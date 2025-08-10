@@ -368,6 +368,7 @@
         }
 
         log(`🔍 機能を動的検索: ${functionName}`, 'info');
+        console.log(`[DEBUG] ChatGPT selectFunction called with: "${functionName}"`);
 
         // 機能選択ボタンを探す
         const functionButtonSelectors = [
@@ -397,20 +398,27 @@
 
         if (!functionButton) {
             log('❌ 機能選択ボタンが見つかりません', 'error');
+            console.log('[DEBUG] ChatGPT: 機能ボタン検索失敗');
+            console.log('[DEBUG] Available buttons:', document.querySelectorAll('button').length);
             return false;
         }
+
+        console.log(`[DEBUG] ChatGPT: 機能ボタン発見 - ${functionButton.getAttribute('data-testid')}`);
 
         // メニューを開く
         debugLog('機能メニューを開きます');
         await performClick(functionButton);
+        await wait(CONFIG.delays.menuOpen); // 成功事例と同じ待機
         const menu = await waitForMenu();
 
         if (!menu) {
             log('❌ 機能メニューが開きませんでした', 'error');
+            console.log('[DEBUG] ChatGPT: メニューオープン失敗');
             return false;
         }
 
         debugLog('機能メニューが正常に開きました');
+        console.log(`[DEBUG] ChatGPT: メニュー項目数: ${menu.querySelectorAll('[role="menuitem"], [role="menuitemradio"]').length}`);
 
         // 動的に機能項目を検索
         let allMenuItems = [];
@@ -421,25 +429,59 @@
         const mainMenuItems = menu.querySelectorAll('[role="menuitem"], [role="menuitemradio"]');
         debugLog(`メインメニュー項目数: ${mainMenuItems.length}`);
 
+        // まず全ての機能を収集
         for (const item of mainMenuItems) {
             const textContent = item.textContent?.trim();
             if (textContent) {
                 allFunctions.push({ text: textContent, location: 'main', element: item });
                 debugLog(`発見機能(メイン): "${textContent}"`);
+            }
+        }
 
-                // 機能名のマッチング（柔軟な検索）
-                const normalizedInput = functionName.toLowerCase().replace(/[^a-z0-9]/g, '');
-                const normalizedFunction = textContent.toLowerCase().replace(/[^a-z0-9]/g, '');
+        console.log(`[DEBUG] ChatGPT: 検索対象機能一覧:`, allFunctions.map(f => f.text));
+        console.log(`[DEBUG] ChatGPT: 検索キーワード: "${functionName}"`);
 
-                if (normalizedFunction.includes(normalizedInput) || 
-                    normalizedInput.includes(normalizedFunction) ||
-                    textContent.toLowerCase().includes(functionName.toLowerCase()) ||
-                    functionName.toLowerCase().includes(textContent.toLowerCase())) {
-                    targetFunction = { element: item, text: textContent, location: 'main' };
-                    log(`🎯 マッチする機能を発見(メイン): "${textContent}"`, 'success');
+        // 完全一致を最優先で検索
+        for (const func of allFunctions) {
+            if (func.text === functionName) {
+                targetFunction = { element: func.element, text: func.text, location: 'main' };
+                console.log(`[DEBUG] ChatGPT: 完全一致成功! "${func.text}"`);
+                break;
+            }
+        }
+
+        // 完全一致が見つからない場合、部分一致検索
+        if (!targetFunction) {
+            for (const func of allFunctions) {
+                if (func.text.includes(functionName)) {
+                    targetFunction = { element: func.element, text: func.text, location: 'main' };
+                    console.log(`[DEBUG] ChatGPT: 部分一致成功! "${func.text}"`);
                     break;
                 }
             }
+        }
+
+        // それでも見つからない場合、正規化マッチング
+        if (!targetFunction) {
+            const normalizedInput = functionName.toLowerCase().replace(/[^a-z0-9]/g, '');
+            
+            for (const func of allFunctions) {
+                const normalizedFunction = func.text.toLowerCase().replace(/[^a-z0-9]/g, '');
+                console.log(`[DEBUG] ChatGPT: 正規化検査 - 入力:"${normalizedInput}" vs 機能:"${normalizedFunction}"`);
+                
+                if (normalizedFunction.includes(normalizedInput) || 
+                    normalizedInput.includes(normalizedFunction) ||
+                    func.text.toLowerCase().includes(functionName.toLowerCase()) ||
+                    functionName.toLowerCase().includes(func.text.toLowerCase())) {
+                    targetFunction = { element: func.element, text: func.text, location: 'main' };
+                    console.log(`[DEBUG] ChatGPT: 正規化マッチ成功! "${func.text}"`);
+                    break;
+                }
+            }
+        }
+
+        if (targetFunction) {
+            log(`🎯 マッチする機能を発見(メイン): "${targetFunction.text}"`, 'success');
         }
 
         // サブメニューも検索（メインで見つからない場合）
@@ -499,11 +541,15 @@
         debugLog(`機能 "${targetFunction.text}" をクリックします`);
         await performClick(targetFunction.element);
 
-        // 選択確認（メニューが閉じるのを待つ）
-        await wait(500);
+        // 成功事例と同様の待機
+        await wait(CONFIG.delays.afterClick);
+        
+        // メニューを確実に閉じる（成功事例と同様）
+        await closeMenu();
 
         currentState.activeFunctions.add(targetFunction.text);
         log(`✅ 機能を「${targetFunction.text}」に変更しました`, 'success');
+        console.log(`[DEBUG] ChatGPT: 機能選択完了 - ${targetFunction.text}`);
         return true;
     }
 

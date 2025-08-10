@@ -466,19 +466,30 @@
     log(`🔍 モデルを動的検索: ${identifier}`, 'INFO');
 
     try {
-      // Geminiスタイルのモデル名マッピング（複数パターン対応）
+      // Geminiスタイルのモデル名マッピング（コード内の既存定義に基づく）
       const modelMappings = {
+        // Opus 4.1
         'opus4.1': ['Opus 4.1', 'Claude Opus 4.1', 'Opus'],
         'opus 4.1': ['Opus 4.1', 'Claude Opus 4.1', 'Opus'],
         'opus41': ['Opus 4.1', 'Claude Opus 4.1', 'Opus'],
         'opus': ['Opus 4.1', 'Claude Opus 4.1', 'Opus'],
+        // Sonnet 4
         'sonnet4': ['Sonnet 4', 'Claude Sonnet 4', 'Sonnet'],
         'sonnet 4': ['Sonnet 4', 'Claude Sonnet 4', 'Sonnet'],
         'sonnet': ['Sonnet 4', 'Claude Sonnet 4', 'Sonnet'],
         '4': ['Sonnet 4', 'Claude Sonnet 4', 'Sonnet'],
-        'haiku': ['Haiku 3.5', 'Claude Haiku 3.5', 'Haiku'],
+        // Opus 4
+        'opus4': ['Opus 4', 'Claude Opus 4', 'Opus'],
+        'opus 4': ['Opus 4', 'Claude Opus 4', 'Opus'],
+        // Sonnet 3.7
+        'sonnet3.7': ['Sonnet 3.7', 'Claude Sonnet 3.7', '3.7'],
+        'sonnet 3.7': ['Sonnet 3.7', 'Claude Sonnet 3.7', '3.7'],
+        '3.7': ['Sonnet 3.7', 'Claude Sonnet 3.7', '3.7'],
+        // Haiku 3.5
         'haiku3.5': ['Haiku 3.5', 'Claude Haiku 3.5', 'Haiku'],
-        'haiku 3.5': ['Haiku 3.5', 'Claude Haiku 3.5', 'Haiku']
+        'haiku 3.5': ['Haiku 3.5', 'Claude Haiku 3.5', 'Haiku'],
+        'haiku': ['Haiku 3.5', 'Claude Haiku 3.5', 'Haiku'],
+        '3.5': ['Haiku 3.5', 'Claude Haiku 3.5', 'Haiku']
       };
 
       const possibleNames = modelMappings[identifier.toLowerCase()] || [identifier];

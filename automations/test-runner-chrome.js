@@ -247,6 +247,39 @@
             target: { tabId: tabId },
             func: async (aiName, config) => {
               try {
+                // 機能名変換マッピング
+                const functionMappings = {
+                  'ChatGPT': {
+                    'agent': 'エージェントモード',
+                    'deep-research': 'Deep Research',
+                    'image': '画像を作成する',
+                    'thinking': 'より長く思考する',
+                    'canvas': 'canvas',
+                    'web-search': 'ウェブ検索',
+                    'learning': 'あらゆる学びをサポート',
+                    'connector': 'コネクターを使用する'
+                  },
+                  'Claude': {
+                    'deep-research': 'リサーチ'
+                  },
+                  'Gemini': {
+                    'deep-research': 'Deep Research',
+                    '画像': '画像',
+                    'canvas': 'canvas',
+                    '動画': '動画',
+                    'thinking': 'thinking'
+                  }
+                };
+                
+                // 機能名を変換
+                if (config.function && config.function !== 'none' && functionMappings[aiName]) {
+                  const mappedFunction = functionMappings[aiName][config.function];
+                  if (mappedFunction) {
+                    config.function = mappedFunction;
+                    console.log(`[TestRunner] ${aiName} 機能名変換: ${config.function}`);
+                  }
+                }
+                
                 // AI名に基づいて適切な自動化オブジェクトを検索
                 const automationMap = {
                   'Claude': ['ClaudeAutomation', 'Claude'],
@@ -292,17 +325,14 @@
                     getResponse: config.getResponse,
                   });
                 } else if (typeof automation.testNormal === 'function' && aiName === 'Gemini') {
-                  // Gemini専用の実行方法
+                  // Gemini専用の実行方法（動的検索版）
                   console.log(`[TestRunner] Gemini動的テストを実行`);
                   
-                  // モデル選択
-                  if (config.model) {
-                    await automation.model(config.model);
-                  }
-                  
-                  // 機能選択
+                  // 機能選択を事前に行う（Deep Research含む）
                   if (config.function && config.function !== 'none') {
+                    console.log(`[TestRunner] Gemini機能選択: ${config.function}`);
                     await automation.func(config.function);
+                    await new Promise(resolve => setTimeout(resolve, 1000));
                   }
                   
                   // テキスト入力と送信
