@@ -15,7 +15,9 @@
     WAIT_INTERVAL: 1000,       // 待機間隔: 1秒
     CLICK_DELAY: 500,          // クリック後の待機: 0.5秒
     INPUT_DELAY: 300,          // 入力後の待機: 0.3秒
-    SCROLL_DELAY: 200          // スクロール後の待機: 0.2秒
+    SCROLL_DELAY: 200,         // スクロール後の待機: 0.2秒
+    MINUTE_MS: 60000,          // 1分 = 60000ミリ秒
+    SECOND_MS: 1000            // 1秒 = 1000ミリ秒
   };
 
   // ========================================
@@ -401,7 +403,7 @@
       log(`[${stopWaitCount}秒] 停止ボタン状態: ${findStopButton() ? '🔴 あり(回答中)' : '✅ なし(完了)'}`, 'info');
       
       // 1分ごとにログ
-      const elapsedMinutes = Math.floor((Date.now() - startTime) / 60000);
+      const elapsedMinutes = Math.floor((Date.now() - startTime) / CONFIG.MINUTE_MS);
       if (elapsedMinutes > lastMinuteLogged) {
         lastMinuteLogged = elapsedMinutes;
         log(`生成中... (${elapsedMinutes}分経過)`, 'info');
@@ -416,14 +418,14 @@
     // 経過時間を計算（送信時刻から）
     if (sendStartTime) {
       const elapsedTotal = Date.now() - sendStartTime;
-      const minutes = Math.floor(elapsedTotal / 60000);
-      const seconds = Math.floor((elapsedTotal % 60000) / 1000);
+      const minutes = Math.floor(elapsedTotal / CONFIG.MINUTE_MS);
+      const seconds = Math.floor((elapsedTotal % CONFIG.MINUTE_MS) / CONFIG.SECOND_MS);
       log(`✅ 応答完了（送信から ${minutes}分${seconds}秒経過）`, 'success');
     } else {
       // 待機開始時刻からの計算（フォールバック）
       const elapsedTotal = Date.now() - startTime;
-      const minutes = Math.floor(elapsedTotal / 60000);
-      const seconds = Math.floor((elapsedTotal % 60000) / 1000);
+      const minutes = Math.floor(elapsedTotal / CONFIG.MINUTE_MS);
+      const seconds = Math.floor((elapsedTotal % CONFIG.MINUTE_MS) / CONFIG.SECOND_MS);
       log(`✅ 応答完了（${minutes}分${seconds}秒経過）`, 'success');
     }
     
