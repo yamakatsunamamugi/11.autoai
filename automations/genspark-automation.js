@@ -368,25 +368,26 @@
     
     const startTime = Date.now();
     
-    // 1. 停止ボタンが出現するまで待つ（最大30秒）
+    // 1. 停止ボタンが出現するまで待つ（制限なし）
     log('停止ボタンの出現を待機中...');
     let waitCount = 0;
-    while (!findStopButton() && waitCount < 30) {
+    while (!findStopButton()) {
       await wait(1000);
       waitCount++;
-    }
-    
-    if (!findStopButton()) {
-      log('停止ボタンが出現しませんでした', 'warning');
-      return false;
+      log(`[${waitCount}秒] 停止ボタン待機中... (DEBUG: ${findStopButton() ? 'あり' : 'なし'})`, 'info');
     }
     
     log('停止ボタンを検出 - 生成中', 'info');
     
     // 2. 停止ボタンが消えるまで待つ（最大タイムアウトまで）
     let lastMinuteLogged = 0;
+    let stopWaitCount = 0;
     while (findStopButton() && (Date.now() - startTime < timeout)) {
       await wait(1000);
+      stopWaitCount++;
+      
+      // 1秒ごとのデバッグログ（DEBUG: 削除予定）
+      log(`[${stopWaitCount}秒] 停止ボタン状態: ${findStopButton() ? '🔴 あり(回答中)' : '✅ なし(完了)'}`, 'info');
       
       // 1分ごとにログ
       const elapsedMinutes = Math.floor((Date.now() - startTime) / 60000);
