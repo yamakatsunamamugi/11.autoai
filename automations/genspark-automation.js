@@ -348,7 +348,7 @@
   /**
    * 5. 応答待機
    */
-  const waitForResponse = async (timeout = 60000) => {
+  const waitForResponse = async (timeout = 3600000) => {
     log('応答待機開始');
     
     // 停止ボタンを検出する関数
@@ -521,7 +521,7 @@
       if (finalConfig.waitResponse) {
         const waitResult = await waitForResponse(finalConfig.timeout || 60000);
         if (!waitResult) {
-          log('応答待機がタイムアウトしました', 'warning');
+          throw new Error('応答待機がタイムアウトしました');
         }
       }
       
