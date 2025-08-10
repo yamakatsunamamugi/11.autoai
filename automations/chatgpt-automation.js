@@ -96,15 +96,14 @@
     };
 
     const debugLog = (message) => {
-        if (currentState.debug) {
-            log(`[DEBUG] ${message}`, 'debug');
-        }
+        log(`[DEBUG] ${message}`, 'debug');
     };
 
     // ============================================
-    // メニュー操作関数
+    // メニュー操作関数（動作確認済み堅牢版）
     // ============================================
     async function closeMenu() {
+        debugLog('メニューを閉じます');
         document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
         await wait(100);
         document.body.click();
@@ -114,13 +113,19 @@
         openMenus.forEach(menu => menu.remove());
         
         await wait(CONFIG.delays.afterClick);
-        return !document.querySelector('[role="menu"]');
+        const menuStillOpen = document.querySelector('[role="menu"]');
+        debugLog(`メニュー閉じた: ${!menuStillOpen}`);
+        return !menuStillOpen;
     }
 
     async function performClick(element) {
-        if (!element) return false;
+        if (!element) {
+            debugLog('クリック対象要素がnull');
+            return false;
+        }
         
         try {
+            debugLog('PointerEventでクリック実行');
             element.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
             await wait(10);
             element.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true }));
@@ -128,6 +133,7 @@
             await wait(CONFIG.delays.afterClick);
             return true;
         } catch (e) {
+            debugLog('PointerEvent失敗、通常クリックで再試行');
             element.click();
             await wait(CONFIG.delays.afterClick);
             return true;
@@ -135,118 +141,227 @@
     }
 
     async function waitForMenu(maxWait = 3000) {
+        debugLog(`メニューを待機中... (最大${maxWait}ms)`);
         const startTime = Date.now();
         while (Date.now() - startTime < maxWait) {
             const menu = document.querySelector('[role="menu"]');
             if (menu && menu.offsetParent !== null) {
+                debugLog('メニューを発見');
                 await wait(CONFIG.delays.menuOpen);
                 return menu;
             }
             await wait(100);
         }
+        debugLog('メニュー待機タイムアウト');
         return null;
     }
 
     async function openSubmenu(menuItem) {
+        debugLog('サブメニューを開きます');
         menuItem.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
         menuItem.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
         await wait(CONFIG.delays.submenuOpen);
         
         const allMenus = document.querySelectorAll('[role="menu"]');
         if (allMenus.length > 1) {
+            debugLog(`サブメニュー発見 (総メニュー数: ${allMenus.length})`);
             return allMenus[allMenus.length - 1];
         }
         
+        debugLog('マウスホバーで開かなかったため、クリックで試行');
         await performClick(menuItem);
         await wait(CONFIG.delays.submenuOpen);
         
         const menusAfterClick = document.querySelectorAll('[role="menu"]');
         if (menusAfterClick.length > 1) {
+            debugLog(`クリック後にサブメニュー発見 (総メニュー数: ${menusAfterClick.length})`);
             return menusAfterClick[menusAfterClick.length - 1];
         }
         
+        debugLog('サブメニューが開けませんでした');
         return null;
     }
 
     // ============================================
-    // モデル選択関数
+    // モデル選択関数（動的検索版）
     // ============================================
-    async function selectModel(modelId) {
-        const targetModelName = MODEL_MAPPING[modelId];
-        if (!targetModelName) {
-            log(`不明なモデル: ${modelId}`, 'error');
-            return false;
-        }
 
-        log(`モデル選択: ${targetModelName}`, 'info');
-
-        // モデル選択ボタンを探す
-        const modelButton = document.querySelector('[data-testid="model-switcher-dropdown-button"]') ||
-                           document.querySelector('button[aria-label*="モデル"]') ||
-                           document.querySelector('button[aria-label*="Model"]') ||
-                           document.querySelector('button[aria-haspopup="true"]');
-
-        if (!modelButton) {
-            log('モデル選択ボタンが見つかりません', 'error');
-            return false;
-        }
-
-        // メニューを開く
-        if (modelButton.getAttribute("aria-expanded") !== "true") {
-            await performClick(modelButton);
-            const menu = await waitForMenu();
-            if (!menu) {
-                log('モデルメニューが開きませんでした', 'error');
-                return false;
-            }
-        }
-
-        // メインメニューでGPT-5を探す
-        if (targetModelName === 'GPT-5') {
-            const menuItems = document.querySelectorAll('[role="menuitem"]');
-            for (const item of menuItems) {
-                if (item.textContent?.includes('GPT-5') && !item.textContent?.includes('Thinking') && !item.textContent?.includes('Pro')) {
-                    await performClick(item);
-                    currentState.selectedModel = targetModelName;
-                    log(`✅ モデルを「${targetModelName}」に変更しました`, 'success');
-                    return true;
+    // ============================================
+    // モデル選択関数（Geminiスタイル動的検索版）
+    // ============================================
+    async function selectModel(modelName) {
+        log(`🤖 モデル選択開始: ${modelName}`, 'info');
+        
+        try {
+            // モデル選択ボタンを探す（ChatGPT特有の方法）
+            const modelButtonSelectors = [
+                '[data-testid="model-switcher-dropdown-button"]',
+                'button[aria-haspopup="menu"]',
+                'button[aria-label*="モデル"]',
+                'button[aria-label*="Model"]'
+            ];
+            
+            let modelButton = null;
+            for (const selector of modelButtonSelectors) {
+                try {
+                    const elements = document.querySelectorAll(selector);
+                    for (const element of elements) {
+                        if (element && element.offsetParent !== null) {
+                            modelButton = element;
+                            debugLog(`モデルボタン発見: ${selector}`);
+                            break;
+                        }
+                    }
+                    if (modelButton) break;
+                } catch (e) {
+                    debugLog(`セレクタエラー: ${selector}`);
                 }
             }
-        } else {
-            // サブメニュー項目の場合
-            const submenuTrigger = Array.from(document.querySelectorAll('[role="menuitem"]'))
-                .find(item => item.textContent?.includes('その他のモデル'));
             
-            if (submenuTrigger) {
-                const submenu = await openSubmenu(submenuTrigger);
-                if (submenu) {
-                    const submenuItems = submenu.querySelectorAll('[role="menuitem"]');
-                    for (const item of submenuItems) {
-                        if (item.textContent?.includes(targetModelName)) {
+            if (!modelButton) {
+                log('❌ モデル選択ボタンが見つかりません', 'error');
+                return false;
+            }
+            
+            // メニューを開く（ChatGPT特有の方法）
+            debugLog('モデルメニューを開きます');
+            await performClick(modelButton);
+            const menu = await waitForMenu();
+            
+            if (!menu) {
+                log('❌ モデルメニューが開きませんでした', 'error');
+                return false;
+            }
+            
+            debugLog('モデルメニューが正常に開きました');
+            
+            // モデル名マッピング（Geminiスタイル - 複数パターン対応）
+            const modelMappings = {
+                'gpt-5': ['GPT-5'],
+                'gpt-5-thinking': ['GPT-5 Thinking', 'Thinking'],
+                'gpt-5-pro': ['GPT-5 Pro', 'Pro'],
+                '5': ['GPT-5'],
+                '5-thinking': ['GPT-5 Thinking', 'Thinking'],
+                '5-pro': ['GPT-5 Pro', 'Pro'],
+                'thinking': ['GPT-5 Thinking', 'Thinking'],
+                'pro': ['GPT-5 Pro', 'Pro']
+            };
+            
+            const possibleNames = modelMappings[modelName.toLowerCase()] || [modelName];
+            log(`検索パターン: ${possibleNames.join(', ')}`, 'info');
+            
+            // メニューからモデルを動的検索（ChatGPT特有のセレクタ）
+            const menuItems = menu.querySelectorAll('[role="menuitem"]');
+            debugLog(`利用可能なモデル項目数: ${menuItems.length}`);
+            
+            let allModels = [];
+            
+            for (const item of menuItems) {
+                const textContent = item.textContent?.trim() || '';
+                const testId = item.getAttribute('data-testid');
+                
+                if (textContent) {
+                    allModels.push({ text: textContent, testId: testId });
+                    debugLog(`発見モデル: "${textContent}" (testId: ${testId})`);
+                    
+                    // Geminiスタイルのマッチング - シンプルなincludes()
+                    for (const name of possibleNames) {
+                        if (textContent.includes(name)) {
+                            log(`🎯 マッチ成功: "${textContent}" ← "${name}"`, 'success');
+                            
+                            // 既に選択済みかチェック
+                            const isSelected = item.querySelector('svg path[d*="12.0961"]') !== null;
+                            if (isSelected) {
+                                log(`ℹ️ モデル "${textContent}" は既に選択済みです`, 'info');
+                                await closeMenu();
+                                return true;
+                            }
+                            
+                            // モデル選択実行
+                            debugLog(`モデル "${textContent}" をクリックします`);
                             await performClick(item);
-                            currentState.selectedModel = targetModelName;
-                            log(`✅ モデルを「${targetModelName}」に変更しました`, 'success');
+                            await wait(1000);
+                            
+                            currentState.selectedModel = textContent;
+                            log(`✅ モデルを「${textContent}」に変更しました`, 'success');
                             return true;
                         }
                     }
                 }
             }
+            
+            // モデルが見つからない場合
+            log(`❌ モデル「${modelName}」が見つかりませんでした`, 'error');
+            log('利用可能なモデル:', 'info');
+            allModels.forEach(model => {
+                log(`  • ${model.text} (${model.testId})`, 'info');
+            });
+            await closeMenu();
+            return false;
+            
+        } catch (error) {
+            log(`モデル選択エラー: ${error.message}`, 'error');
+            return false;
         }
+    }
 
+    // 利用可能なモデルを取得する関数
+    async function getAvailableModels() {
+        log('📋 利用可能なモデルを取得中...', 'info');
+        
+        // モデル選択ボタンを探す
+        const modelButton = document.querySelector('[data-testid="model-switcher-dropdown-button"]');
+        if (!modelButton) {
+            log('❌ モデル選択ボタンが見つかりません', 'error');
+            return [];
+        }
+        
+        // メニューを開く
+        await performClick(modelButton);
+        const menu = await waitForMenu();
+        
+        if (!menu) {
+            log('❌ モデルメニューが開きませんでした', 'error');
+            return [];
+        }
+        
+        // モデル一覧を取得
+        const menuItems = menu.querySelectorAll('[role="menuitem"]');
+        const models = [];
+        
+        for (const item of menuItems) {
+            const textContent = item.textContent?.trim();
+            const testId = item.getAttribute('data-testid');
+            const isSelected = item.querySelector('svg path[d*="12.0961"]') !== null;
+            
+            if (textContent) {
+                models.push({
+                    name: textContent,
+                    testId: testId,
+                    selected: isSelected
+                });
+            }
+        }
+        
+        // メニューを閉じる
         await closeMenu();
-        log(`モデルが見つかりませんでした: ${targetModelName}`, 'error');
-        return false;
+        
+        log(`✅ ${models.length}個のモデルを発見`, 'success');
+        models.forEach(model => {
+            const status = model.selected ? ' [選択中]' : '';
+            log(`  • ${model.name}${status}`, 'info');
+        });
+        
+        return models;
     }
 
     // ============================================
-    // 機能選択関数
+    // 機能選択関数（動的検索版）
     // ============================================
-    async function selectFunction(functionId) {
-        const targetFunctionName = FUNCTION_MAPPING[functionId];
-        
-        if (functionId === 'none' || !targetFunctionName) {
-            // 全ての機能を無効化
-            log('全ての機能を無効化します', 'info');
+    async function selectFunction(functionName) {
+        // 機能を無効化する場合
+        if (functionName === 'none' || !functionName) {
+            log('🔄 全ての機能を無効化します', 'info');
             const activePills = document.querySelectorAll('button[data-is-selected="true"][data-pill="true"]');
             for (const pill of activePills) {
                 const closeButton = pill.querySelector('svg[aria-label*="無効"], svg[aria-label*="disable"]');
@@ -258,73 +373,212 @@
             return true;
         }
 
-        log(`機能選択: ${targetFunctionName}`, 'info');
+        log(`🔍 機能を動的検索: ${functionName}`, 'info');
 
         // 機能選択ボタンを探す
-        const functionButton = document.querySelector('[data-testid="composer-plus-btn"]') ||
-                              document.querySelector('button.composer-btn');
+        const functionButtonSelectors = [
+            '[data-testid="composer-plus-btn"]',
+            'button.composer-btn',
+            'button[aria-label*="機能"]',
+            'button[aria-label*="プラス"]',
+            'button[aria-label*="追加"]'
+        ];
+
+        let functionButton = null;
+        for (const selector of functionButtonSelectors) {
+            try {
+                const elements = document.querySelectorAll(selector);
+                for (const element of elements) {
+                    if (element && element.offsetParent !== null) {
+                        functionButton = element;
+                        debugLog(`機能選択ボタン発見: ${selector}`);
+                        break;
+                    }
+                }
+                if (functionButton) break;
+            } catch (e) {
+                debugLog(`セレクタエラー: ${selector}`);
+            }
+        }
 
         if (!functionButton) {
-            log('機能選択ボタンが見つかりません', 'error');
+            log('❌ 機能選択ボタンが見つかりません', 'error');
             return false;
         }
 
+        // メニューを開く
+        debugLog('機能メニューを開きます');
         await performClick(functionButton);
         const menu = await waitForMenu();
 
         if (!menu) {
-            log('機能メニューが開きませんでした', 'error');
+            log('❌ 機能メニューが開きませんでした', 'error');
             return false;
         }
 
-        // メイン機能から探す
-        const allFunctions = [...CONFIG.functions.main, ...CONFIG.functions.submenu];
-        const targetFunction = allFunctions.find(f => f.name === targetFunctionName);
-        
-        if (!targetFunction) {
-            await closeMenu();
-            log(`機能定義が見つかりません: ${targetFunctionName}`, 'error');
-            return false;
-        }
+        debugLog('機能メニューが正常に開きました');
 
-        // メイン機能の場合
-        if (CONFIG.functions.main.includes(targetFunction)) {
-            const menuItems = menu.querySelectorAll('[role="menuitem"], [role="menuitemradio"]');
-            
-            for (const item of menuItems) {
-                if (item.textContent?.includes(targetFunction.name)) {
-                    await performClick(item);
-                    currentState.activeFunctions.add(targetFunction.name);
-                    log(`✅ 機能を「${targetFunction.name}」に変更しました`, 'success');
-                    await closeMenu();
-                    return true;
+        // 動的に機能項目を検索
+        let allMenuItems = [];
+        let targetFunction = null;
+        let allFunctions = [];
+
+        // メインメニューから検索
+        const mainMenuItems = menu.querySelectorAll('[role="menuitem"], [role="menuitemradio"]');
+        debugLog(`メインメニュー項目数: ${mainMenuItems.length}`);
+
+        for (const item of mainMenuItems) {
+            const textContent = item.textContent?.trim();
+            if (textContent) {
+                allFunctions.push({ text: textContent, location: 'main', element: item });
+                debugLog(`発見機能(メイン): "${textContent}"`);
+
+                // 機能名のマッチング（柔軟な検索）
+                const normalizedInput = functionName.toLowerCase().replace(/[^a-z0-9]/g, '');
+                const normalizedFunction = textContent.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+                if (normalizedFunction.includes(normalizedInput) || 
+                    normalizedInput.includes(normalizedFunction) ||
+                    textContent.toLowerCase().includes(functionName.toLowerCase()) ||
+                    functionName.toLowerCase().includes(textContent.toLowerCase())) {
+                    targetFunction = { element: item, text: textContent, location: 'main' };
+                    log(`🎯 マッチする機能を発見(メイン): "${textContent}"`, 'success');
+                    break;
                 }
             }
-        } else {
-            // サブメニュー機能の場合
-            const submenuTrigger = Array.from(menu.querySelectorAll('[role="menuitem"]'))
+        }
+
+        // サブメニューも検索（メインで見つからない場合）
+        if (!targetFunction) {
+            // 「さらに表示」ボタンを探す
+            const submenuTrigger = Array.from(mainMenuItems)
                 .find(item => item.textContent?.includes('さらに表示'));
-            
+
             if (submenuTrigger) {
+                log('📂 サブメニューを開きます', 'info');
                 const submenu = await openSubmenu(submenuTrigger);
+
                 if (submenu) {
                     const submenuItems = submenu.querySelectorAll('[role="menuitem"], [role="menuitemradio"]');
+                    debugLog(`サブメニュー項目数: ${submenuItems.length}`);
+
                     for (const item of submenuItems) {
-                        if (item.textContent?.includes(targetFunction.name)) {
-                            await performClick(item);
-                            currentState.activeFunctions.add(targetFunction.name);
-                            log(`✅ 機能を「${targetFunction.name}」に変更しました`, 'success');
-                            await closeMenu();
-                            return true;
+                        const textContent = item.textContent?.trim();
+                        if (textContent) {
+                            allFunctions.push({ text: textContent, location: 'submenu', element: item });
+                            debugLog(`発見機能(サブ): "${textContent}"`);
+
+                            // 機能名のマッチング
+                            const normalizedInput = functionName.toLowerCase().replace(/[^a-z0-9]/g, '');
+                            const normalizedFunction = textContent.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+                            if (normalizedFunction.includes(normalizedInput) || 
+                                normalizedInput.includes(normalizedFunction) ||
+                                textContent.toLowerCase().includes(functionName.toLowerCase()) ||
+                                functionName.toLowerCase().includes(textContent.toLowerCase())) {
+                                targetFunction = { element: item, text: textContent, location: 'submenu' };
+                                log(`🎯 マッチする機能を発見(サブ): "${textContent}"`, 'success');
+                                break;
+                            }
                         }
+                    }
+                } else {
+                    debugLog('サブメニューが開けませんでした');
+                }
+            } else {
+                debugLog('「さらに表示」ボタンが見つかりませんでした');
+            }
+        }
+
+        // 機能が見つからない場合、利用可能な機能一覧を表示
+        if (!targetFunction) {
+            log(`❌ 機能 "${functionName}" が見つかりませんでした`, 'error');
+            log('利用可能な機能:', 'info');
+            allFunctions.forEach(func => {
+                log(`  • ${func.text} (${func.location})`, 'info');
+            });
+            await closeMenu();
+            return false;
+        }
+
+        // 機能を選択
+        debugLog(`機能 "${targetFunction.text}" をクリックします`);
+        await performClick(targetFunction.element);
+
+        // 選択確認（メニューが閉じるのを待つ）
+        await wait(500);
+
+        currentState.activeFunctions.add(targetFunction.text);
+        log(`✅ 機能を「${targetFunction.text}」に変更しました`, 'success');
+        return true;
+    }
+
+    // 利用可能な機能を取得する関数
+    async function getAvailableFunctions() {
+        log('📋 利用可能な機能を取得中...', 'info');
+        
+        // 機能選択ボタンを探す
+        const functionButton = document.querySelector('[data-testid="composer-plus-btn"]');
+        if (!functionButton) {
+            log('❌ 機能選択ボタンが見つかりません', 'error');
+            return [];
+        }
+        
+        // メニューを開く
+        await performClick(functionButton);
+        const menu = await waitForMenu();
+        
+        if (!menu) {
+            log('❌ 機能メニューが開きませんでした', 'error');
+            return [];
+        }
+        
+        // 機能一覧を取得
+        const functions = [];
+        
+        // メインメニューの機能
+        const mainMenuItems = menu.querySelectorAll('[role="menuitem"], [role="menuitemradio"]');
+        for (const item of mainMenuItems) {
+            const textContent = item.textContent?.trim();
+            if (textContent) {
+                functions.push({
+                    name: textContent,
+                    location: 'main',
+                    type: item.getAttribute('role') === 'menuitemradio' ? 'radio' : 'normal'
+                });
+            }
+        }
+        
+        // サブメニューの機能
+        const submenuTrigger = Array.from(mainMenuItems)
+            .find(item => item.textContent?.includes('さらに表示'));
+        
+        if (submenuTrigger) {
+            const submenu = await openSubmenu(submenuTrigger);
+            if (submenu) {
+                const submenuItems = submenu.querySelectorAll('[role="menuitem"], [role="menuitemradio"]');
+                for (const item of submenuItems) {
+                    const textContent = item.textContent?.trim();
+                    if (textContent) {
+                        functions.push({
+                            name: textContent,
+                            location: 'submenu',
+                            type: item.getAttribute('role') === 'menuitemradio' ? 'radio' : 'normal'
+                        });
                     }
                 }
             }
         }
-
+        
+        // メニューを閉じる
         await closeMenu();
-        log(`機能が見つかりませんでした: ${targetFunctionName}`, 'error');
-        return false;
+        
+        log(`✅ ${functions.length}個の機能を発見`, 'success');
+        functions.forEach(func => {
+            log(`  • ${func.name} (${func.location}, ${func.type})`, 'info');
+        });
+        
+        return functions;
     }
 
     // ============================================
@@ -649,6 +903,8 @@
         getResponse,
         runAutomation,
         setDebug,
+        getAvailableModels,
+        getAvailableFunctions,
         utils: {
             wait,
             waitForMenu,
