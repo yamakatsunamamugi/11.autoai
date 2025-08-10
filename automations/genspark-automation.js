@@ -519,7 +519,7 @@
       
       // 5. 応答待機
       if (finalConfig.waitResponse) {
-        const waitResult = await waitForResponse(finalConfig.timeout || 60000);
+        const waitResult = await waitForResponse(finalConfig.timeout || 3600000);
         if (!waitResult) {
           throw new Error('応答待機がタイムアウトしました');
         }
