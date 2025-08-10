@@ -50,12 +50,6 @@
     };
 
     // HTMLのIDと実際の機能名のマッピング
-    const MODEL_MAPPING = {
-        'gpt-5': 'GPT-5',
-        'gpt-5-thinking': 'GPT-5 Thinking',
-        'gpt-5-pro': 'GPT-5 Pro'
-    };
-
     const FUNCTION_MAPPING = {
         'none': null,
         'agent': 'エージェントモード',

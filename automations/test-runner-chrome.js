@@ -9,7 +9,19 @@
     const timestamp = new Date().toLocaleTimeString();
     const logContainer = document.getElementById('log-container');
     if (logContainer) {
-      const logEntry = `[${timestamp}] ${message}\n`;
+      // タイプに応じて絵文字を追加
+      let icon = '';
+      switch(type) {
+        case 'success': icon = '✅ '; break;
+        case 'error': icon = '❌ '; break;
+        case 'warning': icon = '⚠️ '; break;
+        case 'model': icon = '🔄 '; break;
+        case 'function': icon = '⚙️ '; break;
+        case 'send': icon = '📤 '; break;
+        case 'complete': icon = '✅ '; break;
+        default: icon = '';
+      }
+      const logEntry = `[${timestamp}] ${icon}${message}\n`;
       logContainer.textContent += logEntry;
       logContainer.scrollTop = logContainer.scrollHeight;
     }
@@ -29,30 +41,36 @@
 
   // テスト設定を取得
   function getTestConfig() {
+    // プロンプトをテキストボックスから直接取得
+    const getPrompt = (aiName) => {
+      const inputElement = document.getElementById(`${aiName}-prompt`);
+      return inputElement?.value || '';
+    };
+    
     return {
       claude: {
         enabled: document.getElementById('enable-claude')?.checked,
         model: document.getElementById('claude-model')?.value,
         function: document.getElementById('claude-feature')?.value,
-        prompt: document.getElementById('claude-prompt')?.value,
+        prompt: getPrompt('claude'),
       },
       chatgpt: {
         enabled: document.getElementById('enable-chatgpt')?.checked,
         model: document.getElementById('chatgpt-model')?.value,
         function: document.getElementById('chatgpt-feature')?.value,
-        prompt: document.getElementById('chatgpt-prompt')?.value,
+        prompt: getPrompt('chatgpt'),
       },
       gemini: {
         enabled: document.getElementById('enable-gemini')?.checked,
         model: document.getElementById('gemini-model')?.value,
         function: document.getElementById('gemini-feature')?.value,
-        prompt: document.getElementById('gemini-prompt')?.value,
+        prompt: getPrompt('gemini'),
       },
       genspark: {
         enabled: document.getElementById('enable-genspark')?.checked,
         model: document.getElementById('genspark-model')?.value,
         function: document.getElementById('genspark-feature')?.value,
-        prompt: document.getElementById('genspark-prompt')?.value,
+        prompt: getPrompt('genspark'),
       },
     };
   }
@@ -198,14 +216,21 @@
   // タブでスクリプトを実行
   async function executeInTab(tabId, aiName, config) {
     return new Promise((resolve) => {
-      const automationName = `${aiName}Automation`;
-      
       log(`${aiName}スクリプト注入開始`);
       
       // まず自動化スクリプトを注入
+      const scriptFileMap = {
+        'claude': 'automations/claude-automation-dynamic.js',
+        'chatgpt': 'automations/chatgpt-automation.js', 
+        'gemini': 'automations/gemini-dynamic-automation.js',
+        'genspark': 'automations/genspark-automation.js'
+      };
+      
+      const scriptFile = scriptFileMap[aiName.toLowerCase()] || `automations/${aiName.toLowerCase()}-automation.js`;
+      
       chrome.scripting.executeScript({
         target: { tabId: tabId },
-        files: [`automations/${aiName.toLowerCase()}-automation.js`]
+        files: [scriptFile]
       }, () => {
         if (chrome.runtime.lastError) {
           log(`❌ ${aiName}スクリプト注入エラー: ${chrome.runtime.lastError.message}`, 'error');
@@ -220,33 +245,83 @@
           // 次に実行コマンドを送信
           chrome.scripting.executeScript({
             target: { tabId: tabId },
-            func: async (automationName, config) => {
+            func: async (aiName, config) => {
               try {
-                console.log(`[TestRunner] ${automationName}を探しています...`);
+                // AI名に基づいて適切な自動化オブジェクトを検索
+                const automationMap = {
+                  'Claude': ['ClaudeAutomation', 'Claude'],
+                  'ChatGPT': ['ChatGPTAutomation', 'ChatGPT'], 
+                  'Gemini': ['Gemini', 'GeminiAutomation'],
+                  'Genspark': ['GensparkAutomation', 'Genspark']
+                };
                 
-                const automation = window[automationName];
-                if (!automation) {
-                  const availableKeys = Object.keys(window).filter(key => key.includes('Automation'));
-                  console.error(`[TestRunner] ${automationName}が見つかりません。利用可能: ${availableKeys.join(', ')}`);
-                  return { success: false, error: `${automationName}が見つかりません` };
+                const possibleNames = automationMap[aiName] || [`${aiName}Automation`];
+                let automation = null;
+                let foundName = null;
+                
+                for (const name of possibleNames) {
+                  if (window[name]) {
+                    automation = window[name];
+                    foundName = name;
+                    break;
+                  }
                 }
                 
-                console.log(`[TestRunner] ${automationName}を発見、実行開始`);
+                console.log(`[TestRunner] ${aiName}の自動化オブジェクトを探しています...`);
+                console.log(`[TestRunner] 利用可能な候補: ${possibleNames.join(', ')}`);
                 
-                return await automation.runAutomation({
-                  model: config.model,
-                  function: config.function,
-                  text: config.text,
-                  send: config.send,
-                  waitResponse: config.waitResponse,
-                  getResponse: config.getResponse,
-                });
+                if (!automation) {
+                  const availableKeys = Object.keys(window).filter(key => 
+                    key.includes('Automation') || key.includes(aiName)
+                  );
+                  console.error(`[TestRunner] ${aiName}の自動化オブジェクトが見つかりません`);
+                  console.log(`[TestRunner] ウィンドウで利用可能: ${availableKeys.join(', ')}`);
+                  return { success: false, error: `${aiName}の自動化オブジェクトが見つかりません` };
+                }
+                
+                console.log(`[TestRunner] ${foundName}を発見、実行開始`);
+                
+                // 実行方法を自動化オブジェクトの構造に応じて調整
+                if (typeof automation.runAutomation === 'function') {
+                  return await automation.runAutomation({
+                    model: config.model,
+                    function: config.function,
+                    text: config.text,
+                    send: config.send,
+                    waitResponse: config.waitResponse,
+                    getResponse: config.getResponse,
+                  });
+                } else if (typeof automation.testNormal === 'function' && aiName === 'Gemini') {
+                  // Gemini専用の実行方法
+                  console.log(`[TestRunner] Gemini動的テストを実行`);
+                  
+                  // モデル選択
+                  if (config.model) {
+                    await automation.model(config.model);
+                  }
+                  
+                  // 機能選択
+                  if (config.function && config.function !== 'none') {
+                    await automation.func(config.function);
+                  }
+                  
+                  // テキスト入力と送信
+                  if (config.text) {
+                    const result = await automation.testNormal(config.text, config.model);
+                    return result;
+                  }
+                  
+                  return { success: true };
+                } else {
+                  return { success: false, error: `${foundName}に適切な実行方法が見つかりません` };
+                }
+                
               } catch (error) {
                 console.error(`[TestRunner] 実行エラー:`, error);
                 return { success: false, error: error.message };
               }
             },
-            args: [automationName, config]
+            args: [aiName, config]
           }, (results) => {
             if (chrome.runtime.lastError) {
               log(`❌ ${aiName}実行エラー: ${chrome.runtime.lastError.message}`, 'error');
@@ -269,6 +344,17 @@
   async function runAI(aiName, config, position) {
     log(`${aiName}の自動化を開始`);
     
+    // AIの設定を取得
+    const aiConfig = config[aiName.toLowerCase()];
+    
+    // モデルと機能の詳細ログ
+    if (aiConfig && aiConfig.model) {
+      log(`${aiName}: モデルを「${aiConfig.model}」に変更`, 'model');
+    }
+    if (aiConfig && aiConfig.function && aiConfig.function !== 'none') {
+      log(`${aiName}: 機能を「${aiConfig.function}」に変更`, 'function');
+    }
+    
     try {
       // AIウィンドウを作成
       const tab = await createAIWindow(aiName, position);
@@ -284,8 +370,12 @@
         await new Promise(resolve => setTimeout(resolve, 3000));
       }
       
-      // スクリプトを実行
-      const aiConfig = config[aiName.toLowerCase()];
+      // スクリプトを実行（既に上で取得済み）
+      
+      // メッセージ送信ログ
+      log(`${aiName}: メッセージを送信しました`, 'send');
+      const sendTime = Date.now(); // 送信時刻を記録
+      
       const result = await executeInTab(tab.id, aiName, {
         model: aiConfig.model,
         function: aiConfig.function,
@@ -296,7 +386,13 @@
       });
 
       if (result.success) {
-        log(`✅ ${aiName}の自動化が完了`);
+        // 経過時間を計算
+        const elapsedMs = Date.now() - sendTime;
+        const minutes = Math.floor(elapsedMs / 60000);
+        const seconds = Math.floor((elapsedMs % 60000) / 1000);
+        
+        log(`${aiName}: 応答完了（送信から ${minutes}分${seconds}秒経過）`, 'complete');
+        
         if (result.response) {
           log(`${aiName}の回答: ${result.response.substring(0, 100)}...`);
         }
