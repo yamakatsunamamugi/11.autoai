@@ -8,6 +8,17 @@
   "use strict";
 
   // ========================================
+  // 設定定数
+  // ========================================
+  const CONFIG = {
+    DEFAULT_TIMEOUT: 3600000,  // デフォルトタイムアウト: 60分
+    WAIT_INTERVAL: 1000,       // 待機間隔: 1秒
+    CLICK_DELAY: 500,          // クリック後の待機: 0.5秒
+    INPUT_DELAY: 300,          // 入力後の待機: 0.3秒
+    SCROLL_DELAY: 200          // スクロール後の待機: 0.2秒
+  };
+
+  // ========================================
   // グローバル変数
   // ========================================
   let sendStartTime = null;  // 送信開始時刻を記録
@@ -145,9 +156,9 @@
     
     try {
       element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      await wait(200);
+      await wait(CONFIG.SCROLL_DELAY);
       element.click();
-      await wait(500);
+      await wait(CONFIG.CLICK_DELAY);
       return true;
     } catch (e) {
       // MouseEventで再試行
@@ -158,7 +169,7 @@
           view: window
         });
         element.dispatchEvent(event);
-        await wait(500);
+        await wait(CONFIG.CLICK_DELAY);
         return true;
       } catch (e2) {
         log(`クリック失敗: ${e2.message}`, 'error');
@@ -279,7 +290,7 @@
       
       // フォーカス
       inputField.focus();
-      await wait(300);
+      await wait(CONFIG.INPUT_DELAY);
       
       // 既存のテキストをクリア
       if (inputField.tagName === 'TEXTAREA' || inputField.tagName === 'INPUT') {
@@ -308,7 +319,7 @@
         inputField.dispatchEvent(ev);
       }
       
-      await wait(500);
+      await wait(CONFIG.CLICK_DELAY);
       log('テキストを入力しました: ' + text.length + '文字', 'success');
       return true;
       
@@ -334,7 +345,7 @@
     // ボタンが無効化されているかチェック
     if (sendButton.disabled || sendButton.classList.contains('disabled')) {
       log('送信ボタンが無効化されています', 'warning');
-      await wait(1000);
+      await wait(CONFIG.WAIT_INTERVAL);
     }
     
     await clickElement(sendButton);
@@ -348,7 +359,7 @@
   /**
    * 5. 応答待機
    */
-  const waitForResponse = async (timeout = 3600000) => {
+  const waitForResponse = async (timeout = CONFIG.DEFAULT_TIMEOUT) => {
     log('応答待機開始');
     
     // 停止ボタンを検出する関数
@@ -372,7 +383,7 @@
     log('停止ボタンの出現を待機中...');
     let waitCount = 0;
     while (!findStopButton()) {
-      await wait(1000);
+      await wait(CONFIG.WAIT_INTERVAL);
       waitCount++;
       log(`[${waitCount}秒] 停止ボタン待機中... (DEBUG: ${findStopButton() ? 'あり' : 'なし'})`, 'info');
     }
@@ -383,7 +394,7 @@
     let lastMinuteLogged = 0;
     let stopWaitCount = 0;
     while (findStopButton() && (Date.now() - startTime < timeout)) {
-      await wait(1000);
+      await wait(CONFIG.WAIT_INTERVAL);
       stopWaitCount++;
       
       // 1秒ごとのデバッグログ（DEBUG: 削除予定）
@@ -498,7 +509,7 @@
         result.function = finalConfig.function;
       }
       
-      await wait(1000);
+      await wait(CONFIG.WAIT_INTERVAL);
       
       // 3. テキスト入力
       if (finalConfig.text) {
@@ -519,7 +530,7 @@
       
       // 5. 応答待機
       if (finalConfig.waitResponse) {
-        const waitResult = await waitForResponse(finalConfig.timeout || 3600000);
+        const waitResult = await waitForResponse(finalConfig.timeout || CONFIG.DEFAULT_TIMEOUT);
         if (!waitResult) {
           throw new Error('応答待機がタイムアウトしました');
         }
@@ -603,6 +614,7 @@
     
     // 設定
     SELECTORS,
+    CONFIG,
     
     // ヘルプ
     help: () => {
