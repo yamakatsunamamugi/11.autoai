@@ -1,0 +1,96 @@
+{
+  "timestamp": "2025-08-04T19:35:45.653Z",
+  "version": "11.autoai-baseline-node",
+  "results": {
+    "fileStructure": {
+      "status": "pass",
+      "message": "全ての必須ファイルが存在",
+      "details": "確認: 5ファイル",
+      "timestamp": "2025-08-04T19:35:45.670Z"
+    },
+    "manifestFields": {
+      "status": "pass",
+      "message": "Manifest必須フィールドが全て存在",
+      "details": "バージョン: 1.0.0, 権限: 7個",
+      "timestamp": "2025-08-04T19:35:45.671Z"
+    },
+    "serviceWorker": {
+      "status": "pass",
+      "message": "Service Workerが定義されている",
+      "details": "src/background/background.js",
+      "timestamp": "2025-08-04T19:35:45.671Z"
+    },
+    "messageHandlerComplexity": {
+      "status": "pass",
+      "message": "Message Handlerのサイズが適切（30行）",
+      "details": "1個のアクションを処理",
+      "timestamp": "2025-08-04T19:35:45.675Z"
+    },
+    "backgroundStats": {
+      "status": "info",
+      "message": "Background.jsの統計情報",
+      "details": "総行数: 2313, 関数数: 33",
+      "timestamp": "2025-08-04T19:35:45.675Z"
+    },
+    "dependencies": {
+      "status": "info",
+      "message": "外部依存なし",
+      "details": "",
+      "timestamp": "2025-08-04T19:35:45.676Z"
+    },
+    "quality_background.js": {
+      "status": "pass",
+      "message": "background.jsのログ出力は適切",
+      "details": "2個のconsole.log",
+      "timestamp": "2025-08-04T19:35:45.676Z"
+    },
+    "quality_ai-content-unified.js": {
+      "status": "pass",
+      "message": "ai-content-unified.jsのログ出力は適切",
+      "details": "17個のconsole.log",
+      "timestamp": "2025-08-04T19:35:45.678Z"
+    },
+    "quality_popup.js": {
+      "status": "pass",
+      "message": "popup.jsのログ出力は適切",
+      "details": "0個のconsole.log",
+      "timestamp": "2025-08-04T19:35:45.678Z"
+    },
+    "module_AuthService": {
+      "status": "pass",
+      "message": "AuthServiceモジュールが存在",
+      "details": "src/modules/auth-service.js",
+      "timestamp": "2025-08-04T19:35:45.678Z"
+    },
+    "module_TaskGenerator": {
+      "status": "pass",
+      "message": "TaskGeneratorモジュールが存在",
+      "details": "src/modules/task-generator.js",
+      "timestamp": "2025-08-04T19:35:45.678Z"
+    },
+    "module_StreamProcessor": {
+      "status": "pass",
+      "message": "StreamProcessorモジュールが存在",
+      "details": "src/modules/stream-processor.js",
+      "timestamp": "2025-08-04T19:35:45.678Z"
+    },
+    "module_StreamingServiceManager": {
+      "status": "pass",
+      "message": "StreamingServiceManagerモジュールが存在",
+      "details": "src/modules/streaming-service-manager.js",
+      "timestamp": "2025-08-04T19:35:45.678Z"
+    },
+    "module_SheetsIntegration": {
+      "status": "pass",
+      "message": "SheetsIntegrationモジュールが存在",
+      "details": "src/modules/sheets-integration.js",
+      "timestamp": "2025-08-04T19:35:45.679Z"
+    }
+  },
+  "summary": {
+    "total": 14,
+    "passed": 12,
+    "failed": 0,
+    "warnings": 0
+  }
+}

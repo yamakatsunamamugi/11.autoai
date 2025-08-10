@@ -1,0 +1,131 @@
+{
+  "timestamp": "2025-08-04T19:41:02.446Z",
+  "summary": {
+    "passed": 24,
+    "failed": 0,
+    "skipped": 0,
+    "total": 24
+  },
+  "tests": [
+    {
+      "name": "ChatGPT デフォルトURL生成",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "ChatGPT o3モデルURL生成",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "ChatGPT DeepResearch URL生成（URLは変わらない）",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "Claude デフォルトURL生成",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "Claude 検索モードURL生成（URLは変わらない）",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "Claude DeepResearch URL生成（URLは変わらない）",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "Gemini デフォルトURL生成",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "Gemini DeepThink URL生成（URLは変わらない）",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "Gemini Canvas URL生成（URLは変わらない）",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "ChatGPT DeepResearchはボタンクリックが必要",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "ChatGPT DeepResearchボタンの特定",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "Claude 検索モードはボタンクリックが必要",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "Claude 検索モードボタンの特定",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "Gemini DeepThinkはボタンクリックが必要",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "Gemini DeepThinkボタンの特定",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "ChatGPTはモデル変更でURLが変わる",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "Claudeはモデル変更でURLが変わらない",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "Geminiはモデル変更でURLが変わらない",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "ChatGPTは機能変更でURLが変わらない",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "Claudeは機能変更でURLが変わらない",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "Geminiは機能変更でURLが変わらない",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "DeepResearchでもプロンプトは変更されない",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "ChatGPT o3+DeepResearch シナリオ: URL確認",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "ChatGPT o3+DeepResearch シナリオ: ボタンクリック必要",
+      "status": "passed",
+      "message": "Test passed"
+    }
+  ]
+}

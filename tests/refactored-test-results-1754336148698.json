@@ -1,0 +1,90 @@
+{
+  "timestamp": "2025-08-04T19:35:48.677Z",
+  "version": "11.autoai-refactored-test",
+  "results": {
+    "authService_init": {
+      "status": "pass",
+      "message": "AuthService初期化成功",
+      "details": "",
+      "timestamp": "2025-08-04T19:35:48.693Z"
+    },
+    "authService_checkAuth": {
+      "status": "pass",
+      "message": "認証状態チェック機能が動作",
+      "details": "認証状態: 未認証",
+      "timestamp": "2025-08-04T19:35:48.693Z"
+    },
+    "authService_auth": {
+      "status": "pass",
+      "message": "認証機能が動作",
+      "details": "トークン取得成功",
+      "timestamp": "2025-08-04T19:35:48.694Z"
+    },
+    "taskGen_generate": {
+      "status": "pass",
+      "message": "タスク生成成功",
+      "details": "生成されたタスク数: 1",
+      "timestamp": "2025-08-04T19:35:48.695Z"
+    },
+    "taskGen_structure": {
+      "status": "fail",
+      "message": "タスク構造が不正",
+      "details": "",
+      "timestamp": "2025-08-04T19:35:48.695Z"
+    },
+    "taskGen_stats": {
+      "status": "pass",
+      "message": "統計情報取得成功",
+      "details": "総タスク数: 1",
+      "timestamp": "2025-08-04T19:35:48.695Z"
+    },
+    "streamProc_start": {
+      "status": "pass",
+      "message": "ストリーム開始成功",
+      "details": "",
+      "timestamp": "2025-08-04T19:35:48.696Z"
+    },
+    "streamProc_chunk": {
+      "status": "pass",
+      "message": "チャンク処理成功",
+      "details": "",
+      "timestamp": "2025-08-04T19:35:48.696Z"
+    },
+    "streamProc_abort": {
+      "status": "pass",
+      "message": "ストリーム中止成功",
+      "details": "",
+      "timestamp": "2025-08-04T19:35:48.696Z"
+    },
+    "streamProc_stats": {
+      "status": "pass",
+      "message": "ストリーム統計取得成功",
+      "details": "アクティブストリーム: 0",
+      "timestamp": "2025-08-04T19:35:48.696Z"
+    },
+    "streamMgr_session": {
+      "status": "pass",
+      "message": "セッション開始成功",
+      "details": "セッションID: session_test-task-1_1754336148697",
+      "timestamp": "2025-08-04T19:35:48.697Z"
+    },
+    "streamMgr_stats": {
+      "status": "pass",
+      "message": "マネージャー統計取得成功",
+      "details": "アクティブセッション: 0, キュー: 0",
+      "timestamp": "2025-08-04T19:35:48.697Z"
+    },
+    "integration_flow": {
+      "status": "pass",
+      "message": "モジュール統合フローが正常",
+      "details": "認証→タスク生成→ストリーム準備が成功",
+      "timestamp": "2025-08-04T19:35:48.698Z"
+    }
+  },
+  "summary": {
+    "total": 13,
+    "passed": 12,
+    "failed": 1,
+    "warnings": 0
+  }
+}

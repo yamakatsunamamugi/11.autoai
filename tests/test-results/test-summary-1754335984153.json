@@ -1,0 +1,135 @@
+{
+  "timestamp": "2025-08-04T19:33:04.153Z",
+  "results": [
+    {
+      "timestamp": "2025-08-04T19:33:03.801Z",
+      "tests": [
+        {
+          "name": "ファイル存在確認: manifest.json",
+          "status": "passed",
+          "message": "ファイルが存在します"
+        },
+        {
+          "name": "ファイル存在確認: background.js",
+          "status": "passed",
+          "message": "ファイルが存在します"
+        },
+        {
+          "name": "ファイル存在確認: src/content/ai-content-unified.js",
+          "status": "passed",
+          "message": "ファイルが存在します"
+        },
+        {
+          "name": "ファイル存在確認: src/modules/deepresearch-loader.js",
+          "status": "passed",
+          "message": "ファイルが存在します"
+        },
+        {
+          "name": "manifest.json検証: manifest_version",
+          "status": "passed",
+          "message": "manifest_version = 3"
+        },
+        {
+          "name": "manifest.json検証: name",
+          "status": "passed",
+          "message": "nameはstring型です"
+        },
+        {
+          "name": "manifest.json検証: version",
+          "status": "passed",
+          "message": "versionはstring型です"
+        },
+        {
+          "name": "manifest.json検証: permissions",
+          "status": "passed",
+          "message": "permissionsはarray型です"
+        },
+        {
+          "name": "manifest.json検証: background.service_worker",
+          "status": "passed",
+          "message": "background.service_worker = background.js"
+        },
+        {
+          "name": "background.js複雑度",
+          "status": "passed",
+          "message": "709行, 24関数"
+        },
+        {
+          "name": "console.log使用量",
+          "status": "warning",
+          "message": "1121個のconsole文"
+        }
+      ]
+    },
+    {
+      "timestamp": "2025-08-04T19:33:03.826Z",
+      "tests": [
+        {
+          "name": "構文チェック: test-ai-automated-suite.js",
+          "status": "passed",
+          "message": "構文エラーなし"
+        },
+        {
+          "name": "構文チェック: test-ai-simple-working-fixed.js",
+          "status": "failed",
+          "message": "Command failed: node --check \"/Users/roudousha/Dropbox/3.auto-ai/11.autoai/tests/test-ai-simple-working-fixed.js\"\n/Users/roudousha/Dropbox/3.auto-ai/11.autoai/tests/test-ai-simple-working-fixed.js:22\n  const windowModule = await import(\"../src/ui/test-window-manager.js\");\n                       ^^^^^\n\nSyntaxError: await is only valid in async functions and the top level bodies of modules\n    at wrapSafe (node:internal/modules/cjs/loader:1662:18)\n    at checkSyntax (node:internal/main/check_syntax:78:3)\n\nNode.js v22.17.0\n"
+        },
+        {
+          "name": "構文チェック: test-baseline-node.js",
+          "status": "passed",
+          "message": "構文エラーなし"
+        },
+        {
+          "name": "構文チェック: test-correct-order-3type.js",
+          "status": "passed",
+          "message": "構文エラーなし"
+        },
+        {
+          "name": "構文チェック: test-global-column-control.js",
+          "status": "passed",
+          "message": "構文エラーなし"
+        },
+        {
+          "name": "構文チェック: test-refactored-modules.js",
+          "status": "passed",
+          "message": "構文エラーなし"
+        },
+        {
+          "name": "構文チェック: test-row-control.js",
+          "status": "passed",
+          "message": "構文エラーなし"
+        },
+        {
+          "name": "構文チェック: test-runner-cli.js",
+          "status": "passed",
+          "message": "構文エラーなし"
+        },
+        {
+          "name": "構文チェック: test-simple-column-control.js",
+          "status": "passed",
+          "message": "構文エラーなし"
+        },
+        {
+          "name": "構文チェック: test-special-task-logging.js",
+          "status": "passed",
+          "message": "構文エラーなし"
+        },
+        {
+          "name": "構文チェック: test-spreadsheet-auto-setup.js",
+          "status": "passed",
+          "message": "構文エラーなし"
+        },
+        {
+          "name": "構文チェック: test-stream-processor.js",
+          "status": "passed",
+          "message": "構文エラーなし"
+        },
+        {
+          "name": "自動テストフレームワーク構造",
+          "status": "passed",
+          "message": "Config: true, Cases: true, Runner: true"
+        }
+      ]
+    }
+  ]
+}

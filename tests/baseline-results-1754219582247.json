@@ -1,0 +1,96 @@
+{
+  "timestamp": "2025-08-03T11:13:02.227Z",
+  "version": "11.autoai-baseline-node",
+  "results": {
+    "fileStructure": {
+      "status": "fail",
+      "message": "2個のファイルが不足",
+      "details": "src/popup/popup.html, src/popup/popup.js",
+      "timestamp": "2025-08-03T11:13:02.241Z"
+    },
+    "manifestFields": {
+      "status": "pass",
+      "message": "Manifest必須フィールドが全て存在",
+      "details": "バージョン: 1.0.0, 権限: 7個",
+      "timestamp": "2025-08-03T11:13:02.242Z"
+    },
+    "serviceWorker": {
+      "status": "pass",
+      "message": "Service Workerが定義されている",
+      "details": "src/background/background.js",
+      "timestamp": "2025-08-03T11:13:02.242Z"
+    },
+    "messageHandlerComplexity": {
+      "status": "pass",
+      "message": "Message Handlerのサイズが適切（12行）",
+      "details": "1個のアクションを処理",
+      "timestamp": "2025-08-03T11:13:02.245Z"
+    },
+    "backgroundStats": {
+      "status": "info",
+      "message": "Background.jsの統計情報",
+      "details": "総行数: 2836, 関数数: 37",
+      "timestamp": "2025-08-03T11:13:02.246Z"
+    },
+    "dependencies": {
+      "status": "info",
+      "message": "外部依存なし",
+      "details": "",
+      "timestamp": "2025-08-03T11:13:02.246Z"
+    },
+    "quality_background.js": {
+      "status": "warn",
+      "message": "background.jsに多数のconsole.logが存在",
+      "details": "29個のconsole.log",
+      "timestamp": "2025-08-03T11:13:02.246Z"
+    },
+    "quality_ai-content-unified.js": {
+      "status": "pass",
+      "message": "ai-content-unified.jsのログ出力は適切",
+      "details": "17個のconsole.log",
+      "timestamp": "2025-08-03T11:13:02.246Z"
+    },
+    "quality_src/popup/popup.js": {
+      "status": "fail",
+      "message": "コード品質チェックエラー",
+      "details": "ENOENT: no such file or directory, open '/Users/roudousha/Dropbox/3.auto-ai/src/popup/popup.js'",
+      "timestamp": "2025-08-03T11:13:02.247Z"
+    },
+    "module_AuthService": {
+      "status": "warn",
+      "message": "AuthServiceモジュールが見つからない",
+      "details": "期待されるパス: src/modules/auth-service.js",
+      "timestamp": "2025-08-03T11:13:02.247Z"
+    },
+    "module_TaskGenerator": {
+      "status": "warn",
+      "message": "TaskGeneratorモジュールが見つからない",
+      "details": "期待されるパス: src/modules/task-generator.js",
+      "timestamp": "2025-08-03T11:13:02.247Z"
+    },
+    "module_StreamProcessor": {
+      "status": "warn",
+      "message": "StreamProcessorモジュールが見つからない",
+      "details": "期待されるパス: src/modules/stream-processor.js",
+      "timestamp": "2025-08-03T11:13:02.247Z"
+    },
+    "module_StreamingServiceManager": {
+      "status": "warn",
+      "message": "StreamingServiceManagerモジュールが見つからない",
+      "details": "期待されるパス: src/modules/streaming-service-manager.js",
+      "timestamp": "2025-08-03T11:13:02.247Z"
+    },
+    "module_SheetsIntegration": {
+      "status": "pass",
+      "message": "SheetsIntegrationモジュールが存在",
+      "details": "src/modules/sheets-integration.js",
+      "timestamp": "2025-08-03T11:13:02.247Z"
+    }
+  },
+  "summary": {
+    "total": 14,
+    "passed": 5,
+    "failed": 2,
+    "warnings": 5
+  }
+}

@@ -1,0 +1,146 @@
+{
+  "timestamp": "2025-08-04T19:37:50.959Z",
+  "summary": {
+    "passed": 21,
+    "failed": 6,
+    "skipped": 0,
+    "total": 27
+  },
+  "tests": [
+    {
+      "name": "ChatGPT デフォルトURL生成",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "ChatGPT o3モデルURL生成",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "ChatGPT DeepResearch URL生成",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "Claude 検索モードURL生成",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "Gemini DeepThink URL生成",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "ChatGPTモデルリスト取得",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "Claudeモデル検証（有効）",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "Geminiモデル検証（無効）",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "ChatGPT機能検証（DeepResearch）",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "Gemini機能数確認",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "プロンプト検証（有効）",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "プロンプト検証（空文字）",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "プロンプト検証（空白のみ）",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "ChatGPT DeepResearchプロンプト整形",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "ファイル存在確認: ../src/content/ai-content-unified.js",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "ファイル存在確認: ../src/modules/deepresearch-loader.js",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "ファイル存在確認: ../background.js",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "ファイル存在確認: ../manifest.json",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "Manifest Version 3確認",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "Permissions配列存在確認",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "Service Worker設定確認",
+      "status": "passed",
+      "message": "Test passed"
+    },
+    {
+      "name": "クラス存在確認: AuthService",
+      "status": "failed",
+      "message": "Test failed"
+    },
+    {
+      "name": "クラス存在確認: TaskGenerator",
+      "status": "failed",
+      "message": "Test failed"
+    },
+    {
+      "name": "クラス存在確認: StreamProcessor",
+      "status": "failed",
+      "message": "Test failed"
+    },
+    {
+      "name": "クラス存在確認: StreamingServiceManager",
+      "status": "failed",
+      "message": "Test failed"
+    },
+    {
+      "name": "DeepResearchLoaderクラス存在確認",
+      "status": "failed",
+      "message": "Test failed"
+    },
+    {
+      "name": "loadDeepResearchメソッド存在確認",
+      "status": "failed",
+      "message": "Test failed"
+    }
+  ]
+}

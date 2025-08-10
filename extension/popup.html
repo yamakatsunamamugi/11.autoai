@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude統合テスト</title>
+    <style>
+        body {
+            width: 400px;
+            min-height: 500px;
+            margin: 0;
+            padding: 15px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        h1 {
+            font-size: 20px;
+            margin: 0 0 20px 0;
+            text-align: center;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .status {
+            background: rgba(255,255,255,0.1);
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 15px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
+            font-size: 13px;
+        }
+        
+        .status-value {
+            font-weight: bold;
+        }
+        
+        .section {
+            background: rgba(255,255,255,0.15);
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .section h2 {
+            font-size: 16px;
+            margin: 0 0 10px 0;
+            color: #ffd700;
+        }
+        
+        input, select, textarea {
+            width: 100%;
+            padding: 8px;
+            border: none;
+            border-radius: 4px;
+            background: rgba(255,255,255,0.9);
+            color: #333;
+            font-size: 13px;
+            margin-bottom: 10px;
+            box-sizing: border-box;
+        }
+        
+        textarea {
+            min-height: 60px;
+            resize: vertical;
+        }
+        
+        .functions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin: 10px 0;
+        }
+        
+        .function-tag {
+            background: rgba(255,255,255,0.2);
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .function-tag.active {
+            background: #ffd700;
+            color: #333;
+        }
+        
+        .function-tag:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        
+        button {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 6px;
+            background: linear-gradient(45deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 5px;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .result {
+            background: rgba(0,0,0,0.2);
+            border-radius: 6px;
+            padding: 10px;
+            margin-top: 10px;
+            font-size: 12px;
+            max-height: 150px;
+            overflow-y: auto;
+            display: none;
+        }
+        
+        .result.show {
+            display: block;
+        }
+        
+        .result.success {
+            border-left: 3px solid #4caf50;
+        }
+        
+        .result.error {
+            border-left: 3px solid #f44336;
+        }
+        
+        .tabs {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 15px;
+        }
+        
+        .tab {
+            flex: 1;
+            padding: 8px;
+            background: rgba(255,255,255,0.1);
+            border: none;
+            border-radius: 6px 6px 0 0;
+            color: white;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        
+        .tab.active {
+            background: rgba(255,255,255,0.25);
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 20px;
+            display: none;
+        }
+        
+        .loading.show {
+            display: block;
+        }
+        
+        .spinner {
+            border: 3px solid rgba(255,255,255,0.3);
+            border-top: 3px solid white;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <h1>🤖 Claude 統合テスト</h1>
+    
+    <div class="status">
+        <div class="status-item">
+            <span>接続状態:</span>
+            <span class="status-value" id="connectionStatus">確認中...</span>
+        </div>
+        <div class="status-item">
+            <span>現在のモデル:</span>
+            <span class="status-value" id="currentModel">-</span>
+        </div>
+    </div>
+    
+    <div class="tabs">
+        <button class="tab active" data-tab="single">単一実行</button>
+        <button class="tab" data-tab="batch">バッチ実行</button>
+        <button class="tab" data-tab="settings">設定</button>
+    </div>
+    
+    <!-- 単一実行タブ -->
+    <div class="tab-content active" id="single">
+        <div class="section">
+            <h2>📝 テスト設定</h2>
+            
+            <select id="modelSelect">
+                <option value="Opus 4.1">Opus 4.1</option>
+                <option value="Sonnet 4">Sonnet 4</option>
+                <option value="Opus 4">Opus 4</option>
+                <option value="Sonnet 3.7">Sonnet 3.7</option>
+                <option value="Haiku 3.5">Haiku 3.5</option>
+            </select>
+            
+            <div class="functions">
+                <div class="function-tag" data-function="じっくり考える">じっくり考える</div>
+                <div class="function-tag" data-function="ウェブ検索">ウェブ検索</div>
+                <div class="function-tag" data-function="Drive検索">Drive検索</div>
+                <div class="function-tag" data-function="Gmail検索">Gmail検索</div>
+                <div class="function-tag" data-function="カレンダー検索">カレンダー</div>
+                <div class="function-tag" data-function="リサーチ">DeepResearch</div>
+            </div>
+            
+            <textarea id="textInput" placeholder="送信するテキストを入力...">こんにちは！今日はいい天気ですね。</textarea>
+            
+            <button id="executeButton">実行</button>
+        </div>
+        
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>処理中...</p>
+        </div>
+        
+        <div class="result" id="result"></div>
+    </div>
+    
+    <!-- バッチ実行タブ -->
+    <div class="tab-content" id="batch">
+        <div class="section">
+            <h2>📋 バッチデータ</h2>
+            <textarea id="batchData" style="min-height: 150px;" placeholder='JSONフォーマットで入力:
+[
+  {
+    "model": "opus 4.1",
+    "functions": ["じっくり考える"],
+    "text": "質問1"
+  },
+  {
+    "model": "sonnet 4",
+    "functions": ["ウェブ検索"],
+    "text": "質問2"
+  }
+]'></textarea>
+            
+            <button id="executeBatchButton">バッチ実行</button>
+        </div>
+        
+        <div class="result" id="batchResult"></div>
+    </div>
+    
+    <!-- 設定タブ -->
+    <div class="tab-content" id="settings">
+        <div class="section">
+            <h2>⚙️ 設定</h2>
+            
+            <label style="display: flex; align-items: center; margin: 10px 0;">
+                <input type="checkbox" id="debugMode" style="width: auto; margin-right: 10px;">
+                デバッグモード
+            </label>
+            
+            <label style="display: flex; align-items: center; margin: 10px 0;">
+                <input type="checkbox" id="waitForResponse" checked style="width: auto; margin-right: 10px;">
+                応答を待つ
+            </label>
+            
+            <label style="margin: 10px 0; display: block;">
+                応答待機時間（分）:
+                <input type="number" id="waitMinutes" value="5" min="1" max="60">
+            </label>
+            
+            <label style="margin: 10px 0; display: block;">
+                リトライ回数:
+                <input type="number" id="maxRetries" value="3" min="1" max="10">
+            </label>
+            
+            <button id="saveSettings">設定を保存</button>
+        </div>
+        
+        <div class="section">
+            <h2>📊 ログ</h2>
+            <button id="clearLogs">ログをクリア</button>
+            <div class="result show" id="logs" style="margin-top: 10px; max-height: 200px;"></div>
+        </div>
+    </div>
+    
+    <script src="popup.js"></script>
+</body>
+</html>

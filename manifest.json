@@ -1,0 +1,132 @@
+{
+  "manifest_version": 3,
+  "name": "AutoAI Minimal",
+  "version": "1.0.0",
+  "description": "最小限の機能から始めるAutoAI",
+  "permissions": [
+    "tabs",
+    "activeTab",
+    "storage",
+    "identity",
+    "system.display",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://sheets.googleapis.com/*",
+    "https://www.googleapis.com/*",
+    "https://chatgpt.com/*",
+    "https://chat.openai.com/*",
+    "https://claude.ai/*",
+    "https://gemini.google.com/*",
+    "https://genspark.com/*",
+    "https://www.genspark.ai/*"
+  ],
+  "oauth2": {
+    "client_id": "81824736218-31g4te8sugagitou68bn2bceoukv5jlu.apps.googleusercontent.com",
+    "scopes": [
+      "https://www.googleapis.com/auth/spreadsheets",
+      "https://www.googleapis.com/auth/documents",
+      "https://www.googleapis.com/auth/drive.file",
+      "https://www.googleapis.com/auth/userinfo.email"
+    ]
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": "icon.png"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "icons": {
+    "16": "icon.png",
+    "48": "icon.png",
+    "128": "icon.png"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*",
+        "https://claude.ai/*",
+        "https://gemini.google.com/*",
+        "https://genspark.com/*",
+        "https://www.genspark.ai/*"
+      ],
+      "js": [
+        "src/content/ai-content-unified.js"
+      ],
+      "run_at": "document_end",
+      "all_frames": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "src/ui/ui.html",
+        "src/ui/ui-controller.js",
+        "src/config/timeout-config.js",
+        "test-task-generation.html",
+        "test-spreadsheet-loading.html",
+        "tests/test-enterprise-streaming.html",
+        "tests/test-actual-ai-responses.html",
+        "tests/test-ai-model-behavior.html",
+        "tests/test-real-streaming.html",
+        "tests/test-real-ai-integration.html",
+        "tests/test-simple.html",
+        "tests/test-stream-processor.html",
+        "tests/test-content-script-integration.html",
+        "tests/test-integration-preview.html",
+        "tests/test-ai-integration-real.html",
+        "tests/test-real-spreadsheet-analysis.html",
+        "tests/test-simple-ai.html",
+        "tests/test-extension.html",
+        "tests/test-log-clear-answer-delete.html",
+        "tests/test-content-script-functions.html",
+        "tests/test-refactoring-baseline.html",
+        "tests/test-refactoring-progress.html",
+        "tests/test-ai-simple-open.html",
+        "tests/test-ai-simple-open.js",
+        "tests/test-comprehensive-easy.html",
+        "tests/test-comprehensive-simple.html",
+        "tests/test-o3-model.html",
+        "tests/test-deep-research.html",
+        "tests/test-claude-computer.html",
+        "tests/test-gemini-thinking.html",
+        "tests/test-comprehensive-ai.html",
+        "tests/test-ai-auto-operation.html",
+        "tests/test-ai-auto-operation.js",
+        "tests/test-deepresearch-fixes.html",
+        "tests/test-ai-simple-working.html",
+        "tests/test-ai-simple-working-fixed.html",
+        "tests/test-ai-simple-working-csp-fixed.html",
+        "tests/test-ai-simple-working-fixed.js",
+        "tests/test-ai-simple-working.js",
+        "tests/test-ai-model-selector-verification.html",
+        "tests/test-ui-improvement.html",
+        "tests/test-chatgpt-verification.html",
+        "tests/test-chatgpt-verification.js",
+        "src/ui/ai-model-selector.js",
+        "src/features/task/special-configs.js",
+        "src/ui/test-window-manager.js",
+        "src/ui/test-automation.js",
+        "src/config/deepresearch-config.js",
+        "src/modules/ai-deepresearch-activator.js",
+        "src/modules/deepresearch-loader.js",
+        "gemini-deepresearch-control.js",
+        "gemini-automation-control.js",
+        "chatgpt-mode-control.js",
+        "claude-mode-control.js",
+        "src/features/chatgpt/chatgpt-tool-control.js",
+        "test-ai-automation-integrated.html",
+        "automations/chatgpt-automation.js",
+        "automations/claude-automation.js",
+        "automations/gemini-automation.js",
+        "automations/genspark-automation.js",
+        "automations/test-runner.js",
+        "automations/test-runner-chrome.js"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
