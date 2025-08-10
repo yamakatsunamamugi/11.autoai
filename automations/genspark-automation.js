@@ -411,7 +411,7 @@
     }
     
     if (findStopButton()) {
-      log(`応答待機タイムアウト (${timeout/1000}秒経過)`, 'warning');
+      log(`応答待機タイムアウト (${timeout/CONFIG.SECOND_MS}秒経過)`, 'warning');
       return false;
     }
     
