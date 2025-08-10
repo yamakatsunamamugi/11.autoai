@@ -351,60 +351,86 @@
   const waitForResponse = async (timeout = 60000) => {
     log('応答待機開始');
     
-    const startTime = Date.now();
-    let lastStopButtonSeen = Date.now();
-    let lastMinuteLogged = 0;
-    let lastResponseText = '';
-    let lastResponseTime = Date.now();
-    
-    while (Date.now() - startTime < timeout) {
-      const elapsedMs = Date.now() - startTime;
-      const elapsedMinutes = Math.floor(elapsedMs / 60000);
+    // 停止ボタンを検出する関数
+    const findStopButton = () => {
+      const stopButtonSelectors = [
+        // 1. SVGクラス名（最も確実）
+        'svg.stop-icon',
+        '.stop-icon',
+        
+        // 2. 親要素の構造＋子要素
+        '.enter-icon-wrapper:has(svg.stop-icon)',
+        'div.enter-icon-wrapper:has(.stop-icon)',
+        
+        // 3. 背景色クラス（現在の実装）
+        '.enter-icon-wrapper.bg-\\[\\#232425\\]',
+        '.enter-icon-wrapper[class*="bg-[#232425]"]',
+        
+        // 4. ダークモード対応クラス
+        '.enter-icon-wrapper.dark\\:bg-\\[\\#eeeeee\\]',
+        
+        // 5. 複合条件（色＋構造）
+        '.bg-\\[\\#232425\\]:has(svg)',
+        '.text-\\[\\#fff\\]:has(svg)',
+        
+        // 6. SVGのviewBox属性
+        'svg[viewBox="0 0 24 24"].stop-icon'
+      ];
       
-      // 1分ごとにログを出力
-      if (elapsedMinutes > lastMinuteLogged) {
-        lastMinuteLogged = elapsedMinutes;
-        log(`応答待機中... (${elapsedMinutes}分経過)`, 'info');
-      }
-      
-      // シンプルな判定：停止ボタンの有無のみで判定
-      const stopButton = document.querySelector('.bg-\\[\\#232425\\]') || 
-                         document.querySelector('[class*="bg-[#232425]"]') ||
-                         document.querySelector('.stop-icon');
-      
-      if (stopButton && stopButton.offsetParent !== null) {
-        // 停止ボタンが表示されている = 生成中
-        lastStopButtonSeen = Date.now();
-        if (elapsedMs % 10000 < 1000) {
-          log('停止ボタン確認 - 生成継続中', 'info');
-        }
-      } else {
-        // 停止ボタンが消えてから5秒経過したら完了
-        const timeSinceLastButton = Date.now() - lastStopButtonSeen;
-        if (timeSinceLastButton > 5000) {
-          // 念のため応答があることを確認
-          const response = document.querySelector('.response-container, [class*="response"], .spark-content');
-          if (response && response.textContent && response.textContent.length > 0) {
-            // 経過時間を計算
-            if (sendStartTime) {
-              const elapsedTotal = Date.now() - sendStartTime;
-              const minutes = Math.floor(elapsedTotal / 60000);
-              const seconds = Math.floor((elapsedTotal % 60000) / 1000);
-              log(`✅ 応答完了（送信から ${minutes}分${seconds}秒経過）`, 'success');
-            } else {
-              log(`✅ 応答完了（停止ボタンが${Math.floor(timeSinceLastButton/1000)}秒間非表示）`, 'success');
-            }
-            await wait(1000);
+      for (const selector of stopButtonSelectors) {
+        try {
+          const element = document.querySelector(selector);
+          if (element && element.offsetParent !== null) {
             return true;
           }
-        }
+        } catch (e) {}
       }
-      
+      return false;
+    };
+    
+    const startTime = Date.now();
+    
+    // 1. 停止ボタンが出現するまで待つ（最大30秒）
+    log('停止ボタンの出現を待機中...');
+    let waitCount = 0;
+    while (!findStopButton() && waitCount < 30) {
       await wait(1000);
+      waitCount++;
     }
     
-    log(`応答待機タイムアウト (${timeout/1000}秒経過)`, 'warning');
-    return false;
+    if (!findStopButton()) {
+      log('停止ボタンが出現しませんでした', 'warning');
+      return false;
+    }
+    
+    log('停止ボタンを検出 - 生成中', 'info');
+    
+    // 2. 停止ボタンが消えるまで待つ（最大タイムアウトまで）
+    let lastMinuteLogged = 0;
+    while (findStopButton() && (Date.now() - startTime < timeout)) {
+      await wait(1000);
+      
+      // 1分ごとにログ
+      const elapsedMinutes = Math.floor((Date.now() - startTime) / 60000);
+      if (elapsedMinutes > lastMinuteLogged) {
+        lastMinuteLogged = elapsedMinutes;
+        log(`生成中... (${elapsedMinutes}分経過)`, 'info');
+      }
+    }
+    
+    if (findStopButton()) {
+      log(`応答待機タイムアウト (${timeout/1000}秒経過)`, 'warning');
+      return false;
+    }
+    
+    // 経過時間を計算
+    const elapsedTotal = Date.now() - startTime;
+    const minutes = Math.floor(elapsedTotal / 60000);
+    const seconds = Math.floor((elapsedTotal % 60000) / 1000);
+    log(`✅ 応答完了（${minutes}分${seconds}秒経過）`, 'success');
+    
+    await wait(1000);  // 念のため1秒待つ
+    return true;
   };
 
   /**
