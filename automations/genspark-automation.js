@@ -353,39 +353,17 @@
     
     // 停止ボタンを検出する関数
     const findStopButton = () => {
-      const stopButtonSelectors = [
-        // 1. SVGクラス名（最も確実）
-        'svg.stop-icon',
-        '.stop-icon',
-        
-        // 2. 親要素の構造＋子要素
-        '.enter-icon-wrapper:has(svg.stop-icon)',
-        'div.enter-icon-wrapper:has(.stop-icon)',
-        
-        // 3. 背景色クラス（現在の実装）
-        '.enter-icon-wrapper.bg-\\[\\#232425\\]',
-        '.enter-icon-wrapper[class*="bg-[#232425]"]',
-        
-        // 4. ダークモード対応クラス
-        '.enter-icon-wrapper.dark\\:bg-\\[\\#eeeeee\\]',
-        
-        // 5. 複合条件（色＋構造）
-        '.bg-\\[\\#232425\\]:has(svg)',
-        '.text-\\[\\#fff\\]:has(svg)',
-        
-        // 6. SVGのviewBox属性
-        'svg[viewBox="0 0 24 24"].stop-icon'
-      ];
-      
-      for (const selector of stopButtonSelectors) {
-        try {
-          const element = document.querySelector(selector);
-          if (element && element.offsetParent !== null) {
-            return true;
-          }
-        } catch (e) {}
-      }
-      return false;
+      // IMPORTANT: このセレクタはコンソールテストで動作確認済み (2025/08/10)
+      // - 回答中: bg-[#232425] (ダークグレー) の停止ボタンが表示
+      // - 完了後: bg-[#f4f4f4] (ライトグレー) の戻るボタンに変化
+      // 
+      // 以下のセレクタは動作しなかった:
+      // - svg.stop-icon: 要素は存在するが背景色での判定の方が確実
+      // - .stop-icon: 同上
+      // - :has() セレクタ: ブラウザサポートが不安定
+      // - 複雑な複合セレクタ: セレクタエラーが発生
+      const stopButton = document.querySelector('.enter-icon-wrapper[class*="bg-[#232425]"]');
+      return stopButton && stopButton.offsetParent !== null;
     };
     
     const startTime = Date.now();
@@ -423,11 +401,19 @@
       return false;
     }
     
-    // 経過時間を計算
-    const elapsedTotal = Date.now() - startTime;
-    const minutes = Math.floor(elapsedTotal / 60000);
-    const seconds = Math.floor((elapsedTotal % 60000) / 1000);
-    log(`✅ 応答完了（${minutes}分${seconds}秒経過）`, 'success');
+    // 経過時間を計算（送信時刻から）
+    if (sendStartTime) {
+      const elapsedTotal = Date.now() - sendStartTime;
+      const minutes = Math.floor(elapsedTotal / 60000);
+      const seconds = Math.floor((elapsedTotal % 60000) / 1000);
+      log(`✅ 応答完了（送信から ${minutes}分${seconds}秒経過）`, 'success');
+    } else {
+      // 待機開始時刻からの計算（フォールバック）
+      const elapsedTotal = Date.now() - startTime;
+      const minutes = Math.floor(elapsedTotal / 60000);
+      const seconds = Math.floor((elapsedTotal % 60000) / 1000);
+      log(`✅ 応答完了（${minutes}分${seconds}秒経過）`, 'success');
+    }
     
     await wait(1000);  // 念のため1秒待つ
     return true;
