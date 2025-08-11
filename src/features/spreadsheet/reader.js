@@ -165,7 +165,7 @@ class SheetsClient {
         };
       }
 
-      // 特殊モデル行を検索
+      // モデル行を検索
       if (
         firstCell === SPREADSHEET_CONFIG.rowIdentifiers.specialModelRow.keyword
       ) {
@@ -175,7 +175,7 @@ class SheetsClient {
         };
       }
 
-      // 特殊作業行を検索
+      // 機能行を検索
       if (
         firstCell === SPREADSHEET_CONFIG.rowIdentifiers.specialTaskRow.keyword
       ) {

@@ -499,9 +499,9 @@ class TaskGenerator {
             console.log(`       モデル: ${task.model}`);
           }
 
-          // 特殊作業
+          // 機能
           if (task.specialOperation) {
-            console.log(`       特殊作業: ${task.specialOperation}`);
+            console.log(`       機能: ${task.specialOperation}`);
           }
 
           // グループ情報

@@ -80,7 +80,7 @@
       none: {
         id: "none",
         name: "なし（通常モード）",
-        description: "特殊機能を使用しない",
+        description: "機能を使用しない",
         icon: "💬",
         keywords: [],
       },

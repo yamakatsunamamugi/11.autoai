@@ -696,7 +696,7 @@
 
     const testSpecial = async (functionSearch = 'research', query = null) => {
         console.clear();
-        console.log('%c🔬 特殊機能テスト開始', 'color: #FF6B6B; font-size: 18px; font-weight: bold');
+        console.log('%c🔬 機能テスト開始', 'color: #FF6B6B; font-size: 18px; font-weight: bold');
         console.log('='.repeat(60));
 
         try {
@@ -734,14 +734,14 @@
             }
             console.log('✅ リクエスト送信完了');
 
-            // 応答待機（特殊機能は時間がかかる場合がある）
+            // 応答待機（機能は時間がかかる場合がある）
             console.log('⏳ 処理中...');
             await wait(10000);
 
             const texts = await getTextFromScreen();
 
             console.log('\n' + '='.repeat(60));
-            console.log('✅ 特殊機能テスト完了！');
+            console.log('✅ 機能テスト完了！');
 
             return {
                 success: true,
@@ -1015,7 +1015,7 @@
             console.log('【テスト実行】');
             console.log('  await Gemini.testNormal()    // 通常処理テスト');
             console.log('  await Gemini.testNormal("質問", "Pro")  // Proモデルでテスト');
-            console.log('  await Gemini.testSpecial("research")    // 特殊機能テスト（簡易版）');
+            console.log('  await Gemini.testSpecial("research")    // 機能テスト（簡易版）');
             console.log('  await Gemini.testDeepResearch()         // Deep Research完全版テスト');
             console.log('  await Gemini.testDeepResearch("調査内容", 30)  // 最大30分待機');
             console.log('  await Gemini.testSpecial("画像", "夕日") // 画像生成テスト');

@@ -565,7 +565,7 @@ class StreamProcessor {
         return "https://gemini.google.com/app";
 
       case "chatgpt":
-        // 特殊モデルをチェック
+        // モデルをチェック
         if (this.specialModelManager) {
           return this.specialModelManager.generateChatGPTUrl(column, aiType);
         }
