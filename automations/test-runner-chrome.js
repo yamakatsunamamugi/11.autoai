@@ -346,59 +346,6 @@
                     getResponse: config.getResponse,
                     timeout: timeout
                   });
-                } else if (typeof automation.testNormal === 'function' && aiName === 'Gemini') {
-                  // Gemini専用の実行方法（動的検索版）
-                  console.log(`[TestRunner] Gemini動的テストを実行`);
-                  
-                  // 機能選択を事前に行う（Deep Research含む）
-                  if (config.function && config.function !== 'none') {
-                    console.log(`[TestRunner] Gemini機能選択: ${config.function}`);
-                    
-                    // 利用可能な機能をデバッグ表示
-                    console.log(`[TestRunner] 利用可能な機能を確認中...`);
-                    const availableFunctions = await automation.listFunctions();
-                    console.log(`[TestRunner] 利用可能な機能:`, availableFunctions);
-                    
-                    const result = await automation.func(config.function);
-                    console.log(`[TestRunner] 機能選択結果:`, result);
-                    
-                    // Deep Researchの場合はグローバル状態にも追加（GeminiのglobalStateを使用）
-                    if (config.function.toLowerCase().includes('research')) {
-                      // GeminiオブジェクトのglobalStateを直接更新
-                      if (!automation.globalState) {
-                        automation.globalState = { activeFunctions: [] };
-                      }
-                      if (!automation.globalState.activeFunctions) {
-                        automation.globalState.activeFunctions = [];
-                      }
-                      if (!automation.globalState.activeFunctions.includes('Deep Research')) {
-                        automation.globalState.activeFunctions.push('Deep Research');
-                      }
-                      
-                      // windowのglobalStateも更新（念のため）
-                      if (window.globalState && window.globalState.activeFunctions) {
-                        if (!window.globalState.activeFunctions.includes('Deep Research')) {
-                          window.globalState.activeFunctions.push('Deep Research');
-                        }
-                      }
-                      
-                      console.log(`[TestRunner] Deep Research機能をグローバル状態に追加`);
-                      console.log(`[TestRunner] automation.globalState:`, automation.globalState);
-                      console.log(`[TestRunner] window.globalState:`, window.globalState);
-                    }
-                    
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                  }
-                  
-                  // テキスト入力と送信
-                  if (config.text) {
-                    // 機能が選択されている場合は機能をクリアしない
-                    const clearFunctions = !(config.function && config.function !== 'none');
-                    const result = await automation.testNormal(config.text, config.model, clearFunctions);
-                    return result;
-                  }
-                  
-                  return { success: true };
                 } else {
                   return { success: false, error: `${foundName}に適切な実行方法が見つかりません` };
                 }

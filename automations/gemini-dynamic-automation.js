@@ -321,64 +321,51 @@
 
         log(`\n🤖 モデル「${searchTerm}」を検索中...`, 'header');
 
-        const models = await collectAvailableModels();
+        // モデル選択ボタンをクリック
+        const modelButton = await findElement([
+            '.gds-mode-switch-button',
+            '[aria-label*="モデル"]'
+        ]);
 
-        // ファジー検索で最適なモデルを探す
-        let bestMatch = null;
-        let bestScore = 0;
+        if (modelButton) {
+            await clickElement(modelButton);
+            await wait(DELAYS.menuWait);
 
-        models.forEach(model => {
-            const match = fuzzyMatch(searchTerm, model.name);
-            if (match && match.score > bestScore) {
-                bestScore = match.score;
-                bestMatch = model;
-            }
-        });
-
-        if (bestMatch) {
-            log(`✅ モデル「${bestMatch.name}」を発見 (スコア: ${bestScore.toFixed(2)})`, 'success');
-
-            // モデル選択ボタンをクリック
-            const modelButton = await findElement([
-                '.gds-mode-switch-button',
-                '[aria-label*="モデル"]'
-            ]);
-
-            if (modelButton) {
-                await clickElement(modelButton);
-                await wait(DELAYS.menuWait);
-
-                // メニューから選択
-                const menuItems = document.querySelectorAll('[role="menuitemradio"], [role="menuitem"]');
-                let selected = false;
-                for (let item of menuItems) {
-                    if (item.textContent?.trim() === bestMatch.name) {
-                        await clickElement(item);
-                        globalState.currentModel = bestMatch.name;
-                        log(`✅ モデル「${bestMatch.name}」を選択しました`, 'success');
-                        selected = true;
-                        break;
-                    }
-                }
-
-                // メニューを確実に閉じる（ESCキーを使用）
-                await wait(500);
-                document.body.dispatchEvent(new KeyboardEvent('keydown', {
-                    key: 'Escape',
-                    code: 'Escape',
-                    bubbles: true
-                }));
-                log('メニューを閉じました', 'info');
+            // メニューから選択
+            const menuItems = document.querySelectorAll('[role="menuitemradio"], [role="menuitem"]');
+            let selected = false;
+            
+            for (let item of menuItems) {
+                const itemText = item.textContent?.trim();
+                const match = fuzzyMatch(searchTerm, itemText);
                 
-                return selected;
+                if (match && match.score > 0.6) {
+                    await clickElement(item);
+                    globalState.currentModel = itemText;
+                    log(`✅ モデル「${itemText}」を選択しました (スコア: ${match.score.toFixed(2)})`, 'success');
+                    selected = true;
+                    break;
+                }
             }
-        } else {
-            log(`❌ モデル「${searchTerm}」が見つかりません`, 'error');
-            log('利用可能なモデル:', 'info');
-            models.forEach(m => console.log(`  - ${m.name}`));
-        }
 
-        return false;
+            // メニューを確実に閉じる（ESCキーを使用）
+            await wait(500);
+            document.body.dispatchEvent(new KeyboardEvent('keydown', {
+                key: 'Escape',
+                code: 'Escape',
+                bubbles: true
+            }));
+            log('メニューを閉じました', 'info');
+            
+            if (!selected) {
+                log(`❌ モデル「${searchTerm}」が見つかりません`, 'error');
+            }
+            
+            return selected;
+        } else {
+            log(`❌ モデル選択ボタンが見つかりません`, 'error');
+            return false;
+        }
     };
 
     const selectFunctionDynamic = async (searchTerm) => {
@@ -951,12 +938,28 @@
             if (config.model) {
                 await selectModelDynamic(config.model);
                 await wait(1000);
+                
+                // メニューを確実に閉じる
+                document.body.dispatchEvent(new KeyboardEvent('keydown', {
+                    key: 'Escape',
+                    code: 'Escape',
+                    bubbles: true
+                }));
+                await wait(500);
             }
             
             // 機能選択
             if (config.function && config.function !== 'none') {
                 await selectFunctionDynamic(config.function);
                 await wait(1000);
+                
+                // メニューを確実に閉じる
+                document.body.dispatchEvent(new KeyboardEvent('keydown', {
+                    key: 'Escape',
+                    code: 'Escape',
+                    bubbles: true
+                }));
+                await wait(500);
             }
             
             // テキスト入力
