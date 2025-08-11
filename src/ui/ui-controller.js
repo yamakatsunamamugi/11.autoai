@@ -512,7 +512,7 @@ function runIntegratedAITest() {
   try {
     // 統合AIテストページを開く
     const testUrl = chrome.runtime.getURL(
-      "test-ai-automation-integrated.html",
+      "tests/integration/test-ai-automation-integrated.html",
     );
 
     // ウィンドウ設定
