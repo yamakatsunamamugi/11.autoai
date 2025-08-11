@@ -49,14 +49,14 @@ const SPREADSHEET_CONFIG = {
     },
 
     specialModelRow: {
-      keyword: "特殊モデル",
-      name: "特殊モデル行",
+      keyword: "モデル",
+      name: "モデル行",
       expectedTexts: ["o3（推論）", "o3-pro（鬼推論）"],
     },
 
     specialTaskRow: {
-      keyword: "特殊作業",
-      name: "特殊作業行",
+      keyword: "機能",
+      name: "機能行",
       expectedTexts: ["DeepReserch"],
     },
   },

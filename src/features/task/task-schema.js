@@ -63,12 +63,12 @@ const TaskSchema = {
     specialOperation: {
       type: "string",
       required: false,
-      description: "特殊作業の種類（deep_research等）",
+      description: "機能の種類（deep_research等）",
     },
     model: {
       type: "string",
       required: false,
-      description: "特殊モデル（gpt-4等）",
+      description: "モデル（gpt-4等）",
     },
 
     // 列固有の特殊設定（新規追加）

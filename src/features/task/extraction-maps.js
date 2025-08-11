@@ -1,6 +1,6 @@
 // extraction-maps.js - 抽出ロジックの辞書定義
 
-// 特殊モデル・特殊作業の設定をインポート
+// モデル・機能の設定をインポート
 import { SPECIAL_MODEL_MAP, SPECIAL_OPERATION_MAP } from "./special-configs.js";
 
 // 再エクスポート

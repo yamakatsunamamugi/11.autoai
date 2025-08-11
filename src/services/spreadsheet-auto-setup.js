@@ -367,7 +367,7 @@ export class SpreadsheetAutoSetup {
     // 一つずつ挿入を実行（3.autoaiアプローチ）
     if (insertions.length > 0) {
       console.log("[AutoSetup] 通常AI列への基本列の挿入:", insertions);
-      await this.executeIndividualInsertions(insertions);
+      await this.executeIndividualInsertions(insertions, promptCol.aiType);
 
       // 追加された列を記録
       for (const insertion of insertions) {
@@ -716,7 +716,7 @@ export class SpreadsheetAutoSetup {
       });
     }
 
-    // 5. ヘッダーを設定
+    // 5. ヘッダーを設定（メニュー行）
     for (let i = 0; i < 4; i++) {
       requests.push({
         updateCells: {
@@ -745,6 +745,32 @@ export class SpreadsheetAutoSetup {
         type: "3type",
         column: this.indexToColumn(promptIndex),
         header: allHeaders[i],
+      });
+    }
+
+    // 6. AI行にAI名を設定（最初の3列のみ、ドキュメントURL列は除外）
+    const aiNames = ["ChatGPT", "Claude", "Gemini"];
+    for (let i = 0; i < 3; i++) {
+      requests.push({
+        updateCells: {
+          range: {
+            sheetId: this.sheetId,
+            startRowIndex: this.aiRowIndex,
+            endRowIndex: this.aiRowIndex + 1,
+            startColumnIndex: promptIndex + 1 + i,
+            endColumnIndex: promptIndex + 2 + i,
+          },
+          rows: [
+            {
+              values: [
+                {
+                  userEnteredValue: { stringValue: aiNames[i] },
+                },
+              ],
+            },
+          ],
+          fields: "userEnteredValue",
+        },
       });
     }
 
@@ -892,10 +918,29 @@ export class SpreadsheetAutoSetup {
   }
 
   /**
+   * AIタイプから表示用AI名を取得
+   * @param {string} aiType - AIタイプ
+   * @returns {string} 表示用AI名
+   */
+  getDisplayAIName(aiType) {
+    const typeMap = {
+      "chatgpt": "ChatGPT",
+      "claude": "Claude", 
+      "gemini": "Gemini",
+      "ChatGPT": "ChatGPT",
+      "Claude": "Claude",
+      "Gemini": "Gemini"
+    };
+    
+    return typeMap[aiType] || aiType;
+  }
+
+  /**
    * 個別の挿入を一つずつ実行（3.autoaiアプローチを完全に採用 + グリッドサイズエラー対処）
    * @param {Array} insertions - 挿入情報の配列
+   * @param {string} aiType - AIタイプ（回答列にAI名を設定するため）
    */
-  async executeIndividualInsertions(insertions) {
+  async executeIndividualInsertions(insertions, aiType = null) {
     // 右から左へソート（インデックスが大きい順）
     const sortedInsertions = insertions.sort((a, b) => b.position - a.position);
 
@@ -957,6 +1002,31 @@ export class SpreadsheetAutoSetup {
             fields: "userEnteredValue",
           },
         });
+
+        // 回答列の場合、AI行にAI名を設定
+        if (insertion.header === "回答" && aiType && aiType !== "") {
+          requests.push({
+            updateCells: {
+              range: {
+                sheetId: this.sheetId,
+                startRowIndex: this.aiRowIndex,
+                endRowIndex: this.aiRowIndex + 1,
+                startColumnIndex: insertion.position,
+                endColumnIndex: insertion.position + 1,
+              },
+              rows: [
+                {
+                  values: [
+                    {
+                      userEnteredValue: { stringValue: this.getDisplayAIName(aiType) },
+                    },
+                  ],
+                },
+              ],
+              fields: "userEnteredValue",
+            },
+          });
+        }
       } else {
         // 通常の列挿入（グリッドサイズ以内）
         requests.push({
@@ -993,6 +1063,31 @@ export class SpreadsheetAutoSetup {
             fields: "userEnteredValue",
           },
         });
+
+        // 回答列の場合、AI行にAI名を設定
+        if (insertion.header === "回答" && aiType && aiType !== "") {
+          requests.push({
+            updateCells: {
+              range: {
+                sheetId: this.sheetId,
+                startRowIndex: this.aiRowIndex,
+                endRowIndex: this.aiRowIndex + 1,
+                startColumnIndex: insertion.position,
+                endColumnIndex: insertion.position + 1,
+              },
+              rows: [
+                {
+                  values: [
+                    {
+                      userEnteredValue: { stringValue: this.getDisplayAIName(aiType) },
+                    },
+                  ],
+                },
+              ],
+              fields: "userEnteredValue",
+            },
+          });
+        }
       }
 
       try {

@@ -186,7 +186,7 @@ class SheetsClient {
       }
 
       // 作業行を検索（A列が「1」から始まる数字）
-      // ただし、すべての制御行（メニュー、制御、AI、特殊モデル、特殊作業）の後のみ
+      // ただし、すべての制御行（メニュー、制御、AI、モデル、機能）の後のみ
       if (/^\d+$/.test(firstCell)) {
         // 最後の制御行を特定
         const lastControlRowIndex = Math.max(

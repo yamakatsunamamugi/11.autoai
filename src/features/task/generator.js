@@ -263,7 +263,7 @@ class TaskGenerator {
     const aColumnValue =
       this.getCellValue(spreadsheetData, "A", rowNumber) || "";
 
-    // 特殊モデル・特殊作業を抽出
+    // モデル・機能を抽出
     const extractedModel = extractFromMap(aColumnValue, SPECIAL_MODEL_MAP);
     const extractedOperation = extractFromMap(
       aColumnValue,
@@ -296,7 +296,7 @@ class TaskGenerator {
 
       multiAI: columnGroup.type === "3type",
 
-      // 特殊モデル・特殊作業（nullの場合は未定義にする）
+      // モデル・機能（nullの場合は未定義にする）
       ...(extractedModel && { model: extractedModel }),
       ...(extractedOperation && { specialOperation: extractedOperation }),
     };
@@ -494,7 +494,7 @@ class TaskGenerator {
             `       プロンプト: ${task.prompt.substring(0, 50)}${task.prompt.length > 50 ? "..." : ""}`,
           );
 
-          // 特殊モデル
+          // モデル
           if (task.model) {
             console.log(`       モデル: ${task.model}`);
           }

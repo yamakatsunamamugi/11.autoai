@@ -131,8 +131,8 @@ class SheetsClient {
               menuRow: { keyword: "プロンプト" },
               controlRow: { keyword: "制御" },
               aiRow: { keyword: "AI" },
-              specialModelRow: { keyword: "特殊モデル" },
-              specialTaskRow: { keyword: "特殊作業" },
+              specialModelRow: { keyword: "モデル" },
+              specialTaskRow: { keyword: "機能" },
             },
             columnTypes: {
               prompt: { keyword: "プロンプト", type: "prompt", aiType: null },

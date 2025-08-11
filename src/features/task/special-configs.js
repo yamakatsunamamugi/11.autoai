@@ -1,7 +1,7 @@
-// special-configs.js - 特殊モデル・特殊作業の設定モジュール
+// special-configs.js - モデル・機能の設定モジュール
 
 /**
- * 特殊モデル設定
+ * モデル設定
  * 将来的に追加しやすいようにモジュール化
  */
 export const SPECIAL_MODEL_CONFIG = {
@@ -23,7 +23,7 @@ export const SPECIAL_MODEL_CONFIG = {
 };
 
 /**
- * 特殊作業設定
+ * 機能設定
  * 将来的に追加しやすいようにモジュール化
  */
 export const SPECIAL_OPERATION_CONFIG = {
@@ -32,7 +32,7 @@ export const SPECIAL_OPERATION_CONFIG = {
     id: "DeepResearch",
     displayName: "DeepResearch",
     aliases: ["DeepResearch", "deepresearch", "deep research", "深掘り"],
-    description: "深い調査・研究を行う特殊作業",
+    description: "深い調査・研究を行う機能",
   },
 
   // ChatGPT Agent Mode
@@ -85,12 +85,12 @@ export function generateExtractionMap(config) {
 }
 
 /**
- * 特殊モデルの抽出マップ
+ * モデルの抽出マップ
  */
 export const SPECIAL_MODEL_MAP = generateExtractionMap(SPECIAL_MODEL_CONFIG);
 
 /**
- * 特殊作業の抽出マップ
+ * 機能の抽出マップ
  */
 export const SPECIAL_OPERATION_MAP = generateExtractionMap(
   SPECIAL_OPERATION_CONFIG,
