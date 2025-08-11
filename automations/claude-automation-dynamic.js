@@ -736,6 +736,40 @@
     }
   }
 
+  // DeepResearch専用の待機・応答関数
+  const waitForClaudeDeepResearchResponse = async (maxWaitMinutes = 60) => {
+    // DeepResearchハンドラーが利用可能か確認
+    if (window.DeepResearchHandler) {
+      log('DeepResearchハンドラーを使用します', 'INFO');
+      return await window.DeepResearchHandler.handle('Claude', maxWaitMinutes);
+    }
+    
+    // フォールバック：従来の実装（互換性のため残す）
+    log('Claude DeepResearch応答を待機中（レガシーモード）...', 'WARNING');
+    const startTime = Date.now();
+    
+    // 停止ボタンの消失を待つシンプルな実装
+    while (Date.now() - startTime < maxWaitMinutes * 60 * 1000) {
+      try {
+        const stopButton = document.querySelector('[aria-label="応答を停止"]');
+        if (!stopButton) {
+          await wait(3000);
+          const finalStopCheck = document.querySelector('[aria-label="応答を停止"]');
+          if (!finalStopCheck) {
+            log('Claude DeepResearch完了を検出', 'SUCCESS');
+            return true;
+          }
+        }
+        await wait(5000);
+      } catch (error) {
+        log(`DeepResearch完了待機エラー: ${error.message}`, 'WARNING');
+      }
+    }
+    
+    log('Claude DeepResearch待機タイムアウト', 'WARNING');
+    return false;
+  };
+
   // ========================================
   // 統合実行関数
   // ========================================
@@ -784,11 +818,19 @@
         }
       }
 
-      // 応答待機
+      // 応答待機（DeepResearchの場合は専用の待機関数を使用）
       if (config.waitResponse) {
-        const waitResult = await waitForResponse(config.timeout || 60000);
-        if (!waitResult) {
-          log('応答待機がタイムアウトしましたが、続行します', 'WARNING');
+        if (config.function && config.function.includes('リサーチ')) {
+          log('Claude DeepResearch モードで待機', 'INFO');
+          const waitResult = await waitForClaudeDeepResearchResponse(60);
+          if (!waitResult) {
+            log('Claude DeepResearch待機がタイムアウトしましたが、続行します', 'WARNING');
+          }
+        } else {
+          const waitResult = await waitForResponse(config.timeout || 60000);
+          if (!waitResult) {
+            log('応答待機がタイムアウトしましたが、続行します', 'WARNING');
+          }
         }
       }
 

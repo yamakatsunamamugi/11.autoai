@@ -218,7 +218,13 @@
     return new Promise((resolve) => {
       log(`${aiName}スクリプト注入開始`);
       
-      // まず自動化スクリプトを注入
+      // 共通ユーティリティとDeepResearchハンドラーを先に注入
+      const commonScripts = [
+        'automations/common-utils.js',
+        'automations/deepresearch-handler.js'
+      ];
+      
+      // AI固有のスクリプト
       const scriptFileMap = {
         'claude': 'automations/claude-automation-dynamic.js',
         'chatgpt': 'automations/chatgpt-automation.js', 
@@ -226,11 +232,14 @@
         'genspark': 'automations/genspark-automation.js'
       };
       
-      const scriptFile = scriptFileMap[aiName.toLowerCase()] || `automations/${aiName.toLowerCase()}-automation.js`;
+      const aiScript = scriptFileMap[aiName.toLowerCase()] || `automations/${aiName.toLowerCase()}-automation.js`;
+      
+      // 共通スクリプトを順番に注入
+      let scriptsToInject = [...commonScripts, aiScript];
       
       chrome.scripting.executeScript({
         target: { tabId: tabId },
-        files: [scriptFile]
+        files: scriptsToInject
       }, () => {
         if (chrome.runtime.lastError) {
           log(`❌ ${aiName}スクリプト注入エラー: ${chrome.runtime.lastError.message}`, 'error');
@@ -316,6 +325,18 @@
                 
                 // 実行方法を自動化オブジェクトの構造に応じて調整
                 if (typeof automation.runAutomation === 'function') {
+                  // DeepResearchの場合は長時間待機（最大60分）
+                  const isDeepResearch = config.function && 
+                    (config.function.toLowerCase().includes('research') || 
+                     config.function === 'リサーチ' ||
+                     config.function === 'Deep Research');
+                  
+                  const timeout = isDeepResearch ? 60 * 60 * 1000 : 60000; // DeepResearch: 60分、通常: 1分
+                  
+                  if (isDeepResearch) {
+                    console.log(`[TestRunner] ${aiName} DeepResearchモード - 最大60分待機`);
+                  }
+                  
                   return await automation.runAutomation({
                     model: config.model,
                     function: config.function,
@@ -323,6 +344,7 @@
                     send: config.send,
                     waitResponse: config.waitResponse,
                     getResponse: config.getResponse,
+                    timeout: timeout
                   });
                 } else if (typeof automation.testNormal === 'function' && aiName === 'Gemini') {
                   // Gemini専用の実行方法（動的検索版）
@@ -331,13 +353,48 @@
                   // 機能選択を事前に行う（Deep Research含む）
                   if (config.function && config.function !== 'none') {
                     console.log(`[TestRunner] Gemini機能選択: ${config.function}`);
-                    await automation.func(config.function);
+                    
+                    // 利用可能な機能をデバッグ表示
+                    console.log(`[TestRunner] 利用可能な機能を確認中...`);
+                    const availableFunctions = await automation.listFunctions();
+                    console.log(`[TestRunner] 利用可能な機能:`, availableFunctions);
+                    
+                    const result = await automation.func(config.function);
+                    console.log(`[TestRunner] 機能選択結果:`, result);
+                    
+                    // Deep Researchの場合はグローバル状態にも追加（GeminiのglobalStateを使用）
+                    if (config.function.toLowerCase().includes('research')) {
+                      // GeminiオブジェクトのglobalStateを直接更新
+                      if (!automation.globalState) {
+                        automation.globalState = { activeFunctions: [] };
+                      }
+                      if (!automation.globalState.activeFunctions) {
+                        automation.globalState.activeFunctions = [];
+                      }
+                      if (!automation.globalState.activeFunctions.includes('Deep Research')) {
+                        automation.globalState.activeFunctions.push('Deep Research');
+                      }
+                      
+                      // windowのglobalStateも更新（念のため）
+                      if (window.globalState && window.globalState.activeFunctions) {
+                        if (!window.globalState.activeFunctions.includes('Deep Research')) {
+                          window.globalState.activeFunctions.push('Deep Research');
+                        }
+                      }
+                      
+                      console.log(`[TestRunner] Deep Research機能をグローバル状態に追加`);
+                      console.log(`[TestRunner] automation.globalState:`, automation.globalState);
+                      console.log(`[TestRunner] window.globalState:`, window.globalState);
+                    }
+                    
                     await new Promise(resolve => setTimeout(resolve, 1000));
                   }
                   
                   // テキスト入力と送信
                   if (config.text) {
-                    const result = await automation.testNormal(config.text, config.model);
+                    // 機能が選択されている場合は機能をクリアしない
+                    const clearFunctions = !(config.function && config.function !== 'none');
+                    const result = await automation.testNormal(config.text, config.model, clearFunctions);
                     return result;
                   }
                   
@@ -400,10 +457,19 @@
         await new Promise(resolve => setTimeout(resolve, 3000));
       }
       
-      // スクリプトを実行（既に上で取得済み）
+      // DeepResearchモードかどうか判定
+      const isDeepResearch = aiConfig.function && 
+        (aiConfig.function.toLowerCase().includes('research') || 
+         aiConfig.function === 'リサーチ' ||
+         aiConfig.function === 'Deep Research' ||
+         aiConfig.function === 'deep-research');
+      
+      if (isDeepResearch) {
+        log(`${aiName}: DeepResearchモード - 停止ボタン消滅まで待機します`, 'function');
+      }
       
       // メッセージ送信ログ
-      log(`${aiName}: メッセージを送信しました`, 'send');
+      log(`${aiName}: 処理を開始しました`, 'send');
       const sendTime = Date.now(); // 送信時刻を記録
       
       const result = await executeInTab(tab.id, aiName, {
@@ -421,7 +487,11 @@
         const minutes = Math.floor(elapsedMs / 60000);
         const seconds = Math.floor((elapsedMs % 60000) / 1000);
         
-        log(`${aiName}: 応答完了（送信から ${minutes}分${seconds}秒経過）`, 'complete');
+        if (isDeepResearch) {
+          log(`${aiName}: DeepResearch完了（${minutes}分${seconds}秒経過）`, 'complete');
+        } else {
+          log(`${aiName}: 応答完了（送信から ${minutes}分${seconds}秒経過）`, 'complete');
+        }
         
         if (result.response) {
           log(`${aiName}の回答: ${result.response.substring(0, 100)}...`);

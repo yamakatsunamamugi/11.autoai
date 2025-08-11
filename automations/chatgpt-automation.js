@@ -2,9 +2,8 @@
 // ChatGPT自動化関数 - 統合テスト版
 // 元のテストコードをベースに統合テスト用に調整
 // ============================================
-
-(function() {
-    'use strict';
+(() => {
+    "use strict";
 
     console.log('%cChatGPT自動化関数 - 統合テスト版', 'color: #00BCD4; font-weight: bold; font-size: 16px');
 
@@ -45,7 +44,8 @@
             submenuOpen: 800,
             afterClick: 300,
             betweenActions: 1000,
-            textInput: 100
+            textInput: 100,
+            elementSearch: 500
         }
     };
 
@@ -77,6 +77,58 @@
     // ユーティリティ関数
     // ============================================
     const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+    const findElement = async (selectors, condition = null, maxWait = 3000) => {
+        const startTime = Date.now();
+        while (Date.now() - startTime < maxWait) {
+            for (const selector of selectors) {
+                try {
+                    const elements = document.querySelectorAll(selector);
+                    for (const element of elements) {
+                        if (!condition || condition(element)) {
+                            return element;
+                        }
+                    }
+                } catch (e) {}
+            }
+            await wait(CONFIG.delays.elementSearch);
+        }
+        return null;
+    };
+
+    const performClick = async (element) => {
+        if (!element) return false;
+        try {
+            const rect = element.getBoundingClientRect();
+            const x = rect.left + rect.width / 2;
+            const y = rect.top + rect.height / 2;
+
+            element.dispatchEvent(new PointerEvent('pointerdown', {
+                bubbles: true,
+                cancelable: true,
+                view: window,
+                clientX: x,
+                clientY: y,
+                pointerId: 1
+            }));
+
+            await wait(CONFIG.delays.click);
+
+            element.dispatchEvent(new PointerEvent('pointerup', {
+                bubbles: true,
+                cancelable: true,
+                view: window,
+                clientX: x,
+                clientY: y,
+                pointerId: 1
+            }));
+
+            element.click();
+            return true;
+        } catch (e) {
+            return false;
+        }
+    };
 
     const log = (message, type = 'info') => {
         const styles = {
@@ -112,27 +164,6 @@
         return !menuStillOpen;
     }
 
-    async function performClick(element) {
-        if (!element) {
-            debugLog('クリック対象要素がnull');
-            return false;
-        }
-        
-        try {
-            debugLog('PointerEventでクリック実行');
-            element.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
-            await wait(10);
-            element.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true }));
-            element.dispatchEvent(new PointerEvent('click', { bubbles: true, cancelable: true }));
-            await wait(CONFIG.delays.afterClick);
-            return true;
-        } catch (e) {
-            debugLog('PointerEvent失敗、通常クリックで再試行');
-            element.click();
-            await wait(CONFIG.delays.afterClick);
-            return true;
-        }
-    }
 
     async function waitForMenu(maxWait = 3000) {
         debugLog(`メニューを待機中... (最大${maxWait}ms)`);
@@ -849,6 +880,123 @@
         }
     }
 
+    // DeepResearch専用の待機・応答関数
+    const waitForDeepResearchResponse = async (maxWaitMinutes = 60) => {
+        // DeepResearchハンドラーが利用可能か確認
+        log('DeepResearchハンドラーの確認中...', 'info');
+        console.log('window.DeepResearchHandler:', window.DeepResearchHandler);
+        
+        if (window.DeepResearchHandler) {
+            log('DeepResearchハンドラーを使用します', 'info');
+            try {
+                const result = await window.DeepResearchHandler.handle('ChatGPT', maxWaitMinutes);
+                log(`DeepResearchハンドラー結果: ${result}`, 'info');
+                return result;
+            } catch (error) {
+                log(`DeepResearchハンドラーエラー: ${error.message}`, 'error');
+                log('フォールバック実装を使用します', 'warning');
+            }
+        } else {
+            log('DeepResearchハンドラーが見つかりません。フォールバック実装を使用します', 'warning');
+        }
+        
+        // フォールバック：完全な実装（Claudeと同様）
+        log('DeepResearch応答を待機中（レガシーモード）...', 'warning');
+        const startTime = Date.now();
+        
+        // 初期メッセージ数を取得
+        const initialMessages = document.querySelectorAll('[data-message-author-role="assistant"]');
+        let lastMessageCount = initialMessages.length;
+        let hasQuestionReceived = false;
+        
+        // 最初の5分間、質問を監視
+        log('最初の5分間、質問を監視中...', 'info');
+        const fiveMinutes = 5 * 60 * 1000;
+        
+        while (Date.now() - startTime < fiveMinutes) {
+            try {
+                // 現在のメッセージ数をチェック
+                const currentMessages = document.querySelectorAll('[data-message-author-role="assistant"]');
+                const currentMessageCount = currentMessages.length;
+                
+                // 停止ボタンの状態をチェック
+                const stopButton = document.querySelector('[aria-label="Stop generating"]');
+                
+                // 新しいメッセージが追加され、かつ停止ボタンが消えた場合
+                if (currentMessageCount > lastMessageCount && !stopButton && !hasQuestionReceived) {
+                    log('ChatGPTから質問を受信しました（停止ボタン消滅後・5分以内）', 'info');
+                    hasQuestionReceived = true;
+                    lastMessageCount = currentMessageCount;
+                    
+                    // 「プロンプトを見て調べて」と返信
+                    const inputField = await findElement(['#prompt-textarea', '[contenteditable="true"]']);
+                    if (inputField) {
+                        inputField.focus();
+                        await wait(500);
+                        
+                        if (inputField.tagName === 'TEXTAREA') {
+                            inputField.value = 'プロンプトを見て調べて';
+                        } else {
+                            inputField.textContent = 'プロンプトを見て調べて';
+                        }
+                        
+                        inputField.dispatchEvent(new Event('input', { bubbles: true }));
+                        await wait(1000);
+                        
+                        // 送信
+                        const sendButton = await findElement([
+                            '[data-testid="send-button"]',
+                            '[aria-label="Send prompt"]',
+                            'button[type="submit"]'
+                        ]);
+                        
+                        if (sendButton && !sendButton.disabled) {
+                            await performClick(sendButton);
+                            log('「プロンプトを見て調べて」を送信しました', 'success');
+                        }
+                    }
+                    
+                    break; // 5分以内に返信したら監視ループを抜ける
+                }
+                
+                // メッセージ数を更新（返信はしない）
+                if (currentMessageCount > lastMessageCount) {
+                    lastMessageCount = currentMessageCount;
+                    if (stopButton) {
+                        log('質問を検出しましたが、まだ処理中です（停止ボタンあり）', 'info');
+                    }
+                }
+                
+                await wait(2000); // 2秒ごとにチェック
+                
+            } catch (error) {
+                debugLog(`質問監視エラー: ${error.message}`);
+            }
+        }
+        
+        // 5分経過後、または質問に返信後、停止ボタンの消失を待つ
+        log('DeepResearch処理の完了を待機中...', 'info');
+        while (Date.now() - startTime < maxWaitMinutes * 60 * 1000) {
+            try {
+                const stopButton = document.querySelector('[aria-label="Stop generating"]');
+                if (!stopButton) {
+                    await wait(3000);
+                    const finalStopCheck = document.querySelector('[aria-label="Stop generating"]');
+                    if (!finalStopCheck) {
+                        log('DeepResearch完了を検出', 'success');
+                        return true;
+                    }
+                }
+                await wait(5000);
+            } catch (error) {
+                debugLog(`DeepResearch完了待機エラー: ${error.message}`);
+            }
+        }
+        
+        log('DeepResearch待機タイムアウト', 'warning');
+        return false;
+    };
+
     // ============================================
     // 統合実行関数
     // ============================================
@@ -897,11 +1045,19 @@
                 }
             }
             
-            // 回答待機
+            // 回答待機（DeepResearchの場合は専用の待機関数を使用）
             if (config.waitResponse) {
-                const waitResult = await waitForResponse(config.timeout || 60000);
-                if (!waitResult) {
-                    log('回答待機がタイムアウトしましたが、続行します', 'warning');
+                if (config.function && config.function.includes('Deep Research')) {
+                    log('DeepResearch モードで待機', 'info');
+                    const waitResult = await waitForDeepResearchResponse(60);
+                    if (!waitResult) {
+                        log('DeepResearch待機がタイムアウトしましたが、続行します', 'warning');
+                    }
+                } else {
+                    const waitResult = await waitForResponse(config.timeout || 60000);
+                    if (!waitResult) {
+                        log('回答待機がタイムアウトしましたが、続行します', 'warning');
+                    }
                 }
             }
             

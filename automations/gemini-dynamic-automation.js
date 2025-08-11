@@ -39,6 +39,9 @@
         currentModel: null,
         activeFunctions: []
     };
+    
+    // グローバルに公開（外部からアクセス可能にする）
+    window.globalState = globalState;
 
     // ========================================
     // ユーティリティ関数
@@ -347,17 +350,27 @@
 
                 // メニューから選択
                 const menuItems = document.querySelectorAll('[role="menuitemradio"], [role="menuitem"]');
+                let selected = false;
                 for (let item of menuItems) {
                     if (item.textContent?.trim() === bestMatch.name) {
                         await clickElement(item);
                         globalState.currentModel = bestMatch.name;
                         log(`✅ モデル「${bestMatch.name}」を選択しました`, 'success');
-                        return true;
+                        selected = true;
+                        break;
                     }
                 }
 
-                // メニューを閉じる
-                document.body.click();
+                // メニューを確実に閉じる（ESCキーを使用）
+                await wait(500);
+                document.body.dispatchEvent(new KeyboardEvent('keydown', {
+                    key: 'Escape',
+                    code: 'Escape',
+                    bubbles: true
+                }));
+                log('メニューを閉じました', 'info');
+                
+                return selected;
             }
         } else {
             log(`❌ モデル「${searchTerm}」が見つかりません`, 'error');
@@ -395,6 +408,10 @@
 
             if (bestMatch.active) {
                 log(`機能「${bestMatch.name}」は既に有効です`, 'info');
+                // 既に有効でもグローバル状態に追加
+                if (!globalState.activeFunctions.includes(bestMatch.name)) {
+                    globalState.activeFunctions.push(bestMatch.name);
+                }
                 return true;
             }
 
@@ -402,6 +419,17 @@
                 // メイン機能
                 await clickElement(bestMatch.element);
                 globalState.activeFunctions.push(bestMatch.name);
+                
+                // Deep Research関連の名前も追加（念のため）
+                if (bestMatch.name.toLowerCase().includes('research') || 
+                    bestMatch.name.toLowerCase().includes('リサーチ')) {
+                    if (!globalState.activeFunctions.includes('Deep Research')) {
+                        globalState.activeFunctions.push('Deep Research');
+                        console.log('🔍 Deep Researchをactivefunctionsに追加しました');
+                        console.log('現在のactiveFunctions:', globalState.activeFunctions);
+                    }
+                }
+                
                 log(`✅ 機能「${bestMatch.name}」を有効化しました`, 'success');
                 return true;
             } else if (bestMatch.location === 'submenu') {
@@ -420,18 +448,39 @@
 
                     // メニュー内で機能を探してクリック
                     const menuItems = document.querySelectorAll('button[mat-list-item], .toolbox-drawer-item-list-button');
+                    let functionSelected = false;
                     for (let item of menuItems) {
                         if (item.textContent?.trim() === bestMatch.name) {
                             await clickElement(item);
                             await wait(500);
-                            document.body.click(); // メニューを閉じる
                             globalState.activeFunctions.push(bestMatch.name);
+                            
+                            // Deep Research関連の名前も追加（念のため）
+                            if (bestMatch.name.toLowerCase().includes('research') || 
+                                bestMatch.name.toLowerCase().includes('リサーチ')) {
+                                if (!globalState.activeFunctions.includes('Deep Research')) {
+                                    globalState.activeFunctions.push('Deep Research');
+                                    console.log('🔍 Deep Researchをactivefunctionsに追加しました（サブメニュー）');
+                                    console.log('現在のactiveFunctions:', globalState.activeFunctions);
+                                }
+                            }
+                            
                             log(`✅ 機能「${bestMatch.name}」を有効化しました`, 'success');
-                            return true;
+                            functionSelected = true;
+                            break;
                         }
                     }
 
-                    document.body.click(); // メニューを閉じる
+                    // メニューを確実に閉じる（ESCキーを使用）
+                    await wait(500);
+                    document.body.dispatchEvent(new KeyboardEvent('keydown', {
+                        key: 'Escape',
+                        code: 'Escape',
+                        bubbles: true
+                    }));
+                    log('メニューを閉じました', 'info');
+                    
+                    return functionSelected;
                 }
             }
         } else {
@@ -509,6 +558,10 @@
             return false;
         }
 
+        // ウィンドウにフォーカスしてからクリック
+        window.focus();
+        document.body.click();
+        inputField.click();
         inputField.focus();
         await wait(500);
 
@@ -536,6 +589,14 @@
     };
 
     const sendMessage = async () => {
+        // 送信前に開いているメニューを閉じる（重要）
+        document.body.dispatchEvent(new KeyboardEvent('keydown', {
+            key: 'Escape',
+            code: 'Escape',
+            bubbles: true
+        }));
+        await wait(500);
+        
         const sendButton = await findElement([
             '[aria-label="プロンプトを送信"]',
             '.send-button:not(.stop)',
@@ -602,7 +663,7 @@
     // ========================================
     // テスト関数
     // ========================================
-    const testNormal = async (query = '今日の天気について教えてください', modelSearch = null) => {
+    const testNormal = async (query = '今日の天気について教えてください', modelSearch = null, clearFunctions = true) => {
         console.clear();
         console.log('%c💬 通常処理テスト開始', 'color: #2196F3; font-size: 18px; font-weight: bold');
         console.log('='.repeat(60));
@@ -610,11 +671,15 @@
         try {
             const startTime = Date.now();
 
-            // 機能をクリア
-            console.log('🔧 すべての機能を解除中...');
-            await clearAllFunctions();
-            await wait(2000);
-            console.log('✅ 通常モードに設定');
+            // 機能をクリア（オプション）
+            if (clearFunctions) {
+                console.log('🔧 すべての機能を解除中...');
+                await clearAllFunctions();
+                await wait(2000);
+                console.log('✅ 通常モードに設定');
+            } else {
+                console.log('🔧 機能設定を維持します');
+            }
 
             // モデルを選択（指定された場合）
             if (modelSearch) {
@@ -633,6 +698,27 @@
             console.log('📤 送信中...');
             if (!await sendMessage()) {
                 throw new Error('送信失敗');
+            }
+
+            // Deep Research機能が有効な場合、DeepResearchHandlerを使用
+            console.log('🔍 現在のactiveFunctions:', globalState.activeFunctions);
+            if (globalState.activeFunctions.includes('Deep Research') || 
+                globalState.activeFunctions.some(f => f.toLowerCase().includes('research'))) {
+                
+                // DeepResearchHandlerが利用可能か確認
+                if (window.DeepResearchHandler) {
+                    console.log('🔍 DeepResearchハンドラーを使用します');
+                    const researchResult = await window.DeepResearchHandler.handle('Gemini', 60);
+                    if (researchResult) {
+                        console.log('✅ DeepResearch処理完了');
+                    } else {
+                        console.log('⚠️ DeepResearch処理がタイムアウトしました');
+                    }
+                } else {
+                    console.log('❌ DeepResearchハンドラーが見つかりません');
+                    console.log('deepresearch-handler.jsが読み込まれているか確認してください');
+                    return { success: false, error: 'DeepResearchHandler not found' };
+                }
             }
 
             // 応答待機
@@ -797,129 +883,23 @@
 
             const sendTime = Date.now();
 
-            // 3. リサーチ計画画面の検出と処理
-            console.log('\n📋 リサーチ計画画面を待機中...');
-            let researchStartClicked = false;
-            const planWaitSeconds = 300; // 5分間待機
-            const planStartTime = Date.now();
-
-            while (Date.now() - planStartTime < planWaitSeconds * 1000 && !researchStartClicked) {
-                // 複数の方法でボタンを探す
-                let researchBtn = await findElement([
-                    'button[aria-label="リサーチを開始"]',
-                    'button[data-test-id="confirm-button"]',
-                    () => {
-                        const buttons = document.querySelectorAll('button');
-                        for (let btn of buttons) {
-                            const text = btn.textContent?.trim();
-                            if (text && text.includes('リサーチを開始')) {
-                                return [btn];
-                            }
-                        }
-                        return [];
-                    }
-                ], null, 1);
-
-                if (researchBtn) {
-                    console.log('\n🎯 「リサーチを開始」ボタンを検出！');
-                    console.log(`  経過時間: ${Math.floor((Date.now() - planStartTime) / 1000)}秒`);
-                    await clickElement(researchBtn);
-                    researchStartClicked = true;
-                    console.log('✅ リサーチを開始しました！');
-                    await wait(3000);
-                    break;
-                }
-
-                // 既に処理中の可能性をチェック
-                const stopBtn = document.querySelector('[aria-label="回答を停止"]');
-                if (stopBtn) {
-                    console.log('📝 リサーチが既に開始されています');
-                    break;
-                }
-
-                await wait(2000);
-            }
-
-            // 4. メイン処理ループ（長時間待機と進捗表示）
-            console.log('\n⏳ Deep Research処理中...');
-            console.log('📝 最初の5分は「リサーチを開始」ボタンを探す');
-            console.log('📝 5分後は停止ボタンが5秒消えたら完了');
-            console.log('='.repeat(60));
-
-            let elapsedMinutes = 0;
-            let noStopButtonSeconds = 0;
-
-            // 進捗表示関数
-            const showProgress = (min) => {
-                const remain = maxWaitMinutes - min;
-                console.log(`\n⏳ [${new Date().toLocaleTimeString()}]`);
-                log(`    処理中... ${min}分経過`, 'progress');
-                log(`    残り最大${remain}分`, 'progress');
-                const progressBar = '▓'.repeat(Math.floor(min * 1.5)) + '░'.repeat(Math.floor(remain * 1.5));
-                console.log('    ' + progressBar.substring(0, 60));
-            };
-
-            showProgress(0);
-
-            // メインループ：1秒ごとにチェック
-            for (let seconds = 0; seconds < maxWaitMinutes * 60; seconds++) {
-                await wait(1000);
-
-                const elapsed = (Date.now() - sendTime) / 1000;
-                const isFirstFiveMinutes = elapsed < 300; // 300秒 = 5分
-
-                // 最初の5分間：追加のリサーチボタンを探す
-                if (isFirstFiveMinutes && !researchStartClicked) {
-                    const researchBtn = await findElement([
-                        'button[aria-label="リサーチを開始"]',
-                        'button[data-test-id="confirm-button"]'
-                    ], null, 1);
-
-                    if (researchBtn) {
-                        console.log('\n🎯 「リサーチを開始」ボタンを発見！');
-                        await clickElement(researchBtn);
-                        researchStartClicked = true;
-                        await wait(3000);
-                        continue;
-                    }
-                }
-
-                // 停止ボタンチェック
-                const stopBtn = document.querySelector('[aria-label="回答を停止"]');
-
-                if (stopBtn) {
-                    // 停止ボタンあり = 処理中
-                    noStopButtonSeconds = 0;
-
-                    // 5分ごとに進捗表示
-                    const currentMinutes = Math.floor(seconds / 60);
-                    if (currentMinutes > 0 && currentMinutes % 5 === 0 && currentMinutes !== elapsedMinutes) {
-                        elapsedMinutes = currentMinutes;
-                        showProgress(elapsedMinutes);
-                    }
+            // 3. DeepResearchHandlerを使用してリサーチ処理
+            console.log('\n🔍 DeepResearch処理を開始...');
+            
+            // DeepResearchHandlerが利用可能か確認
+            if (window.DeepResearchHandler) {
+                console.log('✅ DeepResearchハンドラーを使用します');
+                const researchResult = await window.DeepResearchHandler.handle('Gemini', maxWaitMinutes);
+                
+                if (researchResult) {
+                    console.log('✅ DeepResearch処理完了！');
                 } else {
-                    // 停止ボタンなし
-                    if (isFirstFiveMinutes) {
-                        // 最初の5分：待機継続
-                        if (seconds % 10 === 0) {
-                            debugLog('Waiting for research plan or processing...');
-                        }
-                    } else {
-                        // 5分後：5秒カウント
-                        noStopButtonSeconds++;
-
-                        if (noStopButtonSeconds >= 5) {
-                            // 5秒間停止ボタンなし = 完了
-                            const totalMinutes = Math.floor((Date.now() - startTime) / 60000);
-                            console.log('\n' + '='.repeat(60));
-                            console.log(`🎉 Deep Research完了！`);
-                            console.log(`⏱️ 総時間: ${totalMinutes}分`);
-                            break;
-                        } else {
-                            debugLog(`No stop button (${noStopButtonSeconds}/5)`);
-                        }
-                    }
+                    console.log('⚠️ DeepResearch処理がタイムアウトしました');
                 }
+            } else {
+                console.log('❌ DeepResearchハンドラーが見つかりません');
+                console.log('deepresearch-handler.jsが読み込まれているか確認してください');
+                throw new Error('DeepResearchHandler not found');
             }
 
             // 5. 結果取得
@@ -956,12 +936,104 @@
     };
 
     // ========================================
+    // 統合実行関数（他のAIと互換性のため）
+    // ========================================
+    const runAutomation = async (config) => {
+        console.log('[Gemini] runAutomation開始', config);
+        
+        try {
+            // 機能をクリア（必要に応じて）
+            if (!config.function || config.function === 'none') {
+                await clearAllFunctions();
+            }
+            
+            // モデル選択
+            if (config.model) {
+                await selectModelDynamic(config.model);
+                await wait(1000);
+            }
+            
+            // 機能選択
+            if (config.function && config.function !== 'none') {
+                await selectFunctionDynamic(config.function);
+                await wait(1000);
+            }
+            
+            // テキスト入力
+            if (config.text) {
+                await inputText(config.text);
+            }
+            
+            // 送信
+            if (config.send) {
+                await sendMessage();
+            }
+            
+            // DeepResearchハンドラーを使用
+            if (config.function && 
+                (config.function.toLowerCase().includes('research') || 
+                 config.function === 'リサーチ' ||
+                 config.function === 'Deep Research')) {
+                
+                if (window.DeepResearchHandler) {
+                    console.log('[Gemini] DeepResearchハンドラーを使用');
+                    const timeout = config.timeout || 60 * 60 * 1000; // デフォルト60分
+                    const maxMinutes = Math.floor(timeout / 60000);
+                    await window.DeepResearchHandler.handle('Gemini', maxMinutes);
+                } else {
+                    console.log('[Gemini] DeepResearchハンドラーが見つかりません');
+                }
+            } else if (config.waitResponse) {
+                // 通常の応答待機
+                const timeout = config.timeout || 60000;
+                const maxWait = Math.floor(timeout / 1000);
+                let responseReceived = false;
+                let waitCount = 0;
+                
+                while (!responseReceived && waitCount < maxWait) {
+                    await wait(1000);
+                    waitCount++;
+                    
+                    const stopButton = document.querySelector('[aria-label="回答を停止"]');
+                    if (!stopButton && waitCount > 3) {
+                        responseReceived = true;
+                    }
+                }
+            }
+            
+            // 応答取得
+            let response = null;
+            if (config.getResponse) {
+                await wait(2000);
+                const texts = await getTextFromScreen();
+                response = texts.latestResponse;
+            }
+            
+            return {
+                success: true,
+                model: config.model,
+                function: config.function,
+                text: config.text,
+                response: response
+            };
+            
+        } catch (error) {
+            console.error('[Gemini] runAutomation エラー:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    };
+
+    // ========================================
     // API公開
     // ========================================
     window.Gemini = {
         // 動的検索系
         model: selectModelDynamic,
         func: selectFunctionDynamic,
+        runAutomation,  // 追加
         listModels: async () => {
             const models = await collectAvailableModels();
             console.log('\n📋 利用可能なモデル:');
