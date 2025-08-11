@@ -119,6 +119,7 @@
         "claude-mode-control.js",
         "src/features/chatgpt/chatgpt-tool-control.js",
         "tests/integration/test-ai-automation-integrated.html",
+        "tests/integration/test-ai-automation-integrated.js",
         "automations/chatgpt-automation.js",
         "automations/claude-automation.js",
         "automations/gemini-automation.js",
