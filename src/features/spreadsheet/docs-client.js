@@ -1,5 +1,16 @@
 // docs-client.js - Google Docs APIクライアント
 
+// authServiceをグローバルから取得、またはインポート
+const authService = globalThis.authService || await (async () => {
+  try {
+    await import("../../services/auth-service.js");
+    return globalThis.authService;
+  } catch (e) {
+    console.warn("AuthService import failed, using globalThis.authService");
+    return globalThis.authService;
+  }
+})();
+
 class DocsClient {
   constructor() {
     this.docsBaseUrl = "https://docs.googleapis.com/v1/documents";
