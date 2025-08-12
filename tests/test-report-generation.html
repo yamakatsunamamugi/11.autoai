@@ -196,6 +196,12 @@
       color: #0c5460;
     }
     
+    .result-box.warning {
+      background: #fff3cd;
+      border-color: #ffeaa7;
+      color: #856404;
+    }
+    
     .result-title {
       font-weight: 600;
       margin-bottom: 10px;
@@ -335,7 +341,7 @@
         <div class="test-content">
           <div class="input-group">
             <label for="sheetUrl">スプレッドシートURL（空欄の場合は仮データを使用）</label>
-            <input type="url" id="sheetUrl" placeholder="空欄のままでテストデータ、またはURLを入力">
+            <input type="url" id="sheetUrl" placeholder="空欄のままでテストデータ、またはURLを入力" value="https://docs.google.com/spreadsheets/d/1_uddaFRWDApGajbKj5Yb62vQ0Ok3bePJpNCGoqAzw5s/edit?usp=sharing">
           </div>
           
           <div class="input-group">
@@ -357,6 +363,11 @@
             <span>📝</span>
             各行をドキュメント化
           </button>
+          
+          <button id="deleteCreatedDocsBtn" class="btn btn-danger" style="display: none; background: #dc3545; color: white; margin-left: 10px;">
+            <span>🗑️</span>
+            作成したドキュメントを削除
+          </button>
         </div>
         
         <div id="sheetResult" class="result-box" style="display: none;">
@@ -375,6 +386,9 @@
   <script src="../src/features/spreadsheet/docs-client.js"></script>
   <script src="../src/features/spreadsheet/sheets-client.js"></script>
   <script src="../src/features/spreadsheet/config.js"></script>
+  
+  <!-- レポート機能を読み込み -->
+  <script src="test-report-direct.js"></script>
   
   <!-- 外部スクリプトファイルとして読み込み -->
   <script type="module" src="test-report-generation.js"></script>
