@@ -74,7 +74,7 @@ let isProcessing = false;
 function processSpreadsheetData(spreadsheetData) {
   const result = {
     ...spreadsheetData,
-    aiColumns: [],
+    aiColumns: {},
     columnMapping: {},
   };
 
@@ -82,33 +82,72 @@ function processSpreadsheetData(spreadsheetData) {
     return result;
   }
 
-  const headerRow = spreadsheetData.values[0];
-  headerRow.forEach((header, index) => {
+  // メニュー行とAI行から情報を取得
+  const menuRow = spreadsheetData.menuRow?.data || spreadsheetData.values[0];
+  const aiRow = spreadsheetData.aiRow?.data || [];
+  
+  console.log("[Background] processSpreadsheetData - AI行:", aiRow);
+  
+  // 各列を解析
+  menuRow.forEach((header, index) => {
     const columnLetter = String.fromCharCode(65 + index);
-    const trimmedHeader = header.trim();
-
-    if (
-      trimmedHeader.startsWith("ChatGPT ") ||
-      trimmedHeader.startsWith("Claude ") ||
-      trimmedHeader.startsWith("Gemini ")
-    ) {
-      const [ai, ...rest] = trimmedHeader.split(" ");
-      const promptDescription = rest.join(" ");
-
-      result.aiColumns.push({
-        index,
-        letter: columnLetter,
-        header: trimmedHeader,
-        ai,
-        promptDescription,
-      });
-    }
-
+    const trimmedHeader = header ? header.trim() : "";
+    const aiValue = aiRow[index] ? aiRow[index].trim() : "";
+    
+    // 列マッピングを作成
     result.columnMapping[columnLetter] = {
       index,
       header: trimmedHeader,
     };
+    
+    // プロンプト列の検出
+    if (trimmedHeader === "プロンプト") {
+      // AI行の値を確認して3種類AIレイアウトを検出
+      let aiType = null;
+      
+      // 3種類レイアウトのチェック（AI行に"3種類"がある場合）
+      const nextAiValue = aiRow[index + 1] ? aiRow[index + 1].trim() : "";
+      if (nextAiValue === "3種類") {
+        aiType = "3type";
+        console.log(`[Background] 3種類AIレイアウト検出: ${columnLetter}列`);
+      }
+      // 個別AIのチェック（メニュー行から）
+      else if (trimmedHeader.startsWith("ChatGPT ")) {
+        aiType = "chatgpt";
+      } else if (trimmedHeader.startsWith("Claude ")) {
+        aiType = "claude";
+      } else if (trimmedHeader.startsWith("Gemini ")) {
+        aiType = "gemini";
+      }
+      // メニュー行が"プロンプト"で、次の3列がChatGPT、Claude、Geminiの場合
+      else if (trimmedHeader === "プロンプト") {
+        const nextHeaders = [
+          menuRow[index + 6],
+          menuRow[index + 7],
+          menuRow[index + 8]
+        ];
+        
+        if (nextHeaders[0]?.includes("ChatGPT") &&
+            nextHeaders[1]?.includes("Claude") && 
+            nextHeaders[2]?.includes("Gemini")) {
+          aiType = "3type";
+          console.log(`[Background] メニュー行から3種類AIレイアウト検出: ${columnLetter}列`);
+        }
+      }
+      
+      if (aiType) {
+        result.aiColumns[columnLetter] = {
+          index,
+          letter: columnLetter,
+          header: trimmedHeader,
+          type: aiType,
+          promptDescription: trimmedHeader === "プロンプト" ? "" : trimmedHeader.split(" ").slice(1).join(" ")
+        };
+      }
+    }
   });
+  
+  console.log("[Background] 処理後のaiColumns:", result.aiColumns);
 
   return result;
 }
@@ -157,10 +196,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
           // 3. データを整形（AI列情報を抽出）
           const processedData = processSpreadsheetData(updatedSpreadsheetData);
+          
+          // modelRowとtaskRowも含める
+          processedData.modelRow = updatedSpreadsheetData.modelRow;
+          processedData.taskRow = updatedSpreadsheetData.taskRow;
+          
           console.log("[Background] 処理されたデータ:", {
             aiColumns: processedData.aiColumns,
             columnCount: Object.keys(processedData.columnMapping || {}).length,
             valueRows: updatedSpreadsheetData.values?.length || 0,
+            modelRow: !!processedData.modelRow,
+            taskRow: !!processedData.taskRow
           });
 
           // 4. タスクを生成

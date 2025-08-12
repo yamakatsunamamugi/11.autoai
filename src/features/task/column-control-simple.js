@@ -10,9 +10,10 @@ export class SimpleColumnControl {
    * @param {string} promptColumn - プロンプト列
    * @param {string} aiType - AIタイプ
    * @param {boolean} hasAIInstructionColumn - AI指示列があるか
+   * @param {Object} spreadsheetData - スプレッドシートデータ（レポート化列検出用）
    * @returns {Object} 列グループ情報
    */
-  static getColumnGroup(promptColumn, aiType, hasAIInstructionColumn = false) {
+  static getColumnGroup(promptColumn, aiType, hasAIInstructionColumn = false, spreadsheetData = null) {
     const promptIndex = promptColumn.charCodeAt(0) - 65;
 
     // プロンプト2~5の列を含める（最大4つの追加プロンプト）
@@ -20,27 +21,51 @@ export class SimpleColumnControl {
     for (let i = 1; i <= 4; i++) {
       additionalPromptColumns.push(String.fromCharCode(65 + promptIndex + i));
     }
+    
+    // レポート化列を検出
+    let reportColumn = null;
+    if (spreadsheetData && spreadsheetData.menuRow) {
+      // メニュー行から「レポート化」列を探す
+      const menuRowData = spreadsheetData.menuRow.data || [];
+      for (let i = promptIndex; i < menuRowData.length; i++) {
+        if (menuRowData[i] === "レポート化") {
+          reportColumn = String.fromCharCode(65 + i);
+          console.log(`[SimpleColumnControl] レポート化列検出: ${reportColumn} (index: ${i})`);
+          break;
+        }
+      }
+    }
 
-    if (aiType === "3種類（ChatGPT・Gemini・Claude）" || aiType === "3種類") {
+    if (aiType === "3種類（ChatGPT・Gemini・Claude）" || aiType === "3種類" || aiType === "3type") {
       // 3種類AIの場合: ログ → プロンプト → プロンプト2~5 → ChatGPT → Claude → Gemini → レポート化
       const baseIndex = hasAIInstructionColumn ? promptIndex + 1 : promptIndex;
       // プロンプト2~5の分だけ回答列の位置をずらす
       const answerStartIndex = baseIndex + 5; // プロンプト + プロンプト2~5(4つ) = 5
-      const reportColumn = String.fromCharCode(65 + answerStartIndex + 3); // Gemini回答の次
+      
+      // レポート化列が検出されていない場合は、デフォルトの位置を使用
+      if (!reportColumn) {
+        reportColumn = String.fromCharCode(65 + answerStartIndex + 3); // Gemini回答の次
+      }
+
+      const columns = [
+        String.fromCharCode(65 + promptIndex - 1), // ログ
+        promptColumn, // プロンプト
+        ...additionalPromptColumns, // プロンプト2~5
+        String.fromCharCode(65 + answerStartIndex), // ChatGPT回答
+        String.fromCharCode(65 + answerStartIndex + 1), // Claude回答
+        String.fromCharCode(65 + answerStartIndex + 2), // Gemini回答
+      ];
+      
+      // レポート化列があれば追加
+      if (reportColumn) {
+        columns.push(reportColumn);
+      }
 
       return {
         type: "3type",
         promptColumn: promptColumn,
         additionalPromptColumns: additionalPromptColumns,
-        columns: [
-          String.fromCharCode(65 + promptIndex - 1), // ログ
-          promptColumn, // プロンプト
-          ...additionalPromptColumns, // プロンプト2~5
-          String.fromCharCode(65 + answerStartIndex), // ChatGPT回答
-          String.fromCharCode(65 + answerStartIndex + 1), // Claude回答
-          String.fromCharCode(65 + answerStartIndex + 2), // Gemini回答
-          reportColumn, // レポート化
-        ],
+        columns: columns,
         aiMapping: {
           [String.fromCharCode(65 + answerStartIndex)]: "chatgpt",
           [String.fromCharCode(65 + answerStartIndex + 1)]: "claude",
@@ -51,19 +76,29 @@ export class SimpleColumnControl {
     } else {
       // 単独AIの場合: ログ → プロンプト → プロンプト2~5 → 回答 → レポート化
       const answerIndex = promptIndex + 5; // プロンプト + プロンプト2~5(4つ) = 5
-      const reportColumn = String.fromCharCode(65 + answerIndex + 1); // 回答の次
+      
+      // レポート化列が検出されていない場合は、デフォルトの位置を使用
+      if (!reportColumn) {
+        reportColumn = String.fromCharCode(65 + answerIndex + 1); // 回答の次
+      }
+      
+      const columns = [
+        String.fromCharCode(65 + promptIndex - 1), // ログ
+        promptColumn, // プロンプト
+        ...additionalPromptColumns, // プロンプト2~5
+        String.fromCharCode(65 + answerIndex), // 回答
+      ];
+      
+      // レポート化列があれば追加
+      if (reportColumn) {
+        columns.push(reportColumn);
+      }
       
       return {
         type: "single",
         promptColumn: promptColumn,
         additionalPromptColumns: additionalPromptColumns,
-        columns: [
-          String.fromCharCode(65 + promptIndex - 1), // ログ
-          promptColumn, // プロンプト
-          ...additionalPromptColumns, // プロンプト2~5
-          String.fromCharCode(65 + answerIndex), // 回答
-          reportColumn, // レポート化
-        ],
+        columns: columns,
         aiMapping: {
           [String.fromCharCode(65 + answerIndex)]: aiType.toLowerCase(),
         },
