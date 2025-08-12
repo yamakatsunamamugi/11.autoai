@@ -372,6 +372,7 @@
   <script src="../src/features/spreadsheet/url-parser.js"></script>
   <script src="../src/services/auth-service.js"></script>
   <script src="../src/features/spreadsheet/sheets-client.js"></script>
+  <script src="../src/services/spreadsheet-auto-setup.js"></script>
   
   <!-- タスク生成関連 -->
   <script type="module">
@@ -469,15 +470,69 @@
       }
     });
     
-    // スプレッドシートデータを読み込む（本番と同じコードを使用）
+    // スプレッドシートデータを読み込む（本番と完全に同じ処理）
     async function loadSpreadsheetData(spreadsheetId, gid) {
-      // 本番と同じsheetsClient.loadAutoAIDataを使用
+      // 1. 本番と同じsheetsClient.loadAutoAIDataを使用
       const sheetsClient = new SheetsClient();
-      const spreadsheetData = await sheetsClient.loadAutoAIData(spreadsheetId, gid);
+      const updatedSpreadsheetData = await sheetsClient.loadAutoAIData(spreadsheetId, gid);
       
-      console.log('本番コードで読み込んだスプレッドシートデータ:', spreadsheetData);
+      // 2. 自動セットアップ（本番と同じ）
+      const autoSetup = new SpreadsheetAutoSetup();
+      const token = await globalThis.authService.getAuthToken();
+      await autoSetup.executeAutoSetup(spreadsheetId, token, gid);
       
-      return spreadsheetData;
+      // 3. データを整形（本番と同じprocessSpreadsheetData関数）
+      const processedData = processSpreadsheetData(updatedSpreadsheetData);
+      
+      console.log('[Test] 本番と同じ処理で読み込んだデータ:', {
+        aiColumns: processedData.aiColumns,
+        columnCount: Object.keys(processedData.columnMapping || {}).length,
+        valueRows: updatedSpreadsheetData.values?.length || 0,
+      });
+      
+      return processedData;
+    }
+    
+    // 本番のprocessSpreadsheetData関数と同じ
+    function processSpreadsheetData(spreadsheetData) {
+      const result = {
+        ...spreadsheetData,
+        aiColumns: [],
+        columnMapping: {},
+      };
+      
+      if (!spreadsheetData.values || spreadsheetData.values.length === 0) {
+        return result;
+      }
+      
+      const headerRow = spreadsheetData.values[0];
+      headerRow.forEach((header, index) => {
+        const columnLetter = String.fromCharCode(65 + index);
+        const trimmedHeader = header.trim();
+        
+        if (
+          trimmedHeader.startsWith("ChatGPT ") ||
+          trimmedHeader.startsWith("Claude ") ||
+          trimmedHeader.startsWith("Gemini ")
+        ) {
+          const [ai, ...rest] = trimmedHeader.split(" ");
+          const promptDescription = rest.join(" ");
+          result.aiColumns.push({
+            index,
+            letter: columnLetter,
+            header: trimmedHeader,
+            ai,
+            promptDescription,
+          });
+        }
+        
+        result.columnMapping[columnLetter] = {
+          index,
+          header: trimmedHeader,
+        };
+      });
+      
+      return result;
     }
     
     // タスクリストを表示（本番のタスク構造に合わせて表示）

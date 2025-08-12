@@ -571,28 +571,31 @@ generateReportBtn.addEventListener("click", async () => {
       throw new Error("DocsClientが初期化されていません");
     }
     
-    // テスト用のテキストデータ
-    const testTitle = `レポート化テスト - ${new Date().toLocaleString("ja-JP")}`;
-    const testContent = `これはレポート化機能のテストドキュメントです。
+    // テスト用のタスク結果データ（本番と同じ形式）
+    const testTaskResult = {
+      prompt: "これはレポート化機能のテストプロンプトです。実際の処理では、スプレッドシートのプロンプト列から取得されます。",
+      response: `テストAI回答です。
 
-テスト実行日時: ${new Date().toLocaleString("ja-JP")}
+【生成されたコンテンツ】
+これはテスト用のAI回答として生成されたテキストです。
+実際の処理では、AIが生成した回答がここに入ります。
 
-【テスト内容】
-1. Googleドキュメントの作成
-2. テキストコンテンツの挿入
-3. ドキュメントURLの取得
+【詳細説明】
+1. データの処理方法について
+2. 結果の解釈について
+3. 次のステップの提案
 
-【テスト結果】
-このドキュメントが正常に作成され、閲覧できていることを確認してください。
-
-【次のステップ】
-このテストが成功したら、実際のスプレッドシートデータからレポートを生成する機能を実装します。`;
+【まとめ】
+このテストが成功すれば、本番環境でも同じコードが動作することが確認できます。`,
+      aiType: "ChatGPT", // テスト用のAIタイプ
+      rowNumber: 999, // テスト用の行番号
+      columnIndex: "Z", // テスト用の列番号
+    };
     
-    // Googleドキュメントを作成
-    console.log("Googleドキュメントを作成中...");
-    const docInfo = await globalThis.docsClient.createAndWriteDocument(
-      testTitle,
-      testContent
+    // 本番と同じメソッドを使用してGoogleドキュメントを作成
+    console.log("Googleドキュメントを作成中（本番と同じメソッド使用）...");
+    const docInfo = await globalThis.docsClient.createDocumentFromTaskResult(
+      testTaskResult
     );
     
     console.log("ドキュメント作成成功:", docInfo);
