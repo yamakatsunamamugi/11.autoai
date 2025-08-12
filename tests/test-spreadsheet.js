@@ -236,6 +236,11 @@ async function loadSpreadsheetData(spreadsheetId, gid) {
   const sheetsClient = new SheetsClient();
   const spreadsheetData = await sheetsClient.loadAutoAIData(spreadsheetId, gid);
   
+  console.log('[Test] 生のスプレッドシートデータ:', spreadsheetData);
+  console.log('[Test] rawData.values[0]:', spreadsheetData.values?.[0]);
+  console.log('[Test] menuRow:', spreadsheetData.menuRow);
+  console.log('[Test] aiRow:', spreadsheetData.aiRow);
+  
   // background.jsと同じprocessSpreadsheetData処理を実行
   const processedData = processSpreadsheetData(spreadsheetData);
   
@@ -243,7 +248,8 @@ async function loadSpreadsheetData(spreadsheetId, gid) {
   processedData.modelRow = spreadsheetData.modelRow;
   processedData.taskRow = spreadsheetData.taskRow;
   
-  console.log('[Test] 読み込んだスプレッドシートデータ:', processedData);
+  console.log('[Test] 処理後のprocessedData:', processedData);
+  console.log('[Test] processedData.aiColumns:', processedData.aiColumns);
   
   return processedData;
 }

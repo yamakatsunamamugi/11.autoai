@@ -120,6 +120,8 @@ class SheetsClient {
       columnMapping: {},
       workRows: [],
       rawData: rawData,
+      values: rawData,  // valuesも含める（互換性のため）
+      aiColumns: {}     // aiColumnsも初期化
     };
 
     // 基本的な設定定数を定義（SPREADSHEET_CONFIGがない場合のフォールバック）
@@ -156,6 +158,31 @@ class SheetsClient {
         // 列マッピングを作成
         for (let j = 0; j < row.length; j++) {
           const cellValue = row[j];
+          const columnLetter = String.fromCharCode(65 + j);
+          
+          // プロンプト列の検出とAI列としての登録
+          if (cellValue && cellValue.includes("プロンプト")) {
+            // AI行の値を確認（AI行が存在する場合）
+            let aiType = "single"; // デフォルト
+            if (result.aiRow && result.aiRow.data) {
+              const aiValue = result.aiRow.data[j + 1]; // 次の列のAI行の値
+              if (aiValue === "3種類") {
+                aiType = "3type";
+              }
+            }
+            
+            // aiColumnsに登録
+            result.aiColumns[columnLetter] = {
+              index: j,
+              letter: columnLetter,
+              header: cellValue,
+              type: aiType,
+              promptDescription: ""
+            };
+            
+            this.logger.log("SheetsClient", `AI列検出: ${columnLetter}列 (${aiType})`);
+          }
+          
           for (const [key, columnConfig] of Object.entries(
             config.columnTypes,
           )) {
@@ -245,11 +272,52 @@ class SheetsClient {
         `作業行検出: ${result.workRows.length}行を検出`,
       );
     }
+    
+    // AI列の最終処理（メニュー行とAI行の両方が揃った後）
+    if (result.menuRow && result.menuRow.data) {
+      const menuRowData = result.menuRow.data;
+      const aiRowData = result.aiRow ? result.aiRow.data : [];
+      
+      for (let j = 0; j < menuRowData.length; j++) {
+        const cellValue = menuRowData[j];
+        const columnLetter = String.fromCharCode(65 + j);
+        
+        // プロンプト列の検出
+        if (cellValue && cellValue.includes("プロンプト")) {
+          let aiType = "single"; // デフォルト
+          
+          // AI行の値を確認
+          if (aiRowData && aiRowData[j + 1] === "3種類") {
+            aiType = "3type";
+          }
+          // メニュー行の次の列をチェック（3種類AIレイアウト）
+          else if (
+            menuRowData[j + 6] && menuRowData[j + 6].includes("ChatGPT") &&
+            menuRowData[j + 7] && menuRowData[j + 7].includes("Claude") &&
+            menuRowData[j + 8] && menuRowData[j + 8].includes("Gemini")
+          ) {
+            aiType = "3type";
+          }
+          
+          // aiColumnsに登録（上書き）
+          result.aiColumns[columnLetter] = {
+            index: j,
+            letter: columnLetter,
+            header: cellValue,
+            type: aiType,
+            promptDescription: ""
+          };
+          
+          this.logger.log("SheetsClient", `AI列最終検出: ${columnLetter}列 (${aiType})`);
+        }
+      }
+    }
 
     this.logger.log("SheetsClient", "読み込み完了", {
       menuRowFound: !!result.menuRow,
       workRowsCount: result.workRows.length,
       columnTypes: Object.keys(result.columnMapping).length,
+      aiColumnsCount: Object.keys(result.aiColumns).length
     });
 
     return result;
