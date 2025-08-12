@@ -67,6 +67,25 @@ setTimeout(() => {
 // ===== グローバル変数 =====
 let isProcessing = false;
 
+// ===== ヘルパー関数 =====
+/**
+ * 列名生成関数（A, B, ..., Z, AA, AB, ...）
+ */
+function getColumnName(index) {
+  if (index < 0) return null;
+  
+  let columnName = '';
+  let num = index;
+  
+  while (num >= 0) {
+    columnName = String.fromCharCode(65 + (num % 26)) + columnName;
+    num = Math.floor(num / 26) - 1;
+    if (num < 0) break;
+  }
+  
+  return columnName;
+}
+
 // ===== メッセージハンドラー =====
 /**
  * processSpreadsheetData関数
@@ -91,7 +110,7 @@ function processSpreadsheetData(spreadsheetData) {
   
   // 各列を解析
   menuRow.forEach((header, index) => {
-    const columnLetter = String.fromCharCode(65 + index);
+    const columnLetter = getColumnName(index);
     const trimmedHeader = header ? header.trim() : "";
     const aiValue = aiRow[index] ? aiRow[index].trim() : "";
     
@@ -120,20 +139,23 @@ function processSpreadsheetData(spreadsheetData) {
       // メニュー行が"プロンプト"で、次の3列がChatGPT、Claude、Geminiを含む場合
       else if (trimmedHeader === "プロンプト" || trimmedHeader.includes("プロンプト")) {
         const nextHeaders = [
-          menuRow[index + 6],
-          menuRow[index + 7],
-          menuRow[index + 8]
+          menuRow[index + 1],
+          menuRow[index + 2],
+          menuRow[index + 3]
         ];
         
         console.log(`[Background] 次の列をチェック:`, nextHeaders);
         
-        if (nextHeaders[0] && nextHeaders[0].includes("ChatGPT") &&
-            nextHeaders[1] && nextHeaders[1].includes("Claude") && 
-            nextHeaders[2] && nextHeaders[2].includes("Gemini")) {
+        if ((nextHeaders[0] && nextHeaders[0].includes("ChatGPT") &&
+             nextHeaders[1] && nextHeaders[1].includes("Claude") && 
+             nextHeaders[2] && nextHeaders[2].includes("Gemini")) ||
+            (nextHeaders[0] && nextHeaders[0].includes("回答") &&
+             nextHeaders[1] && nextHeaders[1].includes("回答") &&
+             nextHeaders[2] && nextHeaders[2].includes("回答"))) {
           aiType = "3type";
           console.log(`[Background] メニュー行から3種類AIレイアウト検出: ${columnLetter}列`);
         } else {
-          // デフォルトでプロンプト列は登録（単独AI扱い）
+          // デフォルトでプロンプト列は登鞂（単独AI扱い）
           aiType = "single";
           console.log(`[Background] 単独AIプロンプト列として検出: ${columnLetter}列`);
         }

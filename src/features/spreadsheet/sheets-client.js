@@ -7,6 +7,24 @@ class SheetsClient {
   }
 
   /**
+   * 列名生成関数（A, B, ..., Z, AA, AB, ...）
+   */
+  getColumnName(index) {
+    if (index < 0) return null;
+    
+    let columnName = '';
+    let num = index;
+    
+    while (num >= 0) {
+      columnName = String.fromCharCode(65 + (num % 26)) + columnName;
+      num = Math.floor(num / 26) - 1;
+      if (num < 0) break;
+    }
+    
+    return columnName;
+  }
+
+  /**
    * スプレッドシートのメタデータを取得
    * @param {string} spreadsheetId - スプレッドシートID
    * @returns {Promise<Object>} メタデータ
@@ -158,7 +176,7 @@ class SheetsClient {
         // 列マッピングを作成
         for (let j = 0; j < row.length; j++) {
           const cellValue = row[j];
-          const columnLetter = String.fromCharCode(65 + j);
+          const columnLetter = this.getColumnName(j);
           
           // プロンプト列の検出とAI列としての登録
           if (cellValue && cellValue.includes("プロンプト")) {
@@ -280,7 +298,7 @@ class SheetsClient {
       
       for (let j = 0; j < menuRowData.length; j++) {
         const cellValue = menuRowData[j];
-        const columnLetter = String.fromCharCode(65 + j);
+        const columnLetter = this.getColumnName(j);
         
         // プロンプト列の検出
         if (cellValue && cellValue.includes("プロンプト")) {
@@ -292,9 +310,12 @@ class SheetsClient {
           }
           // メニュー行の次の列をチェック（3種類AIレイアウト）
           else if (
-            menuRowData[j + 6] && menuRowData[j + 6].includes("ChatGPT") &&
-            menuRowData[j + 7] && menuRowData[j + 7].includes("Claude") &&
-            menuRowData[j + 8] && menuRowData[j + 8].includes("Gemini")
+            (menuRowData[j + 1] && menuRowData[j + 1].includes("ChatGPT") &&
+             menuRowData[j + 2] && menuRowData[j + 2].includes("Claude") &&
+             menuRowData[j + 3] && menuRowData[j + 3].includes("Gemini")) ||
+            (menuRowData[j + 1] && menuRowData[j + 1].includes("回答") &&
+             menuRowData[j + 2] && menuRowData[j + 2].includes("回答") &&
+             menuRowData[j + 3] && menuRowData[j + 3].includes("回答"))
           ) {
             aiType = "3type";
           }

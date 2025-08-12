@@ -402,12 +402,19 @@ class TaskGenerator {
       aColumnValue,
       SPECIAL_OPERATION_MAP,
     );
+    
+    // aiTypeを正規化（singleや3typeの場合は実際のAIタイプに変換）
+    let normalizedAiType = aiType;
+    if (aiType === "single" || aiType === "3type") {
+      // columnGroup.aiMappingから実際のAIタイプを取得
+      normalizedAiType = columnGroup.aiMapping?.[answerColumn] || "chatgpt";
+    }
 
     const taskData = {
       id: this.generateTaskId(answerColumn, rowNumber),
       column: answerColumn,
       row: rowNumber,
-      aiType: aiType,
+      aiType: normalizedAiType,
       taskType: "ai",  // タスクタイプを"ai"に設定
       prompt: promptText,
       promptColumn: promptColumn,
@@ -468,11 +475,18 @@ class TaskGenerator {
       return null;
     }
 
+    // aiTypeを正規化（singleの場合はchatgptにデフォルト）
+    let normalizedAiType = aiType;
+    if (aiType === "single" || aiType === "3type") {
+      // デフォルトはchatgpt
+      normalizedAiType = "chatgpt";
+    }
+    
     const taskData = {
       id: this.generateTaskId(reportColumn, rowNumber),
       column: reportColumn,
       row: rowNumber,
-      aiType: aiType || "report",  // aiTypeがない場合は"report"を設定
+      aiType: normalizedAiType || "chatgpt",  // aiTypeがない場合はchatgptを設定
       taskType: "report",  // タスクタイプを"report"に設定
       sourceColumn: sourceColumn,  // AI回答を取得する列
       reportColumn: reportColumn,  // レポートURLを書き込む列
@@ -487,6 +501,7 @@ class TaskGenerator {
         type: "report",
         sourceColumn: sourceColumn,
         reportColumn: reportColumn,
+        columns: [], // 互換性のため空配列を設定
       },
     };
     
@@ -663,84 +678,93 @@ class TaskGenerator {
       tasksByColumn[key].push(task);
     });
 
-    // すべてのタスク情報を1つの折りたたみグループで表示
-    console.groupCollapsed("[TaskGenerator] 作成したタスクリスト");
+    // タスクリストをテーブル形式で表示
+    console.groupCollapsed("[TaskGenerator] 実行用タスクリスト");
+    
+    console.log("╔════════════════════════════════════════════════════════════════════════════╗");
+    console.log("║                          タスク実行リスト                                     ║");
+    console.log("╠════════════════════════════════════════════════════════════════════════════╣");
+    console.log("║ No │ タスクID │ セル │ AI種別 │ タイプ │ グループID │ ウィンドウ │ 状態  ║");
+    console.log("╠════════════════════════════════════════════════════════════════════════════╣");
 
-    Object.keys(tasksByColumn)
-      .sort()
-      .forEach((column) => {
-        const columnTasks = tasksByColumn[column];
-        const aiTypes = {};
-        columnTasks.forEach((task) => {
-          aiTypes[task.aiType] = (aiTypes[task.aiType] || 0) + 1;
-        });
-
-        console.log(
-          `\n【プロンプト列 ${column}】タスク数: ${columnTasks.length}`,
-        );
-        console.log(`  AI種別:`, aiTypes);
-
-        // 回答列を表示
-        const answerColumns = [
-          ...new Set(columnTasks.map((t) => t.column)),
-        ].sort();
-        console.log(`  回答列: ${answerColumns.join(", ")}`);
-
-        // 各タスクの詳細
-        console.log(`  タスク詳細:`);
-        columnTasks.forEach((task, index) => {
-          console.log(
-            `    ${index + 1}. ${task.column}${task.row} (${task.aiType})`,
-          );
-          console.log(`       ID: ${task.id}`);
-          console.log(`       プロンプト列: ${task.promptColumn}`);
-          console.log(`       回答列: ${task.column}`);
-          // promptが存在しない場合（レポートタスクなど）の対応
-          const promptText = task.prompt || "";
-          if (promptText) {
-            console.log(
-              `       プロンプト: ${promptText.substring(0, 50)}${promptText.length > 50 ? "..." : ""}`,
-            );
-          } else {
-            console.log(`       プロンプト: (なし - ${task.taskType || "ai"}タスク)`);
-          }
-
-          // モデル
-          if (task.model) {
-            console.log(`       モデル: ${task.model}`);
-          }
-
-          // 機能
-          if (task.specialOperation) {
-            console.log(`       機能: ${task.specialOperation}`);
-          }
-
-          // グループ情報
-          if (task.groupInfo) {
-            console.log(
-              `       グループ: ${task.groupInfo.type} (${task.groupInfo.columns.join(", ")})`,
-            );
-          }
-
-          // 3種類AIの場合の追加情報
-          if (task.multiAI && task.logColumns?.aiColumns) {
-            console.log(
-              `       3種類AI列マッピング:`,
-              task.logColumns.aiColumns,
-            );
-          }
-
-          // その他の設定
-          if (task.specialSettings) {
-            console.log(`       特殊設定:`, task.specialSettings);
-          }
-
-          if (task.skipReason) {
-            console.log(`       スキップ理由: ${task.skipReason}`);
-          }
-        });
-      });
-
+    taskList.tasks.forEach((task, index) => {
+      const taskIdShort = task.id.substring(0, 8);
+      const cell = `${task.column}${task.row}`;
+      const aiType = task.aiType ? task.aiType.substring(0, 7).padEnd(7) : "N/A    ";
+      const taskType = (task.taskType || "ai").padEnd(6);
+      const groupIdShort = task.groupId ? task.groupId.substring(0, 15).padEnd(15) : "N/A            ";
+      const windowId = task.windowId || "未割当";
+      const status = task.skipReason ? "スキップ" : "実行可能";
+      
+      console.log(
+        `║ ${String(index + 1).padStart(2)} │ ${taskIdShort} │ ${cell.padEnd(4)} │ ${aiType} │ ${taskType} │ ${groupIdShort} │ ${windowId.toString().padEnd(8)} │ ${status.padEnd(6)} ║`
+      );
+    });
+    
+    console.log("╚════════════════════════════════════════════════════════════════════════════╝");
+    
+    // 詳細情報を別のグループで表示
+    console.group("[TaskGenerator] タスク詳細情報");
+    
+    taskList.tasks.forEach((task, index) => {
+      console.log(`\n━━━ タスク ${index + 1} ━━━`);
+      console.log(`📍 基本情報:`);
+      console.log(`   ID: ${task.id}`);
+      console.log(`   セル: ${task.column}${task.row}`);
+      console.log(`   AI: ${task.aiType}`);
+      console.log(`   タイプ: ${task.taskType || "ai"}`);
+      
+      console.log(`📂 グループ情報:`);
+      console.log(`   グループID: ${task.groupId}`);
+      if (task.groupInfo) {
+        console.log(`   グループタイプ: ${task.groupInfo.type}`);
+        if (task.groupInfo.columns && task.groupInfo.columns.length > 0) {
+          console.log(`   関連列: ${task.groupInfo.columns.join(", ")}`);
+        }
+        if (task.groupInfo.sourceColumn) {
+          console.log(`   ソース列: ${task.groupInfo.sourceColumn}`);
+        }
+        if (task.groupInfo.reportColumn) {
+          console.log(`   レポート列: ${task.groupInfo.reportColumn}`);
+        }
+      }
+      
+      console.log(`📝 プロンプト情報:`);
+      console.log(`   プロンプト列: ${task.promptColumn}`);
+      if (task.prompt) {
+        const promptPreview = task.prompt.substring(0, 60);
+        console.log(`   プロンプト: ${promptPreview}${task.prompt.length > 60 ? "..." : ""}`);
+      }
+      
+      if (task.model || task.specialOperation) {
+        console.log(`⚙️ 特殊設定:`);
+        if (task.model) console.log(`   モデル: ${task.model}`);
+        if (task.specialOperation) console.log(`   機能: ${task.specialOperation}`);
+      }
+      
+      if (task.logColumns) {
+        console.log(`📊 ログ列情報:`);
+        if (task.logColumns.log) console.log(`   ログ列: ${task.logColumns.log}`);
+        if (task.logColumns.layout) console.log(`   レイアウト: ${task.logColumns.layout}`);
+        if (task.logColumns.aiColumns) {
+          console.log(`   AI列マッピング:`, task.logColumns.aiColumns);
+        }
+      }
+      
+      if (task.controlFlags) {
+        console.log(`🎮 制御フラグ:`, task.controlFlags);
+      }
+      
+      if (task.skipReason) {
+        console.log(`⚠️ スキップ理由: ${task.skipReason}`);
+      }
+      
+      if (task.metadata && Object.keys(task.metadata).length > 0) {
+        console.log(`📎 メタデータ:`, task.metadata);
+      }
+    });
+    
+    console.groupEnd();
     console.groupEnd();
   }
 
