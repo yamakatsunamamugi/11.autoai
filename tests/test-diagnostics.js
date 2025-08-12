@@ -206,7 +206,7 @@ export default class TestDiagnostics {
         });
       }
       
-      if (!this.testTool.currentData.aiColumns || this.testTool.currentData.aiColumns.length === 0) {
+      if (!this.testTool.currentData.aiColumns || Object.keys(this.testTool.currentData.aiColumns).length === 0) {
         recommendations.push({
           type: 'structure',
           priority: 'medium',
@@ -370,8 +370,8 @@ export default class TestDiagnostics {
     }
     
     // AI列の比較
-    const beforeAI = before.aiColumns?.map(c => c.letter) || [];
-    const afterAI = after.aiColumns?.map(c => c.letter) || [];
+    const beforeAI = before.aiColumns ? Object.keys(before.aiColumns) : [];
+    const afterAI = after.aiColumns ? Object.keys(after.aiColumns) : [];
     
     afterAI.forEach(col => {
       if (!beforeAI.includes(col)) {
@@ -482,7 +482,7 @@ export default class TestDiagnostics {
     }
     
     // AI列のチェック
-    if (!data.aiColumns || data.aiColumns.length === 0) {
+    if (!data.aiColumns || Object.keys(data.aiColumns).length === 0) {
       issues.push({
         severity: 'warning',
         message: 'AI列が検出されませんでした'

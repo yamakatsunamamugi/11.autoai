@@ -156,7 +156,7 @@ export default class TestVisualizer {
         endRow: null,
         withData: 0
       },
-      aiColumns: data.aiColumns || [],
+      aiColumns: data.aiColumns || {},
       controls: {
         rowControls: [],
         columnControls: []
@@ -210,7 +210,7 @@ export default class TestVisualizer {
     // 列ヘッダー
     for (let i = 0; i < maxCols; i++) {
       const letter = String.fromCharCode(65 + i);
-      const isAIColumn = data.aiColumns?.some(col => col.letter === letter);
+      const isAIColumn = data.aiColumns && data.aiColumns[letter];
       html += `<th class="${isAIColumn ? 'ai-column-header' : ''}">${letter}</th>`;
     }
     html += '</tr></thead><tbody>';
@@ -268,7 +268,7 @@ export default class TestVisualizer {
     
     // AI列かどうか
     const columnLetter = String.fromCharCode(65 + colIndex);
-    if (data.aiColumns?.some(col => col.letter === columnLetter)) {
+    if (data.aiColumns && data.aiColumns[columnLetter]) {
       classes.push('ai-column');
     }
     
