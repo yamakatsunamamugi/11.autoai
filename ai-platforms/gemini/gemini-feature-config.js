@@ -5,7 +5,7 @@ const GEMINI_FEATURES = {
   DeepResearch: {
     id: "DeepResearch",
     name: "DeepResearch",
-    description: "🔬 深い調査・研究を行う特殊作業",
+    description: "🔬 深い調査・研究を行う機能",
     enableFunction: "enableGeminiDeepResearch",
     disableFunction: "disableGeminiDeepResearch",
     stateFunction: "getGeminiDeepResearchState",

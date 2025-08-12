@@ -17,8 +17,8 @@ class StreamProcessor {
     const globalContext = typeof self !== "undefined" ? self : globalThis;
     this.windowManager =
       dependencies.windowManager || globalContext.aiWindowManager;
-    this.specialModelManager =
-      dependencies.specialModelManager || globalContext.specialModelManager;
+    this.modelManager =
+      dependencies.modelManager || globalContext.modelManager;
     this.logger = dependencies.logger || console;
 
     // ウィンドウ管理状態
@@ -201,6 +201,12 @@ class StreamProcessor {
       `[StreamProcessor] タスク実行: ${task.column}${task.row} (Window: ${windowId})`,
     );
 
+    // レポートタスクの場合は特別な処理
+    if (task.taskType === "report") {
+      await this.executeReportTask(task, windowId);
+      return;
+    }
+
     try {
       // ウィンドウのタブを取得
       const tabs = await chrome.tabs.query({ windowId });
@@ -303,19 +309,11 @@ class StreamProcessor {
     // タスクを完了済みにマーク
     this.completedTasks.add(taskId);
 
-    // 成功した場合の追加処理
-    if (result.success && result.response) {
+    // 成功した場合の追加処理（AIタスクの場合のみ）
+    if (result.success && result.response && task.taskType === "ai") {
       try {
-        // 1. 回答をスプレッドシートに書き込む
+        // 回答をスプレッドシートに書き込む
         await this.writeResultToSpreadsheet(task, result);
-
-        // 2. Googleドキュメントを作成
-        const docInfo = await this.createGoogleDocument(task, result);
-
-        // 3. ドキュメントURLをスプレッドシートに書き込む
-        if (docInfo && docInfo.url) {
-          await this.writeDocumentUrlToSpreadsheet(task, docInfo.url);
-        }
       } catch (error) {
         this.logger.error(`[StreamProcessor] 結果の保存エラー`, error);
       }
@@ -429,6 +427,159 @@ class StreamProcessor {
     } catch (error) {
       this.logger.error(
         `[StreamProcessor] ドキュメントURL書き込みエラー`,
+        error,
+      );
+    }
+  }
+
+  /**
+   * レポートタスクを実行
+   * @param {Task} task
+   * @param {number} windowId
+   */
+  async executeReportTask(task, windowId) {
+    this.logger.log(
+      `[StreamProcessor] レポートタスク実行: ${task.column}${task.row}`,
+    );
+
+    try {
+      // ソース列（AI回答列）からテキストを取得
+      const answerText = await this.getSpreadsheetCellValue(
+        task.sourceColumn,
+        task.row,
+      );
+
+      if (!answerText || answerText.trim().length === 0) {
+        this.logger.log(
+          `[StreamProcessor] ${task.sourceColumn}${task.row}に回答がないため、レポート作成をスキップ`,
+        );
+        // レポートタスクも完了扱いにして次へ進む
+        await this.onTaskCompleted(task, windowId, {
+          success: false,
+          skipped: true,
+          reason: "no_answer",
+        });
+        return;
+      }
+
+      // プロンプトも取得（レポートに含めるため）
+      const promptText = await this.getSpreadsheetCellValue(
+        task.promptColumn,
+        task.row,
+      );
+
+      // Googleドキュメントを作成
+      const docInfo = await this.createGoogleDocumentForReport(
+        task,
+        promptText,
+        answerText,
+      );
+
+      if (docInfo && docInfo.url) {
+        // ドキュメントURLをレポート化列に書き込む
+        await this.writeReportUrlToSpreadsheet(task, docInfo.url);
+        
+        this.logger.log(
+          `[StreamProcessor] レポート作成完了: ${docInfo.url}`,
+        );
+
+        // タスク完了処理
+        await this.onTaskCompleted(task, windowId, {
+          success: true,
+          reportUrl: docInfo.url,
+        });
+      } else {
+        throw new Error("ドキュメント作成に失敗しました");
+      }
+    } catch (error) {
+      this.logger.error(
+        `[StreamProcessor] レポートタスクエラー: ${task.column}${task.row}`,
+        error,
+      );
+
+      // エラーでも次のタスクへ進む
+      await this.onTaskCompleted(task, windowId, {
+        success: false,
+        error: error.message,
+      });
+    }
+  }
+
+  /**
+   * スプレッドシートのセル値を取得
+   * @param {string} column
+   * @param {number} row
+   * @returns {Promise<string>}
+   */
+  async getSpreadsheetCellValue(column, row) {
+    if (!globalThis.sheetsClient || !this.spreadsheetData) return "";
+
+    try {
+      const { spreadsheetId } = this.spreadsheetData;
+      const range = `${column}${row}`;
+      const data = await globalThis.sheetsClient.getSheetData(
+        spreadsheetId,
+        range,
+      );
+      return data[0]?.[0] || "";
+    } catch (error) {
+      this.logger.error(
+        `[StreamProcessor] セル値取得エラー: ${column}${row}`,
+        error,
+      );
+      return "";
+    }
+  }
+
+  /**
+   * レポート用のGoogleドキュメントを作成
+   * @param {Task} task
+   * @param {string} promptText
+   * @param {string} answerText
+   * @returns {Promise<Object>}
+   */
+  async createGoogleDocumentForReport(task, promptText, answerText) {
+    if (!globalThis.docsClient) return null;
+
+    try {
+      const taskResult = {
+        prompt: promptText || "(プロンプトなし)",
+        response: answerText,
+        aiType: task.aiType,
+        rowNumber: task.row,
+        columnIndex: task.sourceColumn,
+      };
+
+      const docInfo =
+        await globalThis.docsClient.createDocumentFromTaskResult(taskResult);
+
+      this.logger.log(`[StreamProcessor] レポートドキュメント作成: ${docInfo.url}`);
+
+      return docInfo;
+    } catch (error) {
+      this.logger.error(`[StreamProcessor] ドキュメント作成エラー`, error);
+      return null;
+    }
+  }
+
+  /**
+   * レポートURLをスプレッドシートに書き込む
+   * @param {Task} task
+   * @param {string} docUrl
+   */
+  async writeReportUrlToSpreadsheet(task, docUrl) {
+    if (!globalThis.sheetsClient || !this.spreadsheetData) return;
+
+    try {
+      const { spreadsheetId } = this.spreadsheetData;
+      const range = `${task.reportColumn}${task.row}`;
+
+      await globalThis.sheetsClient.updateCell(spreadsheetId, range, docUrl);
+
+      this.logger.log(`[StreamProcessor] レポートURL書き込み: ${range}`);
+    } catch (error) {
+      this.logger.error(
+        `[StreamProcessor] レポートURL書き込みエラー`,
         error,
       );
     }
@@ -566,8 +717,8 @@ class StreamProcessor {
 
       case "chatgpt":
         // モデルをチェック
-        if (this.specialModelManager) {
-          return this.specialModelManager.generateChatGPTUrl(column, aiType);
+        if (this.modelManager) {
+          return this.modelManager.generateChatGPTUrl(column, aiType);
         }
         return "https://chatgpt.com/?model=gpt-4o";
 

@@ -113,8 +113,8 @@ class SheetsClient {
       menuRow: null,
       controlRow: null,
       aiRow: null,
-      specialModelRow: null,
-      specialTaskRow: null,
+      modelRow: null,
+      taskRow: null,
       columnMapping: {},
       workRows: [],
       rawData: rawData,
@@ -167,9 +167,9 @@ class SheetsClient {
 
       // モデル行を検索
       if (
-        firstCell === SPREADSHEET_CONFIG.rowIdentifiers.specialModelRow.keyword
+        firstCell === SPREADSHEET_CONFIG.rowIdentifiers.modelRow.keyword
       ) {
-        result.specialModelRow = {
+        result.modelRow = {
           index: i,
           data: row,
         };
@@ -177,9 +177,9 @@ class SheetsClient {
 
       // 機能行を検索
       if (
-        firstCell === SPREADSHEET_CONFIG.rowIdentifiers.specialTaskRow.keyword
+        firstCell === SPREADSHEET_CONFIG.rowIdentifiers.taskRow.keyword
       ) {
-        result.specialTaskRow = {
+        result.taskRow = {
           index: i,
           data: row,
         };
@@ -193,8 +193,8 @@ class SheetsClient {
           result.menuRow ? result.menuRow.index : -1,
           result.controlRow ? result.controlRow.index : -1,
           result.aiRow ? result.aiRow.index : -1,
-          result.specialModelRow ? result.specialModelRow.index : -1,
-          result.specialTaskRow ? result.specialTaskRow.index : -1,
+          result.modelRow ? result.modelRow.index : -1,
+          result.taskRow ? result.taskRow.index : -1,
         );
 
         // 現在の行がすべての制御行より後にある場合のみ作業行として扱う

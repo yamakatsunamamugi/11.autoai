@@ -39,7 +39,7 @@
       "gemini": "gemini-pro",
       "chatgpt": "gpt-4o"
     },
-    "specialModels": {
+    "models": {
       "o3": {
         "url": "https://chatgpt.com/?model=o3",
         "description": "推論強化モデル",
@@ -209,7 +209,7 @@
         "ERROR"
       ]
     },
-    "specialModels": {
+    "models": {
       "enabled": true,
       "autoDetection": true,
       "supportedModels": ["o3", "o3-pro"]

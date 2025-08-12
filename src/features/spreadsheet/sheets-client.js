@@ -115,8 +115,8 @@ class SheetsClient {
       menuRow: null,
       controlRow: null,
       aiRow: null,
-      specialModelRow: null,
-      specialTaskRow: null,
+      modelRow: null,
+      taskRow: null,
       columnMapping: {},
       workRows: [],
       rawData: rawData,
@@ -131,8 +131,8 @@ class SheetsClient {
               menuRow: { keyword: "プロンプト" },
               controlRow: { keyword: "制御" },
               aiRow: { keyword: "AI" },
-              specialModelRow: { keyword: "モデル" },
-              specialTaskRow: { keyword: "機能" },
+              modelRow: { keyword: "モデル" },
+              taskRow: { keyword: "機能" },
             },
             columnTypes: {
               prompt: { keyword: "プロンプト", type: "prompt", aiType: null },
@@ -187,17 +187,17 @@ class SheetsClient {
         };
       }
 
-      // 特殊モデル行を検索
-      if (firstCell === config.rowIdentifiers.specialModelRow.keyword) {
-        result.specialModelRow = {
+      // モデル行を検索
+      if (firstCell === config.rowIdentifiers.modelRow.keyword) {
+        result.modelRow = {
           index: i,
           data: row,
         };
       }
 
-      // 特殊作業行を検索
-      if (firstCell === config.rowIdentifiers.specialTaskRow.keyword) {
-        result.specialTaskRow = {
+      // 機能行を検索
+      if (firstCell === config.rowIdentifiers.taskRow.keyword) {
+        result.taskRow = {
           index: i,
           data: row,
         };
@@ -210,8 +210,8 @@ class SheetsClient {
           result.menuRow ? result.menuRow.index : -1,
           result.controlRow ? result.controlRow.index : -1,
           result.aiRow ? result.aiRow.index : -1,
-          result.specialModelRow ? result.specialModelRow.index : -1,
-          result.specialTaskRow ? result.specialTaskRow.index : -1,
+          result.modelRow ? result.modelRow.index : -1,
+          result.taskRow ? result.taskRow.index : -1,
         );
 
         // 現在の行がすべての制御行より後にある場合のみ作業行として扱う

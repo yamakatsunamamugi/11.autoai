@@ -557,6 +557,121 @@ startIntegratedTestBtn.addEventListener("click", () => {
   runIntegratedAITest();
 });
 
+// ===== イベントリスナー: レポート生成 =====
+const generateReportBtn = document.getElementById("generateReportBtn");
+generateReportBtn.addEventListener("click", async () => {
+  console.log("レポート生成ボタンが押されました");
+  updateStatus("レポート生成テストを実行中...", "loading");
+  
+  try {
+    // DocsClientを動的にインポート
+    await import("../features/spreadsheet/docs-client.js");
+    
+    if (!globalThis.docsClient) {
+      throw new Error("DocsClientが初期化されていません");
+    }
+    
+    // テスト用のテキストデータ
+    const testTitle = `レポート化テスト - ${new Date().toLocaleString("ja-JP")}`;
+    const testContent = `これはレポート化機能のテストドキュメントです。
+
+テスト実行日時: ${new Date().toLocaleString("ja-JP")}
+
+【テスト内容】
+1. Googleドキュメントの作成
+2. テキストコンテンツの挿入
+3. ドキュメントURLの取得
+
+【テスト結果】
+このドキュメントが正常に作成され、閲覧できていることを確認してください。
+
+【次のステップ】
+このテストが成功したら、実際のスプレッドシートデータからレポートを生成する機能を実装します。`;
+    
+    // Googleドキュメントを作成
+    console.log("Googleドキュメントを作成中...");
+    const docInfo = await globalThis.docsClient.createAndWriteDocument(
+      testTitle,
+      testContent
+    );
+    
+    console.log("ドキュメント作成成功:", docInfo);
+    
+    // 成功メッセージとURLを表示
+    const successMessage = `レポート生成テスト成功！\nURL: ${docInfo.url}`;
+    updateStatus(successMessage, "success");
+    showFeedback(successMessage, "success");
+    
+    // URLをクリップボードにコピー（オプション）
+    if (navigator.clipboard) {
+      try {
+        await navigator.clipboard.writeText(docInfo.url);
+        console.log("URLをクリップボードにコピーしました");
+      } catch (clipboardError) {
+        console.warn("クリップボードへのコピーに失敗:", clipboardError);
+      }
+    }
+    
+    // 新しいタブでドキュメントを開く（オプション）
+    const openDoc = confirm("作成したドキュメントを新しいタブで開きますか？");
+    if (openDoc) {
+      window.open(docInfo.url, "_blank");
+    }
+    
+  } catch (error) {
+    console.error("レポート生成テストエラー:", error);
+    const errorMessage = `レポート生成テストエラー: ${error.message}`;
+    updateStatus(errorMessage, "error");
+    showFeedback(errorMessage, "error");
+  }
+});
+
+// ===== イベントリスナー: タスクリスト表示テスト =====
+const showTaskListTestBtn = document.getElementById("showTaskListTestBtn");
+showTaskListTestBtn.addEventListener("click", () => {
+  console.log("タスクリスト表示テストボタンが押されました");
+  
+  try {
+    // タスクリストテストページを開く
+    const testUrl = chrome.runtime.getURL("tests/test-tasklist.html");
+    
+    // ウィンドウ設定
+    const windowFeatures = `
+      width=1200,
+      height=800,
+      left=${(screen.width - 1200) / 2},
+      top=${(screen.height - 800) / 2},
+      scrollbars=yes,
+      resizable=yes,
+      status=no,
+      toolbar=no,
+      menubar=no,
+      location=no
+    `.replace(/\s+/g, "");
+    
+    // 新しいウィンドウでテストページを開く
+    const testWindow = window.open(
+      testUrl,
+      `tasklist_test_${Date.now()}`,
+      windowFeatures
+    );
+    
+    if (testWindow) {
+      console.log("✅ タスクリストテストページが開かれました");
+      updateStatus("タスクリストテストページを開きました", "success");
+      setTimeout(() => updateStatus("待機中", "waiting"), 2000);
+    } else {
+      console.error("❌ テストページを開けませんでした");
+      updateStatus("テストページを開けませんでした", "error");
+      alert("ポップアップブロッカーを無効にしてください");
+    }
+  } catch (error) {
+    console.error("❌ タスクリストテスト実行エラー:", error);
+    updateStatus("テスト実行エラー", "error");
+    alert(`エラーが発生しました: ${error.message}`);
+  }
+});
+
 
 
 

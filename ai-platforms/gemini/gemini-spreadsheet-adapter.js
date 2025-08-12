@@ -130,22 +130,22 @@
                 }
             }
 
-            // モデルと機能の設定（特殊モデル行・特殊作業行から取得）
-            if (this.loadedData.specialModelRow) {
+            // モデルと機能の設定（モデル行・機能行から取得）
+            if (this.loadedData.modelRow) {
                 const modelColIndex = Object.keys(this.loadedData.columnMapping).find(
                     idx => this.loadedData.columnMapping[idx].aiType === 'gemini'
                 );
-                if (modelColIndex && this.loadedData.specialModelRow.data[modelColIndex]) {
-                    task.model = this.loadedData.specialModelRow.data[modelColIndex].trim();
+                if (modelColIndex && this.loadedData.modelRow.data[modelColIndex]) {
+                    task.model = this.loadedData.modelRow.data[modelColIndex].trim();
                 }
             }
 
-            if (this.loadedData.specialTaskRow) {
+            if (this.loadedData.taskRow) {
                 const taskColIndex = Object.keys(this.loadedData.columnMapping).find(
                     idx => this.loadedData.columnMapping[idx].aiType === 'gemini'
                 );
-                if (taskColIndex && this.loadedData.specialTaskRow.data[taskColIndex]) {
-                    task.function = this.loadedData.specialTaskRow.data[taskColIndex].trim();
+                if (taskColIndex && this.loadedData.taskRow.data[taskColIndex]) {
+                    task.function = this.loadedData.taskRow.data[taskColIndex].trim();
                 }
             }
 

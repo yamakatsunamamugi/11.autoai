@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>タスクリストテスト</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      overflow: hidden;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 30px;
+      text-align: center;
+    }
+
+    .header h1 {
+      font-size: 28px;
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+
+    .header .subtitle {
+      opacity: 0.9;
+      font-size: 14px;
+    }
+
+    .content {
+      padding: 30px;
+    }
+
+    .input-section {
+      background: #f8f9fa;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 30px;
+    }
+
+    .input-group {
+      margin-bottom: 20px;
+    }
+
+    .input-group label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: #333;
+    }
+
+    .url-selector {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .url-input {
+      flex: 1;
+      padding: 10px 15px;
+      border: 2px solid #e0e0e0;
+      border-radius: 6px;
+      font-size: 14px;
+      transition: border-color 0.3s;
+    }
+
+    .url-input:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    .dropdown-button {
+      padding: 10px 15px;
+      background: #667eea;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: background 0.3s;
+    }
+
+    .dropdown-button:hover {
+      background: #5a67d8;
+    }
+
+    .dropdown-menu {
+      position: relative;
+      display: none;
+      background: white;
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      margin-top: 5px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .dropdown-menu.show {
+      display: block;
+    }
+
+    .dropdown-item {
+      padding: 10px 15px;
+      cursor: pointer;
+      transition: background 0.2s;
+      font-size: 14px;
+    }
+
+    .dropdown-item:hover {
+      background: #f0f0f0;
+    }
+
+    .btn {
+      padding: 12px 30px;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .status-message {
+      padding: 15px;
+      border-radius: 6px;
+      margin-top: 20px;
+      display: none;
+    }
+
+    .status-message.show {
+      display: block;
+    }
+
+    .status-message.success {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+
+    .status-message.error {
+      background: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+
+    .status-message.loading {
+      background: #d1ecf1;
+      color: #0c5460;
+      border: 1px solid #bee5eb;
+    }
+
+    .task-list-container {
+      margin-top: 30px;
+      display: none;
+    }
+
+    .task-list-container.show {
+      display: block;
+    }
+
+    .task-stats {
+      display: flex;
+      gap: 20px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+
+    .stat-card {
+      background: #f8f9fa;
+      padding: 15px 20px;
+      border-radius: 8px;
+      flex: 1;
+      min-width: 150px;
+    }
+
+    .stat-value {
+      font-size: 24px;
+      font-weight: bold;
+      color: #667eea;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: #666;
+      margin-top: 5px;
+    }
+
+    .task-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+
+    .task-table th {
+      background: #f8f9fa;
+      padding: 12px;
+      text-align: left;
+      font-weight: 600;
+      border-bottom: 2px solid #e0e0e0;
+    }
+
+    .task-table td {
+      padding: 12px;
+      border-bottom: 1px solid #e0e0e0;
+    }
+
+    .task-table tr:hover {
+      background: #f8f9fa;
+    }
+
+    .ai-badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .ai-claude {
+      background: #f0e6ff;
+      color: #7c3aed;
+    }
+
+    .ai-gemini {
+      background: #e6f7ff;
+      color: #0891b2;
+    }
+
+    .ai-chatgpt {
+      background: #f0fdf4;
+      color: #16a34a;
+    }
+
+    .prompt-preview {
+      max-width: 300px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: #555;
+    }
+
+    .model-badge {
+      background: #fff3cd;
+      color: #856404;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      margin-left: 5px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>📋 タスクリストテスト</h1>
+      <div class="subtitle">スプレッドシートからタスクリストを生成するテストツール</div>
+    </div>
+    
+    <div class="content">
+      <!-- 入力セクション -->
+      <div class="input-section">
+        <div class="input-group">
+          <label for="spreadsheetUrl">スプレッドシートURL</label>
+          <div class="url-selector">
+            <input 
+              type="url" 
+              id="spreadsheetUrl" 
+              class="url-input" 
+              placeholder="https://docs.google.com/spreadsheets/d/..." 
+              value="https://docs.google.com/spreadsheets/d/1C5aOSyyCBXf7HwF-BGGu-cz5jdRwNBaoW4G4ivIRrRg/edit?gid=1633283608#gid=1633283608"
+            >
+            <button class="dropdown-button" id="dropdownBtn">▼ サンプル</button>
+          </div>
+          <div class="dropdown-menu" id="dropdownMenu">
+            <div class="dropdown-item" data-url="https://docs.google.com/spreadsheets/d/1C5aOSyyCBXf7HwF-BGGu-cz5jdRwNBaoW4G4ivIRrRg/edit?gid=1633283608#gid=1633283608">
+              テスト用スプレッドシート1
+            </div>
+            <div class="dropdown-item" data-url="https://docs.google.com/spreadsheets/d/1C5aOSyyCBXf7HwF-BGGu-cz5jdRwNBaoW4G4ivIRrRg/edit">
+              テスト用スプレッドシート2（gidなし）
+            </div>
+          </div>
+        </div>
+
+        <button id="createTaskListBtn" class="btn btn-primary">
+          タスクリスト作成
+        </button>
+
+        <div id="statusMessage" class="status-message"></div>
+      </div>
+
+      <!-- タスクリスト表示セクション -->
+      <div id="taskListContainer" class="task-list-container">
+        <h2 style="margin-bottom: 20px;">生成されたタスクリスト</h2>
+        
+        <div class="task-stats">
+          <div class="stat-card">
+            <div class="stat-value" id="totalTasks">0</div>
+            <div class="stat-label">総タスク数</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="executableTasks">0</div>
+            <div class="stat-label">実行可能</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="claudeTasks">0</div>
+            <div class="stat-label">Claude</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="geminiTasks">0</div>
+            <div class="stat-label">Gemini</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="chatgptTasks">0</div>
+            <div class="stat-label">ChatGPT</div>
+          </div>
+        </div>
+
+        <table class="task-table">
+          <thead>
+            <tr>
+              <th>行</th>
+              <th>AI</th>
+              <th>プロンプト列</th>
+              <th>回答列</th>
+              <th>プロンプト</th>
+              <th>モデル/機能</th>
+            </tr>
+          </thead>
+          <tbody id="taskTableBody">
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 依存スクリプト -->
+  <script src="../src/features/spreadsheet/config.js"></script>
+  <script src="../src/features/spreadsheet/url-parser.js"></script>
+  <script src="../src/services/auth-service.js"></script>
+  <script src="../src/features/spreadsheet/sheets-client.js"></script>
+  
+  <!-- タスク生成関連 -->
+  <script type="module">
+    import TaskGenerator from '../src/features/task/generator.js';
+    
+    // グローバル変数
+    let currentTaskList = null;
+    
+    // DOM要素
+    const spreadsheetUrlInput = document.getElementById('spreadsheetUrl');
+    const dropdownBtn = document.getElementById('dropdownBtn');
+    const dropdownMenu = document.getElementById('dropdownMenu');
+    const createTaskListBtn = document.getElementById('createTaskListBtn');
+    const statusMessage = document.getElementById('statusMessage');
+    const taskListContainer = document.getElementById('taskListContainer');
+    
+    // ドロップダウンメニューの制御
+    dropdownBtn.addEventListener('click', () => {
+      dropdownMenu.classList.toggle('show');
+    });
+    
+    // ドロップダウンアイテムのクリック
+    document.querySelectorAll('.dropdown-item').forEach(item => {
+      item.addEventListener('click', () => {
+        spreadsheetUrlInput.value = item.dataset.url;
+        dropdownMenu.classList.remove('show');
+      });
+    });
+    
+    // 外側クリックでドロップダウンを閉じる
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.url-selector')) {
+        dropdownMenu.classList.remove('show');
+      }
+    });
+    
+    // ステータスメッセージを表示
+    function showStatus(message, type = 'success') {
+      statusMessage.textContent = message;
+      statusMessage.className = `status-message show ${type}`;
+      
+      if (type !== 'loading') {
+        setTimeout(() => {
+          statusMessage.classList.remove('show');
+        }, 5000);
+      }
+    }
+    
+    // タスクリスト作成ボタンのクリック
+    createTaskListBtn.addEventListener('click', async () => {
+      const url = spreadsheetUrlInput.value.trim();
+      
+      if (!url) {
+        showStatus('スプレッドシートURLを入力してください', 'error');
+        return;
+      }
+      
+      // URLパース
+      const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+      if (!match) {
+        showStatus('有効なスプレッドシートURLではありません', 'error');
+        return;
+      }
+      
+      const spreadsheetId = match[1];
+      const gidMatch = url.match(/[#&]gid=(\d+)/);
+      const gid = gidMatch ? gidMatch[1] : null;
+      
+      createTaskListBtn.disabled = true;
+      showStatus('スプレッドシートを読み込み中...', 'loading');
+      
+      try {
+        // スプレッドシートデータを読み込み
+        console.log('スプレッドシート読み込み開始:', spreadsheetId, gid);
+        const spreadsheetData = await loadSpreadsheetData(spreadsheetId, gid);
+        
+        showStatus('タスクリストを生成中...', 'loading');
+        
+        // タスクリストを生成
+        const taskGenerator = new TaskGenerator();
+        currentTaskList = taskGenerator.generateTasks(spreadsheetData);
+        
+        console.log('生成されたタスクリスト:', currentTaskList);
+        
+        // タスクリストを表示
+        displayTaskList(currentTaskList);
+        
+        showStatus(`タスクリストを生成しました（${currentTaskList.tasks.length}件）`, 'success');
+        
+      } catch (error) {
+        console.error('エラー:', error);
+        showStatus(`エラー: ${error.message}`, 'error');
+      } finally {
+        createTaskListBtn.disabled = false;
+      }
+    });
+    
+    // スプレッドシートデータを読み込む（本番と同じコードを使用）
+    async function loadSpreadsheetData(spreadsheetId, gid) {
+      // 本番と同じsheetsClient.loadAutoAIDataを使用
+      const sheetsClient = new SheetsClient();
+      const spreadsheetData = await sheetsClient.loadAutoAIData(spreadsheetId, gid);
+      
+      console.log('本番コードで読み込んだスプレッドシートデータ:', spreadsheetData);
+      
+      return spreadsheetData;
+    }
+    
+    // タスクリストを表示（本番のタスク構造に合わせて表示）
+    function displayTaskList(taskList) {
+      if (!taskList || !taskList.tasks) {
+        return;
+      }
+      
+      // 統計情報を表示
+      const stats = taskList.getStatistics();
+      document.getElementById('totalTasks').textContent = stats.total;
+      document.getElementById('executableTasks').textContent = stats.executable;
+      document.getElementById('claudeTasks').textContent = stats.byAI.claude || 0;
+      document.getElementById('geminiTasks').textContent = stats.byAI.gemini || 0;
+      document.getElementById('chatgptTasks').textContent = stats.byAI.chatgpt || 0;
+      
+      // テーブルをクリア
+      const tbody = document.getElementById('taskTableBody');
+      tbody.innerHTML = '';
+      
+      // プロンプト列ごとにタスクをグループ化（本番と同じ表示形式）
+      const tasksByPromptColumn = {};
+      taskList.tasks.forEach(task => {
+        const key = task.promptColumn;
+        if (!tasksByPromptColumn[key]) {
+          tasksByPromptColumn[key] = [];
+        }
+        tasksByPromptColumn[key].push(task);
+      });
+      
+      // タスクを表示（実行可能なもののみ、またはすべて）
+      taskList.tasks.forEach(task => {
+        // スキップされたタスクは薄く表示
+        const isSkipped = !task.isExecutable();
+        const row = document.createElement('tr');
+        if (isSkipped) {
+          row.style.opacity = '0.5';
+        }
+        
+        // AIタイプに応じたバッジクラス
+        const aiBadgeClass = `ai-${task.aiType}`;
+        
+        // タスクタイプの表示（AIタスクかレポートタスクか）
+        const taskTypeLabel = task.taskType === 'report' ? '[レポート]' : '';
+        
+        // プロンプトのプレビュー（最初の100文字、改行は空白に置換）
+        let promptPreview = '';
+        if (task.taskType === 'report') {
+          promptPreview = `レポート化: ${task.sourceColumn}列 → ${task.reportColumn}列`;
+        } else if (task.prompt) {
+          const cleanPrompt = task.prompt.replace(/\n/g, ' ');
+          promptPreview = cleanPrompt.length > 100 ? 
+            cleanPrompt.substring(0, 100) + '...' : cleanPrompt;
+        } else {
+          promptPreview = '(プロンプトなし)';
+        }
+        
+        // モデル/機能の表示
+        const extras = [];
+        if (task.model) extras.push(`<span class="model-badge">モデル: ${task.model}</span>`);
+        if (task.specialOperation) extras.push(`<span class="model-badge">機能: ${task.specialOperation}</span>`);
+        if (task.skipReason) extras.push(`<span class="model-badge" style="background: #ffcccc;">スキップ: ${task.skipReason}</span>`);
+        
+        // グループ情報
+        let groupInfo = '';
+        if (task.groupInfo) {
+          if (task.groupInfo.type === '3type') {
+            groupInfo = ' [3種類AI]';
+          } else if (task.groupInfo.type === 'single') {
+            groupInfo = ' [単独AI]';
+          } else if (task.groupInfo.type === 'report') {
+            groupInfo = ' [レポート]';
+          }
+        }
+        
+        row.innerHTML = `
+          <td>${task.row}</td>
+          <td><span class="ai-badge ${aiBadgeClass}">${task.aiType.toUpperCase()}</span>${taskTypeLabel}</td>
+          <td>${task.promptColumn || '-'}</td>
+          <td>${task.column}${groupInfo}</td>
+          <td class="prompt-preview" title="${task.prompt ? task.prompt.replace(/"/g, '&quot;') : ''}">${promptPreview}</td>
+          <td>${extras.join(' ')}</td>
+        `;
+        
+        tbody.appendChild(row);
+      });
+      
+      // デバッグ情報をコンソールに出力（本番と同じ）
+      console.groupCollapsed('[Test] 生成されたタスクリスト詳細');
+      Object.keys(tasksByPromptColumn).sort().forEach(promptColumn => {
+        const columnTasks = tasksByPromptColumn[promptColumn];
+        console.log(`\n【プロンプト列 ${promptColumn}】タスク数: ${columnTasks.length}`);
+        
+        columnTasks.forEach((task, index) => {
+          console.log(`  ${index + 1}. ${task.column}${task.row} (${task.aiType})`);
+          if (task.model) console.log(`     モデル: ${task.model}`);
+          if (task.specialOperation) console.log(`     機能: ${task.specialOperation}`);
+          if (task.skipReason) console.log(`     スキップ: ${task.skipReason}`);
+        });
+      });
+      console.groupEnd();
+      
+      // タスクリストコンテナを表示
+      taskListContainer.classList.add('show');
+    }
+  </script>
+</body>
+</html>

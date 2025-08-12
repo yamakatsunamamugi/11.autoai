@@ -11,6 +11,11 @@ class Task {
 
   // タスクが実行可能かチェック
   isExecutable() {
+    // レポートタスクの場合は別の条件
+    if (this.taskType === "report") {
+      return !this.skipReason && this.sourceColumn;
+    }
+    // AIタスクの場合は従来の条件
     return !this.skipReason && this.prompt && this.prompt.trim().length > 0;
   }
 
@@ -21,8 +26,11 @@ class Task {
       column: this.column,
       row: this.row,
       aiType: this.aiType,
+      taskType: this.taskType, // タスクタイプ（"ai" or "report"）
       prompt: this.prompt,
       promptColumn: this.promptColumn,
+      sourceColumn: this.sourceColumn, // レポート化の場合のソース列
+      reportColumn: this.reportColumn, // レポート化列
       specialOperation: this.specialOperation,
       model: this.model,
       multiAI: this.multiAI,

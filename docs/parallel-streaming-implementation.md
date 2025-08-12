@@ -27,7 +27,7 @@
 - Claude: https://claude.ai/new
 - Gemini: https://gemini.google.com/app
 - ChatGPT: https://chatgpt.com/?model=gpt-4o
-- 特殊モデル（o3、o3-pro）にも対応
+- モデル（o3、o3-pro）にも対応
 
 ## 実装ファイル
 

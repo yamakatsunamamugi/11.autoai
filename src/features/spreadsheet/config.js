@@ -48,13 +48,13 @@ const SPREADSHEET_CONFIG = {
       },
     },
 
-    specialModelRow: {
+    modelRow: {
       keyword: "モデル",
       name: "モデル行",
       expectedTexts: ["o3（推論）", "o3-pro（鬼推論）"],
     },
 
-    specialTaskRow: {
+    taskRow: {
       keyword: "機能",
       name: "機能行",
       expectedTexts: ["DeepReserch"],
@@ -87,6 +87,22 @@ const SPREADSHEET_CONFIG = {
       keyword: "プロンプト",
       type: "prompt",
     },
+    prompt2: {
+      keyword: "プロンプト2",
+      type: "prompt",
+    },
+    prompt3: {
+      keyword: "プロンプト3",
+      type: "prompt",
+    },
+    prompt4: {
+      keyword: "プロンプト4",
+      type: "prompt",
+    },
+    prompt5: {
+      keyword: "プロンプト5",
+      type: "prompt",
+    },
     answer: {
       keyword: "回答",
       type: "answer",
@@ -113,6 +129,10 @@ const SPREADSHEET_CONFIG = {
     documentUrl: {
       keyword: "ドキュメントURL",
       type: "documentUrl",
+    },
+    report: {
+      keyword: "レポート化",
+      type: "report",
     },
   },
 

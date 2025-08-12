@@ -178,6 +178,7 @@ class TaskGenerator {
         continue;
       }
 
+      // メインプロンプトを取得
       const promptText = this.getCellValue(
         spreadsheetData,
         columnGroup.promptColumn,
@@ -189,10 +190,43 @@ class TaskGenerator {
         continue;
       }
 
-      // 回答列ごとにタスクを生成
-      const answerColumns = columnGroup.columns.slice(2); // ログとプロンプトを除く
+      // プロンプト2~5を順番に収集して連結
+      const allPrompts = [promptText];
+      const additionalPromptsFound = [];
+      
+      for (let i = 2; i <= 5; i++) {
+        const additionalPromptColumn = String.fromCharCode(
+          columnGroup.promptColumn.charCodeAt(0) + i - 1
+        );
+        const additionalPrompt = this.getCellValue(
+          spreadsheetData,
+          additionalPromptColumn,
+          workRow.number,
+        );
+        if (additionalPrompt && additionalPrompt.trim().length > 0) {
+          allPrompts.push(additionalPrompt);
+          additionalPromptsFound.push(`プロンプト${i}(${additionalPromptColumn}列)`);
+        }
+      }
 
-      for (const answerColumn of answerColumns) {
+      // 追加プロンプトがある場合はログ出力
+      if (additionalPromptsFound.length > 0) {
+        console.log(
+          `[TaskGenerator] 行${workRow.number}: 追加プロンプトを検出: ${additionalPromptsFound.join(', ')}`
+        );
+      }
+
+      // すべてのプロンプトを改行で連結
+      const combinedPrompt = allPrompts.join('\n');
+
+      // 回答列ごとにタスクを生成
+      const answerColumns = columnGroup.columns.slice(6); // ログ、プロンプト、プロンプト2~5を除く
+      
+      // レポート化列を除外（最後の列がレポート化列）
+      const isReportColumn = (col) => col === columnGroup.reportColumn;
+      const aiAnswerColumns = answerColumns.filter(col => !isReportColumn(col));
+
+      for (const answerColumn of aiAnswerColumns) {
         // この列を処理すべきかチェック
         if (
           !SimpleColumnControl.shouldProcessColumn(
@@ -219,19 +253,51 @@ class TaskGenerator {
           continue;
         }
 
-        // タスクを作成
+        // AIタスクを作成（連結されたプロンプトを使用）
         const aiType = columnGroup.aiMapping[answerColumn];
         const task = this.createTask(
           columnGroup.promptColumn,
           answerColumn,
           workRow.number,
-          promptText,
+          combinedPrompt,  // 連結されたプロンプトを使用
           aiType,
           columnGroup,
           spreadsheetData,
+          additionalPromptsFound  // 追加プロンプト情報を渡す
         );
 
         tasks.push(task);
+      }
+
+      // レポート化タスクを生成（レポート化列がある場合）
+      if (columnGroup.reportColumn) {
+        // レポート化タスクを生成（各AI回答列に対して）
+        for (const answerColumn of aiAnswerColumns) {
+          // この列を処理すべきかチェック
+          if (
+            !SimpleColumnControl.shouldProcessColumn(
+              answerColumn,
+              columnGroup,
+              columnControls,
+            )
+          ) {
+            continue;
+          }
+
+          // レポート化タスクを作成
+          const reportTask = this.createReportTask(
+            answerColumn,  // ソース列（AI回答列）
+            columnGroup.reportColumn,  // レポート化列
+            workRow.number,
+            columnGroup.aiMapping[answerColumn],  // AIタイプ
+            columnGroup,
+            spreadsheetData,
+          );
+
+          if (reportTask) {
+            tasks.push(reportTask);
+          }
+        }
       }
     }
 
@@ -275,6 +341,7 @@ class TaskGenerator {
       column: answerColumn,
       row: rowNumber,
       aiType: aiType,
+      taskType: "ai",  // タスクタイプを"ai"に設定
       prompt: promptText,
       promptColumn: promptColumn,
 
@@ -305,6 +372,55 @@ class TaskGenerator {
     if (columnGroup.type === "3type") {
       taskData.logColumns.aiColumns = columnGroup.aiMapping;
     }
+
+    return new Task(TaskFactory.createTask(taskData));
+  }
+
+  /**
+   * レポート化タスクを作成
+   */
+  createReportTask(
+    sourceColumn,
+    reportColumn,
+    rowNumber,
+    aiType,
+    columnGroup,
+    spreadsheetData,
+  ) {
+    // 既にレポートが作成されている場合はスキップ
+    const existingReport = this.getCellValue(
+      spreadsheetData,
+      reportColumn,
+      rowNumber,
+    );
+
+    if (existingReport && existingReport.trim().length > 0) {
+      console.log(
+        `[TaskGenerator] ${reportColumn}${rowNumber}はレポート作成済み`,
+      );
+      return null;
+    }
+
+    const taskData = {
+      id: this.generateTaskId(reportColumn, rowNumber),
+      column: reportColumn,
+      row: rowNumber,
+      aiType: aiType,
+      taskType: "report",  // タスクタイプを"report"に設定
+      sourceColumn: sourceColumn,  // AI回答を取得する列
+      reportColumn: reportColumn,  // レポートURLを書き込む列
+      promptColumn: columnGroup.promptColumn,  // プロンプト列（参照用）
+      
+      // グループID（必須）
+      groupId: `group_row${rowNumber}_report_${reportColumn}`,
+
+      // グループ情報
+      groupInfo: {
+        type: "report",
+        sourceColumn: sourceColumn,
+        reportColumn: reportColumn,
+      },
+    };
 
     return new Task(TaskFactory.createTask(taskData));
   }

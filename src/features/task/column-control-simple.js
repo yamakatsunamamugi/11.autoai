@@ -15,39 +15,59 @@ export class SimpleColumnControl {
   static getColumnGroup(promptColumn, aiType, hasAIInstructionColumn = false) {
     const promptIndex = promptColumn.charCodeAt(0) - 65;
 
+    // プロンプト2~5の列を含める（最大4つの追加プロンプト）
+    const additionalPromptColumns = [];
+    for (let i = 1; i <= 4; i++) {
+      additionalPromptColumns.push(String.fromCharCode(65 + promptIndex + i));
+    }
+
     if (aiType === "3種類（ChatGPT・Gemini・Claude）" || aiType === "3種類") {
-      // 3種類AIの場合: ログ → プロンプト → ChatGPT → Claude → Gemini
+      // 3種類AIの場合: ログ → プロンプト → プロンプト2~5 → ChatGPT → Claude → Gemini → レポート化
       const baseIndex = hasAIInstructionColumn ? promptIndex + 1 : promptIndex;
+      // プロンプト2~5の分だけ回答列の位置をずらす
+      const answerStartIndex = baseIndex + 5; // プロンプト + プロンプト2~5(4つ) = 5
+      const reportColumn = String.fromCharCode(65 + answerStartIndex + 3); // Gemini回答の次
 
       return {
         type: "3type",
         promptColumn: promptColumn,
+        additionalPromptColumns: additionalPromptColumns,
         columns: [
           String.fromCharCode(65 + promptIndex - 1), // ログ
           promptColumn, // プロンプト
-          String.fromCharCode(65 + baseIndex + 1), // ChatGPT回答
-          String.fromCharCode(65 + baseIndex + 2), // Claude回答
-          String.fromCharCode(65 + baseIndex + 3), // Gemini回答
+          ...additionalPromptColumns, // プロンプト2~5
+          String.fromCharCode(65 + answerStartIndex), // ChatGPT回答
+          String.fromCharCode(65 + answerStartIndex + 1), // Claude回答
+          String.fromCharCode(65 + answerStartIndex + 2), // Gemini回答
+          reportColumn, // レポート化
         ],
         aiMapping: {
-          [String.fromCharCode(65 + baseIndex + 1)]: "chatgpt",
-          [String.fromCharCode(65 + baseIndex + 2)]: "claude",
-          [String.fromCharCode(65 + baseIndex + 3)]: "gemini",
+          [String.fromCharCode(65 + answerStartIndex)]: "chatgpt",
+          [String.fromCharCode(65 + answerStartIndex + 1)]: "claude",
+          [String.fromCharCode(65 + answerStartIndex + 2)]: "gemini",
         },
+        reportColumn: reportColumn,
       };
     } else {
-      // 単独AIの場合: ログ → プロンプト → 回答
+      // 単独AIの場合: ログ → プロンプト → プロンプト2~5 → 回答 → レポート化
+      const answerIndex = promptIndex + 5; // プロンプト + プロンプト2~5(4つ) = 5
+      const reportColumn = String.fromCharCode(65 + answerIndex + 1); // 回答の次
+      
       return {
         type: "single",
         promptColumn: promptColumn,
+        additionalPromptColumns: additionalPromptColumns,
         columns: [
           String.fromCharCode(65 + promptIndex - 1), // ログ
           promptColumn, // プロンプト
-          String.fromCharCode(65 + promptIndex + 1), // 回答
+          ...additionalPromptColumns, // プロンプト2~5
+          String.fromCharCode(65 + answerIndex), // 回答
+          reportColumn, // レポート化
         ],
         aiMapping: {
-          [String.fromCharCode(65 + promptIndex + 1)]: aiType.toLowerCase(),
+          [String.fromCharCode(65 + answerIndex)]: aiType.toLowerCase(),
         },
+        reportColumn: reportColumn,
       };
     }
   }
@@ -174,8 +194,9 @@ export class SimpleColumnControl {
     const columnIndex = columnGroup.columns.indexOf(targetColumn);
     if (columnIndex === -1) return false;
 
-    // ログ列とプロンプト列は処理対象外（回答列のみ処理）
-    if (columnIndex < 2) return false;
+    // ログ列、プロンプト列、プロンプト2~5列は処理対象外（回答列のみ処理）
+    // 回答列は、単独AIの場合は6番目、3種類AIの場合は6,7,8番目から
+    if (columnIndex < 6) return false;
 
     // 制御なしの場合はすべての回答列を処理
     if (!controls || controls.length === 0) return true;
@@ -358,7 +379,7 @@ export class SimpleColumnControl {
     console.log("制御情報:", controls);
 
     // 各列の処理状態を表示
-    const answerColumns = columnGroup.columns.slice(2); // ログとプロンプトを除く
+    const answerColumns = columnGroup.columns.slice(6); // ログ、プロンプト、プロンプト2~5を除く
     console.log("処理判定:");
     answerColumns.forEach((col) => {
       const shouldProcess = this.shouldProcessColumn(

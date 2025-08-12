@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>複数プロンプト連結機能テスト</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #333;
+      border-bottom: 2px solid #4CAF50;
+      padding-bottom: 10px;
+    }
+    .test-case {
+      margin: 20px 0;
+      padding: 15px;
+      background: #f9f9f9;
+      border-left: 4px solid #2196F3;
+      border-radius: 4px;
+    }
+    .test-title {
+      font-weight: bold;
+      color: #1976D2;
+      margin-bottom: 10px;
+    }
+    .mock-data {
+      background: #fff;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      margin: 10px 0;
+    }
+    .result {
+      margin-top: 10px;
+      padding: 10px;
+      background: #e8f5e9;
+      border: 1px solid #4CAF50;
+      border-radius: 4px;
+    }
+    .error {
+      background: #ffebee;
+      border-color: #f44336;
+      color: #c62828;
+    }
+    button {
+      background: #4CAF50;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      margin: 5px;
+    }
+    button:hover {
+      background: #45a049;
+    }
+    pre {
+      background: #f4f4f4;
+      padding: 10px;
+      border-radius: 4px;
+      overflow-x: auto;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 10px 0;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      text-align: left;
+    }
+    th {
+      background: #f2f2f2;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🧪 複数プロンプト連結機能テスト</h1>
+    
+    <div class="test-case">
+      <div class="test-title">テストケース1: 単一AIで複数プロンプト</div>
+      <div class="mock-data">
+        <h4>スプレッドシート構造（単一AI）:</h4>
+        <table>
+          <tr>
+            <th>A列</th>
+            <th>B列</th>
+            <th>C列</th>
+            <th>D列</th>
+            <th>E列</th>
+            <th>F列</th>
+            <th>G列</th>
+            <th>H列</th>
+          </tr>
+          <tr>
+            <td>メニュー</td>
+            <td>ログ</td>
+            <td>プロンプト</td>
+            <td>プロンプト2</td>
+            <td>プロンプト3</td>
+            <td>プロンプト4</td>
+            <td>プロンプト5</td>
+            <td>回答</td>
+          </tr>
+          <tr>
+            <td>使うAI</td>
+            <td></td>
+            <td>ChatGPT</td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>1</td>
+            <td></td>
+            <td>質問1</td>
+            <td>追加情報1</td>
+            <td>追加情報2</td>
+            <td></td>
+            <td></td>
+            <td></td>
+          </tr>
+        </table>
+      </div>
+      <button onclick="testSingleAI()">テスト実行</button>
+      <div id="result1" class="result"></div>
+    </div>
+
+    <div class="test-case">
+      <div class="test-title">テストケース2: 3種類AIで複数プロンプト</div>
+      <div class="mock-data">
+        <h4>スプレッドシート構造（3種類AI）:</h4>
+        <table>
+          <tr>
+            <th>A列</th>
+            <th>B列</th>
+            <th>C列</th>
+            <th>D列</th>
+            <th>E列</th>
+            <th>F列</th>
+            <th>G列</th>
+            <th>H列</th>
+            <th>I列</th>
+            <th>J列</th>
+          </tr>
+          <tr>
+            <td>メニュー</td>
+            <td>ログ</td>
+            <td>プロンプト</td>
+            <td>プロンプト2</td>
+            <td>プロンプト3</td>
+            <td>プロンプト4</td>
+            <td>プロンプト5</td>
+            <td>ChatGPT回答</td>
+            <td>Claude回答</td>
+            <td>Gemini回答</td>
+          </tr>
+          <tr>
+            <td>使うAI</td>
+            <td></td>
+            <td>3種類（ChatGPT・Gemini・Claude）</td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>1</td>
+            <td></td>
+            <td>メイン質問</td>
+            <td>背景情報</td>
+            <td>制約条件</td>
+            <td>出力形式</td>
+            <td>追加要件</td>
+            <td></td>
+            <td></td>
+            <td></td>
+          </tr>
+        </table>
+      </div>
+      <button onclick="test3TypeAI()">テスト実行</button>
+      <div id="result2" class="result"></div>
+    </div>
+
+    <div class="test-case">
+      <div class="test-title">テストケース3: 部分的なプロンプト</div>
+      <div class="mock-data">
+        <h4>スプレッドシート構造（プロンプト2,4のみ使用）:</h4>
+        <table>
+          <tr>
+            <th>A列</th>
+            <th>B列</th>
+            <th>C列</th>
+            <th>D列</th>
+            <th>E列</th>
+            <th>F列</th>
+            <th>G列</th>
+            <th>H列</th>
+          </tr>
+          <tr>
+            <td>メニュー</td>
+            <td>ログ</td>
+            <td>プロンプト</td>
+            <td>プロンプト2</td>
+            <td>プロンプト3</td>
+            <td>プロンプト4</td>
+            <td>プロンプト5</td>
+            <td>回答</td>
+          </tr>
+          <tr>
+            <td>使うAI</td>
+            <td></td>
+            <td>Claude</td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>1</td>
+            <td></td>
+            <td>基本質問</td>
+            <td>追加条件</td>
+            <td></td>
+            <td>出力指定</td>
+            <td></td>
+            <td></td>
+          </tr>
+        </table>
+      </div>
+      <button onclick="testPartialPrompts()">テスト実行</button>
+      <div id="result3" class="result"></div>
+    </div>
+
+  </div>
+
+  <script type="module">
+    // モジュールのインポート
+    import SimpleColumnControl from './src/features/task/column-control-simple.js';
+    import TaskGenerator from './src/features/task/generator.js';
+
+    // テスト関数をグローバルスコープに登録
+    window.testSingleAI = async function() {
+      const resultDiv = document.getElementById('result1');
+      try {
+        // モックデータ作成
+        const mockData = createMockSpreadsheetData(
+          'single',
+          ['質問1', '追加情報1', '追加情報2', '', '']
+        );
+
+        // 列グループ取得
+        const columnGroup = SimpleColumnControl.getColumnGroup('C', 'ChatGPT', false);
+        
+        // TaskGenerator のテスト
+        const generator = new TaskGenerator();
+        const tasks = generator.generateTasksForGroup(
+          columnGroup,
+          [],
+          [],
+          mockData
+        );
+
+        resultDiv.innerHTML = `
+          <h4>✅ テスト成功</h4>
+          <p><strong>列グループ:</strong></p>
+          <pre>${JSON.stringify(columnGroup, null, 2)}</pre>
+          <p><strong>生成されたタスク数:</strong> ${tasks.length}</p>
+          <p><strong>連結されたプロンプト:</strong></p>
+          <pre>${tasks[0]?.prompt || 'タスクが生成されませんでした'}</pre>
+        `;
+      } catch (error) {
+        resultDiv.className = 'result error';
+        resultDiv.innerHTML = `<h4>❌ エラー:</h4><pre>${error.stack}</pre>`;
+      }
+    };
+
+    window.test3TypeAI = async function() {
+      const resultDiv = document.getElementById('result2');
+      try {
+        // モックデータ作成
+        const mockData = createMockSpreadsheetData(
+          '3type',
+          ['メイン質問', '背景情報', '制約条件', '出力形式', '追加要件']
+        );
+
+        // 列グループ取得
+        const columnGroup = SimpleColumnControl.getColumnGroup('C', '3種類（ChatGPT・Gemini・Claude）', false);
+        
+        // TaskGenerator のテスト
+        const generator = new TaskGenerator();
+        const tasks = generator.generateTasksForGroup(
+          columnGroup,
+          [],
+          [],
+          mockData
+        );
+
+        resultDiv.innerHTML = `
+          <h4>✅ テスト成功</h4>
+          <p><strong>列グループ:</strong></p>
+          <pre>${JSON.stringify(columnGroup, null, 2)}</pre>
+          <p><strong>生成されたタスク数:</strong> ${tasks.length}</p>
+          <p><strong>連結されたプロンプト:</strong></p>
+          <pre>${tasks[0]?.prompt || 'タスクが生成されませんでした'}</pre>
+        `;
+      } catch (error) {
+        resultDiv.className = 'result error';
+        resultDiv.innerHTML = `<h4>❌ エラー:</h4><pre>${error.stack}</pre>`;
+      }
+    };
+
+    window.testPartialPrompts = async function() {
+      const resultDiv = document.getElementById('result3');
+      try {
+        // モックデータ作成
+        const mockData = createMockSpreadsheetData(
+          'single',
+          ['基本質問', '追加条件', '', '出力指定', '']
+        );
+
+        // 列グループ取得
+        const columnGroup = SimpleColumnControl.getColumnGroup('C', 'Claude', false);
+        
+        // TaskGenerator のテスト
+        const generator = new TaskGenerator();
+        const tasks = generator.generateTasksForGroup(
+          columnGroup,
+          [],
+          [],
+          mockData
+        );
+
+        resultDiv.innerHTML = `
+          <h4>✅ テスト成功</h4>
+          <p><strong>列グループ:</strong></p>
+          <pre>${JSON.stringify(columnGroup, null, 2)}</pre>
+          <p><strong>生成されたタスク数:</strong> ${tasks.length}</p>
+          <p><strong>連結されたプロンプト（プロンプト3,5は空）:</strong></p>
+          <pre>${tasks[0]?.prompt || 'タスクが生成されませんでした'}</pre>
+        `;
+      } catch (error) {
+        resultDiv.className = 'result error';
+        resultDiv.innerHTML = `<h4>❌ エラー:</h4><pre>${error.stack}</pre>`;
+      }
+    };
+
+    // モックデータ作成関数
+    function createMockSpreadsheetData(type, prompts) {
+      const menuRow = ['メニュー', 'ログ', 'プロンプト', 'プロンプト2', 'プロンプト3', 'プロンプト4', 'プロンプト5'];
+      const aiRow = ['使うAI', ''];
+      
+      if (type === '3type') {
+        aiRow[2] = '3種類（ChatGPT・Gemini・Claude）';
+        menuRow.push('ChatGPT回答', 'Claude回答', 'Gemini回答');
+      } else {
+        aiRow[2] = 'ChatGPT';
+        menuRow.push('回答');
+      }
+
+      const workRow = ['1', '', ...prompts];
+      
+      return {
+        values: [
+          menuRow,
+          aiRow,
+          [],
+          workRow
+        ],
+        menuRow: { index: 0, data: menuRow },
+        aiRow: { index: 1, data: aiRow },
+        workRows: [{ number: 4, index: 3, data: workRow }],
+        aiColumns: {
+          'C': { type: type === '3type' ? '3種類（ChatGPT・Gemini・Claude）' : 'ChatGPT' }
+        }
+      };
+    }
+  </script>
+</body>
+</html>
