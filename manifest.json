@@ -22,11 +22,12 @@
     "https://www.genspark.ai/*"
   ],
   "oauth2": {
-    "client_id": "81824736218-31g4te8sugagitou68bn2bceoukv5jlu.apps.googleusercontent.com",
+    "client_id": "262291163420-fj2jfie1cmb63md9nnu4ofdkr9ku1u3o.apps.googleusercontent.com",
     "scopes": [
       "https://www.googleapis.com/auth/spreadsheets",
       "https://www.googleapis.com/auth/documents",
       "https://www.googleapis.com/auth/drive.file",
+      "https://www.googleapis.com/auth/drive",
       "https://www.googleapis.com/auth/userinfo.email"
     ]
   },
@@ -118,6 +119,23 @@
         "chatgpt-mode-control.js",
         "claude-mode-control.js",
         "src/features/chatgpt/chatgpt-tool-control.js",
+        "tests/test-report-generation.html",
+        "tests/test-report-generation.js",
+        "src/services/auth-service.js",
+        "src/features/spreadsheet/docs-client.js",
+        "src/features/spreadsheet/sheets-client.js",
+        "src/features/spreadsheet/reader.js",
+        "src/features/spreadsheet/config.js",
+        "tests/test-spreadsheet.html",
+        "tests/test-spreadsheet.js",
+        "tests/test-debugger.js",
+        "tests/test-visualizer.js",
+        "tests/test-diagnostics.js",
+        "tests/test-styles.css",
+        "src/features/task/generator.js",
+        "src/features/task/column-control-simple.js",
+        "src/features/task/queue.js",
+        "src/services/spreadsheet-auto-setup.js",
         "tests/integration/test-ai-automation-integrated.html",
         "tests/integration/test-ai-automation-integrated.js",
         "automations/chatgpt-automation.js",

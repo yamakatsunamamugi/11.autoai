@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>拡張機能エラーチェッカー</title>
+  <style>
+    body {
+      font-family: 'Hiragino Sans', Meiryo, sans-serif;
+      max-width: 900px;
+      margin: 20px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #e53e3e;
+      border-bottom: 3px solid #e53e3e;
+      padding-bottom: 10px;
+    }
+    .error-box {
+      background: #fff5f5;
+      border: 2px solid #fc8181;
+      padding: 20px;
+      border-radius: 8px;
+      margin: 20px 0;
+    }
+    .step {
+      background: #f7fafc;
+      border-left: 4px solid #4299e1;
+      padding: 15px;
+      margin: 15px 0;
+    }
+    code {
+      background: #2d3748;
+      color: #48bb78;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-family: 'Courier New', monospace;
+    }
+    .important {
+      background: #fef5e7;
+      border: 2px solid #f39c12;
+      padding: 15px;
+      border-radius: 8px;
+      margin: 20px 0;
+    }
+    pre {
+      background: #1a202c;
+      color: #68d391;
+      padding: 15px;
+      border-radius: 8px;
+      overflow-x: auto;
+    }
+    .button {
+      background: #4299e1;
+      color: white;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      margin: 5px;
+    }
+    .button:hover {
+      background: #3182ce;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔍 Service Worker エラーの確認方法</h1>
+    
+    <div class="error-box">
+      <h2>Status Code: 3 が出続ける場合</h2>
+      <p>このエラーは以下の2つの原因のどちらかです：</p>
+      <ol>
+        <li><strong>まだfile://でアクセスしている</strong></li>
+        <li><strong>background.jsまたはその依存ファイルにエラーがある</strong></li>
+      </ol>
+    </div>
+
+    <div class="important">
+      <h2>📋 今すぐ確認してください</h2>
+      <p><strong>質問1:</strong> 今、どのURLでページを開いていますか？</p>
+      <ul>
+        <li>❌ <code>file:///Users/...</code> で始まる → まだ直接開いています</li>
+        <li>✅ <code>chrome-extension://...</code> で始まる → 正しく開いています</li>
+      </ul>
+    </div>
+
+    <div class="step">
+      <h3>もし chrome-extension:// で開いているのにエラーが出る場合：</h3>
+      <p><strong>実際のエラーメッセージを確認する必要があります：</strong></p>
+    </div>
+
+    <h2>🛠️ Service Worker のエラーログを確認する手順</h2>
+    
+    <div class="step">
+      <h3>方法1: 拡張機能ページから確認</h3>
+      <ol>
+        <li><code>chrome://extensions/</code> を開く</li>
+        <li>「AutoAI Minimal」を見つける</li>
+        <li>以下のどれかをクリック：
+          <ul>
+            <li><strong style="color: red;">「エラー」</strong>ボタン（赤い文字で表示される）</li>
+            <li><strong>「ビューを検証: Service Worker」</strong>リンク</li>
+          </ul>
+        </li>
+        <li>開いたコンソールにエラーメッセージが表示されます</li>
+      </ol>
+    </div>
+
+    <div class="step">
+      <h3>方法2: デベロッパーツールから確認</h3>
+      <ol>
+        <li>chrome-extension://[ID]/tests/test-tasklist.html を開く</li>
+        <li>F12キーを押してデベロッパーツールを開く</li>
+        <li>Consoleタブをクリック</li>
+        <li>赤いエラーメッセージを確認</li>
+      </ol>
+    </div>
+
+    <h2>🔴 よくあるエラーと解決方法</h2>
+    
+    <div class="error-box">
+      <h3>エラー例1: Uncaught SyntaxError: Cannot use import statement outside a module</h3>
+      <p>→ manifest.jsonの "type": "module" 設定の問題</p>
+    </div>
+
+    <div class="error-box">
+      <h3>エラー例2: Failed to load module script</h3>
+      <p>→ インポートしているファイルが存在しない、またはパスが間違っている</p>
+    </div>
+
+    <div class="error-box">
+      <h3>エラー例3: Uncaught ReferenceError: [変数名] is not defined</h3>
+      <p>→ グローバル変数の参照エラー</p>
+    </div>
+
+    <div class="important">
+      <h2>⚠️ 重要な確認事項</h2>
+      <p><strong>以下の情報を教えてください：</strong></p>
+      <ol>
+        <li>現在のURL（アドレスバーに表示されているもの）</li>
+        <li>chrome://extensions/ の「AutoAI Minimal」に<span style="color:red;">赤いエラー表示</span>があるか</li>
+        <li>「ビューを検証: Service Worker」をクリックした時のコンソールエラー</li>
+      </ol>
+    </div>
+
+    <button class="button" onclick="checkCurrentContext()">現在のコンテキストを確認</button>
+    <div id="contextInfo" style="margin-top: 20px;"></div>
+  </div>
+
+  <script>
+    function checkCurrentContext() {
+      const info = document.getElementById('contextInfo');
+      const url = window.location.href;
+      const protocol = window.location.protocol;
+      
+      let html = '<div style="padding: 15px; border-radius: 8px; ';
+      
+      if (protocol === 'file:') {
+        html += 'background: #fee; border: 2px solid #f00;">';
+        html += '<h3>❌ 問題: file:// プロトコルでアクセスしています</h3>';
+        html += '<p>現在のURL: ' + url + '</p>';
+        html += '<p><strong>これが原因でService Workerエラーが発生しています。</strong></p>';
+        html += '<p>解決方法: Chrome拡張機能として読み込んで、chrome-extension:// でアクセスしてください。</p>';
+      } else if (protocol === 'chrome-extension:') {
+        html += 'background: #efe; border: 2px solid #0a0;">';
+        html += '<h3>✅ 正しくchrome-extension://でアクセスしています</h3>';
+        html += '<p>拡張機能ID: ' + (chrome.runtime ? chrome.runtime.id : '不明') + '</p>';
+        html += '<p>それでもエラーが出る場合は、background.jsに問題があります。</p>';
+        html += '<p><strong>chrome://extensions/ でエラーログを確認してください。</strong></p>';
+      } else {
+        html += 'background: #ffe; border: 2px solid #fa0;">';
+        html += '<h3>⚠️ 不明なプロトコル: ' + protocol + '</h3>';
+      }
+      
+      html += '</div>';
+      info.innerHTML = html;
+    }
+  </script>
+</body>
+</html>

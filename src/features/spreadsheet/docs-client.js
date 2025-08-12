@@ -1,15 +1,13 @@
 // docs-client.js - Google Docs APIクライアント
 
-// authServiceをグローバルから取得、またはインポート
-const authService = globalThis.authService || await (async () => {
-  try {
-    await import("../../services/auth-service.js");
-    return globalThis.authService;
-  } catch (e) {
-    console.warn("AuthService import failed, using globalThis.authService");
+// authServiceをグローバルから取得
+const getAuthService = () => {
+  if (globalThis.authService) {
     return globalThis.authService;
   }
-})();
+  console.warn("AuthService not found in globalThis");
+  return null;
+};
 
 class DocsClient {
   constructor() {
@@ -23,6 +21,8 @@ class DocsClient {
    * @returns {Promise<Object>} 作成されたドキュメント情報
    */
   async createDocument(title) {
+    const authService = getAuthService();
+    if (!authService) throw new Error("AuthService not available");
     const token = await authService.getAuthToken();
 
     // ドキュメントを作成
@@ -63,6 +63,8 @@ class DocsClient {
    * @returns {Promise<Object>} 更新結果
    */
   async insertText(documentId, text, index = 1) {
+    const authService = getAuthService();
+    if (!authService) throw new Error("AuthService not available");
     const token = await authService.getAuthToken();
     const url = `${this.docsBaseUrl}/${documentId}:batchUpdate`;
 
@@ -103,6 +105,8 @@ class DocsClient {
    * @returns {Promise<Object>} 更新結果
    */
   async updateTitle(documentId, newTitle) {
+    const authService = getAuthService();
+    if (!authService) throw new Error("AuthService not available");
     const token = await authService.getAuthToken();
     const url = `${this.driveBaseUrl}/${documentId}`;
 

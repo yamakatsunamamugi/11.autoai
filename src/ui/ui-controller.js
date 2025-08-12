@@ -559,84 +559,58 @@ startIntegratedTestBtn.addEventListener("click", () => {
 
 // ===== イベントリスナー: レポート生成 =====
 const generateReportBtn = document.getElementById("generateReportBtn");
-generateReportBtn.addEventListener("click", async () => {
-  console.log("レポート生成ボタンが押されました");
-  updateStatus("レポート生成テストを実行中...", "loading");
+generateReportBtn.addEventListener("click", () => {
+  console.log("レポート生成テストボタンが押されました");
   
   try {
-    // DocsClientを動的にインポート
-    await import("../features/spreadsheet/docs-client.js");
+    // レポート化テストページを新しいウィンドウで開く
+    const testUrl = chrome.runtime.getURL("tests/test-report-generation.html");
     
-    if (!globalThis.docsClient) {
-      throw new Error("DocsClientが初期化されていません");
-    }
+    // ウィンドウ設定
+    const windowFeatures = `
+      width=1400,
+      height=800,
+      left=${(screen.width - 1400) / 2},
+      top=${(screen.height - 800) / 2},
+      scrollbars=yes,
+      resizable=yes,
+      status=no,
+      toolbar=no,
+      menubar=no,
+      location=no
+    `.replace(/\s+/g, "");
     
-    // テスト用のタスク結果データ（本番と同じ形式）
-    const testTaskResult = {
-      prompt: "これはレポート化機能のテストプロンプトです。実際の処理では、スプレッドシートのプロンプト列から取得されます。",
-      response: `テストAI回答です。
-
-【生成されたコンテンツ】
-これはテスト用のAI回答として生成されたテキストです。
-実際の処理では、AIが生成した回答がここに入ります。
-
-【詳細説明】
-1. データの処理方法について
-2. 結果の解釈について
-3. 次のステップの提案
-
-【まとめ】
-このテストが成功すれば、本番環境でも同じコードが動作することが確認できます。`,
-      aiType: "ChatGPT", // テスト用のAIタイプ
-      rowNumber: 999, // テスト用の行番号
-      columnIndex: "Z", // テスト用の列番号
-    };
-    
-    // 本番と同じメソッドを使用してGoogleドキュメントを作成
-    console.log("Googleドキュメントを作成中（本番と同じメソッド使用）...");
-    const docInfo = await globalThis.docsClient.createDocumentFromTaskResult(
-      testTaskResult
+    // 新しいウィンドウでテストページを開く
+    const testWindow = window.open(
+      testUrl,
+      `report_generation_test_${Date.now()}`,
+      windowFeatures
     );
     
-    console.log("ドキュメント作成成功:", docInfo);
-    
-    // 成功メッセージとURLを表示
-    const successMessage = `レポート生成テスト成功！\nURL: ${docInfo.url}`;
-    updateStatus(successMessage, "success");
-    showFeedback(successMessage, "success");
-    
-    // URLをクリップボードにコピー（オプション）
-    if (navigator.clipboard) {
-      try {
-        await navigator.clipboard.writeText(docInfo.url);
-        console.log("URLをクリップボードにコピーしました");
-      } catch (clipboardError) {
-        console.warn("クリップボードへのコピーに失敗:", clipboardError);
-      }
+    if (testWindow) {
+      console.log("✅ レポート化テストページが開かれました");
+      updateStatus("レポート化テストページを開きました", "success");
+      setTimeout(() => updateStatus("待機中", "waiting"), 2000);
+    } else {
+      console.error("❌ テストページを開けませんでした");
+      updateStatus("テストページを開けませんでした", "error");
+      alert("ポップアップブロッカーを無効にしてください");
     }
-    
-    // 新しいタブでドキュメントを開く（オプション）
-    const openDoc = confirm("作成したドキュメントを新しいタブで開きますか？");
-    if (openDoc) {
-      window.open(docInfo.url, "_blank");
-    }
-    
   } catch (error) {
-    console.error("レポート生成テストエラー:", error);
-    const errorMessage = `レポート生成テストエラー: ${error.message}`;
-    updateStatus(errorMessage, "error");
-    showFeedback(errorMessage, "error");
+    console.error("❌ レポート化テスト実行エラー:", error);
+    updateStatus("テスト実行エラー", "error");
+    alert(`エラーが発生しました: ${error.message}`);
   }
 });
 
-// ===== イベントリスナー: タスクリスト表示テスト =====
+// ===== イベントリスナー: スプレッドシート読み込みテスト =====
 const showTaskListTestBtn = document.getElementById("showTaskListTestBtn");
 showTaskListTestBtn.addEventListener("click", () => {
-  console.log("タスクリスト表示テストボタンが押されました");
+  console.log("スプレッドシート読み込みテストボタンが押されました");
   
   try {
-    // タスクリストテストページを開く
-    const testUrl = chrome.runtime.getURL("tests/test-tasklist.html");
+    // 新しいスプレッドシート読み込みテストツールを開く
+    const testUrl = chrome.runtime.getURL("tests/test-spreadsheet.html");
     
     // ウィンドウ設定
     const windowFeatures = `
@@ -660,8 +634,8 @@ showTaskListTestBtn.addEventListener("click", () => {
     );
     
     if (testWindow) {
-      console.log("✅ タスクリストテストページが開かれました");
-      updateStatus("タスクリストテストページを開きました", "success");
+      console.log("✅ スプレッドシート読み込みテストページが開かれました");
+      updateStatus("スプレッドシート読み込みテストページを開きました", "success");
       setTimeout(() => updateStatus("待機中", "waiting"), 2000);
     } else {
       console.error("❌ テストページを開けませんでした");
@@ -669,7 +643,7 @@ showTaskListTestBtn.addEventListener("click", () => {
       alert("ポップアップブロッカーを無効にしてください");
     }
   } catch (error) {
-    console.error("❌ タスクリストテスト実行エラー:", error);
+    console.error("❌ スプレッドシート読み込みテスト実行エラー:", error);
     updateStatus("テスト実行エラー", "error");
     alert(`エラーが発生しました: ${error.message}`);
   }

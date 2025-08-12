@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>📄 レポート化テスト</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+      overflow: hidden;
+    }
+    
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 30px;
+      text-align: center;
+    }
+    
+    .header h1 {
+      font-size: 28px;
+      margin-bottom: 10px;
+    }
+    
+    .header .subtitle {
+      opacity: 0.9;
+      font-size: 14px;
+    }
+    
+    .test-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 30px;
+      padding: 30px;
+    }
+    
+    .test-card {
+      border: 1px solid #e0e0e0;
+      border-radius: 12px;
+      padding: 25px;
+      transition: all 0.3s ease;
+    }
+    
+    .test-card:hover {
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+      transform: translateY(-2px);
+    }
+    
+    .test-header {
+      display: flex;
+      align-items: center;
+      margin-bottom: 20px;
+      padding-bottom: 15px;
+      border-bottom: 2px solid #f0f0f0;
+    }
+    
+    .test-icon {
+      font-size: 32px;
+      margin-right: 15px;
+    }
+    
+    .test-title {
+      flex: 1;
+    }
+    
+    .test-title h2 {
+      font-size: 20px;
+      color: #333;
+      margin-bottom: 5px;
+    }
+    
+    .test-title .description {
+      font-size: 13px;
+      color: #666;
+    }
+    
+    .test-content {
+      margin-bottom: 20px;
+    }
+    
+    .input-group {
+      margin-bottom: 15px;
+    }
+    
+    .input-group label {
+      display: block;
+      font-size: 13px;
+      color: #555;
+      margin-bottom: 5px;
+      font-weight: 500;
+    }
+    
+    .input-group input,
+    .input-group textarea {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 14px;
+      transition: border-color 0.3s;
+    }
+    
+    .input-group input:focus,
+    .input-group textarea:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+    
+    .input-group textarea {
+      min-height: 120px;
+      resize: vertical;
+      font-family: inherit;
+    }
+    
+    .btn {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+    
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+    }
+    
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+    
+    .btn-secondary {
+      background: #f5f5f5;
+      color: #333;
+    }
+    
+    .btn-secondary:hover {
+      background: #e8e8e8;
+    }
+    
+    .result-box {
+      background: #f8f9fa;
+      border: 1px solid #dee2e6;
+      border-radius: 6px;
+      padding: 15px;
+      margin-top: 20px;
+      min-height: 100px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    
+    .result-box.success {
+      background: #d4edda;
+      border-color: #c3e6cb;
+      color: #155724;
+    }
+    
+    .result-box.error {
+      background: #f8d7da;
+      border-color: #f5c6cb;
+      color: #721c24;
+    }
+    
+    .result-box.info {
+      background: #d1ecf1;
+      border-color: #bee5eb;
+      color: #0c5460;
+    }
+    
+    .result-title {
+      font-weight: 600;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .result-content {
+      font-size: 13px;
+      line-height: 1.6;
+      word-break: break-all;
+    }
+    
+    .result-content a {
+      color: #667eea;
+      text-decoration: none;
+    }
+    
+    .result-content a:hover {
+      text-decoration: underline;
+    }
+    
+    .loading {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(0,0,0,.1);
+      border-radius: 50%;
+      border-top-color: #667eea;
+      animation: spin 1s ease-in-out infinite;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    .status-badge {
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+      display: inline-block;
+    }
+    
+    .status-badge.ready {
+      background: #e3f2fd;
+      color: #1976d2;
+    }
+    
+    .status-badge.running {
+      background: #fff3e0;
+      color: #f57c00;
+    }
+    
+    .status-badge.success {
+      background: #e8f5e9;
+      color: #2e7d32;
+    }
+    
+    .status-badge.error {
+      background: #ffebee;
+      color: #c62828;
+    }
+    
+    @media (max-width: 768px) {
+      .test-container {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>📄 レポート化機能テスト</h1>
+      <div class="subtitle">Googleドキュメント作成とスプレッドシート連携のテスト環境</div>
+    </div>
+    
+    <div class="test-container">
+      <!-- テスト1: Googleドキュメント作成テスト -->
+      <div class="test-card">
+        <div class="test-header">
+          <span class="test-icon">📝</span>
+          <div class="test-title">
+            <h2>テスト1: ドキュメント作成</h2>
+            <div class="description">テキストを入力してGoogleドキュメントを作成</div>
+          </div>
+        </div>
+        
+        <div class="test-content">
+          <div class="input-group">
+            <label for="docTitle">ドキュメントタイトル</label>
+            <input type="text" id="docTitle" placeholder="例：テストレポート" value="レポート化テスト - ${new Date().toLocaleDateString('ja-JP')}">
+          </div>
+          
+          <div class="input-group">
+            <label for="docContent">ドキュメント内容</label>
+            <textarea id="docContent" placeholder="ドキュメントに記載する内容を入力">これはレポート化機能のテストドキュメントです。
+
+【テスト内容】
+1. Googleドキュメントの作成
+2. テキストコンテンツの挿入
+3. ドキュメントURLの取得
+
+【確認事項】
+- ドキュメントが正常に作成されるか
+- 日本語が正しく表示されるか
+- URLが正しく取得できるか</textarea>
+          </div>
+          
+          <button id="createDocBtn" class="btn btn-primary">
+            <span>📄</span>
+            ドキュメント作成
+          </button>
+        </div>
+        
+        <div id="docResult" class="result-box" style="display: none;">
+          <div class="result-title">
+            <span id="docResultIcon">ℹ️</span>
+            <span id="docResultTitle">結果</span>
+          </div>
+          <div id="docResultContent" class="result-content"></div>
+        </div>
+      </div>
+      
+      <!-- テスト2: スプレッドシートからデータ取得 -->
+      <div class="test-card">
+        <div class="test-header">
+          <span class="test-icon">📊</span>
+          <div class="test-title">
+            <h2>テスト2: シートからレポート生成</h2>
+            <div class="description">スプレッドシートのデータを取得してレポート化</div>
+          </div>
+        </div>
+        
+        <div class="test-content">
+          <div class="input-group">
+            <label for="sheetUrl">スプレッドシートURL（空欄の場合は仮データを使用）</label>
+            <input type="url" id="sheetUrl" placeholder="空欄のままでテストデータ、またはURLを入力">
+          </div>
+          
+          <div class="input-group">
+            <label for="cellRange">取得するセル範囲（URL入力時のみ有効）</label>
+            <input type="text" id="cellRange" placeholder="例：A1:B10" value="A1:Z100">
+          </div>
+          
+          <button id="fetchSheetBtn" class="btn btn-primary">
+            <span>📊</span>
+            データ取得（URLが空欄なら仮データ）
+          </button>
+          
+          <button id="generateReportFromSheetBtn" class="btn btn-secondary" style="margin-left: 10px; display: none;">
+            <span>📄</span>
+            全体レポート生成
+          </button>
+          
+          <button id="generateIndividualReportsBtn" class="btn btn-primary" style="margin-left: 10px; display: none;">
+            <span>📝</span>
+            各行をドキュメント化
+          </button>
+        </div>
+        
+        <div id="sheetResult" class="result-box" style="display: none;">
+          <div class="result-title">
+            <span id="sheetResultIcon">ℹ️</span>
+            <span id="sheetResultTitle">結果</span>
+          </div>
+          <div id="sheetResultContent" class="result-content"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- 必要なサービスを読み込み -->
+  <script src="../src/services/auth-service.js"></script>
+  <script src="../src/features/spreadsheet/docs-client.js"></script>
+  <script src="../src/features/spreadsheet/sheets-client.js"></script>
+  <script src="../src/features/spreadsheet/config.js"></script>
+  
+  <!-- 外部スクリプトファイルとして読み込み -->
+  <script type="module" src="test-report-generation.js"></script>
+</body>
+</html>

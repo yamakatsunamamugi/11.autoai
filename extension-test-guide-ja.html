@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>Chrome拡張機能テストガイド</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif;
+      max-width: 900px;
+      margin: 40px auto;
+      padding: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+    }
+    .container {
+      background: white;
+      border-radius: 16px;
+      padding: 40px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    h1 {
+      color: #667eea;
+      margin-bottom: 10px;
+      font-size: 28px;
+    }
+    .subtitle {
+      color: #666;
+      margin-bottom: 30px;
+      font-size: 14px;
+    }
+    .error-section {
+      background: #fff5f5;
+      border: 2px solid #ff6b6b;
+      border-radius: 12px;
+      padding: 20px;
+      margin: 20px 0;
+    }
+    .error-title {
+      color: #c92a2a;
+      font-weight: bold;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .error-icon {
+      font-size: 24px;
+    }
+    .solution-section {
+      background: #f0fdf4;
+      border: 2px solid #10b981;
+      border-radius: 12px;
+      padding: 25px;
+      margin: 30px 0;
+    }
+    .solution-title {
+      color: #059669;
+      font-weight: bold;
+      font-size: 20px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .step-container {
+      margin: 20px 0;
+    }
+    .step {
+      display: flex;
+      align-items: flex-start;
+      margin: 20px 0;
+      padding: 15px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .step-number {
+      background: #667eea;
+      color: white;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      margin-right: 15px;
+      flex-shrink: 0;
+    }
+    .step-content {
+      flex: 1;
+    }
+    .step-title {
+      font-weight: bold;
+      margin-bottom: 8px;
+      color: #333;
+      font-size: 16px;
+    }
+    .step-detail {
+      color: #666;
+      line-height: 1.6;
+    }
+    code {
+      background: #f3f4f6;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-family: 'Courier New', monospace;
+      color: #e11d48;
+      display: inline-block;
+      margin: 3px 0;
+    }
+    .url-generator {
+      background: #fef3c7;
+      border: 2px solid #fbbf24;
+      border-radius: 12px;
+      padding: 20px;
+      margin: 30px 0;
+    }
+    .url-generator-title {
+      color: #d97706;
+      font-weight: bold;
+      margin-bottom: 15px;
+      font-size: 18px;
+    }
+    .input-group {
+      margin: 15px 0;
+    }
+    .input-group label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: #333;
+    }
+    .text-input {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+    .text-input:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+    .button {
+      background: #667eea;
+      color: white;
+      border: none;
+      padding: 12px 30px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: 600;
+      margin: 10px 5px;
+      transition: all 0.3s;
+    }
+    .button:hover {
+      background: #5a67d8;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+    .generated-url {
+      background: #e0e7ff;
+      border: 2px solid #667eea;
+      border-radius: 8px;
+      padding: 15px;
+      margin: 20px 0;
+      display: none;
+    }
+    .generated-url.show {
+      display: block;
+    }
+    .url-display {
+      background: white;
+      padding: 12px;
+      border-radius: 6px;
+      font-family: monospace;
+      word-break: break-all;
+      margin: 10px 0;
+      border: 1px solid #c7d2fe;
+    }
+    .success-message {
+      background: #d1fae5;
+      color: #065f46;
+      padding: 12px;
+      border-radius: 6px;
+      margin: 10px 0;
+      display: none;
+      border: 1px solid #6ee7b7;
+    }
+    .success-message.show {
+      display: block;
+    }
+    .tip-box {
+      background: #f9fafb;
+      border-left: 4px solid #667eea;
+      padding: 15px;
+      margin: 20px 0;
+    }
+    .tip-title {
+      font-weight: bold;
+      color: #667eea;
+      margin-bottom: 8px;
+    }
+    .alternative {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 30px 0;
+    }
+    .alternative-title {
+      color: #1e40af;
+      font-weight: bold;
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔧 Chrome拡張機能テストガイド</h1>
+    <div class="subtitle">Service Worker登録エラーの解決方法</div>
+    
+    <div class="error-section">
+      <div class="error-title">
+        <span class="error-icon">⚠️</span>
+        エラー: Service worker registration failed. Status code: 3
+      </div>
+      <p><strong>原因：</strong>HTMLファイルを直接ブラウザで開いている（file://プロトコル）ため、Chrome拡張機能のService Workerが正しく動作しません。</p>
+      <p>Chrome拡張機能は、<code>chrome-extension://</code>プロトコル経由でのみ正常に動作します。</p>
+    </div>
+
+    <div class="solution-section">
+      <div class="solution-title">
+        <span>✅</span>
+        解決方法
+      </div>
+      
+      <div class="step-container">
+        <div class="step">
+          <div class="step-number">1</div>
+          <div class="step-content">
+            <div class="step-title">Chrome拡張機能の管理ページを開く</div>
+            <div class="step-detail">
+              Chromeのアドレスバーに以下を入力してEnterキーを押してください：<br>
+              <code>chrome://extensions/</code>
+            </div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-number">2</div>
+          <div class="step-content">
+            <div class="step-title">デベロッパーモードを有効にする</div>
+            <div class="step-detail">
+              ページ右上の「デベロッパーモード」のトグルスイッチをONにしてください。
+            </div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-number">3</div>
+          <div class="step-content">
+            <div class="step-title">拡張機能を読み込む</div>
+            <div class="step-detail">
+              「パッケージ化されていない拡張機能を読み込む」ボタンをクリックし、以下のフォルダを選択してください：<br>
+              <code>/Users/roudousha/Dropbox/11.autoai</code>
+            </div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-number">4</div>
+          <div class="step-content">
+            <div class="step-title">拡張機能IDをコピーする</div>
+            <div class="step-detail">
+              読み込まれた拡張機能の下に表示される「ID」をコピーしてください。<br>
+              例：<code>abcdefghijklmnopqrstuvwxyz123456</code>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="url-generator">
+      <div class="url-generator-title">🔗 テストページURLジェネレーター</div>
+      <div class="input-group">
+        <label for="extensionId">拡張機能IDを入力してください：</label>
+        <input type="text" class="text-input" id="extensionId" placeholder="例: abcdefghijklmnopqrstuvwxyz123456">
+      </div>
+      <button class="button" onclick="generateUrls()">URLを生成</button>
+      
+      <div class="generated-url" id="generatedUrls">
+        <div style="font-weight: bold; margin-bottom: 10px;">生成されたURL:</div>
+        <div class="url-display" id="testUrl"></div>
+        <button class="button" onclick="copyUrl()">URLをコピー</button>
+        <button class="button" onclick="openTestPage()">テストページを開く</button>
+      </div>
+      
+      <div class="success-message" id="copySuccess">
+        ✅ URLをクリップボードにコピーしました！
+      </div>
+    </div>
+
+    <div class="tip-box">
+      <div class="tip-title">💡 ヒント</div>
+      <p>拡張機能が正しく読み込まれると、以下の機能が利用可能になります：</p>
+      <ul>
+        <li>Service Workerの自動起動</li>
+        <li>Chrome API（storage、tabs、identityなど）へのアクセス</li>
+        <li>Google Sheets APIとの連携</li>
+        <li>タスクリストの生成と実行</li>
+      </ul>
+    </div>
+
+    <div class="alternative">
+      <div class="alternative-title">🎯 別の方法：拡張機能のポップアップを使用</div>
+      <ol>
+        <li>Chromeのツールバーに表示される拡張機能アイコンをクリック</li>
+        <li>拡張機能のUIウィンドウが開きます</li>
+        <li>Service Workerが自動的に初期化され、すべての機能が利用可能になります</li>
+      </ol>
+    </div>
+
+    <div class="tip-box">
+      <div class="tip-title">🔍 デバッグのヒント</div>
+      <p>Service Workerのログを確認するには：</p>
+      <ol>
+        <li><code>chrome://extensions/</code>を開く</li>
+        <li>あなたの拡張機能を見つける</li>
+        <li>「ビューを検証: Service Worker」をクリック</li>
+        <li>開発者ツールのコンソールでログを確認</li>
+      </ol>
+    </div>
+  </div>
+
+  <script>
+    function generateUrls() {
+      const extensionId = document.getElementById('extensionId').value.trim();
+      if (!extensionId) {
+        alert('拡張機能IDを入力してください');
+        return;
+      }
+      
+      const testUrl = `chrome-extension://${extensionId}/tests/test-tasklist.html`;
+      document.getElementById('testUrl').textContent = testUrl;
+      document.getElementById('generatedUrls').classList.add('show');
+    }
+    
+    function copyUrl() {
+      const url = document.getElementById('testUrl').textContent;
+      navigator.clipboard.writeText(url).then(() => {
+        const successMsg = document.getElementById('copySuccess');
+        successMsg.classList.add('show');
+        setTimeout(() => {
+          successMsg.classList.remove('show');
+        }, 3000);
+      }).catch(err => {
+        alert('コピーに失敗しました: ' + err);
+      });
+    }
+    
+    function openTestPage() {
+      const url = document.getElementById('testUrl').textContent;
+      if (url) {
+        window.open(url, '_blank');
+      }
+    }
+    
+    // ページ読み込み時に拡張機能コンテキストをチェック
+    window.addEventListener('DOMContentLoaded', () => {
+      if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id) {
+        // 拡張機能コンテキストで実行されている
+        const successBox = document.createElement('div');
+        successBox.style.cssText = 'background: #d1fae5; color: #065f46; padding: 15px; border-radius: 8px; margin: 20px 0; border: 2px solid #10b981;';
+        successBox.innerHTML = '✅ <strong>拡張機能コンテキストで実行中！</strong> Service Workerは正常に動作しています。';
+        document.querySelector('.container').insertBefore(successBox, document.querySelector('.error-section'));
+        document.querySelector('.error-section').style.display = 'none';
+      }
+    });
+  </script>
+</body>
+</html>
