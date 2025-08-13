@@ -64,7 +64,7 @@ function getColumnIndex(columnName) {
 
 // 初期化
 document.addEventListener('DOMContentLoaded', () => {
-  console.log('🚀 スプレッドシート読み込みテストツール初期化');
+  originalConsoleLog('🚀 スプレッドシート読み込みテストツール初期化');
   
   // DOM要素の取得
   initializeElements();
@@ -103,6 +103,8 @@ function initializeElements() {
   elements.tasksTableContainer = document.getElementById('tasksTableContainer');
   elements.rowControlsContainer = document.getElementById('rowControlsContainer');
   elements.columnControlsContainer = document.getElementById('columnControlsContainer');
+  elements.controlMappingDiagram = document.getElementById('controlMappingDiagram');
+  elements.variablesTree = document.getElementById('variablesTree');
 }
 
 // イベントリスナーの設定
@@ -220,9 +222,60 @@ function addLog(message, level = 'INFO', details = null) {
     elements.logsViewer.scrollTop = elements.logsViewer.scrollHeight;
   }
   
-  // コンソールにも出力
-  console.log(`[${timestamp}] [${level}] ${message}`, details || '');
+  // 元のコンソールに出力（ループを避けるため）
+  originalConsoleLog(`[${timestamp}] [${level}] ${message}`, details || '');
 }
+
+// コンソールログをキャプチャしてログビューアにも表示
+const originalConsoleLog = console.log;
+const originalConsoleInfo = console.info;
+const originalConsoleWarn = console.warn;
+const originalConsoleError = console.error;
+
+console.log = function(...args) {
+  originalConsoleLog.apply(console, args);
+  if (elements.logsViewer) {
+    const message = args.map(arg => {
+      if (typeof arg === 'object') {
+        try {
+          return JSON.stringify(arg, null, 2);
+        } catch (e) {
+          return String(arg);
+        }
+      }
+      return String(arg);
+    }).join(' ');
+    
+    // addLogの重複を避けるため、内部フラグをチェック
+    if (!message.includes('[デバッグ]') && !message.includes('[制御マッピング]')) {
+      addLog(message, 'INFO');
+    }
+  }
+};
+
+console.info = function(...args) {
+  originalConsoleInfo.apply(console, args);
+  if (elements.logsViewer && args[0] && typeof args[0] === 'string') {
+    const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' ');
+    addLog(message, 'INFO');
+  }
+};
+
+console.warn = function(...args) {
+  originalConsoleWarn.apply(console, args);
+  if (elements.logsViewer && args[0] && typeof args[0] === 'string') {
+    const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' ');
+    addLog(message, 'WARNING');
+  }
+};
+
+console.error = function(...args) {
+  originalConsoleError.apply(console, args);
+  if (elements.logsViewer && args[0] && typeof args[0] === 'string') {
+    const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' ');
+    addLog(message, 'ERROR');
+  }
+};
 
 // ログカテゴリの判定
 function getLogCategory(message) {
@@ -237,7 +290,16 @@ function getLogCategory(message) {
 
 // デバッグ情報の更新
 function updateDebugInfo() {
-  if (!elements.variablesTree) return;
+  const variablesTree = document.getElementById('variablesTree');
+  const currentStepInfo = document.getElementById('currentStepInfo');
+  const debugOutput = document.getElementById('debugOutput');
+  
+  console.log('[デバッグ] 情報更新開始');
+  
+  if (!variablesTree && !currentStepInfo && !debugOutput) {
+    console.log('[デバッグ] デバッグ要素が見つかりません');
+    return;
+  }
   
   const debugData = {
     currentStep: currentProcessingStep,
@@ -265,10 +327,30 @@ function updateDebugInfo() {
     } : null
   };
   
-  elements.variablesTree.innerHTML = `<pre>${JSON.stringify(debugData, null, 2)}</pre>`;
+  if (variablesTree) {
+    variablesTree.innerHTML = '';
+    const pre = document.createElement('pre');
+    pre.style.margin = '0';
+    pre.style.fontSize = '12px';
+    pre.textContent = JSON.stringify(debugData, null, 2);
+    variablesTree.appendChild(pre);
+    console.log('[デバッグ] 変数ツリー更新完了');
+  }
+  
+  // デバッグ出力エリアも更新
+  const debugOutputElement = document.getElementById('debugOutput');
+  if (debugOutputElement) {
+    const entry = document.createElement('div');
+    entry.className = 'debug-entry';
+    entry.innerHTML = `
+      <span class="debug-time">${new Date().toLocaleTimeString()}</span>
+      <span class="debug-step">${currentProcessingStep}</span>
+    `;
+    debugOutputElement.appendChild(entry);
+    debugOutputElement.scrollTop = debugOutputElement.scrollHeight;
+  }
   
   // 現在のステップ情報を更新
-  const currentStepInfo = document.getElementById('currentStepInfo');
   if (currentStepInfo) {
     currentStepInfo.textContent = currentProcessingStep;
   }
@@ -276,6 +358,7 @@ function updateDebugInfo() {
 
 // 読み込み処理
 async function handleLoad() {
+  console.log('====== スプレッドシート読み込み開始 ======');
   const url = elements.spreadsheetUrl.value.trim();
   
   if (!url) {
@@ -343,6 +426,8 @@ async function handleLoad() {
     updateDebugInfo(); // デバッグ情報を更新
     perfSteps.push({ name: '結果表示', time: performance.now() - stepStart });
     
+    console.log('====== 処理完了 ======');
+    
     // パフォーマンス測定終了
     const totalTime = performance.now() - perfStart;
     updatePerformanceDisplay(perfSteps, totalTime);
@@ -360,6 +445,7 @@ async function handleLoad() {
     console.error('読み込みエラー:', error);
     updateStatus(`エラー: ${error.message}`, 'error');
     addLog(`エラー: ${error.message}`, 'ERROR');
+    updateDebugInfo();
   } finally {
     elements.loadBtn.disabled = false;
   }
@@ -843,8 +929,11 @@ function displayControls(controls) {
   }
   
   // 制御マッピング図の生成
-  if (elements.controlMappingDiagram) {
+  console.log('[制御マッピング] 制御情報:', controls);
+  if (controls && (controls.rowControls || controls.columnControls)) {
     displayControlMappingGrid(controls);
+  } else {
+    console.log('[制御マッピング] 制御情報がないためスキップ');
   }
 }
 
@@ -942,15 +1031,23 @@ function displayTasksTable() {
   `;
   container.appendChild(controlPanel);
   
-  // タスクテーブル（通常のテーブル形式）
-  const table = document.createElement('table');
-  table.className = 'tasks-table';
+  // AIタスクとレポートタスクを分離
+  const aiTasks = currentTaskList.tasks.filter(task => task.taskType !== 'report');
+  const reportTasks = currentTaskList.tasks.filter(task => task.taskType === 'report');
   
-  const thead = document.createElement('thead');
-  thead.innerHTML = `
+  // AIタスクテーブル
+  const aiTableTitle = document.createElement('h3');
+  aiTableTitle.textContent = 'AIタスク一覧';
+  aiTableTitle.style.marginTop = '20px';
+  container.appendChild(aiTableTitle);
+  
+  const aiTable = document.createElement('table');
+  aiTable.className = 'tasks-table ai-tasks-table';
+  
+  const aiThead = document.createElement('thead');
+  aiThead.innerHTML = `
     <tr>
       <th>AI種別</th>
-      <th>タイプ</th>
       <th>実行可能</th>
       <th>プロンプトセル</th>
       <th>回答セル</th>
@@ -966,11 +1063,11 @@ function displayTasksTable() {
       <th class="detail-column" title="メタデータ">メタデータ</th>
     </tr>
   `;
-  table.appendChild(thead);
+  aiTable.appendChild(aiThead);
   
-  // ボディ
-  const tbody = document.createElement('tbody');
-  currentTaskList.tasks.forEach(task => {
+  // AIタスクのボディ
+  const aiTbody = document.createElement('tbody');
+  aiTasks.forEach(task => {
     const tr = document.createElement('tr');
     
     // タスクが実行可能かどうかでスタイルを変更
@@ -1069,7 +1166,6 @@ function displayTasksTable() {
     
     tr.innerHTML = `
       <td class="task-ai-group ${aiGroupClass}">${aiGroupType}</td>
-      <td class="task-type">${task.taskType || 'ai'}</td>
       <td class="task-executable ${executableClass}">${executableIcon}</td>
       <td class="task-prompt-cell">${promptCell}</td>
       <td class="task-answer-cell">${answerCell}</td>
@@ -1087,20 +1183,75 @@ function displayTasksTable() {
       <td class="task-metadata detail-column" title="${metadataText}">${displayMetadata}</td>
     `;
     
-    tbody.appendChild(tr);
+    aiTbody.appendChild(tr);
   });
   
-  table.appendChild(tbody);
-  container.appendChild(table);
+  aiTable.appendChild(aiTbody);
+  container.appendChild(aiTable);
   
-  // ソート・フィルタ・検索機能の初期化
-  initializeTaskTableControls(table, currentTaskList.tasks);
+  // レポートタスクテーブル（レポートタスクがある場合のみ表示）
+  if (reportTasks.length > 0) {
+    const reportTableTitle = document.createElement('h3');
+    reportTableTitle.textContent = 'レポート化タスク一覧';
+    reportTableTitle.style.marginTop = '30px';
+    container.appendChild(reportTableTitle);
+    
+    const reportTable = document.createElement('table');
+    reportTable.className = 'tasks-table report-tasks-table';
+    
+    const reportThead = document.createElement('thead');
+    reportThead.innerHTML = `
+      <tr>
+        <th>タイプ</th>
+        <th>実行可能</th>
+        <th>ソース列</th>
+        <th>レポート列</th>
+        <th>行</th>
+        <th>依存タスク</th>
+        <th class="detail-column" title="タスクID">タスクID</th>
+        <th class="detail-column" title="グループID">グループID</th>
+      </tr>
+    `;
+    reportTable.appendChild(reportThead);
+    
+    const reportTbody = document.createElement('tbody');
+    reportTasks.forEach(task => {
+      const tr = document.createElement('tr');
+      
+      // レポートタスクの実行可能判定
+      const isExecutable = !task.skipReason;
+      const executableIcon = isExecutable ? '○' : '×';
+      const executableClass = isExecutable ? 'executable-yes' : 'executable-no';
+      
+      const displayGroupId = task.groupId || '<span class="null-value">-</span>';
+      const dependsOn = task.dependsOn || '<span class="null-value">-</span>';
+      
+      tr.innerHTML = `
+        <td class="task-type">レポート化</td>
+        <td class="task-executable ${executableClass}">${executableIcon}</td>
+        <td class="task-source-column">${task.sourceColumn || '-'}列</td>
+        <td class="task-report-column">${task.reportColumn || task.column}列</td>
+        <td class="task-row">${task.row}行目</td>
+        <td class="task-depends-on">${dependsOn}</td>
+        <td class="task-id detail-column" title="${task.id}">${task.id || '<span class="null-value">-</span>'}</td>
+        <td class="task-group-id detail-column" title="${task.groupId || ''}">${displayGroupId}</td>
+      `;
+      
+      reportTbody.appendChild(tr);
+    });
+    
+    reportTable.appendChild(reportTbody);
+    container.appendChild(reportTable);
+  }
+  
+  // ソート・フィルタ・検索機能の初期化（AIタスクテーブルに対して）
+  initializeTaskTableControls(aiTable, aiTasks);
   
   // 詳細列の初期状態を非表示にする
   toggleDetailColumnsFunction(false);
   
-  // プロンプトクリック機能を初期化
-  initializePromptClickFeature(table);
+  // プロンプトクリック機能を初期化（AIテーブルに対して）
+  initializePromptClickFeature(aiTable);
   
   // 詳細情報セクション（折りたたみ可能）
   const detailsSection = document.createElement('div');
@@ -1702,7 +1853,12 @@ function initializeColumnResize(table) {
 // 制御マッピンググリッドの表示
 function displayControlMappingGrid(controls) {
   const container = document.getElementById('controlMappingDiagram');
-  if (!container) return;
+  if (!container) {
+    console.error('[制御マッピング] コンテナが見つかりません');
+    return;
+  }
+  
+  console.log('[制御マッピング] グリッド表示開始', controls);
   
   container.innerHTML = '';
   
@@ -1754,14 +1910,14 @@ function displayControlMappingGrid(controls) {
       const colLetter = String.fromCharCode(65 + col);
       
       // 行制御のチェック
-      const rowControl = controls.rowControls?.find(c => c.row === row);
+      const rowControl = controls?.rowControls?.find(c => c.row === row);
       if (rowControl) {
         td.classList.add('has-control', `control-${rowControl.type}`);
         td.title = `行${row}: ${rowControl.type}`;
       }
       
       // 列制御のチェック
-      const colControl = controls.columnControls?.find(c => c.column === colLetter);
+      const colControl = controls?.columnControls?.find(c => c.column === colLetter);
       if (colControl) {
         td.classList.add('has-control', `control-${colControl.type}`);
         td.title = (td.title ? td.title + ', ' : '') + `${colLetter}列: ${colControl.type}`;

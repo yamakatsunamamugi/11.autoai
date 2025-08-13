@@ -255,8 +255,30 @@ main {
   box-shadow: 0 4px 12px rgba(79, 172, 254, 0.3);
 }
 
+.btn-test-window {
+  background: linear-gradient(135deg, #8e44ad, #9b59b6);
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-test-window:hover:not(:disabled) {
+  background: linear-gradient(135deg, #7d3c98, #8e44ad);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(142, 68, 173, 0.3);
+}
+
 .btn-test-report:disabled,
-.btn-test-spreadsheet:disabled {
+.btn-test-spreadsheet:disabled,
+.btn-test-window:disabled {
   opacity: 0.5;
   cursor: not-allowed;
   transform: none;

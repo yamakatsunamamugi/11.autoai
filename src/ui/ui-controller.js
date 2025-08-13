@@ -603,6 +603,79 @@ generateReportBtn.addEventListener("click", () => {
   }
 });
 
+// ===== イベントリスナー: ウィンドウ作成テスト =====
+const windowCreationTestBtn = document.getElementById("windowCreationTestBtn");
+windowCreationTestBtn.addEventListener("click", async () => {
+  console.log("ウィンドウ作成テストボタンが押されました");
+  
+  try {
+    // 現在のURLを取得
+    const urlInputs = document.querySelectorAll(".url-input");
+    const url = urlInputs[0]?.value;
+    
+    if (!url) {
+      alert("スプレッドシートURLを入力してください");
+      return;
+    }
+    
+    // スプレッドシートを読み込んでタスクを生成
+    updateStatus("タスクを生成中...", "loading");
+    
+    // background.jsに読み込みを依頼
+    const response = await chrome.runtime.sendMessage({
+      action: "loadSpreadsheet",
+      url: url
+    });
+    
+    if (!response.success) {
+      throw new Error(response.error || "読み込み失敗");
+    }
+    
+    updateStatus("ウィンドウテストを準備中...", "loading");
+    
+    // ウィンドウ作成テストページを開く
+    const testUrl = chrome.runtime.getURL("tests/test-window-creation.html");
+    
+    // ウィンドウ設定
+    const windowFeatures = `
+      width=1400,
+      height=900,
+      left=${(screen.width - 1400) / 2},
+      top=${(screen.height - 900) / 2},
+      scrollbars=yes,
+      resizable=yes,
+      status=no,
+      menubar=no,
+      toolbar=no,
+      location=no
+    `.replace(/\s+/g, '');
+    
+    const testWindow = window.open(testUrl, "WindowCreationTest", windowFeatures);
+    
+    if (!testWindow) {
+      throw new Error("ポップアップブロッカーによりウィンドウを開けませんでした");
+    }
+    
+    updateStatus("ウィンドウ作成テスト実行中", "running");
+    
+    // テストウィンドウにデータを渡す
+    testWindow.addEventListener('load', () => {
+      setTimeout(() => {
+        testWindow.postMessage({
+          type: 'INIT_TEST',
+          spreadsheetData: response,
+          taskCount: response.taskCount
+        }, '*');
+      }, 500);
+    });
+    
+  } catch (error) {
+    console.error("ウィンドウ作成テストエラー:", error);
+    updateStatus(`エラー: ${error.message}`, "error");
+    alert(`ウィンドウ作成テストの起動に失敗しました: ${error.message}`);
+  }
+});
+
 // ===== イベントリスナー: スプレッドシート読み込みテスト =====
 const showTaskListTestBtn = document.getElementById("showTaskListTestBtn");
 showTaskListTestBtn.addEventListener("click", () => {

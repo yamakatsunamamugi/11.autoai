@@ -42,17 +42,34 @@ export class SimpleColumnControl {
       if (colName) additionalPromptColumns.push(colName);
     }
     
-    // レポート化列を検出
+    // レポート化列を検出（作業グループの直後のみ）
     let reportColumn = null;
     if (spreadsheetData && spreadsheetData.menuRow) {
-      // メニュー行から「レポート化」列を探す
       const menuRowData = spreadsheetData.menuRow.data || [];
-      for (let i = promptIndex; i < menuRowData.length; i++) {
-        if (menuRowData[i] === "レポート化") {
-          reportColumn = this.getColumnName(i);
-          console.log(`[SimpleColumnControl] レポート化列検出: ${reportColumn} (index: ${i})`);
-          break;
+      
+      // 作業グループの終端を判定
+      let groupEndIndex = -1;
+      
+      if (aiType === "3種類（ChatGPT・Gemini・Claude）" || aiType === "3種類" || aiType === "3type") {
+        // 3種類AIの場合：プロンプト + 3つの回答列 = 計4列
+        groupEndIndex = promptIndex + 3; // Gemini回答列のインデックス
+      } else {
+        // 単独AIの場合：プロンプト + 1つの回答列 = 計2列
+        groupEndIndex = promptIndex + 1; // 回答列のインデックス
+      }
+      
+      // グループの直後の列（groupEndIndex + 1）をチェック
+      const nextColumnIndex = groupEndIndex + 1;
+      if (nextColumnIndex < menuRowData.length) {
+        const nextColumnHeader = menuRowData[nextColumnIndex];
+        if (nextColumnHeader === "レポート化") {
+          reportColumn = this.getColumnName(nextColumnIndex);
+          console.log(`[SimpleColumnControl] レポート化列検出: ${reportColumn} (index: ${nextColumnIndex}, プロンプト列: ${promptColumn}の直後)`);
+        } else {
+          console.log(`[SimpleColumnControl] ${promptColumn}列グループの直後は「${nextColumnHeader}」（レポート化列ではない）`);
         }
+      } else {
+        console.log(`[SimpleColumnControl] ${promptColumn}列グループの後に列がない`);
       }
     }
 
@@ -61,10 +78,7 @@ export class SimpleColumnControl {
       // 回答列はプロンプトの直後から始まる
       const answerStartIndex = promptIndex + 1;
       
-      // レポート化列が検出されていない場合は、デフォルトの位置を使用
-      if (!reportColumn) {
-        reportColumn = this.getColumnName(promptIndex + 4); // Gemini回答の次
-      }
+      // レポート化列が検出されていない場合はnullのまま
 
       const columns = [];
       const logCol = this.getColumnName(promptIndex - 1);
@@ -96,10 +110,7 @@ export class SimpleColumnControl {
       // 回答列はプロンプトの直後
       const answerIndex = promptIndex + 1;
       
-      // レポート化列が検出されていない場合は、デフォルトの位置を使用
-      if (!reportColumn) {
-        reportColumn = this.getColumnName(answerIndex + 1); // 回答の次
-      }
+      // レポート化列が検出されていない場合はnullのまま
       
       const columns = [];
       const logCol = this.getColumnName(promptIndex - 1);

@@ -296,50 +296,63 @@ class TaskGenerator {
       if (columnGroup.reportColumn) {
         console.log(`[TaskGenerator] レポート化列あり: ${columnGroup.reportColumn}, 行${workRow.number}`);
         
-        // 最初の回答列のみからレポート生成（重複を防ぐため）
-        const firstAnswerColumn = aiAnswerColumns[0];
-        if (firstAnswerColumn) {
-          console.log(`[TaskGenerator] レポートタスク候補: ${firstAnswerColumn}列`);
-          
-          // 回答がない場合はレポートタスクもスキップ
-          const answerText = this.getCellValue(
-            spreadsheetData,
-            firstAnswerColumn,
-            workRow.number,
-          );
-          
-          console.log(`[TaskGenerator] ${firstAnswerColumn}${workRow.number}の回答確認: "${answerText?.substring(0, 50) || '(なし)'}"`);
-          
-          if (answerText && answerText.trim()) {
-            // この列を処理すべきかチェック
+        // プロンプトの存在確認（同じ作業グループのプロンプト列）
+        const promptText = this.getCellValue(
+          spreadsheetData,
+          columnGroup.promptColumn,
+          workRow.number,
+        );
+        
+        // プロンプトがない場合はレポート化タスクもスキップ
+        if (!promptText || promptText.trim().length === 0) {
+          console.log(`[TaskGenerator] 行${workRow.number}: プロンプトなし、レポート化スキップ`);
+        } else {
+          // 最初の回答列のみからレポート生成（重複を防ぐため）
+          const firstAnswerColumn = aiAnswerColumns[0];
+          if (firstAnswerColumn) {
+            console.log(`[TaskGenerator] レポートタスク候補: ${firstAnswerColumn}列`);
+            
+            // この列を処理すべきかチェック（レポート化列自体の制御をチェック）
             if (
               SimpleColumnControl.shouldProcessColumn(
-                firstAnswerColumn,
+                columnGroup.reportColumn,
                 columnGroup,
                 columnControls,
               )
             ) {
-              // レポート化タスクを作成
-              const reportTask = this.createReportTask(
-                firstAnswerColumn,  // ソース列（AI回答列）
-                columnGroup.reportColumn,  // レポート化列
-                workRow.number,
-                columnGroup.aiMapping[firstAnswerColumn],  // AIタイプ
-                columnGroup,
+              // レポート化列の既存データチェック
+              const existingReport = this.getCellValue(
                 spreadsheetData,
+                columnGroup.reportColumn,
+                workRow.number,
               );
-
-              if (reportTask) {
-                console.log(`[TaskGenerator] レポートタスク作成成功: ${columnGroup.reportColumn}${workRow.number}`);
-                tasks.push(reportTask);
+              
+              if (existingReport && existingReport.trim()) {
+                console.log(`[TaskGenerator] ${columnGroup.reportColumn}${workRow.number}は既にレポート作成済み`);
               } else {
-                console.log(`[TaskGenerator] レポートタスク作成スキップ: ${columnGroup.reportColumn}${workRow.number}`);
+                // レポート化タスクを作成
+                const reportTask = this.createReportTask(
+                  firstAnswerColumn,  // ソース列（AI回答列）
+                  columnGroup.reportColumn,  // レポート化列
+                  workRow.number,
+                  columnGroup.aiMapping[firstAnswerColumn],  // AIタイプ
+                  columnGroup,
+                  spreadsheetData,
+                );
+
+                if (reportTask) {
+                  // 依存関係を設定（AIタスク完了後に実行）
+                  const aiTaskId = `${firstAnswerColumn}${workRow.number}`;
+                  reportTask.dependsOn = aiTaskId;
+                  console.log(`[TaskGenerator] レポートタスク作成成功: ${columnGroup.reportColumn}${workRow.number} (依存: ${aiTaskId})`);
+                  tasks.push(reportTask);
+                } else {
+                  console.log(`[TaskGenerator] レポートタスク作成スキップ: ${columnGroup.reportColumn}${workRow.number}`);
+                }
               }
             } else {
-              console.log(`[TaskGenerator] ${firstAnswerColumn}列はスキップ（列制御）`);
+              console.log(`[TaskGenerator] ${columnGroup.reportColumn}列はスキップ（列制御）`);
             }
-          } else {
-            console.log(`[TaskGenerator] ${firstAnswerColumn}${workRow.number}に回答なし、レポートタスクスキップ`);
           }
         }
       } else {
@@ -497,19 +510,7 @@ class TaskGenerator {
     columnGroup,
     spreadsheetData,
   ) {
-    // 既にレポートが作成されている場合はスキップ
-    const existingReport = this.getCellValue(
-      spreadsheetData,
-      reportColumn,
-      rowNumber,
-    );
-
-    if (existingReport && existingReport.trim().length > 0) {
-      console.log(
-        `[TaskGenerator] ${reportColumn}${rowNumber}はレポート作成済み`,
-      );
-      return null;
-    }
+    // 既存レポートのチェックは呼び出し元で実施済みのため削除
 
     // aiTypeを正規化（singleの場合はchatgptにデフォルト）
     let normalizedAiType = aiType;
@@ -518,16 +519,40 @@ class TaskGenerator {
       normalizedAiType = "chatgpt";
     }
     
+    // 元のプロンプトテキストを取得（参考情報として）
+    const originalPromptText = this.getCellValue(
+      spreadsheetData,
+      columnGroup.promptColumn,
+      rowNumber
+    ) || "";
+    
+    // モデル情報を取得（必要に応じて）
+    let extractedModel = null;
+    if (spreadsheetData.modelRow && spreadsheetData.values) {
+      const modelRowIndex = spreadsheetData.modelRow.index;
+      const modelColumnIndex = this.getColumnIndex(sourceColumn);
+      if (spreadsheetData.values[modelRowIndex]) {
+        const modelValue = spreadsheetData.values[modelRowIndex][modelColumnIndex];
+        if (modelValue && modelValue.trim()) {
+          extractedModel = modelValue.trim();
+        }
+      }
+    }
+    
     const taskData = {
       id: this.generateTaskId(reportColumn, rowNumber),
       column: reportColumn,
       row: rowNumber,
       aiType: normalizedAiType || "chatgpt",  // aiTypeがない場合はchatgptを設定
       taskType: "report",  // タスクタイプを"report"に設定
-      sourceColumn: sourceColumn,  // AI回答を取得する列
+      sourceColumn: sourceColumn,  // AI回答を取得する列（実行時にここから回答を取得）
       reportColumn: reportColumn,  // レポートURLを書き込む列
       promptColumn: columnGroup.promptColumn || "",  // プロンプト列（参照用）
-      prompt: "レポート生成タスク",  // レポートタスクの場合は説明的なテキストを設定
+      prompt: "レポート生成タスク",  // 説明的なテキスト（実際の内容は実行時にsourceColumnから取得）
+      
+      // スプレッドシート情報（レポート生成時に必要）
+      spreadsheetId: spreadsheetData.spreadsheetId || null,  // スプレッドシートID
+      sheetGid: spreadsheetData.gid || null,  // シートのGID
       
       // グループID（必須）
       groupId: `group_row${rowNumber}_report_${reportColumn}`,
@@ -537,8 +562,19 @@ class TaskGenerator {
         type: "report",
         sourceColumn: sourceColumn,
         reportColumn: reportColumn,
+        promptColumn: columnGroup.promptColumn,  // プロンプト列も含める
         columns: [], // 互換性のため空配列を設定
       },
+      
+      // モデル情報（取得できた場合）
+      ...(extractedModel && { model: extractedModel }),
+      
+      // メタデータ（追加情報）
+      metadata: {
+        originalPrompt: originalPromptText,  // 元のプロンプトテキスト（参考用）
+        columnGroupType: columnGroup.type,  // 元の列グループタイプ（single/3type）
+        note: "AI回答は実行時にsourceColumnから取得"  // 実装メモ
+      }
     };
     
     // デバッグログ

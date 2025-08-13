@@ -32,10 +32,19 @@
         e.stopPropagation();
         
         const value = e.target.dataset.value;
+        const action = e.target.dataset.action;
         const menu = e.target.closest('.dropdown-menu');
         const targetId = menu.dataset.for;
         const input = document.getElementById(targetId);
         
+        // 特殊アクション（3連続テスト）の処理
+        if (action === 'consecutive-test') {
+          menu.style.display = 'none';
+          handleConsecutiveTest(targetId);
+          return;
+        }
+        
+        // 通常のプロンプト選択
         if (input && value) {
           input.value = value;
           menu.style.display = 'none';
@@ -70,6 +79,68 @@
     });
   }
 
+  // 3連続テストハンドラー
+  function handleConsecutiveTest(targetId) {
+    console.log(`🔄 3連続テスト開始: ${targetId}`);
+    
+    // テスト用のプロンプトを定義
+    const testPrompts = [
+      '今日は何日ですか？',
+      '1+1は何ですか？',
+      'こんにちは、調子はどうですか？'
+    ];
+    
+    // AIタイプを特定（targetIdから）
+    const aiType = targetId.replace('-prompt', '');
+    const inputElement = document.getElementById(targetId);
+    
+    if (!inputElement) {
+      console.error(`入力要素が見つかりません: ${targetId}`);
+      return;
+    }
+    
+    // プロンプトを順番に送信する関数
+    let currentIndex = 0;
+    
+    function sendNextPrompt() {
+      if (currentIndex >= testPrompts.length) {
+        console.log(`✅ ${aiType}の3連続テスト完了`);
+        // 元のプロンプトに戻す
+        inputElement.value = '桃太郎について歴史を解説して';
+        return;
+      }
+      
+      const prompt = testPrompts[currentIndex];
+      console.log(`📝 送信 ${currentIndex + 1}/3: ${prompt}`);
+      
+      // プロンプトを設定
+      inputElement.value = prompt;
+      
+      // 入力イベントを発火
+      const event = new Event('input', { bubbles: true });
+      inputElement.dispatchEvent(event);
+      
+      // 実際の送信をシミュレート（統合テストボタンをクリック）
+      setTimeout(() => {
+        // 統合テスト開始ボタンを探す
+        const startButton = document.getElementById('start-integrated-test');
+        if (startButton && currentIndex === 0) {
+          // 最初の時だけボタンをクリック
+          console.log(`🚀 ${aiType}のテストを開始`);
+          startButton.click();
+        }
+        
+        currentIndex++;
+        
+        // 次のプロンプトを送信（5秒間隔）
+        setTimeout(sendNextPrompt, 5000);
+      }, 500);
+    }
+    
+    // テスト開始
+    sendNextPrompt();
+  }
+  
   // DOMContentLoaded イベントリスナー
   document.addEventListener('DOMContentLoaded', function() {
     console.log('AI自動操作統合テスト - 初期化開始');

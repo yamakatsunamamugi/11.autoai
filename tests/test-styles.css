@@ -2047,8 +2047,9 @@ body {
 
 .logs-viewer {
   flex: 1;
-  background: #1e1e1e;
-  color: #d4d4d4;
+  background: #ffffff;
+  color: #333333;
+  border: 1px solid #ddd;
   border-radius: 8px;
   padding: 15px;
   font-family: 'Courier New', monospace;
@@ -2058,13 +2059,13 @@ body {
 
 .log-entry {
   padding: 4px 0;
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid #e0e0e0;
   display: flex;
   gap: 10px;
 }
 
 .log-timestamp {
-  color: #808080;
+  color: #666666;
   min-width: 80px;
 }
 
@@ -2073,11 +2074,11 @@ body {
   font-weight: 600;
 }
 
-.log-level.DEBUG { color: #808080; }
-.log-level.INFO { color: #4fc3f7; }
-.log-level.WARNING { color: #ffa726; }
-.log-level.ERROR { color: #ef5350; }
-.log-level.SUCCESS { color: #66bb6a; }
+.log-level.DEBUG { color: #666666; background: #f5f5f5; padding: 2px 6px; border-radius: 3px; }
+.log-level.INFO { color: #1976d2; background: #e3f2fd; padding: 2px 6px; border-radius: 3px; }
+.log-level.WARNING { color: #f57c00; background: #fff3e0; padding: 2px 6px; border-radius: 3px; }
+.log-level.ERROR { color: #d32f2f; background: #ffebee; padding: 2px 6px; border-radius: 3px; }
+.log-level.SUCCESS { color: #388e3c; background: #e8f5e9; padding: 2px 6px; border-radius: 3px; }
 
 .log-message {
   flex: 1;

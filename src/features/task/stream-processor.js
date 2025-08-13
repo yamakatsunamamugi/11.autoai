@@ -335,12 +335,18 @@ class StreamProcessor {
       hasMoreTasks: hasMoreTasks,
     });
 
-    // 次のタスクを開始（同じウィンドウで）
+    // 現在のウィンドウを閉じる（タスク完了ごとに必ず閉じる）
+    this.logger.log(`[StreamProcessor] タスク完了によりウィンドウを閉じます: ${column}列`);
+    await this.closeColumnWindow(column);
+    
+    // 次のタスクがある場合は新しいウィンドウで開始
     if (hasMoreTasks) {
+      this.logger.log(`[StreamProcessor] 新しいウィンドウで次のタスクを開始: ${column}列`);
+      // 少し待機してから新しいウィンドウを開く
+      await new Promise(resolve => setTimeout(resolve, 500));
       await this.startColumnProcessing(column);
     } else {
       this.logger.log(`[StreamProcessor] ${column}列のタスクが全て完了`);
-      await this.closeColumnWindow(column);
     }
 
     // 完了した行の隣の列も開始
