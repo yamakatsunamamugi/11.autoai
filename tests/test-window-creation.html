@@ -318,9 +318,81 @@
     </div>
     
     <div class="content">
-      <!-- 情報パネル -->
+      <!-- テスト設定パネル -->
       <div class="info-panel">
-        <h3>テスト情報</h3>
+        <h3>📝 テスト設定</h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-top: 20px;">
+          <!-- AI選択 -->
+          <div>
+            <label style="display: block; margin-bottom: 8px; font-weight: 600;">AIタイプ</label>
+            <select id="aiTypeSelect" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;">
+              <option value="chatgpt">ChatGPT</option>
+              <option value="claude">Claude</option>
+              <option value="gemini">Gemini</option>
+            </select>
+          </div>
+          
+          <!-- 列選択 -->
+          <div>
+            <label style="display: block; margin-bottom: 8px; font-weight: 600;">列（プロンプト列）</label>
+            <select id="columnSelect" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;">
+              <option value="C">C列</option>
+              <option value="F">F列</option>
+              <option value="I">I列</option>
+              <option value="L">L列</option>
+              <option value="O">O列</option>
+              <option value="R">R列</option>
+            </select>
+          </div>
+          
+          <!-- 行番号 -->
+          <div>
+            <label style="display: block; margin-bottom: 8px; font-weight: 600;">行番号</label>
+            <input type="number" id="rowNumber" value="2" min="1" max="100" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;">
+          </div>
+          
+          <!-- ウィンドウ位置 -->
+          <div>
+            <label style="display: block; margin-bottom: 8px; font-weight: 600;">ウィンドウ位置</label>
+            <select id="positionSelect" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;">
+              <option value="0">左上</option>
+              <option value="1">右上</option>
+              <option value="2">左下</option>
+              <option value="3">右下</option>
+            </select>
+          </div>
+          
+          <!-- モデル選択（オプション） -->
+          <div>
+            <label style="display: block; margin-bottom: 8px; font-weight: 600;">モデル（ChatGPT用）</label>
+            <select id="modelSelect" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;">
+              <option value="gpt-4o">GPT-4o</option>
+              <option value="gpt-4">GPT-4</option>
+              <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+              <option value="o1-preview">o1-preview</option>
+            </select>
+          </div>
+          
+          <!-- タスクタイプ -->
+          <div>
+            <label style="display: block; margin-bottom: 8px; font-weight: 600;">タスクタイプ</label>
+            <select id="taskTypeSelect" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;">
+              <option value="ai">AI回答</option>
+              <option value="report">レポート生成</option>
+            </select>
+          </div>
+        </div>
+        
+        <!-- プロンプト入力 -->
+        <div style="margin-top: 20px;">
+          <label style="display: block; margin-bottom: 8px; font-weight: 600;">テストプロンプト</label>
+          <textarea id="promptText" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; min-height: 80px; resize: vertical;" placeholder="テスト用のプロンプトを入力...">これはテストプロンプトです。実際のタスクをシミュレートします。</textarea>
+        </div>
+      </div>
+      
+      <!-- 情報パネル -->
+      <div class="info-panel" style="margin-top: 20px;">
+        <h3>📊 実行状況</h3>
         <div class="info-grid">
           <div class="info-item">
             <div class="info-label">総タスク数</div>
@@ -343,17 +415,20 @@
       
       <!-- コントロールパネル -->
       <div class="control-panel">
-        <button class="btn btn-primary" id="startTestBtn">
-          <span>▶️</span> テスト開始
+        <button class="btn btn-success" id="openWindowWithSettingsBtn">
+          <span>🪟</span> 設定でウィンドウを開く
         </button>
-        <button class="btn btn-success" id="openSingleWindowBtn">
-          <span>🪟</span> 単一ウィンドウを開く
+        <button class="btn btn-primary" id="testStreamProcessorBtn">
+          <span>🔄</span> StreamProcessor実行テスト
         </button>
         <button class="btn btn-primary" id="openMultipleWindowsBtn">
-          <span>🪟</span> 4分割ウィンドウを開く
+          <span>📐</span> 4分割テスト（自動配置）
         </button>
         <button class="btn btn-danger" id="closeAllWindowsBtn">
           <span>✕</span> 全ウィンドウを閉じる
+        </button>
+        <button class="btn btn-secondary" id="closeSelectedWindowBtn">
+          <span>🎯</span> 選択ウィンドウを閉じる
         </button>
         <button class="btn btn-secondary" id="clearLogBtn">
           <span>🗑️</span> ログクリア
@@ -361,7 +436,7 @@
       </div>
       
       <!-- ウィンドウグリッド -->
-      <h3 style="margin-top: 30px; margin-bottom: 15px;">ウィンドウ状態</h3>
+      <h3 style="margin-top: 30px; margin-bottom: 15px;">🪟 アクティブウィンドウ</h3>
       <div class="window-grid" id="windowGrid">
         <div class="empty-state" style="grid-column: 1 / -1;">
           <div class="empty-state-icon">🪟</div>

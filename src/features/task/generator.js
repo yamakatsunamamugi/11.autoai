@@ -4,11 +4,13 @@ import { Task, TaskList, TaskFactory } from "./models.js";
 import { AnswerFilter } from "./filters/index.js";
 import SimpleColumnControl from "./column-control-simple.js";
 import StreamProcessor from "./stream-processor.js";
+import ReportTaskFactory from "../report/report-task-factory.js";
 
 class TaskGenerator {
   constructor() {
     this.answerFilter = new AnswerFilter();
     this.streamProcessor = new StreamProcessor();
+    this.reportTaskFactory = new ReportTaskFactory();
   }
 
   /**
@@ -163,11 +165,48 @@ class TaskGenerator {
   /**
    * 列グループに対してタスクを生成
    * @param {Object} columnGroup - 列グループ情報
-   * @param {Array} controls - 列制御情報
+   * @param {Array} columnControls - 列制御情報
+   * @param {Array} rowControls - 行制御情報
    * @param {Object} spreadsheetData - スプレッドシートデータ
    * @returns {Array} タスクの配列
    */
   generateTasksForGroup(
+    columnGroup,
+    columnControls,
+    rowControls,
+    spreadsheetData,
+  ) {
+    const tasks = [];
+    
+    // AIタスクの生成
+    const aiTasks = this.generateAITasksForGroup(
+      columnGroup,
+      columnControls,
+      rowControls,
+      spreadsheetData
+    );
+    tasks.push(...aiTasks);
+    
+    // レポートタスクの生成（レポート化列がある場合）
+    if (columnGroup.reportColumn) {
+      const reportTasks = this.generateReportTasksForGroup(
+        columnGroup,
+        columnControls,
+        rowControls,
+        spreadsheetData,
+        aiTasks  // AIタスクを参照してdependsOnを設定
+      );
+      tasks.push(...reportTasks);
+    }
+    
+    return tasks;
+  }
+
+  /**
+   * AIタスクを生成
+   * @private
+   */
+  generateAITasksForGroup(
     columnGroup,
     columnControls,
     rowControls,
@@ -292,72 +331,6 @@ class TaskGenerator {
         tasks.push(task);
       }
 
-      // レポート化タスクを生成（レポート化列がある場合）
-      if (columnGroup.reportColumn) {
-        console.log(`[TaskGenerator] レポート化列あり: ${columnGroup.reportColumn}, 行${workRow.number}`);
-        
-        // プロンプトの存在確認（同じ作業グループのプロンプト列）
-        const promptText = this.getCellValue(
-          spreadsheetData,
-          columnGroup.promptColumn,
-          workRow.number,
-        );
-        
-        // プロンプトがない場合はレポート化タスクもスキップ
-        if (!promptText || promptText.trim().length === 0) {
-          console.log(`[TaskGenerator] 行${workRow.number}: プロンプトなし、レポート化スキップ`);
-        } else {
-          // 最初の回答列のみからレポート生成（重複を防ぐため）
-          const firstAnswerColumn = aiAnswerColumns[0];
-          if (firstAnswerColumn) {
-            console.log(`[TaskGenerator] レポートタスク候補: ${firstAnswerColumn}列`);
-            
-            // この列を処理すべきかチェック（レポート化列自体の制御をチェック）
-            if (
-              SimpleColumnControl.shouldProcessColumn(
-                columnGroup.reportColumn,
-                columnGroup,
-                columnControls,
-              )
-            ) {
-              // レポート化列の既存データチェック
-              const existingReport = this.getCellValue(
-                spreadsheetData,
-                columnGroup.reportColumn,
-                workRow.number,
-              );
-              
-              if (existingReport && existingReport.trim()) {
-                console.log(`[TaskGenerator] ${columnGroup.reportColumn}${workRow.number}は既にレポート作成済み`);
-              } else {
-                // レポート化タスクを作成
-                const reportTask = this.createReportTask(
-                  firstAnswerColumn,  // ソース列（AI回答列）
-                  columnGroup.reportColumn,  // レポート化列
-                  workRow.number,
-                  columnGroup.aiMapping[firstAnswerColumn],  // AIタイプ
-                  columnGroup,
-                  spreadsheetData,
-                );
-
-                if (reportTask) {
-                  // 依存関係を設定（AIタスク完了後に実行）
-                  const aiTaskId = `${firstAnswerColumn}${workRow.number}`;
-                  reportTask.dependsOn = aiTaskId;
-                  console.log(`[TaskGenerator] レポートタスク作成成功: ${columnGroup.reportColumn}${workRow.number} (依存: ${aiTaskId})`);
-                  tasks.push(reportTask);
-                } else {
-                  console.log(`[TaskGenerator] レポートタスク作成スキップ: ${columnGroup.reportColumn}${workRow.number}`);
-                }
-              }
-            } else {
-              console.log(`[TaskGenerator] ${columnGroup.reportColumn}列はスキップ（列制御）`);
-            }
-          }
-        }
-      } else {
-        console.log(`[TaskGenerator] レポート化列なし（columnGroup.type: ${columnGroup.type}）`);
-      }
     }
 
     // スキップされた行をまとめてログ出力
@@ -500,7 +473,71 @@ class TaskGenerator {
   }
 
   /**
-   * レポート化タスクを作成
+   * レポートタスクを生成
+   * @private
+   */
+  generateReportTasksForGroup(
+    columnGroup,
+    columnControls,
+    rowControls,
+    spreadsheetData,
+    aiTasks
+  ) {
+    const tasks = [];
+    
+    if (!columnGroup.reportColumn) {
+      return tasks;
+    }
+    
+    console.log(`[TaskGenerator] レポートタスク生成開始:`, {
+      reportColumn: columnGroup.reportColumn,
+      aiTasksCount: aiTasks.length
+    });
+    
+    // AIタスクごとにレポートタスクを生成
+    for (const aiTask of aiTasks) {
+      // レポート化列に既存の値があるかチェック
+      const existingReport = this.getCellValue(
+        spreadsheetData,
+        columnGroup.reportColumn,
+        aiTask.row
+      );
+      
+      if (existingReport && existingReport.trim()) {
+        console.log(
+          `[TaskGenerator] ${columnGroup.reportColumn}${aiTask.row}は既にレポート済み`
+        );
+        continue;
+      }
+      
+      // ReportTaskFactoryを使用してレポートタスクを作成
+      const reportTask = this.reportTaskFactory.createTask({
+        sourceColumn: aiTask.column,  // AI回答列
+        reportColumn: columnGroup.reportColumn,
+        rowNumber: aiTask.row,
+        aiType: aiTask.aiType,
+        columnGroup: columnGroup
+      }, spreadsheetData);
+      
+      // 依存関係を設定（AIタスクが完了してから実行）
+      reportTask.dependsOn = aiTask.id;
+      
+      console.log(`[TaskGenerator] レポートタスク作成:`, {
+        id: reportTask.id,
+        row: reportTask.row,
+        dependsOn: reportTask.dependsOn
+      });
+      
+      tasks.push(reportTask);
+    }
+    
+    console.log(`[TaskGenerator] レポートタスク生成完了: ${tasks.length}件`);
+    return tasks;
+  }
+
+  /**
+   * レポート化タスクを作成（廃止予定）
+   * @deprecated ReportTaskFactoryを使用してください
    */
   createReportTask(
     sourceColumn,

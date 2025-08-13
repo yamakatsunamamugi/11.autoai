@@ -519,7 +519,21 @@
     // 全AI実行ボタン
     const btnRunAll = document.getElementById('btn-run-all');
     if (btnRunAll) {
-      btnRunAll.addEventListener('click', runAllAIs);
+      btnRunAll.addEventListener('click', async () => {
+        // 3連続テストモードかチェック
+        if (window.consecutiveTestState && window.consecutiveTestState.enabled) {
+          console.log('3連続テストモードで実行');
+          // 3連続テストを実行
+          if (window.executeConsecutiveTest) {
+            await window.executeConsecutiveTest();
+          } else {
+            console.error('executeConsecutiveTest関数が見つかりません');
+          }
+        } else {
+          // 通常のテスト実行
+          await runAllAIs();
+        }
+      });
     }
 
   }

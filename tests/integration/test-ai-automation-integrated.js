@@ -68,20 +68,36 @@
     // ホバーエフェクト
     document.addEventListener('mouseover', function(e) {
       if (e.target.classList.contains('dropdown-item')) {
+        // 特殊アクション項目（3連続テストなど）はスキップ
+        if (e.target.dataset.action) {
+          return;
+        }
         e.target.style.backgroundColor = '#f8f9fa';
       }
     });
     
     document.addEventListener('mouseout', function(e) {
       if (e.target.classList.contains('dropdown-item')) {
-        e.target.style.backgroundColor = 'white';
+        // 特殊アクション項目は元の背景色に戻す
+        if (e.target.dataset.action === 'consecutive-test') {
+          e.target.style.backgroundColor = '#fff3cd';
+        } else {
+          e.target.style.backgroundColor = 'white';
+        }
       }
     });
   }
 
-  // 3連続テストハンドラー
+  // 3連続テストの状態管理
+  let consecutiveTestState = {
+    enabled: false,
+    targetId: null,
+    testData: null
+  };
+
+  // 3連続テストハンドラー（準備のみ）
   function handleConsecutiveTest(targetId) {
-    console.log(`🔄 3連続テスト開始: ${targetId}`);
+    console.log(`🔄 3連続テスト準備: ${targetId}`);
     
     // テスト用のプロンプトを定義
     const testPrompts = [
@@ -92,53 +108,148 @@
     
     // AIタイプを特定（targetIdから）
     const aiType = targetId.replace('-prompt', '');
-    const inputElement = document.getElementById(targetId);
     
-    if (!inputElement) {
-      console.error(`入力要素が見つかりません: ${targetId}`);
+    console.log(`📝 3連続テスト用のスプレッドシートデータを作成`);
+    
+    // テスト用のスプレッドシートデータを作成
+    // 本番のTaskGeneratorが理解できる形式で作成
+    const testSpreadsheetData = {
+      spreadsheetId: 'test-consecutive-' + Date.now(),
+      gid: '0',
+      
+      // メニュー行（ヘッダー）
+      menuRow: {
+        index: 0,
+        data: ['番号', '制御', 'ログ', 'プロンプト', `${aiType}回答`]
+      },
+      
+      // AI行（AI種別の定義）
+      aiRow: {
+        index: 1,
+        data: ['', '', '', aiType.toLowerCase(), '']
+      },
+      
+      // 作業行（3つのテストプロンプト）
+      workRows: [
+        {
+          index: 2,
+          number: 1,
+          data: ['1', '', '', testPrompts[0], '']
+        },
+        {
+          index: 3,
+          number: 2,
+          data: ['2', '', '', testPrompts[1], '']
+        },
+        {
+          index: 4,
+          number: 3,
+          data: ['3', '', '', testPrompts[2], '']
+        }
+      ],
+      
+      // values配列（全データ）
+      values: [
+        ['番号', '制御', 'ログ', 'プロンプト', `${aiType}回答`],
+        ['', '', '', aiType.toLowerCase(), ''],
+        ['1', '', '', testPrompts[0], ''],
+        ['2', '', '', testPrompts[1], ''],
+        ['3', '', '', testPrompts[2], '']
+      ],
+      
+      // AI列の定義
+      aiColumns: {
+        'D': {
+          type: 'single',
+          promptDescription: ''
+        }
+      },
+      
+      // 列マッピング
+      columnMapping: {
+        'D': { 
+          type: 'prompt', 
+          aiType: aiType.toLowerCase()
+        },
+        'E': { 
+          type: 'answer'
+        }
+      }
+    };
+    
+    console.log(`📊 作成したテストデータ:`, testSpreadsheetData);
+    
+    // テストデータを状態に保存
+    consecutiveTestState.enabled = true;
+    consecutiveTestState.targetId = targetId;
+    consecutiveTestState.testData = testSpreadsheetData;
+    
+    // プロンプト欄に準備完了を表示
+    const inputElement = document.getElementById(targetId);
+    if (inputElement) {
+      inputElement.value = '🔄 3連続テスト準備完了（「テスト実行」ボタンを押してください）';
+      inputElement.style.backgroundColor = '#fff3cd';
+    }
+    
+    console.log(`✅ 3連続テスト準備完了。「テスト実行」ボタンを押すと開始します。`);
+    
+    // ステータス表示を更新
+    const statusText = document.getElementById('status-text');
+    if (statusText) {
+      statusText.textContent = '3連続テスト準備完了 - 「テスト実行」ボタンを押してください';
+    }
+  }
+  
+  // 3連続テストを実際に実行
+  async function executeConsecutiveTest() {
+    if (!consecutiveTestState.enabled || !consecutiveTestState.testData) {
+      console.error('3連続テストが準備されていません');
       return;
     }
     
-    // プロンプトを順番に送信する関数
-    let currentIndex = 0;
+    const aiType = consecutiveTestState.targetId.replace('-prompt', '');
+    console.log(`🚀 3連続テスト実行開始: ${aiType}`);
     
-    function sendNextPrompt() {
-      if (currentIndex >= testPrompts.length) {
-        console.log(`✅ ${aiType}の3連続テスト完了`);
-        // 元のプロンプトに戻す
-        inputElement.value = '桃太郎について歴史を解説して';
-        return;
+    try {
+      // TaskGeneratorをインポート（動的インポート）
+      const { default: TaskGenerator } = await import('/src/features/task/generator.js');
+      
+      // TaskGeneratorのインスタンスを作成
+      const generator = new TaskGenerator();
+      
+      console.log(`🎯 TaskGeneratorでタスクを生成`);
+      
+      // タスクを生成して実行（本番のコードを使用）
+      const result = await generator.generateAndExecuteTasks(consecutiveTestState.testData, {
+        testMode: true,
+        consecutiveTest: true
+      });
+      
+      console.log(`✅ 3連続テスト完了:`, result);
+      
+      // 結果を表示
+      if (result.success) {
+        alert(`✅ ${aiType}の3連続テスト成功！\n処理したタスク数: ${result.totalTasks}`);
+      } else {
+        alert(`❌ ${aiType}の3連続テストでエラーが発生しました`);
       }
       
-      const prompt = testPrompts[currentIndex];
-      console.log(`📝 送信 ${currentIndex + 1}/3: ${prompt}`);
+      // 状態をリセット
+      consecutiveTestState.enabled = false;
+      consecutiveTestState.testData = null;
       
-      // プロンプトを設定
-      inputElement.value = prompt;
+      // プロンプト欄を元に戻す
+      const inputElement = document.getElementById(consecutiveTestState.targetId);
+      if (inputElement) {
+        inputElement.value = '桃太郎について歴史を解説して';
+        inputElement.style.backgroundColor = '';
+      }
+      consecutiveTestState.targetId = null;
       
-      // 入力イベントを発火
-      const event = new Event('input', { bubbles: true });
-      inputElement.dispatchEvent(event);
-      
-      // 実際の送信をシミュレート（統合テストボタンをクリック）
-      setTimeout(() => {
-        // 統合テスト開始ボタンを探す
-        const startButton = document.getElementById('start-integrated-test');
-        if (startButton && currentIndex === 0) {
-          // 最初の時だけボタンをクリック
-          console.log(`🚀 ${aiType}のテストを開始`);
-          startButton.click();
-        }
-        
-        currentIndex++;
-        
-        // 次のプロンプトを送信（5秒間隔）
-        setTimeout(sendNextPrompt, 5000);
-      }, 500);
+    } catch (error) {
+      console.error(`❌ 3連続テストエラー:`, error);
+      alert(`エラーが発生しました: ${error.message}`);
     }
-    
-    // テスト開始
-    sendNextPrompt();
   }
   
   // DOMContentLoaded イベントリスナー
@@ -165,6 +276,10 @@
     
     console.log('AI自動操作統合テスト - 初期化完了');
     console.log('カスタムプルダウンが利用可能 - ▼ボタンでプリセット選択、テキストは自由編集可能');
+    
+    // グローバルに公開（test-runner-chrome.jsから呼び出せるように）
+    window.consecutiveTestState = consecutiveTestState;
+    window.executeConsecutiveTest = executeConsecutiveTest;
   });
 
 })();

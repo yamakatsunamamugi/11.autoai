@@ -196,35 +196,11 @@ class DocsClient {
       : "AI回答";
     const title = `${titleBase} - ${new Date().toLocaleDateString("ja-JP")}`;
 
-    // ドキュメントの内容を構成
-    const sections = [
-      {
-        title: "プロンプト",
-        content: taskResult.prompt || "(プロンプトなし)",
-      },
-      {
-        title: "AI回答",
-        content: taskResult.response || "(回答なし)",
-      },
-    ];
+    // 回答のみをドキュメントの内容として設定
+    const content = taskResult.response || "(回答なし)";
 
-    // AIタイプ別の回答がある場合
-    if (taskResult.responses) {
-      for (const [aiType, response] of Object.entries(taskResult.responses)) {
-        sections.push({
-          title: `${aiType}の回答`,
-          content: response || `(${aiType}の回答なし)`,
-        });
-      }
-    }
-
-    // メタデータを追加
-    sections.push({
-      title: "メタデータ",
-      content: `実行日時: ${new Date().toLocaleString("ja-JP")}\nAIタイプ: ${taskResult.aiType || "不明"}\n行番号: ${taskResult.rowNumber || "不明"}\n列番号: ${taskResult.columnIndex || "不明"}`,
-    });
-
-    return await this.createStructuredDocument(title, sections);
+    // シンプルなドキュメントを作成（回答のみ）
+    return await this.createAndWriteDocument(title, content);
   }
 }
 

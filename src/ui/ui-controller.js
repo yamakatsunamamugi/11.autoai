@@ -605,74 +605,68 @@ generateReportBtn.addEventListener("click", () => {
 
 // ===== イベントリスナー: ウィンドウ作成テスト =====
 const windowCreationTestBtn = document.getElementById("windowCreationTestBtn");
-windowCreationTestBtn.addEventListener("click", async () => {
+windowCreationTestBtn.addEventListener("click", () => {
   console.log("ウィンドウ作成テストボタンが押されました");
   
   try {
-    // 現在のURLを取得
-    const urlInputs = document.querySelectorAll(".url-input");
-    const url = urlInputs[0]?.value;
-    
-    if (!url) {
-      alert("スプレッドシートURLを入力してください");
-      return;
-    }
-    
-    // スプレッドシートを読み込んでタスクを生成
-    updateStatus("タスクを生成中...", "loading");
-    
-    // background.jsに読み込みを依頼
-    const response = await chrome.runtime.sendMessage({
-      action: "loadSpreadsheet",
-      url: url
-    });
-    
-    if (!response.success) {
-      throw new Error(response.error || "読み込み失敗");
-    }
-    
-    updateStatus("ウィンドウテストを準備中...", "loading");
-    
-    // ウィンドウ作成テストページを開く
+    // すぐにテストページを開く
     const testUrl = chrome.runtime.getURL("tests/test-window-creation.html");
+    console.log("テストページURL:", testUrl);
     
-    // ウィンドウ設定
-    const windowFeatures = `
-      width=1400,
-      height=900,
-      left=${(screen.width - 1400) / 2},
-      top=${(screen.height - 900) / 2},
-      scrollbars=yes,
-      resizable=yes,
-      status=no,
-      menubar=no,
-      toolbar=no,
-      location=no
-    `.replace(/\s+/g, '');
-    
-    const testWindow = window.open(testUrl, "WindowCreationTest", windowFeatures);
-    
-    if (!testWindow) {
-      throw new Error("ポップアップブロッカーによりウィンドウを開けませんでした");
-    }
-    
-    updateStatus("ウィンドウ作成テスト実行中", "running");
-    
-    // テストウィンドウにデータを渡す
-    testWindow.addEventListener('load', () => {
-      setTimeout(() => {
-        testWindow.postMessage({
-          type: 'INIT_TEST',
-          spreadsheetData: response,
-          taskCount: response.taskCount
-        }, '*');
-      }, 500);
+    // Chrome拡張のタブとして開く
+    chrome.tabs.create({
+      url: testUrl,
+      active: true
+    }, (tab) => {
+      if (chrome.runtime.lastError) {
+        console.error("タブ作成エラー:", chrome.runtime.lastError);
+        // フォールバック: window.openで開く
+        const windowFeatures = `
+          width=1400,
+          height=900,
+          left=${(screen.width - 1400) / 2},
+          top=${(screen.height - 900) / 2},
+          scrollbars=yes,
+          resizable=yes,
+          status=no,
+          menubar=no,
+          toolbar=no,
+          location=no
+        `.replace(/\s+/g, '');
+        
+        const testWindow = window.open(testUrl, "WindowCreationTest", windowFeatures);
+        
+        if (!testWindow) {
+          alert("ポップアップブロッカーによりウィンドウを開けませんでした。\nポップアップを許可してください。");
+        } else {
+          console.log("window.openでテストページを開きました");
+          updateStatus("ウィンドウ作成テストツールを開きました", "success");
+        }
+      } else {
+        console.log("新しいタブでテストページを開きました:", tab.id);
+        updateStatus("ウィンドウ作成テストツールを開きました", "success");
+      }
     });
     
   } catch (error) {
     console.error("ウィンドウ作成テストエラー:", error);
     updateStatus(`エラー: ${error.message}`, "error");
-    alert(`ウィンドウ作成テストの起動に失敗しました: ${error.message}`);
+    
+    // 最終フォールバック: 直接window.openで試す
+    try {
+      const testUrl = chrome.runtime.getURL("tests/test-window-creation.html");
+      const testWindow = window.open(testUrl, "_blank");
+      
+      if (testWindow) {
+        console.log("フォールバックでテストページを開きました");
+        updateStatus("ウィンドウ作成テストツールを開きました", "success");
+      } else {
+        alert("テストページを開けませんでした。\nポップアップブロッカーを確認してください。");
+      }
+    } catch (fallbackError) {
+      console.error("フォールバックも失敗:", fallbackError);
+      alert(`テストページを開けませんでした: ${fallbackError.message}`);
+    }
   }
 });
 
