@@ -48,6 +48,50 @@
     // ========================================
     const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+    // 要素の可視性チェック関数
+    const isElementVisible = (element) => {
+        if (!element) return false;
+        
+        // 基本的な表示チェック
+        const style = window.getComputedStyle(element);
+        if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+            return false;
+        }
+        
+        // 境界チェック
+        const rect = element.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) {
+            return false;
+        }
+        
+        // 画面内にあるかチェック
+        const viewport = {
+            width: window.innerWidth || document.documentElement.clientWidth,
+            height: window.innerHeight || document.documentElement.clientHeight
+        };
+        
+        // 完全に画面外にある場合は非表示とする
+        if (rect.right < 0 || rect.bottom < 0 || rect.left > viewport.width || rect.top > viewport.height) {
+            return false;
+        }
+        
+        // offsetParentがnullの場合は非表示
+        if (!element.offsetParent && element.tagName !== 'BODY') {
+            return false;
+        }
+        
+        return true;
+    };
+
+    // 画面サイズ情報を取得する関数
+    const getScreenInfo = () => {
+        return {
+            width: window.innerWidth || document.documentElement.clientWidth,
+            height: window.innerHeight || document.documentElement.clientHeight,
+            devicePixelRatio: window.devicePixelRatio || 1
+        };
+    };
+
     const log = (message, type = 'info') => {
         const styles = {
             info: 'color: #2196F3',
@@ -248,26 +292,39 @@
             return globalState.functionCache;
         }
 
-        log('🔧 利用可能な機能を検索中...', 'info');
+        const screenInfo = getScreenInfo();
+        log(`🔧 利用可能な機能を検索中... (画面サイズ: ${screenInfo.width}x${screenInfo.height})`, 'info');
         const functions = [];
+        let hiddenFunctionsCount = 0;
 
-        // メインツールボックスの機能を収集
+        // メインツールボックスの機能を収集（可視性チェック付き）
         const mainButtons = document.querySelectorAll('.toolbox-drawer-item-button button');
         mainButtons.forEach(button => {
             const text = button.textContent?.trim();
             if (text) {
                 const isActive = button.getAttribute('aria-pressed') === 'true';
+                const isVisible = isElementVisible(button);
+                
                 functions.push({
                     name: text,
-                    location: 'main',
+                    location: isVisible ? 'main' : 'main-hidden',
                     element: button,
-                    active: isActive
+                    active: isActive,
+                    visible: isVisible
                 });
-                debugLog(`Found main function: ${text} (active: ${isActive})`);
+                
+                if (!isVisible) {
+                    hiddenFunctionsCount++;
+                    debugLog(`Found HIDDEN main function: ${text} (active: ${isActive})`);
+                } else {
+                    debugLog(`Found visible main function: ${text} (active: ${isActive})`);
+                }
             }
         });
 
-        // サブメニュー（その他）を探す
+        // 隠れた機能がある場合、またはその他ボタンが存在する場合はサブメニューを探す
+        const shouldCheckSubmenu = hiddenFunctionsCount > 0;
+        
         const moreButton = await findElement([
             'button[aria-label="その他"]',
             () => Array.from(document.querySelectorAll('button')).filter(btn => {
@@ -276,37 +333,62 @@
             })
         ]);
 
-        if (moreButton) {
-            // その他メニューを開く
-            await clickElement(moreButton);
-            await wait(DELAYS.menuWait);
+        if (moreButton || shouldCheckSubmenu) {
+            if (moreButton) {
+                debugLog(`その他ボタンを発見 (可視: ${isElementVisible(moreButton)})`);
+                
+                // その他メニューを開く
+                await clickElement(moreButton);
+                await wait(DELAYS.menuWait);
 
-            // メニュー内の機能を収集
-            const menuItems = document.querySelectorAll('button[mat-list-item], .toolbox-drawer-item-list-button');
-            menuItems.forEach(item => {
-                const text = item.textContent?.trim();
-                if (text && !functions.find(f => f.name === text)) {
-                    const isActive = item.getAttribute('aria-pressed') === 'true';
-                    functions.push({
-                        name: text,
-                        location: 'submenu',
-                        element: item,
-                        active: isActive
-                    });
-                    debugLog(`Found submenu function: ${text} (active: ${isActive})`);
-                }
-            });
+                // メニュー内の機能を収集
+                const menuItems = document.querySelectorAll('button[mat-list-item], .toolbox-drawer-item-list-button');
+                menuItems.forEach(item => {
+                    const text = item.textContent?.trim();
+                    if (text && !functions.find(f => f.name === text)) {
+                        const isActive = item.getAttribute('aria-pressed') === 'true';
+                        functions.push({
+                            name: text,
+                            location: 'submenu',
+                            element: item,
+                            active: isActive,
+                            visible: true
+                        });
+                        debugLog(`Found submenu function: ${text} (active: ${isActive})`);
+                    }
+                });
 
-            // メニューを閉じる
-            document.body.click();
-            await wait(500);
+                // メニューを閉じる
+                document.body.click();
+                await wait(500);
+            }
+            
+            if (shouldCheckSubmenu && !moreButton) {
+                debugLog(`${hiddenFunctionsCount}個の非表示機能を検出しましたが、「その他」ボタンが見つかりません`);
+            }
         }
+
+        // 統計情報をログ出力
+        const visibleCount = functions.filter(f => f.visible !== false).length;
+        const hiddenCount = functions.filter(f => f.visible === false).length;
+        const submenuCount = functions.filter(f => f.location === 'submenu').length;
 
         // キャッシュに保存
         globalState.functionCache = functions;
         globalState.functionCacheTime = Date.now();
 
-        log(`✅ ${functions.length}個の機能を発見`, 'success');
+        log(`✅ ${functions.length}個の機能を発見 (表示中: ${visibleCount}, 非表示: ${hiddenCount}, サブメニュー: ${submenuCount})`, 'success');
+        
+        // デバッグ情報
+        if (globalState.debugMode) {
+            log('機能一覧:', 'info');
+            functions.forEach(f => {
+                const status = f.active ? '[有効]' : '[無効]';
+                const visibility = f.visible === false ? '[非表示]' : '[表示中]';
+                console.log(`  ${status}${visibility} ${f.name} (${f.location})`);
+            });
+        }
+        
         return functions;
     };
 
@@ -368,13 +450,14 @@
         }
     };
 
-    const selectFunctionDynamic = async (searchTerm) => {
+    const selectFunctionDynamic = async (searchTerm, retryCount = 0) => {
         if (!searchTerm) {
             log('検索語を指定してください', 'error');
             return false;
         }
 
-        log(`\n🔧 機能「${searchTerm}」を検索中...`, 'header');
+        const maxRetries = 2;
+        log(`\n🔧 機能「${searchTerm}」を検索中...${retryCount > 0 ? ` (試行 ${retryCount + 1}/${maxRetries + 1})` : ''}`, 'header');
 
         const functions = await collectAvailableFunctions();
 
@@ -391,7 +474,8 @@
         });
 
         if (bestMatch) {
-            log(`✅ 機能「${bestMatch.name}」を発見 (場所: ${bestMatch.location}, スコア: ${bestScore.toFixed(2)})`, 'success');
+            const visibility = bestMatch.visible === false ? '(非表示)' : '(表示中)';
+            log(`✅ 機能「${bestMatch.name}」を発見 (場所: ${bestMatch.location}, スコア: ${bestScore.toFixed(2)}) ${visibility}`, 'success');
 
             if (bestMatch.active) {
                 log(`機能「${bestMatch.name}」は既に有効です`, 'info');
@@ -402,81 +486,140 @@
                 return true;
             }
 
-            if (bestMatch.location === 'main') {
-                // メイン機能
-                await clickElement(bestMatch.element);
-                globalState.activeFunctions.push(bestMatch.name);
-                
-                // Deep Research関連の名前も追加（念のため）
-                if (bestMatch.name.toLowerCase().includes('research') || 
-                    bestMatch.name.toLowerCase().includes('リサーチ')) {
-                    if (!globalState.activeFunctions.includes('Deep Research')) {
-                        globalState.activeFunctions.push('Deep Research');
-                        console.log('🔍 Deep Researchをactivefunctionsに追加しました');
-                        console.log('現在のactiveFunctions:', globalState.activeFunctions);
-                    }
+            // 機能選択の試行
+            let selectionResult = false;
+
+            if (bestMatch.location === 'main' || bestMatch.location === 'main-hidden') {
+                // メイン機能（表示中または非表示）
+                if (bestMatch.visible === false) {
+                    log(`機能「${bestMatch.name}」は非表示のため、「その他」メニューで探します`, 'warning');
+                    selectionResult = await selectFromSubmenu(bestMatch.name);
+                } else {
+                    selectionResult = await selectFromMain(bestMatch);
                 }
-                
-                log(`✅ 機能「${bestMatch.name}」を有効化しました`, 'success');
-                return true;
             } else if (bestMatch.location === 'submenu') {
                 // サブメニューの機能
-                const moreButton = await findElement([
-                    'button[aria-label="その他"]',
-                    () => Array.from(document.querySelectorAll('button')).filter(btn => {
-                        const icon = btn.querySelector('mat-icon[fonticon="more_horiz"]');
-                        return icon !== null;
-                    })
-                ]);
-
-                if (moreButton) {
-                    await clickElement(moreButton);
-                    await wait(DELAYS.menuWait);
-
-                    // メニュー内で機能を探してクリック
-                    const menuItems = document.querySelectorAll('button[mat-list-item], .toolbox-drawer-item-list-button');
-                    let functionSelected = false;
-                    for (let item of menuItems) {
-                        if (item.textContent?.trim() === bestMatch.name) {
-                            await clickElement(item);
-                            await wait(500);
-                            globalState.activeFunctions.push(bestMatch.name);
-                            
-                            // Deep Research関連の名前も追加（念のため）
-                            if (bestMatch.name.toLowerCase().includes('research') || 
-                                bestMatch.name.toLowerCase().includes('リサーチ')) {
-                                if (!globalState.activeFunctions.includes('Deep Research')) {
-                                    globalState.activeFunctions.push('Deep Research');
-                                    console.log('🔍 Deep Researchをactivefunctionsに追加しました（サブメニュー）');
-                                    console.log('現在のactiveFunctions:', globalState.activeFunctions);
-                                }
-                            }
-                            
-                            log(`✅ 機能「${bestMatch.name}」を有効化しました`, 'success');
-                            functionSelected = true;
-                            break;
-                        }
-                    }
-
-                    // メニューを確実に閉じる（ESCキーを使用）
-                    await wait(500);
-                    document.body.dispatchEvent(new KeyboardEvent('keydown', {
-                        key: 'Escape',
-                        code: 'Escape',
-                        bubbles: true
-                    }));
-                    log('メニューを閉じました', 'info');
-                    
-                    return functionSelected;
-                }
+                selectionResult = await selectFromSubmenu(bestMatch.name);
             }
+
+            // 選択に失敗した場合のフォールバック
+            if (!selectionResult && retryCount < maxRetries) {
+                log(`機能選択に失敗しました。フォールバック処理を実行します...`, 'warning');
+                
+                // キャッシュをクリアして再試行
+                globalState.functionCache = null;
+                globalState.functionCacheTime = null;
+                
+                await wait(1000);
+                return await selectFunctionDynamic(searchTerm, retryCount + 1);
+            }
+
+            return selectionResult;
         } else {
             log(`❌ 機能「${searchTerm}」が見つかりません`, 'error');
             log('利用可能な機能:', 'info');
-            functions.forEach(f => console.log(`  - ${f.name} (${f.location})`));
+            functions.forEach(f => {
+                const visibility = f.visible === false ? '[非表示]' : '[表示中]';
+                console.log(`  - ${f.name} (${f.location}) ${visibility}`);
+            });
         }
 
         return false;
+    };
+
+    // メイン機能の選択ヘルパー関数
+    const selectFromMain = async (bestMatch) => {
+        try {
+            await clickElement(bestMatch.element);
+            globalState.activeFunctions.push(bestMatch.name);
+            
+            // Deep Research関連の名前も追加（念のため）
+            if (bestMatch.name.toLowerCase().includes('research') || 
+                bestMatch.name.toLowerCase().includes('リサーチ')) {
+                if (!globalState.activeFunctions.includes('Deep Research')) {
+                    globalState.activeFunctions.push('Deep Research');
+                    console.log('🔍 Deep Researchをactivefunctionsに追加しました');
+                    console.log('現在のactiveFunctions:', globalState.activeFunctions);
+                }
+            }
+            
+            log(`✅ 機能「${bestMatch.name}」を有効化しました`, 'success');
+            return true;
+        } catch (error) {
+            debugLog(`メイン機能選択エラー: ${error.message}`);
+            return false;
+        }
+    };
+
+    // サブメニューからの選択ヘルパー関数
+    const selectFromSubmenu = async (functionName) => {
+        const moreButton = await findElement([
+            'button[aria-label="その他"]',
+            () => Array.from(document.querySelectorAll('button')).filter(btn => {
+                const icon = btn.querySelector('mat-icon[fonticon="more_horiz"]');
+                return icon !== null;
+            })
+        ]);
+
+        if (!moreButton) {
+            log(`「その他」ボタンが見つかりません`, 'error');
+            return false;
+        }
+
+        try {
+            await clickElement(moreButton);
+            await wait(DELAYS.menuWait);
+
+            // メニュー内で機能を探してクリック
+            const menuItems = document.querySelectorAll('button[mat-list-item], .toolbox-drawer-item-list-button');
+            let functionSelected = false;
+            
+            for (let item of menuItems) {
+                if (item.textContent?.trim() === functionName) {
+                    await clickElement(item);
+                    await wait(500);
+                    globalState.activeFunctions.push(functionName);
+                    
+                    // Deep Research関連の名前も追加（念のため）
+                    if (functionName.toLowerCase().includes('research') || 
+                        functionName.toLowerCase().includes('リサーチ')) {
+                        if (!globalState.activeFunctions.includes('Deep Research')) {
+                            globalState.activeFunctions.push('Deep Research');
+                            console.log('🔍 Deep Researchをactivefunctionsに追加しました（サブメニュー）');
+                            console.log('現在のactiveFunctions:', globalState.activeFunctions);
+                        }
+                    }
+                    
+                    log(`✅ 機能「${functionName}」を有効化しました（サブメニュー）`, 'success');
+                    functionSelected = true;
+                    break;
+                }
+            }
+
+            // メニューを確実に閉じる（ESCキーを使用）
+            await wait(500);
+            document.body.dispatchEvent(new KeyboardEvent('keydown', {
+                key: 'Escape',
+                code: 'Escape',
+                bubbles: true
+            }));
+            log('メニューを閉じました', 'info');
+            
+            if (!functionSelected) {
+                log(`サブメニューで機能「${functionName}」が見つかりませんでした`, 'error');
+            }
+            
+            return functionSelected;
+        } catch (error) {
+            debugLog(`サブメニュー機能選択エラー: ${error.message}`);
+            // エラー時もメニューを閉じる
+            document.body.dispatchEvent(new KeyboardEvent('keydown', {
+                key: 'Escape',
+                code: 'Escape',
+                bubbles: true
+            }));
+            return false;
+        }
     };
 
     const clearAllFunctions = async () => {
@@ -1043,11 +1186,25 @@
             models.forEach((m, i) => console.log(`  ${i + 1}. ${m.name}`));
             return models.map(m => m.name);
         },
+        getAvailableModels: async () => {
+            // 他のAI（ChatGPT、Claude）との統一API
+            const models = await collectAvailableModels();
+            console.log('\n📋 利用可能なモデル:');
+            models.forEach((m, i) => console.log(`  ${i + 1}. ${m.name} (${m.location})`));
+            return models; // 完全なオブジェクトを返す
+        },
         listFunctions: async () => {
             const functions = await collectAvailableFunctions();
             console.log('\n📋 利用可能な機能:');
             functions.forEach((f, i) => console.log(`  ${i + 1}. ${f.name} (${f.location})`));
             return functions.map(f => f.name);
+        },
+        getAvailableFunctions: async () => {
+            // 他のAI（ChatGPT、Claude）との統一API
+            const functions = await collectAvailableFunctions();
+            console.log('\n📋 利用可能な機能:');
+            functions.forEach((f, i) => console.log(`  ${i + 1}. ${f.name} (${f.location})`));
+            return functions; // 完全なオブジェクトを返す
         },
 
         // テスト系
@@ -1068,6 +1225,77 @@
             globalState.debugMode = enabled;
             log(`デバッグモード: ${enabled ? 'ON' : 'OFF'}`, 'info');
         },
+        
+        // デバッグ・診断機能
+        diagnose: async () => {
+            console.clear();
+            log('🔧 Gemini UI診断開始', 'header');
+            console.log('='.repeat(60));
+            
+            const screenInfo = getScreenInfo();
+            log(`📱 画面情報: ${screenInfo.width}x${screenInfo.height} (ratio: ${screenInfo.devicePixelRatio})`, 'info');
+            
+            // ツールボックス診断
+            log('\n🔍 ツールボックス診断:', 'header');
+            const toolboxContainer = document.querySelector('.toolbox-drawer, .toolbox-container');
+            if (toolboxContainer) {
+                const rect = toolboxContainer.getBoundingClientRect();
+                log(`ツールボックス要素: 発見 (${rect.width}x${rect.height})`, 'success');
+            } else {
+                log('ツールボックス要素: 見つかりません', 'error');
+            }
+            
+            // メイン機能ボタン診断
+            const mainButtons = document.querySelectorAll('.toolbox-drawer-item-button button');
+            log(`\n🎯 メイン機能ボタン診断: ${mainButtons.length}個発見`, 'info');
+            mainButtons.forEach((btn, i) => {
+                const text = btn.textContent?.trim();
+                const isVisible = isElementVisible(btn);
+                const isActive = btn.getAttribute('aria-pressed') === 'true';
+                const rect = btn.getBoundingClientRect();
+                
+                const status = isActive ? '[有効]' : '[無効]';
+                const visibility = isVisible ? '[表示]' : '[非表示]';
+                log(`  ${i + 1}. ${status}${visibility} "${text}" (${rect.width.toFixed(0)}x${rect.height.toFixed(0)})`, 
+                    isVisible ? 'success' : 'warning');
+            });
+            
+            // その他ボタン診断
+            log('\n📂 その他ボタン診断:', 'info');
+            const moreButtons = document.querySelectorAll('button').values();
+            let moreButtonFound = false;
+            
+            for (const btn of moreButtons) {
+                const icon = btn.querySelector('mat-icon[fonticon="more_horiz"], mat-icon[data-mat-icon-name="more_horiz"]');
+                if (icon) {
+                    const isVisible = isElementVisible(btn);
+                    const rect = btn.getBoundingClientRect();
+                    log(`その他ボタン: 発見 ${isVisible ? '[表示]' : '[非表示]'} (${rect.width.toFixed(0)}x${rect.height.toFixed(0)})`, 
+                        isVisible ? 'success' : 'warning');
+                    moreButtonFound = true;
+                    break;
+                }
+            }
+            
+            if (!moreButtonFound) {
+                log('その他ボタン: 見つかりません', 'error');
+            }
+            
+            // 現在の状態表示
+            log('\n📊 現在の状態:', 'info');
+            log(`有効な機能: ${globalState.activeFunctions.join(', ') || 'なし'}`, 'info');
+            log(`モデルキャッシュ: ${globalState.modelCache ? `${globalState.modelCache.length}個` : 'なし'}`, 'info');
+            log(`機能キャッシュ: ${globalState.functionCache ? `${globalState.functionCache.length}個` : 'なし'}`, 'info');
+            
+            console.log('\n' + '='.repeat(60));
+            log('✅ 診断完了', 'success');
+        },
+        
+        getScreenInfo,
+        isElementVisible: (selector) => {
+            const element = typeof selector === 'string' ? document.querySelector(selector) : selector;
+            return isElementVisible(element);
+        },
         inputText,
         send: sendMessage,
         getText: getTextFromScreen,
@@ -1080,7 +1308,9 @@
             console.log('');
             console.log('【情報取得】');
             console.log('  await Gemini.listModels()    // 利用可能なモデル一覧');
+            console.log('  await Gemini.getAvailableModels() // 利用可能なモデル一覧（統一API）');
             console.log('  await Gemini.listFunctions() // 利用可能な機能一覧');
+            console.log('  await Gemini.getAvailableFunctions() // 利用可能な機能一覧（統一API）');
             console.log('');
             console.log('【動的選択】');
             console.log('  await Gemini.model("Flash")  // モデルを検索・選択');
@@ -1102,15 +1332,20 @@
             console.log('  await Gemini.send()          // 送信');
             console.log('  await Gemini.getText()       // 画面のテキスト取得');
             console.log('');
-            console.log('【デバッグ】');
+            console.log('【デバッグ・診断】');
             console.log('  Gemini.setDebug(true)        // デバッグモードON');
             console.log('  Gemini.clearCache()          // キャッシュクリア');
+            console.log('  await Gemini.diagnose()      // UI診断実行');
+            console.log('  Gemini.getScreenInfo()       // 画面情報取得');
+            console.log('  Gemini.isElementVisible("selector") // 要素可視性チェック');
             console.log('');
             console.log('%c💡 ヒント:', 'color: #FF9800; font-weight: bold');
             console.log('  - ファジー検索対応: "res" → "Deep Research"');
             console.log('  - 部分一致OK: "画像" → "画像 Imagen で生成"');
             console.log('  - Deep Researchは最大40分待機可能');
             console.log('  - 5分間のキャッシュで高速動作');
+            console.log('  - 画面サイズ変更時は自動で「その他」メニューもチェック');
+            console.log('  - 機能選択失敗時は自動リトライ（最大3回）');
         }
     };
 
@@ -1123,7 +1358,9 @@
     console.log('');
     console.log('%c【すぐ試せるコマンド】', 'color: #2196F3; font-weight: bold');
     console.log('await Gemini.listModels()      // 利用可能なモデルを確認');
+    console.log('await Gemini.getAvailableModels() // 利用可能なモデルを確認（統一API）');
     console.log('await Gemini.listFunctions()   // 利用可能な機能を確認');
+    console.log('await Gemini.getAvailableFunctions() // 利用可能な機能を確認（統一API）');
     console.log('');
     console.log('await Gemini.testNormal()      // 通常処理をテスト');
     console.log('await Gemini.testNormal("こんにちは", "Pro")  // Proモデルでテスト');

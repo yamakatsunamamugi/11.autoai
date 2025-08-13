@@ -550,6 +550,77 @@
   }
 
   // ========================================
+  // 利用可能なモデル一覧取得
+  // ========================================
+  async function getAvailableModels() {
+    log('📋 利用可能なモデルを取得中...', 'INFO');
+
+    try {
+      // モデル選択ボタンを探す
+      const modelButtonSelectors = [
+        '[aria-label="モデルを選択"]',
+        '[data-testid="model-selector"]',
+        'button[aria-haspopup="menu"]'
+      ];
+
+      const modelButton = await findElement(modelButtonSelectors);
+
+      if (!modelButton) {
+        log('❌ モデル選択ボタンが見つかりません', 'ERROR');
+        return [];
+      }
+
+      // 現在のモデルを記録
+      const currentModelText = modelButton.textContent?.trim();
+      log(`現在のモデル: ${currentModelText}`, 'INFO');
+
+      // メニューを開く
+      await performClick(modelButton);
+      await wait(CONFIG.DELAYS.menuOpen);
+
+      // モデルメニューが開いたか確認
+      const modelOptions = document.querySelectorAll('[role="option"], [role="menuitem"]');
+      const models = [];
+
+      for (const option of modelOptions) {
+        const text = option.textContent?.trim();
+        if (text) {
+          // 選択状態を確認（aria-selected、class、チェックマークなど）
+          const isSelected = option.getAttribute('aria-selected') === 'true' ||
+                           option.classList.contains('selected') ||
+                           option.querySelector('svg') !== null ||
+                           text === currentModelText;
+
+          models.push({
+            name: text,
+            element: option,
+            selected: isSelected
+          });
+        }
+      }
+
+      // メニューを閉じる
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      await wait(CONFIG.DELAYS.menuClose);
+
+      // 結果を表示
+      log(`✅ ${models.length}個のモデルを発見`, 'SUCCESS');
+      console.log('\n===== 利用可能なモデル =====');
+      models.forEach((model, index) => {
+        const status = model.selected ? ' [選択中]' : '';
+        console.log(`${index + 1}. ${model.name}${status}`);
+      });
+      console.log('========================\n');
+
+      return models;
+
+    } catch (error) {
+      log(`モデル一覧取得エラー: ${error.message}`, 'ERROR');
+      return [];
+    }
+  }
+
+  // ========================================
   // 利用可能な機能一覧表示
   // ========================================
   async function getAvailableFunctions() {
@@ -863,6 +934,7 @@
     waitForResponse,
     getResponse,
     runAutomation,
+    getAvailableModels,
     getAvailableFunctions,
     utils: {
       wait,
