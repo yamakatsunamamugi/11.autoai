@@ -67,15 +67,14 @@ export class AITaskHandler {
         throw new Error(`プロンプト送信失敗: ${sendResult.error}`);
       }
       
-      // 応答待機（タイムアウト付き）
-      const response = await this.waitForAIResponse(tabId, taskId, timeout);
-      
+      // ai-content-unified.jsで既に回答待機が完了しているため、
+      // ここでは追加の待機は不要（sendResultに応答が含まれている）
       this.logger.log(`[AITaskHandler] タスク完了: ${taskId}`);
       
       return {
         success: true,
-        response: response.text,
-        aiType: response.aiType || 'unknown',
+        response: sendResult.response || "回答取得完了",
+        aiType: sendResult.aiType || 'unknown',
         taskId: taskId
       };
       
@@ -100,13 +99,17 @@ export class AITaskHandler {
     this.logger.log(`[AITaskHandler] タブ${tabId}にメッセージ送信:`, {
       action: message.action,
       taskId: message.taskId,
-      hasPrompt: !!message.prompt
+      hasPrompt: !!message.prompt,
+      promptPreview: message.prompt ? message.prompt.substring(0, 50) + '...' : 'なし'
     });
     
     return new Promise((resolve) => {
+      const startTime = Date.now();
       chrome.tabs.sendMessage(tabId, message, (response) => {
+        const elapsed = Date.now() - startTime;
+        
         if (chrome.runtime.lastError) {
-          this.logger.error(`[AITaskHandler] タブ送信エラー:`, {
+          this.logger.error(`[AITaskHandler] タブ送信エラー (${elapsed}ms):`, {
             error: chrome.runtime.lastError.message,
             tabId: tabId,
             action: message.action
@@ -116,50 +119,19 @@ export class AITaskHandler {
             error: chrome.runtime.lastError.message 
           });
         } else {
-          this.logger.log(`[AITaskHandler] タブからの応答:`, response);
+          this.logger.log(`[AITaskHandler] タブからの応答 (${elapsed}ms):`, {
+            success: response?.success,
+            hasResponse: !!response?.response,
+            aiType: response?.aiType,
+            taskId: response?.taskId,
+            responsePreview: response?.response ? response.response.substring(0, 100) + '...' : 'なし'
+          });
           resolve(response || { success: true });
         }
       });
     });
   }
   
-  /**
-   * AI応答を待機
-   * 
-   * @param {number} tabId - 対象タブID
-   * @param {string} taskId - タスクID
-   * @param {number} timeout - タイムアウト時間
-   * @returns {Promise<Object>} AI応答
-   */
-  async waitForAIResponse(tabId, taskId, timeout) {
-    return new Promise((resolve, reject) => {
-      const timeoutId = setTimeout(() => {
-        this.logger.error(`[AITaskHandler] 応答タイムアウト: ${taskId} (${timeout}ms)`);
-        chrome.runtime.onMessage.removeListener(listener);
-        reject(new Error(`応答タイムアウト: ${timeout}ms`));
-      }, timeout);
-      
-      // 応答リスナーを設定
-      const listener = (message, sender) => {
-        // aiResponseメッセージを待機
-        if (message.action === "aiResponse" && 
-            message.taskId === taskId && 
-            sender.tab?.id === tabId) {
-          
-          this.logger.log(`[AITaskHandler] 応答受信: ${taskId}`);
-          clearTimeout(timeoutId);
-          chrome.runtime.onMessage.removeListener(listener);
-          resolve({
-            text: message.response,
-            aiType: message.aiType
-          });
-        }
-      };
-      
-      chrome.runtime.onMessage.addListener(listener);
-      this.logger.log(`[AITaskHandler] 応答待機開始: ${taskId} (最大${timeout}ms)`);
-    });
-  }
 }
 
 // シングルトンインスタンスをエクスポート

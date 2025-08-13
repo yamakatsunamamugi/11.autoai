@@ -231,6 +231,12 @@ class StreamProcessor {
 
     this.logger.log(
       `[StreamProcessor] タスク実行: ${task.column}${task.row} (Window: ${windowId})`,
+      {
+        taskAiType: task.aiType,
+        windowAiType: windowInfo.aiType,
+        taskId: task.id,
+        prompt: task.prompt?.substring(0, 50) + '...'
+      }
     );
 
     // レポートタスクの場合は特別な処理

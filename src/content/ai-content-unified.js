@@ -1334,16 +1334,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // 4. 結果をbackground.jsに返却
     case "sendPrompt":
       isAsync = true;
+      console.log(`[11.autoai][${AI_TYPE}] sendPromptメッセージ受信 - 判定開始:`, {
+        hasTaskId: !!request.taskId,
+        taskId: request.taskId,
+        promptLength: request.prompt?.length || 0,
+        requestKeys: Object.keys(request)
+      });
+      
       // 既存のhandleSendPromptを使用、またはAITaskHandler用の処理を追加
       if (request.taskId) {
         // AITaskHandlerからの要求の場合
-        console.log(`[11.autoai][${AI_TYPE}] AITaskHandlerからのプロンプト実行要求:`, {
-          taskId: request.taskId,
-          promptLength: request.prompt?.length || 0
-        });
+        console.log(`[11.autoai][${AI_TYPE}] ✓ AITaskHandler経由と判定 - handleAITaskPrompt呼び出し`);
         handleAITaskPrompt(request, sendResponse);
       } else {
         // 既存の処理
+        console.log(`[11.autoai][${AI_TYPE}] ✓ 通常のプロンプト送信と判定 - handleSendPrompt呼び出し`);
         handleSendPrompt(request, sendResponse);
       }
       break;
@@ -1456,6 +1461,13 @@ async function isResponseCompleted() {
 async function handleAITaskPrompt(request, sendResponse) {
   const { prompt, taskId } = request;
   
+  console.log(`[11.autoai][${AI_TYPE}] 🔥 handleAITaskPrompt関数が呼び出されました!`, {
+    taskId,
+    promptLength: prompt?.length || 0,
+    AI_TYPE,
+    hasPrompt: !!prompt
+  });
+  
   try {
     console.log(`[11.autoai][${AI_TYPE}] AIタスク実行開始: ${taskId}`);
     
@@ -1470,11 +1482,46 @@ async function handleAITaskPrompt(request, sendResponse) {
       return;
     }
     
-    // 即座に成功を返す（応答は別途aiResponseメッセージで送信）
-    sendResponse({ success: true });
-    
-    // 応答を待機（バックグラウンドで）
-    waitForAIResponseAndNotify(taskId, prompt);
+    // 応答を待機してから成功を返す（同期処理）
+    try {
+      console.log(`[11.autoai][${AI_TYPE}] 応答待機開始: ${taskId}`);
+      
+      // 応答を待機（最大3分）
+      const maxWaitTime = 180000;
+      const startTime = Date.now();
+      let response = null;
+      
+      while (Date.now() - startTime < maxWaitTime) {
+        response = await getCurrentAIResponse();
+        
+        if (response && response.trim()) {
+          console.log(`[11.autoai][${AI_TYPE}] 応答取得成功: ${taskId}`);
+          sendResponse({ 
+            success: true, 
+            response: response,
+            aiType: AI_TYPE 
+          });
+          return;
+        }
+        
+        // 1秒待機
+        await sleep(1000);
+      }
+      
+      // タイムアウト
+      console.log(`[11.autoai][${AI_TYPE}] 応答待機タイムアウト: ${taskId}`);
+      sendResponse({ 
+        success: false, 
+        error: "応答待機タイムアウト" 
+      });
+      
+    } catch (error) {
+      console.error(`[11.autoai][${AI_TYPE}] 応答待機エラー: ${taskId}`, error);
+      sendResponse({ 
+        success: false, 
+        error: error.message 
+      });
+    }
     
   } catch (error) {
     console.error(`[11.autoai][${AI_TYPE}] AIタスク実行エラー:`, error);
@@ -1485,60 +1532,6 @@ async function handleAITaskPrompt(request, sendResponse) {
   }
 }
 
-/**
- * AI応答を待機してbackground.jsに通知
- */
-async function waitForAIResponseAndNotify(taskId, prompt) {
-  try {
-    console.log(`[11.autoai][${AI_TYPE}] 応答待機開始: ${taskId}`);
-    
-    // 応答を待機（最大3分）
-    const maxWaitTime = 180000;
-    const startTime = Date.now();
-    let response = null;
-    
-    while (Date.now() - startTime < maxWaitTime) {
-      response = await getCurrentAIResponse();
-      
-      if (response && response.trim()) {
-        console.log(`[11.autoai][${AI_TYPE}] 応答取得成功: ${taskId}`);
-        
-        // background.jsに応答を送信
-        chrome.runtime.sendMessage({
-          action: "aiResponse",
-          taskId: taskId,
-          response: response,
-          aiType: AI_TYPE
-        });
-        
-        return;
-      }
-      
-      // 1秒待機
-      await sleep(1000);
-    }
-    
-    // タイムアウト
-    console.error(`[11.autoai][${AI_TYPE}] 応答タイムアウト: ${taskId}`);
-    chrome.runtime.sendMessage({
-      action: "aiResponse",
-      taskId: taskId,
-      response: null,
-      error: "Response timeout",
-      aiType: AI_TYPE
-    });
-    
-  } catch (error) {
-    console.error(`[11.autoai][${AI_TYPE}] 応答待機エラー:`, error);
-    chrome.runtime.sendMessage({
-      action: "aiResponse",
-      taskId: taskId,
-      response: null,
-      error: error.message,
-      aiType: AI_TYPE
-    });
-  }
-}
 
 /**
  * 送信前の特殊モード設定処理（全AI対応）
