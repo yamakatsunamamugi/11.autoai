@@ -3,12 +3,6 @@
 import { Task, TaskList, TaskFactory } from "./models.js";
 import { AnswerFilter } from "./filters/index.js";
 import SimpleColumnControl from "./column-control-simple.js";
-import {
-  AI_TYPE_MAP,
-  extractFromMap,
-  SPECIAL_MODEL_MAP,
-  SPECIAL_OPERATION_MAP,
-} from "./extraction-maps.js";
 import StreamProcessor from "./stream-processor.js";
 
 class TaskGenerator {
@@ -229,24 +223,9 @@ class TaskGenerator {
         continue;
       }
 
-      // プロンプト2~5を順番に収集して連結
+      // 追加プロンプトは使用しない（column-control-simple.jsで削除済み）
       const allPrompts = [promptText];
       const additionalPromptsFound = [];
-      
-      for (let i = 2; i <= 5; i++) {
-        const additionalPromptColumn = String.fromCharCode(
-          columnGroup.promptColumn.charCodeAt(0) + i - 1
-        );
-        const additionalPrompt = this.getCellValue(
-          spreadsheetData,
-          additionalPromptColumn,
-          workRow.number,
-        );
-        if (additionalPrompt && additionalPrompt.trim().length > 0) {
-          allPrompts.push(additionalPrompt);
-          additionalPromptsFound.push(`プロンプト${i}(${additionalPromptColumn}列)`);
-        }
-      }
 
       // 追加プロンプトがある場合はログ出力
       if (additionalPromptsFound.length > 0) {
@@ -392,16 +371,73 @@ class TaskGenerator {
     columnGroup,
     spreadsheetData,
   ) {
-    // A列の内容を読み取る
-    const aColumnValue =
-      this.getCellValue(spreadsheetData, "A", rowNumber) || "";
-
-    // モデル・機能を抽出
-    const extractedModel = extractFromMap(aColumnValue, SPECIAL_MODEL_MAP);
-    const extractedOperation = extractFromMap(
-      aColumnValue,
-      SPECIAL_OPERATION_MAP,
-    );
+    // モデル行からモデルを取得（AIタイプに応じて列を選択）
+    let extractedModel = null;
+    if (spreadsheetData.modelRow) {
+      const modelRowIndex = spreadsheetData.modelRow.index;
+      let modelColumnIndex;
+      
+      // 3種類AIの場合は回答列、通常処理はプロンプト列からモデルを取得
+      if (columnGroup.type === "3type") {
+        // 3種類AI：回答列からモデルを取得
+        modelColumnIndex = this.getColumnIndex(answerColumn);
+        console.log(`[TaskGenerator] 3種類AI - モデル取得試行: ${answerColumn}列(index=${modelColumnIndex}), モデル行${modelRowIndex + 1}`);
+      } else {
+        // 通常処理：プロンプト列からモデルを取得
+        modelColumnIndex = this.getColumnIndex(promptColumn);
+        console.log(`[TaskGenerator] 通常処理 - モデル取得試行: ${promptColumn}列(index=${modelColumnIndex}), モデル行${modelRowIndex + 1}`);
+      }
+      
+      if (spreadsheetData.values && spreadsheetData.values[modelRowIndex]) {
+        const modelValue = spreadsheetData.values[modelRowIndex][modelColumnIndex];
+        console.log(`[TaskGenerator] モデル行の値: "${modelValue}" (type: ${typeof modelValue})`);
+        
+        if (modelValue && modelValue.trim()) {
+          extractedModel = modelValue.trim();
+          console.log(`[TaskGenerator] モデル行から取得: "${extractedModel}"`);
+        } else {
+          console.log(`[TaskGenerator] モデル値は空またはnull`);
+        }
+      } else {
+        console.log(`[TaskGenerator] モデル行データが見つからない: index=${modelRowIndex}`);
+      }
+    } else {
+      console.log(`[TaskGenerator] モデル行がスプレッドシートデータに含まれていない`);
+    }
+    
+    // 機能行から機能を取得（AIタイプに応じて列を選択）
+    let extractedOperation = null;
+    if (spreadsheetData.taskRow) {
+      const taskRowIndex = spreadsheetData.taskRow.index;
+      let operationColumnIndex;
+      
+      // 3種類AIの場合は回答列、通常処理はプロンプト列から機能を取得
+      if (columnGroup.type === "3type") {
+        // 3種類AI：回答列から機能を取得
+        operationColumnIndex = this.getColumnIndex(answerColumn);
+        console.log(`[TaskGenerator] 3種類AI - 機能取得試行: ${answerColumn}列(index=${operationColumnIndex}), 機能行${taskRowIndex + 1}`);
+      } else {
+        // 通常処理：プロンプト列から機能を取得
+        operationColumnIndex = this.getColumnIndex(promptColumn);
+        console.log(`[TaskGenerator] 通常処理 - 機能取得試行: ${promptColumn}列(index=${operationColumnIndex}), 機能行${taskRowIndex + 1}`);
+      }
+      
+      if (spreadsheetData.values && spreadsheetData.values[taskRowIndex]) {
+        const taskValue = spreadsheetData.values[taskRowIndex][operationColumnIndex];
+        console.log(`[TaskGenerator] 機能行の値: "${taskValue}" (type: ${typeof taskValue})`);
+        
+        if (taskValue && taskValue.trim()) {
+          extractedOperation = taskValue.trim();
+          console.log(`[TaskGenerator] 機能行から取得: "${extractedOperation}"`);
+        } else {
+          console.log(`[TaskGenerator] 機能値は空またはnull`);
+        }
+      } else {
+        console.log(`[TaskGenerator] 機能行データが見つからない: index=${taskRowIndex}`);
+      }
+    } else {
+      console.log(`[TaskGenerator] 機能行がスプレッドシートデータに含まれていない`);
+    }
     
     // aiTypeを正規化（singleや3typeの場合は実際のAIタイプに変換）
     let normalizedAiType = aiType;
@@ -528,6 +564,17 @@ class TaskGenerator {
   }
 
   /**
+   * 列名から列インデックスを計算（A=0, Z=25, AA=26, AB=27...）
+   */
+  getColumnIndex(columnName) {
+    let index = 0;
+    for (let i = 0; i < columnName.length; i++) {
+      index = index * 26 + (columnName.charCodeAt(i) - 64);
+    }
+    return index - 1;
+  }
+
+  /**
    * セル値を取得
    */
   getCellValue(spreadsheetData, column, row) {
@@ -535,7 +582,7 @@ class TaskGenerator {
     if (spreadsheetData.workRows) {
       const workRow = spreadsheetData.workRows.find(wr => wr.number === row);
       if (workRow && workRow.data) {
-        const columnIndex = column.charCodeAt(0) - 65;
+        const columnIndex = this.getColumnIndex(column);
         return workRow.data[columnIndex] || null;
       }
     }
@@ -546,7 +593,7 @@ class TaskGenerator {
     const rowData = spreadsheetData.values[row - 1];
     if (!rowData) return null;
 
-    const columnIndex = column.charCodeAt(0) - 65;
+    const columnIndex = this.getColumnIndex(column);
     return rowData[columnIndex] || null;
   }
 

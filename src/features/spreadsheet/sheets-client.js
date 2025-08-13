@@ -232,20 +232,22 @@ class SheetsClient {
         };
       }
 
-      // モデル行を検索
+      // モデル行を検索（A列が「モデル」と完全一致）
       if (firstCell === config.rowIdentifiers.modelRow.keyword) {
         result.modelRow = {
           index: i,
           data: row,
         };
+        this.logger.log("SheetsClient", `モデル行検出: 行${i + 1}, A列="${firstCell}"`);
       }
 
-      // 機能行を検索
+      // 機能行を検索（A列が「機能」と完全一致）
       if (firstCell === config.rowIdentifiers.taskRow.keyword) {
         result.taskRow = {
           index: i,
           data: row,
         };
+        this.logger.log("SheetsClient", `機能行検出: 行${i + 1}, A列="${firstCell}"`);
       }
 
       // 作業行を検索（A列が「1」から始まる数字）

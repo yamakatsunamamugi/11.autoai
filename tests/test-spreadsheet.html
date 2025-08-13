@@ -120,7 +120,11 @@
         <div class="tab-content" id="structure-tab">
           <div class="structure-container">
             <div class="structure-header">
-              <h3>スプレッドシート構造</h3>
+              <h3>スプレッドシート構造分析</h3>
+              <p class="tab-description">
+                読み込んだスプレッドシートの構造を分析し、特殊行（メニュー、AI、モデル、機能）の検出状況とAI列の配置を確認できます。
+                データが正しく解析されているか診断する際に使用します。
+              </p>
               <div class="structure-actions">
                 <button class="btn-small" id="expandAllBtn">すべて展開</button>
                 <button class="btn-small" id="collapseAllBtn">すべて折りたたみ</button>
@@ -128,6 +132,7 @@
             </div>
             <div id="structureTree"></div>
             <div class="spreadsheet-table-container">
+              <h4>スプレッドシートデータプレビュー（最初の20行）</h4>
               <table id="spreadsheetTable" class="spreadsheet-table"></table>
             </div>
           </div>
@@ -211,25 +216,42 @@
         <div class="tab-content" id="performance-tab">
           <div class="performance-container">
             <div class="performance-summary">
-              <h3>パフォーマンス概要</h3>
+              <h3>パフォーマンス測定</h3>
+              <p class="tab-description">
+                スプレッドシートの読み込みとタスク生成の処理時間を測定します。
+                処理が遅い場合の原因分析に使用できます。
+              </p>
               <div class="perf-stats">
+                <div class="perf-stat">
+                  <span class="perf-label">読み込み時間:</span>
+                  <span class="perf-value" id="loadTime">-</span>
+                </div>
+                <div class="perf-stat">
+                  <span class="perf-label">タスク生成時間:</span>
+                  <span class="perf-value" id="taskGenTime">-</span>
+                </div>
                 <div class="perf-stat">
                   <span class="perf-label">総実行時間:</span>
                   <span class="perf-value" id="totalExecutionTime">-</span>
                 </div>
-                <div class="perf-stat">
-                  <span class="perf-label">メモリ使用量:</span>
-                  <span class="perf-value" id="memoryUsage">-</span>
-                </div>
               </div>
             </div>
-            <div class="performance-chart">
-              <h3>処理時間分析</h3>
-              <canvas id="performanceChart"></canvas>
-            </div>
             <div class="performance-details">
-              <h3>詳細タイミング</h3>
-              <table id="performanceTable" class="perf-table"></table>
+              <h3>処理ステップ別時間</h3>
+              <table id="performanceTable" class="perf-table">
+                <thead>
+                  <tr>
+                    <th>処理ステップ</th>
+                    <th>時間 (ms)</th>
+                    <th>割合</th>
+                  </tr>
+                </thead>
+                <tbody id="perfTableBody">
+                  <tr>
+                    <td colspan="3" class="no-data">データなし - スプレッドシートを読み込んでください</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
