@@ -648,30 +648,7 @@ function displayStructureTree(data) {
     aiColumnsSection.innerHTML += '<p class="no-data">AI列が検出されていません</p>';
   }
   
-  elements.structureTree.appendChild(aiColumnsSection)
-  
-  // AI列
-  const aiColumns = Object.entries(data.aiColumns || {});
-  if (aiColumns.length > 0) {
-    tree.innerHTML += `
-      <div class="tree-node">
-        <span class="tree-icon">📊</span>
-        <span class="tree-label">AI列: ${aiColumns.length}列</span>
-      </div>
-    `;
-    
-    aiColumns.forEach(([column, info]) => {
-      tree.innerHTML += `
-        <div class="tree-node tree-child">
-          <span class="tree-icon">📝</span>
-          <span class="tree-label">${column}列: ${info.type === '3type' ? '3種類AI' : info.type.toUpperCase()}</span>
-        </div>
-      `;
-    });
-  }
-  
-  elements.structureTree.innerHTML = '';
-  elements.structureTree.appendChild(tree);
+  elements.structureTree.appendChild(aiColumnsSection);
 }
 
 // スプレッドシートテーブルの表示
@@ -953,14 +930,9 @@ function displayTasksTable() {
   `;
   container.appendChild(controlPanel);
   
-  // タスクテーブル（改善版アコーディオン形式）
-  const tasksContainer = document.createElement('div');
-  tasksContainer.className = 'tasks-accordion-container';
-  
-  // テーブルヘッダー（従来のテーブル形式も併用）
+  // タスクテーブル（通常のテーブル形式）
   const table = document.createElement('table');
   table.className = 'tasks-table';
-  table.style.display = 'none'; // デフォルトで非表示
   
   const thead = document.createElement('thead');
   thead.innerHTML = `
@@ -974,7 +946,12 @@ function displayTasksTable() {
       <th>モデル</th>
       <th>機能</th>
       <th>プロンプト</th>
-      <th class="detail-column" title="その他のメタデータ情報">メタデータ <span class="info-icon">ℹ️</span></th>
+      <th class="detail-column" title="スキップ理由">スキップ理由</th>
+      <th class="detail-column" title="タスクID">タスクID</th>
+      <th class="detail-column" title="グループID">グループID</th>
+      <th class="detail-column" title="ログ列情報">ログ列情報</th>
+      <th class="detail-column" title="制御フラグ">制御フラグ</th>
+      <th class="detail-column" title="メタデータ">メタデータ</th>
     </tr>
   `;
   table.appendChild(thead);
