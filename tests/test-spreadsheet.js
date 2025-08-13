@@ -604,7 +604,7 @@ function displayControls(controls) {
   if (elements.rowControlsContainer) {
     elements.rowControlsContainer.innerHTML = '';
     
-    if (controls.rowControls && Object.keys(controls.rowControls).length > 0) {
+    if (controls.rowControls && controls.rowControls.length > 0) {
       const table = document.createElement('table');
       table.className = 'control-table';
       table.innerHTML = `
@@ -619,14 +619,11 @@ function displayControls(controls) {
       `;
       
       const tbody = table.querySelector('tbody');
-      Object.entries(controls.rowControls).forEach(([row, control]) => {
-        let controlText = control;
+      // rowControlsは配列なので、直接forEachで処理
+      controls.rowControls.forEach((control) => {
+        let controlText = control.type || 'unknown';
         let description = '';
-        
-        // 制御タイプの説明を追加
-        if (typeof control === 'object') {
-          controlText = control.type || JSON.stringify(control);
-        }
+        let rowNumber = control.row || control.startRow || '不明';
         
         switch(controlText) {
           case 'skip':
@@ -641,13 +638,17 @@ function displayControls(controls) {
           case 'until':
             description = 'この行まで処理';
             break;
+          case 'range':
+            description = `${control.startRow}行目から${control.endRow}行目まで処理`;
+            rowNumber = `${control.startRow}-${control.endRow}`;
+            break;
           default:
             description = '特殊制御';
         }
         
         const tr = document.createElement('tr');
         tr.innerHTML = `
-          <td class="control-row">${row}行目</td>
+          <td class="control-row">${rowNumber}行目</td>
           <td class="control-type">${controlText}</td>
           <td class="control-description">${description}</td>
         `;

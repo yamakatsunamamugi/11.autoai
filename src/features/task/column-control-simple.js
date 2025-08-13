@@ -113,9 +113,34 @@ export class SimpleColumnControl {
         columns.push(reportColumn);
       }
       
-      // aiTypeを正規化（singleの場合はchatgptをデフォルトに）
+      // AI行から実際のAIタイプを取得
       let normalizedAiType = "chatgpt"; // デフォルト
-      if (aiType === "chatgpt" || aiType === "claude" || aiType === "gemini") {
+      
+      // spreadsheetDataが渡されていて、AI行がある場合
+      if (spreadsheetData && spreadsheetData.aiRow && spreadsheetData.values) {
+        const aiRowData = spreadsheetData.values[spreadsheetData.aiRow.index];
+        if (aiRowData) {
+          // プロンプト列のAI行の値を確認
+          const aiValue = aiRowData[promptIndex];
+          if (aiValue && typeof aiValue === 'string') {
+            const aiValueLower = aiValue.toLowerCase().trim();
+            // AI名の判定
+            if (aiValueLower.includes('claude')) {
+              normalizedAiType = 'claude';
+              console.log(`[SimpleColumnControl] ${promptColumn}列: AI行から'Claude'を検出`);
+            } else if (aiValueLower.includes('gemini')) {
+              normalizedAiType = 'gemini';
+              console.log(`[SimpleColumnControl] ${promptColumn}列: AI行から'Gemini'を検出`);
+            } else if (aiValueLower.includes('chatgpt') || aiValueLower.includes('gpt')) {
+              normalizedAiType = 'chatgpt';
+              console.log(`[SimpleColumnControl] ${promptColumn}列: AI行から'ChatGPT'を検出`);
+            } else {
+              console.log(`[SimpleColumnControl] ${promptColumn}列: AI行の値 "${aiValue}" を解釈できず、デフォルトの'chatgpt'を使用`);
+            }
+          }
+        }
+      } else if (aiType === "chatgpt" || aiType === "claude" || aiType === "gemini") {
+        // 引数で渡されたaiTypeを使用（後方互換性のため）
         normalizedAiType = aiType;
       }
       
