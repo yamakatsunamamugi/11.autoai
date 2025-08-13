@@ -41,25 +41,44 @@ class StreamProcessor {
    * タスクリストをストリーミング処理で実行
    * @param {TaskList} taskList - タスクリスト
    * @param {Object} spreadsheetData - スプレッドシートデータ
+   * @param {Object} options - オプション設定
    * @returns {Promise<Object>} 処理結果
    */
-  async processTaskStream(taskList, spreadsheetData) {
+  async processTaskStream(taskList, spreadsheetData, options = {}) {
     this.logger.log("[StreamProcessor] ストリーミング処理開始", {
       totalTasks: taskList.tasks.length,
+      testMode: options.testMode || false
     });
 
     this.isProcessing = true;
     this.spreadsheetData = spreadsheetData;
+    this.isTestMode = options.testMode || false;
 
     try {
       // タスクを列・行でグループ化
       this.organizeTasks(taskList);
 
-      // 最初の列の最初のタスクから開始
-      const firstColumn = this.getFirstColumn();
-      if (firstColumn) {
-        await this.startColumnProcessing(firstColumn);
+      // 複数の列を並列で開始（最大4ウィンドウまで）
+      const columns = Array.from(this.taskQueue.keys()).sort();
+      const columnsToStart = Math.min(columns.length, this.maxConcurrentWindows);
+      
+      this.logger.log(`[StreamProcessor] ${columnsToStart}個の列を並列で開始`);
+      
+      // 各列を並列で開始
+      const columnProcessingPromises = [];
+      for (let i = 0; i < columnsToStart; i++) {
+        if (columns[i]) {
+          columnProcessingPromises.push(this.startColumnProcessing(columns[i]));
+        }
       }
+      
+      // 全ての列の処理開始を並列実行（ウィンドウ作成のみ並列、タスク実行は各列内で順次）
+      await Promise.all(columnProcessingPromises.map(promise => 
+        promise.catch(error => {
+          this.logger.error("[StreamProcessor] 列処理エラー", error);
+          return null; // エラーが発生した列は無視して続行
+        })
+      ));
 
       return {
         success: true,
@@ -113,6 +132,9 @@ class StreamProcessor {
    * @param {string} column
    */
   async startColumnProcessing(column) {
+    const startTime = Date.now();
+    this.logger.log(`[StreamProcessor] 📋 startColumnProcessing開始: ${column}列 (${startTime})`);
+    
     const tasks = this.taskQueue.get(column);
     if (!tasks || tasks.length === 0) return;
 
@@ -132,7 +154,10 @@ class StreamProcessor {
       await this.executeTaskInWindow(currentTask, existingWindowId);
     } else {
       // 新しいウィンドウを開く必要がある
-      const position = this.findAvailablePosition();
+      // テスト用のpreferredPositionがある場合はそれを使用、なければ自動検索
+      const position = currentTask.preferredPosition !== undefined 
+        ? currentTask.preferredPosition 
+        : this.findAvailablePosition();
       if (position === -1) {
         this.logger.log(
           `[StreamProcessor] 空きポジションがありません。待機中...`,
@@ -151,7 +176,9 @@ class StreamProcessor {
    * @param {number} position
    */
   async openWindowForColumn(column, task, position) {
-    this.logger.log(`[StreamProcessor] ${column}列用のウィンドウを開く`);
+    const openTime = Date.now();
+    this.logger.log(`[StreamProcessor] 🚀 ${column}列用のウィンドウを開く (position=${position}) ${openTime}`);
+    this.logger.log(`[StreamProcessor] 位置設定前のwindowPositions:`, Array.from(this.windowPositions.keys()));
 
     const url = this.determineAIUrl(task.aiType, column);
     const screenInfo = await this.getScreenInfo();
@@ -174,12 +201,17 @@ class StreamProcessor {
       };
 
       this.activeWindows.set(window.id, windowInfo);
-      this.windowPositions.set(position, window.id);
+      this.windowPositions.set(position, window.id); // 仮予約を本予約に変更
       this.columnWindows.set(column, window.id);
 
+      this.logger.log(`[StreamProcessor] 🔧 位置設定後のwindowPositions:`, Array.from(this.windowPositions.keys()));
       this.logger.log(
-        `[StreamProcessor] ウィンドウ作成: ${column}列 (${task.aiType}) - 位置: ${["左上", "右上", "左下", "右下"][position]}`,
+        `[StreamProcessor] ウィンドウ作成: ${column}列 (${task.aiType}) - 位置: ${["左上", "右上", "左下", "右下"][position]} (windowId: ${window.id})`,
       );
+
+      // ページの読み込みとコンテンツスクリプトのロードを待機
+      this.logger.log(`[StreamProcessor] ページ読み込み待機中...`);
+      await this.waitForContentScriptReady(window.id);
 
       // 最初のタスクを実行
       await this.executeTaskInWindow(task, window.id);
@@ -204,6 +236,27 @@ class StreamProcessor {
     // レポートタスクの場合は特別な処理
     if (task.taskType === "report") {
       await this.executeReportTask(task, windowId);
+      return;
+    }
+
+    // テストモード（waitResponse=false or getResponse=false）の場合はプロンプト送信をスキップ
+    if (task.waitResponse === false || task.getResponse === false) {
+      this.logger.log(`[StreamProcessor] テストモード: プロンプト送信をスキップしてランダム待機`);
+      
+      // ランダム待機（5-15秒）
+      const waitTime = Math.floor(Math.random() * (15000 - 5000 + 1)) + 5000;
+      this.logger.log(`[StreamProcessor] ${waitTime}ms待機中...`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+      
+      // ダミー結果でタスク完了
+      const dummyResult = {
+        success: true,
+        response: `テストモード完了 (${waitTime}ms待機)`,
+        aiType: task.aiType,
+        taskId: task.id
+      };
+      
+      await this.onTaskCompleted(task, windowId, dummyResult);
       return;
     }
 
@@ -299,18 +352,23 @@ class StreamProcessor {
    * @param {Object} result - タスク実行結果
    */
   async onTaskCompleted(task, windowId, result = {}) {
-    const { column, row, id: taskId } = task;
+    const { column, row, id: taskId, promptColumn } = task;
+    
+    // タスクはpromptColumnでグループ化されているので、それを使用
+    const queueColumn = promptColumn || column;
 
     this.logger.log(`[StreamProcessor] タスク完了: ${column}${row}`, {
       result: result.success ? "success" : "failed",
       skipped: result.skipped || false,
+      queueColumn: queueColumn
     });
 
     // タスクを完了済みにマーク
     this.completedTasks.add(taskId);
 
     // 成功した場合の追加処理（AIタスクの場合のみ）
-    if (result.success && result.response && task.taskType === "ai") {
+    // テストモードの場合はスプレッドシート書き込みをスキップ
+    if (result.success && result.response && task.taskType === "ai" && !this.isTestMode) {
       try {
         // 回答をスプレッドシートに書き込む
         await this.writeResultToSpreadsheet(task, result);
@@ -319,16 +377,16 @@ class StreamProcessor {
       }
     }
 
-    // 同じ列の次の行へ進む
-    const currentIndex = this.currentRowByColumn.get(column) || 0;
+    // 同じ列の次の行へ進む（promptColumnを使用）
+    const currentIndex = this.currentRowByColumn.get(queueColumn) || 0;
     const nextIndex = currentIndex + 1;
-    this.currentRowByColumn.set(column, nextIndex);
+    this.currentRowByColumn.set(queueColumn, nextIndex);
 
-    // タスクが残っているか確認
-    const tasks = this.taskQueue.get(column);
+    // タスクが残っているか確認（promptColumnを使用）
+    const tasks = this.taskQueue.get(queueColumn);
     const hasMoreTasks = tasks && nextIndex < tasks.length;
 
-    this.logger.log(`[StreamProcessor] 次のタスク確認: ${column}列`, {
+    this.logger.log(`[StreamProcessor] 次のタスク確認: ${queueColumn}列`, {
       currentIndex: currentIndex,
       nextIndex: nextIndex,
       totalTasks: tasks?.length || 0,
@@ -336,21 +394,21 @@ class StreamProcessor {
     });
 
     // 現在のウィンドウを閉じる（タスク完了ごとに必ず閉じる）
-    this.logger.log(`[StreamProcessor] タスク完了によりウィンドウを閉じます: ${column}列`);
-    await this.closeColumnWindow(column);
+    this.logger.log(`[StreamProcessor] タスク完了によりウィンドウを閉じます: ${queueColumn}列`);
+    await this.closeColumnWindow(queueColumn);
     
     // 次のタスクがある場合は新しいウィンドウで開始
     if (hasMoreTasks) {
-      this.logger.log(`[StreamProcessor] 新しいウィンドウで次のタスクを開始: ${column}列`);
+      this.logger.log(`[StreamProcessor] 新しいウィンドウで次のタスクを開始: ${queueColumn}列`);
       // 少し待機してから新しいウィンドウを開く
       await new Promise(resolve => setTimeout(resolve, 500));
-      await this.startColumnProcessing(column);
+      await this.startColumnProcessing(queueColumn);
     } else {
-      this.logger.log(`[StreamProcessor] ${column}列のタスクが全て完了`);
+      this.logger.log(`[StreamProcessor] ${queueColumn}列のタスクが全て完了`);
     }
 
     // 完了した行の隣の列も開始
-    const nextColumn = this.getNextColumn(column);
+    const nextColumn = this.getNextColumn(queueColumn);
     if (nextColumn && this.shouldStartNextColumn(nextColumn, row)) {
       await this.startColumnProcessing(nextColumn);
     }
@@ -695,16 +753,85 @@ class StreamProcessor {
   }
 
   /**
-   * 空きポジションを探す
+   * 空きポジションを探して即座に予約
    * @returns {number} 空きポジション（0-3）、なければ-1
    */
   findAvailablePosition() {
+    const timestamp = Date.now();
+    this.logger.log(`[StreamProcessor] 🔍 findAvailablePosition開始 ${timestamp}`, {
+      currentWindowPositions: Array.from(this.windowPositions.keys()),
+      activeWindowsCount: this.activeWindows.size,
+      stackTrace: new Error().stack?.split('\n')[2]?.trim()
+    });
+    
     for (let i = 0; i < this.maxConcurrentWindows; i++) {
-      if (!this.windowPositions.has(i)) {
+      const hasPosition = this.windowPositions.has(i);
+      this.logger.log(`[StreamProcessor] ポジション${i}チェック: ${hasPosition ? '使用中' : '空き'}`);
+      
+      if (!hasPosition) {
+        // 競合状態を防ぐため、即座に仮予約
+        this.windowPositions.set(i, 'RESERVED');
+        this.logger.log(`[StreamProcessor] ✅ ポジション${i}を予約して返す (${timestamp})`);
         return i;
       }
     }
+    
+    this.logger.log(`[StreamProcessor] ❌ 空きポジションなし (${timestamp})`);
     return -1;
+  }
+
+  /**
+   * コンテンツスクリプトの準備完了を待機
+   * @param {number} windowId - ウィンドウID
+   * @returns {Promise<void>}
+   */
+  async waitForContentScriptReady(windowId) {
+    const maxRetries = 30; // 最大30回（30秒）
+    const retryDelay = 1000; // 1秒ごとにリトライ
+
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        // ウィンドウのタブを取得
+        const tabs = await chrome.tabs.query({ windowId });
+        if (!tabs || tabs.length === 0) {
+          throw new Error(`ウィンドウ ${windowId} にタブが見つかりません`);
+        }
+
+        const tabId = tabs[0].id;
+        
+        // タブの読み込み状態を確認
+        const tab = await chrome.tabs.get(tabId);
+        if (tab.status !== 'complete') {
+          this.logger.log(`[StreamProcessor] ページ読み込み中... (${i + 1}/${maxRetries})`);
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+          continue;
+        }
+
+        // コンテンツスクリプトに準備完了確認メッセージを送信
+        const response = await new Promise((resolve) => {
+          chrome.tabs.sendMessage(tabId, { action: "checkReady" }, (response) => {
+            if (chrome.runtime.lastError) {
+              resolve(null);
+            } else {
+              resolve(response);
+            }
+          });
+        });
+
+        if (response && response.ready) {
+          this.logger.log(`[StreamProcessor] コンテンツスクリプト準備完了 (AI: ${response.aiType})`);
+          return;
+        }
+
+        this.logger.log(`[StreamProcessor] コンテンツスクリプト待機中... (${i + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+      } catch (error) {
+        this.logger.warn(`[StreamProcessor] 準備確認エラー (${i + 1}/${maxRetries}):`, error.message);
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+      }
+    }
+
+    throw new Error("コンテンツスクリプトの準備がタイムアウトしました");
   }
 
   /**

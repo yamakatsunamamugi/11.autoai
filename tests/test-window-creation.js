@@ -5,6 +5,9 @@ let spreadsheetData = null;
 let taskList = null;
 let activeWindows = new Map();
 let testStartTime = null;
+let autoTestRunning = false;
+let autoTestLoop = null;
+let streamProcessorInstance = null;
 
 // DOM要素
 const elements = {
@@ -12,25 +15,25 @@ const elements = {
   processedTasks: document.getElementById('processedTasks'),
   activeWindows: document.getElementById('activeWindows'),
   maxWindows: document.getElementById('maxWindows'),
-  openWindowWithSettingsBtn: document.getElementById('openWindowWithSettingsBtn'),
-  testStreamProcessorBtn: document.getElementById('testStreamProcessorBtn'),
-  openMultipleWindowsBtn: document.getElementById('openMultipleWindowsBtn'),
+  openTestWindowsBtn: document.getElementById('openTestWindowsBtn'),
+  startAutoTestBtn: document.getElementById('startAutoTestBtn'),
   closeAllWindowsBtn: document.getElementById('closeAllWindowsBtn'),
-  closeSelectedWindowBtn: document.getElementById('closeSelectedWindowBtn'),
+  stopAutoTestBtn: document.getElementById('stopAutoTestBtn'),
   clearLogBtn: document.getElementById('clearLogBtn'),
   windowGrid: document.getElementById('windowGrid'),
   logContainer: document.getElementById('logContainer'),
   statusIndicator: document.getElementById('statusIndicator'),
   statusText: document.getElementById('statusText'),
   statusTime: document.getElementById('statusTime'),
-  // テスト設定要素
-  aiTypeSelect: document.getElementById('aiTypeSelect'),
-  columnSelect: document.getElementById('columnSelect'),
-  rowNumber: document.getElementById('rowNumber'),
-  positionSelect: document.getElementById('positionSelect'),
-  modelSelect: document.getElementById('modelSelect'),
-  taskTypeSelect: document.getElementById('taskTypeSelect'),
-  promptText: document.getElementById('promptText')
+  // 新しい設定要素
+  useChatGPT: document.getElementById('useChatGPT'),
+  useClaude: document.getElementById('useClaude'),
+  useGemini: document.getElementById('useGemini'),
+  windowCountSlider: document.getElementById('windowCountSlider'),
+  windowCountDisplay: document.getElementById('windowCountDisplay'),
+  waitTimeMin: document.getElementById('waitTimeMin'),
+  waitTimeMax: document.getElementById('waitTimeMax'),
+  repeatCount: document.getElementById('repeatCount')
 };
 
 // 初期化
@@ -44,12 +47,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // イベントリスナー設定
 function setupEventListeners() {
-  elements.openWindowWithSettingsBtn.addEventListener('click', openWindowWithSettings);
-  elements.testStreamProcessorBtn.addEventListener('click', testStreamProcessor);
-  elements.openMultipleWindowsBtn.addEventListener('click', openMultipleWindows);
+  elements.openTestWindowsBtn.addEventListener('click', openTestWindows);
+  elements.startAutoTestBtn.addEventListener('click', startAutoTest);
   elements.closeAllWindowsBtn.addEventListener('click', closeAllWindows);
-  elements.closeSelectedWindowBtn.addEventListener('click', closeSelectedWindow);
+  elements.stopAutoTestBtn.addEventListener('click', stopAutoTest);
   elements.clearLogBtn.addEventListener('click', clearLog);
+  
+  // スライダーのリアルタイム更新
+  elements.windowCountSlider.addEventListener('input', (e) => {
+    elements.windowCountDisplay.textContent = e.target.value;
+  });
+  
+  // クイック設定ボタン
+  document.querySelectorAll('.quick-set-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const count = e.target.dataset.count;
+      elements.windowCountSlider.value = count;
+      elements.windowCountDisplay.textContent = count;
+    });
+  });
 }
 
 // 親ウィンドウからのメッセージ処理
@@ -60,9 +76,6 @@ function handleMessage(event) {
     
     elements.totalTasks.textContent = taskCount;
     log(`スプレッドシートデータを受信: ${taskCount}個のタスク`, 'success');
-    
-    // テスト開始ボタンを有効化
-    elements.startTestBtn.disabled = false;
   }
 }
 
@@ -100,147 +113,116 @@ function updateStatus(text, type = 'idle') {
   }
 }
 
-// テスト開始
-async function startTest() {
-  if (!spreadsheetData) {
-    log('スプレッドシートデータがありません', 'error');
+// 設定に基づいてウィンドウを開く
+async function openTestWindows() {
+  log('設定に基づいてウィンドウを開きます', 'info');
+  
+  // 選択されたAIを取得
+  const selectedAIs = [];
+  if (elements.useChatGPT.checked) selectedAIs.push('chatgpt');
+  if (elements.useClaude.checked) selectedAIs.push('claude');
+  if (elements.useGemini.checked) selectedAIs.push('gemini');
+  
+  if (selectedAIs.length === 0) {
+    log('少なくとも1つのAIを選択してください', 'error');
     return;
   }
   
-  log('===== ウィンドウ作成テスト開始 =====', 'success');
-  testStartTime = Date.now();
-  updateStatus('テスト実行中', 'active');
-  
-  // タスクジェネレーターのインポート（動的）
-  try {
-    // StreamProcessorのモックアップを作成
-    log('StreamProcessorのテスト環境を構築中...', 'info');
-    
-    // テスト用のタスクリストを作成
-    const mockTaskList = createMockTaskList();
-    log(`モックタスクリスト作成: ${mockTaskList.length}個のタスク`, 'success');
-    
-    // ウィンドウ作成のシミュレーション
-    await simulateWindowCreation(mockTaskList);
-    
-  } catch (error) {
-    log(`エラー: ${error.message}`, 'error');
-    updateStatus('エラー発生', 'error');
-  }
-}
-
-// モックタスクリストの作成
-function createMockTaskList() {
-  const tasks = [];
-  const columns = ['C', 'F', 'I', 'L']; // 4列
-  const aiTypes = ['chatgpt', 'claude', 'gemini', 'chatgpt'];
-  
-  columns.forEach((column, index) => {
-    // 各列に3つのタスク
-    for (let row = 2; row <= 4; row++) {
-      tasks.push({
-        id: `${column}${row}_mock`,
-        column: column,
-        row: row,
-        aiType: aiTypes[index],
-        prompt: `テストプロンプト ${column}${row}`,
-        status: 'pending'
-      });
-    }
-  });
-  
-  return tasks;
-}
-
-// ウィンドウ作成シミュレーション
-async function simulateWindowCreation(tasks) {
-  log('ウィンドウ作成シミュレーション開始', 'info');
-  
-  // 列ごとにグループ化
-  const tasksByColumn = {};
-  tasks.forEach(task => {
-    if (!tasksByColumn[task.column]) {
-      tasksByColumn[task.column] = [];
-    }
-    tasksByColumn[task.column].push(task);
-  });
-  
-  const columns = Object.keys(tasksByColumn).sort();
-  log(`${columns.length}列のタスクを処理`, 'info');
-  
-  // 順次ウィンドウを開く
-  for (let i = 0; i < columns.length && i < 4; i++) {
-    const column = columns[i];
-    const columnTasks = tasksByColumn[column];
-    const position = i; // 0: 左上, 1: 右上, 2: 左下, 3: 右下
-    
-    await createWindow(column, columnTasks[0], position);
-    await sleep(500); // 視覚的にわかりやすくするため
-  }
-  
-  log('ウィンドウ作成シミュレーション完了', 'success');
-  updateStatus('テスト完了', 'idle');
-}
-
-// 設定に基づいて本番のStreamProcessorでウィンドウを開く
-async function openWindowWithSettings() {
-  log('設定に基づいて本番コードでウィンドウを開きます', 'info');
+  const windowCount = parseInt(elements.windowCountSlider.value);
+  log(`選択されたAI: ${selectedAIs.join(', ')}`, 'info');
+  log(`ウィンドウ数: ${windowCount}`, 'info');
   
   try {
     // 本番のモジュールをインポート
-    const [streamModule, generatorModule, modelsModule] = await Promise.all([
+    const [streamModule, modelsModule, factoryModule] = await Promise.all([
       import('../src/features/task/stream-processor.js'),
-      import('../src/features/task/generator.js'),
-      import('../src/features/task/models.js')
+      import('../src/features/task/models.js'),
+      import('../src/features/task/models.js')  // TaskFactoryも同じファイルから
     ]);
     
     const StreamProcessor = streamModule.default;
-    const TaskGenerator = generatorModule.default;
-    const { Task, TaskList } = modelsModule;
+    const { Task, TaskList, TaskFactory } = modelsModule;
     
     log('本番モジュールをインポートしました', 'success');
     
-    // 設定値を取得（テスト用の設定）
-    const aiType = elements.aiTypeSelect.value;
-    const column = elements.columnSelect.value;
-    const row = parseInt(elements.rowNumber.value);
-    const prompt = elements.promptText.value;
-    const model = elements.modelSelect.value;
-    const taskType = elements.taskTypeSelect.value;
+    // タスクリストを直接作成（スプレッドシートを経由しない）
+    const taskList = new TaskList();
+    const columns = ['C', 'F', 'I', 'L']; // テスト用の列
     
-    // テスト用のスプレッドシートデータを作成
-    const testData = createTestSpreadsheetDataForSingleTask(column, row, aiType, prompt);
+    // 各ウィンドウ用のタスクを作成（各AIで3個のタスクを作成し、3回開閉をシミュレート）
+    for (let i = 0; i < windowCount; i++) {
+      const column = columns[i % columns.length];
+      const aiType = selectedAIs[i % selectedAIs.length];
+      
+      // 各列に3つのタスクを作成（3回開閉をシミュレート）
+      for (let taskNum = 1; taskNum <= 3; taskNum++) {
+        const taskData = {
+          id: `test_${column}${taskNum}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+          column: column,
+          promptColumn: column,  // StreamProcessorはpromptColumnでグループ化する
+          row: taskNum + 1,  // 2,3,4行目
+          aiType: aiType,  // 正しいAIタイプを直接設定
+          taskType: 'ai',
+          prompt: `テストプロンプト${taskNum} for ${aiType} (${column}列)`,
+          groupId: `test_group_${column}_${aiType}`,
+          groupInfo: {
+            type: 'single',
+            columns: [column],
+            promptColumn: column
+          },
+          // テストモード用設定：AI応答を取得しない
+          waitResponse: false,
+          getResponse: false
+        };
+        
+        const task = new Task(TaskFactory.createTask(taskData));
+        taskList.add(task);
+      }
+    }
     
-    // 本番のTaskGeneratorでタスクリストを生成
-    const taskGenerator = new TaskGenerator();
-    const taskList = taskGenerator.generateTasks(testData);
+    log(`タスクリスト作成完了: ${taskList.tasks.length}個のタスク`, 'info');
     
-    log(`タスクリスト生成完了: ${taskList.tasks.length}個のタスク`, 'info');
+    // デバッグ: 作成されたタスクのAIタイプを確認
+    const aiTypes = {};
+    taskList.tasks.forEach(task => {
+      const aiType = task.aiType || 'unknown';
+      aiTypes[aiType] = (aiTypes[aiType] || 0) + 1;
+    });
+    log(`タスクのAIタイプ分布: ${JSON.stringify(aiTypes)}`, 'info');
     
     if (taskList.tasks.length === 0) {
       log('タスクが生成されませんでした。データを確認してください。', 'error');
       return;
     }
     
-    // モデル情報を設定（必要な場合）
-    if (model && taskList.tasks[0]) {
-      taskList.tasks[0].model = model;
-    }
+    log('本番StreamProcessorでウィンドウを開きます...', 'info');
+    log(`タスク数: ${taskList.tasks.length}個`, 'info');
     
-    // 本番のStreamProcessorで実行
+    // デバッグ: タスクリストの詳細
+    taskList.tasks.forEach((task, index) => {
+      log(`タスク${index + 1}: ${task.promptColumn}${task.row} (${task.aiType})`, 'info');
+    });
+    
+    // 本番のStreamProcessorで実行（既にインポート済み）
     const streamProcessor = new StreamProcessor();
     
-    log('本番のprocessTaskStreamを実行します...', 'info');
-    const result = await streamProcessor.processTaskStream(taskList, testData);
+    const minimalSpreadsheetData = {
+      spreadsheetId: 'test_spreadsheet',
+      values: [],
+      aiColumns: {}
+    };
     
-    log('ウィンドウ作成完了', 'success');
-    log(`結果: ${JSON.stringify(result)}`, 'info');
+    log('processTaskStream実行中...', 'info');
+    const result = await streamProcessor.processTaskStream(taskList, minimalSpreadsheetData);
     
-    // アクティブウィンドウの状態を更新
+    log(`ウィンドウ作成完了: ${result.totalWindows}個`, 'success');
+    log(`処理された列: ${result.processedColumns.join(', ')}`, 'info');
+    
+    // StreamProcessorの状態を取得してUIに反映
     updateActiveWindowsFromStreamProcessor(streamProcessor);
     
     // グローバルに保持（後でクローズできるように）
-    window.testStreamProcessor = streamProcessor;
+    streamProcessorInstance = streamProcessor;
     
   } catch (error) {
     log(`エラー: ${error.message}`, 'error');
@@ -248,150 +230,162 @@ async function openWindowWithSettings() {
   }
 }
 
-// 単一タスク用のテストデータを作成
-function createTestSpreadsheetDataForSingleTask(column, row, aiType, prompt) {
-  const columnIndex = column.charCodeAt(0) - 65;
-  
-  const data = {
-    spreadsheetId: 'test_spreadsheet_id',
-    gid: '12345',
-    values: [],
-    menuRow: { index: 0, data: [] },
-    aiRow: { index: 1, data: [] },
-    modelRow: null,
-    taskRow: null,
-    workRows: [],
-    aiColumns: {},
-    columnMapping: {}
-  };
-  
-  // メニュー行を設定
-  data.menuRow.data[columnIndex] = 'プロンプト';
-  data.menuRow.data[columnIndex + 1] = `${aiType}回答`;
-  
-  // AI列情報を設定
-  data.aiColumns[column] = {
-    index: columnIndex,
-    letter: column,
-    header: 'プロンプト',
-    type: 'single'
-  };
-  
-  // 作業行を1つだけ追加
-  const workRow = {
-    index: row - 1,
-    number: row,
-    data: []
-  };
-  workRow.data[columnIndex] = prompt;
-  data.workRows.push(workRow);
-  
-  // valuesにも追加
-  data.values[row - 1] = workRow.data;
-  
-  return data;
-}
+// 不要な独自関数は削除済み - StreamProcessorが全て処理
 
-// 本番のStreamProcessorを使用したテスト実行
-async function testStreamProcessor() {
-  log('===== 本番StreamProcessor実行テスト開始 =====', 'success');
+// 自動開閉テストを開始
+async function startAutoTest() {
+  log('===== 自動開閉テスト開始 =====', 'success');
+  autoTestRunning = true;
+  elements.startAutoTestBtn.disabled = true;
+  elements.stopAutoTestBtn.disabled = false;
+  elements.openTestWindowsBtn.disabled = true;
+  
+  const repeatCount = parseInt(elements.repeatCount.value);
+  const waitMin = parseInt(elements.waitTimeMin.value) * 1000;
+  const waitMax = parseInt(elements.waitTimeMax.value) * 1000;
+  
+  // 選択されたAIを取得
+  const selectedAIs = [];
+  if (elements.useChatGPT.checked) selectedAIs.push('chatgpt');
+  if (elements.useClaude.checked) selectedAIs.push('claude');
+  if (elements.useGemini.checked) selectedAIs.push('gemini');
+  
+  if (selectedAIs.length === 0) {
+    log('少なくとも1つのAIを選択してください', 'error');
+    stopAutoTest();
+    return;
+  }
+  
+  const windowCount = parseInt(elements.windowCountSlider.value);
   
   try {
-    // 本番のStreamProcessorをインポート
-    const streamModule = await import('../src/features/task/stream-processor.js');
+    // モジュールをインポート
+    const [streamModule, modelsModule] = await Promise.all([
+      import('../src/features/task/stream-processor.js'),
+      import('../src/features/task/models.js')
+    ]);
+    
     const StreamProcessor = streamModule.default;
+    const { Task, TaskList, TaskFactory } = modelsModule;
     
-    log('本番のStreamProcessorをインポートしました', 'success');
+    // タスクリストを作成
+    const taskList = new TaskList();
+    const columns = ['C', 'F', 'I', 'L']; // テスト用の列
     
-    // 本番のTaskGeneratorもインポート
-    const generatorModule = await import('../src/features/task/generator.js');
-    const TaskGenerator = generatorModule.default;
+    // 各ウィンドウ用のタスクを作成（各AIで3個のタスクを作成し、3回開閉をシミュレート）
+    for (let i = 0; i < windowCount; i++) {
+      const column = columns[i % columns.length];
+      const aiType = selectedAIs[i % selectedAIs.length];
+      
+      // 各列に3つのタスクを作成（3回開閉をシミュレート）
+      for (let taskNum = 1; taskNum <= 3; taskNum++) {
+        const taskData = {
+          id: `test_${column}${taskNum}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+          column: column,
+          promptColumn: column,
+          row: taskNum + 1,
+          aiType: aiType,
+          taskType: 'ai',
+          prompt: `テストプロンプト${taskNum} for ${aiType} (${column}列)`,
+          groupId: `test_group_${column}_${aiType}`,
+          groupInfo: {
+            type: 'single',
+            columns: [column],
+            promptColumn: column
+          },
+          // テストモード用設定：AI応答を取得しない
+          waitResponse: false,
+          getResponse: false
+        };
+        
+        const task = new Task(TaskFactory.createTask(taskData));
+        taskList.add(task);
+      }
+    }
+  
+    // 本番のStreamProcessorでテストを実行（各列に3つのタスクがあるため、自動的に3回開閉される）
+    log('本番StreamProcessorで開閉テストを開始します', 'info');
+    log('（各AIで3つのタスクを処理し、自動的に3回開閉されます）', 'info');
     
-    log('本番のTaskGeneratorをインポートしました', 'success');
+    // StreamProcessorで実行（本番と同じ処理）
+    const streamProcessor = new StreamProcessor();
+    streamProcessorInstance = streamProcessor; // グローバルに保持
     
-    // テスト用のスプレッドシートデータを作成（実際のデータ構造を模倣）
-    const testSpreadsheetData = createTestSpreadsheetData();
+    const minimalSpreadsheetData = {
+      spreadsheetId: 'test_spreadsheet',
+      values: [],
+      aiColumns: {}
+    };
     
-    // 本番のTaskGeneratorでタスクリストを生成
-    const taskGenerator = new TaskGenerator();
-    const taskList = taskGenerator.generateTasks(testSpreadsheetData);
+    log('StreamProcessorで処理開始...', 'info');
+    log(`タスクリスト詳細: ${taskList.tasks.length}個のタスク`, 'info');
     
-    log(`本番TaskGeneratorでタスクリスト生成: ${taskList.tasks.length}個のタスク`, 'info');
-    
-    // タスクリストの詳細をログ
+    // デバッグ: タスクリストの内容を確認
     taskList.tasks.forEach((task, index) => {
-      log(`  タスク${index + 1}: ${task.column}${task.row} - ${task.aiType}`, 'info');
+      log(`タスク${index + 1}: ${task.promptColumn}列 ${task.row}行 (${task.aiType})`, 'info');
     });
     
-    // 本番のStreamProcessorインスタンスを作成
-    const streamProcessor = new StreamProcessor();
+    log('processTaskStreamを呼び出します...', 'info');
+    const result = await streamProcessor.processTaskStream(taskList, minimalSpreadsheetData);
     
-    // processTaskStreamを実行
-    log('本番のprocessTaskStreamを実行します...', 'info');
-    const result = await streamProcessor.processTaskStream(taskList, testSpreadsheetData);
+    log(`処理完了: ${result.totalWindows}個のウィンドウで処理されました`, 'success');
+    log('StreamProcessorにより各AIで3回の開閉が自動実行されました', 'info');
     
-    log('本番StreamProcessor実行完了', 'success');
-    log(`結果: ${JSON.stringify(result)}`, 'info');
-    
-    // アクティブウィンドウの状態を更新
-    updateActiveWindowsFromStreamProcessor(streamProcessor);
+    // 最終的な状態を確認
+    const status = streamProcessor.getStatus();
+    log(`最終状態: 処理済み列 ${status.processedColumns.length}個`, 'info');
     
   } catch (error) {
-    log(`本番StreamProcessorテストエラー: ${error.message}`, 'error');
-    console.error('詳細エラー:', error);
+    log(`エラー詳細: ${error.message}`, 'error');
+    log(`エラースタック: ${error.stack}`, 'error');
+    console.error('StreamProcessor エラー:', error);
+    
+    // エラーが発生してもクリーンアップ
+    try {
+      await streamProcessor.closeAllWindows();
+    } catch (cleanupError) {
+      log(`クリーンアップエラー: ${cleanupError.message}`, 'warning');
+    }
+  } finally {
+    // UIを更新
+    activeWindows.clear();
+    elements.activeWindows.textContent = '0';
+    updateWindowGrid();
   }
+  
+  log('===== 自動開閉テスト完了 =====', 'success');
+  stopAutoTest();
 }
 
-// 複数行のテスト用スプレッドシートデータを作成
-function createTestSpreadsheetData() {
-  const aiType = elements.aiTypeSelect.value;
-  const column = elements.columnSelect.value;
-  const row = parseInt(elements.rowNumber.value);
-  const prompt = elements.promptText.value;
+// 自動テストを停止
+function stopAutoTest() {
+  autoTestRunning = false;
+  elements.startAutoTestBtn.disabled = false;
+  elements.stopAutoTestBtn.disabled = true;
+  elements.openTestWindowsBtn.disabled = false;
+  updateStatus('テスト停止', 'idle');
+  log('自動テストを停止しました', 'warning');
+}
+
+// 全ウィンドウを閉じる（StreamProcessorを使用）
+async function closeAllWindows() {
+  log('StreamProcessorで全ウィンドウを閉じます', 'info');
   
-  // 本番と同じデータ構造を作成
-  const data = {
-    spreadsheetId: 'test_spreadsheet_id',
-    gid: '12345',
-    values: [],
-    menuRow: { index: 0, data: [] },
-    aiRow: { index: 1, data: [] },
-    modelRow: null,
-    taskRow: null,
-    workRows: [],
-    aiColumns: {},
-    columnMapping: {}
-  };
-  
-  // メニュー行を設定
-  const columnIndex = column.charCodeAt(0) - 65;
-  data.menuRow.data[columnIndex] = 'プロンプト';
-  data.menuRow.data[columnIndex + 1] = `${aiType}回答`;
-  
-  // AI列情報を設定
-  data.aiColumns[column] = {
-    index: columnIndex,
-    letter: column,
-    header: 'プロンプト',
-    type: 'single'
-  };
-  
-  // 作業行を追加（3行分）
-  for (let i = 0; i < 3; i++) {
-    const workRow = {
-      index: row + i - 1,
-      number: row + i,
-      data: []
-    };
-    workRow.data[columnIndex] = `${prompt} (行${row + i})`;
-    data.workRows.push(workRow);
-    
-    // valuesにも追加
-    data.values[row + i - 1] = workRow.data;
+  if (streamProcessorInstance) {
+    try {
+      await streamProcessorInstance.closeAllWindows();
+      log('StreamProcessorによるウィンドウクローズ完了', 'success');
+    } catch (error) {
+      log(`StreamProcessorクローズエラー: ${error.message}`, 'warning');
+    }
+  } else {
+    log('StreamProcessorインスタンスがありません', 'warning');
   }
   
-  log('テスト用スプレッドシートデータを作成しました', 'info');
-  return data;
+  // UIを更新
+  activeWindows.clear();
+  elements.activeWindows.textContent = '0';
+  updateWindowGrid();
 }
 
 // StreamProcessorのアクティブウィンドウ情報を取得して更新
@@ -410,162 +404,6 @@ function updateActiveWindowsFromStreamProcessor(streamProcessor) {
     updateWindowGrid();
   }
 }
-
-// テスト用タスクリストを作成
-function createTestTaskList() {
-  // 設定から取得
-  const aiType = elements.aiTypeSelect.value;
-  const column = elements.columnSelect.value;
-  const row = parseInt(elements.rowNumber.value);
-  const taskType = elements.taskTypeSelect.value;
-  const prompt = elements.promptText.value;
-  
-  // TaskListのモック
-  const taskList = {
-    tasks: [],
-    getExecutableTasks: function() { return this.tasks; },
-    getStatistics: function() {
-      return {
-        byAI: {
-          chatgpt: this.tasks.filter(t => t.aiType === 'chatgpt').length,
-          claude: this.tasks.filter(t => t.aiType === 'claude').length,
-          gemini: this.tasks.filter(t => t.aiType === 'gemini').length
-        }
-      };
-    }
-  };
-  
-  // テストタスクを追加
-  for (let i = 0; i < 3; i++) {
-    taskList.tasks.push({
-      id: `${column}${row + i}_test_${Date.now()}_${i}`,
-      column: column,
-      row: row + i,
-      aiType: aiType,
-      taskType: taskType,
-      prompt: `${prompt} (行 ${row + i})`,
-      promptColumn: column,
-      groupId: `group_test_${column}`,
-      logColumns: { log: column, layout: 'single' },
-      groupInfo: { type: 'single', columns: [column], promptColumn: column }
-    });
-  }
-  
-  return taskList;
-}
-
-// 4分割ウィンドウを本番コードで開く
-async function openMultipleWindows() {
-  log('4分割ウィンドウテスト開始（本番コード使用）', 'info');
-  
-  try {
-    // 本番のモジュールをインポート
-    const [streamModule, generatorModule] = await Promise.all([
-      import('../src/features/task/stream-processor.js'),
-      import('../src/features/task/generator.js')
-    ]);
-    
-    const StreamProcessor = streamModule.default;
-    const TaskGenerator = generatorModule.default;
-    
-    log('本番モジュールをインポートしました', 'success');
-    
-    // 4つの異なる設定
-    const testConfigs = [
-      { column: 'C', aiType: 'chatgpt', model: 'gpt-4o' },
-      { column: 'F', aiType: 'claude', model: null },
-      { column: 'I', aiType: 'gemini', model: null },
-      { column: 'L', aiType: 'chatgpt', model: 'o1-preview' }
-    ];
-    
-    // テスト用のスプレッドシートデータを作成（4列分）
-    const testData = createTestSpreadsheetDataForMultipleTasks(testConfigs);
-    
-    // 本番のTaskGeneratorでタスクリストを生成
-    const taskGenerator = new TaskGenerator();
-    const taskList = taskGenerator.generateTasks(testData);
-    
-    log(`タスクリスト生成完了: ${taskList.tasks.length}個のタスク`, 'info');
-    
-    // タスク詳細をログ
-    taskList.tasks.forEach((task, index) => {
-      log(`  タスク${index + 1}: ${task.column}${task.row} - ${task.aiType}`, 'info');
-    });
-    
-    // 本番のStreamProcessorで実行
-    const streamProcessor = new StreamProcessor();
-    
-    log('本番のprocessTaskStreamを実行します...', 'info');
-    const result = await streamProcessor.processTaskStream(taskList, testData);
-    
-    log('4分割ウィンドウテスト完了', 'success');
-    log(`結果: ${JSON.stringify(result)}`, 'info');
-    
-    // アクティブウィンドウの状態を更新
-    updateActiveWindowsFromStreamProcessor(streamProcessor);
-    
-    // グローバルに保持（後でクローズできるように）
-    window.testStreamProcessor = streamProcessor;
-    
-  } catch (error) {
-    log(`エラー: ${error.message}`, 'error');
-    console.error('詳細エラー:', error);
-  }
-}
-
-// 複数タスク用のテストデータを作成
-function createTestSpreadsheetDataForMultipleTasks(configs) {
-  const data = {
-    spreadsheetId: 'test_spreadsheet_id',
-    gid: '12345',
-    values: [],
-    menuRow: { index: 0, data: [] },
-    aiRow: { index: 1, data: [] },
-    modelRow: null,
-    taskRow: null,
-    workRows: [],
-    aiColumns: {},
-    columnMapping: {}
-  };
-  
-  // 各列の設定
-  configs.forEach(config => {
-    const columnIndex = config.column.charCodeAt(0) - 65;
-    
-    // メニュー行を設定
-    data.menuRow.data[columnIndex] = 'プロンプト';
-    data.menuRow.data[columnIndex + 1] = `${config.aiType}回答`;
-    
-    // AI列情報を設定
-    data.aiColumns[config.column] = {
-      index: columnIndex,
-      letter: config.column,
-      header: 'プロンプト',
-      type: 'single'
-    };
-  });
-  
-  // 作業行を追加（各列に1つずつタスクを作成）
-  const workRow = {
-    index: 1, // 行2
-    number: 2,
-    data: []
-  };
-  
-  configs.forEach(config => {
-    const columnIndex = config.column.charCodeAt(0) - 65;
-    workRow.data[columnIndex] = `テストプロンプト（${config.column}列）`;
-  });
-  
-  data.workRows.push(workRow);
-  data.values[1] = workRow.data;
-  
-  return data;
-}
-
-// これらの関数は削除（本番コードを使用するため不要）
-
-// これらのヘルパー関数も削除（本番コードが独自に持っているため不要）
 
 // 位置名を取得
 function getPositionName(position) {
@@ -606,10 +444,6 @@ function updateWindowGrid() {
           <span class="window-info-value">${windowInfo.windowId}</span>
         </div>
         <div class="window-info-row">
-          <span class="window-info-label">タスク</span>
-          <span class="window-info-value">${windowInfo.task.id}</span>
-        </div>
-        <div class="window-info-row">
           <span class="window-info-label">作成時刻</span>
           <span class="window-info-value">${windowInfo.createdAt.toLocaleTimeString('ja-JP')}</span>
         </div>
@@ -617,77 +451,6 @@ function updateWindowGrid() {
     `;
     elements.windowGrid.appendChild(card);
   });
-}
-
-// 全ウィンドウを閉じる（本番のStreamProcessorも対応）
-async function closeAllWindows() {
-  log('全ウィンドウを閉じます', 'info');
-  
-  // StreamProcessorインスタンスが存在する場合はそちらも閉じる
-  try {
-    const streamModule = await import('../src/features/task/stream-processor.js');
-    const StreamProcessor = streamModule.default;
-    
-    // グローバルに保持されている可能性のあるStreamProcessorインスタンスをチェック
-    if (window.testStreamProcessor) {
-      log('本番StreamProcessorのウィンドウも閉じます', 'info');
-      await window.testStreamProcessor.closeAllWindows();
-    }
-  } catch (error) {
-    // インポートエラーは無視
-  }
-  
-  for (const [windowId, windowInfo] of activeWindows) {
-    try {
-      if (windowInfo.webWindow) {
-        // window.openで開いたウィンドウ
-        windowInfo.webWindow.close();
-      } else {
-        // Chrome APIで開いたウィンドウ
-        await chrome.windows.remove(windowInfo.windowId);
-      }
-      log(`ウィンドウ ${windowId} を閉じました`, 'success');
-    } catch (error) {
-      log(`ウィンドウ ${windowId} のクローズに失敗: ${error.message}`, 'warning');
-    }
-  }
-  
-  activeWindows.clear();
-  elements.activeWindows.textContent = '0';
-  updateWindowGrid();
-  log('全ウィンドウのクローズ完了', 'success');
-}
-
-// 選択したウィンドウを閉じる
-async function closeSelectedWindow() {
-  const column = elements.columnSelect.value;
-  let windowClosed = false;
-  
-  log(`${column}列のウィンドウを閉じます`, 'info');
-  
-  for (const [windowId, windowInfo] of activeWindows) {
-    if (windowInfo.column === column) {
-      try {
-        if (windowInfo.webWindow) {
-          windowInfo.webWindow.close();
-        } else {
-          await chrome.windows.remove(windowInfo.windowId);
-        }
-        activeWindows.delete(windowId);
-        log(`ウィンドウ ${windowId} (${column}列) を閉じました`, 'success');
-        windowClosed = true;
-      } catch (error) {
-        log(`ウィンドウ ${windowId} のクローズに失敗: ${error.message}`, 'warning');
-      }
-    }
-  }
-  
-  if (!windowClosed) {
-    log(`${column}列のウィンドウが見つかりませんでした`, 'warning');
-  }
-  
-  elements.activeWindows.textContent = activeWindows.size;
-  updateWindowGrid();
 }
 
 // ログをクリア

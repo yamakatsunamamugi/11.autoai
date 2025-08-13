@@ -88,16 +88,29 @@
     });
   }
 
-  // 3連続テストの状態管理
-  let consecutiveTestState = {
-    enabled: false,
-    targetId: null,
-    testData: null
+  // 3連続テストの状態管理（AI別に管理）
+  let consecutiveTestStates = {
+    'chatgpt-prompt': {
+      enabled: false,
+      targetId: 'chatgpt-prompt',
+      testData: null
+    },
+    'claude-prompt': {
+      enabled: false,
+      targetId: 'claude-prompt',
+      testData: null
+    },
+    'gemini-prompt': {
+      enabled: false,
+      targetId: 'gemini-prompt',
+      testData: null
+    }
   };
 
   // 3連続テストハンドラー（準備のみ）
   function handleConsecutiveTest(targetId) {
     console.log(`🔄 3連続テスト準備: ${targetId}`);
+    console.log('現在のconsecutiveTestStates:', consecutiveTestStates);
     
     // テスト用のプロンプトを定義
     const testPrompts = [
@@ -108,81 +121,52 @@
     
     // AIタイプを特定（targetIdから）
     const aiType = targetId.replace('-prompt', '');
+    const normalizedAiType = aiType.toLowerCase(); // 正規化
     
-    console.log(`📝 3連続テスト用のスプレッドシートデータを作成`);
+    console.log(`📝 3連続テスト用のタスクリストを直接作成`);
+    console.log(`🤖 AIタイプ: ${aiType} (正規化: ${normalizedAiType})`);
     
-    // テスト用のスプレッドシートデータを作成
-    // 本番のTaskGeneratorが理解できる形式で作成
-    const testSpreadsheetData = {
-      spreadsheetId: 'test-consecutive-' + Date.now(),
-      gid: '0',
-      
-      // メニュー行（ヘッダー）
-      menuRow: {
-        index: 0,
-        data: ['番号', '制御', 'ログ', 'プロンプト', `${aiType}回答`]
+    // テスト用のタスクリストを直接作成（ウィンドウ位置指定付き）
+    const windowPositions = [0, 1, 2]; // 左上→右上→左下の順番
+    const testTasks = testPrompts.map((prompt, index) => ({
+      id: `${normalizedAiType}_test_${index + 1}_${Date.now()}`,
+      column: 'E', // 回答列
+      row: index + 2, // 2行目から開始
+      promptColumn: 'D', // プロンプト列
+      prompt: prompt,
+      aiType: normalizedAiType,
+      taskType: 'ai',
+      preferredPosition: windowPositions[index], // テスト用のウィンドウ位置指定
+      groupId: `test_group_${normalizedAiType}`,
+      groupInfo: {
+        type: 'single',
+        columns: ['C', 'D', 'E'], // ログ、プロンプト、回答
+        promptColumn: 'D'
       },
-      
-      // AI行（AI種別の定義）
-      aiRow: {
-        index: 1,
-        data: ['', '', '', aiType.toLowerCase(), '']
-      },
-      
-      // 作業行（3つのテストプロンプト）
-      workRows: [
-        {
-          index: 2,
-          number: 1,
-          data: ['1', '', '', testPrompts[0], '']
-        },
-        {
-          index: 3,
-          number: 2,
-          data: ['2', '', '', testPrompts[1], '']
-        },
-        {
-          index: 4,
-          number: 3,
-          data: ['3', '', '', testPrompts[2], '']
-        }
-      ],
-      
-      // values配列（全データ）
-      values: [
-        ['番号', '制御', 'ログ', 'プロンプト', `${aiType}回答`],
-        ['', '', '', aiType.toLowerCase(), ''],
-        ['1', '', '', testPrompts[0], ''],
-        ['2', '', '', testPrompts[1], ''],
-        ['3', '', '', testPrompts[2], '']
-      ],
-      
-      // AI列の定義
-      aiColumns: {
-        'D': {
-          type: 'single',
-          promptDescription: ''
-        }
-      },
-      
-      // 列マッピング
-      columnMapping: {
-        'D': { 
-          type: 'prompt', 
-          aiType: aiType.toLowerCase()
-        },
-        'E': { 
-          type: 'answer'
-        }
+      logColumns: {
+        log: 'C',
+        layout: 'single'
       }
+    }));
+    
+    // TaskListオブジェクトを作成
+    const testTaskList = {
+      tasks: testTasks,
+      getStatistics: () => ({
+        total: testTasks.length,
+        byAI: {
+          [normalizedAiType]: testTasks.length
+        }
+      })
     };
     
-    console.log(`📊 作成したテストデータ:`, testSpreadsheetData);
+    console.log(`📊 作成した3連続テストタスク:`, testTaskList);
     
-    // テストデータを状態に保存
-    consecutiveTestState.enabled = true;
-    consecutiveTestState.targetId = targetId;
-    consecutiveTestState.testData = testSpreadsheetData;
+    // テストデータを該当AIの状態に保存
+    if (consecutiveTestStates[targetId]) {
+      consecutiveTestStates[targetId].enabled = true;
+      consecutiveTestStates[targetId].testData = testTaskList;
+    }
     
     // プロンプト欄に準備完了を表示
     const inputElement = document.getElementById(targetId);
@@ -200,27 +184,55 @@
     }
   }
   
-  // 3連続テストを実際に実行
-  async function executeConsecutiveTest() {
-    if (!consecutiveTestState.enabled || !consecutiveTestState.testData) {
+  // 3連続テストを実際に実行（AIタイプを指定）
+  async function executeConsecutiveTest(targetAiType = null) {
+    console.log('executeConsecutiveTest呼び出し:', {
+      targetAiType,
+      consecutiveTestStates,
+      keys: Object.keys(consecutiveTestStates)
+    });
+    
+    // 実行するAIを特定（指定がない場合は有効なものを探す）
+    let targetId = targetAiType ? `${targetAiType}-prompt` : null;
+    let testState = null;
+    
+    if (targetId && consecutiveTestStates[targetId]) {
+      testState = consecutiveTestStates[targetId];
+      console.log(`指定されたAI(${targetAiType})の状態を使用:`, testState);
+    } else {
+      console.log('指定されたAIがないか無効。有効なものを探します...');
+      // 有効な状態を持つAIを探す
+      for (const [id, state] of Object.entries(consecutiveTestStates)) {
+        console.log(`  ${id}: enabled=${state.enabled}, hasData=${!!state.testData}`);
+        if (state.enabled && state.testData) {
+          targetId = id;
+          testState = state;
+          console.log(`  → ${id}を選択`);
+          break;
+        }
+      }
+    }
+    
+    if (!testState || !testState.enabled || !testState.testData) {
       console.error('3連続テストが準備されていません');
       return;
     }
     
-    const aiType = consecutiveTestState.targetId.replace('-prompt', '');
+    const aiType = targetId.replace('-prompt', '');
     console.log(`🚀 3連続テスト実行開始: ${aiType}`);
     
     try {
-      // TaskGeneratorをインポート（動的インポート）
-      const { default: TaskGenerator } = await import('/src/features/task/generator.js');
+      // StreamProcessorを直接使用（タスクリストが既に作成済み）
+      const { default: StreamProcessor } = await import('/src/features/task/stream-processor.js');
       
-      // TaskGeneratorのインスタンスを作成
-      const generator = new TaskGenerator();
+      // StreamProcessorのインスタンスを作成
+      const processor = new StreamProcessor();
       
-      console.log(`🎯 TaskGeneratorでタスクを生成`);
+      console.log(`🎯 StreamProcessorでタスクを直接実行`);
+      console.log(`実行するタスク:`, testState.testData.tasks);
       
-      // タスクを生成して実行（本番のコードを使用）
-      const result = await generator.generateAndExecuteTasks(consecutiveTestState.testData, {
+      // タスクリストを直接実行（TaskGenerator不要）
+      const result = await processor.processTaskStream(testState.testData, {}, {
         testMode: true,
         consecutiveTest: true
       });
@@ -235,16 +247,15 @@
       }
       
       // 状態をリセット
-      consecutiveTestState.enabled = false;
-      consecutiveTestState.testData = null;
+      testState.enabled = false;
+      testState.testData = null;
       
       // プロンプト欄を元に戻す
-      const inputElement = document.getElementById(consecutiveTestState.targetId);
+      const inputElement = document.getElementById(targetId);
       if (inputElement) {
         inputElement.value = '桃太郎について歴史を解説して';
         inputElement.style.backgroundColor = '';
       }
-      consecutiveTestState.targetId = null;
       
     } catch (error) {
       console.error(`❌ 3連続テストエラー:`, error);
@@ -278,8 +289,10 @@
     console.log('カスタムプルダウンが利用可能 - ▼ボタンでプリセット選択、テキストは自由編集可能');
     
     // グローバルに公開（test-runner-chrome.jsから呼び出せるように）
-    window.consecutiveTestState = consecutiveTestState;
+    window.consecutiveTestStates = consecutiveTestStates; // 複数形に修正
     window.executeConsecutiveTest = executeConsecutiveTest;
+    
+    console.log('window.consecutiveTestStatesを公開:', window.consecutiveTestStates);
   });
 
 })();

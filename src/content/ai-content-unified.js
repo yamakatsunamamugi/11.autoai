@@ -1324,9 +1324,28 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   switch (request.action) {
+    // ===== AIタスク実行メッセージハンドラー =====
+    // background.js経由でAITaskHandlerから送信される
+    // プロンプト実行要求を処理
+    // 処理フロー:
+    // 1. sendPromptメッセージを受信
+    // 2. AI画面にプロンプトを入力・送信
+    // 3. 応答を待機
+    // 4. 結果をbackground.jsに返却
     case "sendPrompt":
       isAsync = true;
-      handleSendPrompt(request, sendResponse);
+      // 既存のhandleSendPromptを使用、またはAITaskHandler用の処理を追加
+      if (request.taskId) {
+        // AITaskHandlerからの要求の場合
+        console.log(`[11.autoai][${AI_TYPE}] AITaskHandlerからのプロンプト実行要求:`, {
+          taskId: request.taskId,
+          promptLength: request.prompt?.length || 0
+        });
+        handleAITaskPrompt(request, sendResponse);
+      } else {
+        // 既存の処理
+        handleSendPrompt(request, sendResponse);
+      }
       break;
 
     case "getResponse":
@@ -1358,6 +1377,168 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   return isAsync; // 非同期レスポンスの場合はtrueを返す
 });
+
+/**
+ * プロンプトをAIに送信する共通処理
+ * @param {string} prompt - 送信するプロンプト
+ * @returns {Promise<Object>} 送信結果
+ */
+async function sendPromptToAI(prompt) {
+  try {
+    const aiInput = new AIInput(AI_TYPE);
+    
+    // プロンプト入力
+    const inputResult = await aiInput.inputPrompt(prompt);
+    if (!inputResult.success) {
+      return { 
+        success: false, 
+        error: inputResult.error?.message || 'プロンプト入力失敗' 
+      };
+    }
+    
+    // 少し待機（入力処理の安定化）
+    await sleep(500);
+    
+    // 送信ボタンクリック
+    const clickResult = await aiInput.clickSendButton();
+    if (!clickResult.success) {
+      return { 
+        success: false, 
+        error: clickResult.error?.message || '送信ボタンクリック失敗' 
+      };
+    }
+    
+    return { success: true };
+  } catch (error) {
+    console.error(`[11.autoai][${AI_TYPE}] プロンプト送信エラー:`, error);
+    return { 
+      success: false, 
+      error: error.message 
+    };
+  }
+}
+
+/**
+ * 現在のAI応答を取得
+ * @returns {Promise<string|null>} 応答テキスト、またはnull
+ */
+async function getCurrentAIResponse() {
+  try {
+    // 停止ボタンの存在で応答完了を判定
+    const isCompleted = await isResponseCompleted();
+    if (!isCompleted) {
+      return null;
+    }
+    
+    // Canvas機能対応の応答取得
+    const response = await getResponseWithCanvas();
+    return response || null;
+  } catch (error) {
+    console.error(`[11.autoai][${AI_TYPE}] 応答取得エラー:`, error);
+    return null;
+  }
+}
+
+/**
+ * 応答が完了したかチェック
+ * @returns {Promise<boolean>} 完了している場合true
+ */
+async function isResponseCompleted() {
+  // 停止ボタンが消えているか確認
+  const stopButton = document.querySelector(SELECTOR_CONFIG[AI_TYPE]?.STOP_BUTTON || 'button[aria-label*="stop" i]');
+  return !stopButton || stopButton.style.display === 'none' || stopButton.disabled;
+}
+
+/**
+ * AITaskHandler用のプロンプト処理
+ * handleSendPromptの簡略版で、AITaskHandlerからの要求に特化
+ */
+async function handleAITaskPrompt(request, sendResponse) {
+  const { prompt, taskId } = request;
+  
+  try {
+    console.log(`[11.autoai][${AI_TYPE}] AIタスク実行開始: ${taskId}`);
+    
+    // プロンプトを送信
+    const sendResult = await sendPromptToAI(prompt);
+    
+    if (!sendResult.success) {
+      sendResponse({ 
+        success: false, 
+        error: sendResult.error || 'プロンプト送信失敗' 
+      });
+      return;
+    }
+    
+    // 即座に成功を返す（応答は別途aiResponseメッセージで送信）
+    sendResponse({ success: true });
+    
+    // 応答を待機（バックグラウンドで）
+    waitForAIResponseAndNotify(taskId, prompt);
+    
+  } catch (error) {
+    console.error(`[11.autoai][${AI_TYPE}] AIタスク実行エラー:`, error);
+    sendResponse({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+}
+
+/**
+ * AI応答を待機してbackground.jsに通知
+ */
+async function waitForAIResponseAndNotify(taskId, prompt) {
+  try {
+    console.log(`[11.autoai][${AI_TYPE}] 応答待機開始: ${taskId}`);
+    
+    // 応答を待機（最大3分）
+    const maxWaitTime = 180000;
+    const startTime = Date.now();
+    let response = null;
+    
+    while (Date.now() - startTime < maxWaitTime) {
+      response = await getCurrentAIResponse();
+      
+      if (response && response.trim()) {
+        console.log(`[11.autoai][${AI_TYPE}] 応答取得成功: ${taskId}`);
+        
+        // background.jsに応答を送信
+        chrome.runtime.sendMessage({
+          action: "aiResponse",
+          taskId: taskId,
+          response: response,
+          aiType: AI_TYPE
+        });
+        
+        return;
+      }
+      
+      // 1秒待機
+      await sleep(1000);
+    }
+    
+    // タイムアウト
+    console.error(`[11.autoai][${AI_TYPE}] 応答タイムアウト: ${taskId}`);
+    chrome.runtime.sendMessage({
+      action: "aiResponse",
+      taskId: taskId,
+      response: null,
+      error: "Response timeout",
+      aiType: AI_TYPE
+    });
+    
+  } catch (error) {
+    console.error(`[11.autoai][${AI_TYPE}] 応答待機エラー:`, error);
+    chrome.runtime.sendMessage({
+      action: "aiResponse",
+      taskId: taskId,
+      response: null,
+      error: error.message,
+      aiType: AI_TYPE
+    });
+  }
+}
 
 /**
  * 送信前の特殊モード設定処理（全AI対応）
@@ -2019,14 +2200,38 @@ async function waitForResponseWithStopButton() {
 async function getResponseWithCanvas() {
   switch (AI_TYPE) {
     case "ChatGPT":
-      // ChatGPTは通常の回答取得
-      const chatResponse = document.querySelector(
+      // ChatGPTの回答取得（複数のセレクタを試行）
+      let chatResponse = null;
+      
+      // 複数のセレクタパターンを試行
+      const selectors = [
         'div[data-message-author-role="assistant"]:last-child .markdown.prose',
-      );
-      if (!chatResponse) {
+        'div[data-message-author-role="assistant"]:last-child .markdown',
+        'div[data-message-author-role="assistant"]:last-child',
+        '[data-message-author-role="assistant"]:last-child .prose',
+        '[data-message-author-role="assistant"]:last-child',
+        '.markdown.prose:last-of-type',
+        '.prose:last-of-type'
+      ];
+      
+      for (const selector of selectors) {
+        chatResponse = document.querySelector(selector);
+        if (chatResponse && chatResponse.textContent?.trim()) {
+          console.log(`[ChatGPT] 応答を取得 (セレクタ: ${selector})`);
+          break;
+        }
+      }
+      
+      if (!chatResponse || !chatResponse.textContent?.trim()) {
+        // デバッグ情報を出力
+        const allAssistant = document.querySelectorAll('[data-message-author-role="assistant"]');
+        console.log(`[ChatGPT] デバッグ: assistant要素数 = ${allAssistant.length}`);
+        if (allAssistant.length > 0) {
+          console.log(`[ChatGPT] 最後のassistant要素:`, allAssistant[allAssistant.length - 1]);
+        }
         throw new Error("ChatGPT: 回答コンテナが見つかりません");
       }
-      return chatResponse.textContent || "";
+      return chatResponse.textContent.trim();
 
     case "Claude":
       // Claude: Canvas機能対応（動作確認済み）

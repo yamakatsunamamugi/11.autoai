@@ -142,6 +142,7 @@ class TaskGenerator {
       const result = await this.streamProcessor.processTaskStream(
         taskList,
         spreadsheetData,
+        options  // オプションを渡す（testModeなど）
       );
 
       console.log("[TaskGenerator] ストリーミング処理完了", result);

@@ -29,6 +29,12 @@ import { getStreamingServiceManager } from "./src/core/streaming-service-manager
 // DeepResearchモジュール
 import { deepResearchHandler } from "./src/modules/deep-research-handler.js";
 
+// ===== AIタスク実行ハンドラー =====
+// StreamProcessorからのAIタスク実行要求を処理
+// 詳細な実装はsrc/handlers/ai-task-handler.jsに分離
+// これにより、background.jsの肥大化を防ぎ、保守性を向上
+import { aiTaskHandler } from "./src/handlers/ai-task-handler.js";
+
 // ===== 初期化完了後の処理 =====
 // モジュール読み込み完了を待ってから初期化処理を実行
 setTimeout(() => {
@@ -316,6 +322,53 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     case "testServiceWorker":
       console.log("[MessageHandler] テストメッセージ受信:", request);
       sendResponse({ success: true, echo: request.data });
+      return false;
+
+    // ===== AIタスク実行 =====
+    // StreamProcessorからのタスク実行要求を処理
+    case "executeAITask":
+      console.log("[MessageHandler] AIタスク実行要求:", {
+        taskId: request.taskId,
+        tabId: request.tabId,
+        promptLength: request.prompt?.length || 0,
+        waitResponse: request.waitResponse,
+        getResponse: request.getResponse
+      });
+      
+      // AITaskHandlerに処理を委譲（非同期処理）
+      // waitResponse/getResponseの判定はAITaskHandler内で行う
+      (async () => {
+        try {
+          const result = await aiTaskHandler.handleExecuteAITask(request, sender);
+          sendResponse(result);
+        } catch (error) {
+          console.error("[MessageHandler] AIタスク実行エラー:", error);
+          sendResponse({ 
+            success: false, 
+            error: error.message,
+            taskId: request.taskId 
+          });
+        }
+      })();
+      return true; // 非同期応答のため true を返す
+
+    // ===== コンテンツスクリプトからのメッセージ =====
+    case "contentScriptReady":
+      console.log("[MessageHandler] コンテンツスクリプト準備完了:", {
+        tabId: sender.tab?.id,
+        url: sender.tab?.url,
+        aiType: request.aiType
+      });
+      sendResponse({ received: true });
+      return false;
+
+    case "aiResponse":
+      console.log("[MessageHandler] AI応答受信:", {
+        tabId: sender.tab?.id,
+        taskId: request.taskId,
+        responseLength: request.response?.length || 0
+      });
+      sendResponse({ received: true });
       return false;
 
     default:

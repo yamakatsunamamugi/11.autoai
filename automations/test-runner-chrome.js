@@ -520,12 +520,34 @@
     const btnRunAll = document.getElementById('btn-run-all');
     if (btnRunAll) {
       btnRunAll.addEventListener('click', async () => {
-        // 3連続テストモードかチェック
-        if (window.consecutiveTestState && window.consecutiveTestState.enabled) {
-          console.log('3連続テストモードで実行');
+        // 3連続テストモードかチェック（複数形のconsecutiveTestStatesを確認）
+        let hasConsecutiveTest = false;
+        let targetAiType = null;
+        
+        console.log('🔍 3連続テスト検出チェック開始');
+        console.log('window.consecutiveTestStates:', window.consecutiveTestStates);
+        
+        if (window.consecutiveTestStates) {
+          console.log('consecutiveTestStates存在確認 ✓');
+          // 有効な3連続テストを探す
+          for (const [id, state] of Object.entries(window.consecutiveTestStates)) {
+            console.log(`  ${id}: enabled=${state.enabled}, hasData=${!!state.testData}`);
+            if (state.enabled && state.testData) {
+              hasConsecutiveTest = true;
+              targetAiType = id.replace('-prompt', '');
+              console.log(`3連続テスト検出: ${targetAiType}`);
+              break;
+            }
+          }
+        } else {
+          console.log('❌ window.consecutiveTestStates が存在しません');
+        }
+        
+        if (hasConsecutiveTest) {
+          console.log(`3連続テストモードで実行: ${targetAiType}`);
           // 3連続テストを実行
           if (window.executeConsecutiveTest) {
-            await window.executeConsecutiveTest();
+            await window.executeConsecutiveTest(targetAiType);
           } else {
             console.error('executeConsecutiveTest関数が見つかりません');
           }
