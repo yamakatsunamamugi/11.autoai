@@ -932,6 +932,429 @@ body {
   display: none;
 }
 
+/* 制御マッピンググリッド */
+.control-mapping-table {
+  border-collapse: collapse;
+  margin-top: 10px;
+  font-size: 12px;
+}
+
+.control-mapping-table th,
+.control-mapping-table td {
+  border: 1px solid #ddd;
+  width: 25px;
+  height: 25px;
+  text-align: center;
+  padding: 2px;
+}
+
+.control-mapping-table .column-header {
+  background: #f0f0f0;
+  font-weight: bold;
+}
+
+.control-mapping-table .row-header {
+  background: #f0f0f0;
+  font-weight: bold;
+}
+
+.control-mapping-table td.has-control {
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.control-mapping-table td.control-only {
+  background: #ccffcc;
+}
+
+.control-mapping-table td.control-from {
+  background: #ffffcc;
+}
+
+.control-mapping-table td.control-until {
+  background: #ffcccc;
+}
+
+.control-mapping-table td.control-range {
+  background: #ccccff;
+}
+
+.mapping-description {
+  margin-bottom: 15px;
+}
+
+.legend {
+  display: flex;
+  gap: 15px;
+  margin-top: 5px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.control-color {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 1px solid #999;
+}
+
+.control-color.only { background: #ccffcc; }
+.control-color.from { background: #ffffcc; }
+.control-color.until { background: #ffcccc; }
+.control-color.range { background: #ccccff; }
+
+/* 構造分析テーブル */
+.structure-section {
+  margin-bottom: 20px;
+}
+
+.structure-section h4 {
+  margin-bottom: 10px;
+  color: #333;
+}
+
+.special-rows-table,
+.ai-columns-mapping-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 10px;
+}
+
+.special-rows-table th,
+.special-rows-table td,
+.ai-columns-mapping-table th,
+.ai-columns-mapping-table td {
+  border: 1px solid #ddd;
+  padding: 8px;
+  text-align: left;
+}
+
+.special-rows-table th,
+.ai-columns-mapping-table th {
+  background: #f5f5f5;
+  font-weight: bold;
+}
+
+.status-badge {
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: bold;
+}
+
+.status-badge.success {
+  background: #d4edda;
+  color: #155724;
+}
+
+.status-badge.warning {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.status-badge.info {
+  background: #d1ecf1;
+  color: #0c5460;
+}
+
+/* タスクアコーディオン */
+.tasks-accordion-container {
+  margin-top: 10px;
+}
+
+.task-item {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  margin-bottom: 4px;
+  overflow: hidden;
+}
+
+.task-basic-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  background: #fafafa;
+  cursor: pointer;
+}
+
+.task-basic-info:hover {
+  background: #f0f0f0;
+}
+
+.task-number {
+  font-weight: bold;
+  color: #666;
+  min-width: 40px;
+}
+
+.ai-group-badge {
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: bold;
+}
+
+.ai-group-badge.multi {
+  background: linear-gradient(90deg, #ffcccc, #ccffcc, #ccccff);
+  color: #333;
+}
+
+.ai-group-badge.single {
+  background: #e3f2fd;
+  color: #1565c0;
+}
+
+.task-type-badge {
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: bold;
+}
+
+.task-type-badge.ai {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.task-type-badge.report {
+  background: #fff3e0;
+  color: #e65100;
+}
+
+.executable-badge {
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: bold;
+}
+
+.executable-badge.yes {
+  background: #d4edda;
+  color: #155724;
+}
+
+.executable-badge.no {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.cell-location {
+  font-family: monospace;
+  font-weight: bold;
+  color: #0066cc;
+}
+
+.prompt-preview {
+  flex: 1;
+  color: #666;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.expand-btn {
+  padding: 4px 10px;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.expand-btn:hover {
+  background: #f0f0f0;
+}
+
+.task-detail-info {
+  padding: 15px;
+  background: #fff;
+  border-top: 1px solid #ddd;
+}
+
+.task-detail-info.collapsed {
+  display: none;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+}
+
+.detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.detail-item label {
+  font-size: 11px;
+  color: #666;
+  font-weight: bold;
+}
+
+.detail-item span {
+  font-size: 13px;
+  color: #333;
+}
+
+.detail-item.full-width {
+  grid-column: 1 / -1;
+}
+
+.prompt-full {
+  background: #f5f5f5;
+  padding: 10px;
+  border-radius: 4px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 200px;
+  overflow-y: auto;
+  font-family: monospace;
+  font-size: 12px;
+}
+
+.skip-reason {
+  color: #dc3545;
+  font-weight: bold;
+}
+
+/* ログ詳細表示 */
+.log-entry {
+  border-left: 3px solid #ddd;
+  margin-bottom: 2px;
+  font-family: monospace;
+  font-size: 12px;
+}
+
+.log-entry.log-info {
+  border-color: #4CAF50;
+}
+
+.log-entry.log-warning {
+  border-color: #FF9800;
+}
+
+.log-entry.log-error {
+  border-color: #f44336;
+}
+
+.log-entry.log-success {
+  border-color: #2196F3;
+}
+
+.log-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px;
+  background: #fafafa;
+}
+
+.log-entry.expandable .log-header {
+  cursor: pointer;
+}
+
+.log-entry.expandable .log-header:hover {
+  background: #f0f0f0;
+}
+
+.log-time {
+  color: #666;
+  font-size: 11px;
+}
+
+.log-level {
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: bold;
+  text-transform: uppercase;
+  min-width: 60px;
+  text-align: center;
+}
+
+.log-level.info {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.log-level.warning {
+  background: #fff3e0;
+  color: #e65100;
+}
+
+.log-level.error {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.log-level.success {
+  background: #e3f2fd;
+  color: #1565c0;
+}
+
+.log-category {
+  color: #9e9e9e;
+  font-size: 10px;
+  text-transform: uppercase;
+  min-width: 70px;
+}
+
+.log-message {
+  flex: 1;
+  color: #333;
+}
+
+.log-expand {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+  color: #666;
+}
+
+.log-details {
+  padding: 10px;
+  background: #f5f5f5;
+  border-top: 1px solid #ddd;
+  font-size: 11px;
+}
+
+.log-details.collapsed {
+  display: none;
+}
+
+.log-details pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* デバッグパネル */
+#variablesTree pre {
+  background: #f5f5f5;
+  padding: 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  overflow-x: auto;
+  margin: 0;
+}
+
+#currentStepInfo {
+  padding: 10px;
+  background: #e3f2fd;
+  border-radius: 4px;
+  font-weight: bold;
+  color: #1565c0;
+}
+
 /* プロンプトモーダル */
 .prompt-modal {
   position: fixed;

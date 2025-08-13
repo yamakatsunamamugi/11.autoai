@@ -174,16 +174,46 @@ function updateStatus(text, type = 'idle') {
   addLog(text, type === 'error' ? 'ERROR' : 'INFO');
 }
 
-// ログ追加
-function addLog(message, level = 'INFO') {
-  const timestamp = new Date().toLocaleTimeString();
+// ログ追加（詳細版）
+let currentProcessingStep = '待機中';
+
+function addLog(message, level = 'INFO', details = null) {
+  const timestamp = new Date().toLocaleTimeString('ja-JP', { 
+    hour12: false, 
+    hour: '2-digit', 
+    minute: '2-digit', 
+    second: '2-digit'
+  });
+  
   const logEntry = document.createElement('div');
-  logEntry.className = `log-entry log-${level.toLowerCase()}`;
-  logEntry.innerHTML = `
+  logEntry.className = `log-entry log-${level.toLowerCase()} ${details ? 'expandable' : ''}`;
+  
+  const headerDiv = document.createElement('div');
+  headerDiv.className = 'log-header';
+  headerDiv.innerHTML = `
     <span class="log-time">${timestamp}</span>
-    <span class="log-level">${level}</span>
+    <span class="log-level ${level.toLowerCase()}">${level.padEnd(7)}</span>
+    <span class="log-category">${getLogCategory(message)}</span>
     <span class="log-message">${message}</span>
+    ${details ? '<button class="log-expand">▼</button>' : ''}
   `;
+  
+  logEntry.appendChild(headerDiv);
+  
+  if (details) {
+    const detailsDiv = document.createElement('div');
+    detailsDiv.className = 'log-details collapsed';
+    detailsDiv.innerHTML = `<pre>${typeof details === 'object' ? JSON.stringify(details, null, 2) : details}</pre>`;
+    logEntry.appendChild(detailsDiv);
+    
+    const expandBtn = headerDiv.querySelector('.log-expand');
+    if (expandBtn) {
+      expandBtn.addEventListener('click', () => {
+        detailsDiv.classList.toggle('collapsed');
+        expandBtn.textContent = detailsDiv.classList.contains('collapsed') ? '▼' : '▲';
+      });
+    }
+  }
   
   if (elements.logsViewer) {
     elements.logsViewer.appendChild(logEntry);
@@ -191,7 +221,57 @@ function addLog(message, level = 'INFO') {
   }
   
   // コンソールにも出力
-  console.log(`[${level}] ${message}`);
+  console.log(`[${timestamp}] [${level}] ${message}`, details || '');
+}
+
+// ログカテゴリの判定
+function getLogCategory(message) {
+  if (message.includes('読み込み')) return 'LOAD';
+  if (message.includes('構造')) return 'STRUCT';
+  if (message.includes('制御')) return 'CONTROL';
+  if (message.includes('タスク')) return 'TASK';
+  if (message.includes('エラー')) return 'ERROR';
+  if (message.includes('完了')) return 'COMPLETE';
+  return 'GENERAL';
+}
+
+// デバッグ情報の更新
+function updateDebugInfo() {
+  if (!elements.variablesTree) return;
+  
+  const debugData = {
+    currentStep: currentProcessingStep,
+    spreadsheetData: currentSpreadsheetData ? {
+      rows: currentSpreadsheetData.values?.length || 0,
+      columns: currentSpreadsheetData.values?.[0]?.length || 0,
+      specialRows: {
+        menuRow: currentSpreadsheetData.menuRow?.index !== undefined ? currentSpreadsheetData.menuRow.index + 1 : null,
+        aiRow: currentSpreadsheetData.aiRow?.index !== undefined ? currentSpreadsheetData.aiRow.index + 1 : null,
+        modelRow: currentSpreadsheetData.modelRow?.index !== undefined ? currentSpreadsheetData.modelRow.index + 1 : null,
+        taskRow: currentSpreadsheetData.taskRow?.index !== undefined ? currentSpreadsheetData.taskRow.index + 1 : null
+      },
+      workRows: currentSpreadsheetData.workRows?.length || 0,
+      aiColumns: Object.keys(currentSpreadsheetData.aiColumns || {})
+    } : null,
+    taskList: currentTaskList ? {
+      total: currentTaskList.tasks.length,
+      executable: currentTaskList.getExecutableTasks().length,
+      skipped: currentTaskList.tasks.filter(t => t.skipReason).length,
+      byAI: currentTaskList.getStatistics().byAI
+    } : null,
+    controls: currentControls ? {
+      rowControls: currentControls.rowControls?.length || 0,
+      columnControls: currentControls.columnControls?.length || 0
+    } : null
+  };
+  
+  elements.variablesTree.innerHTML = `<pre>${JSON.stringify(debugData, null, 2)}</pre>`;
+  
+  // 現在のステップ情報を更新
+  const currentStepInfo = document.getElementById('currentStepInfo');
+  if (currentStepInfo) {
+    currentStepInfo.textContent = currentProcessingStep;
+  }
 }
 
 // 読み込み処理
@@ -465,52 +545,110 @@ function analyzeDataStructure(data) {
   displaySpreadsheetTable(data);
 }
 
-// 構造ツリーの表示
+// 構造ツリーの表示（改善版）
 function displayStructureTree(data) {
   if (!elements.structureTree) return;
   
-  const tree = document.createElement('div');
-  tree.className = 'structure-tree';
+  elements.structureTree.innerHTML = '';
   
-  // メニュー行
-  if (data.menuRow) {
-    tree.innerHTML += `
-      <div class="tree-node">
-        <span class="tree-icon">📋</span>
-        <span class="tree-label">メニュー行: ${data.menuRow.index + 1}行目</span>
-      </div>
+  // セクション1: 特殊行サマリー
+  const summarySection = document.createElement('div');
+  summarySection.className = 'structure-section';
+  summarySection.innerHTML = '<h4>特殊行の検出状況</h4>';
+  
+  const summaryTable = document.createElement('table');
+  summaryTable.className = 'special-rows-table';
+  summaryTable.innerHTML = `
+    <thead>
+      <tr>
+        <th>行タイプ</th>
+        <th>行番号</th>
+        <th>内容</th>
+        <th>状態</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>📋 メニュー行</td>
+        <td>${data.menuRow ? (data.menuRow.index + 1) + '行目' : '-'}</td>
+        <td>${data.menuRow ? '列ヘッダー定義' : '未検出'}</td>
+        <td>${data.menuRow ? '<span class="status-badge success">✓</span>' : '<span class="status-badge warning">×</span>'}</td>
+      </tr>
+      <tr>
+        <td>🤖 AI行</td>
+        <td>${data.aiRow ? (data.aiRow.index + 1) + '行目' : '-'}</td>
+        <td>${data.aiRow ? '使用AI指定' : '未検出'}</td>
+        <td>${data.aiRow ? '<span class="status-badge success">✓</span>' : '<span class="status-badge warning">×</span>'}</td>
+      </tr>
+      <tr>
+        <td>🔧 モデル行</td>
+        <td>${data.modelRow ? (data.modelRow.index + 1) + '行目' : '-'}</td>
+        <td>${data.modelRow ? 'モデル指定' : '未検出'}</td>
+        <td>${data.modelRow ? '<span class="status-badge success">✓</span>' : '<span class="status-badge info">任意</span>'}</td>
+      </tr>
+      <tr>
+        <td>⚙️ 機能行</td>
+        <td>${data.taskRow ? (data.taskRow.index + 1) + '行目' : '-'}</td>
+        <td>${data.taskRow ? '機能指定' : '未検出'}</td>
+        <td>${data.taskRow ? '<span class="status-badge success">✓</span>' : '<span class="status-badge info">任意</span>'}</td>
+      </tr>
+    </tbody>
+  `;
+  summarySection.appendChild(summaryTable);
+  elements.structureTree.appendChild(summarySection);
+  
+  // セクション2: AI列マッピング
+  const aiColumnsSection = document.createElement('div');
+  aiColumnsSection.className = 'structure-section';
+  aiColumnsSection.innerHTML = '<h4>AI列の構成</h4>';
+  
+  if (data.aiColumns && Object.keys(data.aiColumns).length > 0) {
+    const aiTable = document.createElement('table');
+    aiTable.className = 'ai-columns-mapping-table';
+    aiTable.innerHTML = `
+      <thead>
+        <tr>
+          <th>列</th>
+          <th>タイプ</th>
+          <th>AI</th>
+          <th>説明</th>
+        </tr>
+      </thead>
+      <tbody>
     `;
+    
+    const tbody = aiTable.querySelector('tbody');
+    Object.entries(data.aiColumns).forEach(([col, info]) => {
+      const tr = document.createElement('tr');
+      let aiTypeDisplay = info.type;
+      let aiDescription = '';
+      
+      if (info.type === '3type') {
+        aiTypeDisplay = '3種類AI';
+        aiDescription = 'ChatGPT/Claude/Gemini';
+      } else if (info.type === 'single') {
+        aiTypeDisplay = '単体AI';
+        aiDescription = info.header || 'プロンプト列';
+      } else {
+        aiTypeDisplay = info.type;
+        aiDescription = info.header || '';
+      }
+      
+      tr.innerHTML = `
+        <td class="column-letter">${col}列</td>
+        <td><span class="ai-type-badge ${info.type}">${aiTypeDisplay}</span></td>
+        <td>${info.type === '3type' ? '複数' : (info.type || '-')}</td>
+        <td>${aiDescription}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+    
+    aiColumnsSection.appendChild(aiTable);
+  } else {
+    aiColumnsSection.innerHTML += '<p class="no-data">AI列が検出されていません</p>';
   }
   
-  // AI行
-  if (data.aiRow) {
-    tree.innerHTML += `
-      <div class="tree-node">
-        <span class="tree-icon">🤖</span>
-        <span class="tree-label">AI行: ${data.aiRow.index + 1}行目</span>
-      </div>
-    `;
-  }
-  
-  // モデル行
-  if (data.modelRow) {
-    tree.innerHTML += `
-      <div class="tree-node">
-        <span class="tree-icon">🔧</span>
-        <span class="tree-label">モデル行: ${data.modelRow.index + 1}行目</span>
-      </div>
-    `;
-  }
-  
-  // 機能行
-  if (data.taskRow) {
-    tree.innerHTML += `
-      <div class="tree-node">
-        <span class="tree-icon">⚙️</span>
-        <span class="tree-label">機能行: ${data.taskRow.index + 1}行目</span>
-      </div>
-    `;
-  }
+  elements.structureTree.appendChild(aiColumnsSection)
   
   // AI列
   const aiColumns = Object.entries(data.aiColumns || {});
@@ -715,19 +853,9 @@ function displayControls(controls) {
     }
   }
   
-  // 制御マッピング図の説明を追加
+  // 制御マッピング図の生成
   if (elements.controlMappingDiagram) {
-    elements.controlMappingDiagram.innerHTML = `
-      <div class="control-mapping-explanation">
-        <h4>制御マッピング図とは？</h4>
-        <p>制御マッピング図は、スプレッドシートの行と列に設定された制御情報を視覚的に表示する機能です。</p>
-        <ul>
-          <li><strong>行制御</strong>: 特定の行のタスクを制御（スキップ、のみ処理など）</li>
-          <li><strong>列制御</strong>: 特定の列のタスクを制御（処理範囲の指定など）</li>
-        </ul>
-        <p>現在、視覚的なマッピング図は準備中です。上記の表で制御情報をご確認ください。</p>
-      </div>
-    `;
+    displayControlMappingGrid(controls);
   }
 }
 
@@ -825,28 +953,27 @@ function displayTasksTable() {
   `;
   container.appendChild(controlPanel);
   
-  // タスクテーブル（本番と同じ形式）
+  // タスクテーブル（改善版アコーディオン形式）
+  const tasksContainer = document.createElement('div');
+  tasksContainer.className = 'tasks-accordion-container';
+  
+  // テーブルヘッダー（従来のテーブル形式も併用）
   const table = document.createElement('table');
   table.className = 'tasks-table';
+  table.style.display = 'none'; // デフォルトで非表示
   
-  // ヘッダー（ソート機能付き）- 重要な情報を左側に配置
   const thead = document.createElement('thead');
   thead.innerHTML = `
     <tr>
-      <th data-sort="aiGroupType" class="sortable" title="3種類AIか単体AIかの区分">AI種別 <span class="sort-icon">⚊</span></th>
-      <th data-sort="taskType" class="sortable" title="タスクの種類（AI実行/レポート生成）">タイプ <span class="sort-icon">⚊</span></th>
-      <th data-sort="executable" class="sortable" title="プロンプトがあり、回答セルが空で、条件を満たしているタスクは実行可能（○）、そうでなければ実行不可（×）">実行可能 <span class="sort-icon">⚊</span></th>
-      <th data-sort="promptCell" class="sortable" title="プロンプトが入力されているセル位置">プロンプトセル <span class="sort-icon">⚊</span></th>
-      <th data-sort="answerCell" class="sortable" title="AI回答が出力されるセル位置">回答セル <span class="sort-icon">⚊</span></th>
-      <th data-sort="aiType" class="sortable" title="使用するAIの種類">AI <span class="sort-icon">⚊</span></th>
-      <th data-sort="model" class="sortable" title="使用するAIモデル（スプレッドシートのモデル行から取得）">モデル <span class="sort-icon">⚊</span></th>
-      <th data-sort="operation" class="sortable" title="特殊操作・機能（スプレッドシートの機能行から取得）">機能 <span class="sort-icon">⚊</span></th>
-      <th data-sort="prompt" class="sortable prompt-column" title="AIに送信するプロンプト内容（クリックで全文表示）">プロンプト <span class="sort-icon">⚊</span></th>
-      <th data-sort="skipReason" class="detail-column" title="タスクがスキップされた理由（実行できない理由）">スキップ理由 <span class="info-icon">ℹ️</span></th>
-      <th data-sort="id" class="sortable detail-column" title="タスクの一意識別子">タスクID <span class="sort-icon">⚊</span></th>
-      <th data-sort="groupId" class="sortable detail-column" title="関連タスクのグループ識別子">グループID <span class="sort-icon">⚊</span></th>
-      <th class="detail-column" title="ログ出力に関する列情報（レイアウト、AI列マッピング等）">ログ列情報 <span class="info-icon">ℹ️</span></th>
-      <th class="detail-column" title="処理制御フラグ（優先度、停止条件等）">制御フラグ <span class="info-icon">ℹ️</span></th>
+      <th>AI種別</th>
+      <th>タイプ</th>
+      <th>実行可能</th>
+      <th>プロンプトセル</th>
+      <th>回答セル</th>
+      <th>AI</th>
+      <th>モデル</th>
+      <th>機能</th>
+      <th>プロンプト</th>
       <th class="detail-column" title="その他のメタデータ情報">メタデータ <span class="info-icon">ℹ️</span></th>
     </tr>
   `;
@@ -1581,6 +1708,91 @@ function initializeColumnResize(table) {
     document.removeEventListener('mousemove', handleResize);
     document.removeEventListener('mouseup', stopResize);
   }
+}
+
+// 制御マッピンググリッドの表示
+function displayControlMappingGrid(controls) {
+  const container = document.getElementById('controlMappingDiagram');
+  if (!container) return;
+  
+  container.innerHTML = '';
+  
+  // グリッドの説明
+  const description = document.createElement('div');
+  description.className = 'mapping-description';
+  description.innerHTML = `
+    <p>スプレッドシートの制御状況を視覚的に表示します。色の意味：</p>
+    <div class="legend">
+      <span class="legend-item"><span class="control-color only"></span> この行/列のみ処理</span>
+      <span class="legend-item"><span class="control-color from"></span> ここから処理開始</span>
+      <span class="legend-item"><span class="control-color until"></span> ここまで処理</span>
+      <span class="legend-item"><span class="control-color range"></span> 範囲処理</span>
+    </div>
+  `;
+  container.appendChild(description);
+  
+  // グリッドテーブルの作成
+  const table = document.createElement('table');
+  table.className = 'control-mapping-table';
+  
+  // ヘッダー行
+  const thead = document.createElement('thead');
+  const headerRow = document.createElement('tr');
+  headerRow.innerHTML = '<th>行/列</th>';
+  
+  // A-Z列のヘッダー
+  for (let i = 0; i < 26; i++) {
+    const th = document.createElement('th');
+    th.textContent = String.fromCharCode(65 + i);
+    th.className = 'column-header';
+    headerRow.appendChild(th);
+  }
+  thead.appendChild(headerRow);
+  table.appendChild(thead);
+  
+  // データ行（1-10行）
+  const tbody = document.createElement('tbody');
+  for (let row = 1; row <= 10; row++) {
+    const tr = document.createElement('tr');
+    const rowHeader = document.createElement('th');
+    rowHeader.textContent = row;
+    rowHeader.className = 'row-header';
+    tr.appendChild(rowHeader);
+    
+    // 各セル
+    for (let col = 0; col < 26; col++) {
+      const td = document.createElement('td');
+      const colLetter = String.fromCharCode(65 + col);
+      
+      // 行制御のチェック
+      const rowControl = controls.rowControls?.find(c => c.row === row);
+      if (rowControl) {
+        td.classList.add('has-control', `control-${rowControl.type}`);
+        td.title = `行${row}: ${rowControl.type}`;
+      }
+      
+      // 列制御のチェック
+      const colControl = controls.columnControls?.find(c => c.column === colLetter);
+      if (colControl) {
+        td.classList.add('has-control', `control-${colControl.type}`);
+        td.title = (td.title ? td.title + ', ' : '') + `${colLetter}列: ${colControl.type}`;
+      }
+      
+      // セルの内容（制御タイプのアイコン）
+      if (rowControl || colControl) {
+        const types = [];
+        if (rowControl) types.push(rowControl.type[0].toUpperCase());
+        if (colControl) types.push(colControl.type[0].toLowerCase());
+        td.textContent = types.join('/');
+      }
+      
+      tr.appendChild(td);
+    }
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  
+  container.appendChild(table);
 }
 
 // パフォーマンス表示更新
