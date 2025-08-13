@@ -1088,6 +1088,236 @@
     };
 
     // ============================================
+    // 自動変更検出システム
+    // ============================================
+    let changeDetectionState = {
+        enabled: false,
+        lastModelsHash: null,
+        lastFunctionsHash: null,
+        observer: null,
+        checkInterval: null,
+        callbacks: {
+            onModelChange: [],
+            onFunctionChange: []
+        }
+    };
+
+    // ハッシュ生成関数
+    function generateHash(data) {
+        return JSON.stringify(data).split('').reduce((a, b) => {
+            a = ((a << 5) - a) + b.charCodeAt(0);
+            return a & a;
+        }, 0);
+    }
+
+    // モデル変更検出
+    async function detectModelChanges() {
+        try {
+            const currentModels = await getAvailableModels();
+            const currentHash = generateHash(currentModels.map(m => m.name));
+            
+            if (changeDetectionState.lastModelsHash !== null && 
+                changeDetectionState.lastModelsHash !== currentHash) {
+                
+                log('🔄 モデル変更を検出しました', 'warning');
+                
+                // コールバック実行
+                changeDetectionState.callbacks.onModelChange.forEach(callback => {
+                    try {
+                        callback(currentModels);
+                    } catch (error) {
+                        log(`モデル変更コールバックエラー: ${error.message}`, 'error');
+                    }
+                });
+                
+                // イベント発火
+                window.dispatchEvent(new CustomEvent('chatgpt-models-changed', {
+                    detail: { models: currentModels }
+                }));
+            }
+            
+            changeDetectionState.lastModelsHash = currentHash;
+        } catch (error) {
+            debugLog(`モデル変更検出エラー: ${error.message}`);
+        }
+    }
+
+    // 機能変更検出
+    async function detectFunctionChanges() {
+        try {
+            const currentFunctions = await getAvailableFunctions();
+            const currentHash = generateHash(currentFunctions.map(f => f.name));
+            
+            if (changeDetectionState.lastFunctionsHash !== null && 
+                changeDetectionState.lastFunctionsHash !== currentHash) {
+                
+                log('🔄 機能変更を検出しました', 'warning');
+                
+                // コールバック実行
+                changeDetectionState.callbacks.onFunctionChange.forEach(callback => {
+                    try {
+                        callback(currentFunctions);
+                    } catch (error) {
+                        log(`機能変更コールバックエラー: ${error.message}`, 'error');
+                    }
+                });
+                
+                // イベント発火
+                window.dispatchEvent(new CustomEvent('chatgpt-functions-changed', {
+                    detail: { functions: currentFunctions }
+                }));
+            }
+            
+            changeDetectionState.lastFunctionsHash = currentHash;
+        } catch (error) {
+            debugLog(`機能変更検出エラー: ${error.message}`);
+        }
+    }
+
+    // 定期チェック関数
+    async function periodicCheck() {
+        await detectModelChanges();
+        await detectFunctionChanges();
+    }
+
+    // DOM変更監視
+    function setupDOMObserver() {
+        if (changeDetectionState.observer) {
+            changeDetectionState.observer.disconnect();
+        }
+
+        changeDetectionState.observer = new MutationObserver((mutations) => {
+            let shouldCheck = false;
+            
+            mutations.forEach(mutation => {
+                // モデル選択ボタンやメニューの変更を監視
+                if (mutation.target.matches && (
+                    mutation.target.matches('[data-testid*="model"]') ||
+                    mutation.target.matches('[data-testid*="composer"]') ||
+                    mutation.target.matches('[role="menu"]') ||
+                    mutation.target.matches('[role="menuitem"]')
+                )) {
+                    shouldCheck = true;
+                }
+                
+                // 追加/削除されたノードをチェック
+                mutation.addedNodes.forEach(node => {
+                    if (node.nodeType === Node.ELEMENT_NODE) {
+                        if (node.querySelector && (
+                            node.querySelector('[data-testid*="model"]') ||
+                            node.querySelector('[data-testid*="composer"]') ||
+                            node.querySelector('[role="menu"]')
+                        )) {
+                            shouldCheck = true;
+                        }
+                    }
+                });
+            });
+            
+            if (shouldCheck) {
+                // デバウンス処理（500ms後に実行）
+                clearTimeout(changeDetectionState.debounceTimer);
+                changeDetectionState.debounceTimer = setTimeout(() => {
+                    periodicCheck();
+                }, 500);
+            }
+        });
+
+        // body要素全体を監視
+        changeDetectionState.observer.observe(document.body, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['data-testid', 'role', 'aria-expanded', 'aria-selected']
+        });
+    }
+
+    // 変更検出開始
+    function startChangeDetection(options = {}) {
+        const {
+            enableDOMObserver = true,
+            enablePeriodicCheck = true,
+            checkInterval = 30000 // 30秒
+        } = options;
+
+        if (changeDetectionState.enabled) {
+            log('変更検出は既に有効です', 'warning');
+            return;
+        }
+
+        log('🔍 ChatGPT変更検出システムを開始します', 'info');
+        
+        changeDetectionState.enabled = true;
+        
+        // 初期状態を記録
+        periodicCheck();
+        
+        // DOM監視開始
+        if (enableDOMObserver) {
+            setupDOMObserver();
+            log('DOM変更監視を開始しました', 'info');
+        }
+        
+        // 定期チェック開始
+        if (enablePeriodicCheck) {
+            changeDetectionState.checkInterval = setInterval(periodicCheck, checkInterval);
+            log(`定期チェックを開始しました (${checkInterval/1000}秒間隔)`, 'info');
+        }
+    }
+
+    // 変更検出停止
+    function stopChangeDetection() {
+        if (!changeDetectionState.enabled) {
+            log('変更検出は無効です', 'warning');
+            return;
+        }
+
+        log('🛑 ChatGPT変更検出システムを停止します', 'info');
+        
+        changeDetectionState.enabled = false;
+        
+        // DOM監視停止
+        if (changeDetectionState.observer) {
+            changeDetectionState.observer.disconnect();
+            changeDetectionState.observer = null;
+        }
+        
+        // 定期チェック停止
+        if (changeDetectionState.checkInterval) {
+            clearInterval(changeDetectionState.checkInterval);
+            changeDetectionState.checkInterval = null;
+        }
+        
+        // デバウンスタイマークリア
+        if (changeDetectionState.debounceTimer) {
+            clearTimeout(changeDetectionState.debounceTimer);
+            changeDetectionState.debounceTimer = null;
+        }
+    }
+
+    // コールバック登録
+    function onModelChange(callback) {
+        if (typeof callback === 'function') {
+            changeDetectionState.callbacks.onModelChange.push(callback);
+            log('モデル変更コールバックを登録しました', 'info');
+        }
+    }
+
+    function onFunctionChange(callback) {
+        if (typeof callback === 'function') {
+            changeDetectionState.callbacks.onFunctionChange.push(callback);
+            log('機能変更コールバックを登録しました', 'info');
+        }
+    }
+
+    // 強制チェック実行
+    async function forceCheck() {
+        log('🔍 強制チェックを実行中...', 'info');
+        await periodicCheck();
+        log('✅ 強制チェック完了', 'success');
+    }
+
+    // ============================================
     // グローバル公開
     // ============================================
     window.ChatGPTAutomation = {
@@ -1101,6 +1331,21 @@
         setDebug,
         getAvailableModels,
         getAvailableFunctions,
+        // 変更検出API
+        startChangeDetection,
+        stopChangeDetection,
+        forceCheck,
+        onModelChange,
+        onFunctionChange,
+        getChangeDetectionState: () => ({
+            enabled: changeDetectionState.enabled,
+            lastModelsHash: changeDetectionState.lastModelsHash,
+            lastFunctionsHash: changeDetectionState.lastFunctionsHash,
+            callbackCounts: {
+                models: changeDetectionState.callbacks.onModelChange.length,
+                functions: changeDetectionState.callbacks.onFunctionChange.length
+            }
+        }),
         utils: {
             wait,
             waitForMenu,
