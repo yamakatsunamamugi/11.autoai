@@ -319,30 +319,42 @@ async function handleLoad() {
     
     // ステップ3: 制御情報の収集
     stepStart = performance.now();
+    currentProcessingStep = '制御情報収集';
     addLog('ステップ3: 制御情報の収集', 'INFO');
     currentControls = SimpleColumnControl.collectControls(currentSpreadsheetData);
     displayControls(currentControls);
+    updateDebugInfo(); // デバッグ情報を更新
     perfSteps.push({ name: '制御情報収集', time: performance.now() - stepStart });
     
     // ステップ4: タスクリストの生成
     stepStart = performance.now();
+    currentProcessingStep = 'タスク生成';
     addLog('ステップ4: タスクリストの生成', 'INFO');
     const taskGenerator = new TaskGenerator();
     currentTaskList = taskGenerator.generateTasks(currentSpreadsheetData);
+    updateDebugInfo(); // デバッグ情報を更新
     perfSteps.push({ name: 'タスク生成', time: performance.now() - stepStart });
     
     // ステップ5: 結果の表示
     stepStart = performance.now();
+    currentProcessingStep = '結果表示';
     addLog('ステップ5: 結果の表示', 'INFO');
     displayResults();
+    updateDebugInfo(); // デバッグ情報を更新
     perfSteps.push({ name: '結果表示', time: performance.now() - stepStart });
     
     // パフォーマンス測定終了
     const totalTime = performance.now() - perfStart;
     updatePerformanceDisplay(perfSteps, totalTime);
     
+    currentProcessingStep = '完了';
     updateStatus('読み込み完了', 'success');
-    addLog(`読み込み完了: ${currentTaskList.tasks.length}個のタスクを生成`, 'SUCCESS');
+    addLog(`読み込み完了: ${currentTaskList.tasks.length}個のタスクを生成`, 'SUCCESS', {
+      総タスク数: currentTaskList.tasks.length,
+      実行可能: currentTaskList.getExecutableTasks().length,
+      AI別: currentTaskList.getStatistics().byAI
+    });
+    updateDebugInfo(); // 最終的なデバッグ情報を更新
     
   } catch (error) {
     console.error('読み込みエラー:', error);
