@@ -1291,6 +1291,106 @@
             log('✅ 診断完了', 'success');
         },
         
+        // ========================================
+        // 自動変更検出システム
+        // ========================================
+        startChangeDetection: (options = {}) => {
+            const {
+                enableDOMObserver = true,
+                enablePeriodicCheck = true,
+                checkInterval = 30000 // 30秒
+            } = options;
+
+            if (globalState.changeDetectionEnabled) {
+                log('変更検出は既に有効です', 'warning');
+                return;
+            }
+
+            log('🔍 Gemini変更検出システムを開始します', 'info');
+            
+            globalState.changeDetectionEnabled = true;
+            
+            // 初期状態を記録
+            geminiPeriodicCheck();
+            
+            // DOM監視開始
+            if (enableDOMObserver) {
+                setupGeminiDOMObserver();
+                log('DOM変更監視を開始しました', 'info');
+            }
+            
+            // 定期チェック開始
+            if (enablePeriodicCheck) {
+                globalState.changeDetectionInterval = setInterval(geminiPeriodicCheck, checkInterval);
+                log(`定期チェックを開始しました (${checkInterval/1000}秒間隔)`, 'info');
+            }
+        },
+
+        stopChangeDetection: () => {
+            if (!globalState.changeDetectionEnabled) {
+                log('変更検出は無効です', 'warning');
+                return;
+            }
+
+            log('🛑 Gemini変更検出システムを停止します', 'info');
+            
+            globalState.changeDetectionEnabled = false;
+            
+            // DOM監視停止
+            if (globalState.changeDetectionObserver) {
+                globalState.changeDetectionObserver.disconnect();
+                globalState.changeDetectionObserver = null;
+            }
+            
+            // 定期チェック停止
+            if (globalState.changeDetectionInterval) {
+                clearInterval(globalState.changeDetectionInterval);
+                globalState.changeDetectionInterval = null;
+            }
+            
+            // デバウンスタイマークリア
+            if (globalState.changeDetectionDebounceTimer) {
+                clearTimeout(globalState.changeDetectionDebounceTimer);
+                globalState.changeDetectionDebounceTimer = null;
+            }
+        },
+
+        onModelChange: (callback) => {
+            if (typeof callback === 'function') {
+                if (!globalState.modelChangeCallbacks) {
+                    globalState.modelChangeCallbacks = [];
+                }
+                globalState.modelChangeCallbacks.push(callback);
+                log('モデル変更コールバックを登録しました', 'info');
+            }
+        },
+
+        onFunctionChange: (callback) => {
+            if (typeof callback === 'function') {
+                if (!globalState.functionChangeCallbacks) {
+                    globalState.functionChangeCallbacks = [];
+                }
+                globalState.functionChangeCallbacks.push(callback);
+                log('機能変更コールバックを登録しました', 'info');
+            }
+        },
+
+        forceCheck: async () => {
+            log('🔍 強制チェックを実行中...', 'info');
+            await geminiPeriodicCheck();
+            log('✅ 強制チェック完了', 'success');
+        },
+
+        getChangeDetectionState: () => ({
+            enabled: globalState.changeDetectionEnabled || false,
+            lastModelsHash: globalState.lastModelsHash || null,
+            lastFunctionsHash: globalState.lastFunctionsHash || null,
+            callbackCounts: {
+                models: globalState.modelChangeCallbacks ? globalState.modelChangeCallbacks.length : 0,
+                functions: globalState.functionChangeCallbacks ? globalState.functionChangeCallbacks.length : 0
+            }
+        }),
+        
         getScreenInfo,
         isElementVisible: (selector) => {
             const element = typeof selector === 'string' ? document.querySelector(selector) : selector;
@@ -1347,6 +1447,147 @@
             console.log('  - 画面サイズ変更時は自動で「その他」メニューもチェック');
             console.log('  - 機能選択失敗時は自動リトライ（最大3回）');
         }
+    };
+
+    // ========================================
+    // 変更検出用ヘルパー関数
+    // ========================================
+    
+    // ハッシュ生成関数
+    const generateHash = (data) => {
+        return JSON.stringify(data).split('').reduce((a, b) => {
+            a = ((a << 5) - a) + b.charCodeAt(0);
+            return a & a;
+        }, 0);
+    };
+
+    // モデル変更検出
+    const detectGeminiModelChanges = async () => {
+        try {
+            const currentModels = await collectAvailableModels();
+            const currentHash = generateHash(currentModels.map(m => m.name));
+            
+            if (globalState.lastModelsHash !== null && 
+                globalState.lastModelsHash !== currentHash) {
+                
+                log('🔄 モデル変更を検出しました', 'warning');
+                
+                // コールバック実行
+                if (globalState.modelChangeCallbacks) {
+                    globalState.modelChangeCallbacks.forEach(callback => {
+                        try {
+                            callback(currentModels);
+                        } catch (error) {
+                            log(`モデル変更コールバックエラー: ${error.message}`, 'error');
+                        }
+                    });
+                }
+                
+                // イベント発火
+                window.dispatchEvent(new CustomEvent('gemini-models-changed', {
+                    detail: { models: currentModels }
+                }));
+            }
+            
+            globalState.lastModelsHash = currentHash;
+        } catch (error) {
+            debugLog(`モデル変更検出エラー: ${error.message}`);
+        }
+    };
+
+    // 機能変更検出
+    const detectGeminiFunctionChanges = async () => {
+        try {
+            const currentFunctions = await collectAvailableFunctions();
+            const currentHash = generateHash(currentFunctions.map(f => f.name));
+            
+            if (globalState.lastFunctionsHash !== null && 
+                globalState.lastFunctionsHash !== currentHash) {
+                
+                log('🔄 機能変更を検出しました', 'warning');
+                
+                // コールバック実行
+                if (globalState.functionChangeCallbacks) {
+                    globalState.functionChangeCallbacks.forEach(callback => {
+                        try {
+                            callback(currentFunctions);
+                        } catch (error) {
+                            log(`機能変更コールバックエラー: ${error.message}`, 'error');
+                        }
+                    });
+                }
+                
+                // イベント発火
+                window.dispatchEvent(new CustomEvent('gemini-functions-changed', {
+                    detail: { functions: currentFunctions }
+                }));
+            }
+            
+            globalState.lastFunctionsHash = currentHash;
+        } catch (error) {
+            debugLog(`機能変更検出エラー: ${error.message}`);
+        }
+    };
+
+    // 定期チェック関数
+    const geminiPeriodicCheck = async () => {
+        await detectGeminiModelChanges();
+        await detectGeminiFunctionChanges();
+    };
+
+    // DOM変更監視
+    const setupGeminiDOMObserver = () => {
+        if (globalState.changeDetectionObserver) {
+            globalState.changeDetectionObserver.disconnect();
+        }
+
+        globalState.changeDetectionObserver = new MutationObserver((mutations) => {
+            let shouldCheck = false;
+            
+            mutations.forEach(mutation => {
+                // Gemini特有のセレクタ監視
+                if (mutation.target.matches && (
+                    mutation.target.matches('.gds-mode-switch-button') ||
+                    mutation.target.matches('.toolbox-drawer-item-button') ||
+                    mutation.target.matches('[aria-label*="その他"]') ||
+                    mutation.target.matches('[role="menuitemradio"]') ||
+                    mutation.target.matches('[role="menuitem"]') ||
+                    mutation.target.matches('[mat-list-item]')
+                )) {
+                    shouldCheck = true;
+                }
+                
+                // 追加/削除されたノードをチェック
+                mutation.addedNodes.forEach(node => {
+                    if (node.nodeType === Node.ELEMENT_NODE) {
+                        if (node.querySelector && (
+                            node.querySelector('.gds-mode-switch-button') ||
+                            node.querySelector('.toolbox-drawer-item-button') ||
+                            node.querySelector('[aria-label*="その他"]') ||
+                            node.querySelector('[role="menuitemradio"]')
+                        )) {
+                            shouldCheck = true;
+                        }
+                    }
+                });
+            });
+            
+            if (shouldCheck) {
+                // デバウンス処理（500ms後に実行）
+                clearTimeout(globalState.changeDetectionDebounceTimer);
+                globalState.changeDetectionDebounceTimer = setTimeout(() => {
+                    geminiPeriodicCheck();
+                }, 500);
+            }
+        });
+
+        // body要素全体を監視
+        globalState.changeDetectionObserver.observe(document.body, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['aria-label', 'aria-pressed', 'mat-list-item', 'role']
+        });
     };
 
     // ========================================
