@@ -566,6 +566,23 @@
     setupEventListeners();
     updateStatus('準備完了', 'ready');
     
+    // background.jsからのログメッセージを受信
+    if (chrome.runtime && chrome.runtime.onMessage) {
+      chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+        if (request.action === "extensionLog") {
+          log(request.message, request.type || 'info');
+        }
+      });
+    }
+    
+    // AITaskHandlerにログ関数を設定（background.jsと連携）
+    if (chrome.runtime && chrome.runtime.sendMessage) {
+      chrome.runtime.sendMessage({
+        action: "setAITaskLogger",
+        logFunction: "test-runner-log"
+      });
+    }
+    
     // Chrome拡張機能APIが利用可能か確認
     if (!chrome.tabs || !chrome.scripting) {
       log('⚠️ Chrome拡張機能のコンテキストで実行してください', 'warning');

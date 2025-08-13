@@ -371,6 +371,37 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       sendResponse({ received: true });
       return false;
 
+    // ===== AITaskHandlerログ設定 =====
+    // test-runner-chrome.jsからのログ関数設定要求
+    case "setAITaskLogger":
+      console.log("[MessageHandler] AITaskHandlerログ設定要求");
+      
+      // 拡張機能のログ関数を設定
+      const extensionLogFunction = (message, type = 'info') => {
+        // 全ての拡張機能タブにログを送信
+        chrome.tabs.query({}, (tabs) => {
+          tabs.forEach(tab => {
+            if (tab.url && tab.url.includes('test-ai-automation-integrated.html')) {
+              chrome.tabs.sendMessage(tab.id, {
+                action: "extensionLog",
+                message: message,
+                type: type
+              }).catch(() => {
+                // エラーは無視（タブが閉じられている場合など）
+              });
+            }
+          });
+        });
+      };
+      
+      aiTaskHandler.setExtensionLogger(extensionLogFunction);
+      
+      sendResponse({ 
+        success: true, 
+        message: "AITaskHandlerログ設定完了" 
+      });
+      return false;
+
     default:
       console.warn("[MessageHandler] 未知のアクション:", request.action);
       sendResponse({ success: false, error: "Unknown action" });

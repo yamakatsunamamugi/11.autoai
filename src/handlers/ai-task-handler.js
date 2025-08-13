@@ -29,6 +29,35 @@ export class AITaskHandler {
   constructor() {
     this.logger = console;
     this.pendingTasks = new Map(); // taskId -> Promise resolver
+    // 拡張機能ログシステムとの連携用
+    this.extensionLogger = null;
+  }
+  
+  /**
+   * 拡張機能のログシステムを設定
+   * @param {Function} logFunction - ログ関数
+   */
+  setExtensionLogger(logFunction) {
+    this.extensionLogger = logFunction;
+  }
+  
+  /**
+   * ログ出力（コンソール + 拡張機能ログ）
+   */
+  log(message, data = null) {
+    this.logger.log(message, data);
+    if (this.extensionLogger) {
+      const logText = data ? `${message} ${JSON.stringify(data)}` : message;
+      this.extensionLogger(logText, 'function');
+    }
+  }
+  
+  error(message, data = null) {
+    this.logger.error(message, data);
+    if (this.extensionLogger) {
+      const logText = data ? `${message} ${JSON.stringify(data)}` : message;
+      this.extensionLogger(logText, 'error');
+    }
   }
 
   /**
@@ -46,8 +75,8 @@ export class AITaskHandler {
   async handleExecuteAITask(request, sender) {
     const { tabId, prompt, taskId, timeout = 180000 } = request;
     
-    this.logger.log(`[AITaskHandler] タスク実行開始: ${taskId}`);
-    this.logger.log(`[AITaskHandler] タブID: ${tabId}, プロンプト: ${prompt ? prompt.substring(0, 50) : 'なし'}...`);
+    this.log(`[AITaskHandler] タスク実行開始: ${taskId}`);
+    this.log(`[AITaskHandler] タブID: ${tabId}, プロンプト: ${prompt ? prompt.substring(0, 50) : 'なし'}...`);
     
     try {
       // タブの存在確認
@@ -69,7 +98,7 @@ export class AITaskHandler {
       
       // ai-content-unified.jsで既に回答待機が完了しているため、
       // ここでは追加の待機は不要（sendResultに応答が含まれている）
-      this.logger.log(`[AITaskHandler] タスク完了: ${taskId}`);
+      this.log(`[AITaskHandler] タスク完了: ${taskId}`);
       
       return {
         success: true,
@@ -79,7 +108,7 @@ export class AITaskHandler {
       };
       
     } catch (error) {
-      this.logger.error(`[AITaskHandler] エラー:`, error);
+      this.error(`[AITaskHandler] エラー:`, error);
       return {
         success: false,
         error: error.message,
@@ -96,7 +125,7 @@ export class AITaskHandler {
    * @returns {Promise<Object>} 送信結果
    */
   async sendPromptToTab(tabId, message) {
-    this.logger.log(`[AITaskHandler] タブ${tabId}にメッセージ送信:`, {
+    this.log(`[AITaskHandler] タブ${tabId}にメッセージ送信:`, {
       action: message.action,
       taskId: message.taskId,
       hasPrompt: !!message.prompt,
@@ -109,7 +138,7 @@ export class AITaskHandler {
         const elapsed = Date.now() - startTime;
         
         if (chrome.runtime.lastError) {
-          this.logger.error(`[AITaskHandler] タブ送信エラー (${elapsed}ms):`, {
+          this.error(`[AITaskHandler] タブ送信エラー (${elapsed}ms):`, {
             error: chrome.runtime.lastError.message,
             tabId: tabId,
             action: message.action
@@ -119,7 +148,7 @@ export class AITaskHandler {
             error: chrome.runtime.lastError.message 
           });
         } else {
-          this.logger.log(`[AITaskHandler] タブからの応答 (${elapsed}ms):`, {
+          this.log(`[AITaskHandler] タブからの応答 (${elapsed}ms):`, {
             success: response?.success,
             hasResponse: !!response?.response,
             aiType: response?.aiType,
