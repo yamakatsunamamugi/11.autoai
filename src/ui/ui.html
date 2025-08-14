@@ -10,6 +10,68 @@
       <h1>AutoAI Control Panel</h1>
     </header>
     
+    <!-- AIステータス表示セクション -->
+    <section class="ai-status-section">
+      <div class="ai-status-grid">
+        <!-- ChatGPT Status -->
+        <div class="ai-status-card">
+          <div class="ai-status-header">
+            <span class="ai-icon chatgpt-icon">🤖</span>
+            <span class="ai-name">ChatGPT</span>
+            <span class="ai-status-badge" id="chatgpt-status">未接続</span>
+          </div>
+          <div class="ai-status-content">
+            <div class="status-item">
+              <span class="status-label">モデル:</span>
+              <span class="status-value" id="chatgpt-model-info" style="cursor: pointer; text-decoration: underline;">0</span>
+            </div>
+            <div class="status-item">
+              <span class="status-label">機能:</span>
+              <span class="status-value" id="chatgpt-function-info" style="cursor: pointer; text-decoration: underline;">0</span>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Claude Status -->
+        <div class="ai-status-card">
+          <div class="ai-status-header">
+            <span class="ai-icon claude-icon">🔮</span>
+            <span class="ai-name">Claude</span>
+            <span class="ai-status-badge" id="claude-status">未接続</span>
+          </div>
+          <div class="ai-status-content">
+            <div class="status-item">
+              <span class="status-label">モデル:</span>
+              <span class="status-value" id="claude-model-info" style="cursor: pointer; text-decoration: underline;">0</span>
+            </div>
+            <div class="status-item">
+              <span class="status-label">機能:</span>
+              <span class="status-value" id="claude-function-info" style="cursor: pointer; text-decoration: underline;">0</span>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Gemini Status -->
+        <div class="ai-status-card">
+          <div class="ai-status-header">
+            <span class="ai-icon gemini-icon">✨</span>
+            <span class="ai-name">Gemini</span>
+            <span class="ai-status-badge" id="gemini-status">未接続</span>
+          </div>
+          <div class="ai-status-content">
+            <div class="status-item">
+              <span class="status-label">モデル:</span>
+              <span class="status-value" id="gemini-model-info" style="cursor: pointer; text-decoration: underline;">0</span>
+            </div>
+            <div class="status-item">
+              <span class="status-label">機能:</span>
+              <span class="status-value" id="gemini-function-info" style="cursor: pointer; text-decoration: underline;">0</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+    
     <main>
       <!-- ステップ1: スプレッドシートURL入力セクション -->
       <section class="step-section">
@@ -95,6 +157,10 @@
         <div class="step-content">
           <p class="test-description">AIの動作確認とパフォーマンステストを実行できます</p>
           <div class="control-buttons">
+            <button id="aiDetectionSystemBtn" class="btn btn-detection btn-large">
+              <span class="btn-icon">🔍</span>
+              0. AI変更検出システム
+            </button>
             <button id="showTaskListTestBtn" class="btn btn-test-spreadsheet btn-large">
               <span class="btn-icon">📊</span>
               1. スプレッドシート読み込みテスト
@@ -110,6 +176,10 @@
             <button id="generateReportBtn" class="btn btn-test-report btn-large">
               <span class="btn-icon">📄</span>
               4. レポート化テスト
+            </button>
+            <button id="showAIStatusBtn" class="btn btn-primary btn-large">
+              <span class="btn-icon">📊</span>
+              5. AIステータス表示
             </button>
           </div>
         </div>

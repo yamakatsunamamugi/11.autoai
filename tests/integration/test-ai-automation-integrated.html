@@ -415,10 +415,18 @@
     </div>
 
     <!-- 外部スクリプト読み込み -->
+    <!-- 各AIオートメーションスクリプト -->
+    <script src="../../automations/chatgpt-automation.js"></script>
+    <script src="../../automations/claude-automation-dynamic.js"></script>
+    <script src="../../automations/gemini-dynamic-automation.js"></script>
+    
     <!-- Chrome拡張機能版テストランナー -->
     <script src="../../automations/test-runner-chrome.js"></script>
     
     <!-- プロンプト管理（外部ファイル化してCSPエラー対応） -->
     <script src="test-ai-automation-integrated.js"></script>
+    
+    <!-- AI設定の動的更新スクリプト -->
+    <script src="test-ai-automation-updater.js"></script>
 </body>
 </html>

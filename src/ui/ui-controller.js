@@ -3,6 +3,188 @@
 // このファイルは、Chrome拡張機能のメインUIを管理します。
 // ユーザーがスプレッドシートを設定し、AI処理を制御するためのインターフェースを提供します。
 
+// ===== AIステータス管理 =====
+function updateAIStatus() {
+  // ストレージから設定を取得
+  chrome.storage.local.get(['ai_config_persistence'], (result) => {
+    const config = result.ai_config_persistence || {};
+    
+    // 各AIのステータスを更新
+    updateAIStatusCard('chatgpt', config.chatgpt);
+    updateAIStatusCard('claude', config.claude);
+    updateAIStatusCard('gemini', config.gemini);
+  });
+}
+
+function updateAIStatusCard(aiType, aiConfig) {
+  const statusEl = document.getElementById(`${aiType}-status`);
+  const modelEl = document.getElementById(`${aiType}-model-info`);
+  const functionEl = document.getElementById(`${aiType}-function-info`);
+  
+  if (!statusEl || !modelEl || !functionEl) return;
+  
+  if (aiConfig && (aiConfig.models || aiConfig.functions)) {
+    // 接続済み表示
+    statusEl.textContent = '接続済み';
+    statusEl.className = 'ai-status-badge connected';
+    
+    // モデル数を表示
+    const modelCount = aiConfig.models ? aiConfig.models.length : 0;
+    modelEl.textContent = modelCount.toString();
+    modelEl.title = 'クリックしてモデル一覧を表示';
+    
+    // 機能数を表示
+    const functionCount = aiConfig.functions ? aiConfig.functions.length : 0;
+    functionEl.textContent = functionCount.toString();
+    functionEl.title = 'クリックして機能一覧を表示';
+    
+    // クリックイベントを設定（既存のイベントを削除してから追加）
+    modelEl.onclick = () => showDetailModal(aiType, 'models', aiConfig.models || []);
+    functionEl.onclick = () => showDetailModal(aiType, 'functions', aiConfig.functions || []);
+  } else {
+    // 未接続表示
+    statusEl.textContent = '未接続';
+    statusEl.className = 'ai-status-badge';
+    modelEl.textContent = '0';
+    functionEl.textContent = '0';
+    modelEl.onclick = null;
+    functionEl.onclick = null;
+  }
+}
+
+// 詳細モーダルを表示する関数
+function showDetailModal(aiType, dataType, items) {
+  // 既存のモーダルがあれば削除
+  const existingModal = document.getElementById('ai-detail-modal');
+  if (existingModal) {
+    existingModal.remove();
+  }
+  
+  // モーダルを作成
+  const modal = document.createElement('div');
+  modal.id = 'ai-detail-modal';
+  modal.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+  `;
+  
+  const modalContent = document.createElement('div');
+  modalContent.style.cssText = `
+    background: white;
+    border-radius: 12px;
+    padding: 20px;
+    max-width: 600px;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  `;
+  
+  // ヘッダー
+  const header = document.createElement('div');
+  header.style.cssText = `
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #e9ecef;
+  `;
+  
+  const title = document.createElement('h3');
+  const aiNames = {
+    chatgpt: 'ChatGPT',
+    claude: 'Claude',
+    gemini: 'Gemini'
+  };
+  title.textContent = `${aiNames[aiType]} ${dataType === 'models' ? 'モデル' : '機能'}一覧`;
+  title.style.cssText = 'margin: 0; color: #2c3e50;';
+  
+  const closeBtn = document.createElement('button');
+  closeBtn.textContent = '✕';
+  closeBtn.style.cssText = `
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #6c757d;
+    padding: 0;
+    width: 30px;
+    height: 30px;
+  `;
+  closeBtn.onclick = () => modal.remove();
+  
+  header.appendChild(title);
+  header.appendChild(closeBtn);
+  
+  // アイテムリスト
+  const list = document.createElement('div');
+  list.style.cssText = 'display: flex; flex-direction: column; gap: 8px;';
+  
+  if (items.length === 0) {
+    const emptyMsg = document.createElement('div');
+    emptyMsg.textContent = 'データがありません';
+    emptyMsg.style.cssText = 'color: #6c757d; text-align: center; padding: 20px;';
+    list.appendChild(emptyMsg);
+  } else {
+    items.forEach(item => {
+      const itemDiv = document.createElement('div');
+      itemDiv.style.cssText = `
+        padding: 12px;
+        background: #f8f9fa;
+        border-radius: 8px;
+        border: 1px solid #dee2e6;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      `;
+      
+      const itemName = document.createElement('span');
+      itemName.textContent = typeof item === 'string' ? item : (item.name || item);
+      itemName.style.cssText = 'font-size: 14px; color: #495057;';
+      
+      itemDiv.appendChild(itemName);
+      
+      // アクティブな項目にバッジを追加
+      if (typeof item === 'object' && (item.selected || item.active)) {
+        const badge = document.createElement('span');
+        badge.textContent = '選択中';
+        badge.style.cssText = `
+          background: #28a745;
+          color: white;
+          padding: 2px 8px;
+          border-radius: 12px;
+          font-size: 12px;
+          font-weight: 600;
+        `;
+        itemDiv.appendChild(badge);
+      }
+      
+      list.appendChild(itemDiv);
+    });
+  }
+  
+  modalContent.appendChild(header);
+  modalContent.appendChild(list);
+  modal.appendChild(modalContent);
+  
+  // モーダル外クリックで閉じる
+  modal.onclick = (e) => {
+    if (e.target === modal) {
+      modal.remove();
+    }
+  };
+  
+  document.body.appendChild(modal);
+}
+
 // ===== DOM要素の取得 =====
 const urlInputsContainer = document.getElementById("urlInputs");
 const addUrlBtn = document.getElementById("addUrlBtn");
@@ -14,6 +196,7 @@ const deleteAnswersBtn = document.getElementById("deleteAnswersBtn");
 const startIntegratedTestBtn = document.getElementById(
   "startIntegratedTestBtn",
 );
+const aiDetectionSystemBtn = document.getElementById("aiDetectionSystemBtn");
 const statusDiv = document.getElementById("status");
 const loadFeedback = document.getElementById("loadFeedback");
 
@@ -551,6 +734,1165 @@ function runIntegratedAITest() {
   }
 }
 
+// ===== AI自動化スクリプト注入関数 =====
+async function injectAutomationScripts(tabId, aiName) {
+  try {
+    console.log(`${aiName}への自動化スクリプト注入開始`);
+    
+    // Claudeの場合はリサーチ機能を使用
+    if (aiName === 'Claude') {
+      console.log(`🔬 ${aiName}リサーチ機能を注入・実行します`);
+      
+      // Claudeのリサーチ検出器ファイル
+      const researchFile = 'ai-platforms/claude/claude-research-detector.js';
+      
+      // リサーチ検出器を注入
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: tabId },
+          files: [researchFile]
+        });
+        console.log(`✅ ${aiName}リサーチ検出器を注入しました`);
+      } catch (injectionError) {
+        console.error(`❌ ${aiName}スクリプト注入エラー:`, injectionError);
+        return;
+      }
+      
+      // 少し待ってから実行
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      // リサーチを実行
+      const detectorName = 'ClaudeResearchDetector';
+      
+      const [result] = await chrome.scripting.executeScript({
+        target: { tabId: tabId },
+        func: async (aiName, detectorName) => {
+          console.log(`🔬 ${aiName}リサーチ実行開始`);
+          
+          const detector = window[detectorName];
+          if (!detector) {
+            console.error(`${detectorName}が見つかりません`);
+            return { success: false, error: `${detectorName}が見つかりません` };
+          }
+          
+          try {
+            // リサーチを実行
+            const researchResult = await detector.executeResearch();
+            
+            if (researchResult.success) {
+              console.log(`✅ ${aiName}リサーチ完了`);
+              console.log('検出されたモデル数:', researchResult.data.models.length);
+              // Claudeの場合
+              if (aiName === 'Claude') {
+                console.log('検出された機能数:', researchResult.data.features.length);
+                console.log('DeepResearch利用可能:', researchResult.data.deepResearch.available);
+                
+                // 機能リストを作成
+              const functionsList = researchResult.data.features.map(f => ({
+                name: f.name,
+                type: f.type,
+                enabled: f.enabled,
+                connected: f.connected
+              }));
+              
+              // DeepResearchが利用可能な場合は機能リストに追加
+              if (researchResult.data.deepResearch && researchResult.data.deepResearch.available) {
+                functionsList.push({
+                  name: 'DeepResearch',
+                  type: 'research',
+                  enabled: researchResult.data.deepResearch.activated || false,
+                  connected: true,
+                  special: true  // 特別な機能としてマーク
+                });
+                console.log('✅ DeepResearch機能を追加しました');
+              }
+              
+                // 結果をストレージに保存
+                const config = {
+                  claude: {
+                  models: researchResult.data.models.map(m => ({
+                    name: m.name,
+                    description: m.description,
+                    available: m.available
+                  })),
+                  functions: functionsList,
+                  deepResearch: researchResult.data.deepResearch,
+                  additionalModels: researchResult.data.additionalModels,
+                  timestamp: new Date().toISOString()
+                }
+                };
+                
+                // Chrome拡張のストレージに保存
+                chrome.storage.local.get(['ai_config_persistence'], (result) => {
+                  const existingConfig = result.ai_config_persistence || {};
+                  const updatedConfig = { ...existingConfig, ...config };
+                  chrome.storage.local.set({ 'ai_config_persistence': updatedConfig });
+                });
+                
+                return {
+                success: true,
+                models: researchResult.data.models,
+                functions: functionsList,  // DeepResearchを含む機能リスト
+                deepResearch: researchResult.data.deepResearch,
+                comparison: researchResult.comparison
+                };
+              // Geminiの場合
+              } else if (aiName === 'Gemini') {
+                console.log('検出されたメイン機能数:', researchResult.data.features.main.length);
+                console.log('検出された追加機能数:', researchResult.data.features.additional.length);
+                console.log('Deep Think利用可能:', researchResult.data.deepThink.available);
+                console.log('Deep Research利用可能:', researchResult.data.deepResearch.available);
+                
+                // Geminiの機能をフラット化（UIが期待する形式に変換）
+                const functionsList = [];
+                
+                // メイン機能を追加
+                researchResult.data.features.main.forEach(f => {
+                  functionsList.push({
+                    name: f.name,
+                    type: f.type || 'main',
+                    enabled: f.enabled,
+                    connected: true,  // Geminiの機能はデフォルトで接続済み
+                    icon: f.icon
+                  });
+                });
+                
+                // 追加機能を追加
+                researchResult.data.features.additional.forEach(f => {
+                  functionsList.push({
+                    name: f.name,
+                    type: f.type || 'additional',
+                    enabled: f.enabled,
+                    connected: true,  // Geminiの機能はデフォルトで接続済み
+                    icon: f.icon,
+                    sublabel: f.sublabel
+                  });
+                });
+                
+                // Deep Thinkが利用可能な場合は機能リストに追加
+                if (researchResult.data.deepThink && researchResult.data.deepThink.available) {
+                  functionsList.push({
+                    name: 'Deep Think',
+                    type: 'special',
+                    enabled: researchResult.data.deepThink.activated || false,
+                    connected: true,
+                    special: true
+                  });
+                  console.log('✅ Deep Think機能を追加しました');
+                }
+                
+                // Deep Researchが利用可能な場合は機能リストに追加
+                if (researchResult.data.deepResearch && researchResult.data.deepResearch.available) {
+                  functionsList.push({
+                    name: 'Deep Research',
+                    type: 'special',
+                    enabled: researchResult.data.deepResearch.activated || false,
+                    connected: true,
+                    special: true
+                  });
+                  console.log('✅ Deep Research機能を追加しました');
+                }
+                
+                console.log('✅ Gemini機能フラット化完了:', functionsList.length, '個の機能');
+                
+                // 結果をストレージに保存
+                const config = {
+                  gemini: {
+                    models: researchResult.data.models.map(m => ({
+                      title: m.title,
+                      description: m.description,
+                      selected: m.selected,
+                      additional: m.additional || false
+                    })),
+                    functions: functionsList,  // フラット化された機能リスト
+                    deepThink: researchResult.data.deepThink,
+                    deepResearch: researchResult.data.deepResearch,
+                    timestamp: new Date().toISOString()
+                  }
+                };
+                
+                // Chrome拡張のストレージに保存
+                chrome.storage.local.get(['ai_config_persistence'], (result) => {
+                  const existingConfig = result.ai_config_persistence || {};
+                  const updatedConfig = { ...existingConfig, ...config };
+                  chrome.storage.local.set({ 'ai_config_persistence': updatedConfig }, () => {
+                    console.log('✅ Gemini設定をストレージに保存しました:', updatedConfig.gemini);
+                  });
+                });
+                
+                return {
+                  success: true,
+                  models: researchResult.data.models,
+                  functions: functionsList,  // フラット化された機能リスト
+                  deepThink: researchResult.data.deepThink,
+                  deepResearch: researchResult.data.deepResearch,
+                  comparison: researchResult.comparison
+                };
+              }
+              
+              return {
+                success: true,
+                models: researchResult.data.models,
+                functions: functionsList,
+                deepThink: researchResult.data.deepThink,
+                deepResearch: researchResult.data.deepResearch,
+                comparison: researchResult.comparison
+              };
+            } else {
+              return { success: false, error: researchResult.error };
+            }
+            
+          } catch (error) {
+            console.error('リサーチ実行エラー:', error);
+            return { success: false, error: error.message };
+          }
+        },
+        args: [aiName, detectorName]
+      });
+      
+      console.log(`🔍 ${aiName}のスクリプト実行結果:`, result);
+      
+      if (result && result.length > 0 && result[0] && result[0].result) {
+        const scriptResult = result[0].result;
+        if (scriptResult.success) {
+          console.log(`✅ ${aiName}リサーチが正常に完了しました`);
+          
+          // ステータスメッセージを作成
+          let statusMessage = `${aiName}: ${scriptResult.models.length}モデル`;
+          
+          if (scriptResult.functions) {
+            statusMessage += `, ${scriptResult.functions.length}機能を検出`;
+          }
+          
+          // 特殊モードの表示
+          if (aiName === 'Claude' && scriptResult.deepResearch && scriptResult.deepResearch.available) {
+            statusMessage += ' (DeepResearch対応)';
+          } else if (aiName === 'Gemini') {
+            const specialModes = [];
+            if (scriptResult.deepThink && scriptResult.deepThink.available) {
+              specialModes.push('Deep Think');
+            }
+            if (scriptResult.deepResearch && scriptResult.deepResearch.available) {
+              specialModes.push('Deep Research');
+            }
+            if (specialModes.length > 0) {
+              statusMessage += ` (${specialModes.join(', ')}対応)`;
+            }
+          } else if (aiName === 'ChatGPT') {
+            const specialModes = [];
+            if (scriptResult.deepResearch && scriptResult.deepResearch.available) {
+              specialModes.push('Deep Research');
+            }
+            if (scriptResult.agentMode && scriptResult.agentMode.available) {
+              specialModes.push('エージェント');
+            }
+            if (specialModes.length > 0) {
+              statusMessage += ` (${specialModes.join(', ')}対応)`;
+            }
+          }
+          
+          updateStatus(statusMessage, "success");
+          
+          // 変更があった場合は通知
+          if (scriptResult.comparison && scriptResult.comparison.hasChanges) {
+            console.log('🔄 変更を検出:', scriptResult.comparison.changes);
+            showChangeNotification(aiName, scriptResult.comparison.changes);
+          }
+        } else {
+          console.error(`❌ ${aiName}リサーチ失敗:`, scriptResult.error);
+          updateStatus(`${aiName}検出エラー: ${scriptResult.error}`, "error");
+        }
+      } else {
+        console.error(`❌ ${aiName}スクリプト実行失敗:`, result);
+        console.error('詳細なエラー情報:', JSON.stringify(result, null, 2));
+        if (result && result.length > 0 && result[0]) {
+          console.error('スクリプトエラー詳細:', result[0].error || result[0]);
+        }
+        updateStatus(`${aiName}スクリプト実行失敗`, "error");
+      }
+      
+      return; // リサーチ機能を使った場合はここで終了
+    }
+    
+    // Geminiの場合もリサーチ機能を使用
+    if (aiName === 'Gemini') {
+      console.log(`🔬 ${aiName}リサーチ機能を注入・実行します`);
+      
+      // Geminiのリサーチ検出器ファイル
+      const researchFile = 'ai-platforms/gemini/gemini-research-detector.js';
+      
+      // リサーチ検出器を注入
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: tabId },
+          files: [researchFile]
+        });
+        console.log(`✅ ${aiName}リサーチ検出器を注入しました`);
+      } catch (injectionError) {
+        console.error(`❌ ${aiName}スクリプト注入エラー:`, injectionError);
+        return;
+      }
+      
+      // 少し待ってから実行
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      // リサーチを実行
+      const detectorName = 'GeminiResearchDetector';
+      
+      const [result] = await chrome.scripting.executeScript({
+        target: { tabId: tabId },
+        func: async (aiName, detectorName) => {
+          console.log(`🔬 ${aiName}リサーチ実行開始`);
+          
+          const detector = window[detectorName];
+          if (!detector) {
+            console.error(`${detectorName}が見つかりません`);
+            return { success: false, error: `${detectorName}が見つかりません` };
+          }
+          
+          try {
+            // リサーチを実行
+            const researchResult = await detector.executeResearch();
+            
+            if (researchResult.success) {
+              console.log(`✅ ${aiName}リサーチ完了`);
+              console.log('検出されたモデル数:', researchResult.data.models.length);
+              console.log('検出されたメイン機能数:', researchResult.data.features.main.length);
+              console.log('検出された追加機能数:', researchResult.data.features.additional.length);
+              console.log('Deep Think利用可能:', researchResult.data.deepThink.available);
+              console.log('Deep Research利用可能:', researchResult.data.deepResearch.available);
+              
+              // Geminiの機能をフラット化（UIが期待する形式に変換）
+              const functionsList = [];
+              
+              // メイン機能を追加
+              researchResult.data.features.main.forEach(f => {
+                functionsList.push({
+                  name: f.name,
+                  type: f.type || 'main',
+                  enabled: f.enabled,
+                  connected: true,  // Geminiの機能はデフォルトで接続済み
+                  icon: f.icon
+                });
+              });
+              
+              // 追加機能を追加
+              researchResult.data.features.additional.forEach(f => {
+                functionsList.push({
+                  name: f.name,
+                  type: f.type || 'additional',
+                  enabled: f.enabled,
+                  connected: true,  // Geminiの機能はデフォルトで接続済み
+                  icon: f.icon,
+                  sublabel: f.sublabel
+                });
+              });
+              
+              // Deep Thinkが利用可能な場合は機能リストに追加
+              if (researchResult.data.deepThink && researchResult.data.deepThink.available) {
+                functionsList.push({
+                  name: 'Deep Think',
+                  type: 'special',
+                  enabled: researchResult.data.deepThink.activated || false,
+                  connected: true,
+                  special: true
+                });
+                console.log('✅ Deep Think機能を追加しました');
+              }
+              
+              // Deep Researchが利用可能な場合は機能リストに追加
+              if (researchResult.data.deepResearch && researchResult.data.deepResearch.available) {
+                functionsList.push({
+                  name: 'Deep Research',
+                  type: 'special',
+                  enabled: researchResult.data.deepResearch.activated || false,
+                  connected: true,
+                  special: true
+                });
+                console.log('✅ Deep Research機能を追加しました');
+              }
+              
+              console.log('✅ Gemini機能フラット化完了:', functionsList.length, '個の機能');
+              
+              // 結果をストレージに保存
+              const config = {
+                gemini: {
+                  models: researchResult.data.models.map(m => ({
+                    title: m.title,
+                    description: m.description,
+                    selected: m.selected,
+                    additional: m.additional || false
+                  })),
+                  functions: functionsList,  // フラット化された機能リスト
+                  deepThink: researchResult.data.deepThink,
+                  deepResearch: researchResult.data.deepResearch,
+                  timestamp: new Date().toISOString()
+                }
+              };
+              
+              // Chrome拡張のストレージに保存
+              chrome.storage.local.get(['ai_config_persistence'], (result) => {
+                const existingConfig = result.ai_config_persistence || {};
+                const updatedConfig = { ...existingConfig, ...config };
+                chrome.storage.local.set({ 'ai_config_persistence': updatedConfig }, () => {
+                  console.log('✅ Gemini設定をストレージに保存しました:', updatedConfig.gemini);
+                });
+              });
+              
+              return {
+                success: true,
+                models: researchResult.data.models,
+                functions: functionsList,  // フラット化された機能リスト
+                deepThink: researchResult.data.deepThink,
+                deepResearch: researchResult.data.deepResearch,
+                comparison: researchResult.comparison
+              };
+            } else {
+              return { success: false, error: researchResult.error };
+            }
+            
+          } catch (error) {
+            console.error('リサーチ実行エラー:', error);
+            return { success: false, error: error.message };
+          }
+        },
+        args: [aiName, detectorName]
+      });
+      
+      console.log(`🔍 ${aiName}のスクリプト実行結果:`, result);
+      
+      if (result && result.length > 0 && result[0] && result[0].result) {
+        const scriptResult = result[0].result;
+        if (scriptResult.success) {
+          console.log(`✅ ${aiName}検出が正常に完了しました`);
+          console.log(`モデル: ${scriptResult.models.length}個, 機能: ${scriptResult.functions.length}個`);
+        } else {
+          console.error(`❌ ${aiName}検出エラー:`, scriptResult.error);
+        }
+      } else {
+        console.error(`❌ ${aiName}スクリプト実行失敗:`, result);
+        console.error('詳細なエラー情報:', JSON.stringify(result, null, 2));
+        if (result && result.length > 0 && result[0]) {
+          console.error('スクリプトエラー詳細:', result[0].error || result[0]);
+        }
+        updateStatus(`${aiName}スクリプト実行失敗`, "error");
+      }
+      
+      return; // リサーチ機能を使った場合はここで終了
+    }
+    
+    // ChatGPT用の新しいリサーチ機能
+    if (aiName === 'ChatGPT') {
+      console.log(`🔬 ${aiName}リサーチ機能を注入・実行します`);
+      
+      // ChatGPTのリサーチ検出器ファイル
+      const researchFile = 'ai-platforms/chatgpt/chatgpt-research-detector.js';
+      
+      // リサーチ検出器を注入
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: tabId },
+          files: [researchFile]
+        });
+        console.log(`✅ ${aiName}リサーチ検出器を注入しました`);
+      } catch (injectionError) {
+        console.error(`❌ ${aiName}スクリプト注入エラー:`, injectionError);
+        return;
+      }
+      
+      // 少し待ってから実行
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      // リサーチを実行
+      const detectorName = 'ChatGPTResearchDetector';
+      
+      const [result] = await chrome.scripting.executeScript({
+        target: { tabId: tabId },
+        func: async (aiName, detectorName) => {
+          console.log(`🔬 ${aiName}リサーチ実行開始`);
+          
+          const detector = window[detectorName];
+          if (!detector) {
+            console.error(`${detectorName}が見つかりません`);
+            return { success: false, error: `${detectorName}が見つかりません` };
+          }
+          
+          try {
+            // リサーチを実行
+            const researchResult = await detector.executeResearch();
+            
+            if (researchResult.success) {
+              console.log(`✅ ${aiName}リサーチ完了`);
+              console.log('検出されたモデル数:', researchResult.data.models.length);
+              console.log('検出されたメイン機能数:', researchResult.data.features.main.length);
+              console.log('検出された追加機能数:', researchResult.data.features.additional.length);
+              console.log('Deep Research利用可能:', researchResult.data.deepResearch.available);
+              console.log('エージェントモード利用可能:', researchResult.data.agentMode.available);
+              
+              // ChatGPTの機能をフラット化（UIが期待する形式に変換）
+              const functionsList = [];
+              
+              // メイン機能を追加
+              researchResult.data.features.main.forEach(f => {
+                functionsList.push({
+                  name: f.name,
+                  type: f.type || 'main',
+                  enabled: f.enabled,
+                  connected: true,  // ChatGPTの機能はデフォルトで接続済み
+                  element: f.element
+                });
+              });
+              
+              // 追加機能を追加
+              researchResult.data.features.additional.forEach(f => {
+                functionsList.push({
+                  name: f.name,
+                  type: f.type || 'additional',
+                  enabled: f.enabled || false,
+                  connected: true  // ChatGPTの機能はデフォルトで接続済み
+                });
+              });
+              
+              // Deep Researchが利用可能な場合は機能リストに追加
+              if (researchResult.data.deepResearch && researchResult.data.deepResearch.available) {
+                functionsList.push({
+                  name: 'Deep Research',
+                  type: 'special',
+                  enabled: researchResult.data.deepResearch.activated || false,
+                  connected: true,
+                  special: true
+                });
+                console.log('✅ Deep Research機能を追加しました');
+              }
+              
+              // エージェントモードが利用可能な場合は機能リストに追加
+              if (researchResult.data.agentMode && researchResult.data.agentMode.available) {
+                functionsList.push({
+                  name: 'エージェントモード',
+                  type: 'special',
+                  enabled: researchResult.data.agentMode.activated || false,
+                  connected: true,
+                  special: true
+                });
+                console.log('✅ エージェントモード機能を追加しました');
+              }
+              
+              console.log('✅ ChatGPT機能フラット化完了:', functionsList.length, '個の機能');
+              
+              // 結果をストレージに保存
+              const config = {
+                chatgpt: {
+                  models: researchResult.data.models.map(m => ({
+                    name: m.name,
+                    selected: m.selected,
+                    additional: m.additional || false
+                  })),
+                  functions: functionsList,  // フラット化された機能リスト
+                  deepResearch: researchResult.data.deepResearch,
+                  agentMode: researchResult.data.agentMode,
+                  timestamp: new Date().toISOString()
+                }
+              };
+              
+              // Chrome拡張のストレージに保存
+              chrome.storage.local.get(['ai_config_persistence'], (result) => {
+                const existingConfig = result.ai_config_persistence || {};
+                const updatedConfig = { ...existingConfig, ...config };
+                chrome.storage.local.set({ 'ai_config_persistence': updatedConfig }, () => {
+                  console.log('✅ ChatGPT設定をストレージに保存しました:', updatedConfig.chatgpt);
+                });
+              });
+              
+              return {
+                success: true,
+                models: researchResult.data.models,
+                functions: functionsList,  // フラット化された機能リスト
+                deepResearch: researchResult.data.deepResearch,
+                agentMode: researchResult.data.agentMode,
+                comparison: researchResult.comparison
+              };
+            } else {
+              return { success: false, error: researchResult.error };
+            }
+            
+          } catch (error) {
+            console.error('リサーチ実行エラー:', error);
+            return { success: false, error: error.message };
+          }
+        },
+        args: [aiName, detectorName]
+      });
+      
+      console.log(`🔍 ${aiName}のスクリプト実行結果:`, result);
+      
+      if (result && result.length > 0 && result[0] && result[0].result) {
+        const scriptResult = result[0].result;
+        if (scriptResult.success) {
+          console.log(`✅ ${aiName}検出が正常に完了しました`);
+          console.log(`モデル: ${scriptResult.models.length}個, 機能: ${scriptResult.functions.length}個`);
+        } else {
+          console.error(`❌ ${aiName}検出エラー:`, scriptResult.error);
+        }
+      } else {
+        console.error(`❌ ${aiName}スクリプト実行失敗:`, result);
+        console.error('詳細なエラー情報:', JSON.stringify(result, null, 2));
+        if (result && result.length > 0 && result[0]) {
+          console.error('スクリプトエラー詳細:', result[0].error || result[0]);
+        }
+        updateStatus(`${aiName}スクリプト実行失敗`, "error");
+      }
+      
+      return; // リサーチ機能を使った場合はここで終了
+    }
+    
+    // 全てのAIが新しいリサーチ検出器システムに移行済み
+    console.error(`⚠️ ${aiName}は新しいリサーチ検出器システムに移行されました`);
+    return;
+  } catch (error) {
+    console.error(`${aiName}スクリプト注入エラー:`, error);
+  }
+}
+
+// AI検出ウィンドウを閉じる関数
+async function closeAIDetectionWindows() {
+  console.log(`🚪 ${aiDetectionWindows.length}個のAI検出ウィンドウを閉じます`);
+  
+  const closePromises = aiDetectionWindows.map(async (windowInfo) => {
+    try {
+      await new Promise((resolve) => {
+        chrome.windows.remove(windowInfo.windowId, () => {
+          console.log(`✅ ${windowInfo.aiType}ウィンドウを閉じました`);
+          resolve();
+        });
+      });
+    } catch (error) {
+      console.error(`❌ ${windowInfo.aiType}ウィンドウの閉鎖エラー:`, error);
+    }
+  });
+  
+  await Promise.allSettled(closePromises);
+  aiDetectionWindows = []; // リストをクリア
+  console.log('✅ すべてのAI検出ウィンドウを閉じました');
+}
+
+// 変更通知を表示する関数
+function showChangeNotification(aiName, changes) {
+  if (!changes || changes.length === 0) return;
+  
+  let message = `以下のモデルと機能が変更された可能性があります。修正してください。\n\n修正内容：\n`;
+  
+  changes.forEach((change, index) => {
+    message += `${index + 1}. ${change.type}: ${change.item}\n`;
+    if (change.details) {
+      message += `   詳細: ${change.details}\n`;
+    }
+    if (change.old && change.new) {
+      message += `   変更: ${change.old} → ${change.new}\n`;
+    }
+    message += '\n';
+  });
+  
+  // ポップアップで通知
+  setTimeout(() => {
+    alert(message);
+  }, 1000); // 1秒後に表示（ログ出力の後）
+}
+
+// ===== イベントリスナー: AI変更検出システム =====
+let isAIDetectionSystemRunning = false; // 実行中フラグ
+let aiDetectionWindows = []; // 開いたウィンドウを記録
+
+aiDetectionSystemBtn.addEventListener("click", async () => {
+  console.log("AI変更検出システムボタンが押されました - 4分割ウィンドウを開きます");
+  
+  try {
+    // プライマリモニターのサイズを取得
+    const screenInfo = await new Promise((resolve) => {
+      chrome.system.display.getInfo((displays) => {
+        const primaryDisplay = displays.find(d => d.isPrimary) || displays[0];
+        resolve(primaryDisplay);
+      });
+    });
+    
+    const screenWidth = screenInfo.bounds.width;
+    const screenHeight = screenInfo.bounds.height;
+    const halfWidth = Math.floor(screenWidth / 2);
+    const halfHeight = Math.floor(screenHeight / 2);
+    
+    console.log(`画面サイズ: ${screenWidth}x${screenHeight}`);
+    console.log(`各ウィンドウサイズ: ${halfWidth}x${halfHeight}`);
+    
+    // メインウィンドウはそのまま（移動しない）
+    console.log('メインウィンドウは現在の位置を維持');
+    
+    // 既存のAI検出ウィンドウがあれば閉じる
+    if (aiDetectionWindows.length > 0) {
+      console.log('既存のAI検出ウィンドウを閉じます');
+      await closeAIDetectionWindows();
+    }
+    
+    // 1. ChatGPTウィンドウを左上に開く
+    const chatgptWindow = await new Promise((resolve) => {
+      chrome.windows.create({
+        url: 'https://chatgpt.com',
+        left: 0,
+        top: 0,
+        width: halfWidth,
+        height: halfHeight,
+        type: 'popup',  // popupタイプに変更（URLバー・ブックマークバー非表示）
+        focused: false  // フォーカスを奪わない
+      }, (window) => {
+        console.log('✅ ChatGPTウィンドウを左上に開きました');
+        if (window) {
+          aiDetectionWindows.push({ windowId: window.id, aiType: 'ChatGPT' });
+        }
+        resolve(window);
+      });
+    });
+    
+    // 少し待機
+    await new Promise(resolve => setTimeout(resolve, 300));
+    
+    // 2. Claudeウィンドウを右上に開く
+    const claudeWindow = await new Promise((resolve) => {
+      chrome.windows.create({
+        url: 'https://claude.ai',
+        left: halfWidth,
+        top: 0,
+        width: halfWidth,
+        height: halfHeight,
+        type: 'popup',  // popupタイプに変更（URLバー・ブックマークバー非表示）
+        focused: false  // フォーカスを奪わない
+      }, (window) => {
+        console.log('✅ Claudeウィンドウを右上に開きました');
+        if (window) {
+          aiDetectionWindows.push({ windowId: window.id, aiType: 'Claude' });
+        }
+        resolve(window);
+      });
+    });
+    
+    // 少し待機
+    await new Promise(resolve => setTimeout(resolve, 300));
+    
+    // 3. Geminiウィンドウを左下に開く
+    const geminiWindow = await new Promise((resolve) => {
+      chrome.windows.create({
+        url: 'https://gemini.google.com',
+        left: 0,
+        top: halfHeight,
+        width: halfWidth,
+        height: halfHeight,
+        type: 'popup',  // popupタイプに変更（URLバー・ブックマークバー非表示）
+        focused: false  // フォーカスを奪わない
+      }, (window) => {
+        console.log('✅ Geminiウィンドウを左下に開きました');
+        if (window) {
+          aiDetectionWindows.push({ windowId: window.id, aiType: 'Gemini' });
+        }
+        resolve(window);
+      });
+    });
+    
+    console.log('4分割ウィンドウを開きました。各AIの自動化スクリプトを注入します...');
+    
+    // 各ウィンドウのタブIDを取得して自動化スクリプトを注入
+    const windows = [
+      { window: chatgptWindow, name: 'ChatGPT' },
+      { window: claudeWindow, name: 'Claude' },
+      { window: geminiWindow, name: 'Gemini' }
+    ];
+    
+    // 各ウィンドウにスクリプトを並列で注入
+    let completedCount = 0;
+    const totalWindows = windows.length;
+    
+    // 各ウィンドウの処理を並列実行するためのPromise配列
+    const processPromises = windows.map(async ({ window, name }) => {
+      if (window && window.tabs && window.tabs[0]) {
+        const tabId = window.tabs[0].id;
+        console.log(`${name}にスクリプトを注入します (タブID: ${tabId})`);
+        
+        try {
+          // ページの読み込みが完了するまで待機
+          await new Promise((resolve) => {
+            chrome.tabs.onUpdated.addListener(function listener(updatedTabId, info) {
+              if (updatedTabId === tabId && info.status === 'complete') {
+                chrome.tabs.onUpdated.removeListener(listener);
+                console.log(`${name}のページ読み込み完了`);
+                resolve();
+              }
+            });
+            
+            // タイムアウト設定（10秒）
+            setTimeout(() => {
+              console.log(`${name}のページ読み込みタイムアウト`);
+              resolve();
+            }, 10000);
+          });
+          
+          // スクリプトを注入
+          await injectAutomationScripts(tabId, name);
+          
+          // 完了カウントを更新（スレッドセーフのために注意深く処理）
+          completedCount++;
+          console.log(`🔢 AI検出進捗: ${completedCount}/${totalWindows} 完了 (${name})`);
+          
+          // 進捗をステータスに表示
+          updateStatus(`AI検出中... (${completedCount}/${totalWindows}) - ${name}完了`, "loading");
+          
+          return { success: true, aiName: name };
+        } catch (error) {
+          console.error(`${name}の処理でエラー:`, error);
+          completedCount++;
+          updateStatus(`AI検出中... (${completedCount}/${totalWindows}) - ${name}エラー`, "loading");
+          return { success: false, aiName: name, error: error.message };
+        }
+      }
+      return { success: false, aiName: name, error: 'ウィンドウまたはタブが無効' };
+    });
+    
+    // すべてのAI処理を並列実行
+    console.log('🚀 すべてのAI検出を並列実行開始...');
+    const results = await Promise.allSettled(processPromises);
+    
+    // 結果を集計
+    const successCount = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
+    const errorCount = results.length - successCount;
+    
+    console.log(`📊 並列処理結果: 成功 ${successCount}件, エラー ${errorCount}件`);
+    
+    if (errorCount > 0) {
+      console.warn('⚠️ 一部のAI検出でエラーが発生しました');
+      results.forEach((result, index) => {
+        if (result.status === 'rejected' || (result.status === 'fulfilled' && !result.value.success)) {
+          console.error(`❌ ${windows[index].name}エラー:`, result.reason || result.value?.error);
+        }
+      });
+    }
+    
+    // 全ての検出が完了したら5秒後にウィンドウを自動で閉じる
+    console.log('🎉 すべてのAI検出が完了しました。5秒後に自動でウィンドウを閉じます...');
+    updateStatus("すべてのAI検出が完了しました。5秒後に自動でウィンドウを閉じます...", "success");
+    
+    setTimeout(async () => {
+      await closeAIDetectionWindows();
+      updateStatus("AI検出システム完了 - ウィンドウを閉じました", "success");
+    }, 5000);
+    
+    // 現在のウィンドウ情報を取得してフォーカスを戻す
+    chrome.windows.getCurrent((currentWindow) => {
+      chrome.windows.update(currentWindow.id, { focused: true });
+    });
+    
+    updateStatus("4分割ウィンドウを開き、AI検出システムを起動しました", "success");
+    
+  } catch (error) {
+    console.error("ウィンドウ操作エラー:", error);
+    updateStatus("ウィンドウ操作エラー", "error");
+    alert(`エラーが発生しました: ${error.message}`);
+  }
+});
+
+// 以下は古いコードのコメントアウト
+/*
+      if (aiTab) {
+        console.log(`AIサイトを検出: ${aiTab.url}`);
+        
+        // そのタブをアクティブにする
+        chrome.tabs.update(aiTab.id, { active: true }, () => {
+          injectScriptsToTab(aiTab.id);
+        });
+        
+      } else {
+        // AIサイトのタブがない場合は選択画面を表示
+        const aiSelection = confirm(
+          '開いているタブにAIサイトがありません。\n' +
+          'どのAIサイトを開きますか？\n\n' +
+          'OK = ChatGPT\n' +
+          'キャンセル = Claude\n\n' +
+          '（Geminiを開く場合は、キャンセル後に再度実行してください）'
+        );
+        
+        let urlToOpen;
+        if (aiSelection) {
+          urlToOpen = 'https://chatgpt.com';
+        } else {
+          const claudeOrGemini = confirm(
+            'Claudeを開きますか？\n\n' +
+            'OK = Claude\n' +
+            'キャンセル = Gemini'
+          );
+          urlToOpen = claudeOrGemini ? 'https://claude.ai' : 'https://gemini.google.com';
+        }
+        
+        // 新しいタブでAIサイトを開く
+        chrome.tabs.create({ url: urlToOpen }, (newTab) => {
+          console.log(`新しいタブでAIサイトを開きました: ${urlToOpen}`);
+          updateStatus("AIサイトを開いています...", "running");
+          
+          // ページ読み込み完了を待つ
+          chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
+            if (tabId === newTab.id && info.status === 'complete') {
+              chrome.tabs.onUpdated.removeListener(listener);
+              
+              // 少し待ってからスクリプトを注入
+              setTimeout(() => {
+                injectScriptsToTab(newTab.id);
+              }, 2000);
+            }
+          });
+        });
+      }
+      
+      // スクリプト注入関数
+      async function injectScriptsToTab(tabId) {
+        // 先に基本的なAI自動化スクリプトを注入
+        const baseScripts = [
+          'automations/chatgpt-automation.js',
+          'automations/claude-automation-dynamic.js',
+          'automations/gemini-dynamic-automation.js'
+        ];
+        
+        // その後、4層システムを注入
+        const scriptsToInject = [
+          'src/ai/unified-ai-api.js',
+          'src/ai/change-detection-processor.js',
+          'src/ai/ai-config-persistence.js',
+          'src/ai/user-settings-sync.js'
+        ];
+        
+        try {
+          // まず、既にシステムが注入されているかチェック
+          const [checkResult] = await chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            func: () => {
+              return {
+                hasUnifiedAI: typeof window.UnifiedAI !== 'undefined',
+                hasAIPersistence: typeof window.AIPersistence !== 'undefined',
+                hasUserSettingsSync: typeof window.UserSettingsSync !== 'undefined',
+                hasChatGPTAutomation: typeof window.ChatGPTAutomation !== 'undefined'
+              };
+            }
+          });
+          
+          console.log('既存システムチェック:', checkResult.result);
+          
+          // 既に全てのシステムが注入されている場合
+          if (checkResult.result.hasUnifiedAI && 
+              checkResult.result.hasAIPersistence && 
+              checkResult.result.hasUserSettingsSync) {
+            console.log('⚠️ システムは既に注入されています');
+            
+            // 既に注入されている場合はアダプタのみ注入して実行
+            await chrome.scripting.executeScript({
+              target: { tabId: tabId },
+              files: [
+                'src/detectors/ai-detector-interface.js',
+                'src/detectors/adapters/chatgpt-adapter.js',
+                'src/detectors/adapters/claude-adapter.js',
+                'src/detectors/adapters/gemini-adapter.js',
+                'src/detectors/ai-detector-service.js'
+              ]
+            });
+            console.log('✅ AI検出アダプタを注入しました（再実行）');
+            
+            await chrome.scripting.executeScript({
+              target: { tabId: tabId },
+              func: async () => {
+                console.log('🔄 AI変更検出システム - 再実行');
+                
+                try {
+                  // サービスを初期化
+                  if (!window.aiDetectorService) {
+                    window.aiDetectorService = new AIDetectorService();
+                  }
+                  
+                  const service = window.aiDetectorService;
+                  await service.initialize();
+                  
+                  // 現在のページのAIタイプを判定
+                  const url = window.location.href;
+                  let aiType = null;
+                  
+                  if (url.includes('chatgpt.com') || url.includes('chat.openai.com')) {
+                    aiType = 'chatgpt';
+                  } else if (url.includes('claude.ai')) {
+                    aiType = 'claude';
+                  } else if (url.includes('gemini.google.com')) {
+                    aiType = 'gemini';
+                  }
+                  
+                  if (!aiType) {
+                    throw new Error('対応するAIサイトではありません');
+                  }
+                  
+                  console.log(`📊 ${aiType.toUpperCase()} のデータを取得中...`);
+                  
+                  // データを検出
+                  const result = await service.detectAI(aiType);
+                  
+                  console.log(`✅ 取得完了:`, result);
+                  
+                  // 結果を表示
+                  const modelCount = result.models ? result.models.length : 0;
+                  const functionCount = result.functions ? result.functions.length : 0;
+                  
+                  alert(`AI変更検出完了！\n\n` +
+                        `AI: ${aiType.toUpperCase()}\n` +
+                        `モデル: ${modelCount}個\n` +
+                        `機能: ${functionCount}個\n\n` +
+                        `トップページでステータスを確認できます。`);
+                  
+                } catch (error) {
+                  console.error('❌ データ取得エラー:', error);
+                  alert('データ取得に失敗しました: ' + error.message);
+                }
+              }
+            });
+            
+            updateStatus("AI変更検出システム起動済み", "ready");
+            isAIDetectionSystemRunning = false;
+            aiDetectionSystemBtn.disabled = false;
+            return; // 重複注入を防ぐ
+          }
+          
+          // 現在のタブのURLを取得
+          const tab = await chrome.tabs.get(tabId);
+          const url = tab.url;
+          
+          // URLに応じて必要な基本スクリプトを注入
+          if (url.includes('chatgpt.com') || url.includes('chat.openai.com')) {
+            await chrome.scripting.executeScript({
+              target: { tabId: tabId },
+              files: ['automations/chatgpt-automation.js']
+            });
+            console.log('✅ ChatGPT自動化スクリプトを注入');
+          } else if (url.includes('claude.ai')) {
+            await chrome.scripting.executeScript({
+              target: { tabId: tabId },
+              files: ['automations/claude-automation-dynamic.js']
+            });
+            console.log('✅ Claude自動化スクリプトを注入');
+          } else if (url.includes('gemini.google.com')) {
+            await chrome.scripting.executeScript({
+              target: { tabId: tabId },
+              files: ['automations/gemini-dynamic-automation.js']
+            });
+            console.log('✅ Gemini自動化スクリプトを注入');
+          }
+          
+          // 少し待機（基本スクリプトの初期化を待つ）
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          // 4層システムのスクリプトを順番に注入
+          for (const script of scriptsToInject) {
+            await chrome.scripting.executeScript({
+              target: { tabId: tabId },
+              files: [script]
+            });
+            console.log(`✅ ${script} を注入しました`);
+          }
+          
+          // アダプタスクリプトを注入
+          await chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            files: [
+              'src/detectors/ai-detector-interface.js',
+              'src/detectors/adapters/chatgpt-adapter.js',
+              'src/detectors/ai-detector-service.js'
+            ]
+          });
+          console.log('✅ AI検出アダプタを注入しました');
+          
+          // 少し待ってから実行
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          // AIDetectorServiceを使用してデータを取得
+          await chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            func: async () => {
+              console.log('🎯 AI変更検出システム起動完了');
+              
+              try {
+                // サービスを初期化
+                if (!window.aiDetectorService) {
+                  window.aiDetectorService = new AIDetectorService();
+                }
+                
+                const service = window.aiDetectorService;
+                await service.initialize();
+                
+                // 現在のページのAIタイプを判定
+                const url = window.location.href;
+                let aiType = null;
+                
+                if (url.includes('chatgpt.com') || url.includes('chat.openai.com')) {
+                  aiType = 'chatgpt';
+                } else if (url.includes('claude.ai')) {
+                  aiType = 'claude';
+                } else if (url.includes('gemini.google.com')) {
+                  aiType = 'gemini';
+                }
+                
+                if (!aiType) {
+                  throw new Error('対応するAIサイトではありません');
+                }
+                
+                console.log(`📊 ${aiType.toUpperCase()} のデータを取得中...`);
+                
+                // データを検出
+                const result = await service.detectAI(aiType);
+                
+                console.log(`✅ 取得完了:`, result);
+                
+                // 結果を表示
+                const modelCount = result.models ? result.models.length : 0;
+                const functionCount = result.functions ? result.functions.length : 0;
+                
+                alert(`AI変更検出完了！\n\n` +
+                      `AI: ${aiType.toUpperCase()}\n` +
+                      `モデル: ${modelCount}個\n` +
+                      `機能: ${functionCount}個\n\n` +
+                      `トップページでステータスを確認できます。`);
+                
+              } catch (error) {
+                console.error('❌ データ取得エラー:', error);
+                alert('データ取得に失敗しました: ' + error.message);
+              }
+            }
+          });
+          
+          updateStatus("AI変更検出システム起動完了", "ready");
+          
+          // AIステータスを更新
+          setTimeout(() => {
+            updateAIStatus();
+            console.log('✅ AIステータスを更新しました');
+          }, 2000); // 2秒後に更新（データ取得を待つため）
+          
+        } catch (error) {
+          console.error('スクリプト注入エラー:', error);
+          updateStatus("スクリプト注入エラー", "error");
+          alert(`エラーが発生しました: ${error.message}`);
+        } finally {
+          // 処理完了後、フラグをリセット
+          isAIDetectionSystemRunning = false;
+          aiDetectionSystemBtn.disabled = false;
+        }
+      }
+    });
+    
+  } catch (error) {
+    console.error("AI変更検出システムエラー:", error);
+    updateStatus("AI変更検出システムエラー", "error");
+    alert(`エラーが発生しました: ${error.message}`);
+    isAIDetectionSystemRunning = false;
+    aiDetectionSystemBtn.disabled = false;
+  }
+});
+*/
+
 // ===== イベントリスナー: 統合AIテスト開始 =====
 startIntegratedTestBtn.addEventListener("click", () => {
   console.log("統合AIテスト開始ボタンが押されました");
@@ -716,8 +2058,37 @@ showTaskListTestBtn.addEventListener("click", () => {
   }
 });
 
-
-
-
+// ===== イベントリスナー: AIステータス表示 =====
+const showAIStatusBtn = document.getElementById("showAIStatusBtn");
+if (showAIStatusBtn) {
+  showAIStatusBtn.addEventListener("click", () => {
+    console.log("AIステータス表示を開きます...");
+    updateStatus("AIステータス表示を開いています...", "running");
+    
+    chrome.tabs.create({
+      url: chrome.runtime.getURL("src/ui/ai-status-display.html"),
+    }, (tab) => {
+      if (tab) {
+        console.log("✅ AIステータス表示ページが開かれました");
+        updateStatus("AIステータス表示を開きました", "success");
+        setTimeout(() => updateStatus("待機中", "waiting"), 2000);
+      } else {
+        console.error("❌ AIステータス表示を開けませんでした");
+        updateStatus("AIステータス表示を開けませんでした", "error");
+      }
+    });
+  });
+}
 
 // テスト実行関数（別ウィンドウ版）
+
+// ===== 初期化処理 =====
+// 初回のAIステータスを更新
+updateAIStatus();
+
+// ストレージの変更を監視（AI変更検出システムが実行されたときに更新）
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === 'local' && changes.ai_config_persistence) {
+    updateAIStatus();
+  }
+});

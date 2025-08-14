@@ -165,6 +165,19 @@ const SELECTOR_CONFIG = {
       'div[class*="prose"], div[class*="markdown"], div[class*="content"]',
     EXCLUDE_SELECTORS: ["button", '[class*="copy"]', '[class*="feedback"]'],
     ERROR_ELEMENT: '[data-testid="error"], .error, [class*="error"]',
+    STOP_BUTTON: [
+      // React対応・優先順位順
+      'button[data-testid*="stop"]', // 1. data-testid (最優先)
+      'button[aria-label="応答を停止"]', // 2. aria-label (実際のClaude)
+      'button[aria-label*="停止"]', // 2. aria-label (バリエーション)
+      'button[data-state="closed"][aria-label*="停止"]', // 3,2. data-state + aria-label組み合わせ
+      'button[type="button"][aria-label*="停止"]', // 7,2. type + aria-label組み合わせ
+      'button[aria-label*="Stop"]', // 2. aria-label (英語)
+      'button[aria-label*="stop"]', // 2. aria-label (小文字)
+      'button:has(svg[viewBox="0 0 256 256"])', // SVGの特徴パターン
+      'button.inline-flex:has(svg)', // 9,16. classパターン + 構造
+      'button[class*="inline-flex"]:has(svg[fill="currentColor"])', // 9,16. より具体的なパターン
+    ],
   },
 
   Gemini: {
@@ -1375,6 +1388,97 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       handleExecuteTask(request, sendResponse);
       break;
 
+    case "getAIStatus":
+      // 現在のAIのステータスを返す
+      isAsync = true;
+      (async () => {
+        try {
+          let models = [];
+          let functions = [];
+          
+          // ChatGPTの場合
+          if (AI_TYPE === 'chatgpt' && window.chatgptAutomation) {
+            models = await window.chatgptAutomation.getAvailableModels();
+            functions = await window.chatgptAutomation.getAvailableFunctions();
+          }
+          // Claudeの場合
+          else if (AI_TYPE === 'claude' && window.ClaudeAutomation) {
+            models = await window.ClaudeAutomation.getAvailableModels();
+            functions = await window.ClaudeAutomation.getAvailableFunctions();
+          }
+          // Geminiの場合
+          else if (AI_TYPE === 'gemini' && window.GeminiAutomation) {
+            models = await window.GeminiAutomation.collectAvailableModels();
+            functions = await window.GeminiAutomation.collectAvailableFunctions();
+          }
+          
+          sendResponse({
+            success: true,
+            aiType: AI_TYPE,
+            models: models,
+            functions: functions
+          });
+        } catch (error) {
+          console.error(`[11.autoai] getAIStatusエラー:`, error);
+          sendResponse({
+            success: false,
+            error: error.message,
+            aiType: AI_TYPE
+          });
+        }
+      })();
+      break;
+
+    case "detectAIChanges":
+      // AI変更検出を実行してデータを返す
+      isAsync = true;
+      (async () => {
+        try {
+          let models = [];
+          let functions = [];
+          
+          console.log(`[${AI_TYPE}] 変更検出を実行中...`);
+          
+          // ChatGPTの場合
+          if (AI_TYPE === 'chatgpt' && window.chatgptAutomation) {
+            console.log('[ChatGPT] モデルと機能を取得中...');
+            models = await window.chatgptAutomation.getAvailableModels();
+            functions = await window.chatgptAutomation.getAvailableFunctions();
+            console.log(`[ChatGPT] モデル: ${models.length}個, 機能: ${functions.length}個`);
+          }
+          // Claudeの場合
+          else if (AI_TYPE === 'claude' && window.ClaudeAutomation) {
+            console.log('[Claude] モデルと機能を取得中...');
+            models = await window.ClaudeAutomation.getAvailableModels();
+            functions = await window.ClaudeAutomation.getAvailableFunctions();
+            console.log(`[Claude] モデル: ${models.length}個, 機能: ${functions.length}個`);
+          }
+          // Geminiの場合
+          else if (AI_TYPE === 'gemini' && window.GeminiAutomation) {
+            console.log('[Gemini] モデルと機能を取得中...');
+            models = await window.GeminiAutomation.collectAvailableModels();
+            functions = await window.GeminiAutomation.collectAvailableFunctions();
+            console.log(`[Gemini] モデル: ${models.length}個, 機能: ${functions.length}個`);
+          }
+          
+          sendResponse({
+            success: true,
+            aiType: AI_TYPE,
+            models: models,
+            functions: functions,
+            timestamp: new Date().toISOString()
+          });
+        } catch (error) {
+          console.error(`[${AI_TYPE}] 変更検出エラー:`, error);
+          sendResponse({
+            success: false,
+            error: error.message,
+            aiType: AI_TYPE
+          });
+        }
+      })();
+      break;
+
     default:
       console.warn(`[11.autoai] 未知のアクション: ${request.action}`);
       sendResponse({ success: false, error: "Unknown action" });
@@ -1449,9 +1553,23 @@ async function getCurrentAIResponse() {
  * @returns {Promise<boolean>} 完了している場合true
  */
 async function isResponseCompleted() {
-  // 停止ボタンが消えているか確認
-  const stopButton = document.querySelector(SELECTOR_CONFIG[AI_TYPE]?.STOP_BUTTON || 'button[aria-label*="stop" i]');
-  return !stopButton || stopButton.style.display === 'none' || stopButton.disabled;
+  if (AI_TYPE === "Claude") {
+    // Claude専用の応答完了判定：停止ボタン消滅のみ
+    const stopButton = document.querySelector('button[aria-label="応答を停止"]');
+    
+    // 停止ボタンが消滅した場合、応答完了
+    const isCompleted = !stopButton;
+    
+    if (isCompleted) {
+      console.log(`[11.autoai][Claude] 応答完了検出: 停止ボタン消失`);
+    }
+    
+    return isCompleted;
+  } else {
+    // 他のAI用の従来の判定
+    const stopButton = document.querySelector(SELECTOR_CONFIG[AI_TYPE]?.STOP_BUTTON || 'button[aria-label*="stop" i]');
+    return !stopButton || stopButton.style.display === 'none' || stopButton.disabled;
+  }
 }
 
 /**
@@ -1502,6 +1620,22 @@ async function handleAITaskPrompt(request, sendResponse) {
             aiType: AI_TYPE 
           });
           return;
+        }
+        
+        // Claude専用: より詳細なデバッグログ
+        if (AI_TYPE === "Claude" && (Date.now() - startTime) % 3000 < 1000) {
+          const stopButton = document.querySelector('button[aria-label="応答を停止"]');
+          const sendButton = document.querySelector('button[aria-label="メッセージを送信"]');
+          const isCompleted = await isResponseCompleted();
+          const currentResponse = await getCurrentAIResponse();
+          
+          console.log(`[11.autoai][Claude] 応答待機詳細 (${Math.floor((Date.now() - startTime) / 1000)}s):`, {
+            停止ボタン: !!stopButton,
+            送信ボタン: !!sendButton,
+            応答完了判定: isCompleted,
+            応答テキスト長: currentResponse ? currentResponse.length : 0,
+            応答プレビュー: currentResponse ? currentResponse.substring(0, 50) + '...' : 'なし'
+          });
         }
         
         // 1秒待機
@@ -2227,18 +2361,39 @@ async function getResponseWithCanvas() {
       return chatResponse.textContent.trim();
 
     case "Claude":
-      // Claude: Canvas機能対応（動作確認済み）
-      const allClaudeMessages = document.querySelectorAll(
-        ".font-claude-message",
-      );
-      const claudeResponse =
-        allClaudeMessages.length > 0
-          ? allClaudeMessages[allClaudeMessages.length - 1]
-          : null;
+      // Claude: 複数のセレクタで回答要素を探す
+      const claudeSelectors = [
+        'div[class*="grid-cols-1"]',  // 新しいClaude UI構造
+        'p.whitespace-normal',        // 新しいClaude UI構造
+        '.font-claude-message',       // 従来のセレクタ
+        '[data-testid="conversation-turn-3"]',
+        '[data-testid*="conversation-turn"]:last-child',
+        '.prose',
+        'div[class*="prose"]',
+        '.markdown',
+        'div[role="presentation"]:last-child'
+      ];
+      
+      let claudeResponse = null;
+      let usedSelector = '';
+      
+      for (const selector of claudeSelectors) {
+        const elements = document.querySelectorAll(selector);
+        if (elements.length > 0) {
+          claudeResponse = elements[elements.length - 1];
+          usedSelector = selector;
+          console.log(`[Claude] 応答要素を発見 (セレクタ: ${selector})`);
+          break;
+        }
+      }
+      
       if (!claudeResponse) {
+        console.error('[Claude] 回答コンテナが見つかりません。利用可能な要素をデバッグ:');
+        console.log('DOM構造:', document.body.innerHTML.substring(0, 1000));
         throw new Error("Claude: 回答コンテナが見つかりません");
       }
 
+      // Canvas機能チェック
       const previewButton = document.querySelector(
         'button[aria-label="内容をプレビュー"]',
       );
@@ -2256,12 +2411,26 @@ async function getResponseWithCanvas() {
           return canvasText;
         }
       }
-      // 通常回答モード
-      // font-claude-messageの2番目の子要素（本文）を取得
-      const contentDiv = claudeResponse.children[1];
-      const text = contentDiv
-        ? contentDiv.innerText.replace(/\u00A0/g, " ") || ""
-        : "";
+      
+      // 通常回答モード：複数の方法で回答テキストを取得
+      let text = '';
+      
+      // 方法1: children[1]を試す
+      if (claudeResponse.children && claudeResponse.children[1]) {
+        text = claudeResponse.children[1].innerText?.replace(/\u00A0/g, " ") || "";
+      }
+      
+      // 方法2: 直接innerTextを試す
+      if (!text) {
+        text = claudeResponse.innerText?.replace(/\u00A0/g, " ") || "";
+      }
+      
+      // 方法3: textContentを試す
+      if (!text) {
+        text = claudeResponse.textContent?.replace(/\u00A0/g, " ") || "";
+      }
+      
+      console.log(`[Claude] 応答取得: セレクタ=${usedSelector}, テキスト長=${text.length}`);
       return text;
 
     case "Gemini":
