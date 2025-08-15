@@ -13,7 +13,118 @@ function updateAIStatus() {
     updateAIStatusCard('chatgpt', config.chatgpt);
     updateAIStatusCard('claude', config.claude);
     updateAIStatusCard('gemini', config.gemini);
+    
+    // 統合表示ボタンを追加
+    addIntegratedViewButton();
+    
+    // データクリーンアップボタンも追加
+    addDataCleanupButton();
   });
+}
+
+// 統合表示ボタンを追加する関数
+function addIntegratedViewButton() {
+  // 既存のボタンがあれば削除
+  const existingBtn = document.getElementById('integrated-view-btn');
+  if (existingBtn) {
+    existingBtn.remove();
+  }
+  
+  // AIステータスセクションを取得
+  const aiStatusSection = document.querySelector('.ai-status-section');
+  if (!aiStatusSection) return;
+  
+  // 統合表示ボタンを作成
+  const integratedBtn = document.createElement('button');
+  integratedBtn.id = 'integrated-view-btn';
+  integratedBtn.textContent = '📊 統合表示';
+  integratedBtn.style.cssText = `
+    margin: 10px auto;
+    padding: 10px 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    display: block;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  `;
+  
+  integratedBtn.onmouseover = () => {
+    integratedBtn.style.transform = 'translateY(-2px)';
+    integratedBtn.style.boxShadow = '0 4px 15px rgba(0, 0, 0, 0.2)';
+  };
+  
+  integratedBtn.onmouseout = () => {
+    integratedBtn.style.transform = 'translateY(0)';
+    integratedBtn.style.boxShadow = '0 2px 10px rgba(0, 0, 0, 0.1)';
+  };
+  
+  integratedBtn.onclick = () => {
+    showDetailModal('integrated', 'all', []);
+  };
+  
+  aiStatusSection.appendChild(integratedBtn);
+}
+
+// データクリーンアップボタンを追加する関数
+function addDataCleanupButton() {
+  // 既存のボタンがあれば削除
+  const existingBtn = document.getElementById('data-cleanup-btn');
+  if (existingBtn) {
+    existingBtn.remove();
+  }
+  
+  // AIステータスセクションを取得
+  const aiStatusSection = document.querySelector('.ai-status-section');
+  if (!aiStatusSection) return;
+  
+  // データクリーンアップボタンを作成
+  const cleanupBtn = document.createElement('button');
+  cleanupBtn.id = 'data-cleanup-btn';
+  cleanupBtn.textContent = '🧹 データクリーンアップ';
+  cleanupBtn.style.cssText = `
+    margin: 5px auto;
+    padding: 8px 16px;
+    background: linear-gradient(135deg, #f39c12 0%, #e74c3c 100%);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    display: block;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  `;
+  
+  cleanupBtn.onmouseover = () => {
+    cleanupBtn.style.transform = 'translateY(-1px)';
+    cleanupBtn.style.boxShadow = '0 3px 12px rgba(0, 0, 0, 0.2)';
+  };
+  
+  cleanupBtn.onmouseout = () => {
+    cleanupBtn.style.transform = 'translateY(0)';
+    cleanupBtn.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
+  };
+  
+  cleanupBtn.onclick = async () => {
+    if (confirm('古いデータ形式をクリアして新しい形式で再取得しますか？')) {
+      // Chrome Storage をクリア
+      chrome.storage.local.remove(['ai_config_persistence'], () => {
+        console.log('✅ 古いデータをクリアしました');
+        alert('データクリーンアップ完了。「AI変更検出システム」を再実行してください。');
+        
+        // AIステータスを更新
+        updateAIStatus();
+      });
+    }
+  };
+  
+  aiStatusSection.appendChild(cleanupBtn);
 }
 
 function updateAIStatusCard(aiType, aiConfig) {
@@ -52,8 +163,14 @@ function updateAIStatusCard(aiType, aiConfig) {
   }
 }
 
-// 詳細モーダルを表示する関数
+// 詳細モーダルを表示する関数（統合表示対応）
 function showDetailModal(aiType, dataType, items) {
+  // 統合表示の場合
+  if (aiType === 'integrated' && dataType === 'all') {
+    showIntegratedModal();
+    return;
+  }
+  
   // 既存のモーダルがあれば削除
   const existingModal = document.getElementById('ai-detail-modal');
   if (existingModal) {
@@ -147,7 +264,17 @@ function showDetailModal(aiType, dataType, items) {
       `;
       
       const itemName = document.createElement('span');
-      itemName.textContent = typeof item === 'string' ? item : (item.name || item);
+      // itemが文字列の場合はそのまま表示
+      // オブジェクトの場合はnameプロパティを優先、なければJSON文字列化を避けて'Unknown'を表示
+      let displayText = '';
+      if (typeof item === 'string') {
+        displayText = item;
+      } else if (typeof item === 'object' && item !== null) {
+        displayText = item.name || item.label || item.text || item.value || 'Unknown';
+      } else {
+        displayText = String(item);
+      }
+      itemName.textContent = displayText;
       itemName.style.cssText = 'font-size: 14px; color: #495057;';
       
       itemDiv.appendChild(itemName);
@@ -183,6 +310,238 @@ function showDetailModal(aiType, dataType, items) {
   };
   
   document.body.appendChild(modal);
+}
+
+// 統合モーダルを表示する関数
+function showIntegratedModal() {
+  // 既存のモーダルがあれば削除
+  const existingModal = document.getElementById('ai-detail-modal');
+  if (existingModal) {
+    existingModal.remove();
+  }
+  
+  // ストレージからデータを取得
+  chrome.storage.local.get(['ai_config_persistence'], async (result) => {
+    const config = result.ai_config_persistence || {};
+    
+    // データクリーンアップを実行（グローバルAIPersistenceが利用可能な場合）
+    if (window.AIPersistence && typeof window.AIPersistence.cleanupExistingData === 'function') {
+      try {
+        console.log('[UI] データクリーンアップを実行中...');
+        const hasChanges = await window.AIPersistence.cleanupExistingData();
+        if (hasChanges) {
+          console.log('[UI] データクリーンアップが完了しました。新しいデータを取得します...');
+          // クリーンアップ後、更新されたデータを再取得
+          setTimeout(() => {
+            chrome.storage.local.get(['ai_config_persistence'], (updatedResult) => {
+              const updatedConfig = updatedResult.ai_config_persistence || {};
+              renderIntegratedTable(updatedConfig);
+            });
+          }, 1000);
+          return; // 早期リターンして重複処理を避ける
+        }
+      } catch (error) {
+        console.error('[UI] データクリーンアップエラー:', error);
+      }
+    }
+    
+    renderIntegratedTable(config);
+  });
+}
+
+// テーブル描画を分離した関数
+function renderIntegratedTable(config) {
+    // モーダルを作成
+    const modal = document.createElement('div');
+    modal.id = 'ai-detail-modal';
+    modal.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+    `;
+    
+    const modalContent = document.createElement('div');
+    modalContent.style.cssText = `
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      max-width: 900px;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    `;
+    
+    // ヘッダー
+    const header = document.createElement('div');
+    header.style.cssText = `
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      padding-bottom: 10px;
+      border-bottom: 2px solid #e9ecef;
+    `;
+    
+    const title = document.createElement('h3');
+    title.textContent = '🤖 AI統合モデル・機能一覧';
+    title.style.cssText = 'margin: 0; color: #2c3e50;';
+    
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = '✕';
+    closeBtn.style.cssText = `
+      background: none;
+      border: none;
+      font-size: 24px;
+      cursor: pointer;
+      color: #6c757d;
+      padding: 0;
+      width: 30px;
+      height: 30px;
+    `;
+    closeBtn.onclick = () => modal.remove();
+    
+    header.appendChild(title);
+    header.appendChild(closeBtn);
+    
+    // テーブル作成
+    const table = document.createElement('table');
+    table.style.cssText = `
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    `;
+    
+    // テーブルヘッダー
+    const thead = document.createElement('thead');
+    const headerRow = document.createElement('tr');
+    headerRow.innerHTML = `
+      <th style="border: 1px solid #dee2e6; padding: 12px; background: #f8f9fa; text-align: center; font-weight: 600; min-width: 150px;">🤖 ChatGPTモデル</th>
+      <th style="border: 1px solid #dee2e6; padding: 12px; background: #f8f9fa; text-align: center; font-weight: 600; min-width: 150px;">🧠 Claudeモデル</th>
+      <th style="border: 1px solid #dee2e6; padding: 12px; background: #f8f9fa; text-align: center; font-weight: 600; min-width: 150px;">💎 Geminiモデル</th>
+      <th style="border: 1px solid #dee2e6; padding: 12px; background: #f8f9fa; text-align: center; font-weight: 600; min-width: 150px;">⚡ ChatGPT機能</th>
+      <th style="border: 1px solid #dee2e6; padding: 12px; background: #f8f9fa; text-align: center; font-weight: 600; min-width: 150px;">🔧 Claude機能</th>
+      <th style="border: 1px solid #dee2e6; padding: 12px; background: #f8f9fa; text-align: center; font-weight: 600; min-width: 150px;">🛠️ Gemini機能</th>
+    `;
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+    
+    // 各列のデータを準備
+    const columns = [
+      { key: 'chatgpt', dataKey: 'models', name: 'ChatGPTモデル' },
+      { key: 'claude', dataKey: 'models', name: 'Claudeモデル' },
+      { key: 'gemini', dataKey: 'models', name: 'Geminiモデル' },
+      { key: 'chatgpt', dataKey: 'functions', name: 'ChatGPT機能' },
+      { key: 'claude', dataKey: 'functions', name: 'Claude機能' },
+      { key: 'gemini', dataKey: 'functions', name: 'Gemini機能' }
+    ];
+    
+    // 各列のデータを取得
+    const columnData = columns.map(col => {
+      const aiConfig = config[col.key];
+      const items = aiConfig && aiConfig[col.dataKey] ? aiConfig[col.dataKey] : [];
+      
+      // デバッグログ: 実際のデータ構造を確認
+      console.log(`[UI Debug] ${col.key} ${col.dataKey} データ:`, items);
+      
+      return items.map((item, index) => {
+        let itemName = '';
+        let isSelected = false;
+        
+        // 新しいシンプルなフォーマット（文字列配列）の処理
+        if (typeof item === 'string') {
+          itemName = item;
+          isSelected = false;
+        } else {
+          // 旧フォーマットとの互換性（デバッグ情報付き）
+          console.log(`[UI Debug] レガシーデータ検出 ${col.key} ${col.dataKey}[${index}]:`, item);
+          
+          if (typeof item === 'object' && item !== null) {
+            // オブジェクトの場合、一般的なプロパティをチェック
+            itemName = item.name || item.text || item.label || item.value || item.title || 'Unknown';
+            isSelected = item.selected || item.active || false;
+          } else {
+            itemName = String(item);
+            isSelected = false;
+          }
+        }
+        
+        // Claudeのモデル名から説明文を除去（全モデルに適用）
+        if (col.key === 'claude' && col.dataKey === 'models' && itemName && typeof itemName === 'string') {
+          const originalName = itemName;
+          
+          // 説明文の開始パターンを探す
+          const descriptionPatterns = [
+            '情報を', '高性能', 'スマート', '最適な', '高速な', '軽量な', '大規模', '小規模',
+            '複雑な', '日常利用', '課題に対応', '効率的', 'に対応できる', 'なモデル'
+          ];
+          
+          for (const pattern of descriptionPatterns) {
+            const patternIndex = itemName.indexOf(pattern);
+            if (patternIndex > 0) {
+              itemName = itemName.substring(0, patternIndex).trim();
+              console.log(`[UI Debug] Claude説明文除去: "${originalName}" → "${itemName}"`);
+              break;
+            }
+          }
+        }
+        
+        return { name: itemName, selected: isSelected };
+      });
+    });
+    
+    // 最大行数を計算
+    const maxRows = Math.max(...columnData.map(col => col.length), 1);
+    
+    // テーブルボディ
+    const tbody = document.createElement('tbody');
+    
+    // 各行を作成
+    for (let rowIndex = 0; rowIndex < maxRows; rowIndex++) {
+      const row = document.createElement('tr');
+      
+      // 各列のセルを作成
+      for (let colIndex = 0; colIndex < 6; colIndex++) {
+        const cell = document.createElement('td');
+        cell.style.cssText = 'border: 1px solid #dee2e6; padding: 8px; vertical-align: top; font-size: 13px;';
+        
+        const item = columnData[colIndex][rowIndex];
+        if (item) {
+          // データがある場合
+          const statusBadge = item.selected ? 
+            '<span style="background: #d4edda; color: #155724; padding: 1px 6px; border-radius: 8px; font-size: 11px; margin-left: 5px;">選択中</span>' : '';
+          cell.innerHTML = `<div style="color: #495057;">${item.name}${statusBadge}</div>`;
+        } else {
+          // データがない場合（空セル）
+          cell.innerHTML = '<div style="color: #dee2e6; text-align: center;">-</div>';
+        }
+        
+        row.appendChild(cell);
+      }
+      
+      tbody.appendChild(row);
+    }
+    
+    table.appendChild(tbody);
+    
+    modalContent.appendChild(header);
+    modalContent.appendChild(table);
+    modal.appendChild(modalContent);
+    
+    // モーダル外クリックで閉じる
+    modal.onclick = (e) => {
+      if (e.target === modal) {
+        modal.remove();
+      }
+    };
+    
+    document.body.appendChild(modal);
 }
 
 // ===== DOM要素の取得 =====
@@ -811,34 +1170,23 @@ async function injectAutomationScripts(tabId, aiName) {
                 console.log('✅ DeepResearch機能を追加しました');
               }
               
-                // 結果をストレージに保存
-                const config = {
-                  claude: {
-                  models: researchResult.data.models.map(m => ({
-                    name: m.name,
-                    description: m.description,
-                    available: m.available
-                  })),
-                  functions: functionsList,
-                  deepResearch: researchResult.data.deepResearch,
-                  additionalModels: researchResult.data.additionalModels,
-                  timestamp: new Date().toISOString()
-                }
-                };
-                
-                // Chrome拡張のストレージに保存
-                chrome.storage.local.get(['ai_config_persistence'], (result) => {
-                  const existingConfig = result.ai_config_persistence || {};
-                  const updatedConfig = { ...existingConfig, ...config };
-                  chrome.storage.local.set({ 'ai_config_persistence': updatedConfig });
-                });
-                
+                // 結果を返す（外側で保存処理）
                 return {
                 success: true,
                 models: researchResult.data.models,
                 functions: functionsList,  // DeepResearchを含む機能リスト
                 deepResearch: researchResult.data.deepResearch,
-                comparison: researchResult.comparison
+                comparison: researchResult.comparison,
+                // 保存用データを含める（オブジェクト配列形式）
+                saveData: {
+                  models: researchResult.data.models.map(m => ({ 
+                    name: m.name.replace(/複雑な課題に対応できる.*|日常利用に最適な.*/g, '').trim() 
+                  })), // 説明文を除去してオブジェクト配列として保存
+                  functions: functionsList.map(f => ({ name: f.name })), // オブジェクト配列として保存
+                  deepResearch: researchResult.data.deepResearch,
+                  additionalModels: researchResult.data.additionalModels,
+                  timestamp: new Date().toISOString()
+                }
                 };
               // Geminiの場合
               } else if (aiName === 'Gemini') {
@@ -899,38 +1247,24 @@ async function injectAutomationScripts(tabId, aiName) {
                 
                 console.log('✅ Gemini機能フラット化完了:', functionsList.length, '個の機能');
                 
-                // 結果をストレージに保存
-                const config = {
-                  gemini: {
-                    models: researchResult.data.models.map(m => ({
-                      title: m.title,
-                      description: m.description,
-                      selected: m.selected,
-                      additional: m.additional || false
-                    })),
-                    functions: functionsList,  // フラット化された機能リスト
-                    deepThink: researchResult.data.deepThink,
-                    deepResearch: researchResult.data.deepResearch,
-                    timestamp: new Date().toISOString()
-                  }
-                };
-                
-                // Chrome拡張のストレージに保存
-                chrome.storage.local.get(['ai_config_persistence'], (result) => {
-                  const existingConfig = result.ai_config_persistence || {};
-                  const updatedConfig = { ...existingConfig, ...config };
-                  chrome.storage.local.set({ 'ai_config_persistence': updatedConfig }, () => {
-                    console.log('✅ Gemini設定をストレージに保存しました:', updatedConfig.gemini);
-                  });
-                });
-                
+                // 結果を返す（外側で保存処理）
                 return {
                   success: true,
                   models: researchResult.data.models,
                   functions: functionsList,  // フラット化された機能リスト
                   deepThink: researchResult.data.deepThink,
                   deepResearch: researchResult.data.deepResearch,
-                  comparison: researchResult.comparison
+                  comparison: researchResult.comparison,
+                  // 保存用データを含める（オブジェクト配列形式）
+                  saveData: {
+                    models: researchResult.data.models.map(m => ({ 
+                      name: m.description || m.name || m.title || m  // descriptionを優先
+                    })),
+                    functions: functionsList.map(f => ({ name: f.name })), // オブジェクト配列として保存
+                    deepThink: researchResult.data.deepThink,
+                    deepResearch: researchResult.data.deepResearch,
+                    timestamp: new Date().toISOString()
+                  }
                 };
               }
               
@@ -1051,17 +1385,22 @@ async function injectAutomationScripts(tabId, aiName) {
           }
           
           updateStatus(statusMessage, "success");
+          
+          // saveDataを返す
+          return scriptResult.saveData;
         } else {
           console.error(`❌ ${aiName}リサーチ失敗:`, scriptResult.error);
           updateStatus(`${aiName}検出エラー: ${scriptResult.error}`, "error");
+          return null;
         }
       } else {
         console.error(`❌ ${aiName}スクリプト実行失敗`);
         console.error('詳細なエラー情報:', JSON.stringify(result, null, 2));
         updateStatus(`${aiName}スクリプト実行失敗`, "error");
+        return null;
       }
       
-      return; // リサーチ機能を使った場合はここで終了
+      // saveDataを返す
     }
     
     // Geminiの場合もリサーチ機能を使用
@@ -1168,38 +1507,24 @@ async function injectAutomationScripts(tabId, aiName) {
               
               console.log('✅ Gemini機能フラット化完了:', functionsList.length, '個の機能');
               
-              // 結果をストレージに保存
-              const config = {
-                gemini: {
-                  models: researchResult.data.models.map(m => ({
-                    title: m.title,
-                    description: m.description,
-                    selected: m.selected,
-                    additional: m.additional || false
-                  })),
-                  functions: functionsList,  // フラット化された機能リスト
-                  deepThink: researchResult.data.deepThink,
-                  deepResearch: researchResult.data.deepResearch,
-                  timestamp: new Date().toISOString()
-                }
-              };
-              
-              // Chrome拡張のストレージに保存
-              chrome.storage.local.get(['ai_config_persistence'], (result) => {
-                const existingConfig = result.ai_config_persistence || {};
-                const updatedConfig = { ...existingConfig, ...config };
-                chrome.storage.local.set({ 'ai_config_persistence': updatedConfig }, () => {
-                  console.log('✅ Gemini設定をストレージに保存しました:', updatedConfig.gemini);
-                });
-              });
-              
+              // 結果を返す（外側で保存処理）
               return {
                 success: true,
                 models: researchResult.data.models,
                 functions: functionsList,  // フラット化された機能リスト
                 deepThink: researchResult.data.deepThink,
                 deepResearch: researchResult.data.deepResearch,
-                comparison: researchResult.comparison
+                comparison: researchResult.comparison,
+                // 保存用データを含める（オブジェクト配列形式）
+                saveData: {
+                  models: researchResult.data.models.map(m => ({ 
+                    name: m.description || m.name || m.title || m  // descriptionを優先
+                  })),
+                  functions: functionsList.map(f => ({ name: f.name })), // オブジェクト配列として保存
+                  deepThink: researchResult.data.deepThink,
+                  deepResearch: researchResult.data.deepResearch,
+                  timestamp: new Date().toISOString()
+                }
               };
             } else {
               return { success: false, error: researchResult.error };
@@ -1268,16 +1593,21 @@ async function injectAutomationScripts(tabId, aiName) {
               console.log(`    ${i+1}. ${change}`);
             });
           }
+          
+          // saveDataを返す
+          return scriptResult.saveData;
         } else {
           console.error(`❌ ${aiName}検出エラー:`, scriptResult.error);
+          return null;
         }
       } else {
         console.error(`❌ ${aiName}スクリプト実行失敗`);
         console.error('詳細なエラー情報:', JSON.stringify(result, null, 2));
         updateStatus(`${aiName}スクリプト実行失敗`, "error");
+        return null;
       }
       
-      return; // リサーチ機能を使った場合はここで終了
+      // saveDataを返す
     }
     
     // ChatGPT用の新しいリサーチ機能
@@ -1365,37 +1695,24 @@ async function injectAutomationScripts(tabId, aiName) {
               
               console.log('✅ ChatGPT機能フラット化完了:', functionsList.length, '個の機能');
               
-              // 結果をストレージに保存
-              const config = {
-                chatgpt: {
-                  models: researchResult.data.models.map(m => ({
-                    name: m,
-                    selected: false,  // フラット化されたデータでは選択状態が分からない
-                    additional: false
-                  })),
-                  functions: functionsList,  // フラット化された機能リスト
-                  deepResearch: researchResult.data.deepResearch,
-                  agentMode: researchResult.data.agentMode,
-                  timestamp: new Date().toISOString()
-                }
-              };
-              
-              // Chrome拡張のストレージに保存
-              chrome.storage.local.get(['ai_config_persistence'], (result) => {
-                const existingConfig = result.ai_config_persistence || {};
-                const updatedConfig = { ...existingConfig, ...config };
-                chrome.storage.local.set({ 'ai_config_persistence': updatedConfig }, () => {
-                  console.log('✅ ChatGPT設定をストレージに保存しました:', updatedConfig.chatgpt);
-                });
-              });
-              
+              // 結果を返す（外側で保存処理）
               return {
                 success: true,
                 models: researchResult.data.models,
                 functions: functionsList,  // フラット化された機能リスト
                 deepResearch: researchResult.data.deepResearch,
                 agentMode: researchResult.data.agentMode,
-                comparison: researchResult.comparison
+                comparison: researchResult.comparison,
+                // 保存用データを含める（オブジェクト配列形式）
+                saveData: {
+                  models: researchResult.data.models.map(m => ({ 
+                    name: typeof m === 'string' ? m : m.name || m 
+                  })), // すでにオブジェクトの場合はnameプロパティを使用
+                  functions: functionsList.map(f => ({ name: f.name })), // オブジェクト配列として保存
+                  deepResearch: researchResult.data.deepResearch,
+                  agentMode: researchResult.data.agentMode,
+                  timestamp: new Date().toISOString()
+                }
               };
             } else {
               return { success: false, error: researchResult.error };
@@ -1464,16 +1781,21 @@ async function injectAutomationScripts(tabId, aiName) {
               console.log(`    ${i+1}. ${change}`);
             });
           }
+          
+          // saveDataを返す
+          return scriptResult.saveData;
         } else {
           console.error(`❌ ${aiName}検出エラー:`, scriptResult.error);
+          return null;
         }
       } else {
         console.error(`❌ ${aiName}スクリプト実行失敗`);
         console.error('詳細なエラー情報:', JSON.stringify(result, null, 2));
         updateStatus(`${aiName}スクリプト実行失敗`, "error");
+        return null;
       }
       
-      return; // リサーチ機能を使った場合はここで終了
+      // saveDataを返す
     }
     
     // 全てのAIが新しいリサーチ検出器システムに移行済み
@@ -1662,8 +1984,8 @@ aiDetectionSystemBtn.addEventListener("click", async () => {
             }, 10000);
           });
           
-          // スクリプトを注入
-          await injectAutomationScripts(tabId, name);
+          // スクリプトを注入し、saveDataを取得
+          const saveData = await injectAutomationScripts(tabId, name);
           
           // 完了カウントを更新（スレッドセーフのために注意深く処理）
           completedCount++;
@@ -1672,7 +1994,7 @@ aiDetectionSystemBtn.addEventListener("click", async () => {
           // 進捗をステータスに表示
           updateStatus(`AI検出中... (${completedCount}/${totalWindows}) - ${name}完了`, "loading");
           
-          return { success: true, aiName: name };
+          return { success: true, aiName: name, saveData: saveData };
         } catch (error) {
           console.error(`${name}の処理でエラー:`, error);
           completedCount++;
@@ -1702,7 +2024,33 @@ aiDetectionSystemBtn.addEventListener("click", async () => {
       });
     }
     
-    // 全ての検出が完了したら5秒後にウィンドウを自動で閉じる
+    // 全ての検出が完了したら、データを一括保存
+    console.log('💾 すべてのAI検出が完了しました。データを一括保存します...');
+    
+    // 各AIのsaveDataを収集
+    const allSaveData = {};
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled' && result.value.success && result.value.saveData) {
+        const aiName = windows[index].name.toLowerCase();
+        allSaveData[aiName] = result.value.saveData;
+        console.log(`✔️ ${windows[index].name}のデータを収集`);
+      }
+    });
+    
+    // 収集したデータをChrome Storageに一括保存
+    if (Object.keys(allSaveData).length > 0) {
+      chrome.storage.local.set({ 'ai_config_persistence': allSaveData }, () => {
+        console.log('✅ 全AIのデータを一括保存しました:', allSaveData);
+        
+        // UI更新を促すイベントを発火
+        window.dispatchEvent(new CustomEvent('ai-data-saved', { 
+          detail: { timestamp: new Date().toISOString() } 
+        }));
+      });
+    } else {
+      console.warn('⚠️ 保存するデータがありません');
+    }
+    
     console.log('🎉 すべてのAI検出が完了しました。5秒後に自動でウィンドウを閉じます...');
     updateStatus("すべてのAI検出が完了しました。5秒後に自動でウィンドウを閉じます...", "success");
     

@@ -523,17 +523,111 @@
         }
 
         normalizeItems(items, type) {
-            return items.map(item => ({
-                name: item.name || item.text || 'Unknown',
-                type: type,
-                detected: new Date().toISOString(),
-                metadata: {
-                    selected: item.selected || false,
-                    active: item.active || item.isActive || false,
-                    visible: item.visible !== false,
-                    location: item.location || null
+            // 既に文字列配列の場合はそのまま返す（新しいフォーマット）
+            if (Array.isArray(items) && items.length > 0 && typeof items[0] === 'string') {
+                return items.map(name => {
+                    // Claudeモデルの説明文を除去
+                    if (type === 'model' && name && typeof name === 'string') {
+                        return this.cleanClaudeModelName(name);
+                    }
+                    return name;
+                });
+            }
+            
+            // 旧フォーマットとの互換性のためのオブジェクト処理
+            return items.map(item => {
+                let name;
+                if (typeof item === 'string') {
+                    name = item;
+                } else if (typeof item === 'object' && item !== null) {
+                    name = item.name || item.text || item.label || item.value || 'Unknown';
+                } else {
+                    name = String(item);
                 }
-            }));
+                
+                // Claudeモデルの説明文を除去
+                if (type === 'model' && name && typeof name === 'string') {
+                    name = this.cleanClaudeModelName(name);
+                }
+                
+                return name; // シンプルに文字列として返す
+            });
+        }
+
+        // Claudeモデル名から説明文を除去するヘルパーメソッド
+        cleanClaudeModelName(name) {
+            if (!name || typeof name !== 'string') return name;
+            
+            const descriptionPatterns = [
+                '情報を', '高性能', 'スマート', '最適な', '高速な', '軽量な', '大規模', '小規模',
+                '複雑な', '日常利用', '課題に対応', '効率的', 'に対応できる', 'なモデル'
+            ];
+            
+            for (const pattern of descriptionPatterns) {
+                const index = name.indexOf(pattern);
+                if (index > 0) {
+                    name = name.substring(0, index).trim();
+                    break;
+                }
+            }
+            
+            // それでも長すぎる場合は、最初の20文字程度に制限
+            if (name.length > 20 && name.includes(' ')) {
+                const words = name.split(' ');
+                if (words.length > 3) {
+                    name = words.slice(0, 3).join(' ');
+                }
+            }
+            
+            return name;
+        }
+
+        // 既存データをクリーンアップするメソッド
+        async cleanupExistingData() {
+            this.log('🧹 既存データのクリーンアップを開始...', 'info');
+            
+            try {
+                let hasChanges = false;
+                
+                // 各AIの設定をチェック
+                for (const [aiName, aiConfig] of Object.entries(this.config.aiConfigs)) {
+                    if (aiConfig.models && Array.isArray(aiConfig.models)) {
+                        const originalModels = [...aiConfig.models];
+                        
+                        // モデル名をクリーンアップ
+                        aiConfig.models = aiConfig.models.map(model => {
+                            const originalName = model.name;
+                            const cleanedName = this.cleanClaudeModelName(originalName);
+                            
+                            if (originalName !== cleanedName) {
+                                this.log(`🔧 ${aiName.toUpperCase()} モデル名クリーンアップ: "${originalName}" → "${cleanedName}"`, 'info');
+                                hasChanges = true;
+                                return { ...model, name: cleanedName };
+                            }
+                            
+                            return model;
+                        });
+                    }
+                }
+                
+                if (hasChanges) {
+                    await this.saveConfig();
+                    this.log('✅ データクリーンアップが完了しました', 'success');
+                    
+                    // 変更通知
+                    this.notifyChangeListeners('data-cleanup-completed', {
+                        timestamp: new Date().toISOString()
+                    });
+                } else {
+                    this.log('ℹ️ クリーンアップの必要なデータはありませんでした', 'info');
+                }
+                
+                return hasChanges;
+                
+            } catch (error) {
+                this.log(`データクリーンアップエラー: ${error.message}`, 'error');
+                return false;
+            }
         }
 
         setupChangeListeners() {

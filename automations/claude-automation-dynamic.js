@@ -583,16 +583,43 @@
       const models = [];
 
       for (const option of modelOptions) {
-        const text = option.textContent?.trim();
-        if (text) {
+        const fullText = option.textContent?.trim();
+        if (fullText) {
+          // モデル名のみを抽出（最初の行、または説明文の前まで）
+          let modelName = fullText;
+          
+          // Claudeの場合、モデル名は通常最初の部分に含まれる
+          // 例: "Claude Opus 4.1情報を..." → "Claude Opus 4.1"
+          // 説明文の開始パターンを探す
+          const descriptionPatterns = [
+            '情報を', '高性能', 'スマート', '最適な', '高速な', '軽量な', '大規模', '小規模'
+          ];
+          
+          for (const pattern of descriptionPatterns) {
+            const index = fullText.indexOf(pattern);
+            if (index > 0) {
+              modelName = fullText.substring(0, index).trim();
+              break;
+            }
+          }
+          
+          // それでも長すぎる場合は、最初の20文字程度に制限
+          if (modelName.length > 20 && modelName.includes(' ')) {
+            // スペースで区切って最初の3つの単語まで
+            const words = modelName.split(' ');
+            if (words.length > 3) {
+              modelName = words.slice(0, 3).join(' ');
+            }
+          }
+          
           // 選択状態を確認（aria-selected、class、チェックマークなど）
           const isSelected = option.getAttribute('aria-selected') === 'true' ||
                            option.classList.contains('selected') ||
                            option.querySelector('svg') !== null ||
-                           text === currentModelText;
+                           modelName === currentModelText;
 
           models.push({
-            name: text,
+            name: modelName,
             element: option,
             selected: isSelected
           });

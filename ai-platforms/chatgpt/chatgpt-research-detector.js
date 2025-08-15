@@ -660,6 +660,14 @@
             const menuItems = modelMenu.querySelectorAll('[role="menuitem"]');
             
             for (const item of menuItems) {
+                // サブメニューを持つ項目は完全にスキップ
+                if (this.hasSubmenuIndicator(item)) {
+                    const submenuName = item.textContent?.trim() || 'Unknown';
+                    Utils.log(`サブメニュー項目をスキップ: ${submenuName}`, 'info');
+                    continue; // サブメニューを持つ項目は処理しない
+                }
+                
+                // 通常のモデル項目のみ処理
                 const modelName = this.extractModelName(item);
                 if (modelName) {
                     this.models.push({
@@ -667,12 +675,6 @@
                         selected: item.getAttribute('aria-checked') === 'true'
                     });
                     Utils.log(`モデル検出: ${modelName}`, 'success');
-                }
-                
-                if (this.hasSubmenuIndicator(item)) {
-                    const submenuName = item.textContent?.trim() || 'Unknown';
-                    Utils.log(`サブメニュー項目を検出: ${submenuName}`, 'warning');
-                    await this.exploreSubmenu(item);
                 }
             }
             
