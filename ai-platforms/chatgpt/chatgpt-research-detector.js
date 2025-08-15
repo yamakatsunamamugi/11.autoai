@@ -736,16 +736,12 @@
                         !this.isModelName(functionInfo.name) &&
                         !this.features.find(f => f.name === functionInfo.name)) {
                         
-                        const attributes = {
+                        this.features.push({
                             name: functionInfo.name,
-                            badge: functionInfo.badge,
-                            hasIcon: !!item.querySelector('svg, img'),
-                            isDisabled: item.disabled || item.getAttribute('aria-disabled') === 'true',
-                            ariaLabel: item.getAttribute('aria-label'),
-                            dataTestId: item.getAttribute('data-testid')
-                        };
-                        
-                        this.features.push(attributes);
+                            type: 'function',
+                            enabled: !(item.disabled || item.getAttribute('aria-disabled') === 'true'),
+                            badge: functionInfo.badge
+                        });
                         Utils.log(`機能検出: ${functionInfo.name}${functionInfo.badge ? ` [${functionInfo.badge}]` : ''}`, 'success');
                     }
                 }

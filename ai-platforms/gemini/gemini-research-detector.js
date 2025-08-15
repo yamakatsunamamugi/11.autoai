@@ -1122,7 +1122,8 @@
                         this.features.push({
                             name: name,
                             icon: icon,
-                            type: 'main'
+                            type: 'main',
+                            enabled: true
                         });
                         Utils.log(`機能検出: ${name}${icon ? ` (${icon})` : ''}`, 'success');
                     }
@@ -1198,7 +1199,8 @@
                                     icon: icon,
                                     type: 'additional',
                                     location: 'submenu',
-                                    source: source  // デバッグ用
+                                    source: source,  // デバッグ用
+                                    enabled: true
                                 });
                                 
                                 Utils.log(`その他メニュー機能検出: ${name}${icon ? ` (${icon})` : ''} [${source}]`, 'success');
