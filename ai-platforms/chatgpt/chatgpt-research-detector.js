@@ -1438,14 +1438,19 @@
         executeResearch: async () => {
             // 既に実行済みの結果を返す
             if (researcher.results) {
-                const features = (researcher.results?.features || []).map(f => ({
-                    name: typeof f === 'string' ? f : (f.name || 'Unknown'),
-                    type: f.type || 'function',
-                    enabled: f.enabled !== false,
-                    connected: f.connected !== false,
-                    badge: f.badge,
-                    icon: f.hasIcon
-                }));
+                const features = (researcher.results?.features || []).map(f => {
+                    // オブジェクトの場合はそのまま返す（元のコードの動作を維持）
+                    if (typeof f === 'object' && f !== null) {
+                        return f;
+                    }
+                    // 文字列の場合はオブジェクトに変換
+                    return {
+                        name: f,
+                        type: 'function',
+                        enabled: true,
+                        connected: true
+                    };
+                });
                 
                 return {
                     success: true,

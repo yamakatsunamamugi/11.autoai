@@ -1440,19 +1440,18 @@
             if (researcher.results) {
                 const allFeatures = researcher.results?.features || [];
                 const features = {
-                    main: allFeatures.filter(f => f.type === 'main' || !f.location).map(f => ({
-                        name: typeof f === 'string' ? f : (f.name || 'Unknown'),
-                        icon: f.icon,
-                        enabled: f.enabled !== false,
-                        type: 'main'
-                    })),
-                    additional: allFeatures.filter(f => f.type === 'additional' || f.location === 'submenu').map(f => ({
-                        name: typeof f === 'string' ? f : (f.name || 'Unknown'),
-                        icon: f.icon,
-                        enabled: f.enabled !== false,
-                        type: 'additional',
-                        sublabel: f.sublabel
-                    }))
+                    main: allFeatures.filter(f => f.type === 'main' || (!f.location && !f.type)).map(f => {
+                        if (typeof f === 'object' && f !== null) {
+                            return f;
+                        }
+                        return { name: f, type: 'main', enabled: true };
+                    }),
+                    additional: allFeatures.filter(f => f.type === 'additional' || f.location === 'submenu').map(f => {
+                        if (typeof f === 'object' && f !== null) {
+                            return f;
+                        }
+                        return { name: f, type: 'additional', enabled: true };
+                    })
                 };
                 
                 return {
