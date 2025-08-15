@@ -1439,14 +1439,22 @@
             try {
                 await researcher.run();
                 
+                // 機能データを正しい形式に変換
+                const features = (researcher.results?.features || []).map(f => ({
+                    name: typeof f === 'string' ? f : (f.name || 'Unknown'),
+                    type: f.type || 'toggle',
+                    enabled: f.enabled === true,
+                    connected: f.connected !== false
+                }));
+                
                 // UI Controllerが期待する形式で結果を返す
                 return {
                     success: true,
                     data: {
-                        models: researcher.results.models || [],
-                        features: researcher.results.features || [],
-                        deepResearch: researcher.results.deepResearch || { available: false },
-                        additionalModels: researcher.results.additionalModels || [],
+                        models: researcher.results?.models || [],
+                        features: features,
+                        deepResearch: researcher.results?.additional?.deepResearch || { available: false },
+                        additionalModels: researcher.results?.additional?.additionalModels || [],
                         timestamp: new Date().toISOString()
                     },
                     comparison: {

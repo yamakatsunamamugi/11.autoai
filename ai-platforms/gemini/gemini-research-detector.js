@@ -1439,14 +1439,32 @@
             try {
                 await researcher.run();
                 
+                // Geminiの機能を適切な形式に変換
+                const allFeatures = researcher.results?.features || [];
+                const features = {
+                    main: allFeatures.filter(f => f.type === 'main' || !f.location).map(f => ({
+                        name: typeof f === 'string' ? f : (f.name || 'Unknown'),
+                        icon: f.icon,
+                        enabled: f.enabled !== false,
+                        type: 'main'
+                    })),
+                    additional: allFeatures.filter(f => f.type === 'additional' || f.location === 'submenu').map(f => ({
+                        name: typeof f === 'string' ? f : (f.name || 'Unknown'),
+                        icon: f.icon,
+                        enabled: f.enabled !== false,
+                        type: 'additional',
+                        sublabel: f.sublabel
+                    }))
+                };
+                
                 // UI Controllerが期待する形式で結果を返す
                 return {
                     success: true,
                     data: {
-                        models: researcher.results.models || [],
-                        features: researcher.results.features || { main: [], additional: [] },
-                        deepThink: researcher.results.deepThink || { available: false },
-                        deepResearch: researcher.results.deepResearch || { available: false },
+                        models: researcher.results?.models || [],
+                        features: features,
+                        deepThink: researcher.results?.additional?.deepThink || { available: false },
+                        deepResearch: researcher.results?.additional?.deepResearch || { available: false },
                         timestamp: new Date().toISOString()
                     },
                     comparison: {
