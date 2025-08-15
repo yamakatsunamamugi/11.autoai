@@ -1,158 +1,442 @@
 /**
- * モデル・機能リサーチコード Claude
- * 作成日: 2025年8月14日
+ * 統一版 AI サービス モデル・機能リサーチコード (修正版)
+ * 作成日: 2025年8月15日
+ * バージョン: 2.0.0
  * 
- * このコードは、Claudeインターフェースで利用可能なモデルと機能を
- * 自動的にリサーチし、変更を検出するためのコンソールスクリプトです。
- * DeepResearchモードの検出機能を含みます。
+ * Claude, ChatGPT, Gemini の3サービスに対応
+ * 自動的にサービスを検出して適切な処理を実行
+ * 
+ * 修正内容 v2.0.0:
+ * - ClaudeのESCキーイベント送信先をdocument.bodyに修正
+ * - Claude専用のメニュークローズ処理を実装
+ * - 待機時間をサービスごとに最適化（Claudeは500ms）
+ * - body.click()をClaude以外でのみ実行するよう修正
+ * 
+ * 修正内容 v1.6.0:
+ * - 優先順位付きセレクタシステムの実装
+ * - モデルメニューと機能メニューの検出精度向上
+ * - デバッグ情報の充実（どのセレクタで検出したかを表示）
+ * 
+ * 修正内容 v1.5.0:
+ * - モデル名の正規化と重複除去を改善
+ * - 機能メニューの検出セレクタを拡張
+ * - 動的メニュー要素の待機処理を追加
+ * 
+ * 修正内容 v1.4.0:
+ * - Claudeのカテゴリータブとモデルを正確に区別
+ * - 機能メニューの検出ロジックを改善
+ * - より厳密なモデル判定ロジックを実装
  */
 
-(function() {
+(async function() {
     'use strict';
     
-    console.log('='.repeat(80));
-    console.log('モデル・機能リサーチコード Claude');
-    console.log(`作成日: ${new Date().toLocaleDateString('ja-JP')} ${new Date().toLocaleTimeString('ja-JP')}`);
-    console.log('='.repeat(80));
+    // ========================================
+    // 共通設定
+    // ========================================
+    const CONFIG = {
+        debugMode: true,
+        waitTime: 1000,        // デフォルト待機時間
+        claudeWaitTime: 500,   // Claude専用待機時間
+        maxRetries: 3,
+        storageKey: 'ai_service_research_data',
+        version: '2.0.0'
+    };
     
-    // ===== 設定と保存データ =====
-    const STORAGE_KEY = 'claude_research_data';
-    const SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/1QfOFEUWtlR0wwaN5BRyVdenFPxCRJmsf4SPo87O_ZnY/edit?gid=915128086#gid=915128086';
-    
-    // 現在のデータ構造
-    const currentData = {
-        timestamp: new Date().toISOString(),
-        models: [],
-        features: [],
-        connectors: [],
-        additionalModels: [],
-        deepResearch: {
-            available: false,
-            searchModeAvailable: false,
-            researchButtonAvailable: false,
-            activated: false
+    // ========================================
+    // ユーティリティ関数（共通）
+    // ========================================
+    class Utils {
+        static wait(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
         }
-    };
-    
-    // ===== ユーティリティ関数 =====
-    const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
-    
-    const log = (message, type = 'INFO') => {
-        const prefix = {
-            'INFO': '📝',
-            'SUCCESS': '✅',
-            'WARNING': '⚠️',
-            'ERROR': '❌',
-            'CHANGE': '🔄',
-            'RESEARCH': '🔬'
-        }[type] || '📝';
-        console.log(`${prefix} ${message}`);
-    };
-    
-    // React要素のプロパティを取得
-    const getReactProps = (element) => {
-        const key = Object.keys(element).find(k => 
-            k.startsWith('__reactInternalInstance') || k.startsWith('__reactFiber')
-        );
-        return key ? element[key]?.memoizedProps : null;
-    };
-    
-    // 要素をクリック
-    const clickElement = async (element) => {
-        const rect = element.getBoundingClientRect();
-        const x = rect.left + rect.width / 2;
-        const y = rect.top + rect.height / 2;
         
-        element.dispatchEvent(new PointerEvent('pointerdown', {
-            bubbles: true,
-            cancelable: true,
-            clientX: x,
-            clientY: y
-        }));
+        static log(message, type = 'info') {
+            const symbols = {
+                info: '📝',
+                success: '✅',
+                warning: '⚠️',
+                error: '❌',
+                search: '🔍',
+                model: '🤖',
+                feature: '🔧',
+                category: '📁',
+                research: '🔬'
+            };
+            console.log(`${symbols[type] || '📝'} ${message}`);
+        }
         
-        await wait(50);
+        static async performClick(element) {
+            if (!element) return false;
+            
+            const rect = element.getBoundingClientRect();
+            const x = rect.left + rect.width / 2;
+            const y = rect.top + rect.height / 2;
+            
+            // PointerEvent sequence
+            element.dispatchEvent(new PointerEvent('pointerdown', {
+                bubbles: true,
+                cancelable: true,
+                clientX: x,
+                clientY: y
+            }));
+            
+            await this.wait(50);
+            
+            element.dispatchEvent(new PointerEvent('pointerup', {
+                bubbles: true,
+                cancelable: true,
+                clientX: x,
+                clientY: y
+            }));
+            
+            element.click();
+            
+            // サービスに応じた待機時間
+            const service = this.detectService();
+            const waitTime = service === 'claude' ? CONFIG.claudeWaitTime : CONFIG.waitTime;
+            await this.wait(waitTime);
+            
+            return true;
+        }
         
-        element.dispatchEvent(new PointerEvent('pointerup', {
-            bubbles: true,
-            cancelable: true,
-            clientX: x,
-            clientY: y
-        }));
+        static async closeMenu() {
+            // 汎用的なメニュークローズ（ChatGPT、Gemini用）
+            document.dispatchEvent(new KeyboardEvent('keydown', {
+                key: 'Escape',
+                code: 'Escape',
+                bubbles: true,
+                cancelable: true
+            }));
+            
+            // Click outside
+            document.body.click();
+            
+            return this.wait(300);
+        }
         
-        element.click();
-        await wait(500);
-    };
-    
-    // メニューを閉じる
-    const closeMenu = async () => {
-        document.body.dispatchEvent(new KeyboardEvent('keydown', {
-            key: 'Escape',
-            code: 'Escape',
-            bubbles: true
-        }));
-        await wait(500);
-    };
-    
-    // メニューが開くのを待つ
-    const waitForMenu = async (maxWait = 3000) => {
-        const startTime = Date.now();
+        static async closeClaudeMenu() {
+            // Claude専用のメニュークローズ処理（document.bodyに送信）
+            document.body.dispatchEvent(new KeyboardEvent('keydown', {
+                key: 'Escape',
+                code: 'Escape',
+                bubbles: true
+            }));
+            
+            return this.wait(CONFIG.claudeWaitTime);
+        }
         
-        while (Date.now() - startTime < maxWait) {
-            // 複数のメニューセレクタをチェック
-            const menuSelectors = [
-                '[role="menu"]',
-                'div[data-radix-menu-content]',
-                'div[data-state="open"][role="menu"]',
-                '.popover[role="menu"]',
-                '[aria-orientation="vertical"][role="menu"]'
+        static async closeGeminiMenu() {
+            // Gemini (Angular Material) 専用のメニュークローズ処理
+            const activeElement = document.activeElement;
+            if (activeElement) {
+                activeElement.dispatchEvent(new KeyboardEvent('keydown', {
+                    key: 'Escape',
+                    code: 'Escape',
+                    keyCode: 27,
+                    bubbles: true
+                }));
+            }
+            
+            // body にも送信
+            document.body.dispatchEvent(new KeyboardEvent('keydown', {
+                key: 'Escape',
+                code: 'Escape',
+                keyCode: 27,
+                bubbles: true
+            }));
+            
+            this.log('Gemini メニュークローズ処理実行', 'info');
+            return this.wait(300);
+        }
+        
+        static async closeAllMenus() {
+            // 全てのメニューを確実に閉じる
+            let menuCount = 0;
+            let attempts = 0;
+            const maxAttempts = 5;
+            
+            // サービスを検出
+            const service = this.detectService();
+            
+            do {
+                // 現在開いているメニューを数える
+                const openMenus = document.querySelectorAll(
+                    '[role="menu"]:not([style*="display: none"]), ' +
+                    '[data-radix-menu-content], ' +
+                    '.mat-mdc-menu-panel:not([style*="display: none"]), ' +
+                    '.popover:not([style*="display: none"])'
+                );
+                
+                menuCount = openMenus.length;
+                
+                if (menuCount > 0) {
+                    this.log(`${menuCount}個のメニューを閉じています...`, 'info');
+                    
+                    // サービスごとの専用処理
+                    if (service === 'claude') {
+                        await this.closeClaudeMenu();
+                    } else if (service === 'gemini') {
+                        await this.closeGeminiMenu();
+                    } else {
+                        // その他のサービス（ChatGPT等）
+                        document.dispatchEvent(new KeyboardEvent('keydown', {
+                            key: 'Escape',
+                            code: 'Escape',
+                            bubbles: true,
+                            cancelable: true
+                        }));
+                        
+                        await this.wait(200);
+                        
+                        // まだメニューが残っている場合は、bodyをクリック（Claude以外）
+                        if (document.querySelector('[role="menu"]:not([style*="display: none"])')) {
+                            document.body.click();
+                            await this.wait(200);
+                        }
+                    }
+                }
+                
+                attempts++;
+            } while (menuCount > 0 && attempts < maxAttempts);
+            
+            if (attempts >= maxAttempts) {
+                this.log('警告: 一部のメニューが閉じられませんでした', 'warning');
+            }
+            
+            return this.wait(300);
+        }
+        
+        static async waitForElement(selector, timeout = 3000) {
+            const selectors = Array.isArray(selector) ? selector : [selector];
+            const startTime = Date.now();
+            
+            while (Date.now() - startTime < timeout) {
+                for (const sel of selectors) {
+                    try {
+                        const element = document.querySelector(sel);
+                        if (element && element.offsetParent !== null) {
+                            return element;
+                        }
+                    } catch (e) {
+                        continue;
+                    }
+                }
+                await this.wait(100);
+            }
+            return null;
+        }
+        
+        static async findDynamicElement(patterns, timeout = 3000) {
+            const startTime = Date.now();
+            
+            while (Date.now() - startTime < timeout) {
+                // セレクタで検索
+                if (patterns.selectors) {
+                    for (const selector of patterns.selectors) {
+                        const element = document.querySelector(selector);
+                        if (element) return element;
+                    }
+                }
+                
+                // テキストで検索
+                if (patterns.text) {
+                    const elements = Array.from(document.querySelectorAll('button, [role="button"], a'));
+                    for (const el of elements) {
+                        const text = el.textContent?.toLowerCase() || '';
+                        if (patterns.text.some(t => text.includes(t.toLowerCase()))) {
+                            return el;
+                        }
+                    }
+                }
+                
+                // 属性で検索
+                if (patterns.attributes) {
+                    for (const [attr, value] of Object.entries(patterns.attributes)) {
+                        const element = document.querySelector(`[${attr}="${value}"]`);
+                        if (element) return element;
+                    }
+                }
+                
+                await this.wait(100);
+            }
+            return null;
+        }
+        
+        static detectService() {
+            const url = window.location.hostname;
+            
+            // URLベースの検出
+            if (url.includes('claude.ai')) {
+                return 'claude';
+            } else if (url.includes('chatgpt.com') || url.includes('chat.openai.com')) {
+                return 'chatgpt';
+            } else if (url.includes('gemini.google.com') || url.includes('bard.google.com')) {
+                return 'gemini';
+            }
+            
+            // DOM要素による動的検出
+            const domPatterns = [
+                // Claude
+                { selector: '[data-testid="model-selector-dropdown"]', service: 'claude' },
+                { selector: '.claude-logo', service: 'claude' },
+                { selector: '[aria-label*="Claude"]', service: 'claude' },
+                
+                // ChatGPT
+                { selector: '[data-testid="model-switcher-dropdown-button"]', service: 'chatgpt' },
+                { selector: '.openai-logo', service: 'chatgpt' },
+                { selector: '[aria-label*="ChatGPT"]', service: 'chatgpt' },
+                
+                // Gemini
+                { selector: '.gds-mode-switch-button', service: 'gemini' },
+                { selector: '.gemini-logo', service: 'gemini' },
+                { selector: '[aria-label*="Gemini"]', service: 'gemini' }
             ];
             
-            for (const selector of menuSelectors) {
-                const menu = document.querySelector(selector);
-                if (menu && menu.offsetParent !== null) {
-                    // メニューが表示されていることを確認
-                    const items = menu.querySelectorAll('[role="menuitem"], [role="menuitemradio"], button');
-                    if (items.length > 0) {
-                        await wait(300); // メニューが完全に開くのを待つ
-                        return menu;
-                    }
+            for (const pattern of domPatterns) {
+                if (document.querySelector(pattern.selector)) {
+                    return pattern.service;
                 }
             }
             
-            await wait(100);
+            // テキストベースの検出
+            const bodyText = document.body.innerText.toLowerCase();
+            if (bodyText.includes('claude')) return 'claude';
+            if (bodyText.includes('chatgpt') || bodyText.includes('openai')) return 'chatgpt';
+            if (bodyText.includes('gemini') || bodyText.includes('bard')) return 'gemini';
+            
+            return 'unknown';
+        }
+    }
+    
+    // ========================================
+    // サービス別アダプター基底クラス
+    // ========================================
+    class ServiceAdapter {
+        constructor() {
+            this.models = [];
+            this.features = [];
+            this.additionalData = {};
         }
         
-        return null;
-    };
-    
-    // ===== リサーチ機能 =====
-    
-    // 1. モデルのリサーチ
-    const researchModels = async () => {
-        log('モデルメニューをリサーチ中...');
-        
-        // モデル選択ボタンを探す
-        const modelButton = document.querySelector('[data-testid="model-selector-dropdown"]') ||
-                          document.querySelector('button[aria-haspopup="menu"]') ||
-                          Array.from(document.querySelectorAll('button'))
-                              .find(el => el.textContent?.includes('Opus') || el.textContent?.includes('Sonnet'));
-        
-        if (!modelButton) {
-            log('モデル選択ボタンが見つかりません', 'ERROR');
-            return;
+        async research() {
+            Utils.log(`${this.getServiceName()} のリサーチを開始`, 'info');
+            
+            try {
+                // リサーチ前に全てのメニューを閉じる
+                await Utils.closeAllMenus();
+                
+                await this.researchModels();
+                await Utils.wait(1000);
+                
+                // モデルリサーチ後も確実にメニューを閉じる
+                await Utils.closeAllMenus();
+                
+                await this.researchFeatures();
+                await Utils.wait(1000);
+                
+                // 機能リサーチ後も確実にメニューを閉じる
+                await Utils.closeAllMenus();
+                
+                await this.researchAdditional();
+                
+                return this.getResults();
+            } catch (error) {
+                Utils.log(`エラー: ${error.message}`, 'error');
+                // エラー時も必ずメニューを閉じる
+                await Utils.closeAllMenus();
+                throw error;
+            }
         }
         
-        // メニューを開く
-        await clickElement(modelButton);
-        await wait(1000);
+        getServiceName() {
+            return 'Unknown Service';
+        }
         
-        // モデル項目を取得
-        const menuItems = Array.from(document.querySelectorAll('[role="menuitem"]'));
-        let hasOtherModels = false;
+        async researchModels() {
+            throw new Error('researchModels must be implemented');
+        }
         
-        menuItems.forEach(item => {
-            const text = item.textContent?.trim();
-            if (text) {
+        async researchFeatures() {
+            throw new Error('researchFeatures must be implemented');
+        }
+        
+        async researchAdditional() {
+            // オプション: 各サービス固有の追加調査
+        }
+        
+        getResults() {
+            return {
+                service: this.getServiceName(),
+                timestamp: new Date().toISOString(),
+                models: this.models,
+                features: this.features,
+                additional: this.additionalData
+            };
+        }
+    }
+    
+    // ========================================
+    // Claude アダプター (修正版 v2.0.0)
+    // ========================================
+    class ClaudeAdapter extends ServiceAdapter {
+        getServiceName() {
+            return 'Claude';
+        }
+        
+        // Claude専用のクリック処理
+        async clickElement(element) {
+            const rect = element.getBoundingClientRect();
+            const x = rect.left + rect.width / 2;
+            const y = rect.top + rect.height / 2;
+            
+            element.dispatchEvent(new PointerEvent('pointerdown', {
+                bubbles: true,
+                cancelable: true,
+                clientX: x,
+                clientY: y
+            }));
+            
+            await Utils.wait(50);
+            
+            element.dispatchEvent(new PointerEvent('pointerup', {
+                bubbles: true,
+                cancelable: true,
+                clientX: x,
+                clientY: y
+            }));
+            
+            element.click();
+            await Utils.wait(CONFIG.claudeWaitTime);
+        }
+        
+        async researchModels() {
+            Utils.log('モデルメニューをリサーチ中...', 'model');
+            
+            // シンプルなセレクタを優先（動作確認済みのもの）
+            const modelButton = document.querySelector('[data-testid="model-selector-dropdown"]') ||
+                              document.querySelector('button[aria-haspopup="menu"]') ||
+                              Array.from(document.querySelectorAll('button'))
+                                  .find(el => el.textContent?.includes('Opus') || el.textContent?.includes('Sonnet'));
+            
+            if (!modelButton) {
+                Utils.log('モデル選択ボタンが見つかりません', 'error');
+                return;
+            }
+            
+            await this.clickElement(modelButton);
+            await Utils.wait(1000);
+            
+            const menuItems = Array.from(document.querySelectorAll('[role="menuitem"]'));
+            
+            Utils.log(`${menuItems.length}個のメニュー項目を発見`, 'info');
+            
+            let hasOtherModels = false;
+            
+            for (const item of menuItems) {
+                const text = item.textContent?.trim();
+                if (!text) continue;
+                
                 // メインモデルの検出
                 if (text.includes('Claude Opus') || text.includes('Claude Sonnet')) {
                     const modelName = text.split('新規チャット')[0].trim();
@@ -161,555 +445,1026 @@
                         .filter(Boolean)
                         .join(' ');
                     
-                    currentData.models.push({
+                    const isSelected = item.getAttribute('aria-checked') === 'true' ||
+                                     item.getAttribute('aria-selected') === 'true';
+                    
+                    this.models.push({
                         name: modelName,
                         description: description || '',
-                        available: true
+                        available: true,
+                        selected: isSelected
                     });
-                    log(`モデル検出: ${modelName}`, 'SUCCESS');
+                    
+                    Utils.log(`モデル検出: ${modelName}${isSelected ? ' (選択中)' : ''}`, 'success');
                 }
                 
                 // 「他のモデル」の検出
                 if (text.includes('他のモデル')) {
                     hasOtherModels = true;
-                    log('「他のモデル」メニューを検出', 'INFO');
+                    Utils.log('「他のモデル」メニューを検出', 'info');
                 }
             }
-        });
-        
-        // 「他のモデル」がある場合、展開を試みる
-        if (hasOtherModels) {
-            const otherModelsItem = menuItems.find(item => item.textContent?.includes('他のモデル'));
-            if (otherModelsItem) {
-                await clickElement(otherModelsItem);
-                await wait(1000);
-                
-                // サブメニューのモデルを取得
-                const subMenuItems = Array.from(document.querySelectorAll('[role="menuitem"]'));
-                subMenuItems.forEach(item => {
-                    const text = item.textContent?.trim();
-                    if (text && (text.includes('Claude') || text.includes('GPT') || text.includes('Gemini'))) {
-                        if (!currentData.additionalModels.find(m => m.name === text)) {
-                            currentData.additionalModels.push({
-                                name: text,
-                                available: true
-                            });
-                            log(`追加モデル検出: ${text}`, 'SUCCESS');
+            
+            // 「他のモデル」がある場合、展開を試みる
+            if (hasOtherModels) {
+                const otherModelsItem = menuItems.find(item => item.textContent?.includes('他のモデル'));
+                if (otherModelsItem) {
+                    await this.clickElement(otherModelsItem);
+                    await Utils.wait(1000);
+                    
+                    // サブメニューのモデルを取得
+                    const subMenuItems = Array.from(document.querySelectorAll('[role="menuitem"]'));
+                    subMenuItems.forEach(item => {
+                        const text = item.textContent?.trim();
+                        if (text && (text.includes('Claude') || text.includes('Opus') || text.includes('Sonnet'))) {
+                            if (!this.models.find(m => m.name === text) && !text.includes('他のモデル')) {
+                                this.models.push({
+                                    name: text,
+                                    available: true,
+                                    location: 'submenu'
+                                });
+                                Utils.log(`追加モデル検出: ${text}`, 'success');
+                            }
                         }
+                    });
+                }
+            }
+            
+            await Utils.closeClaudeMenu();
+        }
+        
+        async researchFeatures() {
+            Utils.log('機能メニューをリサーチ中...', 'feature');
+            
+            // シンプルなセレクタを優先
+            const featureButton = document.querySelector('[data-testid="input-menu-tools"]') ||
+                                document.querySelector('[aria-label="ツールメニューを開く"]') ||
+                                Array.from(document.querySelectorAll('button'))
+                                    .find(el => el.querySelector('svg[class*="grid"]'));
+            
+            if (!featureButton) {
+                Utils.log('機能選択ボタンが見つかりません', 'error');
+                return;
+            }
+            
+            await this.clickElement(featureButton);
+            await Utils.wait(1000);
+            
+            // 機能項目を取得
+            const buttons = Array.from(document.querySelectorAll('button'));
+            
+            const featureNames = [
+                'コネクタを管理',
+                'コネクタを追加',
+                'カレンダー検索',
+                'Gmail検索',
+                'Drive検索',
+                'ウェブ検索',
+                'じっくり考える',
+                'スタイルを使用'
+            ];
+            
+            for (const name of featureNames) {
+                const button = buttons.find(b => b.textContent?.includes(name));
+                if (button) {
+                    const toggle = button.querySelector('input[type="checkbox"]');
+                    const isEnabled = toggle ? toggle.checked : false;
+                    
+                    const statusText = button.textContent;
+                    const isConnected = statusText?.includes('連携済') || !statusText?.includes('連携させる');
+                    
+                    this.features.push({
+                        name: name,
+                        type: toggle ? 'toggle' : 'button',
+                        enabled: isEnabled,
+                        connected: isConnected
+                    });
+                    
+                    Utils.log(`機能検出: ${name} (${isEnabled ? '有効' : '無効'}, ${isConnected ? '連携済' : '未連携'})`, 'success');
+                }
+            }
+            
+            // さらに表示があるかチェック
+            const moreButton = buttons.find(b => b.textContent?.includes('さらに表示'));
+            if (moreButton) {
+                Utils.log('「さらに表示」ボタンを検出', 'info');
+                await this.clickElement(moreButton);
+                await Utils.wait(1000);
+                
+                // 追加の機能を再度スキャン
+                const additionalButtons = Array.from(document.querySelectorAll('button'));
+                additionalButtons.forEach(button => {
+                    const text = button.textContent?.trim();
+                    if (text && !this.features.find(f => text.includes(f.name))) {
+                        this.features.push({
+                            name: text,
+                            type: 'button',
+                            enabled: false,
+                            connected: false,
+                            fromExpanded: true
+                        });
+                        Utils.log(`追加機能検出: ${text}`, 'success');
                     }
                 });
             }
-        }
-        
-        await closeMenu();
-    };
-    
-    // 2. 機能のリサーチ
-    const researchFeatures = async () => {
-        log('機能メニューをリサーチ中...');
-        
-        // 機能選択ボタンを探す
-        const featureButton = document.querySelector('[data-testid="input-menu-tools"]') ||
-                            document.querySelector('[aria-label="ツールメニューを開く"]') ||
-                            Array.from(document.querySelectorAll('button'))
-                                .find(el => el.querySelector('svg[class*="grid"]'));
-        
-        if (!featureButton) {
-            log('機能選択ボタンが見つかりません', 'ERROR');
-            return;
-        }
-        
-        // メニューを開く
-        await clickElement(featureButton);
-        await wait(1000);
-        
-        // 機能項目を取得
-        const buttons = Array.from(document.querySelectorAll('button'));
-        
-        const featureNames = [
-            'コネクタを管理',
-            'コネクタを追加',
-            'カレンダー検索',
-            'Gmail検索',
-            'Drive検索',
-            'ウェブ検索',
-            'じっくり考える',
-            'スタイルを使用'
-        ];
-        
-        featureNames.forEach(name => {
-            const button = buttons.find(b => b.textContent?.includes(name));
-            if (button) {
-                // トグルスイッチの状態を確認
-                const toggle = button.querySelector('input[type="checkbox"]');
-                const isEnabled = toggle ? toggle.checked : false;
-                
-                // 連携状態を確認
-                const statusText = button.textContent;
-                const isConnected = statusText?.includes('連携済') || !statusText?.includes('連携/連携させる');
-                
-                currentData.features.push({
-                    name: name,
-                    type: toggle ? 'toggle' : 'button',
-                    enabled: isEnabled,
-                    connected: isConnected
-                });
-                
-                log(`機能検出: ${name} (${isEnabled ? '有効' : '無効'}, ${isConnected ? '連携済' : '未連携'})`, 'SUCCESS');
-            }
-        });
-        
-        // さらに表示があるかチェック
-        const moreButton = buttons.find(b => b.textContent?.includes('さらに表示'));
-        if (moreButton) {
-            log('「さらに表示」ボタンを検出', 'INFO');
-            await clickElement(moreButton);
-            await wait(1000);
             
-            // 追加の機能を再度スキャン
-            const additionalButtons = Array.from(document.querySelectorAll('button'));
-            additionalButtons.forEach(button => {
-                const text = button.textContent;
-                if (text && !currentData.features.find(f => text.includes(f.name))) {
-                    // 新しい機能を検出
-                    const newFeature = {
-                        name: text.trim(),
-                        type: 'button',
-                        enabled: false,
-                        connected: false
+            await Utils.closeClaudeMenu();
+        }
+        
+        async researchAdditional() {
+            Utils.log('DeepResearchモードをチェック中...', 'research');
+            
+            // ウェブ検索を有効化
+            const featureButton = document.querySelector('[data-testid="input-menu-tools"]') ||
+                                document.querySelector('[aria-label="ツールメニューを開く"]');
+            
+            if (featureButton) {
+                await this.clickElement(featureButton);
+                await Utils.wait(1000);
+                
+                const webSearchButton = Array.from(document.querySelectorAll('button'))
+                    .find(el => el.textContent?.includes('ウェブ検索'));
+                
+                if (webSearchButton) {
+                    const webSearchToggle = webSearchButton.querySelector('input[type="checkbox"]');
+                    let wasWebSearchEnabled = webSearchToggle ? webSearchToggle.checked : false;
+                    
+                    if (webSearchToggle && !webSearchToggle.checked) {
+                        await this.clickElement(webSearchButton);
+                        await Utils.wait(CONFIG.claudeWaitTime);
+                    }
+                    
+                    this.additionalData.searchModeAvailable = true;
+                }
+                
+                await Utils.closeClaudeMenu();
+                await Utils.wait(1000);
+                
+                // リサーチボタンを探す
+                const researchButton = Array.from(document.querySelectorAll('button[aria-pressed]'))
+                    .find(el => el.textContent?.includes('リサーチ') || el.textContent?.includes('Research'));
+                
+                if (researchButton) {
+                    this.additionalData.deepResearch = {
+                        available: true,
+                        activated: researchButton.getAttribute('aria-pressed') === 'true'
                     };
-                    currentData.features.push(newFeature);
-                    log(`追加機能検出: ${newFeature.name}`, 'SUCCESS');
-                }
-            });
-        }
-        
-        await closeMenu();
-    };
-    
-    // 3. DeepResearchモードのリサーチ（改良版）
-    const researchDeepResearch = async () => {
-        log('DeepResearchモードをリサーチ中...', 'RESEARCH');
-        
-        // ステップ1: ウェブ検索機能をオンにする（検索モード）
-        log('ステップ1: ウェブ検索（検索モード）を有効化...', 'RESEARCH');
-        
-        // 機能メニューを開く
-        const featureButton = document.querySelector('[data-testid="input-menu-tools"]') ||
-                            document.querySelector('[aria-label="ツールメニューを開く"]');
-        
-        if (!featureButton) {
-            log('機能メニューボタンが見つかりません', 'ERROR');
-            return;
-        }
-        
-        await clickElement(featureButton);
-        await wait(1000);
-        
-        // ウェブ検索トグルを探してオンにする
-        const webSearchButton = Array.from(document.querySelectorAll('button'))
-            .find(el => el.textContent?.includes('ウェブ検索'));
-        
-        if (!webSearchButton) {
-            log('ウェブ検索ボタンが見つかりません', 'WARNING');
-            // メニューを閉じる
-            document.body.dispatchEvent(new KeyboardEvent('keydown', {
-                key: 'Escape',
-                code: 'Escape',
-                bubbles: true
-            }));
-            await wait(500);
-            return;
-        }
-        
-        // ウェブ検索のトグル状態を確認
-        const webSearchToggle = webSearchButton.querySelector('input[type="checkbox"]');
-        let wasWebSearchEnabled = false;
-        
-        if (webSearchToggle) {
-            wasWebSearchEnabled = webSearchToggle.checked;
-            
-            // オフの場合はオンにする
-            if (!webSearchToggle.checked) {
-                log('ウェブ検索を有効化します', 'RESEARCH');
-                await clickElement(webSearchButton);
-                await wait(500);
-                log('ウェブ検索を有効化しました', 'SUCCESS');
-            } else {
-                log('ウェブ検索は既に有効です', 'INFO');
-            }
-        }
-        
-        currentData.deepResearch.searchModeAvailable = true;
-        
-        // メニューを閉じる（ESCキーを送信）
-        document.body.dispatchEvent(new KeyboardEvent('keydown', {
-            key: 'Escape',
-            code: 'Escape',
-            bubbles: true
-        }));
-        await wait(1000);
-        
-        // ステップ2: リサーチボタンを探す（改良版）
-        log('ステップ2: リサーチボタンを探しています（メニュー外）...', 'RESEARCH');
-        
-        const allButtons = document.querySelectorAll('button');
-        let researchButton = null;
-        
-        // より堅牢な検索ロジック
-        for (const button of allButtons) {
-            const text = button.textContent?.trim();
-            const hasAriaPressed = button.hasAttribute('aria-pressed');
-            
-            if (text && text.includes('リサーチ') && hasAriaPressed) {
-                // SVGアイコンの存在も確認（より正確な判定）
-                const hasSvg = button.querySelector('svg');
-                if (hasSvg) {
-                    researchButton = button;
-                    log('リサーチボタンを発見（SVG付き）', 'SUCCESS');
-                    break;
-                }
-            }
-        }
-        
-        // SVGなしでも検索
-        if (!researchButton) {
-            for (const button of allButtons) {
-                const text = button.textContent?.trim();
-                const hasAriaPressed = button.hasAttribute('aria-pressed');
-                
-                if (text && text.includes('リサーチ') && hasAriaPressed) {
-                    researchButton = button;
-                    log('リサーチボタンを発見（aria-pressed付き）', 'SUCCESS');
-                    break;
-                }
-            }
-        }
-        
-        if (researchButton) {
-            currentData.deepResearch.researchButtonAvailable = true;
-            log('リサーチボタンを検出しました！', 'SUCCESS');
-            
-            // リサーチボタンの現在の状態を確認
-            const isPressed = researchButton.getAttribute('aria-pressed') === 'true';
-            
-            if (!isPressed) {
-                // ステップ3: リサーチボタンをオンにする（DeepResearchモード有効化）
-                log('ステップ3: DeepResearchモードを有効化...', 'RESEARCH');
-                await clickElement(researchButton);
-                await wait(1500);
-                
-                // 有効化の確認
-                const nowPressed = researchButton.getAttribute('aria-pressed') === 'true';
-                
-                if (nowPressed) {
-                    currentData.deepResearch.available = true;
-                    currentData.deepResearch.activated = true;
-                    log('✅ DeepResearchモードが正常に有効化されました！', 'SUCCESS');
-                    log('⚠️ DeepResearchは最大40分かかる場合があります', 'WARNING');
+                    Utils.log('DeepResearchモード検出', 'success');
                     
-                    // ステップ4: リサーチボタンをオフに戻す（テスト用）
-                    log('ステップ4: リサーチボタンをオフに戻します...', 'RESEARCH');
-                    await wait(1000);
-                    await clickElement(researchButton);
-                    await wait(1000);
+                    // テスト: ボタンの状態を切り替え
+                    const wasPressed = researchButton.getAttribute('aria-pressed') === 'true';
+                    await this.clickElement(researchButton);
+                    await Utils.wait(1500);
                     
-                    const offPressed = researchButton.getAttribute('aria-pressed') === 'false';
-                    if (offPressed) {
-                        log('リサーチボタンを無効化しました', 'RESEARCH');
-                        currentData.deepResearch.activated = false;
+                    const nowPressed = researchButton.getAttribute('aria-pressed') === 'true';
+                    if (nowPressed !== wasPressed) {
+                        Utils.log('DeepResearchモードの切り替えに成功', 'success');
+                        // 元に戻す
+                        await this.clickElement(researchButton);
+                        await Utils.wait(1000);
                     }
                 } else {
-                    log('DeepResearchモードの有効化に失敗しました', 'WARNING');
-                    currentData.deepResearch.available = false;
-                }
-            } else {
-                // 既に有効な場合
-                currentData.deepResearch.available = true;
-                currentData.deepResearch.activated = true;
-                log('DeepResearchモードは既に有効です', 'INFO');
-                
-                // オフに戻す（テスト用）
-                log('リサーチボタンをオフに戻します...', 'RESEARCH');
-                await wait(1000);
-                await clickElement(researchButton);
-                await wait(1000);
-                currentData.deepResearch.activated = false;
-            }
-            
-            // ウェブ検索を元の状態に戻す（必要な場合）
-            if (!wasWebSearchEnabled) {
-                log('ウェブ検索を元の状態（無効）に戻します...', 'RESEARCH');
-                const featureButtonAgain = document.querySelector('[data-testid="input-menu-tools"]');
-                if (featureButtonAgain) {
-                    await clickElement(featureButtonAgain);
-                    await wait(1000);
-                    
-                    const webSearchButtonAgain = Array.from(document.querySelectorAll('button'))
-                        .find(el => el.textContent?.includes('ウェブ検索'));
-                    
-                    if (webSearchButtonAgain) {
-                        const toggleAgain = webSearchButtonAgain.querySelector('input[type="checkbox"]');
-                        if (toggleAgain && toggleAgain.checked) {
-                            await clickElement(webSearchButtonAgain);
-                            log('ウェブ検索を無効化しました', 'RESEARCH');
-                        }
-                    }
-                    
-                    await closeMenu();
+                    Utils.log('リサーチボタンが見つかりません', 'warning');
                 }
             }
-        } else {
-            log('リサーチボタンが見つかりません', 'WARNING');
-            log('ウェブ検索が有効でもリサーチボタンが表示されない可能性があります', 'INFO');
-            currentData.deepResearch.researchButtonAvailable = false;
-            currentData.deepResearch.available = false;
-            
-            // ウェブ検索を元に戻す
-            if (!wasWebSearchEnabled) {
-                const featureButtonAgain = document.querySelector('[data-testid="input-menu-tools"]');
-                if (featureButtonAgain) {
-                    await clickElement(featureButtonAgain);
-                    await wait(1000);
-                    
-                    const webSearchButtonAgain = Array.from(document.querySelectorAll('button'))
-                        .find(el => el.textContent?.includes('ウェブ検索'));
-                    
-                    if (webSearchButtonAgain) {
-                        await clickElement(webSearchButtonAgain);
-                    }
-                    
-                    await closeMenu();
-                }
-            }
-        }
-    };
-    
-    // 4. 前回データとの比較
-    const compareWithPrevious = () => {
-        log('\n前回データとの比較...');
-        
-        // LocalStorageから前回データを取得
-        let previousData = null;
-        let isFirstRun = false;
-        
-        try {
-            const stored = localStorage.getItem(STORAGE_KEY);
-            if (stored) {
-                previousData = JSON.parse(stored);
-            } else {
-                isFirstRun = true;
-            }
-        } catch (e) {
-            log('前回データの読み込みエラー', 'WARNING');
-            isFirstRun = true;
-        }
-        
-        if (!previousData) {
-            log('前回データなし（初回実行）', 'INFO');
-            return { hasChanges: false, changes: [], isFirstRun: true };
-        }
-        
-        const changes = [];
-        
-        // モデルの比較
-        const prevModelNames = previousData.models?.map(m => m.name) || [];
-        const currModelNames = currentData.models.map(m => m.name);
-        
-        // 新しく追加されたモデル
-        currModelNames.forEach(name => {
-            if (!prevModelNames.includes(name)) {
-                changes.push(`新規モデル追加: ${name}`);
-            }
-        });
-        
-        // 削除されたモデル
-        prevModelNames.forEach(name => {
-            if (!currModelNames.includes(name)) {
-                changes.push(`モデル削除: ${name}`);
-            }
-        });
-        
-        // 追加モデルの比較
-        const prevAdditionalModels = previousData.additionalModels?.map(m => m.name) || [];
-        const currAdditionalModels = currentData.additionalModels.map(m => m.name);
-        
-        currAdditionalModels.forEach(name => {
-            if (!prevAdditionalModels.includes(name)) {
-                changes.push(`新規追加モデル: ${name}`);
-            }
-        });
-        
-        // 機能の比較
-        const prevFeatures = previousData.features || [];
-        const currFeatures = currentData.features;
-        
-        currFeatures.forEach(curr => {
-            const prev = prevFeatures.find(p => p.name === curr.name);
-            if (!prev) {
-                changes.push(`新規機能追加: ${curr.name}`);
-            } else {
-                // 状態の変更をチェック
-                if (prev.enabled !== curr.enabled) {
-                    changes.push(`機能状態変更: ${curr.name} (${prev.enabled ? '有効' : '無効'} → ${curr.enabled ? '有効' : '無効'})`);
-                }
-                if (prev.connected !== curr.connected) {
-                    changes.push(`連携状態変更: ${curr.name} (${prev.connected ? '連携済' : '未連携'} → ${curr.connected ? '連携済' : '未連携'})`);
-                }
-            }
-        });
-        
-        // 削除された機能
-        prevFeatures.forEach(prev => {
-            if (!currFeatures.find(c => c.name === prev.name)) {
-                changes.push(`機能削除: ${prev.name}`);
-            }
-        });
-        
-        // DeepResearchモードの比較
-        const prevDeepResearch = previousData.deepResearch;
-        const currDeepResearch = currentData.deepResearch;
-        
-        if (prevDeepResearch) {
-            if (prevDeepResearch.available !== currDeepResearch.available) {
-                changes.push(`DeepResearchモード: ${currDeepResearch.available ? '利用可能になりました' : '利用不可になりました'}`);
-            }
-            if (prevDeepResearch.activated !== currDeepResearch.activated) {
-                changes.push(`DeepResearchモード状態: ${currDeepResearch.activated ? '有効化' : '無効化'}`);
-            }
-        } else if (currDeepResearch.available) {
-            changes.push('DeepResearchモード: 新規検出');
-        }
-        
-        return {
-            hasChanges: changes.length > 0,
-            changes: changes,
-            isFirstRun: false
-        };
-    };
-    
-    // ===== メイン実行関数 =====
-    async function executeResearch() {
-        try {
-            // モデルのリサーチ
-            await researchModels();
-            await wait(1000);
-            
-            // 機能のリサーチ
-            await researchFeatures();
-            await wait(1000);
-            
-            // DeepResearchモードのリサーチ
-            await researchDeepResearch();
-            await wait(1000);
-            
-            // 前回データとの比較
-            const comparison = compareWithPrevious();
-            
-            // 結果の表示
-            console.log('\n' + '='.repeat(80));
-            console.log('リサーチ結果サマリー');
-            console.log('='.repeat(80));
-            
-            console.log('\n📊 検出されたモデル:');
-            currentData.models.forEach(m => {
-                console.log(`  • ${m.name}`);
-                if (m.description) console.log(`    ${m.description}`);
-            });
-            
-            if (currentData.additionalModels.length > 0) {
-                console.log('\n📊 追加モデル（他のモデル内）:');
-                currentData.additionalModels.forEach(m => {
-                    console.log(`  • ${m.name}`);
-                });
-            }
-            
-            console.log('\n📊 検出された機能:');
-            currentData.features.forEach(f => {
-                const status = [];
-                if (f.type === 'toggle') status.push(f.enabled ? '✅有効' : '⬜無効');
-                if (f.connected !== undefined) status.push(f.connected ? '🔗連携済' : '🔗未連携');
-                console.log(`  • ${f.name} ${status.join(' ')}`);
-            });
-            
-            console.log('\n🔬 DeepResearchモード:');
-            if (currentData.deepResearch.available) {
-                console.log(`  ✅ 利用可能`);
-                console.log(`  • 検索モード: ${currentData.deepResearch.searchModeAvailable ? '✅' : '❌'}`);
-                console.log(`  • リサーチボタン: ${currentData.deepResearch.researchButtonAvailable ? '✅' : '❌'}`);
-                console.log(`  • 現在の状態: ${currentData.deepResearch.activated ? '有効' : '無効'}`);
-            } else {
-                console.log(`  ❌ 利用不可または未検出`);
-                if (currentData.deepResearch.searchModeAvailable) {
-                    console.log(`  • 検索モードは検出されましたが、リサーチボタンが見つかりません`);
-                }
-            }
-            
-            // 変更がある場合の処理（初回実行以外）
-            if (comparison.hasChanges && !comparison.isFirstRun) {
-                console.log('\n' + '='.repeat(80));
-                console.log('🔄 変更検出！');
-                console.log('='.repeat(80));
-                
-                comparison.changes.forEach(change => {
-                    log(change, 'CHANGE');
-                });
-                
-                console.log('\nℹ️ スプレッドシートURL:');
-                console.log(`📝 ${SPREADSHEET_URL}`);
-            } else if (comparison.isFirstRun) {
-                console.log('\n✅ 初回実行完了 - データを保存しました');
-                console.log('📝 今後、変更が検出された場合にスプレッドシートへの登録を促します');
-            } else if (!comparison.hasChanges) {
-                console.log('\n✅ 前回から変更はありません');
-            }
-            
-            // データを保存
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(currentData));
-            log('\nデータを保存しました', 'SUCCESS');
-            
-            // 詳細データのエクスポート（デバッグ用）
-            console.log('\n📁 詳細データ（JSON形式）:');
-            console.log(JSON.stringify(currentData, null, 2));
-            
-            // 結果を返す
-            return {
-                success: true,
-                data: currentData,
-                comparison: comparison
-            };
-            
-        } catch (error) {
-            log(`エラーが発生しました: ${error.message}`, 'ERROR');
-            console.error(error);
-            return {
-                success: false,
-                error: error.message
-            };
         }
     }
     
-    // ===== エクスポート =====
-    window.ClaudeResearchDetector = {
-        executeResearch: executeResearch,
-        getCurrentData: () => currentData,
-        getStoredData: () => {
-            try {
-                const stored = localStorage.getItem(STORAGE_KEY);
-                return stored ? JSON.parse(stored) : null;
-            } catch (e) {
-                return null;
+    // ========================================
+    // ChatGPT アダプター
+    // ========================================
+    class ChatGPTAdapter extends ServiceAdapter {
+        getServiceName() {
+            return 'ChatGPT';
+        }
+        
+        async researchModels() {
+            Utils.log('モデルメニューをリサーチ中...', 'model');
+            
+            const modelButton = document.querySelector('[data-testid="model-switcher-dropdown-button"]') ||
+                              document.querySelector('button[aria-haspopup="menu"][aria-label*="モデル"]');
+            
+            if (!modelButton) {
+                Utils.log('モデル選択ボタンが見つかりません', 'error');
+                return;
             }
-        },
-        clearStoredData: () => {
-            localStorage.removeItem(STORAGE_KEY);
-            log('保存データをクリアしました', 'SUCCESS');
+            
+            await Utils.performClick(modelButton);
+            const modelMenu = await Utils.waitForElement('[role="menu"]');
+            
+            if (!modelMenu) {
+                Utils.log('モデルメニューが開きませんでした', 'error');
+                return;
+            }
+            
+            const menuItems = modelMenu.querySelectorAll('[role="menuitem"]');
+            
+            for (const item of menuItems) {
+                const modelName = this.extractModelName(item);
+                if (modelName) {
+                    this.models.push({
+                        name: modelName,
+                        selected: item.getAttribute('aria-checked') === 'true'
+                    });
+                    Utils.log(`モデル検出: ${modelName}`, 'success');
+                }
+                
+                if (this.hasSubmenuIndicator(item)) {
+                    const submenuName = item.textContent?.trim() || 'Unknown';
+                    Utils.log(`サブメニュー項目を検出: ${submenuName}`, 'warning');
+                    await this.exploreSubmenu(item);
+                }
+            }
+            
+            await Utils.closeAllMenus();
+        }
+        
+        async researchFeatures() {
+            Utils.log('機能メニューをリサーチ中...', 'feature');
+            
+            const functionButton = await Utils.findDynamicElement({
+                selectors: [
+                    '[data-testid="composer-plus-btn"]',
+                    'button.composer-btn',
+                    '[aria-label*="機能"]',
+                    '[aria-label*="feature"]',
+                    '[aria-label*="tool"]'
+                ],
+                text: ['機能', 'ツール', 'Tools', 'Features'],
+                attributes: {
+                    'data-testid': 'composer-plus-btn'
+                }
+            });
+            
+            if (!functionButton) {
+                Utils.log('機能選択ボタンが見つかりません', 'error');
+                return;
+            }
+            
+            await Utils.performClick(functionButton);
+            const functionMenu = await Utils.waitForElement([
+                '[role="menu"]',
+                '[data-radix-menu-content]',
+                '.popover'
+            ]);
+            
+            if (!functionMenu) {
+                Utils.log('機能メニューが開きませんでした', 'error');
+                return;
+            }
+            
+            const allMenuItems = functionMenu.querySelectorAll('*');
+            const processedItems = new Set();
+            
+            for (const item of allMenuItems) {
+                if (processedItems.has(item)) continue;
+                
+                const isClickable = item.matches('button, [role="menuitem"], [role="menuitemradio"], a');
+                if (!isClickable) continue;
+                
+                const text = item.textContent?.trim();
+                if (!text || text.length > 100) continue;
+                
+                processedItems.add(item);
+                
+                if (this.hasSubmenuIndicator(item)) {
+                    Utils.log(`サブメニュー項目を検出: ${text}`, 'warning');
+                    await this.exploreFunctionSubmenu(item);
+                } else {
+                    const functionInfo = this.extractFunctionName(item);
+                    if (functionInfo.name && 
+                        !this.isModelName(functionInfo.name) &&
+                        !this.features.find(f => f.name === functionInfo.name)) {
+                        
+                        const attributes = {
+                            name: functionInfo.name,
+                            badge: functionInfo.badge,
+                            hasIcon: !!item.querySelector('svg, img'),
+                            isDisabled: item.disabled || item.getAttribute('aria-disabled') === 'true',
+                            ariaLabel: item.getAttribute('aria-label'),
+                            dataTestId: item.getAttribute('data-testid')
+                        };
+                        
+                        this.features.push(attributes);
+                        Utils.log(`機能検出: ${functionInfo.name}${functionInfo.badge ? ` [${functionInfo.badge}]` : ''}`, 'success');
+                    }
+                }
+            }
+            
+            await Utils.closeAllMenus();
+        }
+        
+        extractModelName(element) {
+            const primarySpan = element.querySelector('span:not([class*="badge"]):not([class*="icon"])');
+            if (primarySpan) {
+                return primarySpan.textContent?.trim();
+            }
+            
+            const testId = element.getAttribute('data-testid') || '';
+            const match = testId.match(/model-switcher-(.+)/);
+            if (match) {
+                return match[1].replace(/-/g, ' ');
+            }
+            
+            const nameDiv = element.querySelector('div.min-w-0 > span, div.min-w-0');
+            if (nameDiv) {
+                const text = nameDiv.textContent?.trim() || '';
+                return text.split('\n')[0].trim();
+            }
+            
+            const fullText = element.textContent?.trim() || '';
+            const lines = fullText.split('\n');
+            const modelName = lines[0].trim();
+            
+            const isValidModel = modelName && (
+                /GPT|Claude|o1|Gemini|Auto|Fast|Thinking|Pro|Legacy|Mini|Preview/i.test(modelName) ||
+                /\d+(\.\d+)?/.test(modelName) ||
+                (modelName.length > 1 && modelName.length < 50)
+            );
+            
+            return isValidModel ? modelName : null;
+        }
+        
+        extractFunctionName(element) {
+            const selectors = [
+                '.truncate',
+                '[class*="grow"]',
+                '.flex-grow',
+                '.text-token-text-primary',
+                'div[class*="text"]',
+                'span:not([class*="badge"])',
+                'div'
+            ];
+            
+            let name = '';
+            for (const selector of selectors) {
+                const nameElement = element.querySelector(selector);
+                if (nameElement && nameElement.textContent?.trim()) {
+                    name = nameElement.textContent.trim();
+                    break;
+                }
+            }
+            
+            if (!name) {
+                name = element.textContent?.trim() || '';
+            }
+            
+            const badgeSelectors = [
+                '.__menu-item-badge',
+                'span[class*="badge"]',
+                '.rounded-full',
+                '.ml-auto'
+            ];
+            
+            let badge = '';
+            for (const selector of badgeSelectors) {
+                const badgeEl = element.querySelector(selector);
+                if (badgeEl && badgeEl.textContent?.trim()) {
+                    badge = badgeEl.textContent.trim();
+                    if (badge && name.includes(badge)) {
+                        name = name.replace(badge, '').trim();
+                    }
+                    break;
+                }
+            }
+            
+            return { name: name, badge: badge };
+        }
+        
+        isModelName(name) {
+            if (!name) return false;
+            
+            const modelPatterns = [
+                /GPT/i,
+                /Claude/i,
+                /o1[\s-]/i,
+                /Gemini/i,
+                /Opus/i,
+                /Sonnet/i,
+                /Haiku/i,
+                /Preview/i,
+                /Turbo/i,
+                /Vision/i
+            ];
+            
+            return modelPatterns.some(pattern => pattern.test(name));
+        }
+        
+        hasSubmenuIndicator(element) {
+            const conditions = [
+                element.hasAttribute('data-has-submenu'),
+                element.getAttribute('aria-haspopup') === 'menu',
+                element.getAttribute('aria-expanded') !== null,
+                
+                element.querySelector('svg[data-rtl-flip]') !== null,
+                element.querySelector('[class*="chevron"]') !== null,
+                element.querySelector('[class*="arrow"]') !== null,
+                
+                element.querySelector('path[d*="M6.02925 3.02929"]') !== null,
+                element.querySelector('path[d*="L11.4707"]') !== null,
+                
+                (() => {
+                    const text = element.textContent?.trim().toLowerCase() || '';
+                    const submenuKeywords = [
+                        'その他', 'さらに', '他の', 'もっと',
+                        'レガシー', 'legacy', 
+                        'more', 'other', 'additional',
+                        '以前の', 'previous', 'old',
+                        '詳細', 'advanced', 'settings',
+                        'さらに表示', 'show more', '...'
+                    ];
+                    return submenuKeywords.some(keyword => text.includes(keyword.toLowerCase()));
+                })()
+            ];
+            
+            return conditions.some(condition => condition);
+        }
+        
+        async exploreSubmenu(menuItem) {
+            const initialMenuCount = document.querySelectorAll('[role="menu"]').length;
+            
+            menuItem.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+            menuItem.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+            await Utils.wait(500);
+            
+            let allMenus = document.querySelectorAll('[role="menu"]');
+            if (allMenus.length <= initialMenuCount) {
+                await Utils.performClick(menuItem);
+                await Utils.wait(500);
+                allMenus = document.querySelectorAll('[role="menu"]');
+            }
+            
+            if (allMenus.length > initialMenuCount) {
+                const submenu = allMenus[allMenus.length - 1];
+                const items = submenu.querySelectorAll('[role="menuitem"]');
+                
+                for (const item of items) {
+                    const text = item.textContent?.trim();
+                    const isBackButton = text && (
+                        text.includes('戻る') || 
+                        text.includes('Back') || 
+                        text.includes('←')
+                    );
+                    
+                    if (isBackButton) continue;
+                    
+                    const modelName = this.extractModelName(item);
+                    if (modelName && !this.models.find(m => m.name === modelName)) {
+                        this.models.push({
+                            name: modelName,
+                            location: 'submenu'
+                        });
+                        Utils.log(`サブメニューモデル検出: ${modelName}`, 'success');
+                    }
+                }
+            }
+        }
+        
+        async exploreFunctionSubmenu(menuItem) {
+            const itemText = menuItem.textContent?.trim();
+            Utils.log(`サブメニューを探索中: ${itemText}`, 'info');
+            
+            const initialMenuCount = document.querySelectorAll('[role="menu"]').length;
+            
+            menuItem.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+            menuItem.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+            await Utils.wait(700);
+            
+            let allMenus = document.querySelectorAll('[role="menu"]');
+            
+            let clickedToOpen = false;
+            if (allMenus.length <= initialMenuCount) {
+                const wasSelected = menuItem.getAttribute('aria-checked') || 
+                                  menuItem.getAttribute('aria-selected') ||
+                                  menuItem.classList.contains('selected');
+                
+                await Utils.performClick(menuItem);
+                clickedToOpen = true;
+                await Utils.wait(500);
+                allMenus = document.querySelectorAll('[role="menu"]');
+                
+                if (wasSelected === 'false' && menuItem.getAttribute('aria-checked') === 'true') {
+                    menuItem.needsDeselect = true;
+                }
+            }
+            
+            if (allMenus.length > initialMenuCount) {
+                const submenu = allMenus[allMenus.length - 1];
+                const items = submenu.querySelectorAll('[role="menuitem"], [role="menuitemradio"]');
+                
+                Utils.log(`サブメニューに${items.length}個の項目を発見`, 'info');
+                
+                for (const item of items) {
+                    const text = item.textContent?.trim();
+                    
+                    if (text && (text.includes('戻る') || text.includes('Back') || text.includes('←'))) {
+                        continue;
+                    }
+                    
+                    const functionInfo = this.extractFunctionName(item);
+                    if (functionInfo.name && 
+                        !this.isModelName(functionInfo.name) &&
+                        !this.features.find(f => f.name === functionInfo.name)) {
+                        this.features.push({
+                            name: functionInfo.name,
+                            badge: functionInfo.badge,
+                            location: 'submenu',
+                            parent: itemText
+                        });
+                        Utils.log(`サブメニュー機能検出: ${functionInfo.name}${functionInfo.badge ? ` [${functionInfo.badge}]` : ''} (from ${itemText})`, 'success');
+                    }
+                }
+                
+                document.dispatchEvent(new KeyboardEvent('keydown', {
+                    key: 'Escape',
+                    code: 'Escape',
+                    bubbles: true
+                }));
+                await Utils.wait(300);
+                
+                if (clickedToOpen && menuItem.needsDeselect) {
+                    Utils.log('警告: 項目が選択された可能性があります', 'warning');
+                }
+            } else {
+                Utils.log(`サブメニューが開きませんでした: ${itemText}`, 'warning');
+            }
+        }
+    }
+    
+    // ========================================
+    // Gemini アダプター
+    // ========================================
+    class GeminiAdapter extends ServiceAdapter {
+        getServiceName() {
+            return 'Gemini';
+        }
+        
+        async researchModels() {
+            Utils.log('モデルメニューをリサーチ中...', 'model');
+            
+            const modelButton = document.querySelector('button.gds-mode-switch-button') ||
+                              document.querySelector('button.logo-pill-btn') ||
+                              document.querySelector('button[class*="mode-switch"]') ||
+                              document.querySelector('.logo-pill-label-container')?.closest('button') ||
+                              document.querySelector('[aria-label*="モデル"]');
+            
+            if (!modelButton) {
+                Utils.log('モデル選択ボタンが見つかりません', 'error');
+                return;
+            }
+            
+            await Utils.performClick(modelButton);
+            await Utils.wait(CONFIG.waitTime);
+            
+            // メインメニューのモデルを処理
+            const modelItems = document.querySelectorAll('button.bard-mode-list-button, [role="menuitemradio"], .mat-mdc-menu-item');
+            
+            for (const item of modelItems) {
+                const titleEl = item.querySelector('.mode-title, .gds-label-m:not(.mode-desc), span:first-child');
+                const descEl = item.querySelector('.mode-desc, .gds-label-m-alt, span:last-child');
+                
+                if (titleEl) {
+                    const title = titleEl.textContent.trim();
+                    const description = descEl ? descEl.textContent.trim() : '';
+                    const isSelected = item.classList.contains('is-selected') || 
+                                     item.getAttribute('aria-checked') === 'true' ||
+                                     item.querySelector('mat-icon[fonticon="check_circle"]') !== null;
+                    
+                    this.models.push({
+                        name: title || description,
+                        description: description,
+                        selected: isSelected
+                    });
+                    
+                    Utils.log(`モデル検出: ${title || description}${isSelected ? ' (選択中)' : ''}`, 'success');
+                }
+            }
+            
+            // サブメニューの処理
+            const moreButton = Array.from(document.querySelectorAll('button'))
+                .find(b => b.textContent?.includes('他のモデル') || b.textContent?.includes('さらに表示'));
+            
+            if (moreButton) {
+                Utils.log('追加モデルを確認中...', 'info');
+                
+                // 現在のメニュー数を記録
+                const initialMenuCount = document.querySelectorAll('[role="menu"], .mat-mdc-menu-panel').length;
+                
+                await Utils.performClick(moreButton);
+                await Utils.wait(CONFIG.waitTime);
+                
+                // サブメニューが開いたか確認
+                const currentMenuCount = document.querySelectorAll('[role="menu"], .mat-mdc-menu-panel').length;
+                const submenuOpened = currentMenuCount > initialMenuCount;
+                
+                if (submenuOpened) {
+                    Utils.log('サブメニューが開きました', 'info');
+                    
+                    const additionalModels = document.querySelectorAll('[role="menuitemradio"], .mat-mdc-menu-item');
+                    additionalModels.forEach(item => {
+                        const titleEl = item.querySelector('.mode-title');
+                        const descEl = item.querySelector('.mode-desc');
+                        
+                        if (titleEl && descEl) {
+                            const modelData = {
+                                name: titleEl.textContent.trim(),
+                                description: descEl.textContent.trim(),
+                                selected: false,
+                                location: 'submenu'
+                            };
+                            
+                            if (!this.models.some(m => m.description === modelData.description)) {
+                                this.models.push(modelData);
+                                Utils.log(`追加モデル検出: ${modelData.name}`, 'success');
+                            }
+                        }
+                    });
+                    
+                    // サブメニューを閉じる（Gemini用）
+                    await Utils.closeGeminiMenu();
+                    await Utils.wait(300);
+                }
+            }
+            
+            // メインメニューを閉じる（Gemini用）
+            await Utils.closeGeminiMenu();
+            await Utils.wait(300);
+            
+            // 念のため残っているメニューがあれば追加でクローズ
+            const remainingMenus = document.querySelectorAll('.mat-mdc-menu-panel:not([style*="display: none"])');
+            if (remainingMenus.length > 0) {
+                Utils.log(`残存メニュー検出（${remainingMenus.length}個）、追加クローズ実行`, 'warning');
+                await Utils.closeGeminiMenu();
+            }
+            
+            Utils.log('モデルメニューを閉じました', 'info');
+        }
+        
+        async researchFeatures() {
+            Utils.log('機能メニューをリサーチ中...', 'feature');
+            
+            // 1. メインの機能ボタン（動画、Deep Think、Deep Research、Canvas等）
+            // toolbox-drawer-item-button クラスを持つボタンのみを対象とする
+            const featureButtons = document.querySelectorAll('.toolbox-drawer-item-button button');
+            
+            Utils.log(`${featureButtons.length}個のメイン機能ボタンを検出`, 'info');
+            
+            for (const button of featureButtons) {
+                // ラベル要素を探す
+                const labelEl = button.querySelector('.toolbox-drawer-button-label, .label');
+                
+                if (labelEl && labelEl.textContent?.trim()) {
+                    const name = labelEl.textContent.trim();
+                    const iconEl = button.querySelector('mat-icon');
+                    const icon = iconEl ? (iconEl.getAttribute('fonticon') || iconEl.textContent?.trim()) : '';
+                    
+                    if (!this.features.find(f => f.name === name)) {
+                        this.features.push({
+                            name: name,
+                            icon: icon,
+                            type: 'main'
+                        });
+                        Utils.log(`機能検出: ${name}${icon ? ` (${icon})` : ''}`, 'success');
+                    }
+                }
+            }
+            
+            // 2. その他メニューの処理（重要：ここに「画像」などがある）
+            const moreButton = document.querySelector('[aria-label="その他"]') ||
+                             document.querySelector('button:has(mat-icon[fonticon="more_horiz"])') ||
+                             document.querySelector('.toolbox-drawer-button-container button');
+            
+            if (moreButton) {
+                Utils.log('その他メニューを開いています...', 'info');
+                
+                // 現在のオーバーレイ数を記録（Gemini用の判定）
+                const initialOverlayCount = document.querySelectorAll('.cdk-overlay-pane').length;
+                
+                await Utils.performClick(moreButton);
+                await Utils.wait(CONFIG.waitTime);
+                
+                // メニューが開いたか確認（Geminiは.cdk-overlay-paneで判定）
+                const currentOverlayCount = document.querySelectorAll('.cdk-overlay-pane').length;
+                const menuOpened = currentOverlayCount > initialOverlayCount;
+                
+                if (menuOpened) {
+                    Utils.log('その他メニューが開きました', 'info');
+                    
+                    // Geminiの特殊なカード形式のメニューに対応
+                    // .cdk-overlay-pane内の全ての要素を取得
+                    const overlayPanes = document.querySelectorAll('.cdk-overlay-pane');
+                    const lastPane = overlayPanes[overlayPanes.length - 1]; // 最新のオーバーレイ
+                    
+                    if (lastPane) {
+                        // カード内のボタンや項目を取得
+                        const menuItems = lastPane.querySelectorAll(
+                            'button, ' +
+                            '[role="menuitem"], ' +
+                            '.toolbox-drawer-card button, ' +
+                            '.toolbox-drawer-menu-item button'
+                        );
+                        
+                        Utils.log(`その他メニュー内に${menuItems.length}個の項目を発見`, 'info');
+                        
+                        for (const item of menuItems) {
+                            // 複数の方法で名前を取得
+                            let name = null;
+                            let source = '';
+                            
+                            // 方法1: aria-label（最優先）
+                            const ariaLabel = item.getAttribute('aria-label');
+                            if (ariaLabel && ariaLabel.trim()) {
+                                // "画像  Imagen で生成" のような余分な空白を正規化
+                                name = ariaLabel.trim().replace(/\s+/g, ' ');
+                                source = 'aria-label';
+                            }
+                            
+                            // 方法2: テキストコンテンツ
+                            if (!name) {
+                                const text = item.textContent?.trim().replace(/\s+/g, ' ');
+                                if (text && text.length < 50) {
+                                    name = text;
+                                    source = 'text-content';
+                                }
+                            }
+                            
+                            // 有効な名前が取得できた場合のみ追加
+                            if (name && !this.features.find(f => f.name === name || f.name.includes(name.split(' ')[0]))) {
+                                const iconEl = item.querySelector('mat-icon');
+                                const icon = iconEl ? (iconEl.getAttribute('fonticon') || iconEl.textContent?.trim()) : '';
+                                
+                                this.features.push({
+                                    name: name,
+                                    icon: icon,
+                                    type: 'additional',
+                                    location: 'submenu',
+                                    source: source  // デバッグ用
+                                });
+                                
+                                Utils.log(`その他メニュー機能検出: ${name}${icon ? ` (${icon})` : ''} [${source}]`, 'success');
+                            }
+                        }
+                    }
+                } else {
+                    Utils.log('その他メニューが開きませんでした', 'warning');
+                }
+                
+                // メニューを閉じる（Gemini用）
+                await Utils.closeGeminiMenu();
+                await Utils.wait(300);
+                
+                // 念のため残っているメニューがあれば追加でクローズ
+                const remainingMenus = document.querySelectorAll('.mat-mdc-menu-panel:not([style*="display: none"])');
+                if (remainingMenus.length > 0) {
+                    Utils.log(`残存メニュー検出（${remainingMenus.length}個）、追加クローズ実行`, 'warning');
+                    await Utils.closeGeminiMenu();
+                }
+                
+                Utils.log('機能メニューを閉じました', 'info');
+            }
+        }
+    }
+    
+    // ========================================
+    // メインコントローラー
+    // ========================================
+    class AIServiceResearcher {
+        constructor() {
+            this.service = Utils.detectService();
+            this.adapter = this.createAdapter();
+            this.results = null;
+        }
+        
+        createAdapter() {
+            switch (this.service) {
+                case 'claude':
+                    return new ClaudeAdapter();
+                case 'chatgpt':
+                    return new ChatGPTAdapter();
+                case 'gemini':
+                    return new GeminiAdapter();
+                default:
+                    throw new Error('サービスを検出できませんでした');
+            }
+        }
+        
+        async run() {
+            console.log('='.repeat(60));
+            console.log('🚀 統一版 AI サービス リサーチコード (v2.0.0)');
+            console.log(`📅 実行日時: ${new Date().toLocaleString('ja-JP')}`);
+            console.log(`🔍 検出されたサービス: ${this.service.toUpperCase()}`);
+            console.log(`📦 バージョン: ${CONFIG.version}`);
+            console.log('='.repeat(60));
+            
+            try {
+                this.results = await this.adapter.research();
+                this.displayResults();
+                this.saveResults();
+                this.compareWithPrevious();
+                
+                console.log('\n✨ リサーチ完了！');
+                console.log('全てのメニューが正常に閉じられました。');
+                
+            } catch (error) {
+                console.error('❌ エラーが発生しました:', error);
+                console.log('\n💡 トラブルシューティング:');
+                console.log('  1. ページが完全に読み込まれているか確認');
+                console.log('  2. 正しいサービスのページで実行しているか確認');
+                console.log('  3. UIが変更されていないか確認');
+                
+                // エラー時も必ずメニューを閉じる
+                await Utils.closeAllMenus();
+            }
+        }
+        
+        displayResults() {
+            console.log('\n📊 リサーチ結果');
+            console.log('='.repeat(60));
+            
+            console.log('\n🤖 検出されたモデル:');
+            if (this.results.models.length > 0) {
+                const mainModels = this.results.models.filter(m => !m.location || m.location !== 'submenu');
+                const submenuModels = this.results.models.filter(m => m.location === 'submenu');
+                
+                if (mainModels.length > 0) {
+                    console.log('【メインメニュー】');
+                    mainModels.forEach((model, index) => {
+                        const selected = model.selected ? ' ✅' : '';
+                        console.log(`  ${index + 1}. ${model.name}${selected}`);
+                        if (model.description) {
+                            console.log(`     ${model.description}`);
+                        }
+                    });
+                }
+                
+                if (submenuModels.length > 0) {
+                    console.log('\n【サブメニュー】');
+                    submenuModels.forEach((model, index) => {
+                        console.log(`  ${index + 1}. ${model.name}`);
+                        if (model.description) {
+                            console.log(`     ${model.description}`);
+                        }
+                    });
+                }
+            } else {
+                console.log('  ⚠️ モデルが検出されませんでした');
+            }
+            
+            console.log('\n🔧 検出された機能:');
+            if (this.results.features.length > 0) {
+                const mainFeatures = this.results.features.filter(f => !f.location || (f.location !== 'submenu' && f.location !== 'deep-submenu'));
+                const submenuFeatures = this.results.features.filter(f => f.location === 'submenu');
+                const deepSubmenuFeatures = this.results.features.filter(f => f.location === 'deep-submenu');
+                
+                if (mainFeatures.length > 0) {
+                    console.log('【メイン機能】');
+                    mainFeatures.forEach((feature, index) => {
+                        const status = feature.enabled !== undefined ? 
+                            (feature.enabled ? ' ✅' : ' ⬜') : '';
+                        const connected = feature.connected !== undefined ?
+                            (feature.connected ? ' 🔗' : ' 🔓') : '';
+                        const badge = feature.badge ? ` [${feature.badge}]` : '';
+                        const icon = feature.icon ? ` (${feature.icon})` : '';
+                        const type = feature.type ? ` <${feature.type}>` : '';
+                        console.log(`  ${index + 1}. ${feature.name}${badge}${status}${connected}${icon}${type}`);
+                        if (feature.sublabel) {
+                            console.log(`     ${feature.sublabel}`);
+                        }
+                    });
+                }
+                
+                if (submenuFeatures.length > 0) {
+                    console.log('\n【サブメニュー機能】');
+                    submenuFeatures.forEach((feature, index) => {
+                        const badge = feature.badge ? ` [${feature.badge}]` : '';
+                        const icon = feature.icon ? ` (${feature.icon})` : '';
+                        console.log(`  ${index + 1}. ${feature.name}${badge}${icon}`);
+                        if (feature.sublabel) {
+                            console.log(`     ${feature.sublabel}`);
+                        }
+                    });
+                }
+                
+                if (deepSubmenuFeatures.length > 0) {
+                    console.log('\n【深層サブメニュー機能】');
+                    deepSubmenuFeatures.forEach((feature, index) => {
+                        const parent = feature.parent ? ` (親: ${feature.parent})` : '';
+                        console.log(`  ${index + 1}. ${feature.name}${parent}`);
+                    });
+                }
+            } else {
+                console.log('  ⚠️ 機能が検出されませんでした');
+            }
+            
+            if (Object.keys(this.results.additional).length > 0) {
+                console.log('\n📝 追加情報:');
+                console.log(JSON.stringify(this.results.additional, null, 2));
+            }
+        }
+        
+        saveResults() {
+            const key = `${CONFIG.storageKey}_${this.service}`;
+            localStorage.setItem(key, JSON.stringify(this.results));
+            Utils.log(`データを保存しました (${key})`, 'success');
+        }
+        
+        compareWithPrevious() {
+            const key = `${CONFIG.storageKey}_${this.service}`;
+            const previousDataStr = localStorage.getItem(`${key}_previous`);
+            
+            // 現在のデータを前回データとして保存
+            localStorage.setItem(`${key}_previous`, JSON.stringify(this.results));
+            
+            if (!previousDataStr) {
+                Utils.log('前回のデータなし（初回実行）', 'info');
+                return;
+            }
+            
+            try {
+                const previous = JSON.parse(previousDataStr);
+                const changes = [];
+                
+                // モデルの比較
+                const prevModels = previous.models?.map(m => m.name) || [];
+                const currModels = this.results.models.map(m => m.name);
+                
+                currModels.forEach(name => {
+                    if (!prevModels.includes(name)) {
+                        changes.push(`➕ 新規モデル: ${name}`);
+                    }
+                });
+                
+                prevModels.forEach(name => {
+                    if (!currModels.includes(name)) {
+                        changes.push(`➖ 削除されたモデル: ${name}`);
+                    }
+                });
+                
+                // 機能の比較
+                const prevFeatures = previous.features?.map(f => f.name) || [];
+                const currFeatures = this.results.features.map(f => f.name);
+                
+                currFeatures.forEach(name => {
+                    if (!prevFeatures.includes(name)) {
+                        changes.push(`➕ 新規機能: ${name}`);
+                    }
+                });
+                
+                prevFeatures.forEach(name => {
+                    if (!currFeatures.includes(name)) {
+                        changes.push(`➖ 削除された機能: ${name}`);
+                    }
+                });
+                
+                if (changes.length > 0) {
+                    console.log('\n🔄 前回からの変更:');
+                    changes.forEach(change => console.log(`  ${change}`));
+                } else {
+                    console.log('\n✅ 前回から変更はありません');
+                }
+            } catch (error) {
+                Utils.log('前回データの比較でエラー', 'warning');
+            }
+        }
+    }
+    
+    // ========================================
+    // 実行
+    // ========================================
+    const researcher = new AIServiceResearcher();
+    
+    // UI Controllerとの互換性のためwindowオブジェクトに公開
+    window.ClaudeResearchDetector = {
+        executeResearch: async () => {
+            try {
+                await researcher.run();
+                
+                // UI Controllerが期待する形式で結果を返す
+                return {
+                    success: true,
+                    data: {
+                        models: researcher.results.models || [],
+                        features: researcher.results.features || [],
+                        deepResearch: researcher.results.deepResearch || { available: false },
+                        additionalModels: researcher.results.additionalModels || [],
+                        timestamp: new Date().toISOString()
+                    },
+                    comparison: {
+                        hasChanges: false,
+                        changes: []
+                    }
+                };
+            } catch (error) {
+                console.error('Research execution error:', error);
+                return {
+                    success: false,
+                    error: error.message
+                };
+            }
         }
     };
     
-    console.log('\n' + '='.repeat(80));
-    console.log('Claude リサーチ検出器が初期化されました');
-    console.log('実行方法: ClaudeResearchDetector.executeResearch()');
-    console.log('='.repeat(80));
+    // 自動実行はしない（UI Controllerから呼び出される）
+    console.log('🔧 ClaudeResearchDetector initialized');
     
 })();

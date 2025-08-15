@@ -741,12 +741,14 @@ async function injectAutomationScripts(tabId, aiName) {
     
     // Claudeの場合はリサーチ機能を使用
     if (aiName === 'Claude') {
+      console.log(`🎯 ${aiName}リサーチ処理を開始します`);
       console.log(`🔬 ${aiName}リサーチ機能を注入・実行します`);
       
       // Claudeのリサーチ検出器ファイル
       const researchFile = 'ai-platforms/claude/claude-research-detector.js';
       
       // リサーチ検出器を注入
+      console.log(`⚡ スクリプトファイル: ${researchFile}`);
       try {
         await chrome.scripting.executeScript({
           target: { tabId: tabId },
@@ -759,10 +761,12 @@ async function injectAutomationScripts(tabId, aiName) {
       }
       
       // 少し待ってから実行
+      console.log(`⏳ スクリプト初期化を待機中...`);
       await new Promise(resolve => setTimeout(resolve, 3000));
       
       // リサーチを実行
       const detectorName = 'ClaudeResearchDetector';
+      console.log(`🚀 ${detectorName}を実行します`);
       
       const [result] = await chrome.scripting.executeScript({
         target: { tabId: tabId },
@@ -950,12 +954,67 @@ async function injectAutomationScripts(tabId, aiName) {
         args: [aiName, detectorName]
       });
       
-      console.log(`🔍 ${aiName}のスクリプト実行結果:`, result);
+      console.log(`🔍 ${aiName}のスクリプト実行結果:`);
+      console.log('  レスポンス:', result);
       
-      if (result && result.length > 0 && result[0] && result[0].result) {
-        const scriptResult = result[0].result;
+      if (result && result.result) {
+        const scriptResult = result.result;
         if (scriptResult.success) {
           console.log(`✅ ${aiName}リサーチが正常に完了しました`);
+          console.log(`📊 検出結果: モデル${scriptResult.models.length}個, 機能${scriptResult.functions ? scriptResult.functions.length : 0}個`);
+          
+          // モデルの詳細表示
+          if (scriptResult.models && scriptResult.models.length > 0) {
+            console.log(`📦 ${aiName}モデル一覧:`);
+            scriptResult.models.forEach((model, i) => {
+              // モデル名から説明を分離（重複問題対応）
+              let modelName = model.name;
+              if (model.description && modelName.includes(model.description)) {
+                modelName = modelName.replace(model.description, '').trim();
+              }
+              console.log(`  ${i+1}. ${modelName}${model.selected ? ' ✅(選択中)' : ''}`);
+              if (model.description) {
+                console.log(`     説明: ${model.description}`);
+              }
+            });
+          }
+          
+          // 機能の詳細表示
+          if (scriptResult.functions && scriptResult.functions.length > 0) {
+            console.log(`🔧 ${aiName}機能一覧:`);
+            scriptResult.functions.forEach((func, i) => {
+              const status = func.enabled ? '✅(有効)' : '❌(無効)';
+              console.log(`  ${i+1}. ${func.name} ${status} [${func.type}]`);
+            });
+          }
+          
+          // 選択されたモデルと有効な機能を簡潔に表示
+          const selectedModel = scriptResult.models.find(m => m.selected);
+          const enabledFunctions = scriptResult.functions ? scriptResult.functions.filter(f => f.enabled) : [];
+          
+          console.log(`✨ ${aiName}設定サマリー:`);
+          if (selectedModel) {
+            let modelName = selectedModel.name;
+            if (selectedModel.description && modelName.includes(selectedModel.description)) {
+              modelName = modelName.replace(selectedModel.description, '').trim();
+            }
+            console.log(`  📱 選択モデル: ${modelName}`);
+          }
+          if (enabledFunctions.length > 0) {
+            console.log(`  🔧 有効機能: ${enabledFunctions.map(f => f.name).join(', ')}`);
+          }
+          if (scriptResult.deepResearch && scriptResult.deepResearch.available) {
+            console.log(`  🚀 DeepResearch: ${scriptResult.deepResearch.activated ? '有効' : '利用可能'}`);
+          }
+          
+          // 変更がある場合は表示
+          if (scriptResult.comparison && scriptResult.comparison.hasChanges) {
+            console.log(`  🔄 変更検出: ${scriptResult.comparison.changes.length}件`);
+            scriptResult.comparison.changes.forEach((change, i) => {
+              console.log(`    ${i+1}. ${change}`);
+            });
+            showChangeNotification(aiName, scriptResult.comparison.changes);
+          }
           
           // ステータスメッセージを作成
           let statusMessage = `${aiName}: ${scriptResult.models.length}モデル`;
@@ -992,22 +1051,13 @@ async function injectAutomationScripts(tabId, aiName) {
           }
           
           updateStatus(statusMessage, "success");
-          
-          // 変更があった場合は通知
-          if (scriptResult.comparison && scriptResult.comparison.hasChanges) {
-            console.log('🔄 変更を検出:', scriptResult.comparison.changes);
-            showChangeNotification(aiName, scriptResult.comparison.changes);
-          }
         } else {
           console.error(`❌ ${aiName}リサーチ失敗:`, scriptResult.error);
           updateStatus(`${aiName}検出エラー: ${scriptResult.error}`, "error");
         }
       } else {
-        console.error(`❌ ${aiName}スクリプト実行失敗:`, result);
+        console.error(`❌ ${aiName}スクリプト実行失敗`);
         console.error('詳細なエラー情報:', JSON.stringify(result, null, 2));
-        if (result && result.length > 0 && result[0]) {
-          console.error('スクリプトエラー詳細:', result[0].error || result[0]);
-        }
         updateStatus(`${aiName}スクリプト実行失敗`, "error");
       }
       
@@ -1016,12 +1066,14 @@ async function injectAutomationScripts(tabId, aiName) {
     
     // Geminiの場合もリサーチ機能を使用
     if (aiName === 'Gemini') {
+      console.log(`🎯 ${aiName}リサーチ処理を開始します`);
       console.log(`🔬 ${aiName}リサーチ機能を注入・実行します`);
       
       // Geminiのリサーチ検出器ファイル
       const researchFile = 'ai-platforms/gemini/gemini-research-detector.js';
       
       // リサーチ検出器を注入
+      console.log(`⚡ スクリプトファイル: ${researchFile}`);
       try {
         await chrome.scripting.executeScript({
           target: { tabId: tabId },
@@ -1034,10 +1086,12 @@ async function injectAutomationScripts(tabId, aiName) {
       }
       
       // 少し待ってから実行
+      console.log(`⏳ スクリプト初期化を待機中...`);
       await new Promise(resolve => setTimeout(resolve, 3000));
       
       // リサーチを実行
       const detectorName = 'GeminiResearchDetector';
+      console.log(`🚀 ${detectorName}を実行します`);
       
       const [result] = await chrome.scripting.executeScript({
         target: { tabId: tabId },
@@ -1159,22 +1213,67 @@ async function injectAutomationScripts(tabId, aiName) {
         args: [aiName, detectorName]
       });
       
-      console.log(`🔍 ${aiName}のスクリプト実行結果:`, result);
+      console.log(`🔍 ${aiName}のスクリプト実行結果:`);
+      console.log('  レスポンス:', result);
       
-      if (result && result.length > 0 && result[0] && result[0].result) {
-        const scriptResult = result[0].result;
+      if (result && result.result) {
+        const scriptResult = result.result;
         if (scriptResult.success) {
           console.log(`✅ ${aiName}検出が正常に完了しました`);
-          console.log(`モデル: ${scriptResult.models.length}個, 機能: ${scriptResult.functions.length}個`);
+          console.log(`📊 検出結果: モデル${scriptResult.models.length}個, 機能${scriptResult.functions.length}個`);
+          
+          // モデルの詳細表示
+          if (scriptResult.models && scriptResult.models.length > 0) {
+            console.log(`📦 ${aiName}モデル一覧:`);
+            scriptResult.models.forEach((model, i) => {
+              const modelName = model.title || model.name;
+              console.log(`  ${i+1}. ${modelName}${model.selected ? ' ✅(選択中)' : ''}`);
+              if (model.description) {
+                console.log(`     説明: ${model.description}`);
+              }
+            });
+          }
+          
+          // 機能の詳細表示
+          if (scriptResult.functions && scriptResult.functions.length > 0) {
+            console.log(`🔧 ${aiName}機能一覧:`);
+            scriptResult.functions.forEach((func, i) => {
+              const status = func.enabled ? '✅(有効)' : '❌(無効)';
+              console.log(`  ${i+1}. ${func.name} ${status} [${func.type}]`);
+            });
+          }
+          
+          // 選択されたモデルと有効な機能を簡潔に表示
+          const selectedModel = scriptResult.models.find(m => m.selected);
+          const enabledFunctions = scriptResult.functions.filter(f => f.enabled);
+          
+          console.log(`✨ ${aiName}設定サマリー:`);
+          if (selectedModel) {
+            console.log(`  📱 選択モデル: ${selectedModel.title || selectedModel.name}`);
+          }
+          if (enabledFunctions.length > 0) {
+            console.log(`  🔧 有効機能: ${enabledFunctions.map(f => f.name).join(', ')}`);
+          }
+          if (scriptResult.deepThink && scriptResult.deepThink.available) {
+            console.log(`  🚀 Deep Think: ${scriptResult.deepThink.activated ? '✅有効' : '⚪利用可能(未有効)'}`);
+          }
+          if (scriptResult.deepResearch && scriptResult.deepResearch.available) {
+            console.log(`  🚀 Deep Research: ${scriptResult.deepResearch.activated ? '✅有効' : '⚪利用可能(未有効)'}`);
+          }
+          
+          // 変更がある場合は表示
+          if (scriptResult.comparison && scriptResult.comparison.hasChanges) {
+            console.log(`  🔄 変更検出: ${scriptResult.comparison.changes.length}件`);
+            scriptResult.comparison.changes.forEach((change, i) => {
+              console.log(`    ${i+1}. ${change}`);
+            });
+          }
         } else {
           console.error(`❌ ${aiName}検出エラー:`, scriptResult.error);
         }
       } else {
-        console.error(`❌ ${aiName}スクリプト実行失敗:`, result);
+        console.error(`❌ ${aiName}スクリプト実行失敗`);
         console.error('詳細なエラー情報:', JSON.stringify(result, null, 2));
-        if (result && result.length > 0 && result[0]) {
-          console.error('スクリプトエラー詳細:', result[0].error || result[0]);
-        }
         updateStatus(`${aiName}スクリプト実行失敗`, "error");
       }
       
@@ -1183,12 +1282,14 @@ async function injectAutomationScripts(tabId, aiName) {
     
     // ChatGPT用の新しいリサーチ機能
     if (aiName === 'ChatGPT') {
+      console.log(`🎯 ${aiName}リサーチ処理を開始します`);
       console.log(`🔬 ${aiName}リサーチ機能を注入・実行します`);
       
       // ChatGPTのリサーチ検出器ファイル
       const researchFile = 'ai-platforms/chatgpt/chatgpt-research-detector.js';
       
       // リサーチ検出器を注入
+      console.log(`⚡ スクリプトファイル: ${researchFile}`);
       try {
         await chrome.scripting.executeScript({
           target: { tabId: tabId },
@@ -1201,10 +1302,12 @@ async function injectAutomationScripts(tabId, aiName) {
       }
       
       // 少し待ってから実行
+      console.log(`⏳ スクリプト初期化を待機中...`);
       await new Promise(resolve => setTimeout(resolve, 3000));
       
       // リサーチを実行
       const detectorName = 'ChatGPTResearchDetector';
+      console.log(`🚀 ${detectorName}を実行します`);
       
       const [result] = await chrome.scripting.executeScript({
         target: { tabId: tabId },
@@ -1224,34 +1327,17 @@ async function injectAutomationScripts(tabId, aiName) {
             if (researchResult.success) {
               console.log(`✅ ${aiName}リサーチ完了`);
               console.log('検出されたモデル数:', researchResult.data.models.length);
-              console.log('検出されたメイン機能数:', researchResult.data.features.main.length);
-              console.log('検出された追加機能数:', researchResult.data.features.additional.length);
+              console.log('検出された機能数:', researchResult.data.features.length);
               console.log('Deep Research利用可能:', researchResult.data.deepResearch.available);
               console.log('エージェントモード利用可能:', researchResult.data.agentMode.available);
               
-              // ChatGPTの機能をフラット化（UIが期待する形式に変換）
-              const functionsList = [];
-              
-              // メイン機能を追加
-              researchResult.data.features.main.forEach(f => {
-                functionsList.push({
-                  name: f.name,
-                  type: f.type || 'main',
-                  enabled: f.enabled,
-                  connected: true,  // ChatGPTの機能はデフォルトで接続済み
-                  element: f.element
-                });
-              });
-              
-              // 追加機能を追加
-              researchResult.data.features.additional.forEach(f => {
-                functionsList.push({
-                  name: f.name,
-                  type: f.type || 'additional',
-                  enabled: f.enabled || false,
-                  connected: true  // ChatGPTの機能はデフォルトで接続済み
-                });
-              });
+              // ChatGPTの機能をUIが期待する形式に変換
+              const functionsList = researchResult.data.features.map(f => ({
+                name: f,
+                type: 'function',
+                enabled: true,
+                connected: true
+              }));
               
               // Deep Researchが利用可能な場合は機能リストに追加
               if (researchResult.data.deepResearch && researchResult.data.deepResearch.available) {
@@ -1283,9 +1369,9 @@ async function injectAutomationScripts(tabId, aiName) {
               const config = {
                 chatgpt: {
                   models: researchResult.data.models.map(m => ({
-                    name: m.name,
-                    selected: m.selected,
-                    additional: m.additional || false
+                    name: m,
+                    selected: false,  // フラット化されたデータでは選択状態が分からない
+                    additional: false
                   })),
                   functions: functionsList,  // フラット化された機能リスト
                   deepResearch: researchResult.data.deepResearch,
@@ -1323,22 +1409,67 @@ async function injectAutomationScripts(tabId, aiName) {
         args: [aiName, detectorName]
       });
       
-      console.log(`🔍 ${aiName}のスクリプト実行結果:`, result);
+      console.log(`🔍 ${aiName}のスクリプト実行結果:`);
+      console.log('  レスポンス:', result);
       
-      if (result && result.length > 0 && result[0] && result[0].result) {
-        const scriptResult = result[0].result;
+      if (result && result.result) {
+        const scriptResult = result.result;
         if (scriptResult.success) {
           console.log(`✅ ${aiName}検出が正常に完了しました`);
-          console.log(`モデル: ${scriptResult.models.length}個, 機能: ${scriptResult.functions.length}個`);
+          console.log(`📊 検出結果: モデル${scriptResult.models.length}個, 機能${scriptResult.functions.length}個`);
+          
+          // モデルの詳細表示
+          if (scriptResult.models && scriptResult.models.length > 0) {
+            console.log(`📦 ${aiName}モデル一覧:`);
+            scriptResult.models.forEach((model, i) => {
+              const modelName = model.title || model.name;
+              console.log(`  ${i+1}. ${modelName}${model.selected ? ' ✅(選択中)' : ''}`);
+              if (model.description) {
+                console.log(`     説明: ${model.description}`);
+              }
+            });
+          }
+          
+          // 機能の詳細表示
+          if (scriptResult.functions && scriptResult.functions.length > 0) {
+            console.log(`🔧 ${aiName}機能一覧:`);
+            scriptResult.functions.forEach((func, i) => {
+              const status = func.enabled ? '✅(有効)' : '❌(無効)';
+              console.log(`  ${i+1}. ${func.name} ${status} [${func.type}]`);
+            });
+          }
+          
+          // 選択されたモデルと有効な機能を簡潔に表示
+          const selectedModel = scriptResult.models.find(m => m.selected);
+          const enabledFunctions = scriptResult.functions.filter(f => f.enabled);
+          
+          console.log(`✨ ${aiName}設定サマリー:`);
+          if (selectedModel) {
+            console.log(`  📱 選択モデル: ${selectedModel.title || selectedModel.name}`);
+          }
+          if (enabledFunctions.length > 0) {
+            console.log(`  🔧 有効機能: ${enabledFunctions.map(f => f.name).join(', ')}`);
+          }
+          if (scriptResult.deepThink && scriptResult.deepThink.available) {
+            console.log(`  🚀 Deep Think: ${scriptResult.deepThink.activated ? '✅有効' : '⚪利用可能(未有効)'}`);
+          }
+          if (scriptResult.deepResearch && scriptResult.deepResearch.available) {
+            console.log(`  🚀 Deep Research: ${scriptResult.deepResearch.activated ? '✅有効' : '⚪利用可能(未有効)'}`);
+          }
+          
+          // 変更がある場合は表示
+          if (scriptResult.comparison && scriptResult.comparison.hasChanges) {
+            console.log(`  🔄 変更検出: ${scriptResult.comparison.changes.length}件`);
+            scriptResult.comparison.changes.forEach((change, i) => {
+              console.log(`    ${i+1}. ${change}`);
+            });
+          }
         } else {
           console.error(`❌ ${aiName}検出エラー:`, scriptResult.error);
         }
       } else {
-        console.error(`❌ ${aiName}スクリプト実行失敗:`, result);
+        console.error(`❌ ${aiName}スクリプト実行失敗`);
         console.error('詳細なエラー情報:', JSON.stringify(result, null, 2));
-        if (result && result.length > 0 && result[0]) {
-          console.error('スクリプトエラー詳細:', result[0].error || result[0]);
-        }
         updateStatus(`${aiName}スクリプト実行失敗`, "error");
       }
       

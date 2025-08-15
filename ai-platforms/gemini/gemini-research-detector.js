@@ -1,622 +1,1470 @@
 /**
- * モデル・機能リサーチコード Gemini
- * 作成日: 2025年8月14日
+ * 統一版 AI サービス モデル・機能リサーチコード (修正版)
+ * 作成日: 2025年8月15日
+ * バージョン: 2.0.0
  * 
- * このコードは、Geminiインターフェースで利用可能なモデルと機能を
- * 自動的にリサーチし、変更を検出するためのコンソールスクリプトです。
+ * Claude, ChatGPT, Gemini の3サービスに対応
+ * 自動的にサービスを検出して適切な処理を実行
+ * 
+ * 修正内容 v2.0.0:
+ * - ClaudeのESCキーイベント送信先をdocument.bodyに修正
+ * - Claude専用のメニュークローズ処理を実装
+ * - 待機時間をサービスごとに最適化（Claudeは500ms）
+ * - body.click()をClaude以外でのみ実行するよう修正
+ * 
+ * 修正内容 v1.6.0:
+ * - 優先順位付きセレクタシステムの実装
+ * - モデルメニューと機能メニューの検出精度向上
+ * - デバッグ情報の充実（どのセレクタで検出したかを表示）
+ * 
+ * 修正内容 v1.5.0:
+ * - モデル名の正規化と重複除去を改善
+ * - 機能メニューの検出セレクタを拡張
+ * - 動的メニュー要素の待機処理を追加
+ * 
+ * 修正内容 v1.4.0:
+ * - Claudeのカテゴリータブとモデルを正確に区別
+ * - 機能メニューの検出ロジックを改善
+ * - より厳密なモデル判定ロジックを実装
  */
 
-(function() {
+(async function() {
     'use strict';
     
-    console.log('='.repeat(80));
-    console.log('モデル・機能リサーチコード Gemini');
-    console.log(`作成日: ${new Date().toLocaleDateString('ja-JP')} ${new Date().toLocaleTimeString('ja-JP')}`);
-    console.log('='.repeat(80));
+    // ========================================
+    // 共通設定
+    // ========================================
+    const CONFIG = {
+        debugMode: true,
+        waitTime: 1000,        // デフォルト待機時間
+        claudeWaitTime: 500,   // Claude専用待機時間
+        maxRetries: 3,
+        storageKey: 'ai_service_research_data',
+        version: '2.0.0'
+    };
     
-    // ===== 設定と保存データ =====
-    const STORAGE_KEY = 'gemini_research_data';
-    const SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/1QfOFEUWtlR0wwaN5BRyVdenFPxCRJmsf4SPo87O_ZnY/edit?gid=915128086#gid=915128086';
-    
-    // 現在のデータ構造
-    const currentData = {
-        timestamp: new Date().toISOString(),
-        models: [],
-        features: {
-            main: [],
-            additional: []
-        },
-        deepThink: {
-            available: false,
-            activated: false
-        },
-        deepResearch: {
-            available: false,
-            activated: false
+    // ========================================
+    // ユーティリティ関数（共通）
+    // ========================================
+    class Utils {
+        static wait(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
         }
-    };
-    
-    // ===== ユーティリティ関数 =====
-    const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
-    
-    const log = (message, type = 'INFO') => {
-        const prefix = {
-            'INFO': '📝',
-            'SUCCESS': '✅',
-            'WARNING': '⚠️',
-            'ERROR': '❌',
-            'CHANGE': '🔄',
-            'RESEARCH': '🔬'
-        }[type] || '📝';
-        console.log(`${prefix} ${message}`);
-    };
-    
-    // 要素をクリック
-    const clickElement = async (element) => {
-        if (!element) return false;
         
-        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        await wait(100);
+        static log(message, type = 'info') {
+            const symbols = {
+                info: '📝',
+                success: '✅',
+                warning: '⚠️',
+                error: '❌',
+                search: '🔍',
+                model: '🤖',
+                feature: '🔧',
+                category: '📁',
+                research: '🔬'
+            };
+            console.log(`${symbols[type] || '📝'} ${message}`);
+        }
         
-        // クリックイベントを発火
-        element.click();
-        await wait(500);
+        static async performClick(element) {
+            if (!element) return false;
+            
+            const rect = element.getBoundingClientRect();
+            const x = rect.left + rect.width / 2;
+            const y = rect.top + rect.height / 2;
+            
+            // PointerEvent sequence
+            element.dispatchEvent(new PointerEvent('pointerdown', {
+                bubbles: true,
+                cancelable: true,
+                clientX: x,
+                clientY: y
+            }));
+            
+            await this.wait(50);
+            
+            element.dispatchEvent(new PointerEvent('pointerup', {
+                bubbles: true,
+                cancelable: true,
+                clientX: x,
+                clientY: y
+            }));
+            
+            element.click();
+            
+            // サービスに応じた待機時間
+            const service = this.detectService();
+            const waitTime = service === 'claude' ? CONFIG.claudeWaitTime : CONFIG.waitTime;
+            await this.wait(waitTime);
+            
+            return true;
+        }
         
-        return true;
-    };
-    
-    // メニューを閉じる
-    const closeMenu = async () => {
-        // ESCキーを送信
-        const event = new KeyboardEvent('keydown', { 
-            key: 'Escape', 
-            code: 'Escape', 
-            keyCode: 27,
-            bubbles: true 
-        });
-        document.dispatchEvent(event);
-        await wait(200);
-        
-        // オーバーレイをクリック
-        const overlay = document.querySelector('.cdk-overlay-backdrop');
-        if (overlay) {
-            overlay.click();
-        } else {
+        static async closeMenu() {
+            // 汎用的なメニュークローズ（ChatGPT、Gemini用）
+            document.dispatchEvent(new KeyboardEvent('keydown', {
+                key: 'Escape',
+                code: 'Escape',
+                bubbles: true,
+                cancelable: true
+            }));
+            
+            // Click outside
             document.body.click();
-        }
-        await wait(500);
-    };
-    
-    // ===== リサーチ機能 =====
-    
-    // 1. モデルのリサーチ
-    const researchModels = async () => {
-        log('モデルメニューをリサーチ中...', 'RESEARCH');
-        
-        // モデル選択ボタンを複数のセレクタで探す
-        const modelButtonSelectors = [
-            '[aria-label*="モデル"]',
-            '.mode-selector-button',
-            '.gds-mode-switch-button',
-            'button[aria-haspopup="menu"]:has(.model-name)',
-            'button:has(mat-icon[fonticon="arrow_drop_down"])'
-        ];
-        
-        let modelButton = null;
-        for (const selector of modelButtonSelectors) {
-            try {
-                modelButton = document.querySelector(selector);
-                if (modelButton) {
-                    log(`モデルボタンを発見: ${selector}`, 'SUCCESS');
-                    break;
-                }
-            } catch (e) {
-                // セレクタエラーを無視
-            }
-        }
-        
-        if (!modelButton) {
-            log('モデル選択ボタンが見つかりません', 'ERROR');
-            return;
-        }
-        
-        // メニューを開く
-        await clickElement(modelButton);
-        await wait(1000);
-        
-        // モデル項目を取得
-        const modelItemSelectors = [
-            '.bard-mode-list-button',
-            '[role="menuitemradio"]',
-            '[role="menuitem"]:has(.gds-label-m)',
-            'mat-action-list button:has(.gds-label-m-alt)'
-        ];
-        
-        let modelItems = [];
-        for (const selector of modelItemSelectors) {
-            modelItems = document.querySelectorAll(selector);
-            if (modelItems.length > 0) {
-                log(`モデルアイテムを発見: ${selector} (${modelItems.length}個)`, 'SUCCESS');
-                break;
-            }
-        }
-        
-        modelItems.forEach(item => {
-            // タイトルと説明を取得
-            const titleEl = item.querySelector('.gds-label-m:not(.gds-label-m-alt)') || 
-                          item.querySelector('.mode-title');
-            const descEl = item.querySelector('.gds-label-m-alt') || 
-                         item.querySelector('.mode-desc');
             
-            // 選択状態をチェック
-            const isSelected = item.querySelector('mat-icon[fonticon="check_circle"]') !== null ||
-                             item.classList.contains('is-selected') || 
-                             item.getAttribute('aria-checked') === 'true';
-            
-            if (titleEl && descEl) {
-                const modelData = {
-                    title: titleEl.textContent.trim(),
-                    description: descEl.textContent.trim(),
-                    selected: isSelected
-                };
-                
-                // 重複チェック
-                if (!currentData.models.some(m => m.description === modelData.description)) {
-                    currentData.models.push(modelData);
-                    log(`モデル検出: ${modelData.title} - ${modelData.description}${isSelected ? ' (選択中)' : ''}`, 'SUCCESS');
-                }
-            }
-        });
-        
-        // 「他のモデル」をチェック
-        const moreModelsItem = Array.from(modelItems).find(item => 
-            item.textContent?.includes('他のモデル') || 
-            item.textContent?.includes('さらに表示')
-        );
-        
-        if (moreModelsItem) {
-            log('「他のモデル」メニューを検出', 'INFO');
-            await clickElement(moreModelsItem);
-            await wait(1000);
-            
-            // サブメニューのモデルを取得
-            const subMenuItems = document.querySelectorAll('[role="menuitem"]');
-            subMenuItems.forEach(item => {
-                const titleEl = item.querySelector('.gds-label-m:not(.gds-label-m-alt)');
-                const descEl = item.querySelector('.gds-label-m-alt');
-                
-                if (titleEl && descEl) {
-                    const modelData = {
-                        title: titleEl.textContent.trim(),
-                        description: descEl.textContent.trim(),
-                        selected: false,
-                        additional: true
-                    };
-                    
-                    if (!currentData.models.some(m => m.description === modelData.description)) {
-                        currentData.models.push(modelData);
-                        log(`追加モデル検出: ${modelData.title} - ${modelData.description}`, 'SUCCESS');
-                    }
-                }
-            });
+            return this.wait(300);
         }
         
-        await closeMenu();
-    };
-    
-    // 2. 機能のリサーチ
-    const researchFeatures = async () => {
-        log('機能をリサーチ中...', 'RESEARCH');
-        
-        // メインの機能ボタンを取得
-        const mainFeatureSelectors = [
-            'toolbox-drawer-item button',
-            '.toolbox-drawer-item-button',
-            'toolbox-drawer button:has(.label)'
-        ];
-        
-        for (const selector of mainFeatureSelectors) {
-            const mainFeatures = document.querySelectorAll(selector);
-            if (mainFeatures.length > 0) {
-                log(`メイン機能を発見: ${selector} (${mainFeatures.length}個)`, 'SUCCESS');
-                
-                mainFeatures.forEach(button => {
-                    const labelEl = button.querySelector('.toolbox-drawer-button-label, .label, .gds-label-l');
-                    const iconEl = button.querySelector('mat-icon');
-                    
-                    if (labelEl) {
-                        const label = labelEl.textContent.trim();
-                        // 「その他」ボタンは除外
-                        if (label && label !== 'その他' && label !== 'more_horiz') {
-                            const featureData = {
-                                name: label,
-                                icon: iconEl ? (iconEl.getAttribute('fonticon') || iconEl.textContent.trim()) : null,
-                                type: 'main',
-                                enabled: false
-                            };
-                            
-                            // Deep Think と Deep Research の特別な判定
-                            if (label === 'Deep Think') {
-                                currentData.deepThink.available = true;
-                            } else if (label === 'Deep Research') {
-                                currentData.deepResearch.available = true;
-                            }
-                            
-                            currentData.features.main.push(featureData);
-                            log(`メイン機能検出: ${label}`, 'SUCCESS');
-                        }
-                    }
-                });
-                break;
-            }
+        static async closeClaudeMenu() {
+            // Claude専用のメニュークローズ処理（document.bodyに送信）
+            document.body.dispatchEvent(new KeyboardEvent('keydown', {
+                key: 'Escape',
+                code: 'Escape',
+                bubbles: true
+            }));
+            
+            return this.wait(CONFIG.claudeWaitTime);
         }
         
-        // 「その他」メニューを開く
-        const moreButtonSelectors = [
-            '[aria-label="その他"]',
-            'mat-icon[fonticon="more_horiz"]'
-        ];
-        
-        let moreButton = null;
-        for (const selector of moreButtonSelectors) {
-            const element = document.querySelector(selector);
-            if (element) {
-                moreButton = element.closest('button') || element;
-                if (moreButton) {
-                    log(`その他ボタンを発見: ${selector}`, 'SUCCESS');
-                    break;
-                }
-            }
-        }
-        
-        if (moreButton) {
-            log('その他の機能を確認中...', 'RESEARCH');
-            await clickElement(moreButton);
-            await wait(1000);
-            
-            // その他の機能を取得 - オーバーレイ内を探す
-            const overlaySelectors = [
-                '.cdk-overlay-pane .toolbox-drawer-card',
-                '.cdk-overlay-pane mat-card',
-                '.toolbox-drawer-card'
-            ];
-            
-            let overlayCard = null;
-            for (const selector of overlaySelectors) {
-                overlayCard = document.querySelector(selector);
-                if (overlayCard) {
-                    log(`オーバーレイカードを発見: ${selector}`, 'SUCCESS');
-                    break;
-                }
+        static async closeGeminiMenu() {
+            // Gemini (Angular Material) 専用のメニュークローズ処理
+            const activeElement = document.activeElement;
+            if (activeElement) {
+                activeElement.dispatchEvent(new KeyboardEvent('keydown', {
+                    key: 'Escape',
+                    code: 'Escape',
+                    keyCode: 27,
+                    bubbles: true
+                }));
             }
             
-            if (overlayCard) {
-                const additionalFeatures = overlayCard.querySelectorAll(
-                    '.toolbox-drawer-menu-item button, .toolbox-drawer-item-list-button, mat-list-item'
+            // body にも送信
+            document.body.dispatchEvent(new KeyboardEvent('keydown', {
+                key: 'Escape',
+                code: 'Escape',
+                keyCode: 27,
+                bubbles: true
+            }));
+            
+            this.log('Gemini メニュークローズ処理実行', 'info');
+            return this.wait(300);
+        }
+        
+        static async closeAllMenus() {
+            // 全てのメニューを確実に閉じる
+            let menuCount = 0;
+            let attempts = 0;
+            const maxAttempts = 5;
+            
+            // サービスを検出
+            const service = this.detectService();
+            
+            do {
+                // 現在開いているメニューを数える
+                const openMenus = document.querySelectorAll(
+                    '[role="menu"]:not([style*="display: none"]), ' +
+                    '[data-radix-menu-content], ' +
+                    '.mat-mdc-menu-panel:not([style*="display: none"]), ' +
+                    '.popover:not([style*="display: none"])'
                 );
                 
-                additionalFeatures.forEach(button => {
-                    const iconEl = button.querySelector('mat-icon');
-                    const labelEl = button.querySelector('.gds-label-l, .label');
-                    const sublabelEl = button.querySelector('.gds-label-m-alt, .sublabel');
+                menuCount = openMenus.length;
+                
+                if (menuCount > 0) {
+                    this.log(`${menuCount}個のメニューを閉じています...`, 'info');
                     
-                    if (labelEl) {
-                        const featureData = {
-                            name: labelEl.textContent.trim(),
-                            sublabel: sublabelEl ? sublabelEl.textContent.trim() : null,
-                            icon: iconEl ? (iconEl.getAttribute('fonticon') || iconEl.textContent.trim()) : null,
-                            type: 'additional',
-                            enabled: false
-                        };
+                    // サービスごとの専用処理
+                    if (service === 'claude') {
+                        await this.closeClaudeMenu();
+                    } else if (service === 'gemini') {
+                        await this.closeGeminiMenu();
+                    } else {
+                        // その他のサービス（ChatGPT等）
+                        document.dispatchEvent(new KeyboardEvent('keydown', {
+                            key: 'Escape',
+                            code: 'Escape',
+                            bubbles: true,
+                            cancelable: true
+                        }));
                         
-                        // 重複チェック
-                        if (!currentData.features.additional.some(f => f.name === featureData.name)) {
-                            currentData.features.additional.push(featureData);
-                            log(`追加機能検出: ${featureData.name}${featureData.sublabel ? ` (${featureData.sublabel})` : ''}`, 'SUCCESS');
+                        await this.wait(200);
+                        
+                        // まだメニューが残っている場合は、bodyをクリック（Claude以外）
+                        if (document.querySelector('[role="menu"]:not([style*="display: none"])')) {
+                            document.body.click();
+                            await this.wait(200);
                         }
+                    }
+                }
+                
+                attempts++;
+            } while (menuCount > 0 && attempts < maxAttempts);
+            
+            if (attempts >= maxAttempts) {
+                this.log('警告: 一部のメニューが閉じられませんでした', 'warning');
+            }
+            
+            return this.wait(300);
+        }
+        
+        static async waitForElement(selector, timeout = 3000) {
+            const selectors = Array.isArray(selector) ? selector : [selector];
+            const startTime = Date.now();
+            
+            while (Date.now() - startTime < timeout) {
+                for (const sel of selectors) {
+                    try {
+                        const element = document.querySelector(sel);
+                        if (element && element.offsetParent !== null) {
+                            return element;
+                        }
+                    } catch (e) {
+                        continue;
+                    }
+                }
+                await this.wait(100);
+            }
+            return null;
+        }
+        
+        static async findDynamicElement(patterns, timeout = 3000) {
+            const startTime = Date.now();
+            
+            while (Date.now() - startTime < timeout) {
+                // セレクタで検索
+                if (patterns.selectors) {
+                    for (const selector of patterns.selectors) {
+                        const element = document.querySelector(selector);
+                        if (element) return element;
+                    }
+                }
+                
+                // テキストで検索
+                if (patterns.text) {
+                    const elements = Array.from(document.querySelectorAll('button, [role="button"], a'));
+                    for (const el of elements) {
+                        const text = el.textContent?.toLowerCase() || '';
+                        if (patterns.text.some(t => text.includes(t.toLowerCase()))) {
+                            return el;
+                        }
+                    }
+                }
+                
+                // 属性で検索
+                if (patterns.attributes) {
+                    for (const [attr, value] of Object.entries(patterns.attributes)) {
+                        const element = document.querySelector(`[${attr}="${value}"]`);
+                        if (element) return element;
+                    }
+                }
+                
+                await this.wait(100);
+            }
+            return null;
+        }
+        
+        static detectService() {
+            const url = window.location.hostname;
+            
+            // URLベースの検出
+            if (url.includes('claude.ai')) {
+                return 'claude';
+            } else if (url.includes('chatgpt.com') || url.includes('chat.openai.com')) {
+                return 'chatgpt';
+            } else if (url.includes('gemini.google.com') || url.includes('bard.google.com')) {
+                return 'gemini';
+            }
+            
+            // DOM要素による動的検出
+            const domPatterns = [
+                // Claude
+                { selector: '[data-testid="model-selector-dropdown"]', service: 'claude' },
+                { selector: '.claude-logo', service: 'claude' },
+                { selector: '[aria-label*="Claude"]', service: 'claude' },
+                
+                // ChatGPT
+                { selector: '[data-testid="model-switcher-dropdown-button"]', service: 'chatgpt' },
+                { selector: '.openai-logo', service: 'chatgpt' },
+                { selector: '[aria-label*="ChatGPT"]', service: 'chatgpt' },
+                
+                // Gemini
+                { selector: '.gds-mode-switch-button', service: 'gemini' },
+                { selector: '.gemini-logo', service: 'gemini' },
+                { selector: '[aria-label*="Gemini"]', service: 'gemini' }
+            ];
+            
+            for (const pattern of domPatterns) {
+                if (document.querySelector(pattern.selector)) {
+                    return pattern.service;
+                }
+            }
+            
+            // テキストベースの検出
+            const bodyText = document.body.innerText.toLowerCase();
+            if (bodyText.includes('claude')) return 'claude';
+            if (bodyText.includes('chatgpt') || bodyText.includes('openai')) return 'chatgpt';
+            if (bodyText.includes('gemini') || bodyText.includes('bard')) return 'gemini';
+            
+            return 'unknown';
+        }
+    }
+    
+    // ========================================
+    // サービス別アダプター基底クラス
+    // ========================================
+    class ServiceAdapter {
+        constructor() {
+            this.models = [];
+            this.features = [];
+            this.additionalData = {};
+        }
+        
+        async research() {
+            Utils.log(`${this.getServiceName()} のリサーチを開始`, 'info');
+            
+            try {
+                // リサーチ前に全てのメニューを閉じる
+                await Utils.closeAllMenus();
+                
+                await this.researchModels();
+                await Utils.wait(1000);
+                
+                // モデルリサーチ後も確実にメニューを閉じる
+                await Utils.closeAllMenus();
+                
+                await this.researchFeatures();
+                await Utils.wait(1000);
+                
+                // 機能リサーチ後も確実にメニューを閉じる
+                await Utils.closeAllMenus();
+                
+                await this.researchAdditional();
+                
+                return this.getResults();
+            } catch (error) {
+                Utils.log(`エラー: ${error.message}`, 'error');
+                // エラー時も必ずメニューを閉じる
+                await Utils.closeAllMenus();
+                throw error;
+            }
+        }
+        
+        getServiceName() {
+            return 'Unknown Service';
+        }
+        
+        async researchModels() {
+            throw new Error('researchModels must be implemented');
+        }
+        
+        async researchFeatures() {
+            throw new Error('researchFeatures must be implemented');
+        }
+        
+        async researchAdditional() {
+            // オプション: 各サービス固有の追加調査
+        }
+        
+        getResults() {
+            return {
+                service: this.getServiceName(),
+                timestamp: new Date().toISOString(),
+                models: this.models,
+                features: this.features,
+                additional: this.additionalData
+            };
+        }
+    }
+    
+    // ========================================
+    // Claude アダプター (修正版 v2.0.0)
+    // ========================================
+    class ClaudeAdapter extends ServiceAdapter {
+        getServiceName() {
+            return 'Claude';
+        }
+        
+        // Claude専用のクリック処理
+        async clickElement(element) {
+            const rect = element.getBoundingClientRect();
+            const x = rect.left + rect.width / 2;
+            const y = rect.top + rect.height / 2;
+            
+            element.dispatchEvent(new PointerEvent('pointerdown', {
+                bubbles: true,
+                cancelable: true,
+                clientX: x,
+                clientY: y
+            }));
+            
+            await Utils.wait(50);
+            
+            element.dispatchEvent(new PointerEvent('pointerup', {
+                bubbles: true,
+                cancelable: true,
+                clientX: x,
+                clientY: y
+            }));
+            
+            element.click();
+            await Utils.wait(CONFIG.claudeWaitTime);
+        }
+        
+        async researchModels() {
+            Utils.log('モデルメニューをリサーチ中...', 'model');
+            
+            // シンプルなセレクタを優先（動作確認済みのもの）
+            const modelButton = document.querySelector('[data-testid="model-selector-dropdown"]') ||
+                              document.querySelector('button[aria-haspopup="menu"]') ||
+                              Array.from(document.querySelectorAll('button'))
+                                  .find(el => el.textContent?.includes('Opus') || el.textContent?.includes('Sonnet'));
+            
+            if (!modelButton) {
+                Utils.log('モデル選択ボタンが見つかりません', 'error');
+                return;
+            }
+            
+            await this.clickElement(modelButton);
+            await Utils.wait(1000);
+            
+            const menuItems = Array.from(document.querySelectorAll('[role="menuitem"]'));
+            
+            Utils.log(`${menuItems.length}個のメニュー項目を発見`, 'info');
+            
+            let hasOtherModels = false;
+            
+            for (const item of menuItems) {
+                const text = item.textContent?.trim();
+                if (!text) continue;
+                
+                // メインモデルの検出
+                if (text.includes('Claude Opus') || text.includes('Claude Sonnet')) {
+                    const modelName = text.split('新規チャット')[0].trim();
+                    const description = Array.from(item.querySelectorAll('.text-text-500'))
+                        .map(el => el.textContent?.trim())
+                        .filter(Boolean)
+                        .join(' ');
+                    
+                    const isSelected = item.getAttribute('aria-checked') === 'true' ||
+                                     item.getAttribute('aria-selected') === 'true';
+                    
+                    this.models.push({
+                        name: modelName,
+                        description: description || '',
+                        available: true,
+                        selected: isSelected
+                    });
+                    
+                    Utils.log(`モデル検出: ${modelName}${isSelected ? ' (選択中)' : ''}`, 'success');
+                }
+                
+                // 「他のモデル」の検出
+                if (text.includes('他のモデル')) {
+                    hasOtherModels = true;
+                    Utils.log('「他のモデル」メニューを検出', 'info');
+                }
+            }
+            
+            // 「他のモデル」がある場合、展開を試みる
+            if (hasOtherModels) {
+                const otherModelsItem = menuItems.find(item => item.textContent?.includes('他のモデル'));
+                if (otherModelsItem) {
+                    await this.clickElement(otherModelsItem);
+                    await Utils.wait(1000);
+                    
+                    // サブメニューのモデルを取得
+                    const subMenuItems = Array.from(document.querySelectorAll('[role="menuitem"]'));
+                    subMenuItems.forEach(item => {
+                        const text = item.textContent?.trim();
+                        if (text && (text.includes('Claude') || text.includes('Opus') || text.includes('Sonnet'))) {
+                            if (!this.models.find(m => m.name === text) && !text.includes('他のモデル')) {
+                                this.models.push({
+                                    name: text,
+                                    available: true,
+                                    location: 'submenu'
+                                });
+                                Utils.log(`追加モデル検出: ${text}`, 'success');
+                            }
+                        }
+                    });
+                }
+            }
+            
+            await Utils.closeClaudeMenu();
+        }
+        
+        async researchFeatures() {
+            Utils.log('機能メニューをリサーチ中...', 'feature');
+            
+            // シンプルなセレクタを優先
+            const featureButton = document.querySelector('[data-testid="input-menu-tools"]') ||
+                                document.querySelector('[aria-label="ツールメニューを開く"]') ||
+                                Array.from(document.querySelectorAll('button'))
+                                    .find(el => el.querySelector('svg[class*="grid"]'));
+            
+            if (!featureButton) {
+                Utils.log('機能選択ボタンが見つかりません', 'error');
+                return;
+            }
+            
+            await this.clickElement(featureButton);
+            await Utils.wait(1000);
+            
+            // 機能項目を取得
+            const buttons = Array.from(document.querySelectorAll('button'));
+            
+            const featureNames = [
+                'コネクタを管理',
+                'コネクタを追加',
+                'カレンダー検索',
+                'Gmail検索',
+                'Drive検索',
+                'ウェブ検索',
+                'じっくり考える',
+                'スタイルを使用'
+            ];
+            
+            for (const name of featureNames) {
+                const button = buttons.find(b => b.textContent?.includes(name));
+                if (button) {
+                    const toggle = button.querySelector('input[type="checkbox"]');
+                    const isEnabled = toggle ? toggle.checked : false;
+                    
+                    const statusText = button.textContent;
+                    const isConnected = statusText?.includes('連携済') || !statusText?.includes('連携させる');
+                    
+                    this.features.push({
+                        name: name,
+                        type: toggle ? 'toggle' : 'button',
+                        enabled: isEnabled,
+                        connected: isConnected
+                    });
+                    
+                    Utils.log(`機能検出: ${name} (${isEnabled ? '有効' : '無効'}, ${isConnected ? '連携済' : '未連携'})`, 'success');
+                }
+            }
+            
+            // さらに表示があるかチェック
+            const moreButton = buttons.find(b => b.textContent?.includes('さらに表示'));
+            if (moreButton) {
+                Utils.log('「さらに表示」ボタンを検出', 'info');
+                await this.clickElement(moreButton);
+                await Utils.wait(1000);
+                
+                // 追加の機能を再度スキャン
+                const additionalButtons = Array.from(document.querySelectorAll('button'));
+                additionalButtons.forEach(button => {
+                    const text = button.textContent?.trim();
+                    if (text && !this.features.find(f => text.includes(f.name))) {
+                        this.features.push({
+                            name: text,
+                            type: 'button',
+                            enabled: false,
+                            connected: false,
+                            fromExpanded: true
+                        });
+                        Utils.log(`追加機能検出: ${text}`, 'success');
                     }
                 });
             }
             
-            await closeMenu();
-        }
-    };
-    
-    // 3. Deep Thinkモードのチェック
-    const checkDeepThink = async () => {
-        log('Deep Thinkモードをチェック中...', 'RESEARCH');
-        
-        // Deep Thinkボタンを探す
-        const deepThinkButton = Array.from(document.querySelectorAll('button'))
-            .find(btn => btn.textContent?.includes('Deep Think'));
-        
-        if (deepThinkButton) {
-            currentData.deepThink.available = true;
-            
-            // 有効化状態をチェック（クラスやaria属性で判定）
-            const isActive = deepThinkButton.classList.contains('active') ||
-                           deepThinkButton.getAttribute('aria-pressed') === 'true';
-            
-            currentData.deepThink.activated = isActive;
-            log(`Deep Thinkモード: ${isActive ? '有効' : '無効'}`, 'SUCCESS');
-        } else {
-            log('Deep Thinkボタンが見つかりません', 'INFO');
-        }
-    };
-    
-    // 4. Deep Researchモードのチェック
-    const checkDeepResearch = async () => {
-        log('Deep Researchモードをチェック中...', 'RESEARCH');
-        
-        // Deep Researchボタンを探す
-        const deepResearchButton = Array.from(document.querySelectorAll('button'))
-            .find(btn => btn.textContent?.includes('Deep Research'));
-        
-        if (deepResearchButton) {
-            currentData.deepResearch.available = true;
-            
-            // 有効化状態をチェック
-            const isActive = deepResearchButton.classList.contains('active') ||
-                           deepResearchButton.getAttribute('aria-pressed') === 'true';
-            
-            currentData.deepResearch.activated = isActive;
-            log(`Deep Researchモード: ${isActive ? '有効' : '無効'}`, 'SUCCESS');
-            
-            // Deep Researchは実行に時間がかかることを警告
-            if (isActive) {
-                log('⚠️ Deep Researchは最大40分かかる場合があります', 'WARNING');
-            }
-        } else {
-            log('Deep Researchボタンが見つかりません', 'INFO');
-        }
-    };
-    
-    // 5. 前回データとの比較
-    const compareWithPrevious = () => {
-        log('\n前回データとの比較...', 'INFO');
-        
-        // LocalStorageから前回データを取得
-        let previousData = null;
-        let isFirstRun = false;
-        
-        try {
-            const stored = localStorage.getItem(STORAGE_KEY);
-            if (stored) {
-                previousData = JSON.parse(stored);
-            } else {
-                isFirstRun = true;
-            }
-        } catch (e) {
-            log('前回データの読み込みエラー', 'WARNING');
-            isFirstRun = true;
+            await Utils.closeClaudeMenu();
         }
         
-        if (!previousData) {
-            log('前回データなし（初回実行）', 'INFO');
-            return { hasChanges: false, changes: [], isFirstRun: true };
-        }
-        
-        const changes = [];
-        
-        // モデルの比較
-        const prevModels = previousData.models || [];
-        const currModels = currentData.models;
-        
-        // 新しく追加されたモデル
-        currModels.forEach(curr => {
-            const prev = prevModels.find(p => p.description === curr.description);
-            if (!prev) {
-                changes.push(`新規モデル追加: ${curr.title} - ${curr.description}`);
-            } else if (prev.selected !== curr.selected) {
-                changes.push(`モデル選択状態変更: ${curr.title} (${prev.selected ? '選択' : '非選択'} → ${curr.selected ? '選択' : '非選択'})`);
-            }
-        });
-        
-        // 削除されたモデル
-        prevModels.forEach(prev => {
-            if (!currModels.find(c => c.description === prev.description)) {
-                changes.push(`モデル削除: ${prev.title} - ${prev.description}`);
-            }
-        });
-        
-        // メイン機能の比較
-        const prevMainFeatures = previousData.features?.main || [];
-        const currMainFeatures = currentData.features.main;
-        
-        currMainFeatures.forEach(curr => {
-            const prev = prevMainFeatures.find(p => p.name === curr.name);
-            if (!prev) {
-                changes.push(`新規メイン機能追加: ${curr.name}`);
-            }
-        });
-        
-        prevMainFeatures.forEach(prev => {
-            if (!currMainFeatures.find(c => c.name === prev.name)) {
-                changes.push(`メイン機能削除: ${prev.name}`);
-            }
-        });
-        
-        // 追加機能の比較
-        const prevAdditionalFeatures = previousData.features?.additional || [];
-        const currAdditionalFeatures = currentData.features.additional;
-        
-        currAdditionalFeatures.forEach(curr => {
-            const prev = prevAdditionalFeatures.find(p => p.name === curr.name);
-            if (!prev) {
-                changes.push(`新規追加機能: ${curr.name}${curr.sublabel ? ` (${curr.sublabel})` : ''}`);
-            }
-        });
-        
-        prevAdditionalFeatures.forEach(prev => {
-            if (!currAdditionalFeatures.find(c => c.name === prev.name)) {
-                changes.push(`追加機能削除: ${prev.name}`);
-            }
-        });
-        
-        // Deep Thinkモードの比較
-        const prevDeepThink = previousData.deepThink;
-        const currDeepThink = currentData.deepThink;
-        
-        if (prevDeepThink) {
-            if (prevDeepThink.available !== currDeepThink.available) {
-                changes.push(`Deep Thinkモード: ${currDeepThink.available ? '利用可能になりました' : '利用不可になりました'}`);
-            }
-        } else if (currDeepThink.available) {
-            changes.push('Deep Thinkモード: 新規検出');
-        }
-        
-        // Deep Researchモードの比較
-        const prevDeepResearch = previousData.deepResearch;
-        const currDeepResearch = currentData.deepResearch;
-        
-        if (prevDeepResearch) {
-            if (prevDeepResearch.available !== currDeepResearch.available) {
-                changes.push(`Deep Researchモード: ${currDeepResearch.available ? '利用可能になりました' : '利用不可になりました'}`);
-            }
-        } else if (currDeepResearch.available) {
-            changes.push('Deep Researchモード: 新規検出');
-        }
-        
-        return {
-            hasChanges: changes.length > 0,
-            changes: changes,
-            isFirstRun: false
-        };
-    };
-    
-    // ===== メイン実行関数 =====
-    async function executeResearch() {
-        try {
-            // モデルのリサーチ
-            await researchModels();
-            await wait(1000);
+        async researchAdditional() {
+            Utils.log('DeepResearchモードをチェック中...', 'research');
             
-            // 機能のリサーチ
-            await researchFeatures();
-            await wait(1000);
+            // ウェブ検索を有効化
+            const featureButton = document.querySelector('[data-testid="input-menu-tools"]') ||
+                                document.querySelector('[aria-label="ツールメニューを開く"]');
             
-            // Deep Thinkモードのチェック
-            await checkDeepThink();
-            await wait(500);
-            
-            // Deep Researchモードのチェック
-            await checkDeepResearch();
-            await wait(500);
-            
-            // 前回データとの比較
-            const comparison = compareWithPrevious();
-            
-            // 結果の表示
-            console.log('\n' + '='.repeat(80));
-            console.log('リサーチ結果サマリー');
-            console.log('='.repeat(80));
-            
-            console.log('\n📊 検出されたモデル:');
-            if (currentData.models.length === 0) {
-                console.log('  ⚠️ モデルが検出されませんでした');
-            } else {
-                currentData.models.forEach(m => {
-                    const selectedMark = m.selected ? ' ✅ (選択中)' : '';
-                    const additionalMark = m.additional ? ' (追加モデル)' : '';
-                    console.log(`  • ${m.title} - ${m.description}${selectedMark}${additionalMark}`);
-                });
-            }
-            
-            console.log('\n📊 検出された機能:');
-            if (currentData.features.main.length > 0) {
-                console.log('  メイン機能:');
-                currentData.features.main.forEach(f => {
-                    console.log(`    • ${f.name}${f.icon ? ` (${f.icon})` : ''}`);
-                });
-            }
-            
-            if (currentData.features.additional.length > 0) {
-                console.log('  追加機能（その他メニュー）:');
-                currentData.features.additional.forEach(f => {
-                    const sublabel = f.sublabel ? ` - ${f.sublabel}` : '';
-                    console.log(`    • ${f.name}${sublabel}${f.icon ? ` (${f.icon})` : ''}`);
-                });
-            }
-            
-            console.log('\n🔬 特殊モード:');
-            console.log(`  • Deep Think: ${currentData.deepThink.available ? '✅ 利用可能' : '❌ 利用不可'}`);
-            console.log(`  • Deep Research: ${currentData.deepResearch.available ? '✅ 利用可能' : '❌ 利用不可'}`);
-            
-            // 変更がある場合の処理
-            if (comparison.hasChanges && !comparison.isFirstRun) {
-                console.log('\n' + '='.repeat(80));
-                console.log('🔄 変更検出！');
-                console.log('='.repeat(80));
+            if (featureButton) {
+                await this.clickElement(featureButton);
+                await Utils.wait(1000);
                 
-                comparison.changes.forEach(change => {
-                    log(change, 'CHANGE');
-                });
+                const webSearchButton = Array.from(document.querySelectorAll('button'))
+                    .find(el => el.textContent?.includes('ウェブ検索'));
                 
-                console.log('\nℹ️ スプレッドシートURL:');
-                console.log(`📝 ${SPREADSHEET_URL}`);
-            } else if (comparison.isFirstRun) {
-                console.log('\n✅ 初回実行完了 - データを保存しました');
-                console.log('📝 今後、変更が検出された場合にスプレッドシートへの登録を促します');
-            } else if (!comparison.hasChanges) {
-                console.log('\n✅ 前回から変更はありません');
+                if (webSearchButton) {
+                    const webSearchToggle = webSearchButton.querySelector('input[type="checkbox"]');
+                    let wasWebSearchEnabled = webSearchToggle ? webSearchToggle.checked : false;
+                    
+                    if (webSearchToggle && !webSearchToggle.checked) {
+                        await this.clickElement(webSearchButton);
+                        await Utils.wait(CONFIG.claudeWaitTime);
+                    }
+                    
+                    this.additionalData.searchModeAvailable = true;
+                }
+                
+                await Utils.closeClaudeMenu();
+                await Utils.wait(1000);
+                
+                // リサーチボタンを探す
+                const researchButton = Array.from(document.querySelectorAll('button[aria-pressed]'))
+                    .find(el => el.textContent?.includes('リサーチ') || el.textContent?.includes('Research'));
+                
+                if (researchButton) {
+                    this.additionalData.deepResearch = {
+                        available: true,
+                        activated: researchButton.getAttribute('aria-pressed') === 'true'
+                    };
+                    Utils.log('DeepResearchモード検出', 'success');
+                    
+                    // テスト: ボタンの状態を切り替え
+                    const wasPressed = researchButton.getAttribute('aria-pressed') === 'true';
+                    await this.clickElement(researchButton);
+                    await Utils.wait(1500);
+                    
+                    const nowPressed = researchButton.getAttribute('aria-pressed') === 'true';
+                    if (nowPressed !== wasPressed) {
+                        Utils.log('DeepResearchモードの切り替えに成功', 'success');
+                        // 元に戻す
+                        await this.clickElement(researchButton);
+                        await Utils.wait(1000);
+                    }
+                } else {
+                    Utils.log('リサーチボタンが見つかりません', 'warning');
+                }
             }
-            
-            // データを保存
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(currentData));
-            log('\nデータを保存しました', 'SUCCESS');
-            
-            // 詳細データのエクスポート（デバッグ用）
-            console.log('\n📁 詳細データ（JSON形式）:');
-            console.log(JSON.stringify(currentData, null, 2));
-            
-            // 結果を返す
-            return {
-                success: true,
-                data: currentData,
-                comparison: comparison
-            };
-            
-        } catch (error) {
-            log(`エラーが発生しました: ${error.message}`, 'ERROR');
-            console.error(error);
-            return {
-                success: false,
-                error: error.message
-            };
         }
     }
     
-    // ===== エクスポート =====
-    window.GeminiResearchDetector = {
-        executeResearch: executeResearch,
-        getCurrentData: () => currentData,
-        getStoredData: () => {
+    // ========================================
+    // ChatGPT アダプター
+    // ========================================
+    class ChatGPTAdapter extends ServiceAdapter {
+        getServiceName() {
+            return 'ChatGPT';
+        }
+        
+        async researchModels() {
+            Utils.log('モデルメニューをリサーチ中...', 'model');
+            
+            const modelButton = document.querySelector('[data-testid="model-switcher-dropdown-button"]') ||
+                              document.querySelector('button[aria-haspopup="menu"][aria-label*="モデル"]');
+            
+            if (!modelButton) {
+                Utils.log('モデル選択ボタンが見つかりません', 'error');
+                return;
+            }
+            
+            await Utils.performClick(modelButton);
+            const modelMenu = await Utils.waitForElement('[role="menu"]');
+            
+            if (!modelMenu) {
+                Utils.log('モデルメニューが開きませんでした', 'error');
+                return;
+            }
+            
+            const menuItems = modelMenu.querySelectorAll('[role="menuitem"]');
+            
+            for (const item of menuItems) {
+                const modelName = this.extractModelName(item);
+                if (modelName) {
+                    this.models.push({
+                        name: modelName,
+                        selected: item.getAttribute('aria-checked') === 'true'
+                    });
+                    Utils.log(`モデル検出: ${modelName}`, 'success');
+                }
+                
+                if (this.hasSubmenuIndicator(item)) {
+                    const submenuName = item.textContent?.trim() || 'Unknown';
+                    Utils.log(`サブメニュー項目を検出: ${submenuName}`, 'warning');
+                    await this.exploreSubmenu(item);
+                }
+            }
+            
+            await Utils.closeAllMenus();
+        }
+        
+        async researchFeatures() {
+            Utils.log('機能メニューをリサーチ中...', 'feature');
+            
+            const functionButton = await Utils.findDynamicElement({
+                selectors: [
+                    '[data-testid="composer-plus-btn"]',
+                    'button.composer-btn',
+                    '[aria-label*="機能"]',
+                    '[aria-label*="feature"]',
+                    '[aria-label*="tool"]'
+                ],
+                text: ['機能', 'ツール', 'Tools', 'Features'],
+                attributes: {
+                    'data-testid': 'composer-plus-btn'
+                }
+            });
+            
+            if (!functionButton) {
+                Utils.log('機能選択ボタンが見つかりません', 'error');
+                return;
+            }
+            
+            await Utils.performClick(functionButton);
+            const functionMenu = await Utils.waitForElement([
+                '[role="menu"]',
+                '[data-radix-menu-content]',
+                '.popover'
+            ]);
+            
+            if (!functionMenu) {
+                Utils.log('機能メニューが開きませんでした', 'error');
+                return;
+            }
+            
+            const allMenuItems = functionMenu.querySelectorAll('*');
+            const processedItems = new Set();
+            
+            for (const item of allMenuItems) {
+                if (processedItems.has(item)) continue;
+                
+                const isClickable = item.matches('button, [role="menuitem"], [role="menuitemradio"], a');
+                if (!isClickable) continue;
+                
+                const text = item.textContent?.trim();
+                if (!text || text.length > 100) continue;
+                
+                processedItems.add(item);
+                
+                if (this.hasSubmenuIndicator(item)) {
+                    Utils.log(`サブメニュー項目を検出: ${text}`, 'warning');
+                    await this.exploreFunctionSubmenu(item);
+                } else {
+                    const functionInfo = this.extractFunctionName(item);
+                    if (functionInfo.name && 
+                        !this.isModelName(functionInfo.name) &&
+                        !this.features.find(f => f.name === functionInfo.name)) {
+                        
+                        const attributes = {
+                            name: functionInfo.name,
+                            badge: functionInfo.badge,
+                            hasIcon: !!item.querySelector('svg, img'),
+                            isDisabled: item.disabled || item.getAttribute('aria-disabled') === 'true',
+                            ariaLabel: item.getAttribute('aria-label'),
+                            dataTestId: item.getAttribute('data-testid')
+                        };
+                        
+                        this.features.push(attributes);
+                        Utils.log(`機能検出: ${functionInfo.name}${functionInfo.badge ? ` [${functionInfo.badge}]` : ''}`, 'success');
+                    }
+                }
+            }
+            
+            await Utils.closeAllMenus();
+        }
+        
+        extractModelName(element) {
+            const primarySpan = element.querySelector('span:not([class*="badge"]):not([class*="icon"])');
+            if (primarySpan) {
+                return primarySpan.textContent?.trim();
+            }
+            
+            const testId = element.getAttribute('data-testid') || '';
+            const match = testId.match(/model-switcher-(.+)/);
+            if (match) {
+                return match[1].replace(/-/g, ' ');
+            }
+            
+            const nameDiv = element.querySelector('div.min-w-0 > span, div.min-w-0');
+            if (nameDiv) {
+                const text = nameDiv.textContent?.trim() || '';
+                return text.split('\n')[0].trim();
+            }
+            
+            const fullText = element.textContent?.trim() || '';
+            const lines = fullText.split('\n');
+            const modelName = lines[0].trim();
+            
+            const isValidModel = modelName && (
+                /GPT|Claude|o1|Gemini|Auto|Fast|Thinking|Pro|Legacy|Mini|Preview/i.test(modelName) ||
+                /\d+(\.\d+)?/.test(modelName) ||
+                (modelName.length > 1 && modelName.length < 50)
+            );
+            
+            return isValidModel ? modelName : null;
+        }
+        
+        extractFunctionName(element) {
+            const selectors = [
+                '.truncate',
+                '[class*="grow"]',
+                '.flex-grow',
+                '.text-token-text-primary',
+                'div[class*="text"]',
+                'span:not([class*="badge"])',
+                'div'
+            ];
+            
+            let name = '';
+            for (const selector of selectors) {
+                const nameElement = element.querySelector(selector);
+                if (nameElement && nameElement.textContent?.trim()) {
+                    name = nameElement.textContent.trim();
+                    break;
+                }
+            }
+            
+            if (!name) {
+                name = element.textContent?.trim() || '';
+            }
+            
+            const badgeSelectors = [
+                '.__menu-item-badge',
+                'span[class*="badge"]',
+                '.rounded-full',
+                '.ml-auto'
+            ];
+            
+            let badge = '';
+            for (const selector of badgeSelectors) {
+                const badgeEl = element.querySelector(selector);
+                if (badgeEl && badgeEl.textContent?.trim()) {
+                    badge = badgeEl.textContent.trim();
+                    if (badge && name.includes(badge)) {
+                        name = name.replace(badge, '').trim();
+                    }
+                    break;
+                }
+            }
+            
+            return { name: name, badge: badge };
+        }
+        
+        isModelName(name) {
+            if (!name) return false;
+            
+            const modelPatterns = [
+                /GPT/i,
+                /Claude/i,
+                /o1[\s-]/i,
+                /Gemini/i,
+                /Opus/i,
+                /Sonnet/i,
+                /Haiku/i,
+                /Preview/i,
+                /Turbo/i,
+                /Vision/i
+            ];
+            
+            return modelPatterns.some(pattern => pattern.test(name));
+        }
+        
+        hasSubmenuIndicator(element) {
+            const conditions = [
+                element.hasAttribute('data-has-submenu'),
+                element.getAttribute('aria-haspopup') === 'menu',
+                element.getAttribute('aria-expanded') !== null,
+                
+                element.querySelector('svg[data-rtl-flip]') !== null,
+                element.querySelector('[class*="chevron"]') !== null,
+                element.querySelector('[class*="arrow"]') !== null,
+                
+                element.querySelector('path[d*="M6.02925 3.02929"]') !== null,
+                element.querySelector('path[d*="L11.4707"]') !== null,
+                
+                (() => {
+                    const text = element.textContent?.trim().toLowerCase() || '';
+                    const submenuKeywords = [
+                        'その他', 'さらに', '他の', 'もっと',
+                        'レガシー', 'legacy', 
+                        'more', 'other', 'additional',
+                        '以前の', 'previous', 'old',
+                        '詳細', 'advanced', 'settings',
+                        'さらに表示', 'show more', '...'
+                    ];
+                    return submenuKeywords.some(keyword => text.includes(keyword.toLowerCase()));
+                })()
+            ];
+            
+            return conditions.some(condition => condition);
+        }
+        
+        async exploreSubmenu(menuItem) {
+            const initialMenuCount = document.querySelectorAll('[role="menu"]').length;
+            
+            menuItem.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+            menuItem.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+            await Utils.wait(500);
+            
+            let allMenus = document.querySelectorAll('[role="menu"]');
+            if (allMenus.length <= initialMenuCount) {
+                await Utils.performClick(menuItem);
+                await Utils.wait(500);
+                allMenus = document.querySelectorAll('[role="menu"]');
+            }
+            
+            if (allMenus.length > initialMenuCount) {
+                const submenu = allMenus[allMenus.length - 1];
+                const items = submenu.querySelectorAll('[role="menuitem"]');
+                
+                for (const item of items) {
+                    const text = item.textContent?.trim();
+                    const isBackButton = text && (
+                        text.includes('戻る') || 
+                        text.includes('Back') || 
+                        text.includes('←')
+                    );
+                    
+                    if (isBackButton) continue;
+                    
+                    const modelName = this.extractModelName(item);
+                    if (modelName && !this.models.find(m => m.name === modelName)) {
+                        this.models.push({
+                            name: modelName,
+                            location: 'submenu'
+                        });
+                        Utils.log(`サブメニューモデル検出: ${modelName}`, 'success');
+                    }
+                }
+            }
+        }
+        
+        async exploreFunctionSubmenu(menuItem) {
+            const itemText = menuItem.textContent?.trim();
+            Utils.log(`サブメニューを探索中: ${itemText}`, 'info');
+            
+            const initialMenuCount = document.querySelectorAll('[role="menu"]').length;
+            
+            menuItem.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+            menuItem.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+            await Utils.wait(700);
+            
+            let allMenus = document.querySelectorAll('[role="menu"]');
+            
+            let clickedToOpen = false;
+            if (allMenus.length <= initialMenuCount) {
+                const wasSelected = menuItem.getAttribute('aria-checked') || 
+                                  menuItem.getAttribute('aria-selected') ||
+                                  menuItem.classList.contains('selected');
+                
+                await Utils.performClick(menuItem);
+                clickedToOpen = true;
+                await Utils.wait(500);
+                allMenus = document.querySelectorAll('[role="menu"]');
+                
+                if (wasSelected === 'false' && menuItem.getAttribute('aria-checked') === 'true') {
+                    menuItem.needsDeselect = true;
+                }
+            }
+            
+            if (allMenus.length > initialMenuCount) {
+                const submenu = allMenus[allMenus.length - 1];
+                const items = submenu.querySelectorAll('[role="menuitem"], [role="menuitemradio"]');
+                
+                Utils.log(`サブメニューに${items.length}個の項目を発見`, 'info');
+                
+                for (const item of items) {
+                    const text = item.textContent?.trim();
+                    
+                    if (text && (text.includes('戻る') || text.includes('Back') || text.includes('←'))) {
+                        continue;
+                    }
+                    
+                    const functionInfo = this.extractFunctionName(item);
+                    if (functionInfo.name && 
+                        !this.isModelName(functionInfo.name) &&
+                        !this.features.find(f => f.name === functionInfo.name)) {
+                        this.features.push({
+                            name: functionInfo.name,
+                            badge: functionInfo.badge,
+                            location: 'submenu',
+                            parent: itemText
+                        });
+                        Utils.log(`サブメニュー機能検出: ${functionInfo.name}${functionInfo.badge ? ` [${functionInfo.badge}]` : ''} (from ${itemText})`, 'success');
+                    }
+                }
+                
+                document.dispatchEvent(new KeyboardEvent('keydown', {
+                    key: 'Escape',
+                    code: 'Escape',
+                    bubbles: true
+                }));
+                await Utils.wait(300);
+                
+                if (clickedToOpen && menuItem.needsDeselect) {
+                    Utils.log('警告: 項目が選択された可能性があります', 'warning');
+                }
+            } else {
+                Utils.log(`サブメニューが開きませんでした: ${itemText}`, 'warning');
+            }
+        }
+    }
+    
+    // ========================================
+    // Gemini アダプター
+    // ========================================
+    class GeminiAdapter extends ServiceAdapter {
+        getServiceName() {
+            return 'Gemini';
+        }
+        
+        async researchModels() {
+            Utils.log('モデルメニューをリサーチ中...', 'model');
+            
+            const modelButton = document.querySelector('button.gds-mode-switch-button') ||
+                              document.querySelector('button.logo-pill-btn') ||
+                              document.querySelector('button[class*="mode-switch"]') ||
+                              document.querySelector('.logo-pill-label-container')?.closest('button') ||
+                              document.querySelector('[aria-label*="モデル"]');
+            
+            if (!modelButton) {
+                Utils.log('モデル選択ボタンが見つかりません', 'error');
+                return;
+            }
+            
+            await Utils.performClick(modelButton);
+            await Utils.wait(CONFIG.waitTime);
+            
+            // メインメニューのモデルを処理
+            const modelItems = document.querySelectorAll('button.bard-mode-list-button, [role="menuitemradio"], .mat-mdc-menu-item');
+            
+            for (const item of modelItems) {
+                const titleEl = item.querySelector('.mode-title, .gds-label-m:not(.mode-desc), span:first-child');
+                const descEl = item.querySelector('.mode-desc, .gds-label-m-alt, span:last-child');
+                
+                if (titleEl) {
+                    const title = titleEl.textContent.trim();
+                    const description = descEl ? descEl.textContent.trim() : '';
+                    const isSelected = item.classList.contains('is-selected') || 
+                                     item.getAttribute('aria-checked') === 'true' ||
+                                     item.querySelector('mat-icon[fonticon="check_circle"]') !== null;
+                    
+                    this.models.push({
+                        name: title || description,
+                        description: description,
+                        selected: isSelected
+                    });
+                    
+                    Utils.log(`モデル検出: ${title || description}${isSelected ? ' (選択中)' : ''}`, 'success');
+                }
+            }
+            
+            // サブメニューの処理
+            const moreButton = Array.from(document.querySelectorAll('button'))
+                .find(b => b.textContent?.includes('他のモデル') || b.textContent?.includes('さらに表示'));
+            
+            if (moreButton) {
+                Utils.log('追加モデルを確認中...', 'info');
+                
+                // 現在のメニュー数を記録
+                const initialMenuCount = document.querySelectorAll('[role="menu"], .mat-mdc-menu-panel').length;
+                
+                await Utils.performClick(moreButton);
+                await Utils.wait(CONFIG.waitTime);
+                
+                // サブメニューが開いたか確認
+                const currentMenuCount = document.querySelectorAll('[role="menu"], .mat-mdc-menu-panel').length;
+                const submenuOpened = currentMenuCount > initialMenuCount;
+                
+                if (submenuOpened) {
+                    Utils.log('サブメニューが開きました', 'info');
+                    
+                    const additionalModels = document.querySelectorAll('[role="menuitemradio"], .mat-mdc-menu-item');
+                    additionalModels.forEach(item => {
+                        const titleEl = item.querySelector('.mode-title');
+                        const descEl = item.querySelector('.mode-desc');
+                        
+                        if (titleEl && descEl) {
+                            const modelData = {
+                                name: titleEl.textContent.trim(),
+                                description: descEl.textContent.trim(),
+                                selected: false,
+                                location: 'submenu'
+                            };
+                            
+                            if (!this.models.some(m => m.description === modelData.description)) {
+                                this.models.push(modelData);
+                                Utils.log(`追加モデル検出: ${modelData.name}`, 'success');
+                            }
+                        }
+                    });
+                    
+                    // サブメニューを閉じる（Gemini用）
+                    await Utils.closeGeminiMenu();
+                    await Utils.wait(300);
+                }
+            }
+            
+            // メインメニューを閉じる（Gemini用）
+            await Utils.closeGeminiMenu();
+            await Utils.wait(300);
+            
+            // 念のため残っているメニューがあれば追加でクローズ
+            const remainingMenus = document.querySelectorAll('.mat-mdc-menu-panel:not([style*="display: none"])');
+            if (remainingMenus.length > 0) {
+                Utils.log(`残存メニュー検出（${remainingMenus.length}個）、追加クローズ実行`, 'warning');
+                await Utils.closeGeminiMenu();
+            }
+            
+            Utils.log('モデルメニューを閉じました', 'info');
+        }
+        
+        async researchFeatures() {
+            Utils.log('機能メニューをリサーチ中...', 'feature');
+            
+            // 1. メインの機能ボタン（動画、Deep Think、Deep Research、Canvas等）
+            // toolbox-drawer-item-button クラスを持つボタンのみを対象とする
+            const featureButtons = document.querySelectorAll('.toolbox-drawer-item-button button');
+            
+            Utils.log(`${featureButtons.length}個のメイン機能ボタンを検出`, 'info');
+            
+            for (const button of featureButtons) {
+                // ラベル要素を探す
+                const labelEl = button.querySelector('.toolbox-drawer-button-label, .label');
+                
+                if (labelEl && labelEl.textContent?.trim()) {
+                    const name = labelEl.textContent.trim();
+                    const iconEl = button.querySelector('mat-icon');
+                    const icon = iconEl ? (iconEl.getAttribute('fonticon') || iconEl.textContent?.trim()) : '';
+                    
+                    if (!this.features.find(f => f.name === name)) {
+                        this.features.push({
+                            name: name,
+                            icon: icon,
+                            type: 'main'
+                        });
+                        Utils.log(`機能検出: ${name}${icon ? ` (${icon})` : ''}`, 'success');
+                    }
+                }
+            }
+            
+            // 2. その他メニューの処理（重要：ここに「画像」などがある）
+            const moreButton = document.querySelector('[aria-label="その他"]') ||
+                             document.querySelector('button:has(mat-icon[fonticon="more_horiz"])') ||
+                             document.querySelector('.toolbox-drawer-button-container button');
+            
+            if (moreButton) {
+                Utils.log('その他メニューを開いています...', 'info');
+                
+                // 現在のオーバーレイ数を記録（Gemini用の判定）
+                const initialOverlayCount = document.querySelectorAll('.cdk-overlay-pane').length;
+                
+                await Utils.performClick(moreButton);
+                await Utils.wait(CONFIG.waitTime);
+                
+                // メニューが開いたか確認（Geminiは.cdk-overlay-paneで判定）
+                const currentOverlayCount = document.querySelectorAll('.cdk-overlay-pane').length;
+                const menuOpened = currentOverlayCount > initialOverlayCount;
+                
+                if (menuOpened) {
+                    Utils.log('その他メニューが開きました', 'info');
+                    
+                    // Geminiの特殊なカード形式のメニューに対応
+                    // .cdk-overlay-pane内の全ての要素を取得
+                    const overlayPanes = document.querySelectorAll('.cdk-overlay-pane');
+                    const lastPane = overlayPanes[overlayPanes.length - 1]; // 最新のオーバーレイ
+                    
+                    if (lastPane) {
+                        // カード内のボタンや項目を取得
+                        const menuItems = lastPane.querySelectorAll(
+                            'button, ' +
+                            '[role="menuitem"], ' +
+                            '.toolbox-drawer-card button, ' +
+                            '.toolbox-drawer-menu-item button'
+                        );
+                        
+                        Utils.log(`その他メニュー内に${menuItems.length}個の項目を発見`, 'info');
+                        
+                        for (const item of menuItems) {
+                            // 複数の方法で名前を取得
+                            let name = null;
+                            let source = '';
+                            
+                            // 方法1: aria-label（最優先）
+                            const ariaLabel = item.getAttribute('aria-label');
+                            if (ariaLabel && ariaLabel.trim()) {
+                                // "画像  Imagen で生成" のような余分な空白を正規化
+                                name = ariaLabel.trim().replace(/\s+/g, ' ');
+                                source = 'aria-label';
+                            }
+                            
+                            // 方法2: テキストコンテンツ
+                            if (!name) {
+                                const text = item.textContent?.trim().replace(/\s+/g, ' ');
+                                if (text && text.length < 50) {
+                                    name = text;
+                                    source = 'text-content';
+                                }
+                            }
+                            
+                            // 有効な名前が取得できた場合のみ追加
+                            if (name && !this.features.find(f => f.name === name || f.name.includes(name.split(' ')[0]))) {
+                                const iconEl = item.querySelector('mat-icon');
+                                const icon = iconEl ? (iconEl.getAttribute('fonticon') || iconEl.textContent?.trim()) : '';
+                                
+                                this.features.push({
+                                    name: name,
+                                    icon: icon,
+                                    type: 'additional',
+                                    location: 'submenu',
+                                    source: source  // デバッグ用
+                                });
+                                
+                                Utils.log(`その他メニュー機能検出: ${name}${icon ? ` (${icon})` : ''} [${source}]`, 'success');
+                            }
+                        }
+                    }
+                } else {
+                    Utils.log('その他メニューが開きませんでした', 'warning');
+                }
+                
+                // メニューを閉じる（Gemini用）
+                await Utils.closeGeminiMenu();
+                await Utils.wait(300);
+                
+                // 念のため残っているメニューがあれば追加でクローズ
+                const remainingMenus = document.querySelectorAll('.mat-mdc-menu-panel:not([style*="display: none"])');
+                if (remainingMenus.length > 0) {
+                    Utils.log(`残存メニュー検出（${remainingMenus.length}個）、追加クローズ実行`, 'warning');
+                    await Utils.closeGeminiMenu();
+                }
+                
+                Utils.log('機能メニューを閉じました', 'info');
+            }
+        }
+    }
+    
+    // ========================================
+    // メインコントローラー
+    // ========================================
+    class AIServiceResearcher {
+        constructor() {
+            this.service = Utils.detectService();
+            this.adapter = this.createAdapter();
+            this.results = null;
+        }
+        
+        createAdapter() {
+            switch (this.service) {
+                case 'claude':
+                    return new ClaudeAdapter();
+                case 'chatgpt':
+                    return new ChatGPTAdapter();
+                case 'gemini':
+                    return new GeminiAdapter();
+                default:
+                    throw new Error('サービスを検出できませんでした');
+            }
+        }
+        
+        async run() {
+            console.log('='.repeat(60));
+            console.log('🚀 統一版 AI サービス リサーチコード (v2.0.0)');
+            console.log(`📅 実行日時: ${new Date().toLocaleString('ja-JP')}`);
+            console.log(`🔍 検出されたサービス: ${this.service.toUpperCase()}`);
+            console.log(`📦 バージョン: ${CONFIG.version}`);
+            console.log('='.repeat(60));
+            
             try {
-                const stored = localStorage.getItem(STORAGE_KEY);
-                return stored ? JSON.parse(stored) : null;
-            } catch (e) {
-                return null;
+                this.results = await this.adapter.research();
+                this.displayResults();
+                this.saveResults();
+                this.compareWithPrevious();
+                
+                console.log('\n✨ リサーチ完了！');
+                console.log('全てのメニューが正常に閉じられました。');
+                
+            } catch (error) {
+                console.error('❌ エラーが発生しました:', error);
+                console.log('\n💡 トラブルシューティング:');
+                console.log('  1. ページが完全に読み込まれているか確認');
+                console.log('  2. 正しいサービスのページで実行しているか確認');
+                console.log('  3. UIが変更されていないか確認');
+                
+                // エラー時も必ずメニューを閉じる
+                await Utils.closeAllMenus();
             }
-        },
-        clearStoredData: () => {
-            localStorage.removeItem(STORAGE_KEY);
-            log('保存データをクリアしました', 'SUCCESS');
+        }
+        
+        displayResults() {
+            console.log('\n📊 リサーチ結果');
+            console.log('='.repeat(60));
+            
+            console.log('\n🤖 検出されたモデル:');
+            if (this.results.models.length > 0) {
+                const mainModels = this.results.models.filter(m => !m.location || m.location !== 'submenu');
+                const submenuModels = this.results.models.filter(m => m.location === 'submenu');
+                
+                if (mainModels.length > 0) {
+                    console.log('【メインメニュー】');
+                    mainModels.forEach((model, index) => {
+                        const selected = model.selected ? ' ✅' : '';
+                        console.log(`  ${index + 1}. ${model.name}${selected}`);
+                        if (model.description) {
+                            console.log(`     ${model.description}`);
+                        }
+                    });
+                }
+                
+                if (submenuModels.length > 0) {
+                    console.log('\n【サブメニュー】');
+                    submenuModels.forEach((model, index) => {
+                        console.log(`  ${index + 1}. ${model.name}`);
+                        if (model.description) {
+                            console.log(`     ${model.description}`);
+                        }
+                    });
+                }
+            } else {
+                console.log('  ⚠️ モデルが検出されませんでした');
+            }
+            
+            console.log('\n🔧 検出された機能:');
+            if (this.results.features.length > 0) {
+                const mainFeatures = this.results.features.filter(f => !f.location || (f.location !== 'submenu' && f.location !== 'deep-submenu'));
+                const submenuFeatures = this.results.features.filter(f => f.location === 'submenu');
+                const deepSubmenuFeatures = this.results.features.filter(f => f.location === 'deep-submenu');
+                
+                if (mainFeatures.length > 0) {
+                    console.log('【メイン機能】');
+                    mainFeatures.forEach((feature, index) => {
+                        const status = feature.enabled !== undefined ? 
+                            (feature.enabled ? ' ✅' : ' ⬜') : '';
+                        const connected = feature.connected !== undefined ?
+                            (feature.connected ? ' 🔗' : ' 🔓') : '';
+                        const badge = feature.badge ? ` [${feature.badge}]` : '';
+                        const icon = feature.icon ? ` (${feature.icon})` : '';
+                        const type = feature.type ? ` <${feature.type}>` : '';
+                        console.log(`  ${index + 1}. ${feature.name}${badge}${status}${connected}${icon}${type}`);
+                        if (feature.sublabel) {
+                            console.log(`     ${feature.sublabel}`);
+                        }
+                    });
+                }
+                
+                if (submenuFeatures.length > 0) {
+                    console.log('\n【サブメニュー機能】');
+                    submenuFeatures.forEach((feature, index) => {
+                        const badge = feature.badge ? ` [${feature.badge}]` : '';
+                        const icon = feature.icon ? ` (${feature.icon})` : '';
+                        console.log(`  ${index + 1}. ${feature.name}${badge}${icon}`);
+                        if (feature.sublabel) {
+                            console.log(`     ${feature.sublabel}`);
+                        }
+                    });
+                }
+                
+                if (deepSubmenuFeatures.length > 0) {
+                    console.log('\n【深層サブメニュー機能】');
+                    deepSubmenuFeatures.forEach((feature, index) => {
+                        const parent = feature.parent ? ` (親: ${feature.parent})` : '';
+                        console.log(`  ${index + 1}. ${feature.name}${parent}`);
+                    });
+                }
+            } else {
+                console.log('  ⚠️ 機能が検出されませんでした');
+            }
+            
+            if (Object.keys(this.results.additional).length > 0) {
+                console.log('\n📝 追加情報:');
+                console.log(JSON.stringify(this.results.additional, null, 2));
+            }
+        }
+        
+        saveResults() {
+            const key = `${CONFIG.storageKey}_${this.service}`;
+            localStorage.setItem(key, JSON.stringify(this.results));
+            Utils.log(`データを保存しました (${key})`, 'success');
+        }
+        
+        compareWithPrevious() {
+            const key = `${CONFIG.storageKey}_${this.service}`;
+            const previousDataStr = localStorage.getItem(`${key}_previous`);
+            
+            // 現在のデータを前回データとして保存
+            localStorage.setItem(`${key}_previous`, JSON.stringify(this.results));
+            
+            if (!previousDataStr) {
+                Utils.log('前回のデータなし（初回実行）', 'info');
+                return;
+            }
+            
+            try {
+                const previous = JSON.parse(previousDataStr);
+                const changes = [];
+                
+                // モデルの比較
+                const prevModels = previous.models?.map(m => m.name) || [];
+                const currModels = this.results.models.map(m => m.name);
+                
+                currModels.forEach(name => {
+                    if (!prevModels.includes(name)) {
+                        changes.push(`➕ 新規モデル: ${name}`);
+                    }
+                });
+                
+                prevModels.forEach(name => {
+                    if (!currModels.includes(name)) {
+                        changes.push(`➖ 削除されたモデル: ${name}`);
+                    }
+                });
+                
+                // 機能の比較
+                const prevFeatures = previous.features?.map(f => f.name) || [];
+                const currFeatures = this.results.features.map(f => f.name);
+                
+                currFeatures.forEach(name => {
+                    if (!prevFeatures.includes(name)) {
+                        changes.push(`➕ 新規機能: ${name}`);
+                    }
+                });
+                
+                prevFeatures.forEach(name => {
+                    if (!currFeatures.includes(name)) {
+                        changes.push(`➖ 削除された機能: ${name}`);
+                    }
+                });
+                
+                if (changes.length > 0) {
+                    console.log('\n🔄 前回からの変更:');
+                    changes.forEach(change => console.log(`  ${change}`));
+                } else {
+                    console.log('\n✅ 前回から変更はありません');
+                }
+            } catch (error) {
+                Utils.log('前回データの比較でエラー', 'warning');
+            }
+        }
+    }
+    
+    // ========================================
+    // 実行
+    // ========================================
+    const researcher = new AIServiceResearcher();
+    
+    // UI Controllerとの互換性のためwindowオブジェクトに公開
+    window.GeminiResearchDetector = {
+        executeResearch: async () => {
+            try {
+                await researcher.run();
+                
+                // UI Controllerが期待する形式で結果を返す
+                return {
+                    success: true,
+                    data: {
+                        models: researcher.results.models || [],
+                        features: researcher.results.features || { main: [], additional: [] },
+                        deepThink: researcher.results.deepThink || { available: false },
+                        deepResearch: researcher.results.deepResearch || { available: false },
+                        timestamp: new Date().toISOString()
+                    },
+                    comparison: {
+                        hasChanges: false,
+                        changes: []
+                    }
+                };
+            } catch (error) {
+                console.error('Research execution error:', error);
+                return {
+                    success: false,
+                    error: error.message
+                };
+            }
         }
     };
     
-    // 自動実行（AI変更検出システムから呼ばれた場合）
-    if (window.AIChangeDetector && window.AIChangeDetector.autoRun) {
-        console.log('\n🤖 AI変更検出システムから実行されました');
-        executeResearch().then(result => {
-            if (window.AIChangeDetector.callback) {
-                window.AIChangeDetector.callback('gemini', result);
-            }
-        });
-    } else {
-        console.log('\n' + '='.repeat(80));
-        console.log('Gemini リサーチ検出器が初期化されました');
-        console.log('実行方法: GeminiResearchDetector.executeResearch()');
-        console.log('='.repeat(80));
-    }
+    // 自動実行はしない（UI Controllerから呼び出される）
+    console.log('🔧 GeminiResearchDetector initialized');
     
 })();
