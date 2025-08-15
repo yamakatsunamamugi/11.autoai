@@ -634,16 +634,60 @@
                 await Utils.closeClaudeMenu();
                 await Utils.wait(1000);
                 
-                // リサーチボタンを探す
-                const researchButton = Array.from(document.querySelectorAll('button[aria-pressed]'))
-                    .find(el => el.textContent?.includes('リサーチ') || el.textContent?.includes('Research'));
+                // リサーチボタンを探す（複数の方法で試行）
+                const researchSelectors = [
+                    'button[aria-label*="Research"]',
+                    'button[aria-label*="リサーチ"]',
+                    'button[aria-label*="Deep Research"]',
+                    'button:has(svg[class*="research"])',
+                    'button[data-testid*="research"]'
+                ];
+                
+                let researchButton = null;
+                
+                // 優先順位付きセレクタで検索
+                for (const selector of researchSelectors) {
+                    try {
+                        researchButton = document.querySelector(selector);
+                        if (researchButton) {
+                            Utils.log(`DeepResearchボタンをセレクタ ${selector} で発見`, 'success');
+                            break;
+                        }
+                    } catch (e) {
+                        // 無効なセレクタの場合はスキップ
+                    }
+                }
+                
+                // それでも見つからない場合は、テキストとaria-labelで検索
+                if (!researchButton) {
+                    researchButton = Array.from(document.querySelectorAll('button'))
+                        .find(el => {
+                            const text = el.textContent?.toLowerCase() || '';
+                            const ariaLabel = el.getAttribute('aria-label')?.toLowerCase() || '';
+                            const hasResearchText = text.includes('research') || text.includes('リサーチ') || 
+                                                   text.includes('deep research') || text.includes('ディープリサーチ');
+                            const hasResearchLabel = ariaLabel.includes('research') || ariaLabel.includes('リサーチ');
+                            const hasAriaPressed = el.getAttribute('aria-pressed') !== null;
+                            return (hasResearchText || hasResearchLabel) && hasAriaPressed;
+                        });
+                    
+                    if (researchButton) {
+                        Utils.log('テキスト/aria-labelベースでDeepResearchボタンを発見', 'success');
+                    }
+                }
                 
                 if (researchButton) {
+                    // ボタンの詳細情報をログ出力
+                    Utils.log(`DeepResearchボタン発見:`, 'success');
+                    Utils.log(`  テキスト: ${researchButton.textContent?.trim()}`, 'info');
+                    Utils.log(`  aria-label: ${researchButton.getAttribute('aria-label')}`, 'info');
+                    Utils.log(`  aria-pressed: ${researchButton.getAttribute('aria-pressed')}`, 'info');
+                    
                     this.additionalData.deepResearch = {
                         available: true,
                         activated: researchButton.getAttribute('aria-pressed') === 'true'
                     };
-                    Utils.log('DeepResearchモード検出', 'success');
+                    Utils.log(`DeepResearchモード: ${this.additionalData.deepResearch.activated ? '有効' : '無効'}`, 'success');
                     
                     // テスト: ボタンの状態を切り替え
                     const wasPressed = researchButton.getAttribute('aria-pressed') === 'true';
