@@ -636,6 +636,8 @@
                 
                 // リサーチボタンを探す（複数の方法で試行）
                 const researchSelectors = [
+                    'button[aria-pressed]:has(svg path[d*="M8.5 2C12"])',  // SVGパスの特徴的な部分で検索
+                    'button[aria-pressed]:has(svg)',  // aria-pressed属性を持つSVGボタン
                     'button[aria-label*="Research"]',
                     'button[aria-label*="リサーチ"]',
                     'button[aria-label*="Deep Research"]',
@@ -658,7 +660,29 @@
                     }
                 }
                 
-                // それでも見つからない場合は、テキストとaria-labelで検索
+                // それでも見つからない場合は、aria-pressed属性を持つSVGボタンを探す
+                if (!researchButton) {
+                    // ウェブ検索を有効にした後に出現するaria-pressedボタンを探す
+                    const allPressButtons = Array.from(document.querySelectorAll('button[aria-pressed]'));
+                    
+                    // 機能メニュー外（入力フィールド近く）にあるボタンを探す
+                    researchButton = allPressButtons.find(button => {
+                        // SVGアイコンを含む
+                        const hasSvg = button.querySelector('svg') !== null;
+                        // テキストがない（アイコンのみ）
+                        const hasNoText = !button.textContent?.trim() || button.textContent?.trim().length < 3;
+                        // 機能メニュー内ではない（toggleやcheckboxを含まない）
+                        const notInMenu = !button.querySelector('input[type="checkbox"]');
+                        
+                        return hasSvg && hasNoText && notInMenu;
+                    });
+                    
+                    if (researchButton) {
+                        Utils.log('SVGアイコンボタンとしてDeepResearchボタンを発見', 'success');
+                    }
+                }
+                
+                // 方法2: テキストやaria-labelで検索（既存の方法を維持）
                 if (!researchButton) {
                     researchButton = Array.from(document.querySelectorAll('button'))
                         .find(el => {
