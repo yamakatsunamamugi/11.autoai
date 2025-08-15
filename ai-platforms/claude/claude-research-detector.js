@@ -1432,47 +1432,6 @@
     // 実行
     // ========================================
     const researcher = new AIServiceResearcher();
-    
-    // UI Controllerとの互換性のためwindowオブジェクトに公開
-    window.ClaudeResearchDetector = {
-        executeResearch: async () => {
-            try {
-                await researcher.run();
-                
-                // 機能データを正しい形式に変換
-                const features = (researcher.results?.features || []).map(f => ({
-                    name: typeof f === 'string' ? f : (f.name || 'Unknown'),
-                    type: f.type || 'toggle',
-                    enabled: f.enabled === true,
-                    connected: f.connected !== false
-                }));
-                
-                // UI Controllerが期待する形式で結果を返す
-                return {
-                    success: true,
-                    data: {
-                        models: researcher.results?.models || [],
-                        features: features,
-                        deepResearch: researcher.results?.additional?.deepResearch || { available: false },
-                        additionalModels: researcher.results?.additional?.additionalModels || [],
-                        timestamp: new Date().toISOString()
-                    },
-                    comparison: {
-                        hasChanges: false,
-                        changes: []
-                    }
-                };
-            } catch (error) {
-                console.error('Research execution error:', error);
-                return {
-                    success: false,
-                    error: error.message
-                };
-            }
-        }
-    };
-    
-    // 自動実行はしない（UI Controllerから呼び出される）
-    console.log('🔧 ClaudeResearchDetector initialized');
+    await researcher.run();
     
 })();
