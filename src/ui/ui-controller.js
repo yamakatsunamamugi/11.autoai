@@ -1333,10 +1333,10 @@ async function injectAutomationScripts(tabId, aiName) {
               
               // ChatGPTの機能をUIが期待する形式に変換
               const functionsList = researchResult.data.features.map(f => ({
-                name: f,
-                type: 'function',
-                enabled: true,
-                connected: true
+                name: f.name || f,  // オブジェクトの場合はf.name、文字列の場合はfをそのまま使用
+                type: f.type || 'function',
+                enabled: f.enabled !== undefined ? f.enabled : true,
+                connected: f.connected !== undefined ? f.connected : true
               }));
               
               // Deep Researchが利用可能な場合は機能リストに追加

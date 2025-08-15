@@ -413,14 +413,48 @@
         async researchModels() {
             Utils.log('モデルメニューをリサーチ中...', 'model');
             
-            // シンプルなセレクタを優先（動作確認済みのもの）
-            const modelButton = document.querySelector('[data-testid="model-selector-dropdown"]') ||
-                              document.querySelector('button[aria-haspopup="menu"]') ||
-                              Array.from(document.querySelectorAll('button'))
-                                  .find(el => el.textContent?.includes('Opus') || el.textContent?.includes('Sonnet'));
+            // DOMが完全に準備できるまで待機（5秒）
+            Utils.log('DOMの安定化を待機中（5秒）...', 'info');
+            await Utils.wait(5000);
+            
+            // 優先順位付きセレクタリスト
+            const selectors = [
+                '[data-testid="model-selector-dropdown"]',
+                'button[aria-haspopup="menu"][data-state="closed"]',
+                'button:has(.claude-logo-model-selector)',
+                'button[aria-haspopup="menu"]:has(svg.claude-logo-model-selector)',
+                'button[aria-haspopup="menu"]'
+            ];
+            
+            let modelButton = null;
+            for (const selector of selectors) {
+                try {
+                    modelButton = document.querySelector(selector);
+                    if (modelButton) {
+                        Utils.log(`セレクタ ${selector} でボタンを発見`, 'success');
+                        break;
+                    }
+                } catch (e) {
+                    // 無効なセレクタの場合はスキップ
+                    continue;
+                }
+            }
+            
+            // それでも見つからない場合、テキストで検索
+            if (!modelButton) {
+                modelButton = Array.from(document.querySelectorAll('button'))
+                    .find(el => el.textContent?.includes('Opus') || el.textContent?.includes('Sonnet'));
+                if (modelButton) {
+                    Utils.log('テキストベースでモデルボタンを発見', 'success');
+                }
+            }
             
             if (!modelButton) {
                 Utils.log('モデル選択ボタンが見つかりません', 'error');
+                // デバッグ情報を出力
+                Utils.log(`現在のURL: ${window.location.href}`, 'info');
+                Utils.log(`ページの読み込み状態: ${document.readyState}`, 'info');
+                Utils.log(`button要素の数: ${document.querySelectorAll('button').length}`, 'info');
                 return;
             }
             
