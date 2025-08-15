@@ -1432,6 +1432,39 @@
     // 実行
     // ========================================
     const researcher = new AIServiceResearcher();
+    
+    // UI Controllerが結果を取得できるようにwindowオブジェクトに公開
+    window.ClaudeResearchDetector = {
+        executeResearch: async () => {
+            // 既に実行済みの結果を返す
+            if (researcher.results) {
+                const features = (researcher.results?.features || []).map(f => ({
+                    name: typeof f === 'string' ? f : (f.name || 'Unknown'),
+                    type: f.type || 'toggle',
+                    enabled: f.enabled === true,
+                    connected: f.connected !== false
+                }));
+                
+                return {
+                    success: true,
+                    data: {
+                        models: researcher.results?.models || [],
+                        features: features,
+                        deepResearch: researcher.results?.additional?.deepResearch || { available: false },
+                        additionalModels: researcher.results?.additional?.additionalModels || [],
+                        timestamp: new Date().toISOString()
+                    },
+                    comparison: {
+                        hasChanges: false,
+                        changes: []
+                    }
+                };
+            }
+            return { success: false, error: 'Not executed yet' };
+        }
+    };
+    
+    // 即座に実行（元のコード通り）
     await researcher.run();
     
 })();

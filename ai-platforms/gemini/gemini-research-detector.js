@@ -1432,6 +1432,49 @@
     // 実行
     // ========================================
     const researcher = new AIServiceResearcher();
+    
+    // UI Controllerが結果を取得できるようにwindowオブジェクトに公開
+    window.GeminiResearchDetector = {
+        executeResearch: async () => {
+            // 既に実行済みの結果を返す
+            if (researcher.results) {
+                const allFeatures = researcher.results?.features || [];
+                const features = {
+                    main: allFeatures.filter(f => f.type === 'main' || !f.location).map(f => ({
+                        name: typeof f === 'string' ? f : (f.name || 'Unknown'),
+                        icon: f.icon,
+                        enabled: f.enabled !== false,
+                        type: 'main'
+                    })),
+                    additional: allFeatures.filter(f => f.type === 'additional' || f.location === 'submenu').map(f => ({
+                        name: typeof f === 'string' ? f : (f.name || 'Unknown'),
+                        icon: f.icon,
+                        enabled: f.enabled !== false,
+                        type: 'additional',
+                        sublabel: f.sublabel
+                    }))
+                };
+                
+                return {
+                    success: true,
+                    data: {
+                        models: researcher.results?.models || [],
+                        features: features,
+                        deepThink: researcher.results?.additional?.deepThink || { available: false },
+                        deepResearch: researcher.results?.additional?.deepResearch || { available: false },
+                        timestamp: new Date().toISOString()
+                    },
+                    comparison: {
+                        hasChanges: false,
+                        changes: []
+                    }
+                };
+            }
+            return { success: false, error: 'Not executed yet' };
+        }
+    };
+    
+    // 即座に実行（元のコード通り）
     await researcher.run();
     
 })();
