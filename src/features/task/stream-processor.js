@@ -162,6 +162,25 @@ class StreamProcessor {
       return;
     }
 
+    // ■ 3種類AIグループの特別処理
+    if (this.is3TypeGroup(column)) {
+      const currentRow = tasks[currentIndex].row;
+      
+      // 同じ行の3つのタスクを取得（ChatGPT, Claude, Gemini）
+      const samRowTasks = tasks.filter(t => t.row === currentRow);
+      
+      this.logger.log(`[StreamProcessor] 3種類AI検出: ${column}列グループ`);
+      this.logger.log(`[StreamProcessor]   行${currentRow}のタスク: ${samRowTasks.map(t => t.column).join(', ')}`);
+      
+      // 3つのタスクを並列で開始
+      await this.start3TypeParallel(samRowTasks);
+      
+      // インデックスを進める（3つ分）
+      this.currentRowByColumn.set(column, currentIndex + samRowTasks.length);
+      
+      return;
+    }
+
     const currentTask = tasks[currentIndex];
 
     // この列に既存のウィンドウがあるかチェック
@@ -360,7 +379,7 @@ class StreamProcessor {
    * @param {Object} result - タスク実行結果
    */
   async onTaskCompleted(task, windowId, result = {}) {
-    const { column, row, id: taskId, promptColumn } = task;
+    const { column, row, id: taskId, promptColumn, multiAI } = task;
     
     // タスクはpromptColumnでグループ化されているので、それを使用
     const queueColumn = promptColumn || column;
@@ -368,7 +387,8 @@ class StreamProcessor {
     this.logger.log(`[StreamProcessor] タスク完了: ${column}${row}`, {
       result: result.success ? "success" : "failed",
       skipped: result.skipped || false,
-      queueColumn: queueColumn
+      queueColumn: queueColumn,
+      multiAI: multiAI
     });
 
     // タスクを完了済みにマーク
@@ -401,18 +421,52 @@ class StreamProcessor {
       hasMoreTasks: hasMoreTasks,
     });
 
-    // 現在のウィンドウを閉じる（タスク完了ごとに必ず閉じる）
-    this.logger.log(`[StreamProcessor] タスク完了によりウィンドウを閉じます: ${queueColumn}列`);
-    await this.closeColumnWindow(queueColumn);
-    
-    // 次のタスクがある場合は新しいウィンドウで開始
-    if (hasMoreTasks) {
-      this.logger.log(`[StreamProcessor] 新しいウィンドウで次のタスクを開始: ${queueColumn}列`);
-      // 少し待機してから新しいウィンドウを開く
-      await new Promise(resolve => setTimeout(resolve, 500));
-      await this.startColumnProcessing(queueColumn);
+    // ■ 3種類AIグループの特別処理
+    if (multiAI) {
+      // 3種類AIの場合、同じ行の3つすべてが完了したかチェック
+      const tasks = this.taskQueue.get(queueColumn);
+      const sameRowTasks = tasks.filter(t => t.row === row);
+      const completedCount = sameRowTasks.filter(t => this.completedTasks.has(t.id)).length;
+      
+      this.logger.log(`[StreamProcessor] 3種類AI進捗: 行${row} - ${completedCount}/${sameRowTasks.length}完了`);
+      
+      // 3つすべて完了していない場合は、他のタスクの完了を待つ
+      if (completedCount < sameRowTasks.length) {
+        // ウィンドウは開いたままにして、他のタスクの完了を待つ
+        return;
+      }
+      
+      // 3つすべて完了した場合、次の行へ進む
+      this.logger.log(`[StreamProcessor] 3種類AI行${row}完了 → 次の行へ`);
+      
+      // ウィンドウを閉じる（3つとも）
+      for (const t of sameRowTasks) {
+        const windowId = this.columnWindows.get(t.column);
+        if (windowId) {
+          await this.closeColumnWindow(t.column);
+        }
+      }
+      
+      // 次の行がある場合は開始
+      if (hasMoreTasks) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        await this.startColumnProcessing(queueColumn);
+      }
     } else {
-      this.logger.log(`[StreamProcessor] ${queueColumn}列のタスクが全て完了`);
+      // 通常の処理（単独AI）
+      // 現在のウィンドウを閉じる（タスク完了ごとに必ず閉じる）
+      this.logger.log(`[StreamProcessor] タスク完了によりウィンドウを閉じます: ${queueColumn}列`);
+      await this.closeColumnWindow(queueColumn);
+      
+      // 次のタスクがある場合は新しいウィンドウで開始
+      if (hasMoreTasks) {
+        this.logger.log(`[StreamProcessor] 新しいウィンドウで次のタスクを開始: ${queueColumn}列`);
+        // 少し待機してから新しいウィンドウを開く
+        await new Promise(resolve => setTimeout(resolve, 500));
+        await this.startColumnProcessing(queueColumn);
+      } else {
+        this.logger.log(`[StreamProcessor] ${queueColumn}列のタスクが全て完了`);
+      }
     }
 
     // ■ 並列ストリーミング: 次の列の開始は記載完了後に行われる
@@ -784,6 +838,50 @@ class StreamProcessor {
     if (!this.columnWindows.has(nextColumn)) {
       await this.startColumnProcessing(nextColumn);
     }
+  }
+  
+  /**
+   * 列が3種類AIグループかチェック
+   * @param {string} column - プロンプト列
+   * @returns {boolean}
+   */
+  is3TypeGroup(column) {
+    const tasks = this.taskQueue.get(column);
+    if (!tasks || tasks.length === 0) return false;
+    
+    // 最初のタスクのmultiAIフラグをチェック
+    return tasks[0].multiAI === true;
+  }
+  
+  /**
+   * 3種類AIタスクを並列で開始
+   * @param {Array} tasks - 同じ行の3つのAIタスク（ChatGPT, Claude, Gemini）
+   */
+  async start3TypeParallel(tasks) {
+    this.logger.log(`[StreamProcessor] 🚀 3種類AI並列処理開始`);
+    this.logger.log(`[StreamProcessor]   行${tasks[0].row}: ${tasks.map(t => `${t.column}(${t.aiType})`).join(', ')}`);
+    
+    const parallelPromises = [];
+    
+    for (const task of tasks) {
+      // ウィンドウ数の制限チェック
+      if (this.activeWindows.size >= this.maxConcurrentWindows) {
+        this.logger.log(`[StreamProcessor] ⚠️ ウィンドウ数上限のため${task.column}列は待機`);
+        continue;
+      }
+      
+      // 各AIタスクを並列で開始
+      parallelPromises.push(
+        this.createWindowAndExecuteTask(task).catch(error => {
+          this.logger.error(`[StreamProcessor] ${task.column}列エラー:`, error);
+          return null;
+        })
+      );
+    }
+    
+    // すべてのタスクの完了を待つ
+    await Promise.all(parallelPromises);
+    this.logger.log(`[StreamProcessor] 3種類AI並列処理完了`);
   }
   
   /**

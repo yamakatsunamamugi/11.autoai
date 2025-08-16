@@ -9,7 +9,8 @@
     "storage",
     "identity",
     "system.display",
-    "scripting"
+    "scripting",
+    "windows"
   ],
   "host_permissions": [
     "https://sheets.googleapis.com/*",

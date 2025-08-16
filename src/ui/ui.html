@@ -80,17 +80,47 @@
           <h2>スプレッドシートを設定</h2>
         </div>
         <div class="step-content">
-          <div id="urlInputs">
-            <div class="url-input-group">
-              <input type="url" class="url-input" placeholder="https://docs.google.com/spreadsheets/d/...">
-              <button class="btn-remove" style="display:none">×</button>
+          <!-- スプレッドシートURL入力（プルダウン付きテキスト入力） -->
+          <div class="spreadsheet-input-section">
+            <label for="spreadsheetInput" style="display: block; margin-bottom: 8px; font-weight: 600;">スプレッドシートURL:</label>
+            <input type="text" id="spreadsheetInput" list="spreadsheetList" 
+                   placeholder="URLを入力または選択してください" 
+                   style="width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 6px;">
+            <datalist id="spreadsheetList">
+              <!-- 保存済みURLがここに動的に追加される -->
+            </datalist>
+            
+            <div class="url-actions" style="margin-bottom: 15px;">
+              <button id="loadSheetsBtn" class="btn btn-primary btn-large" style="margin-right: 5px;">
+                <span class="btn-icon">📊</span>
+                スプレッドシートを読み込む
+              </button>
+              <button id="saveUrlBtn" class="btn btn-secondary" style="margin-right: 5px;">
+                <span class="btn-icon">💾</span>
+                URLを保存
+              </button>
+              <button id="deleteUrlBtn" class="btn btn-secondary">
+                <span class="btn-icon">🗑</span>
+                削除
+              </button>
+            </div>
+            
+            <!-- 保存時の名前入力（初期は非表示） -->
+            <div id="saveNameSection" style="display: none; margin-bottom: 10px; padding: 10px; background: #f5f5f5; border-radius: 6px;">
+              <label style="display: block; margin-bottom: 5px; font-size: 12px; color: #666;">保存名を入力:</label>
+              <div style="display: flex; gap: 5px;">
+                <input type="text" id="saveNameInput" placeholder="名前を入力" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <button id="confirmSaveBtn" class="btn btn-primary" style="padding: 8px 12px;">
+                  <span class="btn-icon">✓</span>
+                  保存
+                </button>
+                <button id="cancelSaveBtn" class="btn btn-secondary" style="padding: 8px 12px;">
+                  <span class="btn-icon">❌</span>
+                  キャンセル
+                </button>
+              </div>
             </div>
           </div>
-          <button id="addUrlBtn" class="btn btn-add">+ URL入力欄を追加</button>
-          <button id="loadSheetsBtn" class="btn btn-primary btn-large">
-            <span class="btn-icon">📊</span>
-            スプレッドシートを読み込む
-          </button>
           <div id="loadFeedback" class="feedback-message"></div>
           
           <!-- 列状況カード -->

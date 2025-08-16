@@ -545,9 +545,16 @@ function renderIntegratedTable(config) {
 }
 
 // ===== DOM要素の取得 =====
-const urlInputsContainer = document.getElementById("urlInputs");
-const addUrlBtn = document.getElementById("addUrlBtn");
+const spreadsheetInput = document.getElementById("spreadsheetInput");
+const spreadsheetList = document.getElementById("spreadsheetList");
 const loadSheetsBtn = document.getElementById("loadSheetsBtn");
+const saveUrlBtn = document.getElementById("saveUrlBtn");
+const deleteUrlBtn = document.getElementById("deleteUrlBtn");
+const saveNameSection = document.getElementById("saveNameSection");
+const saveNameInput = document.getElementById("saveNameInput");
+const confirmSaveBtn = document.getElementById("confirmSaveBtn");
+const cancelSaveBtn = document.getElementById("cancelSaveBtn");
+
 const startBtn = document.getElementById("startBtn");
 const stopBtn = document.getElementById("stopBtn");
 const clearLogBtn = document.getElementById("clearLogBtn");
@@ -671,84 +678,357 @@ function hideColumnStatusCard() {
  * URL入力欄が1つの場合は削除ボタンを非表示にする
  */
 function updateRemoveButtons() {
-  const groups = urlInputsContainer.querySelectorAll(".url-input-group");
-  groups.forEach((group, index) => {
-    const removeBtn = group.querySelector(".btn-remove");
-    // 入力欄が2つ以上ある場合のみ削除ボタンを表示
-    if (groups.length > 1) {
-      removeBtn.style.display = "block";
+  // datalist方式では不要
+  return;
+}
+
+/**
+ * URL入力欄を動的に追加（datalist方式では不要）
+ * @param {string} value - 初期値（省略可能）
+ */
+function addUrlInput(value = "") {
+  // datalist方式では不要
+  return;
+}
+
+/**
+ * 入力されたURLをローカルストレージに保存（datalist方式ではChrome Storageを使用）
+ * 空の値は除外して保存する
+ */
+function saveUrls() {
+  // datalist方式ではChrome Storageを使用
+  return;
+}
+
+// ===== URL管理機能 =====
+// デフォルトURL
+const DEFAULT_URL = {
+  url: "https://docs.google.com/spreadsheets/d/1C5aOSyyCBXf7HwF-BGGu-cz5jdRwNBaoW4G4ivIRrRg/edit?gid=1633283608#gid=1633283608",
+  name: "デフォルトスプレッドシート"
+};
+
+// 保存済みURLリストを読み込み
+function loadSavedUrls() {
+  chrome.storage.local.get(['savedSpreadsheets'], (result) => {
+    let savedUrls = result.savedSpreadsheets || [];
+    
+    // デフォルトURLが存在しない場合は追加
+    if (!savedUrls.some(item => item.url === DEFAULT_URL.url)) {
+      savedUrls.unshift(DEFAULT_URL);
+      chrome.storage.local.set({ savedSpreadsheets: savedUrls });
+    }
+    
+    // datalistを更新
+    updateDatalist(savedUrls);
+  });
+}
+
+// datalistを更新
+function updateDatalist(urls) {
+  spreadsheetList.innerHTML = '';
+  urls.forEach((item) => {
+    const option = document.createElement('option');
+    option.value = item.url;
+    option.label = item.name || item.url;
+    spreadsheetList.appendChild(option);
+  });
+}
+
+// URLを保存（名前入力ダイアログ付き）
+function saveCurrentUrl() {
+  const url = spreadsheetInput.value.trim();
+  
+  if (!url) {
+    showFeedback("URLを入力してください", "warning");
+    return;
+  }
+  
+  // 名前入力セクションを表示
+  saveNameSection.style.display = 'block';
+  saveNameInput.value = '';
+  saveNameInput.focus();
+}
+
+// 名前を付けて保存を実行
+function confirmSaveUrl() {
+  const url = spreadsheetInput.value.trim();
+  const name = saveNameInput.value.trim() || `スプレッドシート ${new Date().toLocaleDateString()}`;
+  
+  chrome.storage.local.get(['savedSpreadsheets'], (result) => {
+    let savedUrls = result.savedSpreadsheets || [];
+    
+    // 重複チェック
+    const existingIndex = savedUrls.findIndex(item => item.url === url);
+    if (existingIndex !== -1) {
+      // 既存の場合は名前を更新
+      savedUrls[existingIndex].name = name;
+      showFeedback("名前を更新しました", "success");
     } else {
-      removeBtn.style.display = "none";
+      // 新規追加
+      savedUrls.push({ url, name });
+      showFeedback("URLを保存しました", "success");
+    }
+    
+    chrome.storage.local.set({ savedSpreadsheets: savedUrls }, () => {
+      loadSavedUrls();
+      cancelSave();
+    });
+  });
+}
+
+// 保存をキャンセル
+function cancelSave() {
+  saveNameSection.style.display = 'none';
+  saveNameInput.value = '';
+}
+
+// 現在のURLを削除
+function deleteCurrentUrl() {
+  const url = spreadsheetInput.value.trim();
+  
+  if (!url) {
+    showFeedback("削除するURLを入力してください", "warning");
+    return;
+  }
+  
+  // デフォルトURLは削除不可
+  if (url === DEFAULT_URL.url) {
+    showFeedback("デフォルトURLは削除できません", "warning");
+    return;
+  }
+  
+  chrome.storage.local.get(['savedSpreadsheets'], (result) => {
+    let savedUrls = result.savedSpreadsheets || [];
+    const before = savedUrls.length;
+    savedUrls = savedUrls.filter(item => item.url !== url);
+    
+    if (before === savedUrls.length) {
+      showFeedback("このURLは保存されていません", "info");
+      return;
+    }
+    
+    chrome.storage.local.set({ savedSpreadsheets: savedUrls }, () => {
+      showFeedback("URLを削除しました", "success");
+      loadSavedUrls();
+      spreadsheetInput.value = "";
+    });
+  });
+}
+
+// 選択したURLの名前を編集
+function editSelectedName() {
+  const selectedUrl = savedUrlSelect.value;
+  if (!selectedUrl) {
+    showFeedback("編集するURLを選択してください", "warning");
+    return;
+  }
+  
+  chrome.storage.local.get(['savedSpreadsheets'], (result) => {
+    const savedUrls = result.savedSpreadsheets || [];
+    const selectedItem = savedUrls.find(item => item.url === selectedUrl);
+    
+    if (selectedItem) {
+      // 編集セクションを表示
+      editNameSection.style.display = 'block';
+      editNameInput.value = selectedItem.name || '';
+      editNameInput.focus();
+      editNameInput.select();
     }
   });
 }
 
-/**
- * URL入力欄を動的に追加
- * @param {string} value - 初期値（省略可能）
- */
-function addUrlInput(value = "") {
-  // 入力欄グループを作成
-  const group = document.createElement("div");
-  group.className = "url-input-group";
-
-  // URL入力欄を作成
-  const input = document.createElement("input");
-  input.type = "url";
-  input.className = "url-input";
-  input.placeholder = "https://docs.google.com/spreadsheets/d/...";
-  input.value = value;
-
-  // 削除ボタンを作成
-  const removeBtn = document.createElement("button");
-  removeBtn.className = "btn-remove";
-  removeBtn.textContent = "×";
-  removeBtn.onclick = () => {
-    group.remove();
-    updateRemoveButtons();
-    saveUrls(); // 削除時に自動保存
-  };
-
-  // 要素を組み立てて追加
-  group.appendChild(input);
-  group.appendChild(removeBtn);
-  urlInputsContainer.appendChild(group);
-
-  updateRemoveButtons();
+// 編集した名前を保存
+function saveEditedName() {
+  const selectedUrl = savedUrlSelect.value;
+  const newName = editNameInput.value.trim();
+  
+  if (!selectedUrl) {
+    showFeedback("URLが選択されていません", "error");
+    cancelEdit();
+    return;
+  }
+  
+  if (!newName) {
+    showFeedback("名前を入力してください", "warning");
+    return;
+  }
+  
+  chrome.storage.local.get(['savedSpreadsheets'], (result) => {
+    let savedUrls = result.savedSpreadsheets || [];
+    const index = savedUrls.findIndex(item => item.url === selectedUrl);
+    
+    if (index !== -1) {
+      savedUrls[index].name = newName;
+      chrome.storage.local.set({ savedSpreadsheets: savedUrls }, () => {
+        showFeedback("名前を変更しました", "success");
+        loadSavedUrls();
+        // 選択状態を保持
+        setTimeout(() => {
+          savedUrlSelect.value = selectedUrl;
+        }, 100);
+        cancelEdit();
+      });
+    }
+  });
 }
 
-/**
- * 入力されたURLをローカルストレージに保存
- * 空の値は除外して保存する
- */
-function saveUrls() {
-  const inputs = urlInputsContainer.querySelectorAll(".url-input");
-  const urls = Array.from(inputs)
-    .map((input) => input.value.trim())
-    .filter((url) => url.length > 0);
-  localStorage.setItem("spreadsheetUrls", JSON.stringify(urls));
+// 編集をキャンセル
+function cancelEdit() {
+  editNameSection.style.display = 'none';
+  editNameInput.value = '';
 }
 
-// ===== イベントリスナー: URL入力欄追加 =====
-addUrlBtn.addEventListener("click", () => {
-  addUrlInput();
-});
-
-// ===== イベントリスナー: スプレッドシート読み込み =====
-loadSheetsBtn.addEventListener("click", async () => {
-  // 入力されたURLを収集（空欄は除外）
-  const inputs = urlInputsContainer.querySelectorAll(".url-input");
-  const urls = Array.from(inputs)
-    .map((input) => input.value.trim())
-    .filter((url) => url.length > 0);
-
-  // バリデーション：URLが入力されているか確認
-  if (urls.length === 0) {
-    updateStatus("URLを入力してください", "error");
+// URLを読み込む処理
+async function loadSpreadsheetUrl(url) {
+  if (!url) {
+    updateStatus("URLを選択または入力してください", "error");
     return;
   }
 
-  // ボタンを無効化
+  updateStatus("スプレッドシートを読み込み中...", "loading");
+  showFeedback("読み込み中...", "loading");
+
+  try {
+    const response = await chrome.runtime.sendMessage({
+      action: "loadSpreadsheets",
+      urls: [url],
+    });
+
+    if (response && response.success) {
+      const message = "スプレッドシートを読み込み、タスクリストを作成しました。";
+      updateStatus(message, "success");
+      showFeedback(message, "success");
+      
+      // 列状況を表示
+      if (response.removedColumns) {
+        showColumnStatus(response.removedColumns);
+      }
+    } else {
+      const errorMessage = "読み込みエラー: " + (response?.error || "不明なエラー");
+      updateStatus(errorMessage, "error");
+      showFeedback(errorMessage, "error");
+    }
+  } catch (error) {
+    console.error("スプレッドシート読み込みエラー:", error);
+    updateStatus("読み込みエラー", "error");
+    showFeedback("読み込みエラーが発生しました", "error");
+  }
+}
+
+// ===== イベントリスナー: URL管理（旧UI互換） =====
+// 以下は旧UI用のイベントリスナー（datalist対応のためコメントアウト）
+/*
+if (typeof loadSelectedBtn !== 'undefined' && loadSelectedBtn) {
+  loadSelectedBtn.addEventListener("click", async () => {
+    const selectedUrl = savedUrlSelect.value;
+    if (selectedUrl) {
+      await loadSpreadsheetUrl(selectedUrl);
+    } else {
+      showFeedback("URLを選択してください", "warning");
+    }
+  });
+}
+
+if (typeof deleteSelectedBtn !== 'undefined' && deleteSelectedBtn) {
+  deleteSelectedBtn.addEventListener("click", () => {
+    const selectedUrl = savedUrlSelect.value;
+    if (selectedUrl) {
+      if (confirm("選択したURLを削除しますか？")) {
+        deleteUrl(selectedUrl);
+      }
+    } else {
+      showFeedback("削除するURLを選択してください", "warning");
+    }
+  });
+}
+
+if (typeof saveNewUrlBtn !== 'undefined' && saveNewUrlBtn) {
+  saveNewUrlBtn.addEventListener("click", () => {
+    const urlInput = document.querySelector(".url-input");
+    const url = urlInput.value.trim();
+    const name = urlNameInput.value.trim();
+    
+    if (url) {
+      saveNewUrl(url, name);
+      urlInput.value = "";
+      urlNameInput.value = "";
+    } else {
+      showFeedback("URLを入力してください", "warning");
+    }
+  });
+}
+
+if (typeof loadNewUrlBtn !== 'undefined' && loadNewUrlBtn) {
+  loadNewUrlBtn.addEventListener("click", async () => {
+    const urlInput = document.querySelector(".url-input");
+    const url = urlInput.value.trim();
+    
+    if (url) {
+      await loadSpreadsheetUrl(url);
+    } else {
+      showFeedback("URLを入力してください", "warning");
+    }
+  });
+}
+
+if (typeof editNameBtn !== 'undefined' && editNameBtn) {
+  editNameBtn.addEventListener("click", () => {
+    editSelectedName();
+  });
+}
+
+if (typeof saveEditBtn !== 'undefined' && saveEditBtn) {
+  saveEditBtn.addEventListener("click", () => {
+    saveEditedName();
+  });
+}
+
+if (typeof cancelEditBtn !== 'undefined' && cancelEditBtn) {
+  cancelEditBtn.addEventListener("click", () => {
+    cancelEdit();
+  });
+}
+
+if (typeof editNameInput !== 'undefined' && editNameInput) {
+  editNameInput.addEventListener("keypress", (e) => {
+    if (e.key === "Enter") {
+      saveEditedName();
+    }
+  });
+  
+  editNameInput.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      cancelEdit();
+    }
+  });
+}
+*/
+
+// ===== イベントリスナー: URL入力欄追加 =====
+// datalist方式では不要なため削除
+// const addUrlBtn = document.getElementById("addUrlBtn");
+// if (addUrlBtn) {
+//   addUrlBtn.addEventListener("click", () => {
+//     addUrlInput();
+//   });
+// }
+
+// ===== イベントリスナー: スプレッドシート読み込み =====
+if (loadSheetsBtn) {
+  loadSheetsBtn.addEventListener("click", async () => {
+    // datalist対応の単一入力欄からURLを取得
+    const url = spreadsheetInput.value.trim();
+    
+    if (!url) {
+      showFeedback("URLを入力または選択してください", "warning");
+      updateStatus("URLを入力してください", "error");
+      return;
+    }
+    
+    // 配列形式で処理（既存の処理と互換性保持）
+    const urls = [url];
+
+    // ボタンを無効化
   loadSheetsBtn.disabled = true;
 
   updateStatus("スプレッドシートを読み込み中...", "loading");
@@ -766,7 +1046,7 @@ loadSheetsBtn.addEventListener("click", async () => {
         "スプレッドシートを読み込み、タスクリストを作成しました。";
       updateStatus(message, "success");
       showFeedback(message, "success");
-      saveUrls(); // 成功時にURLを保存
+      // saveUrls(); // datalist方式では自動保存は不要
 
       // 列状況カードを表示
       if (response.columnStatus) {
@@ -800,21 +1080,19 @@ loadSheetsBtn.addEventListener("click", async () => {
     // エラー時もボタンを有効化
     loadSheetsBtn.disabled = false;
   }
-});
+  });
+}
 
 // ===== イベントリスナー: ストリーミング処理開始 =====
 startBtn.addEventListener("click", async () => {
   console.log("ストリーミング処理開始ボタンが押されました。");
 
-  // 入力されたURLを収集（空欄は除外）
-  const inputs = urlInputsContainer.querySelectorAll(".url-input");
-  const urls = Array.from(inputs)
-    .map((input) => input.value.trim())
-    .filter((url) => url.length > 0);
-
+  // datalist対応の入力欄からURLを取得
+  const spreadsheetUrl = spreadsheetInput.value.trim();
+  
   // バリデーション：URLが入力されているか確認
-  if (urls.length === 0) {
-    updateStatus("スプレッドシートURLを入力してください", "error");
+  if (!spreadsheetUrl) {
+    updateStatus("スプレッドシートを先に読み込んでください", "error");
     return;
   }
 
@@ -825,8 +1103,7 @@ startBtn.addEventListener("click", async () => {
   stopBtn.disabled = false;
 
   try {
-    // 最初のURLから情報を抽出
-    const spreadsheetUrl = urls[0];
+    // URLから情報を抽出
     const match = spreadsheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
     if (!match) {
       throw new Error("有効なスプレッドシートURLではありません");
@@ -941,13 +1218,10 @@ clearLogBtn.addEventListener("click", async () => {
     return;
   }
 
-  // 現在のスプレッドシートURLを取得
-  const inputs = urlInputsContainer.querySelectorAll(".url-input");
-  const urls = Array.from(inputs)
-    .map((input) => input.value.trim())
-    .filter((url) => url.length > 0);
+  // datalist対応の入力欄からURLを取得
+  const spreadsheetUrl = spreadsheetInput.value.trim();
 
-  if (urls.length === 0) {
+  if (!spreadsheetUrl) {
     updateStatus("スプレッドシートURLが設定されていません", "error");
     return;
   }
@@ -957,8 +1231,7 @@ clearLogBtn.addEventListener("click", async () => {
   updateStatus("ログをクリア中...", "loading");
 
   try {
-    // 最初のURLから情報を抽出
-    const spreadsheetUrl = urls[0];
+    // URLから情報を抽出
     const match = spreadsheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
     if (!match) {
       throw new Error("有効なスプレッドシートURLではありません");
@@ -995,13 +1268,10 @@ deleteAnswersBtn.addEventListener("click", async () => {
     return;
   }
 
-  // 現在のスプレッドシートURLを取得
-  const inputs = urlInputsContainer.querySelectorAll(".url-input");
-  const urls = Array.from(inputs)
-    .map((input) => input.value.trim())
-    .filter((url) => url.length > 0);
+  // datalist対応の入力欄からURLを取得
+  const spreadsheetUrl = spreadsheetInput.value.trim();
 
-  if (urls.length === 0) {
+  if (!spreadsheetUrl) {
     updateStatus("スプレッドシートURLが設定されていません", "error");
     return;
   }
@@ -1011,8 +1281,7 @@ deleteAnswersBtn.addEventListener("click", async () => {
   updateStatus("回答を削除中...", "loading");
 
   try {
-    // 最初のURLから情報を抽出
-    const spreadsheetUrl = urls[0];
+    // URLから情報を抽出
     const match = spreadsheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
     if (!match) {
       throw new Error("有効なスプレッドシートURLではありません");
@@ -2564,6 +2833,30 @@ if (showAIStatusBtn) {
 // ===== 初期化処理 =====
 // 初回のAIステータスを更新
 updateAIStatus();
+
+// 保存済みURLリストを読み込み
+loadSavedUrls();
+
+// ===== URLボタンのイベントリスナー =====
+// URL保存ボタン
+if (saveUrlBtn) {
+  saveUrlBtn.addEventListener("click", saveCurrentUrl);
+}
+
+// URL削除ボタン
+if (deleteUrlBtn) {
+  deleteUrlBtn.addEventListener("click", deleteCurrentUrl);
+}
+
+// 保存確認ボタン
+if (confirmSaveBtn) {
+  confirmSaveBtn.addEventListener("click", confirmSaveUrl);
+}
+
+// 保存キャンセルボタン
+if (cancelSaveBtn) {
+  cancelSaveBtn.addEventListener("click", cancelSave);
+}
 
 // ストレージの変更を監視（AI変更検出システムが実行されたときに更新）
 chrome.storage.onChanged.addListener((changes, areaName) => {

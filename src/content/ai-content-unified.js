@@ -200,11 +200,13 @@ const SELECTOR_CONFIG = {
     ],
     RESPONSE_ROOT: 'main, [role="main"], .conversation',
     RESPONSE_MESSAGE: [
+      "message-content.model-response-text", // ユーザー提供のHTML構造に基づく
       ".model-response-text",
       "[data-response-text]",
       ".response-container:last-child",
     ],
     RESPONSE_CONTENT: [
+      ".markdown.markdown-main-panel", // ユーザー提供のHTML構造に基づく
       "div[data-response-text]",
       ".response-text",
       ".markdown-content",
@@ -2449,14 +2451,31 @@ async function getResponseWithCanvas() {
         }
       }
 
-      // 通常回答モード
-      const responses = document.querySelectorAll(".markdown-main-panel");
-      if (responses.length > 0) {
-        const latest = responses[responses.length - 1];
-        const text = latest.textContent.replace(/\u00A0/g, " ") || "";
-        return text;
+      // 通常回答モード - ユーザー提供のHTML構造に基づくセレクタ
+      const geminiSelectors = [
+        'message-content.model-response-text .markdown.markdown-main-panel', // 最も具体的
+        '.model-response-text .markdown.markdown-main-panel',
+        '.markdown.markdown-main-panel',
+        'message-content.model-response-text',
+        '.model-response-text',
+        'message-content',
+      ];
+      
+      for (const selector of geminiSelectors) {
+        const elements = document.querySelectorAll(selector);
+        if (elements.length > 0) {
+          const latest = elements[elements.length - 1];
+          const text = latest.textContent.replace(/\u00A0/g, " ").trim();
+          if (text) {
+            console.log(`[Gemini] 回答取得成功 (セレクタ: ${selector})`);
+            return text;
+          }
+        }
       }
 
+      console.error('[Gemini] 回答コンテナが見つかりません。利用可能な要素:');
+      console.log('message-content要素:', document.querySelectorAll('message-content').length);
+      console.log('.model-response-text要素:', document.querySelectorAll('.model-response-text').length);
       throw new Error("Gemini: 回答コンテナが見つかりません");
 
     default:
