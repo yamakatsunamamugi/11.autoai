@@ -3,13 +3,35 @@
 /**
  * StreamProcessor - タスクの並列ストリーミング処理を管理
  *
- * 並列ストリーミング処理の動作:
- * 1. 最初の列の最初の行から開始
- * 2. タスクが完了したら:
- *    - 同じ列の次の行へ進む（同じウィンドウを使い回す）
- *    - 完了した行の隣の列も開始する
- * 3. 波のように処理が広がっていく
- * 4. 最大4つのウィンドウを使い、列ごとに同じウィンドウを使い回す
+ * ■ 並列ストリーミング処理の仕様:
+ * 1. 最初は第1列グループ（例:D列グループ）のみから開始
+ * 2. 各列グループ内では上から下へ順次処理（同じウィンドウを使い回す）
+ * 3. 前の列グループの同じ行の回答が記載完了したら、次の列グループの同じ行を開始
+ * 4. 結果として左上から右下へ斜めに波が広がるように処理が進行
+ * 
+ * ■ 具体例（D,I,N,R,V列の5つの列グループの場合）:
+ * 
+ * 時刻T1: D9開始
+ * 時刻T2: D9完了→E,F,G列に記載 → D10開始（同じウィンドウ）
+ * 時刻T3: D9記載完了により → I9開始（新規ウィンドウ）
+ * 時刻T4: D10完了→記載 → D11開始
+ * 時刻T5: I9完了→J,K,L列に記載 → I10開始 & D10記載完了により→I10待機
+ * 時刻T6: I9記載完了により → N9開始（新規ウィンドウ）
+ * 
+ * ■ 処理イメージ:
+ * ```
+ * 　　D列　I列　N列　R列　V列
+ * 9行: ①→②→③→④→⑤
+ * 10行: ②→③→④→⑤→⑥  
+ * 11行: ③→④→⑤→⑥→⑦
+ * 12行: ④→⑤→⑥→⑦→⑧
+ * ```
+ * ※数字は処理開始の順序
+ * 
+ * ■ ウィンドウ管理:
+ * - 最大4つのウィンドウを並列使用
+ * - 各列グループごとに1つのウィンドウを占有
+ * - 列グループの全行完了後、ウィンドウを解放
  */
 class StreamProcessor {
   constructor(dependencies = {}) {
@@ -31,6 +53,10 @@ class StreamProcessor {
     this.taskQueue = new Map(); // column -> tasks[]
     this.currentRowByColumn = new Map(); // column -> currentRowNumber
     this.completedTasks = new Set(); // taskId
+    
+    // 記載完了管理（並列ストリーミングの核心）
+    this.writtenCells = new Map(); // `${column}${row}` -> true (記載完了したセル)
+    this.pendingColumnStarts = new Map(); // `${column}${row}` -> Promise (開始待機中の列)
 
     // 処理状態
     this.isProcessing = false;
@@ -58,27 +84,18 @@ class StreamProcessor {
       // タスクを列・行でグループ化
       this.organizeTasks(taskList);
 
-      // 複数の列を並列で開始（最大4ウィンドウまで）
+      // ■ 並列ストリーミング: 最初は第1列のみから開始
       const columns = Array.from(this.taskQueue.keys()).sort();
-      const columnsToStart = Math.min(columns.length, this.maxConcurrentWindows);
+      this.logger.log(`[StreamProcessor] 並列ストリーミング開始`);
+      this.logger.log(`[StreamProcessor] 列グループ: ${columns.join(' → ')}`);
+      this.logger.log(`[StreamProcessor] 第1列グループ(${columns[0]})から開始`);
       
-      this.logger.log(`[StreamProcessor] ${columnsToStart}個の列を並列で開始`);
-      
-      // 各列を並列で開始
-      const columnProcessingPromises = [];
-      for (let i = 0; i < columnsToStart; i++) {
-        if (columns[i]) {
-          columnProcessingPromises.push(this.startColumnProcessing(columns[i]));
-        }
+      // 最初の列のみ開始（並列ストリーミングの起点）
+      if (columns[0]) {
+        await this.startColumnProcessing(columns[0]).catch(error => {
+          this.logger.error("[StreamProcessor] 第1列処理エラー", error);
+        });
       }
-      
-      // 全ての列の処理開始を並列実行（ウィンドウ作成のみ並列、タスク実行は各列内で順次）
-      await Promise.all(columnProcessingPromises.map(promise => 
-        promise.catch(error => {
-          this.logger.error("[StreamProcessor] 列処理エラー", error);
-          return null; // エラーが発生した列は無視して続行
-        })
-      ));
 
       return {
         success: true,
@@ -398,11 +415,9 @@ class StreamProcessor {
       this.logger.log(`[StreamProcessor] ${queueColumn}列のタスクが全て完了`);
     }
 
-    // 完了した行の隣の列も開始
-    const nextColumn = this.getNextColumn(queueColumn);
-    if (nextColumn && this.shouldStartNextColumn(nextColumn, row)) {
-      await this.startColumnProcessing(nextColumn);
-    }
+    // ■ 並列ストリーミング: 次の列の開始は記載完了後に行われる
+    // （writeResultToSpreadsheet内のcheckAndStartNextColumnForRowで処理）
+    // 従来のコードは削除し、記載完了ベースの制御に移行
   }
 
   /**
@@ -425,6 +440,15 @@ class StreamProcessor {
       );
 
       this.logger.log(`[StreamProcessor] 回答を書き込み: ${range}`);
+      
+      // ■ 記載完了を記録（並列ストリーミングの核心）
+      const cellKey = `${task.promptColumn || task.column}${task.row}`;
+      this.writtenCells.set(cellKey, true);
+      this.logger.log(`[StreamProcessor] 記載完了マーク: ${cellKey}`);
+      
+      // ■ この記載により、次の列の同じ行を開始できるかチェック
+      await this.checkAndStartNextColumnForRow(task.promptColumn || task.column, task.row);
+      
     } catch (error) {
       this.logger.error(
         `[StreamProcessor] スプレッドシート書き込みエラー`,
@@ -716,6 +740,53 @@ class StreamProcessor {
   }
 
   /**
+   * 記載完了後、次の列の同じ行を開始できるかチェック
+   * @param {string} column - 記載が完了した列
+   * @param {number} row - 記載が完了した行
+   */
+  async checkAndStartNextColumnForRow(column, row) {
+    const nextColumn = this.getNextColumn(column);
+    if (!nextColumn) {
+      this.logger.log(`[StreamProcessor] 次の列なし: ${column}列が最後`);
+      return;
+    }
+    
+    // 次の列の同じ行のタスクを探す
+    const nextColumnTasks = this.taskQueue.get(nextColumn);
+    if (!nextColumnTasks) return;
+    
+    const nextTask = nextColumnTasks.find(t => t.row === row);
+    if (!nextTask) {
+      this.logger.log(`[StreamProcessor] ${nextColumn}列に行${row}のタスクなし`);
+      return;
+    }
+    
+    // すでに処理済みか確認
+    if (this.completedTasks.has(nextTask.id)) {
+      this.logger.log(`[StreamProcessor] ${nextColumn}列の行${row}は処理済み`);
+      return;
+    }
+    
+    // 現在の処理インデックスが該当行に到達しているか確認
+    const currentIndex = this.currentRowByColumn.get(nextColumn) || 0;
+    const taskIndex = nextColumnTasks.indexOf(nextTask);
+    
+    if (taskIndex !== currentIndex) {
+      this.logger.log(`[StreamProcessor] ${nextColumn}列はまだ行${row}に到達していない（現在: 行${nextColumnTasks[currentIndex]?.row}）`);
+      return;
+    }
+    
+    // ■ 並列ストリーミング: 前の列の記載完了により次の列を開始
+    this.logger.log(`[StreamProcessor] 📋 並列ストリーミング発動！`);
+    this.logger.log(`[StreamProcessor]   ${column}列の行${row}記載完了 → ${nextColumn}列の行${row}を開始`);
+    
+    // 次の列がまだウィンドウを持っていない場合のみ開始
+    if (!this.columnWindows.has(nextColumn)) {
+      await this.startColumnProcessing(nextColumn);
+    }
+  }
+  
+  /**
    * 次の列を取得
    * @param {string} currentColumn
    * @returns {string|null}
@@ -727,20 +798,15 @@ class StreamProcessor {
   }
 
   /**
-   * 次の列を開始すべきか判定
+   * 次の列を開始すべきか判定（並列ストリーミングでは使用しない）
+   * @deprecated 記載完了ベースの制御に移行したため不要
    * @param {string} column
    * @param {number} row
    * @returns {boolean}
    */
   shouldStartNextColumn(column, row) {
-    const tasks = this.taskQueue.get(column);
-    if (!tasks || tasks.length === 0) return false;
-
-    const currentIndex = this.currentRowByColumn.get(column) || 0;
-    if (currentIndex >= tasks.length) return false;
-
-    const nextTask = tasks[currentIndex];
-    return nextTask.row === row;
+    // 並列ストリーミングでは checkAndStartNextColumnForRow を使用
+    return false;
   }
 
   /**
