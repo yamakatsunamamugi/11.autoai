@@ -35,6 +35,15 @@ import { deepResearchHandler } from "./src/modules/deep-research-handler.js";
 // これにより、background.jsの肥大化を防ぎ、保守性を向上
 import { aiTaskHandler } from "./src/handlers/ai-task-handler.js";
 
+// ===== ウィンドウマネージャー =====
+import { TestWindowManager } from "./src/ui/test-window-manager.js";
+
+// グローバルにウィンドウマネージャーを設定
+globalThis.aiWindowManager = new TestWindowManager();
+
+// グローバルにAIタスクハンドラーを設定（StreamProcessorから直接アクセス可能にする）
+globalThis.aiTaskHandler = aiTaskHandler;
+
 // ===== 初期化完了後の処理 =====
 // モジュール読み込み完了を待ってから初期化処理を実行
 setTimeout(() => {
@@ -50,6 +59,7 @@ setTimeout(() => {
     console.log("  - authService: 利用可能");
     console.log("  - sheetsClient: 利用可能");
     console.log("  - docsClient: 利用可能");
+    console.log("  - aiWindowManager: 利用可能");
 
     // 拡張機能インストール時の処理
     chrome.runtime.onInstalled.addListener(async () => {
@@ -370,6 +380,134 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
       sendResponse({ received: true });
       return false;
+
+    // ===== ストリーミング処理開始 =====
+    case "streamProcessTasks":
+      console.log("[MessageHandler] ストリーミング処理開始要求:", {
+        spreadsheetId: request.spreadsheetId,
+        taskCount: request.tasks?.length || 0,
+        testMode: request.testMode
+      });
+      
+      (async () => {
+        try {
+          // StreamingServiceManagerを取得
+          const manager = getStreamingServiceManager();
+          
+          if (!manager) {
+            throw new Error("StreamingServiceManagerが取得できません");
+          }
+          
+          // 初期化完了を待つ
+          await manager.waitForInitialization();
+          
+          // ストリーミング処理を開始
+          const result = await manager.startStreaming({
+            spreadsheetId: request.spreadsheetId,
+            spreadsheetUrl: request.spreadsheetUrl,
+            gid: request.gid,
+            tasks: request.tasks,
+            columnMapping: request.columnMapping,
+            testMode: request.testMode || false
+          });
+          
+          sendResponse({
+            success: true,
+            totalWindows: result.totalWindows || 4,
+            message: "ストリーミング処理を開始しました"
+          });
+        } catch (error) {
+          console.error("[MessageHandler] ストリーミング処理開始エラー:", error);
+          sendResponse({
+            success: false,
+            error: error.message
+          });
+        }
+      })();
+      return true; // 非同期応答のため true を返す
+
+    // ===== テストウィンドウ作成 =====
+    case "createTestWindow":
+      console.log("[MessageHandler] テストウィンドウ作成要求:", {
+        aiType: request.aiType,
+        url: request.url
+      });
+      
+      (async () => {
+        try {
+          const window = await chrome.windows.create({
+            url: request.url,
+            type: "normal",
+            state: "normal",
+            left: request.left,
+            top: request.top,
+            width: request.width,
+            height: request.height,
+            focused: false
+          });
+          
+          const tabs = await chrome.tabs.query({ windowId: window.id });
+          
+          sendResponse({
+            success: true,
+            windowId: window.id,
+            tabId: tabs[0]?.id
+          });
+        } catch (error) {
+          console.error("[MessageHandler] ウィンドウ作成エラー:", error);
+          sendResponse({
+            success: false,
+            error: error.message
+          });
+        }
+      })();
+      return true;
+
+    // ===== 画面情報取得 =====
+    case "getScreenInfo":
+      console.log("[MessageHandler] 画面情報取得要求");
+      
+      (async () => {
+        try {
+          const displays = await chrome.system.display.getInfo();
+          const primaryDisplay = displays.find(d => d.isPrimary) || displays[0];
+          
+          sendResponse({
+            screenWidth: primaryDisplay.bounds.width,
+            screenHeight: primaryDisplay.bounds.height,
+            availWidth: primaryDisplay.workArea.width,
+            availHeight: primaryDisplay.workArea.height
+          });
+        } catch (error) {
+          // system.display APIが使えない場合のフォールバック
+          sendResponse({
+            screenWidth: 1920,
+            screenHeight: 1080,
+            availWidth: 1920,
+            availHeight: 1080
+          });
+        }
+      })();
+      return true;
+    
+    // ===== テストウィンドウ閉じる =====
+    case "closeTestWindow":
+      console.log("[MessageHandler] ウィンドウクローズ要求:", request.data);
+      
+      (async () => {
+        try {
+          if (request.data?.windowId) {
+            await chrome.windows.remove(request.data.windowId);
+            sendResponse({ success: true });
+          } else {
+            sendResponse({ success: false, error: "windowId not provided" });
+          }
+        } catch (error) {
+          console.error("[MessageHandler] ウィンドウクローズエラー:", error);
+          sendResponse({ success: false, error: error.message });
+        }
+      })();
+      return true;
 
     // ===== AITaskHandlerログ設定 =====
     // test-runner-chrome.jsからのログ関数設定要求

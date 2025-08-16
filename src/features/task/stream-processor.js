@@ -275,31 +275,16 @@ class StreamProcessor {
 
       const tabId = tabs[0].id;
 
-      // background.jsのメッセージハンドラー経由でコンテンツスクリプトにタスク実行を依頼
-      const result = await new Promise((resolve, reject) => {
-        chrome.runtime.sendMessage(
-          {
-            action: "executeAITask",
-            tabId,
-            prompt: task.prompt,
-            taskId: task.id,
-            timeout: 180000,
-          },
-          (response) => {
-            if (chrome.runtime.lastError) {
-              reject(
-                new Error(`接続エラー: ${chrome.runtime.lastError.message}`),
-              );
-              return;
-            }
-            if (response && response.success) {
-              resolve(response);
-            } else {
-              reject(new Error(response?.error || "応答が無効です"));
-            }
-          },
-        );
-      });
+      // AITaskHandlerを直接呼び出す（Service Worker内なので）
+      // aiTaskHandlerはbackground.jsでimportされているため、globalThisから取得
+      const aiTaskHandler = globalThis.aiTaskHandler || (await import('../../handlers/ai-task-handler.js')).aiTaskHandler;
+      
+      const result = await aiTaskHandler.handleExecuteAITask({
+        tabId,
+        prompt: task.prompt,
+        taskId: task.id,
+        timeout: 180000,
+      }, null);
 
       this.logger.log(
         `[StreamProcessor] タスク完了: ${task.column}${task.row}`,
@@ -792,7 +777,7 @@ class StreamProcessor {
    * @returns {Promise<void>}
    */
   async waitForContentScriptReady(windowId) {
-    const maxRetries = 30; // 最大30回（30秒）
+    const maxRetries = 60; // 最大60回（60秒）
     const retryDelay = 1000; // 1秒ごとにリトライ
 
     for (let i = 0; i < maxRetries; i++) {
@@ -811,6 +796,11 @@ class StreamProcessor {
           this.logger.log(`[StreamProcessor] ページ読み込み中... (${i + 1}/${maxRetries})`);
           await new Promise(resolve => setTimeout(resolve, retryDelay));
           continue;
+        }
+        
+        // 追加の待機時間（ページが完全に初期化されるまで）
+        if (i === 0) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
         }
 
         // コンテンツスクリプトに準備完了確認メッセージを送信

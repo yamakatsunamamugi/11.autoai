@@ -82,9 +82,9 @@ console.log(
 );
 
 // コンテンツスクリプトの準備完了を通知
-if (AI_TYPE === "ChatGPT") {
-  console.log(`[11.autoai][ChatGPT] コンテンツスクリプト初期化中...`);
-  // Background scriptに準備完了を通知
+console.log(`[11.autoai][${AI_TYPE}] コンテンツスクリプト初期化中...`);
+// Background scriptに準備完了を通知
+if (AI_TYPE) {
   chrome.runtime.sendMessage({
     action: "contentScriptReady",
     aiType: AI_TYPE,
