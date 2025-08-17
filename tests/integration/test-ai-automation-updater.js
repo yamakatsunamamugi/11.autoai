@@ -165,14 +165,8 @@
             
             const models = geminiConfig.models.map(model => {
                 if (typeof model === 'string') return model;
-                
-                let name = model.name || model;
-                // モデル名の簡略化
-                if (name.includes('2.5 Flash')) return 'Gemini 2.5 Flash';
-                if (name.includes('2.5 Pro')) return 'Gemini 2.5 Pro';
-                if (name.includes('1.5 Flash')) return 'Gemini 1.5 Flash';
-                if (name.includes('1.5 Pro')) return 'Gemini 1.5 Pro';
-                return name;
+                // モデル名をそのまま使用（変換しない）
+                return model.name || model;
             });
             
             updateDropdown('gemini-model', models);

@@ -12,8 +12,8 @@
 (function() {
     'use strict';
     
-    // AIHandlerを使用
-    const useAIHandler = window.AIHandler;
+    // AIHandlerを使用（フォールバック付き）
+    const useAIHandler = window.AIHandler || null;
     let menuHandler = null;  // AIHandlerのメニューハンドラーインスタンス
 
     // ========================================
@@ -264,6 +264,34 @@
     };
 
     // ========================================
+    // ストレージ保存機能
+    // ========================================
+    const saveToStorage = async (data) => {
+        try {
+            if (chrome?.storage?.local) {
+                // 既存の設定を取得
+                const result = await new Promise((resolve) => {
+                    chrome.storage.local.get(['ai_config_persistence'], (result) => {
+                        resolve(result.ai_config_persistence || {});
+                    });
+                });
+                
+                // Geminiの設定を更新
+                result.gemini = data;
+                
+                // ストレージに保存
+                await new Promise((resolve) => {
+                    chrome.storage.local.set({ ai_config_persistence: result }, resolve);
+                });
+                
+                log('💾 設定をストレージに保存しました', 'success');
+            }
+        } catch (error) {
+            debugLog(`ストレージ保存エラー: ${error.message}`);
+        }
+    };
+
+    // ========================================
     // 動的情報収集
     // ========================================
     const collectAvailableModels = async () => {
@@ -315,6 +343,13 @@
         // キャッシュに保存
         globalState.modelCache = models;
         globalState.modelCacheTime = Date.now();
+
+        // ストレージに保存（検出したモデルを保存）
+        await saveToStorage({
+            models: models,
+            functions: globalState.functionCache || [],
+            lastUpdated: new Date().toISOString()
+        });
 
         log(`✅ ${models.length}個のモデルを発見`, 'success');
         return models;
@@ -411,6 +446,13 @@
         // キャッシュに保存
         globalState.functionCache = functions;
         globalState.functionCacheTime = Date.now();
+
+        // ストレージに保存（検出した機能を保存）
+        await saveToStorage({
+            models: globalState.modelCache || [],
+            functions: functions,
+            lastUpdated: new Date().toISOString()
+        });
 
         log(`✅ ${functions.length}個の機能を発見 (表示中: ${visibleCount}, 非表示: ${hiddenCount}, サブメニュー: ${submenuCount})`, 'success');
         
@@ -1563,5 +1605,8 @@
     console.log('');
     console.log('%c💡 Gemini.help() で詳細ヘルプを表示', 'color: #9C27B0');
     console.log('%c👆 上記のコマンドをコピーして使ってください', 'color: #F44336; font-size: 12px');
+    
+    // GeminiAutomationエイリアスを追加（一貫性のため）
+    window.GeminiAutomation = window.Gemini;
     
 })();

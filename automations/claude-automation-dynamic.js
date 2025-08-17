@@ -372,6 +372,34 @@
   }
 
   // ========================================
+  // ストレージ保存機能
+  // ========================================
+  async function saveToStorage(data) {
+    try {
+      if (chrome?.storage?.local) {
+        // 既存の設定を取得
+        const result = await new Promise((resolve) => {
+          chrome.storage.local.get(['ai_config_persistence'], (result) => {
+            resolve(result.ai_config_persistence || {});
+          });
+        });
+        
+        // Claudeの設定を更新
+        result.claude = data;
+        
+        // ストレージに保存
+        await new Promise((resolve) => {
+          chrome.storage.local.set({ ai_config_persistence: result }, resolve);
+        });
+        
+        log('💾 設定をストレージに保存しました', 'SUCCESS');
+      }
+    } catch (error) {
+      log(`ストレージ保存エラー: ${error.message}`, 'ERROR');
+    }
+  }
+
+  // ========================================
   // 利用可能なモデル一覧取得
   // ========================================
   async function getAvailableModels() {
@@ -474,6 +502,13 @@
       });
       console.log('========================\n');
 
+      // ストレージに保存（検出したモデルを保存）
+      await saveToStorage({
+        models: models,
+        functions: [],
+        lastUpdated: new Date().toISOString()
+      });
+
       return models;
 
     } catch (error) {
@@ -512,6 +547,13 @@
       console.log(`${index + 1}. ${func.text} [${status}]`);
     });
     console.log('========================\n');
+
+    // ストレージに保存（検出した機能を保存）
+    await saveToStorage({
+      models: [],
+      functions: functions,
+      lastUpdated: new Date().toISOString()
+    });
 
     return functions;
   }
@@ -740,8 +782,8 @@
         await wait(1000);
       }
 
-      // 機能選択
-      if (config.function !== undefined) {
+      // 機能選択（空文字やnullの場合はスキップ）
+      if (config.function && config.function !== 'none' && config.function !== '') {
         const functionResult = await selectFunction(config.function);
         result.function = functionResult ? config.function : null;
         await wait(1000);

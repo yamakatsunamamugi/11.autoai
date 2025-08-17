@@ -294,6 +294,32 @@
         }
     }
 
+    // ストレージ保存機能
+    async function saveToStorage(data) {
+        try {
+            if (chrome?.storage?.local) {
+                // 既存の設定を取得
+                const result = await new Promise((resolve) => {
+                    chrome.storage.local.get(['ai_config_persistence'], (result) => {
+                        resolve(result.ai_config_persistence || {});
+                    });
+                });
+                
+                // ChatGPTの設定を更新
+                result.chatgpt = data;
+                
+                // ストレージに保存
+                await new Promise((resolve) => {
+                    chrome.storage.local.set({ ai_config_persistence: result }, resolve);
+                });
+                
+                log('💾 設定をストレージに保存しました', 'success');
+            }
+        } catch (error) {
+            debugLog(`ストレージ保存エラー: ${error.message}`);
+        }
+    }
+
     // 利用可能なモデルを取得する関数（selectModelと同じロジックを使用）
     async function getAvailableModels() {
         // 既に実行中の場合はスキップ
@@ -528,6 +554,14 @@
             } else {
                 log('⚠️ モデルが見つかりませんでした', 'warning');
             }
+            
+            // ストレージに保存（検出したモデルを保存）
+            // 機能取得は後で別途行う
+            await saveToStorage({
+                models: models,
+                functions: [],
+                lastUpdated: new Date().toISOString()
+            });
             
             return models;
             
@@ -837,6 +871,13 @@
             } else {
                 log('⚠️ 機能が見つかりませんでした', 'warning');
             }
+            
+            // ストレージに保存（検出した機能を保存）
+            await saveToStorage({
+                models: [],
+                functions: functions,
+                lastUpdated: new Date().toISOString()
+            });
             
             return functions;
             

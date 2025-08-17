@@ -928,15 +928,29 @@
         // Geminiの場合、説明文が含まれることがあるので最初の行だけチェック
         const firstLine = text?.split('\n')[0]?.trim();
         
+        // 通常の完全一致
         if (text === modelName || 
             text === `Claude ${modelName}` || 
             text === `GPT-${modelName}` || 
             text === `Gemini ${modelName}` ||
             firstLine === modelName ||
-            firstLine === `Gemini ${modelName}` ||
-            (this.aiType === 'Gemini' && firstLine?.includes(modelName))) {
+            firstLine === `Gemini ${modelName}`) {
           targetItem = item;
           break;
+        }
+        
+        // Geminiの特殊ケース: バージョン番号の柔軟な一致
+        if (this.aiType === 'Gemini') {
+          // "2.5 Pro" -> "2.0 Flash Thinking" のような変換
+          // または "Flash" -> "2.0 Flash" のような部分一致
+          const normalizedSearch = modelName.toLowerCase().replace(/\s+/g, ' ').trim();
+          const normalizedText = firstLine?.toLowerCase().replace(/\s+/g, ' ').trim();
+          
+          if (normalizedText?.includes(normalizedSearch) ||
+              normalizedSearch.split(' ').every(part => normalizedText?.includes(part))) {
+            targetItem = item;
+            break;
+          }
         }
       }
 
