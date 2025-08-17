@@ -502,13 +502,6 @@
       });
       console.log('========================\n');
 
-      // ストレージに保存（検出したモデルを保存）
-      await saveToStorage({
-        models: models,
-        functions: [],
-        lastUpdated: new Date().toISOString()
-      });
-
       return models;
 
     } catch (error) {
@@ -547,13 +540,6 @@
       console.log(`${index + 1}. ${func.text} [${status}]`);
     });
     console.log('========================\n');
-
-    // ストレージに保存（検出した機能を保存）
-    await saveToStorage({
-      models: [],
-      functions: functions,
-      lastUpdated: new Date().toISOString()
-    });
 
     return functions;
   }

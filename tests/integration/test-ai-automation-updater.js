@@ -89,23 +89,11 @@
             // 機能のリストを作成（「なし」オプションを最初に追加）
             const functions = [{ name: 'なし（通常モード）' }];
             
+            // 検出された機能をそのまま使用（フィルタリングなし）
             chatgptConfig.functions.forEach(func => {
-                if (typeof func === 'string') {
-                    functions.push({ name: func });
-                } else if (func.name) {
-                    // 特定の機能のみを表示（UIに適したもの）
-                    const name = func.name;
-                    if (name.includes('Deep Research') || name === 'Deep Research') {
-                        functions.push({ name: 'Deep Research', type: func.type });
-                    } else if (name.includes('ウェブ検索') || name === 'ウェブ検索') {
-                        functions.push({ name: 'ウェブ検索', type: func.type });
-                    } else if (name.includes('canvas') || name === 'canvas') {
-                        functions.push({ name: 'Canvas', type: func.type });
-                    } else if (name.includes('画像を作成') || name === '画像を作成する') {
-                        functions.push({ name: '画像を作成', type: func.type });
-                    } else if (name.includes('エージェント') || name.includes('Agent')) {
-                        functions.push({ name: 'エージェントモード', type: func.type });
-                    }
+                const name = typeof func === 'string' ? func : func.name;
+                if (name) {
+                    functions.push({ name: name });
                 }
             });
             
@@ -138,16 +126,11 @@
             
             const functions = [{ name: 'なし（通常モード）' }];
             
+            // 検出された機能をそのまま使用（フィルタリングなし）
             claudeConfig.functions.forEach(func => {
                 const name = typeof func === 'string' ? func : func.name;
                 if (name) {
-                    if (name.includes('じっくり考える')) {
-                        functions.push({ name: 'じっくり考える' });
-                    } else if (name.includes('ウェブ検索')) {
-                        functions.push({ name: 'ウェブ検索' });
-                    } else if (name.includes('DeepResearch')) {
-                        functions.push({ name: 'DeepResearch' });
-                    }
+                    functions.push({ name: name });
                 }
             });
             
@@ -178,20 +161,11 @@
             
             const functions = [{ name: 'なし（通常モード）' }];
             
+            // 検出された機能をそのまま使用（フィルタリングなし）
             geminiConfig.functions.forEach(func => {
                 const name = typeof func === 'string' ? func : func.name;
                 if (name) {
-                    if (name.includes('DeepResearch') || name === 'deep-research') {
-                        functions.push({ name: 'DeepResearch' });
-                    } else if (name.includes('画像')) {
-                        functions.push({ name: '画像' });
-                    } else if (name.includes('Canvas') || name === 'canvas') {
-                        functions.push({ name: 'Canvas' });
-                    } else if (name.includes('動画')) {
-                        functions.push({ name: '動画' });
-                    } else if (name.includes('Think') || name === 'thinking') {
-                        functions.push({ name: 'Think' });
-                    }
+                    functions.push({ name: name });
                 }
             });
             

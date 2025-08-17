@@ -555,14 +555,6 @@
                 log('⚠️ モデルが見つかりませんでした', 'warning');
             }
             
-            // ストレージに保存（検出したモデルを保存）
-            // 機能取得は後で別途行う
-            await saveToStorage({
-                models: models,
-                functions: [],
-                lastUpdated: new Date().toISOString()
-            });
-            
             return models;
             
         } catch (error) {
@@ -871,13 +863,6 @@
             } else {
                 log('⚠️ 機能が見つかりませんでした', 'warning');
             }
-            
-            // ストレージに保存（検出した機能を保存）
-            await saveToStorage({
-                models: [],
-                functions: functions,
-                lastUpdated: new Date().toISOString()
-            });
             
             return functions;
             

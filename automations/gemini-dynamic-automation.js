@@ -344,13 +344,6 @@
         globalState.modelCache = models;
         globalState.modelCacheTime = Date.now();
 
-        // ストレージに保存（検出したモデルを保存）
-        await saveToStorage({
-            models: models,
-            functions: globalState.functionCache || [],
-            lastUpdated: new Date().toISOString()
-        });
-
         log(`✅ ${models.length}個のモデルを発見`, 'success');
         return models;
     };
@@ -446,13 +439,6 @@
         // キャッシュに保存
         globalState.functionCache = functions;
         globalState.functionCacheTime = Date.now();
-
-        // ストレージに保存（検出した機能を保存）
-        await saveToStorage({
-            models: globalState.modelCache || [],
-            functions: functions,
-            lastUpdated: new Date().toISOString()
-        });
 
         log(`✅ ${functions.length}個の機能を発見 (表示中: ${visibleCount}, 非表示: ${hiddenCount}, サブメニュー: ${submenuCount})`, 'success');
         

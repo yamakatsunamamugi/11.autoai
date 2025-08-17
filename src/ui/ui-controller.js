@@ -2482,6 +2482,23 @@ aiDetectionSystemBtn.addEventListener("click", async () => {
                   
                   console.log(`✅ 取得完了:`, result);
                   
+                  // 結果をストレージに保存
+                  chrome.storage.local.get(['ai_config_persistence'], (existingData) => {
+                    const configData = existingData.ai_config_persistence || {};
+                    
+                    // 検出したデータを保存
+                    configData[aiType] = {
+                      models: result.models || [],
+                      functions: result.functions || [],
+                      lastUpdated: new Date().toISOString()
+                    };
+                    
+                    // ストレージに保存
+                    chrome.storage.local.set({ ai_config_persistence: configData }, () => {
+                      console.log(`💾 ${aiType}の検出結果をストレージに保存しました`);
+                    });
+                  });
+                  
                   // 結果を表示
                   const modelCount = result.models ? result.models.length : 0;
                   const functionCount = result.functions ? result.functions.length : 0;
@@ -2548,6 +2565,8 @@ aiDetectionSystemBtn.addEventListener("click", async () => {
             files: [
               'src/detectors/ai-detector-interface.js',
               'src/detectors/adapters/chatgpt-adapter.js',
+              'src/detectors/adapters/claude-adapter.js',
+              'src/detectors/adapters/gemini-adapter.js',
               'src/detectors/ai-detector-service.js'
             ]
           });
@@ -2593,6 +2612,23 @@ aiDetectionSystemBtn.addEventListener("click", async () => {
                 const result = await service.detectAI(aiType);
                 
                 console.log(`✅ 取得完了:`, result);
+                
+                // 結果をストレージに保存
+                chrome.storage.local.get(['ai_config_persistence'], (existingData) => {
+                  const configData = existingData.ai_config_persistence || {};
+                  
+                  // 検出したデータを保存
+                  configData[aiType] = {
+                    models: result.models || [],
+                    functions: result.functions || [],
+                    lastUpdated: new Date().toISOString()
+                  };
+                  
+                  // ストレージに保存
+                  chrome.storage.local.set({ ai_config_persistence: configData }, () => {
+                    console.log(`💾 ${aiType}の検出結果をストレージに保存しました`);
+                  });
+                });
                 
                 // 結果を表示
                 const modelCount = result.models ? result.models.length : 0;
