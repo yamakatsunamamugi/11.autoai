@@ -152,11 +152,14 @@
         '.markdown'
       ],
       modelButton: [
+        'button.gds-mode-switch-button',
+        'button.logo-pill-btn',
+        'button[class*="mode-switch"]',
+        'button:has(.logo-pill-label-container)',
+        'button:has(mat-icon[fonticon="arrow_drop_down"])',
         'button.model-selector',
         '.model-dropdown',
-        'button[aria-label*="モデル"]',
-        'button:has-text("Gemini")',
-        'button:has-text("Flash")'
+        'button[aria-label*="モデル"]'
       ],
       functionButton: [
         'button[aria-label="その他"]',
@@ -165,12 +168,18 @@
         '.feature-menu-button'
       ],
       menu: [
+        '.mat-mdc-menu-panel',
+        '.cdk-overlay-pane',
+        '[role="menu"]',
         '[role="menuitemradio"]',
         '[role="menuitem"]'
       ],
       menuItem: [
+        'button.bard-mode-list-button',
         '[role="menuitemradio"]',
         '[role="menuitem"]',
+        '.mat-mdc-menu-item',
+        'button[mat-menu-item]',
         'button[mat-list-item]',
         '.toolbox-drawer-item-list-button'
       ]
@@ -910,8 +919,16 @@
       // 完全一致を優先
       for (const item of items) {
         const text = item.textContent?.trim();
-        if (text === modelName || text === `Claude ${modelName}` || 
-            text === `GPT-${modelName}` || text === `Gemini ${modelName}`) {
+        // Geminiの場合、説明文が含まれることがあるので最初の行だけチェック
+        const firstLine = text?.split('\n')[0]?.trim();
+        
+        if (text === modelName || 
+            text === `Claude ${modelName}` || 
+            text === `GPT-${modelName}` || 
+            text === `Gemini ${modelName}` ||
+            firstLine === modelName ||
+            firstLine === `Gemini ${modelName}` ||
+            (this.aiType === 'Gemini' && firstLine?.includes(modelName))) {
           targetItem = item;
           break;
         }
