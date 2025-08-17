@@ -1275,7 +1275,11 @@
             
             // 回答待機（DeepResearchの場合は専用の待機関数を使用）
             if (config.waitResponse) {
-                if (config.function && config.function.includes('Deep Research')) {
+                const isDeepResearch = window.FeatureConstants ? 
+                    window.FeatureConstants.isDeepResearch(config.function) :
+                    (config.function && config.function.includes('Deep Research'));
+                
+                if (isDeepResearch) {
                     log('DeepResearch モードで待機', 'info');
                     const waitResult = await waitForDeepResearchResponse(60);
                     if (!waitResult) {

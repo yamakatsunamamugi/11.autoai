@@ -269,7 +269,11 @@
       const targetFunction = CONFIG.FUNCTION_ALIASES[normalizedInput] || functionName;
       
       // DeepResearch特別処理
-      if (normalizedInput === 'deepresearch' || functionName === 'DeepResearch' || CONFIG.FUNCTION_ALIASES[normalizedInput] === 'リサーチ') {
+      const isDeepResearch = window.FeatureConstants ? 
+        window.FeatureConstants.isDeepResearch(functionName) :
+        (normalizedInput === 'deepresearch' || functionName === 'DeepResearch' || CONFIG.FUNCTION_ALIASES[normalizedInput] === 'リサーチ');
+      
+      if (isDeepResearch) {
         log('DeepResearchモードを有効化します', 'INFO');
         log('⚠️ DeepResearchは最大40分かかる場合があります', 'WARNING');
         
@@ -867,7 +871,11 @@
 
       // 応答待機（DeepResearchの場合は専用の待機関数を使用）
       if (config.waitResponse) {
-        if (config.function && config.function.includes('リサーチ')) {
+        const isDeepResearch = window.FeatureConstants ? 
+          window.FeatureConstants.isDeepResearch(config.function) :
+          (config.function === 'DeepResearch' || config.function === 'Deep Research');
+        
+        if (isDeepResearch) {
           log('Claude DeepResearch モードで待機', 'INFO');
           const waitResult = await waitForClaudeDeepResearchResponse(60);
           if (!waitResult) {

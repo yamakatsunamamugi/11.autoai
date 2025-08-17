@@ -232,6 +232,7 @@
       
       // 統合ハンドラーとDeepResearchハンドラーを先に注入
       const commonScripts = [
+        'automations/feature-constants.js',
         'automations/common-ai-handler.js',
         'automations/deepresearch-handler.js',
         'automations/claude-deepresearch-selector.js'
@@ -269,39 +270,7 @@
             target: { tabId: tabId },
             func: async (aiName, config) => {
               try {
-                // 機能名変換マッピング
-                const functionMappings = {
-                  'ChatGPT': {
-                    'agent': 'エージェントモード',
-                    'deep-research': 'Deep Research',
-                    'image': '画像を作成する',
-                    'thinking': 'より長く思考する',
-                    'canvas': 'canvas',
-                    'web-search': 'ウェブ検索',
-                    'learning': 'あらゆる学びをサポート',
-                    'connector': 'コネクターを使用する'
-                  },
-                  'Claude': {
-                    'deep-research': 'リサーチ'
-                  },
-                  'Gemini': {
-                    'deep-research': 'Deep Research',
-                    '画像': '画像',
-                    'canvas': 'canvas',
-                    '動画': '動画',
-                    'thinking': 'thinking'
-                  }
-                };
-                
-                // 機能名を変換
-                if (config.function && config.function !== 'none' && functionMappings[aiName]) {
-                  const mappedFunction = functionMappings[aiName][config.function];
-                  if (mappedFunction) {
-                    config.function = mappedFunction;
-                    console.log(`[TestRunner] ${aiName} 機能名変換: ${config.function}`);
-                  }
-                }
-                
+                // 機能名は変換せずにそのまま使用
                 // AI名に基づいて適切な自動化オブジェクトを検索
                 const automationMap = {
                   'Claude': ['ClaudeAutomation', 'Claude'],
@@ -340,10 +309,9 @@
                 // 実行方法を自動化オブジェクトの構造に応じて調整
                 if (typeof automation.runAutomation === 'function') {
                   // DeepResearchの場合は長時間待機（最大60分）
-                  const isDeepResearch = config.function && 
-                    (config.function.toLowerCase().includes('research') || 
-                     config.function === 'リサーチ' ||
-                     config.function === 'Deep Research');
+                  const isDeepResearch = window.FeatureConstants ? 
+                    window.FeatureConstants.isDeepResearch(config.function) :
+                    (config.function && config.function.toLowerCase().includes('research'));
                   
                   const timeout = isDeepResearch ? 60 * 60 * 1000 : 60000; // DeepResearch: 60分、通常: 1分
                   
@@ -420,11 +388,9 @@
       }
       
       // DeepResearchモードかどうか判定
-      const isDeepResearch = aiConfig.function && 
-        (aiConfig.function.toLowerCase().includes('research') || 
-         aiConfig.function === 'リサーチ' ||
-         aiConfig.function === 'Deep Research' ||
-         aiConfig.function === 'deep-research');
+      const isDeepResearch = window.FeatureConstants ? 
+        window.FeatureConstants.isDeepResearch(aiConfig.function) :
+        (aiConfig.function && aiConfig.function.toLowerCase().includes('research'));
       
       if (isDeepResearch) {
         log(`${aiName}: DeepResearchモード - 停止ボタン消滅まで待機します`, 'function');

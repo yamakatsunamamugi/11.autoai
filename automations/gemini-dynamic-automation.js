@@ -1131,10 +1131,11 @@
             }
             
             // DeepResearchハンドラーを使用
-            if (config.function && 
-                (config.function.toLowerCase().includes('research') || 
-                 config.function === 'リサーチ' ||
-                 config.function === 'Deep Research')) {
+            const isDeepResearch = window.FeatureConstants ? 
+                window.FeatureConstants.isDeepResearch(config.function) :
+                (config.function && config.function.toLowerCase().includes('research'));
+            
+            if (isDeepResearch) {
                 
                 if (window.DeepResearchHandler) {
                     console.log('[Gemini] DeepResearchハンドラーを使用');
