@@ -455,7 +455,7 @@
   }
 
   // ========================================
-  // 動的モデル選択
+  // 動的モデル選択（改善版）
   // ========================================
   async function selectModel(identifier) {
     if (!identifier) {
@@ -466,17 +466,19 @@
     log(`🔍 モデルを動的検索: ${identifier}`, 'INFO');
 
     try {
-      // Geminiスタイルのモデル名マッピング（コード内の既存定義に基づく）
+      // モデル名マッピングを拡張・改善
       const modelMappings = {
         // Opus 4.1
         'opus4.1': ['Opus 4.1', 'Claude Opus 4.1', 'Opus'],
         'opus 4.1': ['Opus 4.1', 'Claude Opus 4.1', 'Opus'],
         'opus41': ['Opus 4.1', 'Claude Opus 4.1', 'Opus'],
         'opus': ['Opus 4.1', 'Claude Opus 4.1', 'Opus'],
+        'claude opus 4.1': ['Opus 4.1', 'Claude Opus 4.1', 'Opus'],
         // Sonnet 4
         'sonnet4': ['Sonnet 4', 'Claude Sonnet 4', 'Sonnet'],
         'sonnet 4': ['Sonnet 4', 'Claude Sonnet 4', 'Sonnet'],
         'sonnet': ['Sonnet 4', 'Claude Sonnet 4', 'Sonnet'],
+        'claude sonnet 4': ['Sonnet 4', 'Claude Sonnet 4', 'Sonnet'],
         '4': ['Sonnet 4', 'Claude Sonnet 4', 'Sonnet'],
         // Opus 4
         'opus4': ['Opus 4', 'Claude Opus 4', 'Opus'],
@@ -489,32 +491,86 @@
         'haiku3.5': ['Haiku 3.5', 'Claude Haiku 3.5', 'Haiku'],
         'haiku 3.5': ['Haiku 3.5', 'Claude Haiku 3.5', 'Haiku'],
         'haiku': ['Haiku 3.5', 'Claude Haiku 3.5', 'Haiku'],
+        'claude haiku': ['Haiku 3.5', 'Claude Haiku 3.5', 'Haiku'],
         '3.5': ['Haiku 3.5', 'Claude Haiku 3.5', 'Haiku']
       };
 
       const possibleNames = modelMappings[identifier.toLowerCase()] || [identifier];
       log(`検索パターン: ${possibleNames.join(', ')}`, 'INFO');
 
-      // モデル選択ボタンを探す
+      // モデル選択ボタンを探す（セレクタを拡張）
       const modelButtonSelectors = [
+        '[data-testid="model-selector-dropdown"]',  // 優先順位高
         '[aria-label="モデルを選択"]',
         '[data-testid="model-selector"]',
-        'button[aria-haspopup="menu"]'
+        'button[aria-haspopup="menu"]',
+        'button[aria-label*="モデル"]',
+        // 現在のモデル名を含むボタンを探す
+        'button:has-text("Opus")',
+        'button:has-text("Sonnet")',
+        'button:has-text("Haiku")'
       ];
 
-      const modelButton = await findElement(modelButtonSelectors);
+      let modelButton = null;
+      let retries = 3;
+      
+      // リトライ処理を追加
+      while (!modelButton && retries > 0) {
+        modelButton = await findElement(modelButtonSelectors, null, 5000);
+        
+        if (!modelButton) {
+          // フォールバック: textContentで現在のモデル名を含むボタンを探す
+          const allButtons = document.querySelectorAll('button');
+          for (const btn of allButtons) {
+            const text = btn.textContent?.trim() || '';
+            if ((text.includes('Opus') || text.includes('Sonnet') || text.includes('Haiku')) &&
+                (btn.hasAttribute('aria-haspopup') || btn.hasAttribute('data-testid'))) {
+              modelButton = btn;
+              log('フォールバック方式でモデルボタンを発見', 'INFO');
+              break;
+            }
+          }
+        }
+        
+        if (!modelButton) {
+          log(`モデルボタン検索リトライ... (残り${retries - 1}回)`, 'WARNING');
+          await wait(1000);
+          retries--;
+        }
+      }
 
       if (!modelButton) {
         log('モデル選択ボタンが見つかりません', 'ERROR');
         return false;
       }
 
+      // 現在のモデルを記録
+      const currentModelText = modelButton.textContent?.trim();
+      log(`現在のモデル: ${currentModelText || '不明'}`, 'INFO');
+
+      // メニューを開く
       await performClick(modelButton);
       await wait(CONFIG.DELAYS.menuOpen);
+
+      // メニューが開いたか確認
+      let modelMenu = await waitForMenu(5000);
+      if (!modelMenu) {
+        // メニューが開かない場合、再度クリック
+        log('メニューが開かないため、再度クリックします', 'WARNING');
+        await performClick(modelButton);
+        await wait(CONFIG.DELAYS.menuOpen);
+        modelMenu = await waitForMenu(3000);
+      }
+
+      if (!modelMenu) {
+        log('モデルメニューが開きませんでした', 'ERROR');
+        return false;
+      }
 
       // メニューからモデルを動的検索
       const modelOptions = document.querySelectorAll('[role="option"], [role="menuitem"]');
       let allModels = [];
+      let targetOption = null;
 
       for (const option of modelOptions) {
         const text = option.textContent?.trim();
@@ -522,29 +578,61 @@
           allModels.push(text);
           log(`発見モデル: "${text}"`, 'DEBUG');
           
-          // Geminiスタイルのマッチング - シンプルなincludes()
+          // 完全一致を優先
           for (const name of possibleNames) {
-            if (text.includes(name)) {
-              log(`🎯 マッチ成功: "${text}" ← "${name}"`, 'SUCCESS');
-              
-              await performClick(option);
-              log(`✅ モデル「${text}」を選択しました`, 'SUCCESS');
-              await wait(CONFIG.DELAYS.modelSwitch);
-              return true;
+            if (text === name || text === `Claude ${name}`) {
+              targetOption = option;
+              log(`🎯 完全一致: "${text}"`, 'SUCCESS');
+              break;
             }
           }
+          
+          // 部分一致（完全一致が見つからない場合）
+          if (!targetOption) {
+            for (const name of possibleNames) {
+              if (text.includes(name)) {
+                targetOption = option;
+                log(`🎯 部分一致: "${text}" ← "${name}"`, 'SUCCESS');
+                break;
+              }
+            }
+          }
+          
+          if (targetOption) break;
         }
       }
 
-      log(`❌ モデル「${identifier}」が見つかりません`, 'ERROR');
-      log('利用可能なモデル:', 'INFO');
-      allModels.forEach(model => log(`  • ${model}`, 'INFO'));
-      
-      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-      return false;
+      if (targetOption) {
+        await performClick(targetOption);
+        log(`✅ モデル「${targetOption.textContent?.trim()}」を選択しました`, 'SUCCESS');
+        await wait(CONFIG.DELAYS.modelSwitch);
+        
+        // 選択確認
+        await wait(1000);
+        const newModelButton = await findElement(modelButtonSelectors, null, 3000);
+        if (newModelButton) {
+          const newModelText = newModelButton.textContent?.trim();
+          if (newModelText && newModelText !== currentModelText) {
+            log(`✅ モデル変更確認: ${currentModelText} → ${newModelText}`, 'SUCCESS');
+          }
+        }
+        
+        return true;
+      } else {
+        log(`❌ モデル「${identifier}」が見つかりません`, 'ERROR');
+        log('利用可能なモデル:', 'INFO');
+        allModels.forEach(model => log(`  • ${model}`, 'INFO'));
+        
+        // メニューを閉じる
+        document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        await wait(CONFIG.DELAYS.menuClose);
+        return false;
+      }
       
     } catch (error) {
       log(`モデル選択エラー: ${error.message}`, 'ERROR');
+      // エラー時もメニューを閉じる
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
       return false;
     }
   }

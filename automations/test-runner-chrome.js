@@ -8,7 +8,13 @@
   function log(message, type = 'info') {
     const timestamp = new Date().toLocaleTimeString();
     const logContainer = document.getElementById('log-container');
-    if (logContainer) {
+    
+    // 新しいログ管理システムを使用
+    if (window.logTestEvent) {
+      // LogToggleManagerを使用（利用可能な場合）
+      window.logTestEvent(message, type);
+    } else if (logContainer) {
+      // フォールバック: 従来の方法（ただし改行を適切に処理）
       // タイプに応じて絵文字を追加
       let icon = '';
       switch(type) {
@@ -21,8 +27,14 @@
         case 'complete': icon = '✅ '; break;
         default: icon = '';
       }
-      const logEntry = `[${timestamp}] ${icon}${message}\n`;
-      logContainer.textContent += logEntry;
+      
+      // 新しいログエントリをdiv要素として作成
+      const logDiv = document.createElement('div');
+      logDiv.style.cssText = 'margin-bottom: 2px; padding: 2px 0; font-family: monospace; font-size: 13px;';
+      logDiv.textContent = `[${timestamp}] ${icon}${message}`;
+      logContainer.appendChild(logDiv);
+      
+      // 自動スクロール
       logContainer.scrollTop = logContainer.scrollHeight;
     }
     console.log(`[TestRunner] ${message}`);

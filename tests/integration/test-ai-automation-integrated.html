@@ -153,16 +153,42 @@
             color: white;
         }
         .log-container {
-            background: #2d3748;
-            color: #e2e8f0;
+            background: #f8f9fa;
             padding: 20px;
             border-radius: 8px;
-            font-family: 'Monaco', 'Menlo', monospace;
-            font-size: 13px;
-            max-height: 400px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-size: 14px;
+            max-height: 500px;
             overflow-y: auto;
-            white-space: pre-wrap;
-            line-height: 1.5;
+            line-height: 1.6;
+            border: 1px solid #dee2e6;
+        }
+        .clear-logs-btn {
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            margin-bottom: 10px;
+        }
+        .clear-logs-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
+        }
+        /* アニメーション定義 */
+        @keyframes fadeInOut {
+            0% { opacity: 0; transform: translateY(-10px); }
+            20% { opacity: 1; transform: translateY(0); }
+            80% { opacity: 1; transform: translateY(0); }
+            100% { opacity: 0; transform: translateY(-10px); }
+        }
+        /* AI回答エントリのスタイル */
+        .ai-response-entry {
+            margin-bottom: 6px;
         }
         .status-indicator {
             display: inline-block;
@@ -407,9 +433,13 @@
             <!-- ログ表示 -->
             <div class="section">
                 <h2>📋 実行ログ</h2>
+                <button class="clear-logs-btn" id="btn-clear-logs">
+                    🗑️ ログをクリア
+                </button>
+                <div id="log-filter-container"></div>
                 <div class="log-container" id="log-container">
-システム準備完了。テストを実行してください。
-</div>
+                    <!-- ログエントリがここに表示されます -->
+                </div>
             </div>
         </div>
     </div>
@@ -422,6 +452,11 @@
     
     <!-- Chrome拡張機能版テストランナー -->
     <script src="../../automations/test-runner-chrome.js"></script>
+    
+    <!-- ログ管理モジュール -->
+    <script src="test-ai-response-viewer.js"></script>
+    <script src="test-log-toggle-manager.js"></script>
+    <script src="test-ai-log-handler.js"></script>
     
     <!-- プロンプト管理（外部ファイル化してCSPエラー対応） -->
     <script src="test-ai-automation-integrated.js"></script>
