@@ -139,12 +139,19 @@
         "src/services/spreadsheet-auto-setup.js",
         "tests/integration/test-ai-automation-integrated.html",
         "tests/integration/test-ai-automation-integrated.js",
+        "automations/common-ai-handler.js",
+        "automations/common-utils.js",
+        "automations/common-menu-handler.js",
+        "automations/deepresearch-handler.js",
         "automations/chatgpt-automation.js",
         "automations/claude-automation.js",
+        "automations/claude-automation-dynamic.js",
         "automations/gemini-automation.js",
+        "automations/gemini-dynamic-automation.js",
         "automations/genspark-automation.js",
         "automations/test-runner.js",
-        "automations/test-runner-chrome.js"
+        "automations/test-runner-chrome.js",
+        "automations/test-sequential-prompts.js"
       ],
       "matches": ["<all_urls>"]
     }

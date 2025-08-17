@@ -230,9 +230,9 @@
     return new Promise((resolve) => {
       log(`${aiName}スクリプト注入開始`);
       
-      // 共通ユーティリティとDeepResearchハンドラーを先に注入
+      // 統合ハンドラーとDeepResearchハンドラーを先に注入
       const commonScripts = [
-        'automations/common-utils.js',
+        'automations/common-ai-handler.js',
         'automations/deepresearch-handler.js'
       ];
       
