@@ -35,7 +35,7 @@
             // メッセージのセレクタ
             messageSelector: '[data-message-author-role="assistant"]',
             // 自動返信メッセージ
-            autoReplyMessage: 'プロンプトを見て調べて',
+            autoReplyMessage: '良いからさきほどの質問を確認して作業して',
             // AI名（ログ用）
             aiName: 'ChatGPT'
         },
@@ -62,7 +62,7 @@
                 'button[aria-label*="Stop"]'
             ],
             messageSelector: '[data-is-streaming="false"]',
-            autoReplyMessage: 'プロンプトを見て調べて',
+            autoReplyMessage: '良いからさきほどの質問を確認して作業して',
             aiName: 'Claude'
         },
         
@@ -145,6 +145,7 @@
             const fiveMinutes = 5 * 60 * 1000;
             let loopCount = 0;
             let previousStopButtonState = null;
+            let hasSeenStopButton = false;  // 停止ボタンを一度でも見たか
             
             while (Date.now() - startTime < fiveMinutes) {
                 loopCount++;
@@ -168,6 +169,7 @@
                     if (selector) {
                         stopButton = document.querySelector(selector);
                         if (stopButton) {
+                            hasSeenStopButton = true;  // 停止ボタンを検出したことを記録
                             // 初回検出時のみログ
                             if (previousStopButtonState === null || previousStopButtonState === false) {
                                 log(`🛑 停止ボタン検出: ${selector}`, 'DEBUG', aiName);
@@ -186,7 +188,7 @@
                         log(`📝 自動返信を実行します`, 'INFO', aiName);
                         await handleAutoReply(config, utils);
                         hasResponded = true;
-                        break;
+                        // breakを削除 - 5分間のループを継続
                     }
                 }
                 
@@ -272,7 +274,7 @@
             
             // 5分経過後、停止ボタンの消失を待つ
             log(`${aiName} DeepResearch処理の完了を待機中...`, 'INFO', aiName);
-            const completionResult = await waitForCompletion(config, utils, maxWaitMinutes - 5, startTime);
+            const completionResult = await waitForCompletion(config, utils, maxWaitMinutes - 5, startTime, hasSeenStopButton);
             
             if (completionResult) {
                 log(`${aiName} DeepResearch完了を検出`, 'SUCCESS', aiName);
@@ -377,10 +379,11 @@
     // ========================================
     // 完了待機処理
     // ========================================
-    const waitForCompletion = async (config, utils, remainingMinutes, startTime) => {
+    const waitForCompletion = async (config, utils, remainingMinutes, startTime, hasSeenStopButton = false) => {
         const aiName = config.aiName;
         const maxWaitTime = remainingMinutes * 60 * 1000;
         const waitStartTime = Date.now();
+        let localHasSeenStopButton = hasSeenStopButton;  // 停止ボタンを見たかのローカルフラグ
         
         while (Date.now() - waitStartTime < maxWaitTime) {
             try {
@@ -390,35 +393,42 @@
                 for (const selector of stopSelectors) {
                     if (selector) {
                         stopButton = document.querySelector(selector);
-                        if (stopButton) break;
+                        if (stopButton) {
+                            localHasSeenStopButton = true;  // 停止ボタンを見つけた
+                            break;
+                        }
                     }
                 }
                 
                 if (!stopButton) {
-                    // 停止ボタンがない状態で3秒待機して最終確認
-                    if (utils && utils.wait) {
-                        await utils.wait(3000);
-                    } else {
-                        await new Promise(resolve => setTimeout(resolve, 3000));
-                    }
-                    
-                    // 最終確認も複数セレクタで
-                    let finalStopCheck = null;
-                    for (const selector of stopSelectors) {
-                        if (selector) {
-                            finalStopCheck = document.querySelector(selector);
-                            if (finalStopCheck) break;
+                    // 停止ボタンを一度でも見た場合のみ完了チェック
+                    if (localHasSeenStopButton) {
+                        // 停止ボタンがない状態で3秒待機して最終確認
+                        if (utils && utils.wait) {
+                            await utils.wait(3000);
+                        } else {
+                            await new Promise(resolve => setTimeout(resolve, 3000));
+                        }
+                        
+                        // 最終確認も複数セレクタで
+                        let finalStopCheck = null;
+                        for (const selector of stopSelectors) {
+                            if (selector) {
+                                finalStopCheck = document.querySelector(selector);
+                                if (finalStopCheck) break;
+                            }
+                        }
+                        
+                        if (!finalStopCheck) {
+                            // 経過時間を計算（送信時刻から）
+                            const elapsedTotal = Date.now() - startTime;
+                            const minutes = Math.floor(elapsedTotal / 60000);
+                            const seconds = Math.floor((elapsedTotal % 60000) / 1000);
+                            log(`処理完了（開始から ${minutes}分${seconds}秒経過）`, 'SUCCESS', aiName);
+                            return true;
                         }
                     }
-                    
-                    if (!finalStopCheck) {
-                        // 経過時間を計算（送信時刻から）
-                        const elapsedTotal = Date.now() - startTime;
-                        const minutes = Math.floor(elapsedTotal / 60000);
-                        const seconds = Math.floor((elapsedTotal % 60000) / 1000);
-                        log(`処理完了（開始から ${minutes}分${seconds}秒経過）`, 'SUCCESS', aiName);
-                        return true;
-                    }
+                    // 停止ボタンを一度も見ていない場合は待機を継続
                 }
                 
                 // 進捗ログ（10秒ごと）
