@@ -87,18 +87,6 @@
             " title="${this.escapeHtml(entry.message)}">${this.escapeHtml(entry.message)}</span>
           </div>
           <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
-            <button onclick="event.stopPropagation(); LogToggleManager.copyLog('${entry.id}')" style="
-              background: ${categoryConfig.color}22;
-              color: ${categoryConfig.color};
-              border: none;
-              padding: 2px 8px;
-              border-radius: 3px;
-              cursor: pointer;
-              font-size: 11px;
-              transition: background 0.2s ease;
-            " onmouseover="this.style.background='${categoryConfig.color}33'" onmouseout="this.style.background='${categoryConfig.color}22'">
-              📋 コピー
-            </button>
             <span style="color: #999; font-size: 11px;">
               ${new Date(entry.timestamp).toLocaleTimeString()}
             </span>

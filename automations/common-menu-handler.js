@@ -1,12 +1,17 @@
 // 共通メニューハンドラー
+// AI変更検出システム（claude-research-detector.js）をベースにした統一メニュー操作
 // 全AI（ChatGPT、Claude、Gemini）で共通のメニュー開閉処理を提供
 (() => {
   "use strict";
 
   // ========================================
-  // 設定
+  // 設定（AI変更検出システムから）
   // ========================================
   const CONFIG = {
+    debugMode: true,
+    waitTime: 1000,        // デフォルト待機時間
+    claudeWaitTime: 500,   // Claude専用待機時間
+    maxRetries: 3,
     DELAYS: {
       click: 50,
       menuOpen: 1500,
@@ -15,9 +20,127 @@
       elementSearch: 500,
       submenuOpen: 1000
     },
-    MAX_RETRIES: 3,
     MAX_WAIT: 5000
   };
+
+  // ========================================
+  // ユーティリティクラス（AI変更検出システムから移植）
+  // ========================================
+  class Utils {
+    static wait(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+    
+    static log(message, type = 'info') {
+      const symbols = {
+        info: '📝',
+        success: '✅',
+        warning: '⚠️',
+        error: '❌',
+        search: '🔍',
+        model: '🤖',
+        feature: '🔧',
+        category: '📁',
+        research: '🔬'
+      };
+      console.log(`${symbols[type] || '📝'} [MenuHandler] ${message}`);
+    }
+    
+    static async performClick(element) {
+      if (!element) return false;
+      
+      const rect = element.getBoundingClientRect();
+      const x = rect.left + rect.width / 2;
+      const y = rect.top + rect.height / 2;
+      
+      // PointerEvent sequence
+      element.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true,
+        cancelable: true,
+        clientX: x,
+        clientY: y
+      }));
+      
+      await this.wait(CONFIG.DELAYS.click);
+      
+      element.dispatchEvent(new PointerEvent('pointerup', {
+        bubbles: true,
+        cancelable: true,
+        clientX: x,
+        clientY: y
+      }));
+      
+      element.click();
+      
+      // サービスに応じた待機時間
+      const service = this.detectService();
+      const waitTime = service === 'claude' ? CONFIG.claudeWaitTime : CONFIG.waitTime;
+      await this.wait(waitTime);
+      
+      return true;
+    }
+    
+    static async closeClaudeMenu() {
+      // Claude専用のメニュークローズ処理（document.bodyに送信）
+      document.body.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'Escape',
+        code: 'Escape',
+        bubbles: true
+      }));
+      
+      return this.wait(CONFIG.claudeWaitTime);
+    }
+    
+    static async closeMenu() {
+      // 汎用的なメニュークローズ
+      document.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'Escape',
+        code: 'Escape',
+        bubbles: true,
+        cancelable: true
+      }));
+      
+      // Click outside
+      document.body.click();
+      
+      return this.wait(300);
+    }
+    
+    static async waitForElement(selector, timeout = 3000) {
+      const selectors = Array.isArray(selector) ? selector : [selector];
+      const startTime = Date.now();
+      
+      while (Date.now() - startTime < timeout) {
+        for (const sel of selectors) {
+          try {
+            const element = document.querySelector(sel);
+            if (element && element.offsetParent !== null) {
+              return element;
+            }
+          } catch (e) {
+            continue;
+          }
+        }
+        await this.wait(100);
+      }
+      return null;
+    }
+    
+    static detectService() {
+      const url = window.location.hostname;
+      
+      // URLベースの検出
+      if (url.includes('claude.ai')) {
+        return 'claude';
+      } else if (url.includes('chatgpt.com') || url.includes('chat.openai.com')) {
+        return 'chatgpt';
+      } else if (url.includes('gemini.google.com') || url.includes('bard.google.com')) {
+        return 'gemini';
+      }
+      
+      return 'unknown';
+    }
+  }
 
   // ========================================
   // AIごとのセレクタ定義
@@ -94,145 +217,61 @@
     }
   };
 
-  // ========================================
-  // ユーティリティ関数
-  // ========================================
-  const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
-  const log = (message, type = 'INFO') => {
-    const prefix = {
-      'INFO': '📝',
-      'SUCCESS': '✅',
-      'ERROR': '❌',
-      'WARNING': '⚠️',
-      'DEBUG': '🔍'
-    }[type] || '📝';
-    console.log(`${prefix} [MenuHandler] ${message}`);
-  };
-
-  const detectAIType = () => {
-    const hostname = window.location.hostname;
-    if (hostname.includes('claude.ai')) return 'claude';
-    if (hostname.includes('chatgpt.com') || hostname.includes('chat.openai.com')) return 'chatgpt';
-    if (hostname.includes('gemini.google.com')) return 'gemini';
-    return null;
-  };
-
-  const findElement = async (selectors, condition = null, maxWait = CONFIG.MAX_WAIT) => {
-    const startTime = Date.now();
-    while (Date.now() - startTime < maxWait) {
-      for (const selector of selectors) {
-        try {
-          const elements = document.querySelectorAll(selector);
-          for (const element of elements) {
-            if (!condition || condition(element)) {
-              return element;
-            }
-          }
-        } catch (e) {}
-      }
-      
-      // フォールバック: textContentでの検索
-      if (selectors.some(s => s.includes(':has-text'))) {
-        const allButtons = document.querySelectorAll('button');
-        for (const btn of allButtons) {
-          const text = btn.textContent?.trim() || '';
-          if (condition && condition(btn)) {
-            return btn;
-          }
-        }
-      }
-      
-      await wait(CONFIG.DELAYS.elementSearch);
-    }
-    return null;
-  };
-
-  const performClick = async (element) => {
-    if (!element) return false;
-    try {
-      const rect = element.getBoundingClientRect();
-      const x = rect.left + rect.width / 2;
-      const y = rect.top + rect.height / 2;
-
-      element.dispatchEvent(new PointerEvent('pointerdown', {
-        bubbles: true,
-        cancelable: true,
-        view: window,
-        clientX: x,
-        clientY: y,
-        pointerId: 1
-      }));
-
-      await wait(CONFIG.DELAYS.click);
-
-      element.dispatchEvent(new PointerEvent('pointerup', {
-        bubbles: true,
-        cancelable: true,
-        view: window,
-        clientX: x,
-        clientY: y,
-        pointerId: 1
-      }));
-
-      element.click();
-      return true;
-    } catch (e) {
-      return false;
-    }
-  };
-
-  const closeMenu = () => {
-    document.body.dispatchEvent(new KeyboardEvent('keydown', { 
-      key: 'Escape', 
-      code: 'Escape',
-      bubbles: true 
-    }));
-  };
 
   // ========================================
-  // メインハンドラークラス
+  // メインハンドラークラス（AI変更検出システムベース）
   // ========================================
   class CommonMenuHandler {
     constructor() {
-      this.aiType = detectAIType();
-      log(`AIタイプ検出: ${this.aiType}`);
+      this.aiType = Utils.detectService();
+      this.models = [];
+      this.features = [];
+      Utils.log(`AIタイプ検出: ${this.aiType}`, 'info');
     }
 
-    // モデルメニューを開く
+    // モデルメニューを開く（AI変更検出システムのロジック使用）
     async openModelMenu() {
-      log('モデルメニューを開いています...', 'INFO');
+      Utils.log('モデルメニューを開いています...', 'model');
       
       const selectors = SELECTORS.modelButton[this.aiType] || [];
       if (selectors.length === 0) {
-        log(`${this.aiType}のモデルメニューセレクタが定義されていません`, 'ERROR');
+        Utils.log(`${this.aiType}のモデルメニューセレクタが定義されていません`, 'error');
         return null;
       }
 
-      let retries = CONFIG.MAX_RETRIES;
+      let retries = CONFIG.maxRetries;
       let button = null;
       
       while (!button && retries > 0) {
-        // セレクタで検索
-        button = await findElement(selectors, null, CONFIG.MAX_WAIT);
+        // 優先順位付きセレクタで検索
+        for (const selector of selectors) {
+          try {
+            button = document.querySelector(selector);
+            if (button) {
+              Utils.log(`セレクタ ${selector} でボタンを発見`, 'success');
+              break;
+            }
+          } catch (e) {
+            continue;
+          }
+        }
         
         // フォールバック: モデル名を含むボタンを探す
         if (!button) {
           const modelNames = ['Opus', 'Sonnet', 'Haiku', 'GPT', 'o1', 'Gemini', 'Flash'];
-          button = await findElement(
-            ['button'],
-            (btn) => {
-              const text = btn.textContent?.trim() || '';
-              return modelNames.some(name => text.includes(name)) &&
-                     (btn.hasAttribute('aria-haspopup') || btn.hasAttribute('data-testid'));
-            },
-            2000
-          );
+          button = Array.from(document.querySelectorAll('button')).find(btn => {
+            const text = btn.textContent?.trim() || '';
+            return modelNames.some(name => text.includes(name)) &&
+                   (btn.hasAttribute('aria-haspopup') || btn.hasAttribute('data-testid'));
+          });
+          if (button) {
+            Utils.log('テキストベースでモデルボタンを発見', 'success');
+          }
         }
         
         if (!button && retries > 1) {
-          log(`モデルボタン検索リトライ... (残り${retries - 1}回)`, 'WARNING');
-          await wait(1000);
+          Utils.log(`モデルボタン検索リトライ... (残り${retries - 1}回)`, 'warning');
+          await Utils.wait(1000);
           retries--;
         } else {
           break;
@@ -240,79 +279,79 @@
       }
 
       if (!button) {
-        log('モデルメニューボタンが見つかりません', 'ERROR');
+        Utils.log('モデルメニューボタンが見つかりません', 'error');
         return null;
       }
 
       // 現在のモデルを記録
       const currentModel = button.textContent?.trim();
-      log(`現在のモデル: ${currentModel || '不明'}`);
+      Utils.log(`現在のモデル: ${currentModel || '不明'}`, 'info');
 
       // メニューを開く
-      await performClick(button);
-      await wait(CONFIG.DELAYS.menuOpen);
+      await Utils.performClick(button);
+      await Utils.wait(CONFIG.DELAYS.menuOpen);
 
       // メニューが開いたか確認
       const menu = await this.waitForMenu();
       if (!menu) {
         // 再試行
-        log('メニューが開かないため、再度クリックします', 'WARNING');
-        await performClick(button);
-        await wait(CONFIG.DELAYS.menuOpen);
+        Utils.log('メニューが開かないため、再度クリックします', 'warning');
+        await Utils.performClick(button);
+        await Utils.wait(CONFIG.DELAYS.menuOpen);
         const retryMenu = await this.waitForMenu();
         if (!retryMenu) {
-          log('モデルメニューを開けませんでした', 'ERROR');
+          Utils.log('モデルメニューを開けませんでした', 'error');
           return null;
         }
         return retryMenu;
       }
 
-      log('モデルメニューが開きました', 'SUCCESS');
+      Utils.log('モデルメニューが開きました', 'success');
       return menu;
     }
 
-    // 機能メニューを開く
+    // 機能メニューを開く（AI変更検出システムのロジック使用）
     async openFunctionMenu() {
-      log('機能メニューを開いています...', 'INFO');
+      Utils.log('機能メニューを開いています...', 'feature');
       
       const selectors = SELECTORS.functionButton[this.aiType] || [];
       if (selectors.length === 0) {
-        log(`${this.aiType}の機能メニューセレクタが定義されていません`, 'ERROR');
+        Utils.log(`${this.aiType}の機能メニューセレクタが定義されていません`, 'error');
         return null;
       }
 
-      const button = await findElement(selectors, null, CONFIG.MAX_WAIT);
+      const button = await Utils.waitForElement(selectors, CONFIG.MAX_WAIT);
       if (!button) {
-        log('機能メニューボタンが見つかりません', 'ERROR');
+        Utils.log('機能メニューボタンが見つかりません', 'error');
         return null;
       }
 
       // メニューを開く
-      await performClick(button);
-      await wait(CONFIG.DELAYS.menuOpen);
+      await Utils.performClick(button);
+      await Utils.wait(CONFIG.DELAYS.menuOpen);
 
       // メニューが開いたか確認
       const menu = await this.waitForMenu();
       if (!menu) {
         // 再試行
-        log('メニューが開かないため、再度クリックします', 'WARNING');
-        await performClick(button);
-        await wait(CONFIG.DELAYS.menuOpen);
+        Utils.log('メニューが開かないため、再度クリックします', 'warning');
+        await Utils.performClick(button);
+        await Utils.wait(CONFIG.DELAYS.menuOpen);
         const retryMenu = await this.waitForMenu();
         if (!retryMenu) {
-          log('機能メニューを開けませんでした', 'ERROR');
+          Utils.log('機能メニューを開けませんでした', 'error');
           return null;
         }
         return retryMenu;
       }
 
-      log('機能メニューが開きました', 'SUCCESS');
+      Utils.log('機能メニューが開きました', 'success');
       return menu;
     }
 
     // サブメニューを開く（「他のモデル」など）
     async openSubmenu(menuText) {
-      log(`サブメニュー「${menuText}」を開いています...`, 'INFO');
+      Utils.log(`サブメニュー「${menuText}」を開いています...`, 'info');
 
       const menuItems = await this.getMenuItems();
       const submenuItem = menuItems.find(item => {
@@ -321,17 +360,17 @@
       });
 
       if (!submenuItem) {
-        log(`サブメニュー項目「${menuText}」が見つかりません`, 'WARNING');
+        Utils.log(`サブメニュー項目「${menuText}」が見つかりません`, 'warning');
         return null;
       }
 
-      await performClick(submenuItem);
-      await wait(CONFIG.DELAYS.submenuOpen);
+      await Utils.performClick(submenuItem);
+      await Utils.wait(CONFIG.DELAYS.submenuOpen);
 
       // サブメニューが開いたか確認（新しいメニュー項目が表示される）
       const newMenuItems = await this.getMenuItems();
       if (newMenuItems.length > menuItems.length) {
-        log(`サブメニュー「${menuText}」が開きました`, 'SUCCESS');
+        Utils.log(`サブメニュー「${menuText}」が開きました`, 'success');
         return true;
       }
 
@@ -341,7 +380,7 @@
     // メニューが開くのを待つ
     async waitForMenu(maxWait = CONFIG.MAX_WAIT) {
       const menuSelectors = SELECTORS.menu.common;
-      return await findElement(menuSelectors, null, maxWait);
+      return await Utils.waitForElement(menuSelectors, maxWait);
     }
 
     // メニュー項目を取得
@@ -363,11 +402,17 @@
       return items;
     }
 
-    // メニューを閉じる
-    closeMenu() {
-      log('メニューを閉じています...', 'INFO');
-      closeMenu();
-      return wait(CONFIG.DELAYS.menuClose);
+    // メニューを閉じる（AI変更検出システムのロジック使用）
+    async closeMenu() {
+      Utils.log('メニューを閉じています...', 'info');
+      
+      if (this.aiType === 'claude') {
+        await Utils.closeClaudeMenu();
+      } else {
+        await Utils.closeMenu();
+      }
+      
+      return Utils.wait(CONFIG.DELAYS.menuClose);
     }
 
     // モデル一覧を取得
@@ -436,7 +481,7 @@
       return functions;
     }
 
-    // モデルを選択
+    // モデルを選択（AI変更検出システムのロジック使用）
     async selectModel(modelName) {
       const menu = await this.openModelMenu();
       if (!menu) return false;
@@ -466,18 +511,18 @@
       }
 
       if (targetItem) {
-        await performClick(targetItem);
-        log(`モデル「${modelName}」を選択しました`, 'SUCCESS');
-        await wait(CONFIG.DELAYS.modelSwitch);
+        await Utils.performClick(targetItem);
+        Utils.log(`モデル「${modelName}」を選択しました`, 'success');
+        await Utils.wait(CONFIG.DELAYS.modelSwitch);
         return true;
       }
 
-      log(`モデル「${modelName}」が見つかりません`, 'ERROR');
+      Utils.log(`モデル「${modelName}」が見つかりません`, 'error');
       await this.closeMenu();
       return false;
     }
 
-    // 機能を選択
+    // 機能を選択（AI変更検出システムのロジック使用）
     async selectFunction(functionName, enable = true) {
       const menu = await this.openFunctionMenu();
       if (!menu) return false;
@@ -498,21 +543,21 @@
         if (toggleInput) {
           const isCurrentlyActive = toggleInput.checked;
           if ((enable && !isCurrentlyActive) || (!enable && isCurrentlyActive)) {
-            await performClick(targetItem);
-            log(`機能「${functionName}」を${enable ? 'ON' : 'OFF'}にしました`, 'SUCCESS');
+            await Utils.performClick(targetItem);
+            Utils.log(`機能「${functionName}」を${enable ? 'ON' : 'OFF'}にしました`, 'success');
           } else {
-            log(`機能「${functionName}」は既に${isCurrentlyActive ? 'ON' : 'OFF'}です`, 'INFO');
+            Utils.log(`機能「${functionName}」は既に${isCurrentlyActive ? 'ON' : 'OFF'}です`, 'info');
           }
         } else {
-          await performClick(targetItem);
-          log(`機能「${functionName}」をクリックしました`, 'SUCCESS');
+          await Utils.performClick(targetItem);
+          Utils.log(`機能「${functionName}」をクリックしました`, 'success');
         }
         
         await this.closeMenu();
         return true;
       }
 
-      log(`機能「${functionName}」が見つかりません`, 'ERROR');
+      Utils.log(`機能「${functionName}」が見つかりません`, 'error');
       await this.closeMenu();
       return false;
     }
@@ -526,11 +571,11 @@
   // 自動インスタンス作成
   window.menuHandler = new CommonMenuHandler();
 
-  log('✅ 共通メニューハンドラーが利用可能になりました', 'SUCCESS');
-  log('使用方法:', 'INFO');
-  log('  await menuHandler.openModelMenu()     // モデルメニューを開く', 'INFO');
-  log('  await menuHandler.openFunctionMenu()  // 機能メニューを開く', 'INFO');
-  log('  await menuHandler.selectModel("Opus") // モデル選択', 'INFO');
-  log('  await menuHandler.selectFunction("検索") // 機能選択', 'INFO');
+  Utils.log('✅ 共通メニューハンドラーが利用可能になりました（AI変更検出システムベース）', 'success');
+  Utils.log('使用方法:', 'info');
+  Utils.log('  await menuHandler.openModelMenu()     // モデルメニューを開く', 'info');
+  Utils.log('  await menuHandler.openFunctionMenu()  // 機能メニューを開く', 'info');
+  Utils.log('  await menuHandler.selectModel("Opus") // モデル選択', 'info');
+  Utils.log('  await menuHandler.selectFunction("検索") // 機能選択', 'info');
 
 })();
