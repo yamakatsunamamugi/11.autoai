@@ -7,9 +7,9 @@
 
     console.log('%cChatGPT自動化関数 - 統合テスト版', 'color: #00BCD4; font-weight: bold; font-size: 16px');
     
-    // 共通メニューハンドラーを使用（利用可能な場合）
-    const useCommonMenuHandler = window.CommonMenuHandler && window.menuHandler;
-    let menuHandler = null;  // 共通メニューハンドラーのインスタンス
+    // AIHandlerを使用
+    const useAIHandler = window.AIHandler;
+    let menuHandler = null;  // AIHandlerのメニューハンドラーインスタンス
 
     // ============================================
     // CONFIG部分
@@ -274,9 +274,9 @@
     async function selectModel(modelName) {
         log(`🤖 モデル選択開始: ${modelName}`, 'info');
         
-        // 共通メニューハンドラーを使用
-        if (!useCommonMenuHandler || !menuHandler) {
-            log('共通メニューハンドラーが利用できません', 'error');
+        // AIHandlerを使用
+        if (!useAIHandler || !menuHandler) {
+            log('AIHandlerが利用できません', 'error');
             return false;
         }
 
@@ -559,9 +559,9 @@
             return true;
         }
         
-        // 共通メニューハンドラーを使用
-        if (!useCommonMenuHandler || !menuHandler) {
-            log('共通メニューハンドラーが利用できません', 'error');
+        // AIHandlerを使用
+        if (!useAIHandler || !menuHandler) {
+            log('AIHandlerが利用できません', 'error');
             return false;
         }
 
@@ -1562,12 +1562,12 @@
     // 初期化
     // ============================================
     function initialize() {
-        // 共通メニューハンドラーの初期化
-        if (useCommonMenuHandler) {
-            menuHandler = window.menuHandler || new window.CommonMenuHandler();
-            log('✅ 共通メニューハンドラーを初期化しました', 'success');
+        // AIHandlerの初期化
+        if (useAIHandler) {
+            menuHandler = window.AIHandler.menuHandler || new window.AIHandler.MenuHandler();
+            log('✅ AIHandlerを初期化しました', 'success');
         } else {
-            log('共通メニューハンドラーが利用できません、従来の方法を使用します', 'info');
+            log('AIHandlerが利用できません、従来の方法を使用します', 'info');
         }
     }
     

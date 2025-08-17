@@ -141,7 +141,6 @@
         "tests/integration/test-ai-automation-integrated.js",
         "automations/common-ai-handler.js",
         "automations/common-utils.js",
-        "automations/common-menu-handler.js",
         "automations/deepresearch-handler.js",
         "automations/chatgpt-automation.js",
         "automations/claude-automation.js",

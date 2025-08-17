@@ -1003,6 +1003,34 @@
       await closeMenu();
       return false;
     }
+
+    // サブメニューを開く（「他のモデル」など）
+    async openSubmenu(menuText) {
+      log(`サブメニュー「${menuText}」を開いています...`, 'INFO');
+
+      const menuItems = await this.getMenuItems();
+      const submenuItem = menuItems.find(item => {
+        const text = item.textContent?.trim();
+        return text && text.includes(menuText);
+      });
+
+      if (!submenuItem) {
+        log(`サブメニュー項目「${menuText}」が見つかりません`, 'WARNING');
+        return null;
+      }
+
+      await performClick(submenuItem);
+      await wait(CONFIG.DELAYS.submenuOpen);
+
+      // サブメニューが開いたか確認（新しいメニュー項目が表示される）
+      const newMenuItems = await this.getMenuItems();
+      if (newMenuItems.length > menuItems.length) {
+        log(`サブメニュー「${menuText}」が開きました`, 'SUCCESS');
+        return true;
+      }
+
+      return false;
+    }
   }
 
   // ========================================

@@ -12,9 +12,9 @@
 (function() {
     'use strict';
     
-    // 共通メニューハンドラーを使用（利用可能な場合）
-    const useCommonMenuHandler = window.CommonMenuHandler && window.menuHandler;
-    let menuHandler = null;  // 共通メニューハンドラーのインスタンス
+    // AIHandlerを使用
+    const useAIHandler = window.AIHandler;
+    let menuHandler = null;  // AIHandlerのメニューハンドラーインスタンス
 
     // ========================================
     // 遅延時間設定のみ
@@ -436,9 +436,9 @@
             return false;
         }
         
-        // 共通メニューハンドラーを使用
-        if (!useCommonMenuHandler || !menuHandler) {
-            log('共通メニューハンドラーが利用できません', 'error');
+        // AIHandlerを使用
+        if (!useAIHandler || !menuHandler) {
+            log('AIHandlerが利用できません', 'error');
             return false;
         }
 
@@ -462,9 +462,9 @@
             return false;
         }
         
-        // 共通メニューハンドラーを使用
-        if (!useCommonMenuHandler || !menuHandler) {
-            log('共通メニューハンドラーが利用できません', 'error');
+        // AIHandlerを使用
+        if (!useAIHandler || !menuHandler) {
+            log('AIHandlerが利用できません', 'error');
             return false;
         }
 
@@ -1528,12 +1528,12 @@
     // 初期化
     // ========================================
     function initialize() {
-        // 共通メニューハンドラーの初期化
-        if (useCommonMenuHandler) {
-            menuHandler = window.menuHandler || new window.CommonMenuHandler();
-            console.log('✅ 共通メニューハンドラーを初期化しました');
+        // AIHandlerの初期化
+        if (useAIHandler) {
+            menuHandler = window.AIHandler.menuHandler || new window.AIHandler.MenuHandler();
+            console.log('✅ AIHandlerを初期化しました');
         } else {
-            console.log('共通メニューハンドラーが利用できません、従来の方法を使用します');
+            console.log('AIHandlerが利用できません、従来の方法を使用します');
         }
     }
     

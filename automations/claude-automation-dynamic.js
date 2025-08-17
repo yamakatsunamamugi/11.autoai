@@ -2,14 +2,14 @@
 (() => {
   "use strict";
 
-  // 共通メニューハンドラーを使用（利用可能な場合）
-  const useCommonMenuHandler = window.CommonMenuHandler && window.menuHandler;
+  // AIHandlerを使用
+  const useAIHandler = window.AIHandler;
   
   // ========================================
   // グローバル変数
   // ========================================
   let sendStartTime = null;  // 送信開始時刻を記録
-  let menuHandler = null;  // 共通メニューハンドラーのインスタンス
+  let menuHandler = null;  // AIHandlerのメニューハンドラーインスタンス
 
   // ========================================
   // 設定
@@ -257,9 +257,9 @@
 
     log(`🔍 機能を動的検索: ${functionName}`, 'INFO');
     
-    // 共通メニューハンドラーを使用
-    if (!useCommonMenuHandler || !menuHandler) {
-      log('共通メニューハンドラーが利用できません', 'ERROR');
+    // AIHandlerを使用
+    if (!useAIHandler || !menuHandler) {
+      log('AIHandlerが利用できません', 'ERROR');
       return false;
     }
 
@@ -350,9 +350,9 @@
 
     log(`🔍 モデルを動的検索: ${identifier}`, 'INFO');
     
-    // 共通メニューハンドラーを使用
-    if (!useCommonMenuHandler || !menuHandler) {
-      log('共通メニューハンドラーが利用できません', 'ERROR');
+    // AIHandlerを使用
+    if (!useAIHandler || !menuHandler) {
+      log('AIHandlerが利用できません', 'ERROR');
       return false;
     }
 
@@ -377,8 +377,8 @@
   async function getAvailableModels() {
     log('📋 利用可能なモデルを取得中...', 'INFO');
     
-    // 共通メニューハンドラーが利用可能な場合は使用
-    if (useCommonMenuHandler && menuHandler) {
+    // AIHandlerが利用可能な場合は使用
+    if (useAIHandler && menuHandler) {
       try {
         const models = await menuHandler.getAvailableModels();
         if (models && models.length > 0) {
@@ -486,8 +486,8 @@
   // 利用可能な機能一覧表示
   // ========================================
   async function getAvailableFunctions() {
-    // 共通メニューハンドラーが利用可能な場合は使用
-    if (useCommonMenuHandler && menuHandler) {
+    // AIHandlerが利用可能な場合は使用
+    if (useAIHandler && menuHandler) {
       try {
         const functions = await menuHandler.getAvailableFunctions();
         if (functions && functions.length > 0) {
@@ -1070,12 +1070,12 @@
   // 初期化
   // ========================================
   function initialize() {
-    // 共通メニューハンドラーの初期化
-    if (useCommonMenuHandler) {
-      menuHandler = window.menuHandler || new window.CommonMenuHandler();
-      log('✅ 共通メニューハンドラーを初期化しました', 'SUCCESS');
+    // AIHandlerの初期化
+    if (useAIHandler) {
+      menuHandler = window.AIHandler.menuHandler || new window.AIHandler.MenuHandler();
+      log('✅ AIHandlerを初期化しました', 'SUCCESS');
     } else {
-      log('共通メニューハンドラーが利用できません、従来の方法を使用します', 'INFO');
+      log('AIHandlerが利用できません、従来の方法を使用します', 'INFO');
     }
   }
   
