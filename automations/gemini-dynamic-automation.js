@@ -886,8 +886,8 @@
                 await wait(1000);
                 waitCount++;
 
-                // 更新されたセレクタリストを使用
-                const stopButtonSelectors = [
+                // UI_SELECTORSから取得（フォールバックあり）
+                const stopButtonSelectors = window.DeepResearchHandler?.getSelectors?.('Gemini', 'STOP_BUTTON') || [
                     'button[aria-label="回答を停止"]',
                     'button.send-button.stop',
                     'button.stop',
@@ -1179,8 +1179,8 @@
                     await wait(1000);
                     waitCount++;
                     
-                    // 複数のセレクタを試す（Geminiの UIが変更される可能性があるため）
-                    const stopButtonSelectors = [
+                    // UI_SELECTORSから取得（フォールバックあり）
+                    const stopButtonSelectors = window.DeepResearchHandler?.getSelectors?.('Gemini', 'STOP_BUTTON') || [
                         'button[aria-label="回答を停止"]',
                         'button.send-button.stop',
                         'button.stop',

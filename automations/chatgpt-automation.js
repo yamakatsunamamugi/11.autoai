@@ -1030,9 +1030,11 @@
             }
             
             // 停止ボタンの存在を確認（生成中の判定）
-            // 複数のセレクタを試す（ChatGPTのUIが変更される可能性があるため）
-            const stopButtonSelectors = [
+            // UI_SELECTORSから取得（フォールバックあり）
+            const stopButtonSelectors = window.DeepResearchHandler?.getSelectors?.('ChatGPT', 'STOP_BUTTON') || [
                 '[data-testid="stop-button"]',
+                '[aria-label="ストリーミングの停止"]',
+                '#composer-submit-button[aria-label*="停止"]',
                 '[aria-label="Stop generating"]', 
                 'button[aria-label*="Stop"]',
                 'button[aria-label*="stop"]',

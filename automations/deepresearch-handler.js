@@ -3,37 +3,28 @@
 (() => {
     "use strict";
 
+    // UI_SELECTORSをインポート（Chrome拡張機能の場合はchrome.runtime.getURLを使用）
+    let UI_SELECTORS = null;
+    
+    // セレクタの読み込みを試みる
+    async function loadSelectors() {
+        try {
+            // Chrome拡張機能として動作している場合
+            if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getURL) {
+                const url = chrome.runtime.getURL('src/config/ui-selectors.js');
+                const module = await import(url);
+                UI_SELECTORS = module.UI_SELECTORS;
+            }
+        } catch (error) {
+            console.log('[DeepResearch] ui-selectors.jsの読み込みに失敗、内蔵セレクタを使用します');
+        }
+    }
+
     // ========================================
-    // AI別の設定
+    // AI別の設定（DeepResearch専用）
     // ========================================
     const AI_CONFIGS = {
         ChatGPT: {
-            // 入力欄のセレクタ
-            inputSelectors: [
-                '#prompt-textarea',
-                '[contenteditable="true"]',
-                '.ProseMirror',
-                'textarea[data-testid="conversation-textarea"]',
-                'textarea[placeholder*="メッセージ"]'
-            ],
-            // 送信ボタンのセレクタ
-            sendSelectors: [
-                '[data-testid="send-button"]',
-                '[aria-label="Send prompt"]',
-                '[aria-label="プロンプトを送信する"]',
-                'button[type="submit"]',
-                'button[class*="send"]'
-            ],
-            // 停止ボタンのセレクタ（テストコードと同じ）
-            stopSelectors: [
-                '[data-testid="stop-button"]',
-                '[aria-label="Stop generating"]',
-                '[aria-label="Stop"]',
-                'button[aria-label*="stop"]',
-                'button[aria-label*="Stop"]'
-            ],
-            // メッセージのセレクタ
-            messageSelector: '[data-message-author-role="assistant"]',
             // 自動返信メッセージ
             autoReplyMessage: '良いからさきほどの質問を確認して作業して',
             // AI名（ログ用）
@@ -41,27 +32,6 @@
         },
         
         Claude: {
-            inputSelectors: [
-                '.ProseMirror[contenteditable="true"]',
-                'div[contenteditable="true"][role="textbox"]',
-                '[aria-label*="プロンプト"]',
-                'div[contenteditable="true"]',
-                'textarea[placeholder*="メッセージ"]'
-            ],
-            sendSelectors: [
-                '[aria-label="メッセージを送信"]:not([disabled])',
-                'button[type="submit"]:not([disabled])',
-                '.send-button:not([disabled])'
-            ],
-            // 停止ボタンのセレクタ（ChatGPTと同じロジック）
-            stopSelectors: [
-                '[aria-label="応答を停止"]',
-                '[aria-label="Stop generating"]',
-                '[data-testid="stop-button"]',
-                'button[aria-label*="stop"]',
-                'button[aria-label*="Stop"]'
-            ],
-            messageSelector: '[data-is-streaming="false"]',
             autoReplyMessage: '良いからさきほどの質問を確認して作業して',
             aiName: 'Claude'
         },
@@ -75,18 +45,41 @@
                 'button[aria-label*="リサーチ"]',
                 'button[class*="research"]'
             ],
-            // 停止ボタンのセレクタ（統一）
-            stopSelectors: [
-                '[aria-label="回答を停止"]',
-                '[aria-label="Stop generating"]',
-                '[data-testid="stop-button"]',
-                'button[aria-label*="stop"]',
-                'button[aria-label*="Stop"]'
-            ],
-            messageSelector: '.conversation-turn.model-turn',
             aiName: 'Gemini'
         }
     };
+
+    // ========================================
+    // セレクタ取得関数
+    // ========================================
+    function getSelectors(aiName, selectorType) {
+        // UI_SELECTORSが読み込まれていれば使用
+        if (UI_SELECTORS && UI_SELECTORS[aiName]) {
+            return UI_SELECTORS[aiName][selectorType] || [];
+        }
+        
+        // フォールバック：内蔵セレクタ
+        const fallbackSelectors = {
+            ChatGPT: {
+                INPUT: ['#prompt-textarea', '[contenteditable="true"]', '.ProseMirror'],
+                SEND_BUTTON: ['[data-testid="send-button"]'],
+                STOP_BUTTON: ['[data-testid="stop-button"]', '[aria-label="ストリーミングの停止"]'],
+                MESSAGE: ['[data-message-author-role="assistant"]']
+            },
+            Claude: {
+                INPUT: ['.ProseMirror[contenteditable="true"]', 'div[contenteditable="true"]'],
+                SEND_BUTTON: ['[aria-label="メッセージを送信"]:not([disabled])'],
+                STOP_BUTTON: ['[aria-label="応答を停止"]'],
+                MESSAGE: ['[data-is-streaming="false"]']
+            },
+            Gemini: {
+                STOP_BUTTON: ['button[aria-label="回答を停止"]', 'button.send-button.stop'],
+                MESSAGE: ['.conversation-turn.model-turn']
+            }
+        };
+        
+        return fallbackSelectors[aiName]?.[selectorType] || [];
+    }
 
     // ========================================
     // ログ関数
@@ -164,7 +157,7 @@
                 
                 // 停止ボタンの状態をチェック
                 let stopButton = null;
-                const stopSelectors = config.stopSelectors || [config.stopSelector];
+                const stopSelectors = getSelectors(aiName, 'STOP_BUTTON');
                 for (const selector of stopSelectors) {
                     if (selector) {
                         stopButton = document.querySelector(selector);
@@ -301,11 +294,12 @@
         try {
             // 入力欄を探す（utilsが無い場合は直接検索）
             let inputField = null;
+            const inputSelectors = getSelectors(aiName, 'INPUT');
             if (utils && utils.findElement) {
-                inputField = await utils.findElement(config.inputSelectors);
+                inputField = await utils.findElement(inputSelectors);
             } else {
                 // フォールバック：直接DOM検索
-                for (const selector of config.inputSelectors) {
+                for (const selector of inputSelectors) {
                     inputField = document.querySelector(selector);
                     if (inputField && inputField.offsetParent !== null) break;
                 }
@@ -313,7 +307,7 @@
             
             if (!inputField) {
                 log('❌ 入力欄が見つかりません', 'ERROR', aiName);
-                log(`🔍 検索したセレクタ: ${config.inputSelectors.join(', ')}`, 'DEBUG', aiName);
+                log(`🔍 検索したセレクタ: ${inputSelectors.join(', ')}`, 'DEBUG', aiName);
                 return false;
             }
             
@@ -338,11 +332,12 @@
             
             // 送信ボタンを探す
             let sendButton = null;
+            const sendSelectors = getSelectors(aiName, 'SEND_BUTTON');
             if (utils && utils.findElement) {
-                sendButton = await utils.findElement(config.sendSelectors);
+                sendButton = await utils.findElement(sendSelectors);
             } else {
                 // フォールバック：直接DOM検索
-                for (const selector of config.sendSelectors) {
+                for (const selector of sendSelectors) {
                     sendButton = document.querySelector(selector);
                     if (sendButton && sendButton.offsetParent !== null && !sendButton.disabled) break;
                 }
@@ -389,7 +384,7 @@
             try {
                 // 停止ボタンをチェック（複数セレクタ対応）
                 let stopButton = null;
-                const stopSelectors = config.stopSelectors || [config.stopSelector];
+                const stopSelectors = getSelectors(aiName, 'STOP_BUTTON');
                 for (const selector of stopSelectors) {
                     if (selector) {
                         stopButton = document.querySelector(selector);
@@ -463,9 +458,14 @@
     // グローバル公開
     // ========================================
     window.DeepResearchHandler = {
-        handle: handleDeepResearch,
+        handle: async (aiName, maxWaitMinutes) => {
+            // UI_SELECTORSを読み込み
+            await loadSelectors();
+            return await handleDeepResearch(aiName, maxWaitMinutes);
+        },
         getConfig: getConfig,
-        AI_CONFIGS: AI_CONFIGS
+        AI_CONFIGS: AI_CONFIGS,
+        getSelectors: getSelectors
     };
 
     log('DeepResearchハンドラーが利用可能になりました', 'SUCCESS');
