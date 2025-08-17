@@ -428,7 +428,7 @@
     };
 
     // ========================================
-    // 動的選択関数
+    // 動的モデル選択（共通ハンドラー使用）
     // ========================================
     const selectModelDynamic = async (searchTerm) => {
         if (!searchTerm) {
@@ -450,77 +450,8 @@
             }
         }
 
-        // プルダウンの表示名から実際のGeminiメニュー用の名前に逆変換
-        let actualSearchTerm = searchTerm;
-        if (searchTerm === "Gemini 2.5 Pro") {
-            actualSearchTerm = "2.5 Pro";
-            console.log(`[DEBUG] Gemini: モデル名逆変換 "${searchTerm}" → "${actualSearchTerm}"`);
-        } else if (searchTerm === "Gemini 2.5 Flash") {
-            actualSearchTerm = "2.5 Flash";
-            console.log(`[DEBUG] Gemini: モデル名逆変換 "${searchTerm}" → "${actualSearchTerm}"`);
-        } else if (searchTerm === "Gemini 1.5 Pro") {
-            actualSearchTerm = "1.5 Pro";
-            console.log(`[DEBUG] Gemini: モデル名逆変換 "${searchTerm}" → "${actualSearchTerm}"`);
-        } else if (searchTerm === "Gemini 1.5 Flash") {
-            actualSearchTerm = "1.5 Flash";
-            console.log(`[DEBUG] Gemini: モデル名逆変換 "${searchTerm}" → "${actualSearchTerm}"`);
-        }
-
-        log(`\n🤖 モデル「${searchTerm}」を検索中...（実際の検索語: ${actualSearchTerm}）`, 'header');
-
-        // モデル選択ボタンをクリック
-        const modelButton = await findElement([
-            '.gds-mode-switch-button',
-            '[aria-label*="モデル"]'
-        ]);
-
-        if (modelButton) {
-            console.log(`[DEBUG] Gemini: モデルボタン発見 - ${modelButton.textContent?.trim()}`);
-            await clickElement(modelButton);
-            await wait(DELAYS.menuWait);
-            console.log(`[DEBUG] Gemini: メニューを${DELAYS.menuWait}ms待機後にチェック`);
-
-            // メニューから選択
-            const menuItems = document.querySelectorAll('[role="menuitemradio"], [role="menuitem"]');
-            console.log(`[DEBUG] Gemini: メニュー項目数 - ${menuItems.length}`);
-            
-            // メニュー項目を詳細ログ
-            menuItems.forEach((item, index) => {
-                console.log(`[DEBUG] Gemini: 項目${index}: "${item.textContent?.trim()}"`);
-            });
-            
-            let selected = false;
-            
-            for (let item of menuItems) {
-                const itemText = item.textContent?.trim();
-                const match = fuzzyMatch(actualSearchTerm, itemText);
-                
-                console.log(`[DEBUG] Gemini: 検索対象"${actualSearchTerm}" vs 項目"${itemText}" - スコア: ${match ? match.score.toFixed(2) : 'なし'}`);
-                
-                if (match && match.score > 0.6) {
-                    console.log(`[DEBUG] Gemini: マッチ成功！ "${itemText}" をクリック`);
-                    await clickElement(item);
-                    globalState.currentModel = itemText;
-                    log(`✅ モデル「${itemText}」を選択しました (スコア: ${match.score.toFixed(2)})`, 'success');
-                    selected = true;
-                    break;
-                }
-            }
-
-            // メニューを確実に閉じる
-            await wait(500);
-            await closeMenu();
-            log('メニューを閉じました', 'info');
-            
-            if (!selected) {
-                log(`❌ モデル「${searchTerm}」（検索語: ${actualSearchTerm}）が見つかりません`, 'error');
-            }
-            
-            return selected;
-        } else {
-            log(`❌ モデル選択ボタンが見つかりません`, 'error');
-            return false;
-        }
+        log('従来のモデル選択メソッドが必要ですが、共通ハンドラーの使用を推奨します', 'warning');
+        return false;
     };
 
     const selectFunctionDynamic = async (searchTerm, retryCount = 0) => {
@@ -543,74 +474,7 @@
             }
         }
 
-        const maxRetries = 2;
-        log(`\n🔧 機能「${searchTerm}」を検索中...${retryCount > 0 ? ` (試行 ${retryCount + 1}/${maxRetries + 1})` : ''}`, 'header');
-
-        const functions = await collectAvailableFunctions();
-
-        // ファジー検索で最適な機能を探す
-        let bestMatch = null;
-        let bestScore = 0;
-
-        functions.forEach(func => {
-            const match = fuzzyMatch(searchTerm, func.name);
-            if (match && match.score > bestScore) {
-                bestScore = match.score;
-                bestMatch = func;
-            }
-        });
-
-        if (bestMatch) {
-            const visibility = bestMatch.visible === false ? '(非表示)' : '(表示中)';
-            log(`✅ 機能「${bestMatch.name}」を発見 (場所: ${bestMatch.location}, スコア: ${bestScore.toFixed(2)}) ${visibility}`, 'success');
-
-            if (bestMatch.active) {
-                log(`機能「${bestMatch.name}」は既に有効です`, 'info');
-                // 既に有効でもグローバル状態に追加
-                if (!globalState.activeFunctions.includes(bestMatch.name)) {
-                    globalState.activeFunctions.push(bestMatch.name);
-                }
-                return true;
-            }
-
-            // 機能選択の試行
-            let selectionResult = false;
-
-            if (bestMatch.location === 'main' || bestMatch.location === 'main-hidden') {
-                // メイン機能（表示中または非表示）
-                if (bestMatch.visible === false) {
-                    log(`機能「${bestMatch.name}」は非表示のため、「その他」メニューで探します`, 'warning');
-                    selectionResult = await selectFromSubmenu(bestMatch.name);
-                } else {
-                    selectionResult = await selectFromMain(bestMatch);
-                }
-            } else if (bestMatch.location === 'submenu') {
-                // サブメニューの機能
-                selectionResult = await selectFromSubmenu(bestMatch.name);
-            }
-
-            // 選択に失敗した場合のフォールバック
-            if (!selectionResult && retryCount < maxRetries) {
-                log(`機能選択に失敗しました。フォールバック処理を実行します...`, 'warning');
-                
-                // キャッシュをクリアして再試行
-                globalState.functionCache = null;
-                globalState.functionCacheTime = null;
-                
-                await wait(1000);
-                return await selectFunctionDynamic(searchTerm, retryCount + 1);
-            }
-
-            return selectionResult;
-        } else {
-            log(`❌ 機能「${searchTerm}」が見つかりません`, 'error');
-            log('利用可能な機能:', 'info');
-            functions.forEach(f => {
-                const visibility = f.visible === false ? '[非表示]' : '[表示中]';
-                console.log(`  - ${f.name} (${f.location}) ${visibility}`);
-            });
-        }
-
+        log('従来の機能選択メソッドが必要ですが、共通ハンドラーの使用を推奨します', 'warning');
         return false;
     };
 

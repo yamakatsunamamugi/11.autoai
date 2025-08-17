@@ -269,7 +269,7 @@
     // ============================================
 
     // ============================================
-    // モデル選択関数（Geminiスタイル動的検索版）
+    // モデル選択関数（共通ハンドラー使用）
     // ============================================
     async function selectModel(modelName) {
         log(`🤖 モデル選択開始: ${modelName}`, 'info');
@@ -288,122 +288,8 @@
             }
         }
         
-        try {
-            // モデル選択ボタンを探す（ChatGPT特有の方法）
-            const modelButtonSelectors = [
-                '[data-testid="model-switcher-dropdown-button"]',
-                'button[aria-label*="モデル セレクター"]',
-                'button[aria-label*="モデル"]',
-                'button[aria-label*="Model"]',
-                'button[id^="radix-"][aria-haspopup="menu"]',
-                // 特定のテキストを含むボタンを探す
-                'button:has(> div > div:first-child)',
-                'button[aria-haspopup="menu"][aria-expanded]',
-                'button[aria-haspopup="menu"]'
-            ];
-            
-            let modelButton = null;
-            for (const selector of modelButtonSelectors) {
-                try {
-                    const elements = document.querySelectorAll(selector);
-                    for (const element of elements) {
-                        if (element && element.offsetParent !== null) {
-                            modelButton = element;
-                            debugLog(`モデルボタン発見: ${selector}`);
-                            break;
-                        }
-                    }
-                    if (modelButton) break;
-                } catch (e) {
-                    debugLog(`セレクタエラー: ${selector}`);
-                }
-            }
-            
-            if (!modelButton) {
-                log('❌ モデル選択ボタンが見つかりません', 'error');
-                return false;
-            }
-            
-            // メニューを開く（ChatGPT特有の方法）
-            debugLog('モデルメニューを開きます');
-            await performClick(modelButton);
-            const menu = await waitForMenu();
-            
-            if (!menu) {
-                log('❌ モデルメニューが開きませんでした', 'error');
-                return false;
-            }
-            
-            debugLog('モデルメニューが正常に開きました');
-            
-            // モデル名マッピング（Geminiスタイル - 複数パターン対応）
-            const modelMappings = {
-                'gpt-5': ['GPT-5'],
-                'gpt-5-thinking': ['GPT-5 Thinking', 'Thinking'],
-                'gpt-5-pro': ['GPT-5 Pro', 'Pro'],
-                '5': ['GPT-5'],
-                '5-thinking': ['GPT-5 Thinking', 'Thinking'],
-                '5-pro': ['GPT-5 Pro', 'Pro'],
-                'thinking': ['GPT-5 Thinking', 'Thinking'],
-                'pro': ['GPT-5 Pro', 'Pro']
-            };
-            
-            const possibleNames = modelMappings[modelName.toLowerCase()] || [modelName];
-            log(`検索パターン: ${possibleNames.join(', ')}`, 'info');
-            
-            // メニューからモデルを動的検索（ChatGPT特有のセレクタ）
-            const menuItems = menu.querySelectorAll('[role="menuitem"]');
-            debugLog(`利用可能なモデル項目数: ${menuItems.length}`);
-            
-            let allModels = [];
-            
-            for (const item of menuItems) {
-                const textContent = item.textContent?.trim() || '';
-                const testId = item.getAttribute('data-testid');
-                
-                if (textContent) {
-                    allModels.push({ text: textContent, testId: testId });
-                    debugLog(`発見モデル: "${textContent}" (testId: ${testId})`);
-                    
-                    // Geminiスタイルのマッチング - シンプルなincludes()
-                    for (const name of possibleNames) {
-                        if (textContent.includes(name)) {
-                            log(`🎯 マッチ成功: "${textContent}" ← "${name}"`, 'success');
-                            
-                            // 既に選択済みかチェック
-                            const isSelected = item.querySelector('svg path[d*="12.0961"]') !== null;
-                            if (isSelected) {
-                                log(`ℹ️ モデル "${textContent}" は既に選択済みです`, 'info');
-                                await closeMenu();
-                                return true;
-                            }
-                            
-                            // モデル選択実行
-                            debugLog(`モデル "${textContent}" をクリックします`);
-                            await performClick(item);
-                            await wait(1000);
-                            
-                            currentState.selectedModel = textContent;
-                            log(`✅ モデルを「${textContent}」に変更しました`, 'success');
-                            return true;
-                        }
-                    }
-                }
-            }
-            
-            // モデルが見つからない場合
-            log(`❌ モデル「${modelName}」が見つかりませんでした`, 'error');
-            log('利用可能なモデル:', 'info');
-            allModels.forEach(model => {
-                log(`  • ${model.text} (${model.testId})`, 'info');
-            });
-            await closeMenu();
-            return false;
-            
-        } catch (error) {
-            log(`モデル選択エラー: ${error.message}`, 'error');
-            return false;
-        }
+        log('従来のモデル選択メソッドが必要ですが、共通ハンドラーの使用を推奨します', 'warning');
+        return false;
     }
 
     // 利用可能なモデルを取得する関数（selectModelと同じロジックを使用）
@@ -658,7 +544,7 @@
     }
 
     // ============================================
-    // 機能選択関数（動的検索版）
+    // 機能選択関数（共通ハンドラー使用）
     // ============================================
     async function selectFunction(functionName) {
         // 機能を無効化する場合
@@ -687,190 +573,8 @@
             }
         }
 
-        log(`🔍 機能を動的検索: ${functionName}`, 'info');
-        console.log(`[DEBUG] ChatGPT selectFunction called with: "${functionName}"`);
-
-        // 機能選択ボタンを探す
-        const functionButtonSelectors = [
-            '[data-testid="composer-plus-btn"]',
-            'button.composer-btn',
-            'button[aria-label*="機能"]',
-            'button[aria-label*="プラス"]',
-            'button[aria-label*="追加"]'
-        ];
-
-        let functionButton = null;
-        for (const selector of functionButtonSelectors) {
-            try {
-                const elements = document.querySelectorAll(selector);
-                for (const element of elements) {
-                    if (element && element.offsetParent !== null) {
-                        functionButton = element;
-                        debugLog(`機能選択ボタン発見: ${selector}`);
-                        break;
-                    }
-                }
-                if (functionButton) break;
-            } catch (e) {
-                debugLog(`セレクタエラー: ${selector}`);
-            }
-        }
-
-        if (!functionButton) {
-            log('❌ 機能選択ボタンが見つかりません', 'error');
-            console.log('[DEBUG] ChatGPT: 機能ボタン検索失敗');
-            console.log('[DEBUG] Available buttons:', document.querySelectorAll('button').length);
-            return false;
-        }
-
-        console.log(`[DEBUG] ChatGPT: 機能ボタン発見 - ${functionButton.getAttribute('data-testid')}`);
-
-        // メニューを開く
-        debugLog('機能メニューを開きます');
-        await performClick(functionButton);
-        await wait(CONFIG.delays.menuOpen); // 成功事例と同じ待機
-        const menu = await waitForMenu();
-
-        if (!menu) {
-            log('❌ 機能メニューが開きませんでした', 'error');
-            console.log('[DEBUG] ChatGPT: メニューオープン失敗');
-            return false;
-        }
-
-        debugLog('機能メニューが正常に開きました');
-        console.log(`[DEBUG] ChatGPT: メニュー項目数: ${menu.querySelectorAll('[role="menuitem"], [role="menuitemradio"]').length}`);
-
-        // 動的に機能項目を検索
-        let allMenuItems = [];
-        let targetFunction = null;
-        let allFunctions = [];
-
-        // メインメニューから検索
-        const mainMenuItems = menu.querySelectorAll('[role="menuitem"], [role="menuitemradio"]');
-        debugLog(`メインメニュー項目数: ${mainMenuItems.length}`);
-
-        // まず全ての機能を収集
-        for (const item of mainMenuItems) {
-            const textContent = item.textContent?.trim();
-            if (textContent) {
-                allFunctions.push({ text: textContent, location: 'main', element: item });
-                debugLog(`発見機能(メイン): "${textContent}"`);
-            }
-        }
-
-        console.log(`[DEBUG] ChatGPT: 検索対象機能一覧:`, allFunctions.map(f => f.text));
-        console.log(`[DEBUG] ChatGPT: 検索キーワード: "${functionName}"`);
-
-        // 完全一致を最優先で検索
-        for (const func of allFunctions) {
-            if (func.text === functionName) {
-                targetFunction = { element: func.element, text: func.text, location: 'main' };
-                console.log(`[DEBUG] ChatGPT: 完全一致成功! "${func.text}"`);
-                break;
-            }
-        }
-
-        // 完全一致が見つからない場合、部分一致検索
-        if (!targetFunction) {
-            for (const func of allFunctions) {
-                if (func.text.includes(functionName)) {
-                    targetFunction = { element: func.element, text: func.text, location: 'main' };
-                    console.log(`[DEBUG] ChatGPT: 部分一致成功! "${func.text}"`);
-                    break;
-                }
-            }
-        }
-
-        // それでも見つからない場合、正規化マッチング
-        if (!targetFunction) {
-            const normalizedInput = functionName.toLowerCase().replace(/[^a-z0-9]/g, '');
-            
-            for (const func of allFunctions) {
-                const normalizedFunction = func.text.toLowerCase().replace(/[^a-z0-9]/g, '');
-                console.log(`[DEBUG] ChatGPT: 正規化検査 - 入力:"${normalizedInput}" vs 機能:"${normalizedFunction}"`);
-                
-                if (normalizedFunction.includes(normalizedInput) || 
-                    normalizedInput.includes(normalizedFunction) ||
-                    func.text.toLowerCase().includes(functionName.toLowerCase()) ||
-                    functionName.toLowerCase().includes(func.text.toLowerCase())) {
-                    targetFunction = { element: func.element, text: func.text, location: 'main' };
-                    console.log(`[DEBUG] ChatGPT: 正規化マッチ成功! "${func.text}"`);
-                    break;
-                }
-            }
-        }
-
-        if (targetFunction) {
-            log(`🎯 マッチする機能を発見(メイン): "${targetFunction.text}"`, 'success');
-        }
-
-        // サブメニューも検索（メインで見つからない場合）
-        if (!targetFunction) {
-            // 「さらに表示」ボタンを探す
-            const submenuTrigger = Array.from(mainMenuItems)
-                .find(item => item.textContent?.includes('さらに表示'));
-
-            if (submenuTrigger) {
-                log('📂 サブメニューを開きます', 'info');
-                const submenu = await openSubmenu(submenuTrigger);
-
-                if (submenu) {
-                    const submenuItems = submenu.querySelectorAll('[role="menuitem"], [role="menuitemradio"]');
-                    debugLog(`サブメニュー項目数: ${submenuItems.length}`);
-
-                    for (const item of submenuItems) {
-                        const textContent = item.textContent?.trim();
-                        if (textContent) {
-                            allFunctions.push({ text: textContent, location: 'submenu', element: item });
-                            debugLog(`発見機能(サブ): "${textContent}"`);
-
-                            // 機能名のマッチング
-                            const normalizedInput = functionName.toLowerCase().replace(/[^a-z0-9]/g, '');
-                            const normalizedFunction = textContent.toLowerCase().replace(/[^a-z0-9]/g, '');
-
-                            if (normalizedFunction.includes(normalizedInput) || 
-                                normalizedInput.includes(normalizedFunction) ||
-                                textContent.toLowerCase().includes(functionName.toLowerCase()) ||
-                                functionName.toLowerCase().includes(textContent.toLowerCase())) {
-                                targetFunction = { element: item, text: textContent, location: 'submenu' };
-                                log(`🎯 マッチする機能を発見(サブ): "${textContent}"`, 'success');
-                                break;
-                            }
-                        }
-                    }
-                } else {
-                    debugLog('サブメニューが開けませんでした');
-                }
-            } else {
-                debugLog('「さらに表示」ボタンが見つかりませんでした');
-            }
-        }
-
-        // 機能が見つからない場合、利用可能な機能一覧を表示
-        if (!targetFunction) {
-            log(`❌ 機能 "${functionName}" が見つかりませんでした`, 'error');
-            log('利用可能な機能:', 'info');
-            allFunctions.forEach(func => {
-                log(`  • ${func.text} (${func.location})`, 'info');
-            });
-            await closeMenu();
-            return false;
-        }
-
-        // 機能を選択
-        debugLog(`機能 "${targetFunction.text}" をクリックします`);
-        await performClick(targetFunction.element);
-
-        // 成功事例と同様の待機
-        await wait(CONFIG.delays.afterClick);
-        
-        // メニューを確実に閉じる（成功事例と同様）
-        await closeMenu();
-
-        currentState.activeFunctions.add(targetFunction.text);
-        log(`✅ 機能を「${targetFunction.text}」に変更しました`, 'success');
-        console.log(`[DEBUG] ChatGPT: 機能選択完了 - ${targetFunction.text}`);
-        return true;
+        log('従来の機能選択メソッドが必要ですが、共通ハンドラーの使用を推奨します', 'warning');
+        return false;
     }
 
     // 利用可能な機能を取得する関数（selectFunctionと同じロジックを使用）
