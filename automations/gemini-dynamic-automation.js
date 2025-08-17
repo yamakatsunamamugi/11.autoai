@@ -752,7 +752,7 @@
         
         const sendButtonSelectors = window.DeepResearchHandler?.getSelectors?.('Gemini', 'SEND_BUTTON');
         
-        if (!sendButtonSelectors) {
+        if (!sendButtonSelectors || sendButtonSelectors.length === 0) {
             log('送信ボタンセレクタが取得できません', 'error');
             return false;
         }

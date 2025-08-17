@@ -599,7 +599,7 @@
 
     const submitButtonSelectors = window.DeepResearchHandler?.getSelectors?.('Claude', 'SEND_BUTTON');
     
-    if (!submitButtonSelectors) {
+    if (!submitButtonSelectors || submitButtonSelectors.length === 0) {
       log('送信ボタンセレクタが取得できません', 'ERROR');
       return false;
     }
