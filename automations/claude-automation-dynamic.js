@@ -677,6 +677,19 @@
   // ========================================
   async function getAvailableModels() {
     log('📋 利用可能なモデルを取得中...', 'INFO');
+    
+    // 共通メニューハンドラーが利用可能な場合は使用
+    if (useCommonMenuHandler && menuHandler) {
+      try {
+        const models = await menuHandler.getAvailableModels();
+        if (models && models.length > 0) {
+          log(`✅ 共通ハンドラーで${models.length}個のモデルを取得しました`, 'SUCCESS');
+          return models;
+        }
+      } catch (error) {
+        log(`共通ハンドラーエラー、フォールバックに切り替えます: ${error.message}`, 'WARNING');
+      }
+    }
 
     try {
       // モデル選択ボタンを探す
@@ -774,6 +787,19 @@
   // 利用可能な機能一覧表示
   // ========================================
   async function getAvailableFunctions() {
+    // 共通メニューハンドラーが利用可能な場合は使用
+    if (useCommonMenuHandler && menuHandler) {
+      try {
+        const functions = await menuHandler.getAvailableFunctions();
+        if (functions && functions.length > 0) {
+          log(`✅ 共通ハンドラーで${functions.length}個の機能を取得しました`, 'SUCCESS');
+          return functions;
+        }
+      } catch (error) {
+        log(`共通ハンドラーエラー、フォールバックに切り替えます: ${error.message}`, 'WARNING');
+      }
+    }
+    
     const functions = await collectMenuFunctions();
 
     if (functions.length === 0) {
