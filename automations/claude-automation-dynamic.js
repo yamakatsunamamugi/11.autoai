@@ -257,40 +257,41 @@
 
     log(`🔍 機能を動的検索: ${functionName}`, 'INFO');
     
-    // 共通メニューハンドラーが利用可能な場合は使用
-    if (useCommonMenuHandler && menuHandler) {
-      try {
-        // エイリアスを解決
-        const normalizedInput = functionName.toLowerCase().replace(/\s+/g, '');
-        const targetFunction = CONFIG.FUNCTION_ALIASES[normalizedInput] || functionName;
-        const result = await menuHandler.selectFunction(targetFunction, enable);
-        if (result) {
-          log(`✅ 共通ハンドラーで機能「${targetFunction}」を${enable ? '有効' : '無効'}にしました`, 'SUCCESS');
-          return true;
+    // 共通メニューハンドラーを使用
+    if (!useCommonMenuHandler || !menuHandler) {
+      log('共通メニューハンドラーが利用できません', 'ERROR');
+      return false;
+    }
+
+    try {
+      // エイリアスを解決
+      const normalizedInput = functionName.toLowerCase().replace(/\s+/g, '');
+      const targetFunction = CONFIG.FUNCTION_ALIASES[normalizedInput] || functionName;
+      
+      // DeepResearch特別処理
+      if (CONFIG.FUNCTION_ALIASES[normalizedInput] === 'リサーチ') {
+        log('DeepResearchモードを有効化します', 'INFO');
+        log('⚠️ DeepResearchは最大40分かかる場合があります', 'WARNING');
+        
+        const searchEnabled = await menuHandler.selectFunction('ウェブ検索', true);
+        if (!searchEnabled) {
+          log('ウェブ検索の有効化に失敗しました', 'ERROR');
+          return false;
         }
-      } catch (error) {
-        log(`共通ハンドラーエラー、フォールバックに切り替えます: ${error.message}`, 'WARNING');
+        
+        return await clickResearchButton();
       }
-    }
-
-    const normalizedInput = functionName.toLowerCase().replace(/\s+/g, '');
-    const targetAlias = CONFIG.FUNCTION_ALIASES[normalizedInput];
-
-    if (targetAlias === 'リサーチ') {
-      log('DeepResearchモードを有効化します', 'INFO');
-      log('⚠️ DeepResearchは最大40分かかる場合があります', 'WARNING');
-
-      const searchEnabled = await selectFunction('ウェブ検索', true);
-      if (!searchEnabled) {
-        log('ウェブ検索の有効化に失敗しました', 'ERROR');
-        return false;
+      
+      const result = await menuHandler.selectFunction(targetFunction, enable);
+      if (result) {
+        log(`✅ 共通ハンドラーで機能「${targetFunction}」を${enable ? '有効' : '無効'}にしました`, 'SUCCESS');
+        return true;
       }
-
-      return await clickResearchButton();
+      return false;
+    } catch (error) {
+      log(`機能選択エラー: ${error.message}`, 'ERROR');
+      return false;
     }
-
-    log('従来の機能選択メソッドが必要ですが、共通ハンドラーの使用を推奨します', 'WARNING');
-    return false;
   }
 
   async function clickResearchButton() {
@@ -349,23 +350,25 @@
 
     log(`🔍 モデルを動的検索: ${identifier}`, 'INFO');
     
-    // 共通メニューハンドラーが利用可能な場合は使用
-    if (useCommonMenuHandler && menuHandler) {
-      try {
-        // エイリアスを解決
-        const targetModel = CONFIG.MODEL_ALIASES[identifier.toLowerCase()] || identifier;
-        const result = await menuHandler.selectModel(targetModel);
-        if (result) {
-          log(`✅ 共通ハンドラーでモデル「${targetModel}」を選択しました`, 'SUCCESS');
-          return true;
-        }
-      } catch (error) {
-        log(`共通ハンドラーエラー、フォールバックに切り替えます: ${error.message}`, 'WARNING');
-      }
+    // 共通メニューハンドラーを使用
+    if (!useCommonMenuHandler || !menuHandler) {
+      log('共通メニューハンドラーが利用できません', 'ERROR');
+      return false;
     }
 
-    log('従来のモデル選択メソッドが必要ですが、共通ハンドラーの使用を推奨します', 'WARNING');
-    return false;
+    try {
+      // エイリアスを解決
+      const targetModel = CONFIG.MODEL_ALIASES[identifier.toLowerCase()] || identifier;
+      const result = await menuHandler.selectModel(targetModel);
+      if (result) {
+        log(`✅ 共通ハンドラーでモデル「${targetModel}」を選択しました`, 'SUCCESS');
+        return true;
+      }
+      return false;
+    } catch (error) {
+      log(`モデル選択エラー: ${error.message}`, 'ERROR');
+      return false;
+    }
   }
 
   // ========================================

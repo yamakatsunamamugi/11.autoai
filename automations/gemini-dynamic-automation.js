@@ -436,22 +436,24 @@
             return false;
         }
         
-        // 共通メニューハンドラーが利用可能な場合は使用
-        if (useCommonMenuHandler && menuHandler) {
-            try {
-                const result = await menuHandler.selectModel(searchTerm);
-                if (result) {
-                    log(`✅ 共通ハンドラーでモデル「${searchTerm}」を選択しました`, 'success');
-                    globalState.currentModel = searchTerm;
-                    return true;
-                }
-            } catch (error) {
-                log(`共通ハンドラーエラー、フォールバックに切り替えます: ${error.message}`, 'warning');
-            }
+        // 共通メニューハンドラーを使用
+        if (!useCommonMenuHandler || !menuHandler) {
+            log('共通メニューハンドラーが利用できません', 'error');
+            return false;
         }
 
-        log('従来のモデル選択メソッドが必要ですが、共通ハンドラーの使用を推奨します', 'warning');
-        return false;
+        try {
+            const result = await menuHandler.selectModel(searchTerm);
+            if (result) {
+                log(`✅ 共通ハンドラーでモデル「${searchTerm}」を選択しました`, 'success');
+                globalState.currentModel = searchTerm;
+                return true;
+            }
+            return false;
+        } catch (error) {
+            log(`モデル選択エラー: ${error.message}`, 'error');
+            return false;
+        }
     };
 
     const selectFunctionDynamic = async (searchTerm, retryCount = 0) => {
@@ -460,22 +462,24 @@
             return false;
         }
         
-        // 共通メニューハンドラーが利用可能な場合は使用
-        if (useCommonMenuHandler && menuHandler) {
-            try {
-                const result = await menuHandler.selectFunction(searchTerm);
-                if (result) {
-                    log(`✅ 共通ハンドラーで機能「${searchTerm}」を選択しました`, 'success');
-                    globalState.activeFunctions.push(searchTerm);
-                    return true;
-                }
-            } catch (error) {
-                log(`共通ハンドラーエラー、フォールバックに切り替えます: ${error.message}`, 'warning');
-            }
+        // 共通メニューハンドラーを使用
+        if (!useCommonMenuHandler || !menuHandler) {
+            log('共通メニューハンドラーが利用できません', 'error');
+            return false;
         }
 
-        log('従来の機能選択メソッドが必要ですが、共通ハンドラーの使用を推奨します', 'warning');
-        return false;
+        try {
+            const result = await menuHandler.selectFunction(searchTerm);
+            if (result) {
+                log(`✅ 共通ハンドラーで機能「${searchTerm}」を選択しました`, 'success');
+                globalState.activeFunctions.push(searchTerm);
+                return true;
+            }
+            return false;
+        } catch (error) {
+            log(`機能選択エラー: ${error.message}`, 'error');
+            return false;
+        }
     };
 
     // メイン機能の選択ヘルパー関数
