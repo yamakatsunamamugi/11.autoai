@@ -269,10 +269,24 @@
       const targetFunction = CONFIG.FUNCTION_ALIASES[normalizedInput] || functionName;
       
       // DeepResearch特別処理
-      if (CONFIG.FUNCTION_ALIASES[normalizedInput] === 'リサーチ') {
+      if (normalizedInput === 'deepresearch' || functionName === 'DeepResearch' || CONFIG.FUNCTION_ALIASES[normalizedInput] === 'リサーチ') {
         log('DeepResearchモードを有効化します', 'INFO');
         log('⚠️ DeepResearchは最大40分かかる場合があります', 'WARNING');
         
+        // 0.AI変更検出と同じ方法を使用
+        if (window.enableClaudeDeepResearch) {
+          try {
+            const result = await window.enableClaudeDeepResearch();
+            if (result) {
+              log('✅ DeepResearchモードを有効化しました', 'SUCCESS');
+              return true;
+            }
+          } catch (error) {
+            log(`DeepResearch有効化エラー: ${error.message}`, 'ERROR');
+          }
+        }
+        
+        // フォールバック: 従来の方法
         const searchEnabled = await menuHandler.selectFunction('ウェブ検索', true);
         if (!searchEnabled) {
           log('ウェブ検索の有効化に失敗しました', 'ERROR');

@@ -493,7 +493,56 @@
         
         console.log(`[デバッグ] Gemini selectFunctionDynamic呼び出し: searchTerm="${searchTerm}"`);
         
-        // AIHandlerを使用
+        // Deep Research特別処理 - ボタンを直接探す
+        if (searchTerm.includes('Research') || searchTerm === 'Deep Research' || searchTerm === 'Deep Think') {
+            log(`🔍 ${searchTerm}ボタンを直接探しています...`, 'info');
+            
+            // まずメインのツールボックスボタンを探す
+            const mainButtons = document.querySelectorAll('.toolbox-drawer-item-button button');
+            for (const button of mainButtons) {
+                const text = button.textContent?.trim();
+                if (text && (text === searchTerm || text.includes(searchTerm.replace('Deep ', '')))) {
+                    const isActive = button.getAttribute('aria-pressed') === 'true';
+                    if (!isActive) {
+                        await clickElement(button);
+                        log(`✅ ${searchTerm}ボタンをクリックしました`, 'success');
+                        globalState.activeFunctions.push(searchTerm);
+                        return true;
+                    } else {
+                        log(`✅ ${searchTerm}は既に有効です`, 'info');
+                        return true;
+                    }
+                }
+            }
+            
+            // ボタンが見つからない場合は「その他」メニューを確認
+            log('メインボタンが見つかりません。「その他」メニューを確認します...', 'info');
+            const moreButton = document.querySelector('[aria-label*="その他"], button:has(svg[viewBox="0 0 24 24"] path[d*="M12 2"])');
+            if (moreButton) {
+                await clickElement(moreButton);
+                await wait(500);
+                
+                // メニュー内で機能を探す
+                const menuItems = document.querySelectorAll('[role="menuitem"], [role="option"]');
+                for (const item of menuItems) {
+                    const text = item.textContent?.trim();
+                    if (text && text.includes(searchTerm)) {
+                        await clickElement(item);
+                        log(`✅ メニューから${searchTerm}を選択しました`, 'success');
+                        globalState.activeFunctions.push(searchTerm);
+                        await wait(500);
+                        // メニューを閉じる
+                        await closeMenu();
+                        return true;
+                    }
+                }
+                
+                // メニューを閉じる
+                await closeMenu();
+            }
+        }
+        
+        // AIHandlerを使用（通常の機能）
         if (!useAIHandler || !menuHandler) {
             log('AIHandlerが利用できません', 'error');
             return false;
