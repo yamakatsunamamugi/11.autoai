@@ -58,27 +58,8 @@
             return UI_SELECTORS[aiName][selectorType] || [];
         }
         
-        // フォールバック：内蔵セレクタ
-        const fallbackSelectors = {
-            ChatGPT: {
-                INPUT: ['#prompt-textarea', '[contenteditable="true"]', '.ProseMirror'],
-                SEND_BUTTON: ['[data-testid="send-button"]'],
-                STOP_BUTTON: ['[data-testid="stop-button"]', '[aria-label="ストリーミングの停止"]'],
-                MESSAGE: ['[data-message-author-role="assistant"]']
-            },
-            Claude: {
-                INPUT: ['.ProseMirror[contenteditable="true"]', 'div[contenteditable="true"]'],
-                SEND_BUTTON: ['[aria-label="メッセージを送信"]:not([disabled])'],
-                STOP_BUTTON: ['[aria-label="応答を停止"]'],
-                MESSAGE: ['[data-is-streaming="false"]']
-            },
-            Gemini: {
-                STOP_BUTTON: ['button[aria-label="回答を停止"]', 'button.send-button.stop'],
-                MESSAGE: ['.conversation-turn.model-turn']
-            }
-        };
-        
-        return fallbackSelectors[aiName]?.[selectorType] || [];
+        // フォールバックは削除 - UI_SELECTORSのみを使用
+        return [];
     }
 
     // ========================================

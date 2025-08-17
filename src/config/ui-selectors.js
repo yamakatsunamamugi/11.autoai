@@ -26,10 +26,13 @@ export const UI_SELECTORS = {
         // 送信ボタン
         SEND_BUTTON: [
             '[data-testid="send-button"]',
-            '[aria-label="Send prompt"]',
+            '#composer-submit-button',
             '[aria-label="プロンプトを送信する"]',
-            'button[type="submit"]',
-            'button[class*="send"]'
+            '[aria-label="Send prompt"]',
+            '[aria-label*="送信"]',
+            'button[data-testid="composer-send-button"]',
+            'button[class*="send"]',
+            'button[type="submit"]'
         ],
         
         // 停止ボタン
@@ -89,9 +92,12 @@ export const UI_SELECTORS = {
         
         // 送信ボタン
         SEND_BUTTON: [
-            '[aria-label="メッセージを送信"]:not([disabled])',
-            'button[type="submit"]:not([disabled])',
-            '.send-button:not([disabled])'
+            '[aria-label="メッセージを送信"]',
+            'button[type="submit"]',
+            '.send-button',
+            'button[aria-label*="送信"]',
+            'button:has(svg)',
+            'button[data-testid*="send"]'
         ],
         
         // 停止ボタン
@@ -156,7 +162,12 @@ export const UI_SELECTORS = {
             'button[aria-label="送信"]',
             'button[mattooltip="送信"]',
             '.send-button-container button',
-            'button.send-button:not(.stop)'
+            'button.send-button:not(.stop)',
+            '[aria-label="プロンプトを送信"]',
+            'button:has(mat-icon[data-mat-icon-name="send"])',
+            'button[aria-label*="Send"]',
+            '[data-testid="send-button"]',
+            'button[type="submit"]'
         ],
         
         // 停止ボタン

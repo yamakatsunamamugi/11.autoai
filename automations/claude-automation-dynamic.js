@@ -597,11 +597,12 @@
   async function sendMessage() {
     log('メッセージを送信中...', 'INFO');
 
-    const submitButtonSelectors = [
-      '[aria-label="メッセージを送信"]:not([disabled])',
-      'button[type="submit"]:not([disabled])',
-      '.send-button:not([disabled])'
-    ];
+    const submitButtonSelectors = window.DeepResearchHandler?.getSelectors?.('Claude', 'SEND_BUTTON');
+    
+    if (!submitButtonSelectors) {
+      log('送信ボタンセレクタが取得できません', 'ERROR');
+      return false;
+    }
 
     const submitButton = await findElement(submitButtonSelectors);
 

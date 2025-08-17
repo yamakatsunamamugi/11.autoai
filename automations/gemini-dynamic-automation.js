@@ -750,12 +750,14 @@
         await closeMenu();
         await wait(500);
         
-        const sendButton = await findElement([
-            '[aria-label="プロンプトを送信"]',
-            '.send-button:not(.stop)',
-            'button[type="submit"]',
-            '[data-testid="send-button"]'
-        ]);
+        const sendButtonSelectors = window.DeepResearchHandler?.getSelectors?.('Gemini', 'SEND_BUTTON');
+        
+        if (!sendButtonSelectors) {
+            log('送信ボタンセレクタが取得できません', 'error');
+            return false;
+        }
+        
+        const sendButton = await findElement(sendButtonSelectors);
 
         if (!sendButton) {
             log('送信ボタンが見つかりません', 'error');

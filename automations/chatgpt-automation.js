@@ -961,14 +961,12 @@
         log('テキストを送信します...', 'info');
         
         try {
-            const sendButtonSelectors = [
-                '[data-testid="send-button"]',
-                '#composer-submit-button',
-                '[aria-label="プロンプトを送信する"]',
-                '[aria-label*="送信"]',
-                'button[data-testid="composer-send-button"]',
-                'button[class*="send"]'
-            ];
+            const sendButtonSelectors = window.DeepResearchHandler?.getSelectors?.('ChatGPT', 'SEND_BUTTON');
+            
+            if (!sendButtonSelectors) {
+                log('送信ボタンセレクタが取得できません', 'error');
+                return false;
+            }
             
             let sendButton = null;
             
