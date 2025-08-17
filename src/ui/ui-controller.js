@@ -2560,6 +2560,10 @@ aiDetectionSystemBtn.addEventListener("click", async () => {
           }
           
           // アダプタスクリプトを注入
+          // 【重要】すべてのAIアダプタを注入する必要がある
+          // chatgpt-adapter.js: ChatGPTの機能検出
+          // claude-adapter.js: Claudeの機能検出
+          // gemini-adapter.js: Geminiの機能検出
           await chrome.scripting.executeScript({
             target: { tabId: tabId },
             files: [
@@ -2614,10 +2618,14 @@ aiDetectionSystemBtn.addEventListener("click", async () => {
                 console.log(`✅ 取得完了:`, result);
                 
                 // 結果をストレージに保存
+                // このデータがtest-ai-automation-updater.jsで読み込まれ
+                // 「3.AI統合テスト」のプルダウンに反映される
                 chrome.storage.local.get(['ai_config_persistence'], (existingData) => {
                   const configData = existingData.ai_config_persistence || {};
                   
                   // 検出したデータを保存
+                  // models: 利用可能なモデルのリスト
+                  // functions: 利用可能な機能のリスト（DeepResearch、DeepThink等）
                   configData[aiType] = {
                     models: result.models || [],
                     functions: result.functions || [],
