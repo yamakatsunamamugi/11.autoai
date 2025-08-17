@@ -1151,14 +1151,47 @@
                 const maxWait = Math.floor(timeout / 1000);
                 let responseReceived = false;
                 let waitCount = 0;
+                let stopButtonDisappearedCount = 0;
+                
+                console.log('[Gemini] 応答待機中...');
                 
                 while (!responseReceived && waitCount < maxWait) {
                     await wait(1000);
                     waitCount++;
                     
-                    const stopButton = document.querySelector('[aria-label="回答を停止"]');
-                    if (!stopButton && waitCount > 3) {
-                        responseReceived = true;
+                    // 複数のセレクタを試す（Geminiの UIが変更される可能性があるため）
+                    const stopButtonSelectors = [
+                        '[aria-label="回答を停止"]',
+                        '[aria-label="Stop response"]',
+                        'button[aria-label*="停止"]',
+                        'button[aria-label*="stop"]',
+                        '.stop-button'
+                    ];
+                    
+                    let stopButton = null;
+                    for (const selector of stopButtonSelectors) {
+                        stopButton = document.querySelector(selector);
+                        if (stopButton) break;
+                    }
+                    
+                    if (!stopButton) {
+                        // 停止ボタンが消えた
+                        stopButtonDisappearedCount++;
+                        
+                        // 停止ボタンが3秒連続で見つからない場合に応答完了と判断
+                        // （初期の3秒待機を除く）
+                        if (stopButtonDisappearedCount >= 3 && waitCount > 5) {
+                            console.log('[Gemini] 応答完了を検出（停止ボタン消滅）');
+                            responseReceived = true;
+                        }
+                    } else {
+                        // 停止ボタンが見つかった
+                        stopButtonDisappearedCount = 0;
+                        
+                        // 10秒ごとに進捗をログ出力
+                        if (waitCount % 10 === 0) {
+                            console.log(`[Gemini] 応答生成中... (${waitCount}秒経過)`);
+                        }
                     }
                 }
             }

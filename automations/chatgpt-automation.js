@@ -1016,6 +1016,9 @@
         const startTime = Date.now();
         let lastMinuteLogged = 0;
         
+        // 停止ボタンのセレクタログフラグをリセット
+        currentState.stopButtonSelectorLogged = false;
+        
         while (Date.now() - startTime < timeout) {
             const elapsedMs = Date.now() - startTime;
             const elapsedMinutes = Math.floor(elapsedMs / 60000);
@@ -1027,7 +1030,30 @@
             }
             
             // 停止ボタンの存在を確認（生成中の判定）
-            const stopButton = document.querySelector('[data-testid="stop-button"]');
+            // 複数のセレクタを試す（ChatGPTのUIが変更される可能性があるため）
+            const stopButtonSelectors = [
+                '[data-testid="stop-button"]',
+                '[aria-label="Stop generating"]', 
+                'button[aria-label*="Stop"]',
+                'button[aria-label*="stop"]',
+                '[data-testid="composer-moderation-stop-button"]'
+            ];
+            
+            let stopButton = null;
+            let usedSelector = null;
+            for (const selector of stopButtonSelectors) {
+                stopButton = document.querySelector(selector);
+                if (stopButton) {
+                    usedSelector = selector;
+                    break;
+                }
+            }
+            
+            // デバッグ用：どのセレクタが使われたかログ出力（初回のみ）
+            if (stopButton && !currentState.stopButtonSelectorLogged) {
+                debugLog(`停止ボタン検出: ${usedSelector}`);
+                currentState.stopButtonSelectorLogged = true;
+            }
             
             if (!stopButton) {
                 // 停止ボタンがない = 生成完了
