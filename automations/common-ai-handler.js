@@ -540,11 +540,68 @@
       return textExtractor(latestResponseElement);
     }
 
-    // デフォルトのテキスト抽出
-    const text = latestResponseElement.textContent?.trim();
-    if (text) {
-      log('応答テキストを取得しました', 'SUCCESS', ai);
-      return text;
+    // AI別のデフォルトテキスト抽出
+    let extractedText = '';
+    
+    if (ai === 'Claude') {
+      // Claudeの場合：すべてのテキスト要素を収集
+      const textElements = latestResponseElement.querySelectorAll('p, div.whitespace-pre-wrap, .prose');
+      const texts = [];
+      
+      textElements.forEach(el => {
+        // Artifactやコードブロックは除外
+        if (!el.closest('.artifact-block-cell') && 
+            !el.closest('pre') && 
+            !el.closest('code')) {
+          const text = el.textContent?.trim();
+          if (text && text.length > 0 && !texts.includes(text)) {
+            texts.push(text);
+          }
+        }
+      });
+      
+      // 要素が見つからない場合は全体のテキストを取得
+      if (texts.length === 0) {
+        extractedText = latestResponseElement.textContent?.trim() || '';
+      } else {
+        extractedText = texts.join('\n\n');
+      }
+      
+    } else if (ai === 'ChatGPT') {
+      // ChatGPTの場合：markdownクラスを優先
+      const markdownElement = latestResponseElement.querySelector('.markdown');
+      if (markdownElement) {
+        extractedText = markdownElement.textContent?.trim() || '';
+      } else {
+        extractedText = latestResponseElement.textContent?.trim() || '';
+      }
+      
+    } else if (ai === 'Gemini') {
+      // Geminiの場合：レスポンスコンテナ内のテキストを取得
+      const messageContent = latestResponseElement.querySelector('.message-content, .model-response-text');
+      if (messageContent) {
+        extractedText = messageContent.textContent?.trim() || '';
+      } else {
+        extractedText = latestResponseElement.textContent?.trim() || '';
+      }
+      
+    } else {
+      // その他の場合：全体のテキストを取得
+      extractedText = latestResponseElement.textContent?.trim() || '';
+    }
+
+    if (extractedText) {
+      const charCount = extractedText.length;
+      const lineCount = extractedText.split('\n').length;
+      log(`応答テキストを取得しました（${charCount}文字、${lineCount}行）`, 'SUCCESS', ai);
+      
+      // 途切れている可能性をチェック
+      const lastChars = extractedText.slice(-50);
+      if (lastChars.endsWith('...') || lastChars.includes('省略') || lastChars.includes('続き')) {
+        log('⚠️ 応答が途切れている可能性があります', 'WARNING', ai);
+      }
+      
+      return extractedText;
     }
 
     log('応答テキストを抽出できませんでした', 'ERROR', ai);
@@ -572,6 +629,120 @@
     log('⏹️ 生成を停止しました', 'SUCCESS', ai);
     await wait(CONFIG.DELAYS.betweenActions);
     return true;
+  };
+
+  // 続きを生成する機能
+  const continueGenerationCommon = async (aiName = null) => {
+    const ai = aiName || detectAI();
+    log('続きを生成中...', 'INFO', ai);
+    
+    // AI別の続き生成方法
+    if (ai === 'Claude') {
+      // Claudeの場合：「続けて」と入力して送信
+      const inputSelectors = AI_SELECTORS[ai].input;
+      const inputField = await findElement(inputSelectors);
+      if (inputField) {
+        await inputText(inputField, '続けて');
+        await wait(500);
+        return await sendMessageCommon(null, ai);
+      }
+      
+    } else if (ai === 'ChatGPT') {
+      // ChatGPTの場合：「Continue generating」ボタンを探す
+      const continueButton = await findElement([
+        'button:has-text("Continue generating")',
+        'button:has-text("続ける")',
+        '[data-testid="continue-button"]'
+      ]);
+      if (continueButton) {
+        await performClick(continueButton);
+        return true;
+      }
+      // ボタンがない場合は「続けて」と入力
+      const inputSelectors = AI_SELECTORS[ai].input;
+      const inputField = await findElement(inputSelectors);
+      if (inputField) {
+        await inputText(inputField, '続けて');
+        await wait(500);
+        return await sendMessageCommon(null, ai);
+      }
+      
+    } else if (ai === 'Gemini') {
+      // Geminiの場合：「続けて」と入力して送信
+      const inputSelectors = AI_SELECTORS[ai].input;
+      const inputField = await findElement(inputSelectors);
+      if (inputField) {
+        await inputText(inputField, '続けて');
+        await wait(500);
+        return await sendMessageCommon(null, ai);
+      }
+    }
+    
+    log('続きを生成できませんでした', 'ERROR', ai);
+    return false;
+  };
+
+  // 完全な応答を取得（途切れた場合は続きも取得）
+  const getFullResponseCommon = async (responseSelectors, textExtractor, maxContinue = 3, aiName = null) => {
+    const ai = aiName || detectAI();
+    let fullText = '';
+    let continueCount = 0;
+    
+    while (continueCount <= maxContinue) {
+      // 現在の応答を取得
+      const response = await getResponseCommon(responseSelectors, textExtractor, ai);
+      
+      if (!response) {
+        if (fullText) {
+          // 既に一部取得している場合はそれを返す
+          break;
+        }
+        return null;
+      }
+      
+      // 新しいテキストを追加
+      if (continueCount === 0) {
+        fullText = response;
+      } else {
+        // 続きの場合は結合
+        fullText += '\n\n' + response;
+      }
+      
+      // 途切れチェック
+      const lastChars = response.slice(-100);
+      const isTruncated = lastChars.endsWith('...') || 
+                          lastChars.includes('省略') || 
+                          lastChars.includes('続き') ||
+                          response.length > 10000; // 長すぎる場合も途切れの可能性
+      
+      if (!isTruncated) {
+        // 途切れていない場合は完了
+        break;
+      }
+      
+      if (continueCount < maxContinue) {
+        log(`応答が途切れています。続きを生成します（${continueCount + 1}/${maxContinue}）`, 'WARNING', ai);
+        
+        // 続きを生成
+        const continued = await continueGenerationCommon(ai);
+        if (!continued) {
+          break;
+        }
+        
+        // 応答を待つ
+        await waitForResponseCommon(null, 60000, ai);
+        continueCount++;
+      } else {
+        log(`最大継続回数（${maxContinue}）に達しました`, 'WARNING', ai);
+        break;
+      }
+    }
+    
+    const charCount = fullText.length;
+    const lineCount = fullText.split('\n').length;
+    log(`完全な応答を取得しました（${charCount}文字、${lineCount}行、継続${continueCount}回）`, 'SUCCESS', ai);
+    
+    return fullText;
   };
 
   // ========================================
@@ -934,6 +1105,8 @@
       send: wrapWithTracking(sendMessageCommon, 'sendMessage'),
       waitForResponse: wrapWithTracking(waitForResponseCommon, 'waitForResponse'),
       getResponse: wrapWithTracking(getResponseCommon, 'getResponse'),
+      getFullResponse: wrapWithTracking(getFullResponseCommon, 'getFullResponse'),
+      continueGeneration: wrapWithTracking(continueGenerationCommon, 'continueGeneration'),
       stopGeneration: wrapWithTracking(stopGenerationCommon, 'stopGeneration')
     },
     
