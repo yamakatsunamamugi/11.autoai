@@ -648,8 +648,62 @@
     return false;
   }
 
+  // Canvas（アーティファクト）コンテンツを取得
+  async function getCanvasContent(expandIfNeeded = true) {
+    // 既に展開されているCanvasを探す
+    let canvas = document.querySelector('.grid-cols-1.grid h1')?.closest('.grid-cols-1.grid');
+    
+    if (!canvas && expandIfNeeded) {
+      // プレビューボタンを探して展開
+      const previewButton = document.querySelector('button[aria-label="内容をプレビュー"]');
+      
+      if (previewButton) {
+        log('Canvasを展開中...', 'INFO');
+        previewButton.click();
+        await wait(1000);
+        canvas = document.querySelector('.grid-cols-1.grid h1')?.closest('.grid-cols-1.grid');
+      }
+    }
+    
+    if (canvas) {
+      const h1 = canvas.querySelector('h1');
+      const h2s = canvas.querySelectorAll('h2');
+      const ps = canvas.querySelectorAll('p.whitespace-normal');
+      
+      return {
+        success: true,
+        text: canvas.textContent?.trim(),
+        title: h1?.textContent?.trim(),
+        sections: h2s.length,
+        paragraphs: ps.length
+      };
+    }
+    
+    // プレビューテキストから取得（フォールバック）
+    const previewElement = document.querySelector('.absolute.inset-0');
+    if (previewElement) {
+      const text = previewElement.textContent?.trim();
+      if (text && text.length > 100) {
+        return {
+          success: true,
+          text: text,
+          isPreview: true
+        };
+      }
+    }
+    
+    return { success: false };
+  }
+
   async function getResponse() {
     log('応答テキストを取得中...', 'INFO');
+
+    const result = {
+      normalText: '',
+      canvasText: '',
+      fullText: '',
+      hasCanvas: false
+    };
 
     const responseSelectors = [
       '[data-is-streaming="false"]',
@@ -673,49 +727,52 @@
       return null;
     }
 
-    // Artifactレポートの確認
-    const artifactButton = latestResponseBlock.querySelector('button[aria-label*="プレビュー"], button[aria-label*="内容"]');
-    let reportText = '';
-
-    if (artifactButton) {
-      const previewDiv = artifactButton.querySelector('.artifact-block-cell-preview > div');
-      if (previewDiv) {
-        reportText = previewDiv.textContent?.trim() || '';
-      }
-    }
-
-    // 通常の応答テキスト
-    const summaryParagraphs = latestResponseBlock.querySelectorAll('p.whitespace-normal.break-words');
-    const summaryTexts = [];
-
-    summaryParagraphs.forEach(p => {
+    // 通常の応答テキストを取得（Canvas要素を除外）
+    const clonedBlock = latestResponseBlock.cloneNode(true);
+    
+    // Canvas関連要素を削除
+    clonedBlock.querySelectorAll('.grid-cols-1.grid').forEach(elem => elem.remove());
+    clonedBlock.querySelectorAll('[class*="artifact-block"]').forEach(elem => elem.remove());
+    
+    // 通常テキストを抽出
+    const paragraphs = clonedBlock.querySelectorAll('p.whitespace-normal.break-words');
+    const normalTexts = [];
+    
+    paragraphs.forEach(p => {
       const text = p.textContent?.trim();
       if (text && text.length > 20 && 
-          !p.closest('.artifact-block-cell') &&
-          !p.closest('[tabindex="-1"]') &&
           !text.includes('The user is asking me')) {
-        summaryTexts.push(text);
+        normalTexts.push(text);
       }
     });
+    
+    result.normalText = normalTexts.join('\n\n');
 
-    const summaryText = summaryTexts.join('\n\n');
-    let fullText = '';
-
-    if (reportText) {
-      fullText = '【レポート】\n' + reportText;
-    }
-
-    if (summaryText) {
-      if (fullText) {
-        fullText += '\n\n【通常応答】\n' + summaryText;
-      } else {
-        fullText = summaryText;
+    // Canvas（アーティファクト）を取得
+    const canvas = await getCanvasContent(true);
+    if (canvas.success) {
+      result.hasCanvas = true;
+      result.canvasText = canvas.text;
+      
+      if (canvas.title) {
+        log(`✅ Canvas取得: "${canvas.title}" (${canvas.sections}セクション, ${canvas.paragraphs}段落)`, 'SUCCESS');
+      } else if (canvas.isPreview) {
+        log('✅ Canvasプレビューから取得', 'SUCCESS');
       }
     }
 
-    if (fullText) {
-      log(`✅ 応答テキストを取得（${fullText.length}文字）`, 'SUCCESS');
-      return fullText;
+    // 完全なテキストを結合
+    if (result.normalText && result.canvasText) {
+      result.fullText = result.normalText + '\n\n--- Canvas Content ---\n\n' + result.canvasText;
+    } else if (result.canvasText) {
+      result.fullText = result.canvasText;
+    } else {
+      result.fullText = result.normalText;
+    }
+
+    if (result.fullText) {
+      log(`✅ 応答取得完了: 通常=${result.normalText.length}文字, Canvas=${result.canvasText.length}文字`, 'SUCCESS');
+      return result.fullText;
     } else {
       log('応答テキストが見つかりません', 'WARNING');
       return null;
