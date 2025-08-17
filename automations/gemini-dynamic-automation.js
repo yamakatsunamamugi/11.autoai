@@ -880,15 +880,35 @@
             let waitCount = 0;
             const maxWait = 30;
 
+            let stopButtonDisappearedCount = 0;
+            
             while (!responseReceived && waitCount < maxWait) {
                 await wait(1000);
                 waitCount++;
 
-                const stopButton = document.querySelector('[aria-label="回答を停止"]');
+                // 更新されたセレクタリストを使用
+                const stopButtonSelectors = [
+                    'button[aria-label="回答を停止"]',
+                    'button.send-button.stop',
+                    'button.stop',
+                    '.stop-icon',
+                    'mat-icon[data-mat-icon-name="stop"]'
+                ];
+                
+                let stopButton = null;
+                for (const selector of stopButtonSelectors) {
+                    stopButton = document.querySelector(selector);
+                    if (stopButton) break;
+                }
+                
                 if (stopButton) {
                     console.log(`    処理中... (${waitCount}秒)`);
-                } else if (waitCount > 3) {
-                    responseReceived = true;
+                    stopButtonDisappearedCount = 0;
+                } else {
+                    stopButtonDisappearedCount++;
+                    if (stopButtonDisappearedCount >= 3 && waitCount > 5) {
+                        responseReceived = true;
+                    }
                 }
             }
 
@@ -1161,7 +1181,11 @@
                     
                     // 複数のセレクタを試す（Geminiの UIが変更される可能性があるため）
                     const stopButtonSelectors = [
-                        '[aria-label="回答を停止"]',
+                        'button[aria-label="回答を停止"]',
+                        'button.send-button.stop',
+                        'button.stop',
+                        '.stop-icon',
+                        'mat-icon[data-mat-icon-name="stop"]',
                         '[aria-label="Stop response"]',
                         'button[aria-label*="停止"]',
                         'button[aria-label*="stop"]',
