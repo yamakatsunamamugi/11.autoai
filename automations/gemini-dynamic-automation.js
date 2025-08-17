@@ -11,6 +11,10 @@
 
 (function() {
     'use strict';
+    
+    // 共通メニューハンドラーを使用（利用可能な場合）
+    const useCommonMenuHandler = window.CommonMenuHandler && window.menuHandler;
+    let menuHandler = null;  // 共通メニューハンドラーのインスタンス
 
     // ========================================
     // 遅延時間設定のみ
@@ -431,6 +435,20 @@
             log('検索語を指定してください', 'error');
             return false;
         }
+        
+        // 共通メニューハンドラーが利用可能な場合は使用
+        if (useCommonMenuHandler && menuHandler) {
+            try {
+                const result = await menuHandler.selectModel(searchTerm);
+                if (result) {
+                    log(`✅ 共通ハンドラーでモデル「${searchTerm}」を選択しました`, 'success');
+                    globalState.currentModel = searchTerm;
+                    return true;
+                }
+            } catch (error) {
+                log(`共通ハンドラーエラー、フォールバックに切り替えます: ${error.message}`, 'warning');
+            }
+        }
 
         // プルダウンの表示名から実際のGeminiメニュー用の名前に逆変換
         let actualSearchTerm = searchTerm;
@@ -509,6 +527,20 @@
         if (!searchTerm) {
             log('検索語を指定してください', 'error');
             return false;
+        }
+        
+        // 共通メニューハンドラーが利用可能な場合は使用
+        if (useCommonMenuHandler && menuHandler) {
+            try {
+                const result = await menuHandler.selectFunction(searchTerm);
+                if (result) {
+                    log(`✅ 共通ハンドラーで機能「${searchTerm}」を選択しました`, 'success');
+                    globalState.activeFunctions.push(searchTerm);
+                    return true;
+                }
+            } catch (error) {
+                log(`共通ハンドラーエラー、フォールバックに切り替えます: ${error.message}`, 'warning');
+            }
         }
 
         const maxRetries = 2;
@@ -1624,6 +1656,22 @@
         });
     };
 
+    // ========================================
+    // 初期化
+    // ========================================
+    function initialize() {
+        // 共通メニューハンドラーの初期化
+        if (useCommonMenuHandler) {
+            menuHandler = window.menuHandler || new window.CommonMenuHandler();
+            console.log('✅ 共通メニューハンドラーを初期化しました');
+        } else {
+            console.log('共通メニューハンドラーが利用できません、従来の方法を使用します');
+        }
+    }
+    
+    // 初期化実行
+    initialize();
+    
     // ========================================
     // 初期化メッセージ
     // ========================================

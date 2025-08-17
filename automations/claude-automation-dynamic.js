@@ -2,10 +2,14 @@
 (() => {
   "use strict";
 
+  // 共通メニューハンドラーを使用（利用可能な場合）
+  const useCommonMenuHandler = window.CommonMenuHandler && window.menuHandler;
+  
   // ========================================
   // グローバル変数
   // ========================================
   let sendStartTime = null;  // 送信開始時刻を記録
+  let menuHandler = null;  // 共通メニューハンドラーのインスタンス
 
   // ========================================
   // 設定
@@ -312,6 +316,22 @@
     }
 
     log(`🔍 機能を動的検索: ${functionName}`, 'INFO');
+    
+    // 共通メニューハンドラーが利用可能な場合は使用
+    if (useCommonMenuHandler && menuHandler) {
+      try {
+        // エイリアスを解決
+        const normalizedInput = functionName.toLowerCase().replace(/\s+/g, '');
+        const targetFunction = CONFIG.FUNCTION_ALIASES[normalizedInput] || functionName;
+        const result = await menuHandler.selectFunction(targetFunction, enable);
+        if (result) {
+          log(`✅ 共通ハンドラーで機能「${targetFunction}」を${enable ? '有効' : '無効'}にしました`, 'SUCCESS');
+          return true;
+        }
+      } catch (error) {
+        log(`共通ハンドラーエラー、フォールバックに切り替えます: ${error.message}`, 'WARNING');
+      }
+    }
 
     const normalizedInput = functionName.toLowerCase().replace(/\s+/g, '');
     const targetAlias = CONFIG.FUNCTION_ALIASES[normalizedInput];
@@ -464,6 +484,21 @@
     }
 
     log(`🔍 モデルを動的検索: ${identifier}`, 'INFO');
+    
+    // 共通メニューハンドラーが利用可能な場合は使用
+    if (useCommonMenuHandler && menuHandler) {
+      try {
+        // エイリアスを解決
+        const targetModel = CONFIG.MODEL_ALIASES[identifier.toLowerCase()] || identifier;
+        const result = await menuHandler.selectModel(targetModel);
+        if (result) {
+          log(`✅ 共通ハンドラーでモデル「${targetModel}」を選択しました`, 'SUCCESS');
+          return true;
+        }
+      } catch (error) {
+        log(`共通ハンドラーエラー、フォールバックに切り替えます: ${error.message}`, 'WARNING');
+      }
+    }
 
     try {
       // モデル名マッピングを拡張・改善
@@ -1306,6 +1341,22 @@
     }
   };
 
+  // ========================================
+  // 初期化
+  // ========================================
+  function initialize() {
+    // 共通メニューハンドラーの初期化
+    if (useCommonMenuHandler) {
+      menuHandler = window.menuHandler || new window.CommonMenuHandler();
+      log('✅ 共通メニューハンドラーを初期化しました', 'SUCCESS');
+    } else {
+      log('共通メニューハンドラーが利用できません、従来の方法を使用します', 'INFO');
+    }
+  }
+  
+  // 初期化実行
+  initialize();
+  
   log('Claude動的検索自動化関数が利用可能になりました', 'SUCCESS');
   return window.ClaudeAutomation;
 })();

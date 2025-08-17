@@ -6,6 +6,10 @@
     "use strict";
 
     console.log('%cChatGPT自動化関数 - 統合テスト版', 'color: #00BCD4; font-weight: bold; font-size: 16px');
+    
+    // 共通メニューハンドラーを使用（利用可能な場合）
+    const useCommonMenuHandler = window.CommonMenuHandler && window.menuHandler;
+    let menuHandler = null;  // 共通メニューハンドラーのインスタンス
 
     // ============================================
     // CONFIG部分
@@ -269,6 +273,20 @@
     // ============================================
     async function selectModel(modelName) {
         log(`🤖 モデル選択開始: ${modelName}`, 'info');
+        
+        // 共通メニューハンドラーが利用可能な場合は使用
+        if (useCommonMenuHandler && menuHandler) {
+            try {
+                const result = await menuHandler.selectModel(modelName);
+                if (result) {
+                    log(`✅ 共通ハンドラーでモデル「${modelName}」を選択しました`, 'success');
+                    currentState.selectedModel = modelName;
+                    return true;
+                }
+            } catch (error) {
+                log(`共通ハンドラーエラー、フォールバックに切り替えます: ${error.message}`, 'warning');
+            }
+        }
         
         try {
             // モデル選択ボタンを探す（ChatGPT特有の方法）
@@ -651,6 +669,22 @@
             // メニューを閉じる
             await closeMenu();
             return true;
+        }
+        
+        // 共通メニューハンドラーが利用可能な場合は使用
+        if (useCommonMenuHandler && menuHandler) {
+            try {
+                // FUNCTION_MAPPINGで変換
+                const mappedFunction = FUNCTION_MAPPING[functionName] || functionName;
+                const result = await menuHandler.selectFunction(mappedFunction);
+                if (result) {
+                    log(`✅ 共通ハンドラーで機能「${mappedFunction}」を選択しました`, 'success');
+                    currentState.activeFunctions.add(mappedFunction);
+                    return true;
+                }
+            } catch (error) {
+                log(`共通ハンドラーエラー、フォールバックに切り替えます: ${error.message}`, 'warning');
+            }
         }
 
         log(`🔍 機能を動的検索: ${functionName}`, 'info');
@@ -1816,6 +1850,22 @@
         log('✅ 強制チェック完了', 'success');
     }
 
+    // ============================================
+    // 初期化
+    // ============================================
+    function initialize() {
+        // 共通メニューハンドラーの初期化
+        if (useCommonMenuHandler) {
+            menuHandler = window.menuHandler || new window.CommonMenuHandler();
+            log('✅ 共通メニューハンドラーを初期化しました', 'success');
+        } else {
+            log('共通メニューハンドラーが利用できません、従来の方法を使用します', 'info');
+        }
+    }
+    
+    // 初期化実行
+    initialize();
+    
     // ============================================
     // グローバル公開
     // ============================================
