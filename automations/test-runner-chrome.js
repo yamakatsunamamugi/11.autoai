@@ -113,7 +113,7 @@
     return new Promise((resolve) => {
       chrome.windows.create({
         url: url,
-        type: 'normal',
+        type: 'popup',  // ブックマークバー・URLバーを非表示
         width: windowWidth,
         height: windowHeight,
         left: pos.left,
@@ -441,7 +441,42 @@
         }
         
         if (result.response) {
-          log(`${aiName}の回答: ${result.response.substring(0, 100)}...`);
+          // 30文字のプレビューを表示し、クリックで全文表示
+          const preview = result.response.length > 30 
+            ? result.response.substring(0, 30) + '...' 
+            : result.response;
+          
+          const logContainer = document.getElementById('log-container');
+          if (logContainer) {
+            const timestamp = new Date().toLocaleTimeString();
+            const responseId = `response-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            
+            // 展開可能なログエントリを作成
+            const logEntry = document.createElement('div');
+            logEntry.innerHTML = `[${timestamp}] ${aiName}の回答: <span id="${responseId}" style="cursor: pointer; color: #0066cc; text-decoration: underline;" data-expanded="false" data-full-text="${result.response.replace(/"/g, '&quot;')}">${preview}</span>\n`;
+            
+            logContainer.appendChild(logEntry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+            
+            // クリックイベントを追加
+            document.getElementById(responseId).addEventListener('click', function() {
+              const isExpanded = this.getAttribute('data-expanded') === 'true';
+              const fullText = this.getAttribute('data-full-text').replace(/&quot;/g, '"');
+              
+              if (isExpanded) {
+                // 折りたたみ
+                this.textContent = preview;
+                this.setAttribute('data-expanded', 'false');
+              } else {
+                // 展開
+                this.textContent = fullText;
+                this.setAttribute('data-expanded', 'true');
+              }
+            });
+          } else {
+            // フォールバック: logContainer が見つからない場合は通常のログ出力
+            log(`${aiName}の回答: ${preview}`);
+          }
         }
       } else {
         log(`❌ ${aiName}でエラー: ${result.error}`, 'error');

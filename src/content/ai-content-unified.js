@@ -2253,7 +2253,6 @@ async function handleExecuteTask(request, sendResponse) {
 async function waitForResponseWithStopButton() {
   return new Promise((resolve) => {
     let lastText = "";
-    let stableCount = 0;
 
     const check = setInterval(() => {
       // AI種別に応じた停止ボタンセレクタ
@@ -2299,19 +2298,16 @@ async function waitForResponseWithStopButton() {
       console.log(`[11.autoai][${AI_TYPE}] レスポンス監視中`, {
         hasStopButton: !!stopBtn,
         textLength: currentText.length,
-        stableCount: stableCount,
       });
 
-      // 停止ボタンがなく、テキストが安定している場合は完了
-      if (!stopBtn && currentText.length > 0 && currentText === lastText) {
-        stableCount++;
-        if (stableCount >= 3) {
-          clearInterval(check);
-          console.log(`[11.autoai][${AI_TYPE}] レスポンス完了検出`);
+      // 停止ボタンが消滅した場合のみ完了
+      if (!stopBtn && currentText.length > 10) {
+        clearInterval(check);
+        console.log(`[11.autoai][${AI_TYPE}] ✅ 停止ボタン消失検出 - レスポンス生成完了`);
+        setTimeout(() => {
+          console.log(`[11.autoai][${AI_TYPE}] ✅ テキスト取得完了 - タスク完了`);
           resolve(true);
-        }
-      } else {
-        stableCount = 0;
+        }, 500);
       }
       lastText = currentText;
     }, 1000);

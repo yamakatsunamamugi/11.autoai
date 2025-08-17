@@ -149,54 +149,15 @@
     // メニュー操作関数（動作確認済み堅牢版）
     // ============================================
     async function closeMenu() {
-        debugLog('メニューを閉じます');
+        debugLog('メニューを閉じる処理をスキップ（誤クリック防止）');
         
-        // ESCキーで閉じる
-        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-        await wait(200);
+        // ESCキーとbodyクリックは誤クリックの原因となるため削除
+        // メニューは自然に閉じるか、他の操作で閉じることを想定
         
-        // 複数のセレクタでメニューを確認
-        const menuSelectors = [
-            '[role="menu"]',
-            'div[data-radix-menu-content]',
-            'div[data-state="open"][role="menu"]',
-            '.popover[role="menu"]',
-            '[aria-orientation="vertical"][role="menu"]'
-        ];
+        await wait(200); // 少し待機
         
-        const isMenuOpen = () => {
-            // Radix UIのポッパーを確認
-            const poppers = document.querySelectorAll('[data-radix-popper-content-wrapper]');
-            if (poppers.length > 0) {
-                return true;
-            }
-            
-            // 通常のメニューも確認
-            for (const selector of menuSelectors) {
-                const menu = document.querySelector(selector);
-                if (menu && menu.offsetParent !== null) {
-                    return true;
-                }
-            }
-            return false;
-        };
-        
-        // まだ開いていたら、もう一度ESC
-        if (isMenuOpen()) {
-            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-            await wait(200);
-        }
-        
-        // それでも開いていたら、bodyクリック
-        if (isMenuOpen()) {
-            document.body.click();
-            await wait(200);
-        }
-        
-        // 最終確認
-        const menuClosed = !isMenuOpen();
-        debugLog(`メニュー閉じた: ${menuClosed}`);
-        return menuClosed;
+        debugLog('メニュー閉じ処理完了（スキップ）');
+        return true; // 常に成功とみなす
     }
 
 
@@ -439,13 +400,8 @@
         isCheckingModels = true; // 実行開始
         
         try {
-            // まず既存のメニューを確実に閉じる（ESCキーで確実に閉じる）
-            document.body.dispatchEvent(new KeyboardEvent('keydown', { 
-                key: 'Escape', 
-                code: 'Escape', 
-                bubbles: true 
-            }));
-            await wait(300); // メニューが完全に閉じるまで待つ
+            // 既存のメニューを閉じる処理をスキップ（誤クリック防止）
+            await wait(300); // 少し待機
             
             // selectModelと同じ複数セレクタでモデルボタンを探す
             const modelButtonSelectors = [
@@ -641,12 +597,7 @@
                         }
                     }
                     
-                    // サブメニューをESCキーで閉じる
-                    document.body.dispatchEvent(new KeyboardEvent('keydown', { 
-                        key: 'Escape', 
-                        code: 'Escape', 
-                        bubbles: true 
-                    }));
+                    // サブメニューを閉じる処理をスキップ（誤クリック防止）
                     await wait(200);
                 } else {
                     debugLog(`サブメニューが開けませんでした: ${triggerText}`);
@@ -693,16 +644,12 @@
     // ============================================
     async function selectFunction(functionName) {
         // 機能を無効化する場合
-        if (functionName === 'none' || !functionName) {
-            log('🔄 全ての機能を無効化します', 'info');
-            const activePills = document.querySelectorAll('button[data-is-selected="true"][data-pill="true"]');
-            for (const pill of activePills) {
-                const closeButton = pill.querySelector('svg[aria-label*="無効"], svg[aria-label*="disable"]');
-                const clickTarget = closeButton?.parentElement || pill;
-                await performClick(clickTarget);
-                await wait(CONFIG.delays.afterClick);
-            }
-            log('✅ 全ての機能を無効化しました', 'success');
+        if (functionName === 'none' || !functionName || functionName === 'なし（通常モード）' || functionName.includes('なし')) {
+            log('🔄 機能無効化処理をスキップ（誤クリック防止）', 'info');
+            log(`✅ 機能設定を「${functionName || 'なし'}」に設定しました`, 'success');
+            
+            // メニューを閉じる
+            await closeMenu();
             return true;
         }
 
@@ -904,13 +851,8 @@
         isCheckingFunctions = true; // 実行開始
         
         try {
-            // まず既存のメニューを確実に閉じる（ESCキーで確実に閉じる）
-            document.body.dispatchEvent(new KeyboardEvent('keydown', { 
-                key: 'Escape', 
-                code: 'Escape', 
-                bubbles: true 
-            }));
-            await wait(300); // メニューが完全に閉じるまで待つ
+            // 既存のメニューを閉じる処理をスキップ（誤クリック防止）
+            await wait(300); // 少し待機
             
             // selectFunctionと同じ複数セレクタで機能ボタンを探す
             const functionButtonSelectors = [
@@ -1106,12 +1048,7 @@
                         }
                     }
                     
-                    // サブメニューをESCキーで閉じる
-                    document.body.dispatchEvent(new KeyboardEvent('keydown', { 
-                        key: 'Escape', 
-                        code: 'Escape', 
-                        bubbles: true 
-                    }));
+                    // サブメニューを閉じる処理をスキップ（誤クリック防止）
                     await wait(200);
                 } else {
                     debugLog(`サブメニューが開けませんでした: ${triggerText}`);

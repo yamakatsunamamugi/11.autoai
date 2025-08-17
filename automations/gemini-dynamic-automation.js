@@ -48,6 +48,39 @@
     // ========================================
     const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+    // メニューを閉じる統一関数（テスト結果に基づくメニュートリガー方式）
+    const closeMenu = async () => {
+        try {
+            // 方法1: メニュートリガーのトグル（最も効果的）
+            const menuTrigger = document.querySelector('.mat-mdc-menu-trigger[aria-expanded="true"]');
+            if (menuTrigger) {
+                debugLog('メニュートリガーを使用してメニューを閉じます');
+                menuTrigger.click();
+                await wait(300);
+                return true;
+            }
+
+            // 方法2: ESCキー（バックアップ）
+            debugLog('ESCキーでメニューを閉じます');
+            document.body.dispatchEvent(new KeyboardEvent('keydown', {
+                key: 'Escape',
+                code: 'Escape',
+                bubbles: true
+            }));
+            await wait(300);
+
+            // 方法3: document.body.click（最終手段）
+            debugLog('document.body.clickでメニューを閉じます');
+            document.body.click();
+            await wait(200);
+            
+            return true;
+        } catch (error) {
+            debugLog(`メニューを閉じる際にエラー: ${error.message}`);
+            return false;
+        }
+    };
+
     // 要素の可視性チェック関数
     const isElementVisible = (element) => {
         if (!element) return false;
@@ -272,8 +305,7 @@
             });
 
             // メニューを閉じる
-            document.body.click();
-            await wait(500);
+            await closeMenu();
         }
 
         // キャッシュに保存
@@ -359,8 +391,7 @@
                 });
 
                 // メニューを閉じる
-                document.body.click();
-                await wait(500);
+                await closeMenu();
             }
             
             if (shouldCheckSubmenu && !moreButton) {
@@ -401,7 +432,23 @@
             return false;
         }
 
-        log(`\n🤖 モデル「${searchTerm}」を検索中...`, 'header');
+        // プルダウンの表示名から実際のGeminiメニュー用の名前に逆変換
+        let actualSearchTerm = searchTerm;
+        if (searchTerm === "Gemini 2.5 Pro") {
+            actualSearchTerm = "2.5 Pro";
+            console.log(`[DEBUG] Gemini: モデル名逆変換 "${searchTerm}" → "${actualSearchTerm}"`);
+        } else if (searchTerm === "Gemini 2.5 Flash") {
+            actualSearchTerm = "2.5 Flash";
+            console.log(`[DEBUG] Gemini: モデル名逆変換 "${searchTerm}" → "${actualSearchTerm}"`);
+        } else if (searchTerm === "Gemini 1.5 Pro") {
+            actualSearchTerm = "1.5 Pro";
+            console.log(`[DEBUG] Gemini: モデル名逆変換 "${searchTerm}" → "${actualSearchTerm}"`);
+        } else if (searchTerm === "Gemini 1.5 Flash") {
+            actualSearchTerm = "1.5 Flash";
+            console.log(`[DEBUG] Gemini: モデル名逆変換 "${searchTerm}" → "${actualSearchTerm}"`);
+        }
+
+        log(`\n🤖 モデル「${searchTerm}」を検索中...（実際の検索語: ${actualSearchTerm}）`, 'header');
 
         // モデル選択ボタンをクリック
         const modelButton = await findElement([
@@ -410,18 +457,30 @@
         ]);
 
         if (modelButton) {
+            console.log(`[DEBUG] Gemini: モデルボタン発見 - ${modelButton.textContent?.trim()}`);
             await clickElement(modelButton);
             await wait(DELAYS.menuWait);
+            console.log(`[DEBUG] Gemini: メニューを${DELAYS.menuWait}ms待機後にチェック`);
 
             // メニューから選択
             const menuItems = document.querySelectorAll('[role="menuitemradio"], [role="menuitem"]');
+            console.log(`[DEBUG] Gemini: メニュー項目数 - ${menuItems.length}`);
+            
+            // メニュー項目を詳細ログ
+            menuItems.forEach((item, index) => {
+                console.log(`[DEBUG] Gemini: 項目${index}: "${item.textContent?.trim()}"`);
+            });
+            
             let selected = false;
             
             for (let item of menuItems) {
                 const itemText = item.textContent?.trim();
-                const match = fuzzyMatch(searchTerm, itemText);
+                const match = fuzzyMatch(actualSearchTerm, itemText);
+                
+                console.log(`[DEBUG] Gemini: 検索対象"${actualSearchTerm}" vs 項目"${itemText}" - スコア: ${match ? match.score.toFixed(2) : 'なし'}`);
                 
                 if (match && match.score > 0.6) {
+                    console.log(`[DEBUG] Gemini: マッチ成功！ "${itemText}" をクリック`);
                     await clickElement(item);
                     globalState.currentModel = itemText;
                     log(`✅ モデル「${itemText}」を選択しました (スコア: ${match.score.toFixed(2)})`, 'success');
@@ -430,17 +489,13 @@
                 }
             }
 
-            // メニューを確実に閉じる（ESCキーを使用）
+            // メニューを確実に閉じる
             await wait(500);
-            document.body.dispatchEvent(new KeyboardEvent('keydown', {
-                key: 'Escape',
-                code: 'Escape',
-                bubbles: true
-            }));
+            await closeMenu();
             log('メニューを閉じました', 'info');
             
             if (!selected) {
-                log(`❌ モデル「${searchTerm}」が見つかりません`, 'error');
+                log(`❌ モデル「${searchTerm}」（検索語: ${actualSearchTerm}）が見つかりません`, 'error');
             }
             
             return selected;
@@ -596,13 +651,9 @@
                 }
             }
 
-            // メニューを確実に閉じる（ESCキーを使用）
+            // メニューを確実に閉じる
             await wait(500);
-            document.body.dispatchEvent(new KeyboardEvent('keydown', {
-                key: 'Escape',
-                code: 'Escape',
-                bubbles: true
-            }));
+            await closeMenu();
             log('メニューを閉じました', 'info');
             
             if (!functionSelected) {
@@ -613,11 +664,7 @@
         } catch (error) {
             debugLog(`サブメニュー機能選択エラー: ${error.message}`);
             // エラー時もメニューを閉じる
-            document.body.dispatchEvent(new KeyboardEvent('keydown', {
-                key: 'Escape',
-                code: 'Escape',
-                bubbles: true
-            }));
+            await closeMenu();
             return false;
         }
     };
@@ -663,8 +710,7 @@
                 }
             }
 
-            document.body.click(); // メニューを閉じる
-            await wait(500);
+            await closeMenu(); // メニューを閉じる
         }
 
         globalState.activeFunctions = [];
@@ -690,7 +736,7 @@
 
         // ウィンドウにフォーカスしてからクリック
         window.focus();
-        document.body.click();
+        await closeMenu(); // 開いているメニューがあれば閉じる
         inputField.click();
         inputField.focus();
         await wait(500);
@@ -720,11 +766,7 @@
 
     const sendMessage = async () => {
         // 送信前に開いているメニューを閉じる（重要）
-        document.body.dispatchEvent(new KeyboardEvent('keydown', {
-            key: 'Escape',
-            code: 'Escape',
-            bubbles: true
-        }));
+        await closeMenu();
         await wait(500);
         
         const sendButton = await findElement([
@@ -1083,11 +1125,7 @@
                 await wait(1000);
                 
                 // メニューを確実に閉じる
-                document.body.dispatchEvent(new KeyboardEvent('keydown', {
-                    key: 'Escape',
-                    code: 'Escape',
-                    bubbles: true
-                }));
+                await closeMenu();
                 await wait(500);
             }
             
@@ -1097,11 +1135,7 @@
                 await wait(1000);
                 
                 // メニューを確実に閉じる
-                document.body.dispatchEvent(new KeyboardEvent('keydown', {
-                    key: 'Escape',
-                    code: 'Escape',
-                    bubbles: true
-                }));
+                await closeMenu();
                 await wait(500);
             }
             
