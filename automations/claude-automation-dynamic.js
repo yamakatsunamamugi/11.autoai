@@ -850,6 +850,16 @@
         }
         result.function = functionResult ? config.function : null;
         await wait(1000);
+      } else if (!config.function || config.function === 'none' || config.function === '') {
+        // 通常処理の場合、Web検索が有効になっていたら無効化する
+        log('通常処理モード: Web検索を無効化します', 'INFO');
+        
+        // Web検索を明示的に無効化
+        const webSearchOffResult = await selectFunction('ウェブ検索', false);
+        if (webSearchOffResult) {
+          log('✅ Web検索を無効化しました', 'SUCCESS');
+        }
+        await wait(500);
       }
 
       // テキスト入力
