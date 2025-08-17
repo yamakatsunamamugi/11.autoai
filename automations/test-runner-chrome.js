@@ -334,6 +334,7 @@
                 }
                 
                 console.log(`[TestRunner] ${foundName}を発見、実行開始`);
+                console.log(`[デバッグ] 選択された機能: "${config.function}"`);
                 
                 // 実行方法を自動化オブジェクトの構造に応じて調整
                 if (typeof automation.runAutomation === 'function') {
@@ -349,6 +350,7 @@
                     console.log(`[TestRunner] ${aiName} DeepResearchモード - 最大60分待機`);
                   }
                   
+                  console.log(`[デバッグ] runAutomationに渡す機能名: "${config.function}"`);
                   return await automation.runAutomation({
                     model: config.model,
                     function: config.function,

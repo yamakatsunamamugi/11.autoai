@@ -985,25 +985,38 @@
         log('機能名が指定されていません', 'WARNING');
         return false;
       }
+      
+      console.log(`[デバッグ] selectFunctionを実行: functionName="${functionName}", enable=${enable}, AI=${this.aiType}`);
 
       const menu = await this.openFunctionMenu();
       if (!menu) return false;
 
       const items = await this.getMenuItems();
       let targetItem = null;
+      
+      console.log(`[デバッグ] メニューアイテム数: ${items.length}`);
 
       for (const item of items) {
         const text = item.textContent?.trim();
-        if (text === functionName || text.includes(functionName)) {
+        console.log(`[デバッグ] メニューアイテム: "${text}"`);
+        
+        if (text === functionName) {
+          console.log(`[デバッグ] 完全一致: "${text}" === "${functionName}"`);
+          targetItem = item;
+          break;
+        } else if (text.includes(functionName)) {
+          console.log(`[デバッグ] 部分一致: "${text}" includes "${functionName}"`);
           targetItem = item;
           break;
         }
       }
 
       if (targetItem) {
+        console.log(`[デバッグ] ターゲットアイテムが見つかりました`);
         const toggleInput = targetItem.querySelector('input[type="checkbox"][role="switch"]');
         if (toggleInput) {
           const isCurrentlyActive = toggleInput.checked;
+          console.log(`[デバッグ] トグル状態: ${isCurrentlyActive ? 'ON' : 'OFF'}`);
           if ((enable && !isCurrentlyActive) || (!enable && isCurrentlyActive)) {
             await performClick(targetItem);
             log(`機能「${functionName}」を${enable ? 'ON' : 'OFF'}にしました`, 'SUCCESS');
@@ -1019,6 +1032,7 @@
         return true;
       }
 
+      console.log(`[デバッグ] ターゲットアイテムが見つかりませんでした: "${functionName}"`);
       log(`機能「${functionName}」が見つかりません`, 'ERROR');
       await closeMenu();
       return false;

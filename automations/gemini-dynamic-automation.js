@@ -369,6 +369,7 @@
                 const isActive = button.getAttribute('aria-pressed') === 'true';
                 const isVisible = isElementVisible(button);
                 
+                console.log(`[デバッグ] Gemini機能を収集: "${text}" (active: ${isActive}, visible: ${isVisible})`);
                 functions.push({
                     name: text,
                     location: isVisible ? 'main' : 'main-hidden',
@@ -490,6 +491,8 @@
             return false;
         }
         
+        console.log(`[デバッグ] Gemini selectFunctionDynamic呼び出し: searchTerm="${searchTerm}"`);
+        
         // AIHandlerを使用
         if (!useAIHandler || !menuHandler) {
             log('AIHandlerが利用できません', 'error');
@@ -503,6 +506,7 @@
                 globalState.activeFunctions.push(searchTerm);
                 return true;
             }
+            console.log(`[デバッグ] Gemini機能選択失敗: "${searchTerm}"`);
             return false;
         } catch (error) {
             log(`機能選択エラー: ${error.message}`, 'error');

@@ -770,7 +770,11 @@
 
       // 機能選択（空文字やnullの場合はスキップ）
       if (config.function && config.function !== 'none' && config.function !== '') {
+        console.log(`[デバッグ] Claude機能選択: "${config.function}"`);
         const functionResult = await selectFunction(config.function);
+        if (!functionResult) {
+          console.log(`[デバッグ] Claude機能選択失敗: "${config.function}"`);
+        }
         result.function = functionResult ? config.function : null;
         await wait(1000);
       }
