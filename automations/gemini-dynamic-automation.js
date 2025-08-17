@@ -517,7 +517,7 @@
             
             // ボタンが見つからない場合は「その他」メニューを確認
             log('メインボタンが見つかりません。「その他」メニューを確認します...', 'info');
-            const moreButton = document.querySelector('[aria-label*="その他"], button:has(svg[viewBox="0 0 24 24"] path[d*="M12 2"])');
+            const moreButton = document.querySelector('button[aria-label="その他"], button[aria-label*="その他"], button mat-icon[fonticon="more_horiz"]');
             if (moreButton) {
                 await clickElement(moreButton);
                 await wait(500);
