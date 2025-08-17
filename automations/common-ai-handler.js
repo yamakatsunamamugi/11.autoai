@@ -910,6 +910,12 @@
     }
 
     async selectModel(modelName) {
+      // モデル名が指定されていない場合は何もしない
+      if (!modelName || modelName.trim() === '') {
+        log('モデル名が指定されていません', 'WARNING');
+        return false;
+      }
+
       const menu = await this.openModelMenu();
       if (!menu) return false;
 
@@ -949,6 +955,8 @@
         await performClick(targetItem);
         log(`モデル「${modelName}」を選択しました`, 'SUCCESS');
         await wait(CONFIG.DELAYS.modelSwitch);
+        // メニューが自動的に閉じない場合のために明示的に閉じる
+        await closeMenu();
         return true;
       }
 
@@ -958,6 +966,12 @@
     }
 
     async selectFunction(functionName, enable = true) {
+      // 機能名が指定されていない場合は何もしない
+      if (!functionName || functionName.trim() === '') {
+        log('機能名が指定されていません', 'WARNING');
+        return false;
+      }
+
       const menu = await this.openFunctionMenu();
       if (!menu) return false;
 
