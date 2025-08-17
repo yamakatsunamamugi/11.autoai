@@ -273,27 +273,25 @@
         log('DeepResearchモードを有効化します', 'INFO');
         log('⚠️ DeepResearchは最大40分かかる場合があります', 'WARNING');
         
-        // 0.AI変更検出と同じ方法を使用
-        if (window.enableClaudeDeepResearch) {
-          try {
-            const result = await window.enableClaudeDeepResearch();
-            if (result) {
-              log('✅ DeepResearchモードを有効化しました', 'SUCCESS');
-              return true;
+        // 共有モジュールを使用してDeepResearchを選択
+        if (window.ClaudeDeepResearchSelector && window.ClaudeDeepResearchSelector.select) {
+          const result = await window.ClaudeDeepResearchSelector.select();
+          
+          if (result.success) {
+            if (result.alreadyEnabled) {
+              log('DeepResearchは既に有効です', 'INFO');
+            } else {
+              log('✅ DeepResearchボタンをクリックしました', 'SUCCESS');
             }
-          } catch (error) {
-            log(`DeepResearch有効化エラー: ${error.message}`, 'ERROR');
+            return true;
+          } else {
+            log('❌ DeepResearchボタンが見つかりません', 'ERROR');
+            return false;
           }
-        }
-        
-        // フォールバック: 従来の方法
-        const searchEnabled = await menuHandler.selectFunction('ウェブ検索', true);
-        if (!searchEnabled) {
-          log('ウェブ検索の有効化に失敗しました', 'ERROR');
+        } else {
+          log('❌ ClaudeDeepResearchSelectorモジュールが見つかりません', 'ERROR');
           return false;
         }
-        
-        return await clickResearchButton();
       }
       
       const result = await menuHandler.selectFunction(targetFunction, enable);

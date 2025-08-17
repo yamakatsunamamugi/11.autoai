@@ -233,7 +233,8 @@
       // 統合ハンドラーとDeepResearchハンドラーを先に注入
       const commonScripts = [
         'automations/common-ai-handler.js',
-        'automations/deepresearch-handler.js'
+        'automations/deepresearch-handler.js',
+        'automations/claude-deepresearch-selector.js'
       ];
       
       // AI固有のスクリプト
