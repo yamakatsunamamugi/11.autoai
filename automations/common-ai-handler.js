@@ -835,6 +835,72 @@
   }
 
   // ========================================
+  // 使用状況追跡
+  // ========================================
+  const usageTracker = {
+    functionCalls: {},
+    fallbackCalls: {},
+    
+    track(funcName, source = 'unknown') {
+      if (!this.functionCalls[funcName]) {
+        this.functionCalls[funcName] = { count: 0, sources: [] };
+      }
+      this.functionCalls[funcName].count++;
+      if (!this.functionCalls[funcName].sources.includes(source)) {
+        this.functionCalls[funcName].sources.push(source);
+      }
+      console.log(`📊 [Usage] ${funcName} called from ${source} (total: ${this.functionCalls[funcName].count})`);
+    },
+    
+    trackFallback(funcName, source = 'unknown') {
+      if (!this.fallbackCalls[funcName]) {
+        this.fallbackCalls[funcName] = { count: 0, sources: [] };
+      }
+      this.fallbackCalls[funcName].count++;
+      if (!this.fallbackCalls[funcName].sources.includes(source)) {
+        this.fallbackCalls[funcName].sources.push(source);
+      }
+      console.log(`⚠️ [Fallback] ${funcName} using legacy code from ${source} (total: ${this.fallbackCalls[funcName].count})`);
+    },
+    
+    getReport() {
+      return {
+        functionCalls: this.functionCalls,
+        fallbackCalls: this.fallbackCalls,
+        summary: {
+          totalCalls: Object.values(this.functionCalls).reduce((sum, f) => sum + f.count, 0),
+          totalFallbacks: Object.values(this.fallbackCalls).reduce((sum, f) => sum + f.count, 0),
+          uniqueFunctions: Object.keys(this.functionCalls).length,
+          uniqueFallbacks: Object.keys(this.fallbackCalls).length
+        }
+      };
+    },
+    
+    printReport() {
+      const report = this.getReport();
+      console.log('📈 === 使用状況レポート ===');
+      console.log('✅ 新ハンドラー使用:', report.summary.totalCalls, '回');
+      console.log('⚠️ フォールバック使用:', report.summary.totalFallbacks, '回');
+      console.log('関数別詳細:', report.functionCalls);
+      if (report.summary.totalFallbacks > 0) {
+        console.log('フォールバック詳細:', report.fallbackCalls);
+      }
+      return report;
+    }
+  };
+
+  // ========================================
+  // ラッパー関数でトラッキングを追加
+  // ========================================
+  const wrapWithTracking = (func, funcName) => {
+    return function(...args) {
+      const caller = new Error().stack?.split('\n')[2]?.trim() || 'unknown';
+      usageTracker.track(funcName, caller);
+      return func.apply(this, args);
+    };
+  };
+
+  // ========================================
   // グローバル公開
   // ========================================
   window.AIHandler = {
@@ -845,46 +911,73 @@
     selectors: AI_SELECTORS,
     
     // AI検出
-    detectAI,
+    detectAI: wrapWithTracking(detectAI, 'detectAI'),
     
-    // 基本ユーティリティ
+    // 基本ユーティリティ（トラッキング付き）
     utils: {
-      log,
-      debugLog,
-      wait,
-      findElement,
-      findElements,
-      performClick,
-      inputText,
-      waitForMenu,
-      closeMenu,
-      isElementVisible,
-      isElementEnabled,
-      waitForElementToDisappear
+      log: wrapWithTracking(log, 'log'),
+      debugLog: wrapWithTracking(debugLog, 'debugLog'),
+      wait: wrapWithTracking(wait, 'wait'),
+      findElement: wrapWithTracking(findElement, 'findElement'),
+      findElements: wrapWithTracking(findElements, 'findElements'),
+      performClick: wrapWithTracking(performClick, 'performClick'),
+      inputText: wrapWithTracking(inputText, 'inputText'),
+      waitForMenu: wrapWithTracking(waitForMenu, 'waitForMenu'),
+      closeMenu: wrapWithTracking(closeMenu, 'closeMenu'),
+      isElementVisible: wrapWithTracking(isElementVisible, 'isElementVisible'),
+      isElementEnabled: wrapWithTracking(isElementEnabled, 'isElementEnabled'),
+      waitForElementToDisappear: wrapWithTracking(waitForElementToDisappear, 'waitForElementToDisappear')
     },
     
-    // メッセージ処理
+    // メッセージ処理（トラッキング付き）
     message: {
-      send: sendMessageCommon,
-      waitForResponse: waitForResponseCommon,
-      getResponse: getResponseCommon,
-      stopGeneration: stopGenerationCommon
+      send: wrapWithTracking(sendMessageCommon, 'sendMessage'),
+      waitForResponse: wrapWithTracking(waitForResponseCommon, 'waitForResponse'),
+      getResponse: wrapWithTracking(getResponseCommon, 'getResponse'),
+      stopGeneration: wrapWithTracking(stopGenerationCommon, 'stopGeneration')
     },
     
     // メニューハンドラー
     MenuHandler,
     
     // メニューハンドラーインスタンス（自動作成）
-    menuHandler: new MenuHandler()
+    menuHandler: new MenuHandler(),
+    
+    // 使用状況トラッカー
+    usageTracker
   };
 
   // 後方互換性のための公開（既存スクリプトが動作するように）
-  window.AICommonUtils = window.AIHandler.utils;
-  window.CommonMenuHandler = MenuHandler;
-  window.menuHandler = window.AIHandler.menuHandler;
+  window.AICommonUtils = new Proxy(window.AIHandler.utils, {
+    get(target, prop) {
+      console.log(`⚠️ [Legacy] AICommonUtils.${prop} accessed - 新しいAIHandler.utilsを使用してください`);
+      usageTracker.trackFallback(`AICommonUtils.${prop}`, 'legacy-utils');
+      return target[prop];
+    }
+  });
+  
+  window.CommonMenuHandler = new Proxy(MenuHandler, {
+    construct(target, args) {
+      console.log('⚠️ [Legacy] CommonMenuHandler constructed - 新しいAIHandler.MenuHandlerを使用してください');
+      usageTracker.trackFallback('CommonMenuHandler.constructor', 'legacy-menu');
+      return new target(...args);
+    }
+  });
+  
+  window.menuHandler = new Proxy(window.AIHandler.menuHandler, {
+    get(target, prop) {
+      console.log(`⚠️ [Legacy] menuHandler.${prop} accessed - 新しいAIHandler.menuHandlerを使用してください`);
+      usageTracker.trackFallback(`menuHandler.${prop}`, 'legacy-menu-instance');
+      return target[prop];
+    }
+  });
 
   log('✅ AI統合ハンドラーが利用可能になりました', 'SUCCESS');
   log('検出されたAI: ' + detectAI(), 'INFO');
+  
+  // 使用状況確認用のグローバルコマンド
+  window.AIUsageReport = () => usageTracker.printReport();
+  console.log('💡 使用状況を確認: AIUsageReport() を実行してください');
   
   return window.AIHandler;
 })();
