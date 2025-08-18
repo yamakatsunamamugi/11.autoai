@@ -698,8 +698,9 @@
             // 目的の機能を探す
             for (const item of allItems) {
                 const itemText = item.textContent?.trim();
-                if (itemText === mappedFunction) {
-                    debugLog(`機能「${mappedFunction}」発見！クリックします`);
+                // バッジ付きの場合も考慮（例：「エージェントモード新規」）
+                if (itemText === mappedFunction || itemText?.startsWith(mappedFunction)) {
+                    debugLog(`機能「${mappedFunction}」発見！クリックします（実際のテキスト: "${itemText}"）`);
                     
                     // 直接クリック（サイズチェックなし）
                     item.click();
