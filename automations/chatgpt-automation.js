@@ -192,7 +192,12 @@
                 poppers.push(...document.querySelectorAll(selector));
             }
             for (const popper of poppers) {
-                const menuSelectors = window.AIHandler?.getSelectors?.('ChatGPT', 'MENU') || ['[role="menu"]'];
+                // MENU.CONTAINERセレクタを取得（オブジェクトの場合はCONTAINERプロパティを使用）
+                const menuConfig = window.AIHandler?.getSelectors?.('ChatGPT', 'MENU');
+                const menuSelectors = menuConfig?.CONTAINER ? 
+                    [menuConfig.CONTAINER] : 
+                    (Array.isArray(menuConfig) ? menuConfig : ['[role="menu"]']);
+                
                 let menu = null;
                 for (const selector of menuSelectors) {
                     menu = popper.querySelector(selector);
@@ -248,7 +253,10 @@
         await wait(800); // 800ms待機（成功実績のある待機時間）
         
         // サブメニューが開いたか確認
-        const menuSelectors = window.AIHandler?.getSelectors?.('ChatGPT', 'MENU') || ['[role="menu"]'];
+        const menuConfig = window.AIHandler?.getSelectors?.('ChatGPT', 'MENU');
+        const menuSelectors = menuConfig?.CONTAINER ? 
+            [menuConfig.CONTAINER] : 
+            (Array.isArray(menuConfig) ? menuConfig : ['[role="menu"]']);
         let allMenus = [];
         for (const selector of menuSelectors) {
             allMenus.push(...document.querySelectorAll(selector));
@@ -277,6 +285,7 @@
         await performClick(menuItem);
         await wait(800);
         
+        // menuSelectorsは上で定義済みなので再利用
         let menusAfterClick = [];
         for (const selector of menuSelectors) {
             menusAfterClick.push(...document.querySelectorAll(selector));
@@ -623,26 +632,136 @@
             return true;
         }
         
-        // AIHandlerを使用
-        if (!useAIHandler || !menuHandler) {
-            log('AIHandlerが利用できません', 'error');
+        // FUNCTION_MAPPINGで変換
+        const mappedFunction = FUNCTION_MAPPING[functionName] || functionName;
+        
+        // シンプルな直接クリック処理
+        log(`🎯 機能「${mappedFunction}」を選択中...`, 'info');
+        
+        // 既存のメニューが開いている場合は閉じる
+        debugLog('既存のメニューをチェック中...');
+        const existingMenu = document.querySelector('[role="menu"][data-state="open"], [data-radix-popper-content-wrapper]');
+        if (existingMenu) {
+            debugLog('既存のメニューを閉じます');
+            document.body.click();
+            await wait(500);
+        }
+        
+        // 機能ボタンをクリック
+        const button = document.querySelector('[data-testid="composer-plus-btn"]');
+        if (!button) {
+            log('機能ボタンが見つかりません', 'error');
             return false;
         }
-
-        try {
-            // FUNCTION_MAPPINGで変換
-            const mappedFunction = FUNCTION_MAPPING[functionName] || functionName;
-            const result = await menuHandler.selectFunction(mappedFunction);
-            if (result) {
-                log(`✅ 共通ハンドラーで機能「${mappedFunction}」を選択しました`, 'success');
-                currentState.activeFunctions.add(mappedFunction);
-                return true;
+        
+        debugLog('機能ボタンをクリックします');
+        
+        // 複数の方法でクリックを試す
+        const clickMethods = [
+            () => button.click(),
+            () => button.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })),
+            () => {
+                button.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+                button.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+                button.dispatchEvent(new PointerEvent('click', { bubbles: true }));
+            }
+        ];
+        
+        for (const method of clickMethods) {
+            method();
+            await wait(100);
+        }
+        
+        await wait(1500);  // メニューが開くまで少し長めに待つ
+        
+        // メニューが開いたか確認
+        const menu = await waitForMenu();
+        if (!menu) {
+            log('機能メニューが開きませんでした', 'error');
+            return false;
+        }
+        
+        // 全ての要素を収集して探す関数
+        const findAndClickFunction = async () => {
+            // 現在表示されている全てのメニュー項目を取得
+            const allItems = document.querySelectorAll('[role="menuitemradio"], [role="menuitem"], [role="option"]');
+            debugLog(`メニュー項目数: ${allItems.length}`);
+            
+            // 各項目をログに出力（デバッグ用）
+            allItems.forEach((item, index) => {
+                const text = item.textContent?.trim();
+                if (text) {
+                    debugLog(`  [${index}] "${text}" (role=${item.getAttribute('role')})`);
+                }
+            });
+            
+            // 目的の機能を探す
+            for (const item of allItems) {
+                const itemText = item.textContent?.trim();
+                if (itemText === mappedFunction) {
+                    debugLog(`機能「${mappedFunction}」発見！クリックします`);
+                    
+                    // 直接クリック（サイズチェックなし）
+                    item.click();
+                    
+                    // 選択結果を確認
+                    await wait(500);
+                    const checked = item.getAttribute('aria-checked');
+                    if (checked === 'true') {
+                        log(`✅ 機能「${mappedFunction}」を選択しました`, 'success');
+                    } else {
+                        log(`✅ 機能「${mappedFunction}」をクリックしました`, 'success');
+                    }
+                    
+                    currentState.activeFunctions.add(mappedFunction);
+                    return true;
+                }
             }
             return false;
-        } catch (error) {
-            log(`機能選択エラー: ${error.message}`, 'error');
-            return false;
+        };
+        
+        // まずメインメニューで探す
+        debugLog('メインメニューで機能を探しています...');
+        if (await findAndClickFunction()) {
+            return true;
         }
+        
+        // メインメニューで見つからない場合、「さらに表示」を探して展開
+        debugLog('メインメニューで見つからないため、「さらに表示」を探します');
+        const showMoreItems = document.querySelectorAll('[role="menuitemradio"], [role="menuitem"], [role="option"]');
+        
+        for (const item of showMoreItems) {
+            const text = item.textContent?.trim();
+            if (text === 'さらに表示' || text === 'Show more') {
+                debugLog('「さらに表示」を発見、クリックして展開します');
+                item.click();
+                
+                // サブメニューが展開されるのを待つ
+                await wait(1000);
+                
+                // サブメニューで再度探す
+                debugLog('サブメニューで機能を探しています...');
+                if (await findAndClickFunction()) {
+                    return true;
+                }
+                
+                break; // 「さらに表示」は1つだけのはず
+            }
+        }
+        
+        log(`機能「${mappedFunction}」が見つかりません`, 'error');
+        
+        // デバッグ情報を出力
+        debugLog('=== 最終的なメニュー状態 ===');
+        const finalItems = document.querySelectorAll('[role="menuitemradio"], [role="menuitem"], [role="option"]');
+        finalItems.forEach((item, index) => {
+            const text = item.textContent?.trim();
+            if (text) {
+                debugLog(`  [${index}] "${text}"`);
+            }
+        });
+        
+        return false;
     }
 
     // 利用可能な機能を取得する関数（selectFunctionと同じロジックを使用）
@@ -1048,72 +1167,14 @@
     }
 
     async function waitForResponse(timeout = 60000) {
-        log('回答を待機中...', 'info');
-        const startTime = Date.now();
-        let lastMinuteLogged = 0;
-        
         // 停止ボタンのセレクタログフラグをリセット
         currentState.stopButtonSelectorLogged = false;
         
-        while (Date.now() - startTime < timeout) {
-            const elapsedMs = Date.now() - startTime;
-            const elapsedMinutes = Math.floor(elapsedMs / 60000);
-            
-            // 1分ごとにログを出力
-            if (elapsedMinutes > lastMinuteLogged) {
-                lastMinuteLogged = elapsedMinutes;
-                log(`回答待機中... (${elapsedMinutes}分経過)`, 'info');
-            }
-            
-            // 停止ボタンの存在を確認（生成中の判定）
-            // UI_SELECTORSから取得（フォールバックあり）
-            const stopButtonSelectors = window.AIHandler?.getSelectors?.('ChatGPT', 'STOP_BUTTON') || [
-                '[data-testid="stop-button"]',
-                '[aria-label="ストリーミングの停止"]',
-                '#composer-submit-button[aria-label*="停止"]',
-                '[aria-label="Stop generating"]', 
-                'button[aria-label*="Stop"]',
-                'button[aria-label*="stop"]',
-                '[data-testid="composer-moderation-stop-button"]'
-            ];
-            
-            let stopButton = null;
-            let usedSelector = null;
-            for (const selector of stopButtonSelectors) {
-                stopButton = document.querySelector(selector);
-                if (stopButton) {
-                    usedSelector = selector;
-                    break;
-                }
-            }
-            
-            // デバッグ用：どのセレクタが使われたかログ出力（初回のみ）
-            if (stopButton && !currentState.stopButtonSelectorLogged) {
-                debugLog(`停止ボタン検出: ${usedSelector}`);
-                currentState.stopButtonSelectorLogged = true;
-            }
-            
-            if (!stopButton) {
-                // 停止ボタンがない = 生成完了
-                await wait(1000); // 念のため1秒待つ
-                
-                // 経過時間を計算
-                if (currentState.sendStartTime) {
-                    const elapsedTotal = Date.now() - currentState.sendStartTime;
-                    const minutes = Math.floor(elapsedTotal / 60000);
-                    const seconds = Math.floor((elapsedTotal % 60000) / 1000);
-                    log(`✅ 回答生成完了（送信から ${minutes}分${seconds}秒経過）`, 'success');
-                } else {
-                    log('✅ 回答生成完了', 'success');
-                }
-                return true;
-            }
-            
-            await wait(500);
-        }
-        
-        log(`回答待機タイムアウト (${timeout/1000}秒経過)`, 'warning');
-        return false;
+        // 共通関数を使用
+        return await window.AIHandler?.message?.waitForResponse?.(null, {
+            timeout: timeout,
+            sendStartTime: currentState.sendStartTime
+        }, 'ChatGPT');
     }
 
     async function getResponse() {
@@ -1137,7 +1198,8 @@
             }
             
             if (messages.length === 0) {
-                throw new Error('回答が見つかりません');
+                log('回答が見つかりません - 空の回答として処理を継続', 'warning');
+                return '';  // 空文字列を返して処理を継続
             }
             
             const lastMessage = messages[messages.length - 1];
@@ -1164,7 +1226,8 @@
                 }
             }
             
-            throw new Error('回答テキストを抽出できませんでした');
+            log('回答テキストを抽出できませんでした - 空の回答として処理を継続', 'warning');
+            return '';  // 空文字列を返して処理を継続
             
         } catch (error) {
             log(`回答取得エラー: ${error.message}`, 'error');
