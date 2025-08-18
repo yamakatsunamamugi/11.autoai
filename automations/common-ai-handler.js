@@ -497,16 +497,31 @@
     log('AI応答を待機中...', 'INFO', ai);
     const startTime = Date.now();
     let lastProgressTime = startTime;
+    let noStopButtonCount = 0;  // 停止ボタンが見つからない連続回数
+    const requiredNoStopButtonTime = 5;  // 5秒間連続で見つからなければ完了
 
     while (Date.now() - startTime < maxWait) {
-      const stopButton = await findElement(selectors, null, CONFIG.DELAYS.responseCheck);
+      // 停止ボタンを素早く検索（1秒以内）
+      const stopButton = await findElement(selectors, null, 1000);
       
       if (!stopButton) {
-        const elapsedTotal = Date.now() - startTime;
-        const minutes = Math.floor(elapsedTotal / 60000);
-        const seconds = Math.floor((elapsedTotal % 60000) / 1000);
-        log(`✅ 応答完了（${minutes}分${seconds}秒経過）`, 'SUCCESS', ai);
-        return true;
+        noStopButtonCount++;
+        debugLog(`停止ボタンなし: ${noStopButtonCount}秒連続`);
+        
+        // 5秒間連続で停止ボタンが見つからない場合は完了と判定
+        if (noStopButtonCount >= requiredNoStopButtonTime) {
+          const elapsedTotal = Date.now() - startTime;
+          const minutes = Math.floor(elapsedTotal / 60000);
+          const seconds = Math.floor((elapsedTotal % 60000) / 1000);
+          log(`✅ 応答完了（送信から ${minutes}分${seconds}秒経過）`, 'SUCCESS', ai);
+          return true;
+        }
+      } else {
+        // 停止ボタンが見つかったらカウントリセット
+        if (noStopButtonCount > 0) {
+          debugLog('停止ボタン再検出: カウントリセット');
+        }
+        noStopButtonCount = 0;
       }
 
       if (Date.now() - lastProgressTime > 10000) {
@@ -515,7 +530,7 @@
         lastProgressTime = Date.now();
       }
 
-      await wait(CONFIG.DELAYS.responseCheck);
+      await wait(1000);  // 1秒ごとにチェック
     }
 
     log('応答待機がタイムアウトしました', 'WARNING', ai);

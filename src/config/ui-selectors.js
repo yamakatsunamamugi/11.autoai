@@ -232,6 +232,12 @@ export const UI_SELECTORS = {
         
         // 停止ボタン
         STOP_BUTTON: [
+            // 新しいGemini停止ボタンセレクタ（最優先）
+            'div.blue-circle.stop-icon',
+            'div.stop-icon mat-icon[data-mat-icon-name="stop"]',
+            '.blue-circle.stop-icon',
+            
+            // 従来のセレクタ
             'button[aria-label="回答を停止"]',
             'button.send-button.stop',
             'button.stop',

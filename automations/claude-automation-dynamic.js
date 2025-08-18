@@ -788,18 +788,83 @@
     // 通常の応答テキストを取得（Canvas要素を除外）
     const clonedBlock = latestResponseBlock.cloneNode(true);
     
-    // Canvas関連要素を削除
-    clonedBlock.querySelectorAll('.grid-cols-1.grid').forEach(elem => elem.remove());
+    // ユーザーメッセージを削除（data-testid="user-message"を含む要素）
+    clonedBlock.querySelectorAll('[data-testid="user-message"]').forEach(elem => {
+      // ユーザーメッセージのコンテナ全体を削除
+      const parent = elem.closest('.group.relative.inline-flex');
+      if (parent) {
+        parent.remove();
+      } else {
+        elem.remove();
+      }
+    });
+    
+    // Canvas関連要素を削除（h1タグを含むgrid-cols-1要素のみ）
+    clonedBlock.querySelectorAll('.grid-cols-1.grid').forEach(elem => {
+      // h1タグを含む場合のみCanvas として削除
+      if (elem.querySelector('h1')) {
+        elem.remove();
+      }
+    });
     clonedBlock.querySelectorAll('[class*="artifact-block"]').forEach(elem => elem.remove());
     
-    // 通常テキストを抽出
-    const paragraphs = clonedBlock.querySelectorAll('p.whitespace-normal.break-words');
+    // 全ての折りたたみボタンを削除（思考プロセスやその他の不要な要素）
+    clonedBlock.querySelectorAll('button.group\\/row').forEach(elem => {
+      // 折りたたみボタンのコンテナ全体を削除
+      const parent = elem.closest('.transition-all.duration-400');
+      if (parent) {
+        parent.remove();
+      } else {
+        elem.remove();
+      }
+    });
+    
+    // 思考プロセスのテキストを含む段落も削除
+    clonedBlock.querySelectorAll('.font-claude-response').forEach(elem => {
+      const text = elem.textContent || '';
+      if (text.includes('The user is asking me') || 
+          text.includes('I should provide') ||
+          text.includes('Since this is about') ||
+          text.includes('ユーザーは') ||
+          text.includes('求めています')) {
+        elem.remove();
+      }
+    });
+    
+    // 通常テキストを抽出（p、h2、h3、ul、li要素を含む）
+    const contentElements = clonedBlock.querySelectorAll('p.whitespace-normal.break-words, h2.text-xl.font-bold, h3.text-lg.font-bold, ul.list-disc li');
     const normalTexts = [];
     
-    paragraphs.forEach(p => {
-      const text = p.textContent?.trim();
-      if (text && text.length > 20 && 
-          !text.includes('The user is asking me')) {
+    contentElements.forEach(elem => {
+      const text = elem.textContent?.trim();
+      
+      // ユーザーのプロンプトを除外（短いテキストで「解説して」などを含む）
+      const isUserPrompt = text && text.length < 100 && (
+        text === '桃太郎について歴史を解説して' ||
+        text.includes('について') && text.includes('解説して') ||
+        text.includes('教えて') ||
+        text.includes('説明して')
+      );
+      
+      // 思考プロセスのテキストパターンを除外（英語と日本語両方）
+      const isThinkingText = text && (
+        // 英語パターン
+        text.includes('The user is asking me') ||
+        text.includes('I should provide') ||
+        text.includes('I should answer') ||
+        text.includes('Since this is about') ||
+        text.includes('they want a') ||
+        text.includes('They want me to') ||
+        // 日本語パターン
+        text.includes('ユーザーは') && text.includes('求めています') ||
+        text.includes('について説明すべきでしょう') ||
+        text.includes('私の知識に基づいて回答できます') ||
+        text.includes('web検索は必要ないでしょう') ||
+        text.includes('日本の民話の歴史を深く考察し、解説の準備をした') ||
+        text.includes('解説の準備を整え、日本の伝統的な民話を紹介')
+      );
+      
+      if (text && text.length > 10 && !isThinkingText && !isUserPrompt) {
         normalTexts.push(text);
       }
     });
