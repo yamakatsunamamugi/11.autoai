@@ -558,27 +558,49 @@
     let extractedText = '';
     
     if (ai === 'Claude') {
-      // Claudeの場合：すべてのテキスト要素を収集
-      const textElements = latestResponseElement.querySelectorAll('p, div.whitespace-pre-wrap, .prose');
-      const texts = [];
+      // Claudeの場合：grid-cols-1クラスを持つdivからテキストを取得
+      const gridContainer = latestResponseElement.querySelector('div.grid-cols-1.grid');
       
-      textElements.forEach(el => {
-        // Artifactやコードブロックは除外
-        if (!el.closest('.artifact-block-cell') && 
-            !el.closest('pre') && 
-            !el.closest('code')) {
-          const text = el.textContent?.trim();
-          if (text && text.length > 0 && !texts.includes(text)) {
-            texts.push(text);
+      if (gridContainer) {
+        // grid内のすべてのp, h2, ul, liタグからテキストを取得
+        const textElements = gridContainer.querySelectorAll('p.whitespace-normal, h2, ul li');
+        const texts = [];
+        
+        textElements.forEach(el => {
+          // Artifactやコードブロックは除外
+          if (!el.closest('.artifact-block-cell') && 
+              !el.closest('pre') && 
+              !el.closest('code')) {
+            const text = el.textContent?.trim();
+            if (text && text.length > 0) {
+              // h2タグの場合は改行を追加
+              if (el.tagName === 'H2') {
+                texts.push('\n' + text);
+              } else {
+                texts.push(text);
+              }
+            }
           }
-        }
-      });
-      
-      // 要素が見つからない場合は全体のテキストを取得
-      if (texts.length === 0) {
-        extractedText = latestResponseElement.textContent?.trim() || '';
+        });
+        
+        extractedText = texts.join('\n');
       } else {
-        extractedText = texts.join('\n\n');
+        // フォールバック: 従来の方法
+        const textElements = latestResponseElement.querySelectorAll('p, div.whitespace-pre-wrap, .prose');
+        const texts = [];
+        
+        textElements.forEach(el => {
+          if (!el.closest('.artifact-block-cell') && 
+              !el.closest('pre') && 
+              !el.closest('code')) {
+            const text = el.textContent?.trim();
+            if (text && text.length > 0 && !texts.includes(text)) {
+              texts.push(text);
+            }
+          }
+        });
+        
+        extractedText = texts.length > 0 ? texts.join('\n\n') : latestResponseElement.textContent?.trim() || '';
       }
       
     } else if (ai === 'ChatGPT') {
