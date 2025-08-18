@@ -559,12 +559,20 @@
     
     if (ai === 'Claude') {
       // Claudeの場合：grid-cols-1クラスを持つdivからテキストを取得
-      const gridContainer = latestResponseElement.querySelector('div.grid-cols-1.grid');
+      let gridContainer = latestResponseElement.querySelector('div.grid-cols-1.grid');
+      
+      // latestResponseElement自体がgrid-cols-1の場合も考慮
+      if (!gridContainer && latestResponseElement.classList?.contains('grid-cols-1')) {
+        gridContainer = latestResponseElement;
+        debugLog('latestResponseElement自体がgrid-cols-1です');
+      }
       
       if (gridContainer) {
-        // grid内のすべてのp, h2, ul, liタグからテキストを取得
-        const textElements = gridContainer.querySelectorAll('p.whitespace-normal, h2, ul li');
+        // grid内のすべてのp, h2, ul, liタグからテキストを取得（セレクタを拡張）
+        const textElements = gridContainer.querySelectorAll('p, h2, ul li, li');
         const texts = [];
+        
+        debugLog(`Claudeテキスト要素数: ${textElements.length}`);
         
         textElements.forEach(el => {
           // Artifactやコードブロックは除外
@@ -579,11 +587,13 @@
               } else {
                 texts.push(text);
               }
+              debugLog(`要素取得: ${el.tagName} - ${text.substring(0, 50)}...`);
             }
           }
         });
         
         extractedText = texts.join('\n');
+        debugLog(`Claude応答: ${texts.length}要素, 合計${extractedText.length}文字`);
       } else {
         // フォールバック: 従来の方法
         const textElements = latestResponseElement.querySelectorAll('p, div.whitespace-pre-wrap, .prose');
@@ -866,6 +876,21 @@
       }
       
       return buttonText || '不明';
+    }
+
+    async getCurrentModelDisplay() {
+      // 現在表示されているモデル名を取得（UI表示用）
+      if (this.aiType === 'Claude') {
+        // Claudeのモデル表示要素から取得
+        const modelDisplay = document.querySelector('div.font-claude-response');
+        if (modelDisplay) {
+          const modelText = modelDisplay.textContent?.trim();
+          log(`現在のモデル表示: ${modelText}`, 'INFO');
+          return modelText;
+        }
+      }
+      // その他のAIまたはフォールバック
+      return this.getCurrentModel();
     }
 
     async openFunctionMenu() {
