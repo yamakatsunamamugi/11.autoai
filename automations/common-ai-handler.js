@@ -1,8 +1,62 @@
-// AI自動化統合ハンドラー
-// common-utils.js と common-menu-handler.js を統合し、メッセージ処理も追加
-// 全AI（ChatGPT、Claude、Gemini）で共通の操作を提供
+/**
+ * @fileoverview AI自動化統合ハンドラー
+ * 
+ * 【役割】
+ * 全AI（ChatGPT、Claude、Gemini）の共通操作を統合管理するメインハンドラー
+ * 
+ * 【主要機能】
+ * - ui-selectors.jsからセレクタを動的に読み込み
+ * - メニュー操作（モデル選択、機能選択）の共通処理
+ * - メッセージ送信・応答待機の共通処理
+ * - AI別のクリック戦略の実装
+ * 
+ * 【ファイル間の関係】
+ * ui-selectors.js（セレクタ定義）→ 当ファイル → 各AI個別ファイル
+ * 
+ * 【使用方法】
+ * - window.AIHandler: 各AI個別ファイルから呼び出される
+ * - menuHandler = new window.AIHandler.MenuHandler(aiType)
+ * 
+ * 【依存関係】
+ * - src/config/ui-selectors.js: UIセレクタ定義
+ * - 各AI個別ファイル: このハンドラーを使用
+ */
 (() => {
   "use strict";
+
+  // ========================================
+  // UI_SELECTORSを読み込み
+  // ========================================
+  let UI_SELECTORS = null;
+  
+  // セレクタの読み込みを試みる
+  async function loadSelectors() {
+    try {
+      // Chrome拡張機能として動作している場合
+      if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getURL) {
+        const url = chrome.runtime.getURL('src/config/ui-selectors.js');
+        const module = await import(url);
+        UI_SELECTORS = module.UI_SELECTORS;
+        log('UI_SELECTORSの読み込み成功', 'SUCCESS');
+      }
+    } catch (error) {
+      log(`UI_SELECTORSの読み込み失敗: ${error.message}`, 'ERROR');
+    }
+  }
+
+  // ========================================
+  // セレクタ取得関数
+  // ========================================
+  function getSelectors(aiName, selectorType) {
+    // UI_SELECTORSが読み込まれていれば使用
+    if (UI_SELECTORS && UI_SELECTORS[aiName]) {
+      return UI_SELECTORS[aiName][selectorType] || [];
+    }
+    
+    // UI_SELECTORSが利用できない場合はエラー
+    log(`UI_SELECTORSが読み込まれていません: ${aiName}.${selectorType}`, 'ERROR');
+    return [];
+  }
 
   // ========================================
   // 共通設定
@@ -13,7 +67,7 @@
       click: 50,            // クリック後の待機
       textInput: 500,       // テキスト入力後の待機
       betweenActions: 1000, // アクション間の待機
-      menuOpen: 1500,       // メニュー表示待機
+      menuOpen: 2000,       // メニュー表示待機（1500→2000ms）
       menuClose: 1000,      // メニュー閉じる待機
       modelSwitch: 2000,    // モデル切替待機
       submenuOpen: 1000,    // サブメニュー表示待機
@@ -22,168 +76,11 @@
     },
     TIMEOUTS: {
       elementSearch: 3000,  // 要素検索のタイムアウト
-      menuWait: 5000,       // メニュー表示待機
+      menuWait: 8000,       // メニュー表示待機（5000→8000ms）
       responseWait: 60000   // 応答待機のデフォルト
     },
     claudeWaitTime: 500,    // Claude専用待機時間
     maxRetries: 3
-  };
-
-  // ========================================
-  // AI固有セレクタ定義
-  // ========================================
-  const AI_SELECTORS = {
-    Claude: {
-      input: [
-        '[contenteditable="true"][role="textbox"]',
-        '.ProseMirror',
-        'div[contenteditable="true"]',
-        'textarea[placeholder*="メッセージ"]'
-      ],
-      send: [
-        '[aria-label="メッセージを送信"]:not([disabled])',
-        'button[type="submit"]:not([disabled])',
-        '.send-button:not([disabled])'
-      ],
-      stop: [
-        '[aria-label="応答を停止"]'
-      ],
-      response: [
-        '[data-is-streaming="false"]',
-        '.font-claude-message',
-        'div[class*="font-claude-message"]',
-        '.group.relative.-tracking-\\[0\\.015em\\]'
-      ],
-      modelButton: [
-        '[data-testid="model-selector-dropdown"]',
-        '[aria-label="モデルを選択"]',
-        '[data-testid="model-selector"]',
-        'button[aria-haspopup="menu"]',
-        'button[aria-label*="モデル"]'
-      ],
-      functionButton: [
-        '[data-testid="input-menu-tools"]',
-        '[aria-label="ツールメニューを開く"]',
-        'button[aria-label*="ツール"]',
-        'button:has(svg[class*="grid"])'
-      ],
-      menu: [
-        '[role="menu"][data-state="open"]',
-        '[role="menu"]'
-      ],
-      menuItem: [
-        '[role="menuitem"]',
-        '[role="option"]'
-      ]
-    },
-    
-    ChatGPT: {
-      input: [
-        '#prompt-textarea',
-        '[contenteditable="true"]',
-        '.ProseMirror',
-        'div[contenteditable="true"]',
-        'textarea[data-testid="conversation-textarea"]',
-        'textarea[placeholder*="メッセージ"]',
-        'textarea'
-      ],
-      send: [
-        '[data-testid="send-button"]',
-        '#composer-submit-button',
-        '[aria-label="プロンプトを送信する"]',
-        '[aria-label*="送信"]',
-        'button[data-testid="composer-send-button"]',
-        'button[class*="send"]'
-      ],
-      stop: [
-        '[data-testid="stop-button"]',
-        '[aria-label="Stop generating"]'
-      ],
-      response: [
-        '[data-message-author-role="assistant"]',
-        '.text-message[data-message-author-role="assistant"]',
-        'div[data-message-author-role="assistant"]'
-      ],
-      modelButton: [
-        '[data-testid="model-switcher-dropdown-button"]',
-        'button[aria-label*="モデル セレクター"]',
-        'button[aria-label*="モデル"]',
-        'button[aria-label*="Model"]',
-        'button[id^="radix-"][aria-haspopup="menu"]'
-      ],
-      functionButton: [
-        '[data-testid="composer-plus-btn"]',
-        'button[aria-label*="一時的なチャット"]',
-        'button[aria-label*="GPT"]',
-        'button[id*="radix"]',
-        'button[data-testid*="gpt"]'
-      ],
-      menu: [
-        '[role="menu"]',
-        'div[data-state="open"][role="menu"]',
-        '.popover[role="menu"]',
-        '[aria-orientation="vertical"][role="menu"]'
-      ],
-      menuItem: [
-        '[role="menuitem"]',
-        '[role="menuitemradio"]'
-      ]
-    },
-    
-    Gemini: {
-      input: [
-        '.ql-editor',
-        '[contenteditable="true"]',
-        '[role="textbox"]'
-      ],
-      send: [
-        '[aria-label="プロンプトを送信"]',
-        '.send-button:not(.stop)',
-        'button[type="submit"]',
-        '[data-testid="send-button"]'
-      ],
-      stop: [
-        '[aria-label="回答を停止"]'
-      ],
-      response: [
-        '.response-container',
-        '.conversation-turn',
-        '.message-container',
-        '.markdown'
-      ],
-      modelButton: [
-        'button.gds-mode-switch-button',
-        'button.logo-pill-btn',
-        'button[class*="mode-switch"]',
-        'button:has(.logo-pill-label-container)',
-        'button:has(mat-icon[fonticon="arrow_drop_down"])',
-        'button.model-selector',
-        '.model-dropdown',
-        'button[aria-label*="モデル"]'
-      ],
-      functionButton: [
-        'button[aria-label="その他"]',
-        'button.feature-selector',
-        'button[aria-label*="機能"]',
-        '.feature-menu-button'
-      ],
-      menu: [
-        '.mat-mdc-menu-panel',
-        '.cdk-overlay-pane',
-        '[role="menu"]',
-        '[role="menuitemradio"]',
-        '[role="menuitem"]'
-      ],
-      menuItem: [
-        'button.bard-mode-list-button',
-        '[role="menuitemradio"]',
-        '[role="menuitem"]',
-        '.mat-mdc-menu-item',
-        'button[mat-menu-item]',
-        'button[mat-list-item]',
-        '.toolbox-drawer-item-list-button'
-      ]
-    }
   };
 
   // ========================================
@@ -390,17 +287,125 @@
   // ========================================
   // メニュー操作
   // ========================================
-  const waitForMenu = async (menuSelectors = null, maxWait = CONFIG.TIMEOUTS.menuWait) => {
-    const aiType = detectAI();
-    const selectors = menuSelectors || AI_SELECTORS[aiType]?.menu || [
-      '[role="menu"][data-state="open"]',
-      '[role="menu"]',
-      '.menu-container',
-      '[class*="menu"]',
-      '[class*="dropdown"]'
+  
+  // メニューが開いているか確認する関数
+  const isMenuOpen = () => {
+    const selectors = [
+      '[role="menu"]:not([style*="display: none"])',
+      '[data-state="open"]',
+      '[data-radix-menu-content]',
+      '.mat-mdc-menu-panel',
+      '[aria-expanded="true"]',
+      '[data-radix-popper-content-wrapper]',
+      '.cdk-overlay-pane'
     ];
     
-    return await findElement(selectors, null, maxWait);
+    for (const selector of selectors) {
+      try {
+        const element = document.querySelector(selector);
+        if (element && element.offsetParent !== null) {
+          debugLog(`メニュー検出: ${selector}`);
+          return true;
+        }
+      } catch (e) {
+        // セレクタエラーは無視
+      }
+    }
+    return false;
+  };
+  
+  // 複数のクリック方法を試す関数（成功例のクリック方法のみ使用）
+  const tryMultipleClickMethods = async (element, checkFunction, aiType) => {
+    if (!element) {
+      log('クリック対象の要素がnullです', 'ERROR');
+      return null;
+    }
+    
+    const clickMethods = {
+      'ChatGPT': { // PointerEventで成功
+        name: 'PointerEvent',
+        execute: () => {
+          element.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+          element.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+          element.dispatchEvent(new PointerEvent('click', { bubbles: true }));
+        }
+      },
+      'Claude': { // PointerEventで成功
+        name: 'PointerEvent',
+        execute: () => {
+          element.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+          element.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+          element.dispatchEvent(new PointerEvent('click', { bubbles: true }));
+        }
+      },
+      'Gemini': { // element.click()で成功
+        name: 'element.click()',
+        execute: () => element.click()
+      }
+    };
+    
+    const method = clickMethods[aiType] || {
+      name: 'element.click()',
+      execute: () => element.click()
+    };
+    
+    try {
+      log(`${aiType}: ${method.name}でクリックを試行中...`, 'INFO', aiType);
+      await method.execute();
+      await wait(1500); // クリック後の待機
+      
+      if (await checkFunction()) {
+        log(`✅ ${method.name}で成功！`, 'SUCCESS', aiType);
+        return method.name;
+      } else {
+        log(`${method.name}でメニューが開きませんでした`, 'WARNING', aiType);
+        return null;
+      }
+    } catch (error) {
+      log(`${method.name}でエラー: ${error.message}`, 'ERROR', aiType);
+      return null;
+    }
+  };
+  
+  const waitForMenu = async (menuSelectors = null, maxWait = CONFIG.TIMEOUTS.menuWait) => {
+    const aiType = detectAI();
+    
+    // isMenuOpenと同じセレクタを使用
+    const selectors = menuSelectors || [
+      '[role="menu"]:not([style*="display: none"])',
+      '[data-state="open"]',
+      '[data-radix-menu-content]',
+      '.mat-mdc-menu-panel',
+      '[aria-expanded="true"]',
+      '[data-radix-popper-content-wrapper]',
+      '.cdk-overlay-pane',
+      '[role="menu"]'
+    ];
+    
+    debugLog(`waitForMenu: ${selectors.length}個のセレクタで検索中...`);
+    
+    const startTime = Date.now();
+    while (Date.now() - startTime < maxWait) {
+      // isMenuOpenと同じロジックを使用
+      if (isMenuOpen()) {
+        // メニューが開いていることを確認したら、要素を探す
+        for (const selector of selectors) {
+          try {
+            const element = document.querySelector(selector);
+            if (element && element.offsetParent !== null) {
+              log(`メニュー発見: ${selector}`, 'SUCCESS', aiType);
+              return element;
+            }
+          } catch (e) {
+            // セレクタエラーは無視
+          }
+        }
+      }
+      await wait(100);
+    }
+    
+    log('メニューが見つかりませんでした', 'WARNING', aiType);
+    return null;
   };
 
   const closeMenu = async () => {
@@ -459,10 +464,10 @@
   // ========================================
   const sendMessageCommon = async (sendButtonSelectors, aiName = null) => {
     const ai = aiName || detectAI();
-    const selectors = sendButtonSelectors || AI_SELECTORS[ai]?.send;
+    const selectors = sendButtonSelectors || getSelectors(ai, 'SEND_BUTTON');
     
-    if (!selectors) {
-      log(`${ai}の送信ボタンセレクタが定義されていません`, 'ERROR', ai);
+    if (!selectors || selectors.length === 0) {
+      log(`${ai}の送信ボタンセレクタが取得できません`, 'ERROR', ai);
       return false;
     }
 
@@ -474,7 +479,7 @@
       return false;
     }
 
-    await performClick(sendButton);
+    await performClick(sendButton, ai);
     log('📤 メッセージを送信しました', 'SUCCESS', ai);
     await wait(CONFIG.DELAYS.submit);
     return true;
@@ -482,10 +487,10 @@
 
   const waitForResponseCommon = async (stopButtonSelectors, maxWait = CONFIG.TIMEOUTS.responseWait, aiName = null) => {
     const ai = aiName || detectAI();
-    const selectors = stopButtonSelectors || AI_SELECTORS[ai]?.stop;
+    const selectors = stopButtonSelectors || getSelectors(ai, 'STOP_BUTTON');
     
-    if (!selectors) {
-      log(`${ai}の停止ボタンセレクタが定義されていません`, 'WARNING', ai);
+    if (!selectors || selectors.length === 0) {
+      log(`${ai}の停止ボタンセレクタが取得できません`, 'WARNING', ai);
       return false;
     }
 
@@ -519,10 +524,10 @@
 
   const getResponseCommon = async (responseSelectors, textExtractor, aiName = null) => {
     const ai = aiName || detectAI();
-    const selectors = responseSelectors || AI_SELECTORS[ai]?.response;
+    const selectors = responseSelectors || getSelectors(ai, 'RESPONSE');
     
-    if (!selectors) {
-      log(`${ai}の応答要素セレクタが定義されていません`, 'ERROR', ai);
+    if (!selectors || selectors.length === 0) {
+      log(`${ai}の応答要素セレクタが取得できません`, 'ERROR', ai);
       return null;
     }
 
@@ -619,10 +624,10 @@
 
   const stopGenerationCommon = async (stopButtonSelectors, aiName = null) => {
     const ai = aiName || detectAI();
-    const selectors = stopButtonSelectors || AI_SELECTORS[ai]?.stop;
+    const selectors = stopButtonSelectors || getSelectors(ai, 'STOP_BUTTON');
     
-    if (!selectors) {
-      log(`${ai}の停止ボタンセレクタが定義されていません`, 'ERROR', ai);
+    if (!selectors || selectors.length === 0) {
+      log(`${ai}の停止ボタンセレクタが取得できません`, 'ERROR', ai);
       return false;
     }
 
@@ -634,7 +639,7 @@
       return false;
     }
 
-    await performClick(stopButton);
+    await performClick(stopButton, ai);
     log('⏹️ 生成を停止しました', 'SUCCESS', ai);
     await wait(CONFIG.DELAYS.betweenActions);
     return true;
@@ -648,7 +653,7 @@
     // AI別の続き生成方法
     if (ai === 'Claude') {
       // Claudeの場合：「続けて」と入力して送信
-      const inputSelectors = AI_SELECTORS[ai].input;
+      const inputSelectors = getSelectors(ai, 'INPUT');
       const inputField = await findElement(inputSelectors);
       if (inputField) {
         await inputText(inputField, '続けて');
@@ -664,11 +669,11 @@
         '[data-testid="continue-button"]'
       ]);
       if (continueButton) {
-        await performClick(continueButton);
+        await performClick(continueButton, ai);
         return true;
       }
       // ボタンがない場合は「続けて」と入力
-      const inputSelectors = AI_SELECTORS[ai].input;
+      const inputSelectors = getSelectors(ai, 'INPUT');
       const inputField = await findElement(inputSelectors);
       if (inputField) {
         await inputText(inputField, '続けて');
@@ -678,7 +683,7 @@
       
     } else if (ai === 'Gemini') {
       // Geminiの場合：「続けて」と入力して送信
-      const inputSelectors = AI_SELECTORS[ai].input;
+      const inputSelectors = getSelectors(ai, 'INPUT');
       const inputField = await findElement(inputSelectors);
       if (inputField) {
         await inputText(inputField, '続けて');
@@ -768,9 +773,9 @@
     async openModelMenu() {
       log('モデルメニューを開いています...', 'MODEL');
       
-      const selectors = AI_SELECTORS[this.aiType]?.modelButton;
-      if (!selectors) {
-        log(`${this.aiType}のモデルメニューセレクタが定義されていません`, 'ERROR');
+      const selectors = getSelectors(this.aiType, 'MODEL_BUTTON');
+      if (!selectors || selectors.length === 0) {
+        log(`${this.aiType}のモデルメニューセレクタが取得できません`, 'ERROR');
         return null;
       }
 
@@ -783,8 +788,13 @@
       const currentModel = button.textContent?.trim();
       log(`現在のモデル: ${currentModel || '不明'}`, 'INFO');
 
-      await performClick(button);
-      await wait(CONFIG.DELAYS.menuOpen);
+      // 改善: AI別のクリック戦略を使用
+      const clickMethod = await tryMultipleClickMethods(button, isMenuOpen, this.aiType);
+      
+      if (!clickMethod) {
+        log('モデルメニューを開けませんでした', 'ERROR');
+        return null;
+      }
 
       const menu = await waitForMenu();
       if (!menu) {
@@ -796,12 +806,52 @@
       return menu;
     }
 
+    async getCurrentModel() {
+      // モデルボタンからテキストを取得
+      const selectors = getSelectors(this.aiType, 'MODEL_BUTTON');
+      if (!selectors || selectors.length === 0) {
+        return '不明';
+      }
+
+      const button = await findElement(selectors, null, 1000);
+      if (!button) {
+        return '不明';
+      }
+
+      const buttonText = button.textContent?.trim();
+      
+      // AI別の処理
+      if (this.aiType === 'ChatGPT') {
+        // "ChatGPT 5" のような形式から "5" を抽出
+        if (buttonText?.includes('ChatGPT')) {
+          return buttonText.replace('ChatGPT', '').trim();
+        }
+        return buttonText || '不明';
+      } else if (this.aiType === 'Claude') {
+        // ClaudeのモデルボタンまたはUIから取得
+        const modelSelector = document.querySelector('.font-claude-response');
+        if (modelSelector) {
+          return modelSelector.textContent?.trim() || buttonText || '不明';
+        }
+        return buttonText || '不明';
+      } else if (this.aiType === 'Gemini') {
+        // Geminiのモデル表示から取得
+        const modelSpan = document.querySelector('span[_ngcontent-ng-c3031725912]');
+        if (modelSpan) {
+          return modelSpan.textContent?.trim() || buttonText || '不明';
+        }
+        return buttonText || '不明';
+      }
+      
+      return buttonText || '不明';
+    }
+
     async openFunctionMenu() {
       log('機能メニューを開いています...', 'FEATURE');
       
-      const selectors = AI_SELECTORS[this.aiType]?.functionButton;
-      if (!selectors) {
-        log(`${this.aiType}の機能メニューセレクタが定義されていません`, 'ERROR');
+      const selectors = getSelectors(this.aiType, 'FUNCTION_BUTTON');
+      if (!selectors || selectors.length === 0) {
+        log(`${this.aiType}の機能メニューセレクタが取得できません`, 'ERROR');
         return null;
       }
 
@@ -811,8 +861,13 @@
         return null;
       }
 
-      await performClick(button);
-      await wait(CONFIG.DELAYS.menuOpen);
+      // 改善: AI別のクリック戦略を使用
+      const clickMethod = await tryMultipleClickMethods(button, isMenuOpen, this.aiType);
+      
+      if (!clickMethod) {
+        log('機能メニューを開けませんでした', 'ERROR');
+        return null;
+      }
 
       const menu = await waitForMenu();
       if (!menu) {
@@ -825,7 +880,7 @@
     }
 
     async getMenuItems() {
-      const itemSelectors = AI_SELECTORS[this.aiType]?.menuItem || [
+      const itemSelectors = getSelectors(this.aiType, 'MENU_ITEM') || [
         '[role="menuitem"]',
         '[role="option"]',
         '[role="menuitemradio"]'
@@ -916,8 +971,100 @@
         return false;
       }
 
+      // 現在のモデルを記録
+      const currentModel = await this.getCurrentModel();
+      log(`現在のモデル: ${currentModel}`, 'INFO');
+
       const menu = await this.openModelMenu();
       if (!menu) return false;
+
+      // ChatGPT用の特別な処理
+      if (this.aiType === 'ChatGPT') {
+        // ChatGPTの新しいモデル用のdata-testidを使用
+        const testIdMap = {
+          'Auto': 'model-switcher-gpt-5',
+          'Fast': 'model-switcher-gpt-5-instant',
+          'Thinking': 'model-switcher-gpt-5-thinking',
+          'Pro': 'model-switcher-gpt-5-pro',
+          'GPT-5': 'model-switcher-gpt-5',
+          'GPT-5 Auto': 'model-switcher-gpt-5',
+          'GPT-5 Fast': 'model-switcher-gpt-5-instant',
+          'GPT-5 Thinking': 'model-switcher-gpt-5-thinking',
+          'GPT-5 Pro': 'model-switcher-gpt-5-pro'
+        };
+        
+        const testId = testIdMap[modelName];
+        if (testId) {
+          const targetItem = document.querySelector(`[data-testid="${testId}"]`);
+          if (targetItem) {
+            await performClick(targetItem, this.aiType);
+            log(`ChatGPTモデル「${modelName}」を選択しました`, 'SUCCESS');
+            await wait(CONFIG.DELAYS.modelSwitch);
+            
+            // モデル変更を確認
+            await wait(1000);
+            const newModel = await this.getCurrentModel();
+            if (newModel !== currentModel) {
+              log(`モデルが「${currentModel}」から「${newModel}」に変更されました`, 'SUCCESS');
+              await closeMenu();
+              return true;
+            } else {
+              log(`モデル変更が確認できませんでした`, 'WARNING');
+            }
+          }
+        }
+      }
+
+      // Claude用の特別な処理
+      if (this.aiType === 'Claude') {
+        const menuItems = document.querySelectorAll('[role="menuitem"]');
+        for (const item of menuItems) {
+          const text = item.textContent?.trim();
+          // Claude Opus 4.1, Claude Sonnet 4 などの形式に対応
+          if (text?.includes(modelName) || 
+              text?.includes(`Claude ${modelName}`) ||
+              (modelName.includes('Opus') && text?.includes('Opus')) ||
+              (modelName.includes('Sonnet') && text?.includes('Sonnet'))) {
+            await performClick(item, this.aiType);
+            log(`Claudeモデル「${modelName}」を選択しました`, 'SUCCESS');
+            await wait(CONFIG.DELAYS.modelSwitch);
+            
+            // モデル変更を確認
+            await wait(1000);
+            const newModel = await this.getCurrentModel();
+            if (newModel !== currentModel) {
+              log(`モデルが「${currentModel}」から「${newModel}」に変更されました`, 'SUCCESS');
+              await closeMenu();
+              return true;
+            }
+          }
+        }
+      }
+
+      // Gemini用の特別な処理
+      if (this.aiType === 'Gemini') {
+        const menuItems = document.querySelectorAll('.mat-mdc-menu-item, [role="menuitem"]');
+        for (const item of menuItems) {
+          const text = item.textContent?.trim();
+          // 2.5 Flash, 2.5 Pro などの形式に対応
+          if (text?.includes(modelName) || 
+              (modelName.includes('Flash') && text?.includes('Flash')) ||
+              (modelName.includes('Pro') && text?.includes('Pro'))) {
+            await performClick(item, this.aiType);
+            log(`Geminiモデル「${modelName}」を選択しました`, 'SUCCESS');
+            await wait(CONFIG.DELAYS.modelSwitch);
+            
+            // モデル変更を確認
+            await wait(1000);
+            const newModel = await this.getCurrentModel();
+            if (newModel !== currentModel) {
+              log(`モデルが「${currentModel}」から「${newModel}」に変更されました`, 'SUCCESS');
+              await closeMenu();
+              return true;
+            }
+          }
+        }
+      }
 
       const items = await this.getMenuItems();
       let targetItem = null;
@@ -966,9 +1113,21 @@
       }
 
       if (targetItem) {
-        await performClick(targetItem);
+        await performClick(targetItem, this.aiType);
         log(`モデル「${modelName}」を選択しました`, 'SUCCESS');
         await wait(CONFIG.DELAYS.modelSwitch);
+        
+        // モデル変更を確認
+        await wait(1000);
+        const newModel = await this.getCurrentModel();
+        if (currentModel && newModel !== currentModel) {
+          log(`モデルが「${currentModel}」から「${newModel}」に変更されました`, 'SUCCESS');
+        } else if (!currentModel) {
+          log(`モデルが「${newModel}」に設定されました`, 'SUCCESS');
+        } else {
+          log(`モデル変更の確認をスキップしました`, 'INFO');
+        }
+        
         // メニューが自動的に閉じない場合のために明示的に閉じる
         await closeMenu();
         return true;
@@ -1018,13 +1177,13 @@
           const isCurrentlyActive = toggleInput.checked;
           console.log(`[デバッグ] トグル状態: ${isCurrentlyActive ? 'ON' : 'OFF'}`);
           if ((enable && !isCurrentlyActive) || (!enable && isCurrentlyActive)) {
-            await performClick(targetItem);
+            await performClick(targetItem, this.aiType);
             log(`機能「${functionName}」を${enable ? 'ON' : 'OFF'}にしました`, 'SUCCESS');
           } else {
             log(`機能「${functionName}」は既に${isCurrentlyActive ? 'ON' : 'OFF'}です`, 'INFO');
           }
         } else {
-          await performClick(targetItem);
+          await performClick(targetItem, this.aiType);
           log(`機能「${functionName}」をクリックしました`, 'SUCCESS');
         }
         
@@ -1050,7 +1209,7 @@
           const toggleInput = item.querySelector('input[type="checkbox"][role="switch"]');
           if (toggleInput) {
             const wasActive = toggleInput.checked;
-            await performClick(item);
+            await performClick(item, this.aiType);
             log(`機能「${functionName}」を${wasActive ? 'OFF' : 'ON'}に切り替えました`, 'SUCCESS');
             await closeMenu();
             return true;
@@ -1078,7 +1237,7 @@
         return null;
       }
 
-      await performClick(submenuItem);
+      await performClick(submenuItem, this.aiType);
       await wait(CONFIG.DELAYS.submenuOpen);
 
       // サブメニューが開いたか確認（新しいメニュー項目が表示される）
@@ -1165,8 +1324,9 @@
     // 設定
     CONFIG,
     
-    // セレクタ定義
-    selectors: AI_SELECTORS,
+    // UI_SELECTORSアクセス
+    loadSelectors,
+    getSelectors,
     
     // AI検出
     detectAI: wrapWithTracking(detectAI, 'detectAI'),
@@ -1232,8 +1392,11 @@
     }
   });
 
-  log('✅ AI統合ハンドラーが利用可能になりました', 'SUCCESS');
-  log('検出されたAI: ' + detectAI(), 'INFO');
+  // UI_SELECTORSを自動読み込み
+  loadSelectors().then(() => {
+    log('✅ AI統合ハンドラーが利用可能になりました', 'SUCCESS');
+    log('検出されたAI: ' + detectAI(), 'INFO');
+  });
   
   // 使用状況確認用のグローバルコマンド
   window.AIUsageReport = () => usageTracker.printReport();

@@ -1,20 +1,32 @@
 /**
- * Gemini動的自動化関数（完全動的検索版）
+ * @fileoverview Gemini動的自動化関数（完全動的検索版）
  * Version: 2.0.0
  * 
- * 特徴:
+ * 【役割】
+ * Gemini専用の自動化処理を提供（完全動的検索版）
+ * 
+ * 【主要機能】
+ * - Gemini固有のモデル選択（2.5 Flash、2.5 Pro、2.0 Flash Thinkingなど）
+ * - Gemini固有の機能選択（Deep Research、Deep Think、画像、動画など）
  * - ハードコードなし、完全動的検索
  * - UI変更に自動適応
  * - ファジー検索対応
  * - キャッシュ機能付き
+ * 
+ * 【依存関係】
+ * - common-ai-handler.js: window.AIHandlerを使用（フォールバック付き）
+ * - ui-selectors.js: Gemini用セレクタを使用
+ * 
+ * 【グローバル公開】
+ * window.GeminiAutomation: コンソールから直接呼び出し可能
  */
 
 (function() {
     'use strict';
     
-    // AIHandlerを使用（フォールバック付き）
-    const useAIHandler = window.AIHandler || null;
-    let menuHandler = null;  // AIHandlerのメニューハンドラーインスタンス
+    // common-ai-handler.jsのAIHandlerを使用（フォールバック付き）
+    const useAIHandler = window.AIHandler || null;  // common-ai-handler.jsによって提供される
+    let menuHandler = null;  // common-ai-handler.jsのMenuHandlerインスタンス
 
     // ========================================
     // 遅延時間設定のみ
@@ -56,7 +68,12 @@
     const closeMenu = async () => {
         try {
             // 方法1: メニュートリガーのトグル（最も効果的）
-            const menuTrigger = document.querySelector('.mat-mdc-menu-trigger[aria-expanded="true"]');
+            const menuTriggerSelectors = window.AIHandler?.getSelectors?.('Gemini', 'MENU_TRIGGER') || ['.mat-mdc-menu-trigger[aria-expanded="true"]'];
+            let menuTrigger = null;
+            for (const selector of menuTriggerSelectors) {
+                menuTrigger = document.querySelector(selector);
+                if (menuTrigger) break;
+            }
             if (menuTrigger) {
                 debugLog('メニュートリガーを使用してメニューを閉じます');
                 menuTrigger.click();
@@ -327,7 +344,11 @@
             await wait(DELAYS.menuWait);
 
             // メニュー項目を収集
-            const menuItems = document.querySelectorAll('[role="menuitemradio"], [role="menuitem"]');
+            const menuItemSelectors = window.AIHandler?.getSelectors?.('Gemini', 'MENU_ITEM') || ['[role="menuitemradio"]', '[role="menuitem"]'];
+            let menuItems = [];
+            for (const selector of menuItemSelectors) {
+                menuItems.push(...document.querySelectorAll(selector));
+            }
             menuItems.forEach(item => {
                 const text = item.textContent?.trim();
                 if (text && !models.find(m => m.name === text)) {
@@ -407,7 +428,11 @@
                 await wait(DELAYS.menuWait);
 
                 // メニュー内の機能を収集
-                const menuItems = document.querySelectorAll('button[mat-list-item], .toolbox-drawer-item-list-button');
+                const menuItemSelectors = window.AIHandler?.getSelectors?.('Gemini', 'MENU_ITEM') || ['button[mat-list-item]', '.toolbox-drawer-item-list-button'];
+                let menuItems = [];
+                for (const selector of menuItemSelectors) {
+                    menuItems.push(...document.querySelectorAll(selector));
+                }
                 menuItems.forEach(item => {
                     const text = item.textContent?.trim();
                     if (text && !functions.find(f => f.name === text)) {
@@ -517,13 +542,22 @@
             
             // ボタンが見つからない場合は「その他」メニューを確認
             log('メインボタンが見つかりません。「その他」メニューを確認します...', 'info');
-            const moreButton = document.querySelector('button[aria-label="その他"], button[aria-label*="その他"], button mat-icon[fonticon="more_horiz"]');
+            const functionButtonSelectors = window.AIHandler?.getSelectors?.('Gemini', 'FUNCTION_BUTTON') || ['button[aria-label="その他"]', 'button[aria-label*="その他"]', 'button mat-icon[fonticon="more_horiz"]'];
+            let moreButton = null;
+            for (const selector of functionButtonSelectors) {
+                moreButton = document.querySelector(selector);
+                if (moreButton) break;
+            }
             if (moreButton) {
                 await clickElement(moreButton);
                 await wait(500);
                 
                 // メニュー内で機能を探す
-                const menuItems = document.querySelectorAll('[role="menuitem"], [role="option"]');
+                const menuItemSelectors = window.AIHandler?.getSelectors?.('Gemini', 'MENU_ITEM') || ['[role="menuitem"]', '[role="option"]'];
+                let menuItems = [];
+                for (const selector of menuItemSelectors) {
+                    menuItems.push(...document.querySelectorAll(selector));
+                }
                 for (const item of menuItems) {
                     const text = item.textContent?.trim();
                     if (text && text.includes(searchTerm)) {
@@ -607,7 +641,11 @@
             await wait(DELAYS.menuWait);
 
             // メニュー内で機能を探してクリック
-            const menuItems = document.querySelectorAll('button[mat-list-item], .toolbox-drawer-item-list-button');
+            const menuItemSelectors = window.AIHandler?.getSelectors?.('Gemini', 'MENU_ITEM') || ['button[mat-list-item]', '.toolbox-drawer-item-list-button'];
+            let menuItems = [];
+            for (const selector of menuItemSelectors) {
+                menuItems.push(...document.querySelectorAll(selector));
+            }
             let functionSelected = false;
             
             for (let item of menuItems) {
@@ -680,7 +718,11 @@
             await clickElement(moreButton);
             await wait(DELAYS.menuWait);
 
-            const menuItems = document.querySelectorAll('button[mat-list-item]');
+            const menuItemSelectors = window.AIHandler?.getSelectors?.('Gemini', 'MENU_ITEM') || ['button[mat-list-item]'];
+            let menuItems = [];
+            for (const selector of menuItemSelectors) {
+                menuItems.push(...document.querySelectorAll(selector));
+            }
             for (let item of menuItems) {
                 const isActive = item.getAttribute('aria-pressed') === 'true';
                 if (isActive) {
@@ -750,7 +792,7 @@
         await closeMenu();
         await wait(500);
         
-        const sendButtonSelectors = window.DeepResearchHandler?.getSelectors?.('Gemini', 'SEND_BUTTON');
+        const sendButtonSelectors = window.AIHandler?.getSelectors?.('Gemini', 'SEND_BUTTON');
         
         if (!sendButtonSelectors || sendButtonSelectors.length === 0) {
             log('送信ボタンセレクタが取得できません', 'error');
@@ -794,12 +836,16 @@
             }
         }
 
-        const responseContainers = document.querySelectorAll([
+        const responseSelectors = window.AIHandler?.getSelectors?.('Gemini', 'RESPONSE') || [
             '.response-container',
             '.conversation-turn',
             '.message-container',
             '.markdown'
-        ].join(','));
+        ];
+        let responseContainers = [];
+        for (const selector of responseSelectors) {
+            responseContainers.push(...document.querySelectorAll(selector));
+        }
 
         if (responseContainers.length > 0) {
             const lastResponse = responseContainers[responseContainers.length - 1];
@@ -889,7 +935,7 @@
                 waitCount++;
 
                 // UI_SELECTORSから取得（フォールバックあり）
-                const stopButtonSelectors = window.DeepResearchHandler?.getSelectors?.('Gemini', 'STOP_BUTTON') || [
+                const stopButtonSelectors = window.AIHandler?.getSelectors?.('Gemini', 'STOP_BUTTON') || [
                     'button[aria-label="回答を停止"]',
                     'button.send-button.stop',
                     'button.stop',
@@ -1182,7 +1228,7 @@
                     waitCount++;
                     
                     // UI_SELECTORSから取得（フォールバックあり）
-                    const stopButtonSelectors = window.DeepResearchHandler?.getSelectors?.('Gemini', 'STOP_BUTTON') || [
+                    const stopButtonSelectors = window.AIHandler?.getSelectors?.('Gemini', 'STOP_BUTTON') || [
                         'button[aria-label="回答を停止"]',
                         'button.send-button.stop',
                         'button.stop',
@@ -1312,7 +1358,13 @@
             
             // ツールボックス診断
             log('\n🔍 ツールボックス診断:', 'header');
-            const toolboxContainer = document.querySelector('.toolbox-drawer, .toolbox-container');
+            const toolboxSelectors = window.AIHandler?.getSelectors?.('Gemini', 'TOOLBOX') || { CONTAINER: ['.toolbox-drawer', '.toolbox-container'] };
+            const containerSelectors = toolboxSelectors.CONTAINER || ['.toolbox-drawer', '.toolbox-container'];
+            let toolboxContainer = null;
+            for (const selector of containerSelectors) {
+                toolboxContainer = document.querySelector(selector);
+                if (toolboxContainer) break;
+            }
             if (toolboxContainer) {
                 const rect = toolboxContainer.getBoundingClientRect();
                 log(`ツールボックス要素: 発見 (${rect.width}x${rect.height})`, 'success');

@@ -1,5 +1,24 @@
-// AI自動化共通ユーティリティ
-// 全AIで共通使用する関数群を提供
+/**
+ * @fileoverview AI自動化共通ユーティリティ
+ * 
+ * 【役割】
+ * AIに依存しない汎用的なユーティリティ関数を提供
+ * 
+ * 【主要機能】
+ * - wait: 待機処理
+ * - findElement: 要素検索（複数セレクタ対応）
+ * - performClick: クリック実行
+ * - inputText: テキスト入力
+ * - isElementVisible/Enabled: 要素状態チェック
+ * - log/debugLog: ログ出力
+ * 
+ * 【使用者】
+ * - common-ai-handler.js: 一部の関数を使用（現在は重複実装あり）
+ * - 各AI個別ファイル: 必要に応じて使用
+ * 
+ * 【グローバル公開】
+ * window.CommonUtils: コンソールから直接呼び出し可能
+ */
 (() => {
     "use strict";
 

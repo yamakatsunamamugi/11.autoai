@@ -43,7 +43,12 @@
   // ステータス更新
   function updateStatus(text, status = 'ready') {
     const statusText = document.getElementById('status-text');
-    const statusIndicator = document.querySelector('.status-indicator');
+    const statusSelectors = window.AIHandler?.getSelectors?.('TEST', 'STATUS_INDICATOR') || ['.status-indicator'];
+    let statusIndicator = null;
+    for (const selector of statusSelectors) {
+      statusIndicator = document.querySelector(selector);
+      if (statusIndicator) break;
+    }
     
     if (statusText) statusText.textContent = text;
     if (statusIndicator) {

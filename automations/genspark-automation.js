@@ -1,7 +1,27 @@
 /**
- * Genspark自動化関数 実装
+ * @fileoverview Genspark自動化関数 実装
  * Version: 1.0.0
  * 作成日: 2025年8月10日
+ * 
+ * 【役割】
+ * Genspark専用の自動化処理を提供（スライド生成特化）
+ * 
+ * 【主要機能】
+ * - スライド生成機能の自動化
+ * - テキスト入力と送信
+ * - 応答待機（停止ボタンの状態監視）
+ * - 応答テキストの取得
+ * 
+ * 【依存関係】
+ * - ui-selectors.js: Genspark用セレクタを使用（window.AIHandler経由）
+ * 
+ * 【特記事項】
+ * - Gensparkはモデル選択機能がない
+ * - スライド生成専用のAI
+ * - common-ai-handler.jsは使用していない（独立実装）
+ * 
+ * 【グローバル公開】
+ * window.GensparkAutomation: コンソールから直接呼び出し可能
  */
 
 (() => {
@@ -192,7 +212,11 @@
     log(`モデル選択: ${modelId}`);
     
     // Gensparkにモデル選択機能があるか確認
-    const modelButtons = document.querySelectorAll('[data-model], .model-selector, select[name="model"]');
+    const modelSelectors = window.AIHandler?.getSelectors?.('Genspark', 'MODEL_BUTTON') || ['[data-model]', '.model-selector', 'select[name="model"]'];
+    let modelButtons = [];
+    for (const selector of modelSelectors) {
+      modelButtons.push(...document.querySelectorAll(selector));
+    }
     
     if (modelButtons.length > 0) {
       for (const button of modelButtons) {
@@ -375,7 +399,12 @@
       // - .stop-icon: 同上
       // - :has() セレクタ: ブラウザサポートが不安定
       // - 複雑な複合セレクタ: セレクタエラーが発生
-      const stopButton = document.querySelector('.enter-icon-wrapper[class*="bg-[#232425]"]');
+      const stopSelectors = window.AIHandler?.getSelectors?.('Genspark', 'STOP_BUTTON') || ['.enter-icon-wrapper[class*="bg-[#232425]"]'];
+      let stopButton = null;
+      for (const selector of stopSelectors) {
+        stopButton = document.querySelector(selector);
+        if (stopButton) break;
+      }
       return stopButton && stopButton.offsetParent !== null;
     };
     
@@ -444,7 +473,11 @@
     
     if (!responseContainer) {
       // 代替方法: 最後のメッセージを探す
-      const allMessages = document.querySelectorAll('[class*="message"], [class*="response"], div[role="article"]');
+      const messageSelectors = window.AIHandler?.getSelectors?.('Genspark', 'MESSAGE') || ['[class*="message"]', '[class*="response"]', 'div[role="article"]'];
+      let allMessages = [];
+      for (const selector of messageSelectors) {
+        allMessages.push(...document.querySelectorAll(selector));
+      }
       
       if (allMessages.length > 0) {
         const lastMessage = allMessages[allMessages.length - 1];
@@ -561,7 +594,11 @@
   const debug = {
     // すべてのボタンを表示
     showAllButtons: () => {
-      const buttons = document.querySelectorAll('button, [role="button"]');
+      const buttonSelectors = window.AIHandler?.getSelectors?.('Genspark', 'ALL_BUTTONS') || ['button', '[role="button"]'];
+      let buttons = [];
+      for (const selector of buttonSelectors) {
+        buttons.push(...document.querySelectorAll(selector));
+      }
       console.log(`ボタン数: ${buttons.length}`);
       buttons.forEach((btn, i) => {
         console.log(`${i}: ${btn.textContent?.trim().substring(0, 50)}`);
@@ -571,7 +608,11 @@
     
     // すべての入力欄を表示
     showAllInputs: () => {
-      const inputs = document.querySelectorAll('textarea, input, [contenteditable="true"]');
+      const inputSelectors = window.AIHandler?.getSelectors?.('Genspark', 'INPUT') || ['textarea', 'input', '[contenteditable="true"]'];
+      let inputs = [];
+      for (const selector of inputSelectors) {
+        inputs.push(...document.querySelectorAll(selector));
+      }
       console.log(`入力欄数: ${inputs.length}`);
       inputs.forEach((input, i) => {
         console.log(`${i}: ${input.tagName} - ${input.placeholder || input.name || 'no-id'}`);
@@ -581,7 +622,11 @@
     
     // 特定のテキストを含む要素を検索
     findByText: (text) => {
-      const allElements = document.querySelectorAll('*');
+      const elementSelectors = window.AIHandler?.getSelectors?.('Genspark', 'ALL_ELEMENTS') || ['*'];
+      let allElements = [];
+      for (const selector of elementSelectors) {
+        allElements.push(...document.querySelectorAll(selector));
+      }
       const found = [];
       allElements.forEach(el => {
         if (el.textContent?.includes(text) && el.children.length === 0) {

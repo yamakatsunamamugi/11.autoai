@@ -1,10 +1,20 @@
 /**
  * @fileoverview 11.autoai UI セレクタ集中管理
- * 全AI（ChatGPT、Claude、Gemini）のUIセレクタを一元管理
  * 
- * 使用方法:
+ * 【役割】
+ * 全AI（ChatGPT、Claude、Gemini、Genspark）のUIセレクタを一元管理
+ * 
+ * 【使用方法】
  * import { UI_SELECTORS } from './src/config/ui-selectors.js';
  * const selectors = UI_SELECTORS.ChatGPT.INPUT;
+ * 
+ * 【使用者】
+ * - common-ai-handler.js: getSelectors関数経由で使用
+ * - 各AI個別ファイル: window.AIHandler経由で使用
+ * - deepresearch-handler.js: DeepResearch用セレクタを使用
+ * 
+ * 【更新履歴】
+ * - 2025-08-17: 参考コードから最新セレクタを反映
  */
 
 export const UI_SELECTORS = {
@@ -49,9 +59,12 @@ export const UI_SELECTORS = {
         
         // モデル選択
         MODEL_BUTTON: [
+            '[data-testid="model-switcher-dropdown-button"]',  // 最新のセレクタ（最優先）
+            'button[aria-label*="モデル"]',
+            'button[aria-label*="Model"]',
             '[aria-label="Model selector"]',
-            '[data-testid="model-selector"]',
-            'button[aria-haspopup="menu"]'
+            'button[aria-haspopup="menu"]',
+            '[data-testid="model-selector"]'  // 古いセレクタ（フォールバック）
         ],
         
         // 機能メニュー
@@ -70,11 +83,22 @@ export const UI_SELECTORS = {
         
         // メニュー関連
         MENU: {
-            CONTAINER: '[role="menu"]',
-            ITEM: '[role="menuitem"], [role="menuitemradio"]',
+            CONTAINER: '[data-radix-popper-content-wrapper], [role="menu"][data-state="open"], [data-radix-menu-content], [role="menu"]',  // 最新のセレクタを追加
+            ITEM: '[data-testid^="model-switcher-"], [role="menuitem"], [role="menuitemradio"]',  // model-switcherを優先
             POPPER: '[data-radix-popper-content-wrapper]',
-            LABEL: '.__menu-label, div:not([role])'
-        }
+            LABEL: '.__menu-label, div:not([role])',
+            SUBMENU_ITEM: 'button:has(span)',  // サブメニュー項目（"その他のモデル"など）
+        },
+        
+        // ポッパーコンテナ（RadixUI）
+        POPPER_CONTAINER: ['[data-radix-popper-content-wrapper]'],
+        
+        // 応答/レスポンス
+        RESPONSE: [
+            '[data-message-author-role="assistant"]',
+            '.text-message[data-message-author-role="assistant"]',
+            'div[data-message-author-role="assistant"]'
+        ]
     },
     
     // ========================================
@@ -111,9 +135,14 @@ export const UI_SELECTORS = {
         
         // モデル選択
         MODEL_BUTTON: [
+            '[data-testid="model-selector-dropdown"]',  // 最新のセレクタ（最優先）
+            'button[data-value*="claude"]',  // モデル名を含むボタン
+            'button.cursor-pointer:has(span.font-medium)',  // モデル表示ボタン
+            'button[aria-label*="モデル"]',
+            'button[aria-label*="Model"]',
             '[aria-label="モデルを選択"]',
-            '[data-testid="model-selector"]',
-            'button[aria-haspopup="menu"]'
+            'button[aria-haspopup="menu"]',
+            '[data-testid="model-selector"]'
         ],
         
         // 機能メニュー
@@ -137,10 +166,41 @@ export const UI_SELECTORS = {
             'button:contains("リサーチ")'
         ],
         
+        // プレビューボタン
+        PREVIEW_BUTTON: [
+            'button[aria-label="内容をプレビュー"]'
+        ],
+        
+        // 応答/レスポンス
+        RESPONSE: [
+            '[data-is-streaming="false"]',
+            '.font-claude-message',
+            'div[class*="font-claude-message"]',
+            '.group.relative.-tracking-\\[0\\.015em\\]'
+        ],
+        
         // メニュー関連
         MENU: {
             CONTAINER: '[role="menu"][data-state="open"], [role="menu"]',
-            ITEM: '[role="option"], [role="menuitem"]'
+            ITEM: '[role="option"], [role="menuitem"]',
+            MODEL_ITEM: 'button[role="option"]:has(span)',  // モデル選択用
+        },
+        
+        // メニューアイテム（拡張）
+        MENU_ITEM: [
+            '[role="option"]',
+            '[role="menuitem"]'
+        ],
+        
+        // Canvas関連（Claude特有）
+        CANVAS: {
+            CONTAINER: [
+                '.grid-cols-1.grid h1',  // h1を含むgridコンテナ
+                '.grid-cols-1.grid'       // gridコンテナ直接
+            ],
+            PREVIEW_TEXT: [
+                '.absolute.inset-0'       // プレビューテキスト要素
+            ]
         }
     },
     
@@ -185,9 +245,16 @@ export const UI_SELECTORS = {
         
         // モデル選択
         MODEL_BUTTON: [
+            '.gds-mode-switch-button',  // 最新のGeminiのセレクタ（最優先）
+            'button.logo-pill-btn',  // ロゴピルボタン
+            'button[mat-flat-button]:has(.logo-pill-label-container)',  // マテリアルボタン
+            'button[aria-haspopup="menu"][aria-expanded="false"]',  // 一般的なメニューボタン
+            'button:has(.mode-title)',  // モデル名を含むボタン
+            'button[aria-label*="モデル"]',
+            'button[mattooltip*="モデル"]',
             'button.model-selector-button',
-            '[aria-label*="モデル"]',
-            'button:has(.model-name)'
+            'button:has(.model-name)',
+            '.model-selector'
         ],
         
         // 機能ボタン（Gemini特有）
@@ -227,8 +294,9 @@ export const UI_SELECTORS = {
         // メニュー関連
         MENU: {
             BUTTON: 'button.input-area-buttons',
-            CONTAINER: '.menu-container',
-            ITEM: '.menu-item'
+            CONTAINER: '.cdk-overlay-pane, .mat-mdc-menu-panel, .menu-container',  // CDKオーバーレイを優先
+            ITEM: '[role="menuitemradio"], [role="menuitem"], .menu-item',  // menuitemradioを優先
+            MODEL_ITEM: '[role="menuitemradio"]'  // モデル選択用
         },
         
         // その他のメニューボタン
@@ -236,7 +304,43 @@ export const UI_SELECTORS = {
             'button[aria-label="その他"]',
             'button[mattooltip="その他"]',
             'button:has(mat-icon[data-mat-icon-name="more_vert"])'
-        ]
+        ],
+        
+        // メニュートリガー（Material Design）
+        MENU_TRIGGER: [
+            '.mat-mdc-menu-trigger[aria-expanded="true"]'
+        ],
+        
+        // メニューアイテム（拡張）
+        MENU_ITEM: [
+            '[role="menuitemradio"]',
+            '[role="menuitem"]',
+            'button[mat-list-item]',
+            '.toolbox-drawer-item-list-button'
+        ],
+        
+        // 機能ボタン（拡張）
+        FUNCTION_BUTTON: [
+            'button[aria-label="その他"]',
+            'button[aria-label*="その他"]',
+            'button mat-icon[fonticon="more_horiz"]'
+        ],
+        
+        // 応答/レスポンス
+        RESPONSE: [
+            '.response-container',
+            '.conversation-turn',
+            '.message-container',
+            '.markdown'
+        ],
+        
+        // ツールボックス関連（Gemini特有）
+        TOOLBOX: {
+            CONTAINER: [
+                '.toolbox-drawer',
+                '.toolbox-container'
+            ]
+        }
     },
     
     // ========================================
@@ -262,6 +366,58 @@ export const UI_SELECTORS = {
             '[role="dialog"]',
             '.modal',
             '[aria-modal="true"]'
+        ]
+    },
+    
+    // ========================================
+    // テスト関連セレクタ
+    // ========================================
+    TEST: {
+        // ステータスインジケーター
+        STATUS_INDICATOR: [
+            '.status-indicator'
+        ]
+    },
+    
+    // ========================================
+    // Genspark セレクタ（特殊なAI）
+    // ========================================
+    Genspark: {
+        // 停止ボタン
+        STOP_BUTTON: [
+            '.enter-icon-wrapper[class*="bg-[#232425]"]'
+        ],
+        
+        // モデル選択
+        MODEL_BUTTON: [
+            '[data-model]',
+            '.model-selector',
+            'select[name="model"]'
+        ],
+        
+        // メッセージ要素
+        MESSAGE: [
+            '[class*="message"]',
+            '[class*="response"]',
+            'div[role="article"]'
+        ],
+        
+        // ボタン全般
+        ALL_BUTTONS: [
+            'button',
+            '[role="button"]'
+        ],
+        
+        // 入力欄
+        INPUT: [
+            'textarea',
+            'input',
+            '[contenteditable="true"]'
+        ],
+        
+        // 全要素（診断用）
+        ALL_ELEMENTS: [
+            '*'
         ]
     }
 };

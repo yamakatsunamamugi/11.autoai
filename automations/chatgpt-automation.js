@@ -1,15 +1,30 @@
-// ============================================
-// ChatGPT自動化関数 - 統合テスト版
-// 元のテストコードをベースに統合テスト用に調整
-// ============================================
+/**
+ * @fileoverview ChatGPT自動化関数 - 統合テスト版
+ * 
+ * 【役割】
+ * ChatGPT専用の自動化処理を提供
+ * 
+ * 【主要機能】
+ * - ChatGPT固有のモデル選択（GPT-5、Fast、Thinking、Proなど）
+ * - ChatGPT固有の機能選択（エージェントモード、Deep Research、Canvasなど）
+ * - サブメニュー対応（"その他のモデル"、"さらに表示"）
+ * 
+ * 【依存関係】
+ * - common-ai-handler.js: window.AIHandlerを使用
+ * - ui-selectors.js: ChatGPT用セレクタを使用
+ * 
+ * 【グローバル公開】
+ * window.ChatGPTAutomation: コンソールから直接呼び出し可能
+ */
 (() => {
     "use strict";
 
     console.log('%cChatGPT自動化関数 - 統合テスト版', 'color: #00BCD4; font-weight: bold; font-size: 16px');
+    console.log('【使用】common-ai-handler.jsのwindow.AIHandlerを使用');
     
-    // AIHandlerを使用
+    // common-ai-handler.jsのAIHandlerを使用
     const useAIHandler = window.AIHandler;
-    let menuHandler = null;  // AIHandlerのメニューハンドラーインスタンス
+    let menuHandler = null;  // AIHandlerのメニューハンドラーインスタンス（common-ai-handler.jsのMenuHandlerクラス）
 
     // ============================================
     // CONFIG部分
@@ -171,9 +186,18 @@
         
         while (Date.now() - startTime < maxWait) {
             // Radix UIのポッパーを優先的に探す
-            const poppers = document.querySelectorAll('[data-radix-popper-content-wrapper]');
+            const popperSelectors = window.AIHandler?.getSelectors?.('ChatGPT', 'POPPER_CONTAINER') || ['[data-radix-popper-content-wrapper]'];
+            let poppers = [];
+            for (const selector of popperSelectors) {
+                poppers.push(...document.querySelectorAll(selector));
+            }
             for (const popper of poppers) {
-                const menu = popper.querySelector('[role="menu"]');
+                const menuSelectors = window.AIHandler?.getSelectors?.('ChatGPT', 'MENU') || ['[role="menu"]'];
+                let menu = null;
+                for (const selector of menuSelectors) {
+                    menu = popper.querySelector(selector);
+                    if (menu) break;
+                }
                 if (menu && menu.offsetParent !== null) {
                     const items = menu.querySelectorAll('[role="menuitem"], [role="menuitemradio"]');
                     if (items.length > 0) {
@@ -224,14 +248,22 @@
         await wait(800); // 800ms待機（成功実績のある待機時間）
         
         // サブメニューが開いたか確認
-        const allMenus = document.querySelectorAll('[role="menu"]');
+        const menuSelectors = window.AIHandler?.getSelectors?.('ChatGPT', 'MENU') || ['[role="menu"]'];
+        let allMenus = [];
+        for (const selector of menuSelectors) {
+            allMenus.push(...document.querySelectorAll(selector));
+        }
         if (allMenus.length > 1) {
             debugLog('✅ ホバーでサブメニューが開きました');
             return allMenus[allMenus.length - 1];
         }
         
         // Radix UIポッパーも確認
-        const poppers = document.querySelectorAll('[data-radix-popper-content-wrapper]');
+        const popperSelectors = window.AIHandler?.getSelectors?.('ChatGPT', 'POPPER_CONTAINER') || ['[data-radix-popper-content-wrapper]'];
+        let poppers = [];
+        for (const selector of popperSelectors) {
+            poppers.push(...document.querySelectorAll(selector));
+        }
         if (poppers.length > 1) {
             const submenu = poppers[poppers.length - 1].querySelector('[role="menu"]');
             if (submenu) {
@@ -245,13 +277,19 @@
         await performClick(menuItem);
         await wait(800);
         
-        const menusAfterClick = document.querySelectorAll('[role="menu"]');
+        let menusAfterClick = [];
+        for (const selector of menuSelectors) {
+            menusAfterClick.push(...document.querySelectorAll(selector));
+        }
         if (menusAfterClick.length > 1) {
             debugLog('✅ クリックでサブメニューが開きました');
             return menusAfterClick[menusAfterClick.length - 1];
         }
         
-        const poppersAfterClick = document.querySelectorAll('[data-radix-popper-content-wrapper]');
+        let poppersAfterClick = [];
+        for (const selector of popperSelectors) {
+            poppersAfterClick.push(...document.querySelectorAll(selector));
+        }
         if (poppersAfterClick.length > 1) {
             const submenu = poppersAfterClick[poppersAfterClick.length - 1].querySelector('[role="menu"]');
             if (submenu) {
@@ -961,7 +999,7 @@
         log('テキストを送信します...', 'info');
         
         try {
-            const sendButtonSelectors = window.DeepResearchHandler?.getSelectors?.('ChatGPT', 'SEND_BUTTON');
+            const sendButtonSelectors = window.AIHandler?.getSelectors?.('ChatGPT', 'SEND_BUTTON');
             
             if (!sendButtonSelectors || sendButtonSelectors.length === 0) {
                 log('送信ボタンセレクタが取得できません', 'error');
@@ -1029,7 +1067,7 @@
             
             // 停止ボタンの存在を確認（生成中の判定）
             // UI_SELECTORSから取得（フォールバックあり）
-            const stopButtonSelectors = window.DeepResearchHandler?.getSelectors?.('ChatGPT', 'STOP_BUTTON') || [
+            const stopButtonSelectors = window.AIHandler?.getSelectors?.('ChatGPT', 'STOP_BUTTON') || [
                 '[data-testid="stop-button"]',
                 '[aria-label="ストリーミングの停止"]',
                 '#composer-submit-button[aria-label*="停止"]',
@@ -1159,7 +1197,11 @@
         const startTime = Date.now();
         
         // 初期メッセージ数を取得
-        const initialMessages = document.querySelectorAll('[data-message-author-role="assistant"]');
+        const responseSelectors = window.AIHandler?.getSelectors?.('ChatGPT', 'RESPONSE') || ['[data-message-author-role="assistant"]'];
+        let initialMessages = [];
+        for (const selector of responseSelectors) {
+            initialMessages.push(...document.querySelectorAll(selector));
+        }
         let lastMessageCount = initialMessages.length;
         let hasQuestionReceived = false;
         
@@ -1170,11 +1212,19 @@
         while (Date.now() - startTime < fiveMinutes) {
             try {
                 // 現在のメッセージ数をチェック
-                const currentMessages = document.querySelectorAll('[data-message-author-role="assistant"]');
+                let currentMessages = [];
+                for (const selector of responseSelectors) {
+                    currentMessages.push(...document.querySelectorAll(selector));
+                }
                 const currentMessageCount = currentMessages.length;
                 
                 // 停止ボタンの状態をチェック
-                const stopButton = document.querySelector('[aria-label="Stop generating"]');
+                const stopButtonSelectors = window.AIHandler?.getSelectors?.('ChatGPT', 'STOP_BUTTON') || ['[aria-label="Stop generating"]'];
+                let stopButton = null;
+                for (const selector of stopButtonSelectors) {
+                    stopButton = document.querySelector(selector);
+                    if (stopButton) break;
+                }
                 
                 // 新しいメッセージが追加され、かつ停止ボタンが消えた場合
                 if (currentMessageCount > lastMessageCount && !stopButton && !hasQuestionReceived) {
@@ -1183,7 +1233,8 @@
                     lastMessageCount = currentMessageCount;
                     
                     // 「プロンプトを見て調べて」と返信
-                    const inputField = await findElement(['#prompt-textarea', '[contenteditable="true"]']);
+                    const inputSelectors = window.AIHandler?.getSelectors?.('ChatGPT', 'INPUT') || [];
+                    const inputField = await findElement(inputSelectors);
                     if (inputField) {
                         inputField.focus();
                         await wait(500);
@@ -1232,10 +1283,18 @@
         log('DeepResearch処理の完了を待機中...', 'info');
         while (Date.now() - startTime < maxWaitMinutes * 60 * 1000) {
             try {
-                const stopButton = document.querySelector('[aria-label="Stop generating"]');
+                let stopButton = null;
+                for (const selector of stopButtonSelectors) {
+                    stopButton = document.querySelector(selector);
+                    if (stopButton) break;
+                }
                 if (!stopButton) {
                     await wait(3000);
-                    const finalStopCheck = document.querySelector('[aria-label="Stop generating"]');
+                    let finalStopCheck = null;
+                    for (const selector of stopButtonSelectors) {
+                        finalStopCheck = document.querySelector(selector);
+                        if (finalStopCheck) break;
+                    }
                     if (!finalStopCheck) {
                         log('DeepResearch完了を検出', 'success');
                         return true;

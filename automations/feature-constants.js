@@ -1,5 +1,22 @@
-// AI機能名の定数定義モジュール
-// 全AI共通で使用する機能名を統一管理
+/**
+ * @fileoverview AI機能名の定数定義モジュール
+ * 
+ * 【役割】
+ * 全AI共通で使用する機能名を統一管理
+ * 
+ * 【主要機能】
+ * - 機能名の定数定義（DeepResearch、Thinking、WebSearch、Canvasなど）
+ * - 機能判定関数（isDeepResearch、isThinkingなど）
+ * - 機能名の正規化（レガシー名から正規名への変換）
+ * - AI別の機能名マッピング
+ * 
+ * 【使用者】
+ * - 各AI個別ファイル: 機能判定や正規化に使用
+ * - deepresearch-handler.js: DeepResearch判定に使用
+ * 
+ * 【グローバル公開】
+ * window.FeatureConstants: コンソールから直接呼び出し可能
+ */
 (() => {
     'use strict';
 

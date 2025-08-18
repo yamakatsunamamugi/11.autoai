@@ -1,15 +1,34 @@
-// Claude自動化関数 - 動的検索対応版
+/**
+ * @fileoverview Claude自動化関数 - 動的検索対応版
+ * 
+ * 【役割】
+ * Claude専用の自動化処理を提供
+ * 
+ * 【主要機能】
+ * - Claude固有のモデル選択（Opus 4.1、Sonnet 4、Haiku 3.5など）
+ * - Claude固有の機能選択（じっくり考える、ウェブ検索、Drive検索など）
+ * - モデル名・機能名のエイリアス対応（略称やタイポに対応）
+ * - Canvas機能のテキスト取得
+ * 
+ * 【依存関係】
+ * - common-ai-handler.js: window.AIHandlerを使用
+ * - ui-selectors.js: Claude用セレクタを使用
+ * - claude-deepresearch-selector.js: DeepResearch選択ロジック
+ * 
+ * 【グローバル公開】
+ * window.ClaudeAutomation: コンソールから直接呼び出し可能
+ */
 (() => {
   "use strict";
 
-  // AIHandlerを使用
-  const useAIHandler = window.AIHandler;
+  // common-ai-handler.jsのAIHandlerを使用
+  const useAIHandler = window.AIHandler;  // common-ai-handler.jsによって提供される
   
   // ========================================
   // グローバル変数
   // ========================================
   let sendStartTime = null;  // 送信開始時刻を記録
-  let menuHandler = null;  // AIHandlerのメニューハンドラーインスタンス
+  let menuHandler = null;  // common-ai-handler.jsのMenuHandlerインスタンス
 
   // ========================================
   // 設定
@@ -458,7 +477,11 @@
       await wait(CONFIG.DELAYS.menuOpen);
 
       // モデルメニューが開いたか確認
-      const modelOptions = document.querySelectorAll('[role="option"], [role="menuitem"]');
+      const menuItemSelectors = window.AIHandler?.getSelectors?.('Claude', 'MENU_ITEM') || ['[role="option"]', '[role="menuitem"]'];
+      let modelOptions = [];
+      for (const selector of menuItemSelectors) {
+        modelOptions.push(...document.querySelectorAll(selector));
+      }
       const models = [];
 
       for (const option of modelOptions) {
@@ -597,7 +620,7 @@
   async function sendMessage() {
     log('メッセージを送信中...', 'INFO');
 
-    const submitButtonSelectors = window.DeepResearchHandler?.getSelectors?.('Claude', 'SEND_BUTTON');
+    const submitButtonSelectors = window.AIHandler?.getSelectors?.('Claude', 'SEND_BUTTON');
     
     if (!submitButtonSelectors || submitButtonSelectors.length === 0) {
       log('送信ボタンセレクタが取得できません', 'ERROR');
@@ -625,7 +648,12 @@
     let lastProgressTime = startTime;
 
     while (Date.now() - startTime < maxWaitTime) {
-      const stopButton = document.querySelector('[aria-label="応答を停止"]');
+      const stopButtonSelectors = window.AIHandler?.getSelectors?.('Claude', 'STOP_BUTTON') || ['[aria-label="応答を停止"]'];
+      let stopButton = null;
+      for (const selector of stopButtonSelectors) {
+        stopButton = document.querySelector(selector);
+        if (stopButton) break;
+      }
 
       if (!stopButton) {
         // 経過時間を計算（送信時刻から）
@@ -656,17 +684,37 @@
   // Canvas（アーティファクト）コンテンツを取得
   async function getCanvasContent(expandIfNeeded = true) {
     // 既に展開されているCanvasを探す
-    let canvas = document.querySelector('.grid-cols-1.grid h1')?.closest('.grid-cols-1.grid');
+    const canvasSelectors = window.AIHandler?.getSelectors?.('Claude', 'CANVAS') || { CONTAINER: ['.grid-cols-1.grid h1', '.grid-cols-1.grid'] };
+    const containerSelectors = canvasSelectors.CONTAINER || ['.grid-cols-1.grid h1', '.grid-cols-1.grid'];
+    let canvas = null;
+    for (const selector of containerSelectors) {
+      const element = document.querySelector(selector);
+      if (element) {
+        canvas = selector.includes('h1') ? element.closest('.grid-cols-1.grid') : element;
+        if (canvas) break;
+      }
+    }
     
     if (!canvas && expandIfNeeded) {
       // プレビューボタンを探して展開
-      const previewButton = document.querySelector('button[aria-label="内容をプレビュー"]');
+      const previewButtonSelectors = window.AIHandler?.getSelectors?.('Claude', 'PREVIEW_BUTTON') || ['button[aria-label="内容をプレビュー"]'];
+      let previewButton = null;
+      for (const selector of previewButtonSelectors) {
+        previewButton = document.querySelector(selector);
+        if (previewButton) break;
+      }
       
       if (previewButton) {
         log('Canvasを展開中...', 'INFO');
         previewButton.click();
         await wait(1000);
-        canvas = document.querySelector('.grid-cols-1.grid h1')?.closest('.grid-cols-1.grid');
+        for (const selector of containerSelectors) {
+          const element = document.querySelector(selector);
+          if (element) {
+            canvas = selector.includes('h1') ? element.closest('.grid-cols-1.grid') : element;
+            if (canvas) break;
+          }
+        }
       }
     }
     
@@ -685,7 +733,12 @@
     }
     
     // プレビューテキストから取得（フォールバック）
-    const previewElement = document.querySelector('.absolute.inset-0');
+    const previewSelectors = canvasSelectors.PREVIEW_TEXT || ['.absolute.inset-0'];
+    let previewElement = null;
+    for (const selector of previewSelectors) {
+      previewElement = document.querySelector(selector);
+      if (previewElement) break;
+    }
     if (previewElement) {
       const text = previewElement.textContent?.trim();
       if (text && text.length > 100) {
@@ -799,10 +852,19 @@
     // 停止ボタンの消失を待つシンプルな実装
     while (Date.now() - startTime < maxWaitMinutes * 60 * 1000) {
       try {
-        const stopButton = document.querySelector('[aria-label="応答を停止"]');
+        const stopButtonSelectors = window.AIHandler?.getSelectors?.('Claude', 'STOP_BUTTON') || ['[aria-label="応答を停止"]'];
+        let stopButton = null;
+        for (const selector of stopButtonSelectors) {
+          stopButton = document.querySelector(selector);
+          if (stopButton) break;
+        }
         if (!stopButton) {
           await wait(3000);
-          const finalStopCheck = document.querySelector('[aria-label="応答を停止"]');
+          let finalStopCheck = null;
+          for (const selector of stopButtonSelectors) {
+            finalStopCheck = document.querySelector(selector);
+            if (finalStopCheck) break;
+          }
           if (!finalStopCheck) {
             log('Claude DeepResearch完了を検出', 'SUCCESS');
             return true;

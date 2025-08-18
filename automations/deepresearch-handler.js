@@ -1,5 +1,25 @@
-// DeepResearch専用ハンドラー
-// 全AIのDeepResearch機能を統一管理
+/**
+ * @fileoverview DeepResearch専用ハンドラー
+ * 
+ * 【役割】
+ * 全AIのDeepResearch機能を統一管理する専用ハンドラー
+ * 
+ * 【主要機能】
+ * - DeepResearch機能の自動判定と実行
+ * - ChatGPT/Claude: 確認ダイアログへの自動返信
+ * - Gemini: 「リサーチを開始」ボタンの自動クリック
+ * - DeepResearch実行後の応答待機
+ * 
+ * 【依存関係】
+ * - ui-selectors.js: DeepResearch用セレクタを使用
+ * - claude-deepresearch-selector.js: ClaudeのDeepResearch選択ロジック
+ * 
+ * 【使用者】
+ * - 各AI個別ファイル: DeepResearch機能が選択された際に呼び出される
+ * 
+ * 【グローバル公開】
+ * window.DeepResearchHandler: コンソールから直接呼び出し可能
+ */
 (() => {
     "use strict";
 
@@ -185,14 +205,24 @@
                         let researchButton = null;
                         
                         // 方法1: 両方の属性を持つボタン（最も確実）
-                        researchButton = document.querySelector('button[data-test-id="confirm-button"][aria-label="リサーチを開始"]');
+                        const researchSelectors1 = window.AIHandler?.getSelectors?.('Gemini', 'DEEP_RESEARCH') || [{ BUTTON: ['button[data-test-id="confirm-button"][aria-label="リサーチを開始"]'] }];
+                        const selectors1 = researchSelectors1[0]?.BUTTON || ['button[data-test-id="confirm-button"][aria-label="リサーチを開始"]'];
+                        for (const selector of selectors1) {
+                            researchButton = document.querySelector(selector);
+                            if (researchButton) break;
+                        }
                         if (researchButton) {
                             log('✅ 方法1で発見: data-test-id + aria-label', 'SUCCESS', aiName);
                         }
                         
                         // 方法2: aria-labelのみ
                         if (!researchButton) {
-                            researchButton = document.querySelector('button[aria-label="リサーチを開始"]');
+                            const researchSelectors2 = window.AIHandler?.getSelectors?.('Gemini', 'DEEP_RESEARCH') || [{ BUTTON: ['button[aria-label="リサーチを開始"]'] }];
+                            const selectors2 = researchSelectors2[0]?.BUTTON || ['button[aria-label="リサーチを開始"]'];
+                            for (const selector of selectors2) {
+                                researchButton = document.querySelector(selector);
+                                if (researchButton) break;
+                            }
                             if (researchButton) {
                                 log('✅ 方法2で発見: aria-labelのみ', 'SUCCESS', aiName);
                             }

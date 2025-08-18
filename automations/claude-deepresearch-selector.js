@@ -80,7 +80,11 @@
         // それでも見つからない場合は、aria-pressed属性を持つSVGボタンを探す
         if (!researchButton) {
             // ウェブ検索を有効にした後に出現するaria-pressedボタンを探す
-            const allPressButtons = Array.from(document.querySelectorAll('button[aria-pressed]'));
+            const deepResearchSelectors = window.AIHandler?.getSelectors?.('Claude', 'DEEP_RESEARCH_BUTTON') || ['button[aria-pressed]'];
+            let allPressButtons = [];
+            for (const selector of deepResearchSelectors) {
+                allPressButtons.push(...document.querySelectorAll(selector));
+            }
             
             // 機能メニュー外（入力フィールド近く）にあるボタンを探す
             researchButton = allPressButtons.find(button => {
