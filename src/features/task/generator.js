@@ -5,20 +5,22 @@ import { AnswerFilter } from "./filters/index.js";
 import SimpleColumnControl from "./column-control-simple.js";
 import StreamProcessor from "./stream-processor.js";
 import ReportTaskFactory from "../report/report-task-factory.js";
+import { getDynamicConfigManager } from "../../core/dynamic-config-manager.js";
 
 class TaskGenerator {
   constructor() {
     this.answerFilter = new AnswerFilter();
     this.streamProcessor = new StreamProcessor();
     this.reportTaskFactory = new ReportTaskFactory();
+    this.dynamicConfigManager = getDynamicConfigManager();
   }
 
   /**
    * タスクを生成
    * @param {Object} spreadsheetData - スプレッドシートデータ
-   * @returns {TaskList} タスクリスト
+   * @returns {Promise<TaskList>} タスクリスト
    */
-  generateTasks(spreadsheetData) {
+  async generateTasks(spreadsheetData) {
     console.log("[TaskGenerator] タスク生成開始");
     console.log("[TaskGenerator] 受信したデータ:", {
       aiColumns: spreadsheetData.aiColumns,
@@ -84,7 +86,7 @@ class TaskGenerator {
       SimpleColumnControl.debugPrint(columnGroup, controls.columnControls);
 
       // タスクを生成
-      const tasks = this.generateTasksForGroup(
+      const tasks = await this.generateTasksForGroup(
         columnGroup,
         controls.columnControls,
         controls.rowControls,
@@ -125,7 +127,7 @@ class TaskGenerator {
     console.log("[TaskGenerator] タスク生成・実行開始（ストリーミング）");
 
     // タスクを生成
-    const taskList = this.generateTasks(spreadsheetData);
+    const taskList = await this.generateTasks(spreadsheetData);
 
     if (taskList.tasks.length === 0) {
       console.log("[TaskGenerator] 実行可能なタスクがありません");
@@ -169,9 +171,9 @@ class TaskGenerator {
    * @param {Array} columnControls - 列制御情報
    * @param {Array} rowControls - 行制御情報
    * @param {Object} spreadsheetData - スプレッドシートデータ
-   * @returns {Array} タスクの配列
+   * @returns {Promise<Array>} タスクの配列
    */
-  generateTasksForGroup(
+  async generateTasksForGroup(
     columnGroup,
     columnControls,
     rowControls,
@@ -180,7 +182,7 @@ class TaskGenerator {
     const tasks = [];
     
     // AIタスクの生成
-    const aiTasks = this.generateAITasksForGroup(
+    const aiTasks = await this.generateAITasksForGroup(
       columnGroup,
       columnControls,
       rowControls,
@@ -207,7 +209,7 @@ class TaskGenerator {
    * AIタスクを生成
    * @private
    */
-  generateAITasksForGroup(
+  async generateAITasksForGroup(
     columnGroup,
     columnControls,
     rowControls,
@@ -318,7 +320,7 @@ class TaskGenerator {
 
         // AIタスクを作成（連結されたプロンプトを使用）
         const aiType = columnGroup.aiMapping[answerColumn];
-        const task = this.createTask(
+        const task = await this.createTask(
           columnGroup.promptColumn,
           answerColumn,
           workRow.number,
@@ -349,7 +351,7 @@ class TaskGenerator {
   /**
    * タスクを作成
    */
-  createTask(
+  async createTask(
     promptColumn,
     answerColumn,
     rowNumber,
@@ -433,6 +435,38 @@ class TaskGenerator {
       normalizedAiType = columnGroup.aiMapping?.[answerColumn] || "chatgpt";
     }
 
+    // 🔥 UIからの動的モデル・機能取得を追加（テスト環境と同様）
+    let dynamicModel = null;
+    let dynamicOperation = null;
+    
+    try {
+      // DynamicConfigManagerからUI選択値を取得（非同期）
+      const dynamicConfig = await this.dynamicConfigManager.getAIConfig(normalizedAiType);
+      if (dynamicConfig && dynamicConfig.enabled) {
+        dynamicModel = dynamicConfig.model;
+        dynamicOperation = dynamicConfig.function;
+        
+        console.log(`[TaskGenerator] 🎯 UI動的設定取得: ${normalizedAiType}`, {
+          model: dynamicModel || '未設定',
+          function: dynamicOperation || '未設定'
+        });
+      } else {
+        console.log(`[TaskGenerator] UI動的設定なし: ${normalizedAiType}`);
+      }
+    } catch (error) {
+      console.warn(`[TaskGenerator] UI動的設定取得エラー: ${error.message}`);
+    }
+    
+    // 優先度: UI動的選択 > スプレッドシート静的値
+    const finalModel = dynamicModel || extractedModel;
+    const finalOperation = dynamicOperation || extractedOperation;
+    
+    console.log(`[TaskGenerator] 📋 最終設定決定: ${normalizedAiType}`, {
+      model: finalModel ? `${finalModel} (${dynamicModel ? 'UI' : 'Sheet'})` : 'デフォルト',
+      function: finalOperation ? `${finalOperation} (${dynamicOperation ? 'UI' : 'Sheet'})` : 'デフォルト',
+      source: dynamicModel || dynamicOperation ? '動的UI優先' : 'スプレッドシート'
+    });
+
     const taskData = {
       id: this.generateTaskId(answerColumn, rowNumber),
       column: answerColumn,
@@ -460,9 +494,9 @@ class TaskGenerator {
 
       multiAI: columnGroup.type === "3type",
 
-      // モデル・機能（nullの場合は未定義にする）
-      ...(extractedModel && { model: extractedModel }),
-      ...(extractedOperation && { specialOperation: extractedOperation }),
+      // モデル・機能（UI優先、フォールバックでスプレッドシート値）
+      ...(finalModel && { model: finalModel }),
+      ...(finalOperation && { specialOperation: finalOperation }),
     };
 
     // 3種類AIの場合の追加情報
@@ -564,8 +598,11 @@ class TaskGenerator {
       rowNumber
     ) || "";
     
-    // モデル情報を取得（必要に応じて）
+    // 🔥 UIからの動的モデル取得（レポートタスクでも適用）
     let extractedModel = null;
+    let dynamicModel = null;
+    
+    // まずスプレッドシートから取得（フォールバック用）
     if (spreadsheetData.modelRow && spreadsheetData.values) {
       const modelRowIndex = spreadsheetData.modelRow.index;
       const modelColumnIndex = this.getColumnIndex(sourceColumn);
@@ -576,6 +613,20 @@ class TaskGenerator {
         }
       }
     }
+    
+    // UIから動的に取得（優先）
+    try {
+      const dynamicConfig = this.dynamicConfigManager.getAIConfig(normalizedAiType);
+      if (dynamicConfig && dynamicConfig.enabled) {
+        dynamicModel = dynamicConfig.model;
+        console.log(`[TaskGenerator] レポートタスクでUI動的モデル取得: ${normalizedAiType} -> ${dynamicModel || '未設定'}`);
+      }
+    } catch (error) {
+      console.warn(`[TaskGenerator] レポートタスクのUI動的設定取得エラー: ${error.message}`);
+    }
+    
+    // 優先度: UI動的選択 > スプレッドシート静的値
+    const finalModel = dynamicModel || extractedModel;
     
     const taskData = {
       id: this.generateTaskId(reportColumn, rowNumber),
@@ -604,8 +655,8 @@ class TaskGenerator {
         columns: [], // 互換性のため空配列を設定
       },
       
-      // モデル情報（取得できた場合）
-      ...(extractedModel && { model: extractedModel }),
+      // モデル情報（UI優先、フォールバックでスプレッドシート値）
+      ...(finalModel && { model: finalModel }),
       
       // メタデータ（追加情報）
       metadata: {

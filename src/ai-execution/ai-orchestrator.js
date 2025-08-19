@@ -195,6 +195,44 @@
   };
 
   /**
+   * UI設定をchrome.storageに保存
+   * モデルと機能の選択状態を保存して、本番実行時に使用できるようにします。
+   */
+  function saveUIConfigToStorage() {
+    const config = {
+      claude: {
+        enabled: document.getElementById('enable-claude')?.checked || false,
+        model: document.getElementById('claude-model')?.value || '',
+        function: document.getElementById('claude-feature')?.value || '',
+        prompt: document.getElementById('claude-prompt')?.value || '',
+      },
+      chatgpt: {
+        enabled: document.getElementById('enable-chatgpt')?.checked || false,
+        model: document.getElementById('chatgpt-model')?.value || '',
+        function: document.getElementById('chatgpt-feature')?.value || '',
+        prompt: document.getElementById('chatgpt-prompt')?.value || '',
+      },
+      gemini: {
+        enabled: document.getElementById('enable-gemini')?.checked || false,
+        model: document.getElementById('gemini-model')?.value || '',
+        function: document.getElementById('gemini-feature')?.value || '',
+        prompt: document.getElementById('gemini-prompt')?.value || '',
+      },
+      genspark: {
+        enabled: document.getElementById('enable-genspark')?.checked || false,
+        model: document.getElementById('genspark-model')?.value || '',
+        function: document.getElementById('genspark-feature')?.value || '',
+        prompt: document.getElementById('genspark-prompt')?.value || '',
+      },
+    };
+    
+    // chrome.storageに保存
+    chrome.storage.local.set({ dynamicAIConfig: config }, () => {
+      console.log('[AI Orchestrator] UI設定をchrome.storageに保存:', config);
+    });
+  }
+
+  /**
    * カスタムドロップダウンUIのイベントハンドラーを設定
    * クリック、ホバー、選択などのユーザーインタラクションを管理します。
    * 
@@ -271,6 +309,9 @@
         if (input && value) {
           input.value = value;
           menu.style.display = 'none';
+          
+          // プロンプト変更時もchrome.storageに保存
+          saveUIConfigToStorage();
           
           // 入力イベントを発火（他の処理があれば動作させる）
           const event = new Event('input', { bubbles: true });
@@ -695,6 +736,34 @@
       PromptManager.updateDropdownMenu(aiType);
     });
     
+    // モデルと機能の変更時にchrome.storageに保存
+    document.querySelectorAll('select[id$="-model"], select[id$="-feature"]').forEach(select => {
+      select.addEventListener('change', () => {
+        saveUIConfigToStorage();
+        console.log(`[AI Orchestrator] ${select.id}の値が変更されました: ${select.value}`);
+      });
+    });
+    
+    // チェックボックスの変更時にも保存
+    document.querySelectorAll('input[type="checkbox"][id^="enable-"]').forEach(checkbox => {
+      checkbox.addEventListener('change', () => {
+        saveUIConfigToStorage();
+        console.log(`[AI Orchestrator] ${checkbox.id}の状態が変更されました: ${checkbox.checked}`);
+      });
+    });
+    
+    // プロンプト入力欄の変更も監視
+    document.querySelectorAll('input[id$="-prompt"]').forEach(input => {
+      input.addEventListener('input', () => {
+        // デバウンス処理（頻繁な保存を避ける）
+        clearTimeout(input.saveTimer);
+        input.saveTimer = setTimeout(() => {
+          saveUIConfigToStorage();
+          console.log(`[AI Orchestrator] ${input.id}の値が変更されました`);
+        }, 500);
+      });
+    });
+    
     // デフォルトプロンプトの設定（タスクリストモードでない場合のみ）
     if (executionMode !== 'tasklist') {
       const promptFields = [
@@ -719,6 +788,9 @@
     window.consecutiveTestStates = consecutiveTestStates;
     window.executeConsecutiveTest = executeConsecutiveTest;
     window.executeWithTaskList = executeWithTaskList;
+    
+    // 初回のUI設定をchrome.storageに保存
+    saveUIConfigToStorage();
     
     // 実行ボタンのイベントリスナーを追加
     const btnRunAll = document.getElementById('btn-run-all');

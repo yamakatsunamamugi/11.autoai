@@ -80,19 +80,25 @@
           <h2>スプレッドシートを設定 & 処理実行</h2>
         </div>
         <div class="step-content">
-          <!-- スプレッドシートURL入力（プルダウン付きテキスト入力） -->
+          <!-- スプレッドシートURL入力（複数対応） -->
           <div class="spreadsheet-input-section">
-            <label for="spreadsheetInput" style="display: block; margin-bottom: 8px; font-weight: 600;">スプレッドシートURL:</label>
-            <div style="position: relative;">
-              <input type="text" id="spreadsheetInput" list="spreadsheetList" 
-                     placeholder="URLを入力または選択してください" 
-                     style="width: 100%; padding: 10px 35px 10px 10px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 6px;">
-              <button id="quickSaveBtn" class="btn btn-icon-only" style="position: absolute; right: 5px; top: 50%; transform: translateY(-50%); width: 30px; height: 30px; padding: 0; border-radius: 4px; background: #28a745; color: white; border: none; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center;" title="URLを保存">
-                <span>+</span>
-              </button>
-              <datalist id="spreadsheetList">
-                <!-- 保存済みURLがここに動的に追加される -->
-              </datalist>
+            <label style="display: block; margin-bottom: 8px; font-weight: 600;">スプレッドシートURL:</label>
+            <div id="url-inputs-container">
+              <!-- 最初の入力欄 -->
+              <div class="url-input-row" data-index="0" style="display: flex; gap: 5px; margin-bottom: 10px;">
+                <input type="text" class="spreadsheet-url-input" 
+                       placeholder="URLを入力してください" 
+                       style="flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+                <button class="btn btn-icon-only add-url-btn" style="width: 40px; height: 40px; padding: 0; border-radius: 4px; background: #28a745; color: white; border: none; cursor: pointer; font-size: 20px;" title="入力欄を追加">
+                  <span>+</span>
+                </button>
+                <button class="btn btn-icon-only save-url-btn" style="width: 40px; height: 40px; padding: 0; border-radius: 4px; background: #007bff; color: white; border: none; cursor: pointer;" title="URLを保存">
+                  <span>💾</span>
+                </button>
+                <button class="btn btn-icon-only open-url-btn" style="width: 40px; height: 40px; padding: 0; border-radius: 4px; background: #6c757d; color: white; border: none; cursor: pointer;" title="保存済みURLを開く">
+                  <span>📂</span>
+                </button>
+              </div>
             </div>
             
             <div class="url-actions" style="margin-bottom: 15px;">
@@ -118,19 +124,26 @@
               </button>
             </div>
             
-            <!-- 保存時の名前入力（初期は非表示） -->
-            <div id="saveNameSection" style="display: none; margin-bottom: 10px; padding: 10px; background: #f5f5f5; border-radius: 6px;">
-              <label style="display: block; margin-bottom: 5px; font-size: 12px; color: #666;">保存名を入力:</label>
-              <div style="display: flex; gap: 5px;">
-                <input type="text" id="saveNameInput" placeholder="名前を入力" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
-                <button id="confirmSaveBtn" class="btn btn-primary" style="padding: 8px 12px;">
-                  <span class="btn-icon">✓</span>
-                  保存
-                </button>
-                <button id="cancelSaveBtn" class="btn btn-secondary" style="padding: 8px 12px;">
-                  <span class="btn-icon">❌</span>
-                  キャンセル
-                </button>
+            <!-- 保存ダイアログ（モーダル風） -->
+            <div id="saveUrlDialog" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1), 0 0 0 9999px rgba(0,0,0,0.5); z-index: 9999; min-width: 300px;">
+              <h3 style="margin-top: 0;">URLを保存</h3>
+              <label style="display: block; margin-bottom: 5px; font-size: 14px;">タイトル:</label>
+              <input type="text" id="saveUrlTitle" placeholder="タイトルを入力" style="width: 100%; padding: 8px; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 4px;">
+              <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button id="confirmSaveUrlBtn" class="btn btn-primary">保存</button>
+                <button id="cancelSaveUrlBtn" class="btn btn-secondary">キャンセル</button>
+              </div>
+            </div>
+            
+            <!-- 保存済みURL選択ダイアログ -->
+            <div id="openUrlDialog" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1), 0 0 0 9999px rgba(0,0,0,0.5); z-index: 9999; min-width: 400px; max-height: 400px;">
+              <h3 style="margin-top: 0;">保存済みURLを選択</h3>
+              <div id="savedUrlsList" style="max-height: 300px; overflow-y: auto; margin-bottom: 15px;">
+                <!-- 保存済みURLリストがここに表示される -->
+              </div>
+              <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button id="confirmOpenUrlBtn" class="btn btn-primary">開く</button>
+                <button id="cancelOpenUrlBtn" class="btn btn-secondary">キャンセル</button>
               </div>
             </div>
           </div>

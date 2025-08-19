@@ -21,17 +21,37 @@ export class DynamicConfigManager {
 
   /**
    * テスト設定を動的に取得（test-runner-chrome.jsから移植）
-   * UIの現在値を直接読み取り
-   * @returns {Object} AI設定オブジェクト
+   * UIの現在値を直接読み取り、またはchrome.storageから取得
+   * @returns {Object|Promise<Object>} AI設定オブジェクト
    */
-  getTestConfig() {
-    // プロンプトをテキストボックスから直接取得
+  async getTestConfig() {
+    // Service Worker環境の場合はchrome.storageから取得
+    if (typeof document === 'undefined') {
+      try {
+        const result = await chrome.storage.local.get('dynamicAIConfig');
+        if (result.dynamicAIConfig) {
+          console.log('[DynamicConfigManager] chrome.storageから設定取得:', result.dynamicAIConfig);
+          return result.dynamicAIConfig;
+        }
+      } catch (error) {
+        console.warn('[DynamicConfigManager] chrome.storage取得エラー:', error);
+      }
+      // デフォルト値を返す
+      return {
+        claude: { enabled: false, model: '', function: '', prompt: '' },
+        chatgpt: { enabled: false, model: '', function: '', prompt: '' },
+        gemini: { enabled: false, model: '', function: '', prompt: '' },
+        genspark: { enabled: false, model: '', function: '', prompt: '' }
+      };
+    }
+    
+    // ブラウザ環境の場合は従来通りdocumentから取得
     const getPrompt = (aiName) => {
       const inputElement = document.getElementById(`${aiName}-prompt`);
       return inputElement?.value || '';
     };
     
-    return {
+    const config = {
       claude: {
         enabled: document.getElementById('enable-claude')?.checked || false,
         model: document.getElementById('claude-model')?.value || '',
@@ -57,15 +77,25 @@ export class DynamicConfigManager {
         prompt: getPrompt('genspark'),
       },
     };
+    
+    // UIから取得した設定をchrome.storageに保存（他の環境でも使えるように）
+    try {
+      await chrome.storage.local.set({ dynamicAIConfig: config });
+      console.log('[DynamicConfigManager] 設定をchrome.storageに保存');
+    } catch (error) {
+      console.warn('[DynamicConfigManager] chrome.storage保存エラー:', error);
+    }
+    
+    return config;
   }
 
   /**
    * 特定AIの設定を動的取得
    * @param {string} aiType - AI種別
-   * @returns {Object} AI設定
+   * @returns {Promise<Object>} AI設定
    */
-  getAIConfig(aiType) {
-    const config = this.getTestConfig();
+  async getAIConfig(aiType) {
+    const config = await this.getTestConfig();
     return config[aiType.toLowerCase()] || null;
   }
 

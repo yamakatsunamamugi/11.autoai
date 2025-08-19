@@ -33,6 +33,9 @@
  * - 各列グループごとに1つのウィンドウを占有
  * - 列グループの全行完了後、ウィンドウを解放
  */
+// DynamicConfigManagerをインポート
+import { getDynamicConfigManager } from "../../core/dynamic-config-manager.js";
+
 class StreamProcessor {
   constructor(dependencies = {}) {
     // Node.js環境でのテスト用にglobalThisを使用
@@ -42,6 +45,9 @@ class StreamProcessor {
     this.modelManager =
       dependencies.modelManager || globalContext.modelManager;
     this.logger = dependencies.logger || console;
+    
+    // DynamicConfigManagerを初期化
+    this.dynamicConfigManager = getDynamicConfigManager();
 
     // ウィンドウ管理状態
     this.activeWindows = new Map(); // windowId -> windowInfo
@@ -339,6 +345,27 @@ class StreamProcessor {
 
       const tabId = tabs[0].id;
 
+      // 🔥 実行時にUIの最新選択肢を再取得（テスト環境と同様）
+      let finalModel = task.model;
+      let finalOperation = task.specialOperation;
+      
+      try {
+        const dynamicConfig = await this.dynamicConfigManager.getAIConfig(task.aiType);
+        if (dynamicConfig && dynamicConfig.enabled) {
+          // UI選択値が存在する場合は優先使用
+          if (dynamicConfig.model) {
+            finalModel = dynamicConfig.model;
+            this.logger.log(`[StreamProcessor] 🎯 UI動的モデル適用: ${task.aiType} -> ${finalModel}`);
+          }
+          if (dynamicConfig.function) {
+            finalOperation = dynamicConfig.function;
+            this.logger.log(`[StreamProcessor] 🎯 UI動的機能適用: ${task.aiType} -> ${finalOperation}`);
+          }
+        }
+      } catch (error) {
+        this.logger.warn(`[StreamProcessor] UI動的設定取得エラー: ${error.message}`);
+      }
+
       // AITaskHandlerを直接呼び出す（Service Worker内なので）
       // aiTaskHandlerはbackground.jsでimportされているため、globalThisから取得
       const aiTaskHandler = globalThis.aiTaskHandler || (await import('../../handlers/ai-task-handler.js')).aiTaskHandler;
@@ -348,8 +375,8 @@ class StreamProcessor {
         prompt: task.prompt,
         taskId: task.id,
         timeout: 180000,
-        model: task.model,  // タスクで指定されたモデル情報を追加
-        specialOperation: task.specialOperation,  // タスクで指定された機能情報を追加
+        model: finalModel,  // UI優先のモデル情報
+        specialOperation: finalOperation,  // UI優先の機能情報
         aiType: task.aiType  // AI種別も明示的に渡す
       }, null);
 

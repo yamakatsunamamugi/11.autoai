@@ -545,14 +545,15 @@ function renderIntegratedTable(config) {
 }
 
 // ===== DOM要素の取得 =====
-const spreadsheetInput = document.getElementById("spreadsheetInput");
-const spreadsheetList = document.getElementById("spreadsheetList");
-// loadSheetsBtnは削除（startBtnに統合）
-// const loadSheetsBtn = document.getElementById("loadSheetsBtn");
-const saveNameSection = document.getElementById("saveNameSection");
-const saveNameInput = document.getElementById("saveNameInput");
-const confirmSaveBtn = document.getElementById("confirmSaveBtn");
-const cancelSaveBtn = document.getElementById("cancelSaveBtn");
+const urlInputsContainer = document.getElementById("url-inputs-container");
+const saveUrlDialog = document.getElementById("saveUrlDialog");
+const saveUrlTitle = document.getElementById("saveUrlTitle");
+const confirmSaveUrlBtn = document.getElementById("confirmSaveUrlBtn");
+const cancelSaveUrlBtn = document.getElementById("cancelSaveUrlBtn");
+const openUrlDialog = document.getElementById("openUrlDialog");
+const savedUrlsList = document.getElementById("savedUrlsList");
+const confirmOpenUrlBtn = document.getElementById("confirmOpenUrlBtn");
+const cancelOpenUrlBtn = document.getElementById("cancelOpenUrlBtn");
 
 const startBtn = document.getElementById("startBtn");
 const stopBtn = document.getElementById("stopBtn");
@@ -699,12 +700,52 @@ function saveUrls() {
   return;
 }
 
-// ===== URL管理機能 =====
+// ===== 複数URL管理機能 =====
+let urlInputCounter = 1;  // URL入力欄のカウンター
+let currentUrlIndex = 0;  // 現在処理中のURLインデックス
+let savedUrlToInput = null;  // どの入力欄に保存済みURLを設定するか
+
 // デフォルトURL
 const DEFAULT_URL = {
   url: "https://docs.google.com/spreadsheets/d/1C5aOSyyCBXf7HwF-BGGu-cz5jdRwNBaoW4G4ivIRrRg/edit?gid=1633283608#gid=1633283608",
   name: "デフォルトスプレッドシート"
 };
+
+// URL入力欄を追加
+function addUrlInput() {
+  const newRow = document.createElement('div');
+  newRow.className = 'url-input-row';
+  newRow.dataset.index = urlInputCounter;
+  newRow.style.cssText = 'display: flex; gap: 5px; margin-bottom: 10px;';
+  
+  newRow.innerHTML = `
+    <input type="text" class="spreadsheet-url-input" 
+           placeholder="URLを入力してください" 
+           style="flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+    <button class="btn btn-icon-only remove-url-btn" style="width: 40px; height: 40px; padding: 0; border-radius: 4px; background: #dc3545; color: white; border: none; cursor: pointer;" title="削除">
+      <span>−</span>
+    </button>
+    <button class="btn btn-icon-only save-url-btn" style="width: 40px; height: 40px; padding: 0; border-radius: 4px; background: #007bff; color: white; border: none; cursor: pointer;" title="URLを保存">
+      <span>💾</span>
+    </button>
+    <button class="btn btn-icon-only open-url-btn" style="width: 40px; height: 40px; padding: 0; border-radius: 4px; background: #6c757d; color: white; border: none; cursor: pointer;" title="保存済みURLを開く">
+      <span>📂</span>
+    </button>
+  `;
+  
+  urlInputsContainer.appendChild(newRow);
+  urlInputCounter++;
+  
+  // イベントリスナーを追加
+  attachUrlRowEventListeners(newRow);
+}
+
+// URL入力欄を削除
+function removeUrlInput(row) {
+  if (urlInputsContainer.children.length > 1) {
+    row.remove();
+  }
+}
 
 // 保存済みURLリストを読み込み
 function loadSavedUrls() {
@@ -716,20 +757,6 @@ function loadSavedUrls() {
       savedUrls.unshift(DEFAULT_URL);
       chrome.storage.local.set({ savedSpreadsheets: savedUrls });
     }
-    
-    // datalistを更新
-    updateDatalist(savedUrls);
-  });
-}
-
-// datalistを更新
-function updateDatalist(urls) {
-  spreadsheetList.innerHTML = '';
-  urls.forEach((item) => {
-    const option = document.createElement('option');
-    option.value = item.url;
-    option.label = item.name || item.url;
-    spreadsheetList.appendChild(option);
   });
 }
 
