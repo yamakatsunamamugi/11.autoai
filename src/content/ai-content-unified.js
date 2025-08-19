@@ -1853,31 +1853,16 @@ async function getCurrentAIResponse() {
  * @returns {Promise<boolean>} 完了している場合true
  */
 async function isResponseCompleted() {
+  // 統合テストページと同じロジック：停止ボタンの消滅のみで判定
   if (AI_TYPE === "Claude") {
     // Claude専用の応答完了判定
     const stopButton = document.querySelector('button[aria-label="応答を停止"]');
     
-    // 応答要素の存在も確認
-    let hasResponseElement = false;
-    const responseSelectors = [
-      '[data-is-streaming="false"]',
-      '.font-claude-message',
-      'div[class*="font-claude-message"]'
-    ];
-    
-    for (const selector of responseSelectors) {
-      const elements = document.querySelectorAll(selector);
-      if (elements.length > 0) {
-        hasResponseElement = true;
-        break;
-      }
-    }
-    
-    // 停止ボタンが消滅し、かつ応答要素が存在する場合、応答完了
-    const isCompleted = !stopButton && hasResponseElement;
+    // 停止ボタンが消滅した場合、応答完了（応答要素の存在チェックは不要）
+    const isCompleted = !stopButton;
     
     if (isCompleted) {
-      console.log(`[11.autoai][Claude] 応答完了検出: 停止ボタン消失 & 応答要素存在`);
+      console.log(`[11.autoai][Claude] 応答完了検出: 停止ボタン消失`);
     }
     
     return isCompleted;
