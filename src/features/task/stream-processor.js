@@ -1024,9 +1024,10 @@ class StreamProcessor {
         return;
       }
 
-      // 共通スクリプトを含む（ui-selectorsを最初に注入）
+      // 共通スクリプトを含む
+      // 注意: ui-selectors.jsはESモジュールなので、chrome.scripting.executeScriptでは直接注入できない
+      // common-ai-handler.jsがUI_SELECTORSを内部で定義しているので、それを使用
       const scriptsToInject = [
-        'src/config/ui-selectors.js',
         'automations/common-ai-handler.js',
         scriptFile
       ];

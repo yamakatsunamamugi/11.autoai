@@ -57,6 +57,25 @@
         }
       } catch (error) {
         log(`UI_SELECTORSの読み込み失敗: ${error.message}`, 'ERROR');
+        // フォールバック: 基本的なセレクタをインライン定義
+        UI_SELECTORS = {
+          ChatGPT: {
+            INPUT: ['#prompt-textarea', '[contenteditable="true"]', '.ProseMirror'],
+            SEND_BUTTON: ['[data-testid="send-button"]', 'button[data-testid="composer-send-button"]'],
+            RESPONSE: ['[data-message-author-role="assistant"]:last-child .markdown', '[data-message-author-role="assistant"]:last-child']
+          },
+          Claude: {
+            INPUT: ['.ProseMirror[contenteditable="true"]', 'div[contenteditable="true"][role="textbox"]'],
+            SEND_BUTTON: ['[aria-label="メッセージを送信"]', 'button[type="submit"]'],
+            RESPONSE: ['[data-is-streaming="false"]', '.font-claude-message']
+          },
+          Gemini: {
+            INPUT: ['.ql-editor[contenteditable="true"]', 'div[contenteditable="true"][role="textbox"]'],
+            SEND_BUTTON: ['button[aria-label="送信"]', 'button[mattooltip="送信"]'],
+            RESPONSE: ['.conversation-turn.model-turn', '.model-response-text']
+          }
+        };
+        log('フォールバックUI_SELECTORSを使用', 'WARNING');
       } finally {
         loadingPromise = null;
       }
