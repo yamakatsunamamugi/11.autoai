@@ -414,7 +414,7 @@ async function handleLoad() {
     currentProcessingStep = 'タスク生成';
     addLog('ステップ4: タスクリストの生成', 'INFO');
     const taskGenerator = new TaskGenerator();
-    currentTaskList = taskGenerator.generateTasks(currentSpreadsheetData);
+    currentTaskList = await taskGenerator.generateTasks(currentSpreadsheetData);
     updateDebugInfo(); // デバッグ情報を更新
     perfSteps.push({ name: 'タスク生成', time: performance.now() - stepStart });
     

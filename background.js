@@ -264,10 +264,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           // 4. タスクを生成
           console.log("タスク生成中...");
           const taskGenerator = new TaskGenerator();
-          const taskList = taskGenerator.generateTasks(processedData);
+          const taskList = await taskGenerator.generateTasks(processedData);  // awaitを追加
           
           // taskListとtasksの存在を確認
           if (!taskList || !taskList.tasks) {
+            console.error("タスク生成失敗 - taskList:", taskList);
             throw new Error("タスク生成に失敗しました: タスクリストが空です");
           }
           

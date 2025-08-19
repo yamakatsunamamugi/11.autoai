@@ -417,7 +417,7 @@ class StreamingServiceManager {
     
     if (!tasks && request.spreadsheetData) {
       const taskGenerator = this.serviceRegistry.get("TaskGenerator");
-      const taskList = taskGenerator.generateTasks(request.spreadsheetData);
+      const taskList = await taskGenerator.generateTasks(request.spreadsheetData);
       tasks = taskList.tasks;
     }
 
