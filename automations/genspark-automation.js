@@ -50,7 +50,7 @@
   // ========================================
   const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-  const log = (message, type = 'info') => {
+  const log = (message, type = 'info', consoleOnly = false) => {
     const prefix = '[Genspark]';
     const styles = {
       info: 'color: #2196F3',
@@ -58,7 +58,22 @@
       warning: 'color: #FF9800',
       error: 'color: #F44336'
     };
+    
+    // コンソールには常に出力
     console.log(`%c${prefix} ${message}`, styles[type] || styles.info);
+    
+    // 拡張機能へのログ送信（consoleOnlyがfalseの場合のみ）
+    if (!consoleOnly && window.chrome?.runtime?.sendMessage) {
+      try {
+        window.chrome.runtime.sendMessage({
+          action: 'extensionLog',
+          message: `Genspark: ${message}`,
+          type: type
+        });
+      } catch (e) {
+        // 拡張機能との通信エラーは無視
+      }
+    }
   };
 
   // ========================================
@@ -238,7 +253,7 @@
    * Gensparkのスライド生成とファクトチェックに対応
    */
   const selectFunction = async (functionId) => {
-    log(`機能選択: ${functionId}`);
+    log(`⚙️ 機能選択: ${functionId}`);
     
     // 機能URLマッピング
     const functionUrls = {
@@ -294,14 +309,14 @@
    * 3. テキスト入力
    */
   const inputText = async (text) => {
-    log('テキスト入力開始');
+    log('📝 テキスト入力開始');
     
     try {
       if (!text) {
         throw new Error('入力するテキストがありません');
       }
       
-      log('テキスト入力を開始: ' + text.substring(0, 50) + '...', 'info');
+      log('テキスト入力を開始: ' + text.substring(0, 50) + '...', 'info', true);  // コンソールのみ
       
       // 優先順位付きセレクタで検索
       const selectors = [
@@ -321,7 +336,7 @@
           for (const element of elements) {
             if (element && element.offsetParent !== null) {
               inputField = element;
-              log('入力欄発見: ' + selector, 'success');
+              log('入力欄発見: ' + selector, 'success', true);  // コンソールのみ
               break;
             }
           }
@@ -367,7 +382,7 @@
       }
       
       await wait(CONFIG.CLICK_DELAY);
-      log('テキストを入力しました: ' + text.length + '文字', 'success');
+      log('✅ テキストを入力しました: ' + text.length + '文字', 'success');
       return true;
       
     } catch (error) {
@@ -380,7 +395,7 @@
    * 4. メッセージ送信
    */
   const sendMessage = async () => {
-    log('送信ボタンを探しています');
+    log('送信ボタンを探しています', 'info', true);  // コンソールのみ
     
     const sendButton = findElement(SELECTORS.submitButton, '送信ボタン');
     
@@ -391,7 +406,7 @@
     
     // ボタンが無効化されているかチェック
     if (sendButton.disabled || sendButton.classList.contains('disabled')) {
-      log('送信ボタンが無効化されています', 'warning');
+      log('送信ボタンが無効化されています', 'warning', true);  // コンソールのみ
       await wait(CONFIG.WAIT_INTERVAL);
     }
     
@@ -407,8 +422,8 @@
    * 5. 応答待機
    */
   const waitForResponse = async (timeout = CONFIG.DEFAULT_TIMEOUT) => {
-    log('応答待機開始');
-    log(`タイムアウト設定: ${timeout}ms (${timeout/1000}秒)`, 'info');
+    log('⏳ 応答待機開始');
+    log(`タイムアウト設定: ${timeout}ms (${timeout/1000}秒)`, 'info', true);  // コンソールのみ
     
     // 停止ボタンを検出する関数
     const findStopButton = () => {
@@ -433,15 +448,18 @@
     const startTime = Date.now();
     
     // 1. 停止ボタンが出現するまで待つ（制限なし）
-    log('停止ボタンの出現を待機中...');
+    log('停止ボタンの出現を待機中...', 'info', true);  // コンソールのみ
     let waitCount = 0;
     while (!findStopButton()) {
       await wait(CONFIG.WAIT_INTERVAL);
       waitCount++;
-      log(`[${waitCount}秒] 停止ボタン待機中... (DEBUG: ${findStopButton() ? 'あり' : 'なし'})`, 'info');
+      // 詳細ログはコンソールのみ
+      if (waitCount % 5 === 0) {  // 5秒ごとにコンソールに出力
+        log(`[${waitCount}秒] 停止ボタン待機中...`, 'info', true);
+      }
     }
     
-    log('停止ボタンを検出 - 生成中', 'info');
+    log('🔴 停止ボタンを検出 - 生成中', 'info');  // 拡張機能にも送信
     
     // 2. 停止ボタンが消えるまで待つ（最大タイムアウトまで）
     let lastMinuteLogged = 0;
@@ -450,14 +468,16 @@
       await wait(CONFIG.WAIT_INTERVAL);
       stopWaitCount++;
       
-      // 1秒ごとのデバッグログ（DEBUG: 削除予定）
-      log(`[${stopWaitCount}秒] 停止ボタン状態: ${findStopButton() ? '🔴 あり(回答中)' : '✅ なし(完了)'}`, 'info');
+      // 詳細ログはコンソールのみ（10秒ごと）
+      if (stopWaitCount % 10 === 0) {
+        log(`[${stopWaitCount}秒] 停止ボタン状態: ${findStopButton() ? '🔴 あり(回答中)' : '✅ なし(完了)'}`, 'info', true);
+      }
       
-      // 1分ごとにログ
+      // 1分ごとに拡張機能にもログ
       const elapsedMinutes = Math.floor((Date.now() - startTime) / CONFIG.MINUTE_MS);
       if (elapsedMinutes > lastMinuteLogged) {
         lastMinuteLogged = elapsedMinutes;
-        log(`生成中... (${elapsedMinutes}分経過)`, 'info');
+        log(`⏳ 生成中... (${elapsedMinutes}分経過)`, 'info');  // 拡張機能にも送信
       }
     }
     
@@ -488,7 +508,7 @@
    * 6. 応答取得
    */
   const getResponse = async () => {
-    log('応答テキスト取得開始');
+    log('📋 応答テキスト取得開始');
     
     // 複数のセレクタで応答コンテナを探す
     const responseContainer = findElement(SELECTORS.responseContainer, '応答コンテナ');
@@ -505,7 +525,7 @@
         const lastMessage = allMessages[allMessages.length - 1];
         const text = lastMessage.textContent?.trim();
         if (text) {
-          log(`応答取得成功 (代替方法): ${text.substring(0, 100)}...`, 'success');
+          log(`✅ 応答取得成功 (代替方法): ${text.substring(0, 100)}...`, 'success');
           return text;
         }
       }
@@ -514,7 +534,7 @@
     if (responseContainer) {
       const text = responseContainer.textContent?.trim();
       if (text) {
-        log(`応答取得成功: ${text.substring(0, 100)}...`, 'success');
+        log(`✅ 応答取得成功: ${text.substring(0, 100)}...`, 'success');
         return text;
       }
     }
@@ -528,7 +548,7 @@
    * 生成完了後のURLを取得（スライドやファクトチェック結果のURL）
    */
   const getResponseUrl = async () => {
-    log('応答URL取得開始');
+    log('🔗 応答URL取得開始');
     
     // 現在のURLを取得
     const currentUrl = window.location.href;
@@ -586,8 +606,8 @@
     };
     
     const finalConfig = { ...defaultConfig, ...config };
-    log('自動化実行開始', 'info');
-    console.log('設定:', finalConfig);
+    log('🚀 自動化実行開始', 'info');
+    log(`設定: ${JSON.stringify(finalConfig)}`, 'info', true);  // 詳細はコンソールのみ
     
     const result = {
       success: false,
@@ -638,7 +658,7 @@
       if (finalConfig.waitResponse) {
         // タイムアウトを明示的に設定（デフォルト: 60分）
         const timeoutMs = finalConfig.timeout || 3600000; // 60分
-        log(`応答待機タイムアウト: ${timeoutMs}ms (${timeoutMs/1000}秒)`, 'info');
+        log(`応答待機タイムアウト: ${timeoutMs}ms (${timeoutMs/1000}秒)`, 'info', true);  // コンソールのみ
         const waitResult = await waitForResponse(timeoutMs);
         if (!waitResult) {
           throw new Error('応答待機がタイムアウトしました');
@@ -658,7 +678,7 @@
       }
       
       result.success = true;
-      log('自動化実行完了', 'success');
+      log('✅ 自動化実行完了', 'success');
       
     } catch (error) {
       log(`エラー発生: ${error.message}`, 'error');
