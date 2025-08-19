@@ -2375,6 +2375,13 @@ async function getResponseWithCanvas() {
       
       // UI_SELECTORSが利用可能な場合は使用、なければフォールバック
       let selectors = [];
+      console.log(`[ChatGPT] UI_SELECTORS状態:`, {
+        'window.UI_SELECTORS': !!window.UI_SELECTORS,
+        'window.UI_SELECTORS.ChatGPT': !!window.UI_SELECTORS?.ChatGPT,
+        'RESPONSE': window.UI_SELECTORS?.ChatGPT?.RESPONSE?.length || 0,
+        'MESSAGE': window.UI_SELECTORS?.ChatGPT?.MESSAGE?.length || 0
+      });
+      
       if (window.UI_SELECTORS && window.UI_SELECTORS.ChatGPT) {
         // UI_SELECTORSのRESPONSEセレクタを使用
         selectors = [
@@ -2385,6 +2392,7 @@ async function getResponseWithCanvas() {
           ...window.UI_SELECTORS.ChatGPT.MESSAGE.map(s => `${s}:last-child`)
         ];
         console.log(`[ChatGPT] UI_SELECTORS使用: ${selectors.length}個のセレクタを試行`);
+        console.log(`[ChatGPT] セレクタ一覧:`, selectors);
       } else {
         // フォールバック: 従来のセレクタ
         selectors = [
@@ -2397,6 +2405,7 @@ async function getResponseWithCanvas() {
           '.prose:last-of-type'
         ];
         console.log(`[ChatGPT] フォールバック: ${selectors.length}個のセレクタを試行`);
+        console.log(`[ChatGPT] フォールバックセレクタ一覧:`, selectors);
       }
       
       for (const selector of selectors) {
@@ -2418,6 +2427,13 @@ async function getResponseWithCanvas() {
         if (allAssistant.length > 0) {
           console.log(`[ChatGPT] 最後のassistant要素:`, allAssistant[allAssistant.length - 1]);
         }
+        console.log('[ChatGPT] 利用可能な要素:');
+        console.log('.markdown.prose要素:', document.querySelectorAll('.markdown.prose').length);
+        console.log('.prose要素:', document.querySelectorAll('.prose').length);
+        console.log('.markdown要素:', document.querySelectorAll('.markdown').length);
+        console.log('[role="presentation"]要素:', document.querySelectorAll('[role="presentation"]').length);
+        console.log('ページタイトル:', document.title);
+        console.log('URL:', window.location.href);
         throw new Error("ChatGPT: 回答コンテナが見つかりません");
       }
       return chatResponse.textContent.trim();
@@ -2425,6 +2441,14 @@ async function getResponseWithCanvas() {
     case "Claude":
       // Claude: UI_SELECTORSを使用
       let claudeSelectors = [];
+      console.log(`[Claude] UI_SELECTORS状態:`, {
+        'window.UI_SELECTORS': !!window.UI_SELECTORS,
+        'window.UI_SELECTORS.Claude': !!window.UI_SELECTORS?.Claude,
+        'RESPONSE': window.UI_SELECTORS?.Claude?.RESPONSE?.length || 0,
+        'MESSAGE': window.UI_SELECTORS?.Claude?.MESSAGE?.length || 0,
+        'CANVAS': window.UI_SELECTORS?.Claude?.CANVAS?.CONTAINER?.length || 0
+      });
+      
       if (window.UI_SELECTORS && window.UI_SELECTORS.Claude) {
         // UI_SELECTORSのRESPONSEセレクタを使用
         claudeSelectors = [
@@ -2434,6 +2458,7 @@ async function getResponseWithCanvas() {
           ...window.UI_SELECTORS.Claude.CANVAS.CONTAINER
         ];
         console.log(`[Claude] UI_SELECTORS使用: ${claudeSelectors.length}個のセレクタを試行`);
+        console.log(`[Claude] セレクタ一覧:`, claudeSelectors);
       } else {
         // フォールバック: 従来のセレクタ
         claudeSelectors = [
@@ -2448,6 +2473,7 @@ async function getResponseWithCanvas() {
           'div[role="presentation"]:last-child'
         ];
         console.log(`[Claude] フォールバック: ${claudeSelectors.length}個のセレクタを試行`);
+        console.log(`[Claude] フォールバックセレクタ一覧:`, claudeSelectors);
       }
       
       let claudeResponse = null;
@@ -2470,6 +2496,13 @@ async function getResponseWithCanvas() {
       if (!claudeResponse) {
         console.error('[Claude] 回答コンテナが見つかりません。利用可能な要素をデバッグ:');
         console.log('DOM構造:', document.body.innerHTML.substring(0, 1000));
+        console.log('.font-claude-message要素:', document.querySelectorAll('.font-claude-message').length);
+        console.log('.prose要素:', document.querySelectorAll('.prose').length);
+        console.log('.markdown要素:', document.querySelectorAll('.markdown').length);
+        console.log('[data-testid*="conversation-turn"]要素:', document.querySelectorAll('[data-testid*="conversation-turn"]').length);
+        console.log('[data-is-streaming]要素:', document.querySelectorAll('[data-is-streaming]').length);
+        console.log('ページタイトル:', document.title);
+        console.log('URL:', window.location.href);
         throw new Error("Claude: 回答コンテナが見つかりません");
       }
 
@@ -2531,6 +2564,13 @@ async function getResponseWithCanvas() {
 
       // Gemini: UI_SELECTORSを使用
       let geminiSelectors = [];
+      console.log(`[Gemini] UI_SELECTORS状態:`, {
+        'window.UI_SELECTORS': !!window.UI_SELECTORS,
+        'window.UI_SELECTORS.Gemini': !!window.UI_SELECTORS?.Gemini,
+        'RESPONSE': window.UI_SELECTORS?.Gemini?.RESPONSE?.length || 0,
+        'MESSAGE': window.UI_SELECTORS?.Gemini?.MESSAGE?.length || 0
+      });
+      
       if (window.UI_SELECTORS && window.UI_SELECTORS.Gemini) {
         // UI_SELECTORSのRESPONSEセレクタを使用
         geminiSelectors = [
@@ -2538,6 +2578,7 @@ async function getResponseWithCanvas() {
           ...window.UI_SELECTORS.Gemini.MESSAGE
         ];
         console.log(`[Gemini] UI_SELECTORS使用: ${geminiSelectors.length}個のセレクタを試行`);
+        console.log(`[Gemini] セレクタ一覧:`, geminiSelectors);
       } else {
         // フォールバック: 従来のセレクタ
         geminiSelectors = [
@@ -2549,6 +2590,7 @@ async function getResponseWithCanvas() {
           'message-content',
         ];
         console.log(`[Gemini] フォールバック: ${geminiSelectors.length}個のセレクタを試行`);
+        console.log(`[Gemini] フォールバックセレクタ一覧:`, geminiSelectors);
       }
       
       for (const selector of geminiSelectors) {
@@ -2570,6 +2612,15 @@ async function getResponseWithCanvas() {
       console.error('[Gemini] 回答コンテナが見つかりません。利用可能な要素:');
       console.log('message-content要素:', document.querySelectorAll('message-content').length);
       console.log('.model-response-text要素:', document.querySelectorAll('.model-response-text').length);
+      console.log('.conversation-turn要素:', document.querySelectorAll('.conversation-turn').length);
+      console.log('.markdown要素:', document.querySelectorAll('.markdown').length);
+      console.log('[role="presentation"]要素:', document.querySelectorAll('[role="presentation"]').length);
+      console.log('すべてのdiv要素数:', document.querySelectorAll('div').length);
+      
+      // 最新のGeminiページ構造をサンプリング
+      console.log('ページタイトル:', document.title);
+      console.log('body内の主要なクラス:', Array.from(document.body.classList));
+      
       throw new Error("Gemini: 回答コンテナが見つかりません");
 
     default:
