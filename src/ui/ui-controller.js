@@ -760,7 +760,124 @@ function loadSavedUrls() {
   });
 }
 
-// URLを保存（名前入力ダイアログ付き）
+// イベントリスナーを各URL行に追加
+function attachUrlRowEventListeners(row) {
+  // +ボタン（最初の行のみ）
+  const addBtn = row.querySelector('.add-url-btn');
+  if (addBtn) {
+    addBtn.addEventListener('click', () => addUrlInput());
+  }
+  
+  // -ボタン（削除）
+  const removeBtn = row.querySelector('.remove-url-btn');
+  if (removeBtn) {
+    removeBtn.addEventListener('click', () => removeUrlInput(row));
+  }
+  
+  // 保存ボタン
+  const saveBtn = row.querySelector('.save-url-btn');
+  if (saveBtn) {
+    saveBtn.addEventListener('click', () => {
+      const input = row.querySelector('.spreadsheet-url-input');
+      const url = input.value.trim();
+      if (!url) {
+        showFeedback('URLを入力してください', 'error');
+        return;
+      }
+      showSaveUrlDialog(url, input);
+    });
+  }
+  
+  // 開くボタン
+  const openBtn = row.querySelector('.open-url-btn');
+  if (openBtn) {
+    openBtn.addEventListener('click', () => {
+      const input = row.querySelector('.spreadsheet-url-input');
+      showOpenUrlDialog(input);
+    });
+  }
+}
+
+// URL保存ダイアログを表示
+function showSaveUrlDialog(url, inputElement) {
+  saveUrlDialog.style.display = 'block';
+  saveUrlTitle.value = '';
+  saveUrlTitle.focus();
+  
+  // 保存ボタンのイベント
+  confirmSaveUrlBtn.onclick = () => {
+    const title = saveUrlTitle.value.trim();
+    if (!title) {
+      showFeedback('タイトルを入力してください', 'error');
+      return;
+    }
+    
+    chrome.storage.local.get(['savedSpreadsheets'], (result) => {
+      let savedUrls = result.savedSpreadsheets || [];
+      savedUrls.push({ url: url, name: title });
+      chrome.storage.local.set({ savedSpreadsheets: savedUrls }, () => {
+        showFeedback('URLを保存しました', 'success');
+        saveUrlDialog.style.display = 'none';
+      });
+    });
+  };
+  
+  // キャンセルボタン
+  cancelSaveUrlBtn.onclick = () => {
+    saveUrlDialog.style.display = 'none';
+  };
+}
+
+// 保存済みURL選択ダイアログを表示
+function showOpenUrlDialog(inputElement) {
+  chrome.storage.local.get(['savedSpreadsheets'], (result) => {
+    const savedUrls = result.savedSpreadsheets || [];
+    
+    if (savedUrls.length === 0) {
+      showFeedback('保存済みURLがありません', 'info');
+      return;
+    }
+    
+    // リストを作成
+    savedUrlsList.innerHTML = '';
+    savedUrls.forEach((item, index) => {
+      const div = document.createElement('div');
+      div.style.cssText = 'padding: 10px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 5px; cursor: pointer;';
+      div.innerHTML = `
+        <input type="radio" name="savedUrl" value="${index}" id="url-${index}" style="margin-right: 10px;">
+        <label for="url-${index}" style="cursor: pointer;">
+          <strong>${item.name}</strong><br>
+          <small style="color: #666;">${item.url.substring(0, 50)}...</small>
+        </label>
+      `;
+      savedUrlsList.appendChild(div);
+    });
+    
+    openUrlDialog.style.display = 'block';
+    
+    // 開くボタン
+    confirmOpenUrlBtn.onclick = () => {
+      const selected = document.querySelector('input[name="savedUrl"]:checked');
+      if (!selected) {
+        showFeedback('URLを選択してください', 'error');
+        return;
+      }
+      
+      const selectedUrl = savedUrls[selected.value];
+      inputElement.value = selectedUrl.url;
+      openUrlDialog.style.display = 'none';
+      showFeedback(`「${selectedUrl.name}」を読み込みました`, 'success');
+    };
+    
+    // キャンセルボタン
+    cancelOpenUrlBtn.onclick = () => {
+      openUrlDialog.style.display = 'none';
+    };
+  });
+}
+
+// 旧実装の関数群（新実装に置き換え済み）
+/*
 function saveCurrentUrl() {
   const url = spreadsheetInput.value.trim();
   
@@ -840,8 +957,10 @@ function deleteCurrentUrl() {
     });
   });
 }
+*/
 
-// 選択したURLの名前を編集
+// 以下も旧実装の関数（コメントアウト）
+/*
 function editSelectedName() {
   const selectedUrl = savedUrlSelect.value;
   if (!selectedUrl) {
@@ -903,6 +1022,7 @@ function cancelEdit() {
   editNameSection.style.display = 'none';
   editNameInput.value = '';
 }
+*/
 
 // URLを読み込む処理
 async function loadSpreadsheetUrl(url) {
@@ -1128,18 +1248,47 @@ if (loadSheetsBtn) {
 startBtn.addEventListener("click", async () => {
   console.log("【本番実行】ストリーミング処理開始ボタンが押されました。");
 
-  // datalist対応の入力欄からURLを取得
-  const spreadsheetUrl = spreadsheetInput.value.trim();
+  // 複数のURL入力欄から値を取得
+  const urlInputs = document.querySelectorAll('.spreadsheet-url-input');
+  const urls = [];
+  
+  urlInputs.forEach((input) => {
+    const url = input.value.trim();
+    if (url) {
+      urls.push(url);
+    }
+  });
   
   // バリデーション：URLが入力されているか確認
-  if (!spreadsheetUrl) {
-    updateStatus("スプレッドシートURLを入力してください", "error");
+  if (urls.length === 0) {
+    updateStatus("少なくとも1つのURLを入力してください", "error");
     return;
   }
+  
+  console.log(`処理するURL数: ${urls.length}`, urls);
 
   // ボタンの状態を更新
   startBtn.disabled = true;
   stopBtn.disabled = false;
+  
+  // 複数URLを順次処理
+  currentUrlIndex = 0;
+  await processMultipleUrls(urls);
+});
+
+// 複数URLを順次処理する関数
+async function processMultipleUrls(urls) {
+  if (currentUrlIndex >= urls.length) {
+    console.log("すべてのURLの処理が完了しました");
+    updateStatus("すべての処理が完了しました", "success");
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+    return;
+  }
+  
+  const currentUrl = urls[currentUrlIndex];
+  console.log(`処理中: ${currentUrlIndex + 1}/${urls.length} - ${currentUrl}`);
+  updateStatus(`処理中 (${currentUrlIndex + 1}/${urls.length}): ${currentUrl.substring(0, 50)}...`, "loading");
 
   // まずスプレッドシートが読み込まれているか確認
   const storageResult = await chrome.storage.local.get(['savedTasks']);
@@ -1154,7 +1303,7 @@ startBtn.addEventListener("click", async () => {
       // loadSheetsBtnのクリック処理と同じロジックを実行
       const loadResponse = await chrome.runtime.sendMessage({
         action: "loadSpreadsheets",
-        urls: [spreadsheetUrl],
+        urls: [currentUrl],
       });
 
       if (!loadResponse || !loadResponse.success) {
@@ -1194,14 +1343,14 @@ startBtn.addEventListener("click", async () => {
 
   try {
     // URLから情報を抽出
-    const match = spreadsheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+    const match = currentUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
     if (!match) {
       throw new Error("有効なスプレッドシートURLではありません");
     }
     const spreadsheetId = match[1];
 
     // gidを抽出
-    const gidMatch = spreadsheetUrl.match(/[#&]gid=(\d+)/);
+    const gidMatch = currentUrl.match(/[#&]gid=(\d+)/);
     const gid = gidMatch ? gidMatch[1] : null;
 
     // 最新のタスクを取得（前のステップで自動読み込みした場合も含む）
@@ -1214,7 +1363,7 @@ startBtn.addEventListener("click", async () => {
     if (!savedTasks || !savedTasks.tasks || savedTasks.tasks.length === 0) {
       const loadResponse = await chrome.runtime.sendMessage({
         action: "loadSpreadsheet",
-        url: spreadsheetUrl,
+        url: currentUrl,
       });
 
       console.log("[UI] loadSpreadsheet レスポンス:", loadResponse);
@@ -1258,17 +1407,22 @@ startBtn.addEventListener("click", async () => {
       action: "streamProcessTaskList",
       taskList: savedTasks, // TaskListオブジェクトをそのまま送信
       spreadsheetId: spreadsheetId, // スプレッドシートIDを追加
-      spreadsheetUrl: spreadsheetUrl, // URL情報も追加
+      spreadsheetUrl: currentUrl, // URL情報も追加
       gid: gid, // シートIDも追加
       testMode: false, // 本番実行
+      urlIndex: currentUrlIndex, // 現在のURLインデックスを追加
+      totalUrls: urls.length // 全URL数を追加
     });
 
     if (response && response.success) {
-      updateStatus("🌊 並列ストリーミング処理実行中", "running");
+      updateStatus(`🌊 処理実行中 (${currentUrlIndex + 1}/${urls.length})`, "running");
       showFeedback(
         `ストリーミング処理開始: ${response.totalWindows || 4}個のウィンドウで並列処理中`,
         "success",
       );
+      
+      // タスク完了を監視して次のURLへ
+      monitorTaskCompletion(urls);
     } else {
       updateStatus(
         "ストリーミング開始エラー: " + (response?.error || "不明なエラー"),
@@ -1286,7 +1440,26 @@ startBtn.addEventListener("click", async () => {
     stopBtn.disabled = true;
     showFeedback("ストリーミング処理でエラーが発生しました", "error");
   }
-});
+}
+
+// タスク完了を監視して次のURLへ移行
+function monitorTaskCompletion(urls) {
+  const checkInterval = setInterval(async () => {
+    // 現在の処理状態を確認
+    const response = await chrome.runtime.sendMessage({
+      action: "getStreamingStatus"
+    });
+    
+    if (response && response.completed) {
+      clearInterval(checkInterval);
+      console.log(`URL ${currentUrlIndex + 1}の処理が完了しました`);
+      
+      // 次のURLへ
+      currentUrlIndex++;
+      await processMultipleUrls(urls);
+    }
+  }, 5000); // 5秒ごとにチェック
+}
 
 // ===== イベントリスナー: ストリーミング処理停止 =====
 stopBtn.addEventListener("click", async () => {
@@ -3031,9 +3204,15 @@ updateAIStatus();
 // 保存済みURLリストを読み込み
 loadSavedUrls();
 
-// ===== URLボタンのイベントリスナー =====
+// 最初の入力欄にイベントリスナーを設定
+const firstUrlRow = document.querySelector('.url-input-row');
+if (firstUrlRow) {
+  attachUrlRowEventListeners(firstUrlRow);
+}
 
-// クイック保存ボタン（+ボタン）
+// ===== URLボタンのイベントリスナー（旧実装の削除） =====
+// 以下のquickSaveBtn関連は新実装では不要
+/*
 const quickSaveBtn = document.getElementById("quickSaveBtn");
 if (quickSaveBtn) {
   quickSaveBtn.addEventListener("click", () => {
@@ -3100,17 +3279,9 @@ if (quickSaveBtn) {
     });
   });
 }
+*/
 
-
-// 保存確認ボタン
-if (confirmSaveBtn) {
-  confirmSaveBtn.addEventListener("click", confirmSaveUrl);
-}
-
-// 保存キャンセルボタン
-if (cancelSaveBtn) {
-  cancelSaveBtn.addEventListener("click", cancelSave);
-}
+// 旧実装のcancelSaveBtnは削除済み（新実装のcancelSaveUrlBtnを使用）
 
 // ストレージの変更を監視（AI変更検出システムが実行されたときに更新）
 chrome.storage.onChanged.addListener((changes, areaName) => {

@@ -265,6 +265,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           console.log("タスク生成中...");
           const taskGenerator = new TaskGenerator();
           const taskList = taskGenerator.generateTasks(processedData);
+          
+          // taskListとtasksの存在を確認
+          if (!taskList || !taskList.tasks) {
+            throw new Error("タスク生成に失敗しました: タスクリストが空です");
+          }
+          
           console.log("[Background] 生成されたタスク:", {
             totalTasks: taskList.tasks.length,
             statistics: taskList.getStatistics(),
@@ -279,7 +285,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           const response = {
             success: true,
             ...processedData,
-            taskCount: taskList.tasks.length,
+            taskCount: taskList.tasks ? taskList.tasks.length : 0,
             taskQueueStatus: saveResult,
           };
           console.log("[MessageHandler] レスポンス:", response);
