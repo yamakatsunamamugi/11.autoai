@@ -1604,6 +1604,174 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 /**
+ * モデルと機能を動的検索で選択（3.統合AIテスト開始と同じ方法）
+ * @param {string} model - モデル名
+ * @param {string} specialOperation - 機能名
+ */
+async function selectModelAndFunction(model, specialOperation) {
+  try {
+    console.log(`[11.autoai][${AI_TYPE}] 🔍 動的選択開始: モデル="${model}", 機能="${specialOperation}"`);
+    
+    // 各AI自動化スクリプトが読み込まれているか確認
+    let automation = null;
+    
+    switch (AI_TYPE) {
+      case 'ChatGPT':
+        if (window.ChatGPTAutomation) {
+          automation = window.ChatGPTAutomation;
+        } else if (window.chatgptAutomation) {
+          automation = window.chatgptAutomation;
+        }
+        break;
+        
+      case 'Claude':
+        if (window.ClaudeAutomation) {
+          automation = window.ClaudeAutomation;
+        } else if (window.Claude) {
+          automation = window.Claude;
+        }
+        break;
+        
+      case 'Gemini':
+        if (window.Gemini) {
+          automation = window.Gemini;
+        } else if (window.GeminiAutomation) {
+          automation = window.GeminiAutomation;
+        }
+        break;
+    }
+    
+    if (!automation) {
+      console.warn(`[11.autoai][${AI_TYPE}] ⚠️ 自動化スクリプトが読み込まれていません。動的選択をスキップします。`);
+      
+      // 自動化スクリプトを動的に読み込む
+      await loadAutomationScript();
+      
+      // 再度取得を試みる
+      switch (AI_TYPE) {
+        case 'ChatGPT':
+          automation = window.ChatGPTAutomation || window.chatgptAutomation;
+          break;
+        case 'Claude':
+          automation = window.ClaudeAutomation || window.Claude;
+          break;
+        case 'Gemini':
+          automation = window.Gemini || window.GeminiAutomation;
+          break;
+      }
+      
+      if (!automation) {
+        console.error(`[11.autoai][${AI_TYPE}] ❌ 自動化スクリプトの読み込みに失敗しました`);
+        return;
+      }
+    }
+    
+    // モデルを動的選択
+    if (model) {
+      console.log(`[11.autoai][${AI_TYPE}] 🎯 モデル動的選択: ${model}`);
+      try {
+        let modelResult = false;
+        
+        // Geminiは別のメソッド名を使用
+        if (AI_TYPE === 'Gemini' && automation.model) {
+          modelResult = await automation.model(model);
+        } else if (automation.selectModel) {
+          modelResult = await automation.selectModel(model);
+        } else {
+          console.warn(`[11.autoai][${AI_TYPE}] ⚠️ モデル選択メソッドが見つかりません`);
+        }
+        
+        if (modelResult) {
+          console.log(`[11.autoai][${AI_TYPE}] ✅ モデル選択成功: ${model}`);
+        } else {
+          console.warn(`[11.autoai][${AI_TYPE}] ⚠️ モデル選択失敗: ${model}`);
+        }
+      } catch (error) {
+        console.error(`[11.autoai][${AI_TYPE}] ❌ モデル選択エラー:`, error);
+      }
+    }
+    
+    // 機能を動的選択
+    if (specialOperation && specialOperation !== 'none') {
+      console.log(`[11.autoai][${AI_TYPE}] 🎯 機能動的選択: ${specialOperation}`);
+      try {
+        let functionResult = false;
+        
+        // Geminiは別のメソッド名を使用
+        if (AI_TYPE === 'Gemini' && automation.func) {
+          functionResult = await automation.func(specialOperation);
+        } else if (automation.selectFunction) {
+          functionResult = await automation.selectFunction(specialOperation);
+        } else {
+          console.warn(`[11.autoai][${AI_TYPE}] ⚠️ 機能選択メソッドが見つかりません`);
+        }
+        
+        if (functionResult) {
+          console.log(`[11.autoai][${AI_TYPE}] ✅ 機能選択成功: ${specialOperation}`);
+        } else {
+          console.warn(`[11.autoai][${AI_TYPE}] ⚠️ 機能選択失敗: ${specialOperation}`);
+        }
+      } catch (error) {
+        console.error(`[11.autoai][${AI_TYPE}] ❌ 機能選択エラー:`, error);
+      }
+    }
+    
+    // 選択後少し待機（UI更新の安定化）
+    await sleep(500);
+    
+  } catch (error) {
+    console.error(`[11.autoai][${AI_TYPE}] ❌ 動的選択エラー:`, error);
+  }
+}
+
+/**
+ * 自動化スクリプトを動的に読み込む
+ */
+async function loadAutomationScript() {
+  return new Promise((resolve) => {
+    console.log(`[11.autoai][${AI_TYPE}] 🔄 自動化スクリプトを動的に読み込み中...`);
+    
+    const scriptMap = {
+      'ChatGPT': 'automations/chatgpt-automation.js',
+      'Claude': 'automations/claude-automation-dynamic.js',
+      'Gemini': 'automations/gemini-dynamic-automation.js'
+    };
+    
+    const scriptPath = scriptMap[AI_TYPE];
+    if (!scriptPath) {
+      console.error(`[11.autoai][${AI_TYPE}] ❌ 未対応のAI種別`);
+      resolve(false);
+      return;
+    }
+    
+    // 共通ハンドラーを先に読み込む
+    const commonScript = document.createElement('script');
+    commonScript.src = chrome.runtime.getURL('automations/common-ai-handler.js');
+    commonScript.onload = () => {
+      console.log(`[11.autoai][${AI_TYPE}] ✅ 共通ハンドラー読み込み完了`);
+      
+      // AI固有のスクリプトを読み込む
+      const aiScript = document.createElement('script');
+      aiScript.src = chrome.runtime.getURL(scriptPath);
+      aiScript.onload = () => {
+        console.log(`[11.autoai][${AI_TYPE}] ✅ ${AI_TYPE}自動化スクリプト読み込み完了`);
+        resolve(true);
+      };
+      aiScript.onerror = (error) => {
+        console.error(`[11.autoai][${AI_TYPE}] ❌ ${AI_TYPE}自動化スクリプト読み込みエラー:`, error);
+        resolve(false);
+      };
+      document.head.appendChild(aiScript);
+    };
+    commonScript.onerror = (error) => {
+      console.error(`[11.autoai][${AI_TYPE}] ❌ 共通ハンドラー読み込みエラー:`, error);
+      resolve(false);
+    };
+    document.head.appendChild(commonScript);
+  });
+}
+
+/**
  * プロンプトをAIに送信する共通処理
  * @param {string} prompt - 送信するプロンプト
  * @param {Object} options - 追加オプション（モデル・機能情報など）
@@ -1621,12 +1789,15 @@ async function sendPromptToAI(prompt, options = {}) {
         aiType,
         taskId
       });
+      
+      // 動的検索でモデル・機能を選択（3.統合AIテスト開始と同じ方法）
+      await selectModelAndFunction(model, specialOperation);
     }
     
     const aiInput = new AIInput(AI_TYPE);
     
-    // プロンプト入力（将来的にはここでモデル・機能設定を適用）
-    const inputResult = await aiInput.inputPrompt(prompt, { model, specialOperation });
+    // プロンプト入力
+    const inputResult = await aiInput.inputPrompt(prompt);
     if (!inputResult.success) {
       return { 
         success: false, 
