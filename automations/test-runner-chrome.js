@@ -93,13 +93,24 @@
   }
 
   // AIサイトのウィンドウを作成
-  async function createAIWindow(aiName, position) {
+  async function createAIWindow(aiName, position, functionType = null) {
     const urls = {
       'claude': 'https://claude.ai',
       'chatgpt': 'https://chatgpt.com', 
       'gemini': 'https://gemini.google.com',
-      'genspark': 'https://www.genspark.ai/agents?type=slides_agent'
+      'genspark': 'https://www.genspark.ai/agents?type=slides_agent'  // デフォルト
     };
+    
+    // Gensparkの場合、機能に応じてURLを変更
+    if (aiName.toLowerCase() === 'genspark' && functionType) {
+      if (functionType === 'factcheck' || functionType === 'fact-check' || 
+          functionType.toLowerCase().includes('fact') || functionType.toLowerCase().includes('check')) {
+        urls['genspark'] = 'https://www.genspark.ai/agents?type=agentic_cross_check';
+        log('Genspark: ファクトチェックモードで起動');
+      } else {
+        log('Genspark: スライド生成モードで起動');
+      }
+    }
 
     const url = urls[aiName.toLowerCase()];
     if (!url) return null;
@@ -384,8 +395,8 @@
     }
     
     try {
-      // AIウィンドウを作成
-      const tab = await createAIWindow(aiName, position);
+      // AIウィンドウを作成（Gensparkの場合は機能タイプも渡す）
+      const tab = await createAIWindow(aiName, position, aiConfig?.function);
       if (!tab) {
         log(`❌ ${aiName}のウィンドウ作成に失敗しました`, 'error');
         return { success: false, error: 'ウィンドウ作成失敗' };
