@@ -2512,6 +2512,13 @@ async function getResponseWithCanvas() {
 
     case "Gemini":
       // GeminiAutomationまたはwindow.Geminiのget Response関数を使用
+      console.log(`[Gemini] デバッグ詳細:`, {
+        GeminiAutomation: !!window.GeminiAutomation,
+        'GeminiAutomation.getResponse': typeof window.GeminiAutomation?.getResponse,
+        Gemini: !!window.Gemini,
+        'Gemini.getResponse': typeof window.Gemini?.getResponse
+      });
+      
       if (window.GeminiAutomation?.getResponse) {
         console.log(`[Gemini] GeminiAutomation.getResponse()を使用`);
         const response = await window.GeminiAutomation.getResponse();

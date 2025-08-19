@@ -435,15 +435,17 @@ class StreamProcessor {
         // テストモード：ログに表示のみ
         this.logger.log(`[StreamProcessor] テスト回答取得: ${task.column}${task.row} -> ${result.response.substring(0, 100)}...`);
       } else {
-        // 本番モード：スプレッドシートに書き込み（非同期で並行処理）
+        // 本番モード：スプレッドシートに書き込み（同期実行で完了を待つ）
         this.logger.log(`[StreamProcessor] 本番回答取得: ${task.column}${task.row} -> ${result.response.substring(0, 100)}...`);
         
-        // スプレッドシート書き込みを非同期で実行（awaitしない）
-        this.writeResultToSpreadsheet(task, result).then(() => {
-          this.logger.log(`[StreamProcessor] 本番回答を書き込み完了: ${task.column}${task.row}`);
-        }).catch(error => {
-          this.logger.error(`[StreamProcessor] 結果の保存エラー`, error);
-        });
+        try {
+          // スプレッドシート書き込みを同期で実行（awaitで完了を待つ）
+          await this.writeResultToSpreadsheet(task, result);
+          this.logger.log(`[StreamProcessor] 📝 本番回答を書き込み完了: ${task.column}${task.row}`);
+        } catch (error) {
+          this.logger.error(`[StreamProcessor] ❌ 結果の保存エラー`, error);
+          // エラーが発生してもタスク処理は継続
+        }
       }
     }
 
@@ -500,22 +502,20 @@ class StreamProcessor {
       }
     } else {
       // 通常の処理（単独AI）
-      // 現在のウィンドウを即座に閉じる
-      this.logger.log(`[StreamProcessor] 🚪 タスク完了によりウィンドウを閉じます: ${queueColumn}列, windowId: ${windowId}`);
-      const closePromise = this.closeColumnWindow(queueColumn);
+      // スプレッドシート書き込み完了後にウィンドウを閉じる
+      this.logger.log(`[StreamProcessor] 🚪 スプレッドシート記載完了後、ウィンドウを閉じます: ${queueColumn}列, windowId: ${windowId}`);
+      await this.closeColumnWindow(queueColumn);
+      this.logger.log(`[StreamProcessor] ✅ ウィンドウクローズ完了: ${queueColumn}列`);
       
-      // 次のタスクがある場合は即座に開始（ウィンドウクローズと並行）
+      // ウィンドウクローズ完了後に次のタスクを開始
       if (hasMoreTasks) {
-        this.logger.log(`[StreamProcessor] ${queueColumn}列の次のタスクを即座に開始`);
+        this.logger.log(`[StreamProcessor] 🔄 ウィンドウクローズ完了後、${queueColumn}列の次のタスクを開始`);
         this.startColumnProcessing(queueColumn).catch(error => {
           this.logger.error(`[StreamProcessor] 次タスク開始エラー`, error);
         });
       } else {
-        this.logger.log(`[StreamProcessor] ${queueColumn}列のタスクが全て完了`);
+        this.logger.log(`[StreamProcessor] 🎯 ${queueColumn}列のタスクが全て完了しました`);
       }
-      
-      // ウィンドウクローズを待つ
-      await closePromise;
     }
 
     // ■ 並列ストリーミング: 次の列の開始は記載完了後に行われる
