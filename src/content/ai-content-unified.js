@@ -8,7 +8,24 @@
 // 初期化とAI種別検出
 // ========================================
 
-// タイムアウト設定とDeepResearch設定を読み込み
+// UI Selectors、タイムアウト設定とDeepResearch設定を読み込み
+const loadUISelectors = () => {
+  console.log("🔄 [11.autoai] UI Selectors読み込み開始");
+  const script = document.createElement("script");
+  script.type = "module";
+  script.src = chrome.runtime.getURL("src/config/ui-selectors.js");
+  script.onload = () => {
+    console.log("✅ [11.autoai] UI Selectorsを読み込みました");
+    loadTimeoutConfig();
+  };
+  script.onerror = (error) => {
+    console.error("❌ [11.autoai] UI Selectors読み込みエラー:", error);
+    console.log("🔄 [11.autoai] フォールバック: タイムアウト設定を直接読み込み");
+    loadTimeoutConfig();
+  };
+  document.head.appendChild(script);
+};
+
 const loadTimeoutConfig = () => {
   console.log("🔄 [11.autoai] タイムアウト設定読み込み開始");
   const script = document.createElement("script");
@@ -233,11 +250,39 @@ class SelectorFactory {
    * @returns {Object|null} セレクタ設定オブジェクト
    */
   static getSelectors(aiType) {
+    // UI_SELECTORSが利用可能な場合は優先的に使用
+    if (window.UI_SELECTORS && window.UI_SELECTORS[aiType]) {
+      console.log(`[SelectorFactory] UI_SELECTORS使用: ${aiType}`);
+      return this.adaptUISelectorsFormat(window.UI_SELECTORS[aiType]);
+    }
+    
+    // フォールバック: 従来のSELECTOR_CONFIG
     if (!aiType || !SELECTOR_CONFIG[aiType]) {
       console.warn(`[11.autoai] 未対応のAI種別: ${aiType}`);
       return null;
     }
+    console.log(`[SelectorFactory] フォールバック使用: ${aiType}`);
     return SELECTOR_CONFIG[aiType];
+  }
+
+  /**
+   * UI_SELECTORSの形式をSELECTOR_CONFIGの形式に適合
+   * @param {Object} uiSelectors - UI_SELECTORSのセレクタ
+   * @returns {Object} SELECTOR_CONFIG形式のセレクタ
+   */
+  static adaptUISelectorsFormat(uiSelectors) {
+    return {
+      TEXTAREA: uiSelectors.INPUT || [],
+      SEND_BUTTON: uiSelectors.SEND_BUTTON || [],
+      STOP_BUTTON: uiSelectors.STOP_BUTTON || [],
+      RESPONSE_MESSAGE: uiSelectors.RESPONSE || uiSelectors.MESSAGE || [],
+      RESPONSE_CONTENT: uiSelectors.RESPONSE || [],
+      MODEL_BUTTON: uiSelectors.MODEL_BUTTON || [],
+      FUNCTION_BUTTON: uiSelectors.FUNCTION_BUTTON || uiSelectors.FUNCTION_MENU_BUTTON || [],
+      // その他のマッピングも追加可能
+      EXCLUDE_SELECTORS: ["button", ".copy-button", ".action-button"], // デフォルト値
+      ERROR_ELEMENT: ".error-message, [data-error], .warning" // デフォルト値
+    };
   }
 
   /**
@@ -2325,25 +2370,44 @@ async function waitForResponseWithStopButton() {
 async function getResponseWithCanvas() {
   switch (AI_TYPE) {
     case "ChatGPT":
-      // ChatGPTの回答取得（複数のセレクタを試行）
+      // ChatGPTの回答取得（UI_SELECTORSを使用）
       let chatResponse = null;
       
-      // 複数のセレクタパターンを試行
-      const selectors = [
-        'div[data-message-author-role="assistant"]:last-child .markdown.prose',
-        'div[data-message-author-role="assistant"]:last-child .markdown',
-        'div[data-message-author-role="assistant"]:last-child',
-        '[data-message-author-role="assistant"]:last-child .prose',
-        '[data-message-author-role="assistant"]:last-child',
-        '.markdown.prose:last-of-type',
-        '.prose:last-of-type'
-      ];
+      // UI_SELECTORSが利用可能な場合は使用、なければフォールバック
+      let selectors = [];
+      if (window.UI_SELECTORS && window.UI_SELECTORS.ChatGPT) {
+        // UI_SELECTORSのRESPONSEセレクタを使用
+        selectors = [
+          ...window.UI_SELECTORS.ChatGPT.RESPONSE.map(s => `${s}:last-child .markdown.prose`),
+          ...window.UI_SELECTORS.ChatGPT.RESPONSE.map(s => `${s}:last-child .markdown`),
+          ...window.UI_SELECTORS.ChatGPT.RESPONSE.map(s => `${s}:last-child`),
+          ...window.UI_SELECTORS.ChatGPT.MESSAGE.map(s => `${s}:last-child .prose`),
+          ...window.UI_SELECTORS.ChatGPT.MESSAGE.map(s => `${s}:last-child`)
+        ];
+        console.log(`[ChatGPT] UI_SELECTORS使用: ${selectors.length}個のセレクタを試行`);
+      } else {
+        // フォールバック: 従来のセレクタ
+        selectors = [
+          'div[data-message-author-role="assistant"]:last-child .markdown.prose',
+          'div[data-message-author-role="assistant"]:last-child .markdown',
+          'div[data-message-author-role="assistant"]:last-child',
+          '[data-message-author-role="assistant"]:last-child .prose',
+          '[data-message-author-role="assistant"]:last-child',
+          '.markdown.prose:last-of-type',
+          '.prose:last-of-type'
+        ];
+        console.log(`[ChatGPT] フォールバック: ${selectors.length}個のセレクタを試行`);
+      }
       
       for (const selector of selectors) {
-        chatResponse = document.querySelector(selector);
-        if (chatResponse && chatResponse.textContent?.trim()) {
-          console.log(`[ChatGPT] 応答を取得 (セレクタ: ${selector})`);
-          break;
+        try {
+          chatResponse = document.querySelector(selector);
+          if (chatResponse && chatResponse.textContent?.trim()) {
+            console.log(`[ChatGPT] 応答を取得 (セレクタ: ${selector})`);
+            break;
+          }
+        } catch (e) {
+          console.debug(`[ChatGPT] セレクタエラー: ${selector}`, e);
         }
       }
       
@@ -2359,29 +2423,47 @@ async function getResponseWithCanvas() {
       return chatResponse.textContent.trim();
 
     case "Claude":
-      // Claude: 複数のセレクタで回答要素を探す
-      const claudeSelectors = [
-        'div[class*="grid-cols-1"]',  // 新しいClaude UI構造
-        'p.whitespace-normal',        // 新しいClaude UI構造
-        '.font-claude-message',       // 従来のセレクタ
-        '[data-testid="conversation-turn-3"]',
-        '[data-testid*="conversation-turn"]:last-child',
-        '.prose',
-        'div[class*="prose"]',
-        '.markdown',
-        'div[role="presentation"]:last-child'
-      ];
+      // Claude: UI_SELECTORSを使用
+      let claudeSelectors = [];
+      if (window.UI_SELECTORS && window.UI_SELECTORS.Claude) {
+        // UI_SELECTORSのRESPONSEセレクタを使用
+        claudeSelectors = [
+          ...window.UI_SELECTORS.Claude.RESPONSE,
+          ...window.UI_SELECTORS.Claude.MESSAGE,
+          // Canvas関連も追加
+          ...window.UI_SELECTORS.Claude.CANVAS.CONTAINER
+        ];
+        console.log(`[Claude] UI_SELECTORS使用: ${claudeSelectors.length}個のセレクタを試行`);
+      } else {
+        // フォールバック: 従来のセレクタ
+        claudeSelectors = [
+          'div[class*="grid-cols-1"]',  // 新しいClaude UI構造
+          'p.whitespace-normal',        // 新しいClaude UI構造
+          '.font-claude-message',       // 従来のセレクタ
+          '[data-testid="conversation-turn-3"]',
+          '[data-testid*="conversation-turn"]:last-child',
+          '.prose',
+          'div[class*="prose"]',
+          '.markdown',
+          'div[role="presentation"]:last-child'
+        ];
+        console.log(`[Claude] フォールバック: ${claudeSelectors.length}個のセレクタを試行`);
+      }
       
       let claudeResponse = null;
       let usedSelector = '';
       
       for (const selector of claudeSelectors) {
-        const elements = document.querySelectorAll(selector);
-        if (elements.length > 0) {
-          claudeResponse = elements[elements.length - 1];
-          usedSelector = selector;
-          console.log(`[Claude] 応答要素を発見 (セレクタ: ${selector})`);
-          break;
+        try {
+          const elements = document.querySelectorAll(selector);
+          if (elements.length > 0) {
+            claudeResponse = elements[elements.length - 1];
+            usedSelector = selector;
+            console.log(`[Claude] 応答要素を発見 (セレクタ: ${selector})`);
+            break;
+          }
+        } catch (e) {
+          console.debug(`[Claude] セレクタエラー: ${selector}`, e);
         }
       }
       
@@ -2447,25 +2529,41 @@ async function getResponseWithCanvas() {
         }
       }
 
-      // 通常回答モード - ユーザー提供のHTML構造に基づくセレクタ
-      const geminiSelectors = [
-        'message-content.model-response-text .markdown.markdown-main-panel', // 最も具体的
-        '.model-response-text .markdown.markdown-main-panel',
-        '.markdown.markdown-main-panel',
-        'message-content.model-response-text',
-        '.model-response-text',
-        'message-content',
-      ];
+      // Gemini: UI_SELECTORSを使用
+      let geminiSelectors = [];
+      if (window.UI_SELECTORS && window.UI_SELECTORS.Gemini) {
+        // UI_SELECTORSのRESPONSEセレクタを使用
+        geminiSelectors = [
+          ...window.UI_SELECTORS.Gemini.RESPONSE,
+          ...window.UI_SELECTORS.Gemini.MESSAGE
+        ];
+        console.log(`[Gemini] UI_SELECTORS使用: ${geminiSelectors.length}個のセレクタを試行`);
+      } else {
+        // フォールバック: 従来のセレクタ
+        geminiSelectors = [
+          'message-content.model-response-text .markdown.markdown-main-panel', // 最も具体的
+          '.model-response-text .markdown.markdown-main-panel',
+          '.markdown.markdown-main-panel',
+          'message-content.model-response-text',
+          '.model-response-text',
+          'message-content',
+        ];
+        console.log(`[Gemini] フォールバック: ${geminiSelectors.length}個のセレクタを試行`);
+      }
       
       for (const selector of geminiSelectors) {
-        const elements = document.querySelectorAll(selector);
-        if (elements.length > 0) {
-          const latest = elements[elements.length - 1];
-          const text = latest.textContent.replace(/\u00A0/g, " ").trim();
-          if (text) {
-            console.log(`[Gemini] 回答取得成功 (セレクタ: ${selector})`);
-            return text;
+        try {
+          const elements = document.querySelectorAll(selector);
+          if (elements.length > 0) {
+            const latest = elements[elements.length - 1];
+            const text = latest.textContent.replace(/\u00A0/g, " ").trim();
+            if (text) {
+              console.log(`[Gemini] 回答取得成功 (セレクタ: ${selector})`);
+              return text;
+            }
           }
+        } catch (e) {
+          console.debug(`[Gemini] セレクタエラー: ${selector}`, e);
         }
       }
 
@@ -2793,8 +2891,8 @@ async function initializeWithDefaults() {
 if (AI_TYPE) {
   console.log(`🚀 [11.autoai] ${AI_TYPE} サイトでContent Script初期化開始`);
 
-  // タイムアウト設定の読み込みから開始
-  loadTimeoutConfig();
+  // UI Selectors読み込みから開始
+  loadUISelectors();
 
   // フォールバック: 3秒後にDeepResearch設定が未読み込みなら強制実行
   setTimeout(() => {

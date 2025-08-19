@@ -61,6 +61,7 @@ class StreamProcessor {
     // 処理状態
     this.isProcessing = false;
     this.spreadsheetData = null;
+    this.processingColumns = new Set(); // 現在処理中の列を管理
   }
 
   /**
@@ -93,7 +94,13 @@ class StreamProcessor {
       // 最初の列のみ開始（並列ストリーミングの起点）
       if (columns[0]) {
         await this.startColumnProcessing(columns[0]).catch(error => {
-          this.logger.error("[StreamProcessor] 第1列処理エラー", error);
+          this.logger.error("[StreamProcessor] 第1列処理エラー", {
+            message: error.message,
+            stack: error.stack,
+            name: error.name,
+            column: columns[0],
+            errorString: error.toString()
+          });
         });
       }
 
@@ -149,16 +156,29 @@ class StreamProcessor {
    * @param {string} column
    */
   async startColumnProcessing(column) {
+    // 重複処理チェック
+    if (this.processingColumns.has(column)) {
+      this.logger.log(`[StreamProcessor] ${column}列は既に処理中のためスキップ`);
+      return;
+    }
+    
     const startTime = Date.now();
     this.logger.log(`[StreamProcessor] 📋 startColumnProcessing開始: ${column}列 (${startTime})`);
     
+    // 処理開始フラグを設定
+    this.processingColumns.add(column);
+    
     const tasks = this.taskQueue.get(column);
-    if (!tasks || tasks.length === 0) return;
+    if (!tasks || tasks.length === 0) {
+      this.processingColumns.delete(column);
+      return;
+    }
 
     const currentIndex = this.currentRowByColumn.get(column) || 0;
     if (currentIndex >= tasks.length) {
       // この列のタスクが全て完了したら、ウィンドウを閉じる
       await this.closeColumnWindow(column);
+      this.processingColumns.delete(column); // 処理完了フラグをクリア
       return;
     }
 
@@ -178,31 +198,26 @@ class StreamProcessor {
       // インデックスを進める（3つ分）
       this.currentRowByColumn.set(column, currentIndex + samRowTasks.length);
       
+      // 3種類AI処理完了後はフラグをクリア
+      this.processingColumns.delete(column);
       return;
     }
 
     const currentTask = tasks[currentIndex];
 
-    // この列に既存のウィンドウがあるかチェック
-    const existingWindowId = this.columnWindows.get(column);
-    if (existingWindowId && this.activeWindows.has(existingWindowId)) {
-      // 既存のウィンドウでタスクを実行
-      await this.executeTaskInWindow(currentTask, existingWindowId);
-    } else {
-      // 新しいウィンドウを開く必要がある
-      // テスト用のpreferredPositionがある場合はそれを使用、なければ自動検索
-      const position = currentTask.preferredPosition !== undefined 
-        ? currentTask.preferredPosition 
-        : this.findAvailablePosition();
-      if (position === -1) {
-        this.logger.log(
-          `[StreamProcessor] 空きポジションがありません。待機中...`,
-        );
-        return;
-      }
-
-      await this.openWindowForColumn(column, currentTask, position);
+    // 常に新しいウィンドウを開く（既存ウィンドウは使い回さない）
+    // テスト用のpreferredPositionがある場合はそれを使用、なければ自動検索
+    const position = currentTask.preferredPosition !== undefined 
+      ? currentTask.preferredPosition 
+      : this.findAvailablePosition();
+    if (position === -1) {
+      this.logger.log(
+        `[StreamProcessor] 空きポジションがありません。待機中...`,
+      );
+      return;
     }
+
+    await this.openWindowForColumn(column, currentTask, position);
   }
 
   /**
@@ -221,6 +236,11 @@ class StreamProcessor {
     const windowPosition = this.calculateWindowPosition(position, screenInfo);
 
     try {
+      // chrome.windows APIの存在確認
+      if (typeof chrome === 'undefined' || !chrome.windows) {
+        throw new Error('chrome.windows API is not available. This must run in a Service Worker context.');
+      }
+
       const window = await chrome.windows.create({
         url: url,
         type: "popup",
@@ -252,7 +272,17 @@ class StreamProcessor {
       // 最初のタスクを実行
       await this.executeTaskInWindow(task, window.id);
     } catch (error) {
-      this.logger.error(`[StreamProcessor] ウィンドウ作成エラー`, error);
+      this.logger.error(`[StreamProcessor] ウィンドウ作成エラー`, {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+        url: url,
+        position: position,
+        column: column,
+        taskAiType: task.aiType,
+        errorString: error.toString()
+      });
+      throw error; // エラーを再スロー
     }
   }
 
@@ -447,26 +477,15 @@ class StreamProcessor {
         }
       }
       
-      // 次の行がある場合は開始
-      if (hasMoreTasks) {
-        await new Promise(resolve => setTimeout(resolve, 500));
-        await this.startColumnProcessing(queueColumn);
-      }
+      // 3種類AI完了時は次の行の処理は並列ストリーミングで自動開始される
     } else {
       // 通常の処理（単独AI）
       // 現在のウィンドウを閉じる（タスク完了ごとに必ず閉じる）
       this.logger.log(`[StreamProcessor] タスク完了によりウィンドウを閉じます: ${queueColumn}列`);
       await this.closeColumnWindow(queueColumn);
       
-      // 次のタスクがある場合は新しいウィンドウで開始
-      if (hasMoreTasks) {
-        this.logger.log(`[StreamProcessor] 新しいウィンドウで次のタスクを開始: ${queueColumn}列`);
-        // 少し待機してから新しいウィンドウを開く
-        await new Promise(resolve => setTimeout(resolve, 500));
-        await this.startColumnProcessing(queueColumn);
-      } else {
-        this.logger.log(`[StreamProcessor] ${queueColumn}列のタスクが全て完了`);
-      }
+      // 通常処理の次タスクも並列ストリーミングで自動開始される
+      this.logger.log(`[StreamProcessor] ${queueColumn}列のタスクが全て完了`);
     }
 
     // ■ 並列ストリーミング: 次の列の開始は記載完了後に行われる
@@ -483,14 +502,15 @@ class StreamProcessor {
     if (!globalThis.sheetsClient || !this.spreadsheetData) return;
 
     try {
-      const { spreadsheetId } = this.spreadsheetData;
-      const answerColumn = this.getAnswerColumn(task);
+      const { spreadsheetId, gid } = this.spreadsheetData;
+      const answerColumn = task.column;
       const range = `${answerColumn}${task.row}`;
 
       await globalThis.sheetsClient.updateCell(
         spreadsheetId,
         range,
         result.response,
+        gid  // gidを渡してシート名を含む範囲にする
       );
 
       this.logger.log(`[StreamProcessor] 回答を書き込み: ${range}`);
@@ -541,29 +561,6 @@ class StreamProcessor {
     }
   }
 
-  /**
-   * ドキュメントURLをスプレッドシートに書き込む
-   * @param {Task} task
-   * @param {string} docUrl
-   */
-  async writeDocumentUrlToSpreadsheet(task, docUrl) {
-    if (!globalThis.sheetsClient || !this.spreadsheetData) return;
-
-    try {
-      const { spreadsheetId } = this.spreadsheetData;
-      const docUrlColumn = this.getDocumentUrlColumn(task);
-      const range = `${docUrlColumn}${task.row}`;
-
-      await globalThis.sheetsClient.updateCell(spreadsheetId, range, docUrl);
-
-      this.logger.log(`[StreamProcessor] ドキュメントURL書き込み: ${range}`);
-    } catch (error) {
-      this.logger.error(
-        `[StreamProcessor] ドキュメントURL書き込みエラー`,
-        error,
-      );
-    }
-  }
 
   /**
    * レポートタスクを実行
@@ -609,9 +606,6 @@ class StreamProcessor {
       );
 
       if (docInfo && docInfo.url) {
-        // ドキュメントURLをレポート化列に書き込む
-        await this.writeReportUrlToSpreadsheet(task, docInfo.url);
-        
         this.logger.log(
           `[StreamProcessor] レポート作成完了: ${docInfo.url}`,
         );
@@ -695,50 +689,6 @@ class StreamProcessor {
     }
   }
 
-  /**
-   * レポートURLをスプレッドシートに書き込む
-   * @param {Task} task
-   * @param {string} docUrl
-   */
-  async writeReportUrlToSpreadsheet(task, docUrl) {
-    if (!globalThis.sheetsClient || !this.spreadsheetData) return;
-
-    try {
-      const { spreadsheetId } = this.spreadsheetData;
-      const range = `${task.reportColumn}${task.row}`;
-
-      await globalThis.sheetsClient.updateCell(spreadsheetId, range, docUrl);
-
-      this.logger.log(`[StreamProcessor] レポートURL書き込み: ${range}`);
-    } catch (error) {
-      this.logger.error(
-        `[StreamProcessor] レポートURL書き込みエラー`,
-        error,
-      );
-    }
-  }
-
-  /**
-   * 回答列の列名を取得
-   * @param {Task} task
-   * @returns {string} 列名
-   */
-  getAnswerColumn(task) {
-    // プロンプト列の次の列が回答列
-    const columnIndex = this.columnToIndex(task.promptColumn);
-    return this.indexToColumn(columnIndex + 1);
-  }
-
-  /**
-   * ドキュメントURL列の列名を取得
-   * @param {Task} task
-   * @returns {string} 列名
-   */
-  getDocumentUrlColumn(task) {
-    // プロンプト列の2つ後の列がドキュメントURL列
-    const columnIndex = this.columnToIndex(task.promptColumn);
-    return this.indexToColumn(columnIndex + 2);
-  }
 
   /**
    * 列名をインデックスに変換
@@ -871,9 +821,21 @@ class StreamProcessor {
       }
       
       // 各AIタスクを並列で開始
+      const position = task.preferredPosition !== undefined 
+        ? task.preferredPosition 
+        : this.findAvailablePosition();
+        
+      if (position === -1) {
+        this.logger.log(`[StreamProcessor] 空きポジションがないため${task.column}列は待機`);
+        continue;
+      }
+      
       parallelPromises.push(
-        this.createWindowAndExecuteTask(task).catch(error => {
-          this.logger.error(`[StreamProcessor] ${task.column}列エラー:`, error);
+        this.openWindowForColumn(task.column, task, position).catch(error => {
+          this.logger.error(`[StreamProcessor] ${task.column}列エラー:`, {
+            message: error.message,
+            stack: error.stack
+          });
           return null;
         })
       );
