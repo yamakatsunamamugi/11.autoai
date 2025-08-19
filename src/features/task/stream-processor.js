@@ -478,38 +478,34 @@ class StreamProcessor {
       hasMoreTasks: hasMoreTasks,
     });
 
-    // ■ 3種類AIグループの特別処理
+    // ■ 3種類AIグループの処理（個別完了対応）
     if (multiAI) {
       // 3種類AIの場合も、1つずつ完了したらそのウィンドウを閉じる
       this.logger.log(`[StreamProcessor] 🚪 3種類AI個別完了: ${task.column}${task.row} (${task.aiType}) - ウィンドウを閉じます`);
       await this.closeColumnWindow(task.column);
       this.logger.log(`[StreamProcessor] ✅ 3種類AI個別ウィンドウクローズ完了: ${task.column}列`);
       
-      // 同じ行の3つすべてが完了したかチェック（次の行開始判定のため）
-      const tasks = this.taskQueue.get(queueColumn);
-      const sameRowTasks = tasks.filter(t => t.row === row);
-      const completedCount = sameRowTasks.filter(t => this.completedTasks.has(t.id)).length;
-      
-      this.logger.log(`[StreamProcessor] 3種類AI進捗: 行${row} - ${completedCount}/${sameRowTasks.length}完了`);
-      
-      // 3つすべて完了した場合のみ、次の行を開始
-      if (completedCount === sameRowTasks.length) {
-        this.logger.log(`[StreamProcessor] 3種類AI行${row}完了 → 次の行へ`);
+      // そのAIの次のタスクを即座に開始（単独AIと同じ動作）
+      if (hasMoreTasks) {
+        // 同じAI（同じ列）の次のタスクを探す
+        const tasks = this.taskQueue.get(queueColumn);
+        const nextTask = tasks[nextIndex];
         
-        // 次の行のタスクを即座に開始
-        if (hasMoreTasks) {
-          const nextRowTasks = tasks.filter(t => t.row === tasks[nextIndex]?.row);
-          if (nextRowTasks.length > 0) {
-            this.logger.log(`[StreamProcessor] 🔄 3種類AI次の行を開始: 行${nextRowTasks[0].row}`);
-            await this.start3TypeParallel(nextRowTasks);
+        if (nextTask && nextTask.aiType === task.aiType) {
+          this.logger.log(`[StreamProcessor] 🔄 3種類AI個別次タスク開始: ${nextTask.column}${nextTask.row} (${nextTask.aiType})`);
+          
+          // 個別に次のタスクを開始（3種類並列ではなく単独で）
+          const position = this.findAvailablePosition();
+          if (position !== -1) {
+            await this.openWindowForColumn(nextTask.column, nextTask, position);
+          } else {
+            this.logger.log(`[StreamProcessor] ⚠️ 空きポジションがないため${nextTask.column}列は待機`);
           }
         } else {
-          this.logger.log(`[StreamProcessor] 🎯 3種類AI全タスク完了しました`);
+          this.logger.log(`[StreamProcessor] 🎯 ${task.aiType}の全タスク完了しました`);
         }
       } else {
-        // まだ未完了のタスクがある場合
-        const pendingTasks = sameRowTasks.filter(t => !this.completedTasks.has(t.id));
-        this.logger.log(`[StreamProcessor] ⏳ 同一行の残りタスク待機中: ${pendingTasks.map(t => `${t.column}(${t.aiType})`).join(', ')}`);
+        this.logger.log(`[StreamProcessor] 🎯 ${task.aiType}の全タスク完了しました`);
       }
     } else {
       // 通常の処理（単独AI）
