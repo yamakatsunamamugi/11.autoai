@@ -1424,7 +1424,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // 3. 応答を待機
     // 4. 結果をbackground.jsに返却
     case "sendPrompt":
-      isAsync = true;
+      isAsync = true;  // 非同期処理のため必須！
       console.log(`[11.autoai][${AI_TYPE}] sendPromptメッセージ受信 - 判定開始:`, {
         hasTaskId: !!request.taskId,
         taskId: request.taskId,
@@ -1641,14 +1641,30 @@ async function getCurrentAIResponse() {
  */
 async function isResponseCompleted() {
   if (AI_TYPE === "Claude") {
-    // Claude専用の応答完了判定：停止ボタン消滅のみ
+    // Claude専用の応答完了判定
     const stopButton = document.querySelector('button[aria-label="応答を停止"]');
     
-    // 停止ボタンが消滅した場合、応答完了
-    const isCompleted = !stopButton;
+    // 応答要素の存在も確認
+    let hasResponseElement = false;
+    const responseSelectors = [
+      '[data-is-streaming="false"]',
+      '.font-claude-message',
+      'div[class*="font-claude-message"]'
+    ];
+    
+    for (const selector of responseSelectors) {
+      const elements = document.querySelectorAll(selector);
+      if (elements.length > 0) {
+        hasResponseElement = true;
+        break;
+      }
+    }
+    
+    // 停止ボタンが消滅し、かつ応答要素が存在する場合、応答完了
+    const isCompleted = !stopButton && hasResponseElement;
     
     if (isCompleted) {
-      console.log(`[11.autoai][Claude] 応答完了検出: 停止ボタン消失`);
+      console.log(`[11.autoai][Claude] 応答完了検出: 停止ボタン消失 & 応答要素存在`);
     }
     
     return isCompleted;
@@ -1695,22 +1711,37 @@ async function handleAITaskPrompt(request, sendResponse) {
     try {
       console.log(`[11.autoai][${AI_TYPE}] 応答待機開始: ${taskId}`);
       
+      // 初回待機: 応答要素が生成されるまで少し待つ
+      console.log(`[11.autoai][${AI_TYPE}] 初回待機中（応答要素の生成待ち）...`);
+      await sleep(2000); // 2秒待機
+      
       // 応答を待機（最大3分）
       const maxWaitTime = 180000;
       const startTime = Date.now();
       let response = null;
+      let hasStartedStreaming = false;
       
       while (Date.now() - startTime < maxWaitTime) {
-        response = await getCurrentAIResponse();
+        // 停止ボタンの存在確認で応答開始を検出
+        const stopButton = document.querySelector('button[aria-label="応答を停止"]');
+        if (stopButton && !hasStartedStreaming) {
+          hasStartedStreaming = true;
+          console.log(`[11.autoai][${AI_TYPE}] 応答ストリーミング開始を検出`);
+        }
         
-        if (response && response.trim()) {
-          console.log(`[11.autoai][${AI_TYPE}] 応答取得成功: ${taskId}`);
-          sendResponse({ 
-            success: true, 
-            response: response,
-            aiType: AI_TYPE 
-          });
-          return;
+        // 応答開始後のみ取得を試みる
+        if (hasStartedStreaming || (Date.now() - startTime) > 3000) {
+          response = await getCurrentAIResponse();
+          
+          if (response && response.trim()) {
+            console.log(`[11.autoai][${AI_TYPE}] 応答取得成功: ${taskId}`);
+            sendResponse({ 
+              success: true, 
+              response: response,
+              aiType: AI_TYPE 
+            });
+            return;
+          }
         }
         
         // Claude専用: より詳細なデバッグログ
@@ -2415,8 +2446,27 @@ async function getResponseWithCanvas() {
   // UI_SELECTORSの読み込みを待つ
   await waitForUISelectors();
   
+  // デバッグ: 利用可能な自動化スクリプトを確認
+  console.log(`[${AI_TYPE}] 利用可能な自動化スクリプト:`, {
+    ChatGPTAutomation: !!window.ChatGPTAutomation,
+    ClaudeAutomation: !!window.ClaudeAutomation,
+    GeminiAutomation: !!window.GeminiAutomation,
+    Gemini: !!window.Gemini
+  });
+  
+  // 各AIの自動化スクリプトのgetResponse関数を優先的に使用
   switch (AI_TYPE) {
     case "ChatGPT":
+      // ChatGPTAutomationのgetResponse関数を使用（テストで実証済み）
+      if (window.ChatGPTAutomation?.getResponse) {
+        console.log(`[ChatGPT] ChatGPTAutomation.getResponse()を使用`);
+        const response = await window.ChatGPTAutomation.getResponse();
+        // ChatGPTは空文字列を返すことがあるので、nullに変換
+        return response || null;
+      }
+      
+      // フォールバック: 従来の処理
+      console.log(`[ChatGPT] フォールバック処理を使用`);
       // ChatGPTの回答取得（UI_SELECTORSを使用）
       let chatResponse = null;
       
@@ -2468,24 +2518,22 @@ async function getResponseWithCanvas() {
       }
       
       if (!chatResponse || !chatResponse.textContent?.trim()) {
-        // デバッグ情報を出力
-        const allAssistant = document.querySelectorAll('[data-message-author-role="assistant"]');
-        console.log(`[ChatGPT] デバッグ: assistant要素数 = ${allAssistant.length}`);
-        if (allAssistant.length > 0) {
-          console.log(`[ChatGPT] 最後のassistant要素:`, allAssistant[allAssistant.length - 1]);
-        }
-        console.log('[ChatGPT] 利用可能な要素:');
-        console.log('.markdown.prose要素:', document.querySelectorAll('.markdown.prose').length);
-        console.log('.prose要素:', document.querySelectorAll('.prose').length);
-        console.log('.markdown要素:', document.querySelectorAll('.markdown').length);
-        console.log('[role="presentation"]要素:', document.querySelectorAll('[role="presentation"]').length);
-        console.log('ページタイトル:', document.title);
-        console.log('URL:', window.location.href);
-        throw new Error("ChatGPT: 回答コンテナが見つかりません");
+        console.debug('[ChatGPT] 回答コンテナがまだ見つかりません');
+        // エラーをスローせずにnullを返す（応答がまだ生成されていない場合）
+        return null;
       }
       return chatResponse.textContent.trim();
 
     case "Claude":
+      // ClaudeAutomationのgetResponse関数を使用（テストで実証済み）
+      if (window.ClaudeAutomation?.getResponse) {
+        console.log(`[Claude] ClaudeAutomation.getResponse()を使用`);
+        const response = await window.ClaudeAutomation.getResponse();
+        return response;
+      }
+      
+      // フォールバック: 従来の処理
+      console.log(`[Claude] フォールバック処理を使用`);
       // Claude: UI_SELECTORSを使用
       let claudeSelectors = [];
       console.log(`[Claude] UI_SELECTORS状態:`, {
@@ -2541,16 +2589,9 @@ async function getResponseWithCanvas() {
       }
       
       if (!claudeResponse) {
-        console.error('[Claude] 回答コンテナが見つかりません。利用可能な要素をデバッグ:');
-        console.log('DOM構造:', document.body.innerHTML.substring(0, 1000));
-        console.log('.font-claude-message要素:', document.querySelectorAll('.font-claude-message').length);
-        console.log('.prose要素:', document.querySelectorAll('.prose').length);
-        console.log('.markdown要素:', document.querySelectorAll('.markdown').length);
-        console.log('[data-testid*="conversation-turn"]要素:', document.querySelectorAll('[data-testid*="conversation-turn"]').length);
-        console.log('[data-is-streaming]要素:', document.querySelectorAll('[data-is-streaming]').length);
-        console.log('ページタイトル:', document.title);
-        console.log('URL:', window.location.href);
-        throw new Error("Claude: 回答コンテナが見つかりません");
+        console.debug('[Claude] 回答コンテナがまだ見つかりません');
+        // エラーをスローせずにnullを返す（応答がまだ生成されていない場合）
+        return null;
       }
 
       // Canvas機能チェック
@@ -2656,19 +2697,9 @@ async function getResponseWithCanvas() {
         }
       }
 
-      console.error('[Gemini] 回答コンテナが見つかりません。利用可能な要素:');
-      console.log('message-content要素:', document.querySelectorAll('message-content').length);
-      console.log('.model-response-text要素:', document.querySelectorAll('.model-response-text').length);
-      console.log('.conversation-turn要素:', document.querySelectorAll('.conversation-turn').length);
-      console.log('.markdown要素:', document.querySelectorAll('.markdown').length);
-      console.log('[role="presentation"]要素:', document.querySelectorAll('[role="presentation"]').length);
-      console.log('すべてのdiv要素数:', document.querySelectorAll('div').length);
-      
-      // 最新のGeminiページ構造をサンプリング
-      console.log('ページタイトル:', document.title);
-      console.log('body内の主要なクラス:', Array.from(document.body.classList));
-      
-      throw new Error("Gemini: 回答コンテナが見つかりません");
+      console.debug('[Gemini] 回答コンテナがまだ見つかりません');
+      // エラーをスローせずにnullを返す（応答がまだ生成されていない場合）
+      return null;
 
     default:
       throw new Error(`サポートされていないAI種別: ${AI_TYPE}`);
@@ -3010,9 +3041,9 @@ async function loadAIControlScripts() {
   console.log(`[11.autoai][${AI_TYPE}] 制御スクリプトを読み込み中...`);
 
   const scriptMap = {
-    Gemini: "gemini-deepresearch-control.js",
-    ChatGPT: "chatgpt-mode-control.js",
-    Claude: "claude-mode-control.js",
+    Gemini: "gemini-dynamic-automation.js",
+    ChatGPT: "chatgpt-automation.js",
+    Claude: "claude-automation-dynamic.js",
   };
 
   if (scriptMap[AI_TYPE]) {
@@ -3029,7 +3060,7 @@ async function loadAIControlScripts() {
 
     return new Promise((resolve) => {
       const script = document.createElement("script");
-      script.src = chrome.runtime.getURL(scriptMap[AI_TYPE]);
+      script.src = chrome.runtime.getURL(`automations/${scriptMap[AI_TYPE]}`);
       script.dataset.extensionScript = "true";
 
       script.onload = () => {
