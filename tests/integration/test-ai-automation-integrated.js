@@ -4,6 +4,99 @@
 (function() {
   'use strict';
 
+  // プロンプト保存管理
+  const PromptManager = {
+    // プロンプトを取得
+    getPrompts: function(aiType) {
+      const key = `ai_prompts_${aiType}`;
+      const saved = localStorage.getItem(key);
+      return saved ? JSON.parse(saved) : [];
+    },
+    
+    // プロンプトを保存
+    savePrompt: function(aiType, prompt) {
+      if (!prompt || prompt.trim() === '') return false;
+      
+      const prompts = this.getPrompts(aiType);
+      
+      // 重複チェック
+      if (prompts.includes(prompt)) {
+        console.log(`[${aiType}] プロンプトは既に登録済み: ${prompt}`);
+        return false;
+      }
+      
+      // 最大20個まで
+      if (prompts.length >= 20) {
+        alert('保存できるプロンプトは最大20個までです');
+        return false;
+      }
+      
+      prompts.push(prompt);
+      localStorage.setItem(`ai_prompts_${aiType}`, JSON.stringify(prompts));
+      console.log(`[${aiType}] プロンプトを保存: ${prompt}`);
+      return true;
+    },
+    
+    // プロンプトを削除
+    deletePrompt: function(aiType, prompt) {
+      const prompts = this.getPrompts(aiType);
+      const index = prompts.indexOf(prompt);
+      if (index > -1) {
+        prompts.splice(index, 1);
+        localStorage.setItem(`ai_prompts_${aiType}`, JSON.stringify(prompts));
+        console.log(`[${aiType}] プロンプトを削除: ${prompt}`);
+        return true;
+      }
+      return false;
+    },
+    
+    // ドロップダウンメニューを更新
+    updateDropdownMenu: function(aiType) {
+      const menu = document.querySelector(`.dropdown-menu[data-for="${aiType}-prompt"]`);
+      if (!menu) return;
+      
+      // 既存のカスタムプロンプトを削除（デフォルトと特殊項目は残す）
+      const customItems = menu.querySelectorAll('.dropdown-item.custom-prompt');
+      customItems.forEach(item => item.remove());
+      
+      // 保存されたプロンプトを追加
+      const prompts = this.getPrompts(aiType);
+      const specialItem = menu.querySelector('[data-action]'); // 特殊項目（3連続テストなど）
+      
+      prompts.forEach(prompt => {
+        const item = document.createElement('div');
+        item.className = 'dropdown-item custom-prompt';
+        item.dataset.value = prompt;
+        item.style.cssText = 'padding: 8px; cursor: pointer; border-bottom: 1px solid #eee; position: relative; padding-right: 30px;';
+        
+        // プロンプトテキスト
+        const textSpan = document.createElement('span');
+        textSpan.textContent = prompt;
+        item.appendChild(textSpan);
+        
+        // 削除ボタン
+        const deleteBtn = document.createElement('span');
+        deleteBtn.textContent = '✕';
+        deleteBtn.style.cssText = 'position: absolute; right: 8px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #dc3545; font-weight: bold;';
+        deleteBtn.onclick = (e) => {
+          e.stopPropagation();
+          if (confirm(`「${prompt}」を削除しますか？`)) {
+            this.deletePrompt(aiType, prompt);
+            this.updateDropdownMenu(aiType);
+          }
+        };
+        item.appendChild(deleteBtn);
+        
+        // 特殊項目の前に挿入
+        if (specialItem) {
+          menu.insertBefore(item, specialItem);
+        } else {
+          menu.appendChild(item);
+        }
+      });
+    }
+  };
+
   // カスタムプルダウンの設定
   function setupCustomDropdowns() {
     // プルダウンボタンのクリックイベント
@@ -26,14 +119,36 @@
         }
       }
       
-      // ドロップダウン項目のクリック
-      if (e.target.classList.contains('dropdown-item')) {
+      // 登録ボタンのクリック
+      if (e.target.classList.contains('add-prompt-btn')) {
         e.preventDefault();
         e.stopPropagation();
         
-        const value = e.target.dataset.value;
-        const action = e.target.dataset.action;
-        const menu = e.target.closest('.dropdown-menu');
+        const targetId = e.target.dataset.target;
+        const input = document.getElementById(targetId);
+        const aiType = targetId.replace('-prompt', '');
+        
+        if (input && input.value) {
+          if (PromptManager.savePrompt(aiType, input.value)) {
+            PromptManager.updateDropdownMenu(aiType);
+            // 視覚的フィードバック
+            e.target.textContent = '✅';
+            setTimeout(() => {
+              e.target.textContent = '➕';
+            }, 1000);
+          }
+        }
+      }
+      
+      // ドロップダウン項目のクリック
+      if (e.target.classList.contains('dropdown-item') || e.target.parentElement?.classList.contains('dropdown-item')) {
+        const item = e.target.classList.contains('dropdown-item') ? e.target : e.target.parentElement;
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const value = item.dataset.value;
+        const action = item.dataset.action;
+        const menu = item.closest('.dropdown-menu');
         const targetId = menu.dataset.for;
         const input = document.getElementById(targetId);
         
@@ -309,6 +424,11 @@
     
     // カスタムプルダウン設定
     setupCustomDropdowns();
+    
+    // 保存済みプロンプトを読み込み
+    ['chatgpt', 'claude', 'gemini', 'genspark'].forEach(aiType => {
+      PromptManager.updateDropdownMenu(aiType);
+    });
     
     // デフォルトプロンプトの設定
     const promptFields = [
