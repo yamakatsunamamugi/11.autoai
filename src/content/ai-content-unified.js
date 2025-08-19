@@ -1439,21 +1439,38 @@ async function handleSendPrompt(request, sendResponse) {
       }
     }
 
-    const aiInput = new AIInput(AI_TYPE);
-
-    // プロンプト入力
-    const inputResult = await aiInput.inputPrompt(prompt);
-    if (!inputResult.success) {
-      throw new Error(`プロンプト入力失敗: ${inputResult.error.message}`);
+    // 統合テストと同じrunAutomation方式を使用（AIInputクラスは削除済み）
+    console.log(`[11.autoai][${AI_TYPE}] runAutomationを使用してプロンプト送信`);
+    
+    // プロンプト送信のみ（応答待機なし）
+    const config = {
+      text: prompt,
+      send: true,
+      waitResponse: false,
+      getResponse: false
+    };
+    
+    let result = null;
+    switch (AI_TYPE) {
+      case "Claude":
+        if (window.ClaudeAutomation?.runAutomation) {
+          result = await window.ClaudeAutomation.runAutomation(config);
+        }
+        break;
+      case "ChatGPT":
+        if (window.ChatGPTAutomation?.runAutomation) {
+          result = await window.ChatGPTAutomation.runAutomation(config);
+        }
+        break;
+      case "Gemini":
+        if (window.Gemini?.runAutomation) {
+          result = await window.Gemini.runAutomation(config);
+        }
+        break;
     }
-
-    // 少し待機（入力処理の安定化）
-    await sleep(500);
-
-    // 送信ボタンクリック
-    const clickResult = await aiInput.clickSendButton();
-    if (!clickResult.success) {
-      throw new Error(`送信ボタンクリック失敗: ${clickResult.error.message}`);
+    
+    if (!result || !result.success) {
+      throw new Error(`プロンプト送信失敗: ${result?.error || '不明なエラー'}`);
     }
 
     sendResponse({
