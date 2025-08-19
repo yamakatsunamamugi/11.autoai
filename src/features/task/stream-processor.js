@@ -417,11 +417,13 @@ class StreamProcessor {
     // タスクはpromptColumnでグループ化されているので、それを使用
     const queueColumn = promptColumn || column;
 
-    this.logger.log(`[StreamProcessor] タスク完了: ${column}${row}`, {
+    this.logger.log(`[StreamProcessor] 🎯 onTaskCompleted開始: ${column}${row}`, {
       result: result.success ? "success" : "failed",
       skipped: result.skipped || false,
       queueColumn: queueColumn,
-      multiAI: multiAI
+      multiAI: multiAI,
+      windowId: windowId,
+      hasResponse: !!result.response
     });
 
     // タスクを完了済みにマーク
@@ -499,7 +501,7 @@ class StreamProcessor {
     } else {
       // 通常の処理（単独AI）
       // 現在のウィンドウを即座に閉じる
-      this.logger.log(`[StreamProcessor] タスク完了によりウィンドウを閉じます: ${queueColumn}列`);
+      this.logger.log(`[StreamProcessor] 🚪 タスク完了によりウィンドウを閉じます: ${queueColumn}列, windowId: ${windowId}`);
       const closePromise = this.closeColumnWindow(queueColumn);
       
       // 次のタスクがある場合は即座に開始（ウィンドウクローズと並行）
@@ -758,12 +760,13 @@ class StreamProcessor {
     const windowInfo = this.activeWindows.get(windowId);
     if (!windowInfo) return;
 
-    this.logger.log(`[StreamProcessor] ${column}列のウィンドウを閉じる`);
+    this.logger.log(`[StreamProcessor] 🗂️ ${column}列のウィンドウを閉じる開始 (windowId: ${windowId})`);
 
     try {
       await chrome.windows.remove(windowId);
+      this.logger.log(`[StreamProcessor] ✅ ウィンドウクローズ完了 (windowId: ${windowId})`);
     } catch (error) {
-      this.logger.warn(`[StreamProcessor] ウィンドウクローズエラー`, error);
+      this.logger.warn(`[StreamProcessor] ❌ ウィンドウクローズエラー (windowId: ${windowId})`, error);
     }
 
     this.activeWindows.delete(windowId);
@@ -1055,6 +1058,20 @@ class StreamProcessor {
       
       // スクリプトが初期化されるまで少し待機
       await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      // 自動化オブジェクトの存在を確認
+      const verification = await chrome.scripting.executeScript({
+        target: { tabId: tabId },
+        func: () => ({
+          ChatGPTAutomation: !!window.ChatGPTAutomation,
+          ClaudeAutomation: !!window.ClaudeAutomation,
+          GeminiAutomation: !!window.GeminiAutomation,
+          Gemini: !!window.Gemini,
+          commonAIHandler: !!window.AIHandler
+        })
+      });
+      
+      this.logger.log(`[StreamProcessor] ${aiType}自動化オブジェクト確認:`, verification[0]?.result || 'error');
       
     } catch (error) {
       this.logger.error(`[StreamProcessor] 自動化スクリプト注入エラー`, {
