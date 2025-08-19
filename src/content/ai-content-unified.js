@@ -1148,7 +1148,7 @@ class ResponseCollector {
    * @param {number} timeout - タイムアウト時間
    * @returns {Promise<Object>} 収集結果
    */
-  async collectResponse(timeout = 180000) {
+  async collectResponse(timeout = 600000) {
     if (this.isCollecting) {
       throw new Error("[11.autoai] 既に応答収集中です");
     }
@@ -2424,10 +2424,10 @@ async function handleSendPrompt(request, sendResponse) {
  */
 async function handleGetResponse(request, sendResponse) {
   try {
-    const { taskId, timeout = 180000, enableDeepResearch = false } = request;
+    const { taskId, timeout = 600000, enableDeepResearch = false } = request;
 
     // DeepResearchモードの場合はタイムアウトを40分に調整
-    const actualTimeout = enableDeepResearch ? 2400000 : timeout;
+    const actualTimeout = enableDeepResearch ? 3600000 : timeout;
 
     console.log(`[11.autoai][${AI_TYPE}] 応答収集開始: ${taskId}`, {
       timeout: actualTimeout,
@@ -2436,7 +2436,7 @@ async function handleGetResponse(request, sendResponse) {
 
     // 停止ボタン監視による回答待機（3.autoai準拠）
     console.log(`[11.autoai][${AI_TYPE}] 停止ボタン監視開始`);
-    const waitResult = await waitForResponseWithStopButton();
+    const waitResult = await waitForResponseWithStopButton(enableDeepResearch);
 
     if (!waitResult) {
       throw new Error("応答待機タイムアウト");
@@ -2495,73 +2495,99 @@ function handleGetTaskStatus(request, sendResponse) {
 
 /**
  * 統合タスク実行処理（プロンプト送信＋応答収集）
+ * 統合テストページと同じrunAutomation関数を使用
  */
 async function handleExecuteTask(request, sendResponse) {
   try {
     const {
       prompt,
       taskId,
-      timeout = 180000,
+      timeout = 600000,
       enableDeepResearch = false,
       specialMode = null,
+      model = null,
     } = request;
 
     // DeepResearchモードの場合はタイムアウトを40分に調整
-    const actualTimeout = enableDeepResearch ? 2400000 : timeout;
+    const actualTimeout = enableDeepResearch ? 3600000 : timeout;
 
     console.log(`[11.autoai][${AI_TYPE}] 統合タスク実行開始: ${taskId}`, {
       timeout: actualTimeout,
       enableDeepResearch: enableDeepResearch,
       specialMode: specialMode,
+      model: model,
     });
 
-    // ChatGPT特有のデバッグ
-    if (AI_TYPE === "ChatGPT") {
-      console.log(
-        `[11.autoai][ChatGPT] handleExecuteTask開始 - prompt: ${prompt.substring(0, 50)}...`,
-      );
-    }
-
-    // プロンプト送信（特殊モード情報を追加）
-    const sendPromptRequest = {
-      ...request,
-      enableDeepResearch,
-      specialMode,
+    // 統合テストページと同じ形式のconfigを作成
+    const config = {
+      model: model,
+      function: specialMode || (enableDeepResearch ? 'DeepResearch' : 'none'),
+      text: prompt,
+      send: true,
+      waitResponse: true,
+      getResponse: true,
+      timeout: actualTimeout
     };
-    await new Promise((resolve, reject) => {
-      handleSendPrompt(sendPromptRequest, (result) => {
-        if (result.success) resolve(result);
-        else reject(new Error(result.error));
-      });
-    });
 
-    // 応答収集
-    if (AI_TYPE === "ChatGPT") {
-      console.log(`[11.autoai][ChatGPT] 応答収集開始...`);
+    console.log(`[11.autoai][${AI_TYPE}] runAutomation実行`, config);
+
+    let result = null;
+
+    // 各AIのautomation.runAutomationを使用（統合テストページと同じ）
+    switch (AI_TYPE) {
+      case "Claude":
+        if (window.ClaudeAutomation?.runAutomation) {
+          console.log(`[11.autoai][Claude] ClaudeAutomation.runAutomationを使用`);
+          result = await window.ClaudeAutomation.runAutomation(config);
+        } else {
+          throw new Error("ClaudeAutomationが利用できません");
+        }
+        break;
+
+      case "ChatGPT":
+        if (window.ChatGPTAutomation?.runAutomation) {
+          console.log(`[11.autoai][ChatGPT] ChatGPTAutomation.runAutomationを使用`);
+          result = await window.ChatGPTAutomation.runAutomation(config);
+        } else {
+          throw new Error("ChatGPTAutomationが利用できません");
+        }
+        break;
+
+      case "Gemini":
+        // GeminiまたはGeminiAutomationを使用
+        if (window.Gemini?.runAutomation) {
+          console.log(`[11.autoai][Gemini] Gemini.runAutomationを使用`);
+          result = await window.Gemini.runAutomation(config);
+        } else if (window.GeminiAutomation?.runAutomation) {
+          console.log(`[11.autoai][Gemini] GeminiAutomation.runAutomationを使用`);
+          result = await window.GeminiAutomation.runAutomation(config);
+        } else {
+          throw new Error("Gemini/GeminiAutomationが利用できません");
+        }
+        break;
+
+      default:
+        throw new Error(`未対応のAI: ${AI_TYPE}`);
     }
 
-    const responseResult = await new Promise((resolve, reject) => {
-      handleGetResponse(
-        { taskId, timeout: actualTimeout, enableDeepResearch },
-        (result) => {
-          if (AI_TYPE === "ChatGPT") {
-            console.log(`[11.autoai][ChatGPT] 応答収集結果:`, result);
-          }
-          if (result.success) resolve(result);
-          else reject(new Error(result.error));
-        },
-      );
-    });
+    // 結果の処理
+    if (result && result.success) {
+      console.log(`[11.autoai][${AI_TYPE}] runAutomation成功`, {
+        responseLength: result.response?.length || 0
+      });
 
-    sendResponse({
-      success: true,
-      taskId,
-      prompt,
-      response: responseResult.response,
-      chunks: responseResult.chunks,
-      aiType: AI_TYPE,
-      timestamp: new Date().toISOString(),
-    });
+      sendResponse({
+        success: true,
+        taskId,
+        prompt,
+        response: result.response || "",
+        chunks: 1,
+        aiType: AI_TYPE,
+        timestamp: new Date().toISOString(),
+      });
+    } else {
+      throw new Error(result?.error || "runAutomation失敗");
+    }
   } catch (error) {
     const errorInfo = handleError(error, "handleExecuteTask", {
       taskId: request.taskId,
@@ -2580,48 +2606,151 @@ async function handleExecuteTask(request, sendResponse) {
 // 3.autoai準拠の応答待機・取得関数
 // ========================================
 
+// DeepResearchスクリプトの注入確認関数
+async function ensureDeepResearchScripts() {
+  console.log(`[11.autoai][${AI_TYPE}] DeepResearchスクリプトの読み込み確認中...`);
+  
+  const maxWait = 5000; // 最大5秒待機
+  const startTime = Date.now();
+  
+  while (Date.now() - startTime < maxWait) {
+    // 必要なオブジェクトの存在確認
+    const hasClaudeAutomation = window.ClaudeAutomation && 
+                               typeof window.ClaudeAutomation.waitForClaudeDeepResearchResponse === 'function';
+    const hasDeepResearchHandler = window.DeepResearchHandler &&
+                                  typeof window.DeepResearchHandler.handle === 'function';
+    const hasAIHandler = window.AIHandler && 
+                        window.AIHandler.message && 
+                        typeof window.AIHandler.message.waitForResponse === 'function';
+    
+    console.log(`[11.autoai][${AI_TYPE}] スクリプト読み込み状況:`, {
+      ClaudeAutomation: hasClaudeAutomation,
+      DeepResearchHandler: hasDeepResearchHandler,
+      AIHandler: hasAIHandler,
+      elapsed: Date.now() - startTime
+    });
+    
+    // いずれかが利用可能であれば成功
+    if (hasClaudeAutomation || hasDeepResearchHandler || hasAIHandler) {
+      console.log(`[11.autoai][${AI_TYPE}] DeepResearchスクリプト読み込み完了`);
+      return true;
+    }
+    
+    // 100ms待機して再試行
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  
+  console.warn(`[11.autoai][${AI_TYPE}] DeepResearchスクリプトの読み込みがタイムアウトしました`);
+  return false;
+}
+
 // 停止ボタン監視による回答待機関数
-async function waitForResponseWithStopButton() {
+async function waitForResponseWithStopButton(enableDeepResearch = false) {
+  // DeepResearchモードの場合はタイムアウトを40分に調整
+  const timeout = enableDeepResearch ? 3600000 : 600000; // DeepResearch: 60分、通常: 10分
+  
+  console.log(`[11.autoai][${AI_TYPE}] 応答待機開始`, {
+    enableDeepResearch,
+    timeout: `${timeout / 60000}分`
+  });
+  
+  // ClaudeのDeepResearchの場合は専用の待機処理を使用（統合テストページと同じ）
+  if (enableDeepResearch && AI_TYPE === "Claude") {
+    console.log(`[11.autoai][Claude] DeepResearchモード - 専用待機処理を使用`);
+    
+    // 必要なスクリプトの注入と読み込み確認
+    await ensureDeepResearchScripts();
+    
+    // ClaudeAutomationのwaitForClaudeDeepResearchResponseを使用
+    if (window.ClaudeAutomation && window.ClaudeAutomation.waitForClaudeDeepResearchResponse) {
+      console.log(`[11.autoai][Claude] ClaudeAutomation.waitForClaudeDeepResearchResponseを使用`);
+      const result = await window.ClaudeAutomation.waitForClaudeDeepResearchResponse(timeout / 60000);
+      if (result !== undefined) {
+        console.log(`[11.autoai][Claude] ClaudeAutomation待機結果:`, result);
+        return result;
+      }
+    }
+    
+    // DeepResearchHandlerが使える場合
+    if (window.DeepResearchHandler) {
+      console.log(`[11.autoai][Claude] DeepResearchHandlerを使用`);
+      const result = await window.DeepResearchHandler.handle('Claude', timeout / 60000);
+      if (result !== undefined) {
+        console.log(`[11.autoai][Claude] DeepResearchHandler待機結果:`, result);
+        return result;
+      }
+    }
+    
+    console.warn(`[11.autoai][Claude] 警告: DeepResearchハンドラーが利用できません`);
+  }
+  
   // 統合テストページと同じcommon-ai-handler.jsの関数を使用
   if (window.AIHandler && window.AIHandler.message && window.AIHandler.message.waitForResponse) {
     console.log(`[11.autoai][${AI_TYPE}] AIHandler.waitForResponseを使用`);
     const result = await window.AIHandler.message.waitForResponse(null, {
-      timeout: 300000, // 5分
+      timeout: timeout,
+      extendedTimeout: enableDeepResearch ? timeout : 30 * 60 * 1000, // DeepResearchの場合は延長
       sendStartTime: Date.now()
     }, AI_TYPE);
+    
+    console.log(`[11.autoai][${AI_TYPE}] AIHandler.waitForResponse結果:`, {
+      result: result,
+      type: typeof result,
+      isSuccess: result === true || result?.success === true
+    });
+    
     return result;
   }
   
-  // フォールバック: AIHandlerが使えない場合は停止ボタン消滅のみで判定（テキスト長チェックなし）
-  console.log(`[11.autoai][${AI_TYPE}] フォールバック: 独自の停止ボタン監視を使用`);
+  // フォールバック: AIHandlerが使えない場合は停止ボタン消滅のみで判定
+  console.warn(`[11.autoai][${AI_TYPE}] 警告: 統合テストのAIHandlerが利用できません - 独自監視を使用`);
+  console.log(`[11.autoai][${AI_TYPE}] フォールバック処理開始:`, {
+    timeout: `${timeout / 60000}分`,
+    enableDeepResearch,
+    selectors: SelectorFactory.getSelectors(AI_TYPE).STOP_BUTTON
+  });
+  
   return new Promise((resolve) => {
+    let checkCount = 0;
+    const startTime = Date.now();
+    
     const check = setInterval(() => {
+      checkCount++;
+      
       // AI種別に応じた停止ボタンセレクタ
       const stopBtn = document.querySelector(
         SelectorFactory.getSelectors(AI_TYPE).STOP_BUTTON?.join(", "),
       );
 
-      console.log(`[11.autoai][${AI_TYPE}] レスポンス監視中`, {
-        hasStopButton: !!stopBtn,
-      });
+      // 10回に1回詳細ログを出力
+      if (checkCount % 10 === 0) {
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        console.log(`[11.autoai][${AI_TYPE}] レスポンス監視中 (${elapsed}秒経過)`, {
+          hasStopButton: !!stopBtn,
+          checkCount,
+          enableDeepResearch
+        });
+      }
 
-      // 停止ボタンが消滅した場合のみ完了（テキスト長チェックなし）
+      // 停止ボタンが消滅した場合のみ完了
       if (!stopBtn) {
         clearInterval(check);
-        console.log(`[11.autoai][${AI_TYPE}] ✅ 停止ボタン消失検出 - レスポンス生成完了`);
+        const totalElapsed = Math.floor((Date.now() - startTime) / 1000);
+        console.log(`[11.autoai][${AI_TYPE}] ✅ 停止ボタン消失検出 - レスポンス生成完了 (${totalElapsed}秒)`);
         setTimeout(() => {
           console.log(`[11.autoai][${AI_TYPE}] ✅ タスク完了`);
           resolve(true);
-        }, 1000); // 念のため1秒待つ（common-ai-handlerと同じ）
+        }, 1000);
       }
     }, 1000);
 
-    // 5分でタイムアウト
+    // タイムアウト設定（DeepResearchモードに対応）
     setTimeout(() => {
       clearInterval(check);
-      console.log(`[11.autoai][${AI_TYPE}] レスポンス待機タイムアウト`);
+      const totalElapsed = Math.floor((Date.now() - startTime) / 1000);
+      console.warn(`[11.autoai][${AI_TYPE}] ⏰ レスポンス待機タイムアウト (${timeout / 60000}分 / ${totalElapsed}秒経過)`);
       resolve(false);
-    }, 300000);
+    }, timeout);
   });
 }
 

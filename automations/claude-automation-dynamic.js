@@ -1255,6 +1255,7 @@
     inputText,
     sendMessage,
     waitForResponse,
+    waitForClaudeDeepResearchResponse,  // DeepResearch専用待機関数を追加
     getResponse,
     runAutomation,
     getAvailableModels,
