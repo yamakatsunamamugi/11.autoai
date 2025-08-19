@@ -406,6 +406,19 @@ class StreamProcessor {
   }
 
   /**
+   * 応答しないタスクを強制完了する（デッドロック回避）
+   * @param {string} taskId - 強制完了するタスクID
+   * @param {string} reason - 完了理由
+   */
+  forceCompleteTask(taskId, reason = "タイムアウト") {
+    if (this.completedTasks.has(taskId)) return false;
+    
+    this.completedTasks.add(taskId);
+    this.logger.log(`[StreamProcessor] 🚨 タスク強制完了: ${taskId} (理由: ${reason})`);
+    return true;
+  }
+
+  /**
    * タスク完了時の処理
    * @param {Task} task
    * @param {number} windowId
@@ -467,38 +480,36 @@ class StreamProcessor {
 
     // ■ 3種類AIグループの特別処理
     if (multiAI) {
-      // 3種類AIの場合、同じ行の3つすべてが完了したかチェック
+      // 3種類AIの場合も、1つずつ完了したらそのウィンドウを閉じる
+      this.logger.log(`[StreamProcessor] 🚪 3種類AI個別完了: ${task.column}${task.row} (${task.aiType}) - ウィンドウを閉じます`);
+      await this.closeColumnWindow(task.column);
+      this.logger.log(`[StreamProcessor] ✅ 3種類AI個別ウィンドウクローズ完了: ${task.column}列`);
+      
+      // 同じ行の3つすべてが完了したかチェック（次の行開始判定のため）
       const tasks = this.taskQueue.get(queueColumn);
       const sameRowTasks = tasks.filter(t => t.row === row);
       const completedCount = sameRowTasks.filter(t => this.completedTasks.has(t.id)).length;
       
       this.logger.log(`[StreamProcessor] 3種類AI進捗: 行${row} - ${completedCount}/${sameRowTasks.length}完了`);
       
-      // 3つすべて完了していない場合は、他のタスクの完了を待つ
-      if (completedCount < sameRowTasks.length) {
-        // ウィンドウは開いたままにして、他のタスクの完了を待つ
-        return;
-      }
-      
-      // 3つすべて完了した場合、次の行へ進む
-      this.logger.log(`[StreamProcessor] 3種類AI行${row}完了 → 次の行へ`);
-      
-      // ウィンドウを閉じる（3つとも）
-      const closePromises = sameRowTasks.map(t => {
-        const windowId = this.columnWindows.get(t.column);
-        if (windowId) {
-          return this.closeColumnWindow(t.column);
+      // 3つすべて完了した場合のみ、次の行を開始
+      if (completedCount === sameRowTasks.length) {
+        this.logger.log(`[StreamProcessor] 3種類AI行${row}完了 → 次の行へ`);
+        
+        // 次の行のタスクを即座に開始
+        if (hasMoreTasks) {
+          const nextRowTasks = tasks.filter(t => t.row === tasks[nextIndex]?.row);
+          if (nextRowTasks.length > 0) {
+            this.logger.log(`[StreamProcessor] 🔄 3種類AI次の行を開始: 行${nextRowTasks[0].row}`);
+            await this.start3TypeParallel(nextRowTasks);
+          }
+        } else {
+          this.logger.log(`[StreamProcessor] 🎯 3種類AI全タスク完了しました`);
         }
-      });
-      await Promise.all(closePromises.filter(p => p));
-      
-      // 次の行のタスクを即座に開始
-      if (hasMoreTasks) {
-        const nextRowTasks = tasks.filter(t => t.row === tasks[nextIndex]?.row);
-        if (nextRowTasks.length > 0) {
-          this.logger.log(`[StreamProcessor] 3種類AI次の行を開始: 行${nextRowTasks[0].row}`);
-          await this.start3TypeParallel(nextRowTasks);
-        }
+      } else {
+        // まだ未完了のタスクがある場合
+        const pendingTasks = sameRowTasks.filter(t => !this.completedTasks.has(t.id));
+        this.logger.log(`[StreamProcessor] ⏳ 同一行の残りタスク待機中: ${pendingTasks.map(t => `${t.column}(${t.aiType})`).join(', ')}`);
       }
     } else {
       // 通常の処理（単独AI）
