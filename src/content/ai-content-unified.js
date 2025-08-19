@@ -640,7 +640,9 @@ async function enableDeepResearchSimple() {
 /*
  * 【削除予定】統合テストのcommon-ai-handlerを使用するため、
  * AIInput・ResponseCollectorクラスは使用停止
- * 
+ */
+ 
+/*
 class AIInput {
   constructor(aiType) {
     this.aiType = aiType;
@@ -955,9 +957,9 @@ class AIInput {
 /*
  * 【削除予定】統合テストのcommon-ai-handlerを使用するため使用停止
  * 
-/**
  * ResponseCollector - AI応答の収集と監視
  */
+/*
 class ResponseCollector {
   constructor(aiType) {
     this.aiType = aiType;
