@@ -549,8 +549,6 @@ const spreadsheetInput = document.getElementById("spreadsheetInput");
 const spreadsheetList = document.getElementById("spreadsheetList");
 // loadSheetsBtnは削除（startBtnに統合）
 // const loadSheetsBtn = document.getElementById("loadSheetsBtn");
-const saveUrlBtn = document.getElementById("saveUrlBtn");
-const deleteUrlBtn = document.getElementById("deleteUrlBtn");
 const saveNameSection = document.getElementById("saveNameSection");
 const saveNameInput = document.getElementById("saveNameInput");
 const confirmSaveBtn = document.getElementById("confirmSaveBtn");
@@ -3007,10 +3005,6 @@ updateAIStatus();
 loadSavedUrls();
 
 // ===== URLボタンのイベントリスナー =====
-// URL保存ボタン
-if (saveUrlBtn) {
-  saveUrlBtn.addEventListener("click", saveCurrentUrl);
-}
 
 // クイック保存ボタン（+ボタン）
 const quickSaveBtn = document.getElementById("quickSaveBtn");
@@ -3080,10 +3074,6 @@ if (quickSaveBtn) {
   });
 }
 
-// URL削除ボタン
-if (deleteUrlBtn) {
-  deleteUrlBtn.addEventListener("click", deleteCurrentUrl);
-}
 
 // 保存確認ボタン
 if (confirmSaveBtn) {

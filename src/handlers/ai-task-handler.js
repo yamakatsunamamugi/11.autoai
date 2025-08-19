@@ -73,10 +73,19 @@ export class AITaskHandler {
    * @returns {Promise<Object>} 実行結果
    */
   async handleExecuteAITask(request, sender) {
-    const { tabId, prompt, taskId, timeout = 180000 } = request;
+    const { tabId, prompt, taskId, timeout = 180000, model, specialOperation, aiType } = request;
     
     this.log(`[AITaskHandler] タスク実行開始: ${taskId}`);
     this.log(`[AITaskHandler] タブID: ${tabId}, プロンプト: ${prompt ? prompt.substring(0, 50) : 'なし'}...`);
+    
+    // モデル・機能情報をログ出力
+    if (model || specialOperation) {
+      this.log(`[AITaskHandler] 追加設定:`, {
+        model: model || 'デフォルト',
+        specialOperation: specialOperation || 'なし',
+        aiType: aiType || '未指定'
+      });
+    }
     
     try {
       // タブの存在確認
@@ -85,11 +94,14 @@ export class AITaskHandler {
         throw new Error(`タブが見つかりません: ${tabId}`);
       }
       
-      // コンテンツスクリプトにプロンプト送信を依頼
+      // コンテンツスクリプトにプロンプト送信を依頼（モデル・機能情報も含める）
       const sendResult = await this.sendPromptToTab(tabId, {
         action: "sendPrompt",
         prompt: prompt,
-        taskId: taskId
+        taskId: taskId,
+        model: model,  // タスクで指定されたモデル情報
+        specialOperation: specialOperation,  // タスクで指定された機能情報
+        aiType: aiType  // AI種別
       });
       
       if (!sendResult.success) {

@@ -1606,14 +1606,27 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 /**
  * プロンプトをAIに送信する共通処理
  * @param {string} prompt - 送信するプロンプト
+ * @param {Object} options - 追加オプション（モデル・機能情報など）
  * @returns {Promise<Object>} 送信結果
  */
-async function sendPromptToAI(prompt) {
+async function sendPromptToAI(prompt, options = {}) {
   try {
+    const { model, specialOperation, aiType, taskId } = options;
+    
+    // モデル・機能情報をログ出力
+    if (model || specialOperation) {
+      console.log(`[11.autoai][${AI_TYPE}] 📋 送信前設定適用:`, {
+        model,
+        specialOperation,
+        aiType,
+        taskId
+      });
+    }
+    
     const aiInput = new AIInput(AI_TYPE);
     
-    // プロンプト入力
-    const inputResult = await aiInput.inputPrompt(prompt);
+    // プロンプト入力（将来的にはここでモデル・機能設定を適用）
+    const inputResult = await aiInput.inputPrompt(prompt, { model, specialOperation });
     if (!inputResult.success) {
       return { 
         success: false, 
@@ -1709,14 +1722,27 @@ async function isResponseCompleted() {
  * handleSendPromptの簡略版で、AITaskHandlerからの要求に特化
  */
 async function handleAITaskPrompt(request, sendResponse) {
-  const { prompt, taskId } = request;
+  const { prompt, taskId, model, specialOperation, aiType } = request;
   
   console.log(`[11.autoai][${AI_TYPE}] 🔥 handleAITaskPrompt関数が呼び出されました!`, {
     taskId,
     promptLength: prompt?.length || 0,
     AI_TYPE,
-    hasPrompt: !!prompt
+    hasPrompt: !!prompt,
+    model: model || 'デフォルト',
+    specialOperation: specialOperation || 'なし',
+    aiType: aiType || '未指定'
   });
+  
+  // モデル・機能情報の追加ログ
+  if (model || specialOperation) {
+    console.log(`[11.autoai][${AI_TYPE}] 📋 タスク設定:`, {
+      model,
+      specialOperation,
+      aiType,
+      taskId
+    });
+  }
   
   try {
     // UI_SELECTORSの読み込みを待つ
@@ -1725,8 +1751,8 @@ async function handleAITaskPrompt(request, sendResponse) {
     
     console.log(`[11.autoai][${AI_TYPE}] AIタスク実行開始: ${taskId}`);
     
-    // プロンプトを送信
-    const sendResult = await sendPromptToAI(prompt);
+    // プロンプトを送信（モデル・機能情報を含める）
+    const sendResult = await sendPromptToAI(prompt, { model, specialOperation, aiType, taskId });
     
     if (!sendResult.success) {
       sendResponse({ 

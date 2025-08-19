@@ -348,6 +348,9 @@ class StreamProcessor {
         prompt: task.prompt,
         taskId: task.id,
         timeout: 180000,
+        model: task.model,  // タスクで指定されたモデル情報を追加
+        specialOperation: task.specialOperation,  // タスクで指定された機能情報を追加
+        aiType: task.aiType  // AI種別も明示的に渡す
       }, null);
 
       this.logger.log(

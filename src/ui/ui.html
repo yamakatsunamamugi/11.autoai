@@ -96,18 +96,30 @@
             </div>
             
             <div class="url-actions" style="margin-bottom: 15px;">
-              <button id="startBtn" class="btn btn-primary btn-large" style="margin-right: 5px;">
+              <button id="startBtn" class="btn btn-primary btn-large">
                 <span class="btn-icon">▶</span>
                 処理を開始（本番実行）
               </button>
-              <button id="saveUrlBtn" class="btn btn-secondary" style="margin-right: 5px;">
-                <span class="btn-icon">💾</span>
-                URLを保存
-              </button>
-              <button id="deleteUrlBtn" class="btn btn-secondary">
-                <span class="btn-icon">🗑</span>
-                削除
-              </button>
+            </div>
+            
+            <!-- 処理コントロールボタン -->
+            <div class="control-buttons" style="margin-bottom: 15px;">
+              <div class="control-row">
+                <button id="stopBtn" class="btn btn-danger" disabled>
+                  <span class="btn-icon">■</span>
+                  処理停止
+                </button>
+              </div>
+              <div class="control-row">
+                <button id="clearLogBtn" class="btn btn-secondary">
+                  <span class="btn-icon">🗑</span>
+                  ログクリア
+                </button>
+                <button id="deleteAnswersBtn" class="btn btn-secondary">
+                  <span class="btn-icon">✕</span>
+                  回答削除
+                </button>
+              </div>
             </div>
             
             <!-- 保存時の名前入力（初期は非表示） -->
@@ -143,30 +155,6 @@
                 </button>
               </div>
             </div>
-          </div>
-        </div>
-      </section>
-      
-      <!-- コントロールボタンセクション -->
-      <section class="step-section">
-        <div class="step-header">
-          <span class="step-number">2</span>
-          <h2>処理コントロール</h2>
-        </div>
-        <div class="step-content">
-          <div class="control-buttons">
-            <button id="stopBtn" class="btn btn-danger" disabled>
-              <span class="btn-icon">■</span>
-              処理停止
-            </button>
-            <button id="clearLogBtn" class="btn btn-secondary">
-              <span class="btn-icon">🗑</span>
-              ログクリア
-            </button>
-            <button id="deleteAnswersBtn" class="btn btn-secondary">
-              <span class="btn-icon">✕</span>
-              回答削除
-            </button>
           </div>
         </div>
       </section>
