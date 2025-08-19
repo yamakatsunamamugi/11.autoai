@@ -8,23 +8,54 @@
 // 初期化とAI種別検出
 // ========================================
 
+// UI_SELECTORSの読み込み状態を管理
+let UI_SELECTORS_LOADED = false;
+let UI_SELECTORS_PROMISE = null;
+
 // UI Selectors、タイムアウト設定とDeepResearch設定を読み込み
 const loadUISelectors = () => {
   console.log("🔄 [11.autoai] UI Selectors読み込み開始");
-  const script = document.createElement("script");
-  script.type = "module";
-  script.src = chrome.runtime.getURL("src/config/ui-selectors.js");
-  script.onload = () => {
-    console.log("✅ [11.autoai] UI Selectorsを読み込みました");
-    loadTimeoutConfig();
-  };
-  script.onerror = (error) => {
-    console.error("❌ [11.autoai] UI Selectors読み込みエラー:", error);
-    console.log("🔄 [11.autoai] フォールバック: タイムアウト設定を直接読み込み");
-    loadTimeoutConfig();
-  };
-  document.head.appendChild(script);
+  
+  UI_SELECTORS_PROMISE = new Promise((resolve) => {
+    const script = document.createElement("script");
+    script.type = "module";
+    script.src = chrome.runtime.getURL("src/config/ui-selectors.js");
+    script.onload = () => {
+      console.log("✅ [11.autoai] UI Selectorsを読み込みました");
+      UI_SELECTORS_LOADED = true;
+      resolve(true);
+      loadTimeoutConfig();
+    };
+    script.onerror = (error) => {
+      console.error("❌ [11.autoai] UI Selectors読み込みエラー:", error);
+      console.log("🔄 [11.autoai] フォールバック: タイムアウト設定を直接読み込み");
+      UI_SELECTORS_LOADED = false;
+      resolve(false); // エラーでも続行
+      loadTimeoutConfig();
+    };
+    document.head.appendChild(script);
+  });
+  
+  return UI_SELECTORS_PROMISE;
 };
+
+// UI_SELECTORSの読み込み完了を待つ
+async function waitForUISelectors() {
+  if (UI_SELECTORS_LOADED) {
+    console.log("✅ [11.autoai] UI_SELECTORSは既に読み込み済み");
+    return true;
+  }
+  
+  if (UI_SELECTORS_PROMISE) {
+    console.log("⏳ [11.autoai] UI_SELECTORSの読み込みを待機中...");
+    const result = await UI_SELECTORS_PROMISE;
+    console.log(`✅ [11.autoai] UI_SELECTORS読み込み完了: ${result ? '成功' : 'エラー(フォールバック使用)'}`);
+    return result;
+  }
+  
+  console.warn("⚠️ [11.autoai] UI_SELECTORSの読み込みが開始されていません");
+  return false;
+}
 
 const loadTimeoutConfig = () => {
   console.log("🔄 [11.autoai] タイムアウト設定読み込み開始");
@@ -1423,7 +1454,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       break;
 
     case "checkReady":
-      sendResponse({ ready: true, aiType: AI_TYPE });
+      // UI_SELECTORSの読み込み状態も確認
+      (async () => {
+        const uiSelectorsLoaded = await waitForUISelectors();
+        sendResponse({ 
+          ready: true, 
+          aiType: AI_TYPE,
+          uiSelectorsLoaded: uiSelectorsLoaded
+        });
+      })();
+      isAsync = true;
       break;
 
     case "getAIType":
@@ -1634,6 +1674,10 @@ async function handleAITaskPrompt(request, sendResponse) {
   });
   
   try {
+    // UI_SELECTORSの読み込みを待つ
+    console.log(`[11.autoai][${AI_TYPE}] UI_SELECTORSの読み込みを確認中...`);
+    await waitForUISelectors();
+    
     console.log(`[11.autoai][${AI_TYPE}] AIタスク実行開始: ${taskId}`);
     
     // プロンプトを送信
@@ -2368,6 +2412,9 @@ async function waitForResponseWithStopButton() {
 
 // Canvas機能対応の回答取得関数
 async function getResponseWithCanvas() {
+  // UI_SELECTORSの読み込みを待つ
+  await waitForUISelectors();
+  
   switch (AI_TYPE) {
     case "ChatGPT":
       // ChatGPTの回答取得（UI_SELECTORSを使用）
