@@ -86,20 +86,23 @@ class StreamProcessor {
       // タスクを列・行でグループ化
       this.organizeTasks(taskList);
 
-      // ■ 並列ストリーミング: 最初は第1列のみから開始
+      // ■ 並列実行: 空きウィンドウ分だけ同時開始
       const columns = Array.from(this.taskQueue.keys()).sort();
-      this.logger.log(`[StreamProcessor] 並列ストリーミング開始`);
+      this.logger.log(`[StreamProcessor] 並列実行開始`);
       this.logger.log(`[StreamProcessor] 列グループ: ${columns.join(' → ')}`);
-      this.logger.log(`[StreamProcessor] 第1列グループ(${columns[0]})から開始`);
       
-      // 最初の列のみ開始（並列ストリーミングの起点）
-      if (columns[0]) {
-        await this.startColumnProcessing(columns[0]).catch(error => {
-          this.logger.error("[StreamProcessor] 第1列処理エラー", {
+      // 空きウィンドウ分だけ同時開始
+      const maxStart = Math.min(columns.length, this.maxConcurrentWindows);
+      this.logger.log(`[StreamProcessor] ${maxStart}列を同時開始`);
+      
+      for (let i = 0; i < maxStart; i++) {
+        this.logger.log(`[StreamProcessor] ${columns[i]}列を開始`);
+        this.startColumnProcessing(columns[i]).catch(error => {
+          this.logger.error(`[StreamProcessor] ${columns[i]}列エラー`, {
             message: error.message,
             stack: error.stack,
             name: error.name,
-            column: columns[0],
+            column: columns[i],
             errorString: error.toString()
           });
         });
@@ -470,15 +473,17 @@ class StreamProcessor {
     await this.closeColumnWindow(column);
     this.logger.log(`[StreamProcessor] ✅ ウィンドウクローズ完了: ${column}列`);
     
-    // 次のタスクを開始
+    // 空きウィンドウを利用して利用可能な列を開始
     if (hasMoreTasks) {
-      this.logger.log(`[StreamProcessor] 🔄 次のタスクを開始: ${column}列`);
-      this.startColumnProcessing(column).catch(error => {
-        this.logger.error(`[StreamProcessor] 次タスク開始エラー`, error);
-      });
+      this.logger.log(`[StreamProcessor] 🔄 ${column}列の次のタスクあり`);
     } else {
       this.logger.log(`[StreamProcessor] 🎯 ${column}列の全タスク完了`);
     }
+    
+    // ウィンドウが空いたので、利用可能な全ての列をチェックして開始
+    this.checkAndStartAvailableColumns().catch(error => {
+      this.logger.error(`[StreamProcessor] 利用可能列チェックエラー`, error);
+    });
 
     // ■ 並列ストリーミング: 次の列の開始は記載完了後に行われる
     // （writeResultToSpreadsheet内のcheckAndStartNextColumnForRowで処理）
@@ -745,6 +750,44 @@ class StreamProcessor {
     
     // 注意: 次のタスクの開始はonTaskCompletedで既に行われているため、ここでは行わない
     // checkAndStartNextTaskの呼び出しを削除（重複処理を避ける）
+  }
+
+  /**
+   * 空きウィンドウ分だけ利用可能な列を開始
+   */
+  async checkAndStartAvailableColumns() {
+    const availableSlots = this.maxConcurrentWindows - this.activeWindows.size;
+    if (availableSlots <= 0) {
+      this.logger.log(`[StreamProcessor] 空きウィンドウなし (${this.activeWindows.size}/${this.maxConcurrentWindows})`);
+      return;
+    }
+    
+    this.logger.log(`[StreamProcessor] 空きウィンドウ${availableSlots}個で未処理列をチェック`);
+    
+    const columns = Array.from(this.taskQueue.keys()).sort();
+    let started = 0;
+    
+    for (const column of columns) {
+      if (started >= availableSlots) break;
+      
+      // すでにウィンドウがある列はスキップ
+      if (this.columnWindows.has(column)) continue;
+      
+      const tasks = this.taskQueue.get(column);
+      const index = this.currentRowByColumn.get(column) || 0;
+      
+      if (tasks && index < tasks.length) {
+        this.logger.log(`[StreamProcessor] ${column}列を開始 (${started + 1}/${availableSlots})`);
+        this.startColumnProcessing(column).catch(error => {
+          this.logger.error(`[StreamProcessor] ${column}列開始エラー`, error);
+        });
+        started++;
+      }
+    }
+    
+    if (started === 0) {
+      this.logger.log(`[StreamProcessor] 開始可能な列がありません`);
+    }
   }
 
   /**
