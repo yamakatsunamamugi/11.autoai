@@ -129,232 +129,14 @@ console.log(
   `🎯 [11.autoai] 統合AIコンテンツスクリプト起動 - ${AI_TYPE} モード`,
 );
 
-// コンテンツスクリプトの準備完了を通知
+// コンテンツスクリプトの初期化開始ログ
 console.log(`[11.autoai][${AI_TYPE}] コンテンツスクリプト初期化中...`);
-// Background scriptに準備完了を通知
-if (AI_TYPE) {
-  chrome.runtime.sendMessage({
-    action: "contentScriptReady",
-    aiType: AI_TYPE,
-    url: window.location.href,
-  });
-}
+// 注意: contentScriptReady通知は初期化完了後に送信されます（initializeContentScript内で実行）
 
 // ========================================
-// セレクタ設定（Factory Pattern）
+// セレクタ設定は ui-selectors.js を使用
 // ========================================
-const SELECTOR_CONFIG = {
-  ChatGPT: {
-    TEXTAREA: [
-      "#prompt-textarea", // ProseMirrorエディタ（最優先）
-      "textarea", // 実際の入力処理用の隠れたtextarea
-      'textarea[placeholder*="Message"]',
-      'textarea[data-id="chat-input"]',
-    ],
-    SEND_BUTTON: [
-      "button#composer-submit-button", // 最優先
-      'button[aria-label="プロンプトを送信する"]',
-      'button[data-testid="send-button"]',
-      'button[aria-label="Send message"]',
-      'button[data-testid="composer-submit-btn"]',
-      'button[aria-label*="送信"]',
-    ],
-    RESPONSE_ROOT: 'main div[role="list"], main',
-    RESPONSE_MESSAGE: 'div[data-message-author-role="assistant"]:last-child',
-    RESPONSE_CONTENT: [
-      ".markdown.prose", // 最優先
-      "div.markdown.prose",
-    ],
-    EXCLUDE_SELECTORS: ["button", ".copy-code-button", "button:has(svg)"],
-    ERROR_ELEMENT: '.text-red-500, [role="alert"]',
-    STOP_BUTTON: [
-      'button[data-testid="stop-button"]',
-      'button[aria-label="ストリーミングの停止"]',
-      'button[aria-label*="Stop"]',
-    ],
-    // DeepResearch関連
-    WEB_SEARCH_TOGGLE: [
-      'button[data-testid="web-search-toggle"]',
-      'button[aria-label*="検索"]',
-      'button[aria-label*="Search"]',
-      'button[aria-label*="web"]',
-      "#radix-\\:r27\\: button", // 実際のIDパターン
-    ],
-    TOOLS_BUTTON: [
-      "button#system-hint-button",
-      'button[aria-label="ツール"]',
-      "button.composer-btn",
-    ],
-  },
 
-  Claude: {
-    TEXTAREA: [
-      '.ProseMirror[contenteditable="true"]', // 最優先
-      'div.ProseMirror[contenteditable="true"]',
-      ".ProseMirror",
-      'div[contenteditable="true"]:not([aria-hidden="true"])',
-    ],
-    PROCESSING_DELAY: 2000, // Claude専用の処理遅延
-    SEND_BUTTON: [
-      'button[data-testid="send-button"]', // 最優先
-      'button[aria-label*="Send"]',
-      'button[aria-label*="送信"]',
-      'button[aria-label="メッセージを送信"]',
-      'button svg[class*="arrow"]', // 矢印アイコンを持つボタン
-      "button:has(svg)", // SVGを含むボタン全般
-    ],
-    RESPONSE_ROOT: "main",
-    RESPONSE_MESSAGE: [
-      ".font-claude-message", // 最優先
-      '[data-message-author-role="assistant"]:last-child',
-      '[data-testid*="conversation"] [class*="assistant"]:last-child',
-    ],
-    RESPONSE_CONTENT:
-      'div[class*="prose"], div[class*="markdown"], div[class*="content"]',
-    EXCLUDE_SELECTORS: ["button", '[class*="copy"]', '[class*="feedback"]'],
-    ERROR_ELEMENT: '[data-testid="error"], .error, [class*="error"]',
-    STOP_BUTTON: [
-      // React対応・優先順位順
-      'button[data-testid*="stop"]', // 1. data-testid (最優先)
-      'button[aria-label="応答を停止"]', // 2. aria-label (実際のClaude)
-      'button[aria-label*="停止"]', // 2. aria-label (バリエーション)
-      'button[data-state="closed"][aria-label*="停止"]', // 3,2. data-state + aria-label組み合わせ
-      'button[type="button"][aria-label*="停止"]', // 7,2. type + aria-label組み合わせ
-      'button[aria-label*="Stop"]', // 2. aria-label (英語)
-      'button[aria-label*="stop"]', // 2. aria-label (小文字)
-      'button:has(svg[viewBox="0 0 256 256"])', // SVGの特徴パターン
-      'button.inline-flex:has(svg)', // 9,16. classパターン + 構造
-      'button[class*="inline-flex"]:has(svg[fill="currentColor"])', // 9,16. より具体的なパターン
-    ],
-  },
-
-  Gemini: {
-    TEXTAREA: [
-      'div[contenteditable="true"].ql-editor', // 最優先（より具体的）
-      'div[contenteditable="true"]',
-      "rich-textarea .ql-editor",
-      ".ql-editor",
-      "textarea",
-      'div[role="textbox"]',
-    ],
-    SEND_BUTTON: [
-      'button[aria-label*="プロンプトを送信"]', // 最優先（日本語）
-      'button[aria-label*="送信"]',
-      'button[aria-label*="Send"]',
-      'button[mattooltip*="送信"]',
-      'button mat-icon[fonticon="send"]',
-      'button[data-testid="send-button"]',
-      ".send-button",
-    ],
-    RESPONSE_ROOT: 'main, [role="main"], .conversation',
-    RESPONSE_MESSAGE: [
-      "message-content.model-response-text", // ユーザー提供のHTML構造に基づく
-      ".model-response-text",
-      "[data-response-text]",
-      ".response-container:last-child",
-    ],
-    RESPONSE_CONTENT: [
-      ".markdown.markdown-main-panel", // ユーザー提供のHTML構造に基づく
-      "div[data-response-text]",
-      ".response-text",
-      ".markdown-content",
-    ],
-    EXCLUDE_SELECTORS: ["button", ".copy-button", ".action-button"],
-    ERROR_ELEMENT: ".error-message, [data-error], .warning",
-    // DeepResearchボタン用のセレクタ
-    DEEP_RESEARCH_BUTTON: [
-      'button[aria-label*="Deep Research"]',
-      // 有効なセレクタのみを保持
-      // テキストによる検索は動的に行う
-    ],
-  },
-};
-
-/**
- * SelectorFactory - AIセレクタ管理の統合クラス
- * 将来的な新AI追加に対応
- */
-class SelectorFactory {
-  /**
-   * 指定したAI種別のセレクタ設定を取得
-   * @param {string} aiType - AI種別 ('ChatGPT', 'Claude', 'Gemini')
-   * @returns {Object|null} セレクタ設定オブジェクト
-   */
-  static getSelectors(aiType) {
-    // UI_SELECTORSが利用可能な場合は優先的に使用
-    if (window.UI_SELECTORS && window.UI_SELECTORS[aiType]) {
-      console.log(`[SelectorFactory] UI_SELECTORS使用: ${aiType}`);
-      return this.adaptUISelectorsFormat(window.UI_SELECTORS[aiType]);
-    }
-    
-    // フォールバック: 従来のSELECTOR_CONFIG
-    if (!aiType || !SELECTOR_CONFIG[aiType]) {
-      console.warn(`[11.autoai] 未対応のAI種別: ${aiType}`);
-      return null;
-    }
-    console.log(`[SelectorFactory] フォールバック使用: ${aiType}`);
-    return SELECTOR_CONFIG[aiType];
-  }
-
-  /**
-   * UI_SELECTORSの形式をSELECTOR_CONFIGの形式に適合
-   * @param {Object} uiSelectors - UI_SELECTORSのセレクタ
-   * @returns {Object} SELECTOR_CONFIG形式のセレクタ
-   */
-  static adaptUISelectorsFormat(uiSelectors) {
-    return {
-      TEXTAREA: uiSelectors.INPUT || [],
-      SEND_BUTTON: uiSelectors.SEND_BUTTON || [],
-      STOP_BUTTON: uiSelectors.STOP_BUTTON || [],
-      RESPONSE_MESSAGE: uiSelectors.RESPONSE || uiSelectors.MESSAGE || [],
-      RESPONSE_CONTENT: uiSelectors.RESPONSE || [],
-      MODEL_BUTTON: uiSelectors.MODEL_BUTTON || [],
-      FUNCTION_BUTTON: uiSelectors.FUNCTION_BUTTON || uiSelectors.FUNCTION_MENU_BUTTON || [],
-      // その他のマッピングも追加可能
-      EXCLUDE_SELECTORS: ["button", ".copy-button", ".action-button"], // デフォルト値
-      ERROR_ELEMENT: ".error-message, [data-error], .warning" // デフォルト値
-    };
-  }
-
-  /**
-   * サポートされているAI種別の一覧を取得
-   * @returns {Array<string>} AI種別の配列
-   */
-  static getSupportedAITypes() {
-    return Object.keys(SELECTOR_CONFIG);
-  }
-
-  /**
-   * 新しいAI種別のセレクタを追加（拡張性機能）
-   * @param {string} aiType - 新しいAI種別
-   * @param {Object} selectors - セレクタ設定
-   */
-  static addAISupport(aiType, selectors) {
-    const requiredKeys = ["TEXTAREA", "SEND_BUTTON", "RESPONSE_MESSAGE"];
-    const hasRequired = requiredKeys.every((key) =>
-      selectors.hasOwnProperty(key),
-    );
-
-    if (!hasRequired) {
-      throw new Error(
-        `[11.autoai] セレクタ設定が不完全です。必須: ${requiredKeys.join(", ")}`,
-      );
-    }
-
-    SELECTOR_CONFIG[aiType] = selectors;
-    console.log(`✅ [11.autoai] 新しいAIサポート追加: ${aiType}`);
-  }
-
-  /**
-   * セレクタ設定の妥当性検証
-   * @param {Object} selectors - 検証するセレクタ設定
-   * @returns {boolean} 妥当性
-   */
-  static validateSelectors(selectors) {
-    const requiredKeys = ["TEXTAREA", "SEND_BUTTON", "RESPONSE_MESSAGE"];
-    return requiredKeys.every((key) => selectors.hasOwnProperty(key));
-  }
-}
 
 // ========================================
 // DOM操作ユーティリティ（共通機能）
@@ -470,13 +252,14 @@ async function checkDeepResearchState() {
   try {
     switch (AI_TYPE) {
       case "ChatGPT":
-        const toggle = document.querySelector(
-          SELECTOR_CONFIG.ChatGPT.WEB_SEARCH_TOGGLE,
-        );
-        if (toggle) {
-          const isChecked = toggle.getAttribute("aria-checked") === "true";
-          return isChecked ? "enabled" : "disabled";
-        }
+        // TODO: WEB_SEARCH_TOGGLEセレクタをui-selectors.jsに追加する必要あり
+        // const toggle = document.querySelector(
+        //   SELECTOR_CONFIG.ChatGPT.WEB_SEARCH_TOGGLE,
+        // );
+        // if (toggle) {
+        //   const isChecked = toggle.getAttribute("aria-checked") === "true";
+        //   return isChecked ? "enabled" : "disabled";
+        // }
         break;
 
       case "Claude":
@@ -496,9 +279,10 @@ async function checkDeepResearchState() {
         // GeminiのDeepResearch状態を確認
         let deepResearchBtn = null;
 
-        // DEEP_RESEARCH_BUTTONが配列の場合は各セレクタを試す
-        if (Array.isArray(SELECTOR_CONFIG.Gemini.DEEP_RESEARCH_BUTTON)) {
-          for (const selector of SELECTOR_CONFIG.Gemini.DEEP_RESEARCH_BUTTON) {
+        // DEEP_RESEARCH_BUTTONセレクタを使用
+        const deepResearchSelectors = window.AIHandler?.getSelectors('Gemini', 'DEEP_RESEARCH');
+        if (deepResearchSelectors?.BUTTON) {
+          for (const selector of deepResearchSelectors.BUTTON) {
             try {
               deepResearchBtn = document.querySelector(selector);
               if (deepResearchBtn) break;
@@ -779,9 +563,9 @@ async function enableDeepResearchSimple() {
           let deepResearchButton = null;
 
           // aria-labelセレクタで探す
-          if (Array.isArray(SELECTOR_CONFIG.Gemini.DEEP_RESEARCH_BUTTON)) {
-            for (const selector of SELECTOR_CONFIG.Gemini
-              .DEEP_RESEARCH_BUTTON) {
+          const deepResearchSelectors = window.AIHandler?.getSelectors('Gemini', 'DEEP_RESEARCH');
+          if (deepResearchSelectors?.BUTTON) {
+            for (const selector of deepResearchSelectors.BUTTON) {
               try {
                 deepResearchButton = document.querySelector(selector);
                 if (deepResearchButton) {
@@ -838,18 +622,47 @@ async function enableDeepResearchSimple() {
 }
 
 // ========================================
-// 入力処理クラス（AI別対応）
+// 統合テストのcommon-ai-handlerを使用
+// （AIInputクラス・ResponseCollectorクラスは削除）
 // ========================================
 
-/**
- * AIInput - AI別の入力処理を統括
+/*
+ * AIInput・ResponseCollectorクラスの代わりに、
+ * 統合テストと同じcommon-ai-handler.jsの関数を直接使用：
+ * 
+ * - window.AIHandler.message.send() - プロンプト送信
+ * - window.AIHandler.message.waitForResponse() - 応答待機
+ * - window.AIHandler.message.getResponse() - 応答取得
+ * 
+ * 従来のAIInputは削除し、runAutomation()のみを使用
  */
+
+/*
+ * 【削除予定】統合テストのcommon-ai-handlerを使用するため、
+ * AIInput・ResponseCollectorクラスは使用停止
+ * 
 class AIInput {
   constructor(aiType) {
     this.aiType = aiType;
-    this.selectors = SelectorFactory.getSelectors(aiType);
-    if (!this.selectors) {
-      throw new Error(`[11.autoai] 未対応のAI種別: ${aiType}`);
+    // AIHandler.getSelectorは個別のセレクタタイプを返すので、必要な形式に変換
+    this.selectors = {
+      TEXTAREA: window.AIHandler?.getSelectors?.(aiType, 'INPUT') || [],
+      SEND_BUTTON: window.AIHandler?.getSelectors?.(aiType, 'SEND_BUTTON') || [],
+      STOP_BUTTON: window.AIHandler?.getSelectors?.(aiType, 'STOP_BUTTON') || [],
+      RESPONSE_MESSAGE: window.AIHandler?.getSelectors?.(aiType, 'RESPONSE') || window.AIHandler?.getSelectors?.(aiType, 'MESSAGE') || [],
+      RESPONSE_CONTENT: window.AIHandler?.getSelectors?.(aiType, 'RESPONSE') || [],
+      MODEL_BUTTON: window.AIHandler?.getSelectors?.(aiType, 'MODEL_BUTTON') || [],
+      FUNCTION_BUTTON: window.AIHandler?.getSelectors?.(aiType, 'FUNCTION_BUTTON') || window.AIHandler?.getSelectors?.(aiType, 'FUNCTION_MENU_BUTTON') || []
+    };
+    
+    console.log(`[11.autoai][${aiType}] セレクタ構築:`, {
+      TEXTAREA: this.selectors.TEXTAREA.length,
+      SEND_BUTTON: this.selectors.SEND_BUTTON.length,
+      STOP_BUTTON: this.selectors.STOP_BUTTON.length
+    });
+    
+    if (!this.selectors.TEXTAREA.length || !this.selectors.SEND_BUTTON.length) {
+      console.warn(`[11.autoai] セレクタが不完全: ${aiType}`, this.selectors);
     }
   }
 
@@ -859,6 +672,14 @@ class AIInput {
    * @returns {Promise<Object>} 処理結果
    */
   async inputPrompt(prompt) {
+    console.log(`[11.autoai][${this.aiType}] inputPrompt開始:`, {
+      prompt: typeof prompt === 'string' ? prompt.substring(0, 50) + '...' : prompt,
+      selectorsAvailable: {
+        TEXTAREA: this.selectors.TEXTAREA?.length || 0,
+        SEND_BUTTON: this.selectors.SEND_BUTTON?.length || 0
+      }
+    });
+    
     try {
       const { element } = await waitForAnyElement(
         this.selectors.TEXTAREA,
@@ -1131,13 +952,21 @@ class AIInput {
 // 応答収集クラス（AI別対応）
 // ========================================
 
+/*
+ * 【削除予定】統合テストのcommon-ai-handlerを使用するため使用停止
+ * 
 /**
  * ResponseCollector - AI応答の収集と監視
  */
 class ResponseCollector {
   constructor(aiType) {
     this.aiType = aiType;
-    this.selectors = SelectorFactory.getSelectors(aiType);
+    // AIHandler.getSelectorは個別のセレクタタイプを返すので、必要な形式に変換
+    this.selectors = {
+      RESPONSE_MESSAGE: window.AIHandler?.getSelectors?.(aiType, 'RESPONSE') || window.AIHandler?.getSelectors?.(aiType, 'MESSAGE') || [],
+      RESPONSE_CONTENT: window.AIHandler?.getSelectors?.(aiType, 'RESPONSE') || [],
+      STOP_BUTTON: window.AIHandler?.getSelectors?.(aiType, 'STOP_BUTTON') || []
+    };
     this.isCollecting = false;
     this.observer = null;
     this.collectedChunks = [];
@@ -1411,6 +1240,7 @@ class ResponseCollector {
     }
   }
 }
+*/
 
 // ========================================
 // メッセージ通信（Background Script連携）
@@ -1603,6 +1433,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   return isAsync; // 非同期レスポンスの場合はtrueを返す
 });
 
+/*
+ * 【削除】統合テストと同じrunAutomation方式を使用するため削除
+ *
 /**
  * モデルと機能を動的検索で選択（3.統合AIテスト開始と同じ方法）
  * @param {string} model - モデル名
@@ -1723,6 +1556,7 @@ async function selectModelAndFunction(model, specialOperation) {
     console.error(`[11.autoai][${AI_TYPE}] ❌ 動的選択エラー:`, error);
   }
 }
+*/
 
 /**
  * 自動化スクリプトを動的に読み込む
@@ -1771,6 +1605,9 @@ async function loadAutomationScript() {
   });
 }
 
+/*
+ * 【廃止】統合テストのrunAutomation方式を使用するため削除
+ *
 /**
  * プロンプトをAIに送信する共通処理
  * @param {string} prompt - 送信するプロンプト
@@ -1826,6 +1663,7 @@ async function sendPromptToAI(prompt, options = {}) {
     };
   }
 }
+*/
 
 /**
  * 現在のAI応答を取得
@@ -1867,8 +1705,9 @@ async function isResponseCompleted() {
     
     return isCompleted;
   } else {
-    // 他のAI用の従来の判定
-    const stopButton = document.querySelector(SELECTOR_CONFIG[AI_TYPE]?.STOP_BUTTON || 'button[aria-label*="stop" i]');
+    // 他のAI用の判定（ui-selectors.js使用）
+    const stopButtonSelectors = window.AIHandler?.getSelectors(AI_TYPE, 'STOP_BUTTON') || ['button[aria-label*="stop" i]'];
+    const stopButton = document.querySelector(stopButtonSelectors.join(', '));
     return !stopButton || stopButton.style.display === 'none' || stopButton.disabled;
   }
 }
@@ -2707,7 +2546,7 @@ async function waitForResponseWithStopButton(enableDeepResearch = false) {
   console.log(`[11.autoai][${AI_TYPE}] フォールバック処理開始:`, {
     timeout: `${timeout / 60000}分`,
     enableDeepResearch,
-    selectors: SelectorFactory.getSelectors(AI_TYPE).STOP_BUTTON
+    selectors: window.AIHandler.getSelectors(AI_TYPE, 'STOP_BUTTON')
   });
   
   return new Promise((resolve) => {
@@ -2718,9 +2557,8 @@ async function waitForResponseWithStopButton(enableDeepResearch = false) {
       checkCount++;
       
       // AI種別に応じた停止ボタンセレクタ
-      const stopBtn = document.querySelector(
-        SelectorFactory.getSelectors(AI_TYPE).STOP_BUTTON?.join(", "),
-      );
+      const stopBtnSelectors = window.AIHandler.getSelectors(AI_TYPE, 'STOP_BUTTON');
+      const stopBtn = document.querySelector(stopBtnSelectors?.join(", "));
 
       // 10回に1回詳細ログを出力
       if (checkCount % 10 === 0) {
@@ -2871,10 +2709,8 @@ async function initializeContentScript() {
 
   // グローバル変数を設定
   window.AI_TYPE = AI_TYPE;
-  window.AI_SELECTORS = SELECTOR_CONFIG;
-  window.SelectorFactory = SelectorFactory;
-  window.AIInput = AIInput;
-  window.ResponseCollector = ResponseCollector;
+  // Note: SELECTOR_CONFIGとSelectorFactoryは削除済み - ui-selectors.jsを使用
+  // Note: AIInputとResponseCollectorも削除済み - common-ai-handlerを使用
   window.waitForResponseWithStopButton = waitForResponseWithStopButton;
   window.getResponseWithCanvas = getResponseWithCanvas;
   window.enableDeepResearchSimple = enableDeepResearchSimple;
@@ -3170,6 +3006,9 @@ if (AI_TYPE) {
 // AI別の制御スクリプトを読み込む関数
 async function loadAIControlScripts() {
   console.log(`[11.autoai][${AI_TYPE}] 制御スクリプトを読み込み中...`);
+
+  // まず共通のDeepResearchハンドラーを読み込む
+  await loadDeepResearchHandler();
 
   const scriptMap = {
     Gemini: "gemini-dynamic-automation.js",
@@ -3477,3 +3316,51 @@ function createProxyFunction(functionName) {
     });
   };
 }
+
+// DeepResearchハンドラーを読み込む関数
+async function loadDeepResearchHandler() {
+  console.log(`[11.autoai] DeepResearchハンドラーを読み込み中...`);
+  
+  // 既に読み込まれているか確認
+  if (window.DeepResearchHandler) {
+    console.log(`[11.autoai] DeepResearchハンドラーは既に読み込まれています`);
+    return Promise.resolve();
+  }
+
+  const existingScript = document.querySelector('script[src*="deepresearch-handler.js"]');
+  if (existingScript) {
+    console.log(`[11.autoai] DeepResearchハンドラースクリプトは既に読み込まれています`);
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = chrome.runtime.getURL("automations/deepresearch-handler.js");
+    script.dataset.extensionScript = "true";
+
+    script.onload = () => {
+      console.log(`[11.autoai] ✅ DeepResearchハンドラー読み込み完了`);
+      // DeepResearchHandlerが利用可能になるまで少し待機
+      setTimeout(() => {
+        if (window.DeepResearchHandler) {
+          console.log(`[11.autoai] ✅ DeepResearchHandlerが利用可能です`);
+        } else {
+          console.warn(`[11.autoai] ⚠️ DeepResearchHandlerが見つかりません`);
+        }
+        resolve();
+      }, 100);
+    };
+
+    script.onerror = (error) => {
+      console.error(`[11.autoai] ❌ DeepResearchハンドラー読み込み失敗:`, {
+        type: error.type,
+        target: error.target?.src,
+      });
+      // エラーでも続行
+      resolve();
+    };
+
+    document.head.appendChild(script);
+  });
+}
+
