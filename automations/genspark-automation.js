@@ -235,37 +235,58 @@
 
   /**
    * 2. 機能選択
-   * Gensparkはスライド生成専用なので、URLチェックのみ
+   * Gensparkのスライド生成とファクトチェックに対応
    */
   const selectFunction = async (functionId) => {
     log(`機能選択: ${functionId}`);
     
-    // Gensparkはスライド生成のみサポート
-    if (functionId !== 'slides') {
-      log('Gensparkはスライド生成機能のみサポートしています', 'warning');
-      functionId = 'slides';
+    // 機能URLマッピング
+    const functionUrls = {
+      'slides': 'https://www.genspark.ai/agents?type=slides_agent',
+      'factcheck': 'https://www.genspark.ai/agents?type=agentic_cross_check',
+      'fact-check': 'https://www.genspark.ai/agents?type=agentic_cross_check',
+      'cross-check': 'https://www.genspark.ai/agents?type=agentic_cross_check'
+    };
+    
+    // 機能名の正規化
+    const normalizedFunction = functionId.toLowerCase().replace(/[\s_-]/g, '');
+    let targetUrl = null;
+    let functionName = '';
+    
+    if (normalizedFunction.includes('slide')) {
+      targetUrl = functionUrls['slides'];
+      functionName = 'スライド生成';
+    } else if (normalizedFunction.includes('fact') || normalizedFunction.includes('check') || normalizedFunction.includes('cross')) {
+      targetUrl = functionUrls['factcheck'];
+      functionName = 'ファクトチェック';
+    } else {
+      // デフォルトはスライド生成
+      log(`不明な機能「${functionId}」。スライド生成を使用します`, 'warning');
+      targetUrl = functionUrls['slides'];
+      functionName = 'スライド生成';
     }
     
-    log(`✅ 機能を「スライド生成」に設定しました`, 'success');
-    
-    // スライド生成のURLを確認
-    const slidesUrl = 'https://www.genspark.ai/agents?type=slides_agent';
+    log(`✅ 機能を「${functionName}」に設定しました`, 'success');
     
     if (!window.location.href.includes('genspark.ai')) {
-      log(`Gensparkのページを開いてください: ${slidesUrl}`, 'info');
-      window.location.href = slidesUrl;
+      log(`Gensparkのページを開いてください: ${targetUrl}`, 'info');
+      window.location.href = targetUrl;
       return 'page_reload_required';
     }
     
     // 既に正しいページにいる場合
-    if (window.location.href.includes('slides_agent') || window.location.href.includes('agents')) {
+    const currentUrl = window.location.href;
+    if (currentUrl.includes('slides_agent') && functionName === 'スライド生成') {
       log('スライド生成ページにいます', 'success');
+      return true;
+    } else if (currentUrl.includes('agentic_cross_check') && functionName === 'ファクトチェック') {
+      log('ファクトチェックページにいます', 'success');
       return true;
     }
     
     // URLを変更
-    log(`スライド生成ページに移動します: ${slidesUrl}`, 'info');
-    window.location.href = slidesUrl;
+    log(`${functionName}ページに移動します: ${targetUrl}`, 'info');
+    window.location.href = targetUrl;
     return 'page_reload_required';
   };
 
@@ -387,6 +408,7 @@
    */
   const waitForResponse = async (timeout = CONFIG.DEFAULT_TIMEOUT) => {
     log('応答待機開始');
+    log(`タイムアウト設定: ${timeout}ms (${timeout/1000}秒)`, 'info');
     
     // 停止ボタンを検出する関数
     const findStopButton = () => {
@@ -500,6 +522,55 @@
     log('応答テキストが見つかりません', 'warning');
     return null;
   };
+  
+  /**
+   * 6.5. 応答URL取得
+   * 生成完了後のURLを取得（スライドやファクトチェック結果のURL）
+   */
+  const getResponseUrl = async () => {
+    log('応答URL取得開始');
+    
+    // 現在のURLを取得
+    const currentUrl = window.location.href;
+    
+    // URLパラメータを確認（結果が含まれている可能性）
+    const urlParams = new URLSearchParams(window.location.search);
+    const resultId = urlParams.get('result') || urlParams.get('id');
+    
+    if (resultId) {
+      log(`✅ 結果ID取得: ${resultId}`, 'success');
+      log(`✅ 応答URL: ${currentUrl}`, 'success');
+      return currentUrl;
+    }
+    
+    // リンク要素を探す（生成完了後にリンクが表示される場合）
+    const linkSelectors = [
+      'a[href*="/result"]',
+      'a[href*="/share"]',
+      'a[href*="/slides"]',
+      'a[href*="/check"]',
+      '.result-link',
+      '.share-link'
+    ];
+    
+    for (const selector of linkSelectors) {
+      const links = document.querySelectorAll(selector);
+      if (links.length > 0) {
+        const resultUrl = links[0].href;
+        log(`✅ 結果リンク発見: ${resultUrl}`, 'success');
+        return resultUrl;
+      }
+    }
+    
+    // URLが変更されている場合（リダイレクト後）
+    if (currentUrl !== window.location.origin + '/agents') {
+      log(`✅ 現在のURL（結果ページ）: ${currentUrl}`, 'success');
+      return currentUrl;
+    }
+    
+    log('応答URLが見つかりません', 'warning');
+    return null;
+  };
 
   /**
    * 7. 自動化実行
@@ -565,7 +636,10 @@
       
       // 5. 応答待機
       if (finalConfig.waitResponse) {
-        const waitResult = await waitForResponse(finalConfig.timeout || CONFIG.DEFAULT_TIMEOUT);
+        // タイムアウトを明示的に設定（デフォルト: 60分）
+        const timeoutMs = finalConfig.timeout || 3600000; // 60分
+        log(`応答待機タイムアウト: ${timeoutMs}ms (${timeoutMs/1000}秒)`, 'info');
+        const waitResult = await waitForResponse(timeoutMs);
         if (!waitResult) {
           throw new Error('応答待機がタイムアウトしました');
         }
@@ -575,6 +649,12 @@
       if (finalConfig.getResponse) {
         const response = await getResponse();
         result.response = response;
+      }
+      
+      // 7. 応答URL取得
+      if (finalConfig.getResponseUrl) {
+        const responseUrl = await getResponseUrl();
+        result.responseUrl = responseUrl;
       }
       
       result.success = true;

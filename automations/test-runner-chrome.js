@@ -318,10 +318,16 @@
                     window.FeatureConstants.isDeepResearch(config.function) :
                     (config.function && config.function.toLowerCase().includes('research'));
                   
-                  const timeout = isDeepResearch ? 60 * 60 * 1000 : 60000; // DeepResearch: 60分、通常: 1分
+                  // Gensparkは処理に時間がかかるため特別扱い
+                  const isGenspark = aiName.toLowerCase() === 'genspark';
+                  const timeout = isDeepResearch ? 60 * 60 * 1000 : 
+                                isGenspark ? 60 * 60 * 1000 :  // Genspark: 60分
+                                60000;  // その他: 1分
                   
                   if (isDeepResearch) {
                     console.log(`[TestRunner] ${aiName} DeepResearchモード - 最大60分待機`);
+                  } else if (isGenspark) {
+                    console.log(`[TestRunner] ${aiName} スライド生成モード - 最大60分待機`);
                   }
                   
                   console.log(`[デバッグ] runAutomationに渡す機能名: "${config.function}"`);
