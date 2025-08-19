@@ -126,10 +126,6 @@ const SPREADSHEET_CONFIG = {
       keyword: "処理履歴を記録",
       type: "history",
     },
-    documentUrl: {
-      keyword: "ドキュメントURL",
-      type: "documentUrl",
-    },
     report: {
       keyword: "レポート化",
       type: "report",

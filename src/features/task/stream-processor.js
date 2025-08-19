@@ -747,6 +747,74 @@ class StreamProcessor {
     this.activeWindows.delete(windowId);
     this.windowPositions.delete(windowInfo.position);
     this.columnWindows.delete(column);
+    
+    // ウィンドウを閉じた後、次のタスクを開始
+    await this.checkAndStartNextTask(column);
+  }
+
+  /**
+   * 次のタスクを確認して開始
+   * @param {string} closedColumn - 閉じた列
+   */
+  async checkAndStartNextTask(closedColumn) {
+    this.logger.log(`[StreamProcessor] 次のタスク確認: ${closedColumn}列のウィンドウを閉じた後`);
+    
+    // 1. 同じ列の次のタスクをチェック
+    const tasks = this.taskQueue.get(closedColumn);
+    const currentIndex = this.currentRowByColumn.get(closedColumn) || 0;
+    
+    if (tasks && currentIndex < tasks.length) {
+      this.logger.log(`[StreamProcessor] ${closedColumn}列に未処理タスクあり (${currentIndex}/${tasks.length})`);
+      // 同じ列に未処理タスクがある場合は開始
+      await this.startColumnProcessing(closedColumn);
+      return;
+    }
+    
+    // 2. 他の列で未処理タスクを探す
+    const columns = Array.from(this.taskQueue.keys()).sort();
+    for (const column of columns) {
+      // 処理中の列はスキップ
+      if (this.processingColumns.has(column)) {
+        this.logger.log(`[StreamProcessor] ${column}列は処理中のためスキップ`);
+        continue;
+      }
+      
+      // すでにウィンドウがある列はスキップ
+      if (this.columnWindows.has(column)) {
+        this.logger.log(`[StreamProcessor] ${column}列は既にウィンドウがあるためスキップ`);
+        continue;
+      }
+      
+      const columnTasks = this.taskQueue.get(column);
+      const index = this.currentRowByColumn.get(column) || 0;
+      
+      if (columnTasks && index < columnTasks.length) {
+        this.logger.log(`[StreamProcessor] ${column}列で未処理タスク発見 (${index}/${columnTasks.length})`);
+        // 未処理タスクがある列を開始
+        await this.startColumnProcessing(column);
+        break; // 1つだけ開始
+      }
+    }
+    
+    // 全タスク完了チェック
+    const allCompleted = this.checkAllTasksCompleted();
+    if (allCompleted) {
+      this.logger.log(`[StreamProcessor] ✅ 全タスク完了！`);
+    }
+  }
+
+  /**
+   * 全タスクが完了したかチェック
+   * @returns {boolean}
+   */
+  checkAllTasksCompleted() {
+    for (const [column, tasks] of this.taskQueue.entries()) {
+      const currentIndex = this.currentRowByColumn.get(column) || 0;
+      if (currentIndex < tasks.length) {
+        return false; // まだ未処理タスクがある
+      }
+    }
+    return true; // 全タスク完了
   }
 
   /**

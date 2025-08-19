@@ -83,12 +83,17 @@
           <!-- スプレッドシートURL入力（プルダウン付きテキスト入力） -->
           <div class="spreadsheet-input-section">
             <label for="spreadsheetInput" style="display: block; margin-bottom: 8px; font-weight: 600;">スプレッドシートURL:</label>
-            <input type="text" id="spreadsheetInput" list="spreadsheetList" 
-                   placeholder="URLを入力または選択してください" 
-                   style="width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 6px;">
-            <datalist id="spreadsheetList">
-              <!-- 保存済みURLがここに動的に追加される -->
-            </datalist>
+            <div style="position: relative;">
+              <input type="text" id="spreadsheetInput" list="spreadsheetList" 
+                     placeholder="URLを入力または選択してください" 
+                     style="width: 100%; padding: 10px 35px 10px 10px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 6px;">
+              <button id="quickSaveBtn" class="btn btn-icon-only" style="position: absolute; right: 5px; top: 50%; transform: translateY(-50%); width: 30px; height: 30px; padding: 0; border-radius: 4px; background: #28a745; color: white; border: none; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center;" title="URLを保存">
+                <span>+</span>
+              </button>
+              <datalist id="spreadsheetList">
+                <!-- 保存済みURLがここに動的に追加される -->
+              </datalist>
+            </div>
             
             <div class="url-actions" style="margin-bottom: 15px;">
               <button id="loadSheetsBtn" class="btn btn-primary btn-large" style="margin-right: 5px;">
@@ -142,16 +147,17 @@
         </div>
       </section>
       
-      <!-- ステップ2: 処理実行セクション -->
+      <!-- ステップ2: 本番実行セクション -->
       <section class="step-section">
         <div class="step-header">
           <span class="step-number">2</span>
-          <h2>処理を実行</h2>
+          <h2>処理を実行【本番】</h2>
         </div>
         <div class="step-content">
-          <button id="startBtn" class="btn btn-primary btn-large">
+          <!-- 本番実行ボタン: スプレッドシートのタスクを実際に処理 -->
+          <button id="startBtn" class="btn btn-primary btn-large" title="スプレッドシートから生成されたタスクを実際に処理します">
             <span class="btn-icon">▶</span>
-            処理を開始
+            処理を開始（本番実行）
           </button>
           <div class="control-buttons">
             <button id="stopBtn" class="btn btn-danger" disabled>
@@ -178,14 +184,14 @@
         </div>
       </section>
 
-      <!-- テストセクション -->
+      <!-- テストセクション（本番ではない） -->
       <section class="step-section">
         <div class="step-header">
           <span class="step-number">🧪</span>
-          <h2>AIテスト機能</h2>
+          <h2>AIテスト機能【テスト・デバッグ用】</h2>
         </div>
         <div class="step-content">
-          <p class="test-description">AIの動作確認とパフォーマンステストを実行できます</p>
+          <p class="test-description">AIの動作確認、テスト、デバッグ用の機能です（本番実行ではありません）</p>
           <div class="control-buttons">
             <button id="aiDetectionSystemBtn" class="btn btn-detection btn-large">
               <span class="btn-icon">🔍</span>
@@ -199,9 +205,10 @@
               <span class="btn-icon">🪟</span>
               2. ウィンドウ作成テスト
             </button>
-            <button id="startIntegratedTestBtn" class="btn btn-primary btn-large">
+            <!-- AI Orchestratorを開いてテスト環境を起動（本番実行ではない） -->
+            <button id="startIntegratedTestBtn" class="btn btn-primary btn-large" title="AI Orchestratorを開いてテスト環境を起動します（手動テスト、3連続テスト、プロンプト管理）">
               <span class="btn-icon">🎯</span>
-              3. 統合AIテスト開始
+              3. 統合AIテスト開始（テスト環境）
             </button>
             <button id="generateReportBtn" class="btn btn-test-report btn-large">
               <span class="btn-icon">📄</span>

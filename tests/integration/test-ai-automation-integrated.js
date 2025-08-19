@@ -1,19 +1,79 @@
-// test-ai-automation-integrated.js
-// カスタムプルダウンの実装
+/**
+ * @fileoverview 統合AIテストシステム - メイン実装
+ * 
+ * 【概要】
+ * 複数AI（ChatGPT、Claude、Gemini、Genspark）の自動操作と
+ * 統合テストを管理するシステムです。
+ * Chrome拡張機能として動作し、各AIサービスのWebページを
+ * 自動操作してプロンプトの送信と応答の取得を行います。
+ * 
+ * 【主要機能】
+ * 1. プロンプト管理（PromptManager）
+ *    - LocalStorageを使用したプロンプトの永続化
+ *    - 最大20個までのプロンプト保存
+ *    - プロンプトの追加・削除・選択
+ * 
+ * 2. カスタムドロップダウンUI
+ *    - 動的なプロンプト選択メニュー
+ *    - プロンプト登録ボタン（➕）
+ *    - 削除機能付きプロンプトリスト
+ * 
+ * 3. 3連続テスト機能
+ *    - 複数AIの並列テスト実行
+ *    - チェックボックスで有効AIを動的検出
+ *    - StreamProcessorによる効率的なタスク処理
+ * 
+ * 【依存関係】
+ * 外部モジュール:
+ *   - /src/features/task/stream-processor.js - タスクの並列ストリーミング処理
+ *   - /automations/test-runner-chrome.js - Chrome拡張機能のテストランナー（window.TestRunner）
+ *   - /automations/common-ai-handler.js - AI操作の共通ハンドラー（window.AIHandler）
+ *   - /src/config/ui-selectors.js - 各AIのUIセレクタ定義
+ * 
+ * 【グローバル公開オブジェクト】
+ *   - window.consecutiveTestStates - 3連続テストの状態管理
+ *   - window.executeConsecutiveTest - 3連続テスト実行関数
+ *   - window.PromptManager - プロンプト管理オブジェクト（デバッグ用）
+ * 
+ * 【ストレージ使用】
+ *   - localStorage: ai_prompts_[aiType] - 各AI用の保存プロンプト
+ * 
+ * 【イベントリスナー】
+ *   - DOMContentLoaded - 初期化処理
+ *   - click - ドロップダウン操作、プロンプト選択
+ *   - mouseover/mouseout - ホバーエフェクト
+ * 
+ * @author AutoAI Development Team
+ * @version 1.0.0
+ */
 
 (function() {
   'use strict';
 
-  // プロンプト保存管理
+  /**
+   * プロンプト保存管理オブジェクト
+   * LocalStorageを使用して各AI用のプロンプトを永続化管理します。
+   * 
+   * @namespace PromptManager
+   */
   const PromptManager = {
-    // プロンプトを取得
+    /**
+     * 指定AIタイプの保存済みプロンプトを取得
+     * @param {string} aiType - AI種別（'chatgpt', 'claude', 'gemini', 'genspark'）
+     * @returns {Array<string>} 保存されているプロンプトの配列
+     */
     getPrompts: function(aiType) {
       const key = `ai_prompts_${aiType}`;
       const saved = localStorage.getItem(key);
       return saved ? JSON.parse(saved) : [];
     },
     
-    // プロンプトを保存
+    /**
+     * プロンプトを保存（最大20個、重複チェック付き）
+     * @param {string} aiType - AI種別
+     * @param {string} prompt - 保存するプロンプトテキスト
+     * @returns {boolean} 保存成功の場合true、失敗の場合false
+     */
     savePrompt: function(aiType, prompt) {
       if (!prompt || prompt.trim() === '') return false;
       
@@ -37,7 +97,12 @@
       return true;
     },
     
-    // プロンプトを削除
+    /**
+     * 保存済みプロンプトを削除
+     * @param {string} aiType - AI種別
+     * @param {string} prompt - 削除するプロンプトテキスト
+     * @returns {boolean} 削除成功の場合true、見つからない場合false
+     */
     deletePrompt: function(aiType, prompt) {
       const prompts = this.getPrompts(aiType);
       const index = prompts.indexOf(prompt);
@@ -50,7 +115,11 @@
       return false;
     },
     
-    // ドロップダウンメニューを更新
+    /**
+     * ドロップダウンメニューのDOM要素を動的に更新
+     * 保存済みプロンプトを読み込んでメニューに反映します。
+     * @param {string} aiType - AI種別
+     */
     updateDropdownMenu: function(aiType) {
       const menu = document.querySelector(`.dropdown-menu[data-for="${aiType}-prompt"]`);
       if (!menu) return;
@@ -97,7 +166,18 @@
     }
   };
 
-  // カスタムプルダウンの設定
+  /**
+   * カスタムドロップダウンUIのイベントハンドラーを設定
+   * クリック、ホバー、選択などのユーザーインタラクションを管理します。
+   * 
+   * @function setupCustomDropdowns
+   * @description
+   * - ドロップダウンボタンのクリック処理
+   * - プロンプト追加ボタン（➕）の処理
+   * - プロンプト選択・削除の処理
+   * - メニューの開閉制御
+   * - ホバーエフェクト
+   */
   function setupCustomDropdowns() {
     // プルダウンボタンのクリックイベント
     document.addEventListener('click', function(e) {
@@ -203,7 +283,12 @@
     });
   }
 
-  // 3連続テストの状態管理（AI別に管理）
+  /**
+   * 3連続テストの状態管理オブジェクト
+   * 各AIごとにテストの準備状態とデータを管理します。
+   * 
+   * @type {Object<string, {enabled: boolean, targetId: string, testData: Object|null}>}
+   */
   let consecutiveTestStates = {
     'chatgpt-prompt': {
       enabled: false,
@@ -222,7 +307,20 @@
     }
   };
 
-  // 3連続テストハンドラー（準備のみ）
+  /**
+   * 3連続テストの準備処理
+   * チェックボックスで選択されたAIに対してテストタスクを生成します。
+   * 
+   * @function handleConsecutiveTest
+   * @param {string} targetId - 対象プロンプト入力欄のID（例: 'chatgpt-prompt'）
+   * @description
+   * 1. window.TestRunnerから有効なAIを取得
+   * 2. 各AIに3つのテストプロンプトを割り当て
+   * 3. タスクリストを生成して状態を保存
+   * 4. UIに準備完了を表示
+   * 
+   * @requires window.TestRunner.getTestConfig
+   */
   function handleConsecutiveTest(targetId) {
     console.log(`🔄 3連続テスト準備: ${targetId}`);
     console.log('現在のconsecutiveTestStates:', consecutiveTestStates);
@@ -339,7 +437,22 @@
     }
   }
   
-  // 3連続テストを実際に実行（AIタイプを指定）
+  /**
+   * 3連続テストの実行処理
+   * 準備されたテストタスクをStreamProcessorで実行します。
+   * 
+   * @async
+   * @function executeConsecutiveTest
+   * @param {string|null} targetAiType - 実行対象のAIタイプ（省略時は自動選択）
+   * @returns {Promise<void>}
+   * @description
+   * 1. 有効なテスト状態を確認
+   * 2. StreamProcessorをインポート
+   * 3. タスクリストを並列実行
+   * 4. 結果を表示して状態をリセット
+   * 
+   * @requires /src/features/task/stream-processor.js
+   */
   async function executeConsecutiveTest(targetAiType = null) {
     console.log('executeConsecutiveTest呼び出し:', {
       targetAiType,
@@ -418,7 +531,17 @@
     }
   }
   
-  // DOMContentLoaded イベントリスナー
+  /**
+   * 初期化処理
+   * DOMContentLoadedイベントで実行される初期設定を行います。
+   * 
+   * @event DOMContentLoaded
+   * @description
+   * 1. カスタムドロップダウンの設定
+   * 2. 保存済みプロンプトの読み込み
+   * 3. デフォルトプロンプトの設定
+   * 4. グローバル変数の公開
+   */
   document.addEventListener('DOMContentLoaded', function() {
     console.log('AI自動操作統合テスト - 初期化開始');
     

@@ -1,5 +1,58 @@
-// テストランナー（Chrome拡張機能版）
-// 各AIサイトのタブと通信して自動化を実行
+/**
+ * @fileoverview テストランナー（Chrome拡張機能版）
+ * 
+ * 【概要】
+ * Chrome拡張機能のコンテンツスクリプトとして動作し、
+ * 各AIサイトのタブと通信して自動化テストを実行します。
+ * 
+ * 【主要機能】
+ * 1. テスト設定の管理
+ *    - 各AIの有効/無効状態
+ *    - モデル選択
+ *    - 機能選択
+ *    - プロンプト管理
+ * 
+ * 2. AIウィンドウ管理
+ *    - 4分割ウィンドウの作成と配置
+ *    - タブとの通信確立
+ *    - ウィンドウ状態の監視
+ * 
+ * 3. AI操作の実行
+ *    - プロンプト送信
+ *    - 応答待機
+ *    - 結果の取得と記録
+ * 
+ * 【依存関係】
+ * 外部モジュール:
+ *   - /automations/common-ai-handler.js - AI共通処理（window.AIHandler）
+ *   - /src/config/ui-selectors.js - UIセレクタ定義
+ *   - /tests/integration/test-log-toggle-manager.js - ログ管理（window.LogToggleManager）
+ * 
+ * Chrome API:
+ *   - chrome.runtime - メッセージ通信
+ *   - chrome.tabs - タブ操作
+ *   - chrome.windows - ウィンドウ管理
+ * 
+ * 【グローバル公開オブジェクト】
+ *   - window.TestRunner - テストランナーのメインオブジェクト
+ *     - getTestConfig() - テスト設定を取得
+ *     - createAIWindow() - AIウィンドウを作成
+ *     - sendPromptToAI() - AIにプロンプトを送信
+ *     - waitForResponse() - AI応答を待機
+ * 
+ * 【メッセージプロトコル】
+ * 送信メッセージ:
+ *   - type: 'SEND_PROMPT' - プロンプト送信
+ *   - type: 'SELECT_MODEL' - モデル選択
+ *   - type: 'SELECT_FUNCTION' - 機能選択
+ * 
+ * 受信メッセージ:
+ *   - type: 'RESPONSE_COMPLETE' - 応答完了
+ *   - type: 'ERROR' - エラー通知
+ * 
+ * @author AutoAI Development Team
+ * @version 1.0.0
+ */
 
 (() => {
   "use strict";

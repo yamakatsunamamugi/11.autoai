@@ -351,18 +351,6 @@ export class SpreadsheetAutoSetup {
       });
     }
 
-    // 回答列の右にドキュメントURL列がなければ追加
-    const docUrlIndex = actualIndex + 2;
-    let docUrlValue = "";
-    if (docUrlIndex < menuRow.length) {
-      docUrlValue = (menuRow[docUrlIndex] || "").toString().trim();
-    }
-    if (docUrlIndex >= menuRow.length || docUrlValue !== "ドキュメントURL") {
-      insertions.push({
-        position: actualIndex + 2,
-        header: "ドキュメントURL",
-      });
-    }
 
     // 一つずつ挿入を実行（3.autoaiアプローチ）
     if (insertions.length > 0) {
@@ -644,21 +632,13 @@ export class SpreadsheetAutoSetup {
       }
     }
 
-    // ドキュメントURL列のチェック
-    const docUrlIndex = promptIndex + 4; // プロンプト + 3つの回答列の後
-    const docUrlValue =
-      docUrlIndex < menuRow.length
-        ? (menuRow[docUrlIndex] || "").toString().trim()
-        : "";
-    const hasDocUrlColumn = docUrlValue === "ドキュメントURL";
-
-    // 既に正しい3つの回答列が存在し、ドキュメントURL列もある場合は何もしない
-    if (hasAllCorrectHeaders && hasDocUrlColumn) {
+    // 既に正しい3つの回答列が存在する場合は何もしない
+    if (hasAllCorrectHeaders) {
       console.log(
-        "[AutoSetup] 3種類AI: 既に正しい回答列とドキュメントURL列が存在するため、処理をスキップ",
+        "[AutoSetup] 3種類AI: 既に正しい回答列が存在するため、処理をスキップ",
         {
           promptColumn: this.indexToColumn(promptIndex),
-          existingHeaders: [...answerHeaders, "ドキュメントURL"],
+          existingHeaders: answerHeaders,
         },
       );
 
@@ -694,15 +674,14 @@ export class SpreadsheetAutoSetup {
       });
     }
 
-    // 4. 3つの回答列とドキュメントURL列を挿入
-    const allHeaders = [...answerHeaders, "ドキュメントURL"];
-    console.log("[AutoSetup] 3種類AI: 回答列とドキュメントURL列を挿入予定", {
-      headers: allHeaders,
+    // 4. 3つの回答列を挿入
+    console.log("[AutoSetup] 3種類AI: 回答列を挿入予定", {
+      headers: answerHeaders,
       startPosition: promptIndex + 1,
     });
 
-    // 4つの列を挿入（3つの回答列 + ドキュメントURL列）
-    for (let i = 0; i < 4; i++) {
+    // 3つの列を挿入（回答列のみ）
+    for (let i = 0; i < 3; i++) {
       requests.push({
         insertDimension: {
           range: {
@@ -717,7 +696,7 @@ export class SpreadsheetAutoSetup {
     }
 
     // 5. ヘッダーを設定（メニュー行）
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 3; i++) {
       requests.push({
         updateCells: {
           range: {
@@ -731,7 +710,7 @@ export class SpreadsheetAutoSetup {
             {
               values: [
                 {
-                  userEnteredValue: { stringValue: allHeaders[i] },
+                  userEnteredValue: { stringValue: answerHeaders[i] },
                 },
               ],
             },
@@ -744,11 +723,11 @@ export class SpreadsheetAutoSetup {
       this.addedColumns.push({
         type: "3type",
         column: this.indexToColumn(promptIndex),
-        header: allHeaders[i],
+        header: answerHeaders[i],
       });
     }
 
-    // 6. AI行にAI名を設定（最初の3列のみ、ドキュメントURL列は除外）
+    // 6. AI行にAI名を設定
     const aiNames = ["ChatGPT", "Claude", "Gemini"];
     for (let i = 0; i < 3; i++) {
       requests.push({

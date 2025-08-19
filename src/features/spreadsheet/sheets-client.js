@@ -383,9 +383,18 @@ class SheetsClient {
    * @param {string} spreadsheetId - スプレッドシートID
    * @param {string} range - 更新する範囲（例: "A1"）
    * @param {*} value - 設定する値
+   * @param {string} gid - シートのgid（オプション）
    * @returns {Promise<Object>} 更新結果
    */
-  async updateCell(spreadsheetId, range, value) {
+  async updateCell(spreadsheetId, range, value, gid = null) {
+    // gidが指定されている場合、シート名を取得して範囲を更新
+    if (gid && !range.includes("!")) {
+      const sheetName = await this.getSheetNameFromGid(spreadsheetId, gid);
+      if (sheetName) {
+        range = `'${sheetName}'!${range}`;
+      }
+    }
+    
     const token = await globalThis.authService.getAuthToken();
     const url = `${this.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`;
 

@@ -17,6 +17,7 @@ import "./src/features/spreadsheet/reader.js";
 import "./src/features/task/generator.js";
 import TaskGenerator from "./src/features/task/generator.js";
 import TaskQueue from "./src/features/task/queue.js";
+import StreamProcessor from "./src/features/task/stream-processor.js";
 
 // Step 6 - サービスファイル
 import SpreadsheetAutoSetup from "./src/services/spreadsheet-auto-setup.js";
@@ -418,6 +419,49 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           });
         } catch (error) {
           console.error("[MessageHandler] ストリーミング処理開始エラー:", error);
+          sendResponse({
+            success: false,
+            error: error.message
+          });
+        }
+      })();
+      return true; // 非同期応答のため true を返す
+      
+    // ===== タスクリストストリーミング処理（AI Orchestratorから） =====
+    case "streamProcessTaskList":
+      console.log("[MessageHandler] タスクリストストリーミング処理要求:", {
+        taskListSize: request.taskList?.tasks?.length || 0,
+        testMode: request.testMode
+      });
+      
+      (async () => {
+        try {
+          // StreamProcessorは既に静的インポート済み
+          const processor = new StreamProcessor();
+          
+          // スプレッドシートデータを準備
+          const spreadsheetData = {
+            spreadsheetId: request.spreadsheetId,
+            spreadsheetUrl: request.spreadsheetUrl,
+            gid: request.gid
+          };
+          
+          // タスクリストを処理
+          const result = await processor.processTaskStream(request.taskList, spreadsheetData, {
+            testMode: request.testMode || false,
+            taskListMode: true
+          });
+          
+          console.log("[MessageHandler] StreamProcessor実行結果:", result);
+          
+          sendResponse({
+            success: true,
+            totalWindows: result.totalWindows || 0,
+            processedColumns: result.processedColumns || [],
+            message: "タスクリストストリーミング処理を開始しました"
+          });
+        } catch (error) {
+          console.error("[MessageHandler] タスクリストストリーミング処理エラー:", error);
           sendResponse({
             success: false,
             error: error.message
