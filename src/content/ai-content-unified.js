@@ -946,7 +946,30 @@ class AIInput {
       // ProseMirrorの内部構造に対応
       const pElement = element.querySelector("p");
       if (pElement) {
+        // React環境を考慮した安全な更新方法
+        const selection = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(pElement);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        
+        // React用のInputEventを作成して発火
+        const inputEvent = new InputEvent('beforeinput', {
+          bubbles: true,
+          cancelable: true,
+          inputType: 'insertText',
+          data: prompt
+        });
+        element.dispatchEvent(inputEvent);
+        
+        // テキストを設定
         pElement.textContent = prompt;
+        
+        // カーソルを末尾に設置
+        range.selectNodeContents(pElement);
+        range.collapse(false);
+        selection.removeAllRanges();
+        selection.addRange(range);
       } else {
         // TrustedHTMLエラーを回避するため、DOM操作で要素を作成
         const newP = document.createElement("p");
@@ -959,9 +982,15 @@ class AIInput {
       element.textContent = prompt;
     }
 
-    // 複数のイベントを発火してUIの更新を確実にする
-    ["input", "compositionend", "keyup", "change"].forEach((eventType) => {
-      element.dispatchEvent(new Event(eventType, { bubbles: true }));
+    // React互換のイベント発火順序
+    const events = [
+      new InputEvent('input', { bubbles: true, cancelable: true, inputType: 'insertText', data: prompt }),
+      new Event('change', { bubbles: true }),
+      new CompositionEvent('compositionend', { bubbles: true, data: prompt })
+    ];
+    
+    events.forEach(event => {
+      element.dispatchEvent(event);
     });
 
     // Geminiの場合は追加のイベントも発火
@@ -2454,7 +2483,7 @@ async function getResponseWithCanvas() {
     Gemini: !!window.Gemini
   });
   
-  // 各AIの自動化スクリプトのgetResponse関数を優先的に使用
+  // 各AIの自動化スクリプトのgetResponse関数を使用
   switch (AI_TYPE) {
     case "ChatGPT":
       // ChatGPTAutomationのgetResponse関数を使用（テストで実証済み）
@@ -2465,64 +2494,9 @@ async function getResponseWithCanvas() {
         return response || null;
       }
       
-      // フォールバック: 従来の処理
-      console.log(`[ChatGPT] フォールバック処理を使用`);
-      // ChatGPTの回答取得（UI_SELECTORSを使用）
-      let chatResponse = null;
-      
-      // UI_SELECTORSが利用可能な場合は使用、なければフォールバック
-      let selectors = [];
-      console.log(`[ChatGPT] UI_SELECTORS状態:`, {
-        'window.UI_SELECTORS': !!window.UI_SELECTORS,
-        'window.UI_SELECTORS.ChatGPT': !!window.UI_SELECTORS?.ChatGPT,
-        'RESPONSE': window.UI_SELECTORS?.ChatGPT?.RESPONSE?.length || 0,
-        'MESSAGE': window.UI_SELECTORS?.ChatGPT?.MESSAGE?.length || 0
-      });
-      
-      if (window.UI_SELECTORS && window.UI_SELECTORS.ChatGPT) {
-        // UI_SELECTORSのRESPONSEセレクタを使用
-        selectors = [
-          ...window.UI_SELECTORS.ChatGPT.RESPONSE.map(s => `${s}:last-child .markdown.prose`),
-          ...window.UI_SELECTORS.ChatGPT.RESPONSE.map(s => `${s}:last-child .markdown`),
-          ...window.UI_SELECTORS.ChatGPT.RESPONSE.map(s => `${s}:last-child`),
-          ...window.UI_SELECTORS.ChatGPT.MESSAGE.map(s => `${s}:last-child .prose`),
-          ...window.UI_SELECTORS.ChatGPT.MESSAGE.map(s => `${s}:last-child`)
-        ];
-        console.log(`[ChatGPT] UI_SELECTORS使用: ${selectors.length}個のセレクタを試行`);
-        console.log(`[ChatGPT] セレクタ一覧:`, selectors);
-      } else {
-        // フォールバック: 従来のセレクタ
-        selectors = [
-          'div[data-message-author-role="assistant"]:last-child .markdown.prose',
-          'div[data-message-author-role="assistant"]:last-child .markdown',
-          'div[data-message-author-role="assistant"]:last-child',
-          '[data-message-author-role="assistant"]:last-child .prose',
-          '[data-message-author-role="assistant"]:last-child',
-          '.markdown.prose:last-of-type',
-          '.prose:last-of-type'
-        ];
-        console.log(`[ChatGPT] フォールバック: ${selectors.length}個のセレクタを試行`);
-        console.log(`[ChatGPT] フォールバックセレクタ一覧:`, selectors);
-      }
-      
-      for (const selector of selectors) {
-        try {
-          chatResponse = document.querySelector(selector);
-          if (chatResponse && chatResponse.textContent?.trim()) {
-            console.log(`[ChatGPT] 応答を取得 (セレクタ: ${selector})`);
-            break;
-          }
-        } catch (e) {
-          console.debug(`[ChatGPT] セレクタエラー: ${selector}`, e);
-        }
-      }
-      
-      if (!chatResponse || !chatResponse.textContent?.trim()) {
-        console.debug('[ChatGPT] 回答コンテナがまだ見つかりません');
-        // エラーをスローせずにnullを返す（応答がまだ生成されていない場合）
-        return null;
-      }
-      return chatResponse.textContent.trim();
+      // ChatGPTAutomationが利用できない場合はエラーをスロー
+      console.error('[ChatGPT] ChatGPTAutomationが利用できません');
+      throw new Error('ChatGPT: 自動化スクリプトが利用できません');
 
     case "Claude":
       // ClaudeAutomationのgetResponse関数を使用（テストで実証済み）
@@ -2532,109 +2506,22 @@ async function getResponseWithCanvas() {
         return response;
       }
       
-      // フォールバック: 従来の処理
-      console.log(`[Claude] フォールバック処理を使用`);
-      // Claude: UI_SELECTORSを使用
-      let claudeSelectors = [];
-      console.log(`[Claude] UI_SELECTORS状態:`, {
-        'window.UI_SELECTORS': !!window.UI_SELECTORS,
-        'window.UI_SELECTORS.Claude': !!window.UI_SELECTORS?.Claude,
-        'RESPONSE': window.UI_SELECTORS?.Claude?.RESPONSE?.length || 0,
-        'MESSAGE': window.UI_SELECTORS?.Claude?.MESSAGE?.length || 0,
-        'CANVAS': window.UI_SELECTORS?.Claude?.CANVAS?.CONTAINER?.length || 0
-      });
-      
-      if (window.UI_SELECTORS && window.UI_SELECTORS.Claude) {
-        // UI_SELECTORSのRESPONSEセレクタを使用
-        claudeSelectors = [
-          ...window.UI_SELECTORS.Claude.RESPONSE,
-          ...window.UI_SELECTORS.Claude.MESSAGE,
-          // Canvas関連も追加
-          ...window.UI_SELECTORS.Claude.CANVAS.CONTAINER
-        ];
-        console.log(`[Claude] UI_SELECTORS使用: ${claudeSelectors.length}個のセレクタを試行`);
-        console.log(`[Claude] セレクタ一覧:`, claudeSelectors);
-      } else {
-        // フォールバック: 従来のセレクタ
-        claudeSelectors = [
-          'div[class*="grid-cols-1"]',  // 新しいClaude UI構造
-          'p.whitespace-normal',        // 新しいClaude UI構造
-          '.font-claude-message',       // 従来のセレクタ
-          '[data-testid="conversation-turn-3"]',
-          '[data-testid*="conversation-turn"]:last-child',
-          '.prose',
-          'div[class*="prose"]',
-          '.markdown',
-          'div[role="presentation"]:last-child'
-        ];
-        console.log(`[Claude] フォールバック: ${claudeSelectors.length}個のセレクタを試行`);
-        console.log(`[Claude] フォールバックセレクタ一覧:`, claudeSelectors);
-      }
-      
-      let claudeResponse = null;
-      let usedSelector = '';
-      
-      for (const selector of claudeSelectors) {
-        try {
-          const elements = document.querySelectorAll(selector);
-          if (elements.length > 0) {
-            claudeResponse = elements[elements.length - 1];
-            usedSelector = selector;
-            console.log(`[Claude] 応答要素を発見 (セレクタ: ${selector})`);
-            break;
-          }
-        } catch (e) {
-          console.debug(`[Claude] セレクタエラー: ${selector}`, e);
-        }
-      }
-      
-      if (!claudeResponse) {
-        console.debug('[Claude] 回答コンテナがまだ見つかりません');
-        // エラーをスローせずにnullを返す（応答がまだ生成されていない場合）
-        return null;
-      }
-
-      // Canvas機能チェック
-      const previewButton = document.querySelector(
-        'button[aria-label="内容をプレビュー"]',
-      );
-      if (previewButton) {
-        console.log(
-          `[11.autoai][${AI_TYPE}] Canvas機能検出（プレビューボタン方式）`,
-        );
-        previewButton.click();
-        await sleep(1000);
-        const textContainer = document.querySelector(
-          'div[class*="grid-cols-1"][class*="!gap-3.5"]',
-        );
-        if (textContainer) {
-          const canvasText = textContainer.innerText;
-          return canvasText;
-        }
-      }
-      
-      // 通常回答モード：複数の方法で回答テキストを取得
-      let text = '';
-      
-      // 方法1: children[1]を試す
-      if (claudeResponse.children && claudeResponse.children[1]) {
-        text = claudeResponse.children[1].innerText?.replace(/\u00A0/g, " ") || "";
-      }
-      
-      // 方法2: 直接innerTextを試す
-      if (!text) {
-        text = claudeResponse.innerText?.replace(/\u00A0/g, " ") || "";
-      }
-      
-      // 方法3: textContentを試す
-      if (!text) {
-        text = claudeResponse.textContent?.replace(/\u00A0/g, " ") || "";
-      }
-      
-      console.log(`[Claude] 応答取得: セレクタ=${usedSelector}, テキスト長=${text.length}`);
-      return text;
+      // ClaudeAutomationが利用できない場合はエラーをスロー
+      console.error('[Claude] ClaudeAutomationが利用できません');
+      throw new Error('Claude: 自動化スクリプトが利用できません');
 
     case "Gemini":
+      // GeminiAutomationまたはwindow.Geminiのget Response関数を使用
+      if (window.GeminiAutomation?.getResponse) {
+        console.log(`[Gemini] GeminiAutomation.getResponse()を使用`);
+        const response = await window.GeminiAutomation.getResponse();
+        return response || null;
+      } else if (window.Gemini?.getResponse) {
+        console.log(`[Gemini] window.Gemini.getResponse()を使用`);
+        const response = await window.Gemini.getResponse();
+        return response || null;
+      }
+      
       // Gemini: Canvas機能対応（動作確認済み）
       const geminiCanvasContainer = document.querySelector(
         'div[contenteditable="true"].ProseMirror',
@@ -2650,56 +2537,9 @@ async function getResponseWithCanvas() {
         }
       }
 
-      // Gemini: UI_SELECTORSを使用
-      let geminiSelectors = [];
-      console.log(`[Gemini] UI_SELECTORS状態:`, {
-        'window.UI_SELECTORS': !!window.UI_SELECTORS,
-        'window.UI_SELECTORS.Gemini': !!window.UI_SELECTORS?.Gemini,
-        'RESPONSE': window.UI_SELECTORS?.Gemini?.RESPONSE?.length || 0,
-        'MESSAGE': window.UI_SELECTORS?.Gemini?.MESSAGE?.length || 0
-      });
-      
-      if (window.UI_SELECTORS && window.UI_SELECTORS.Gemini) {
-        // UI_SELECTORSのRESPONSEセレクタを使用
-        geminiSelectors = [
-          ...window.UI_SELECTORS.Gemini.RESPONSE,
-          ...window.UI_SELECTORS.Gemini.MESSAGE
-        ];
-        console.log(`[Gemini] UI_SELECTORS使用: ${geminiSelectors.length}個のセレクタを試行`);
-        console.log(`[Gemini] セレクタ一覧:`, geminiSelectors);
-      } else {
-        // フォールバック: 従来のセレクタ
-        geminiSelectors = [
-          'message-content.model-response-text .markdown.markdown-main-panel', // 最も具体的
-          '.model-response-text .markdown.markdown-main-panel',
-          '.markdown.markdown-main-panel',
-          'message-content.model-response-text',
-          '.model-response-text',
-          'message-content',
-        ];
-        console.log(`[Gemini] フォールバック: ${geminiSelectors.length}個のセレクタを試行`);
-        console.log(`[Gemini] フォールバックセレクタ一覧:`, geminiSelectors);
-      }
-      
-      for (const selector of geminiSelectors) {
-        try {
-          const elements = document.querySelectorAll(selector);
-          if (elements.length > 0) {
-            const latest = elements[elements.length - 1];
-            const text = latest.textContent.replace(/\u00A0/g, " ").trim();
-            if (text) {
-              console.log(`[Gemini] 回答取得成功 (セレクタ: ${selector})`);
-              return text;
-            }
-          }
-        } catch (e) {
-          console.debug(`[Gemini] セレクタエラー: ${selector}`, e);
-        }
-      }
-
-      console.debug('[Gemini] 回答コンテナがまだ見つかりません');
-      // エラーをスローせずにnullを返す（応答がまだ生成されていない場合）
-      return null;
+      // GeminiAutomationが利用できない場合はエラーをスロー
+      console.error('[Gemini] GeminiAutomationもwindow.Geminiも利用できません');
+      throw new Error('Gemini: 自動化スクリプトが利用できません');
 
     default:
       throw new Error(`サポートされていないAI種別: ${AI_TYPE}`);
@@ -3082,6 +2922,10 @@ async function loadAIControlScripts() {
               `[11.autoai][Claude] 制御関数確認 (試行 ${retryCount}/${maxRetries}):`,
             );
             console.log(
+              "  - ClaudeAutomation:",
+              typeof window.ClaudeAutomation,
+            );
+            console.log(
               "  - enableClaudeMode:",
               typeof window.enableClaudeMode,
             );
@@ -3090,7 +2934,7 @@ async function loadAIControlScripts() {
               typeof window.enableClaudeDeepResearch,
             );
 
-            if (typeof window.enableClaudeDeepResearch !== "undefined") {
+            if (typeof window.ClaudeAutomation !== "undefined" || typeof window.enableClaudeDeepResearch !== "undefined") {
               console.log(
                 "[11.autoai][Claude] ✅ 制御関数が利用可能になりました",
               );
@@ -3103,6 +2947,14 @@ async function loadAIControlScripts() {
               `[11.autoai][Gemini] 制御関数確認 (試行 ${retryCount}/${maxRetries}):`,
             );
             console.log(
+              "  - GeminiAutomation:",
+              typeof window.GeminiAutomation,
+            );
+            console.log(
+              "  - Gemini:",
+              typeof window.Gemini,
+            );
+            console.log(
               "  - enableGeminiDeepResearch:",
               typeof window.enableGeminiDeepResearch,
             );
@@ -3111,7 +2963,7 @@ async function loadAIControlScripts() {
               typeof window.disableGeminiDeepResearch,
             );
 
-            if (typeof window.enableGeminiDeepResearch !== "undefined") {
+            if (typeof window.GeminiAutomation !== "undefined" || typeof window.Gemini !== "undefined" || typeof window.enableGeminiDeepResearch !== "undefined") {
               console.log(
                 "[11.autoai][Gemini] ✅ 制御関数が利用可能になりました",
               );
@@ -3119,8 +2971,25 @@ async function loadAIControlScripts() {
               resolve();
               return;
             }
+          } else if (AI_TYPE === "ChatGPT") {
+            console.log(
+              `[11.autoai][ChatGPT] 制御関数確認 (試行 ${retryCount}/${maxRetries}):`,
+            );
+            console.log(
+              "  - ChatGPTAutomation:",
+              typeof window.ChatGPTAutomation,
+            );
+            
+            if (typeof window.ChatGPTAutomation !== "undefined") {
+              console.log(
+                "[11.autoai][ChatGPT] ✅ 制御関数が利用可能になりました",
+              );
+              clearInterval(checkFunctions);
+              resolve();
+              return;
+            }
           } else {
-            // ChatGPTなど他のAIの場合
+            // その他のAIの場合
             clearInterval(checkFunctions);
             resolve();
             return;

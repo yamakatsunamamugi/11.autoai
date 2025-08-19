@@ -547,7 +547,8 @@ function renderIntegratedTable(config) {
 // ===== DOM要素の取得 =====
 const spreadsheetInput = document.getElementById("spreadsheetInput");
 const spreadsheetList = document.getElementById("spreadsheetList");
-const loadSheetsBtn = document.getElementById("loadSheetsBtn");
+// loadSheetsBtnは削除（startBtnに統合）
+// const loadSheetsBtn = document.getElementById("loadSheetsBtn");
 const saveUrlBtn = document.getElementById("saveUrlBtn");
 const deleteUrlBtn = document.getElementById("deleteUrlBtn");
 const saveNameSection = document.getElementById("saveNameSection");
@@ -1013,7 +1014,9 @@ if (typeof editNameInput !== 'undefined' && editNameInput) {
 //   });
 // }
 
-// ===== イベントリスナー: スプレッドシート読み込み =====
+// ===== イベントリスナー: スプレッドシート読み込み（startBtnに統合済み） =====
+// loadSheetsBtnの処理はstartBtnに統合されました
+/*
 if (loadSheetsBtn) {
   loadSheetsBtn.addEventListener("click", async () => {
     // datalist対応の単一入力欄からURLを取得
@@ -1082,6 +1085,7 @@ if (loadSheetsBtn) {
   }
   });
 }
+*/
 
 // ===== イベントリスナー: 本番実行（ストリーミング処理開始） =====
 /**
@@ -1104,15 +1108,64 @@ startBtn.addEventListener("click", async () => {
   
   // バリデーション：URLが入力されているか確認
   if (!spreadsheetUrl) {
-    updateStatus("スプレッドシートを先に読み込んでください", "error");
+    updateStatus("スプレッドシートURLを入力してください", "error");
     return;
   }
-
-  updateStatus("🌊 並列ストリーミング処理を開始しています...", "loading");
 
   // ボタンの状態を更新
   startBtn.disabled = true;
   stopBtn.disabled = false;
+
+  // まずスプレッドシートが読み込まれているか確認
+  const storageResult = await chrome.storage.local.get(['savedTasks']);
+  let savedTasks = storageResult.savedTasks;
+  
+  if (!savedTasks || !savedTasks.tasks || savedTasks.tasks.length === 0) {
+    // スプレッドシートが読み込まれていない場合、自動的に読み込む
+    console.log("スプレッドシートが未読み込み。自動的に読み込みます。");
+    updateStatus("スプレッドシートを自動読み込み中...", "loading");
+    
+    try {
+      // loadSheetsBtnのクリック処理と同じロジックを実行
+      const loadResponse = await chrome.runtime.sendMessage({
+        action: "loadSpreadsheets",
+        urls: [spreadsheetUrl],
+      });
+
+      if (!loadResponse || !loadResponse.success) {
+        throw new Error("スプレッドシート読み込みエラー: " + (loadResponse?.error || "不明なエラー"));
+      }
+
+      console.log("スプレッドシート読み込み成功。タスクを生成しました。");
+      console.log("loadResponse内容:", loadResponse);
+      
+      // タスクはストレージに保存されているので、少し待ってから取得
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      const updatedStorage = await chrome.storage.local.get(['savedTasks']);
+      
+      if (updatedStorage.savedTasks && updatedStorage.savedTasks.tasks && updatedStorage.savedTasks.tasks.length > 0) {
+        // ストレージから取得
+        savedTasks = updatedStorage.savedTasks;
+        console.log("ストレージからタスク取得成功:", savedTasks.tasks.length, "件");
+      } else {
+        // それでも取得できない場合はTaskQueueから直接取得
+        const taskQueue = new (await import("../features/task/queue.js")).default();
+        savedTasks = await taskQueue.loadTaskList();
+        
+        if (!savedTasks || !savedTasks.tasks || savedTasks.tasks.length === 0) {
+          throw new Error("タスク生成に失敗しました。タスクが保存されていません。");
+        }
+      }
+    } catch (error) {
+      console.error("スプレッドシート自動読み込みエラー:", error);
+      updateStatus("スプレッドシート読み込みエラー: " + error.message, "error");
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      return;
+    }
+  }
+
+  updateStatus("🌊 並列ストリーミング処理を開始しています...", "loading");
 
   try {
     // URLから情報を抽出
@@ -1126,37 +1179,48 @@ startBtn.addEventListener("click", async () => {
     const gidMatch = spreadsheetUrl.match(/[#&]gid=(\d+)/);
     const gid = gidMatch ? gidMatch[1] : null;
 
-    // まずスプレッドシートを読み込んでタスクを生成
-    const loadResponse = await chrome.runtime.sendMessage({
-      action: "loadSpreadsheet",
-      url: spreadsheetUrl,
-    });
-
-    console.log("[UI] loadSpreadsheet レスポンス:", loadResponse);
-
-    if (!loadResponse || !loadResponse.success) {
-      throw new Error(loadResponse?.error || "スプレッドシート読み込みエラー");
+    // 最新のタスクを取得（前のステップで自動読み込みした場合も含む）
+    if (!savedTasks) {
+      const storageData = await chrome.storage.local.get(['savedTasks']);
+      savedTasks = storageData.savedTasks;
     }
+    
+    // タスクがまだない場合は、スプレッドシートを読み込む
+    if (!savedTasks || !savedTasks.tasks || savedTasks.tasks.length === 0) {
+      const loadResponse = await chrome.runtime.sendMessage({
+        action: "loadSpreadsheet",
+        url: spreadsheetUrl,
+      });
 
-    // タスクQueueから保存されたタスクを取得して処理
-    const taskQueue = new (await import("../features/task/queue.js")).default();
-    const savedTasks = await taskQueue.loadTaskList();
+      console.log("[UI] loadSpreadsheet レスポンス:", loadResponse);
+
+      if (!loadResponse || !loadResponse.success) {
+        throw new Error(loadResponse?.error || "スプレッドシート読み込みエラー");
+      }
+
+      // 少し待ってからタスクを取得
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // タスクQueueから保存されたタスクを取得して処理
+      const taskQueue = new (await import("../features/task/queue.js")).default();
+      savedTasks = await taskQueue.loadTaskList();
+    }
 
     console.log("[UI] 保存されたタスク:", savedTasks);
     console.log("[UI] タスク数:", savedTasks?.tasks?.length || 0);
     
-    // AI列数の正しい計算（オブジェクト/配列両対応）
-    const aiColumnsCount = loadResponse?.aiColumns ? 
-      (Array.isArray(loadResponse.aiColumns) ? 
-        loadResponse.aiColumns.length : 
-        Object.keys(loadResponse.aiColumns).length
+    // AI列数の正しい計算（savedTasksから取得）
+    const aiColumnsCount = savedTasks?.aiColumns ? 
+      (Array.isArray(savedTasks.aiColumns) ? 
+        savedTasks.aiColumns.length : 
+        Object.keys(savedTasks.aiColumns).length
       ) : 0;
     console.log("[UI] AI列数:", aiColumnsCount);
 
     if (!savedTasks || !savedTasks.tasks || savedTasks.tasks.length === 0) {
       console.error(
         "[UI] タスクが見つかりません。AI列情報:",
-        loadResponse?.aiColumns,
+        savedTasks?.aiColumns,
         "AI列数:",
         aiColumnsCount
       );

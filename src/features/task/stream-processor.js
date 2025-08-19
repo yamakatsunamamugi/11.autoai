@@ -269,6 +269,9 @@ class StreamProcessor {
       this.logger.log(`[StreamProcessor] ページ読み込み待機中...`);
       await this.waitForContentScriptReady(window.id);
 
+      // 自動化スクリプトを注入
+      await this.injectAutomationScripts(window.id, task.aiType);
+
       // 最初のタスクを実行
       await this.executeTaskInWindow(task, window.id);
     } catch (error) {
@@ -430,14 +433,15 @@ class StreamProcessor {
         // テストモード：ログに表示のみ
         this.logger.log(`[StreamProcessor] テスト回答取得: ${task.column}${task.row} -> ${result.response.substring(0, 100)}...`);
       } else {
-        // 本番モード：スプレッドシートに書き込み + ログ表示
+        // 本番モード：スプレッドシートに書き込み（非同期で並行処理）
         this.logger.log(`[StreamProcessor] 本番回答取得: ${task.column}${task.row} -> ${result.response.substring(0, 100)}...`);
-        try {
-          await this.writeResultToSpreadsheet(task, result);
-          this.logger.log(`[StreamProcessor] 本番回答を書き込み: ${task.column}${task.row}`);
-        } catch (error) {
+        
+        // スプレッドシート書き込みを非同期で実行（awaitしない）
+        this.writeResultToSpreadsheet(task, result).then(() => {
+          this.logger.log(`[StreamProcessor] 本番回答を書き込み完了: ${task.column}${task.row}`);
+        }).catch(error => {
           this.logger.error(`[StreamProcessor] 結果の保存エラー`, error);
-        }
+        });
       }
     }
 
@@ -476,22 +480,40 @@ class StreamProcessor {
       this.logger.log(`[StreamProcessor] 3種類AI行${row}完了 → 次の行へ`);
       
       // ウィンドウを閉じる（3つとも）
-      for (const t of sameRowTasks) {
+      const closePromises = sameRowTasks.map(t => {
         const windowId = this.columnWindows.get(t.column);
         if (windowId) {
-          await this.closeColumnWindow(t.column);
+          return this.closeColumnWindow(t.column);
+        }
+      });
+      await Promise.all(closePromises.filter(p => p));
+      
+      // 次の行のタスクを即座に開始
+      if (hasMoreTasks) {
+        const nextRowTasks = tasks.filter(t => t.row === tasks[nextIndex]?.row);
+        if (nextRowTasks.length > 0) {
+          this.logger.log(`[StreamProcessor] 3種類AI次の行を開始: 行${nextRowTasks[0].row}`);
+          await this.start3TypeParallel(nextRowTasks);
         }
       }
-      
-      // 3種類AI完了時は次の行の処理は並列ストリーミングで自動開始される
     } else {
       // 通常の処理（単独AI）
-      // 現在のウィンドウを閉じる（タスク完了ごとに必ず閉じる）
+      // 現在のウィンドウを即座に閉じる
       this.logger.log(`[StreamProcessor] タスク完了によりウィンドウを閉じます: ${queueColumn}列`);
-      await this.closeColumnWindow(queueColumn);
+      const closePromise = this.closeColumnWindow(queueColumn);
       
-      // 通常処理の次タスクも並列ストリーミングで自動開始される
-      this.logger.log(`[StreamProcessor] ${queueColumn}列のタスクが全て完了`);
+      // 次のタスクがある場合は即座に開始（ウィンドウクローズと並行）
+      if (hasMoreTasks) {
+        this.logger.log(`[StreamProcessor] ${queueColumn}列の次のタスクを即座に開始`);
+        this.startColumnProcessing(queueColumn).catch(error => {
+          this.logger.error(`[StreamProcessor] 次タスク開始エラー`, error);
+        });
+      } else {
+        this.logger.log(`[StreamProcessor] ${queueColumn}列のタスクが全て完了`);
+      }
+      
+      // ウィンドウクローズを待つ
+      await closePromise;
     }
 
     // ■ 並列ストリーミング: 次の列の開始は記載完了後に行われる
@@ -748,8 +770,8 @@ class StreamProcessor {
     this.windowPositions.delete(windowInfo.position);
     this.columnWindows.delete(column);
     
-    // ウィンドウを閉じた後、次のタスクを開始
-    await this.checkAndStartNextTask(column);
+    // 注意: 次のタスクの開始はonTaskCompletedで既に行われているため、ここでは行わない
+    // checkAndStartNextTaskの呼び出しを削除（重複処理を避ける）
   }
 
   /**
@@ -969,6 +991,78 @@ class StreamProcessor {
     
     this.logger.log(`[StreamProcessor] ❌ 空きポジションなし (${timestamp})`);
     return -1;
+  }
+
+  /**
+   * 自動化スクリプトを注入
+   * @param {number} windowId - ウィンドウID
+   * @param {string} aiType - AI種別
+   * @returns {Promise<void>}
+   */
+  async injectAutomationScripts(windowId, aiType) {
+    try {
+      // ウィンドウのタブを取得
+      const tabs = await chrome.tabs.query({ windowId });
+      if (!tabs || tabs.length === 0) {
+        throw new Error(`ウィンドウ ${windowId} にタブが見つかりません`);
+      }
+      const tabId = tabs[0].id;
+
+      // AI種別に応じたスクリプトファイルを定義
+      const scriptFileMap = {
+        'claude': 'automations/claude-automation-dynamic.js',
+        'chatgpt': 'automations/chatgpt-automation.js',
+        'gemini': 'automations/gemini-dynamic-automation.js',
+        'genspark': 'automations/genspark-automation.js'
+      };
+
+      const aiName = aiType.toLowerCase();
+      const scriptFile = scriptFileMap[aiName];
+
+      if (!scriptFile) {
+        this.logger.warn(`[StreamProcessor] ${aiType}用の自動化スクリプトが見つかりません`);
+        return;
+      }
+
+      // 共通スクリプトを含む（ui-selectorsを最初に注入）
+      const scriptsToInject = [
+        'src/config/ui-selectors.js',
+        'automations/common-ai-handler.js',
+        scriptFile
+      ];
+
+      // スクリプトを注入
+      this.logger.log(`[StreamProcessor] スクリプト注入開始: ${scriptsToInject.join(', ')}`);
+      
+      // chrome.scripting.executeScriptの結果を取得してエラーチェック
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tabId },
+        files: scriptsToInject
+      });
+      
+      if (!results || results.length === 0) {
+        throw new Error('スクリプト注入結果が空です');
+      }
+      
+      // エラーチェック
+      const lastError = chrome.runtime.lastError;
+      if (lastError) {
+        throw new Error(`Chrome runtime error: ${lastError.message}`);
+      }
+
+      this.logger.log(`[StreamProcessor] ${aiType}の自動化スクリプトを注入しました (結果: ${results.length}件)`);
+      
+      // スクリプトが初期化されるまで少し待機
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+    } catch (error) {
+      this.logger.error(`[StreamProcessor] 自動化スクリプト注入エラー`, {
+        message: error.message,
+        aiType: aiType,
+        windowId: windowId
+      });
+      // エラーが発生しても処理は続行（フォールバック）
+    }
   }
 
   /**

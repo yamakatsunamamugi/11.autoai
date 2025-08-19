@@ -111,9 +111,14 @@ export const UI_SELECTORS = {
         
         // 応答/レスポンス
         RESPONSE: [
+            'div[data-message-author-role="assistant"]:last-child .markdown.prose',
+            'div[data-message-author-role="assistant"]:last-child .markdown',
+            '[data-message-author-role="assistant"]:last-child .prose',
             '[data-message-author-role="assistant"]',
             '.text-message[data-message-author-role="assistant"]',
-            'div[data-message-author-role="assistant"]'
+            'div[data-message-author-role="assistant"]',
+            '.markdown.prose:last-of-type',
+            '.prose:last-of-type'
         ]
     },
     
