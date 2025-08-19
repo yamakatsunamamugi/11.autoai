@@ -425,13 +425,19 @@ class StreamProcessor {
     this.completedTasks.add(taskId);
 
     // 成功した場合の追加処理（AIタスクの場合のみ）
-    // テストモードの場合はスプレッドシート書き込みをスキップ
-    if (result.success && result.response && task.taskType === "ai" && !this.isTestMode) {
-      try {
-        // 回答をスプレッドシートに書き込む
-        await this.writeResultToSpreadsheet(task, result);
-      } catch (error) {
-        this.logger.error(`[StreamProcessor] 結果の保存エラー`, error);
+    if (result.success && result.response && task.taskType === "ai") {
+      if (this.isTestMode) {
+        // テストモード：ログに表示のみ
+        this.logger.log(`[StreamProcessor] テスト回答取得: ${task.column}${task.row} -> ${result.response.substring(0, 100)}...`);
+      } else {
+        // 本番モード：スプレッドシートに書き込み + ログ表示
+        this.logger.log(`[StreamProcessor] 本番回答取得: ${task.column}${task.row} -> ${result.response.substring(0, 100)}...`);
+        try {
+          await this.writeResultToSpreadsheet(task, result);
+          this.logger.log(`[StreamProcessor] 本番回答を書き込み: ${task.column}${task.row}`);
+        } catch (error) {
+          this.logger.error(`[StreamProcessor] 結果の保存エラー`, error);
+        }
       }
     }
 

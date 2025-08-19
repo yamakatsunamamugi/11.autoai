@@ -1083,9 +1083,21 @@ if (loadSheetsBtn) {
   });
 }
 
-// ===== イベントリスナー: ストリーミング処理開始 =====
+// ===== イベントリスナー: 本番実行（ストリーミング処理開始） =====
+/**
+ * 【本番実行】
+ * スプレッドシートから生成されたタスクリストを実際に処理します。
+ * バックグラウンドスクリプト経由でStreamProcessorが並列実行されます。
+ * 
+ * 実行フロー:
+ * 1. スプレッドシートURL確認
+ * 2. TaskQueueからタスクリスト取得
+ * 3. バックグラウンドでStreamProcessor実行
+ * 4. 複数AIウィンドウで並列処理
+ * 5. 結果をスプレッドシートに書き込み
+ */
 startBtn.addEventListener("click", async () => {
-  console.log("ストリーミング処理開始ボタンが押されました。");
+  console.log("【本番実行】ストリーミング処理開始ボタンが押されました。");
 
   // datalist対応の入力欄からURLを取得
   const spreadsheetUrl = spreadsheetInput.value.trim();
@@ -1132,25 +1144,34 @@ startBtn.addEventListener("click", async () => {
 
     console.log("[UI] 保存されたタスク:", savedTasks);
     console.log("[UI] タスク数:", savedTasks?.tasks?.length || 0);
-    console.log("[UI] AI列数:", loadResponse?.aiColumns?.length || 0);
+    
+    // AI列数の正しい計算（オブジェクト/配列両対応）
+    const aiColumnsCount = loadResponse?.aiColumns ? 
+      (Array.isArray(loadResponse.aiColumns) ? 
+        loadResponse.aiColumns.length : 
+        Object.keys(loadResponse.aiColumns).length
+      ) : 0;
+    console.log("[UI] AI列数:", aiColumnsCount);
 
     if (!savedTasks || !savedTasks.tasks || savedTasks.tasks.length === 0) {
       console.error(
         "[UI] タスクが見つかりません。AI列情報:",
         loadResponse?.aiColumns,
+        "AI列数:",
+        aiColumnsCount
       );
       throw new Error("実行可能なタスクがありません");
     }
 
     // タスクが生成されたら、ストリーミング処理を開始
+    // 統合AIテストと同じstreamProcessTaskListを使用（統一化）
     const response = await chrome.runtime.sendMessage({
-      action: "streamProcessTasks",
-      spreadsheetId: spreadsheetId,
-      spreadsheetUrl: spreadsheetUrl,
-      gid: gid,
-      tasks: savedTasks.tasks,
-      columnMapping: loadResponse.columnMapping || {},
-      testMode: false,
+      action: "streamProcessTaskList",
+      taskList: savedTasks, // TaskListオブジェクトをそのまま送信
+      spreadsheetId: spreadsheetId, // スプレッドシートIDを追加
+      spreadsheetUrl: spreadsheetUrl, // URL情報も追加
+      gid: gid, // シートIDも追加
+      testMode: false, // 本番実行
     });
 
     if (response && response.success) {
@@ -1318,12 +1339,41 @@ deleteAnswersBtn.addEventListener("click", async () => {
   }
 });
 
-// ===== 統合AIテスト実行関数 =====
-function runIntegratedAITest() {
+// ===== テスト実行（統合AIテスト）関数 =====
+/**
+ * 【テスト実行】
+ * AI Orchestratorを開いてテスト環境を提供します。
+ * 手動テスト、3連続テスト、プロンプト管理などのテスト機能が使えます。
+ * 
+ * 主な用途:
+ * - AI動作の手動確認
+ * - 3連続テストでの性能測定
+ * - プロンプトの登録・管理
+ * - タスクリストのデバッグ（タスクリストがある場合は渡される）
+ * 
+ * 注意: これは本番実行ではなく、テスト・デバッグ用の機能です。
+ */
+async function runIntegratedAITest() {
   try {
-    // 統合AIテストページを開く
-    const testUrl = chrome.runtime.getURL(
-      "tests/integration/test-ai-automation-integrated.html",
+    console.log("【テスト実行】AI Orchestratorを開きます");
+    
+    // TaskQueueから現在のタスクリストを取得（デバッグ用）
+    const { default: TaskQueue } = await import("../features/task/queue.js");
+    const taskQueue = new TaskQueue();
+    const taskList = await taskQueue.loadTaskList();
+    
+    if (taskList) {
+      // タスクリストをJSON化してChrome Storageに保存
+      const taskData = taskList.toJSON();
+      await chrome.storage.local.set({
+        'task_queue_for_test': taskData
+      });
+      console.log("📋 タスクリストをChrome Storageに保存しました:", taskData);
+    }
+    
+    // AI Orchestratorページを開く（タスクリストモードで）
+    const orchestratorUrl = chrome.runtime.getURL(
+      "src/ai-execution/ai-orchestrator.html?mode=tasklist",
     );
 
     // ウィンドウ設定
@@ -1340,24 +1390,30 @@ function runIntegratedAITest() {
       location=no
     `.replace(/\s+/g, "");
 
-    // 新しいウィンドウでテストページを開く
-    const testWindow = window.open(
-      testUrl,
-      `integrated_ai_test_${Date.now()}`,
+    // 新しいウィンドウでAI Orchestratorを開く
+    const orchestratorWindow = window.open(
+      orchestratorUrl,
+      `ai_orchestrator_${Date.now()}`,
       windowFeatures,
     );
 
-    if (testWindow) {
-      console.log("✅ 統合AIテストページが開かれました");
-      updateStatus("統合AIテストページを開きました", "success");
+    if (orchestratorWindow) {
+      console.log("✅ AI Orchestratorが開かれました");
+      updateStatus("AI Orchestratorを開きました", "success");
+      
+      if (taskList) {
+        console.log(`📊 タスク統計: 総数=${taskList.tasks.length}`);
+      } else {
+        console.log("ℹ️ タスクリストなしで手動モードで開きます");
+      }
     } else {
-      console.error("❌ テストページを開けませんでした");
-      updateStatus("テストページを開けませんでした", "error");
+      console.error("❌ AI Orchestratorを開けませんでした");
+      updateStatus("AI Orchestratorを開けませんでした", "error");
       alert("ポップアップブロッカーを無効にしてください");
     }
   } catch (error) {
-    console.error("❌ 統合AIテスト実行エラー:", error);
-    updateStatus("テスト実行エラー", "error");
+    console.error("❌ AI Orchestrator実行エラー:", error);
+    updateStatus("実行エラー", "error");
     alert(`エラーが発生しました: ${error.message}`);
   }
 }
@@ -2685,9 +2741,14 @@ aiDetectionSystemBtn.addEventListener("click", async () => {
 });
 */
 
-// ===== イベントリスナー: 統合AIテスト開始 =====
+// ===== イベントリスナー: テスト実行（統合AIテスト開始） =====
+/**
+ * 【テスト用ボタン】
+ * AI Orchestratorを開いてテスト環境を起動します。
+ * 本番実行は「処理を開始」ボタンを使用してください。
+ */
 startIntegratedTestBtn.addEventListener("click", () => {
-  console.log("統合AIテスト開始ボタンが押されました");
+  console.log("【テスト】統合AIテスト開始ボタンが押されました");
   runIntegratedAITest();
 });
 
@@ -2885,6 +2946,74 @@ loadSavedUrls();
 // URL保存ボタン
 if (saveUrlBtn) {
   saveUrlBtn.addEventListener("click", saveCurrentUrl);
+}
+
+// クイック保存ボタン（+ボタン）
+const quickSaveBtn = document.getElementById("quickSaveBtn");
+if (quickSaveBtn) {
+  quickSaveBtn.addEventListener("click", () => {
+    const url = spreadsheetInput.value.trim();
+    
+    if (!url) {
+      showFeedback("URLを入力してください", "warning");
+      return;
+    }
+    
+    // URLのバリデーション
+    if (!url.includes("docs.google.com/spreadsheets")) {
+      showFeedback("有効なGoogleスプレッドシートURLを入力してください", "error");
+      return;
+    }
+    
+    // 名前入力ダイアログを表示
+    const name = prompt("保存名を入力してください（空欄の場合はURLの一部が使用されます）");
+    
+    if (name === null) {
+      // キャンセルされた場合
+      return;
+    }
+    
+    // 名前が空の場合はスプレッドシートIDを使用
+    let saveName = name.trim();
+    if (!saveName) {
+      const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+      saveName = match ? `シート_${match[1].substring(0, 8)}` : "新規シート";
+    }
+    
+    // 保存処理
+    chrome.storage.local.get(['savedSpreadsheets'], (result) => {
+      let savedUrls = result.savedSpreadsheets || [];
+      
+      // 既存のURLかチェック
+      const existingIndex = savedUrls.findIndex(item => item.url === url);
+      if (existingIndex !== -1) {
+        // 既存の場合は更新
+        savedUrls[existingIndex].name = saveName;
+        showFeedback("URLを更新しました", "success");
+      } else {
+        // 新規追加
+        savedUrls.push({
+          url: url,
+          name: saveName,
+          createdAt: new Date().toISOString()
+        });
+        showFeedback("URLを保存しました", "success");
+      }
+      
+      // ストレージに保存
+      chrome.storage.local.set({ savedSpreadsheets: savedUrls }, () => {
+        loadSavedUrls(); // データリストを更新
+        
+        // ボタンのアニメーション
+        quickSaveBtn.style.background = "#218838";
+        quickSaveBtn.innerHTML = "<span>✓</span>";
+        setTimeout(() => {
+          quickSaveBtn.style.background = "#28a745";
+          quickSaveBtn.innerHTML = "<span>+</span>";
+        }, 1000);
+      });
+    });
+  });
 }
 
 // URL削除ボタン
