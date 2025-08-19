@@ -2597,65 +2597,38 @@ async function handleExecuteTask(request, sendResponse) {
 
 // 停止ボタン監視による回答待機関数
 async function waitForResponseWithStopButton() {
+  // 統合テストページと同じcommon-ai-handler.jsの関数を使用
+  if (window.AIHandler && window.AIHandler.message && window.AIHandler.message.waitForResponse) {
+    console.log(`[11.autoai][${AI_TYPE}] AIHandler.waitForResponseを使用`);
+    const result = await window.AIHandler.message.waitForResponse(null, {
+      timeout: 300000, // 5分
+      sendStartTime: Date.now()
+    }, AI_TYPE);
+    return result;
+  }
+  
+  // フォールバック: AIHandlerが使えない場合は停止ボタン消滅のみで判定（テキスト長チェックなし）
+  console.log(`[11.autoai][${AI_TYPE}] フォールバック: 独自の停止ボタン監視を使用`);
   return new Promise((resolve) => {
-    let lastText = "";
-
     const check = setInterval(() => {
       // AI種別に応じた停止ボタンセレクタ
       const stopBtn = document.querySelector(
         SelectorFactory.getSelectors(AI_TYPE).STOP_BUTTON?.join(", "),
       );
 
-      // 現在のレスポンステキストを取得
-      let currentText = "";
-      try {
-        switch (AI_TYPE) {
-          case "ChatGPT":
-            const chatResponse = document.querySelector(
-              'div[data-message-author-role="assistant"]:last-child .markdown.prose',
-            );
-            currentText = chatResponse ? chatResponse.textContent : "";
-            break;
-          case "Claude":
-            const allClaudeMessages = document.querySelectorAll(
-              ".font-claude-message",
-            );
-            const claudeResponse =
-              allClaudeMessages.length > 0
-                ? allClaudeMessages[allClaudeMessages.length - 1]
-                : null;
-            // font-claude-messageの2番目の子要素（本文）を取得
-            const contentDiv = claudeResponse
-              ? claudeResponse.children[1]
-              : null;
-            currentText = contentDiv ? contentDiv.textContent : "";
-            break;
-          case "Gemini":
-            const geminiResponse = document.querySelector(
-              ".markdown-main-panel:last-child",
-            );
-            currentText = geminiResponse ? geminiResponse.textContent : "";
-            break;
-        }
-      } catch (error) {
-        console.error(`[11.autoai][${AI_TYPE}] テキスト取得エラー:`, error);
-      }
-
       console.log(`[11.autoai][${AI_TYPE}] レスポンス監視中`, {
         hasStopButton: !!stopBtn,
-        textLength: currentText.length,
       });
 
-      // 停止ボタンが消滅した場合のみ完了
-      if (!stopBtn && currentText.length > 10) {
+      // 停止ボタンが消滅した場合のみ完了（テキスト長チェックなし）
+      if (!stopBtn) {
         clearInterval(check);
         console.log(`[11.autoai][${AI_TYPE}] ✅ 停止ボタン消失検出 - レスポンス生成完了`);
         setTimeout(() => {
-          console.log(`[11.autoai][${AI_TYPE}] ✅ テキスト取得完了 - タスク完了`);
+          console.log(`[11.autoai][${AI_TYPE}] ✅ タスク完了`);
           resolve(true);
-        }, 500);
+        }, 1000); // 念のため1秒待つ（common-ai-handlerと同じ）
       }
-      lastText = currentText;
     }, 1000);
 
     // 5分でタイムアウト
