@@ -1340,6 +1340,61 @@
             log(`デバッグモード: ${enabled ? 'ON' : 'OFF'}`, 'info');
         },
         
+        // ========================================
+        // 応答取得機能（ai-content-unified.js互換）
+        // ========================================
+        getResponse: async () => {
+            try {
+                log('[Gemini] 応答を取得中...', 'info');
+                
+                // Canvas機能対応の応答取得
+                const geminiCanvasContainer = document.querySelector(
+                    'model-response-text canvas-content'
+                );
+                
+                if (geminiCanvasContainer) {
+                    const canvasText = geminiCanvasContainer.innerText || geminiCanvasContainer.textContent;
+                    if (canvasText && canvasText.trim().length > 0) {
+                        log('[Gemini] Canvas応答を取得しました', 'success');
+                        return canvasText;
+                    }
+                }
+                
+                // 通常のテキスト応答を取得
+                const texts = await getTextFromScreen();
+                if (texts.latestResponse) {
+                    log('[Gemini] 通常応答を取得しました', 'success');
+                    return texts.latestResponse;
+                }
+                
+                // フォールバック: 他の応答要素を検索
+                const responseSelectors = [
+                    'model-response-text',
+                    '.model-response',
+                    '.response-container-content',
+                    '.response-text'
+                ];
+                
+                for (const selector of responseSelectors) {
+                    const element = document.querySelector(selector);
+                    if (element) {
+                        const text = element.innerText || element.textContent;
+                        if (text && text.trim().length > 0) {
+                            log(`[Gemini] フォールバック応答を取得しました (${selector})`, 'success');
+                            return text;
+                        }
+                    }
+                }
+                
+                log('[Gemini] 応答が見つかりませんでした', 'warning');
+                return null;
+                
+            } catch (error) {
+                console.error('[Gemini] getResponse エラー:', error);
+                return null;
+            }
+        },
+        
         // デバッグ・診断機能
         diagnose: async () => {
             console.clear();
@@ -1752,5 +1807,9 @@
     
     // GeminiAutomationエイリアスを追加（一貫性のため）
     window.GeminiAutomation = window.Gemini;
+    
+    // ai-content-unified.js互換のため、関数を直接公開
+    window.GeminiAutomation.collectAvailableModels = collectAvailableModels;
+    window.GeminiAutomation.collectAvailableFunctions = collectAvailableFunctions;
     
 })();

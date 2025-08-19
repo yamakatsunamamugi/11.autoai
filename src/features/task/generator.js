@@ -800,7 +800,7 @@ class TaskGenerator {
     });
 
     // タスクリストをテーブル形式で表示
-    console.groupCollapsed("[TaskGenerator] 実行用タスクリスト");
+    console.log("[TaskGenerator] 実行用タスクリスト");
     
     console.log("╔════════════════════════════════════════════════════════════════════════════╗");
     console.log("║                          タスク実行リスト                                     ║");
