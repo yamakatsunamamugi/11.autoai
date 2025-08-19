@@ -742,6 +742,73 @@
     };
 
     // ========================================
+    // 応答待機関数（common-ai-handler.js使用）
+    // ========================================
+    const waitForResponse = async (timeout = 60000) => {
+        // 共通の応答待機関数を使用
+        if (window.AIHandler?.message?.waitForResponse) {
+            try {
+                const result = await window.AIHandler.message.waitForResponse(null, {
+                    timeout: timeout,
+                    sendStartTime: Date.now()
+                }, 'Gemini');
+                return result;
+            } catch (error) {
+                log(`応答待機エラー: ${error.message}`, 'error');
+                return false;
+            }
+        }
+        
+        // フォールバック: 従来の方法
+        log('⚠️ 共通応答待機関数が見つかりません。従来の方法を使用します', 'warning');
+        
+        const stopButtonSelectors = window.AIHandler?.getSelectors?.('Gemini', 'STOP_BUTTON') || [
+            'button[aria-label="回答を停止"]',
+            'button.send-button.stop',
+            'button.stop',
+            '.stop-icon',
+            'mat-icon[data-mat-icon-name="stop"]',
+            '[aria-label="Stop response"]',
+            'button[aria-label*="停止"]',
+            'button[aria-label*="stop"]',
+            '.stop-button'
+        ];
+        
+        let responseReceived = false;
+        let waitCount = 0;
+        const maxWait = Math.floor(timeout / 1000);
+        let stopButtonDisappearedCount = 0;
+        
+        console.log('[Gemini] 応答待機中...');
+        
+        while (!responseReceived && waitCount < maxWait) {
+            await wait(1000);
+            waitCount++;
+            
+            let stopButton = null;
+            for (const selector of stopButtonSelectors) {
+                stopButton = document.querySelector(selector);
+                if (stopButton) break;
+            }
+            
+            if (!stopButton) {
+                stopButtonDisappearedCount++;
+                if (stopButtonDisappearedCount >= 3 && waitCount > 5) {
+                    console.log('[Gemini] 応答完了を検出（停止ボタン消滅）');
+                    responseReceived = true;
+                }
+            } else {
+                stopButtonDisappearedCount = 0;
+                if (waitCount % 10 === 0) {
+                    console.log(`[Gemini] 応答生成中... (${waitCount}秒経過)`);
+                }
+            }
+        }
+        
+        return responseReceived;
+    };
+
+    // ========================================
     // テキスト入力・送信関数
     // ========================================
     const inputText = async (text) => {
@@ -924,40 +991,10 @@
 
             // 応答待機
             console.log('⏳ 応答を待機中...');
-            let responseReceived = false;
-            let waitCount = 0;
-            const maxWait = 30;
-
-            let stopButtonDisappearedCount = 0;
+            const responseReceived = await waitForResponse(30000); // 30秒タイムアウト
             
-            while (!responseReceived && waitCount < maxWait) {
-                await wait(1000);
-                waitCount++;
-
-                // UI_SELECTORSから取得（フォールバックあり）
-                const stopButtonSelectors = window.AIHandler?.getSelectors?.('Gemini', 'STOP_BUTTON') || [
-                    'button[aria-label="回答を停止"]',
-                    'button.send-button.stop',
-                    'button.stop',
-                    '.stop-icon',
-                    'mat-icon[data-mat-icon-name="stop"]'
-                ];
-                
-                let stopButton = null;
-                for (const selector of stopButtonSelectors) {
-                    stopButton = document.querySelector(selector);
-                    if (stopButton) break;
-                }
-                
-                if (stopButton) {
-                    console.log(`    処理中... (${waitCount}秒)`);
-                    stopButtonDisappearedCount = 0;
-                } else {
-                    stopButtonDisappearedCount++;
-                    if (stopButtonDisappearedCount >= 3 && waitCount > 5) {
-                        responseReceived = true;
-                    }
-                }
+            if (!responseReceived) {
+                console.log('⚠️ 応答待機がタイムアウトしました');
             }
 
             // 応答を取得
@@ -1214,57 +1251,13 @@
                     console.log('[Gemini] DeepResearchハンドラーが見つかりません');
                 }
             } else if (config.waitResponse) {
-                // 通常の応答待機
-                const timeout = config.timeout || 60000;
-                const maxWait = Math.floor(timeout / 1000);
-                let responseReceived = false;
-                let waitCount = 0;
-                let stopButtonDisappearedCount = 0;
-                
+                // 通常の応答待機（共通関数使用）
                 console.log('[Gemini] 応答待機中...');
+                const timeout = config.timeout || 60000;
+                const responseReceived = await waitForResponse(timeout);
                 
-                while (!responseReceived && waitCount < maxWait) {
-                    await wait(1000);
-                    waitCount++;
-                    
-                    // UI_SELECTORSから取得（フォールバックあり）
-                    const stopButtonSelectors = window.AIHandler?.getSelectors?.('Gemini', 'STOP_BUTTON') || [
-                        'button[aria-label="回答を停止"]',
-                        'button.send-button.stop',
-                        'button.stop',
-                        '.stop-icon',
-                        'mat-icon[data-mat-icon-name="stop"]',
-                        '[aria-label="Stop response"]',
-                        'button[aria-label*="停止"]',
-                        'button[aria-label*="stop"]',
-                        '.stop-button'
-                    ];
-                    
-                    let stopButton = null;
-                    for (const selector of stopButtonSelectors) {
-                        stopButton = document.querySelector(selector);
-                        if (stopButton) break;
-                    }
-                    
-                    if (!stopButton) {
-                        // 停止ボタンが消えた
-                        stopButtonDisappearedCount++;
-                        
-                        // 停止ボタンが3秒連続で見つからない場合に応答完了と判断
-                        // （初期の3秒待機を除く）
-                        if (stopButtonDisappearedCount >= 3 && waitCount > 5) {
-                            console.log('[Gemini] 応答完了を検出（停止ボタン消滅）');
-                            responseReceived = true;
-                        }
-                    } else {
-                        // 停止ボタンが見つかった
-                        stopButtonDisappearedCount = 0;
-                        
-                        // 10秒ごとに進捗をログ出力
-                        if (waitCount % 10 === 0) {
-                            console.log(`[Gemini] 応答生成中... (${waitCount}秒経過)`);
-                        }
-                    }
+                if (!responseReceived) {
+                    console.log('[Gemini] 応答待機がタイムアウトしました');
                 }
             }
             

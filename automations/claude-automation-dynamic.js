@@ -642,43 +642,11 @@
   }
 
   async function waitForResponse(maxWaitTime = 60000) {
-    log('AI応答を待機中...', 'INFO');
-
-    const startTime = Date.now();
-    let lastProgressTime = startTime;
-
-    while (Date.now() - startTime < maxWaitTime) {
-      const stopButtonSelectors = window.AIHandler?.getSelectors?.('Claude', 'STOP_BUTTON') || ['[aria-label="応答を停止"]'];
-      let stopButton = null;
-      for (const selector of stopButtonSelectors) {
-        stopButton = document.querySelector(selector);
-        if (stopButton) break;
-      }
-
-      if (!stopButton) {
-        // 経過時間を計算（送信時刻から）
-        if (sendStartTime) {
-          const elapsedTotal = Date.now() - sendStartTime;
-          const minutes = Math.floor(elapsedTotal / 60000);
-          const seconds = Math.floor((elapsedTotal % 60000) / 1000);
-          log(`✅ 応答完了（送信から ${minutes}分${seconds}秒経過）`, 'SUCCESS');
-        } else {
-          log('AI応答が完了しました', 'SUCCESS');
-        }
-        return true;
-      }
-
-      if (Date.now() - lastProgressTime > 10000) {
-        const elapsedSec = Math.round((Date.now() - startTime) / 1000);
-        log(`応答待機中... (${elapsedSec}秒経過)`, 'INFO');
-        lastProgressTime = Date.now();
-      }
-
-      await wait(1000);
-    }
-
-    log('応答待機がタイムアウトしました', 'WARNING');
-    return false;
+    // 共通関数を使用
+    return await window.AIHandler?.message?.waitForResponse?.(null, {
+      timeout: maxWaitTime,
+      sendStartTime: sendStartTime
+    }, 'Claude');
   }
 
   // Canvas（アーティファクト）コンテンツを取得

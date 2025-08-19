@@ -28,34 +28,130 @@
   // UI_SELECTORSを読み込み
   // ========================================
   let UI_SELECTORS = null;
+  let loadingPromise = null;
+  let loadAttempted = false;
   
   // セレクタの読み込みを試みる
   async function loadSelectors() {
-    try {
-      // Chrome拡張機能として動作している場合
-      if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getURL) {
-        const url = chrome.runtime.getURL('src/config/ui-selectors.js');
-        const module = await import(url);
-        UI_SELECTORS = module.UI_SELECTORS;
-        log('UI_SELECTORSの読み込み成功', 'SUCCESS');
-      }
-    } catch (error) {
-      log(`UI_SELECTORSの読み込み失敗: ${error.message}`, 'ERROR');
+    if (loadingPromise) {
+      return loadingPromise;
     }
+    
+    if (loadAttempted && UI_SELECTORS) {
+      return UI_SELECTORS;
+    }
+    
+    loadingPromise = (async () => {
+      try {
+        loadAttempted = true;
+        log('UI_SELECTORSの読み込み開始...', 'INFO');
+        
+        // Chrome拡張機能として動作している場合
+        if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getURL) {
+          const url = chrome.runtime.getURL('src/config/ui-selectors.js');
+          const module = await import(url);
+          UI_SELECTORS = module.UI_SELECTORS;
+          log('UI_SELECTORSの読み込み成功', 'SUCCESS');
+        } else {
+          log('Chrome拡張機能環境ではありません', 'WARNING');
+        }
+      } catch (error) {
+        log(`UI_SELECTORSの読み込み失敗: ${error.message}`, 'ERROR');
+      } finally {
+        loadingPromise = null;
+      }
+      return UI_SELECTORS;
+    })();
+    
+    return loadingPromise;
   }
 
   // ========================================
   // セレクタ取得関数
   // ========================================
-  function getSelectors(aiName, selectorType) {
+  async function getSelectorsSafe(aiName, selectorType) {
+    // UI_SELECTORSが読み込まれていない場合は読み込みを試行
+    if (!UI_SELECTORS && !loadAttempted) {
+      await loadSelectors();
+    }
+    
     // UI_SELECTORSが読み込まれていれば使用
     if (UI_SELECTORS && UI_SELECTORS[aiName]) {
-      return UI_SELECTORS[aiName][selectorType] || [];
+      const selectors = UI_SELECTORS[aiName][selectorType] || [];
+      log(`セレクタ取得成功: ${aiName}.${selectorType} (${selectors.length}個)`, 'DEBUG');
+      return selectors;
+    }
+    
+    // フォールバック: 基本的なセレクタを返す
+    const fallbackSelectors = getFallbackSelectors(aiName, selectorType);
+    if (fallbackSelectors.length > 0) {
+      log(`フォールバックセレクタを使用: ${aiName}.${selectorType} (${fallbackSelectors.length}個)`, 'WARNING');
+      return fallbackSelectors;
     }
     
     // UI_SELECTORSが利用できない場合はエラー
     log(`UI_SELECTORSが読み込まれていません: ${aiName}.${selectorType}`, 'ERROR');
     return [];
+  }
+  
+  // 同期版（互換性のため）
+  function getSelectors(aiName, selectorType) {
+    // UI_SELECTORSが読み込まれていれば使用
+    if (UI_SELECTORS && UI_SELECTORS[aiName]) {
+      const selectors = UI_SELECTORS[aiName][selectorType] || [];
+      log(`セレクタ取得成功: ${aiName}.${selectorType} (${selectors.length}個)`, 'DEBUG');
+      return selectors;
+    }
+    
+    // フォールバック: 基本的なセレクタを返す
+    const fallbackSelectors = getFallbackSelectors(aiName, selectorType);
+    if (fallbackSelectors.length > 0) {
+      log(`フォールバックセレクタを使用: ${aiName}.${selectorType} (${fallbackSelectors.length}個)`, 'WARNING');
+      return fallbackSelectors;
+    }
+    
+    // UI_SELECTORSが利用できない場合はエラー
+    log(`UI_SELECTORSが読み込まれていません: ${aiName}.${selectorType}`, 'ERROR');
+    return [];
+  }
+  
+  // フォールバックセレクタ定義
+  function getFallbackSelectors(aiName, selectorType) {
+    const fallbacks = {
+      'ChatGPT': {
+        'MENU_ITEM': [
+          '[role="option"]',
+          '[role="menuitem"]',
+          '[role="menuitemradio"]'  // Deep Research等のラジオボタン機能
+        ],
+        'FUNCTION_BUTTON': [
+          '[data-testid="composer-plus-btn"]',
+          '[data-testid="input-menu-trigger"]',
+          '[aria-label="Add"]'
+        ],
+        'MODEL_BUTTON': [
+          '[data-testid="model-switcher-dropdown-button"]',
+          'button[aria-label*="モデル"]',
+          'button[aria-haspopup="menu"]'
+        ]
+      },
+      'Claude': {
+        'MENU_ITEM': [
+          '[role="option"]',
+          '[role="menuitem"]',
+          '[role="menuitemradio"]'
+        ]
+      },
+      'Gemini': {
+        'MENU_ITEM': [
+          '[role="menuitemradio"]',
+          '[role="menuitem"]',
+          'button[mat-list-item]'
+        ]
+      }
+    };
+    
+    return (fallbacks[aiName] && fallbacks[aiName][selectorType]) || [];
   }
 
   // ========================================
@@ -321,50 +417,92 @@
       return null;
     }
     
-    const clickMethods = {
-      'ChatGPT': { // PointerEventで成功
-        name: 'PointerEvent',
-        execute: () => {
-          element.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
-          element.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
-          element.dispatchEvent(new PointerEvent('click', { bubbles: true }));
-        }
-      },
-      'Claude': { // PointerEventで成功
-        name: 'PointerEvent',
-        execute: () => {
-          element.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
-          element.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
-          element.dispatchEvent(new PointerEvent('click', { bubbles: true }));
-        }
-      },
-      'Gemini': { // element.click()で成功
-        name: 'element.click()',
-        execute: () => element.click()
-      }
-    };
-    
-    const method = clickMethods[aiType] || {
-      name: 'element.click()',
-      execute: () => element.click()
-    };
-    
-    try {
-      log(`${aiType}: ${method.name}でクリックを試行中...`, 'INFO', aiType);
-      await method.execute();
-      await wait(1500); // クリック後の待機
+    // ChatGPTの場合はサイズチェックをスキップして直接クリック
+    if (aiType === 'ChatGPT') {
+      log('ChatGPT: 要素を直接クリックします', 'DEBUG');
+    } else {
+      // 他のAIの場合は従来通りサイズチェック
+      const rect = element.getBoundingClientRect();
+      const visible = element.offsetParent !== null;
+      const inViewport = rect.width > 0 && rect.height > 0;
       
-      if (await checkFunction()) {
-        log(`✅ ${method.name}で成功！`, 'SUCCESS', aiType);
-        return method.name;
-      } else {
-        log(`${method.name}でメニューが開きませんでした`, 'WARNING', aiType);
+      log(`要素の状態: visible=${visible}, inViewport=${inViewport}, size=${rect.width}x${rect.height}, pos=${rect.x},${rect.y}`, 'DEBUG');
+      
+      if (rect.width === 0 || rect.height === 0) {
+        log('要素のサイズが0のためクリックをスキップします', 'WARNING');
         return null;
       }
-    } catch (error) {
-      log(`${method.name}でエラー: ${error.message}`, 'ERROR', aiType);
-      return null;
     }
+    
+    // 複数のクリック方法を定義
+    const clickMethods = [
+      {
+        name: 'element.click()',
+        execute: () => element.click()
+      },
+      {
+        name: 'MouseEvent',
+        execute: () => {
+          element.dispatchEvent(new MouseEvent('click', {
+            view: window,
+            bubbles: true,
+            cancelable: true
+          }));
+        }
+      },
+      {
+        name: 'PointerEvent',
+        execute: () => {
+          element.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+          element.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+          element.dispatchEvent(new PointerEvent('click', { bubbles: true }));
+        }
+      },
+      {
+        name: 'MouseEvent with coordinates',
+        execute: () => {
+          const rect = element.getBoundingClientRect();
+          const x = rect.left + rect.width / 2;
+          const y = rect.top + rect.height / 2;
+          element.dispatchEvent(new MouseEvent('click', {
+            view: window,
+            bubbles: true,
+            cancelable: true,
+            clientX: x,
+            clientY: y
+          }));
+        }
+      },
+      {
+        name: 'Focus + Enter',
+        execute: () => {
+          element.focus();
+          element.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+          element.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }));
+        }
+      }
+    ];
+    
+    // 各クリック方法を順番に試す
+    for (const method of clickMethods) {
+      try {
+        log(`${aiType}: ${method.name}でクリックを試行中...`, 'INFO', aiType);
+        await method.execute();
+        await wait(500); // クリック後の待機を短縮
+        
+        if (await checkFunction()) {
+          log(`✅ ${method.name}で成功！`, 'SUCCESS', aiType);
+          return method.name;
+        } else {
+          log(`${method.name}では反応なし、次の方法を試します`, 'DEBUG', aiType);
+        }
+      } catch (error) {
+        log(`${method.name}でエラー: ${error.message}`, 'DEBUG', aiType);
+      }
+    }
+    
+    log('全てのクリック方法が失敗しました', 'WARNING', aiType);
+    return null;
   };
   
   const waitForMenu = async (menuSelectors = null, maxWait = CONFIG.TIMEOUTS.menuWait) => {
@@ -485,8 +623,14 @@
     return true;
   };
 
-  const waitForResponseCommon = async (stopButtonSelectors, maxWait = CONFIG.TIMEOUTS.responseWait, aiName = null) => {
+  const waitForResponseCommon = async (stopButtonSelectors, options = {}, aiName = null) => {
     const ai = aiName || detectAI();
+    const {
+      timeout = CONFIG.TIMEOUTS.responseWait,
+      extendedTimeout = 30 * 60 * 1000,  // 30分
+      sendStartTime = null
+    } = options;
+    
     const selectors = stopButtonSelectors || getSelectors(ai, 'STOP_BUTTON');
     
     if (!selectors || selectors.length === 0) {
@@ -496,41 +640,81 @@
 
     log('AI応答を待機中...', 'INFO', ai);
     const startTime = Date.now();
-    let lastProgressTime = startTime;
-    let noStopButtonCount = 0;  // 停止ボタンが見つからない連続回数
-    const requiredNoStopButtonTime = 5;  // 5秒間連続で見つからなければ完了
+    let lastMinuteLogged = 0;
 
-    while (Date.now() - startTime < maxWait) {
-      // 停止ボタンを素早く検索（1秒以内）
-      const stopButton = await findElement(selectors, null, 1000);
+    // 基本待機時間（デフォルト60秒）
+    while (Date.now() - startTime < timeout) {
+      const elapsedMs = Date.now() - startTime;
+      const elapsedMinutes = Math.floor(elapsedMs / 60000);
+      
+      // 1分ごとにログを出力
+      if (elapsedMinutes > lastMinuteLogged) {
+        lastMinuteLogged = elapsedMinutes;
+        log(`応答待機中... (${elapsedMinutes}分経過)`, 'INFO', ai);
+      }
+      
+      // 停止ボタンの存在確認
+      const stopButton = await findElement(selectors, null, 100);
       
       if (!stopButton) {
-        noStopButtonCount++;
-        debugLog(`停止ボタンなし: ${noStopButtonCount}秒連続`);
+        // 停止ボタンがない = 応答完了
+        await wait(1000); // 念のため1秒待つ
         
-        // 5秒間連続で停止ボタンが見つからない場合は完了と判定
-        if (noStopButtonCount >= requiredNoStopButtonTime) {
-          const elapsedTotal = Date.now() - startTime;
+        // 経過時間を計算
+        if (sendStartTime) {
+          const elapsedTotal = Date.now() - sendStartTime;
           const minutes = Math.floor(elapsedTotal / 60000);
           const seconds = Math.floor((elapsedTotal % 60000) / 1000);
           log(`✅ 応答完了（送信から ${minutes}分${seconds}秒経過）`, 'SUCCESS', ai);
+        } else {
+          log('✅ 応答生成完了', 'SUCCESS', ai);
+        }
+        return true;
+      }
+      
+      await wait(500);
+    }
+
+    // タイムアウト後も停止ボタンがある場合は待機を継続
+    let stopButton = null;
+    for (const selector of selectors) {
+      const element = document.querySelector(selector);
+      if (element) {
+        stopButton = element;
+        break;
+      }
+    }
+    
+    if (stopButton) {
+      log(`応答待機タイムアウト (${timeout/1000}秒経過) - 停止ボタンがまだ表示されているため待機を継続`, 'WARNING', ai);
+      
+      // 停止ボタンが消えるまで追加で待機
+      const extendedStartTime = Date.now();
+      
+      while (Date.now() - extendedStartTime < extendedTimeout) {
+        stopButton = null;
+        for (const selector of selectors) {
+          const element = document.querySelector(selector);
+          if (element) {
+            stopButton = element;
+            break;
+          }
+        }
+        
+        if (!stopButton) {
+          log('✅ 停止ボタンが消滅 - 応答生成完了', 'SUCCESS', ai);
           return true;
         }
-      } else {
-        // 停止ボタンが見つかったらカウントリセット
-        if (noStopButtonCount > 0) {
-          debugLog('停止ボタン再検出: カウントリセット');
+        
+        // 1分ごとにログ
+        const elapsedMinutes = Math.floor((Date.now() - startTime) / 60000);
+        if (elapsedMinutes > lastMinuteLogged) {
+          lastMinuteLogged = elapsedMinutes;
+          log(`延長待機中... (合計 ${elapsedMinutes}分経過)`, 'INFO', ai);
         }
-        noStopButtonCount = 0;
+        
+        await wait(1000);
       }
-
-      if (Date.now() - lastProgressTime > 10000) {
-        const elapsedSec = Math.round((Date.now() - startTime) / 1000);
-        log(`応答待機中... (${elapsedSec}秒経過)`, 'INFO', ai);
-        lastProgressTime = Date.now();
-      }
-
-      await wait(1000);  // 1秒ごとにチェック
     }
 
     log('応答待機がタイムアウトしました', 'WARNING', ai);
@@ -942,25 +1126,87 @@
     }
 
     async getMenuItems() {
-      const itemSelectors = getSelectors(this.aiType, 'MENU_ITEM') || [
-        '[role="menuitem"]',
-        '[role="option"]',
-        '[role="menuitemradio"]'
-      ];
+      // セレクタを非同期で取得（UI_SELECTORS読み込み待機あり）
+      const itemSelectors = await getSelectorsSafe(this.aiType, 'MENU_ITEM');
+      
+      // デバッグログ追加
+      console.log(`[デバッグ] getMenuItems - aiType: ${this.aiType}`);
+      console.log(`[デバッグ] 使用されたセレクタ: ${JSON.stringify(itemSelectors)}`);
       
       const items = [];
-      for (const selector of itemSelectors) {
-        try {
-          const elements = document.querySelectorAll(selector);
-          elements.forEach(el => {
-            if (!items.includes(el)) {
-              items.push(el);
-            }
-          });
-        } catch (e) {}
-      }
+      const visitedMenus = new Set();
+      
+      // Step 1: 現在表示されているメインメニューの項目を取得
+      await this._collectMenuItems(items, itemSelectors, visitedMenus);
+      
+      // Step 2: サブメニューを動的に探索（「さらに表示」など）
+      await this._expandAndCollectSubmenus(items, itemSelectors, visitedMenus);
+      
+      console.log(`[デバッグ] メニューアイテム数: ${items.length}`);
+      items.forEach((item, index) => {
+        console.log(`[デバッグ] アイテム${index}: "${item.textContent?.trim()}" (role="${item.getAttribute('role')}")`);
+      });
       
       return items;
+    }
+
+    async _collectMenuItems(items, itemSelectors, visitedMenus) {
+      const menuContainers = document.querySelectorAll('[data-radix-popper-content-wrapper] [role="menu"], [role="menu"][data-state="open"]');
+      
+      for (const container of menuContainers) {
+        const menuId = container.id || container.getAttribute('aria-labelledby') || 'unknown';
+        if (visitedMenus.has(menuId)) continue;
+        visitedMenus.add(menuId);
+        
+        for (const selector of itemSelectors) {
+          try {
+            const elements = container.querySelectorAll(selector);
+            elements.forEach(el => {
+              if (!items.some(existing => existing === el)) {
+                items.push(el);
+              }
+            });
+          } catch (e) {}
+        }
+      }
+    }
+
+    async _expandAndCollectSubmenus(items, itemSelectors, visitedMenus) {
+      // サブメニュートリガーを探す（「さらに表示」、「その他のモデル」など）
+      const submenuTriggers = document.querySelectorAll('[data-has-submenu=""], [aria-haspopup="menu"], [role="menuitem"]:has(svg[data-rtl-flip])');
+      
+      for (const trigger of submenuTriggers) {
+        const text = trigger.textContent?.trim();
+        if (!text) continue;
+        
+        // 一般的なサブメニュートリガーのテキストをチェック
+        const isSubmenuTrigger = text.includes('さらに表示') || 
+                                text.includes('その他') || 
+                                text.includes('More') || 
+                                text.includes('Show more') ||
+                                trigger.hasAttribute('data-has-submenu') ||
+                                trigger.getAttribute('aria-haspopup') === 'menu';
+        
+        if (!isSubmenuTrigger) continue;
+        
+        try {
+          // サブメニューが既に開いているかチェック
+          const isExpanded = trigger.getAttribute('aria-expanded') === 'true';
+          
+          if (!isExpanded) {
+            // サブメニューを開く
+            console.log(`[デバッグ] サブメニュー「${text}」を展開中...`);
+            await performClick(trigger);
+            await wait(500); // サブメニューの展開を待機
+          }
+          
+          // 新しく表示されたメニュー項目を収集
+          await this._collectMenuItems(items, itemSelectors, visitedMenus);
+          
+        } catch (e) {
+          console.log(`[デバッグ] サブメニュー展開エラー: ${e.message}`);
+        }
+      }
     }
 
     async getAvailableModels() {
@@ -1059,8 +1305,10 @@
         if (testId) {
           const targetItem = document.querySelector(`[data-testid="${testId}"]`);
           if (targetItem) {
-            await performClick(targetItem, this.aiType);
-            log(`ChatGPTモデル「${modelName}」を選択しました`, 'SUCCESS');
+            const clickMethod = await tryMultipleClickMethods(targetItem, () => true, this.aiType);
+            if (clickMethod) {
+              log(`ChatGPTモデル「${modelName}」を選択しました`, 'SUCCESS');
+            }
             await wait(CONFIG.DELAYS.modelSwitch);
             
             // モデル変更を確認
@@ -1215,11 +1463,17 @@
       const items = await this.getMenuItems();
       let targetItem = null;
       
+      // より詳細なデバッグ情報（非同期版を使用）
+      const itemSelectors = await getSelectorsSafe(this.aiType, 'MENU_ITEM');
+      console.log(`[デバッグ] 使用されたセレクタ: ${JSON.stringify(itemSelectors)}`);
       console.log(`[デバッグ] メニューアイテム数: ${items.length}`);
+      console.log(`[デバッグ] 検索対象の機能名: "${functionName}"`);
 
       for (const item of items) {
         const text = item.textContent?.trim();
-        console.log(`[デバッグ] メニューアイテム: "${text}"`);
+        const role = item.getAttribute('role');
+        const ariaChecked = item.getAttribute('aria-checked');
+        console.log(`[デバッグ] メニューアイテム: "${text}" (role="${role}", aria-checked="${ariaChecked}")`);
         
         if (text === functionName) {
           console.log(`[デバッグ] 完全一致: "${text}" === "${functionName}"`);
@@ -1239,18 +1493,57 @@
           const isCurrentlyActive = toggleInput.checked;
           console.log(`[デバッグ] トグル状態: ${isCurrentlyActive ? 'ON' : 'OFF'}`);
           if ((enable && !isCurrentlyActive) || (!enable && isCurrentlyActive)) {
-            await performClick(targetItem, this.aiType);
-            log(`機能「${functionName}」を${enable ? 'ON' : 'OFF'}にしました`, 'SUCCESS');
+            // 改善: AI別のクリック戦略を使用（非表示要素クリック問題を解決）
+            const clickMethod = await tryMultipleClickMethods(targetItem, () => true, this.aiType);
+            await closeMenu();
+            if (clickMethod) {
+              log(`機能「${functionName}」を${enable ? 'ON' : 'OFF'}にしました`, 'SUCCESS');
+              return true;
+            } else {
+              log(`機能「${functionName}」のクリックに失敗しました`, 'ERROR');
+              return false;
+            }
           } else {
             log(`機能「${functionName}」は既に${isCurrentlyActive ? 'ON' : 'OFF'}です`, 'INFO');
+            await closeMenu();
+            return true;
           }
         } else {
-          await performClick(targetItem, this.aiType);
-          log(`機能「${functionName}」をクリックしました`, 'SUCCESS');
+          // 全AIで複数のクリック方法を試す
+          log(`機能「${functionName}」を選択中...`, 'INFO');
+          
+          // クリック成功をチェックする関数
+          const checkClickSuccess = async () => {
+            // aria-checkedの変更を確認
+            const ariaChecked = targetItem.getAttribute('aria-checked');
+            if (ariaChecked === 'true') {
+              return true;
+            }
+            
+            // メニューが閉じたかを確認（クリック成功の別の指標）
+            const menu = document.querySelector('[role="menu"]:not([style*="display: none"])');
+            if (!menu) {
+              return true;
+            }
+            
+            return false;
+          };
+          
+          // tryMultipleClickMethodsで複数の方法を試す
+          const clickMethod = await tryMultipleClickMethods(targetItem, checkClickSuccess, this.aiType);
+          
+          // 結果を確認
+          const finalAriaChecked = targetItem.getAttribute('aria-checked');
+          await closeMenu();
+          
+          if (clickMethod || finalAriaChecked === 'true') {
+            log(`機能「${functionName}」をクリックしました（${clickMethod || 'unknown method'}）`, 'SUCCESS');
+            return true;
+          } else {
+            log(`機能「${functionName}」のクリックに失敗しました`, 'ERROR');
+            return false;
+          }
         }
-        
-        await closeMenu();
-        return true;
       }
 
       console.log(`[デバッグ] ターゲットアイテムが見つかりませんでした: "${functionName}"`);
@@ -1389,6 +1682,7 @@
     // UI_SELECTORSアクセス
     loadSelectors,
     getSelectors,
+    getSelectorsSafe,
     
     // AI検出
     detectAI: wrapWithTracking(detectAI, 'detectAI'),

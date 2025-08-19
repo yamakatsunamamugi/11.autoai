@@ -69,6 +69,15 @@ export const UI_SELECTORS = {
         
         // 機能メニュー
         FUNCTION_MENU_BUTTON: [
+            '[data-testid="composer-plus-btn"]',  // 最新のセレクタ（最優先）
+            '[data-testid="input-menu-trigger"]',
+            '[aria-label="Add"]',
+            'button[aria-label*="Add"]'
+        ],
+        
+        // 機能ボタン（common-ai-handler.js用の別名）
+        FUNCTION_BUTTON: [
+            '[data-testid="composer-plus-btn"]',  // 最新のセレクタ（最優先）
             '[data-testid="input-menu-trigger"]',
             '[aria-label="Add"]',
             'button[aria-label*="Add"]'
@@ -92,6 +101,13 @@ export const UI_SELECTORS = {
         
         // ポッパーコンテナ（RadixUI）
         POPPER_CONTAINER: ['[data-radix-popper-content-wrapper]'],
+        
+        // メニューアイテム（拡張）- Deep Research等のラジオボタン機能に必要
+        MENU_ITEM: [
+            '[role="option"]',
+            '[role="menuitem"]',
+            '[role="menuitemradio"]'  // ラジオボタン機能（Deep Research、エージェントモード等）に必要
+        ],
         
         // 応答/レスポンス
         RESPONSE: [
@@ -189,7 +205,8 @@ export const UI_SELECTORS = {
         // メニューアイテム（拡張）
         MENU_ITEM: [
             '[role="option"]',
-            '[role="menuitem"]'
+            '[role="menuitem"]',
+            '[role="menuitemradio"]'  // ラジオボタン機能（Deep Research、エージェントモード等）に必要
         ],
         
         // Canvas関連（Claude特有）

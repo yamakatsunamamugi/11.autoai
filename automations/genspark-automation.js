@@ -671,10 +671,13 @@
         result.response = response;
       }
       
-      // 7. 応答URL取得
-      if (finalConfig.getResponseUrl) {
+      // 7. 応答URL取得（デフォルトで有効）
+      if (finalConfig.getResponseUrl !== false) {  // 明示的にfalseでない限り実行
         const responseUrl = await getResponseUrl();
         result.responseUrl = responseUrl;
+        if (responseUrl) {
+          log(`🔗 結果URL: ${responseUrl}`, 'success');
+        }
       }
       
       result.success = true;

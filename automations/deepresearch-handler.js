@@ -83,10 +83,15 @@
     }
 
     // ========================================
-    // ログ関数
+    // ログ関数（新しいAIHandler.utilsを使用）
     // ========================================
     const log = (message, type = 'INFO', aiName = 'DeepResearch') => {
-        if (window.AICommonUtils) {
+        // 新しいAPIを優先使用
+        if (window.AIHandler && window.AIHandler.utils && window.AIHandler.utils.log) {
+            window.AIHandler.utils.log(message, type, aiName);
+        } else if (window.AICommonUtils) {
+            // レガシーフォールバック（警告付き）
+            console.warn('[DeepResearch] Legacy APIを使用中 - AIHandler.utilsへの移行を推奨');
             window.AICommonUtils.log(message, type, aiName);
         } else {
             const prefix = {
@@ -111,10 +116,14 @@
             return false;
         }
 
-        // 共通ユーティリティが利用可能か確認（無くても動作可能）
-        const utils = window.AICommonUtils || null;
+        // 共通ユーティリティが利用可能か確認（新しいAPIを優先）
+        const utils = (window.AIHandler && window.AIHandler.utils) || window.AICommonUtils || null;
         if (!utils) {
             log('共通ユーティリティが読み込まれていません。フォールバックモードで動作します', 'WARNING');
+        } else if (window.AIHandler && window.AIHandler.utils) {
+            log('新しいAIHandler.utilsを使用します', 'INFO');
+        } else {
+            log('レガシーAICommonUtilsを使用しています', 'WARNING');
         }
         const aiName = config.aiName;
         
