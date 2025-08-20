@@ -2702,26 +2702,46 @@ async function loadDeepResearchHandler() {
 
   return new Promise((resolve, reject) => {
     const script = document.createElement("script");
+    script.type = "text/javascript"; // 明示的にtype指定
     script.src = chrome.runtime.getURL("automations/deepresearch-handler.js");
     script.dataset.extensionScript = "true";
 
     script.onload = () => {
-      console.log(`[11.autoai] ✅ DeepResearchハンドラー読み込み完了`);
-      // DeepResearchHandlerが利用可能になるまで少し待機
-      setTimeout(() => {
-        if (window.DeepResearchHandler) {
-          console.log(`[11.autoai] ✅ DeepResearchHandlerが利用可能です`);
-        } else {
-          console.warn(`[11.autoai] ⚠️ DeepResearchHandlerが見つかりません`);
-        }
+      console.log(`[11.autoai] ✅ DeepResearchハンドラースクリプト読み込み完了`);
+      
+      // すぐにチェック、その後定期的にチェック
+      if (window.DeepResearchHandler) {
+        console.log(`[11.autoai] ✅ DeepResearchHandlerが即座に利用可能`);
         resolve();
-      }, 100);
+        return;
+      }
+      
+      // DeepResearchHandlerが利用可能になるまで待機（最大5秒）
+      let attempts = 0;
+      const maxAttempts = 50; // 5秒間 (100ms × 50回)
+      
+      const checkHandler = () => {
+        attempts++;
+        if (window.DeepResearchHandler) {
+          console.log(`[11.autoai] ✅ DeepResearchHandlerが利用可能です (${attempts * 100}ms後)`);
+          resolve();
+        } else if (attempts >= maxAttempts) {
+          console.warn(`[11.autoai] ⚠️ DeepResearchHandlerが見つかりません (${maxAttempts * 100}ms経過)`);
+          console.log(`[11.autoai] windowオブジェクトの確認:`, Object.keys(window).filter(key => key.includes('Deep')));
+          resolve();
+        } else {
+          setTimeout(checkHandler, 100);
+        }
+      };
+      
+      setTimeout(checkHandler, 100); // 100ms後から開始
     };
 
     script.onerror = (error) => {
       console.error(`[11.autoai] ❌ DeepResearchハンドラー読み込み失敗:`, {
         type: error.type,
         target: error.target?.src,
+        message: error.message
       });
       // エラーでも続行
       resolve();
