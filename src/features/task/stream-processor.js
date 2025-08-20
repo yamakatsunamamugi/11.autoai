@@ -1,5 +1,23 @@
 // stream-processor.js - 並列ストリーミング処理
 
+// ReportManagerを動的にインポート
+// Chrome拡張機能環境でのES6モジュール制限のため動的インポートを使用
+let ReportManager = null;
+
+async function getReportManager() {
+  if (!ReportManager) {
+    try {
+      const module = await import('../report/report-manager.js');
+      ReportManager = module.ReportManager || module.default;
+      console.log('[StreamProcessor] ReportManagerを動的にインポートしました');
+    } catch (error) {
+      console.warn('[StreamProcessor] ReportManagerのインポートに失敗、フォールバックを使用', error);
+      return null;
+    }
+  }
+  return ReportManager;
+}
+
 /**
  * StreamProcessor - タスクの並列ストリーミング処理を管理
  *
@@ -637,7 +655,7 @@ class StreamProcessor {
    */
   async executeReportTask(task, windowId) {
     this.logger.log(
-      `[StreamProcessor] レポートタスク実行: ${task.column}${task.row}`,
+      `[StreamProcessor] レポートタスク実行: ${task.column}${task.row} (ソース: ${task.sourceColumn}, プロンプト: ${task.promptColumn})`,
     );
 
     try {
@@ -662,16 +680,45 @@ class StreamProcessor {
 
       // プロンプトも取得（レポートに含めるため）
       const promptText = await this.getSpreadsheetCellValue(
-        task.column,
+        task.promptColumn || task.column,
         task.row,
       );
 
-      // Googleドキュメントを作成
-      const docInfo = await this.createGoogleDocumentForReport(
-        task,
-        promptText,
-        answerText,
-      );
+      // ReportManagerを使用してレポートを生成
+      let docInfo = null;
+      const ReportManagerClass = await getReportManager();
+      
+      if (ReportManagerClass) {
+        // ReportManagerが利用可能な場合
+        this.logger.log('[StreamProcessor] ReportManagerを使用してレポートを生成');
+        const reportManager = new ReportManagerClass({
+          sheetsClient: globalThis.sheetsClient,
+          docsClient: globalThis.docsClient,
+          authService: globalThis.authService,
+          logger: this.logger
+        });
+        
+        const result = await reportManager.generateReportForRow({
+          spreadsheetId: this.spreadsheetData.spreadsheetId,
+          gid: this.spreadsheetData.gid,
+          rowNumber: task.row,
+          promptText: promptText,
+          answerText: answerText,
+          reportColumn: task.column
+        });
+        
+        if (result.success) {
+          docInfo = { url: result.url, documentId: result.documentId };
+        }
+      } else {
+        // フォールバック: 直接DocsClientを使用
+        this.logger.log('[StreamProcessor] フォールバック: DocsClientを直接使用');
+        docInfo = await this.createGoogleDocumentForReport(
+          task,
+          promptText,
+          answerText,
+        );
+      }
 
       if (docInfo && docInfo.url) {
         this.logger.log(

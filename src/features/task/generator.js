@@ -135,9 +135,12 @@ class TaskGenerator {
 
         // レポート化列をチェック
         const lastAnswerIndex = group.answerColumns[group.answerColumns.length - 1].index;
-        if (lastAnswerIndex + 1 < menuRow.data.length &&
-            menuRow.data[lastAnswerIndex + 1] === "レポート化") {
-          group.reportColumn = lastAnswerIndex + 1;
+        if (lastAnswerIndex + 1 < menuRow.data.length) {
+          const reportHeader = menuRow.data[lastAnswerIndex + 1];
+          if (reportHeader && (reportHeader === "レポート化" || reportHeader.includes("レポート"))) {
+            group.reportColumn = lastAnswerIndex + 1;
+            console.log(`[TaskGenerator] レポート化列を検出: ${this.indexToColumn(lastAnswerIndex + 1)}列`);
+          }
         }
 
         groups.push(group);
@@ -268,6 +271,7 @@ class TaskGenerator {
 
         // レポート化タスクを生成
         if (group.reportColumn !== undefined) {
+          console.log(`[TaskGenerator] レポート化列が存在: ${this.indexToColumn(group.reportColumn)}列`);
           const reportTask = this.createReportTask(
             spreadsheetData,
             workRow,
@@ -275,8 +279,13 @@ class TaskGenerator {
             taskList.tasks
           );
           if (reportTask) {
+            console.log(`[TaskGenerator] レポートタスクをタスクリストに追加: ${reportTask.column}${reportTask.row}`);
             taskList.add(reportTask);
+          } else {
+            console.log(`[TaskGenerator] レポートタスク生成をスキップ`);
           }
+        } else {
+          console.log(`[TaskGenerator] レポート化列が存在しません`);
         }
       }
     }
@@ -426,7 +435,10 @@ class TaskGenerator {
   createReportTask(spreadsheetData, workRow, group, existingTasks) {
     // 既存レポートチェック
     const existingReport = this.getCellValue(spreadsheetData, workRow.index, group.reportColumn);
-    if (existingReport && existingReport.trim()) return null;
+    if (existingReport && existingReport.trim()) {
+      console.log(`[TaskGenerator] 既存レポートをスキップ: ${this.indexToColumn(group.reportColumn)}${workRow.number}`);
+      return null;
+    }
 
     // このグループ・行のAIタスクを探す
     const relatedTasks = existingTasks.filter(t => 
@@ -434,7 +446,10 @@ class TaskGenerator {
       group.answerColumns.some(a => a.column === t.column)
     );
 
-    if (relatedTasks.length === 0) return null;
+    if (relatedTasks.length === 0) {
+      console.log(`[TaskGenerator] 関連AIタスクがないためレポートタスクをスキップ: 行${workRow.number}`);
+      return null;
+    }
 
     const reportData = {
       id: this.generateTaskId(this.indexToColumn(group.reportColumn), workRow.number),
@@ -455,6 +470,7 @@ class TaskGenerator {
       }
     };
 
+    console.log(`[TaskGenerator] レポートタスクを生成: ${this.indexToColumn(group.reportColumn)}${workRow.number}`);
     return new Task(TaskFactory.createTask(reportData));
   }
 

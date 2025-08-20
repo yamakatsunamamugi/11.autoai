@@ -294,22 +294,51 @@ class TaskAdapter {
   
   /**
    * 実行モードを判定
-   * @returns {Promise<Object>} {mode: 'tasklist'|'manual', taskList: Object|null}
+   * 【重要な変更】テストモードと本番モードを明確に区別
+   * @returns {Promise<Object>} {mode: 'tasklist'|'manual'|'test', taskList: Object|null}
    */
   static async detectMode() {
-    // 1. URLパラメータをチェック
+    // 1. URLパラメータをチェック（テスト用パラメータを優先）
+    const urlParams = new URLSearchParams(window.location.search);
+    const testMode = urlParams.get('test');
+    if (testMode === 'true' || testMode === '1') {
+      console.log('🧪 テストモード検出（URLパラメータ）');
+      return { mode: 'test', taskList: null };
+    }
+    
     const urlTaskList = this.receiveFromURL();
     if (urlTaskList) {
+      console.log('📊 タスクリストモード検出（URLパラメータ）');
       return { mode: 'tasklist', taskList: urlTaskList };
     }
     
-    // 2. Chrome Storageをチェック
-    const storageTaskList = await this.loadFromStorage();
-    if (storageTaskList) {
-      return { mode: 'tasklist', taskList: storageTaskList };
+    // 2. ページ内の要素をチェック（統合テストページの判定）
+    const isTestPage = document.querySelector('#test-mode-indicator') || 
+                      document.title.includes('AI Orchestrator') ||
+                      document.title.includes('統合AIテスト');
+    
+    if (isTestPage) {
+      console.log('🧪 テストモード検出（ページ要素）');
+      return { mode: 'test', taskList: null };
     }
     
-    // 3. デフォルトは手動モード
+    // 3. Chrome Storageをチェック（本番用のみ、テストページでない場合）
+    try {
+      if (typeof chrome !== 'undefined' && chrome.storage) {
+        const result = await chrome.storage.local.get(['task_queue']);
+        if (result.task_queue) {
+          console.log('📊 タスクリストモード検出（Chrome Storage - 本番用）');
+          // task_queueから読み込み（スプレッドシートからのデータ）
+          const taskData = this.fromTaskList(result.task_queue);
+          return { mode: 'tasklist', taskList: taskData };
+        }
+      }
+    } catch (error) {
+      console.warn('Chrome Storage読み込みエラー:', error);
+    }
+    
+    // 4. デフォルトは手動モード
+    console.log('📝 手動モード（デフォルト）');
     return { mode: 'manual', taskList: null };
   }
   

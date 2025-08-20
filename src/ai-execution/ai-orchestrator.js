@@ -721,10 +721,15 @@
       const { mode, taskList } = await TaskAdapter.detectMode();
       console.log('実行モード:', mode);
       
+      // タスクリストモードはスプレッドシートからのデータがある場合のみ
       if (mode === 'tasklist' && taskList) {
         executionMode = 'tasklist';
         receivedTaskList = taskList;
         updateUIForTaskListMode(taskList);
+      } else if (mode === 'test') {
+        // テストモードの場合は手動モードとして扱う
+        executionMode = 'manual';
+        console.log('🧪 テストモード検出 - プルダウン選択値を使用');
       }
     }
     
@@ -792,21 +797,21 @@
     // 初回のUI設定をchrome.storageに保存
     saveUIConfigToStorage();
     
-    // 実行ボタンのイベントリスナーを追加
-    const btnRunAll = document.getElementById('btn-run-all');
-    if (btnRunAll) {
-      btnRunAll.addEventListener('click', async () => {
-        if (executionMode === 'tasklist' && receivedTaskList) {
-          // タスクリストモード
+    // 実行ボタンのイベントリスナーは追加しない
+    // test-runner-chrome.jsが既にイベントリスナーを設定しているため
+    // これにより実行が2回されることを防ぐ
+    
+    // タスクリストモードの場合のみ、実行ボタンのイベントリスナーを追加
+    if (executionMode === 'tasklist' && receivedTaskList) {
+      const btnRunAll = document.getElementById('btn-run-all');
+      if (btnRunAll) {
+        btnRunAll.addEventListener('click', async () => {
+          console.log('📊 本番モード: スプレッドシートからのタスクリストを実行');
           await executeWithTaskList(receivedTaskList);
-        } else if (window.TestRunner) {
-          // 従来のテストモード
-          await window.TestRunner.runAllAIs();
-        } else {
-          console.error('実行機能が利用できません');
-        }
-      });
+        });
+      }
     }
+    // テストモードの場合は、test-runner-chrome.jsがイベントを処理する
   });
 
 })();

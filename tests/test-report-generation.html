@@ -387,7 +387,19 @@
   <script src="../src/features/spreadsheet/sheets-client.js"></script>
   <script src="../src/features/spreadsheet/config.js"></script>
   
-  <!-- レポート機能を読み込み -->
+  <!-- レポート機能をモジュールとして読み込み -->
+  <script type="module">
+    // 本体のReportManagerを使用
+    import { initializeReportManager } from './test-report-module.js';
+    
+    // DOMContentLoadedで初期化
+    document.addEventListener('DOMContentLoaded', () => {
+      initializeReportManager();
+      console.log('[テスト] 本体のReportManagerを使用して初期化完了');
+    });
+  </script>
+  
+  <!-- テスト用の互換コード -->
   <script src="test-report-direct.js"></script>
   
   <!-- 外部スクリプトファイルとして読み込み -->

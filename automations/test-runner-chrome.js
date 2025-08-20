@@ -447,6 +447,13 @@
       log(`${aiName}: 機能を「${aiConfig.function}」に変更`, 'function');
     }
     
+    // プロンプトのログを追加
+    if (aiConfig && aiConfig.prompt) {
+      log(`${aiName}: プロンプト「${aiConfig.prompt}」を送信`, 'send');
+    } else {
+      log(`⚠️ ${aiName}: プロンプトが設定されていません`, 'warning');
+    }
+    
     try {
       // AIウィンドウを作成（Gensparkの場合は機能タイプも渡す）
       const tab = await createAIWindow(aiName, position, aiConfig?.function);
@@ -551,6 +558,18 @@
     log('統合テスト開始');
     
     const config = getTestConfig();
+    
+    // デバッグ: 取得した設定を詳細にログ出力
+    console.log('📋 取得したテスト設定:', config);
+    ['chatgpt', 'claude', 'gemini', 'genspark'].forEach(aiType => {
+      if (config[aiType] && config[aiType].enabled) {
+        log(`${aiType.toUpperCase()} 設定:`, 'info');
+        log(`  - モデル: ${config[aiType].model}`, 'info');
+        log(`  - 機能: ${config[aiType].function}`, 'info');
+        log(`  - プロンプト: "${config[aiType].prompt}"`, 'info');
+      }
+    });
+    
     const results = {};
     
     // 有効なAIのみ実行（順序：ChatGPT→Claude→Gemini→Genspark）
