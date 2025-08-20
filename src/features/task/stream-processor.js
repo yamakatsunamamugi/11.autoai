@@ -51,8 +51,7 @@ async function getReportManager() {
  * - 各列グループごとに1つのウィンドウを占有
  * - 列グループの全行完了後、ウィンドウを解放
  */
-// DynamicConfigManagerをインポート
-import { getDynamicConfigManager } from "../../core/dynamic-config-manager.js";
+// DynamicConfigManager import削除 - スプレッドシート設定を直接使用するため不要
 
 class StreamProcessor {
   constructor(dependencies = {}) {
@@ -64,8 +63,7 @@ class StreamProcessor {
       dependencies.modelManager || globalContext.modelManager;
     this.logger = dependencies.logger || console;
     
-    // DynamicConfigManagerを初期化
-    this.dynamicConfigManager = getDynamicConfigManager();
+    // DynamicConfigManager削除 - スプレッドシート設定を直接使用するため不要
 
     // ウィンドウ管理状態
     this.activeWindows = new Map(); // windowId -> windowInfo
@@ -407,22 +405,8 @@ class StreamProcessor {
       let finalModel = task.model;
       let finalOperation = task.specialOperation;
       
-      try {
-        const dynamicConfig = await this.dynamicConfigManager.getAIConfig(task.aiType);
-        if (dynamicConfig && dynamicConfig.enabled) {
-          // UI選択値が存在する場合は優先使用
-          if (dynamicConfig.model) {
-            finalModel = dynamicConfig.model;
-            this.logger.log(`[StreamProcessor] 🎯 UI動的モデル適用: ${task.aiType} -> ${finalModel}`);
-          }
-          if (dynamicConfig.function) {
-            finalOperation = dynamicConfig.function;
-            this.logger.log(`[StreamProcessor] 🎯 UI動的機能適用: ${task.aiType} -> ${finalOperation}`);
-          }
-        }
-      } catch (error) {
-        this.logger.warn(`[StreamProcessor] UI動的設定取得エラー: ${error.message}`);
-      }
+      // DynamicConfig上書きを削除 - スプレッドシートの設定をそのまま使用
+      this.logger.log(`[StreamProcessor] 📊 スプレッドシート設定適用: ${task.aiType} -> モデル:${finalModel}, 機能:${finalOperation}`);
 
       // AITaskHandlerを直接呼び出す（Service Worker内なので）
       // aiTaskHandlerはbackground.jsでimportされているため、globalThisから取得
