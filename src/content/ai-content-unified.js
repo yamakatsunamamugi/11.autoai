@@ -986,6 +986,19 @@ async function handleAITaskPrompt(request, sendResponse) {
     promptLength: prompt?.length
   });
   
+  // common-ai-handler.jsが読み込まれているか確認
+  if (!window.AIHandler || !window.AIHandler.message || !window.AIHandler.message.waitForResponse) {
+    console.warn(`[11.autoai][${AI_TYPE}] AIHandlerが未初期化。common-ai-handler.jsを読み込み中...`);
+    await loadCommonAIHandler();
+    
+    // 再度確認
+    if (!window.AIHandler || !window.AIHandler.message || !window.AIHandler.message.waitForResponse) {
+      console.error(`[11.autoai][${AI_TYPE}] AIHandlerの読み込みに失敗しました`);
+    } else {
+      console.log(`[11.autoai][${AI_TYPE}] AIHandlerの読み込み完了`);
+    }
+  }
+  
   // 統合テストと完全に同じconfig形式
   const config = {
     model: model,
@@ -1020,16 +1033,32 @@ async function handleAITaskPrompt(request, sendResponse) {
         if (!window.ChatGPTAutomation) {
           throw new Error("ChatGPTAutomationが利用できません");
         }
-        console.log(`[11.autoai][ChatGPT] ChatGPTAutomation.runAutomationを実行`);
+        console.log(`[11.autoai][ChatGPT] ChatGPTAutomation.runAutomationを実行`, {
+          config: config,
+          hasWaitForResponse: !!window.AIHandler?.message?.waitForResponse
+        });
         result = await window.ChatGPTAutomation.runAutomation(config);
+        console.log(`[11.autoai][ChatGPT] runAutomation完了`, {
+          success: result?.success,
+          hasResponse: !!result?.response,
+          responseLength: result?.response?.length
+        });
         break;
         
       case "Claude":
         if (!window.ClaudeAutomation) {
           throw new Error("ClaudeAutomationが利用できません");
         }
-        console.log(`[11.autoai][Claude] ClaudeAutomation.runAutomationを実行`);
+        console.log(`[11.autoai][Claude] ClaudeAutomation.runAutomationを実行`, {
+          config: config,
+          hasWaitForResponse: !!window.AIHandler?.message?.waitForResponse
+        });
         result = await window.ClaudeAutomation.runAutomation(config);
+        console.log(`[11.autoai][Claude] runAutomation完了`, {
+          success: result?.success,
+          hasResponse: !!result?.response,
+          responseLength: result?.response?.length
+        });
         break;
         
       case "Gemini":
@@ -1037,8 +1066,16 @@ async function handleAITaskPrompt(request, sendResponse) {
         if (!geminiAutomation) {
           throw new Error("Gemini/GeminiAutomationが利用できません");
         }
-        console.log(`[11.autoai][Gemini] Gemini.runAutomationを実行`);
+        console.log(`[11.autoai][Gemini] Gemini.runAutomationを実行`, {
+          config: config,
+          hasWaitForResponse: !!window.AIHandler?.message?.waitForResponse
+        });
         result = await geminiAutomation.runAutomation(config);
+        console.log(`[11.autoai][Gemini] runAutomation完了`, {
+          success: result?.success,
+          hasResponse: !!result?.response,
+          responseLength: result?.response?.length
+        });
         break;
         
       default:
