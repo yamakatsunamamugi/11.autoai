@@ -999,6 +999,19 @@ async function handleAITaskPrompt(request, sendResponse) {
     }
   }
   
+  // DeepResearchHandlerの読み込み確認
+  if (!window.DeepResearchHandler) {
+    console.warn(`[11.autoai][${AI_TYPE}] DeepResearchHandlerが未初期化。deepresearch-handler.jsを読み込み中...`);
+    await loadDeepResearchHandler();
+    
+    // 再度確認
+    if (!window.DeepResearchHandler) {
+      console.error(`[11.autoai][${AI_TYPE}] DeepResearchHandlerの読み込みに失敗しました`);
+    } else {
+      console.log(`[11.autoai][${AI_TYPE}] DeepResearchHandlerの読み込み完了`);
+    }
+  }
+  
   // 統合テストと完全に同じconfig形式
   const config = {
     model: model,
@@ -1035,7 +1048,9 @@ async function handleAITaskPrompt(request, sendResponse) {
         }
         console.log(`[11.autoai][ChatGPT] ChatGPTAutomation.runAutomationを実行`, {
           config: config,
-          hasWaitForResponse: !!window.AIHandler?.message?.waitForResponse
+          hasWaitForResponse: !!window.AIHandler?.message?.waitForResponse,
+          hasDeepResearchHandler: !!window.DeepResearchHandler,
+          isDeepResearch: isDeepResearch
         });
         result = await window.ChatGPTAutomation.runAutomation(config);
         console.log(`[11.autoai][ChatGPT] runAutomation完了`, {
@@ -1051,7 +1066,9 @@ async function handleAITaskPrompt(request, sendResponse) {
         }
         console.log(`[11.autoai][Claude] ClaudeAutomation.runAutomationを実行`, {
           config: config,
-          hasWaitForResponse: !!window.AIHandler?.message?.waitForResponse
+          hasWaitForResponse: !!window.AIHandler?.message?.waitForResponse,
+          hasDeepResearchHandler: !!window.DeepResearchHandler,
+          isDeepResearch: isDeepResearch
         });
         result = await window.ClaudeAutomation.runAutomation(config);
         console.log(`[11.autoai][Claude] runAutomation完了`, {
@@ -1068,7 +1085,9 @@ async function handleAITaskPrompt(request, sendResponse) {
         }
         console.log(`[11.autoai][Gemini] Gemini.runAutomationを実行`, {
           config: config,
-          hasWaitForResponse: !!window.AIHandler?.message?.waitForResponse
+          hasWaitForResponse: !!window.AIHandler?.message?.waitForResponse,
+          hasDeepResearchHandler: !!window.DeepResearchHandler,
+          isDeepResearch: isDeepResearch
         });
         result = await geminiAutomation.runAutomation(config);
         console.log(`[11.autoai][Gemini] runAutomation完了`, {
