@@ -178,13 +178,13 @@ class SheetsClient {
           const cellValue = row[j];
           const columnLetter = this.getColumnName(j);
           
-          // プロンプト列の検出とAI列としての登録
-          if (cellValue && cellValue.includes("プロンプト")) {
+          // プロンプト列の検出とAI列としての登録（メインのプロンプト列のみ）
+          if (cellValue && cellValue === "プロンプト") {
             // AI行の値を確認（AI行が存在する場合）
             let aiType = "single"; // デフォルト
             if (result.aiRow && result.aiRow.data) {
-              const aiValue = result.aiRow.data[j + 1]; // 次の列のAI行の値
-              if (aiValue === "3種類") {
+              const aiValue = result.aiRow.data[j]; // プロンプト列自体のAI行の値
+              if (aiValue && aiValue.includes("3種類")) {
                 aiType = "3type";
               }
             }
@@ -302,12 +302,12 @@ class SheetsClient {
         const cellValue = menuRowData[j];
         const columnLetter = this.getColumnName(j);
         
-        // プロンプト列の検出
-        if (cellValue && cellValue.includes("プロンプト")) {
+        // プロンプト列の検出（メインのプロンプト列のみ）
+        if (cellValue && cellValue === "プロンプト") {
           let aiType = "single"; // デフォルト
           
           // AI行の値を確認
-          if (aiRowData && aiRowData[j + 1] === "3種類") {
+          if (aiRowData && aiRowData[j] && aiRowData[j].includes("3種類")) {
             aiType = "3type";
           }
           // メニュー行の次の列をチェック（3種類AIレイアウト）

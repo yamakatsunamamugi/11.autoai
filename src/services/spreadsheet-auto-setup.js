@@ -210,20 +210,57 @@ export class SpreadsheetAutoSetup {
       throw new Error("メニュー行または使うAI行のデータが不正です");
     }
 
-    // プロンプト列を検索
-    const promptColumns = [];
+    // プロンプト列グループを検索
+    const promptGroups = [];
     const maxLength = Math.max(menuRow.length, aiRow.length);
+    
     for (let colIndex = 0; colIndex < maxLength; colIndex++) {
       const cellValue = menuRow[colIndex];
-      if (cellValue && cellValue.toString().trim() === "プロンプト") {
-        promptColumns.push({
-          index: colIndex,
-          column: this.indexToColumn(colIndex),
-          value: cellValue,
-          aiType: (aiRow[colIndex] || "").toString(),
-        });
+      if (cellValue) {
+        const trimmedValue = cellValue.toString().trim();
+        
+        // メインのプロンプト列を見つけた場合
+        if (trimmedValue === "プロンプト") {
+          let lastPromptIndex = colIndex;
+          
+          // 連続するプロンプト2〜5を探す
+          for (let i = 2; i <= 5; i++) {
+            const nextIndex = lastPromptIndex + 1;
+            if (nextIndex < maxLength) {
+              const nextValue = menuRow[nextIndex];
+              if (nextValue && nextValue.toString().trim() === `プロンプト${i}`) {
+                lastPromptIndex = nextIndex;
+                console.log(`[AutoSetup] プロンプト${i}を検出: ${this.indexToColumn(nextIndex)}列`);
+              } else {
+                break; // 連続していない場合は終了
+              }
+            }
+          }
+          
+          // プロンプトグループとして記録（回答列は最後のプロンプトの後に配置）
+          promptGroups.push({
+            firstIndex: colIndex,
+            lastIndex: lastPromptIndex,
+            column: this.indexToColumn(colIndex),
+            aiType: (aiRow[colIndex] || "").toString(),
+          });
+          
+          console.log(`[AutoSetup] プロンプトグループ検出: ${this.indexToColumn(colIndex)}〜${this.indexToColumn(lastPromptIndex)}列`);
+          
+          // 次の検索はグループの最後の次から
+          colIndex = lastPromptIndex;
+        }
       }
     }
+    
+    // promptColumnsに変換（互換性のため）
+    const promptColumns = promptGroups.map(group => ({
+      index: group.firstIndex,
+      lastIndex: group.lastIndex,  // 最後のプロンプトのインデックスを追加
+      column: group.column,
+      value: menuRow[group.firstIndex],
+      aiType: group.aiType,
+    }));
 
     console.log("[AutoSetup] プロンプト列を検出", {
       count: promptColumns.length,
@@ -338,15 +375,17 @@ export class SpreadsheetAutoSetup {
       });
     }
 
-    // 右に回答列がなければ追加
-    const rightIndex = actualIndex + 1;
-    let rightValue = "";
-    if (rightIndex < menuRow.length) {
-      rightValue = (menuRow[rightIndex] || "").toString().trim();
+    // 回答列の配置位置を決定（lastIndexがあればその後、なければ通常通り）
+    const answerPosition = promptCol.lastIndex !== undefined ? promptCol.lastIndex + 1 : actualIndex + 1;
+    
+    // 回答列がなければ追加
+    let answerValue = "";
+    if (answerPosition < menuRow.length) {
+      answerValue = (menuRow[answerPosition] || "").toString().trim();
     }
-    if (rightIndex >= menuRow.length || rightValue !== "回答") {
+    if (answerPosition >= menuRow.length || answerValue !== "回答") {
       insertions.push({
-        position: actualIndex + 1,
+        position: answerPosition,
         header: "回答",
       });
     }
@@ -554,6 +593,21 @@ export class SpreadsheetAutoSetup {
       },
     );
 
+    // プロンプト2〜5を探して最後のプロンプトのインデックスを取得
+    let lastPromptIndex = promptIndex;
+    for (let i = 2; i <= 5; i++) {
+      const nextIndex = lastPromptIndex + 1;
+      if (nextIndex < menuRow.length) {
+        const nextValue = menuRow[nextIndex];
+        if (nextValue && nextValue.toString().trim() === `プロンプト${i}`) {
+          lastPromptIndex = nextIndex;
+          console.log(`[AutoSetup] 3種類AI: プロンプト${i}を検出: ${this.indexToColumn(nextIndex)}列`);
+        } else {
+          break;
+        }
+      }
+    }
+
     // 1. 左にログ列がなければ追加
     const leftIndex = promptIndex - 1;
     const leftValue =
@@ -598,8 +652,9 @@ export class SpreadsheetAutoSetup {
         },
       });
 
-      // ログ列を挿入したので、プロンプト列の位置が1つ右にずれる
+      // ログ列を挿入したので、プロンプト列とlastPromptIndexの位置が1つ右にずれる
       promptIndex++;
+      lastPromptIndex++;
 
       // ログ列を記録
       this.addedColumns.push({
@@ -609,13 +664,13 @@ export class SpreadsheetAutoSetup {
       });
     }
 
-    // 2. 既存の3つの回答列が正しく存在するかチェック
+    // 2. 既存の3つの回答列が正しく存在するかチェック（最後のプロンプトの後）
     const answerHeaders = ["ChatGPT回答", "Claude回答", "Gemini回答"];
     let hasAllCorrectHeaders = true;
 
-    // 右側の3列をチェック
+    // 最後のプロンプトの右側の3列をチェック
     for (let i = 0; i < answerHeaders.length; i++) {
-      const checkIndex = promptIndex + 1 + i;
+      const checkIndex = lastPromptIndex + 1 + i;  // promptIndexではなくlastPromptIndexを使用
       const currentValue =
         checkIndex < menuRow.length
           ? (menuRow[checkIndex] || "").toString().trim()
@@ -649,8 +704,8 @@ export class SpreadsheetAutoSetup {
       return;
     }
 
-    // 3. 右側の「回答」列を削除（あれば）
-    const rightIndex = promptIndex + 1;
+    // 3. 右側の「回答」列を削除（あれば）- 最後のプロンプトの後をチェック
+    const rightIndex = lastPromptIndex + 1;  // promptIndexではなくlastPromptIndexを使用
     const rightValue =
       rightIndex < menuRow.length
         ? (menuRow[rightIndex] || "").toString().trim()
@@ -674,10 +729,10 @@ export class SpreadsheetAutoSetup {
       });
     }
 
-    // 4. 3つの回答列を挿入
+    // 4. 3つの回答列を挿入（最後のプロンプトの後）
     console.log("[AutoSetup] 3種類AI: 回答列を挿入予定", {
       headers: answerHeaders,
-      startPosition: promptIndex + 1,
+      startPosition: lastPromptIndex + 1,  // promptIndexではなくlastPromptIndexを使用
     });
 
     // 3つの列を挿入（回答列のみ）
@@ -687,8 +742,8 @@ export class SpreadsheetAutoSetup {
           range: {
             sheetId: this.sheetId,
             dimension: "COLUMNS",
-            startIndex: promptIndex + 1 + i,
-            endIndex: promptIndex + 2 + i,
+            startIndex: lastPromptIndex + 1 + i,  // promptIndexではなくlastPromptIndexを使用
+            endIndex: lastPromptIndex + 2 + i,
           },
           inheritFromBefore: false,
         },
@@ -703,8 +758,8 @@ export class SpreadsheetAutoSetup {
             sheetId: this.sheetId,
             startRowIndex: this.menuRowIndex,
             endRowIndex: this.menuRowIndex + 1,
-            startColumnIndex: promptIndex + 1 + i,
-            endColumnIndex: promptIndex + 2 + i,
+            startColumnIndex: lastPromptIndex + 1 + i,  // promptIndexではなくlastPromptIndexを使用
+            endColumnIndex: lastPromptIndex + 2 + i,
           },
           rows: [
             {
@@ -736,8 +791,8 @@ export class SpreadsheetAutoSetup {
             sheetId: this.sheetId,
             startRowIndex: this.aiRowIndex,
             endRowIndex: this.aiRowIndex + 1,
-            startColumnIndex: promptIndex + 1 + i,
-            endColumnIndex: promptIndex + 2 + i,
+            startColumnIndex: lastPromptIndex + 1 + i,  // promptIndexではなくlastPromptIndexを使用
+            endColumnIndex: lastPromptIndex + 2 + i,
           },
           rows: [
             {
@@ -798,13 +853,13 @@ export class SpreadsheetAutoSetup {
       promptIndex += 1;
     }
 
-    // 2. 既存の3つの回答列が正しく存在するかチェック
+    // 2. 既存の3つの回答列が正しく存在するかチェック（最後のプロンプトの後）
     const answerHeaders = ["ChatGPT回答", "Claude回答", "Gemini回答"];
     let hasAllCorrectHeaders = true;
 
-    // 右側の3列をチェック
+    // 最後のプロンプトの右側の3列をチェック
     for (let i = 0; i < answerHeaders.length; i++) {
-      const checkIndex = promptIndex + 1 + i;
+      const checkIndex = lastPromptIndex + 1 + i;  // promptIndexではなくlastPromptIndexを使用
       const currentValue =
         checkIndex < menuRow.length
           ? (menuRow[checkIndex] || "").toString().trim()
