@@ -482,6 +482,30 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             totalTasks: taskList.tasks.length,
             statistics: taskList.getStatistics(),
           });
+          
+          // タスクリストの詳細をログ出力
+          console.log("[Background] 📋 タスクリスト詳細:");
+          taskList.tasks.forEach((task, index) => {
+            console.log(`  [${index + 1}] ${task.column}${task.row}:`, {
+              id: task.id.substring(0, 8) + '...',
+              aiType: task.aiType,
+              model: task.model,
+              function: task.function,
+              multiAI: task.multiAI || false,
+              groupId: task.groupId || null,
+              promptPreview: task.prompt ? task.prompt.substring(0, 50) + '...' : ''
+            });
+          });
+          
+          // 列ごとのタスク数を集計
+          const tasksByColumn = {};
+          taskList.tasks.forEach(task => {
+            if (!tasksByColumn[task.column]) {
+              tasksByColumn[task.column] = 0;
+            }
+            tasksByColumn[task.column]++;
+          });
+          console.log("[Background] 📊 列ごとのタスク数:", tasksByColumn);
 
           // 5. タスクを保存
           console.log("タスク保存中...");

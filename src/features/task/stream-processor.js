@@ -100,9 +100,21 @@ class StreamProcessor {
       this.logger.log(`[StreamProcessor] 並列実行開始`);
       this.logger.log(`[StreamProcessor] 列グループ: ${columns.join(' → ')}`);
       
-      // 空きウィンドウ分だけ同時開始
-      const maxStart = Math.min(columns.length, this.maxConcurrentWindows);
-      this.logger.log(`[StreamProcessor] ${maxStart}列を同時開始`);
+      // 最初のタスクが3種類AIグループかチェック
+      const firstTask = this.taskQueue.get(columns[0])?.[0];
+      const isThreeTypeGroup = firstTask?.multiAI && firstTask?.groupId;
+      
+      // 3種類AIの場合は3列のみ、通常は4列まで同時開始
+      const maxStart = Math.min(
+        columns.length, 
+        isThreeTypeGroup ? 3 : this.maxConcurrentWindows
+      );
+      
+      if (isThreeTypeGroup) {
+        this.logger.log(`[StreamProcessor] 3種類AIグループを検出: ${maxStart}列のみ同時開始`);
+      } else {
+        this.logger.log(`[StreamProcessor] ${maxStart}列を同時開始`);
+      }
       
       for (let i = 0; i < maxStart; i++) {
         this.logger.log(`[StreamProcessor] ${columns[i]}列を開始`);
@@ -797,6 +809,19 @@ class StreamProcessor {
    * 空きウィンドウ分だけ利用可能な列を開始
    */
   async checkAndStartAvailableColumns() {
+    // 3種類AIグループが実行中かチェック
+    // groupCompletionTrackerに未完了のグループがあるか確認
+    const hasIncompleteGroup = Array.from(this.groupCompletionTracker.entries())
+      .some(([key, tracker]) => 
+        tracker.completed.size < tracker.required.size
+      );
+    
+    if (hasIncompleteGroup) {
+      // 3種類AIグループが未完了なら、新規列の開始をブロック
+      this.logger.log("[StreamProcessor] 3種類AIグループ実行中のため新規列開始を待機");
+      return;
+    }
+    
     const availableSlots = this.maxConcurrentWindows - this.activeWindows.size;
     if (availableSlots <= 0) {
       this.logger.log(`[StreamProcessor] 空きウィンドウなし (${this.activeWindows.size}/${this.maxConcurrentWindows})`);
