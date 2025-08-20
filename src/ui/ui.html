@@ -213,6 +213,28 @@
           </div>
         </div>
       </section>
+
+      <!-- ログビューアーセクション -->
+      <section class="log-viewer-section">
+        <h2>📝 実行ログ</h2>
+        <div class="log-controls">
+          <div class="log-tabs">
+            <button class="log-tab active" data-category="all">すべて</button>
+            <button class="log-tab" data-category="chatgpt">ChatGPT</button>
+            <button class="log-tab" data-category="claude">Claude</button>
+            <button class="log-tab" data-category="gemini">Gemini</button>
+            <button class="log-tab" data-category="system">システム</button>
+            <button class="log-tab" data-category="error">エラー</button>
+          </div>
+          <div class="log-actions">
+            <button id="btn-clear-logs" class="btn-small">クリア</button>
+            <button id="btn-copy-logs" class="btn-small">コピー</button>
+          </div>
+        </div>
+        <div class="log-container" id="log-container">
+          <div class="log-empty">ログがまだありません</div>
+        </div>
+      </section>
     </main>
   </div>
 

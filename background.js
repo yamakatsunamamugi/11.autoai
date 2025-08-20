@@ -36,6 +36,10 @@ import { deepResearchHandler } from "./src/modules/deep-research-handler.js";
 // これにより、background.jsの肥大化を防ぎ、保守性を向上
 import { aiTaskHandler } from "./src/handlers/ai-task-handler.js";
 
+// ===== 共通AIタスク実行モジュール =====
+import { AITaskExecutor } from "./src/core/ai-task-executor.js";
+const aiTaskExecutor = new AITaskExecutor();
+
 // ===== ウィンドウマネージャー =====
 import { TestWindowManager } from "./src/ui/test-window-manager.js";
 
@@ -268,10 +272,10 @@ setTimeout(() => {
 // ===== グローバル変数 =====
 let isProcessing = false;
 
-// ===== AI実行制御（統合テストと同じアプローチ） =====
+// ===== AI実行制御（共通モジュールを使用） =====
 /**
  * AIタスクを実行する中央制御関数
- * コンテンツスクリプトから転送されたタスクをchrome.scripting.executeScriptで実行
+ * 共通のAITaskExecutorモジュールを使用
  */
 async function executeAITask(tabId, taskData) {
   const startTime = Date.now();
@@ -286,178 +290,37 @@ async function executeAITask(tabId, taskData) {
   });
 
   try {
-    // AI固有のスクリプトマップ（統合テストと完全に同じ）
-    const scriptFileMap = {
-      'claude': 'automations/claude-automation-dynamic.js',
-      'chatgpt': 'automations/chatgpt-automation.js',
-      'gemini': 'automations/gemini-dynamic-automation.js',
-      'genspark': 'automations/genspark-automation.js'
-    };
-
-    // 統合テストと同じ共通スクリプト
-    const commonScripts = [
-      'automations/feature-constants.js',
-      'automations/common-ai-handler.js',
-      'automations/deepresearch-handler.js',
-      'automations/claude-deepresearch-selector.js'
-    ];
-
-    // AI固有のスクリプトを追加（統合テストと同じ方式）
-    const aiScript = scriptFileMap[taskData.aiType.toLowerCase()] || `automations/${taskData.aiType.toLowerCase()}-automation.js`;
+    // 共通モジュールを使用してAIタスクを実行
+    const result = await aiTaskExecutor.executeAITask(tabId, taskData);
     
-    // 共通スクリプトを順番に注入
-    let scriptsToInject = [...commonScripts, aiScript];
-
-    logManager.logAI(taskData.aiType, `スクリプト注入開始`, {
-      metadata: {
-        scripts: scriptsToInject.map(s => s.split('/').pop()),
-        count: scriptsToInject.length
-      }
-    });
-
-    // スクリプトを注入（統合テストと同じ方式）
-    await chrome.scripting.executeScript({
-      target: { tabId: tabId },
-      files: scriptsToInject
-    });
-
-    logManager.logAI(taskData.aiType, `スクリプト注入完了、初期化待機中...`, { level: 'success' });
-
-    // スクリプト初期化を待つ（統合テストと同じ2秒待機）
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
-    console.log(`[Background] 🔄 [${taskData.aiType}] タスク実行開始...`);
+    const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
     
-    // タスクを実行
-    const result = await chrome.scripting.executeScript({
-      target: { tabId: tabId },
-      func: async (taskData) => {
-        try {
-          // 統合テストと同じAI自動化オブジェクト検索方式
-          const automationMap = {
-            'Claude': ['ClaudeAutomation', 'Claude'],
-            'ChatGPT': ['ChatGPTAutomation', 'ChatGPT'],
-            'Gemini': ['Gemini', 'GeminiAutomation'],
-            'Genspark': ['GensparkAutomation', 'Genspark']
-          };
-
-          const possibleNames = automationMap[taskData.aiType] || [`${taskData.aiType}Automation`];
-          let automation = null;
-          let foundName = null;
-
-          for (const name of possibleNames) {
-            if (window[name]) {
-              automation = window[name];
-              foundName = name;
-              break;
-            }
-          }
-
-          console.log(`[ExecuteAITask] 🔍 ${taskData.aiType}の自動化オブジェクトを探しています...`);
-          console.log(`[ExecuteAITask] 📋 利用可能な候補: ${possibleNames.join(', ')}`);
-
-          if (!automation) {
-            const availableKeys = Object.keys(window).filter(key =>
-              key.includes('Automation') || key.includes(taskData.aiType)
-            );
-            console.error(`[ExecuteAITask] ❌ ${taskData.aiType}の自動化オブジェクトが見つかりません`);
-            console.log(`[ExecuteAITask] 📋 ウィンドウで利用可能: ${availableKeys.join(', ')}`);
-            return { success: false, error: `${taskData.aiType}の自動化オブジェクトが見つかりません` };
-          }
-
-          console.log(`[ExecuteAITask] ✅ ${foundName}を発見、実行開始`);
-
-          // DeepResearchの判定（統合テストと同じ）
-          const isDeepResearch = window.FeatureConstants ?
-            window.FeatureConstants.isDeepResearch(taskData.function) :
-            (taskData.function && taskData.function.toLowerCase().includes('research'));
-
-          // タイムアウト設定（統合テストと同じ）
-          const isGenspark = taskData.aiType.toLowerCase() === 'genspark';
-          const timeout = isDeepResearch ? 60 * 60 * 1000 :
-                         isGenspark ? 60 * 60 * 1000 :
-                         60000;
-
-          if (isDeepResearch) {
-            console.log(`[ExecuteAITask] 🔬 ${taskData.aiType} DeepResearchモード - 最大60分待機`);
-          } else if (isGenspark) {
-            console.log(`[ExecuteAITask] 📊 ${taskData.aiType} スライド生成モード - 最大60分待機`);
-          } else {
-            console.log(`[ExecuteAITask] ⚡ ${taskData.aiType} 通常モード - 最大1分待機`);
-          }
-
-          // 設定オブジェクト（統合テストと同じ形式）
-          const config = {
-            model: taskData.model,
-            function: taskData.function,
-            text: taskData.prompt,
-            send: true,
-            waitResponse: true,
-            getResponse: true,
-            timeout: timeout
-          };
-
-          // runAutomationを実行
-          if (typeof automation.runAutomation === 'function') {
-            console.log(`[ExecuteAITask] 🎯 ${foundName}.runAutomationを実行中...`);
-            const execStartTime = Date.now();
-            const result = await automation.runAutomation(config);
-            const execTime = ((Date.now() - execStartTime) / 1000).toFixed(1);
-            
-            console.log(`[ExecuteAITask] ✅ ${taskData.aiType} runAutomation完了:`, {
-              success: result?.success,
-              hasResponse: !!result?.response,
-              responseLength: result?.response?.length,
-              executionTime: `${execTime}秒`,
-              error: result?.error
-            });
-            return result;
-          } else {
-            return { success: false, error: `${foundName}に適切な実行方法が見つかりません` };
-          }
-
-        } catch (error) {
-          console.error(`[ExecuteAITask] 実行エラー:`, error);
-          return { success: false, error: error.message };
+    if (result.success) {
+      logManager.logAI(taskData.aiType, `タスク完了 (${totalTime}秒)`, {
+        level: 'success',
+        metadata: {
+          taskId: taskData.taskId,
+          responseLength: result.response?.length || 0
         }
-      },
-      args: [taskData]
-    });
-
-    // 結果を返す
-    if (result && result[0] && result[0].result) {
-      const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
-      const resultData = result[0].result;
-      
-      if (resultData.success) {
-        logManager.logAI(taskData.aiType, `タスク完了 (${totalTime}秒)`, {
-          level: 'success',
-          metadata: {
-            taskId: taskData.taskId,
-            responseLength: resultData.response?.length || 0
-          }
-        });
-      } else {
-        logManager.logAI(taskData.aiType, `タスク失敗: ${resultData.error}`, {
-          level: 'error',
-          metadata: {
-            taskId: taskData.taskId,
-            totalTime: `${totalTime}秒`
-          }
-        });
-      }
-      
-      return resultData;
+      });
     } else {
-      throw new Error('スクリプト実行結果が取得できませんでした');
+      logManager.logAI(taskData.aiType, `タスク失敗: ${result.error}`, {
+        level: 'error',
+        metadata: {
+          taskId: taskData.taskId,
+          totalTime: `${totalTime}秒`
+        }
+      });
     }
-
+    
+    return result;
   } catch (error) {
     const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
     logManager.error(`[${taskData.aiType}] AIタスク実行エラー: ${error.message}`, error);
     return { success: false, error: error.message };
   }
 }
+
 
 // ===== ヘルパー関数 =====
 /**
