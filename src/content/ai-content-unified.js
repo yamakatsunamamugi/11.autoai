@@ -974,153 +974,50 @@ async function isResponseCompleted() {
 
 /**
  * AITaskHandler用のプロンプト処理
- * handleSendPromptの簡略版で、AITaskHandlerからの要求に特化
+ * background.jsの中央制御に転送する軽量版
  */
 async function handleAITaskPrompt(request, sendResponse) {
-  const { prompt, taskId, model, specialOperation, aiType } = request;
+  const { prompt, taskId, model, specialOperation } = request;
   
-  console.log(`[11.autoai][${AI_TYPE}] handleAITaskPrompt実行 - 統合テストのrunAutomationを使用`, {
+  console.log(`[11.autoai][${AI_TYPE}] handleAITaskPrompt - background.jsに転送`, {
     taskId,
     model,
     specialOperation,
     promptLength: prompt?.length
   });
   
-  // 統合テストと同じシンプルなアプローチ
-  
-  // 統合テストと完全に同じconfig形式
-  const config = {
+  // タスクデータを準備
+  const taskData = {
+    aiType: AI_TYPE,
     model: model,
     function: specialOperation || 'none',
-    text: prompt,
-    send: true,
-    waitResponse: true,
-    getResponse: true,
-    timeout: 180000  // デフォルト3分
+    prompt: prompt,
+    taskId: taskId
   };
   
-  // 統合テストと同じDeepResearch判定とtimeout設定
-  const isDeepResearch = window.FeatureConstants ? 
-    window.FeatureConstants.isDeepResearch(config.function) :
-    (config.function && config.function.toLowerCase().includes('research'));
-  
-  // Gensparkは処理に時間がかかるため特別扱い（統合テストと同じ）
-  const isGenspark = AI_TYPE.toLowerCase() === 'genspark';
-  const timeout = isDeepResearch ? 60 * 60 * 1000 : 
-                 isGenspark ? 60 * 60 * 1000 :  // Genspark: 60分
-                 60000;  // その他: 1分
-  
-  // configに動的timeoutを設定（統合テストと同じ）
-  config.timeout = timeout;
-  
-  if (isDeepResearch) {
-    console.log(`[11.autoai][${AI_TYPE}] DeepResearchモード - 最大60分待機`);
-  } else if (isGenspark) {
-    console.log(`[11.autoai][${AI_TYPE}] スライド生成モード - 最大60分待機`);
-  }
-  
-  try {
-    let result = null;
-    
-    // 統合テストと同じAI自動化オブジェクト検索方式
-    const automationMap = {
-      'Claude': ['ClaudeAutomation', 'Claude'],
-      'ChatGPT': ['ChatGPTAutomation', 'ChatGPT'], 
-      'Gemini': ['Gemini', 'GeminiAutomation']
-    };
-    
-    const possibleNames = automationMap[AI_TYPE] || [`${AI_TYPE}Automation`];
-    let automation = null;
-    let foundName = null;
-    
-    for (const name of possibleNames) {
-      if (window[name]) {
-        automation = window[name];
-        foundName = name;
-        break;
-      }
-    }
-    
-    console.log(`[11.autoai][${AI_TYPE}] 自動化オブジェクトを探しています...`);
-    console.log(`[11.autoai][${AI_TYPE}] 利用可能な候補: ${possibleNames.join(', ')}`);
-    
-    if (!automation) {
-      const availableKeys = Object.keys(window).filter(key => 
-        key.includes('Automation') || key.includes(AI_TYPE)
-      );
-      console.error(`[11.autoai][${AI_TYPE}] 自動化オブジェクトが見つかりません`);
-      console.log(`[11.autoai][${AI_TYPE}] ウィンドウで利用可能: ${availableKeys.join(', ')}`);
-      throw new Error(`${AI_TYPE}の自動化オブジェクトが見つかりません`);
-    }
-    
-    console.log(`[11.autoai][${AI_TYPE}] ${foundName}を発見、実行開始`);
-    console.log(`[11.autoai][${AI_TYPE}] 選択された機能: "${config.function}"`);
-    
-    // DeepResearchHandlerの利用可能性確認（統合テストと同じ）
-    console.log(`[11.autoai][${AI_TYPE}] DeepResearchHandler確認:`, {
-      available: !!window.DeepResearchHandler,
-      type: typeof window.DeepResearchHandler,
-      hasHandle: !!(window.DeepResearchHandler && window.DeepResearchHandler.handle)
-    });
-    
-    // DeepResearchの場合は、DeepResearchHandlerが利用可能になるまで待機
-    if (isDeepResearch && !window.DeepResearchHandler) {
-      console.log(`[11.autoai][${AI_TYPE}] DeepResearchモードですが、DeepResearchHandlerが未読み込み。待機中...`);
-      let waitAttempts = 0;
-      const maxWaitAttempts = 30; // 3秒間待機
-      
-      while (!window.DeepResearchHandler && waitAttempts < maxWaitAttempts) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-        waitAttempts++;
-      }
-      
-      if (window.DeepResearchHandler) {
-        console.log(`[11.autoai][${AI_TYPE}] ✅ DeepResearchHandlerが利用可能になりました`);
-      } else {
-        console.warn(`[11.autoai][${AI_TYPE}] ⚠️ DeepResearchHandlerの読み込みに失敗しました`);
-      }
-    }
-    
-    // 統合テストと同じrunAutomation実行
-    if (typeof automation.runAutomation === 'function') {
-      console.log(`[11.autoai][${AI_TYPE}] ${foundName}.runAutomationを実行`, {
-        config: config,
-        isDeepResearch: isDeepResearch
+  // background.jsに転送して実行
+  chrome.runtime.sendMessage(
+    {
+      action: "executeAITask",
+      taskData: taskData
+    },
+    (response) => {
+      console.log(`[11.autoai][${AI_TYPE}] background.jsからの応答:`, {
+        success: response?.success,
+        responseLength: response?.response?.length,
+        error: response?.error
       });
-      result = await automation.runAutomation(config);
-      console.log(`[11.autoai][${AI_TYPE}] runAutomation完了`, {
-        success: result?.success,
-        hasResponse: !!result?.response,
-        responseLength: result?.response?.length
+      
+      // 応答をそのまま返す
+      sendResponse({
+        success: response?.success || false,
+        response: response?.response || '',
+        error: response?.error,
+        aiType: AI_TYPE,
+        taskId: taskId
       });
-    } else {
-      throw new Error(`${foundName}に適切な実行方法が見つかりません`);
     }
-    
-    // 結果をそのまま返す
-    console.log(`[11.autoai][${AI_TYPE}] runAutomation完了`, {
-      success: result?.success,
-      responseLength: result?.response?.length,
-      error: result?.error
-    });
-    
-    sendResponse({
-      success: result?.success || false,
-      response: result?.response || '',
-      error: result?.error,
-      aiType: AI_TYPE,
-      taskId: taskId
-    });
-    
-  } catch (error) {
-    console.error(`[11.autoai][${AI_TYPE}] handleAITaskPromptエラー:`, error);
-    sendResponse({
-      success: false,
-      error: error.message,
-      aiType: AI_TYPE,
-      taskId: taskId
-    });
-  }
+  );
 }
 
 
@@ -2041,21 +1938,10 @@ async function initializeContentScript() {
   window._contentScriptInitialized = true;
 
   console.log(`[11.autoai][${AI_TYPE}] コンテンツスクリプト初期化開始`);
+  
+  // 注意: スクリプト読み込みはbackground.jsが担当
+  // コンテンツスクリプトはメッセージ転送のみ
 
-  // 先にAI別の制御スクリプトを読み込む（同期的に待機）
-  console.log(`[11.autoai][${AI_TYPE}] 制御スクリプトを読み込み中...`);
-  await loadAIControlScripts();
-  console.log(`[11.autoai][${AI_TYPE}] 制御スクリプト読み込み完了`);
-
-  // DeepResearch設定確認
-  console.log(`[11.autoai][${AI_TYPE}] DeepResearch設定確認:`);
-  console.log(
-    `  - deepResearchConfigLoaded: ${window.deepResearchConfigLoaded}`,
-  );
-  console.log(`  - deepResearchConfig: ${typeof window.deepResearchConfig}`);
-  console.log(
-    `  - createDeepResearchActivator: ${typeof window.createDeepResearchActivator}`,
-  );
 
   // グローバル変数を設定
   window.AI_TYPE = AI_TYPE;
@@ -2355,183 +2241,8 @@ if (AI_TYPE) {
   console.log("[11.autoai] 対応外のサイトです:", window.location.hostname);
 }
 
-// 現在のタブIDを取得する関数
-async function getCurrentTabId() {
-  return new Promise((resolve) => {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs && tabs[0]) {
-        resolve(tabs[0].id);
-      } else {
-        resolve(null);
-      }
-    });
-  });
-}
-
-// AI別の制御スクリプトを読み込む関数（統合テストと同じ方式）
-async function loadAIControlScripts() {
-  console.log(`[11.autoai][${AI_TYPE}] 制御スクリプトを読み込み中...`);
-
-  try {
-    // 現在のタブIDを取得
-    const currentTabId = await getCurrentTabId();
-    if (!currentTabId) {
-      console.error(`[11.autoai] タブIDの取得に失敗しました`);
-      return;
-    }
-
-    // 統合テストと同じ共通スクリプトファイル
-    const commonScripts = [
-      'automations/feature-constants.js',
-      'automations/common-ai-handler.js', 
-      'automations/deepresearch-handler.js',
-      'automations/claude-deepresearch-selector.js'
-    ];
-
-    // AI固有のスクリプトマップ
-    const scriptMap = {
-      Gemini: "automations/gemini-dynamic-automation.js",
-      ChatGPT: "automations/chatgpt-automation.js",
-      Claude: "automations/claude-automation-dynamic.js",
-    };
-
-    // 統合テストと同じ方式でスクリプトを注入
-    let scriptsToInject = [...commonScripts];
-    if (scriptMap[AI_TYPE]) {
-      scriptsToInject.push(scriptMap[AI_TYPE]);
-    }
-
-    console.log(`[11.autoai] chrome.scripting.executeScript でスクリプト注入: ${scriptsToInject.join(', ')}`);
-    
-    // chrome.scripting.executeScript を使用（統合テストと同じ）
-    await chrome.scripting.executeScript({
-      target: { tabId: currentTabId },
-      files: scriptsToInject
-    });
-
-    console.log(`[11.autoai] ✅ スクリプト注入完了、初期化待機中...`);
-
-    // スクリプト初期化を待つ（統合テストと同じ）
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
-    // DeepResearchHandlerの読み込み確認
-    console.log(`[11.autoai] DeepResearchHandlerの読み込み確認中...`);
-    let attempts = 0;
-    const maxAttempts = 50; // 5秒間待機
-    
-    while (!window.DeepResearchHandler && attempts < maxAttempts) {
-      await new Promise(resolve => setTimeout(resolve, 100));
-      attempts++;
-    }
-    
-    if (window.DeepResearchHandler) {
-      console.log(`[11.autoai] ✅ DeepResearchHandlerが利用可能です`);
-    } else {
-      console.warn(`[11.autoai] ⚠️ DeepResearchHandlerの読み込みに失敗しました`);
-    }
-
-    // 制御関数が利用可能になるまで待機
-    return new Promise((resolve) => {
-      let retryCount = 0;
-      const maxRetries = 10;
-      const checkInterval = 100;
-
-      const checkFunctions = setInterval(() => {
-        retryCount++;
-
-        if (AI_TYPE === "Claude") {
-          console.log(
-            `[11.autoai][Claude] 制御関数確認 (試行 ${retryCount}/${maxRetries}):`,
-          );
-          console.log(
-            "  - ClaudeAutomation:",
-            typeof window.ClaudeAutomation,
-          );
-          console.log(
-            "  - enableClaudeMode:",
-            typeof window.enableClaudeMode,
-          );
-          console.log(
-            "  - enableClaudeDeepResearch:",
-            typeof window.enableClaudeDeepResearch,
-          );
-
-          if (typeof window.ClaudeAutomation !== "undefined" || typeof window.enableClaudeDeepResearch !== "undefined") {
-            console.log(
-              "[11.autoai][Claude] ✅ 制御関数が利用可能になりました",
-            );
-            clearInterval(checkFunctions);
-            resolve();
-            return;
-          }
-        } else if (AI_TYPE === "Gemini") {
-          console.log(
-            `[11.autoai][Gemini] 制御関数確認 (試行 ${retryCount}/${maxRetries}):`,
-          );
-          console.log(
-            "  - GeminiAutomation:",
-            typeof window.GeminiAutomation,
-          );
-          console.log(
-            "  - Gemini:",
-            typeof window.Gemini,
-          );
-          console.log(
-            "  - enableGeminiDeepResearch:",
-            typeof window.enableGeminiDeepResearch,
-          );
-          console.log(
-            "  - disableGeminiDeepResearch:",
-            typeof window.disableGeminiDeepResearch,
-          );
-
-          if (typeof window.GeminiAutomation !== "undefined" || typeof window.Gemini !== "undefined" || typeof window.enableGeminiDeepResearch !== "undefined") {
-            console.log(
-              "[11.autoai][Gemini] ✅ 制御関数が利用可能になりました",
-            );
-            clearInterval(checkFunctions);
-            resolve();
-            return;
-          }
-        } else if (AI_TYPE === "ChatGPT") {
-          console.log(
-            `[11.autoai][ChatGPT] 制御関数確認 (試行 ${retryCount}/${maxRetries}):`,
-          );
-          console.log(
-            "  - ChatGPTAutomation:",
-            typeof window.ChatGPTAutomation,
-          );
-          
-          if (typeof window.ChatGPTAutomation !== "undefined") {
-            console.log(
-              "[11.autoai][ChatGPT] ✅ 制御関数が利用可能になりました",
-            );
-            clearInterval(checkFunctions);
-            resolve();
-            return;
-          }
-        } else {
-          // その他のAIの場合
-          clearInterval(checkFunctions);
-          resolve();
-          return;
-        }
-
-        if (retryCount >= maxRetries) {
-          console.error(
-            `[11.autoai][${AI_TYPE}] ❌ 制御関数が見つかりません（タイムアウト）`,
-          );
-          clearInterval(checkFunctions);
-          resolve();
-        }
-      }, checkInterval);
-    });
-
-  } catch (error) {
-    console.error(`[11.autoai] スクリプト注入エラー: ${error.message}`);
-    return Promise.resolve();
-  }
-}
+// 注意: loadAIControlScripts、getCurrentTabId、loadScript関数は削除
+// background.jsの中央制御に移行したため不要
 
 // 注意: injectControlFunctions と createProxyFunction は削除
 // 統合テストと同じchrome.scripting.executeScript方式では不要

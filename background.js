@@ -84,6 +84,161 @@ setTimeout(() => {
 // ===== グローバル変数 =====
 let isProcessing = false;
 
+// ===== AI実行制御（統合テストと同じアプローチ） =====
+/**
+ * AIタスクを実行する中央制御関数
+ * コンテンツスクリプトから転送されたタスクをchrome.scripting.executeScriptで実行
+ */
+async function executeAITask(tabId, taskData) {
+  console.log(`[Background] AIタスク実行開始:`, {
+    tabId,
+    aiType: taskData.aiType,
+    function: taskData.function,
+    promptLength: taskData.prompt?.length
+  });
+
+  try {
+    // AI固有のスクリプトマップ（統合テストと同じ）
+    const scriptMap = {
+      'Gemini': 'gemini-dynamic-automation.js',
+      'ChatGPT': 'chatgpt-automation.js',
+      'Claude': 'claude-automation-dynamic.js',
+      'Genspark': 'genspark-automation.js'
+    };
+
+    // 統合テストと同じ共通スクリプト
+    const commonScripts = [
+      'automations/feature-constants.js',
+      'automations/common-ai-handler.js',
+      'automations/deepresearch-handler.js',
+      'automations/claude-deepresearch-selector.js'
+    ];
+
+    // AI固有のスクリプトを追加
+    const aiScript = scriptMap[taskData.aiType];
+    if (aiScript) {
+      commonScripts.push(`automations/${aiScript}`);
+    }
+
+    console.log(`[Background] スクリプト注入:`, commonScripts);
+
+    // スクリプトを注入（統合テストと同じ方式）
+    await chrome.scripting.executeScript({
+      target: { tabId: tabId },
+      files: commonScripts
+    });
+
+    console.log(`[Background] スクリプト注入完了、初期化待機中...`);
+
+    // スクリプト初期化を待つ（統合テストと同じ2秒待機）
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // タスクを実行
+    const result = await chrome.scripting.executeScript({
+      target: { tabId: tabId },
+      func: async (taskData) => {
+        try {
+          // 統合テストと同じAI自動化オブジェクト検索方式
+          const automationMap = {
+            'Claude': ['ClaudeAutomation', 'Claude'],
+            'ChatGPT': ['ChatGPTAutomation', 'ChatGPT'],
+            'Gemini': ['Gemini', 'GeminiAutomation'],
+            'Genspark': ['GensparkAutomation', 'Genspark']
+          };
+
+          const possibleNames = automationMap[taskData.aiType] || [`${taskData.aiType}Automation`];
+          let automation = null;
+          let foundName = null;
+
+          for (const name of possibleNames) {
+            if (window[name]) {
+              automation = window[name];
+              foundName = name;
+              break;
+            }
+          }
+
+          console.log(`[ExecuteAITask] ${taskData.aiType}の自動化オブジェクトを探しています...`);
+          console.log(`[ExecuteAITask] 利用可能な候補: ${possibleNames.join(', ')}`);
+
+          if (!automation) {
+            const availableKeys = Object.keys(window).filter(key =>
+              key.includes('Automation') || key.includes(taskData.aiType)
+            );
+            console.error(`[ExecuteAITask] ${taskData.aiType}の自動化オブジェクトが見つかりません`);
+            console.log(`[ExecuteAITask] ウィンドウで利用可能: ${availableKeys.join(', ')}`);
+            return { success: false, error: `${taskData.aiType}の自動化オブジェクトが見つかりません` };
+          }
+
+          console.log(`[ExecuteAITask] ${foundName}を発見、実行開始`);
+
+          // DeepResearchの判定（統合テストと同じ）
+          const isDeepResearch = window.FeatureConstants ?
+            window.FeatureConstants.isDeepResearch(taskData.function) :
+            (taskData.function && taskData.function.toLowerCase().includes('research'));
+
+          // タイムアウト設定（統合テストと同じ）
+          const isGenspark = taskData.aiType.toLowerCase() === 'genspark';
+          const timeout = isDeepResearch ? 60 * 60 * 1000 :
+                         isGenspark ? 60 * 60 * 1000 :
+                         60000;
+
+          if (isDeepResearch) {
+            console.log(`[ExecuteAITask] ${taskData.aiType} DeepResearchモード - 最大60分待機`);
+          } else if (isGenspark) {
+            console.log(`[ExecuteAITask] ${taskData.aiType} スライド生成モード - 最大60分待機`);
+          }
+
+          // 設定オブジェクト（統合テストと同じ形式）
+          const config = {
+            model: taskData.model,
+            function: taskData.function,
+            text: taskData.prompt,
+            send: true,
+            waitResponse: true,
+            getResponse: true,
+            timeout: timeout
+          };
+
+          // runAutomationを実行
+          if (typeof automation.runAutomation === 'function') {
+            console.log(`[ExecuteAITask] ${foundName}.runAutomationを実行`);
+            const result = await automation.runAutomation(config);
+            console.log(`[ExecuteAITask] runAutomation完了:`, {
+              success: result?.success,
+              hasResponse: !!result?.response,
+              responseLength: result?.response?.length
+            });
+            return result;
+          } else {
+            return { success: false, error: `${foundName}に適切な実行方法が見つかりません` };
+          }
+
+        } catch (error) {
+          console.error(`[ExecuteAITask] 実行エラー:`, error);
+          return { success: false, error: error.message };
+        }
+      },
+      args: [taskData]
+    });
+
+    // 結果を返す
+    if (result && result[0] && result[0].result) {
+      console.log(`[Background] AIタスク実行成功:`, {
+        success: result[0].result.success,
+        hasResponse: !!result[0].result.response
+      });
+      return result[0].result;
+    } else {
+      throw new Error('スクリプト実行結果が取得できませんでした');
+    }
+
+  } catch (error) {
+    console.error(`[Background] AIタスク実行エラー:`, error);
+    return { success: false, error: error.message };
+  }
+}
+
 // ===== ヘルパー関数 =====
 /**
  * 列名生成関数（A, B, ..., Z, AA, AB, ...）
@@ -209,6 +364,33 @@ function processSpreadsheetData(spreadsheetData) {
  */
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   switch (request.action) {
+    // ===== AIタスク実行（コンテンツスクリプトから転送） =====
+    case "executeAITask":
+      console.log("[MessageHandler] AIタスク実行要求:", {
+        from: sender.tab?.url,
+        tabId: sender.tab?.id,
+        aiType: request.taskData?.aiType,
+        function: request.taskData?.function
+      });
+      
+      if (!sender.tab?.id) {
+        sendResponse({ success: false, error: "タブIDが取得できません" });
+        return false;
+      }
+      
+      // 非同期でAIタスクを実行
+      executeAITask(sender.tab.id, request.taskData)
+        .then(result => {
+          console.log("[MessageHandler] AIタスク実行完了:", result);
+          sendResponse(result);
+        })
+        .catch(error => {
+          console.error("[MessageHandler] AIタスク実行エラー:", error);
+          sendResponse({ success: false, error: error.message });
+        });
+      
+      return true; // 非同期応答のため true を返す
+      
     // ----- スプレッドシート読み込み（タスク生成含む） -----
     case "loadSpreadsheet":
     case "loadSpreadsheets": // 互換性のため両方サポート
