@@ -658,23 +658,58 @@
             }
             
             const menuItems = modelMenu.querySelectorAll('[role="menuitem"]');
+            Utils.log(`${menuItems.length}個のメニュー項目を発見`, 'info');
             
+            // まずメインメニューの項目を処理（詳細デバッグ版）
             for (const item of menuItems) {
-                // サブメニューを持つ項目は完全にスキップ
-                if (this.hasSubmenuIndicator(item)) {
-                    const submenuName = item.textContent?.trim() || 'Unknown';
-                    Utils.log(`サブメニュー項目をスキップ: ${submenuName}`, 'info');
-                    continue; // サブメニューを持つ項目は処理しない
-                }
+                // 各メニュー項目の詳細情報をログ出力
+                const itemText = item.textContent?.trim() || '';
+                const itemTestId = item.getAttribute('data-testid') || '';
+                const itemAttributes = {
+                    'data-has-submenu': item.hasAttribute('data-has-submenu'),
+                    'aria-haspopup': item.getAttribute('aria-haspopup'),
+                    'aria-expanded': item.getAttribute('aria-expanded'),
+                    'data-testid': itemTestId,
+                    'className': item.className,
+                    'tagName': item.tagName
+                };
                 
-                // 通常のモデル項目のみ処理
-                const modelName = this.extractModelName(item);
-                if (modelName) {
-                    this.models.push({
-                        name: modelName,
-                        selected: item.getAttribute('aria-checked') === 'true'
-                    });
-                    Utils.log(`モデル検出: ${modelName}`, 'success');
+                Utils.log(`🔍 メニュー項目詳細: "${itemText}"`, 'info');
+                Utils.log(`   属性:`, itemAttributes);
+                
+                // SVGチェック
+                const hasSvg = item.querySelector('svg') !== null;
+                const svgInfo = hasSvg ? {
+                    'svg存在': true,
+                    'rtl-flip': item.querySelector('svg[data-rtl-flip]') !== null,
+                    'chevron': item.querySelector('[class*="chevron"]') !== null,
+                    'arrow': item.querySelector('[class*="arrow"]') !== null,
+                    'pathCount': item.querySelectorAll('path').length
+                } : { 'svg存在': false };
+                Utils.log(`   SVG情報:`, svgInfo);
+                
+                const isSubmenu = this.hasSubmenuIndicator(item);
+                Utils.log(`   サブメニュー判定: ${isSubmenu}`, isSubmenu ? 'warning' : 'info');
+                
+                if (isSubmenu) {
+                    const submenuName = itemText || 'Unknown';
+                    Utils.log(`📂 サブメニュー項目を検出: ${submenuName}`, 'info');
+                    
+                    // サブメニューを展開して中身を取得
+                    await this.exploreModelSubmenu(item, submenuName);
+                } else {
+                    // 通常のモデル項目を処理
+                    const modelName = this.extractModelName(item);
+                    if (modelName) {
+                        this.models.push({
+                            name: modelName,
+                            selected: item.getAttribute('aria-checked') === 'true',
+                            location: 'main'
+                        });
+                        Utils.log(`✅ モデル検出: ${modelName}`, 'success');
+                    } else {
+                        Utils.log(`⚠️ モデル名抽出失敗: "${itemText}"`, 'warning');
+                    }
                 }
             }
             
@@ -985,6 +1020,197 @@
                 }
             } else {
                 Utils.log(`サブメニューが開きませんでした: ${itemText}`, 'warning');
+            }
+        }
+        
+        async exploreModelSubmenu(menuItem, submenuName) {
+            Utils.log(`🔍 モデルサブメニューを探索開始: "${submenuName}"`, 'info');
+            
+            const submenuAttributes = {
+                'data-has-submenu': menuItem.hasAttribute('data-has-submenu'),
+                'aria-haspopup': menuItem.getAttribute('aria-haspopup'),
+                'aria-expanded': menuItem.getAttribute('aria-expanded'),
+                'data-testid': menuItem.getAttribute('data-testid') || 'no-testid'
+            };
+            
+            Utils.log(`サブメニュートリガー詳細:`, submenuAttributes);
+            
+            let submenu = null;
+            let retryCount = 0;
+            const maxRetries = 3;
+            
+            // リトライ機能付きでサブメニューを開く
+            while (retryCount <= maxRetries && !submenu) {
+                if (retryCount > 0) {
+                    Utils.log(`⏳ モデルサブメニュー開放リトライ ${retryCount}回目: ${submenuName}`, 'warning');
+                    await Utils.wait(500);
+                }
+                
+                // 改善: より包括的なセレクタで初期メニュー数を取得
+                const initialMenuCount = document.querySelectorAll('[role="menu"], [data-radix-popper-content-wrapper], .radix-popper, [data-state="open"]').length;
+                const initialAriaExpanded = menuItem.getAttribute('aria-expanded');
+                
+                Utils.log(`開始前状態: メニュー数=${initialMenuCount}, aria-expanded=${initialAriaExpanded}`, 'info');
+                
+                // 改善: クリックを優先的に試行（ChatGPTの新UIではクリックがより信頼性高い）
+                if (retryCount === 0 || retryCount === 2) {
+                    Utils.log('クリックイベント発火中...', 'info');
+                    await Utils.performClick(menuItem);
+                    await Utils.wait(500); // クリック後は長めに待機
+                } else {
+                    // ホバーイベントを発火
+                    Utils.log('ホバーイベント発火中...', 'info');
+                    menuItem.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+                    menuItem.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+                    await Utils.wait(300);
+                }
+                
+                // aria-expandedの変化を監視（最大2秒）
+                let waitTime = 0;
+                const maxWaitTime = 2000;
+                const checkInterval = 100;
+                
+                while (waitTime < maxWaitTime) {
+                    await Utils.wait(checkInterval);
+                    waitTime += checkInterval;
+                    
+                    const currentAriaExpanded = menuItem.getAttribute('aria-expanded');
+                    if (currentAriaExpanded === 'true') {
+                        Utils.log(`✅ aria-expanded状態変化検出: ${initialAriaExpanded} → ${currentAriaExpanded} (${waitTime}ms)`, 'success');
+                        break;
+                    }
+                    
+                    // 改善: data-state属性もチェック
+                    const dataState = menuItem.getAttribute('data-state');
+                    if (dataState === 'open') {
+                        Utils.log(`✅ data-state="open"検出 (${waitTime}ms)`, 'success');
+                        break;
+                    }
+                }
+                
+                // 追加の安定化待機
+                await Utils.wait(500);
+                
+                // 改善: より包括的なセレクタでメニューを検索
+                let allMenus = document.querySelectorAll('[role="menu"]');
+                let allPoppers = document.querySelectorAll('[data-radix-popper-content-wrapper], .radix-popper');
+                let openElements = document.querySelectorAll('[data-state="open"][role="menu"], [data-state="open"] [role="menu"]');
+                
+                Utils.log(`メニュー検索結果: role="menu"=${allMenus.length}, ポッパー数=${allPoppers.length}, data-state="open"=${openElements.length}`, 'info');
+                
+                // 改善: 複数の方法でサブメニューを検索
+                if (openElements.length > 0) {
+                    submenu = openElements[openElements.length - 1];
+                    Utils.log(`✅ data-state="open"経由でサブメニュー取得成功`, 'success');
+                } else if (allMenus.length > initialMenuCount) {
+                    submenu = allMenus[allMenus.length - 1];
+                    Utils.log(`✅ メニュー経由でサブメニュー取得成功`, 'success');
+                } else if (allPoppers.length > 0) {
+                    // 最新のポッパーから順に検索
+                    for (let i = allPoppers.length - 1; i >= 0; i--) {
+                        const popper = allPoppers[i];
+                        const popperMenu = popper.querySelector('[role="menu"]');
+                        if (popperMenu) {
+                            submenu = popperMenu;
+                            Utils.log(`✅ ポッパー経由でサブメニュー取得成功 (index: ${i})`, 'success');
+                            break;
+                        }
+                    }
+                }
+                
+                // 改善: ダイナミックコンテンツの遅延読み込みを考慮
+                if (!submenu && retryCount < maxRetries) {
+                    Utils.log('サブメニューが見つからず、追加待機中...', 'warning');
+                    await Utils.wait(1000);
+                    
+                    // 再度検索
+                    allMenus = document.querySelectorAll('[role="menu"]');
+                    openElements = document.querySelectorAll('[data-state="open"][role="menu"], [data-state="open"] [role="menu"]');
+                    
+                    if (openElements.length > 0) {
+                        submenu = openElements[openElements.length - 1];
+                        Utils.log(`✅ 追加待機後: data-state="open"経由でサブメニュー取得成功`, 'success');
+                    } else if (allMenus.length > initialMenuCount) {
+                        submenu = allMenus[allMenus.length - 1];
+                        Utils.log(`✅ 追加待機後: メニュー経由でサブメニュー取得成功`, 'success');
+                    }
+                }
+                
+                retryCount++;
+            }
+            
+            if (submenu) {
+                Utils.log(`🎉 サブメニュー開放成功: "${submenuName}" (試行回数: ${retryCount})`, 'success');
+                
+                const submenuItems = submenu.querySelectorAll('[role="menuitem"], [role="menuitemradio"]');
+                Utils.log(`サブメニュー項目数: ${submenuItems.length}`, 'info');
+                
+                // サブメニュー内の全項目をログ出力（デバッグ用）
+                submenuItems.forEach((item, index) => {
+                    const itemText = item.textContent?.trim();
+                    const itemTestId = item.getAttribute('data-testid');
+                    Utils.log(`  項目[${index}]: "${itemText}" (testId: ${itemTestId})`, 'info');
+                });
+                
+                let modelsAdded = 0;
+                for (const item of submenuItems) {
+                    const text = item.textContent?.trim();
+                    
+                    // 戻るボタンやトリガー自体は除外
+                    if (text && (text.includes('戻る') || text.includes('Back') || text.includes('←') || text === submenuName)) {
+                        continue;
+                    }
+                    
+                    const modelName = this.extractModelName(item);
+                    if (modelName && !this.models.find(m => m.name === modelName)) {
+                        const isSelected = item.getAttribute('aria-checked') === 'true' || 
+                                         item.querySelector('svg path[d*="12.0961"]') !== null;
+                        
+                        this.models.push({
+                            name: modelName,
+                            selected: isSelected,
+                            location: `submenu-${submenuName.replace(/\s+/g, '-').toLowerCase()}`,
+                            testId: item.getAttribute('data-testid')
+                        });
+                        
+                        Utils.log(`✅ サブメニューモデル検出: "${modelName}"${isSelected ? ' (選択中)' : ''}`, 'success');
+                        modelsAdded++;
+                    }
+                }
+                
+                Utils.log(`📝 サブメニュー"${submenuName}"から${modelsAdded}個のモデルを取得`, 'success');
+                
+                // サブメニューを閉じる処理をスキップ（誤クリック防止）
+                await Utils.wait(200);
+            } else {
+                Utils.log(`❌ サブメニューが開けませんでした: "${submenuName}" (${maxRetries + 1}回試行)`, 'error');
+                
+                // レガシーモデル専用のフォールバック処理
+                if (submenuName.includes('レガシー') || submenuName.toLowerCase().includes('legacy')) {
+                    Utils.log('🔄 レガシーモデル専用フォールバック処理を実行', 'warning');
+                    
+                    const fallbackLegacyModels = [
+                        { name: 'GPT-4o', testId: 'model-switcher-gpt-4o' },
+                        { name: 'GPT-4', testId: 'model-switcher-gpt-4' },
+                        { name: 'GPT-3.5', testId: 'model-switcher-gpt-3.5' }
+                    ];
+                    
+                    let fallbackAdded = 0;
+                    fallbackLegacyModels.forEach(model => {
+                        if (!this.models.find(m => m.name === model.name)) {
+                            this.models.push({
+                                name: model.name,
+                                testId: model.testId,
+                                selected: false,
+                                location: 'submenu-legacy-fallback'
+                            });
+                            Utils.log(`📋 フォールバック追加: "${model.name}"`, 'warning');
+                            fallbackAdded++;
+                        }
+                    });
+                    
+                    Utils.log(`📋 レガシーモデルフォールバック: ${fallbackAdded}個のモデルを追加`, 'warning');
+                }
             }
         }
     }
