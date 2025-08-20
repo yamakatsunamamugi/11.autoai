@@ -98,12 +98,12 @@ async function executeAITask(tabId, taskData) {
   });
 
   try {
-    // AI固有のスクリプトマップ（統合テストと同じ）
-    const scriptMap = {
-      'Gemini': 'gemini-dynamic-automation.js',
-      'ChatGPT': 'chatgpt-automation.js',
-      'Claude': 'claude-automation-dynamic.js',
-      'Genspark': 'genspark-automation.js'
+    // AI固有のスクリプトマップ（統合テストと完全に同じ）
+    const scriptFileMap = {
+      'claude': 'automations/claude-automation-dynamic.js',
+      'chatgpt': 'automations/chatgpt-automation.js',
+      'gemini': 'automations/gemini-dynamic-automation.js',
+      'genspark': 'automations/genspark-automation.js'
     };
 
     // 統合テストと同じ共通スクリプト
@@ -114,18 +114,18 @@ async function executeAITask(tabId, taskData) {
       'automations/claude-deepresearch-selector.js'
     ];
 
-    // AI固有のスクリプトを追加
-    const aiScript = scriptMap[taskData.aiType];
-    if (aiScript) {
-      commonScripts.push(`automations/${aiScript}`);
-    }
+    // AI固有のスクリプトを追加（統合テストと同じ方式）
+    const aiScript = scriptFileMap[taskData.aiType.toLowerCase()] || `automations/${taskData.aiType.toLowerCase()}-automation.js`;
+    
+    // 共通スクリプトを順番に注入
+    let scriptsToInject = [...commonScripts, aiScript];
 
-    console.log(`[Background] スクリプト注入:`, commonScripts);
+    console.log(`[Background] スクリプト注入:`, scriptsToInject);
 
     // スクリプトを注入（統合テストと同じ方式）
     await chrome.scripting.executeScript({
       target: { tabId: tabId },
-      files: commonScripts
+      files: scriptsToInject
     });
 
     console.log(`[Background] スクリプト注入完了、初期化待機中...`);
