@@ -72,6 +72,9 @@ class StreamProcessor {
     // 処理状態
     this.isProcessing = false;
     this.spreadsheetData = null;
+    
+    // 3種類AI実行制御
+    this.activeThreeTypeGroupId = null; // 実行中の3種類AIグループID
   }
 
   /**
@@ -79,17 +82,24 @@ class StreamProcessor {
    * @param {TaskList} taskList - タスクリスト
    * @param {Object} spreadsheetData - スプレッドシートデータ
    * @param {Object} options - オプション設定
+   * @param {string} options.outputTarget - 出力先 ('spreadsheet' | 'log')
+   * @param {boolean} options.testMode - テストモード（互換性のため残す）
    * @returns {Promise<Object>} 処理結果
    */
   async processTaskStream(taskList, spreadsheetData, options = {}) {
+    // outputTargetの設定（testModeからの移行をサポート）
+    const outputTarget = options.outputTarget || (options.testMode ? 'log' : 'spreadsheet');
+    
     this.logger.log("[StreamProcessor] ストリーミング処理開始", {
       totalTasks: taskList.tasks.length,
+      outputTarget: outputTarget,
       testMode: options.testMode || false
     });
 
     this.isProcessing = true;
     this.spreadsheetData = spreadsheetData;
-    this.isTestMode = options.testMode || false;
+    this.outputTarget = outputTarget;
+    this.isTestMode = options.testMode || (outputTarget === 'log');
 
     try {
       // タスクを列・行でグループ化
@@ -112,6 +122,9 @@ class StreamProcessor {
       
       if (isThreeTypeGroup) {
         this.logger.log(`[StreamProcessor] 3種類AIグループを検出: ${maxStart}列のみ同時開始`);
+        // 実行中の3種類AIグループIDを記録
+        this.activeThreeTypeGroupId = firstTask.groupId;
+        this.logger.log(`[StreamProcessor] アクティブな3種類AIグループ: ${this.activeThreeTypeGroupId}`);
       } else {
         this.logger.log(`[StreamProcessor] ${maxStart}列を同時開始`);
       }
@@ -484,17 +497,17 @@ class StreamProcessor {
 
     // 成功した場合の追加処理（AIタスクの場合のみ）
     if (result.success && result.response && task.taskType === "ai") {
-      if (this.isTestMode) {
-        // テストモード：ログに表示のみ
-        this.logger.log(`[StreamProcessor] テスト回答取得: ${task.column}${task.row} -> ${result.response.substring(0, 100)}...`);
-      } else {
-        // 本番モード：スプレッドシートに書き込み（同期実行で完了を待つ）
-        this.logger.log(`[StreamProcessor] 本番回答取得: ${task.column}${task.row} -> ${result.response.substring(0, 100)}...`);
+      if (this.outputTarget === 'log') {
+        // ログ出力モード：ログに表示のみ
+        this.logger.log(`[StreamProcessor] ログ出力: ${task.column}${task.row} -> ${result.response.substring(0, 100)}...`);
+      } else if (this.outputTarget === 'spreadsheet') {
+        // スプレッドシート出力モード：スプレッドシートに書き込み（同期実行で完了を待つ）
+        this.logger.log(`[StreamProcessor] スプレッドシート出力: ${task.column}${task.row} -> ${result.response.substring(0, 100)}...`);
         
         try {
           // スプレッドシート書き込みを同期で実行（awaitで完了を待つ）
           await this.writeResultToSpreadsheet(task, result);
-          this.logger.log(`[StreamProcessor] 📝 本番回答を書き込み完了: ${task.column}${task.row}`);
+          this.logger.log(`[StreamProcessor] 📝 スプレッドシートに書き込み完了: ${task.column}${task.row}`);
         } catch (error) {
           this.logger.error(`[StreamProcessor] ❌ 結果の保存エラー`, error);
           // エラーが発生してもタスク処理は継続
@@ -809,17 +822,22 @@ class StreamProcessor {
    * 空きウィンドウ分だけ利用可能な列を開始
    */
   async checkAndStartAvailableColumns() {
-    // 3種類AIグループが実行中かチェック
-    // groupCompletionTrackerに未完了のグループがあるか確認
-    const hasIncompleteGroup = Array.from(this.groupCompletionTracker.entries())
-      .some(([key, tracker]) => 
-        tracker.completed.size < tracker.required.size
-      );
-    
-    if (hasIncompleteGroup) {
-      // 3種類AIグループが未完了なら、新規列の開始をブロック
-      this.logger.log("[StreamProcessor] 3種類AIグループ実行中のため新規列開始を待機");
-      return;
+    // 実行中の3種類AIグループがある場合のチェック
+    if (this.activeThreeTypeGroupId) {
+      // このグループがまだ未完了かチェック
+      const hasIncompleteGroup = Array.from(this.groupCompletionTracker.entries())
+        .some(([key, tracker]) => {
+          // アクティブなグループIDを含むキーかチェック
+          if (key.includes(this.activeThreeTypeGroupId)) {
+            return tracker.completed.size < tracker.required.size;
+          }
+          return false;
+        });
+      
+      if (hasIncompleteGroup) {
+        this.logger.log(`[StreamProcessor] 3種類AIグループ(${this.activeThreeTypeGroupId})実行中のため新規列開始を待機`);
+        return;
+      }
     }
     
     const availableSlots = this.maxConcurrentWindows - this.activeWindows.size;
@@ -832,6 +850,7 @@ class StreamProcessor {
     
     const columns = Array.from(this.taskQueue.keys()).sort();
     let started = 0;
+    let nextThreeTypeGroupId = null;
     
     for (const column of columns) {
       if (started >= availableSlots) break;
@@ -843,11 +862,33 @@ class StreamProcessor {
       const index = this.currentRowByColumn.get(column) || 0;
       
       if (tasks && index < tasks.length) {
-        this.logger.log(`[StreamProcessor] ${column}列を開始 (${started + 1}/${availableSlots})`);
-        this.startColumnProcessing(column).catch(error => {
-          this.logger.error(`[StreamProcessor] ${column}列開始エラー`, error);
-        });
-        started++;
+        const task = tasks[index];
+        
+        // 3種類AIグループのチェック
+        if (task.multiAI && task.groupId) {
+          // 新しい3種類AIグループを検出
+          if (!nextThreeTypeGroupId) {
+            nextThreeTypeGroupId = task.groupId;
+            this.activeThreeTypeGroupId = nextThreeTypeGroupId;
+            this.logger.log(`[StreamProcessor] 新しい3種類AIグループを開始: ${nextThreeTypeGroupId}`);
+          }
+          
+          // 同じグループのタスクのみ開始（最大3つ）
+          if (task.groupId === nextThreeTypeGroupId && started < 3) {
+            this.logger.log(`[StreamProcessor] ${column}列を開始 (3種類AIグループ: ${started + 1}/3)`);
+            this.startColumnProcessing(column).catch(error => {
+              this.logger.error(`[StreamProcessor] ${column}列開始エラー`, error);
+            });
+            started++;
+          }
+        } else if (!nextThreeTypeGroupId) {
+          // 3種類AIグループがない場合のみ通常タスクを開始
+          this.logger.log(`[StreamProcessor] ${column}列を開始 (${started + 1}/${availableSlots})`);
+          this.startColumnProcessing(column).catch(error => {
+            this.logger.error(`[StreamProcessor] ${column}列開始エラー`, error);
+          });
+          started++;
+        }
       }
     }
     
@@ -1148,6 +1189,19 @@ class StreamProcessor {
       // タスクのAIタイプを完了に追加
       tracker.completed.add(task.aiType);
       this.logger.log(`[StreamProcessor] グループ進捗更新: ${trackerKey}, 完了: ${task.aiType}, 状況: ${tracker.completed.size}/${tracker.required.size}`);
+      
+      // グループが完全に完了したかチェック
+      if (tracker.completed.size === tracker.required.size) {
+        // このグループIDに関連する全てのトラッカーが完了したかチェック
+        const allGroupTasksComplete = Array.from(this.groupCompletionTracker.entries())
+          .filter(([key]) => key.includes(task.groupId))
+          .every(([, t]) => t.completed.size === t.required.size);
+        
+        if (allGroupTasksComplete && this.activeThreeTypeGroupId === task.groupId) {
+          this.logger.log(`[StreamProcessor] 3種類AIグループ完了: ${task.groupId}`);
+          this.activeThreeTypeGroupId = null; // アクティブグループをクリア
+        }
+      }
     }
   }
 

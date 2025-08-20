@@ -153,7 +153,10 @@
         "automations/test-runner.js",
         "automations/test-runner-chrome.js",
         "automations/test-sequential-prompts.js",
-        "src/config/ui-selectors.js"
+        "src/config/ui-selectors.js",
+        "log-viewer.html",
+        "log-viewer.js",
+        "log-viewer.css"
       ],
       "matches": ["<all_urls>"]
     }

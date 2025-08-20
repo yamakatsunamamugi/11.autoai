@@ -45,6 +45,190 @@ globalThis.aiWindowManager = new TestWindowManager();
 // グローバルにAIタスクハンドラーを設定（StreamProcessorから直接アクセス可能にする）
 globalThis.aiTaskHandler = aiTaskHandler;
 
+// ===== ログマネージャー =====
+class LogManager {
+  constructor() {
+    this.logs = [];
+    this.maxLogs = 10000;
+    this.connections = new Map(); // port connections
+    this.categories = {
+      AI: {
+        CHATGPT: 'chatgpt',
+        CLAUDE: 'claude',
+        GEMINI: 'gemini',
+        GENSPARK: 'genspark'
+      },
+      SYSTEM: 'system',
+      ERROR: 'error'
+    };
+  }
+  
+  /**
+   * ログを追加
+   */
+  log(message, options = {}) {
+    const logEntry = {
+      id: crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(),
+      timestamp: new Date().toISOString(),
+      message: typeof message === 'string' ? message : JSON.stringify(message),
+      category: options.category || 'system',
+      level: options.level || 'info',
+      ai: options.ai || null,
+      metadata: options.metadata || {},
+      source: options.source || 'background'
+    };
+    
+    // ログを保存
+    this.logs.push(logEntry);
+    if (this.logs.length > this.maxLogs) {
+      this.logs.shift(); // 古いログを削除
+    }
+    
+    // 接続中のビューアーに送信
+    this.broadcast({ type: 'log', data: logEntry });
+    
+    // コンソールにも出力（開発用）
+    const icon = {
+      debug: '🔍',
+      info: '📝',
+      warning: '⚠️',
+      error: '❌',
+      success: '✅'
+    }[logEntry.level] || '📝';
+    
+    console.log(`${icon} [LogManager] ${logEntry.message}`, options.metadata || '');
+    
+    return logEntry;
+  }
+  
+  /**
+   * AI別ログ
+   */
+  logAI(aiType, message, options = {}) {
+    return this.log(message, {
+      ...options,
+      ai: aiType,
+      category: aiType.toLowerCase()
+    });
+  }
+  
+  /**
+   * エラーログ
+   */
+  error(message, error = null) {
+    return this.log(message, {
+      level: 'error',
+      category: 'error',
+      metadata: error ? { 
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      } : {}
+    });
+  }
+  
+  /**
+   * 成功ログ
+   */
+  success(message, metadata = {}) {
+    return this.log(message, {
+      level: 'success',
+      metadata
+    });
+  }
+  
+  /**
+   * デバッグログ
+   */
+  debug(message, metadata = {}) {
+    return this.log(message, {
+      level: 'debug',
+      metadata
+    });
+  }
+  
+  /**
+   * 全接続にブロードキャスト
+   */
+  broadcast(message) {
+    this.connections.forEach((port) => {
+      try {
+        port.postMessage(message);
+      } catch (e) {
+        // 接続が切れている場合は削除
+        this.connections.delete(port);
+      }
+    });
+  }
+  
+  /**
+   * ログビューアー接続を追加
+   */
+  addConnection(port) {
+    this.connections.set(port, port);
+    
+    // 接続時に既存のログを送信
+    port.postMessage({
+      type: 'logs-batch',
+      data: this.logs
+    });
+    
+    // 切断時の処理
+    port.onDisconnect.addListener(() => {
+      this.connections.delete(port);
+    });
+    
+    // メッセージ受信
+    port.onMessage.addListener((msg) => {
+      if (msg.type === 'get-logs') {
+        port.postMessage({
+          type: 'logs-batch',
+          data: this.logs
+        });
+      } else if (msg.type === 'clear') {
+        this.clear(msg.category);
+      }
+    });
+  }
+  
+  /**
+   * ログをクリア
+   */
+  clear(category = null) {
+    if (!category) {
+      this.logs = [];
+    } else {
+      this.logs = this.logs.filter(log => {
+        if (category === 'error') {
+          return log.level !== 'error';
+        } else if (category === 'system') {
+          return log.category !== 'system';
+        } else {
+          return log.ai !== category;
+        }
+      });
+    }
+    
+    this.broadcast({ type: 'clear', category });
+  }
+  
+  /**
+   * ログを取得
+   */
+  getLogs(filter = {}) {
+    return this.logs.filter(log => {
+      if (filter.category && log.category !== filter.category) return false;
+      if (filter.level && log.level !== filter.level) return false;
+      if (filter.ai && log.ai !== filter.ai) return false;
+      return true;
+    });
+  }
+}
+
+// グローバルLogManagerインスタンス
+const logManager = new LogManager();
+globalThis.logManager = logManager;
+
 // ===== 初期化完了後の処理 =====
 // モジュール読み込み完了を待ってから初期化処理を実行
 setTimeout(() => {
@@ -91,13 +275,14 @@ let isProcessing = false;
  */
 async function executeAITask(tabId, taskData) {
   const startTime = Date.now();
-  console.log(`[Background] 🚀 AIタスク実行開始 [${taskData.aiType}]:`, {
-    tabId,
-    taskId: taskData.taskId,
-    model: taskData.model,
-    function: taskData.function,
-    promptLength: taskData.prompt?.length,
-    timestamp: new Date().toLocaleTimeString()
+  logManager.logAI(taskData.aiType, `AIタスク実行開始`, {
+    metadata: {
+      tabId,
+      taskId: taskData.taskId,
+      model: taskData.model,
+      function: taskData.function,
+      promptLength: taskData.prompt?.length
+    }
   });
 
   try {
@@ -123,9 +308,11 @@ async function executeAITask(tabId, taskData) {
     // 共通スクリプトを順番に注入
     let scriptsToInject = [...commonScripts, aiScript];
 
-    console.log(`[Background] 📝 [${taskData.aiType}] スクリプト注入開始:`, {
-      scripts: scriptsToInject.map(s => s.split('/').pop()),
-      count: scriptsToInject.length
+    logManager.logAI(taskData.aiType, `スクリプト注入開始`, {
+      metadata: {
+        scripts: scriptsToInject.map(s => s.split('/').pop()),
+        count: scriptsToInject.length
+      }
     });
 
     // スクリプトを注入（統合テストと同じ方式）
@@ -134,7 +321,7 @@ async function executeAITask(tabId, taskData) {
       files: scriptsToInject
     });
 
-    console.log(`[Background] ✅ [${taskData.aiType}] スクリプト注入完了、初期化待機中...`);
+    logManager.logAI(taskData.aiType, `スクリプト注入完了、初期化待機中...`, { level: 'success' });
 
     // スクリプト初期化を待つ（統合テストと同じ2秒待機）
     await new Promise(resolve => setTimeout(resolve, 2000));
@@ -243,20 +430,20 @@ async function executeAITask(tabId, taskData) {
       const resultData = result[0].result;
       
       if (resultData.success) {
-        console.log(`[Background] ✅ [${taskData.aiType}] タスク完了:`, {
-          taskId: taskData.taskId,
-          success: true,
-          responseLength: resultData.response?.length || 0,
-          totalTime: `${totalTime}秒`,
-          timestamp: new Date().toLocaleTimeString()
+        logManager.logAI(taskData.aiType, `タスク完了 (${totalTime}秒)`, {
+          level: 'success',
+          metadata: {
+            taskId: taskData.taskId,
+            responseLength: resultData.response?.length || 0
+          }
         });
       } else {
-        console.log(`[Background] ⚠️ [${taskData.aiType}] タスク失敗:`, {
-          taskId: taskData.taskId,
-          success: false,
-          error: resultData.error,
-          totalTime: `${totalTime}秒`,
-          timestamp: new Date().toLocaleTimeString()
+        logManager.logAI(taskData.aiType, `タスク失敗: ${resultData.error}`, {
+          level: 'error',
+          metadata: {
+            taskId: taskData.taskId,
+            totalTime: `${totalTime}秒`
+          }
         });
       }
       
@@ -267,12 +454,7 @@ async function executeAITask(tabId, taskData) {
 
   } catch (error) {
     const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
-    console.error(`[Background] ❌ [${taskData.aiType}] AIタスク実行エラー:`, {
-      taskId: taskData.taskId,
-      error: error.message,
-      totalTime: `${totalTime}秒`,
-      timestamp: new Date().toLocaleTimeString()
-    });
+    logManager.error(`[${taskData.aiType}] AIタスク実行エラー: ${error.message}`, error);
     return { success: false, error: error.message };
   }
 }
@@ -369,6 +551,14 @@ function processSpreadsheetData(spreadsheetData) {
 
   return result;
 }
+
+// ポート接続リスナー（ログビューアー用）
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name === 'log-viewer') {
+    logManager.addConnection(port);
+    logManager.log('ログビューアー接続', { level: 'info' });
+  }
+});
 
 /**
  * ポップアップ/ウィンドウからのメッセージを処理

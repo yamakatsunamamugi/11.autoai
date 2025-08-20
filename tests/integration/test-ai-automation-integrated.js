@@ -382,6 +382,9 @@
           prompt: prompt,
           aiType: aiType, // 各AIのタイプを正しく設定
           taskType: 'ai',
+          // テストモード用設定：実際のAI実行をスキップ
+          waitResponse: false,  // 応答待機をスキップ
+          getResponse: false,   // 応答取得をスキップ
           preferredPosition: windowPositions[aiIndex], // AI別のウィンドウ位置
           groupId: `test_group_${aiType}_${promptColumn}`,
           groupInfo: {
