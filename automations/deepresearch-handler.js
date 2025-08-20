@@ -50,74 +50,21 @@
             // AI名（ログ用）
             aiName: 'ChatGPT',
             // メッセージセレクタ（メッセージ数カウント用）
-            messageSelector: '[data-message-author-role]',
-            // 停止ボタンセレクタ
-            stopButtonSelectors: [
-                'button[aria-label*="Stop"]',
-                'button[aria-label*="停止"]',
-                'button svg.icon-stop',
-                'button[data-testid="stop-button"]'
-            ],
-            // 入力欄セレクタ
-            inputSelectors: [
-                '#prompt-textarea',
-                '[contenteditable="true"]',
-                '.ProseMirror',
-                'textarea[data-testid="conversation-textarea"]'
-            ],
-            // 送信ボタンセレクタ
-            sendButtonSelectors: [
-                'button[data-testid="send-button"]',
-                'button[aria-label*="Send"]',
-                'button[aria-label*="送信"]'
-            ]
+            messageSelector: '[data-message-author-role]'
         },
         
         Claude: {
             autoReplyMessage: '良いからさきほどの質問を確認して作業して',
             aiName: 'Claude',
             // メッセージセレクタ
-            messageSelector: '[data-test-id^="message"]',
-            // 停止ボタンセレクタ
-            stopButtonSelectors: [
-                'button[aria-label*="Stop"]',
-                'button[aria-label*="停止"]',
-                'button:has(svg[class*="stop"])',
-                '[data-stop-button="true"]'
-            ],
-            // 入力欄セレクタ
-            inputSelectors: [
-                '.ProseMirror[contenteditable="true"]',
-                'div[contenteditable="true"][role="textbox"]',
-                '[aria-label*="プロンプト"]'
-            ],
-            // 送信ボタンセレクタ  
-            sendButtonSelectors: [
-                'button[aria-label*="Send"]',
-                'button[aria-label*="送信"]',
-                'button:has(svg[class*="send"])'
-            ]
+            messageSelector: '[data-test-id^="message"]'
         },
         
         Gemini: {
             // Geminiは特殊（リサーチ開始ボタンをクリック）
-            researchButtonSelectors: [
-                'button[aria-label="リサーチを開始"]',
-                'button[data-test-id="confirm-button"][aria-label="リサーチを開始"]',
-                'button:contains("リサーチを開始")',
-                'button[aria-label*="リサーチ"]',
-                'button[class*="research"]'
-            ],
             aiName: 'Gemini',
             // メッセージセレクタ
-            messageSelector: '.message-content',
-            // 停止ボタンセレクタ
-            stopButtonSelectors: [
-                'button[aria-label*="Stop"]',
-                'button[aria-label*="停止"]',
-                'button[jsname*="stop"]',
-                '.stop-button'
-            ]
+            messageSelector: '.message-content'
         }
     };
 
@@ -125,26 +72,24 @@
     // セレクタ取得関数
     // ========================================
     function getSelectors(aiName, selectorType) {
-        // まずAI_CONFIGSから取得を試みる
-        const config = AI_CONFIGS[aiName];
-        if (config) {
-            switch(selectorType) {
-                case 'STOP_BUTTON':
-                    return config.stopButtonSelectors || [];
-                case 'INPUT':
-                    return config.inputSelectors || [];
-                case 'SEND_BUTTON':
-                    return config.sendButtonSelectors || [];
-                case 'MESSAGE':
-                    return config.messageSelector ? [config.messageSelector] : [];
-            }
-        }
-        
-        // UI_SELECTORSが読み込まれていれば使用（フォールバック）
+        // UI_SELECTORSが読み込まれていれば優先使用
         if (UI_SELECTORS && UI_SELECTORS[aiName]) {
             return UI_SELECTORS[aiName][selectorType] || [];
         }
         
+        // UI_SELECTORSが利用できない場合のフォールバック
+        // window.AIHandlerから取得を試みる
+        if (window.AIHandler && window.AIHandler.getSelectors) {
+            return window.AIHandler.getSelectors(aiName, selectorType) || [];
+        }
+        
+        // 最後の手段：AI_CONFIGSのメッセージセレクタのみ
+        const config = AI_CONFIGS[aiName];
+        if (config && selectorType === 'MESSAGE') {
+            return config.messageSelector ? [config.messageSelector] : [];
+        }
+        
+        console.warn(`[DeepResearch] セレクタが見つかりません: ${aiName}.${selectorType}`);
         return [];
     }
 
@@ -293,30 +238,35 @@
                         document.body.click();
                         await new Promise(resolve => setTimeout(resolve, 500));
                         
-                        // あなたのテストコードと同じ検索方法を使用
+                        // UI_SELECTORSからDeepResearchボタンセレクタを取得
                         let researchButton = null;
+                        let researchSelectors = [];
                         
-                        // 方法1: 両方の属性を持つボタン（最も確実）
-                        const researchSelectors1 = window.AIHandler?.getSelectors?.('Gemini', 'DEEP_RESEARCH') || [{ BUTTON: ['button[data-test-id="confirm-button"][aria-label="リサーチを開始"]'] }];
-                        const selectors1 = researchSelectors1[0]?.BUTTON || ['button[data-test-id="confirm-button"][aria-label="リサーチを開始"]'];
-                        for (const selector of selectors1) {
-                            researchButton = document.querySelector(selector);
-                            if (researchButton) break;
-                        }
-                        if (researchButton) {
-                            log('✅ 方法1で発見: data-test-id + aria-label', 'SUCCESS', aiName);
-                        }
-                        
-                        // 方法2: aria-labelのみ
-                        if (!researchButton) {
-                            const researchSelectors2 = window.AIHandler?.getSelectors?.('Gemini', 'DEEP_RESEARCH') || [{ BUTTON: ['button[aria-label="リサーチを開始"]'] }];
-                            const selectors2 = researchSelectors2[0]?.BUTTON || ['button[aria-label="リサーチを開始"]'];
-                            for (const selector of selectors2) {
-                                researchButton = document.querySelector(selector);
-                                if (researchButton) break;
+                        // UI_SELECTORSから取得
+                        if (UI_SELECTORS && UI_SELECTORS.Gemini && UI_SELECTORS.Gemini.DEEP_RESEARCH) {
+                            researchSelectors = UI_SELECTORS.Gemini.DEEP_RESEARCH.BUTTON || [];
+                        } else if (window.AIHandler?.getSelectors) {
+                            // AIHandlerから取得（フォールバック）
+                            const deepResearch = window.AIHandler.getSelectors('Gemini', 'DEEP_RESEARCH');
+                            if (deepResearch && deepResearch.BUTTON) {
+                                researchSelectors = deepResearch.BUTTON;
                             }
+                        }
+                        
+                        // デフォルトセレクタ（最後の手段）
+                        if (researchSelectors.length === 0) {
+                            researchSelectors = [
+                                'button[aria-label="リサーチを開始"]',
+                                'button[data-test-id="confirm-button"][aria-label="リサーチを開始"]'
+                            ];
+                        }
+                        
+                        // セレクタで検索
+                        for (const selector of researchSelectors) {
+                            researchButton = document.querySelector(selector);
                             if (researchButton) {
-                                log('✅ 方法2で発見: aria-labelのみ', 'SUCCESS', aiName);
+                                log(`✅ リサーチボタン発見: ${selector}`, 'SUCCESS', aiName);
+                                break;
                             }
                         }
                         
