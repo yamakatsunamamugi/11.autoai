@@ -5,7 +5,7 @@ import { Task, TaskList, TaskFactory } from "./models.js";
 import { AnswerFilter } from "./filters/index.js";
 import StreamProcessor from "./stream-processor.js";
 import ReportTaskFactory from "../report/report-task-factory.js";
-import { getDynamicConfigManager } from "../../core/dynamic-config-manager.js";
+// getDynamicConfigManager import削除 - スプレッドシート設定を直接使用するため不要
 
 /**
  * タスクジェネレーター
@@ -16,7 +16,7 @@ class TaskGenerator {
     this.answerFilter = new AnswerFilter();
     this.streamProcessor = new StreamProcessor();
     this.reportTaskFactory = new ReportTaskFactory();
-    this.dynamicConfigManager = getDynamicConfigManager();
+    // dynamicConfigManager削除 - スプレッドシート設定を直接使用するため不要
   }
 
   /**
@@ -389,16 +389,8 @@ class TaskGenerator {
       specialOperation = this.getCellValue(spreadsheetData, rows.task.index, answerCol.index);
     }
 
-    // UI動的設定を取得
-    try {
-      const dynamicConfig = await this.dynamicConfigManager.getAIConfig(answerCol.type);
-      if (dynamicConfig?.enabled) {
-        model = dynamicConfig.model || model;
-        specialOperation = dynamicConfig.function || specialOperation;
-      }
-    } catch (error) {
-      console.warn(`[TaskGenerator] 動的設定取得エラー: ${error.message}`);
-    }
+    // スプレッドシートの設定をそのまま使用（シンプル化）
+    // DynamicConfig による上書きを削除し、スプレッドシートの値を直接適用
 
     const taskData = {
       id: this.generateTaskId(answerCol.column, workRow.number),
