@@ -63,6 +63,9 @@ class StreamProcessor {
     // 記載完了管理（並列ストリーミング用）
     this.writtenCells = new Map(); // `${column}${row}` -> true (記載完了したセル)
     
+    // 3種類AIグループ完了追跡
+    this.groupCompletionTracker = new Map(); // `${groupId}_${row}` -> { required: Set(['chatgpt', 'claude', 'gemini']), completed: Set() }
+    
     // 待機中の列管理
     this.waitingColumns = new Set(); // 空きポジション待機中の列
 
@@ -299,13 +302,18 @@ class StreamProcessor {
     const windowInfo = this.activeWindows.get(windowId);
     if (!windowInfo) return;
 
+    // 3種類AIグループの追跡を初期化
+    this.initializeGroupTracking(task);
+
     this.logger.log(
       `[StreamProcessor] タスク実行: ${task.column}${task.row} (Window: ${windowId})`,
       {
         taskAiType: task.aiType,
         windowAiType: windowInfo.aiType,
         taskId: task.id,
-        prompt: task.prompt?.substring(0, 50) + '...'
+        prompt: task.prompt?.substring(0, 50) + '...',
+        multiAI: task.multiAI,
+        groupId: task.groupId
       }
     );
 
@@ -546,6 +554,9 @@ class StreamProcessor {
       const cellKey = `${task.column}${task.row}`;
       this.writtenCells.set(cellKey, true);
       this.logger.log(`[StreamProcessor] 記載完了マーク: ${cellKey}`);
+      
+      // ■ 3種類AIグループの完了状況を更新
+      this.updateGroupCompletion(task);
       
       // ■ この記載により、次の列の同じ行を開始できるかチェック
       await this.checkAndStartNextColumnForRow(task.column, task.row);
@@ -885,6 +896,19 @@ class StreamProcessor {
    * @param {number} row - 記載が完了した行
    */
   async checkAndStartNextColumnForRow(column, row) {
+    // まず、現在のタスクが3種類AIグループの一部かチェック
+    const currentColumnTasks = this.taskQueue.get(column);
+    const currentTask = currentColumnTasks?.find(t => t.row === row);
+    
+    if (currentTask?.multiAI && currentTask?.groupId) {
+      // 3種類AIグループの場合、グループ完了をチェック
+      if (!this.isGroupComplete(currentTask.groupId, row)) {
+        this.logger.log(`[StreamProcessor] 3種類AI未完了のため次列開始を保留: ${column}${row}, グループ: ${currentTask.groupId}`);
+        return; // グループが完了していない場合は次の列を開始しない
+      }
+      this.logger.log(`[StreamProcessor] 3種類AIグループ完了確認: ${column}${row}, グループ: ${currentTask.groupId}`);
+    }
+    
     const nextColumn = this.getNextColumn(column);
     if (!nextColumn) {
       this.logger.log(`[StreamProcessor] 次の列なし: ${column}列が最後`);
@@ -951,6 +975,73 @@ class StreamProcessor {
   shouldStartNextColumn(column, row) {
     // 並列ストリーミングでは checkAndStartNextColumnForRow を使用
     return false;
+  }
+
+  /**
+   * 3種類AIグループが完了しているかチェック
+   * @param {string} groupId - グループID
+   * @param {number} row - 行番号
+   * @returns {boolean} グループが完了しているか
+   */
+  isGroupComplete(groupId, row) {
+    const trackerKey = `${groupId}_${row}`;
+    const tracker = this.groupCompletionTracker.get(trackerKey);
+    
+    if (!tracker) {
+      // 追跡対象外（単独AIなど）は完了扱い
+      return true;
+    }
+    
+    // すべての必要なAIが完了しているか確認
+    for (const requiredAI of tracker.required) {
+      if (!tracker.completed.has(requiredAI)) {
+        this.logger.log(`[StreamProcessor] グループ未完了: ${trackerKey}, 待機中: ${requiredAI}`);
+        return false;
+      }
+    }
+    
+    this.logger.log(`[StreamProcessor] グループ完了: ${trackerKey}`);
+    return true;
+  }
+
+  /**
+   * 3種類AIグループの完了状況を初期化
+   * @param {Object} task - タスク
+   */
+  initializeGroupTracking(task) {
+    if (!task.multiAI || !task.groupId) {
+      return; // 3種類AIグループでない場合はスキップ
+    }
+    
+    const trackerKey = `${task.groupId}_${task.row}`;
+    
+    if (!this.groupCompletionTracker.has(trackerKey)) {
+      // 初回のみトラッカーを作成
+      this.groupCompletionTracker.set(trackerKey, {
+        required: new Set(['chatgpt', 'claude', 'gemini']),
+        completed: new Set()
+      });
+      this.logger.log(`[StreamProcessor] グループトラッカー初期化: ${trackerKey}`);
+    }
+  }
+
+  /**
+   * 3種類AIグループのタスク完了を記録
+   * @param {Object} task - 完了したタスク
+   */
+  updateGroupCompletion(task) {
+    if (!task.multiAI || !task.groupId) {
+      return; // 3種類AIグループでない場合はスキップ
+    }
+    
+    const trackerKey = `${task.groupId}_${task.row}`;
+    const tracker = this.groupCompletionTracker.get(trackerKey);
+    
+    if (tracker) {
+      // タスクのAIタイプを完了に追加
+      tracker.completed.add(task.aiType);
+      this.logger.log(`[StreamProcessor] グループ進捗更新: ${trackerKey}, 完了: ${task.aiType}, 状況: ${tracker.completed.size}/${tracker.required.size}`);
+    }
   }
 
   /**
