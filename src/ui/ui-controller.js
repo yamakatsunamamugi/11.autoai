@@ -3197,6 +3197,184 @@ if (showAIStatusBtn) {
 
 // テスト実行関数（別ウィンドウ版）
 
+// ===== ログビューアー機能 =====
+class LogViewer {
+  constructor() {
+    this.logs = [];
+    this.currentCategory = 'all';
+    this.port = null;
+    this.initElements();
+    this.connectToBackground();
+    this.attachEventListeners();
+  }
+  
+  initElements() {
+    this.container = document.getElementById('log-container');
+    this.tabs = document.querySelectorAll('.log-tab');
+    this.clearBtn = document.getElementById('btn-clear-logs');
+    this.copyBtn = document.getElementById('btn-copy-logs');
+  }
+  
+  connectToBackground() {
+    // background.jsのLogManagerに接続
+    this.port = chrome.runtime.connect({ name: 'log-viewer' });
+    
+    // メッセージリスナー
+    this.port.onMessage.addListener((msg) => {
+      if (msg.type === 'log') {
+        this.addLog(msg.data);
+      } else if (msg.type === 'logs-batch') {
+        this.logs = msg.data || [];
+        this.renderLogs();
+      } else if (msg.type === 'clear') {
+        if (!msg.category || msg.category === this.currentCategory || this.currentCategory === 'all') {
+          this.logs = this.logs.filter(log => {
+            if (!msg.category) return false;
+            if (msg.category === 'error') return log.level !== 'error';
+            if (msg.category === 'system') return log.category !== 'system';
+            return log.ai !== msg.category;
+          });
+          this.renderLogs();
+        }
+      }
+    });
+    
+    // 既存のログを取得
+    this.port.postMessage({ type: 'get-logs' });
+  }
+  
+  attachEventListeners() {
+    // タブ切り替え
+    this.tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        this.tabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        this.currentCategory = tab.dataset.category;
+        this.renderLogs();
+      });
+    });
+    
+    // クリアボタン
+    if (this.clearBtn) {
+      this.clearBtn.addEventListener('click', () => {
+        const category = this.currentCategory === 'all' ? null : this.currentCategory;
+        this.port.postMessage({ type: 'clear', category });
+      });
+    }
+    
+    // コピーボタン
+    if (this.copyBtn) {
+      this.copyBtn.addEventListener('click', () => {
+        this.copyLogs();
+      });
+    }
+  }
+  
+  addLog(logEntry) {
+    this.logs.push(logEntry);
+    if (this.shouldShowLog(logEntry)) {
+      this.appendLogEntry(logEntry);
+    }
+  }
+  
+  shouldShowLog(log) {
+    if (this.currentCategory === 'all') return true;
+    if (this.currentCategory === 'error') return log.level === 'error';
+    if (this.currentCategory === 'system') return log.category === 'system';
+    if (this.currentCategory === 'chatgpt') return log.ai === 'ChatGPT' || log.ai === 'chatgpt';
+    if (this.currentCategory === 'claude') return log.ai === 'Claude' || log.ai === 'claude';
+    if (this.currentCategory === 'gemini') return log.ai === 'Gemini' || log.ai === 'gemini';
+    return false;
+  }
+  
+  renderLogs() {
+    if (!this.container) return;
+    
+    const filteredLogs = this.logs.filter(log => this.shouldShowLog(log));
+    
+    if (filteredLogs.length === 0) {
+      this.container.innerHTML = '<div class="log-empty">ログがまだありません</div>';
+      return;
+    }
+    
+    this.container.innerHTML = '';
+    filteredLogs.forEach(log => this.appendLogEntry(log));
+    
+    // 最新のログまでスクロール
+    this.container.scrollTop = this.container.scrollHeight;
+  }
+  
+  appendLogEntry(log) {
+    if (!this.container) return;
+    
+    // 空メッセージチェックを削除
+    if (this.container.querySelector('.log-empty')) {
+      this.container.innerHTML = '';
+    }
+    
+    const entry = document.createElement('div');
+    entry.className = `log-entry log-${log.level || 'info'}`;
+    
+    // タイムスタンプ
+    const timestamp = new Date(log.timestamp).toLocaleTimeString('ja-JP');
+    const timestampSpan = document.createElement('span');
+    timestampSpan.className = 'log-timestamp';
+    timestampSpan.textContent = timestamp;
+    
+    // ソース/AI名
+    if (log.ai || log.source) {
+      const sourceSpan = document.createElement('span');
+      sourceSpan.className = 'log-source';
+      sourceSpan.textContent = `[${log.ai || log.source}]`;
+      entry.appendChild(sourceSpan);
+    }
+    
+    entry.appendChild(timestampSpan);
+    
+    // メッセージ
+    const messageSpan = document.createElement('span');
+    messageSpan.textContent = ` ${log.message}`;
+    entry.appendChild(messageSpan);
+    
+    this.container.appendChild(entry);
+    
+    // 最新のログまでスクロール
+    this.container.scrollTop = this.container.scrollHeight;
+  }
+  
+  copyLogs() {
+    const filteredLogs = this.logs.filter(log => this.shouldShowLog(log));
+    
+    if (filteredLogs.length === 0) {
+      showFeedback('コピーするログがありません', 'warning');
+      return;
+    }
+    
+    const text = filteredLogs.map(log => {
+      const timestamp = new Date(log.timestamp).toLocaleString('ja-JP');
+      const source = log.ai || log.source || '';
+      return `[${timestamp}] ${source ? `[${source}] ` : ''}${log.message}`;
+    }).join('\n');
+    
+    navigator.clipboard.writeText(text).then(() => {
+      showFeedback('ログをコピーしました', 'success');
+      
+      // ボタンのフィードバック
+      const originalText = this.copyBtn.textContent;
+      this.copyBtn.textContent = '✓ コピー済み';
+      setTimeout(() => {
+        this.copyBtn.textContent = originalText;
+      }, 2000);
+    }).catch(err => {
+      showFeedback('コピーに失敗しました', 'error');
+      console.error('Failed to copy logs:', err);
+    });
+  }
+}
+
+// ログビューアーのインスタンスを作成
+let logViewer = null;
+
 // ===== 初期化処理 =====
 // 初回のAIステータスを更新
 updateAIStatus();
@@ -3209,6 +3387,12 @@ const firstUrlRow = document.querySelector('.url-input-row');
 if (firstUrlRow) {
   attachUrlRowEventListeners(firstUrlRow);
 }
+
+// ログビューアーを初期化
+logViewer = new LogViewer();
+
+// UI初期化完了を通知（LogManagerは後でポート経由でログを受信）
+console.log('📝 ログビューアー初期化完了');
 
 // ===== URLボタンのイベントリスナー（旧実装の削除） =====
 // 以下のquickSaveBtn関連は新実装では不要

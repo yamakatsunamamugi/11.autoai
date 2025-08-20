@@ -190,6 +190,9 @@ class TaskAdapter {
           prompt: prompt,
           aiType: aiType,
           taskType: 'ai',
+          // テストモード用設定：AI実行をスキップ
+          waitResponse: false,
+          getResponse: false,
           preferredPosition: windowPositions[aiIndex],
           groupId: `test_group_${aiType}_${promptColumn}`,
           groupInfo: {
