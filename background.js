@@ -335,48 +335,21 @@ function processSpreadsheetData(spreadsheetData) {
       console.log(`[Background] 列${columnLetter}: メニュー="${trimmedHeader}", AI="${aiValue}"`);
     }
     
-    // プロンプト列の検出 - より柔軟に
-    if (trimmedHeader === "プロンプト" || trimmedHeader.includes("プロンプト")) {
+    // プロンプト列の検出（プロンプト2等は除外）
+    if (trimmedHeader === "プロンプト") {
       // AI行の値を確認して3種類AIレイアウトを検出
       let aiType = null;
       
-      // 3種類レイアウトのチェック（AI行に"3種類"がある場合）
-      const nextAiValue = aiRow[index + 1] ? aiRow[index + 1].trim() : "";
-      if (nextAiValue === "3種類") {
+      // AI行の現在の列の値をチェック（3種類の文字が含まれているか）
+      if (aiValue.includes("3種類")) {
         aiType = "3type";
-        console.log(`[Background] 3種類AIレイアウト検出: ${columnLetter}列`);
+        console.log(`[Background] 3種類AIレイアウト検出（AI行から）: ${columnLetter}列, AI値="${aiValue}"`);
       }
-      // メニュー行が"プロンプト"で、次の3列がChatGPT、Claude、Geminiを含む場合
-      else if (trimmedHeader === "プロンプト" || trimmedHeader.includes("プロンプト")) {
-        const nextHeaders = [
-          menuRow[index + 1],
-          menuRow[index + 2],
-          menuRow[index + 3]
-        ];
-        
-        console.log(`[Background] 次の列をチェック:`, nextHeaders);
-        
-        if ((nextHeaders[0] && nextHeaders[0].includes("ChatGPT") &&
-             nextHeaders[1] && nextHeaders[1].includes("Claude") && 
-             nextHeaders[2] && nextHeaders[2].includes("Gemini")) ||
-            (nextHeaders[0] && nextHeaders[0].includes("回答") &&
-             nextHeaders[1] && nextHeaders[1].includes("回答") &&
-             nextHeaders[2] && nextHeaders[2].includes("回答"))) {
-          aiType = "3type";
-          console.log(`[Background] メニュー行から3種類AIレイアウト検出: ${columnLetter}列`);
-        } else {
-          // デフォルトでプロンプト列は登鞂（単独AI扱い）
-          aiType = "single";
-          console.log(`[Background] 単独AIプロンプト列として検出: ${columnLetter}列`);
-        }
-      }
-      // 個別AIのチェック（メニュー行から）
-      else if (trimmedHeader.startsWith("ChatGPT ")) {
-        aiType = "chatgpt";
-      } else if (trimmedHeader.startsWith("Claude ")) {
-        aiType = "claude";
-      } else if (trimmedHeader.startsWith("Gemini ")) {
-        aiType = "gemini";
+      // 単独AIの場合
+      else if (aiValue) {
+        // AI行に値がある場合は単独AI
+        aiType = "single";
+        console.log(`[Background] 単独AIプロンプト列として検出: ${columnLetter}列, AI値="${aiValue}"`);
       }
       
       if (aiType) {
@@ -385,7 +358,7 @@ function processSpreadsheetData(spreadsheetData) {
           letter: columnLetter,
           header: trimmedHeader,
           type: aiType,
-          promptDescription: trimmedHeader === "プロンプト" ? "" : trimmedHeader.split(" ").slice(1).join(" ")
+          promptDescription: ""
         };
         console.log(`[Background] AI列として登録: ${columnLetter}列 (${aiType})`);
       }

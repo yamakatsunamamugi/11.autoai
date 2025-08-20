@@ -892,21 +892,59 @@ class StreamProcessor {
 
   /**
    * 記載完了後、次の列の同じ行を開始できるかチェック
-   * @param {string} column - 記載が完了した列
-   * @param {number} row - 記載が完了した行
+   * 
+   * ■ 3種類AI完了待機機能の核心部分
+   * このメソッドは、タスクがスプレッドシートに記載された後に呼ばれ、
+   * 次の列の処理を開始するかどうかを判定します。
+   * 
+   * 【重要】3種類AI（ChatGPT・Claude・Gemini）の場合：
+   * - 3つすべての回答が記載完了するまで、次の列の開始をブロック
+   * - これにより、3種類の結果が揃ってから次の処理に進むことを保証
+   * 
+   * @param {string} column - 記載が完了した列（例: "F", "G", "H"）
+   * @param {number} row - 記載が完了した行（例: 9）
    */
   async checkAndStartNextColumnForRow(column, row) {
-    // まず、現在のタスクが3種類AIグループの一部かチェック
+    // ======= STEP 1: 現在のタスク情報を取得 =======
+    // 現在の列のタスクキューから、該当行のタスクを探す
     const currentColumnTasks = this.taskQueue.get(column);
     const currentTask = currentColumnTasks?.find(t => t.row === row);
     
+    // ======= STEP 2: 3種類AIグループの完了待機チェック =======
+    // multiAI=true かつ groupIdがある場合、3種類AIグループの一部
     if (currentTask?.multiAI && currentTask?.groupId) {
-      // 3種類AIグループの場合、グループ完了をチェック
-      if (!this.isGroupComplete(currentTask.groupId, row)) {
-        this.logger.log(`[StreamProcessor] 3種類AI未完了のため次列開始を保留: ${column}${row}, グループ: ${currentTask.groupId}`);
-        return; // グループが完了していない場合は次の列を開始しない
+      /*
+       * 【3種類AI完了待機の仕組み】
+       * 
+       * 1. getGroupAnswerColumns()で同じグループの全回答列を取得
+       *    例: groupId="group_row9_3type_3" → ["F", "G", "H"]
+       * 
+       * 2. writtenCells Mapを使って、全列が記載済みかチェック
+       *    - writtenCells.has("F9") → ChatGPT記載済み？
+       *    - writtenCells.has("G9") → Claude記載済み？
+       *    - writtenCells.has("H9") → Gemini記載済み？
+       * 
+       * 3. 1つでも未記載があれば、次列の開始をブロック
+       *    これにより3種類すべての結果が揃うまで待機
+       */
+      
+      // 同じグループIDを持つ全タスクの列を取得（例: F,G,H列）
+      const answerColumns = this.getGroupAnswerColumns(currentTask.groupId, row);
+      
+      // 全列が記載完了しているかチェック（記載完了ベースの判定）
+      const allWritten = answerColumns.every(col => 
+        this.writtenCells.has(`${col}${row}`)
+      );
+      
+      if (!allWritten) {
+        // まだ記載されていない列がある場合
+        const writtenColumns = answerColumns.filter(col => this.writtenCells.has(`${col}${row}`));
+        this.logger.log(`[StreamProcessor] 3種類AI記載未完了: ${writtenColumns.length}/${answerColumns.length}列完了 (${column}${row})`);
+        return; // ★ ここで次列開始をブロック ★
       }
-      this.logger.log(`[StreamProcessor] 3種類AIグループ完了確認: ${column}${row}, グループ: ${currentTask.groupId}`);
+      
+      // 全列記載完了の場合のみ、次の処理へ進む
+      this.logger.log(`[StreamProcessor] 3種類AI全列記載完了確認: ${column}${row}`);
     }
     
     const nextColumn = this.getNextColumn(column);
@@ -975,6 +1013,50 @@ class StreamProcessor {
   shouldStartNextColumn(column, row) {
     // 並列ストリーミングでは checkAndStartNextColumnForRow を使用
     return false;
+  }
+
+  /**
+   * 3種類AIグループの回答列を取得
+   * 
+   * ■ このメソッドの役割
+   * 指定されたグループIDに属する全ての回答列を返します。
+   * 3種類AIの場合、同じgroupIdを持つ3つのタスク（ChatGPT, Claude, Gemini）の
+   * 列を配列として返します。
+   * 
+   * 【例】
+   * - グループ1（D-E列のプロンプト）: groupId="group_row9_3type_3"
+   *   → 返り値: ["F", "G", "H"]（ChatGPT, Claude, Gemini列）
+   * 
+   * - グループ2（J-K列のプロンプト）: groupId="group_row9_3type_9"
+   *   → 返り値: ["L", "M", "N"]（ChatGPT, Claude, Gemini列）
+   * 
+   * 【重要】複数の3種類AIグループがある場合も正しく分離
+   * groupIdでフィルタリングするため、各グループは独立して管理されます。
+   * 
+   * @param {string} groupId - グループID（例: "group_row9_3type_3"）
+   * @param {number} row - 行番号（例: 9）
+   * @returns {string[]} 回答列の配列（例: ["F", "G", "H"]）
+   */
+  getGroupAnswerColumns(groupId, row) {
+    // タスクキューの全エントリをループ
+    // taskQueue: Map { "F" => [tasks], "G" => [tasks], ... }
+    const columns = [];
+    for (const [column, tasks] of this.taskQueue.entries()) {
+      // この列のタスクの中から、指定されたgroupIdと行に一致するものを探す
+      const groupTask = tasks.find(t => 
+        t.groupId === groupId &&  // 同じグループID
+        t.row === row             // 同じ行
+      );
+      
+      if (groupTask) {
+        // 一致するタスクがあれば、その列を結果に追加
+        columns.push(column);
+      }
+    }
+    
+    // デバッグ用ログ: どの列が同じグループに属するか表示
+    this.logger.log(`[StreamProcessor] グループ${groupId}の回答列: ${columns.join(', ')}`);
+    return columns;
   }
 
   /**

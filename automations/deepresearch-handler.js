@@ -48,12 +48,55 @@
             // 自動返信メッセージ
             autoReplyMessage: '良いからさきほどの質問を確認して作業して',
             // AI名（ログ用）
-            aiName: 'ChatGPT'
+            aiName: 'ChatGPT',
+            // メッセージセレクタ（メッセージ数カウント用）
+            messageSelector: '[data-message-author-role]',
+            // 停止ボタンセレクタ
+            stopButtonSelectors: [
+                'button[aria-label*="Stop"]',
+                'button[aria-label*="停止"]',
+                'button svg.icon-stop',
+                'button[data-testid="stop-button"]'
+            ],
+            // 入力欄セレクタ
+            inputSelectors: [
+                '#prompt-textarea',
+                '[contenteditable="true"]',
+                '.ProseMirror',
+                'textarea[data-testid="conversation-textarea"]'
+            ],
+            // 送信ボタンセレクタ
+            sendButtonSelectors: [
+                'button[data-testid="send-button"]',
+                'button[aria-label*="Send"]',
+                'button[aria-label*="送信"]'
+            ]
         },
         
         Claude: {
             autoReplyMessage: '良いからさきほどの質問を確認して作業して',
-            aiName: 'Claude'
+            aiName: 'Claude',
+            // メッセージセレクタ
+            messageSelector: '[data-test-id^="message"]',
+            // 停止ボタンセレクタ
+            stopButtonSelectors: [
+                'button[aria-label*="Stop"]',
+                'button[aria-label*="停止"]',
+                'button:has(svg[class*="stop"])',
+                '[data-stop-button="true"]'
+            ],
+            // 入力欄セレクタ
+            inputSelectors: [
+                '.ProseMirror[contenteditable="true"]',
+                'div[contenteditable="true"][role="textbox"]',
+                '[aria-label*="プロンプト"]'
+            ],
+            // 送信ボタンセレクタ  
+            sendButtonSelectors: [
+                'button[aria-label*="Send"]',
+                'button[aria-label*="送信"]',
+                'button:has(svg[class*="send"])'
+            ]
         },
         
         Gemini: {
@@ -65,7 +108,16 @@
                 'button[aria-label*="リサーチ"]',
                 'button[class*="research"]'
             ],
-            aiName: 'Gemini'
+            aiName: 'Gemini',
+            // メッセージセレクタ
+            messageSelector: '.message-content',
+            // 停止ボタンセレクタ
+            stopButtonSelectors: [
+                'button[aria-label*="Stop"]',
+                'button[aria-label*="停止"]',
+                'button[jsname*="stop"]',
+                '.stop-button'
+            ]
         }
     };
 
@@ -73,12 +125,26 @@
     // セレクタ取得関数
     // ========================================
     function getSelectors(aiName, selectorType) {
-        // UI_SELECTORSが読み込まれていれば使用
+        // まずAI_CONFIGSから取得を試みる
+        const config = AI_CONFIGS[aiName];
+        if (config) {
+            switch(selectorType) {
+                case 'STOP_BUTTON':
+                    return config.stopButtonSelectors || [];
+                case 'INPUT':
+                    return config.inputSelectors || [];
+                case 'SEND_BUTTON':
+                    return config.sendButtonSelectors || [];
+                case 'MESSAGE':
+                    return config.messageSelector ? [config.messageSelector] : [];
+            }
+        }
+        
+        // UI_SELECTORSが読み込まれていれば使用（フォールバック）
         if (UI_SELECTORS && UI_SELECTORS[aiName]) {
             return UI_SELECTORS[aiName][selectorType] || [];
         }
         
-        // フォールバックは削除 - UI_SELECTORSのみを使用
         return [];
     }
 
@@ -142,8 +208,9 @@
             let hasRespondedGemini = false;  // Gemini専用フラグ
             
             // 最初の5分間、質問を監視
-            log('🔍 最初の5分間、質問を監視中...', 'INFO', aiName);
+            log('🔍 最初の5分間、停止ボタンの出現と消滅を監視中...', 'INFO', aiName);
             log(`📊 初期メッセージ数: ${lastMessageCount}`, 'DEBUG', aiName);
+            console.log(`[DeepResearch] ${aiName} 監視開始 - メッセージセレクタ: ${config.messageSelector}`);
             const startTime = Date.now();
             const fiveMinutes = 5 * 60 * 1000;
             let loopCount = 0;
@@ -168,16 +235,27 @@
                 // 停止ボタンの状態をチェック
                 let stopButton = null;
                 const stopSelectors = getSelectors(aiName, 'STOP_BUTTON');
+                console.log(`[DeepResearch] ${aiName} 停止ボタンセレクタ: ${stopSelectors.join(', ')}`);
                 for (const selector of stopSelectors) {
                     if (selector) {
-                        stopButton = document.querySelector(selector);
-                        if (stopButton) {
-                            hasSeenStopButton = true;  // 停止ボタンを検出したことを記録
-                            // 初回検出時のみログ
-                            if (previousStopButtonState === null || previousStopButtonState === false) {
-                                log(`🛑 停止ボタン検出: ${selector}`, 'DEBUG', aiName);
+                        try {
+                            const elements = document.querySelectorAll(selector);
+                            for (const elem of elements) {
+                                // 要素が表示されているか確認
+                                if (elem && elem.offsetParent !== null) {
+                                    stopButton = elem;
+                                    hasSeenStopButton = true;  // 停止ボタンを検出したことを記録
+                                    // 初回検出時のみログ
+                                    if (previousStopButtonState === null || previousStopButtonState === false) {
+                                        log(`🛑 停止ボタン検出: ${selector}`, 'SUCCESS', aiName);
+                                        console.log(`[DeepResearch] ${aiName} 停止ボタン要素:`, stopButton);
+                                    }
+                                    break;
+                                }
                             }
-                            break;
+                            if (stopButton) break;
+                        } catch (e) {
+                            console.log(`[DeepResearch] セレクタエラー: ${selector}`, e);
                         }
                     }
                 }
@@ -187,10 +265,13 @@
                     // 停止ボタンの状態変化を検出
                     if (previousStopButtonState === true && !stopButton && !hasResponded) {
                         // 停止ボタンがあった → なくなった
-                        log(`✅ ${aiName}の停止ボタンが消滅しました（5分以内）`, 'SUCCESS', aiName);
+                        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+                        log(`✅ ${aiName}の停止ボタンが消滅しました（${elapsed}秒経過）`, 'SUCCESS', aiName);
+                        console.log(`[DeepResearch] ${aiName} 停止ボタン消滅を検出 - 自動返信を実行`);
                         log(`📝 自動返信を実行します`, 'INFO', aiName);
                         await handleAutoReply(config, utils);
                         hasResponded = true;
+                        log(`✅ 自動返信完了、DeepResearch処理の継続を待機`, 'SUCCESS', aiName);
                         // breakを削除 - 5分間のループを継続
                     }
                 }
@@ -199,7 +280,9 @@
                 if (aiType === 'Gemini') {
                     // 停止ボタンの状態変化を検出（あった → なくなった）
                     if (previousStopButtonState === true && !stopButton && !hasRespondedGemini) {
-                        log(`✅ ${aiName}の停止ボタンが消滅しました（5分以内）`, 'SUCCESS', aiName);
+                        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+                        log(`✅ ${aiName}の停止ボタンが消滅しました（${elapsed}秒経過）`, 'SUCCESS', aiName);
+                        console.log(`[DeepResearch] ${aiName} 停止ボタン消滅を検出 - リサーチボタンを探索`);
                         log(`🔍 2秒待機してから「リサーチを開始」ボタンを探します`, 'INFO', aiName);
                         
                         // 画面更新を待つ（重要）
