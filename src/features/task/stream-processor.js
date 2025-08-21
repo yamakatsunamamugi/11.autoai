@@ -3,6 +3,7 @@
 // ReportManagerを動的にインポート
 // Chrome拡張機能環境でのES6モジュール制限のため動的インポートを使用
 let ReportManager = null;
+let SpreadsheetLogger = null;
 
 async function getReportManager() {
   if (!ReportManager) {
@@ -16,6 +17,29 @@ async function getReportManager() {
     }
   }
   return ReportManager;
+}
+
+async function getSpreadsheetLogger() {
+  if (!SpreadsheetLogger) {
+    try {
+      // Service Worker環境では動的インポートが使用できないため、
+      // グローバルに登録されたSpreadsheetLoggerを取得
+      if (globalThis.SpreadsheetLogger) {
+        SpreadsheetLogger = globalThis.SpreadsheetLogger;
+        console.log('[StreamProcessor] グローバルからSpreadsheetLoggerを取得しました');
+      } else if (globalThis.spreadsheetLogger) {
+        SpreadsheetLogger = globalThis.spreadsheetLogger.constructor;
+        console.log('[StreamProcessor] グローバルインスタンスからSpreadsheetLoggerクラスを取得しました');
+      } else {
+        console.warn('[StreamProcessor] SpreadsheetLoggerがグローバルに見つかりません');
+        return null;
+      }
+    } catch (error) {
+      console.warn('[StreamProcessor] SpreadsheetLoggerの取得に失敗', error);
+      return null;
+    }
+  }
+  return SpreadsheetLogger;
 }
 
 /**
@@ -64,6 +88,10 @@ class StreamProcessor {
     this.logger = dependencies.logger || console;
     
     // DynamicConfigManager削除 - スプレッドシート設定を直接使用するため不要
+    
+    // SpreadsheetLoggerのインスタンスを初期化
+    this.spreadsheetLogger = null;
+    this.initializeSpreadsheetLogger();
 
     // ウィンドウ管理状態
     this.activeWindows = new Map(); // windowId -> windowInfo
@@ -91,6 +119,24 @@ class StreamProcessor {
     
     // 3種類AI実行制御
     this.activeThreeTypeGroupId = null; // 実行中の3種類AIグループID
+  }
+
+  /**
+   * SpreadsheetLoggerを非同期で初期化
+   */
+  async initializeSpreadsheetLogger() {
+    try {
+      const LoggerClass = await getSpreadsheetLogger();
+      if (LoggerClass) {
+        this.spreadsheetLogger = globalThis.spreadsheetLogger || new LoggerClass(this.logger);
+        if (!globalThis.spreadsheetLogger) {
+          globalThis.spreadsheetLogger = this.spreadsheetLogger;
+        }
+        this.logger.log('[StreamProcessor] SpreadsheetLoggerを初期化しました');
+      }
+    } catch (error) {
+      this.logger.warn('[StreamProcessor] SpreadsheetLogger初期化エラー:', error.message);
+    }
   }
 
   /**
@@ -353,15 +399,20 @@ class StreamProcessor {
     // 3種類AIグループの追跡を初期化
     this.initializeGroupTracking(task);
 
+    const cellPosition = `${task.column}${task.row}`;
+    
     this.logger.log(
-      `[StreamProcessor] タスク実行: ${task.column}${task.row} (Window: ${windowId})`,
+      `[StreamProcessor] 📍 タスク実行: ${cellPosition}セル (Window: ${windowId})`,
       {
+        セル: cellPosition,
         taskAiType: task.aiType,
         windowAiType: windowInfo.aiType,
         taskId: task.id,
         prompt: task.prompt?.substring(0, 50) + '...',
         multiAI: task.multiAI,
-        groupId: task.groupId
+        groupId: task.groupId,
+        column: task.column,
+        row: task.row
       }
     );
 
@@ -426,11 +477,17 @@ class StreamProcessor {
         }
       }, null);
 
+      const cellPosition = `${task.column}${task.row}`;
+      
       this.logger.log(
-        `[StreamProcessor] タスク完了: ${task.column}${task.row}`,
+        `[StreamProcessor] ✅ タスク完了: ${cellPosition}セル`,
         {
+          セル: cellPosition,
           aiType: result.aiType,
           responseLength: result.response?.length || 0,
+          column: task.column,
+          row: task.row,
+          taskId: task.id
         },
       );
 
@@ -497,12 +554,17 @@ class StreamProcessor {
    */
   async onTaskCompleted(task, windowId, result = {}) {
     const { column, row, id: taskId } = task;
+    const cellPosition = `${column}${row}`;
 
-    this.logger.log(`[StreamProcessor] 🎯 onTaskCompleted開始: ${column}${row}`, {
+    this.logger.log(`[StreamProcessor] 🎯 タスク完了処理開始: ${cellPosition}セル`, {
+      セル: cellPosition,
       result: result.success ? "success" : "failed",
       skipped: result.skipped || false,
       windowId: windowId,
-      hasResponse: !!result.response
+      hasResponse: !!result.response,
+      column: column,
+      row: row,
+      taskId: taskId
     });
 
     // タスクを完了済みにマーク
@@ -512,15 +574,15 @@ class StreamProcessor {
     if (result.success && result.response && task.taskType === "ai") {
       if (this.outputTarget === 'log') {
         // ログ出力モード：ログに表示のみ
-        this.logger.log(`[StreamProcessor] ログ出力: ${task.column}${task.row} -> ${result.response.substring(0, 100)}...`);
+        this.logger.log(`[StreamProcessor] ログ出力: ${cellPosition}セル -> ${result.response.substring(0, 100)}...`);
       } else if (this.outputTarget === 'spreadsheet') {
         // スプレッドシート出力モード：スプレッドシートに書き込み（同期実行で完了を待つ）
-        this.logger.log(`[StreamProcessor] スプレッドシート出力: ${task.column}${task.row} -> ${result.response.substring(0, 100)}...`);
+        this.logger.log(`[StreamProcessor] スプレッドシート出力: ${cellPosition}セル -> ${result.response.substring(0, 100)}...`);
         
         try {
           // スプレッドシート書き込みを同期で実行（awaitで完了を待つ）
           await this.writeResultToSpreadsheet(task, result);
-          this.logger.log(`[StreamProcessor] 📝 スプレッドシートに書き込み完了: ${task.column}${task.row}`);
+          this.logger.log(`[StreamProcessor] 📝 スプレッドシートに書き込み完了: ${cellPosition}セル`);
         } catch (error) {
           this.logger.error(`[StreamProcessor] ❌ 結果の保存エラー`, error);
           // エラーが発生してもタスク処理は継続
@@ -579,6 +641,7 @@ class StreamProcessor {
       const answerColumn = task.column;
       const range = `${answerColumn}${task.row}`;
 
+      // 応答を書き込み
       await globalThis.sheetsClient.updateCell(
         spreadsheetId,
         range,
@@ -587,6 +650,29 @@ class StreamProcessor {
       );
 
       this.logger.log(`[StreamProcessor] 回答を書き込み: ${range}`);
+      
+      // ログを書き込み（SpreadsheetLoggerを使用）
+      if (this.spreadsheetLogger) {
+        try {
+          await this.spreadsheetLogger.writeLogToSpreadsheet(task, {
+            url: typeof window !== 'undefined' ? window.location.href : 'N/A',
+            sheetsClient: globalThis.sheetsClient,
+            spreadsheetId,
+            gid
+          });
+          this.logger.log(`[StreamProcessor] ログを書き込み: ${task.logColumns?.[0] || 'B'}${task.row}`);
+        } catch (logError) {
+          // ログ書き込みエラーは警告として記録し、処理は続行
+          this.logger.warn(
+            `[StreamProcessor] ログ書き込みエラー（処理は続行）`,
+            {
+              message: logError.message,
+              taskId: task.id,
+              row: task.row
+            }
+          );
+        }
+      }
       
       // ■ 記載完了を記録（並列ストリーミングの核心）
       const cellKey = `${task.column}${task.row}`;

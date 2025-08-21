@@ -13,6 +13,9 @@ import "./src/features/spreadsheet/sheets-client.js";
 import "./src/features/spreadsheet/docs-client.js";
 import "./src/features/spreadsheet/reader.js";
 
+// SpreadsheetLogger - Service Worker環境で利用するためグローバル設定
+import { SpreadsheetLogger } from "./src/features/logging/spreadsheet-logger.js";
+
 // Step 5 - タスク関連ファイル
 import "./src/features/task/generator.js";
 import TaskGenerator from "./src/features/task/generator.js";
@@ -48,6 +51,9 @@ globalThis.aiWindowManager = new TestWindowManager();
 
 // グローバルにAIタスクハンドラーを設定（StreamProcessorから直接アクセス可能にする）
 globalThis.aiTaskHandler = aiTaskHandler;
+
+// グローバルにSpreadsheetLoggerクラスを設定（Service Worker環境でのアクセス用）
+globalThis.SpreadsheetLogger = SpreadsheetLogger;
 
 // ===== ログマネージャー =====
 class LogManager {
@@ -460,6 +466,25 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       } else {
         console.error('Invalid LOG_AI_MESSAGE format:', request);
         sendResponse({ success: false, error: 'Invalid message format' });
+      }
+      return false; // 同期応答
+
+    // ===== セレクタ検出ログメッセージ受信 =====
+    case "SELECTOR_DETECTION_LOG":
+      if (request.log) {
+        const { timestamp, message, type, aiType } = request.log;
+        console.log(`[SelectorDetectionLog] [${timestamp}] [${aiType || 'SYSTEM'}] ${message}`);
+        
+        // LogManagerに送信（拡張機能UI用）
+        logManager.logAI(aiType || 'selector_detection', message, {
+          level: type === 'error' ? 'error' : 'info',
+          timestamp: timestamp,
+          category: 'selector_detection'
+        });
+        sendResponse({ success: true });
+      } else {
+        console.error('Invalid SELECTOR_DETECTION_LOG format:', request);
+        sendResponse({ success: false, error: 'Invalid log format' });
       }
       return false; // 同期応答
 
@@ -879,6 +904,111 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       })();
       return true;
 
+    // ===== リトライ用新規ウィンドウ作成 =====
+    case "RETRY_WITH_NEW_WINDOW":
+      console.log("[MessageHandler] リトライ用新規ウィンドウ作成要求:", {
+        taskId: request.taskId,
+        aiType: request.aiType,
+        error: request.error
+      });
+      
+      (async () => {
+        try {
+          // AIタイプに応じたURLを決定
+          const aiUrls = {
+            'ChatGPT': 'https://chatgpt.com',
+            'Claude': 'https://claude.ai',
+            'Gemini': 'https://gemini.google.com'
+          };
+          
+          const url = aiUrls[request.aiType] || aiUrls['Claude'];
+          
+          // 新規ウィンドウを作成
+          const window = await chrome.windows.create({
+            url: url,
+            type: "normal",
+            state: "normal",
+            focused: true
+          });
+          
+          const tabs = await chrome.tabs.query({ windowId: window.id });
+          const newTabId = tabs[0]?.id;
+          
+          if (newTabId) {
+            // 新規タブでページ読み込み完了を待つ
+            setTimeout(async () => {
+              try {
+                // 新規タブでタスクを再実行
+                const response = await chrome.tabs.sendMessage(newTabId, {
+                  action: "EXECUTE_RETRY_TASK",
+                  taskId: request.taskId,
+                  prompt: request.prompt,
+                  enableDeepResearch: request.enableDeepResearch,
+                  specialMode: request.specialMode,
+                  isRetry: true,
+                  originalError: request.error
+                });
+                
+                // 元のタブに結果を通知
+                if (sender.tab?.id) {
+                  chrome.tabs.sendMessage(sender.tab.id, {
+                    action: "RETRY_RESULT",
+                    taskId: request.taskId,
+                    ...response
+                  });
+                }
+                
+                sendResponse({
+                  success: true,
+                  windowId: window.id,
+                  tabId: newTabId,
+                  message: "リトライタスクを開始しました"
+                });
+              } catch (error) {
+                console.error("[MessageHandler] リトライタスク実行エラー:", error);
+                sendResponse({
+                  success: false,
+                  error: error.message
+                });
+              }
+            }, 5000); // ページ読み込みを待つ
+          } else {
+            throw new Error("新規タブIDが取得できません");
+          }
+        } catch (error) {
+          console.error("[MessageHandler] リトライウィンドウ作成エラー:", error);
+          sendResponse({
+            success: false,
+            error: error.message
+          });
+        }
+      })();
+      return true;
+    
+    // ===== リトライ通知 =====
+    case "RETRY_NOTIFICATION":
+      console.log("[MessageHandler] リトライ通知:", request.data);
+      
+      // UIタブに通知を転送
+      (async () => {
+        try {
+          const tabs = await chrome.tabs.query({});
+          for (const tab of tabs) {
+            if (tab.url && tab.url.includes('ui-controller.html')) {
+              await chrome.tabs.sendMessage(tab.id, {
+                action: "showRetryNotification",
+                data: request.data
+              }).catch(() => {});
+            }
+          }
+          sendResponse({ success: true });
+        } catch (error) {
+          console.error("[MessageHandler] リトライ通知エラー:", error);
+          sendResponse({ success: false, error: error.message });
+        }
+      })();
+      return true;
+
     // ===== AITaskHandlerログ設定 =====
     // test-runner-chrome.jsからのログ関数設定要求
     case "setAITaskLogger":
@@ -908,6 +1038,79 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         success: true, 
         message: "AITaskHandlerログ設定完了" 
       });
+      return false;
+
+    // ===== セレクタデータ転送 =====
+    case "selector-data":
+      console.log("[MessageHandler] 📡 セレクタデータ受信:", {
+        from: sender.tab?.url,
+        tabId: sender.tab?.id,
+        aiTypes: Object.keys(request.data || {}),
+        timestamp: new Date().toLocaleTimeString()
+      });
+      
+      // UIウィンドウに転送
+      chrome.runtime.getContexts
+        ? chrome.runtime.getContexts({}).then(contexts => {
+            const uiWindow = contexts.find(ctx => 
+              ctx.documentUrl?.includes('ui.html') || 
+              ctx.documentUrl?.includes('ui-controller')
+            );
+            
+            // セレクタデータは直接処理（転送不要）
+            console.log("[MessageHandler] 📡 セレクタデータ受信:", {
+              from: sender.tab?.url,
+              tabId: sender.tab?.id,
+              dataKeys: Object.keys(request.data || {}),
+              timestamp: new Date().toLocaleTimeString()
+            });
+            
+            // LogManagerに記録
+            if (request.data) {
+              Object.entries(request.data).forEach(([aiType, data]) => {
+                logManager.logAI(aiType, `セレクタデータ更新: ${Object.keys(data).length}項目`, {
+                  level: 'info',
+                  category: 'selector_data'
+                });
+              });
+            }
+            
+            if (false) { // UIウィンドウへの転送を無効化
+              // ポートを使用して転送
+              if (uiPort) {
+                uiPort.postMessage({
+                  type: 'selector-data',
+                  data: request.data
+                });
+                console.log("[MessageHandler] ✅ ポート経由でセレクタデータを転送");
+              } else {
+                console.warn("[MessageHandler] ⚠️ UIウィンドウが見つかりません");
+              }
+            }
+          }).catch(err => {
+            console.error("[MessageHandler] getContextsエラー:", err);
+            // フォールバック: ポートを使用
+            if (uiPort) {
+              uiPort.postMessage({
+                type: 'selector-data',
+                data: request.data
+              });
+            }
+          })
+        : (() => {
+            // chrome.runtime.getContextsが使用できない場合
+            if (uiPort) {
+              uiPort.postMessage({
+                type: 'selector-data',
+                data: request.data
+              });
+              console.log("[MessageHandler] ✅ ポート経由でセレクタデータを転送");
+            } else {
+              console.warn("[MessageHandler] ⚠️ UIポートが利用できません");
+            }
+          })();
+      
+      sendResponse({ success: true, message: "セレクタデータ受信完了" });
       return false;
 
     // ===== スプレッドシートログクリア =====

@@ -75,7 +75,17 @@ export class AITaskHandler {
   async handleExecuteAITask(request, sender) {
     const { tabId, prompt, taskId, timeout = 180000, model, specialOperation, aiType, cellInfo } = request;
     
-    this.log(`[AITaskHandler] タスク実行開始: ${taskId}`);
+    const cellPosition = cellInfo?.column && cellInfo?.row 
+      ? `${cellInfo.column}${cellInfo.row}` 
+      : '不明';
+    
+    this.log(`[AITaskHandler] タスク実行開始 [${cellPosition}セル]: ${taskId}`, {
+      セル: cellPosition,
+      aiType: aiType || '未指定',
+      taskId,
+      column: cellInfo?.column,
+      row: cellInfo?.row
+    });
     this.log(`[AITaskHandler] タブID: ${tabId}, プロンプト: ${prompt ? prompt.substring(0, 50) : 'なし'}...`);
     
     // モデル・機能情報をログ出力
@@ -111,7 +121,12 @@ export class AITaskHandler {
       
       // ai-content-unified.jsで既に回答待機が完了しているため、
       // ここでは追加の待機は不要（sendResultに応答が含まれている）
-      this.log(`[AITaskHandler] タスク完了: ${taskId}`);
+      this.log(`[AITaskHandler] タスク完了 [${cellPosition}セル]: ${taskId}`, {
+        セル: cellPosition,
+        success: true,
+        responseLength: sendResult.response?.length || 0,
+        aiType: sendResult.aiType || 'unknown'
+      });
       
       return {
         success: true,

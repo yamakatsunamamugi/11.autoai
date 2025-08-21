@@ -32,7 +32,12 @@ export class AITaskExecutor {
    */
   async executeAITask(tabId, taskData) {
     const startTime = Date.now();
-    this.logger.log(`[AITaskExecutor] 🚀 AIタスク実行開始 [${taskData.aiType}]:`, {
+    const cellPosition = taskData.cellInfo?.column && taskData.cellInfo?.row 
+      ? `${taskData.cellInfo.column}${taskData.cellInfo.row}` 
+      : '不明';
+    
+    this.logger.log(`[AITaskExecutor] 🚀 AIタスク実行開始 [${cellPosition}セル] [${taskData.aiType}]:`, {
+      セル: cellPosition,
       tabId,
       taskId: taskData.taskId,
       model: taskData.model,
@@ -141,6 +146,14 @@ export class AITaskExecutor {
               console.log(`[ExecuteAITask] ⚡ ${taskData.aiType} 通常モード - 最大1分待機`);
             }
 
+            // グローバル変数に現在のタスク情報を設定（SpreadsheetLogger用）
+            window.currentAITaskInfo = {
+              taskId: taskData.taskId,
+              model: taskData.model,
+              aiType: taskData.aiType
+            };
+            console.log(`[ExecuteAITask] 📝 タスク情報をグローバル変数に設定:`, window.currentAITaskInfo);
+
             // 設定オブジェクト（統合テストと同じ形式）
             const config = {
               model: taskData.model,
@@ -167,6 +180,10 @@ export class AITaskExecutor {
                 executionTime: `${execTime}秒`,
                 error: result?.error
               });
+              
+              // タスク完了後、グローバル変数をクリア
+              window.currentAITaskInfo = null;
+              
               return result;
             } else {
               return { success: false, error: `${foundName}に適切な実行方法が見つかりません` };
@@ -184,16 +201,21 @@ export class AITaskExecutor {
       if (result && result[0] && result[0].result) {
         const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
         const resultData = result[0].result;
+        const cellPosition = taskData.cellInfo?.column && taskData.cellInfo?.row 
+          ? `${taskData.cellInfo.column}${taskData.cellInfo.row}` 
+          : '不明';
         
         if (resultData.success) {
-          this.logger.log(`[AITaskExecutor] ✅ [${taskData.aiType}] タスク完了:`, {
+          this.logger.log(`[AITaskExecutor] ✅ [${taskData.aiType}] タスク完了 [${cellPosition}セル]:`, {
+            セル: cellPosition,
             taskId: taskData.taskId,
             success: true,
             responseLength: resultData.response?.length || 0,
             totalTime: `${totalTime}秒`
           });
         } else {
-          this.logger.log(`[AITaskExecutor] ⚠️ [${taskData.aiType}] タスク失敗:`, {
+          this.logger.log(`[AITaskExecutor] ⚠️ [${taskData.aiType}] タスク失敗 [${cellPosition}セル]:`, {
+            セル: cellPosition,
             taskId: taskData.taskId,
             error: resultData.error,
             totalTime: `${totalTime}秒`
@@ -207,7 +229,12 @@ export class AITaskExecutor {
 
     } catch (error) {
       const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
-      this.logger.error(`[AITaskExecutor] ❌ [${taskData.aiType}] 実行エラー:`, {
+      const cellPosition = taskData.cellInfo?.column && taskData.cellInfo?.row 
+        ? `${taskData.cellInfo.column}${taskData.cellInfo.row}` 
+        : '不明';
+      
+      this.logger.error(`[AITaskExecutor] ❌ [${taskData.aiType}] 実行エラー [${cellPosition}セル]:`, {
+        セル: cellPosition,
         taskId: taskData.taskId,
         error: error.message,
         stack: error.stack,

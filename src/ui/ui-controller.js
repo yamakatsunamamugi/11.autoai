@@ -3,6 +3,149 @@
 // このファイルは、Chrome拡張機能のメインUIを管理します。
 // ユーザーがスプレッドシートを設定し、AI処理を制御するためのインターフェースを提供します。
 
+// ===== リトライ通知システム =====
+let activeNotifications = new Map();
+
+// リトライ通知を表示
+function showRetryNotification(data) {
+  const { taskId, retryCount, maxRetries, error, errorMessage } = data;
+  
+  // 既存の通知を削除
+  if (activeNotifications.has(taskId)) {
+    const oldNotification = activeNotifications.get(taskId);
+    if (oldNotification.element) {
+      oldNotification.element.remove();
+    }
+  }
+  
+  // 通知要素を作成
+  const notification = document.createElement('div');
+  notification.className = 'retry-notification';
+  notification.id = `retry-${taskId}`;
+  notification.style.cssText = `
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: linear-gradient(135deg, #ff9a00 0%, #ff6b35 100%);
+    color: white;
+    padding: 15px 20px;
+    border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(255, 107, 53, 0.3);
+    z-index: 10001;
+    min-width: 300px;
+    animation: slideIn 0.3s ease-out;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  `;
+  
+  notification.innerHTML = `
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <div style="font-size: 24px;">🔄</div>
+      <div style="flex: 1;">
+        <div style="font-weight: 600; font-size: 14px; margin-bottom: 5px;">
+          リトライ中 (${retryCount}/${maxRetries})
+        </div>
+        <div style="font-size: 12px; opacity: 0.9;">
+          ${errorMessage || 'タイムアウトエラーを検出しました'}
+        </div>
+        <div style="font-size: 11px; opacity: 0.8; margin-top: 3px;">
+          タスクID: ${taskId.substring(0, 8)}...
+        </div>
+      </div>
+      <button onclick="dismissRetryNotification('${taskId}')" style="
+        background: rgba(255, 255, 255, 0.2);
+        border: none;
+        color: white;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+        transition: background 0.2s;
+      " onmouseover="this.style.background='rgba(255,255,255,0.3)'" 
+         onmouseout="this.style.background='rgba(255,255,255,0.2)'">
+        ×
+      </button>
+    </div>
+    <div style="margin-top: 10px; background: rgba(255, 255, 255, 0.1); 
+                height: 3px; border-radius: 2px; overflow: hidden;">
+      <div style="background: white; height: 100%; width: 0%; 
+                  animation: progress 5s linear forwards;"></div>
+    </div>
+  `;
+  
+  document.body.appendChild(notification);
+  
+  // 通知を記録
+  activeNotifications.set(taskId, {
+    element: notification,
+    timestamp: Date.now(),
+    data: data
+  });
+  
+  // 5秒後に自動的に削除
+  setTimeout(() => {
+    dismissRetryNotification(taskId);
+  }, 5000);
+}
+
+// 通知を削除
+function dismissRetryNotification(taskId) {
+  if (activeNotifications.has(taskId)) {
+    const notification = activeNotifications.get(taskId);
+    if (notification.element) {
+      notification.element.style.animation = 'slideOut 0.3s ease-in';
+      setTimeout(() => {
+        notification.element.remove();
+      }, 300);
+    }
+    activeNotifications.delete(taskId);
+  }
+}
+
+// メッセージリスナー
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'showRetryNotification') {
+    showRetryNotification(request.data);
+    sendResponse({ success: true });
+  }
+  return false;
+});
+
+// CSSアニメーションを追加
+const style = document.createElement('style');
+style.textContent = `
+  @keyframes slideIn {
+    from {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+  
+  @keyframes slideOut {
+    from {
+      transform: translateX(0);
+      opacity: 1;
+    }
+    to {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+  }
+  
+  @keyframes progress {
+    from { width: 0%; }
+    to { width: 100%; }
+  }
+`;
+document.head.appendChild(style);
+
 // ===== AIステータス管理 =====
 function updateAIStatus() {
   // ストレージから設定を取得
@@ -2490,699 +2633,61 @@ function showChangeNotification(aiName, changes) {
   }, 1000); // 1秒後に表示（ログ出力の後）
 }
 
-// ===== イベントリスナー: AI変更検出システム =====
-let isAIDetectionSystemRunning = false; // 実行中フラグ
-let aiDetectionWindows = []; // 開いたウィンドウを記録
+// ===== コントローラー統合管理システム =====
+let controllerManager = null;
 
-aiDetectionSystemBtn.addEventListener("click", async () => {
-  console.log("AI変更検出システムボタンが押されました - 4分割ウィンドウを開きます");
+// コントローラーマネージャーの動的読み込み
+async function loadControllerManager() {
+  if (controllerManager) return controllerManager;
   
   try {
-    // プライマリモニターのサイズを取得
-    const screenInfo = await new Promise((resolve) => {
-      chrome.system.display.getInfo((displays) => {
-        const primaryDisplay = displays.find(d => d.isPrimary) || displays[0];
-        resolve(primaryDisplay);
-      });
-    });
-    
-    const screenWidth = screenInfo.bounds.width;
-    const screenHeight = screenInfo.bounds.height;
-    const halfWidth = Math.floor(screenWidth / 2);
-    const halfHeight = Math.floor(screenHeight / 2);
-    
-    console.log(`画面サイズ: ${screenWidth}x${screenHeight}`);
-    console.log(`各ウィンドウサイズ: ${halfWidth}x${halfHeight}`);
-    
-    // メインウィンドウはそのまま（移動しない）
-    console.log('メインウィンドウは現在の位置を維持');
-    
-    // 既存のAI検出ウィンドウがあれば閉じる
-    if (aiDetectionWindows.length > 0) {
-      console.log('既存のAI検出ウィンドウを閉じます');
-      await closeAIDetectionWindows();
-    }
-    
-    // 1. ChatGPTウィンドウを左上に開く
-    const chatgptWindow = await new Promise((resolve) => {
-      chrome.windows.create({
-        url: 'https://chatgpt.com',
-        left: 0,
-        top: 0,
-        width: halfWidth,
-        height: halfHeight,
-        type: 'popup',  // popupタイプに変更（URLバー・ブックマークバー非表示）
-        focused: false  // フォーカスを奪わない
-      }, (window) => {
-        console.log('✅ ChatGPTウィンドウを左上に開きました');
-        if (window) {
-          aiDetectionWindows.push({ windowId: window.id, aiType: 'ChatGPT' });
-        }
-        resolve(window);
-      });
-    });
-    
-    // 少し待機
-    await new Promise(resolve => setTimeout(resolve, 300));
-    
-    // 2. Claudeウィンドウを右上に開く
-    const claudeWindow = await new Promise((resolve) => {
-      chrome.windows.create({
-        url: 'https://claude.ai',
-        left: halfWidth,
-        top: 0,
-        width: halfWidth,
-        height: halfHeight,
-        type: 'popup',  // popupタイプに変更（URLバー・ブックマークバー非表示）
-        focused: false  // フォーカスを奪わない
-      }, (window) => {
-        console.log('✅ Claudeウィンドウを右上に開きました');
-        if (window) {
-          aiDetectionWindows.push({ windowId: window.id, aiType: 'Claude' });
-        }
-        resolve(window);
-      });
-    });
-    
-    // 少し待機
-    await new Promise(resolve => setTimeout(resolve, 300));
-    
-    // 3. Geminiウィンドウを左下に開く
-    const geminiWindow = await new Promise((resolve) => {
-      chrome.windows.create({
-        url: 'https://gemini.google.com',
-        left: 0,
-        top: halfHeight,
-        width: halfWidth,
-        height: halfHeight,
-        type: 'popup',  // popupタイプに変更（URLバー・ブックマークバー非表示）
-        focused: false  // フォーカスを奪わない
-      }, (window) => {
-        console.log('✅ Geminiウィンドウを左下に開きました');
-        if (window) {
-          aiDetectionWindows.push({ windowId: window.id, aiType: 'Gemini' });
-        }
-        resolve(window);
-      });
-    });
-    
-    console.log('4分割ウィンドウを開きました。各AIの自動化スクリプトを注入します...');
-    
-    // 各ウィンドウのタブIDを取得して自動化スクリプトを注入
-    const windows = [
-      { window: chatgptWindow, name: 'ChatGPT' },
-      { window: claudeWindow, name: 'Claude' },
-      { window: geminiWindow, name: 'Gemini' }
-    ];
-    
-    // 各ウィンドウにスクリプトを並列で注入
-    let completedCount = 0;
-    const totalWindows = windows.length;
-    
-    // 各ウィンドウの処理を並列実行するためのPromise配列
-    const processPromises = windows.map(async ({ window, name }) => {
-      if (window && window.tabs && window.tabs[0]) {
-        const tabId = window.tabs[0].id;
-        console.log(`${name}にスクリプトを注入します (タブID: ${tabId})`);
-        
-        try {
-          // ページの読み込みが完了するまで待機
-          await new Promise((resolve) => {
-            chrome.tabs.onUpdated.addListener(function listener(updatedTabId, info) {
-              if (updatedTabId === tabId && info.status === 'complete') {
-                chrome.tabs.onUpdated.removeListener(listener);
-                console.log(`${name}のページ読み込み完了`);
-                resolve();
-              }
-            });
-            
-            // タイムアウト設定（10秒）
-            setTimeout(() => {
-              console.log(`${name}のページ読み込みタイムアウト`);
-              resolve();
-            }, 10000);
-          });
-          
-          // スクリプトを注入し、saveDataを取得
-          const saveData = await injectAutomationScripts(tabId, name);
-          
-          // 完了カウントを更新（スレッドセーフのために注意深く処理）
-          completedCount++;
-          console.log(`🔢 AI検出進捗: ${completedCount}/${totalWindows} 完了 (${name})`);
-          
-          // 進捗をステータスに表示
-          updateStatus(`AI検出中... (${completedCount}/${totalWindows}) - ${name}完了`, "loading");
-          
-          return { success: true, aiName: name, saveData: saveData };
-        } catch (error) {
-          console.error(`${name}の処理でエラー:`, error);
-          completedCount++;
-          updateStatus(`AI検出中... (${completedCount}/${totalWindows}) - ${name}エラー`, "loading");
-          return { success: false, aiName: name, error: error.message };
-        }
-      }
-      return { success: false, aiName: name, error: 'ウィンドウまたはタブが無効' };
-    });
-    
-    // すべてのAI処理を並列実行
-    console.log('🚀 すべてのAI検出を並列実行開始...');
-    const results = await Promise.allSettled(processPromises);
-    
-    // 結果を集計
-    const successCount = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
-    const errorCount = results.length - successCount;
-    
-    console.log(`📊 並列処理結果: 成功 ${successCount}件, エラー ${errorCount}件`);
-    
-    if (errorCount > 0) {
-      console.warn('⚠️ 一部のAI検出でエラーが発生しました');
-      results.forEach((result, index) => {
-        if (result.status === 'rejected' || (result.status === 'fulfilled' && !result.value.success)) {
-          console.error(`❌ ${windows[index].name}エラー:`, result.reason || result.value?.error);
-        }
-      });
-    }
-    
-    // 全ての検出が完了したら、データを一括保存
-    console.log('💾 すべてのAI検出が完了しました。データを一括保存します...');
-    
-    // 各AIのsaveDataを収集
-    const allSaveData = {};
-    results.forEach((result, index) => {
-      if (result.status === 'fulfilled' && result.value.success && result.value.saveData) {
-        const aiName = windows[index].name.toLowerCase();
-        allSaveData[aiName] = result.value.saveData;
-        console.log(`✔️ ${windows[index].name}のデータを収集`);
-      }
-    });
-    
-    // 収集したデータをChrome Storageに一括保存
-    if (Object.keys(allSaveData).length > 0) {
-      chrome.storage.local.set({ 'ai_config_persistence': allSaveData }, () => {
-        console.log('✅ 全AIのデータを一括保存しました:', allSaveData);
-        
-        // UI更新を促すイベントを発火
-        window.dispatchEvent(new CustomEvent('ai-data-saved', { 
-          detail: { timestamp: new Date().toISOString() } 
-        }));
-      });
-    } else {
-      console.warn('⚠️ 保存するデータがありません');
-    }
-    
-    console.log('🎉 すべてのAI検出が完了しました。5秒後に自動でウィンドウを閉じます...');
-    updateStatus("すべてのAI検出が完了しました。5秒後に自動でウィンドウを閉じます...", "success");
-    
-    setTimeout(async () => {
-      await closeAIDetectionWindows();
-      updateStatus("AI検出システム完了 - ウィンドウを閉じました", "success");
-    }, 5000);
-    
-    // 現在のウィンドウ情報を取得してフォーカスを戻す
-    chrome.windows.getCurrent((currentWindow) => {
-      chrome.windows.update(currentWindow.id, { focused: true });
-    });
-    
-    updateStatus("4分割ウィンドウを開き、AI検出システムを起動しました", "success");
-    
+    // モジュールインポートを試してみる
+    const module = await import('./controllers/index.js');
+    controllerManager = module.default;
+    console.log('✅ コントローラーマネージャーをモジュールとして読み込み');
+    return controllerManager;
   } catch (error) {
-    console.error("ウィンドウ操作エラー:", error);
-    updateStatus("ウィンドウ操作エラー", "error");
-    alert(`エラーが発生しました: ${error.message}`);
-  }
-});
-
-// 以下は古いコードのコメントアウト
-/*
-      if (aiTab) {
-        console.log(`AIサイトを検出: ${aiTab.url}`);
-        
-        // そのタブをアクティブにする
-        chrome.tabs.update(aiTab.id, { active: true }, () => {
-          injectScriptsToTab(aiTab.id);
-        });
-        
-      } else {
-        // AIサイトのタブがない場合は選択画面を表示
-        const aiSelection = confirm(
-          '開いているタブにAIサイトがありません。\n' +
-          'どのAIサイトを開きますか？\n\n' +
-          'OK = ChatGPT\n' +
-          'キャンセル = Claude\n\n' +
-          '（Geminiを開く場合は、キャンセル後に再度実行してください）'
-        );
-        
-        let urlToOpen;
-        if (aiSelection) {
-          urlToOpen = 'https://chatgpt.com';
-        } else {
-          const claudeOrGemini = confirm(
-            'Claudeを開きますか？\n\n' +
-            'OK = Claude\n' +
-            'キャンセル = Gemini'
-          );
-          urlToOpen = claudeOrGemini ? 'https://claude.ai' : 'https://gemini.google.com';
-        }
-        
-        // 新しいタブでAIサイトを開く
-        chrome.tabs.create({ url: urlToOpen }, (newTab) => {
-          console.log(`新しいタブでAIサイトを開きました: ${urlToOpen}`);
-          updateStatus("AIサイトを開いています...", "running");
-          
-          // ページ読み込み完了を待つ
-          chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
-            if (tabId === newTab.id && info.status === 'complete') {
-              chrome.tabs.onUpdated.removeListener(listener);
-              
-              // 少し待ってからスクリプトを注入
-              setTimeout(() => {
-                injectScriptsToTab(newTab.id);
-              }, 2000);
-            }
-          });
-        });
-      }
-      
-      // スクリプト注入関数
-      async function injectScriptsToTab(tabId) {
-        // 先に基本的なAI自動化スクリプトを注入
-        const baseScripts = [
-          'automations/chatgpt-automation.js',
-          'automations/claude-automation-dynamic.js',
-          'automations/gemini-dynamic-automation.js'
-        ];
-        
-        // その後、4層システムを注入
-        const scriptsToInject = [
-          'src/ai/unified-ai-api.js',
-          'src/ai/change-detection-processor.js',
-          'src/ai/ai-config-persistence.js',
-          'src/ai/user-settings-sync.js'
-        ];
-        
-        try {
-          // まず、既にシステムが注入されているかチェック
-          const [checkResult] = await chrome.scripting.executeScript({
-            target: { tabId: tabId },
-            func: () => {
-              return {
-                hasUnifiedAI: typeof window.UnifiedAI !== 'undefined',
-                hasAIPersistence: typeof window.AIPersistence !== 'undefined',
-                hasUserSettingsSync: typeof window.UserSettingsSync !== 'undefined',
-                hasChatGPTAutomation: typeof window.ChatGPTAutomation !== 'undefined'
-              };
-            }
-          });
-          
-          console.log('既存システムチェック:', checkResult.result);
-          
-          // 既に全てのシステムが注入されている場合
-          if (checkResult.result.hasUnifiedAI && 
-              checkResult.result.hasAIPersistence && 
-              checkResult.result.hasUserSettingsSync) {
-            console.log('⚠️ システムは既に注入されています');
-            
-            // 既に注入されている場合はアダプタのみ注入して実行
-            await chrome.scripting.executeScript({
-              target: { tabId: tabId },
-              files: [
-                'src/detectors/ai-detector-interface.js',
-                'src/detectors/adapters/chatgpt-adapter.js',
-                'src/detectors/adapters/claude-adapter.js',
-                'src/detectors/adapters/gemini-adapter.js',
-                'src/detectors/ai-detector-service.js'
-              ]
-            });
-            console.log('✅ AI検出アダプタを注入しました（再実行）');
-            
-            await chrome.scripting.executeScript({
-              target: { tabId: tabId },
-              func: async () => {
-                console.log('🔄 AI変更検出システム - 再実行');
-                
-                try {
-                  // サービスを初期化
-                  if (!window.aiDetectorService) {
-                    window.aiDetectorService = new AIDetectorService();
-                  }
-                  
-                  const service = window.aiDetectorService;
-                  await service.initialize();
-                  
-                  // 現在のページのAIタイプを判定
-                  const url = window.location.href;
-                  let aiType = null;
-                  
-                  if (url.includes('chatgpt.com') || url.includes('chat.openai.com')) {
-                    aiType = 'chatgpt';
-                  } else if (url.includes('claude.ai')) {
-                    aiType = 'claude';
-                  } else if (url.includes('gemini.google.com')) {
-                    aiType = 'gemini';
-                  }
-                  
-                  if (!aiType) {
-                    throw new Error('対応するAIサイトではありません');
-                  }
-                  
-                  console.log(`📊 ${aiType.toUpperCase()} のデータを取得中...`);
-                  
-                  // データを検出
-                  const result = await service.detectAI(aiType);
-                  
-                  console.log(`✅ 取得完了:`, result);
-                  
-                  // 結果をストレージに保存
-                  chrome.storage.local.get(['ai_config_persistence'], (existingData) => {
-                    const configData = existingData.ai_config_persistence || {};
-                    
-                    // 検出したデータを保存
-                    configData[aiType] = {
-                      models: result.models || [],
-                      functions: result.functions || [],
-                      lastUpdated: new Date().toISOString()
-                    };
-                    
-                    // ストレージに保存
-                    chrome.storage.local.set({ ai_config_persistence: configData }, () => {
-                      console.log(`💾 ${aiType}の検出結果をストレージに保存しました`);
-                    });
-                  });
-                  
-                  // 結果を表示
-                  const modelCount = result.models ? result.models.length : 0;
-                  const functionCount = result.functions ? result.functions.length : 0;
-                  
-                  alert(`AI変更検出完了！\n\n` +
-                        `AI: ${aiType.toUpperCase()}\n` +
-                        `モデル: ${modelCount}個\n` +
-                        `機能: ${functionCount}個\n\n` +
-                        `トップページでステータスを確認できます。`);
-                  
-                } catch (error) {
-                  console.error('❌ データ取得エラー:', error);
-                  alert('データ取得に失敗しました: ' + error.message);
-                }
-              }
-            });
-            
-            updateStatus("AI変更検出システム起動済み", "ready");
-            isAIDetectionSystemRunning = false;
-            aiDetectionSystemBtn.disabled = false;
-            return; // 重複注入を防ぐ
-          }
-          
-          // 現在のタブのURLを取得
-          const tab = await chrome.tabs.get(tabId);
-          const url = tab.url;
-          
-          // URLに応じて必要な基本スクリプトを注入
-          if (url.includes('chatgpt.com') || url.includes('chat.openai.com')) {
-            await chrome.scripting.executeScript({
-              target: { tabId: tabId },
-              files: ['automations/chatgpt-automation.js']
-            });
-            console.log('✅ ChatGPT自動化スクリプトを注入');
-          } else if (url.includes('claude.ai')) {
-            await chrome.scripting.executeScript({
-              target: { tabId: tabId },
-              files: ['automations/claude-automation-dynamic.js']
-            });
-            console.log('✅ Claude自動化スクリプトを注入');
-          } else if (url.includes('gemini.google.com')) {
-            await chrome.scripting.executeScript({
-              target: { tabId: tabId },
-              files: ['automations/gemini-dynamic-automation.js']
-            });
-            console.log('✅ Gemini自動化スクリプトを注入');
-          }
-          
-          // 少し待機（基本スクリプトの初期化を待つ）
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          
-          // 4層システムのスクリプトを順番に注入
-          for (const script of scriptsToInject) {
-            await chrome.scripting.executeScript({
-              target: { tabId: tabId },
-              files: [script]
-            });
-            console.log(`✅ ${script} を注入しました`);
-          }
-          
-          // アダプタスクリプトを注入
-          // 【重要】すべてのAIアダプタを注入する必要がある
-          // chatgpt-adapter.js: ChatGPTの機能検出
-          // claude-adapter.js: Claudeの機能検出
-          // gemini-adapter.js: Geminiの機能検出
-          await chrome.scripting.executeScript({
-            target: { tabId: tabId },
-            files: [
-              'src/detectors/ai-detector-interface.js',
-              'src/detectors/adapters/chatgpt-adapter.js',
-              'src/detectors/adapters/claude-adapter.js',
-              'src/detectors/adapters/gemini-adapter.js',
-              'src/detectors/ai-detector-service.js'
-            ]
-          });
-          console.log('✅ AI検出アダプタを注入しました');
-          
-          // 少し待ってから実行
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          
-          // AIDetectorServiceを使用してデータを取得
-          await chrome.scripting.executeScript({
-            target: { tabId: tabId },
-            func: async () => {
-              console.log('🎯 AI変更検出システム起動完了');
-              
-              try {
-                // サービスを初期化
-                if (!window.aiDetectorService) {
-                  window.aiDetectorService = new AIDetectorService();
-                }
-                
-                const service = window.aiDetectorService;
-                await service.initialize();
-                
-                // 現在のページのAIタイプを判定
-                const url = window.location.href;
-                let aiType = null;
-                
-                if (url.includes('chatgpt.com') || url.includes('chat.openai.com')) {
-                  aiType = 'chatgpt';
-                } else if (url.includes('claude.ai')) {
-                  aiType = 'claude';
-                } else if (url.includes('gemini.google.com')) {
-                  aiType = 'gemini';
-                }
-                
-                if (!aiType) {
-                  throw new Error('対応するAIサイトではありません');
-                }
-                
-                console.log(`📊 ${aiType.toUpperCase()} のデータを取得中...`);
-                
-                // データを検出
-                const result = await service.detectAI(aiType);
-                
-                console.log(`✅ 取得完了:`, result);
-                
-                // 結果をストレージに保存
-                // このデータがtest-ai-automation-updater.jsで読み込まれ
-                // 「3.AI統合テスト」のプルダウンに反映される
-                chrome.storage.local.get(['ai_config_persistence'], (existingData) => {
-                  const configData = existingData.ai_config_persistence || {};
-                  
-                  // 検出したデータを保存
-                  // models: 利用可能なモデルのリスト
-                  // functions: 利用可能な機能のリスト（DeepResearch、DeepThink等）
-                  configData[aiType] = {
-                    models: result.models || [],
-                    functions: result.functions || [],
-                    lastUpdated: new Date().toISOString()
-                  };
-                  
-                  // ストレージに保存
-                  chrome.storage.local.set({ ai_config_persistence: configData }, () => {
-                    console.log(`💾 ${aiType}の検出結果をストレージに保存しました`);
-                  });
-                });
-                
-                // 結果を表示
-                const modelCount = result.models ? result.models.length : 0;
-                const functionCount = result.functions ? result.functions.length : 0;
-                
-                alert(`AI変更検出完了！\n\n` +
-                      `AI: ${aiType.toUpperCase()}\n` +
-                      `モデル: ${modelCount}個\n` +
-                      `機能: ${functionCount}個\n\n` +
-                      `トップページでステータスを確認できます。`);
-                
-              } catch (error) {
-                console.error('❌ データ取得エラー:', error);
-                alert('データ取得に失敗しました: ' + error.message);
-              }
-            }
-          });
-          
-          updateStatus("AI変更検出システム起動完了", "ready");
-          
-          // AIステータスを更新
-          setTimeout(() => {
-            updateAIStatus();
-            console.log('✅ AIステータスを更新しました');
-          }, 2000); // 2秒後に更新（データ取得を待つため）
-          
-        } catch (error) {
-          console.error('スクリプト注入エラー:', error);
-          updateStatus("スクリプト注入エラー", "error");
-          alert(`エラーが発生しました: ${error.message}`);
-        } finally {
-          // 処理完了後、フラグをリセット
-          isAIDetectionSystemRunning = false;
-          aiDetectionSystemBtn.disabled = false;
-        }
-      }
-    });
-    
-  } catch (error) {
-    console.error("AI変更検出システムエラー:", error);
-    updateStatus("AI変更検出システムエラー", "error");
-    alert(`エラーが発生しました: ${error.message}`);
-    isAIDetectionSystemRunning = false;
-    aiDetectionSystemBtn.disabled = false;
-  }
-});
-*/
-
-// ===== イベントリスナー: AIセレクタ変更検出システム =====
-let isAIMutationSystemRunning = false;
-let currentMutationObserver = null;
-
-aiSelectorMutationSystemBtn.addEventListener("click", async () => {
-  console.log("AIセレクタ変更検出システムボタンが押されました");
-  
-  if (isAIMutationSystemRunning) {
-    // 監視停止
-    console.log("MutationObserver監視を停止します");
-    
-    try {
-      if (currentMutationObserver && currentMutationObserver.mode === 'orchestrator' && currentMutationObserver.window) {
-        // AI Orchestratorウィンドウを閉じる
-        currentMutationObserver.window.close();
-        
-        isAIMutationSystemRunning = false;
-        currentMutationObserver = null;
-        aiSelectorMutationSystemBtn.innerHTML = '<span class="btn-icon">👁️</span>2. AIセレクタ変更検出システム';
-        aiSelectorMutationSystemBtn.style.background = "linear-gradient(135deg, #a55eea, #3742fa)";
-        updateStatus("MutationObserver監視停止", "warning");
-        console.log("✅ AI Orchestrator（MutationObserver版）を閉じました");
-      }
-    } catch (error) {
-      console.error("MutationObserver停止エラー:", error);
-      updateStatus("監視停止エラー", "error");
-    }
-    
-  } else {
-    // 監視開始
-    console.log("MutationObserver監視を開始します");
-    
-    try {
-      aiSelectorMutationSystemBtn.disabled = true;
-      updateStatus("MutationObserver準備中...", "loading");
-      
-      // ai-mutation-observer.jsを動的読み込み
-      if (!window.AIMutationObserver) {
-        const script = document.createElement('script');
-        script.src = chrome.runtime.getURL('automations/ai-mutation-observer.js');
-        script.onload = async () => {
-          console.log("✅ ai-mutation-observer.js読み込み完了");
-          await startMutationObserverMonitoring();
-        };
-        script.onerror = (error) => {
-          console.error("❌ ai-mutation-observer.js読み込み失敗:", error);
-          updateStatus("スクリプト読み込みエラー", "error");
-          aiSelectorMutationSystemBtn.disabled = false;
-        };
-        document.head.appendChild(script);
-      } else {
-        await startMutationObserverMonitoring();
-      }
-      
-    } catch (error) {
-      console.error("MutationObserver開始エラー:", error);
-      updateStatus("監視開始エラー", "error");
-      aiSelectorMutationSystemBtn.disabled = false;
-    }
-  }
-});
-
-// MutationObserver監視開始処理
-async function startMutationObserverMonitoring() {
-  try {
-    console.log("🖼️ AI Orchestratorを使用してMutationObserver開始");
-    updateStatus("AI Orchestrator（MutationObserver版）を開いています...", "loading");
-    
-    // AI Orchestratorをmutationobserver モードで開く
-    const orchestratorUrl = chrome.runtime.getURL(
-      "src/ai-execution/ai-orchestrator.html?mode=mutationobserver"
-    );
-
-    // ウィンドウ設定
-    const windowFeatures = `
-      width=1200,
-      height=800,
-      left=${(screen.width - 1200) / 2},
-      top=${(screen.height - 800) / 2},
-      scrollbars=yes,
-      resizable=yes,
-      status=no,
-      toolbar=no,
-      menubar=no,
-      location=no
-    `.replace(/\s+/g, "");
-
-    // 新しいウィンドウでAI Orchestratorを開く
-    const orchestratorWindow = window.open(
-      orchestratorUrl,
-      `ai_orchestrator_mutation_observer_${Date.now()}`,
-      windowFeatures
-    );
-
-    if (orchestratorWindow) {
-      console.log("✅ AI Orchestrator（MutationObserver版）が開かれました");
-      updateStatus("AI Orchestrator（MutationObserver版）を開きました", "success");
-      
-      currentMutationObserver = { 
-        window: orchestratorWindow, 
-        mode: 'orchestrator'
-      };
-      isAIMutationSystemRunning = true;
-        
-        // ボタンの表示を更新
-        aiSelectorMutationSystemBtn.innerHTML = '<span class="btn-icon">⏹️</span>監視停止 (実行中)';
-        aiSelectorMutationSystemBtn.style.background = "linear-gradient(135deg, #e74c3c, #c0392b)";
-        aiSelectorMutationSystemBtn.disabled = false;
-        
-        updateStatus("AI Orchestrator（MutationObserver版）実行中", "running");
-        console.log("✅ AI Orchestrator（MutationObserver版）開始成功");
-        
-        // ボタンを有効化
-        aiSelectorMutationSystemBtn.disabled = false;
-        
-      } else {
-        throw new Error("AI Orchestratorを開けませんでした");
-      }
-  } catch (error) {
-    console.error("AI Orchestrator開始エラー:", error);
-    updateStatus("AI Orchestrator開始エラー", "error");
-    aiSelectorMutationSystemBtn.disabled = false;
-    
-    if (error.message.includes("開けませんでした")) {
-      alert("ポップアップブロッカーを無効にしてください");
-    }
+    console.error('❌ コントローラーマネージャーの読み込み失敗:', error);
+    throw error;
   }
 }
+
+// ===== イベントリスナー: AI変更検出システム =====
+aiDetectionSystemBtn.addEventListener("click", async () => {
+  try {
+    const manager = await loadControllerManager();
+    const controller = await manager.loadController('aiDetection');
+    
+    if (controller && controller.runAIDetectionSystem) {
+      await controller.runAIDetectionSystem(updateStatus, injectAutomationScripts);
+    } else {
+      console.error('❌ AI検出コントローラーが正しく読み込まれていません');
+      updateStatus('AI検出コントローラー読み込みエラー', 'error');
+    }
+  } catch (error) {
+    console.error('AI検出制御エラー:', error);
+    updateStatus('AI検出制御エラー', 'error');
+  }
+});
+
+
+// ===== イベントリスナー: AIセレクタ変更検出システム =====
+aiSelectorMutationSystemBtn.addEventListener("click", async () => {
+  try {
+    const manager = await loadControllerManager();
+    const controller = await manager.loadController('mutationObserver');
+    
+    if (controller && controller.toggleMutationObserverMonitoring) {
+      await controller.toggleMutationObserverMonitoring(aiSelectorMutationSystemBtn, updateStatus);
+    } else {
+      console.error('❌ MutationObserverコントローラーが正しく読み込まれていません');
+      updateStatus('MutationObserverコントローラー読み込みエラー', 'error');
+    }
+  } catch (error) {
+    console.error('MutationObserver制御エラー:', error);
+    updateStatus('MutationObserver制御エラー', 'error');
+  }
+});
 
 // AIサイトタブでMutationObserver開始
 async function startMutationObserverOnTab(tabId) {
@@ -3449,189 +2954,428 @@ async function checkAndOpenAISites() {
  * AI Orchestratorを開いてテスト環境を起動します。
  * 本番実行は「処理を開始」ボタンを使用してください。
  */
-startIntegratedTestBtn.addEventListener("click", () => {
-  console.log("【テスト】統合AIテスト開始ボタンが押されました");
-  runIntegratedAITest();
+startIntegratedTestBtn.addEventListener("click", async () => {
+  try {
+    const manager = await loadControllerManager();
+    const controller = await manager.loadController('integratedTest');
+    
+    if (controller && controller.runIntegratedAITest) {
+      await controller.runIntegratedAITest();
+    } else {
+      console.error('❌ 統合テストコントローラーが正しく読み込まれていません');
+      updateStatus('統合テストコントローラー読み込みエラー', 'error');
+    }
+  } catch (error) {
+    console.error('統合テスト制御エラー:', error);
+    updateStatus('統合テスト制御エラー', 'error');
+  }
 });
 
 // ===== イベントリスナー: レポート生成 =====
 const generateReportBtn = document.getElementById("generateReportBtn");
-generateReportBtn.addEventListener("click", () => {
-  console.log("レポート生成テストボタンが押されました");
-  
+generateReportBtn.addEventListener("click", async () => {
   try {
-    // レポート化テストページを新しいウィンドウで開く
-    const testUrl = chrome.runtime.getURL("tests/test-report-generation.html");
+    const manager = await loadControllerManager();
+    const controller = await manager.loadController('reportTest');
     
-    // ウィンドウ設定
-    const windowFeatures = `
-      width=1400,
-      height=800,
-      left=${(screen.width - 1400) / 2},
-      top=${(screen.height - 800) / 2},
-      scrollbars=yes,
-      resizable=yes,
-      status=no,
-      toolbar=no,
-      menubar=no,
-      location=no
-    `.replace(/\s+/g, "");
-    
-    // 新しいウィンドウでテストページを開く
-    const testWindow = window.open(
-      testUrl,
-      `report_generation_test_${Date.now()}`,
-      windowFeatures
-    );
-    
-    if (testWindow) {
-      console.log("✅ レポート化テストページが開かれました");
-      updateStatus("レポート化テストページを開きました", "success");
-      setTimeout(() => updateStatus("待機中", "waiting"), 2000);
+    if (controller && controller.runReportTest) {
+      controller.runReportTest(updateStatus);
     } else {
-      console.error("❌ テストページを開けませんでした");
-      updateStatus("テストページを開けませんでした", "error");
-      alert("ポップアップブロッカーを無効にしてください");
+      console.error('❌ レポートテストコントローラーが正しく読み込まれていません');
+      updateStatus('レポートテストコントローラー読み込みエラー', 'error');
     }
   } catch (error) {
-    console.error("❌ レポート化テスト実行エラー:", error);
-    updateStatus("テスト実行エラー", "error");
-    alert(`エラーが発生しました: ${error.message}`);
+    console.error('レポートテスト制御エラー:', error);
+    updateStatus('レポートテスト制御エラー', 'error');
   }
 });
 
 // ===== イベントリスナー: ウィンドウ作成テスト =====
 const windowCreationTestBtn = document.getElementById("windowCreationTestBtn");
-windowCreationTestBtn.addEventListener("click", () => {
-  console.log("ウィンドウ作成テストボタンが押されました");
-  
+windowCreationTestBtn.addEventListener("click", async () => {
   try {
-    // すぐにテストページを開く
-    const testUrl = chrome.runtime.getURL("tests/test-window-creation.html");
-    console.log("テストページURL:", testUrl);
+    const manager = await loadControllerManager();
+    const controller = await manager.loadController('windowCreationTest');
     
-    // Chrome拡張のタブとして開く
-    chrome.tabs.create({
-      url: testUrl,
-      active: true
-    }, (tab) => {
-      if (chrome.runtime.lastError) {
-        console.error("タブ作成エラー:", chrome.runtime.lastError);
-        // フォールバック: window.openで開く
-        const windowFeatures = `
-          width=1400,
-          height=900,
-          left=${(screen.width - 1400) / 2},
-          top=${(screen.height - 900) / 2},
-          scrollbars=yes,
-          resizable=yes,
-          status=no,
-          menubar=no,
-          toolbar=no,
-          location=no
-        `.replace(/\s+/g, '');
-        
-        const testWindow = window.open(testUrl, "WindowCreationTest", windowFeatures);
-        
-        if (!testWindow) {
-          alert("ポップアップブロッカーによりウィンドウを開けませんでした。\nポップアップを許可してください。");
-        } else {
-          console.log("window.openでテストページを開きました");
-          updateStatus("ウィンドウ作成テストツールを開きました", "success");
-        }
-      } else {
-        console.log("新しいタブでテストページを開きました:", tab.id);
-        updateStatus("ウィンドウ作成テストツールを開きました", "success");
-      }
-    });
-    
-  } catch (error) {
-    console.error("ウィンドウ作成テストエラー:", error);
-    updateStatus(`エラー: ${error.message}`, "error");
-    
-    // 最終フォールバック: 直接window.openで試す
-    try {
-      const testUrl = chrome.runtime.getURL("tests/test-window-creation.html");
-      const testWindow = window.open(testUrl, "_blank");
-      
-      if (testWindow) {
-        console.log("フォールバックでテストページを開きました");
-        updateStatus("ウィンドウ作成テストツールを開きました", "success");
-      } else {
-        alert("テストページを開けませんでした。\nポップアップブロッカーを確認してください。");
-      }
-    } catch (fallbackError) {
-      console.error("フォールバックも失敗:", fallbackError);
-      alert(`テストページを開けませんでした: ${fallbackError.message}`);
+    if (controller && controller.runWindowCreationTest) {
+      controller.runWindowCreationTest(updateStatus);
+    } else {
+      console.error('❌ ウィンドウ作成テストコントローラーが正しく読み込まれていません');
+      updateStatus('ウィンドウ作成テストコントローラー読み込みエラー', 'error');
     }
+  } catch (error) {
+    console.error('ウィンドウ作成テスト制御エラー:', error);
+    updateStatus('ウィンドウ作成テスト制御エラー', 'error');
   }
 });
 
 // ===== イベントリスナー: スプレッドシート読み込みテスト =====
 const showTaskListTestBtn = document.getElementById("showTaskListTestBtn");
-showTaskListTestBtn.addEventListener("click", () => {
-  console.log("スプレッドシート読み込みテストボタンが押されました");
-  
+showTaskListTestBtn.addEventListener("click", async () => {
   try {
-    // 新しいスプレッドシート読み込みテストツールを開く
-    const testUrl = chrome.runtime.getURL("tests/test-spreadsheet.html");
+    const manager = await loadControllerManager();
+    const controller = await manager.loadController('spreadsheetTest');
     
-    // ウィンドウ設定
-    const windowFeatures = `
-      width=1200,
-      height=800,
-      left=${(screen.width - 1200) / 2},
-      top=${(screen.height - 800) / 2},
-      scrollbars=yes,
-      resizable=yes,
-      status=no,
-      toolbar=no,
-      menubar=no,
-      location=no
-    `.replace(/\s+/g, "");
-    
-    // 新しいウィンドウでテストページを開く
-    const testWindow = window.open(
-      testUrl,
-      `tasklist_test_${Date.now()}`,
-      windowFeatures
-    );
-    
-    if (testWindow) {
-      console.log("✅ スプレッドシート読み込みテストページが開かれました");
-      updateStatus("スプレッドシート読み込みテストページを開きました", "success");
-      setTimeout(() => updateStatus("待機中", "waiting"), 2000);
+    if (controller && controller.runSpreadsheetTest) {
+      controller.runSpreadsheetTest(updateStatus);
     } else {
-      console.error("❌ テストページを開けませんでした");
-      updateStatus("テストページを開けませんでした", "error");
-      alert("ポップアップブロッカーを無効にしてください");
+      console.error('❌ スプレッドシートテストコントローラーが正しく読み込まれていません');
+      updateStatus('スプレッドシートテストコントローラー読み込みエラー', 'error');
     }
   } catch (error) {
-    console.error("❌ スプレッドシート読み込みテスト実行エラー:", error);
-    updateStatus("テスト実行エラー", "error");
-    alert(`エラーが発生しました: ${error.message}`);
+    console.error('スプレッドシートテスト制御エラー:', error);
+    updateStatus('スプレッドシートテスト制御エラー', 'error');
   }
+});
+
+// ===== セレクタ情報動的取得関数 =====
+/**
+ * 指定されたAIのセレクタ情報を取得して表示
+ * @param {string} aiType - AI名 (chatgpt, claude, gemini)
+ */
+async function fetchAndDisplaySelectorInfo(aiType) {
+  const targetPanel = document.getElementById(`${aiType}-selectors`);
+  if (!targetPanel) return;
+
+  try {
+    // ローディング表示
+    targetPanel.innerHTML = `
+      <div style="text-align: center; padding: 40px;">
+        <div style="font-size: 24px;">🔄</div>
+        <div style="margin-top: 10px; color: #666;">${aiType.toUpperCase()}のセレクタ情報を取得中...</div>
+      </div>
+    `;
+
+    // まずChrome Storageからセレクタデータを確認
+    const result = await chrome.storage.local.get(['ai_selector_data']);
+    console.log(`🔍 Chrome Storage全体のデータ:`, result.ai_selector_data);
+    
+    // aiTypeは'chatgpt', 'claude', 'gemini'の小文字で渡される
+    const storedData = result.ai_selector_data?.[aiType];
+    console.log(`🔍 ${aiType}の保存データ:`, storedData);
+    
+    // セレクタデータを取得（selectorDataプロパティの中にある場合とない場合の両方に対応）
+    const storedSelectors = storedData?.selectorData || storedData;
+    console.log(`🔍 ${aiType}のセレクタデータ:`, storedSelectors);
+    
+    // 詳細なデバッグ情報を追加
+    if (storedSelectors) {
+      console.log(`🔍 ${aiType} セレクタキー:`, Object.keys(storedSelectors));
+      console.log(`🔍 ${aiType} input値:`, storedSelectors.input);
+      console.log(`🔍 ${aiType} send値:`, storedSelectors.send);
+      console.log(`🔍 ${aiType} stop値:`, storedSelectors.stop);
+      console.log(`🔍 ${aiType} response値:`, storedSelectors.response);
+    }
+    
+    // ストレージにデータがある場合は優先的に表示
+    if (storedSelectors && (storedSelectors.input || storedSelectors.send || storedSelectors.response || storedSelectors.stop)) {
+      console.log(`📊 Chrome Storageからセレクタデータを取得: ${aiType}`, storedSelectors);
+      
+      const aiNameMap = {
+        'chatgpt': 'ChatGPT',
+        'claude': 'Claude', 
+        'gemini': 'Gemini'
+      };
+      const properAIName = aiNameMap[aiType.toLowerCase()] || aiType;
+      
+      let html = `<h3>${properAIName} セレクタ情報</h3><div class="selector-types">`;
+      
+      // 保存されたセレクタを表示
+      const selectorTypes = [
+        { key: 'input', label: '📝 INPUT (入力欄)' },
+        { key: 'send', label: '📤 SEND_BUTTON (送信ボタン)' },
+        { key: 'response', label: '📄 RESPONSE (応答)' },
+        { key: 'stop', label: '⏸️ STOP_BUTTON (停止ボタン)' },
+        { key: 'deepresearch', label: '🔬 DEEP_RESEARCH' }
+      ];
+      
+      console.log(`🔍 ${aiType} 表示対象セレクタタイプ:`, selectorTypes.map(t => t.key));
+      
+      for (const type of selectorTypes) {
+        const value = storedSelectors[type.key];
+        console.log(`🔍 ${aiType} ${type.key}の値:`, value);
+        
+        html += `
+          <div class="selector-type">
+            <h4>${type.label}</h4>
+            <div class="selector-list">
+        `;
+        
+        if (value) {
+          // valueがオブジェクトの場合と文字列の場合を処理
+          let selectorText = '';
+          let priorityInfo = '';
+          
+          if (typeof value === 'object' && value !== null) {
+            // オブジェクトの場合（新しい形式）
+            selectorText = value.fullSelector || value.selector || JSON.stringify(value);
+            if (value.priority) {
+              priorityInfo = `<span style="color: #666; font-size: 11px; margin-left: 8px;">優先度: ${value.priority}</span>`;
+            }
+            if (value.tagName) {
+              priorityInfo += `<span style="color: #666; font-size: 11px; margin-left: 8px;">タグ: &lt;${value.tagName}&gt;</span>`;
+            }
+            if (typeof value.visible === 'boolean') {
+              const visibilityIcon = value.visible ? '👁️' : '🙈';
+              const visibilityText = value.visible ? '可視' : '非表示';
+              priorityInfo += `<span style="color: ${value.visible ? '#28a745' : '#dc3545'}; font-size: 11px; margin-left: 8px;">${visibilityIcon} ${visibilityText}</span>`;
+            }
+          } else {
+            // 文字列の場合（旧形式）
+            selectorText = value;
+          }
+          
+          html += `
+            <div style="margin: 5px 0;">
+              <code style="background: #f0f0f0; padding: 4px 8px; border-radius: 4px; font-family: 'Courier New', monospace; font-size: 12px; display: inline-block; max-width: 100%; overflow-x: auto;">
+                ${escapeHtml(selectorText)}
+              </code>
+              ${priorityInfo}
+            </div>
+          `;
+        } else {
+          html += `<div style="color: #999; font-size: 14px;">未検出</div>`;
+        }
+        
+        html += `
+            </div>
+          </div>
+        `;
+      }
+      
+      html += `</div>`;
+      
+      // 最終更新時刻を表示
+      if (storedSelectors.lastUpdated) {
+        const updateTime = new Date(storedSelectors.lastUpdated).toLocaleString('ja-JP');
+        html += `
+          <div style="margin-top: 20px; padding: 10px; background: #f8f9fa; border-radius: 8px; font-size: 12px; color: #666;">
+            最終更新: ${updateTime}
+          </div>
+        `;
+      }
+      
+      targetPanel.innerHTML = html;
+      return;
+    }
+
+    // ストレージにデータがない場合はAIHandlerを確認（フォールバック）
+    if (!window.AIHandler || !window.AIHandler.getSelectors) {
+      targetPanel.innerHTML = `
+        <div style="color: #999; padding: 20px; text-align: center;">
+          <div style="font-size: 18px; margin-bottom: 10px;">📊 セレクタ情報未取得</div>
+          <div>「2. AIセレクタ変更検出システム」を実行してセレクタを取得してください。</div>
+        </div>
+      `;
+      return;
+    }
+
+    // セレクタカテゴリの定義
+    const selectorCategories = [
+      { key: 'INPUT', label: '📝 INPUT (入力欄)', icon: '📝' },
+      { key: 'SEND_BUTTON', label: '📤 SEND_BUTTON (送信ボタン)', icon: '📤' },
+      { key: 'STOP_BUTTON', label: '⏸️ STOP_BUTTON (停止ボタン)', icon: '⏸️' },
+      { key: 'RESPONSE', label: '📄 RESPONSE (応答)', icon: '📄' },
+      { key: 'MODEL_BUTTON', label: '🎯 MODEL_BUTTON (モデル選択)', icon: '🎯' },
+      { key: 'MENU_ITEM', label: '📋 MENU_ITEM (メニュー項目)', icon: '📋' },
+      { key: 'DEEP_RESEARCH', label: '🔬 DEEP_RESEARCH (DeepResearch)', icon: '🔬' },
+      { key: 'CANVAS', label: '🎨 CANVAS (アーティファクト)', icon: '🎨' },
+      { key: 'THINKING_PROCESS', label: '🤔 THINKING_PROCESS (思考プロセス)', icon: '🤔' }
+    ];
+
+    // 正しいAI名に変換（ChatGPT, Claude, Gemini）
+    const aiNameMap = {
+      'chatgpt': 'ChatGPT',
+      'claude': 'Claude', 
+      'gemini': 'Gemini'
+    };
+    const properAIName = aiNameMap[aiType.toLowerCase()] || aiType;
+
+    // 各カテゴリのセレクタを取得
+    let html = `<h3>${properAIName} セレクタ情報</h3><div class="selector-types">`;
+    let totalSelectors = 0;
+    let hasSelectors = false;
+
+    for (const category of selectorCategories) {
+      try {
+        const selectors = await window.AIHandler.getSelectors(properAIName, category.key);
+        
+        if (selectors && selectors.length > 0) {
+          hasSelectors = true;
+          totalSelectors += selectors.length;
+          
+          html += `
+            <div class="selector-type">
+              <h4>${category.label}</h4>
+              <div class="selector-list">
+          `;
+          
+          // 各セレクタを表示（最大5個まで表示、それ以上は省略）
+          const displayCount = Math.min(selectors.length, 5);
+          for (let i = 0; i < displayCount; i++) {
+            const selector = selectors[i];
+            // セレクタをコード形式で表示
+            html += `
+              <div style="margin: 5px 0;">
+                <code style="background: #f0f0f0; padding: 4px 8px; border-radius: 4px; font-family: 'Courier New', monospace; font-size: 12px; display: inline-block; max-width: 100%; overflow-x: auto;">
+                  ${escapeHtml(selector)}
+                </code>
+              </div>
+            `;
+          }
+          
+          if (selectors.length > 5) {
+            html += `
+              <div style="color: #666; font-size: 12px; margin-top: 5px;">
+                他 ${selectors.length - 5} 個のセレクタ...
+              </div>
+            `;
+          }
+          
+          html += `
+              </div>
+            </div>
+          `;
+        } else {
+          // セレクタが見つからない場合
+          html += `
+            <div class="selector-type">
+              <h4>${category.label}</h4>
+              <div class="selector-list" style="color: #999; font-size: 14px;">
+                未検出
+              </div>
+            </div>
+          `;
+        }
+      } catch (error) {
+        console.error(`${category.key}セレクタ取得エラー:`, error);
+        html += `
+          <div class="selector-type">
+            <h4>${category.label}</h4>
+            <div class="selector-list" style="color: #e74c3c; font-size: 14px;">
+              取得エラー
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    html += `</div>`;
+
+    // 統計情報を追加
+    if (hasSelectors) {
+      html = `
+        <h3>${properAIName} セレクタ情報</h3>
+        <div style="background: #f8f9fa; padding: 10px; border-radius: 8px; margin-bottom: 20px;">
+          <div style="color: #333; font-size: 14px;">
+            ✅ 総セレクタ数: <strong>${totalSelectors}</strong>個
+          </div>
+        </div>
+        <div class="selector-types">
+      ` + html.split('<div class="selector-types">')[1];
+    } else {
+      html = `
+        <h3>${properAIName} セレクタ情報</h3>
+        <div style="color: #999; padding: 20px; text-align: center;">
+          セレクタ情報が取得できませんでした。
+        </div>
+      `;
+    }
+
+    targetPanel.innerHTML = html;
+    console.log(`✅ ${properAIName}のセレクタ情報を表示しました (${totalSelectors}個のセレクタ)`);
+
+  } catch (error) {
+    console.error('セレクタ情報取得エラー:', error);
+    targetPanel.innerHTML = `
+      <div style="color: #e74c3c; padding: 20px;">
+        ❌ エラーが発生しました: ${error.message}
+      </div>
+    `;
+  }
+}
+
+// ===== イベントリスナー: セレクタタブ切り替え =====
+document.querySelectorAll('.selector-tab').forEach(tab => {
+  tab.addEventListener('click', async (e) => {
+    // アクティブタブの切り替え
+    document.querySelectorAll('.selector-tab').forEach(t => t.classList.remove('active'));
+    e.target.classList.add('active');
+    
+    // パネルの表示切り替え
+    const aiType = e.target.dataset.ai;
+    document.querySelectorAll('.selector-ai-panel').forEach(panel => {
+      panel.style.display = 'none';
+    });
+    const targetPanel = document.getElementById(`${aiType}-selectors`);
+    if (targetPanel) {
+      targetPanel.style.display = 'block';
+    }
+    
+    console.log(`セレクタタブ切り替え: ${aiType}`);
+    
+    // セレクタ情報を動的に取得・表示
+    await fetchAndDisplaySelectorInfo(aiType);
+  });
+});
+
+// 初期表示（ChatGPTタブ）
+document.addEventListener('DOMContentLoaded', () => {
+  // 初期状態でChatGPTのセレクタ情報を表示
+  const initialTab = document.querySelector('.selector-tab[data-ai="chatgpt"]');
+  if (initialTab && initialTab.classList.contains('active')) {
+    fetchAndDisplaySelectorInfo('chatgpt');
+  }
+  
+  // Chrome Storageからセレクタデータを読み込んで全タブに反映
+  chrome.storage.local.get(['ai_selector_data'], (result) => {
+    if (result.ai_selector_data) {
+      console.log('📊 初期化時にセレクタデータを検出:', result.ai_selector_data);
+      // 各AIのセレクタ情報を更新（バックグラウンドで）
+      ['claude', 'gemini'].forEach(aiType => {
+        if (result.ai_selector_data[aiType]) {
+          // タブがアクティブでない場合も、データがあれば準備しておく
+          const panel = document.getElementById(`${aiType}-selectors`);
+          if (panel && !panel.innerHTML.includes('セレクタ情報')) {
+            // 初期状態のままの場合のみ更新
+            console.log(`📋 ${aiType}のセレクタ情報を準備`);
+          }
+        }
+      });
+    }
+  });
+  
+  // セレクタデータ保存時のイベントリスナー
+  window.addEventListener('ai-selector-data-saved', (event) => {
+    console.log('🔄 セレクタデータが保存されました。UIを更新します...', event.detail);
+    // 現在アクティブなタブを取得
+    const activeTab = document.querySelector('.selector-tab.active');
+    if (activeTab) {
+      const aiType = activeTab.dataset.ai;
+      // アクティブなタブのセレクタ情報を再読み込み
+      fetchAndDisplaySelectorInfo(aiType);
+    }
+  });
 });
 
 // ===== イベントリスナー: AIステータス表示 =====
 const showAIStatusBtn = document.getElementById("showAIStatusBtn");
 if (showAIStatusBtn) {
-  showAIStatusBtn.addEventListener("click", () => {
-    console.log("AIステータス表示を開きます...");
-    updateStatus("AIステータス表示を開いています...", "running");
-    
-    chrome.tabs.create({
-      url: chrome.runtime.getURL("src/ui/ai-status-display.html"),
-    }, (tab) => {
-      if (tab) {
-        console.log("✅ AIステータス表示ページが開かれました");
-        updateStatus("AIステータス表示を開きました", "success");
-        setTimeout(() => updateStatus("待機中", "waiting"), 2000);
+  showAIStatusBtn.addEventListener("click", async () => {
+    try {
+      const manager = await loadControllerManager();
+      const controller = await manager.loadController('aiStatus');
+      
+      if (controller && controller.showAIStatus) {
+        controller.showAIStatus(updateStatus);
       } else {
-        console.error("❌ AIステータス表示を開けませんでした");
-        updateStatus("AIステータス表示を開けませんでした", "error");
+        console.error('❌ AIステータスコントローラーが正しく読み込まれていません');
+        updateStatus('AIステータスコントローラー読み込みエラー', 'error');
       }
-    });
+    } catch (error) {
+      console.error('AIステータス制御エラー:', error);
+      updateStatus('AIステータス制御エラー', 'error');
+    }
   });
 }
 
@@ -4070,3 +3814,7 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
     updateAIStatus();
   }
 });
+
+// ===== グローバル関数公開 =====
+// 他のモジュールから使用できるように関数をwindowオブジェクトに公開
+window.injectAutomationScripts = injectAutomationScripts;

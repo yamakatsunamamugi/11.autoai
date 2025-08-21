@@ -652,6 +652,34 @@
             await clickElement(modelButton);
             await wait(CONFIG.delays.menuOpen);
             
+            // "first"の場合は一番上のモデルを選択
+            if (modelName === 'first') {
+                const menuItemSelectors = window.AIHandler?.getSelectors?.('ChatGPT', 'MENU_ITEM') || ['[role="option"]', '[role="menuitem"]', '[role="menuitemradio"]'];
+                let menuItems = [];
+                for (const selector of menuItemSelectors) {
+                    menuItems.push(...document.querySelectorAll(selector));
+                }
+                
+                if (menuItems.length > 0) {
+                    // 一番最初のメニュー項目を選択
+                    const firstItem = menuItems[0];
+                    log(`一番上のモデルを選択: ${firstItem.textContent?.trim()}`, 'INFO');
+                    await clickElement(firstItem);
+                    await wait(CONFIG.delays.afterClick);
+                    
+                    const success = await checkMenuClosed();
+                    if (success) {
+                        log(`一番上のモデル選択成功: ${firstItem.textContent?.trim()}`, 'SUCCESS');
+                        endOperation(operationName, { success: true, model: firstItem.textContent?.trim() });
+                        return true;
+                    }
+                }
+                
+                log('一番上のモデルが見つかりません', 'ERROR');
+                endOperation(operationName, { success: false, error: '一番上のモデルが見つかりません' });
+                return false;
+            }
+            
             // まずメインメニューから探す
             const menuItemSelectors = window.AIHandler?.getSelectors?.('ChatGPT', 'MENU_ITEM') || ['[role="option"]', '[role="menuitem"]', '[role="menuitemradio"]'];
             let menuItems = [];

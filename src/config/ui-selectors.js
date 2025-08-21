@@ -632,3 +632,8 @@ export function detectAIType() {
 
 // デフォルトエクスポート
 export default UI_SELECTORS;
+
+// Chrome拡張機能の注入スクリプトコンテキストで利用可能にする
+if (typeof window !== 'undefined') {
+    window.UI_SELECTORS = UI_SELECTORS;
+}

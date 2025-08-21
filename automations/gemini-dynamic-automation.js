@@ -718,6 +718,28 @@
             
             log(`メニュー項目数: ${menuItems.length}`, 'DEBUG');
             
+            // "first"の場合は一番上のモデルを選択
+            if (searchTerm === 'first') {
+                if (menuItems.length > 0) {
+                    // 一番最初のメニュー項目を選択
+                    const firstItem = menuItems[0];
+                    log(`一番上のモデルを選択: ${firstItem.textContent?.trim()}`, 'INFO');
+                    await clickElement(firstItem);
+                    await wait(DELAYS.afterClick);
+                    
+                    const success = await checkMenuClosed();
+                    if (success) {
+                        log(`一番上のモデル選択成功: ${firstItem.textContent?.trim()}`, 'SUCCESS');
+                        endOperation(operationName, { success: true, model: firstItem.textContent?.trim() });
+                        return true;
+                    }
+                }
+                
+                log('一番上のモデルが見つかりません', 'ERROR');
+                endOperation(operationName, { success: false, error: '一番上のモデルが見つかりません' });
+                return false;
+            }
+            
             // 4. searchTermに一致する項目を探す
             for (const item of menuItems) {
                 const text = item.textContent?.trim();

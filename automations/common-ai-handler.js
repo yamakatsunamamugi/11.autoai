@@ -619,7 +619,7 @@
   // ========================================
   // メッセージ処理の共通関数
   // ========================================
-  const sendMessageCommon = async (sendButtonSelectors, aiName = null) => {
+  const sendMessageCommon = async (sendButtonSelectors, aiName = null, taskInfo = null) => {
     const ai = aiName || detectAI();
     const selectors = sendButtonSelectors || getSelectors(ai, 'SEND_BUTTON');
     
@@ -636,10 +636,37 @@
       return false;
     }
 
+    // 送信時刻を記録（SpreadsheetLoggerが利用可能な場合）
+    const sendTime = new Date();
+    
+    // taskInfoが渡されない場合はグローバル変数から取得
+    const actualTaskInfo = taskInfo || window.currentAITaskInfo;
+    
+    if (actualTaskInfo && actualTaskInfo.taskId && globalThis.spreadsheetLogger) {
+      try {
+        // 現在のモデルを取得
+        let currentModel = '不明';
+        if (window.AIHandler && window.AIHandler.menuHandler) {
+          currentModel = await window.AIHandler.menuHandler.getCurrentModel() || '不明';
+        }
+        
+        globalThis.spreadsheetLogger.recordSendTime(actualTaskInfo.taskId, {
+          aiType: actualTaskInfo.aiType || ai,
+          model: actualTaskInfo.model || currentModel
+        });
+        log(`📝 送信時刻を記録: タスク=${actualTaskInfo.taskId}, 時刻=${sendTime.toLocaleString('ja-JP')}`, 'INFO', ai);
+      } catch (error) {
+        log(`送信時刻の記録に失敗: ${error.message}`, 'WARNING', ai);
+      }
+    } else if (globalThis.spreadsheetLogger) {
+      // タスク情報がない場合のデバッグログ
+      log(`タスク情報なし: taskInfo=${!!taskInfo}, currentAITaskInfo=${!!window.currentAITaskInfo}`, 'DEBUG', ai);
+    }
+
     await performClick(sendButton, ai);
     log('📤 メッセージを送信しました', 'SUCCESS', ai);
     await wait(CONFIG.DELAYS.submit);
-    return true;
+    return { success: true, sendTime };
   };
 
   const waitForResponseCommon = async (stopButtonSelectors, options = {}, aiName = null) => {
@@ -654,12 +681,19 @@
     
     if (!selectors || selectors.length === 0) {
       log(`${ai}の停止ボタンセレクタが取得できません`, 'WARNING', ai);
-      return false;
+      return {
+        success: false,
+        error: 'NO_SELECTOR',
+        errorMessage: '停止ボタンセレクタが取得できません',
+        duration: 0,
+        needsRetry: false
+      };
     }
 
     log('AI応答を待機中...', 'INFO', ai);
     const startTime = Date.now();
     let lastMinuteLogged = 0;
+    let hasResponse = false;
 
     // 基本待機時間（デフォルト60秒）
     while (Date.now() - startTime < timeout) {
@@ -679,7 +713,22 @@
         // 停止ボタンがない = 応答完了
         await wait(1000); // 念のため1秒待つ
         
+        // 応答要素の存在を確認
+        const responseSelectors = getSelectors(ai, 'RESPONSE');
+        let responseFound = false;
+        if (responseSelectors) {
+          for (const selector of responseSelectors) {
+            const elements = document.querySelectorAll(selector);
+            if (elements.length > 0) {
+              responseFound = true;
+              hasResponse = true;
+              break;
+            }
+          }
+        }
+        
         // 経過時間を計算
+        const duration = Date.now() - startTime;
         if (sendStartTime) {
           const elapsedTotal = Date.now() - sendStartTime;
           const minutes = Math.floor(elapsedTotal / 60000);
@@ -688,7 +737,15 @@
         } else {
           log('✅ 応答生成完了', 'SUCCESS', ai);
         }
-        return true;
+        
+        return {
+          success: true,
+          error: null,
+          errorMessage: null,
+          duration: duration,
+          hasResponse: responseFound,
+          needsRetry: false
+        };
       }
       
       await wait(500);
@@ -721,8 +778,29 @@
         }
         
         if (!stopButton) {
+          // 応答要素の存在を確認
+          const responseSelectors = getSelectors(ai, 'RESPONSE');
+          let responseFound = false;
+          if (responseSelectors) {
+            for (const selector of responseSelectors) {
+              const elements = document.querySelectorAll(selector);
+              if (elements.length > 0) {
+                responseFound = true;
+                hasResponse = true;
+                break;
+              }
+            }
+          }
+          
           log('✅ 停止ボタンが消滅 - 応答生成完了', 'SUCCESS', ai);
-          return true;
+          return {
+            success: true,
+            error: null,
+            errorMessage: null,
+            duration: Date.now() - startTime,
+            hasResponse: responseFound,
+            needsRetry: false
+          };
         }
         
         // 1分ごとにログ
@@ -734,10 +812,42 @@
         
         await wait(1000);
       }
+      
+      // 延長タイムアウトに達した
+      log('延長待機もタイムアウトしました', 'ERROR', ai);
+      return {
+        success: false,
+        error: 'EXTENDED_TIMEOUT',
+        errorMessage: `停止ボタンが${(extendedTimeout + timeout) / 60000}分経過後も消えませんでした`,
+        duration: Date.now() - startTime,
+        hasResponse: hasResponse,
+        needsRetry: true
+      };
+    }
+
+    // 応答要素の存在を最終確認
+    const responseSelectors = getSelectors(ai, 'RESPONSE');
+    if (responseSelectors) {
+      for (const selector of responseSelectors) {
+        const elements = document.querySelectorAll(selector);
+        if (elements.length > 0) {
+          hasResponse = true;
+          break;
+        }
+      }
     }
 
     log('応答待機がタイムアウトしました', 'WARNING', ai);
-    return false;
+    return {
+      success: false,
+      error: hasResponse ? 'TIMEOUT_WITH_RESPONSE' : 'TIMEOUT_NO_RESPONSE',
+      errorMessage: hasResponse 
+        ? `タイムアウト（${timeout/1000}秒）しましたが、応答は取得できました`
+        : `タイムアウト（${timeout/1000}秒）- 応答が取得できませんでした`,
+      duration: Date.now() - startTime,
+      hasResponse: hasResponse,
+      needsRetry: !hasResponse
+    };
   };
 
   const getResponseCommon = async (responseSelectors, textExtractor, aiName = null) => {
@@ -1017,7 +1127,12 @@
       this.aiType = detectAI();
       this.models = [];
       this.features = [];
+      this.lastFailureReason = null;
       log(`AIタイプ検出: ${this.aiType}`, 'INFO');
+    }
+    
+    getLastFailureReason() {
+      return this.lastFailureReason || '不明';
     }
 
     async openModelMenu() {
@@ -1116,13 +1231,20 @@
       
       const selectors = getSelectors(this.aiType, 'FUNCTION_BUTTON');
       if (!selectors || selectors.length === 0) {
-        log(`${this.aiType}の機能メニューセレクタが取得できません`, 'ERROR');
+        const error = `${this.aiType}の機能メニューセレクタが取得できません`;
+        log(error, 'ERROR');
+        this.lastFailureReason = '機能メニューセレクタが未定義';
         return null;
       }
 
+      log(`機能メニューボタンを検索中... セレクタ: ${JSON.stringify(selectors)}`, 'DEBUG');
       const button = await findElement(selectors, null, CONFIG.TIMEOUTS.menuWait);
       if (!button) {
-        log('機能メニューボタンが見つかりません', 'ERROR');
+        const error = '機能メニューボタンが見つかりません';
+        log(error, 'ERROR');
+        log(`検索に使用したセレクタ: ${JSON.stringify(selectors)}`, 'ERROR');
+        log(`タイムアウト: ${CONFIG.TIMEOUTS.menuWait}ms`, 'ERROR');
+        this.lastFailureReason = '機能メニューボタンが見つからない';
         return null;
       }
 
@@ -1130,13 +1252,17 @@
       const clickMethod = await tryMultipleClickMethods(button, isMenuOpen, this.aiType);
       
       if (!clickMethod) {
-        log('機能メニューを開けませんでした', 'ERROR');
+        const error = '機能メニューボタンのクリックに失敗しました';
+        log(error, 'ERROR');
+        this.lastFailureReason = '機能メニューボタンのクリックに失敗';
         return null;
       }
 
       const menu = await waitForMenu();
       if (!menu) {
-        log('機能メニューを開けませんでした', 'ERROR');
+        const error = '機能メニューの表示待機がタイムアウトしました';
+        log(error, 'ERROR');
+        this.lastFailureReason = '機能メニューの表示待機がタイムアウト';
         return null;
       }
 
@@ -1480,6 +1606,18 @@
       if (!menu) return false;
 
       const items = await this.getMenuItems();
+      
+      // メニューアイテムが0件の場合の詳細ログ
+      if (items.length === 0) {
+        const error = 'メニューアイテムが1件も見つかりません';
+        log(error, 'ERROR');
+        const itemSelectors = await getSelectorsSafe(this.aiType, 'MENU_ITEM');
+        log(`メニューアイテムセレクタ: ${JSON.stringify(itemSelectors)}`, 'ERROR');
+        this.lastFailureReason = 'メニューアイテムが0件';
+        await closeMenu();
+        return false;
+      }
+      
       let targetItem = null;
       
       // より詳細なデバッグ情報（非同期版を使用）
@@ -1566,7 +1704,13 @@
       }
 
       console.log(`[デバッグ] ターゲットアイテムが見つかりませんでした: "${functionName}"`);
+      
+      // 利用可能な機能名一覧を出力
+      const availableFunctions = items.map(item => item.textContent?.trim()).filter(text => text && text.length > 0);
       log(`機能「${functionName}」が見つかりません`, 'ERROR');
+      log(`利用可能な機能一覧 (${availableFunctions.length}件): ${JSON.stringify(availableFunctions)}`, 'ERROR');
+      this.lastFailureReason = `機能「${functionName}」が見つからない。利用可能: ${availableFunctions.join(', ')}`;
+      
       await closeMenu();
       return false;
     }

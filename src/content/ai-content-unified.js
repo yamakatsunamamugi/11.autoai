@@ -11,6 +11,132 @@
 // UI_SELECTORSの読み込み状態を管理
 let UI_SELECTORS_LOADED = false;
 let UI_SELECTORS_PROMISE = null;
+let retryManager = null; // RetryManagerインスタンス
+
+// RetryManagerの初期化
+async function initializeRetryManager() {
+  if (retryManager) return retryManager;
+  
+  // retry-manager.jsを読み込む
+  return new Promise((resolve) => {
+    const script = document.createElement('script');
+    script.src = chrome.runtime.getURL('src/modules/retry-manager.js');
+    script.onload = () => {
+      console.log('✅ [11.autoai] RetryManagerを読み込みました');
+      retryManager = new window.RetryManager({
+        maxRetries: 3,
+        retryDelay: 5000,
+        debugMode: true
+      });
+      
+      // executeTask関数を上書き
+      retryManager.executeTask = async (taskConfig) => {
+        return await executeTaskInternal(taskConfig);
+      };
+      
+      resolve(retryManager);
+    };
+    script.onerror = (error) => {
+      console.error('❌ [11.autoai] RetryManager読み込みエラー:', error);
+      resolve(null);
+    };
+    document.head.appendChild(script);
+  });
+}
+
+// 内部タスク実行関数
+async function executeTaskInternal(taskConfig) {
+  const { taskId, prompt, aiType, enableDeepResearch, specialMode, timeout } = taskConfig;
+  
+  try {
+    // プロンプト送信
+    const sendResult = await sendPromptToAI(prompt, {
+      model: null,
+      specialOperation: specialMode,
+      aiType: aiType || AI_TYPE,
+      taskId
+    });
+    
+    if (!sendResult || !sendResult.success) {
+      return {
+        success: false,
+        error: 'SEND_FAILED',
+        errorMessage: sendResult?.error || 'プロンプト送信失敗',
+        needsRetry: true
+      };
+    }
+    
+    // 応答待機（改良版のwaitForResponseを使用）
+    const waitResult = await waitForResponseEnhanced(enableDeepResearch, timeout);
+    
+    if (!waitResult.success) {
+      return waitResult; // エラー情報をそのまま返す
+    }
+    
+    // 応答取得
+    const response = await getResponseWithCanvas();
+    
+    if (!response || response.trim().length === 0) {
+      return {
+        success: false,
+        error: 'EMPTY_RESPONSE',
+        errorMessage: '空のレスポンスを受信しました',
+        needsRetry: true
+      };
+    }
+    
+    return {
+      success: true,
+      response: response,
+      taskId: taskId,
+      aiType: aiType || AI_TYPE
+    };
+    
+  } catch (error) {
+    return {
+      success: false,
+      error: 'UNEXPECTED_ERROR',
+      errorMessage: error.message,
+      needsRetry: true
+    };
+  }
+}
+
+// 拡張された応答待機関数
+async function waitForResponseEnhanced(enableDeepResearch = false, customTimeout = null) {
+  const timeout = customTimeout || (enableDeepResearch ? 3600000 : 600000);
+  
+  // AIHandlerが利用可能な場合
+  if (window.AIHandler && window.AIHandler.message && window.AIHandler.message.waitForResponse) {
+    const result = await window.AIHandler.message.waitForResponse(null, {
+      timeout: timeout,
+      extendedTimeout: enableDeepResearch ? timeout : 30 * 60 * 1000,
+      sendStartTime: Date.now()
+    }, AI_TYPE);
+    
+    // 新しい形式の戻り値に対応
+    if (typeof result === 'object' && result !== null) {
+      return result;
+    }
+    
+    // 旧形式（boolean）の場合は変換
+    return {
+      success: result === true,
+      error: result ? null : 'TIMEOUT_NO_RESPONSE',
+      errorMessage: result ? null : '応答待機がタイムアウトしました',
+      needsRetry: !result
+    };
+  }
+  
+  // フォールバック処理
+  const waitResult = await waitForResponseWithStopButton(enableDeepResearch);
+  return {
+    success: waitResult === true,
+    error: waitResult ? null : 'TIMEOUT_NO_RESPONSE',
+    errorMessage: waitResult ? null : '応答待機がタイムアウトしました',
+    needsRetry: !waitResult
+  };
+}
 
 // UI Selectors、タイムアウト設定とDeepResearch設定を読み込み
 const loadUISelectors = () => {
@@ -923,6 +1049,45 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       })();
       break;
 
+    case "GET_SELECTOR_DATA":
+      // セレクタデータ取得
+      isAsync = true;
+      console.log(`[${AI_TYPE}] セレクタデータ取得要求受信`);
+      (async () => {
+        try {
+          if (window.getAIMutationData) {
+            const selectorData = window.getAIMutationData();
+            if (selectorData) {
+              console.log(`[${AI_TYPE}] セレクタデータ取得成功:`, selectorData);
+              sendResponse({
+                success: true,
+                data: selectorData,
+                aiType: AI_TYPE
+              });
+            } else {
+              console.log(`[${AI_TYPE}] セレクタデータがまだ収集されていません`);
+              sendResponse({
+                success: false,
+                error: 'セレクタデータがまだ収集されていません'
+              });
+            }
+          } else {
+            console.error(`[${AI_TYPE}] getAIMutationData関数が見つかりません`);
+            sendResponse({
+              success: false,
+              error: 'セレクタデータ取得機能が利用できません'
+            });
+          }
+        } catch (error) {
+          console.error(`[${AI_TYPE}] セレクタデータ取得エラー:`, error);
+          sendResponse({
+            success: false,
+            error: error.message
+          });
+        }
+      })();
+      break;
+
     case "GET_MUTATION_OBSERVER_RESULT":
       // MutationObserver結果取得
       isAsync = true;
@@ -1596,7 +1761,7 @@ async function handleSendPrompt(request, sendResponse) {
  */
 async function handleGetResponse(request, sendResponse) {
   try {
-    const { taskId, timeout = 600000, enableDeepResearch = false } = request;
+    const { taskId, timeout = 600000, enableDeepResearch = false, useRetry = true } = request;
 
     // DeepResearchモードの場合はタイムアウトを40分に調整
     const actualTimeout = enableDeepResearch ? 3600000 : timeout;
@@ -1604,14 +1769,75 @@ async function handleGetResponse(request, sendResponse) {
     console.log(`[11.autoai][${AI_TYPE}] 応答収集開始: ${taskId}`, {
       timeout: actualTimeout,
       enableDeepResearch: enableDeepResearch,
+      useRetry: useRetry
     });
 
-    // 停止ボタン監視による回答待機（3.autoai準拠）
-    console.log(`[11.autoai][${AI_TYPE}] 停止ボタン監視開始`);
-    const waitResult = await waitForResponseWithStopButton(enableDeepResearch);
+    // リトライマネージャーを使用する場合
+    if (useRetry && retryManager) {
+      const result = await retryManager.executeWithRetry({
+        taskId,
+        prompt: request.prompt || '',
+        aiType: AI_TYPE,
+        enableDeepResearch,
+        specialMode: request.specialMode,
+        timeout: actualTimeout
+      }, {
+        onRetry: (retryInfo) => {
+          console.log(`[11.autoai][${AI_TYPE}] リトライ ${retryInfo.retryCount}/${retryInfo.maxRetries}`, retryInfo);
+          // UIに通知を送信
+          chrome.runtime.sendMessage({
+            type: 'RETRY_NOTIFICATION',
+            data: retryInfo
+          });
+        },
+        onError: (errorInfo) => {
+          console.error(`[11.autoai][${AI_TYPE}] タスク失敗:`, errorInfo);
+        }
+      });
+      
+      if (result.success) {
+        sendResponse({
+          success: true,
+          response: result.response,
+          chunks: 1,
+          taskId,
+          aiType: AI_TYPE,
+          retryCount: result.retryCount
+        });
+      } else {
+        sendResponse({
+          success: false,
+          error: result.errorMessage,
+          errorDetails: result,
+          taskId,
+          aiType: AI_TYPE,
+          retryCount: result.retryCount
+        });
+      }
+      return;
+    }
 
-    if (!waitResult) {
-      throw new Error("応答待機タイムアウト");
+    // 従来の処理（リトライなし）
+    console.log(`[11.autoai][${AI_TYPE}] 停止ボタン監視開始`);
+    const waitResult = await waitForResponseEnhanced(enableDeepResearch, actualTimeout);
+
+    if (!waitResult.success) {
+      // エラー時にリトライが必要かチェック
+      if (waitResult.needsRetry) {
+        console.log(`[11.autoai][${AI_TYPE}] リトライが必要なエラー:`, waitResult);
+        // 新規ウィンドウでリトライを要求
+        chrome.runtime.sendMessage({
+          type: 'RETRY_WITH_NEW_WINDOW',
+          taskId: taskId,
+          prompt: request.prompt || '',
+          aiType: AI_TYPE,
+          enableDeepResearch: enableDeepResearch,
+          specialMode: request.specialMode,
+          error: waitResult.error,
+          errorMessage: waitResult.errorMessage
+        });
+      }
+      throw new Error(waitResult.errorMessage || "応答待機タイムアウト");
     }
 
     // Canvas機能対応の回答取得（3.autoai準拠）
@@ -1630,7 +1856,7 @@ async function handleGetResponse(request, sendResponse) {
     sendResponse({
       success: true,
       response: response,
-      chunks: 1, // 3.autoaiでは分割していない
+      chunks: 1,
       taskId,
       aiType: AI_TYPE,
     });
@@ -2359,6 +2585,11 @@ async function initializeWithDefaults() {
 if (AI_TYPE) {
   console.log(`🚀 [11.autoai] ${AI_TYPE} サイトでContent Script初期化開始`);
 
+  // RetryManagerの初期化
+  initializeRetryManager().then(() => {
+    console.log('[11.autoai] RetryManager初期化完了');
+  });
+  
   // UI Selectors読み込みから開始
   loadUISelectors();
 

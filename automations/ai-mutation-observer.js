@@ -52,6 +52,14 @@
         responseComplete: null
       };
 
+      // セレクタ情報管理
+      this.selectorData = {
+        lastCollected: null,
+        selectors: {},
+        foundElements: {},
+        status: {}
+      };
+
       this.log(`AI統合MutationObserver初期化完了 - 検出AI: ${this.aiType}`, 'INFO');
     }
 
@@ -124,18 +132,28 @@
      * 要素を検索
      */
     findElement(selectors) {
-      if (!Array.isArray(selectors)) return null;
+      if (!Array.isArray(selectors)) {
+        this.log('⚠️ セレクタ配列が無効です', 'WARNING');
+        return null;
+      }
+      
+      this.log(`🔍 要素検索開始: ${selectors.length}個のセレクタを試行`, 'INFO');
       
       for (const selector of selectors) {
         try {
+          this.log(`  → 試行中: ${selector}`, 'DEBUG');
           const element = document.querySelector(selector);
           if (element && element.offsetParent !== null) {
+            this.log(`  ✅ 要素発見: ${selector} - ${element.tagName}`, 'SUCCESS');
             return element;
+          } else if (element) {
+            this.log(`  ⚠️ 要素は存在するが非表示: ${selector}`, 'DEBUG');
           }
         } catch (e) {
-          // セレクタエラーは無視
+          this.log(`  ❌ セレクタエラー: ${selector} - ${e.message}`, 'DEBUG');
         }
       }
+      this.log('❌ 要素が見つかりませんでした', 'WARNING');
       return null;
     }
 
@@ -365,7 +383,9 @@
      */
     sendSelectorDataToUI() {
       try {
+        this.log('📡 セレクタ情報の収集を開始', 'INFO');
         const selectorData = this.collectAllSelectors();
+        
         const formattedData = {
           [this.aiType.toLowerCase()]: {
             totalSelectors: this.getTotalSelectorCount(selectorData),
@@ -377,17 +397,31 @@
           }
         };
 
+        console.log('📤 送信するセレクタデータ:', formattedData);
+        this.log(`📊 収集結果: 総セレクタ数=${formattedData[this.aiType.toLowerCase()].totalSelectors}, 入力欄=${formattedData[this.aiType.toLowerCase()].inputElements}, ボタン=${formattedData[this.aiType.toLowerCase()].buttonElements}`, 'INFO');
+
         // UI Controllerに送信（chrome.runtime.sendMessageまたはpostMessage）
         if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
           chrome.runtime.sendMessage({
             type: 'selector-data',
             data: formattedData
+          }, (response) => {
+            if (chrome.runtime.lastError) {
+              this.log(`❌ セレクタデータ送信エラー: ${chrome.runtime.lastError.message}`, 'ERROR');
+              console.error('Chrome runtime エラー:', chrome.runtime.lastError);
+            } else {
+              this.log(`✅ セレクタデータ送信成功: ${response?.message || 'レスポンスなし'}`, 'SUCCESS');
+              console.log('送信レスポンス:', response);
+            }
           });
+        } else {
+          this.log('⚠️ chrome.runtime.sendMessageが利用できません', 'WARNING');
         }
         
         this.log(`🎯 セレクタ情報をUIに送信: ${JSON.stringify(formattedData).length}バイト`, 'INFO');
       } catch (error) {
-        this.log(`セレクタ情報送信エラー: ${error.message}`, 'ERROR');
+        this.log(`❌ セレクタ情報送信エラー: ${error.message}`, 'ERROR');
+        console.error('セレクタ送信エラーの詳細:', error);
       }
     }
 
@@ -574,19 +608,35 @@
       const selectors = this.getSelectors(selectorType);
       const foundSelectors = [];
       
+      this.log(`📋 ${selectorType}セレクタ収集開始: ${selectors.length}個のセレクタ候補`, 'INFO');
+      console.log(`[${selectorType}] 検索するセレクタ:`, selectors);
+      
       for (const selector of selectors) {
         try {
+          this.log(`  → 検索中: ${selector}`, 'DEBUG');
           const elements = document.querySelectorAll(selector);
-          elements.forEach(element => {
+          
+          if (elements.length > 0) {
+            this.log(`  ✅ ${elements.length}個の要素を発見: ${selector}`, 'SUCCESS');
+            console.log(`[${selectorType}] 発見した要素:`, elements);
+          } else {
+            this.log(`  ⚠️ 要素なし: ${selector}`, 'DEBUG');
+          }
+          
+          elements.forEach((element, index) => {
             const selectorInfo = this.extractComprehensiveSelectors(element, selectorType);
             if (selectorInfo) {
               foundSelectors.push(selectorInfo);
+              this.log(`    [${index}] ${element.tagName} - attributes: ${Object.keys(selectorInfo.attributes).join(', ')}`, 'DEBUG');
             }
           });
         } catch (e) {
-          // セレクタエラーは無視
+          this.log(`  ❌ セレクタエラー: ${selector} - ${e.message}`, 'ERROR');
         }
       }
+      
+      this.log(`📊 ${selectorType}セレクタ収集完了: ${foundSelectors.length}個のセレクタ情報を取得`, 'INFO');
+      console.log(`[${selectorType}] 収集したセレクタ情報:`, foundSelectors);
       
       return foundSelectors;
     }
@@ -1374,6 +1424,303 @@
     getTimestamps() {
       return { ...this.timestamps };
     }
+
+    /**
+     * 現在のセレクタ情報を収集
+     */
+    collectSelectorData() {
+      this.log('🔍 セレクタ情報の収集を開始します', 'INFO');
+      
+      try {
+        const data = {
+          aiType: this.aiType,
+          timestamp: new Date().toISOString(),
+          url: window.location.href,
+          selectors: {},
+          foundElements: {},
+          status: {}
+        };
+
+        // AIHandlerからセレクタを取得
+        if (window.AIHandler && window.AIHandler.getSelectors) {
+          this.log(`📋 ${this.aiType} AIHandlerからセレクタを取得中...`, 'INFO');
+          
+          // 各セレクタタイプを取得して実際の要素をチェック
+          const selectorTypes = ['INPUT', 'SEND_BUTTON', 'STOP_BUTTON', 'MODEL_BUTTON', 'FUNCTION_BUTTON', 'MESSAGE'];
+          
+          for (const type of selectorTypes) {
+            try {
+              const selectors = window.AIHandler.getSelectors(this.aiType, type);
+              if (selectors && selectors.length > 0) {
+                data.selectors[type] = selectors;
+                
+                // 実際にページで見つかった要素をチェック
+                const foundElement = this.findElement(selectors);
+                data.foundElements[type] = {
+                  found: !!foundElement,
+                  selector: foundElement ? this.getElementSelector(foundElement) : null,
+                  text: foundElement ? foundElement.textContent?.trim().substring(0, 50) : null,
+                  visible: foundElement ? this.isElementVisible(foundElement) : false
+                };
+                
+                this.log(`  ${type}: ${foundElement ? '✅見つかった' : '❌見つからない'} (${selectors.length}個のセレクタ)`, 'DEBUG');
+              }
+            } catch (error) {
+              this.log(`⚠️ ${type}セレクタ取得エラー: ${error.message}`, 'WARNING');
+            }
+          }
+          
+          // 現在のAI状態も取得
+          data.status = this.getCurrentAIStatus();
+          
+        } else {
+          this.log('❌ window.AIHandler.getSelectorsが利用できません', 'WARNING');
+          
+          // フォールバック: 基本的なセレクタのみ収集
+          data.selectors = this.getBasicSelectors();
+          data.status = this.getCurrentAIStatus();
+        }
+        
+        // セレクタデータを更新
+        this.selectorData = {
+          lastCollected: new Date().toISOString(),
+          ...data
+        };
+        
+        this.log(`📋 ${this.aiType} セレクタ収集完了`, 'INFO');
+        
+        // 収集したデータをbackgroundに送信
+        this.sendSelectorDataToBackground(data);
+        
+        return data;
+        
+      } catch (error) {
+        this.log(`❌ ${this.aiType} セレクタ収集エラー: ${error.message}`, 'ERROR');
+        return null;
+      }
+    }
+
+    /**
+     * 要素の可視性をチェック
+     */
+    isElementVisible(element) {
+      if (!element) return false;
+      
+      const style = window.getComputedStyle(element);
+      return (
+        style.display !== 'none' &&
+        style.visibility !== 'hidden' &&
+        style.opacity !== '0' &&
+        element.offsetWidth > 0 &&
+        element.offsetHeight > 0
+      );
+    }
+
+    /**
+     * 要素のセレクタを生成
+     */
+    getElementSelector(element) {
+      if (!element) return null;
+      
+      // ID がある場合は優先
+      if (element.id) {
+        return `#${element.id}`;
+      }
+      
+      // data-testid がある場合
+      if (element.getAttribute('data-testid')) {
+        return `[data-testid="${element.getAttribute('data-testid')}"]`;
+      }
+      
+      // aria-label がある場合
+      if (element.getAttribute('aria-label')) {
+        return `[aria-label="${element.getAttribute('aria-label')}"]`;
+      }
+      
+      // クラス名を使用（可能な限り短縮）
+      if (element.className && typeof element.className === 'string') {
+        const classes = element.className.trim().split(/\s+/).slice(0, 2); // 最初の2つのクラスのみ
+        return `.${classes.join('.')}`;
+      }
+      
+      // タグ名のみ
+      return element.tagName.toLowerCase();
+    }
+
+    /**
+     * 現在のAI状態を取得
+     */
+    getCurrentAIStatus() {
+      const status = {};
+      
+      try {
+        // 共通状態
+        status.pageLoaded = document.readyState === 'complete';
+        status.timestamp = new Date().toISOString();
+        
+        // AI別の状態取得
+        if (this.aiType === 'Claude') {
+          status = { ...status, ...this.getClaudeStatus() };
+        } else if (this.aiType === 'ChatGPT') {
+          status = { ...status, ...this.getChatGPTStatus() };
+        } else if (this.aiType === 'Gemini') {
+          status = { ...status, ...this.getGeminiStatus() };
+        }
+        
+      } catch (error) {
+        this.log(`❌ AI状態取得エラー: ${error.message}`, 'ERROR');
+      }
+      
+      return status;
+    }
+
+    /**
+     * Claude状態を取得
+     */
+    getClaudeStatus() {
+      const status = {};
+      
+      try {
+        // 選択中のモデル
+        const modelButton = this.findElement(this.getSelectors('MODEL_BUTTON'));
+        if (modelButton) {
+          status.selectedModel = modelButton.textContent.trim();
+        }
+        
+        // 入力可能状態
+        const textInput = this.findElement(this.getSelectors('INPUT'));
+        status.inputReady = textInput && !textInput.disabled && this.isElementVisible(textInput);
+        
+        // 送信ボタン状態
+        const sendButton = this.findElement(this.getSelectors('SEND_BUTTON'));
+        status.sendReady = sendButton && !sendButton.disabled && this.isElementVisible(sendButton);
+        
+        // 停止ボタンの存在（応答中の場合）
+        const stopButton = this.findElement(this.getSelectors('STOP_BUTTON'));
+        status.responding = stopButton && this.isElementVisible(stopButton);
+        
+      } catch (error) {
+        this.log(`Claude状態取得エラー: ${error.message}`, 'WARNING');
+      }
+      
+      return status;
+    }
+
+    /**
+     * ChatGPT状態を取得
+     */
+    getChatGPTStatus() {
+      const status = {};
+      
+      try {
+        // 選択中のモデル
+        const modelButton = this.findElement(this.getSelectors('MODEL_BUTTON'));
+        if (modelButton) {
+          status.selectedModel = modelButton.textContent.trim();
+        }
+        
+        // 入力可能状態
+        const textInput = this.findElement(this.getSelectors('INPUT'));
+        status.inputReady = textInput && !textInput.disabled && this.isElementVisible(textInput);
+        
+        // 送信ボタン状態
+        const sendButton = this.findElement(this.getSelectors('SEND_BUTTON'));
+        status.sendReady = sendButton && !sendButton.disabled && this.isElementVisible(sendButton);
+        
+        // 停止ボタンの存在（応答中の場合）
+        const stopButton = this.findElement(this.getSelectors('STOP_BUTTON'));
+        status.responding = stopButton && this.isElementVisible(stopButton);
+        
+      } catch (error) {
+        this.log(`ChatGPT状態取得エラー: ${error.message}`, 'WARNING');
+      }
+      
+      return status;
+    }
+
+    /**
+     * Gemini状態を取得
+     */
+    getGeminiStatus() {
+      const status = {};
+      
+      try {
+        // 選択中のモデル
+        const modelButton = this.findElement(this.getSelectors('MODEL_BUTTON'));
+        if (modelButton) {
+          status.selectedModel = modelButton.textContent.trim();
+        }
+        
+        // 入力可能状態
+        const textInput = this.findElement(this.getSelectors('INPUT'));
+        status.inputReady = textInput && !textInput.disabled && this.isElementVisible(textInput);
+        
+        // 送信ボタン状態
+        const sendButton = this.findElement(this.getSelectors('SEND_BUTTON'));
+        status.sendReady = sendButton && !sendButton.disabled && this.isElementVisible(sendButton);
+        
+        // 停止ボタンの存在（応答中の場合）
+        const stopButton = this.findElement(this.getSelectors('STOP_BUTTON'));
+        status.responding = stopButton && this.isElementVisible(stopButton);
+        
+      } catch (error) {
+        this.log(`Gemini状態取得エラー: ${error.message}`, 'WARNING');
+      }
+      
+      return status;
+    }
+
+    /**
+     * セレクタデータをbackgroundに送信
+     */
+    sendSelectorDataToBackground(selectorData) {
+      try {
+        chrome.runtime.sendMessage({
+          type: 'selector-data',
+          data: selectorData
+        }, (response) => {
+          if (chrome.runtime.lastError) {
+            this.log(`❌ セレクタデータ送信エラー: ${chrome.runtime.lastError.message}`, 'ERROR');
+          } else {
+            this.log('✅ セレクタデータをbackgroundに送信しました', 'DEBUG');
+          }
+        });
+      } catch (error) {
+        this.log(`❌ セレクタデータ送信処理エラー: ${error.message}`, 'ERROR');
+      }
+    }
+
+    /**
+     * 基本的なセレクタを取得（フォールバック用）
+     */
+    getBasicSelectors() {
+      const selectors = {};
+      
+      if (this.aiType === 'Claude') {
+        selectors.INPUT = ['[contenteditable="true"][role="textbox"]'];
+        selectors.SEND_BUTTON = ['button[aria-label="メッセージを送信"]'];
+        selectors.MODEL_BUTTON = ['button[data-testid="model-selector"]'];
+      } else if (this.aiType === 'ChatGPT') {
+        selectors.INPUT = ['#prompt-textarea'];
+        selectors.SEND_BUTTON = ['[data-testid="send-button"]'];
+        selectors.MODEL_BUTTON = ['[data-testid="model-switcher-dropdown-button"]'];
+      } else if (this.aiType === 'Gemini') {
+        selectors.INPUT = ['[contenteditable="true"][role="textbox"]'];
+        selectors.SEND_BUTTON = ['button[aria-label="Send message"]'];
+        selectors.MODEL_BUTTON = ['button[aria-label="Model selector"]'];
+      }
+      
+      return selectors;
+    }
+
+    /**
+     * 現在のセレクタデータを取得
+     */
+    getSelectorData() {
+      // 最新のデータを収集
+      this.collectSelectorData();
+      return this.selectorData;
+    }
   }
 
   // グローバルに公開
@@ -1419,10 +1766,34 @@
     return window.AIMutationObserverResult || null;
   };
 
+  // セレクタデータ取得関数
+  window.getAIMutationData = () => {
+    try {
+      if (window.currentAIObserver) {
+        // 実行中のObserverからセレクタデータを取得
+        console.log('🔍 実行中のMutationObserverからセレクタデータを取得中...');
+        return window.currentAIObserver.getSelectorData();
+      } else {
+        // 一時的なObserverを作成してセレクタデータを収集
+        console.log('🔍 MutationObserver未開始のため、一時的にセレクタデータを収集します');
+        const tempObserver = new AIMutationObserver();
+        return tempObserver.getSelectorData();
+      }
+    } catch (error) {
+      console.error('❌ セレクタデータ取得エラー:', error);
+      return null;
+    }
+  };
+
+
+  // AIMutationObserverクラスをグローバルに公開
+  window.AIMutationObserver = AIMutationObserver;
+
   console.log('🔍 AI統合MutationObserver監視システム準備完了');
   console.log('💡 使用方法:');
   console.log('  - 開始: startAIMutationMonitoring()');
   console.log('  - 停止: stopAIMutationMonitoring()');  
   console.log('  - 結果: getAIMutationReport()');
+  console.log('  - セレクタ: getAIMutationData()');
 
 })();

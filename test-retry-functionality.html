@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>リトライ機能テストページ</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      color: white;
+      text-align: center;
+      margin-bottom: 30px;
+      font-size: 2rem;
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    }
+
+    .test-panel {
+      background: white;
+      border-radius: 15px;
+      padding: 30px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+      margin-bottom: 20px;
+    }
+
+    h2 {
+      color: #333;
+      margin-bottom: 20px;
+      padding-bottom: 10px;
+      border-bottom: 2px solid #f0f0f0;
+    }
+
+    .control-group {
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 5px;
+      color: #666;
+      font-weight: 500;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      padding: 10px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 14px;
+      transition: border-color 0.3s;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    textarea {
+      min-height: 100px;
+      resize: vertical;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    button {
+      flex: 1;
+      padding: 12px 24px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .status-panel {
+      background: #f8f9fa;
+      border-radius: 8px;
+      padding: 15px;
+      margin-top: 20px;
+    }
+
+    .status-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid #e0e0e0;
+    }
+
+    .status-item:last-child {
+      border-bottom: none;
+    }
+
+    .status-label {
+      color: #666;
+      font-weight: 500;
+    }
+
+    .status-value {
+      color: #333;
+      font-weight: 600;
+    }
+
+    .log-panel {
+      background: #1e1e1e;
+      color: #d4d4d4;
+      border-radius: 8px;
+      padding: 15px;
+      margin-top: 20px;
+      max-height: 400px;
+      overflow-y: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+    }
+
+    .log-entry {
+      margin-bottom: 5px;
+      padding: 5px;
+      border-left: 3px solid transparent;
+    }
+
+    .log-entry.info {
+      border-left-color: #3b82f6;
+    }
+
+    .log-entry.success {
+      border-left-color: #10b981;
+      color: #10b981;
+    }
+
+    .log-entry.warning {
+      border-left-color: #f59e0b;
+      color: #f59e0b;
+    }
+
+    .log-entry.error {
+      border-left-color: #ef4444;
+      color: #ef4444;
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 30px;
+      background: #e0e0e0;
+      border-radius: 15px;
+      overflow: hidden;
+      margin-top: 20px;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+      width: 0%;
+      transition: width 0.5s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 600;
+      font-size: 12px;
+    }
+
+    .test-scenarios {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 15px;
+      margin-top: 20px;
+    }
+
+    .scenario-card {
+      background: white;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 15px;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .scenario-card:hover {
+      border-color: #667eea;
+      box-shadow: 0 5px 15px rgba(102, 126, 234, 0.2);
+    }
+
+    .scenario-card.selected {
+      border-color: #764ba2;
+      background: #f8f4ff;
+    }
+
+    .scenario-title {
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 5px;
+    }
+
+    .scenario-description {
+      font-size: 12px;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔄 リトライ機能テストページ</h1>
+
+    <div class="test-panel">
+      <h2>テスト設定</h2>
+      
+      <div class="control-group">
+        <label for="aiType">AIタイプ</label>
+        <select id="aiType">
+          <option value="Claude">Claude</option>
+          <option value="ChatGPT">ChatGPT</option>
+          <option value="Gemini">Gemini</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <label for="prompt">プロンプト</label>
+        <textarea id="prompt" placeholder="テスト用のプロンプトを入力...">これはタイムアウトテスト用のプロンプトです。長い処理を実行してください。</textarea>
+      </div>
+
+      <div class="control-group">
+        <label for="timeout">タイムアウト時間（ミリ秒）</label>
+        <input type="number" id="timeout" value="10000" min="1000" max="600000">
+      </div>
+
+      <div class="control-group">
+        <label for="maxRetries">最大リトライ回数</label>
+        <input type="number" id="maxRetries" value="3" min="1" max="10">
+      </div>
+
+      <div class="control-group">
+        <label>
+          <input type="checkbox" id="enableDeepResearch">
+          DeepResearchモードを有効化
+        </label>
+      </div>
+
+      <div class="control-group">
+        <label>
+          <input type="checkbox" id="simulateTimeout" checked>
+          タイムアウトをシミュレート
+        </label>
+      </div>
+    </div>
+
+    <div class="test-panel">
+      <h2>テストシナリオ</h2>
+      <div class="test-scenarios">
+        <div class="scenario-card" data-scenario="timeout">
+          <div class="scenario-title">タイムアウトエラー</div>
+          <div class="scenario-description">応答がタイムアウトし、リトライが発生</div>
+        </div>
+        <div class="scenario-card" data-scenario="partial">
+          <div class="scenario-title">部分的な応答</div>
+          <div class="scenario-description">応答の途中でタイムアウト</div>
+        </div>
+        <div class="scenario-card" data-scenario="network">
+          <div class="scenario-title">ネットワークエラー</div>
+          <div class="scenario-description">ネットワーク接続の問題</div>
+        </div>
+        <div class="scenario-card" data-scenario="success">
+          <div class="scenario-title">成功ケース</div>
+          <div class="scenario-description">正常に応答を取得</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="test-panel">
+      <h2>実行制御</h2>
+      <div class="button-group">
+        <button id="startTest">テスト開始</button>
+        <button id="stopTest" disabled>テスト停止</button>
+        <button id="clearLog">ログクリア</button>
+      </div>
+
+      <div class="progress-bar">
+        <div class="progress-fill" id="progressBar">0%</div>
+      </div>
+
+      <div class="status-panel">
+        <div class="status-item">
+          <span class="status-label">ステータス:</span>
+          <span class="status-value" id="testStatus">待機中</span>
+        </div>
+        <div class="status-item">
+          <span class="status-label">現在のリトライ回数:</span>
+          <span class="status-value" id="currentRetry">0</span>
+        </div>
+        <div class="status-item">
+          <span class="status-label">経過時間:</span>
+          <span class="status-value" id="elapsedTime">0秒</span>
+        </div>
+        <div class="status-item">
+          <span class="status-label">タスクID:</span>
+          <span class="status-value" id="taskId">-</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="test-panel">
+      <h2>実行ログ</h2>
+      <div class="log-panel" id="logPanel"></div>
+    </div>
+  </div>
+
+  <script>
+    // テストコントローラー
+    class RetryTestController {
+      constructor() {
+        this.isRunning = false;
+        this.startTime = null;
+        this.currentTaskId = null;
+        this.retryCount = 0;
+        this.selectedScenario = 'timeout';
+        
+        this.initializeElements();
+        this.attachEventListeners();
+        this.log('テストシステム初期化完了', 'info');
+      }
+
+      initializeElements() {
+        this.elements = {
+          startBtn: document.getElementById('startTest'),
+          stopBtn: document.getElementById('stopTest'),
+          clearBtn: document.getElementById('clearLog'),
+          logPanel: document.getElementById('logPanel'),
+          progressBar: document.getElementById('progressBar'),
+          testStatus: document.getElementById('testStatus'),
+          currentRetry: document.getElementById('currentRetry'),
+          elapsedTime: document.getElementById('elapsedTime'),
+          taskId: document.getElementById('taskId'),
+          aiType: document.getElementById('aiType'),
+          prompt: document.getElementById('prompt'),
+          timeout: document.getElementById('timeout'),
+          maxRetries: document.getElementById('maxRetries'),
+          enableDeepResearch: document.getElementById('enableDeepResearch'),
+          simulateTimeout: document.getElementById('simulateTimeout')
+        };
+      }
+
+      attachEventListeners() {
+        this.elements.startBtn.addEventListener('click', () => this.startTest());
+        this.elements.stopBtn.addEventListener('click', () => this.stopTest());
+        this.elements.clearBtn.addEventListener('click', () => this.clearLog());
+        
+        // シナリオカード選択
+        document.querySelectorAll('.scenario-card').forEach(card => {
+          card.addEventListener('click', () => {
+            document.querySelectorAll('.scenario-card').forEach(c => c.classList.remove('selected'));
+            card.classList.add('selected');
+            this.selectedScenario = card.dataset.scenario;
+            this.log(`シナリオ選択: ${card.querySelector('.scenario-title').textContent}`, 'info');
+          });
+        });
+        
+        // デフォルトシナリオを選択
+        document.querySelector('[data-scenario="timeout"]').classList.add('selected');
+      }
+
+      async startTest() {
+        if (this.isRunning) return;
+        
+        this.isRunning = true;
+        this.startTime = Date.now();
+        this.retryCount = 0;
+        this.currentTaskId = this.generateTaskId();
+        
+        this.updateUI('running');
+        this.log('テスト開始', 'success');
+        this.log(`タスクID: ${this.currentTaskId}`, 'info');
+        this.log(`シナリオ: ${this.selectedScenario}`, 'info');
+        
+        // タイマー開始
+        this.startTimer();
+        
+        try {
+          const result = await this.executeTestScenario();
+          this.handleTestResult(result);
+        } catch (error) {
+          this.log(`エラー: ${error.message}`, 'error');
+          this.updateUI('error');
+        }
+      }
+
+      async executeTestScenario() {
+        const config = {
+          taskId: this.currentTaskId,
+          prompt: this.elements.prompt.value,
+          aiType: this.elements.aiType.value,
+          timeout: parseInt(this.elements.timeout.value),
+          maxRetries: parseInt(this.elements.maxRetries.value),
+          enableDeepResearch: this.elements.enableDeepResearch.checked,
+          simulateTimeout: this.elements.simulateTimeout.checked,
+          scenario: this.selectedScenario
+        };
+        
+        this.log(`設定: ${JSON.stringify(config, null, 2)}`, 'info');
+        
+        // シナリオに応じたシミュレーション
+        switch (this.selectedScenario) {
+          case 'timeout':
+            return await this.simulateTimeoutScenario(config);
+          case 'partial':
+            return await this.simulatePartialResponseScenario(config);
+          case 'network':
+            return await this.simulateNetworkErrorScenario(config);
+          case 'success':
+            return await this.simulateSuccessScenario(config);
+          default:
+            throw new Error('未知のシナリオ');
+        }
+      }
+
+      async simulateTimeoutScenario(config) {
+        this.log('タイムアウトシナリオ実行中...', 'warning');
+        
+        for (let i = 0; i <= config.maxRetries; i++) {
+          this.retryCount = i;
+          this.updateRetryCount(i);
+          
+          if (i > 0) {
+            this.log(`リトライ ${i}/${config.maxRetries}`, 'warning');
+            this.showRetryNotification(i, config.maxRetries);
+          }
+          
+          // タイムアウトをシミュレート
+          await this.wait(config.timeout);
+          
+          // 最後の試行で成功させる
+          if (i === config.maxRetries || Math.random() > 0.7) {
+            this.log('応答取得成功！', 'success');
+            return {
+              success: true,
+              response: 'テスト応答テキスト',
+              retryCount: i
+            };
+          }
+          
+          this.log(`タイムアウトエラー (試行 ${i + 1})`, 'error');
+        }
+        
+        return {
+          success: false,
+          error: 'MAX_RETRIES_EXCEEDED',
+          retryCount: config.maxRetries
+        };
+      }
+
+      async simulatePartialResponseScenario(config) {
+        this.log('部分応答シナリオ実行中...', 'warning');
+        await this.wait(config.timeout / 2);
+        this.log('部分的な応答を受信...', 'info');
+        await this.wait(config.timeout / 2);
+        this.log('タイムアウト - 応答が不完全', 'error');
+        
+        // リトライ
+        this.retryCount = 1;
+        this.updateRetryCount(1);
+        this.showRetryNotification(1, config.maxRetries);
+        await this.wait(config.timeout);
+        
+        return {
+          success: true,
+          response: '完全な応答テキスト',
+          retryCount: 1
+        };
+      }
+
+      async simulateNetworkErrorScenario(config) {
+        this.log('ネットワークエラーシナリオ実行中...', 'warning');
+        await this.wait(2000);
+        this.log('ネットワークエラー検出', 'error');
+        
+        // リトライ
+        for (let i = 1; i <= 2; i++) {
+          this.retryCount = i;
+          this.updateRetryCount(i);
+          this.showRetryNotification(i, config.maxRetries);
+          await this.wait(3000);
+          
+          if (i === 2) {
+            this.log('ネットワーク接続回復', 'success');
+            return {
+              success: true,
+              response: 'ネットワーク回復後の応答',
+              retryCount: i
+            };
+          }
+        }
+      }
+
+      async simulateSuccessScenario(config) {
+        this.log('成功シナリオ実行中...', 'info');
+        const duration = Math.min(config.timeout / 2, 5000);
+        await this.wait(duration);
+        this.log('応答取得成功！', 'success');
+        
+        return {
+          success: true,
+          response: '正常な応答テキスト',
+          retryCount: 0
+        };
+      }
+
+      showRetryNotification(current, max) {
+        // 実際の通知をシミュレート
+        const notification = {
+          taskId: this.currentTaskId,
+          retryCount: current,
+          maxRetries: max,
+          error: 'TIMEOUT_NO_RESPONSE',
+          errorMessage: 'タイムアウトエラーを検出しました'
+        };
+        
+        this.log(`通知: ${JSON.stringify(notification)}`, 'info');
+        
+        // Chrome拡張機能APIが利用可能な場合は実際に通知を送信
+        if (typeof chrome !== 'undefined' && chrome.runtime) {
+          chrome.runtime.sendMessage({
+            type: 'RETRY_NOTIFICATION',
+            data: notification
+          }).catch(() => {});
+        }
+      }
+
+      handleTestResult(result) {
+        this.stopTimer();
+        
+        if (result.success) {
+          this.log(`テスト成功 (リトライ回数: ${result.retryCount})`, 'success');
+          this.updateUI('success');
+          this.updateProgress(100);
+        } else {
+          this.log(`テスト失敗: ${result.error}`, 'error');
+          this.updateUI('failed');
+        }
+        
+        this.isRunning = false;
+        this.elements.startBtn.disabled = false;
+        this.elements.stopBtn.disabled = true;
+      }
+
+      stopTest() {
+        if (!this.isRunning) return;
+        
+        this.isRunning = false;
+        this.stopTimer();
+        this.log('テスト停止', 'warning');
+        this.updateUI('stopped');
+        this.elements.startBtn.disabled = false;
+        this.elements.stopBtn.disabled = true;
+      }
+
+      startTimer() {
+        this.timerInterval = setInterval(() => {
+          const elapsed = Math.floor((Date.now() - this.startTime) / 1000);
+          this.elements.elapsedTime.textContent = `${elapsed}秒`;
+          
+          // プログレスバー更新
+          const timeout = parseInt(this.elements.timeout.value) / 1000;
+          const progress = Math.min((elapsed / timeout) * 100, 100);
+          this.updateProgress(progress);
+        }, 100);
+      }
+
+      stopTimer() {
+        if (this.timerInterval) {
+          clearInterval(this.timerInterval);
+          this.timerInterval = null;
+        }
+      }
+
+      updateUI(status) {
+        const statusTexts = {
+          running: '実行中',
+          success: '成功',
+          failed: '失敗',
+          stopped: '停止',
+          error: 'エラー'
+        };
+        
+        this.elements.testStatus.textContent = statusTexts[status] || '待機中';
+        this.elements.taskId.textContent = this.currentTaskId || '-';
+        
+        if (status === 'running') {
+          this.elements.startBtn.disabled = true;
+          this.elements.stopBtn.disabled = false;
+        }
+      }
+
+      updateRetryCount(count) {
+        this.elements.currentRetry.textContent = count;
+      }
+
+      updateProgress(percent) {
+        this.elements.progressBar.style.width = `${percent}%`;
+        this.elements.progressBar.textContent = `${Math.round(percent)}%`;
+      }
+
+      log(message, type = 'info') {
+        const timestamp = new Date().toLocaleTimeString();
+        const entry = document.createElement('div');
+        entry.className = `log-entry ${type}`;
+        entry.textContent = `[${timestamp}] ${message}`;
+        this.elements.logPanel.appendChild(entry);
+        this.elements.logPanel.scrollTop = this.elements.logPanel.scrollHeight;
+      }
+
+      clearLog() {
+        this.elements.logPanel.innerHTML = '';
+        this.log('ログクリア', 'info');
+      }
+
+      generateTaskId() {
+        return `test_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      }
+
+      wait(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+      }
+    }
+
+    // コントローラー初期化
+    const testController = new RetryTestController();
+  </script>
+</body>
+</html>

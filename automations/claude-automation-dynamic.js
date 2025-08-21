@@ -669,11 +669,18 @@
         });
         return true;
       } else {
-        const error = '共通ハンドラーでの機能選択に失敗';
-        log(error, 'WARNING', { targetFunction, enable }); // ERRORからWARNINGに変更（統合テスト同等）
-        log('機能選択失敗を無視して処理を継続します', 'INFO'); // 統合テストでは失敗しても継続
-        endOperation(operationName, { success: true, error, targetFunction, enable }); // successをtrueに変更
-        return true; // falseからtrueに変更（処理継続）
+        // 詳細な失敗理由を取得
+        const failureReason = menuHandler.getLastFailureReason ? menuHandler.getLastFailureReason() : '不明';
+        const error = `共通ハンドラーでの機能選択に失敗: ${failureReason}`;
+        log(error, 'WARNING', { 
+          targetFunction, 
+          enable,
+          failureReason,
+          functionName: targetFunction // オブジェクト表示を避けるため明示的に追加
+        });
+        log('機能選択失敗を無視して処理を継続します', 'INFO');
+        endOperation(operationName, { success: true, error, targetFunction, enable, failureReason });
+        return true;
       }
     } catch (error) {
       logError(error, { 
@@ -759,6 +766,49 @@
     }
 
     try {
+      // "first"の場合は一番上のモデルを選択
+      if (identifier === 'first') {
+        // モデル選択ボタンを探す
+        const modelButtonSelectors = window.AIHandler?.getSelectors?.('Claude', 'MODEL_BUTTON') || 
+          ['[data-testid="model-selector-button"]', 'button[aria-label*="モデル"]'];
+        
+        const modelButton = await findElement(modelButtonSelectors);
+        if (!modelButton) {
+          const error = 'モデル選択ボタンが見つかりません';
+          log(error, 'ERROR');
+          endOperation(operationName, { success: false, error });
+          return false;
+        }
+        
+        // メニューを開く
+        modelButton.click();
+        await wait(500); // 500msの固定待機時間
+        
+        // メニュー項目を取得
+        const menuItemSelectors = window.AIHandler?.getSelectors?.('Claude', 'MENU_ITEM') || 
+          ['[role="option"]', '[role="menuitem"]', '[role="menuitemradio"]'];
+        let menuItems = [];
+        for (const selector of menuItemSelectors) {
+          menuItems.push(...document.querySelectorAll(selector));
+        }
+        
+        if (menuItems.length > 0) {
+          // 一番最初のメニュー項目を選択
+          const firstItem = menuItems[0];
+          log(`一番上のモデルを選択: ${firstItem.textContent?.trim()}`, 'INFO');
+          firstItem.click();
+          await wait(500); // 500msの固定待機時間
+          
+          log(`一番上のモデル選択成功: ${firstItem.textContent?.trim()}`, 'SUCCESS');
+          endOperation(operationName, { success: true, model: firstItem.textContent?.trim() });
+          return true;
+        }
+        
+        log('一番上のモデルが見つかりません', 'ERROR');
+        endOperation(operationName, { success: false, error: '一番上のモデルが見つかりません' });
+        return false;
+      }
+      
       // エイリアスを解決
       const targetModel = CONFIG.MODEL_ALIASES[identifier.toLowerCase()] || identifier;
       
@@ -1179,7 +1229,7 @@
           if (messages.length > 0) {
             finalMessages = messages;
             usedSelector = selector;
-            log(`✅ 使用セレクタ: "${selector}" (${messages.length}個のメッセージ)`, 'SUCCESS');
+            log(`✅ 使用セレクタ: "${selector}" (${messages.length}個のメッセージ)`, 'DEBUG');
             break;
           }
         } catch (e) {
