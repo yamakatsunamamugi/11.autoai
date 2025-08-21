@@ -557,11 +557,12 @@ async function executeSelectorDetectionFlow(aiWindows, updateStatus) {
     // ai-detection-controller.jsの並列処理を流用
     const results = await processWindowsInParallel(windows, updateStatus, injectAutomationScripts);
     
+    // セレクタデータは後から非同期で取得されるため、ここでは基本情報のみ返す
     return results.map((result, index) => ({
       aiType: windows[index].name,
       tabId: windows[index].window.tabId,
       success: result.status === 'fulfilled' && result.value && result.value.success,
-      selectorData: result.value?.saveData || result.value,
+      selectorData: {}, // 後から追加される
       error: result.reason?.message || (result.value ? result.value.error : 'Unknown error')
     }));
     
@@ -1035,7 +1036,11 @@ async function executeInTabForSelector(tabId, aiType) {
         text: "桃太郎の歴史について解説して",
         send: true,
         waitResponse: true,
-        getResponse: true
+        getResponse: true,
+        cellInfo: {  // セレクタ検出テスト用のダミーセル情報を追加
+          column: "TEST",
+          row: "検出"
+        }
       }]
     }, (results) => {
       if (chrome.runtime.lastError) {
@@ -1538,16 +1543,23 @@ async function getSelectorDataFromTab(tabId) {
  * @returns {Promise<Object>} セレクタデータ
  */
 async function executeGetSelectorData(tabId, aiType) {
+  console.log(`🔍 executeGetSelectorData開始: tabId=${tabId}, aiType=${aiType}`);
+  
   try {
     const [result] = await chrome.scripting.executeScript({
       target: { tabId: tabId },
       func: (aiName) => {
+        console.log(`🔍 executeScript内でセレクタ取得開始: ${aiName}`);
+        console.log(`現在のURL: ${window.location.href}`);
+        console.log(`ページタイトル: ${document.title}`);
+        
         // getSelectorData関数を再実装（executeScript内で実行可能な形）
         const selectors = {};
         
         try {
           // ui-selectors.jsを使用してセレクタ候補を取得
           let UI_SELECTORS = window.UI_SELECTORS || {};
+          console.log(`UI_SELECTORS取得:`, Object.keys(UI_SELECTORS));
           
           // UI_SELECTORSが空の場合の代替セレクタ
           if (Object.keys(UI_SELECTORS).length === 0) {

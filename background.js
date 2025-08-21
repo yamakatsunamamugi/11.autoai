@@ -1114,6 +1114,23 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return false;
 
     // ===== スプレッドシートログクリア =====
+    /**
+     * 【clearLog アクション】
+     * 
+     * 概要：
+     * スプレッドシートのログ列とA列をクリアする処理
+     * 
+     * 処理内容：
+     * 1. sheets-client.js の clearSheetLogs でメニュー行の「ログ」列をクリア
+     * 2. batchUpdate でA列（A2:A1000）をクリア
+     * 
+     * 依存関係：
+     * - sheets-client.js: clearSheetLogs, batchUpdate
+     * - ui-controller.js から呼び出される
+     * 
+     * エラーハンドリング：
+     * - A列のクリアに失敗してもログクリアが成功していれば成功とする
+     */
     case "clearLog":
       (async () => {
         try {
@@ -1125,6 +1142,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
           // SheetsClientを使用してログをクリア
           const result = await sheetsClient.clearSheetLogs(request.spreadsheetId);
+          
+          // A列の1行目以降もクリア（A2:A1000）
+          if (result.success) {
+            try {
+              const a1ClearResult = await sheetsClient.batchUpdate(request.spreadsheetId, [{
+                range: "A2:A1000",
+                values: Array(999).fill([""])
+              }]);
+              console.log("[MessageHandler] A列クリア完了:", a1ClearResult);
+            } catch (a1Error) {
+              console.warn("[MessageHandler] A列クリアエラー:", a1Error);
+              // A列のクリアに失敗してもログクリアは成功とする
+            }
+          }
           
           console.log("[MessageHandler] ログクリア完了:", result);
           sendResponse({ 
@@ -1143,6 +1174,28 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return true;
 
     // ===== AI回答削除 =====
+    /**
+     * 【deleteAnswers アクション】
+     * 
+     * 概要：
+     * スプレッドシートのAI回答列とA列をクリアする処理
+     * 
+     * 処理内容：
+     * 1. sheets-client.js の deleteAnswers でAI回答列を検出してクリア
+     * 2. 同メソッド内でA列（A2:A1000）も同時にクリア
+     * 
+     * 削除対象：
+     * - メニュー行にあるAI名（Claude、ChatGPT、Gemini等）の列
+     * - A列の作業行マーカー（1の値）
+     * 
+     * 依存関係：
+     * - sheets-client.js: deleteAnswers, columnMapping
+     * - ui-controller.js から呼び出される
+     * 
+     * ログクリアとの違い：
+     * - ログクリア: ログ列＋A列
+     * - 回答削除: AI回答列＋A列
+     */
     case "deleteAnswers":
       (async () => {
         try {
@@ -1163,6 +1216,81 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           });
         } catch (error) {
           console.error("[MessageHandler] 回答削除エラー:", error);
+          sendResponse({ 
+            success: false, 
+            error: error.message 
+          });
+        }
+      })();
+      return true;
+
+    // ===== 送信時刻記録メッセージ =====
+    case "recordSendTime":
+      (async () => {
+        try {
+          let spreadsheetLogger = null;
+          
+          // 方法1: StreamingServiceManagerからStreamProcessorを取得
+          try {
+            const manager = getStreamingServiceManager();
+            const streamProcessor = manager?.serviceRegistry?.get("StreamProcessor");
+            spreadsheetLogger = streamProcessor?.spreadsheetLogger;
+          } catch (error) {
+            console.log(`⚠️ [MessageHandler] StreamProcessor取得失敗: ${error.message}`);
+          }
+          
+          // 方法2: グローバルSpreadsheetLoggerを使用（フォールバック）
+          if (!spreadsheetLogger && globalThis.spreadsheetLogger) {
+            spreadsheetLogger = globalThis.spreadsheetLogger;
+            console.log(`🔄 [MessageHandler] グローバルSpreadsheetLoggerを使用`);
+          }
+          
+          console.log(`🔍 [MessageHandler] 送信時刻記録要求受信:`, {
+            taskId: request.taskId,
+            sendTime: request.sendTime,
+            aiType: request.taskInfo?.aiType,
+            model: request.taskInfo?.model,
+            spreadsheetLogger: !!spreadsheetLogger
+          });
+          
+          // SpreadsheetLoggerに送信時刻を記録
+          if (spreadsheetLogger) {
+            // ISO文字列をDateオブジェクトに変換
+            const sendTime = new Date(request.sendTime);
+            
+            console.log(`📝 [MessageHandler] 送信時刻をSpreadsheetLoggerに記録開始: ${request.taskId}`);
+            
+            // SpreadsheetLoggerのrecordSendTimeを呼び出し（送信時刻を直接設定）
+            spreadsheetLogger.sendTimestamps.set(request.taskId, {
+              time: sendTime,
+              aiType: request.taskInfo.aiType || 'Unknown',
+              model: request.taskInfo.model || '不明'
+            });
+            
+            console.log(`✅ [MessageHandler] 送信時刻記録成功: ${request.taskId}, 時刻=${sendTime.toLocaleString('ja-JP')}, AI=${request.taskInfo?.aiType}, モデル=${request.taskInfo?.model}`);
+            
+            // 拡張機能のログシステムにも記録
+            if (globalThis.logManager) {
+              globalThis.logManager.log(`📝 送信時刻記録: ${request.taskInfo?.aiType} - ${request.taskId}`, {
+                category: 'system',
+                level: 'info',
+                metadata: {
+                  taskId: request.taskId,
+                  aiType: request.taskInfo?.aiType,
+                  model: request.taskInfo?.model,
+                  sendTime: sendTime.toLocaleString('ja-JP')
+                }
+              });
+            }
+            
+            sendResponse({ success: true });
+          } else {
+            console.warn("❌ [MessageHandler] SpreadsheetLoggerが利用できません");
+            sendResponse({ success: false, error: "SpreadsheetLogger not available" });
+          }
+        } catch (error) {
+          console.error("❌ [MessageHandler] 送信時刻記録エラー:", error);
+          console.error("エラー詳細:", { message: error.message, stack: error.stack, name: error.name });
           sendResponse({ 
             success: false, 
             error: error.message 

@@ -136,67 +136,75 @@ class TaskGenerator {
       if (processed.has(i)) continue;
 
       const cell = menuRow.data[i];
-      if (cell === "プロンプト") {
-        // グループを作成
-        const group = {
-          startIndex: i,
-          promptColumns: [i],
-          answerColumns: [],
-          aiType: null
-        };
+      // ログ列から開始してプロンプトグループを識別
+      if (cell === "ログ") {
+        // 次の列が「プロンプト」かチェック
+        const nextIndex = i + 1;
+        if (nextIndex < menuRow.data.length && menuRow.data[nextIndex] === "プロンプト") {
+          // グループを作成
+          const group = {
+            startIndex: nextIndex, // プロンプト列がstartIndex
+            logColumn: this.indexToColumn(i), // ログ列を記録
+            promptColumns: [nextIndex],
+            answerColumns: [],
+            aiType: null
+          };
+          
+          processed.add(i); // ログ列を処理済みに
 
-        // 連続するプロンプト2〜5を探す
-        let lastPromptIndex = i;
-        for (let num = 2; num <= 5; num++) {
-          const nextIndex = lastPromptIndex + 1;
-          if (nextIndex < menuRow.data.length && 
-              menuRow.data[nextIndex] === `プロンプト${num}`) {
-            group.promptColumns.push(nextIndex);
-            processed.add(nextIndex);
-            lastPromptIndex = nextIndex;
+          // 連続するプロンプト2〜5を探す
+          let lastPromptIndex = nextIndex;
+          for (let num = 2; num <= 5; num++) {
+            const promptIndex = lastPromptIndex + 1;
+            if (promptIndex < menuRow.data.length && 
+                menuRow.data[promptIndex] === `プロンプト${num}`) {
+              group.promptColumns.push(promptIndex);
+              processed.add(promptIndex);
+              lastPromptIndex = promptIndex;
+            } else {
+              break;
+            }
+          }
+
+          // AIタイプを判定
+          const aiValue = aiRow?.data?.[nextIndex] || ""; // プロンプト列のAI値を取得
+          group.aiType = this.determineAIType(aiValue);
+
+          // 回答列を設定
+          if (group.aiType === "3type") {
+            // 3種類AI: 最後のプロンプトの次から3列
+            const answerStart = lastPromptIndex + 1;
+            group.answerColumns = [
+              { index: answerStart, type: "chatgpt", column: this.indexToColumn(answerStart) },
+              { index: answerStart + 1, type: "claude", column: this.indexToColumn(answerStart + 1) },
+              { index: answerStart + 2, type: "gemini", column: this.indexToColumn(answerStart + 2) }
+            ];
           } else {
-            break;
+            // 単独AI: 最後のプロンプトの次の1列
+            const answerIndex = lastPromptIndex + 1;
+            const aiType = this.extractSingleAIType(aiValue);
+            group.answerColumns = [
+              { index: answerIndex, type: aiType, column: this.indexToColumn(answerIndex) }
+            ];
           }
-        }
 
-        // AIタイプを判定
-        const aiValue = aiRow?.data?.[i] || "";
-        group.aiType = this.determineAIType(aiValue);
-
-        // 回答列を設定
-        if (group.aiType === "3type") {
-          // 3種類AI: 最後のプロンプトの次から3列
-          const answerStart = lastPromptIndex + 1;
-          group.answerColumns = [
-            { index: answerStart, type: "chatgpt", column: this.indexToColumn(answerStart) },
-            { index: answerStart + 1, type: "claude", column: this.indexToColumn(answerStart + 1) },
-            { index: answerStart + 2, type: "gemini", column: this.indexToColumn(answerStart + 2) }
-          ];
-        } else {
-          // 単独AI: 最後のプロンプトの次の1列
-          const answerIndex = lastPromptIndex + 1;
-          const aiType = this.extractSingleAIType(aiValue);
-          group.answerColumns = [
-            { index: answerIndex, type: aiType, column: this.indexToColumn(answerIndex) }
-          ];
-        }
-
-        // レポート化列をチェック
-        const lastAnswerIndex = group.answerColumns[group.answerColumns.length - 1].index;
-        if (lastAnswerIndex + 1 < menuRow.data.length) {
-          const reportHeader = menuRow.data[lastAnswerIndex + 1];
-          if (reportHeader && (reportHeader === "レポート化" || reportHeader.includes("レポート"))) {
-            group.reportColumn = lastAnswerIndex + 1;
-            console.log(`[TaskGenerator] レポート化列を検出: ${this.indexToColumn(lastAnswerIndex + 1)}列`);
+          // レポート化列をチェック
+          const lastAnswerIndex = group.answerColumns[group.answerColumns.length - 1].index;
+          if (lastAnswerIndex + 1 < menuRow.data.length) {
+            const reportHeader = menuRow.data[lastAnswerIndex + 1];
+            if (reportHeader && (reportHeader === "レポート化" || reportHeader.includes("レポート"))) {
+              group.reportColumn = lastAnswerIndex + 1;
+              console.log(`[TaskGenerator] レポート化列を検出: ${this.indexToColumn(lastAnswerIndex + 1)}列`);
+            }
           }
+
+          groups.push(group);
+          processed.add(nextIndex); // プロンプト列を処理済みに
+
+          console.log(`[TaskGenerator] プロンプトグループ検出 (ログ列: ${group.logColumn}): ` +
+            `${this.indexToColumn(nextIndex)}〜${this.indexToColumn(lastPromptIndex)}列 ` +
+            `(${group.aiType}, 回答列: ${group.answerColumns.length})`);
         }
-
-        groups.push(group);
-        processed.add(i);
-
-        console.log(`[TaskGenerator] プロンプトグループ検出: ` +
-          `${this.indexToColumn(i)}〜${this.indexToColumn(lastPromptIndex)}列 ` +
-          `(${group.aiType}, 回答列: ${group.answerColumns.length})`);
       }
     }
 
@@ -487,10 +495,7 @@ class TaskGenerator {
         promptColumn: this.indexToColumn(group.promptColumns[0])
       },
       multiAI: group.aiType === "3type",
-      logColumns: {
-        log: this.indexToColumn(group.promptColumns[0] - 1),
-        layout: group.aiType
-      }
+      logColumns: [group.logColumn] // 動的検索されたログ列を使用
     };
 
     // オプション設定
@@ -629,6 +634,7 @@ class TaskGenerator {
     
     return column;
   }
+
 
   /**
    * タスクIDを生成

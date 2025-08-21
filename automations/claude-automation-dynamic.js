@@ -1076,6 +1076,22 @@
     await performClick(submitButton);
     sendStartTime = Date.now();  // 送信時刻を記録
     log('📤 メッセージを送信しました', 'SUCCESS');
+    
+    // 送信時刻を記録（SpreadsheetLogger用）
+    log(`🔍 送信時刻記録開始 - AIHandler: ${!!window.AIHandler}, recordSendTimestamp: ${!!window.AIHandler?.recordSendTimestamp}, currentAITaskInfo: ${!!window.currentAITaskInfo}`, 'INFO');
+    if (window.AIHandler && window.AIHandler.recordSendTimestamp) {
+        try {
+            log(`📝 送信時刻記録実行開始 - タスクID: ${window.currentAITaskInfo?.taskId}`, 'INFO');
+            await window.AIHandler.recordSendTimestamp('Claude');
+            log(`✅ 送信時刻記録成功`, 'SUCCESS');
+        } catch (error) {
+            log(`❌ 送信時刻記録エラー: ${error.message}`, 'ERROR');
+            log(`エラー詳細: ${JSON.stringify({ stack: error.stack, name: error.name })}`, 'ERROR');
+        }
+    } else {
+        log(`⚠️ 送信時刻記録スキップ - AIHandler利用不可`, 'WARNING');
+    }
+    
     await wait(CONFIG.DELAYS.submit);
     return true;
   }
@@ -1396,7 +1412,9 @@
     
     // セル位置情報を含む詳細ログ
     const cellInfo = config.cellInfo || {};
-    const cellPosition = cellInfo.column && cellInfo.row ? `${cellInfo.column}${cellInfo.row}` : '不明';
+    const cellPosition = cellInfo.column && cellInfo.row 
+      ? `${cellInfo.column}${cellInfo.row}` 
+      : (cellInfo.column === "TEST" && cellInfo.row === "検出" ? "TEST検出" : "タスク実行中");
     
     log(`📊 (Claude) Step1: スプレッドシート読み込み開始 [${cellPosition}セル]`, 'INFO', {
       cellPosition,
@@ -1484,17 +1502,8 @@
         
         await wait(1000);
       } else if (!config.function || config.function === 'none' || config.function === '') {
-        // 通常処理の場合、Web検索が有効になっていたら無効化する
-        log('通常処理モード: Web検索を無効化します', 'INFO');
-        
-        // Web検索を明示的に無効化（統合テストでは失敗しても継続）
-        const webSearchOffResult = await selectFunction('ウェブ検索', false);
-        if (webSearchOffResult) {
-          log('✅ Web検索を無効化しました', 'SUCCESS');
-        } else {
-          log('Web検索無効化に失敗しましたが、処理を継続します', 'WARNING'); // 統合テスト同等の処理継続
-        }
-        await wait(500);
+        // 通常処理モード（Web検索無効化処理は削除）
+        log('通常処理モード: 機能設定なし', 'INFO');
       }
 
       // テキスト入力

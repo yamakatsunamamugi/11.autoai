@@ -421,6 +421,31 @@ class SheetsClient {
 
   /**
    * スプレッドシートのログをクリア
+   * 
+   * 【概要】
+   * スプレッドシートのメニュー行から「ログ」列を探し、その列の作業行データをクリアする機能。
+   * background.jsと連携してA列のデータもクリアされる。
+   * 
+   * 【依存関係】
+   * - loadAutoAIData: スプレッドシートの構造を読み込む
+   * - batchUpdate: 複数セルを一括更新
+   * - background.js: A列のクリア処理を追加実行
+   * 
+   * 【前提条件】
+   * - メニュー行（1行目）に「ログ」という列が存在すること
+   * - 「ログ」は完全一致で検索される（部分一致は不可）
+   * - 作業行はメニュー行の「プロンプト」列にデータがある行
+   * 
+   * 【動作フロー】
+   * 1. スプレッドシート全体のデータを読み込み
+   * 2. メニュー行から「ログ」列を完全一致で検索
+   * 3. 見つかった場合、その列の作業行のセルをクリア
+   * 4. background.jsでA列（A2:A1000）も同時にクリア
+   * 
+   * 【注意事項】
+   * - B列固定ではなく、メニュー行の「ログ」を動的に検索
+   * - ログ列が見つからない場合はエラーを返す
+   * 
    * @param {string} spreadsheetId - スプレッドシートID
    * @param {string} gid - シートのgid（オプション）
    * @returns {Promise<Object>} クリア結果
@@ -432,20 +457,37 @@ class SheetsClient {
       // スプレッドシートのデータを読み込み
       const sheetData = await this.loadAutoAIData(spreadsheetId, gid);
       
-      // ログ列（B列）を特定してクリア
+      // メニュー行から「ログ」列を探す（完全一致）
+      let logColumnIndex = -1;
+      if (sheetData.menuRow && sheetData.menuRow.data) {
+        for (let j = 0; j < sheetData.menuRow.data.length; j++) {
+          if (sheetData.menuRow.data[j] === "ログ") {  // 完全一致
+            logColumnIndex = j;
+            this.logger.log("SheetsClient", `ログ列を検出: ${this.getColumnName(j)}列`);
+            break;
+          }
+        }
+      }
+      
+      if (logColumnIndex === -1) {
+        this.logger.warn("SheetsClient", "メニュー行に'ログ'列が見つかりません");
+        return { success: false, error: "ログ列が見つかりません" };
+      }
+      
       const updates = [];
       let clearedCount = 0;
       
-      // 作業行のログ列（B列）をクリア
+      // 作業行のログ列をクリア
       for (const workRow of sheetData.workRows) {
         const rowIndex = workRow.index;
+        const columnName = this.getColumnName(logColumnIndex);
         let range;
         
         if (gid) {
           const sheetName = await this.getSheetNameFromGid(spreadsheetId, gid);
-          range = sheetName ? `'${sheetName}'!B${rowIndex + 1}` : `B${rowIndex + 1}`;
+          range = sheetName ? `'${sheetName}'!${columnName}${rowIndex + 1}` : `${columnName}${rowIndex + 1}`;
         } else {
-          range = `B${rowIndex + 1}`;
+          range = `${columnName}${rowIndex + 1}`;
         }
         
         updates.push({
@@ -470,6 +512,36 @@ class SheetsClient {
 
   /**
    * AI回答を削除
+   * 
+   * 【概要】
+   * スプレッドシートのAI回答列（Claude、ChatGPT、Gemini等）とA列のデータを削除する機能。
+   * メニュー行から各AI名の列を検出し、その列の作業行データをクリアする。
+   * 
+   * 【依存関係】
+   * - loadAutoAIData: スプレッドシートの構造を読み込む
+   * - batchUpdate: 複数セルを一括更新
+   * - columnMapping: メニュー行の列タイプ判定情報
+   * 
+   * 【前提条件】
+   * - メニュー行にAI名（Claude、ChatGPT、Gemini等）の列が存在
+   * - A列は作業行のチェック用（1が入っている行が処理対象）
+   * - 作業行はメニュー行の「プロンプト」列にデータがある行
+   * 
+   * 【動作フロー】
+   * 1. スプレッドシート全体のデータを読み込み
+   * 2. columnMappingから type="answer" の列を特定
+   * 3. 各AI回答列の作業行データをクリア
+   * 4. A列（A2:A1000）の全データもクリア
+   * 
+   * 【削除対象】
+   * - 各AI列（Claude、ChatGPT、Gemini等）の回答データ
+   * - A列の作業行マーカー（1の値）
+   * 
+   * 【削除対象外】
+   * - メニュー行、制御行、AI行、モデル行、機能行
+   * - プロンプト列
+   * - ログ列
+   * 
    * @param {string} spreadsheetId - スプレッドシートID
    * @param {string} gid - シートのgid（オプション）
    * @returns {Promise<Object>} 削除結果

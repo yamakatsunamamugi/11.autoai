@@ -119,6 +119,10 @@ class StreamProcessor {
     
     // 3種類AI実行制御
     this.activeThreeTypeGroupId = null; // 実行中の3種類AIグループID
+    
+    // ペンディングレポートタスク管理
+    this.pendingReportTasks = new Set(); // 待機中のレポートタスク
+    this.reportCheckInterval = null; // レポートチェック用タイマー
   }
 
   /**
@@ -162,6 +166,7 @@ class StreamProcessor {
     this.spreadsheetData = spreadsheetData;
     this.outputTarget = outputTarget;
     this.isTestMode = options.testMode || (outputTarget === 'log');
+    this.isFirstTaskProcessed = false; // 最初のタスクフラグを追加
 
     try {
       // タスクを列・行でグループ化
@@ -298,6 +303,19 @@ class StreamProcessor {
     // 3種類AI特別処理を削除：全てのAIを独立したタスクとして扱う
 
     const currentTask = tasks[currentIndex];
+
+    // レポートタスクの場合は特別処理（ウィンドウを開かない）
+    if (currentTask.taskType === "report") {
+      this.logger.log(`[StreamProcessor] レポートタスクを直接実行: ${column}${currentTask.row}`);
+      
+      // ダミーのウィンドウIDを設定（タスク処理の一貫性のため）
+      const dummyWindowId = -1;
+      this.columnWindows.set(column, dummyWindowId);
+      
+      // レポートタスクを直接実行
+      await this.executeReportTask(currentTask, dummyWindowId);
+      return;
+    }
 
     // 常に新しいウィンドウを開く（既存ウィンドウは使い回さない）
     // テスト用のpreferredPositionがある場合はそれを使用、なければ自動検索
@@ -555,6 +573,9 @@ class StreamProcessor {
   async onTaskCompleted(task, windowId, result = {}) {
     const { column, row, id: taskId } = task;
     const cellPosition = `${column}${row}`;
+    
+    // ウィンドウIDをタスクに保存
+    task.windowId = windowId;
 
     this.logger.log(`[StreamProcessor] 🎯 タスク完了処理開始: ${cellPosition}セル`, {
       セル: cellPosition,
@@ -652,17 +673,63 @@ class StreamProcessor {
       this.logger.log(`[StreamProcessor] 回答を書き込み: ${range}`);
       
       // ログを書き込み（SpreadsheetLoggerを使用）
+      console.log(`📝 [StreamProcessor] ログ書き込み準備:`, {
+        hasSpreadsheetLogger: !!this.spreadsheetLogger,
+        hasWriteMethod: !!(this.spreadsheetLogger?.writeLogToSpreadsheet),
+        taskId: task.id,
+        row: task.row
+      });
+      
       if (this.spreadsheetLogger) {
+        // URLを取得（Service Worker環境用）
+        let currentUrl = 'N/A';
         try {
+          // ウィンドウIDから実際のタブURLを取得
+          if (task.windowId) {
+            try {
+              const tabs = await chrome.tabs.query({ windowId: task.windowId });
+              if (tabs && tabs.length > 0) {
+                currentUrl = tabs[0].url || 'N/A';
+                console.log(`🌐 [StreamProcessor] 実際の作業 URL取得: ${currentUrl}`);
+              }
+            } catch (err) {
+              console.warn(`⚠️ [StreamProcessor] URL取得エラー:`, err);
+            }
+          }
+          
+          // フォールバック: AIタイプからベースURLを生成
+          if (currentUrl === 'N/A') {
+            const urlMap = {
+              'chatgpt': 'https://chatgpt.com/',
+              'claude': 'https://claude.ai/',
+              'gemini': 'https://gemini.google.com/'
+            };
+            currentUrl = urlMap[task.aiType?.toLowerCase()] || 'N/A';
+          }
+          
           await this.spreadsheetLogger.writeLogToSpreadsheet(task, {
-            url: typeof window !== 'undefined' ? window.location.href : 'N/A',
+            url: currentUrl,
             sheetsClient: globalThis.sheetsClient,
             spreadsheetId,
-            gid
+            gid,
+            isFirstTask: !this.isFirstTaskProcessed
           });
+          
+          // 最初のタスク処理完了フラグを更新
+          this.isFirstTaskProcessed = true;
           this.logger.log(`[StreamProcessor] ログを書き込み: ${task.logColumns?.[0] || 'B'}${task.row}`);
         } catch (logError) {
           // ログ書き込みエラーは警告として記録し、処理は続行
+          console.error(`❌ [StreamProcessor] ログ書き込みエラー詳細:`, {
+            error: logError,
+            message: logError.message,
+            stack: logError.stack,
+            taskId: task.id,
+            row: task.row,
+            aiType: task.aiType,
+            currentUrl,
+            spreadsheetLogger: !!this.spreadsheetLogger
+          });
           this.logger.warn(
             `[StreamProcessor] ログ書き込みエラー（処理は続行）`,
             {
@@ -742,9 +809,16 @@ class StreamProcessor {
     // 依存タスクが完了しているか確認
     if (task.dependsOn && !this.completedTasks.has(task.dependsOn)) {
       this.logger.log(
-        `[StreamProcessor] レポートタスクは依存タスク${task.dependsOn}の完了待ち、スキップ`,
+        `[StreamProcessor] レポートタスクは依存タスク${task.dependsOn}の完了待ち、後で再試行`,
       );
-      // レポートタスクを後で再試行するため、完了扱いにしない
+      // レポートタスクを後で再試行するため、ペンディングリストに追加
+      this.schedulePendingReportTask(task);
+      // タスクを完了扱いにして次へ進む（ただし実際の処理はペンディング）
+      await this.onTaskCompleted(task, windowId, {
+        success: false,
+        pending: true,
+        reason: "waiting_dependency"
+      });
       return;
     }
     
@@ -752,9 +826,16 @@ class StreamProcessor {
     const sourceCellKey = `${task.sourceColumn}${task.row}`;
     if (!this.writtenCells.has(sourceCellKey)) {
       this.logger.log(
-        `[StreamProcessor] レポートタスクはソース${sourceCellKey}の記載待ち、スキップ`,
+        `[StreamProcessor] レポートタスクはソース${sourceCellKey}の記載待ち、後で再試行`,
       );
-      // レポートタスクを後で再試行するため、完了扱いにしない
+      // レポートタスクを後で再試行するため、ペンディングリストに追加
+      this.schedulePendingReportTask(task);
+      // タスクを完了扱いにして次へ進む（ただし実際の処理はペンディング）
+      await this.onTaskCompleted(task, windowId, {
+        success: false,
+        pending: true,
+        reason: "waiting_source"
+      });
       return;
     }
 

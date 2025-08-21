@@ -1762,6 +1762,22 @@
             await wait(1000);
             
             log('📤 テキストを送信しました', 'success');
+            
+            // 送信時刻を記録（SpreadsheetLogger用）
+            log(`🔍 送信時刻記録開始 - AIHandler: ${!!window.AIHandler}, recordSendTimestamp: ${!!window.AIHandler?.recordSendTimestamp}, currentAITaskInfo: ${!!window.currentAITaskInfo}`, 'info');
+            if (window.AIHandler && window.AIHandler.recordSendTimestamp) {
+                try {
+                    log(`📝 送信時刻記録実行開始 - タスクID: ${window.currentAITaskInfo?.taskId}`, 'info');
+                    await window.AIHandler.recordSendTimestamp('ChatGPT');
+                    log(`✅ 送信時刻記録成功`, 'success');
+                } catch (error) {
+                    log(`❌ 送信時刻記録エラー: ${error.message}`, 'error');
+                    log(`エラー詳細: ${JSON.stringify({ stack: error.stack, name: error.name })}`, 'error');
+                }
+            } else {
+                log(`⚠️ 送信時刻記録スキップ - AIHandler利用不可`, 'warning');
+            }
+            
             return true;
             
         } catch (error) {
@@ -1993,7 +2009,9 @@
         
         // セル位置情報を含む詳細ログ
         const cellInfo = config.cellInfo || {};
-        const cellPosition = cellInfo.column && cellInfo.row ? `${cellInfo.column}${cellInfo.row}` : '不明';
+        const cellPosition = cellInfo.column && cellInfo.row 
+          ? `${cellInfo.column}${cellInfo.row}` 
+          : (cellInfo.column === "TEST" && cellInfo.row === "検出" ? "TEST検出" : "タスク実行中");
         
         log(`📊 (ChatGPT) Step1: スプレッドシート読み込み開始 [${cellPosition}セル]`, 'INFO', {
             cellPosition,

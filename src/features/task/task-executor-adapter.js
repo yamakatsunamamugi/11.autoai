@@ -1,32 +1,23 @@
 // task-executor-adapter.js - タスクとレイアウトを結合するアダプター
 
-import LayoutManager from "./layout-manager.js";
-
 /**
  * タスク実行アダプター
- * タスクデータとレイアウト情報を結合して実行可能な形式に変換
+ * タスクデータを実行可能な形式に変換（シンプル版）
  */
 class TaskExecutorAdapter {
   constructor() {
-    this.layoutManager = new LayoutManager();
+    // LayoutManager不要 - logColumnsをそのまま保持
   }
 
   /**
    * タスクを実行用に準備
    * @param {Object} task - 純粋なタスクオブジェクト
-   * @returns {Object} レイアウト情報を含む実行可能なタスク
+   * @returns {Object} 実行可能なタスク
    */
   prepareTaskForExecution(task) {
-    const taskType = this.determineTaskType(task);
-    const layout = this.layoutManager.getColumnLayout(
-      taskType,
-      task.promptColumn,
-    );
-
+    // タスクをそのまま返す（logColumnsを保持）
     return {
-      ...task,
-      layout: layout,
-      writeLocations: this.layoutManager.calculateWriteLocations(task, layout),
+      ...task
     };
   }
 
@@ -54,14 +45,11 @@ class TaskExecutorAdapter {
 
   /**
    * レガシーフォーマットからの変換
-   * 既存のlogColumnsプロパティを持つタスクをレイアウトベースに変換
+   * logColumnsプロパティを保持するように修正
    */
   convertFromLegacyFormat(task) {
-    // 既存のlogColumnsがある場合は削除
-    const { logColumns, ...cleanTask } = task;
-
-    // 新しい形式で返す
-    return this.prepareTaskForExecution(cleanTask);
+    // logColumnsを削除せずにそのまま保持
+    return this.prepareTaskForExecution(task);
   }
 }
 

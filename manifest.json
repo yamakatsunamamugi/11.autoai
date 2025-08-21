@@ -56,6 +56,7 @@
         "https://www.genspark.ai/*"
       ],
       "js": [
+        "src/modules/retry-manager.js",
         "src/content/ai-content-unified.js"
       ],
       "run_at": "document_end",
@@ -155,6 +156,7 @@
         "automations/test-runner-chrome.js",
         "automations/test-sequential-prompts.js",
         "src/config/ui-selectors.js",
+        "src/modules/retry-manager.js",
         "log-viewer.html",
         "log-viewer.js",
         "log-viewer.css"

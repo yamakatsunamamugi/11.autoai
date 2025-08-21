@@ -177,7 +177,19 @@ export const UI_SELECTORS = {
         
         // 機能メニュー
         FUNCTION_MENU_BUTTON: [
-            '[data-testid="input-menu-trigger"]',
+            '[data-testid="input-menu-tools"]',  // 最新のセレクタ
+            '#input-tools-menu-trigger',
+            '[aria-label="ツールメニューを開く"]',
+            '[data-testid="input-menu-trigger"]',  // フォールバック
+            'button[aria-label*="機能"]'
+        ],
+        
+        // 機能ボタン（common-ai-handler.js用の別名）
+        FUNCTION_BUTTON: [
+            '[data-testid="input-menu-tools"]',  // 最新のセレクタ
+            '#input-tools-menu-trigger',
+            '[aria-label="ツールメニューを開く"]',
+            '[data-testid="input-menu-trigger"]',  // フォールバック
             'button[aria-label*="機能"]'
         ],
         

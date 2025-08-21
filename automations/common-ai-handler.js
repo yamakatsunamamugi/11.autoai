@@ -642,7 +642,7 @@
     // taskInfoが渡されない場合はグローバル変数から取得
     const actualTaskInfo = taskInfo || window.currentAITaskInfo;
     
-    if (actualTaskInfo && actualTaskInfo.taskId && globalThis.spreadsheetLogger) {
+    if (actualTaskInfo && actualTaskInfo.taskId) {
       try {
         // 現在のモデルを取得
         let currentModel = '不明';
@@ -650,10 +650,17 @@
           currentModel = await window.AIHandler.menuHandler.getCurrentModel() || '不明';
         }
         
-        globalThis.spreadsheetLogger.recordSendTime(actualTaskInfo.taskId, {
-          aiType: actualTaskInfo.aiType || ai,
-          model: actualTaskInfo.model || currentModel
+        // Chrome拡張機能のメッセージパッシングでService Workerに送信時刻を通知
+        chrome.runtime.sendMessage({
+          action: 'recordSendTime',
+          taskId: actualTaskInfo.taskId,
+          sendTime: sendTime.toISOString(),
+          taskInfo: {
+            aiType: actualTaskInfo.aiType || ai,
+            model: actualTaskInfo.model || currentModel
+          }
         });
+        
         log(`📝 送信時刻を記録: タスク=${actualTaskInfo.taskId}, 時刻=${sendTime.toLocaleString('ja-JP')}`, 'INFO', ai);
       } catch (error) {
         log(`送信時刻の記録に失敗: ${error.message}`, 'WARNING', ai);
@@ -1825,6 +1832,49 @@
   };
 
   // ========================================
+  // 送信時刻記録関数
+  // ========================================
+  const recordSendTimestamp = async (ai = null) => {
+    const aiType = ai || detectAI();
+    const sendTime = new Date();
+    
+    // taskInfoが渡されない場合はグローバル変数から取得
+    const actualTaskInfo = window.currentAITaskInfo;
+    
+    if (actualTaskInfo && actualTaskInfo.taskId) {
+      try {
+        // 現在のモデルを取得
+        let currentModel = '不明';
+        if (window.AIHandler && window.AIHandler.menuHandler) {
+          currentModel = await window.AIHandler.menuHandler.getCurrentModel() || '不明';
+        }
+        
+        log(`📝 [recordSendTimestamp] 送信時刻記録開始: タスクID=${actualTaskInfo.taskId}, AI=${aiType}`, 'INFO', aiType);
+        
+        // Chrome拡張機能のメッセージパッシングでService Workerに送信時刻を通知
+        chrome.runtime.sendMessage({
+          action: 'recordSendTime',
+          taskId: actualTaskInfo.taskId,
+          sendTime: sendTime.toISOString(),
+          taskInfo: {
+            aiType: actualTaskInfo.aiType || aiType,
+            model: actualTaskInfo.model || currentModel
+          }
+        });
+        
+        log(`✅ [recordSendTimestamp] 送信時刻記録完了: タスク=${actualTaskInfo.taskId}, 時刻=${sendTime.toLocaleString('ja-JP')}`, 'SUCCESS', aiType);
+      } catch (error) {
+        log(`❌ [recordSendTimestamp] 送信時刻記録エラー: ${error.message}`, 'ERROR', aiType);
+        throw error;
+      }
+    } else {
+      const errorMsg = `タスク情報なし: taskInfo=${!!window.currentAITaskInfo}`;
+      log(`⚠️ [recordSendTimestamp] ${errorMsg}`, 'WARNING', aiType);
+      throw new Error(errorMsg);
+    }
+  };
+
+  // ========================================
   // ラッパー関数でトラッキングを追加
   // ========================================
   const wrapWithTracking = (func, funcName) => {
@@ -1849,6 +1899,9 @@
     
     // AI検出
     detectAI: wrapWithTracking(detectAI, 'detectAI'),
+    
+    // 送信時刻記録関数（SpreadsheetLogger用）
+    recordSendTimestamp: wrapWithTracking(recordSendTimestamp, 'recordSendTimestamp'),
     
     // 基本ユーティリティ（トラッキング付き）
     utils: {

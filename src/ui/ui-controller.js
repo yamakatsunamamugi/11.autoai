@@ -1688,9 +1688,34 @@ stopBtn.addEventListener("click", async () => {
 });
 
 // ===== イベントリスナー: ログクリア =====
+/**
+ * 【ログクリアボタンの動作】
+ * 
+ * 概要：
+ * スプレッドシートのログ列とA列のデータをクリアする機能
+ * 
+ * 削除対象：
+ * 1. メニュー行の「ログ」列（完全一致）の作業行データ
+ * 2. A列の2行目以降（A2:A1000）の全データ
+ * 
+ * 処理フロー：
+ * 1. UIからスプレッドシートURLを取得
+ * 2. background.jsの clearLog アクションを呼び出し
+ * 3. sheets-client.jsでログ列をクリア
+ * 4. background.jsでA列を追加クリア
+ * 
+ * 依存関係：
+ * - background.js: clearLog ハンドラー
+ * - sheets-client.js: clearSheetLogs メソッド
+ * - sheets-client.js: batchUpdate メソッド（A列クリア用）
+ * 
+ * 前提条件：
+ * - スプレッドシートURLが設定されていること
+ * - メニュー行に「ログ」列が存在すること
+ */
 clearLogBtn.addEventListener("click", async () => {
   // 確認ダイアログを表示
-  if (!confirm("スプレッドシートのログをクリアしますか？")) {
+  if (!confirm("スプレッドシートのログ列(メニューのログ列)とA列の1行目以降のデータをクリアしますか？")) {
     return;
   }
 
@@ -1715,6 +1740,7 @@ clearLogBtn.addEventListener("click", async () => {
     }
     const spreadsheetId = match[1];
 
+    // ログ列とA列をクリア（background.jsで両方処理される）
     const response = await chrome.runtime.sendMessage({
       action: "clearLog",
       spreadsheetId: spreadsheetId,
@@ -1722,7 +1748,8 @@ clearLogBtn.addEventListener("click", async () => {
 
     if (response && response.success) {
       const clearedCount = response.clearedCount || 0;
-      updateStatus(`ログをクリアしました (${clearedCount}個のセル)`, "success");
+      updateStatus(`ログ列とA列をクリアしました (${clearedCount}個のセル)`, "success");
+      
       // 2秒後に通常状態に戻す
       setTimeout(() => updateStatus("待機中", "waiting"), 2000);
     } else {
@@ -1739,6 +1766,41 @@ clearLogBtn.addEventListener("click", async () => {
 });
 
 // ===== イベントリスナー: 回答削除 =====
+/**
+ * 【回答削除ボタンの動作】
+ * 
+ * 概要：
+ * スプレッドシートの全AI回答列とA列のデータを削除する機能
+ * 
+ * 削除対象：
+ * 1. 各AI回答列（Claude、ChatGPT、Gemini等）の作業行データ
+ * 2. A列の2行目以降（A2:A1000）の全データ（作業行マーカー）
+ * 
+ * 削除対象外：
+ * - プロンプト列
+ * - ログ列
+ * - メニュー行、制御行、AI行、モデル行、機能行
+ * 
+ * 処理フロー：
+ * 1. UIからスプレッドシートURLを取得
+ * 2. background.jsの deleteAnswers アクションを呼び出し
+ * 3. sheets-client.jsでAI回答列を検出し削除
+ * 4. A列も同時にクリア
+ * 
+ * 依存関係：
+ * - background.js: deleteAnswers ハンドラー
+ * - sheets-client.js: deleteAnswers メソッド
+ * - sheets-client.js: columnMapping（AI列の特定）
+ * 
+ * 前提条件：
+ * - スプレッドシートURLが設定されていること
+ * - メニュー行にAI名の列が存在すること
+ * 
+ * ログクリアとの違い：
+ * - ログクリア: ログ列＋A列をクリア
+ * - 回答削除: AI回答列＋A列をクリア
+ * - 両方ともA列はクリアされる（作業行のリセット）
+ */
 deleteAnswersBtn.addEventListener("click", async () => {
   // 確認ダイアログを表示
   if (!confirm("AI回答を削除しますか？")) {

@@ -13,35 +13,29 @@ let UI_SELECTORS_LOADED = false;
 let UI_SELECTORS_PROMISE = null;
 let retryManager = null; // RetryManagerインスタンス
 
-// RetryManagerの初期化
-async function initializeRetryManager() {
+// RetryManagerの初期化（同期的）
+function initializeRetryManager() {
   if (retryManager) return retryManager;
   
-  // retry-manager.jsを読み込む
-  return new Promise((resolve) => {
-    const script = document.createElement('script');
-    script.src = chrome.runtime.getURL('src/modules/retry-manager.js');
-    script.onload = () => {
-      console.log('✅ [11.autoai] RetryManagerを読み込みました');
-      retryManager = new window.RetryManager({
-        maxRetries: 3,
-        retryDelay: 5000,
-        debugMode: true
-      });
-      
-      // executeTask関数を上書き
-      retryManager.executeTask = async (taskConfig) => {
-        return await executeTaskInternal(taskConfig);
-      };
-      
-      resolve(retryManager);
+  // RetryManagerは既にmanifest.jsonのcontent_scriptsで読み込み済み
+  if (typeof window.RetryManager === 'function') {
+    console.log('✅ [11.autoai] RetryManagerを初期化しました');
+    retryManager = new window.RetryManager({
+      maxRetries: 3,
+      retryDelay: 5000,
+      debugMode: true
+    });
+    
+    // executeTask関数を上書き
+    retryManager.executeTask = async (taskConfig) => {
+      return await executeTaskInternal(taskConfig);
     };
-    script.onerror = (error) => {
-      console.error('❌ [11.autoai] RetryManager読み込みエラー:', error);
-      resolve(null);
-    };
-    document.head.appendChild(script);
-  });
+    
+    return retryManager;
+  } else {
+    console.error('❌ [11.autoai] RetryManagerクラスが見つかりません');
+    return null;
+  }
 }
 
 // 内部タスク実行関数
@@ -2586,9 +2580,10 @@ if (AI_TYPE) {
   console.log(`🚀 [11.autoai] ${AI_TYPE} サイトでContent Script初期化開始`);
 
   // RetryManagerの初期化
-  initializeRetryManager().then(() => {
+  const manager = initializeRetryManager();
+  if (manager) {
     console.log('[11.autoai] RetryManager初期化完了');
-  });
+  }
   
   // UI Selectors読み込みから開始
   loadUISelectors();
