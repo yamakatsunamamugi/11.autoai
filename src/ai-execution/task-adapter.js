@@ -295,11 +295,19 @@ class TaskAdapter {
   /**
    * 実行モードを判定
    * 【重要な変更】テストモードと本番モードを明確に区別
-   * @returns {Promise<Object>} {mode: 'tasklist'|'manual'|'test', taskList: Object|null}
+   * @returns {Promise<Object>} {mode: 'tasklist'|'manual'|'test'|'mutationobserver', taskList: Object|null}
    */
   static async detectMode() {
-    // 1. URLパラメータをチェック（テスト用パラメータを優先）
+    // 1. URLパラメータをチェック（特殊モードを優先）
     const urlParams = new URLSearchParams(window.location.search);
+    
+    // MutationObserverモードの検出
+    const mutationObserverMode = urlParams.get('mode');
+    if (mutationObserverMode === 'mutationobserver') {
+      console.log('👁️ MutationObserverモード検出（URLパラメータ）');
+      return { mode: 'mutationobserver', taskList: null };
+    }
+    
     const testMode = urlParams.get('test');
     if (testMode === 'true' || testMode === '1') {
       console.log('🧪 テストモード検出（URLパラメータ）');

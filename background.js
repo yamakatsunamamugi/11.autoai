@@ -279,10 +279,22 @@ let isProcessing = false;
  */
 async function executeAITask(tabId, taskData) {
   const startTime = Date.now();
-  logManager.logAI(taskData.aiType, `AIタスク実行開始`, {
+  
+  // セル位置情報を含む詳細ログ
+  const cellInfo = taskData.cellInfo || {};
+  console.log('[Background] cellInfo受信:', cellInfo, 'taskData:', taskData);
+  const cellPosition = cellInfo.column && cellInfo.row ? `${cellInfo.column}${cellInfo.row}` : '不明';
+  
+  logManager.logAI(taskData.aiType, `📊 (${taskData.aiType}) Step1: スプレッドシート処理開始 [${cellPosition}セル]`, {
+    level: 'info',
     metadata: {
       tabId,
       taskId: taskData.taskId,
+      cellPosition,
+      column: cellInfo.column,
+      row: cellInfo.row,
+      step: 1,
+      process: 'スプレッドシート読み込み',
       model: taskData.model,
       function: taskData.function,
       promptLength: taskData.prompt?.length
@@ -296,19 +308,31 @@ async function executeAITask(tabId, taskData) {
     const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
     
     if (result.success) {
-      logManager.logAI(taskData.aiType, `タスク完了 (${totalTime}秒)`, {
+      logManager.logAI(taskData.aiType, `✅ 全プロセス完了 [${cellPosition}セル] (${totalTime}秒)`, {
         level: 'success',
         metadata: {
           taskId: taskData.taskId,
-          responseLength: result.response?.length || 0
+          cellPosition,
+          column: cellInfo.column,
+          row: cellInfo.row,
+          totalTime: `${totalTime}秒`,
+          responseLength: result.response?.length || 0,
+          allStepsCompleted: true,
+          finalStep: 5,
+          process: '回答取得完了'
         }
       });
     } else {
-      logManager.logAI(taskData.aiType, `タスク失敗: ${result.error}`, {
+      logManager.logAI(taskData.aiType, `❌ 処理失敗 [${cellPosition}セル]: ${result.error}`, {
         level: 'error',
         metadata: {
           taskId: taskData.taskId,
-          totalTime: `${totalTime}秒`
+          cellPosition,
+          column: cellInfo.column,
+          row: cellInfo.row,
+          totalTime: `${totalTime}秒`,
+          error: result.error,
+          failedProcess: result.failedStep || '不明'
         }
       });
     }
@@ -427,7 +451,18 @@ chrome.runtime.onConnect.addListener((port) => {
  * ポップアップ/ウィンドウからのメッセージを処理
  */
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  switch (request.action) {
+  switch (request.action || request.type) {
+    // ===== AI詳細ログメッセージ受信 =====
+    case "LOG_AI_MESSAGE":
+      if (request.aiType && request.message) {
+        logManager.logAI(request.aiType, request.message, request.options || {});
+        sendResponse({ success: true });
+      } else {
+        console.error('Invalid LOG_AI_MESSAGE format:', request);
+        sendResponse({ success: false, error: 'Invalid message format' });
+      }
+      return false; // 同期応答
+
     // ===== AIタスク実行（コンテンツスクリプトから転送） =====
     case "executeAITask":
       console.log("[MessageHandler] 📨 AIタスク実行要求受信:", {
@@ -437,6 +472,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         model: request.taskData?.model,
         function: request.taskData?.function,
         promptPreview: request.taskData?.prompt?.substring(0, 50) + '...',
+        cellInfo: request.taskData?.cellInfo,
         timestamp: new Date().toLocaleTimeString()
       });
       
@@ -873,6 +909,64 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         message: "AITaskHandlerログ設定完了" 
       });
       return false;
+
+    // ===== スプレッドシートログクリア =====
+    case "clearLog":
+      (async () => {
+        try {
+          console.log("[MessageHandler] ログクリア要求:", request.spreadsheetId);
+          
+          if (!request.spreadsheetId) {
+            throw new Error("スプレッドシートIDが指定されていません");
+          }
+
+          // SheetsClientを使用してログをクリア
+          const result = await sheetsClient.clearSheetLogs(request.spreadsheetId);
+          
+          console.log("[MessageHandler] ログクリア完了:", result);
+          sendResponse({ 
+            success: true, 
+            clearedCount: result.clearedCount || 0,
+            message: "ログをクリアしました"
+          });
+        } catch (error) {
+          console.error("[MessageHandler] ログクリアエラー:", error);
+          sendResponse({ 
+            success: false, 
+            error: error.message 
+          });
+        }
+      })();
+      return true;
+
+    // ===== AI回答削除 =====
+    case "deleteAnswers":
+      (async () => {
+        try {
+          console.log("[MessageHandler] 回答削除要求:", request.spreadsheetId);
+          
+          if (!request.spreadsheetId) {
+            throw new Error("スプレッドシートIDが指定されていません");
+          }
+
+          // SheetsClientを使用してAI回答を削除
+          const result = await sheetsClient.deleteAnswers(request.spreadsheetId);
+          
+          console.log("[MessageHandler] 回答削除完了:", result);
+          sendResponse({ 
+            success: true, 
+            deletedCount: result.deletedCount || 0,
+            message: "AI回答を削除しました"
+          });
+        } catch (error) {
+          console.error("[MessageHandler] 回答削除エラー:", error);
+          sendResponse({ 
+            success: false, 
+            error: error.message 
+          });
+        }
+      })();
+      return true;
 
     default:
       console.warn("[MessageHandler] 未知のアクション:", request.action);

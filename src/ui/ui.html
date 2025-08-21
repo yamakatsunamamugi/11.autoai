@@ -95,6 +95,9 @@
                 <button class="btn btn-icon-only save-url-btn" style="width: 40px; height: 40px; padding: 0; border-radius: 4px; background: #007bff; color: white; border: none; cursor: pointer;" title="URLを保存">
                   <span>💾</span>
                 </button>
+                <button class="btn btn-icon-only view-spreadsheet-btn" style="width: 40px; height: 40px; padding: 0; border-radius: 4px; background: #17a2b8; color: white; border: none; cursor: pointer;" title="スプレッドシートを開く">
+                  <span>🔗</span>
+                </button>
                 <button class="btn btn-icon-only open-url-btn" style="width: 40px; height: 40px; padding: 0; border-radius: 4px; background: #6c757d; color: white; border: none; cursor: pointer;" title="保存済みURLを開く">
                   <span>📂</span>
                 </button>
@@ -118,7 +121,7 @@
                 <span class="btn-icon">🗑</span>
                 ログクリア
               </button>
-              <button id="deleteAnswersBtn" class="btn btn-secondary" style="flex: 1;">
+              <button id="deleteAnswersBtn" class="btn btn-warning" style="flex: 1; background: #ff6b35; color: white; border: none;">
                 <span class="btn-icon">✕</span>
                 回答削除
               </button>
@@ -187,29 +190,120 @@
           <div class="control-buttons">
             <button id="aiDetectionSystemBtn" class="btn btn-detection btn-large">
               <span class="btn-icon">🔍</span>
-              0. AI変更検出システム
+              1. モデル・機能変更検出システム
+            </button>
+            <button id="aiSelectorMutationSystemBtn" class="btn btn-mutation btn-large">
+              <span class="btn-icon">👁️</span>
+              2. AIセレクタ変更検出システム
             </button>
             <button id="showTaskListTestBtn" class="btn btn-test-spreadsheet btn-large">
               <span class="btn-icon">📊</span>
-              1. スプレッドシート読み込みテスト
+              3. スプレッドシート読み込みテスト
             </button>
             <button id="windowCreationTestBtn" class="btn btn-test-window btn-large">
               <span class="btn-icon">🪟</span>
-              2. ウィンドウ作成テスト
+              4. ウィンドウ作成テスト
             </button>
             <!-- AI Orchestratorを開いてテスト環境を起動（本番実行ではない） -->
             <button id="startIntegratedTestBtn" class="btn btn-primary btn-large" title="AI Orchestratorを開いてテスト環境を起動します（手動テスト、3連続テスト、プロンプト管理）">
               <span class="btn-icon">🎯</span>
-              3. 統合AIテスト開始（テスト環境）
+              5. 統合AIテスト開始（テスト環境）
             </button>
             <button id="generateReportBtn" class="btn btn-test-report btn-large">
               <span class="btn-icon">📄</span>
-              4. レポート化テスト
+              6. レポート化テスト
             </button>
             <button id="showAIStatusBtn" class="btn btn-primary btn-large">
               <span class="btn-icon">📊</span>
-              5. AIステータス表示
+              7. AIステータス表示
             </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- セレクタ情報セクション -->
+      <section class="selector-info-section" style="margin-bottom: 30px;">
+        <h2>🔍 AIセレクタ情報</h2>
+        <div class="selector-tabs">
+          <button class="selector-tab active" data-ai="chatgpt">ChatGPT</button>
+          <button class="selector-tab" data-ai="claude">Claude</button>
+          <button class="selector-tab" data-ai="gemini">Gemini</button>
+        </div>
+        <div class="selector-content">
+          <div class="selector-ai-panel" id="chatgpt-selectors" style="display: block;">
+            <h3>ChatGPT セレクタ情報</h3>
+            <div class="selector-types">
+              <div class="selector-type">
+                <h4>📝 INPUT (入力欄)</h4>
+                <div class="selector-list" id="chatgpt-input-selectors">セレクタ情報を取得するには上記のボタンを実行してください</div>
+              </div>
+              <div class="selector-type">
+                <h4>📤 SEND_BUTTON (送信ボタン)</h4>
+                <div class="selector-list" id="chatgpt-send-selectors">セレクタ情報を取得するには上記のボタンを実行してください</div>
+              </div>
+              <div class="selector-type">
+                <h4>⏸️ STOP_BUTTON (停止ボタン)</h4>
+                <div class="selector-list" id="chatgpt-stop-selectors">セレクタ情報を取得するには上記のボタンを実行してください</div>
+              </div>
+              <div class="selector-type">
+                <h4>📄 RESPONSE (応答)</h4>
+                <div class="selector-list" id="chatgpt-response-selectors">セレクタ情報を取得するには上記のボタンを実行してください</div>
+              </div>
+              <div class="selector-type">
+                <h4>🔬 DEEP_RESEARCH (DeepResearch)</h4>
+                <div class="selector-list" id="chatgpt-deepresearch-selectors">セレクタ情報を取得するには上記のボタンを実行してください</div>
+              </div>
+            </div>
+          </div>
+          <div class="selector-ai-panel" id="claude-selectors" style="display: none;">
+            <h3>Claude セレクタ情報</h3>
+            <div class="selector-types">
+              <div class="selector-type">
+                <h4>📝 INPUT (入力欄)</h4>
+                <div class="selector-list" id="claude-input-selectors">セレクタ情報を取得するには上記のボタンを実行してください</div>
+              </div>
+              <div class="selector-type">
+                <h4>📤 SEND_BUTTON (送信ボタン)</h4>
+                <div class="selector-list" id="claude-send-selectors">セレクタ情報を取得するには上記のボタンを実行してください</div>
+              </div>
+              <div class="selector-type">
+                <h4>⏸️ STOP_BUTTON (停止ボタン)</h4>
+                <div class="selector-list" id="claude-stop-selectors">セレクタ情報を取得するには上記のボタンを実行してください</div>
+              </div>
+              <div class="selector-type">
+                <h4>📄 RESPONSE (応答)</h4>
+                <div class="selector-list" id="claude-response-selectors">セレクタ情報を取得するには上記のボタンを実行してください</div>
+              </div>
+              <div class="selector-type">
+                <h4>🔬 DEEP_RESEARCH (DeepResearch)</h4>
+                <div class="selector-list" id="claude-deepresearch-selectors">セレクタ情報を取得するには上記のボタンを実行してください</div>
+              </div>
+            </div>
+          </div>
+          <div class="selector-ai-panel" id="gemini-selectors" style="display: none;">
+            <h3>Gemini セレクタ情報</h3>
+            <div class="selector-types">
+              <div class="selector-type">
+                <h4>📝 INPUT (入力欄)</h4>
+                <div class="selector-list" id="gemini-input-selectors">セレクタ情報を取得するには上記のボタンを実行してください</div>
+              </div>
+              <div class="selector-type">
+                <h4>📤 SEND_BUTTON (送信ボタン)</h4>
+                <div class="selector-list" id="gemini-send-selectors">セレクタ情報を取得するには上記のボタンを実行してください</div>
+              </div>
+              <div class="selector-type">
+                <h4>⏸️ STOP_BUTTON (停止ボタン)</h4>
+                <div class="selector-list" id="gemini-stop-selectors">セレクタ情報を取得するには上記のボタンを実行してください</div>
+              </div>
+              <div class="selector-type">
+                <h4>📄 RESPONSE (応答)</h4>
+                <div class="selector-list" id="gemini-response-selectors">セレクタ情報を取得するには上記のボタンを実行してください</div>
+              </div>
+              <div class="selector-type">
+                <h4>🔬 DEEP_RESEARCH (DeepResearch)</h4>
+                <div class="selector-list" id="gemini-deepresearch-selectors">セレクタ情報を取得するには上記のボタンを実行してください</div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -225,6 +319,7 @@
             <button class="log-tab" data-category="gemini">Gemini</button>
             <button class="log-tab" data-category="system">システム</button>
             <button class="log-tab" data-category="error">エラー</button>
+            <button class="log-tab" data-category="selector">セレクタ関係</button>
           </div>
           <div class="log-actions">
             <button id="btn-clear-logs" class="btn-small">クリア</button>

@@ -150,6 +150,7 @@
         "automations/gemini-automation.js",
         "automations/gemini-dynamic-automation.js",
         "automations/genspark-automation.js",
+        "automations/ai-mutation-observer.js",
         "automations/test-runner.js",
         "automations/test-runner-chrome.js",
         "automations/test-sequential-prompts.js",

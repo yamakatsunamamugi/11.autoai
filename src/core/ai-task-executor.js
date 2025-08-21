@@ -149,7 +149,8 @@ export class AITaskExecutor {
               send: true,
               waitResponse: true,
               getResponse: true,
-              timeout: timeout
+              timeout: timeout,
+              cellInfo: taskData.cellInfo  // セル位置情報を追加
             };
 
             // runAutomationを実行

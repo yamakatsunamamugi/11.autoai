@@ -826,6 +826,139 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       })();
       break;
 
+    case "START_MUTATION_OBSERVER":
+      // MutationObserver開始
+      isAsync = true;
+      console.log(`[${AI_TYPE}] MutationObserver開始要求受信`);
+      (async () => {
+        try {
+          // ai-mutation-observer.jsを動的読み込み
+          if (!window.AIMutationObserver) {
+            const script = document.createElement('script');
+            script.src = chrome.runtime.getURL('automations/ai-mutation-observer.js');
+            script.onload = () => {
+              console.log(`[${AI_TYPE}] ai-mutation-observer.js読み込み完了`);
+              startMutationObserverInContent();
+            };
+            script.onerror = (error) => {
+              console.error(`[${AI_TYPE}] ai-mutation-observer.js読み込み失敗:`, error);
+              sendResponse({
+                success: false,
+                error: 'MutationObserverスクリプトの読み込みに失敗しました'
+              });
+            };
+            document.head.appendChild(script);
+          } else {
+            startMutationObserverInContent();
+          }
+          
+          function startMutationObserverInContent() {
+            if (window.startAIMutationMonitoring) {
+              const observer = window.startAIMutationMonitoring();
+              if (observer) {
+                console.log(`[${AI_TYPE}] MutationObserver開始成功`);
+                sendResponse({
+                  success: true,
+                  aiType: AI_TYPE,
+                  message: 'MutationObserver開始成功'
+                });
+              } else {
+                console.error(`[${AI_TYPE}] MutationObserver開始失敗`);
+                sendResponse({
+                  success: false,
+                  error: 'MutationObserverの開始に失敗しました'
+                });
+              }
+            } else {
+              console.error(`[${AI_TYPE}] startAIMutationMonitoring関数が見つかりません`);
+              sendResponse({
+                success: false,
+                error: 'MutationObserver機能が利用できません'
+              });
+            }
+          }
+        } catch (error) {
+          console.error(`[${AI_TYPE}] MutationObserver開始エラー:`, error);
+          sendResponse({
+            success: false,
+            error: error.message
+          });
+        }
+      })();
+      break;
+
+    case "STOP_MUTATION_OBSERVER":
+      // MutationObserver停止
+      isAsync = true;
+      console.log(`[${AI_TYPE}] MutationObserver停止要求受信`);
+      (async () => {
+        try {
+          if (window.stopAIMutationMonitoring) {
+            const stopped = window.stopAIMutationMonitoring();
+            if (stopped) {
+              console.log(`[${AI_TYPE}] MutationObserver停止成功`);
+              sendResponse({
+                success: true,
+                message: 'MutationObserver停止成功'
+              });
+            } else {
+              sendResponse({
+                success: false,
+                error: 'MutationObserverの停止に失敗しました'
+              });
+            }
+          } else {
+            sendResponse({
+              success: false,
+              error: 'MutationObserver機能が見つかりません'
+            });
+          }
+        } catch (error) {
+          console.error(`[${AI_TYPE}] MutationObserver停止エラー:`, error);
+          sendResponse({
+            success: false,
+            error: error.message
+          });
+        }
+      })();
+      break;
+
+    case "GET_MUTATION_OBSERVER_RESULT":
+      // MutationObserver結果取得
+      isAsync = true;
+      (async () => {
+        try {
+          if (window.getAIMutationReport) {
+            const report = window.getAIMutationReport();
+            if (report) {
+              console.log(`[${AI_TYPE}] MutationObserver結果取得成功`);
+              sendResponse({
+                success: true,
+                report: report
+              });
+            } else {
+              // まだ完了していない場合
+              sendResponse({
+                success: true,
+                report: null
+              });
+            }
+          } else {
+            sendResponse({
+              success: false,
+              error: 'MutationObserver結果取得機能が見つかりません'
+            });
+          }
+        } catch (error) {
+          console.error(`[${AI_TYPE}] MutationObserver結果取得エラー:`, error);
+          sendResponse({
+            success: false,
+            error: error.message
+          });
+        }
+      })();
+      break;
+
     default:
       console.warn(`[11.autoai] 未知のアクション: ${request.action}`);
       sendResponse({ success: false, error: "Unknown action" });
@@ -977,7 +1110,7 @@ async function isResponseCompleted() {
  * background.jsの中央制御に転送する軽量版
  */
 async function handleAITaskPrompt(request, sendResponse) {
-  const { prompt, taskId, model, specialOperation } = request;
+  const { prompt, taskId, model, specialOperation, cellInfo } = request;
   
   console.log(`[11.autoai][${AI_TYPE}] handleAITaskPrompt - background.jsに転送`, {
     taskId,
@@ -992,7 +1125,8 @@ async function handleAITaskPrompt(request, sendResponse) {
     model: model,
     function: specialOperation || 'none',
     prompt: prompt,
-    taskId: taskId
+    taskId: taskId,
+    cellInfo: cellInfo  // セル位置情報を追加
   };
   
   // background.jsに転送して実行

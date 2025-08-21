@@ -292,12 +292,34 @@
             metadataHtml = `<span class="log-metadata" title="${escapeHtml(JSON.stringify(log.metadata, null, 2))}">📎</span>`;
         }
         
+        // 応答プレビュー処理（30文字制限とクリック展開機能）
+        let messageContent = escapeHtml(log.message);
+        let responsePreviewHtml = '';
+        
+        // Step5の応答取得完了メッセージで30文字プレビューとクリック機能を追加
+        if (log.metadata && log.metadata.responsePreview30 && log.metadata.hasMoreContent && log.metadata.fullResponse) {
+            const preview = escapeHtml(log.metadata.responsePreview30);
+            responsePreviewHtml = `
+                <div class="response-preview-container">
+                    <div class="response-preview">
+                        <span class="response-text">${preview}</span>
+                        <span class="response-expand-button" title="クリックして全文を表示">...</span>
+                    </div>
+                    <div class="response-full" style="display: none;">
+                        <pre class="response-full-text">${escapeHtml(log.metadata.fullResponse)}</pre>
+                        <div class="response-collapse-button" title="クリックして折りたたむ">▲ 折りたたむ</div>
+                    </div>
+                </div>
+            `;
+        }
+        
         div.innerHTML = `
             <input type="checkbox" class="log-checkbox" data-log-id="${log.id}">
             ${timestampHtml}
             ${levelIcon}
             ${sourceHtml}
-            <span class="log-message">${escapeHtml(log.message)}</span>
+            <span class="log-message">${messageContent}</span>
+            ${responsePreviewHtml}
             ${metadataHtml}
         `;
         
@@ -307,6 +329,12 @@
                 toggleLogSelection(log.id);
             } else if (e.target.classList.contains('log-metadata')) {
                 showMetadataPopup(log.metadata);
+            } else if (e.target.classList.contains('response-expand-button')) {
+                e.stopPropagation();
+                toggleResponseExpand(e.target);
+            } else if (e.target.classList.contains('response-collapse-button')) {
+                e.stopPropagation();
+                toggleResponseCollapse(e.target);
             }
         });
         
@@ -361,6 +389,45 @@
         }
         
         updateSelectionUI();
+    }
+
+    /**
+     * 応答展開
+     */
+    function toggleResponseExpand(expandButton) {
+        const container = expandButton.closest('.response-preview-container');
+        if (container) {
+            const previewDiv = container.querySelector('.response-preview');
+            const fullDiv = container.querySelector('.response-full');
+            
+            if (previewDiv && fullDiv) {
+                previewDiv.style.display = 'none';
+                fullDiv.style.display = 'block';
+                
+                // 自動スクロールが有効な場合、展開した内容にスクロール
+                if (state.autoScroll) {
+                    setTimeout(() => {
+                        fullDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    }, 100);
+                }
+            }
+        }
+    }
+    
+    /**
+     * 応答折りたたみ
+     */
+    function toggleResponseCollapse(collapseButton) {
+        const container = collapseButton.closest('.response-preview-container');
+        if (container) {
+            const previewDiv = container.querySelector('.response-preview');
+            const fullDiv = container.querySelector('.response-full');
+            
+            if (previewDiv && fullDiv) {
+                fullDiv.style.display = 'none';
+                previewDiv.style.display = 'block';
+            }
+        }
     }
 
     /**

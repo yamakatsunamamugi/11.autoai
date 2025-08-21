@@ -497,3 +497,108 @@ body {
         overflow-x: scroll;
     }
 }
+
+/* ========================================
+   応答プレビュー機能
+   ======================================== */
+.response-preview-container {
+    margin-top: 0.5rem;
+    margin-left: 1rem;
+    border-left: 3px solid #4CAF50;
+    padding-left: 0.75rem;
+}
+
+.response-preview {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background-color: #2a2a2a;
+    padding: 0.5rem 0.75rem;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.response-preview:hover {
+    background-color: #333333;
+}
+
+.response-text {
+    font-family: 'Courier New', monospace;
+    color: #e0e0e0;
+    font-size: 0.9rem;
+}
+
+.response-expand-button {
+    color: #4CAF50;
+    font-weight: bold;
+    font-size: 1.1rem;
+    margin-left: auto;
+    cursor: pointer;
+    user-select: none;
+    padding: 0.2rem 0.4rem;
+    border-radius: 3px;
+    transition: background-color 0.2s ease;
+}
+
+.response-expand-button:hover {
+    background-color: #4CAF50;
+    color: #000;
+}
+
+.response-full {
+    background-color: #1e1e1e;
+    border-radius: 6px;
+    overflow: hidden;
+    margin-top: 0.5rem;
+    border: 1px solid #333;
+}
+
+.response-full-text {
+    background-color: #1a1a1a;
+    color: #e0e0e0;
+    font-family: 'Courier New', monospace;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    padding: 1rem;
+    margin: 0;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.response-collapse-button {
+    background-color: #2a2a2a;
+    color: #4CAF50;
+    text-align: center;
+    padding: 0.5rem;
+    cursor: pointer;
+    font-size: 0.85rem;
+    border-top: 1px solid #333;
+    transition: background-color 0.2s ease;
+    user-select: none;
+}
+
+.response-collapse-button:hover {
+    background-color: #333333;
+    color: #66BB6A;
+}
+
+/* 応答プレビューのアニメーション */
+.response-preview-container .response-preview,
+.response-preview-container .response-full {
+    animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-5px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}

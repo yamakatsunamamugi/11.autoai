@@ -37,7 +37,7 @@ function addIntegratedViewButton() {
   // 統合表示ボタンを作成
   const integratedBtn = document.createElement('button');
   integratedBtn.id = 'integrated-view-btn';
-  integratedBtn.textContent = '📊 統合表示';
+  integratedBtn.textContent = '📊 モデル・機能一覧';
   integratedBtn.style.cssText = `
     margin: 10px auto;
     padding: 10px 20px;
@@ -381,12 +381,18 @@ function renderIntegratedTable(config) {
     // ヘッダー
     const header = document.createElement('div');
     header.style.cssText = `
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
       margin-bottom: 20px;
       padding-bottom: 10px;
       border-bottom: 2px solid #e9ecef;
+    `;
+    
+    // タイトル行（タイトルと閉じるボタン）
+    const titleRow = document.createElement('div');
+    titleRow.style.cssText = `
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
     `;
     
     const title = document.createElement('h3');
@@ -407,8 +413,25 @@ function renderIntegratedTable(config) {
     `;
     closeBtn.onclick = () => modal.remove();
     
-    header.appendChild(title);
-    header.appendChild(closeBtn);
+    titleRow.appendChild(title);
+    titleRow.appendChild(closeBtn);
+    
+    // スプレッドシート貼り付け指示テキストを追加
+    const instructionText = document.createElement('p');
+    instructionText.innerHTML = '📋 <strong>スプレッドシートの「AIモデル変更関数」に下の表を貼り付け</strong>';
+    instructionText.style.cssText = `
+      margin: 0;
+      padding: 8px 12px;
+      background-color: #e8f5e8;
+      border: 1px solid #28a745;
+      border-radius: 5px;
+      color: #155724;
+      font-size: 14px;
+      font-weight: normal;
+    `;
+    
+    header.appendChild(titleRow);
+    header.appendChild(instructionText);
     
     // テーブル作成
     const table = document.createElement('table');
@@ -563,6 +586,7 @@ const startIntegratedTestBtn = document.getElementById(
   "startIntegratedTestBtn",
 );
 const aiDetectionSystemBtn = document.getElementById("aiDetectionSystemBtn");
+const aiSelectorMutationSystemBtn = document.getElementById("aiSelectorMutationSystemBtn");
 const statusDiv = document.getElementById("status");
 const loadFeedback = document.getElementById("loadFeedback");
 
@@ -728,6 +752,9 @@ function addUrlInput() {
     <button class="btn btn-icon-only save-url-btn" style="width: 40px; height: 40px; padding: 0; border-radius: 4px; background: #007bff; color: white; border: none; cursor: pointer;" title="URLを保存">
       <span>💾</span>
     </button>
+    <button class="btn btn-icon-only view-spreadsheet-btn" style="width: 40px; height: 40px; padding: 0; border-radius: 4px; background: #17a2b8; color: white; border: none; cursor: pointer;" title="スプレッドシートを開く">
+      <span>🔗</span>
+    </button>
     <button class="btn btn-icon-only open-url-btn" style="width: 40px; height: 40px; padding: 0; border-radius: 4px; background: #6c757d; color: white; border: none; cursor: pointer;" title="保存済みURLを開く">
       <span>📂</span>
     </button>
@@ -785,6 +812,29 @@ function attachUrlRowEventListeners(row) {
         return;
       }
       showSaveUrlDialog(url, input);
+    });
+  }
+  
+  // スプレッドシートを開くボタン
+  const viewBtn = row.querySelector('.view-spreadsheet-btn');
+  if (viewBtn) {
+    viewBtn.addEventListener('click', () => {
+      const input = row.querySelector('.spreadsheet-url-input');
+      const url = input.value.trim();
+      if (!url) {
+        showFeedback('URLを入力してください', 'error');
+        return;
+      }
+      
+      // URLの形式をチェック
+      if (!url.includes('spreadsheets.google.com')) {
+        showFeedback('Google スプレッドシートのURLを入力してください', 'error');
+        return;
+      }
+      
+      // 新しいタブでスプレッドシートを開く
+      chrome.tabs.create({ url: url });
+      showFeedback('スプレッドシートを開きました', 'success');
     });
   }
   
@@ -1501,8 +1551,9 @@ clearLogBtn.addEventListener("click", async () => {
     return;
   }
 
-  // datalist対応の入力欄からURLを取得
-  const spreadsheetUrl = spreadsheetInput.value.trim();
+  // 複数URL入力欄から最初のURLを取得
+  const urlInputs = document.querySelectorAll('.spreadsheet-url-input');
+  const spreadsheetUrl = urlInputs.length > 0 ? urlInputs[0].value.trim() : '';
 
   if (!spreadsheetUrl) {
     updateStatus("スプレッドシートURLが設定されていません", "error");
@@ -1551,8 +1602,9 @@ deleteAnswersBtn.addEventListener("click", async () => {
     return;
   }
 
-  // datalist対応の入力欄からURLを取得
-  const spreadsheetUrl = spreadsheetInput.value.trim();
+  // 複数URL入力欄から最初のURLを取得
+  const urlInputs = document.querySelectorAll('.spreadsheet-url-input');
+  const spreadsheetUrl = urlInputs.length > 0 ? urlInputs[0].value.trim() : '';
 
   if (!spreadsheetUrl) {
     updateStatus("スプレッドシートURLが設定されていません", "error");
@@ -3003,6 +3055,394 @@ aiDetectionSystemBtn.addEventListener("click", async () => {
 });
 */
 
+// ===== イベントリスナー: AIセレクタ変更検出システム =====
+let isAIMutationSystemRunning = false;
+let currentMutationObserver = null;
+
+aiSelectorMutationSystemBtn.addEventListener("click", async () => {
+  console.log("AIセレクタ変更検出システムボタンが押されました");
+  
+  if (isAIMutationSystemRunning) {
+    // 監視停止
+    console.log("MutationObserver監視を停止します");
+    
+    try {
+      if (currentMutationObserver && currentMutationObserver.mode === 'orchestrator' && currentMutationObserver.window) {
+        // AI Orchestratorウィンドウを閉じる
+        currentMutationObserver.window.close();
+        
+        isAIMutationSystemRunning = false;
+        currentMutationObserver = null;
+        aiSelectorMutationSystemBtn.innerHTML = '<span class="btn-icon">👁️</span>2. AIセレクタ変更検出システム';
+        aiSelectorMutationSystemBtn.style.background = "linear-gradient(135deg, #a55eea, #3742fa)";
+        updateStatus("MutationObserver監視停止", "warning");
+        console.log("✅ AI Orchestrator（MutationObserver版）を閉じました");
+      }
+    } catch (error) {
+      console.error("MutationObserver停止エラー:", error);
+      updateStatus("監視停止エラー", "error");
+    }
+    
+  } else {
+    // 監視開始
+    console.log("MutationObserver監視を開始します");
+    
+    try {
+      aiSelectorMutationSystemBtn.disabled = true;
+      updateStatus("MutationObserver準備中...", "loading");
+      
+      // ai-mutation-observer.jsを動的読み込み
+      if (!window.AIMutationObserver) {
+        const script = document.createElement('script');
+        script.src = chrome.runtime.getURL('automations/ai-mutation-observer.js');
+        script.onload = async () => {
+          console.log("✅ ai-mutation-observer.js読み込み完了");
+          await startMutationObserverMonitoring();
+        };
+        script.onerror = (error) => {
+          console.error("❌ ai-mutation-observer.js読み込み失敗:", error);
+          updateStatus("スクリプト読み込みエラー", "error");
+          aiSelectorMutationSystemBtn.disabled = false;
+        };
+        document.head.appendChild(script);
+      } else {
+        await startMutationObserverMonitoring();
+      }
+      
+    } catch (error) {
+      console.error("MutationObserver開始エラー:", error);
+      updateStatus("監視開始エラー", "error");
+      aiSelectorMutationSystemBtn.disabled = false;
+    }
+  }
+});
+
+// MutationObserver監視開始処理
+async function startMutationObserverMonitoring() {
+  try {
+    console.log("🖼️ AI Orchestratorを使用してMutationObserver開始");
+    updateStatus("AI Orchestrator（MutationObserver版）を開いています...", "loading");
+    
+    // AI Orchestratorをmutationobserver モードで開く
+    const orchestratorUrl = chrome.runtime.getURL(
+      "src/ai-execution/ai-orchestrator.html?mode=mutationobserver"
+    );
+
+    // ウィンドウ設定
+    const windowFeatures = `
+      width=1200,
+      height=800,
+      left=${(screen.width - 1200) / 2},
+      top=${(screen.height - 800) / 2},
+      scrollbars=yes,
+      resizable=yes,
+      status=no,
+      toolbar=no,
+      menubar=no,
+      location=no
+    `.replace(/\s+/g, "");
+
+    // 新しいウィンドウでAI Orchestratorを開く
+    const orchestratorWindow = window.open(
+      orchestratorUrl,
+      `ai_orchestrator_mutation_observer_${Date.now()}`,
+      windowFeatures
+    );
+
+    if (orchestratorWindow) {
+      console.log("✅ AI Orchestrator（MutationObserver版）が開かれました");
+      updateStatus("AI Orchestrator（MutationObserver版）を開きました", "success");
+      
+      currentMutationObserver = { 
+        window: orchestratorWindow, 
+        mode: 'orchestrator'
+      };
+      isAIMutationSystemRunning = true;
+        
+        // ボタンの表示を更新
+        aiSelectorMutationSystemBtn.innerHTML = '<span class="btn-icon">⏹️</span>監視停止 (実行中)';
+        aiSelectorMutationSystemBtn.style.background = "linear-gradient(135deg, #e74c3c, #c0392b)";
+        aiSelectorMutationSystemBtn.disabled = false;
+        
+        updateStatus("AI Orchestrator（MutationObserver版）実行中", "running");
+        console.log("✅ AI Orchestrator（MutationObserver版）開始成功");
+        
+        // ボタンを有効化
+        aiSelectorMutationSystemBtn.disabled = false;
+        
+      } else {
+        throw new Error("AI Orchestratorを開けませんでした");
+      }
+  } catch (error) {
+    console.error("AI Orchestrator開始エラー:", error);
+    updateStatus("AI Orchestrator開始エラー", "error");
+    aiSelectorMutationSystemBtn.disabled = false;
+    
+    if (error.message.includes("開けませんでした")) {
+      alert("ポップアップブロッカーを無効にしてください");
+    }
+  }
+}
+
+// AIサイトタブでMutationObserver開始
+async function startMutationObserverOnTab(tabId) {
+  try {
+    console.log(`🚀 TabID ${tabId} にMutationObserver開始メッセージ送信`);
+    
+    const response = await chrome.tabs.sendMessage(tabId, {
+      type: 'START_MUTATION_OBSERVER',
+      timestamp: Date.now()
+    });
+    
+    if (response && response.success) {
+      console.log(`✅ TabID ${tabId} でMutationObserver開始成功`);
+      return true;
+    } else {
+      console.error(`❌ TabID ${tabId} でMutationObserver開始失敗:`, response);
+      return false;
+    }
+  } catch (error) {
+    console.error(`❌ TabID ${tabId} メッセージ送信エラー:`, error);
+    return false;
+  }
+}
+
+// AIサイトタブからMutationObserver結果取得
+async function getMutationObserverResultFromTab(tabId) {
+  try {
+    const response = await chrome.tabs.sendMessage(tabId, {
+      type: 'GET_MUTATION_OBSERVER_RESULT',
+      timestamp: Date.now()
+    });
+    
+    if (response && response.success && response.report) {
+      return response.report;
+    }
+    return null;
+  } catch (error) {
+    // エラーは通常のフロー（まだ完了していない）なので詳細ログは不要
+    return null;
+  }
+}
+
+// AIサイトタブでMutationObserver停止
+async function stopMutationObserverOnTab(tabId) {
+  try {
+    console.log(`🛑 TabID ${tabId} にMutationObserver停止メッセージ送信`);
+    
+    const response = await chrome.tabs.sendMessage(tabId, {
+      type: 'STOP_MUTATION_OBSERVER',
+      timestamp: Date.now()
+    });
+    
+    if (response && response.success) {
+      console.log(`✅ TabID ${tabId} でMutationObserver停止成功`);
+      return true;
+    } else {
+      console.error(`❌ TabID ${tabId} でMutationObserver停止失敗:`, response);
+      return false;
+    }
+  } catch (error) {
+    console.error(`❌ TabID ${tabId} 停止メッセージ送信エラー:`, error);
+    return false;
+  }
+}
+
+// MutationObserver結果表示
+function showMutationObserverResults(report) {
+  const resultHtml = `
+    <div style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); margin: 20px; max-width: 600px;">
+      <h3 style="color: #2c3e50; margin-bottom: 15px;">🔍 AI監視システム結果レポート</h3>
+      
+      <div style="background: #f8f9fa; padding: 15px; border-radius: 6px; margin-bottom: 15px;">
+        <h4 style="color: #495057; margin: 0 0 10px 0;">基本情報</h4>
+        <p><strong>AI:</strong> ${report.aiType}</p>
+        <p><strong>総実行時間:</strong> ${report.monitoringDuration}ms</p>
+        <p><strong>応答文字数:</strong> ${report.responseLength}文字</p>
+      </div>
+      
+      <div style="background: #e8f4fd; padding: 15px; border-radius: 6px; margin-bottom: 15px;">
+        <h4 style="color: #495057; margin: 0 0 10px 0;">⏱️ 実行時間内訳</h4>
+        <p><strong>入力→送信:</strong> ${report.inputToSendTime}ms</p>
+        <p><strong>送信→応答開始:</strong> ${report.sendToResponseTime}ms</p>
+        <p><strong>応答生成:</strong> ${report.responseGenerationTime}ms</p>
+        <p><strong>全体フロー:</strong> ${report.totalFlowTime}ms</p>
+      </div>
+      
+      <div style="background: #f0f8e8; padding: 15px; border-radius: 6px; margin-bottom: 15px;">
+        <h4 style="color: #495057; margin: 0 0 10px 0;">📝 入力内容</h4>
+        <p style="font-family: monospace; background: white; padding: 10px; border-radius: 4px; border: 1px solid #ddd;">${report.inputContent}</p>
+      </div>
+      
+      <div style="background: #fff8e1; padding: 15px; border-radius: 6px;">
+        <h4 style="color: #495057; margin: 0 0 10px 0;">🤖 AI応答プレビュー</h4>
+        <p style="font-family: monospace; background: white; padding: 10px; border-radius: 4px; border: 1px solid #ddd; max-height: 150px; overflow-y: auto;">${report.responsePreview}</p>
+      </div>
+      
+      <div style="text-align: center; margin-top: 20px;">
+        <button onclick="this.parentElement.parentElement.remove()" style="background: #6c757d; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">閉じる</button>
+      </div>
+    </div>
+  `;
+  
+  // 結果表示エリアに追加
+  const resultContainer = document.createElement('div');
+  resultContainer.innerHTML = resultHtml;
+  resultContainer.style.position = 'fixed';
+  resultContainer.style.top = '20px';
+  resultContainer.style.right = '20px';
+  resultContainer.style.zIndex = '9999';
+  resultContainer.style.maxHeight = '80vh';
+  resultContainer.style.overflowY = 'auto';
+  
+  document.body.appendChild(resultContainer);
+}
+
+// 4分割ウィンドウレイアウトを作成（MutationObserver用）
+async function create4PaneLayoutForMutationObserver() {
+  console.log("🖼️ MutationObserver用4分割ウィンドウレイアウト作成開始");
+  
+  // test-runner-chrome.jsのcreateAIWindow関数を使用
+  if (!window.TestRunner || !window.TestRunner.createAIWindow) {
+    // test-runner-chrome.jsを動的読み込み
+    const script = document.createElement('script');
+    script.src = chrome.runtime.getURL('automations/test-runner-chrome.js');
+    
+    await new Promise((resolve, reject) => {
+      script.onload = () => {
+        console.log("✅ test-runner-chrome.js読み込み完了");
+        resolve();
+      };
+      script.onerror = (error) => {
+        console.error("❌ test-runner-chrome.js読み込み失敗:", error);
+        reject(error);
+      };
+      document.head.appendChild(script);
+    });
+    
+    // スクリプト初期化を少し待つ
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+  
+  if (!window.TestRunner || !window.TestRunner.createAIWindow) {
+    throw new Error("TestRunner.createAIWindowが利用できません");
+  }
+  
+  // AIサイト定義（test-runner-chrome.jsと同じ4分割配置）
+  const aiSites = [
+    { name: 'ChatGPT', position: 0 },  // 左上
+    { name: 'Claude', position: 1 },   // 右上  
+    { name: 'Gemini', position: 2 }    // 左下
+  ];
+  
+  const createdTabs = [];
+  
+  for (const site of aiSites) {
+    try {
+      console.log(`🌐 ${site.name}ウィンドウを作成中... (位置: ${site.position})`);
+      
+      // TestRunner.createAIWindowを使用してウィンドウを作成
+      const tab = await window.TestRunner.createAIWindow(site.name.toLowerCase(), site.position);
+      
+      if (tab && tab.id) {
+        createdTabs.push({
+          id: tab.id,
+          name: site.name,
+          position: site.position
+        });
+        console.log(`✅ ${site.name}ウィンドウ作成成功 (TabID: ${tab.id})`);
+      } else {
+        console.error(`❌ ${site.name}ウィンドウ作成失敗`);
+      }
+      
+      // 各ウィンドウ作成間で少し待機
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+    } catch (error) {
+      console.error(`❌ ${site.name}ウィンドウ作成エラー:`, error);
+    }
+  }
+  
+  console.log(`🎯 4分割レイアウト作成完了: ${createdTabs.length}個のウィンドウ`);
+  return createdTabs;
+}
+
+// AIサイトをチェックして必要に応じて開く
+async function checkAndOpenAISites() {
+  const aiSites = [
+    { name: 'ChatGPT', url: 'https://chatgpt.com/', pattern: /chatgpt\.com|chat\.openai\.com/ },
+    { name: 'Claude', url: 'https://claude.ai/', pattern: /claude\.ai/ },
+    { name: 'Gemini', url: 'https://gemini.google.com/app', pattern: /gemini\.google\.com|bard\.google\.com/ }
+  ];
+  
+  try {
+    // 現在開いているタブを取得
+    const tabs = await new Promise((resolve, reject) => {
+      chrome.tabs.query({}, (tabs) => {
+        if (chrome.runtime.lastError) {
+          reject(chrome.runtime.lastError);
+        } else {
+          resolve(tabs);
+        }
+      });
+    });
+    
+    // どのAIサイトが開かれているかチェック
+    const openAISites = aiSites.filter(site => 
+      tabs.some(tab => site.pattern.test(tab.url))
+    );
+    
+    console.log(`✅ 既に開かれているAIサイト: ${openAISites.map(s => s.name).join(', ') || 'なし'}`);
+    
+    let targetTabs = [];
+    
+    // 一つもAIサイトが開かれていない場合は全て開く
+    if (openAISites.length === 0) {
+      console.log("🌐 AIサイトを開きます...");
+      updateStatus("AIサイト（ChatGPT、Claude、Gemini）を開いています...", "loading");
+      
+      for (const site of aiSites) {
+        try {
+          const tab = await new Promise((resolve, reject) => {
+            chrome.tabs.create({ url: site.url, active: false }, (tab) => {
+              if (chrome.runtime.lastError) {
+                console.error(`❌ ${site.name}を開けませんでした:`, chrome.runtime.lastError);
+                reject(chrome.runtime.lastError);
+              } else {
+                console.log(`✅ ${site.name}を開きました (TabID: ${tab.id})`);
+                resolve(tab);
+              }
+            });
+          });
+          targetTabs.push(tab);
+          // 各サイト間で少し待機
+          await new Promise(resolve => setTimeout(resolve, 500));
+        } catch (error) {
+          console.error(`❌ ${site.name}開始エラー:`, error);
+        }
+      }
+      
+      return { opened: true, tabs: targetTabs }; // AIサイトを開いた
+    } else {
+      // 既に開かれているAIサイトがある場合は、そのタブをアクティブにする
+      const existingTabs = openAISites.map(site => {
+        const tab = tabs.find(tab => site.pattern.test(tab.url));
+        return tab;
+      }).filter(Boolean);
+      
+      if (existingTabs.length > 0) {
+        chrome.tabs.update(existingTabs[0].id, { active: true });
+        console.log(`🎯 ${openAISites[0].name}タブをアクティブにしました (TabID: ${existingTabs[0].id})`);
+      }
+      return { opened: false, tabs: existingTabs }; // 既に開かれている
+    }
+  } catch (error) {
+    console.error("❌ AIサイトチェック・オープンエラー:", error);
+    updateStatus("AIサイト確認エラー", "error");
+    return { opened: false, tabs: [] };
+  }
+}
+
 // ===== イベントリスナー: テスト実行（統合AIテスト開始） =====
 /**
  * 【テスト用ボタン】
@@ -3236,6 +3676,14 @@ class LogViewer {
           });
           this.renderLogs();
         }
+      } else if (msg.type === 'selector-data') {
+        // セレクタデータを受信してUIに表示
+        if (typeof displaySelectorInfo === 'function') {
+          displaySelectorInfo(msg.data);
+        }
+        if (typeof logSelectorInfo === 'function') {
+          logSelectorInfo(msg.data);
+        }
       }
     });
     
@@ -3281,6 +3729,7 @@ class LogViewer {
     if (this.currentCategory === 'all') return true;
     if (this.currentCategory === 'error') return log.level === 'error';
     if (this.currentCategory === 'system') return log.category === 'system';
+    if (this.currentCategory === 'selector') return log.category === 'selector' || log.type === 'selector-update';
     if (this.currentCategory === 'chatgpt') return log.ai === 'ChatGPT' || log.ai === 'chatgpt';
     if (this.currentCategory === 'claude') return log.ai === 'Claude' || log.ai === 'claude';
     if (this.currentCategory === 'gemini') return log.ai === 'Gemini' || log.ai === 'gemini';
@@ -3370,6 +3819,52 @@ class LogViewer {
       console.error('Failed to copy logs:', err);
     });
   }
+  
+  /**
+   * セレクタ情報をログに追加する専用メソッド
+   * @param {Object} logEntry - セレクタログエントリ
+   */
+  addSelectorLog(logEntry) {
+    // セレクタログ専用のフォーマット
+    const selectorLogEntry = {
+      timestamp: logEntry.timestamp || Date.now(),
+      level: 'info',
+      category: 'selector',
+      ai: 'Selector System',
+      source: 'MutationObserver',
+      message: this.formatSelectorMessage(logEntry.data),
+      type: 'selector-update',
+      data: logEntry.data
+    };
+    
+    this.addLog(selectorLogEntry);
+  }
+  
+  /**
+   * セレクタデータを人間が読める形式にフォーマット
+   * @param {Object} selectorData - セレクタデータ
+   * @returns {string} フォーマット済みメッセージ
+   */
+  formatSelectorMessage(selectorData) {
+    if (!selectorData) return 'セレクタ情報を更新しました';
+    
+    const aiTypes = Object.keys(selectorData);
+    if (aiTypes.length === 0) return 'セレクタ情報を更新しました';
+    
+    const summaries = aiTypes.map(aiType => {
+      const data = selectorData[aiType];
+      if (!data) return `${aiType.toUpperCase()}: データなし`;
+      
+      const selectorCount = data.totalSelectors || 0;
+      const inputCount = data.inputElements || 0;
+      const buttonCount = data.buttonElements || 0;
+      const deepResearch = data.deepResearch?.available ? ' (DeepResearch対応)' : '';
+      
+      return `${aiType.toUpperCase()}: ${selectorCount}個のセレクタ (入力:${inputCount}, ボタン:${buttonCount})${deepResearch}`;
+    });
+    
+    return `セレクタ情報を更新: ${summaries.join(', ')}`;
+  }
 }
 
 // ログビューアーのインスタンスを作成
@@ -3393,6 +3888,108 @@ logViewer = new LogViewer();
 
 // UI初期化完了を通知（LogManagerは後でポート経由でログを受信）
 console.log('📝 ログビューアー初期化完了');
+
+// ===== セレクタ情報表示機能 =====
+
+/**
+ * セレクタ情報を各AIタブに表示
+ * @param {Object} selectorData - セレクタデータ {chatgpt: {...}, claude: {...}, gemini: {...}}
+ */
+function displaySelectorInfo(selectorData) {
+  if (!selectorData) return;
+  
+  const aiTypes = ['chatgpt', 'claude', 'gemini'];
+  
+  aiTypes.forEach(aiType => {
+    const tabContent = document.getElementById(`selector-${aiType}`);
+    if (!tabContent) return;
+    
+    const data = selectorData[aiType];
+    if (!data) {
+      tabContent.innerHTML = '<div class="selector-empty">このAIのセレクタ情報がありません</div>';
+      return;
+    }
+    
+    let html = `
+      <div class="selector-summary">
+        <h4>🎯 ${aiType.toUpperCase()} セレクタ情報</h4>
+        <div class="selector-stats">
+          <span class="stat-item">総セレクタ数: ${data.totalSelectors || 0}</span>
+          <span class="stat-item">入力欄: ${data.inputElements || 0}</span>
+          <span class="stat-item">ボタン: ${data.buttonElements || 0}</span>
+        </div>
+      </div>
+      <div class="selector-details">
+    `;
+    
+    // 主要なセレクタ情報を表示
+    if (data.selectors && data.selectors.length > 0) {
+      html += '<h5>📋 検出されたセレクタ</h5>';
+      data.selectors.slice(0, 10).forEach(selector => {
+        html += `
+          <div class="selector-item">
+            <div class="selector-type">${selector.type || 'unknown'}</div>
+            <div class="selector-value">${escapeHtml(selector.selector || '')}</div>
+            <div class="selector-element">${escapeHtml(selector.element || '')}</div>
+          </div>
+        `;
+      });
+      
+      if (data.selectors.length > 10) {
+        html += `<div class="selector-more">他 ${data.selectors.length - 10} 個のセレクタ...</div>`;
+      }
+    }
+    
+    // DeepResearch情報
+    if (data.deepResearch) {
+      html += `
+        <h5>🔍 DeepResearch対応</h5>
+        <div class="deepresearch-info">
+          <span class="deepresearch-status ${data.deepResearch.available ? 'available' : 'unavailable'}">
+            ${data.deepResearch.available ? '✅ 利用可能' : '❌ 利用不可'}
+          </span>
+          ${data.deepResearch.selector ? `<div class="deepresearch-selector">セレクタ: ${escapeHtml(data.deepResearch.selector)}</div>` : ''}
+        </div>
+      `;
+    }
+    
+    html += '</div>';
+    tabContent.innerHTML = html;
+  });
+}
+
+/**
+ * セレクタ情報をログに記録
+ * @param {Object} selectorData - セレクタデータ
+ */
+function logSelectorInfo(selectorData) {
+  if (!selectorData) return;
+  
+  const logEntry = {
+    timestamp: new Date().toLocaleTimeString(),
+    type: 'selector-update',
+    data: selectorData
+  };
+  
+  // ログビューアーにセレクタ情報を追加
+  if (logViewer && typeof logViewer.addSelectorLog === 'function') {
+    logViewer.addSelectorLog(logEntry);
+  }
+  
+  console.log('🎯 セレクタ情報ログ:', logEntry);
+}
+
+/**
+ * HTMLをエスケープする安全な関数
+ * @param {string} text - エスケープするテキスト
+ * @returns {string} エスケープされたテキスト
+ */
+function escapeHtml(text) {
+  if (typeof text !== 'string') return '';
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
 
 // ===== URLボタンのイベントリスナー（旧実装の削除） =====
 // 以下のquickSaveBtn関連は新実装では不要

@@ -24,10 +24,24 @@
     const getClaudeResponse = () => {
         console.log('\n===== 応答取得開始 =====');
         
-        const messages = document.querySelectorAll('.font-claude-message');
-        console.log(`Claudeメッセージ数: ${messages.length}`);
+        // ui-selectors.js と同じセレクタを使用（実際のDOM構造に対応）
+        const selectors = [
+            '.grid-cols-1.grid',  // 実際のClaude応答DOM構造
+            'div[class*="grid-cols-1"][class*="grid"]',  // 属性版
+            '.font-claude-message',  // 旧版（フォールバック）
+        ];
         
-        if (messages.length === 0) {
+        let messages = null;
+        for (const selector of selectors) {
+            const elements = document.querySelectorAll(selector);
+            if (elements.length > 0) {
+                console.log(`✅ セレクタ "${selector}" で ${elements.length}個のメッセージを発見`);
+                messages = elements;
+                break;
+            }
+        }
+        
+        if (!messages || messages.length === 0) {
             console.log('メッセージが見つかりません');
             return null;
         }

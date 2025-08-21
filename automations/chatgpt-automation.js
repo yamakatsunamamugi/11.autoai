@@ -149,19 +149,253 @@
         }
     };
 
-    const log = (message, type = 'info') => {
-        const styles = {
-            info: 'color: #2196F3',
-            success: 'color: #4CAF50',
-            warning: 'color: #FF9800',
-            error: 'color: #F44336',
-            debug: 'color: #9C27B0'
-        };
-        console.log(`%c[ChatGPT] ${message}`, `${styles[type]}; font-weight: bold`);
+    // ========================================
+    // 拡張ログシステム（Claudeと同様）
+    // ========================================
+    const LogLevel = {
+        TRACE: 0,
+        DEBUG: 1,
+        INFO: 2,
+        WARN: 3,
+        ERROR: 4,
+        FATAL: 5
     };
 
+    let logConfig = {
+        level: LogLevel.INFO,
+        enableConsole: true,
+        enableStorage: true,
+        maxStorageEntries: 1000,
+        includeTimestamp: true,
+        includePerformance: true
+    };
+
+    let logStorage = [];
+    let sessionId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+    let operationContext = null;
+    let performanceMetrics = new Map();
+
+    const logTypeConfig = {
+        'TRACE': { level: LogLevel.TRACE, prefix: '🔬', color: '#888' },
+        'DEBUG': { level: LogLevel.DEBUG, prefix: '🔍', color: '#9C27B0' },
+        'INFO': { level: LogLevel.INFO, prefix: '📝', color: '#2196F3' },
+        'SUCCESS': { level: LogLevel.INFO, prefix: '✅', color: '#4CAF50' },
+        'WARN': { level: LogLevel.WARN, prefix: '⚠️', color: '#FF9800' },
+        'WARNING': { level: LogLevel.WARN, prefix: '⚠️', color: '#FF9800' },
+        'ERROR': { level: LogLevel.ERROR, prefix: '❌', color: '#F44336' },
+        'FATAL': { level: LogLevel.FATAL, prefix: '💀', color: '#8B0000' },
+        'SEARCH': { level: LogLevel.INFO, prefix: '🔎', color: '#2196F3' },
+        'PERFORMANCE': { level: LogLevel.INFO, prefix: '⚡', color: '#FF6B35' },
+        'USER_ACTION': { level: LogLevel.INFO, prefix: '👤', color: '#8764B8' },
+        'AUTOMATION': { level: LogLevel.INFO, prefix: '🤖', color: '#00BCD4' }
+    };
+
+    function formatTimestamp() {
+        const now = new Date();
+        return now.toISOString().replace('T', ' ').substr(0, 23);
+    }
+
+    function formatDuration(startTime) {
+        const duration = Date.now() - startTime;
+        if (duration < 1000) return `${duration}ms`;
+        if (duration < 60000) return `${(duration / 1000).toFixed(2)}s`;
+        return `${(duration / 60000).toFixed(2)}m`;
+    }
+
+    function createLogEntry(message, type, context = {}) {
+        const typeInfo = logTypeConfig[type] || logTypeConfig['INFO'];
+        
+        return {
+            timestamp: Date.now(),
+            sessionId,
+            level: typeInfo.level,
+            type,
+            message,
+            context: {
+                operation: operationContext,
+                ...context
+            },
+            formattedTime: formatTimestamp()
+        };
+    }
+
+    function shouldLog(type) {
+        const typeInfo = logTypeConfig[type] || logTypeConfig['INFO'];
+        return typeInfo.level >= logConfig.level;
+    }
+
+    function storeLogEntry(entry) {
+        if (!logConfig.enableStorage) return;
+        
+        logStorage.push(entry);
+        
+        if (logStorage.length > logConfig.maxStorageEntries) {
+            logStorage = logStorage.slice(-logConfig.maxStorageEntries);
+        }
+    }
+
+    const log = (message, type = 'INFO', context = {}) => {
+        if (!shouldLog(type)) return;
+
+        const typeInfo = logTypeConfig[type] || logTypeConfig['INFO'];
+        const entry = createLogEntry(message, type, context);
+        
+        storeLogEntry(entry);
+
+        // 拡張機能のLogManagerに送信
+        if (window.chrome && window.chrome.runtime) {
+            try {
+                window.chrome.runtime.sendMessage({
+                    action: 'LOG_AI_MESSAGE',
+                    aiType: 'ChatGPT',
+                    message: message,
+                    options: {
+                        level: type.toLowerCase(),
+                        metadata: {
+                            operation: operationContext,
+                            ...context
+                        }
+                    }
+                }).catch(() => {
+                    // エラーを無視（拡張機能が無効な場合）
+                });
+            } catch (e) {
+                // chrome.runtime が利用できない場合は無視
+            }
+        }
+
+        if (logConfig.enableConsole) {
+            const timeStr = logConfig.includeTimestamp ? `[${formatTimestamp()}] ` : '';
+            const contextStr = operationContext ? `[${operationContext}] ` : '';
+            const fullMessage = `${typeInfo.prefix} ${timeStr}[ChatGPT] ${contextStr}${message}`;
+            
+            if (typeInfo.level >= LogLevel.ERROR) {
+                console.error(fullMessage, context);
+            } else if (typeInfo.level >= LogLevel.WARN) {
+                console.warn(fullMessage, context);
+            } else {
+                console.log(fullMessage, context);
+            }
+        }
+    };
+
+    function startOperation(operationName, details = {}) {
+        operationContext = operationName;
+        const startTime = Date.now();
+        performanceMetrics.set(operationName, { startTime, details });
+        
+        log(`開始: ${operationName}`, 'AUTOMATION', details);
+        return startTime;
+    }
+
+    function endOperation(operationName, result = {}) {
+        const metrics = performanceMetrics.get(operationName);
+        if (metrics) {
+            const duration = Date.now() - metrics.startTime;
+            const context = {
+                duration: formatDuration(metrics.startTime),
+                durationMs: duration,
+                ...metrics.details,
+                result
+            };
+            
+            log(`完了: ${operationName} (${formatDuration(metrics.startTime)})`, 'PERFORMANCE', context);
+            performanceMetrics.delete(operationName);
+        }
+        
+        if (operationContext === operationName) {
+            operationContext = null;
+        }
+    }
+
+    function logError(error, context = {}) {
+        const errorContext = {
+            name: error.name,
+            message: error.message,
+            stack: error.stack,
+            ...context
+        };
+        log(`エラー発生: ${error.message}`, 'ERROR', errorContext);
+    }
+
+    function logUserAction(action, target, details = {}) {
+        const context = {
+            action,
+            target,
+            ...details
+        };
+        log(`ユーザーアクション: ${action} -> ${target}`, 'USER_ACTION', context);
+    }
+
     const debugLog = (message) => {
-        log(`[DEBUG] ${message}`, 'debug');
+        log(`[DEBUG] ${message}`, 'DEBUG');
+    };
+
+    // ============================================
+    // 基本的なユーティリティ関数
+    // ============================================
+    const clickElement = async (element) => {
+        if (!element) return false;
+
+        const clickMethods = [
+            // 方法1: 通常のclick
+            async () => {
+                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                await wait(200);
+                element.click();
+                return true;
+            },
+            // 方法2: MouseEvent (mousedown→mouseup→click)
+            async () => {
+                element.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+                await wait(50);
+                element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+                element.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                return true;
+            },
+            // 方法3: PointerEvent (pointerdown→pointerup→click)
+            async () => {
+                element.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+                await wait(50);
+                element.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+                element.click();
+                return true;
+            },
+            // 方法4: Focus + Enter
+            async () => {
+                element.focus();
+                await wait(50);
+                element.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+                element.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }));
+                return true;
+            }
+        ];
+
+        // 各クリック方法を順番に試す
+        for (let i = 0; i < clickMethods.length; i++) {
+            try {
+                debugLog(`クリック方法${i + 1}/4を試行中...`);
+                await clickMethods[i]();
+                await wait(500);
+                
+                // ChatGPTのモデルボタンの場合、メニューが開いたか確認
+                if (element.getAttribute('data-testid') === 'model-switcher-dropdown-button') {
+                    // aria-expandedがtrueになったか確認
+                    if (element.getAttribute('aria-expanded') === 'true') {
+                        debugLog(`クリック方法${i + 1}で成功`);
+                        return true;
+                    }
+                } else {
+                    // 他の要素の場合は成功とみなす
+                    return true;
+                }
+            } catch (e) {
+                debugLog(`クリック方法${i + 1}失敗: ${e.message}`);
+            }
+        }
+        
+        debugLog('すべてのクリック方法が失敗しました');
+        return false;
     };
 
     // ============================================
@@ -245,12 +479,36 @@
     }
 
     async function openSubmenu(menuItem) {
-        debugLog('サブメニューを開きます');
+        const triggerText = menuItem.textContent?.trim() || 'Unknown';
+        debugLog(`サブメニューを開きます: "${triggerText}"`);
+        
+        // 初期状態を記録
+        const initialAriaExpanded = menuItem.getAttribute('aria-expanded');
+        debugLog(`初期aria-expanded: ${initialAriaExpanded}`);
         
         // ホバーイベントを発火（成功実績のある方法）
+        debugLog('ホバーイベントを発火中...');
         menuItem.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
         menuItem.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
-        await wait(800); // 800ms待機（成功実績のある待機時間）
+        
+        // より長い待機時間でaria-expandedの変化を監視
+        let waitTime = 0;
+        const maxWaitTime = 2000; // 2秒まで待機
+        const checkInterval = 100; // 100msごとにチェック
+        
+        while (waitTime < maxWaitTime) {
+            await wait(checkInterval);
+            waitTime += checkInterval;
+            
+            const currentAriaExpanded = menuItem.getAttribute('aria-expanded');
+            if (currentAriaExpanded === 'true') {
+                debugLog(`✅ aria-expanded状態変化検出: ${initialAriaExpanded} → ${currentAriaExpanded} (${waitTime}ms)`);
+                break;
+            }
+        }
+        
+        // 追加の安定化待機
+        await wait(300);
         
         // サブメニューが開いたか確認
         const menuConfig = window.AIHandler?.getSelectors?.('ChatGPT', 'MENU');
@@ -261,9 +519,12 @@
         for (const selector of menuSelectors) {
             allMenus.push(...document.querySelectorAll(selector));
         }
+        
+        debugLog(`メニュー数確認: ${allMenus.length}個`);
         if (allMenus.length > 1) {
-            debugLog('✅ ホバーでサブメニューが開きました');
-            return allMenus[allMenus.length - 1];
+            const submenu = allMenus[allMenus.length - 1];
+            debugLog(`✅ ホバーでサブメニューが開きました: ${submenu.className}`);
+            return submenu;
         }
         
         // Radix UIポッパーも確認
@@ -272,10 +533,12 @@
         for (const selector of popperSelectors) {
             poppers.push(...document.querySelectorAll(selector));
         }
+        
+        debugLog(`ポッパー数確認: ${poppers.length}個`);
         if (poppers.length > 1) {
             const submenu = poppers[poppers.length - 1].querySelector('[role="menu"]');
             if (submenu) {
-                debugLog('✅ ホバーでサブメニューが開きました（ポッパー経由）');
+                debugLog(`✅ ホバーでサブメニューが開きました（ポッパー経由）: ${submenu.className}`);
                 return submenu;
             }
         }
@@ -283,31 +546,52 @@
         // ホバーで開かない場合はクリックも試みる
         debugLog('ホバーで開かなかったため、クリックを試行');
         await performClick(menuItem);
-        await wait(800);
+        
+        // クリック後もaria-expandedの変化を監視
+        waitTime = 0;
+        while (waitTime < maxWaitTime) {
+            await wait(checkInterval);
+            waitTime += checkInterval;
+            
+            const currentAriaExpanded = menuItem.getAttribute('aria-expanded');
+            if (currentAriaExpanded === 'true') {
+                debugLog(`✅ クリック後のaria-expanded状態変化検出: ${currentAriaExpanded} (${waitTime}ms)`);
+                break;
+            }
+        }
+        
+        // 追加の安定化待機
+        await wait(300);
         
         // menuSelectorsは上で定義済みなので再利用
         let menusAfterClick = [];
         for (const selector of menuSelectors) {
             menusAfterClick.push(...document.querySelectorAll(selector));
         }
+        
+        debugLog(`クリック後メニュー数確認: ${menusAfterClick.length}個`);
         if (menusAfterClick.length > 1) {
-            debugLog('✅ クリックでサブメニューが開きました');
-            return menusAfterClick[menusAfterClick.length - 1];
+            const submenu = menusAfterClick[menusAfterClick.length - 1];
+            debugLog(`✅ クリックでサブメニューが開きました: ${submenu.className}`);
+            return submenu;
         }
         
         let poppersAfterClick = [];
         for (const selector of popperSelectors) {
             poppersAfterClick.push(...document.querySelectorAll(selector));
         }
+        
+        debugLog(`クリック後ポッパー数確認: ${poppersAfterClick.length}個`);
         if (poppersAfterClick.length > 1) {
             const submenu = poppersAfterClick[poppersAfterClick.length - 1].querySelector('[role="menu"]');
             if (submenu) {
-                debugLog('✅ クリックでサブメニューが開きました（ポッパー経由）');
+                debugLog(`✅ クリックでサブメニューが開きました（ポッパー経由）: ${submenu.className}`);
                 return submenu;
             }
         }
         
-        debugLog('❌ サブメニューが開けませんでした');
+        const finalAriaExpanded = menuItem.getAttribute('aria-expanded');
+        debugLog(`❌ サブメニューが開けませんでした - 最終aria-expanded: ${finalAriaExpanded}`);
         return null;
     }
 
@@ -316,27 +600,197 @@
     // ============================================
 
     // ============================================
-    // モデル選択関数（共通ハンドラー使用）
+    // メニューが閉じたか確認する関数
+    // ============================================
+    const checkMenuClosed = async () => {
+        const menuSelectors = [
+            '[data-radix-popper-content-wrapper]',
+            '[role="menu"]:not([style*="display: none"])',
+            '.relative.z-\\[60\\]',
+            '[data-state="open"]'
+        ];
+        
+        for (const selector of menuSelectors) {
+            const menu = document.querySelector(selector);
+            if (menu && menu.offsetParent !== null) {
+                return false; // メニューがまだ開いている
+            }
+        }
+        return true; // メニューが閉じている
+    };
+
+    // ============================================
+    // モデル選択関数（collectAvailableModelsのロジックを使用）
     // ============================================
     async function selectModel(modelName) {
-        log(`🤖 モデル選択開始: ${modelName}`, 'info');
-        
-        // AIHandlerを使用
-        if (!useAIHandler || !menuHandler) {
-            log('AIHandlerが利用できません', 'error');
-            return false;
-        }
+        const operationName = 'selectModel';
+        const startTime = startOperation(operationName, {
+            modelName,
+            timestamp: new Date().toISOString()
+        });
 
+        log(`モデル選択開始: ${modelName}`, 'SEARCH', { modelName });
+        
         try {
-            const result = await menuHandler.selectModel(modelName);
-            if (result) {
-                log(`✅ 共通ハンドラーでモデル「${modelName}」を選択しました`, 'success');
-                currentState.selectedModel = modelName;
-                return true;
+            // モデル選択ボタンを探す
+            const modelButtonSelectors = [
+                '[data-testid="model-switcher-dropdown-button"]',
+                '[aria-label*="モデル"]',
+                '[aria-label*="Model"]',
+                'button[aria-haspopup="menu"]'
+            ];
+            
+            const modelButton = await findElement(modelButtonSelectors);
+            if (!modelButton) {
+                const error = 'モデル選択ボタンが見つかりません';
+                log(error, 'ERROR');
+                endOperation(operationName, { success: false, error });
+                return false;
             }
+            
+            // メニューを開く
+            await clickElement(modelButton);
+            await wait(CONFIG.delays.menuOpen);
+            
+            // まずメインメニューから探す
+            const menuItemSelectors = window.AIHandler?.getSelectors?.('ChatGPT', 'MENU_ITEM') || ['[role="option"]', '[role="menuitem"]', '[role="menuitemradio"]'];
+            let menuItems = [];
+            for (const selector of menuItemSelectors) {
+                menuItems.push(...document.querySelectorAll(selector));
+            }
+            
+            log(`メニュー項目数: ${menuItems.length}`, 'DEBUG');
+            
+            // メインメニューで探す
+            for (const item of menuItems) {
+                const text = item.textContent?.trim();
+                if (text && (text === modelName || text.includes(modelName))) {
+                    log(`メインメニューでモデル「${text}」を発見`, 'INFO');
+                    
+                    // 複数のクリック方法を試す
+                    const clickMethods = [
+                        async () => {
+                            log('クリック方法1: 通常のclick', 'DEBUG');
+                            item.click();
+                            return true;
+                        },
+                        async () => {
+                            log('クリック方法2: clickElement', 'DEBUG');
+                            await clickElement(item);
+                            return true;
+                        },
+                        async () => {
+                            log('クリック方法3: PointerEvent', 'DEBUG');
+                            const rect = item.getBoundingClientRect();
+                            const x = rect.left + rect.width / 2;
+                            const y = rect.top + rect.height / 2;
+                            
+                            item.dispatchEvent(new PointerEvent('pointerdown', {
+                                bubbles: true,
+                                cancelable: true,
+                                clientX: x,
+                                clientY: y
+                            }));
+                            await wait(50);
+                            item.dispatchEvent(new PointerEvent('pointerup', {
+                                bubbles: true,
+                                cancelable: true,
+                                clientX: x,
+                                clientY: y
+                            }));
+                            item.click();
+                            return true;
+                        }
+                    ];
+                    
+                    // 各クリック方法を試す
+                    for (const [index, clickMethod] of clickMethods.entries()) {
+                        try {
+                            await clickMethod();
+                            await wait(500);
+                            
+                            const menuClosed = await checkMenuClosed();
+                            if (menuClosed) {
+                                const message = `✅ クリック方法${index + 1}でモデル「${modelName}」を選択成功`;
+                                log(message, 'SUCCESS');
+                                currentState.selectedModel = modelName;
+                                endOperation(operationName, { 
+                                    success: true, 
+                                    selectedModel: modelName,
+                                    clickMethod: index + 1
+                                });
+                                return true;
+                            }
+                        } catch (error) {
+                            log(`クリック方法${index + 1}失敗: ${error.message}`, 'DEBUG');
+                        }
+                    }
+                }
+            }
+            
+            // メインメニューで見つからない場合、サブメニューを探す（レガシーモデルなど）
+            log('メインメニューで見つからないため、サブメニューを探します', 'INFO');
+            const submenuTriggers = Array.from(menuItems).filter(item => {
+                const text = item.textContent?.trim();
+                return text && (text.includes('レガシー') || text.includes('legacy') || 
+                               text.includes('他の') || text.includes('その他'));
+            });
+            
+            for (const trigger of submenuTriggers) {
+                const triggerText = trigger.textContent?.trim();
+                log(`サブメニュー「${triggerText}」を開きます`, 'INFO');
+                
+                await clickElement(trigger);
+                await wait(500);
+                
+                // サブメニュー内のアイテムを取得
+                const submenuItems = document.querySelectorAll('[role="menuitem"], [role="menuitemradio"]');
+                
+                for (const item of submenuItems) {
+                    const text = item.textContent?.trim();
+                    if (text && (text === modelName || text.includes(modelName) || 
+                                (modelName === 'GPT-4o' && text.includes('4o')))) {
+                        log(`サブメニューでモデル「${text}」を発見`, 'INFO');
+                        
+                        await clickElement(item);
+                        await wait(500);
+                        
+                        const menuClosed = await checkMenuClosed();
+                        if (menuClosed) {
+                            const message = `✅ サブメニューからモデル「${modelName}」を選択成功`;
+                            log(message, 'SUCCESS');
+                            currentState.selectedModel = modelName;
+                            endOperation(operationName, { 
+                                success: true, 
+                                selectedModel: modelName,
+                                location: 'submenu'
+                            });
+                            return true;
+                        }
+                    }
+                }
+            }
+            
+            // どこにも見つからない場合
+            const error = `モデル「${modelName}」が見つかりません`;
+            log(error, 'ERROR');
+            
+            // メニューを閉じる
+            document.body.dispatchEvent(new KeyboardEvent('keydown', { 
+                key: 'Escape', 
+                bubbles: true 
+            }));
+            await wait(500);
+            
+            endOperation(operationName, { success: false, error });
             return false;
+            
         } catch (error) {
-            log(`モデル選択エラー: ${error.message}`, 'error');
+            logError(error, { 
+                operation: 'selectModel',
+                modelName
+            });
+            endOperation(operationName, { success: false, error: error.message });
             return false;
         }
     }
@@ -543,19 +997,58 @@
             
             debugLog(`サブメニュートリガー発見: ${submenuTriggers.length}個`);
             
-            // 各サブメニューを順番に処理
+            // 各サブメニューを順番に処理（リトライ機能付き）
             for (const trigger of submenuTriggers) {
                 const triggerText = trigger.textContent?.trim() || 'Unknown';
-                log(`📂 サブメニューを開きます: ${triggerText}`, 'info');
-                debugLog(`サブメニュートリガー: "${triggerText}"`);
+                const triggerTestId = trigger.getAttribute('data-testid') || 'no-testid';
+                const triggerAttributes = {
+                    'data-has-submenu': trigger.hasAttribute('data-has-submenu'),
+                    'aria-haspopup': trigger.getAttribute('aria-haspopup'),
+                    'aria-expanded': trigger.getAttribute('aria-expanded'),
+                    'data-testid': triggerTestId
+                };
                 
-                // openSubmenu関数を使用してサブメニューを開く
-                const submenu = await openSubmenu(trigger);
+                log(`📂 サブメニューを開きます: ${triggerText}`, 'info');
+                debugLog(`サブメニュートリガー詳細: "${triggerText}"`, triggerAttributes);
+                
+                let submenu = null;
+                let retryCount = 0;
+                const maxRetries = 2;
+                
+                // リトライ機能付きでサブメニューを開く
+                while (retryCount <= maxRetries && !submenu) {
+                    if (retryCount > 0) {
+                        debugLog(`サブメニュー開放リトライ ${retryCount}回目: ${triggerText}`);
+                        await wait(500); // リトライ前に少し待機
+                    }
+                    
+                    submenu = await openSubmenu(trigger);
+                    retryCount++;
+                }
                 
                 if (submenu) {
+                    debugLog(`✅ サブメニュー開放成功: ${triggerText} (試行回数: ${retryCount})`);
+                    
+                    // サブメニューの詳細情報をログ
+                    const submenuInfo = {
+                        className: submenu.className,
+                        tagName: submenu.tagName,
+                        id: submenu.id,
+                        role: submenu.getAttribute('role')
+                    };
+                    debugLog(`サブメニュー詳細:`, submenuInfo);
+                    
                     const submenuItems = submenu.querySelectorAll('[role="menuitem"], [role="menuitemradio"]');
                     debugLog(`サブメニュー項目数: ${submenuItems.length}`);
                     
+                    // サブメニュー内の全項目をログに出力（デバッグ用）
+                    submenuItems.forEach((item, index) => {
+                        const itemText = item.textContent?.trim();
+                        const itemTestId = item.getAttribute('data-testid');
+                        debugLog(`  サブメニュー項目[${index}]: "${itemText}" (testId: ${itemTestId})`);
+                    });
+                    
+                    let itemsAdded = 0;
                     for (const item of submenuItems) {
                         const textContent = item.textContent?.trim();
                         const testId = item.getAttribute('data-testid');
@@ -572,14 +1065,44 @@
                                 selected: isSelected,
                                 location: locationName
                             });
-                            debugLog(`発見モデル(${locationName}): "${textContent}" (testId: ${testId}, selected: ${isSelected})`);
+                            debugLog(`✅ 発見モデル(${locationName}): "${textContent}" (testId: ${testId}, selected: ${isSelected})`);
+                            itemsAdded++;
                         }
                     }
+                    
+                    log(`📝 サブメニュー"${triggerText}"から${itemsAdded}個のモデルを取得`, 'success');
                     
                     // サブメニューを閉じる処理をスキップ（誤クリック防止）
                     await wait(200);
                 } else {
-                    debugLog(`サブメニューが開けませんでした: ${triggerText}`);
+                    log(`❌ サブメニューが開けませんでした: ${triggerText} (${maxRetries + 1}回試行)`, 'error');
+                    debugLog(`失敗したサブメニューの属性:`, triggerAttributes);
+                    
+                    // レガシーモデル専用のフォールバック処理
+                    if (triggerText.includes('レガシー') || triggerText.toLowerCase().includes('legacy')) {
+                        debugLog('レガシーモデル専用フォールバック処理を実行');
+                        
+                        // 既知のレガシーモデルを追加
+                        const fallbackLegacyModels = [
+                            { name: 'GPT-4o', testId: 'model-switcher-gpt-4o' },
+                            { name: 'GPT-4', testId: 'model-switcher-gpt-4' },
+                            { name: 'GPT-3.5', testId: 'model-switcher-gpt-3.5' }
+                        ];
+                        
+                        let fallbackAdded = 0;
+                        fallbackLegacyModels.forEach(model => {
+                            models.push({
+                                name: model.name,
+                                testId: model.testId,
+                                selected: false,
+                                location: 'submenu-legacy-fallback'
+                            });
+                            debugLog(`📋 フォールバック追加: "${model.name}" (testId: ${model.testId})`);
+                            fallbackAdded++;
+                        });
+                        
+                        log(`📋 レガシーモデルフォールバック: ${fallbackAdded}個のモデルを追加`, 'warning');
+                    }
                 }
             }
             
@@ -944,26 +1467,67 @@
             
             debugLog(`サブメニュートリガー発見: ${submenuTriggers.length}個`);
             
-            // 各サブメニューを順番に処理
+            // 各サブメニューを順番に処理（機能版 - モデル版と同様のリトライ機能）
             for (const trigger of submenuTriggers) {
                 const triggerText = trigger.textContent?.trim() || 'Unknown';
-                log(`📂 サブメニューを開きます: ${triggerText}`, 'info');
+                const triggerTestId = trigger.getAttribute('data-testid') || 'no-testid';
+                const triggerAttributes = {
+                    'data-has-submenu': trigger.hasAttribute('data-has-submenu'),
+                    'aria-haspopup': trigger.getAttribute('aria-haspopup'),
+                    'aria-expanded': trigger.getAttribute('aria-expanded'),
+                    'data-testid': triggerTestId
+                };
                 
-                const submenu = await openSubmenu(trigger);
+                log(`📂 機能サブメニューを開きます: ${triggerText}`, 'info');
+                debugLog(`機能サブメニュートリガー詳細: "${triggerText}"`, triggerAttributes);
+                
+                let submenu = null;
+                let retryCount = 0;
+                const maxRetries = 2;
+                
+                // リトライ機能付きでサブメニューを開く
+                while (retryCount <= maxRetries && !submenu) {
+                    if (retryCount > 0) {
+                        debugLog(`機能サブメニュー開放リトライ ${retryCount}回目: ${triggerText}`);
+                        await wait(500); // リトライ前に少し待機
+                    }
+                    
+                    submenu = await openSubmenu(trigger);
+                    retryCount++;
+                }
                 
                 if (submenu) {
-                    const submenuItems = submenu.querySelectorAll('[role="menuitem"], [role="menuitemradio"]');
-                    debugLog(`✅ サブメニュー項目数: ${submenuItems.length}`);
+                    debugLog(`✅ 機能サブメニュー開放成功: ${triggerText} (試行回数: ${retryCount})`);
                     
+                    // サブメニューの詳細情報をログ
+                    const submenuInfo = {
+                        className: submenu.className,
+                        tagName: submenu.tagName,
+                        id: submenu.id,
+                        role: submenu.getAttribute('role')
+                    };
+                    debugLog(`機能サブメニュー詳細:`, submenuInfo);
+                    
+                    const submenuItems = submenu.querySelectorAll('[role="menuitem"], [role="menuitemradio"]');
+                    debugLog(`機能サブメニュー項目数: ${submenuItems.length}`);
+                    
+                    // サブメニュー内の全項目をログに出力（デバッグ用）
+                    submenuItems.forEach((item, index) => {
+                        const itemText = item.textContent?.trim();
+                        const itemTestId = item.getAttribute('data-testid');
+                        debugLog(`  機能サブメニュー項目[${index}]: "${itemText}" (testId: ${itemTestId})`);
+                    });
+                    
+                    let itemsAdded = 0;
                     for (const item of submenuItems) {
                         const textContent = item.textContent?.trim();
                         // トリガー自体は除外
                         if (textContent && textContent !== triggerText) {
-                            // サブメニューの場所を記録（シンプルに "submenu" とする）
-                            const locationName = 'submenu';
+                            // サブメニューの場所を記録（例: "submenu-さらに表示"）
+                            const locationName = `submenu-${triggerText.replace(/\s+/g, '-').toLowerCase()}`;
                             
                             allFunctions.push({ text: textContent, location: locationName, element: item });
-                            debugLog(`発見機能(サブメニュー): "${textContent}"`);
+                            debugLog(`✅ 発見機能(${locationName}): "${textContent}"`);
                             
                             functions.push({
                                 name: textContent,
@@ -971,34 +1535,45 @@
                                 type: item.getAttribute('role') === 'menuitemradio' ? 'radio' : 'normal',
                                 active: item.getAttribute('aria-checked') === 'true'
                             });
+                            itemsAdded++;
                         }
                     }
+                    
+                    log(`📝 機能サブメニュー"${triggerText}"から${itemsAdded}個の機能を取得`, 'success');
                     
                     // サブメニューを閉じる処理をスキップ（誤クリック防止）
                     await wait(200);
                 } else {
-                    debugLog(`サブメニューが開けませんでした: ${triggerText}`);
+                    log(`❌ 機能サブメニューが開けませんでした: ${triggerText} (${maxRetries + 1}回試行)`, 'error');
+                    debugLog(`失敗した機能サブメニューの属性:`, triggerAttributes);
                     
-                    // フォールバック: 「さらに表示」の場合は既知の機能を追加
+                    // 「さらに表示」専用のフォールバック処理
                     if (triggerText === 'さらに表示' || triggerText.toLowerCase() === 'show more') {
-                        debugLog('フォールバック: 既知の「さらに表示」機能を追加');
+                        debugLog('「さらに表示」専用フォールバック処理を実行');
+                        
+                        // 既知の「さらに表示」機能を追加
                         const fallbackFunctions = [
                             'あらゆる学びをサポート',
-                            'ウェブ検索',
+                            'ウェブ検索', 
                             'canvas',
                             'OneDrive を接続する',
-                            'Sharepoint を接続する'
+                            'Sharepoint を接続する',
+                            'コネクターを使用する'
                         ];
                         
+                        let fallbackAdded = 0;
                         fallbackFunctions.forEach(funcName => {
                             functions.push({
                                 name: funcName,
-                                location: 'submenu-fallback',
+                                location: 'submenu-show-more-fallback',
                                 type: 'normal',
                                 active: false
                             });
-                            debugLog(`フォールバック機能追加: "${funcName}"`);
+                            debugLog(`📋 フォールバック追加: "${funcName}"`);
+                            fallbackAdded++;
                         });
+                        
+                        log(`📋 「さらに表示」フォールバック: ${fallbackAdded}個の機能を追加`, 'warning');
                     }
                 }
             }
@@ -1378,8 +1953,30 @@
     // 統合実行関数
     // ============================================
     async function runAutomation(config) {
-        log('自動化実行開始', 'info');
+        const operationName = 'runAutomation';
+        const fullStartTime = startOperation(operationName, {
+            config,
+            sessionId,
+            timestamp: new Date().toISOString()
+        });
+
+        log('(ChatGPT) 自動化実行開始', 'AUTOMATION', config);
         console.log('[ChatGPT] 設定:', config);
+        
+        // セル位置情報を含む詳細ログ
+        const cellInfo = config.cellInfo || {};
+        const cellPosition = cellInfo.column && cellInfo.row ? `${cellInfo.column}${cellInfo.row}` : '不明';
+        
+        log(`📊 (ChatGPT) Step1: スプレッドシート読み込み開始 [${cellPosition}セル]`, 'INFO', {
+            cellPosition,
+            column: cellInfo.column,
+            row: cellInfo.row,
+            step: 1,
+            process: 'スプレッドシート読み込み',
+            model: config.model,
+            function: config.function,
+            promptLength: config.text?.length
+        });
         
         const result = {
             success: false,
@@ -1387,21 +1984,73 @@
             function: null,
             text: null,
             response: null,
-            error: null
+            error: null,
+            timings: {}
         };
         
         try {
+            // Step 2: タスクリスト作成
+            log(`📋 (ChatGPT) Step2: タスクリスト作成開始 [${cellPosition}セル]`, 'INFO', {
+                cellPosition,
+                step: 2,
+                process: 'タスクリスト作成',
+                model: config.model,
+                function: config.function
+            });
+            
             // モデル選択
             if (config.model) {
+                const modelStepStart = Date.now();
+                log(`モデル選択ステップ開始: ${config.model}`, 'DEBUG');
+                
                 const modelResult = await selectModel(config.model);
                 result.model = modelResult ? config.model : null;
+                result.timings.modelSelection = Date.now() - modelStepStart;
+                
+                log(`モデル選択ステップ完了: ${modelResult ? '成功' : '失敗'}`, 
+                    modelResult ? 'SUCCESS' : 'ERROR', {
+                  model: config.model,
+                  success: modelResult,
+                  duration: `${result.timings.modelSelection}ms`
+                });
+                
                 await wait(CONFIG.delays.betweenActions);
             }
             
+            // タスクリスト作成完了のログ
+            log(`✅ (ChatGPT) Step2: タスクリスト作成完了 [${cellPosition}セル]`, 'SUCCESS', {
+                cellPosition,
+                step: 2,
+                process: 'タスクリスト作成完了'
+            });
+            
+            // Step 3: AI実行開始（経過時間計測開始）
+            const step3StartTime = Date.now();
+            log(`🤖 (ChatGPT) Step3: AI実行開始 [${cellPosition}セル]`, 'INFO', {
+                cellPosition,
+                step: 3,
+                process: 'AI実行',
+                model: config.model,
+                function: config.function,
+                startTime: step3StartTime
+            });
+            
             // 機能選択
             if (config.function !== undefined) {
+                const functionStepStart = Date.now();
+                log(`機能選択ステップ開始: ${config.function}`, 'DEBUG');
+                
                 const functionResult = await selectFunction(config.function);
                 result.function = functionResult ? config.function : null;
+                result.timings.functionSelection = Date.now() - functionStepStart;
+                
+                log(`機能選択ステップ完了: ${functionResult ? '成功' : '失敗'}`, 
+                    functionResult ? 'SUCCESS' : 'ERROR', {
+                  function: config.function,
+                  success: functionResult,
+                  duration: `${result.timings.functionSelection}ms`
+                });
+                
                 await wait(CONFIG.delays.betweenActions);
             }
             
@@ -1420,41 +2069,109 @@
                 if (!sendResult) {
                     throw new Error('送信に失敗しました');
                 }
+                
+                const step3Duration = Date.now() - step3StartTime;
+                log(`✅ (ChatGPT) Step3: AI実行完了（送信） [${cellPosition}セル] (${step3Duration}ms)`, 'SUCCESS', {
+                    cellPosition,
+                    step: 3,
+                    process: 'AI実行完了',
+                    promptLength: config.text?.length,
+                    duration: step3Duration,
+                    elapsedTime: `${step3Duration}ms`
+                });
             }
             
-            // 回答待機（DeepResearchの場合は専用の待機関数を使用）
+            // Step 4: 応答停止ボタン消滅まで待機
             if (config.waitResponse) {
+                const step4Duration = Date.now() - step3StartTime;
+                const currentCellInfo = config.cellInfo || {};
+                const currentCellPosition = currentCellInfo.column && currentCellInfo.row ? `${currentCellInfo.column}${currentCellInfo.row}` : '不明';
+                log(`⏳ (ChatGPT) Step4: 応答停止ボタン消滅まで待機 [${currentCellPosition}セル] (${step4Duration}ms経過)`, 'INFO', {
+                    cellPosition: currentCellPosition,
+                    step: 4,
+                    process: '応答完了待機',
+                    elapsedFromStep3: step4Duration,
+                    elapsedTime: `${step4Duration}ms`
+                });
+                
                 const isDeepResearch = window.FeatureConstants ? 
                     window.FeatureConstants.isDeepResearch(config.function) :
                     (config.function && config.function.includes('Deep Research'));
                 
                 if (isDeepResearch) {
-                    log('DeepResearch モードで待機', 'info');
+                    log('(ChatGPT) DeepResearch モードで待機', 'INFO');
                     const waitResult = await waitForDeepResearchResponse(60);
                     if (!waitResult) {
-                        log('DeepResearch待機がタイムアウトしましたが、続行します', 'warning');
+                        log('(ChatGPT) DeepResearch待機がタイムアウトしましたが、続行します', 'WARNING');
                     }
                 } else {
                     const waitResult = await waitForResponse(config.timeout || 60000);
                     if (!waitResult) {
-                        log('回答待機がタイムアウトしましたが、続行します', 'warning');
+                        log('(ChatGPT) 回答待機がタイムアウトしましたが、続行します', 'WARNING');
                     }
+                }
+                
+                const step4EndDuration = Date.now() - step3StartTime;
+                log(`✅ (ChatGPT) Step4: 応答完了検出 [${cellPosition}セル] (${step4EndDuration}ms経過)`, 'SUCCESS', {
+                    cellPosition,
+                    step: 4,
+                    process: '応答完了検出',
+                    elapsedFromStep3: step4EndDuration,
+                    elapsedTime: `${step4EndDuration}ms`
+                });
+            }
+            
+            // Step 5: 応答取得
+            if (config.getResponse) {
+                const step5Duration = Date.now() - step3StartTime;
+                const step5CellInfo = config.cellInfo || {};
+                const step5CellPosition = step5CellInfo.column && step5CellInfo.row ? `${step5CellInfo.column}${step5CellInfo.row}` : '不明';
+                log(`📤 (ChatGPT) Step5: 応答取得開始 [${step5CellPosition}セル] (${step5Duration}ms経過)`, 'INFO', {
+                    cellPosition: step5CellPosition,
+                    step: 5,
+                    process: '応答取得',
+                    elapsedFromStep3: step5Duration,
+                    elapsedTime: `${step5Duration}ms`
+                });
+                
+                const response = await getResponse();
+                result.response = response;
+                
+                if (response) {
+                    const step5EndDuration = Date.now() - step3StartTime;
+                    const responsePreview = response.substring(0, 30);
+                    const hasMore = response.length > 30;
+                    log(`✅ (ChatGPT) Step5: 応答取得完了 [${step5CellPosition}セル] (${response.length}文字, ${step5EndDuration}ms経過)`, 'SUCCESS', {
+                        cellPosition: step5CellPosition,
+                        step: 5,
+                        process: '応答取得完了',
+                        responseLength: response.length,
+                        responsePreview: responsePreview + (hasMore ? '...' : ''),
+                        responsePreview30: responsePreview,
+                        hasMoreContent: hasMore,
+                        fullResponse: response,
+                        elapsedFromStep3: step5EndDuration,
+                        elapsedTime: `${step5EndDuration}ms`
+                    });
+                } else {
+                    const step5FailDuration = Date.now() - step3StartTime;
+                    log(`❌ (ChatGPT) Step5: 応答取得失敗 [${step5CellPosition}セル] (${step5FailDuration}ms経過)`, 'ERROR', {
+                        cellPosition: step5CellPosition,
+                        step: 5,
+                        process: '応答取得失敗',
+                        elapsedFromStep3: step5FailDuration,
+                        elapsedTime: `${step5FailDuration}ms`
+                    });
                 }
             }
             
-            // 回答取得
-            if (config.getResponse) {
-                const response = await getResponse();
-                result.response = response;
-            }
-            
             result.success = true;
-            log('自動化実行完了', 'success');
+            log('(ChatGPT) 自動化実行完了', 'success');
             
         } catch (error) {
             result.success = false;
             result.error = error.message;
-            log(`自動化実行エラー: ${error.message}`, 'error');
+            log(`(ChatGPT) 自動化実行エラー: ${error.message}`, 'error');
         }
         
         return result;
@@ -1789,6 +2506,23 @@
         }
     };
 
-    log('ChatGPT自動化関数が利用可能になりました', 'success');
+    // 拡張機能ログ統合テスト
+    log('ChatGPT自動化スクリプト初期化開始', 'AUTOMATION', {
+        version: '統合テスト版',
+        sessionId: sessionId,
+        logSystemEnabled: true,
+        extensionIntegration: !!(window.chrome && window.chrome.runtime)
+    });
+
+    log('ChatGPT自動化関数が利用可能になりました', 'SUCCESS');
+    
+    // テスト用の詳細ログ
+    log('詳細ログシステム動作確認', 'DEBUG', {
+        logLevels: Object.keys(LogLevel),
+        logTypes: Object.keys(logTypeConfig),
+        storageEnabled: logConfig.enableStorage,
+        consoleEnabled: logConfig.enableConsole
+    });
+    
     return window.ChatGPTAutomation;
 })();

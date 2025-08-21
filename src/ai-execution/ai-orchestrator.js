@@ -685,6 +685,60 @@
   }
 
   /**
+   * UIをMutationObserverモードに更新
+   */
+  function updateUIForMutationObserverMode() {
+    // ヘッダーを更新
+    const title = document.getElementById('page-title');
+    const description = document.getElementById('page-description');
+    const modeIndicator = document.getElementById('mode-indicator');
+    const modeText = document.getElementById('mode-text');
+    
+    if (title) title.textContent = '👁️ AI Orchestrator - MutationObserver監視';
+    if (description) description.textContent = 'AI操作フローをリアルタイム監視';
+    if (modeIndicator) modeIndicator.style.display = 'block';
+    if (modeText) modeText.textContent = 'MutationObserver';
+    
+    // プロンプト入力欄を無効化（監視のみなので不要）
+    document.querySelectorAll('input[id$="-prompt"]').forEach(input => {
+      input.disabled = true;
+      input.placeholder = 'MutationObserverモードでは使用不可';
+      input.style.opacity = '0.5';
+    });
+    
+    // 実行ボタンを4分割レイアウト作成ボタンに変更
+    const btnText = document.getElementById('btn-run-text');
+    if (btnText) btnText.textContent = '4分割AIウィンドウ作成';
+    
+    // ステータス更新
+    const statusText = document.getElementById('status-text');
+    if (statusText) {
+      statusText.textContent = 'MutationObserverモード準備完了 - 4分割AIウィンドウを作成してください';
+    }
+
+    // MutationObserver説明を追加
+    const controlsSection = document.querySelector('.section');
+    if (controlsSection) {
+      const mutationObserverInfo = document.createElement('div');
+      mutationObserverInfo.className = 'section';
+      mutationObserverInfo.style.cssText = 'background: #f0f8ff; border-left: 4px solid #a55eea; margin-bottom: 20px;';
+      mutationObserverInfo.innerHTML = `
+        <h3 style="color: #a55eea; margin-bottom: 15px;">🔍 MutationObserver監視について</h3>
+        <p>このモードでは、AIサイトでの操作を完全に監視します：</p>
+        <ol style="margin: 10px 0; padding-left: 20px;">
+          <li>📝 <strong>テキスト入力検出</strong> - プロンプト入力を自動検知</li>
+          <li>📤 <strong>送信検出</strong> - 送信ボタンクリックを監視</li>
+          <li>⏸️ <strong>応答開始検出</strong> - AI応答生成開始を検知</li>
+          <li>✅ <strong>応答完了検出</strong> - 応答生成完了を監視</li>
+          <li>📄 <strong>応答テキスト取得</strong> - 最終応答を自動抽出</li>
+        </ol>
+        <p><strong>💡 使用方法:</strong> 下記で4分割ウィンドウを作成し、任意のAIで質問してください。全フローが自動監視されます。</p>
+      `;
+      controlsSection.parentNode.insertBefore(mutationObserverInfo, controlsSection);
+    }
+  }
+
+  /**
    * ステータス更新関数
    */
   function updateStatus(text, status = 'ready') {
@@ -730,6 +784,11 @@
         // テストモードの場合は手動モードとして扱う
         executionMode = 'manual';
         console.log('🧪 テストモード検出 - プルダウン選択値を使用');
+      } else if (mode === 'mutationobserver') {
+        // MutationObserverモードの場合
+        executionMode = 'mutationobserver';
+        console.log('👁️ MutationObserverモード検出 - MutationObserver専用UI');
+        updateUIForMutationObserverMode();
       }
     }
     
@@ -789,26 +848,263 @@
     console.log('AI Orchestrator - 初期化完了');
     console.log('実行モード:', executionMode);
     
+    // MutationObserverモードの場合は自動的に4分割ウィンドウを作成
+    if (executionMode === 'mutationobserver') {
+      console.log('👁️ MutationObserverモード - 自動的に4分割ウィンドウを作成');
+      setTimeout(async () => {
+        await startMutationObserverMode();
+      }, 1000);
+    }
+
+    /**
+     * DeepResearchモードでウィンドウを再オープン
+     */
+    async function reopenWindowForDeepResearch(aiType) {
+      console.log(`🔄 ${aiType}をDeepResearchモードで再オープン`);
+      updateStatus(`${aiType}をDeepResearchモードで再実行中...`, 'running');
+      
+      try {
+        // AIのURLを取得
+        let url = '';
+        switch (aiType) {
+          case 'ChatGPT':
+            url = 'https://chatgpt.com/';
+            break;
+          case 'Claude':
+            url = 'https://claude.ai/new';
+            break;
+          case 'Gemini':
+            url = 'https://gemini.google.com/';
+            break;
+          default:
+            console.error('未知のAIタイプ:', aiType);
+            return;
+        }
+        
+        // 新しいウィンドウを作成
+        const newWindow = window.open(url, `${aiType}_deepresearch`, 'width=800,height=600');
+        
+        if (newWindow) {
+          // ウィンドウが完全に読み込まれるまで待機
+          setTimeout(async () => {
+            // MutationObserverスクリプトを注入（DeepResearchモード）
+            const tabs = await chrome.tabs.query({ url: url + '*' });
+            const targetTab = tabs.find(tab => tab.windowId === newWindow.windowId);
+            
+            if (targetTab) {
+              // 依存関係を注入
+              await chrome.scripting.executeScript({
+                target: { tabId: targetTab.id },
+                files: [
+                  'src/config/ui-selectors.js',
+                  'automations/common-ai-handler.js',
+                  'automations/ai-mutation-observer.js'
+                ]
+              });
+              
+              // DeepResearchモードで自動実行
+              await chrome.scripting.executeScript({
+                target: { tabId: targetTab.id },
+                func: () => {
+                  console.log('🔍 DeepResearchモードで自動実行開始');
+                  
+                  if (window.AIMutationObserver) {
+                    const observer = new window.AIMutationObserver();
+                    observer.isDeepResearchMode = true; // DeepResearchモードフラグを設定
+                    
+                    // DeepResearchボタンをクリックしてから自動実行
+                    setTimeout(() => {
+                      const deepResearchButtons = [
+                        'button[aria-label*="research"]',
+                        'button[data-testid*="research"]',
+                        'button:contains("リサーチ")',
+                        'button[aria-label*="Research"]'
+                      ];
+                      
+                      let deepResearchClicked = false;
+                      for (const selector of deepResearchButtons) {
+                        try {
+                          const button = document.querySelector(selector);
+                          if (button) {
+                            button.click();
+                            console.log('✅ DeepResearchボタンクリック');
+                            deepResearchClicked = true;
+                            break;
+                          }
+                        } catch (e) {
+                          // セレクタエラーは無視
+                        }
+                      }
+                      
+                      // 自動実行フローを開始
+                      setTimeout(() => {
+                        observer.startFullFlowMonitoring();
+                      }, 2000);
+                      
+                    }, 3000);
+                    
+                    window.currentAIObserver = observer;
+                  }
+                }
+              });
+              
+              console.log(`✅ ${aiType} DeepResearchモード開始`);
+              updateStatus(`${aiType} DeepResearchモード実行中`, 'success');
+            }
+          }, 5000);
+        }
+        
+      } catch (error) {
+        console.error(`DeepResearchモード再オープンエラー:`, error);
+        updateStatus('DeepResearchモード実行エラー', 'error');
+      }
+    }
+
+    /**
+     * 各AIウィンドウにMutationObserverスクリプトを注入
+     */
+    async function injectMutationObserverToWindows(results) {
+      console.log('📌 MutationObserverスクリプトを各AIウィンドウに注入開始');
+      
+      if (!results || !results.windows) {
+        console.error('❌ ウィンドウ情報が取得できません');
+        return;
+      }
+      
+      // 各AIウィンドウのタブに対してスクリプトを注入
+      for (const [aiType, windowInfo] of Object.entries(results.windows)) {
+        if (windowInfo && windowInfo.tabId) {
+          try {
+            console.log(`🔧 ${aiType}にMutationObserverスクリプトを注入`);
+            
+            // 必要な依存関係を先に注入
+            await chrome.scripting.executeScript({
+              target: { tabId: windowInfo.tabId },
+              files: [
+                'src/config/ui-selectors.js',
+                'automations/common-ai-handler.js'
+              ]
+            });
+            
+            // その後ai-mutation-observer.jsを注入
+            await chrome.scripting.executeScript({
+              target: { tabId: windowInfo.tabId },
+              files: ['automations/ai-mutation-observer.js']
+            });
+            
+            // その後、自動実行を開始
+            await chrome.scripting.executeScript({
+              target: { tabId: windowInfo.tabId },
+              func: () => {
+                console.log('🚀 MutationObserver自動実行を開始');
+                
+                // AIMutationObserverのインスタンスを作成
+                if (window.AIMutationObserver) {
+                  const observer = new window.AIMutationObserver();
+                  
+                  // 自動実行フローを開始
+                  observer.startFullFlowMonitoring();
+                  
+                  // グローバルに保存
+                  window.currentAIObserver = observer;
+                  
+                  console.log('✅ MutationObserver自動実行開始完了');
+                } else {
+                  console.error('❌ AIMutationObserverクラスが見つかりません');
+                }
+              }
+            });
+            
+            console.log(`✅ ${aiType}へのスクリプト注入完了`);
+            
+          } catch (error) {
+            console.error(`❌ ${aiType}へのスクリプト注入エラー:`, error);
+          }
+        }
+      }
+      
+      updateStatus('全AIウィンドウでMutationObserver自動実行中', 'success');
+    }
+
+    /**
+     * MutationObserverモードを開始
+     */
+    async function startMutationObserverMode() {
+      updateStatus('4分割AIウィンドウ作成中...', 'running');
+      
+      try {
+        // TestRunnerを使用して4分割ウィンドウを作成
+        if (window.TestRunner && window.TestRunner.runAllAIs) {
+          console.log('🖼️ TestRunnerで4分割ウィンドウを作成');
+          
+          // AI設定を自動設定（全AIを有効化）
+          const checkboxes = document.querySelectorAll('input[id^="enable-"]');
+          checkboxes.forEach(checkbox => {
+            checkbox.checked = true;
+          });
+          
+          // TestRunnerで4分割ウィンドウ作成とMutationObserver開始
+          const results = await window.TestRunner.runAllAIs();
+          console.log('✅ 4分割ウィンドウ作成完了:', results);
+          
+          // 各AIウィンドウにMutationObserverスクリプトを注入
+          setTimeout(async () => {
+            await injectMutationObserverToWindows(results);
+          }, 3000); // ウィンドウが完全に読み込まれるまで待機
+          
+          updateStatus('MutationObserver自動実行開始中...', 'success');
+          
+        } else {
+          throw new Error('TestRunnerが利用できません');
+        }
+      } catch (error) {
+        console.error('❌ MutationObserverモード開始エラー:', error);
+        updateStatus('4分割ウィンドウ作成エラー', 'error');
+      }
+    }
+    
     // グローバルに公開（test-runner-chrome.jsから呼び出せるように）
     window.consecutiveTestStates = consecutiveTestStates;
     window.executeConsecutiveTest = executeConsecutiveTest;
     window.executeWithTaskList = executeWithTaskList;
+    window.startMutationObserverMode = startMutationObserverMode;
     
     // 初回のUI設定をchrome.storageに保存
     saveUIConfigToStorage();
+    
+    // MutationObserverモードのメッセージリスナー設定
+    if (executionMode === 'mutationobserver') {
+      chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
+        if (message.type === 'close-and-reopen-for-deepresearch') {
+          console.log('🔄 DeepResearchモードで再実行要求:', message.aiType);
+          
+          // 3秒後に新しいウィンドウを開く
+          setTimeout(async () => {
+            await reopenWindowForDeepResearch(message.aiType);
+          }, 3000);
+          
+          sendResponse({ success: true });
+        }
+      });
+    }
     
     // 実行ボタンのイベントリスナーは追加しない
     // test-runner-chrome.jsが既にイベントリスナーを設定しているため
     // これにより実行が2回されることを防ぐ
     
-    // タスクリストモードの場合のみ、実行ボタンのイベントリスナーを追加
-    if (executionMode === 'tasklist' && receivedTaskList) {
-      const btnRunAll = document.getElementById('btn-run-all');
-      if (btnRunAll) {
+    // モード別の実行ボタン処理
+    const btnRunAll = document.getElementById('btn-run-all');
+    if (btnRunAll) {
+      if (executionMode === 'tasklist' && receivedTaskList) {
+        // タスクリストモード
         btnRunAll.addEventListener('click', async () => {
           console.log('📊 本番モード: スプレッドシートからのタスクリストを実行');
           await executeWithTaskList(receivedTaskList);
         });
+      } else if (executionMode === 'mutationobserver') {
+        // MutationObserverモードの場合はボタンを非表示にする（自動実行されるため）
+        btnRunAll.style.display = 'none';
+        console.log('👁️ MutationObserverモード: 実行ボタンを非表示（自動実行のため）');
       }
     }
     // テストモードの場合は、test-runner-chrome.jsがイベントを処理する

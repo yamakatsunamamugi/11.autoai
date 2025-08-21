@@ -418,6 +418,118 @@ class SheetsClient {
 
     return await response.json();
   }
+
+  /**
+   * スプレッドシートのログをクリア
+   * @param {string} spreadsheetId - スプレッドシートID
+   * @param {string} gid - シートのgid（オプション）
+   * @returns {Promise<Object>} クリア結果
+   */
+  async clearSheetLogs(spreadsheetId, gid = null) {
+    this.logger.log("SheetsClient", `ログクリア開始: ${spreadsheetId}`);
+    
+    try {
+      // スプレッドシートのデータを読み込み
+      const sheetData = await this.loadAutoAIData(spreadsheetId, gid);
+      
+      // ログ列（B列）を特定してクリア
+      const updates = [];
+      let clearedCount = 0;
+      
+      // 作業行のログ列（B列）をクリア
+      for (const workRow of sheetData.workRows) {
+        const rowIndex = workRow.index;
+        let range;
+        
+        if (gid) {
+          const sheetName = await this.getSheetNameFromGid(spreadsheetId, gid);
+          range = sheetName ? `'${sheetName}'!B${rowIndex + 1}` : `B${rowIndex + 1}`;
+        } else {
+          range = `B${rowIndex + 1}`;
+        }
+        
+        updates.push({
+          range: range,
+          values: [[""]]
+        });
+        clearedCount++;
+      }
+      
+      if (updates.length > 0) {
+        await this.batchUpdate(spreadsheetId, updates);
+      }
+      
+      this.logger.log("SheetsClient", `ログクリア完了: ${clearedCount}個のセル`);
+      return { success: true, clearedCount };
+      
+    } catch (error) {
+      this.logger.error("SheetsClient", `ログクリアエラー: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * AI回答を削除
+   * @param {string} spreadsheetId - スプレッドシートID
+   * @param {string} gid - シートのgid（オプション）
+   * @returns {Promise<Object>} 削除結果
+   */
+  async deleteAnswers(spreadsheetId, gid = null) {
+    this.logger.log("SheetsClient", `AI回答削除開始: ${spreadsheetId}`);
+    
+    try {
+      // スプレッドシートのデータを読み込み
+      const sheetData = await this.loadAutoAIData(spreadsheetId, gid);
+      
+      // AI回答列を特定して削除
+      const updates = [];
+      let deletedCount = 0;
+      
+      // columnMappingから回答列を特定
+      const answerColumns = [];
+      for (const [colIndex, mapping] of Object.entries(sheetData.columnMapping)) {
+        if (mapping.type === "answer") {
+          const columnIndex = parseInt(colIndex);
+          answerColumns.push(columnIndex);
+          this.logger.log("SheetsClient", `回答列検出: ${this.getColumnName(columnIndex)}列 (${mapping.keyword})`);
+        }
+      }
+      
+      // 作業行のAI回答列をクリア
+      for (const workRow of sheetData.workRows) {
+        const rowIndex = workRow.index;
+        
+        for (const colIndex of answerColumns) {
+          const columnLetter = this.getColumnName(colIndex);
+          let range;
+          
+          if (gid) {
+            const sheetName = await this.getSheetNameFromGid(spreadsheetId, gid);
+            range = sheetName ? `'${sheetName}'!${columnLetter}${rowIndex + 1}` : `${columnLetter}${rowIndex + 1}`;
+          } else {
+            range = `${columnLetter}${rowIndex + 1}`;
+          }
+          
+          updates.push({
+            range: range,
+            values: [[""]]
+          });
+          deletedCount++;
+        }
+      }
+      
+      if (updates.length > 0) {
+        await this.batchUpdate(spreadsheetId, updates);
+      }
+      
+      this.logger.log("SheetsClient", `AI回答削除完了: ${deletedCount}個のセル`);
+      return { success: true, deletedCount };
+      
+    } catch (error) {
+      this.logger.error("SheetsClient", `AI回答削除エラー: ${error.message}`);
+      throw error;
+    }
+  }
 }
 
 // グローバルスコープに追加

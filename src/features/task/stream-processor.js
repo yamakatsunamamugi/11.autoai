@@ -419,7 +419,11 @@ class StreamProcessor {
         timeout: 180000,
         model: finalModel,  // UI優先のモデル情報
         specialOperation: finalOperation,  // UI優先の機能情報
-        aiType: task.aiType  // AI種別も明示的に渡す
+        aiType: task.aiType,  // AI種別も明示的に渡す
+        cellInfo: {  // セル位置情報を追加
+          column: task.column,
+          row: task.row
+        }
       }, null);
 
       this.logger.log(

@@ -146,21 +146,191 @@
         };
     };
 
-    const log = (message, type = 'info') => {
-        const styles = {
-            info: 'color: #2196F3',
-            success: 'color: #4CAF50',
-            warning: 'color: #FF9800',
-            error: 'color: #F44336',
-            header: 'color: #9C27B0; font-size: 14px; font-weight: bold',
-            progress: 'color: #00BCD4; font-weight: bold'
-        };
-        console.log(`%c${message}`, styles[type] || styles.info);
+    // ========================================
+    // 拡張ログシステム
+    // ========================================
+    const LogLevel = {
+        TRACE: 0,
+        DEBUG: 1,
+        INFO: 2,
+        WARN: 3,
+        ERROR: 4,
+        FATAL: 5
     };
+
+    let logConfig = {
+        level: LogLevel.INFO,
+        enableConsole: true,
+        enableStorage: true,
+        maxStorageEntries: 1000,
+        includeTimestamp: true,
+        includePerformance: true
+    };
+
+    let logStorage = [];
+    let sessionId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+    let operationContext = null;
+    let performanceMetrics = new Map();
+
+    const logTypeConfig = {
+        'TRACE': { level: LogLevel.TRACE, prefix: '🔬', color: '#888' },
+        'DEBUG': { level: LogLevel.DEBUG, prefix: '🔍', color: '#9E9E9E' },
+        'INFO': { level: LogLevel.INFO, prefix: '📝', color: '#2196F3' },
+        'SUCCESS': { level: LogLevel.INFO, prefix: '✅', color: '#4CAF50' },
+        'WARN': { level: LogLevel.WARN, prefix: '⚠️', color: '#FF9800' },
+        'WARNING': { level: LogLevel.WARN, prefix: '⚠️', color: '#FF9800' },
+        'ERROR': { level: LogLevel.ERROR, prefix: '❌', color: '#F44336' },
+        'FATAL': { level: LogLevel.FATAL, prefix: '💀', color: '#8B0000' },
+        'SEARCH': { level: LogLevel.INFO, prefix: '🔎', color: '#2196F3' },
+        'PERFORMANCE': { level: LogLevel.INFO, prefix: '⚡', color: '#FF6B35' },
+        'USER_ACTION': { level: LogLevel.INFO, prefix: '👤', color: '#8764B8' },
+        'AUTOMATION': { level: LogLevel.INFO, prefix: '🤖', color: '#4CAF50' },
+        'HEADER': { level: LogLevel.INFO, prefix: '🎯', color: '#9C27B0' },
+        'PROGRESS': { level: LogLevel.INFO, prefix: '📊', color: '#00BCD4' }
+    };
+
+    function formatTimestamp() {
+        const now = new Date();
+        return now.toISOString().replace('T', ' ').substr(0, 23);
+    }
+
+    function formatDuration(startTime) {
+        const duration = Date.now() - startTime;
+        if (duration < 1000) return `${duration}ms`;
+        if (duration < 60000) return `${(duration / 1000).toFixed(2)}s`;
+        return `${(duration / 60000).toFixed(2)}m`;
+    }
+
+    function createLogEntry(message, type, context = {}) {
+        const typeInfo = logTypeConfig[type] || logTypeConfig['INFO'];
+        
+        return {
+            timestamp: Date.now(),
+            sessionId,
+            level: typeInfo.level,
+            type,
+            message,
+            context: {
+                operation: operationContext,
+                ...context
+            },
+            formattedTime: formatTimestamp()
+        };
+    }
+
+    function shouldLog(type) {
+        const typeInfo = logTypeConfig[type] || logTypeConfig['INFO'];
+        return typeInfo.level >= logConfig.level;
+    }
+
+    function storeLogEntry(entry) {
+        if (!logConfig.enableStorage) return;
+        
+        logStorage.push(entry);
+        
+        if (logStorage.length > logConfig.maxStorageEntries) {
+            logStorage = logStorage.slice(-logConfig.maxStorageEntries);
+        }
+    }
+
+    const log = (message, type = 'INFO', context = {}) => {
+        if (!shouldLog(type)) return;
+
+        const typeInfo = logTypeConfig[type] || logTypeConfig['INFO'];
+        const entry = createLogEntry(message, type, context);
+        
+        storeLogEntry(entry);
+
+        // 拡張機能のLogManagerに送信
+        if (window.chrome && window.chrome.runtime) {
+            try {
+                window.chrome.runtime.sendMessage({
+                    action: 'LOG_AI_MESSAGE',
+                    aiType: 'Gemini',
+                    message: message,
+                    options: {
+                        level: type.toLowerCase(),
+                        metadata: {
+                            operation: operationContext,
+                            ...context
+                        }
+                    }
+                }).catch(() => {
+                    // エラーを無視（拡張機能が無効な場合）
+                });
+            } catch (e) {
+                // chrome.runtime が利用できない場合は無視
+            }
+        }
+
+        if (logConfig.enableConsole) {
+            const timeStr = logConfig.includeTimestamp ? `[${formatTimestamp()}] ` : '';
+            const contextStr = operationContext ? `[${operationContext}] ` : '';
+            const contextDetailStr = context && Object.keys(context).length > 0 ? 
+                ` ${JSON.stringify(context)}` : '';
+            const fullMessage = `${typeInfo.prefix} ${timeStr}[Gemini] ${contextStr}${message}${contextDetailStr}`;
+            
+            if (typeInfo.level >= LogLevel.ERROR) {
+                console.error(fullMessage);
+            } else if (typeInfo.level >= LogLevel.WARN) {
+                console.warn(fullMessage);
+            } else {
+                console.log(fullMessage);
+            }
+        }
+    };
+
+    function startOperation(operationName, details = {}) {
+        operationContext = operationName;
+        const startTime = Date.now();
+        performanceMetrics.set(operationName, { startTime, details });
+        
+        log(`開始: ${operationName}`, 'AUTOMATION', details);
+        return startTime;
+    }
+
+    function endOperation(operationName, result = {}) {
+        const metrics = performanceMetrics.get(operationName);
+        if (metrics) {
+            const duration = Date.now() - metrics.startTime;
+            const context = {
+                duration: formatDuration(metrics.startTime),
+                durationMs: duration,
+                ...metrics.details,
+                result
+            };
+            
+            log(`完了: ${operationName} (${formatDuration(metrics.startTime)})`, 'PERFORMANCE', context);
+            performanceMetrics.delete(operationName);
+        }
+        
+        if (operationContext === operationName) {
+            operationContext = null;
+        }
+    }
+
+    function logError(error, context = {}) {
+        const errorContext = {
+            name: error.name,
+            message: error.message,
+            stack: error.stack,
+            ...context
+        };
+        log(`エラー発生: ${error.message}`, 'ERROR', errorContext);
+    }
+
+    function logUserAction(action, target, details = {}) {
+        const context = {
+            action,
+            target,
+            ...details
+        };
+        log(`ユーザーアクション: ${action} -> ${target}`, 'USER_ACTION', context);
+    }
 
     const debugLog = (message) => {
         if (globalState.debugMode) {
-            console.log(`%c[DEBUG] ${message}`, 'color: #9E9E9E');
+            log(`[DEBUG] ${message}`, 'DEBUG');
         }
     };
 
@@ -484,28 +654,186 @@
     // ========================================
     // 動的モデル選択（共通ハンドラー使用）
     // ========================================
+    // メニューが閉じたか確認する関数
+    const checkMenuClosed = async () => {
+        const menuSelectors = [
+            '.mat-mdc-menu-panel',
+            '[role="menu"]:not([style*="display: none"])',
+            '[data-radix-menu-content]',
+            '.cdk-overlay-pane'
+        ];
+        
+        for (const selector of menuSelectors) {
+            const menu = document.querySelector(selector);
+            if (menu && menu.offsetParent !== null) {
+                return false; // メニューがまだ開いている
+            }
+        }
+        return true; // メニューが閉じている
+    };
+
     const selectModelDynamic = async (searchTerm) => {
+        const operationName = 'selectModelDynamic';
+        const startTime = startOperation(operationName, {
+            searchTerm,
+            timestamp: new Date().toISOString()
+        });
+
         if (!searchTerm) {
-            log('検索語を指定してください', 'error');
+            const error = '検索語を指定してください';
+            log(error, 'ERROR');
+            endOperation(operationName, { success: false, error });
             return false;
         }
         
-        // AIHandlerを使用
-        if (!useAIHandler || !menuHandler) {
-            log('AIHandlerが利用できません', 'error');
-            return false;
-        }
-
+        log(`モデル動的選択開始: ${searchTerm}`, 'SEARCH', { searchTerm });
+        
         try {
-            const result = await menuHandler.selectModel(searchTerm);
-            if (result) {
-                log(`✅ 共通ハンドラーでモデル「${searchTerm}」を選択しました`, 'success');
-                globalState.currentModel = searchTerm;
-                return true;
+            // 1. モデルボタンを探す（collectAvailableModelsと同じ）
+            const modelButton = await findElement([
+                '.gds-mode-switch-button',
+                '[aria-label*="モデル"]',
+                'button:has(.mode-title)',
+                () => Array.from(document.querySelectorAll('button')).filter(btn => 
+                    btn.textContent && (btn.textContent.includes('Flash') || btn.textContent.includes('Pro')))
+            ]);
+            
+            if (!modelButton) {
+                const error = 'モデルボタンが見つかりません';
+                log(error, 'ERROR');
+                endOperation(operationName, { success: false, error });
+                return false;
             }
+            
+            // 2. メニューを開く
+            await clickElement(modelButton);
+            await wait(DELAYS.menuWait);
+            
+            // 3. メニュー項目を収集（collectAvailableModelsと同じ）
+            const menuItemSelectors = window.AIHandler?.getSelectors?.('Gemini', 'MENU_ITEM') || ['[role="menuitemradio"]', '[role="menuitem"]'];
+            let menuItems = [];
+            for (const selector of menuItemSelectors) {
+                menuItems.push(...document.querySelectorAll(selector));
+            }
+            
+            log(`メニュー項目数: ${menuItems.length}`, 'DEBUG');
+            
+            // 4. searchTermに一致する項目を探す
+            for (const item of menuItems) {
+                const text = item.textContent?.trim();
+                if (text && text.includes(searchTerm)) {
+                    log(`モデル「${text}」を選択中...`, 'INFO');
+                    
+                    // 5. 複数のクリック方法を試す
+                    const clickMethods = [
+                        // 方法1: 通常のclick
+                        async () => {
+                            log('クリック方法1: 通常のclick', 'DEBUG');
+                            item.click();
+                            return true;
+                        },
+                        // 方法2: clickElement（既存の関数）
+                        async () => {
+                            log('クリック方法2: clickElement', 'DEBUG');
+                            await clickElement(item);
+                            return true;
+                        },
+                        // 方法3: PointerEvent
+                        async () => {
+                            log('クリック方法3: PointerEvent', 'DEBUG');
+                            const rect = item.getBoundingClientRect();
+                            const x = rect.left + rect.width / 2;
+                            const y = rect.top + rect.height / 2;
+                            
+                            item.dispatchEvent(new PointerEvent('pointerdown', {
+                                bubbles: true,
+                                cancelable: true,
+                                clientX: x,
+                                clientY: y
+                            }));
+                            
+                            await wait(50);
+                            
+                            item.dispatchEvent(new PointerEvent('pointerup', {
+                                bubbles: true,
+                                cancelable: true,
+                                clientX: x,
+                                clientY: y
+                            }));
+                            
+                            item.click();
+                            return true;
+                        },
+                        // 方法4: MouseEvent
+                        async () => {
+                            log('クリック方法4: MouseEvent', 'DEBUG');
+                            item.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+                            await wait(50);
+                            item.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+                            item.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                            return true;
+                        }
+                    ];
+                    
+                    // 6. 各クリック方法を試して、メニューが閉じるか確認
+                    for (const [index, clickMethod] of clickMethods.entries()) {
+                        try {
+                            await clickMethod();
+                            await wait(500);
+                            
+                            // メニューが閉じたか確認
+                            const menuClosed = await checkMenuClosed();
+                            if (menuClosed) {
+                                const message = `✅ クリック方法${index + 1}でモデル「${searchTerm}」を選択成功`;
+                                log(message, 'SUCCESS');
+                                globalState.currentModel = searchTerm;
+                                endOperation(operationName, { 
+                                    success: true, 
+                                    selectedModel: searchTerm,
+                                    clickMethod: index + 1
+                                });
+                                return true;
+                            } else {
+                                log(`クリック方法${index + 1}ではメニューが閉じませんでした`, 'DEBUG');
+                            }
+                        } catch (error) {
+                            log(`クリック方法${index + 1}失敗: ${error.message}`, 'DEBUG');
+                        }
+                    }
+                    
+                    // 7. どの方法でもメニューが閉じない場合、ESCキーで強制的に閉じる
+                    log('メニューが閉じないため、ESCキーで閉じます', 'WARNING');
+                    document.body.dispatchEvent(new KeyboardEvent('keydown', { 
+                        key: 'Escape', 
+                        bubbles: true 
+                    }));
+                    await wait(500);
+                    
+                    const message = `モデル「${searchTerm}」を選択しました（メニュー手動クローズ）`;
+                    log(message, 'SUCCESS');
+                    globalState.currentModel = searchTerm;
+                    endOperation(operationName, { 
+                        success: true, 
+                        selectedModel: searchTerm,
+                        menuClosedManually: true
+                    });
+                    return true;
+                }
+            }
+            
+            // 見つからない場合はメニューを閉じる
+            const error = `モデル「${searchTerm}」が見つかりません`;
+            log(error, 'ERROR');
+            await closeMenu();
+            endOperation(operationName, { success: false, error });
             return false;
+            
         } catch (error) {
-            log(`モデル選択エラー: ${error.message}`, 'error');
+            logError(error, { 
+                operation: 'selectModelDynamic',
+                searchTerm
+            });
+            endOperation(operationName, { success: false, error: error.message });
             return false;
         }
     };
@@ -518,83 +846,139 @@
         
         console.log(`[デバッグ] Gemini selectFunctionDynamic呼び出し: searchTerm="${searchTerm}"`);
         
-        // Deep Research特別処理 - ボタンを直接探す
-        if (searchTerm.includes('Research') || searchTerm === 'Deep Research' || searchTerm === 'Deep Think') {
-            log(`🔍 ${searchTerm}ボタンを直接探しています...`, 'info');
-            
-            // まずメインのツールボックスボタンを探す
-            const mainButtons = document.querySelectorAll('.toolbox-drawer-item-button button');
-            for (const button of mainButtons) {
-                const text = button.textContent?.trim();
-                if (text && (text === searchTerm || text.includes(searchTerm.replace('Deep ', '')))) {
-                    const isActive = button.getAttribute('aria-pressed') === 'true';
-                    if (!isActive) {
-                        await clickElement(button);
-                        log(`✅ ${searchTerm}ボタンをクリックしました`, 'success');
-                        globalState.activeFunctions.push(searchTerm);
-                        return true;
-                    } else {
-                        log(`✅ ${searchTerm}は既に有効です`, 'info');
-                        return true;
-                    }
-                }
+        // collectAvailableFunctionsを使用して機能を収集（要素参照を保存）
+        const functions = await collectAvailableFunctions();
+        
+        // 検索語に合致する機能を探す
+        let bestMatch = null;
+        
+        // 完全一致を優先
+        bestMatch = functions.find(f => f.name === searchTerm);
+        
+        // 部分一致で検索
+        if (!bestMatch) {
+            bestMatch = functions.find(f => f.name.toLowerCase().includes(searchTerm.toLowerCase()));
+        }
+        
+        // Deep Research特別処理
+        if (!bestMatch && (searchTerm.includes('Research') || searchTerm === 'Deep Research' || searchTerm === 'Deep Think')) {
+            bestMatch = functions.find(f => 
+                f.name.includes('Research') || 
+                f.name.includes('リサーチ') || 
+                f.name === 'Deep Research' || 
+                f.name === 'Deep Think'
+            );
+        }
+        
+        if (!bestMatch) {
+            log(`❌ 機能「${searchTerm}」が見つかりません`, 'error');
+            console.log('利用可能な機能:', functions.map(f => f.name));
+            return false;
+        }
+        
+        // 既に有効な場合
+        if (bestMatch.active) {
+            log(`✅ ${bestMatch.name}は既に有効です`, 'info');
+            if (!globalState.activeFunctions.includes(bestMatch.name)) {
+                globalState.activeFunctions.push(bestMatch.name);
             }
+            return true;
+        }
+        
+        // サブメニューにある場合は「その他」メニューを開く
+        if (bestMatch.location === 'submenu') {
+            const moreButton = await findElement([
+                'button[aria-label="その他"]',
+                () => Array.from(document.querySelectorAll('button')).filter(btn => {
+                    const icon = btn.querySelector('mat-icon[fonticon="more_horiz"], mat-icon[data-mat-icon-name="more_horiz"]');
+                    return icon !== null;
+                })
+            ]);
             
-            // ボタンが見つからない場合は「その他」メニューを確認
-            log('メインボタンが見つかりません。「その他」メニューを確認します...', 'info');
-            const functionButtonSelectors = window.AIHandler?.getSelectors?.('Gemini', 'FUNCTION_BUTTON') || ['button[aria-label="その他"]', 'button[aria-label*="その他"]', 'button mat-icon[fonticon="more_horiz"]'];
-            let moreButton = null;
-            for (const selector of functionButtonSelectors) {
-                moreButton = document.querySelector(selector);
-                if (moreButton) break;
-            }
             if (moreButton) {
                 await clickElement(moreButton);
                 await wait(500);
-                
-                // メニュー内で機能を探す
-                const menuItemSelectors = window.AIHandler?.getSelectors?.('Gemini', 'MENU_ITEM') || ['[role="menuitem"]', '[role="option"]'];
-                let menuItems = [];
-                for (const selector of menuItemSelectors) {
-                    menuItems.push(...document.querySelectorAll(selector));
-                }
-                for (const item of menuItems) {
-                    const text = item.textContent?.trim();
-                    if (text && text.includes(searchTerm)) {
-                        await clickElement(item);
-                        log(`✅ メニューから${searchTerm}を選択しました`, 'success');
-                        globalState.activeFunctions.push(searchTerm);
-                        await wait(500);
-                        // メニューを閉じる
-                        await closeMenu();
-                        return true;
-                    }
-                }
-                
-                // メニューを閉じる
-                await closeMenu();
             }
         }
         
-        // AIHandlerを使用（通常の機能）
-        if (!useAIHandler || !menuHandler) {
-            log('AIHandlerが利用できません', 'error');
-            return false;
-        }
-
+        // 保存された要素参照を使用してクリック（複数の方法を試す）
         try {
-            const result = await menuHandler.selectFunction(searchTerm);
-            if (result) {
-                log(`✅ 共通ハンドラーで機能「${searchTerm}」を選択しました`, 'success');
-                globalState.activeFunctions.push(searchTerm);
-                return true;
+            // 方法1: 通常のクリック
+            await clickElement(bestMatch.element);
+            log(`✅ ${bestMatch.name}をクリックしました（通常クリック）`, 'success');
+        } catch (e1) {
+            try {
+                // 方法2: PointerEventを使用
+                const rect = bestMatch.element.getBoundingClientRect();
+                const x = rect.left + rect.width / 2;
+                const y = rect.top + rect.height / 2;
+                
+                bestMatch.element.dispatchEvent(new PointerEvent('pointerdown', {
+                    view: window,
+                    bubbles: true,
+                    cancelable: true,
+                    clientX: x,
+                    clientY: y
+                }));
+                
+                bestMatch.element.dispatchEvent(new PointerEvent('pointerup', {
+                    view: window,
+                    bubbles: true,
+                    cancelable: true,
+                    clientX: x,
+                    clientY: y
+                }));
+                
+                bestMatch.element.click();
+                log(`✅ ${bestMatch.name}をクリックしました（PointerEvent）`, 'success');
+            } catch (e2) {
+                try {
+                    // 方法3: MouseEventを使用
+                    bestMatch.element.dispatchEvent(new MouseEvent('mousedown', {
+                        view: window,
+                        bubbles: true,
+                        cancelable: true
+                    }));
+                    
+                    bestMatch.element.dispatchEvent(new MouseEvent('mouseup', {
+                        view: window,
+                        bubbles: true,
+                        cancelable: true
+                    }));
+                    
+                    bestMatch.element.dispatchEvent(new MouseEvent('click', {
+                        view: window,
+                        bubbles: true,
+                        cancelable: true
+                    }));
+                    log(`✅ ${bestMatch.name}をクリックしました（MouseEvent）`, 'success');
+                } catch (e3) {
+                    log(`❌ ${bestMatch.name}のクリックに失敗しました`, 'error');
+                    return false;
+                }
             }
-            console.log(`[デバッグ] Gemini機能選択失敗: "${searchTerm}"`);
-            return false;
-        } catch (error) {
-            log(`機能選択エラー: ${error.message}`, 'error');
-            return false;
         }
+        
+        // 成功したらactiveFunctionsに追加
+        globalState.activeFunctions.push(bestMatch.name);
+        
+        // Deep Research関連の名前も追加（念のため）
+        if (bestMatch.name.toLowerCase().includes('research') || 
+            bestMatch.name.toLowerCase().includes('リサーチ')) {
+            if (!globalState.activeFunctions.includes('Deep Research')) {
+                globalState.activeFunctions.push('Deep Research');
+                console.log('🔍 Deep Researchをactivefunctionsに追加しました');
+            }
+        }
+        
+        // メニューが閉じるまで待つ
+        await wait(500);
+        const menuClosed = await checkMenuClosed();
+        if (!menuClosed) {
+            await closeMenu();
+        }
+        
+        return true;
     };
 
     // メイン機能の選択ヘルパー関数
@@ -1197,7 +1581,40 @@
     // 統合実行関数（他のAIと互換性のため）
     // ========================================
     const runAutomation = async (config) => {
+        const operationName = 'runAutomation';
+        const fullStartTime = startOperation(operationName, {
+            config,
+            sessionId,
+            timestamp: new Date().toISOString()
+        });
+
+        log('(Gemini) 自動化実行開始', 'AUTOMATION', config);
         console.log('[Gemini] runAutomation開始', config);
+        
+        // セル位置情報を含む詳細ログ
+        const cellInfo = config.cellInfo || {};
+        const cellPosition = cellInfo.column && cellInfo.row ? `${cellInfo.column}${cellInfo.row}` : '不明';
+        
+        log(`📊 (Gemini) Step1: スプレッドシート読み込み開始 [${cellPosition}セル]`, 'INFO', {
+            cellPosition,
+            column: cellInfo.column,
+            row: cellInfo.row,
+            step: 1,
+            process: 'スプレッドシート読み込み',
+            model: config.model,
+            function: config.function,
+            promptLength: config.text?.length
+        });
+        
+        const result = {
+            success: false,
+            model: null,
+            function: null,
+            text: null,
+            response: null,
+            error: null,
+            timings: {}
+        };
         
         try {
             // 機能をクリア（必要に応じて）
@@ -1228,45 +1645,125 @@
             // テキスト入力
             if (config.text) {
                 await inputText(config.text);
+                result.text = config.text;
             }
+            
+            // Step3 開始時刻を定義（スコープを広げる）
+            const step3StartTime = Date.now();
             
             // 送信
             if (config.send) {
                 await sendMessage();
+                
+                const step3Duration = Date.now() - step3StartTime;
+                log(`✅ (Gemini) Step3: AI実行完了（送信） [${cellPosition}セル] (${step3Duration}ms)`, 'SUCCESS', {
+                    cellPosition,
+                    step: 3,
+                    process: 'AI実行完了',
+                    promptLength: config.text?.length,
+                    duration: step3Duration,
+                    elapsedTime: `${step3Duration}ms`
+                });
             }
             
-            // DeepResearchハンドラーを使用
+            // Step 4: 応答停止ボタン消滅まで待機
             const isDeepResearch = window.FeatureConstants ? 
                 window.FeatureConstants.isDeepResearch(config.function) :
                 (config.function && config.function.toLowerCase().includes('research'));
             
-            if (isDeepResearch) {
+            if (isDeepResearch || config.waitResponse) {
+                const step4Duration = Date.now() - step3StartTime;
+                const currentCellInfo = config.cellInfo || {};
+                const currentCellPosition = currentCellInfo.column && currentCellInfo.row ? `${currentCellInfo.column}${currentCellInfo.row}` : '不明';
+                log(`⏳ (Gemini) Step4: 応答停止ボタン消滅まで待機 [${currentCellPosition}セル] (${step4Duration}ms経過)`, 'INFO', {
+                    cellPosition: currentCellPosition,
+                    step: 4,
+                    process: '応答完了待機',
+                    elapsedFromStep3: step4Duration,
+                    elapsedTime: `${step4Duration}ms`
+                });
                 
-                if (window.DeepResearchHandler) {
-                    console.log('[Gemini] DeepResearchハンドラーを使用');
-                    const timeout = config.timeout || 60 * 60 * 1000; // デフォルト60分
-                    const maxMinutes = Math.floor(timeout / 60000);
-                    await window.DeepResearchHandler.handle('Gemini', maxMinutes);
+                if (isDeepResearch) {
+                    if (window.DeepResearchHandler) {
+                        console.log('[Gemini] DeepResearchハンドラーを使用');
+                        log('Gemini DeepResearch モードで待機', 'INFO');
+                        const timeout = config.timeout || 60 * 60 * 1000; // デフォルト60分
+                        const maxMinutes = Math.floor(timeout / 60000);
+                        const waitResult = await window.DeepResearchHandler.handle('Gemini', maxMinutes);
+                        if (!waitResult) {
+                            log('Gemini DeepResearch待機がタイムアウトしましたが、続行します', 'WARNING');
+                        }
+                    } else {
+                        console.log('[Gemini] DeepResearchハンドラーが見つかりません');
+                        log('DeepResearchハンドラーが見つかりません', 'ERROR');
+                    }
                 } else {
-                    console.log('[Gemini] DeepResearchハンドラーが見つかりません');
+                    // 通常の応答待機（共通関数使用）
+                    console.log('[Gemini] 応答待機中...');
+                    const timeout = config.timeout || 60000;
+                    const responseReceived = await waitForResponse(timeout);
+                    
+                    if (!responseReceived) {
+                        console.log('[Gemini] 応答待機がタイムアウトしました');
+                        log('応答待機がタイムアウトしましたが、続行します', 'WARNING');
+                    }
                 }
-            } else if (config.waitResponse) {
-                // 通常の応答待機（共通関数使用）
-                console.log('[Gemini] 応答待機中...');
-                const timeout = config.timeout || 60000;
-                const responseReceived = await waitForResponse(timeout);
                 
-                if (!responseReceived) {
-                    console.log('[Gemini] 応答待機がタイムアウトしました');
-                }
+                const step4EndDuration = Date.now() - step3StartTime;
+                log(`✅ (Gemini) Step4: 応答完了検出 [${cellPosition}セル] (${step4EndDuration}ms経過)`, 'SUCCESS', {
+                    cellPosition,
+                    step: 4,
+                    process: '応答完了検出',
+                    elapsedFromStep3: step4EndDuration,
+                    elapsedTime: `${step4EndDuration}ms`
+                });
             }
             
-            // 応答取得
+            // Step 5: 応答取得
             let response = null;
             if (config.getResponse) {
+                const step5Duration = Date.now() - step3StartTime;
+                const step5CellInfo = config.cellInfo || {};
+                const step5CellPosition = step5CellInfo.column && step5CellInfo.row ? `${step5CellInfo.column}${step5CellInfo.row}` : '不明';
+                log(`📤 (Gemini) Step5: 応答取得開始 [${step5CellPosition}セル] (${step5Duration}ms経過)`, 'INFO', {
+                    cellPosition: step5CellPosition,
+                    step: 5,
+                    process: '応答取得',
+                    elapsedFromStep3: step5Duration,
+                    elapsedTime: `${step5Duration}ms`
+                });
+                
                 await wait(2000);
                 const texts = await getTextFromScreen();
                 response = texts.latestResponse;
+                result.response = response;
+                
+                if (response) {
+                    const step5EndDuration = Date.now() - step3StartTime;
+                    const responsePreview = response.substring(0, 30);
+                    const hasMore = response.length > 30;
+                    log(`✅ (Gemini) Step5: 応答取得完了 [${step5CellPosition}セル] (${response.length}文字, ${step5EndDuration}ms経過)`, 'SUCCESS', {
+                        cellPosition: step5CellPosition,
+                        step: 5,
+                        process: '応答取得完了',
+                        responseLength: response.length,
+                        responsePreview: responsePreview + (hasMore ? '...' : ''),
+                        responsePreview30: responsePreview,
+                        hasMoreContent: hasMore,
+                        fullResponse: response,
+                        elapsedFromStep3: step5EndDuration,
+                        elapsedTime: `${step5EndDuration}ms`
+                    });
+                } else {
+                    const step5FailDuration = Date.now() - step3StartTime;
+                    log(`❌ (Gemini) Step5: 応答取得失敗 [${step5CellPosition}セル] (${step5FailDuration}ms経過)`, 'ERROR', {
+                        cellPosition: step5CellPosition,
+                        step: 5,
+                        process: '応答取得失敗',
+                        elapsedFromStep3: step5FailDuration,
+                        elapsedTime: `${step5FailDuration}ms`
+                    });
+                }
             }
             
             return {
@@ -1804,6 +2301,24 @@
     console.log('');
     console.log('%c💡 Gemini.help() で詳細ヘルプを表示', 'color: #9C27B0');
     console.log('%c👆 上記のコマンドをコピーして使ってください', 'color: #F44336; font-size: 12px');
+    
+    // 拡張機能ログ統合テスト
+    log('Gemini自動化スクリプト初期化開始', 'AUTOMATION', {
+        version: '動的検索版',
+        sessionId: sessionId,
+        logSystemEnabled: true,
+        extensionIntegration: !!(window.chrome && window.chrome.runtime)
+    });
+
+    log('Gemini動的自動化関数が利用可能になりました', 'SUCCESS');
+    
+    // テスト用の詳細ログ
+    log('詳細ログシステム動作確認', 'DEBUG', {
+        logLevels: Object.keys(LogLevel),
+        logTypes: Object.keys(logTypeConfig),
+        storageEnabled: logConfig.enableStorage,
+        consoleEnabled: logConfig.enableConsole
+    });
     
     // GeminiAutomationエイリアスを追加（一貫性のため）
     window.GeminiAutomation = window.Gemini;

@@ -1,6 +1,54 @@
 // タスクジェネレーター - リファクタリング版
 // 明確な責任分離と単純なデータフロー
 
+/**
+ * ========================================
+ * 依存関係
+ * ========================================
+ * 
+ * ■ 内部モジュール:
+ *   - models.js: Task, TaskList, TaskFactory - タスクモデルの定義
+ *   - filters/index.js: AnswerFilter - 既存回答のフィルタリング
+ *   - stream-processor.js: StreamProcessor - タスクストリーム処理（独立モジュール）
+ *   - ../report/report-task-factory.js: ReportTaskFactory - レポートタスク生成
+ * 
+ * ■ 関連モジュール（このモジュールを使用）:
+ *   - ai-orchestrator.js - メインのAI実行制御
+ *   - background.js - Chrome拡張のバックグラウンド処理
+ *   - test関連ファイル - テスト実行
+ * 
+ * ========================================
+ * 制御フローの概要
+ * ========================================
+ * 
+ * 1. スプレッドシート構造解析
+ *    - メニュー行、AI行、モデル行、機能行の特定
+ *    - プロンプトグループの識別（プロンプト〜プロンプト5を1グループ）
+ * 
+ * 2. 制御情報の収集
+ *    【行制御】B列で「この行から処理」「この行の処理後に停止」「この行のみ処理」
+ *    【列制御】制御行で「この列から処理」「この列の処理後に停止」「この列のみ処理」
+ * 
+ * 3. タスク生成
+ *    - 列制御でプロンプトグループをフィルタリング（グループ単位で適用）
+ *    - 行制御で作業行をフィルタリング
+ *    - 処理対象のグループ×行に対してタスクを生成
+ * 
+ * ========================================
+ * 制御の特徴
+ * ========================================
+ * 
+ * ■ グループ単位の処理:
+ *   - 1つのプロンプトグループ（プロンプト列群＋回答列群）をまとめて処理
+ *   - 3種類AI: グループが対象なら ChatGPT/Claude/Gemini の3列すべて処理
+ *   - 単独AI: グループが対象なら1つの回答列を処理
+ * 
+ * ■ 制御の優先順位:
+ *   1. 「この○○のみ処理」が最優先（他の制御を無視）
+ *   2. 「この○○から処理」と「この○○で停止」の組み合わせ
+ *   3. 範囲指定（例：5-10行、P-R列）
+ */
+
 import { Task, TaskList, TaskFactory } from "./models.js";
 import { AnswerFilter } from "./filters/index.js";
 import StreamProcessor from "./stream-processor.js";
@@ -298,31 +346,49 @@ class TaskGenerator {
 
   /**
    * 列制御でグループをフィルタリング
+   * 
+   * 【重要】プロンプトグループ単位で制御を適用
+   * - グループ = プロンプト列群（プロンプト〜プロンプト5）＋ 回答列群
+   * - 3種類AI: 1グループに ChatGPT/Claude/Gemini の3つの回答列
+   * - 単独AI: 1グループに1つの回答列
+   * 
+   * 【制御の判定】
+   * - グループ内のいずれかの列が制御対象 → グループ全体を処理
+   * - 例：P列が「この列のみ処理」でP列がプロンプトグループ内
+   *      → そのグループの全回答列（3種類AIなら3列すべて）を処理
+   * 
+   * @param {Array} groups - プロンプトグループの配列
+   * @param {Array} columnControls - 列制御情報の配列
+   * @returns {Array} 処理対象のグループ
    */
   filterGroupsByColumnControl(groups, columnControls) {
     if (!columnControls || columnControls.length === 0) {
       return groups;
     }
 
-    // "この列のみ処理"が優先
+    // "この列のみ処理"が優先（他の制御を無視）
     const onlyControls = columnControls.filter(c => c.type === "only");
     if (onlyControls.length > 0) {
       return groups.filter(group => {
+        // グループ内のプロンプト列のいずれかが制御対象なら、グループ全体を処理
         return group.promptColumns.some(colIndex => 
           onlyControls.some(ctrl => ctrl.index === colIndex)
         );
       });
     }
 
-    // "この列から処理"と"この列で停止"
+    // "この列から処理"と"この列で停止"の組み合わせ
     const fromControl = columnControls.find(c => c.type === "from");
     const untilControl = columnControls.find(c => c.type === "until");
 
     return groups.filter(group => {
+      // グループの範囲：最初のプロンプト列 〜 最後の回答列
       const groupStart = group.promptColumns[0];
       const groupEnd = group.answerColumns[group.answerColumns.length - 1].index;
 
+      // fromControl: グループの終端が制御開始位置より前なら除外
       if (fromControl && groupEnd < fromControl.index) return false;
+      // untilControl: グループの開始が制御終了位置より後なら除外
       if (untilControl && groupStart > untilControl.index) return false;
 
       return true;
@@ -331,21 +397,34 @@ class TaskGenerator {
 
   /**
    * 行を処理すべきか判定
+   * 
+   * 【行制御の検出箇所】
+   * - 作業行のB列：その行専用の制御
+   * - 制御行（1-10行）のA/B列：範囲指定など全体的な制御
+   * 
+   * 【制御の優先順位】
+   * 1. "この行のみ処理" - 指定行だけを処理（最優先）
+   * 2. "この行から処理" - 指定行以降を処理
+   * 3. "この行の処理後に停止" - 指定行までを処理
+   * 
+   * @param {number} rowNumber - チェック対象の行番号（1ベース）
+   * @param {Array} rowControls - 行制御情報の配列
+   * @returns {boolean} 処理すべきかどうか
    */
   shouldProcessRow(rowNumber, rowControls) {
     if (!rowControls || rowControls.length === 0) return true;
 
-    // "この行のみ処理"が優先
+    // "この行のみ処理"が優先（他の制御を無視）
     const onlyControls = rowControls.filter(c => c.type === "only");
     if (onlyControls.length > 0) {
       return onlyControls.some(c => c.row === rowNumber);
     }
 
-    // "この行から処理"
+    // "この行から処理"（開始行より前なら除外）
     const fromControl = rowControls.find(c => c.type === "from");
     if (fromControl && rowNumber < fromControl.row) return false;
 
-    // "この行で停止"
+    // "この行で停止"（終了行より後なら除外）
     const untilControl = rowControls.find(c => c.type === "until");
     if (untilControl && rowNumber > untilControl.row) return false;
 

@@ -97,6 +97,13 @@ export const UI_SELECTORS = {
             POPPER: '[data-radix-popper-content-wrapper]',
             LABEL: '.__menu-label, div:not([role])',
             SUBMENU_ITEM: 'button:has(span)',  // サブメニュー項目（"その他のモデル"など）
+            SUBMENU_TRIGGERS: [
+                '[data-has-submenu]',  // レガシーモデル用
+                '[aria-haspopup="menu"]',  // 標準的なサブメニュー
+                '[aria-expanded]',  // 展開可能な項目
+                'div:contains("レガシーモデル")',  // レガシーモデル専用
+                'div:contains("さらに表示")'  // 機能「さらに表示」専用
+            ]
         },
         
         // ポッパーコンテナ（RadixUI）
@@ -123,7 +130,7 @@ export const UI_SELECTORS = {
     },
     
     // ========================================
-    // Claude セレクタ
+    // Claude セレクタ（test-claude-response-final.js 実証済み）
     // ========================================
     Claude: {
         // テキスト入力欄
@@ -135,8 +142,9 @@ export const UI_SELECTORS = {
             'textarea[placeholder*="メッセージ"]'
         ],
         
-        // 送信ボタン
+        // 送信ボタン（test-claude-response-final.js 実証済み）
         SEND_BUTTON: [
+            'button[aria-label="メッセージを送信"]',  // 最優先：統合テストで実証済み
             '[aria-label="メッセージを送信"]',
             'button[type="submit"]',
             '.send-button',
@@ -145,8 +153,9 @@ export const UI_SELECTORS = {
             'button[data-testid*="send"]'
         ],
         
-        // 停止ボタン
+        // 停止ボタン（test-claude-response-final.js 実証済み）
         STOP_BUTTON: [
+            'button[aria-label="応答を停止"]',  // 最優先：統合テストで実証済み
             '[aria-label="応答を停止"]',
             '[aria-label="Stop generating"]',
             '[data-testid="stop-button"]',
@@ -172,13 +181,44 @@ export const UI_SELECTORS = {
             'button[aria-label*="機能"]'
         ],
         
-        // メッセージ
+        // メッセージ（実際のDOM構造に基づく）
         MESSAGE: [
+            '.grid-cols-1.grid',  // 最優先：実際のClaude応答DOM構造
+            'div[class*="grid-cols-1"][class*="grid"]',  // 属性版（より安全）
+            '.font-claude-message',  // 旧版（フォールバック）
             '[data-is-streaming="false"]',
-            '.font-claude-message',
             'div[class*="font-claude-message"]',
             '.group.relative.-tracking-\\[0\\.015em\\]'
         ],
+        
+        // 思考プロセス除外用セレクタ（test-claude-response-final.js より移植）
+        THINKING_PROCESS: {
+            // 思考プロセスを示すテキストパターン
+            TEXT_PATTERNS: [
+                '思考プロセス',
+                'Analyzed',
+                'Pondered', 
+                'Thought',
+                'Considered',
+                'Evaluated',
+                'Reviewed'
+            ],
+            
+            // 思考プロセス関連要素のセレクタ
+            ELEMENTS: [
+                'button:has(.tabular-nums)',  // 時間表示を含むボタン
+                'svg path[d*="M10.3857 2.50977"]',  // タイマーアイコン（時計SVG）
+                '.tabular-nums'  // 時間表示クラス
+            ],
+            
+            // 削除対象の親要素クラス
+            PARENT_CLASSES: [
+                'rounded-lg',
+                'border-0.5', 
+                'transition-all',
+                'my-3'
+            ]
+        },
         
         // DeepResearchボタン（Claude特有）
         DEEP_RESEARCH_BUTTON: [
@@ -192,10 +232,12 @@ export const UI_SELECTORS = {
             'button[aria-label="内容をプレビュー"]'
         ],
         
-        // 応答/レスポンス
+        // 応答/レスポンス（実際のDOM構造に基づく）
         RESPONSE: [
+            '.grid-cols-1.grid',  // 最優先：実際のClaude応答DOM構造
+            'div[class*="grid-cols-1"][class*="grid"]',  // 属性版（より安全）
+            '.font-claude-message',  // 旧版（フォールバック）
             '[data-is-streaming="false"]',
-            '.font-claude-message',
             'div[class*="font-claude-message"]',
             '.group.relative.-tracking-\\[0\\.015em\\]'
         ],
@@ -474,6 +516,61 @@ export function getSelectors(aiType, selectorType) {
     }
     
     return Array.isArray(selectors) ? selectors : [];
+}
+
+/**
+ * Claude思考プロセス要素を検出・削除するヘルパー関数
+ * test-claude-response-final.js のロジックを移植
+ * @param {Element} element - 検査対象の要素
+ * @returns {Element} 思考プロセスが削除された要素のクローン
+ */
+export function removeClaudeThinkingProcess(element) {
+    if (!element) return null;
+    
+    // 要素をクローンして元の要素を変更しないようにする
+    const clone = element.cloneNode(true);
+    
+    // 思考プロセスボタンを含む要素を削除
+    const allButtons = clone.querySelectorAll('button');
+    const thinkingPatterns = UI_SELECTORS.Claude.THINKING_PROCESS.TEXT_PATTERNS;
+    const parentClasses = UI_SELECTORS.Claude.THINKING_PROCESS.PARENT_CLASSES;
+    
+    let removedCount = 0;
+    
+    allButtons.forEach(btn => {
+        const text = btn.textContent || '';
+        
+        // 思考プロセスを示すテキストパターンをチェック
+        const isThinkingButton = 
+            thinkingPatterns.some(pattern => text.includes(pattern)) ||
+            // タイマーアイコン（時計SVG）を含むボタンも思考プロセス
+            btn.querySelector('svg path[d*="M10.3857 2.50977"]') !== null ||
+            // tabular-numsクラス（時間表示）を含むボタン
+            btn.querySelector('.tabular-nums') !== null;
+        
+        if (isThinkingButton) {
+            // ボタンの最も外側の親要素を探す
+            let elementToRemove = btn;
+            let parent = btn.parentElement;
+            
+            // 指定されたクラスを持つ親要素まで遡る
+            while (parent) {
+                if (parent.classList && parentClasses.some(cls => parent.classList.contains(cls))) {
+                    elementToRemove = parent;
+                    parent = parent.parentElement;
+                } else {
+                    break;
+                }
+            }
+            
+            console.debug(`削除: 思考プロセス要素 "${text.substring(0, 50)}..."`);
+            elementToRemove.remove();
+            removedCount++;
+        }
+    });
+    
+    console.debug(`削除した思考プロセス要素: ${removedCount}個`);
+    return clone;
 }
 
 /**

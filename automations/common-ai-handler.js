@@ -1372,7 +1372,7 @@
 
       // Gemini用の特別な処理
       if (this.aiType === 'Gemini') {
-        const menuItems = document.querySelectorAll('.mat-mdc-menu-item, [role="menuitem"]');
+        const menuItems = document.querySelectorAll('.mat-mdc-menu-item, [role="menuitem"], [role="menuitemradio"]');
         for (const item of menuItems) {
           const text = item.textContent?.trim();
           // 2.5 Flash, 2.5 Pro などの形式に対応
