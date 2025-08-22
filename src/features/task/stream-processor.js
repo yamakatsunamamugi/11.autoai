@@ -265,21 +265,19 @@ class StreamProcessor {
     this.isFirstTaskProcessed = false; // 最初のタスクフラグを追加
 
     try {
-      // タスクを列・行でグループ化
-      this.organizeTasks(taskList);
-
-      // ■ Sequential実行: checkAndStartAvailableColumnsで統一管理
-      const columns = Array.from(this.taskQueue.keys()).sort();
-      this.logger.log(`[StreamProcessor] Sequential実行開始`);
-      this.logger.log(`[StreamProcessor] 列グループ: ${columns.join(' → ')}`);
+      // タスクをグループ単位に整理
+      const groups = this.createTaskGroups(taskList);
+      this.logger.log(`[StreamProcessor] タスクグループ作成完了: ${groups.length}グループ`);
       
-      // 全ての開始処理をcheckAndStartAvailableColumnsに委譲
-      this.checkAndStartAvailableColumns();
+      // グループごとに順次処理
+      for (const group of groups) {
+        await this.processGroup(group);
+      }
 
       return {
         success: true,
-        processedColumns: Array.from(this.taskQueue.keys()),
-        totalWindows: this.activeWindows.size,
+        totalGroups: groups.length,
+        processedTasks: taskList.tasks.length,
       };
     } catch (error) {
       this.logger.error("[StreamProcessor] 処理エラー", error);
@@ -287,6 +285,283 @@ class StreamProcessor {
     } finally {
       this.isProcessing = false;
     }
+  }
+
+  /**
+   * タスクをグループ単位に整理
+   * @param {TaskList} taskList
+   * @returns {Array} グループ配列
+   */
+  createTaskGroups(taskList) {
+    const groups = [];
+    const processedTasks = new Set();
+    
+    // まずタスクを列ごとに整理
+    this.organizeTasks(taskList);
+    
+    // 行番号順にソート
+    const allRows = [...new Set(taskList.tasks.map(t => t.row))].sort((a, b) => a - b);
+    
+    for (const row of allRows) {
+      // 3種類AIグループをチェック
+      const threeTypeTasks = taskList.tasks.filter(t => 
+        t.row === row && 
+        t.multiAI && 
+        !processedTasks.has(t.id)
+      );
+      
+      if (threeTypeTasks.length >= 3) {
+        // 3種類AIグループを作成
+        const groupId = threeTypeTasks[0].groupId;
+        const columns = [...new Set(threeTypeTasks.map(t => t.column))].sort();
+        
+        // この行から始まる連続した行を収集
+        const rows = [];
+        let currentRow = row;
+        
+        while (true) {
+          const tasksInRow = taskList.tasks.filter(t => 
+            t.row === currentRow && 
+            columns.includes(t.column) &&
+            t.multiAI &&
+            !processedTasks.has(t.id)
+          );
+          
+          if (tasksInRow.length === columns.length) {
+            rows.push(currentRow);
+            tasksInRow.forEach(t => processedTasks.add(t.id));
+            currentRow++;
+          } else {
+            break;
+          }
+        }
+        
+        if (rows.length > 0) {
+          groups.push({
+            type: '3type',
+            columns: columns,
+            rows: rows,
+            tasks: taskList.tasks.filter(t => 
+              columns.includes(t.column) && 
+              rows.includes(t.row)
+            )
+          });
+        }
+      }
+    }
+    
+    // 1種類AI（単独）のグループを作成
+    const singleAIColumns = [...new Set(
+      taskList.tasks
+        .filter(t => !t.multiAI && !processedTasks.has(t.id))
+        .map(t => t.column)
+    )].sort();
+    
+    for (const column of singleAIColumns) {
+      const columnTasks = taskList.tasks
+        .filter(t => t.column === column && !processedTasks.has(t.id))
+        .sort((a, b) => a.row - b.row);
+      
+      // 3行ずつのバッチに分割
+      for (let i = 0; i < columnTasks.length; i += 3) {
+        const batchTasks = columnTasks.slice(i, Math.min(i + 3, columnTasks.length));
+        const rows = batchTasks.map(t => t.row);
+        
+        groups.push({
+          type: 'single',
+          columns: [column],
+          rows: rows,
+          tasks: batchTasks
+        });
+        
+        batchTasks.forEach(t => processedTasks.add(t.id));
+      }
+    }
+    
+    // レポートタスクのグループを作成
+    const reportTasks = taskList.tasks.filter(t => 
+      t.taskType === 'report' && !processedTasks.has(t.id)
+    );
+    
+    for (const task of reportTasks) {
+      groups.push({
+        type: 'report',
+        columns: [task.column],
+        rows: [task.row],
+        tasks: [task]
+      });
+      processedTasks.add(task.id);
+    }
+    
+    this.logger.log(`[StreamProcessor] グループ作成完了:`, groups.map(g => ({
+      type: g.type,
+      columns: g.columns,
+      rows: g.rows,
+      taskCount: g.tasks.length
+    })));
+    
+    return groups;
+  }
+
+  /**
+   * グループを処理
+   * @param {Object} group - タスクグループ
+   */
+  async processGroup(group) {
+    this.logger.log(`[StreamProcessor] グループ処理開始: ${group.type}`, {
+      columns: group.columns,
+      rows: group.rows,
+      taskCount: group.tasks.length
+    });
+    
+    if (group.type === '3type') {
+      await this.processThreeTypeGroup(group);
+    } else if (group.type === 'single') {
+      await this.processSingleGroup(group);
+    } else if (group.type === 'report') {
+      await this.processReportGroup(group);
+    }
+    
+    this.logger.log(`[StreamProcessor] グループ処理完了: ${group.type}`);
+  }
+  
+  /**
+   * 3種類AIグループを処理
+   * @param {Object} group
+   */
+  async processThreeTypeGroup(group) {
+    const { columns, rows, tasks } = group;
+    this.logger.log(`[StreamProcessor] 3種類AIグループ処理: ${columns.join(',')}列 x ${rows.length}行`);
+    
+    // 3つのウィンドウを開く
+    const windows = new Map();
+    
+    for (const column of columns) {
+      const firstTask = tasks.find(t => t.column === column && t.row === rows[0]);
+      if (!firstTask) continue;
+      
+      const position = this.findAvailablePosition();
+      const windowId = await this.openWindow(firstTask, position);
+      windows.set(column, windowId);
+      
+      this.logger.log(`[StreamProcessor] ウィンドウ作成: ${column}列 (${firstTask.aiType})`);
+    }
+    
+    // 各行を順次処理
+    for (const row of rows) {
+      const rowTasks = tasks.filter(t => t.row === row);
+      
+      // 3つのタスクを並列実行
+      await Promise.all(rowTasks.map(async (task) => {
+        const windowId = windows.get(task.column);
+        if (windowId) {
+          await this.executeTaskInWindow(task, windowId);
+        }
+      }));
+      
+      this.logger.log(`[StreamProcessor] 3種類AI行${row}完了`);
+    }
+    
+    // ウィンドウを閉じる
+    for (const windowId of windows.values()) {
+      try {
+        await chrome.windows.remove(windowId);
+      } catch (error) {
+        this.logger.warn(`[StreamProcessor] ウィンドウクローズエラー`, error);
+      }
+    }
+  }
+  
+  /**
+   * 1種類AIグループを処理（3ウィンドウで並列処理）
+   * @param {Object} group
+   */
+  async processSingleGroup(group) {
+    const { columns, rows, tasks } = group;
+    const column = columns[0];
+    
+    this.logger.log(`[StreamProcessor] 1種類AIグループ処理: ${column}列 x ${rows.length}行（3ウィンドウ並列）`);
+    
+    // 3つのウィンドウを開く（各行に1つずつ）
+    const windows = new Map();
+    
+    for (let i = 0; i < tasks.length; i++) {
+      const task = tasks[i];
+      const position = this.findAvailablePosition();
+      const windowId = await this.openWindow(task, position);
+      windows.set(task.row, windowId);
+      
+      this.logger.log(`[StreamProcessor] ウィンドウ${i + 1}作成: ${column}${task.row} (${task.aiType})`);
+    }
+    
+    // タスクを並列処理
+    await Promise.all(tasks.map(async (task) => {
+      const windowId = windows.get(task.row);
+      if (windowId) {
+        await this.executeTaskInWindow(task, windowId);
+        this.logger.log(`[StreamProcessor] タスク完了: ${task.column}${task.row}`);
+      }
+    }));
+    
+    this.logger.log(`[StreamProcessor] ${column}列のバッチ完了（行${rows.join(',')}）`);
+    
+    // ウィンドウを閉じる
+    for (const windowId of windows.values()) {
+      try {
+        await chrome.windows.remove(windowId);
+      } catch (error) {
+        this.logger.warn(`[StreamProcessor] ウィンドウクローズエラー`, error);
+      }
+    }
+  }
+  
+  /**
+   * レポートグループを処理
+   * @param {Object} group
+   */
+  async processReportGroup(group) {
+    const task = group.tasks[0];
+    this.logger.log(`[StreamProcessor] レポートタスク処理: ${task.column}${task.row}`);
+    
+    // レポートタスクは特別処理
+    await this.executeReportTask(task, -1);
+  }
+  
+  /**
+   * ウィンドウを開く
+   * @param {Task} task
+   * @param {number} position
+   * @returns {Promise<number>} windowId
+   */
+  async openWindow(task, position) {
+    const url = this.determineAIUrl(task.aiType, task.column);
+    const screenInfo = await this.getScreenInfo();
+    const windowPosition = this.calculateWindowPosition(position, screenInfo);
+    
+    const window = await chrome.windows.create({
+      url: url,
+      type: "popup",
+      focused: false,
+      ...windowPosition,
+    });
+    
+    this.activeWindows.set(window.id, {
+      windowId: window.id,
+      column: task.column,
+      position: position,
+      aiType: task.aiType,
+      createdAt: new Date(),
+    });
+    
+    this.windowPositions.set(position, window.id);
+    
+    // ページの読み込みを待機
+    await this.waitForContentScriptReady(window.id);
+    
+    // 自動化スクリプトを注入
+    await this.injectAutomationScripts(window.id, task.aiType);
+    
+    return window.id;
   }
 
   /**
@@ -466,9 +741,10 @@ class StreamProcessor {
   }
 
   /**
-   * 既存のウィンドウでタスクを実行
+   * 既存のウィンドウでタスクを実行（完了まで待機）
    * @param {Task} task
    * @param {number} windowId
+   * @returns {Promise<Object>} 実行結果
    */
   async executeTaskInWindow(task, windowId) {
     const windowInfo = this.activeWindows.get(windowId);
@@ -569,8 +845,9 @@ class StreamProcessor {
         },
       );
 
-      // タスク完了処理
-      await this.onTaskCompleted(task, windowId, result);
+      // タスク完了処理（スプレッドシート書き込みを含む）
+      await this.handleTaskResult(task, windowId, result);
+      return result;
     } catch (error) {
       this.logger.error(
         `[StreamProcessor] タスク実行エラー: ${task.column}${task.row}`,
@@ -600,14 +877,41 @@ class StreamProcessor {
           `[StreamProcessor] エラー上限に達しました。タスクを完全にスキップ: ${taskKey}`,
         );
         delete this.errorCount[taskKey];
-        // 次のタスクに進むが、エラーフラグ付き
-        await this.onTaskCompleted(task, windowId, {
+        // エラーをスキップ
+        const errorResult = {
           success: false,
           error: `エラー上限到達: ${error.message}`,
           skipped: true,
-        });
+        };
+        await this.handleTaskResult(task, windowId, errorResult);
+        return errorResult;
       }
       // それ以外は何もしない（リトライは別途実装）
+    }
+  }
+
+  /**
+   * タスク結果を処理（シンプル版）
+   * @param {Task} task
+   * @param {number} windowId
+   * @param {Object} result
+   */
+  async handleTaskResult(task, windowId, result) {
+    const cellPosition = `${task.column}${task.row}`;
+    
+    this.logger.log(`[StreamProcessor] タスク結果処理: ${cellPosition}`, {
+      success: result.success,
+      error: result.error
+    });
+    
+    // タスクを完了済みにマーク
+    this.completedTasks.add(task.id);
+    
+    // 成功した場合はスプレッドシートに書き込み
+    if (result.success && result.response) {
+      if (this.outputTarget === 'spreadsheet') {
+        await this.writeResultToSpreadsheet(task, result);
+      }
     }
   }
 
