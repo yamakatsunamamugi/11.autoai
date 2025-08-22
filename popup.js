@@ -14,33 +14,33 @@ document.addEventListener("DOMContentLoaded", async () => {
       top: primaryDisplay.workArea.top,
     };
     
-    // 右下の位置を計算（画面を4分割）
-    const halfWidth = Math.floor(screenInfo.width / 2);
-    const halfHeight = Math.floor(screenInfo.height / 2);
-    
+    // 初期は全画面で表示
     chrome.windows.create(
       {
         url: chrome.runtime.getURL("src/ui/ui.html"),
         type: "popup",
-        width: halfWidth,
-        height: halfHeight,
-        left: screenInfo.left + halfWidth,  // 右側
-        top: screenInfo.top + halfHeight,    // 下側
+        width: screenInfo.width,
+        height: screenInfo.height,
+        left: screenInfo.left,
+        top: screenInfo.top,
+        state: "maximized",
       },
-      () => {
-        // ウィンドウが開いたらポップアップを閉じる
+      (window) => {
+        // ウィンドウIDを保存（処理開始時に移動するため）
+        chrome.storage.local.set({ extensionWindowId: window.id });
+        // ポップアップを閉じる
         window.close();
       },
     );
   } catch (error) {
-    console.error("Failed to position extension window:", error);
-    // フォールバック: 位置指定なしで開く
+    console.error("Failed to create extension window:", error);
+    // フォールバック: デフォルトサイズで開く
     chrome.windows.create(
       {
         url: chrome.runtime.getURL("src/ui/ui.html"),
         type: "popup",
-        width: 850,
-        height: 700,
+        width: 1200,
+        height: 800,
       },
       () => {
         window.close();

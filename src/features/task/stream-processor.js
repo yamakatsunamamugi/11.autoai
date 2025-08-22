@@ -609,6 +609,9 @@ class StreamProcessor {
   async processAllTasks() {
     this.logger.log('[StreamProcessor] 全タスク処理開始');
     
+    // 拡張機能ウィンドウを右下に移動
+    await this.moveExtensionWindowToBottomRight();
+    
     // タスクを3種類AIと通常処理に分類
     const threeTypeGroups = new Map(); // groupId → tasks[]
     const normalColumns = new Map(); // column → tasks[]
@@ -3302,6 +3305,48 @@ ${formattedGemini}`;
         `[StreamProcessor] レポートタスク直接実行エラー: ${task.column}${task.row}`,
         error,
       );
+    }
+  }
+
+  /**
+   * 拡張機能ウィンドウを右下に移動
+   */
+  async moveExtensionWindowToBottomRight() {
+    try {
+      // 保存されたウィンドウIDを取得
+      const result = await chrome.storage.local.get(['extensionWindowId']);
+      const windowId = result.extensionWindowId;
+      
+      if (!windowId) {
+        this.logger.log('[StreamProcessor] 拡張機能ウィンドウIDが見つかりません');
+        return;
+      }
+
+      // ウィンドウが存在するか確認
+      try {
+        await chrome.windows.get(windowId);
+      } catch (error) {
+        this.logger.log('[StreamProcessor] 拡張機能ウィンドウが存在しません');
+        return;
+      }
+
+      // 画面情報を取得
+      const screenInfo = await this.getScreenInfo();
+      const halfWidth = Math.floor(screenInfo.width / 2);
+      const halfHeight = Math.floor(screenInfo.height / 2);
+
+      // 右下に移動
+      await chrome.windows.update(windowId, {
+        left: screenInfo.left + halfWidth,
+        top: screenInfo.top + halfHeight,
+        width: halfWidth,
+        height: halfHeight,
+        state: "normal",
+      });
+
+      this.logger.log('[StreamProcessor] 拡張機能ウィンドウを右下に移動しました');
+    } catch (error) {
+      this.logger.error('[StreamProcessor] 拡張機能ウィンドウ移動エラー', error);
     }
   }
 }
