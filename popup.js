@@ -23,13 +23,22 @@ document.addEventListener("DOMContentLoaded", async () => {
         height: screenInfo.height,
         left: screenInfo.left,
         top: screenInfo.top,
-        state: "maximized",
       },
       (window) => {
-        // ウィンドウIDを保存（処理開始時に移動するため）
-        chrome.storage.local.set({ extensionWindowId: window.id });
+        if (chrome.runtime.lastError) {
+          console.error("Window creation error:", chrome.runtime.lastError);
+          return;
+        }
+        if (window && window.id) {
+          // ウィンドウIDを保存（処理開始時に移動するため）
+          chrome.storage.local.set({ extensionWindowId: window.id });
+        }
         // ポップアップを閉じる
-        window.close();
+        if (typeof window !== 'undefined' && window.close) {
+          window.close();
+        } else {
+          self.close();
+        }
       },
     );
   } catch (error) {
@@ -42,8 +51,20 @@ document.addEventListener("DOMContentLoaded", async () => {
         width: 1200,
         height: 800,
       },
-      () => {
-        window.close();
+      (window) => {
+        if (chrome.runtime.lastError) {
+          console.error("Fallback window creation error:", chrome.runtime.lastError);
+          return;
+        }
+        if (window && window.id) {
+          chrome.storage.local.set({ extensionWindowId: window.id });
+        }
+        // ポップアップを閉じる
+        if (typeof window !== 'undefined' && window.close) {
+          window.close();
+        } else {
+          self.close();
+        }
       },
     );
   }
