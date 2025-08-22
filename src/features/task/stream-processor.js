@@ -1,3 +1,37 @@
+/**
+ * @fileoverview StreamProcessor - AIタスクの並列ストリーミング処理システム
+ * 
+ * ■ システム概要
+ * このモジュールは、複数のAI（ChatGPT、Claude、Gemini）に対して
+ * 並列でプロンプトを送信し、結果をストリーミングで取得・記録するシステムです。
+ * 
+ * ■ 主要機能
+ * 1. タスクキュー管理: 列・行単位でタスクを整理し、実行順序を制御
+ * 2. ウィンドウ管理: 最大4つのブラウザウィンドウを並列で制御
+ * 3. ストリーミング処理: AIの応答をリアルタイムで取得・記録
+ * 4. 依存関係管理: タスク間の依存関係を解決し、適切な順序で実行
+ * 5. エラーハンドリング: 再試行機能とエラーログの記録
+ * 
+ * ■ 処理フロー
+ * 1. タスクリストの受信 → organizeTasks()でキュー化
+ * 2. checkAndStartAvailableColumns()で開始可能なタスクを検出
+ * 3. startColumnProcessing()で列単位の処理を開始
+ * 4. processNextTask()で個別タスクを実行
+ * 5. handleStreamData()でAIの応答をストリーミング処理
+ * 6. writeResultToSpreadsheet()で結果をスプレッドシートに記録
+ * 
+ * ■ 特殊処理
+ * - 3種類AIグループ: ChatGPT/Claude/Geminiを同時実行する特別なタスクグループ
+ * - レポートタスク: 他のタスク結果を集約して要約を生成
+ * - Sequential実行: 列間で依存関係を持つタスクの順次実行
+ * 
+ * ■ 依存関係
+ * - windowManager: ブラウザウィンドウの管理
+ * - modelManager: AI APIとの通信
+ * - SpreadsheetLogger: スプレッドシートへの記録
+ * - ReportManager: レポート生成（オプション）
+ */
+
 // stream-processor.js - 並列ストリーミング処理
 
 // ReportManagerを動的にインポート
@@ -5,6 +39,23 @@
 let ReportManager = null;
 let SpreadsheetLogger = null;
 
+/**
+ * ReportManagerの動的取得
+ * 
+ * ■ 動作
+ * 1. 初回呼び出し時にReportManagerモジュールを動的インポート
+ * 2. 取得したモジュールをキャッシュして再利用
+ * 3. インポート失敗時はnullを返してフォールバック
+ * 
+ * ■ 依存関係
+ * - ../report/report-manager.js モジュール
+ * 
+ * ■ 使用条件
+ * - レポートタスクが存在する場合のみ呼び出される
+ * - Chrome拡張機能環境でES6モジュールが利用可能な場合
+ * 
+ * @returns {Promise<Class|null>} ReportManagerクラスまたはnull
+ */
 async function getReportManager() {
   if (!ReportManager) {
     try {
@@ -19,6 +70,28 @@ async function getReportManager() {
   return ReportManager;
 }
 
+/**
+ * SpreadsheetLoggerの動的取得
+ * 
+ * ■ 動作
+ * 1. グローバル空間からSpreadsheetLoggerクラスを検索
+ * 2. クラスが見つからない場合はインスタンスから取得
+ * 3. 取得したクラスをキャッシュして再利用
+ * 
+ * ■ 依存関係
+ * - globalThis.SpreadsheetLogger (クラス)
+ * - globalThis.spreadsheetLogger (インスタンス)
+ * 
+ * ■ 使用条件
+ * - Service Worker環境での実行時
+ * - スプレッドシートへの記録が必要な場合
+ * 
+ * ■ 特記事項
+ * Service Worker環境では動的インポートが制限されるため、
+ * グローバル空間に事前に登録されたクラスを使用
+ * 
+ * @returns {Promise<Class|null>} SpreadsheetLoggerクラスまたはnull
+ */
 async function getSpreadsheetLogger() {
   if (!SpreadsheetLogger) {
     try {
@@ -78,6 +151,29 @@ async function getSpreadsheetLogger() {
 // DynamicConfigManager import削除 - スプレッドシート設定を直接使用するため不要
 
 class StreamProcessor {
+  /**
+   * StreamProcessorのコンストラクタ
+   * 
+   * ■ 初期化内容
+   * 1. 依存関係の注入（windowManager、modelManager、logger）
+   * 2. ウィンドウ管理状態の初期化
+   * 3. タスクキューとトラッキング用データ構造の初期化
+   * 4. SpreadsheetLoggerのインスタンス作成
+   * 
+   * ■ 依存関係
+   * - windowManager: AIウィンドウの開閉・制御を管理
+   * - modelManager: AI APIとの通信を管理
+   * - logger: ログ出力（デフォルト: console）
+   * 
+   * ■ 初期化される主要なプロパティ
+   * - activeWindows: 開いているウィンドウの管理Map
+   * - columnWindows: 列とウィンドウの対応Map
+   * - taskQueue: 列ごとのタスクキュー
+   * - completedTasks: 完了済みタスクのSet
+   * - writtenCells: スプレッドシートに記載済みのセル
+   * 
+   * @param {Object} dependencies - 依存関係オブジェクト
+   */
   constructor(dependencies = {}) {
     // Node.js環境でのテスト用にglobalThisを使用
     const globalContext = typeof self !== "undefined" ? self : globalThis;
