@@ -771,9 +771,10 @@ class StreamProcessor {
               if (!error) {
                 this.logger.log(`[StreamProcessor] 📝 ログ記録完了コールバック実行: ${logCell}`);
                 
-                // ウィンドウクローズ情報があれば、ここでウィンドウを閉じる
-                if (completedTask._windowCloseInfo) {
-                  const { column: closeColumn, windowId: closeWindowId, hasMoreTasks: closeHasMoreTasks } = completedTask._windowCloseInfo;
+                // task オブジェクトから直接ウィンドウクローズ情報を取得
+                // (completedTaskではなく、外側スコープのtaskを使用)
+                if (task._windowCloseInfo) {
+                  const { column: closeColumn, windowId: closeWindowId, hasMoreTasks: closeHasMoreTasks } = task._windowCloseInfo;
                   
                   this.logger.log(`[StreamProcessor] 🚪 ウィンドウクローズコールバック実行: ${closeColumn}列, windowId: ${closeWindowId}`);
                   
@@ -800,8 +801,8 @@ class StreamProcessor {
                 this.logger.error(`[StreamProcessor] ログ記録エラー時のコールバック: ${error.message}`);
                 
                 // エラーが発生してもウィンドウは閉じる
-                if (completedTask._windowCloseInfo) {
-                  const { column: closeColumn } = completedTask._windowCloseInfo;
+                if (task._windowCloseInfo) {
+                  const { column: closeColumn } = task._windowCloseInfo;
                   await this.closeColumnWindow(closeColumn);
                 }
               }
