@@ -374,14 +374,25 @@ export class SpreadsheetLogger {
       // 送信時刻をクリア（メモリ節約）
       this.sendTimestamps.delete(task.id);
       
+      // デバッグ: コールバックの存在確認
+      console.log(`🔍 [SpreadsheetLogger] コールバック確認:`, {
+        hasOnComplete: !!options.onComplete,
+        typeOfOnComplete: typeof options.onComplete,
+        isFunction: typeof options.onComplete === 'function',
+        optionsKeys: Object.keys(options)
+      });
+      
       // 完了コールバックを実行
       if (typeof options.onComplete === 'function') {
         console.log(`🔔 [SpreadsheetLogger] 完了コールバック実行: ${logCell}`);
         try {
           await options.onComplete(task, logCell);
+          console.log(`✅ [SpreadsheetLogger] コールバック実行成功: ${logCell}`);
         } catch (callbackError) {
           console.error(`❌ [SpreadsheetLogger] コールバックエラー:`, callbackError);
         }
+      } else {
+        console.warn(`⚠️ [SpreadsheetLogger] コールバックが存在しないかfunction型ではありません`);
       }
       
     } catch (error) {

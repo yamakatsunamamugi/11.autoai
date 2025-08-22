@@ -757,7 +757,8 @@ class StreamProcessor {
             }
           }
           
-          await this.spreadsheetLogger.writeLogToSpreadsheet(task, {
+          // デバッグ: optionsオブジェクトの内容を確認
+          const logOptions = {
             url: currentUrl,
             sheetsClient: globalThis.sheetsClient,
             spreadsheetId,
@@ -806,7 +807,16 @@ class StreamProcessor {
                 }
               }
             }
+          };
+          
+          console.log(`🔍 [StreamProcessor] SpreadsheetLogger呼び出し前:`, {
+            hasOnComplete: !!logOptions.onComplete,
+            typeOfOnComplete: typeof logOptions.onComplete,
+            taskId: task.id,
+            hasWindowCloseInfo: !!task._windowCloseInfo
           });
+          
+          await this.spreadsheetLogger.writeLogToSpreadsheet(task, logOptions);
           
           // 最初のタスク処理完了フラグを更新
           this.isFirstTaskProcessed = true;
