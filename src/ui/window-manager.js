@@ -86,20 +86,27 @@ class WindowManager {
   // スプレッドシートを指定番号のウィンドウで開く
   async openSpreadsheetInWindow() {
     try {
+      console.log('[WindowManager] スプレッドシート開く処理開始');
+      
       // 設定を保存
       await this.saveWindowSettings();
       
       // スプレッドシートURLを取得
       const urlInputs = document.querySelectorAll('.spreadsheet-url-input');
+      console.log('[WindowManager] URL入力欄の数:', urlInputs.length);
+      
       let url = null;
       
       for (const input of urlInputs) {
         const inputUrl = input.value.trim();
+        console.log('[WindowManager] 検査中のURL:', inputUrl);
         if (inputUrl && inputUrl.includes('spreadsheets.google.com')) {
           url = inputUrl;
           break;
         }
       }
+      
+      console.log('[WindowManager] 最終的に選択されたURL:', url);
       
       if (!url) {
         this.showFeedback('スプレッドシートURLを入力してください', 'error');
@@ -476,7 +483,17 @@ class WindowManager {
     // showFeedback関数がグローバルに存在する場合は使用
     if (typeof window.showFeedback === 'function') {
       window.showFeedback(message, type);
+    } else if (typeof showFeedback === 'function') {
+      showFeedback(message, type);
     } else {
+      // フォールバック: アラートで表示
+      const typeMap = {
+        'success': '✅ 成功',
+        'error': '❌ エラー', 
+        'warning': '⚠️ 警告',
+        'info': 'ℹ️ 情報'
+      };
+      alert(`${typeMap[type] || type}: ${message}`);
       console.log(`[${type.toUpperCase()}] ${message}`);
     }
   }
