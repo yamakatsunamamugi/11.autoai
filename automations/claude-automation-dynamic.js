@@ -298,15 +298,26 @@
     if (logConfig.enableConsole) {
       const timeStr = logConfig.includeTimestamp ? `[${formatTimestamp()}] ` : '';
       const contextStr = operationContext ? `[${operationContext}] ` : '';
-      const fullMessage = `${typeInfo.prefix} ${timeStr}[Claude] ${contextStr}${message}`;
+      
+      // コンテキストオブジェクトを文字列として適切に表示
+      let contextInfo = '';
+      if (context && typeof context === 'object' && Object.keys(context).length > 0) {
+        try {
+          contextInfo = ` ${JSON.stringify(context)}`;
+        } catch (e) {
+          contextInfo = ` [Context Object]`;
+        }
+      }
+      
+      const fullMessage = `${typeInfo.prefix} ${timeStr}[Claude] ${contextStr}${message}${contextInfo}`;
       
       if (typeInfo.level >= LogLevel.ERROR) {
-        console.error(fullMessage, context);
+        console.error(fullMessage);
         if (entry.stackTrace) console.error(entry.stackTrace);
       } else if (typeInfo.level >= LogLevel.WARN) {
-        console.warn(fullMessage, context);
+        console.warn(fullMessage);
       } else {
-        console.log(fullMessage, context);
+        console.log(fullMessage);
       }
     }
   }
@@ -621,10 +632,10 @@
       
       if (isDeepResearch) {
         log('DeepResearchモードを有効化します', 'INFO');
-        log('DeepResearchは最大40分かかる場合があります', 'WARNING', {
-          estimatedDuration: '最大40分',
-          functionType: 'DeepResearch'
-        });
+        // DeepResearch専用の特別なログフォーマット
+        const deepResearchMessage = 'DeepResearchは最大40分の処理時間がかかる場合があります。長時間お待ちください。';
+        const deepResearchDetails = '深層調査モード - 推定時間: 最大40分';
+        log(`${deepResearchMessage} (${deepResearchDetails})`, 'INFO');
         
         // 共有モジュールを使用してDeepResearchを選択
         if (window.ClaudeDeepResearchSelector && window.ClaudeDeepResearchSelector.select) {

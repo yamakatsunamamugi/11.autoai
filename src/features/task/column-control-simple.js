@@ -282,31 +282,43 @@ export class SimpleColumnControl {
   static parseColumnControl(cellValue, currentColumn) {
     if (!cellValue || typeof cellValue !== "string") return null;
 
-    // この列のみ処理
-    if (cellValue.includes("この列のみ処理")) {
-      return { type: "only", column: currentColumn };
+    // configから列制御文字列を取得
+    const config = typeof SPREADSHEET_CONFIG !== "undefined" ? SPREADSHEET_CONFIG : null;
+    if (config && config.rowIdentifiers && config.rowIdentifiers.controlRow && config.rowIdentifiers.controlRow.expectedTexts) {
+      const [onlyThis, startFrom, stopAfter] = config.rowIdentifiers.controlRow.expectedTexts;
+      
+      // この列のみ処理
+      if (cellValue.includes(onlyThis)) {
+        return { type: "only", column: currentColumn };
+      }
+
+      // この列から処理
+      if (cellValue.includes(startFrom)) {
+        return { type: "from", column: currentColumn };
+      }
+
+      // この列の処理後に停止
+      if (cellValue.includes(stopAfter)) {
+        return { type: "until", column: currentColumn };
+      }
     }
 
-    // この列から処理
-    if (cellValue.includes("この列から処理")) {
-      return { type: "from", column: currentColumn };
+    // configから特定列指定パターンを動的生成
+    const patterns = [];
+    if (config && config.rowIdentifiers && config.rowIdentifiers.controlRow && config.rowIdentifiers.controlRow.expectedTexts) {
+      const [onlyThis, startFrom, stopAfter] = config.rowIdentifiers.controlRow.expectedTexts;
+      
+      // 動的にパターンを生成（例：P列のみ処理、P列から処理、P列の処理後に停止）
+      patterns.push(
+        { regex: new RegExp(`([A-Z]+)列${onlyThis.replace('この列', '')}`), type: "only" },
+        { regex: new RegExp(`([A-Z]+)列だけ処理`), type: "only" },
+        { regex: new RegExp(`([A-Z]+)だけ処理`), type: "only" },
+        { regex: new RegExp(`([A-Z]+)列${startFrom.replace('この列', '')}`), type: "from" },
+        { regex: new RegExp(`([A-Z]+)から開始`), type: "from" },
+        { regex: new RegExp(`([A-Z]+)列${stopAfter.replace('この列', '')}`), type: "until" },
+        { regex: new RegExp(`([A-Z]+)で停止`), type: "until" }
+      );
     }
-
-    // この列の処理後に停止
-    if (cellValue.includes("この列の処理後に停止")) {
-      return { type: "until", column: currentColumn };
-    }
-
-    // 特定列の指定パターン（例：P列のみ処理、P列から処理、P列の処理後に停止）
-    const patterns = [
-      { regex: /([A-Z]+)列のみ処理/, type: "only" },
-      { regex: /([A-Z]+)列だけ処理/, type: "only" },
-      { regex: /([A-Z]+)だけ処理/, type: "only" },
-      { regex: /([A-Z]+)列から処理/, type: "from" },
-      { regex: /([A-Z]+)から開始/, type: "from" },
-      { regex: /([A-Z]+)列の処理後に停止/, type: "until" },
-      { regex: /([A-Z]+)で停止/, type: "until" },
-    ];
 
     for (const pattern of patterns) {
       const match = cellValue.match(pattern.regex);
@@ -337,31 +349,43 @@ export class SimpleColumnControl {
   static parseRowControl(cellValue, currentRow) {
     if (!cellValue || typeof cellValue !== "string") return null;
 
-    // この行のみ処理
-    if (cellValue.includes("この行のみ処理")) {
-      return { type: "only", row: currentRow };
+    // configから行制御文字列を取得
+    const config = typeof SPREADSHEET_CONFIG !== "undefined" ? SPREADSHEET_CONFIG : null;
+    if (config && config.rowControl && config.rowControl.types) {
+      const { onlyThis, startFrom, stopAfter } = config.rowControl.types;
+      
+      // この行のみ処理
+      if (cellValue.includes(onlyThis)) {
+        return { type: "only", row: currentRow };
+      }
+
+      // この行から処理
+      if (cellValue.includes(startFrom)) {
+        return { type: "from", row: currentRow };
+      }
+
+      // この行の処理後に停止
+      if (cellValue.includes(stopAfter)) {
+        return { type: "until", row: currentRow };
+      }
     }
 
-    // この行から処理
-    if (cellValue.includes("この行から処理")) {
-      return { type: "from", row: currentRow };
+    // configから特定行指定パターンを動的生成
+    const patterns = [];
+    if (config && config.rowControl && config.rowControl.types) {
+      const { onlyThis, startFrom, stopAfter } = config.rowControl.types;
+      
+      // 動的にパターンを生成（例：5行のみ処理、5行から処理、5行の処理後に停止）
+      patterns.push(
+        { regex: new RegExp(`(\\d+)行${onlyThis.replace('この行', '')}`), type: "only" },
+        { regex: new RegExp(`(\\d+)行だけ処理`), type: "only" },
+        { regex: new RegExp(`(\\d+)だけ処理`), type: "only" },
+        { regex: new RegExp(`(\\d+)行${startFrom.replace('この行', '')}`), type: "from" },
+        { regex: new RegExp(`(\\d+)から開始`), type: "from" },
+        { regex: new RegExp(`(\\d+)行${stopAfter.replace('この行', '')}`), type: "until" },
+        { regex: new RegExp(`(\\d+)で停止`), type: "until" }
+      );
     }
-
-    // この行の処理後に停止
-    if (cellValue.includes("この行の処理後に停止")) {
-      return { type: "until", row: currentRow };
-    }
-
-    // 特定行の指定パターン（例：5行のみ処理、5行から処理、5行の処理後に停止）
-    const patterns = [
-      { regex: /(\d+)行のみ処理/, type: "only" },
-      { regex: /(\d+)行だけ処理/, type: "only" },
-      { regex: /(\d+)だけ処理/, type: "only" },
-      { regex: /(\d+)行から処理/, type: "from" },
-      { regex: /(\d+)から開始/, type: "from" },
-      { regex: /(\d+)行の処理後に停止/, type: "until" },
-      { regex: /(\d+)で停止/, type: "until" },
-    ];
 
     for (const pattern of patterns) {
       const match = cellValue.match(pattern.regex);

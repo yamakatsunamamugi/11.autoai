@@ -86,7 +86,21 @@ class TaskGenerator {
       return taskList;
     } catch (error) {
       console.error("[TaskGenerator] タスク生成エラー:", error);
-      return new TaskList();
+      console.error("[TaskGenerator] エラー詳細:", {
+        errorMessage: error.message,
+        errorStack: error.stack,
+        spreadsheetDataKeys: spreadsheetData ? Object.keys(spreadsheetData) : null,
+        hasValues: spreadsheetData && spreadsheetData.values ? spreadsheetData.values.length : 0
+      });
+      
+      // エラーの種類に応じて適切なメッセージを設定
+      if (error.message.includes("メニュー行が見つかりません")) {
+        throw new Error("スプレッドシート構造エラー: メニュー行が見つかりません。スプレッドシートの形式を確認してください。");
+      } else if (error.message.includes("SPREADSHEET_CONFIG")) {
+        throw new Error("設定エラー: スプレッドシート設定ファイルが読み込まれていません。");
+      } else {
+        throw new Error(`タスク生成エラー: ${error.message}`);
+      }
     }
   }
 
@@ -97,7 +111,7 @@ class TaskGenerator {
     // 重要な行を特定
     const rows = {
       menu: this.findRowByKeyword(spreadsheetData, "メニュー"),
-      ai: this.findRowByKeyword(spreadsheetData, "使うAI"),
+      ai: this.findRowByKeyword(spreadsheetData, "AI"),
       model: this.findRowByKeyword(spreadsheetData, "モデル"),
       task: this.findRowByKeyword(spreadsheetData, "機能")
     };
@@ -246,15 +260,21 @@ class TaskGenerator {
 
       const cellB = row[1];
       if (cellB && typeof cellB === 'string') {
-        if (cellB.includes("この行から処理")) {
-          controls.row.push({ type: "from", row: i + 1 });
-          console.log(`[TaskGenerator] 行制御: ${i + 1}行から処理`);
-        } else if (cellB.includes("この行の処理後に停止")) {
-          controls.row.push({ type: "until", row: i + 1 });
-          console.log(`[TaskGenerator] 行制御: ${i + 1}行で停止`);
-        } else if (cellB.includes("この行のみ処理")) {
-          controls.row.push({ type: "only", row: i + 1 });
-          console.log(`[TaskGenerator] 行制御: ${i + 1}行のみ処理`);
+        // configから行制御文字列を取得
+        const config = typeof SPREADSHEET_CONFIG !== "undefined" ? SPREADSHEET_CONFIG : null;
+        if (config && config.rowControl && config.rowControl.types) {
+          const { startFrom, stopAfter, onlyThis } = config.rowControl.types;
+          
+          if (cellB.includes(startFrom)) {
+            controls.row.push({ type: "from", row: i + 1 });
+            console.log(`[TaskGenerator] 行制御: ${i + 1}行から処理`);
+          } else if (cellB.includes(stopAfter)) {
+            controls.row.push({ type: "until", row: i + 1 });
+            console.log(`[TaskGenerator] 行制御: ${i + 1}行で停止`);
+          } else if (cellB.includes(onlyThis)) {
+            controls.row.push({ type: "only", row: i + 1 });
+            console.log(`[TaskGenerator] 行制御: ${i + 1}行のみ処理`);
+          }
         }
       }
     }
@@ -268,15 +288,21 @@ class TaskGenerator {
         const cell = row[j];
         if (cell && typeof cell === 'string') {
           const column = this.indexToColumn(j);
-          if (cell.includes("この列から処理")) {
-            controls.column.push({ type: "from", column, index: j });
-            console.log(`[TaskGenerator] 列制御: ${column}列から処理`);
-          } else if (cell.includes("この列の処理後に停止")) {
-            controls.column.push({ type: "until", column, index: j });
-            console.log(`[TaskGenerator] 列制御: ${column}列で停止`);
-          } else if (cell.includes("この列のみ処理")) {
-            controls.column.push({ type: "only", column, index: j });
-            console.log(`[TaskGenerator] 列制御: ${column}列のみ処理`);
+          // configから列制御文字列を取得
+          const config = typeof SPREADSHEET_CONFIG !== "undefined" ? SPREADSHEET_CONFIG : null;
+          if (config && config.rowIdentifiers && config.rowIdentifiers.controlRow && config.rowIdentifiers.controlRow.expectedTexts) {
+            const [onlyThis, startFrom, stopAfter] = config.rowIdentifiers.controlRow.expectedTexts;
+            
+            if (cell.includes(startFrom)) {
+              controls.column.push({ type: "from", column, index: j });
+              console.log(`[TaskGenerator] 列制御: ${column}列から処理`);
+            } else if (cell.includes(stopAfter)) {
+              controls.column.push({ type: "until", column, index: j });
+              console.log(`[TaskGenerator] 列制御: ${column}列で停止`);
+            } else if (cell.includes(onlyThis)) {
+              controls.column.push({ type: "only", column, index: j });
+              console.log(`[TaskGenerator] 列制御: ${column}列のみ処理`);
+            }
           }
         }
       }
@@ -348,6 +374,33 @@ class TaskGenerator {
 
     // controls情報を追加（互換性のため）
     taskList.controls = controls;
+
+    // タスク生成結果をログ出力
+    console.log(`[TaskGenerator] タスク生成完了: ${taskList.tasks.length}件`, {
+      processableGroups: processableGroups.length,
+      workRows: workRows.length,
+      columnControls: controls.column.length,
+      rowControls: controls.row.length
+    });
+
+    // タスクが0件の場合の詳細ログ
+    if (taskList.tasks.length === 0) {
+      console.warn("[TaskGenerator] タスクが生成されませんでした。詳細:", {
+        promptGroups: promptGroups.length,
+        processableGroups: processableGroups.length,
+        workRows: workRows.length,
+        controlInfo: {
+          columnControls: controls.column,
+          rowControls: controls.row
+        },
+        spreadsheetStructure: {
+          hasMenuRow: !!rows.menu,
+          hasAIRow: !!rows.ai,
+          hasModelRow: !!rows.model,
+          hasTaskRow: !!rows.task
+        }
+      });
+    }
 
     return taskList;
   }
@@ -581,13 +634,16 @@ class TaskGenerator {
    * キーワードで行を検索
    */
   findRowByKeyword(spreadsheetData, keyword) {
-    // 既存のプロパティをチェック
-    const propMap = {
-      "メニュー": "menuRow",
-      "使うAI": "aiRow",
-      "モデル": "modelRow",
-      "機能": "taskRow"
-    };
+    // configから動的にプロパティマップを生成
+    const config = typeof SPREADSHEET_CONFIG !== "undefined" ? SPREADSHEET_CONFIG : null;
+    if (!config) {
+      throw new Error("SPREADSHEET_CONFIG が見つかりません。config.js を読み込んでください。");
+    }
+
+    const propMap = {};
+    Object.entries(config.rowIdentifiers).forEach(([propName, rowConfig]) => {
+      propMap[rowConfig.keyword] = propName;
+    });
 
     if (propMap[keyword] && spreadsheetData[propMap[keyword]]) {
       return spreadsheetData[propMap[keyword]];

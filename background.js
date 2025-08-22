@@ -325,7 +325,7 @@ async function executeAITask(tabId, taskData) {
           responseLength: result.response?.length || 0,
           allStepsCompleted: true,
           finalStep: 5,
-          process: '回答取得完了'
+          process: '[Request interrupted by user]回答テキスト取得できない　エラー'
         }
       });
     } else {
@@ -589,7 +589,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           // taskListとtasksの存在を確認
           if (!taskList || !taskList.tasks) {
             console.error("タスク生成失敗 - taskList:", taskList);
-            throw new Error("タスク生成に失敗しました: タスクリストが空です");
+            const errorDetails = {
+              taskListExists: !!taskList,
+              tasksProperty: taskList ? !!taskList.tasks : false,
+              taskListType: typeof taskList,
+              spreadsheetData: processedData ? Object.keys(processedData) : null
+            };
+            console.error("詳細エラー情報:", errorDetails);
+            throw new Error(`タスク生成に失敗しました: タスクリストが空です (詳細: ${JSON.stringify(errorDetails)})`);
+          }
+          
+          // タスクが0件の場合の処理
+          if (taskList.tasks.length === 0) {
+            console.warn("タスクが0件生成されました。スプレッドシートに処理対象データがない可能性があります。");
+            throw new Error("タスクなし");
           }
           
           console.log("[Background] 生成されたタスク:", {
@@ -1142,20 +1155,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
           // SheetsClientを使用してログをクリア
           const result = await sheetsClient.clearSheetLogs(request.spreadsheetId);
-          
-          // A列の1行目以降もクリア（A2:A1000）
-          if (result.success) {
-            try {
-              const a1ClearResult = await sheetsClient.batchUpdate(request.spreadsheetId, [{
-                range: "A2:A1000",
-                values: Array(999).fill([""])
-              }]);
-              console.log("[MessageHandler] A列クリア完了:", a1ClearResult);
-            } catch (a1Error) {
-              console.warn("[MessageHandler] A列クリアエラー:", a1Error);
-              // A列のクリアに失敗してもログクリアは成功とする
-            }
-          }
           
           console.log("[MessageHandler] ログクリア完了:", result);
           sendResponse({ 

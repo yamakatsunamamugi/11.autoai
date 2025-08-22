@@ -19,7 +19,7 @@ const SPREADSHEET_CONFIG = {
     },
 
     controlRow: {
-      keyword: "行の処理",
+      keyword: "列制御",
       name: "列制御",
       expectedTexts: [
         "この列のみ処理",
@@ -29,8 +29,8 @@ const SPREADSHEET_CONFIG = {
     },
 
     aiRow: {
-      keyword: "使うAI",
-      name: "使うAI行",
+      keyword: "AI",
+      name: "AI行",
       expectedTexts: [
         "ChatGPT",
         "Claude",

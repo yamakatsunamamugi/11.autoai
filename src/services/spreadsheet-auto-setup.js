@@ -39,7 +39,7 @@ export class SpreadsheetAutoSetup {
       // 2. スプレッドシートデータを取得
       await this.loadSpreadsheetData();
 
-      // 3. メニュー行と使うAI行を検索
+      // 3. メニュー行とAI行を検索
       await this.findKeyRows();
 
       // 3. プロンプト列を検索して処理
@@ -150,12 +150,18 @@ export class SpreadsheetAutoSetup {
   }
 
   /**
-   * メニュー行と使うAI行を検索
+   * メニュー行とAI行を検索
    */
   async findKeyRows() {
     console.log("[AutoSetup] キー行検索開始", {
       totalRows: this.sheetData.length,
     });
+
+    // configから設定を取得
+    const config = typeof SPREADSHEET_CONFIG !== "undefined" ? SPREADSHEET_CONFIG : null;
+    if (!config) {
+      throw new Error("SPREADSHEET_CONFIG が見つかりません。config.js を読み込んでください。");
+    }
 
     for (let i = 0; i < this.sheetData.length; i++) {
       const row = this.sheetData[i];
@@ -168,7 +174,7 @@ export class SpreadsheetAutoSetup {
       const cellValue = cellA.toString().trim();
 
       // メニュー行を検索
-      if (cellValue.includes("メニュー")) {
+      if (cellValue === config.rowIdentifiers.menuRow.keyword) {
         this.menuRowIndex = i;
         console.log("[AutoSetup] メニュー行を発見", {
           row: i + 1,
@@ -176,10 +182,10 @@ export class SpreadsheetAutoSetup {
         });
       }
 
-      // 使うAI行を検索
-      if (cellValue.includes("使うAI")) {
+      // AI行を検索
+      if (cellValue === config.rowIdentifiers.aiRow.keyword) {
         this.aiRowIndex = i;
-        console.log("[AutoSetup] 使うAI行を発見", {
+        console.log("[AutoSetup] AI行を発見", {
           row: i + 1,
           value: cellValue,
         });
@@ -188,13 +194,13 @@ export class SpreadsheetAutoSetup {
 
     if (this.menuRowIndex === -1) {
       throw new Error(
-        "メニュー行が見つかりません（A列に「メニュー」を含むセルが必要）",
+        `メニュー行が見つかりません（A列に「${config.rowIdentifiers.menuRow.keyword}」を含むセルが必要）`,
       );
     }
 
     if (this.aiRowIndex === -1) {
       throw new Error(
-        "使うAI行が見つかりません（A列に「使うAI」を含むセルが必要）",
+        `AI行が見つかりません（A列に「${config.rowIdentifiers.aiRow.keyword}」を含むセルが必要）`,
       );
     }
   }
@@ -207,7 +213,7 @@ export class SpreadsheetAutoSetup {
     const aiRow = this.sheetData[this.aiRowIndex];
 
     if (!menuRow || !aiRow) {
-      throw new Error("メニュー行または使うAI行のデータが不正です");
+      throw new Error("メニュー行またはAI行のデータが不正です");
     }
 
     // プロンプト列グループを検索

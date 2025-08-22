@@ -190,14 +190,23 @@ class DocsClient {
    * @returns {Promise<Object>} 作成されたドキュメント情報
    */
   async createDocumentFromTaskResult(taskResult) {
-    // タイトルの生成（プロンプトの冒頭30文字を使用）
+    // タイトルの生成（【AI自動化用】プレフィックス + プロンプトの冒頭30文字を使用）
     const titleBase = taskResult.prompt
       ? taskResult.prompt.substring(0, 30).replace(/[\n\r]/g, " ")
       : "AI回答";
-    const title = `${titleBase} - ${new Date().toLocaleDateString("ja-JP")}`;
+    const title = `【AI自動化用】${titleBase} - ${new Date().toLocaleDateString("ja-JP")}`;
 
     // 回答のみをドキュメントの内容として設定
     const content = taskResult.response || "(回答なし)";
+    
+    // デバッグ: 受け取ったコンテンツの確認
+    console.log(`[DocsClient] ドキュメント作成開始:`);
+    console.log(`  - タイトル: ${title}`);
+    console.log(`  - コンテンツ長: ${content.length}文字`);
+    console.log(`  - 最初の200文字: ${content.substring(0, 200)}...`);
+    console.log(`  - ChatGPT含む: ${content.includes('【ChatGPT回答】')}`);
+    console.log(`  - Claude含む: ${content.includes('【Claude回答】')}`);
+    console.log(`  - Gemini含む: ${content.includes('【Gemini回答】')}`);
 
     // シンプルなドキュメントを作成（回答のみ）
     return await this.createAndWriteDocument(title, content);

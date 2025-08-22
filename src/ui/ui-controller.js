@@ -869,7 +869,6 @@ function saveUrls() {
 
 // ===== 複数URL管理機能 =====
 let urlInputCounter = 1;  // URL入力欄のカウンター
-let currentUrlIndex = 0;  // 現在処理中のURLインデックス
 let savedUrlToInput = null;  // どの入力欄に保存済みURLを設定するか
 
 // デフォルトURL
@@ -1464,24 +1463,23 @@ startBtn.addEventListener("click", async () => {
   startBtn.disabled = true;
   stopBtn.disabled = false;
   
-  // 複数URLを順次処理
-  currentUrlIndex = 0;
+  // 複数URLを並列処理
   await processMultipleUrls(urls);
 });
 
-// 複数URLを順次処理する関数
+// 複数URLを並列処理する関数
 async function processMultipleUrls(urls) {
-  if (currentUrlIndex >= urls.length) {
-    console.log("すべてのURLの処理が完了しました");
-    updateStatus("すべての処理が完了しました", "success");
+  if (!urls || urls.length === 0) {
+    console.log("処理するURLがありません");
+    updateStatus("処理するURLがありません", "error");
     startBtn.disabled = false;
     stopBtn.disabled = true;
     return;
   }
   
-  const currentUrl = urls[currentUrlIndex];
-  console.log(`処理中: ${currentUrlIndex + 1}/${urls.length} - ${currentUrl}`);
-  updateStatus(`処理中 (${currentUrlIndex + 1}/${urls.length}): ${currentUrl.substring(0, 50)}...`, "loading");
+  const currentUrl = urls[0]; // 最初のURLのみ処理（複数URL同時処理は未実装）
+  console.log(`処理中: ${currentUrl}`);
+  updateStatus(`処理中: ${currentUrl.substring(0, 50)}...`, "loading");
 
   // まずスプレッドシートが読み込まれているか確認
   const storageResult = await chrome.storage.local.get(['savedTasks']);
@@ -1520,7 +1518,7 @@ async function processMultipleUrls(urls) {
         savedTasks = await taskQueue.loadTaskList();
         
         if (!savedTasks || !savedTasks.tasks || savedTasks.tasks.length === 0) {
-          throw new Error("タスク生成に失敗しました。タスクが保存されていません。");
+          throw new Error("タスクなし");
         }
       }
     } catch (error) {
@@ -1603,19 +1601,14 @@ async function processMultipleUrls(urls) {
       spreadsheetUrl: currentUrl, // URL情報も追加
       gid: gid, // シートIDも追加
       testMode: false, // 本番実行
-      urlIndex: currentUrlIndex, // 現在のURLインデックスを追加
-      totalUrls: urls.length // 全URL数を追加
     });
 
     if (response && response.success) {
-      updateStatus(`🌊 処理実行中 (${currentUrlIndex + 1}/${urls.length})`, "running");
+      updateStatus(`🌊 処理実行中`, "running");
       showFeedback(
         `ストリーミング処理開始: ${response.totalWindows || 4}個のウィンドウで並列処理中`,
         "success",
       );
-      
-      // タスク完了を監視して次のURLへ
-      monitorTaskCompletion(urls);
     } else {
       updateStatus(
         "ストリーミング開始エラー: " + (response?.error || "不明なエラー"),
@@ -1633,25 +1626,6 @@ async function processMultipleUrls(urls) {
     stopBtn.disabled = true;
     showFeedback("ストリーミング処理でエラーが発生しました", "error");
   }
-}
-
-// タスク完了を監視して次のURLへ移行
-function monitorTaskCompletion(urls) {
-  const checkInterval = setInterval(async () => {
-    // 現在の処理状態を確認
-    const response = await chrome.runtime.sendMessage({
-      action: "getStreamingStatus"
-    });
-    
-    if (response && response.completed) {
-      clearInterval(checkInterval);
-      console.log(`URL ${currentUrlIndex + 1}の処理が完了しました`);
-      
-      // 次のURLへ
-      currentUrlIndex++;
-      await processMultipleUrls(urls);
-    }
-  }, 5000); // 5秒ごとにチェック
 }
 
 // ===== イベントリスナー: ストリーミング処理停止 =====

@@ -591,22 +591,53 @@ class StreamProcessor {
     // タスクを完了済みにマーク
     this.completedTasks.add(taskId);
 
-    // 成功した場合の追加処理（AIタスクの場合のみ）
-    if (result.success && result.response && task.taskType === "ai") {
-      if (this.outputTarget === 'log') {
-        // ログ出力モード：ログに表示のみ
-        this.logger.log(`[StreamProcessor] ログ出力: ${cellPosition}セル -> ${result.response.substring(0, 100)}...`);
-      } else if (this.outputTarget === 'spreadsheet') {
-        // スプレッドシート出力モード：スプレッドシートに書き込み（同期実行で完了を待つ）
-        this.logger.log(`[StreamProcessor] スプレッドシート出力: ${cellPosition}セル -> ${result.response.substring(0, 100)}...`);
-        
-        try {
-          // スプレッドシート書き込みを同期で実行（awaitで完了を待つ）
-          await this.writeResultToSpreadsheet(task, result);
-          this.logger.log(`[StreamProcessor] 📝 スプレッドシートに書き込み完了: ${cellPosition}セル`);
-        } catch (error) {
-          this.logger.error(`[StreamProcessor] ❌ 結果の保存エラー`, error);
-          // エラーが発生してもタスク処理は継続
+    // 成功した場合の追加処理
+    if (result.success) {
+      // AIタスクの場合
+      if (result.response && task.taskType === "ai") {
+        if (this.outputTarget === 'log') {
+          // ログ出力モード：ログに表示のみ
+          this.logger.log(`[StreamProcessor] ログ出力: ${cellPosition}セル -> ${result.response.substring(0, 100)}...`);
+        } else if (this.outputTarget === 'spreadsheet') {
+          // スプレッドシート出力モード：スプレッドシートに書き込み（同期実行で完了を待つ）
+          this.logger.log(`[StreamProcessor] スプレッドシート出力: ${cellPosition}セル -> ${result.response.substring(0, 100)}...`);
+          
+          try {
+            // スプレッドシート書き込みを同期で実行（awaitで完了を待つ）
+            await this.writeResultToSpreadsheet(task, result);
+            this.logger.log(`[StreamProcessor] 📝 スプレッドシートに書き込み完了: ${cellPosition}セル`);
+          } catch (error) {
+            this.logger.error(`[StreamProcessor] ❌ 結果の保存エラー`, error);
+            // エラーが発生してもタスク処理は継続
+          }
+        }
+      }
+      // レポートタスクの場合
+      else if (result.reportUrl && task.taskType === "report") {
+        if (this.outputTarget === 'spreadsheet') {
+          this.logger.log(`[StreamProcessor] レポートURL書き込み: ${cellPosition}セル -> ${result.reportUrl}`);
+          
+          try {
+            // レポートURLをスプレッドシートに書き込み
+            if (globalThis.sheetsClient && this.spreadsheetData) {
+              const { spreadsheetId, gid } = this.spreadsheetData;
+              const range = `${task.column}${task.row}`;
+              await globalThis.sheetsClient.updateCell(
+                spreadsheetId,
+                range,
+                result.reportUrl,
+                gid
+              );
+              this.logger.log(`[StreamProcessor] 📝 レポートURL書き込み完了: ${cellPosition}セル`);
+              
+              // レポート記載完了もマーク
+              const cellKey = `${task.column}${task.row}`;
+              this.writtenCells.set(cellKey, true);
+            }
+          } catch (error) {
+            this.logger.error(`[StreamProcessor] ❌ レポートURL保存エラー`, error);
+            // エラーが発生してもタスク処理は継続
+          }
         }
       }
     }
@@ -707,12 +738,27 @@ class StreamProcessor {
             currentUrl = urlMap[task.aiType?.toLowerCase()] || 'N/A';
           }
           
+          // 3種類AIグループかどうか判定
+          const isGroupTask = task.multiAI && task.groupId;
+          let isLastInGroup = false;
+          
+          if (isGroupTask) {
+            // グループ内の最後のタスクかどうか判定
+            const groupTracker = this.groupCompletionTracker.get(`${task.groupId}_${task.row}`);
+            if (groupTracker) {
+              const completedCount = groupTracker.completed.size;
+              isLastInGroup = (completedCount === 2); // すでに2つ完了していれば、これが3つ目（最後）
+            }
+          }
+          
           await this.spreadsheetLogger.writeLogToSpreadsheet(task, {
             url: currentUrl,
             sheetsClient: globalThis.sheetsClient,
             spreadsheetId,
             gid,
-            isFirstTask: !this.isFirstTaskProcessed
+            isFirstTask: !this.isFirstTaskProcessed,
+            isGroupTask,
+            isLastInGroup
           });
           
           // 最初のタスク処理完了フラグを更新
@@ -840,11 +886,132 @@ class StreamProcessor {
     }
 
     try {
-      // ソース列（AI回答列）からテキストを取得
-      const answerText = await this.getSpreadsheetCellValue(
-        task.sourceColumn,
-        task.row,
-      );
+      // レポート列の直前の列を確認
+      const prevColumnIndex = this.columnToIndex(task.column) - 1;
+      const prevColumnName = this.indexToColumn(prevColumnIndex);
+      
+      // メニュー行を正しく取得（spreadsheetDataから）
+      const menuRowNumber = this.spreadsheetData?.menuRow?.index ? 
+        this.spreadsheetData.menuRow.index + 1 : 3; // デフォルトは3行目（メニュー行）
+      const prevColumnHeader = await this.getSpreadsheetCellValue(prevColumnName, menuRowNumber);
+      
+      this.logger.log(`[StreamProcessor] レポート列判定:`);
+      this.logger.log(`  - レポート列: ${task.column}`);
+      this.logger.log(`  - 直前列: ${prevColumnName}="${prevColumnHeader}"`);
+      this.logger.log(`  - メニュー行: ${menuRowNumber}行目`);
+      
+      let answerText = "";
+      let allAnswers = {};
+      
+      // シンプルな判定：直前列が「Gemini回答」なら3種類AI、それ以外は単独AI
+      const isThreeTypeAI = prevColumnHeader && prevColumnHeader.includes("Gemini回答");
+      
+      this.logger.log(`[StreamProcessor] AI種別判定: ${isThreeTypeAI ? '3種類AI' : '単独AI'}`);
+      
+      if (isThreeTypeAI) {
+        // 3種類AIの場合：ChatGPT回答、Claude回答、Gemini回答の3列を取得
+        this.logger.log(`[StreamProcessor] 3種類AIレポート：ChatGPT回答、Claude回答、Gemini回答を取得`);
+        
+        // レポート列の前の3列が ChatGPT回答、Claude回答、Gemini回答 の順番
+        const chatgptColumn = this.indexToColumn(prevColumnIndex - 2);  // 3列前 = ChatGPT回答
+        const claudeColumn = this.indexToColumn(prevColumnIndex - 1);   // 2列前 = Claude回答
+        const geminiColumn = prevColumnName;                            // 1列前 = Gemini回答
+        
+        // 各列のヘッダーを確認（検証用）
+        const chatgptHeader = await this.getSpreadsheetCellValue(chatgptColumn, menuRowNumber);
+        const claudeHeader = await this.getSpreadsheetCellValue(claudeColumn, menuRowNumber);
+        const geminiHeader = await this.getSpreadsheetCellValue(geminiColumn, menuRowNumber);
+        
+        this.logger.log(`[StreamProcessor] 3種類AI列の配置確認:`);
+        this.logger.log(`  - ${chatgptColumn}列: "${chatgptHeader}" (ChatGPT回答列)`);
+        this.logger.log(`  - ${claudeColumn}列: "${claudeHeader}" (Claude回答列)`);
+        this.logger.log(`  - ${geminiColumn}列: "${geminiHeader}" (Gemini回答列)`);
+        
+        // 各AIの回答を取得
+        const chatgptAnswer = await this.getSpreadsheetCellValue(chatgptColumn, task.row);
+        const claudeAnswer = await this.getSpreadsheetCellValue(claudeColumn, task.row);
+        const geminiAnswer = await this.getSpreadsheetCellValue(geminiColumn, task.row);
+        
+        this.logger.log(`[StreamProcessor] 取得した回答の状況:`);
+        this.logger.log(`  - ChatGPT(${chatgptColumn}${task.row}): ${chatgptAnswer ? `${chatgptAnswer.substring(0, 30)}...` : '(空)'}`);
+        this.logger.log(`  - Claude(${claudeColumn}${task.row}): ${claudeAnswer ? `${claudeAnswer.substring(0, 30)}...` : '(空)'}`);
+        this.logger.log(`  - Gemini(${geminiColumn}${task.row}): ${geminiAnswer ? `${geminiAnswer.substring(0, 30)}...` : '(空)'}`);
+        
+        // 警告：ヘッダーが想定と異なる場合
+        if (!chatgptHeader?.includes('ChatGPT') || !claudeHeader?.includes('Claude') || !geminiHeader?.includes('Gemini')) {
+          this.logger.warn(`[StreamProcessor] ⚠️ ヘッダーが想定と異なる可能性があります`);
+          this.logger.warn(`  - 期待: ChatGPT回答、Claude回答、Gemini回答`);
+          this.logger.warn(`  - 実際: ${chatgptHeader}、${claudeHeader}、${geminiHeader}`);
+        }
+        
+        // 回答を整形（。の後に改行が2回未満の場合、2回改行を追加）
+        const formatAnswer = (text) => {
+          if (!text) return "(回答なし)";
+          // 。の後に改行が0回または1回の場合、2回改行に置換
+          return text.replace(/。(?!\n\n)/g, '。\n\n');
+        };
+        
+        allAnswers = {
+          chatgpt: chatgptAnswer || "",
+          claude: claudeAnswer || "",
+          gemini: geminiAnswer || ""
+        };
+        
+        // 各AIの回答を確認（必ずChatGPT→Claude→Geminiの順番で）
+        const formattedChatGPT = formatAnswer(chatgptAnswer || allAnswers.chatgpt || "");
+        const formattedClaude = formatAnswer(claudeAnswer || allAnswers.claude || "");
+        const formattedGemini = formatAnswer(geminiAnswer || allAnswers.gemini || "");
+        
+        // デバッグ: 各AIの回答が存在するか確認
+        this.logger.log(`[StreamProcessor] レポート生成前の確認:`);
+        this.logger.log(`  - ChatGPT回答あり: ${!!chatgptAnswer} (長さ: ${chatgptAnswer?.length || 0})`);
+        this.logger.log(`  - Claude回答あり: ${!!claudeAnswer} (長さ: ${claudeAnswer?.length || 0})`);
+        this.logger.log(`  - Gemini回答あり: ${!!geminiAnswer} (長さ: ${geminiAnswer?.length || 0})`);
+        
+        // 回答が全部空の場合の警告
+        if (!chatgptAnswer && !claudeAnswer && !geminiAnswer) {
+          this.logger.warn(`[StreamProcessor] ⚠️ すべてのAI回答が空です。スプレッドシートの内容を確認してください。`);
+        }
+        
+        // レポート用に全回答を結合（必ずChatGPT→Claude→Geminiの順番で）
+        answerText = `----------------------------------------
+【ChatGPT回答】
+----------------------------------------
+${formattedChatGPT}
+
+----------------------------------------
+【Claude回答】
+----------------------------------------
+${formattedClaude}
+
+----------------------------------------
+【Gemini回答】
+----------------------------------------
+${formattedGemini}`;
+        
+        // デバッグ: 生成されたanswerTextの確認
+        this.logger.log(`[StreamProcessor] 3種類AIレポートテキスト生成完了:`);
+        this.logger.log(`  - 全体の長さ: ${answerText.length}文字`);
+        this.logger.log(`  - 最初の100文字: ${answerText.substring(0, 100)}...`);
+        this.logger.log(`  - ChatGPT部分含む: ${answerText.includes('【ChatGPT回答】')}`);
+        this.logger.log(`  - Claude部分含む: ${answerText.includes('【Claude回答】')}`);
+        this.logger.log(`  - Gemini部分含む: ${answerText.includes('【Gemini回答】')}`);
+        
+        this.logger.log(`[StreamProcessor] 3種類AI回答取得完了: ChatGPT=${!!chatgptAnswer}, Claude=${!!claudeAnswer}, Gemini=${!!geminiAnswer}`);
+      } else {
+        // 単独AIの場合：ソース列から回答を取得
+        const singleAnswer = await this.getSpreadsheetCellValue(
+          task.sourceColumn,
+          task.row,
+        );
+        
+        // 回答を整形（。の後に改行が2回未満の場合、2回改行を追加）
+        if (singleAnswer) {
+          answerText = singleAnswer.replace(/。(?!\n\n)/g, '。\n\n');
+        } else {
+          answerText = singleAnswer;
+        }
+      }
 
       if (!answerText || answerText.trim().length === 0) {
         this.logger.log(
@@ -1795,6 +1962,12 @@ class StreamProcessor {
   async closeAllWindows() {
     this.logger.log("[StreamProcessor] 全ウィンドウクローズ開始");
 
+    // レポートチェック用タイマーをクリア
+    if (this.reportCheckInterval) {
+      clearInterval(this.reportCheckInterval);
+      this.reportCheckInterval = null;
+    }
+
     const closePromises = Array.from(this.activeWindows.values()).map(
       async (windowInfo) => {
         try {
@@ -1817,6 +1990,7 @@ class StreamProcessor {
     this.currentRowByColumn.clear();
     this.completedTasks.clear();
     this.waitingColumns.clear();
+    this.pendingReportTasks.clear();
 
     this.logger.log("[StreamProcessor] 全ウィンドウクローズ完了");
   }
@@ -1941,6 +2115,288 @@ class StreamProcessor {
       };
     });
     return progress;
+  }
+
+  /**
+   * ペンディングレポートタスクをスケジュール
+   * @param {Task} task
+   */
+  schedulePendingReportTask(task) {
+    this.pendingReportTasks.add(task);
+    this.logger.log(`[StreamProcessor] レポートタスクをペンディングリストに追加: ${task.column}${task.row}`);
+    
+    // まだタイマーが動いていない場合は開始
+    if (!this.reportCheckInterval) {
+      this.startReportCheckTimer();
+    }
+  }
+
+  /**
+   * レポートチェック用タイマーを開始
+   */
+  startReportCheckTimer() {
+    // 5秒ごとにペンディングレポートをチェック
+    this.reportCheckInterval = setInterval(() => {
+      this.checkPendingReportTasks();
+    }, 5000);
+    
+    this.logger.log(`[StreamProcessor] レポートチェックタイマーを開始（5秒間隔）`);
+  }
+
+  /**
+   * ペンディングレポートタスクをチェックして実行可能なものを処理
+   */
+  async checkPendingReportTasks() {
+    if (this.pendingReportTasks.size === 0) {
+      // ペンディングタスクがなくなったらタイマー停止
+      if (this.reportCheckInterval) {
+        clearInterval(this.reportCheckInterval);
+        this.reportCheckInterval = null;
+        this.logger.log(`[StreamProcessor] レポートチェックタイマーを停止`);
+      }
+      return;
+    }
+
+    this.logger.log(`[StreamProcessor] ペンディングレポートタスクをチェック: ${this.pendingReportTasks.size}件`);
+    
+    const tasksToProcess = [];
+    
+    // 実行可能なタスクを探す
+    for (const task of this.pendingReportTasks) {
+      // 依存タスクが完了しているか確認
+      const dependencyMet = !task.dependsOn || this.completedTasks.has(task.dependsOn);
+      
+      // ソース列の記載が完了しているか確認
+      const sourceCellKey = `${task.sourceColumn}${task.row}`;
+      const sourceWritten = this.writtenCells.has(sourceCellKey);
+      
+      if (dependencyMet && sourceWritten) {
+        tasksToProcess.push(task);
+        this.pendingReportTasks.delete(task);
+      }
+    }
+    
+    // 実行可能なタスクを処理
+    for (const task of tasksToProcess) {
+      this.logger.log(`[StreamProcessor] ペンディングレポートタスクを実行: ${task.column}${task.row}`);
+      
+      try {
+        // レポートタスクを直接実行（ウィンドウなし）
+        await this.executeReportTaskDirect(task);
+      } catch (error) {
+        this.logger.error(`[StreamProcessor] ペンディングレポートタスク実行エラー: ${task.column}${task.row}`, error);
+      }
+    }
+  }
+
+  /**
+   * レポートタスクを直接実行（ペンディング処理用）
+   * @param {Task} task
+   */
+  async executeReportTaskDirect(task) {
+    try {
+      // レポート列の直前の列を確認
+      const prevColumnIndex = this.columnToIndex(task.column) - 1;
+      const prevColumnName = this.indexToColumn(prevColumnIndex);
+      
+      // メニュー行を正しく取得（spreadsheetDataから）
+      const menuRowNumber = this.spreadsheetData?.menuRow?.index ? 
+        this.spreadsheetData.menuRow.index + 1 : 3; // デフォルトは3行目（メニュー行）
+      const prevColumnHeader = await this.getSpreadsheetCellValue(prevColumnName, menuRowNumber);
+      
+      this.logger.log(`[StreamProcessor] レポート列判定:`);
+      this.logger.log(`  - レポート列: ${task.column}`);
+      this.logger.log(`  - 直前列: ${prevColumnName}="${prevColumnHeader}"`);
+      this.logger.log(`  - メニュー行: ${menuRowNumber}行目`);
+      
+      let answerText = "";
+      let allAnswers = {};
+      
+      // シンプルな判定：直前列が「Gemini回答」なら3種類AI、それ以外は単独AI
+      const isThreeTypeAI = prevColumnHeader && prevColumnHeader.includes("Gemini回答");
+      
+      this.logger.log(`[StreamProcessor] AI種別判定（ペンディング）: ${isThreeTypeAI ? '3種類AI' : '単独AI'}`);
+      
+      if (isThreeTypeAI) {
+        // 3種類AIの場合：ChatGPT回答、Claude回答、Gemini回答の3列を取得
+        this.logger.log(`[StreamProcessor] 3種類AIレポート（ペンディング）：ChatGPT回答、Claude回答、Gemini回答を取得`);
+        
+        // レポート列の前の3列が ChatGPT回答、Claude回答、Gemini回答 の順番
+        const chatgptColumn = this.indexToColumn(prevColumnIndex - 2);  // 3列前 = ChatGPT回答
+        const claudeColumn = this.indexToColumn(prevColumnIndex - 1);   // 2列前 = Claude回答
+        const geminiColumn = prevColumnName;                            // 1列前 = Gemini回答
+        
+        // 各列のヘッダーを確認（検証用）
+        const chatgptHeader = await this.getSpreadsheetCellValue(chatgptColumn, menuRowNumber);
+        const claudeHeader = await this.getSpreadsheetCellValue(claudeColumn, menuRowNumber);
+        const geminiHeader = await this.getSpreadsheetCellValue(geminiColumn, menuRowNumber);
+        
+        this.logger.log(`[StreamProcessor] 3種類AI列の配置確認（ペンディング）:`);
+        this.logger.log(`  - ${chatgptColumn}列: "${chatgptHeader}" (ChatGPT回答列)`);
+        this.logger.log(`  - ${claudeColumn}列: "${claudeHeader}" (Claude回答列)`);
+        this.logger.log(`  - ${geminiColumn}列: "${geminiHeader}" (Gemini回答列)`);
+        
+        // 各AIの回答を取得
+        const chatgptAnswer = await this.getSpreadsheetCellValue(chatgptColumn, task.row);
+        const claudeAnswer = await this.getSpreadsheetCellValue(claudeColumn, task.row);
+        const geminiAnswer = await this.getSpreadsheetCellValue(geminiColumn, task.row);
+        
+        this.logger.log(`[StreamProcessor] 取得した回答の状況（ペンディング）:`);
+        this.logger.log(`  - ChatGPT(${chatgptColumn}${task.row}): ${chatgptAnswer ? `${chatgptAnswer.substring(0, 30)}...` : '(空)'}`);
+        this.logger.log(`  - Claude(${claudeColumn}${task.row}): ${claudeAnswer ? `${claudeAnswer.substring(0, 30)}...` : '(空)'}`);
+        this.logger.log(`  - Gemini(${geminiColumn}${task.row}): ${geminiAnswer ? `${geminiAnswer.substring(0, 30)}...` : '(空)'}`);
+        
+        // 警告：ヘッダーが想定と異なる場合
+        if (!chatgptHeader?.includes('ChatGPT') || !claudeHeader?.includes('Claude') || !geminiHeader?.includes('Gemini')) {
+          this.logger.warn(`[StreamProcessor] ⚠️ ヘッダーが想定と異なる可能性があります（ペンディング）`);
+          this.logger.warn(`  - 期待: ChatGPT回答、Claude回答、Gemini回答`);
+          this.logger.warn(`  - 実際: ${chatgptHeader}、${claudeHeader}、${geminiHeader}`);
+        }
+        
+        // 回答を整形（。の後に改行が2回未満の場合、2回改行を追加）
+        const formatAnswer = (text) => {
+          if (!text) return "(回答なし)";
+          // 。の後に改行が0回または1回の場合、2回改行に置換
+          return text.replace(/。(?!\n\n)/g, '。\n\n');
+        };
+        
+        allAnswers = {
+          chatgpt: chatgptAnswer || "",
+          claude: claudeAnswer || "",
+          gemini: geminiAnswer || ""
+        };
+        
+        // 各AIの回答を確認（必ずChatGPT→Claude→Geminiの順番で）
+        const formattedChatGPT = formatAnswer(chatgptAnswer || allAnswers.chatgpt || "");
+        const formattedClaude = formatAnswer(claudeAnswer || allAnswers.claude || "");
+        const formattedGemini = formatAnswer(geminiAnswer || allAnswers.gemini || "");
+        
+        // デバッグ: 各AIの回答が存在するか確認
+        this.logger.log(`[StreamProcessor] レポート生成前の確認:`);
+        this.logger.log(`  - ChatGPT回答あり: ${!!chatgptAnswer} (長さ: ${chatgptAnswer?.length || 0})`);
+        this.logger.log(`  - Claude回答あり: ${!!claudeAnswer} (長さ: ${claudeAnswer?.length || 0})`);
+        this.logger.log(`  - Gemini回答あり: ${!!geminiAnswer} (長さ: ${geminiAnswer?.length || 0})`);
+        
+        // 回答が全部空の場合の警告
+        if (!chatgptAnswer && !claudeAnswer && !geminiAnswer) {
+          this.logger.warn(`[StreamProcessor] ⚠️ すべてのAI回答が空です。スプレッドシートの内容を確認してください。`);
+        }
+        
+        // レポート用に全回答を結合（必ずChatGPT→Claude→Geminiの順番で）
+        answerText = `----------------------------------------
+【ChatGPT回答】
+----------------------------------------
+${formattedChatGPT}
+
+----------------------------------------
+【Claude回答】
+----------------------------------------
+${formattedClaude}
+
+----------------------------------------
+【Gemini回答】
+----------------------------------------
+${formattedGemini}`;
+        
+        // デバッグ: 生成されたanswerTextの確認
+        this.logger.log(`[StreamProcessor] 3種類AIレポートテキスト生成完了:`);
+        this.logger.log(`  - 全体の長さ: ${answerText.length}文字`);
+        this.logger.log(`  - 最初の100文字: ${answerText.substring(0, 100)}...`);
+        this.logger.log(`  - ChatGPT部分含む: ${answerText.includes('【ChatGPT回答】')}`);
+        this.logger.log(`  - Claude部分含む: ${answerText.includes('【Claude回答】')}`);
+        this.logger.log(`  - Gemini部分含む: ${answerText.includes('【Gemini回答】')}`);
+        
+        this.logger.log(`[StreamProcessor] 3種類AI回答取得完了（ペンディング）: ChatGPT=${!!chatgptAnswer}, Claude=${!!claudeAnswer}, Gemini=${!!geminiAnswer}`);
+      } else {
+        // 単独AIの場合：ソース列から回答を取得
+        const singleAnswer = await this.getSpreadsheetCellValue(
+          task.sourceColumn,
+          task.row,
+        );
+        
+        // 回答を整形（。の後に改行が2回未満の場合、2回改行を追加）
+        if (singleAnswer) {
+          answerText = singleAnswer.replace(/。(?!\n\n)/g, '。\n\n');
+        } else {
+          answerText = singleAnswer;
+        }
+      }
+
+      if (!answerText || answerText.trim().length === 0) {
+        this.logger.log(
+          `[StreamProcessor] ${task.sourceColumn}${task.row}に回答がないため、レポート作成をスキップ`,
+        );
+        return;
+      }
+
+      // プロンプトも取得（レポートに含めるため）
+      const promptText = await this.getSpreadsheetCellValue(
+        task.promptColumn || task.column,
+        task.row,
+      );
+
+      // ReportManagerを使用してレポートを生成
+      let docInfo = null;
+      const ReportManagerClass = await getReportManager();
+      
+      if (ReportManagerClass) {
+        // ReportManagerが利用可能な場合
+        this.logger.log('[StreamProcessor] ReportManagerを使用してレポートを生成');
+        const reportManager = new ReportManagerClass({
+          sheetsClient: globalThis.sheetsClient,
+          docsClient: globalThis.docsClient,
+          authService: globalThis.authService,
+          logger: this.logger
+        });
+        
+        const result = await reportManager.generateReportForRow({
+          spreadsheetId: this.spreadsheetData.spreadsheetId,
+          gid: this.spreadsheetData.gid,
+          rowNumber: task.row,
+          promptText: promptText,
+          answerText: answerText,
+          reportColumn: task.column
+        });
+        
+        if (result.success) {
+          docInfo = { url: result.url, documentId: result.documentId };
+        }
+      } else {
+        // フォールバック: 直接DocsClientを使用
+        this.logger.log('[StreamProcessor] フォールバック: DocsClientを直接使用');
+        docInfo = await this.createGoogleDocumentForReport(
+          task,
+          promptText,
+          answerText,
+        );
+      }
+
+      if (docInfo && docInfo.url) {
+        this.logger.log(
+          `[StreamProcessor] ペンディングレポート作成完了: ${docInfo.url}`,
+        );
+        
+        // レポートURLをスプレッドシートに記載
+        if (globalThis.sheetsClient && this.spreadsheetData) {
+          const { spreadsheetId, gid } = this.spreadsheetData;
+          const range = `${task.column}${task.row}`;
+          await globalThis.sheetsClient.updateCell(
+            spreadsheetId,
+            range,
+            docInfo.url,
+            gid
+          );
+          this.logger.log(`[StreamProcessor] レポートURLを記載: ${range}`);
+        }
+      } else {
+        throw new Error("ドキュメント作成に失敗しました");
+      }
+    } catch (error) {
+      this.logger.error(
+        `[StreamProcessor] レポートタスク直接実行エラー: ${task.column}${task.row}`,
+        error,
+      );
+    }
   }
 }
 

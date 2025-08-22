@@ -15,6 +15,8 @@ export class SpreadsheetLogger {
   constructor(logger = console) {
     this.logger = logger;
     this.sendTimestamps = new Map(); // key: taskId, value: { time: Date, aiType: string, model: string }
+    this.pendingLogs = new Map(); // key: row, value: array of log entries
+    this.writingInProgress = new Set(); // Set of cells currently being written
   }
 
   /**
@@ -55,6 +57,7 @@ export class SpreadsheetLogger {
   formatLogEntry(task, url, sendTime, writeTime) {
     const aiType = task.aiType || 'Unknown';
     const model = task.model || '不明';
+    const functionName = task.function || task.specialOperation || '指定なし';
     
     // 経過時間を計算（秒単位）
     const elapsedMs = writeTime.getTime() - sendTime.getTime();
@@ -82,10 +85,11 @@ export class SpreadsheetLogger {
     // AI名を日本語表記に
     const aiDisplayName = this.getAIDisplayName(aiType);
     
-    // ログフォーマット（スプレッドシートエラー回避のため「=」を除去）
+    // 常にテキスト形式で返す（CONCATENATE関数を使わない）
     const logEntry = [
       `---------- ${aiDisplayName} ----------`,
       `モデル: ${model}`,
+      `機能: ${functionName}`,
       `URL: ${url || 'URLが取得できませんでした'}`,
       `送信時刻: ${sendTimeStr}`,
       `記載時刻: ${writeTimeStr} (${elapsedSeconds}秒後)`
@@ -182,6 +186,8 @@ export class SpreadsheetLogger {
    * @param {string} options.spreadsheetId - スプレッドシートID
    * @param {string} options.gid - シートGID
    * @param {boolean} options.isFirstTask - 最初のタスクかどうか
+   * @param {boolean} options.isGroupTask - 3種類AIグループタスクかどうか
+   * @param {boolean} options.isLastInGroup - グループ最後のタスクかどうか
    * @returns {Promise<void>}
    */
   async writeLogToSpreadsheet(task, options = {}) {
@@ -234,13 +240,51 @@ export class SpreadsheetLogger {
         writeTime
       );
       
-      // 最初のタスクの場合はログをクリア、それ以降は追加
+      // 3種類AIグループタスクの場合、ログを一時保存（AIタイプとURLも保存）
+      if (options.isGroupTask && !options.isLastInGroup) {
+        const rowKey = `${task.row}`;
+        if (!this.pendingLogs.has(rowKey)) {
+          this.pendingLogs.set(rowKey, []);
+        }
+        // オブジェクト形式で保存（AIタイプ、内容、URL）
+        this.pendingLogs.get(rowKey).push({
+          aiType: sendTimeInfo.aiType,
+          content: newLog,
+          url: url || window.location.href
+        });
+        console.log(`📦 [SpreadsheetLogger] グループログを一時保存: ${logCell} (AI: ${sendTimeInfo.aiType})`);
+        
+        // 送信時刻をクリア（メモリ節約）
+        this.sendTimestamps.delete(task.id);
+        return;
+      }
+      
+      // グループ最後のタスクの場合、一時保存したログをまとめる
       let mergedLog = newLog;
       
-      if (options.isFirstTask) {
-        // 最初のタスクの場合はログをクリアして新規作成
-        console.log(`🔄 [SpreadsheetLogger] 最初のタスクのためログをクリア: ${logCell}`);
-        mergedLog = newLog;
+      if (options.isLastInGroup) {
+        const rowKey = `${task.row}`;
+        const pendingLogsForRow = this.pendingLogs.get(rowKey) || [];
+        
+        // 現在のログもオブジェクト形式で追加
+        pendingLogsForRow.push({
+          aiType: sendTimeInfo.aiType,
+          content: newLog,
+          url: url || window.location.href
+        });
+        
+        // すべてのログを結合（ChatGPT→Claude→Geminiの順番で）
+        mergedLog = this.combineGroupLogs(pendingLogsForRow);
+        console.log(`📦 [SpreadsheetLogger] グループログを結合: ${pendingLogsForRow.length}件 (${logCell})`);
+        
+        // 一時保存をクリア
+        this.pendingLogs.delete(rowKey);
+      }
+      
+      if (options.isFirstTask || (options.isGroupTask && options.isLastInGroup)) {
+        // 最初のタスクまたはグループ最後のタスクの場合はログをクリアして新規作成
+        console.log(`🔄 [SpreadsheetLogger] ログをクリアして新規作成: ${logCell}`);
+        // mergedLogはそのまま使用（既に設定済み）
       } else {
         // 2回目以降は既存ログに追加
         let existingLog = '';
@@ -264,6 +308,12 @@ export class SpreadsheetLogger {
         
         // 既存ログに追加（上書きではなく追加）
         if (existingLog && existingLog.trim() !== '') {
+          // 同じAIのログが既に存在するかチェック
+          const aiDisplayName = this.getAIDisplayName(sendTimeInfo.aiType);
+          if (existingLog.includes(`---------- ${aiDisplayName} ----------`)) {
+            console.log(`⚠️ [SpreadsheetLogger] 同じAIのログが既存、スキップ (AI: ${sendTimeInfo.aiType})`);
+            return; // 同じAIのログが既にある場合はスキップ
+          }
           mergedLog = `${existingLog}\n\n${newLog}`;
           console.log(`➕ [SpreadsheetLogger] 既存ログに追加 (AI: ${sendTimeInfo.aiType})`);
         } else {
@@ -272,7 +322,7 @@ export class SpreadsheetLogger {
         }
       }
       
-      // スプレッドシートに書き込み
+      // スプレッドシートに書き込み（リッチテキスト対応）
       console.log(`💾 [SpreadsheetLogger] スプレッドシート書き込み実行:`, {
         spreadsheetId,
         logCell,
@@ -280,12 +330,27 @@ export class SpreadsheetLogger {
         logLength: mergedLog.length
       });
       
-      await sheetsClient.updateCell(
-        spreadsheetId,
-        logCell,
-        mergedLog,
-        gid
-      );
+      // リッチテキストデータを構築
+      const richTextData = this.parseLogToRichText(mergedLog);
+      
+      // リッチテキストメソッドが利用可能な場合は使用、そうでなければ通常の更新
+      if (sheetsClient.updateCellWithRichText && richTextData.some(item => item.url)) {
+        console.log(`🔗 [SpreadsheetLogger] リッチテキスト形式で書き込み（リンク付き）`);
+        await sheetsClient.updateCellWithRichText(
+          spreadsheetId,
+          logCell,
+          richTextData,
+          gid
+        );
+      } else {
+        // 通常のテキストとして書き込み
+        await sheetsClient.updateCell(
+          spreadsheetId,
+          logCell,
+          mergedLog,
+          gid
+        );
+      }
       
       console.log(`✅ [SpreadsheetLogger] ログ書き込み完了: ${logCell}`);
       this.logger.log(`[SpreadsheetLogger] ログを書き込み: ${logCell}`);
@@ -359,6 +424,139 @@ export class SpreadsheetLogger {
     this.logger.log('[SpreadsheetLogger] タイムスタンプをクリアしました');
   }
 
+  /**
+   * ログテキストをリッチテキストデータに変換
+   * @param {string} logText - ログテキスト
+   * @returns {Array<Object>} リッチテキストデータの配列
+   */
+  parseLogToRichText(logText) {
+    const richTextData = [];
+    const lines = logText.split('\n');
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      
+      // URL行を検出（"URL: "で始まる行）
+      if (line.startsWith('URL: ')) {
+        // "URL: "部分を追加
+        richTextData.push({ text: 'URL: ' });
+        
+        // URL部分を抽出
+        const urlPart = line.substring(5); // "URL: "の後の部分
+        const urlMatch = urlPart.match(/^(https?:\/\/[^\s]+)/);
+        
+        if (urlMatch) {
+          // URLをリンクとして追加
+          richTextData.push({
+            text: urlMatch[1],
+            url: urlMatch[1]
+          });
+          
+          // URL以降の残りのテキストがあれば追加
+          const remaining = urlPart.substring(urlMatch[1].length);
+          if (remaining) {
+            richTextData.push({ text: remaining });
+          }
+        } else {
+          // URLが見つからない場合は通常テキストとして追加
+          richTextData.push({ text: urlPart });
+        }
+      } else {
+        // 通常の行はそのまま追加
+        richTextData.push({ text: line });
+      }
+      
+      // 改行を追加（最後の行以外）
+      if (i < lines.length - 1) {
+        richTextData.push({ text: '\n' });
+      }
+    }
+    
+    return richTextData;
+  }
+
+  /**
+   * グループログを結合
+   * @param {Array<Object|string>} logs - ログの配列（オブジェクトまたは文字列）
+   * @returns {string} 結合されたログ
+   */
+  combineGroupLogs(logs) {
+    // オブジェクト形式と文字列形式の両方に対応
+    const normalizedLogs = logs.map(log => {
+      if (typeof log === 'object' && log.content) {
+        return {
+          aiType: log.aiType,
+          content: log.content,
+          url: log.url
+        };
+      } else if (typeof log === 'string') {
+        // 文字列から AIタイプを推測
+        let aiType = 'unknown';
+        if (log.includes('---------- ChatGPT ----------')) {
+          aiType = 'chatgpt';
+        } else if (log.includes('---------- Claude ----------')) {
+          aiType = 'claude';
+        } else if (log.includes('---------- Gemini ----------')) {
+          aiType = 'gemini';
+        }
+        return {
+          aiType: aiType,
+          content: log,
+          url: null
+        };
+      }
+      return null;
+    }).filter(log => log !== null);
+    
+    // AIタイプの順番を定義（ChatGPT → Claude → Gemini）
+    const aiOrder = {
+      'chatgpt': 1,
+      'claude': 2,
+      'gemini': 3,
+      'unknown': 4
+    };
+    
+    // 順番でソート
+    normalizedLogs.sort((a, b) => {
+      const orderA = aiOrder[a.aiType.toLowerCase()] || 999;
+      const orderB = aiOrder[b.aiType.toLowerCase()] || 999;
+      return orderA - orderB;
+    });
+    
+    console.log(`📊 [SpreadsheetLogger] ログ順番ソート結果:`, 
+      normalizedLogs.map(log => log.aiType));
+    
+    // contentのみを取り出して結合
+    const sortedContents = normalizedLogs.map(log => log.content);
+    
+    // テキスト形式で結合
+    return sortedContents.join('\n\n');
+  }
+  
+  /**
+   * 数式ログを統合（非推奨 - テキスト形式を使用）
+   * @param {Array<string>} formulaLogs - 数式ログの配列
+   * @returns {string} 統合されたテキスト
+   * @deprecated CONCATENATE関数は使用せず、テキスト形式で返す
+   */
+  mergeFormulaLogs(formulaLogs) {
+    // CONCATENATE関数は使わず、テキスト形式に変換して結合
+    const textLogs = formulaLogs.map(formula => {
+      // 数式からテキスト部分を抽出（簡易的な処理）
+      const text = formula
+        .replace(/^=CONCATENATE\(/, '')
+        .replace(/\)$/, '')
+        .replace(/CHAR\(10\)/g, '\n')
+        .replace(/HYPERLINK\([^,]+,\s*"([^"]+)"\)/g, '$1')
+        .replace(/",\s*"/g, '')
+        .replace(/^"|"$/g, '');
+      return text;
+    });
+    
+    // ChatGPT → Claude → Gemini の順番で並び替え
+    return this.combineGroupLogs(textLogs);
+  }
+  
   /**
    * 統計情報を取得
    * @returns {Object} 統計情報

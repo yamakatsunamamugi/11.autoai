@@ -38,7 +38,7 @@ export class SpreadsheetColumnRemover {
       // 2. スプレッドシートデータを取得
       await this.loadSpreadsheetData();
 
-      // 3. メニュー行と使うAI行を検索
+      // 3. メニュー行とAI行を検索
       await this.findKeyRows();
 
       // 4. 削除対象の列を特定して削除
@@ -121,7 +121,7 @@ export class SpreadsheetColumnRemover {
   }
 
   /**
-   * メニュー行と使うAI行を検索
+   * メニュー行とAI行を検索
    */
   async findKeyRows() {
     for (let i = 0; i < this.sheetData.length; i++) {

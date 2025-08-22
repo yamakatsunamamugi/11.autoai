@@ -130,7 +130,7 @@ export class AITaskHandler {
       
       return {
         success: true,
-        response: sendResult.response || "回答取得完了",
+        response: sendResult.response || "[Request interrupted by user]回答テキスト取得できない　エラー",
         aiType: sendResult.aiType || 'unknown',
         taskId: taskId
       };

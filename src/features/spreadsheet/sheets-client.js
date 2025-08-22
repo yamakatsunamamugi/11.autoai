@@ -143,24 +143,14 @@ class SheetsClient {
     };
 
     // 基本的な設定定数を定義（SPREADSHEET_CONFIGがない場合のフォールバック）
-    const config =
-      typeof SPREADSHEET_CONFIG !== "undefined"
+    // SPREADSHEET_CONFIGを使用（グローバル変数またはインポート）
+    const config = typeof SPREADSHEET_CONFIG !== "undefined"
         ? SPREADSHEET_CONFIG
-        : {
-            rowIdentifiers: {
-              menuRow: { keyword: "プロンプト" },
-              controlRow: { keyword: "制御" },
-              aiRow: { keyword: "AI" },
-              modelRow: { keyword: "モデル" },
-              taskRow: { keyword: "機能" },
-            },
-            columnTypes: {
-              prompt: { keyword: "プロンプト", type: "prompt", aiType: null },
-              claude: { keyword: "Claude", type: "ai", aiType: "claude" },
-              gemini: { keyword: "Gemini", type: "ai", aiType: "gemini" },
-              chatgpt: { keyword: "ChatGPT", type: "ai", aiType: "chatgpt" },
-            },
-          };
+        : null;
+        
+    if (!config) {
+      throw new Error("SPREADSHEET_CONFIG が見つかりません。config.js を読み込んでください。");
+    }
 
     // 各行を解析
     for (let i = 0; i < rawData.length; i++) {
@@ -420,6 +410,96 @@ class SheetsClient {
   }
 
   /**
+   * リッチテキストでセルを更新（リンクを含むテキスト）
+   * @param {string} spreadsheetId - スプレッドシートID
+   * @param {string} range - 更新する範囲（例: "B5"）
+   * @param {Array<Object>} richTextData - リッチテキストデータの配列
+   *   [{text: "通常テキスト"}, {text: "リンクテキスト", url: "https://example.com"}, ...]
+   * @param {string} gid - シートのgid（オプション）
+   * @returns {Promise<Object>} 更新結果
+   */
+  async updateCellWithRichText(spreadsheetId, range, richTextData, gid = null) {
+    const token = await globalThis.authService.getAuthToken();
+    
+    // 範囲をA1記法からインデックスに変換
+    const cellMatch = range.match(/^([A-Z]+)(\d+)$/);
+    if (!cellMatch) {
+      throw new Error(`Invalid range format: ${range}`);
+    }
+    
+    const columnLetters = cellMatch[1];
+    const rowNumber = parseInt(cellMatch[2]);
+    
+    // 列文字をインデックスに変換（A=0, B=1, ...）
+    let columnIndex = 0;
+    for (let i = 0; i < columnLetters.length; i++) {
+      columnIndex = columnIndex * 26 + (columnLetters.charCodeAt(i) - 65);
+    }
+    
+    // 全体のテキストを構築
+    let fullText = '';
+    const textFormatRuns = [];
+    
+    richTextData.forEach(item => {
+      const startIndex = fullText.length;
+      fullText += item.text || '';
+      
+      // URLがある場合はリンクとして追加
+      if (item.url) {
+        textFormatRuns.push({
+          startIndex: startIndex,
+          format: {
+            link: { uri: item.url }
+          }
+        });
+        // リンクの終了位置を指定
+        textFormatRuns.push({
+          startIndex: fullText.length
+        });
+      }
+    });
+    
+    // batchUpdate用のリクエスト
+    const requests = [{
+      updateCells: {
+        rows: [{
+          values: [{
+            userEnteredValue: { 
+              stringValue: fullText 
+            },
+            textFormatRuns: textFormatRuns.length > 0 ? textFormatRuns : undefined
+          }]
+        }],
+        range: {
+          sheetId: gid ? parseInt(gid) : 0,
+          startRowIndex: rowNumber - 1,  // 0-indexed
+          endRowIndex: rowNumber,
+          startColumnIndex: columnIndex,
+          endColumnIndex: columnIndex + 1
+        },
+        fields: "userEnteredValue,textFormatRuns"
+      }
+    }];
+    
+    const batchUpdateUrl = `${this.baseUrl}/${spreadsheetId}:batchUpdate`;
+    const response = await fetch(batchUpdateUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ requests }),
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(`Sheets API batchUpdate error: ${error.error.message}`);
+    }
+    
+    return await response.json();
+  }
+
+  /**
    * スプレッドシートのログをクリア
    * 
    * 【概要】
@@ -557,13 +637,27 @@ class SheetsClient {
       const updates = [];
       let deletedCount = 0;
       
-      // columnMappingから回答列を特定
+      // 削除対象の列を特定
+      // 対象: 「回答」「ChatGPT回答」「Claude回答」「Gemini回答」の4つの列
       const answerColumns = [];
-      for (const [colIndex, mapping] of Object.entries(sheetData.columnMapping)) {
-        if (mapping.type === "answer") {
-          const columnIndex = parseInt(colIndex);
-          answerColumns.push(columnIndex);
-          this.logger.log("SheetsClient", `回答列検出: ${this.getColumnName(columnIndex)}列 (${mapping.keyword})`);
+      
+      // メニュー行から削除対象の列を検索
+      if (sheetData.menuRow && sheetData.menuRow.data) {
+        // 削除対象の列名を定義（完全一致で検索）
+        const targetColumns = ["回答", "ChatGPT回答", "Claude回答", "Gemini回答"];
+        
+        for (let j = 0; j < sheetData.menuRow.data.length; j++) {
+          const cellValue = sheetData.menuRow.data[j];
+          
+          // 削除対象の列名と完全一致するかチェック
+          if (targetColumns.includes(cellValue)) {
+            answerColumns.push(j);
+            this.logger.log("SheetsClient", `削除対象列検出: ${this.getColumnName(j)}列 (${cellValue})`);
+          }
+        }
+        
+        if (answerColumns.length === 0) {
+          this.logger.warn("SheetsClient", "削除対象の列（回答、ChatGPT回答、Claude回答、Gemini回答）が見つかりません");
         }
       }
       
