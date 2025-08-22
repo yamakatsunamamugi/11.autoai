@@ -1278,11 +1278,22 @@ ${formattedGemini}`;
     this.windowPositions.delete(windowInfo.position);
     this.columnWindows.delete(column);
     
+    // 1種類AIの場合、次のバッチを開始
+    const tasks = this.taskQueue.get(column);
+    const currentIndex = this.currentRowByColumn.get(column) || 0;
+    
+    if (tasks && currentIndex < tasks.length) {
+      const nextTask = tasks[currentIndex];
+      if (!nextTask.multiAI) {
+        // 1種類AIの次のバッチを開始
+        this.logger.log(`[StreamProcessor] 📋 1種類AI次のバッチ開始: ${column}列の行${nextTask.row}から`);
+        await this.startColumnProcessing(column);
+        return;
+      }
+    }
+    
     // 待機中の列があればそれを再開する
     this.checkAndStartWaitingColumns();
-    
-    // 注意: 次のタスクの開始はonTaskCompletedで既に行われているため、ここでは行わない
-    // checkAndStartNextTaskの呼び出しを削除（重複処理を避ける）
   }
 
   /**
@@ -1479,15 +1490,11 @@ ${formattedGemini}`;
   }
 
   /**
-   * 記載完了後、次の列の同じ行を開始できるかチェック
+   * 記載完了後、次のタスクを開始できるかチェック
    * 
-   * ■ 3種類AI完了待機機能の核心部分
-   * このメソッドは、タスクがスプレッドシートに記載された後に呼ばれ、
-   * 次の列の処理を開始するかどうかを判定します。
-   * 
-   * 【重要】3種類AI（ChatGPT・Claude・Gemini）の場合：
-   * - 3つすべての回答が記載完了するまで、次の列の開始をブロック
-   * - これにより、3種類の結果が揃ってから次の処理に進むことを保証
+   * ■ 処理パターン
+   * 1. 3種類AI並列処理: 同じ行を3つのウィンドウで並列処理（F9,G9,H9 → F10,G10,H10）
+   * 2. 1種類AI連続処理: 同じ列で3行ずつ連続処理（F9,F10,F11 → F12,F13,F14）
    * 
    * @param {string} column - 記載が完了した列（例: "F", "G", "H"）
    * @param {number} row - 記載が完了した行（例: 9）
@@ -1498,28 +1505,13 @@ ${formattedGemini}`;
     const currentColumnTasks = this.taskQueue.get(column);
     const currentTask = currentColumnTasks?.find(t => t.row === row);
     
-    // ======= STEP 2: 3種類AIグループの完了待機チェック =======
-    // multiAI=true かつ groupIdがある場合、3種類AIグループの一部
+    // ======= STEP 2: 3種類AI並列処理の場合 =======
+    // 3種類AIは同じ行を並列で処理（横方向）
     if (currentTask?.multiAI && currentTask?.groupId) {
-      /*
-       * 【3種類AI完了待機の仕組み】
-       * 
-       * 1. getGroupAnswerColumns()で同じグループの全回答列を取得
-       *    例: groupId="group_row9_3type_3" → ["F", "G", "H"]
-       * 
-       * 2. writtenCells Mapを使って、全列が記載済みかチェック
-       *    - writtenCells.has("F9") → ChatGPT記載済み？
-       *    - writtenCells.has("G9") → Claude記載済み？
-       *    - writtenCells.has("H9") → Gemini記載済み？
-       * 
-       * 3. 1つでも未記載があれば、次列の開始をブロック
-       *    これにより3種類すべての結果が揃うまで待機
-       */
-      
       // 同じグループIDを持つ全タスクの列を取得（例: F,G,H列）
       const answerColumns = this.getGroupAnswerColumns(currentTask.groupId, row);
       
-      // 全列が記載完了しているかチェック（記載完了ベースの判定）
+      // 全列が記載完了しているかチェック
       const allWritten = answerColumns.every(col => 
         this.writtenCells.has(`${col}${row}`)
       );
@@ -1527,23 +1519,54 @@ ${formattedGemini}`;
       if (!allWritten) {
         // まだ記載されていない列がある場合
         const writtenColumns = answerColumns.filter(col => this.writtenCells.has(`${col}${row}`));
-        this.logger.log(`[StreamProcessor] 3種類AI記載未完了: ${writtenColumns.length}/${answerColumns.length}列完了 (${column}${row})`);
-        return; // ★ ここで次列開始をブロック ★
+        this.logger.log(`[StreamProcessor] 3種類AI並列処理中: ${writtenColumns.length}/${answerColumns.length}列完了 (行${row})`);
+        return;
       }
       
-      // 全列記載完了の場合のみ、次の処理へ進む
-      this.logger.log(`[StreamProcessor] 3種類AI全列記載完了確認: ${column}${row}`);
+      // 全列記載完了の場合、次の行に進む
+      this.logger.log(`[StreamProcessor] 🎯 3種類AI行${row}完了 → 次の行へ`);
       
-      // グループが完了したらactiveThreeTypeGroupIdをクリアして次のグループを開始
+      // グループが完了したら次の行の3種類AIグループを開始
       if (this.activeThreeTypeGroupId === currentTask.groupId) {
-        this.logger.log(`[StreamProcessor] 🎯 3種類AIグループ ${currentTask.groupId} 完了！`);
-        this.logger.log(`[StreamProcessor] activeThreeTypeGroupIdをクリア: ${this.activeThreeTypeGroupId} -> null`);
         this.activeThreeTypeGroupId = null;
         
-        // 次の3種類AIグループがあるか確認して開始
-        this.logger.log(`[StreamProcessor] 次の3種類AIグループを探索開始...`);
-        await this.checkAndStartNextThreeTypeGroup();
+        // 次の行の3種類AIグループを探して開始
+        await this.startNextThreeTypeRow(answerColumns, row + 1);
       }
+      return;
+    }
+    
+    // ======= STEP 3: 1種類AI連続処理の場合 =======
+    // 1種類AIは同じ列で3行ずつ処理（縦方向）
+    if (!currentTask?.multiAI) {
+      // 現在の列のタスクリストを取得
+      const columnTasks = this.taskQueue.get(column);
+      const currentIndex = this.currentRowByColumn.get(column) || 0;
+      
+      // 次のタスクがあるかチェック
+      if (columnTasks && currentIndex < columnTasks.length) {
+        const nextTask = columnTasks[currentIndex];
+        
+        // 3行単位のバッチで処理しているか判定
+        const batchStart = Math.floor((nextTask.row - 9) / 3) * 3 + 9;
+        const batchEnd = batchStart + 2;
+        
+        // 現在のバッチ内にまだ未処理タスクがある場合
+        if (nextTask.row <= batchEnd) {
+          this.logger.log(`[StreamProcessor] 📋 1種類AI連続処理: ${column}列の行${nextTask.row}を開始`);
+          
+          // 同じウィンドウで次のタスクを処理
+          const windowId = this.columnWindows.get(column);
+          if (windowId) {
+            await this.processNextTask(column, windowId);
+          }
+          return;
+        }
+      }
+      
+      // バッチ完了後、ウィンドウを閉じて次のバッチへ
+      this.logger.log(`[StreamProcessor] ${column}列の3行バッチ完了`);
+      await this.closeColumnWindow(column);
     }
     
     const nextColumn = this.getNextColumn(column);
@@ -1663,6 +1686,45 @@ ${formattedGemini}`;
   shouldStartNextColumn(column, row) {
     // 並列ストリーミングでは checkAndStartNextColumnForRow を使用
     return false;
+  }
+
+  /**
+   * 次の行の3種類AIグループを開始
+   * @param {Array<string>} columns - 処理する列（例: ["F", "G", "H"]）
+   * @param {number} nextRow - 次の行番号
+   */
+  async startNextThreeTypeRow(columns, nextRow) {
+    this.logger.log(`[StreamProcessor] 3種類AI次の行チェック: 行${nextRow}`);
+    
+    // 各列で次の行のタスクがあるか確認
+    const tasksToStart = [];
+    for (const column of columns) {
+      const tasks = this.taskQueue.get(column);
+      const currentIndex = this.currentRowByColumn.get(column) || 0;
+      
+      if (tasks && currentIndex < tasks.length) {
+        const nextTask = tasks[currentIndex];
+        if (nextTask.row === nextRow && nextTask.multiAI) {
+          tasksToStart.push({ column, task: nextTask });
+        }
+      }
+    }
+    
+    // 3つの列すべてに次の行のタスクがある場合のみ開始
+    if (tasksToStart.length === columns.length) {
+      this.logger.log(`[StreamProcessor] 🚀 3種類AI行${nextRow}を並列開始`);
+      
+      // グループIDを設定
+      const groupId = tasksToStart[0].task.groupId;
+      this.activeThreeTypeGroupId = groupId;
+      
+      // 3つのウィンドウを同時に開始
+      for (const { column } of tasksToStart) {
+        await this.startColumnProcessing(column);
+      }
+    } else {
+      this.logger.log(`[StreamProcessor] 行${nextRow}は3種類AIタスクが揃っていません`);
+    }
   }
 
   /**
