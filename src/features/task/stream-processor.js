@@ -775,17 +775,20 @@ class StreamProcessor {
                 if (completedTask._windowCloseInfo) {
                   const { column: closeColumn, windowId: closeWindowId, hasMoreTasks: closeHasMoreTasks } = completedTask._windowCloseInfo;
                   
-                  this.logger.log(`[StreamProcessor] 🚪 ウィンドウを閉じます: ${closeColumn}列, windowId: ${closeWindowId}`);
+                  this.logger.log(`[StreamProcessor] 🚪 ウィンドウクローズコールバック実行: ${closeColumn}列, windowId: ${closeWindowId}`);
                   
                   // タスクが完了しているかチェック
                   const hasMoreTasksInColumn = closeHasMoreTasks;
+                  this.logger.log(`[StreamProcessor] hasMoreTasks: ${hasMoreTasksInColumn}, closeColumn: ${closeColumn}`);
                   
                   if (!hasMoreTasksInColumn) {
                     // この列のタスクが全て完了した場合のみウィンドウを閉じる
+                    this.logger.log(`[StreamProcessor] ウィンドウクローズ実行開始: ${closeColumn}列`);
                     await this.closeColumnWindow(closeColumn);
                     this.logger.log(`[StreamProcessor] ✅ ウィンドウクローズ完了: ${closeColumn}列（全タスク完了）`);
                     
                     // ウィンドウが空いたので、利用可能な全ての列をチェックして開始
+                    this.logger.log(`[StreamProcessor] 次の列をチェック中...`);
                     this.checkAndStartAvailableColumns().catch(checkError => {
                       this.logger.error(`[StreamProcessor] 利用可能列チェックエラー`, checkError);
                     });
@@ -1481,13 +1484,15 @@ ${formattedGemini}`;
       // 全列記載完了の場合のみ、次の処理へ進む
       this.logger.log(`[StreamProcessor] 3種類AI全列記載完了確認: ${column}${row}`);
       
-      // グループが完了したらactiveThreeTypeGroupIdをクリア
+      // グループが完了したらactiveThreeTypeGroupIdをクリアして次のグループを開始
       if (this.activeThreeTypeGroupId === currentTask.groupId) {
-        this.logger.log(`[StreamProcessor] 🎯 3種類AIグループ ${currentTask.groupId} 完了！activeThreeTypeGroupIdをクリア`);
+        this.logger.log(`[StreamProcessor] 🎯 3種類AIグループ ${currentTask.groupId} 完了！`);
+        this.logger.log(`[StreamProcessor] activeThreeTypeGroupIdをクリア: ${this.activeThreeTypeGroupId} -> null`);
         this.activeThreeTypeGroupId = null;
         
         // 次の3種類AIグループがあるか確認して開始
-        this.checkAndStartNextThreeTypeGroup();
+        this.logger.log(`[StreamProcessor] 次の3種類AIグループを探索開始...`);
+        await this.checkAndStartNextThreeTypeGroup();
       }
     }
     
@@ -1782,7 +1787,8 @@ ${formattedGemini}`;
         
         if (allGroupTasksComplete && this.activeThreeTypeGroupId === task.groupId) {
           this.logger.log(`[StreamProcessor] 3種類AIグループ完了: ${task.groupId}`);
-          this.activeThreeTypeGroupId = null; // アクティブグループをクリア
+          // activeThreeTypeGroupIdは checkAndStartNextColumnForRow でクリアする
+          // this.activeThreeTypeGroupId = null; // ここではクリアしない
         }
       }
     }
