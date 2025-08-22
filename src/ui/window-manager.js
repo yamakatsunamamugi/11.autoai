@@ -489,5 +489,3 @@ window.WindowManager = WindowManager;
 document.addEventListener('DOMContentLoaded', () => {
   window.windowManager = new WindowManager();
 });
-
-export default WindowManager;
