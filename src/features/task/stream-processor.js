@@ -609,8 +609,8 @@ class StreamProcessor {
   async processAllTasks() {
     this.logger.log('[StreamProcessor] 全タスク処理開始');
     
-    // 拡張機能ウィンドウを右下に移動
-    await this.moveExtensionWindowToBottomRight();
+    // ウィンドウ設定に基づいて拡張機能とスプレッドシートを配置
+    await this.setupWindowsBasedOnSettings();
     
     // タスクを3種類AIと通常処理に分類
     const threeTypeGroups = new Map(); // groupId → tasks[]
@@ -3309,11 +3309,37 @@ ${formattedGemini}`;
   }
 
   /**
-   * 拡張機能ウィンドウを右下に移動
+   * ウィンドウ設定に基づいて拡張機能とスプレッドシートを配置
    */
-  async moveExtensionWindowToBottomRight() {
+  async setupWindowsBasedOnSettings() {
     try {
-      // 保存されたウィンドウIDを取得
+      // ウィンドウ設定を取得
+      const result = await chrome.storage.local.get(['windowSettings']);
+      const settings = result.windowSettings || {
+        extensionWindowNumber: 4,  // デフォルト: 右下
+        spreadsheetWindowNumber: 5  // デフォルト: 左上にオフセット
+      };
+
+      this.logger.log('[StreamProcessor] ウィンドウ設定:', settings);
+
+      // 拡張機能ウィンドウを指定番号に移動
+      await this.moveExtensionToWindowNumber(settings.extensionWindowNumber);
+
+      // スプレッドシートウィンドウを開く（設定されている場合）
+      await this.openSpreadsheetInWindowNumber(settings.spreadsheetWindowNumber);
+
+    } catch (error) {
+      this.logger.error('[StreamProcessor] ウィンドウ設定エラー', error);
+      // フォールバック: 従来の右下移動を実行
+      await this.moveExtensionWindowToBottomRight();
+    }
+  }
+
+  /**
+   * 拡張機能ウィンドウを指定番号に移動
+   */
+  async moveExtensionToWindowNumber(windowNumber) {
+    try {
       const result = await chrome.storage.local.get(['extensionWindowId']);
       const windowId = result.extensionWindowId;
       
@@ -3332,22 +3358,101 @@ ${formattedGemini}`;
 
       // 画面情報を取得
       const screenInfo = await this.getScreenInfo();
-      const halfWidth = Math.floor(screenInfo.width / 2);
-      const halfHeight = Math.floor(screenInfo.height / 2);
+      const position = this.calculateWindowPositionFromNumber(windowNumber, screenInfo);
 
-      // 右下に移動
+      // 拡張機能ウィンドウを移動
       await chrome.windows.update(windowId, {
-        left: screenInfo.left + halfWidth,
-        top: screenInfo.top + halfHeight,
-        width: halfWidth,
-        height: halfHeight,
+        ...position,
         state: "normal",
       });
 
-      this.logger.log('[StreamProcessor] 拡張機能ウィンドウを右下に移動しました');
+      this.logger.log(`[StreamProcessor] 拡張機能ウィンドウを番号${windowNumber}に移動しました`);
     } catch (error) {
       this.logger.error('[StreamProcessor] 拡張機能ウィンドウ移動エラー', error);
     }
+  }
+
+  /**
+   * スプレッドシートウィンドウを指定番号で開く
+   */
+  async openSpreadsheetInWindowNumber(windowNumber) {
+    try {
+      // スプレッドシートURLを取得
+      const spreadsheetUrl = this.getSpreadsheetUrl();
+      if (!spreadsheetUrl) {
+        this.logger.log('[StreamProcessor] スプレッドシートURLが見つかりません');
+        return;
+      }
+
+      // 画面情報を取得
+      const screenInfo = await this.getScreenInfo();
+      const position = this.calculateWindowPositionFromNumber(windowNumber, screenInfo);
+
+      // スプレッドシートウィンドウを作成
+      const window = await chrome.windows.create({
+        url: spreadsheetUrl,
+        type: 'popup',
+        ...position,
+        focused: false  // 背景で開く
+      });
+
+      this.logger.log(`[StreamProcessor] スプレッドシートをウィンドウ番号${windowNumber}で開きました (ID: ${window.id})`);
+    } catch (error) {
+      this.logger.error('[StreamProcessor] スプレッドシートウィンドウ作成エラー', error);
+    }
+  }
+
+  /**
+   * ウィンドウ番号から位置を計算
+   */
+  calculateWindowPositionFromNumber(windowNumber, screenInfo) {
+    // 4分割の基本配置 (1-4: 左上、右上、左下、右下)
+    // 5以降は少しずつずらして配置
+    const halfWidth = Math.floor(screenInfo.width / 2);
+    const halfHeight = Math.floor(screenInfo.height / 2);
+    
+    const basePositions = [
+      // 1: 左上
+      { left: screenInfo.left, top: screenInfo.top, width: halfWidth, height: halfHeight },
+      // 2: 右上
+      { left: screenInfo.left + halfWidth, top: screenInfo.top, width: halfWidth, height: halfHeight },
+      // 3: 左下
+      { left: screenInfo.left, top: screenInfo.top + halfHeight, width: halfWidth, height: halfHeight },
+      // 4: 右下
+      { left: screenInfo.left + halfWidth, top: screenInfo.top + halfHeight, width: halfWidth, height: halfHeight }
+    ];
+    
+    const baseIndex = ((windowNumber - 1) % 4);
+    const offset = Math.floor((windowNumber - 1) / 4) * 50; // 5番以降は50pxずつずらす
+    
+    const position = basePositions[baseIndex];
+    return {
+      left: position.left + offset,
+      top: position.top + offset,
+      width: position.width,
+      height: position.height
+    };
+  }
+
+  /**
+   * スプレッドシートURLを取得
+   */
+  getSpreadsheetUrl() {
+    // spreadsheetDataからURLを取得
+    if (this.spreadsheetData && this.spreadsheetData.url) {
+      return this.spreadsheetData.url;
+    }
+    
+    // フォールバック: 他の場所からURLを取得
+    // ここで必要に応じてURLの取得ロジックを追加
+    return null;
+  }
+
+  /**
+   * 拡張機能ウィンドウを右下に移動（互換性のため保持）
+   */
+  async moveExtensionWindowToBottomRight() {
+    await this.moveExtensionToWindowNumber(4); // 4番 = 右下
   }
 }
 

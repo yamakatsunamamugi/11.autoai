@@ -3851,6 +3851,298 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   }
 });
 
+// ===== ウィンドウ管理機能 =====
+
+// DOM要素を取得
+const extensionWindowNumberInput = document.getElementById('extensionWindowNumber');
+const spreadsheetWindowNumberInput = document.getElementById('spreadsheetWindowNumber');
+const openSpreadsheetBtn = document.getElementById('openSpreadsheetBtn');
+const checkWindowLocationsBtn = document.getElementById('checkWindowLocationsBtn');
+const windowLocationDialog = document.getElementById('windowLocationDialog');
+const windowLocationList = document.getElementById('windowLocationList');
+const refreshWindowLocationBtn = document.getElementById('refreshWindowLocationBtn');
+const closeWindowLocationBtn = document.getElementById('closeWindowLocationBtn');
+
+// ウィンドウ番号設定を読み込み
+async function loadWindowSettings() {
+  try {
+    const result = await chrome.storage.local.get(['windowSettings']);
+    const settings = result.windowSettings || {};
+    
+    if (settings.extensionWindowNumber) {
+      extensionWindowNumberInput.value = settings.extensionWindowNumber;
+    }
+    if (settings.spreadsheetWindowNumber) {
+      spreadsheetWindowNumberInput.value = settings.spreadsheetWindowNumber;
+    }
+  } catch (error) {
+    console.error('ウィンドウ設定読み込みエラー:', error);
+  }
+}
+
+// ウィンドウ番号設定を保存
+async function saveWindowSettings() {
+  try {
+    const settings = {
+      extensionWindowNumber: parseInt(extensionWindowNumberInput.value),
+      spreadsheetWindowNumber: parseInt(spreadsheetWindowNumberInput.value)
+    };
+    
+    await chrome.storage.local.set({ windowSettings: settings });
+    console.log('ウィンドウ設定保存完了:', settings);
+  } catch (error) {
+    console.error('ウィンドウ設定保存エラー:', error);
+  }
+}
+
+// スプレッドシートを指定番号のウィンドウで開く
+async function openSpreadsheetInWindow() {
+  try {
+    // 設定を保存
+    await saveWindowSettings();
+    
+    // スプレッドシートURLを取得
+    const urlInputs = document.querySelectorAll('.spreadsheet-url-input');
+    let url = null;
+    
+    for (const input of urlInputs) {
+      const inputUrl = input.value.trim();
+      if (inputUrl && inputUrl.includes('spreadsheets.google.com')) {
+        url = inputUrl;
+        break;
+      }
+    }
+    
+    if (!url) {
+      showFeedback('スプレッドシートURLを入力してください', 'error');
+      return;
+    }
+    
+    const windowNumber = parseInt(spreadsheetWindowNumberInput.value);
+    
+    // ウィンドウ番号に基づいて位置を計算
+    const screenInfo = await getScreenInfo();
+    const position = calculateWindowPositionFromNumber(windowNumber, screenInfo);
+    
+    // スプレッドシートウィンドウを作成
+    const window = await chrome.windows.create({
+      url: url,
+      type: 'popup',
+      ...position,
+      focused: false  // 背景で開く
+    });
+    
+    showFeedback(`スプレッドシートをウィンドウ${windowNumber}で開きました`, 'success');
+    console.log(`スプレッドシートウィンドウ作成: ID=${window.id}, 番号=${windowNumber}`);
+    
+  } catch (error) {
+    console.error('スプレッドシートウィンドウ作成エラー:', error);
+    showFeedback('スプレッドシートウィンドウの作成に失敗しました', 'error');
+  }
+}
+
+// 拡張機能ウィンドウを指定番号に移動
+async function moveExtensionToWindow() {
+  try {
+    await saveWindowSettings();
+    
+    const result = await chrome.storage.local.get(['extensionWindowId']);
+    const windowId = result.extensionWindowId;
+    
+    if (!windowId) {
+      showFeedback('拡張機能ウィンドウIDが見つかりません', 'error');
+      return;
+    }
+    
+    // ウィンドウが存在するか確認
+    try {
+      await chrome.windows.get(windowId);
+    } catch (error) {
+      showFeedback('拡張機能ウィンドウが存在しません', 'error');
+      return;
+    }
+    
+    const windowNumber = parseInt(extensionWindowNumberInput.value);
+    const screenInfo = await getScreenInfo();
+    const position = calculateWindowPositionFromNumber(windowNumber, screenInfo);
+    
+    // 拡張機能ウィンドウを移動
+    await chrome.windows.update(windowId, {
+      ...position,
+      state: 'normal'
+    });
+    
+    showFeedback(`拡張機能をウィンドウ${windowNumber}に移動しました`, 'success');
+    
+  } catch (error) {
+    console.error('拡張機能ウィンドウ移動エラー:', error);
+    showFeedback('拡張機能ウィンドウの移動に失敗しました', 'error');
+  }
+}
+
+// ウィンドウ番号から位置を計算
+function calculateWindowPositionFromNumber(windowNumber, screenInfo) {
+  // 4分割の基本配置 (1-4: 左上、右上、左下、右下)
+  // 5以降は少しずつずらして配置
+  const halfWidth = Math.floor(screenInfo.width / 2);
+  const halfHeight = Math.floor(screenInfo.height / 2);
+  
+  const basePositions = [
+    // 1: 左上
+    { left: screenInfo.left, top: screenInfo.top, width: halfWidth, height: halfHeight },
+    // 2: 右上
+    { left: screenInfo.left + halfWidth, top: screenInfo.top, width: halfWidth, height: halfHeight },
+    // 3: 左下
+    { left: screenInfo.left, top: screenInfo.top + halfHeight, width: halfWidth, height: halfHeight },
+    // 4: 右下
+    { left: screenInfo.left + halfWidth, top: screenInfo.top + halfHeight, width: halfWidth, height: halfHeight }
+  ];
+  
+  const baseIndex = ((windowNumber - 1) % 4);
+  const offset = Math.floor((windowNumber - 1) / 4) * 50; // 5番以降は50pxずつずらす
+  
+  const position = basePositions[baseIndex];
+  return {
+    left: position.left + offset,
+    top: position.top + offset,
+    width: position.width,
+    height: position.height
+  };
+}
+
+// 画面情報を取得
+async function getScreenInfo() {
+  try {
+    const displays = await chrome.system.display.getInfo();
+    const primaryDisplay = displays.find(d => d.isPrimary) || displays[0];
+    
+    return {
+      width: primaryDisplay.workArea.width,
+      height: primaryDisplay.workArea.height,
+      left: primaryDisplay.workArea.left,
+      top: primaryDisplay.workArea.top
+    };
+  } catch (error) {
+    console.error('画面情報取得エラー:', error);
+    // フォールバック
+    return {
+      width: 1920,
+      height: 1080,
+      left: 0,
+      top: 0
+    };
+  }
+}
+
+// 全ウィンドウの位置情報を取得・表示
+async function checkAllWindowLocations() {
+  try {
+    windowLocationDialog.style.display = 'block';
+    windowLocationList.innerHTML = '<div class="loading-message">ウィンドウ情報を取得中...</div>';
+    
+    const windows = await chrome.windows.getAll({ populate: true });
+    const screenInfo = await getScreenInfo();
+    
+    if (windows.length === 0) {
+      windowLocationList.innerHTML = '<div style="text-align: center; color: #666;">開いているウィンドウがありません</div>';
+      return;
+    }
+    
+    let html = '<div style="margin-bottom: 10px; font-weight: bold; color: #333;">開いているウィンドウ一覧:</div>';
+    
+    windows.forEach((window, index) => {
+      const tabs = window.tabs || [];
+      const title = tabs.length > 0 ? tabs[0].title : 'タイトル不明';
+      const url = tabs.length > 0 ? tabs[0].url : '';
+      
+      // どの領域にあるかを判定
+      const area = determineWindowArea(window, screenInfo);
+      const stateText = getWindowStateText(window.state);
+      
+      html += `
+        <div style="border: 1px solid #ddd; margin: 5px 0; padding: 8px; border-radius: 4px; background: white;">
+          <div style="font-weight: bold; color: #007bff;">ウィンドウ ${index + 1} (ID: ${window.id})</div>
+          <div style="margin: 2px 0;">タイトル: ${title.length > 50 ? title.substring(0, 50) + '...' : title}</div>
+          <div style="margin: 2px 0;">位置: (${window.left}, ${window.top}) | サイズ: ${window.width}x${window.height}</div>
+          <div style="margin: 2px 0;">状態: ${stateText} | 領域: ${area}</div>
+          ${url.includes('spreadsheets.google.com') ? '<div style="color: #28a745; font-weight: bold;">📊 スプレッドシート</div>' : ''}
+          ${url.includes('autoai') || title.includes('AutoAI') ? '<div style="color: #007bff; font-weight: bold;">🤖 拡張機能</div>' : ''}
+        </div>
+      `;
+    });
+    
+    windowLocationList.innerHTML = html;
+    
+  } catch (error) {
+    console.error('ウィンドウ位置確認エラー:', error);
+    windowLocationList.innerHTML = '<div style="color: red;">エラー: ウィンドウ情報の取得に失敗しました</div>';
+  }
+}
+
+// ウィンドウがどの領域にあるかを判定
+function determineWindowArea(window, screenInfo) {
+  const centerX = window.left + window.width / 2;
+  const centerY = window.top + window.height / 2;
+  const screenCenterX = screenInfo.left + screenInfo.width / 2;
+  const screenCenterY = screenInfo.top + screenInfo.height / 2;
+  
+  if (window.state === 'maximized') {
+    return '全画面';
+  }
+  
+  const isLeft = centerX < screenCenterX;
+  const isTop = centerY < screenCenterY;
+  
+  if (isLeft && isTop) return '左上';
+  if (!isLeft && isTop) return '右上';
+  if (isLeft && !isTop) return '左下';
+  return '右下';
+}
+
+// ウィンドウ状態のテキスト変換
+function getWindowStateText(state) {
+  const stateMap = {
+    'normal': '通常',
+    'maximized': '最大化',
+    'minimized': '最小化',
+    'fullscreen': '全画面'
+  };
+  return stateMap[state] || state;
+}
+
+// イベントリスナーを設定
+if (openSpreadsheetBtn) {
+  openSpreadsheetBtn.addEventListener('click', openSpreadsheetInWindow);
+}
+
+if (checkWindowLocationsBtn) {
+  checkWindowLocationsBtn.addEventListener('click', checkAllWindowLocations);
+}
+
+if (refreshWindowLocationBtn) {
+  refreshWindowLocationBtn.addEventListener('click', checkAllWindowLocations);
+}
+
+if (closeWindowLocationBtn) {
+  closeWindowLocationBtn.addEventListener('click', () => {
+    windowLocationDialog.style.display = 'none';
+  });
+}
+
+// ウィンドウ番号が変更されたら設定を保存
+if (extensionWindowNumberInput) {
+  extensionWindowNumberInput.addEventListener('change', saveWindowSettings);
+}
+
+if (spreadsheetWindowNumberInput) {
+  spreadsheetWindowNumberInput.addEventListener('change', saveWindowSettings);
+}
+
+// ページ読み込み時に設定を読み込み
+document.addEventListener('DOMContentLoaded', loadWindowSettings);
+
 // ===== グローバル関数公開 =====
 // 他のモジュールから使用できるように関数をwindowオブジェクトに公開
 window.injectAutomationScripts = injectAutomationScripts;
+window.openSpreadsheetInWindow = openSpreadsheetInWindow;
+window.moveExtensionToWindow = moveExtensionToWindow;
