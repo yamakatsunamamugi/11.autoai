@@ -591,6 +591,40 @@ class StreamProcessor {
     // タスクを完了済みにマーク
     this.completedTasks.add(taskId);
 
+    // 同じ列の次の行へ進むための情報を先に計算
+    const currentIndex = this.currentRowByColumn.get(column) || 0;
+    const nextIndex = currentIndex + 1;
+    this.currentRowByColumn.set(column, nextIndex);
+    
+    // タスクが残っているか確認
+    const tasks = this.taskQueue.get(column);
+    const hasMoreTasks = tasks && nextIndex < tasks.length;
+    
+    this.logger.log(`[StreamProcessor] 次のタスク確認: ${column}列`, {
+      currentIndex: currentIndex,
+      nextIndex: nextIndex,
+      totalTasks: tasks?.length || 0,
+      hasMoreTasks: hasMoreTasks,
+    });
+    
+    // ウィンドウクローズ情報を先に設定（writeResultToSpreadsheetの前に！）
+    const windowCloseInfo = {
+      column,
+      windowId,
+      hasMoreTasks
+    };
+    
+    // タスクにウィンドウクローズ情報を付与
+    task._windowCloseInfo = windowCloseInfo;
+    
+    this.logger.log(`[StreamProcessor] 📋 ウィンドウクローズを保留: ${column}列 (スプレッドシート記録完了待ち)`);
+    
+    if (hasMoreTasks) {
+      this.logger.log(`[StreamProcessor] 🔄 ${column}列の次のタスクあり`);
+    } else {
+      this.logger.log(`[StreamProcessor] 🎯 ${column}列の全タスク完了`);
+    }
+
     // 成功した場合の追加処理
     if (result.success) {
       // AIタスクの場合
@@ -640,41 +674,6 @@ class StreamProcessor {
           }
         }
       }
-    }
-
-    // 同じ列の次の行へ進む
-    const currentIndex = this.currentRowByColumn.get(column) || 0;
-    const nextIndex = currentIndex + 1;
-    this.currentRowByColumn.set(column, nextIndex);
-
-    // タスクが残っているか確認
-    const tasks = this.taskQueue.get(column);
-    const hasMoreTasks = tasks && nextIndex < tasks.length;
-
-    this.logger.log(`[StreamProcessor] 次のタスク確認: ${column}列`, {
-      currentIndex: currentIndex,
-      nextIndex: nextIndex,
-      totalTasks: tasks?.length || 0,
-      hasMoreTasks: hasMoreTasks,
-    });
-
-    // ウィンドウクローズを一時的に保留
-    // スプレッドシート記録完了後にクローズするため、ここではクローズ情報を保存
-    const windowCloseInfo = {
-      column,
-      windowId,
-      hasMoreTasks
-    };
-    
-    // タスクにウィンドウクローズ情報を付与
-    task._windowCloseInfo = windowCloseInfo;
-    
-    this.logger.log(`[StreamProcessor] 📋 ウィンドウクローズを保留: ${column}列 (スプレッドシート記録完了待ち)`);
-    
-    if (hasMoreTasks) {
-      this.logger.log(`[StreamProcessor] 🔄 ${column}列の次のタスクあり`);
-    } else {
-      this.logger.log(`[StreamProcessor] 🎯 ${column}列の全タスク完了`);
     }
 
     // ■ 並列ストリーミング: 次の列の開始は記載完了後に行われる
