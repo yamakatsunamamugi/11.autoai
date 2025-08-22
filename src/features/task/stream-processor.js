@@ -706,9 +706,9 @@ class StreamProcessor {
       this.logger.log(`[StreamProcessor] 回答を書き込み: ${range}`);
       
       // 書き込み完了をマーク（3種類AI完了判定用）
-      const cellKey = `${answerColumn}${task.row}`;
-      this.writtenCells.set(cellKey, true);
-      this.logger.log(`[StreamProcessor] ✅ writtenCellsに記録: ${cellKey}`);
+      const answerCellKey = `${answerColumn}${task.row}`;
+      this.writtenCells.set(answerCellKey, true);
+      this.logger.log(`[StreamProcessor] ✅ writtenCellsに記録: ${answerCellKey}`);
       
       // ログを書き込み（SpreadsheetLoggerを使用）
       console.log(`📝 [StreamProcessor] ログ書き込み準備:`, {
