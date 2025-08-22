@@ -4049,10 +4049,15 @@ async function checkAllWindowLocations() {
     }
     
     // 各ウィンドウにポップアップを表示
-    await showWindowPopups(windows);
+    const successCount = await showWindowPopups(windows);
     
     let html = '<div style="margin-bottom: 10px; font-weight: bold; color: #333;">開いているウィンドウ一覧:</div>';
-    html += '<div style="margin-bottom: 10px; font-size: 12px; color: #666;">各ウィンドウに番号が表示されています（3秒後に自動で消えます）</div>';
+    
+    if (successCount > 0) {
+      html += '<div style="margin-bottom: 10px; font-size: 12px; color: #28a745;">✅ 対応サイトのウィンドウに番号ポップアップを表示中（3秒後に自動で消えます）</div>';
+    } else {
+      html += '<div style="margin-bottom: 10px; font-size: 12px; color: #ffc107;">⚠️ ポップアップ表示可能なウィンドウがありません（AI サイト・スプレッドシートで利用可能）</div>';
+    }
     
     windows.forEach((window, index) => {
       const tabs = window.tabs || [];
@@ -4063,14 +4068,21 @@ async function checkAllWindowLocations() {
       const area = determineWindowArea(window, screenInfo);
       const stateText = getWindowStateText(window.state);
       
+      // ポップアップ表示可否を判定
+      const isSystemPage = url.startsWith('chrome://') || url.startsWith('chrome-extension://') || url.startsWith('edge://') || url.startsWith('about:');
+      const allowedHosts = ['chatgpt.com', 'chat.openai.com', 'claude.ai', 'gemini.google.com', 'genspark.com', 'www.genspark.ai', 'sheets.googleapis.com', 'docs.google.com'];
+      const isAllowedHost = allowedHosts.some(host => url.includes(host));
+      const canShowPopup = !isSystemPage && isAllowedHost;
+      
       html += `
         <div style="border: 1px solid #ddd; margin: 5px 0; padding: 8px; border-radius: 4px; background: white;">
-          <div style="font-weight: bold; color: #007bff;">ウィンドウ ${index + 1} (ID: ${window.id})</div>
+          <div style="font-weight: bold; color: #007bff;">ウィンドウ ${index + 1} (ID: ${window.id}) ${canShowPopup ? '✅' : '❌'}</div>
           <div style="margin: 2px 0;">タイトル: ${title.length > 50 ? title.substring(0, 50) + '...' : title}</div>
           <div style="margin: 2px 0;">位置: (${window.left}, ${window.top}) | サイズ: ${window.width}x${window.height}</div>
           <div style="margin: 2px 0;">状態: ${stateText} | 領域: ${area}</div>
           ${url.includes('spreadsheets.google.com') ? '<div style="color: #28a745; font-weight: bold;">📊 スプレッドシート</div>' : ''}
           ${url.includes('autoai') || title.includes('AutoAI') ? '<div style="color: #007bff; font-weight: bold;">🤖 拡張機能</div>' : ''}
+          ${!canShowPopup ? '<div style="color: #dc3545; font-size: 11px;">❌ ポップアップ表示不可（権限なし）</div>' : '<div style="color: #28a745; font-size: 11px;">✅ ポップアップ表示可能</div>'}
         </div>
       `;
     });
@@ -4147,13 +4159,41 @@ document.addEventListener('DOMContentLoaded', loadWindowSettings);
 
 // 各ウィンドウにポップアップ番号を表示
 async function showWindowPopups(windows) {
+  let successCount = 0;
+  
   const popupPromises = windows.map(async (window, index) => {
     try {
       const tabs = window.tabs || [];
-      if (tabs.length === 0) return;
+      if (tabs.length === 0) return false;
       
       const tabId = tabs[0].id;
       const windowNumber = index + 1;
+      const url = tabs[0].url;
+      
+      // URLをチェックして注入可能か判定
+      if (url.startsWith('chrome://') || url.startsWith('chrome-extension://') || url.startsWith('edge://') || url.startsWith('about:')) {
+        console.log(`ウィンドウ ${windowNumber}: システムページのためスキップ (${url})`);
+        return false;
+      }
+      
+      // 権限があるホストかチェック
+      const allowedHosts = [
+        'chatgpt.com',
+        'chat.openai.com', 
+        'claude.ai',
+        'gemini.google.com',
+        'genspark.com',
+        'www.genspark.ai',
+        'sheets.googleapis.com',
+        'docs.google.com'
+      ];
+      
+      const isAllowedHost = allowedHosts.some(host => url.includes(host));
+      
+      if (!isAllowedHost) {
+        console.log(`ウィンドウ ${windowNumber}: 権限がないホストのためスキップ (${url})`);
+        return false;
+      }
       
       // コンテンツスクリプトを注入してポップアップを表示
       await chrome.scripting.executeScript({
@@ -4162,13 +4202,30 @@ async function showWindowPopups(windows) {
         args: [windowNumber]
       });
       
+      console.log(`ウィンドウ ${windowNumber}: ポップアップ表示成功`);
+      successCount++;
+      return true;
+      
     } catch (error) {
-      console.log(`ウィンドウ ${index + 1} へのポップアップ表示をスキップ:`, error.message);
+      console.log(`ウィンドウ ${index + 1}: ポップアップ表示エラー -`, error.message);
+      return false;
     }
   });
   
   // 全ての注入を並列実行
-  await Promise.allSettled(popupPromises);
+  const results = await Promise.allSettled(popupPromises);
+  
+  // 成功数をログ出力
+  console.log(`ポップアップ表示: ${successCount}/${windows.length} ウィンドウで成功`);
+  
+  // 成功数が0の場合は通知
+  if (successCount === 0) {
+    showFeedback('ポップアップを表示できるウィンドウがありませんでした。AI サイトやスプレッドシートでお試しください。', 'warning');
+  } else {
+    showFeedback(`${successCount}個のウィンドウにポップアップを表示しました`, 'success');
+  }
+  
+  return successCount;
 }
 
 // ウィンドウ番号ポップアップを表示する関数（注入用）
