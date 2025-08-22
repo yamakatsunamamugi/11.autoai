@@ -219,6 +219,10 @@ class StreamProcessor {
     // ペンディングレポートタスク管理
     this.pendingReportTasks = new Set(); // 待機中のレポートタスク
     this.reportCheckInterval = null; // レポートチェック用タイマー
+    
+    // 通常処理バッチ管理（新規追加）
+    this.normalBatchTracker = new Map(); // batchId → {column, tasks: [], windows: Map(), completed: Set()}
+    this.activeBatchIds = new Set(); // 実行中のバッチID
   }
 
   /**
@@ -265,18 +269,15 @@ class StreamProcessor {
     this.isFirstTaskProcessed = false; // 最初のタスクフラグを追加
 
     try {
-      // タスクをグループ単位に整理
-      const groups = this.createTaskGroups(taskList);
-      this.logger.log(`[StreamProcessor] タスクグループ作成完了: ${groups.length}グループ`);
-      
-      // グループごとに順次処理
-      for (const group of groups) {
-        await this.processGroup(group);
-      }
+      // タスクを列・行でグループ化
+      this.organizeTasks(taskList);
+
+      // 新しい処理フローで開始
+      await this.processAllTasks()
 
       return {
         success: true,
-        totalGroups: groups.length,
+        totalGroups: Math.ceil(taskList.tasks.length / 3),
         processedTasks: taskList.tasks.length,
       };
     } catch (error) {
@@ -602,6 +603,138 @@ class StreamProcessor {
   }
 
   /**
+   * 全タスクを処理（新規追加）
+   * 3種類AIと通常処理を適切に振り分ける
+   */
+  async processAllTasks() {
+    this.logger.log('[StreamProcessor] 全タスク処理開始');
+    
+    // タスクを3種類AIと通常処理に分類
+    const threeTypeGroups = new Map(); // groupId → tasks[]
+    const normalColumns = new Map(); // column → tasks[]
+    
+    for (const [column, tasks] of this.taskQueue.entries()) {
+      for (const task of tasks) {
+        if (task.multiAI && task.groupId) {
+          // 3種類AIグループ
+          if (!threeTypeGroups.has(task.groupId)) {
+            threeTypeGroups.set(task.groupId, []);
+          }
+          threeTypeGroups.get(task.groupId).push(task);
+        } else {
+          // 通常処理
+          if (!normalColumns.has(column)) {
+            normalColumns.set(column, []);
+          }
+          normalColumns.get(column).push(task);
+        }
+      }
+    }
+    
+    this.logger.log(`[StreamProcessor] タスク分類完了:`, {
+      threeTypeGroups: threeTypeGroups.size,
+      normalColumns: normalColumns.size
+    });
+    
+    // 3種類AIグループを処理
+    for (const [groupId, groupTasks] of threeTypeGroups) {
+      this.logger.log(`[StreamProcessor] 3種類AIグループ処理: ${groupId}`);
+      await this.process3TypeGroup(groupTasks);
+    }
+    
+    // 通常処理列を並列で処理
+    const normalPromises = [];
+    for (const [column, tasks] of normalColumns) {
+      this.logger.log(`[StreamProcessor] 通常処理列開始: ${column}列`);
+      normalPromises.push(this.processNormalColumn(column));
+    }
+    
+    // 全ての通常処理列の完了を待つ
+    await Promise.all(normalPromises);
+    
+    this.logger.log('[StreamProcessor] 全タスク処理完了');
+  }
+  
+  /**
+   * 3種類AIグループを処理（新規追加）
+   * @param {Array} groupTasks - グループのタスク配列
+   */
+  async process3TypeGroup(groupTasks) {
+    if (!groupTasks || groupTasks.length === 0) return;
+    
+    // 行番号でグループ化
+    const tasksByRow = new Map();
+    for (const task of groupTasks) {
+      if (!tasksByRow.has(task.row)) {
+        tasksByRow.set(task.row, []);
+      }
+      tasksByRow.get(task.row).push(task);
+    }
+    
+    // 行番号順にソート
+    const sortedRows = Array.from(tasksByRow.keys()).sort((a, b) => a - b);
+    
+    this.logger.log(`[StreamProcessor] 3種類AIグループ: ${sortedRows.length}行`);
+    
+    // 各行を順番に処理
+    for (const row of sortedRows) {
+      const rowTasks = tasksByRow.get(row);
+      await this.start3TypeBatch(rowTasks, row);
+    }
+  }
+  
+  /**
+   * 3種類AIバッチを開始（新規追加）
+   * @param {Array} rowTasks - 行のタスク配列
+   * @param {number} row - 行番号
+   */
+  async start3TypeBatch(rowTasks, row) {
+    const batchId = `3type_row${row}_${Date.now()}`;
+    
+    this.logger.log(`[StreamProcessor] 🔷 3種類AIバッチ開始: 行${row}`);
+    this.logger.log(`[StreamProcessor] タスク: ${rowTasks.map(t => `${t.column}${t.row}`).join(', ')}`);
+    
+    // 3つのウィンドウを並列で開いてタスクを実行
+    const windowPromises = rowTasks.map(async (task) => {
+      try {
+        // ポジションを探す
+        const position = this.findAvailablePosition();
+        if (position === -1) {
+          throw new Error('利用可能なポジションがありません');
+        }
+        
+        // ウィンドウを開く
+        const windowId = await this.openWindowForTask(task, position);
+        if (!windowId) {
+          throw new Error(`ウィンドウを開けませんでした: ${task.column}${task.row}`);
+        }
+        
+        // タスクを実行
+        await this.executeTaskInWindow(task, windowId);
+        
+        // ウィンドウを閉じる
+        await chrome.windows.remove(windowId);
+        this.activeWindows.delete(windowId);
+        // positionからも削除
+        for (const [pos, wId] of this.windowPositions.entries()) {
+          if (wId === windowId) {
+            this.windowPositions.delete(pos);
+            break;
+          }
+        }
+        
+      } catch (error) {
+        this.logger.error(`[StreamProcessor] 3種類AIタスクエラー: ${task.column}${task.row}`, error);
+      }
+    });
+    
+    // 全タスクの完了を待つ
+    await Promise.allSettled(windowPromises);
+    
+    this.logger.log(`[StreamProcessor] 3種類AIバッチ完了: 行${row}`);
+  }
+  
+  /**
    * 最初の列を取得（アルファベット順）
    */
   getFirstColumn() {
@@ -713,7 +846,7 @@ class StreamProcessor {
 
       this.logger.log(`[StreamProcessor] 🔧 位置設定後のwindowPositions:`, Array.from(this.windowPositions.keys()));
       this.logger.log(
-        `[StreamProcessor] ウィンドウ作成: ${column}列 (${task.aiType}) - 位置: ${["左上", "右上", "左下", "右下"][position]} (windowId: ${window.id})`,
+        `[StreamProcessor] ウィンドウ作成: ${column}列 (${task.aiType}) - 位置: ${["左", "中央", "右"][position]} (windowId: ${window.id})`,
       );
 
       // ページの読み込みとコンテンツスクリプトのロードを待機
@@ -954,6 +1087,11 @@ class StreamProcessor {
 
     // タスクを完了済みにマーク
     this.completedTasks.add(taskId);
+    
+    // 通常処理バッチの完了をチェック（新規追加）
+    if (!task.multiAI) {
+      await this.updateNormalBatchCompletion(task);
+    }
 
     // 同じ列の次の行へ進むための情報を先に計算
     const currentIndex = this.currentRowByColumn.get(column) || 0;
@@ -1929,6 +2067,218 @@ ${formattedGemini}`;
   }
   
   /**
+   * 通常処理列を3タスクずつのバッチで処理（新規追加）
+   * @param {string} column - 処理する列
+   */
+  async processNormalColumn(column) {
+    const tasks = this.taskQueue.get(column);
+    if (!tasks || tasks.length === 0) return;
+    
+    this.logger.log(`[StreamProcessor] 通常処理列開始: ${column}列 (${tasks.length}タスク)`);
+    
+    // 3タスクずつのバッチに分割
+    const batches = [];
+    for (let i = 0; i < tasks.length; i += 3) {
+      const batchTasks = tasks.slice(i, Math.min(i + 3, tasks.length));
+      batches.push(batchTasks);
+    }
+    
+    this.logger.log(`[StreamProcessor] ${column}列を${batches.length}バッチに分割`);
+    
+    // 最初のバッチを開始
+    if (batches.length > 0) {
+      await this.startNormalBatch(column, batches[0], 0, batches.length);
+    }
+  }
+  
+  /**
+   * 通常処理の3タスクバッチを開始（新規追加）
+   * @param {string} column - 列
+   * @param {Array} batchTasks - バッチ内のタスク配列（最大3つ）
+   * @param {number} batchIndex - バッチインデックス
+   * @param {number} totalBatches - 全バッチ数
+   */
+  async startNormalBatch(column, batchTasks, batchIndex, totalBatches) {
+    const batchId = `batch_${column}_${batchIndex}_${Date.now()}`;
+    
+    this.logger.log(`[StreamProcessor] 📦 バッチ開始: ${batchId} (${batchIndex + 1}/${totalBatches})`);
+    this.logger.log(`[StreamProcessor] タスク: ${batchTasks.map(t => `${t.column}${t.row}`).join(', ')}`);
+    
+    // バッチトラッカーに登録
+    const batchInfo = {
+      column: column,
+      batchIndex: batchIndex,
+      totalBatches: totalBatches,
+      tasks: batchTasks,
+      windows: new Map(), // taskId → windowId
+      completed: new Set(),
+      startTime: Date.now()
+    };
+    
+    this.normalBatchTracker.set(batchId, batchInfo);
+    this.activeBatchIds.add(batchId);
+    
+    // 3つのウィンドウを並列で開いてタスクを実行
+    const windowPromises = batchTasks.map(async (task, index) => {
+      try {
+        // ポジションを探す
+        const position = this.findAvailablePosition();
+        if (position === -1) {
+          throw new Error('利用可能なポジションがありません');
+        }
+        
+        // ウィンドウを開く
+        const windowId = await this.openWindowForTask(task, position);
+        if (!windowId) {
+          throw new Error(`ウィンドウを開けませんでした: ${task.column}${task.row}`);
+        }
+        
+        // バッチ情報にウィンドウIDを記録
+        batchInfo.windows.set(task.id, windowId);
+        
+        // タスクを実行
+        await this.executeTaskInWindow(task, windowId);
+        
+      } catch (error) {
+        this.logger.error(`[StreamProcessor] バッチタスクエラー: ${task.column}${task.row}`, error);
+        // エラーでも完了扱いにして次に進む
+        batchInfo.completed.add(task.id);
+      }
+    });
+    
+    // 全タスクの実行を待つ（並列実行）
+    await Promise.allSettled(windowPromises);
+    
+    this.logger.log(`[StreamProcessor] バッチ${batchId}の全タスク開始完了`);
+  }
+  
+  /**
+   * タスク用のウィンドウを開く（新規追加）
+   * @param {Object} task - タスク
+   * @param {number} position - ウィンドウ位置
+   * @returns {Promise<number>} ウィンドウID
+   */
+  async openWindowForTask(task, position) {
+    const url = this.determineAIUrl(task.aiType, task.column);
+    const screenInfo = await this.getScreenInfo();
+    const windowPosition = this.calculateWindowPosition(position, screenInfo);
+    
+    try {
+      const window = await chrome.windows.create({
+        url: url,
+        ...windowPosition,
+        focused: false,
+        type: "normal",
+      });
+      
+      // ウィンドウ情報を記録
+      this.activeWindows.set(window.id, {
+        windowId: window.id,
+        column: task.column,
+        position: position,
+        aiType: task.aiType,
+        taskId: task.id,
+        createdAt: Date.now()
+      });
+      
+      this.windowPositions.set(position, window.id);
+      this.columnWindows.set(task.column, window.id);
+      
+      // 自動化スクリプトを注入
+      await this.injectAutomationScripts(window.id, task.aiType);
+      
+      return window.id;
+    } catch (error) {
+      this.logger.error(`[StreamProcessor] ウィンドウ作成エラー`, error);
+      // 予約を解除
+      if (this.windowPositions.get(position) === 'RESERVED') {
+        this.windowPositions.delete(position);
+      }
+      return null;
+    }
+  }
+  
+  /**
+   * 通常処理バッチの完了をチェックして次のバッチを開始（新規追加）
+   * @param {string} batchId - バッチID
+   */
+  async checkAndStartNextNormalBatch(batchId) {
+    const batchInfo = this.normalBatchTracker.get(batchId);
+    if (!batchInfo) return;
+    
+    // 全タスクが完了しているかチェック
+    if (batchInfo.completed.size === batchInfo.tasks.length) {
+      const duration = ((Date.now() - batchInfo.startTime) / 1000).toFixed(1);
+      this.logger.log(`[StreamProcessor] ✅ バッチ完了: ${batchId} (${duration}秒)`);
+      
+      // バッチのウィンドウを全て閉じる
+      await this.closeNormalBatchWindows(batchId);
+      
+      // 次のバッチを開始
+      const nextBatchIndex = batchInfo.batchIndex + 1;
+      if (nextBatchIndex < batchInfo.totalBatches) {
+        // 列の全タスクを取得
+        const allTasks = this.taskQueue.get(batchInfo.column);
+        const nextBatchTasks = allTasks.slice(nextBatchIndex * 3, (nextBatchIndex + 1) * 3);
+        
+        if (nextBatchTasks.length > 0) {
+          this.logger.log(`[StreamProcessor] 次のバッチを開始: ${batchInfo.column}列 バッチ${nextBatchIndex + 1}`);
+          await this.startNormalBatch(batchInfo.column, nextBatchTasks, nextBatchIndex, batchInfo.totalBatches);
+        }
+      } else {
+        this.logger.log(`[StreamProcessor] ${batchInfo.column}列の全バッチ完了`);
+      }
+      
+      // トラッカーから削除
+      this.normalBatchTracker.delete(batchId);
+      this.activeBatchIds.delete(batchId);
+    }
+  }
+  
+  /**
+   * 通常処理バッチのウィンドウを閉じる（新規追加）
+   * @param {string} batchId - バッチID
+   */
+  async closeNormalBatchWindows(batchId) {
+    const batchInfo = this.normalBatchTracker.get(batchId);
+    if (!batchInfo) return;
+    
+    this.logger.log(`[StreamProcessor] バッチのウィンドウを閉じる: ${batchId} (${batchInfo.windows.size}個)`);
+    
+    const closePromises = [];
+    for (const [taskId, windowId] of batchInfo.windows) {
+      closePromises.push(
+        chrome.windows.remove(windowId)
+          .then(() => {
+            this.logger.log(`[StreamProcessor] ✅ Window${windowId}を閉じた`);
+            // 管理情報をクリア
+            this.activeWindows.delete(windowId);
+            // positionからも削除
+            for (const [pos, wId] of this.windowPositions.entries()) {
+              if (wId === windowId) {
+                this.windowPositions.delete(pos);
+                break;
+              }
+            }
+            // columnWindowsからも削除
+            for (const [col, wId] of this.columnWindows.entries()) {
+              if (wId === windowId) {
+                this.columnWindows.delete(col);
+                break;
+              }
+            }
+          })
+          .catch(error => {
+            this.logger.debug(`[StreamProcessor] Window${windowId}クローズエラー（無視）: ${error.message}`);
+          })
+      );
+    }
+    
+    await Promise.all(closePromises);
+    this.logger.log(`[StreamProcessor] バッチウィンドウクローズ完了: ${batchId}`);
+  }
+  
+  /**
    * 前の列を取得
    * @param {string} currentColumn
    * @returns {string|null}
@@ -2180,6 +2530,36 @@ ${formattedGemini}`;
   }
 
   /**
+   * 通常処理バッチの完了を更新（新規追加）
+   * @param {Object} task - 完了したタスク
+   */
+  async updateNormalBatchCompletion(task) {
+    // どのバッチに属するか探す
+    let targetBatchId = null;
+    let targetBatchInfo = null;
+    
+    for (const [batchId, batchInfo] of this.normalBatchTracker) {
+      if (batchInfo.tasks.some(t => t.id === task.id)) {
+        targetBatchId = batchId;
+        targetBatchInfo = batchInfo;
+        break;
+      }
+    }
+    
+    if (!targetBatchId || !targetBatchInfo) {
+      return; // バッチに属さないタスク
+    }
+    
+    // タスクを完了に追加
+    targetBatchInfo.completed.add(task.id);
+    
+    this.logger.log(`[StreamProcessor] バッチ進捗: ${targetBatchId}, 完了: ${targetBatchInfo.completed.size}/${targetBatchInfo.tasks.length}`);
+    
+    // バッチが完了したかチェック
+    await this.checkAndStartNextNormalBatch(targetBatchId);
+  }
+  
+  /**
    * 3種類AIグループのタスク完了を記録
    * @param {Object} task - 完了したタスク
    */
@@ -2420,41 +2800,35 @@ ${formattedGemini}`;
    * @returns {Object} 位置情報
    */
   calculateWindowPosition(index, screenInfo) {
-    const halfWidth = Math.floor(screenInfo.width / 2);
-    const halfHeight = Math.floor(screenInfo.height / 2);
+    // 3分割レイアウト（左、中央、右）
+    const thirdWidth = Math.floor(screenInfo.width / 3);
+    const fullHeight = screenInfo.height;
 
     const positions = [
       {
-        // 左上
+        // 左
         left: screenInfo.left,
         top: screenInfo.top,
-        width: halfWidth,
-        height: halfHeight,
+        width: thirdWidth,
+        height: fullHeight,
       },
       {
-        // 右上
-        left: screenInfo.left + halfWidth,
+        // 中央
+        left: screenInfo.left + thirdWidth,
         top: screenInfo.top,
-        width: halfWidth,
-        height: halfHeight,
+        width: thirdWidth,
+        height: fullHeight,
       },
       {
-        // 左下
-        left: screenInfo.left,
-        top: screenInfo.top + halfHeight,
-        width: halfWidth,
-        height: halfHeight,
-      },
-      {
-        // 右下
-        left: screenInfo.left + halfWidth,
-        top: screenInfo.top + halfHeight,
-        width: halfWidth,
-        height: halfHeight,
+        // 右
+        left: screenInfo.left + thirdWidth * 2,
+        top: screenInfo.top,
+        width: thirdWidth,
+        height: fullHeight,
       },
     ];
 
-    return positions[index % 4];
+    return positions[index % 3];
   }
 
   /**
