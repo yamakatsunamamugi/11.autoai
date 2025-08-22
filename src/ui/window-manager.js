@@ -11,24 +11,49 @@ class WindowManager {
 
   // DOM要素を初期化
   initializeElements() {
+    console.log('[WindowManager] DOM要素初期化開始');
+    
     this.extensionWindowNumberInput = document.getElementById('extensionWindowNumber');
     this.spreadsheetWindowNumberInput = document.getElementById('spreadsheetWindowNumber');
-    this.openSpreadsheetBtn = document.getElementById('openSpreadsheetBtn');
     this.checkWindowLocationsBtn = document.getElementById('checkWindowLocationsBtn');
     this.windowLocationDialog = document.getElementById('windowLocationDialog');
     this.windowLocationList = document.getElementById('windowLocationList');
     this.refreshWindowLocationBtn = document.getElementById('refreshWindowLocationBtn');
     this.closeWindowLocationBtn = document.getElementById('closeWindowLocationBtn');
+    
+    // DOM要素の存在確認
+    console.log('[WindowManager] DOM要素確認:');
+    console.log('- extensionWindowNumberInput:', !!this.extensionWindowNumberInput);
+    console.log('- spreadsheetWindowNumberInput:', !!this.spreadsheetWindowNumberInput);
+    console.log('- checkWindowLocationsBtn:', !!this.checkWindowLocationsBtn);
+    console.log('- windowLocationDialog:', !!this.windowLocationDialog);
+    console.log('- windowLocationList:', !!this.windowLocationList);
+    console.log('- refreshWindowLocationBtn:', !!this.refreshWindowLocationBtn);
+    console.log('- closeWindowLocationBtn:', !!this.closeWindowLocationBtn);
+    
+    // 重要な要素が見つからない場合の警告
+    if (!this.extensionWindowNumberInput || !this.spreadsheetWindowNumberInput) {
+      console.warn('[WindowManager] 重要なDOM要素が見つかりません');
+      console.warn('HTML要素が正しく読み込まれているか確認してください');
+    }
+    
+    
+    console.log('[WindowManager] DOM要素初期化完了');
   }
 
   // イベントリスナーを設定
   setupEventListeners() {
-    if (this.openSpreadsheetBtn) {
-      this.openSpreadsheetBtn.addEventListener('click', () => this.openSpreadsheetInWindow());
-    }
+    console.log('[WindowManager] イベントリスナー設定開始');
+    
 
     if (this.checkWindowLocationsBtn) {
-      this.checkWindowLocationsBtn.addEventListener('click', () => this.checkAllWindowLocations());
+      console.log('[WindowManager] checkWindowLocationsBtn にクリックイベント設定');
+      this.checkWindowLocationsBtn.addEventListener('click', () => {
+        console.log('[WindowManager] checkWindowLocationsBtn がクリックされました');
+        this.checkAllWindowLocations();
+      });
+    } else {
+      console.warn('[WindowManager] checkWindowLocationsBtn が見つかりません');
     }
 
     if (this.refreshWindowLocationBtn) {
@@ -49,6 +74,8 @@ class WindowManager {
     if (this.spreadsheetWindowNumberInput) {
       this.spreadsheetWindowNumberInput.addEventListener('change', () => this.saveWindowSettings());
     }
+    
+    console.log('[WindowManager] イベントリスナー設定完了');
   }
 
   // ウィンドウ番号設定を読み込み
@@ -83,58 +110,6 @@ class WindowManager {
     }
   }
 
-  // スプレッドシートを指定番号のウィンドウで開く
-  async openSpreadsheetInWindow() {
-    try {
-      console.log('[WindowManager] スプレッドシート開く処理開始');
-      
-      // 設定を保存
-      await this.saveWindowSettings();
-      
-      // スプレッドシートURLを取得
-      const urlInputs = document.querySelectorAll('.spreadsheet-url-input');
-      console.log('[WindowManager] URL入力欄の数:', urlInputs.length);
-      
-      let url = null;
-      
-      for (const input of urlInputs) {
-        const inputUrl = input.value.trim();
-        console.log('[WindowManager] 検査中のURL:', inputUrl);
-        if (inputUrl && inputUrl.includes('spreadsheets.google.com')) {
-          url = inputUrl;
-          break;
-        }
-      }
-      
-      console.log('[WindowManager] 最終的に選択されたURL:', url);
-      
-      if (!url) {
-        this.showFeedback('スプレッドシートURLを入力してください', 'error');
-        return;
-      }
-      
-      const windowNumber = parseInt(this.spreadsheetWindowNumberInput.value);
-      
-      // ウィンドウ番号に基づいて位置を計算
-      const screenInfo = await this.getScreenInfo();
-      const position = this.calculateWindowPositionFromNumber(windowNumber, screenInfo);
-      
-      // スプレッドシートウィンドウを作成
-      const window = await chrome.windows.create({
-        url: url,
-        type: 'popup',
-        ...position,
-        focused: false  // 背景で開く
-      });
-      
-      this.showFeedback(`スプレッドシートをウィンドウ${windowNumber}で開きました`, 'success');
-      console.log(`スプレッドシートウィンドウ作成: ID=${window.id}, 番号=${windowNumber}`);
-      
-    } catch (error) {
-      console.error('スプレッドシートウィンドウ作成エラー:', error);
-      this.showFeedback('スプレッドシートウィンドウの作成に失敗しました', 'error');
-    }
-  }
 
   // 拡張機能ウィンドウを指定番号に移動
   async moveExtensionToWindow() {
@@ -229,61 +204,92 @@ class WindowManager {
     }
   }
 
-  // 全ウィンドウの位置情報を取得・表示
-  async checkAllWindowLocations() {
+  // 各モニターに番号表示ウィンドウを作成
+  async createMonitorDisplayWindows() {
     try {
-      this.windowLocationDialog.style.display = 'block';
-      this.windowLocationList.innerHTML = '<div class="loading-message">ウィンドウ情報を取得中...</div>';
+      console.log('[WindowManager] モニター表示ウィンドウ作成開始');
       
-      const windows = await chrome.windows.getAll({ populate: true });
-      const screenInfo = await this.getScreenInfo();
+      // 全ディスプレイ情報を取得
+      const displays = await chrome.system.display.getInfo();
+      console.log(`[WindowManager] 検出されたディスプレイ数: ${displays.length}`);
       
-      if (windows.length === 0) {
-        this.windowLocationList.innerHTML = '<div style="text-align: center; color: #666;">開いているウィンドウがありません</div>';
-        return;
-      }
+      const windowPromises = [];
       
-      // 各ウィンドウにポップアップを表示
-      const successCount = await this.showWindowPopups(windows);
-      
-      let html = '<div style="margin-bottom: 10px; font-weight: bold; color: #333;">開いているウィンドウ一覧:</div>';
-      
-      if (successCount > 0) {
-        html += '<div style="margin-bottom: 10px; font-size: 12px; color: #28a745;">✅ 対応サイトのウィンドウに番号ポップアップを表示中（3秒後に自動で消えます）</div>';
-      } else {
-        html += '<div style="margin-bottom: 10px; font-size: 12px; color: #ffc107;">⚠️ ポップアップ表示可能なウィンドウがありません（AI サイト・スプレッドシートで利用可能）</div>';
-      }
-      
-      windows.forEach((window, index) => {
-        const tabs = window.tabs || [];
-        const title = tabs.length > 0 ? tabs[0].title : 'タイトル不明';
-        const url = tabs.length > 0 ? tabs[0].url : '';
+      // 各ディスプレイに番号表示ウィンドウを作成
+      displays.forEach((display, index) => {
+        const monitorNumber = index + 1;
+        console.log(`[WindowManager] モニター${monitorNumber} 表示ウィンドウ作成中...`);
         
-        // どの領域にあるかを判定
-        const area = this.determineWindowArea(window, screenInfo);
-        const stateText = this.getWindowStateText(window.state);
+        // モニター中央に小さな表示ウィンドウを作成
+        const centerX = display.workArea.left + Math.floor(display.workArea.width / 2) - 150;
+        const centerY = display.workArea.top + Math.floor(display.workArea.height / 2) - 100;
         
-        // ポップアップ表示可否を判定
-        const canShowPopup = this.canShowPopupOnUrl(url);
+        const windowPromise = chrome.windows.create({
+          url: 'data:text/html,<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{margin:0;padding:0;background:rgba(0,123,255,0.9);color:white;font-family:Arial,sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;font-size:48px;font-weight:bold;text-align:center;border-radius:20px;}div{animation:pulse 2s infinite;}</style></head><body><div>🖥️<br>モニター ' + monitorNumber + '</div></body></html>',
+          type: 'popup',
+          left: centerX,
+          top: centerY,
+          width: 300,
+          height: 200,
+          focused: false,
+          state: 'normal'
+        }).then(window => {
+          // ウィンドウを最前面に移動
+          chrome.windows.update(window.id, { 
+            focused: true,
+            drawAttention: true 
+          }).catch(err => console.log('最前面移動エラー:', err));
+          
+          setTimeout(() => {
+            chrome.windows.update(window.id, { focused: false }).catch(() => {});
+          }, 100);
+          console.log(`[WindowManager] モニター${monitorNumber} 表示ウィンドウ作成成功 (ID: ${window.id})`);
+          
+          // 3秒後に自動で閉じる
+          setTimeout(() => {
+            chrome.windows.remove(window.id).catch(err => {
+              console.log(`[WindowManager] モニター${monitorNumber} ウィンドウ削除エラー:`, err);
+            });
+          }, 3000);
+          
+          return window;
+        }).catch(error => {
+          console.error(`[WindowManager] モニター${monitorNumber} 表示ウィンドウ作成エラー:`, error);
+          return null;
+        });
         
-        html += `
-          <div style="border: 1px solid #ddd; margin: 5px 0; padding: 8px; border-radius: 4px; background: white;">
-            <div style="font-weight: bold; color: #007bff;">ウィンドウ ${index + 1} (ID: ${window.id}) ${canShowPopup ? '✅' : '❌'}</div>
-            <div style="margin: 2px 0;">タイトル: ${title.length > 50 ? title.substring(0, 50) + '...' : title}</div>
-            <div style="margin: 2px 0;">位置: (${window.left}, ${window.top}) | サイズ: ${window.width}x${window.height}</div>
-            <div style="margin: 2px 0;">状態: ${stateText} | 領域: ${area}</div>
-            ${url.includes('spreadsheets.google.com') || url.includes('docs.google.com') ? '<div style="color: #28a745; font-weight: bold;">📊 Google ワークスペース</div>' : ''}
-            ${url.includes('autoai') || title.includes('AutoAI') ? '<div style="color: #007bff; font-weight: bold;">🤖 拡張機能</div>' : ''}
-            ${!canShowPopup ? '<div style="color: #dc3545; font-size: 11px;">❌ ポップアップ表示不可（権限なし）</div>' : '<div style="color: #28a745; font-size: 11px;">✅ ポップアップ表示可能</div>'}
-          </div>
-        `;
+        windowPromises.push(windowPromise);
       });
       
-      this.windowLocationList.innerHTML = html;
+      // 全てのウィンドウ作成完了を待つ
+      const results = await Promise.allSettled(windowPromises);
+      const successCount = results.filter(result => 
+        result.status === 'fulfilled' && result.value !== null
+      ).length;
+      
+      console.log(`[WindowManager] モニター表示ウィンドウ作成完了: ${successCount}/${displays.length} 成功`);
+      this.showFeedback(`${successCount}個のモニターに番号を表示しました（3秒後に自動で消えます）`, 'success');
+      
+      return successCount;
       
     } catch (error) {
-      console.error('ウィンドウ位置確認エラー:', error);
-      this.windowLocationList.innerHTML = '<div style="color: red;">エラー: ウィンドウ情報の取得に失敗しました</div>';
+      console.error('[WindowManager] モニター表示ウィンドウ作成エラー:', error);
+      this.showFeedback('モニター表示ウィンドウの作成に失敗しました', 'error');
+      return 0;
+    }
+  }
+
+  // モニター場所確認 - 各モニターに番号を表示
+  async checkAllWindowLocations() {
+    try {
+      console.log('[WindowManager] モニター場所確認開始');
+      
+      // 各モニターに番号表示ウィンドウを作成（3秒後に自動で閉じる）
+      await this.createMonitorDisplayWindows();
+      
+    } catch (error) {
+      console.error('モニター場所確認エラー:', error);
+      this.showFeedback('モニター場所確認に失敗しました', 'error');
     }
   }
 
