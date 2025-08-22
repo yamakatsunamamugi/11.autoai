@@ -607,17 +607,6 @@ class StreamProcessor {
       hasMoreTasks: hasMoreTasks,
     });
     
-    // ウィンドウクローズ情報を先に設定（writeResultToSpreadsheetの前に！）
-    const windowCloseInfo = {
-      column,
-      windowId,
-      hasMoreTasks
-    };
-    
-    // タスクにウィンドウクローズ情報を付与
-    task._windowCloseInfo = windowCloseInfo;
-    
-    this.logger.log(`[StreamProcessor] 📋 ウィンドウクローズを保留: ${column}列 (スプレッドシート記録完了待ち)`);
     
     if (hasMoreTasks) {
       this.logger.log(`[StreamProcessor] 🔄 ${column}列の次のタスクあり`);
@@ -709,6 +698,23 @@ class StreamProcessor {
       this.writtenCells.set(answerCellKey, true);
       this.logger.log(`[StreamProcessor] ✅ writtenCellsに記録: ${answerCellKey}`);
       
+      // ウィンドウクローズチェック（スプレッドシート書き込み後）
+      const columnTasks = this.taskQueue.get(answerColumn);
+      const columnIndex = this.currentRowByColumn.get(answerColumn) || 0;
+      const hasMoreTasksInColumn = columnTasks && columnIndex < columnTasks.length;
+      
+      if (!hasMoreTasksInColumn && this.columnWindows.has(answerColumn)) {
+        // この列の全タスクが完了したらウィンドウを閉じる
+        this.logger.log(`[StreamProcessor] 🚪 スプレッドシート書き込み完了、ウィンドウを閉じます: ${answerColumn}列`);
+        await this.closeColumnWindow(answerColumn);
+        this.logger.log(`[StreamProcessor] ✅ ウィンドウクローズ完了: ${answerColumn}列`);
+        
+        // ウィンドウが空いたので、利用可能な列をチェック
+        this.checkAndStartAvailableColumns().catch(error => {
+          this.logger.error(`[StreamProcessor] 利用可能列チェックエラー`, error);
+        });
+      }
+      
       // ログを書き込み（SpreadsheetLoggerを使用）
       console.log(`📝 [StreamProcessor] ログ書き込み準備:`, {
         hasSpreadsheetLogger: !!this.spreadsheetLogger,
@@ -757,66 +763,15 @@ class StreamProcessor {
             }
           }
           
-          // デバッグ: optionsオブジェクトの内容を確認
-          const logOptions = {
+          await this.spreadsheetLogger.writeLogToSpreadsheet(task, {
             url: currentUrl,
             sheetsClient: globalThis.sheetsClient,
             spreadsheetId,
             gid,
             isFirstTask: !this.isFirstTaskProcessed,
             isGroupTask,
-            isLastInGroup,
-            onComplete: async (completedTask, logCell, error) => {
-              // スプレッドシート記録完了後のコールバック
-              if (!error) {
-                this.logger.log(`[StreamProcessor] 📝 ログ記録完了コールバック実行: ${logCell}`);
-                
-                // task オブジェクトから直接ウィンドウクローズ情報を取得
-                // (completedTaskではなく、外側スコープのtaskを使用)
-                if (task._windowCloseInfo) {
-                  const { column: closeColumn, windowId: closeWindowId, hasMoreTasks: closeHasMoreTasks } = task._windowCloseInfo;
-                  
-                  this.logger.log(`[StreamProcessor] 🚪 ウィンドウクローズコールバック実行: ${closeColumn}列, windowId: ${closeWindowId}`);
-                  
-                  // タスクが完了しているかチェック
-                  const hasMoreTasksInColumn = closeHasMoreTasks;
-                  this.logger.log(`[StreamProcessor] hasMoreTasks: ${hasMoreTasksInColumn}, closeColumn: ${closeColumn}`);
-                  
-                  if (!hasMoreTasksInColumn) {
-                    // この列のタスクが全て完了した場合のみウィンドウを閉じる
-                    this.logger.log(`[StreamProcessor] ウィンドウクローズ実行開始: ${closeColumn}列`);
-                    await this.closeColumnWindow(closeColumn);
-                    this.logger.log(`[StreamProcessor] ✅ ウィンドウクローズ完了: ${closeColumn}列（全タスク完了）`);
-                    
-                    // ウィンドウが空いたので、利用可能な全ての列をチェックして開始
-                    this.logger.log(`[StreamProcessor] 次の列をチェック中...`);
-                    this.checkAndStartAvailableColumns().catch(checkError => {
-                      this.logger.error(`[StreamProcessor] 利用可能列チェックエラー`, checkError);
-                    });
-                  } else {
-                    this.logger.log(`[StreamProcessor] ⏸️ ウィンドウクローズをスキップ: ${closeColumn}列（まだタスクが残っている）`);
-                  }
-                }
-              } else {
-                this.logger.error(`[StreamProcessor] ログ記録エラー時のコールバック: ${error.message}`);
-                
-                // エラーが発生してもウィンドウは閉じる
-                if (task._windowCloseInfo) {
-                  const { column: closeColumn } = task._windowCloseInfo;
-                  await this.closeColumnWindow(closeColumn);
-                }
-              }
-            }
-          };
-          
-          console.log(`🔍 [StreamProcessor] SpreadsheetLogger呼び出し前:`, {
-            hasOnComplete: !!logOptions.onComplete,
-            typeOfOnComplete: typeof logOptions.onComplete,
-            taskId: task.id,
-            hasWindowCloseInfo: !!task._windowCloseInfo
+            isLastInGroup
           });
-          
-          await this.spreadsheetLogger.writeLogToSpreadsheet(task, logOptions);
           
           // 最初のタスク処理完了フラグを更新
           this.isFirstTaskProcessed = true;
