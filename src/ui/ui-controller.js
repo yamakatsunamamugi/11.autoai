@@ -4048,7 +4048,11 @@ async function checkAllWindowLocations() {
       return;
     }
     
+    // 各ウィンドウにポップアップを表示
+    await showWindowPopups(windows);
+    
     let html = '<div style="margin-bottom: 10px; font-weight: bold; color: #333;">開いているウィンドウ一覧:</div>';
+    html += '<div style="margin-bottom: 10px; font-size: 12px; color: #666;">各ウィンドウに番号が表示されています（3秒後に自動で消えます）</div>';
     
     windows.forEach((window, index) => {
       const tabs = window.tabs || [];
@@ -4140,6 +4144,116 @@ if (spreadsheetWindowNumberInput) {
 
 // ページ読み込み時に設定を読み込み
 document.addEventListener('DOMContentLoaded', loadWindowSettings);
+
+// 各ウィンドウにポップアップ番号を表示
+async function showWindowPopups(windows) {
+  const popupPromises = windows.map(async (window, index) => {
+    try {
+      const tabs = window.tabs || [];
+      if (tabs.length === 0) return;
+      
+      const tabId = tabs[0].id;
+      const windowNumber = index + 1;
+      
+      // コンテンツスクリプトを注入してポップアップを表示
+      await chrome.scripting.executeScript({
+        target: { tabId: tabId },
+        func: showWindowNumberPopup,
+        args: [windowNumber]
+      });
+      
+    } catch (error) {
+      console.log(`ウィンドウ ${index + 1} へのポップアップ表示をスキップ:`, error.message);
+    }
+  });
+  
+  // 全ての注入を並列実行
+  await Promise.allSettled(popupPromises);
+}
+
+// ウィンドウ番号ポップアップを表示する関数（注入用）
+function showWindowNumberPopup(windowNumber) {
+  // 既存のポップアップを削除
+  const existingPopup = document.getElementById('window-number-popup-autoai');
+  if (existingPopup) {
+    existingPopup.remove();
+  }
+  
+  // ポップアップ要素を作成
+  const popup = document.createElement('div');
+  popup.id = 'window-number-popup-autoai';
+  popup.style.cssText = `
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+    color: white;
+    padding: 20px 30px;
+    border-radius: 12px;
+    box-shadow: 0 8px 25px rgba(0, 123, 255, 0.4);
+    z-index: 999999;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 24px;
+    font-weight: bold;
+    text-align: center;
+    animation: popupSlideIn 0.3s ease-out;
+    border: 3px solid rgba(255, 255, 255, 0.3);
+  `;
+  
+  popup.innerHTML = `
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <div style="font-size: 30px;">🪟</div>
+      <div>
+        <div style="font-size: 28px; line-height: 1;">ウィンドウ ${windowNumber}</div>
+        <div style="font-size: 14px; opacity: 0.9; margin-top: 4px;">Window ${windowNumber}</div>
+      </div>
+    </div>
+  `;
+  
+  // アニメーションスタイルを追加
+  if (!document.getElementById('popup-animation-styles-autoai')) {
+    const style = document.createElement('style');
+    style.id = 'popup-animation-styles-autoai';
+    style.textContent = `
+      @keyframes popupSlideIn {
+        from {
+          transform: translateX(100%) scale(0.8);
+          opacity: 0;
+        }
+        to {
+          transform: translateX(0) scale(1);
+          opacity: 1;
+        }
+      }
+      @keyframes popupSlideOut {
+        from {
+          transform: translateX(0) scale(1);
+          opacity: 1;
+        }
+        to {
+          transform: translateX(100%) scale(0.8);
+          opacity: 0;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+  
+  // ポップアップを表示
+  document.body.appendChild(popup);
+  
+  // 3秒後に自動削除
+  setTimeout(() => {
+    if (popup && popup.parentNode) {
+      popup.style.animation = 'popupSlideOut 0.3s ease-in';
+      setTimeout(() => {
+        if (popup && popup.parentNode) {
+          popup.remove();
+        }
+      }, 300);
+    }
+  }, 3000);
+}
 
 // ===== グローバル関数公開 =====
 // 他のモジュールから使用できるように関数をwindowオブジェクトに公開
