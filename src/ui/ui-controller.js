@@ -1594,14 +1594,17 @@ async function processMultipleUrls(urls) {
 
     // タスクが生成されたら、ストリーミング処理を開始
     // 統合AIテストと同じstreamProcessTaskListを使用（統一化）
-    const response = await chrome.runtime.sendMessage({
-      action: "streamProcessTaskList",
-      taskList: savedTasks, // TaskListオブジェクトをそのまま送信
-      spreadsheetId: spreadsheetId, // スプレッドシートIDを追加
-      spreadsheetUrl: currentUrl, // URL情報も追加
-      gid: gid, // シートIDも追加
-      testMode: false, // 本番実行
-    });
+    const response = await Promise.race([
+      chrome.runtime.sendMessage({
+        action: "streamProcessTaskList",
+        taskList: savedTasks, // TaskListオブジェクトをそのまま送信
+        spreadsheetId: spreadsheetId, // スプレッドシートIDを追加
+        spreadsheetUrl: currentUrl, // URL情報も追加
+        gid: gid, // シートIDも追加
+        testMode: false, // 本番実行
+      }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Message timeout')), 10000))
+    ]);
 
     if (response && response.success) {
       updateStatus(`🌊 処理実行中`, "running");
@@ -1621,6 +1624,19 @@ async function processMultipleUrls(urls) {
     }
   } catch (error) {
     console.error("ストリーミング処理開始エラー:", error);
+    
+    // メッセージングエラーの場合は詳細ログを出力
+    if (error.message.includes('message channel closed') || error.message.includes('Message timeout')) {
+      console.log("🔧 [Debug] メッセージングエラーが発生:", error.message);
+      console.log("🔧 [Debug] バックグラウンド処理は継続している可能性があります");
+      console.log("🔧 [Debug] タスクリスト:", savedTasks?.tasks?.length, "件のタスク");
+      updateStatus("処理開始中（通信エラーを検出）", "warning");
+      showFeedback("通信エラーが発生しましたが、処理は継続している可能性があります", "warning");
+      
+      // ボタンはリセットしない（処理が継続している可能性があるため）
+      return;
+    }
+    
     updateStatus("ストリーミング開始エラー", "error");
     startBtn.disabled = false;
     stopBtn.disabled = true;

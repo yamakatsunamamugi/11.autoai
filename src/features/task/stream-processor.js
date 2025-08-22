@@ -3316,23 +3316,143 @@ ${formattedGemini}`;
       // ウィンドウ設定を取得
       const result = await chrome.storage.local.get(['windowSettings']);
       const settings = result.windowSettings || {
-        extensionWindowNumber: 4,  // デフォルト: 右下
-        spreadsheetWindowNumber: 5  // デフォルト: 左上にオフセット
+        extensionWindowNumber: 1,  // デフォルト: モニター1
+        spreadsheetWindowNumber: 2  // デフォルト: モニター2
       };
 
-      this.logger.log('[StreamProcessor] ウィンドウ設定:', settings);
+      this.logger.log('[StreamProcessor] モニター設定:', settings);
 
-      // 拡張機能ウィンドウを指定番号に移動
-      await this.moveExtensionToWindowNumber(settings.extensionWindowNumber);
-
-      // スプレッドシートウィンドウを開く（設定されている場合）
-      await this.openSpreadsheetInWindowNumber(settings.spreadsheetWindowNumber);
+      // 指定されたモニター内で4分割配置を実行
+      await this.setupMonitorQuadrantLayout(settings.extensionWindowNumber);
 
     } catch (error) {
-      this.logger.error('[StreamProcessor] ウィンドウ設定エラー', error);
+      this.logger.error('[StreamProcessor] モニター設定エラー', error);
       // フォールバック: 従来の右下移動を実行
       await this.moveExtensionWindowToBottomRight();
     }
+  }
+
+  /**
+   * 指定されたモニター内で4分割レイアウトを設定
+   * 左上→右上→左下：AI操作用、右下：拡張機能
+   */
+  async setupMonitorQuadrantLayout(monitorNumber) {
+    try {
+      this.logger.log(`[StreamProcessor] モニター${monitorNumber}内での4分割レイアウト開始`);
+
+      // 拡張機能ウィンドウを右下（4番目）に配置
+      await this.moveExtensionToMonitorQuadrant(monitorNumber, 4);
+
+      // AI操作用ウィンドウの準備（必要に応じて）
+      // 左上(1)、右上(2)、左下(3)は AI操作時に使用
+
+      this.logger.log(`[StreamProcessor] モニター${monitorNumber}での4分割レイアウト完了`);
+    } catch (error) {
+      this.logger.error('[StreamProcessor] 4分割レイアウト設定エラー', error);
+    }
+  }
+
+  /**
+   * 拡張機能ウィンドウを指定モニターの指定位置に移動
+   */
+  async moveExtensionToMonitorQuadrant(monitorNumber, quadrant) {
+    try {
+      const result = await chrome.storage.local.get(['extensionWindowId']);
+      const windowId = result.extensionWindowId;
+      
+      if (!windowId) {
+        this.logger.log('[StreamProcessor] 拡張機能ウィンドウIDが見つかりません');
+        return;
+      }
+
+      // ウィンドウが存在するか確認
+      try {
+        await chrome.windows.get(windowId);
+      } catch (error) {
+        this.logger.log('[StreamProcessor] 拡張機能ウィンドウが存在しません');
+        return;
+      }
+
+      // モニター内の4分割位置を計算
+      const position = await this.calculateMonitorQuadrantPosition(monitorNumber, quadrant);
+
+      // 拡張機能ウィンドウを移動
+      await chrome.windows.update(windowId, {
+        ...position,
+        state: "normal",
+      });
+
+      this.logger.log(`[StreamProcessor] 拡張機能をモニター${monitorNumber}の位置${quadrant}に移動しました`);
+    } catch (error) {
+      this.logger.error('[StreamProcessor] 拡張機能ウィンドウ移動エラー', error);
+    }
+  }
+
+  /**
+   * モニター内の4分割位置を計算
+   */
+  async calculateMonitorQuadrantPosition(monitorNumber, quadrant) {
+    try {
+      // 全ディスプレイ情報を取得
+      const displays = await chrome.system.display.getInfo();
+      
+      // 指定されたモニター番号のディスプレイを取得
+      const targetDisplay = displays[monitorNumber - 1];
+      if (!targetDisplay) {
+        this.logger.log(`[StreamProcessor] モニター${monitorNumber}が見つかりません。メインディスプレイを使用します。`);
+        const primaryDisplay = displays.find(d => d.isPrimary) || displays[0];
+        return this.getQuadrantPositionFromDisplay(primaryDisplay, quadrant);
+      }
+      
+      return this.getQuadrantPositionFromDisplay(targetDisplay, quadrant);
+      
+    } catch (error) {
+      this.logger.error('[StreamProcessor] モニター位置計算エラー:', error);
+      // フォールバック: デフォルト位置
+      return {
+        left: 0,
+        top: 0,
+        width: 800,
+        height: 600
+      };
+    }
+  }
+
+  /**
+   * ディスプレイ内の4分割位置を取得
+   */
+  getQuadrantPositionFromDisplay(display, quadrant) {
+    const halfWidth = Math.floor(display.workArea.width / 2);
+    const halfHeight = Math.floor(display.workArea.height / 2);
+    
+    const positions = {
+      1: { // 左上 - AI操作用
+        left: display.workArea.left,
+        top: display.workArea.top,
+        width: halfWidth,
+        height: halfHeight
+      },
+      2: { // 右上 - AI操作用
+        left: display.workArea.left + halfWidth,
+        top: display.workArea.top,
+        width: halfWidth,
+        height: halfHeight
+      },
+      3: { // 左下 - AI操作用
+        left: display.workArea.left,
+        top: display.workArea.top + halfHeight,
+        width: halfWidth,
+        height: halfHeight
+      },
+      4: { // 右下 - 拡張機能用
+        left: display.workArea.left + halfWidth,
+        top: display.workArea.top + halfHeight,
+        width: halfWidth,
+        height: halfHeight
+      }
+    };
+    
+    return positions[quadrant] || positions[1];
   }
 
   /**

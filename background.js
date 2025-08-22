@@ -793,11 +793,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       
     // ===== タスクリストストリーミング処理（AI Orchestratorから） =====
     case "streamProcessTaskList":
-      console.log("[MessageHandler] タスクリストストリーミング処理要求:", {
+      console.log("🚀 [MessageHandler] タスクリストストリーミング処理要求:", {
         taskListSize: request.taskList?.tasks?.length || 0,
-        testMode: request.testMode
+        testMode: request.testMode,
+        spreadsheetId: request.spreadsheetId,
+        hasSpreadsheetUrl: !!request.spreadsheetUrl
       });
       
+      // 即座にレスポンスを送信してメッセージチャネルの閉鎖を防ぐ
+      sendResponse({
+        success: true,
+        totalWindows: 4, // デフォルト値
+        processedColumns: [],
+        message: "タスクリストストリーミング処理を開始しました"
+      });
+      
+      // バックグラウンドで非同期処理を開始
       (async () => {
         try {
           // StreamProcessorは既に静的インポート済み
@@ -816,23 +827,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             taskListMode: true
           });
           
-          console.log("[MessageHandler] StreamProcessor実行結果:", result);
-          
-          sendResponse({
-            success: true,
-            totalWindows: result.totalWindows || 0,
-            processedColumns: result.processedColumns || [],
-            message: "タスクリストストリーミング処理を開始しました"
-          });
+          console.log("✅ [MessageHandler] StreamProcessor実行結果:", result);
         } catch (error) {
-          console.error("[MessageHandler] タスクリストストリーミング処理エラー:", error);
-          sendResponse({
-            success: false,
-            error: error.message
+          console.error("❌ [MessageHandler] タスクリストストリーミング処理エラー:", error);
+          console.error("❌ [Debug] エラー詳細:", {
+            message: error.message,
+            stack: error.stack,
+            taskListSize: request.taskList?.tasks?.length || 0
           });
         }
       })();
-      return true; // 非同期応答のため true を返す
+      
+      return false; // 同期応答（既にsendResponseを呼び出し済み）
 
     // ===== テストウィンドウ作成 =====
     case "createTestWindow":
