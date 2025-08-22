@@ -180,7 +180,12 @@
                 // 停止ボタンの状態をチェック
                 let stopButton = null;
                 const stopSelectors = getSelectors(aiName, 'STOP_BUTTON');
-                console.log(`[DeepResearch] ${aiName} 停止ボタンセレクタ: ${stopSelectors.join(', ')}`);
+                
+                // セレクタログ出力（デバッグ用、セレクタが取得できた場合のみ）
+                if (stopSelectors && stopSelectors.length > 0 && loopCount === 1) {
+                    console.log(`[DeepResearch] ${aiName} 停止ボタンセレクタ: ${stopSelectors.join(', ')}`);
+                }
+                
                 for (const selector of stopSelectors) {
                     if (selector) {
                         try {
@@ -432,24 +437,34 @@
         const maxWaitTime = remainingMinutes * 60 * 1000;
         const waitStartTime = Date.now();
         let localHasSeenStopButton = hasSeenStopButton;  // 停止ボタンを見たかのローカルフラグ
+        let noButtonCheckCount = 0;  // 停止ボタンが見つからない回数
         
         while (Date.now() - waitStartTime < maxWaitTime) {
             try {
                 // 停止ボタンをチェック（複数セレクタ対応）
                 let stopButton = null;
                 const stopSelectors = getSelectors(aiName, 'STOP_BUTTON');
+                
+                // セレクタが取得できない場合の警告（初回のみ）
+                if (stopSelectors.length === 0 && noButtonCheckCount === 0) {
+                    log(`⚠️ 停止ボタンセレクタが取得できません。DeepResearch完了検出を代替方法で行います。`, 'WARNING', aiName);
+                }
+                
                 for (const selector of stopSelectors) {
                     if (selector) {
                         stopButton = document.querySelector(selector);
                         if (stopButton) {
                             localHasSeenStopButton = true;  // 停止ボタンを見つけた
+                            noButtonCheckCount = 0;  // リセット
                             break;
                         }
                     }
                 }
                 
                 if (!stopButton) {
-                    // 停止ボタンを一度でも見た場合のみ完了チェック
+                    noButtonCheckCount++;
+                    
+                    // 停止ボタンを一度でも見た場合の完了チェック
                     if (localHasSeenStopButton) {
                         // 停止ボタンがない状態で3秒待機して最終確認
                         if (utils && utils.wait) {
@@ -476,7 +491,55 @@
                             return true;
                         }
                     }
-                    // 停止ボタンを一度も見ていない場合は待機を継続
+                    // 停止ボタンを一度も見ていない場合でも、DeepResearchの場合は別の方法で完了を検出
+                    else if (noButtonCheckCount > 60) {  // 5分間（5秒×60回）停止ボタンが見つからない
+                        // DeepResearch特有の完了検出
+                        // Canvas/Artifactsの存在をチェック
+                        const canvasSelectors = [
+                            '.grid-cols-1.grid:has(h1)',
+                            '.grid-cols-1.grid',
+                            '[class*="grid-cols-1"][class*="grid"]'
+                        ];
+                        
+                        let canvasFound = false;
+                        for (const selector of canvasSelectors) {
+                            const canvas = document.querySelector(selector);
+                            if (canvas && canvas.textContent && canvas.textContent.length > 500) {
+                                canvasFound = true;
+                                break;
+                            }
+                        }
+                        
+                        if (canvasFound) {
+                            const elapsedTotal = Date.now() - startTime;
+                            const minutes = Math.floor(elapsedTotal / 60000);
+                            const seconds = Math.floor((elapsedTotal % 60000) / 1000);
+                            log(`✅ DeepResearch完了（Canvas/Artifacts検出、開始から ${minutes}分${seconds}秒経過）`, 'SUCCESS', aiName);
+                            return true;
+                        }
+                        
+                        // メッセージ数の変化で完了を検出
+                        const currentMessages = document.querySelectorAll(config.messageSelector);
+                        if (currentMessages.length > 0) {
+                            // 最後のメッセージが10秒以上変化していない場合は完了と判断
+                            const lastMessage = currentMessages[currentMessages.length - 1];
+                            const lastMessageText = lastMessage?.textContent || '';
+                            
+                            if (!this.lastMessageText) {
+                                this.lastMessageText = lastMessageText;
+                                this.lastMessageTime = Date.now();
+                            } else if (this.lastMessageText !== lastMessageText) {
+                                this.lastMessageText = lastMessageText;
+                                this.lastMessageTime = Date.now();
+                            } else if (Date.now() - this.lastMessageTime > 30000) {  // 30秒変化なし
+                                const elapsedTotal = Date.now() - startTime;
+                                const minutes = Math.floor(elapsedTotal / 60000);
+                                const seconds = Math.floor((elapsedTotal % 60000) / 1000);
+                                log(`✅ DeepResearch完了（応答安定検出、開始から ${minutes}分${seconds}秒経過）`, 'SUCCESS', aiName);
+                                return true;
+                            }
+                        }
+                    }
                 }
                 
                 // 進捗ログ（10秒ごと）
