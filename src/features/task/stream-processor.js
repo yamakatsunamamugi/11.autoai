@@ -846,7 +846,7 @@ class StreamProcessor {
 
       this.logger.log(`[StreamProcessor] 🔧 位置設定後のwindowPositions:`, Array.from(this.windowPositions.keys()));
       this.logger.log(
-        `[StreamProcessor] ウィンドウ作成: ${column}列 (${task.aiType}) - 位置: ${["左", "中央", "右"][position]} (windowId: ${window.id})`,
+        `[StreamProcessor] ウィンドウ作成: ${column}列 (${task.aiType}) - 位置: ${["左上", "右上", "左下"][position]} (windowId: ${window.id})`,
       );
 
       // ページの読み込みとコンテンツスクリプトのロードを待機
@@ -2800,35 +2800,36 @@ ${formattedGemini}`;
    * @returns {Object} 位置情報
    */
   calculateWindowPosition(index, screenInfo) {
-    // 3分割レイアウト（左、中央、右）
-    const thirdWidth = Math.floor(screenInfo.width / 3);
-    const fullHeight = screenInfo.height;
+    // 4分割レイアウト（左上、右上、左下、右下は拡張機能用）
+    const halfWidth = Math.floor(screenInfo.width / 2);
+    const halfHeight = Math.floor(screenInfo.height / 2);
 
     const positions = [
       {
-        // 左
+        // 左上
         left: screenInfo.left,
         top: screenInfo.top,
-        width: thirdWidth,
-        height: fullHeight,
+        width: halfWidth,
+        height: halfHeight,
       },
       {
-        // 中央
-        left: screenInfo.left + thirdWidth,
+        // 右上
+        left: screenInfo.left + halfWidth,
         top: screenInfo.top,
-        width: thirdWidth,
-        height: fullHeight,
+        width: halfWidth,
+        height: halfHeight,
       },
       {
-        // 右
-        left: screenInfo.left + thirdWidth * 2,
-        top: screenInfo.top,
-        width: thirdWidth,
-        height: fullHeight,
+        // 左下
+        left: screenInfo.left,
+        top: screenInfo.top + halfHeight,
+        width: halfWidth,
+        height: halfHeight,
       },
+      // 右下は拡張機能用に空けておく
     ];
 
-    return positions[index % 3];
+    return positions[index % 3];  // 3つのウィンドウのみ使用
   }
 
   /**
