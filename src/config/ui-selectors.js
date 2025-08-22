@@ -268,15 +268,28 @@ export const UI_SELECTORS = {
             '[role="menuitemradio"]'  // ラジオボタン機能（Deep Research、エージェントモード等）に必要
         ],
         
-        // Canvas関連（Claude特有）
+        // Canvas関連（Claude特有）- DeepResearch/Artifacts対応
         CANVAS: {
             CONTAINER: [
-                '.grid-cols-1.grid h1',  // h1を含むgridコンテナ
-                '.grid-cols-1.grid'       // gridコンテナ直接
+                '.grid-cols-1.grid:has(h1)',  // h1を含むgridコンテナ（優先）
+                '.grid-cols-1.grid',           // gridコンテナ直接
+                '[class*="grid-cols-1"][class*="grid"]',  // クラス部分一致
+                'div:has(> h1.text-2xl)',      // 大きなタイトルを持つdiv
+                '.overflow-y-auto:has(h1)'     // スクロール可能なArtifacts
             ],
             PREVIEW_TEXT: [
-                '.absolute.inset-0'       // プレビューテキスト要素
-            ]
+                '.absolute.inset-0'            // プレビューテキスト要素
+            ],
+            PREVIEW_BUTTON: [
+                'button[aria-label="内容をプレビュー"]',  // 日本語版
+                'button[aria-label*="プレビュー"]',       // 部分一致
+                'button[aria-label*="preview"]',          // 英語版
+                'button[aria-label="View content"]'       // 英語版代替
+            ],
+            // DeepResearch特有の要素
+            TITLE: 'h1.text-2xl',
+            SECTION: 'h2.text-xl',
+            PARAGRAPH: 'p.whitespace-normal, p[class*="whitespace"]'
         }
     },
     

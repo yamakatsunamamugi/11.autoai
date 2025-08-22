@@ -1157,79 +1157,149 @@
     }
   }
 
-  // Canvas（アーティファクト）コンテンツを取得
+  // Canvas（アーティファクト）コンテンツを取得 - DeepResearch対応強化版
   async function getCanvasContent(expandIfNeeded = true) {
-    // 既に展開されているCanvasを探す
-    const canvasSelectors = window.AIHandler?.getSelectors?.('Claude', 'CANVAS') || { CONTAINER: ['.grid-cols-1.grid h1', '.grid-cols-1.grid'] };
-    const containerSelectors = canvasSelectors.CONTAINER || ['.grid-cols-1.grid h1', '.grid-cols-1.grid'];
+    log('Canvas/Artifacts取得開始', 'DEBUG', { expandIfNeeded });
+    
+    // ui-selectors.jsからセレクタを取得
+    const canvasSelectors = window.AIHandler?.getSelectors ? 
+      await window.AIHandler.getSelectors('Claude', 'CANVAS') : 
+      {
+        CONTAINER: [
+          '.grid-cols-1.grid:has(h1)',
+          '.grid-cols-1.grid',
+          '[class*="grid-cols-1"][class*="grid"]',
+          'div:has(> h1.text-2xl)',
+          '.overflow-y-auto:has(h1)'
+        ],
+        PREVIEW_BUTTON: [
+          'button[aria-label="内容をプレビュー"]',
+          'button[aria-label*="プレビュー"]',
+          'button[aria-label*="preview"]'
+        ]
+      };
+    
+    const containerSelectors = canvasSelectors.CONTAINER || [];
     let canvas = null;
+    
+    // 既に展開されているCanvasを探す
     for (const selector of containerSelectors) {
-      const element = document.querySelector(selector);
-      if (element) {
-        canvas = selector.includes('h1') ? element.closest('.grid-cols-1.grid') : element;
+      try {
+        const elements = document.querySelectorAll(selector);
+        for (const element of elements) {
+          // h1があり、テキストが十分長い場合のみCanvasとして認識
+          const h1 = element.querySelector('h1');
+          const textLength = element.textContent?.length || 0;
+          if (h1 && textLength > 500) {  // DeepResearchは通常長いテキスト
+            canvas = element;
+            log('Canvas発見（展開済み）', 'DEBUG', { 
+              selector, 
+              title: h1.textContent?.substring(0, 50),
+              textLength 
+            });
+            break;
+          }
+        }
         if (canvas) break;
+      } catch (e) {
+        log(`セレクタエラー: ${selector}`, 'DEBUG', { error: e.message });
       }
     }
     
+    // Canvasが見つからない場合、プレビューボタンをクリックして展開
     if (!canvas && expandIfNeeded) {
-      // プレビューボタンを探して展開
-      const previewButtonSelectors = window.AIHandler?.getSelectors?.('Claude', 'PREVIEW_BUTTON') || ['button[aria-label="内容をプレビュー"]'];
+      const previewButtonSelectors = canvasSelectors.PREVIEW_BUTTON || 
+        ['button[aria-label="内容をプレビュー"]'];
+      
       let previewButton = null;
       for (const selector of previewButtonSelectors) {
         previewButton = document.querySelector(selector);
-        if (previewButton) break;
+        if (previewButton) {
+          log('プレビューボタン発見', 'DEBUG', { selector });
+          break;
+        }
       }
       
       if (previewButton) {
         log('Canvasを展開中...', 'INFO');
         previewButton.click();
-        await wait(1000);
+        await wait(1500);  // 展開アニメーションを待つ
+        
+        // 再度Canvasを探す
         for (const selector of containerSelectors) {
-          const element = document.querySelector(selector);
-          if (element) {
-            canvas = selector.includes('h1') ? element.closest('.grid-cols-1.grid') : element;
+          try {
+            const elements = document.querySelectorAll(selector);
+            for (const element of elements) {
+              const h1 = element.querySelector('h1');
+              const textLength = element.textContent?.length || 0;
+              if (h1 && textLength > 500) {
+                canvas = element;
+                log('Canvas発見（展開後）', 'DEBUG', { 
+                  selector,
+                  title: h1.textContent?.substring(0, 50),
+                  textLength 
+                });
+                break;
+              }
+            }
             if (canvas) break;
+          } catch (e) {
+            log(`セレクタエラー: ${selector}`, 'DEBUG', { error: e.message });
           }
         }
       }
     }
     
+    // Canvas内容を解析
     if (canvas) {
       const h1 = canvas.querySelector('h1');
       const h2s = canvas.querySelectorAll('h2');
-      const ps = canvas.querySelectorAll('p.whitespace-normal');
+      const ps = canvas.querySelectorAll('p.whitespace-normal, p[class*="whitespace"]');
+      const text = canvas.textContent?.trim();
       
-      return {
+      const result = {
         success: true,
-        text: canvas.textContent?.trim(),
+        text: text,
         title: h1?.textContent?.trim(),
         sections: h2s.length,
-        paragraphs: ps.length
+        paragraphs: ps.length,
+        isCanvas: true,
+        isDeepResearch: h2s.length > 3 && text?.length > 2000  // DeepResearchの特徴
       };
+      
+      log('Canvas内容取得成功', 'SUCCESS', {
+        title: result.title,
+        sections: result.sections,
+        paragraphs: result.paragraphs,
+        textLength: text?.length,
+        isDeepResearch: result.isDeepResearch
+      });
+      
+      return result;
     }
     
     // プレビューテキストから取得（フォールバック）
     const previewSelectors = canvasSelectors.PREVIEW_TEXT || ['.absolute.inset-0'];
-    let previewElement = null;
     for (const selector of previewSelectors) {
-      previewElement = document.querySelector(selector);
-      if (previewElement) break;
-    }
-    if (previewElement) {
-      const text = previewElement.textContent?.trim();
-      if (text && text.length > 100) {
-        return {
-          success: true,
-          text: text,
-          isPreview: true
-        };
+      const previewElement = document.querySelector(selector);
+      if (previewElement) {
+        const text = previewElement.textContent?.trim();
+        if (text && text.length > 100) {
+          log('プレビューテキストから取得', 'INFO', { textLength: text.length });
+          return {
+            success: true,
+            text: text,
+            isPreview: true
+          };
+        }
       }
     }
     
+    log('Canvas/Artifacts取得失敗', 'DEBUG');
     return { success: false };
   }
 
-  // 統合テストと同じロジックを使用したgetResponse関数（test-claude-response-final.js ベース）
+  // 統合テストと同じロジックを使用したgetResponse関数（Canvas/Artifacts優先）
   async function getResponse() {
     const operationName = 'getResponse';
     const startTime = startOperation(operationName, {
@@ -1240,6 +1310,43 @@
     log('Claude応答テキストを取得中...', 'INFO');
 
     try {
+      // ========================================
+      // 1. まずCanvas/Artifactsをチェック（DeepResearch等）
+      // ========================================
+      log('Canvas/Artifactsの確認を開始', 'DEBUG');
+      const canvasResult = await getCanvasContent(true);  // expandIfNeeded=true
+      
+      if (canvasResult?.success && canvasResult?.text) {
+        const responseLength = canvasResult.text.length;
+        const previewText = canvasResult.text.substring(0, 100);
+        
+        log('Canvas/Artifactsから応答取得成功', 'SUCCESS', {
+          method: 'canvas',
+          isCanvas: canvasResult.isCanvas,
+          isDeepResearch: canvasResult.isDeepResearch,
+          isPreview: canvasResult.isPreview,
+          title: canvasResult.title,
+          sections: canvasResult.sections,
+          paragraphs: canvasResult.paragraphs,
+          responseLength,
+          previewText: previewText + (responseLength > 100 ? '...' : '')
+        });
+        
+        endOperation(operationName, { 
+          success: true, 
+          responseLength,
+          method: 'canvas-artifacts',
+          isDeepResearch: canvasResult.isDeepResearch
+        });
+        
+        return canvasResult.text;
+      }
+      
+      log('Canvas/Artifactsが見つからない、通常メッセージを確認', 'DEBUG');
+      
+      // ========================================
+      // 2. 通常のClaude応答を取得（既存のロジック）
+      // ========================================
       // ui-selectors.js の定義を使用してClaude応答を取得
       const responseSelectors = await window.AIHandler.getSelectors('Claude', 'RESPONSE');
       log(`ui-selectors.js から取得した応答セレクタ: ${responseSelectors.join(', ')}`, 'DEBUG');

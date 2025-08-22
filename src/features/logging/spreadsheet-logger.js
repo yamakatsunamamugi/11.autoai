@@ -188,6 +188,7 @@ export class SpreadsheetLogger {
    * @param {boolean} options.isFirstTask - 最初のタスクかどうか
    * @param {boolean} options.isGroupTask - 3種類AIグループタスクかどうか
    * @param {boolean} options.isLastInGroup - グループ最後のタスクかどうか
+   * @param {Function} options.onComplete - 書き込み完了時のコールバック
    * @returns {Promise<void>}
    */
   async writeLogToSpreadsheet(task, options = {}) {
@@ -373,6 +374,16 @@ export class SpreadsheetLogger {
       // 送信時刻をクリア（メモリ節約）
       this.sendTimestamps.delete(task.id);
       
+      // 完了コールバックを実行
+      if (typeof options.onComplete === 'function') {
+        console.log(`🔔 [SpreadsheetLogger] 完了コールバック実行: ${logCell}`);
+        try {
+          await options.onComplete(task, logCell);
+        } catch (callbackError) {
+          console.error(`❌ [SpreadsheetLogger] コールバックエラー:`, callbackError);
+        }
+      }
+      
     } catch (error) {
       // エラーが発生してもメイン処理は続行
       this.logger.error('[SpreadsheetLogger] ログ書き込みエラー:', {
@@ -381,6 +392,16 @@ export class SpreadsheetLogger {
         taskId: task.id,
         row: task.row
       });
+      
+      // エラー時もコールバックを実行（エラー情報付き）
+      if (typeof options.onComplete === 'function') {
+        console.log(`🔔 [SpreadsheetLogger] エラー時のコールバック実行`);
+        try {
+          await options.onComplete(task, null, error);
+        } catch (callbackError) {
+          console.error(`❌ [SpreadsheetLogger] コールバックエラー:`, callbackError);
+        }
+      }
     }
   }
 

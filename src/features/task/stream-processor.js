@@ -658,22 +658,24 @@ class StreamProcessor {
       hasMoreTasks: hasMoreTasks,
     });
 
-    // 統一処理: 全てのAIを同じフローで処理
-    this.logger.log(`[StreamProcessor] 🚪 ウィンドウを閉じます: ${column}列, windowId: ${windowId}`);
-    await this.closeColumnWindow(column);
-    this.logger.log(`[StreamProcessor] ✅ ウィンドウクローズ完了: ${column}列`);
+    // ウィンドウクローズを一時的に保留
+    // スプレッドシート記録完了後にクローズするため、ここではクローズ情報を保存
+    const windowCloseInfo = {
+      column,
+      windowId,
+      hasMoreTasks
+    };
     
-    // 空きウィンドウを利用して利用可能な列を開始
+    // タスクにウィンドウクローズ情報を付与
+    task._windowCloseInfo = windowCloseInfo;
+    
+    this.logger.log(`[StreamProcessor] 📋 ウィンドウクローズを保留: ${column}列 (スプレッドシート記録完了待ち)`);
+    
     if (hasMoreTasks) {
       this.logger.log(`[StreamProcessor] 🔄 ${column}列の次のタスクあり`);
     } else {
       this.logger.log(`[StreamProcessor] 🎯 ${column}列の全タスク完了`);
     }
-    
-    // ウィンドウが空いたので、利用可能な全ての列をチェックして開始
-    this.checkAndStartAvailableColumns().catch(error => {
-      this.logger.error(`[StreamProcessor] 利用可能列チェックエラー`, error);
-    });
 
     // ■ 並列ストリーミング: 次の列の開始は記載完了後に行われる
     // （writeResultToSpreadsheet内のcheckAndStartNextColumnForRowで処理）
@@ -758,7 +760,35 @@ class StreamProcessor {
             gid,
             isFirstTask: !this.isFirstTaskProcessed,
             isGroupTask,
-            isLastInGroup
+            isLastInGroup,
+            onComplete: async (completedTask, logCell, error) => {
+              // スプレッドシート記録完了後のコールバック
+              if (!error) {
+                this.logger.log(`[StreamProcessor] 📝 ログ記録完了コールバック実行: ${logCell}`);
+                
+                // ウィンドウクローズ情報があれば、ここでウィンドウを閉じる
+                if (completedTask._windowCloseInfo) {
+                  const { column: closeColumn, windowId: closeWindowId, hasMoreTasks: closeHasMoreTasks } = completedTask._windowCloseInfo;
+                  
+                  this.logger.log(`[StreamProcessor] 🚪 ウィンドウを閉じます: ${closeColumn}列, windowId: ${closeWindowId}`);
+                  await this.closeColumnWindow(closeColumn);
+                  this.logger.log(`[StreamProcessor] ✅ ウィンドウクローズ完了: ${closeColumn}列`);
+                  
+                  // ウィンドウが空いたので、利用可能な全ての列をチェックして開始
+                  this.checkAndStartAvailableColumns().catch(checkError => {
+                    this.logger.error(`[StreamProcessor] 利用可能列チェックエラー`, checkError);
+                  });
+                }
+              } else {
+                this.logger.error(`[StreamProcessor] ログ記録エラー時のコールバック: ${error.message}`);
+                
+                // エラーが発生してもウィンドウは閉じる
+                if (completedTask._windowCloseInfo) {
+                  const { column: closeColumn } = completedTask._windowCloseInfo;
+                  await this.closeColumnWindow(closeColumn);
+                }
+              }
+            }
           });
           
           // 最初のタスク処理完了フラグを更新
