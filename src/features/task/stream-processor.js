@@ -2168,7 +2168,7 @@ ${formattedGemini}`;
         url: url,
         ...windowPosition,
         focused: false,
-        type: "normal",
+        type: "popup",
       });
       
       // ウィンドウ情報を記録
