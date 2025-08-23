@@ -9,7 +9,7 @@
 // 1. スプレッドシートの読み込みと処理
 // 2. AIタスクの実行制御
 // 3. 列追加機能（2025-08-23追加）
-//    - スプレッドシートに必要な列（ログ列、回答列）を手動で追加
+//    - スプレッドシートに必要な列（ログ列、回答列）を自動で追加
 //    - 既存のSpreadsheetAutoSetupクラスを利用
 // 4. ウィンドウ管理
 // 5. ログ表示とエラーハンドリング
@@ -1461,7 +1461,7 @@ if (loadSheetsBtn) {
  * 列追加ボタンのイベントリスナー
  * 
  * 【機能概要】
- * スプレッドシートに必要な列（ログ列、回答列など）を手動で追加する機能
+ * スプレッドシートに必要な列（ログ列、回答列など）を自動で追加する機能
  * 
  * 【動作の流れ】
  * 1. ユーザーが「列追加」ボタンをクリック
@@ -1480,7 +1480,7 @@ if (loadSheetsBtn) {
  * - background.js: executeAutoSetupメッセージハンドラ
  * - SpreadsheetAutoSetup: src/services/spreadsheet-auto-setup.js
  * 
- * @since 2025-08-23
+ * @since 2025-08-23 列追加ボタン機能として追加
  */
 const addColumnsBtn = document.getElementById("addColumnsBtn");
 if (addColumnsBtn) {

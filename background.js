@@ -549,7 +549,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
      * - loadSpreadsheets処理でも同じSpreadsheetAutoSetupを使用しているが、
      *   そちらはタスク生成も含む完全な処理を行う
      * 
-     * @since 2025-08-23 手動列追加機能として追加
+     * @since 2025-08-23 列追加ボタン機能として追加
      */
     case "executeAutoSetup":
       (async () => {
