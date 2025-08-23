@@ -1890,109 +1890,81 @@ function handleGetTaskStatus(request, sendResponse) {
 }
 
 /**
- * AIモデル情報を取得
+ * AIモデル情報を取得（ModelInfoExtractor使用）
  * @returns {string} モデル名
  */
 function getModelInfo() {
+  try {
+    // ModelInfoExtractorが利用可能かチェック
+    if (typeof window.ModelInfoExtractor !== 'undefined') {
+      // グローバルからModelInfoExtractorを使用
+      const modelName = window.ModelInfoExtractor.extract(AI_TYPE);
+      console.log(`[11.autoai][${AI_TYPE}] 🔧 ModelInfoExtractor使用: "${modelName || '取得失敗'}"`);
+      return modelName;
+    } 
+    
+    // フォールバック: 従来の直接取得方式
+    console.warn(`[11.autoai][${AI_TYPE}] ⚠️ ModelInfoExtractorが利用できません。フォールバック方式を使用`);
+    return getModelInfoFallback();
+    
+  } catch (error) {
+    console.error(`[11.autoai][${AI_TYPE}] ❌ モデル情報取得エラー:`, error);
+    // エラー時もフォールバックを試行
+    return getModelInfoFallback();
+  }
+}
+
+/**
+ * フォールバック用モデル情報取得関数
+ * ModelInfoExtractorが利用できない場合の従来方式
+ */
+function getModelInfoFallback() {
   let modelName = '';
-  let debugInfo = {
-    aiType: AI_TYPE,
-    selectorFound: false,
-    elementContent: null,
-    extractedModel: null
-  };
   
   try {
     switch(AI_TYPE) {
       case 'ChatGPT':
       case 'chatgpt':
-        // ChatGPT: "ChatGPT 5 Thinking" から "5 Thinking" を取得
         const chatgptBtn = document.querySelector('button[data-testid="model-switcher-dropdown-button"]');
-        debugInfo.selector = 'button[data-testid="model-switcher-dropdown-button"]';
-        
         if (chatgptBtn) {
-          debugInfo.selectorFound = true;
           const divElement = chatgptBtn.querySelector('div');
           if (divElement) {
             const fullText = divElement.textContent.trim();
-            debugInfo.elementContent = fullText;
-            // "ChatGPT " を削除してモデル名のみ取得
-            modelName = fullText.replace('ChatGPT', '').trim();
-            debugInfo.extractedModel = modelName;
-          } else {
-            console.warn(`[11.autoai][ChatGPT] ⚠️ div要素が見つかりません`);
+            modelName = fullText.replace(/^ChatGPT\s*/i, '').trim();
           }
-        } else {
-          console.warn(`[11.autoai][ChatGPT] ⚠️ モデルセレクタボタンが見つかりません`);
         }
         break;
       
       case 'Claude':
       case 'claude':
-        // Claude: "Opus 4.1" を取得（より具体的なセレクタを使用）
-        // まずボタン内の特定の要素を探す
         const claudeButton = document.querySelector('button[data-testid="model-selector-dropdown"]');
-        debugInfo.selector = 'button[data-testid="model-selector-dropdown"] .whitespace-nowrap.tracking-tight.select-none';
-        
         if (claudeButton) {
-          // ボタン内の.whitespace-nowrap.tracking-tight.select-none要素を探す
           const claudeModel = claudeButton.querySelector('.whitespace-nowrap.tracking-tight.select-none');
-          
           if (claudeModel) {
-            debugInfo.selectorFound = true;
             modelName = claudeModel.textContent.trim();
-            debugInfo.elementContent = modelName;
-            debugInfo.extractedModel = modelName;
           } else {
-            // フォールバック: ボタン内のテキストから抽出
             const buttonText = claudeButton.textContent;
-            console.warn(`[11.autoai][Claude] ⚠️ 特定の要素が見つからないため、ボタン全体から抽出: ${buttonText}`);
-            // "Claude" を除外してモデル名を取得
             const match = buttonText.match(/(?:Claude\s*)?((?:Opus|Sonnet|Haiku)\s*[\d.]+)/i);
             if (match) {
               modelName = match[1].trim();
-              debugInfo.elementContent = buttonText;
-              debugInfo.extractedModel = modelName;
-              debugInfo.fallbackUsed = true;
             }
           }
-        } else {
-          console.warn(`[11.autoai][Claude] ⚠️ モデルセレクタボタンが見つかりません`);
         }
         break;
         
       case 'Gemini':
       case 'gemini':
-        // Gemini: "2.5 Pro" を取得
         const geminiLabel = document.querySelector('.logo-pill-label-container span');
-        debugInfo.selector = '.logo-pill-label-container span';
-        
         if (geminiLabel) {
-          debugInfo.selectorFound = true;
           modelName = geminiLabel.textContent.trim();
-          debugInfo.elementContent = modelName;
-          debugInfo.extractedModel = modelName;
-        } else {
-          console.warn(`[11.autoai][Gemini] ⚠️ モデルラベル要素が見つかりません`);
         }
         break;
     }
     
-    // 詳細ログ出力
-    console.log(`[11.autoai][${AI_TYPE}] 🔍 モデル情報取得詳細:`, debugInfo);
-    
-    if (modelName) {
-      console.log(`[11.autoai][${AI_TYPE}] ✅ モデル情報取得成功: "${modelName}"`);
-    } else {
-      console.warn(`[11.autoai][${AI_TYPE}] ⚠️ モデル情報を取得できませんでした`);
-    }
+    console.log(`[11.autoai][${AI_TYPE}] 📋 フォールバック取得結果: "${modelName || '取得失敗'}"`);
     
   } catch (error) {
-    console.error(`[11.autoai][${AI_TYPE}] ❌ モデル情報取得エラー:`, {
-      error: error.message,
-      stack: error.stack,
-      debugInfo
-    });
+    console.error(`[11.autoai][${AI_TYPE}] ❌ フォールバック取得エラー:`, error);
   }
   
   return modelName;

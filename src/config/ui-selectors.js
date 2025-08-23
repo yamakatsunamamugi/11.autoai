@@ -126,7 +126,24 @@ export const UI_SELECTORS = {
             'div[data-message-author-role="assistant"]',
             '.markdown.prose:last-of-type',
             '.prose:last-of-type'
-        ]
+        ],
+        
+        // モデル情報取得
+        MODEL_INFO: {
+            BUTTON: [
+                'button[data-testid="model-switcher-dropdown-button"]',  // 最優先：現在確認済み
+                'button[aria-label*="モデル"]',
+                'button[aria-label*="Model"]',
+                'button[class*="model"]',
+                '[data-testid*="model-switcher"]'
+            ],
+            TEXT_ELEMENT: [
+                'button[data-testid="model-switcher-dropdown-button"] div',  // ボタン内のdiv
+                'button[data-testid="model-switcher-dropdown-button"] span',  // ボタン内のspan（フォールバック）
+                '[data-testid="model-switcher-dropdown-button"] .text-sm',  // 小さいテキスト
+                '[data-testid="model-switcher-dropdown-button"] *'  // ボタン内の全要素（最終手段）
+            ]
+        }
     },
     
     // ========================================
@@ -290,6 +307,24 @@ export const UI_SELECTORS = {
             TITLE: 'h1.text-2xl',
             SECTION: 'h2.text-xl',
             PARAGRAPH: 'p.whitespace-normal, p[class*="whitespace"]'
+        },
+        
+        // モデル情報取得
+        MODEL_INFO: {
+            BUTTON: [
+                'button[data-testid="model-selector-dropdown"]',  // 最優先：現在確認済み
+                'button[aria-haspopup="menu"]',  // メニューを開くボタン
+                'button.cursor-pointer:has(span.font-medium)',  // モデル表示ボタン
+                'button[aria-label*="モデル"]',
+                'button[aria-label*="Model"]'
+            ],
+            TEXT_ELEMENT: [
+                'button[data-testid="model-selector-dropdown"] .whitespace-nowrap.tracking-tight.select-none',  // 最優先：特定の要素
+                'button[data-testid="model-selector-dropdown"] span',  // ボタン内のspan
+                'button[data-testid="model-selector-dropdown"] div',   // ボタン内のdiv（フォールバック）
+                'button[aria-haspopup="menu"] .whitespace-nowrap',      // フォールバック用
+                'button[aria-haspopup="menu"] span.font-medium'         // フォント中太のspan
+            ]
         }
     },
     
@@ -434,6 +469,24 @@ export const UI_SELECTORS = {
             CONTAINER: [
                 '.toolbox-drawer',
                 '.toolbox-container'
+            ]
+        },
+        
+        // モデル情報取得
+        MODEL_INFO: {
+            BUTTON: [
+                '.logo-pill-label-container',  // モデルラベルコンテナ
+                'button[aria-label*="モデル"]',
+                'button[aria-label*="Model"]',
+                '.model-selector-button',
+                '[data-testid*="model"]'
+            ],
+            TEXT_ELEMENT: [
+                '.logo-pill-label-container span',  // 最優先：現在確認済み
+                '.logo-pill-label-container .model-name',  // モデル名要素
+                '.logo-pill-label-container div',   // コンテナ内のdiv
+                '.model-indicator span',            // モデルインジケーター
+                '[class*="model-"] span'            // モデル関連クラス内のspan
             ]
         }
     },

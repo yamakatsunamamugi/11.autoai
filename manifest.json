@@ -58,6 +58,7 @@
       ],
       "js": [
         "src/modules/retry-manager.js",
+        "src/content/model-info-loader.js",
         "src/content/ai-content-unified.js"
       ],
       "run_at": "document_end",
