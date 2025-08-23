@@ -552,14 +552,12 @@ class StreamProcessor {
     // WindowServiceを使用してAI URLを取得（ChatGPT/Claude/Gemini等のURL管理を一元化）
     const url = WindowService.getAIUrl(task.aiType);
     
-    // WindowServiceを使用してスクリーン情報を取得（モニター情報の取得を統一）
-    const screenInfo = await WindowService.getScreenInfo();
-    
-    // WindowServiceを使用してウィンドウ位置を計算（4分割レイアウト等の位置計算を統一）
-    const windowPosition = WindowService.calculateWindowPosition(position, screenInfo);
-    
-    // WindowServiceを使用してAIウィンドウを作成（focused: trueがデフォルトで設定される）
-    const window = await WindowService.createAIWindow(url, windowPosition);
+    // WindowServiceのcreateWindowWithPositionを使用してウィンドウを作成
+    // これにより位置計算とウィンドウ作成が一元化される
+    const window = await WindowService.createWindowWithPosition(url, position, {
+      type: 'ai',
+      aiType: task.aiType
+    });
     
     this.activeWindows.set(window.id, {
       windowId: window.id,
@@ -2477,15 +2475,13 @@ ${formattedGemini}`;
     // WindowServiceを使用してAI URLを取得（タスクのAIタイプに応じたURL取得を一元化）
     const url = WindowService.getAIUrl(task.aiType);
     
-    // WindowServiceを使用してスクリーン情報を取得（複数モニター対応の情報取得を統一）
-    const screenInfo = await WindowService.getScreenInfo();
-    
-    // WindowServiceを使用してウィンドウ位置を計算（タスク用ウィンドウの位置計算を統一）
-    const windowPosition = WindowService.calculateWindowPosition(position, screenInfo);
-    
     try {
-      // WindowServiceを使用してAIウィンドウを作成（自動的に最前面表示される）
-      const window = await WindowService.createAIWindow(url, windowPosition);
+      // WindowServiceのcreateWindowWithPositionを使用してウィンドウを作成
+      // これにより位置計算とウィンドウ作成が一元化される
+      const window = await WindowService.createWindowWithPosition(url, position, {
+        type: 'ai',
+        aiType: task.aiType
+      });
       
       // ウィンドウ情報を記録
       this.activeWindows.set(window.id, {
