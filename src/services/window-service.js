@@ -160,7 +160,7 @@ export class WindowService {
   
   /**
    * ウィンドウ位置を計算
-   * @param {string} position - 位置（left, right, center, etc）
+   * @param {string|number} position - 位置（left, right, center, または 0-3の数値）
    * @param {Object} screenInfo - スクリーン情報
    * @returns {Object} 位置とサイズ
    */
@@ -168,6 +168,47 @@ export class WindowService {
     const baseWidth = Math.floor(screenInfo.width * 0.35);
     const baseHeight = Math.floor(screenInfo.height * 0.8);
     
+    // 数値のpositionを処理（4分割レイアウト用）
+    if (typeof position === 'number') {
+      const halfWidth = Math.floor(screenInfo.width / 2);
+      const halfHeight = Math.floor(screenInfo.height / 2);
+      
+      switch (position) {
+        case 0: // 左上
+          return {
+            left: screenInfo.left,
+            top: screenInfo.top,
+            width: halfWidth,
+            height: halfHeight
+          };
+        case 1: // 右上
+          return {
+            left: screenInfo.left + halfWidth,
+            top: screenInfo.top,
+            width: halfWidth,
+            height: halfHeight
+          };
+        case 2: // 左下
+          return {
+            left: screenInfo.left,
+            top: screenInfo.top + halfHeight,
+            width: halfWidth,
+            height: halfHeight
+          };
+        case 3: // 右下
+          return {
+            left: screenInfo.left + halfWidth,
+            top: screenInfo.top + halfHeight,
+            width: halfWidth,
+            height: halfHeight
+          };
+        default:
+          // 4以上の数値の場合は中央に配置
+          return this.calculateWindowPosition('center', screenInfo);
+      }
+    }
+    
+    // 文字列のpositionを処理
     switch (position) {
       case 'left':
         return {
