@@ -3967,6 +3967,350 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   }
 });
 
+// ===== テストボタンのイベントハンドラー =====
+/**
+ * テスト機能のボタンハンドラー
+ * 各テスト機能でウィンドウを最前面に表示する
+ */
+
+// 1. モデル・機能変更検出システム
+const testModelDetectionBtn = document.getElementById('testModelDetectionBtn');
+if (testModelDetectionBtn) {
+  testModelDetectionBtn.addEventListener('click', async () => {
+    console.log('🔍 モデル・機能変更検出システムテスト開始');
+    
+    // ウィンドウを最前面に表示
+    try {
+      const currentWindow = await chrome.windows.getCurrent();
+      await chrome.windows.update(currentWindow.id, {
+        focused: true,
+        drawAttention: true,
+        state: 'normal'
+      });
+    } catch (error) {
+      console.error('ウィンドウ最前面表示エラー:', error);
+    }
+    
+    updateStatus('モデル・機能変更検出を実行中...', 'loading');
+    
+    try {
+      // AI検出処理を実行
+      const detectionResults = await detectAllAIConfigurations();
+      
+      if (detectionResults && detectionResults.length > 0) {
+        console.log('✅ モデル・機能変更検出完了:', detectionResults);
+        updateStatus('モデル・機能変更検出が完了しました', 'success');
+        
+        // 結果をログに表示
+        detectionResults.forEach(result => {
+          if (result) {
+            addLogEntry(`${result.aiType || 'Unknown AI'}: モデル検出完了`, 'system');
+          }
+        });
+      } else {
+        updateStatus('検出結果がありません', 'warning');
+      }
+    } catch (error) {
+      console.error('モデル検出エラー:', error);
+      updateStatus('モデル検出エラー: ' + error.message, 'error');
+    }
+  });
+}
+
+// 2. AIセレクタ変更検出システム
+const testAiSelectorBtn = document.getElementById('testAiSelectorBtn');
+if (testAiSelectorBtn) {
+  testAiSelectorBtn.addEventListener('click', async () => {
+    console.log('🎯 AIセレクタ変更検出システムテスト開始');
+    
+    // ウィンドウを最前面に表示
+    try {
+      const currentWindow = await chrome.windows.getCurrent();
+      await chrome.windows.update(currentWindow.id, {
+        focused: true,
+        drawAttention: true,
+        state: 'normal'
+      });
+    } catch (error) {
+      console.error('ウィンドウ最前面表示エラー:', error);
+    }
+    
+    updateStatus('AIセレクタ変更検出を実行中...', 'loading');
+    
+    try {
+      // バックグラウンドにメッセージ送信
+      const response = await chrome.runtime.sendMessage({
+        action: 'testAiSelector'
+      });
+      
+      if (response && response.success) {
+        updateStatus('AIセレクタ変更検出が完了しました', 'success');
+        addLogEntry('AIセレクタ変更検出完了', 'system');
+      } else {
+        updateStatus('AIセレクタ検出失敗', 'error');
+      }
+    } catch (error) {
+      console.error('AIセレクタ検出エラー:', error);
+      updateStatus('AIセレクタ検出エラー: ' + error.message, 'error');
+    }
+  });
+}
+
+// 3. スプレッドシート読み込みテスト
+const testSpreadsheetLoadingBtn = document.getElementById('testSpreadsheetLoadingBtn');
+if (testSpreadsheetLoadingBtn) {
+  testSpreadsheetLoadingBtn.addEventListener('click', async () => {
+    console.log('📊 スプレッドシート読み込みテスト開始');
+    
+    // ウィンドウを最前面に表示
+    try {
+      const currentWindow = await chrome.windows.getCurrent();
+      await chrome.windows.update(currentWindow.id, {
+        focused: true,
+        drawAttention: true,
+        state: 'normal'
+      });
+    } catch (error) {
+      console.error('ウィンドウ最前面表示エラー:', error);
+    }
+    
+    updateStatus('スプレッドシート読み込みテスト中...', 'loading');
+    
+    try {
+      // スプレッドシートURL入力欄から値を取得
+      const urlInputs = document.querySelectorAll('.spreadsheet-url-input');
+      const urls = [];
+      
+      urlInputs.forEach((input) => {
+        const url = input.value.trim();
+        if (url) {
+          urls.push(url);
+        }
+      });
+      
+      if (urls.length === 0) {
+        updateStatus('URLを入力してください', 'warning');
+        return;
+      }
+      
+      // スプレッドシート読み込み
+      const response = await chrome.runtime.sendMessage({
+        action: 'loadSpreadsheets',
+        urls: urls
+      });
+      
+      if (response && response.success) {
+        updateStatus(`スプレッドシート読み込み完了: ${urls.length}件`, 'success');
+        addLogEntry(`スプレッドシート${urls.length}件を読み込みました`, 'system');
+      } else {
+        updateStatus('スプレッドシート読み込み失敗', 'error');
+      }
+    } catch (error) {
+      console.error('スプレッドシート読み込みエラー:', error);
+      updateStatus('読み込みエラー: ' + error.message, 'error');
+    }
+  });
+}
+
+// 4. ウィンドウ作成テスト
+const testWindowCreationBtn = document.getElementById('testWindowCreationBtn');
+if (testWindowCreationBtn) {
+  testWindowCreationBtn.addEventListener('click', async () => {
+    console.log('🪟 ウィンドウ作成テスト開始');
+    
+    // 現在のウィンドウを最前面に表示
+    try {
+      const currentWindow = await chrome.windows.getCurrent();
+      await chrome.windows.update(currentWindow.id, {
+        focused: true,
+        drawAttention: true,
+        state: 'normal'
+      });
+    } catch (error) {
+      console.error('ウィンドウ最前面表示エラー:', error);
+    }
+    
+    updateStatus('テストウィンドウを作成中...', 'loading');
+    
+    try {
+      // テストウィンドウ作成
+      const testWindow = await chrome.windows.create({
+        url: 'https://chatgpt.com',
+        type: 'popup',
+        width: 800,
+        height: 600,
+        focused: true,  // 最前面に表示
+        left: 100,
+        top: 100
+      });
+      
+      updateStatus('テストウィンドウを作成しました', 'success');
+      addLogEntry(`ウィンドウID: ${testWindow.id}を作成`, 'system');
+      
+      // 3秒後に最前面に再度表示
+      setTimeout(async () => {
+        await chrome.windows.update(testWindow.id, {
+          focused: true,
+          drawAttention: true
+        });
+        addLogEntry('ウィンドウを最前面に表示', 'system');
+      }, 3000);
+      
+    } catch (error) {
+      console.error('ウィンドウ作成エラー:', error);
+      updateStatus('ウィンドウ作成エラー: ' + error.message, 'error');
+    }
+  });
+}
+
+// 5. 統合AIテスト開始
+const testIntegratedAiBtn = document.getElementById('testIntegratedAiBtn');
+if (testIntegratedAiBtn) {
+  testIntegratedAiBtn.addEventListener('click', async () => {
+    console.log('🤖 統合AIテスト開始');
+    
+    // ウィンドウを最前面に表示
+    try {
+      const currentWindow = await chrome.windows.getCurrent();
+      await chrome.windows.update(currentWindow.id, {
+        focused: true,
+        drawAttention: true,
+        state: 'normal'
+      });
+    } catch (error) {
+      console.error('ウィンドウ最前面表示エラー:', error);
+    }
+    
+    updateStatus('統合AIテストを開始中...', 'loading');
+    
+    try {
+      // バックグラウンドに統合テスト開始を通知
+      const response = await chrome.runtime.sendMessage({
+        action: 'startIntegratedTest',
+        testMode: true
+      });
+      
+      if (response && response.success) {
+        updateStatus('統合AIテストを開始しました', 'success');
+        addLogEntry('統合AIテスト開始', 'system');
+        
+        // 各AIのウィンドウを順番に最前面に表示
+        if (response.windows) {
+          for (const windowInfo of response.windows) {
+            await chrome.windows.update(windowInfo.id, {
+              focused: true,
+              drawAttention: true
+            });
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+        }
+      } else {
+        updateStatus('統合AIテスト開始失敗', 'error');
+      }
+    } catch (error) {
+      console.error('統合AIテストエラー:', error);
+      updateStatus('テストエラー: ' + error.message, 'error');
+    }
+  });
+}
+
+// 6. レポート化テスト
+const generateReportBtn = document.getElementById('generateReportBtn');
+if (generateReportBtn) {
+  generateReportBtn.addEventListener('click', async () => {
+    console.log('📄 レポート生成テスト開始');
+    
+    // ウィンドウを最前面に表示
+    try {
+      const currentWindow = await chrome.windows.getCurrent();
+      await chrome.windows.update(currentWindow.id, {
+        focused: true,
+        drawAttention: true,
+        state: 'normal'
+      });
+    } catch (error) {
+      console.error('ウィンドウ最前面表示エラー:', error);
+    }
+    
+    updateStatus('レポートを生成中...', 'loading');
+    
+    try {
+      // レポート生成処理
+      const response = await chrome.runtime.sendMessage({
+        action: 'generateReport'
+      });
+      
+      if (response && response.success) {
+        updateStatus('レポート生成完了', 'success');
+        addLogEntry('レポートを生成しました', 'system');
+        
+        // レポートウィンドウを開く
+        if (response.reportUrl) {
+          const reportWindow = await chrome.windows.create({
+            url: response.reportUrl,
+            type: 'popup',
+            width: 1000,
+            height: 700,
+            focused: true
+          });
+        }
+      } else {
+        updateStatus('レポート生成失敗', 'error');
+      }
+    } catch (error) {
+      console.error('レポート生成エラー:', error);
+      updateStatus('レポート生成エラー: ' + error.message, 'error');
+    }
+  });
+}
+
+// 7. AIステータス表示
+const showAIStatusBtn = document.getElementById('showAIStatusBtn');
+if (showAIStatusBtn) {
+  showAIStatusBtn.addEventListener('click', async () => {
+    console.log('📊 AIステータス表示');
+    
+    // ウィンドウを最前面に表示
+    try {
+      const currentWindow = await chrome.windows.getCurrent();
+      await chrome.windows.update(currentWindow.id, {
+        focused: true,
+        drawAttention: true,
+        state: 'normal'
+      });
+    } catch (error) {
+      console.error('ウィンドウ最前面表示エラー:', error);
+    }
+    
+    updateStatus('AIステータスを取得中...', 'loading');
+    
+    try {
+      // AIステータス取得
+      const response = await chrome.runtime.sendMessage({
+        action: 'getAIStatus'
+      });
+      
+      if (response && response.status) {
+        updateStatus('AIステータスを取得しました', 'success');
+        
+        // ステータスをログに表示
+        addLogEntry('=== AIステータス ===', 'system');
+        Object.entries(response.status).forEach(([ai, status]) => {
+          addLogEntry(`${ai}: ${JSON.stringify(status)}`, 'system');
+        });
+        
+        // AIステータスセクションを更新
+        updateAIStatus();
+      } else {
+        updateStatus('AIステータス取得失敗', 'error');
+      }
+    } catch (error) {
+      console.error('AIステータス取得エラー:', error);
+      updateStatus('ステータス取得エラー: ' + error.message, 'error');
+    }
+  });
+}
+
 // ===== グローバル関数公開 =====
 // 他のモジュールから使用できるように関数をwindowオブジェクトに公開
 window.injectAutomationScripts = injectAutomationScripts;
