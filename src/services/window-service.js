@@ -11,6 +11,12 @@ export class WindowService {
   // アクティブなウィンドウを管理するMap
   static activeWindows = new Map();
   
+  // ウィンドウポジション管理 (0-3の位置を管理)
+  static windowPositions = new Map();
+  
+  // ポジションごとのウィンドウID管理
+  static positionToWindow = new Map();
+  
   // AI種別とURLのマッピング
   static AI_URLS = {
     chatgpt: 'https://chatgpt.com',
@@ -168,8 +174,10 @@ export class WindowService {
     const baseWidth = Math.floor(screenInfo.width * 0.35);
     const baseHeight = Math.floor(screenInfo.height * 0.8);
     
-    // 数値のpositionを処理（4分割レイアウト用）
+    // 数値のpositionを処理（8分割レイアウト用）
     if (typeof position === 'number') {
+      const quarterWidth = Math.floor(screenInfo.width / 4);
+      const quarterHeight = Math.floor(screenInfo.height / 2);
       const halfWidth = Math.floor(screenInfo.width / 2);
       const halfHeight = Math.floor(screenInfo.height / 2);
       
@@ -343,23 +351,61 @@ export class WindowService {
    */
   static registerWindow(windowId, info) {
     this.activeWindows.set(windowId, info);
+    
+    // ポジション情報がある場合は登録
+    if (info.position !== undefined && info.position >= 0 && info.position < 4) {
+      this.windowPositions.set(info.position, windowId);
+      this.positionToWindow.set(windowId, info.position);
+    }
+    
     console.log('[WindowService] ウィンドウ登録:', windowId, info);
   }
   
   /**
    * ウィンドウを削除
    * @param {number} windowId - ウィンドウID
+   * @param {Function} onClosed - ウィンドウ閉じ後のコールバック関数
    * @returns {Promise<void>}
    */
-  static async closeWindow(windowId) {
-    try {
-      await chrome.windows.remove(windowId);
+  static async closeWindow(windowId, onClosed = null) {
+    // 必ずポジションを解放（エラーが発生しても実行）
+    const releasePosition = () => {
+      // ポジション情報をクリア
+      const position = this.positionToWindow.get(windowId);
+      if (position !== undefined) {
+        this.windowPositions.delete(position);
+        this.positionToWindow.delete(windowId);
+        console.log(`[WindowService] ポジション${position}を解放しました`);
+      }
+      
+      // アクティブウィンドウから削除
       this.activeWindows.delete(windowId);
+    };
+    
+    try {
+      // ウィンドウの存在確認
+      await chrome.windows.get(windowId);
+      await chrome.windows.remove(windowId);
       console.log('[WindowService] ウィンドウ削除:', windowId);
     } catch (error) {
-      console.error('[WindowService] ウィンドウ削除エラー:', error);
-      // ウィンドウが既に閉じられている場合もMapから削除
-      this.activeWindows.delete(windowId);
+      // ウィンドウが既に閉じられている場合は正常な動作
+      if (error.message.includes('No window with id') || error.message.includes('not found')) {
+        console.warn('[WindowService] ウィンドウは既に閉じられています:', windowId);
+      } else {
+        console.error('[WindowService] ウィンドウ削除エラー:', error);
+      }
+    } finally {
+      // エラーが発生してもポジションは必ず解放
+      releasePosition();
+      
+      // コールバックを実行
+      if (onClosed && typeof onClosed === 'function') {
+        try {
+          await onClosed(windowId);
+        } catch (callbackError) {
+          console.error('[WindowService] ウィンドウ閉じ後コールバックエラー:', callbackError);
+        }
+      }
     }
   }
   
@@ -474,15 +520,91 @@ export class WindowService {
   }
   
   /**
+   * 利用可能なポジションを検索
+   * @returns {number} 空きポジション（0-3）、なければ-1
+   */
+  static findAvailablePosition() {
+    for (let i = 0; i < 4; i++) {
+      if (!this.windowPositions.has(i)) {
+        console.log(`[WindowService] 利用可能なポジション: ${i}`);
+        return i;
+      }
+    }
+    console.warn('[WindowService] 利用可能なポジションがありません');
+    return -1;
+  }
+  
+  /**
+   * ポジションを指定してウィンドウを作成
+   * @param {string} url - URL
+   * @param {number} position - ポジション（0-3）
+   * @param {Object} options - 追加オプション
+   * @returns {Promise<Object>} ウィンドウオブジェクト
+   */
+  static async createWindowWithPosition(url, position, options = {}) {
+    // ポジションが既に使用中かチェック
+    if (this.windowPositions.has(position)) {
+      const existingWindowId = this.windowPositions.get(position);
+      console.warn(`[WindowService] ポジション${position}は既に使用中: Window${existingWindowId}`);
+      
+      // 既存ウィンドウを閉じる
+      await this.closeWindow(existingWindowId);
+    }
+    
+    // スクリーン情報を取得
+    const screenInfo = await this.getScreenInfo();
+    const positionInfo = this.calculateWindowPosition(position, screenInfo);
+    
+    // ウィンドウを作成
+    const windowOptions = {
+      ...this.DEFAULT_WINDOW_OPTIONS,
+      ...positionInfo,
+      ...options,
+      url: url,
+      focused: true
+    };
+    
+    try {
+      const window = await chrome.windows.create(windowOptions);
+      
+      // ウィンドウ情報を登録（ポジション情報を含む）
+      this.registerWindow(window.id, {
+        url: url,
+        position: position,
+        type: options.type || 'general',
+        createdAt: Date.now(),
+        ...options
+      });
+      
+      console.log(`[WindowService] ウィンドウ作成成功: ID=${window.id}, Position=${position}`);
+      return window;
+    } catch (error) {
+      console.error('[WindowService] ウィンドウ作成エラー:', error);
+      throw error;
+    }
+  }
+  
+  /**
    * デバッグ情報を出力
    */
   static debug() {
     console.log('[WindowService] デバッグ情報:');
     console.log('  アクティブウィンドウ数:', this.activeWindows.size);
+    console.log('  使用中ポジション:', Array.from(this.windowPositions.keys()).sort());
     console.log('  ウィンドウ一覧:');
     for (const [id, info] of this.activeWindows) {
-      console.log(`    - ID: ${id}, Type: ${info.type}, URL: ${info.url}`);
+      const position = this.positionToWindow.get(id);
+      console.log(`    - ID: ${id}, Position: ${position ?? 'なし'}, Type: ${info.type}, URL: ${info.url}`);
     }
+  }
+  
+  /**
+   * すべてのポジションをクリア
+   */
+  static clearAllPositions() {
+    this.windowPositions.clear();
+    this.positionToWindow.clear();
+    console.log('[WindowService] すべてのポジションをクリアしました');
   }
 }
 

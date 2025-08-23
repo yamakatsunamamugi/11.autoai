@@ -189,7 +189,8 @@ export class SpreadsheetLogger {
    * @param {boolean} options.isGroupTask - 3種類AIグループタスクかどうか
    * @param {boolean} options.isLastInGroup - グループ最後のタスクかどうか
    * @param {Function} options.onComplete - 書き込み完了時のコールバック
-   * @returns {Promise<void>}
+   * @param {boolean} options.enableWriteVerification - 書き込み確認を有効にするかどうか
+   * @returns {Promise<{success: boolean, verified: boolean, error?: string}>}
    */
   async writeLogToSpreadsheet(task, options = {}) {
     try {
@@ -356,17 +357,30 @@ export class SpreadsheetLogger {
       console.log(`✅ [SpreadsheetLogger] ログ書き込み完了: ${logCell}`);
       this.logger.log(`[SpreadsheetLogger] ログを書き込み: ${logCell}`);
       
+      // 書き込み確認を実行（有効な場合）
+      let writeVerified = true;
+      if (options.enableWriteVerification) {
+        writeVerified = await this.verifyWriteSuccess(
+          sheetsClient, 
+          spreadsheetId, 
+          logCell, 
+          mergedLog, 
+          gid
+        );
+      }
+      
       // 拡張機能のログシステムにも記録
       if (globalThis.logManager) {
         globalThis.logManager.log(`📝 スプレッドシートログ書き込み完了: ${logCell}`, {
           category: 'system',
-          level: 'info',
+          level: writeVerified ? 'info' : 'warning',
           metadata: {
             taskId: task.id,
             logCell,
             aiType: sendTimeInfo.aiType,
             model: sendTimeInfo.model,
-            elapsedSeconds: Math.round((writeTime.getTime() - sendTimeInfo.time.getTime()) / 1000)
+            elapsedSeconds: Math.round((writeTime.getTime() - sendTimeInfo.time.getTime()) / 1000),
+            verified: writeVerified
           }
         });
       }
@@ -386,7 +400,7 @@ export class SpreadsheetLogger {
       if (typeof options.onComplete === 'function') {
         console.log(`🔔 [SpreadsheetLogger] 完了コールバック実行: ${logCell}`);
         try {
-          await options.onComplete(task, logCell);
+          await options.onComplete(task, logCell, writeVerified);
           console.log(`✅ [SpreadsheetLogger] コールバック実行成功: ${logCell}`);
         } catch (callbackError) {
           console.error(`❌ [SpreadsheetLogger] コールバックエラー:`, callbackError);
@@ -394,6 +408,13 @@ export class SpreadsheetLogger {
       } else {
         console.warn(`⚠️ [SpreadsheetLogger] コールバックが存在しないかfunction型ではありません`);
       }
+      
+      // 結果を返す
+      return {
+        success: true,
+        verified: writeVerified,
+        logCell
+      };
       
     } catch (error) {
       // エラーが発生してもメイン処理は続行
@@ -408,12 +429,97 @@ export class SpreadsheetLogger {
       if (typeof options.onComplete === 'function') {
         console.log(`🔔 [SpreadsheetLogger] エラー時のコールバック実行`);
         try {
-          await options.onComplete(task, null, error);
+          await options.onComplete(task, null, false, error);
         } catch (callbackError) {
           console.error(`❌ [SpreadsheetLogger] コールバックエラー:`, callbackError);
         }
       }
+      
+      // エラー結果を返す
+      return {
+        success: false,
+        verified: false,
+        error: error.message
+      };
     }
+  }
+
+  /**
+   * スプレッドシートへの書き込み成功を確認
+   * @param {Object} sheetsClient - SheetsClientインスタンス
+   * @param {string} spreadsheetId - スプレッドシートID
+   * @param {string} logCell - ログセル
+   * @param {string} expectedContent - 期待される内容
+   * @param {string} gid - シートGID
+   * @returns {Promise<boolean>} 書き込み成功の確認結果
+   */
+  async verifyWriteSuccess(sheetsClient, spreadsheetId, logCell, expectedContent, gid) {
+    try {
+      console.log(`🔍 [SpreadsheetLogger] 書き込み確認開始: ${logCell}`);
+      
+      // 少し待ってから確認（APIの遅延を考慮）
+      await this._sleep(1000);
+      
+      // 実際のセルの内容を取得
+      const actualData = await sheetsClient.getSheetData(
+        spreadsheetId,
+        logCell,
+        gid
+      );
+      
+      const actualContent = actualData?.[0]?.[0] || '';
+      
+      // 内容が期待された内容と一致するかチェック
+      const isMatched = actualContent.length > 0 && 
+                       (actualContent === expectedContent || 
+                        actualContent.includes(expectedContent.substring(0, 100)));
+      
+      console.log(`📊 [SpreadsheetLogger] 書き込み確認結果:`, {
+        logCell,
+        expectedLength: expectedContent.length,
+        actualLength: actualContent.length,
+        isMatched,
+        preview: actualContent.substring(0, 100) + (actualContent.length > 100 ? '...' : '')
+      });
+      
+      if (!isMatched) {
+        console.warn(`⚠️ [SpreadsheetLogger] 書き込み確認失敗: ${logCell} - 期待される内容と一致しません`);
+        
+        // 詳細なエラー情報をログに記録
+        if (globalThis.logManager) {
+          globalThis.logManager.log(`⚠️ スプレッドシート書き込み確認失敗: ${logCell}`, {
+            category: 'system',
+            level: 'warning',
+            metadata: {
+              logCell,
+              expectedLength: expectedContent.length,
+              actualLength: actualContent.length,
+              hasContent: actualContent.length > 0
+            }
+          });
+        }
+      } else {
+        console.log(`✅ [SpreadsheetLogger] 書き込み確認成功: ${logCell}`);
+      }
+      
+      return isMatched;
+      
+    } catch (error) {
+      console.error(`❌ [SpreadsheetLogger] 書き込み確認エラー:`, error);
+      this.logger.error('[SpreadsheetLogger] 書き込み確認エラー:', error.message);
+      
+      // エラーの場合は確認失敗として扱う
+      return false;
+    }
+  }
+
+  /**
+   * 待機処理（ヘルパーメソッド）
+   * @param {number} ms - 待機時間（ミリ秒）
+   * @returns {Promise<void>}
+   */
+  _sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   /**

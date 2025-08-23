@@ -182,7 +182,7 @@ export class RetryPlugin extends TaskHandlerPlugin {
       maxAttempts: 3,
       baseDelay: 1000,
       exponentialBackoff: true,
-      retryConditions: ['timeout', 'network', 'temporary'],
+      retryConditions: ['timeout', 'network', 'temporary', 'spreadsheet_write_failed', 'write_verification_failed'],
       ...config
     };
   }
@@ -213,8 +213,23 @@ export class RetryPlugin extends TaskHandlerPlugin {
 
   _shouldRetry(error) {
     const errorMessage = error.message.toLowerCase();
+    const errorType = error.type || '';
+    
+    // エラータイプまたはメッセージでリトライ判定
     return this.config.retryConditions.some(condition => 
-      errorMessage.includes(condition)
+      errorMessage.includes(condition) || 
+      errorType.includes(condition) ||
+      (condition === 'spreadsheet_write_failed' && (
+        errorMessage.includes('書き込み確認失敗') ||
+        errorMessage.includes('write verification failed') ||
+        errorMessage.includes('スプレッドシート書き込み') ||
+        errorType === 'SPREADSHEET_WRITE_FAILED'
+      )) ||
+      (condition === 'write_verification_failed' && (
+        errorMessage.includes('確認失敗') ||
+        errorMessage.includes('verification failed') ||
+        errorType === 'WRITE_VERIFICATION_FAILED'
+      ))
     );
   }
 

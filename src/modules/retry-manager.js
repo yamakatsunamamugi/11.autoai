@@ -39,9 +39,11 @@ class RetryManager {
       enableDeepResearch = false,
       specialMode = null,
       timeout = 600000,
+      enableWriteVerification = true,
       onRetry = null,
       onError = null,
-      onSuccess = null
+      onSuccess = null,
+      onWriteFailure = null
     } = { ...task, ...options };
 
     this.currentTaskId = taskId;
@@ -71,7 +73,8 @@ class RetryManager {
           aiType,
           enableDeepResearch,
           specialMode,
-          timeout
+          timeout,
+          enableWriteVerification
         });
 
         // 結果を解析
@@ -86,8 +89,22 @@ class RetryManager {
         }
 
         // エラー判定
-        if (result.error === 'TIMEOUT_NO_RESPONSE' || result.needsRetry) {
-          this.log(`タイムアウトエラー検出: ${result.errorMessage}`, 'WARNING');
+        if (result.error === 'TIMEOUT_NO_RESPONSE' || 
+            result.error === 'SPREADSHEET_WRITE_FAILED' ||
+            result.error === 'WRITE_VERIFICATION_FAILED' ||
+            result.needsRetry ||
+            (result.writeResult && !result.writeResult.verified)) {
+          
+          let errorType = result.error || 'UNKNOWN_ERROR';
+          let errorMessage = result.errorMessage || 'エラーが発生しました';
+          
+          // スプレッドシート書き込み確認失敗の場合
+          if (result.writeResult && !result.writeResult.verified) {
+            errorType = 'WRITE_VERIFICATION_FAILED';
+            errorMessage = 'スプレッドシートへの書き込み確認に失敗しました';
+          }
+          
+          this.log(`エラー検出: ${errorType} - ${errorMessage}`, 'WARNING');
           
           if (this.retryCount < this.maxRetries) {
             this.retryCount++;
@@ -97,8 +114,20 @@ class RetryManager {
               await onRetry({
                 retryCount: this.retryCount,
                 maxRetries: this.maxRetries,
-                error: result.error,
-                taskId
+                error: errorType,
+                errorMessage: errorMessage,
+                taskId,
+                isWriteVerificationFailure: errorType === 'WRITE_VERIFICATION_FAILED'
+              });
+            }
+            
+            // 書き込み確認失敗時の特別な処理
+            if (errorType === 'WRITE_VERIFICATION_FAILED' && onWriteFailure) {
+              await onWriteFailure({
+                retryCount: this.retryCount,
+                maxRetries: this.maxRetries,
+                taskId,
+                writeResult: result.writeResult
               });
             }
             
@@ -113,7 +142,9 @@ class RetryManager {
               aiType,
               enableDeepResearch,
               specialMode,
-              attemptNumber: this.retryCount + 1
+              enableWriteVerification,
+              attemptNumber: this.retryCount + 1,
+              retryReason: errorType
             });
             
             if (retryResult && retryResult.success) {

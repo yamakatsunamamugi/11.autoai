@@ -148,13 +148,163 @@ function dismissRetryNotification(taskId) {
   }
 }
 
+// スプレッドシート書き込み失敗通知を表示
+function showSpreadsheetWriteFailureNotification(data) {
+  const { taskId, retryCount, maxRetries, logCell, writeResult } = data;
+  
+  // 既存の通知を削除
+  const notificationId = `spreadsheet-fail-${taskId}`;
+  const existingNotification = document.getElementById(notificationId);
+  if (existingNotification) {
+    existingNotification.remove();
+  }
+  
+  // 通知要素を作成
+  const notification = document.createElement('div');
+  notification.className = 'spreadsheet-failure-notification';
+  notification.id = notificationId;
+  notification.style.cssText = `
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+    color: white;
+    padding: 15px 20px;
+    border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(220, 53, 69, 0.3);
+    z-index: 10002;
+    min-width: 320px;
+    animation: slideIn 0.3s ease-out;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  `;
+  
+  notification.innerHTML = `
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <div style="font-size: 24px;">⚠️</div>
+      <div style="flex: 1;">
+        <div style="font-weight: 600; font-size: 14px; margin-bottom: 5px;">
+          スプレッドシート書き込み失敗
+        </div>
+        <div style="font-size: 12px; opacity: 0.9; margin-bottom: 3px;">
+          セル ${logCell || 'Unknown'} への書き込みが確認できませんでした
+        </div>
+        <div style="font-size: 11px; opacity: 0.8;">
+          リトライ ${retryCount}/${maxRetries} 実行中...
+        </div>
+      </div>
+      <button onclick="dismissSpreadsheetFailureNotification('${taskId}')" style="
+        background: rgba(255, 255, 255, 0.2);
+        border: none;
+        color: white;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+        transition: background 0.2s;
+      " onmouseover="this.style.background='rgba(255,255,255,0.3)'" 
+         onmouseout="this.style.background='rgba(255,255,255,0.2)'">
+        ×
+      </button>
+    </div>
+    <div style="margin-top: 10px; padding: 8px; 
+                background: rgba(255, 255, 255, 0.1); 
+                border-radius: 5px; font-size: 11px;">
+      <div style="margin-bottom: 5px;">🔧 <strong>対処方法:</strong></div>
+      <ul style="margin: 0; padding-left: 15px; line-height: 1.4;">
+        <li>スプレッドシートのアクセス権限を確認してください</li>
+        <li>ブラウザのネットワーク接続を確認してください</li>
+        <li>数秒待ってから手動でリトライしてください</li>
+      </ul>
+    </div>
+  `;
+  
+  document.body.appendChild(notification);
+  
+  // 通知を記録
+  activeNotifications.set(notificationId, {
+    element: notification,
+    timestamp: Date.now(),
+    data: data
+  });
+  
+  // 10秒後に自動的に削除（スプレッドシートエラーは重要なので長めに表示）
+  setTimeout(() => {
+    dismissSpreadsheetFailureNotification(taskId);
+  }, 10000);
+}
+
+// スプレッドシート失敗通知を削除
+function dismissSpreadsheetFailureNotification(taskId) {
+  const notificationId = `spreadsheet-fail-${taskId}`;
+  if (activeNotifications.has(notificationId)) {
+    const notification = activeNotifications.get(notificationId);
+    if (notification.element) {
+      notification.element.style.animation = 'slideOut 0.3s ease-in';
+      setTimeout(() => {
+        notification.element.remove();
+      }, 300);
+    }
+    activeNotifications.delete(notificationId);
+  }
+}
+
+// 成功通知を表示
+function showSuccessNotification(message, duration = 3000) {
+  const notificationId = `success-${Date.now()}`;
+  
+  const notification = document.createElement('div');
+  notification.id = notificationId;
+  notification.style.cssText = `
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+    color: white;
+    padding: 15px 20px;
+    border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(40, 167, 69, 0.3);
+    z-index: 10000;
+    min-width: 300px;
+    animation: slideIn 0.3s ease-out;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  `;
+  
+  notification.innerHTML = `
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <div style="font-size: 24px;">✅</div>
+      <div style="flex: 1; font-size: 14px; font-weight: 500;">
+        ${message}
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(notification);
+  
+  setTimeout(() => {
+    notification.style.animation = 'slideOut 0.3s ease-in';
+    setTimeout(() => {
+      notification.remove();
+    }, 300);
+  }, duration);
+}
+
 // メッセージリスナー
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'showRetryNotification') {
     showRetryNotification(request.data);
     sendResponse({ success: true });
+  } else if (request.action === 'showSpreadsheetWriteFailure') {
+    showSpreadsheetWriteFailureNotification(request.data);
+    sendResponse({ success: true });
+  } else if (request.action === 'showSuccessNotification') {
+    showSuccessNotification(request.message || 'スプレッドシート書き込み成功', request.duration);
+    sendResponse({ success: true });
   }
-  return false;
+  return true;
 });
 
 // CSSアニメーションを追加
@@ -188,6 +338,13 @@ style.textContent = `
   }
 `;
 document.head.appendChild(style);
+
+// グローバルに通知機能を公開
+window.showRetryNotification = showRetryNotification;
+window.showSpreadsheetWriteFailureNotification = showSpreadsheetWriteFailureNotification;
+window.showSuccessNotification = showSuccessNotification;
+window.dismissRetryNotification = dismissRetryNotification;
+window.dismissSpreadsheetFailureNotification = dismissSpreadsheetFailureNotification;
 
 // ===== AIステータス管理 =====
 function updateAIStatus() {

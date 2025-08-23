@@ -194,9 +194,9 @@ class StreamProcessor {
 
     // ウィンドウ管理状態
     this.activeWindows = new Map(); // windowId -> windowInfo
-    this.windowPositions = new Map(); // position(0-2) -> windowId (左上、右上、左下の3つ)
+    this.windowPositions = new Map(); // position(0-3) -> windowId (4分割対応)
     this.columnWindows = new Map(); // column -> windowId (列とウィンドウの対応)
-    this.maxConcurrentWindows = 3; // 左上、右上、左下の3つのみ（右下は拡張機能用）
+    this.maxConcurrentWindows = 4; // 4分割レイアウト対応
 
     // タスク管理状態
     this.taskQueue = new Map(); // column -> tasks[]
@@ -453,7 +453,7 @@ class StreamProcessor {
       const firstTask = tasks.find(t => t.column === column && t.row === rows[0]);
       if (!firstTask) continue;
       
-      const position = this.findAvailablePosition();
+      const position = WindowService.findAvailablePosition();
       const windowId = await this.openWindow(firstTask, position);
       windows.set(column, windowId);
       
@@ -501,7 +501,7 @@ class StreamProcessor {
     
     for (let i = 0; i < tasks.length; i++) {
       const task = tasks[i];
-      const position = this.findAvailablePosition();
+      const position = WindowService.findAvailablePosition();
       const windowId = await this.openWindow(task, position);
       windows.set(task.row, windowId);
       
@@ -711,33 +711,55 @@ class StreamProcessor {
     
     // 開いたウィンドウを記録
     const openedWindows = [];
+    const maxRetries = 3;
+    const retryDelay = 2000;
     
     // 3つのウィンドウを並列で開いてタスクを実行（3種類AIは同時実行でOK）
     const windowPromises = rowTasks.map(async (task) => {
-      try {
-        // ポジションを探す
-        const position = this.findAvailablePosition();
-        if (position === -1) {
-          throw new Error('利用可能なポジションがありません');
+      let retryCount = 0;
+      
+      while (retryCount < maxRetries) {
+        try {
+          // WindowServiceを使用してポジションを探す
+          const position = WindowService.findAvailablePosition();
+          if (position === -1) {
+            // ポジションがない場合は少し待ってリトライ
+            if (retryCount < maxRetries - 1) {
+              this.logger.log(`[StreamProcessor] ポジション待機中... (リトライ ${retryCount + 1}/${maxRetries})`);
+              await new Promise(resolve => setTimeout(resolve, retryDelay));
+              retryCount++;
+              continue;
+            }
+            throw new Error('利用可能なポジションがありません');
+          }
+        
+          // ウィンドウを開く
+          const windowId = await this.openWindowForTask(task, position);
+          if (!windowId) {
+            throw new Error(`ウィンドウを開けませんでした: ${task.column}${task.row}`);
+          }
+          
+          // 開いたウィンドウを記録
+          openedWindows.push(windowId);
+          
+          // タスクを実行（リトライ機能付き）
+          const result = await this.executeTaskInWindow(task, windowId);
+          
+          // 成功したらループを抜ける
+          break;
+          
+        } catch (error) {
+          retryCount++;
+          if (retryCount >= maxRetries) {
+            // リトライ上限に達した場合
+            this.logger.error(`[StreamProcessor] 3種類AIタスク失敗: ${task.column}${task.row}`, error);
+            // タスクを失敗として記録
+            this.markTaskAsFailed(task);
+          } else {
+            this.logger.warn(`[StreamProcessor] リトライ ${retryCount}/${maxRetries}: ${task.column}${task.row}`);
+            await new Promise(resolve => setTimeout(resolve, retryDelay));
+          }
         }
-        
-        // ウィンドウを開く
-        const windowId = await this.openWindowForTask(task, position);
-        if (!windowId) {
-          throw new Error(`ウィンドウを開けませんでした: ${task.column}${task.row}`);
-        }
-        
-        // 開いたウィンドウを記録
-        openedWindows.push(windowId);
-        
-        // タスクを実行（リトライ機能付き）
-        const result = await this.executeTaskInWindow(task, windowId);
-        
-        // 注: ウィンドウはバッチ完了時にまとめて閉じる
-        
-      } catch (error) {
-        // ここに来るのは予期しないエラーのみ（リトライは executeTaskInWindow 内で処理済み）
-        this.logger.error(`[StreamProcessor] 3種類AIタスク予期しないエラー: ${task.column}${task.row}`, error);
       }
     });
     
@@ -822,7 +844,7 @@ class StreamProcessor {
     // テスト用のpreferredPositionがある場合はそれを使用、なければ自動検索
     const position = currentTask.preferredPosition !== undefined 
       ? currentTask.preferredPosition 
-      : this.findAvailablePosition();
+      : WindowService.findAvailablePosition();
     if (position === -1) {
       this.logger.log(
         `[StreamProcessor] 空きポジションがありません。待機中...`,
@@ -2370,7 +2392,7 @@ ${formattedGemini}`;
     const windowPromises = batchTasks.map(async (task, index) => {
       try {
         // ポジションを探す
-        const position = this.findAvailablePosition();
+        const position = WindowService.findAvailablePosition();
         if (position === -1) {
           throw new Error('利用可能なポジションがありません');
         }
@@ -2535,29 +2557,35 @@ ${formattedGemini}`;
    */
   async closeWindowAfterTask(windowId) {
     try {
-      // WindowServiceを使用してウィンドウを閉じる（エラーハンドリングも統一）
-      await WindowService.closeWindow(windowId);
+      // ウィンドウクローズ後に確実に位置解放を行うコールバック
+      const onWindowClosed = async (closedWindowId) => {
+        this.logger.log(`[StreamProcessor] 🧹 ウィンドウ${closedWindowId}の位置管理をクリーンアップ`);
+        
+        // 管理情報をクリア
+        this.activeWindows.delete(closedWindowId);
+        
+        // positionからも削除
+        for (const [pos, wId] of this.windowPositions.entries()) {
+          if (wId === closedWindowId) {
+            this.windowPositions.delete(pos);
+            this.logger.log(`[StreamProcessor] ✅ ポジション${pos}を解放しました`);
+            break;
+          }
+        }
+        
+        // columnWindowsからも削除
+        for (const [col, wId] of this.columnWindows.entries()) {
+          if (wId === closedWindowId) {
+            this.columnWindows.delete(col);
+            this.logger.log(`[StreamProcessor] ✅ 列${col}のウィンドウ管理を解放しました`);
+            break;
+          }
+        }
+      };
+      
+      // WindowServiceを使用してウィンドウを閉じる（コールバック付き）
+      await WindowService.closeWindow(windowId, onWindowClosed);
       this.logger.log(`[StreamProcessor] ✅ タスク完了後、Window${windowId}を閉じました`);
-      
-      // 管理情報をクリア
-      this.activeWindows.delete(windowId);
-      
-      // positionからも削除
-      for (const [pos, wId] of this.windowPositions.entries()) {
-        if (wId === windowId) {
-          this.windowPositions.delete(pos);
-          this.logger.log(`[StreamProcessor] ポジション${pos}を解放しました`);
-          break;
-        }
-      }
-      
-      // columnWindowsからも削除
-      for (const [col, wId] of this.columnWindows.entries()) {
-        if (wId === windowId) {
-          this.columnWindows.delete(col);
-          break;
-        }
-      }
     } catch (error) {
       this.logger.debug(`[StreamProcessor] Window${windowId}クローズエラー（無視）: ${error.message}`);
     }
@@ -2967,31 +2995,33 @@ ${formattedGemini}`;
   }
 
   /**
-   * 空きポジションを探して即座に予約
+   * タスクを失敗としてマーク
+   * @param {Object} task - タスクオブジェクト
+   */
+  markTaskAsFailed(task) {
+    const taskId = `${task.column}${task.row}`;
+    this.completedTasks.add(task.id);
+    
+    // スプレッドシートにエラーを記録
+    if (this.spreadsheetLogger) {
+      this.spreadsheetLogger.writeResult({
+        cell: taskId,
+        result: 'エラー: タスク実行に失敗しました',
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    this.logger.error(`[StreamProcessor] タスク${taskId}を失敗としてマーク`);
+  }
+  
+  /**
+   * 空きポジションを探して即座に予約（非推奨: WindowServiceを使用してください）
+   * @deprecated WindowService.findAvailablePosition()を使用してください
    * @returns {number} 空きポジション（0-3）、なければ-1
    */
   findAvailablePosition() {
-    const timestamp = Date.now();
-    this.logger.log(`[StreamProcessor] 🔍 findAvailablePosition開始 ${timestamp}`, {
-      currentWindowPositions: Array.from(this.windowPositions.keys()),
-      activeWindowsCount: this.activeWindows.size,
-      stackTrace: new Error().stack?.split('\n')[2]?.trim()
-    });
-    
-    for (let i = 0; i < this.maxConcurrentWindows; i++) {
-      const hasPosition = this.windowPositions.has(i);
-      this.logger.log(`[StreamProcessor] ポジション${i}チェック: ${hasPosition ? '使用中' : '空き'}`);
-      
-      if (!hasPosition) {
-        // 競合状態を防ぐため、即座に仮予約
-        this.windowPositions.set(i, 'RESERVED');
-        this.logger.log(`[StreamProcessor] ✅ ポジション${i}を予約して返す (${timestamp})`);
-        return i;
-      }
-    }
-    
-    this.logger.log(`[StreamProcessor] ❌ 空きポジションなし (${timestamp})`);
-    return -1;
+    // WindowServiceに委譲
+    return WindowService.findAvailablePosition();
   }
 
   /**
@@ -3920,7 +3950,7 @@ ${formattedGemini}`;
       const retryPromises = batch.map(async (task) => {
         try {
           // ポジションを探す
-          const position = this.findAvailablePosition();
+          const position = WindowService.findAvailablePosition();
           if (position === -1) {
             throw new Error('利用可能なポジションがありません');
           }
