@@ -333,10 +333,17 @@ class TaskGenerator {
         if (!combinedPrompt) continue;
 
         // 各回答列にタスクを生成
+        console.log(`[TaskGenerator] グループ処理 (${group.aiType}): プロンプト列[${group.promptColumns.map(i => this.indexToColumn(i)).join(', ')}] -> 回答列[${group.answerColumns.map(a => a.column).join(', ')}]`);
+        
         for (const answerCol of group.answerColumns) {
           // 既存回答チェック
           const existingAnswer = this.getCellValue(spreadsheetData, workRow.index, answerCol.index);
-          if (this.answerFilter.hasAnswer(existingAnswer)) continue;
+          if (this.answerFilter.hasAnswer(existingAnswer)) {
+            console.log(`[TaskGenerator] 既存回答をスキップ: ${answerCol.column}${workRow.number}`);
+            continue;
+          }
+
+          console.log(`[TaskGenerator] タスク作成: ${answerCol.column}${workRow.number} (グループ: ${group.aiType}, プロンプト: ${group.promptColumns.map(i => this.indexToColumn(i)).join('+')})`);
 
           // タスクを作成
           const task = await this.createAITask(
@@ -348,7 +355,13 @@ class TaskGenerator {
             combinedPrompt
           );
           
-          taskList.add(task);
+          // 重複チェック付きでタスクを追加
+          const added = taskList.add(task);
+          if (added) {
+            console.log(`[TaskGenerator] タスク追加成功: ${task.column}${task.row} (ID: ${task.id})`);
+          } else {
+            console.warn(`[TaskGenerator] タスク追加失敗（重複）: ${task.column}${task.row}`);
+          }
         }
 
         // レポート化タスクを生成
@@ -493,23 +506,89 @@ class TaskGenerator {
   }
 
   /**
-   * プロンプトを連結
+   * プロンプトを連結（拡張デバッグ版）
    */
   buildCombinedPrompt(spreadsheetData, workRow, group) {
     const prompts = [];
+    const promptDetails = []; // デバッグ用詳細情報
 
     for (const colIndex of group.promptColumns) {
+      const columnName = this.indexToColumn(colIndex);
       const value = this.getCellValue(spreadsheetData, workRow.index, colIndex);
+      
       if (value && value.trim()) {
-        prompts.push(value.trim());
+        const trimmedValue = value.trim();
+        prompts.push(trimmedValue);
+        promptDetails.push({
+          column: columnName,
+          length: trimmedValue.length,
+          preview: trimmedValue.substring(0, 50) + (trimmedValue.length > 50 ? '...' : '')
+        });
+      } else {
+        // 空のセルも記録
+        promptDetails.push({
+          column: columnName,
+          length: 0,
+          preview: '[空]'
+        });
       }
     }
 
-    if (prompts.length === 0) return null;
+    if (prompts.length === 0) {
+      console.log(`[TaskGenerator] プロンプト連結失敗 (行${workRow.number}): 全プロンプト列が空`, {
+        行: workRow.number,
+        グループ: group.aiType,
+        プロンプト列: group.promptColumns.map(i => this.indexToColumn(i)),
+        詳細: promptDetails
+      });
+      return null;
+    }
 
     const combined = prompts.join('\n');
-    console.log(`[TaskGenerator] プロンプト連結: ${prompts.length}個 → ${combined.length}文字`);
+    
+    // プロンプト内容のハッシュを生成（重複検出用）
+    const promptHash = this.generateSimpleHash(combined);
+    
+    console.log(`[TaskGenerator] プロンプト連結成功 (行${workRow.number}):`, {
+      行: workRow.number,
+      グループ: group.aiType,
+      プロンプト数: prompts.length,
+      総文字数: combined.length,
+      ハッシュ: promptHash,
+      列詳細: promptDetails
+    });
+
+    // 重複検出（同じハッシュのプロンプトが既に存在するかチェック）
+    if (!this.promptHashTracker) {
+      this.promptHashTracker = new Map(); // プロンプトハッシュ → 初回出現位置
+    }
+    
+    if (this.promptHashTracker.has(promptHash)) {
+      const firstOccurrence = this.promptHashTracker.get(promptHash);
+      console.warn(`[TaskGenerator] ⚠️ 重複プロンプト検出:`, {
+        現在: `行${workRow.number} (${group.aiType})`,
+        初回出現: firstOccurrence,
+        ハッシュ: promptHash,
+        プレビュー: combined.substring(0, 100) + '...'
+      });
+    } else {
+      this.promptHashTracker.set(promptHash, `行${workRow.number} (${group.aiType})`);
+    }
+
     return combined;
+  }
+  
+  /**
+   * シンプルハッシュ生成（重複検出用）
+   */
+  generateSimpleHash(text) {
+    let hash = 0;
+    for (let i = 0; i < text.length; i++) {
+      const char = text.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // 32bit整数に変換
+    }
+    return hash.toString(36); // 36進数文字列として返す
   }
 
   /**
@@ -522,11 +601,33 @@ class TaskGenerator {
     let model = null;
     let specialOperation = null;
 
+    // 3種類AIか単独AIかで取得方法を分ける
+    const isThreeTypeAI = (group.aiType === "3type");
+    
     if (rows.model) {
-      model = this.getCellValue(spreadsheetData, rows.model.index, answerCol.index);
+      if (isThreeTypeAI) {
+        // 3種類AI: 各回答列（ChatGPT回答、Claude回答、Gemini回答）のモデル・機能を取得
+        model = this.getCellValue(spreadsheetData, rows.model.index, answerCol.index);
+        console.log(`[TaskGenerator] 3種類AI - ${answerCol.column}列のモデル取得: "${model}"`);
+      } else {
+        // 単独AI: プロンプト列のモデル・機能を取得
+        const promptColumnIndex = group.promptColumns[0]; // 最初のプロンプト列
+        model = this.getCellValue(spreadsheetData, rows.model.index, promptColumnIndex);
+        console.log(`[TaskGenerator] 単独AI - プロンプト列(${this.indexToColumn(promptColumnIndex)})のモデル取得: "${model}"`);
+      }
     }
+    
     if (rows.task) {
-      specialOperation = this.getCellValue(spreadsheetData, rows.task.index, answerCol.index);
+      if (isThreeTypeAI) {
+        // 3種類AI: 各回答列の機能を取得
+        specialOperation = this.getCellValue(spreadsheetData, rows.task.index, answerCol.index);
+        console.log(`[TaskGenerator] 3種類AI - ${answerCol.column}列の機能取得: "${specialOperation}"`);
+      } else {
+        // 単独AI: プロンプト列の機能を取得
+        const promptColumnIndex = group.promptColumns[0]; // 最初のプロンプト列
+        specialOperation = this.getCellValue(spreadsheetData, rows.task.index, promptColumnIndex);
+        console.log(`[TaskGenerator] 単独AI - プロンプト列(${this.indexToColumn(promptColumnIndex)})の機能取得: "${specialOperation}"`);
+      }
     }
 
     // スプレッドシートの設定をそのまま使用（シンプル化）

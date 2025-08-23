@@ -1895,6 +1895,12 @@ function handleGetTaskStatus(request, sendResponse) {
  */
 function getModelInfo() {
   let modelName = '';
+  let debugInfo = {
+    aiType: AI_TYPE,
+    selectorFound: false,
+    elementContent: null,
+    extractedModel: null
+  };
   
   try {
     switch(AI_TYPE) {
@@ -1902,22 +1908,56 @@ function getModelInfo() {
       case 'chatgpt':
         // ChatGPT: "ChatGPT 5 Thinking" から "5 Thinking" を取得
         const chatgptBtn = document.querySelector('button[data-testid="model-switcher-dropdown-button"]');
+        debugInfo.selector = 'button[data-testid="model-switcher-dropdown-button"]';
+        
         if (chatgptBtn) {
+          debugInfo.selectorFound = true;
           const divElement = chatgptBtn.querySelector('div');
           if (divElement) {
             const fullText = divElement.textContent.trim();
+            debugInfo.elementContent = fullText;
             // "ChatGPT " を削除してモデル名のみ取得
             modelName = fullText.replace('ChatGPT', '').trim();
+            debugInfo.extractedModel = modelName;
+          } else {
+            console.warn(`[11.autoai][ChatGPT] ⚠️ div要素が見つかりません`);
           }
+        } else {
+          console.warn(`[11.autoai][ChatGPT] ⚠️ モデルセレクタボタンが見つかりません`);
         }
         break;
       
       case 'Claude':
       case 'claude':
-        // Claude: "Opus 4.1" を取得
-        const claudeModel = document.querySelector('.whitespace-nowrap.tracking-tight.select-none');
-        if (claudeModel) {
-          modelName = claudeModel.textContent.trim();
+        // Claude: "Opus 4.1" を取得（より具体的なセレクタを使用）
+        // まずボタン内の特定の要素を探す
+        const claudeButton = document.querySelector('button[data-testid="model-selector-dropdown"]');
+        debugInfo.selector = 'button[data-testid="model-selector-dropdown"] .whitespace-nowrap.tracking-tight.select-none';
+        
+        if (claudeButton) {
+          // ボタン内の.whitespace-nowrap.tracking-tight.select-none要素を探す
+          const claudeModel = claudeButton.querySelector('.whitespace-nowrap.tracking-tight.select-none');
+          
+          if (claudeModel) {
+            debugInfo.selectorFound = true;
+            modelName = claudeModel.textContent.trim();
+            debugInfo.elementContent = modelName;
+            debugInfo.extractedModel = modelName;
+          } else {
+            // フォールバック: ボタン内のテキストから抽出
+            const buttonText = claudeButton.textContent;
+            console.warn(`[11.autoai][Claude] ⚠️ 特定の要素が見つからないため、ボタン全体から抽出: ${buttonText}`);
+            // "Claude" を除外してモデル名を取得
+            const match = buttonText.match(/(?:Claude\s*)?((?:Opus|Sonnet|Haiku)\s*[\d.]+)/i);
+            if (match) {
+              modelName = match[1].trim();
+              debugInfo.elementContent = buttonText;
+              debugInfo.extractedModel = modelName;
+              debugInfo.fallbackUsed = true;
+            }
+          }
+        } else {
+          console.warn(`[11.autoai][Claude] ⚠️ モデルセレクタボタンが見つかりません`);
         }
         break;
         
@@ -1925,15 +1965,34 @@ function getModelInfo() {
       case 'gemini':
         // Gemini: "2.5 Pro" を取得
         const geminiLabel = document.querySelector('.logo-pill-label-container span');
+        debugInfo.selector = '.logo-pill-label-container span';
+        
         if (geminiLabel) {
+          debugInfo.selectorFound = true;
           modelName = geminiLabel.textContent.trim();
+          debugInfo.elementContent = modelName;
+          debugInfo.extractedModel = modelName;
+        } else {
+          console.warn(`[11.autoai][Gemini] ⚠️ モデルラベル要素が見つかりません`);
         }
         break;
     }
     
-    console.log(`[11.autoai][${AI_TYPE}] モデル情報取得: ${modelName || '不明'}`);
+    // 詳細ログ出力
+    console.log(`[11.autoai][${AI_TYPE}] 🔍 モデル情報取得詳細:`, debugInfo);
+    
+    if (modelName) {
+      console.log(`[11.autoai][${AI_TYPE}] ✅ モデル情報取得成功: "${modelName}"`);
+    } else {
+      console.warn(`[11.autoai][${AI_TYPE}] ⚠️ モデル情報を取得できませんでした`);
+    }
+    
   } catch (error) {
-    console.error(`[11.autoai][${AI_TYPE}] モデル情報取得エラー:`, error);
+    console.error(`[11.autoai][${AI_TYPE}] ❌ モデル情報取得エラー:`, {
+      error: error.message,
+      stack: error.stack,
+      debugInfo
+    });
   }
   
   return modelName;
@@ -1949,12 +2008,13 @@ async function sendPromptToAI(prompt, options = {}) {
   // 現在のモデル情報を取得
   const currentModel = getModelInfo();
   
-  console.log(`[11.autoai][${AI_TYPE}] sendPromptToAI実行:`, {
+  console.log(`[11.autoai][${AI_TYPE}] 🚀 sendPromptToAI実行開始:`, {
     aiType: aiType || AI_TYPE,
-    model,
-    specialOperation,
-    taskId,
-    currentModel  // 現在のモデル情報を追加
+    requestedModel: model || '未指定',
+    actualModel: currentModel || '取得失敗',
+    specialOperation: specialOperation || 'なし',
+    taskId: taskId || '未設定',
+    promptLength: prompt?.length || 0
   });
   
   // 設定オブジェクトの作成（統合テストと同じ形式）
@@ -1995,11 +2055,21 @@ async function sendPromptToAI(prompt, options = {}) {
     console.log(`[11.autoai][${AI_TYPE}] runAutomationを実行:`, config);
     const result = await automation.runAutomation(config);
     
-    console.log(`[11.autoai][${AI_TYPE}] runAutomation結果:`, result);
+    console.log(`[11.autoai][${AI_TYPE}] 📤 runAutomation結果:`, {
+      success: result?.success,
+      responseLength: result?.response?.length || 0,
+      error: result?.error,
+      modelUsed: currentModel || '不明'
+    });
     
     // 結果にモデル情報を追加
-    if (result && result.success) {
+    if (result) {
       result.model = currentModel;
+      if (result.success) {
+        console.log(`[11.autoai][${AI_TYPE}] ✅ プロンプト送信成功 - モデル: ${currentModel || '不明'}`);
+      } else {
+        console.error(`[11.autoai][${AI_TYPE}] ❌ プロンプト送信失敗:`, result.error);
+      }
     }
     
     return result;

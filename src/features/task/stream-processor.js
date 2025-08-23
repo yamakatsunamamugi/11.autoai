@@ -200,6 +200,7 @@ class StreamProcessor {
     this.currentRowByColumn = new Map(); // column -> currentRowNumber
     this.completedTasks = new Set(); // taskId
     this.failedTasksByColumn = new Map(); // column -> Set<task> (エラーになったタスク)
+    this.errorRows = new Set(); // エラーになった行番号（次の列でスキップする）
     
     // 記載完了管理（並列ストリーミング用）
     this.writtenCells = new Map(); // `${column}${row}` -> true (記載完了したセル)
@@ -224,6 +225,13 @@ class StreamProcessor {
     // 通常処理バッチ管理（新規追加）
     this.normalBatchTracker = new Map(); // batchId → {column, tasks: [], windows: Map(), completed: Set()}
     this.activeBatchIds = new Set(); // 実行中のバッチID
+    
+    // 実行中タスク管理（重複実行防止用）
+    this.activeTasksByCell = new Map(); // `${column}${row}` -> { taskId, startTime, windowId }
+    this.executionLock = new Set(); // 実行中のタスクID（排他制御用）
+    
+    // バッチトラッキング排他制御
+    this.batchUpdateMutex = new Set(); // バッチ更新中のバッチID
   }
 
   /**
@@ -951,6 +959,10 @@ class StreamProcessor {
         }
         this.failedTasksByColumn.get(task.column).add(task);
         this.logger.log(`[StreamProcessor] ❌ エラータスク記録: ${task.column}${task.row}`);
+        
+        // エラー行を記録（次の列でスキップするため）
+        this.errorRows.add(task.row);
+        this.logger.log(`[StreamProcessor] ❌ エラー行記録: 行${task.row} (次の列でスキップ)`);
       }
       
       await this.handleTaskResult(task, windowId, errorResult);
@@ -975,25 +987,68 @@ class StreamProcessor {
     const windowInfo = this.activeWindows.get(windowId);
     if (!windowInfo) return;
 
-    // 3種類AIグループの追跡を初期化
-    this.initializeGroupTracking(task);
-
     const cellPosition = `${task.column}${task.row}`;
     
+    // 重複実行チェック
+    if (this.executionLock.has(task.id)) {
+      this.logger.warn(`[StreamProcessor] 🔒 重複実行をスキップ (タスクID既に実行中): ${cellPosition} (ID: ${task.id})`);
+      return { success: false, error: "重複実行", taskId: task.id };
+    }
+    
+    if (this.activeTasksByCell.has(cellPosition)) {
+      const activeTask = this.activeTasksByCell.get(cellPosition);
+      this.logger.warn(`[StreamProcessor] 🔒 重複実行をスキップ (セル既に実行中): ${cellPosition}`, {
+        実行中タスクID: activeTask.taskId,
+        新規タスクID: task.id,
+        実行開始時間: new Date(activeTask.startTime).toLocaleTimeString()
+      });
+      return { success: false, error: "セル重複実行", taskId: task.id };
+    }
+    
+    // 実行開始をマーク
+    this.executionLock.add(task.id);
+    this.activeTasksByCell.set(cellPosition, {
+      taskId: task.id,
+      startTime: Date.now(),
+      windowId: windowId
+    });
+
+    // 3種類AIグループの追跡を初期化
+    this.initializeGroupTracking(task);
+    
+    // 詳細デバッグログ
     this.logger.log(
-      `[StreamProcessor] 📍 タスク実行: ${cellPosition}セル (Window: ${windowId})`,
+      `[StreamProcessor] 📍 タスク実行開始: ${cellPosition}セル (Window: ${windowId})`,
       {
         セル: cellPosition,
         taskAiType: task.aiType,
         windowAiType: windowInfo.aiType,
-        taskId: task.id,
-        prompt: task.prompt?.substring(0, 50) + '...',
+        タスクID: task.id,
+        プロンプト長: task.prompt?.length || 0,
+        プロンプト予覧: task.prompt?.substring(0, 100) + (task.prompt?.length > 100 ? '...' : ''),
         multiAI: task.multiAI,
-        groupId: task.groupId,
-        column: task.column,
-        row: task.row
+        グループID: task.groupId,
+        列: task.column,
+        行: task.row,
+        モデル: task.model || '未設定',
+        機能: task.specialOperation || '未設定',
+        実行時刻: new Date().toLocaleTimeString(),
+        ウィンドウ位置: windowInfo.position,
+        実行中タスク数: this.activeTasksByCell.size,
+        実行ロック数: this.executionLock.size
       }
     );
+    
+    // プロンプト内容の詳細ログ（デバッグモード）
+    if (task.prompt && task.prompt.length > 0) {
+      const promptLines = task.prompt.split('\n');
+      this.logger.log(`[StreamProcessor] プロンプト詳細 (${cellPosition}):`, {
+        行数: promptLines.length,
+        文字数: task.prompt.length,
+        先頭行: promptLines[0]?.substring(0, 100) + (promptLines[0]?.length > 100 ? '...' : ''),
+        末尾行: promptLines.length > 1 ? (promptLines[promptLines.length - 1]?.substring(0, 100) + (promptLines[promptLines.length - 1]?.length > 100 ? '...' : '')) : '（1行のみ）'
+      });
+    }
 
     // レポートタスクの場合は特別な処理
     if (task.taskType === "report") {
@@ -1036,7 +1091,12 @@ class StreamProcessor {
       let finalOperation = task.specialOperation;
       
       // DynamicConfig上書きを削除 - スプレッドシートの設定をそのまま使用
-      this.logger.log(`[StreamProcessor] 📊 スプレッドシート設定適用: ${task.aiType} -> モデル:${finalModel}, 機能:${finalOperation}`);
+      this.logger.log(`[StreamProcessor] 📊 スプレッドシート設定適用:`, {
+        aiType: task.aiType,
+        requestedModel: finalModel || '未指定',
+        specialOperation: finalOperation || 'なし',
+        cellPosition: `${task.column}${task.row}`
+      });
 
       // 送信時刻を記録（ログ用）
       if (this.spreadsheetLogger) {
@@ -1044,6 +1104,7 @@ class StreamProcessor {
           aiType: task.aiType,
           model: finalModel || '不明'
         });
+        this.logger.log(`[StreamProcessor] ⏰ 送信時刻を記録: ${new Date().toLocaleString('ja-JP')}`);
       }
 
       // AITaskHandlerを直接呼び出す（Service Worker内なので）
@@ -1069,23 +1130,35 @@ class StreamProcessor {
       // 動的に取得したモデル情報をタスクに保存
       if (result.model) {
         task.model = result.model;
-        this.logger.log(`[StreamProcessor] モデル情報を更新: ${cellPosition} = ${result.model}`);
-      } else if (!result.model && finalModel) {
+        this.logger.log(`[StreamProcessor] 🎯 モデル情報を動的取得: ${cellPosition} = "${result.model}"`);
+      } else if (finalModel) {
         // フォールバック: スプレッドシートのモデル情報を使用
         result.model = finalModel;
+        task.model = finalModel;
+        this.logger.log(`[StreamProcessor] 📄 スプレッドシートのモデル情報を使用: "${finalModel}"`);
+      } else {
+        this.logger.warn(`[StreamProcessor] ⚠️ モデル情報を取得できませんでした: ${cellPosition}`);
       }
       
       this.logger.log(
-        `[StreamProcessor] ✅ タスク完了: ${cellPosition}セル`,
+        `[StreamProcessor] ✅ タスク実行完了: ${cellPosition}セル`,
         {
           セル: cellPosition,
+          実行結果: result.success ? '成功' : '失敗',
+          エラー内容: result.error || 'なし',
           aiType: result.aiType || task.aiType,
-          model: result.model || finalModel || '不明',
-          responseLength: result.response?.length || 0,
-          column: task.column,
-          row: task.row,
-          taskId: task.id
-        },
+          実際のモデル: result.model || '取得失敗',
+          要求されたモデル: finalModel || '未指定',
+          モデル一致: result.model === finalModel ? '✓一致' : '✗不一致',
+          応答文字数: result.response?.length || 0,
+          応答プレビュー: result.response ? (result.response.substring(0, 100) + (result.response.length > 100 ? '...' : '')) : 'なし',
+          列: task.column,
+          行: task.row,
+          タスクID: task.id,
+          実行完了時刻: new Date().toLocaleTimeString(),
+          windowId: windowId,
+          実行時間: windowInfo.startTime ? `${Date.now() - windowInfo.startTime}ms` : '不明'
+        }
       );
       
       // 成功した場合、エラーリストから削除（通常処理列の場合）
@@ -1164,6 +1237,11 @@ class StreamProcessor {
     const { column, row, id: taskId } = task;
     const cellPosition = `${column}${row}`;
     
+    // 実行ロックを解除
+    this.executionLock.delete(taskId);
+    this.activeTasksByCell.delete(cellPosition);
+    this.logger.log(`[StreamProcessor] 🔓 実行ロック解除: ${cellPosition} (ID: ${taskId})`);
+    
     // ウィンドウIDをタスクに保存
     task.windowId = windowId;
 
@@ -1181,11 +1259,6 @@ class StreamProcessor {
     // タスクを完了済みにマーク
     this.completedTasks.add(taskId);
     
-    // 通常処理バッチの完了をチェック（新規追加）
-    if (!task.multiAI) {
-      await this.updateNormalBatchCompletion(task);
-    }
-
     // 同じ列の次の行へ進むための情報を先に計算
     const currentIndex = this.currentRowByColumn.get(column) || 0;
     const nextIndex = currentIndex + 1;
@@ -1209,7 +1282,21 @@ class StreamProcessor {
       this.logger.log(`[StreamProcessor] 🎯 ${column}列の全タスク完了`);
     }
 
-    // 成功した場合の追加処理
+    // エラー応答のチェックとリトライ処理（バッチ完了チェックの前に実行）
+    if (result.success && result.response && result.response.includes("[Request interrupted by user]回答テキスト取得できない　エラー")) {
+      this.logger.log(`[StreamProcessor] ❌ エラー応答を検知、リトライキューに追加: ${cellPosition}セル`);
+      
+      // リトライキューに追加
+      if (!this.failedTasksByColumn.has(column)) {
+        this.failedTasksByColumn.set(column, []);
+      }
+      this.failedTasksByColumn.get(column).push(task);
+      
+      // このタスクは失敗扱いとして、バッチ完了チェックから除外
+      return;
+    }
+    
+    // 成功した場合の追加処理（重要：バッチ完了チェックの前に実行）
     if (result.success) {
       // AIタスクの場合
       if (result.response && task.taskType === "ai") {
@@ -1222,6 +1309,7 @@ class StreamProcessor {
           
           try {
             // スプレッドシート書き込みを同期で実行（awaitで完了を待つ）
+            // 重要：ウィンドウが閉じる前に実行する必要がある
             await this.writeResultToSpreadsheet(task, result, windowId);
             this.logger.log(`[StreamProcessor] 📝 スプレッドシートに書き込み完了: ${cellPosition}セル`);
           } catch (error) {
@@ -1258,6 +1346,12 @@ class StreamProcessor {
           }
         }
       }
+    }
+    
+    // 通常処理バッチの完了をチェック（重要：スプレッドシート書き込み後に実行）
+    // これによりウィンドウクローズ前に全ての書き込みが完了する
+    if (!task.multiAI) {
+      await this.updateNormalBatchCompletion(task);
     }
 
     // ■ 並列ストリーミング: 次の列の開始は記載完了後に行われる
@@ -1365,6 +1459,14 @@ class StreamProcessor {
             model: task.model || result?.model || '不明'
           };
           
+          this.logger.log(`[StreamProcessor] 📝 ログ書き込み准備:`, {
+            セル: `${task.column}${task.row}`,
+            モデル: taskWithModel.model,
+            URL: currentUrl,
+            isGroupTask,
+            isLastInGroup
+          });
+          
           await this.spreadsheetLogger.writeLogToSpreadsheet(taskWithModel, {
             url: currentUrl,
             sheetsClient: globalThis.sheetsClient,
@@ -1410,8 +1512,8 @@ class StreamProcessor {
       // ■ 3種類AIグループの完了状況を更新
       this.updateGroupCompletion(task);
       
-      // ■ この記載により、次の列の同じ行を開始できるかチェック
-      await this.checkAndStartNextColumnForRow(task.column, task.row);
+      // ■ 列またぎを無効化（列が完全に終わるまで次の列を開始しない）
+      // await this.checkAndStartNextColumnForRow(task.column, task.row);
       
     } catch (error) {
       this.logger.error(
@@ -2174,12 +2276,26 @@ ${formattedGemini}`;
     const tasks = this.taskQueue.get(column);
     if (!tasks || tasks.length === 0) return;
     
-    this.logger.log(`[StreamProcessor] 通常処理列開始: ${column}列 (${tasks.length}タスク)`);
+    // エラー行をスキップ
+    const validTasks = tasks.filter(task => {
+      if (this.errorRows.has(task.row)) {
+        this.logger.log(`[StreamProcessor] ⚠️ 行${task.row}はエラー行のため${column}列でスキップ`);
+        return false;
+      }
+      return true;
+    });
+    
+    if (validTasks.length === 0) {
+      this.logger.log(`[StreamProcessor] ${column}列: 全タスクがエラー行のためスキップ`);
+      return;
+    }
+    
+    this.logger.log(`[StreamProcessor] 通常処理列開始: ${column}列 (${validTasks.length}/${tasks.length}タスク)`);
     
     // 3タスクずつのバッチに分割
     const batches = [];
-    for (let i = 0; i < tasks.length; i += 3) {
-      const batchTasks = tasks.slice(i, Math.min(i + 3, tasks.length));
+    for (let i = 0; i < validTasks.length; i += 3) {
+      const batchTasks = validTasks.slice(i, Math.min(i + 3, validTasks.length));
       batches.push(batchTasks);
     }
     
@@ -2704,7 +2820,7 @@ ${formattedGemini}`;
   }
 
   /**
-   * 通常処理バッチの完了を更新（新規追加）
+   * 通常処理バッチの完了を更新（排他制御付き）
    * @param {Object} task - 完了したタスク
    */
   async updateNormalBatchCompletion(task) {
@@ -2724,13 +2840,50 @@ ${formattedGemini}`;
       return; // バッチに属さないタスク
     }
     
-    // タスクを完了に追加
-    targetBatchInfo.completed.add(task.id);
+    // 排他制御: 同じバッチが同時に更新されないようにする
+    if (this.batchUpdateMutex.has(targetBatchId)) {
+      this.logger.log(`[StreamProcessor] バッチ更新待機 (他の処理中): ${targetBatchId}`);
+      // 簡単な待機ループ（本格的なMutexの代替）
+      let retryCount = 0;
+      while (this.batchUpdateMutex.has(targetBatchId) && retryCount < 10) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        retryCount++;
+      }
+      if (this.batchUpdateMutex.has(targetBatchId)) {
+        this.logger.warn(`[StreamProcessor] バッチ更新タイムアウト: ${targetBatchId}`);
+        return;
+      }
+    }
     
-    this.logger.log(`[StreamProcessor] バッチ進捗: ${targetBatchId}, 完了: ${targetBatchInfo.completed.size}/${targetBatchInfo.tasks.length}`);
+    // 更新開始をマーク
+    this.batchUpdateMutex.add(targetBatchId);
     
-    // バッチが完了したかチェック
-    await this.checkAndStartNextNormalBatch(targetBatchId);
+    try {
+      // 重複チェック: 同じタスクが既に完了マークされていないか確認
+      if (targetBatchInfo.completed.has(task.id)) {
+        this.logger.warn(`[StreamProcessor] バッチ更新スキップ (既に完了済み): ${targetBatchId}, タスクID: ${task.id}`);
+        return;
+      }
+      
+      // タスクを完了に追加
+      targetBatchInfo.completed.add(task.id);
+      
+      this.logger.log(`[StreamProcessor] バッチ進捗更新: ${targetBatchId}`, {
+        完了数: targetBatchInfo.completed.size,
+        総タスク数: targetBatchInfo.tasks.length,
+        完了タスクID: task.id,
+        完了率: `${Math.round((targetBatchInfo.completed.size / targetBatchInfo.tasks.length) * 100)}%`
+      });
+      
+      // バッチが完了したかチェック
+      await this.checkAndStartNextNormalBatch(targetBatchId);
+      
+      // リトライ処理: バッチ完了後にエラーになったタスクをリトライ
+      await this.processRetryTasks();
+    } finally {
+      // 更新完了をマーク
+      this.batchUpdateMutex.delete(targetBatchId);
+    }
   }
   
   /**
@@ -3886,6 +4039,49 @@ ${formattedGemini}`;
    */
   async moveExtensionWindowToBottomRight() {
     await this.moveExtensionToWindowNumber(4); // 4番 = 右下
+  }
+  
+  /**
+   * エラーになったタスクをリトライする
+   */
+  async processRetryTasks() {
+    if (this.failedTasksByColumn.size === 0) {
+      return; // リトライタスクがない
+    }
+    
+    this.logger.log(`[StreamProcessor] 🔄 リトライ処理開始: ${this.failedTasksByColumn.size}列にエラータスクあり`);
+    
+    for (const [column, failedTasks] of this.failedTasksByColumn) {
+      if (failedTasks.length === 0) {
+        continue;
+      }
+      
+      this.logger.log(`[StreamProcessor] 🔄 ${column}列のエラータスクリトライ: ${failedTasks.length}件`);
+      
+      // エラータスクをタスクキューに戻す
+      if (!this.taskQueue.has(column)) {
+        this.taskQueue.set(column, []);
+      }
+      
+      const columnQueue = this.taskQueue.get(column);
+      
+      // 失敗タスクをキューの先頭に追加（優先処理）
+      for (const task of failedTasks.reverse()) { // reverseで先頭に追加する順序を保持
+        columnQueue.unshift(task);
+        this.logger.log(`[StreamProcessor] 🔄 リトライタスクをキューに追加: ${task.column}${task.row}`);
+      }
+      
+      // 現在の行インデックスをリセット（先頭から再開）
+      this.currentRowByColumn.set(column, 0);
+      
+      // リトライキューをクリア
+      this.failedTasksByColumn.set(column, []);
+    }
+    
+    // 利用可能な列をチェックしてリトライタスクを開始
+    await this.checkAndStartAvailableColumns();
+    
+    this.logger.log(`[StreamProcessor] 🔄 リトライ処理完了`);
   }
 }
 

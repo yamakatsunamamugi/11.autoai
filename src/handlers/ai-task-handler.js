@@ -79,23 +79,23 @@ export class AITaskHandler {
       ? `${cellInfo.column}${cellInfo.row}` 
       : '不明';
     
-    this.log(`[AITaskHandler] タスク実行開始 [${cellPosition}セル]: ${taskId}`, {
+    this.log(`[AITaskHandler] 🚀 タスク実行開始 [${cellPosition}セル]: ${taskId}`, {
       セル: cellPosition,
       aiType: aiType || '未指定',
       taskId,
       column: cellInfo?.column,
-      row: cellInfo?.row
+      row: cellInfo?.row,
+      tabId,
+      promptLength: prompt?.length || 0
     });
-    this.log(`[AITaskHandler] タブID: ${tabId}, プロンプト: ${prompt ? prompt.substring(0, 50) : 'なし'}...`);
     
-    // モデル・機能情報をログ出力
-    if (model || specialOperation) {
-      this.log(`[AITaskHandler] 追加設定:`, {
-        model: model || 'デフォルト',
-        specialOperation: specialOperation || 'なし',
-        aiType: aiType || '未指定'
-      });
-    }
+    // モデル・機能情報を詳細ログ出力
+    this.log(`[AITaskHandler] 🔧 タスク設定:`, {
+      requestedModel: model || '未指定',
+      specialOperation: specialOperation || 'なし',
+      aiType: aiType || '未指定',
+      timeout: `${timeout / 1000}秒`
+    });
     
     try {
       // タブの存在確認
@@ -121,13 +121,22 @@ export class AITaskHandler {
       
       // ai-content-unified.jsで既に回答待機が完了しているため、
       // ここでは追加の待機は不要（sendResultに応答が含まれている）
-      this.log(`[AITaskHandler] タスク完了 [${cellPosition}セル]: ${taskId}`, {
+      this.log(`[AITaskHandler] ✅ タスク完了 [${cellPosition}セル]: ${taskId}`, {
         セル: cellPosition,
         success: true,
         responseLength: sendResult.response?.length || 0,
         aiType: sendResult.aiType || 'unknown',
-        model: sendResult.model || '不明'
+        actualModel: sendResult.model || '取得失敗',
+        requestedModel: model || '未指定',
+        modelMatch: sendResult.model === model ? '一致' : '不一致'
       });
+      
+      // モデル情報の詳細ログ
+      if (sendResult.model) {
+        this.log(`[AITaskHandler] 🎯 モデル情報取得成功: "${sendResult.model}"`);
+      } else {
+        this.log(`[AITaskHandler] ⚠️ モデル情報を取得できませんでした`);
+      }
       
       return {
         success: true,
@@ -138,7 +147,13 @@ export class AITaskHandler {
       };
       
     } catch (error) {
-      this.error(`[AITaskHandler] エラー:`, error);
+      this.error(`[AITaskHandler] ❌ タスク実行エラー [${cellPosition}セル]:`, {
+        error: error.message,
+        stack: error.stack,
+        taskId,
+        aiType,
+        model
+      });
       return {
         success: false,
         error: error.message,

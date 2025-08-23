@@ -60,9 +60,20 @@ class TaskList {
     this.createdAt = Date.now();
   }
 
-  // タスクを追加
+  // タスクを追加（重複チェック付き）
   add(task) {
+    // 重複チェック: 同じ列・行のタスクが既に存在しないか確認
+    const duplicate = this.tasks.find(existingTask => 
+      existingTask.column === task.column && existingTask.row === task.row
+    );
+    
+    if (duplicate) {
+      console.warn(`[TaskList] 重複タスクをスキップ: ${task.column}${task.row} (既存ID: ${duplicate.id}, 新規ID: ${task.id})`);
+      return false; // 追加しない
+    }
+    
     this.tasks.push(task);
+    return true; // 追加成功
   }
 
   // タスクを一括追加
