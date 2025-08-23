@@ -3126,6 +3126,7 @@ startIntegratedTestBtn.addEventListener("click", async () => {
 // ===== イベントリスナー: レポート生成 =====
 const generateReportBtn = document.getElementById("generateReportBtn");
 generateReportBtn.addEventListener("click", async () => {
+  await bringWindowToFront(); // ウィンドウを最前面に表示
   try {
     const manager = await loadControllerManager();
     const controller = await manager.loadController('reportTest');
@@ -3145,6 +3146,7 @@ generateReportBtn.addEventListener("click", async () => {
 // ===== イベントリスナー: ウィンドウ作成テスト =====
 const windowCreationTestBtn = document.getElementById("windowCreationTestBtn");
 windowCreationTestBtn.addEventListener("click", async () => {
+  await bringWindowToFront(); // ウィンドウを最前面に表示
   try {
     const manager = await loadControllerManager();
     const controller = await manager.loadController('windowCreationTest');
@@ -3514,6 +3516,7 @@ document.addEventListener('DOMContentLoaded', () => {
 const showAIStatusBtn = document.getElementById("showAIStatusBtn");
 if (showAIStatusBtn) {
   showAIStatusBtn.addEventListener("click", async () => {
+    await bringWindowToFront(); // ウィンドウを最前面に表示
     try {
       const manager = await loadControllerManager();
       const controller = await manager.loadController('aiStatus');
@@ -4094,6 +4097,8 @@ if (testSpreadsheetLoadingBtn) {
 }
 
 // 4. ウィンドウ作成テスト
+// 注意: windowCreationTestBtnは既に3146行目で定義・実装済みだが、
+// IDが異なる（testWindowCreationBtn vs windowCreationTestBtn）ため、これは別のボタン
 const testWindowCreationBtn = document.getElementById('testWindowCreationBtn');
 if (testWindowCreationBtn) {
   testWindowCreationBtn.addEventListener('click', async () => {
@@ -4174,79 +4179,10 @@ if (testIntegratedAiBtn) {
 }
 
 // 6. レポート化テスト
-const generateReportBtn = document.getElementById('generateReportBtn');
-if (generateReportBtn) {
-  generateReportBtn.addEventListener('click', async () => {
-    console.log('📄 レポート生成テスト開始');
-    await bringWindowToFront();
-    
-    updateStatus('レポートを生成中...', 'loading');
-    
-    try {
-      // レポート生成処理
-      const response = await chrome.runtime.sendMessage({
-        action: 'generateReport'
-      });
-      
-      if (response && response.success) {
-        updateStatus('レポート生成完了', 'success');
-        addLogEntry('レポートを生成しました', 'system');
-        
-        // レポートウィンドウを開く
-        if (response.reportUrl) {
-          const reportWindow = await chrome.windows.create({
-            url: response.reportUrl,
-            type: 'popup',
-            width: 1000,
-            height: 700,
-            focused: true
-          });
-        }
-      } else {
-        updateStatus('レポート生成失敗', 'error');
-      }
-    } catch (error) {
-      console.error('レポート生成エラー:', error);
-      updateStatus('レポート生成エラー: ' + error.message, 'error');
-    }
-  });
-}
+// 注意: generateReportBtnは既に3127行目で定義・実装済み
 
 // 7. AIステータス表示
-const showAIStatusBtn = document.getElementById('showAIStatusBtn');
-if (showAIStatusBtn) {
-  showAIStatusBtn.addEventListener('click', async () => {
-    console.log('📊 AIステータス表示');
-    await bringWindowToFront();
-    
-    updateStatus('AIステータスを取得中...', 'loading');
-    
-    try {
-      // AIステータス取得
-      const response = await chrome.runtime.sendMessage({
-        action: 'getAIStatus'
-      });
-      
-      if (response && response.status) {
-        updateStatus('AIステータスを取得しました', 'success');
-        
-        // ステータスをログに表示
-        addLogEntry('=== AIステータス ===', 'system');
-        Object.entries(response.status).forEach(([ai, status]) => {
-          addLogEntry(`${ai}: ${JSON.stringify(status)}`, 'system');
-        });
-        
-        // AIステータスセクションを更新
-        updateAIStatus();
-      } else {
-        updateStatus('AIステータス取得失敗', 'error');
-      }
-    } catch (error) {
-      console.error('AIステータス取得エラー:', error);
-      updateStatus('ステータス取得エラー: ' + error.message, 'error');
-    }
-  });
-}
+// 注意: showAIStatusBtnは既に3514行目で定義・実装済み
 
 // ===== グローバル関数公開 =====
 // 他のモジュールから使用できるように関数をwindowオブジェクトに公開
