@@ -25,6 +25,9 @@
  * @class AITaskHandler
  */
 
+// WindowServiceをインポート（ウィンドウ管理の一元化）
+import { WindowService } from '../services/window-service.js';
+
 export class AITaskHandler {
   constructor() {
     this.logger = console;
@@ -104,17 +107,14 @@ export class AITaskHandler {
         throw new Error(`タブが見つかりません: ${tabId}`);
       }
       
-      // AIページのウィンドウを最前面に表示
+      // WindowServiceを使用してAIページのウィンドウを最前面に表示（ウィンドウフォーカス処理を統一）
       this.log(`[AITaskHandler] 🔝 AIページのウィンドウを最前面に表示 (WindowID: ${tab.windowId})`);
       try {
-        await chrome.windows.update(tab.windowId, {
-          focused: true,
-          drawAttention: true,
-          state: 'normal'
-        });
+        // WindowServiceのfocusWindow関数でウィンドウを最前面に（focused: true, drawAttention: true, state: 'normal'が自動設定される）
+        await WindowService.focusWindow(tab.windowId);
         
-        // タブもアクティブにする
-        await chrome.tabs.update(tabId, { active: true });
+        // WindowServiceを使用してタブもアクティブにする（タブ操作も統一）
+        await WindowService.activateTab(tabId);
         
         // 少し待機して確実に最前面になるのを待つ
         await new Promise(resolve => setTimeout(resolve, 300));

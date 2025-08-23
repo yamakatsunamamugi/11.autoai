@@ -34,6 +34,9 @@
 
 // stream-processor.js - 並列ストリーミング処理
 
+// WindowServiceをインポート
+import { WindowService } from '../../services/window-service.js';
+
 // ReportManagerを動的にインポート
 // Chrome拡張機能環境でのES6モジュール制限のため動的インポートを使用
 let ReportManager = null;
@@ -475,7 +478,8 @@ class StreamProcessor {
     // ウィンドウを閉じる
     for (const windowId of windows.values()) {
       try {
-        await chrome.windows.remove(windowId);
+        // WindowServiceを使用してウィンドウを閉じる（エラーハンドリングも統一）
+        await WindowService.closeWindow(windowId);
       } catch (error) {
         this.logger.warn(`[StreamProcessor] ウィンドウクローズエラー`, error);
       }
@@ -518,7 +522,8 @@ class StreamProcessor {
     // ウィンドウを閉じる
     for (const windowId of windows.values()) {
       try {
-        await chrome.windows.remove(windowId);
+        // WindowServiceを使用してウィンドウを閉じる（エラーハンドリングも統一）
+        await WindowService.closeWindow(windowId);
       } catch (error) {
         this.logger.warn(`[StreamProcessor] ウィンドウクローズエラー`, error);
       }
@@ -544,16 +549,17 @@ class StreamProcessor {
    * @returns {Promise<number>} windowId
    */
   async openWindow(task, position) {
-    const url = this.determineAIUrl(task.aiType, task.column);
-    const screenInfo = await this.getScreenInfo();
-    const windowPosition = this.calculateWindowPosition(position, screenInfo);
+    // WindowServiceを使用してAI URLを取得（ChatGPT/Claude/Gemini等のURL管理を一元化）
+    const url = WindowService.getAIUrl(task.aiType);
     
-    const window = await chrome.windows.create({
-      url: url,
-      type: "popup",
-      focused: true,  // AIページを最前面に表示
-      ...windowPosition,
-    });
+    // WindowServiceを使用してスクリーン情報を取得（モニター情報の取得を統一）
+    const screenInfo = await WindowService.getScreenInfo();
+    
+    // WindowServiceを使用してウィンドウ位置を計算（4分割レイアウト等の位置計算を統一）
+    const windowPosition = WindowService.calculateWindowPosition(position, screenInfo);
+    
+    // WindowServiceを使用してAIウィンドウを作成（focused: trueがデフォルトで設定される）
+    const window = await WindowService.createAIWindow(url, windowPosition);
     
     this.activeWindows.set(window.id, {
       windowId: window.id,
@@ -742,7 +748,8 @@ class StreamProcessor {
     this.logger.log(`[StreamProcessor] 3種類AIバッチのウィンドウを閉じる: ${openedWindows.length}個`);
     for (const windowId of openedWindows) {
       try {
-        await chrome.windows.remove(windowId);
+        // WindowServiceを使用してウィンドウを閉じる（エラーハンドリングも統一）
+        await WindowService.closeWindow(windowId);
         this.activeWindows.delete(windowId);
         // positionからも削除
         for (const [pos, wId] of this.windowPositions.entries()) {
@@ -841,22 +848,18 @@ class StreamProcessor {
     this.logger.log(`[StreamProcessor] 🚀 ${column}列用のウィンドウを開く (position=${position}) ${openTime}`);
     this.logger.log(`[StreamProcessor] 位置設定前のwindowPositions:`, Array.from(this.windowPositions.keys()));
 
-    const url = this.determineAIUrl(task.aiType, column);
-    const screenInfo = await this.getScreenInfo();
-    const windowPosition = this.calculateWindowPosition(position, screenInfo);
+    // WindowServiceを使用してAI URLを取得（ChatGPT/Claude/Gemini等のURL管理を一元化）
+    const url = WindowService.getAIUrl(task.aiType);
+    
+    // WindowServiceを使用してスクリーン情報を取得（モニター情報の取得を統一）
+    const screenInfo = await WindowService.getScreenInfo();
+    
+    // WindowServiceを使用してウィンドウ位置を計算（列番号に応じた位置計算を統一）
+    const windowPosition = WindowService.calculateWindowPosition(position, screenInfo);
 
     try {
-      // chrome.windows APIの存在確認
-      if (typeof chrome === 'undefined' || !chrome.windows) {
-        throw new Error('chrome.windows API is not available. This must run in a Service Worker context.');
-      }
-
-      const window = await chrome.windows.create({
-        url: url,
-        type: "popup",
-        focused: true,  // AIページを最前面に表示
-        ...windowPosition,
-      });
+      // WindowServiceを使用してAIウィンドウを作成（focused: trueがデフォルトで設定される）
+      const window = await WindowService.createAIWindow(url, windowPosition);
 
       const windowInfo = {
         windowId: window.id,
@@ -1913,7 +1916,8 @@ ${formattedGemini}`;
     this.logger.log(`[StreamProcessor] 🗂️ ${column}列のウィンドウを閉じる開始 (windowId: ${windowId})`);
 
     try {
-      await chrome.windows.remove(windowId);
+      // WindowServiceを使用してウィンドウを閉じる（エラーハンドリングも統一）
+      await WindowService.closeWindow(windowId);
       this.logger.log(`[StreamProcessor] ✅ ウィンドウクローズ完了 (windowId: ${windowId})`);
     } catch (error) {
       this.logger.warn(`[StreamProcessor] ❌ ウィンドウクローズエラー (windowId: ${windowId})`, error);
@@ -2448,17 +2452,18 @@ ${formattedGemini}`;
    * @returns {Promise<number>} ウィンドウID
    */
   async openWindowForTask(task, position) {
-    const url = this.determineAIUrl(task.aiType, task.column);
-    const screenInfo = await this.getScreenInfo();
-    const windowPosition = this.calculateWindowPosition(position, screenInfo);
+    // WindowServiceを使用してAI URLを取得（タスクのAIタイプに応じたURL取得を一元化）
+    const url = WindowService.getAIUrl(task.aiType);
+    
+    // WindowServiceを使用してスクリーン情報を取得（複数モニター対応の情報取得を統一）
+    const screenInfo = await WindowService.getScreenInfo();
+    
+    // WindowServiceを使用してウィンドウ位置を計算（タスク用ウィンドウの位置計算を統一）
+    const windowPosition = WindowService.calculateWindowPosition(position, screenInfo);
     
     try {
-      const window = await chrome.windows.create({
-        url: url,
-        ...windowPosition,
-        focused: true,  // AIページを最前面に表示
-        type: "popup",
-      });
+      // WindowServiceを使用してAIウィンドウを作成（自動的に最前面表示される）
+      const window = await WindowService.createAIWindow(url, windowPosition);
       
       // ウィンドウ情報を記録
       this.activeWindows.set(window.id, {
@@ -2530,7 +2535,8 @@ ${formattedGemini}`;
    */
   async closeWindowAfterTask(windowId) {
     try {
-      await chrome.windows.remove(windowId);
+      // WindowServiceを使用してウィンドウを閉じる（エラーハンドリングも統一）
+      await WindowService.closeWindow(windowId);
       this.logger.log(`[StreamProcessor] ✅ タスク完了後、Window${windowId}を閉じました`);
       
       // 管理情報をクリア
@@ -2570,7 +2576,8 @@ ${formattedGemini}`;
     const closePromises = [];
     for (const [taskId, windowId] of batchInfo.windows) {
       closePromises.push(
-        chrome.windows.remove(windowId)
+        // WindowServiceを使用してウィンドウを閉じる（Promise形式で統一）
+        WindowService.closeWindow(windowId)
           .then(() => {
             this.logger.log(`[StreamProcessor] ✅ Window${windowId}を閉じた`);
             // 管理情報をクリア
@@ -3241,7 +3248,8 @@ ${formattedGemini}`;
     const closePromises = Array.from(this.activeWindows.values()).map(
       async (windowInfo) => {
         try {
-          await chrome.windows.remove(windowInfo.windowId);
+          // WindowServiceを使用してウィンドウを閉じる（統一されたエラーハンドリング）
+          await WindowService.closeWindow(windowInfo.windowId);
         } catch (error) {
           this.logger.error(
             `[StreamProcessor] ウィンドウクローズエラー: ${windowInfo.column}`,
@@ -3983,11 +3991,8 @@ ${formattedGemini}`;
           height: fullHeight
         };
 
-        const extensionsWindow = await chrome.windows.create({
-          url: 'chrome://extensions/',
-          type: 'popup',
-          ...leftPosition,
-          focused: true  // ウィンドウを最前面に表示
+        const extensionsWindow = await WindowService.createWindow('chrome://extensions/', {
+          ...leftPosition
         });
 
         this.logger.log(`[StreamProcessor] chrome://extensions/を左側に開きました (ID: ${extensionsWindow.id})`);
@@ -4000,11 +4005,8 @@ ${formattedGemini}`;
           height: fullHeight
         };
 
-        const spreadsheetWindow = await chrome.windows.create({
-          url: spreadsheetUrl,
-          type: 'popup',
-          ...rightPosition,
-          focused: true  // ウィンドウを最前面に表示
+        const spreadsheetWindow = await WindowService.createWindow(spreadsheetUrl, {
+          ...rightPosition
         });
 
         this.logger.log(`[StreamProcessor] スプレッドシートを右側に開きました (ID: ${spreadsheetWindow.id})`);
@@ -4015,12 +4017,7 @@ ${formattedGemini}`;
       const position = this.calculateWindowPositionFromNumber(windowNumber, screenInfo);
 
       // スプレッドシートウィンドウを作成
-      const window = await chrome.windows.create({
-        url: spreadsheetUrl,
-        type: 'popup',
-        ...position,
-        focused: true  // ウィンドウを最前面に表示
-      });
+      const window = await WindowService.createWindow(spreadsheetUrl, position);
 
       this.logger.log(`[StreamProcessor] スプレッドシートをウィンドウ番号${windowNumber}で開きました (ID: ${window.id})`);
     } catch (error) {
