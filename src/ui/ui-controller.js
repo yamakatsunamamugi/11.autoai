@@ -3973,23 +3973,26 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
  * 各テスト機能でウィンドウを最前面に表示する
  */
 
+// ウィンドウを最前面に表示する共通関数
+async function bringWindowToFront() {
+  try {
+    const currentWindow = await chrome.windows.getCurrent();
+    await chrome.windows.update(currentWindow.id, {
+      focused: true,
+      drawAttention: true,
+      state: 'normal'
+    });
+  } catch (error) {
+    console.error('ウィンドウ最前面表示エラー:', error);
+  }
+}
+
 // 1. モデル・機能変更検出システム
 const testModelDetectionBtn = document.getElementById('testModelDetectionBtn');
 if (testModelDetectionBtn) {
   testModelDetectionBtn.addEventListener('click', async () => {
     console.log('🔍 モデル・機能変更検出システムテスト開始');
-    
-    // ウィンドウを最前面に表示
-    try {
-      const currentWindow = await chrome.windows.getCurrent();
-      await chrome.windows.update(currentWindow.id, {
-        focused: true,
-        drawAttention: true,
-        state: 'normal'
-      });
-    } catch (error) {
-      console.error('ウィンドウ最前面表示エラー:', error);
-    }
+    await bringWindowToFront();
     
     updateStatus('モデル・機能変更検出を実行中...', 'loading');
     
@@ -4022,18 +4025,7 @@ const testAiSelectorBtn = document.getElementById('testAiSelectorBtn');
 if (testAiSelectorBtn) {
   testAiSelectorBtn.addEventListener('click', async () => {
     console.log('🎯 AIセレクタ変更検出システムテスト開始');
-    
-    // ウィンドウを最前面に表示
-    try {
-      const currentWindow = await chrome.windows.getCurrent();
-      await chrome.windows.update(currentWindow.id, {
-        focused: true,
-        drawAttention: true,
-        state: 'normal'
-      });
-    } catch (error) {
-      console.error('ウィンドウ最前面表示エラー:', error);
-    }
+    await bringWindowToFront();
     
     updateStatus('AIセレクタ変更検出を実行中...', 'loading');
     
@@ -4061,18 +4053,7 @@ const testSpreadsheetLoadingBtn = document.getElementById('testSpreadsheetLoadin
 if (testSpreadsheetLoadingBtn) {
   testSpreadsheetLoadingBtn.addEventListener('click', async () => {
     console.log('📊 スプレッドシート読み込みテスト開始');
-    
-    // ウィンドウを最前面に表示
-    try {
-      const currentWindow = await chrome.windows.getCurrent();
-      await chrome.windows.update(currentWindow.id, {
-        focused: true,
-        drawAttention: true,
-        state: 'normal'
-      });
-    } catch (error) {
-      console.error('ウィンドウ最前面表示エラー:', error);
-    }
+    await bringWindowToFront();
     
     updateStatus('スプレッドシート読み込みテスト中...', 'loading');
     
@@ -4117,18 +4098,7 @@ const testWindowCreationBtn = document.getElementById('testWindowCreationBtn');
 if (testWindowCreationBtn) {
   testWindowCreationBtn.addEventListener('click', async () => {
     console.log('🪟 ウィンドウ作成テスト開始');
-    
-    // 現在のウィンドウを最前面に表示
-    try {
-      const currentWindow = await chrome.windows.getCurrent();
-      await chrome.windows.update(currentWindow.id, {
-        focused: true,
-        drawAttention: true,
-        state: 'normal'
-      });
-    } catch (error) {
-      console.error('ウィンドウ最前面表示エラー:', error);
-    }
+    await bringWindowToFront();
     
     updateStatus('テストウィンドウを作成中...', 'loading');
     
@@ -4168,18 +4138,7 @@ const testIntegratedAiBtn = document.getElementById('testIntegratedAiBtn');
 if (testIntegratedAiBtn) {
   testIntegratedAiBtn.addEventListener('click', async () => {
     console.log('🤖 統合AIテスト開始');
-    
-    // ウィンドウを最前面に表示
-    try {
-      const currentWindow = await chrome.windows.getCurrent();
-      await chrome.windows.update(currentWindow.id, {
-        focused: true,
-        drawAttention: true,
-        state: 'normal'
-      });
-    } catch (error) {
-      console.error('ウィンドウ最前面表示エラー:', error);
-    }
+    await bringWindowToFront();
     
     updateStatus('統合AIテストを開始中...', 'loading');
     
@@ -4219,18 +4178,7 @@ const generateReportBtn = document.getElementById('generateReportBtn');
 if (generateReportBtn) {
   generateReportBtn.addEventListener('click', async () => {
     console.log('📄 レポート生成テスト開始');
-    
-    // ウィンドウを最前面に表示
-    try {
-      const currentWindow = await chrome.windows.getCurrent();
-      await chrome.windows.update(currentWindow.id, {
-        focused: true,
-        drawAttention: true,
-        state: 'normal'
-      });
-    } catch (error) {
-      console.error('ウィンドウ最前面表示エラー:', error);
-    }
+    await bringWindowToFront();
     
     updateStatus('レポートを生成中...', 'loading');
     
@@ -4269,18 +4217,7 @@ const showAIStatusBtn = document.getElementById('showAIStatusBtn');
 if (showAIStatusBtn) {
   showAIStatusBtn.addEventListener('click', async () => {
     console.log('📊 AIステータス表示');
-    
-    // ウィンドウを最前面に表示
-    try {
-      const currentWindow = await chrome.windows.getCurrent();
-      await chrome.windows.update(currentWindow.id, {
-        focused: true,
-        drawAttention: true,
-        state: 'normal'
-      });
-    } catch (error) {
-      console.error('ウィンドウ最前面表示エラー:', error);
-    }
+    await bringWindowToFront();
     
     updateStatus('AIステータスを取得中...', 'loading');
     
