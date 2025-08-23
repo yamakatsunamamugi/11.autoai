@@ -551,7 +551,7 @@ class StreamProcessor {
     const window = await chrome.windows.create({
       url: url,
       type: "popup",
-      focused: false,
+      focused: true,  // AIページを最前面に表示
       ...windowPosition,
     });
     
@@ -854,7 +854,7 @@ class StreamProcessor {
       const window = await chrome.windows.create({
         url: url,
         type: "popup",
-        focused: false,
+        focused: true,  // AIページを最前面に表示
         ...windowPosition,
       });
 
@@ -2456,7 +2456,7 @@ ${formattedGemini}`;
       const window = await chrome.windows.create({
         url: url,
         ...windowPosition,
-        focused: false,
+        focused: true,  // AIページを最前面に表示
         type: "popup",
       });
       
@@ -3987,7 +3987,7 @@ ${formattedGemini}`;
           url: 'chrome://extensions/',
           type: 'popup',
           ...leftPosition,
-          focused: false
+          focused: true  // ウィンドウを最前面に表示
         });
 
         this.logger.log(`[StreamProcessor] chrome://extensions/を左側に開きました (ID: ${extensionsWindow.id})`);
@@ -4004,7 +4004,7 @@ ${formattedGemini}`;
           url: spreadsheetUrl,
           type: 'popup',
           ...rightPosition,
-          focused: false
+          focused: true  // ウィンドウを最前面に表示
         });
 
         this.logger.log(`[StreamProcessor] スプレッドシートを右側に開きました (ID: ${spreadsheetWindow.id})`);
@@ -4019,7 +4019,7 @@ ${formattedGemini}`;
         url: spreadsheetUrl,
         type: 'popup',
         ...position,
-        focused: false  // 背景で開く
+        focused: true  // ウィンドウを最前面に表示
       });
 
       this.logger.log(`[StreamProcessor] スプレッドシートをウィンドウ番号${windowNumber}で開きました (ID: ${window.id})`);

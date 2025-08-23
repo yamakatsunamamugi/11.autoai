@@ -104,6 +104,27 @@ export class AITaskHandler {
         throw new Error(`タブが見つかりません: ${tabId}`);
       }
       
+      // AIページのウィンドウを最前面に表示
+      this.log(`[AITaskHandler] 🔝 AIページのウィンドウを最前面に表示 (WindowID: ${tab.windowId})`);
+      try {
+        await chrome.windows.update(tab.windowId, {
+          focused: true,
+          drawAttention: true,
+          state: 'normal'
+        });
+        
+        // タブもアクティブにする
+        await chrome.tabs.update(tabId, { active: true });
+        
+        // 少し待機して確実に最前面になるのを待つ
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        this.log(`[AITaskHandler] ✅ ウィンドウ最前面表示完了`);
+      } catch (focusError) {
+        this.log(`[AITaskHandler] ⚠️ ウィンドウ最前面表示エラー: ${focusError.message}`);
+        // エラーが発生しても処理は続行
+      }
+      
       // コンテンツスクリプトにプロンプト送信を依頼（モデル・機能情報も含める）
       const sendResult = await this.sendPromptToTab(tabId, {
         action: "sendPrompt",
