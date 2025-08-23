@@ -144,23 +144,40 @@ export class WindowService {
       const displays = await chrome.system.display.getInfo();
       const primaryDisplay = displays.find(d => d.isPrimary) || displays[0];
       
-      return {
+      // デバッグ: ディスプレイ情報を詳しくログ出力
+      console.log('[WindowService] ディスプレイ情報:', {
+        displayCount: displays.length,
+        primaryDisplay: {
+          id: primaryDisplay.id,
+          bounds: primaryDisplay.bounds,
+          workArea: primaryDisplay.workArea,
+          isPrimary: primaryDisplay.isPrimary
+        }
+      });
+      
+      const screenInfo = {
         width: primaryDisplay.workArea.width,
         height: primaryDisplay.workArea.height,
         left: primaryDisplay.workArea.left,
         top: primaryDisplay.workArea.top,
         displays: displays
       };
+      
+      console.log('[WindowService] スクリーン情報:', screenInfo);
+      
+      return screenInfo;
     } catch (error) {
       console.error('[WindowService] スクリーン情報取得エラー:', error);
       // フォールバック値
-      return {
+      const fallback = {
         width: 1440,
         height: 900,
         left: 0,
         top: 0,
         displays: []
       };
+      console.log('[WindowService] フォールバック値を使用:', fallback);
+      return fallback;
     }
   }
   
@@ -174,70 +191,90 @@ export class WindowService {
     const baseWidth = Math.floor(screenInfo.width * 0.35);
     const baseHeight = Math.floor(screenInfo.height * 0.8);
     
-    // 数値のpositionを処理（8分割レイアウト用）
+    console.log('[WindowService] 位置計算開始:', {
+      position,
+      screenInfo,
+      baseWidth,
+      baseHeight
+    });
+    
+    // スクリーン座標が0,0の場合、オフセットを追加（macOSなどで位置が反映されない問題の対策）
+    const offsetLeft = screenInfo.left === 0 ? 50 : screenInfo.left;
+    const offsetTop = screenInfo.top === 0 ? 50 : screenInfo.top;
+    
+    // 数値のpositionを処理（4分割レイアウト用）
     if (typeof position === 'number') {
       const quarterWidth = Math.floor(screenInfo.width / 4);
       const quarterHeight = Math.floor(screenInfo.height / 2);
       const halfWidth = Math.floor(screenInfo.width / 2);
       const halfHeight = Math.floor(screenInfo.height / 2);
       
+      let calculatedPosition;
+      
       switch (position) {
         case 0: // 左上
-          return {
-            left: screenInfo.left,
-            top: screenInfo.top,
+          calculatedPosition = {
+            left: offsetLeft,
+            top: offsetTop,
             width: halfWidth,
             height: halfHeight
           };
+          break;
         case 1: // 右上
-          return {
-            left: screenInfo.left + halfWidth,
-            top: screenInfo.top,
+          calculatedPosition = {
+            left: offsetLeft + halfWidth,
+            top: offsetTop,
             width: halfWidth,
             height: halfHeight
           };
+          break;
         case 2: // 左下
-          return {
-            left: screenInfo.left,
-            top: screenInfo.top + halfHeight,
+          calculatedPosition = {
+            left: offsetLeft,
+            top: offsetTop + halfHeight,
             width: halfWidth,
             height: halfHeight
           };
+          break;
         case 3: // 右下
-          return {
-            left: screenInfo.left + halfWidth,
-            top: screenInfo.top + halfHeight,
+          calculatedPosition = {
+            left: offsetLeft + halfWidth,
+            top: offsetTop + halfHeight,
             width: halfWidth,
             height: halfHeight
           };
+          break;
         default:
           // 4以上の数値の場合は中央に配置
           return this.calculateWindowPosition('center', screenInfo);
       }
+      
+      console.log(`[WindowService] ポジション${position}の計算結果:`, calculatedPosition);
+      return calculatedPosition;
     }
     
     // 文字列のpositionを処理
     switch (position) {
       case 'left':
         return {
-          left: screenInfo.left + 20,
-          top: screenInfo.top + 50,
+          left: offsetLeft + 20,
+          top: offsetTop + 50,
           width: baseWidth,
           height: baseHeight
         };
         
       case 'right':
         return {
-          left: screenInfo.left + screenInfo.width - baseWidth - 20,
-          top: screenInfo.top + 50,
+          left: offsetLeft + screenInfo.width - baseWidth - 20,
+          top: offsetTop + 50,
           width: baseWidth,
           height: baseHeight
         };
         
       case 'center':
         return {
-          left: screenInfo.left + Math.floor((screenInfo.width - baseWidth) / 2),
-          top: screenInfo.top + Math.floor((screenInfo.height - baseHeight) / 2),
+          left: offsetLeft + Math.floor((screenInfo.width - baseWidth) / 2),
+          top: offsetTop + Math.floor((screenInfo.height - baseHeight) / 2),
           width: baseWidth,
           height: baseHeight
         };
@@ -555,25 +592,57 @@ export class WindowService {
     const screenInfo = await this.getScreenInfo();
     const positionInfo = this.calculateWindowPosition(position, screenInfo);
     
-    // ウィンドウを作成
+    // optionsからChrome APIが認識しないプロパティを除外
+    const { aiType, ...chromeOptions } = options || {};
+    
+    // ウィンドウを作成（aiTypeを除外したオプションを使用）
     const windowOptions = {
       ...this.DEFAULT_WINDOW_OPTIONS,
       ...positionInfo,
-      ...options,
+      ...chromeOptions,  // aiTypeを除外したオプションを使用
       url: url,
       focused: true
     };
     
+    // デバッグ: Chrome APIに渡すオプションをログ出力
+    console.log('[WindowService] chrome.windows.create オプション:', {
+      url: windowOptions.url,
+      type: windowOptions.type,
+      left: windowOptions.left,
+      top: windowOptions.top,
+      width: windowOptions.width,
+      height: windowOptions.height,
+      focused: windowOptions.focused,
+      state: windowOptions.state
+    });
+    
     try {
       const window = await chrome.windows.create(windowOptions);
+      
+      // ウィンドウ作成後、位置を明示的に更新（Chrome APIが初回作成時に位置を無視する場合の対策）
+      if (positionInfo.left !== undefined && positionInfo.top !== undefined) {
+        console.log(`[WindowService] ウィンドウ位置を更新: left=${positionInfo.left}, top=${positionInfo.top}`);
+        try {
+          await chrome.windows.update(window.id, {
+            left: positionInfo.left,
+            top: positionInfo.top,
+            width: positionInfo.width,
+            height: positionInfo.height,
+            focused: true
+          });
+        } catch (updateError) {
+          console.warn('[WindowService] ウィンドウ位置の更新に失敗:', updateError);
+        }
+      }
       
       // ウィンドウ情報を登録（ポジション情報を含む）
       this.registerWindow(window.id, {
         url: url,
         position: position,
-        type: options.type || 'general',
+        type: chromeOptions.type || 'general',
+        aiType: aiType,  // 内部管理用に保存
         createdAt: Date.now(),
-        ...options
+        ...chromeOptions
       });
       
       console.log(`[WindowService] ウィンドウ作成成功: ID=${window.id}, Position=${position}`);
