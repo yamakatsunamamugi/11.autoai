@@ -191,14 +191,15 @@ class StreamProcessor {
 
     // ウィンドウ管理状態
     this.activeWindows = new Map(); // windowId -> windowInfo
-    this.windowPositions = new Map(); // position(0-3) -> windowId
+    this.windowPositions = new Map(); // position(0-2) -> windowId (左上、右上、左下の3つ)
     this.columnWindows = new Map(); // column -> windowId (列とウィンドウの対応)
-    this.maxConcurrentWindows = 4;
+    this.maxConcurrentWindows = 3; // 左上、右上、左下の3つのみ（右下は拡張機能用）
 
     // タスク管理状態
     this.taskQueue = new Map(); // column -> tasks[]
     this.currentRowByColumn = new Map(); // column -> currentRowNumber
     this.completedTasks = new Set(); // taskId
+    this.failedTasksByColumn = new Map(); // column -> Set<task> (エラーになったタスク)
     
     // 記載完了管理（並列ストリーミング用）
     this.writtenCells = new Map(); // `${column}${row}` -> true (記載完了したセル)
@@ -645,15 +646,12 @@ class StreamProcessor {
       await this.process3TypeGroup(groupTasks);
     }
     
-    // 通常処理列を並列で処理
-    const normalPromises = [];
+    // 通常処理列を順次処理（ポジション枯渇を防ぐため）
     for (const [column, tasks] of normalColumns) {
       this.logger.log(`[StreamProcessor] 通常処理列開始: ${column}列`);
-      normalPromises.push(this.processNormalColumn(column));
+      await this.processNormalColumn(column);
+      this.logger.log(`[StreamProcessor] 通常処理列完了: ${column}列`);
     }
-    
-    // 全ての通常処理列の完了を待つ
-    await Promise.all(normalPromises);
     
     this.logger.log('[StreamProcessor] 全タスク処理完了');
   }
@@ -697,6 +695,9 @@ class StreamProcessor {
     this.logger.log(`[StreamProcessor] 🔷 3種類AIバッチ開始: 行${row}`);
     this.logger.log(`[StreamProcessor] タスク: ${rowTasks.map(t => `${t.column}${t.row}`).join(', ')}`);
     
+    // 開いたウィンドウを記録
+    const openedWindows = [];
+    
     // 3つのウィンドウを並列で開いてタスクを実行
     const windowPromises = rowTasks.map(async (task) => {
       try {
@@ -712,10 +713,27 @@ class StreamProcessor {
           throw new Error(`ウィンドウを開けませんでした: ${task.column}${task.row}`);
         }
         
-        // タスクを実行
-        await this.executeTaskInWindow(task, windowId);
+        // 開いたウィンドウを記録
+        openedWindows.push(windowId);
         
-        // ウィンドウを閉じる
+        // タスクを実行（リトライ機能付き）
+        const result = await this.executeTaskInWindow(task, windowId);
+        
+        // 注: ウィンドウはバッチ完了時にまとめて閉じる
+        
+      } catch (error) {
+        // ここに来るのは予期しないエラーのみ（リトライは executeTaskInWindow 内で処理済み）
+        this.logger.error(`[StreamProcessor] 3種類AIタスク予期しないエラー: ${task.column}${task.row}`, error);
+      }
+    });
+    
+    // 全タスクの完了を待つ
+    await Promise.allSettled(windowPromises);
+    
+    // バッチ完了後、全ウィンドウを閉じる
+    this.logger.log(`[StreamProcessor] 3種類AIバッチのウィンドウを閉じる: ${openedWindows.length}個`);
+    for (const windowId of openedWindows) {
+      try {
         await chrome.windows.remove(windowId);
         this.activeWindows.delete(windowId);
         // positionからも削除
@@ -725,14 +743,11 @@ class StreamProcessor {
             break;
           }
         }
-        
+        this.logger.log(`[StreamProcessor] ✅ Window${windowId}を閉じました`);
       } catch (error) {
-        this.logger.error(`[StreamProcessor] 3種類AIタスクエラー: ${task.column}${task.row}`, error);
+        this.logger.debug(`[StreamProcessor] Window${windowId}クローズエラー（無視）: ${error.message}`);
       }
-    });
-    
-    // 全タスクの完了を待つ
-    await Promise.allSettled(windowPromises);
+    }
     
     this.logger.log(`[StreamProcessor] 3種類AIバッチ完了: 行${row}`);
   }
@@ -877,12 +892,86 @@ class StreamProcessor {
   }
 
   /**
-   * 既存のウィンドウでタスクを実行（完了まで待機）
+   * 既存のウィンドウでタスクを実行（リトライ機能付き）
+   * @param {Task} task
+   * @param {number} windowId
+   * @param {number} retryCount - 現在のリトライ回数
+   * @returns {Promise<Object>} 実行結果
+   */
+  async executeTaskInWindow(task, windowId, retryCount = 0) {
+    const MAX_RETRIES = 3;
+    const taskKey = `${task.column}${task.row}`;
+    
+    try {
+      // コア実行処理を呼び出す
+      const result = await this.executeTaskCore(task, windowId);
+      
+      // 成功したらエラーカウントをリセット
+      if (this.errorCount && this.errorCount[taskKey]) {
+        delete this.errorCount[taskKey];
+        this.logger.log(`[StreamProcessor] ✅ タスク成功、エラーカウントリセット: ${taskKey}`);
+      }
+      
+      return result;
+      
+    } catch (error) {
+      // リトライ可能かチェック
+      if (retryCount < MAX_RETRIES - 1) {
+        this.logger.warn(
+          `[StreamProcessor] ⚠️ タスクエラー（${retryCount + 1}/${MAX_RETRIES}回目）: ${taskKey}`,
+          { error: error.message }
+        );
+        
+        // 指数バックオフで待機（1秒、2秒、4秒...最大5秒）
+        const waitTime = Math.min(1000 * Math.pow(2, retryCount), 5000);
+        this.logger.log(`[StreamProcessor] ${waitTime}ms待機してリトライします...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        
+        // 再帰的にリトライ
+        return await this.executeTaskInWindow(task, windowId, retryCount + 1);
+      }
+      
+      // リトライ上限に達した
+      this.logger.error(
+        `[StreamProcessor] ❌ エラー上限到達（${MAX_RETRIES}回失敗）: ${taskKey}`,
+        { error: error.message }
+      );
+      
+      // エラー結果を処理
+      const errorResult = {
+        success: false,
+        error: `エラー上限到達: ${error.message}`,
+        skipped: true,
+      };
+      
+      // エラータスクを記録（通常処理列の場合）
+      if (!task.multiAI) {
+        if (!this.failedTasksByColumn.has(task.column)) {
+          this.failedTasksByColumn.set(task.column, new Set());
+        }
+        this.failedTasksByColumn.get(task.column).add(task);
+        this.logger.log(`[StreamProcessor] ❌ エラータスク記録: ${task.column}${task.row}`);
+      }
+      
+      await this.handleTaskResult(task, windowId, errorResult);
+      
+      // エラーの場合もウィンドウを閉じる（通常処理列の場合）
+      // 二重安全策：バッチ完了時にも再度閉じる
+      if (!task.multiAI) {
+        await this.closeWindowAfterTask(windowId);
+      }
+      
+      return errorResult;
+    }
+  }
+
+  /**
+   * タスク実行のコア処理（元のexecuteTaskInWindowの内容）
    * @param {Task} task
    * @param {number} windowId
    * @returns {Promise<Object>} 実行結果
    */
-  async executeTaskInWindow(task, windowId) {
+  async executeTaskCore(task, windowId) {
     const windowInfo = this.activeWindows.get(windowId);
     if (!windowInfo) return;
 
@@ -949,6 +1038,14 @@ class StreamProcessor {
       // DynamicConfig上書きを削除 - スプレッドシートの設定をそのまま使用
       this.logger.log(`[StreamProcessor] 📊 スプレッドシート設定適用: ${task.aiType} -> モデル:${finalModel}, 機能:${finalOperation}`);
 
+      // 送信時刻を記録（ログ用）
+      if (this.spreadsheetLogger) {
+        this.spreadsheetLogger.recordSendTime(task.id, {
+          aiType: task.aiType,
+          model: finalModel || '不明'
+        });
+      }
+
       // AITaskHandlerを直接呼び出す（Service Worker内なので）
       // aiTaskHandlerはbackground.jsでimportされているため、globalThisから取得
       const aiTaskHandler = globalThis.aiTaskHandler || (await import('../../handlers/ai-task-handler.js')).aiTaskHandler;
@@ -969,60 +1066,53 @@ class StreamProcessor {
 
       const cellPosition = `${task.column}${task.row}`;
       
+      // 動的に取得したモデル情報をタスクに保存
+      if (result.model) {
+        task.model = result.model;
+        this.logger.log(`[StreamProcessor] モデル情報を更新: ${cellPosition} = ${result.model}`);
+      } else if (!result.model && finalModel) {
+        // フォールバック: スプレッドシートのモデル情報を使用
+        result.model = finalModel;
+      }
+      
       this.logger.log(
         `[StreamProcessor] ✅ タスク完了: ${cellPosition}セル`,
         {
           セル: cellPosition,
-          aiType: result.aiType,
+          aiType: result.aiType || task.aiType,
+          model: result.model || finalModel || '不明',
           responseLength: result.response?.length || 0,
           column: task.column,
           row: task.row,
           taskId: task.id
         },
       );
+      
+      // 成功した場合、エラーリストから削除（通常処理列の場合）
+      if (!task.multiAI && result.success) {
+        const failedSet = this.failedTasksByColumn.get(task.column);
+        if (failedSet && failedSet.has(task)) {
+          failedSet.delete(task);
+          this.logger.log(`[StreamProcessor] ✅ エラーリストから削除: ${task.column}${task.row}`);
+          if (failedSet.size === 0) {
+            this.failedTasksByColumn.delete(task.column);
+          }
+        }
+      }
 
       // タスク完了処理（スプレッドシート書き込みを含む）
-      await this.handleTaskResult(task, windowId, result);
+      await this.onTaskCompleted(task, windowId, result);
+      
+      // タスク完了後、ウィンドウを閉じる（通常処理列の場合）
+      // 二重安全策：バッチ完了時にも再度閉じる
+      if (!task.multiAI) {
+        await this.closeWindowAfterTask(windowId);
+      }
+      
       return result;
     } catch (error) {
-      this.logger.error(
-        `[StreamProcessor] タスク実行エラー: ${task.column}${task.row}`,
-        {
-          error: error.message,
-          stack: error.stack,
-          taskId: task.id,
-          prompt: task.prompt?.substring(0, 100) + "...",
-          windowId: windowId,
-        },
-      );
-
-      // エラーの場合は無限ループを防ぐため、次のタスクに進まない
-      // TODO: 再試行ロジックを実装
-      this.logger.error(
-        `[StreamProcessor] タスクをスキップします: ${task.column}${task.row}`,
-      );
-
-      // エラーカウンターを追加（無限ループ防止）
-      if (!this.errorCount) this.errorCount = {};
-      const taskKey = `${task.column}${task.row}`;
-      this.errorCount[taskKey] = (this.errorCount[taskKey] || 0) + 1;
-
-      // 3回以上エラーが発生したらスキップ
-      if (this.errorCount[taskKey] >= 3) {
-        this.logger.error(
-          `[StreamProcessor] エラー上限に達しました。タスクを完全にスキップ: ${taskKey}`,
-        );
-        delete this.errorCount[taskKey];
-        // エラーをスキップ
-        const errorResult = {
-          success: false,
-          error: `エラー上限到達: ${error.message}`,
-          skipped: true,
-        };
-        await this.handleTaskResult(task, windowId, errorResult);
-        return errorResult;
-      }
-      // それ以外は何もしない（リトライは別途実装）
+      // エラーを上位に投げる（executeTaskInWindowでリトライ処理）
+      throw error;
     }
   }
 
@@ -1132,7 +1222,7 @@ class StreamProcessor {
           
           try {
             // スプレッドシート書き込みを同期で実行（awaitで完了を待つ）
-            await this.writeResultToSpreadsheet(task, result);
+            await this.writeResultToSpreadsheet(task, result, windowId);
             this.logger.log(`[StreamProcessor] 📝 スプレッドシートに書き込み完了: ${cellPosition}セル`);
           } catch (error) {
             this.logger.error(`[StreamProcessor] ❌ 結果の保存エラー`, error);
@@ -1179,8 +1269,9 @@ class StreamProcessor {
    * 結果をスプレッドシートに書き込む
    * @param {Task} task
    * @param {Object} result
+   * @param {number} windowId - ウィンドウID
    */
-  async writeResultToSpreadsheet(task, result) {
+  async writeResultToSpreadsheet(task, result, windowId) {
     if (!globalThis.sheetsClient || !this.spreadsheetData) return;
 
     try {
@@ -1233,9 +1324,9 @@ class StreamProcessor {
         let currentUrl = 'N/A';
         try {
           // ウィンドウIDから実際のタブURLを取得
-          if (task.windowId) {
+          if (windowId) {  // task.windowId ではなく windowId パラメータを使用
             try {
-              const tabs = await chrome.tabs.query({ windowId: task.windowId });
+              const tabs = await chrome.tabs.query({ windowId });
               if (tabs && tabs.length > 0) {
                 currentUrl = tabs[0].url || 'N/A';
                 console.log(`🌐 [StreamProcessor] 実際の作業 URL取得: ${currentUrl}`);
@@ -1246,7 +1337,7 @@ class StreamProcessor {
           }
           
           // フォールバック: AIタイプからベースURLを生成
-          if (currentUrl === 'N/A') {
+          if (currentUrl === 'N/A' || !currentUrl) {
             const urlMap = {
               'chatgpt': 'https://chatgpt.com/',
               'claude': 'https://claude.ai/',
@@ -1268,7 +1359,13 @@ class StreamProcessor {
             }
           }
           
-          await this.spreadsheetLogger.writeLogToSpreadsheet(task, {
+          // タスクオブジェクトにモデル情報を追加
+          const taskWithModel = {
+            ...task,
+            model: task.model || result?.model || '不明'
+          };
+          
+          await this.spreadsheetLogger.writeLogToSpreadsheet(taskWithModel, {
             url: currentUrl,
             sheetsClient: globalThis.sheetsClient,
             spreadsheetId,
@@ -1283,15 +1380,16 @@ class StreamProcessor {
           this.logger.log(`[StreamProcessor] ログを書き込み: ${task.logColumns?.[0] || 'B'}${task.row}`);
         } catch (logError) {
           // ログ書き込みエラーは警告として記録し、処理は続行
-          console.error(`❌ [StreamProcessor] ログ書き込みエラー詳細:`, {
-            error: logError,
-            message: logError.message,
-            stack: logError.stack,
+          console.error(`❌ [StreamProcessor] ログ書き込みエラー詳細:`, logError);
+          console.error(`[StreamProcessor] エラー詳細情報:`, {
+            errorMessage: logError?.message || 'メッセージなし',
+            errorStack: logError?.stack || 'スタックトレースなし',
             taskId: task.id,
             row: task.row,
             aiType: task.aiType,
             currentUrl,
-            spreadsheetLogger: !!this.spreadsheetLogger
+            spreadsheetLogger: !!this.spreadsheetLogger,
+            taskModel: task.model || '不明'
           });
           this.logger.warn(
             `[StreamProcessor] ログ書き込みエラー（処理は続行）`,
@@ -2000,11 +2098,10 @@ ${formattedGemini}`;
         if (nextTask.row <= batchEnd) {
           this.logger.log(`[StreamProcessor] 📋 1種類AI連続処理: ${column}列の行${nextTask.row}を開始`);
           
-          // 同じウィンドウで次のタスクを処理
-          const windowId = this.columnWindows.get(column);
-          if (windowId) {
-            await this.processNextTask(column, windowId);
-          }
+          // 次のタスクを実行
+          // 注: ここでは新しいウィンドウを開いて処理する
+          // バッチ内の次のタスクは checkAndStartNextNormalBatch で処理される
+          this.logger.log(`[StreamProcessor] 次のタスク${nextTask.column}${nextTask.row}はバッチ処理で実行されます`);
           return;
         }
       }
@@ -2092,6 +2189,33 @@ ${formattedGemini}`;
     if (batches.length > 0) {
       await this.startNormalBatch(column, batches[0], 0, batches.length);
     }
+    
+    // 全バッチ完了を待つ（バッチは連鎖的に実行される）
+    await this.waitForColumnCompletion(column);
+    
+    // エラータスクの再試行
+    const failedTasks = this.failedTasksByColumn.get(column);
+    if (failedTasks && failedTasks.size > 0) {
+      this.logger.log(`[StreamProcessor] 🔄 ${column}列のエラータスク${failedTasks.size}個を再試行します`);
+      
+      // 5秒待機（サービス復旧を待つ）
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      
+      // エラータスクを配列に変換
+      const retryTasks = Array.from(failedTasks);
+      
+      // 再試行バッチを実行
+      await this.retryFailedTasks(column, retryTasks);
+      
+      // 再試行後、まだエラーが残っているかチェック
+      const remainingErrors = this.failedTasksByColumn.get(column);
+      if (remainingErrors && remainingErrors.size > 0) {
+        this.logger.warn(`[StreamProcessor] ⚠️ ${column}列に${remainingErrors.size}個のエラーが残っています`);
+      } else {
+        this.logger.log(`[StreamProcessor] ✅ ${column}列の全エラーが解決しました`);
+        this.failedTasksByColumn.delete(column);
+      }
+    }
   }
   
   /**
@@ -2139,12 +2263,18 @@ ${formattedGemini}`;
         // バッチ情報にウィンドウIDを記録
         batchInfo.windows.set(task.id, windowId);
         
-        // タスクを実行
-        await this.executeTaskInWindow(task, windowId);
+        // タスクを実行（リトライ機能付き）
+        const result = await this.executeTaskInWindow(task, windowId);
+        
+        // 成功またはスキップの場合、完了扱い
+        if (result && (result.success || result.skipped)) {
+          batchInfo.completed.add(task.id);
+        }
         
       } catch (error) {
-        this.logger.error(`[StreamProcessor] バッチタスクエラー: ${task.column}${task.row}`, error);
-        // エラーでも完了扱いにして次に進む
+        // ここに来るのは予期しないエラーのみ（リトライは executeTaskInWindow 内で処理済み）
+        this.logger.error(`[StreamProcessor] バッチタスク予期しないエラー: ${task.column}${task.row}`, error);
+        // 予期しないエラーでも完了扱いにして次に進む
         batchInfo.completed.add(task.id);
       }
     });
@@ -2239,6 +2369,39 @@ ${formattedGemini}`;
   }
   
   /**
+   * タスク完了後にウィンドウを閉じる（新規追加）
+   * @param {number} windowId - ウィンドウID
+   */
+  async closeWindowAfterTask(windowId) {
+    try {
+      await chrome.windows.remove(windowId);
+      this.logger.log(`[StreamProcessor] ✅ タスク完了後、Window${windowId}を閉じました`);
+      
+      // 管理情報をクリア
+      this.activeWindows.delete(windowId);
+      
+      // positionからも削除
+      for (const [pos, wId] of this.windowPositions.entries()) {
+        if (wId === windowId) {
+          this.windowPositions.delete(pos);
+          this.logger.log(`[StreamProcessor] ポジション${pos}を解放しました`);
+          break;
+        }
+      }
+      
+      // columnWindowsからも削除
+      for (const [col, wId] of this.columnWindows.entries()) {
+        if (wId === windowId) {
+          this.columnWindows.delete(col);
+          break;
+        }
+      }
+    } catch (error) {
+      this.logger.debug(`[StreamProcessor] Window${windowId}クローズエラー（無視）: ${error.message}`);
+    }
+  }
+  
+  /**
    * 通常処理バッチのウィンドウを閉じる（新規追加）
    * @param {string} batchId - バッチID
    */
@@ -2273,6 +2436,14 @@ ${formattedGemini}`;
           })
           .catch(error => {
             this.logger.debug(`[StreamProcessor] Window${windowId}クローズエラー（無視）: ${error.message}`);
+            // エラーでも管理情報はクリア（既に閉じている可能性があるため）
+            this.activeWindows.delete(windowId);
+            for (const [pos, wId] of this.windowPositions.entries()) {
+              if (wId === windowId) {
+                this.windowPositions.delete(pos);
+                break;
+              }
+            }
           })
       );
     }
@@ -2784,15 +2955,12 @@ ${formattedGemini}`;
         return "https://gemini.google.com/app";
 
       case "chatgpt":
-        // モデルをチェック
-        if (this.modelManager) {
-          return this.modelManager.generateChatGPTUrl(column, aiType);
-        }
-        return "https://chatgpt.com/?model=gpt-4o";
+        // ChatGPTはmodelパラメータを付けない（モデル選択はコンテンツスクリプトで制御）
+        return "https://chatgpt.com/";
 
       default:
         this.logger.warn(`[StreamProcessor] 未知のAIタイプ: ${aiType}`);
-        return "https://chatgpt.com/?model=gpt-4o";
+        return "https://chatgpt.com/";
     }
   }
 
@@ -3493,6 +3661,108 @@ ${formattedGemini}`;
   }
 
   /**
+   * 列の全バッチ完了を待つ
+   * @param {string} column - 列名
+   */
+  async waitForColumnCompletion(column) {
+    const maxWaitTime = 300000; // 5分
+    const checkInterval = 1000; // 1秒ごとにチェック
+    const startTime = Date.now();
+    
+    while (Date.now() - startTime < maxWaitTime) {
+      // 全バッチが完了しているかチェック
+      let allBatchesComplete = true;
+      
+      for (const [batchId, batchInfo] of this.normalBatchTracker) {
+        if (batchInfo.column === column) {
+          allBatchesComplete = false;
+          break;
+        }
+      }
+      
+      if (allBatchesComplete) {
+        this.logger.log(`[StreamProcessor] ${column}列の全バッチが完了しました`);
+        return;
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, checkInterval));
+    }
+    
+    this.logger.warn(`[StreamProcessor] ${column}列の完了待機がタイムアウトしました`);
+  }
+  
+  /**
+   * エラータスクを再試行
+   * @param {string} column - 列名
+   * @param {Array} retryTasks - 再試行するタスクの配列
+   */
+  async retryFailedTasks(column, retryTasks) {
+    if (!retryTasks || retryTasks.length === 0) return;
+    
+    this.logger.log(`[StreamProcessor] 🔄 エラータスク再試行開始: ${column}列 (${retryTasks.length}タスク)`);
+    
+    // 3タスクずつのバッチに分割
+    const batches = [];
+    for (let i = 0; i < retryTasks.length; i += 3) {
+      const batchTasks = retryTasks.slice(i, Math.min(i + 3, retryTasks.length));
+      batches.push(batchTasks);
+    }
+    
+    // 再試行バッチを順次実行
+    for (let i = 0; i < batches.length; i++) {
+      const batch = batches[i];
+      const retryBatchId = `retry_${column}_${i}_${Date.now()}`;
+      
+      this.logger.log(`[StreamProcessor] 再試行バッチ ${i + 1}/${batches.length}: ${batch.map(t => `${t.column}${t.row}`).join(', ')}`);
+      
+      // バッチ内のタスクを並列実行
+      const retryPromises = batch.map(async (task) => {
+        try {
+          // ポジションを探す
+          const position = this.findAvailablePosition();
+          if (position === -1) {
+            throw new Error('利用可能なポジションがありません');
+          }
+          
+          // ウィンドウを開く
+          const windowId = await this.openWindowForTask(task, position);
+          if (!windowId) {
+            throw new Error(`ウィンドウを開けませんでした: ${task.column}${task.row}`);
+          }
+          
+          // タスクを実行（リトライ機能付き）
+          const result = await this.executeTaskInWindow(task, windowId, 0); // retryCount=0で新たに開始
+          
+          // 成功した場合、エラーリストから削除
+          if (result && result.success) {
+            const failedSet = this.failedTasksByColumn.get(column);
+            if (failedSet) {
+              failedSet.delete(task);
+              this.logger.log(`[StreamProcessor] ✅ 再試行成功: ${task.column}${task.row}`);
+            }
+          }
+          
+          return result;
+          
+        } catch (error) {
+          this.logger.error(`[StreamProcessor] 再試行エラー: ${task.column}${task.row}`, error);
+          return { success: false, error: error.message };
+        }
+      });
+      
+      // バッチの完了を待つ
+      await Promise.allSettled(retryPromises);
+      
+      // 次のバッチまで少し待機
+      if (i < batches.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    }
+    
+    this.logger.log(`[StreamProcessor] 🔄 ${column}列の再試行完了`);
+  }
+  
+  /**
    * スプレッドシートウィンドウを指定番号で開く
    */
   async openSpreadsheetInWindowNumber(windowNumber) {
@@ -3506,6 +3776,49 @@ ${formattedGemini}`;
 
       // 画面情報を取得
       const screenInfo = await this.getScreenInfo();
+
+      // モニター番号2の特別処理: 左にchrome://extensions/、右にスプレッドシート
+      if (windowNumber === 2) {
+        const halfWidth = Math.floor(screenInfo.width / 2);
+        const fullHeight = screenInfo.height;
+
+        // 左側: chrome://extensions/を開く
+        const leftPosition = {
+          left: screenInfo.left,
+          top: screenInfo.top,
+          width: halfWidth,
+          height: fullHeight
+        };
+
+        const extensionsWindow = await chrome.windows.create({
+          url: 'chrome://extensions/',
+          type: 'popup',
+          ...leftPosition,
+          focused: false
+        });
+
+        this.logger.log(`[StreamProcessor] chrome://extensions/を左側に開きました (ID: ${extensionsWindow.id})`);
+
+        // 右側: スプレッドシートを開く
+        const rightPosition = {
+          left: screenInfo.left + halfWidth,
+          top: screenInfo.top,
+          width: halfWidth,
+          height: fullHeight
+        };
+
+        const spreadsheetWindow = await chrome.windows.create({
+          url: spreadsheetUrl,
+          type: 'popup',
+          ...rightPosition,
+          focused: false
+        });
+
+        this.logger.log(`[StreamProcessor] スプレッドシートを右側に開きました (ID: ${spreadsheetWindow.id})`);
+        return;
+      }
+
+      // 通常の処理（モニター番号2以外）
       const position = this.calculateWindowPositionFromNumber(windowNumber, screenInfo);
 
       // スプレッドシートウィンドウを作成

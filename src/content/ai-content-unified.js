@@ -1301,12 +1301,16 @@ async function handleAITaskPrompt(request, sendResponse) {
         error: response?.error
       });
       
+      // モデル情報を取得して応答に含める
+      const currentModel = getModelInfo();
+      
       // 応答をそのまま返す
       sendResponse({
         success: response?.success || false,
         response: response?.response || '',
         error: response?.error,
         aiType: AI_TYPE,
+        model: currentModel,  // モデル情報を追加
         taskId: taskId
       });
     }
@@ -1886,17 +1890,71 @@ function handleGetTaskStatus(request, sendResponse) {
 }
 
 /**
+ * AIモデル情報を取得
+ * @returns {string} モデル名
+ */
+function getModelInfo() {
+  let modelName = '';
+  
+  try {
+    switch(AI_TYPE) {
+      case 'ChatGPT':
+      case 'chatgpt':
+        // ChatGPT: "ChatGPT 5 Thinking" から "5 Thinking" を取得
+        const chatgptBtn = document.querySelector('button[data-testid="model-switcher-dropdown-button"]');
+        if (chatgptBtn) {
+          const divElement = chatgptBtn.querySelector('div');
+          if (divElement) {
+            const fullText = divElement.textContent.trim();
+            // "ChatGPT " を削除してモデル名のみ取得
+            modelName = fullText.replace('ChatGPT', '').trim();
+          }
+        }
+        break;
+      
+      case 'Claude':
+      case 'claude':
+        // Claude: "Opus 4.1" を取得
+        const claudeModel = document.querySelector('.whitespace-nowrap.tracking-tight.select-none');
+        if (claudeModel) {
+          modelName = claudeModel.textContent.trim();
+        }
+        break;
+        
+      case 'Gemini':
+      case 'gemini':
+        // Gemini: "2.5 Pro" を取得
+        const geminiLabel = document.querySelector('.logo-pill-label-container span');
+        if (geminiLabel) {
+          modelName = geminiLabel.textContent.trim();
+        }
+        break;
+    }
+    
+    console.log(`[11.autoai][${AI_TYPE}] モデル情報取得: ${modelName || '不明'}`);
+  } catch (error) {
+    console.error(`[11.autoai][${AI_TYPE}] モデル情報取得エラー:`, error);
+  }
+  
+  return modelName;
+}
+
+/**
  * sendPromptToAI関数
  * 各AIのrunAutomationを直接使用してプロンプトを送信
  */
 async function sendPromptToAI(prompt, options = {}) {
   const { model, specialOperation, aiType, taskId } = options;
   
+  // 現在のモデル情報を取得
+  const currentModel = getModelInfo();
+  
   console.log(`[11.autoai][${AI_TYPE}] sendPromptToAI実行:`, {
     aiType: aiType || AI_TYPE,
     model,
     specialOperation,
-    taskId
+    taskId,
+    currentModel  // 現在のモデル情報を追加
   });
   
   // 設定オブジェクトの作成（統合テストと同じ形式）
@@ -1938,6 +1996,12 @@ async function sendPromptToAI(prompt, options = {}) {
     const result = await automation.runAutomation(config);
     
     console.log(`[11.autoai][${AI_TYPE}] runAutomation結果:`, result);
+    
+    // 結果にモデル情報を追加
+    if (result && result.success) {
+      result.model = currentModel;
+    }
+    
     return result;
     
   } catch (error) {

@@ -125,13 +125,15 @@ export class AITaskHandler {
         セル: cellPosition,
         success: true,
         responseLength: sendResult.response?.length || 0,
-        aiType: sendResult.aiType || 'unknown'
+        aiType: sendResult.aiType || 'unknown',
+        model: sendResult.model || '不明'
       });
       
       return {
         success: true,
         response: sendResult.response || "[Request interrupted by user]回答テキスト取得できない　エラー",
         aiType: sendResult.aiType || 'unknown',
+        model: sendResult.model,  // モデル情報を追加
         taskId: taskId
       };
       
