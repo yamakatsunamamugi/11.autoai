@@ -555,7 +555,7 @@ class StreamProcessor {
     // WindowServiceのcreateWindowWithPositionを使用してウィンドウを作成
     // これにより位置計算とウィンドウ作成が一元化される
     const window = await WindowService.createWindowWithPosition(url, position, {
-      type: 'ai',
+      type: 'popup',  // Chrome APIは 'normal', 'panel', 'popup' のみ許可
       aiType: task.aiType
     });
     
@@ -2482,7 +2482,7 @@ ${formattedGemini}`;
       // WindowServiceのcreateWindowWithPositionを使用してウィンドウを作成
       // これにより位置計算とウィンドウ作成が一元化される
       const window = await WindowService.createWindowWithPosition(url, position, {
-        type: 'ai',
+        type: 'popup',  // Chrome APIは 'normal', 'panel', 'popup' のみ許可
         aiType: task.aiType
       });
       
