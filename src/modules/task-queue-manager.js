@@ -81,13 +81,14 @@ export class TaskQueueManager {
     this.isProcessing = true;
     console.log('[TaskQueueManager] キュー処理開始');
     
+    let taskIndex = 0;
     while (this.taskQueue.length > 0 && !this.isPaused) {
-      // 利用可能なポジションを待つ
-      const position = await this.waitForAvailablePosition();
+      // タスクインデックスからポジションを計算
+      const position = taskIndex % 4; // 0-3の範囲に収める
       
-      if (position === -1) {
-        // ポジションが取得できない場合は少し待つ
-        await new Promise(resolve => setTimeout(resolve, 1000));
+      // 処理中タスク数が上限に達している場合は待機
+      if (this.processingTasks.size >= this.maxConcurrentTasks) {
+        await new Promise(resolve => setTimeout(resolve, 500));
         continue;
       }
       
@@ -95,6 +96,7 @@ export class TaskQueueManager {
       const task = this.taskQueue.shift();
       if (task) {
         this.processTask(task, position);
+        taskIndex++;
       }
     }
     

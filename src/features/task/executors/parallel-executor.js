@@ -96,10 +96,11 @@ class ParallelExecutor extends BaseExecutor {
     
     for (let i = 0; i < maxStart; i++) {
       const column = columns[i];
-      this.logger.log(`[ParallelExecutor] ${column}列を開始 (${i + 1}/${maxStart})`);
+      const position = i; // インデックスをポジションとして使用（0, 1, 2）
+      this.logger.log(`[ParallelExecutor] ${column}列を開始 (${i + 1}/${maxStart}), position=${position}`);
       
       parallelPromises.push(
-        this.startColumnProcessing(column).catch(error => {
+        this.startColumnProcessing(column, position).catch(error => {
           this.logger.error(`[ParallelExecutor] ${column}列エラー`, error);
           return { column, error };
         })
@@ -117,7 +118,7 @@ class ParallelExecutor extends BaseExecutor {
   /**
    * 列の処理を開始
    */
-  async startColumnProcessing(column) {
+  async startColumnProcessing(column, position) {
     const tasks = this.taskQueue.get(column);
     if (!tasks || tasks.length === 0) {
       return;
@@ -130,26 +131,10 @@ class ParallelExecutor extends BaseExecutor {
     
     const currentTask = tasks[currentIndex];
     
-    // ウィンドウポジションを決定
-    const position = this.findAvailablePosition();
-    if (position === -1) {
-      throw new Error(`利用可能なウィンドウポジションがありません`);
-    }
+    // positionは呼び出し元から渡される（0, 1, 2）
+    this.logger.log(`[ParallelExecutor] ${column}列処理開始, position=${position}`);
     
     await this.openWindowForColumn(column, currentTask, position);
-  }
-  
-  /**
-   * 利用可能なポジションを検索
-   */
-  findAvailablePosition() {
-    for (let i = 0; i < this.maxConcurrentWindows; i++) {
-      if (!this.windowPositions.has(i)) {
-        this.windowPositions.set(i, null); // 予約
-        return i;
-      }
-    }
-    return -1;
   }
   
   /**
