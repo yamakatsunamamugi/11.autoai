@@ -58,6 +58,7 @@ class TaskList {
   constructor(tasks = []) {
     this.tasks = tasks;
     this.createdAt = Date.now();
+    this.aiColumns = {}; // AI列情報を追加
   }
 
   // タスクを追加（重複チェック付き）
@@ -142,6 +143,7 @@ class TaskList {
       tasks: this.tasks.map((task) => task.toJSON()),
       createdAt: this.createdAt,
       statistics: this.getStatistics(),
+      aiColumns: this.aiColumns, // AI列情報を含める
     };
   }
 
@@ -150,6 +152,7 @@ class TaskList {
     const tasks = json.tasks.map((taskData) => Task.fromJSON(taskData));
     const taskList = new TaskList(tasks);
     taskList.createdAt = json.createdAt || Date.now();
+    taskList.aiColumns = json.aiColumns || {}; // AI列情報を復元
     return taskList;
   }
 }

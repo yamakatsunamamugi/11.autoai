@@ -392,6 +392,25 @@ class TaskGenerator {
       }
     }
 
+    // AI列情報を収集してTaskListに設定
+    const aiColumns = {};
+    for (const group of processableGroups) {
+      if (group.aiType && group.answerColumns && group.answerColumns.length > 0) {
+        const aiType = group.aiType.toLowerCase();
+        if (!aiColumns[aiType]) {
+          aiColumns[aiType] = [];
+        }
+        // 各AIタイプの回答列を記録
+        group.answerColumns.forEach(ansCol => {
+          if (!aiColumns[aiType].includes(ansCol.column)) {
+            aiColumns[aiType].push(ansCol.column);
+          }
+        });
+      }
+    }
+    taskList.aiColumns = aiColumns;
+    console.log(`[TaskGenerator] AI列情報: ${JSON.stringify(aiColumns)}`);
+
     // controls情報を追加（互換性のため）
     taskList.controls = controls;
 

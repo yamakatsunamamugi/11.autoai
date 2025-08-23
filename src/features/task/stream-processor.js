@@ -699,8 +699,25 @@ class StreamProcessor {
   
   /**
    * 3種類AIバッチを開始（新規追加）
-   * @param {Array} rowTasks - 行のタスク配列
-   * @param {number} row - 行番号
+   * 
+   * ■ 機能概要
+   * 同一行の3種類AI（ChatGPT, Claude, Gemini）を並列実行します。
+   * 一部のAIに既存回答がある場合でも、残りのAIは正常に処理されます。
+   * 
+   * ■ ポジション管理
+   * - ChatGPT: position=0（左上）
+   * - Claude: position=1（右上）  
+   * - Gemini: position=2（左下）
+   * - 各AIは固定ポジションに配置され、空きがあれば処理実行
+   * 
+   * ■ 処理フロー
+   * 1. 利用可能なタスクを並列でウィンドウ作成
+   * 2. 各AIが独立してタスク実行
+   * 3. 全タスク完了後、一括でウィンドウクリーンアップ
+   * 
+   * @param {Array} rowTasks - 行のタスク配列（スキップされたAIは含まれない）
+   * @param {number} row - 処理対象の行番号
+   * @returns {Promise<void>} 処理完了のPromise
    */
   async start3TypeBatch(rowTasks, row) {
     const batchId = `3type_row${row}_${Date.now()}`;
@@ -719,12 +736,24 @@ class StreamProcessor {
       
       while (retryCount < maxRetries) {
         try {
-          // AIタイプに基づいて固定ポジションを決定（グループ内で空きがあれば処理）
+          // ■ AIタイプ固定ポジション割り当て
+          // 従来のindex基準ではなく、AIタイプで固定ポジションを決定
+          // これにより、一部AIがスキップされても残りのAIが正常に処理される
+          // 
+          // ポジションマッピング:
+          // - chatgpt: 0 (左上)  - F列など
+          // - claude:  1 (右上)  - G列など  
+          // - gemini:  2 (左下)  - H列など
+          // - position 3 (右下) は通常処理用に予約
           const aiTypeToPosition = { 'chatgpt': 0, 'claude': 1, 'gemini': 2 };
           const position = aiTypeToPosition[task.aiType.toLowerCase()];
+          
           if (position === undefined || position > 3) {
             throw new Error(`AIタイプ${task.aiType}のポジションが不正です`);
           }
+          
+          this.logger.log(`[StreamProcessor] ${task.aiType} → position=${position} (${task.column}${task.row})`);
+        
         
           // ウィンドウを開く
           let windowId;
