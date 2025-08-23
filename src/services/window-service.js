@@ -198,9 +198,9 @@ export class WindowService {
       baseHeight
     });
     
-    // スクリーン座標が0,0の場合、オフセットを追加（macOSなどで位置が反映されない問題の対策）
-    const offsetLeft = screenInfo.left === 0 ? 50 : screenInfo.left;
-    const offsetTop = screenInfo.top === 0 ? 50 : screenInfo.top;
+    // 画面全体を使用（余白なし）
+    const offsetLeft = screenInfo.left;  // 余白なし（通常は0）
+    const offsetTop = screenInfo.top;     // メニューバーの高さ（通常は25）
     
     // 数値のpositionを処理（4分割レイアウト用）
     if (typeof position === 'number') {
@@ -257,16 +257,16 @@ export class WindowService {
     switch (position) {
       case 'left':
         return {
-          left: offsetLeft + 20,
-          top: offsetTop + 50,
+          left: offsetLeft,
+          top: offsetTop,
           width: baseWidth,
           height: baseHeight
         };
         
       case 'right':
         return {
-          left: offsetLeft + screenInfo.width - baseWidth - 20,
-          top: offsetTop + 50,
+          left: offsetLeft + screenInfo.width - baseWidth,
+          top: offsetTop,
           width: baseWidth,
           height: baseHeight
         };
