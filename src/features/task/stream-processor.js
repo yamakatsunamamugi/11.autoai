@@ -706,62 +706,34 @@ class StreamProcessor {
     // 開いたウィンドウを記録
     const openedWindows = [];
     
-    // 順次処理：各ウィンドウを5秒間隔で開く
-    const windowPromises = [];
-    const aiOrder = ['chatgpt', 'claude', 'gemini']; // 処理順序を明示
-    
-    // タスクをAIタイプ順にソート
-    const sortedTasks = rowTasks.sort((a, b) => {
-      const aIndex = aiOrder.indexOf(a.aiType.toLowerCase());
-      const bIndex = aiOrder.indexOf(b.aiType.toLowerCase());
-      return aIndex - bIndex;
-    });
-    
-    for (let i = 0; i < sortedTasks.length; i++) {
-      const task = sortedTasks[i];
-      const aiTypeName = task.aiType.toUpperCase();
-      
-      this.logger.log(`[StreamProcessor] 📍 3種類AI タスク${i + 1}/${sortedTasks.length}を開始: ${task.column}${task.row} (${aiTypeName})`);
-      
-      // 各タスクを非同期で開始するが、次のタスクまで5秒待機
-      const taskPromise = (async () => {
-        try {
-          // ポジションを探す
-          const position = this.findAvailablePosition();
-          if (position === -1) {
-            throw new Error('利用可能なポジションがありません');
-          }
-          
-          // ウィンドウを開く
-          const windowId = await this.openWindowForTask(task, position);
-          if (!windowId) {
-            throw new Error(`ウィンドウを開けませんでした: ${task.column}${task.row}`);
-          }
-          
-          this.logger.log(`[StreamProcessor] ✅ 3種類AIウィンドウ開始: ${task.column}${task.row} (${aiTypeName}, Window ID: ${windowId})`);
-          
-          // 開いたウィンドウを記録
-          openedWindows.push(windowId);
-          
-          // タスクを実行（リトライ機能付き）
-          const result = await this.executeTaskInWindow(task, windowId);
-          
-          // 注: ウィンドウはバッチ完了時にまとめて閉じる
-          
-        } catch (error) {
-          // ここに来るのは予期しないエラーのみ（リトライは executeTaskInWindow 内で処理済み）
-          this.logger.error(`[StreamProcessor] 3種類AIタスク予期しないエラー: ${task.column}${task.row}`, error);
+    // 3つのウィンドウを並列で開いてタスクを実行（3種類AIは同時実行でOK）
+    const windowPromises = rowTasks.map(async (task) => {
+      try {
+        // ポジションを探す
+        const position = this.findAvailablePosition();
+        if (position === -1) {
+          throw new Error('利用可能なポジションがありません');
         }
-      })();
-      
-      windowPromises.push(taskPromise);
-      
-      // 次のウィンドウまで5秒待機（最後のタスクでは待機不要）
-      if (i < sortedTasks.length - 1) {
-        this.logger.log(`[StreamProcessor] ⏱️ 次の3種類AIウィンドウまで5秒待機...`);
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        
+        // ウィンドウを開く
+        const windowId = await this.openWindowForTask(task, position);
+        if (!windowId) {
+          throw new Error(`ウィンドウを開けませんでした: ${task.column}${task.row}`);
+        }
+        
+        // 開いたウィンドウを記録
+        openedWindows.push(windowId);
+        
+        // タスクを実行（リトライ機能付き）
+        const result = await this.executeTaskInWindow(task, windowId);
+        
+        // 注: ウィンドウはバッチ完了時にまとめて閉じる
+        
+      } catch (error) {
+        // ここに来るのは予期しないエラーのみ（リトライは executeTaskInWindow 内で処理済み）
+        this.logger.error(`[StreamProcessor] 3種類AIタスク予期しないエラー: ${task.column}${task.row}`, error);
       }
-    }
+    });
     
     // 全タスクの完了を待つ
     await Promise.allSettled(windowPromises);
@@ -2389,63 +2361,82 @@ ${formattedGemini}`;
     this.normalBatchTracker.set(batchId, batchInfo);
     this.activeBatchIds.add(batchId);
     
-    // 順次処理：各ウィンドウを5秒間隔で開く
-    const windowPromises = [];
+    // まず全てのウィンドウを並列で開く
+    const windowInfos = [];
+    const windowPromises = batchTasks.map(async (task, index) => {
+      try {
+        // ポジションを探す
+        const position = this.findAvailablePosition();
+        if (position === -1) {
+          throw new Error('利用可能なポジションがありません');
+        }
+        
+        // ウィンドウを開く
+        const windowId = await this.openWindowForTask(task, position);
+        if (!windowId) {
+          throw new Error(`ウィンドウを開けませんでした: ${task.column}${task.row}`);
+        }
+        
+        // バッチ情報にウィンドウIDを記録
+        batchInfo.windows.set(task.id, windowId);
+        
+        // ウィンドウ情報を保存（後で順次送信するため）
+        windowInfos.push({
+          task,
+          windowId,
+          index
+        });
+        
+        this.logger.log(`[StreamProcessor] ✅ ウィンドウ開き完了: ${task.column}${task.row} (Window ID: ${windowId})`);
+        
+      } catch (error) {
+        this.logger.error(`[StreamProcessor] ウィンドウ開きエラー: ${task.column}${task.row}`, error);
+        // 予期しないエラーでも完了扱いにして次に進む
+        batchInfo.completed.add(task.id);
+      }
+    });
+    
+    // 全ウィンドウが開くのを待つ
+    await Promise.allSettled(windowPromises);
+    
+    this.logger.log(`[StreamProcessor] 📂 全ウィンドウ開き完了、送信処理を開始します`);
+    
+    // 送信を順次実行（5秒間隔）
+    const sendPromises = [];
     const positions = ['top-left', 'top-right', 'bottom-left']; // 処理順序を明示
     
-    for (let i = 0; i < batchTasks.length; i++) {
-      const task = batchTasks[i];
-      const positionName = positions[i] || positions[0]; // デフォルトはtop-left
+    // windowInfosをindex順にソート
+    windowInfos.sort((a, b) => a.index - b.index);
+    
+    for (let i = 0; i < windowInfos.length; i++) {
+      const { task, windowId } = windowInfos[i];
+      const positionName = positions[i] || positions[0];
       
-      this.logger.log(`[StreamProcessor] 📍 タスク${i + 1}/${batchTasks.length}を開始: ${task.column}${task.row} (${positionName})`);
-      
-      // 各タスクを非同期で開始するが、次のタスクまで5秒待機
-      const taskPromise = (async () => {
-        try {
-          // ポジションを探す
-          const position = this.findAvailablePosition();
-          if (position === -1) {
-            throw new Error('利用可能なポジションがありません');
-          }
-          
-          // ウィンドウを開く
-          const windowId = await this.openWindowForTask(task, position);
-          if (!windowId) {
-            throw new Error(`ウィンドウを開けませんでした: ${task.column}${task.row}`);
-          }
-          
-          this.logger.log(`[StreamProcessor] ✅ ウィンドウ開始: ${task.column}${task.row} (Window ID: ${windowId}, Position: ${positionName})`);
-          
-          // バッチ情報にウィンドウIDを記録
-          batchInfo.windows.set(task.id, windowId);
-          
-          // タスクを実行（リトライ機能付き）
-          const result = await this.executeTaskInWindow(task, windowId);
-          
-          // 成功またはスキップの場合、完了扱い
-          if (result && (result.success || result.skipped)) {
-            batchInfo.completed.add(task.id);
-          }
-          
-        } catch (error) {
-          // ここに来るのは予期しないエラーのみ（リトライは executeTaskInWindow 内で処理済み）
-          this.logger.error(`[StreamProcessor] バッチタスク予期しないエラー: ${task.column}${task.row}`, error);
-          // 予期しないエラーでも完了扱いにして次に進む
-          batchInfo.completed.add(task.id);
-        }
-      })();
-      
-      windowPromises.push(taskPromise);
-      
-      // 次のウィンドウまで5秒待機（最後のタスクでは待機不要）
-      if (i < batchTasks.length - 1) {
-        this.logger.log(`[StreamProcessor] ⏱️ 次のウィンドウまで5秒待機...`);
+      // 送信前に5秒待機（最初のタスクは待機なし）
+      if (i > 0) {
+        this.logger.log(`[StreamProcessor] ⏱️ 次の送信まで5秒待機...`);
         await new Promise(resolve => setTimeout(resolve, 5000));
       }
+      
+      this.logger.log(`[StreamProcessor] 📤 送信開始: ${task.column}${task.row} (${positionName})`);
+      
+      // タスクを実行（送信処理）
+      const sendPromise = this.executeTaskInWindow(task, windowId).then(result => {
+        // 成功またはスキップの場合、完了扱い
+        if (result && (result.success || result.skipped)) {
+          batchInfo.completed.add(task.id);
+        }
+        return result;
+      }).catch(error => {
+        this.logger.error(`[StreamProcessor] タスク実行エラー: ${task.column}${task.row}`, error);
+        batchInfo.completed.add(task.id);
+      });
+      
+      sendPromises.push(sendPromise);
     }
     
     // 全タスクの完了を待つ
-    await Promise.allSettled(windowPromises);
+    await Promise.allSettled(sendPromises);
     
     this.logger.log(`[StreamProcessor] バッチ${batchId}の全タスク開始完了`);
   }
