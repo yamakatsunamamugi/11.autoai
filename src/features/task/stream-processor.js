@@ -449,15 +449,16 @@ class StreamProcessor {
     // 3つのウィンドウを開く
     const windows = new Map();
     
-    for (const column of columns) {
+    for (let i = 0; i < columns.length; i++) {
+      const column = columns[i];
       const firstTask = tasks.find(t => t.column === column && t.row === rows[0]);
       if (!firstTask) continue;
       
-      const position = WindowService.findAvailablePosition();
+      const position = i;  // インデックスをポジションとして使用（0, 1, 2）
       const windowId = await this.openWindow(firstTask, position);
       windows.set(column, windowId);
       
-      this.logger.log(`[StreamProcessor] ウィンドウ作成: ${column}列 (${firstTask.aiType})`);
+      this.logger.log(`[StreamProcessor] ウィンドウ作成: ${column}列 (${firstTask.aiType}) - Position: ${position}`);
     }
     
     // 各行を順次処理
@@ -501,11 +502,11 @@ class StreamProcessor {
     
     for (let i = 0; i < tasks.length; i++) {
       const task = tasks[i];
-      const position = WindowService.findAvailablePosition();
+      const position = i;  // インデックスをポジションとして使用（0, 1, 2, ...）
       const windowId = await this.openWindow(task, position);
       windows.set(task.row, windowId);
       
-      this.logger.log(`[StreamProcessor] ウィンドウ${i + 1}作成: ${column}${task.row} (${task.aiType})`);
+      this.logger.log(`[StreamProcessor] ウィンドウ${i + 1}作成: ${column}${task.row} (${task.aiType}) - Position: ${position}`);
     }
     
     // タスクを並列処理
@@ -2392,10 +2393,12 @@ ${formattedGemini}`;
     const windowInfos = [];
     const windowPromises = batchTasks.map(async (task, index) => {
       try {
-        // ポジションを探す
-        const position = WindowService.findAvailablePosition();
-        if (position === -1) {
-          throw new Error('利用可能なポジションがありません');
+        // インデックスをポジションとして使用（最大4つまで）
+        const position = index % 4;  // 0, 1, 2, 3 をループ
+        
+        // ポジションチェック（念のため）
+        if (position < 0 || position > 3) {
+          throw new Error(`無効なポジション: ${position}`);
         }
         
         // ウィンドウを開く
