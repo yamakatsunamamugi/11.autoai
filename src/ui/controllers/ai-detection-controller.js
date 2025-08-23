@@ -114,7 +114,7 @@ async function createAIWindow(url, left, top, width, height, aiType) {
       width: width,
       height: height,
       type: 'popup',
-      focused: false
+      focused: true  // AIページを最前面に表示
     }, (window) => {
       console.log(`✅ ${aiType}ウィンドウを開きました`);
       if (window) {

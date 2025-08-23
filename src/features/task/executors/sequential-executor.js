@@ -204,7 +204,7 @@ class SequentialExecutor extends BaseExecutor {
       const window = await chrome.windows.create({
         url: url,
         type: "popup", 
-        focused: false,
+        focused: true,  // AIページを最前面に表示
         ...windowPosition,
       });
       

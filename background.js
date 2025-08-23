@@ -927,7 +927,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             top: request.top,
             width: request.width,
             height: request.height,
-            focused: false
+            focused: true  // ウィンドウを最前面に表示
           });
           
           const tabs = await chrome.tabs.query({ windowId: window.id });
