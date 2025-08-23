@@ -714,22 +714,15 @@ class StreamProcessor {
     const retryDelay = 2000;
     
     // 3つのウィンドウを並列で開いてタスクを実行（3種類AIは同時実行でOK）
-    const windowPromises = rowTasks.map(async (task) => {
+    const windowPromises = rowTasks.map(async (task, index) => {
       let retryCount = 0;
       
       while (retryCount < maxRetries) {
         try {
-          // WindowServiceを使用してポジションを探す
-          const position = WindowService.findAvailablePosition();
-          if (position === -1) {
-            // ポジションがない場合は少し待ってリトライ
-            if (retryCount < maxRetries - 1) {
-              this.logger.log(`[StreamProcessor] ポジション待機中... (リトライ ${retryCount + 1}/${maxRetries})`);
-              await new Promise(resolve => setTimeout(resolve, retryDelay));
-              retryCount++;
-              continue;
-            }
-            throw new Error('利用可能なポジションがありません');
+          // インデックスをポジションとして使用（0, 1, 2）
+          const position = index;
+          if (position > 3) {
+            throw new Error(`ポジション${position}は範囲外です`);
           }
         
           // ウィンドウを開く
