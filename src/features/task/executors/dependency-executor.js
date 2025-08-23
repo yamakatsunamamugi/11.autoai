@@ -1,6 +1,8 @@
 // dependency-executor.js - 依存関係実行専用Executor
 
 import BaseExecutor from './base-executor.js';
+// WindowServiceをインポート（ウィンドウ管理の一元化）
+import { WindowService } from '../../../services/window-service.js';
 
 /**
  * レポートタスクの依存関係実行を管理
@@ -358,22 +360,18 @@ class DependencyExecutor extends BaseExecutor {
    * タスク用のウィンドウを開く（AIタスク用）
    */
   async openWindowForTask(task) {
-    const url = this.determineAIUrl(task.aiType, task.column);
-    const screenInfo = await this.getScreenInfo();
-    const windowPosition = this.calculateWindowPosition(0, screenInfo);
+    // WindowServiceを使用してAI URLを取得（ChatGPT/Claude/Gemini等のURL管理を一元化）
+    const url = WindowService.getAIUrl(task.aiType);
+    
+    // WindowServiceを使用してスクリーン情報を取得（モニター情報の取得を統一）
+    const screenInfo = await WindowService.getScreenInfo();
+    
+    // WindowServiceを使用してウィンドウ位置を計算（依存関係実行用の位置計算を統一）
+    const windowPosition = WindowService.calculateWindowPosition(0, screenInfo);
     
     try {
-      // chrome.windows APIの存在確認
-      if (typeof chrome === 'undefined' || !chrome.windows) {
-        throw new Error('chrome.windows API is not available. This must run in a Service Worker context.');
-      }
-      
-      const window = await chrome.windows.create({
-        url: url,
-        type: "popup",
-        focused: true,  // AIページを最前面に表示
-        ...windowPosition,
-      });
+      // WindowServiceを使用してAIウィンドウを作成（focused: trueがデフォルトで設定される）
+      const window = await WindowService.createAIWindow(url, windowPosition);
       
       const windowInfo = {
         windowId: window.id,

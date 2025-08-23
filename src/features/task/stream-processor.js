@@ -3991,7 +3991,8 @@ ${formattedGemini}`;
           height: fullHeight
         };
 
-        const extensionsWindow = await WindowService.createWindow('chrome://extensions/', {
+        const extensionsWindow = await WindowService.createWindow({
+          url: 'chrome://extensions/',
           ...leftPosition
         });
 
@@ -4005,7 +4006,8 @@ ${formattedGemini}`;
           height: fullHeight
         };
 
-        const spreadsheetWindow = await WindowService.createWindow(spreadsheetUrl, {
+        const spreadsheetWindow = await WindowService.createWindow({
+          url: spreadsheetUrl,
           ...rightPosition
         });
 
@@ -4017,7 +4019,10 @@ ${formattedGemini}`;
       const position = this.calculateWindowPositionFromNumber(windowNumber, screenInfo);
 
       // スプレッドシートウィンドウを作成
-      const window = await WindowService.createWindow(spreadsheetUrl, position);
+      const window = await WindowService.createWindow({
+        url: spreadsheetUrl,
+        ...position
+      });
 
       this.logger.log(`[StreamProcessor] スプレッドシートをウィンドウ番号${windowNumber}で開きました (ID: ${window.id})`);
     } catch (error) {

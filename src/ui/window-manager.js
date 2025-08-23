@@ -223,7 +223,8 @@ class WindowManager {
       const position = await this.calculateWindowPositionFromNumber(windowNumber);
       
       // 拡張機能ウィンドウを移動
-      await chrome.windows.update(windowId, {
+      // WindowServiceを使用してウィンドウを更新（ウィンドウ操作を統一）
+      await WindowService.updateWindow(windowId, {
         ...position,
         state: 'normal'
       });
@@ -409,19 +410,19 @@ class WindowManager {
           state: 'normal'
         }).then(window => {
           // ウィンドウを最前面に移動
-          chrome.windows.update(window.id, { 
-            focused: true,
-            drawAttention: true 
-          }).catch(err => console.log('最前面移動エラー:', err));
+          // WindowServiceを使用してウィンドウを最前面に表示（focused: true, drawAttention: trueが自動設定される）
+          WindowService.focusWindow(window.id).catch(err => console.log('最前面移動エラー:', err));
           
           setTimeout(() => {
-            chrome.windows.update(window.id, { focused: false }).catch(() => {});
+            // WindowServiceを使用してフォーカスを外す
+            WindowService.updateWindow(window.id, { focused: false }).catch(() => {});
           }, 100);
           console.log(`[WindowManager] モニター${monitorNumber} 表示ウィンドウ作成成功 (ID: ${window.id})`);
           
           // 3秒後に自動で閉じる
           setTimeout(() => {
-            chrome.windows.remove(window.id).catch(err => {
+            // WindowServiceを使用してウィンドウを閉じる（エラーハンドリングも統一）
+            WindowService.closeWindow(window.id).catch(err => {
               console.log(`[WindowManager] モニター${monitorNumber} ウィンドウ削除エラー:`, err);
             });
           }, 3000);

@@ -1,5 +1,8 @@
 // popup.js - ポップアップからウィンドウを開く
 
+// WindowServiceをインポート（ウィンドウ管理の一元化）
+import { WindowService } from './src/services/window-service.js';
+
 // ポップアップがクリックされたらメインUIウィンドウを開く
 document.addEventListener("DOMContentLoaded", async () => {
   try {
@@ -15,57 +18,45 @@ document.addEventListener("DOMContentLoaded", async () => {
     };
     
     // 初期は全画面で表示
-    chrome.windows.create(
-      {
-        url: chrome.runtime.getURL("src/ui/ui.html"),
-        type: "popup",
-        width: screenInfo.width,
-        height: screenInfo.height,
-        left: screenInfo.left,
-        top: screenInfo.top,
-      },
-      (window) => {
-        if (chrome.runtime.lastError) {
-          console.error("Window creation error:", chrome.runtime.lastError);
-          return;
-        }
-        if (window && window.id) {
-          // ウィンドウIDを保存（処理開始時に移動するため）
-          chrome.storage.local.set({ extensionWindowId: window.id });
-        }
-        // ポップアップを閉じる
-        if (typeof window !== 'undefined' && window.close) {
-          window.close();
-        } else {
-          self.close();
-        }
-      },
-    );
+    // WindowServiceを使用してウィンドウを作成（focused: trueがデフォルトで設定される）
+    const createdWindow = await WindowService.createWindow({
+      url: chrome.runtime.getURL("src/ui/ui.html"),
+      type: "popup",
+      width: screenInfo.width,
+      height: screenInfo.height,
+      left: screenInfo.left,
+      top: screenInfo.top,
+    });
+    
+    if (createdWindow && createdWindow.id) {
+      // ウィンドウIDを保存（処理開始時に移動するため）
+      chrome.storage.local.set({ extensionWindowId: createdWindow.id });
+    }
+    // ポップアップを閉じる
+    if (typeof window !== 'undefined' && window.close) {
+      window.close();
+    } else {
+      self.close();
+    }
   } catch (error) {
     console.error("Failed to create extension window:", error);
     // フォールバック: デフォルトサイズで開く
-    chrome.windows.create(
-      {
-        url: chrome.runtime.getURL("src/ui/ui.html"),
-        type: "popup",
-        width: 1200,
-        height: 800,
-      },
-      (window) => {
-        if (chrome.runtime.lastError) {
-          console.error("Fallback window creation error:", chrome.runtime.lastError);
-          return;
-        }
-        if (window && window.id) {
-          chrome.storage.local.set({ extensionWindowId: window.id });
-        }
-        // ポップアップを閉じる
-        if (typeof window !== 'undefined' && window.close) {
-          window.close();
-        } else {
-          self.close();
-        }
-      },
-    );
+    // WindowServiceを使用してウィンドウを作成（focused: trueがデフォルトで設定される）
+    const fallbackWindow = await WindowService.createWindow({
+      url: chrome.runtime.getURL("src/ui/ui.html"),
+      type: "popup",
+      width: 1200,
+      height: 800,
+    });
+    
+    if (fallbackWindow && fallbackWindow.id) {
+      chrome.storage.local.set({ extensionWindowId: fallbackWindow.id });
+    }
+    // ポップアップを閉じる
+    if (typeof window !== 'undefined' && window.close) {
+      window.close();
+    } else {
+      self.close();
+    }
   }
 });

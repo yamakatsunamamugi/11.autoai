@@ -99,24 +99,22 @@ export class WindowService {
   
   /**
    * 汎用ウィンドウを作成
-   * @param {string} url - ウィンドウで開くURL
-   * @param {Object} options - ウィンドウオプション
+   * @param {Object} options - ウィンドウオプション（urlを含む）
    * @returns {Promise<Object>} 作成されたウィンドウオブジェクト
    */
-  static async createWindow(url, options = {}) {
-    console.log('[WindowService] ウィンドウ作成:', url);
+  static async createWindow(options = {}) {
+    console.log('[WindowService] ウィンドウ作成:', options.url);
     
     const windowOptions = {
       ...this.DEFAULT_WINDOW_OPTIONS,
-      ...options,
-      url: url
+      ...options
     };
     
     try {
       const window = await chrome.windows.create(windowOptions);
       
       this.registerWindow(window.id, {
-        url: url,
+        url: options.url,
         type: 'general',
         createdAt: Date.now(),
         ...options

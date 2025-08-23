@@ -1,6 +1,8 @@
 // parallel-executor.js - 3種類AI並列実行専用Executor
 
 import BaseExecutor from './base-executor.js';
+// WindowServiceをインポート（ウィンドウ管理の一元化）
+import { WindowService } from '../../../services/window-service.js';
 
 /**
  * 3種類AI（ChatGPT, Claude, Gemini）の並列実行を管理
@@ -156,9 +158,14 @@ class ParallelExecutor extends BaseExecutor {
   async openWindowForColumn(column, task, position) {
     this.logger.log(`[ParallelExecutor] ${column}列用ウィンドウ開く (position=${position})`);
     
-    const url = this.determineAIUrl(task.aiType, column);
-    const screenInfo = await this.getScreenInfo();
-    const windowPosition = this.calculateWindowPosition(position, screenInfo);
+    // WindowServiceを使用してAI URLを取得（ChatGPT/Claude/Gemini等のURL管理を一元化）
+    const url = WindowService.getAIUrl(task.aiType);
+    
+    // WindowServiceを使用してスクリーン情報を取得（モニター情報の取得を統一）
+    const screenInfo = await WindowService.getScreenInfo();
+    
+    // WindowServiceを使用してウィンドウ位置を計算（並列実行用の位置計算を統一）
+    const windowPosition = WindowService.calculateWindowPosition(position, screenInfo);
     
     try {
       // テストモードの場合はウィンドウ作成をスキップ
@@ -167,17 +174,8 @@ class ParallelExecutor extends BaseExecutor {
         return;
       }
       
-      // chrome.windows APIの存在確認
-      if (typeof chrome === 'undefined' || !chrome.windows) {
-        throw new Error('chrome.windows API is not available. This must run in a Service Worker context.');
-      }
-      
-      const window = await chrome.windows.create({
-        url: url,
-        type: "popup",
-        focused: true,  // AIページを最前面に表示
-        ...windowPosition,
-      });
+      // WindowServiceを使用してAIウィンドウを作成（API存在確認も内部で実施）
+      const window = await WindowService.createAIWindow(url, windowPosition);
       
       const windowInfo = {
         windowId: window.id,
@@ -237,8 +235,9 @@ class ParallelExecutor extends BaseExecutor {
    */
   async closeWindow(windowId) {
     try {
-      if (!this.isTestMode && typeof chrome !== 'undefined' && chrome.windows) {
-        await chrome.windows.remove(windowId);
+      if (!this.isTestMode) {
+        // WindowServiceを使用してウィンドウを閉じる（エラーハンドリングも統一）
+        await WindowService.closeWindow(windowId);
       }
       
       const windowInfo = this.activeWindows.get(windowId);

@@ -2869,7 +2869,8 @@ async function startMutationObserverOnTab(tabId) {
   try {
     console.log(`🚀 TabID ${tabId} にMutationObserver開始メッセージ送信`);
     
-    const response = await chrome.tabs.sendMessage(tabId, {
+    // WindowServiceを使用してタブにメッセージを送信（タブ操作を統一）
+    const response = await WindowService.sendMessageToTab(tabId, {
       type: 'START_MUTATION_OBSERVER',
       timestamp: Date.now()
     });
@@ -2890,7 +2891,8 @@ async function startMutationObserverOnTab(tabId) {
 // AIサイトタブからMutationObserver結果取得
 async function getMutationObserverResultFromTab(tabId) {
   try {
-    const response = await chrome.tabs.sendMessage(tabId, {
+    // WindowServiceを使用してタブにメッセージを送信（タブ操作を統一）
+    const response = await WindowService.sendMessageToTab(tabId, {
       type: 'GET_MUTATION_OBSERVER_RESULT',
       timestamp: Date.now()
     });
@@ -2910,7 +2912,8 @@ async function stopMutationObserverOnTab(tabId) {
   try {
     console.log(`🛑 TabID ${tabId} にMutationObserver停止メッセージ送信`);
     
-    const response = await chrome.tabs.sendMessage(tabId, {
+    // WindowServiceを使用してタブにメッセージを送信（タブ操作を統一）
+    const response = await WindowService.sendMessageToTab(tabId, {
       type: 'STOP_MUTATION_OBSERVER',
       timestamp: Date.now()
     });

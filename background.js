@@ -1081,15 +1081,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       // UIタブに通知を転送
       (async () => {
         try {
-          const tabs = await chrome.tabs.query({});
-          for (const tab of tabs) {
-            if (tab.url && tab.url.includes('ui-controller.html')) {
-              await chrome.tabs.sendMessage(tab.id, {
-                action: "showRetryNotification",
-                data: request.data
-              }).catch(() => {});
+          // WindowServiceを使用して特定のタブにメッセージを送信（タブ操作を統一）
+          await WindowService.sendMessageToMatchingTabs(
+            (tab) => tab.url && tab.url.includes('ui-controller.html'),
+            {
+              action: "showRetryNotification",
+              data: request.data
             }
-          }
+          );
           sendResponse({ success: true });
         } catch (error) {
           console.error("[MessageHandler] リトライ通知エラー:", error);
@@ -1412,12 +1411,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           ];
           
           for (const url of aiUrls) {
-            const window = await chrome.windows.create({
+            // WindowServiceを使用してウィンドウを作成（focused: trueがデフォルトで設定される）
+            const window = await WindowService.createWindow({
               url: url,
               type: 'popup',
               width: 800,
               height: 600,
-              focused: true,
               left: 100 + windows.length * 50,
               top: 100 + windows.length * 50
             });

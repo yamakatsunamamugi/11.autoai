@@ -8,6 +8,9 @@
  * @requires ../automations/ai-mutation-observer.js
  */
 
+// WindowServiceをインポート（ウィンドウ管理の一元化）
+import { WindowService } from '../../services/window-service.js';
+
 // MutationObserver監視状態管理
 let isAIMutationSystemRunning = false;
 let currentMutationObserver = null;
@@ -438,18 +441,11 @@ async function create4PaneAIWindows() {
  * ai-detection-controller.jsのコードを完全流用
  */
 async function executeAIDetectionWindowCreation() {
-  // プライマリモニターのサイズを取得（ai-detection-controller.jsと同じ処理）
-  const screenInfo = await new Promise((resolve) => {
-    chrome.system.display.getInfo((displays) => {
-      const primaryDisplay = displays.find(d => d.isPrimary) || displays[0];
-      resolve(primaryDisplay);
-    });
-  });
+  // WindowServiceを使用してスクリーン情報を取得（モニター情報の取得を統一）
+  const screenInfo = await WindowService.getScreenInfo();
   
-  const screenWidth = screenInfo.bounds.width;
-  const screenHeight = screenInfo.bounds.height;
-  const halfWidth = Math.floor(screenWidth / 2);
-  const halfHeight = Math.floor(screenHeight / 2);
+  // WindowServiceを使用して4分割レイアウトを計算（位置計算を統一）
+  const quadLayout = WindowService.calculateQuadLayout(screenInfo);
   
   logToExtensionUI(`画面サイズ: ${screenWidth}x${screenHeight}`, "info");
   
@@ -458,7 +454,10 @@ async function executeAIDetectionWindowCreation() {
   // 1. ChatGPTウィンドウを左上に開く（ai-detection-controller.jsと同じ）
   const chatgptWindow = await createAIWindow(
     'https://chatgpt.com',
-    0, 0, halfWidth, halfHeight,
+    quadLayout.topLeft.left,
+    quadLayout.topLeft.top,
+    quadLayout.topLeft.width,
+    quadLayout.topLeft.height,
     'ChatGPT'
   );
   if (chatgptWindow) aiWindows.push(chatgptWindow);
@@ -468,7 +467,10 @@ async function executeAIDetectionWindowCreation() {
   // 2. Claudeウィンドウを右上に開く（ai-detection-controller.jsと同じ）
   const claudeWindow = await createAIWindow(
     'https://claude.ai',
-    halfWidth, 0, halfWidth, halfHeight,
+    quadLayout.topRight.left,
+    quadLayout.topRight.top,
+    quadLayout.topRight.width,
+    quadLayout.topRight.height,
     'Claude'
   );
   if (claudeWindow) aiWindows.push(claudeWindow);
@@ -478,7 +480,10 @@ async function executeAIDetectionWindowCreation() {
   // 3. Geminiウィンドウを左下に開く（ai-detection-controller.jsと同じ）
   const geminiWindow = await createAIWindow(
     'https://gemini.google.com',
-    0, halfHeight, halfWidth, halfHeight,
+    quadLayout.bottomLeft.left,
+    quadLayout.bottomLeft.top,
+    quadLayout.bottomLeft.width,
+    quadLayout.bottomLeft.height,
     'Gemini'
   );
   if (geminiWindow) aiWindows.push(geminiWindow);
@@ -492,30 +497,31 @@ async function executeAIDetectionWindowCreation() {
  * ai-detection-controller.jsのcreateAIWindow関数を流用
  */
 async function createAIWindow(url, left, top, width, height, aiType) {
-  return new Promise((resolve) => {
-    chrome.windows.create({
-      url: url,
+  try {
+    // WindowServiceを使用してAIウィンドウを作成（focused: trueがデフォルトで設定される）
+    const window = await WindowService.createAIWindow(url, {
       left: left,
       top: top,
       width: width,
-      height: height,
-      type: 'popup',
-      focused: true  // AIページを最前面に表示
-    }, (window) => {
-      console.log(`✅ ${aiType}ウィンドウを開きました`);
-      if (window) {
-        resolve({ 
-          windowId: window.id, 
-          tabId: window.tabs[0].id, 
-          aiType: aiType,
-          url: url
-        });
-      } else {
-        console.error(`❌ ${aiType}ウィンドウ作成失敗`);
-        resolve(null);
-      }
+      height: height
     });
-  });
+    
+    console.log(`✅ ${aiType}ウィンドウを開きました`);
+    if (window) {
+      return { 
+        windowId: window.id, 
+        tabId: window.tabs[0].id, 
+        aiType: aiType,
+        url: url
+      };
+    } else {
+      console.error(`❌ ${aiType}ウィンドウ作成失敗`);
+      return null;
+    }
+  } catch (error) {
+    console.error(`❌ ${aiType}ウィンドウ作成エラー:`, error);
+    return null;
+  }
 }
 
 /**
@@ -527,7 +533,8 @@ async function closeAIWindows(aiWindows) {
   
   for (const window of aiWindows) {
     try {
-      chrome.windows.remove(window.windowId);
+      // WindowServiceを使用してウィンドウを閉じる（エラーハンドリングも統一）
+      await WindowService.closeWindow(window.windowId);
       console.log(`✅ ${window.aiType}ウィンドウを閉じました`);
     } catch (error) {
       console.error(`❌ ${window.aiType}ウィンドウ閉じエラー:`, error);
