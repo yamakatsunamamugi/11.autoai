@@ -732,9 +732,12 @@ class StreamProcessor {
           }
         
           // ウィンドウを開く
-          const windowId = await this.openWindowForTask(task, position);
-          if (!windowId) {
-            throw new Error(`ウィンドウを開けませんでした: ${task.column}${task.row}`);
+          let windowId;
+          try {
+            windowId = await this.openWindowForTask(task, position);
+          } catch (windowError) {
+            // openWindowForTaskがエラーをスローした場合
+            throw new Error(`ウィンドウを開けませんでした: ${task.column}${task.row} - ${windowError.message}`);
           }
           
           // 開いたウィンドウを記録
@@ -2501,12 +2504,18 @@ ${formattedGemini}`;
       
       return window.id;
     } catch (error) {
-      this.logger.error(`[StreamProcessor] ウィンドウ作成エラー`, error);
+      this.logger.error(`[StreamProcessor] ウィンドウ作成エラー: ${task.column}${task.row}`, {
+        error: error.message,
+        aiType: task.aiType,
+        position: position,
+        url: url
+      });
       // 予約を解除
       if (this.windowPositions.get(position) === 'RESERVED') {
         this.windowPositions.delete(position);
       }
-      return null;
+      // エラーを再スローして上位でリトライ処理させる
+      throw error;
     }
   }
   
@@ -3952,9 +3961,12 @@ ${formattedGemini}`;
           }
           
           // ウィンドウを開く
-          const windowId = await this.openWindowForTask(task, position);
-          if (!windowId) {
-            throw new Error(`ウィンドウを開けませんでした: ${task.column}${task.row}`);
+          let windowId;
+          try {
+            windowId = await this.openWindowForTask(task, position);
+          } catch (windowError) {
+            // openWindowForTaskがエラーをスローした場合
+            throw new Error(`ウィンドウを開けませんでした: ${task.column}${task.row} - ${windowError.message}`);
           }
           
           // タスクを実行（リトライ機能付き）
