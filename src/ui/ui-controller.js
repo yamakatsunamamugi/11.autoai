@@ -23,6 +23,29 @@
 // - src/features/spreadsheet/: スプレッドシート関連機能
 // - window-manager.js: ウィンドウ管理機能
 
+// ===== 共通ヘルパー関数 =====
+/**
+ * ウィンドウを最前面に表示する共通関数
+ * テスト機能やAIタスク実行時に使用
+ */
+async function bringWindowToFront() {
+  try {
+    console.log('[bringWindowToFront] ウィンドウを最前面に表示開始');
+    const currentWindow = await chrome.windows.getCurrent();
+    console.log('[bringWindowToFront] 現在のウィンドウID:', currentWindow.id);
+    
+    await chrome.windows.update(currentWindow.id, {
+      focused: true,
+      drawAttention: true,
+      state: 'normal'
+    });
+    
+    console.log('[bringWindowToFront] ウィンドウ最前面表示完了');
+  } catch (error) {
+    console.error('[bringWindowToFront] ウィンドウ最前面表示エラー:', error);
+  }
+}
+
 // ===== リトライ通知システム =====
 let activeNotifications = new Map();
 
@@ -3975,20 +3998,6 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
  * テスト機能のボタンハンドラー
  * 各テスト機能でウィンドウを最前面に表示する
  */
-
-// ウィンドウを最前面に表示する共通関数
-async function bringWindowToFront() {
-  try {
-    const currentWindow = await chrome.windows.getCurrent();
-    await chrome.windows.update(currentWindow.id, {
-      focused: true,
-      drawAttention: true,
-      state: 'normal'
-    });
-  } catch (error) {
-    console.error('ウィンドウ最前面表示エラー:', error);
-  }
-}
 
 // 1. モデル・機能変更検出システム
 const testModelDetectionBtn = document.getElementById('testModelDetectionBtn');
