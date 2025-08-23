@@ -529,6 +529,76 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       
       return true; // 非同期応答のため true を返す
       
+    /**
+     * 列追加のみ実行（タスク生成なし）
+     * 
+     * 【機能概要】
+     * UIの「列追加」ボタンから呼び出される専用ハンドラ
+     * スプレッドシートの読み込みやタスク生成は行わず、
+     * 列追加（SpreadsheetAutoSetup）のみを実行する
+     * 
+     * 【処理内容】
+     * 1. スプレッドシートURLを解析してIDとGIDを取得
+     * 2. SpreadsheetAutoSetupクラスのexecuteAutoSetup()を実行
+     * 3. プロンプト列の前後に必要な列（ログ列、回答列）を追加
+     * 4. 結果をUIに返す
+     * 
+     * 【既存コードの再利用】
+     * - SpreadsheetAutoSetup: src/services/spreadsheet-auto-setup.js
+     *   既存の列追加ロジックをそのまま使用（変更なし）
+     * - loadSpreadsheets処理でも同じSpreadsheetAutoSetupを使用しているが、
+     *   そちらはタスク生成も含む完全な処理を行う
+     * 
+     * @since 2025-08-23 手動列追加機能として追加
+     */
+    case "executeAutoSetup":
+      (async () => {
+        try {
+          const url = request.urls && request.urls[0];
+          console.log("[MessageHandler] 列追加実行:", url);
+
+          if (!url) {
+            sendResponse({
+              success: false,
+              error: "URLが指定されていません",
+            });
+            return;
+          }
+
+          // URLを解析してスプレッドシートIDとシートIDを取得
+          const { spreadsheetId, gid } = globalThis.parseSpreadsheetUrl(url);
+          if (!spreadsheetId) {
+            sendResponse({
+              success: false,
+              error: "無効なスプレッドシートURLです",
+            });
+            return;
+          }
+
+          // 既存のSpreadsheetAutoSetupクラスを使用して列追加を実行
+          // このクラスは元々loadSpreadsheetsでも使用されている
+          const autoSetup = new SpreadsheetAutoSetup();
+          const token = await globalThis.authService.getAuthToken();
+          const result = await autoSetup.executeAutoSetup(spreadsheetId, token, gid);
+
+          // 結果をUIに返す
+          sendResponse({
+            success: result.success,
+            message: result.message,
+            addedColumns: result.addedColumns?.length || 0,  // 追加された列の数
+            hasAdditions: result.hasAdditions,                // 列が追加されたかどうか
+            error: result.error
+          });
+        } catch (error) {
+          console.error("[MessageHandler] 列追加エラー:", error);
+          sendResponse({
+            success: false,
+            error: error.message,
+          });
+        }
+      })();
+      return true;  // 非同期処理のためtrueを返す
+      
     // ----- スプレッドシート読み込み（タスク生成含む） -----
     case "loadSpreadsheet":
     case "loadSpreadsheets": // 互換性のため両方サポート

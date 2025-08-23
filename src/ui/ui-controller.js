@@ -1,7 +1,27 @@
-// window.js - AutoAI Minimal コントロールパネル
+// ui-controller.js - AutoAI Minimal コントロールパネル
 //
 // このファイルは、Chrome拡張機能のメインUIを管理します。
 // ユーザーがスプレッドシートを設定し、AI処理を制御するためのインターフェースを提供します。
+//
+// ====================================
+// 主な機能:
+// ====================================
+// 1. スプレッドシートの読み込みと処理
+// 2. AIタスクの実行制御
+// 3. 列追加機能（2025-08-23追加）
+//    - スプレッドシートに必要な列（ログ列、回答列）を手動で追加
+//    - 既存のSpreadsheetAutoSetupクラスを利用
+// 4. ウィンドウ管理
+// 5. ログ表示とエラーハンドリング
+//
+// ====================================
+// 依存関係:
+// ====================================
+// - ui.html: UIのHTML構造
+// - background.js: バックグラウンド処理（メッセージハンドラ）
+// - src/services/spreadsheet-auto-setup.js: 列追加ロジック（間接的に使用）
+// - src/features/spreadsheet/: スプレッドシート関連機能
+// - window-manager.js: ウィンドウ管理機能
 
 // ===== リトライ通知システム =====
 let activeNotifications = new Map();
@@ -1437,6 +1457,86 @@ if (loadSheetsBtn) {
  * 4. 複数AIウィンドウで並列処理
  * 5. 結果をスプレッドシートに書き込み
  */
+/**
+ * 列追加ボタンのイベントリスナー
+ * 
+ * 【機能概要】
+ * スプレッドシートに必要な列（ログ列、回答列など）を手動で追加する機能
+ * 
+ * 【動作の流れ】
+ * 1. ユーザーが「列追加」ボタンをクリック
+ * 2. 入力されたスプレッドシートURLを取得
+ * 3. background.jsの既存のSpreadsheetAutoSetupクラスを呼び出し
+ * 4. プロンプト列の前後に必要な列を自動追加
+ * 5. 結果をユーザーに表示
+ * 
+ * 【追加される列】
+ * - ログ列: プロンプト列の左側に配置
+ * - 回答列: プロンプト列の右側に配置
+ *   - 通常AI: 1つの回答列
+ *   - 3種類AI: ChatGPT回答、Claude回答、Gemini回答の3列
+ * 
+ * 【依存関係】
+ * - background.js: executeAutoSetupメッセージハンドラ
+ * - SpreadsheetAutoSetup: src/services/spreadsheet-auto-setup.js
+ * 
+ * @since 2025-08-23
+ */
+const addColumnsBtn = document.getElementById("addColumnsBtn");
+if (addColumnsBtn) {
+  addColumnsBtn.addEventListener("click", async () => {
+    console.log("列追加ボタンがクリックされました");
+    
+    // 複数のURL入力欄から値を取得
+    const urlInputs = document.querySelectorAll('.spreadsheet-url-input');
+    const urls = [];
+    
+    urlInputs.forEach((input) => {
+      const url = input.value.trim();
+      if (url) {
+        urls.push(url);
+      }
+    });
+    
+    // バリデーション：URLが入力されているか確認
+    if (urls.length === 0) {
+      updateStatus("スプレッドシートのURLを入力してください", "error");
+      return;
+    }
+    
+    // ボタンを無効化（二重クリック防止）
+    addColumnsBtn.disabled = true;
+    updateStatus("列を追加中...", "loading");
+    
+    try {
+      // background.jsに列追加実行メッセージを送信
+      // SpreadsheetAutoSetup.executeAutoSetup()が実行される
+      const response = await chrome.runtime.sendMessage({
+        action: "executeAutoSetup",
+        urls: urls
+      });
+      
+      if (response && response.success) {
+        if (response.hasAdditions) {
+          // 列が追加された場合
+          updateStatus(`${response.addedColumns}個の列を追加しました`, "success");
+        } else {
+          // 必要な列が既に存在する場合
+          updateStatus("必要な列は既に存在します", "success");
+        }
+      } else {
+        throw new Error(response?.error || "列追加に失敗しました");
+      }
+    } catch (error) {
+      console.error("列追加エラー:", error);
+      updateStatus(`エラー: ${error.message}`, "error");
+    } finally {
+      // ボタンを再度有効化
+      addColumnsBtn.disabled = false;
+    }
+  });
+}
+
 startBtn.addEventListener("click", async () => {
   console.log("【本番実行】ストリーミング処理開始ボタンが押されました。");
 

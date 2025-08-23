@@ -215,9 +215,16 @@ class TaskGenerator {
           groups.push(group);
           processed.add(nextIndex); // プロンプト列を処理済みに
 
-          console.log(`[TaskGenerator] プロンプトグループ検出 (ログ列: ${group.logColumn}): ` +
-            `${this.indexToColumn(nextIndex)}〜${this.indexToColumn(lastPromptIndex)}列 ` +
-            `(${group.aiType}, 回答列: ${group.answerColumns.length})`);
+          console.log(`[TaskGenerator] 🔍 プロンプトグループ検出詳細 (グループ${groups.length}):`, {
+            ログ列: group.logColumn,
+            範囲: `${this.indexToColumn(nextIndex)}〜${this.indexToColumn(lastPromptIndex)}列`,
+            AIタイプ: group.aiType,
+            プロンプト列: group.promptColumns,
+            プロンプト列名: group.promptColumns.map(i => this.indexToColumn(i)),
+            回答列数: group.answerColumns.length,
+            回答列詳細: group.answerColumns.map(a => `${a.column}(${a.type}, index=${a.index})`),
+            開始インデックス: group.startIndex
+          });
         }
       }
     }
@@ -444,10 +451,34 @@ class TaskGenerator {
     const onlyControls = columnControls.filter(c => c.type === "only");
     if (onlyControls.length > 0) {
       return groups.filter(group => {
-        // グループ内のプロンプト列のいずれかが制御対象なら、グループ全体を処理
-        return group.promptColumns.some(colIndex => 
+        // グループ内のログ列、プロンプト列、回答列のいずれかが制御対象なら、グループ全体を処理
+        
+        // ログ列のチェック（文字列比較）
+        const logColumnIndex = this.columnToIndex(group.logColumn);
+        const logMatch = logColumnIndex !== null && onlyControls.some(ctrl => ctrl.index === logColumnIndex);
+        
+        // プロンプト列のチェック
+        const promptMatch = group.promptColumns.some(colIndex => 
           onlyControls.some(ctrl => ctrl.index === colIndex)
         );
+        
+        // 回答列のチェック
+        const answerMatch = group.answerColumns.some(answerCol => 
+          onlyControls.some(ctrl => ctrl.index === answerCol.index)
+        );
+        
+        const isMatched = logMatch || promptMatch || answerMatch;
+        
+        if (isMatched) {
+          const matchedColumns = [];
+          if (logMatch) matchedColumns.push(`ログ列(${group.logColumn})`);
+          if (promptMatch) matchedColumns.push(`プロンプト列`);
+          if (answerMatch) matchedColumns.push(`回答列`);
+          
+          console.log(`[TaskGenerator] ✅ 「この列のみ処理」でグループ選択: ${matchedColumns.join(', ')}`);
+        }
+        
+        return isMatched;
       });
     }
 
@@ -456,16 +487,46 @@ class TaskGenerator {
     const untilControl = columnControls.find(c => c.type === "until");
 
     return groups.filter(group => {
-      // グループの範囲：最初のプロンプト列 〜 最後の回答列
-      const groupStart = group.promptColumns[0];
+      // グループの全範囲：ログ列 〜 最後の回答列
+      const logColumnIndex = this.columnToIndex(group.logColumn);
+      const groupStart = logColumnIndex !== null ? logColumnIndex : group.promptColumns[0];
       const groupEnd = group.answerColumns[group.answerColumns.length - 1].index;
 
-      // fromControl: グループの終端が制御開始位置より前なら除外
-      if (fromControl && groupEnd < fromControl.index) return false;
-      // untilControl: グループの開始が制御終了位置より後なら除外
-      if (untilControl && groupStart > untilControl.index) return false;
+      let shouldProcess = true;
 
-      return true;
+      // fromControl: グループ内のいずれかの列が制御開始位置以降にあるかチェック
+      if (fromControl) {
+        const groupColumns = [];
+        if (logColumnIndex !== null) groupColumns.push(logColumnIndex);
+        groupColumns.push(...group.promptColumns);
+        groupColumns.push(...group.answerColumns.map(a => a.index));
+        
+        const hasColumnAtOrAfterFrom = groupColumns.some(colIndex => colIndex >= fromControl.index);
+        if (!hasColumnAtOrAfterFrom) {
+          shouldProcess = false;
+          console.log(`[TaskGenerator] 🚫 「この列から処理」により除外: グループの全列が制御開始位置より前`);
+        }
+      }
+
+      // untilControl: グループ内のいずれかの列が制御終了位置以前にあるかチェック
+      if (untilControl) {
+        const groupColumns = [];
+        if (logColumnIndex !== null) groupColumns.push(logColumnIndex);
+        groupColumns.push(...group.promptColumns);
+        groupColumns.push(...group.answerColumns.map(a => a.index));
+        
+        const hasColumnAtOrBeforeUntil = groupColumns.some(colIndex => colIndex <= untilControl.index);
+        if (!hasColumnAtOrBeforeUntil) {
+          shouldProcess = false;
+          console.log(`[TaskGenerator] 🚫 「この列で停止」により除外: グループの全列が制御終了位置より後`);
+        }
+      }
+
+      if (shouldProcess && (fromControl || untilControl)) {
+        console.log(`[TaskGenerator] ✅ 範囲制御でグループ選択: ${group.logColumn}〜${group.answerColumns[group.answerColumns.length - 1].column}`);
+      }
+
+      return shouldProcess;
     });
   }
 
@@ -509,6 +570,15 @@ class TaskGenerator {
    * プロンプトを連結（拡張デバッグ版）
    */
   buildCombinedPrompt(spreadsheetData, workRow, group) {
+    console.log(`[TaskGenerator] 🔍 buildCombinedPrompt開始:`, {
+      行番号: workRow.number,
+      行インデックス: workRow.index,
+      グループタイプ: group.aiType,
+      プロンプト列: group.promptColumns,
+      プロンプト列名: group.promptColumns.map(i => this.indexToColumn(i)),
+      回答列: group.answerColumns.map(a => `${a.column}(${a.type})`)
+    });
+
     const prompts = [];
     const promptDetails = []; // デバッグ用詳細情報
 
@@ -516,20 +586,30 @@ class TaskGenerator {
       const columnName = this.indexToColumn(colIndex);
       const value = this.getCellValue(spreadsheetData, workRow.index, colIndex);
       
+      console.log(`[TaskGenerator] 🔍 プロンプト列取得: ${columnName}${workRow.number} (rowIndex=${workRow.index}, colIndex=${colIndex})`, {
+        取得値: value,
+        値の型: typeof value,
+        値の長さ: value ? value.length : 'null'
+      });
+      
       if (value && value.trim()) {
         const trimmedValue = value.trim();
         prompts.push(trimmedValue);
         promptDetails.push({
           column: columnName,
+          colIndex: colIndex,
           length: trimmedValue.length,
-          preview: trimmedValue.substring(0, 50) + (trimmedValue.length > 50 ? '...' : '')
+          preview: trimmedValue.substring(0, 100) + (trimmedValue.length > 100 ? '...' : ''),
+          fullValue: trimmedValue // デバッグ用の完全値
         });
       } else {
         // 空のセルも記録
         promptDetails.push({
           column: columnName,
+          colIndex: colIndex,
           length: 0,
-          preview: '[空]'
+          preview: '[空]',
+          fullValue: value
         });
       }
     }
@@ -595,6 +675,14 @@ class TaskGenerator {
    * AIタスクを作成
    */
   async createAITask(spreadsheetData, structure, workRow, group, answerCol, prompt) {
+    console.log(`[TaskGenerator] 🔍 createAITask開始: ${answerCol.column}${workRow.number}`, {
+      回答列: `${answerCol.column}(type=${answerCol.type}, index=${answerCol.index})`,
+      グループ: group.aiType,
+      プロンプト列: group.promptColumns.map(i => this.indexToColumn(i)),
+      プロンプト長: prompt ? prompt.length : 'null',
+      プロンプトプレビュー: prompt ? prompt.substring(0, 100) + '...' : 'null'
+    });
+
     const { rows } = structure;
 
     // モデルと機能を取得
@@ -767,13 +855,29 @@ class TaskGenerator {
    */
   getCellValue(spreadsheetData, rowIndex, colIndex) {
     const values = spreadsheetData.values || [];
-    if (rowIndex >= 0 && rowIndex < values.length) {
-      const row = values[rowIndex];
-      if (row && colIndex >= 0 && colIndex < row.length) {
-        return row[colIndex];
+    const result = (() => {
+      if (rowIndex >= 0 && rowIndex < values.length) {
+        const row = values[rowIndex];
+        if (row && colIndex >= 0 && colIndex < row.length) {
+          return row[colIndex];
+        }
       }
+      return null;
+    })();
+    
+    // デバッグログ（重要なケースのみ）
+    if (colIndex >= 20 && colIndex <= 25 && rowIndex === 4) { // V-Z列、行5のケース
+      console.log(`[TaskGenerator] 🔍 getCellValue: ${this.indexToColumn(colIndex)}${rowIndex + 1}`, {
+        rowIndex,
+        colIndex,
+        columnName: this.indexToColumn(colIndex),
+        result: result,
+        resultType: typeof result,
+        resultLength: result ? result.length : 'null'
+      });
     }
-    return null;
+    
+    return result;
   }
 
   /**
@@ -790,6 +894,24 @@ class TaskGenerator {
     }
     
     return column;
+  }
+
+  /**
+   * 列名をインデックスに変換
+   */
+  columnToIndex(columnName) {
+    if (!columnName || typeof columnName !== 'string') {
+      return null;
+    }
+    
+    let result = 0;
+    const upperColumn = columnName.toUpperCase();
+    
+    for (let i = 0; i < upperColumn.length; i++) {
+      result = result * 26 + (upperColumn.charCodeAt(i) - 64);
+    }
+    
+    return result - 1; // 0-based index
   }
 
 
