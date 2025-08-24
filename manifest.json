@@ -59,6 +59,9 @@
       "js": [
         "src/modules/retry-manager.js",
         "src/modules/auto-followup-handler.js",
+        "src/modules/ai-config-manager.js",
+        "src/modules/unified-error-recovery.js",
+        "src/modules/ai-automation-wrapper.js",
         "src/content/model-info-loader.js",
         "src/content/ai-content-unified.js"
       ],

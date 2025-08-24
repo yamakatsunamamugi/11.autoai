@@ -307,9 +307,23 @@ async function executeAITask(tabId, taskData) {
     }
   });
 
+  // 統合エラーリカバリーシステムを初期化（バックグラウンド用）
+  const errorRecovery = globalThis.UnifiedErrorRecovery ? 
+    new globalThis.UnifiedErrorRecovery({
+      aiType: taskData.aiType,
+      enableLogging: true
+    }) : null;
+  
+  // AI設定マネージャーを初期化
+  const configManager = globalThis.aiConfigManager || new (globalThis.AIConfigManager || class {})();
+  
+  // 設定を正規化して保存
+  const normalizedTaskData = configManager.normalizeConfig(taskData, taskData.aiType);
+  configManager.saveConfig(taskData.taskId, normalizedTaskData, taskData.aiType);
+  
   try {
     // 共通モジュールを使用してAIタスクを実行
-    const result = await aiTaskExecutor.executeAITask(tabId, taskData);
+    const result = await aiTaskExecutor.executeAITask(tabId, normalizedTaskData);
     
     const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
     
@@ -325,7 +339,7 @@ async function executeAITask(tabId, taskData) {
           responseLength: result.response?.length || 0,
           allStepsCompleted: true,
           finalStep: 5,
-          process: '[Request interrupted by user]回答テキスト取得できない　エラー'
+          process: '回答テキスト取得成功'
         }
       });
     } else {
@@ -347,6 +361,26 @@ async function executeAITask(tabId, taskData) {
   } catch (error) {
     const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
     logManager.error(`[${taskData.aiType}] AIタスク実行エラー: ${error.message}`, error);
+    
+    // 統合エラーリカバリーシステムで処理
+    if (errorRecovery && errorRecovery.handleStepError) {
+      const stepNumber = error.failedStep || 3; // デフォルトはStep3（AI実行）
+      const recoveryResult = await errorRecovery.handleStepError(stepNumber, error, {
+        taskId: taskData.taskId,
+        aiType: taskData.aiType,
+        prompt: taskData.prompt,
+        model: taskData.model,
+        function: taskData.function,
+        cellInfo: taskData.cellInfo,
+        source: 'background_executeAITask',
+        tabId
+      });
+      
+      if (recoveryResult.success) {
+        return recoveryResult;
+      }
+    }
+    
     return { success: false, error: error.message };
   }
 }

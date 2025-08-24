@@ -88,23 +88,7 @@ async function executeTaskInternal(taskConfig) {
     }
     
     // 応答取得
-    let response;
-    try {
-      response = await getResponseWithCanvas();
-    } catch (fetchError) {
-      // 応答取得失敗の場合
-      if (fetchError.errorType === 'AIResponseFetchError') {
-        return {
-          success: false,
-          error: 'AIResponseFetchError',
-          errorMessage: fetchError.message,
-          aiType: fetchError.aiType || aiType,
-          needsRetry: true,
-          errorType: 'AIResponseFetchError'
-        };
-      }
-      throw fetchError;
-    }
+    const response = await getResponseWithCanvas();
     
     if (!response || response.trim().length === 0) {
       return {
@@ -1303,9 +1287,23 @@ async function isResponseCompleted() {
 /**
  * AITaskHandler用のプロンプト処理
  * background.jsの中央制御に転送する軽量版
+ * 統合エラーリカバリーシステムでラップされた版
  */
 async function handleAITaskPrompt(request, sendResponse) {
   const { prompt, taskId, model, specialOperation, cellInfo } = request;
+  
+  // 統合エラーリカバリーシステムを初期化
+  const errorRecovery = window.UnifiedErrorRecovery ? 
+    new window.UnifiedErrorRecovery({
+      aiType: AI_TYPE,
+      enableLogging: true
+    }) : null;
+  
+  // AI設定マネージャーを初期化
+  const configManager = window.aiConfigManager || new (window.AIConfigManager || class {})();
+  
+  // 現在のタスクIDをグローバルに保存（エラーハンドラー用）
+  window.currentTaskId = taskId;
   
   console.log(`[11.autoai][${AI_TYPE}] handleAITaskPrompt - background.jsに転送`, {
     taskId,
@@ -1314,22 +1312,27 @@ async function handleAITaskPrompt(request, sendResponse) {
     promptLength: prompt?.length
   });
   
-  // タスクデータを準備
-  const taskData = {
+  // タスクデータを準備して正規化
+  const taskData = configManager.normalizeConfig({
     aiType: AI_TYPE,
     model: model,
     function: specialOperation || 'none',
     prompt: prompt,
     taskId: taskId,
     cellInfo: cellInfo  // セル位置情報を追加
-  };
+  }, AI_TYPE);
   
-  // Port接続を使用した長時間処理対応の通信
-  let port = null;
-  let keepAliveInterval = null;
-  let responseReceived = false;
-  let reconnectAttempts = 0;
-  const maxReconnectAttempts = 3;
+  // 設定を保存
+  configManager.saveConfig(taskId, taskData, AI_TYPE);
+  
+  // エラーハンドリングをラップ
+  try {
+    // Port接続を使用した長時間処理対応の通信
+    let port = null;
+    let keepAliveInterval = null;
+    let responseReceived = false;
+    let reconnectAttempts = 0;
+    const maxReconnectAttempts = 3;
   
   // Port接続を確立する関数
   const establishPortConnection = () => {
@@ -1474,6 +1477,49 @@ async function handleAITaskPrompt(request, sendResponse) {
   
   // 初回のタスク送信
   sendTaskRequest();
+  
+  } catch (error) {
+    // エラーが発生した場合、統合エラーリカバリーで処理
+    console.error(`[11.autoai][${AI_TYPE}] handleAITaskPrompt エラー:`, error);
+    
+    if (errorRecovery && errorRecovery.handleStepError) {
+      // Step3（AI実行）のエラーとして処理
+      const recoveryResult = await errorRecovery.handleStepError(3, error, {
+        taskId,
+        aiType: AI_TYPE,
+        prompt,
+        model,
+        function: specialOperation,
+        cellInfo,
+        source: 'handleAITaskPrompt'
+      });
+      
+      if (recoveryResult.success) {
+        // リカバリー成功
+        sendResponse(recoveryResult);
+      } else {
+        // リカバリー失敗
+        sendResponse({
+          success: false,
+          response: '',
+          error: recoveryResult.error || error.message,
+          aiType: AI_TYPE,
+          model: getModelInfo(),
+          taskId: taskId
+        });
+      }
+    } else {
+      // 統合エラーリカバリーが利用できない場合
+      sendResponse({
+        success: false,
+        response: '',
+        error: error.message,
+        aiType: AI_TYPE,
+        model: getModelInfo(),
+        taskId: taskId
+      });
+    }
+  }
 }
 
 
@@ -2472,7 +2518,6 @@ async function getResponseWithCanvas() {
   });
   
   let rawResponse = null;
-  let responseError = null;
   
   // 各AIの自動化スクリプトのgetResponse関数を使用
   switch (AI_TYPE) {
@@ -2483,15 +2528,10 @@ async function getResponseWithCanvas() {
         rawResponse = await window.ChatGPTAutomation.getResponse();
         // ChatGPTは空文字列を返すことがあるので、nullに変換
         rawResponse = rawResponse || null;
-      }
-      
       } else {
-        // ChatGPTAutomationが利用できない場合はエラーを記録
+        // ChatGPTAutomationが利用できない場合はエラーをスロー
         console.error('[ChatGPT] ChatGPTAutomationが利用できません');
-        responseError = new Error('AIResponseFetchError');
-        responseError.aiType = 'ChatGPT';
-        responseError.errorType = 'AIResponseFetchError';
-        responseError.message = 'ChatGPT: 応答取得に失敗しました';
+        throw new Error('ChatGPT: 自動化スクリプトが利用できません');
       }
       break;
 
@@ -2501,12 +2541,9 @@ async function getResponseWithCanvas() {
         console.log(`[Claude] ClaudeAutomation.getResponse()を使用`);
         rawResponse = await window.ClaudeAutomation.getResponse();
       } else {
-        // ClaudeAutomationが利用できない場合はエラーを記録
+        // ClaudeAutomationが利用できない場合はエラーをスロー
         console.error('[Claude] ClaudeAutomationが利用できません');
-        responseError = new Error('AIResponseFetchError');
-        responseError.aiType = 'Claude';
-        responseError.errorType = 'AIResponseFetchError';
-        responseError.message = 'Claude: 応答取得に失敗しました';
+        throw new Error('Claude: 自動化スクリプトが利用できません');
       }
       break;
 
@@ -2547,22 +2584,14 @@ async function getResponseWithCanvas() {
       }
 
       if (!rawResponse) {
-        // GeminiAutomationが利用できない場合はエラーを記録
-        console.error('[Gemini] 応答取得失敗');
-        responseError = new Error('AIResponseFetchError');
-        responseError.aiType = 'Gemini';
-        responseError.errorType = 'AIResponseFetchError';
-        responseError.message = 'Gemini: 応答取得に失敗しました';
+        // GeminiAutomationが利用できない場合はエラーをスロー
+        console.error('[Gemini] GeminiAutomationもwindow.Geminiも利用できません');
+        throw new Error('Gemini: 自動化スクリプトが利用できません');
       }
       break;
 
     default:
       throw new Error(`サポートされていないAI種別: ${AI_TYPE}`);
-  }
-  
-  // エラーがある場合はエラーをスロー
-  if (responseError) {
-    throw responseError;
   }
   
   // 自動追加質問機能を適用

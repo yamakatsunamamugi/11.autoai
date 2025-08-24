@@ -17,7 +17,7 @@ export class ErrorHandler {
         backoffMultiplier: 2,
         maxDelay: 30000,
         enableJitter: true,
-        retryableErrors: ["NetworkError", "TimeoutError", "ServiceUnavailable", "AIResponseError", "AITimeoutError", "ModelUnavailableError", "AIResponseFetchError"],
+        retryableErrors: ["NetworkError", "TimeoutError", "ServiceUnavailable", "AIResponseError", "AITimeoutError", "ModelUnavailableError"],
         ...options.retryConfig,
       },
 
@@ -58,7 +58,6 @@ export class ErrorHandler {
           "ModelOverloadError",
           "ContentFilterError",
           "TokenLimitError",
-          "AIResponseFetchError",
         ],
         ...options.classification,
       },
@@ -652,60 +651,6 @@ export class ErrorHandler {
         action: "model_unavailable_recovery",
         suggestion: "しばらく待ってから再試行するか、別のAIモデルを使用してください",
         waitTime: 60000, // 60秒待機を推奨
-      };
-    });
-
-    // AI応答取得失敗エラー復旧（段階的リトライ）
-    this.errorRecoveryStrategies.set("AIResponseFetchError", async (error, context) => {
-      this.logger.info("AI応答取得失敗エラー復旧戦略実行");
-      
-      const retryAttempt = context.retryAttempt || 1;
-      let waitTime = 0;
-      let action = "immediate_window_restart";
-      
-      // 段階的な待機時間設定
-      if (retryAttempt === 1) {
-        // 1回目: 即時リトライ
-        waitTime = 0;
-        action = "immediate_window_restart";
-      } else if (retryAttempt === 2) {
-        // 2回目: 5分待機
-        waitTime = 300000; // 5分
-        action = "delayed_window_restart_5min";
-      } else if (retryAttempt === 3) {
-        // 3回目: 10分待機
-        waitTime = 600000; // 10分
-        action = "delayed_window_restart_10min";
-      } else {
-        // リトライ回数超過
-        return {
-          success: false,
-          error: error.message,
-          action: "max_retries_exceeded",
-          suggestion: "最大リトライ回数を超過しました。手動で再試行してください。",
-          finalError: true,
-        };
-      }
-      
-      this.logger.info(`AI応答取得失敗: リトライ${retryAttempt}回目, 待機時間: ${waitTime}ms`);
-      
-      // 待機時間がある場合は待機
-      if (waitTime > 0) {
-        this.logger.info(`${waitTime / 1000}秒待機中...`);
-        await this.delay(waitTime);
-      }
-      
-      // ウィンドウを閉じて再起動をリクエスト
-      return {
-        success: false,
-        error: error.message,
-        action,
-        suggestion: `ウィンドウを再起動してリトライします（試行${retryAttempt}/3）`,
-        retryWithNewWindow: true,
-        closeCurrentWindow: true,
-        waitTime,
-        retryAttempt,
-        needsRetry: true,
       };
     });
   }
