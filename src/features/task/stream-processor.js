@@ -220,6 +220,7 @@ class StreamProcessor {
     
     // 3種類AI実行制御
     this.activeThreeTypeGroupId = null; // 実行中の3種類AIグループID
+    this.activeThreeTypeGroups = new Set(); // 実行中の3種類AIグループIDのセット
     
     // ペンディングレポートタスク管理
     this.pendingReportTasks = new Set(); // 待機中のレポートタスク
@@ -676,25 +677,49 @@ class StreamProcessor {
   async process3TypeGroup(groupTasks) {
     if (!groupTasks || groupTasks.length === 0) return;
     
-    // 行番号でグループ化
-    const tasksByRow = new Map();
-    for (const task of groupTasks) {
-      if (!tasksByRow.has(task.row)) {
-        tasksByRow.set(task.row, []);
+    // グループIDを取得
+    const groupId = groupTasks[0].groupId;
+    
+    // グループを実行中として登録
+    this.activeThreeTypeGroups.add(groupId);
+    this.activeThreeTypeGroupId = groupId;
+    
+    // グループのタスクを記録（後で参照するため）
+    this.groupTasksMap = this.groupTasksMap || new Map();
+    this.groupTasksMap.set(groupId, groupTasks);
+    
+    try {
+      // 行番号でグループ化
+      const tasksByRow = new Map();
+      for (const task of groupTasks) {
+        if (!tasksByRow.has(task.row)) {
+          tasksByRow.set(task.row, []);
+        }
+        tasksByRow.get(task.row).push(task);
       }
-      tasksByRow.get(task.row).push(task);
+      
+      // 行番号順にソート
+      const sortedRows = Array.from(tasksByRow.keys()).sort((a, b) => a - b);
+      
+      this.logger.log(`[StreamProcessor] 3種類AIグループ: ${sortedRows.length}行`);
+      
+      // 各行を順番に処理
+      for (const row of sortedRows) {
+        const rowTasks = tasksByRow.get(row);
+        await this.start3TypeBatch(rowTasks, row);
+      }
+    } catch (error) {
+      // エラー時のみ即座に解除
+      this.activeThreeTypeGroups.delete(groupId);
+      if (this.activeThreeTypeGroupId === groupId) {
+        this.activeThreeTypeGroupId = null;
+      }
+      this.groupTasksMap.delete(groupId);
+      throw error;
     }
+    // finallyブロックを削除 - 記載完了後に解除するように変更
     
-    // 行番号順にソート
-    const sortedRows = Array.from(tasksByRow.keys()).sort((a, b) => a - b);
-    
-    this.logger.log(`[StreamProcessor] 3種類AIグループ: ${sortedRows.length}行`);
-    
-    // 各行を順番に処理
-    for (const row of sortedRows) {
-      const rowTasks = tasksByRow.get(row);
-      await this.start3TypeBatch(rowTasks, row);
-    }
+    this.logger.log(`[StreamProcessor] 3種類AIグループタスク実行完了（記載待ち）: ${groupId}`);
   }
   
   /**
@@ -846,6 +871,15 @@ class StreamProcessor {
     // 3種類AI特別処理を削除：全てのAIを独立したタスクとして扱う
 
     const currentTask = tasks[currentIndex];
+    
+    // 通常処理列（3種類AIでもレポートでもない）の場合はスキップ
+    // processNormalColumnでバッチ処理されるため
+    if (!currentTask.multiAI && currentTask.taskType !== "report") {
+      this.logger.log(`[StreamProcessor] ${column}列は通常処理列のためstartColumnProcessingをスキップ（バッチ処理で対応）`);
+      // 処理中フラグを設定して重複を防ぐ
+      this.columnWindows.set(column, 'pending-batch');
+      return;
+    }
 
     // レポートタスクの場合は特別処理（ウィンドウを開かない）
     if (currentTask.taskType === "report") {
@@ -1429,7 +1463,7 @@ class StreamProcessor {
       // 書き込み完了をマーク（3種類AI完了判定用）
       const answerCellKey = `${answerColumn}${task.row}`;
       this.writtenCells.set(answerCellKey, true);
-      this.logger.log(`[StreamProcessor] ✅ writtenCellsに記録: ${answerCellKey}`);
+      this.logger.log(`[StreamProcessor] ✅ writtenCellsに記録: ${answerCellKey} (タスク: ${task.column}${task.row} → 回答: ${answerCellKey})`);
       
       // ウィンドウクローズチェック（スプレッドシート書き込み後）
       // 重要: onTaskCompletedで既にcurrentRowByColumnがインクリメントされているため、
@@ -1452,10 +1486,14 @@ class StreamProcessor {
         await this.closeColumnWindow(answerColumn);
         this.logger.log(`[StreamProcessor] ✅ ウィンドウクローズ完了: ${answerColumn}列`);
         
-        // ウィンドウが空いたので、利用可能な列をチェック
-        this.checkAndStartAvailableColumns().catch(error => {
-          this.logger.error(`[StreamProcessor] 利用可能列チェックエラー`, error);
-        });
+        // 3種類AIグループでない場合のみ、次の列をチェック
+        // 3種類AIグループの場合は、グループ全体の完了をupdateGroupCompletionで判定
+        if (!task.multiAI) {
+          // ウィンドウが空いたので、利用可能な列をチェック
+          this.checkAndStartAvailableColumns().catch(error => {
+            this.logger.error(`[StreamProcessor] 利用可能列チェックエラー`, error);
+          });
+        }
       }
       
       // ログを書き込み（SpreadsheetLoggerを使用）
@@ -1564,6 +1602,11 @@ class StreamProcessor {
       
       // ■ 3種類AIグループの完了状況を更新
       this.updateGroupCompletion(task);
+      
+      // ■ 3種類AIグループの場合、記載完了をチェックして解放
+      if (task.multiAI && task.groupId) {
+        this.checkAndReleaseGroup(task.groupId);
+      }
       
       // ■ 列またぎを無効化（列が完全に終わるまで次の列を開始しない）
       // await this.checkAndStartNextColumnForRow(task.column, task.row);
@@ -1999,7 +2042,13 @@ ${formattedGemini}`;
    * 空きウィンドウ分だけ利用可能な列を開始
    */
   async checkAndStartAvailableColumns() {
-    // 実行中の3種類AIグループがある場合のチェック
+    // 実行中の3種類AIグループがある場合は新しいグループを開始しない
+    if (this.activeThreeTypeGroups.size > 0) {
+      this.logger.log(`[StreamProcessor] 3種類AIグループ実行中のため新規列開始を待機 (実行中: ${this.activeThreeTypeGroups.size}グループ)`);
+      return;
+    }
+    
+    // 古い互換性チェック（念のため残す）
     if (this.activeThreeTypeGroupId) {
       // このグループがまだ未完了かチェック
       const hasIncompleteGroup = Array.from(this.groupCompletionTracker.entries())
@@ -2113,11 +2162,19 @@ ${formattedGemini}`;
         }
         
         // 開始可能な列を開始（単独AIは1つずつ）
-        this.logger.log(`[StreamProcessor] ${column}列を開始`);
-        this.startColumnProcessing(column).catch(error => {
-          this.logger.error(`[StreamProcessor] ${column}列開始エラー`, error);
-        });
-        started++;
+        // バッチ処理中の列はスキップ
+        const isBatchProcessing = Array.from(this.normalBatchTracker.values())
+          .some(batch => batch.column === column);
+        
+        if (!isBatchProcessing) {
+          this.logger.log(`[StreamProcessor] ${column}列を開始`);
+          this.startColumnProcessing(column).catch(error => {
+            this.logger.error(`[StreamProcessor] ${column}列開始エラー`, error);
+          });
+          started++;
+        } else {
+          this.logger.log(`[StreamProcessor] ${column}列はバッチ処理中のためスキップ`);
+        }
         
         // 単独AIは1つずつ開始するため、ここで終了
         break;
@@ -2330,6 +2387,15 @@ ${formattedGemini}`;
     const tasks = this.taskQueue.get(column);
     if (!tasks || tasks.length === 0) return;
     
+    // すでに処理中（ウィンドウがある）場合はスキップ
+    if (this.columnWindows.has(column)) {
+      this.logger.log(`[StreamProcessor] ${column}列は既に処理中のためスキップ`);
+      return;
+    }
+    
+    // 処理中フラグを設定（重複処理を防ぐ）
+    this.columnWindows.set(column, 'batch-processing');
+    
     // エラー行をスキップ
     const validTasks = tasks.filter(task => {
       if (this.errorRows.has(task.row)) {
@@ -2526,7 +2592,11 @@ ${formattedGemini}`;
       });
       
       // windowPositionsの管理はWindowServiceに一元化（重複管理を削除）
-      this.columnWindows.set(task.column, window.id);
+      // バッチ処理の場合は columnWindows を上書きしない
+      // （processNormalColumn で設定した 'batch-processing' フラグを保持）
+      if (!this.columnWindows.has(task.column)) {
+        this.columnWindows.set(task.column, window.id);
+      }
       
       // 自動化スクリプトを注入
       await this.injectAutomationScripts(window.id, task.aiType);
@@ -2577,6 +2647,8 @@ ${formattedGemini}`;
         }
       } else {
         this.logger.log(`[StreamProcessor] ${batchInfo.column}列の全バッチ完了`);
+        // 列の処理中フラグをクリア
+        this.columnWindows.delete(batchInfo.column);
       }
       
       // トラッカーから削除
@@ -2984,6 +3056,44 @@ ${formattedGemini}`;
   }
   
   /**
+   * 3種類AIグループの回答列がすべて記載済みかチェック
+   * @param {string} groupId - グループID
+   * @returns {boolean} すべて記載済みならtrue
+   */
+  checkGroupAnswerColumnsWritten(groupId) {
+    // groupTasksMapから取得（process3TypeGroupで保存済み）
+    const groupTasks = this.groupTasksMap?.get(groupId) || [];
+    
+    if (groupTasks.length === 0) {
+      return true; // タスクがない場合は完了とみなす
+    }
+    
+    // 各タスクの回答列が記載済みかチェック
+    const requiredCells = [];
+    const writtenCellsList = [];
+    
+    for (const task of groupTasks) {
+      // タスクの列から回答列を計算（1つ左の列）
+      const columnIndex = this.columnToIndex(task.column);
+      const answerColumn = this.indexToColumn(columnIndex - 1);
+      const answerCellKey = `${answerColumn}${task.row}`;
+      requiredCells.push(answerCellKey);
+      
+      if (this.writtenCells.has(answerCellKey)) {
+        writtenCellsList.push(answerCellKey);
+      }
+    }
+    
+    const allWritten = writtenCellsList.length === requiredCells.length;
+    
+    if (!allWritten) {
+      this.logger.log(`[StreamProcessor] グループ${groupId}回答列待機中: ${writtenCellsList.length}/${requiredCells.length}完了`);
+    }
+    
+    return allWritten;
+  }
+
+  /**
    * 3種類AIグループのタスク完了を記録
    * @param {Object} task - 完了したタスク
    */
@@ -3000,19 +3110,47 @@ ${formattedGemini}`;
       tracker.completed.add(task.aiType);
       this.logger.log(`[StreamProcessor] グループ進捗更新: ${trackerKey}, 完了: ${task.aiType}, 状況: ${tracker.completed.size}/${tracker.required.size}`);
       
-      // グループが完全に完了したかチェック
+      // この行が完全に完了したかチェック
       if (tracker.completed.size === tracker.required.size) {
         // このグループIDに関連する全てのトラッカーが完了したかチェック
         const allGroupTasksComplete = Array.from(this.groupCompletionTracker.entries())
           .filter(([key]) => key.includes(task.groupId))
           .every(([, t]) => t.completed.size === t.required.size);
         
-        if (allGroupTasksComplete && this.activeThreeTypeGroupId === task.groupId) {
-          this.logger.log(`[StreamProcessor] 3種類AIグループ完了: ${task.groupId}`);
-          // activeThreeTypeGroupIdは checkAndStartNextColumnForRow でクリアする
-          // this.activeThreeTypeGroupId = null; // ここではクリアしない
+        if (allGroupTasksComplete) {
+          this.logger.log(`[StreamProcessor] 3種類AIグループ全タスク完了: ${task.groupId}`);
+          // 記載完了は各writeResultToSpreadsheetでチェックするので、ここでは何もしない
         }
       }
+    }
+  }
+  
+  /**
+   * 3種類AIグループの記載完了をチェックして次の処理を開始
+   * @param {string} groupId - グループID
+   */
+  checkAndReleaseGroup(groupId) {
+    // 回答列の記載完了をチェック
+    const allAnswerColumnsWritten = this.checkGroupAnswerColumnsWritten(groupId);
+    
+    if (allAnswerColumnsWritten) {
+      this.logger.log(`[StreamProcessor] 3種類AIグループ全回答列記載完了、グループ解放: ${groupId}`);
+      
+      // グループを実行完了として登録解除
+      this.activeThreeTypeGroups.delete(groupId);
+      if (this.activeThreeTypeGroupId === groupId) {
+        this.activeThreeTypeGroupId = null;
+      }
+      
+      // グループタスクマップからも削除
+      if (this.groupTasksMap) {
+        this.groupTasksMap.delete(groupId);
+      }
+      
+      // 次の3種類AIグループまたは通常処理を開始
+      this.checkAndStartAvailableColumns().catch(error => {
+        this.logger.error(`[StreamProcessor] 次の処理開始エラー`, error);
+      });
     }
   }
 
