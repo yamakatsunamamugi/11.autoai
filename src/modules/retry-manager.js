@@ -88,12 +88,13 @@ class RetryManager {
           };
         }
 
-        // エラー判定
+        // エラー判定（AI特化エラーパターンを追加）
         if (result.error === 'TIMEOUT_NO_RESPONSE' || 
             result.error === 'SPREADSHEET_WRITE_FAILED' ||
             result.error === 'WRITE_VERIFICATION_FAILED' ||
             result.needsRetry ||
-            (result.writeResult && !result.writeResult.verified)) {
+            (result.writeResult && !result.writeResult.verified) ||
+            this.isAISpecificRetryableError(result)) {
           
           let errorType = result.error || 'UNKNOWN_ERROR';
           let errorMessage = result.errorMessage || 'エラーが発生しました';
@@ -106,18 +107,31 @@ class RetryManager {
           
           this.log(`エラー検出: ${errorType} - ${errorMessage}`, 'WARNING');
           
-          if (this.retryCount < this.maxRetries) {
+          // AI特化エラーの場合は専用の戦略を適用
+          let aiRetryStrategy = null;
+          let effectiveRetryDelay = this.retryDelay;
+          let effectiveMaxRetries = this.maxRetries;
+          
+          if (this.isAISpecificRetryableError(result)) {
+            aiRetryStrategy = this.getAISpecificRetryStrategy(result);
+            effectiveRetryDelay = this.calculateAIRetryDelay(aiRetryStrategy.strategy, this.retryCount);
+            effectiveMaxRetries = Math.min(aiRetryStrategy.maxRetries, this.maxRetries);
+            this.log(aiRetryStrategy.message, 'INFO');
+          }
+          
+          if (this.retryCount < effectiveMaxRetries) {
             this.retryCount++;
             
             // リトライコールバック実行
             if (onRetry) {
               await onRetry({
                 retryCount: this.retryCount,
-                maxRetries: this.maxRetries,
+                maxRetries: effectiveMaxRetries,
                 error: errorType,
                 errorMessage: errorMessage,
                 taskId,
-                isWriteVerificationFailure: errorType === 'WRITE_VERIFICATION_FAILED'
+                isWriteVerificationFailure: errorType === 'WRITE_VERIFICATION_FAILED',
+                aiRetryStrategy: aiRetryStrategy
               });
             }
             
@@ -125,15 +139,15 @@ class RetryManager {
             if (errorType === 'WRITE_VERIFICATION_FAILED' && onWriteFailure) {
               await onWriteFailure({
                 retryCount: this.retryCount,
-                maxRetries: this.maxRetries,
+                maxRetries: effectiveMaxRetries,
                 taskId,
                 writeResult: result.writeResult
               });
             }
             
-            // リトライ前の待機
-            this.log(`${this.retryDelay}ms後にリトライします...`, 'INFO');
-            await this.wait(this.retryDelay);
+            // リトライ前の待機（AI特化遅延時間を使用）
+            this.log(`${effectiveRetryDelay}ms後にリトライします... ${aiRetryStrategy ? `(${aiRetryStrategy.strategy})` : ''}`, 'INFO');
+            await this.wait(effectiveRetryDelay);
             
             // 新規ウィンドウでリトライを要求
             const retryResult = await this.requestNewWindowRetry({
@@ -299,6 +313,175 @@ class RetryManager {
     this.retryCount = 0;
     this.currentTaskId = null;
     this.taskHistory = [];
+  }
+
+  /**
+   * AI特化リトライ可能エラーの判定
+   * @param {Object} result - タスク実行結果
+   * @returns {boolean} リトライ可能かどうか
+   */
+  isAISpecificRetryableError(result) {
+    if (!result.error && !result.errorMessage) {
+      return false;
+    }
+
+    const errorMessage = (result.errorMessage || result.error || '').toLowerCase();
+    
+    // AI特化エラーパターン
+    const aiRetryablePatterns = [
+      // ChatGPT関連エラー
+      'rate limit',
+      'too many requests',
+      'model is overloaded',
+      'openai api error',
+      'chatgpt error',
+      'gpt model unavailable',
+      
+      // Claude関連エラー
+      'claude is overloaded',
+      'anthropic api error',
+      'claude error',
+      'claude unavailable',
+      'request was rejected',
+      
+      // Gemini関連エラー
+      'gemini api error',
+      'quota exceeded',
+      'bard is unavailable',
+      'gemini model error',
+      'google ai error',
+      
+      // Genspark関連エラー
+      'genspark error',
+      'genspark unavailable',
+      'service temporarily unavailable',
+      'genspark timeout',
+      
+      // 一般的なAIエラー
+      'ai response error',
+      'model unavailable',
+      'ai timeout',
+      'ai service error',
+      'request interrupted by user',
+      'response generation failed',
+      'model loading',
+      'service temporarily down',
+      'connection timeout',
+      'server overload',
+      'temporary service interruption'
+    ];
+
+    // エラーパターンマッチング
+    for (const pattern of aiRetryablePatterns) {
+      if (errorMessage.includes(pattern)) {
+        this.log(`AI特化エラーパターン検出: ${pattern}`, 'WARNING');
+        return true;
+      }
+    }
+
+    // 特定のエラーコード
+    const aiRetryableErrorCodes = [
+      'AI_RESPONSE_ERROR',
+      'AI_TIMEOUT_ERROR',
+      'MODEL_UNAVAILABLE_ERROR',
+      'AI_RATE_LIMIT_ERROR',
+      'AI_OVERLOAD_ERROR',
+      'AI_SERVICE_ERROR'
+    ];
+
+    if (aiRetryableErrorCodes.includes(result.error)) {
+      this.log(`AI特化エラーコード検出: ${result.error}`, 'WARNING');
+      return true;
+    }
+
+    // HTTPステータスコードベースの判定（AI API特有）
+    if (result.statusCode) {
+      const retryableStatusCodes = [
+        429, // Too Many Requests (Rate Limit)
+        502, // Bad Gateway (Service Unavailable)
+        503, // Service Unavailable
+        504, // Gateway Timeout
+        520, // Cloudflare: Unknown Error
+        521, // Cloudflare: Web Server Is Down
+        522, // Cloudflare: Connection Timed Out
+        524  // Cloudflare: A Timeout Occurred
+      ];
+      
+      if (retryableStatusCodes.includes(result.statusCode)) {
+        this.log(`AI特化HTTPエラーコード検出: ${result.statusCode}`, 'WARNING');
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * AI特化リトライ戦略の取得
+   * @param {Object} result - タスク実行結果
+   * @returns {Object} リトライ戦略情報
+   */
+  getAISpecificRetryStrategy(result) {
+    const errorMessage = (result.errorMessage || result.error || '').toLowerCase();
+    
+    // レート制限エラーの場合は長めの待機時間
+    if (errorMessage.includes('rate limit') || errorMessage.includes('too many requests')) {
+      return {
+        retryDelay: 10000, // 10秒
+        maxRetries: 2,     // 回数を抑える
+        strategy: 'rate_limit_backoff',
+        message: 'レート制限によるリトライ戦略を適用'
+      };
+    }
+    
+    // モデル過負荷エラーの場合
+    if (errorMessage.includes('overloaded') || errorMessage.includes('overload')) {
+      return {
+        retryDelay: 15000, // 15秒
+        maxRetries: 2,
+        strategy: 'overload_backoff',
+        message: 'モデル過負荷によるリトライ戦略を適用'
+      };
+    }
+    
+    // サービス一時的利用不可の場合
+    if (errorMessage.includes('unavailable') || errorMessage.includes('temporarily')) {
+      return {
+        retryDelay: 8000,  // 8秒
+        maxRetries: 3,
+        strategy: 'service_unavailable_backoff',
+        message: 'サービス一時利用不可によるリトライ戦略を適用'
+      };
+    }
+    
+    // 一般的なAIエラーの場合
+    return {
+      retryDelay: 5000,  // 5秒（デフォルト）
+      maxRetries: 3,
+      strategy: 'ai_general_backoff',
+      message: '一般的なAIエラーによるリトライ戦略を適用'
+    };
+  }
+
+  /**
+   * AI特化のリトライ遅延時間計算
+   * @param {string} errorType - エラータイプ
+   * @param {number} attemptNumber - 試行回数
+   * @returns {number} 遅延時間（ミリ秒）
+   */
+  calculateAIRetryDelay(errorType, attemptNumber) {
+    const baseDelays = {
+      'rate_limit_backoff': 10000,
+      'overload_backoff': 15000,
+      'service_unavailable_backoff': 8000,
+      'ai_general_backoff': 5000
+    };
+    
+    const baseDelay = baseDelays[errorType] || 5000;
+    
+    // エクスポネンシャルバックオフ（最大60秒まで）
+    const exponentialDelay = baseDelay * Math.pow(1.5, attemptNumber - 1);
+    return Math.min(exponentialDelay, 60000);
   }
 }
 

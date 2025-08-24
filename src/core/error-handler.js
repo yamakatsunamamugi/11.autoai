@@ -17,7 +17,7 @@ export class ErrorHandler {
         backoffMultiplier: 2,
         maxDelay: 30000,
         enableJitter: true,
-        retryableErrors: ["NetworkError", "TimeoutError", "ServiceUnavailable"],
+        retryableErrors: ["NetworkError", "TimeoutError", "ServiceUnavailable", "AIResponseError", "AITimeoutError", "ModelUnavailableError"],
         ...options.retryConfig,
       },
 
@@ -36,15 +36,58 @@ export class ErrorHandler {
           "SecurityError",
           "AuthenticationError",
           "AuthorizationError",
+          "AISecurityError",
+          "PromptInjectionError",
         ],
         retriable: [
           "NetworkError",
           "TimeoutError",
           "ServiceUnavailable",
           "RateLimitError",
+          "AIResponseError",
+          "AITimeoutError",
+          "ModelUnavailableError",
+          "AIRateLimitError",
         ],
-        permanent: ["ValidationError", "NotFoundError", "BadRequestError"],
+        permanent: ["ValidationError", "NotFoundError", "BadRequestError", "InvalidPromptError"],
+        aiSpecific: [
+          "ChatGPTError",
+          "ClaudeError", 
+          "GeminiError",
+          "GensparkError",
+          "ModelOverloadError",
+          "ContentFilterError",
+          "TokenLimitError",
+        ],
         ...options.classification,
+      },
+
+      // AI特化設定
+      aiHandling: {
+        enabled: true,
+        platforms: {
+          chatgpt: {
+            errorPatterns: ["rate limit", "token limit", "content policy", "moderation"],
+            recoveryStrategies: ["waitAndRetry", "simplifyPrompt", "splitPrompt"],
+            timeout: 180000,
+          },
+          claude: {
+            errorPatterns: ["overloaded", "rate limit", "safety", "harmful content"],
+            recoveryStrategies: ["waitAndRetry", "reformatPrompt", "useAlternativeModel"],
+            timeout: 180000,
+          },
+          gemini: {
+            errorPatterns: ["quota exceeded", "safety filter", "blocked", "harmful"],
+            recoveryStrategies: ["waitAndRetry", "adjustSafetySettings", "reformatPrompt"],
+            timeout: 180000,
+          },
+          genspark: {
+            errorPatterns: ["service unavailable", "timeout", "server error"],
+            recoveryStrategies: ["waitAndRetry", "useBackupEndpoint"],
+            timeout: 180000,
+          },
+        },
+        ...options.aiHandling,
       },
     };
 
@@ -180,6 +223,14 @@ export class ErrorHandler {
     const errorType = error.constructor.name;
     const errorMessage = error.message.toLowerCase();
 
+    // AI特化エラーの分類
+    if (this.config.aiHandling.enabled) {
+      const aiCategory = this.classifyAIError(error, errorMessage);
+      if (aiCategory) {
+        return aiCategory;
+      }
+    }
+
     // 設定ベースの分類
     for (const [category, types] of Object.entries(
       this.config.classification,
@@ -209,6 +260,65 @@ export class ErrorHandler {
     }
 
     return "unknown";
+  }
+
+  /**
+   * AI特化エラー分類
+   * @param {Error} error - エラー
+   * @param {string} errorMessage - エラーメッセージ（小文字）
+   * @returns {string|null} AIエラーカテゴリまたはnull
+   */
+  classifyAIError(error, errorMessage) {
+    // AI特化エラータイプの確認
+    if (this.config.classification.aiSpecific.includes(error.constructor.name)) {
+      return "aiSpecific";
+    }
+
+    // AI Platform別エラーパターンチェック
+    for (const [platform, config] of Object.entries(this.config.aiHandling.platforms)) {
+      for (const pattern of config.errorPatterns) {
+        if (errorMessage.includes(pattern.toLowerCase())) {
+          // プラットフォーム固有のエラー
+          error.aiPlatform = platform;
+          error.aiErrorPattern = pattern;
+          
+          // エラーパターンに応じたカテゴリ分類
+          if (pattern.includes("rate limit") || pattern.includes("quota")) {
+            return "retriable";
+          } else if (pattern.includes("safety") || pattern.includes("policy") || pattern.includes("harmful")) {
+            return "critical";
+          } else if (pattern.includes("overloaded") || pattern.includes("unavailable")) {
+            return "retriable";
+          } else if (pattern.includes("token limit")) {
+            return "permanent"; // プロンプトを短くする必要がある
+          }
+          
+          return "aiSpecific";
+        }
+      }
+    }
+
+    // 一般的なAIエラーパターン
+    const aiPatterns = [
+      { pattern: "ai response", category: "retriable" },
+      { pattern: "model unavailable", category: "retriable" },
+      { pattern: "prompt injection", category: "critical" },
+      { pattern: "content filter", category: "critical" },
+      { pattern: "token limit exceeded", category: "permanent" },
+      { pattern: "request interrupted by user", category: "retriable" },
+      { pattern: "timeout_no_response", category: "retriable" },
+      { pattern: "spreadsheet_write_failed", category: "retriable" },
+      { pattern: "write_verification_failed", category: "retriable" },
+    ];
+
+    for (const { pattern, category } of aiPatterns) {
+      if (errorMessage.includes(pattern)) {
+        error.aiErrorType = pattern;
+        return category;
+      }
+    }
+
+    return null;
   }
 
   /**
@@ -482,6 +592,213 @@ export class ErrorHandler {
         };
       },
     );
+
+    // AI特化復旧戦略
+    if (this.config.aiHandling.enabled) {
+      this.setupAIRecoveryStrategies();
+    }
+  }
+
+  /**
+   * AI特化復旧戦略設定
+   */
+  setupAIRecoveryStrategies() {
+    // ChatGPTエラー復旧
+    this.errorRecoveryStrategies.set("ChatGPTError", async (error, context) => {
+      return this.executeAIRecoveryStrategy(error, context, "chatgpt");
+    });
+
+    // Claudeエラー復旧
+    this.errorRecoveryStrategies.set("ClaudeError", async (error, context) => {
+      return this.executeAIRecoveryStrategy(error, context, "claude");
+    });
+
+    // Geminiエラー復旧
+    this.errorRecoveryStrategies.set("GeminiError", async (error, context) => {
+      return this.executeAIRecoveryStrategy(error, context, "gemini");
+    });
+
+    // Gensparkエラー復旧
+    this.errorRecoveryStrategies.set("GensparkError", async (error, context) => {
+      return this.executeAIRecoveryStrategy(error, context, "genspark");
+    });
+
+    // 一般的なAIエラー復旧
+    this.errorRecoveryStrategies.set("AIResponseError", async (error, context) => {
+      const platform = error.aiPlatform || this.detectAIPlatform(context);
+      return this.executeAIRecoveryStrategy(error, context, platform);
+    });
+
+    this.errorRecoveryStrategies.set("AITimeoutError", async (error, context) => {
+      this.logger.info("AIタイムアウトエラー復旧戦略実行");
+      
+      // 新しいウィンドウでリトライを提案
+      return {
+        success: false,
+        error: error.message,
+        action: "ai_timeout_recovery",
+        suggestion: "新しいウィンドウでリトライすることを推奨します",
+        retryWithNewWindow: true,
+      };
+    });
+
+    this.errorRecoveryStrategies.set("ModelUnavailableError", async (error, context) => {
+      this.logger.info("モデル利用不可エラー復旧戦略実行");
+      
+      return {
+        success: false,
+        error: error.message,
+        action: "model_unavailable_recovery",
+        suggestion: "しばらく待ってから再試行するか、別のAIモデルを使用してください",
+        waitTime: 60000, // 60秒待機を推奨
+      };
+    });
+  }
+
+  /**
+   * AI復旧戦略実行
+   * @param {Error} error - エラー
+   * @param {Object} context - コンテキスト
+   * @param {string} platform - AIプラットフォーム
+   * @returns {Promise<Object>} 復旧結果
+   */
+  async executeAIRecoveryStrategy(error, context, platform) {
+    if (!platform || !this.config.aiHandling.platforms[platform]) {
+      return {
+        success: false,
+        error: error.message,
+        action: "no_platform_specific_recovery",
+      };
+    }
+
+    const platformConfig = this.config.aiHandling.platforms[platform];
+    const errorPattern = error.aiErrorPattern;
+    
+    this.logger.info(`${platform} エラー復旧戦略実行: ${errorPattern}`);
+
+    // パターンに応じた復旧戦略選択
+    for (const strategy of platformConfig.recoveryStrategies) {
+      const result = await this.executeSpecificRecoveryStrategy(strategy, error, context, platform);
+      if (result.success) {
+        return result;
+      }
+    }
+
+    // すべての戦略が失敗した場合
+    return {
+      success: false,
+      error: error.message,
+      action: "ai_recovery_failed",
+      platform,
+      attemptedStrategies: platformConfig.recoveryStrategies,
+    };
+  }
+
+  /**
+   * 特定の復旧戦略実行
+   * @param {string} strategy - 戦略名
+   * @param {Error} error - エラー
+   * @param {Object} context - コンテキスト
+   * @param {string} platform - AIプラットフォーム
+   * @returns {Promise<Object>} 実行結果
+   */
+  async executeSpecificRecoveryStrategy(strategy, error, context, platform) {
+    switch (strategy) {
+      case "waitAndRetry":
+        await this.delay(this.config.retry.initialDelay);
+        return {
+          success: true,
+          action: "wait_and_retry",
+          platform,
+          waitTime: this.config.retry.initialDelay,
+        };
+
+      case "simplifyPrompt":
+        return {
+          success: true,
+          action: "simplify_prompt",
+          platform,
+          suggestion: "プロンプトを簡素化して再試行することを推奨します",
+          modifyPrompt: true,
+        };
+
+      case "splitPrompt":
+        return {
+          success: true,
+          action: "split_prompt",
+          platform,
+          suggestion: "プロンプトを複数の小さな部分に分割して処理することを推奨します",
+          splitPrompt: true,
+        };
+
+      case "reformatPrompt":
+        return {
+          success: true,
+          action: "reformat_prompt",
+          platform,
+          suggestion: "プロンプトの形式を調整して再試行することを推奨します",
+          reformatPrompt: true,
+        };
+
+      case "useAlternativeModel":
+        return {
+          success: true,
+          action: "use_alternative_model",
+          platform,
+          suggestion: "別のモデルを使用して再試行することを推奨します",
+          switchModel: true,
+        };
+
+      case "adjustSafetySettings":
+        return {
+          success: true,
+          action: "adjust_safety_settings",
+          platform,
+          suggestion: "安全性設定を調整して再試行することを推奨します",
+          adjustSafety: true,
+        };
+
+      case "useBackupEndpoint":
+        return {
+          success: true,
+          action: "use_backup_endpoint",
+          platform,
+          suggestion: "バックアップエンドポイントを使用して再試行することを推奨します",
+          useBackup: true,
+        };
+
+      default:
+        return {
+          success: false,
+          action: "unknown_strategy",
+          strategy,
+        };
+    }
+  }
+
+  /**
+   * AIプラットフォーム検出
+   * @param {Object} context - コンテキスト
+   * @returns {string|null} プラットフォーム名
+   */
+  detectAIPlatform(context) {
+    if (context.aiType) {
+      const aiType = context.aiType.toLowerCase();
+      if (aiType.includes('chatgpt')) return 'chatgpt';
+      if (aiType.includes('claude')) return 'claude';
+      if (aiType.includes('gemini')) return 'gemini';
+      if (aiType.includes('genspark')) return 'genspark';
+    }
+    
+    if (context.url) {
+      const url = context.url.toLowerCase();
+      if (url.includes('openai.com') || url.includes('chat.openai.com')) return 'chatgpt';
+      if (url.includes('claude.ai') || url.includes('anthropic.com')) return 'claude';
+      if (url.includes('gemini.google.com') || url.includes('bard.google.com')) return 'gemini';
+      if (url.includes('genspark.ai')) return 'genspark';
+    }
+    
+    return null;
   }
 
   /**

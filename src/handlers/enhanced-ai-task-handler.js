@@ -246,6 +246,342 @@ export class RetryPlugin extends TaskHandlerPlugin {
 }
 
 /**
+ * AI特化プラグイン
+ */
+export class AISpecificPlugin extends TaskHandlerPlugin {
+  constructor(config = {}) {
+    super('AISpecific');
+    this.config = {
+      enablePlatformDetection: true,
+      enableErrorClassification: true,
+      enableRecoveryStrategies: true,
+      platforms: ['chatgpt', 'claude', 'gemini', 'genspark'],
+      errorPatterns: {
+        chatgpt: ['rate limit', 'token limit', 'content policy', 'moderation'],
+        claude: ['overloaded', 'rate limit', 'safety', 'harmful content'],
+        gemini: ['quota exceeded', 'safety filter', 'blocked', 'harmful'],
+        genspark: ['service unavailable', 'timeout', 'server error']
+      },
+      recoveryActions: {
+        rateLimitError: 'waitAndRetry',
+        tokenLimitError: 'splitPrompt',
+        contentPolicyError: 'reformatPrompt',
+        safetyFilterError: 'adjustSafetySettings',
+        modelOverloadError: 'useAlternativeModel',
+        serviceUnavailableError: 'useBackupEndpoint'
+      },
+      ...config
+    };
+    
+    this.aiMetrics = {
+      totalAITasks: 0,
+      tasksByPlatform: {},
+      errorsByPlatform: {},
+      recoverySuccessRate: 0,
+      lastPlatformUsed: null
+    };
+  }
+
+  async beforeTaskExecution(request, context) {
+    if (this.config.enablePlatformDetection) {
+      // AIプラットフォームを検出
+      const platform = this.detectAIPlatform(request, context);
+      if (platform) {
+        context.aiPlatform = platform;
+        context.aiErrorPatterns = this.config.errorPatterns[platform] || [];
+        this.aiMetrics.lastPlatformUsed = platform;
+        
+        // プラットフォーム別メトリクス更新
+        this.aiMetrics.tasksByPlatform[platform] = 
+          (this.aiMetrics.tasksByPlatform[platform] || 0) + 1;
+      }
+    }
+
+    this.aiMetrics.totalAITasks++;
+    return request;
+  }
+
+  async afterTaskExecution(result, context) {
+    // AI特化メトリクスの更新
+    if (context.aiPlatform) {
+      if (!result.success && result.error) {
+        // エラーメトリクス更新
+        this.aiMetrics.errorsByPlatform[context.aiPlatform] = 
+          (this.aiMetrics.errorsByPlatform[context.aiPlatform] || 0) + 1;
+      }
+    }
+
+    // AI特化情報を結果に追加
+    if (context.aiPlatform) {
+      result.aiPlatform = context.aiPlatform;
+      result.aiMetrics = this.getAIMetrics();
+    }
+
+    return result;
+  }
+
+  async onError(error, context) {
+    if (!this.config.enableErrorClassification && !this.config.enableRecoveryStrategies) {
+      return null;
+    }
+
+    const platform = context.aiPlatform || this.detectAIPlatformFromError(error);
+    if (!platform) {
+      return null; // AI関連エラーでない場合は処理しない
+    }
+
+    // AI特化エラー分類
+    const errorCategory = this.classifyAIError(error, platform);
+    if (!errorCategory) {
+      return null;
+    }
+
+    // 復旧戦略の決定と実行
+    const recoveryAction = this.config.recoveryActions[errorCategory];
+    if (!recoveryAction) {
+      return null;
+    }
+
+    // 復旧戦略実行
+    const recoveryResult = await this.executeAIRecovery(recoveryAction, error, context, platform);
+    
+    if (recoveryResult.success) {
+      this.updateRecoverySuccessRate(true);
+      return {
+        retry: true,
+        context: {
+          ...context,
+          aiRecovery: recoveryResult,
+          aiPlatform: platform,
+          aiErrorCategory: errorCategory
+        }
+      };
+    } else {
+      this.updateRecoverySuccessRate(false);
+      return null;
+    }
+  }
+
+  /**
+   * AIプラットフォーム検出
+   */
+  detectAIPlatform(request, context) {
+    // tabIdからURLを推測（実装では実際のタブ情報を取得）
+    if (context.tabUrl) {
+      const url = context.tabUrl.toLowerCase();
+      if (url.includes('openai.com') || url.includes('chat.openai.com')) return 'chatgpt';
+      if (url.includes('claude.ai') || url.includes('anthropic.com')) return 'claude';
+      if (url.includes('gemini.google.com') || url.includes('bard.google.com')) return 'gemini';
+      if (url.includes('genspark.ai')) return 'genspark';
+    }
+
+    // aiTypeからの推測
+    if (request.aiType) {
+      const aiType = request.aiType.toLowerCase();
+      if (aiType.includes('chatgpt')) return 'chatgpt';
+      if (aiType.includes('claude')) return 'claude';
+      if (aiType.includes('gemini')) return 'gemini';
+      if (aiType.includes('genspark')) return 'genspark';
+    }
+
+    // モデル名からの推測
+    if (request.model) {
+      const model = request.model.toLowerCase();
+      if (model.includes('gpt')) return 'chatgpt';
+      if (model.includes('claude')) return 'claude';
+      if (model.includes('gemini')) return 'gemini';
+      if (model.includes('genspark')) return 'genspark';
+    }
+
+    return null;
+  }
+
+  /**
+   * エラーからAIプラットフォーム検出
+   */
+  detectAIPlatformFromError(error) {
+    const errorMessage = error.message.toLowerCase();
+    
+    // エラーメッセージからプラットフォームを推測
+    if (errorMessage.includes('openai') || errorMessage.includes('chatgpt')) return 'chatgpt';
+    if (errorMessage.includes('claude') || errorMessage.includes('anthropic')) return 'claude';
+    if (errorMessage.includes('gemini') || errorMessage.includes('bard')) return 'gemini';
+    if (errorMessage.includes('genspark')) return 'genspark';
+
+    return null;
+  }
+
+  /**
+   * AI特化エラー分類
+   */
+  classifyAIError(error, platform) {
+    const errorMessage = error.message.toLowerCase();
+    
+    // プラットフォーム固有のエラーパターンマッチング
+    const patterns = this.config.errorPatterns[platform] || [];
+    for (const pattern of patterns) {
+      if (errorMessage.includes(pattern.toLowerCase())) {
+        // パターンに基づいてカテゴリを決定
+        if (pattern.includes('rate limit') || pattern.includes('quota')) {
+          return 'rateLimitError';
+        } else if (pattern.includes('token limit')) {
+          return 'tokenLimitError';
+        } else if (pattern.includes('content policy') || pattern.includes('moderation')) {
+          return 'contentPolicyError';
+        } else if (pattern.includes('safety') || pattern.includes('harmful')) {
+          return 'safetyFilterError';
+        } else if (pattern.includes('overloaded')) {
+          return 'modelOverloadError';
+        } else if (pattern.includes('unavailable') || pattern.includes('server error')) {
+          return 'serviceUnavailableError';
+        }
+      }
+    }
+
+    // 一般的なエラーパターン
+    if (errorMessage.includes('timeout')) return 'timeoutError';
+    if (errorMessage.includes('network')) return 'networkError';
+    
+    return null;
+  }
+
+  /**
+   * AI復旧戦略実行
+   */
+  async executeAIRecovery(action, error, context, platform) {
+    switch (action) {
+      case 'waitAndRetry':
+        const waitTime = this.calculateWaitTime(platform);
+        await this._sleep(waitTime);
+        return {
+          success: true,
+          action: 'waitAndRetry',
+          waitTime,
+          platform,
+          message: `${platform}で${waitTime}ms待機してリトライしました`
+        };
+
+      case 'splitPrompt':
+        return {
+          success: true,
+          action: 'splitPrompt',
+          platform,
+          message: `${platform}でプロンプト分割を推奨します`,
+          suggestion: 'プロンプトを複数の小さな部分に分割して処理してください'
+        };
+
+      case 'reformatPrompt':
+        return {
+          success: true,
+          action: 'reformatPrompt',
+          platform,
+          message: `${platform}でプロンプト形式調整を推奨します`,
+          suggestion: 'プロンプトの表現を調整して再試行してください'
+        };
+
+      case 'adjustSafetySettings':
+        return {
+          success: true,
+          action: 'adjustSafetySettings',
+          platform,
+          message: `${platform}で安全性設定の調整を推奨します`,
+          suggestion: '安全性フィルターの設定を確認・調整してください'
+        };
+
+      case 'useAlternativeModel':
+        return {
+          success: true,
+          action: 'useAlternativeModel',
+          platform,
+          message: `${platform}で代替モデルの使用を推奨します`,
+          suggestion: '別のモデルを選択して再試行してください'
+        };
+
+      case 'useBackupEndpoint':
+        return {
+          success: true,
+          action: 'useBackupEndpoint',
+          platform,
+          message: `${platform}でバックアップエンドポイントの使用を推奨します`,
+          suggestion: 'バックアップサーバーへの切り替えを検討してください'
+        };
+
+      default:
+        return {
+          success: false,
+          action: 'unknown',
+          platform,
+          message: `未知の復旧戦略: ${action}`
+        };
+    }
+  }
+
+  /**
+   * プラットフォーム別待機時間計算
+   */
+  calculateWaitTime(platform) {
+    const baseTimes = {
+      chatgpt: 2000,   // OpenAIは比較的厳しいレート制限
+      claude: 1500,    // Claudeは中程度
+      gemini: 1000,    // Geminiは比較的緩やか
+      genspark: 3000   // Gensparkはサービス不安定時が多い
+    };
+    
+    return baseTimes[platform] || 2000;
+  }
+
+  /**
+   * 復旧成功率更新
+   */
+  updateRecoverySuccessRate(success) {
+    // 単純な移動平均で成功率を更新
+    const alpha = 0.1; // 学習率
+    const newValue = success ? 1 : 0;
+    this.aiMetrics.recoverySuccessRate = 
+      this.aiMetrics.recoverySuccessRate * (1 - alpha) + newValue * alpha;
+  }
+
+  /**
+   * AIメトリクス取得
+   */
+  getAIMetrics() {
+    return {
+      ...this.aiMetrics,
+      successRate: this.calculateSuccessRate(),
+      lastUpdated: new Date().toISOString()
+    };
+  }
+
+  /**
+   * 成功率計算
+   */
+  calculateSuccessRate() {
+    const totalTasks = this.aiMetrics.totalAITasks;
+    const totalErrors = Object.values(this.aiMetrics.errorsByPlatform)
+      .reduce((sum, count) => sum + count, 0);
+    
+    return totalTasks > 0 ? ((totalTasks - totalErrors) / totalTasks) * 100 : 100;
+  }
+
+  /**
+   * メトリクスリセット
+   */
+  resetMetrics() {
+    this.aiMetrics = {
+      totalAITasks: 0,
+      tasksByPlatform: {},
+      errorsByPlatform: {},
+      recoverySuccessRate: 0,
+      lastPlatformUsed: null
+    };
+  }
+
+  _sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+}
+
+/**
  * 拡張AIタスクハンドラー
  */
 export class EnhancedAITaskHandler extends AITaskHandler {
@@ -262,7 +598,8 @@ export class EnhancedAITaskHandler extends AITaskHandler {
       plugins: {
         testMode: { enabled: true },
         performanceMonitor: { enabled: true },
-        retry: { enabled: true }
+        retry: { enabled: true },
+        aiSpecific: { enabled: true }
       },
       
       // エラーハンドリング設定
@@ -462,6 +799,10 @@ export class EnhancedAITaskHandler extends AITaskHandler {
     
     if (this.config.plugins.retry?.enabled) {
       this.registerPlugin(new RetryPlugin(this.config.plugins.retry), 30);
+    }
+    
+    if (this.config.plugins.aiSpecific?.enabled) {
+      this.registerPlugin(new AISpecificPlugin(this.config.plugins.aiSpecific), 5); // AI特化は高い優先度
     }
   }
 
