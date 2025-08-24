@@ -804,7 +804,7 @@ class StreamProcessor {
             // リトライ上限に達した場合
             this.logger.error(`[StreamProcessor] 3種類AIタスク失敗: ${task.column}${task.row}`, error);
             // タスクを失敗として記録
-            this.markTaskAsFailed(task);
+            await this.markTaskAsFailed(task);
           } else {
             this.logger.warn(`[StreamProcessor] リトライ ${retryCount}/${maxRetries}: ${task.column}${task.row}`);
             await new Promise(resolve => setTimeout(resolve, retryDelay));
@@ -3158,9 +3158,48 @@ ${formattedGemini}`;
    * タスクを失敗としてマーク
    * @param {Object} task - タスクオブジェクト
    */
-  markTaskAsFailed(task) {
+  async markTaskAsFailed(task) {
     const taskId = `${task.column}${task.row}`;
     this.completedTasks.add(task.id);
+    
+    // 統合エラーリカバリーを使用
+    if (window.UnifiedErrorRecovery) {
+      const errorRecovery = new window.UnifiedErrorRecovery({
+        aiType: task.aiType,
+        enableLogging: true
+      });
+      
+      // エラーリカバリーを実行
+      const recoveryResult = await errorRecovery.handleStepError(
+        3, // Step3: AI実行エラーとして扱う
+        new Error('タスク実行に失敗しました'),
+        {
+          taskId: task.id,
+          column: task.column,
+          row: task.row,
+          aiType: task.aiType,
+          prompt: task.prompt,
+          model: task.model,
+          function: task.function
+        }
+      );
+      
+      // リカバリー成功時は再実行
+      if (recoveryResult.success) {
+        this.logger.log(`[StreamProcessor] ✅ エラーリカバリー成功: ${taskId}`);
+        // タスクをリトライキューに追加
+        if (!this.failedTasksByColumn.has(task.column)) {
+          this.failedTasksByColumn.set(task.column, new Set());
+        }
+        this.failedTasksByColumn.get(task.column).add(task);
+        return;
+      }
+      
+      // 最終エラーの場合
+      if (recoveryResult.finalError) {
+        this.logger.error(`[StreamProcessor] ❌ 最終エラー: ${taskId} - ${recoveryResult.errorMessage}`);
+      }
+    }
     
     // スプレッドシートにエラーを記録
     if (this.spreadsheetLogger) {
@@ -4284,31 +4323,64 @@ ${formattedGemini}`;
     
     this.logger.log(`[StreamProcessor] 🔄 リトライ処理開始: ${this.failedTasksByColumn.size}列にエラータスクあり`);
     
+    // 統合エラーリカバリーを使用
+    const errorRecovery = window.UnifiedErrorRecovery ? new window.UnifiedErrorRecovery({
+      enableLogging: true
+    }) : null;
+    
     for (const [column, failedTasks] of this.failedTasksByColumn) {
-      if (failedTasks.length === 0) {
+      const tasksArray = failedTasks instanceof Set ? Array.from(failedTasks) : failedTasks;
+      if (tasksArray.length === 0) {
         continue;
       }
       
-      this.logger.log(`[StreamProcessor] 🔄 ${column}列のエラータスクリトライ: ${failedTasks.length}件`);
+      this.logger.log(`[StreamProcessor] 🔄 ${column}列のエラータスクリトライ: ${tasksArray.length}件`);
       
-      // エラータスクをタスクキューに戻す
-      if (!this.taskQueue.has(column)) {
-        this.taskQueue.set(column, []);
-      }
-      
-      const columnQueue = this.taskQueue.get(column);
-      
-      // 失敗タスクをキューの先頭に追加（優先処理）
-      for (const task of failedTasks.reverse()) { // reverseで先頭に追加する順序を保持
-        columnQueue.unshift(task);
-        this.logger.log(`[StreamProcessor] 🔄 リトライタスクをキューに追加: ${task.column}${task.row}`);
+      // 統合エラーリカバリーを使用してリトライ
+      if (errorRecovery) {
+        for (const task of tasksArray) {
+          const recoveryResult = await errorRecovery.handleStepError(
+            3, // Step3: AI実行エラー
+            new Error(`タスク${task.column}${task.row}の再実行が必要`),
+            {
+              taskId: task.id,
+              column: task.column,
+              row: task.row,
+              aiType: task.aiType,
+              prompt: task.prompt,
+              model: task.model,
+              function: task.function,
+              currentRetry: 0
+            }
+          );
+          
+          if (recoveryResult.success || recoveryResult.needsRetry) {
+            // エラータスクをタスクキューに戻す
+            if (!this.taskQueue.has(column)) {
+              this.taskQueue.set(column, []);
+            }
+            const columnQueue = this.taskQueue.get(column);
+            columnQueue.unshift(task);
+            this.logger.log(`[StreamProcessor] 🔄 リトライタスクをキューに追加: ${task.column}${task.row}`);
+          }
+        }
+      } else {
+        // エラーリカバリーが利用できない場合は従来の処理
+        if (!this.taskQueue.has(column)) {
+          this.taskQueue.set(column, []);
+        }
+        const columnQueue = this.taskQueue.get(column);
+        for (const task of tasksArray.reverse()) {
+          columnQueue.unshift(task);
+          this.logger.log(`[StreamProcessor] 🔄 リトライタスクをキューに追加: ${task.column}${task.row}`);
+        }
       }
       
       // 現在の行インデックスをリセット（先頭から再開）
       this.currentRowByColumn.set(column, 0);
       
       // リトライキューをクリア
-      this.failedTasksByColumn.set(column, []);
+      this.failedTasksByColumn.set(column, failedTasks instanceof Set ? new Set() : []);
     }
     
     // 利用可能な列をチェックしてリトライタスクを開始

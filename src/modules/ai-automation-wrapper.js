@@ -284,13 +284,19 @@ class AIAutomationWrapper {
     // 通常のエラーをキャッチ
     const originalOnError = window.onerror;
     window.onerror = function(message, source, lineno, colno, error) {
-      console.error(`[GlobalErrorHandler] エラーをキャッチ:`, {
-        message,
-        source,
-        lineno,
-        colno,
-        error
-      });
+      // エラーオブジェクトを適切に文字列化
+      const errorDetails = {
+        message: message,
+        source: source,
+        lineno: lineno,
+        colno: colno,
+        error: error ? {
+          message: error.message,
+          stack: error.stack,
+          name: error.name
+        } : null
+      };
+      console.error(`[GlobalErrorHandler] エラーをキャッチ:`, JSON.stringify(errorDetails, null, 2));
       
       // 統合エラーリカバリーで処理
       if (errorRecovery && errorRecovery.handleStepError) {
