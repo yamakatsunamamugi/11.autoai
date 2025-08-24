@@ -454,6 +454,116 @@ chrome.runtime.onConnect.addListener((port) => {
 });
 
 /**
+ * Port接続を処理（長時間実行タスク用）
+ */
+chrome.runtime.onConnect.addListener((port) => {
+  console.log("[Port] 新しいPort接続:", port.name);
+  
+  if (port.name === "ai-task-executor") {
+    let currentTaskId = null;
+    let keepAliveTimer = null;
+    
+    // Port切断時のクリーンアップ
+    port.onDisconnect.addListener(() => {
+      console.log("[Port] Port接続が切断されました:", currentTaskId);
+      if (keepAliveTimer) {
+        clearTimeout(keepAliveTimer);
+      }
+    });
+    
+    // メッセージ受信
+    port.onMessage.addListener(async (msg) => {
+      // Keep-aliveメッセージの処理
+      if (msg.type === 'keep-alive') {
+        console.log("[Port] Keep-alive受信:", msg.taskId);
+        port.postMessage({ 
+          type: 'keep-alive-ack', 
+          taskId: msg.taskId 
+        });
+        
+        // タイムアウトタイマーをリセット
+        if (keepAliveTimer) {
+          clearTimeout(keepAliveTimer);
+        }
+        keepAliveTimer = setTimeout(() => {
+          console.log("[Port] Keep-aliveタイムアウト:", currentTaskId);
+          port.disconnect();
+        }, 60000); // 60秒のタイムアウト
+        return;
+      }
+      
+      // タスク実行要求の処理
+      if (msg.type === 'execute-task' && msg.action === "executeAITask") {
+        currentTaskId = msg.taskData?.taskId;
+        console.log("[Port] AIタスク実行要求受信:", {
+          taskId: currentTaskId,
+          aiType: msg.taskData?.aiType,
+          model: msg.taskData?.model,
+          function: msg.taskData?.function
+        });
+        
+        try {
+          // タブIDを取得（送信元から）
+          const tabId = port.sender?.tab?.id;
+          if (!tabId) {
+            port.postMessage({
+              type: 'task-response',
+              response: {
+                success: false,
+                error: "タブIDが取得できません"
+              }
+            });
+            return;
+          }
+          
+          // 進捗通知を定期的に送信
+          const progressInterval = setInterval(() => {
+            port.postMessage({
+              type: 'progress',
+              progress: 'Processing...',
+              taskId: currentTaskId
+            });
+          }, 10000); // 10秒ごと
+          
+          // AIタスクを実行
+          const result = await executeAITask(tabId, msg.taskData);
+          
+          // 進捗通知を停止
+          clearInterval(progressInterval);
+          
+          // 結果を送信
+          console.log("[Port] AIタスク完了:", {
+            taskId: currentTaskId,
+            success: result.success,
+            responseLength: result.response?.length || 0
+          });
+          
+          port.postMessage({
+            type: 'task-response',
+            response: result
+          });
+          
+        } catch (error) {
+          console.error("[Port] AIタスク実行エラー:", error);
+          port.postMessage({
+            type: 'task-response',
+            response: {
+              success: false,
+              error: error.message
+            }
+          });
+        }
+        
+        // タイムアウトタイマーをクリア
+        if (keepAliveTimer) {
+          clearTimeout(keepAliveTimer);
+        }
+      }
+    });
+  }
+});
+
+/**
  * ポップアップ/ウィンドウからのメッセージを処理
  */
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -1066,6 +1176,94 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           }
         } catch (error) {
           console.error("[MessageHandler] リトライウィンドウ作成エラー:", error);
+          sendResponse({
+            success: false,
+            error: error.message
+          });
+        }
+      })();
+      return true;
+    
+    // ===== ウィンドウ閉じて再度開いてリトライ =====
+    case "CLOSE_AND_REOPEN_WINDOW":
+      console.log("[MessageHandler] ウィンドウ閉じて再開要求:", {
+        taskId: request.taskId,
+        aiType: request.aiType,
+        retryAttempt: request.retryAttempt,
+        waitTime: request.waitTime
+      });
+      
+      (async () => {
+        try {
+          // 現在のウィンドウIDを取得
+          const currentWindowId = sender.tab?.windowId;
+          
+          // AIタイプに応じたURLを決定
+          const aiUrls = {
+            'ChatGPT': 'https://chatgpt.com',
+            'Claude': 'https://claude.ai',
+            'Gemini': 'https://gemini.google.com'
+          };
+          
+          const url = aiUrls[request.aiType] || aiUrls['Claude'];
+          
+          // 現在のウィンドウを閉じる
+          if (currentWindowId) {
+            try {
+              await chrome.windows.remove(currentWindowId);
+              console.log("[MessageHandler] 現在のウィンドウを閉じました");
+            } catch (closeError) {
+              console.warn("[MessageHandler] ウィンドウクローズエラー（続行）:", closeError);
+            }
+          }
+          
+          // 新規ウィンドウを作成
+          const newWindow = await chrome.windows.create({
+            url: url,
+            type: "normal",
+            state: "normal",
+            focused: true
+          });
+          
+          const tabs = await chrome.tabs.query({ windowId: newWindow.id });
+          const newTabId = tabs[0]?.id;
+          
+          if (newTabId) {
+            // 新規タブでページ読み込み完了を待つ
+            setTimeout(async () => {
+              try {
+                // 新規タブでタスクを再実行
+                const response = await chrome.tabs.sendMessage(newTabId, {
+                  action: "EXECUTE_RETRY_TASK",
+                  taskId: request.taskId,
+                  prompt: request.prompt,
+                  enableDeepResearch: request.enableDeepResearch,
+                  specialMode: request.specialMode,
+                  isRetry: true,
+                  retryAttempt: request.retryAttempt,
+                  originalError: request.originalError || "AIResponseFetchError"
+                });
+                
+                sendResponse({
+                  success: true,
+                  windowId: newWindow.id,
+                  tabId: newTabId,
+                  message: `ウィンドウ再起動でリトライ開始（試行${request.retryAttempt}/3）`,
+                  response
+                });
+              } catch (error) {
+                console.error("[MessageHandler] リトライタスク実行エラー:", error);
+                sendResponse({
+                  success: false,
+                  error: error.message
+                });
+              }
+            }, 5000); // ページ読み込みを待つ
+          } else {
+            throw new Error("新規タブIDが取得できません");
+          }
+        } catch (error) {
+          console.error("[MessageHandler] ウィンドウ再起動エラー:", error);
           sendResponse({
             success: false,
             error: error.message

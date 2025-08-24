@@ -1731,6 +1731,13 @@
             step: 5,
             process: '応答取得失敗'
           });
+          
+          // 応答取得失敗を明示的に返す
+          result.success = false;
+          result.error = 'RESPONSE_FETCH_ERROR';
+          result.errorMessage = 'AI応答の取得に失敗しました';
+          result.needsRetry = true;
+          result.errorType = 'AIResponseFetchError';
         }
       }
 

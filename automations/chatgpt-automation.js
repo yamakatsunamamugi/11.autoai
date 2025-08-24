@@ -2208,6 +2208,13 @@
                         elapsedFromStep3: step5FailDuration,
                         elapsedTime: `${step5FailDuration}ms`
                     });
+                    
+                    // 応答取得失敗を明示的に返す
+                    result.success = false;
+                    result.error = 'RESPONSE_FETCH_ERROR';
+                    result.errorMessage = 'AI応答の取得に失敗しました';
+                    result.needsRetry = true;
+                    result.errorType = 'AIResponseFetchError';
                 }
             }
             

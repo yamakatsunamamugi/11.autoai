@@ -12,6 +12,26 @@
 let UI_SELECTORS_LOADED = false;
 let UI_SELECTORS_PROMISE = null;
 let retryManager = null; // RetryManagerインスタンス
+let autoFollowupHandler = null; // AutoFollowupHandlerインスタンス
+
+// AutoFollowupHandlerの初期化（同期的）
+function initializeAutoFollowupHandler() {
+  if (autoFollowupHandler) return autoFollowupHandler;
+  
+  // AutoFollowupHandlerは既にmanifest.jsonのcontent_scriptsで読み込み済み
+  if (typeof window.AutoFollowupHandler === 'function') {
+    console.log('✅ [11.autoai] AutoFollowupHandlerを初期化しました');
+    autoFollowupHandler = new window.AutoFollowupHandler({
+      enabled: true,
+      debug: true,
+      maxFollowups: 3
+    });
+    return autoFollowupHandler;
+  } else {
+    console.warn('⚠️ [11.autoai] AutoFollowupHandlerクラスが見つかりません');
+    return null;
+  }
+}
 
 // RetryManagerの初期化（同期的）
 function initializeRetryManager() {
@@ -68,7 +88,23 @@ async function executeTaskInternal(taskConfig) {
     }
     
     // 応答取得
-    const response = await getResponseWithCanvas();
+    let response;
+    try {
+      response = await getResponseWithCanvas();
+    } catch (fetchError) {
+      // 応答取得失敗の場合
+      if (fetchError.errorType === 'AIResponseFetchError') {
+        return {
+          success: false,
+          error: 'AIResponseFetchError',
+          errorMessage: fetchError.message,
+          aiType: fetchError.aiType || aiType,
+          needsRetry: true,
+          errorType: 'AIResponseFetchError'
+        };
+      }
+      throw fetchError;
+    }
     
     if (!response || response.trim().length === 0) {
       return {
@@ -1288,33 +1324,156 @@ async function handleAITaskPrompt(request, sendResponse) {
     cellInfo: cellInfo  // セル位置情報を追加
   };
   
-  // background.jsに転送して実行
-  chrome.runtime.sendMessage(
-    {
-      action: "executeAITask",
-      taskData: taskData
-    },
-    (response) => {
-      console.log(`[11.autoai][${AI_TYPE}] background.jsからの応答:`, {
-        success: response?.success,
-        responseLength: response?.response?.length,
-        error: response?.error
+  // Port接続を使用した長時間処理対応の通信
+  let port = null;
+  let keepAliveInterval = null;
+  let responseReceived = false;
+  let reconnectAttempts = 0;
+  const maxReconnectAttempts = 3;
+  
+  // Port接続を確立する関数
+  const establishPortConnection = () => {
+    try {
+      port = chrome.runtime.connect({ name: "ai-task-executor" });
+      console.log(`[11.autoai][${AI_TYPE}] Port接続を確立しました`);
+      
+      // Port切断時のハンドリング
+      port.onDisconnect.addListener(() => {
+        console.log(`[11.autoai][${AI_TYPE}] Port接続が切断されました`);
+        if (keepAliveInterval) {
+          clearInterval(keepAliveInterval);
+          keepAliveInterval = null;
+        }
+        
+        if (!responseReceived && reconnectAttempts < maxReconnectAttempts) {
+          reconnectAttempts++;
+          console.log(`[11.autoai][${AI_TYPE}] 再接続試行 ${reconnectAttempts}/${maxReconnectAttempts}`);
+          setTimeout(() => {
+            establishPortConnection();
+            sendTaskRequest();
+          }, 2000); // 2秒後に再接続
+        } else if (!responseReceived) {
+          console.error(`[11.autoai][${AI_TYPE}] 最大再接続回数に達しました`);
+          sendResponse({
+            success: false,
+            response: '',
+            error: 'Port connection lost after max reconnect attempts',
+            aiType: AI_TYPE,
+            model: getModelInfo(),
+            taskId: taskId
+          });
+        }
       });
+      
+      return true;
+    } catch (error) {
+      console.error(`[11.autoai][${AI_TYPE}] Port接続エラー:`, error);
+      return false;
+    }
+  };
+  
+  // 初回接続を確立
+  if (!establishPortConnection()) {
+    sendResponse({
+      success: false,
+      response: '',
+      error: 'Failed to establish port connection',
+      aiType: AI_TYPE,
+      model: getModelInfo(),
+      taskId: taskId
+    });
+    return;
+  }
+  
+  // メッセージ受信リスナー
+  port.onMessage.addListener((msg) => {
+    if (msg.type === 'keep-alive-ack') {
+      console.log(`[11.autoai][${AI_TYPE}] Keep-alive確認受信`);
+      return;
+    }
+    
+    if (msg.type === 'progress') {
+      console.log(`[11.autoai][${AI_TYPE}] 進捗状況:`, msg.progress);
+      return;
+    }
+    
+    if (msg.type === 'task-response') {
+      responseReceived = true;
+      
+      console.log(`[11.autoai][${AI_TYPE}] background.jsからの応答:`, {
+        success: msg.response?.success,
+        responseLength: msg.response?.response?.length,
+        error: msg.response?.error
+      });
+      
+      // Keep-aliveを停止
+      if (keepAliveInterval) {
+        clearInterval(keepAliveInterval);
+      }
       
       // モデル情報を取得して応答に含める
       const currentModel = getModelInfo();
       
       // 応答をそのまま返す
       sendResponse({
-        success: response?.success || false,
-        response: response?.response || '',
-        error: response?.error,
+        success: msg.response?.success || false,
+        response: msg.response?.response || '',
+        error: msg.response?.error,
         aiType: AI_TYPE,
-        model: currentModel,  // モデル情報を追加
+        model: currentModel,
         taskId: taskId
       });
+      
+      // Port接続を閉じる
+      port.disconnect();
     }
-  );
+  });
+  
+  // タスク実行要求を送信する関数
+  const sendTaskRequest = () => {
+    if (!port) {
+      console.error(`[11.autoai][${AI_TYPE}] Port接続がありません`);
+      return;
+    }
+    
+    try {
+      // Keep-aliveメッセージを30秒ごとに送信
+      if (!keepAliveInterval) {
+        keepAliveInterval = setInterval(() => {
+          try {
+            if (port) {
+              port.postMessage({
+                type: 'keep-alive',
+                taskId: taskId,
+                timestamp: Date.now()
+              });
+              console.log(`[11.autoai][${AI_TYPE}] Keep-aliveメッセージ送信`);
+            }
+          } catch (error) {
+            console.error(`[11.autoai][${AI_TYPE}] Keep-alive送信エラー:`, error);
+            if (keepAliveInterval) {
+              clearInterval(keepAliveInterval);
+              keepAliveInterval = null;
+            }
+          }
+        }, 30000); // 30秒ごと
+      }
+      
+      // タスク実行要求を送信
+      port.postMessage({
+        type: 'execute-task',
+        action: "executeAITask",
+        taskData: taskData
+      });
+      
+      console.log(`[11.autoai][${AI_TYPE}] タスク実行要求を送信しました`);
+    } catch (error) {
+      console.error(`[11.autoai][${AI_TYPE}] タスク送信エラー:`, error);
+    }
+  };
+  
+  // 初回のタスク送信
+  sendTaskRequest();
 }
 
 
@@ -2312,32 +2471,44 @@ async function getResponseWithCanvas() {
     Gemini: !!window.Gemini
   });
   
+  let rawResponse = null;
+  let responseError = null;
+  
   // 各AIの自動化スクリプトのgetResponse関数を使用
   switch (AI_TYPE) {
     case "ChatGPT":
       // ChatGPTAutomationのgetResponse関数を使用（テストで実証済み）
       if (window.ChatGPTAutomation?.getResponse) {
         console.log(`[ChatGPT] ChatGPTAutomation.getResponse()を使用`);
-        const response = await window.ChatGPTAutomation.getResponse();
+        rawResponse = await window.ChatGPTAutomation.getResponse();
         // ChatGPTは空文字列を返すことがあるので、nullに変換
-        return response || null;
+        rawResponse = rawResponse || null;
       }
       
-      // ChatGPTAutomationが利用できない場合はエラーをスロー
-      console.error('[ChatGPT] ChatGPTAutomationが利用できません');
-      throw new Error('ChatGPT: 自動化スクリプトが利用できません');
+      } else {
+        // ChatGPTAutomationが利用できない場合はエラーを記録
+        console.error('[ChatGPT] ChatGPTAutomationが利用できません');
+        responseError = new Error('AIResponseFetchError');
+        responseError.aiType = 'ChatGPT';
+        responseError.errorType = 'AIResponseFetchError';
+        responseError.message = 'ChatGPT: 応答取得に失敗しました';
+      }
+      break;
 
     case "Claude":
       // ClaudeAutomationのgetResponse関数を使用（テストで実証済み）
       if (window.ClaudeAutomation?.getResponse) {
         console.log(`[Claude] ClaudeAutomation.getResponse()を使用`);
-        const response = await window.ClaudeAutomation.getResponse();
-        return response;
+        rawResponse = await window.ClaudeAutomation.getResponse();
+      } else {
+        // ClaudeAutomationが利用できない場合はエラーを記録
+        console.error('[Claude] ClaudeAutomationが利用できません');
+        responseError = new Error('AIResponseFetchError');
+        responseError.aiType = 'Claude';
+        responseError.errorType = 'AIResponseFetchError';
+        responseError.message = 'Claude: 応答取得に失敗しました';
       }
-      
-      // ClaudeAutomationが利用できない場合はエラーをスロー
-      console.error('[Claude] ClaudeAutomationが利用できません');
-      throw new Error('Claude: 自動化スクリプトが利用できません');
+      break;
 
     case "Gemini":
       // GeminiAutomationまたはwindow.Geminiのget Response関数を使用
@@ -2350,36 +2521,76 @@ async function getResponseWithCanvas() {
       
       if (window.GeminiAutomation?.getResponse) {
         console.log(`[Gemini] GeminiAutomation.getResponse()を使用`);
-        const response = await window.GeminiAutomation.getResponse();
-        return response || null;
+        rawResponse = await window.GeminiAutomation.getResponse();
+        rawResponse = rawResponse || null;
       } else if (window.Gemini?.getResponse) {
         console.log(`[Gemini] window.Gemini.getResponse()を使用`);
-        const response = await window.Gemini.getResponse();
-        return response || null;
+        rawResponse = await window.Gemini.getResponse();
+        rawResponse = rawResponse || null;
       }
       
       // Gemini: Canvas機能対応（動作確認済み）
-      const geminiCanvasContainer = document.querySelector(
-        'div[contenteditable="true"].ProseMirror',
-      );
-      if (geminiCanvasContainer) {
-        console.log(
-          `[11.autoai][${AI_TYPE}] Canvas機能検出（ProseMirror方式）`,
+      if (!rawResponse) {
+        const geminiCanvasContainer = document.querySelector(
+          'div[contenteditable="true"].ProseMirror',
         );
-        const canvasText =
-          geminiCanvasContainer.innerText || geminiCanvasContainer.textContent;
-        if (canvasText && canvasText.trim().length > 0) {
-          return canvasText;
+        if (geminiCanvasContainer) {
+          console.log(
+            `[11.autoai][${AI_TYPE}] Canvas機能検出（ProseMirror方式）`,
+          );
+          const canvasText =
+            geminiCanvasContainer.innerText || geminiCanvasContainer.textContent;
+          if (canvasText && canvasText.trim().length > 0) {
+            rawResponse = canvasText;
+          }
         }
       }
 
-      // GeminiAutomationが利用できない場合はエラーをスロー
-      console.error('[Gemini] GeminiAutomationもwindow.Geminiも利用できません');
-      throw new Error('Gemini: 自動化スクリプトが利用できません');
+      if (!rawResponse) {
+        // GeminiAutomationが利用できない場合はエラーを記録
+        console.error('[Gemini] 応答取得失敗');
+        responseError = new Error('AIResponseFetchError');
+        responseError.aiType = 'Gemini';
+        responseError.errorType = 'AIResponseFetchError';
+        responseError.message = 'Gemini: 応答取得に失敗しました';
+      }
+      break;
 
     default:
       throw new Error(`サポートされていないAI種別: ${AI_TYPE}`);
   }
+  
+  // エラーがある場合はエラーをスロー
+  if (responseError) {
+    throw responseError;
+  }
+  
+  // 自動追加質問機能を適用
+  if (rawResponse && autoFollowupHandler) {
+    try {
+      console.log(`[${AI_TYPE}] 自動追加質問機能を適用中...`);
+      const finalResponse = await autoFollowupHandler.processResponse(
+        rawResponse,
+        AI_TYPE,
+        {
+          taskId: window.currentAITaskInfo?.taskId,
+          model: window.currentAITaskInfo?.model
+        }
+      );
+      console.log(`[${AI_TYPE}] 自動追加質問完了`, {
+        original: rawResponse.length,
+        final: finalResponse.length,
+        added: finalResponse.length - rawResponse.length
+      });
+      return finalResponse;
+    } catch (error) {
+      console.warn(`[${AI_TYPE}] 自動追加質問エラー:`, error);
+      // エラーが発生しても元の応答を返す
+      return rawResponse;
+    }
+  }
+  
+  return rawResponse;
 }
 
 // ========================================
@@ -2689,6 +2900,12 @@ if (AI_TYPE) {
   const manager = initializeRetryManager();
   if (manager) {
     console.log('[11.autoai] RetryManager初期化完了');
+  }
+  
+  // AutoFollowupHandlerの初期化
+  const followupHandler = initializeAutoFollowupHandler();
+  if (followupHandler) {
+    console.log('[11.autoai] AutoFollowupHandler初期化完了');
   }
   
   // UI Selectors読み込みから開始

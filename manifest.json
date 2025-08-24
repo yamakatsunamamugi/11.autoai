@@ -58,6 +58,7 @@
       ],
       "js": [
         "src/modules/retry-manager.js",
+        "src/modules/auto-followup-handler.js",
         "src/content/model-info-loader.js",
         "src/content/ai-content-unified.js"
       ],
