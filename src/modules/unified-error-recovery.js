@@ -401,10 +401,33 @@ class UnifiedErrorRecovery {
     
     const logMessage = `[UnifiedErrorRecovery] ${prefix} ${message}`;
     
-    if (data) {
-      console.log(logMessage, data);
+    // コンソールに出力
+    if (level === 'ERROR') {
+      console.error(logMessage, data || '');
+    } else if (level === 'WARNING') {
+      console.warn(logMessage, data || '');
     } else {
-      console.log(logMessage);
+      console.log(logMessage, data || '');
+    }
+    
+    // Chrome拡張機能のログにも送信
+    if (chrome && chrome.runtime && chrome.runtime.sendMessage) {
+      const logLevel = level === 'ERROR' ? 'error' : 
+                       level === 'WARNING' ? 'warn' : 'info';
+      
+      chrome.runtime.sendMessage({
+        type: 'LOG_ERROR',
+        level: logLevel,
+        message: logMessage,
+        details: {
+          timestamp: timestamp,
+          aiType: this.config.aiType,
+          data: data,
+          source: 'UnifiedErrorRecovery'
+        }
+      }).catch(() => {
+        // 送信エラーは無視
+      });
     }
   }
   

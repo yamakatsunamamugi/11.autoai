@@ -568,6 +568,30 @@ chrome.runtime.onConnect.addListener((port) => {
  */
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   switch (request.action || request.type) {
+    // ===== エラーログメッセージ受信 =====
+    case "LOG_ERROR":
+      if (request.message && request.details) {
+        const level = request.level || 'error';
+        const timestamp = request.details.timestamp || new Date().toISOString();
+        
+        // コンソールに出力
+        console[level](`[ExtensionLog] ${request.message}`, request.details);
+        
+        // LogManagerに送信（拡張機能UI用）
+        logManager.logAI(request.details.aiType || 'system', request.message, {
+          level: level,
+          timestamp: timestamp,
+          category: 'error',
+          details: request.details
+        });
+        
+        sendResponse({ success: true });
+      } else {
+        console.error('Invalid LOG_ERROR format:', request);
+        sendResponse({ success: false, error: 'Invalid error log format' });
+      }
+      return false; // 同期応答
+      
     // ===== AI詳細ログメッセージ受信 =====
     case "LOG_AI_MESSAGE":
       if (request.aiType && request.message) {

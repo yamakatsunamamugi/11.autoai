@@ -286,6 +286,8 @@ class AIAutomationWrapper {
     window.onerror = function(message, source, lineno, colno, error) {
       // エラーオブジェクトを適切に文字列化
       const errorDetails = {
+        timestamp: new Date().toISOString(),
+        type: 'GLOBAL_ERROR',
         message: message,
         source: source,
         lineno: lineno,
@@ -294,9 +296,26 @@ class AIAutomationWrapper {
           message: error.message,
           stack: error.stack,
           name: error.name
-        } : null
+        } : null,
+        aiType: aiType,
+        url: window.location.href
       };
-      console.error(`[GlobalErrorHandler] エラーをキャッチ:`, JSON.stringify(errorDetails, null, 2));
+      
+      // コンソールと拡張機能の両方に出力
+      const errorString = JSON.stringify(errorDetails, null, 2);
+      console.error(`[GlobalErrorHandler] エラーをキャッチ:`, errorString);
+      
+      // Chrome拡張機能のログにも送信
+      if (chrome && chrome.runtime && chrome.runtime.sendMessage) {
+        chrome.runtime.sendMessage({
+          type: 'LOG_ERROR',
+          level: 'error',
+          message: `[GlobalErrorHandler] エラーをキャッチ`,
+          details: errorDetails
+        }).catch(() => {
+          // 送信エラーは無視（バックグラウンドが利用不可の場合あり）
+        });
+      }
       
       // 統合エラーリカバリーで処理
       if (errorRecovery && errorRecovery.handleStepError) {
@@ -319,7 +338,35 @@ class AIAutomationWrapper {
     // Promiseのrejectをキャッチ
     const originalOnUnhandledRejection = window.onunhandledrejection;
     window.onunhandledrejection = function(event) {
-      console.error(`[GlobalErrorHandler] 未処理のPromise rejection:`, event.reason);
+      // エラー情報を構造化
+      const errorDetails = {
+        timestamp: new Date().toISOString(),
+        type: 'UNHANDLED_REJECTION',
+        reason: event.reason instanceof Error ? {
+          message: event.reason.message,
+          stack: event.reason.stack,
+          name: event.reason.name
+        } : String(event.reason),
+        promise: event.promise ? 'Promise object' : null,
+        aiType: aiType,
+        url: window.location.href
+      };
+      
+      // コンソールと拡張機能の両方に出力
+      const errorString = JSON.stringify(errorDetails, null, 2);
+      console.error(`[GlobalErrorHandler] 未処理のPromise rejection:`, errorString);
+      
+      // Chrome拡張機能のログにも送信
+      if (chrome && chrome.runtime && chrome.runtime.sendMessage) {
+        chrome.runtime.sendMessage({
+          type: 'LOG_ERROR',
+          level: 'error',
+          message: `[GlobalErrorHandler] 未処理のPromise rejection`,
+          details: errorDetails
+        }).catch(() => {
+          // 送信エラーは無視
+        });
+      }
       
       // 統合エラーリカバリーで処理
       if (errorRecovery && errorRecovery.handleStepError) {
