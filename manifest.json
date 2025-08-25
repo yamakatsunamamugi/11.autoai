@@ -23,6 +23,16 @@
     "https://genspark.com/*",
     "https://www.genspark.ai/*"
   ],
+  "oauth2": {
+    "client_id": "262291163420-fj2jfie1cmb63md9nnu4ofdkr9ku1u3o.apps.googleusercontent.com",
+    "scopes": [
+      "https://www.googleapis.com/auth/spreadsheets",
+      "https://www.googleapis.com/auth/documents",
+      "https://www.googleapis.com/auth/drive.file",
+      "https://www.googleapis.com/auth/drive",
+      "https://www.googleapis.com/auth/userinfo.email"
+    ]
+  },
   "action": {
     "default_popup": "popup.html",
     "default_icon": "icon.png"
