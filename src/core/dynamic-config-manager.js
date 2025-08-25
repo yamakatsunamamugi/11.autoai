@@ -28,7 +28,7 @@ export class DynamicConfigManager {
     // Service Worker環境の場合はchrome.storageから取得
     if (typeof document === 'undefined') {
       try {
-        const result = await chrome.storage.local.get('dynamicAIConfig');
+        const result = await chrome.storage.sync.get('dynamicAIConfig');
         if (result.dynamicAIConfig) {
           console.log('[DynamicConfigManager] chrome.storageから設定取得:', result.dynamicAIConfig);
           return result.dynamicAIConfig;
@@ -80,7 +80,7 @@ export class DynamicConfigManager {
     
     // UIから取得した設定をchrome.storageに保存（他の環境でも使えるように）
     try {
-      await chrome.storage.local.set({ dynamicAIConfig: config });
+      await chrome.storage.sync.set({ dynamicAIConfig: config });
       console.log('[DynamicConfigManager] 設定をchrome.storageに保存');
     } catch (error) {
       console.warn('[DynamicConfigManager] chrome.storage保存エラー:', error);

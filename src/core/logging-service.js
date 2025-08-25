@@ -97,7 +97,7 @@ class LoggingService {
         oldestKeys.forEach(k => delete logs[k]);
       }
 
-      await chrome.storage.local.set({ extension_logs: logs });
+      await chrome.storage.sync.set({ extension_logs: logs });
     } catch (error) {
       console.error('Failed to save log to storage:', error);
     }
@@ -110,7 +110,7 @@ class LoggingService {
     if (!this.isExtension) return {};
 
     try {
-      const result = await chrome.storage.local.get('extension_logs');
+      const result = await chrome.storage.sync.get('extension_logs');
       return result.extension_logs || {};
     } catch (error) {
       console.error('Failed to get logs from storage:', error);
@@ -266,7 +266,7 @@ class LoggingService {
   async clearLogs() {
     this.logHistory = [];
     if (this.isExtension) {
-      await chrome.storage.local.remove('extension_logs');
+      await chrome.storage.sync.remove('extension_logs');
     }
   }
 }

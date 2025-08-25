@@ -30,7 +30,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     
     if (createdWindow && createdWindow.id) {
       // ウィンドウIDを保存（処理開始時に移動するため）
-      chrome.storage.local.set({ extensionWindowId: createdWindow.id });
+      chrome.storage.sync.set({ extensionWindowId: createdWindow.id });
     }
     // ポップアップを閉じる
     if (typeof window !== 'undefined' && window.close) {
@@ -50,7 +50,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
     
     if (fallbackWindow && fallbackWindow.id) {
-      chrome.storage.local.set({ extensionWindowId: fallbackWindow.id });
+      chrome.storage.sync.set({ extensionWindowId: fallbackWindow.id });
     }
     // ポップアップを閉じる
     if (typeof window !== 'undefined' && window.close) {

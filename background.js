@@ -1,6 +1,9 @@
 // background.js - Service Worker 
 console.log("AutoAI Service Worker が起動しました");
 
+// Storage Migration Helper - 自動移行
+import { StorageMigration } from "./src/utils/storage-migration.js";
+
 // 段階的復元: Step 1 - 基本サービスのみ（問題のあるファイルを除外）
 import "./src/services/auth-service.js";
 import "./src/features/spreadsheet/config.js";
@@ -1790,3 +1793,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return false;
   }
 });
+
+// ===== 拡張機能インストール/アップデート時の処理 =====
+chrome.runtime.onInstalled.addListener(async (details) => {
+  console.log('🔄 Extension installed/updated:', details.reason);
+  
+  // ストレージ移行を実行
+  if (details.reason === 'install' || details.reason === 'update') {
+    await StorageMigration.autoMigrate();
+  }
+});
+
+console.log("✅ AutoAI Service Worker 初期化完了");

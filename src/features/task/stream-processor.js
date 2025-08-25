@@ -3913,7 +3913,7 @@ ${formattedGemini}`;
   async setupWindowsBasedOnSettings() {
     try {
       // ウィンドウ設定を取得
-      const result = await chrome.storage.local.get(['windowSettings']);
+      const result = await chrome.storage.sync.get(['windowSettings']);
       const settings = result.windowSettings || {
         extensionWindowNumber: 1,  // デフォルト: モニター1
         spreadsheetWindowNumber: 2  // デフォルト: モニター2
@@ -3956,7 +3956,7 @@ ${formattedGemini}`;
    */
   async moveExtensionToMonitorQuadrant(monitorNumber, quadrant) {
     try {
-      const result = await chrome.storage.local.get(['extensionWindowId']);
+      const result = await chrome.storage.sync.get(['extensionWindowId']);
       const windowId = result.extensionWindowId;
       
       if (!windowId) {
@@ -4059,7 +4059,7 @@ ${formattedGemini}`;
    */
   async moveExtensionToWindowNumber(windowNumber) {
     try {
-      const result = await chrome.storage.local.get(['extensionWindowId']);
+      const result = await chrome.storage.sync.get(['extensionWindowId']);
       const windowId = result.extensionWindowId;
       
       if (!windowId) {
