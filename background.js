@@ -1048,6 +1048,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         hasSpreadsheetUrl: !!request.spreadsheetUrl
       });
       
+      // スリープ防止を有効化（画面を明るく保つ）
+      console.log('☕ スリープ防止を有効化');
+      chrome.power.requestKeepAwake('display');
+      
       // 即座にレスポンスを送信してメッセージチャネルの閉鎖を防ぐ
       sendResponse({
         success: true,
@@ -1786,6 +1790,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         }
       })();
       return true;
+    
+    // ===== スリープ防止解除 =====
+    case "releaseKeepAwake":
+      console.log('☕ スリープ防止を解除');
+      chrome.power.releaseKeepAwake();
+      sendResponse({ success: true });
+      return false;
 
     default:
       console.warn("[MessageHandler] 未知のアクション:", request.action);

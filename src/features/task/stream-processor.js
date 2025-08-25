@@ -2242,6 +2242,13 @@ ${formattedGemini}`;
         return false; // まだ未処理タスクがある
       }
     }
+    
+    // 全タスク完了時にスリープ防止を解除
+    console.log('☕ 全タスク完了、スリープ防止を解除');
+    chrome.runtime.sendMessage({
+      action: 'releaseKeepAwake'
+    });
+    
     return true; // 全タスク完了
   }
 

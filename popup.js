@@ -2,10 +2,17 @@
 
 // WindowServiceをインポート（ウィンドウ管理の一元化）
 import { WindowService } from './src/services/window-service.js';
+// StorageMigrationをインポート（起動時の自動同期）
+import { StorageMigration } from './src/utils/storage-migration.js';
 
 // ポップアップがクリックされたらメインUIウィンドウを開く
 document.addEventListener("DOMContentLoaded", async () => {
   try {
+    // 起動時に自動的にストレージを同期
+    console.log('🔄 起動時の自動同期を開始...');
+    await StorageMigration.autoMigrate();
+    console.log('✅ 自動同期完了');
+    
     // 画面情報を取得
     const displays = await chrome.system.display.getInfo();
     const primaryDisplay = displays.find((d) => d.isPrimary) || displays[0];

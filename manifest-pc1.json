@@ -10,7 +10,8 @@
     "identity",
     "system.display",
     "scripting",
-    "windows"
+    "windows",
+    "power"
   ],
   "host_permissions": [
     "https://sheets.googleapis.com/*",

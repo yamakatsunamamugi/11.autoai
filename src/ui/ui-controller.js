@@ -1717,8 +1717,21 @@ if (addColumnsBtn) {
   });
 }
 
+// Screen Wake Lock API用の変数
+let wakeLock = null;
+
 startBtn.addEventListener("click", async () => {
   console.log("【本番実行】ストリーミング処理開始ボタンが押されました。");
+
+  // Screen Wake Lock APIでスリープ防止（UIから画面を明るく保つ）
+  if ('wakeLock' in navigator) {
+    try {
+      wakeLock = await navigator.wakeLock.request('screen');
+      console.log('🌞 Screen Wake Lock有効化（画面を明るく保つ）');
+    } catch (err) {
+      console.log('Screen Wake Lock失敗:', err.name, err.message);
+    }
+  }
 
   // 複数のURL入力欄から値を取得
   const urlInputs = document.querySelectorAll('.spreadsheet-url-input');
@@ -1734,6 +1747,11 @@ startBtn.addEventListener("click", async () => {
   // バリデーション：URLが入力されているか確認
   if (urls.length === 0) {
     updateStatus("少なくとも1つのURLを入力してください", "error");
+    // Wake Lockを解除
+    if (wakeLock) {
+      wakeLock.release();
+      wakeLock = null;
+    }
     return;
   }
   
@@ -1928,6 +1946,13 @@ async function processMultipleUrls(urls) {
 stopBtn.addEventListener("click", async () => {
   stopBtn.disabled = true;
   updateStatus("ストリーミング処理を停止中...", "loading");
+
+  // Screen Wake Lockを解除
+  if (wakeLock) {
+    wakeLock.release();
+    wakeLock = null;
+    console.log('🌞 Screen Wake Lock解除');
+  }
 
   try {
     // バックグラウンドスクリプトにストリーミング処理停止を通知
