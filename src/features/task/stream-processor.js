@@ -2253,6 +2253,41 @@ ${formattedGemini}`;
   }
 
   /**
+   * エラー時のクリーンアップ処理
+   * @param {Error} error - 発生したエラー
+   */
+  async cleanupOnError(error) {
+    this.logger.error('[StreamProcessor] エラー時のクリーンアップ開始', error);
+    
+    // スリープ防止を解除
+    console.log('☕ エラーによりスリープ防止を解除');
+    try {
+      await chrome.runtime.sendMessage({
+        action: 'releaseKeepAwake'
+      });
+    } catch (msgError) {
+      console.error('スリープ防止解除メッセージ送信失敗:', msgError);
+    }
+    
+    // 全ウィンドウを閉じる
+    for (const [windowId, data] of this.activeWindows.entries()) {
+      try {
+        await chrome.windows.remove(windowId);
+        this.logger.log(`[StreamProcessor] ウィンドウを閉じました: ${windowId}`);
+      } catch (closeError) {
+        console.error(`ウィンドウクローズ失敗 (${windowId}):`, closeError);
+      }
+    }
+    
+    // 状態をクリア
+    this.activeWindows.clear();
+    this.columnWindows.clear();
+    this.isProcessing = false;
+    
+    this.logger.log('[StreamProcessor] クリーンアップ完了');
+  }
+
+  /**
    * 記載完了後、次のタスクを開始できるかチェック
    * 
    * ■ 処理パターン

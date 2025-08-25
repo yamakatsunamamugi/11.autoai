@@ -1824,6 +1824,12 @@ async function processMultipleUrls(urls) {
       updateStatus("スプレッドシート読み込みエラー: " + error.message, "error");
       startBtn.disabled = false;
       stopBtn.disabled = true;
+      // Wake Lockを解除
+      if (wakeLock) {
+        wakeLock.release();
+        wakeLock = null;
+        console.log('🌞 Screen Wake Lock解除（エラー時）');
+      }
       return;
     }
   }
@@ -1834,6 +1840,12 @@ async function processMultipleUrls(urls) {
     // URLから情報を抽出
     const match = currentUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
     if (!match) {
+      // Wake Lockを解除
+      if (wakeLock) {
+        wakeLock.release();
+        wakeLock = null;
+        console.log('🌞 Screen Wake Lock解除（URLエラー時）');
+      }
       throw new Error("有効なスプレッドシートURLではありません");
     }
     const spreadsheetId = match[1];
@@ -1919,6 +1931,12 @@ async function processMultipleUrls(urls) {
       startBtn.disabled = false;
       stopBtn.disabled = true;
       showFeedback("ストリーミング処理の開始に失敗しました", "error");
+      // Wake Lockを解除
+      if (wakeLock) {
+        wakeLock.release();
+        wakeLock = null;
+        console.log('🌞 Screen Wake Lock解除（開始エラー時）');
+      }
     }
   } catch (error) {
     console.error("ストリーミング処理開始エラー:", error);
@@ -1939,6 +1957,12 @@ async function processMultipleUrls(urls) {
     startBtn.disabled = false;
     stopBtn.disabled = true;
     showFeedback("ストリーミング処理でエラーが発生しました", "error");
+    // Wake Lockを解除
+    if (wakeLock) {
+      wakeLock.release();
+      wakeLock = null;
+      console.log('🌞 Screen Wake Lock解除（一般エラー時）');
+    }
   }
 }
 

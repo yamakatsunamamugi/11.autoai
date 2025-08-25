@@ -1087,6 +1087,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             stack: error.stack,
             taskListSize: request.taskList?.tasks?.length || 0
           });
+          // エラー時にスリープ防止を解除
+          console.log('☕ スリープ防止を解除（エラー時）');
+          chrome.power.releaseKeepAwake();
         }
       })();
       
