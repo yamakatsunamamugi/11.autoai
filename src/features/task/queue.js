@@ -13,7 +13,7 @@ class TaskQueue {
       // タスクリストをJSON形式で保存
       const data = taskList.toJSON();
 
-      await chrome.storage.sync.set({
+      await chrome.storage.local.set({
         [this.storageKey]: data,
         [this.eventKey]: {
           type: "task_list_saved",
@@ -32,7 +32,7 @@ class TaskQueue {
   // タスクリストを読み込み
   async loadTaskList() {
     try {
-      const result = await chrome.storage.sync.get([this.storageKey]);
+      const result = await chrome.storage.local.get([this.storageKey]);
       const data = result[this.storageKey];
 
       if (!data) {
@@ -58,9 +58,9 @@ class TaskQueue {
   // タスクリストをクリア
   async clearTaskList() {
     try {
-      await chrome.storage.sync.remove([this.storageKey, this.metadataKey]);
+      await chrome.storage.local.remove([this.storageKey, this.metadataKey]);
 
-      await chrome.storage.sync.set({
+      await chrome.storage.local.set({
         [this.eventKey]: {
           type: "task_list_cleared",
           timestamp: Date.now(),

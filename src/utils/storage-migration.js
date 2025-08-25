@@ -24,7 +24,8 @@ export class StorageMigration {
     this.localKeys = [
       'extension_logs',       // ログデータ（大きい）
       'task_queue',           // タスクキュー（大きい可能性）
-      'ai_config_persistence' // AI設定履歴（大きい可能性）
+      'ai_config_persistence', // AI設定履歴（大きい可能性）
+      'savedTasks'            // 保存されたタスク（大きい）
     ];
   }
 
