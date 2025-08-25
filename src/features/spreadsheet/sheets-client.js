@@ -30,22 +30,50 @@ class SheetsClient {
    * @returns {Promise<Object>} メタデータ
    */
   async getSpreadsheetMetadata(spreadsheetId) {
-    const token = await globalThis.authService.getAuthToken();
-    const url = `${this.baseUrl}/${spreadsheetId}?fields=properties,sheets(properties)`;
+    try {
+      const token = await globalThis.authService.getAuthToken();
+      const url = `${this.baseUrl}/${spreadsheetId}?fields=properties,sheets(properties)`;
 
-    const response = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-    });
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(`Sheets API error: ${error.error.message}`);
+      if (!response.ok) {
+        const error = await response.json();
+        const errorMessage = error.error?.message || 'Unknown error';
+        
+        // エラーの詳細をログに記録
+        if (globalThis.logManager) {
+          let hint = '';
+          if (response.status === 403) {
+            hint = 'スプレッドシートへのアクセス権限がありません。共有設定を確認してください。';
+          } else if (response.status === 404) {
+            hint = 'スプレッドシートが見つかりません。URLを確認してください。';
+          } else if (response.status === 401) {
+            hint = '認証が必要です。再度ログインしてください。';
+          }
+          
+          globalThis.logManager.error(`スプレッドシート読み込みエラー: ${errorMessage}`, {
+            status: response.status,
+            spreadsheetId: spreadsheetId,
+            hint: hint
+          });
+        }
+        
+        throw new Error(`Sheets API error (${response.status}): ${errorMessage}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      // 認証エラーの場合の追加情報
+      if (error.message && error.message.includes('Failed to fetch')) {
+        throw new Error('ネットワークエラー: インターネット接続を確認してください');
+      }
+      throw error;
     }
-
-    return await response.json();
   }
 
   /**
