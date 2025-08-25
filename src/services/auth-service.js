@@ -48,6 +48,14 @@ class AuthService {
       
       // OAuth2認証URLを構築
       const redirectUri = `https://${chrome.runtime.id}.chromiumapp.org`;
+      
+      // デバッグ用ログ
+      console.log('=== OAuth Debug Info ===');
+      console.log('Extension ID:', chrome.runtime.id);
+      console.log('Client ID:', clientId);
+      console.log('Redirect URI:', redirectUri);
+      console.log('========================');
+      
       const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
       authUrl.searchParams.set('client_id', clientId);
       authUrl.searchParams.set('response_type', 'token');
