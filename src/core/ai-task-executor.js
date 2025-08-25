@@ -214,12 +214,29 @@ export class AITaskExecutor {
             totalTime: `${totalTime}秒`
           });
         } else {
-          this.logger.log(`[AITaskExecutor] ⚠️ [${taskData.aiType}] タスク失敗 [${cellPosition}セル]:`, {
-            セル: cellPosition,
-            taskId: taskData.taskId,
-            error: resultData.error,
-            totalTime: `${totalTime}秒`
-          });
+          // エラーの詳細情報をログに記録
+          const errorMessage = `⚠️ [${taskData.aiType}] タスク失敗 [${cellPosition}セル]: ${resultData.error}`;
+          
+          // logManagerがある場合は詳細なエラー情報を記録
+          if (this.logger.logAI) {
+            this.logger.logAI(taskData.aiType, errorMessage, {
+              level: 'error',
+              metadata: {
+                セル: cellPosition,
+                taskId: taskData.taskId,
+                error: resultData.error,
+                errorDetails: resultData.errorDetails || {},
+                totalTime: `${totalTime}秒`
+              }
+            });
+          } else {
+            this.logger.log(errorMessage, {
+              セル: cellPosition,
+              taskId: taskData.taskId,
+              error: resultData.error,
+              totalTime: `${totalTime}秒`
+            });
+          }
         }
         
         return resultData;
@@ -233,17 +250,41 @@ export class AITaskExecutor {
         ? `${taskData.cellInfo.column}${taskData.cellInfo.row}` 
         : '不明';
       
-      this.logger.error(`[AITaskExecutor] ❌ [${taskData.aiType}] 実行エラー [${cellPosition}セル]:`, {
-        セル: cellPosition,
-        taskId: taskData.taskId,
-        error: error.message,
-        stack: error.stack,
-        totalTime: `${totalTime}秒`
-      });
+      const errorMessage = `❌ [${taskData.aiType}] 実行エラー [${cellPosition}セル]: ${error.message}`;
+      
+      // logManagerがある場合は詳細なエラー情報を記録
+      if (this.logger.logAI) {
+        this.logger.logAI(taskData.aiType, errorMessage, {
+          level: 'error',
+          metadata: {
+            セル: cellPosition,
+            taskId: taskData.taskId,
+            error: error.message,
+            errorStack: error.stack,
+            errorName: error.name,
+            totalTime: `${totalTime}秒`
+          }
+        });
+      } else if (this.logger.error) {
+        this.logger.error(errorMessage, {
+          セル: cellPosition,
+          taskId: taskData.taskId,
+          error: error.message,
+          stack: error.stack,
+          totalTime: `${totalTime}秒`
+        });
+      } else {
+        this.logger.log(errorMessage);
+      }
       
       return {
         success: false,
-        error: error.message
+        error: error.message,
+        errorDetails: {
+          message: error.message,
+          stack: error.stack,
+          name: error.name
+        }
       };
     }
   }

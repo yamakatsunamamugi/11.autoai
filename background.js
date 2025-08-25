@@ -41,7 +41,8 @@ import { aiTaskHandler } from "./src/handlers/ai-task-handler.js";
 
 // ===== 共通AIタスク実行モジュール =====
 import { AITaskExecutor } from "./src/core/ai-task-executor.js";
-const aiTaskExecutor = new AITaskExecutor();
+// logManagerが初期化された後に設定するため、一旦nullで初期化
+let aiTaskExecutor = null;
 
 // ===== ウィンドウマネージャー =====
 import { TestWindowManager } from "./src/ui/test-window-manager.js";
@@ -239,6 +240,9 @@ class LogManager {
 const logManager = new LogManager();
 globalThis.logManager = logManager;
 
+// logManagerを使用してAITaskExecutorを初期化
+aiTaskExecutor = new AITaskExecutor(logManager);
+
 // ===== 初期化完了後の処理 =====
 // モジュール読み込み完了を待ってから初期化処理を実行
 setTimeout(() => {
@@ -329,7 +333,11 @@ async function executeAITask(tabId, taskData) {
         }
       });
     } else {
-      logManager.logAI(taskData.aiType, `❌ 処理失敗 [${cellPosition}セル]: ${result.error}`, {
+      // エラー詳細を含めたメッセージを作成
+      const errorDetails = result.errorDetails || {};
+      const errorMessage = `❌ 処理失敗 [${cellPosition}セル]: ${result.error}${errorDetails.message ? ` - 詳細: ${errorDetails.message}` : ''}`;
+      
+      logManager.logAI(taskData.aiType, errorMessage, {
         level: 'error',
         metadata: {
           taskId: taskData.taskId,
@@ -338,6 +346,7 @@ async function executeAITask(tabId, taskData) {
           row: cellInfo.row,
           totalTime: `${totalTime}秒`,
           error: result.error,
+          errorDetails: errorDetails,
           failedProcess: result.failedStep || '不明'
         }
       });
@@ -346,8 +355,21 @@ async function executeAITask(tabId, taskData) {
     return result;
   } catch (error) {
     const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
-    logManager.error(`[${taskData.aiType}] AIタスク実行エラー: ${error.message}`, error);
-    return { success: false, error: error.message };
+    // エラーの詳細情報を含めてログに記録
+    logManager.logAI(taskData.aiType, `❌ AIタスク実行エラー [${cellPosition}セル]: ${error.message}`, {
+      level: 'error',
+      metadata: {
+        taskId: taskData.taskId,
+        cellPosition,
+        column: cellInfo.column,
+        row: cellInfo.row,
+        totalTime: `${totalTime}秒`,
+        error: error.message,
+        errorStack: error.stack,
+        errorName: error.name
+      }
+    });
+    return { success: false, error: error.message, errorDetails: { message: error.message, stack: error.stack, name: error.name } };
   }
 }
 
@@ -463,9 +485,13 @@ chrome.runtime.onConnect.addListener((port) => {
     let currentTaskId = null;
     let keepAliveTimer = null;
     
+    // Port切断を検知するフラグ
+    let isPortConnected = true;
+    
     // Port切断時のクリーンアップ
     port.onDisconnect.addListener(() => {
       console.log("[Port] Port接続が切断されました:", currentTaskId);
+      isPortConnected = false;
       if (keepAliveTimer) {
         clearTimeout(keepAliveTimer);
       }
@@ -518,11 +544,26 @@ chrome.runtime.onConnect.addListener((port) => {
           
           // 進捗通知を定期的に送信
           const progressInterval = setInterval(() => {
-            port.postMessage({
-              type: 'progress',
-              progress: 'Processing...',
-              taskId: currentTaskId
-            });
+            // ポートが接続されているかチェック
+            if (!isPortConnected) {
+              console.log(`[Port] 進捗送信停止: ${currentTaskId} - ポート切断`);
+              clearInterval(progressInterval);
+              return;
+            }
+            
+            try {
+              // ポートが切断されていないかチェックしてからメッセージを送信
+              port.postMessage({
+                type: 'progress',
+                progress: 'Processing...',
+                taskId: currentTaskId
+              });
+            } catch (error) {
+              // ポートが切断されていたらインターバルを停止
+              console.log(`[Port] 進捗送信エラー: ${currentTaskId}`, error);
+              clearInterval(progressInterval);
+              isPortConnected = false;
+            }
           }, 10000); // 10秒ごと
           
           // AIタスクを実行

@@ -284,6 +284,12 @@ class AIAutomationWrapper {
     // 通常のエラーをキャッチ
     const originalOnError = window.onerror;
     window.onerror = function(message, source, lineno, colno, error) {
+      // ResizeObserverエラーを無視（無害なブラウザ警告）
+      if (message && message.includes('ResizeObserver loop')) {
+        console.log('[GlobalErrorHandler] ResizeObserverエラーを無視');
+        return true; // エラーを処理済みとして他のハンドラーに伝播させない
+      }
+      
       // エラーオブジェクトを適切に文字列化
       const errorDetails = {
         timestamp: new Date().toISOString(),

@@ -3162,9 +3162,9 @@ ${formattedGemini}`;
     const taskId = `${task.column}${task.row}`;
     this.completedTasks.add(task.id);
     
-    // 統合エラーリカバリーを使用
-    if (window.UnifiedErrorRecovery) {
-      const errorRecovery = new window.UnifiedErrorRecovery({
+    // 統合エラーリカバリーを使用（Service Workerではglobalthisを使用）
+    if (typeof globalThis !== 'undefined' && globalThis.UnifiedErrorRecovery) {
+      const errorRecovery = new globalThis.UnifiedErrorRecovery({
         aiType: task.aiType,
         enableLogging: true
       });
@@ -4323,10 +4323,11 @@ ${formattedGemini}`;
     
     this.logger.log(`[StreamProcessor] 🔄 リトライ処理開始: ${this.failedTasksByColumn.size}列にエラータスクあり`);
     
-    // 統合エラーリカバリーを使用
-    const errorRecovery = window.UnifiedErrorRecovery ? new window.UnifiedErrorRecovery({
-      enableLogging: true
-    }) : null;
+    // 統合エラーリカバリーを使用（Service Workerではglobalthisを使用）
+    const errorRecovery = (typeof globalThis !== 'undefined' && globalThis.UnifiedErrorRecovery) ? 
+      new globalThis.UnifiedErrorRecovery({
+        enableLogging: true
+      }) : null;
     
     for (const [column, failedTasks] of this.failedTasksByColumn) {
       const tasksArray = failedTasks instanceof Set ? Array.from(failedTasks) : failedTasks;
