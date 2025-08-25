@@ -1,37 +1,11 @@
 /**
  * @fileoverview Authentication Service
- * OAuth2認証処理を管理するサービス（複数拡張機能ID対応）
+ * OAuth2認証処理を管理するサービス
  */
 
 class AuthService {
   constructor() {
     this.logger = typeof logger !== "undefined" ? logger : console;
-    
-    // 拡張機能IDごとのクライアントIDマッピング
-    // 両方のパソコンで同じウェブアプリケーションタイプのクライアントIDを使用
-    this.CLIENT_ID_MAPPING = {
-      // 1台目のパソコン
-      'bbbfjffpkfleplpoabeehglgikblfkip': '262291163420-02ohr4mn3i3tngukpj11ed5pdqn0frjg.apps.googleusercontent.com',
-      // 2台目のパソコン
-      'fphilbjcpglgablmlkffchdphbndehlg': '262291163420-02ohr4mn3i3tngukpj11ed5pdqn0frjg.apps.googleusercontent.com'
-    };
-  }
-
-  /**
-   * 現在の拡張機能IDに対応するクライアントIDを取得
-   */
-  getClientIdForCurrentExtension() {
-    const extensionId = chrome.runtime.id;
-    const clientId = this.CLIENT_ID_MAPPING[extensionId];
-    
-    if (!clientId) {
-      // マッピングにない場合はmanifest.jsonの設定を使用
-      this.logger.warn(`No client ID mapping for extension ${extensionId}, using manifest.json oauth2 config`);
-      return null;
-    }
-    
-    this.logger.log(`Using client ID for extension ${extensionId}`);
-    return clientId;
   }
 
   /**
@@ -39,82 +13,39 @@ class AuthService {
    * @param {boolean} interactive - ユーザー操作を許可するか
    */
   async getAuthToken(interactive = true) {
-    try {
-      // 拡張機能IDに対応するクライアントIDを取得
-      const clientId = this.getClientIdForCurrentExtension();
-      if (!clientId) {
-        throw new Error(`未登録の拡張機能ID: ${chrome.runtime.id}`);
-      }
-      
-      // OAuth2認証URLを構築
-      const redirectUri = `https://${chrome.runtime.id}.chromiumapp.org`;
-      
-      // デバッグ用ログ
-      console.log('=== OAuth Debug Info ===');
-      console.log('Extension ID:', chrome.runtime.id);
-      console.log('Client ID:', clientId);
-      console.log('Redirect URI:', redirectUri);
-      console.log('========================');
-      
-      const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
-      authUrl.searchParams.set('client_id', clientId);
-      authUrl.searchParams.set('response_type', 'token');
-      authUrl.searchParams.set('redirect_uri', redirectUri);
-      authUrl.searchParams.set('scope', [
-        'https://www.googleapis.com/auth/spreadsheets',
-        'https://www.googleapis.com/auth/documents', 
-        'https://www.googleapis.com/auth/drive.file',
-        'https://www.googleapis.com/auth/drive',
-        'https://www.googleapis.com/auth/userinfo.email'
-      ].join(' '));
-      
-      if (!interactive) {
-        authUrl.searchParams.set('prompt', 'none');
-      }
-      
-      // 認証フローを起動
-      const responseUrl = await new Promise((resolve, reject) => {
-        chrome.identity.launchWebAuthFlow(
-          {
-            url: authUrl.toString(),
-            interactive: interactive
-          },
-          (responseUrl) => {
-            if (chrome.runtime.lastError) {
-              reject(chrome.runtime.lastError);
-            } else {
-              resolve(responseUrl);
-            }
+    return new Promise((resolve, reject) => {
+      chrome.identity.getAuthToken({ interactive }, async (token) => {
+        if (chrome.runtime.lastError) {
+          const error = chrome.runtime.lastError;
+          this.logger.error(
+            "AuthService",
+            "Failed to get auth token",
+            error,
+          );
+          
+          // エラーの詳細情報をログに記録
+          if (globalThis.logManager) {
+            globalThis.logManager.error(`認証エラー: ${error.message}`, {
+              message: error.message,
+              interactive: interactive,
+              hint: this.getErrorHint(error.message)
+            });
           }
-        );
+          
+          // トークンをクリアして再試行を促す
+          if (error.message && error.message.includes('OAuth2')) {
+            chrome.identity.removeCachedAuthToken({ token: '' }, () => {
+              this.logger.log("AuthService", "Cleared cached auth token");
+            });
+          }
+          
+          reject(error);
+        } else {
+          this.logger.log("AuthService", "Auth token obtained successfully");
+          resolve(token);
+        }
       });
-      
-      // レスポンスURLからトークンを抽出
-      const url = new URL(responseUrl);
-      const hashParams = new URLSearchParams(url.hash.substring(1));
-      const token = hashParams.get('access_token');
-      
-      if (!token) {
-        throw new Error('トークンの取得に失敗しました');
-      }
-      
-      this.logger.log("AuthService", "Auth token obtained successfully");
-      return token;
-      
-    } catch (error) {
-      this.logger.error("AuthService", "Failed to get auth token", error);
-      
-      // エラーの詳細情報をログに記録
-      if (globalThis.logManager) {
-        globalThis.logManager.error(`認証エラー: ${error.message}`, {
-          message: error.message,
-          interactive: interactive,
-          hint: this.getErrorHint(error.message)
-        });
-      }
-      
-      throw error;
-    }
+    });
   }
   
   /**
