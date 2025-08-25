@@ -8,11 +8,12 @@ class AuthService {
     this.logger = typeof logger !== "undefined" ? logger : console;
     
     // 拡張機能IDごとのクライアントIDマッピング
+    // 両方のパソコンで同じウェブアプリケーションタイプのクライアントIDを使用
     this.CLIENT_ID_MAPPING = {
       // 1台目のパソコン
-      'bbbfjffpkfleplpoabeehglgikblfkip': '262291163420-fj2jfie1cmb63md9nnu4ofdkr9ku1u3o.apps.googleusercontent.com',
+      'bbbfjffpkfleplpoabeehglgikblfkip': '262291163420-02ohr4mn3i3tngukpj11ed5pdqn0frjg.apps.googleusercontent.com',
       // 2台目のパソコン
-      'fphilbjcpglgablmlkffchdphbndehlg': '262291163420-kdnveh0r0b2q6o0sepv9j2ikbt04b1ig.apps.googleusercontent.com'
+      'fphilbjcpglgablmlkffchdphbndehlg': '262291163420-02ohr4mn3i3tngukpj11ed5pdqn0frjg.apps.googleusercontent.com'
     };
   }
 
