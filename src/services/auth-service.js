@@ -11,10 +11,9 @@ class AuthService {
     
     // OAuthクライアントIDマッピング
     this.OAUTH_CLIENT_MAPPING = {
-      // 1台目のパソコン
-      'bbbfjffpkfleplpoabeehglgikblfkip': '262291163420-fj2jfie1cmb63md9nnu4ofdkr9ku1u3o.apps.googleusercontent.com',
-      // 2台目のパソコン
-      'fphilbjcpglgablmlkffchdphbndehlg': '262291163420-treg4qt8vf9bh5hojire3vfkc0fhvet6.apps.googleusercontent.com'
+      // 両方のパソコンで同じクライアントIDを使用（ウェブアプリケーションタイプ）
+      'bbbfjffpkfleplpoabeehglgikblfkip': '262291163420-02ohr4mn3i3tngukpj11ed5pdqn0frjg.apps.googleusercontent.com',
+      'fphilbjcpglgablmlkffchdphbndehlg': '262291163420-02ohr4mn3i3tngukpj11ed5pdqn0frjg.apps.googleusercontent.com'
     };
     
     // OAuth2スコープ
