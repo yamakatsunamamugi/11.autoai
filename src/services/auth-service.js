@@ -61,7 +61,7 @@ class AuthService {
     // OAuth2フローを使用してトークンを取得
     try {
       const clientId = this.getOAuthClientId();
-      const redirectUri = `https://${chrome.runtime.id}.chromiumapp.org/`;
+      const redirectUri = `https://${chrome.runtime.id}.chromiumapp.org`;  // スラッシュなしに変更
       const scopes = this.OAUTH_SCOPES.join(' ');
       
       // OAuth2認証URLを構築
