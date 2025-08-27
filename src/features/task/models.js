@@ -26,18 +26,18 @@ class Task {
       column: this.column,
       row: this.row,
       aiType: this.aiType,
-      taskType: this.taskType, // タスクタイプ（"ai" or "report"）
+      taskType: this.taskType,
       prompt: this.prompt,
       promptColumn: this.promptColumn,
-      sourceColumn: this.sourceColumn, // レポート化の場合のソース列
-      reportColumn: this.reportColumn, // レポート化列
+      sourceColumn: this.sourceColumn,
+      reportColumn: this.reportColumn,
       specialOperation: this.specialOperation,
       model: this.model,
       multiAI: this.multiAI,
       existingAnswer: this.existingAnswer,
       skipReason: this.skipReason,
       metadata: this.metadata,
-      logColumns: this.logColumns, // ログ列情報を追加
+      logColumns: this.logColumns,
       groupId: this.groupId,
       groupInfo: this.groupInfo,
       specialSettings: this.specialSettings,

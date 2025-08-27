@@ -589,14 +589,7 @@ class TaskGenerator {
    * プロンプトを連結（拡張デバッグ版）
    */
   buildCombinedPrompt(spreadsheetData, workRow, group) {
-    console.log(`[TaskGenerator] 🔍 buildCombinedPrompt開始:`, {
-      行番号: workRow.number,
-      行インデックス: workRow.index,
-      グループタイプ: group.aiType,
-      プロンプト列: group.promptColumns,
-      プロンプト列名: group.promptColumns.map(i => this.indexToColumn(i)),
-      回答列: group.answerColumns.map(a => `${a.column}(${a.type})`)
-    });
+    // デバッグログを削減（開始ログは削除）
 
     const prompts = [];
     const promptDetails = []; // デバッグ用詳細情報
@@ -605,11 +598,7 @@ class TaskGenerator {
       const columnName = this.indexToColumn(colIndex);
       const value = this.getCellValue(spreadsheetData, workRow.index, colIndex);
       
-      console.log(`[TaskGenerator] 🔍 プロンプト列取得: ${columnName}${workRow.number} (rowIndex=${workRow.index}, colIndex=${colIndex})`, {
-        取得値: value,
-        値の型: typeof value,
-        値の長さ: value ? value.length : 'null'
-      });
+      // プロンプト列取得（ログ削除）
       
       if (value && value.trim()) {
         const trimmedValue = value.trim();
@@ -634,12 +623,7 @@ class TaskGenerator {
     }
 
     if (prompts.length === 0) {
-      console.log(`[TaskGenerator] プロンプト連結失敗 (行${workRow.number}): 全プロンプト列が空`, {
-        行: workRow.number,
-        グループ: group.aiType,
-        プロンプト列: group.promptColumns.map(i => this.indexToColumn(i)),
-        詳細: promptDetails
-      });
+      // プロンプト連結失敗（行${workRow.number}）
       return null;
     }
 
@@ -648,14 +632,7 @@ class TaskGenerator {
     // プロンプト内容のハッシュを生成（重複検出用）
     const promptHash = this.generateSimpleHash(combined);
     
-    console.log(`[TaskGenerator] プロンプト連結成功 (行${workRow.number}):`, {
-      行: workRow.number,
-      グループ: group.aiType,
-      プロンプト数: prompts.length,
-      総文字数: combined.length,
-      ハッシュ: promptHash,
-      列詳細: promptDetails
-    });
+    // プロンプト連結成功（行${workRow.number}）
 
     // 重複検出（同じハッシュのプロンプトが既に存在するかチェック）
     if (!this.promptHashTracker) {
