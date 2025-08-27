@@ -71,6 +71,18 @@ class TaskGenerator {
    * メインエントリーポイント - タスクを生成
    */
   async generateTasks(spreadsheetData) {
+    console.log("[TaskGenerator] generateTasks開始");
+    console.log("[TaskGenerator] spreadsheetData内容:", {
+      hasData: !!spreadsheetData,
+      keys: spreadsheetData ? Object.keys(spreadsheetData) : null,
+      sheetName: spreadsheetData?.sheetName,
+      hasValues: !!spreadsheetData?.values,
+      valuesLength: spreadsheetData?.values?.length
+    });
+    
+    // spreadsheetDataを保存（createTaskメソッドで使用）
+    this.data = spreadsheetData;
+    console.log("[TaskGenerator] this.dataに保存完了, sheetName:", this.data?.sheetName);
     
     try {
       // 1. スプレッドシート構造を解析
@@ -626,6 +638,12 @@ class TaskGenerator {
    * AIタスクを作成
    */
   async createAITask(spreadsheetData, structure, workRow, group, answerCol, prompt) {
+    console.log("[TaskGenerator] createAITask呼び出し:", {
+      hasData: !!this.data,
+      sheetName: this.data?.sheetName,
+      workRowNumber: workRow.number,
+      answerColumn: answerCol.column
+    });
   
     const { rows } = structure;
 
@@ -661,6 +679,12 @@ class TaskGenerator {
     // スプレッドシートの設定をそのまま使用（シンプル化）
     // DynamicConfig による上書きを削除し、スプレッドシートの値を直接適用
 
+    // デバッグ: sheetName確認
+    const taskSheetName = this.data?.sheetName || 'Sheet1';
+    if (workRow.number <= 11) {  // 最初の3行だけログ
+      console.log(`[TaskGenerator] タスク生成 row=${workRow.number}, sheetName="${taskSheetName}"`);
+    }
+    
     const taskData = {
       id: this.generateTaskId(answerCol.column, workRow.number),
       column: answerCol.column,
@@ -669,6 +693,8 @@ class TaskGenerator {
       taskType: "ai",
       prompt: prompt,
       promptColumn: this.indexToColumn(group.promptColumns[0]),
+      promptColumns: group.promptColumns,  // 動的プロンプト取得用の列配列
+      sheetName: taskSheetName,  // シート名を追加
       answerColumn: answerCol.column,
       groupId: `group_row${workRow.number}_${group.aiType}_${group.startIndex}`,
       groupInfo: {

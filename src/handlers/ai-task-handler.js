@@ -79,6 +79,9 @@ export class AITaskHandler {
   async handleExecuteAITask(request, sender) {
     let { tabId, prompt, taskId, timeout = 180000, model, specialOperation, aiType, cellInfo, taskInfo, spreadsheetId } = request;
     
+    // デバッグ: taskInfo確認
+    console.log(`[AITaskHandler] handleExecuteAITask - taskInfo受信:`, taskInfo);
+    
     // promptが無い場合は動的に取得
     if (!prompt && taskInfo && spreadsheetId) {
       try {
@@ -102,10 +105,6 @@ export class AITaskHandler {
       }
     }
     
-    const { tabId: finalTabId, prompt: finalPrompt, taskId: finalTaskId, timeout: finalTimeout = 180000, model: finalModel, specialOperation: finalSpecialOperation, aiType: finalAiType, cellInfo: finalCellInfo } = {
-      tabId, prompt, taskId, timeout, model, specialOperation, aiType, cellInfo
-    };
-    
     const cellPosition = cellInfo?.column && cellInfo?.row 
       ? `${cellInfo.column}${cellInfo.row}` 
       : '不明';
@@ -117,7 +116,9 @@ export class AITaskHandler {
       column: cellInfo?.column,
       row: cellInfo?.row,
       tabId,
-      promptLength: prompt?.length || 0
+      promptLength: prompt?.length || 0,
+      hasPrompt: !!prompt,
+      promptPreview: prompt ? prompt.substring(0, 100) + '...' : '❌ プロンプトが空です！'
     });
     
     // モデル・機能情報を詳細ログ出力
@@ -154,6 +155,14 @@ export class AITaskHandler {
       }
       
       // コンテンツスクリプトにプロンプト送信を依頼（モデル・機能情報も含める）
+      // 🔍 DEBUG: sendPromptToTab呼び出し前の確認
+      this.log(`[AITaskHandler] 🔍 DEBUG: sendPromptToTab呼び出し前`, {
+        promptExists: !!prompt,
+        promptLength: prompt?.length || 0,
+        promptType: typeof prompt,
+        promptPreview: prompt ? prompt.substring(0, 200) + '...' : '❌ プロンプトが空！'
+      });
+      
       const sendResult = await this.sendPromptToTab(tabId, {
         action: "sendPrompt",
         prompt: prompt,
@@ -262,55 +271,152 @@ export class AITaskHandler {
    * @returns {Promise<string>} 結合されたプロンプト
    */
   async fetchPromptFromSpreadsheet(spreadsheetId, taskInfo) {
-    const { row, promptColumns } = taskInfo;
+    const { row, promptColumns, sheetName } = taskInfo;
+    
+    console.log(`[AITaskHandler] ========== fetchPromptFromSpreadsheet START ==========`);
+    console.log(`[AITaskHandler] STEP 1: 入力パラメータ確認`);
+    console.log(`[AITaskHandler]   - spreadsheetId: ${spreadsheetId}`);
+    console.log(`[AITaskHandler]   - row: ${row}`);
+    console.log(`[AITaskHandler]   - promptColumns: ${JSON.stringify(promptColumns)}`);
+    console.log(`[AITaskHandler]   - sheetName: "${sheetName}" (type: ${typeof sheetName})`);
+    
+    this.log(`[AITaskHandler] 📋 fetchPromptFromSpreadsheet開始:`, {
+      row,
+      promptColumns,
+      spreadsheetId,
+      sheetName,
+      hasSheetName: !!sheetName,
+      sheetNameType: typeof sheetName
+    });
     
     if (!promptColumns || promptColumns.length === 0) {
+      console.error(`[AITaskHandler] ❌ プロンプト列情報がありません`);
+      this.error(`[AITaskHandler] ❌ プロンプト列情報がありません`);
       throw new Error('プロンプト列情報がありません');
     }
     
     try {
+      console.log(`[AITaskHandler] STEP 2: 列名変換処理`);
       // 列名を取得（例: ['G', 'H', 'I']）
-      const columnLetters = promptColumns.map(col => 
-        typeof col === 'string' ? col : this.indexToColumn(col)
-      );
+      const columnLetters = promptColumns.map((col, index) => {
+        const letter = typeof col === 'string' ? col : this.indexToColumn(col);
+        console.log(`[AITaskHandler]   - promptColumns[${index}]: ${col} -> 列名: ${letter}`);
+        return letter;
+      });
       
+      console.log(`[AITaskHandler] STEP 3: 範囲文字列構築`);
       // 複数のセル範囲を一度に取得（例: 'G10:I10'）
       const startCol = columnLetters[0];
       const endCol = columnLetters[columnLetters.length - 1];
-      const range = `${startCol}${row}:${endCol}${row}`;
+      console.log(`[AITaskHandler]   - 開始列: ${startCol}`);
+      console.log(`[AITaskHandler]   - 終了列: ${endCol}`);
+      
+      // シート名が指定されていればシート名を含める
+      const rangeWithoutSheet = `${startCol}${row}:${endCol}${row}`;
+      console.log(`[AITaskHandler]   - シート名なし範囲: ${rangeWithoutSheet}`);
+      
+      const range = sheetName ? `'${sheetName}'!${rangeWithoutSheet}` : rangeWithoutSheet;
+      console.log(`[AITaskHandler]   - 最終範囲: ${range}`);
       
       this.log(`[AITaskHandler] 📊 スプレッドシートから範囲取得: ${range}`);
       
-      // Google Sheets APIを呼び出し
-      const response = await chrome.runtime.sendMessage({
-        action: 'getSheetsData',
-        spreadsheetId: spreadsheetId,
-        range: range
-      });
+      console.log(`[AITaskHandler] STEP 4: sheetsClient確認`);
+      // sheetsClientを直接使用（background.jsのグローバル変数）
+      if (!globalThis.sheetsClient) {
+        console.error(`[AITaskHandler] ❌ sheetsClientが初期化されていません`);
+        this.error(`[AITaskHandler] ❌ sheetsClientが初期化されていません`);
+        throw new Error('sheetsClientが初期化されていません');
+      }
+      console.log(`[AITaskHandler]   - sheetsClient: 利用可能`);
       
-      if (!response || !response.success) {
-        throw new Error(response?.error || 'スプレッドシートのデータ取得に失敗');
+      console.log(`[AITaskHandler] STEP 5: Google Sheets API呼び出し`);
+      console.log(`[AITaskHandler]   - 呼び出し: sheetsClient.getSheetData("${spreadsheetId}", "${range}")`);
+      
+      // Google Sheets APIを直接呼び出し
+      const data = await globalThis.sheetsClient.getSheetData(spreadsheetId, range);
+      
+      console.log(`[AITaskHandler] STEP 6: APIレスポンス受信`);
+      console.log('[AITaskHandler]   - Raw API data:', data);
+      
+      console.log(`[AITaskHandler] STEP 7: データ構造確認`);
+      console.log(`[AITaskHandler]   - dataが存在: ${!!data}`);
+      console.log(`[AITaskHandler]   - dataの型: ${typeof data}`);
+      console.log(`[AITaskHandler]   - dataが配列: ${Array.isArray(data)}`);
+      console.log(`[AITaskHandler]   - dataの長さ: ${Array.isArray(data) ? data.length : '配列ではない'}`);
+      if (Array.isArray(data) && data.length > 0) {
+        console.log(`[AITaskHandler]   - data[0]の内容: ${JSON.stringify(data[0])}`);
       }
       
+      this.log(`[AITaskHandler] 📬 Google Sheets API応答:`, {
+        hasData: !!data,
+        isArray: Array.isArray(data),
+        dataLength: Array.isArray(data) ? data.length : 'not array',
+        firstRow: Array.isArray(data) && data.length > 0 ? data[0] : 'no data'
+      });
+      
+      if (!data && !Array.isArray(data)) {
+        console.error(`[AITaskHandler] ❌ Sheets API エラー: データが取得できません`);
+        this.error(`[AITaskHandler] ❌ Sheets API エラー: データが取得できません`);
+        throw new Error('スプレッドシートのデータ取得に失敗');
+      }
+      
+      console.log(`[AITaskHandler] STEP 8: 値の抽出`);
       // 取得したデータから値を抽出して結合
-      const values = response.data?.values?.[0] || [];
+      // dataは配列として返される (values配列そのもの)
+      const values = Array.isArray(data) && data.length > 0 ? data[0] : [];
+      console.log(`[AITaskHandler]   - values配列: ${JSON.stringify(values)}`);
+      console.log(`[AITaskHandler]   - valuesの長さ: ${values.length}`);
+      
+      this.log(`[AITaskHandler] 📝 取得した値の配列:`, {
+        valuesCount: values.length,
+        values: values,
+        rawData: data
+      });
+      
+      console.log(`[AITaskHandler] STEP 9: プロンプト抽出`);
       const prompts = [];
       
       for (let i = 0; i < values.length; i++) {
         const value = values[i];
+        console.log(`[AITaskHandler]   - values[${i}]: "${value}" (type: ${typeof value})`);
         if (value && value.trim()) {
-          prompts.push(value.trim());
+          const trimmed = value.trim();
+          console.log(`[AITaskHandler]     -> トリム後: "${trimmed}" (長さ: ${trimmed.length})`);
+          prompts.push(trimmed);
+        } else {
+          console.log(`[AITaskHandler]     -> 空または空白のためスキップ`);
         }
       }
       
+      console.log(`[AITaskHandler] STEP 10: プロンプト結果確認`);
+      console.log(`[AITaskHandler]   - 抽出されたプロンプト数: ${prompts.length}`);
+      if (prompts.length > 0) {
+        console.log(`[AITaskHandler]   - 結合後の総文字数: ${prompts.join('\n').length}`);
+      }
+      
+      this.log(`[AITaskHandler] 📝 フィルター後のプロンプト:`, {
+        promptsCount: prompts.length,
+        totalLength: prompts.join('\n').length
+      });
+      
       if (prompts.length === 0) {
-        throw new Error(`行${row}にプロンプトが見つかりません`);
+        console.error(`[AITaskHandler] ❌ プロンプトが空です`);
+        this.error(`[AITaskHandler] ❌ セル${columnLetters.join(',')}${row}が空です（プロンプトが入力されていません）`, {
+          検索範囲: range,
+          取得データ: values,
+          スプレッドシートを確認してください: `G${row}セルにプロンプトを入力してください`
+        });
+        throw new Error(`セル${columnLetters.join(',')}${row}が空です。スプレッドシートのG${row}セルにプロンプトを入力してください`);
       }
       
       // プロンプトを改行で結合
       const combinedPrompt = prompts.join('\n');
       
-      this.log(`[AITaskHandler] ✅ プロンプト結合完了: ${prompts.length}個のプロンプト`);
+      this.log(`[AITaskHandler] ✅ プロンプト結合完了:`, {
+        promptCount: prompts.length,
+        totalLength: combinedPrompt.length,
+        preview: combinedPrompt.substring(0, 200) + '...'
+      });
       
       return combinedPrompt;
     } catch (error) {

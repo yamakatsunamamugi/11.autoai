@@ -172,6 +172,15 @@ export class AITaskExecutor {
               timeout: timeout,
               cellInfo: taskData.cellInfo  // セル位置情報を追加
             };
+            
+            // 🔍 DEBUG: config.textの詳細確認
+            console.log(`[ExecuteAITask] 🔍 DEBUG: config設定内容:`, {
+              hasText: !!config.text,
+              textType: typeof config.text,
+              textLength: config.text?.length || 0,
+              textPreview: config.text ? config.text.substring(0, 100) + '...' : '❌ config.textが空！',
+              fullConfig: config
+            });
 
             // runAutomationを実行
             if (typeof automation.runAutomation === 'function') {

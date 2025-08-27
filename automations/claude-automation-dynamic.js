@@ -1037,6 +1037,14 @@
   // テキスト送信・応答待機・応答取得
   // ========================================
   async function inputText(text) {
+    // 🔍 DEBUG: inputText関数の開始
+    log(`🔍 DEBUG: inputText関数呼び出し`, 'DEBUG', {
+      receivedText: !!text,
+      textType: typeof text,
+      textLength: text?.length || 0,
+      textPreview: text ? text.substring(0, 100) + '...' : '❌ 空のテキスト！'
+    });
+    
     if (!text) {
       log('入力するテキストがありません', 'ERROR');
       return false;
@@ -1554,6 +1562,19 @@
 
     log('(Claude) 自動化実行開始', 'AUTOMATION', config);
     
+    // 🔍 DEBUG: 受け取ったconfig全体の詳細確認
+    log(`🔍 DEBUG: runAutomation開始時のconfig詳細`, 'DEBUG', {
+      hasText: !!config.text,
+      textType: typeof config.text,
+      textLength: config.text?.length || 0,
+      textPreview: config.text ? config.text.substring(0, 100) + '...' : '❌ config.textが未設定！',
+      model: config.model,
+      function: config.function,
+      send: config.send,
+      waitResponse: config.waitResponse,
+      getResponse: config.getResponse
+    });
+    
     // セル位置情報を含む詳細ログ
     const cellInfo = config.cellInfo || {};
     const cellPosition = cellInfo.column && cellInfo.row 
@@ -1651,12 +1672,34 @@
       }
 
       // テキスト入力
+      // 🔍 DEBUG: テキスト入力処理の条件確認
+      log(`🔍 DEBUG: テキスト入力条件チェック`, 'DEBUG', {
+        configTextExists: !!config.text,
+        configTextType: typeof config.text,
+        configTextLength: config.text?.length || 0,
+        configTextTruthy: config.text ? 'truthy' : 'falsy',
+        configTextPreview: config.text ? config.text.substring(0, 50) + '...' : '空'
+      });
+      
       if (config.text) {
+        log(`🔍 DEBUG: inputText呼び出し前`, 'DEBUG', {
+          textLength: config.text.length,
+          textPreview: config.text.substring(0, 100) + '...'
+        });
+        
         const inputResult = await inputText(config.text);
+        
+        log(`🔍 DEBUG: inputText呼び出し後`, 'DEBUG', {
+          inputResult: inputResult,
+          success: !!inputResult
+        });
+        
         if (!inputResult) {
           throw new Error('テキスト入力に失敗しました');
         }
         result.text = config.text;
+      } else {
+        log(`🔍 DEBUG: config.textが空のため、inputTextをスキップ`, 'WARNING');
       }
 
       // 送信

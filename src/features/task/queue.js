@@ -41,6 +41,10 @@ class TaskQueue {
       // 各チャンクを個別に保存
       for (let i = 0; i < chunks.length; i++) {
         const chunkKey = `${this.storageKey}_chunk_${i}`;
+        // デバッグ: 最初のタスクのsheetNameを確認
+        if (i === 0 && chunks[i].length > 0) {
+          console.log('[TaskQueue] 保存するチャンク0の最初のタスク sheetName:', chunks[i][0].sheetName);
+        }
         await chrome.storage.local.set({
           [chunkKey]: chunks[i],
         });
@@ -97,13 +101,25 @@ class TaskQueue {
         const chunkData = chunkResult[chunkKey];
         
         if (chunkData) {
+          // デバッグ: 最初のタスクのsheetNameを確認
+          if (i === 0 && chunkData.length > 0) {
+            console.log('[TaskQueue] 読み込んだチャンク0の最初のタスク sheetName:', chunkData[0].sheetName);
+          }
           allTasks.push(...chunkData);
         }
       }
       
       // TaskListインスタンスを復元
       const { TaskList, Task } = await import("./models.js");
-      const tasks = allTasks.map((taskData) => Task.fromJSON(taskData));
+      const tasks = allTasks.map((taskData) => {
+        const task = Task.fromJSON(taskData);
+        // デバッグ: 復元後のsheetNameを確認
+        if (taskData.row === 10) {  // 行10のタスクをチェック
+          console.log('[TaskQueue] 復元前のtaskData sheetName:', taskData.sheetName);
+          console.log('[TaskQueue] 復元後のtask sheetName:', task.sheetName);
+        }
+        return task;
+      });
       const taskList = new TaskList(tasks);
       taskList.createdAt = metadata.createdAt || Date.now();
       taskList.aiColumns = metadata.aiColumns || {};

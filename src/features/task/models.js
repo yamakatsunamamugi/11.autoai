@@ -31,6 +31,7 @@ class Task {
       // prompt: this.prompt,  // 削除：実行時にスプレッドシートから取得
       promptColumn: this.promptColumn,  // どの列から取得するかの情報は保持
       promptColumns: this.promptColumns, // 複数プロンプト列の情報も保持
+      sheetName: this.sheetName,  // シート名を追加
       sourceColumn: this.sourceColumn,
       reportColumn: this.reportColumn,
       specialOperation: this.specialOperation,

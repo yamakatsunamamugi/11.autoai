@@ -376,11 +376,15 @@ function getColumnName(index) {
  * processSpreadsheetData関数
  */
 function processSpreadsheetData(spreadsheetData) {
+  console.log("[Background] [DEBUG] processSpreadsheetData開始, sheetName:", spreadsheetData?.sheetName);
+  
   const result = {
     ...spreadsheetData,
     aiColumns: {},
     columnMapping: {},
   };
+  
+  console.log("[Background] [DEBUG] スプレッド演算子後のresult.sheetName:", result.sheetName);
 
   if (!spreadsheetData.values || spreadsheetData.values.length === 0) {
     return result;
@@ -530,6 +534,53 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         });
       
       return true; // 非同期応答のため true を返す
+    
+    // ===== Google Sheetsデータ取得 =====
+    case "getSheetsData":
+      console.log("[MessageHandler] 📊 Sheetsデータ取得要求:", {
+        spreadsheetId: request.spreadsheetId,
+        range: request.range
+      });
+      
+      if (!request.spreadsheetId || !request.range) {
+        sendResponse({ 
+          success: false, 
+          error: "spreadsheetIdとrangeが必要です" 
+        });
+        return false;
+      }
+      
+      // SheetsClientインスタンスがグローバルに存在するか確認
+      if (typeof globalThis.sheetsClient === 'undefined') {
+        console.error("[MessageHandler] ❌ sheetsClientが初期化されていません");
+        sendResponse({ 
+          success: false, 
+          error: "sheetsClientが初期化されていません" 
+        });
+        return false;
+      }
+      
+      // Google Sheets APIを呼び出してデータ取得（Promise形式）
+      globalThis.sheetsClient.getSheetData(request.spreadsheetId, request.range)
+        .then(data => {
+          console.log("[MessageHandler] ✅ Sheetsデータ取得成功:", {
+            rowsCount: data?.values?.length || 0,
+            firstRow: data?.values?.[0]
+          });
+          sendResponse({ 
+            success: true, 
+            data: data 
+          });
+        })
+        .catch(error => {
+          console.error("[MessageHandler] ❌ Sheetsデータ取得エラー:", error);
+          sendResponse({ 
+            success: false, 
+            error: error.message 
+          });
+        });
+      
+      return true; // 非同期応答
       
     /**
      * 列追加のみ実行（タスク生成なし）
@@ -639,7 +690,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           await autoSetup.executeAutoSetup(spreadsheetId, token, gid);
 
           // 3. データを整形（AI列情報を抽出）
+          console.log("[Background] [DEBUG] updatedSpreadsheetData.sheetName:", updatedSpreadsheetData?.sheetName);
           const processedData = processSpreadsheetData(updatedSpreadsheetData);
+          console.log("[Background] [DEBUG] processedData.sheetName:", processedData?.sheetName);
           
           // modelRowとtaskRowも含める
           processedData.modelRow = updatedSpreadsheetData.modelRow;
@@ -759,34 +812,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       console.log("[MessageHandler] テストメッセージ受信:", request);
       sendResponse({ success: true, echo: request.data });
       return false;
-
-    // ===== AIタスク実行 =====
-    // StreamProcessorからのタスク実行要求を処理
-    case "executeAITask":
-      console.log("[MessageHandler] AIタスク実行要求:", {
-        taskId: request.taskId,
-        tabId: request.tabId,
-        promptLength: request.prompt?.length || 0,
-        waitResponse: request.waitResponse,
-        getResponse: request.getResponse
-      });
-      
-      // AITaskHandlerに処理を委譲（非同期処理）
-      // waitResponse/getResponseの判定はAITaskHandler内で行う
-      (async () => {
-        try {
-          const result = await aiTaskHandler.handleExecuteAITask(request, sender);
-          sendResponse(result);
-        } catch (error) {
-          console.error("[MessageHandler] AIタスク実行エラー:", error);
-          sendResponse({ 
-            success: false, 
-            error: error.message,
-            taskId: request.taskId 
-          });
-        }
-      })();
-      return true; // 非同期応答のため true を返す
 
     // ===== コンテンツスクリプトからのメッセージ =====
     case "contentScriptReady":

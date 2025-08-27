@@ -275,6 +275,19 @@ class StreamProcessor {
       testMode: options.testMode || false
     });
 
+    // デバッグ: 最初のタスクのsheetNameを確認
+    if (taskList.tasks.length > 0) {
+      const firstTask = taskList.tasks[0];
+      console.log('[StreamProcessor] 最初のタスクのsheetName:', firstTask.sheetName);
+      console.log('[StreamProcessor] 最初のタスク詳細:', {
+        id: firstTask.id,
+        row: firstTask.row,
+        column: firstTask.column,
+        sheetName: firstTask.sheetName,
+        hasSheetName: !!firstTask.sheetName
+      });
+    }
+
     this.isProcessing = true;
     this.spreadsheetData = spreadsheetData;
     this.outputTarget = outputTarget;
@@ -1188,9 +1201,29 @@ class StreamProcessor {
       // aiTaskHandlerはbackground.jsでimportされているため、globalThisから取得
       const aiTaskHandler = globalThis.aiTaskHandler || (await import('../../handlers/ai-task-handler.js')).aiTaskHandler;
       
+      // デバッグログ追加
+      console.log(`[StreamProcessor] タスク実行前 - row=${task.row}, task.sheetName="${task.sheetName}"`);
+      console.log('[StreamProcessor] [DEBUG] タスク情報:', {
+        taskId: task.id,
+        hasSheetName: !!task.sheetName,
+        sheetName: task.sheetName,
+        row: task.row,
+        column: task.column,
+        promptColumns: task.promptColumns
+      });
+      
+      // taskInfo作成
+      const taskInfoForAI = task.promptColumns ? {
+        row: task.row,
+        promptColumns: task.promptColumns,
+        sheetName: task.sheetName
+      } : null;
+      
+      console.log(`[StreamProcessor] taskInfo送信前 - taskInfo:`, taskInfoForAI);
+      
       const result = await aiTaskHandler.handleExecuteAITask({
         tabId,
-        prompt: task.prompt,
+        prompt: task.prompt,  // 空の場合は動的取得される
         taskId: task.id,
         timeout: 180000,
         model: finalModel,  // UI優先のモデル情報
@@ -1199,7 +1232,10 @@ class StreamProcessor {
         cellInfo: {  // セル位置情報を追加
           column: task.column,
           row: task.row
-        }
+        },
+        // 動的プロンプト取得用の情報を追加
+        taskInfo: taskInfoForAI,
+        spreadsheetId: this.spreadsheetData?.spreadsheetId  // スプレッドシートID
       }, null);
 
       const cellPosition = `${task.column}${task.row}`;
