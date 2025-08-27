@@ -496,7 +496,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         aiType: request.taskData?.aiType,
         model: request.taskData?.model,
         function: request.taskData?.function,
-        promptPreview: request.taskData?.prompt?.substring(0, 50) + '...',
+        promptLength: request.taskData?.prompt?.length,
+        promptPreview: request.taskData?.prompt ? request.taskData?.prompt.substring(0, 100) + '...' : '❌ プロンプトがありません！',
+        hasPrompt: !!request.taskData?.prompt,
         cellInfo: request.taskData?.cellInfo,
         timestamp: new Date().toLocaleTimeString()
       });
@@ -680,19 +682,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             statistics: taskList.getStatistics(),
           });
           
-          // タスクリストの詳細をログ出力
-          console.log("[Background] 📋 タスクリスト詳細:");
-          taskList.tasks.forEach((task, index) => {
-            console.log(`  [${index + 1}] ${task.column}${task.row}:`, {
-              id: task.id.substring(0, 8) + '...',
-              aiType: task.aiType,
-              model: task.model,
-              function: task.function,
-              multiAI: task.multiAI || false,
-              groupId: task.groupId || null,
-              promptPreview: task.prompt ? task.prompt.substring(0, 50) + '...' : ''
-            });
-          });
+          // タスクリストの詳細ログは削減（サマリーのみ）
+          console.log("[Background] 📋 タスクリスト生成完了: " + taskList.tasks.length + "タスク");
           
           // 列ごとのタスク数を集計
           const tasksByColumn = {};

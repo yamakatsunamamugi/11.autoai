@@ -28,7 +28,6 @@ export class TaskQueueManager {
     this.onTaskFailed = null;
     this.onQueueEmpty = null;
     
-    console.log('[TaskQueueManager] 初期化完了');
   }
   
   /**
@@ -44,10 +43,8 @@ export class TaskQueueManager {
     
     if (priority) {
       this.taskQueue.unshift(task);
-      console.log(`[TaskQueueManager] 優先タスク追加: ${task.id}`);
     } else {
       this.taskQueue.push(task);
-      console.log(`[TaskQueueManager] タスク追加: ${task.id}`);
     }
     
     // 処理が停止していれば開始
@@ -67,7 +64,6 @@ export class TaskQueueManager {
     }
     
     tasks.forEach(task => this.enqueue(task, false));
-    console.log(`[TaskQueueManager] ${tasks.length}個のタスクを追加`);
   }
   
   /**
@@ -79,7 +75,6 @@ export class TaskQueueManager {
     }
     
     this.isProcessing = true;
-    console.log('[TaskQueueManager] キュー処理開始');
     
     let taskIndex = 0;
     while (this.taskQueue.length > 0 && !this.isPaused) {
@@ -101,7 +96,6 @@ export class TaskQueueManager {
     }
     
     this.isProcessing = false;
-    console.log('[TaskQueueManager] キュー処理終了');
     
     // キューが空になったらコールバック実行
     if (this.taskQueue.length === 0 && this.processingTasks.size === 0) {
@@ -149,7 +143,6 @@ export class TaskQueueManager {
     const taskId = task.id;
     
     try {
-      console.log(`[TaskQueueManager] タスク処理開始: ${taskId} (Position: ${position})`);
       this.processingTasks.set(taskId, task);
       
       // タスク実行関数を呼び出し
@@ -161,7 +154,6 @@ export class TaskQueueManager {
       
       // 成功処理
       this.processingTasks.delete(taskId);
-      console.log(`[TaskQueueManager] タスク完了: ${taskId}`);
       
       if (this.onTaskComplete) {
         this.onTaskComplete(task);
@@ -195,7 +187,6 @@ export class TaskQueueManager {
     
     if (failedInfo.retryCount < this.maxRetries) {
       // リトライ
-      console.log(`[TaskQueueManager] リトライ ${failedInfo.retryCount}/${this.maxRetries}: ${taskId}`);
       this.failedTasks.set(taskId, failedInfo);
       
       // 遅延後に再度キューに追加
@@ -218,7 +209,6 @@ export class TaskQueueManager {
    */
   pause() {
     this.isPaused = true;
-    console.log('[TaskQueueManager] キュー処理を一時停止');
   }
   
   /**
@@ -226,7 +216,6 @@ export class TaskQueueManager {
    */
   resume() {
     this.isPaused = false;
-    console.log('[TaskQueueManager] キュー処理を再開');
     
     if (!this.isProcessing && this.taskQueue.length > 0) {
       this.startProcessing();
@@ -238,7 +227,6 @@ export class TaskQueueManager {
    */
   clear() {
     this.taskQueue = [];
-    console.log('[TaskQueueManager] キューをクリア');
   }
   
   /**
@@ -255,28 +243,6 @@ export class TaskQueueManager {
     };
   }
   
-  /**
-   * デバッグ情報を出力
-   */
-  debug() {
-    console.log('[TaskQueueManager] デバッグ情報:');
-    console.log('  キュー長:', this.taskQueue.length);
-    console.log('  処理中:', this.processingTasks.size);
-    console.log('  失敗:', this.failedTasks.size);
-    console.log('  処理状態:', this.isProcessing ? '処理中' : '停止');
-    console.log('  一時停止:', this.isPaused ? 'はい' : 'いいえ');
-    
-    if (this.taskQueue.length > 0) {
-      console.log('  次のタスク:', this.taskQueue[0].id);
-    }
-    
-    if (this.processingTasks.size > 0) {
-      console.log('  処理中タスク:');
-      for (const [id, task] of this.processingTasks) {
-        console.log(`    - ${id}`);
-      }
-    }
-  }
 }
 
 // デフォルトエクスポート

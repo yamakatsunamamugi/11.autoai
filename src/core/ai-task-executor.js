@@ -43,6 +43,8 @@ export class AITaskExecutor {
       model: taskData.model,
       function: taskData.function,
       promptLength: taskData.prompt?.length,
+      promptPreview: taskData.prompt ? taskData.prompt.substring(0, 100) + '...' : '❌ プロンプトが空！',
+      hasPrompt: !!taskData.prompt,
       timestamp: new Date().toLocaleTimeString()
     });
 
@@ -115,6 +117,11 @@ export class AITaskExecutor {
 
             console.log(`[ExecuteAITask] 🔍 ${taskData.aiType}の自動化オブジェクトを探しています...`);
             console.log(`[ExecuteAITask] 📋 利用可能な候補: ${possibleNames.join(', ')}`);
+            console.log(`[ExecuteAITask] 📝 プロンプト確認:`, {
+              hasPrompt: !!taskData.prompt,
+              promptLength: taskData.prompt?.length || 0,
+              promptPreview: taskData.prompt ? taskData.prompt.substring(0, 100) + '...' : '❌ プロンプトなし'
+            });
 
             if (!automation) {
               const availableKeys = Object.keys(window).filter(key =>

@@ -42,7 +42,6 @@
         async initialize() {
             if (this.isInitialized) return;
             
-            this.log('🔧 ユーザー設定同期システムを初期化中...', 'info');
             
             try {
                 // 設定ターゲットを登録
@@ -60,7 +59,6 @@
                 }
                 
                 this.isInitialized = true;
-                this.log('✅ ユーザー設定同期システム初期化完了', 'success');
                 
             } catch (error) {
                 this.log(`初期化エラー: ${error.message}`, 'error');
@@ -112,7 +110,6 @@
                 validator: this.validateGeminiConfig.bind(this)
             });
 
-            this.log(`${this.settingsTargets.size}個の設定ターゲットを登録しました`, 'info');
         }
 
         // ========================================
@@ -159,7 +156,6 @@
                 priority: 1
             });
 
-            this.log(`${this.syncRules.size}個の同期ルールを設定しました`, 'info');
         }
 
         addSyncRule(name, rule) {
@@ -204,11 +200,9 @@
                 const relevantRules = this.findRelevantSyncRules(ai, type);
                 
                 if (relevantRules.length === 0) {
-                    this.log(`${ai}-${type}に該当する同期ルールがありません`, 'debug');
                     return;
                 }
 
-                this.log(`🔄 ${ai.toUpperCase()}-${type}の同期処理を開始`, 'info');
 
                 // 変更分析を取得
                 const changes = await this.analyzeChanges(ai, type, changeEvent.data);
@@ -218,7 +212,6 @@
                     await this.executeSyncRule(rule, changes, changeEvent);
                 }
 
-                this.log(`✅ ${ai.toUpperCase()}-${type}の同期処理完了`, 'success');
 
             } catch (error) {
                 this.log(`同期処理エラー: ${error.message}`, 'error');
@@ -230,7 +223,6 @@
             const type = eventType.includes('models') ? 'models' : 'functions';
             
             if (newCount > 0 || removedCount > 0) {
-                this.log(`📊 永続化トリガー: ${ai}-${type} (新規:${newCount}, 削除:${removedCount})`, 'info');
                 // 追加的な同期処理があればここで実行
             }
         }
@@ -239,11 +231,9 @@
             try {
                 // 条件チェック
                 if (rule.condition && !rule.condition(changes)) {
-                    this.log(`同期ルール「${rule.name}」の条件を満たしていません`, 'debug');
                     return;
                 }
 
-                this.log(`🔧 同期ルール「${rule.name}」を実行中...`, 'info');
 
                 // データ変換
                 const transformedData = rule.transformer ? 
@@ -267,7 +257,6 @@
                     success: true
                 });
 
-                this.log(`✅ 同期ルール「${rule.name}」実行完了`, 'success');
 
             } catch (error) {
                 this.log(`同期ルール「${rule.name}」実行エラー: ${error.message}`, 'error');
@@ -289,11 +278,9 @@
                 throw new Error(`同期ターゲット「${targetName}」が見つかりません`);
             }
 
-            this.log(`📁 「${target.name}」に同期中...`, 'info');
 
             // Dry run モード
             if (this.config.dryRun) {
-                this.log(`[DRY RUN] ${target.name}への同期をシミュレート`, 'warning');
                 return;
             }
 
@@ -328,7 +315,6 @@
                     throw new Error(`未知の更新戦略: ${target.updateStrategy}`);
             }
 
-            this.log(`✅ 「${target.name}」同期完了`, 'success');
         }
 
         // ========================================
@@ -406,7 +392,6 @@
         // ========================================
         async mergeUpdate(target, data) {
             // ai-models.jsファイルの更新
-            this.log(`マージ更新: ${target.name}`, 'debug');
             
             // 実際のファイル更新は、実装上はコメントアウト
             // （実際の本番環境では適切なファイル操作APIを使用）
@@ -416,7 +401,6 @@
                 const aiConfig = window.aiModels[data.ai];
                 if (aiConfig && data.added) {
                     data.added.forEach(item => {
-                        this.log(`新しい${data.type}を追加: ${item.name}`, 'info');
                         
                         // 実際の設定更新ロジック
                         if (data.type === 'models') {
@@ -430,24 +414,20 @@
         }
 
         async partialUpdate(target, data) {
-            this.log(`部分更新: ${target.name}`, 'debug');
             // ChatGPT UIセレクターの部分的な更新
         }
 
         async aliasUpdate(target, data) {
-            this.log(`エイリアス更新: ${target.name}`, 'debug');
             // Claudeの MODEL_ALIASES を更新
             if (data.added && data.ai === 'claude') {
                 data.added.forEach(model => {
                     if (model.aliases) {
-                        this.log(`Claudeエイリアスを追加: ${model.name} → ${model.aliases.join(', ')}`, 'info');
                     }
                 });
             }
         }
 
         async dynamicUpdate(target, data) {
-            this.log(`動的更新: ${target.name}`, 'debug');
             // Geminiの動的設定更新
         }
 
@@ -555,7 +535,6 @@
                     state: currentState
                 }));
                 
-                this.log(`バックアップ作成: ${targetName}`, 'info');
                 
             } catch (error) {
                 this.log(`バックアップ作成エラー: ${error.message}`, 'error');
@@ -584,7 +563,6 @@
 
         async checkForPendingSync() {
             // 定期的な同期チェック（必要に応じて）
-            this.log('定期同期チェック実行', 'debug');
         }
 
         // ========================================
@@ -596,7 +574,6 @@
 
         updateConfig(newConfig) {
             this.config = { ...this.config, ...newConfig };
-            this.log('設定を更新しました', 'info');
         }
 
         getSyncRules() {
@@ -641,7 +618,6 @@
 
         enableDryRun(enabled = true) {
             this.config.dryRun = enabled;
-            this.log(`ドライランモード: ${enabled ? 'ON' : 'OFF'}`, 'warning');
         }
 
         log(message, type = 'info') {

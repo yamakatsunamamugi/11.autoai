@@ -5,22 +5,27 @@ class TaskQueue {
     this.storageKey = "task_queue";
     this.metadataKey = "task_metadata";
     this.eventKey = "task_events";
-    this.chunkSize = 100; // 1チャンクあたりのタスク数
+    this.chunkSize = 10; // 1チャンクあたりのタスク数を10に削減（より安全）
   }
 
   // タスクリストを保存（分割保存対応）
   async saveTaskList(taskList) {
     try {
+      // 保存前に既存データをクリア
+      await this.clearTaskList();
+      
+      // ストレージ使用量を確認
+      const usage = await this.getStorageUsage();
+      
       const data = taskList.toJSON();
       const tasks = data.tasks;
       
-      // タスクを100個ずつのチャンクに分割
+      // タスクを30個ずつのチャンクに分割
       const chunks = [];
       for (let i = 0; i < tasks.length; i += this.chunkSize) {
         chunks.push(tasks.slice(i, i + this.chunkSize));
       }
       
-      console.log(`[TaskQueue] タスクを${chunks.length}個のチャンクに分割 (${tasks.length}タスク)`);
       
       // メタデータを保存（チャンク数と統計情報）
       await chrome.storage.local.set({
@@ -39,7 +44,6 @@ class TaskQueue {
         await chrome.storage.local.set({
           [chunkKey]: chunks[i],
         });
-        console.log(`[TaskQueue] チャンク${i + 1}/${chunks.length}を保存 (${chunks[i].length}タスク)`);
       }
       
       // イベントを記録
@@ -72,14 +76,12 @@ class TaskQueue {
         const data = result[this.storageKey];
         
         if (!data) {
-          console.log("[TaskQueue] 保存されたタスクリストが見つかりません");
           return null;
         }
         
         // 旧形式のデータを復元
         const { TaskList } = await import("./models.js");
         const taskList = TaskList.fromJSON(data);
-        console.log("[TaskQueue] 旧形式のタスクリスト読み込み完了:", taskList.getStatistics());
         return taskList;
       }
       
@@ -87,7 +89,6 @@ class TaskQueue {
       const allTasks = [];
       const chunkCount = metadata.chunkCount;
       
-      console.log(`[TaskQueue] ${chunkCount}個のチャンクから読み込み開始`);
       
       // 各チャンクを読み込み
       for (let i = 0; i < chunkCount; i++) {
@@ -97,7 +98,6 @@ class TaskQueue {
         
         if (chunkData) {
           allTasks.push(...chunkData);
-          console.log(`[TaskQueue] チャンク${i + 1}/${chunkCount}を読み込み (${chunkData.length}タスク)`);
         }
       }
       
@@ -108,10 +108,6 @@ class TaskQueue {
       taskList.createdAt = metadata.createdAt || Date.now();
       taskList.aiColumns = metadata.aiColumns || {};
       
-      console.log(
-        "[TaskQueue] チャンク分割タスクリスト読み込み完了:",
-        taskList.getStatistics(),
-      );
       return taskList;
     } catch (error) {
       console.error("[TaskQueue] 読み込みエラー:", error);
@@ -134,13 +130,11 @@ class TaskQueue {
         for (let i = 0; i < metadata.chunkCount; i++) {
           keysToRemove.push(`${this.storageKey}_chunk_${i}`);
         }
-        console.log(`[TaskQueue] ${metadata.chunkCount}個のチャンクを削除します`);
       }
       
       // 全ての関連データを削除
       await chrome.storage.local.remove(keysToRemove);
 
-      console.log("[TaskQueue] タスクリストをクリアしました");
       return { success: true };
     } catch (error) {
       console.error("[TaskQueue] クリアエラー:", error);
@@ -153,7 +147,6 @@ class TaskQueue {
     return new Promise((resolve) => {
       chrome.storage.local.getBytesInUse(null, (bytesInUse) => {
         const mb = (bytesInUse / 1024 / 1024).toFixed(2);
-        console.log(`[TaskQueue] ストレージ使用量: ${mb}MB / 10MB`);
         resolve({ bytesInUse, mb, percentage: (bytesInUse / 10485760 * 100).toFixed(1) });
       });
     });

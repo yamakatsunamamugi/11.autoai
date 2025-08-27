@@ -30,9 +30,7 @@
  */
 async function bringWindowToFront() {
   try {
-    console.log('[bringWindowToFront] ウィンドウを最前面に表示開始');
     const currentWindow = await chrome.windows.getCurrent();
-    console.log('[bringWindowToFront] 現在のウィンドウID:', currentWindow.id);
     
     await chrome.windows.update(currentWindow.id, {
       focused: true,
@@ -40,7 +38,6 @@ async function bringWindowToFront() {
       state: 'normal'
     });
     
-    console.log('[bringWindowToFront] ウィンドウ最前面表示完了');
   } catch (error) {
     console.error('[bringWindowToFront] ウィンドウ最前面表示エラー:', error);
   }
@@ -458,7 +455,6 @@ function addDataCleanupButton() {
     if (confirm('古いデータ形式をクリアして新しい形式で再取得しますか？')) {
       // Chrome Storage をクリア
       chrome.storage.local.remove(['ai_config_persistence'], () => {
-        console.log('✅ 古いデータをクリアしました');
         alert('データクリーンアップ完了。「AI変更検出システム」を再実行してください。');
         
         // AIステータスを更新
@@ -670,10 +666,8 @@ function showIntegratedModal() {
     // データクリーンアップを実行（グローバルAIPersistenceが利用可能な場合）
     if (window.AIPersistence && typeof window.AIPersistence.cleanupExistingData === 'function') {
       try {
-        console.log('[UI] データクリーンアップを実行中...');
         const hasChanges = await window.AIPersistence.cleanupExistingData();
         if (hasChanges) {
-          console.log('[UI] データクリーンアップが完了しました。新しいデータを取得します...');
           // クリーンアップ後、更新されたデータを再取得
           setTimeout(() => {
             chrome.storage.local.get(['ai_config_persistence'], (updatedResult) => {
@@ -813,8 +807,6 @@ function renderIntegratedTable(config) {
       const aiConfig = config[col.key];
       const items = aiConfig && aiConfig[col.dataKey] ? aiConfig[col.dataKey] : [];
       
-      // デバッグログ: 実際のデータ構造を確認
-      console.log(`[UI Debug] ${col.key} ${col.dataKey} データ:`, items);
       
       return items.map((item, index) => {
         let itemName = '';
@@ -825,8 +817,6 @@ function renderIntegratedTable(config) {
           itemName = item;
           isSelected = false;
         } else {
-          // 旧フォーマットとの互換性（デバッグ情報付き）
-          console.log(`[UI Debug] レガシーデータ検出 ${col.key} ${col.dataKey}[${index}]:`, item);
           
           if (typeof item === 'object' && item !== null) {
             // オブジェクトの場合、一般的なプロパティをチェック
@@ -852,7 +842,6 @@ function renderIntegratedTable(config) {
             const patternIndex = itemName.indexOf(pattern);
             if (patternIndex > 0) {
               itemName = itemName.substring(0, patternIndex).trim();
-              console.log(`[UI Debug] Claude説明文除去: "${originalName}" → "${itemName}"`);
               break;
             }
           }
@@ -1665,7 +1654,6 @@ if (loadSheetsBtn) {
 const addColumnsBtn = document.getElementById("addColumnsBtn");
 if (addColumnsBtn) {
   addColumnsBtn.addEventListener("click", async () => {
-    console.log("列追加ボタンがクリックされました");
     
     // 複数のURL入力欄から値を取得
     const urlInputs = document.querySelectorAll('.spreadsheet-url-input');
@@ -1718,7 +1706,6 @@ if (addColumnsBtn) {
 }
 
 startBtn.addEventListener("click", async () => {
-  console.log("【本番実行】ストリーミング処理開始ボタンが押されました。");
 
   // 複数のURL入力欄から値を取得
   const urlInputs = document.querySelectorAll('.spreadsheet-url-input');
@@ -1737,7 +1724,6 @@ startBtn.addEventListener("click", async () => {
     return;
   }
   
-  console.log(`処理するURL数: ${urls.length}`, urls);
 
   // ボタンの状態を更新
   startBtn.disabled = true;
@@ -1750,7 +1736,6 @@ startBtn.addEventListener("click", async () => {
 // 複数URLを並列処理する関数
 async function processMultipleUrls(urls) {
   if (!urls || urls.length === 0) {
-    console.log("処理するURLがありません");
     updateStatus("処理するURLがありません", "error");
     startBtn.disabled = false;
     stopBtn.disabled = true;
@@ -1758,7 +1743,6 @@ async function processMultipleUrls(urls) {
   }
   
   const currentUrl = urls[0]; // 最初のURLのみ処理（複数URL同時処理は未実装）
-  console.log(`処理中: ${currentUrl}`);
   updateStatus(`処理中: ${currentUrl.substring(0, 50)}...`, "loading");
 
   // まずスプレッドシートが読み込まれているか確認
@@ -1767,7 +1751,6 @@ async function processMultipleUrls(urls) {
   
   if (!savedTasks || !savedTasks.tasks || savedTasks.tasks.length === 0) {
     // スプレッドシートが読み込まれていない場合、自動的に読み込む
-    console.log("スプレッドシートが未読み込み。自動的に読み込みます。");
     updateStatus("スプレッドシートを自動読み込み中...", "loading");
     
     try {
@@ -1781,7 +1764,6 @@ async function processMultipleUrls(urls) {
         throw new Error("スプレッドシート読み込みエラー: " + (loadResponse?.error || "不明なエラー"));
       }
 
-      console.log("スプレッドシート読み込み成功。タスクを生成しました。");
       console.log("loadResponse内容:", loadResponse);
       
       // タスクはストレージに保存されているので、少し待ってから取得
@@ -1791,7 +1773,6 @@ async function processMultipleUrls(urls) {
       if (updatedStorage.savedTasks && updatedStorage.savedTasks.tasks && updatedStorage.savedTasks.tasks.length > 0) {
         // ストレージから取得
         savedTasks = updatedStorage.savedTasks;
-        console.log("ストレージからタスク取得成功:", savedTasks.tasks.length, "件");
       } else {
         // それでも取得できない場合はTaskQueueから直接取得
         const taskQueue = new (await import("../features/task/queue.js")).default();
@@ -1851,8 +1832,6 @@ async function processMultipleUrls(urls) {
       savedTasks = await taskQueue.loadTaskList();
     }
 
-    console.log("[UI] 保存されたタスク:", savedTasks);
-    console.log("[UI] タスク数:", savedTasks?.tasks?.length || 0);
     
     // AI列数の正しい計算（savedTasksから取得）
     const aiColumnsCount = savedTasks?.aiColumns ? 
@@ -1907,9 +1886,6 @@ async function processMultipleUrls(urls) {
     
     // メッセージングエラーの場合は詳細ログを出力
     if (error.message.includes('message channel closed') || error.message.includes('Message timeout')) {
-      console.log("🔧 [Debug] メッセージングエラーが発生:", error.message);
-      console.log("🔧 [Debug] バックグラウンド処理は継続している可能性があります");
-      console.log("🔧 [Debug] タスクリスト:", savedTasks?.tasks?.length, "件のタスク");
       updateStatus("処理開始中（通信エラーを検出）", "warning");
       showFeedback("通信エラーが発生しましたが、処理は継続している可能性があります", "warning");
       
@@ -2144,7 +2120,6 @@ deleteAnswersBtn.addEventListener("click", async () => {
  */
 async function runIntegratedAITest() {
   try {
-    console.log("【テスト実行】AI Orchestratorを開きます");
     
     // TaskQueueから現在のタスクリストを取得（デバッグ用）
     const { default: TaskQueue } = await import("../features/task/queue.js");
@@ -2157,7 +2132,6 @@ async function runIntegratedAITest() {
       await chrome.storage.local.set({
         'task_queue_for_test': taskData
       });
-      console.log("📋 タスクリストをChrome Storageに保存しました:", taskData);
     }
     
     // AI Orchestratorページを開く（タスクリストモードで）
@@ -2187,13 +2161,9 @@ async function runIntegratedAITest() {
     );
 
     if (orchestratorWindow) {
-      console.log("✅ AI Orchestratorが開かれました");
       updateStatus("AI Orchestratorを開きました", "success");
       
       if (taskList) {
-        console.log(`📊 タスク統計: 総数=${taskList.tasks.length}`);
-      } else {
-        console.log("ℹ️ タスクリストなしで手動モードで開きます");
       }
     } else {
       console.error("❌ AI Orchestratorを開けませんでした");
@@ -4224,7 +4194,6 @@ if (testAiSelectorBtn) {
 const testSpreadsheetLoadingBtn = document.getElementById('testSpreadsheetLoadingBtn');
 if (testSpreadsheetLoadingBtn) {
   testSpreadsheetLoadingBtn.addEventListener('click', async () => {
-    console.log('📊 スプレッドシート読み込みテスト開始');
     await bringWindowToFront();
     
     updateStatus('スプレッドシート読み込みテスト中...', 'loading');

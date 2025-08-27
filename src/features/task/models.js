@@ -21,14 +21,16 @@ class Task {
 
   // タスクをJSON形式で出力（Chrome Storage保存用）
   toJSON() {
+    // promptは保存しない（実行時に動的取得するため）
     return {
       id: this.id,
       column: this.column,
       row: this.row,
       aiType: this.aiType,
       taskType: this.taskType,
-      prompt: this.prompt,
-      promptColumn: this.promptColumn,
+      // prompt: this.prompt,  // 削除：実行時にスプレッドシートから取得
+      promptColumn: this.promptColumn,  // どの列から取得するかの情報は保持
+      promptColumns: this.promptColumns, // 複数プロンプト列の情報も保持
       sourceColumn: this.sourceColumn,
       reportColumn: this.reportColumn,
       specialOperation: this.specialOperation,
@@ -36,12 +38,12 @@ class Task {
       multiAI: this.multiAI,
       existingAnswer: this.existingAnswer,
       skipReason: this.skipReason,
-      metadata: this.metadata,
+      // metadata: this.metadata,  // 削除：サイズ削減
       logColumns: this.logColumns,
       groupId: this.groupId,
       groupInfo: this.groupInfo,
-      specialSettings: this.specialSettings,
-      controlFlags: this.controlFlags,
+      // specialSettings: this.specialSettings,  // 削除：サイズ削減
+      // controlFlags: this.controlFlags,  // 削除：サイズ削減
       createdAt: this.createdAt,
       version: this.version,
     };

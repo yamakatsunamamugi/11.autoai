@@ -231,7 +231,6 @@ class TaskAdapter {
       
       if (mode === 'tasklist' && data) {
         const taskListData = JSON.parse(decodeURIComponent(data));
-        console.log('📥 URLパラメータからタスクリストを受信:', taskListData);
         return this.fromTaskList(taskListData);
       }
     } catch (error) {
@@ -255,7 +254,6 @@ class TaskAdapter {
       
       // タスクリストメッセージの処理
       if (event.data && event.data.type === 'TASK_LIST') {
-        console.log('📥 postMessageでタスクリストを受信:', event.data.taskList);
         const taskList = this.fromTaskList(event.data.taskList);
         callback(taskList);
       }
@@ -277,7 +275,6 @@ class TaskAdapter {
         
         const taskData = result.task_queue_for_test || result.task_queue;
         if (taskData) {
-          console.log('📥 Chrome Storageからタスクリストを読み込み:', taskData);
           // 読み込み後、task_queue_for_testをクリア（次回の混乱を防ぐ）
           if (result.task_queue_for_test) {
             chrome.storage.local.remove(['task_queue_for_test']);
@@ -304,19 +301,16 @@ class TaskAdapter {
     // MutationObserverモードの検出
     const mutationObserverMode = urlParams.get('mode');
     if (mutationObserverMode === 'mutationobserver') {
-      console.log('👁️ MutationObserverモード検出（URLパラメータ）');
       return { mode: 'mutationobserver', taskList: null };
     }
     
     const testMode = urlParams.get('test');
     if (testMode === 'true' || testMode === '1') {
-      console.log('🧪 テストモード検出（URLパラメータ）');
       return { mode: 'test', taskList: null };
     }
     
     const urlTaskList = this.receiveFromURL();
     if (urlTaskList) {
-      console.log('📊 タスクリストモード検出（URLパラメータ）');
       return { mode: 'tasklist', taskList: urlTaskList };
     }
     
@@ -326,7 +320,6 @@ class TaskAdapter {
                       document.title.includes('統合AIテスト');
     
     if (isTestPage) {
-      console.log('🧪 テストモード検出（ページ要素）');
       return { mode: 'test', taskList: null };
     }
     
@@ -335,7 +328,6 @@ class TaskAdapter {
       if (typeof chrome !== 'undefined' && chrome.storage) {
         const result = await chrome.storage.local.get(['task_queue']);
         if (result.task_queue) {
-          console.log('📊 タスクリストモード検出（Chrome Storage - 本番用）');
           // task_queueから読み込み（スプレッドシートからのデータ）
           const taskData = this.fromTaskList(result.task_queue);
           return { mode: 'tasklist', taskList: taskData };
@@ -346,7 +338,6 @@ class TaskAdapter {
     }
     
     // 4. デフォルトは手動モード
-    console.log('📝 手動モード（デフォルト）');
     return { mode: 'manual', taskList: null };
   }
   

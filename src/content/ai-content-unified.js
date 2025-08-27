@@ -19,7 +19,6 @@ function initializeRetryManager() {
   
   // RetryManagerは既にmanifest.jsonのcontent_scriptsで読み込み済み
   if (typeof window.RetryManager === 'function') {
-    console.log('✅ [11.autoai] RetryManagerを初期化しました');
     retryManager = new window.RetryManager({
       maxRetries: 3,
       retryDelay: 5000,
@@ -134,21 +133,18 @@ async function waitForResponseEnhanced(enableDeepResearch = false, customTimeout
 
 // UI Selectors、タイムアウト設定とDeepResearch設定を読み込み
 const loadUISelectors = () => {
-  console.log("🔄 [11.autoai] UI Selectors読み込み開始");
   
   UI_SELECTORS_PROMISE = new Promise((resolve) => {
     const script = document.createElement("script");
     script.type = "module";
     script.src = chrome.runtime.getURL("src/config/ui-selectors.js");
     script.onload = () => {
-      console.log("✅ [11.autoai] UI Selectorsを読み込みました");
       UI_SELECTORS_LOADED = true;
       resolve(true);
       loadTimeoutConfig();
     };
     script.onerror = (error) => {
       console.error("❌ [11.autoai] UI Selectors読み込みエラー:", error);
-      console.log("🔄 [11.autoai] フォールバック: タイムアウト設定を直接読み込み");
       UI_SELECTORS_LOADED = false;
       resolve(false); // エラーでも続行
       loadTimeoutConfig();
@@ -162,14 +158,11 @@ const loadUISelectors = () => {
 // UI_SELECTORSの読み込み完了を待つ
 async function waitForUISelectors() {
   if (UI_SELECTORS_LOADED) {
-    console.log("✅ [11.autoai] UI_SELECTORSは既に読み込み済み");
     return true;
   }
   
   if (UI_SELECTORS_PROMISE) {
-    console.log("⏳ [11.autoai] UI_SELECTORSの読み込みを待機中...");
     const result = await UI_SELECTORS_PROMISE;
-    console.log(`✅ [11.autoai] UI_SELECTORS読み込み完了: ${result ? '成功' : 'エラー(フォールバック使用)'}`);
     return result;
   }
   
@@ -178,11 +171,9 @@ async function waitForUISelectors() {
 }
 
 const loadTimeoutConfig = () => {
-  console.log("🔄 [11.autoai] タイムアウト設定読み込み開始");
   const script = document.createElement("script");
   script.src = chrome.runtime.getURL("src/config/timeout-config.js");
   script.onload = () => {
-    console.log("✅ [11.autoai] タイムアウト設定を読み込みました");
     loadDeepResearchConfig();
   };
   script.onerror = (error) => {
@@ -198,7 +189,6 @@ const loadTimeoutConfig = () => {
 
 // DeepResearch設定を読み込み
 const loadDeepResearchConfig = () => {
-  console.log("🔄 [11.autoai] DeepResearchモジュール読み込み開始...");
 
   const script = document.createElement("script");
   script.type = "module";
@@ -212,7 +202,6 @@ const loadDeepResearchConfig = () => {
   };
 
   script.onload = () => {
-    console.log("📜 [11.autoai] DeepResearchスクリプトが読み込まれました");
   };
 
   const deepResearchConfigUrl = chrome.runtime.getURL(
@@ -453,7 +442,6 @@ async function checkDeepResearchState() {
  * @returns {Promise<void>}
  */
 async function enableDeepResearchSimple() {
-  console.log(`[11.autoai][${AI_TYPE}] 🔬 DeepResearch有効化（シンプル版）`);
 
   try {
     // 現在の状態を確認
@@ -480,7 +468,6 @@ async function enableDeepResearchSimple() {
           );
 
           if (toolButton) {
-            console.log(`[11.autoai][ChatGPT] ツールボタンを発見`);
 
             // focus + Enterキーが確実に動作する
             toolButton.focus();
@@ -568,7 +555,6 @@ async function enableDeepResearchSimple() {
               }),
             );
           } else {
-            console.log(`[11.autoai][ChatGPT] ⚠️ ツールボタンが見つかりません`);
           }
         } catch (error) {
           console.error(
@@ -580,7 +566,6 @@ async function enableDeepResearchSimple() {
 
       case "Claude":
         // Claude: ツールメニュー → Web検索 → リサーチボタン（3ステップ）
-        console.log(`[11.autoai][Claude] DeepResearch 3ステップ開始`);
 
         // ステップ1: ツールメニューを開く
         const toolsButton = document.querySelector(
@@ -645,7 +630,6 @@ async function enableDeepResearchSimple() {
           );
         }
 
-        console.log(`[11.autoai][Claude] ✅ DeepResearch 3ステップ完了`);
         break;
 
       case "Gemini":
@@ -1275,7 +1259,9 @@ async function handleAITaskPrompt(request, sendResponse) {
     taskId,
     model,
     specialOperation,
-    promptLength: prompt?.length
+    promptLength: prompt?.length,
+    promptPreview: prompt ? prompt.substring(0, 200) + '...' : '❌ プロンプトが空です！',
+    hasPrompt: !!prompt
   });
   
   // タスクデータを準備
@@ -1486,12 +1472,6 @@ async function handlePreSendModeSetup(specialMode, enableDeepResearch) {
           window.selectedChatGPTTool ||
           null;
 
-        console.log(`[11.autoai][ChatGPT] 🔧 選択されたツール:`, {
-          specialMode,
-          urlParam: urlParams.get("chatgptTool"),
-          globalVar: window.selectedChatGPTTool,
-          selected: selectedTool,
-        });
 
         if (
           window.chatGPTToolControl &&
@@ -2070,12 +2050,6 @@ async function handleExecuteTask(request, sendResponse) {
     // DeepResearchモードの場合はタイムアウトを40分に調整
     const actualTimeout = enableDeepResearch ? 3600000 : timeout;
 
-    console.log(`[11.autoai][${AI_TYPE}] 統合タスク実行開始: ${taskId}`, {
-      timeout: actualTimeout,
-      enableDeepResearch: enableDeepResearch,
-      specialMode: specialMode,
-      model: model,
-    });
 
     // 統合テストページと同じ形式のconfigを作成
     const config = {
@@ -2283,7 +2257,6 @@ async function waitForResponseWithStopButton(enableDeepResearch = false) {
         const totalElapsed = Math.floor((Date.now() - startTime) / 1000);
         console.log(`[11.autoai][${AI_TYPE}] ✅ 停止ボタン消失検出 - レスポンス生成完了 (${totalElapsed}秒)`);
         setTimeout(() => {
-          console.log(`[11.autoai][${AI_TYPE}] ✅ タスク完了`);
           resolve(true);
         }, 1000);
       }

@@ -1308,6 +1308,10 @@
     });
 
     log('Claude応答テキストを取得中...', 'INFO');
+    
+    // 応答要素が表示されるまで少し待機
+    await wait(500);
+    log('応答要素の表示待機完了', 'DEBUG');
 
     try {
       // ========================================
@@ -1372,11 +1376,33 @@
       }
       
       if (!finalMessages || finalMessages.length === 0) {
-        const error = 'ui-selectors.js の全セレクタでClaude メッセージが見つかりません';
-        log(error, 'ERROR');
-        log('使用可能セレクタ:', 'ERROR', { selectors: responseSelectors });
-        endOperation(operationName, { success: false, error });
-        return null;
+        // 初回失敗時、さらに待機してリトライ
+        log('初回取得失敗、追加待機してリトライします', 'WARNING');
+        await wait(1000);
+        
+        // リトライ
+        for (const selector of responseSelectors) {
+          try {
+            const messages = document.querySelectorAll(selector);
+            if (messages.length > 0) {
+              finalMessages = messages;
+              usedSelector = selector;
+              log(`✅ リトライ成功: "${selector}" (${messages.length}個のメッセージ)`, 'SUCCESS');
+              break;
+            }
+          } catch (e) {
+            // エラーは無視
+          }
+        }
+        
+        // それでも見つからない場合はエラー
+        if (!finalMessages || finalMessages.length === 0) {
+          const error = 'ui-selectors.js の全セレクタでClaude メッセージが見つかりません';
+          log(error, 'ERROR');
+          log('使用可能セレクタ:', 'ERROR', { selectors: responseSelectors });
+          endOperation(operationName, { success: false, error });
+          return null;
+        }
       }
       
       // 最後のメッセージを取得（統合テスト同等処理）

@@ -109,7 +109,6 @@
       
       // 重複チェック
       if (prompts.includes(prompt)) {
-        console.log(`[${aiType}] プロンプトは既に登録済み: ${prompt}`);
         return false;
       }
       
@@ -121,7 +120,6 @@
       
       prompts.push(prompt);
       localStorage.setItem(`ai_prompts_${aiType}`, JSON.stringify(prompts));
-      console.log(`[${aiType}] プロンプトを保存: ${prompt}`);
       return true;
     },
     
@@ -137,7 +135,6 @@
       if (index > -1) {
         prompts.splice(index, 1);
         localStorage.setItem(`ai_prompts_${aiType}`, JSON.stringify(prompts));
-        console.log(`[${aiType}] プロンプトを削除: ${prompt}`);
         return true;
       }
       return false;
@@ -227,9 +224,7 @@
     };
     
     // chrome.storageに保存
-    chrome.storage.local.set({ dynamicAIConfig: config }, () => {
-      console.log('[AI Orchestrator] UI設定をchrome.storageに保存:', config);
-    });
+    chrome.storage.local.set({ dynamicAIConfig: config });
   }
 
   /**
@@ -317,7 +312,6 @@
           const event = new Event('input', { bubbles: true });
           input.dispatchEvent(event);
           
-          console.log(`[${targetId}] プロンプトを選択: ${value}`);
         }
       }
       
@@ -391,8 +385,6 @@
    * @requires window.TestRunner.getTestConfig
    */
   function handleConsecutiveTest(targetId) {
-    console.log(`🔄 3連続テスト準備: ${targetId}`);
-    console.log('現在のconsecutiveTestStates:', consecutiveTestStates);
     
     // テスト用のプロンプトを定義
     const testPrompts = [
@@ -401,8 +393,6 @@
       'こんにちは、調子はどうですか？'
     ];
     
-    console.log(`📝 チェックボックス連携3連続テスト用のタスクリストを作成`);
-    console.log(`🤖 開始AI: ${targetId}`);
     
     // test-runner-chrome.jsのgetTestConfig関数を使用してチェック状態を取得
     const testConfig = window.TestRunner ? window.TestRunner.getTestConfig() : null;
@@ -420,7 +410,6 @@
     ];
     
     const enabledAiTypes = allAiTypes.filter(ai => testConfig[ai.key]?.enabled);
-    console.log(`✅ 有効なAI: ${enabledAiTypes.map(ai => ai.name).join(', ')}`);
     
     if (enabledAiTypes.length === 0) {
       alert('❌ 有効なAIが選択されていません。チェックボックスでAIを選択してください。');
@@ -482,7 +471,6 @@
       }
     };
     
-    console.log(`📊 作成した3連続テストタスク:`, testTaskList);
     
     // テストデータを該当AIの状態に保存
     if (consecutiveTestStates[targetId]) {
@@ -497,7 +485,6 @@
       inputElement.style.backgroundColor = '#fff3cd';
     }
     
-    console.log(`✅ 3連続テスト準備完了。「テスト実行」ボタンを押すと開始します。`);
     
     // ステータス表示を更新
     const statusText = document.getElementById('status-text');
@@ -523,11 +510,6 @@
    * @requires /src/features/task/stream-processor.js
    */
   async function executeConsecutiveTest(targetAiType = null) {
-    console.log('executeConsecutiveTest呼び出し:', {
-      targetAiType,
-      consecutiveTestStates,
-      keys: Object.keys(consecutiveTestStates)
-    });
     
     // 実行するAIを特定（指定がない場合は有効なものを探す）
     let targetId = targetAiType ? `${targetAiType}-prompt` : null;
@@ -535,16 +517,12 @@
     
     if (targetId && consecutiveTestStates[targetId]) {
       testState = consecutiveTestStates[targetId];
-      console.log(`指定されたAI(${targetAiType})の状態を使用:`, testState);
     } else {
-      console.log('指定されたAIがないか無効。有効なものを探します...');
       // 有効な状態を持つAIを探す
       for (const [id, state] of Object.entries(consecutiveTestStates)) {
-        console.log(`  ${id}: enabled=${state.enabled}, hasData=${!!state.testData}`);
         if (state.enabled && state.testData) {
           targetId = id;
           testState = state;
-          console.log(`  → ${id}を選択`);
           break;
         }
       }
@@ -556,7 +534,6 @@
     }
     
     const aiType = targetId.replace('-prompt', '');
-    console.log(`🚀 3連続テスト実行開始: ${aiType}`);
     
     try {
       // StreamProcessorを直接使用（タスクリストが既に作成済み）
@@ -565,8 +542,6 @@
       // StreamProcessorのインスタンスを作成
       const processor = new StreamProcessor();
       
-      console.log(`🎯 StreamProcessorでタスクを直接実行`);
-      console.log(`実行するタスク:`, testState.testData.tasks);
       
       // タスクリストを直接実行（TaskGenerator不要）
       const result = await processor.processTaskStream(testState.testData, {}, {
@@ -574,7 +549,6 @@
         consecutiveTest: true
       });
       
-      console.log(`✅ 3連続テスト完了:`, result);
       
       // 結果を表示
       if (result.success) {
@@ -605,7 +579,6 @@
    * @param {Object} taskList - 実行するタスクリスト
    */
   async function executeWithTaskList(taskList) {
-    console.log('📋 タスクリストモードで実行:', taskList);
     updateStatus('タスクリスト実行中...', 'running');
     
     try {
@@ -617,7 +590,6 @@
         testMode: true  // テストモードとして実行
       });
       
-      console.log('✅ background.jsからのレスポンス:', response);
       
       if (response && response.success) {
         updateStatus(`タスクリスト実行開始: ${response.totalWindows || 0}個のウィンドウで処理中`, 'running');
@@ -768,12 +740,9 @@
    * 5. グローバル変数の公開
    */
   document.addEventListener('DOMContentLoaded', async function() {
-    console.log('AI Orchestrator - 初期化開始');
-    
     // TaskAdapterでモード判定
     if (window.TaskAdapter) {
       const { mode, taskList } = await TaskAdapter.detectMode();
-      console.log('実行モード:', mode);
       
       // タスクリストモードはスプレッドシートからのデータがある場合のみ
       if (mode === 'tasklist' && taskList) {
@@ -783,11 +752,9 @@
       } else if (mode === 'test') {
         // テストモードの場合は手動モードとして扱う
         executionMode = 'manual';
-        console.log('🧪 テストモード検出 - プルダウン選択値を使用');
       } else if (mode === 'mutationobserver') {
         // MutationObserverモードの場合
         executionMode = 'mutationobserver';
-        console.log('👁️ MutationObserverモード検出 - MutationObserver専用UI');
         updateUIForMutationObserverMode();
       }
     }
@@ -804,7 +771,6 @@
     document.querySelectorAll('select[id$="-model"], select[id$="-feature"]').forEach(select => {
       select.addEventListener('change', () => {
         saveUIConfigToStorage();
-        console.log(`[AI Orchestrator] ${select.id}の値が変更されました: ${select.value}`);
       });
     });
     
@@ -812,7 +778,6 @@
     document.querySelectorAll('input[type="checkbox"][id^="enable-"]').forEach(checkbox => {
       checkbox.addEventListener('change', () => {
         saveUIConfigToStorage();
-        console.log(`[AI Orchestrator] ${checkbox.id}の状態が変更されました: ${checkbox.checked}`);
       });
     });
     
@@ -823,7 +788,6 @@
         clearTimeout(input.saveTimer);
         input.saveTimer = setTimeout(() => {
           saveUIConfigToStorage();
-          console.log(`[AI Orchestrator] ${input.id}の値が変更されました`);
         }, 500);
       });
     });
@@ -845,12 +809,9 @@
       });
     }
     
-    console.log('AI Orchestrator - 初期化完了');
-    console.log('実行モード:', executionMode);
     
     // MutationObserverモードの場合は自動的に4分割ウィンドウを作成
     if (executionMode === 'mutationobserver') {
-      console.log('👁️ MutationObserverモード - 自動的に4分割ウィンドウを作成');
       setTimeout(async () => {
         await startMutationObserverMode();
       }, 1000);
@@ -860,7 +821,6 @@
      * DeepResearchモードでウィンドウを再オープン
      */
     async function reopenWindowForDeepResearch(aiType) {
-      console.log(`🔄 ${aiType}をDeepResearchモードで再オープン`);
       updateStatus(`${aiType}をDeepResearchモードで再実行中...`, 'running');
       
       try {
@@ -906,7 +866,6 @@
               await chrome.scripting.executeScript({
                 target: { tabId: targetTab.id },
                 func: () => {
-                  console.log('🔍 DeepResearchモードで自動実行開始');
                   
                   if (window.AIMutationObserver) {
                     const observer = new window.AIMutationObserver();
@@ -927,7 +886,6 @@
                           const button = document.querySelector(selector);
                           if (button) {
                             button.click();
-                            console.log('✅ DeepResearchボタンクリック');
                             deepResearchClicked = true;
                             break;
                           }
@@ -948,7 +906,6 @@
                 }
               });
               
-              console.log(`✅ ${aiType} DeepResearchモード開始`);
               updateStatus(`${aiType} DeepResearchモード実行中`, 'success');
             }
           }, 5000);
@@ -964,7 +921,6 @@
      * 各AIウィンドウにMutationObserverスクリプトを注入
      */
     async function injectMutationObserverToWindows(results) {
-      console.log('📌 MutationObserverスクリプトを各AIウィンドウに注入開始');
       
       if (!results || !results.windows) {
         console.error('❌ ウィンドウ情報が取得できません');
@@ -975,7 +931,6 @@
       for (const [aiType, windowInfo] of Object.entries(results.windows)) {
         if (windowInfo && windowInfo.tabId) {
           try {
-            console.log(`🔧 ${aiType}にMutationObserverスクリプトを注入`);
             
             // 必要な依存関係を先に注入
             await chrome.scripting.executeScript({
@@ -996,7 +951,6 @@
             await chrome.scripting.executeScript({
               target: { tabId: windowInfo.tabId },
               func: () => {
-                console.log('🚀 MutationObserver自動実行を開始');
                 
                 // AIMutationObserverのインスタンスを作成
                 if (window.AIMutationObserver) {
@@ -1008,14 +962,12 @@
                   // グローバルに保存
                   window.currentAIObserver = observer;
                   
-                  console.log('✅ MutationObserver自動実行開始完了');
                 } else {
                   console.error('❌ AIMutationObserverクラスが見つかりません');
                 }
               }
             });
             
-            console.log(`✅ ${aiType}へのスクリプト注入完了`);
             
           } catch (error) {
             console.error(`❌ ${aiType}へのスクリプト注入エラー:`, error);
@@ -1035,7 +987,6 @@
       try {
         // TestRunnerを使用して4分割ウィンドウを作成
         if (window.TestRunner && window.TestRunner.runAllAIs) {
-          console.log('🖼️ TestRunnerで4分割ウィンドウを作成');
           
           // AI設定を自動設定（全AIを有効化）
           const checkboxes = document.querySelectorAll('input[id^="enable-"]');
@@ -1045,7 +996,6 @@
           
           // TestRunnerで4分割ウィンドウ作成とMutationObserver開始
           const results = await window.TestRunner.runAllAIs();
-          console.log('✅ 4分割ウィンドウ作成完了:', results);
           
           // 各AIウィンドウにMutationObserverスクリプトを注入
           setTimeout(async () => {
@@ -1076,7 +1026,6 @@
     if (executionMode === 'mutationobserver') {
       chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
         if (message.type === 'close-and-reopen-for-deepresearch') {
-          console.log('🔄 DeepResearchモードで再実行要求:', message.aiType);
           
           // 3秒後に新しいウィンドウを開く
           setTimeout(async () => {
@@ -1098,13 +1047,11 @@
       if (executionMode === 'tasklist' && receivedTaskList) {
         // タスクリストモード
         btnRunAll.addEventListener('click', async () => {
-          console.log('📊 本番モード: スプレッドシートからのタスクリストを実行');
           await executeWithTaskList(receivedTaskList);
         });
       } else if (executionMode === 'mutationobserver') {
         // MutationObserverモードの場合はボタンを非表示にする（自動実行されるため）
         btnRunAll.style.display = 'none';
-        console.log('👁️ MutationObserverモード: 実行ボタンを非表示（自動実行のため）');
       }
     }
     // テストモードの場合は、test-runner-chrome.jsがイベントを処理する

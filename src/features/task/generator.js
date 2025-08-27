@@ -71,7 +71,6 @@ class TaskGenerator {
    * メインエントリーポイント - タスクを生成
    */
   async generateTasks(spreadsheetData) {
-    console.log("[TaskGenerator] タスク生成開始（リファクタリング版）");
     
     try {
       // 1. スプレッドシート構造を解析
@@ -80,8 +79,6 @@ class TaskGenerator {
       // 2. タスクを生成
       const taskList = await this.buildTasks(structure, spreadsheetData);
       
-      // 3. 統計情報を出力
-      this.logStatistics(taskList);
       
       return taskList;
     } catch (error) {
@@ -208,23 +205,12 @@ class TaskGenerator {
             const reportHeader = menuRow.data[lastAnswerIndex + 1];
             if (reportHeader && (reportHeader === "レポート化" || reportHeader.includes("レポート"))) {
               group.reportColumn = lastAnswerIndex + 1;
-              console.log(`[TaskGenerator] レポート化列を検出: ${this.indexToColumn(lastAnswerIndex + 1)}列`);
             }
           }
 
           groups.push(group);
           processed.add(nextIndex); // プロンプト列を処理済みに
 
-          console.log(`[TaskGenerator] 🔍 プロンプトグループ検出詳細 (グループ${groups.length}):`, {
-            ログ列: group.logColumn,
-            範囲: `${this.indexToColumn(nextIndex)}〜${this.indexToColumn(lastPromptIndex)}列`,
-            AIタイプ: group.aiType,
-            プロンプト列: group.promptColumns,
-            プロンプト列名: group.promptColumns.map(i => this.indexToColumn(i)),
-            回答列数: group.answerColumns.length,
-            回答列詳細: group.answerColumns.map(a => `${a.column}(${a.type}, index=${a.index})`),
-            開始インデックス: group.startIndex
-          });
         }
       }
     }
@@ -274,13 +260,10 @@ class TaskGenerator {
           
           if (cellB.includes(startFrom)) {
             controls.row.push({ type: "from", row: i + 1 });
-            console.log(`[TaskGenerator] 行制御: ${i + 1}行から処理`);
           } else if (cellB.includes(stopAfter)) {
             controls.row.push({ type: "until", row: i + 1 });
-            console.log(`[TaskGenerator] 行制御: ${i + 1}行で停止`);
           } else if (cellB.includes(onlyThis)) {
             controls.row.push({ type: "only", row: i + 1 });
-            console.log(`[TaskGenerator] 行制御: ${i + 1}行のみ処理`);
           }
         }
       }
@@ -302,13 +285,10 @@ class TaskGenerator {
             
             if (cell.includes(startFrom)) {
               controls.column.push({ type: "from", column, index: j });
-              console.log(`[TaskGenerator] 列制御: ${column}列から処理`);
             } else if (cell.includes(stopAfter)) {
               controls.column.push({ type: "until", column, index: j });
-              console.log(`[TaskGenerator] 列制御: ${column}列で停止`);
             } else if (cell.includes(onlyThis)) {
               controls.column.push({ type: "only", column, index: j });
-              console.log(`[TaskGenerator] 列制御: ${column}列のみ処理`);
             }
           }
         }
@@ -340,17 +320,14 @@ class TaskGenerator {
         if (!combinedPrompt) continue;
 
         // 各回答列にタスクを生成
-        console.log(`[TaskGenerator] グループ処理 (${group.aiType}): プロンプト列[${group.promptColumns.map(i => this.indexToColumn(i)).join(', ')}] -> 回答列[${group.answerColumns.map(a => a.column).join(', ')}]`);
         
         for (const answerCol of group.answerColumns) {
           // 既存回答チェック
           const existingAnswer = this.getCellValue(spreadsheetData, workRow.index, answerCol.index);
           if (this.answerFilter.hasAnswer(existingAnswer)) {
-            console.log(`[TaskGenerator] 既存回答をスキップ: ${answerCol.column}${workRow.number}`);
             continue;
           }
 
-          console.log(`[TaskGenerator] タスク作成: ${answerCol.column}${workRow.number} (グループ: ${group.aiType}, プロンプト: ${group.promptColumns.map(i => this.indexToColumn(i)).join('+')})`);
 
           // タスクを作成
           const task = await this.createAITask(
@@ -364,16 +341,13 @@ class TaskGenerator {
           
           // 重複チェック付きでタスクを追加
           const added = taskList.add(task);
-          if (added) {
-            console.log(`[TaskGenerator] タスク追加成功: ${task.column}${task.row} (ID: ${task.id})`);
-          } else {
+          if (!added) {
             console.warn(`[TaskGenerator] タスク追加失敗（重複）: ${task.column}${task.row}`);
           }
         }
 
         // レポート化タスクを生成
         if (group.reportColumn !== undefined) {
-          console.log(`[TaskGenerator] レポート化列が存在: ${this.indexToColumn(group.reportColumn)}列`);
           const reportTask = this.createReportTask(
             spreadsheetData,
             workRow,
@@ -381,13 +355,8 @@ class TaskGenerator {
             taskList.tasks
           );
           if (reportTask) {
-            console.log(`[TaskGenerator] レポートタスクをタスクリストに追加: ${reportTask.column}${reportTask.row}`);
             taskList.add(reportTask);
-          } else {
-            console.log(`[TaskGenerator] レポートタスク生成をスキップ`);
           }
-        } else {
-          console.log(`[TaskGenerator] レポート化列が存在しません`);
         }
       }
     }
@@ -409,18 +378,10 @@ class TaskGenerator {
       }
     }
     taskList.aiColumns = aiColumns;
-    console.log(`[TaskGenerator] AI列情報: ${JSON.stringify(aiColumns)}`);
 
     // controls情報を追加（互換性のため）
     taskList.controls = controls;
 
-    // タスク生成結果をログ出力
-    console.log(`[TaskGenerator] タスク生成完了: ${taskList.tasks.length}件`, {
-      processableGroups: processableGroups.length,
-      workRows: workRows.length,
-      columnControls: controls.column.length,
-      rowControls: controls.row.length
-    });
 
     // タスクが0件の場合の詳細ログ
     if (taskList.tasks.length === 0) {
@@ -494,7 +455,6 @@ class TaskGenerator {
           if (promptMatch) matchedColumns.push(`プロンプト列`);
           if (answerMatch) matchedColumns.push(`回答列`);
           
-          console.log(`[TaskGenerator] ✅ 「この列のみ処理」でグループ選択: ${matchedColumns.join(', ')}`);
         }
         
         return isMatched;
@@ -523,7 +483,6 @@ class TaskGenerator {
         const hasColumnAtOrAfterFrom = groupColumns.some(colIndex => colIndex >= fromControl.index);
         if (!hasColumnAtOrAfterFrom) {
           shouldProcess = false;
-          console.log(`[TaskGenerator] 🚫 「この列から処理」により除外: グループの全列が制御開始位置より前`);
         }
       }
 
@@ -537,13 +496,9 @@ class TaskGenerator {
         const hasColumnAtOrBeforeUntil = groupColumns.some(colIndex => colIndex <= untilControl.index);
         if (!hasColumnAtOrBeforeUntil) {
           shouldProcess = false;
-          console.log(`[TaskGenerator] 🚫 「この列で停止」により除外: グループの全列が制御終了位置より後`);
         }
       }
 
-      if (shouldProcess && (fromControl || untilControl)) {
-        console.log(`[TaskGenerator] ✅ 範囲制御でグループ選択: ${group.logColumn}〜${group.answerColumns[group.answerColumns.length - 1].column}`);
-      }
 
       return shouldProcess;
     });
@@ -671,14 +626,7 @@ class TaskGenerator {
    * AIタスクを作成
    */
   async createAITask(spreadsheetData, structure, workRow, group, answerCol, prompt) {
-    console.log(`[TaskGenerator] 🔍 createAITask開始: ${answerCol.column}${workRow.number}`, {
-      回答列: `${answerCol.column}(type=${answerCol.type}, index=${answerCol.index})`,
-      グループ: group.aiType,
-      プロンプト列: group.promptColumns.map(i => this.indexToColumn(i)),
-      プロンプト長: prompt ? prompt.length : 'null',
-      プロンプトプレビュー: prompt ? prompt.substring(0, 100) + '...' : 'null'
-    });
-
+  
     const { rows } = structure;
 
     // モデルと機能を取得
@@ -692,12 +640,10 @@ class TaskGenerator {
       if (isThreeTypeAI) {
         // 3種類AI: 各回答列（ChatGPT回答、Claude回答、Gemini回答）のモデル・機能を取得
         model = this.getCellValue(spreadsheetData, rows.model.index, answerCol.index);
-        console.log(`[TaskGenerator] 3種類AI - ${answerCol.column}列のモデル取得: "${model}"`);
       } else {
         // 単独AI: プロンプト列のモデル・機能を取得
         const promptColumnIndex = group.promptColumns[0]; // 最初のプロンプト列
         model = this.getCellValue(spreadsheetData, rows.model.index, promptColumnIndex);
-        console.log(`[TaskGenerator] 単独AI - プロンプト列(${this.indexToColumn(promptColumnIndex)})のモデル取得: "${model}"`);
       }
     }
     
@@ -705,12 +651,10 @@ class TaskGenerator {
       if (isThreeTypeAI) {
         // 3種類AI: 各回答列の機能を取得
         specialOperation = this.getCellValue(spreadsheetData, rows.task.index, answerCol.index);
-        console.log(`[TaskGenerator] 3種類AI - ${answerCol.column}列の機能取得: "${specialOperation}"`);
       } else {
         // 単独AI: プロンプト列の機能を取得
         const promptColumnIndex = group.promptColumns[0]; // 最初のプロンプト列
         specialOperation = this.getCellValue(spreadsheetData, rows.task.index, promptColumnIndex);
-        console.log(`[TaskGenerator] 単独AI - プロンプト列(${this.indexToColumn(promptColumnIndex)})の機能取得: "${specialOperation}"`);
       }
     }
 
@@ -750,7 +694,6 @@ class TaskGenerator {
     // 既存レポートチェック
     const existingReport = this.getCellValue(spreadsheetData, workRow.index, group.reportColumn);
     if (existingReport && existingReport.trim()) {
-      console.log(`[TaskGenerator] 既存レポートをスキップ: ${this.indexToColumn(group.reportColumn)}${workRow.number}`);
       return null;
     }
 
@@ -761,7 +704,6 @@ class TaskGenerator {
     );
 
     if (relatedTasks.length === 0) {
-      console.log(`[TaskGenerator] 関連AIタスクがないためレポートタスクをスキップ: 行${workRow.number}`);
       return null;
     }
 
@@ -784,7 +726,6 @@ class TaskGenerator {
       }
     };
 
-    console.log(`[TaskGenerator] レポートタスクを生成: ${this.indexToColumn(group.reportColumn)}${workRow.number}`);
     return new Task(TaskFactory.createTask(reportData));
   }
 
@@ -861,17 +802,6 @@ class TaskGenerator {
       return null;
     })();
     
-    // デバッグログ（重要なケースのみ）
-    if (colIndex >= 20 && colIndex <= 25 && rowIndex === 4) { // V-Z列、行5のケース
-      console.log(`[TaskGenerator] 🔍 getCellValue: ${this.indexToColumn(colIndex)}${rowIndex + 1}`, {
-        rowIndex,
-        colIndex,
-        columnName: this.indexToColumn(colIndex),
-        result: result,
-        resultType: typeof result,
-        resultLength: result ? result.length : 'null'
-      });
-    }
     
     return result;
   }
@@ -920,30 +850,11 @@ class TaskGenerator {
     return `${column}${row}_${timestamp}_${random}`;
   }
 
-  /**
-   * 統計情報をログ出力
-   */
-  logStatistics(taskList) {
-    const stats = taskList.getStatistics();
-    
-    console.log("[TaskGenerator] === タスク生成完了 ===");
-    console.log(`総タスク数: ${taskList.tasks.length}`);
-    console.log(`実行可能: ${taskList.getExecutableTasks().length}`);
-    console.log(`AI別: ChatGPT=${stats.byAI.chatgpt}, Claude=${stats.byAI.claude}, Gemini=${stats.byAI.gemini}`);
-
-    // 詳細ログ
-    console.groupCollapsed("[TaskGenerator] タスク詳細");
-    taskList.tasks.forEach((task, i) => {
-      console.log(`${i + 1}. ${task.column}${task.row} (${task.aiType}) - ${task.taskType}`);
-    });
-    console.groupEnd();
-  }
 
   /**
    * ストリーミング処理（互換性維持）
    */
   async generateAndExecuteTasks(spreadsheetData, options = {}) {
-    console.log("[TaskGenerator] タスク生成・実行開始");
     
     const taskList = await this.generateTasks(spreadsheetData);
     

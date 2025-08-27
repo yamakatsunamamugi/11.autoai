@@ -31,7 +31,6 @@ export class SpreadsheetAutoSetup {
     this.targetGid = gid;
 
     try {
-      console.log("[AutoSetup] 自動セットアップ開始", { spreadsheetId });
 
       // 1. シートIDを取得
       await this.loadSheetMetadata();
@@ -45,7 +44,6 @@ export class SpreadsheetAutoSetup {
       // 3. プロンプト列を検索して処理
       await this.processPromptColumns();
 
-      console.log("[AutoSetup] 自動セットアップ完了");
 
       const result = {
         success: true,
@@ -112,11 +110,6 @@ export class SpreadsheetAutoSetup {
 
       this.sheetId = targetSheet.properties.sheetId;
       this.sheetName = targetSheet.properties.title;
-      console.log("[AutoSetup] シートID取得完了", {
-        sheetId: this.sheetId,
-        sheetTitle: this.sheetName,
-        targetGid: this.targetGid,
-      });
     } else {
       throw new Error("スプレッドシートにシートが見つかりません");
     }
@@ -144,18 +137,12 @@ export class SpreadsheetAutoSetup {
 
     const data = await response.json();
     this.sheetData = data.values || [];
-    console.log("[AutoSetup] スプレッドシートデータ読み込み完了", {
-      rows: this.sheetData.length,
-    });
   }
 
   /**
    * メニュー行とAI行を検索
    */
   async findKeyRows() {
-    console.log("[AutoSetup] キー行検索開始", {
-      totalRows: this.sheetData.length,
-    });
 
     // configから設定を取得
     const config = typeof SPREADSHEET_CONFIG !== "undefined" ? SPREADSHEET_CONFIG : null;
@@ -176,19 +163,11 @@ export class SpreadsheetAutoSetup {
       // メニュー行を検索
       if (cellValue === config.rowIdentifiers.menuRow.keyword) {
         this.menuRowIndex = i;
-        console.log("[AutoSetup] メニュー行を発見", {
-          row: i + 1,
-          value: cellValue,
-        });
       }
 
       // AI行を検索
       if (cellValue === config.rowIdentifiers.aiRow.keyword) {
         this.aiRowIndex = i;
-        console.log("[AutoSetup] AI行を発見", {
-          row: i + 1,
-          value: cellValue,
-        });
       }
     }
 
@@ -236,7 +215,6 @@ export class SpreadsheetAutoSetup {
               const nextValue = menuRow[nextIndex];
               if (nextValue && nextValue.toString().trim() === `プロンプト${i}`) {
                 lastPromptIndex = nextIndex;
-                console.log(`[AutoSetup] プロンプト${i}を検出: ${this.indexToColumn(nextIndex)}列`);
               } else {
                 break; // 連続していない場合は終了
               }
@@ -251,7 +229,6 @@ export class SpreadsheetAutoSetup {
             aiType: (aiRow[colIndex] || "").toString(),
           });
           
-          console.log(`[AutoSetup] プロンプトグループ検出: ${this.indexToColumn(colIndex)}〜${this.indexToColumn(lastPromptIndex)}列`);
           
           // 次の検索はグループの最後の次から
           colIndex = lastPromptIndex;
@@ -268,18 +245,8 @@ export class SpreadsheetAutoSetup {
       aiType: group.aiType,
     }));
 
-    console.log("[AutoSetup] プロンプト列を検出", {
-      count: promptColumns.length,
-      columns: promptColumns.map((p) => p.column),
-      details: promptColumns.map((p) => ({
-        column: p.column,
-        index: p.index,
-        aiType: p.aiType,
-      })),
-    });
 
     // 第1段階: 通常AIのプロンプト列のみ処理（3種類AIは除外）
-    console.log("[AutoSetup] 第1段階: 通常AIの基本的な列の追加開始");
 
     // 右から左に処理（インデックスが大きい順）
     const sortedPromptColumns = promptColumns.sort((a, b) => b.index - a.index);
@@ -289,22 +256,14 @@ export class SpreadsheetAutoSetup {
         "3種類（ChatGPT・Gemini・Claude）",
       );
 
-      console.log(
-        `[AutoSetup] 列${promptCol.column}の判定: AIType="${promptCol.aiType}", is3TypeAI=${is3TypeAI}`,
-      );
 
       if (!is3TypeAI) {
-        console.log(`[AutoSetup] 通常AI処理実行: ${promptCol.column}列`);
         await this.setupBasicColumns(promptCol);
       } else {
-        console.log(
-          `[AutoSetup] 3種類AIのため第1段階ではスキップ: ${promptCol.column}列`,
-        );
       }
     }
 
     // 第2段階: 3種類AIの特別処理
-    console.log("[AutoSetup] 第2段階: 3種類AIの特別処理開始");
     await this.process3TypeAIColumns();
   }
 
@@ -313,7 +272,6 @@ export class SpreadsheetAutoSetup {
    * @param {Object} promptCol - プロンプト列情報
    */
   async setupBasicColumns(promptCol) {
-    console.log("[AutoSetup] setupBasicColumns開始:", promptCol.column);
 
     // 最新のデータを再読み込み（3.autoaiアプローチ）
     await this.loadSpreadsheetData();
@@ -328,10 +286,6 @@ export class SpreadsheetAutoSetup {
     );
 
     if (is3TypeAI) {
-      console.log(
-        "[AutoSetup]",
-        `${promptCol.column}列: 3種類AIのため第1段階をスキップ`,
-      );
       return { added: false };
     }
 
@@ -361,11 +315,6 @@ export class SpreadsheetAutoSetup {
       actualIndex = promptCol.index;
     }
 
-    console.log("[AutoSetup] 通常AI列の基本列設定:", {
-      originalIndex: promptCol.index,
-      actualIndex: actualIndex,
-      aiType: promptCol.aiType,
-    });
 
     const insertions = [];
 
@@ -399,7 +348,6 @@ export class SpreadsheetAutoSetup {
 
     // 一つずつ挿入を実行（3.autoaiアプローチ）
     if (insertions.length > 0) {
-      console.log("[AutoSetup] 通常AI列への基本列の挿入:", insertions);
       await this.executeIndividualInsertions(insertions, promptCol.aiType);
 
       // 追加された列を記録
@@ -422,7 +370,6 @@ export class SpreadsheetAutoSetup {
    * 3種類AIの特別処理（正しい順番での配置と位置確認対応）
    */
   async process3TypeAIColumns() {
-    console.log("[AutoSetup] process3TypeAIColumns開始");
 
     // 処理済みの列位置を記録
     const processedPositions = new Set();
@@ -456,14 +403,9 @@ export class SpreadsheetAutoSetup {
       }
 
       if (threeTypeAIColumns.length === 0) {
-        console.log("[AutoSetup] 3種類AIプロンプト列が見つかりません");
         break;
       }
 
-      console.log("[AutoSetup] 3種類AIプロンプト列を検出（現在の位置）", {
-        count: threeTypeAIColumns.length,
-        columns: threeTypeAIColumns.map((c) => `${c.column}(index:${c.index})`),
-      });
 
       // 最も右にある3種類AI列を1つ処理
       const sortedColumns = threeTypeAIColumns.sort(
@@ -471,9 +413,6 @@ export class SpreadsheetAutoSetup {
       );
       const targetColumn = sortedColumns[0];
 
-      console.log(
-        `[AutoSetup] 3種類AI列の処理開始: ${targetColumn.column}列 (現在index: ${targetColumn.index})`,
-      );
 
       // 処理前に再度最新の位置を確認
       await this.loadSpreadsheetData();
@@ -483,26 +422,16 @@ export class SpreadsheetAutoSetup {
       );
 
       if (currentPosition !== -1) {
-        console.log(
-          `[AutoSetup] プロンプト列位置確認: ${targetColumn.index} → ${currentPosition}`,
-        );
 
         // 処理前に既に正しい順番かチェック
         if (!this.check3TypeAICorrectOrder(currentPosition)) {
           await this.setup3TypeAIColumnWithCorrectOrder(currentPosition);
         } else {
-          console.log(
-            `[AutoSetup] 3種類AI列は既に正しい順番です: ${this.indexToColumn(currentPosition)}列`,
-          );
         }
       } else {
-        console.log(
-          `[AutoSetup] プロンプト列が見つかりません: ${targetColumn.column}`,
-        );
         break;
       }
 
-      console.log(`[AutoSetup] 3種類AI列の処理完了: ${targetColumn.column}列`);
 
       // 処理済みの位置として記録
       processedPositions.add(targetColumn.index);
@@ -591,13 +520,6 @@ export class SpreadsheetAutoSetup {
     const menuRow = this.sheetData[this.menuRowIndex];
     const requests = [];
 
-    console.log(
-      `[AutoSetup] setup3TypeAIColumnWithCorrectOrder開始: ${this.indexToColumn(promptIndex)}列`,
-      {
-        promptIndex: promptIndex,
-        menuRowLength: menuRow.length,
-      },
-    );
 
     // プロンプト2〜5を探して最後のプロンプトのインデックスを取得
     let lastPromptIndex = promptIndex;
@@ -607,7 +529,6 @@ export class SpreadsheetAutoSetup {
         const nextValue = menuRow[nextIndex];
         if (nextValue && nextValue.toString().trim() === `プロンプト${i}`) {
           lastPromptIndex = nextIndex;
-          console.log(`[AutoSetup] 3種類AI: プロンプト${i}を検出: ${this.indexToColumn(nextIndex)}列`);
         } else {
           break;
         }
@@ -620,11 +541,6 @@ export class SpreadsheetAutoSetup {
       leftIndex >= 0 ? (menuRow[leftIndex] || "").toString().trim() : "";
 
     if (leftValue !== "ログ") {
-      console.log(
-        "[AutoSetup] 3種類AI: ログ列を挿入予定 (位置:",
-        promptIndex,
-        ")",
-      );
       requests.push({
         insertDimension: {
           range: {
@@ -684,24 +600,12 @@ export class SpreadsheetAutoSetup {
 
       if (currentValue !== answerHeaders[i]) {
         hasAllCorrectHeaders = false;
-        console.log("[AutoSetup] 3種類AI: 期待する列が見つかりません", {
-          position: checkIndex,
-          expected: answerHeaders[i],
-          actual: currentValue,
-        });
         break;
       }
     }
 
     // 既に正しい3つの回答列が存在する場合は何もしない
     if (hasAllCorrectHeaders) {
-      console.log(
-        "[AutoSetup] 3種類AI: 既に正しい回答列が存在するため、処理をスキップ",
-        {
-          promptColumn: this.indexToColumn(promptIndex),
-          existingHeaders: answerHeaders,
-        },
-      );
 
       // ログ列の追加のみ実行（必要な場合）
       if (requests.length > 0) {
@@ -718,11 +622,6 @@ export class SpreadsheetAutoSetup {
         : "";
 
     if (rightValue === "回答") {
-      console.log(
-        "[AutoSetup] 3種類AI: 既存の「回答」列を削除予定 (位置:",
-        rightIndex,
-        ")",
-      );
       requests.push({
         deleteDimension: {
           range: {
@@ -736,10 +635,6 @@ export class SpreadsheetAutoSetup {
     }
 
     // 4. 3つの回答列を挿入（最後のプロンプトの後）
-    console.log("[AutoSetup] 3種類AI: 回答列を挿入予定", {
-      headers: answerHeaders,
-      startPosition: lastPromptIndex + 1,  // promptIndexではなくlastPromptIndexを使用
-    });
 
     // 3つの列を挿入（回答列のみ）
     for (let i = 0; i < 3; i++) {
@@ -816,12 +711,7 @@ export class SpreadsheetAutoSetup {
 
     // バッチ更新を実行（3.autoai方式）
     if (requests.length > 0) {
-      console.log("[AutoSetup] 3種類AI列の更新実行", {
-        requestCount: requests.length,
-        operations: requests.map((r) => Object.keys(r)[0]),
-      });
       await this.executeBatchUpdate(requests);
-      console.log("[AutoSetup] 3種類AI列の更新完了");
     }
   }
 
@@ -836,13 +726,6 @@ export class SpreadsheetAutoSetup {
     const menuRow = this.sheetData[this.menuRowIndex];
     const insertions = [];
 
-    console.log(
-      `[AutoSetup] setup3TypeAIColumn開始: ${this.indexToColumn(promptIndex)}列`,
-      {
-        promptIndex: promptIndex,
-        menuRowLength: menuRow.length,
-      },
-    );
 
     // 1. 左にログ列がなければ追加
     const leftIndex = promptIndex - 1;
@@ -850,7 +733,6 @@ export class SpreadsheetAutoSetup {
       leftIndex >= 0 ? (menuRow[leftIndex] || "").toString().trim() : "";
 
     if (leftValue !== "ログ") {
-      console.log("[AutoSetup] 3種類AI: ログ列を追加予定");
       insertions.push({
         position: promptIndex,
         header: "ログ",
@@ -873,21 +755,12 @@ export class SpreadsheetAutoSetup {
 
       if (currentValue !== answerHeaders[i]) {
         hasAllCorrectHeaders = false;
-        console.log("[AutoSetup] 3種類AI: 期待する列が見つかりません", {
-          position: checkIndex,
-          expected: answerHeaders[i],
-          actual: currentValue,
-        });
         break;
       }
     }
 
     // 3つの回答列を追加
     if (!hasAllCorrectHeaders) {
-      console.log("[AutoSetup] 3種類AI: 3つの回答列を追加予定", {
-        headers: answerHeaders,
-        startPosition: promptIndex + 1,
-      });
 
       for (let i = 0; i < answerHeaders.length; i++) {
         insertions.push({
@@ -899,7 +772,6 @@ export class SpreadsheetAutoSetup {
 
     // 一つずつ挿入を実行（3.autoaiアプローチ）
     if (insertions.length > 0) {
-      console.log("[AutoSetup] 3種類AI列への挿入実行:", insertions);
       await this.executeIndividualInsertions(insertions);
 
       // 追加された列を記録
@@ -911,9 +783,6 @@ export class SpreadsheetAutoSetup {
         });
       }
     } else {
-      console.log(
-        "[AutoSetup] 3種類AI: 既に正しい回答列が存在するため、処理をスキップ",
-      );
     }
   }
 
@@ -991,23 +860,12 @@ export class SpreadsheetAutoSetup {
       const menuRow = this.sheetData[this.menuRowIndex];
       const currentGridSize = menuRow ? menuRow.length : 0;
 
-      console.log("[AutoSetup] 個別列挿入実行:", {
-        position: insertion.position,
-        column: this.indexToColumn(insertion.position),
-        header: insertion.header,
-        currentGridSize: currentGridSize,
-      });
 
       // グリッドサイズエラー対処: 3.autoaiと同じ方式
       if (insertion.position >= currentGridSize) {
         // グリッドサイズを超える場合は、まず空の列を必要な数だけ追加
         const columnsNeeded = insertion.position - currentGridSize + 1;
 
-        console.log("[AutoSetup] グリッド拡張が必要:", {
-          currentGridSize: currentGridSize,
-          targetPosition: insertion.position,
-          columnsNeeded: columnsNeeded,
-        });
 
         // 複数列を一度に追加（3.autoai方式）
         for (let i = 0; i < columnsNeeded; i++) {
@@ -1132,7 +990,6 @@ export class SpreadsheetAutoSetup {
 
       try {
         await this.executeBatchUpdate(requests);
-        console.log(`[AutoSetup] ${insertion.header}列の挿入完了`);
 
         // データを再読み込み（次の挿入のため）- 3.autoaiアプローチの核心
         await this.loadSpreadsheetData();

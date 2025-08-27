@@ -1365,9 +1365,9 @@ class StreamProcessor {
       
       // リトライキューに追加
       if (!this.failedTasksByColumn.has(column)) {
-        this.failedTasksByColumn.set(column, []);
+        this.failedTasksByColumn.set(column, new Set());
       }
-      this.failedTasksByColumn.get(column).push(task);
+      this.failedTasksByColumn.get(column).add(task);
       
       // このタスクは失敗扱いとして、バッチ完了チェックから除外
       return;
@@ -4308,7 +4308,7 @@ ${formattedGemini}`;
       this.currentRowByColumn.set(column, 0);
       
       // リトライキューをクリア
-      this.failedTasksByColumn.set(column, []);
+      this.failedTasksByColumn.set(column, new Set());
     }
     
     // 利用可能な列をチェックしてリトライタスクを開始

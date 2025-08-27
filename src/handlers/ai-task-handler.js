@@ -69,14 +69,42 @@ export class AITaskHandler {
    * 
    * @param {Object} request - リクエストオブジェクト
    * @param {number} request.tabId - 対象タブID
-   * @param {string} request.prompt - 送信するプロンプト
+   * @param {string} request.prompt - 送信するプロンプト（省略可能、動的取得する場合）
+   * @param {Object} request.taskInfo - タスク情報（動的取得用）
    * @param {string} request.taskId - タスクID
    * @param {number} request.timeout - タイムアウト時間（ミリ秒）
    * @param {Object} sender - 送信元情報
    * @returns {Promise<Object>} 実行結果
    */
   async handleExecuteAITask(request, sender) {
-    const { tabId, prompt, taskId, timeout = 180000, model, specialOperation, aiType, cellInfo } = request;
+    let { tabId, prompt, taskId, timeout = 180000, model, specialOperation, aiType, cellInfo, taskInfo, spreadsheetId } = request;
+    
+    // promptが無い場合は動的に取得
+    if (!prompt && taskInfo && spreadsheetId) {
+      try {
+        this.log(`[AITaskHandler] 📋 プロンプトを動的取得中...`, {
+          row: taskInfo.row,
+          promptColumns: taskInfo.promptColumns,
+          spreadsheetId
+        });
+        
+        // Google Sheets APIを使用してプロンプトを取得
+        prompt = await this.fetchPromptFromSpreadsheet(spreadsheetId, taskInfo);
+        
+        if (!prompt) {
+          throw new Error('プロンプトの取得に失敗しました');
+        }
+        
+        this.log(`[AITaskHandler] ✅ プロンプト取得成功 (${prompt.length}文字)`);
+      } catch (error) {
+        this.error(`[AITaskHandler] ❌ プロンプト取得エラー:`, error);
+        throw error;
+      }
+    }
+    
+    const { tabId: finalTabId, prompt: finalPrompt, taskId: finalTaskId, timeout: finalTimeout = 180000, model: finalModel, specialOperation: finalSpecialOperation, aiType: finalAiType, cellInfo: finalCellInfo } = {
+      tabId, prompt, taskId, timeout, model, specialOperation, aiType, cellInfo
+    };
     
     const cellPosition = cellInfo?.column && cellInfo?.row 
       ? `${cellInfo.column}${cellInfo.row}` 
@@ -225,6 +253,88 @@ export class AITaskHandler {
         }
       });
     });
+  }
+  
+  /**
+   * スプレッドシートからプロンプトを動的に取得
+   * @param {string} spreadsheetId - スプレッドシートID
+   * @param {Object} taskInfo - タスク情報
+   * @returns {Promise<string>} 結合されたプロンプト
+   */
+  async fetchPromptFromSpreadsheet(spreadsheetId, taskInfo) {
+    const { row, promptColumns } = taskInfo;
+    
+    if (!promptColumns || promptColumns.length === 0) {
+      throw new Error('プロンプト列情報がありません');
+    }
+    
+    try {
+      // 列名を取得（例: ['G', 'H', 'I']）
+      const columnLetters = promptColumns.map(col => 
+        typeof col === 'string' ? col : this.indexToColumn(col)
+      );
+      
+      // 複数のセル範囲を一度に取得（例: 'G10:I10'）
+      const startCol = columnLetters[0];
+      const endCol = columnLetters[columnLetters.length - 1];
+      const range = `${startCol}${row}:${endCol}${row}`;
+      
+      this.log(`[AITaskHandler] 📊 スプレッドシートから範囲取得: ${range}`);
+      
+      // Google Sheets APIを呼び出し
+      const response = await chrome.runtime.sendMessage({
+        action: 'getSheetsData',
+        spreadsheetId: spreadsheetId,
+        range: range
+      });
+      
+      if (!response || !response.success) {
+        throw new Error(response?.error || 'スプレッドシートのデータ取得に失敗');
+      }
+      
+      // 取得したデータから値を抽出して結合
+      const values = response.data?.values?.[0] || [];
+      const prompts = [];
+      
+      for (let i = 0; i < values.length; i++) {
+        const value = values[i];
+        if (value && value.trim()) {
+          prompts.push(value.trim());
+        }
+      }
+      
+      if (prompts.length === 0) {
+        throw new Error(`行${row}にプロンプトが見つかりません`);
+      }
+      
+      // プロンプトを改行で結合
+      const combinedPrompt = prompts.join('\n');
+      
+      this.log(`[AITaskHandler] ✅ プロンプト結合完了: ${prompts.length}個のプロンプト`);
+      
+      return combinedPrompt;
+    } catch (error) {
+      this.error(`[AITaskHandler] ❌ スプレッドシート取得エラー:`, error);
+      throw error;
+    }
+  }
+  
+  /**
+   * 列インデックスを列文字に変換
+   * @param {number} index - 列インデックス（0ベース）
+   * @returns {string} 列文字（例: 0 -> 'A', 25 -> 'Z', 26 -> 'AA'）
+   */
+  indexToColumn(index) {
+    let column = '';
+    let quotient = index;
+    
+    while (quotient >= 0) {
+      const remainder = quotient % 26;
+      column = String.fromCharCode(65 + remainder) + column;
+      quotient = Math.floor(quotient / 26) - 1;
+    }
+    
+    return column;
   }
   
 }
