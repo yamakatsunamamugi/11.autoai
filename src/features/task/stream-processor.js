@@ -269,6 +269,9 @@ class StreamProcessor {
     // outputTargetの設定（testModeからの移行をサポート）
     const outputTarget = options.outputTarget || (options.testMode ? 'log' : 'spreadsheet');
     
+    // 動的再スキャン用にspreadsheetDataを保存
+    this.spreadsheetData = spreadsheetData;
+    
     this.logger.log("[StreamProcessor] ストリーミング処理開始", {
       totalTasks: taskList.tasks.length,
       outputTarget: outputTarget,
@@ -2468,6 +2471,9 @@ ${formattedGemini}`;
     this.columnWindows.delete(column);
     
     this.logger.log(`[StreamProcessor] ${column}列の全タスク処理完了`);
+    
+    // 動的スプレッドシート対応: 列完了後に新規プロンプトを再スキャン
+    await this.rescanForNewTasks(column);
   }
   
   
@@ -4319,6 +4325,124 @@ ${formattedGemini}`;
     await this.checkAndStartAvailableColumns();
     
     this.logger.log(`[StreamProcessor] 🔄 リトライ処理完了`);
+  }
+
+  /**
+   * 動的スプレッドシート対応: 列完了後に新規プロンプトを再スキャン
+   * @param {string} completedColumn - 完了した列
+   */
+  async rescanForNewTasks(completedColumn) {
+    try {
+      this.logger.log(`[StreamProcessor] 🔍 ${completedColumn}列完了後の動的再スキャン開始`);
+      
+      // TaskGeneratorのインスタンスを取得（既存の依存性を利用）
+      const TaskGenerator = (await import('./generator.js')).default;
+      const generator = new TaskGenerator();
+      
+      // 現在のスプレッドシートデータを再取得して新規タスクを生成
+      if (this.spreadsheetData) {
+        const newTaskList = await generator.generateTasks(this.spreadsheetData);
+        
+        if (newTaskList && newTaskList.tasks) {
+          // 新規タスクを既存のタスクキューと比較
+          const newTasks = this.findNewTasks(newTaskList.tasks);
+          
+          if (newTasks.length > 0) {
+            this.logger.log(`[StreamProcessor] 🆕 新規プロンプト発見: ${newTasks.length}件`, {
+              newTasks: newTasks.map(task => `${task.column}${task.row}`).join(', ')
+            });
+            
+            // 新規タスクを既存のキューに追加
+            this.addNewTasksToQueue(newTasks);
+            
+            // 新規タスクの列を処理対象に追加
+            await this.processNewlyDiscoveredTasks(newTasks);
+          } else {
+            this.logger.log(`[StreamProcessor] ✅ ${completedColumn}列完了後の再スキャン: 新規プロンプトなし`);
+          }
+        }
+      }
+      
+    } catch (error) {
+      this.logger.error(`[StreamProcessor] ❌ 動的再スキャンエラー`, {
+        completedColumn,
+        error: error.message
+      });
+    }
+  }
+
+  /**
+   * 新規タスクを既存タスクと比較して未処理のものを特定
+   * @param {Array} allTasks - 再生成されたすべてのタスク
+   * @returns {Array} 新規タスクの配列
+   */
+  findNewTasks(allTasks) {
+    const existingTaskIds = new Set();
+    
+    // 既存のタスクキューからすべてのタスクIDを収集
+    for (const [column, tasks] of this.taskQueue) {
+      tasks.forEach(task => existingTaskIds.add(task.id));
+    }
+    
+    // 完了済みタスクも除外
+    const completedTaskIds = this.completedTasks;
+    
+    // 新規タスク（既存にない且つ完了していないタスク）を抽出
+    const newTasks = allTasks.filter(task => 
+      !existingTaskIds.has(task.id) && !completedTaskIds.has(task.id)
+    );
+    
+    return newTasks;
+  }
+
+  /**
+   * 新規タスクを既存のタスクキューに追加
+   * @param {Array} newTasks - 新規タスクの配列
+   */
+  addNewTasksToQueue(newTasks) {
+    newTasks.forEach(task => {
+      const column = task.column;
+      
+      // 列のキューが存在しない場合は作成
+      if (!this.taskQueue.has(column)) {
+        this.taskQueue.set(column, []);
+        this.currentRowByColumn.set(column, 0);
+      }
+      
+      // タスクを列キューに追加
+      this.taskQueue.get(column).push(task);
+      
+      this.logger.log(`[StreamProcessor] ➕ 新規タスク追加: ${task.column}${task.row}`);
+    });
+    
+    // 各列のタスクを行順でソート
+    this.taskQueue.forEach((tasks, column) => {
+      tasks.sort((a, b) => a.row - b.row);
+    });
+  }
+
+  /**
+   * 新規発見されたタスクを処理
+   * @param {Array} newTasks - 新規タスクの配列
+   */
+  async processNewlyDiscoveredTasks(newTasks) {
+    // 新規タスクを列でグループ化
+    const newTasksByColumn = new Map();
+    newTasks.forEach(task => {
+      if (!newTasksByColumn.has(task.column)) {
+        newTasksByColumn.set(task.column, []);
+      }
+      newTasksByColumn.get(task.column).push(task);
+    });
+    
+    // アルファベット順で新規列を処理
+    const sortedNewColumns = Array.from(newTasksByColumn.keys()).sort((a, b) => a.localeCompare(b));
+    
+    for (const column of sortedNewColumns) {
+      const tasks = newTasksByColumn.get(column);
+      this.logger.log(`[StreamProcessor] 🔄 新規発見列の処理開始: ${column}列 (${tasks.length}件)`);
+      await this.processNormalColumn(column);
+    }
   }
 }
 
