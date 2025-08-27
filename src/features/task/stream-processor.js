@@ -673,8 +673,9 @@ class StreamProcessor {
       await this.process3TypeGroup(groupTasks);
     }
     
-    // 通常処理列を順次処理（ポジション枯渇を防ぐため）
-    for (const [column, tasks] of normalColumns) {
+    // 通常処理列をアルファベット順で順次処理（ポジション枯渇を防ぐため）
+    const sortedColumns = Array.from(normalColumns.entries()).sort(([a], [b]) => a.localeCompare(b));
+    for (const [column, tasks] of sortedColumns) {
       this.logger.log(`[StreamProcessor] 通常処理列開始: ${column}列`);
       await this.processNormalColumn(column);
       this.logger.log(`[StreamProcessor] 通常処理列完了: ${column}列`);
@@ -1129,16 +1130,7 @@ class StreamProcessor {
       }
     );
     
-    // プロンプト内容の詳細ログ（デバッグモード）
-    if (task.prompt && task.prompt.length > 0) {
-      const promptLines = task.prompt.split('\n');
-      this.logger.log(`[StreamProcessor] プロンプト詳細 (${cellPosition}):`, {
-        行数: promptLines.length,
-        文字数: task.prompt.length,
-        先頭行: promptLines[0]?.substring(0, 100) + (promptLines[0]?.length > 100 ? '...' : ''),
-        末尾行: promptLines.length > 1 ? (promptLines[promptLines.length - 1]?.substring(0, 100) + (promptLines[promptLines.length - 1]?.length > 100 ? '...' : '')) : '（1行のみ）'
-      });
-    }
+    // プロンプト内容の詳細ログは省略（見づらいため）
 
     // レポートタスクの場合は特別な処理
     if (task.taskType === "report") {
@@ -2416,7 +2408,7 @@ ${formattedGemini}`;
   }
   
   /**
-   * 通常処理列を3タスクずつのバッチで処理（新規追加）
+   * 通常処理列を3タスクずつのバッチで処理
    * @param {string} column - 処理する列
    */
   async processNormalColumn(column) {
@@ -2432,17 +2424,24 @@ ${formattedGemini}`;
     // 処理中フラグを設定（重複処理を防ぐ）
     this.columnWindows.set(column, 'batch-processing');
     
-    // エラー行をスキップ
+    // エラー行と既存回答をスキップ
     const validTasks = tasks.filter(task => {
       if (this.errorRows.has(task.row)) {
         this.logger.log(`[StreamProcessor] ⚠️ 行${task.row}はエラー行のため${column}列でスキップ`);
+        return false;
+      }
+      // 既存回答チェック
+      const cellKey = `${task.column}${task.row}`;
+      if (this.writtenCells.has(cellKey)) {
+        this.logger.log(`[StreamProcessor] ${cellKey}は既に記載済みのためスキップ`);
         return false;
       }
       return true;
     });
     
     if (validTasks.length === 0) {
-      this.logger.log(`[StreamProcessor] ${column}列: 全タスクがエラー行のためスキップ`);
+      this.logger.log(`[StreamProcessor] ${column}列: 全タスクが処理済みまたはエラー行のためスキップ`);
+      this.columnWindows.delete(column);
       return;
     }
     
@@ -2457,38 +2456,20 @@ ${formattedGemini}`;
     
     this.logger.log(`[StreamProcessor] ${column}列を${batches.length}バッチに分割`);
     
-    // 最初のバッチを開始
-    if (batches.length > 0) {
-      await this.startNormalBatch(column, batches[0], 0, batches.length);
+    // 各バッチを順次処理
+    for (let i = 0; i < batches.length; i++) {
+      await this.startNormalBatch(column, batches[i], i, batches.length);
     }
     
-    // 全バッチ完了を待つ（バッチは連鎖的に実行される）
+    // 全バッチ完了を待つ
     await this.waitForColumnCompletion(column);
     
-    // エラータスクの再試行
-    const failedTasks = this.failedTasksByColumn.get(column);
-    if (failedTasks && failedTasks.size > 0) {
-      this.logger.log(`[StreamProcessor] 🔄 ${column}列のエラータスク${failedTasks.size}個を再試行します`);
-      
-      // 5秒待機（サービス復旧を待つ）
-      await new Promise(resolve => setTimeout(resolve, 5000));
-      
-      // エラータスクを配列に変換
-      const retryTasks = Array.from(failedTasks);
-      
-      // 再試行バッチを実行
-      await this.retryFailedTasks(column, retryTasks);
-      
-      // 再試行後、まだエラーが残っているかチェック
-      const remainingErrors = this.failedTasksByColumn.get(column);
-      if (remainingErrors && remainingErrors.size > 0) {
-        this.logger.warn(`[StreamProcessor] ⚠️ ${column}列に${remainingErrors.size}個のエラーが残っています`);
-      } else {
-        this.logger.log(`[StreamProcessor] ✅ ${column}列の全エラーが解決しました`);
-        this.failedTasksByColumn.delete(column);
-      }
-    }
+    // 処理完了後、フラグを削除
+    this.columnWindows.delete(column);
+    
+    this.logger.log(`[StreamProcessor] ${column}列の全タスク処理完了`);
   }
+  
   
   /**
    * 通常処理の3タスクバッチを開始（新規追加）
@@ -2521,11 +2502,11 @@ ${formattedGemini}`;
     const windowInfos = [];
     const windowPromises = batchTasks.map(async (task, index) => {
       try {
-        // インデックスをポジションとして使用（最大4つまで）
-        const position = index % 4;  // 0, 1, 2, 3 をループ
+        // インデックスをポジションとして使用（0, 1, 2のみ使用）
+        const position = index % 3;  // 0, 1, 2 をループ（position 3は使わない）
         
         // ポジションチェック（念のため）
-        if (position < 0 || position > 3) {
+        if (position < 0 || position > 2) {
           throw new Error(`無効なポジション: ${position}`);
         }
         
@@ -2670,22 +2651,9 @@ ${formattedGemini}`;
       // バッチのウィンドウを全て閉じる
       await this.closeNormalBatchWindows(batchId);
       
-      // 次のバッチを開始
-      const nextBatchIndex = batchInfo.batchIndex + 1;
-      if (nextBatchIndex < batchInfo.totalBatches) {
-        // 列の全タスクを取得
-        const allTasks = this.taskQueue.get(batchInfo.column);
-        const nextBatchTasks = allTasks.slice(nextBatchIndex * 3, (nextBatchIndex + 1) * 3);
-        
-        if (nextBatchTasks.length > 0) {
-          this.logger.log(`[StreamProcessor] 次のバッチを開始: ${batchInfo.column}列 バッチ${nextBatchIndex + 1}`);
-          await this.startNormalBatch(batchInfo.column, nextBatchTasks, nextBatchIndex, batchInfo.totalBatches);
-        }
-      } else {
-        this.logger.log(`[StreamProcessor] ${batchInfo.column}列の全バッチ完了`);
-        // 列の処理中フラグをクリア
-        this.columnWindows.delete(batchInfo.column);
-      }
+      // 次のバッチを開始（削除：processNormalColumnで全バッチを順次処理するように変更）
+      // ここでは何もしない（processNormalColumnのforループで次のバッチが処理される）
+      this.logger.log(`[StreamProcessor] バッチ${batchInfo.batchIndex + 1}/${batchInfo.totalBatches}完了: ${batchInfo.column}列`);
       
       // トラッカーから削除
       this.normalBatchTracker.delete(batchId);
