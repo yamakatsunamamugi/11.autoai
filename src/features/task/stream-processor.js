@@ -263,7 +263,7 @@ class StreamProcessor {
         if (!globalThis.spreadsheetLogger) {
           globalThis.spreadsheetLogger = this.spreadsheetLogger;
         }
-        this.logger.log('[StreamProcessor] SpreadsheetLoggerを初期化しました');
+        // this.logger.log('[StreamProcessor] SpreadsheetLoggerを初期化しました');
       }
     } catch (error) {
       this.logger.warn('[StreamProcessor] SpreadsheetLogger初期化エラー:', error.message);
@@ -289,11 +289,11 @@ class StreamProcessor {
     // 🛡️ 処理開始時にスリープ防止を開始
     await globalThis.powerManager?.startProtection('StreamProcessor');
     
-    this.logger.log("[StreamProcessor] ストリーミング処理開始", {
-      totalTasks: taskList.tasks.length,
-      outputTarget: outputTarget,
-      testMode: options.testMode || false
-    });
+    // this.logger.log("[StreamProcessor] ストリーミング処理開始", {
+    //   totalTasks: taskList.tasks.length,
+    //   outputTarget: outputTarget,
+    //   testMode: options.testMode || false
+    // });
 
     // デバッグ: 最初のタスクのsheetNameを確認
     if (taskList.tasks.length > 0) {
@@ -332,7 +332,7 @@ class StreamProcessor {
     } finally {
       // 🔓 処理終了時に必ずスリープ防止を解除
       await globalThis.powerManager?.stopProtection('StreamProcessor');
-      this.logger.log("[StreamProcessor] スリープ防止を解除しました");
+      // this.logger.log("[StreamProcessor] スリープ防止を解除しました");
       this.isProcessing = false;
     }
   }
@@ -443,12 +443,12 @@ class StreamProcessor {
       processedTasks.add(task.id);
     }
     
-    this.logger.log(`[StreamProcessor] グループ作成完了:`, groups.map(g => ({
-      type: g.type,
-      columns: g.columns,
-      rows: g.rows,
-      taskCount: g.tasks.length
-    })));
+    // this.logger.log(`[StreamProcessor] グループ作成完了:`, groups.map(g => ({
+    //   type: g.type,
+    //   columns: g.columns,
+    //   rows: g.rows,
+    //   taskCount: g.tasks.length
+    // })));
     
     return groups;
   }
@@ -458,11 +458,11 @@ class StreamProcessor {
    * @param {Object} group - タスクグループ
    */
   async processGroup(group) {
-    this.logger.log(`[StreamProcessor] グループ処理開始: ${group.type}`, {
-      columns: group.columns,
-      rows: group.rows,
-      taskCount: group.tasks.length
-    });
+    // this.logger.log(`[StreamProcessor] グループ処理開始: ${group.type}`, {
+    //   columns: group.columns,
+    //   rows: group.rows,
+    //   taskCount: group.tasks.length
+    // });
     
     if (group.type === '3type') {
       await this.processThreeTypeGroup(group);
@@ -472,7 +472,7 @@ class StreamProcessor {
       await this.processReportGroup(group);
     }
     
-    this.logger.log(`[StreamProcessor] グループ処理完了: ${group.type}`);
+    // this.logger.log(`[StreamProcessor] グループ処理完了: ${group.type}`);
   }
   
   /**
@@ -481,7 +481,7 @@ class StreamProcessor {
    */
   async processThreeTypeGroup(group) {
     const { columns, rows, tasks } = group;
-    this.logger.log(`[StreamProcessor] 3種類AIグループ処理: ${columns.join(',')}列 x ${rows.length}行`);
+    // this.logger.log(`[StreamProcessor] 3種類AIグループ処理: ${columns.join(',')}列 x ${rows.length}行`);
     
     // 3つのウィンドウを開く
     const windows = new Map();
@@ -495,7 +495,7 @@ class StreamProcessor {
       const windowId = await this.openWindow(firstTask, position);
       windows.set(column, windowId);
       
-      this.logger.log(`[StreamProcessor] ウィンドウ作成: ${column}列 (${firstTask.aiType}) - Position: ${position}`);
+      // this.logger.log(`[StreamProcessor] ウィンドウ作成: ${column}列 (${firstTask.aiType}) - Position: ${position}`);
     }
     
     // 各行を順次処理
@@ -510,7 +510,7 @@ class StreamProcessor {
         }
       }));
       
-      this.logger.log(`[StreamProcessor] 3種類AI行${row}完了`);
+      // this.logger.log(`[StreamProcessor] 3種類AI行${row}完了`);
     }
     
     // ウィンドウを閉じる
@@ -532,7 +532,7 @@ class StreamProcessor {
     const { columns, rows, tasks } = group;
     const column = columns[0];
     
-    this.logger.log(`[StreamProcessor] 1種類AIグループ処理: ${column}列 x ${rows.length}行（3ウィンドウ並列）`);
+    // this.logger.log(`[StreamProcessor] 1種類AIグループ処理: ${column}列 x ${rows.length}行（3ウィンドウ並列）`);
     
     // 3つのウィンドウを開く（各行に1つずつ）
     const windows = new Map();
@@ -543,7 +543,7 @@ class StreamProcessor {
       const windowId = await this.openWindow(task, position);
       windows.set(task.row, windowId);
       
-      this.logger.log(`[StreamProcessor] ウィンドウ${i + 1}作成: ${column}${task.row} (${task.aiType}) - Position: ${position}`);
+      // this.logger.log(`[StreamProcessor] ウィンドウ${i + 1}作成: ${column}${task.row} (${task.aiType}) - Position: ${position}`);
     }
     
     // タスクを並列処理
@@ -551,11 +551,11 @@ class StreamProcessor {
       const windowId = windows.get(task.row);
       if (windowId) {
         await this.executeTaskInWindow(task, windowId);
-        this.logger.log(`[StreamProcessor] タスク完了: ${task.column}${task.row}`);
+        // this.logger.log(`[StreamProcessor] タスク完了: ${task.column}${task.row}`);
       }
     }));
     
-    this.logger.log(`[StreamProcessor] ${column}列のバッチ完了（行${rows.join(',')}）`);
+    // this.logger.log(`[StreamProcessor] ${column}列のバッチ完了（行${rows.join(',')}）`);
     
     // ウィンドウを閉じる
     for (const windowId of windows.values()) {
@@ -574,7 +574,7 @@ class StreamProcessor {
    */
   async processReportGroup(group) {
     const task = group.tasks[0];
-    this.logger.log(`[StreamProcessor] レポートタスク処理: ${task.column}${task.row}`);
+    // this.logger.log(`[StreamProcessor] レポートタスク処理: ${task.column}${task.row}`);
     
     // レポートタスクは特別処理
     await this.executeReportTask(task, -1);
@@ -636,20 +636,20 @@ class StreamProcessor {
       tasks.sort((a, b) => a.row - b.row);
     });
 
-    this.logger.log("[StreamProcessor] タスク整理完了", {
-      columns: Array.from(this.taskQueue.keys()),
-      totalTasks: taskList.tasks.length,
-    });
+    // this.logger.log("[StreamProcessor] タスク整理完了", {
+    //   columns: Array.from(this.taskQueue.keys()),
+    //   totalTasks: taskList.tasks.length,
+    // });
 
     // 各列のタスク詳細を表示
     this.taskQueue.forEach((tasks, column) => {
-      this.logger.log(`[StreamProcessor] ${column}列のタスク: ${tasks.length}件`, {
-        tasks: tasks.map(task => ({
-          id: task.id.substring(0, 8),
-          cell: `${task.column}${task.row}`,
-          aiType: task.aiType
-        }))
-      });
+      // this.logger.log(`[StreamProcessor] ${column}列のタスク: ${tasks.length}件`, {
+      //   tasks: tasks.map(task => ({
+      //     id: task.id.substring(0, 8),
+      //     cell: `${task.column}${task.row}`,
+      //     aiType: task.aiType
+      //   }))
+      // });
     });
   }
 
@@ -658,7 +658,7 @@ class StreamProcessor {
    * 3種類AIと通常処理を適切に振り分ける
    */
   async processAllTasks() {
-    this.logger.log('[StreamProcessor] 全タスク処理開始');
+    // this.logger.log('[StreamProcessor] 全タスク処理開始');
     
     // ウィンドウ設定に基づいて拡張機能とスプレッドシートを配置
     await this.setupWindowsBasedOnSettings();
@@ -685,26 +685,26 @@ class StreamProcessor {
       }
     }
     
-    this.logger.log(`[StreamProcessor] タスク分類完了:`, {
-      threeTypeGroups: threeTypeGroups.size,
-      normalColumns: normalColumns.size
-    });
+    // this.logger.log(`[StreamProcessor] タスク分類完了:`, {
+    //   threeTypeGroups: threeTypeGroups.size,
+    //   normalColumns: normalColumns.size
+    // });
     
     // 3種類AIグループを処理
     for (const [groupId, groupTasks] of threeTypeGroups) {
-      this.logger.log(`[StreamProcessor] 3種類AIグループ処理: ${groupId}`);
+      // this.logger.log(`[StreamProcessor] 3種類AIグループ処理: ${groupId}`);
       await this.process3TypeGroup(groupTasks);
     }
     
     // 通常処理列をアルファベット順で順次処理（ポジション枯渇を防ぐため）
     const sortedColumns = Array.from(normalColumns.entries()).sort(([a], [b]) => a.localeCompare(b));
     for (const [column, tasks] of sortedColumns) {
-      this.logger.log(`[StreamProcessor] 通常処理列開始: ${column}列`);
+      // this.logger.log(`[StreamProcessor] 通常処理列開始: ${column}列`);
       await this.processNormalColumn(column);
-      this.logger.log(`[StreamProcessor] 通常処理列完了: ${column}列`);
+      // this.logger.log(`[StreamProcessor] 通常処理列完了: ${column}列`);
     }
     
-    this.logger.log('[StreamProcessor] 全タスク処理完了');
+    // this.logger.log('[StreamProcessor] 全タスク処理完了');
   }
   
   /**
@@ -738,7 +738,7 @@ class StreamProcessor {
       // 行番号順にソート
       const sortedRows = Array.from(tasksByRow.keys()).sort((a, b) => a - b);
       
-      this.logger.log(`[StreamProcessor] 3種類AIグループ: ${sortedRows.length}行`);
+      // this.logger.log(`[StreamProcessor] 3種類AIグループ: ${sortedRows.length}行`);
       
       // 各行を順番に処理
       for (const row of sortedRows) {
@@ -756,7 +756,7 @@ class StreamProcessor {
     }
     // finallyブロックを削除 - 記載完了後に解除するように変更
     
-    this.logger.log(`[StreamProcessor] 3種類AIグループタスク実行完了（記載待ち）: ${groupId}`);
+    // this.logger.log(`[StreamProcessor] 3種類AIグループタスク実行完了（記載待ち）: ${groupId}`);
   }
   
   /**
@@ -784,8 +784,8 @@ class StreamProcessor {
   async start3TypeBatch(rowTasks, row) {
     const batchId = `3type_row${row}_${Date.now()}`;
     
-    this.logger.log(`[StreamProcessor] 🔷 3種類AIバッチ開始: 行${row}`);
-    this.logger.log(`[StreamProcessor] タスク: ${rowTasks.map(t => `${t.column}${t.row}`).join(', ')}`);
+    // this.logger.log(`[StreamProcessor] 🔷 3種類AIバッチ開始: 行${row}`);
+    // this.logger.log(`[StreamProcessor] タスク: ${rowTasks.map(t => `${t.column}${t.row}`).join(', ')}`);
     
     // 開いたウィンドウを記録
     const openedWindows = [];
@@ -814,7 +814,7 @@ class StreamProcessor {
             throw new Error(`AIタイプ${task.aiType}のポジションが不正です`);
           }
           
-          this.logger.log(`[StreamProcessor] ${task.aiType} → position=${position} (${task.column}${task.row})`);
+          // this.logger.log(`[StreamProcessor] ${task.aiType} → position=${position} (${task.column}${task.row})`);
         
         
           // ウィンドウを開く
@@ -854,7 +854,7 @@ class StreamProcessor {
     await Promise.allSettled(windowPromises);
     
     // バッチ完了後、全ウィンドウを閉じる
-    this.logger.log(`[StreamProcessor] 3種類AIバッチのウィンドウを閉じる: ${openedWindows.length}個`);
+    // this.logger.log(`[StreamProcessor] 3種類AIバッチのウィンドウを閉じる: ${openedWindows.length}個`);
     for (const windowId of openedWindows) {
       try {
         // WindowServiceを使用してウィンドウを閉じる（ポジション解放も含めて一元管理）
@@ -862,13 +862,13 @@ class StreamProcessor {
         this.activeWindows.delete(windowId);
         // StreamProcessor側のwindowPositions管理は削除（WindowServiceに一元化）
         // WindowService.closeWindow()内でポジション解放が行われる
-        this.logger.log(`[StreamProcessor] ✅ Window${windowId}を閉じました`);
+        // this.logger.log(`[StreamProcessor] ✅ Window${windowId}を閉じました`);
       } catch (error) {
         this.logger.debug(`[StreamProcessor] Window${windowId}クローズエラー（無視）: ${error.message}`);
       }
     }
     
-    this.logger.log(`[StreamProcessor] 3種類AIバッチ完了: 行${row}`);
+    // this.logger.log(`[StreamProcessor] 3種類AIバッチ完了: 行${row}`);
   }
   
   /**
@@ -886,12 +886,12 @@ class StreamProcessor {
   async startColumnProcessing(column) {
     // 重複処理チェック（既にウィンドウがある場合はスキップ）
     if (this.columnWindows.has(column)) {
-      this.logger.log(`[StreamProcessor] ${column}列は既にウィンドウがあるためスキップ`);
+      // this.logger.log(`[StreamProcessor] ${column}列は既にウィンドウがあるためスキップ`);
       return;
     }
     
     const startTime = Date.now();
-    this.logger.log(`[StreamProcessor] 📋 startColumnProcessing開始: ${column}列 (${startTime})`);
+    // this.logger.log(`[StreamProcessor] 📋 startColumnProcessing開始: ${column}列 (${startTime})`);
     
     const tasks = this.taskQueue.get(column);
     if (!tasks || tasks.length === 0) {
@@ -912,7 +912,7 @@ class StreamProcessor {
     // 通常処理列（3種類AIでもレポートでもない）の場合はスキップ
     // processNormalColumnでバッチ処理されるため
     if (!currentTask.multiAI && currentTask.taskType !== "report") {
-      this.logger.log(`[StreamProcessor] ${column}列は通常処理列のためstartColumnProcessingをスキップ（バッチ処理で対応）`);
+      // this.logger.log(`[StreamProcessor] ${column}列は通常処理列のためstartColumnProcessingをスキップ（バッチ処理で対応）`);
       // 処理中フラグを設定して重複を防ぐ
       this.columnWindows.set(column, 'pending-batch');
       return;
@@ -920,7 +920,7 @@ class StreamProcessor {
 
     // レポートタスクの場合は特別処理（ウィンドウを開かない）
     if (currentTask.taskType === "report") {
-      this.logger.log(`[StreamProcessor] レポートタスクを直接実行: ${column}${currentTask.row}`);
+      // this.logger.log(`[StreamProcessor] レポートタスクを直接実行: ${column}${currentTask.row}`);
       
       // ダミーのウィンドウIDを設定（タスク処理の一貫性のため）
       const dummyWindowId = -1;
@@ -956,7 +956,7 @@ class StreamProcessor {
    */
   async openWindowForColumn(column, task, position) {
     const openTime = Date.now();
-    this.logger.log(`[StreamProcessor] 🚀 ${column}列用のウィンドウを開く (position=${position}) ${openTime}`);
+    // this.logger.log(`[StreamProcessor] 🚀 ${column}列用のウィンドウを開く (position=${position}) ${openTime}`);
     // windowPositionsの管理はWindowServiceに一元化
 
     // WindowServiceを使用してAI URLを取得（ChatGPT/Claude/Gemini等のURL管理を一元化）
@@ -984,13 +984,13 @@ class StreamProcessor {
       // windowPositionsの管理はWindowServiceに一元化 // 仮予約を本予約に変更
       this.columnWindows.set(column, window.id);
 
-      this.logger.log(`[StreamProcessor] 🔧 ウィンドウ作成完了: position=${position}`);
-      this.logger.log(
-        `[StreamProcessor] ウィンドウ作成: ${column}列 (${task.aiType}) - 位置: ${["左上", "右上", "左下"][position]} (windowId: ${window.id})`,
-      );
+      // this.logger.log(`[StreamProcessor] 🔧 ウィンドウ作成完了: position=${position}`);
+      // this.logger.log(
+      //   `[StreamProcessor] ウィンドウ作成: ${column}列 (${task.aiType}) - 位置: ${["左上", "右上", "左下"][position]} (windowId: ${window.id})`,
+      // );
 
       // ページの読み込みとコンテンツスクリプトのロードを待機
-      this.logger.log(`[StreamProcessor] ページ読み込み待機中...`);
+      // this.logger.log(`[StreamProcessor] ページ読み込み待機中...`);
       await this.waitForContentScriptReady(window.id);
 
       // 自動化スクリプトを注入
@@ -1031,7 +1031,7 @@ class StreamProcessor {
       // 成功したらエラーカウントをリセット
       if (this.errorCount && this.errorCount[taskKey]) {
         delete this.errorCount[taskKey];
-        this.logger.log(`[StreamProcessor] ✅ タスク成功、エラーカウントリセット: ${taskKey}`);
+        // this.logger.log(`[StreamProcessor] ✅ タスク成功、エラーカウントリセット: ${taskKey}`);
       }
       
       return result;
@@ -1046,7 +1046,7 @@ class StreamProcessor {
         
         // 指数バックオフで待機（1秒、2秒、4秒...最大5秒）
         const waitTime = Math.min(1000 * Math.pow(2, retryCount), 5000);
-        this.logger.log(`[StreamProcessor] ${waitTime}ms待機してリトライします...`);
+        // this.logger.log(`[StreamProcessor] ${waitTime}ms待機してリトライします...`);
         await new Promise(resolve => setTimeout(resolve, waitTime));
         
         // 再帰的にリトライ
@@ -1072,11 +1072,11 @@ class StreamProcessor {
           this.failedTasksByColumn.set(task.column, new Set());
         }
         this.failedTasksByColumn.get(task.column).add(task);
-        this.logger.log(`[StreamProcessor] ❌ エラータスク記録: ${task.column}${task.row}`);
+        // this.logger.log(`[StreamProcessor] ❌ エラータスク記録: ${task.column}${task.row}`);
         
         // エラー行を記録（次の列でスキップするため）
         this.errorRows.add(task.row);
-        this.logger.log(`[StreamProcessor] ❌ エラー行記録: 行${task.row} (次の列でスキップ)`);
+        // this.logger.log(`[StreamProcessor] ❌ エラー行記録: 行${task.row} (次の列でスキップ)`);
       }
       
       await this.handleTaskResult(task, windowId, errorResult);
@@ -1131,27 +1131,27 @@ class StreamProcessor {
     this.initializeGroupTracking(task);
     
     // 詳細デバッグログ
-    this.logger.log(
-      `[StreamProcessor] 📍 タスク実行開始: ${cellPosition}セル (Window: ${windowId})`,
-      {
-        セル: cellPosition,
-        taskAiType: task.aiType,
-        windowAiType: windowInfo.aiType,
-        タスクID: task.id,
-        プロンプト長: task.prompt?.length || 0,
-        プロンプト予覧: task.prompt?.substring(0, 100) + (task.prompt?.length > 100 ? '...' : ''),
-        multiAI: task.multiAI,
-        グループID: task.groupId,
-        列: task.column,
-        行: task.row,
-        モデル: task.model || '未設定',
-        機能: task.specialOperation || '未設定',
-        実行時刻: new Date().toLocaleTimeString(),
-        ウィンドウ位置: windowInfo.position,
-        実行中タスク数: this.activeTasksByCell.size,
-        実行ロック数: this.executionLock.size
-      }
-    );
+    // this.logger.log(
+    //   `[StreamProcessor] 📍 タスク実行開始: ${cellPosition}セル (Window: ${windowId})`,
+    //   {
+    //     セル: cellPosition,
+    //     taskAiType: task.aiType,
+    //     windowAiType: windowInfo.aiType,
+    //     タスクID: task.id,
+    //     プロンプト長: task.prompt?.length || 0,
+    //     プロンプト予覧: task.prompt?.substring(0, 100) + (task.prompt?.length > 100 ? '...' : ''),
+    //     multiAI: task.multiAI,
+    //     グループID: task.groupId,
+    //     列: task.column,
+    //     行: task.row,
+    //     モデル: task.model || '未設定',
+    //     機能: task.specialOperation || '未設定',
+    //     実行時刻: new Date().toLocaleTimeString(),
+    //     ウィンドウ位置: windowInfo.position,
+    //     実行中タスク数: this.activeTasksByCell.size,
+    //     実行ロック数: this.executionLock.size
+    //   }
+    // );
     
     // プロンプト内容の詳細ログは省略（見づらいため）
 
@@ -1163,11 +1163,11 @@ class StreamProcessor {
 
     // テストモード（waitResponse=false or getResponse=false）の場合はプロンプト送信をスキップ
     if (task.waitResponse === false || task.getResponse === false) {
-      this.logger.log(`[StreamProcessor] テストモード: プロンプト送信をスキップしてランダム待機`);
+      // this.logger.log(`[StreamProcessor] テストモード: プロンプト送信をスキップしてランダム待機`);
       
       // ランダム待機（5-15秒）
       const waitTime = Math.floor(Math.random() * (15000 - 5000 + 1)) + 5000;
-      this.logger.log(`[StreamProcessor] ${waitTime}ms待機中...`);
+      // this.logger.log(`[StreamProcessor] ${waitTime}ms待機中...`);
       await new Promise(resolve => setTimeout(resolve, waitTime));
       
       // ダミー結果でタスク完了
@@ -1196,12 +1196,12 @@ class StreamProcessor {
       let finalOperation = task.specialOperation;
       
       // DynamicConfig上書きを削除 - スプレッドシートの設定をそのまま使用
-      this.logger.log(`[StreamProcessor] 📊 スプレッドシート設定適用:`, {
-        aiType: task.aiType,
-        requestedModel: finalModel || '未指定',
-        specialOperation: finalOperation || 'なし',
-        cellPosition: `${task.column}${task.row}`
-      });
+      // this.logger.log(`[StreamProcessor] 📊 スプレッドシート設定適用:`, {
+      //   aiType: task.aiType,
+      //   requestedModel: finalModel || '未指定',
+      //   specialOperation: finalOperation || 'なし',
+      //   cellPosition: `${task.column}${task.row}`
+      // });
 
       // 送信時刻を記録（ログ用）
       if (this.spreadsheetLogger) {
@@ -1209,7 +1209,7 @@ class StreamProcessor {
           aiType: task.aiType,
           model: finalModel || '不明'
         });
-        this.logger.log(`[StreamProcessor] ⏰ 送信時刻を記録: ${new Date().toLocaleString('ja-JP')}`);
+        // this.logger.log(`[StreamProcessor] ⏰ 送信時刻を記録: ${new Date().toLocaleString('ja-JP')}`);
       }
 
       // AITaskHandlerを直接呼び出す（Service Worker内なので）
@@ -1258,43 +1258,43 @@ class StreamProcessor {
       // 動的に取得したモデル情報をタスクに保存
       if (result.model) {
         task.model = result.model;
-        this.logger.log(`[StreamProcessor] 🎯 モデル情報を動的取得: ${cellPosition} = "${result.model}"`);
+        // this.logger.log(`[StreamProcessor] 🎯 モデル情報を動的取得: ${cellPosition} = "${result.model}"`);
       } else if (finalModel) {
         // フォールバック: スプレッドシートのモデル情報を使用
         result.model = finalModel;
         task.model = finalModel;
-        this.logger.log(`[StreamProcessor] 📄 スプレッドシートのモデル情報を使用: "${finalModel}"`);
+        // this.logger.log(`[StreamProcessor] 📄 スプレッドシートのモデル情報を使用: "${finalModel}"`);
       } else {
         this.logger.warn(`[StreamProcessor] ⚠️ モデル情報を取得できませんでした: ${cellPosition}`);
       }
       
-      this.logger.log(
-        `[StreamProcessor] ✅ タスク実行完了: ${cellPosition}セル`,
-        {
-          セル: cellPosition,
-          実行結果: result.success ? '成功' : '失敗',
-          エラー内容: result.error || 'なし',
-          aiType: result.aiType || task.aiType,
-          実際のモデル: result.model || '取得失敗',
-          要求されたモデル: finalModel || '未指定',
-          モデル一致: result.model === finalModel ? '✓一致' : '✗不一致',
-          応答文字数: result.response?.length || 0,
-          応答プレビュー: result.response ? (result.response.substring(0, 100) + (result.response.length > 100 ? '...' : '')) : 'なし',
-          列: task.column,
-          行: task.row,
-          タスクID: task.id,
-          実行完了時刻: new Date().toLocaleTimeString(),
-          windowId: windowId,
-          実行時間: windowInfo.startTime ? `${Date.now() - windowInfo.startTime}ms` : '不明'
-        }
-      );
+      // this.logger.log(
+      //   `[StreamProcessor] ✅ タスク実行完了: ${cellPosition}セル`,
+      //   {
+      //     セル: cellPosition,
+      //     実行結果: result.success ? '成功' : '失敗',
+      //     エラー内容: result.error || 'なし',
+      //     aiType: result.aiType || task.aiType,
+      //     実際のモデル: result.model || '取得失敗',
+      //     要求されたモデル: finalModel || '未指定',
+      //     モデル一致: result.model === finalModel ? '✓一致' : '✗不一致',
+      //     応答文字数: result.response?.length || 0,
+      //     応答プレビュー: result.response ? (result.response.substring(0, 100) + (result.response.length > 100 ? '...' : '')) : 'なし',
+      //     列: task.column,
+      //     行: task.row,
+      //     タスクID: task.id,
+      //     実行完了時刻: new Date().toLocaleTimeString(),
+      //     windowId: windowId,
+      //     実行時間: windowInfo.startTime ? `${Date.now() - windowInfo.startTime}ms` : '不明'
+      //   }
+      // );
       
       // 成功した場合、エラーリストから削除（通常処理列の場合）
       if (!task.multiAI && result.success) {
         const failedSet = this.failedTasksByColumn.get(task.column);
         if (failedSet && failedSet.has(task)) {
           failedSet.delete(task);
-          this.logger.log(`[StreamProcessor] ✅ エラーリストから削除: ${task.column}${task.row}`);
+          // this.logger.log(`[StreamProcessor] ✅ エラーリストから削除: ${task.column}${task.row}`);
           if (failedSet.size === 0) {
             this.failedTasksByColumn.delete(task.column);
           }
@@ -1326,10 +1326,10 @@ class StreamProcessor {
   async handleTaskResult(task, windowId, result) {
     const cellPosition = `${task.column}${task.row}`;
     
-    this.logger.log(`[StreamProcessor] タスク結果処理: ${cellPosition}`, {
-      success: result.success,
-      error: result.error
-    });
+    // this.logger.log(`[StreamProcessor] タスク結果処理: ${cellPosition}`, {
+    //   success: result.success,
+    //   error: result.error
+    // });
     
     // タスクを完了済みにマーク
     this.completedTasks.add(task.id);
@@ -1351,7 +1351,7 @@ class StreamProcessor {
     if (this.completedTasks.has(taskId)) return false;
     
     this.completedTasks.add(taskId);
-    this.logger.log(`[StreamProcessor] 🚨 タスク強制完了: ${taskId} (理由: ${reason})`);
+    // this.logger.log(`[StreamProcessor] 🚨 タスク強制完了: ${taskId} (理由: ${reason})`);
     return true;
   }
 
@@ -1368,21 +1368,21 @@ class StreamProcessor {
     // 実行ロックを解除
     this.executionLock.delete(taskId);
     this.activeTasksByCell.delete(cellPosition);
-    this.logger.log(`[StreamProcessor] 🔓 実行ロック解除: ${cellPosition} (ID: ${taskId})`);
+    // this.logger.log(`[StreamProcessor] 🔓 実行ロック解除: ${cellPosition} (ID: ${taskId})`);
     
     // ウィンドウIDをタスクに保存
     task.windowId = windowId;
 
-    this.logger.log(`[StreamProcessor] 🎯 タスク完了処理開始: ${cellPosition}セル`, {
-      セル: cellPosition,
-      result: result.success ? "success" : "failed",
-      skipped: result.skipped || false,
-      windowId: windowId,
-      hasResponse: !!result.response,
-      column: column,
-      row: row,
-      taskId: taskId
-    });
+    // this.logger.log(`[StreamProcessor] 🎯 タスク完了処理開始: ${cellPosition}セル`, {
+    //   セル: cellPosition,
+    //   result: result.success ? "success" : "failed",
+    //   skipped: result.skipped || false,
+    //   windowId: windowId,
+    //   hasResponse: !!result.response,
+    //   column: column,
+    //   row: row,
+    //   taskId: taskId
+    // });
 
     // タスクを完了済みにマーク
     this.completedTasks.add(taskId);
@@ -1396,23 +1396,23 @@ class StreamProcessor {
     const tasks = this.taskQueue.get(column);
     const hasMoreTasks = tasks && nextIndex < tasks.length;
     
-    this.logger.log(`[StreamProcessor] 次のタスク確認: ${column}列`, {
-      currentIndex: currentIndex,
-      nextIndex: nextIndex,
-      totalTasks: tasks?.length || 0,
-      hasMoreTasks: hasMoreTasks,
-    });
+    // this.logger.log(`[StreamProcessor] 次のタスク確認: ${column}列`, {
+    //   currentIndex: currentIndex,
+    //   nextIndex: nextIndex,
+    //   totalTasks: tasks?.length || 0,
+    //   hasMoreTasks: hasMoreTasks,
+    // });
     
     
     if (hasMoreTasks) {
-      this.logger.log(`[StreamProcessor] 🔄 ${column}列の次のタスクあり`);
+      // this.logger.log(`[StreamProcessor] 🔄 ${column}列の次のタスクあり`);
     } else {
-      this.logger.log(`[StreamProcessor] 🎯 ${column}列の全タスク完了`);
+      // this.logger.log(`[StreamProcessor] 🎯 ${column}列の全タスク完了`);
     }
 
     // エラー応答のチェックとリトライ処理（バッチ完了チェックの前に実行）
     if (result.success && result.response && result.response.includes("[Request interrupted by user]回答テキスト取得できない　エラー")) {
-      this.logger.log(`[StreamProcessor] ❌ エラー応答を検知、リトライキューに追加: ${cellPosition}セル`);
+      // this.logger.log(`[StreamProcessor] ❌ エラー応答を検知、リトライキューに追加: ${cellPosition}セル`);
       
       // リトライキューに追加
       if (!this.failedTasksByColumn.has(column)) {
@@ -1430,16 +1430,16 @@ class StreamProcessor {
       if (result.response && task.taskType === "ai") {
         if (this.outputTarget === 'log') {
           // ログ出力モード：ログに表示のみ
-          this.logger.log(`[StreamProcessor] ログ出力: ${cellPosition}セル -> ${result.response.substring(0, 100)}...`);
+          // this.logger.log(`[StreamProcessor] ログ出力: ${cellPosition}セル -> ${result.response.substring(0, 100)}...`);
         } else if (this.outputTarget === 'spreadsheet') {
           // スプレッドシート出力モード：スプレッドシートに書き込み（同期実行で完了を待つ）
-          this.logger.log(`[StreamProcessor] スプレッドシート出力: ${cellPosition}セル -> ${result.response.substring(0, 100)}...`);
+          // this.logger.log(`[StreamProcessor] スプレッドシート出力: ${cellPosition}セル -> ${result.response.substring(0, 100)}...`);
           
           try {
             // スプレッドシート書き込みを同期で実行（awaitで完了を待つ）
             // 重要：ウィンドウが閉じる前に実行する必要がある
             await this.writeResultToSpreadsheet(task, result, windowId);
-            this.logger.log(`[StreamProcessor] 📝 スプレッドシートに書き込み完了: ${cellPosition}セル`);
+            // this.logger.log(`[StreamProcessor] 📝 スプレッドシートに書き込み完了: ${cellPosition}セル`);
           } catch (error) {
             this.logger.error(`[StreamProcessor] ❌ 結果の保存エラー`, error);
             // エラーが発生してもタスク処理は継続
@@ -1449,7 +1449,7 @@ class StreamProcessor {
       // レポートタスクの場合
       else if (result.reportUrl && task.taskType === "report") {
         if (this.outputTarget === 'spreadsheet') {
-          this.logger.log(`[StreamProcessor] レポートURL書き込み: ${cellPosition}セル -> ${result.reportUrl}`);
+          // this.logger.log(`[StreamProcessor] レポートURL書き込み: ${cellPosition}セル -> ${result.reportUrl}`);
           
           try {
             // レポートURLをスプレッドシートに書き込み
@@ -1462,7 +1462,7 @@ class StreamProcessor {
                 result.reportUrl,
                 gid
               );
-              this.logger.log(`[StreamProcessor] 📝 レポートURL書き込み完了: ${cellPosition}セル`);
+              // this.logger.log(`[StreamProcessor] 📝 レポートURL書き込み完了: ${cellPosition}セル`);
               
               // レポート記載完了もマーク
               const cellKey = `${task.column}${task.row}`;
@@ -1509,12 +1509,12 @@ class StreamProcessor {
         gid  // gidを渡してシート名を含む範囲にする
       );
 
-      this.logger.log(`[StreamProcessor] 回答を書き込み: ${range}`);
+      // this.logger.log(`[StreamProcessor] 回答を書き込み: ${range}`);
       
       // 書き込み完了をマーク（3種類AI完了判定用）
       const answerCellKey = `${answerColumn}${task.row}`;
       this.writtenCells.set(answerCellKey, true);
-      this.logger.log(`[StreamProcessor] ✅ writtenCellsに記録: ${answerCellKey} (タスク: ${task.column}${task.row} → 回答: ${answerCellKey})`);
+      // this.logger.log(`[StreamProcessor] ✅ writtenCellsに記録: ${answerCellKey} (タスク: ${task.column}${task.row} → 回答: ${answerCellKey})`);
       
       // ウィンドウクローズチェック（スプレッドシート書き込み後）
       // 重要: onTaskCompletedで既にcurrentRowByColumnがインクリメントされているため、
@@ -1524,31 +1524,31 @@ class StreamProcessor {
       const totalTasks = columnTasks ? columnTasks.length : 0;
       const allTasksCompleted = columnIndex >= totalTasks;
       
-      this.logger.log(`[StreamProcessor] 列完了チェック: ${answerColumn}列`, {
-        currentIndex: columnIndex,
-        totalTasks: totalTasks,
-        allTasksCompleted: allTasksCompleted,
-        hasWindow: this.columnWindows.has(answerColumn)
-      });
+      // this.logger.log(`[StreamProcessor] 列完了チェック: ${answerColumn}列`, {
+      //   currentIndex: columnIndex,
+      //   totalTasks: totalTasks,
+      //   allTasksCompleted: allTasksCompleted,
+      //   hasWindow: this.columnWindows.has(answerColumn)
+      // });
       
       // デバッグログ：答列完了時のtaskQueue状態
-      this.logger.log(`[StreamProcessor] 🔍 答列完了時のtaskQueue Debug:`, {
-        answerColumn,
-        taskQueueKeys: Array.from(this.taskQueue.keys()),
-        answerColumnInTaskQueue: this.taskQueue.has(answerColumn),
-        correspondingPromptColumn: task.column, // 元のプロンプト列
-        correspondingPromptColumnInTaskQueue: this.taskQueue.has(task.column)
-      });
+      // this.logger.log(`[StreamProcessor] 🔍 答列完了時のtaskQueue Debug:`, {
+      //   answerColumn,
+      //   taskQueueKeys: Array.from(this.taskQueue.keys()),
+      //   answerColumnInTaskQueue: this.taskQueue.has(answerColumn),
+      //   correspondingPromptColumn: task.column, // 元のプロンプト列
+      //   correspondingPromptColumnInTaskQueue: this.taskQueue.has(task.column)
+      // });
       
       if (allTasksCompleted && this.columnWindows.has(answerColumn)) {
         // この列の全タスクが完了したらウィンドウを閉じる
-        this.logger.log(`[StreamProcessor] 🚪 列の全タスク完了、ウィンドウを閉じます: ${answerColumn}列`);
+        // this.logger.log(`[StreamProcessor] 🚪 列の全タスク完了、ウィンドウを閉じます: ${answerColumn}列`);
         await this.closeColumnWindow(answerColumn);
-        this.logger.log(`[StreamProcessor] ✅ ウィンドウクローズ完了: ${answerColumn}列`);
+        // this.logger.log(`[StreamProcessor] ✅ ウィンドウクローズ完了: ${answerColumn}列`);
         
         // 🆕 答列完了時の次列進行ロジック（Phase 2追加）
         if (this.isAnswerColumn(answerColumn)) {
-          this.logger.log(`[StreamProcessor] 🎯 答列完了検出、専用ハンドラーを呼び出し: ${answerColumn}列`);
+          // this.logger.log(`[StreamProcessor] 🎯 答列完了検出、専用ハンドラーを呼び出し: ${answerColumn}列`);
           await this.handleAnswerColumnCompletion(answerColumn);
         } else {
           // 既存の処理（3種類AIグループでない場合のみ）
@@ -1615,13 +1615,13 @@ class StreamProcessor {
             model: task.model || result?.model || '不明'
           };
           
-          this.logger.log(`[StreamProcessor] 📝 ログ書き込み准備:`, {
-            セル: `${task.column}${task.row}`,
-            モデル: taskWithModel.model,
-            URL: currentUrl,
-            isGroupTask,
-            isLastInGroup
-          });
+          // this.logger.log(`[StreamProcessor] 📝 ログ書き込み准備:`, {
+          //   セル: `${task.column}${task.row}`,
+          //   モデル: taskWithModel.model,
+          //   URL: currentUrl,
+          //   isGroupTask,
+          //   isLastInGroup
+          // });
           
           await this.spreadsheetLogger.writeLogToSpreadsheet(taskWithModel, {
             url: currentUrl,
@@ -1635,7 +1635,7 @@ class StreamProcessor {
           
           // 最初のタスク処理完了フラグを更新
           this.isFirstTaskProcessed = true;
-          this.logger.log(`[StreamProcessor] ログを書き込み: ${task.logColumns?.[0] || 'B'}${task.row}`);
+          // this.logger.log(`[StreamProcessor] ログを書き込み: ${task.logColumns?.[0] || 'B'}${task.row}`);
         } catch (logError) {
           // ログ書き込みエラーは警告として記録し、処理は続行
           console.error(`❌ [StreamProcessor] ログ書き込みエラー詳細:`, logError);
@@ -1663,7 +1663,7 @@ class StreamProcessor {
       // ■ 記載完了を記録（並列ストリーミングの核心）
       const cellKey = `${task.column}${task.row}`;
       this.writtenCells.set(cellKey, true);
-      this.logger.log(`[StreamProcessor] 記載完了マーク: ${cellKey}`);
+      // this.logger.log(`[StreamProcessor] 記載完了マーク: ${cellKey}`);
       
       // ■ 3種類AIグループの完了状況を更新
       this.updateGroupCompletion(task);
@@ -1710,7 +1710,7 @@ class StreamProcessor {
       const docInfo =
         await globalThis.docsClient.createDocumentFromTaskResult(taskResult);
 
-      this.logger.log(`[StreamProcessor] ドキュメント作成: ${docInfo.url}`);
+      // this.logger.log(`[StreamProcessor] ドキュメント作成: ${docInfo.url}`);
 
       return docInfo;
     } catch (error) {
@@ -1726,15 +1726,15 @@ class StreamProcessor {
    * @param {number} windowId
    */
   async executeReportTask(task, windowId) {
-    this.logger.log(
-      `[StreamProcessor] レポートタスク実行: ${task.column}${task.row} (ソース: ${task.sourceColumn}, プロンプト: ${task.promptColumn})`,
-    );
+    // this.logger.log(
+    //   `[StreamProcessor] レポートタスク実行: ${task.column}${task.row} (ソース: ${task.sourceColumn}, プロンプト: ${task.promptColumn})`,
+    // );
 
     // 依存タスクが完了しているか確認
     if (task.dependsOn && !this.completedTasks.has(task.dependsOn)) {
-      this.logger.log(
-        `[StreamProcessor] レポートタスクは依存タスク${task.dependsOn}の完了待ち、後で再試行`,
-      );
+      // this.logger.log(
+      //   `[StreamProcessor] レポートタスクは依存タスク${task.dependsOn}の完了待ち、後で再試行`,
+      // );
       // レポートタスクを後で再試行するため、ペンディングリストに追加
       this.schedulePendingReportTask(task);
       // タスクを完了扱いにして次へ進む（ただし実際の処理はペンディング）
@@ -1749,9 +1749,9 @@ class StreamProcessor {
     // ソース列の記載が完了しているか確認
     const sourceCellKey = `${task.sourceColumn}${task.row}`;
     if (!this.writtenCells.has(sourceCellKey)) {
-      this.logger.log(
-        `[StreamProcessor] レポートタスクはソース${sourceCellKey}の記載待ち、後で再試行`,
-      );
+      // this.logger.log(
+      //   `[StreamProcessor] レポートタスクはソース${sourceCellKey}の記載待ち、後で再試行`,
+      // );
       // レポートタスクを後で再試行するため、ペンディングリストに追加
       this.schedulePendingReportTask(task);
       // タスクを完了扱いにして次へ進む（ただし実際の処理はペンディング）
@@ -1773,10 +1773,10 @@ class StreamProcessor {
         this.spreadsheetData.menuRow.index + 1 : 3; // デフォルトは3行目（メニュー行）
       const prevColumnHeader = await this.getSpreadsheetCellValue(prevColumnName, menuRowNumber);
       
-      this.logger.log(`[StreamProcessor] レポート列判定:`);
-      this.logger.log(`  - レポート列: ${task.column}`);
-      this.logger.log(`  - 直前列: ${prevColumnName}="${prevColumnHeader}"`);
-      this.logger.log(`  - メニュー行: ${menuRowNumber}行目`);
+      // this.logger.log(`[StreamProcessor] レポート列判定:`);
+      // this.logger.log(`  - レポート列: ${task.column}`);
+      // this.logger.log(`  - 直前列: ${prevColumnName}="${prevColumnHeader}"`);
+      // this.logger.log(`  - メニュー行: ${menuRowNumber}行目`);
       
       let answerText = "";
       let allAnswers = {};
@@ -1784,11 +1784,11 @@ class StreamProcessor {
       // シンプルな判定：直前列が「Gemini回答」なら3種類AI、それ以外は単独AI
       const isThreeTypeAI = prevColumnHeader && prevColumnHeader.includes("Gemini回答");
       
-      this.logger.log(`[StreamProcessor] AI種別判定: ${isThreeTypeAI ? '3種類AI' : '単独AI'}`);
+      // this.logger.log(`[StreamProcessor] AI種別判定: ${isThreeTypeAI ? '3種類AI' : '単独AI'}`);
       
       if (isThreeTypeAI) {
         // 3種類AIの場合：ChatGPT回答、Claude回答、Gemini回答の3列を取得
-        this.logger.log(`[StreamProcessor] 3種類AIレポート：ChatGPT回答、Claude回答、Gemini回答を取得`);
+        // this.logger.log(`[StreamProcessor] 3種類AIレポート：ChatGPT回答、Claude回答、Gemini回答を取得`);
         
         // レポート列の前の3列が ChatGPT回答、Claude回答、Gemini回答 の順番
         const chatgptColumn = this.indexToColumn(prevColumnIndex - 2);  // 3列前 = ChatGPT回答
@@ -1800,20 +1800,20 @@ class StreamProcessor {
         const claudeHeader = await this.getSpreadsheetCellValue(claudeColumn, menuRowNumber);
         const geminiHeader = await this.getSpreadsheetCellValue(geminiColumn, menuRowNumber);
         
-        this.logger.log(`[StreamProcessor] 3種類AI列の配置確認:`);
-        this.logger.log(`  - ${chatgptColumn}列: "${chatgptHeader}" (ChatGPT回答列)`);
-        this.logger.log(`  - ${claudeColumn}列: "${claudeHeader}" (Claude回答列)`);
-        this.logger.log(`  - ${geminiColumn}列: "${geminiHeader}" (Gemini回答列)`);
+        // this.logger.log(`[StreamProcessor] 3種類AI列の配置確認:`);
+        // this.logger.log(`  - ${chatgptColumn}列: "${chatgptHeader}" (ChatGPT回答列)`);
+        // this.logger.log(`  - ${claudeColumn}列: "${claudeHeader}" (Claude回答列)`);
+        // this.logger.log(`  - ${geminiColumn}列: "${geminiHeader}" (Gemini回答列)`);
         
         // 各AIの回答を取得
         const chatgptAnswer = await this.getSpreadsheetCellValue(chatgptColumn, task.row);
         const claudeAnswer = await this.getSpreadsheetCellValue(claudeColumn, task.row);
         const geminiAnswer = await this.getSpreadsheetCellValue(geminiColumn, task.row);
         
-        this.logger.log(`[StreamProcessor] 取得した回答の状況:`);
-        this.logger.log(`  - ChatGPT(${chatgptColumn}${task.row}): ${chatgptAnswer ? `${chatgptAnswer.substring(0, 30)}...` : '(空)'}`);
-        this.logger.log(`  - Claude(${claudeColumn}${task.row}): ${claudeAnswer ? `${claudeAnswer.substring(0, 30)}...` : '(空)'}`);
-        this.logger.log(`  - Gemini(${geminiColumn}${task.row}): ${geminiAnswer ? `${geminiAnswer.substring(0, 30)}...` : '(空)'}`);
+        // this.logger.log(`[StreamProcessor] 取得した回答の状況:`);
+        // this.logger.log(`  - ChatGPT(${chatgptColumn}${task.row}): ${chatgptAnswer ? `${chatgptAnswer.substring(0, 30)}...` : '(空)'}`);
+        // this.logger.log(`  - Claude(${claudeColumn}${task.row}): ${claudeAnswer ? `${claudeAnswer.substring(0, 30)}...` : '(空)'}`);
+        // this.logger.log(`  - Gemini(${geminiColumn}${task.row}): ${geminiAnswer ? `${geminiAnswer.substring(0, 30)}...` : '(空)'}`);
         
         // 警告：ヘッダーが想定と異なる場合
         if (!chatgptHeader?.includes('ChatGPT') || !claudeHeader?.includes('Claude') || !geminiHeader?.includes('Gemini')) {
@@ -1841,10 +1841,10 @@ class StreamProcessor {
         const formattedGemini = formatAnswer(geminiAnswer || allAnswers.gemini || "");
         
         // デバッグ: 各AIの回答が存在するか確認
-        this.logger.log(`[StreamProcessor] レポート生成前の確認:`);
-        this.logger.log(`  - ChatGPT回答あり: ${!!chatgptAnswer} (長さ: ${chatgptAnswer?.length || 0})`);
-        this.logger.log(`  - Claude回答あり: ${!!claudeAnswer} (長さ: ${claudeAnswer?.length || 0})`);
-        this.logger.log(`  - Gemini回答あり: ${!!geminiAnswer} (長さ: ${geminiAnswer?.length || 0})`);
+        // this.logger.log(`[StreamProcessor] レポート生成前の確認:`);
+        // this.logger.log(`  - ChatGPT回答あり: ${!!chatgptAnswer} (長さ: ${chatgptAnswer?.length || 0})`);
+        // this.logger.log(`  - Claude回答あり: ${!!claudeAnswer} (長さ: ${claudeAnswer?.length || 0})`);
+        // this.logger.log(`  - Gemini回答あり: ${!!geminiAnswer} (長さ: ${geminiAnswer?.length || 0})`);
         
         // 回答が全部空の場合の警告
         if (!chatgptAnswer && !claudeAnswer && !geminiAnswer) {
@@ -1868,14 +1868,14 @@ ${formattedClaude}
 ${formattedGemini}`;
         
         // デバッグ: 生成されたanswerTextの確認
-        this.logger.log(`[StreamProcessor] 3種類AIレポートテキスト生成完了:`);
-        this.logger.log(`  - 全体の長さ: ${answerText.length}文字`);
-        this.logger.log(`  - 最初の100文字: ${answerText.substring(0, 100)}...`);
-        this.logger.log(`  - ChatGPT部分含む: ${answerText.includes('【ChatGPT回答】')}`);
-        this.logger.log(`  - Claude部分含む: ${answerText.includes('【Claude回答】')}`);
-        this.logger.log(`  - Gemini部分含む: ${answerText.includes('【Gemini回答】')}`);
+        // this.logger.log(`[StreamProcessor] 3種類AIレポートテキスト生成完了:`);
+        // this.logger.log(`  - 全体の長さ: ${answerText.length}文字`);
+        // this.logger.log(`  - 最初の100文字: ${answerText.substring(0, 100)}...`);
+        // this.logger.log(`  - ChatGPT部分含む: ${answerText.includes('【ChatGPT回答】')}`);
+        // this.logger.log(`  - Claude部分含む: ${answerText.includes('【Claude回答】')}`);
+        // this.logger.log(`  - Gemini部分含む: ${answerText.includes('【Gemini回答】')}`);
         
-        this.logger.log(`[StreamProcessor] 3種類AI回答取得完了: ChatGPT=${!!chatgptAnswer}, Claude=${!!claudeAnswer}, Gemini=${!!geminiAnswer}`);
+        // this.logger.log(`[StreamProcessor] 3種類AI回答取得完了: ChatGPT=${!!chatgptAnswer}, Claude=${!!claudeAnswer}, Gemini=${!!geminiAnswer}`);
       } else {
         // 単独AIの場合：ソース列から回答を取得
         const singleAnswer = await this.getSpreadsheetCellValue(
@@ -1892,9 +1892,9 @@ ${formattedGemini}`;
       }
 
       if (!answerText || answerText.trim().length === 0) {
-        this.logger.log(
-          `[StreamProcessor] ${task.sourceColumn}${task.row}に回答がないため、レポート作成をスキップ`,
-        );
+        // this.logger.log(
+        //   `[StreamProcessor] ${task.sourceColumn}${task.row}に回答がないため、レポート作成をスキップ`,
+        // );
         // レポートタスクも完了扱いにして次へ進む
         await this.onTaskCompleted(task, windowId, {
           success: false,
@@ -1916,7 +1916,7 @@ ${formattedGemini}`;
       
       if (ReportManagerClass) {
         // ReportManagerが利用可能な場合
-        this.logger.log('[StreamProcessor] ReportManagerを使用してレポートを生成');
+        // this.logger.log('[StreamProcessor] ReportManagerを使用してレポートを生成');
         const reportManager = new ReportManagerClass({
           sheetsClient: globalThis.sheetsClient,
           docsClient: globalThis.docsClient,
@@ -1938,7 +1938,7 @@ ${formattedGemini}`;
         }
       } else {
         // フォールバック: 直接DocsClientを使用
-        this.logger.log('[StreamProcessor] フォールバック: DocsClientを直接使用');
+        // this.logger.log('[StreamProcessor] フォールバック: DocsClientを直接使用');
         docInfo = await this.createGoogleDocumentForReport(
           task,
           promptText,
@@ -1947,9 +1947,9 @@ ${formattedGemini}`;
       }
 
       if (docInfo && docInfo.url) {
-        this.logger.log(
-          `[StreamProcessor] レポート作成完了: ${docInfo.url}`,
-        );
+        // this.logger.log(
+        //   `[StreamProcessor] レポート作成完了: ${docInfo.url}`,
+        // );
 
         // タスク完了処理
         await this.onTaskCompleted(task, windowId, {
@@ -2021,7 +2021,7 @@ ${formattedGemini}`;
       const docInfo =
         await globalThis.docsClient.createDocumentFromTaskResult(taskResult);
 
-      this.logger.log(`[StreamProcessor] レポートドキュメント作成: ${docInfo.url}`);
+      // this.logger.log(`[StreamProcessor] レポートドキュメント作成: ${docInfo.url}`);
 
       return docInfo;
     } catch (error) {
@@ -2071,12 +2071,12 @@ ${formattedGemini}`;
     const windowInfo = this.activeWindows.get(windowId);
     if (!windowInfo) return;
 
-    this.logger.log(`[StreamProcessor] 🗂️ ${column}列のウィンドウを閉じる開始 (windowId: ${windowId})`);
+    // this.logger.log(`[StreamProcessor] 🗂️ ${column}列のウィンドウを閉じる開始 (windowId: ${windowId})`);
 
     try {
       // WindowServiceを使用してウィンドウを閉じる（エラーハンドリングも統一）
       await WindowService.closeWindow(windowId);
-      this.logger.log(`[StreamProcessor] ✅ ウィンドウクローズ完了 (windowId: ${windowId})`);
+      // this.logger.log(`[StreamProcessor] ✅ ウィンドウクローズ完了 (windowId: ${windowId})`);
     } catch (error) {
       this.logger.warn(`[StreamProcessor] ❌ ウィンドウクローズエラー (windowId: ${windowId})`, error);
     }
@@ -2093,33 +2093,33 @@ ${formattedGemini}`;
       const nextTask = tasks[currentIndex];
       if (!nextTask.multiAI) {
         // 1種類AIの次のバッチを開始
-        this.logger.log(`[StreamProcessor] 📋 1種類AI次のバッチ開始: ${column}列の行${nextTask.row}から`);
+        // this.logger.log(`[StreamProcessor] 📋 1種類AI次のバッチ開始: ${column}列の行${nextTask.row}から`);
         await this.startColumnProcessing(column);
         return;
       }
     }
     
     // この列のタスクがすべて完了した場合、次のプロンプト列を開始
-    this.logger.log(`[StreamProcessor] 🎯 ${column}列の全タスク完了 → 次のプロンプト列を探す`);
+    // this.logger.log(`[StreamProcessor] 🎯 ${column}列の全タスク完了 → 次のプロンプト列を探す`);
     
     // 次のプロンプト列を取得
     const nextColumn = this.getNextColumn(column);
     if (nextColumn) {
-      this.logger.log(`[StreamProcessor] 📋 次のプロンプト列に進行: ${column}列 → ${nextColumn}列`);
+      // this.logger.log(`[StreamProcessor] 📋 次のプロンプト列に進行: ${column}列 → ${nextColumn}列`);
       // 次の列に未処理タスクがあるかチェック
       const nextTasks = this.taskQueue.get(nextColumn);
       const nextIndex = this.currentRowByColumn.get(nextColumn) || 0;
       
       if (nextTasks && nextIndex < nextTasks.length) {
         // 次の列の処理を開始
-        this.logger.log(`[StreamProcessor] 🚀 startColumnProcessing呼び出し: ${nextColumn}列`);
+        // this.logger.log(`[StreamProcessor] 🚀 startColumnProcessing呼び出し: ${nextColumn}列`);
         await this.startColumnProcessing(nextColumn);
         return;
       } else {
-        this.logger.log(`[StreamProcessor] ${nextColumn}列にはもう処理するタスクがありません`);
+        // this.logger.log(`[StreamProcessor] ${nextColumn}列にはもう処理するタスクがありません`);
       }
     } else {
-      this.logger.log(`[StreamProcessor] 次のプロンプト列はありません - すべての列の処理が完了`);
+      // this.logger.log(`[StreamProcessor] 次のプロンプト列はありません - すべての列の処理が完了`);
     }
     
     // 待機中の列があればそれを再開する
@@ -2132,7 +2132,7 @@ ${formattedGemini}`;
   async checkAndStartAvailableColumns() {
     // 実行中の3種類AIグループがある場合は新しいグループを開始しない
     if (this.activeThreeTypeGroups.size > 0) {
-      this.logger.log(`[StreamProcessor] 3種類AIグループ実行中のため新規列開始を待機 (実行中: ${this.activeThreeTypeGroups.size}グループ)`);
+      // this.logger.log(`[StreamProcessor] 3種類AIグループ実行中のため新規列開始を待機 (実行中: ${this.activeThreeTypeGroups.size}グループ)`);
       return;
     }
     
@@ -2149,18 +2149,18 @@ ${formattedGemini}`;
         });
       
       if (hasIncompleteGroup) {
-        this.logger.log(`[StreamProcessor] 3種類AIグループ(${this.activeThreeTypeGroupId})実行中のため新規列開始を待機`);
+        // this.logger.log(`[StreamProcessor] 3種類AIグループ(${this.activeThreeTypeGroupId})実行中のため新規列開始を待機`);
         return;
       }
     }
     
     const availableSlots = this.maxConcurrentWindows - this.activeWindows.size;
     if (availableSlots <= 0) {
-      this.logger.log(`[StreamProcessor] 空きウィンドウなし (${this.activeWindows.size}/${this.maxConcurrentWindows})`);
+      // this.logger.log(`[StreamProcessor] 空きウィンドウなし (${this.activeWindows.size}/${this.maxConcurrentWindows})`);
       return;
     }
     
-    this.logger.log(`[StreamProcessor] 空きウィンドウ${availableSlots}個で未処理列をチェック`);
+    // this.logger.log(`[StreamProcessor] 空きウィンドウ${availableSlots}個で未処理列をチェック`);
     
     const columns = Array.from(this.taskQueue.keys()).sort();
     let nextThreeTypeGroupId = null;
@@ -2183,7 +2183,7 @@ ${formattedGemini}`;
           if (!nextThreeTypeGroupId) {
             nextThreeTypeGroupId = task.groupId;
             this.activeThreeTypeGroupId = nextThreeTypeGroupId;
-            this.logger.log(`[StreamProcessor] 新しい3種類AIグループを検出: ${nextThreeTypeGroupId}`);
+            // this.logger.log(`[StreamProcessor] 新しい3種類AIグループを検出: ${nextThreeTypeGroupId}`);
           }
           
           // 同じグループの列を収集
@@ -2196,9 +2196,9 @@ ${formattedGemini}`;
     
     // 3種類AIグループが見つかった場合、全列を同時に開始
     if (nextThreeTypeGroupId && groupColumns.length > 0) {
-      this.logger.log(`[StreamProcessor] 3種類AIグループ ${nextThreeTypeGroupId} を開始: ${groupColumns.join(', ')}列`);
+      // this.logger.log(`[StreamProcessor] 3種類AIグループ ${nextThreeTypeGroupId} を開始: ${groupColumns.join(', ')}列`);
       for (const column of groupColumns) {
-        this.logger.log(`[StreamProcessor] ${column}列を開始`);
+        // this.logger.log(`[StreamProcessor] ${column}列を開始`);
         this.startColumnProcessing(column).catch(error => {
           this.logger.error(`[StreamProcessor] ${column}列エラー`, error);
         });
@@ -2228,7 +2228,7 @@ ${formattedGemini}`;
           // レポートタスクの場合、依存元タスクが完了しているか確認
           const dependsOnTaskId = task.dependsOn;
           if (dependsOnTaskId && !this.completedTasks.has(dependsOnTaskId)) {
-            this.logger.log(`[StreamProcessor] ${column}列(レポート)は依存タスク${dependsOnTaskId}の完了待ち`);
+            // this.logger.log(`[StreamProcessor] ${column}列(レポート)は依存タスク${dependsOnTaskId}の完了待ち`);
             continue;
           }
           // ソース列のデータが存在するか確認
@@ -2236,7 +2236,7 @@ ${formattedGemini}`;
           const sourceRow = task.row;
           const sourceCellKey = `${sourceColumn}${sourceRow}`;
           if (!this.writtenCells.has(sourceCellKey)) {
-            this.logger.log(`[StreamProcessor] ${column}列(レポート)はソース${sourceCellKey}の記載待ち`);
+            // this.logger.log(`[StreamProcessor] ${column}列(レポート)はソース${sourceCellKey}の記載待ち`);
             continue;
           }
         } else {
@@ -2244,7 +2244,7 @@ ${formattedGemini}`;
           // 前の列が完了しているか確認（単独AIの場合のみ1つずつ開始）
           const prevColumn = this.getPreviousColumn(column);
           if (prevColumn && this.shouldWaitForPreviousColumn(prevColumn, column, task.row)) {
-            this.logger.log(`[StreamProcessor] ${column}列は前の列${prevColumn}の完了待ち`);
+            // this.logger.log(`[StreamProcessor] ${column}列は前の列${prevColumn}の完了待ち`);
             continue;
           }
         }
@@ -2255,13 +2255,13 @@ ${formattedGemini}`;
           .some(batch => batch.column === column);
         
         if (!isBatchProcessing) {
-          this.logger.log(`[StreamProcessor] ${column}列を開始`);
+          // this.logger.log(`[StreamProcessor] ${column}列を開始`);
           this.startColumnProcessing(column).catch(error => {
             this.logger.error(`[StreamProcessor] ${column}列開始エラー`, error);
           });
           started++;
         } else {
-          this.logger.log(`[StreamProcessor] ${column}列はバッチ処理中のためスキップ`);
+          // this.logger.log(`[StreamProcessor] ${column}列はバッチ処理中のためスキップ`);
         }
         
         // 単独AIは1つずつ開始するため、ここで終了
@@ -2270,7 +2270,7 @@ ${formattedGemini}`;
     }
     
     if (started === 0) {
-      this.logger.log(`[StreamProcessor] 開始可能な列がありません`);
+      // this.logger.log(`[StreamProcessor] 開始可能な列がありません`);
     }
   }
 
@@ -2279,14 +2279,14 @@ ${formattedGemini}`;
    * @param {string} closedColumn - 閉じた列
    */
   async checkAndStartNextTask(closedColumn) {
-    this.logger.log(`[StreamProcessor] 次のタスク確認: ${closedColumn}列のウィンドウを閉じた後`);
+    // this.logger.log(`[StreamProcessor] 次のタスク確認: ${closedColumn}列のウィンドウを閉じた後`);
     
     // 1. 同じ列の次のタスクをチェック
     const tasks = this.taskQueue.get(closedColumn);
     const currentIndex = this.currentRowByColumn.get(closedColumn) || 0;
     
     if (tasks && currentIndex < tasks.length) {
-      this.logger.log(`[StreamProcessor] ${closedColumn}列に未処理タスクあり (${currentIndex}/${tasks.length})`);
+      // this.logger.log(`[StreamProcessor] ${closedColumn}列に未処理タスクあり (${currentIndex}/${tasks.length})`);
       // 同じ列に未処理タスクがある場合は開始
       await this.startColumnProcessing(closedColumn);
       return;
@@ -2297,7 +2297,7 @@ ${formattedGemini}`;
     for (const column of columns) {
       // すでにウィンドウがある列はスキップ
       if (this.columnWindows.has(column)) {
-        this.logger.log(`[StreamProcessor] ${column}列は既にウィンドウがあるためスキップ`);
+        // this.logger.log(`[StreamProcessor] ${column}列は既にウィンドウがあるためスキップ`);
         continue;
       }
       
@@ -2305,7 +2305,7 @@ ${formattedGemini}`;
       const index = this.currentRowByColumn.get(column) || 0;
       
       if (columnTasks && index < columnTasks.length) {
-        this.logger.log(`[StreamProcessor] ${column}列で未処理タスク発見 (${index}/${columnTasks.length})`);
+        // this.logger.log(`[StreamProcessor] ${column}列で未処理タスク発見 (${index}/${columnTasks.length})`);
         // 未処理タスクがある列を開始
         await this.startColumnProcessing(column);
         break; // 1つだけ開始
@@ -2315,7 +2315,7 @@ ${formattedGemini}`;
     // 全タスク完了チェック
     const allCompleted = this.checkAllTasksCompleted();
     if (allCompleted) {
-      this.logger.log(`[StreamProcessor] ✅ 全タスク完了！`);
+      // this.logger.log(`[StreamProcessor] ✅ 全タスク完了！`);
     }
   }
 
@@ -2363,12 +2363,12 @@ ${formattedGemini}`;
       if (!allWritten) {
         // まだ記載されていない列がある場合
         const writtenColumns = answerColumns.filter(col => this.writtenCells.has(`${col}${row}`));
-        this.logger.log(`[StreamProcessor] 3種類AI並列処理中: ${writtenColumns.length}/${answerColumns.length}列完了 (行${row})`);
+        // this.logger.log(`[StreamProcessor] 3種類AI並列処理中: ${writtenColumns.length}/${answerColumns.length}列完了 (行${row})`);
         return;
       }
       
       // 全列記載完了の場合、次の行に進む
-      this.logger.log(`[StreamProcessor] 🎯 3種類AI行${row}完了 → 次の行へ`);
+      // this.logger.log(`[StreamProcessor] 🎯 3種類AI行${row}完了 → 次の行へ`);
       
       // グループが完了したら次の行の3種類AIグループを開始
       if (this.activeThreeTypeGroupId === currentTask.groupId) {
@@ -2397,24 +2397,24 @@ ${formattedGemini}`;
         
         // 現在のバッチ内にまだ未処理タスクがある場合
         if (nextTask.row <= batchEnd) {
-          this.logger.log(`[StreamProcessor] 📋 1種類AI連続処理: ${column}列の行${nextTask.row}を開始`);
+          // this.logger.log(`[StreamProcessor] 📋 1種類AI連続処理: ${column}列の行${nextTask.row}を開始`);
           
           // 次のタスクを実行
           // 注: ここでは新しいウィンドウを開いて処理する
           // バッチ内の次のタスクは checkAndStartNextNormalBatch で処理される
-          this.logger.log(`[StreamProcessor] 次のタスク${nextTask.column}${nextTask.row}はバッチ処理で実行されます`);
+          // this.logger.log(`[StreamProcessor] 次のタスク${nextTask.column}${nextTask.row}はバッチ処理で実行されます`);
           return;
         }
       }
       
       // バッチ完了後、ウィンドウを閉じて次のバッチへ
-      this.logger.log(`[StreamProcessor] ${column}列の3行バッチ完了`);
+      // this.logger.log(`[StreamProcessor] ${column}列の3行バッチ完了`);
       await this.closeColumnWindow(column);
     }
     
     const nextColumn = this.getNextColumn(column);
     if (!nextColumn) {
-      this.logger.log(`[StreamProcessor] 次の列なし: ${column}列が最後`);
+      // this.logger.log(`[StreamProcessor] 次の列なし: ${column}列が最後`);
       return;
     }
     
@@ -2424,13 +2424,13 @@ ${formattedGemini}`;
     
     const nextTask = nextColumnTasks.find(t => t.row === row);
     if (!nextTask) {
-      this.logger.log(`[StreamProcessor] ${nextColumn}列に行${row}のタスクなし`);
+      // this.logger.log(`[StreamProcessor] ${nextColumn}列に行${row}のタスクなし`);
       return;
     }
     
     // すでに処理済みか確認
     if (this.completedTasks.has(nextTask.id)) {
-      this.logger.log(`[StreamProcessor] ${nextColumn}列の行${row}は処理済み`);
+      // this.logger.log(`[StreamProcessor] ${nextColumn}列の行${row}は処理済み`);
       return;
     }
     
@@ -2438,13 +2438,13 @@ ${formattedGemini}`;
     if (nextTask.taskType === "report") {
       // レポートタスクは依存関係があるため、ここでは開始しない
       // checkAndStartAvailableColumnsで依存関係をチェックして開始される
-      this.logger.log(`[StreamProcessor] ${nextColumn}列はレポートタスクのため、依存関係チェック後に開始`);
+      // this.logger.log(`[StreamProcessor] ${nextColumn}列はレポートタスクのため、依存関係チェック後に開始`);
       return;
     }
     
     // 3種類AIグループの場合は同時開始されるため、ここでは開始しない
     if (nextTask.multiAI && nextTask.groupId) {
-      this.logger.log(`[StreamProcessor] ${nextColumn}列は3種類AIグループのため、グループ単位で開始`);
+      // this.logger.log(`[StreamProcessor] ${nextColumn}列は3種類AIグループのため、グループ単位で開始`);
       return;
     }
     
@@ -2453,13 +2453,13 @@ ${formattedGemini}`;
     const taskIndex = nextColumnTasks.indexOf(nextTask);
     
     if (taskIndex !== currentIndex) {
-      this.logger.log(`[StreamProcessor] ${nextColumn}列はまだ行${row}に到達していない（現在: 行${nextColumnTasks[currentIndex]?.row}）`);
+      // this.logger.log(`[StreamProcessor] ${nextColumn}列はまだ行${row}に到達していない（現在: 行${nextColumnTasks[currentIndex]?.row}）`);
       return;
     }
     
     // 単独AIの場合、前の列の記載完了により次の列を開始
-    this.logger.log(`[StreamProcessor] 📋 並列ストリーミング発動！`);
-    this.logger.log(`[StreamProcessor]   ${column}列の行${row}記載完了 → ${nextColumn}列の行${row}を開始`);
+    // this.logger.log(`[StreamProcessor] 📋 並列ストリーミング発動！`);
+    // this.logger.log(`[StreamProcessor]   ${column}列の行${row}記載完了 → ${nextColumn}列の行${row}を開始`);
     
     // 次の列がまだウィンドウを持っていない場合のみ開始
     if (!this.columnWindows.has(nextColumn)) {
@@ -2477,7 +2477,7 @@ ${formattedGemini}`;
     
     // すでに処理中（ウィンドウがある）場合はスキップ
     if (this.columnWindows.has(column)) {
-      this.logger.log(`[StreamProcessor] ${column}列は既に処理中のためスキップ`);
+      // this.logger.log(`[StreamProcessor] ${column}列は既に処理中のためスキップ`);
       return;
     }
     
@@ -2487,25 +2487,25 @@ ${formattedGemini}`;
     // エラー行と既存回答をスキップ
     const validTasks = tasks.filter(task => {
       if (this.errorRows.has(task.row)) {
-        this.logger.log(`[StreamProcessor] ⚠️ 行${task.row}はエラー行のため${column}列でスキップ`);
+        // this.logger.log(`[StreamProcessor] ⚠️ 行${task.row}はエラー行のため${column}列でスキップ`);
         return false;
       }
       // 既存回答チェック
       const cellKey = `${task.column}${task.row}`;
       if (this.writtenCells.has(cellKey)) {
-        this.logger.log(`[StreamProcessor] ${cellKey}は既に記載済みのためスキップ`);
+        // this.logger.log(`[StreamProcessor] ${cellKey}は既に記載済みのためスキップ`);
         return false;
       }
       return true;
     });
     
     if (validTasks.length === 0) {
-      this.logger.log(`[StreamProcessor] ${column}列: 全タスクが処理済みまたはエラー行のためスキップ`);
+      // this.logger.log(`[StreamProcessor] ${column}列: 全タスクが処理済みまたはエラー行のためスキップ`);
       this.columnWindows.delete(column);
       return;
     }
     
-    this.logger.log(`[StreamProcessor] 通常処理列開始: ${column}列 (${validTasks.length}/${tasks.length}タスク)`);
+    // this.logger.log(`[StreamProcessor] 通常処理列開始: ${column}列 (${validTasks.length}/${tasks.length}タスク)`);
     
     // 3タスクずつのバッチに分割
     const batches = [];
@@ -2514,7 +2514,7 @@ ${formattedGemini}`;
       batches.push(batchTasks);
     }
     
-    this.logger.log(`[StreamProcessor] ${column}列を${batches.length}バッチに分割`);
+    // this.logger.log(`[StreamProcessor] ${column}列を${batches.length}バッチに分割`);
     
     // 各バッチを順次処理
     for (let i = 0; i < batches.length; i++) {
@@ -2527,7 +2527,7 @@ ${formattedGemini}`;
     // 処理完了後、フラグを削除
     this.columnWindows.delete(column);
     
-    this.logger.log(`[StreamProcessor] ${column}列の全タスク処理完了`);
+    // this.logger.log(`[StreamProcessor] ${column}列の全タスク処理完了`);
     
     // 動的スプレッドシート対応: 列完了後に新規プロンプトを再スキャン
     await this.rescanForNewTasks(column);
@@ -2544,8 +2544,8 @@ ${formattedGemini}`;
   async startNormalBatch(column, batchTasks, batchIndex, totalBatches) {
     const batchId = `batch_${column}_${batchIndex}_${Date.now()}`;
     
-    this.logger.log(`[StreamProcessor] 📦 バッチ開始: ${batchId} (${batchIndex + 1}/${totalBatches})`);
-    this.logger.log(`[StreamProcessor] タスク: ${batchTasks.map(t => `${t.column}${t.row}`).join(', ')}`);
+    // this.logger.log(`[StreamProcessor] 📦 バッチ開始: ${batchId} (${batchIndex + 1}/${totalBatches})`);
+    // this.logger.log(`[StreamProcessor] タスク: ${batchTasks.map(t => `${t.column}${t.row}`).join(', ')}`);
     
     // バッチトラッカーに登録
     const batchInfo = {
@@ -2589,7 +2589,7 @@ ${formattedGemini}`;
           index
         });
         
-        this.logger.log(`[StreamProcessor] ✅ ウィンドウ開き完了: ${task.column}${task.row} (Window ID: ${windowId})`);
+        // this.logger.log(`[StreamProcessor] ✅ ウィンドウ開き完了: ${task.column}${task.row} (Window ID: ${windowId})`);
         
       } catch (error) {
         this.logger.error(`[StreamProcessor] ウィンドウ開きエラー: ${task.column}${task.row}`, error);
@@ -2601,7 +2601,7 @@ ${formattedGemini}`;
     // 全ウィンドウが開くのを待つ
     await Promise.allSettled(windowPromises);
     
-    this.logger.log(`[StreamProcessor] 📂 全ウィンドウ開き完了、送信処理を開始します`);
+    // this.logger.log(`[StreamProcessor] 📂 全ウィンドウ開き完了、送信処理を開始します`);
     
     // 送信を順次実行（5秒間隔）
     const sendPromises = [];
@@ -2616,11 +2616,11 @@ ${formattedGemini}`;
       
       // 送信前に10秒待機（最初のタスクは待機なし）
       if (i > 0) {
-        this.logger.log(`[StreamProcessor] ⏱️ 次の送信まで10秒待機...`);
+        // this.logger.log(`[StreamProcessor] ⏱️ 次の送信まで10秒待機...`);
         await new Promise(resolve => setTimeout(resolve, 10000));
       }
       
-      this.logger.log(`[StreamProcessor] 📤 送信開始: ${task.column}${task.row} (${positionName})`);
+      // this.logger.log(`[StreamProcessor] 📤 送信開始: ${task.column}${task.row} (${positionName})`);
       
       // タスクを実行（送信処理）
       const sendPromise = this.executeTaskInWindow(task, windowId).then(result => {
@@ -2640,7 +2640,7 @@ ${formattedGemini}`;
     // 全タスクの完了を待つ
     await Promise.allSettled(sendPromises);
     
-    this.logger.log(`[StreamProcessor] バッチ${batchId}の全タスク開始完了`);
+    // this.logger.log(`[StreamProcessor] バッチ${batchId}の全タスク開始完了`);
   }
   
   /**
@@ -2709,14 +2709,14 @@ ${formattedGemini}`;
     // 全タスクが完了しているかチェック
     if (batchInfo.completed.size === batchInfo.tasks.length) {
       const duration = ((Date.now() - batchInfo.startTime) / 1000).toFixed(1);
-      this.logger.log(`[StreamProcessor] ✅ バッチ完了: ${batchId} (${duration}秒)`);
+      // this.logger.log(`[StreamProcessor] ✅ バッチ完了: ${batchId} (${duration}秒)`);
       
       // バッチのウィンドウを全て閉じる
       await this.closeNormalBatchWindows(batchId);
       
       // 次のバッチを開始（削除：processNormalColumnで全バッチを順次処理するように変更）
       // ここでは何もしない（processNormalColumnのforループで次のバッチが処理される）
-      this.logger.log(`[StreamProcessor] バッチ${batchInfo.batchIndex + 1}/${batchInfo.totalBatches}完了: ${batchInfo.column}列`);
+      // this.logger.log(`[StreamProcessor] バッチ${batchInfo.batchIndex + 1}/${batchInfo.totalBatches}完了: ${batchInfo.column}列`);
       
       // トラッカーから削除
       this.normalBatchTracker.delete(batchId);
@@ -2732,7 +2732,7 @@ ${formattedGemini}`;
     try {
       // ウィンドウクローズ後に確実に位置解放を行うコールバック
       const onWindowClosed = async (closedWindowId) => {
-        this.logger.log(`[StreamProcessor] 🧹 ウィンドウ${closedWindowId}の位置管理をクリーンアップ`);
+        // this.logger.log(`[StreamProcessor] 🧹 ウィンドウ${closedWindowId}の位置管理をクリーンアップ`);
         
         // 管理情報をクリア
         this.activeWindows.delete(closedWindowId);
@@ -2744,7 +2744,7 @@ ${formattedGemini}`;
         for (const [col, wId] of this.columnWindows.entries()) {
           if (wId === closedWindowId) {
             this.columnWindows.delete(col);
-            this.logger.log(`[StreamProcessor] ✅ 列${col}のウィンドウ管理を解放しました`);
+            // this.logger.log(`[StreamProcessor] ✅ 列${col}のウィンドウ管理を解放しました`);
             break;
           }
         }
@@ -2752,7 +2752,7 @@ ${formattedGemini}`;
       
       // WindowServiceを使用してウィンドウを閉じる（コールバック付き）
       await WindowService.closeWindow(windowId, onWindowClosed);
-      this.logger.log(`[StreamProcessor] ✅ タスク完了後、Window${windowId}を閉じました`);
+      // this.logger.log(`[StreamProcessor] ✅ タスク完了後、Window${windowId}を閉じました`);
     } catch (error) {
       this.logger.debug(`[StreamProcessor] Window${windowId}クローズエラー（無視）: ${error.message}`);
     }
@@ -2766,7 +2766,7 @@ ${formattedGemini}`;
     const batchInfo = this.normalBatchTracker.get(batchId);
     if (!batchInfo) return;
     
-    this.logger.log(`[StreamProcessor] バッチのウィンドウを閉じる: ${batchId} (${batchInfo.windows.size}個)`);
+    // this.logger.log(`[StreamProcessor] バッチのウィンドウを閉じる: ${batchId} (${batchInfo.windows.size}個)`);
     
     const closePromises = [];
     for (const [taskId, windowId] of batchInfo.windows) {
@@ -2774,7 +2774,7 @@ ${formattedGemini}`;
         // WindowServiceを使用してウィンドウを閉じる（Promise形式で統一）
         WindowService.closeWindow(windowId)
           .then(() => {
-            this.logger.log(`[StreamProcessor] ✅ Window${windowId}を閉じた`);
+            // this.logger.log(`[StreamProcessor] ✅ Window${windowId}を閉じた`);
             // 管理情報をクリア
             this.activeWindows.delete(windowId);
             // windowPositionsの管理はWindowServiceに一元化
@@ -2801,7 +2801,7 @@ ${formattedGemini}`;
     }
     
     await Promise.all(closePromises);
-    this.logger.log(`[StreamProcessor] バッチウィンドウクローズ完了: ${batchId}`);
+    // this.logger.log(`[StreamProcessor] バッチウィンドウクローズ完了: ${batchId}`);
   }
   
   /**
@@ -2886,7 +2886,7 @@ ${formattedGemini}`;
    */
   async handleAnswerColumnCompletion(answerColumn) {
     try {
-      this.logger.log(`[StreamProcessor] 🎯 答列完了処理開始: ${answerColumn}列`);
+      // this.logger.log(`[StreamProcessor] 🎯 答列完了処理開始: ${answerColumn}列`);
       
       // Phase 4: 入力検証強化
       if (!answerColumn || typeof answerColumn !== 'string') {
@@ -2895,19 +2895,19 @@ ${formattedGemini}`;
       }
       
       // Phase 4: デバッグ情報強化
-      this.logger.log(`[StreamProcessor] 🔍 初期状態確認:`, {
-        answerColumn,
-        isValidAnswerColumn: this.isAnswerColumn(answerColumn),
-        taskQueueKeys: Array.from(this.taskQueue.keys()),
-        currentRowByColumnState: Object.fromEntries(this.currentRowByColumn)
-      });
+      // this.logger.log(`[StreamProcessor] 🔍 初期状態確認:`, {
+      //   answerColumn,
+      //   isValidAnswerColumn: this.isAnswerColumn(answerColumn),
+      //   taskQueueKeys: Array.from(this.taskQueue.keys()),
+      //   currentRowByColumnState: Object.fromEntries(this.currentRowByColumn)
+      // });
       
       // 対応するプロンプト列を取得
       const correspondingPromptColumn = this.getCorrespondingColumn(answerColumn);
       if (!correspondingPromptColumn) {
         this.logger.warn(`[StreamProcessor] ⚠️ 対応するプロンプト列が見つかりません: ${answerColumn}列`);
-        this.logger.log(`[StreamProcessor] 🔍 利用可能な列マッピング:`, StreamProcessor.COLUMN_MAPPING);
-        this.logger.log(`[StreamProcessor] 🔍 フォールバック: checkAndStartAvailableColumns()を実行`);
+        // this.logger.log(`[StreamProcessor] 🔍 利用可能な列マッピング:`, StreamProcessor.COLUMN_MAPPING);
+        // this.logger.log(`[StreamProcessor] 🔍 フォールバック: checkAndStartAvailableColumns()を実行`);
         this.checkAndStartAvailableColumns().catch(error => {
           this.logger.error(`[StreamProcessor] フォールバック処理エラー`, error);
         });
@@ -2915,7 +2915,7 @@ ${formattedGemini}`;
       }
       
       // ステップ1: 現在の列（対応するプロンプト列）でタスクを再スキャン
-      this.logger.log(`[StreamProcessor] 🔍 ${correspondingPromptColumn}列の再スキャン開始`);
+      // this.logger.log(`[StreamProcessor] 🔍 ${correspondingPromptColumn}列の再スキャン開始`);
       
       // 現在の列で新しいタスクがあるか確認（動的に追加されたプロンプト等）
       await this.rescanForNewTasks(correspondingPromptColumn);
@@ -2926,51 +2926,51 @@ ${formattedGemini}`;
       const hasRemainingTasks = currentColumnTasks && currentIndex < currentColumnTasks.length;
       
       if (hasRemainingTasks) {
-        this.logger.log(`[StreamProcessor] 📝 ${correspondingPromptColumn}列に未処理タスク発見: ${currentColumnTasks.length - currentIndex}件`);
-        this.logger.log(`[StreamProcessor] 🚀 ${correspondingPromptColumn}列の処理を継続`);
+        // this.logger.log(`[StreamProcessor] 📝 ${correspondingPromptColumn}列に未処理タスク発見: ${currentColumnTasks.length - currentIndex}件`);
+        // this.logger.log(`[StreamProcessor] 🚀 ${correspondingPromptColumn}列の処理を継続`);
         await this.startColumnProcessing(correspondingPromptColumn);
         return;
       }
       
       // ステップ2: 現在の列にタスクがなければ、次の列グループへ進む
-      this.logger.log(`[StreamProcessor] ✅ ${correspondingPromptColumn}列の全タスク完了`);
+      // this.logger.log(`[StreamProcessor] ✅ ${correspondingPromptColumn}列の全タスク完了`);
       
       // 次のプロンプト列を取得
       const nextPromptColumn = this.getNextColumn(correspondingPromptColumn);
       if (!nextPromptColumn) {
-        this.logger.log(`[StreamProcessor] 📝 次のプロンプト列はありません: ${correspondingPromptColumn}列が最後`);
-        this.logger.log(`[StreamProcessor] 🔍 現在のプロンプト列順序:`, Array.from(this.taskQueue.keys()).sort());
-        this.logger.log(`[StreamProcessor] 🔍 他の利用可能列をチェック`);
+        // this.logger.log(`[StreamProcessor] 📝 次のプロンプト列はありません: ${correspondingPromptColumn}列が最後`);
+        // this.logger.log(`[StreamProcessor] 🔍 現在のプロンプト列順序:`, Array.from(this.taskQueue.keys()).sort());
+        // this.logger.log(`[StreamProcessor] 🔍 他の利用可能列をチェック`);
         this.checkAndStartAvailableColumns().catch(error => {
           this.logger.error(`[StreamProcessor] 利用可能列チェックエラー`, error);
         });
         return;
       }
       
-      this.logger.log(`[StreamProcessor] 🎯 次の列グループへ進行: ${answerColumn}列 → ${nextPromptColumn}列`);
+      // this.logger.log(`[StreamProcessor] 🎯 次の列グループへ進行: ${answerColumn}列 → ${nextPromptColumn}列`);
       
       // ステップ3: 次の列グループのタスクを生成
-      this.logger.log(`[StreamProcessor] 🔍 ${nextPromptColumn}列のタスク生成開始`);
+      // this.logger.log(`[StreamProcessor] 🔍 ${nextPromptColumn}列のタスク生成開始`);
       await this.rescanForNewTasks(nextPromptColumn);
       
       // 次のプロンプト列に未処理タスクがあるかチェック
       const nextTasks = this.taskQueue.get(nextPromptColumn);
       const nextIndex = this.currentRowByColumn.get(nextPromptColumn) || 0;
       
-      this.logger.log(`[StreamProcessor] 🔍 次列タスク状況確認:`, {
-        nextPromptColumn,
-        nextTasksLength: nextTasks ? nextTasks.length : 0,
-        nextIndex,
-        hasTasksToProcess: nextTasks && nextIndex < nextTasks.length,
-        columnWindowExists: this.columnWindows.has(nextPromptColumn)
-      });
+      // this.logger.log(`[StreamProcessor] 🔍 次列タスク状況確認:`, {
+      //   nextPromptColumn,
+      //   nextTasksLength: nextTasks ? nextTasks.length : 0,
+      //   nextIndex,
+      //   hasTasksToProcess: nextTasks && nextIndex < nextTasks.length,
+      //   columnWindowExists: this.columnWindows.has(nextPromptColumn)
+      // });
       
       if (nextTasks && nextIndex < nextTasks.length) {
-        this.logger.log(`[StreamProcessor] 🚀 次のプロンプト列を開始: ${nextPromptColumn}列`);
+        // this.logger.log(`[StreamProcessor] 🚀 次のプロンプト列を開始: ${nextPromptColumn}列`);
         await this.startColumnProcessing(nextPromptColumn);
       } else {
-        this.logger.log(`[StreamProcessor] 📝 ${nextPromptColumn}列には処理するタスクがありません`);
-        this.logger.log(`[StreamProcessor] 🔍 他の利用可能列をチェック`);
+        // this.logger.log(`[StreamProcessor] 📝 ${nextPromptColumn}列には処理するタスクがありません`);
+        // this.logger.log(`[StreamProcessor] 🔍 他の利用可能列をチェック`);
         
         // 他に利用可能な列をチェック
         this.checkAndStartAvailableColumns().catch(error => {
@@ -2978,7 +2978,7 @@ ${formattedGemini}`;
         });
       }
       
-      this.logger.log(`[StreamProcessor] ✅ 答列完了処理完了: ${answerColumn}列`);
+      // this.logger.log(`[StreamProcessor] ✅ 答列完了処理完了: ${answerColumn}列`);
       
     } catch (error) {
       this.logger.error(`[StreamProcessor] ❌ 答列完了処理で予期しないエラー発生: ${answerColumn}列`, error);
@@ -2989,7 +2989,7 @@ ${formattedGemini}`;
       });
       
       // エラー時のフォールバック処理
-      this.logger.log(`[StreamProcessor] 🔄 エラー後フォールバック処理を実行`);
+      // this.logger.log(`[StreamProcessor] 🔄 エラー後フォールバック処理を実行`);
       this.checkAndStartAvailableColumns().catch(fallbackError => {
         this.logger.error(`[StreamProcessor] ❌ フォールバック処理も失敗`, fallbackError);
       });
@@ -3007,16 +3007,16 @@ ${formattedGemini}`;
     const nextColumn = currentIndex < columns.length - 1 ? columns[currentIndex + 1] : null;
     
     // 詳細デバッグログ追加
-    this.logger.log(`[StreamProcessor] 🔍 getNextColumn詳細Debug:`, {
-      inputColumn: currentColumn,
-      allColumns: columns,
-      currentIndex: currentIndex,
-      foundAtIndex: currentIndex >= 0,
-      nextIndex: currentIndex + 1,
-      nextColumn: nextColumn,
-      totalColumns: columns.length,
-      isLastColumn: currentIndex === columns.length - 1
-    });
+    // this.logger.log(`[StreamProcessor] 🔍 getNextColumn詳細Debug:`, {
+    //   inputColumn: currentColumn,
+    //   allColumns: columns,
+    //   currentIndex: currentIndex,
+    //   foundAtIndex: currentIndex >= 0,
+    //   nextIndex: currentIndex + 1,
+    //   nextColumn: nextColumn,
+    //   totalColumns: columns.length,
+    //   isLastColumn: currentIndex === columns.length - 1
+    // });
     
     return nextColumn;
   }
@@ -3039,7 +3039,7 @@ ${formattedGemini}`;
    * @param {number} nextRow - 次の行番号
    */
   async startNextThreeTypeRow(columns, nextRow) {
-    this.logger.log(`[StreamProcessor] 3種類AI次の行チェック: 行${nextRow}`);
+    // this.logger.log(`[StreamProcessor] 3種類AI次の行チェック: 行${nextRow}`);
     
     // 各列で次の行のタスクがあるか確認
     const tasksToStart = [];
@@ -3057,7 +3057,7 @@ ${formattedGemini}`;
     
     // 3つの列すべてに次の行のタスクがある場合のみ開始
     if (tasksToStart.length === columns.length) {
-      this.logger.log(`[StreamProcessor] 🚀 3種類AI行${nextRow}を並列開始`);
+      // this.logger.log(`[StreamProcessor] 🚀 3種類AI行${nextRow}を並列開始`);
       
       // グループIDを設定
       const groupId = tasksToStart[0].task.groupId;
@@ -3068,7 +3068,7 @@ ${formattedGemini}`;
         await this.startColumnProcessing(column);
       }
     } else {
-      this.logger.log(`[StreamProcessor] 行${nextRow}は3種類AIタスクが揃っていません`);
+      // this.logger.log(`[StreamProcessor] 行${nextRow}は3種類AIタスクが揃っていません`);
     }
   }
 
@@ -3076,7 +3076,7 @@ ${formattedGemini}`;
    * 次の3種類AIグループを探して開始
    */
   async checkAndStartNextThreeTypeGroup() {
-    this.logger.log(`[StreamProcessor] 次の3種類AIグループを探索中...`);
+    // this.logger.log(`[StreamProcessor] 次の3種類AIグループを探索中...`);
     
     // 全列をチェックして次の3種類AIグループを探す
     const columns = Array.from(this.taskQueue.keys()).sort();
@@ -3097,7 +3097,7 @@ ${formattedGemini}`;
         if (task.multiAI && task.groupId) {
           if (!nextGroupId) {
             nextGroupId = task.groupId;
-            this.logger.log(`[StreamProcessor] 📋 次の3種類AIグループ発見: ${nextGroupId}`);
+            // this.logger.log(`[StreamProcessor] 📋 次の3種類AIグループ発見: ${nextGroupId}`);
           }
           
           // 同じグループの列を収集
@@ -3111,17 +3111,17 @@ ${formattedGemini}`;
     // 3種類AIグループが見つかったら開始
     if (nextGroupId && groupColumns.length > 0) {
       this.activeThreeTypeGroupId = nextGroupId;
-      this.logger.log(`[StreamProcessor] 🚀 3種類AIグループ ${nextGroupId} を開始: ${groupColumns.join(', ')}列`);
+      // this.logger.log(`[StreamProcessor] 🚀 3種類AIグループ ${nextGroupId} を開始: ${groupColumns.join(', ')}列`);
       
       // グループの全列を同時に開始（awaitなしで並列実行）
       for (const column of groupColumns) {
-        this.logger.log(`[StreamProcessor] ${column}列を開始`);
+        // this.logger.log(`[StreamProcessor] ${column}列を開始`);
         this.startColumnProcessing(column).catch(error => {
           this.logger.error(`[StreamProcessor] ${column}列エラー`, error);
         });
       }
     } else {
-      this.logger.log(`[StreamProcessor] 次の3種類AIグループなし`);
+      // this.logger.log(`[StreamProcessor] 次の3種類AIグループなし`);
       
       // 3種類AIグループがない場合は通常のタスクを開始
       this.checkAndStartAvailableColumns();
@@ -3168,7 +3168,7 @@ ${formattedGemini}`;
     }
     
     // デバッグ用ログ: どの列が同じグループに属するか表示
-    this.logger.log(`[StreamProcessor] グループ${groupId}の回答列: ${columns.join(', ')}`);
+    // this.logger.log(`[StreamProcessor] グループ${groupId}の回答列: ${columns.join(', ')}`);
     return columns;
   }
 
@@ -3190,12 +3190,12 @@ ${formattedGemini}`;
     // すべての必要なAIが完了しているか確認
     for (const requiredAI of tracker.required) {
       if (!tracker.completed.has(requiredAI)) {
-        this.logger.log(`[StreamProcessor] グループ未完了: ${trackerKey}, 待機中: ${requiredAI}`);
+        // this.logger.log(`[StreamProcessor] グループ未完了: ${trackerKey}, 待機中: ${requiredAI}`);
         return false;
       }
     }
     
-    this.logger.log(`[StreamProcessor] グループ完了: ${trackerKey}`);
+    // this.logger.log(`[StreamProcessor] グループ完了: ${trackerKey}`);
     return true;
   }
 
@@ -3216,7 +3216,7 @@ ${formattedGemini}`;
         required: new Set(['chatgpt', 'claude', 'gemini']),
         completed: new Set()
       });
-      this.logger.log(`[StreamProcessor] グループトラッカー初期化: ${trackerKey}`);
+      // this.logger.log(`[StreamProcessor] グループトラッカー初期化: ${trackerKey}`);
     }
   }
 
@@ -3243,7 +3243,7 @@ ${formattedGemini}`;
     
     // 排他制御: 同じバッチが同時に更新されないようにする
     if (this.batchUpdateMutex.has(targetBatchId)) {
-      this.logger.log(`[StreamProcessor] バッチ更新待機 (他の処理中): ${targetBatchId}`);
+      // this.logger.log(`[StreamProcessor] バッチ更新待機 (他の処理中): ${targetBatchId}`);
       // 簡単な待機ループ（本格的なMutexの代替）
       let retryCount = 0;
       while (this.batchUpdateMutex.has(targetBatchId) && retryCount < 10) {
@@ -3269,12 +3269,12 @@ ${formattedGemini}`;
       // タスクを完了に追加
       targetBatchInfo.completed.add(task.id);
       
-      this.logger.log(`[StreamProcessor] バッチ進捗更新: ${targetBatchId}`, {
-        完了数: targetBatchInfo.completed.size,
-        総タスク数: targetBatchInfo.tasks.length,
-        完了タスクID: task.id,
-        完了率: `${Math.round((targetBatchInfo.completed.size / targetBatchInfo.tasks.length) * 100)}%`
-      });
+      // this.logger.log(`[StreamProcessor] バッチ進捗更新: ${targetBatchId}`, {
+      //   完了数: targetBatchInfo.completed.size,
+      //   総タスク数: targetBatchInfo.tasks.length,
+      //   完了タスクID: task.id,
+      //   完了率: `${Math.round((targetBatchInfo.completed.size / targetBatchInfo.tasks.length) * 100)}%`
+      // });
       
       // バッチが完了したかチェック
       await this.checkAndStartNextNormalBatch(targetBatchId);
@@ -3319,7 +3319,7 @@ ${formattedGemini}`;
     const allWritten = writtenCellsList.length === requiredCells.length;
     
     if (!allWritten) {
-      this.logger.log(`[StreamProcessor] グループ${groupId}回答列待機中: ${writtenCellsList.length}/${requiredCells.length}完了`);
+      // this.logger.log(`[StreamProcessor] グループ${groupId}回答列待機中: ${writtenCellsList.length}/${requiredCells.length}完了`);
     }
     
     return allWritten;
@@ -3340,7 +3340,7 @@ ${formattedGemini}`;
     if (tracker) {
       // タスクのAIタイプを完了に追加
       tracker.completed.add(task.aiType);
-      this.logger.log(`[StreamProcessor] グループ進捗更新: ${trackerKey}, 完了: ${task.aiType}, 状況: ${tracker.completed.size}/${tracker.required.size}`);
+      // this.logger.log(`[StreamProcessor] グループ進捗更新: ${trackerKey}, 完了: ${task.aiType}, 状況: ${tracker.completed.size}/${tracker.required.size}`);
       
       // この行が完全に完了したかチェック
       if (tracker.completed.size === tracker.required.size) {
@@ -3350,7 +3350,7 @@ ${formattedGemini}`;
           .every(([, t]) => t.completed.size === t.required.size);
         
         if (allGroupTasksComplete) {
-          this.logger.log(`[StreamProcessor] 3種類AIグループ全タスク完了: ${task.groupId}`);
+          // this.logger.log(`[StreamProcessor] 3種類AIグループ全タスク完了: ${task.groupId}`);
           // 記載完了は各writeResultToSpreadsheetでチェックするので、ここでは何もしない
         }
       }
@@ -3366,7 +3366,7 @@ ${formattedGemini}`;
     const allAnswerColumnsWritten = this.checkGroupAnswerColumnsWritten(groupId);
     
     if (allAnswerColumnsWritten) {
-      this.logger.log(`[StreamProcessor] 3種類AIグループ全回答列記載完了、グループ解放: ${groupId}`);
+      // this.logger.log(`[StreamProcessor] 3種類AIグループ全回答列記載完了、グループ解放: ${groupId}`);
       
       // グループを実行完了として登録解除
       this.activeThreeTypeGroups.delete(groupId);
@@ -3456,7 +3456,7 @@ ${formattedGemini}`;
       ];
 
       // スクリプトを注入
-      this.logger.log(`[StreamProcessor] スクリプト注入開始: ${scriptsToInject.join(', ')}`);
+      // this.logger.log(`[StreamProcessor] スクリプト注入開始: ${scriptsToInject.join(', ')}`);
       
       // chrome.scripting.executeScriptの結果を取得してエラーチェック
       const results = await chrome.scripting.executeScript({
@@ -3474,7 +3474,7 @@ ${formattedGemini}`;
         throw new Error(`Chrome runtime error: ${lastError.message}`);
       }
 
-      this.logger.log(`[StreamProcessor] ${aiType}の自動化スクリプトを注入しました (結果: ${results.length}件)`);
+      // this.logger.log(`[StreamProcessor] ${aiType}の自動化スクリプトを注入しました (結果: ${results.length}件)`);
       
       // スクリプトが初期化されるまで少し待機
       await new Promise(resolve => setTimeout(resolve, 1500));
@@ -3491,7 +3491,7 @@ ${formattedGemini}`;
         })
       });
       
-      this.logger.log(`[StreamProcessor] ${aiType}自動化オブジェクト確認:`, verification[0]?.result || 'error');
+      // this.logger.log(`[StreamProcessor] ${aiType}自動化オブジェクト確認:`, verification[0]?.result || 'error');
       
     } catch (error) {
       this.logger.error(`[StreamProcessor] 自動化スクリプト注入エラー`, {
@@ -3525,7 +3525,7 @@ ${formattedGemini}`;
         // タブの読み込み状態を確認
         const tab = await chrome.tabs.get(tabId);
         if (tab.status !== 'complete') {
-          this.logger.log(`[StreamProcessor] ページ読み込み中... (${i + 1}/${maxRetries})`);
+          // this.logger.log(`[StreamProcessor] ページ読み込み中... (${i + 1}/${maxRetries})`);
           await new Promise(resolve => setTimeout(resolve, retryDelay));
           continue;
         }
@@ -3547,11 +3547,11 @@ ${formattedGemini}`;
         });
 
         if (response && response.ready) {
-          this.logger.log(`[StreamProcessor] コンテンツスクリプト準備完了 (AI: ${response.aiType})`);
+          // this.logger.log(`[StreamProcessor] コンテンツスクリプト準備完了 (AI: ${response.aiType})`);
           return;
         }
 
-        this.logger.log(`[StreamProcessor] コンテンツスクリプト待機中... (${i + 1}/${maxRetries})`);
+        // this.logger.log(`[StreamProcessor] コンテンツスクリプト待機中... (${i + 1}/${maxRetries})`);
         await new Promise(resolve => setTimeout(resolve, retryDelay));
       } catch (error) {
         this.logger.warn(`[StreamProcessor] 準備確認エラー (${i + 1}/${maxRetries}):`, error.message);
@@ -3659,7 +3659,7 @@ ${formattedGemini}`;
    * @returns {Promise<void>}
    */
   async closeAllWindows() {
-    this.logger.log("[StreamProcessor] 全ウィンドウクローズ開始");
+    // this.logger.log("[StreamProcessor] 全ウィンドウクローズ開始");
 
     // レポートチェック用タイマーをクリア
     if (this.reportCheckInterval) {
@@ -3692,7 +3692,7 @@ ${formattedGemini}`;
     this.waitingColumns.clear();
     this.pendingReportTasks.clear();
 
-    this.logger.log("[StreamProcessor] 全ウィンドウクローズ完了");
+    // this.logger.log("[StreamProcessor] 全ウィンドウクローズ完了");
   }
 
   /**
@@ -3703,14 +3703,14 @@ ${formattedGemini}`;
       return;
     }
 
-    this.logger.log(`[StreamProcessor] 待機中の列をチェック: ${Array.from(this.waitingColumns).join(', ')}`);
+    // this.logger.log(`[StreamProcessor] 待機中の列をチェック: ${Array.from(this.waitingColumns).join(', ')}`);
 
     // 待機中の列を1つずつ処理
     for (const waitingColumn of this.waitingColumns) {
       // ポジション予約をせずに空きがあるかのみチェック
       const availablePosition = this.checkAvailablePositionWithoutReserve();
       if (availablePosition !== -1) {
-        this.logger.log(`[StreamProcessor] 待機中の${waitingColumn}列を再開 (利用可能ポジション: ${availablePosition})`);
+        // this.logger.log(`[StreamProcessor] 待機中の${waitingColumn}列を再開 (利用可能ポジション: ${availablePosition})`);
         this.waitingColumns.delete(waitingColumn);
         // 非同期で開始（awaitしない）
         this.startColumnProcessing(waitingColumn).catch(error => {
@@ -3824,7 +3824,7 @@ ${formattedGemini}`;
    */
   schedulePendingReportTask(task) {
     this.pendingReportTasks.add(task);
-    this.logger.log(`[StreamProcessor] レポートタスクをペンディングリストに追加: ${task.column}${task.row}`);
+    // this.logger.log(`[StreamProcessor] レポートタスクをペンディングリストに追加: ${task.column}${task.row}`);
     
     // まだタイマーが動いていない場合は開始
     if (!this.reportCheckInterval) {
@@ -3841,7 +3841,7 @@ ${formattedGemini}`;
       this.checkPendingReportTasks();
     }, 10000);
     
-    this.logger.log(`[StreamProcessor] レポートチェックタイマーを開始（10秒間隔）`);
+    // this.logger.log(`[StreamProcessor] レポートチェックタイマーを開始（10秒間隔）`);
   }
 
   /**
@@ -3853,12 +3853,12 @@ ${formattedGemini}`;
       if (this.reportCheckInterval) {
         clearInterval(this.reportCheckInterval);
         this.reportCheckInterval = null;
-        this.logger.log(`[StreamProcessor] レポートチェックタイマーを停止`);
+        // this.logger.log(`[StreamProcessor] レポートチェックタイマーを停止`);
       }
       return;
     }
 
-    this.logger.log(`[StreamProcessor] ペンディングレポートタスクをチェック: ${this.pendingReportTasks.size}件`);
+    // this.logger.log(`[StreamProcessor] ペンディングレポートタスクをチェック: ${this.pendingReportTasks.size}件`);
     
     const tasksToProcess = [];
     
@@ -3879,7 +3879,7 @@ ${formattedGemini}`;
     
     // 実行可能なタスクを処理
     for (const task of tasksToProcess) {
-      this.logger.log(`[StreamProcessor] ペンディングレポートタスクを実行: ${task.column}${task.row}`);
+      // this.logger.log(`[StreamProcessor] ペンディングレポートタスクを実行: ${task.column}${task.row}`);
       
       try {
         // レポートタスクを直接実行（ウィンドウなし）
@@ -3905,10 +3905,10 @@ ${formattedGemini}`;
         this.spreadsheetData.menuRow.index + 1 : 3; // デフォルトは3行目（メニュー行）
       const prevColumnHeader = await this.getSpreadsheetCellValue(prevColumnName, menuRowNumber);
       
-      this.logger.log(`[StreamProcessor] レポート列判定:`);
-      this.logger.log(`  - レポート列: ${task.column}`);
-      this.logger.log(`  - 直前列: ${prevColumnName}="${prevColumnHeader}"`);
-      this.logger.log(`  - メニュー行: ${menuRowNumber}行目`);
+      // this.logger.log(`[StreamProcessor] レポート列判定:`);
+      // this.logger.log(`  - レポート列: ${task.column}`);
+      // this.logger.log(`  - 直前列: ${prevColumnName}="${prevColumnHeader}"`);
+      // this.logger.log(`  - メニュー行: ${menuRowNumber}行目`);
       
       let answerText = "";
       let allAnswers = {};
@@ -3916,11 +3916,11 @@ ${formattedGemini}`;
       // シンプルな判定：直前列が「Gemini回答」なら3種類AI、それ以外は単独AI
       const isThreeTypeAI = prevColumnHeader && prevColumnHeader.includes("Gemini回答");
       
-      this.logger.log(`[StreamProcessor] AI種別判定（ペンディング）: ${isThreeTypeAI ? '3種類AI' : '単独AI'}`);
+      // this.logger.log(`[StreamProcessor] AI種別判定（ペンディング）: ${isThreeTypeAI ? '3種類AI' : '単独AI'}`);
       
       if (isThreeTypeAI) {
         // 3種類AIの場合：ChatGPT回答、Claude回答、Gemini回答の3列を取得
-        this.logger.log(`[StreamProcessor] 3種類AIレポート（ペンディング）：ChatGPT回答、Claude回答、Gemini回答を取得`);
+        // this.logger.log(`[StreamProcessor] 3種類AIレポート（ペンディング）：ChatGPT回答、Claude回答、Gemini回答を取得`);
         
         // レポート列の前の3列が ChatGPT回答、Claude回答、Gemini回答 の順番
         const chatgptColumn = this.indexToColumn(prevColumnIndex - 2);  // 3列前 = ChatGPT回答
@@ -3932,20 +3932,20 @@ ${formattedGemini}`;
         const claudeHeader = await this.getSpreadsheetCellValue(claudeColumn, menuRowNumber);
         const geminiHeader = await this.getSpreadsheetCellValue(geminiColumn, menuRowNumber);
         
-        this.logger.log(`[StreamProcessor] 3種類AI列の配置確認（ペンディング）:`);
-        this.logger.log(`  - ${chatgptColumn}列: "${chatgptHeader}" (ChatGPT回答列)`);
-        this.logger.log(`  - ${claudeColumn}列: "${claudeHeader}" (Claude回答列)`);
-        this.logger.log(`  - ${geminiColumn}列: "${geminiHeader}" (Gemini回答列)`);
+        // this.logger.log(`[StreamProcessor] 3種類AI列の配置確認（ペンディング）:`);
+        // this.logger.log(`  - ${chatgptColumn}列: "${chatgptHeader}" (ChatGPT回答列)`);
+        // this.logger.log(`  - ${claudeColumn}列: "${claudeHeader}" (Claude回答列)`);
+        // this.logger.log(`  - ${geminiColumn}列: "${geminiHeader}" (Gemini回答列)`);
         
         // 各AIの回答を取得
         const chatgptAnswer = await this.getSpreadsheetCellValue(chatgptColumn, task.row);
         const claudeAnswer = await this.getSpreadsheetCellValue(claudeColumn, task.row);
         const geminiAnswer = await this.getSpreadsheetCellValue(geminiColumn, task.row);
         
-        this.logger.log(`[StreamProcessor] 取得した回答の状況（ペンディング）:`);
-        this.logger.log(`  - ChatGPT(${chatgptColumn}${task.row}): ${chatgptAnswer ? `${chatgptAnswer.substring(0, 30)}...` : '(空)'}`);
-        this.logger.log(`  - Claude(${claudeColumn}${task.row}): ${claudeAnswer ? `${claudeAnswer.substring(0, 30)}...` : '(空)'}`);
-        this.logger.log(`  - Gemini(${geminiColumn}${task.row}): ${geminiAnswer ? `${geminiAnswer.substring(0, 30)}...` : '(空)'}`);
+        // this.logger.log(`[StreamProcessor] 取得した回答の状況（ペンディング）:`);
+        // this.logger.log(`  - ChatGPT(${chatgptColumn}${task.row}): ${chatgptAnswer ? `${chatgptAnswer.substring(0, 30)}...` : '(空)'}`);
+        // this.logger.log(`  - Claude(${claudeColumn}${task.row}): ${claudeAnswer ? `${claudeAnswer.substring(0, 30)}...` : '(空)'}`);
+        // this.logger.log(`  - Gemini(${geminiColumn}${task.row}): ${geminiAnswer ? `${geminiAnswer.substring(0, 30)}...` : '(空)'}`);
         
         // 警告：ヘッダーが想定と異なる場合
         if (!chatgptHeader?.includes('ChatGPT') || !claudeHeader?.includes('Claude') || !geminiHeader?.includes('Gemini')) {
@@ -3973,10 +3973,10 @@ ${formattedGemini}`;
         const formattedGemini = formatAnswer(geminiAnswer || allAnswers.gemini || "");
         
         // デバッグ: 各AIの回答が存在するか確認
-        this.logger.log(`[StreamProcessor] レポート生成前の確認:`);
-        this.logger.log(`  - ChatGPT回答あり: ${!!chatgptAnswer} (長さ: ${chatgptAnswer?.length || 0})`);
-        this.logger.log(`  - Claude回答あり: ${!!claudeAnswer} (長さ: ${claudeAnswer?.length || 0})`);
-        this.logger.log(`  - Gemini回答あり: ${!!geminiAnswer} (長さ: ${geminiAnswer?.length || 0})`);
+        // this.logger.log(`[StreamProcessor] レポート生成前の確認:`);
+        // this.logger.log(`  - ChatGPT回答あり: ${!!chatgptAnswer} (長さ: ${chatgptAnswer?.length || 0})`);
+        // this.logger.log(`  - Claude回答あり: ${!!claudeAnswer} (長さ: ${claudeAnswer?.length || 0})`);
+        // this.logger.log(`  - Gemini回答あり: ${!!geminiAnswer} (長さ: ${geminiAnswer?.length || 0})`);
         
         // 回答が全部空の場合の警告
         if (!chatgptAnswer && !claudeAnswer && !geminiAnswer) {
@@ -4000,14 +4000,14 @@ ${formattedClaude}
 ${formattedGemini}`;
         
         // デバッグ: 生成されたanswerTextの確認
-        this.logger.log(`[StreamProcessor] 3種類AIレポートテキスト生成完了:`);
-        this.logger.log(`  - 全体の長さ: ${answerText.length}文字`);
-        this.logger.log(`  - 最初の100文字: ${answerText.substring(0, 100)}...`);
-        this.logger.log(`  - ChatGPT部分含む: ${answerText.includes('【ChatGPT回答】')}`);
-        this.logger.log(`  - Claude部分含む: ${answerText.includes('【Claude回答】')}`);
-        this.logger.log(`  - Gemini部分含む: ${answerText.includes('【Gemini回答】')}`);
+        // this.logger.log(`[StreamProcessor] 3種類AIレポートテキスト生成完了:`);
+        // this.logger.log(`  - 全体の長さ: ${answerText.length}文字`);
+        // this.logger.log(`  - 最初の100文字: ${answerText.substring(0, 100)}...`);
+        // this.logger.log(`  - ChatGPT部分含む: ${answerText.includes('【ChatGPT回答】')}`);
+        // this.logger.log(`  - Claude部分含む: ${answerText.includes('【Claude回答】')}`);
+        // this.logger.log(`  - Gemini部分含む: ${answerText.includes('【Gemini回答】')}`);
         
-        this.logger.log(`[StreamProcessor] 3種類AI回答取得完了（ペンディング）: ChatGPT=${!!chatgptAnswer}, Claude=${!!claudeAnswer}, Gemini=${!!geminiAnswer}`);
+        // this.logger.log(`[StreamProcessor] 3種類AI回答取得完了（ペンディング）: ChatGPT=${!!chatgptAnswer}, Claude=${!!claudeAnswer}, Gemini=${!!geminiAnswer}`);
       } else {
         // 単独AIの場合：ソース列から回答を取得
         const singleAnswer = await this.getSpreadsheetCellValue(
@@ -4024,9 +4024,9 @@ ${formattedGemini}`;
       }
 
       if (!answerText || answerText.trim().length === 0) {
-        this.logger.log(
-          `[StreamProcessor] ${task.sourceColumn}${task.row}に回答がないため、レポート作成をスキップ`,
-        );
+        // this.logger.log(
+        //   `[StreamProcessor] ${task.sourceColumn}${task.row}に回答がないため、レポート作成をスキップ`,
+        // );
         return;
       }
 
@@ -4042,7 +4042,7 @@ ${formattedGemini}`;
       
       if (ReportManagerClass) {
         // ReportManagerが利用可能な場合
-        this.logger.log('[StreamProcessor] ReportManagerを使用してレポートを生成');
+        // this.logger.log('[StreamProcessor] ReportManagerを使用してレポートを生成');
         const reportManager = new ReportManagerClass({
           sheetsClient: globalThis.sheetsClient,
           docsClient: globalThis.docsClient,
@@ -4064,7 +4064,7 @@ ${formattedGemini}`;
         }
       } else {
         // フォールバック: 直接DocsClientを使用
-        this.logger.log('[StreamProcessor] フォールバック: DocsClientを直接使用');
+        // this.logger.log('[StreamProcessor] フォールバック: DocsClientを直接使用');
         docInfo = await this.createGoogleDocumentForReport(
           task,
           promptText,
@@ -4073,9 +4073,9 @@ ${formattedGemini}`;
       }
 
       if (docInfo && docInfo.url) {
-        this.logger.log(
-          `[StreamProcessor] ペンディングレポート作成完了: ${docInfo.url}`,
-        );
+        // this.logger.log(
+        //   `[StreamProcessor] ペンディングレポート作成完了: ${docInfo.url}`,
+        // );
         
         // レポートURLをスプレッドシートに記載
         if (globalThis.sheetsClient && this.spreadsheetData) {
@@ -4087,7 +4087,7 @@ ${formattedGemini}`;
             docInfo.url,
             gid
           );
-          this.logger.log(`[StreamProcessor] レポートURLを記載: ${range}`);
+          // this.logger.log(`[StreamProcessor] レポートURLを記載: ${range}`);
         }
       } else {
         throw new Error("ドキュメント作成に失敗しました");
@@ -4112,7 +4112,7 @@ ${formattedGemini}`;
         spreadsheetWindowNumber: 2  // デフォルト: モニター2
       };
 
-      this.logger.log('[StreamProcessor] モニター設定:', settings);
+      // this.logger.log('[StreamProcessor] モニター設定:', settings);
 
       // 指定されたモニター内で4分割配置を実行
       await this.setupMonitorQuadrantLayout(settings.extensionWindowNumber);
@@ -4130,7 +4130,7 @@ ${formattedGemini}`;
    */
   async setupMonitorQuadrantLayout(monitorNumber) {
     try {
-      this.logger.log(`[StreamProcessor] モニター${monitorNumber}内での4分割レイアウト開始`);
+      // this.logger.log(`[StreamProcessor] モニター${monitorNumber}内での4分割レイアウト開始`);
 
       // 拡張機能ウィンドウを右下（4番目）に配置
       await this.moveExtensionToMonitorQuadrant(monitorNumber, 4);
@@ -4138,7 +4138,7 @@ ${formattedGemini}`;
       // AI操作用ウィンドウの準備（必要に応じて）
       // 左上(1)、右上(2)、左下(3)は AI操作時に使用
 
-      this.logger.log(`[StreamProcessor] モニター${monitorNumber}での4分割レイアウト完了`);
+      // this.logger.log(`[StreamProcessor] モニター${monitorNumber}での4分割レイアウト完了`);
     } catch (error) {
       this.logger.error('[StreamProcessor] 4分割レイアウト設定エラー', error);
     }
@@ -4153,7 +4153,7 @@ ${formattedGemini}`;
       const windowId = result.extensionWindowId;
       
       if (!windowId) {
-        this.logger.log('[StreamProcessor] 拡張機能ウィンドウIDが見つかりません');
+        // this.logger.log('[StreamProcessor] 拡張機能ウィンドウIDが見つかりません');
         return;
       }
 
@@ -4161,7 +4161,7 @@ ${formattedGemini}`;
       try {
         await chrome.windows.get(windowId);
       } catch (error) {
-        this.logger.log('[StreamProcessor] 拡張機能ウィンドウが存在しません');
+        // this.logger.log('[StreamProcessor] 拡張機能ウィンドウが存在しません');
         return;
       }
 
@@ -4174,7 +4174,7 @@ ${formattedGemini}`;
         state: "normal",
       });
 
-      this.logger.log(`[StreamProcessor] 拡張機能をモニター${monitorNumber}の位置${quadrant}に移動しました`);
+      // this.logger.log(`[StreamProcessor] 拡張機能をモニター${monitorNumber}の位置${quadrant}に移動しました`);
     } catch (error) {
       this.logger.error('[StreamProcessor] 拡張機能ウィンドウ移動エラー', error);
     }
@@ -4191,7 +4191,7 @@ ${formattedGemini}`;
       // 指定されたモニター番号のディスプレイを取得
       const targetDisplay = displays[monitorNumber - 1];
       if (!targetDisplay) {
-        this.logger.log(`[StreamProcessor] モニター${monitorNumber}が見つかりません。メインディスプレイを使用します。`);
+        // this.logger.log(`[StreamProcessor] モニター${monitorNumber}が見つかりません。メインディスプレイを使用します。`);
         const primaryDisplay = displays.find(d => d.isPrimary) || displays[0];
         return this.getQuadrantPositionFromDisplay(primaryDisplay, quadrant);
       }
@@ -4256,7 +4256,7 @@ ${formattedGemini}`;
       const windowId = result.extensionWindowId;
       
       if (!windowId) {
-        this.logger.log('[StreamProcessor] 拡張機能ウィンドウIDが見つかりません');
+        // this.logger.log('[StreamProcessor] 拡張機能ウィンドウIDが見つかりません');
         return;
       }
 
@@ -4264,7 +4264,7 @@ ${formattedGemini}`;
       try {
         await chrome.windows.get(windowId);
       } catch (error) {
-        this.logger.log('[StreamProcessor] 拡張機能ウィンドウが存在しません');
+        // this.logger.log('[StreamProcessor] 拡張機能ウィンドウが存在しません');
         return;
       }
 
@@ -4278,7 +4278,7 @@ ${formattedGemini}`;
         state: "normal",
       });
 
-      this.logger.log(`[StreamProcessor] 拡張機能ウィンドウを番号${windowNumber}に移動しました`);
+      // this.logger.log(`[StreamProcessor] 拡張機能ウィンドウを番号${windowNumber}に移動しました`);
     } catch (error) {
       this.logger.error('[StreamProcessor] 拡張機能ウィンドウ移動エラー', error);
     }
@@ -4305,7 +4305,7 @@ ${formattedGemini}`;
       }
       
       if (allBatchesComplete) {
-        this.logger.log(`[StreamProcessor] ${column}列の全バッチが完了しました`);
+        // this.logger.log(`[StreamProcessor] ${column}列の全バッチが完了しました`);
         return;
       }
       
@@ -4323,7 +4323,7 @@ ${formattedGemini}`;
   async retryFailedTasks(column, retryTasks) {
     if (!retryTasks || retryTasks.length === 0) return;
     
-    this.logger.log(`[StreamProcessor] 🔄 エラータスク再試行開始: ${column}列 (${retryTasks.length}タスク)`);
+    // this.logger.log(`[StreamProcessor] 🔄 エラータスク再試行開始: ${column}列 (${retryTasks.length}タスク)`);
     
     // 3タスクずつのバッチに分割
     const batches = [];
@@ -4337,7 +4337,7 @@ ${formattedGemini}`;
       const batch = batches[i];
       const retryBatchId = `retry_${column}_${i}_${Date.now()}`;
       
-      this.logger.log(`[StreamProcessor] 再試行バッチ ${i + 1}/${batches.length}: ${batch.map(t => `${t.column}${t.row}`).join(', ')}`);
+      // this.logger.log(`[StreamProcessor] 再試行バッチ ${i + 1}/${batches.length}: ${batch.map(t => `${t.column}${t.row}`).join(', ')}`);
       
       // バッチ内のタスクを並列実行
       const retryPromises = batch.map(async (task, index) => {
@@ -4362,7 +4362,7 @@ ${formattedGemini}`;
             const failedSet = this.failedTasksByColumn.get(column);
             if (failedSet) {
               failedSet.delete(task);
-              this.logger.log(`[StreamProcessor] ✅ 再試行成功: ${task.column}${task.row}`);
+              // this.logger.log(`[StreamProcessor] ✅ 再試行成功: ${task.column}${task.row}`);
             }
           }
           
@@ -4383,7 +4383,7 @@ ${formattedGemini}`;
       }
     }
     
-    this.logger.log(`[StreamProcessor] 🔄 ${column}列の再試行完了`);
+    // this.logger.log(`[StreamProcessor] 🔄 ${column}列の再試行完了`);
   }
   
   /**
@@ -4394,7 +4394,7 @@ ${formattedGemini}`;
       // スプレッドシートURLを取得
       const spreadsheetUrl = this.getSpreadsheetUrl();
       if (!spreadsheetUrl) {
-        this.logger.log('[StreamProcessor] スプレッドシートURLが見つかりません');
+        // this.logger.log('[StreamProcessor] スプレッドシートURLが見つかりません');
         return;
       }
 
@@ -4419,7 +4419,7 @@ ${formattedGemini}`;
           ...leftPosition
         });
 
-        this.logger.log(`[StreamProcessor] chrome://extensions/を左側に開きました (ID: ${extensionsWindow.id})`);
+        // this.logger.log(`[StreamProcessor] chrome://extensions/を左側に開きました (ID: ${extensionsWindow.id})`);
 
         // 右側: スプレッドシートを開く
         const rightPosition = {
@@ -4434,7 +4434,7 @@ ${formattedGemini}`;
           ...rightPosition
         });
 
-        this.logger.log(`[StreamProcessor] スプレッドシートを右側に開きました (ID: ${spreadsheetWindow.id})`);
+        // this.logger.log(`[StreamProcessor] スプレッドシートを右側に開きました (ID: ${spreadsheetWindow.id})`);
         return;
       }
 
@@ -4447,7 +4447,7 @@ ${formattedGemini}`;
         ...position
       });
 
-      this.logger.log(`[StreamProcessor] スプレッドシートをウィンドウ番号${windowNumber}で開きました (ID: ${window.id})`);
+      // this.logger.log(`[StreamProcessor] スプレッドシートをウィンドウ番号${windowNumber}で開きました (ID: ${window.id})`);
     } catch (error) {
       this.logger.error('[StreamProcessor] スプレッドシートウィンドウ作成エラー', error);
     }
@@ -4514,14 +4514,14 @@ ${formattedGemini}`;
       return; // リトライタスクがない
     }
     
-    this.logger.log(`[StreamProcessor] 🔄 リトライ処理開始: ${this.failedTasksByColumn.size}列にエラータスクあり`);
+    // this.logger.log(`[StreamProcessor] 🔄 リトライ処理開始: ${this.failedTasksByColumn.size}列にエラータスクあり`);
     
     for (const [column, failedTasks] of this.failedTasksByColumn) {
       if (failedTasks.length === 0) {
         continue;
       }
       
-      this.logger.log(`[StreamProcessor] 🔄 ${column}列のエラータスクリトライ: ${failedTasks.length}件`);
+      // this.logger.log(`[StreamProcessor] 🔄 ${column}列のエラータスクリトライ: ${failedTasks.length}件`);
       
       // エラータスクをタスクキューに戻す
       if (!this.taskQueue.has(column)) {
@@ -4533,7 +4533,7 @@ ${formattedGemini}`;
       // 失敗タスクをキューの先頭に追加（優先処理）
       for (const task of failedTasks.reverse()) { // reverseで先頭に追加する順序を保持
         columnQueue.unshift(task);
-        this.logger.log(`[StreamProcessor] 🔄 リトライタスクをキューに追加: ${task.column}${task.row}`);
+        // this.logger.log(`[StreamProcessor] 🔄 リトライタスクをキューに追加: ${task.column}${task.row}`);
       }
       
       // 現在の行インデックスをリセット（先頭から再開）
@@ -4546,7 +4546,7 @@ ${formattedGemini}`;
     // 利用可能な列をチェックしてリトライタスクを開始
     await this.checkAndStartAvailableColumns();
     
-    this.logger.log(`[StreamProcessor] 🔄 リトライ処理完了`);
+    // this.logger.log(`[StreamProcessor] 🔄 リトライ処理完了`);
   }
 
   /**
@@ -4555,7 +4555,7 @@ ${formattedGemini}`;
    */
   async rescanForNewTasks(targetColumn) {
     try {
-      this.logger.log(`[StreamProcessor] 🔍 ${targetColumn}列の動的タスク生成開始`);
+      // this.logger.log(`[StreamProcessor] 🔍 ${targetColumn}列の動的タスク生成開始`);
       
       // TaskGeneratorのインスタンスを取得（既存の依存性を利用）
       const TaskGenerator = (await import('./generator.js')).default;
@@ -4585,9 +4585,9 @@ ${formattedGemini}`;
         const newTasks = this.findNewTasks(newTaskList.tasks);
         
         if (newTasks.length > 0) {
-          this.logger.log(`[StreamProcessor] 🆕 ${targetColumn}列の新規タスク発見: ${newTasks.length}件`, {
-            newTasks: newTasks.map(task => `${task.column}${task.row}`).join(', ')
-          });
+          // this.logger.log(`[StreamProcessor] 🆕 ${targetColumn}列の新規タスク発見: ${newTasks.length}件`, {
+          //   newTasks: newTasks.map(task => `${task.column}${task.row}`).join(', ')
+          // });
           
           // 新規タスクを既存のキューに追加
           this.addNewTasksToQueue(newTasks);
@@ -4595,10 +4595,10 @@ ${formattedGemini}`;
           // 新規タスクの列を処理対象に追加
           await this.processNewlyDiscoveredTasks(newTasks);
         } else {
-          this.logger.log(`[StreamProcessor] ✅ ${targetColumn}列の再スキャン: 新規タスクなし`);
+          // this.logger.log(`[StreamProcessor] ✅ ${targetColumn}列の再スキャン: 新規タスクなし`);
         }
       } else {
-        this.logger.log(`[StreamProcessor] 📝 ${targetColumn}列にはタスク生成対象がありません`);
+        // this.logger.log(`[StreamProcessor] 📝 ${targetColumn}列にはタスク生成対象がありません`);
       }
       
     } catch (error) {
@@ -4615,7 +4615,7 @@ ${formattedGemini}`;
       
       // エラーが発生してもフォールバック処理として通常のタスク生成を試みる
       try {
-        this.logger.log(`[StreamProcessor] 🔄 フォールバック: 通常のタスク生成を試行`);
+        // this.logger.log(`[StreamProcessor] 🔄 フォールバック: 通常のタスク生成を試行`);
         const TaskGenerator = (await import('./generator.js')).default;
         const generator = new TaskGenerator();
         
@@ -4631,7 +4631,7 @@ ${formattedGemini}`;
           if (targetTasks.length > 0) {
             const newTasks = this.findNewTasks(targetTasks);
             if (newTasks.length > 0) {
-              this.logger.log(`[StreamProcessor] 🆕 フォールバックで${targetColumn}列のタスク発見: ${newTasks.length}件`);
+              // this.logger.log(`[StreamProcessor] 🆕 フォールバックで${targetColumn}列のタスク発見: ${newTasks.length}件`);
               this.addNewTasksToQueue(newTasks);
               await this.processNewlyDiscoveredTasks(newTasks);
             }
@@ -4686,7 +4686,7 @@ ${formattedGemini}`;
       // タスクを列キューに追加
       this.taskQueue.get(column).push(task);
       
-      this.logger.log(`[StreamProcessor] ➕ 新規タスク追加: ${task.column}${task.row}`);
+      // this.logger.log(`[StreamProcessor] ➕ 新規タスク追加: ${task.column}${task.row}`);
     });
     
     // 各列のタスクを行順でソート
@@ -4714,7 +4714,7 @@ ${formattedGemini}`;
     
     for (const column of sortedNewColumns) {
       const tasks = newTasksByColumn.get(column);
-      this.logger.log(`[StreamProcessor] 🔄 新規発見列の処理開始: ${column}列 (${tasks.length}件)`);
+      // this.logger.log(`[StreamProcessor] 🔄 新規発見列の処理開始: ${column}列 (${tasks.length}件)`);
       await this.processNormalColumn(column);
     }
   }
