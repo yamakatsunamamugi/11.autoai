@@ -84,9 +84,9 @@ class TaskGenerator {
     this.data = spreadsheetData;
     console.log("[TaskGenerator] this.dataに保存完了, sheetName:", this.data?.sheetName);
     
-    // 初回実行時は最初のグループのみ処理するオプションをデフォルトで有効化
+    // オプション設定（firstGroupOnlyのデフォルトはfalseに変更）
     const processOptions = {
-      firstGroupOnly: options.firstGroupOnly !== false, // デフォルトtrue
+      firstGroupOnly: options.firstGroupOnly === true, // 明示的にtrueが指定された時のみ有効
       ...options
     };
     
