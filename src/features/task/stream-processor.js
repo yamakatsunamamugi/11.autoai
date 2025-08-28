@@ -2914,17 +2914,26 @@ ${formattedGemini}`;
         return;
       }
       
-      // デバッグログ：taskQueueの詳細分析
-      this.logger.log(`[StreamProcessor] 🔍 taskQueue詳細分析:`, {
-        correspondingPromptColumn, // "J"
-        rawTaskQueueKeys: Array.from(this.taskQueue.keys()),
-        sortedTaskQueueKeys: Array.from(this.taskQueue.keys()).sort(),
-        taskQueueSize: this.taskQueue.size,
-        jColumnExists: this.taskQueue.has('J'),
-        mColumnExists: this.taskQueue.has('M'),
-        kColumnExists: this.taskQueue.has('K'),
-        nColumnExists: this.taskQueue.has('N')
-      });
+      // ステップ1: 現在の列（対応するプロンプト列）でタスクを再スキャン
+      this.logger.log(`[StreamProcessor] 🔍 ${correspondingPromptColumn}列の再スキャン開始`);
+      
+      // 現在の列で新しいタスクがあるか確認（動的に追加されたプロンプト等）
+      await this.rescanForNewTasks(correspondingPromptColumn);
+      
+      // 再スキャン後、現在の列にタスクが残っているか確認
+      const currentColumnTasks = this.taskQueue.get(correspondingPromptColumn);
+      const currentIndex = this.currentRowByColumn.get(correspondingPromptColumn) || 0;
+      const hasRemainingTasks = currentColumnTasks && currentIndex < currentColumnTasks.length;
+      
+      if (hasRemainingTasks) {
+        this.logger.log(`[StreamProcessor] 📝 ${correspondingPromptColumn}列に未処理タスク発見: ${currentColumnTasks.length - currentIndex}件`);
+        this.logger.log(`[StreamProcessor] 🚀 ${correspondingPromptColumn}列の処理を継続`);
+        await this.startColumnProcessing(correspondingPromptColumn);
+        return;
+      }
+      
+      // ステップ2: 現在の列にタスクがなければ、次の列グループへ進む
+      this.logger.log(`[StreamProcessor] ✅ ${correspondingPromptColumn}列の全タスク完了`);
       
       // 次のプロンプト列を取得
       const nextPromptColumn = this.getNextColumn(correspondingPromptColumn);
@@ -2938,7 +2947,11 @@ ${formattedGemini}`;
         return;
       }
       
-      this.logger.log(`[StreamProcessor] 🎯 答列完了による次列進行: ${answerColumn}列 → ${correspondingPromptColumn}列 → ${nextPromptColumn}列`);
+      this.logger.log(`[StreamProcessor] 🎯 次の列グループへ進行: ${answerColumn}列 → ${nextPromptColumn}列`);
+      
+      // ステップ3: 次の列グループのタスクを生成
+      this.logger.log(`[StreamProcessor] 🔍 ${nextPromptColumn}列のタスク生成開始`);
+      await this.rescanForNewTasks(nextPromptColumn);
       
       // 次のプロンプト列に未処理タスクがあるかチェック
       const nextTasks = this.taskQueue.get(nextPromptColumn);
@@ -4537,46 +4550,98 @@ ${formattedGemini}`;
   }
 
   /**
-   * 動的スプレッドシート対応: 列完了後に新規プロンプトを再スキャン
-   * @param {string} completedColumn - 完了した列
+   * 動的スプレッドシート対応: 特定の列グループのタスクを生成・再スキャン
+   * @param {string} targetColumn - タスクを生成する列（プロンプト列）
    */
-  async rescanForNewTasks(completedColumn) {
+  async rescanForNewTasks(targetColumn) {
     try {
-      this.logger.log(`[StreamProcessor] 🔍 ${completedColumn}列完了後の動的再スキャン開始`);
+      this.logger.log(`[StreamProcessor] 🔍 ${targetColumn}列の動的タスク生成開始`);
       
       // TaskGeneratorのインスタンスを取得（既存の依存性を利用）
       const TaskGenerator = (await import('./generator.js')).default;
       const generator = new TaskGenerator();
       
-      // 現在のスプレッドシートデータを再取得して新規タスクを生成
-      if (this.spreadsheetData) {
-        const newTaskList = await generator.generateTasks(this.spreadsheetData);
+      // スプレッドシートデータの存在確認
+      if (!this.spreadsheetData) {
+        this.logger.warn(`[StreamProcessor] ⚠️ スプレッドシートデータがありません`);
+        return;
+      }
+      
+      // 特定の列グループのみのタスクを生成するオプションを追加
+      const options = {
+        targetColumn: targetColumn,  // 特定の列グループのみ生成
+        skipExistingAnswers: true    // 既存回答はスキップ
+      };
+      
+      // タスク生成（特定列グループのみ）
+      const newTaskList = await generator.generateTasksForColumn(
+        this.spreadsheetData, 
+        targetColumn,
+        options
+      );
+      
+      if (newTaskList && newTaskList.tasks && newTaskList.tasks.length > 0) {
+        // 新規タスクを既存のタスクキューと比較
+        const newTasks = this.findNewTasks(newTaskList.tasks);
         
-        if (newTaskList && newTaskList.tasks) {
-          // 新規タスクを既存のタスクキューと比較
-          const newTasks = this.findNewTasks(newTaskList.tasks);
+        if (newTasks.length > 0) {
+          this.logger.log(`[StreamProcessor] 🆕 ${targetColumn}列の新規タスク発見: ${newTasks.length}件`, {
+            newTasks: newTasks.map(task => `${task.column}${task.row}`).join(', ')
+          });
           
-          if (newTasks.length > 0) {
-            this.logger.log(`[StreamProcessor] 🆕 新規プロンプト発見: ${newTasks.length}件`, {
-              newTasks: newTasks.map(task => `${task.column}${task.row}`).join(', ')
-            });
-            
-            // 新規タスクを既存のキューに追加
-            this.addNewTasksToQueue(newTasks);
-            
-            // 新規タスクの列を処理対象に追加
-            await this.processNewlyDiscoveredTasks(newTasks);
-          } else {
-            this.logger.log(`[StreamProcessor] ✅ ${completedColumn}列完了後の再スキャン: 新規プロンプトなし`);
-          }
+          // 新規タスクを既存のキューに追加
+          this.addNewTasksToQueue(newTasks);
+          
+          // 新規タスクの列を処理対象に追加
+          await this.processNewlyDiscoveredTasks(newTasks);
+        } else {
+          this.logger.log(`[StreamProcessor] ✅ ${targetColumn}列の再スキャン: 新規タスクなし`);
         }
+      } else {
+        this.logger.log(`[StreamProcessor] 📝 ${targetColumn}列にはタスク生成対象がありません`);
       }
       
     } catch (error) {
-      this.logger.error(`[StreamProcessor] ❌ 動的再スキャンエラー`, {
-        completedColumn,
-        error: error.message
+      // エラー内容を確実に取得
+      const errorMessage = error?.message || error?.toString() || 'Unknown error';
+      const errorStack = error?.stack || 'No stack trace';
+      
+      this.logger.error(`[StreamProcessor] ❌ 動的タスク生成エラー`, {
+        targetColumn,
+        error: errorMessage,
+        stack: errorStack,
+        errorType: error?.constructor?.name || typeof error
       });
+      
+      // エラーが発生してもフォールバック処理として通常のタスク生成を試みる
+      try {
+        this.logger.log(`[StreamProcessor] 🔄 フォールバック: 通常のタスク生成を試行`);
+        const TaskGenerator = (await import('./generator.js')).default;
+        const generator = new TaskGenerator();
+        
+        // 通常のタスク生成（全列対象）
+        const fullTaskList = await generator.generateTasks(this.spreadsheetData);
+        
+        if (fullTaskList && fullTaskList.tasks) {
+          // targetColumnに関連するタスクのみ抽出
+          const targetTasks = fullTaskList.tasks.filter(task => 
+            task.promptColumn === targetColumn || task.column === targetColumn
+          );
+          
+          if (targetTasks.length > 0) {
+            const newTasks = this.findNewTasks(targetTasks);
+            if (newTasks.length > 0) {
+              this.logger.log(`[StreamProcessor] 🆕 フォールバックで${targetColumn}列のタスク発見: ${newTasks.length}件`);
+              this.addNewTasksToQueue(newTasks);
+              await this.processNewlyDiscoveredTasks(newTasks);
+            }
+          }
+        }
+      } catch (fallbackError) {
+        this.logger.error(`[StreamProcessor] ❌ フォールバックも失敗`, {
+          error: fallbackError?.message || fallbackError?.toString() || 'Unknown fallback error'
+        });
+      }
     }
   }
 

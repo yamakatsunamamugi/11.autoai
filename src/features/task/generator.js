@@ -70,7 +70,7 @@ class TaskGenerator {
   /**
    * メインエントリーポイント - タスクを生成
    */
-  async generateTasks(spreadsheetData) {
+  async generateTasks(spreadsheetData, options = {}) {
     console.log("[TaskGenerator] generateTasks開始");
     console.log("[TaskGenerator] spreadsheetData内容:", {
       hasData: !!spreadsheetData,
@@ -84,12 +84,18 @@ class TaskGenerator {
     this.data = spreadsheetData;
     console.log("[TaskGenerator] this.dataに保存完了, sheetName:", this.data?.sheetName);
     
+    // 初回実行時は最初のグループのみ処理するオプションをデフォルトで有効化
+    const processOptions = {
+      firstGroupOnly: options.firstGroupOnly !== false, // デフォルトtrue
+      ...options
+    };
+    
     try {
       // 1. スプレッドシート構造を解析
       const structure = this.analyzeStructure(spreadsheetData);
       
-      // 2. タスクを生成
-      const taskList = await this.buildTasks(structure, spreadsheetData);
+      // 2. タスクを生成（オプションを渡す）
+      const taskList = await this.buildTasks(structure, spreadsheetData, processOptions);
       
       
       return taskList;
@@ -323,7 +329,7 @@ class TaskGenerator {
   /**
    * タスクを構築
    */
-  async buildTasks(structure, spreadsheetData) {
+  async buildTasks(structure, spreadsheetData, options = {}) {
     const taskList = new TaskList();
     const { rows, promptGroups, controls, workRows } = structure;
 
@@ -338,6 +344,13 @@ class TaskGenerator {
         aiType: g.aiType
       }))
     });
+    
+    // 初回タスク生成を最初のグループのみに制限するオプション
+    let groupsToProcess = processableGroups;
+    if (options.firstGroupOnly && processableGroups.length > 0) {
+      console.log("[TaskGenerator] 🎯 初回タスク生成: 最初のグループのみ処理");
+      groupsToProcess = [processableGroups[0]];
+    }
 
     for (const workRow of workRows) {
       // 行制御チェック
@@ -345,7 +358,7 @@ class TaskGenerator {
         continue;
       }
 
-      for (const group of processableGroups) {
+      for (const group of groupsToProcess) {
         // プロンプトを連結（プロンプト〜プロンプト5）
         const combinedPrompt = this.buildCombinedPrompt(spreadsheetData, workRow, group);
         if (!combinedPrompt) continue;
@@ -917,6 +930,99 @@ class TaskGenerator {
   }
 
 
+  /**
+   * 特定の列グループのタスクを生成
+   * @param {Object} spreadsheetData - スプレッドシートデータ
+   * @param {string} targetColumn - 対象列（プロンプト列）
+   * @param {Object} options - オプション
+   * @returns {TaskList} タスクリスト
+   */
+  async generateTasksForColumn(spreadsheetData, targetColumn, options = {}) {
+    console.log(`[TaskGenerator] 特定列のタスク生成開始: ${targetColumn}列`);
+    
+    // データ保存
+    this.data = spreadsheetData;
+    
+    // 構造解析
+    const structure = this.analyzeStructure(spreadsheetData);
+    const { rows, promptGroups, controls, workRows } = structure;
+    
+    // 対象列に対応するプロンプトグループを検索
+    const targetGroup = promptGroups.find(group => {
+      // プロンプト列が対象列と一致するグループを探す
+      const promptColumns = group.promptColumns.map(i => this.indexToColumn(i));
+      return promptColumns.includes(targetColumn);
+    });
+    
+    if (!targetGroup) {
+      console.log(`[TaskGenerator] ${targetColumn}列に対応するプロンプトグループが見つかりません`);
+      return new TaskList();
+    }
+    
+    console.log(`[TaskGenerator] ${targetColumn}列のグループ発見:`, {
+      promptColumns: targetGroup.promptColumns.map(i => this.indexToColumn(i)),
+      answerColumns: targetGroup.answerColumns.map(a => a.column),
+      aiType: targetGroup.aiType
+    });
+    
+    // タスクリスト作成
+    const taskList = new TaskList();
+    
+    // 行ごとにタスク生成
+    for (const workRow of workRows) {
+      // 行制御チェック
+      if (!this.shouldProcessRow(workRow.number, controls.row)) {
+        continue;
+      }
+      
+      // プロンプト連結
+      const combinedPrompt = this.buildCombinedPrompt(spreadsheetData, workRow, targetGroup);
+      if (!combinedPrompt) continue;
+      
+      // 各回答列にタスクを生成
+      for (const answerCol of targetGroup.answerColumns) {
+        // 既存回答チェック
+        const existingAnswer = this.getCellValue(spreadsheetData, workRow.index, answerCol.index);
+        const hasExistingAnswer = this.answerFilter.hasAnswer(existingAnswer);
+        
+        if (hasExistingAnswer && options.skipExistingAnswers) {
+          console.log(`[TaskGenerator] ${answerCol.column}${workRow.number}はスキップ（既存回答あり）`);
+          continue;
+        }
+        
+        // タスクを作成
+        const task = await this.createAITask(
+          spreadsheetData,
+          structure,
+          workRow,
+          targetGroup,
+          answerCol,
+          combinedPrompt
+        );
+        
+        // タスクを追加
+        taskList.add(task);
+        console.log(`[TaskGenerator] タスク追加: ${task.column}${task.row}`);
+      }
+      
+      // レポート化タスクも生成（必要な場合）
+      if (targetGroup.reportColumn !== undefined) {
+        const reportTask = this.createReportTask(
+          spreadsheetData,
+          workRow,
+          targetGroup,
+          targetGroup.answerColumns
+        );
+        if (reportTask) {
+          taskList.add(reportTask);
+        }
+      }
+    }
+    
+    console.log(`[TaskGenerator] ${targetColumn}列のタスク生成完了: ${taskList.tasks.length}件`);
+    return taskList;
+  }
+  
   /**
    * ストリーミング処理（互換性維持）
    */
