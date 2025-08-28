@@ -113,7 +113,10 @@ class LogManager {
       success: '✅'
     }[logEntry.level] || '📝';
     
-    console.log(`${icon} [LogManager] ${logEntry.message}`, options.metadata || '');
+    // 重要なログのみ表示
+    if (logEntry.level === 'error' || logEntry.level === 'warning') {
+      console.log(`${icon} [LogManager] ${logEntry.message}`, options.metadata || '');
+    }
     
     return logEntry;
   }

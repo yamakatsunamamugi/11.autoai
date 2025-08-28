@@ -145,15 +145,15 @@ export class WindowService {
       const primaryDisplay = displays.find(d => d.isPrimary) || displays[0];
       
       // デバッグ: ディスプレイ情報を詳しくログ出力
-      console.log('[WindowService] ディスプレイ情報:', {
-        displayCount: displays.length,
-        primaryDisplay: {
-          id: primaryDisplay.id,
-          bounds: primaryDisplay.bounds,
-          workArea: primaryDisplay.workArea,
-          isPrimary: primaryDisplay.isPrimary
-        }
-      });
+      // console.log('[WindowService] ディスプレイ情報:', {
+      //   displayCount: displays.length,
+      //   primaryDisplay: {
+      //     id: primaryDisplay.id,
+      //     bounds: primaryDisplay.bounds,
+      //     workArea: primaryDisplay.workArea,
+      //     isPrimary: primaryDisplay.isPrimary
+      //   }
+      // });
       
       const screenInfo = {
         width: primaryDisplay.workArea.width,
@@ -163,7 +163,7 @@ export class WindowService {
         displays: displays
       };
       
-      console.log('[WindowService] スクリーン情報:', screenInfo);
+      // console.log('[WindowService] スクリーン情報:', screenInfo);
       
       return screenInfo;
     } catch (error) {
@@ -176,7 +176,7 @@ export class WindowService {
         top: 0,
         displays: []
       };
-      console.log('[WindowService] フォールバック値を使用:', fallback);
+      // console.log('[WindowService] フォールバック値を使用:', fallback);
       return fallback;
     }
   }
@@ -191,12 +191,12 @@ export class WindowService {
     const baseWidth = Math.floor(screenInfo.width * 0.35);
     const baseHeight = Math.floor(screenInfo.height * 0.8);
     
-    console.log('[WindowService] 位置計算開始:', {
-      position,
-      screenInfo,
-      baseWidth,
-      baseHeight
-    });
+    // console.log('[WindowService] 位置計算開始:', {
+    //   position,
+    //   screenInfo,
+    //   baseWidth,
+    //   baseHeight
+    // });
     
     // 画面全体を使用（余白なし）
     const offsetLeft = screenInfo.left;  // 余白なし（通常は0）
@@ -249,7 +249,7 @@ export class WindowService {
           return this.calculateWindowPosition('center', screenInfo);
       }
       
-      console.log(`[WindowService] ポジション${position}の計算結果:`, calculatedPosition);
+      // console.log(`[WindowService] ポジション${position}の計算結果:`, calculatedPosition);
       return calculatedPosition;
     }
     
@@ -395,7 +395,7 @@ export class WindowService {
       this.positionToWindow.set(windowId, info.position);
     }
     
-    console.log('[WindowService] ウィンドウ登録:', windowId, info);
+    // console.log('[WindowService] ウィンドウ登録:', windowId, info);
   }
   
   /**
@@ -605,16 +605,16 @@ export class WindowService {
     };
     
     // デバッグ: Chrome APIに渡すオプションをログ出力
-    console.log('[WindowService] chrome.windows.create オプション:', {
-      url: windowOptions.url,
-      type: windowOptions.type,
-      left: windowOptions.left,
-      top: windowOptions.top,
-      width: windowOptions.width,
-      height: windowOptions.height,
-      focused: windowOptions.focused,
-      state: windowOptions.state
-    });
+    // console.log('[WindowService] chrome.windows.create オプション:', {
+    //   url: windowOptions.url,
+    //   type: windowOptions.type,
+    //   left: windowOptions.left,
+    //   top: windowOptions.top,
+    //   width: windowOptions.width,
+    //   height: windowOptions.height,
+    //   focused: windowOptions.focused,
+    //   state: windowOptions.state
+    // });
     
     try {
       const window = await chrome.windows.create(windowOptions);

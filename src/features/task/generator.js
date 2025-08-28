@@ -71,18 +71,18 @@ class TaskGenerator {
    * メインエントリーポイント - タスクを生成
    */
   async generateTasks(spreadsheetData, options = {}) {
-    console.log("[TaskGenerator] generateTasks開始");
-    console.log("[TaskGenerator] spreadsheetData内容:", {
-      hasData: !!spreadsheetData,
-      keys: spreadsheetData ? Object.keys(spreadsheetData) : null,
-      sheetName: spreadsheetData?.sheetName,
-      hasValues: !!spreadsheetData?.values,
-      valuesLength: spreadsheetData?.values?.length
-    });
+    // console.log("[TaskGenerator] generateTasks開始");
+    // console.log("[TaskGenerator] spreadsheetData内容:", {
+    //   hasData: !!spreadsheetData,
+    //   keys: spreadsheetData ? Object.keys(spreadsheetData) : null,
+    //   sheetName: spreadsheetData?.sheetName,
+    //   hasValues: !!spreadsheetData?.values,
+    //   valuesLength: spreadsheetData?.values?.length
+    // });
     
     // spreadsheetDataを保存（createTaskメソッドで使用）
     this.data = spreadsheetData;
-    console.log("[TaskGenerator] this.dataに保存完了, sheetName:", this.data?.sheetName);
+    // console.log("[TaskGenerator] this.dataに保存完了, sheetName:", this.data?.sheetName);
     
     // オプション設定（firstGroupOnlyのデフォルトはfalseに変更）
     const processOptions = {
@@ -137,16 +137,16 @@ class TaskGenerator {
 
     // プロンプトグループを識別（プロンプト〜プロンプト5を1グループとして）
     const promptGroups = this.identifyPromptGroups(rows.menu, rows.ai);
-    console.log("[TaskGenerator] 🔍 プロンプトグループ識別結果:", {
-      グループ数: promptGroups.length,
-      グループ詳細: promptGroups.map(g => ({
-        startIndex: g.startIndex,
-        logColumn: g.logColumn,
-        promptColumns: g.promptColumns.map(i => this.indexToColumn(i)),
-        answerColumns: g.answerColumns.map(a => a.column),
-        aiType: g.aiType
-      }))
-    });
+    // console.log("[TaskGenerator] 🔍 プロンプトグループ識別結果:", {
+    //   グループ数: promptGroups.length,
+    //   グループ詳細: promptGroups.map(g => ({
+    //     startIndex: g.startIndex,
+    //     logColumn: g.logColumn,
+    //     promptColumns: g.promptColumns.map(i => this.indexToColumn(i)),
+    //     answerColumns: g.answerColumns.map(a => a.column),
+    //     aiType: g.aiType
+    //   }))
+    // });
     
     // 制御情報を収集
     const controls = this.collectControls(spreadsheetData);
@@ -335,20 +335,20 @@ class TaskGenerator {
 
     // 列制御でフィルタリング
     const processableGroups = this.filterGroupsByColumnControl(promptGroups, controls.column);
-    console.log("[TaskGenerator] 🔍 フィルタリング後の処理可能グループ:", {
-      元のグループ数: promptGroups.length,
-      処理可能グループ数: processableGroups.length,
-      処理可能グループ: processableGroups.map(g => ({
-        promptColumns: g.promptColumns.map(i => this.indexToColumn(i)),
-        answerColumns: g.answerColumns.map(a => a.column),
-        aiType: g.aiType
-      }))
-    });
+    // console.log("[TaskGenerator] 🔍 フィルタリング後の処理可能グループ:", {
+    //   元のグループ数: promptGroups.length,
+    //   処理可能グループ数: processableGroups.length,
+    //   処理可能グループ: processableGroups.map(g => ({
+    //     promptColumns: g.promptColumns.map(i => this.indexToColumn(i)),
+    //     answerColumns: g.answerColumns.map(a => a.column),
+    //     aiType: g.aiType
+    //   }))
+    // });
     
     // 初回タスク生成を最初のグループのみに制限するオプション
     let groupsToProcess = processableGroups;
     if (options.firstGroupOnly && processableGroups.length > 0) {
-      console.log("[TaskGenerator] 🎯 初回タスク生成: 最初のグループのみ処理");
+      // console.log("[TaskGenerator] 🎯 初回タスク生成: 最初のグループのみ処理");
       groupsToProcess = [processableGroups[0]];
     }
 
@@ -680,12 +680,12 @@ class TaskGenerator {
    * AIタスクを作成
    */
   async createAITask(spreadsheetData, structure, workRow, group, answerCol, prompt) {
-    console.log("[TaskGenerator] createAITask呼び出し:", {
-      hasData: !!this.data,
-      sheetName: this.data?.sheetName,
-      workRowNumber: workRow.number,
-      answerColumn: answerCol.column
-    });
+    // console.log("[TaskGenerator] createAITask呼び出し:", {
+    //   hasData: !!this.data,
+    //   sheetName: this.data?.sheetName,
+    //   workRowNumber: workRow.number,
+    //   answerColumn: answerCol.column
+    // });
   
     const { rows } = structure;
 
@@ -724,7 +724,7 @@ class TaskGenerator {
     // デバッグ: sheetName確認
     const taskSheetName = this.data?.sheetName || 'Sheet1';
     if (workRow.number <= 11) {  // 最初の3行だけログ
-      console.log(`[TaskGenerator] タスク生成 row=${workRow.number}, sheetName="${taskSheetName}"`);
+      // console.log(`[TaskGenerator] タスク生成 row=${workRow.number}, sheetName="${taskSheetName}"`);
     }
     
     const taskData = {
