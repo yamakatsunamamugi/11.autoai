@@ -12,7 +12,6 @@
 let UI_SELECTORS_LOADED = false;
 let UI_SELECTORS_PROMISE = null;
 let retryManager = null; // RetryManagerインスタンス
-let wakeLock = null; // Wake Lock API用
 
 // RetryManagerの初期化（同期的）
 function initializeRetryManager() {
@@ -43,8 +42,6 @@ async function executeTaskInternal(taskConfig) {
   const { taskId, prompt, aiType, enableDeepResearch, specialMode, timeout } = taskConfig;
   
   try {
-    // Wake Lock取得（スリープ防止）
-    await acquireWakeLock();
     // プロンプト送信
     const sendResult = await sendPromptToAI(prompt, {
       model: null,
@@ -96,63 +93,11 @@ async function executeTaskInternal(taskConfig) {
       needsRetry: true
     };
   } finally {
-    // Wake Lock解放（スリープ許可）
-    await releaseWakeLock();
+    // Chrome Power APIでスクリーンセイバー防止を解除
+    chrome.runtime.sendMessage({type: 'STOP_AI_PROCESSING'});
   }
 }
 
-// Wake Lock API関数
-async function acquireWakeLock() {
-  try {
-    if ('wakeLock' in navigator) {
-      // 既存のWake Lockがあれば先に解放
-      if (wakeLock) {
-        await releaseWakeLock();
-      }
-      
-      wakeLock = await navigator.wakeLock.request('screen');
-      console.log('🚫 [11.autoai] スリープ防止: Wake Lock取得成功');
-      
-      // Wake Lockが解放された場合の再取得処理
-      wakeLock.addEventListener('release', () => {
-        console.log('⚠️ [11.autoai] Wake Lockが解放されました');
-        wakeLock = null; // 参照をクリア
-      });
-      
-      // ページ表示状態が変わった時の処理（重複イベント登録を防ぐ）
-      if (!window.__wakeLockVisibilityListenerAdded) {
-        window.__wakeLockVisibilityListenerAdded = true;
-        document.addEventListener('visibilitychange', async () => {
-          if (wakeLock !== null && document.visibilityState === 'visible') {
-            // ページが再度表示された時に再取得
-            try {
-              wakeLock = await navigator.wakeLock.request('screen');
-              console.log('🔄 [11.autoai] Wake Lock再取得成功');
-            } catch (e) {
-              console.error('❌ [11.autoai] Wake Lock再取得失敗:', e);
-            }
-          }
-        });
-      }
-    } else {
-      console.warn('⚠️ [11.autoai] Wake Lock APIはこのブラウザではサポートされていません');
-    }
-  } catch (error) {
-    console.error('❌ [11.autoai] Wake Lock取得エラー:', error);
-  }
-}
-
-async function releaseWakeLock() {
-  try {
-    if (wakeLock) {
-      await wakeLock.release();
-      wakeLock = null;
-      console.log('✅ [11.autoai] スリープ防止解除: Wake Lock解放成功');
-    }
-  } catch (error) {
-    console.error('❌ [11.autoai] Wake Lock解放エラー:', error);
-  }
-}
 
 // 拡張された応答待機関数
 async function waitForResponseEnhanced(enableDeepResearch = false, customTimeout = null) {
@@ -299,21 +244,21 @@ console.log(
 
 // ページ離脱時のクリーンアップ処理
 window.addEventListener('beforeunload', async () => {
-  console.log('🔄 [11.autoai] ページ離脱検知: Wake Lock解放');
-  await releaseWakeLock();
+  console.log('🔄 [11.autoai] ページ離脱検知');
+  // Chrome Power APIの解除はbackground.jsで管理
 });
 
 // ページ非表示時のクリーンアップ処理
 window.addEventListener('pagehide', async () => {
-  console.log('🔄 [11.autoai] ページ非表示: Wake Lock解放');
-  await releaseWakeLock();
+  console.log('🔄 [11.autoai] ページ非表示');
+  // Chrome Power APIの解除はbackground.jsで管理
 });
 
 // 拡張機能のアンロード時のクリーンアップ
 if (chrome.runtime && chrome.runtime.onSuspend) {
   chrome.runtime.onSuspend.addListener(async () => {
-    console.log('🔄 [11.autoai] 拡張機能サスペンド: Wake Lock解放');
-    await releaseWakeLock();
+    console.log('🔄 [11.autoai] 拡張機能サスペンド');
+    // Chrome Power APIの解除はbackground.jsで管理
   });
 }
 
@@ -1691,9 +1636,6 @@ async function handleLegacyDeepResearch() {
  * プロンプト送信処理
  */
 async function handleSendPrompt(request, sendResponse) {
-  // Wake Lock取得（スリープ防止）
-  await acquireWakeLock();
-  
   try {
     const {
       prompt,
@@ -1814,8 +1756,8 @@ async function handleSendPrompt(request, sendResponse) {
       aiType: AI_TYPE,
     });
   } finally {
-    // Wake Lock解放（スリープ許可）
-    await releaseWakeLock();
+    // Chrome Power APIでスクリーンセイバー防止を解除
+    chrome.runtime.sendMessage({type: 'STOP_AI_PROCESSING'});
   }
 }
 
@@ -1823,9 +1765,6 @@ async function handleSendPrompt(request, sendResponse) {
  * 応答収集処理（3.autoaiと同じ実装）
  */
 async function handleGetResponse(request, sendResponse) {
-  // Wake Lock取得（スリープ防止）
-  await acquireWakeLock();
-  
   try {
     const { taskId, timeout = 600000, enableDeepResearch = false, useRetry = true } = request;
 
@@ -1938,8 +1877,8 @@ async function handleGetResponse(request, sendResponse) {
       aiType: AI_TYPE,
     });
   } finally {
-    // Wake Lock解放（スリープ許可）
-    await releaseWakeLock();
+    // Chrome Power APIでスクリーンセイバー防止を解除
+    chrome.runtime.sendMessage({type: 'STOP_AI_PROCESSING'});
   }
 }
 
@@ -2048,8 +1987,8 @@ function getModelInfoFallback() {
 async function sendPromptToAI(prompt, options = {}) {
   const { model, specialOperation, aiType, taskId } = options;
   
-  // Wake Lock取得（スリープ防止）
-  await acquireWakeLock();
+  // Chrome Power APIでスクリーンセイバー防止を開始
+  chrome.runtime.sendMessage({type: 'START_AI_PROCESSING'});
   
   // 現在のモデル情報を取得
   const currentModel = getModelInfo();
@@ -2124,8 +2063,8 @@ async function sendPromptToAI(prompt, options = {}) {
     console.error(`[11.autoai][${AI_TYPE}] sendPromptToAIエラー:`, error);
     return { success: false, error: error.message };
   } finally {
-    // Wake Lock解放（スリープ許可）
-    await releaseWakeLock();
+    // Chrome Power APIでスクリーンセイバー防止を解除
+    chrome.runtime.sendMessage({type: 'STOP_AI_PROCESSING'});
   }
 }
 
@@ -2134,8 +2073,8 @@ async function sendPromptToAI(prompt, options = {}) {
  * 統合テストページと同じrunAutomation関数を使用
  */
 async function handleExecuteTask(request, sendResponse) {
-  // Wake Lock取得（スリープ防止）
-  await acquireWakeLock();
+  // Chrome Power APIでスクリーンセイバー防止を開始
+  chrome.runtime.sendMessage({type: 'START_AI_PROCESSING'});
   
   try {
     const {
@@ -2233,8 +2172,8 @@ async function handleExecuteTask(request, sendResponse) {
       aiType: AI_TYPE,
     });
   } finally {
-    // Wake Lock解放（スリープ許可）
-    await releaseWakeLock();
+    // Chrome Power APIでスクリーンセイバー防止を解除
+    chrome.runtime.sendMessage({type: 'STOP_AI_PROCESSING'});
   }
 }
 

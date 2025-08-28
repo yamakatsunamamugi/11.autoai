@@ -154,6 +154,20 @@ async function getSpreadsheetLogger() {
 // DynamicConfigManager import削除 - スプレッドシート設定を直接使用するため不要
 
 class StreamProcessor {
+  // 🔧 列マッピング定数定義（Phase 1追加）
+  static COLUMN_MAPPING = {
+    'G': 'H', 'H': 'G',  // G（プロンプト） ↔ H（答）
+    'J': 'K', 'K': 'J',  // J（プロンプト） ↔ K（答）
+    'M': 'N', 'N': 'M',  // M（プロンプト） ↔ N（答）
+    'P': 'Q', 'Q': 'P',  // P（プロンプト） ↔ Q（答）
+    'S': 'T', 'T': 'S',  // S（プロンプト） ↔ T（答）
+    'V': 'W', 'W': 'V',  // V（プロンプト） ↔ W（答）
+    'Y': 'Z', 'Z': 'Y'   // Y（プロンプト） ↔ Z（答）
+  };
+  
+  static PROMPT_COLUMNS = ['G', 'J', 'M', 'P', 'S', 'V', 'Y'];
+  static ANSWER_COLUMNS = ['H', 'K', 'N', 'Q', 'T', 'W', 'Z'];
+  
   /**
    * StreamProcessorのコンストラクタ
    * 
@@ -272,6 +286,9 @@ class StreamProcessor {
     // 動的再スキャン用にspreadsheetDataを保存
     this.spreadsheetData = spreadsheetData;
     
+    // 🛡️ 処理開始時にスリープ防止を開始
+    await globalThis.powerManager?.startProtection('StreamProcessor');
+    
     this.logger.log("[StreamProcessor] ストリーミング処理開始", {
       totalTasks: taskList.tasks.length,
       outputTarget: outputTarget,
@@ -313,6 +330,9 @@ class StreamProcessor {
       this.logger.error("[StreamProcessor] 処理エラー", error);
       throw error;
     } finally {
+      // 🔓 処理終了時に必ずスリープ防止を解除
+      await globalThis.powerManager?.stopProtection('StreamProcessor');
+      this.logger.log("[StreamProcessor] スリープ防止を解除しました");
       this.isProcessing = false;
     }
   }
@@ -1511,19 +1531,33 @@ class StreamProcessor {
         hasWindow: this.columnWindows.has(answerColumn)
       });
       
+      // デバッグログ：答列完了時のtaskQueue状態
+      this.logger.log(`[StreamProcessor] 🔍 答列完了時のtaskQueue Debug:`, {
+        answerColumn,
+        taskQueueKeys: Array.from(this.taskQueue.keys()),
+        answerColumnInTaskQueue: this.taskQueue.has(answerColumn),
+        correspondingPromptColumn: task.column, // 元のプロンプト列
+        correspondingPromptColumnInTaskQueue: this.taskQueue.has(task.column)
+      });
+      
       if (allTasksCompleted && this.columnWindows.has(answerColumn)) {
         // この列の全タスクが完了したらウィンドウを閉じる
         this.logger.log(`[StreamProcessor] 🚪 列の全タスク完了、ウィンドウを閉じます: ${answerColumn}列`);
         await this.closeColumnWindow(answerColumn);
         this.logger.log(`[StreamProcessor] ✅ ウィンドウクローズ完了: ${answerColumn}列`);
         
-        // 3種類AIグループでない場合のみ、次の列をチェック
-        // 3種類AIグループの場合は、グループ全体の完了をupdateGroupCompletionで判定
-        if (!task.multiAI) {
-          // ウィンドウが空いたので、利用可能な列をチェック
-          this.checkAndStartAvailableColumns().catch(error => {
-            this.logger.error(`[StreamProcessor] 利用可能列チェックエラー`, error);
-          });
+        // 🆕 答列完了時の次列進行ロジック（Phase 2追加）
+        if (this.isAnswerColumn(answerColumn)) {
+          this.logger.log(`[StreamProcessor] 🎯 答列完了検出、専用ハンドラーを呼び出し: ${answerColumn}列`);
+          await this.handleAnswerColumnCompletion(answerColumn);
+        } else {
+          // 既存の処理（3種類AIグループでない場合のみ）
+          if (!task.multiAI) {
+            // ウィンドウが空いたので、利用可能な列をチェック
+            this.checkAndStartAvailableColumns().catch(error => {
+              this.logger.error(`[StreamProcessor] 利用可能列チェックエラー`, error);
+            });
+          }
         }
       }
       
@@ -2065,6 +2099,29 @@ ${formattedGemini}`;
       }
     }
     
+    // この列のタスクがすべて完了した場合、次のプロンプト列を開始
+    this.logger.log(`[StreamProcessor] 🎯 ${column}列の全タスク完了 → 次のプロンプト列を探す`);
+    
+    // 次のプロンプト列を取得
+    const nextColumn = this.getNextColumn(column);
+    if (nextColumn) {
+      this.logger.log(`[StreamProcessor] 📋 次のプロンプト列に進行: ${column}列 → ${nextColumn}列`);
+      // 次の列に未処理タスクがあるかチェック
+      const nextTasks = this.taskQueue.get(nextColumn);
+      const nextIndex = this.currentRowByColumn.get(nextColumn) || 0;
+      
+      if (nextTasks && nextIndex < nextTasks.length) {
+        // 次の列の処理を開始
+        this.logger.log(`[StreamProcessor] 🚀 startColumnProcessing呼び出し: ${nextColumn}列`);
+        await this.startColumnProcessing(nextColumn);
+        return;
+      } else {
+        this.logger.log(`[StreamProcessor] ${nextColumn}列にはもう処理するタスクがありません`);
+      }
+    } else {
+      this.logger.log(`[StreamProcessor] 次のプロンプト列はありません - すべての列の処理が完了`);
+    }
+    
     // 待機中の列があればそれを再開する
     this.checkAndStartWaitingColumns();
   }
@@ -2557,10 +2614,10 @@ ${formattedGemini}`;
       const { task, windowId } = windowInfos[i];
       const positionName = positions[i] || positions[0];
       
-      // 送信前に5秒待機（最初のタスクは待機なし）
+      // 送信前に10秒待機（最初のタスクは待機なし）
       if (i > 0) {
-        this.logger.log(`[StreamProcessor] ⏱️ 次の送信まで5秒待機...`);
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        this.logger.log(`[StreamProcessor] ⏱️ 次の送信まで10秒待機...`);
+        await new Promise(resolve => setTimeout(resolve, 10000));
       }
       
       this.logger.log(`[StreamProcessor] 📤 送信開始: ${task.column}${task.row} (${positionName})`);
@@ -2787,6 +2844,144 @@ ${formattedGemini}`;
     
     return false;
   }
+
+  // 🔧 ヘルパーメソッド（Phase 1追加）
+  
+  /**
+   * 答列かどうかを判定
+   * @param {string} column - 列名
+   * @returns {boolean} 答列の場合true
+   */
+  isAnswerColumn(column) {
+    return StreamProcessor.ANSWER_COLUMNS.includes(column);
+  }
+  
+  /**
+   * 対応する列を取得（プロンプト列↔答列）
+   * @param {string} column - 列名
+   * @returns {string|null} 対応する列名、見つからない場合null
+   */
+  getCorrespondingColumn(column) {
+    return StreamProcessor.COLUMN_MAPPING[column] || null;
+  }
+  
+  /**
+   * 答列から次のプロンプト列を取得
+   * @param {string} answerColumn - 答列名
+   * @returns {string|null} 次のプロンプト列名、見つからない場合null
+   */
+  getNextPromptColumnFromAnswer(answerColumn) {
+    const promptColumn = this.getCorrespondingColumn(answerColumn);
+    if (!promptColumn) {
+      this.logger.warn(`[StreamProcessor] ⚠️ 対応するプロンプト列が見つかりません: ${answerColumn}列`);
+      return null;
+    }
+    
+    return this.getNextColumn(promptColumn);
+  }
+
+  /**
+   * 答列完了時の処理（Phase 3追加・Phase 4強化）
+   * @param {string} answerColumn - 完了した答列
+   */
+  async handleAnswerColumnCompletion(answerColumn) {
+    try {
+      this.logger.log(`[StreamProcessor] 🎯 答列完了処理開始: ${answerColumn}列`);
+      
+      // Phase 4: 入力検証強化
+      if (!answerColumn || typeof answerColumn !== 'string') {
+        this.logger.error(`[StreamProcessor] ❌ 無効な答列名: ${answerColumn}`);
+        return;
+      }
+      
+      // Phase 4: デバッグ情報強化
+      this.logger.log(`[StreamProcessor] 🔍 初期状態確認:`, {
+        answerColumn,
+        isValidAnswerColumn: this.isAnswerColumn(answerColumn),
+        taskQueueKeys: Array.from(this.taskQueue.keys()),
+        currentRowByColumnState: Object.fromEntries(this.currentRowByColumn)
+      });
+      
+      // 対応するプロンプト列を取得
+      const correspondingPromptColumn = this.getCorrespondingColumn(answerColumn);
+      if (!correspondingPromptColumn) {
+        this.logger.warn(`[StreamProcessor] ⚠️ 対応するプロンプト列が見つかりません: ${answerColumn}列`);
+        this.logger.log(`[StreamProcessor] 🔍 利用可能な列マッピング:`, StreamProcessor.COLUMN_MAPPING);
+        this.logger.log(`[StreamProcessor] 🔍 フォールバック: checkAndStartAvailableColumns()を実行`);
+        this.checkAndStartAvailableColumns().catch(error => {
+          this.logger.error(`[StreamProcessor] フォールバック処理エラー`, error);
+        });
+        return;
+      }
+      
+      // デバッグログ：taskQueueの詳細分析
+      this.logger.log(`[StreamProcessor] 🔍 taskQueue詳細分析:`, {
+        correspondingPromptColumn, // "J"
+        rawTaskQueueKeys: Array.from(this.taskQueue.keys()),
+        sortedTaskQueueKeys: Array.from(this.taskQueue.keys()).sort(),
+        taskQueueSize: this.taskQueue.size,
+        jColumnExists: this.taskQueue.has('J'),
+        mColumnExists: this.taskQueue.has('M'),
+        kColumnExists: this.taskQueue.has('K'),
+        nColumnExists: this.taskQueue.has('N')
+      });
+      
+      // 次のプロンプト列を取得
+      const nextPromptColumn = this.getNextColumn(correspondingPromptColumn);
+      if (!nextPromptColumn) {
+        this.logger.log(`[StreamProcessor] 📝 次のプロンプト列はありません: ${correspondingPromptColumn}列が最後`);
+        this.logger.log(`[StreamProcessor] 🔍 現在のプロンプト列順序:`, Array.from(this.taskQueue.keys()).sort());
+        this.logger.log(`[StreamProcessor] 🔍 他の利用可能列をチェック`);
+        this.checkAndStartAvailableColumns().catch(error => {
+          this.logger.error(`[StreamProcessor] 利用可能列チェックエラー`, error);
+        });
+        return;
+      }
+      
+      this.logger.log(`[StreamProcessor] 🎯 答列完了による次列進行: ${answerColumn}列 → ${correspondingPromptColumn}列 → ${nextPromptColumn}列`);
+      
+      // 次のプロンプト列に未処理タスクがあるかチェック
+      const nextTasks = this.taskQueue.get(nextPromptColumn);
+      const nextIndex = this.currentRowByColumn.get(nextPromptColumn) || 0;
+      
+      this.logger.log(`[StreamProcessor] 🔍 次列タスク状況確認:`, {
+        nextPromptColumn,
+        nextTasksLength: nextTasks ? nextTasks.length : 0,
+        nextIndex,
+        hasTasksToProcess: nextTasks && nextIndex < nextTasks.length,
+        columnWindowExists: this.columnWindows.has(nextPromptColumn)
+      });
+      
+      if (nextTasks && nextIndex < nextTasks.length) {
+        this.logger.log(`[StreamProcessor] 🚀 次のプロンプト列を開始: ${nextPromptColumn}列`);
+        await this.startColumnProcessing(nextPromptColumn);
+      } else {
+        this.logger.log(`[StreamProcessor] 📝 ${nextPromptColumn}列には処理するタスクがありません`);
+        this.logger.log(`[StreamProcessor] 🔍 他の利用可能列をチェック`);
+        
+        // 他に利用可能な列をチェック
+        this.checkAndStartAvailableColumns().catch(error => {
+          this.logger.error(`[StreamProcessor] 利用可能列チェックエラー`, error);
+        });
+      }
+      
+      this.logger.log(`[StreamProcessor] ✅ 答列完了処理完了: ${answerColumn}列`);
+      
+    } catch (error) {
+      this.logger.error(`[StreamProcessor] ❌ 答列完了処理で予期しないエラー発生: ${answerColumn}列`, error);
+      this.logger.error(`[StreamProcessor] ❌ エラー詳細:`, {
+        answerColumn,
+        errorMessage: error.message,
+        errorStack: error.stack
+      });
+      
+      // エラー時のフォールバック処理
+      this.logger.log(`[StreamProcessor] 🔄 エラー後フォールバック処理を実行`);
+      this.checkAndStartAvailableColumns().catch(fallbackError => {
+        this.logger.error(`[StreamProcessor] ❌ フォールバック処理も失敗`, fallbackError);
+      });
+    }
+  }
   
   /**
    * 次の列を取得
@@ -2796,7 +2991,21 @@ ${formattedGemini}`;
   getNextColumn(currentColumn) {
     const columns = Array.from(this.taskQueue.keys()).sort();
     const currentIndex = columns.indexOf(currentColumn);
-    return currentIndex < columns.length - 1 ? columns[currentIndex + 1] : null;
+    const nextColumn = currentIndex < columns.length - 1 ? columns[currentIndex + 1] : null;
+    
+    // 詳細デバッグログ追加
+    this.logger.log(`[StreamProcessor] 🔍 getNextColumn詳細Debug:`, {
+      inputColumn: currentColumn,
+      allColumns: columns,
+      currentIndex: currentIndex,
+      foundAtIndex: currentIndex >= 0,
+      nextIndex: currentIndex + 1,
+      nextColumn: nextColumn,
+      totalColumns: columns.length,
+      isLastColumn: currentIndex === columns.length - 1
+    });
+    
+    return nextColumn;
   }
 
   /**
@@ -3614,12 +3823,12 @@ ${formattedGemini}`;
    * レポートチェック用タイマーを開始
    */
   startReportCheckTimer() {
-    // 5秒ごとにペンディングレポートをチェック
+    // 10秒ごとにペンディングレポートをチェック
     this.reportCheckInterval = setInterval(() => {
       this.checkPendingReportTasks();
-    }, 5000);
+    }, 10000);
     
-    this.logger.log(`[StreamProcessor] レポートチェックタイマーを開始（5秒間隔）`);
+    this.logger.log(`[StreamProcessor] レポートチェックタイマーを開始（10秒間隔）`);
   }
 
   /**

@@ -33,6 +33,9 @@ import { getStreamingServiceManager } from "./src/core/streaming-service-manager
 // DeepResearchモジュール
 import { deepResearchHandler } from "./src/modules/deep-research-handler.js";
 
+// PowerManagerモジュール - スリープ防止の統一管理
+import PowerManager from "./src/core/power-manager.js";
+
 // ===== AIタスク実行ハンドラー =====
 // StreamProcessorからのAIタスク実行要求を処理
 // 詳細な実装はsrc/handlers/ai-task-handler.jsに分離
@@ -54,6 +57,10 @@ globalThis.aiTaskHandler = aiTaskHandler;
 
 // グローバルにSpreadsheetLoggerクラスを設定（Service Worker環境でのアクセス用）
 globalThis.SpreadsheetLogger = SpreadsheetLogger;
+
+// グローバルにPowerManagerを設定（スリープ防止統一管理）
+globalThis.powerManager = new PowerManager();
+console.log("✅ PowerManager初期化完了");
 
 // ===== ログマネージャー =====
 class LogManager {
@@ -462,6 +469,27 @@ chrome.runtime.onConnect.addListener((port) => {
  */
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   switch (request.action || request.type) {
+    // ===== PowerManager制御（スクリーンセイバー防止） =====
+    case "START_AI_PROCESSING":
+      (async () => {
+        await globalThis.powerManager.startProtection('message-handler');
+        sendResponse({ success: true });
+      })();
+      return true;
+      
+    case "STOP_AI_PROCESSING":
+      (async () => {
+        await globalThis.powerManager.stopProtection('message-handler');
+        sendResponse({ success: true });
+      })();
+      return true;
+    
+    // Keep-Aliveメッセージの処理
+    case "KEEP_ALIVE_PING":
+      // PowerManagerからのKeep-Aliveメッセージ（処理不要、ログのみ）
+      console.log(`📡 [MessageHandler] Keep-Alive ping受信: ${new Date(request.timestamp).toLocaleTimeString()}`);
+      sendResponse({ success: true });
+      return false;
     // ===== AI詳細ログメッセージ受信 =====
     case "LOG_AI_MESSAGE":
       if (request.aiType && request.message) {
@@ -753,10 +781,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           const taskQueue = new TaskQueue();
           const saveResult = await taskQueue.saveTaskList(taskList);
 
-          // 6. レスポンスを返す
+          // 6. レスポンスを返す（大きなデータを除外してメッセージサイズを削減）
           const response = {
             success: true,
-            ...processedData,
+            aiColumns: processedData.aiColumns,
+            columnMapping: processedData.columnMapping,
+            sheetName: processedData.sheetName,
+            modelRow: processedData.modelRow,
+            taskRow: processedData.taskRow,
             taskCount: taskList.tasks ? taskList.tasks.length : 0,
             taskQueueStatus: saveResult,
           };

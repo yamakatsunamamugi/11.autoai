@@ -131,6 +131,16 @@ class TaskGenerator {
 
     // プロンプトグループを識別（プロンプト〜プロンプト5を1グループとして）
     const promptGroups = this.identifyPromptGroups(rows.menu, rows.ai);
+    console.log("[TaskGenerator] 🔍 プロンプトグループ識別結果:", {
+      グループ数: promptGroups.length,
+      グループ詳細: promptGroups.map(g => ({
+        startIndex: g.startIndex,
+        logColumn: g.logColumn,
+        promptColumns: g.promptColumns.map(i => this.indexToColumn(i)),
+        answerColumns: g.answerColumns.map(a => a.column),
+        aiType: g.aiType
+      }))
+    });
     
     // 制御情報を収集
     const controls = this.collectControls(spreadsheetData);
@@ -319,6 +329,15 @@ class TaskGenerator {
 
     // 列制御でフィルタリング
     const processableGroups = this.filterGroupsByColumnControl(promptGroups, controls.column);
+    console.log("[TaskGenerator] 🔍 フィルタリング後の処理可能グループ:", {
+      元のグループ数: promptGroups.length,
+      処理可能グループ数: processableGroups.length,
+      処理可能グループ: processableGroups.map(g => ({
+        promptColumns: g.promptColumns.map(i => this.indexToColumn(i)),
+        answerColumns: g.answerColumns.map(a => a.column),
+        aiType: g.aiType
+      }))
+    });
 
     for (const workRow of workRows) {
       // 行制御チェック
@@ -332,14 +351,29 @@ class TaskGenerator {
         if (!combinedPrompt) continue;
 
         // 各回答列にタスクを生成
+        console.log("[TaskGenerator] 🔍 タスク生成開始:", {
+          行: workRow.number,
+          グループ: {
+            promptColumns: group.promptColumns.map(i => this.indexToColumn(i)),
+            answerColumns: group.answerColumns.map(a => a.column),
+            aiType: group.aiType
+          }
+        });
         
         for (const answerCol of group.answerColumns) {
           // 既存回答チェック
           const existingAnswer = this.getCellValue(spreadsheetData, workRow.index, answerCol.index);
-          if (this.answerFilter.hasAnswer(existingAnswer)) {
+          const hasExistingAnswer = this.answerFilter.hasAnswer(existingAnswer);
+          console.log("[TaskGenerator] 🔍 既存回答チェック:", {
+            列: answerCol.column,
+            行: workRow.number,
+            既存回答: existingAnswer,
+            スキップ: hasExistingAnswer
+          });
+          
+          if (hasExistingAnswer) {
             continue;
           }
-
 
           // タスクを作成
           const task = await this.createAITask(
@@ -350,6 +384,12 @@ class TaskGenerator {
             answerCol,
             combinedPrompt
           );
+          console.log("[TaskGenerator] 🔍 タスク作成完了:", {
+            taskId: task.id,
+            column: task.column,
+            row: task.row,
+            aiType: task.aiType
+          });
           
           // 重複チェック付きでタスクを追加
           const added = taskList.add(task);
