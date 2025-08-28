@@ -364,25 +364,18 @@ class TaskGenerator {
         if (!combinedPrompt) continue;
 
         // 各回答列にタスクを生成
-        console.log("[TaskGenerator] 🔍 タスク生成開始:", {
-          行: workRow.number,
-          グループ: {
-            promptColumns: group.promptColumns.map(i => this.indexToColumn(i)),
-            answerColumns: group.answerColumns.map(a => a.column),
-            aiType: group.aiType
-          }
-        });
+        // ログ削減: タスク生成開始ログをコメントアウト
+        // console.log("[TaskGenerator] 🔍 タスク生成開始:", {
+        //   行: workRow.number,
+        //   グループ: group
+        // });
         
         for (const answerCol of group.answerColumns) {
           // 既存回答チェック
           const existingAnswer = this.getCellValue(spreadsheetData, workRow.index, answerCol.index);
           const hasExistingAnswer = this.answerFilter.hasAnswer(existingAnswer);
-          console.log("[TaskGenerator] 🔍 既存回答チェック:", {
-            列: answerCol.column,
-            行: workRow.number,
-            既存回答: existingAnswer,
-            スキップ: hasExistingAnswer
-          });
+          // ログ削減: 既存回答チェックログをコメントアウト
+          // console.log("[TaskGenerator] 🔍 既存回答チェック:", { 列: answerCol.column, 行: workRow.number });
           
           if (hasExistingAnswer) {
             continue;
@@ -397,12 +390,8 @@ class TaskGenerator {
             answerCol,
             combinedPrompt
           );
-          console.log("[TaskGenerator] 🔍 タスク作成完了:", {
-            taskId: task.id,
-            column: task.column,
-            row: task.row,
-            aiType: task.aiType
-          });
+          // ログ削減: タスク作成完了ログを最小限に
+          // console.log("[TaskGenerator] タスク作成:", { column: task.column, row: task.row });
           
           // 重複チェック付きでタスクを追加
           const added = taskList.add(task);

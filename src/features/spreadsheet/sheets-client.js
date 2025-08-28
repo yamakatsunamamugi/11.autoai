@@ -143,7 +143,7 @@ class SheetsClient {
 
     const data = await response.json();
     console.log(`[SheetsClient] STEP F: JSONパース完了`);
-    console.log('[SheetsClient]   - レスポンスデータ:', data);
+    console.log('[SheetsClient]   - レスポンスデータ: [object]');
     console.log(`[SheetsClient]   - valuesの有無: ${!!data.values}`);
     console.log(`[SheetsClient]   - valuesの長さ: ${data.values ? data.values.length : 'valuesがない'}`);
     
@@ -151,7 +151,11 @@ class SheetsClient {
     console.log(`[SheetsClient] STEP G: 返却値`);
     console.log(`[SheetsClient]   - 返却する配列の長さ: ${result.length}`);
     if (result.length > 0) {
-      console.log(`[SheetsClient]   - 最初の行: ${JSON.stringify(result[0])}`);
+      const firstRow = result[0];
+      const firstRowPreview = Array.isArray(firstRow) ? 
+        `[配列: ${firstRow.length}列]` : 
+        `[オブジェクト]`;
+      console.log(`[SheetsClient]   - 最初の行: ${firstRowPreview}`);
     }
     console.log(`[SheetsClient] ========== getSheetData END ==========`);
     

@@ -87,8 +87,7 @@ export class AITaskHandler {
       try {
         this.log(`[AITaskHandler] 📋 プロンプトを動的取得中...`, {
           row: taskInfo.row,
-          promptColumns: taskInfo.promptColumns,
-          spreadsheetId
+          promptColumns: taskInfo.promptColumns
         });
         
         // Google Sheets APIを使用してプロンプトを取得
@@ -368,9 +367,7 @@ export class AITaskHandler {
       console.log(`[AITaskHandler]   - valuesの長さ: ${values.length}`);
       
       this.log(`[AITaskHandler] 📝 取得した値の配列:`, {
-        valuesCount: values.length,
-        values: values,
-        rawData: data
+        valuesCount: values.length
       });
       
       console.log(`[AITaskHandler] STEP 9: プロンプト抽出`);
@@ -378,10 +375,11 @@ export class AITaskHandler {
       
       for (let i = 0; i < values.length; i++) {
         const value = values[i];
-        console.log(`[AITaskHandler]   - values[${i}]: "${value}" (type: ${typeof value})`);
+        const valuePreview = value ? (value.substring(0, 50) + (value.length > 50 ? '...' : '')) : '';
+        console.log(`[AITaskHandler]   - values[${i}]: (長さ: ${value ? value.length : 0})`);
         if (value && value.trim()) {
           const trimmed = value.trim();
-          console.log(`[AITaskHandler]     -> トリム後: "${trimmed}" (長さ: ${trimmed.length})`);
+          console.log(`[AITaskHandler]     -> トリム後の長さ: ${trimmed.length}`);
           prompts.push(trimmed);
         } else {
           console.log(`[AITaskHandler]     -> 空または空白のためスキップ`);
@@ -394,8 +392,8 @@ export class AITaskHandler {
         console.log(`[AITaskHandler]   - 結合後の総文字数: ${prompts.join('\n').length}`);
       }
       
-      this.log(`[AITaskHandler] 📝 フィルター後のプロンプト:`, {
-        promptsCount: prompts.length,
+      this.log(`[AITaskHandler] 📝 プロンプト取得成功:`, {
+        count: prompts.length,
         totalLength: prompts.join('\n').length
       });
       
@@ -415,7 +413,7 @@ export class AITaskHandler {
       this.log(`[AITaskHandler] ✅ プロンプト結合完了:`, {
         promptCount: prompts.length,
         totalLength: combinedPrompt.length,
-        preview: combinedPrompt.substring(0, 200) + '...'
+        preview: combinedPrompt.substring(0, 100) + '...'
       });
       
       return combinedPrompt;
