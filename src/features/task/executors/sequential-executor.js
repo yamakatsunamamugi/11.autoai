@@ -111,7 +111,7 @@ class SequentialExecutor extends BaseExecutor {
   }
   
   /**
-   * 列を処理
+   * 列を処理（改善版：処理可能なタスクから優先実行）
    */
   async processColumn(column) {
     this.currentColumn = column;
@@ -127,18 +127,54 @@ class SequentialExecutor extends BaseExecutor {
       aiType: tasks[0]?.aiType
     });
     
-    // この列の全タスクを順次実行
-    for (let i = 0; i < tasks.length; i++) {
-      const task = tasks[i];
-      this.currentRowByColumn.set(column, i);
+    // 処理済みタスクのインデックスを記録
+    const processedIndices = new Set();
+    let remainingTasks = tasks.length;
+    let maxRetries = tasks.length * 3; // 無限ループ防止
+    let retryCount = 0;
+    
+    // 全タスクが処理されるまで繰り返し
+    while (remainingTasks > 0 && retryCount < maxRetries) {
+      let processedInThisRound = 0;
       
-      // 前の列の同じ行が完了しているかチェック
-      if (this.shouldWaitForPreviousColumn(column, task.row)) {
-        this.logger.log(`[SequentialExecutor] ${column}${task.row}は前の列の完了待ち`);
-        continue;
+      // 全タスクをチェックし、処理可能なものから実行
+      for (let i = 0; i < tasks.length; i++) {
+        if (processedIndices.has(i)) {
+          continue; // 既に処理済み
+        }
+        
+        const task = tasks[i];
+        
+        // 前の列の同じ行が完了しているかチェック
+        if (this.shouldWaitForPreviousColumn(column, task.row)) {
+          this.logger.log(`[SequentialExecutor] ${column}${task.row}は前の列の完了待ち（後で再試行）`);
+          continue; // 後で再試行
+        }
+        
+        // タスクを処理
+        await this.processTask(task);
+        processedIndices.add(i);
+        processedInThisRound++;
+        remainingTasks--;
+        
+        this.logger.log(`[SequentialExecutor] ${column}${task.row}処理完了 (残り: ${remainingTasks})`);
       }
       
-      await this.processTask(task);
+      // この回で処理されたタスクがない場合は待機
+      if (processedInThisRound === 0) {
+        this.logger.log(`[SequentialExecutor] ${column}列: 処理可能なタスクなし、5秒待機`);
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      }
+      
+      retryCount++;
+    }
+    
+    // 未処理のタスクが残っている場合は警告
+    if (remainingTasks > 0) {
+      const unprocessedTasks = tasks.filter((_, i) => !processedIndices.has(i));
+      this.logger.log(`[SequentialExecutor] ⚠️ ${column}列: ${remainingTasks}個のタスクが未処理のまま`, {
+        unprocessedTasks: unprocessedTasks.map(t => `${t.column}${t.row}`)
+      });
     }
     
     this.logger.log(`[SequentialExecutor] ${column}列の処理完了`);

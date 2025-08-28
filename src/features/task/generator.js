@@ -53,6 +53,7 @@ import { Task, TaskList, TaskFactory } from "./models.js";
 import { AnswerFilter } from "./filters/index.js";
 import StreamProcessor from "./stream-processor.js";
 import ReportTaskFactory from "../report/report-task-factory.js";
+import logger from "../../utils/logger.js";
 // getDynamicConfigManager import削除 - スプレッドシート設定を直接使用するため不要
 
 /**
@@ -688,7 +689,7 @@ class TaskGenerator {
   }
 
   /**
-   * AIタスクを作成
+   * AIタスクを作成（グループ順序管理対応）
    */
   async createAITask(spreadsheetData, structure, workRow, group, answerCol, prompt) {
     console.log("[TaskGenerator] createAITask呼び出し:", {
@@ -738,6 +739,10 @@ class TaskGenerator {
       console.log(`[TaskGenerator] タスク生成 row=${workRow.number}, sheetName="${taskSheetName}"`);
     }
     
+    // タスク順序とグループ優先度を計算
+    const taskNumber = this.calculateTaskNumber(group, answerCol);
+    const groupPriority = this.calculateGroupPriority(group);
+    
     const taskData = {
       id: this.generateTaskId(answerCol.column, workRow.number),
       column: answerCol.column,
@@ -756,7 +761,11 @@ class TaskGenerator {
         promptColumn: this.indexToColumn(group.promptColumns[0])
       },
       multiAI: group.aiType === "3type",
-      logColumns: [group.logColumn] // 動的検索されたログ列を使用
+      logColumns: [group.logColumn], // 動的検索されたログ列を使用
+      // 新しいグループ管理フィールド
+      taskNumber: taskNumber,           // タスク順序 (1, 2, 3, 4...)
+      groupType: group.aiType,          // グループ種別 ('single', '3type')
+      groupPriority: groupPriority      // グループ優先度 (アルファベット順)
     };
 
     // オプション設定
@@ -786,6 +795,9 @@ class TaskGenerator {
       return null;
     }
 
+    // レポートタスクのグループ情報を計算
+    const groupPriority = this.calculateGroupPriority(group);
+    
     const reportData = {
       id: this.generateTaskId(this.indexToColumn(group.reportColumn), workRow.number),
       column: this.indexToColumn(group.reportColumn),
@@ -802,7 +814,11 @@ class TaskGenerator {
         type: "report",
         sourceColumn: relatedTasks[0].column,
         reportColumn: this.indexToColumn(group.reportColumn)
-      }
+      },
+      // レポートタスクのグループ管理フィールド
+      taskNumber: 5,                    // レポート化はタスク5
+      groupType: "report",              // レポートグループ
+      groupPriority: groupPriority      // 同じグループの優先度
     };
 
     return new Task(TaskFactory.createTask(reportData));
@@ -927,6 +943,44 @@ class TaskGenerator {
     const timestamp = Date.now();
     const random = Math.random().toString(36).substring(2, 9);
     return `${column}${row}_${timestamp}_${random}`;
+  }
+
+  /**
+   * タスク順序を計算
+   * タスク1: プロンプト入力（手動）
+   * タスク2: 1つ目の回答列
+   * タスク3: 2つ目の回答列（3種類AIの場合）
+   * タスク4: 3つ目の回答列（3種類AIの場合）
+   * タスク5: レポート化（存在する場合）
+   */
+  calculateTaskNumber(group, answerCol) {
+    // グループ内での順序を計算
+    if (group.aiType === "3type") {
+      // 3種類AI: ChatGPT回答(2) → Claude回答(3) → Gemini回答(4)
+      const answerIndex = group.answerColumns.findIndex(col => col.column === answerCol.column);
+      return answerIndex + 2; // タスク2から開始
+    } else {
+      // 単独AI: 回答列はタスク2
+      return 2;
+    }
+  }
+
+  /**
+   * グループ優先度を計算（アルファベット順）
+   * A列グループ = 1, B列グループ = 2, ...
+   */
+  calculateGroupPriority(group) {
+    // ログ列のアルファベット順で優先度を決定
+    const logColumn = group.logColumn;
+    if (!logColumn) return 999; // ログ列がない場合は最後
+    
+    // A=1, B=2, C=3, ... として計算
+    let priority = 0;
+    for (let i = 0; i < logColumn.length; i++) {
+      priority = priority * 26 + (logColumn.charCodeAt(i) - 64);
+    }
+    
+    return priority;
   }
 
 

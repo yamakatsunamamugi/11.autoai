@@ -43,6 +43,9 @@ class Task {
       logColumns: this.logColumns,
       groupId: this.groupId,
       groupInfo: this.groupInfo,
+      taskNumber: this.taskNumber,       // タスク順序 (1, 2, 3, 4...)
+      groupType: this.groupType,         // グループ種別 ('single', '3type', 'report')
+      groupPriority: this.groupPriority, // グループ優先度 (アルファベット順)
       // specialSettings: this.specialSettings,  // 削除：サイズ削減
       // controlFlags: this.controlFlags,  // 削除：サイズ削減
       createdAt: this.createdAt,
@@ -98,6 +101,54 @@ class TaskList {
   // 列別にタスクを取得
   getTasksByColumn(column) {
     return this.tasks.filter((task) => task.column === column);
+  }
+
+  // グループ別にタスクを取得
+  getTasksByGroup(groupId) {
+    return this.tasks.filter((task) => task.groupId === groupId);
+  }
+
+  // グループ順序でソート済みタスクを取得
+  getTasksSortedByGroup() {
+    return this.tasks.slice().sort((a, b) => {
+      // 1. グループ優先度順
+      if (a.groupPriority !== b.groupPriority) {
+        return a.groupPriority - b.groupPriority;
+      }
+      // 2. 行番号順
+      if (a.row !== b.row) {
+        return a.row - b.row;
+      }
+      // 3. タスク順序順
+      return (a.taskNumber || 0) - (b.taskNumber || 0);
+    });
+  }
+
+  // グループ情報を取得
+  getGroupInfo() {
+    const groups = new Map();
+    
+    this.tasks.forEach(task => {
+      if (!task.groupId) return;
+      
+      if (!groups.has(task.groupId)) {
+        groups.set(task.groupId, {
+          groupId: task.groupId,
+          groupType: task.groupType,
+          groupPriority: task.groupPriority,
+          tasks: [],
+          columns: new Set(),
+          rows: new Set()
+        });
+      }
+      
+      const group = groups.get(task.groupId);
+      group.tasks.push(task);
+      group.columns.add(task.column);
+      group.rows.add(task.row);
+    });
+    
+    return Array.from(groups.values()).sort((a, b) => a.groupPriority - b.groupPriority);
   }
 
   // 統計情報を取得
