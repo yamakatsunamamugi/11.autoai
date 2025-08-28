@@ -1163,7 +1163,7 @@ class StreamProcessor {
 
     // テストモード（waitResponse=false or getResponse=false）の場合はプロンプト送信をスキップ
     if (task.waitResponse === false || task.getResponse === false) {
-      // this.logger.log(`[StreamProcessor] テストモード: プロンプト送信をスキップしてランダム待機`);
+      // テストモード: プロンプト送信をスキップ
       
       // ランダム待機（5-15秒）
       const waitTime = Math.floor(Math.random() * (15000 - 5000 + 1)) + 5000;

@@ -12,7 +12,7 @@ import { ConfigManager } from "./config-manager.js";
 import { EventBus } from "./event-bus.js";
 import { Logger } from "./logger.js";
 import { ErrorHandler } from "./error-handler.js";
-import StreamProcessor from "../features/task/stream-processor.js";
+import ProcessorFactory from "./processor-factory.js";
 import TaskGenerator from "../features/task/generator.js";
 
 /**
@@ -306,16 +306,18 @@ class StreamingServiceManager {
    * コアサービスの登録
    */
   async registerCoreServices() {
-    // StreamProcessor（静的インポートに変更）
+    // ProcessorFactory（設定ベース）
     this.serviceRegistry.register(
-      "StreamProcessor",
-      () =>
-        new StreamProcessor({
+      "StreamProcessor", // 既存のサービス名を維持（互換性のため）
+      async () => {
+        const processor = await ProcessorFactory.createProcessorFromConfig({
           config: this.config.get("streaming", {}),
-          logger: this.logger.child("StreamProcessor"),
+          logger: this.logger.child("TaskProcessor"),
           eventBus: this.eventBus,
-          windowManager: globalThis.aiWindowManager, // グローバルのWindowManagerを使用
-        }),
+          windowManager: globalThis.aiWindowManager,
+        });
+        return processor;
+      }
     );
 
     // TaskGenerator（静的インポートに変更）

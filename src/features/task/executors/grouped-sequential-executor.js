@@ -226,11 +226,7 @@ class GroupedSequentialExecutor {
   async processColumnTask(columnTask, structure, spreadsheetData, originalTaskList = null) {
     this.currentColumnTask = columnTask;
     
-    this.logger.log(`[GroupedSequentialExecutor] 列タスク開始: ${columnTask.taskName}`, {
-      taskNumber: columnTask.taskNumber,
-      taskType: columnTask.taskType,
-      columns: columnTask.columns
-    });
+    this.logger.info('GroupedSequentialExecutor', `列タスク開始: ${columnTask.taskName}`);
     
     let retryCount = 0;
     const maxRetries = 3;
@@ -294,18 +290,14 @@ class GroupedSequentialExecutor {
    * 列タスクの全行を実行
    */
   async executeColumnTaskRows(columnTask, structure, spreadsheetData) {
-    this.logger.log(`[GroupedSequentialExecutor] 列タスクの全行実行開始: ${columnTask.taskName}`);
+    this.logger.info('GroupedSequentialExecutor', `列タスクの全行実行開始: ${columnTask.taskName}`);
     
     // 処理可能な行をフィルタリング
     const processableRows = structure.workRows.filter(row => 
       this.shouldProcessRow(row.number, structure.controls.row)
     );
     
-    this.logger.log(`[GroupedSequentialExecutor] 処理対象行:`, {
-      totalWorkRows: structure.workRows.length,
-      processableRows: processableRows.length,
-      rowNumbers: processableRows.map(r => r.number)
-    });
+    this.logger.debug('GroupedSequentialExecutor', `処理対象行: ${processableRows.length}/${structure.workRows.length}行`);
     
     // 各行のタスクを生成して実行
     for (const workRow of processableRows) {
@@ -324,7 +316,7 @@ class GroupedSequentialExecutor {
       }
     }
     
-    this.logger.log(`[GroupedSequentialExecutor] 列タスクの全行実行完了: ${columnTask.taskName}`);
+    this.logger.info('GroupedSequentialExecutor', `列タスクの全行実行完了: ${columnTask.taskName}`);
   }
   
   /**
@@ -345,12 +337,7 @@ class GroupedSequentialExecutor {
     
     const combinedPrompt = prompts.join('\n');
     
-    this.logger.log(`[GroupedSequentialExecutor] プロンプト構築:`, {
-      cell: `${task.column}${task.row}`,
-      promptColumns: columnTask.promptColumns,
-      promptLength: combinedPrompt.length,
-      promptPreview: combinedPrompt.substring(0, 100) + (combinedPrompt.length > 100 ? '...' : '')
-    });
+    this.logger.debug('GroupedSequentialExecutor', `プロンプト構築: ${task.column}${task.row} (${combinedPrompt.length}文字)`);
     
     return combinedPrompt;
   }
@@ -383,16 +370,11 @@ class GroupedSequentialExecutor {
    */
   async processTask(task) {
     try {
-      this.logger.log(`[GroupedSequentialExecutor] タスク処理開始`, {
-        cell: `${task.column}${task.row}`,
-        taskType: task.taskType,
-        columnTaskNumber: task.columnTaskNumber,
-        aiType: task.aiType
-      });
+      this.logger.debug('GroupedSequentialExecutor', `タスク処理開始: ${task.column}${task.row}`);
       
       // テストモードの場合はシミュレート
       if (this.isTestMode) {
-        this.logger.log(`[GroupedSequentialExecutor] テストモード: タスク処理をシミュレート`);
+        this.logger.debug('GroupedSequentialExecutor', `テストモード: タスク処理をシミュレート`);
         this.completedTasks.add(task.id);
         return;
       }
@@ -403,17 +385,10 @@ class GroupedSequentialExecutor {
       // タスク完了をマーク
       this.completedTasks.add(task.id);
       
-      this.logger.log(`[GroupedSequentialExecutor] タスク処理完了`, {
-        cell: `${task.column}${task.row}`,
-        columnTaskNumber: task.columnTaskNumber
-      });
+      this.logger.debug('GroupedSequentialExecutor', `タスク処理完了: ${task.column}${task.row}`);
       
     } catch (error) {
-      this.logger.error(`[GroupedSequentialExecutor] タスク処理エラー`, {
-        cell: `${task.column}${task.row}`,
-        taskId: task.id.substring(0, 8),
-        error: error.message
-      });
+      this.logger.error('GroupedSequentialExecutor', `タスク処理エラー: ${task.column}${task.row} - ${error.message}`);
       throw error;
     }
   }

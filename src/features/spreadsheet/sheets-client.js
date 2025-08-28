@@ -74,66 +74,30 @@ class SheetsClient {
    * @returns {Promise<Array>} セルデータの2次元配列
    */
   async getSheetData(spreadsheetId, range, gid = null) {
-    console.log(`[SheetsClient] ========== getSheetData START ==========`);
-    console.log(`[SheetsClient] STEP A: 入力パラメータ`);
-    console.log(`[SheetsClient]   - spreadsheetId: ${spreadsheetId}`);
-    console.log(`[SheetsClient]   - range (入力): ${range}`);
-    console.log(`[SheetsClient]   - gid: ${gid}`);
-    
     // gidが指定されている場合、シート名を取得して範囲を更新
     if (gid) {
-      console.log(`[SheetsClient] STEP B: gidからシート名取得`);
       const sheetName = await this.getSheetNameFromGid(spreadsheetId, gid);
-      console.log(`[SheetsClient]   - 取得したシート名: "${sheetName}"`);
       if (sheetName) {
         // 範囲にシート名が含まれていない場合は追加
         if (!range.includes("!")) {
-          const oldRange = range;
           range = `'${sheetName}'!${range}`;
-          console.log(`[SheetsClient]   - 範囲を変更: "${oldRange}" -> "${range}"`);
         } else {
           // すでにシート名が含まれている場合は置き換え
-          const oldRange = range;
           range = `'${sheetName}'!${range.split("!")[1]}`;
-          console.log(`[SheetsClient]   - 範囲を置換: "${oldRange}" -> "${range}"`);
         }
       }
-    } else {
-      console.log(`[SheetsClient] STEP B: gid未指定、rangeからシート名抽出試行`);
-      // rangeからシート名を抽出してみる
-      const match = range.match(/^'(.+?)'!/);
-      if (match) {
-        console.log(`[SheetsClient]   - rangeからシート名抽出: "${match[1]}"`);
-      } else if (range.includes("!")) {
-        const sheetName = range.split("!")[0];
-        console.log(`[SheetsClient]   - クォートなしシート名: "${sheetName}"`);
-      } else {
-        console.log(`[SheetsClient]   - シート名が含まれていない`);
-      }
     }
-
-    console.log(`[SheetsClient] STEP C: API呼び出し準備`);
-    console.log(`[SheetsClient]   - 最終範囲: ${range}`);
     
     const token = await globalThis.authService.getAuthToken();
     const encodedRange = encodeURIComponent(range);
     const url = `${this.baseUrl}/${spreadsheetId}/values/${encodedRange}`;
-    
-    console.log(`[SheetsClient]   - エンコード後範囲: ${encodedRange}`);
-    console.log(`[SheetsClient]   - 完全URL: ${url}`);
-    this.logger.log("SheetsClient", `API URL: ${url}`);
 
-    console.log(`[SheetsClient] STEP D: fetch実行`);
     const response = await fetch(url, {
       headers: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
     });
-
-    console.log(`[SheetsClient] STEP E: レスポンス処理`);
-    console.log(`[SheetsClient]   - ステータス: ${response.status}`);
-    console.log(`[SheetsClient]   - OK: ${response.ok}`);
     
     if (!response.ok) {
       const error = await response.json();
@@ -142,20 +106,7 @@ class SheetsClient {
     }
 
     const data = await response.json();
-    console.log(`[SheetsClient] STEP F: JSONパース完了`);
-    console.log('[SheetsClient]   - レスポンスデータ:', data);
-    console.log(`[SheetsClient]   - valuesの有無: ${!!data.values}`);
-    console.log(`[SheetsClient]   - valuesの長さ: ${data.values ? data.values.length : 'valuesがない'}`);
-    
-    const result = data.values || [];
-    console.log(`[SheetsClient] STEP G: 返却値`);
-    console.log(`[SheetsClient]   - 返却する配列の長さ: ${result.length}`);
-    if (result.length > 0) {
-      console.log(`[SheetsClient]   - 最初の行: ${JSON.stringify(result[0])}`);
-    }
-    console.log(`[SheetsClient] ========== getSheetData END ==========`);
-    
-    return result;
+    return data.values || [];
   }
 
   /**

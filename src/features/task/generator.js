@@ -51,7 +51,7 @@
 
 import { Task, TaskList, TaskFactory } from "./models.js";
 import { AnswerFilter } from "./filters/index.js";
-import StreamProcessor from "./stream-processor.js";
+import ProcessorFactory from "../../core/processor-factory.js";
 import ReportTaskFactory from "../report/report-task-factory.js";
 import logger from "../../utils/logger.js";
 // getDynamicConfigManager import削除 - スプレッドシート設定を直接使用するため不要
@@ -62,28 +62,43 @@ import logger from "../../utils/logger.js";
  */
 class TaskGenerator {
   constructor() {
+    this.logger = logger; // ロガー初期化
     this.answerFilter = new AnswerFilter();
-    this.streamProcessor = new StreamProcessor();
+    this.streamProcessor = null; // 遅延初期化
     this.reportTaskFactory = new ReportTaskFactory();
     // dynamicConfigManager削除 - スプレッドシート設定を直接使用するため不要
+  }
+
+  /**
+   * StreamProcessorを遅延初期化（設定ベース）
+   * @returns {Promise<Object>} プロセッサインスタンス
+   */
+  async getStreamProcessor() {
+    if (!this.streamProcessor) {
+      this.streamProcessor = await ProcessorFactory.createProcessorFromConfig({
+        logger: this.logger.child ? this.logger.child("StreamProcessor") : this.logger
+      });
+      
+      this.logger.info('TaskGenerator', '🔧 プロセッサを設定ベースで初期化', {
+        processorType: this.streamProcessor.constructor.name,
+        configDriven: true
+      });
+    }
+    return this.streamProcessor;
   }
 
   /**
    * メインエントリーポイント - タスクを生成
    */
   async generateTasks(spreadsheetData, options = {}) {
-    console.log("[TaskGenerator] generateTasks開始");
-    console.log("[TaskGenerator] spreadsheetData内容:", {
-      hasData: !!spreadsheetData,
-      keys: spreadsheetData ? Object.keys(spreadsheetData) : null,
+    this.logger.info('TaskGenerator', 'generateTasks開始', {
       sheetName: spreadsheetData?.sheetName,
-      hasValues: !!spreadsheetData?.values,
-      valuesLength: spreadsheetData?.values?.length
+      rows: spreadsheetData?.values?.length || 0
     });
     
     // spreadsheetDataを保存（createTaskメソッドで使用）
     this.data = spreadsheetData;
-    console.log("[TaskGenerator] this.dataに保存完了, sheetName:", this.data?.sheetName);
+    this.logger.debug('TaskGenerator', 'data保存完了');
     
     // オプション設定（firstGroupOnlyのデフォルトはfalseに変更）
     const processOptions = {
@@ -138,16 +153,7 @@ class TaskGenerator {
 
     // プロンプトグループを識別（プロンプト〜プロンプト5を1グループとして）
     const promptGroups = this.identifyPromptGroups(rows.menu, rows.ai);
-    console.log("[TaskGenerator] 🔍 プロンプトグループ識別結果:", {
-      グループ数: promptGroups.length,
-      グループ詳細: promptGroups.map(g => ({
-        startIndex: g.startIndex,
-        logColumn: g.logColumn,
-        promptColumns: g.promptColumns.map(i => this.indexToColumn(i)),
-        answerColumns: g.answerColumns.map(a => a.column),
-        aiType: g.aiType
-      }))
-    });
+    this.logger.debug('TaskGenerator', `プロンプトグループ識別完了: ${promptGroups.length}グループ`);
     
     // 制御情報を収集
     const controls = this.collectControls(spreadsheetData);
@@ -1094,7 +1100,8 @@ class TaskGenerator {
     }
 
     try {
-      const result = await this.streamProcessor.processTaskStream(
+      const processor = await this.getStreamProcessor();
+      const result = await processor.processTaskStream(
         taskList,
         spreadsheetData,
         options
@@ -1108,7 +1115,8 @@ class TaskGenerator {
       };
     } catch (error) {
       console.error("[TaskGenerator] ストリーミング処理エラー", error);
-      await this.streamProcessor.closeAllWindows();
+      const processor = await this.getStreamProcessor();
+      await processor.closeAllWindows();
       throw error;
     }
   }

@@ -94,14 +94,14 @@ export class ColumnTaskManager {
    * スプレッドシート構造からタスクリストを生成
    */
   generateColumnTaskList(structure, spreadsheetData, options = {}) {
-    this.logger.log(`[ColumnTaskManager] 列タスクリスト生成開始`);
+    this.logger.info('ColumnTaskManager', '列タスクリスト生成開始');
     
     const { promptGroups, controls } = structure;
     
     // 列制御でフィルタリング
     const processableGroups = this.filterGroupsByColumnControl(promptGroups, controls.column);
     
-    this.logger.log(`[ColumnTaskManager] 処理可能グループ:`, {
+    this.logger.info('ColumnTaskManager', '処理可能グループ', {
       totalGroups: promptGroups.length,
       processableGroups: processableGroups.length,
       groups: processableGroups.map(g => ({
@@ -133,7 +133,7 @@ export class ColumnTaskManager {
     this.columnTasks = columnTasks;
     this.currentTaskIndex = 0;
     
-    this.logger.log(`[ColumnTaskManager] 列タスクリスト生成完了:`, {
+    this.logger.info('ColumnTaskManager', '列タスクリスト生成完了', {
       totalTasks: this.columnTasks.length,
       tasks: this.columnTasks.map(t => ({
         taskNumber: t.taskNumber,
@@ -206,14 +206,17 @@ export class ColumnTaskManager {
    */
   moveToNextTask() {
     this.currentTaskIndex++;
-    this.logger.log(`[ColumnTaskManager] 次のタスクに進行: ${this.currentTaskIndex}/${this.columnTasks.length}`);
+    this.logger.info('ColumnTaskManager', '次のタスクに進行', {
+      currentIndex: this.currentTaskIndex,
+      totalTasks: this.columnTasks.length
+    });
   }
   
   /**
    * タスクの空白をチェック
    */
   async checkTaskBlanks(columnTask, spreadsheetData, workRows, rowControls) {
-    this.logger.log(`[ColumnTaskManager] タスク空白チェック開始: ${columnTask.taskName}`);
+    this.logger.info('ColumnTaskManager', 'タスク空白チェック開始', { taskName: columnTask.taskName });
     
     // 列タスク用のプロンプトグループ形式に変換
     const promptGroup = {
@@ -236,7 +239,8 @@ export class ColumnTaskManager {
     
     columnTask.blankCheckResult = result;
     
-    this.logger.log(`[ColumnTaskManager] タスク空白チェック完了: ${columnTask.taskName}`, {
+    this.logger.info('ColumnTaskManager', 'タスク空白チェック完了', {
+      taskName: columnTask.taskName,
       totalBlanks: result.totalBlanks,
       isComplete: result.isComplete,
       blankCells: result.blankCells.map(c => c.cell)
@@ -250,7 +254,7 @@ export class ColumnTaskManager {
    */
   markTaskCompleted(columnTask) {
     columnTask.isCompleted = true;
-    this.logger.log(`[ColumnTaskManager] タスク完了: ${columnTask.taskName}`);
+    this.logger.info('ColumnTaskManager', 'タスク完了', { taskName: columnTask.taskName });
   }
   
   /**

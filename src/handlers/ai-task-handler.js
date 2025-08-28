@@ -277,7 +277,6 @@ export class AITaskHandler {
     console.log(`[AITaskHandler] STEP 1: 入力パラメータ確認`);
     console.log(`[AITaskHandler]   - spreadsheetId: ${spreadsheetId}`);
     console.log(`[AITaskHandler]   - row: ${row}`);
-    console.log(`[AITaskHandler]   - promptColumns: ${JSON.stringify(promptColumns)}`);
     console.log(`[AITaskHandler]   - sheetName: "${sheetName}" (type: ${typeof sheetName})`);
     
     this.log(`[AITaskHandler] 📋 fetchPromptFromSpreadsheet開始:`, {
@@ -300,7 +299,6 @@ export class AITaskHandler {
       // 列名を取得（例: ['G', 'H', 'I']）
       const columnLetters = promptColumns.map((col, index) => {
         const letter = typeof col === 'string' ? col : this.indexToColumn(col);
-        console.log(`[AITaskHandler]   - promptColumns[${index}]: ${col} -> 列名: ${letter}`);
         return letter;
       });
       
@@ -373,7 +371,6 @@ export class AITaskHandler {
         rawData: data
       });
       
-      console.log(`[AITaskHandler] STEP 9: プロンプト抽出`);
       const prompts = [];
       
       for (let i = 0; i < values.length; i++) {
@@ -388,11 +385,6 @@ export class AITaskHandler {
         }
       }
       
-      console.log(`[AITaskHandler] STEP 10: プロンプト結果確認`);
-      console.log(`[AITaskHandler]   - 抽出されたプロンプト数: ${prompts.length}`);
-      if (prompts.length > 0) {
-        console.log(`[AITaskHandler]   - 結合後の総文字数: ${prompts.join('\n').length}`);
-      }
       
       this.log(`[AITaskHandler] 📝 フィルター後のプロンプト:`, {
         promptsCount: prompts.length,

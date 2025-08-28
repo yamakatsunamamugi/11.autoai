@@ -1645,11 +1645,6 @@ async function handleSendPrompt(request, sendResponse) {
       specialMode = null,
     } = request;
 
-    console.log(`[11.autoai][${AI_TYPE}] プロンプト送信開始: ${taskId}`, {
-      enableDeepResearch,
-      enableSearchMode,
-      specialMode,
-    });
 
     // 送信前の特殊モード設定（全AI対応）
     await handlePreSendModeSetup(specialMode, enableDeepResearch);
@@ -1705,7 +1700,6 @@ async function handleSendPrompt(request, sendResponse) {
     }
 
     // 統合テストと同じrunAutomation方式を使用（AIInputクラスは削除済み）
-    console.log(`[11.autoai][${AI_TYPE}] runAutomationを使用してプロンプト送信`);
     
     // プロンプト送信のみ（応答待機なし）
     const config = {
@@ -2051,7 +2045,6 @@ async function sendPromptToAI(prompt, options = {}) {
     if (result) {
       result.model = currentModel;
       if (result.success) {
-        console.log(`[11.autoai][${AI_TYPE}] ✅ プロンプト送信成功 - モデル: ${currentModel || '不明'}`);
       } else {
         console.error(`[11.autoai][${AI_TYPE}] ❌ プロンプト送信失敗:`, result.error);
       }

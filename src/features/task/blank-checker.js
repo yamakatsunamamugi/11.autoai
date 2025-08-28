@@ -28,7 +28,7 @@ export class BlankChecker {
    * @returns {Object} チェック結果
    */
   checkGroupBlanks(spreadsheetData, group, rowControls = [], workRows = []) {
-    this.logger.log(`[BlankChecker] グループ空白チェック開始:`, {
+    this.logger.info('BlankChecker', 'グループ空白チェック開始', {
       groupType: group.aiType,
       answerColumns: group.answerColumns.map(a => a.column)
     });
@@ -36,7 +36,7 @@ export class BlankChecker {
     const blankCells = [];
     const processableRows = this.getProcessableRows(workRows, rowControls);
     
-    this.logger.log(`[BlankChecker] 処理対象行:`, {
+    this.logger.debug('BlankChecker', '処理対象行', {
       totalWorkRows: workRows.length,
       processableRows: processableRows.length,
       rowNumbers: processableRows.map(r => r.number)
@@ -79,11 +79,10 @@ export class BlankChecker {
       processedRows: processableRows.length
     };
 
-    this.logger.log(`[BlankChecker] グループ空白チェック完了:`, {
+    this.logger.info('BlankChecker', 'グループ空白チェック完了', {
       groupType: group.aiType,
       totalBlanks: result.totalBlanks,
-      isComplete: result.isComplete,
-      blankCells: result.blankCells
+      isComplete: result.isComplete
     });
 
     return result;
@@ -114,11 +113,10 @@ export class BlankChecker {
       }
     }
     
-    this.logger.log(`[BlankChecker] ${column.column}列空白チェック:`, {
+    this.logger.debug('BlankChecker', `${column.column}列空白チェック`, {
       column: column.column,
       totalRows: processableRows.length,
-      blankCount: blanks.length,
-      blanks: blanks.map(b => b.cell)
+      blankCount: blanks.length
     });
     
     return blanks;
@@ -133,7 +131,7 @@ export class BlankChecker {
    * @returns {Object} 全体チェック結果
    */
   checkAllGroupsBlanks(spreadsheetData, groups, rowControls = [], workRows = []) {
-    this.logger.log(`[BlankChecker] 全グループ空白チェック開始:`, {
+    this.logger.info('BlankChecker', '全グループ空白チェック開始', {
       totalGroups: groups.length,
       groupTypes: groups.map(g => g.aiType)
     });
@@ -162,7 +160,7 @@ export class BlankChecker {
       checkedAt: new Date().toISOString()
     };
 
-    this.logger.log(`[BlankChecker] 全グループ空白チェック完了:`, {
+    this.logger.info('BlankChecker', '全グループ空白チェック完了', {
       totalGroups: overallResult.totalGroups,
       totalBlanks: overallResult.totalBlanks,
       allComplete: overallResult.allComplete,
@@ -287,7 +285,7 @@ export class BlankChecker {
       }
     }
     
-    this.logger.log(`[BlankChecker] 再処理タスク生成:`, {
+    this.logger.info('BlankChecker', '再処理タスク生成', {
       totalBlanks: blankCheckResult.totalBlanks,
       retryTasks: retryTasks.length,
       cells: retryTasks.map(t => `${t.column}${t.row}`)

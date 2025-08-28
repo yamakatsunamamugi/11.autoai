@@ -49,7 +49,6 @@ class ExecutorFactory {
     
     // 新しい列ごと順次実行をデフォルトに変更
     // この実装により、常に列ごと順次実行が選択される
-    console.log("[ExecutorFactory] 列ごと順次実行システムを使用");
     return 'grouped_sequential';
     
     // 以下は無効化（必要に応じて復活可能）

@@ -20,7 +20,7 @@ import { SpreadsheetLogger } from "./src/features/logging/spreadsheet-logger.js"
 import "./src/features/task/generator.js";
 import TaskGenerator from "./src/features/task/generator.js";
 import TaskQueue from "./src/features/task/queue.js";
-import StreamProcessor from "./src/features/task/stream-processor.js";
+import ProcessorFactory from "./src/core/processor-factory.js";
 
 // Step 6 - サービスファイル
 import SpreadsheetAutoSetup from "./src/services/spreadsheet-auto-setup.js";
@@ -383,15 +383,11 @@ function getColumnName(index) {
  * processSpreadsheetData関数
  */
 function processSpreadsheetData(spreadsheetData) {
-  console.log("[Background] [DEBUG] processSpreadsheetData開始, sheetName:", spreadsheetData?.sheetName);
-  
   const result = {
     ...spreadsheetData,
     aiColumns: {},
     columnMapping: {},
   };
-  
-  console.log("[Background] [DEBUG] スプレッド演算子後のresult.sheetName:", result.sheetName);
 
   if (!spreadsheetData.values || spreadsheetData.values.length === 0) {
     return result;
@@ -718,9 +714,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           await autoSetup.executeAutoSetup(spreadsheetId, token, gid);
 
           // 3. データを整形（AI列情報を抽出）
-          console.log("[Background] [DEBUG] updatedSpreadsheetData.sheetName:", updatedSpreadsheetData?.sheetName);
           const processedData = processSpreadsheetData(updatedSpreadsheetData);
-          console.log("[Background] [DEBUG] processedData.sheetName:", processedData?.sheetName);
           
           // modelRowとtaskRowも含める
           processedData.modelRow = updatedSpreadsheetData.modelRow;
@@ -929,8 +923,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       // バックグラウンドで非同期処理を開始
       (async () => {
         try {
-          // StreamProcessorは既に静的インポート済み
-          const processor = new StreamProcessor();
+          // ProcessorFactoryで設定ベースのプロセッサを作成
+          const processor = await ProcessorFactory.createProcessorFromConfig();
           
           // スプレッドシートデータを準備
           const spreadsheetData = {
@@ -945,7 +939,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             taskListMode: true
           });
           
-          console.log("✅ [MessageHandler] StreamProcessor実行結果:", result);
+          console.log("✅ [MessageHandler] プロセッサ実行結果:", result);
         } catch (error) {
           console.error("❌ [MessageHandler] タスクリストストリーミング処理エラー:", error);
           console.error("❌ [Debug] エラー詳細:", {
