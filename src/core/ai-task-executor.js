@@ -64,41 +64,45 @@ export class AITaskExecutor {
         // 初期化待機
         await new Promise(resolve => setTimeout(resolve, 2000));
         
+        this.logger.log(`[AITaskExecutor] V2関数実行を開始します...`);
+        
         // V2関数を直接実行
-        const result = await chrome.scripting.executeScript({
-          target: { tabId: tabId },
-          func: async (taskData) => {
-            try {
-              console.log('%c🚀 [Gemini V2] 直接実行開始', 'color: #ff0000; font-weight: bold; font-size: 16px');
-              console.log('[Gemini V2] タスクデータ:', {
-                model: taskData.model,
-                function: taskData.function,
-                hasText: !!taskData.prompt,
-                textLength: taskData.prompt?.length
-              });
-              
-              // runIntegrationTestを実行
-              if (!window.runIntegrationTest) {
-                throw new Error('runIntegrationTest関数が見つかりません');
-              }
-              
-              console.log('📋 Step 1: runIntegrationTest実行');
-              await window.runIntegrationTest();
-              
-              // モデルと機能リストが生成されるのを待つ
-              let retryCount = 0;
-              while ((!window.availableModels || !window.availableFeatures) && retryCount < 10) {
-                console.log(`⏳ モデル/機能リスト待機中... (${retryCount + 1}/10)`);
-                await new Promise(resolve => setTimeout(resolve, 1000));
-                retryCount++;
-              }
-              
-              // モデルと機能の番号を動的に決定
-              let modelNumber = 1; // デフォルト
-              let featureNumber = null; // デフォルトは機能なし
-              
-              // モデルの動的検索
-              if (taskData.model && window.availableModels) {
+        let result;
+        try {
+          result = await chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            func: async (taskData) => {
+              try {
+                console.log('%c🚀 [Gemini V2] 直接実行開始', 'color: #ff0000; font-weight: bold; font-size: 16px');
+                console.log('[Gemini V2] タスクデータ:', {
+                  model: taskData.model,
+                  function: taskData.function,
+                  hasText: !!taskData.prompt,
+                  textLength: taskData.prompt?.length
+                });
+                
+                // runIntegrationTestを実行
+                if (!window.runIntegrationTest) {
+                  throw new Error('runIntegrationTest関数が見つかりません');
+                }
+                
+                console.log('📋 Step 1: runIntegrationTest実行');
+                await window.runIntegrationTest();
+                
+                // モデルと機能リストが生成されるのを待つ
+                let retryCount = 0;
+                while ((!window.availableModels || !window.availableFeatures) && retryCount < 10) {
+                  console.log(`⏳ モデル/機能リスト待機中... (${retryCount + 1}/10)`);
+                  await new Promise(resolve => setTimeout(resolve, 1000));
+                  retryCount++;
+                }
+                
+                // モデルと機能の番号を動的に決定
+                let modelNumber = 1; // デフォルト
+                let featureNumber = null; // デフォルトは機能なし
+                
+                // モデルの動的検索
+                if (taskData.model && window.availableModels) {
                 console.log(`🔍 モデル「${taskData.model}」を検索中...`);
                 const targetModel = taskData.model.toLowerCase();
                 
@@ -117,9 +121,9 @@ export class AITaskExecutor {
                   }
                 }
               }
-              
-              // 機能の動的検索
-              if (taskData.function && taskData.function !== 'none' && window.availableFeatures) {
+                
+                // 機能の動的検索
+                if (taskData.function && taskData.function !== 'none' && window.availableFeatures) {
                 console.log(`🔍 機能「${taskData.function}」を検索中...`);
                 const targetFunction = taskData.function.toLowerCase();
                 
@@ -138,30 +142,34 @@ export class AITaskExecutor {
                   }
                 }
               }
-              
-              // プロンプトをwindowに設定（V2が使用するため）
-              window.currentPromptText = taskData.prompt;
-              console.log(`📝 プロンプト設定: ${taskData.prompt?.length || 0}文字`);
-              
-              // continueTestを実行
-              console.log(`📋 Step 2: continueTest(${modelNumber}, ${featureNumber})実行`);
-              const result = await window.continueTest(modelNumber, featureNumber);
-              
-              console.log('✅ [Gemini V2] 実行完了');
-              return {
-                success: true,
-                response: result?.response || '',
-                modelUsed: modelNumber,
-                featureUsed: featureNumber
-              };
-              
-            } catch (error) {
-              console.error('❌ [Gemini V2] 実行エラー:', error);
-              return { success: false, error: error.message };
-            }
-          },
-          args: [taskData]
-        });
+                
+                // プロンプトをwindowに設定（V2が使用するため）
+                window.currentPromptText = taskData.prompt;
+                console.log(`📝 プロンプト設定: ${taskData.prompt?.length || 0}文字`);
+                
+                // continueTestを実行
+                console.log(`📋 Step 2: continueTest(${modelNumber}, ${featureNumber})実行`);
+                const result = await window.continueTest(modelNumber, featureNumber);
+                
+                console.log('✅ [Gemini V2] 実行完了');
+                return {
+                  success: true,
+                  response: result?.response || '',
+                  modelUsed: modelNumber,
+                  featureUsed: featureNumber
+                };
+                
+              } catch (error) {
+                console.error('❌ [Gemini V2] 実行エラー:', error);
+                return { success: false, error: error.message };
+              }
+            },
+            args: [taskData]
+          });
+        } catch (scriptError) {
+          this.logger.error(`[AITaskExecutor] ❌ V2スクリプト実行エラー:`, scriptError);
+          throw scriptError;
+        }
         
         // 結果を返す
         if (result && result[0] && result[0].result) {
