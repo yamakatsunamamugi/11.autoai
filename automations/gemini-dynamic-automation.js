@@ -2367,4 +2367,65 @@
     window.GeminiAutomation.collectAvailableModels = collectAvailableModels;
     window.GeminiAutomation.collectAvailableFunctions = collectAvailableFunctions;
     
+    // 新しいgemini-automation-v2.jsのスクリプトを動的に読み込む
+    const loadGeminiAutomationV2 = async () => {
+        try {
+            // Chrome拡張機能のコンテキストで実行されている場合
+            if (window.chrome && window.chrome.runtime && window.chrome.runtime.getURL) {
+                const scriptUrl = chrome.runtime.getURL('src/platforms/gemini-automation-v2.js');
+                const script = document.createElement('script');
+                script.src = scriptUrl;
+                script.onload = () => {
+                    console.log('✅ Gemini Automation V2スクリプトがロードされました');
+                    
+                    // V2の関数が利用可能になったら、GeminiAutomationに統合
+                    if (window.runIntegrationTest) {
+                        window.GeminiAutomation.runIntegrationTest = window.runIntegrationTest;
+                        window.GeminiAutomation.continueTest = window.continueTest;
+                        console.log('✅ Gemini Automation V2関数が統合されました');
+                    }
+                };
+                script.onerror = (error) => {
+                    console.error('❌ Gemini Automation V2スクリプトのロードに失敗:', error);
+                };
+                (document.head || document.documentElement).appendChild(script);
+            } else {
+                // 開発環境やコンソールからの直接実行の場合
+                console.log('ℹ️ Gemini Automation V2は拡張機能のコンテキストでのみ自動ロードされます');
+                console.log('手動でロードする場合は、src/platforms/gemini-automation-v2.jsを直接実行してください');
+            }
+        } catch (error) {
+            console.error('Gemini Automation V2のロード中にエラー:', error);
+        }
+    };
+    
+    // V2スクリプトを非同期でロード
+    loadGeminiAutomationV2();
+    
+    // V2統合スクリプトもロード
+    const loadGeminiV2Integration = async () => {
+        try {
+            if (window.chrome && window.chrome.runtime && window.chrome.runtime.getURL) {
+                // V2スクリプトがロードされるのを待つ
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
+                const scriptUrl = chrome.runtime.getURL('src/platforms/gemini-v2-integration.js');
+                const script = document.createElement('script');
+                script.src = scriptUrl;
+                script.onload = () => {
+                    console.log('✅ Gemini V2 Integration スクリプトがロードされました');
+                };
+                script.onerror = (error) => {
+                    console.error('❌ Gemini V2 Integration スクリプトのロードに失敗:', error);
+                };
+                (document.head || document.documentElement).appendChild(script);
+            }
+        } catch (error) {
+            console.error('Gemini V2 Integrationのロード中にエラー:', error);
+        }
+    };
+    
+    // V2統合スクリプトを非同期でロード
+    loadGeminiV2Integration();
+    
 })();
