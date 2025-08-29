@@ -100,6 +100,7 @@
         "tests/test-deep-research.html",
         "tests/test-claude-computer.html",
         "tests/test-gemini-thinking.html",
+        "test-gemini-v2-debug.html",
         "tests/test-comprehensive-ai.html",
         "tests/test-ai-auto-operation.html",
         "tests/test-ai-auto-operation.js",

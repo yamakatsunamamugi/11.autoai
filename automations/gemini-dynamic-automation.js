@@ -1629,6 +1629,71 @@
         log('(Gemini) 自動化実行開始', 'AUTOMATION', config);
         console.log('[Gemini] runAutomation開始', config);
         
+        // 常にV2を使う！！
+        {
+            console.log('%c🚀 [Gemini] V2モード強制実行', 'color: #ff0000; font-weight: bold; font-size: 16px');
+            console.log('設定:', {
+                model: config.model,
+                function: config.function,
+                text: config.text ? config.text.substring(0, 50) + '...' : null
+            });
+            
+            // V2スクリプトが無い場合は読み込む
+            if (!window.runIntegrationTest) {
+                console.log('⏳ V2スクリプトをロード中...');
+                const script = document.createElement('script');
+                script.src = chrome.runtime.getURL('src/platforms/gemini-automation-v2.js');
+                await new Promise((resolve) => {
+                    script.onload = resolve;
+                    (document.head || document.documentElement).appendChild(script);
+                });
+                await wait(1000);
+            }
+            
+            // V2関数を直接実行
+            if (window.runIntegrationTest && window.continueTest) {
+                try {
+                    console.log('📋 Step 1: runIntegrationTest実行');
+                    await window.runIntegrationTest();
+                    await wait(2000);
+                    
+                    // モデルと機能の番号を決定
+                    let modelNumber = null;
+                    let featureNumber = null;
+                    
+                    if (config.model) {
+                        const modelMap = {
+                            'flash': 1, '2.5 flash': 1,
+                            'pro': 2, '2.5 pro': 2,
+                            'thinking': 3, '2.0 flash thinking': 3
+                        };
+                        modelNumber = modelMap[config.model.toLowerCase()] || 1;
+                        console.log(`📌 モデル「${config.model}」→ 番号${modelNumber}`);
+                    }
+                    
+                    if (config.function) {
+                        const functionMap = {
+                            'canvas': 1,
+                            'deep research': 2,
+                            'deep think': 3
+                        };
+                        featureNumber = functionMap[config.function.toLowerCase()];
+                        console.log(`📌 機能「${config.function}」→ 番号${featureNumber || 'なし'}`);
+                    }
+                    
+                    console.log('📋 Step 2: continueTest実行');
+                    const result = await window.continueTest(modelNumber, featureNumber);
+                    
+                    console.log('✅ V2実行完了');
+                    return { success: true, result, v2Mode: true };
+                    
+                } catch (v2Error) {
+                    console.error('❌ V2実行エラー:', v2Error);
+                    // エラーでも続行
+                }
+            }
+        }
+        
         // セル位置情報を含む詳細ログ
         const cellInfo = config.cellInfo || {};
         const cellPosition = cellInfo.column && cellInfo.row 

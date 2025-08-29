@@ -1710,10 +1710,20 @@ async function handleSendPrompt(request, sendResponse) {
     // プロンプト送信のみ（応答待機なし）
     const config = {
       text: prompt,
+      model: request.model || null,  // モデル情報を追加
+      function: specialMode || 'none',  // 機能情報を追加
       send: true,
       waitResponse: false,
       getResponse: false
     };
+    
+    // Gemini V2モードの判定
+    if (AI_TYPE === 'Gemini') {
+      if (config.model || (config.function && config.function !== 'none')) {
+        config.useV2 = true;
+        console.log(`[11.autoai][Gemini] 🚀 V2モード有効（handleSendPrompt） - model: ${config.model}, function: ${config.function}`);
+      }
+    }
     
     let result = null;
     switch (AI_TYPE) {
@@ -1728,7 +1738,11 @@ async function handleSendPrompt(request, sendResponse) {
         }
         break;
       case "Gemini":
-        if (window.Gemini?.runAutomation) {
+        if (window.GeminiAutomation?.runAutomation) {
+          console.log(`[11.autoai][Gemini] GeminiAutomation.runAutomationを使用 (V2: ${config.useV2 || false})`);
+          result = await window.GeminiAutomation.runAutomation(config);
+        } else if (window.Gemini?.runAutomation) {
+          console.log(`[11.autoai][Gemini] Gemini.runAutomationを使用 (V2: ${config.useV2 || false})`);
           result = await window.Gemini.runAutomation(config);
         }
         break;
@@ -2012,6 +2026,14 @@ async function sendPromptToAI(prompt, options = {}) {
     getResponse: false
   };
   
+  // Gemini V2モードの判定
+  if (targetAI === 'Gemini' || targetAI === 'gemini') {
+    if (model || (specialOperation && specialOperation !== 'none')) {
+      config.useV2 = true;
+      console.log(`[11.autoai][${AI_TYPE}] 🚀 Gemini V2モード有効 - model: ${model}, function: ${specialOperation}`);
+    }
+  }
+  
   try {
     let automation = null;
     const targetAI = aiType || AI_TYPE;
@@ -2029,6 +2051,7 @@ async function sendPromptToAI(prompt, options = {}) {
       case "Gemini":
       case "gemini":
         automation = window.GeminiAutomation || window.Gemini;
+        // V2モードはconfig内で設定済み
         break;
     }
     
@@ -2126,13 +2149,19 @@ async function handleExecuteTask(request, sendResponse) {
         break;
 
       case "Gemini":
-        // GeminiまたはGeminiAutomationを使用
-        if (window.Gemini?.runAutomation) {
-          console.log(`[11.autoai][Gemini] Gemini.runAutomationを使用`);
-          result = await window.Gemini.runAutomation(config);
-        } else if (window.GeminiAutomation?.runAutomation) {
-          console.log(`[11.autoai][Gemini] GeminiAutomation.runAutomationを使用`);
+        // V2モードの判定：modelまたはfunctionが指定されている場合
+        if (config.model || (config.function && config.function !== 'none')) {
+          config.useV2 = true;
+          console.log(`[11.autoai][Gemini] 🚀 V2モード有効 - model: ${config.model}, function: ${config.function}`);
+        }
+        
+        // GeminiAutomationまたはGeminiを使用
+        if (window.GeminiAutomation?.runAutomation) {
+          console.log(`[11.autoai][Gemini] GeminiAutomation.runAutomationを使用 (V2: ${config.useV2 || false})`);
           result = await window.GeminiAutomation.runAutomation(config);
+        } else if (window.Gemini?.runAutomation) {
+          console.log(`[11.autoai][Gemini] Gemini.runAutomationを使用 (V2: ${config.useV2 || false})`);
+          result = await window.Gemini.runAutomation(config);
         } else {
           throw new Error("Gemini/GeminiAutomationが利用できません");
         }
