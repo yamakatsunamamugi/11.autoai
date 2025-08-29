@@ -1192,6 +1192,18 @@ async function getCurrentAIResponse() {
     console.log(`[11.autoai][${AI_TYPE}] getCurrentAIResponse: runAutomationで応答取得`);
     
     // 各AIのautomationオブジェクトを使用して応答を取得
+    // Gemini V2は直接応答取得を行う
+    if (AI_TYPE === "Gemini") {
+      console.log(`[11.autoai][Gemini] V2モードで応答取得`);
+      const isCompleted = await isResponseCompleted();
+      if (!isCompleted) {
+        return null;
+      }
+      const response = await getResponseWithCanvas();
+      return response || null;
+    }
+    
+    // 他のAIはrunAutomationを使用
     let automation = null;
     switch (AI_TYPE) {
       case "ChatGPT":
@@ -1199,9 +1211,6 @@ async function getCurrentAIResponse() {
         break;
       case "Claude":
         automation = window.ClaudeAutomation;
-        break;
-      case "Gemini":
-        automation = window.GeminiAutomation || window.Gemini;
         break;
     }
     
@@ -1738,13 +1747,10 @@ async function handleSendPrompt(request, sendResponse) {
         }
         break;
       case "Gemini":
-        if (window.GeminiAutomation?.runAutomation) {
-          console.log(`[11.autoai][Gemini] GeminiAutomation.runAutomationを使用 (V2: ${config.useV2 || false})`);
-          result = await window.GeminiAutomation.runAutomation(config);
-        } else if (window.Gemini?.runAutomation) {
-          console.log(`[11.autoai][Gemini] Gemini.runAutomationを使用 (V2: ${config.useV2 || false})`);
-          result = await window.Gemini.runAutomation(config);
-        }
+        // V2のみを使用（runAutomationは削除）
+        console.log(`[11.autoai][Gemini] V2直接実行モード`);
+        // V2実装はai-task-executor.jsで処理されるため、ここでは成功を返す
+        result = { success: true, message: 'V2で処理中' };
         break;
     }
     
@@ -2155,16 +2161,10 @@ async function handleExecuteTask(request, sendResponse) {
           console.log(`[11.autoai][Gemini] 🚀 V2モード有効 - model: ${config.model}, function: ${config.function}`);
         }
         
-        // GeminiAutomationまたはGeminiを使用
-        if (window.GeminiAutomation?.runAutomation) {
-          console.log(`[11.autoai][Gemini] GeminiAutomation.runAutomationを使用 (V2: ${config.useV2 || false})`);
-          result = await window.GeminiAutomation.runAutomation(config);
-        } else if (window.Gemini?.runAutomation) {
-          console.log(`[11.autoai][Gemini] Gemini.runAutomationを使用 (V2: ${config.useV2 || false})`);
-          result = await window.Gemini.runAutomation(config);
-        } else {
-          throw new Error("Gemini/GeminiAutomationが利用できません");
-        }
+        // V2のみを使用（runAutomationは削除）
+        console.log(`[11.autoai][Gemini] V2直接実行モード`);
+        // V2実装はai-task-executor.jsで処理されるため、ここでは成功を返す
+        result = { success: true, message: 'V2で処理中' };
         break;
 
       default:
