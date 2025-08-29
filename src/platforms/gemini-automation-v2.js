@@ -1183,9 +1183,10 @@ console.log(`作成日時: ${new Date().toLocaleString('ja-JP')}`);
     window.getGeneratedText = getGeneratedText;
     window.displayTextSample = displayTextSample;
     
-    // ========== テスト自動実行 ==========
-    console.log('\n⏳ 統合テストを開始します...\n');
-    
-    await runIntegrationTest();
+    // ========== テスト自動実行は削除 ==========
+    console.log('\n✅ V2関数が利用可能になりました');
+    console.log('使用方法:');
+    console.log('  await runIntegrationTest()');
+    console.log('  await continueTest(modelNumber, featureNumber)');
     
 })();
