@@ -604,42 +604,52 @@ console.log(`作成日時: ${new Date().toLocaleString('ja-JP')}`);
     async function waitForResponse() {
         log.debug('応答待機開始...');
         const startTime = Date.now();
-        const maxWaitTime = 300000; // 5分
+        
+        // Deep Researchの場合は40分、それ以外は5分
+        const isDeepResearch = window.availableFeatures && 
+                              window.availableFeatures.some(f => f.name && f.name.toLowerCase().includes('deep research') && f.active);
+        const maxWaitTime = isDeepResearch ? 2400000 : 300000; // 40分 or 5分
+        
+        if (isDeepResearch) {
+            log.info('🔬 Deep Researchモード: 最大40分待機');
+        }
         
         const canvasState = checkCanvas();
 
         // 1. Canvas機能が有効な場合の停止条件
         if (canvasState.enabled) {
-            log.info('Canvas機能が有効なため、専用の待機ロジックを使用します。');
+            log.info('Canvas機能が有効なため、60秒待機後に停止ボタンを監視します。');
             
-            // 1-1. 1分待機
-            log.debug('まず60秒間待機します...');
+            // 1-1. 60秒待機
+            log.debug('60秒間待機します...');
             await wait(60000);
-            log.debug('60秒経過。これより文字数の監視を開始します。');
+            log.debug('60秒経過。停止ボタンの監視を開始します。');
 
-            let lastLength = -1;
-            let currentLength = 0;
-            const checkInterval = 10000; // 10秒ごと
+            // 1-2. 停止ボタンが消えるまで待機（文字数監視は削除）
+            const checkInterval = 2000; // 2秒ごと
             
             while (Date.now() - startTime < maxWaitTime) {
-                // 1-2. Canvasのテキスト文字数を取得
-                currentLength = getCanvasTextLength();
-                log.debug(`Canvas文字数チェック: ${currentLength}文字 (前回: ${lastLength}文字)`);
-
-                // 1-3. 10秒間テキストが0文字以上で文字数が変更しなくなったら停止
-                if (currentLength > 0 && currentLength === lastLength) {
-                    log.success(`✓ 応答完了 (Canvasの文字数が${checkInterval / 1000}秒間安定)`);
+                const stopButton = document.querySelector('button.stop') ||
+                                   document.querySelector('button:has(.stop-icon)') ||
+                                   document.querySelector('button:has(mat-icon[fonticon="stop"])');
+                
+                if (!stopButton) {
+                    log.success('✓ 応答完了 (Canvas - 停止ボタンが消えました)');
                     return { completed: true, duration: Date.now() - startTime };
                 }
                 
-                lastLength = currentLength;
+                const elapsed = Math.floor((Date.now() - startTime) / 1000);
+                if (elapsed > 0 && elapsed % 30 === 0) {
+                     log.debug(`Canvas待機中... ${elapsed}秒経過`);
+                }
+                
                 await wait(checkInterval);
             }
 
-            log.warn('⚠ タイムアウト (Canvasの生成が完了しませんでした)');
+            log.warn(`⚠ タイムアウト (Canvas - ${maxWaitTime/60000}分経過)`);
             return { completed: false, duration: maxWaitTime };
         } 
-        // 2. 通常モード（Canvas以外）の停止条件 (元のコードそのまま)
+        // 2. 通常モード（Canvas以外）の停止条件
         else {
             log.info('通常応答の待機ロジックを使用します。');
             const checkInterval = 2000; // 2秒ごとにチェック
@@ -655,14 +665,14 @@ console.log(`作成日時: ${new Date().toLocaleString('ja-JP')}`);
                 }
                 
                 const elapsed = Math.floor((Date.now() - startTime) / 1000);
-                if (elapsed > 0 && elapsed % 10 === 0) {
+                if (elapsed > 0 && elapsed % 30 === 0) {
                      log.debug(`待機中... ${elapsed}秒経過`);
                 }
                 
                 await wait(checkInterval);
             }
             
-            log.warn('⚠ タイムアウト（300秒経過）');
+            log.warn(`⚠ タイムアウト（${maxWaitTime/60000}分経過）`);
             return { completed: false, duration: maxWaitTime };
         }
     }
