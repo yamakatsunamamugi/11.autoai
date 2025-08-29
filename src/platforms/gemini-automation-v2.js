@@ -1,7 +1,8 @@
-// 動作テストコードGemini   要素
+// 動作テストコードGemini V2 - Canvas 60秒待機特化版
 // 作成日時: 
-console.log(`%c動作テストコードGemini - 統合版`, 'color: #4285f4; font-weight: bold; font-size: 16px');
-console.log(`作成日時: ${new Date().toLocaleString('ja-JP')}`);
+console.log(`%c🚀 Gemini Automation V2 - Canvas特化版`, 'color: #ff0000; font-weight: bold; font-size: 18px');
+console.log(`%c📅 ロード日時: ${new Date().toLocaleString('ja-JP')}`, 'color: #666; font-size: 12px');
+console.log(`%c🎯 特徴: Canvas 60秒待機 + Deep Research 40分対応`, 'color: #4285f4; font-weight: bold');
 
 (async function() {
     // =============== テキスト表示関数（元のコードそのまま） ===============
@@ -192,7 +193,10 @@ console.log(`作成日時: ${new Date().toLocaleString('ja-JP')}`);
             try {
                 const elem = document.querySelector(selector);
                 if (elem) return elem;
-            } catch (e) {}
+            } catch (e) {
+                log.error(`モデル検索中のエラー: ${e.message || e}`);
+                console.error('詳細なエラー情報:', e);
+            }
         }
         return null;
     };
@@ -202,7 +206,10 @@ console.log(`作成日時: ${new Date().toLocaleString('ja-JP')}`);
             try {
                 const elems = document.querySelectorAll(selector);
                 if (elems.length > 0) return Array.from(elems);
-            } catch (e) {}
+            } catch (e) {
+                log.error(`モデル検索中のエラー: ${e.message || e}`);
+                console.error('詳細なエラー情報:', e);
+            }
         }
         return [];
     };
@@ -224,7 +231,10 @@ console.log(`作成日時: ${new Date().toLocaleString('ja-JP')}`);
                     const button = el.tagName === 'BUTTON' ? el : el.closest('button');
                     if (button) return button;
                 }
-            } catch (e) {}
+            } catch (e) {
+                log.error(`モデル検索中のエラー: ${e.message || e}`);
+                console.error('詳細なエラー情報:', e);
+            }
         }
         return null;
     };
@@ -246,7 +256,10 @@ console.log(`作成日時: ${new Date().toLocaleString('ja-JP')}`);
                         return text;
                     }
                 }
-            } catch (e) {}
+            } catch (e) {
+                log.error(`モデル検索中のエラー: ${e.message || e}`);
+                console.error('詳細なエラー情報:', e);
+            }
         }
         return 'Unknown';
     };
@@ -290,7 +303,10 @@ console.log(`作成日時: ${new Date().toLocaleString('ja-JP')}`);
             info.isSelected = button.classList.contains('is-selected') || 
                               button.getAttribute('aria-checked') === 'true' ||
                               !!button.querySelector('mat-icon[fonticon="check_circle"]');
-        } catch (e) {}
+        } catch (e) {
+            log.error(`機能アクセス中のエラー: ${e.message || e}`);
+            console.error('詳細なエラー情報:', e);
+        }
         
         return info;
     };
@@ -522,8 +538,10 @@ console.log(`作成日時: ${new Date().toLocaleString('ja-JP')}`);
             throw new Error('テキスト入力の確認に失敗');
             
         } catch (error) {
-            console.error('テキスト入力エラー:', error.message);
-            return { success: false, error: error.message };
+            log.error(`テキスト入力エラー: ${error.message || error}`);
+            console.error('テキスト入力詳細なエラー情報:', error);
+            console.error('エラースタックトレース:', error.stack || 'スタック情報なし');
+            return { success: false, error: error.message || error.toString() };
         }
     }
     
@@ -574,7 +592,9 @@ console.log(`作成日時: ${new Date().toLocaleString('ja-JP')}`);
             return true;
             
         } catch (error) {
-            console.error('送信エラー:', error.message);
+            log.error(`送信エラー: ${error.message || error}`);
+            console.error('送信詳細なエラー情報:', error);
+            console.error('エラースタックトレース:', error.stack || 'スタック情報なし');
             return false;
         }
     }
@@ -751,8 +771,9 @@ console.log(`作成日時: ${new Date().toLocaleString('ja-JP')}`);
     
     // =============== メイン統合テスト実行 ===============
     async function runIntegrationTest() {
+        console.log('%c🚀 [V2] runIntegrationTest開始', 'color: #ff0000; font-weight: bold; font-size: 16px');
         console.log('\n╔══════════════════════════════════════════════╗');
-        console.log('║  Gemini 統合テスト開始                         ║');
+        console.log('║  🚀 Gemini V2統合テスト開始                   ║');
         console.log('╚══════════════════════════════════════════════╝\n');
         
         const testResults = {
@@ -767,6 +788,7 @@ console.log(`作成日時: ${new Date().toLocaleString('ja-JP')}`);
         
         try {
             // ========== STEP 1: モデル探索 ==========
+            console.log('%c📋 [V2] STEP 1: 利用可能なモデルを探索', 'color: #4285f4; font-weight: bold');
             console.log('\n📋 STEP 1: 利用可能なモデルを探索');
             console.log('=' * 50);
             
@@ -883,15 +905,22 @@ console.log(`作成日時: ${new Date().toLocaleString('ja-JP')}`);
             console.log('\n✋ テストはここで停止しました。続行するには上記のコマンドを使用してください。');
             return; // ここで関数を終了
         } catch (error) {
-            log.error(`テストエラー: ${error.message}`);
-            testResults.エラー.push(error.message);
+            log.error(`テストエラー: ${error.message || error}`);
+            console.error('テスト詳細なエラー情報:', error);
+            console.error('エラースタックトレース:', error.stack || 'スタック情報なし');
+            testResults.エラー.push({
+                message: error.message || error.toString(),
+                stack: error.stack || 'スタック情報なし',
+                timestamp: new Date().toISOString()
+            });
         }
     }
     
     // ========== テスト続行関数（ユーザー選択後） ==========
     async function continueTest(modelNumber = null, featureNumber = null) {
+        console.log('%c🚀 [V2] continueTest開始', 'color: #ff0000; font-weight: bold; font-size: 16px');
         console.log('\n╔══════════════════════════════════════════════╗');
-        console.log('║        テスト続行                              ║');
+        console.log('║        🎯 V2テスト続行                         ║');
         console.log('╚══════════════════════════════════════════════╝\n');
         
         const testResults = window.testResults || {
@@ -994,8 +1023,10 @@ console.log(`作成日時: ${new Date().toLocaleString('ja-JP')}`);
             console.log('\n📋 STEP 6: メッセージ送信');
             console.log('=' * 50);
             
-            // テキスト入力（元のコードの関数を使用）
-            const inputResult = await safeInputText('桃太郎について2000文字で解説して');
+            // テキスト入力（グローバル変数またはデフォルトテキストを使用）
+            const promptText = window.currentPromptText || '桃太郎について2000文字で解説して';
+            console.log(`📝 プロンプト入力: ${promptText.substring(0, 100)}...`);
+            const inputResult = await safeInputText(promptText);
             
             testResults.ステップ = testResults.ステップ || [];
             testResults.ステップ.push({
@@ -1104,8 +1135,15 @@ console.log(`作成日時: ${new Date().toLocaleString('ja-JP')}`);
             
         } catch (error) {
             log.error(`テスト続行エラー: ${error.message || error}`);
+            console.error('テスト続行詳細なエラー情報:', error);
+            console.error('エラースタックトレース:', error.stack || 'スタック情報なし');
             testResults.エラー = testResults.エラー || [];
-            testResults.エラー.push(error.message || error.toString());
+            testResults.エラー.push({
+                message: error.message || error.toString(),
+                stack: error.stack || 'スタック情報なし',
+                timestamp: new Date().toISOString(),
+                context: 'テスト続行処理'
+            });
         }
         
         // 所要時間を計算（startTimeが定義されているか確認）
@@ -1152,8 +1190,32 @@ console.log(`作成日時: ${new Date().toLocaleString('ja-JP')}`);
         console.log(`終了時刻: ${new Date().toLocaleString('ja-JP')}`);
         
         if (testResults.エラー && testResults.エラー.length > 0) {
-            console.log('\n⚠️ エラー:');
-            testResults.エラー.forEach(err => console.log(`  - ${err}`));
+            console.log('\n📚 エラー詳細レポート');
+            console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+            testResults.エラー.forEach((error, index) => {
+                if (typeof error === 'string') {
+                    // 古い形式のエラー（文字列）
+                    console.log(`❌ エラー ${index + 1}: ${error}`);
+                } else {
+                    // 新しい形式のエラー（オブジェクト）
+                    console.log(`❌ エラー ${index + 1}:`);
+                    console.log(`   📝 メッセージ: ${error.message}`);
+                    console.log(`   📅 発生時刻: ${error.timestamp}`);
+                    if (error.context) {
+                        console.log(`   🔍 コンテキスト: ${error.context}`);
+                    }
+                    if (error.stack && error.stack !== 'スタック情報なし') {
+                        console.log(`   📚 スタックトレース (先頭5行):`);
+                        const stackLines = error.stack.split('\n').slice(0, 5);
+                        stackLines.forEach(line => console.log(`      ${line}`));
+                        if (error.stack.split('\n').length > 5) {
+                            console.log(`      ... あと ${error.stack.split('\n').length - 5} 行`);
+                        }
+                    }
+                    console.log('   ─'.repeat(40));
+                }
+            });
+            console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         }
         
         // デバッグコマンド

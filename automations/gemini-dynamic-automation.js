@@ -1657,28 +1657,69 @@
                     await window.runIntegrationTest();
                     await wait(2000);
                     
-                    // モデルと機能の番号を決定
+                    // availableModelsとavailableFeaturesを待つ
+                    let retryCount = 0;
+                    while ((!window.availableModels || !window.availableFeatures) && retryCount < 10) {
+                        console.log(`⏳ モデル/機能リスト待機中... (${retryCount + 1}/10)`);
+                        await wait(1000);
+                        retryCount++;
+                    }
+                    
+                    // モデルと機能の番号を動的に決定
                     let modelNumber = null;
                     let featureNumber = null;
                     
-                    if (config.model) {
-                        const modelMap = {
-                            'flash': 1, '2.5 flash': 1,
-                            'pro': 2, '2.5 pro': 2,
-                            'thinking': 3, '2.0 flash thinking': 3
-                        };
-                        modelNumber = modelMap[config.model.toLowerCase()] || 1;
-                        console.log(`📌 モデル「${config.model}」→ 番号${modelNumber}`);
+                    // モデルの動的検索
+                    if (config.model && window.availableModels) {
+                        console.log(`🔍 モデル「${config.model}」を検索中...`);
+                        const targetModel = config.model.toLowerCase();
+                        
+                        for (let i = 0; i < window.availableModels.length; i++) {
+                            const model = window.availableModels[i];
+                            const modelName = (model.名前 || model.name || '').toLowerCase();
+                            
+                            // 部分一致で検索
+                            if (modelName.includes(targetModel) || 
+                                targetModel.includes(modelName) ||
+                                (targetModel.includes('flash') && modelName.includes('flash')) ||
+                                (targetModel.includes('pro') && modelName.includes('pro')) ||
+                                (targetModel.includes('thinking') && modelName.includes('thinking'))) {
+                                modelNumber = model.番号 || (i + 1);
+                                console.log(`✅ モデル「${config.model}」→ 番号${modelNumber} (${model.名前 || model.name})`);
+                                break;
+                            }
+                        }
+                        
+                        if (!modelNumber) {
+                            console.log(`⚠️ モデル「${config.model}」が見つかりません。デフォルト1番を使用`);
+                            modelNumber = 1;
+                        }
                     }
                     
-                    if (config.function) {
-                        const functionMap = {
-                            'canvas': 1,
-                            'deep research': 2,
-                            'deep think': 3
-                        };
-                        featureNumber = functionMap[config.function.toLowerCase()];
-                        console.log(`📌 機能「${config.function}」→ 番号${featureNumber || 'なし'}`);
+                    // 機能の動的検索
+                    if (config.function && config.function !== 'none' && window.availableFeatures) {
+                        console.log(`🔍 機能「${config.function}」を検索中...`);
+                        const targetFunction = config.function.toLowerCase();
+                        
+                        for (let i = 0; i < window.availableFeatures.length; i++) {
+                            const feature = window.availableFeatures[i];
+                            const featureName = (feature.name || feature.名前 || '').toLowerCase();
+                            
+                            // 部分一致で検索
+                            if (featureName.includes(targetFunction) || 
+                                targetFunction.includes(featureName) ||
+                                (targetFunction === 'canvas' && featureName.includes('canvas')) ||
+                                (targetFunction.includes('research') && featureName.includes('research')) ||
+                                (targetFunction.includes('think') && featureName.includes('think'))) {
+                                featureNumber = i + 1; // 1ベースのインデックス
+                                console.log(`✅ 機能「${config.function}」→ 番号${featureNumber} (${feature.name || feature.名前})`);
+                                break;
+                            }
+                        }
+                        
+                        if (!featureNumber) {
+                            console.log(`⚠️ 機能「${config.function}」が見つかりません`);
+                        }
                     }
                     
                     console.log('📋 Step 2: continueTest実行');
