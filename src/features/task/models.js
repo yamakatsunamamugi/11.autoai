@@ -36,6 +36,7 @@ class Task {
       reportColumn: this.reportColumn,
       specialOperation: this.specialOperation,
       model: this.model,
+      function: this.function,  // 機能情報を保存
       multiAI: this.multiAI,
       existingAnswer: this.existingAnswer,
       skipReason: this.skipReason,

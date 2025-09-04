@@ -283,13 +283,42 @@
                 if (!sendButton) throw new Error("送信ボタンが見つからないか、送信不可能な状態です。");
                 sendButton.click();
                 
+                // 送信時刻を記録（SpreadsheetLogger用）
+                log(`🔍 送信時刻記録開始 - AIHandler: ${!!window.AIHandler}, recordSendTimestamp: ${!!window.AIHandler?.recordSendTimestamp}, currentAITaskInfo: ${!!window.currentAITaskInfo}`, 'info');
+                if (window.AIHandler && window.AIHandler.recordSendTimestamp) {
+                    try {
+                        log(`📝 送信時刻記録実行開始 - タスクID: ${window.currentAITaskInfo?.taskId}`, 'info');
+                        await window.AIHandler.recordSendTimestamp('Gemini');
+                        log(`✅ 送信時刻記録成功`, 'success');
+                    } catch (error) {
+                        log(`❌ 送信時刻記録エラー: ${error.message}`, 'error');
+                    }
+                } else {
+                    log(`⚠️ AIHandler または recordSendTimestamp が利用できません`, 'warning');
+                }
+                
                 return "メッセージを送信しました。";
             });
             
             // ステップ4: 応答待機
             const responseText = await logStep('ステップ4: 応答待機', () => new Promise(async (resolve, reject) => {
                 // Deep Researchモードの判定
-                const isDeepResearchMode = featureName && (featureName.toLowerCase().includes('deep research') || featureName.toLowerCase().includes('deep'));
+                console.log(`🔍 [機能判定] Gemini機能チェック:`, {
+                    featureName: featureName,
+                    isDeepResearch: featureName === 'DeepResearch',
+                    isDeepReserch: featureName === 'DeepReserch', 
+                    containsDeepResearch: featureName && featureName.toLowerCase().includes('deep research'),
+                    containsDeep: featureName && featureName.toLowerCase().includes('deep')
+                });
+                
+                const isDeepResearchMode = featureName && (
+                    featureName.toLowerCase().includes('deep research') || 
+                    featureName.toLowerCase().includes('deep') ||
+                    featureName === 'DeepReserch' ||  // 追加
+                    featureName === 'DeepResearch'    // 追加
+                );
+                
+                console.log(`🎯 [機能判定] Gemini特別モード判定結果: ${isDeepResearchMode} (機能: "${featureName}")`);
                 
                 log(`待機モード: ${isDeepResearchMode ? '🔬 Deep Research' : isCanvasMode ? '🎨 Canvas' : '💬 通常'}`, 'info');
                 
@@ -482,10 +511,22 @@
                 await discoverModelsAndFeatures();
             }
             
-            // タスクデータから情報を取得（スプレッドシートの値をそのまま使用）
+            // タスクデータから情報を取得（機能名マッピング処理あり）
             const modelName = taskData.model;  // そのまま（変換しない）
-            const featureName = taskData.function;  // そのまま（変換しない）
+            let featureName = taskData.function;
             const promptText = taskData.prompt || taskData.text || '桃太郎を2000文字で解説して';
+            
+            // 機能名マッピング（スプレッドシート値 → Gemini UI表記）
+            const featureMapping = {
+                'DeepReserch': 'Deep Research',
+                'DeepResearch': 'Deep Research',
+                'Deep Research': 'Deep Research'
+            };
+            
+            const mappedFeatureName = featureMapping[featureName] || featureName;
+            featureName = mappedFeatureName;
+            
+            console.log(`🔄 [機能名マッピング] Gemini: "${taskData.function}" → "${featureName}"`);
             
             // モデル名と機能名を解決
             let resolvedModel = modelName;
