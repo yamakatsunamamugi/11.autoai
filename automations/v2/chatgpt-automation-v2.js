@@ -420,7 +420,9 @@
                 // 利用可能なモデルを検索してselectedModelオブジェクトを作成
                 const modelButton = await findElement(SELECTORS.modelButton, 'モデル切り替えボタン');
                 if (modelButton) {
-                    triggerReactEvent(modelButton, 'pointer');
+                    modelButton.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+                    await sleep(100);
+                    modelButton.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
                     await sleep(1500);
                     
                     const modelMenu = await findElement(SELECTORS.modelMenu, 'モデルメニュー');
@@ -516,7 +518,9 @@
                     throw new Error('モデルボタンが見つかりません');
                 }
                 
-                triggerReactEvent(modelBtn, 'pointer');
+                modelBtn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+                await sleep(100);
+                modelBtn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
                 await sleep(1500);
                 
                 const modelMenuEl = await findElement(SELECTORS.modelMenu, 'モデルメニュー');
