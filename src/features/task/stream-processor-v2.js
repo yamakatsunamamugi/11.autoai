@@ -46,7 +46,7 @@ export default class StreamProcessorV2 {
     this.writtenCells = new Map();
     this.spreadsheetData = null;
     this.spreadsheetLogger = null;
-    this.isFirstTaskProcessed = false;
+    this.processedCells = new Set(); // セル単位で処理済みを追跡
     
     // 再実行管理状態
     this.failedTasksByColumn = new Map(); // column -> Set<task>
@@ -422,18 +422,23 @@ export default class StreamProcessorV2 {
             const isFirstInGroup = isGroupTask && task.groupPosition === 0;
             const isLastInGroup = isGroupTask && task.groupPosition === 2;
             
+            // ログセルを特定（ログ列と行の組み合わせ）
+            const logCellKey = `${task.logColumns[0]}_${task.row}`;
+            const isFirstForThisCell = !this.processedCells.has(logCellKey);
+            
             await this.spreadsheetLogger.writeLogToSpreadsheet(taskWithModel, {
               url: currentUrl,
               sheetsClient: globalThis.sheetsClient,
               spreadsheetId,
               gid,
-              isFirstTask: !this.isFirstTaskProcessed || isFirstInGroup,
+              isFirstTask: isFirstForThisCell || isFirstInGroup,
               isGroupTask: isGroupTask,
               isLastInGroup: isLastInGroup,
               enableWriteVerification: false // 書き込み確認は無効化（パフォーマンスのため）
             });
             
-            this.isFirstTaskProcessed = true;
+            // このセルを処理済みとしてマーク
+            this.processedCells.add(logCellKey);
             this.logger.log(`[StreamProcessorV2] ✅ ログを書き込み: ${task.logColumns[0]}${task.row}`);
             
           } catch (logError) {

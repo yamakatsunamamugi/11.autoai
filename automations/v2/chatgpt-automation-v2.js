@@ -508,8 +508,13 @@
             // ========================================
             // ステップ5: モデル選択（テスト済みコード）
             // ========================================
-            if (selectedModel && modelName) {
+            if (modelName) {
                 log('\n【ステップ5】モデル選択', 'step');
+                
+                // selectedModelが事前検索で見つからなかった場合の情報を出力
+                if (!selectedModel) {
+                    log(`事前検索でモデル "${modelName}" が見つかりませんでした。再検索を試みます。`, 'warning');
+                }
                 
                 // 5-1: モデルメニューを開く
                 log('5-1. モデルのメニューを開く', 'step');
@@ -543,21 +548,33 @@
                 // 5-2: 該当のモデルを選択（テスト済みコードのロジック）
                 log('5-2. 該当のモデルを選択する', 'step');
                 const allMenuItems = document.querySelectorAll('[role="menuitem"]');
-                const targetItem = Array.from(allMenuItems).find(item => {
-                    const text = getCleanText(item);
-                    return text === selectedModel.name || 
-                           (selectedModel.testId && item.getAttribute('data-testid') === selectedModel.testId);
-                });
+                
+                // selectedModelがない場合は、modelNameで直接検索
+                let targetItem = null;
+                if (selectedModel) {
+                    targetItem = Array.from(allMenuItems).find(item => {
+                        const text = getCleanText(item);
+                        return text === selectedModel.name || 
+                               (selectedModel.testId && item.getAttribute('data-testid') === selectedModel.testId);
+                    });
+                } else {
+                    // selectedModelがない場合、modelNameで直接検索
+                    targetItem = Array.from(allMenuItems).find(item => {
+                        const text = getCleanText(item);
+                        return text === modelName || text.includes(modelName);
+                    });
+                }
                 
                 if (targetItem) {
                     targetItem.click();
                     await sleep(2000);
-                    log(`モデル選択完了: ${selectedModel.name}`, 'success');
+                    const selectedName = selectedModel ? selectedModel.name : modelName;
+                    log(`モデル選択完了: ${selectedName}`, 'success');
                 } else {
-                    throw new Error('指定されたモデルが見つかりません');
+                    log(`モデル "${modelName}" が見つかりません。デフォルトモデルを使用します。`, 'warning');
                 }
             } else {
-                log('モデル選択をスキップ（モデル情報が不完全）', 'warning');
+                log('モデル選択をスキップ（モデル名が指定されていません）', 'info');
             }
             
             // ========================================
@@ -566,12 +583,9 @@
             let mappedFeatureName = null;
             if (featureName && featureName !== '' && featureName !== 'none' && featureName !== '通常') {
                 // 機能名マッピング（スプレッドシート値 → ChatGPT UI表記）
+                // 必要最小限のマッピングのみ（スペルミスの修正など）
                 const featureMapping = {
-                    'DeepReserch': 'Deep Research',
-                    'DeepResearch': 'Deep Research',
-                    'Deep Research': 'Deep Research',
-                    'エージェントモード': 'エージェントモード',
-                    'エージェントモード新規': 'エージェントモード新規'
+                    'DeepReserch': 'Deep Research'  // スペルミスの修正のみ
                 };
                 
                 mappedFeatureName = featureMapping[featureName] || featureName;
@@ -608,21 +622,35 @@
                     const moreBtn = findElementByText('[role="menuitem"]', 'さらに表示');
                     if (moreBtn) {
                         moreBtn.click();
-                        await sleep(1000);
+                        
+                        // サブメニューが表示されるまで待機（最大3秒）
+                        let subMenu = null;
+                        for (let i = 0; i < 6; i++) {
+                            await sleep(500);
+                            subMenu = document.querySelector('[data-side="right"]');
+                            if (subMenu) {
+                                console.log(`✅ [機能検索] サブメニューが表示されました (${(i + 1) * 0.5}秒後)`);
+                                break;
+                            }
+                        }
                         
                         // 6-3: サブメニューで機能を探す
-                        log('6-3. 機能を選択', 'step');
-                        const subMenu = document.querySelector('[data-side="right"]');
+                        log('6-3. サブメニューで機能を選択', 'step');
                         if (subMenu) {
-                            featureElement = subMenu.querySelector(`[role="menuitemradio"]:contains("${mappedFeatureName}")`);
-                            if (!featureElement) {
-                                featureElement = findElementByText('[role="menuitemradio"]', mappedFeatureName, subMenu);
-                            }
+                            // 追加で少し待機してメニュー項目が完全にレンダリングされるのを待つ
+                            await sleep(500);
+                            // セレクタのバリエーションを試す
+                            featureElement = findElementByText('[role="menuitemradio"]', mappedFeatureName, subMenu);
                             console.log(`🔍 [機能検索] サブメニューで "${mappedFeatureName}" を検索: ${featureElement ? '見つかった' : '見つからない'}`);
+                        } else {
+                            console.log(`⚠️ [機能検索] サブメニューが見つかりません（3秒待機後）`);
                         }
+                    } else {
+                        console.log(`⚠️ [機能検索] "さらに表示"ボタンが見つかりません`);
                     }
                 }
                 
+                // すべての検索が終わってから判定
                 if (featureElement) {
                     featureElement.click();
                     await sleep(1500);
@@ -643,13 +671,33 @@
                         log('機能ボタンが表示されていません', 'warning');
                     }
                 } else {
-                    // 利用可能な機能一覧を表示
+                    // デバッグ: 利用可能な機能を収集
                     const allFeatures = [];
-                    document.querySelectorAll('[role="menuitemradio"]').forEach(item => {
+                    
+                    // メインメニューの機能を取得
+                    const mainMenuItems = document.querySelectorAll('[role="menuitemradio"]');
+                    mainMenuItems.forEach(item => {
                         const text = getCleanText(item);
-                        if (text) allFeatures.push(text);
+                        if (text) {
+                            // サブメニュー内かメインメニュー内かを判定
+                            const isInSubMenu = item.closest('[data-side="right"]');
+                            if (isInSubMenu) {
+                                allFeatures.push(`[サブ] ${text}`);
+                            } else {
+                                allFeatures.push(`[メイン] ${text}`);
+                            }
+                        }
                     });
+                    
                     console.log(`❌ [機能検索] "${mappedFeatureName}" が見つかりません。利用可能な機能:`, allFeatures);
+                    
+                    // より詳細な情報を出力
+                    if (allFeatures.length === 0) {
+                        console.log(`⚠️ [機能検索] メニュー項目が1つも見つかりません。メニューが正しく開いていない可能性があります。`);
+                    } else {
+                        console.log(`📋 [機能検索] 見つかった機能数: ${allFeatures.length}個`);
+                    }
+                    
                     log(`指定された機能 "${mappedFeatureName}" が見つかりません`, 'warning');
                 }
                 

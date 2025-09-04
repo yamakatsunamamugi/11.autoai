@@ -50,7 +50,9 @@
       "Bash(git cherry-pick:*)",
       "Bash(bash:*)",
       "Bash(npx eslint:*)",
-      "Bash(git show:*)"
+      "Bash(git show:*)",
+      "Read(///**)",
+      "Read(///**)"
     ],
     "defaultMode": "acceptEdits",
     "additionalDirectories": [

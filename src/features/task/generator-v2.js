@@ -501,7 +501,7 @@ export default class TaskGeneratorV2 {
       shouldProcess = false;
     }
     
-    return true;
+    return shouldProcess;
   }
 
   /**

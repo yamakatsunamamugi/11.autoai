@@ -178,7 +178,7 @@ export class SpreadsheetLogger {
       // 置換に失敗した場合は末尾に追加
       if (updatedLog === existingLog) {
         console.log(`⚠️ [SpreadsheetLogger] 置換失敗、末尾に追加`);
-        return `${existingLog}\n\n${newLog}`;
+        return `${existingLog}\n\n═══════════════════════\n\n${newLog}`;
       }
       
       return updatedLog;
@@ -186,7 +186,7 @@ export class SpreadsheetLogger {
     
     // 新しいAIのログなので末尾に追加
     console.log(`➕ [SpreadsheetLogger] 新しいAIログを末尾に追加 (AI: ${aiDisplayName})`);
-    return `${existingLog}\n\n${newLog}`;
+    return `${existingLog}\n\n═══════════════════════\n\n${newLog}`;
   }
 
   /**
@@ -387,18 +387,13 @@ export class SpreadsheetLogger {
         // 既存ログに追加（上書きではなく追加）
         if (existingLog && existingLog.trim() !== '') {
           if (options.isGroupTask && options.isLastInGroup) {
-            // 3種類AIグループの最後：既存ログにグループ全体を追加
-            mergedLog = `${existingLog}\n\n${mergedLog}`;
+            // 3種類AIグループの最後：既存ログにグループ全体を追加（明確な区切りで）
+            mergedLog = `${existingLog}\n\n📋========== 3種類AI実行ログ ==========📋\n\n${mergedLog}`;
             console.log(`➕ [SpreadsheetLogger] 既存ログに3種類AIグループを追加`);
           } else {
-            // 通常タスク：同じAIのログチェック
-            const aiDisplayName = this.getAIDisplayName(sendTimeInfo.aiType);
-            if (existingLog.includes(`---------- ${aiDisplayName} ----------`)) {
-              console.log(`⚠️ [SpreadsheetLogger] 同じAIのログが既存、スキップ (AI: ${sendTimeInfo.aiType})`);
-              return; // 同じAIのログが既にある場合はスキップ
-            }
-            mergedLog = `${existingLog}\n\n${mergedLog}`;
-            console.log(`➕ [SpreadsheetLogger] 既存ログに追加 (AI: ${sendTimeInfo.aiType})`);
+            // 通常タスク：既存ログとマージ（同じAIのログは置換）
+            mergedLog = this.mergeWithExistingLog(existingLog, mergedLog, sendTimeInfo.aiType);
+            console.log(`🔄 [SpreadsheetLogger] 既存ログとマージ完了 (AI: ${sendTimeInfo.aiType})`);
           }
         } else {
           console.log(`➕ [SpreadsheetLogger] 新規ログ作成 (${options.isGroupTask ? '3種類AIグループ' : 'AI: ' + sendTimeInfo.aiType})`);
@@ -748,8 +743,8 @@ export class SpreadsheetLogger {
     // contentのみを取り出して結合
     const sortedContents = normalizedLogs.map(log => log.content);
     
-    // テキスト形式で結合
-    return sortedContents.join('\n\n');
+    // テキスト形式で結合（明確な区切りを追加）
+    return sortedContents.join('\n\n====================\n\n');
   }
   
   /**
