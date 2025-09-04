@@ -60,8 +60,8 @@ export class AITaskExecutor {
       if (taskData.aiType.toLowerCase() === 'gemini') {
         this.logger.log(`[AITaskExecutor] 🎯 Gemini統合版実行`);
         
-        // V2版があれば使用、なければ既存版
-        const geminiScript = v2ScriptMap['gemini'] || 'src/platforms/gemini-automation.js';
+        // V2版を使用（V2版が存在することを確認済み）
+        const geminiScript = v2ScriptMap['gemini'];
         
         // 統合版スクリプトを注入
         await chrome.scripting.executeScript({
@@ -172,20 +172,18 @@ export class AITaskExecutor {
       const hasV2 = v2ScriptMap.hasOwnProperty(aiTypeLower);
       const isV2Available = hasV2;
       
-      // AI固有のスクリプトマップ（V2版を優先）
+      // AI固有のスクリプトマップ（V2版を常に使用）
       const scriptFileMap = {
-        'claude': hasV2 ? v2ScriptMap['claude'] : 'automations/claude-automation-dynamic.js',
-        'chatgpt': hasV2 ? v2ScriptMap['chatgpt'] : 'automations/chatgpt-automation.js',
-        'gemini': hasV2 ? v2ScriptMap['gemini'] : 'src/platforms/gemini-automation.js',
+        'claude': v2ScriptMap['claude'],
+        'chatgpt': v2ScriptMap['chatgpt'],
+        'gemini': v2ScriptMap['gemini'],
         'genspark': 'automations/genspark-automation.js'
       };
 
-      // V2版の場合は共通スクリプトを読み込まない（V2は独立して動作）
-      const commonScripts = isV2Available ? [] : [
+      // V2版でも基本的な共通スクリプトは必要
+      const commonScripts = [
         'automations/feature-constants.js',
-        'automations/common-ai-handler.js',
-        'automations/deepresearch-handler.js',
-        'automations/claude-deepresearch-selector.js'
+        'automations/common-ai-handler.js'
       ];
 
       // AI固有のスクリプトを追加（統合テストと同じ方式）
@@ -210,24 +208,34 @@ export class AITaskExecutor {
       const injectionTime = (performance.now() - injectionStartTime).toFixed(0);
       this.logger.log(`[AITaskExecutor] ✅ [${taskData.aiType}] スクリプト注入完了 (${injectionTime}ms)、初期化確認中...`);
 
-      // V2版の場合、ChatGPTAutomationV2の存在を確認
-      if (taskData.aiType.toLowerCase() === 'chatgpt' && isV2Available) {
-        try {
-          const [v2Check] = await chrome.scripting.executeScript({
-            target: { tabId: tabId },
-            func: () => {
-              const exists = typeof window.ChatGPTAutomationV2 !== 'undefined';
-              console.log(`[V2チェック] ChatGPTAutomationV2存在確認: ${exists}`);
-              if (exists) {
-                console.log('[V2チェック] ChatGPTAutomationV2のメソッド:', Object.keys(window.ChatGPTAutomationV2));
-              }
-              return exists;
+      // V2版の存在を確認（全AIタイプ）
+      try {
+        const [v2Check] = await chrome.scripting.executeScript({
+          target: { tabId: tabId },
+          func: (aiType) => {
+            const v2Names = {
+              'chatgpt': 'ChatGPTAutomationV2',
+              'claude': 'ClaudeAutomationV2', 
+              'gemini': 'GeminiAutomation'  // GeminiはV2でも同じ名前
+            };
+            const v2Name = v2Names[aiType.toLowerCase()];
+            const exists = v2Name && typeof window[v2Name] !== 'undefined';
+            console.log(`[V2チェック] ${v2Name}存在確認: ${exists}`);
+            if (exists) {
+              console.log(`[V2チェック] ${v2Name}のメソッド:`, Object.keys(window[v2Name]));
             }
-          });
-          this.logger.log(`[AITaskExecutor] 📋 ChatGPTAutomationV2存在確認: ${v2Check?.result}`);
-        } catch (e) {
-          this.logger.error(`[AITaskExecutor] V2チェックエラー:`, e);
+            return { exists, v2Name };
+          },
+          args: [taskData.aiType]
+        });
+        this.logger.log(`[AITaskExecutor] 📋 ${v2Check?.result?.v2Name}存在確認: ${v2Check?.result?.exists}`);
+        
+        // V2が読み込まれていない場合はエラー
+        if (!v2Check?.result?.exists) {
+          this.logger.error(`[AITaskExecutor] ❌ ${taskData.aiType}のV2スクリプトが読み込まれていません`);
         }
+      } catch (e) {
+        this.logger.error(`[AITaskExecutor] V2チェックエラー:`, e);
       }
 
       // ページ読み込み完了を待つ
