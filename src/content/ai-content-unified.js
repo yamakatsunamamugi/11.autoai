@@ -855,15 +855,30 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       break;
 
     case "getAIType":
-      // AI_TYPEを正規化して表示名で返す
-      try {
-        const { aiUrlManager } = await import('../../core/ai-url-manager.js');
-        const displayName = aiUrlManager.getDisplayName(AI_TYPE);
-        sendResponse({ aiType: displayName });
-      } catch (error) {
-        console.warn('[AI Content] aiUrlManagerのimportに失敗:', error);
-        sendResponse({ aiType: AI_TYPE });
+      // AI_TYPEを正規化して表示名で返す（シンプルなマッピング）
+      const displayNameMap = {
+        'chatgpt': 'ChatGPT',
+        'claude': 'Claude', 
+        'gemini': 'Gemini',
+        'genspark': 'Genspark'
+      };
+      const normalized = (AI_TYPE || '').toLowerCase();
+      let displayName = AI_TYPE;
+      
+      // 部分マッチで表示名を決定
+      if (normalized.includes('chatgpt') || normalized.includes('gpt') || normalized.includes('openai')) {
+        displayName = 'ChatGPT';
+      } else if (normalized.includes('claude') || normalized.includes('anthropic')) {
+        displayName = 'Claude';
+      } else if (normalized.includes('gemini') || normalized.includes('google')) {
+        displayName = 'Gemini';
+      } else if (normalized.includes('genspark')) {
+        displayName = 'Genspark';
+      } else if (displayNameMap[normalized]) {
+        displayName = displayNameMap[normalized];
       }
+      
+      sendResponse({ aiType: displayName });
       break;
 
     case "executeTask":
