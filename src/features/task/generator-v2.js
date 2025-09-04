@@ -62,11 +62,21 @@ export default class TaskGeneratorV2 {
         }
         
         // 各回答列にタスクを生成
-        for (const answerCol of promptGroup.answerColumns) {
+        for (let answerIndex = 0; answerIndex < promptGroup.answerColumns.length; answerIndex++) {
+          const answerCol = promptGroup.answerColumns[answerIndex];
           // 既存回答チェック
           const existingAnswer = this.getCellValue(spreadsheetData, workRow.index, answerCol.index);
           if (this.hasAnswer(existingAnswer)) {
             continue;
+          }
+          
+          // 3種類AI列の場合は各回答列に対応するAI種別を設定
+          let aiType;
+          if (promptGroup.aiType.includes('3種類') || promptGroup.aiType.includes('３種類')) {
+            const aiTypes = ['ChatGPT', 'Claude', 'Gemini'];
+            aiType = aiTypes[answerIndex] || 'ChatGPT';
+          } else {
+            aiType = promptGroup.aiType.toLowerCase();  // 小文字に統一（'Claude' → 'claude'）
           }
           
           // Taskインスタンスを作成
@@ -75,7 +85,7 @@ export default class TaskGeneratorV2 {
             row: workRow.number,
             column: answerCol.column,
             promptColumns: promptGroup.promptColumns,  // プロンプト列の位置のみ
-            aiType: promptGroup.aiType.toLowerCase(),  // 小文字に統一（'Claude' → 'claude'）
+            aiType: aiType,
             model: this.getModel(spreadsheetData, promptGroup),
             function: this.getFunction(spreadsheetData, promptGroup),
             cellInfo: {
