@@ -1141,7 +1141,15 @@
     return true;
   }
 
-  async function waitForResponse(maxWaitTime = 60000) {
+  async function waitForResponse(maxWaitTime) {
+    // timeout-config.jsから設定を取得（なければデフォルト5分）
+    if (!maxWaitTime) {
+      const defaultTimeout = window.CONFIG?.AI_SPECIFIC?.Claude?.RESPONSE_TIMEOUT || 
+                            window.CONFIG?.TIMEOUT?.RESPONSE_WAIT || 
+                            300000; // デフォルト5分
+      maxWaitTime = defaultTimeout;
+    }
+    
     const operationName = 'waitForResponse';
     const startTime = startOperation(operationName, {
       maxWaitTime,

@@ -722,9 +722,13 @@
      * 応答完了を待機
      */
     async waitForResponseComplete() {
-      const maxWaitTime = 60000; // 最大60秒待機
+      // timeout-config.jsから設定を取得（なければデフォルト5分）
+      const aiConfig = window.getAIConfig ? window.getAIConfig(this.aiType) : null;
+      const maxWaitTime = aiConfig?.RESPONSE_TIMEOUT || window.CONFIG?.TIMEOUT?.RESPONSE_WAIT || 300000; // デフォルト5分
       const checkInterval = 1000; // 1秒ごとにチェック
       const startTime = Date.now();
+      
+      console.log(`[AIObserver] 応答待機開始: 最大${maxWaitTime / 1000}秒 (${this.aiType})`);
       
       while (Date.now() - startTime < maxWaitTime) {
         // 停止ボタンの存在確認

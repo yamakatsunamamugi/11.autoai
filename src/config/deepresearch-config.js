@@ -3,6 +3,14 @@
  * AI固有のDeepResearchボタン/トグル設定を統合管理
  */
 
+// タイムアウト設定をインポート（存在する場合のみ使用）
+const getDeepResearchTimeout = () => {
+  if (typeof window !== 'undefined' && window.CONFIG?.TIMEOUT?.DEEP_RESEARCH) {
+    return window.CONFIG.TIMEOUT.DEEP_RESEARCH;
+  }
+  return 2400000; // デフォルト40分
+};
+
 // 共通設定
 export const DEEPRESEARCH_COMMON_CONFIG = {
   // 検出パターン（言語対応）
@@ -18,7 +26,7 @@ export const DEEPRESEARCH_COMMON_CONFIG = {
   TIMEOUTS: {
     ELEMENT_DETECTION: 5000,
     TOGGLE_ACTIVATION: 2000,
-    RESPONSE_TIMEOUT: 2400000, // 40分
+    RESPONSE_TIMEOUT: getDeepResearchTimeout(), // timeout-config.jsから取得、なければ40分
   },
 
   // 共通動作設定

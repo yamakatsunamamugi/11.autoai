@@ -14,6 +14,9 @@
  * @module AITaskExecutor
  */
 
+// タイムアウト設定をインポート
+import '../config/timeout-config.js';
+
 export class AITaskExecutor {
   constructor(logger = console) {
     this.logger = logger;
@@ -410,7 +413,7 @@ export class AITaskExecutor {
         if (resultData.waitForCompletion) {
           this.logger.log(`[AITaskExecutor] 📝 [${taskData.aiType}] タスク実行開始、完了待機中 [${cellPosition}セル]`);
           
-          // V2/V1実行の完了を待つ（通常は最大60秒、Deep Research/エージェントモードは40分）
+          // V2/V1実行の完了を待つ（timeout-config.jsから設定を取得）
           const isV2 = resultData.v2Executing;
           const isDeepResearchOrAgent = taskData.function && (
             taskData.function.toLowerCase().includes('deep research') ||
@@ -418,7 +421,25 @@ export class AITaskExecutor {
             taskData.function.toLowerCase().includes('エージェント') ||
             taskData.function.toLowerCase().includes('agent')
           );
-          const maxWaitTime = isDeepResearchOrAgent ? 2400000 : 60000; // Deep Research/エージェント: 40分、通常: 60秒
+          
+          // timeout-config.jsから適切なタイムアウト値を取得（Service Worker対応）
+          const globalCtx = (typeof globalThis !== 'undefined' ? globalThis : 
+                            typeof self !== 'undefined' ? self : 
+                            typeof window !== 'undefined' ? window : {});
+          const aiConfig = globalCtx.getAIConfig ? globalCtx.getAIConfig(taskData.aiType) : null;
+          const defaultTimeout = globalCtx.CONFIG?.TIMEOUT?.RESPONSE_WAIT || 300000; // デフォルト5分
+          const deepTimeout = globalCtx.CONFIG?.TIMEOUT?.DEEP_RESEARCH || 2400000; // デフォルト40分
+          
+          let maxWaitTime;
+          if (isDeepResearchOrAgent) {
+            // DeepResearch/エージェントモードの場合
+            maxWaitTime = aiConfig?.DEEP_RESEARCH_TIMEOUT || deepTimeout;
+          } else {
+            // 通常モードの場合
+            maxWaitTime = aiConfig?.RESPONSE_TIMEOUT || defaultTimeout;
+          }
+          
+          this.logger.log(`[AITaskExecutor] タイムアウト設定: ${maxWaitTime / 1000}秒 (${isDeepResearchOrAgent ? 'DeepResearch/Agent' : '通常'})`);
           const checkInterval = 500;
           const waitStartTime = Date.now();
           
