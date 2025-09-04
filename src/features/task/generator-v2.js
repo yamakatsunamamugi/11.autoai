@@ -67,7 +67,9 @@ export default class TaskGeneratorV2 {
         
         if (is3TypeAI) {
           // 3種類AI列の処理：各回答列（F,G,H）に対してタスクを生成
-          for (const answerCol of promptGroup.answerColumns) {
+          for (let i = 0; i < promptGroup.answerColumns.length; i++) {
+            const answerCol = promptGroup.answerColumns[i];
+            
             // 既存回答チェック
             const existingAnswer = this.getCellValue(spreadsheetData, workRow.index, answerCol.index);
             if (this.hasAnswer(existingAnswer)) {
@@ -79,6 +81,9 @@ export default class TaskGeneratorV2 {
             // ログ列を特定（プロンプト列の1列前）
             const logColumnIndex = Math.max(0, Math.min(...promptGroup.promptColumns) - 1);
             const logColumn = this.indexToColumn(logColumnIndex);
+            
+            // グループポジションを決定（ChatGPT:0, Claude:1, Gemini:2）
+            const groupPosition = i;
             
             const taskData = {
               id: this.generateTaskId(answerCol.column, workRow.number),
@@ -95,9 +100,11 @@ export default class TaskGeneratorV2 {
               },
               // ログ列情報を追加
               logColumns: [logColumn],
-              // グループ情報
+              // グループ情報（groupTypeとgroupPositionを追加）
               multiAI: true,
               groupId: `group_${workRow.number}_${this.indexToColumn(promptGroup.promptColumns[0])}`,
+              groupType: '3type',  // 3種類AIグループを明示
+              groupPosition: groupPosition,  // 0:ChatGPT, 1:Claude, 2:Gemini
               // Task必須フィールド
               prompt: '',  // 実行時に動的取得
               taskType: 'ai',

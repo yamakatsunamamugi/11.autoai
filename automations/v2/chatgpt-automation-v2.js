@@ -971,12 +971,22 @@
                     'div[class*="prose"]'
                 ],
                 CANVAS_ARTIFACT: [
+                    // パターン1: サイドパネル型Canvas（優先度高）
+                    '.ProseMirror[contenteditable="false"]',
+                    'div.markdown.prose.ProseMirror',
+                    '[contenteditable="false"].markdown',
+                    'div#prosemirror-editor-container .ProseMirror',
+                    'div._main_5jn6z_1.markdown.prose',
+                    
+                    // パターン2: インライン型Canvas
+                    '[data-message-author-role="assistant"] .markdown.prose',
+                    'div.markdown.prose:not([data-message-author-role])',
+                    
+                    // 既存のセレクタ（互換性のため残す）
                     '#canvas-content',
                     '[data-testid="canvas-content"]',
                     'div[class*="canvas"]',
-                    'div[class*="artifact"]',
-                    '.prose-mirror',
-                    '[contenteditable="false"] .markdown'
+                    'div[class*="artifact"]'
                 ]
             };
             
@@ -1004,23 +1014,52 @@
                 }
             }
             
-            // 方法2: Canvas/Artifact機能の内容を取得
+            // 方法2: Canvas/Artifact機能の内容を取得（2パターン対応）
             if (!responseText) {
+                log('Canvas/Artifactコンテンツを検索中...', 'info');
+                
                 for (const selector of textSelectors.CANVAS_ARTIFACT) {
                     const elements = document.querySelectorAll(selector);
+                    
                     for (const elem of elements) {
-                        // アシスタントメッセージ内にあるものは除外
-                        if (!elem.closest('[data-message-author-role]')) {
+                        // パターン1: サイドパネル型（ProseMirrorクラスを持つ）
+                        if (elem.classList && elem.classList.contains('ProseMirror')) {
                             const text = elem.textContent?.trim() || '';
                             if (text && text.length > 10) {
                                 responseText = text;
-                                log(`Canvas/Artifact取得成功 (${selector}): ${text.length}文字`, 'success');
-                                log(`最初の100文字: ${text.substring(0, 100)}...`, 'info');
+                                log(`✅ サイドパネル型Canvas取得成功 (${selector}): ${text.length}文字`, 'success');
+                                log(`Canvas内容プレビュー: ${text.substring(0, 100)}...`, 'info');
+                                break;
+                            }
+                        }
+                        // パターン2: インライン型（アシスタントメッセージ外のmarkdown）
+                        else if (!elem.closest('[data-message-author-role]')) {
+                            const text = elem.textContent?.trim() || '';
+                            if (text && text.length > 10) {
+                                responseText = text;
+                                log(`✅ インライン型Canvas取得成功 (${selector}): ${text.length}文字`, 'success');
+                                log(`Canvas内容プレビュー: ${text.substring(0, 100)}...`, 'info');
                                 break;
                             }
                         }
                     }
                     if (responseText) break;
+                }
+                
+                // Canvasが見つからない場合のデバッグ情報
+                if (!responseText) {
+                    log('⚠️ Canvasコンテンツが見つかりません。利用可能な要素を確認中...', 'warning');
+                    
+                    // ProseMirrorクラスを持つ要素の存在確認
+                    const proseMirrorElements = document.querySelectorAll('.ProseMirror');
+                    if (proseMirrorElements.length > 0) {
+                        log(`ProseMirror要素が${proseMirrorElements.length}個見つかりました`, 'info');
+                        proseMirrorElements.forEach((elem, index) => {
+                            const contentLength = elem.textContent?.length || 0;
+                            const isEditable = elem.getAttribute('contenteditable');
+                            log(`  要素${index + 1}: 文字数=${contentLength}, contenteditable=${isEditable}`, 'info');
+                        });
+                    }
                 }
             }
             

@@ -264,11 +264,12 @@ export class SpreadsheetLogger {
         writeTime
       );
       
-      // 3種類AIグループタスクの場合、ログを一時保存（AIタイプとURLも保存）
-      if (options.isGroupTask && !options.isLastInGroup) {
+      // 3種類AIグループタスクの場合、段階的にログを記載
+      if (options.isGroupTask) {
         const rowKey = `${task.row}`;
         
         try {
+          // ログ保存用のMapを初期化
           if (!this.pendingLogs.has(rowKey)) {
             this.pendingLogs.set(rowKey, []);
             this.stats.totalGroups++;
@@ -283,7 +284,7 @@ export class SpreadsheetLogger {
             this.pendingLogTimeouts.set(rowKey, timeoutId);
           }
           
-          // オブジェクト形式で保存（AIタイプ、内容、URL）
+          // 現在のログを追加（AIタイプ、内容、URL）
           this.pendingLogs.get(rowKey).push({
             aiType: sendTimeInfo.aiType,
             content: newLog,
@@ -291,71 +292,34 @@ export class SpreadsheetLogger {
             timestamp: new Date()
           });
           
-          console.log(`📦 [SpreadsheetLogger] グループログを一時保存: ${logCell} (AI: ${sendTimeInfo.aiType}) - 現在${this.pendingLogs.get(rowKey).length}件`);
+          const pendingLogsForRow = this.pendingLogs.get(rowKey);
+          console.log(`📦 [SpreadsheetLogger] グループログ処理: ${logCell} (AI: ${sendTimeInfo.aiType}) - 累積${pendingLogsForRow.length}件`);
+          
+          // 現在までのログをすべて結合（1つ目、2つ目、3つ目と増えていく）
+          mergedLog = this.combineGroupLogs(pendingLogsForRow);
+          console.log(`✅ [SpreadsheetLogger] 段階的ログ結合: ${pendingLogsForRow.length}件 → ${mergedLog.length}文字 (${logCell})`);
+          
+          // 統計情報の更新
+          if (pendingLogsForRow.length === 3) {
+            this.stats.completedGroups++;
+            // 3つ揃ったらタイムアウトをクリア
+            this._clearTimeout(rowKey);
+            // 最後のタスクの場合のみクリーンアップ（次回実行のため）
+            if (options.isLastInGroup) {
+              this._cleanupPendingLog(rowKey, 'completed');
+            }
+          }
           
           // 送信時刻をクリア（メモリ節約）
           this.sendTimestamps.delete(task.id);
           
-          return {
-            success: true,
-            verified: false,
-            logCell,
-            status: 'pending'
-          };
+          // ここでmergedLogを書き込むため、returnせずに処理を続行
           
         } catch (error) {
-          console.error(`❌ [SpreadsheetLogger] グループログ一時保存エラー:`, error);
-          this.stats.errorGroups++;
-          throw error;
-        }
-      }
-      
-      // グループ最後のタスクの場合、一時保存したログをまとめる
-      let mergedLog = newLog;
-      
-      if (options.isLastInGroup) {
-        const rowKey = `${task.row}`;
-        
-        try {
-          // タイムアウトをクリア
-          this._clearTimeout(rowKey);
-          
-          const pendingLogsForRow = this.pendingLogs.get(rowKey) || [];
-          
-          // 現在のログもオブジェクト形式で追加
-          pendingLogsForRow.push({
-            aiType: sendTimeInfo.aiType,
-            content: newLog,
-            url: url || window.location.href,
-            timestamp: new Date()
-          });
-          
-          console.log(`📦 [SpreadsheetLogger] グループログ結合開始: ${pendingLogsForRow.length}件 (${logCell})`);
-          console.log(`📊 [SpreadsheetLogger] グループ内訳:`, pendingLogsForRow.map(log => ({
-            ai: log.aiType,
-            timestamp: log.timestamp?.toLocaleString('ja-JP'),
-            contentLength: log.content?.length
-          })));
-          
-          // フェールセーフ: 3つ未満でも統合（部分完了対応）
-          if (pendingLogsForRow.length < 3) {
-            console.warn(`⚠️ [SpreadsheetLogger] 不完全なグループ（${pendingLogsForRow.length}/3）を統合: ${logCell}`);
-          }
-          
-          // すべてのログを結合（ChatGPT→Claude→Geminiの順番で）
-          mergedLog = this.combineGroupLogs(pendingLogsForRow);
-          console.log(`✅ [SpreadsheetLogger] グループログ結合完了: ${pendingLogsForRow.length}件 → ${mergedLog.length}文字 (${logCell})`);
-          
-          this.stats.completedGroups++;
-          
-        } catch (error) {
-          console.error(`❌ [SpreadsheetLogger] グループログ結合エラー:`, error);
+          console.error(`❌ [SpreadsheetLogger] グループログ処理エラー:`, error);
           this.stats.errorGroups++;
           // エラー時でも個別ログを使用（フェールセーフ）
           mergedLog = newLog;
-        } finally {
-          // 一時保存をクリア（エラー時も実行）
-          this._cleanupPendingLog(rowKey, 'completed');
         }
       }
       
