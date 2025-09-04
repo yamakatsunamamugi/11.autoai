@@ -396,6 +396,10 @@
     // メイン実行関数
     // ========================================
     async function executeTask(taskData) {
+        // 実行前にフラグをリセット（どの経路から呼ばれても適切に初期化）
+        window.__v2_execution_complete = false;
+        window.__v2_execution_result = null;
+        
         console.log('%c🚀 ChatGPT V2 タスク実行開始', 'color: #00BCD4; font-weight: bold; font-size: 16px');
         console.log('受信したタスクデータ:', {
             model: taskData.model,
@@ -1063,6 +1067,12 @@
             
             if (responseText) {
                 console.log('✅ ChatGPT V2 タスク実行完了');
+                // 実行完了フラグを設定（AITaskExecutorが確認）
+                window.__v2_execution_complete = true;
+                window.__v2_execution_result = {
+                    success: true,
+                    response: responseText
+                };
                 return {
                     success: true,
                     response: responseText
@@ -1073,6 +1083,12 @@
             
         } catch (error) {
             console.error('❌ ChatGPT V2 タスク実行エラー:', error);
+            // エラー時も完了フラグを設定
+            window.__v2_execution_complete = true;
+            window.__v2_execution_result = {
+                success: false,
+                error: error.message
+            };
             return {
                 success: false,
                 error: error.message
@@ -1084,6 +1100,7 @@
     // runAutomation関数（後方互換性）
     // ========================================
     async function runAutomation(config) {
+        // executeTask内でフラグリセットが行われるため、ここでは不要
         return executeTask({
             model: config.model,
             function: config.function,

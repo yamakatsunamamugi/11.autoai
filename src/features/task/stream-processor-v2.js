@@ -431,7 +431,7 @@ export default class StreamProcessorV2 {
               sheetsClient: globalThis.sheetsClient,
               spreadsheetId,
               gid,
-              isFirstTask: isFirstForThisCell || isFirstInGroup,
+              isFirstTask: false,  // 常に追加モード（上書きを防ぐ）
               isGroupTask: isGroupTask,
               isLastInGroup: isLastInGroup,
               enableWriteVerification: false // 書き込み確認は無効化（パフォーマンスのため）
