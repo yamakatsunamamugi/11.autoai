@@ -227,6 +227,16 @@ export class SpreadsheetLogger {
       const logColumn = task.logColumns?.[0] || 'B'; // デフォルトはB列
       const logCell = `${logColumn}${task.row}`;
       
+      // デバッグ: ログセルの詳細確認
+      console.log(`🔍 [ログセル詳細デバッグ]`, {
+        logColumn: logColumn,
+        taskRow: task.row,
+        結果セル: logCell,
+        logColumn型: typeof logColumn,
+        有効な列名: /^[A-Z]+$/.test(logColumn),
+        logColumns配列: task.logColumns
+      });
+      
       console.log(`📍 [SpreadsheetLogger] ログセル特定: ${logCell} (logColumns: ${JSON.stringify(task.logColumns)})`);
       
       // 送信時刻を取得
@@ -349,8 +359,8 @@ export class SpreadsheetLogger {
         }
       }
       
-      if (options.isFirstTask || (options.isGroupTask && options.isLastInGroup)) {
-        // 最初のタスクまたはグループ最後のタスクの場合はログをクリアして新規作成
+      if (options.isFirstTask && !options.isGroupTask) {
+        // 通常の最初のタスクの場合のみクリアして新規作成（3種類AIグループは除外）
         console.log(`🔄 [SpreadsheetLogger] ログをクリアして新規作成: ${logCell}`);
         // mergedLogはそのまま使用（既に設定済み）
       } else {
@@ -376,17 +386,22 @@ export class SpreadsheetLogger {
         
         // 既存ログに追加（上書きではなく追加）
         if (existingLog && existingLog.trim() !== '') {
-          // 同じAIのログが既に存在するかチェック
-          const aiDisplayName = this.getAIDisplayName(sendTimeInfo.aiType);
-          if (existingLog.includes(`---------- ${aiDisplayName} ----------`)) {
-            console.log(`⚠️ [SpreadsheetLogger] 同じAIのログが既存、スキップ (AI: ${sendTimeInfo.aiType})`);
-            return; // 同じAIのログが既にある場合はスキップ
+          if (options.isGroupTask && options.isLastInGroup) {
+            // 3種類AIグループの最後：既存ログにグループ全体を追加
+            mergedLog = `${existingLog}\n\n${mergedLog}`;
+            console.log(`➕ [SpreadsheetLogger] 既存ログに3種類AIグループを追加`);
+          } else {
+            // 通常タスク：同じAIのログチェック
+            const aiDisplayName = this.getAIDisplayName(sendTimeInfo.aiType);
+            if (existingLog.includes(`---------- ${aiDisplayName} ----------`)) {
+              console.log(`⚠️ [SpreadsheetLogger] 同じAIのログが既存、スキップ (AI: ${sendTimeInfo.aiType})`);
+              return; // 同じAIのログが既にある場合はスキップ
+            }
+            mergedLog = `${existingLog}\n\n${mergedLog}`;
+            console.log(`➕ [SpreadsheetLogger] 既存ログに追加 (AI: ${sendTimeInfo.aiType})`);
           }
-          mergedLog = `${existingLog}\n\n${newLog}`;
-          console.log(`➕ [SpreadsheetLogger] 既存ログに追加 (AI: ${sendTimeInfo.aiType})`);
         } else {
-          mergedLog = newLog;
-          console.log(`➕ [SpreadsheetLogger] 新規ログ作成 (AI: ${sendTimeInfo.aiType})`);
+          console.log(`➕ [SpreadsheetLogger] 新規ログ作成 (${options.isGroupTask ? '3種類AIグループ' : 'AI: ' + sendTimeInfo.aiType})`);
         }
       }
       

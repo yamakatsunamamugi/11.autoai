@@ -220,18 +220,18 @@ export default class StreamProcessorV2 {
   }
 
   /**
-   * バッチ内のタスクを並列処理（10秒間隔で開始）
+   * バッチ内のタスクを並列処理（5秒間隔で開始）
    */
   async processBatch(batch, isTestMode) {
     this.logger.log(`[StreamProcessorV2] 🚀 バッチ並列処理開始`, {
       tasks: batch.map(t => `${t.column}${t.row}`).join(', '),
       taskCount: batch.length,
-      interval: '10秒間隔で開始'
+      interval: '5秒間隔で開始'
     });
 
     const taskPromises = [];
     
-    // バッチ内のタスクを10秒間隔で開始（並列実行）
+    // バッチ内のタスクを5秒間隔で開始（並列実行）
     for (let index = 0; index < batch.length; index++) {
       const task = batch[index];
       
@@ -252,10 +252,10 @@ export default class StreamProcessorV2 {
         
         taskPromises.push(taskPromise);
         
-        // 最後のタスクでない場合は10秒待機してから次のタスクを開始
+        // 最後のタスクでない場合は5秒待機してから次のタスクを開始
         if (index < batch.length - 1) {
-          this.logger.log(`[StreamProcessorV2] 次のタスク開始まで10秒待機...`);
-          await this.delay(10000);
+          this.logger.log(`[StreamProcessorV2] 次のタスク開始まで5秒待機...`);
+          await this.delay(5000);
         }
         
       } catch (error) {
@@ -367,6 +367,15 @@ export default class StreamProcessorV2 {
         });
         
         // ログを書き込み（SpreadsheetLoggerを使用）
+        // デバッグ: ログ書き込み条件チェック
+        console.log(`🔍 [ログ書き込み条件チェック]`, {
+          hasSpreadsheetLogger: !!this.spreadsheetLogger,
+          hasLogColumns: !!(task.logColumns),
+          logColumnsLength: task.logColumns?.length,
+          logColumns値: task.logColumns,
+          条件成立: !!(this.spreadsheetLogger && task.logColumns && task.logColumns.length > 0)
+        });
+        
         if (this.spreadsheetLogger && task.logColumns && task.logColumns.length > 0) {
           try {
             this.logger.log(`[StreamProcessorV2] 📝 ログ書き込み準備`, {
@@ -446,6 +455,77 @@ export default class StreamProcessorV2 {
       this.logger.error(`[StreamProcessorV2] タスク処理エラー ${task.column}${task.row}:`, error);
       this.failedTasks.add(task.id);
       throw error;
+    }
+  }
+
+  /**
+   * 列の作業終了後、回答列を確認して回答がない場合は再実行
+   */
+  async verifyAndReprocessColumn(column, tasks, isTestMode) {
+    this.logger.log(`[StreamProcessorV2] 🔍 ${column}列の回答確認と再実行開始`);
+    
+    const tasksToReprocess = [];
+    
+    for (const task of tasks) {
+      try {
+        // スプレッドシートから現在の回答を取得
+        const currentAnswer = await this.getCurrentAnswer(task);
+        
+        if (!currentAnswer || currentAnswer.trim() === '') {
+          this.logger.warn(`[StreamProcessorV2] 🔄 ${task.column}${task.row}: 回答がないため再実行対象に追加`);
+          tasksToReprocess.push(task);
+        } else {
+          this.logger.log(`[StreamProcessorV2] ✅ ${task.column}${task.row}: 回答あり (${currentAnswer.length}文字)`);
+        }
+      } catch (error) {
+        this.logger.error(`[StreamProcessorV2] ${task.column}${task.row}の回答確認エラー:`, error);
+        // エラーの場合も再実行対象に追加
+        tasksToReprocess.push(task);
+      }
+    }
+    
+    if (tasksToReprocess.length > 0) {
+      this.logger.log(`[StreamProcessorV2] 🔄 ${column}列: ${tasksToReprocess.length}個のタスクを再実行します`);
+      
+      // 再実行タスクをバッチ処理
+      const reprocessBatches = this.createBatches(tasksToReprocess, 3);
+      
+      for (let batchIndex = 0; batchIndex < reprocessBatches.length; batchIndex++) {
+        const batch = reprocessBatches[batchIndex];
+        
+        this.logger.log(`[StreamProcessorV2] 🔄 ${column}列 再実行バッチ${batchIndex + 1}/${reprocessBatches.length}開始`);
+        
+        await this.processBatch(batch, isTestMode);
+        
+        this.logger.log(`[StreamProcessorV2] ✅ ${column}列 再実行バッチ${batchIndex + 1}/${reprocessBatches.length}完了`);
+      }
+    } else {
+      this.logger.log(`[StreamProcessorV2] ✅ ${column}列: すべてのタスクに回答があります`);
+    }
+  }
+  
+  /**
+   * タスクの現在の回答をスプレッドシートから取得
+   */
+  async getCurrentAnswer(task) {
+    try {
+      const { spreadsheetId, gid } = this.spreadsheetData;
+      const range = `${task.column}${task.row}`;
+      
+      const response = await globalThis.sheetsClient.getRange(
+        spreadsheetId,
+        range,
+        gid
+      );
+      
+      if (response && response.values && response.values.length > 0 && response.values[0].length > 0) {
+        return response.values[0][0];
+      }
+      
+      return '';
+    } catch (error) {
+      this.logger.error(`[StreamProcessorV2] ${task.column}${task.row}の回答取得エラー:`, error);
+      return '';
     }
   }
 
