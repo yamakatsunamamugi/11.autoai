@@ -353,8 +353,8 @@
                         // ステップ2: 初期応答が完了して「リサーチを開始」ボタンが出現するまで待機
                         logDr('ステップ2: 初期応答の完了を待機中...');
                         while (findElement(['button.send-button.stop'])) {
-                            if (Date.now() - startTime > 5 * 60 * 1000) {
-                                throw new Error('5分以内に初期応答が完了しませんでした。');
+                            if (Date.now() - startTime > 2 * 60 * 1000) {
+                                throw new Error('2分以内に初期応答が完了しませんでした。');
                             }
                             await wait(1000);
                         }
@@ -462,12 +462,30 @@
             await logStep('ステップ5: テキスト取得', async () => {
                 let textElement;
                 
-                if (isCanvasMode) {
-                    textElement = findElement(['.ProseMirror[contenteditable="true"]', '.ProseMirror']);
-                } else {
-                    const responses = findElements(['.model-response-text .markdown', '.markdown']);
-                    if (responses.length > 0) {
-                        textElement = responses[responses.length - 1];
+                // DeepResearch結果を優先的にチェック
+                if (resolvedFeature && resolvedFeature.toLowerCase().includes('research')) {
+                    log('DeepResearch結果を探しています...');
+                    textElement = findElement([
+                        '#extended-response-markdown-content',
+                        '.extended-response-markdown-content',
+                        '[id="extended-response-markdown-content"]',
+                        'div[id="extended-response-markdown-content"]',
+                        '.markdown.markdown-main-panel'
+                    ]);
+                    if (textElement) {
+                        log('DeepResearch結果を発見しました', 'success');
+                    }
+                }
+                
+                // DeepResearch結果が見つからない場合は既存のロジック
+                if (!textElement) {
+                    if (isCanvasMode) {
+                        textElement = findElement(['.ProseMirror[contenteditable="true"]', '.ProseMirror']);
+                    } else {
+                        const responses = findElements(['.model-response-text .markdown', '.markdown']);
+                        if (responses.length > 0) {
+                            textElement = responses[responses.length - 1];
+                        }
                     }
                 }
                 

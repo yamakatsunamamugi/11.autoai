@@ -17,6 +17,18 @@ export class SpreadsheetLogger {
     this.sendTimestamps = new Map(); // key: taskId, value: { time: Date, aiType: string, model: string }
     this.pendingLogs = new Map(); // key: row, value: array of log entries
     this.writingInProgress = new Set(); // Set of cells currently being written
+    
+    // タイムアウト管理（メモリリーク防止）
+    this.pendingLogTimeouts = new Map(); // key: row, value: timeoutId
+    this.PENDING_LOG_TIMEOUT = 10 * 60 * 1000; // 10分でタイムアウト
+    
+    // 統計情報
+    this.stats = {
+      totalGroups: 0,
+      completedGroups: 0,
+      timeoutGroups: 0,
+      errorGroups: 0
+    };
   }
 
   /**
@@ -245,20 +257,47 @@ export class SpreadsheetLogger {
       // 3種類AIグループタスクの場合、ログを一時保存（AIタイプとURLも保存）
       if (options.isGroupTask && !options.isLastInGroup) {
         const rowKey = `${task.row}`;
-        if (!this.pendingLogs.has(rowKey)) {
-          this.pendingLogs.set(rowKey, []);
-        }
-        // オブジェクト形式で保存（AIタイプ、内容、URL）
-        this.pendingLogs.get(rowKey).push({
-          aiType: sendTimeInfo.aiType,
-          content: newLog,
-          url: url || window.location.href
-        });
-        console.log(`📦 [SpreadsheetLogger] グループログを一時保存: ${logCell} (AI: ${sendTimeInfo.aiType})`);
         
-        // 送信時刻をクリア（メモリ節約）
-        this.sendTimestamps.delete(task.id);
-        return;
+        try {
+          if (!this.pendingLogs.has(rowKey)) {
+            this.pendingLogs.set(rowKey, []);
+            this.stats.totalGroups++;
+            
+            // タイムアウト設定（メモリリーク防止）
+            const timeoutId = setTimeout(() => {
+              console.warn(`⏰ [SpreadsheetLogger] グループログタイムアウト: 行${task.row}`);
+              this._cleanupPendingLog(rowKey, 'timeout');
+              this.stats.timeoutGroups++;
+            }, this.PENDING_LOG_TIMEOUT);
+            
+            this.pendingLogTimeouts.set(rowKey, timeoutId);
+          }
+          
+          // オブジェクト形式で保存（AIタイプ、内容、URL）
+          this.pendingLogs.get(rowKey).push({
+            aiType: sendTimeInfo.aiType,
+            content: newLog,
+            url: url || window.location.href,
+            timestamp: new Date()
+          });
+          
+          console.log(`📦 [SpreadsheetLogger] グループログを一時保存: ${logCell} (AI: ${sendTimeInfo.aiType}) - 現在${this.pendingLogs.get(rowKey).length}件`);
+          
+          // 送信時刻をクリア（メモリ節約）
+          this.sendTimestamps.delete(task.id);
+          
+          return {
+            success: true,
+            verified: false,
+            logCell,
+            status: 'pending'
+          };
+          
+        } catch (error) {
+          console.error(`❌ [SpreadsheetLogger] グループログ一時保存エラー:`, error);
+          this.stats.errorGroups++;
+          throw error;
+        }
       }
       
       // グループ最後のタスクの場合、一時保存したログをまとめる
@@ -266,21 +305,48 @@ export class SpreadsheetLogger {
       
       if (options.isLastInGroup) {
         const rowKey = `${task.row}`;
-        const pendingLogsForRow = this.pendingLogs.get(rowKey) || [];
         
-        // 現在のログもオブジェクト形式で追加
-        pendingLogsForRow.push({
-          aiType: sendTimeInfo.aiType,
-          content: newLog,
-          url: url || window.location.href
-        });
-        
-        // すべてのログを結合（ChatGPT→Claude→Geminiの順番で）
-        mergedLog = this.combineGroupLogs(pendingLogsForRow);
-        console.log(`📦 [SpreadsheetLogger] グループログを結合: ${pendingLogsForRow.length}件 (${logCell})`);
-        
-        // 一時保存をクリア
-        this.pendingLogs.delete(rowKey);
+        try {
+          // タイムアウトをクリア
+          this._clearTimeout(rowKey);
+          
+          const pendingLogsForRow = this.pendingLogs.get(rowKey) || [];
+          
+          // 現在のログもオブジェクト形式で追加
+          pendingLogsForRow.push({
+            aiType: sendTimeInfo.aiType,
+            content: newLog,
+            url: url || window.location.href,
+            timestamp: new Date()
+          });
+          
+          console.log(`📦 [SpreadsheetLogger] グループログ結合開始: ${pendingLogsForRow.length}件 (${logCell})`);
+          console.log(`📊 [SpreadsheetLogger] グループ内訳:`, pendingLogsForRow.map(log => ({
+            ai: log.aiType,
+            timestamp: log.timestamp?.toLocaleString('ja-JP'),
+            contentLength: log.content?.length
+          })));
+          
+          // フェールセーフ: 3つ未満でも統合（部分完了対応）
+          if (pendingLogsForRow.length < 3) {
+            console.warn(`⚠️ [SpreadsheetLogger] 不完全なグループ（${pendingLogsForRow.length}/3）を統合: ${logCell}`);
+          }
+          
+          // すべてのログを結合（ChatGPT→Claude→Geminiの順番で）
+          mergedLog = this.combineGroupLogs(pendingLogsForRow);
+          console.log(`✅ [SpreadsheetLogger] グループログ結合完了: ${pendingLogsForRow.length}件 → ${mergedLog.length}文字 (${logCell})`);
+          
+          this.stats.completedGroups++;
+          
+        } catch (error) {
+          console.error(`❌ [SpreadsheetLogger] グループログ結合エラー:`, error);
+          this.stats.errorGroups++;
+          // エラー時でも個別ログを使用（フェールセーフ）
+          mergedLog = newLog;
+        } finally {
+          // 一時保存をクリア（エラー時も実行）
+          this._cleanupPendingLog(rowKey, 'completed');
+        }
       }
       
       if (options.isFirstTask || (options.isGroupTask && options.isLastInGroup)) {
@@ -707,8 +773,127 @@ export class SpreadsheetLogger {
         aiType: info.aiType,
         model: info.model,
         sendTime: info.time.toLocaleString('ja-JP')
+      })),
+      groups: {
+        total: this.stats.totalGroups,
+        completed: this.stats.completedGroups,
+        timeout: this.stats.timeoutGroups,
+        error: this.stats.errorGroups,
+        pending: this.pendingLogs.size
+      },
+      pendingLogDetails: Array.from(this.pendingLogs.entries()).map(([row, logs]) => ({
+        row: row,
+        count: logs.length,
+        aiTypes: logs.map(log => log.aiType),
+        oldestTimestamp: Math.min(...logs.map(log => log.timestamp?.getTime() || Date.now()))
       }))
     };
+  }
+
+  /**
+   * タイムアウトをクリア
+   * @private
+   * @param {string} rowKey - 行キー
+   */
+  _clearTimeout(rowKey) {
+    const timeoutId = this.pendingLogTimeouts.get(rowKey);
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      this.pendingLogTimeouts.delete(rowKey);
+    }
+  }
+
+  /**
+   * 一時保存ログをクリーンアップ
+   * @private
+   * @param {string} rowKey - 行キー  
+   * @param {string} reason - クリーンアップの理由
+   */
+  _cleanupPendingLog(rowKey, reason = 'unknown') {
+    this._clearTimeout(rowKey);
+    
+    if (this.pendingLogs.has(rowKey)) {
+      const logCount = this.pendingLogs.get(rowKey).length;
+      this.pendingLogs.delete(rowKey);
+      console.log(`🧹 [SpreadsheetLogger] 一時保存ログをクリーンアップ: 行${rowKey}, ${logCount}件, 理由: ${reason}`);
+    }
+  }
+
+  /**
+   * 全ての一時保存ログを強制クリーンアップ（デバッグ・メンテナンス用）
+   */
+  forceCleanupAll() {
+    console.warn(`🧹 [SpreadsheetLogger] 全一時保存ログを強制クリーンアップ`);
+    
+    // 全タイムアウトをクリア
+    for (const timeoutId of this.pendingLogTimeouts.values()) {
+      clearTimeout(timeoutId);
+    }
+    this.pendingLogTimeouts.clear();
+    
+    // 一時保存ログをクリア
+    const pendingCount = this.pendingLogs.size;
+    this.pendingLogs.clear();
+    
+    console.log(`✅ [SpreadsheetLogger] ${pendingCount}件の一時保存ログをクリーンアップ完了`);
+  }
+
+  /**
+   * 部分完了グループを強制統合（フェールセーフ機能）
+   * @param {string} groupId - グループID
+   * @param {number} row - 行番号
+   */
+  async forceIntegratePartialGroup(groupId, row) {
+    const rowKey = `${row}`;
+    const pendingLogs = this.pendingLogs.get(rowKey);
+    
+    if (!pendingLogs || pendingLogs.length === 0) {
+      console.log(`🔍 [SpreadsheetLogger] 部分統合: ログなし ${rowKey}`);
+      return;
+    }
+    
+    console.warn(`⚠️ [SpreadsheetLogger] 部分完了グループを強制統合開始: 行${row}, ${pendingLogs.length}件のログ`);
+    
+    try {
+      // 部分ログを統合
+      const mergedLog = this.combineGroupLogs(pendingLogs);
+      
+      // ログセルを特定（最初のログのAIタイプを基準）
+      const firstLog = pendingLogs[0];
+      const logColumn = 'B'; // デフォルトのログ列
+      const logCell = `${logColumn}${row}`;
+      
+      console.log(`📦 [SpreadsheetLogger] 部分統合実行:`, {
+        rowKey,
+        logCell,
+        logCount: pendingLogs.length,
+        mergedLength: mergedLog.length,
+        aiTypes: pendingLogs.map(log => log.aiType)
+      });
+      
+      // スプレッドシートに書き込み（globalThisから取得）
+      if (globalThis.sheetsClient) {
+        await globalThis.sheetsClient.updateCell(
+          globalThis.currentSpreadsheetId || '',
+          logCell,
+          mergedLog,
+          globalThis.currentGid || '0'
+        );
+        
+        console.log(`✅ [SpreadsheetLogger] 部分統合書き込み完了: ${logCell}`);
+        this.stats.completedGroups++;
+      } else {
+        console.error(`❌ [SpreadsheetLogger] SheetsClientが利用不可、部分統合失敗`);
+        this.stats.errorGroups++;
+      }
+      
+    } catch (error) {
+      console.error(`❌ [SpreadsheetLogger] 部分統合エラー:`, error);
+      this.stats.errorGroups++;
+    } finally {
+      // クリーンアップ
+      this._cleanupPendingLog(rowKey, 'forced-partial');
+    }
   }
 }
 

@@ -587,8 +587,12 @@ export class WindowService {
       const existingWindowId = this.windowPositions.get(position);
       console.warn(`[WindowService] ポジション${position}は既に使用中: Window${existingWindowId}`);
       
-      // 既存ウィンドウを閉じる
+      // 既存ウィンドウを閉じて完全に削除されるまで待機
       await this.closeWindow(existingWindowId);
+      
+      // 削除完了を確認するための追加待機（競合回避）
+      await new Promise(resolve => setTimeout(resolve, 100));
+      console.log(`[WindowService] ポジション${position}の削除完了確認、新規作成開始`);
     }
     
     // スクリーン情報を取得

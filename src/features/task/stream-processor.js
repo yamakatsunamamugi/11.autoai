@@ -204,6 +204,7 @@ class StreamProcessor {
     
     // SpreadsheetLoggerのインスタンスを初期化
     this.spreadsheetLogger = null;
+    console.log(`🔧 [StreamProcessor] SpreadsheetLogger初期化を開始`);
     this.initializeSpreadsheetLogger();
 
     // ウィンドウ管理状態
@@ -257,15 +258,21 @@ class StreamProcessor {
    */
   async initializeSpreadsheetLogger() {
     try {
+      console.log(`🔧 [StreamProcessor] SpreadsheetLogger取得開始`);
       const LoggerClass = await getSpreadsheetLogger();
       if (LoggerClass) {
+        console.log(`✅ [StreamProcessor] SpreadsheetLoggerクラス取得成功`);
         this.spreadsheetLogger = globalThis.spreadsheetLogger || new LoggerClass(this.logger);
         if (!globalThis.spreadsheetLogger) {
           globalThis.spreadsheetLogger = this.spreadsheetLogger;
+          console.log(`🌐 [StreamProcessor] グローバルSpreadsheetLoggerを設定`);
         }
-        // this.logger.log('[StreamProcessor] SpreadsheetLoggerを初期化しました');
+        console.log(`🎯 [StreamProcessor] SpreadsheetLogger初期化完了`);
+      } else {
+        console.warn(`❌ [StreamProcessor] SpreadsheetLoggerクラスが取得できませんでした`);
       }
     } catch (error) {
+      console.error(`🔥 [StreamProcessor] SpreadsheetLogger初期化エラー:`, error);
       this.logger.warn('[StreamProcessor] SpreadsheetLogger初期化エラー:', error.message);
     }
   }
@@ -502,13 +509,26 @@ class StreamProcessor {
     for (const row of rows) {
       const rowTasks = tasks.filter(t => t.row === row);
       
-      // 3つのタスクを並列実行
-      await Promise.all(rowTasks.map(async (task) => {
-        const windowId = windows.get(task.column);
-        if (windowId) {
-          await this.executeTaskInWindow(task, windowId);
+      // 3つのタスクを5秒間隔で順次実行
+      for (let i = 0; i < rowTasks.length; i++) {
+        const task = rowTasks[i];
+        try {
+          const windowId = windows.get(task.column);
+          if (windowId) {
+            this.logger.log(`[StreamProcessor] タスク${i + 1}/${rowTasks.length}実行中: ${task.column}${task.row}`);
+            await this.executeTaskInWindow(task, windowId);
+            this.logger.log(`[StreamProcessor] タスク${i + 1}/${rowTasks.length}完了: ${task.column}${task.row}`);
+            
+            // 最後のタスクでない場合は5秒待機
+            if (i < rowTasks.length - 1) {
+              this.logger.log(`[StreamProcessor] 次のタスクまで5秒待機...`);
+              await this.delay(5000);
+            }
+          }
+        } catch (error) {
+          this.logger.error(`[StreamProcessor] タスク実行エラー ${task.column}${task.row}:`, error);
         }
-      }));
+      }
       
       // this.logger.log(`[StreamProcessor] 3種類AI行${row}完了`);
     }
@@ -546,14 +566,26 @@ class StreamProcessor {
       // this.logger.log(`[StreamProcessor] ウィンドウ${i + 1}作成: ${column}${task.row} (${task.aiType}) - Position: ${position}`);
     }
     
-    // タスクを並列処理
-    await Promise.all(tasks.map(async (task) => {
-      const windowId = windows.get(task.row);
-      if (windowId) {
-        await this.executeTaskInWindow(task, windowId);
-        // this.logger.log(`[StreamProcessor] タスク完了: ${task.column}${task.row}`);
+    // タスクを5秒間隔で順次処理
+    for (let i = 0; i < tasks.length; i++) {
+      const task = tasks[i];
+      try {
+        const windowId = windows.get(task.row);
+        if (windowId) {
+          this.logger.log(`[StreamProcessor] タスク${i + 1}/${tasks.length}実行中: ${task.column}${task.row}`);
+          await this.executeTaskInWindow(task, windowId);
+          this.logger.log(`[StreamProcessor] タスク${i + 1}/${tasks.length}完了: ${task.column}${task.row}`);
+          
+          // 最後のタスクでない場合は5秒待機
+          if (i < tasks.length - 1) {
+            this.logger.log(`[StreamProcessor] 次のタスクまで5秒待機...`);
+            await this.delay(5000);
+          }
+        }
+      } catch (error) {
+        this.logger.error(`[StreamProcessor] タスク実行エラー ${task.column}${task.row}:`, error);
       }
-    }));
+    }
     
     // this.logger.log(`[StreamProcessor] ${column}列のバッチ完了（行${rows.join(',')}）`);
     
@@ -1600,12 +1632,34 @@ class StreamProcessor {
           const isGroupTask = task.multiAI && task.groupId;
           let isLastInGroup = false;
           
+          console.log(`🔍 [StreamProcessor] グループタスク判定:`, {
+            taskId: task.id,
+            multiAI: task.multiAI,
+            groupId: task.groupId,
+            aiType: task.aiType,
+            isGroupTask
+          });
+          
           if (isGroupTask) {
+            // グループ追跡を初期化（必要に応じて）
+            this._initializeGroupTracker(task);
+            
             // グループ内の最後のタスクかどうか判定
             const groupTracker = this.groupCompletionTracker.get(`${task.groupId}_${task.row}`);
             if (groupTracker) {
               const completedCount = groupTracker.completed.size;
               isLastInGroup = (completedCount === 2); // すでに2つ完了していれば、これが3つ目（最後）
+              
+              console.log(`📊 [StreamProcessor] グループ進捗:`, {
+                groupKey: `${task.groupId}_${task.row}`,
+                completed: Array.from(groupTracker.completed),
+                completedCount,
+                required: Array.from(groupTracker.required),
+                isLastInGroup,
+                currentAI: task.aiType
+              });
+            } else {
+              console.warn(`⚠️ [StreamProcessor] グループトラッカーが見つかりません: ${task.groupId}_${task.row}`);
             }
           }
           
@@ -1622,6 +1676,15 @@ class StreamProcessor {
           //   isGroupTask,
           //   isLastInGroup
           // });
+          
+          // フェールセーフ: タイムアウトでも部分統合を実行
+          if (isGroupTask && !isLastInGroup) {
+            // タイムアウトチェック（8分経過で強制統合）
+            const PARTIAL_INTEGRATION_TIMEOUT = 8 * 60 * 1000; // 8分
+            setTimeout(() => {
+              this._checkAndForcePartialIntegration(task.groupId, task.row);
+            }, PARTIAL_INTEGRATION_TIMEOUT);
+          }
           
           await this.spreadsheetLogger.writeLogToSpreadsheet(taskWithModel, {
             url: currentUrl,
@@ -3200,24 +3263,36 @@ ${formattedGemini}`;
   }
 
   /**
-   * 3種類AIグループの完了状況を初期化
+   * グループトラッカーを初期化
+   * @private
+   * @param {Object} task - タスク
+   */
+  _initializeGroupTracker(task) {
+    const trackerKey = `${task.groupId}_${task.row}`;
+    
+    if (!this.groupCompletionTracker.has(trackerKey)) {
+      console.log(`🔧 [StreamProcessor] グループトラッカー初期化: ${trackerKey}`);
+      this.groupCompletionTracker.set(trackerKey, {
+        required: new Set(['chatgpt', 'claude', 'gemini']),
+        completed: new Set(),
+        createdAt: new Date(),
+        groupId: task.groupId,
+        row: task.row
+      });
+    }
+  }
+
+  /**
+   * 3種類AIグループの完了状況を初期化（互換性保持）
    * @param {Object} task - タスク
    */
   initializeGroupTracking(task) {
     if (!task.multiAI || !task.groupId) {
+      console.log(`📝 [StreamProcessor] 非グループタスクの初期化をスキップ: ${task.id}`);
       return; // 3種類AIグループでない場合はスキップ
     }
     
-    const trackerKey = `${task.groupId}_${task.row}`;
-    
-    if (!this.groupCompletionTracker.has(trackerKey)) {
-      // 初回のみトラッカーを作成
-      this.groupCompletionTracker.set(trackerKey, {
-        required: new Set(['chatgpt', 'claude', 'gemini']),
-        completed: new Set()
-      });
-      // this.logger.log(`[StreamProcessor] グループトラッカー初期化: ${trackerKey}`);
-    }
+    this._initializeGroupTracker(task);
   }
 
   /**
@@ -3331,28 +3406,66 @@ ${formattedGemini}`;
    */
   updateGroupCompletion(task) {
     if (!task.multiAI || !task.groupId) {
+      console.log(`📝 [StreamProcessor] 非グループタスクの完了更新をスキップ: ${task.id}`);
       return; // 3種類AIグループでない場合はスキップ
     }
     
     const trackerKey = `${task.groupId}_${task.row}`;
     const tracker = this.groupCompletionTracker.get(trackerKey);
     
+    console.log(`📊 [StreamProcessor] グループ完了更新開始:`, {
+      trackerKey,
+      taskId: task.id,
+      aiType: task.aiType,
+      trackerExists: !!tracker,
+      currentCompleted: tracker ? Array.from(tracker.completed) : 'N/A'
+    });
+    
     if (tracker) {
       // タスクのAIタイプを完了に追加
-      tracker.completed.add(task.aiType);
-      // this.logger.log(`[StreamProcessor] グループ進捗更新: ${trackerKey}, 完了: ${task.aiType}, 状況: ${tracker.completed.size}/${tracker.required.size}`);
+      const aiTypeLower = task.aiType?.toLowerCase();
+      tracker.completed.add(aiTypeLower);
+      
+      console.log(`✅ [StreamProcessor] グループ進捗更新: ${trackerKey}, 完了: ${aiTypeLower}, 状況: ${tracker.completed.size}/${tracker.required.size}`);
+      console.log(`📋 [StreamProcessor] 完了済みAI:`, Array.from(tracker.completed));
+      console.log(`📋 [StreamProcessor] 必要AI:`, Array.from(tracker.required));
       
       // この行が完全に完了したかチェック
       if (tracker.completed.size === tracker.required.size) {
+        console.log(`🎉 [StreamProcessor] 行完了: ${trackerKey}`);
+        
         // このグループIDに関連する全てのトラッカーが完了したかチェック
-        const allGroupTasksComplete = Array.from(this.groupCompletionTracker.entries())
-          .filter(([key]) => key.includes(task.groupId))
+        const relatedTrackers = Array.from(this.groupCompletionTracker.entries())
+          .filter(([key]) => key.includes(task.groupId));
+        
+        const allGroupTasksComplete = relatedTrackers
           .every(([, t]) => t.completed.size === t.required.size);
         
+        console.log(`📊 [StreamProcessor] グループ全体チェック:`, {
+          groupId: task.groupId,
+          relatedTrackers: relatedTrackers.length,
+          allComplete: allGroupTasksComplete,
+          details: relatedTrackers.map(([key, t]) => ({
+            key,
+            completed: t.completed.size,
+            required: t.required.size,
+            complete: t.completed.size === t.required.size
+          }))
+        });
+        
         if (allGroupTasksComplete) {
-          // this.logger.log(`[StreamProcessor] 3種類AIグループ全タスク完了: ${task.groupId}`);
+          console.log(`🎊 [StreamProcessor] 3種類AIグループ全タスク完了: ${task.groupId}`);
           // 記載完了は各writeResultToSpreadsheetでチェックするので、ここでは何もしない
         }
+      }
+    } else {
+      console.warn(`⚠️ [StreamProcessor] グループトラッカーが存在しません: ${trackerKey}`);
+      // フェールセーフとして初期化を試行
+      this._initializeGroupTracker(task);
+      const newTracker = this.groupCompletionTracker.get(trackerKey);
+      if (newTracker) {
+        newTracker.completed.add(task.aiType?.toLowerCase());
+        console.log(`🔧 [StreamProcessor] フェールセーフでトラッカー作成・更新: ${trackerKey}`);
       }
     }
   }
@@ -3384,6 +3497,72 @@ ${formattedGemini}`;
         this.logger.error(`[StreamProcessor] 次の処理開始エラー`, error);
       });
     }
+  }
+
+  /**
+   * 部分完了グループの強制統合をチェック（フェールセーフ）
+   * @private
+   * @param {string} groupId - グループID
+   * @param {number} row - 行番号
+   */
+  _checkAndForcePartialIntegration(groupId, row) {
+    const trackerKey = `${groupId}_${row}`;
+    const tracker = this.groupCompletionTracker.get(trackerKey);
+    
+    if (!tracker) {
+      console.log(`🔍 [StreamProcessor] 部分統合チェック: トラッカーなし ${trackerKey}`);
+      return;
+    }
+    
+    const completedCount = tracker.completed.size;
+    const requiredCount = tracker.required.size;
+    
+    console.log(`⏰ [StreamProcessor] 部分統合チェック:`, {
+      trackerKey,
+      completed: completedCount,
+      required: requiredCount,
+      hasPartialCompletion: completedCount > 0 && completedCount < requiredCount
+    });
+    
+    // 部分完了（1つ以上完了、でも全部ではない）の場合、強制統合を実行
+    if (completedCount > 0 && completedCount < requiredCount) {
+      console.warn(`⚠️ [StreamProcessor] 部分完了グループを強制統合: ${trackerKey} (${completedCount}/${requiredCount})`);
+      
+      // SpreadsheetLoggerの強制統合機能を呼び出し
+      if (this.spreadsheetLogger && this.spreadsheetLogger.forceIntegratePartialGroup) {
+        this.spreadsheetLogger.forceIntegratePartialGroup(groupId, row);
+      } else {
+        console.warn(`⚠️ [StreamProcessor] SpreadsheetLoggerの部分統合機能が利用不可`);
+      }
+    }
+  }
+
+  /**
+   * グループ統合状況の診断情報を取得
+   * @returns {Object} 診断情報
+   */
+  getGroupIntegrationDiagnostics() {
+    const diagnostics = {
+      activeGroups: this.activeThreeTypeGroups.size,
+      pendingTrackers: this.groupCompletionTracker.size,
+      trackerDetails: [],
+      pendingLogDetails: this.spreadsheetLogger ? this.spreadsheetLogger.getStatistics().groups : null
+    };
+    
+    // トラッカー詳細
+    for (const [key, tracker] of this.groupCompletionTracker.entries()) {
+      diagnostics.trackerDetails.push({
+        key,
+        completed: Array.from(tracker.completed),
+        required: Array.from(tracker.required),
+        completedCount: tracker.completed.size,
+        requiredCount: tracker.required.size,
+        isComplete: tracker.completed.size === tracker.required.size,
+        createdAt: tracker.createdAt?.toLocaleString('ja-JP') || 'Unknown'
+      });
+    }
+    
+    return diagnostics;
   }
 
   /**
@@ -4717,6 +4896,13 @@ ${formattedGemini}`;
       // this.logger.log(`[StreamProcessor] 🔄 新規発見列の処理開始: ${column}列 (${tasks.length}件)`);
       await this.processNormalColumn(column);
     }
+  }
+
+  /**
+   * 指定時間待機
+   */
+  async delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 }
 

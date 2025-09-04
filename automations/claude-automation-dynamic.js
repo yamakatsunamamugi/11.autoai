@@ -625,10 +625,36 @@
         resolved: targetFunction
       });
       
+      // 機能名マッピング（スプレッドシート値 → Claude UI表記）
+      const featureMapping = {
+        'DeepReserch': 'DeepResearch',
+        'DeepResearch': 'DeepResearch',
+        'Deep Research': 'DeepResearch',
+        'じっくり考える': 'じっくり考える',
+        'ウェブ検索': 'ウェブ検索'
+      };
+      
+      const mappedFunctionName = featureMapping[functionName] || functionName;
+      
+      console.log(`🔄 [機能名マッピング] Claude: "${functionName}" → "${mappedFunctionName}"`);
+      
       // DeepResearch特別処理
+      console.log(`🔍 [機能判定] Claude機能チェック:`, {
+        originalFunctionName: functionName,
+        mappedFunctionName: mappedFunctionName,
+        normalizedInput: normalizedInput,
+        isDeepResearch: mappedFunctionName === 'DeepResearch',
+        hasFeatureConstants: !!window.FeatureConstants,
+        aliasCheck: CONFIG.FUNCTION_ALIASES[normalizedInput]
+      });
+      
       const isDeepResearch = window.FeatureConstants ? 
-        window.FeatureConstants.isDeepResearch(functionName) :
-        (normalizedInput === 'deepresearch' || functionName === 'DeepResearch' || CONFIG.FUNCTION_ALIASES[normalizedInput] === 'リサーチ');
+        window.FeatureConstants.isDeepResearch(mappedFunctionName) :
+        (normalizedInput === 'deepresearch' || 
+         mappedFunctionName === 'DeepResearch' || 
+         CONFIG.FUNCTION_ALIASES[normalizedInput] === 'リサーチ');
+      
+      console.log(`🎯 [機能判定] Claude特別モード判定結果: ${isDeepResearch} (最終機能名: "${mappedFunctionName}")`);
       
       if (isDeepResearch) {
         log('DeepResearchモードを有効化します', 'INFO');

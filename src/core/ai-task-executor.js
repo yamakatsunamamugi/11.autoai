@@ -282,6 +282,13 @@ export class AITaskExecutor {
             }
 
             // グローバル変数に現在のタスク情報を設定（SpreadsheetLogger用）
+            console.log(`[ExecuteAITask] 🔍 taskData詳細:`, {
+              taskId: taskData.taskId,
+              model: taskData.model,
+              aiType: taskData.aiType,
+              fullTaskData: taskData
+            });
+            
             window.currentAITaskInfo = {
               taskId: taskData.taskId,
               model: taskData.model,
@@ -403,9 +410,14 @@ export class AITaskExecutor {
         if (resultData.waitForCompletion) {
           this.logger.log(`[AITaskExecutor] 📝 [${taskData.aiType}] タスク実行開始、完了待機中 [${cellPosition}セル]`);
           
-          // V2/V1実行の完了を待つ（最大60秒）
+          // V2/V1実行の完了を待つ（通常は最大60秒、Deep Research/エージェントモードは40分）
           const isV2 = resultData.v2Executing;
-          const maxWaitTime = 60000;
+          const isDeepResearchOrAgent = taskData.function && (
+            taskData.function.toLowerCase().includes('deep research') ||
+            taskData.function.toLowerCase().includes('エージェント') ||
+            taskData.function.toLowerCase().includes('agent')
+          );
+          const maxWaitTime = isDeepResearchOrAgent ? 2400000 : 60000; // Deep Research/エージェント: 40分、通常: 60秒
           const checkInterval = 500;
           const waitStartTime = Date.now();
           

@@ -1851,6 +1851,9 @@
     // taskInfoが渡されない場合はグローバル変数から取得
     const actualTaskInfo = window.currentAITaskInfo;
     
+    // デバッグ用: タスク情報の詳細をログ出力
+    log(`🔍 [recordSendTimestamp] タスク情報詳細: ${JSON.stringify(actualTaskInfo)}`, 'DEBUG', aiType);
+    
     if (actualTaskInfo && actualTaskInfo.taskId) {
       try {
         // 現在のモデルを取得
@@ -1878,7 +1881,9 @@
         throw error;
       }
     } else {
-      const errorMsg = `タスク情報なし: taskInfo=${!!window.currentAITaskInfo}`;
+      const hasTaskInfo = !!window.currentAITaskInfo;
+      const taskId = window.currentAITaskInfo?.taskId;
+      const errorMsg = `タスク情報不正: hasTaskInfo=${hasTaskInfo}, taskId=${taskId}, actualTaskInfo=${JSON.stringify(actualTaskInfo)}`;
       log(`⚠️ [recordSendTimestamp] ${errorMsg}`, 'WARNING', aiType);
       throw new Error(errorMsg);
     }

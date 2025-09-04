@@ -49,21 +49,28 @@ export default class TaskGeneratorV2 {
     let taskCount = 0;
     
     for (const workRow of workRows) {
+      console.log(`[制御] 行${workRow.number}の処理開始`);
+      
       // 行制御チェック
       if (!this.shouldProcessRow(workRow.number, controls.row)) {
+        console.log(`[制御] 行${workRow.number}: 行制御によりスキップ`);
         continue;
       }
       
       // 各プロンプトグループでタスク生成
       for (const promptGroup of promptGroups) {
+        console.log(`[制御] 行${workRow.number}: グループ ${promptGroup.promptColumns.map(i => this.indexToColumn(i)).join(',')} の処理開始`);
+        
         // 列制御チェック
         if (!this.shouldProcessColumn(promptGroup, controls.column)) {
+          console.log(`[制御] 行${workRow.number}: グループ ${promptGroup.promptColumns.map(i => this.indexToColumn(i)).join(',')}: 列制御によりスキップ`);
           continue;
         }
         
         // プロンプト列の存在確認（プロンプトの内容は取得しない）
         const hasPrompt = this.hasPromptInRow(spreadsheetData, workRow, promptGroup);
         if (!hasPrompt) {
+          console.log(`[制御] 行${workRow.number}: グループ ${promptGroup.promptColumns.map(i => this.indexToColumn(i)).join(',')}: プロンプトなしでスキップ`);
           continue;
         }
         
@@ -87,6 +94,13 @@ export default class TaskGeneratorV2 {
               answerCol詳細: answerCol
             });
             
+            const functionValue = this.getFunction(spreadsheetData, answerCol);
+            console.log(`🎯 [タスク生成] ${answerCol.column}${workRow.number}: AI=${answerCol.type}, 機能="${functionValue}"`);
+            
+            // ログ列を特定（プロンプト列の1列前）
+            const logColumnIndex = Math.max(0, Math.min(...promptGroup.promptColumns.map(col => col.index)) - 1);
+            const logColumn = this.indexToColumn(logColumnIndex);
+            
             const taskData = {
               id: this.generateTaskId(answerCol.column, workRow.number),
               row: workRow.number,
@@ -94,12 +108,14 @@ export default class TaskGeneratorV2 {
               promptColumns: promptGroup.promptColumns,  // D,E列（プロンプト列）
               aiType: answerCol.type,  // ChatGPT, Claude, Gemini
               model: this.getModel(spreadsheetData, answerCol),
-              function: this.getFunction(spreadsheetData, answerCol),
+              function: functionValue,
               cellInfo: {
                 row: workRow.number,
                 column: answerCol.column,
                 columnIndex: answerCol.index
               },
+              // ログ列情報を追加
+              logColumns: [logColumn],
               // グループ情報
               multiAI: true,
               groupId: `group_${workRow.number}_${this.indexToColumn(promptGroup.promptColumns[0])}`,
@@ -129,6 +145,9 @@ export default class TaskGeneratorV2 {
             const aiType = promptGroup.aiType.toLowerCase();  // 小文字に統一（'Claude' → 'claude'）
             
             // Taskインスタンスを作成
+            const functionValue = this.getFunction(spreadsheetData, answerCol);
+            console.log(`🎯 [タスク生成] ${answerCol.column}${workRow.number}: AI=${aiType}, 機能="${functionValue}"`);
+            
             const taskData = {
               id: this.generateTaskId(answerCol.column, workRow.number),
               row: workRow.number,
@@ -136,7 +155,7 @@ export default class TaskGeneratorV2 {
               promptColumns: promptGroup.promptColumns,  // プロンプト列の位置のみ
               aiType: aiType,
               model: this.getModel(spreadsheetData, answerCol),
-              function: this.getFunction(spreadsheetData, answerCol),
+              function: functionValue,
               cellInfo: {
                 row: workRow.number,
                 column: answerCol.column,
@@ -418,15 +437,29 @@ export default class TaskGeneratorV2 {
       row[0] && (row[0] === '機能' || row[0].toLowerCase() === 'function')
     );
     
+    console.log(`🔍 [機能取得] ${answerCol.column}列の機能情報を取得中...`, {
+      functionRowExists: !!functionRow,
+      answerColIndex: answerCol.index,
+      answerColumn: answerCol.column
+    });
+    
     if (functionRow) {
       // 回答列から取得を試みる
       const functionValue = functionRow[answerCol.index];
+      console.log(`📋 [機能取得] 機能行データ:`, {
+        機能行: functionRow,
+        対象列index: answerCol.index,
+        取得した値: functionValue
+      });
+      
       if (functionValue) {
+        console.log(`✅ [機能取得] 機能設定検出: ${answerCol.column}列 → "${functionValue}"`);
         this.logger.log(`[TaskGeneratorV2] 機能取得: ${answerCol.column}列（index=${answerCol.index}）から "${functionValue}"`);
         return functionValue;
       }
     }
     
+    console.log(`🔄 [機能取得] ${answerCol.column}列: 機能設定なし → デフォルト "通常"`);
     return '通常';
   }
 

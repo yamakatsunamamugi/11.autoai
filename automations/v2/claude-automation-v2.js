@@ -850,17 +850,17 @@
             await clickButton(sendResult.element);
             
             // 送信時刻を記録（SpreadsheetLogger用）
-            log(`🔍 送信時刻記録開始 - AIHandler: ${!!window.AIHandler}, recordSendTimestamp: ${!!window.AIHandler?.recordSendTimestamp}, currentAITaskInfo: ${!!window.currentAITaskInfo}`, 'info');
+            console.log(`🔍 送信時刻記録開始 - AIHandler: ${!!window.AIHandler}, recordSendTimestamp: ${!!window.AIHandler?.recordSendTimestamp}, currentAITaskInfo: ${!!window.currentAITaskInfo}`);
             if (window.AIHandler && window.AIHandler.recordSendTimestamp) {
                 try {
-                    log(`📝 送信時刻記録実行開始 - タスクID: ${window.currentAITaskInfo?.taskId}`, 'info');
+                    console.log(`📝 送信時刻記録実行開始 - タスクID: ${window.currentAITaskInfo?.taskId}`);
                     await window.AIHandler.recordSendTimestamp('Claude');
-                    log(`✅ 送信時刻記録成功`, 'success');
+                    console.log(`✅ 送信時刻記録成功`);
                 } catch (error) {
-                    log(`❌ 送信時刻記録エラー: ${error.message}`, 'error');
+                    console.log(`❌ 送信時刻記録エラー: ${error.message}`);
                 }
             } else {
-                log(`⚠️ AIHandler または recordSendTimestamp が利用できません`, 'warning');
+                console.log(`⚠️ AIHandler または recordSendTimestamp が利用できません`);
             }
             
             // ===== ステップ8: 応答待機 =====

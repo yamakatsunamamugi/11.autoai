@@ -226,22 +226,24 @@ ${prompt}`;
       const windows = await Promise.all(windowPromises);
       const validWindows = windows.filter(w => w !== null);
       
-      // 5秒ずつずらして送信
-      const promises = [];
+      // 5秒間隔で順次送信
       for (let i = 0; i < validWindows.length; i++) {
         const window = validWindows[i];
         
-        // 送信を遅延実行
-        const delayedExecution = (async () => {
-          await this.delay(i * 5000);
-          return this.executeTaskFromList(window.task, window.prompt, window.model, window.func, window.taskIndex, window.tabId);
-        })();
-        
-        promises.push(delayedExecution);
+        try {
+          this.logger.log(`[ColumnProcessor] タスク${i + 1}/${validWindows.length}実行中: ${window.task.column}${window.task.row}`);
+          await this.executeTaskFromList(window.task, window.prompt, window.model, window.func, window.taskIndex, window.tabId);
+          this.logger.log(`[ColumnProcessor] タスク${i + 1}/${validWindows.length}完了: ${window.task.column}${window.task.row}`);
+          
+          // 最後のタスクでない場合は5秒待機
+          if (i < validWindows.length - 1) {
+            this.logger.log(`[ColumnProcessor] 次のタスクまで5秒待機...`);
+            await this.delay(5000);
+          }
+        } catch (error) {
+          this.logger.error(`[ColumnProcessor] タスク実行エラー ${window.task.column}${window.task.row}:`, error);
+        }
       }
-      
-      // バッチ内の全タスクの完了を待つ
-      await Promise.allSettled(promises);
       
       this.logger.log(`[ColumnProcessor] ✅ バッチ処理完了`);
       
@@ -718,23 +720,24 @@ ${prompt}`;
       const windowOpenTime = (performance.now() - windowOpenStartTime).toFixed(0);
       this.logger.log(`[ColumnProcessor] ✅ ${validWindows.length}個のウィンドウを開きました (${windowOpenTime}ms)`);
       
-      // 5秒ずつずらして送信
-      const promises = [];
+      // 5秒間隔で順次送信
       for (let i = 0; i < validWindows.length; i++) {
         const window = validWindows[i];
         
-        // 送信を遅延実行
-        const delayedExecution = (async () => {
-          // 指定秒数待機してから送信
-          await this.delay(i * 5000);
-          return this.executeSingleTask(window.task, window.prompt, window.model, window.func, window.taskIndex, window.tabId);
-        })();
-        
-        promises.push(delayedExecution);
+        try {
+          this.logger.log(`[ColumnProcessor] タスク${i + 1}/${validWindows.length}実行中: ${window.task.column}${window.task.row}`);
+          await this.executeSingleTask(window.task, window.prompt, window.model, window.func, window.taskIndex, window.tabId);
+          this.logger.log(`[ColumnProcessor] タスク${i + 1}/${validWindows.length}完了: ${window.task.column}${window.task.row}`);
+          
+          // 最後のタスクでない場合は5秒待機
+          if (i < validWindows.length - 1) {
+            this.logger.log(`[ColumnProcessor] 次のタスクまで5秒待機...`);
+            await this.delay(5000);
+          }
+        } catch (error) {
+          this.logger.error(`[ColumnProcessor] タスク実行エラー ${window.task.column}${window.task.row}:`, error);
+        }
       }
-      
-      // バッチ内の全タスクの完了を待つ
-      await Promise.allSettled(promises);
       
       // ウィンドウは各タスクで個別に閉じるので、ここでは閉じない
       

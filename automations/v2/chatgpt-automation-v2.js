@@ -257,12 +257,12 @@
                 return false;
             }
             
-            // 1-2: 5分間待機して停止ボタンの状態を確認
-            log('1-2. 回答送信後、5分間待機。5分以内に回答停止が消滅したら1-3へ、5分待機後は1-4へ', 'step');
-            const fiveMinutes = 300; // 5分 = 300秒
+            // 1-2: 2分間待機して停止ボタンの状態を確認
+            log('1-2. 回答送信後、2分間待機。2分以内に回答停止が消滅したら1-3へ、2分待機後は1-4へ', 'step');
+            const twoMinutes = 120; // 2分 = 120秒
             let disappeared = false;
             
-            for (let i = 0; i < fiveMinutes; i++) {
+            for (let i = 0; i < twoMinutes; i++) {
                 stopBtn = await findElement(SELECTORS.stopButton, '停止ボタン', 1);
                 
                 if (!stopBtn) {
@@ -276,15 +276,15 @@
                 if (i % 30 === 0 && i > 0) {
                     const minutes = Math.floor(i / 60);
                     const seconds = i % 60;
-                    log(`停止ボタン存在確認中... (${minutes}分${seconds}秒経過 / 5分まで)`, 'info');
+                    log(`停止ボタン存在確認中... (${minutes}分${seconds}秒経過 / 2分まで)`, 'info');
                 }
                 
                 await sleep(1000);
             }
             
-            // 1-3: 5分以内に停止ボタンが消滅した場合
+            // 1-3: 2分以内に停止ボタンが消滅した場合
             if (disappeared) {
-                log('1-3. 回答停止が5分以内に消滅したため、「いいから元のプロンプトを確認して作業をして」と再送信', 'step');
+                log('1-3. 回答停止が2分以内に消滅したため、「いいから元のプロンプトを確認して作業をして」と再送信', 'step');
                 
                 await sleep(2000); // 少し待機
                 
@@ -334,7 +334,7 @@
                     log('送信ボタンが見つかりません', 'error');
                 }
             } else {
-                log('5分間経過。停止ボタンは消滅しませんでした', 'info');
+                log('2分間経過。停止ボタンは消滅しませんでした', 'info');
             }
             
             // 1-4: 回答停止ボタンが10秒間連続で消滅するまで待機（最大40分）

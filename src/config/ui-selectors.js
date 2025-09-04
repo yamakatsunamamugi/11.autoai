@@ -411,6 +411,13 @@ export const UI_SELECTORS = {
                 'button:contains("リサーチを開始")',
                 'button[aria-label*="リサーチ"]',
                 'button[class*="research"]'
+            ],
+            RESPONSE: [
+                '#extended-response-markdown-content',
+                '.extended-response-markdown-content',
+                '[id="extended-response-markdown-content"]',
+                'div[id="extended-response-markdown-content"]',
+                '.markdown.markdown-main-panel'
             ]
         },
         
