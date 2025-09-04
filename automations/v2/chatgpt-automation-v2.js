@@ -685,7 +685,22 @@
                 if (!featureElement) {
                     // 6-2: さらに表示ボタンをクリック
                     log('6-2. 機能メニューの中のさらに表示ボタンをクリック', 'step');
-                    const moreBtn = findElementByText('[role="menuitem"]', 'さらに表示');
+                    
+                    // さらに表示ボタンを複数の方法で探す
+                    let moreBtn = findElementByText('[role="menuitem"]', 'さらに表示');
+                    if (!moreBtn) {
+                        // 別のパターンで検索
+                        const allMenuItems = funcMenu.querySelectorAll('[role="menuitem"]');
+                        for (const item of allMenuItems) {
+                            const text = getCleanText(item);
+                            if (text === 'さらに表示' || text.includes('さらに表示')) {
+                                moreBtn = item;
+                                console.log(`🔍 [機能検索] 別のパターンで"さらに表示"ボタンを発見`);
+                                break;
+                            }
+                        }
+                    }
+                    
                     if (moreBtn) {
                         // 初回タスクの場合は追加待機
                         if (isFirstTask) {
@@ -693,14 +708,39 @@
                             await sleep(500);
                         }
                         
-                        moreBtn.click();
+                        // PointerEventを使用してクリック（より確実）
+                        console.log(`🔍 [機能検索] さらに表示ボタンをPointerEventでクリック`);
+                        moreBtn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+                        await sleep(100);
+                        moreBtn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+                        await sleep(500);
                         
                         // サブメニューが表示されるまで待機（最大5秒、より頻繁にチェック）
                         let subMenu = null;
                         for (let i = 0; i < 20; i++) {
                             await sleep(250);
+                            
+                            // デバッグ：全メニュー要素をチェック
+                            if (i === 0 || i === 10 || i === 19) {
+                                const allMenus = document.querySelectorAll('[role="menu"]');
+                                console.log(`🔍 [デバッグ] ${(i + 1) * 0.25}秒後 - 現在のメニュー数: ${allMenus.length}`);
+                                allMenus.forEach((menu, index) => {
+                                    const rect = menu.getBoundingClientRect();
+                                    const dataSide = menu.getAttribute('data-side');
+                                    console.log(`  メニュー${index}: data-side="${dataSide}", 表示=${rect.width > 0 && rect.height > 0}, 幅=${rect.width}, 高さ=${rect.height}`);
+                                });
+                            }
+                            
+                            // より多くのセレクタパターンを試す
                             subMenu = document.querySelector('[data-side="right"]') || 
-                                     document.querySelector('[role="menu"][data-side="right"]');
+                                     document.querySelector('[role="menu"][data-side="right"]') ||
+                                     document.querySelector('div[data-side="right"]') ||
+                                     Array.from(document.querySelectorAll('[role="menu"]')).find(el => {
+                                         const rect = el.getBoundingClientRect();
+                                         return rect.width > 0 && rect.height > 0 && 
+                                               el.parentElement !== funcMenu &&
+                                               el !== funcMenu;
+                                     });
                             if (subMenu) {
                                 console.log(`✅ [機能検索] サブメニューが表示されました (${(i + 1) * 0.25}秒後)`);
                                 break;
