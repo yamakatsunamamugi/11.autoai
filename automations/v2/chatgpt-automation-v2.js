@@ -706,77 +706,36 @@
                     }
                     
                     if (moreBtn) {
-                        // 初回タスクの場合は追加待機
-                        if (isFirstTask) {
-                            log('初回タスクのため、さらに表示クリック前に追加待機', 'info');
-                            await sleep(500);
-                        }
+                        // テストコードの実装をそのまま使用
+                        log('「さらに表示」をクリック', 'info');
+                        moreBtn.click();
+                        await sleep(1000);
                         
-                        // PointerEventを使用してクリック（より確実）
-                        console.log(`🔍 [機能検索] さらに表示ボタンをPointerEventでクリック`);
-                        moreBtn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
-                        await sleep(100);
-                        moreBtn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
-                        await sleep(500);
+                        // テストコードのサブメニュー検出をそのまま使用
+                        const subMenu = document.querySelector('[data-side="right"]');
                         
-                        // サブメニューが表示されるまで待機（最大5秒、より頻繁にチェック）
-                        let subMenu = null;
-                        for (let i = 0; i < 20; i++) {
-                            await sleep(250);
-                            
-                            // デバッグ：全メニュー要素をチェック
-                            if (i === 0 || i === 10 || i === 19) {
-                                const allMenus = document.querySelectorAll('[role="menu"]');
-                                console.log(`🔍 [デバッグ] ${(i + 1) * 0.25}秒後 - 現在のメニュー数: ${allMenus.length}`);
-                                allMenus.forEach((menu, index) => {
-                                    const rect = menu.getBoundingClientRect();
-                                    const dataSide = menu.getAttribute('data-side');
-                                    console.log(`  メニュー${index}: data-side="${dataSide}", 表示=${rect.width > 0 && rect.height > 0}, 幅=${rect.width}, 高さ=${rect.height}`);
-                                });
-                            }
-                            
-                            // より多くのセレクタパターンを試す
-                            subMenu = document.querySelector('[data-side="right"]') || 
-                                     document.querySelector('[role="menu"][data-side="right"]') ||
-                                     document.querySelector('div[data-side="right"]') ||
-                                     Array.from(document.querySelectorAll('[role="menu"]')).find(el => {
-                                         const rect = el.getBoundingClientRect();
-                                         return rect.width > 0 && rect.height > 0 && 
-                                               el.parentElement !== funcMenu &&
-                                               el !== funcMenu;
-                                     });
-                            if (subMenu) {
-                                console.log(`✅ [機能検索] サブメニューが表示されました (${(i + 1) * 0.25}秒後)`);
-                                break;
-                            }
-                        }
-                        
-                        // 6-3: サブメニューで機能を探す
+                        // 6-3: サブメニューで機能を探す（テストコードの実装）
                         log('6-3. サブメニューで機能を選択', 'step');
                         if (subMenu) {
-                            // メニュー項目が完全にレンダリングされるまで追加待機
-                            await sleep(1000);
-                            
-                            // 複数の方法で機能を探す
-                            featureElement = findElementByText('[role="menuitemradio"]', mappedFeatureName, subMenu);
-                            
-                            // 見つからない場合は、より広範囲で検索
-                            if (!featureElement) {
-                                console.log(`🔍 [機能検索] 別のセレクタで再試行中...`);
-                                const allItems = subMenu.querySelectorAll('[role="menuitemradio"], [role="menuitem"]');
-                                for (const item of allItems) {
-                                    const itemText = getCleanText(item);
-                                    if (itemText === mappedFeatureName || itemText.includes(mappedFeatureName)) {
-                                        featureElement = item;
-                                        console.log(`✅ [機能検索] 別のセレクタで "${mappedFeatureName}" を発見`);
-                                        break;
-                                    }
+                            // テストコードの実装をそのまま使用
+                            const subMenuItems = subMenu.querySelectorAll('[role="menuitemradio"]');
+                            for (const item of subMenuItems) {
+                                const featureName = getCleanText(item);
+                                if (featureName === mappedFeatureName) {
+                                    featureElement = item;
+                                    log(`サブメニュー機能発見: ${featureName}`, 'success');
+                                    break;
                                 }
+                            }
+                            
+                            // テストコードのfindElementByText互換実装も追加
+                            if (!featureElement) {
+                                featureElement = findElementByText('[role="menuitemradio"]', mappedFeatureName, subMenu);
                             }
                             
                             console.log(`🔍 [機能検索] サブメニューで "${mappedFeatureName}" を検索: ${featureElement ? '見つかった' : '見つからない'}`);
                         } else {
-                            console.log(`⚠️ [機能検索] サブメニューが見つかりません（5秒待機後）`);
+                            console.log(`⚠️ [機能検索] サブメニューが見つかりません`);
                         }
                     } else {
                         console.log(`⚠️ [機能検索] "さらに表示"ボタンが見つかりません`);
