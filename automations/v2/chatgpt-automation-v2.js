@@ -273,7 +273,7 @@
                     disappeared = true;
                     const minutes = Math.floor(i / 60);
                     const seconds = i % 60;
-                    log(`停止ボタンが消滅しました (${minutes}分${seconds}秒で消滅)`, 'warning');
+                    log(`停止ボタンが完了しました (${minutes}分${seconds}秒で完了)`, 'info');
                     break;
                 }
                 

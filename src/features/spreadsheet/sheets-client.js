@@ -154,7 +154,6 @@ class SheetsClient {
     
     // シート名が取得できなかった場合、デフォルトでSheet1を使用
     if (!sheetName) {
-      console.log("SheetsClient", "[WARNING] シート名が取得できません。デフォルトのSheet1を使用");
       sheetName = "Sheet1";  // デフォルトのシート名
     }
     

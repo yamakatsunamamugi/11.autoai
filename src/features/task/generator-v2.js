@@ -125,21 +125,12 @@ export default class TaskGeneratorV2 {
             
             // Taskインスタンスを作成
             const functionValue = this.getFunction(spreadsheetData, answerCol);
-            console.log(`🎯 [タスク生成] ${answerCol.column}${workRow.number}: AI=${aiType}, 機能="${functionValue}"`);
             
             // ログ列を特定（プロンプト列の1列前）
             // promptColumnsは既にインデックスの配列なので、.map(col => col.index)は不要
             const logColumnIndex = Math.max(0, Math.min(...promptGroup.promptColumns) - 1);
             const logColumn = this.indexToColumn(logColumnIndex);
             
-            // デバッグログ
-            console.log(`🔍 [ログ列計算デバッグ] 通常AI`, {
-              promptColumns: promptGroup.promptColumns,
-              最小プロンプト列: Math.min(...promptGroup.promptColumns),
-              logColumnIndex: logColumnIndex,
-              logColumn: logColumn,
-              isNaN: isNaN(logColumnIndex)
-            });
             
             const taskData = {
               id: this.generateTaskId(answerCol.column, workRow.number),
