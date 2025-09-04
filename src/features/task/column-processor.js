@@ -129,7 +129,7 @@ ${prompt}`;
           model: task.model,
           func: task.function,
           taskIndex: taskIndex,
-          aiType: aiUrlManager.getDisplayName(task.aiType)
+          aiType: task.multiAI ? task.aiType : aiUrlManager.getDisplayName(task.aiType)
         });
       }
       
@@ -221,7 +221,7 @@ ${prompt}`;
       
       // タブIDが渡されていない場合は新規作成
       if (!tabId) {
-        const aiType = aiUrlManager.getDisplayName(task.aiType);
+        const aiType = task.multiAI ? task.aiType : aiUrlManager.getDisplayName(task.aiType);
         tabId = await this.createNewWindow(aiType, taskPosition);
         if (!tabId) {
           throw new Error(`Failed to create tab for ${task.aiType}`);
@@ -235,7 +235,7 @@ ${prompt}`;
       
       // AITaskExecutorを使用してタスク実行
       const result = await this.aiTaskExecutor.executeAITask(tabId, {
-        aiType: aiUrlManager.getDisplayName(task.aiType),
+        aiType: task.multiAI ? task.aiType : aiUrlManager.getDisplayName(task.aiType),
         taskId: task.id,
         model: model,
         function: func,

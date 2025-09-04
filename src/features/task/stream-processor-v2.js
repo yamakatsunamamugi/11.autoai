@@ -1,19 +1,21 @@
 /**
- * @fileoverview StreamProcessor V2 - ColumnProcessorを使用したシンプルな実行システム
+ * @fileoverview StreamProcessor V2 - SequentialExecutorを使用した列ごと順次処理システム
  * 
  * 特徴:
- * - 列ごとにタスクリストを生成して順次処理
- * - ColumnProcessorに処理を委譲
- * - シンプルで保守しやすい実装
+ * - 列ごとに上から下へ順次処理
+ * - SequentialExecutorに処理を委譲
+ * - 列完了後に次の列に進む
  */
 
-import ColumnProcessor from './column-processor.js';
+import SequentialExecutor from './executors/sequential-executor.js';
 import TaskQueue from './queue.js';
 
 export default class StreamProcessorV2 {
   constructor(logger = console) {
     this.logger = logger;
-    this.columnProcessor = new ColumnProcessor(logger);
+    this.sequentialExecutor = new SequentialExecutor({
+      logger: logger
+    });
   }
 
   /**
@@ -23,9 +25,10 @@ export default class StreamProcessorV2 {
    * @returns {Promise<Object>} 実行結果
    */
   async processTaskStream(taskList, spreadsheetData) {
-    this.logger.log('[StreamProcessorV2] 🚀 処理開始', {
+    this.logger.log('[StreamProcessorV2] 🚀 列ごと順次処理開始', {
       タスク数: taskList.tasks.length,
-      行制御・列制御: '適用済み'
+      行制御・列制御: '適用済み',
+      処理方式: '列ごと（上から下へ）'
     });
     
     // タスクリストが空の場合は早期リターン
@@ -40,8 +43,10 @@ export default class StreamProcessorV2 {
       };
     }
     
-    // ColumnProcessorにタスクリストと処理を委譲
-    const result = await this.columnProcessor.processTaskList(taskList, spreadsheetData);
+    // SequentialExecutorにタスクリストと処理を委譲
+    const result = await this.sequentialExecutor.processTaskStream(taskList, spreadsheetData, {
+      testMode: false
+    });
     
     // タスクリストをクリア（Chrome Storageから削除）
     try {

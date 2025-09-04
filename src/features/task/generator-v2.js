@@ -61,12 +61,39 @@ export default class TaskGeneratorV2 {
           continue;
         }
         
+        // 3種類AI列かどうかを判定
+        const is3TypeAI = promptGroup.aiType.includes('3種類') || promptGroup.aiType.includes('３種類');
+        
+        if (is3TypeAI) {
+          // 3種類AI列：全ての回答列が完了しているかチェック
+          const allAnswersComplete = promptGroup.answerColumns.every(answerCol => {
+            const existingAnswer = this.getCellValue(spreadsheetData, workRow.index, answerCol.index);
+            return this.hasAnswer(existingAnswer);
+          });
+          
+          if (allAnswersComplete) {
+            // 全て完了している場合は、この行の3種類AI列をスキップ
+            continue;
+          }
+        }
+        
         // 各回答列にタスクを生成
-        for (const answerCol of promptGroup.answerColumns) {
-          // 既存回答チェック
+        for (let answerIndex = 0; answerIndex < promptGroup.answerColumns.length; answerIndex++) {
+          const answerCol = promptGroup.answerColumns[answerIndex];
+          
+          // 個別の既存回答チェック（既に回答があるタスクはスキップ）
           const existingAnswer = this.getCellValue(spreadsheetData, workRow.index, answerCol.index);
           if (this.hasAnswer(existingAnswer)) {
             continue;
+          }
+          
+          // AI種別を設定
+          let aiType;
+          if (is3TypeAI) {
+            const aiTypes = ['ChatGPT', 'Claude', 'Gemini'];
+            aiType = aiTypes[answerIndex] || 'ChatGPT';
+          } else {
+            aiType = promptGroup.aiType.toLowerCase();  // 小文字に統一（'Claude' → 'claude'）
           }
           
           // Taskインスタンスを作成
@@ -75,7 +102,7 @@ export default class TaskGeneratorV2 {
             row: workRow.number,
             column: answerCol.column,
             promptColumns: promptGroup.promptColumns,  // プロンプト列の位置のみ
-            aiType: promptGroup.aiType.toLowerCase(),  // 小文字に統一（'Claude' → 'claude'）
+            aiType: aiType,
             model: this.getModel(spreadsheetData, promptGroup),
             function: this.getFunction(spreadsheetData, promptGroup),
             cellInfo: {
