@@ -64,13 +64,16 @@ export default class ColumnProcessor {
   }
   
   /**
-   * タスクを行ごとにグループ化
+   * タスクを行ごとにグループ化（3種類AI列の場合は3つずつに制限）
    * @param {Array} tasks - タスクリスト
    * @returns {Array} グループ化されたタスク
    */
   groupTasksByRow(tasks) {
     const groups = [];
     const rowMap = new Map();
+    
+    // 3種類AI列（連続する3列）の検出
+    const threeTypeAIGroups = this.detect3TypeAIGroups(tasks);
     
     // 行ごとにタスクをグループ化
     for (const task of tasks) {
@@ -81,15 +84,87 @@ export default class ColumnProcessor {
       rowMap.get(rowKey).push(task);
     }
     
-    // グループを配列に変換
+    // グループを配列に変換（3種類AI列の場合は3つずつ制限）
     for (const [row, rowTasks] of rowMap) {
-      groups.push({
-        row: row,
-        tasks: rowTasks
-      });
+      const processedTasks = new Set();
+      
+      // 3種類AI列グループを優先処理
+      for (const threeTypeGroup of threeTypeAIGroups) {
+        const groupTasks = rowTasks.filter(task => 
+          threeTypeGroup.columns.includes(task.column) && !processedTasks.has(task.id)
+        );
+        
+        if (groupTasks.length === 3) {
+          // 列順でソート（F,G,H順など）
+          groupTasks.sort((a, b) => a.column.localeCompare(b.column));
+          
+          groups.push({
+            row: row,
+            tasks: groupTasks,
+            is3TypeAI: true
+          });
+          
+          groupTasks.forEach(task => processedTasks.add(task.id));
+        }
+      }
+      
+      // 残りのタスクを通常処理
+      const remainingTasks = rowTasks.filter(task => !processedTasks.has(task.id));
+      if (remainingTasks.length > 0) {
+        groups.push({
+          row: row,
+          tasks: remainingTasks,
+          is3TypeAI: false
+        });
+      }
     }
     
     return groups;
+  }
+  
+  /**
+   * 3種類AI列グループ（連続する3列）を検出
+   * @param {Array} tasks - タスクリスト
+   * @returns {Array} 3種類AI列グループ
+   */
+  detect3TypeAIGroups(tasks) {
+    const columnMap = new Map();
+    
+    // 列ごとにAI種別を集計
+    for (const task of tasks) {
+      if (!columnMap.has(task.column)) {
+        columnMap.set(task.column, new Set());
+      }
+      columnMap.get(task.column).add(task.aiType);
+    }
+    
+    // 連続する3列でAI種別が異なる場合を検出
+    const columns = Array.from(columnMap.keys()).sort();
+    const threeTypeGroups = [];
+    
+    for (let i = 0; i < columns.length - 2; i++) {
+      const col1 = columns[i];
+      const col2 = columns[i + 1];
+      const col3 = columns[i + 2];
+      
+      const types1 = Array.from(columnMap.get(col1));
+      const types2 = Array.from(columnMap.get(col2));
+      const types3 = Array.from(columnMap.get(col3));
+      
+      // 各列が単一のAI種別で、3列とも異なるAI種別の場合
+      if (types1.length === 1 && types2.length === 1 && types3.length === 1) {
+        const uniqueTypes = new Set([types1[0], types2[0], types3[0]]);
+        if (uniqueTypes.size === 3) {
+          threeTypeGroups.push({
+            columns: [col1, col2, col3],
+            aiTypes: [types1[0], types2[0], types3[0]]
+          });
+          i += 2; // 重複を避けるため2つスキップ
+        }
+      }
+    }
+    
+    return threeTypeGroups;
   }
   
   /**
@@ -97,12 +172,14 @@ export default class ColumnProcessor {
    * @param {Object} group - タスクグループ
    */
   async executeTaskGroup(group) {
-    this.logger.log(`[ColumnProcessor] 📋 行${group.row}のタスク処理開始 (${group.tasks.length}タスク)`);
+    this.logger.log(`[ColumnProcessor] 📋 行${group.row}のタスク処理開始 (${group.tasks.length}タスク)${group.is3TypeAI ? ' [3種類AI]' : ''}`);
     
-    // 3つずつバッチ処理
-    for (let i = 0; i < group.tasks.length; i += 3) {
-      const batch = group.tasks.slice(i, Math.min(i + 3, group.tasks.length));
-      this.logger.log(`[ColumnProcessor] 🎯 バッチ処理開始: ${batch.length}タスク`);
+    // 3種類AI列の場合は全タスクを一度に処理、それ以外は3つずつバッチ処理
+    const batchSize = group.is3TypeAI ? group.tasks.length : 3;
+    
+    for (let i = 0; i < group.tasks.length; i += batchSize) {
+      const batch = group.tasks.slice(i, Math.min(i + batchSize, group.tasks.length));
+      this.logger.log(`[ColumnProcessor] 🎯 バッチ処理開始: ${batch.length}タスク${group.is3TypeAI ? ' [3種類AI]' : ''}`);
       
       // 各タスクのプロンプトを事前に準備
       const taskDataList = [];

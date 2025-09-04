@@ -133,9 +133,11 @@ class SequentialExecutor extends BaseExecutor {
       return;
     }
     
-    this.logger.log(`[SequentialExecutor] ${column}列の処理開始`, {
+    this.logger.log(`[SequentialExecutor] 📋 ${column}列の処理開始`, {
       taskCount: tasks.length,
-      aiType: tasks[0]?.aiType
+      aiType: tasks[0]?.aiType,
+      columnIndex: this.columnOrder.indexOf(column) + 1,
+      totalColumns: this.columnOrder.length
     });
     
     // この列の全タスクを順次実行
@@ -143,16 +145,22 @@ class SequentialExecutor extends BaseExecutor {
       const task = tasks[i];
       this.currentRowByColumn.set(column, i);
       
-      // 前の列の同じ行が完了しているかチェック
-      if (this.shouldWaitForPreviousColumn(column, task.row)) {
-        this.logger.log(`[SequentialExecutor] ${column}${task.row}は前の列の完了待ち`);
-        continue;
-      }
+      this.logger.log(`[SequentialExecutor] 🔄 ${column}${task.row}処理開始 (${i + 1}/${tasks.length})`);
+      
+      // 前の列の同じ行が完了しているかチェック & 待機
+      await this.waitForPreviousColumnCompletion(column, task.row);
       
       await this.processTask(task);
+      
+      this.logger.log(`[SequentialExecutor] ✅ ${column}${task.row}処理完了 (${i + 1}/${tasks.length})`);
     }
     
-    this.logger.log(`[SequentialExecutor] ${column}列の処理完了`);
+    this.logger.log(`[SequentialExecutor] 🎉 ${column}列の処理完了`, {
+      completedTasks: tasks.length,
+      columnIndex: this.columnOrder.indexOf(column) + 1,
+      totalColumns: this.columnOrder.length,
+      nextColumn: this.columnOrder[this.columnOrder.indexOf(column) + 1] || '完了'
+    });
     this.currentColumn = null;
   }
   
@@ -404,7 +412,45 @@ class SequentialExecutor extends BaseExecutor {
   }
   
   /**
-   * 前の列の完了を待つべきか判定
+   * 前の列の同じ行の完了を待機
+   */
+  async waitForPreviousColumnCompletion(currentColumn, row) {
+    const currentIndex = this.columnOrder.indexOf(currentColumn);
+    if (currentIndex === 0) {
+      return; // 最初の列は待機不要
+    }
+    
+    const previousColumn = this.columnOrder[currentIndex - 1];
+    const previousCellKey = `${previousColumn}${row}`;
+    
+    // 前の列の同じ行が記載完了していない場合は待機
+    if (!this.writtenCells.has(previousCellKey)) {
+      this.logger.log(`[SequentialExecutor] 🔄 ${currentColumn}${row}は${previousColumn}${row}の完了待ち開始`);
+      
+      // ポーリングで前の列の完了を待機
+      let waitCount = 0;
+      const maxWait = 300; // 最大5分待機 (300 * 1秒)
+      
+      while (!this.writtenCells.has(previousCellKey) && waitCount < maxWait) {
+        await new Promise(resolve => setTimeout(resolve, 1000)); // 1秒待機
+        waitCount++;
+        
+        if (waitCount % 10 === 0) { // 10秒ごとにログ
+          this.logger.log(`[SequentialExecutor] ⏳ ${currentColumn}${row}待機中... (${waitCount}秒経過)`);
+        }
+      }
+      
+      if (waitCount >= maxWait) {
+        this.logger.error(`[SequentialExecutor] ⚠️ ${currentColumn}${row}の待機がタイムアウト (${maxWait}秒)`);
+        throw new Error(`Previous column completion timeout: ${previousColumn}${row}`);
+      } else {
+        this.logger.log(`[SequentialExecutor] ✅ ${currentColumn}${row}の待機完了 (${waitCount}秒)`);
+      }
+    }
+  }
+  
+  /**
+   * 前の列の完了を待つべきか判定（旧メソッド、互換性のため保持）
    */
   shouldWaitForPreviousColumn(currentColumn, row) {
     const currentIndex = this.columnOrder.indexOf(currentColumn);
@@ -416,11 +462,7 @@ class SequentialExecutor extends BaseExecutor {
     const previousCellKey = `${previousColumn}${row}`;
     
     // 前の列の同じ行が記載完了していない場合は待機
-    if (!this.writtenCells.has(previousCellKey)) {
-      return true;
-    }
-    
-    return false;
+    return !this.writtenCells.has(previousCellKey);
   }
   
   /**
