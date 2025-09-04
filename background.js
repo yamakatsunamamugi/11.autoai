@@ -1,6 +1,86 @@
 // background.js - Service Worker 
 console.log("AutoAI Service Worker が起動しました");
 
+// ポップアップウィンドウの管理
+let popupWindowId = null;
+
+// ポップアップを右下に移動する関数
+async function movePopupToBottomRight() {
+  try {
+    // Chrome Storageから拡張機能のウィンドウIDを取得
+    const storage = await chrome.storage.local.get('extensionWindowId');
+    let extensionWindow = null;
+    
+    if (storage.extensionWindowId) {
+      try {
+        extensionWindow = await chrome.windows.get(storage.extensionWindowId);
+        console.log('[Background] Chrome Storageから拡張機能ウィンドウを発見:', storage.extensionWindowId);
+      } catch (e) {
+        // ウィンドウが既に閉じられている場合
+        console.log('[Background] 保存されたウィンドウIDが無効です');
+      }
+    }
+    
+    // StorageのIDが無効な場合、ui.htmlを含むウィンドウを検索
+    if (!extensionWindow) {
+      const windows = await chrome.windows.getAll({ populate: true });
+      
+      for (const window of windows) {
+        if (window.tabs && window.tabs.length > 0) {
+          const tab = window.tabs[0];
+          if (tab.url && tab.url.includes('ui.html')) {
+            extensionWindow = window;
+            console.log('[Background] ui.htmlウィンドウを発見:', window.id);
+            break;
+          }
+        }
+      }
+    }
+    
+    if (!extensionWindow) {
+      console.log('[Background] 拡張機能ウィンドウが見つかりません（ui.html）');
+      return;
+    }
+    
+    console.log('[Background] 拡張機能ウィンドウ発見:', {
+      id: extensionWindow.id,
+      type: extensionWindow.type,
+      width: extensionWindow.width,
+      height: extensionWindow.height
+    });
+    
+    // 画面サイズを取得
+    const displays = await chrome.system.display.getInfo();
+    const primaryDisplay = displays.find(d => d.isPrimary) || displays[0];
+    const screenWidth = primaryDisplay.workArea.width;
+    const screenHeight = primaryDisplay.workArea.height;
+    const screenLeft = primaryDisplay.workArea.left;
+    const screenTop = primaryDisplay.workArea.top;
+    
+    // 4分割の右下に配置（画面の半分のサイズ）
+    const popupWidth = Math.floor(screenWidth / 2);
+    const popupHeight = Math.floor(screenHeight / 2);
+    const left = screenLeft + Math.floor(screenWidth / 2); // 画面の右半分（オフセット考慮）
+    const top = screenTop + Math.floor(screenHeight / 2);  // 画面の下半分（オフセット考慮）
+    
+    // ウィンドウを右下に移動とリサイズ
+    await chrome.windows.update(extensionWindow.id, {
+      left: left,
+      top: top,
+      width: popupWidth,
+      height: popupHeight,
+      focused: false // フォーカスは移動しない
+    });
+    
+    popupWindowId = extensionWindow.id;
+    console.log('[Background] 拡張機能ウィンドウを右下に移動しました', {
+      left, top, width: popupWidth, height: popupHeight
+    });
+  } catch (error) {
+    console.error('[Background] ポップアップ移動エラー:', error);
+  }
+}
+
 // 段階的復元: Step 1 - 基本サービスのみ（問題のあるファイルを除外）
 import "./src/services/auth-service.js";
 import "./src/features/spreadsheet/config.js";
@@ -948,6 +1028,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       // バックグラウンドで非同期処理を開始
       (async () => {
         try {
+          // ポップアップウィンドウを右下に移動
+          await movePopupToBottomRight();
+          
           // V2モード切り替えフラグ（上部の設定と同じ値を使用）
           const USE_V2_MODE = true; // true: V2版を使用, false: 従来版を使用
           

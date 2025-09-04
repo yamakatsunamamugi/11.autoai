@@ -65,56 +65,26 @@ export default class TaskGeneratorV2 {
         const is3TypeAI = promptGroup.aiType.includes('3種類') || promptGroup.aiType.includes('３種類');
         
         if (is3TypeAI) {
-          // 3種類AI列：全ての回答列が完了しているかチェック
-          const allAnswersComplete = promptGroup.answerColumns.every(answerCol => {
-            const existingAnswer = this.getCellValue(spreadsheetData, workRow.index, answerCol.index);
-            return this.hasAnswer(existingAnswer);
-          });
+          // 3種類AI列の処理：D列のタスクとして生成
+          const promptColumn = this.indexToColumn(promptGroup.promptColumns[0]);
           
-          if (allAnswersComplete) {
-            // 全て完了している場合は、この行の3種類AI列をスキップ
-            continue;
-          }
-        }
-        
-        // 各回答列にタスクを生成
-        for (let answerIndex = 0; answerIndex < promptGroup.answerColumns.length; answerIndex++) {
-          const answerCol = promptGroup.answerColumns[answerIndex];
-          
-          // 個別の既存回答チェック（既に回答があるタスクはスキップ）
-          const existingAnswer = this.getCellValue(spreadsheetData, workRow.index, answerCol.index);
-          if (this.hasAnswer(existingAnswer)) {
-            continue;
-          }
-          
-          // AI種別を設定
-          let aiType;
-          if (is3TypeAI) {
-            const aiTypes = ['ChatGPT', 'Claude', 'Gemini'];
-            aiType = aiTypes[answerIndex] || 'ChatGPT';
-          } else {
-            aiType = promptGroup.aiType.toLowerCase();  // 小文字に統一（'Claude' → 'claude'）
-          }
-          
-          // Taskインスタンスを作成
+          // D列のタスクを生成（ChatGPTとして実行）
           const taskData = {
-            id: this.generateTaskId(answerCol.column, workRow.number),
+            id: this.generateTaskId(promptColumn, workRow.number),
             row: workRow.number,
-            column: answerCol.column,
-            promptColumns: promptGroup.promptColumns,  // プロンプト列の位置のみ
-            aiType: aiType,
+            column: promptColumn,  // D列を使用（プロンプト列）
+            promptColumns: promptGroup.promptColumns,
+            aiType: 'ChatGPT',  // 3種類AIは最初にChatGPTで実行
             model: this.getModel(spreadsheetData, promptGroup),
             function: this.getFunction(spreadsheetData, promptGroup),
             cellInfo: {
               row: workRow.number,
-              column: answerCol.column,
-              columnIndex: answerCol.index
+              column: promptColumn,
+              columnIndex: promptGroup.promptColumns[0]
             },
             // グループ情報
-            multiAI: promptGroup.answerColumns.length > 1,
-            groupId: promptGroup.answerColumns.length > 1 
-              ? `group_${workRow.number}_${promptGroup.promptColumns[0]}` 
-              : null,
+            multiAI: true,
+            groupId: `group_${workRow.number}_${promptColumn}`,
             // Task必須フィールド
             prompt: '',  // 実行時に動的取得
             taskType: 'ai',
@@ -125,6 +95,48 @@ export default class TaskGeneratorV2 {
           const task = new Task(taskData);
           taskList.add(task);
           taskCount++;
+        } else {
+          // 通常のAI列の処理（従来通り）
+          for (let answerIndex = 0; answerIndex < promptGroup.answerColumns.length; answerIndex++) {
+            const answerCol = promptGroup.answerColumns[answerIndex];
+            
+            // 個別の既存回答チェック（既に回答があるタスクはスキップ）
+            const existingAnswer = this.getCellValue(spreadsheetData, workRow.index, answerCol.index);
+            if (this.hasAnswer(existingAnswer)) {
+              continue;
+            }
+            
+            // AI種別を設定
+            const aiType = promptGroup.aiType.toLowerCase();  // 小文字に統一（'Claude' → 'claude'）
+            
+            // Taskインスタンスを作成
+            const taskData = {
+              id: this.generateTaskId(answerCol.column, workRow.number),
+              row: workRow.number,
+              column: answerCol.column,
+              promptColumns: promptGroup.promptColumns,  // プロンプト列の位置のみ
+              aiType: aiType,
+              model: this.getModel(spreadsheetData, promptGroup),
+              function: this.getFunction(spreadsheetData, promptGroup),
+              cellInfo: {
+                row: workRow.number,
+                column: answerCol.column,
+                columnIndex: answerCol.index
+              },
+              // グループ情報
+              multiAI: false,
+              groupId: null,
+              // Task必須フィールド
+              prompt: '',  // 実行時に動的取得
+              taskType: 'ai',
+              createdAt: Date.now(),
+              version: '2.0'
+            };
+            
+            const task = new Task(taskData);
+            taskList.add(task);
+            taskCount++;
+          }
         }
       }
     }
@@ -216,14 +228,16 @@ export default class TaskGeneratorV2 {
         }
         currentGroup.promptColumns.push(i);
       }
-      // 回答列を検出
+      // 回答列を検出（AI行に値がある場合のみ独立タスクとして扱う）
       else if (menuCell && (menuCell.includes('回答') || menuCell.includes('答'))) {
-        if (currentGroup) {
+        // AI行に値がある場合は独立したタスク列として扱う
+        if (aiCell && aiCell.trim() !== '' && currentGroup) {
           currentGroup.answerColumns.push({
             index: i,
             column: this.indexToColumn(i)
           });
         }
+        // AI行が空の場合は3種類AI列の回答先として扱う（タスクとして生成しない）
       }
       // グループの終了を検出
       else if (currentGroup && currentGroup.promptColumns.length > 0) {

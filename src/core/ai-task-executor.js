@@ -230,10 +230,13 @@ export class AITaskExecutor {
         }
       }
 
-      // スクリプト初期化を動的に確認（最大2秒、50ms間隔でポーリング）
+      // ページ読み込み完了を待つ
+      await new Promise(resolve => setTimeout(resolve, 3000)); // 3秒待機
+      
+      // スクリプト初期化を動的に確認（最大15秒、100ms間隔でポーリング）
       const initStartTime = performance.now();
-      const maxWaitTime = 2000;
-      const checkInterval = 50;
+      const maxWaitTime = 15000; // 15秒に増やす
+      const checkInterval = 100; // 100msに変更
       let isReady = false;
       
       while (!isReady && (performance.now() - initStartTime) < maxWaitTime) {
@@ -250,6 +253,19 @@ export class AITaskExecutor {
                 'ChatGPTAutomationV2', 'ChatGPTAutomation',
                 'GeminiAutomation'
               ];
+              
+              // デバッグ: 利用可能なAutomationオブジェクトをログ出力
+              const availableAutomations = Object.keys(window).filter(key => 
+                key.includes('Automation')
+              );
+              console.log('[スクリプト初期化チェック] 利用可能なAutomation:', availableAutomations);
+              console.log('[スクリプト初期化チェック] 探索対象:', possibleNames);
+              
+              const found = possibleNames.find(name => window[name] !== undefined);
+              if (found) {
+                console.log('[スクリプト初期化チェック] 発見:', found);
+              }
+              
               return possibleNames.some(name => window[name] !== undefined);
             },
             args: [taskData.aiType]
