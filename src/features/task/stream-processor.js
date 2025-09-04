@@ -220,6 +220,16 @@ class StreamProcessor {
     this.failedTasksByColumn = new Map(); // column -> Set<task> (エラーになったタスク)
     this.errorRows = new Set(); // エラーになった行番号（次の列でスキップする）
     
+    // 再実行管理状態
+    this.retryCountByColumn = new Map(); // column -> retryCount (列ごとの再実行回数)
+    this.maxRetryCount = 3; // 最大再実行回数
+    this.retryStats = {
+      totalRetries: 0,
+      successfulRetries: 0,
+      failedRetries: 0,
+      retriesByColumn: new Map() // column -> { attempts: number, successes: number }
+    };
+    
     // 記載完了管理（並列ストリーミング用）
     this.writtenCells = new Map(); // `${column}${row}` -> true (記載完了したセル)
     
@@ -1326,9 +1336,17 @@ class StreamProcessor {
         const failedSet = this.failedTasksByColumn.get(task.column);
         if (failedSet && failedSet.has(task)) {
           failedSet.delete(task);
-          // this.logger.log(`[StreamProcessor] ✅ エラーリストから削除: ${task.column}${task.row}`);
+          this.logger.log(`[StreamProcessor] ✅ 再実行成功: ${task.column}${task.row}`);
+          
+          // 再実行成功統計を更新
+          this.retryStats.successfulRetries++;
+          if (this.retryStats.retriesByColumn.has(task.column)) {
+            this.retryStats.retriesByColumn.get(task.column).successes++;
+          }
+          
           if (failedSet.size === 0) {
             this.failedTasksByColumn.delete(task.column);
+            this.logger.log(`[StreamProcessor] 🎉 ${task.column}列の全失敗タスクが成功しました`);
           }
         }
       }
@@ -1573,6 +1591,9 @@ class StreamProcessor {
       // });
       
       if (allTasksCompleted && this.columnWindows.has(answerColumn)) {
+        // 🔄 列完了時の自動再実行チェック
+        await this.checkAndProcessFailedTasks(answerColumn);
+        
         // この列の全タスクが完了したらウィンドウを閉じる
         // this.logger.log(`[StreamProcessor] 🚪 列の全タスク完了、ウィンドウを閉じます: ${answerColumn}列`);
         await this.closeColumnWindow(answerColumn);
@@ -4484,7 +4505,11 @@ ${formattedGemini}`;
       }
       
       if (allBatchesComplete) {
-        // this.logger.log(`[StreamProcessor] ${column}列の全バッチが完了しました`);
+        this.logger.log(`[StreamProcessor] ${column}列の全バッチが完了しました`);
+        
+        // 列完了時に再実行統計を表示
+        this.logRetryStats();
+        
         return;
       }
       
@@ -4685,6 +4710,86 @@ ${formattedGemini}`;
     await this.moveExtensionToWindowNumber(4); // 4番 = 右下
   }
   
+  /**
+   * 列完了時の失敗タスクチェックと自動再実行
+   * @param {string} column - チェック対象の列
+   */
+  async checkAndProcessFailedTasks(column) {
+    const failedTasks = this.failedTasksByColumn.get(column);
+    
+    if (!failedTasks || failedTasks.size === 0) {
+      return; // 失敗タスクがない
+    }
+    
+    const retryCount = this.retryCountByColumn.get(column) || 0;
+    
+    if (retryCount >= this.maxRetryCount) {
+      this.logger.error(`[StreamProcessor] 🚫 ${column}列の再実行回数上限に達しました (${retryCount}/${this.maxRetryCount}回)`);
+      this.logger.error(`[StreamProcessor] 🚫 失敗タスク一覧: ${Array.from(failedTasks).map(t => `${t.column}${t.row}`).join(', ')}`);
+      return;
+    }
+    
+    this.logger.log(`[StreamProcessor] 🔄 ${column}列の失敗タスク検出、自動再実行開始 (${retryCount + 1}/${this.maxRetryCount}回目)`);
+    this.logger.log(`[StreamProcessor] 🔄 再実行対象: ${Array.from(failedTasks).map(t => `${t.column}${t.row}`).join(', ')}`);
+    
+    // 再実行統計を更新
+    this.retryStats.totalRetries++;
+    if (!this.retryStats.retriesByColumn.has(column)) {
+      this.retryStats.retriesByColumn.set(column, { attempts: 0, successes: 0 });
+    }
+    this.retryStats.retriesByColumn.get(column).attempts++;
+    
+    // 再実行回数をインクリメント
+    this.retryCountByColumn.set(column, retryCount + 1);
+    
+    // 失敗タスクをタスクキューに戻す
+    if (!this.taskQueue.has(column)) {
+      this.taskQueue.set(column, []);
+    }
+    
+    const columnQueue = this.taskQueue.get(column);
+    
+    // 失敗タスクをキューの先頭に追加（優先処理）
+    const failedTasksArray = Array.from(failedTasks).reverse();
+    for (const task of failedTasksArray) {
+      columnQueue.unshift(task);
+      this.logger.log(`[StreamProcessor] 🔄 再実行タスクをキューに追加: ${task.column}${task.row}`);
+    }
+    
+    // 現在の行インデックスをリセット（先頭から再開）
+    this.currentRowByColumn.set(column, 0);
+    
+    // 失敗タスクリストをクリア
+    this.failedTasksByColumn.set(column, new Set());
+    
+    // ウィンドウを再オープンして再実行を開始
+    this.logger.log(`[StreamProcessor] 🔄 ${column}列の再実行処理を開始します`);
+    await this.checkAndStartAvailableColumns();
+  }
+
+  /**
+   * 再実行統計情報を表示
+   */
+  logRetryStats() {
+    if (this.retryStats.totalRetries === 0) {
+      return;
+    }
+    
+    this.logger.log(`[StreamProcessor] 📊 再実行統計情報:`);
+    this.logger.log(`  - 総再実行回数: ${this.retryStats.totalRetries}`);
+    this.logger.log(`  - 成功: ${this.retryStats.successfulRetries}`);
+    this.logger.log(`  - 失敗: ${this.retryStats.failedRetries}`);
+    this.logger.log(`  - 成功率: ${this.retryStats.totalRetries > 0 ? Math.round((this.retryStats.successfulRetries / this.retryStats.totalRetries) * 100) : 0}%`);
+    
+    if (this.retryStats.retriesByColumn.size > 0) {
+      this.logger.log(`  - 列別統計:`);
+      for (const [column, stats] of this.retryStats.retriesByColumn) {
+        const successRate = stats.attempts > 0 ? Math.round((stats.successes / stats.attempts) * 100) : 0;
+        this.logger.log(`    ${column}列: ${stats.attempts}回実行, ${stats.successes}回成功 (${successRate}%)`);
+      }
+    }
+  }
+
   /**
    * エラーになったタスクをリトライする
    */
