@@ -52,6 +52,8 @@ export default class StreamProcessorV2 {
     this.failedTasksByColumn = new Map(); // column -> Set<task>
     this.retryCountByColumn = new Map(); // column -> retryCount
     this.maxRetryCount = 3; // 最大再実行回数
+    this.retryDelays = [5 * 60 * 1000, 30 * 60 * 1000, 60 * 60 * 1000]; // 5分, 30分, 1時間
+    this.retryTimers = new Map(); // column -> timer
     this.retryStats = {
       totalRetries: 0,
       successfulRetries: 0,
@@ -773,22 +775,47 @@ export default class StreamProcessorV2 {
     // 再実行回数をインクリメント
     this.retryCountByColumn.set(column, retryCount + 1);
     
-    // 失敗タスクを配列に変換して再実行
+    // 失敗タスクを配列に変換
     const failedTasksArray = Array.from(failedTasks);
     
     // 失敗タスクリストをクリア
     this.failedTasksByColumn.set(column, new Set());
     
-    // 失敗タスクを再実行
-    this.logger.log(`[StreamProcessorV2] 🔄 ${column}列の再実行処理を開始します (${failedTasksArray.length}個のタスク)`);
-    await this.processColumn(column, failedTasksArray, false);
+    // 再実行遅延時間を決定（回数に応じて段階的に増加）
+    const delayIndex = retryCount; // 0: 5分, 1: 30分, 2: 1時間
+    const delayMs = this.retryDelays[delayIndex] || this.retryDelays[this.retryDelays.length - 1];
+    const delayMinutes = Math.round(delayMs / (1000 * 60));
+    
+    this.logger.log(`[StreamProcessorV2] ⏰ ${column}列の再実行を${delayMinutes}分後にスケジュール (${failedTasksArray.length}個のタスク)`);
+    
+    // 既存のタイマーがあればクリア
+    if (this.retryTimers.has(column)) {
+      clearTimeout(this.retryTimers.get(column));
+    }
+    
+    // 指定時間後に再実行するタイマーを設定
+    const timer = setTimeout(async () => {
+      try {
+        this.logger.log(`[StreamProcessorV2] 🔄 ${column}列の遅延再実行開始 (${delayMinutes}分後)`);
+        await this.processColumn(column, failedTasksArray, false);
+        
+        // タイマーをクリア
+        this.retryTimers.delete(column);
+      } catch (error) {
+        this.logger.error(`[StreamProcessorV2] 遅延再実行エラー ${column}列:`, error);
+        this.retryTimers.delete(column);
+      }
+    }, delayMs);
+    
+    // タイマーを保存
+    this.retryTimers.set(column, timer);
   }
 
   /**
    * 再実行統計情報を表示
    */
   logRetryStats() {
-    if (this.retryStats.totalRetries === 0) {
+    if (this.retryStats.totalRetries === 0 && this.retryTimers.size === 0) {
       return;
     }
     
@@ -805,6 +832,49 @@ export default class StreamProcessorV2 {
         this.logger.log(`    ${column}列: ${stats.attempts}回実行, ${stats.successes}回成功 (${successRate}%)`);
       }
     }
+    
+    // スケジュール中の再実行を表示
+    if (this.retryTimers.size > 0) {
+      this.logger.log(`  - スケジュール中の再実行:`);
+      for (const [column, timer] of this.retryTimers) {
+        const retryCount = this.retryCountByColumn.get(column) || 0;
+        const delayMinutes = Math.round(this.retryDelays[retryCount - 1] / (1000 * 60));
+        this.logger.log(`    ${column}列: ${delayMinutes}分後に実行予定`);
+      }
+    }
+  }
+
+  /**
+   * すべての再実行タイマーをキャンセル
+   */
+  cancelAllRetryTimers() {
+    if (this.retryTimers.size === 0) {
+      this.logger.log(`[StreamProcessorV2] キャンセルするタイマーがありません`);
+      return;
+    }
+    
+    this.logger.log(`[StreamProcessorV2] 🚫 ${this.retryTimers.size}個の再実行タイマーをキャンセルします`);
+    
+    for (const [column, timer] of this.retryTimers) {
+      clearTimeout(timer);
+      this.logger.log(`[StreamProcessorV2] ❌ ${column}列の再実行タイマーをキャンセル`);
+    }
+    
+    this.retryTimers.clear();
+  }
+
+  /**
+   * 特定列の再実行タイマーをキャンセル
+   */
+  cancelRetryTimer(column) {
+    if (!this.retryTimers.has(column)) {
+      this.logger.log(`[StreamProcessorV2] ${column}列の再実行タイマーは存在しません`);
+      return;
+    }
+    
+    clearTimeout(this.retryTimers.get(column));
+    this.retryTimers.delete(column);
+    this.logger.log(`[StreamProcessorV2] ❌ ${column}列の再実行タイマーをキャンセル`);
   }
 
 }
