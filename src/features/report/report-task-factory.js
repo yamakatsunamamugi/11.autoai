@@ -1,6 +1,7 @@
 // report-task-factory.js - レポートタスク生成専用ファクトリー
 
 import { Task, TaskFactory } from '../task/models.js';
+import { aiUrlManager } from '../../core/ai-url-manager.js';
 
 /**
  * レポートタスク生成ファクトリー
@@ -28,7 +29,7 @@ export class ReportTaskFactory {
     this.validateParams(params);
     
     // AIタイプの正規化
-    const normalizedAiType = this.normalizeAIType(params.aiType);
+    const normalizedAiType = aiUrlManager.normalizeAIType(params.aiType) || this.defaultAIType;
     
     // モデル情報の抽出（必要に応じて）
     const model = this.extractModel(params.sourceColumn, params.rowNumber, spreadsheetData);
@@ -70,15 +71,6 @@ export class ReportTaskFactory {
     }
   }
 
-  /**
-   * AIタイプの正規化
-   */
-  normalizeAIType(aiType) {
-    if (aiType === 'single' || aiType === '3type' || !aiType) {
-      return this.defaultAIType;
-    }
-    return aiType;
-  }
 
   /**
    * モデル情報の抽出

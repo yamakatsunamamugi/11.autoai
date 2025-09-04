@@ -218,6 +218,70 @@ export class AIUrlManager {
       },
     });
   }
+
+  /**
+   * AI種別を正規化（入力形式を統一された形式に変換）
+   * @param {string} aiType - 入力されたAI種別
+   * @returns {string} 正規化されたAI種別（小文字）
+   */
+  normalizeAIType(aiType) {
+    if (!aiType || typeof aiType !== 'string') {
+      return 'claude'; // デフォルト
+    }
+
+    const lower = aiType.toLowerCase().trim();
+    
+    // 直接マッチするもの
+    if (this.aiConfigs.hasOwnProperty(lower)) {
+      return lower;
+    }
+
+    // 部分マッチ
+    if (lower.includes('chatgpt') || lower.includes('gpt') || lower.includes('openai')) {
+      return 'chatgpt';
+    }
+    if (lower.includes('claude') || lower.includes('anthropic')) {
+      return 'claude';
+    }
+    if (lower.includes('gemini') || lower.includes('google')) {
+      return 'gemini';
+    }
+    if (lower.includes('genspark')) {
+      return 'genspark';
+    }
+
+    // マッチしない場合はデフォルト
+    return 'claude';
+  }
+
+  /**
+   * 表示用の名前を取得（大文字始まり）
+   * @param {string} aiType - AI種別
+   * @returns {string} 表示用名前
+   */
+  getDisplayName(aiType) {
+    const normalized = this.normalizeAIType(aiType);
+    const config = this.aiConfigs[normalized];
+    return config ? config.name : 'Claude';
+  }
+
+  /**
+   * AI種別がサポートされているかチェック
+   * @param {string} aiType - AI種別
+   * @returns {boolean} サポートされている場合true
+   */
+  isSupported(aiType) {
+    const normalized = this.normalizeAIType(aiType);
+    return this.aiConfigs.hasOwnProperty(normalized);
+  }
+
+  /**
+   * サポートしている全AI種別を取得（正規化済み）
+   * @returns {Array<string>} サポートAI種別のリスト
+   */
+  getSupportedTypes() {
+    return Object.keys(this.aiConfigs);
+  }
 }
 
 // シングルトンインスタンスを作成してエクスポート

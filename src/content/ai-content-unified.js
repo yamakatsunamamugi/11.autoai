@@ -855,7 +855,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       break;
 
     case "getAIType":
-      sendResponse({ aiType: AI_TYPE });
+      // AI_TYPEを正規化して表示名で返す
+      try {
+        const { aiUrlManager } = await import('../../core/ai-url-manager.js');
+        const displayName = aiUrlManager.getDisplayName(AI_TYPE);
+        sendResponse({ aiType: displayName });
+      } catch (error) {
+        console.warn('[AI Content] aiUrlManagerのimportに失敗:', error);
+        sendResponse({ aiType: AI_TYPE });
+      }
       break;
 
     case "executeTask":

@@ -9,6 +9,7 @@
  */
 
 import { AITaskExecutor } from '../../core/ai-task-executor.js';
+import { aiUrlManager } from '../../core/ai-url-manager.js';
 
 export default class ColumnProcessor {
   constructor(logger = console) {
@@ -128,7 +129,7 @@ ${prompt}`;
           model: task.model,
           func: task.function,
           taskIndex: taskIndex,
-          aiType: this.normalizeAIType(task.aiType)
+          aiType: aiUrlManager.getDisplayName(task.aiType)
         });
       }
       
@@ -220,7 +221,7 @@ ${prompt}`;
       
       // タブIDが渡されていない場合は新規作成
       if (!tabId) {
-        const aiType = this.normalizeAIType(task.aiType);
+        const aiType = aiUrlManager.getDisplayName(task.aiType);
         tabId = await this.createNewWindow(aiType, taskPosition);
         if (!tabId) {
           throw new Error(`Failed to create tab for ${task.aiType}`);
@@ -234,7 +235,7 @@ ${prompt}`;
       
       // AITaskExecutorを使用してタスク実行
       const result = await this.aiTaskExecutor.executeAITask(tabId, {
-        aiType: this.normalizeAIType(task.aiType),
+        aiType: aiUrlManager.getDisplayName(task.aiType),
         taskId: task.id,
         model: model,
         function: func,
@@ -330,19 +331,6 @@ ${prompt}`;
     }
   }
   
-  /**
-   * AI種別を正規化
-   * @param {string} aiType - AI種別
-   * @returns {string} 正規化されたAI種別
-   */
-  normalizeAIType(aiType) {
-    const lower = (aiType || '').toLowerCase();
-    if (lower.includes('chatgpt') || lower.includes('gpt')) return 'ChatGPT';
-    if (lower.includes('claude')) return 'Claude';
-    if (lower.includes('gemini')) return 'Gemini';
-    if (lower.includes('genspark')) return 'Genspark';
-    return 'Claude'; // デフォルト
-  }
 
   /**
    * スプレッドシートをプロンプトグループ単位で処理（旧メソッド、互換性のため残す）
@@ -535,7 +523,7 @@ ${prompt}`;
             rowIndex: rowIndex,
             promptColumns: group.promptColumns,
             answerColumn: answerCol,
-            aiType: this.getAIType(group.aiType),
+            aiType: aiUrlManager.getDisplayName(group.aiType),
             is3TypeAI: false
           });
         }
@@ -1099,17 +1087,6 @@ ${prompt}`;
     return column;
   }
 
-  /**
-   * AI種別を正規化（AITaskExecutorのautomationMapと一致させる）
-   */
-  getAIType(aiTypeStr) {
-    const lower = aiTypeStr.toLowerCase();
-    if (lower.includes('chatgpt') || lower.includes('gpt')) return 'ChatGPT';
-    if (lower.includes('claude')) return 'Claude';
-    if (lower.includes('gemini')) return 'Gemini';
-    if (lower.includes('genspark')) return 'Genspark';
-    return 'Claude'; // デフォルト
-  }
 
   /**
    * AI種別のURLを取得
@@ -1122,7 +1099,8 @@ ${prompt}`;
       'genspark': 'https://www.genspark.ai'
     };
     
-    return urls[aiType.toLowerCase()] || urls.claude;
+    const normalizedType = aiUrlManager.normalizeAIType(aiType);
+    return urls[normalizedType] || urls.claude;
   }
 
   /**
