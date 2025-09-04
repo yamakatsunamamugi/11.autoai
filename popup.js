@@ -18,7 +18,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     };
     
     // 初期は全画面で表示
-    // WindowServiceを使用してウィンドウを作成（focused: trueがデフォルトで設定される）
+    // WindowServiceを使用してウィンドウを作成（全画面）
     const createdWindow = await WindowService.createWindow({
       url: chrome.runtime.getURL("src/ui/ui.html"),
       type: "popup",

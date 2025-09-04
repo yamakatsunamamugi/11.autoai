@@ -41,7 +41,8 @@ export class WindowService {
    * @returns {Promise<Object>} 作成されたウィンドウオブジェクト
    */
   static async createAIWindow(url, options = {}) {
-    console.log('[WindowService] AIウィンドウ作成:', url);
+    const startTime = performance.now();
+    console.log('[WindowService] AIウィンドウ作成開始:', url);
     
     const windowOptions = {
       ...this.DEFAULT_WINDOW_OPTIONS,
@@ -61,10 +62,12 @@ export class WindowService {
         ...options
       });
       
-      console.log('[WindowService] AIウィンドウ作成成功:', window.id);
+      const totalTime = (performance.now() - startTime).toFixed(0);
+      console.log(`[WindowService] AIウィンドウ作成成功 (${totalTime}ms): ID=${window.id}`);
       return window;
     } catch (error) {
-      console.error('[WindowService] AIウィンドウ作成エラー:', error);
+      const totalTime = (performance.now() - startTime).toFixed(0);
+      console.error(`[WindowService] AIウィンドウ作成エラー (${totalTime}ms):`, error);
       throw error;
     }
   }
@@ -616,12 +619,25 @@ export class WindowService {
     //   state: windowOptions.state
     // });
     
+    const createStartTime = performance.now();
+    
     try {
       const window = await chrome.windows.create(windowOptions);
       
-      // ウィンドウ作成後、位置を明示的に更新（Chrome APIが初回作成時に位置を無視する場合の対策）
-      if (positionInfo.left !== undefined && positionInfo.top !== undefined) {
-        console.log(`[WindowService] ウィンドウ位置を更新: left=${positionInfo.left}, top=${positionInfo.top}`);
+      const createTime = (performance.now() - createStartTime).toFixed(0);
+      console.log(`[WindowService] ウィンドウ作成完了 (${createTime}ms): ID=${window.id}`);
+      
+      // Chrome APIが位置を正しく適用しない場合のみ更新
+      // 作成されたウィンドウの位置をチェック
+      const createdWindow = await chrome.windows.get(window.id);
+      const needsPositionUpdate = 
+        Math.abs(createdWindow.left - positionInfo.left) > 10 ||
+        Math.abs(createdWindow.top - positionInfo.top) > 10;
+      
+      if (needsPositionUpdate && positionInfo.left !== undefined && positionInfo.top !== undefined) {
+        const updateStartTime = performance.now();
+        console.log(`[WindowService] ウィンドウ位置補正が必要: 期待=${positionInfo.left},${positionInfo.top} 実際=${createdWindow.left},${createdWindow.top}`);
+        
         try {
           await chrome.windows.update(window.id, {
             left: positionInfo.left,
@@ -630,6 +646,8 @@ export class WindowService {
             height: positionInfo.height,
             focused: true
           });
+          const updateTime = (performance.now() - updateStartTime).toFixed(0);
+          console.log(`[WindowService] ウィンドウ位置補正完了 (${updateTime}ms)`);
         } catch (updateError) {
           console.warn('[WindowService] ウィンドウ位置の更新に失敗:', updateError);
         }

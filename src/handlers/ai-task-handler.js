@@ -264,6 +264,53 @@ export class AITaskHandler {
   }
   
   /**
+   * スプレッドシートデータを読み込み
+   * @param {string} spreadsheetId - スプレッドシートID
+   * @param {string} sheetName - シート名（省略可能）
+   * @returns {Promise<Object>} スプレッドシートデータ
+   */
+  async loadSpreadsheet(spreadsheetId, sheetName = null) {
+    this.log(`[AITaskHandler] 📊 スプレッドシート読み込み開始:`, {
+      spreadsheetId,
+      sheetName
+    });
+    
+    try {
+      // Google Sheets APIの範囲を決定
+      const range = sheetName ? `'${sheetName}'!A1:Z1000` : 'A1:Z1000';
+      
+      // Google Sheets APIを使用してデータ取得
+      const response = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${this.accessToken}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Google Sheets API error: ${response.status} - ${errorText}`);
+      }
+      
+      const data = await response.json();
+      
+      this.log(`[AITaskHandler] ✅ スプレッドシート読み込み成功:`, {
+        rows: data.values?.length || 0,
+        columns: data.values?.[0]?.length || 0
+      });
+      
+      return data;
+      
+    } catch (error) {
+      this.error(`[AITaskHandler] ❌ スプレッドシート読み込みエラー:`, error);
+      throw error;
+    }
+  }
+  
+  /**
    * スプレッドシートからプロンプトを動的に取得
    * @param {string} spreadsheetId - スプレッドシートID
    * @param {Object} taskInfo - タスク情報

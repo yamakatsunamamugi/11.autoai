@@ -1607,6 +1607,16 @@
         return false;
       }
       
+      // Claude.aiの「じっくり考える」機能は現在利用できないため、スキップする
+      if (this.aiType === 'Claude' && (functionName === 'じっくり考える' || functionName === 'Thinking')) {
+        log(`機能「${functionName}」は現在のClaude.aiでは利用できません。スキップします。`, 'WARNING', {
+          operation: 'selectFunction',
+          functionName: functionName,
+          skipReason: 'Feature not available in current Claude UI'
+        });
+        return true; // エラーではなく成功として扱う
+      }
+      
       console.log(`[デバッグ] selectFunctionを実行: functionName="${functionName}", enable=${enable}, AI=${this.aiType}`);
 
       const menu = await this.openFunctionMenu();

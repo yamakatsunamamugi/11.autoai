@@ -49,125 +49,93 @@ export class AITaskExecutor {
     });
 
     try {
-      // GeminiタスクはV2で直接実行（シンプル化）
+      // V2ファイルマップを定義（共通で使用）
+      const v2ScriptMap = {
+        'claude': 'automations/v2/claude-automation-v2.js',
+        'chatgpt': 'automations/v2/chatgpt-automation-v2.js',
+        'gemini': 'automations/v2/gemini-automation-v2.js'
+      };
+      
+      // Geminiタスクは統合版で実行（V2版を優先）
       if (taskData.aiType.toLowerCase() === 'gemini') {
-        this.logger.log(`[AITaskExecutor] 🎯 Gemini V2モード直接実行`);
+        this.logger.log(`[AITaskExecutor] 🎯 Gemini統合版実行`);
         
-        // V2スクリプトを注入
+        // V2版があれば使用、なければ既存版
+        const geminiScript = v2ScriptMap['gemini'] || 'src/platforms/gemini-automation.js';
+        
+        // 統合版スクリプトを注入
         await chrome.scripting.executeScript({
           target: { tabId: tabId },
-          files: ['src/platforms/gemini-automation-v2.js']
+          files: [geminiScript]
         });
         
-        this.logger.log(`[AITaskExecutor] ✅ Gemini V2スクリプト注入完了`);
+        this.logger.log(`[AITaskExecutor] ✅ Gemini Automationスクリプト注入完了`);
         
-        // 初期化待機
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // 初期化待機を動的に（最大1秒）
+        const geminiInitStart = performance.now();
+        let geminiReady = false;
+        const maxGeminiWait = 1000;
         
-        this.logger.log(`[AITaskExecutor] V2関数実行を開始します...`);
+        while (!geminiReady && (performance.now() - geminiInitStart) < maxGeminiWait) {
+          try {
+            const [checkResult] = await chrome.scripting.executeScript({
+              target: { tabId: tabId },
+              func: () => window.GeminiAutomation !== undefined
+            });
+            
+            if (checkResult?.result) {
+              geminiReady = true;
+              const waitTime = (performance.now() - geminiInitStart).toFixed(0);
+              this.logger.log(`[AITaskExecutor] ✅ Gemini初期化完了 (${waitTime}ms)`);
+            } else {
+              await new Promise(resolve => setTimeout(resolve, 50));
+            }
+          } catch (e) {
+            await new Promise(resolve => setTimeout(resolve, 50));
+          }
+        }
         
-        // V2関数を直接実行
+        this.logger.log(`[AITaskExecutor] executeTask実行を開始します...`);
+        
+        // executeTaskを直接実行
         let result;
         try {
           result = await chrome.scripting.executeScript({
             target: { tabId: tabId },
             func: async (taskData) => {
               try {
-                console.log('%c🚀 [Gemini V2] 直接実行開始', 'color: #ff0000; font-weight: bold; font-size: 16px');
-                console.log('[Gemini V2] タスクデータ:', {
+                console.log('%c🚀 [Gemini] タスク実行開始', 'color: #4285f4; font-weight: bold; font-size: 16px');
+                console.log('[Gemini] タスクデータ:', {
                   model: taskData.model,
                   function: taskData.function,
                   hasText: !!taskData.prompt,
                   textLength: taskData.prompt?.length
                 });
                 
-                // runIntegrationTestを実行
-                if (!window.runIntegrationTest) {
-                  throw new Error('runIntegrationTest関数が見つかりません');
+                // GeminiAutomation.executeTaskを実行
+                if (!window.GeminiAutomation || !window.GeminiAutomation.executeTask) {
+                  throw new Error('GeminiAutomation.executeTask関数が見つかりません');
                 }
                 
-                console.log('📋 Step 1: runIntegrationTest実行');
-                await window.runIntegrationTest();
+                const result = await window.GeminiAutomation.executeTask({
+                  model: taskData.model,
+                  function: taskData.function,
+                  text: taskData.prompt,
+                  prompt: taskData.prompt  // promptプロパティも追加
+                });
                 
-                // モデルと機能リストが生成されるのを待つ
-                let retryCount = 0;
-                while ((!window.availableModels || !window.availableFeatures) && retryCount < 10) {
-                  console.log(`⏳ モデル/機能リスト待機中... (${retryCount + 1}/10)`);
-                  await new Promise(resolve => setTimeout(resolve, 1000));
-                  retryCount++;
-                }
-                
-                // モデルと機能の番号を動的に決定
-                let modelNumber = 1; // デフォルト
-                let featureNumber = null; // デフォルトは機能なし
-                
-                // モデルの動的検索
-                if (taskData.model && window.availableModels) {
-                console.log(`🔍 モデル「${taskData.model}」を検索中...`);
-                const targetModel = taskData.model.toLowerCase();
-                
-                for (let i = 0; i < window.availableModels.length; i++) {
-                  const model = window.availableModels[i];
-                  const modelName = (model.名前 || model.name || '').toLowerCase();
-                  
-                  if (modelName.includes(targetModel) || 
-                      targetModel.includes(modelName) ||
-                      (targetModel.includes('flash') && modelName.includes('flash')) ||
-                      (targetModel.includes('pro') && modelName.includes('pro')) ||
-                      (targetModel.includes('thinking') && modelName.includes('thinking'))) {
-                    modelNumber = model.番号 || (i + 1);
-                    console.log(`✅ モデル「${taskData.model}」→ 番号${modelNumber} (${model.名前 || model.name})`);
-                    break;
-                  }
-                }
-              }
-                
-                // 機能の動的検索
-                if (taskData.function && taskData.function !== 'none' && window.availableFeatures) {
-                console.log(`🔍 機能「${taskData.function}」を検索中...`);
-                const targetFunction = taskData.function.toLowerCase();
-                
-                for (let i = 0; i < window.availableFeatures.length; i++) {
-                  const feature = window.availableFeatures[i];
-                  const featureName = (feature.name || feature.名前 || '').toLowerCase();
-                  
-                  if (featureName.includes(targetFunction) || 
-                      targetFunction.includes(featureName) ||
-                      (targetFunction === 'canvas' && featureName.includes('canvas')) ||
-                      (targetFunction.includes('research') && featureName.includes('research')) ||
-                      (targetFunction.includes('think') && featureName.includes('think'))) {
-                    featureNumber = i + 1;
-                    console.log(`✅ 機能「${taskData.function}」→ 番号${featureNumber} (${feature.name || feature.名前})`);
-                    break;
-                  }
-                }
-              }
-                
-                // プロンプトをwindowに設定（V2が使用するため）
-                window.currentPromptText = taskData.prompt;
-                console.log(`📝 プロンプト設定: ${taskData.prompt?.length || 0}文字`);
-                
-                // continueTestを実行
-                console.log(`📋 Step 2: continueTest(${modelNumber}, ${featureNumber})実行`);
-                const result = await window.continueTest(modelNumber, featureNumber);
-                
-                console.log('✅ [Gemini V2] 実行完了');
-                return {
-                  success: true,
-                  response: result?.response || '',
-                  modelUsed: modelNumber,
-                  featureUsed: featureNumber
-                };
+                console.log('[Gemini] タスク実行結果:', result);
+                return result;
                 
               } catch (error) {
-                console.error('❌ [Gemini V2] 実行エラー:', error);
+                console.error('❌ [Gemini] 実行エラー:', error);
                 return { success: false, error: error.message };
               }
             },
             args: [taskData]
           });
         } catch (scriptError) {
-          this.logger.error(`[AITaskExecutor] ❌ V2スクリプト実行エラー:`, scriptError);
+          this.logger.error(`[AITaskExecutor] ❌ スクリプト実行エラー:`, scriptError);
           throw scriptError;
         }
         
@@ -177,15 +145,13 @@ export class AITaskExecutor {
           const resultData = result[0].result;
           
           if (resultData.success) {
-            this.logger.log(`[AITaskExecutor] ✅ Gemini V2タスク完了 [${cellPosition}セル]:`, {
+            this.logger.log(`[AITaskExecutor] ✅ Geminiタスク完了 [${cellPosition}セル]:`, {
               セル: cellPosition,
               taskId: taskData.taskId,
-              modelUsed: resultData.modelUsed,
-              featureUsed: resultData.featureUsed,
               totalTime: `${totalTime}秒`
             });
           } else {
-            this.logger.log(`[AITaskExecutor] ⚠️ Gemini V2タスク失敗 [${cellPosition}セル]:`, {
+            this.logger.log(`[AITaskExecutor] ⚠️ Geminiタスク失敗 [${cellPosition}セル]:`, {
               セル: cellPosition,
               taskId: taskData.taskId,
               error: resultData.error,
@@ -195,20 +161,27 @@ export class AITaskExecutor {
           
           return resultData;
         } else {
-          throw new Error('V2実行結果が不正です');
+          throw new Error('実行結果が不正です');
         }
       }
       
       // Gemini以外は従来の処理
-      // AI固有のスクリプトマップ（統合テストと完全に同じ）
+      // V2ファイルマップはすでに上で定義済み
+      
+      const aiTypeLower = taskData.aiType.toLowerCase();
+      const hasV2 = v2ScriptMap.hasOwnProperty(aiTypeLower);
+      const isV2Available = hasV2;
+      
+      // AI固有のスクリプトマップ（V2版を優先）
       const scriptFileMap = {
-        'claude': 'automations/claude-automation-dynamic.js',
-        'chatgpt': 'automations/chatgpt-automation.js',
+        'claude': hasV2 ? v2ScriptMap['claude'] : 'automations/claude-automation-dynamic.js',
+        'chatgpt': hasV2 ? v2ScriptMap['chatgpt'] : 'automations/chatgpt-automation.js',
+        'gemini': hasV2 ? v2ScriptMap['gemini'] : 'src/platforms/gemini-automation.js',
         'genspark': 'automations/genspark-automation.js'
       };
 
-      // 統合テストと同じ共通スクリプト
-      const commonScripts = [
+      // V2版の場合は共通スクリプトを読み込まない（V2は独立して動作）
+      const commonScripts = isV2Available ? [] : [
         'automations/feature-constants.js',
         'automations/common-ai-handler.js',
         'automations/deepresearch-handler.js',
@@ -222,6 +195,7 @@ export class AITaskExecutor {
       // 共通スクリプトを順番に注入
       let scriptsToInject = [...commonScripts, aiScript];
 
+      const injectionStartTime = performance.now();
       this.logger.log(`[AITaskExecutor] 📝 [${taskData.aiType}] スクリプト注入開始:`, {
         scripts: scriptsToInject.map(s => s.split('/').pop()),
         count: scriptsToInject.length
@@ -233,23 +207,89 @@ export class AITaskExecutor {
         files: scriptsToInject
       });
 
-      this.logger.log(`[AITaskExecutor] ✅ [${taskData.aiType}] スクリプト注入完了、初期化待機中...`);
+      const injectionTime = (performance.now() - injectionStartTime).toFixed(0);
+      this.logger.log(`[AITaskExecutor] ✅ [${taskData.aiType}] スクリプト注入完了 (${injectionTime}ms)、初期化確認中...`);
 
-      // スクリプト初期化を待つ（統合テストと同じ2秒待機）
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // V2版の場合、ChatGPTAutomationV2の存在を確認
+      if (taskData.aiType.toLowerCase() === 'chatgpt' && isV2Available) {
+        try {
+          const [v2Check] = await chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            func: () => {
+              const exists = typeof window.ChatGPTAutomationV2 !== 'undefined';
+              console.log(`[V2チェック] ChatGPTAutomationV2存在確認: ${exists}`);
+              if (exists) {
+                console.log('[V2チェック] ChatGPTAutomationV2のメソッド:', Object.keys(window.ChatGPTAutomationV2));
+              }
+              return exists;
+            }
+          });
+          this.logger.log(`[AITaskExecutor] 📋 ChatGPTAutomationV2存在確認: ${v2Check?.result}`);
+        } catch (e) {
+          this.logger.error(`[AITaskExecutor] V2チェックエラー:`, e);
+        }
+      }
+
+      // スクリプト初期化を動的に確認（最大2秒、50ms間隔でポーリング）
+      const initStartTime = performance.now();
+      const maxWaitTime = 2000;
+      const checkInterval = 50;
+      let isReady = false;
+      
+      while (!isReady && (performance.now() - initStartTime) < maxWaitTime) {
+        try {
+          const [result] = await chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            func: (aiType) => {
+              // V2版を優先的にチェック
+              const possibleNames = [
+                `${aiType}AutomationV2`,
+                `${aiType}Automation`,
+                aiType,
+                'ClaudeAutomationV2', 'ClaudeAutomation',
+                'ChatGPTAutomationV2', 'ChatGPTAutomation',
+                'GeminiAutomation'
+              ];
+              return possibleNames.some(name => window[name] !== undefined);
+            },
+            args: [taskData.aiType]
+          });
+          
+          if (result?.result) {
+            isReady = true;
+            const initTime = (performance.now() - initStartTime).toFixed(0);
+            this.logger.log(`[AITaskExecutor] 🎯 [${taskData.aiType}] スクリプト初期化完了 (${initTime}ms)`);
+          } else {
+            await new Promise(resolve => setTimeout(resolve, checkInterval));
+          }
+        } catch (e) {
+          // エラー時は少し待って続行
+          await new Promise(resolve => setTimeout(resolve, checkInterval));
+        }
+      }
+      
+      if (!isReady) {
+        // タイムアウトした場合でも続行（フォールバック）
+        this.logger.warn(`[AITaskExecutor] ⚠️ [${taskData.aiType}] スクリプト初期化確認タイムアウト、続行します`);
+      }
 
       this.logger.log(`[AITaskExecutor] 🔄 [${taskData.aiType}] タスク実行開始...`);
       
       // タスクを実行
-      const result = await chrome.scripting.executeScript({
-        target: { tabId: tabId },
-        func: async (taskData) => {
+      let result;
+      try {
+        // まずシンプルな同期関数でテスト
+        result = await chrome.scripting.executeScript({
+          target: { tabId: tabId },
+          func: (taskData) => {
+          console.log('[ExecuteAITask] タスクデータ受信（同期版）:', taskData);
+          
           try {
-            // 統合テストと同じAI自動化オブジェクト検索方式
+            // 統合テストと同じAI自動化オブジェクト検索方式（V2版を優先）
             const automationMap = {
-              'Claude': ['ClaudeAutomation', 'Claude'],
-              'ChatGPT': ['ChatGPTAutomation', 'ChatGPT'],
-              'Gemini': ['Gemini', 'GeminiAutomation'],
+              'Claude': ['ClaudeAutomationV2', 'ClaudeAutomation', 'Claude'],
+              'ChatGPT': ['ChatGPTAutomationV2', 'ChatGPTAutomation', 'ChatGPT'],
+              'Gemini': ['GeminiAutomation', 'Gemini'],
               'Genspark': ['GensparkAutomation', 'Genspark']
             };
 
@@ -332,25 +372,70 @@ export class AITaskExecutor {
               fullConfig: config
             });
 
-            // runAutomationを実行
-            if (typeof automation.runAutomation === 'function') {
-              console.log(`[ExecuteAITask] 🎯 ${foundName}.runAutomationを実行中...`);
+            // V2版はexecuteTaskを優先、従来版はrunAutomationを使用
+            if (typeof automation.executeTask === 'function') {
+              console.log(`[ExecuteAITask] 🎯 ${foundName}.executeTask（V2）を実行中...`);
               const execStartTime = Date.now();
-              const result = await automation.runAutomation(config);
-              const execTime = ((Date.now() - execStartTime) / 1000).toFixed(1);
               
-              console.log(`[ExecuteAITask] ✅ ${taskData.aiType} runAutomation完了:`, {
-                success: result?.success,
-                hasResponse: !!result?.response,
-                responseLength: result?.response?.length,
-                executionTime: `${execTime}秒`,
-                error: result?.error
+              // V2版のexecuteTaskを直接実行し、その結果を待つ
+              // CSP回避のため、Promiseを作成してthenで処理
+              const executePromise = automation.executeTask({
+                model: taskData.model,
+                function: taskData.function,
+                prompt: taskData.prompt,
+                text: taskData.prompt
               });
               
-              // タスク完了後、グローバル変数をクリア
-              window.currentAITaskInfo = null;
+              // Promiseの結果を同期的に取得するため、グローバル変数を使用
+              window.__v2_execution_result = null;
+              window.__v2_execution_complete = false;
               
-              return result;
+              executePromise.then(result => {
+                console.log(`[ExecuteAITask] V2実行完了:`, result);
+                window.__v2_execution_result = result;
+                window.__v2_execution_complete = true;
+              }).catch(error => {
+                console.error(`[ExecuteAITask] V2実行エラー:`, error);
+                window.__v2_execution_result = { success: false, error: error.message };
+                window.__v2_execution_complete = true;
+              });
+              
+              console.log(`[ExecuteAITask] V2実行を開始しました、完了を待機中...`);
+              
+              // 完了フラグを返す（バックグラウンドで待機処理を行う）
+              return { 
+                success: true, 
+                message: 'V2 execution started',
+                v2Executing: true,
+                waitForCompletion: true
+              };
+            } else if (typeof automation.runAutomation === 'function') {
+              console.log(`[ExecuteAITask] 🎯 ${foundName}.runAutomationを実行中...`);
+              
+              // 従来版も同様に処理
+              const executePromise = automation.runAutomation(config);
+              
+              window.__v1_execution_result = null;
+              window.__v1_execution_complete = false;
+              
+              executePromise.then(result => {
+                console.log(`[ExecuteAITask] V1実行完了:`, result);
+                window.__v1_execution_result = result;
+                window.__v1_execution_complete = true;
+              }).catch(error => {
+                console.error(`[ExecuteAITask] V1実行エラー:`, error);
+                window.__v1_execution_result = { success: false, error: error.message };
+                window.__v1_execution_complete = true;
+              });
+              
+              console.log(`[ExecuteAITask] V1実行を開始しました、完了を待機中...`);
+              
+              return { 
+                success: true, 
+                message: 'V1 execution started',
+                v1Executing: true,
+                waitForCompletion: true
+              };
             } else {
               return { success: false, error: `${foundName}に適切な実行方法が見つかりません` };
             }
@@ -361,7 +446,13 @@ export class AITaskExecutor {
           }
         },
         args: [taskData]
-      });
+        });
+        
+        this.logger.log(`[AITaskExecutor] 📊 executeScript完了、結果確認中...`);
+      } catch (scriptError) {
+        this.logger.error(`[AITaskExecutor] ❌ executeScript実行エラー:`, scriptError);
+        throw scriptError;
+      }
 
       // 結果を返す
       if (result && result[0] && result[0].result) {
@@ -371,7 +462,71 @@ export class AITaskExecutor {
           ? `${taskData.cellInfo.column}${taskData.cellInfo.row}` 
           : '不明';
         
-        if (resultData.success) {
+        if (resultData.waitForCompletion) {
+          this.logger.log(`[AITaskExecutor] 📝 [${taskData.aiType}] タスク実行開始、完了待機中 [${cellPosition}セル]`);
+          
+          // V2/V1実行の完了を待つ（最大60秒）
+          const isV2 = resultData.v2Executing;
+          const maxWaitTime = 60000;
+          const checkInterval = 500;
+          const waitStartTime = Date.now();
+          
+          while ((Date.now() - waitStartTime) < maxWaitTime) {
+            const [checkResult] = await chrome.scripting.executeScript({
+              target: { tabId: tabId },
+              func: (isV2) => {
+                const completeFlag = isV2 ? '__v2_execution_complete' : '__v1_execution_complete';
+                const resultFlag = isV2 ? '__v2_execution_result' : '__v1_execution_result';
+                return {
+                  complete: window[completeFlag] || false,
+                  result: window[resultFlag] || null
+                };
+              },
+              args: [isV2]
+            });
+            
+            if (checkResult?.result?.complete) {
+              const execResult = checkResult.result.result;
+              this.logger.log(`[AITaskExecutor] ✅ [${taskData.aiType}] 実行完了:`, execResult);
+              
+              if (execResult?.success) {
+                return {
+                  success: true,
+                  message: 'Task completed successfully',
+                  response: execResult.response || ''
+                };
+              } else {
+                return {
+                  success: false,
+                  error: execResult?.error || 'Unknown error during execution'
+                };
+              }
+            }
+            
+            await new Promise(resolve => setTimeout(resolve, checkInterval));
+          }
+          
+          // タイムアウト
+          this.logger.warn(`[AITaskExecutor] ⚠️ [${taskData.aiType}] 実行タイムアウト`);
+          return {
+            success: false,
+            error: 'Execution timeout'
+          };
+        } else if (resultData.taskStarted) {
+          // 旧方式（互換性のため残す）
+          this.logger.log(`[AITaskExecutor] 📝 [${taskData.aiType}] タスク開始 [${cellPosition}セル]:`, {
+            セル: cellPosition,
+            taskId: taskData.taskId,
+            message: resultData.message,
+            totalTime: `${totalTime}秒`
+          });
+          
+          return {
+            success: true,
+            message: 'Task execution started',
+            response: ''
+          };
+        } else if (resultData.success) {
           this.logger.log(`[AITaskExecutor] ✅ [${taskData.aiType}] タスク完了 [${cellPosition}セル]:`, {
             セル: cellPosition,
             taskId: taskData.taskId,

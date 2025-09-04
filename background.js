@@ -22,6 +22,10 @@ import TaskGenerator from "./src/features/task/generator.js";
 import TaskQueue from "./src/features/task/queue.js";
 import StreamProcessor from "./src/features/task/stream-processor.js";
 
+// V2版モジュール（静的インポート）
+import TaskGeneratorV2 from "./src/features/task/generator-v2.js";
+import StreamProcessorV2 from "./src/features/task/stream-processor-v2.js";
+
 // Step 6 - サービスファイル
 import SpreadsheetAutoSetup from "./src/services/spreadsheet-auto-setup.js";
 import SpreadsheetColumnRemover from "./src/services/spreadsheet-column-remover.js";
@@ -739,7 +743,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
           // 4. タスクを生成
           console.log("タスク生成中...");
-          const taskGenerator = new TaskGenerator();
+          
+          // V2モード切り替えフラグ
+          const USE_V2_MODE = true; // true: V2版を使用, false: 従来版を使用
+          
+          let taskGenerator;
+          if (USE_V2_MODE) {
+            console.log("[Background] 🚀 V2モードでタスク生成");
+            taskGenerator = new TaskGeneratorV2();
+          } else {
+            console.log("[Background] 従来モードでタスク生成");
+            taskGenerator = new TaskGenerator();
+          }
+          
           const taskList = await taskGenerator.generateTasks(processedData);  // awaitを追加
           
           // taskListとtasksの存在を確認
@@ -932,15 +948,50 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       // バックグラウンドで非同期処理を開始
       (async () => {
         try {
-          // StreamProcessorは既に静的インポート済み
-          const processor = new StreamProcessor();
+          // V2モード切り替えフラグ（上部の設定と同じ値を使用）
+          const USE_V2_MODE = true; // true: V2版を使用, false: 従来版を使用
           
-          // スプレッドシートデータを準備
-          const spreadsheetData = {
-            spreadsheetId: request.spreadsheetId,
-            spreadsheetUrl: request.spreadsheetUrl,
-            gid: request.gid
-          };
+          let processor;
+          if (USE_V2_MODE) {
+            console.log("[Background] 🚀 V2モードでStreamProcessor実行");
+            processor = new StreamProcessorV2();
+          } else {
+            console.log("[Background] 従来モードでStreamProcessor実行");
+            processor = new StreamProcessor();
+          }
+          
+          // スプレッドシートデータを取得
+          let spreadsheetData;
+          if (request.spreadsheetId) {
+            // スプレッドシートのデータを読み込み
+            const sheetData = await globalThis.sheetsClient.loadAutoAIData(
+              request.spreadsheetId,
+              request.gid
+            );
+            
+            spreadsheetData = {
+              spreadsheetId: request.spreadsheetId,
+              spreadsheetUrl: request.spreadsheetUrl,
+              gid: request.gid,
+              sheetName: sheetData.sheetName || request.sheetName || null,
+              values: sheetData.values || []
+            };
+            
+            console.log("[Background] スプレッドシートデータ読み込み完了:", {
+              rows: spreadsheetData.values.length,
+              columns: spreadsheetData.values[0]?.length || 0,
+              sheetName: spreadsheetData.sheetName
+            });
+          } else {
+            // スプレッドシートIDがない場合は空のデータ
+            spreadsheetData = {
+              spreadsheetId: '',
+              spreadsheetUrl: '',
+              gid: null,
+              sheetName: null,
+              values: []
+            };
+          }
           
           // タスクリストを処理
           const result = await processor.processTaskStream(request.taskList, spreadsheetData, {
@@ -1349,6 +1400,76 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       })();
       return true;
 
+    // ===== スプレッドシート読み込み（ColumnProcessor用） =====
+    case "loadSpreadsheet":
+      (async () => {
+        try {
+          const { spreadsheetId, sheetName } = request;
+          
+          // AITaskHandlerのloadSpreadsheet関数を呼び出し
+          if (globalThis.aiTaskHandler) {
+            const data = await globalThis.aiTaskHandler.loadSpreadsheet(
+              spreadsheetId,
+              sheetName
+            );
+            
+            sendResponse({ success: true, data });
+          } else {
+            throw new Error("AITaskHandler not available");
+          }
+        } catch (error) {
+          console.error("[MessageHandler] スプレッドシート読み込みエラー:", error);
+          sendResponse({ success: false, error: error.message });
+        }
+      })();
+      return true;
+
+    // ===== プロンプト動的取得（V2用） =====
+    case "fetchPromptFromSpreadsheet":
+      (async () => {
+        try {
+          const { spreadsheetId, row, promptColumns, sheetName, gid } = request;
+          
+          // AITaskHandlerのfetchPromptFromSpreadsheet関数を呼び出し
+          if (globalThis.aiTaskHandler) {
+            const prompt = await globalThis.aiTaskHandler.fetchPromptFromSpreadsheet(
+              spreadsheetId,
+              { row, promptColumns, sheetName }
+            );
+            
+            sendResponse({ success: true, prompt });
+          } else {
+            throw new Error("AITaskHandler not available");
+          }
+        } catch (error) {
+          console.error("[MessageHandler] プロンプト取得エラー:", error);
+          sendResponse({ success: false, error: error.message });
+        }
+      })();
+      return true;
+      
+    // ===== スプレッドシート書き込み（V2用） =====
+    case "writeToSpreadsheet":
+      (async () => {
+        try {
+          const { spreadsheetId, range, value, sheetName } = request;
+          
+          if (!globalThis.sheetsClient) {
+            throw new Error("SheetsClient not available");
+          }
+          
+          // スプレッドシートに書き込み
+          const fullRange = sheetName ? `'${sheetName}'!${range}` : range;
+          const result = await globalThis.sheetsClient.writeValue(spreadsheetId, fullRange, value);
+          
+          sendResponse({ success: true, result });
+        } catch (error) {
+          console.error("[MessageHandler] スプレッドシート書き込みエラー:", error);
+          sendResponse({ success: false, error: error.message });
+        }
+      })();
+      return true;
+    
     // ===== 送信時刻記録メッセージ =====
     case "recordSendTime":
       (async () => {
