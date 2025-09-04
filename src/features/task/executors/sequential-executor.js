@@ -3,6 +3,8 @@
 import BaseExecutor from './base-executor.js';
 // WindowServiceをインポート（ウィンドウ管理の一元化）
 import { WindowService } from '../../../services/window-service.js';
+// AITaskExecutorをインポート（AI実行処理）
+import { AITaskExecutor } from '../../../core/ai-task-executor.js';
 
 /**
  * 単独AI（1つずつのAI）の順次実行を管理
@@ -22,13 +24,18 @@ class SequentialExecutor extends BaseExecutor {
     this.columnOrder = []; // 列の処理順序
     this.writtenCells = new Map(); // `${column}${row}` -> true
     this.maxConcurrentWindows = 1; // 順次実行のため1つ
+    
+    // AITaskExecutorを初期化
+    this.aiTaskExecutor = new AITaskExecutor(this.logger);
+    this.spreadsheetData = null;
   }
   
   /**
    * 順次実行でタスクストリームを処理
    */
   async processTaskStream(taskList, spreadsheetData, options = {}) {
-    this.setupProcessing(taskList, spreadsheetData, options);
+    this.spreadsheetData = spreadsheetData;
+    this.isTestMode = options.testMode || false;
     
     try {
       // タスクを列・行でグループ化
@@ -37,13 +44,17 @@ class SequentialExecutor extends BaseExecutor {
       // 順次実行開始
       await this.startSequentialExecution();
       
-      return this.createSuccessResult({
+      return {
+        success: true,
+        total: this.completedTasks.size + this.failedTasks.size,
+        completed: this.completedTasks.size,
+        failed: this.failedTasks.size,
         processedColumns: Array.from(this.taskQueue.keys()),
         executionPattern: 'sequential'
-      });
+      };
       
     } catch (error) {
-      this.handleError(error, 'processTaskStream');
+      this.logger.error('[SequentialExecutor] processTaskStream error:', error);
       throw error;
     } finally {
       this.cleanup();
@@ -167,17 +178,45 @@ class SequentialExecutor extends BaseExecutor {
         return;
       }
       
-      // 実際のウィンドウ処理（Service Worker環境でのみ実行）
-      await this.openWindowForTask(task);
+      // 実際のAI処理（ウィンドウ作成とAI実行）
+      const tabId = await this.createWindowForTask(task);
+      if (!tabId) {
+        throw new Error(`Failed to create window for ${task.aiType}`);
+      }
       
-      // タスク完了をマーク
-      this.completedTasks.add(task.id);
-      this.writtenCells.set(`${task.column}${task.row}`, true);
+      // プロンプトを動的取得
+      const prompt = await this.fetchPromptFromTask(task);
+      if (!prompt) {
+        throw new Error(`Empty prompt for ${task.column}${task.row}`);
+      }
       
-      this.logger.log(`[SequentialExecutor] タスク処理完了`, {
-        cell: `${task.column}${task.row}`,
-        taskId: task.id.substring(0, 8)
+      // AITaskExecutorでタスク実行
+      const result = await this.aiTaskExecutor.executeAITask(tabId, {
+        aiType: task.aiType,
+        taskId: task.id,
+        model: task.model,
+        function: task.function,
+        prompt: prompt,
+        cellInfo: task.cellInfo || {
+          row: task.row,
+          column: task.column,
+          columnIndex: task.columnIndex
+        }
       });
+      
+      if (result.success) {
+        // 結果をスプレッドシートに書き込み
+        await this.writeToSpreadsheet(task, result.response);
+        this.completedTasks.add(task.id);
+        this.writtenCells.set(`${task.column}${task.row}`, true);
+        
+        this.logger.log(`[SequentialExecutor] タスク処理完了`, {
+          cell: `${task.column}${task.row}`,
+          taskId: task.id.substring(0, 8)
+        });
+      } else {
+        throw new Error(result.error || 'Task execution failed');
+      }
       
     } catch (error) {
       this.logger.error(`[SequentialExecutor] タスク処理エラー`, {
@@ -185,12 +224,138 @@ class SequentialExecutor extends BaseExecutor {
         taskId: task.id.substring(0, 8),
         error: error.message
       });
-      throw error;
+      
+      if (!this.failedTasks) {
+        this.failedTasks = new Set();
+      }
+      this.failedTasks.add(task.id);
     }
   }
   
   /**
-   * タスク用のウィンドウを開く
+   * タスク用のウィンドウを作成（AITaskExecutor用）
+   */
+  async createWindowForTask(task) {
+    // WindowServiceを使用してAI URLを取得（ChatGPT/Claude/Gemini等のURL管理を一元化）
+    const url = WindowService.getAIUrl(task.aiType);
+    
+    // WindowServiceを使用してスクリーン情報を取得（モニター情報の取得を統一）
+    const screenInfo = await WindowService.getScreenInfo();
+    
+    // WindowServiceを使用してウィンドウ位置を計算（順次実行は position 0 固定）
+    const windowPosition = WindowService.calculateWindowPosition(0, screenInfo);
+    
+    try {
+      // WindowServiceを使用してAIウィンドウを作成（focused: trueがデフォルトで設定される）
+      const window = await WindowService.createAIWindow(url, windowPosition);
+      
+      // タブを取得
+      const tabs = await chrome.tabs.query({ windowId: window.id });
+      const tabId = tabs[0].id;
+      
+      this.logger.log(`[SequentialExecutor] ウィンドウ作成完了`, {
+        windowId: window.id,
+        tabId: tabId,
+        cell: `${task.column}${task.row}`,
+        aiType: task.aiType
+      });
+      
+      return tabId;
+      
+    } catch (error) {
+      this.logger.error(`[SequentialExecutor] ウィンドウ作成エラー`, {
+        message: error.message,
+        url: url,
+        cell: `${task.column}${task.row}`,
+        taskId: task.id.substring(0, 8)
+      });
+      return null;
+    }
+  }
+  
+  /**
+   * プロンプトを動的取得
+   */
+  async fetchPromptFromTask(task) {
+    try {
+      const prompts = [];
+      
+      // 各プロンプト列から値を取得
+      for (const colInfo of task.promptColumns) {
+        const colIndex = typeof colInfo === 'object' ? colInfo.index : colInfo;
+        const rowIndex = task.row - 1; // 行番号は1ベースなので0ベースに変換
+        const value = this.getCellValue(rowIndex, colIndex);
+        if (value && value.trim()) {
+          prompts.push(value.trim());
+        }
+      }
+      
+      // プロンプトを連結
+      return prompts.join('\n\n');
+      
+    } catch (error) {
+      this.logger.error(`[SequentialExecutor] プロンプト取得エラー:`, error);
+      return null;
+    }
+  }
+  
+  /**
+   * セルの値を取得
+   */
+  getCellValue(rowIndex, colIndex) {
+    if (!this.spreadsheetData || !this.spreadsheetData.values[rowIndex]) {
+      return null;
+    }
+    return this.spreadsheetData.values[rowIndex][colIndex] || null;
+  }
+  
+  /**
+   * スプレッドシートに書き込み
+   */
+  async writeToSpreadsheet(task, response) {
+    try {
+      if (!response) return;
+      
+      const range = `${task.column}${task.row}`;
+      
+      // background contextで実行されているかチェック
+      if (globalThis.sheetsClient) {
+        // background contextから直接SheetsClientを使用
+        const fullRange = this.spreadsheetData.sheetName 
+          ? `'${this.spreadsheetData.sheetName}'!${range}` 
+          : range;
+        
+        await globalThis.sheetsClient.updateCell(
+          this.spreadsheetData.spreadsheetId, 
+          fullRange, 
+          response,
+          this.spreadsheetData.gid
+        );
+        
+        this.logger.log(`[SequentialExecutor] 📝 書き込み完了: ${range}`);
+      } else {
+        // UIページから実行されている場合はメッセージ送信
+        const result = await chrome.runtime.sendMessage({
+          action: 'writeToSpreadsheet',
+          spreadsheetId: this.spreadsheetData.spreadsheetId,
+          range: range,
+          value: response,
+          sheetName: this.spreadsheetData.sheetName
+        });
+        
+        if (!result || !result.success) {
+          throw new Error(result?.error || 'Failed to write');
+        }
+        
+        this.logger.log(`[SequentialExecutor] 📝 書き込み完了: ${range}`);
+      }
+    } catch (error) {
+      this.logger.error(`[SequentialExecutor] 書き込みエラー:`, error);
+    }
+  }
+
+  /**
+   * タスク用のウィンドウを開く（旧メソッド、後方互換性のため）
    */
   async openWindowForTask(task) {
     // WindowServiceを使用してAI URLを取得（ChatGPT/Claude/Gemini等のURL管理を一元化）
