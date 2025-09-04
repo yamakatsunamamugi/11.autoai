@@ -405,6 +405,66 @@
         });
         
         try {
+            // ========================================
+            // ページ準備状態チェック（初回実行の問題を解決）
+            // ========================================
+            log('\n【ページ初期化チェック】', 'step');
+            
+            // 1. ChatGPT UIの基本要素が存在するか確認
+            const criticalElements = {
+                'テキスト入力欄': SELECTORS.textInput,
+                'モデルボタン': SELECTORS.modelButton
+            };
+            
+            let allElementsReady = false;
+            let retryCount = 0;
+            const maxRetries = 10;
+            
+            // 最初のタスクの場合は追加の初期化待機
+            const isFirstTask = !window.ChatGPTAutomationV2._initialized;
+            if (isFirstTask) {
+                log('初回タスク実行を検知。追加の初期化待機を行います', 'info');
+                await sleep(3000); // 初回は3秒待機
+                window.ChatGPTAutomationV2._initialized = true;
+            }
+            
+            // 全ての重要な要素が利用可能になるまで待機
+            while (!allElementsReady && retryCount < maxRetries) {
+                allElementsReady = true;
+                
+                for (const [name, selectors] of Object.entries(criticalElements)) {
+                    const element = await findElement(selectors, name, 1);
+                    if (!element) {
+                        log(`${name}が見つかりません。待機中... (${retryCount + 1}/${maxRetries})`, 'warning');
+                        allElementsReady = false;
+                        break;
+                    }
+                }
+                
+                if (!allElementsReady) {
+                    await sleep(2000);
+                    retryCount++;
+                }
+            }
+            
+            if (!allElementsReady) {
+                throw new Error('ChatGPT UIが完全に初期化されていません。ページをリロードしてください。');
+            }
+            
+            // 2. React/DOM の安定化待機
+            log('DOM安定化待機中...', 'info');
+            await sleep(1500);
+            
+            // 3. 既存の開いているメニューを全て閉じる
+            const openMenus = document.querySelectorAll('[role="menu"][data-state="open"]');
+            if (openMenus.length > 0) {
+                log(`開いているメニュー(${openMenus.length}個)を閉じます`, 'info');
+                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape' }));
+                await sleep(500);
+            }
+            
+            log('ページ初期化チェック完了', 'success');
+            
             // パラメータ準備（スプレッドシートの値をそのまま使用）
             const prompt = taskData.prompt || taskData.text || '';
             const modelName = taskData.model || '';
@@ -601,10 +661,16 @@
                     throw new Error('機能メニューボタンが見つかりません');
                 }
                 
+                // 初回タスクの場合は追加待機
+                if (isFirstTask) {
+                    log('初回タスクのため、メニュー操作前に追加待機', 'info');
+                    await sleep(1000);
+                }
+                
                 funcMenuBtn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
                 await sleep(100);
                 funcMenuBtn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
-                await sleep(1500);
+                await sleep(2000); // メニュー表示の待機時間を増やす
                 
                 const funcMenu = await findElement(SELECTORS.mainMenu, 'メインメニュー');
                 if (!funcMenu) {
@@ -621,15 +687,22 @@
                     log('6-2. 機能メニューの中のさらに表示ボタンをクリック', 'step');
                     const moreBtn = findElementByText('[role="menuitem"]', 'さらに表示');
                     if (moreBtn) {
+                        // 初回タスクの場合は追加待機
+                        if (isFirstTask) {
+                            log('初回タスクのため、さらに表示クリック前に追加待機', 'info');
+                            await sleep(500);
+                        }
+                        
                         moreBtn.click();
                         
-                        // サブメニューが表示されるまで待機（最大3秒）
+                        // サブメニューが表示されるまで待機（最大5秒、より頻繁にチェック）
                         let subMenu = null;
-                        for (let i = 0; i < 6; i++) {
-                            await sleep(500);
-                            subMenu = document.querySelector('[data-side="right"]');
+                        for (let i = 0; i < 20; i++) {
+                            await sleep(250);
+                            subMenu = document.querySelector('[data-side="right"]') || 
+                                     document.querySelector('[role="menu"][data-side="right"]');
                             if (subMenu) {
-                                console.log(`✅ [機能検索] サブメニューが表示されました (${(i + 1) * 0.5}秒後)`);
+                                console.log(`✅ [機能検索] サブメニューが表示されました (${(i + 1) * 0.25}秒後)`);
                                 break;
                             }
                         }
@@ -637,13 +710,29 @@
                         // 6-3: サブメニューで機能を探す
                         log('6-3. サブメニューで機能を選択', 'step');
                         if (subMenu) {
-                            // 追加で少し待機してメニュー項目が完全にレンダリングされるのを待つ
-                            await sleep(500);
-                            // セレクタのバリエーションを試す
+                            // メニュー項目が完全にレンダリングされるまで追加待機
+                            await sleep(1000);
+                            
+                            // 複数の方法で機能を探す
                             featureElement = findElementByText('[role="menuitemradio"]', mappedFeatureName, subMenu);
+                            
+                            // 見つからない場合は、より広範囲で検索
+                            if (!featureElement) {
+                                console.log(`🔍 [機能検索] 別のセレクタで再試行中...`);
+                                const allItems = subMenu.querySelectorAll('[role="menuitemradio"], [role="menuitem"]');
+                                for (const item of allItems) {
+                                    const itemText = getCleanText(item);
+                                    if (itemText === mappedFeatureName || itemText.includes(mappedFeatureName)) {
+                                        featureElement = item;
+                                        console.log(`✅ [機能検索] 別のセレクタで "${mappedFeatureName}" を発見`);
+                                        break;
+                                    }
+                                }
+                            }
+                            
                             console.log(`🔍 [機能検索] サブメニューで "${mappedFeatureName}" を検索: ${featureElement ? '見つかった' : '見つからない'}`);
                         } else {
-                            console.log(`⚠️ [機能検索] サブメニューが見つかりません（3秒待機後）`);
+                            console.log(`⚠️ [機能検索] サブメニューが見つかりません（5秒待機後）`);
                         }
                     } else {
                         console.log(`⚠️ [機能検索] "さらに表示"ボタンが見つかりません`);
