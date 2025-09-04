@@ -1153,16 +1153,39 @@
             
             if (responseText) {
                 console.log('✅ Claude V2 タスク実行完了');
+                
+                // 完了フラグを設定
+                window.__v2_execution_complete = true;
+                window.__v2_execution_result = {
+                    success: true,
+                    response: responseText
+                };
+                
                 return {
                     success: true,
                     response: responseText
                 };
             } else {
+                // エラー時も完了フラグを設定
+                window.__v2_execution_complete = true;
+                window.__v2_execution_result = {
+                    success: false,
+                    error: '応答テキストを取得できませんでした'
+                };
+                
                 throw new Error('応答テキストを取得できませんでした');
             }
             
         } catch (error) {
             console.error('❌ Claude V2 タスク実行エラー:', error);
+            
+            // catch時も完了フラグを設定
+            window.__v2_execution_complete = true;
+            window.__v2_execution_result = {
+                success: false,
+                error: error.message
+            };
+            
             return {
                 success: false,
                 error: error.message

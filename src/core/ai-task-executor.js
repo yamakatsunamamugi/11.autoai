@@ -414,6 +414,7 @@ export class AITaskExecutor {
           const isV2 = resultData.v2Executing;
           const isDeepResearchOrAgent = taskData.function && (
             taskData.function.toLowerCase().includes('deep research') ||
+            taskData.function.toLowerCase().includes('deepresearch') ||
             taskData.function.toLowerCase().includes('エージェント') ||
             taskData.function.toLowerCase().includes('agent')
           );

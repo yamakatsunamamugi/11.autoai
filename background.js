@@ -570,6 +570,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     // ===== AIタスク実行（コンテンツスクリプトから転送） =====
     case "executeAITask":
+      console.log(`[Background] 📝 AIタスク実行要求受信:`, {
         from: sender.tab?.url?.split('?')[0],  // URLからクエリパラメータを除外
         tabId: sender.tab?.id,
         aiType: request.taskData?.aiType,
@@ -590,6 +591,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       // 非同期でAIタスクを実行
       executeAITask(sender.tab.id, request.taskData)
         .then(result => {
+          console.log("[MessageHandler] ✅ AIタスク実行成功:", {
             aiType: request.taskData?.aiType,
             taskId: request.taskData?.taskId,
             success: result.success,
@@ -611,6 +613,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     
     // ===== Google Sheetsデータ取得 =====
     case "getSheetsData":
+      console.log(`[Background] 📊 Google Sheets データ取得:`, {
         spreadsheetId: request.spreadsheetId,
         range: request.range
       });
@@ -636,6 +639,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       // Google Sheets APIを呼び出してデータ取得（Promise形式）
       globalThis.sheetsClient.getSheetData(request.spreadsheetId, request.range)
         .then(data => {
+          console.log("[MessageHandler] ✅ Sheetsデータ取得成功:", {
             rowsCount: data?.values?.length || 0,
             firstRow: data?.values?.[0]
           });
@@ -866,6 +870,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     // ===== コンテンツスクリプトからのメッセージ =====
     case "contentScriptReady":
+      console.log(`[Background] 📡 コンテンツスクリプト準備完了:`, {
         tabId: sender.tab?.id,
         url: sender.tab?.url,
         aiType: request.aiType
@@ -874,6 +879,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return false;
 
     case "aiResponse":
+      console.log(`[Background] 🤖 AI応答受信:`, {
         tabId: sender.tab?.id,
         taskId: request.taskId,
         responseLength: request.response?.length || 0
@@ -883,6 +889,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     // ===== ストリーミング処理開始 =====
     case "streamProcessTasks":
+      console.log(`[Background] 🌊 ストリーミング処理開始:`, {
         spreadsheetId: request.spreadsheetId,
         taskCount: request.tasks?.length || 0,
         testMode: request.testMode
@@ -927,6 +934,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       
     // ===== タスクリストストリーミング処理（AI Orchestratorから） =====
     case "streamProcessTaskList":
+      console.log(`[Background] 📋 タスクリストストリーミング処理:`, {
         taskListSize: request.taskList?.tasks?.length || 0,
         testMode: request.testMode,
         spreadsheetId: request.spreadsheetId,
@@ -974,6 +982,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               values: sheetData.values || []
             };
             
+            console.log(`[Background] 📊 スプレッドシートデータ取得完了:`, {
               rows: spreadsheetData.values.length,
               columns: spreadsheetData.values[0]?.length || 0,
               sheetName: spreadsheetData.sheetName
@@ -1009,6 +1018,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     // ===== テストウィンドウ作成 =====
     case "createTestWindow":
+      console.log(`[Background] 🪟 テストウィンドウ作成:`, {
         aiType: request.aiType,
         url: request.url
       });
@@ -1089,6 +1099,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     // ===== リトライ用新規ウィンドウ作成 =====
     case "RETRY_WITH_NEW_WINDOW":
+      console.log(`[Background] 🔄 新規ウィンドウでリトライ:`, {
         taskId: request.taskId,
         aiType: request.aiType,
         error: request.error
@@ -1221,6 +1232,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     // ===== セレクタデータ転送 =====
     case "selector-data":
+      console.log(`[Background] 🎯 セレクタデータ受信:`, {
         from: sender.tab?.url,
         tabId: sender.tab?.id,
         aiTypes: Object.keys(request.data || {}),
@@ -1236,6 +1248,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             );
             
             // セレクタデータは直接処理（転送不要）
+            console.log(`[Background] 🔍 セレクタデータ処理:`, {
               from: sender.tab?.url,
               tabId: sender.tab?.id,
               dataKeys: Object.keys(request.data || {}),
@@ -1470,6 +1483,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             spreadsheetLogger = globalThis.spreadsheetLogger;
           }
           
+          console.log(`[Background] ⏰ 送信時刻記録:`, {
             taskId: request.taskId,
             sendTime: request.sendTime,
             aiType: request.taskInfo?.aiType,
