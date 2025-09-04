@@ -11,6 +11,10 @@
     const SCRIPT_VERSION = "3.0.0";
     console.log(`🚀 Gemini Automation v${SCRIPT_VERSION} 初期化`);
     
+    // ui-selectorsからインポート（Chrome拡張機能のインジェクトコンテキスト）
+    const UI_SELECTORS = window.UI_SELECTORS || {};
+    const GeminiSelectorsFromUI = UI_SELECTORS.Gemini || {};
+    
     // ================================================================
     // グローバル変数
     // ================================================================
@@ -273,15 +277,63 @@
                 return `プロンプトを入力しました（${promptText.length}文字）`;
             });
             
-            // ステップ3: メッセージ送信
-            await logStep('ステップ3: メッセージ送信', async () => {
-                const sendButton = findElement([
-                    'button.send-button.submit:not(.stop)',
-                    'button[aria-label="プロンプトを送信"]:not(.stop)'
-                ]);
+            // ステップ3: メッセージ送信（再試行対応）
+            await logStep('ステップ3: メッセージ送信（再試行対応）', async () => {
+                // 送信ボタンを5回まで再試行
+                let sendSuccess = false;
+                let sendAttempts = 0;
+                const maxSendAttempts = 5;
                 
-                if (!sendButton) throw new Error("送信ボタンが見つからないか、送信不可能な状態です。");
-                sendButton.click();
+                while (!sendSuccess && sendAttempts < maxSendAttempts) {
+                    sendAttempts++;
+                    log(`送信試行 ${sendAttempts}/${maxSendAttempts}`, 'step');
+                    
+                    const sendButton = findElement([
+                        'button.send-button.submit:not(.stop)',
+                        'button[aria-label="プロンプトを送信"]:not(.stop)'
+                    ]);
+                    
+                    if (!sendButton) {
+                        if (sendAttempts === maxSendAttempts) {
+                            throw new Error('送信ボタンが見つからないか、送信不可能な状態です');
+                        }
+                        log(`送信ボタンが見つかりません。2秒後に再試行...`, 'warning');
+                        await wait(2000);
+                        continue;
+                    }
+                    
+                    sendButton.click();
+                    log(`送信ボタンをクリックしました（試行${sendAttempts}）`, 'success');
+                    await sleep(1000);
+                    
+                    // 送信後に停止ボタンが表示されるか、5秒待機
+                    let stopButtonAppeared = false;
+                    
+                    for (let i = 0; i < 5; i++) {
+                        const stopButton = findElement([
+                            'button.stop-button, button.send-button.stop',
+                            'button[aria-label="ストリーミングを停止"]'
+                        ]);
+                        if (stopButton) {
+                            stopButtonAppeared = true;
+                            log('停止ボタンが表示されました - 送信成功', 'success');
+                            break;
+                        }
+                        await sleep(1000);
+                    }
+                    
+                    if (stopButtonAppeared) {
+                        sendSuccess = true;
+                        break;
+                    } else {
+                        log(`送信反応が確認できません。再試行します...`, 'warning');
+                        await wait(2000);
+                    }
+                }
+                
+                if (!sendSuccess) {
+                    throw new Error(`${maxSendAttempts}回試行しても送信が成功しませんでした`);
+                }
                 
                 // 送信時刻を記録（SpreadsheetLogger用）
                 log(`🔍 送信時刻記録開始 - AIHandler: ${!!window.AIHandler}, recordSendTimestamp: ${!!window.AIHandler?.recordSendTimestamp}, currentAITaskInfo: ${!!window.currentAITaskInfo}`, 'info');
@@ -458,43 +510,143 @@
                 }
             }));
             
-            // ステップ5: テキスト取得
+            // ステップ5: テキスト取得（ui-selectorsを使用）
             await logStep('ステップ5: テキスト取得', async () => {
                 let textElement;
+                let text = '';
                 
-                // DeepResearch結果を優先的にチェック
-                if (resolvedFeature && resolvedFeature.toLowerCase().includes('research')) {
-                    log('DeepResearch結果を探しています...');
-                    textElement = findElement([
+                // ui-selectorsから取得、フォールバック付き
+                const textSelectors = GeminiSelectorsFromUI.TEXT_EXTRACTION || {
+                    DEEP_RESEARCH: [
                         '#extended-response-markdown-content',
                         '.extended-response-markdown-content',
                         '[id="extended-response-markdown-content"]',
                         'div[id="extended-response-markdown-content"]',
-                        '.markdown.markdown-main-panel'
-                    ]);
-                    if (textElement) {
-                        log('DeepResearch結果を発見しました', 'success');
-                    }
-                }
+                        '.markdown.markdown-main-panel',
+                        'div[class*="deep-research"]',
+                        'div[class*="research-result"]'
+                    ],
+                    MESSAGE_CONTAINER: [
+                        '.model-response-text',
+                        'div[class*="model-response"]',
+                        '.message-content',
+                        'div[class*="gemini-response"]',
+                        'div[class*="assistant-message"]'
+                    ],
+                    MESSAGE_CONTENT: [
+                        '.markdown',
+                        'div[class*="markdown"]',
+                        '.prose',
+                        'div[class*="text-base"]'
+                    ],
+                    CANVAS_CONTENT: [
+                        '.ProseMirror[contenteditable="true"]',
+                        '.ProseMirror',
+                        'div[contenteditable="true"]',
+                        'div[class*="canvas"]',
+                        'div[class*="code-block"]'
+                    ],
+                    GENERIC_RESPONSE: [
+                        'div[data-message-role="model"]',
+                        'div[class*="message"][class*="assistant"]',
+                        'article[class*="response"]',
+                        'section[class*="output"]'
+                    ]
+                };
                 
-                // DeepResearch結果が見つからない場合は既存のロジック
-                if (!textElement) {
-                    if (isCanvasMode) {
-                        textElement = findElement(['.ProseMirror[contenteditable="true"]', '.ProseMirror']);
-                    } else {
-                        const responses = findElements(['.model-response-text .markdown', '.markdown']);
-                        if (responses.length > 0) {
-                            textElement = responses[responses.length - 1];
+                // 方法1: DeepResearch結果を優先的にチェック
+                if (featureName && featureName.toLowerCase().includes('research')) {
+                    log('DeepResearch結果を探しています...');
+                    
+                    for (const selector of textSelectors.DEEP_RESEARCH) {
+                        textElement = findElement([selector]);
+                        if (textElement) {
+                            text = textElement.textContent?.trim() || '';
+                            if (text && text.length > 10) {
+                                log(`DeepResearch結果取得成功 (${selector}): ${text.length}文字`, 'success');
+                                break;
+                            }
                         }
                     }
                 }
                 
-                if (!textElement || !textElement.textContent) {
+                // 方法2: 通常の応答メッセージを取得（ui-selectorsを使用）
+                if (!text) {
+                    log('通常処理テキスト取得試行', 'info');
+                    
+                    // ui-selectorsのNORMAL_RESPONSEセレクタを使用
+                    const normalSelectors = textSelectors.NORMAL_RESPONSE || [
+                        '.model-response-text .markdown',
+                        '.model-response-text',
+                        '.conversation-turn .markdown',
+                        'div[class*="model-response"] .markdown'
+                    ];
+                    
+                    for (const selector of normalSelectors) {
+                        const responseElements = findElements([selector]);
+                        if (responseElements.length > 0) {
+                            const latestResponse = responseElements[responseElements.length - 1];
+                            text = latestResponse.textContent?.trim() || '';
+                            
+                            if (text && text.length > 10) {
+                                log(`通常処理テキスト取得成功 (${selector}): ${text.length}文字`, 'success');
+                                log(`最初の100文字: ${text.substring(0, 100)}...`, 'info');
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // フォールバック: MESSAGE_CONTAINERセレクタも試行
+                    if (!text) {
+                        for (const selector of textSelectors.MESSAGE_CONTAINER) {
+                            const elements = findElements([selector]);
+                            if (elements.length > 0) {
+                                const lastElement = elements[elements.length - 1];
+                                text = lastElement.textContent?.trim() || '';
+                                if (text && text.length > 10) {
+                                    log(`フォールバック取得成功 (${selector}): ${text.length}文字`, 'success');
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // 方法3: Canvas/ProseMirrorエディタの内容を取得
+                if (!text) {
+                    for (const selector of textSelectors.CANVAS_CONTENT) {
+                        textElement = findElement([selector]);
+                        if (textElement) {
+                            text = textElement.textContent?.trim() || '';
+                            if (text && text.length > 10) {
+                                log(`Canvas/Editor取得成功 (${selector}): ${text.length}文字`, 'success');
+                                break;
+                            }
+                        }
+                    }
+                }
+                
+                // 方法4: より汎用的なセレクタで探す
+                if (!text) {
+                    for (const selector of textSelectors.GENERIC_RESPONSE) {
+                        const elements = findElements([selector]);
+                        if (elements.length > 0) {
+                            const lastElement = elements[elements.length - 1];
+                            text = lastElement.textContent?.trim() || '';
+                            if (text && text.length > 10) {
+                                log(`汎用セレクタ取得成功 (${selector}): ${text.length}文字`, 'success');
+                                break;
+                            }
+                        }
+                    }
+                }
+                
+                if (!text) {
                     throw new Error("応答テキストが見つかりません。");
                 }
                 
-                const text = textElement.textContent;
-                log(`応答取得成功: ${text.length}文字`, 'success');
+                log(`最終的に取得: ${text.length}文字`, 'success');
+                log(`最初の100文字: ${text.substring(0, 100)}...`, 'info');
                 
                 // 結果を返す
                 return text;

@@ -63,7 +63,6 @@ export class WindowService {
       });
       
       const totalTime = (performance.now() - startTime).toFixed(0);
-      console.log(`[WindowService] AIウィンドウ作成成功 (${totalTime}ms): ID=${window.id}`);
       return window;
     } catch (error) {
       const totalTime = (performance.now() - startTime).toFixed(0);
@@ -98,7 +97,6 @@ export class WindowService {
         ...options
       });
       
-      console.log('[WindowService] テストウィンドウ作成成功:', window.id);
       return window;
     } catch (error) {
       console.error('[WindowService] テストウィンドウ作成エラー:', error);
@@ -629,7 +627,6 @@ export class WindowService {
       const window = await chrome.windows.create(windowOptions);
       
       const createTime = (performance.now() - createStartTime).toFixed(0);
-      console.log(`[WindowService] ウィンドウ作成完了 (${createTime}ms): ID=${window.id}`);
       
       // Chrome APIが位置を正しく適用しない場合のみ更新
       // 作成されたウィンドウの位置をチェック
@@ -667,7 +664,6 @@ export class WindowService {
         ...chromeOptions
       });
       
-      console.log(`[WindowService] ウィンドウ作成成功: ID=${window.id}, Position=${position}`);
       return window;
     } catch (error) {
       console.error('[WindowService] ウィンドウ作成エラー:', error);

@@ -13,8 +13,12 @@
     
     console.log(`ChatGPT Automation V2 - 初期化時刻: ${new Date().toLocaleString('ja-JP')}`);
     
+    // ui-selectorsからインポート（Chrome拡張機能のインジェクトコンテキスト）
+    const UI_SELECTORS = window.UI_SELECTORS || {};
+    const ChatGPTSelectors = UI_SELECTORS.ChatGPT || {};
+    
     // ========================================
-    // セレクタ定義（テストコードより）
+    // セレクタ定義（ui-selectorsからマージ、フォールバック付き）
     // ========================================
     const SELECTORS = {
         // モデル関連
@@ -652,17 +656,70 @@
             }
             
             // ========================================
-            // ステップ7: メッセージ送信
+            // ステップ7: メッセージ送信（再試行対応）
             // ========================================
-            log('\n【ステップ7】メッセージ送信', 'step');
+            log('\n【ステップ7】メッセージ送信（再試行対応）', 'step');
             
-            const sendBtn = await findElement(SELECTORS.sendButton, '送信ボタン');
-            if (!sendBtn) {
-                throw new Error('送信ボタンが見つかりません');
+            // 送信ボタンを5回まで再試行
+            let sendSuccess = false;
+            let sendAttempts = 0;
+            const maxSendAttempts = 5;
+            
+            while (!sendSuccess && sendAttempts < maxSendAttempts) {
+                sendAttempts++;
+                log(`送信試行 ${sendAttempts}/${maxSendAttempts}`, 'step');
+                
+                const sendBtn = await findElement(SELECTORS.sendButton, '送信ボタン');
+                if (!sendBtn) {
+                    if (sendAttempts === maxSendAttempts) {
+                        throw new Error('送信ボタンが見つかりません');
+                    }
+                    log(`送信ボタンが見つかりません。2秒後に再試行...`, 'warning');
+                    await sleep(2000);
+                    continue;
+                }
+                
+                // 送信ボタンをクリック
+                sendBtn.click();
+                log(`送信ボタンをクリックしました（試行${sendAttempts}）`, 'success');
+                await sleep(1000);
+                
+                // 送信後に停止ボタンが表示されるか、または送信ボタンが消えるまで5秒待機
+                let stopButtonAppeared = false;
+                let sendButtonDisappeared = false;
+                
+                for (let i = 0; i < 5; i++) {
+                    // 停止ボタンの確認
+                    const stopBtn = await findElement(SELECTORS.stopButton, '停止ボタン', 1);
+                    if (stopBtn) {
+                        stopButtonAppeared = true;
+                        log('停止ボタンが表示されました - 送信成功', 'success');
+                        break;
+                    }
+                    
+                    // 送信ボタンが消えたかどうかを確認
+                    const stillSendBtn = await findElement(SELECTORS.sendButton, '送信ボタン', 1);
+                    if (!stillSendBtn) {
+                        sendButtonDisappeared = true;
+                        log('送信ボタンが消えました - 送信成功', 'success');
+                        break;
+                    }
+                    
+                    await sleep(1000);
+                }
+                
+                if (stopButtonAppeared || sendButtonDisappeared) {
+                    sendSuccess = true;
+                    break;
+                } else {
+                    log(`送信反応が確認できません。再試行します...`, 'warning');
+                    await sleep(2000);
+                }
             }
             
-            sendBtn.click();
-            log('送信ボタンをクリックしました', 'success');
+            if (!sendSuccess) {
+                throw new Error(`${maxSendAttempts}回試行しても送信が成功しませんでした`);
+            }
             
             // 送信時刻を記録（SpreadsheetLogger用）
             log(`🔍 送信時刻記録開始 - AIHandler: ${!!window.AIHandler}, recordSendTimestamp: ${!!window.AIHandler?.recordSendTimestamp}, currentAITaskInfo: ${!!window.currentAITaskInfo}`, 'info');
@@ -750,60 +807,76 @@
             // ========================================
             log('\n【ステップ9】テキスト取得と表示', 'step');
             
+            // テキスト取得の改善版（ui-selectorsを使用）
             let responseText = '';
             
-            // Canvas機能のテキスト取得
-            let canvasText = '';
-            const canvasContainers = document.querySelectorAll('div.w-full.pt-1.pb-1, div.w-full.pt-1.pb-1.sm\\:pt-4.sm\\:pb-3');
-            for (const container of canvasContainers) {
-                const markdownDiv = container.querySelector('div.markdown.prose, div.markdown.prose.dark\\:prose-invert');
-                if (markdownDiv) {
-                    const parentMessage = markdownDiv.closest('[data-message-author-role]');
-                    if (!parentMessage) {
-                        canvasText = markdownDiv.textContent?.trim() || '';
-                        if (canvasText) {
-                            log(`Canvas機能のテキスト取得: ${canvasText.length}文字`, 'success');
-                            log(`Canvas最初の50文字: ${canvasText.substring(0, 50)}...`, 'info');
-                            responseText = canvasText;
-                            break;
-                        }
-                    }
-                }
-            }
+            // ui-selectorsから取得、フォールバック付き
+            const textSelectors = ChatGPTSelectors.TEXT_EXTRACTION || {
+                ASSISTANT_MESSAGE: [
+                    '[data-message-author-role="assistant"]',
+                    'div[class*="agent-turn"]',
+                    'div[class*="model-response"]',
+                    'article[class*="message"]'
+                ],
+                MESSAGE_CONTENT: [
+                    'div.markdown.prose',
+                    'div.markdown',
+                    'div[class*="markdown"]',
+                    'div.text-base',
+                    'div[class*="text-message"]',
+                    'div[class*="prose"]'
+                ],
+                CANVAS_ARTIFACT: [
+                    '#canvas-content',
+                    '[data-testid="canvas-content"]',
+                    'div[class*="canvas"]',
+                    'div[class*="artifact"]',
+                    '.prose-mirror',
+                    '[contenteditable="false"] .markdown'
+                ]
+            };
             
-            // 通常処理のテキスト取得
-            if (!responseText) {
-                let normalText = '';
-                const assistantMessages = document.querySelectorAll('[data-message-author-role="assistant"]');
+            // 方法1: アシスタントメッセージから取得
+            for (const msgSelector of textSelectors.ASSISTANT_MESSAGE) {
+                const assistantMessages = document.querySelectorAll(msgSelector);
                 if (assistantMessages.length > 0) {
                     const lastMessage = assistantMessages[assistantMessages.length - 1];
-                    const markdownDivs = lastMessage.querySelectorAll('div.markdown');
-                    for (const markdownDiv of markdownDivs) {
-                        const text = markdownDiv.textContent?.trim() || '';
-                        if (text && text !== canvasText) {
-                            normalText = text;
-                            log(`通常処理のテキスト取得: ${normalText.length}文字`, 'success');
-                            log(`通常最初の50文字: ${normalText.substring(0, 50)}...`, 'info');
-                            responseText = normalText;
-                            break;
+                    
+                    // markdown形式のコンテンツを探す
+                    for (const contentSelector of textSelectors.MESSAGE_CONTENT) {
+                        const elements = lastMessage.querySelectorAll(contentSelector);
+                        for (const elem of elements) {
+                            const text = elem.textContent?.trim() || '';
+                            if (text && text.length > 10) {
+                                responseText = text;
+                                log(`アシスタントメッセージ取得成功 (${contentSelector}): ${text.length}文字`, 'success');
+                                log(`最初の100文字: ${text.substring(0, 100)}...`, 'info');
+                                break;
+                            }
                         }
+                        if (responseText) break;
                     }
+                    if (responseText) break;
                 }
             }
             
-            // 追加の確認
-            if (canvasText && !responseText) {
-                const textMessages = document.querySelectorAll('div.text-message');
-                for (const msg of textMessages) {
-                    const mdDiv = msg.querySelector('div.markdown');
-                    if (mdDiv) {
-                        const text = mdDiv.textContent?.trim() || '';
-                        if (text && text !== canvasText) {
-                            responseText = text;
-                            log(`通常テキスト再取得成功: ${text.length}文字`, 'success');
-                            break;
+            // 方法2: Canvas/Artifact機能の内容を取得
+            if (!responseText) {
+                for (const selector of textSelectors.CANVAS_ARTIFACT) {
+                    const elements = document.querySelectorAll(selector);
+                    for (const elem of elements) {
+                        // アシスタントメッセージ内にあるものは除外
+                        if (!elem.closest('[data-message-author-role]')) {
+                            const text = elem.textContent?.trim() || '';
+                            if (text && text.length > 10) {
+                                responseText = text;
+                                log(`Canvas/Artifact取得成功 (${selector}): ${text.length}文字`, 'success');
+                                log(`最初の100文字: ${text.substring(0, 100)}...`, 'info');
+                                break;
+                            }
                         }
                     }
+                    if (responseText) break;
                 }
             }
             

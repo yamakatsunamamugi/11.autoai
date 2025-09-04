@@ -86,30 +86,11 @@ export default class TaskGeneratorV2 {
               continue;
             }
             
-            // デバッグログ: answerColの内容を確認
-            this.logger.log(`[TaskGeneratorV2] 3種類AI タスク作成:`, {
-              行: workRow.number,
-              列: answerCol.column,
-              AIタイプ: answerCol.type,
-              answerCol詳細: answerCol
-            });
-            
             const functionValue = this.getFunction(spreadsheetData, answerCol);
-            console.log(`🎯 [タスク生成] ${answerCol.column}${workRow.number}: AI=${answerCol.type}, 機能="${functionValue}"`);
             
             // ログ列を特定（プロンプト列の1列前）
-            // promptColumnsは既にインデックスの配列なので、.map(col => col.index)は不要
             const logColumnIndex = Math.max(0, Math.min(...promptGroup.promptColumns) - 1);
             const logColumn = this.indexToColumn(logColumnIndex);
-            
-            // デバッグログ
-            console.log(`🔍 [ログ列計算デバッグ] 3種類AI`, {
-              promptColumns: promptGroup.promptColumns,
-              最小プロンプト列: Math.min(...promptGroup.promptColumns),
-              logColumnIndex: logColumnIndex,
-              logColumn: logColumn,
-              isNaN: isNaN(logColumnIndex)
-            });
             
             const taskData = {
               id: this.generateTaskId(answerCol.column, workRow.number),
@@ -213,7 +194,6 @@ export default class TaskGeneratorV2 {
       columnCounts[task.column] = (columnCounts[task.column] || 0) + 1;
     });
     
-    this.logger.log('[TaskGeneratorV2] 📊 列別タスク数:', columnCounts);
     
     return taskList;
   }
@@ -327,13 +307,6 @@ export default class TaskGeneratorV2 {
             type: aiType  // AIタイプを設定
           });
           
-          // デバッグログ追加
-          this.logger.log(`[TaskGeneratorV2] 回答列追加: ${this.indexToColumn(i)}列, AI種別: ${aiType}`, {
-            列インデックス: i,
-            メニュー行値: menuCell,
-            AI行値: aiCell || '(空)',
-            判定されたAI: aiType
-          });
         }
       }
       // グループの終了を検出
@@ -438,7 +411,6 @@ export default class TaskGeneratorV2 {
       // 回答列から取得を試みる
       const modelValue = modelRow[answerCol.index];
       if (modelValue) {
-        this.logger.log(`[TaskGeneratorV2] モデル取得: ${answerCol.column}列（index=${answerCol.index}）から "${modelValue}"`);
         return modelValue;
       }
     }
@@ -463,29 +435,13 @@ export default class TaskGeneratorV2 {
       row[0] && (row[0] === '機能' || row[0].toLowerCase() === 'function')
     );
     
-    console.log(`🔍 [機能取得] ${answerCol.column}列の機能情報を取得中...`, {
-      functionRowExists: !!functionRow,
-      answerColIndex: answerCol.index,
-      answerColumn: answerCol.column
-    });
-    
     if (functionRow) {
-      // 回答列から取得を試みる
       const functionValue = functionRow[answerCol.index];
-      console.log(`📋 [機能取得] 機能行データ:`, {
-        機能行: functionRow,
-        対象列index: answerCol.index,
-        取得した値: functionValue
-      });
-      
       if (functionValue) {
-        console.log(`✅ [機能取得] 機能設定検出: ${answerCol.column}列 → "${functionValue}"`);
-        this.logger.log(`[TaskGeneratorV2] 機能取得: ${answerCol.column}列（index=${answerCol.index}）から "${functionValue}"`);
         return functionValue;
       }
     }
     
-    console.log(`🔄 [機能取得] ${answerCol.column}列: 機能設定なし → デフォルト "通常"`);
     return '通常';
   }
 

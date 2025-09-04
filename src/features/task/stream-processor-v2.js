@@ -25,10 +25,8 @@ async function getSpreadsheetLogger() {
     try {
       if (globalThis.SpreadsheetLogger) {
         SpreadsheetLogger = globalThis.SpreadsheetLogger;
-        console.log('[StreamProcessorV2] グローバルからSpreadsheetLoggerを取得');
       } else if (globalThis.spreadsheetLogger) {
         SpreadsheetLogger = globalThis.spreadsheetLogger.constructor;
-        console.log('[StreamProcessorV2] グローバルインスタンスからSpreadsheetLoggerクラスを取得');
       } else {
         console.warn('[StreamProcessorV2] SpreadsheetLoggerがグローバルに見つかりません');
         return null;
@@ -367,14 +365,6 @@ export default class StreamProcessorV2 {
         });
         
         // ログを書き込み（SpreadsheetLoggerを使用）
-        // デバッグ: ログ書き込み条件チェック
-        console.log(`🔍 [ログ書き込み条件チェック]`, {
-          hasSpreadsheetLogger: !!this.spreadsheetLogger,
-          hasLogColumns: !!(task.logColumns),
-          logColumnsLength: task.logColumns?.length,
-          logColumns値: task.logColumns,
-          条件成立: !!(this.spreadsheetLogger && task.logColumns && task.logColumns.length > 0)
-        });
         
         if (this.spreadsheetLogger && task.logColumns && task.logColumns.length > 0) {
           try {

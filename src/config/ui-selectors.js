@@ -143,6 +143,36 @@ export const UI_SELECTORS = {
                 '[data-testid="model-switcher-dropdown-button"] .text-sm',  // 小さいテキスト
                 '[data-testid="model-switcher-dropdown-button"] *'  // ボタン内の全要素（最終手段）
             ]
+        },
+        
+        // テキスト取得用セレクタ（v2用）
+        TEXT_EXTRACTION: {
+            // アシスタントメッセージコンテナ
+            ASSISTANT_MESSAGE: [
+                '[data-message-author-role="assistant"]',
+                'div[class*="agent-turn"]',
+                'div[class*="model-response"]',
+                'article[class*="message"]',
+                'div[class*="chat-message"]'
+            ],
+            // メッセージ内のテキストコンテンツ
+            MESSAGE_CONTENT: [
+                'div.markdown.prose',
+                'div.markdown',
+                'div[class*="markdown"]',
+                'div.text-base',
+                'div[class*="text-message"]',
+                'div[class*="prose"]'
+            ],
+            // Canvas/Artifact機能の内容
+            CANVAS_ARTIFACT: [
+                '#canvas-content',
+                '[data-testid="canvas-content"]',
+                'div[class*="canvas"]',
+                'div[class*="artifact"]',
+                '.prose-mirror',
+                '[contenteditable="false"] .markdown'
+            ]
         }
     },
     
@@ -325,6 +355,49 @@ export const UI_SELECTORS = {
                 'button[aria-haspopup="menu"] .whitespace-nowrap',      // フォールバック用
                 'button[aria-haspopup="menu"] span.font-medium'         // フォント中太のspan
             ]
+        },
+        
+        // テキスト取得用セレクタ（v2用）
+        TEXT_EXTRACTION: {
+            // メッセージコンテナ
+            MESSAGE_CONTAINER: [
+                '[data-message-author-role="assistant"]',
+                'div[class*="assistant-message"]',
+                'div[class*="claude-message"]',
+                'div[data-testid*="message"]'
+            ],
+            // メッセージ内のテキストコンテンツ
+            MESSAGE_CONTENT: [
+                '.standard-markdown',
+                'div[class*="markdown"]',
+                '.prose',
+                'div[class*="text-base"]',
+                'div[class*="message-content"]'
+            ],
+            // 通常処理テキスト（テスト済みセレクタ）
+            NORMAL_RESPONSE: [
+                '.standard-markdown',
+                'div.standard-markdown',
+                '.grid.gap-2\\.5.standard-markdown',
+                'div.grid-cols-1.standard-markdown',
+                '[class*="standard-markdown"]'
+            ],
+            // Artifact/Canvas機能の内容
+            ARTIFACT_CONTENT: [
+                '#markdown-artifact',
+                '[id*="artifact"]',
+                'div[class*="artifact"]',
+                '.artifact-content',
+                '[data-testid="artifact-content"]',
+                'div[class*="canvas"]'
+            ],
+            // 汎用セレクタ（フォールバック）
+            GENERIC_RESPONSE: [
+                'div.font-claude-message',
+                'div[class*="response"]',
+                'article[class*="message"]',
+                'div.conversation-turn'
+            ]
         }
     },
     
@@ -494,6 +567,57 @@ export const UI_SELECTORS = {
                 '.logo-pill-label-container div',   // コンテナ内のdiv
                 '.model-indicator span',            // モデルインジケーター
                 '[class*="model-"] span'            // モデル関連クラス内のspan
+            ]
+        },
+        
+        // テキスト取得用セレクタ（v2用）
+        TEXT_EXTRACTION: {
+            // DeepResearch結果
+            DEEP_RESEARCH: [
+                '#extended-response-markdown-content',
+                '.extended-response-markdown-content',
+                '[id="extended-response-markdown-content"]',
+                'div[id="extended-response-markdown-content"]',
+                '.markdown.markdown-main-panel',
+                'div[class*="deep-research"]',
+                'div[class*="research-result"]'
+            ],
+            // メッセージコンテナ
+            MESSAGE_CONTAINER: [
+                '.model-response-text',
+                'div[class*="model-response"]',
+                '.message-content',
+                'div[class*="gemini-response"]',
+                'div[class*="assistant-message"]'
+            ],
+            // メッセージ内容（markdown）
+            MESSAGE_CONTENT: [
+                '.markdown',
+                'div[class*="markdown"]',
+                '.prose',
+                'div[class*="text-base"]'
+            ],
+            // 通常処理テキスト（テスト済みセレクタ）
+            NORMAL_RESPONSE: [
+                '.model-response-text .markdown',
+                '.model-response-text',
+                '.conversation-turn .markdown',
+                'div[class*="model-response"] .markdown'
+            ],
+            // Canvas/Editor内容
+            CANVAS_CONTENT: [
+                '.ProseMirror[contenteditable="true"]',
+                '.ProseMirror',
+                'div[contenteditable="true"]',
+                'div[class*="canvas"]',
+                'div[class*="code-block"]'
+            ],
+            // 汎用セレクタ（フォールバック）
+            GENERIC_RESPONSE: [
+                'div[data-message-role="model"]',
+                'div[class*="message"][class*="assistant"]',
+                'article[class*="response"]',
+                'section[class*="output"]'
             ]
         }
     },

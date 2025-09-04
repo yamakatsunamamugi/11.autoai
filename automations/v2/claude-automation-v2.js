@@ -13,14 +13,17 @@
     
     console.log(`Claude Automation V2 - 初期化時刻: ${new Date().toLocaleString('ja-JP')}`);
     
+    // ui-selectorsからインポート（Chrome拡張機能のインジェクトコンテキスト）
+    const UI_SELECTORS = window.UI_SELECTORS || {};
+    
     // =====================================================================
-    // セレクタ定義（テストコードから完全移植）
+    // セレクタ定義（ui-selectorsからマージ、テストコードから完全移植）
     // =====================================================================
     
-    // Deep Research用セレクタ
-    const deepResearchSelectors = {
+    // Deep Research用セレクタ（ui-selectorsから取得）
+    const getDeepResearchSelectors = () => ({
         '3_回答停止ボタン': {
-            selectors: [
+            selectors: UI_SELECTORS.Claude?.STOP_BUTTON || [
                 '[aria-label="応答を停止"]',
                 'button[aria-label="応答を停止"]',
                 '[data-state="closed"][aria-label="応答を停止"]',
@@ -30,7 +33,7 @@
             description: '回答停止ボタン'
         },
         '4_Canvas機能テキスト位置': {
-            selectors: [
+            selectors: UI_SELECTORS.Claude?.TEXT_EXTRACTION?.ARTIFACT_CONTENT || [
                 '#markdown-artifact',
                 '[id="markdown-artifact"]',
                 '.font-claude-response#markdown-artifact',
@@ -40,7 +43,7 @@
             description: 'Canvas機能のテキスト表示エリア'
         },
         '4_2_Canvas開くボタン': {
-            selectors: [
+            selectors: UI_SELECTORS.Claude?.PREVIEW_BUTTON || [
                 '[aria-label="内容をプレビュー"]',
                 '[role="button"][aria-label="内容をプレビュー"]',
                 '.artifact-block-cell',
@@ -49,7 +52,7 @@
             description: 'Canvas機能を開くボタン'
         },
         '5_通常処理テキスト位置': {
-            selectors: [
+            selectors: UI_SELECTORS.Claude?.TEXT_EXTRACTION?.NORMAL_RESPONSE || [
                 '.standard-markdown',
                 'div.standard-markdown',
                 '.grid.gap-2\\.5.standard-markdown',
@@ -58,7 +61,7 @@
             ],
             description: '通常処理のテキスト表示エリア'
         }
-    };
+    });
     
     // モデル選択用セレクタ
     const modelSelectors = {
@@ -556,6 +559,7 @@
             const maxInitialWait = 120; // 初期待機最大2分
             
             while (!stopButtonFound && waitCount < maxInitialWait) {
+                const deepResearchSelectors = getDeepResearchSelectors();
                 const stopResult = await findClaudeElement(deepResearchSelectors['3_回答停止ボタン'], 1);
                 
                 if (stopResult) {
@@ -578,6 +582,7 @@
             let disappeared = false;
             
             while ((Date.now() - startTime) < 120000) { // 2分間
+                const deepResearchSelectors = getDeepResearchSelectors();
                 const stopResult = await findClaudeElement(deepResearchSelectors['3_回答停止ボタン'], 1);
                 
                 if (!stopResult) {
@@ -621,6 +626,7 @@
             const maxWaitCount = 2400; // 最大40分
             
             while (!stopButtonFound && waitCount < maxWaitCount) {
+                const deepResearchSelectors = getDeepResearchSelectors();
                 const stopResult = await findClaudeElement(deepResearchSelectors['3_回答停止ボタン'], 1);
                 
                 if (stopResult) {
@@ -647,6 +653,7 @@
                 let lastLogTime = Date.now();
                 
                 while (!stopButtonGone && disappearWaitCount < maxDisappearWait) {
+                    const deepResearchSelectors = getDeepResearchSelectors();
                     const stopResult = await findClaudeElement(deepResearchSelectors['3_回答停止ボタン'], 1);
                     
                     if (!stopResult) {
@@ -656,6 +663,7 @@
                         
                         while (confirmCount < 10) {
                             await wait(1000);
+                            const deepResearchSelectors = getDeepResearchSelectors();
                             const checkResult = await findClaudeElement(deepResearchSelectors['3_回答停止ボタン'], 1);
                             if (checkResult) {
                                 stillGone = false;
@@ -839,15 +847,58 @@
                 console.log(`選択機能: ${featureName}`);
             }
             
-            // ===== ステップ7: メッセージ送信 =====
-            console.log('\n【ステップ7】メッセージ送信');
+            // ===== ステップ7: メッセージ送信（再試行対応） =====
+            console.log('\n【ステップ7】メッセージ送信（再試行対応）');
             console.log('─'.repeat(40));
             
-            const sendResult = await findClaudeElement(claudeSelectors['2_送信ボタン']);
-            if (!sendResult) {
-                throw new Error('送信ボタンが見つかりません');
+            // 送信ボタンを5回まで再試行
+            let sendSuccess = false;
+            let sendAttempts = 0;
+            const maxSendAttempts = 5;
+            
+            while (!sendSuccess && sendAttempts < maxSendAttempts) {
+                sendAttempts++;
+                console.log(`送信試行 ${sendAttempts}/${maxSendAttempts}`);
+                
+                const sendResult = await findClaudeElement(claudeSelectors['2_送信ボタン']);
+                if (!sendResult) {
+                    if (sendAttempts === maxSendAttempts) {
+                        throw new Error('送信ボタンが見つかりません');
+                    }
+                    console.log(`送信ボタンが見つかりません。2秒後に再試行...`);
+                    await wait(2000);
+                    continue;
+                }
+                
+                await clickButton(sendResult.element);
+                console.log(`送信ボタンをクリックしました（試行${sendAttempts}）`);
+                await wait(1000);
+                
+                // 送信後に停止ボタンが表示されるか、5秒待機
+                let stopButtonAppeared = false;
+                
+                for (let i = 0; i < 5; i++) {
+                    const stopResult = await findClaudeElement(claudeSelectors['3_回答停止ボタン'], 1);
+                    if (stopResult) {
+                        stopButtonAppeared = true;
+                        console.log('停止ボタンが表示されました - 送信成功');
+                        break;
+                    }
+                    await wait(1000);
+                }
+                
+                if (stopButtonAppeared) {
+                    sendSuccess = true;
+                    break;
+                } else {
+                    console.log(`送信反応が確認できません。再試行します...`);
+                    await wait(2000);
+                }
             }
-            await clickButton(sendResult.element);
+            
+            if (!sendSuccess) {
+                throw new Error(`${maxSendAttempts}回試行しても送信が成功しませんでした`);
+            }
             
             // 送信時刻を記録（SpreadsheetLogger用）
             console.log(`🔍 送信時刻記録開始 - AIHandler: ${!!window.AIHandler}, recordSendTimestamp: ${!!window.AIHandler?.recordSendTimestamp}, currentAITaskInfo: ${!!window.currentAITaskInfo}`);
@@ -871,51 +922,135 @@
                 
                 await handleDeepResearchWait();
             } else {
-                console.log('\n【ステップ8】通常応答待機');
+                console.log('\n【ステップ8】通常応答待機（改善版）');
                 console.log('─'.repeat(40));
                 
-                console.log('\n【ステップ8-1】送信停止ボタンが出てくるまで待機（最大30秒）');
+                // ui-selectorsから停止ボタンセレクタを取得
+                const stopButtonSelectors = UI_SELECTORS.Claude?.STOP_BUTTON || [
+                    '[aria-label="応答を停止"]',
+                    'button[aria-label="応答を停止"]',
+                    '[data-state="closed"][aria-label="応答を停止"]',
+                    'button.border-border-200[aria-label="応答を停止"]',
+                    'button svg path[d*="M128,20A108"]'
+                ];
+                
+                console.log('\n【ステップ8-1】送信停止ボタンが出てくるまで待機（最大60秒）');
                 let stopButtonFound = false;
                 let waitCount = 0;
-                const maxWaitCount = 30;
+                const maxWaitCount = 60; // 30秒→60秒に延長
                 
+                // 停止ボタンの出現を待機
                 while (!stopButtonFound && waitCount < maxWaitCount) {
-                    const stopResult = await findClaudeElement(claudeSelectors['3_回答停止ボタン'], 1);
+                    let currentStopElement = null;
                     
-                    if (stopResult) {
-                        stopButtonFound = true;
-                        console.log('✓ 停止ボタンが出現しました');
-                        break;
+                    // 複数セレクタで停止ボタンを検索
+                    for (const selector of stopButtonSelectors) {
+                        try {
+                            currentStopElement = document.querySelector(selector);
+                            if (currentStopElement) {
+                                stopButtonFound = true;
+                                console.log(`✓ 停止ボタンが出現しました (${selector})`);
+                                break;
+                            }
+                        } catch (e) {
+                            // セレクタエラーは無視
+                        }
                     }
                     
-                    await wait(1000);
-                    waitCount++;
-                    
-                    if (waitCount % 10 === 0) {
-                        console.log(`  待機中... ${waitCount}秒経過`);
+                    if (!stopButtonFound) {
+                        await wait(1000);
+                        waitCount++;
+                        
+                        if (waitCount % 10 === 0) {
+                            console.log(`  停止ボタン待機中... ${waitCount}秒経過`);
+                        }
                     }
                 }
                 
-                if (stopButtonFound) {
+                // 停止ボタンが見つからない場合のフォールバック処理
+                if (!stopButtonFound) {
+                    console.log('⚠️ 停止ボタンが見つかりません。応答完了を直接チェックします');
+                    
+                    // 応答テキストの存在をチェック
+                    let responseFound = false;
+                    let textCheckCount = 0;
+                    const maxTextCheck = 30; // 30秒間チェック
+                    
+                    while (!responseFound && textCheckCount < maxTextCheck) {
+                        const normalSelectors = UI_SELECTORS.Claude?.TEXT_EXTRACTION?.NORMAL_RESPONSE || ['.standard-markdown'];
+                        
+                        for (const selector of normalSelectors) {
+                            try {
+                                const elements = document.querySelectorAll(selector);
+                                if (elements.length > 0) {
+                                    const lastElement = elements[elements.length - 1];
+                                    const text = lastElement.textContent?.trim();
+                                    if (text && text.length > 10) {
+                                        responseFound = true;
+                                        console.log('✓ 応答テキストを確認しました（停止ボタン経由なし）');
+                                        break;
+                                    }
+                                }
+                            } catch (e) {
+                                // エラーは無視
+                            }
+                        }
+                        
+                        if (!responseFound) {
+                            await wait(1000);
+                            textCheckCount++;
+                            
+                            if (textCheckCount % 10 === 0) {
+                                console.log(`  応答テキストチェック中... ${textCheckCount}秒経過`);
+                            }
+                        }
+                    }
+                    
+                    if (!responseFound) {
+                        console.log('⚠️ 応答を確認できませんでしたが、処理を継続します');
+                    }
+                } else {
+                    // 停止ボタンが見つかった場合の通常処理
                     console.log('停止ボタンが10秒間消えるまで待機（最大5分）');
                     let stopButtonGone = false;
                     let disappearWaitCount = 0;
                     const maxDisappearWait = 300;
                     
                     while (!stopButtonGone && disappearWaitCount < maxDisappearWait) {
-                        const stopResult = await findClaudeElement(claudeSelectors['3_回答停止ボタン'], 1);
+                        let currentStopElement = null;
                         
-                        if (!stopResult) {
+                        // 停止ボタンの存在チェック
+                        for (const selector of stopButtonSelectors) {
+                            try {
+                                currentStopElement = document.querySelector(selector);
+                                if (currentStopElement) break;
+                            } catch (e) {
+                                // エラーは無視
+                            }
+                        }
+                        
+                        if (!currentStopElement) {
+                            // 10秒間の確認期間
                             let confirmCount = 0;
                             let stillGone = true;
                             
                             while (confirmCount < 10) {
                                 await wait(1000);
-                                const checkResult = await findClaudeElement(claudeSelectors['3_回答停止ボタン'], 1);
-                                if (checkResult) {
-                                    stillGone = false;
-                                    break;
+                                
+                                // 再度停止ボタンをチェック
+                                for (const selector of stopButtonSelectors) {
+                                    try {
+                                        const checkElement = document.querySelector(selector);
+                                        if (checkElement) {
+                                            stillGone = false;
+                                            break;
+                                        }
+                                    } catch (e) {
+                                        // エラーは無視
+                                    }
                                 }
+                                
+                                if (!stillGone) break;
                                 confirmCount++;
                             }
                             
@@ -933,6 +1068,10 @@
                             console.log(`  回答生成中... ${Math.floor(disappearWaitCount / 60)}分経過`);
                         }
                     }
+                    
+                    if (!stopButtonGone) {
+                        console.log('⚠️ 最大待機時間に達しましたが、処理を継続します');
+                    }
                 }
             }
             
@@ -942,53 +1081,72 @@
             
             let responseText = '';
             
-            // Canvas機能テキスト取得
-            let canvasResult = await findClaudeElement(claudeSelectors['4_Canvas機能テキスト位置'], 1);
+            // テスト済みロジックを使用（動作確認済み）
+            console.log('\n通常処理テキスト取得試行');
             
-            if (!canvasResult) {
-                console.log('Canvas機能を開くボタンを探します');
-                const openButtonSelectors = deepResearchSelectors['4_2_Canvas開くボタン'].selectors;
+            // ui-selectorsから取得、フォールバック付き
+            const textSelectors = UI_SELECTORS.Claude?.TEXT_EXTRACTION || {
+                NORMAL_RESPONSE: [
+                    '.standard-markdown',
+                    'div.standard-markdown',
+                    '.grid.gap-2\\.5.standard-markdown',
+                    'div.grid-cols-1.standard-markdown',
+                    '[class*="standard-markdown"]'
+                ]
+            };
+            
+            // ui-selectorsのNORMAL_RESPONSEセレクタを使用
+            const normalElements = document.querySelectorAll(textSelectors.NORMAL_RESPONSE.join(', '));
+            
+            if (normalElements.length > 0) {
+                console.log(`通常処理要素数: ${normalElements.length}個`);
                 
-                for (const selector of openButtonSelectors) {
-                    try {
-                        const openButton = document.querySelector(selector);
-                        if (openButton) {
-                            console.log('Canvas機能を開くボタンを発見、クリックします');
-                            await clickButton(openButton);
-                            await wait(1000);
-                            
-                            canvasResult = await findClaudeElement(claudeSelectors['4_Canvas機能テキスト位置'], 1);
-                            if (canvasResult) {
-                                break;
-                            }
-                        }
-                    } catch (e) {
-                        // エラーは無視して次を試す
+                // Canvas要素内を除外してフィルタリング
+                const filtered = Array.from(normalElements).filter(el => {
+                    return !el.closest('#markdown-artifact') && 
+                           !el.closest('[class*="artifact"]');
+                });
+                
+                if (filtered.length > 0) {
+                    // 最後の要素（最新の応答）を取得
+                    const targetElement = filtered[filtered.length - 1];
+                    responseText = targetElement.textContent?.trim() || '';
+                    
+                    if (responseText) {
+                        console.log(`✓ 通常処理テキスト取得成功: ${responseText.length}文字`);
+                        console.log(`最初の100文字: ${responseText.substring(0, 100)}...`);
                     }
                 }
             }
             
-            if (canvasResult) {
-                const canvasText = getTextPreview(canvasResult.element);
-                if (canvasText) {
-                    console.log('\n**取得したCanvasのテキスト**');
-                    console.log(`文字数: ${canvasText.length}文字`);
-                    console.log(canvasText.preview);
-                    responseText = canvasText.full;
+            // フォールバック: Canvas機能の内容を取得
+            if (!responseText) {
+                const canvasSelectors = textSelectors.ARTIFACT_CONTENT || ['#markdown-artifact'];
+                for (const selector of canvasSelectors) {
+                    const canvasElement = document.querySelector(selector);
+                    if (canvasElement) {
+                        const text = canvasElement.textContent?.trim() || '';
+                        if (text && text.length > 10) {
+                            responseText = text;
+                            console.log(`✓ Canvas機能取得成功 (${selector}): ${text.length}文字`);
+                            console.log(`最初の100文字: ${text.substring(0, 100)}...`);
+                            break;
+                        }
+                    }
                 }
             }
             
-            // 通常処理テキスト取得
+            // 最終フォールバック: 汎用セレクタで探す
             if (!responseText) {
-                const normalResult = await findClaudeElement(claudeSelectors['5_通常処理テキスト位置']);
-                
-                if (normalResult) {
-                    const normalText = getTextPreview(normalResult.element);
-                    if (normalText) {
-                        console.log('\n**取得した通常処理のテキスト**');
-                        console.log(`文字数: ${normalText.length}文字`);
-                        console.log(normalText.preview);
-                        responseText = normalText.full;
+                const genericSelectors = textSelectors.GENERIC_RESPONSE || ['div.font-claude-message', 'div[class*="response"]', 'article[class*="message"]'];
+                const genericElements = document.querySelectorAll(genericSelectors.join(', '));
+                if (genericElements.length > 0) {
+                    const lastElem = genericElements[genericElements.length - 1];
+                    const text = lastElem.textContent?.trim() || '';
+                    if (text && text.length > 10) {
+                        responseText = text;
+                        console.log(`✓ 汎用セレクタ取得成功: ${text.length}文字`);
+                        console.log(`最初の100文字: ${text.substring(0, 100)}...`);
                     }
                 }
             }

@@ -470,7 +470,6 @@ function getColumnName(index) {
  * processSpreadsheetData関数
  */
 function processSpreadsheetData(spreadsheetData) {
-  console.log("[Background] [DEBUG] processSpreadsheetData開始, sheetName:", spreadsheetData?.sheetName);
   
   const result = {
     ...spreadsheetData,
@@ -478,7 +477,6 @@ function processSpreadsheetData(spreadsheetData) {
     columnMapping: {},
   };
   
-  console.log("[Background] [DEBUG] スプレッド演算子後のresult.sheetName:", result.sheetName);
 
   if (!spreadsheetData.values || spreadsheetData.values.length === 0) {
     return result;
@@ -488,8 +486,6 @@ function processSpreadsheetData(spreadsheetData) {
   const menuRow = spreadsheetData.menuRow?.data || spreadsheetData.values[0];
   const aiRow = spreadsheetData.aiRow?.data || [];
   
-  console.log("[Background] processSpreadsheetData - メニュー行:", menuRow);
-  console.log("[Background] processSpreadsheetData - AI行:", aiRow);
   
   // 各列を解析
   menuRow.forEach((header, index) => {
@@ -505,7 +501,6 @@ function processSpreadsheetData(spreadsheetData) {
     
     // デバッグログ
     if (index < 20) {
-      console.log(`[Background] 列${columnLetter}: メニュー="${trimmedHeader}", AI="${aiValue}"`);
     }
     
     // プロンプト列の検出（プロンプト2等は除外）
@@ -516,13 +511,11 @@ function processSpreadsheetData(spreadsheetData) {
       // AI行の現在の列の値をチェック（3種類の文字が含まれているか）
       if (aiValue.includes("3種類")) {
         aiType = "3type";
-        console.log(`[Background] 3種類AIレイアウト検出（AI行から）: ${columnLetter}列, AI値="${aiValue}"`);
       }
       // 単独AIの場合
       else if (aiValue) {
         // AI行に値がある場合は単独AI
         aiType = "single";
-        console.log(`[Background] 単独AIプロンプト列として検出: ${columnLetter}列, AI値="${aiValue}"`);
       }
       
       if (aiType) {
@@ -533,7 +526,6 @@ function processSpreadsheetData(spreadsheetData) {
           type: aiType,
           promptDescription: ""
         };
-        console.log(`[Background] AI列として登録: ${columnLetter}列 (${aiType})`);
       }
     }
   });
@@ -805,9 +797,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           await autoSetup.executeAutoSetup(spreadsheetId, token, gid);
 
           // 3. データを整形（AI列情報を抽出）
-          console.log("[Background] [DEBUG] updatedSpreadsheetData.sheetName:", updatedSpreadsheetData?.sheetName);
           const processedData = processSpreadsheetData(updatedSpreadsheetData);
-          console.log("[Background] [DEBUG] processedData.sheetName:", processedData?.sheetName);
           
           // modelRowとtaskRowも含める
           processedData.modelRow = updatedSpreadsheetData.modelRow;
@@ -857,26 +847,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             throw new Error("タスクなし");
           }
           
-          console.log("[Background] 生成されたタスク:", {
-            totalTasks: taskList.tasks.length,
-            statistics: taskList.getStatistics(),
-          });
-          
-          // タスクリストの詳細ログは削減（サマリーのみ）
-          console.log("[Background] 📋 タスクリスト生成完了: " + taskList.tasks.length + "タスク");
-          
-          // 列ごとのタスク数を集計
-          const tasksByColumn = {};
-          taskList.tasks.forEach(task => {
-            if (!tasksByColumn[task.column]) {
-              tasksByColumn[task.column] = 0;
-            }
-            tasksByColumn[task.column]++;
-          });
-          console.log("[Background] 📊 列ごとのタスク数:", tasksByColumn);
 
           // 5. タスクを保存
-          console.log("タスク保存中...");
           const taskQueue = new TaskQueue();
           const saveResult = await taskQueue.saveTaskList(taskList);
 
