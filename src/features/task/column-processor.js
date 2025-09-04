@@ -21,7 +21,331 @@ export default class ColumnProcessor {
   }
 
   /**
-   * スプレッドシートをプロンプトグループ単位で処理
+   * タスクリストを処理（TaskGeneratorV2で生成済み、行制御・列制御適用済み）
+   * @param {TaskList} taskList - タスクリスト
+   * @param {Object} spreadsheetData - スプレッドシートデータ
+   * @returns {Promise<Object>} 処理結果
+   */
+  async processTaskList(taskList, spreadsheetData) {
+    this.logger.log('[ColumnProcessor] 🚀 タスクリスト処理開始', {
+      タスク数: taskList.tasks.length,
+      行制御・列制御: '適用済み'
+    });
+    this.spreadsheetData = spreadsheetData;
+    
+    const startTime = Date.now();
+    
+    // 作業開始時に拡張機能ウィンドウを右下に移動
+    await this.moveExtensionWindowToBottomRight();
+    
+    // タスクをグループ化（同じ行のタスクをまとめる）
+    const taskGroups = this.groupTasksByRow(taskList.tasks);
+    this.logger.log(`[ColumnProcessor] 📊 タスクグループ数: ${taskGroups.length}`);
+    
+    // グループごとに処理（3つずつ並列処理）
+    for (const group of taskGroups) {
+      await this.executeTaskGroup(group);
+    }
+    
+    // 全ウィンドウを閉じる
+    await this.closeAllWindows();
+    
+    const totalTime = Math.round((Date.now() - startTime) / 1000);
+    
+    return {
+      success: true,
+      total: this.completed.length + this.failed.length,
+      completed: this.completed.length,
+      failed: this.failed.length,
+      totalTime: `${totalTime}秒`,
+      processedTasks: taskList.tasks.length
+    };
+  }
+  
+  /**
+   * タスクを行ごとにグループ化
+   * @param {Array} tasks - タスクリスト
+   * @returns {Array} グループ化されたタスク
+   */
+  groupTasksByRow(tasks) {
+    const groups = [];
+    const rowMap = new Map();
+    
+    // 行ごとにタスクをグループ化
+    for (const task of tasks) {
+      const rowKey = task.row;
+      if (!rowMap.has(rowKey)) {
+        rowMap.set(rowKey, []);
+      }
+      rowMap.get(rowKey).push(task);
+    }
+    
+    // グループを配列に変換
+    for (const [row, rowTasks] of rowMap) {
+      groups.push({
+        row: row,
+        tasks: rowTasks
+      });
+    }
+    
+    return groups;
+  }
+  
+  /**
+   * タスクグループを実行（3つずつ並列処理）
+   * @param {Object} group - タスクグループ
+   */
+  async executeTaskGroup(group) {
+    this.logger.log(`[ColumnProcessor] 📋 行${group.row}のタスク処理開始 (${group.tasks.length}タスク)`);
+    
+    // 3つずつバッチ処理
+    for (let i = 0; i < group.tasks.length; i += 3) {
+      const batch = group.tasks.slice(i, Math.min(i + 3, group.tasks.length));
+      this.logger.log(`[ColumnProcessor] 🎯 バッチ処理開始: ${batch.length}タスク`);
+      
+      // 各タスクのプロンプトを事前に準備
+      const taskDataList = [];
+      for (let taskIndex = 0; taskIndex < batch.length; taskIndex++) {
+        const task = batch[taskIndex];
+        
+        // タスクからプロンプトを取得（TaskGeneratorV2では空なので動的取得）
+        const prompt = await this.fetchPromptFromTask(task);
+        if (!prompt) {
+          this.logger.warn(`[ColumnProcessor] ⚠️ プロンプトが空: ${task.column}${task.row}`);
+          this.failed.push(task.id);
+          continue;
+        }
+        
+        // セル位置をプロンプトの冒頭に追加
+        const cellPosition = `${task.column}${task.row}`;
+        const promptWithPosition = `【現在${cellPosition}セルを処理中です】
+
+${prompt}`;
+        
+        taskDataList.push({
+          task: task,
+          prompt: promptWithPosition,
+          model: task.model,
+          func: task.function,
+          taskIndex: taskIndex,
+          aiType: this.normalizeAIType(task.aiType)
+        });
+      }
+      
+      // すべてのウィンドウを同時に開く（並列処理）
+      this.logger.log(`[ColumnProcessor] 🚀 ${taskDataList.length}個のウィンドウを並列で開きます`);
+      
+      const windowPromises = taskDataList.map(async (data) => {
+        const tabId = await this.createNewWindow(data.aiType, data.taskIndex);
+        if (!tabId) {
+          this.logger.error(`[ColumnProcessor] ウィンドウ作成失敗: ${data.task.column}${data.task.row}`);
+          this.failed.push(data.task.id);
+          return null;
+        }
+        return { ...data, tabId };
+      });
+      
+      const windows = await Promise.all(windowPromises);
+      const validWindows = windows.filter(w => w !== null);
+      
+      // 5秒ずつずらして送信
+      const promises = [];
+      for (let i = 0; i < validWindows.length; i++) {
+        const window = validWindows[i];
+        
+        // 送信を遅延実行
+        const delayedExecution = (async () => {
+          await this.delay(i * 5000);
+          return this.executeTaskFromList(window.task, window.prompt, window.model, window.func, window.taskIndex, window.tabId);
+        })();
+        
+        promises.push(delayedExecution);
+      }
+      
+      // バッチ内の全タスクの完了を待つ
+      await Promise.allSettled(promises);
+      
+      this.logger.log(`[ColumnProcessor] ✅ バッチ処理完了`);
+      
+      // 次のバッチまで少し待機
+      if (i + 3 < group.tasks.length) {
+        await this.delay(2000);
+      }
+    }
+  }
+  
+  /**
+   * タスクからプロンプトを取得
+   * @param {Task} task - タスク
+   * @returns {Promise<string>} プロンプト
+   */
+  async fetchPromptFromTask(task) {
+    try {
+      const prompts = [];
+      
+      // 各プロンプト列から値を取得
+      for (const colInfo of task.promptColumns) {
+        const colIndex = typeof colInfo === 'object' ? colInfo.index : colInfo;
+        const rowIndex = task.row - 1; // 行番号は1ベースなので0ベースに変換
+        const value = this.getCellValue(rowIndex, colIndex);
+        if (value && value.trim()) {
+          prompts.push(value.trim());
+        }
+      }
+      
+      // プロンプトを連結
+      return prompts.join('\n\n');
+      
+    } catch (error) {
+      this.logger.error(`[ColumnProcessor] プロンプト取得エラー:`, error);
+      return null;
+    }
+  }
+  
+  /**
+   * タスクリストからのタスクを実行
+   * @param {Task} task - タスク
+   * @param {string} prompt - プロンプト
+   * @param {string} model - モデル
+   * @param {string} func - 機能
+   * @param {number} taskPosition - タスク位置（0,1,2）
+   * @param {number} tabId - タブID
+   */
+  async executeTaskFromList(task, prompt, model, func, taskPosition = 0, tabId = null) {
+    const taskKey = `${task.column}${task.row}`;
+    let windowId = null;
+    
+    try {
+      this.logger.log(`[ColumnProcessor] 🎯 実行中: ${taskKey} (${task.aiType}) - 位置: ${taskPosition}`);
+      
+      // タブIDが渡されていない場合は新規作成
+      if (!tabId) {
+        const aiType = this.normalizeAIType(task.aiType);
+        tabId = await this.createNewWindow(aiType, taskPosition);
+        if (!tabId) {
+          throw new Error(`Failed to create tab for ${task.aiType}`);
+        }
+      }
+      
+      // ウィンドウIDを保存
+      if (this.activeWindows.has(taskPosition)) {
+        windowId = this.activeWindows.get(taskPosition).windowId;
+      }
+      
+      // AITaskExecutorを使用してタスク実行
+      const result = await this.aiTaskExecutor.executeAITask(tabId, {
+        aiType: this.normalizeAIType(task.aiType),
+        taskId: task.id,
+        model: model,
+        function: func,
+        prompt: prompt,
+        cellInfo: task.cellInfo || {
+          row: task.row,
+          column: task.column,
+          columnIndex: task.columnIndex
+        }
+      });
+      
+      if (result.success) {
+        // 結果をスプレッドシートに書き込み
+        await this.writeToSpreadsheetFromTask(task, result.response);
+        this.logger.log(`[ColumnProcessor] ✅ 完了: ${taskKey}`);
+        this.completed.push(task.id);
+        
+        // ウィンドウを閉じる
+        if (windowId) {
+          try {
+            await chrome.windows.remove(windowId);
+            this.logger.log(`[ColumnProcessor] ウィンドウを閉じました: ${taskKey}`);
+            this.activeWindows.delete(taskPosition);
+          } catch (e) {
+            // 既に閉じている場合は無視
+          }
+        }
+      } else {
+        throw new Error(result.error || 'Task execution failed');
+      }
+      
+    } catch (error) {
+      this.logger.error(`[ColumnProcessor] ❌ エラー: ${taskKey}`, error.message);
+      this.failed.push(task.id);
+      
+      // エラー時もウィンドウを閉じる
+      if (windowId) {
+        try {
+          await chrome.windows.remove(windowId);
+          this.activeWindows.delete(taskPosition);
+        } catch (e) {
+          // 既に閉じている場合は無視
+        }
+      }
+    }
+  }
+  
+  /**
+   * タスクから結果をスプレッドシートに書き込み
+   * @param {Task} task - タスク
+   * @param {string} response - AI応答
+   */
+  async writeToSpreadsheetFromTask(task, response) {
+    try {
+      if (!response) return;
+      
+      const column = task.column;
+      const range = `${column}${task.row}`;
+      
+      // background contextで実行されているかチェック
+      if (globalThis.sheetsClient) {
+        // background contextから直接SheetsClientを使用
+        const fullRange = this.spreadsheetData.sheetName 
+          ? `'${this.spreadsheetData.sheetName}'!${range}` 
+          : range;
+        
+        await globalThis.sheetsClient.updateCell(
+          this.spreadsheetData.spreadsheetId, 
+          fullRange, 
+          response,
+          this.spreadsheetData.gid
+        );
+        
+        this.logger.log(`[ColumnProcessor] 📝 書き込み完了: ${range}`);
+      } else {
+        // UIページから実行されている場合はメッセージ送信
+        const result = await chrome.runtime.sendMessage({
+          action: 'writeToSpreadsheet',
+          spreadsheetId: this.spreadsheetData.spreadsheetId,
+          range: range,
+          value: response,
+          sheetName: this.spreadsheetData.sheetName
+        });
+        
+        if (!result || !result.success) {
+          throw new Error(result?.error || 'Failed to write');
+        }
+        
+        this.logger.log(`[ColumnProcessor] 📝 書き込み完了: ${range}`);
+      }
+    } catch (error) {
+      this.logger.error(`[ColumnProcessor] 書き込みエラー:`, error);
+    }
+  }
+  
+  /**
+   * AI種別を正規化
+   * @param {string} aiType - AI種別
+   * @returns {string} 正規化されたAI種別
+   */
+  normalizeAIType(aiType) {
+    const lower = (aiType || '').toLowerCase();
+    if (lower.includes('chatgpt') || lower.includes('gpt')) return 'ChatGPT';
+    if (lower.includes('claude')) return 'Claude';
+    if (lower.includes('gemini')) return 'Gemini';
+    if (lower.includes('genspark')) return 'Genspark';
+    return 'Claude'; // デフォルト
+  }
+
+  /**
+   * スプレッドシートをプロンプトグループ単位で処理（旧メソッド、互換性のため残す）
    * @param {Object} spreadsheetData - スプレッドシートデータ
    * @returns {Promise<Object>} 処理結果
    */
