@@ -267,6 +267,7 @@ class TaskGenerator {
    * 制御情報を収集
    */
   collectControls(spreadsheetData) {
+    console.log("[制御収集] 制御情報の収集開始");
     const controls = {
       row: [],
       column: []
@@ -288,10 +289,13 @@ class TaskGenerator {
           
           if (cellB.includes(startFrom)) {
             controls.row.push({ type: "from", row: i + 1 });
-          } else if (cellB.includes(stopAfter)) {
+            console.log(`[制御収集] 行制御検出: "この行から処理" - 行${i + 1}`);
+          } else if (cellB.includes(stopAfter) || cellB.includes('この行の処理後に停止')) {
             controls.row.push({ type: "until", row: i + 1 });
+            console.log(`[制御収集] 行制御検出: "この行で停止/処理後に停止" - 行${i + 1}`);
           } else if (cellB.includes(onlyThis)) {
             controls.row.push({ type: "only", row: i + 1 });
+            console.log(`[制御収集] 行制御検出: "この行のみ処理" - 行${i + 1}`);
           }
         }
       }
@@ -313,16 +317,20 @@ class TaskGenerator {
             
             if (cell.includes(startFrom)) {
               controls.column.push({ type: "from", column, index: j });
-            } else if (cell.includes(stopAfter)) {
+              console.log(`[制御収集] 列制御検出: "この列から処理" - ${column}列 (行${i + 1})`);
+            } else if (cell.includes(stopAfter) || cell.includes('この列の処理後に停止')) {
               controls.column.push({ type: "until", column, index: j });
+              console.log(`[制御収集] 列制御検出: "この列で停止/処理後に停止" - ${column}列 (行${i + 1})`);
             } else if (cell.includes(onlyThis)) {
               controls.column.push({ type: "only", column, index: j });
+              console.log(`[制御収集] 列制御検出: "この列のみ処理" - ${column}列 (行${i + 1})`);
             }
           }
         }
       }
     }
-
+    
+    console.log(`[制御収集] 収集完了 - 行制御: ${controls.row.length}件, 列制御: ${controls.column.length}件`);
     return controls;
   }
 
@@ -334,7 +342,10 @@ class TaskGenerator {
     const { rows, promptGroups, controls, workRows } = structure;
 
     // 列制御でフィルタリング
+    console.log("[制御] 列制御適用前のグループ数:", promptGroups.length);
+    console.log("[制御] 収集した列制御:", controls.column);
     const processableGroups = this.filterGroupsByColumnControl(promptGroups, controls.column);
+    console.log("[制御] 列制御適用後のグループ数:", processableGroups.length);
     // console.log("[TaskGenerator] 🔍 フィルタリング後の処理可能グループ:", {
     //   元のグループ数: promptGroups.length,
     //   処理可能グループ数: processableGroups.length,
@@ -352,6 +363,9 @@ class TaskGenerator {
       groupsToProcess = [processableGroups[0]];
     }
 
+    console.log("[制御] 行制御情報:", controls.row);
+    console.log(`[制御] 処理対象行数: ${workRows.length}行`);
+    
     for (const workRow of workRows) {
       // 行制御チェック
       if (!this.shouldProcessRow(workRow.number, controls.row)) {
@@ -478,13 +492,17 @@ class TaskGenerator {
    */
   filterGroupsByColumnControl(groups, columnControls) {
     if (!columnControls || columnControls.length === 0) {
+      console.log("[列制御] 列制御情報なし - 全グループを処理");
       return groups;
     }
+
+    console.log("[列制御] 列制御情報あり:", columnControls);
 
     // "この列のみ処理"が優先（他の制御を無視）
     const onlyControls = columnControls.filter(c => c.type === "only");
     if (onlyControls.length > 0) {
-      return groups.filter(group => {
+      console.log("[列制御] 「この列のみ処理」モード:", onlyControls.map(c => this.indexToColumn(c.index)));
+      const filteredGroups = groups.filter(group => {
         // グループ内のログ列、プロンプト列、回答列のいずれかが制御対象なら、グループ全体を処理
         
         // ログ列のチェック（文字列比較）
@@ -508,18 +526,27 @@ class TaskGenerator {
           if (logMatch) matchedColumns.push(`ログ列(${group.logColumn})`);
           if (promptMatch) matchedColumns.push(`プロンプト列`);
           if (answerMatch) matchedColumns.push(`回答列`);
-          
+          console.log(`[列制御] グループ処理対象: プロンプト列${group.promptColumns.map(i => this.indexToColumn(i))} → 回答列${group.answerColumns.map(a => a.column)} (マッチ: ${matchedColumns.join(', ')})`);
         }
         
         return isMatched;
       });
+      console.log(`[列制御] 「この列のみ処理」フィルタ結果: ${filteredGroups.length}/${groups.length}グループを処理`);
+      return filteredGroups;
     }
 
     // "この列から処理"と"この列で停止"の組み合わせ
     const fromControl = columnControls.find(c => c.type === "from");
     const untilControl = columnControls.find(c => c.type === "until");
+    
+    if (fromControl) {
+      console.log(`[列制御] 「この列から処理」: ${this.indexToColumn(fromControl.index)}列`);
+    }
+    if (untilControl) {
+      console.log(`[列制御] 「この列で停止」: ${this.indexToColumn(untilControl.index)}列`);
+    }
 
-    return groups.filter(group => {
+    const filteredGroups = groups.filter(group => {
       // グループの全範囲：ログ列 〜 最後の回答列
       const logColumnIndex = this.columnToIndex(group.logColumn);
       const groupStart = logColumnIndex !== null ? logColumnIndex : group.promptColumns[0];
@@ -554,8 +581,14 @@ class TaskGenerator {
       }
 
 
+      if (shouldProcess) {
+        console.log(`[列制御] グループ処理対象: プロンプト列${group.promptColumns.map(i => this.indexToColumn(i))} → 回答列${group.answerColumns.map(a => a.column)}`);
+      }
       return shouldProcess;
     });
+    
+    console.log(`[列制御] 範囲指定フィルタ結果: ${filteredGroups.length}/${groups.length}グループを処理`);
+    return filteredGroups;
   }
 
   /**
@@ -575,22 +608,46 @@ class TaskGenerator {
    * @returns {boolean} 処理すべきかどうか
    */
   shouldProcessRow(rowNumber, rowControls) {
-    if (!rowControls || rowControls.length === 0) return true;
+    if (!rowControls || rowControls.length === 0) {
+      // 行制御なしの場合は、最初の数行だけログを出力
+      if (rowNumber <= 12) {
+        console.log(`[行制御] 行${rowNumber}: 制御なし → 処理対象`);
+      }
+      return true;
+    }
+    
+    console.log(`[行制御] 行${rowNumber}の処理判定 - 制御情報:`, rowControls);
 
     // "この行のみ処理"が優先（他の制御を無視）
     const onlyControls = rowControls.filter(c => c.type === "only");
     if (onlyControls.length > 0) {
-      return onlyControls.some(c => c.row === rowNumber);
+      console.log(`[行制御] 「この行のみ処理」モード: 行${onlyControls.map(c => c.row).join(', ')}`);
+      const shouldProcess = onlyControls.some(c => c.row === rowNumber);
+      console.log(`[行制御] 行${rowNumber}: ${shouldProcess ? '処理対象' : 'スキップ'}`);
+      return shouldProcess;
     }
 
     // "この行から処理"（開始行より前なら除外）
     const fromControl = rowControls.find(c => c.type === "from");
-    if (fromControl && rowNumber < fromControl.row) return false;
+    if (fromControl) {
+      console.log(`[行制御] 「この行から処理」: 行${fromControl.row}以降`);
+      if (rowNumber < fromControl.row) {
+        console.log(`[行制御] 行${rowNumber}: スキップ（開始行${fromControl.row}より前）`);
+        return false;
+      }
+    }
 
     // "この行で停止"（終了行より後なら除外）
     const untilControl = rowControls.find(c => c.type === "until");
-    if (untilControl && rowNumber > untilControl.row) return false;
+    if (untilControl) {
+      console.log(`[行制御] 「この行で停止」: 行${untilControl.row}まで`);
+      if (rowNumber > untilControl.row) {
+        console.log(`[行制御] 行${rowNumber}: スキップ（停止行${untilControl.row}より後）`);
+        return false;
+      }
+    }
 
+    console.log(`[行制御] 行${rowNumber}: 処理対象`);
     return true;
   }
 
@@ -636,7 +693,12 @@ class TaskGenerator {
       return null;
     }
 
-    const combined = prompts.join('\n');
+    // 最初のプロンプト列名を使用してセル位置を特定
+    const firstPromptColumn = this.indexToColumn(group.promptColumns[0]);
+    const cellPosition = `${firstPromptColumn}${workRow.number}`;
+    
+    // 「現在は〇〇のセルです。」を先頭に追加してからプロンプトを連結
+    const combined = `現在は${cellPosition}のセルです。\n${prompts.join('\n')}`;
     
     // プロンプト内容のハッシュを生成（重複検出用）
     const promptHash = this.generateSimpleHash(combined);

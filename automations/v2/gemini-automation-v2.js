@@ -5,7 +5,7 @@
  * V2の堅牢なロジックを保ちながらシンプルな構造を実現
  */
 
-(() => {
+(function() {
     'use strict';
     
     const SCRIPT_VERSION = "3.0.0";
@@ -288,9 +288,92 @@
             
             // ステップ4: 応答待機
             const responseText = await logStep('ステップ4: 応答待機', () => new Promise(async (resolve, reject) => {
-                log(`待機モード: ${isCanvasMode ? '🎨 Canvas' : '💬 通常'}`, 'info');
+                // Deep Researchモードの判定
+                const isDeepResearchMode = featureName && (featureName.toLowerCase().includes('deep research') || featureName.toLowerCase().includes('deep'));
                 
-                if (isCanvasMode) {
+                log(`待機モード: ${isDeepResearchMode ? '🔬 Deep Research' : isCanvasMode ? '🎨 Canvas' : '💬 通常'}`, 'info');
+                
+                if (isDeepResearchMode) {
+                    // Deep Researchモード: 特別な処理フロー
+                    const MAX_WAIT = 40 * 60 * 1000; // 40分
+                    const startTime = Date.now();
+                    
+                    const logDr = (message, type = 'info') => {
+                        const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(1);
+                        log(`[経過: ${elapsedTime}秒] ${message}`, type);
+                    };
+                    
+                    logDr('Deep Researchモードで応答を監視します。');
+                    
+                    // 全体のタイムアウト設定
+                    const timeoutId = setTimeout(() => {
+                        reject(new Error(`Deep Researchの応答が${MAX_WAIT / 60000}分以内に完了しませんでした。`));
+                    }, MAX_WAIT);
+                    
+                    try {
+                        // ステップ1: 初期応答の停止ボタンが出現するまで待機
+                        logDr('ステップ1: 初期応答の開始を待機中...');
+                        while (!findElement(['button.send-button.stop'])) {
+                            if (Date.now() - startTime > 30000) {
+                                throw new Error('30秒以内に初期応答が開始されませんでした。');
+                            }
+                            await wait(1000);
+                        }
+                        logDr('ステップ1完了: 初期応答が開始されました。', 'success');
+                        
+                        // ステップ2: 初期応答が完了して「リサーチを開始」ボタンが出現するまで待機
+                        logDr('ステップ2: 初期応答の完了を待機中...');
+                        while (findElement(['button.send-button.stop'])) {
+                            if (Date.now() - startTime > 5 * 60 * 1000) {
+                                throw new Error('5分以内に初期応答が完了しませんでした。');
+                            }
+                            await wait(1000);
+                        }
+                        
+                        // 「リサーチを開始」ボタンをクリック
+                        const researchButton = findElement(['button[data-test-id="confirm-button"]']);
+                        if (!researchButton) {
+                            throw new Error('「リサーチを開始」ボタンが見つかりませんでした。');
+                        }
+                        researchButton.click();
+                        logDr('ステップ2完了: 「リサーチを開始」ボタンをクリックしました。', 'success');
+                        await wait(2000);
+                        
+                        // ステップ3: 本応答の完了を待つ
+                        logDr('ステップ3: 本応答の完了を待機中...');
+                        
+                        // 定期的な状態チェック
+                        const loggingInterval = setInterval(() => {
+                            const btn = findElement(['button.send-button.stop']);
+                            logDr(`[定期チェック] 回答停止ボタンは${btn ? '✅ 存在します' : '❌ 存在しません'}。`);
+                        }, 10000);
+                        
+                        // 本応答の停止ボタンが出現するまで待つ
+                        while (!findElement(['button.send-button.stop'])) {
+                            await wait(1000);
+                        }
+                        logDr('本応答の停止ボタンが出現しました。');
+                        
+                        // 停止ボタンが10秒間消えたら完了とみなす
+                        let lastSeenTime = Date.now();
+                        const checkInterval = setInterval(() => {
+                            if (findElement(['button.send-button.stop'])) {
+                                lastSeenTime = Date.now();
+                            } else if (Date.now() - lastSeenTime > 10000) {
+                                clearInterval(checkInterval);
+                                clearInterval(loggingInterval);
+                                clearTimeout(timeoutId);
+                                logDr('ステップ3完了: Deep Researchの応答が完了しました。', 'success');
+                                resolve('Deep Researchの応答が完了しました。');
+                            }
+                        }, 2000);
+                        
+                    } catch (error) {
+                        clearTimeout(timeoutId);
+                        reject(error);
+                    }
+                    
+                } else if (isCanvasMode) {
                     // Canvasモード: 30秒初期待機 + テキスト変化監視
                     log("Canvasモード: 初期待機30秒...");
                     await wait(30000);
@@ -476,5 +559,13 @@
     
     console.log('✅ Gemini Automation 準備完了');
     console.log('使用方法: GeminiAutomation.executeTask({ model: "Pro", function: "Canvas", prompt: "..." })');
+    
+    // デバッグ: グローバル公開の確認
+    if (typeof window.GeminiAutomation !== 'undefined') {
+        console.log('✅ window.GeminiAutomation が正常に公開されました');
+        console.log('利用可能なメソッド:', Object.keys(window.GeminiAutomation));
+    } else {
+        console.error('❌ window.GeminiAutomation の公開に失敗しました');
+    }
     
 })();

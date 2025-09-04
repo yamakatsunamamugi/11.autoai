@@ -39,6 +39,12 @@ export default class TaskGeneratorV2 {
       workRows: workRows.length
     });
     
+    // 制御ログ
+    console.log("[制御] 列制御適用前のグループ数:", promptGroups.length);
+    console.log("[制御] 収集した列制御:", controls.column);
+    console.log("[制御] 行制御情報:", controls.row);
+    console.log(`[制御] 処理対象行数: ${workRows.length}行`);
+    
     // 各作業行でタスク生成
     let taskCount = 0;
     
@@ -65,36 +71,49 @@ export default class TaskGeneratorV2 {
         const is3TypeAI = promptGroup.aiType.includes('3種類') || promptGroup.aiType.includes('３種類');
         
         if (is3TypeAI) {
-          // 3種類AI列の処理：D列のタスクとして生成
-          const promptColumn = this.indexToColumn(promptGroup.promptColumns[0]);
-          
-          // D列のタスクを生成（ChatGPTとして実行）
-          const taskData = {
-            id: this.generateTaskId(promptColumn, workRow.number),
-            row: workRow.number,
-            column: promptColumn,  // D列を使用（プロンプト列）
-            promptColumns: promptGroup.promptColumns,
-            aiType: 'ChatGPT',  // 3種類AIは最初にChatGPTで実行
-            model: this.getModel(spreadsheetData, promptGroup),
-            function: this.getFunction(spreadsheetData, promptGroup),
-            cellInfo: {
+          // 3種類AI列の処理：各回答列（F,G,H）に対してタスクを生成
+          for (const answerCol of promptGroup.answerColumns) {
+            // 既存回答チェック
+            const existingAnswer = this.getCellValue(spreadsheetData, workRow.index, answerCol.index);
+            if (this.hasAnswer(existingAnswer)) {
+              continue;
+            }
+            
+            // デバッグログ: answerColの内容を確認
+            this.logger.log(`[TaskGeneratorV2] 3種類AI タスク作成:`, {
+              行: workRow.number,
+              列: answerCol.column,
+              AIタイプ: answerCol.type,
+              answerCol詳細: answerCol
+            });
+            
+            const taskData = {
+              id: this.generateTaskId(answerCol.column, workRow.number),
               row: workRow.number,
-              column: promptColumn,
-              columnIndex: promptGroup.promptColumns[0]
-            },
-            // グループ情報
-            multiAI: true,
-            groupId: `group_${workRow.number}_${promptColumn}`,
-            // Task必須フィールド
-            prompt: '',  // 実行時に動的取得
-            taskType: 'ai',
-            createdAt: Date.now(),
-            version: '2.0'
-          };
-          
-          const task = new Task(taskData);
-          taskList.add(task);
-          taskCount++;
+              column: answerCol.column,  // F列、G列、H列など（回答列）
+              promptColumns: promptGroup.promptColumns,  // D,E列（プロンプト列）
+              aiType: answerCol.type,  // ChatGPT, Claude, Gemini
+              model: this.getModel(spreadsheetData, answerCol),
+              function: this.getFunction(spreadsheetData, answerCol),
+              cellInfo: {
+                row: workRow.number,
+                column: answerCol.column,
+                columnIndex: answerCol.index
+              },
+              // グループ情報
+              multiAI: true,
+              groupId: `group_${workRow.number}_${this.indexToColumn(promptGroup.promptColumns[0])}`,
+              // Task必須フィールド
+              prompt: '',  // 実行時に動的取得
+              taskType: 'ai',
+              createdAt: Date.now(),
+              version: '2.0'
+            };
+            
+            const task = new Task(taskData);
+            taskList.add(task);
+            taskCount++;
+          }
         } else {
           // 通常のAI列の処理（従来通り）
           for (let answerIndex = 0; answerIndex < promptGroup.answerColumns.length; answerIndex++) {
@@ -116,8 +135,8 @@ export default class TaskGeneratorV2 {
               column: answerCol.column,
               promptColumns: promptGroup.promptColumns,  // プロンプト列の位置のみ
               aiType: aiType,
-              model: this.getModel(spreadsheetData, promptGroup),
-              function: this.getFunction(spreadsheetData, promptGroup),
+              model: this.getModel(spreadsheetData, answerCol),
+              function: this.getFunction(spreadsheetData, answerCol),
               cellInfo: {
                 row: workRow.number,
                 column: answerCol.column,
@@ -228,16 +247,49 @@ export default class TaskGeneratorV2 {
         }
         currentGroup.promptColumns.push(i);
       }
-      // 回答列を検出（AI行に値がある場合のみ独立タスクとして扱う）
+      // 回答列を検出
       else if (menuCell && (menuCell.includes('回答') || menuCell.includes('答'))) {
-        // AI行に値がある場合は独立したタスク列として扱う
-        if (aiCell && aiCell.trim() !== '' && currentGroup) {
+        if (currentGroup) {
+          // AIタイプを判定（AI行またはメニュー行から）
+          let aiType = 'ChatGPT'; // デフォルト
+          
+          // まずAI行の値から判定
+          if (aiCell && aiCell.trim() !== '') {
+            const aiCellLower = aiCell.toLowerCase();
+            if (aiCellLower.includes('chatgpt') || aiCellLower.includes('gpt')) {
+              aiType = 'ChatGPT';
+            } else if (aiCellLower.includes('claude')) {
+              aiType = 'Claude';
+            } else if (aiCellLower.includes('gemini')) {
+              aiType = 'Gemini';
+            }
+          }
+          // AI行が空の場合はメニュー行から判定（3種類AIの場合）
+          else {
+            const menuCellLower = menuCell.toLowerCase();
+            if (menuCellLower.includes('chatgpt') || menuCellLower.includes('gpt')) {
+              aiType = 'ChatGPT';
+            } else if (menuCellLower.includes('claude')) {
+              aiType = 'Claude';
+            } else if (menuCellLower.includes('gemini')) {
+              aiType = 'Gemini';
+            }
+          }
+          
           currentGroup.answerColumns.push({
             index: i,
-            column: this.indexToColumn(i)
+            column: this.indexToColumn(i),
+            type: aiType  // AIタイプを設定
+          });
+          
+          // デバッグログ追加
+          this.logger.log(`[TaskGeneratorV2] 回答列追加: ${this.indexToColumn(i)}列, AI種別: ${aiType}`, {
+            列インデックス: i,
+            メニュー行値: menuCell,
+            AI行値: aiCell || '(空)',
+            判定されたAI: aiType
           });
         }
-        // AI行が空の場合は3種類AI列の回答先として扱う（タスクとして生成しない）
       }
       // グループの終了を検出
       else if (currentGroup && currentGroup.promptColumns.length > 0) {
@@ -332,67 +384,46 @@ export default class TaskGeneratorV2 {
   /**
    * モデル情報を取得
    */
-  getModel(data, promptGroup) {
+  getModel(data, answerCol) {
     const modelRow = data.values.find(row => 
       row[0] && (row[0] === 'モデル' || row[0].toLowerCase() === 'model')
     );
     
     if (modelRow) {
-      // まずプロンプト列から取得を試みる
-      if (promptGroup.promptColumns && promptGroup.promptColumns.length > 0) {
-        const modelValue = modelRow[promptGroup.promptColumns[0]];
-        if (modelValue) {
-          this.logger.log(`[TaskGeneratorV2] モデル取得: プロンプト列${promptGroup.promptColumns[0]}から "${modelValue}"`);
-          return modelValue;
-        }
-      }
-      
-      // 次に回答列から取得を試みる
-      if (promptGroup.answerColumns.length > 0) {
-        const modelValue = modelRow[promptGroup.answerColumns[0].index];
-        if (modelValue) {
-          this.logger.log(`[TaskGeneratorV2] モデル取得: 回答列${promptGroup.answerColumns[0].index}から "${modelValue}"`);
-          return modelValue;
-        }
+      // 回答列から取得を試みる
+      const modelValue = modelRow[answerCol.index];
+      if (modelValue) {
+        this.logger.log(`[TaskGeneratorV2] モデル取得: ${answerCol.column}列（index=${answerCol.index}）から "${modelValue}"`);
+        return modelValue;
       }
     }
     
     // デフォルトモデル
     const defaultModels = {
-      'Claude': 'Claude Opus 4.1',
-      'ChatGPT': 'GPT-4',
-      'Gemini': 'Gemini Pro',
-      'Genspark': 'Genspark'
+      'claude': 'Claude Opus 4.1',
+      'chatgpt': 'GPT-4',
+      'gemini': 'Gemini Pro',
+      'genspark': 'Genspark'
     };
     
-    return defaultModels[promptGroup.aiType] || 'Claude Opus 4.1';
+    const aiTypeLower = answerCol.type ? answerCol.type.toLowerCase() : 'claude';
+    return defaultModels[aiTypeLower] || 'Claude Opus 4.1';
   }
 
   /**
    * 機能情報を取得
    */
-  getFunction(data, promptGroup) {
+  getFunction(data, answerCol) {
     const functionRow = data.values.find(row => 
       row[0] && (row[0] === '機能' || row[0].toLowerCase() === 'function')
     );
     
     if (functionRow) {
-      // まずプロンプト列から取得を試みる
-      if (promptGroup.promptColumns && promptGroup.promptColumns.length > 0) {
-        const functionValue = functionRow[promptGroup.promptColumns[0]];
-        if (functionValue) {
-          this.logger.log(`[TaskGeneratorV2] 機能取得: プロンプト列${promptGroup.promptColumns[0]}から "${functionValue}"`);
-          return functionValue;
-        }
-      }
-      
-      // 次に回答列から取得を試みる
-      if (promptGroup.answerColumns.length > 0) {
-        const functionValue = functionRow[promptGroup.answerColumns[0].index];
-        if (functionValue) {
-          this.logger.log(`[TaskGeneratorV2] 機能取得: 回答列${promptGroup.answerColumns[0].index}から "${functionValue}"`);
-          return functionValue;
-        }
+      // 回答列から取得を試みる
+      const functionValue = functionRow[answerCol.index];
+      if (functionValue) {
+        this.logger.log(`[TaskGeneratorV2] 機能取得: ${answerCol.column}列（index=${answerCol.index}）から "${functionValue}"`);
+        return functionValue;
       }
     }
     
@@ -400,89 +431,178 @@ export default class TaskGeneratorV2 {
   }
 
   /**
-   * 行制御をチェック
+   * 行制御をチェック（generator.jsと同じロジック）
    */
-  shouldProcessRow(rowNumber, rowControl) {
-    if (!rowControl) return true;
-    
-    const { type, values } = rowControl;
-    
-    if (type === 'only') {
-      return values.includes(rowNumber);
-    } else if (type === 'skip') {
-      return !values.includes(rowNumber);
+  shouldProcessRow(rowNumber, rowControls) {
+    if (!rowControls || rowControls.length === 0) {
+      if (rowNumber <= 12) {
+        console.log(`[行制御] 行${rowNumber}: 制御なし → 処理対象`);
+      }
+      return true;
     }
     
+    console.log(`[行制御] 行${rowNumber}の処理判定 - 制御情報:`, rowControls);
+    
+    // "この行のみ処理"が優先
+    const onlyControls = rowControls.filter(c => c.type === 'only');
+    if (onlyControls.length > 0) {
+      console.log(`[行制御] 「この行のみ処理」モード: 行${onlyControls.map(c => c.row).join(', ')}`);
+      const shouldProcess = onlyControls.some(c => c.row === rowNumber);
+      console.log(`[行制御] 行${rowNumber}: ${shouldProcess ? '処理対象' : 'スキップ'}`);
+      return shouldProcess;
+    }
+    
+    // "この行から処理"
+    const fromControl = rowControls.find(c => c.type === 'from');
+    if (fromControl) {
+      console.log(`[行制御] 「この行から処理」: 行${fromControl.row}以降`);
+      if (rowNumber < fromControl.row) {
+        console.log(`[行制御] 行${rowNumber}: スキップ（開始行${fromControl.row}より前）`);
+        return false;
+      }
+    }
+    
+    // "この行で停止"
+    const untilControl = rowControls.find(c => c.type === 'until');
+    if (untilControl) {
+      console.log(`[行制御] 「この行で停止」: 行${untilControl.row}まで`);
+      if (rowNumber > untilControl.row) {
+        console.log(`[行制御] 行${rowNumber}: スキップ（停止行${untilControl.row}より後）`);
+        return false;
+      }
+    }
+    
+    console.log(`[行制御] 行${rowNumber}: 処理対象`);
     return true;
   }
 
   /**
-   * 列制御をチェック
+   * 列制御をチェック（generator.jsと同じロジック）
    */
-  shouldProcessColumn(promptGroup, columnControl) {
-    if (!columnControl) return true;
-    
-    const { type, values } = columnControl;
-    const columns = promptGroup.answerColumns.map(ac => ac.column);
-    
-    if (type === 'only') {
-      return columns.some(col => values.includes(col));
-    } else if (type === 'skip') {
-      return !columns.some(col => values.includes(col));
+  shouldProcessColumn(promptGroup, columnControls) {
+    if (!columnControls || columnControls.length === 0) {
+      console.log("[列制御] 列制御情報なし - 全グループを処理");
+      return true;
     }
     
-    return true;
+    console.log("[列制御] 列制御情報あり:", columnControls);
+    
+    // "この列のみ処理"が優先
+    const onlyControls = columnControls.filter(c => c.type === 'only');
+    if (onlyControls.length > 0) {
+      console.log("[列制御] 「この列のみ処理」モード:", onlyControls.map(c => c.column));
+      
+      // グループ内のプロンプト列または回答列がマッチするか
+      const promptMatch = promptGroup.promptColumns.some(colIndex => 
+        onlyControls.some(ctrl => ctrl.index === colIndex)
+      );
+      const answerMatch = promptGroup.answerColumns.some(answerCol => 
+        onlyControls.some(ctrl => ctrl.index === answerCol.index)
+      );
+      
+      const shouldProcess = promptMatch || answerMatch;
+      if (shouldProcess) {
+        console.log(`[列制御] グループ処理対象: プロンプト列${promptGroup.promptColumns.map(i => this.indexToColumn(i))} → 回答列${promptGroup.answerColumns.map(a => a.column)}`);
+      }
+      return shouldProcess;
+    }
+    
+    // "この列から処理"と"この列で停止"
+    const fromControl = columnControls.find(c => c.type === 'from');
+    const untilControl = columnControls.find(c => c.type === 'until');
+    
+    if (fromControl) {
+      console.log(`[列制御] 「この列から処理」: ${fromControl.column}列`);
+    }
+    if (untilControl) {
+      console.log(`[列制御] 「この列で停止」: ${untilControl.column}列`);
+    }
+    
+    // グループの範囲を判定
+    const groupStart = Math.min(...promptGroup.promptColumns);
+    const groupEnd = Math.max(...promptGroup.answerColumns.map(a => a.index));
+    
+    let shouldProcess = true;
+    
+    if (fromControl && groupEnd < fromControl.index) {
+      shouldProcess = false;
+    }
+    
+    if (untilControl && groupStart > untilControl.index) {
+      shouldProcess = false;
+    }
+    
+    if (shouldProcess) {
+      console.log(`[列制御] グループ処理対象: プロンプト列${promptGroup.promptColumns.map(i => this.indexToColumn(i))} → 回答列${promptGroup.answerColumns.map(a => a.column)}`);
+    }
+    
+    return shouldProcess;
   }
 
   /**
-   * 行制御情報を取得
+   * 行制御情報を取得（generator.jsと同じ形式）
    */
   getRowControl(data) {
-    // A列で「only:」や「skip:」を探す
-    for (const row of data.values) {
-      const cell = row[0];
-      if (!cell) continue;
+    console.log("[制御収集] 行制御情報の収集開始 (V2)");
+    const controls = [];
+    
+    // B列で制御文字列を探す（generator.jsと同じ）
+    for (let i = 0; i < data.values.length; i++) {
+      const row = data.values[i];
+      if (!row) continue;
       
-      const lower = cell.toLowerCase();
-      if (lower.startsWith('only:')) {
-        const values = this.parseControlValues(cell.substring(5));
-        return { type: 'only', values };
-      } else if (lower.startsWith('skip:')) {
-        const values = this.parseControlValues(cell.substring(5));
-        return { type: 'skip', values };
+      const cellB = row[1]; // B列
+      if (cellB && typeof cellB === 'string') {
+        if (cellB.includes('この行から処理')) {
+          controls.push({ type: 'from', row: i + 1 });
+          console.log(`[制御収集] 行制御検出: "この行から処理" - 行${i + 1}`);
+        } else if (cellB.includes('この行で停止') || cellB.includes('この行の処理後に停止')) {
+          controls.push({ type: 'until', row: i + 1 });
+          console.log(`[制御収集] 行制御検出: "この行で停止/処理後に停止" - 行${i + 1}`);
+        } else if (cellB.includes('この行のみ処理')) {
+          controls.push({ type: 'only', row: i + 1 });
+          console.log(`[制御収集] 行制御検出: "この行のみ処理" - 行${i + 1}`);
+        }
       }
     }
     
-    return null;
+    console.log(`[制御収集] 行制御収集完了: ${controls.length}件`);
+    return controls;
   }
 
   /**
-   * 列制御情報を取得
+   * 列制御情報を取得（generator.jsと同じ形式）
    */
   getColumnControl(data, rows) {
-    if (!rows.menu) return null;
+    console.log("[制御収集] 列制御情報の収集開始 (V2)");
+    const controls = [];
     
-    const menuRow = data.values[rows.menu];
-    for (const cell of menuRow) {
-      if (!cell) continue;
+    // 制御行1-10で制御文字列を探す（generator.jsと同じ）
+    for (let i = 0; i < Math.min(10, data.values.length); i++) {
+      const row = data.values[i];
+      if (!row) continue;
       
-      const lower = cell.toLowerCase();
-      if (lower.includes('only:')) {
-        const match = lower.match(/only:\s*([a-z,\s]+)/);
-        if (match) {
-          const values = match[1].split(',').map(v => v.trim().toUpperCase());
-          return { type: 'only', values };
-        }
-      } else if (lower.includes('skip:')) {
-        const match = lower.match(/skip:\s*([a-z,\s]+)/);
-        if (match) {
-          const values = match[1].split(',').map(v => v.trim().toUpperCase());
-          return { type: 'skip', values };
+      for (let j = 0; j < row.length; j++) {
+        const cell = row[j];
+        if (cell && typeof cell === 'string') {
+          const column = this.indexToColumn(j);
+          
+          if (cell.includes('この列から処理')) {
+            controls.push({ type: 'from', column, index: j });
+            console.log(`[制御収集] 列制御検出: "この列から処理" - ${column}列 (行${i + 1})`);
+          } else if (cell.includes('この列で停止') || cell.includes('この列の処理後に停止')) {
+            controls.push({ type: 'until', column, index: j });
+            console.log(`[制御収集] 列制御検出: "この列で停止/処理後に停止" - ${column}列 (行${i + 1})`);
+          } else if (cell.includes('この列のみ処理')) {
+            controls.push({ type: 'only', column, index: j });
+            console.log(`[制御収集] 列制御検出: "この列のみ処理" - ${column}列 (行${i + 1})`);
+          }
         }
       }
     }
     
-    return null;
+    console.log(`[制御収集] 列制御収集完了: ${controls.length}件`);
+    return controls;
   }
 
   /**

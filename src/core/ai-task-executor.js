@@ -36,6 +36,16 @@ export class AITaskExecutor {
       ? `${taskData.cellInfo.column}${taskData.cellInfo.row}` 
       : '不明';
     
+    // aiTypeのnullチェック追加
+    if (!taskData.aiType) {
+      this.logger.error(`[AITaskExecutor] ❌ aiTypeが未定義です。デフォルトでChatGPTを使用します`, {
+        セル: cellPosition,
+        taskId: taskData.taskId,
+        全プロパティ: Object.keys(taskData).join(', ')
+      });
+      taskData.aiType = 'ChatGPT'; // デフォルト値を設定
+    }
+    
     this.logger.log(`[AITaskExecutor] 🚀 AIタスク実行開始 [${cellPosition}セル] [${taskData.aiType}]:`, {
       セル: cellPosition,
       tabId,
@@ -56,117 +66,13 @@ export class AITaskExecutor {
         'gemini': 'automations/v2/gemini-automation-v2.js'
       };
       
-      // Geminiタスクは統合版で実行（V2版を優先）
-      if (taskData.aiType.toLowerCase() === 'gemini') {
-        this.logger.log(`[AITaskExecutor] 🎯 Gemini統合版実行`);
-        
-        // V2版を使用（V2版が存在することを確認済み）
-        const geminiScript = v2ScriptMap['gemini'];
-        
-        // 統合版スクリプトを注入
-        await chrome.scripting.executeScript({
-          target: { tabId: tabId },
-          files: [geminiScript]
-        });
-        
-        this.logger.log(`[AITaskExecutor] ✅ Gemini Automationスクリプト注入完了`);
-        
-        // 初期化待機を動的に（最大1秒）
-        const geminiInitStart = performance.now();
-        let geminiReady = false;
-        const maxGeminiWait = 1000;
-        
-        while (!geminiReady && (performance.now() - geminiInitStart) < maxGeminiWait) {
-          try {
-            const [checkResult] = await chrome.scripting.executeScript({
-              target: { tabId: tabId },
-              func: () => window.GeminiAutomation !== undefined
-            });
-            
-            if (checkResult?.result) {
-              geminiReady = true;
-              const waitTime = (performance.now() - geminiInitStart).toFixed(0);
-              this.logger.log(`[AITaskExecutor] ✅ Gemini初期化完了 (${waitTime}ms)`);
-            } else {
-              await new Promise(resolve => setTimeout(resolve, 50));
-            }
-          } catch (e) {
-            await new Promise(resolve => setTimeout(resolve, 50));
-          }
-        }
-        
-        this.logger.log(`[AITaskExecutor] executeTask実行を開始します...`);
-        
-        // executeTaskを直接実行
-        let result;
-        try {
-          result = await chrome.scripting.executeScript({
-            target: { tabId: tabId },
-            func: async (taskData) => {
-              try {
-                console.log('%c🚀 [Gemini] タスク実行開始', 'color: #4285f4; font-weight: bold; font-size: 16px');
-                console.log('[Gemini] タスクデータ:', {
-                  model: taskData.model,
-                  function: taskData.function,
-                  hasText: !!taskData.prompt,
-                  textLength: taskData.prompt?.length
-                });
-                
-                // GeminiAutomation.executeTaskを実行
-                if (!window.GeminiAutomation || !window.GeminiAutomation.executeTask) {
-                  throw new Error('GeminiAutomation.executeTask関数が見つかりません');
-                }
-                
-                const result = await window.GeminiAutomation.executeTask({
-                  model: taskData.model,
-                  function: taskData.function,
-                  text: taskData.prompt,
-                  prompt: taskData.prompt  // promptプロパティも追加
-                });
-                
-                console.log('[Gemini] タスク実行結果:', result);
-                return result;
-                
-              } catch (error) {
-                console.error('❌ [Gemini] 実行エラー:', error);
-                return { success: false, error: error.message };
-              }
-            },
-            args: [taskData]
-          });
-        } catch (scriptError) {
-          this.logger.error(`[AITaskExecutor] ❌ スクリプト実行エラー:`, scriptError);
-          throw scriptError;
-        }
-        
-        // 結果を返す
-        if (result && result[0] && result[0].result) {
-          const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
-          const resultData = result[0].result;
-          
-          if (resultData.success) {
-            this.logger.log(`[AITaskExecutor] ✅ Geminiタスク完了 [${cellPosition}セル]:`, {
-              セル: cellPosition,
-              taskId: taskData.taskId,
-              totalTime: `${totalTime}秒`
-            });
-          } else {
-            this.logger.log(`[AITaskExecutor] ⚠️ Geminiタスク失敗 [${cellPosition}セル]:`, {
-              セル: cellPosition,
-              taskId: taskData.taskId,
-              error: resultData.error,
-              totalTime: `${totalTime}秒`
-            });
-          }
-          
-          return resultData;
-        } else {
-          throw new Error('実行結果が不正です');
-        }
-      }
+      // すべてのAIタイプで共通の処理を使用
+      // V2ファイルマップはすでに上で定義済み（Geminiも含む）
       
-      // Gemini以外は従来の処理
-      // V2ファイルマップはすでに上で定義済み
+      // aiTypeの再チェック（念のため）
+      if (!taskData.aiType) {
+        taskData.aiType = 'ChatGPT';
+      }
       
       const aiTypeLower = taskData.aiType.toLowerCase();
       const hasV2 = v2ScriptMap.hasOwnProperty(aiTypeLower);
@@ -186,9 +92,9 @@ export class AITaskExecutor {
         'automations/common-ai-handler.js'
       ];
 
-      // AI固有のスクリプトを追加（統合テストと同じ方式）
-      const aiScript = scriptFileMap[taskData.aiType.toLowerCase()] || 
-                       `automations/${taskData.aiType.toLowerCase()}-automation.js`;
+      // AI固有のスクリプトを追加（V2版を優先）
+      const aiScript = scriptFileMap[aiTypeLower] || 
+                       `automations/${aiTypeLower}-automation.js`;
       
       // 共通スクリプトを順番に注入
       let scriptsToInject = [...commonScripts, aiScript];
@@ -200,13 +106,19 @@ export class AITaskExecutor {
       });
 
       // スクリプトを注入（統合テストと同じ方式）
-      await chrome.scripting.executeScript({
-        target: { tabId: tabId },
-        files: scriptsToInject
-      });
+      for (const scriptFile of scriptsToInject) {
+        this.logger.log(`[AITaskExecutor] 📝 注入中: ${scriptFile}`);
+        await chrome.scripting.executeScript({
+          target: { tabId: tabId },
+          files: [scriptFile]
+        });
+      }
 
       const injectionTime = (performance.now() - injectionStartTime).toFixed(0);
       this.logger.log(`[AITaskExecutor] ✅ [${taskData.aiType}] スクリプト注入完了 (${injectionTime}ms)、初期化確認中...`);
+
+      // スクリプト実行完了を待つ
+      await new Promise(resolve => setTimeout(resolve, 500));
 
       // V2版の存在を確認（全AIタイプ）
       try {
@@ -221,6 +133,8 @@ export class AITaskExecutor {
             const v2Name = v2Names[aiType.toLowerCase()];
             const exists = v2Name && typeof window[v2Name] !== 'undefined';
             console.log(`[V2チェック] ${v2Name}存在確認: ${exists}`);
+            console.log(`[V2チェック] window.ChatGPTAutomationV2:`, window.ChatGPTAutomationV2);
+            console.log(`[V2チェック] typeof window.ChatGPTAutomationV2:`, typeof window.ChatGPTAutomationV2);
             if (exists) {
               console.log(`[V2チェック] ${v2Name}のメソッド:`, Object.keys(window[v2Name]));
             }
