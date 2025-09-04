@@ -1,5 +1,4 @@
 // background.js - Service Worker 
-console.log("AutoAI Service Worker が起動しました");
 
 // ポップアップウィンドウの管理
 let popupWindowId = null;
@@ -14,10 +13,8 @@ async function movePopupToBottomRight() {
     if (storage.extensionWindowId) {
       try {
         extensionWindow = await chrome.windows.get(storage.extensionWindowId);
-        console.log('[Background] Chrome Storageから拡張機能ウィンドウを発見:', storage.extensionWindowId);
       } catch (e) {
         // ウィンドウが既に閉じられている場合
-        console.log('[Background] 保存されたウィンドウIDが無効です');
       }
     }
     
@@ -30,7 +27,6 @@ async function movePopupToBottomRight() {
           const tab = window.tabs[0];
           if (tab.url && tab.url.includes('ui.html')) {
             extensionWindow = window;
-            console.log('[Background] ui.htmlウィンドウを発見:', window.id);
             break;
           }
         }
@@ -38,16 +34,9 @@ async function movePopupToBottomRight() {
     }
     
     if (!extensionWindow) {
-      console.log('[Background] 拡張機能ウィンドウが見つかりません（ui.html）');
       return;
     }
     
-    console.log('[Background] 拡張機能ウィンドウ発見:', {
-      id: extensionWindow.id,
-      type: extensionWindow.type,
-      width: extensionWindow.width,
-      height: extensionWindow.height
-    });
     
     // 画面サイズを取得
     const displays = await chrome.system.display.getInfo();
@@ -73,9 +62,6 @@ async function movePopupToBottomRight() {
     });
     
     popupWindowId = extensionWindow.id;
-    console.log('[Background] 拡張機能ウィンドウを右下に移動しました', {
-      left, top, width: popupWidth, height: popupHeight
-    });
   } catch (error) {
     console.error('[Background] ポップアップ移動エラー:', error);
   }
@@ -144,7 +130,6 @@ globalThis.SpreadsheetLogger = SpreadsheetLogger;
 
 // グローバルにPowerManagerを設定（スリープ防止統一管理）
 globalThis.powerManager = new PowerManager();
-console.log("✅ PowerManager初期化完了");
 
 // ===== ログマネージャー =====
 class LogManager {
@@ -199,7 +184,6 @@ class LogManager {
     
     // 重要なログのみ表示
     if (logEntry.level === 'error' || logEntry.level === 'warning') {
-      console.log(`${icon} [LogManager] ${logEntry.message}`, options.metadata || '');
     }
     
     return logEntry;
@@ -336,7 +320,6 @@ globalThis.logManager = logManager;
 // ===== 初期化完了後の処理 =====
 // モジュール読み込み完了を待ってから初期化処理を実行
 setTimeout(() => {
-  console.log("モジュール読み込み完了、拡張機能初期化中...");
 
   // サービスの初期化確認
   if (
@@ -344,28 +327,18 @@ setTimeout(() => {
     globalThis.sheetsClient &&
     globalThis.docsClient
   ) {
-    console.log("✅ サービス初期化完了");
-    console.log("  - authService: 利用可能");
-    console.log("  - sheetsClient: 利用可能");
-    console.log("  - docsClient: 利用可能");
-    console.log("  - aiWindowManager: 利用可能");
 
     // 拡張機能インストール時の処理
     chrome.runtime.onInstalled.addListener(async () => {
-      console.log("拡張機能がインストール/更新されました");
       // 自動認証は無効化（必要時のみ実行）
     });
 
     // Chrome起動時の処理
     chrome.runtime.onStartup.addListener(async () => {
-      console.log("Chromeが起動しました");
       // 自動認証は無効化（必要時のみ実行）
     });
   } else {
     console.error("❌ サービス初期化に失敗しました");
-    console.log("authService:", typeof globalThis.authService);
-    console.log("sheetsClient:", typeof globalThis.sheetsClient);
-    console.log("docsClient:", typeof globalThis.docsClient);
   }
 }, 2000); // 2秒待機
 
@@ -382,7 +355,6 @@ async function executeAITask(tabId, taskData) {
   
   // セル位置情報を含む詳細ログ
   const cellInfo = taskData.cellInfo || {};
-  console.log('[Background] cellInfo受信:', cellInfo, 'taskData:', taskData);
   const cellPosition = cellInfo.column && cellInfo.row ? `${cellInfo.column}${cellInfo.row}` : '不明';
   
   logManager.logAI(taskData.aiType, `📊 (${taskData.aiType}) Step1: スプレッドシート処理開始 [${cellPosition}セル]`, {
@@ -530,7 +502,6 @@ function processSpreadsheetData(spreadsheetData) {
     }
   });
   
-  console.log("[Background] 処理後のaiColumns:", result.aiColumns);
 
   return result;
 }
@@ -566,7 +537,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // Keep-Aliveメッセージの処理
     case "KEEP_ALIVE_PING":
       // PowerManagerからのKeep-Aliveメッセージ（処理不要、ログのみ）
-      console.log(`📡 [MessageHandler] Keep-Alive ping受信: ${new Date(request.timestamp).toLocaleTimeString()}`);
       sendResponse({ success: true });
       return false;
     // ===== AI詳細ログメッセージ受信 =====
@@ -584,7 +554,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     case "SELECTOR_DETECTION_LOG":
       if (request.log) {
         const { timestamp, message, type, aiType } = request.log;
-        console.log(`[SelectorDetectionLog] [${timestamp}] [${aiType || 'SYSTEM'}] ${message}`);
         
         // LogManagerに送信（拡張機能UI用）
         logManager.logAI(aiType || 'selector_detection', message, {
@@ -601,7 +570,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     // ===== AIタスク実行（コンテンツスクリプトから転送） =====
     case "executeAITask":
-      console.log("[MessageHandler] 📨 AIタスク実行要求受信:", {
         from: sender.tab?.url?.split('?')[0],  // URLからクエリパラメータを除外
         tabId: sender.tab?.id,
         aiType: request.taskData?.aiType,
@@ -622,7 +590,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       // 非同期でAIタスクを実行
       executeAITask(sender.tab.id, request.taskData)
         .then(result => {
-          console.log("[MessageHandler] ✅ AIタスク応答送信:", {
             aiType: request.taskData?.aiType,
             taskId: request.taskData?.taskId,
             success: result.success,
@@ -644,7 +611,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     
     // ===== Google Sheetsデータ取得 =====
     case "getSheetsData":
-      console.log("[MessageHandler] 📊 Sheetsデータ取得要求:", {
         spreadsheetId: request.spreadsheetId,
         range: request.range
       });
@@ -670,7 +636,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       // Google Sheets APIを呼び出してデータ取得（Promise形式）
       globalThis.sheetsClient.getSheetData(request.spreadsheetId, request.range)
         .then(data => {
-          console.log("[MessageHandler] ✅ Sheetsデータ取得成功:", {
             rowsCount: data?.values?.length || 0,
             firstRow: data?.values?.[0]
           });
@@ -715,7 +680,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       (async () => {
         try {
           const url = request.urls && request.urls[0];
-          console.log("[MessageHandler] 列追加実行:", url);
 
           if (!url) {
             sendResponse({
@@ -766,7 +730,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         try {
           // 新旧フォーマット対応
           const url = request.url || (request.urls && request.urls[0]);
-          console.log("[MessageHandler] スプレッドシート読み込み:", url);
 
           if (!url) {
             sendResponse({
@@ -787,7 +750,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           }
 
           // 2. データを読み込み
-          console.log("シートデータ読み込み中...");
           const updatedSpreadsheetData =
             await globalThis.sheetsClient.loadAutoAIData(spreadsheetId, gid);
 
@@ -803,26 +765,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           processedData.modelRow = updatedSpreadsheetData.modelRow;
           processedData.taskRow = updatedSpreadsheetData.taskRow;
           
-          console.log("[Background] 処理されたデータ:", {
-            aiColumns: processedData.aiColumns,
-            columnCount: Object.keys(processedData.columnMapping || {}).length,
-            valueRows: updatedSpreadsheetData.values?.length || 0,
-            modelRow: !!processedData.modelRow,
-            taskRow: !!processedData.taskRow
-          });
 
           // 4. タスクを生成
-          console.log("タスク生成中...");
           
           // V2モード切り替えフラグ
           const USE_V2_MODE = true; // true: V2版を使用, false: 従来版を使用
           
           let taskGenerator;
           if (USE_V2_MODE) {
-            console.log("[Background] 🚀 V2モードでタスク生成");
             taskGenerator = new TaskGeneratorV2();
           } else {
-            console.log("[Background] 従来モードでタスク生成");
             taskGenerator = new TaskGenerator();
           }
           
@@ -863,7 +815,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             taskCount: taskList.tasks ? taskList.tasks.length : 0,
             taskQueueStatus: saveResult,
           };
-          console.log("[MessageHandler] レスポンス:", response);
           sendResponse(response);
         } catch (error) {
           console.error("[MessageHandler] エラー:", error);
@@ -897,12 +848,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     // ----- 自動テスト関連 -----
     case "checkServiceWorkerStatus":
-      console.log("[MessageHandler] Service Worker ステータスチェック");
       sendResponse({ status: "ready", message: "Service Worker is active" });
       return false;
 
     case "checkAutoAIStatus":
-      console.log("[MessageHandler] AutoAI ステータスチェック");
       const manager = getStreamingServiceManager();
       sendResponse({
         status: "ready",
@@ -912,13 +861,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return false;
 
     case "testServiceWorker":
-      console.log("[MessageHandler] テストメッセージ受信:", request);
       sendResponse({ success: true, echo: request.data });
       return false;
 
     // ===== コンテンツスクリプトからのメッセージ =====
     case "contentScriptReady":
-      console.log("[MessageHandler] コンテンツスクリプト準備完了:", {
         tabId: sender.tab?.id,
         url: sender.tab?.url,
         aiType: request.aiType
@@ -927,7 +874,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return false;
 
     case "aiResponse":
-      console.log("[MessageHandler] AI応答受信:", {
         tabId: sender.tab?.id,
         taskId: request.taskId,
         responseLength: request.response?.length || 0
@@ -937,7 +883,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     // ===== ストリーミング処理開始 =====
     case "streamProcessTasks":
-      console.log("[MessageHandler] ストリーミング処理開始要求:", {
         spreadsheetId: request.spreadsheetId,
         taskCount: request.tasks?.length || 0,
         testMode: request.testMode
@@ -982,7 +927,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       
     // ===== タスクリストストリーミング処理（AI Orchestratorから） =====
     case "streamProcessTaskList":
-      console.log("🚀 [MessageHandler] タスクリストストリーミング処理要求:", {
         taskListSize: request.taskList?.tasks?.length || 0,
         testMode: request.testMode,
         spreadsheetId: request.spreadsheetId,
@@ -1008,10 +952,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           
           let processor;
           if (USE_V2_MODE) {
-            console.log("[Background] 🚀 V2モードでStreamProcessor実行");
             processor = new StreamProcessorV2();
           } else {
-            console.log("[Background] 従来モードでStreamProcessor実行");
             processor = new StreamProcessor();
           }
           
@@ -1032,7 +974,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               values: sheetData.values || []
             };
             
-            console.log("[Background] スプレッドシートデータ読み込み完了:", {
               rows: spreadsheetData.values.length,
               columns: spreadsheetData.values[0]?.length || 0,
               sheetName: spreadsheetData.sheetName
@@ -1054,7 +995,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             taskListMode: true
           });
           
-          console.log("✅ [MessageHandler] StreamProcessor実行結果:", result);
         } catch (error) {
           console.error("❌ [MessageHandler] タスクリストストリーミング処理エラー:", error);
           console.error("❌ [Debug] エラー詳細:", {
@@ -1069,7 +1009,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     // ===== テストウィンドウ作成 =====
     case "createTestWindow":
-      console.log("[MessageHandler] テストウィンドウ作成要求:", {
         aiType: request.aiType,
         url: request.url
       });
@@ -1106,7 +1045,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     // ===== 画面情報取得 =====
     case "getScreenInfo":
-      console.log("[MessageHandler] 画面情報取得要求");
       
       (async () => {
         try {
@@ -1133,7 +1071,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     
     // ===== テストウィンドウ閉じる =====
     case "closeTestWindow":
-      console.log("[MessageHandler] ウィンドウクローズ要求:", request.data);
       
       (async () => {
         try {
@@ -1152,7 +1089,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     // ===== リトライ用新規ウィンドウ作成 =====
     case "RETRY_WITH_NEW_WINDOW":
-      console.log("[MessageHandler] リトライ用新規ウィンドウ作成要求:", {
         taskId: request.taskId,
         aiType: request.aiType,
         error: request.error
@@ -1233,7 +1169,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     
     // ===== リトライ通知 =====
     case "RETRY_NOTIFICATION":
-      console.log("[MessageHandler] リトライ通知:", request.data);
       
       // UIタブに通知を転送
       (async () => {
@@ -1257,7 +1192,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // ===== AITaskHandlerログ設定 =====
     // test-runner-chrome.jsからのログ関数設定要求
     case "setAITaskLogger":
-      console.log("[MessageHandler] AITaskHandlerログ設定要求");
       
       // 拡張機能のログ関数を設定
       const extensionLogFunction = (message, type = 'info') => {
@@ -1287,7 +1221,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     // ===== セレクタデータ転送 =====
     case "selector-data":
-      console.log("[MessageHandler] 📡 セレクタデータ受信:", {
         from: sender.tab?.url,
         tabId: sender.tab?.id,
         aiTypes: Object.keys(request.data || {}),
@@ -1303,7 +1236,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             );
             
             // セレクタデータは直接処理（転送不要）
-            console.log("[MessageHandler] 📡 セレクタデータ受信:", {
               from: sender.tab?.url,
               tabId: sender.tab?.id,
               dataKeys: Object.keys(request.data || {}),
@@ -1327,7 +1259,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                   type: 'selector-data',
                   data: request.data
                 });
-                console.log("[MessageHandler] ✅ ポート経由でセレクタデータを転送");
               } else {
                 console.warn("[MessageHandler] ⚠️ UIウィンドウが見つかりません");
               }
@@ -1349,7 +1280,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 type: 'selector-data',
                 data: request.data
               });
-              console.log("[MessageHandler] ✅ ポート経由でセレクタデータを転送");
             } else {
               console.warn("[MessageHandler] ⚠️ UIポートが利用できません");
             }
@@ -1379,7 +1309,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     case "clearLog":
       (async () => {
         try {
-          console.log("[MessageHandler] ログクリア要求:", request.spreadsheetId);
           
           if (!request.spreadsheetId) {
             throw new Error("スプレッドシートIDが指定されていません");
@@ -1388,7 +1317,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           // SheetsClientを使用してログをクリア
           const result = await sheetsClient.clearSheetLogs(request.spreadsheetId);
           
-          console.log("[MessageHandler] ログクリア完了:", result);
           sendResponse({ 
             success: true, 
             clearedCount: result.clearedCount || 0,
@@ -1430,7 +1358,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     case "deleteAnswers":
       (async () => {
         try {
-          console.log("[MessageHandler] 回答削除要求:", request.spreadsheetId);
           
           if (!request.spreadsheetId) {
             throw new Error("スプレッドシートIDが指定されていません");
@@ -1439,7 +1366,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           // SheetsClientを使用してAI回答を削除
           const result = await sheetsClient.deleteAnswers(request.spreadsheetId);
           
-          console.log("[MessageHandler] 回答削除完了:", result);
           sendResponse({ 
             success: true, 
             deletedCount: result.deletedCount || 0,
@@ -1537,16 +1463,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             const streamProcessor = manager?.serviceRegistry?.get("StreamProcessor");
             spreadsheetLogger = streamProcessor?.spreadsheetLogger;
           } catch (error) {
-            console.log(`⚠️ [MessageHandler] StreamProcessor取得失敗: ${error.message}`);
           }
           
           // 方法2: グローバルSpreadsheetLoggerを使用（フォールバック）
           if (!spreadsheetLogger && globalThis.spreadsheetLogger) {
             spreadsheetLogger = globalThis.spreadsheetLogger;
-            console.log(`🔄 [MessageHandler] グローバルSpreadsheetLoggerを使用`);
           }
           
-          console.log(`🔍 [MessageHandler] 送信時刻記録要求受信:`, {
             taskId: request.taskId,
             sendTime: request.sendTime,
             aiType: request.taskInfo?.aiType,
@@ -1559,7 +1482,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             // ISO文字列をDateオブジェクトに変換
             const sendTime = new Date(request.sendTime);
             
-            console.log(`📝 [MessageHandler] 送信時刻をSpreadsheetLoggerに記録開始: ${request.taskId}`);
             
             // SpreadsheetLoggerのrecordSendTimeを呼び出し（送信時刻を直接設定）
             spreadsheetLogger.sendTimestamps.set(request.taskId, {
@@ -1568,7 +1490,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               model: request.taskInfo.model || '不明'
             });
             
-            console.log(`✅ [MessageHandler] 送信時刻記録成功: ${request.taskId}, 時刻=${sendTime.toLocaleString('ja-JP')}, AI=${request.taskInfo?.aiType}, モデル=${request.taskInfo?.model}`);
             
             // 拡張機能のログシステムにも記録
             if (globalThis.logManager) {
@@ -1606,7 +1527,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     case "testAiSelector":
       (async () => {
         try {
-          console.log("[TestHandler] AIセレクタ変更検出テスト開始");
           
           // AIセレクタの検出処理（実際の実装はAI検出システムを使用）
           sendResponse({ 
@@ -1627,7 +1547,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     case "startIntegratedTest":
       (async () => {
         try {
-          console.log("[TestHandler] 統合AIテスト開始");
           
           // テスト用のウィンドウを作成
           const windows = [];
@@ -1672,7 +1591,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     case "generateReport":
       (async () => {
         try {
-          console.log("[TestHandler] レポート生成テスト開始");
           
           // レポート生成処理（簡易実装）
           const reportData = {
@@ -1720,7 +1638,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     case "getAIStatus":
       (async () => {
         try {
-          console.log("[TestHandler] AIステータス取得");
           
           // ストレージからAI設定を取得
           const result = await chrome.storage.local.get(['ai_config_persistence']);

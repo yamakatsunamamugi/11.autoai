@@ -28,11 +28,9 @@ async function getSpreadsheetLogger() {
       } else if (globalThis.spreadsheetLogger) {
         SpreadsheetLogger = globalThis.spreadsheetLogger.constructor;
       } else {
-        console.warn('[StreamProcessorV2] SpreadsheetLoggerがグローバルに見つかりません');
         return null;
       }
     } catch (error) {
-      console.warn('[StreamProcessorV2] SpreadsheetLoggerの取得に失敗', error);
       return null;
     }
   }
@@ -65,10 +63,8 @@ export default class StreamProcessorV2 {
         if (!globalThis.spreadsheetLogger) {
           globalThis.spreadsheetLogger = this.spreadsheetLogger;
         }
-        this.logger.log('[StreamProcessorV2] SpreadsheetLoggerを初期化しました');
       }
     } catch (error) {
-      this.logger.warn('[StreamProcessorV2] SpreadsheetLogger初期化エラー:', error.message);
     }
   }
 
