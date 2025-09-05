@@ -541,7 +541,8 @@ export default class StreamProcessorV2 {
                   model: context.task.model || 'Auto',
                   function: context.task.function || '通常',
                   displayedModel: result.displayedModel || context.task.displayedModel || context.task.model || 'Auto',
-                  displayedFunction: context.task.displayedFunction || result.displayedFunction || context.task.function || '通常'
+                  // displayedFunctionはPhase3で保存された値を最優先、次にsend結果、機能未指定の場合は'通常'
+                  displayedFunction: context.task.displayedFunction || result.displayedFunction || '通常'
                 };
                 
                 // ログセルを特定
