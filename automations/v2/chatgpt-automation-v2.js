@@ -1649,13 +1649,48 @@
                     // ModelInfoExtractorを使用（グローバルに登録されている）
                     if (window.ModelInfoExtractor) {
                         displayedModel = window.ModelInfoExtractor.extract('ChatGPT') || '';
+                        log(`📊 ModelInfoExtractor結果: "${displayedModel}"`, 'info');
+                    } else {
+                        log('⚠️ ModelInfoExtractorが利用できません', 'warn');
                     }
+                    
                     // FunctionInfoExtractorを使用
                     if (window.FunctionInfoExtractor) {
                         displayedFunction = window.FunctionInfoExtractor.extract('ChatGPT') || '';
+                        log(`📊 FunctionInfoExtractor結果: "${displayedFunction}"`, 'info');
+                        
+                        // 空文字の場合の診断
+                        if (!displayedFunction) {
+                            log('⚠️ 機能情報が取得できませんでした。UIの状態を診断します...', 'warn');
+                            
+                            // Canvas パネルの存在確認
+                            const canvasPanel = document.querySelector('#prosemirror-editor-container');
+                            log(`  - Canvasパネル (#prosemirror-editor-container): ${canvasPanel ? '存在' : '存在しない'}`, 'info');
+                            
+                            // 機能ボタンの確認
+                            const pillButtons = document.querySelectorAll('button[data-pill="true"]');
+                            log(`  - 機能ボタン (data-pill="true"): ${pillButtons.length}個`, 'info');
+                            if (pillButtons.length > 0) {
+                                pillButtons.forEach((btn, idx) => {
+                                    log(`    [${idx}] ${btn.textContent?.trim() || '(テキストなし)'}`, 'info');
+                                });
+                            }
+                            
+                            // メニュー項目の確認
+                            const checkedItems = document.querySelectorAll('[role="menuitemradio"][aria-checked="true"]');
+                            log(`  - 選択されたメニュー項目: ${checkedItems.length}個`, 'info');
+                            if (checkedItems.length > 0) {
+                                checkedItems.forEach((item, idx) => {
+                                    log(`    [${idx}] ${item.textContent?.trim() || '(テキストなし)'}`, 'info');
+                                });
+                            }
+                        }
+                    } else {
+                        log('⚠️ FunctionInfoExtractorが利用できません', 'warn');
                     }
                 } catch (e) {
-                    log('モデル/機能情報の取得に失敗（処理は継続）', 'warn');
+                    log(`❌ モデル/機能情報の取得エラー: ${e.message}`, 'error');
+                    console.error(e);
                 }
                 
                 return { 
