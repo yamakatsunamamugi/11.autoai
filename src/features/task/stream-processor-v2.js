@@ -398,7 +398,11 @@ export default class StreamProcessorV2 {
               hasWriteMethod: !!(this.spreadsheetLogger?.writeLogToSpreadsheet),
               taskId: task.id,
               row: task.row,
-              logColumns: task.logColumns
+              logColumns: task.logColumns,
+              groupId: task.groupId,
+              groupType: task.groupType,
+              groupPosition: task.groupPosition,
+              multiAI: task.multiAI
             });
             
             // 現在のURLを取得

@@ -165,6 +165,12 @@
     async function executeCore(modelName, featureName, promptText) {
         const testResults = [];
         const isCanvasMode = featureName && featureName.toLowerCase().includes('canvas');
+        const isDeepResearchMode = featureName && (
+            featureName.toLowerCase().includes('deep research') || 
+            featureName.toLowerCase().includes('deep') ||
+            featureName === 'DeepReserch' ||
+            featureName === 'DeepResearch'
+        );
         
         const logStep = async (stepName, stepFunction) => {
             try {
@@ -354,23 +360,14 @@
             
             // ステップ4: 応答待機
             const responseText = await logStep('ステップ4: 応答待機', () => new Promise(async (resolve, reject) => {
-                // Deep Researchモードの判定
+                // Deep Researchモードの判定（executeCoreで定義済みの変数を使用）
                 console.log(`🔍 [機能判定] Gemini機能チェック:`, {
                     featureName: featureName,
-                    isDeepResearch: featureName === 'DeepResearch',
-                    isDeepReserch: featureName === 'DeepReserch', 
-                    containsDeepResearch: featureName && featureName.toLowerCase().includes('deep research'),
-                    containsDeep: featureName && featureName.toLowerCase().includes('deep')
+                    isDeepResearchMode: isDeepResearchMode,
+                    isCanvasMode: isCanvasMode
                 });
                 
-                const isDeepResearchMode = featureName && (
-                    featureName.toLowerCase().includes('deep research') || 
-                    featureName.toLowerCase().includes('deep') ||
-                    featureName === 'DeepReserch' ||  // 追加
-                    featureName === 'DeepResearch'    // 追加
-                );
-                
-                console.log(`🎯 [機能判定] Gemini特別モード判定結果: ${isDeepResearchMode} (機能: "${featureName}")`);
+                console.log(`🎯 [機能判定] Gemini特別モード判定結果: ${isDeepResearchMode ? 'Deep Research' : isCanvasMode ? 'Canvas' : '通常'} (機能: "${featureName}")`);
                 
                 log(`待機モード: ${isDeepResearchMode ? '🔬 Deep Research' : isCanvasMode ? '🎨 Canvas' : '💬 通常'}`, 'info');
                 
@@ -512,70 +509,40 @@
             
             // ステップ5: テキスト取得（ui-selectorsを使用）
             await logStep('ステップ5: テキスト取得', async () => {
-                let textElement;
                 let text = '';
                 
-                // ui-selectorsから取得、フォールバック付き
-                const textSelectors = GeminiSelectorsFromUI.TEXT_EXTRACTION || {
-                    EXTENDED_RESPONSE: [
-                        // Deep ResearchとCanvas共通の拡張応答セレクタ
-                        '#extended-response-markdown-content .ProseMirror',
-                        '#extended-response-message-content .ProseMirror',
-                        '.immersive-editor .ProseMirror',
-                        '#extended-response-markdown-content',
-                        '.extended-response-markdown-content',
-                        '.ProseMirror[contenteditable="true"]',
-                        '.ProseMirror',
-                        '.markdown.markdown-main-panel',
-                        'div[class*="deep-research"]',
-                        'div[class*="research-result"]',
-                        'div[contenteditable="true"]',
-                        'div[class*="canvas"]'
-                    ],
-                    MESSAGE_CONTAINER: [
-                        '.model-response-text',
-                        'div[class*="model-response"]',
-                        '.message-content',
-                        'div[class*="gemini-response"]',
-                        'div[class*="assistant-message"]'
-                    ],
-                    MESSAGE_CONTENT: [
-                        '.markdown',
-                        'div[class*="markdown"]',
-                        '.prose',
-                        'div[class*="text-base"]'
-                    ],
-                    GENERIC_RESPONSE: [
-                        'div[data-message-role="model"]',
-                        'div[class*="message"][class*="assistant"]',
-                        'article[class*="response"]',
-                        'section[class*="output"]'
-                    ]
-                };
+                // 方法1: Canvas/拡張応答を実際のDOM要素で判定して優先的に取得
+                const canvasSelectors = [
+                    '.ProseMirror[contenteditable="true"][translate="no"]',  // Canvasエディタの正確なセレクタ
+                    'div[contenteditable="true"][translate="no"].ProseMirror',
+                    '#extended-response-markdown-content .ProseMirror',
+                    '#extended-response-message-content .ProseMirror',
+                    '.immersive-editor .ProseMirror',
+                    '.ProseMirror[contenteditable="true"]',
+                    '.ProseMirror'
+                ];
                 
-                // 方法1: Deep ResearchまたはCanvasモードの拡張応答を取得
-                if (isDeepResearchMode || isCanvasMode) {
-                    log(`${isDeepResearchMode ? 'Deep Research' : 'Canvas'}の拡張応答を探しています...`);
-                    
-                    for (const selector of textSelectors.EXTENDED_RESPONSE) {
-                        textElement = findElement([selector]);
-                        if (textElement) {
-                            text = textElement.textContent?.trim() || '';
-                            if (text && text.length > 10) {
-                                log(`拡張応答取得成功 (${selector}): ${text.length}文字`, 'success');
-                                break;
-                            }
+                // Canvas/拡張応答のチェック
+                for (const selector of canvasSelectors) {
+                    const canvasElement = findElement([selector]);
+                    if (canvasElement) {
+                        text = canvasElement.textContent?.trim() || '';
+                        if (text && text.length > 10) {
+                            log(`Canvas/拡張応答取得成功 (${selector}): ${text.length}文字`, 'success');
+                            break;
                         }
                     }
                 }
                 
-                // 方法2: 通常の応答メッセージを取得（ui-selectorsを使用）
+                // 方法2: 通常の応答メッセージを取得
                 if (!text) {
-                    log('通常処理テキスト取得試行', 'info');
+                    log('通常テキスト取得試行', 'info');
                     
-                    // ui-selectorsのNORMAL_RESPONSEセレクタを使用
-                    const normalSelectors = textSelectors.NORMAL_RESPONSE || [
+                    // 通常テキストのセレクタ
+                    const normalSelectors = [
+                        '.model-response-text .markdown.markdown-main-panel',  // 最も具体的なセレクタ
                         '.model-response-text .markdown',
+                        '.markdown.markdown-main-panel',
                         '.model-response-text',
                         '.conversation-turn .markdown',
                         'div[class*="model-response"] .markdown'
@@ -588,40 +555,32 @@
                             text = latestResponse.textContent?.trim() || '';
                             
                             if (text && text.length > 10) {
-                                log(`通常処理テキスト取得成功 (${selector}): ${text.length}文字`, 'success');
-                                log(`最初の100文字: ${text.substring(0, 100)}...`, 'info');
+                                log(`通常テキスト取得成功 (${selector}): ${text.length}文字`, 'success');
                                 break;
                             }
                         }
                     }
                     
-                    // フォールバック: MESSAGE_CONTAINERセレクタも試行
-                    if (!text) {
-                        for (const selector of textSelectors.MESSAGE_CONTAINER) {
-                            const elements = findElements([selector]);
-                            if (elements.length > 0) {
-                                const lastElement = elements[elements.length - 1];
-                                text = lastElement.textContent?.trim() || '';
-                                if (text && text.length > 10) {
-                                    log(`フォールバック取得成功 (${selector}): ${text.length}文字`, 'success');
-                                    break;
-                                }
-                            }
-                        }
-                    }
                 }
                 
-                // 方法3: 削除（EXTENDED_RESPONSEに統合済み）
-                
-                // 方法3: より汎用的なセレクタで探す
+                // 方法3: フォールバック - より汎用的なセレクタで探す
                 if (!text) {
-                    for (const selector of textSelectors.GENERIC_RESPONSE) {
+                    log('フォールバックセレクタで取得試行', 'info');
+                    const fallbackSelectors = [
+                        '.model-response-text',
+                        'div[class*="model-response"]',
+                        '.message-content',
+                        'div[data-message-role="model"]',
+                        'div[class*="message"][class*="assistant"]'
+                    ];
+                    
+                    for (const selector of fallbackSelectors) {
                         const elements = findElements([selector]);
                         if (elements.length > 0) {
                             const lastElement = elements[elements.length - 1];
                             text = lastElement.textContent?.trim() || '';
                             if (text && text.length > 10) {
-                                log(`汎用セレクタ取得成功 (${selector}): ${text.length}文字`, 'success');
+                                log(`フォールバック取得成功 (${selector}): ${text.length}文字`, 'success');
                                 break;
                             }
                         }

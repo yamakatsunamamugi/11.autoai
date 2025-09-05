@@ -257,12 +257,33 @@ export class SpreadsheetLogger {
       const writeTime = new Date();
       
       // ログエントリーを生成
-      const newLog = this.formatLogEntry(
-        task,
-        url || (typeof window !== 'undefined' ? window.location.href : 'N/A'),
-        sendTimeInfo.time,
-        writeTime
-      );
+      let newLog;
+      try {
+        newLog = this.formatLogEntry(
+          task,
+          url || (typeof window !== 'undefined' ? window.location.href : 'N/A'),
+          sendTimeInfo.time,
+          writeTime
+        );
+      } catch (formatError) {
+        console.error('[SpreadsheetLogger] formatLogEntryエラー:', formatError);
+        console.error('[SpreadsheetLogger] エラー詳細:', {
+          errorMessage: formatError.message,
+          errorStack: formatError.stack,
+          taskData: {
+            id: task.id,
+            aiType: task.aiType,
+            model: task.model,
+            function: task.function,
+            row: task.row,
+            column: task.column
+          },
+          sendTimeInfo: sendTimeInfo,
+          url: url
+        });
+        // フォールバック: シンプルなログを生成
+        newLog = `${task.aiType || 'Unknown'} - ${writeTime.toLocaleString('ja-JP')} - エラーにより簡易ログ`;
+      }
       
       // 3種類AIグループタスクの場合、段階的にログを記載
       console.log(`[SpreadsheetLogger] グループタスク判定: isGroupTask=${options.isGroupTask}`);
