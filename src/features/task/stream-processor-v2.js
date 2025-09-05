@@ -71,13 +71,26 @@ export default class StreamProcessorV2 {
   async initializeSpreadsheetLogger() {
     try {
       const LoggerClass = await getSpreadsheetLogger();
+      this.logger.log(`[StreamProcessorV2] SpreadsheetLogger初期化:`, {
+        LoggerClassFound: !!LoggerClass,
+        globalSpreadsheetLogger: !!globalThis.spreadsheetLogger,
+        globalSpreadsheetLoggerType: typeof globalThis.spreadsheetLogger
+      });
+      
       if (LoggerClass) {
         this.spreadsheetLogger = globalThis.spreadsheetLogger || new LoggerClass(this.logger);
         if (!globalThis.spreadsheetLogger) {
           globalThis.spreadsheetLogger = this.spreadsheetLogger;
         }
+        this.logger.log(`[StreamProcessorV2] SpreadsheetLogger初期化完了:`, {
+          spreadsheetLoggerSet: !!this.spreadsheetLogger,
+          hasWriteMethod: !!(this.spreadsheetLogger?.writeLogToSpreadsheet)
+        });
+      } else {
+        this.logger.warn(`[StreamProcessorV2] SpreadsheetLoggerクラスが見つかりません`);
       }
     } catch (error) {
+      this.logger.error(`[StreamProcessorV2] SpreadsheetLogger初期化エラー:`, error);
     }
   }
 
@@ -374,6 +387,20 @@ export default class StreamProcessorV2 {
             );
             
             this.logger.log(`[StreamProcessorV2] 📝 ${range}に応答を書き込みました`);
+            
+            // デバッグ: SpreadsheetLoggerの状態確認
+            this.logger.log(`[StreamProcessorV2] ログ書き込み前チェック:`, {
+              hasSpreadsheetLogger: !!this.spreadsheetLogger,
+              spreadsheetLoggerType: typeof this.spreadsheetLogger,
+              hasTask: !!context.task,
+              taskLogColumns: context.task?.logColumns,
+              logColumnsLength: context.task?.logColumns?.length || 0,
+              taskDetails: {
+                id: context.task?.id,
+                row: context.task?.row,
+                column: context.task?.column
+              }
+            });
             
             // SpreadsheetLoggerでログを記録
             if (this.spreadsheetLogger && context.task.logColumns && context.task.logColumns.length > 0) {
