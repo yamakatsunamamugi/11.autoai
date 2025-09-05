@@ -122,7 +122,9 @@ const UI_SELECTORS_LOCAL = window.UI_SELECTORS || {
     }
 };
 
-class ModelInfoExtractor {
+// グローバルにクラスが存在しない場合のみ定義
+if (typeof window.ModelInfoExtractor === 'undefined') {
+    class ModelInfoExtractor {
     
     static extract(aiType) {
         const normalizedAiType = aiType.toLowerCase();
@@ -304,9 +306,12 @@ class ModelInfoExtractor {
         }
     }
 }
+}
 
 // FunctionInfoExtractor クラスの追加
-class FunctionInfoExtractor {
+// グローバルにクラスが存在しない場合のみ定義
+if (typeof window.FunctionInfoExtractor === 'undefined') {
+    class FunctionInfoExtractor {
     
     static extract(aiType) {
         const normalizedAiType = aiType.toLowerCase();
@@ -554,8 +559,19 @@ class FunctionInfoExtractor {
         }
     }
 }
+}
 
-// グローバルに登録
-window.ModelInfoExtractor = ModelInfoExtractor;
-window.FunctionInfoExtractor = FunctionInfoExtractor;
-console.log('✅ [11.autoai] ModelInfoExtractorとFunctionInfoExtractorをグローバルに登録しました');
+// グローバルに登録（既に存在する場合はスキップ）
+if (typeof window.ModelInfoExtractor === 'undefined') {
+    window.ModelInfoExtractor = ModelInfoExtractor;
+    console.log('✅ [11.autoai] ModelInfoExtractorをグローバルに登録しました');
+} else {
+    console.log('ℹ️ [11.autoai] ModelInfoExtractorは既に登録済みです');
+}
+
+if (typeof window.FunctionInfoExtractor === 'undefined') {
+    window.FunctionInfoExtractor = FunctionInfoExtractor;
+    console.log('✅ [11.autoai] FunctionInfoExtractorをグローバルに登録しました');
+} else {
+    console.log('ℹ️ [11.autoai] FunctionInfoExtractorは既に登録済みです');
+}
