@@ -1595,7 +1595,7 @@
                     // サブメニューが開いたか確認
                     let subMenu = document.querySelector('[data-side="right"]');
                     
-                    // サブメニューが開かない場合、フォールバックとして1回だけクリックを試みる
+                    // サブメニューが開かない場合、複数の方法を試す
                     if (!subMenu) {
                         log('ホバーでサブメニューが開かないため、クリックを試行', 'info');
                         moreBtn.focus();
@@ -1605,11 +1605,50 @@
                         subMenu = document.querySelector('[data-side="right"]');
                     }
                     
+                    // それでも開かない場合は、ポインターイベントで試す
+                    if (!subMenu) {
+                        log('サブメニューが開きませんでした', 'warn');
+                        const rect = moreBtn.getBoundingClientRect();
+                        const x = rect.left + rect.width / 2;
+                        const y = rect.top + rect.height / 2;
+                        
+                        moreBtn.dispatchEvent(new PointerEvent('pointerenter', {
+                            bubbles: true,
+                            clientX: x,
+                            clientY: y
+                        }));
+                        
+                        await sleep(500);
+                        subMenu = document.querySelector('[data-side="right"]');
+                    }
+                    
+                    // 最終手段: キーボード操作
+                    if (!subMenu) {
+                        log('最終手段: キーボード操作を試行', 'warn');
+                        moreBtn.focus();
+                        await sleep(100);
+                        
+                        moreBtn.dispatchEvent(new KeyboardEvent('keydown', {
+                            key: 'Enter',
+                            code: 'Enter',
+                            bubbles: true
+                        }));
+                        
+                        await sleep(500);
+                        subMenu = document.querySelector('[data-side="right"]');
+                    }
+                    
                     if (subMenu) {
                         log('サブメニューが開きました', 'success');
                         featureElement = findElementByText('[role="menuitemradio"]', functionName, subMenu);
                     } else {
                         log('⚠️ サブメニューが開きませんでした', 'warning');
+                        // 機能選択を失敗として扱う
+                        return {
+                            success: false,
+                            error: 'サブメニューを開けませんでした',
+                            displayedFunction: ''
+                        };
                     }
                 }
             }
