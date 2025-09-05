@@ -346,7 +346,7 @@ export default class StreamProcessorV2 {
         const modelResult = await this.executePhaseOnTab(context.tabId, context.task, 'model');
         
         // 実際に選択されたモデルを保存
-        if (modelResult && modelResult.displayedModel !== undefined) {
+        if (modelResult && modelResult.success !== false && modelResult.displayedModel !== undefined) {
           context.task.displayedModel = modelResult.displayedModel;
           this.logger.log(`[StreamProcessorV2] 選択されたモデルを記録: ${context.task.model || 'Auto'} → ${modelResult.displayedModel || '(取得できず)'}`);
         }
@@ -376,11 +376,12 @@ export default class StreamProcessorV2 {
           functionResult = await this.executePhaseOnTab(context.tabId, context.task, 'function');
           
           // 機能選択が成功したかチェック
-          if (functionResult && functionResult.success !== false && 
-              (functionResult.displayedFunction !== undefined && functionResult.displayedFunction !== '')) {
-            // 成功：実際に選択された機能を保存
-            context.task.displayedFunction = functionResult.displayedFunction;
-            this.logger.log(`[StreamProcessorV2] ✅ 選択された機能を記録: ${context.task.function || '通常'} → ${functionResult.displayedFunction || '(取得できず)'}`);
+          if (functionResult && functionResult.success !== false) {
+            // 成功：実際に選択された機能を保存（空文字でも保存）
+            if (functionResult.displayedFunction !== undefined) {
+              context.task.displayedFunction = functionResult.displayedFunction;
+              this.logger.log(`[StreamProcessorV2] ✅ 選択された機能を記録: ${context.task.function || '通常'} → ${functionResult.displayedFunction || '(空/通常)'}`);
+            }
             break; // 成功したらループを抜ける
           }
           
@@ -610,7 +611,8 @@ export default class StreamProcessorV2 {
       // 共通スクリプト
       const commonScripts = [
         'automations/feature-constants.js',
-        'automations/common-ai-handler.js'
+        'automations/common-ai-handler.js',
+        'src/content/model-info-loader.js'  // FunctionInfoExtractorとModelInfoExtractorを含む
       ];
       
       // AI固有のスクリプト
