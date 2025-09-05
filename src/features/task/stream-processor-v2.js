@@ -467,6 +467,17 @@ export default class StreamProcessorV2 {
           this.logger.error(`[StreamProcessorV2] ⚠️ ${context.cell}の応答が取得できませんでした`);
         }
         
+        // ウィンドウを閉じる
+        try {
+          const tab = await chrome.tabs.get(context.tabId);
+          if (tab && tab.windowId) {
+            await chrome.windows.remove(tab.windowId);
+            this.logger.log(`[StreamProcessorV2] 🔒 ウィンドウを閉じました: ${context.cell} - WindowID: ${tab.windowId}`);
+          }
+        } catch (error) {
+          this.logger.warn(`[StreamProcessorV2] ウィンドウを閉じる際にエラー (${context.cell}):`, error);
+        }
+        
         this.logger.log(`[StreamProcessorV2] ✅ 送信完了: ${context.cell}`);
         return result;
       });
