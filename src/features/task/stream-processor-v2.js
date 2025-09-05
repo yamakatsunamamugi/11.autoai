@@ -240,6 +240,9 @@ export default class StreamProcessorV2 {
     // 🔄 列完了時の自動再実行チェック
     await this.checkAndProcessFailedTasks(column);
     
+    // 🔄 回答が空白のセルを再実行
+    await this.checkAndRetryEmptyAnswers(column, tasks, isTestMode);
+    
     this.logger.log(`[StreamProcessorV2] 🎉 ${column}列の処理完了`, {
       completedTasks: tasks.length
     });
@@ -1247,6 +1250,244 @@ export default class StreamProcessorV2 {
       result = result * 26 + (column.charCodeAt(i) - 'A'.charCodeAt(0) + 1);
     }
     return result - 1; // 0ベースのインデックスに変換
+  }
+
+  /**
+   * 回答が空白のセルをチェックして再実行
+   * @param {string} column - チェック対象の列
+   * @param {Array} tasks - 該当列のタスク一覧
+   * @param {boolean} isTestMode - テストモード
+   */
+  async checkAndRetryEmptyAnswers(column, tasks, isTestMode) {
+    this.logger.log(`[StreamProcessorV2] 🔍 ${column}列の回答確認中...`);
+    
+    const emptyTasks = [];
+    
+    // 各タスクの回答をチェック
+    for (const task of tasks) {
+      try {
+        const { spreadsheetId, gid } = this.spreadsheetData;
+        const range = `${task.column}${task.row}`;
+        
+        // 現在のセルの値を取得
+        const response = await globalThis.sheetsClient?.getRange(
+          spreadsheetId,
+          range,
+          gid
+        );
+        
+        const cellValue = response?.values?.[0]?.[0] || '';
+        
+        if (!cellValue || cellValue.trim() === '') {
+          this.logger.warn(`[StreamProcessorV2] 📝 ${range}: 回答が空白です - 再実行対象に追加`);
+          emptyTasks.push(task);
+        } else {
+          this.logger.log(`[StreamProcessorV2] ✅ ${range}: 回答あり (${cellValue.length}文字)`);
+        }
+      } catch (error) {
+        this.logger.error(`[StreamProcessorV2] ${task.column}${task.row}の回答確認エラー:`, error);
+        // エラーの場合も再実行対象に追加
+        emptyTasks.push(task);
+      }
+    }
+    
+    if (emptyTasks.length === 0) {
+      this.logger.log(`[StreamProcessorV2] ✅ ${column}列: すべてのセルに回答があります`);
+      return;
+    }
+    
+    this.logger.log(`[StreamProcessorV2] 🔄 ${column}列: ${emptyTasks.length}個の空白セルを再実行します`);
+    
+    // 空白タスクを3つずつのバッチで再実行
+    const retryBatches = this.createBatches(emptyTasks, 3);
+    
+    for (let batchIndex = 0; batchIndex < retryBatches.length; batchIndex++) {
+      const batch = retryBatches[batchIndex];
+      
+      this.logger.log(`[StreamProcessorV2] 🔄 ${column}列 再実行バッチ${batchIndex + 1}/${retryBatches.length}`, {
+        retryTasks: batch.map(t => `${t.column}${t.row}`).join(', ')
+      });
+      
+      // バッチを再実行（モデル/機能選択失敗時はスキップ）
+      await this.processBatchWithSkip(batch, isTestMode);
+      
+      this.logger.log(`[StreamProcessorV2] ✅ ${column}列 再実行バッチ${batchIndex + 1}/${retryBatches.length}完了`);
+    }
+  }
+
+  /**
+   * モデル/機能選択失敗時にスキップするバッチ処理
+   * @param {Array} batch - バッチタスク
+   * @param {boolean} isTestMode - テストモード
+   */
+  async processBatchWithSkip(batch, isTestMode) {
+    this.logger.log(`[StreamProcessorV2] 🚀 バッチ処理開始（失敗時スキップモード）`, {
+      tasks: batch.map(t => `${t.column}${t.row}`).join(', '),
+      taskCount: batch.length
+    });
+
+    if (isTestMode) {
+      for (const task of batch) {
+        this.completedTasks.add(task.id);
+        this.writtenCells.set(`${task.column}${task.row}`, true);
+      }
+      return;
+    }
+
+    const taskContexts = [];
+    
+    try {
+      // フェーズ1: ウィンドウ準備とテキスト入力
+      for (let index = 0; index < batch.length; index++) {
+        const task = batch[index];
+        const position = index;
+        
+        this.logger.log(`[StreamProcessorV2] ウィンドウ${index + 1}/${batch.length}を準備: ${task.column}${task.row}`);
+        
+        const tabId = await this.createWindowForTask(task, position);
+        if (!tabId) {
+          this.logger.error(`[StreamProcessorV2] ウィンドウ作成失敗: ${task.column}${task.row} - スキップ`);
+          continue;
+        }
+        
+        const prompt = await this.getPromptForTask(task);
+        
+        taskContexts.push({
+          task: { ...task, prompt },
+          tabId,
+          position,
+          cell: `${task.column}${task.row}`,
+          skipped: false
+        });
+        
+        await this.delay(3000);
+        await this.injectScriptsForTab(tabId, task.aiType);
+        
+        const textResult = await this.executePhaseOnTab(tabId, { ...task, prompt }, 'text');
+        if (!textResult || !textResult.success) {
+          this.logger.error(`[StreamProcessorV2] テキスト入力失敗: ${task.column}${task.row}`);
+        }
+        
+        if (index < batch.length - 1) {
+          await this.delay(1000);
+        }
+      }
+      
+      await this.delay(2000);
+      
+      // フェーズ2: モデル選択（失敗時はスキップ）
+      for (const context of taskContexts) {
+        if (context.skipped) continue;
+        
+        this.logger.log(`[StreamProcessorV2] モデル選択: ${context.cell}`);
+        const modelResult = await this.executePhaseOnTab(context.tabId, context.task, 'model');
+        
+        if (!modelResult || modelResult.success === false) {
+          this.logger.warn(`[StreamProcessorV2] ⚠️ モデル選択失敗: ${context.cell} - このタスクをスキップします`);
+          context.skipped = true;
+          // ウィンドウを閉じる
+          try {
+            const tab = await chrome.tabs.get(context.tabId);
+            if (tab && tab.windowId) {
+              await chrome.windows.remove(tab.windowId);
+            }
+          } catch (e) {}
+          continue;
+        }
+        
+        if (modelResult.displayedModel !== undefined) {
+          context.task.displayedModel = modelResult.displayedModel;
+        }
+        await this.delay(1000);
+      }
+      
+      await this.delay(2000);
+      
+      // フェーズ3: 機能選択（失敗時はスキップ）
+      for (const context of taskContexts) {
+        if (context.skipped) continue;
+        
+        this.logger.log(`[StreamProcessorV2] 機能選択: ${context.cell}`);
+        const functionResult = await this.executePhaseOnTab(context.tabId, context.task, 'function');
+        
+        const requestedFunction = context.task.function || '通常';
+        const isSuccess = functionResult && 
+                         functionResult.success !== false &&
+                         functionResult.displayedFunction !== undefined &&
+                         (requestedFunction === '通常' || functionResult.displayedFunction !== '');
+        
+        if (!isSuccess) {
+          this.logger.warn(`[StreamProcessorV2] ⚠️ 機能選択失敗: ${context.cell} - このタスクをスキップします`);
+          context.skipped = true;
+          // ウィンドウを閉じる
+          try {
+            const tab = await chrome.tabs.get(context.tabId);
+            if (tab && tab.windowId) {
+              await chrome.windows.remove(tab.windowId);
+            }
+          } catch (e) {}
+          continue;
+        }
+        
+        if (functionResult.displayedFunction !== undefined) {
+          context.task.displayedFunction = functionResult.displayedFunction;
+        }
+        await this.delay(1000);
+      }
+      
+      await this.delay(2000);
+      
+      // フェーズ4: 送信（スキップされたタスクは除外）
+      const activeContexts = taskContexts.filter(ctx => !ctx.skipped);
+      
+      if (activeContexts.length === 0) {
+        this.logger.warn(`[StreamProcessorV2] すべてのタスクがスキップされました`);
+        return;
+      }
+      
+      const sendPromises = activeContexts.map(async (context, index) => {
+        if (index > 0) {
+          await this.delay(index * 5000);
+        }
+        
+        this.logger.log(`[StreamProcessorV2] 送信開始: ${context.cell}`);
+        const result = await this.executePhaseOnTab(context.tabId, context.task, 'send');
+        
+        if (result && result.response) {
+          this.completedTasks.add(context.task.id);
+          this.writtenCells.set(context.cell, result.response);
+          
+          // スプレッドシートに書き込み
+          if (this.spreadsheetData) {
+            const { spreadsheetId, gid } = this.spreadsheetData;
+            await globalThis.sheetsClient?.updateCell(
+              spreadsheetId,
+              context.cell,
+              result.response,
+              gid
+            );
+            this.logger.log(`[StreamProcessorV2] 📝 ${context.cell}に応答を書き込みました`);
+          }
+        }
+        
+        // ウィンドウを閉じる
+        try {
+          const tab = await chrome.tabs.get(context.tabId);
+          if (tab && tab.windowId) {
+            await chrome.windows.remove(tab.windowId);
+          }
+        } catch (e) {}
+        
+        return result;
+      });
+      
+      await Promise.all(sendPromises);
+      this.logger.log(`[StreamProcessorV2] ✅ バッチ処理完了（スキップモード）`);
+      
+    } catch (error) {
+      this.logger.error(`[StreamProcessorV2] バッチ処理エラー:`, error);
+      throw error;
+    }
   }
 
   /**
