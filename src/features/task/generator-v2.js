@@ -36,7 +36,9 @@ export default class TaskGeneratorV2 {
       modelRow: rows.model,
       functionRow: rows.function,
       promptGroups: promptGroups.length,
-      workRows: workRows.length
+      workRows: workRows.length,
+      columnControls: controls.column,
+      rowControls: controls.row
     });
     
     
