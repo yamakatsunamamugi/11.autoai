@@ -6,7 +6,67 @@
  */
 
 // UI_SELECTORSを直接定義（import制限回避）
-const UI_SELECTORS = {
+// グローバルに既に存在する場合は再定義しない
+if (typeof window.UI_SELECTORS === 'undefined') {
+  window.UI_SELECTORS = {
+    ChatGPT: {
+        MODEL_INFO: {
+            BUTTON: [
+                'button[data-testid="model-switcher-dropdown-button"]',
+                'button[aria-label*="モデル"]',
+                'button[aria-label*="Model"]',
+                'button[class*="model"]',
+                '[data-testid*="model-switcher"]'
+            ],
+            TEXT_ELEMENT: [
+                'button[data-testid="model-switcher-dropdown-button"] div',
+                'button[data-testid="model-switcher-dropdown-button"] span',
+                '[data-testid="model-switcher-dropdown-button"] .text-sm',
+                '[data-testid="model-switcher-dropdown-button"] *'
+            ]
+        }
+    },
+    Claude: {
+        MODEL_INFO: {
+            BUTTON: [
+                'button[data-testid="model-selector-dropdown"]',
+                'button[aria-haspopup="menu"]',
+                'button.cursor-pointer:has(span.font-medium)',
+                'button[aria-label*="モデル"]',
+                'button[aria-label*="Model"]'
+            ],
+            TEXT_ELEMENT: [
+                'button[data-testid="model-selector-dropdown"] .whitespace-nowrap.tracking-tight.select-none',
+                'button[data-testid="model-selector-dropdown"] span',
+                'button[data-testid="model-selector-dropdown"] div',
+                'button[aria-haspopup="menu"] .whitespace-nowrap',
+                'button[aria-haspopup="menu"] span.font-medium'
+            ]
+        }
+    },
+    Gemini: {
+        MODEL_INFO: {
+            BUTTON: [
+                '.logo-pill-label-container',
+                'button[aria-label*="モデル"]',
+                'button[aria-label*="Model"]',
+                '.model-selector-button',
+                '[data-testid*="model"]'
+            ],
+            TEXT_ELEMENT: [
+                '.logo-pill-label-container span',
+                '.logo-pill-label-container .model-name',
+                '.logo-pill-label-container div',
+                '.model-indicator span',
+                '[class*="model-"] span'
+            ]
+        }
+    }
+  };
+}
+
+// 既存のUI_SELECTORSを使用（存在しない場合はローカル定義を使用）
+const UI_SELECTORS_LOCAL = window.UI_SELECTORS || {
     ChatGPT: {
         MODEL_INFO: {
             BUTTON: [
@@ -89,7 +149,7 @@ class ModelInfoExtractor {
         };
         
         try {
-            const selectors = UI_SELECTORS.ChatGPT.MODEL_INFO;
+            const selectors = UI_SELECTORS_LOCAL.ChatGPT.MODEL_INFO;
             
             let buttonElement = null;
             for (const selector of selectors.BUTTON) {
@@ -145,7 +205,7 @@ class ModelInfoExtractor {
         };
         
         try {
-            const selectors = UI_SELECTORS.Claude.MODEL_INFO;
+            const selectors = UI_SELECTORS_LOCAL.Claude.MODEL_INFO;
             
             let buttonElement = null;
             for (const selector of selectors.BUTTON) {
@@ -212,7 +272,7 @@ class ModelInfoExtractor {
         };
         
         try {
-            const selectors = UI_SELECTORS.Gemini.MODEL_INFO;
+            const selectors = UI_SELECTORS_LOCAL.Gemini.MODEL_INFO;
             
             let modelText = '';
             for (const selector of selectors.TEXT_ELEMENT) {
