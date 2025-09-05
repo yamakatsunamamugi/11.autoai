@@ -61,8 +61,7 @@ export default class StreamProcessorV2 {
       retriesByColumn: new Map() // column -> { attempts: number, successes: number }
     };
     
-    // SpreadsheetLoggerを非同期で初期化
-    this.initializeSpreadsheetLogger();
+    // SpreadsheetLoggerは processTaskStream で初期化する
   }
   
   /**
@@ -118,6 +117,19 @@ export default class StreamProcessorV2 {
     this.spreadsheetData = spreadsheetData;
     const isTestMode = options.testMode || false;
     const startTime = Date.now();
+    
+    // SpreadsheetLoggerを初期化
+    this.logger.log('[StreamProcessorV2] SpreadsheetLogger初期化前:', {
+      spreadsheetLogger: !!this.spreadsheetLogger,
+      globalSpreadsheetLogger: !!globalThis.SpreadsheetLogger
+    });
+    
+    await this.initializeSpreadsheetLogger();
+    
+    this.logger.log('[StreamProcessorV2] SpreadsheetLogger初期化後:', {
+      spreadsheetLogger: !!this.spreadsheetLogger,
+      hasWriteMethod: !!(this.spreadsheetLogger?.writeLogToSpreadsheet)
+    });
     
     // テスト用: F列の最初の3タスクのみ処理
     let tasksToProcess = taskList.tasks;
