@@ -240,8 +240,8 @@ export default class StreamProcessorV2 {
     // 🔄 列完了時の自動再実行チェック
     await this.checkAndProcessFailedTasks(column);
     
-    // 🔄 回答が空白のセルを再実行
-    await this.checkAndRetryEmptyAnswers(column, tasks, isTestMode);
+    // 🔄 回答が空白のセルを再実行（既存メソッドを使用、失敗時スキップモード）
+    await this.verifyAndReprocessColumn(column, tasks, isTestMode);
     
     this.logger.log(`[StreamProcessorV2] 🎉 ${column}列の処理完了`, {
       completedTasks: tasks.length
@@ -1033,7 +1033,8 @@ export default class StreamProcessorV2 {
         
         this.logger.log(`[StreamProcessorV2] 🔄 ${column}列 再実行バッチ${batchIndex + 1}/${reprocessBatches.length}開始`);
         
-        await this.processBatch(batch, isTestMode);
+        // 失敗時スキップモードで再実行（モデル/機能選択が失敗してもスキップして続行）
+        await this.processBatchWithSkip(batch, isTestMode);
         
         this.logger.log(`[StreamProcessorV2] ✅ ${column}列 再実行バッチ${batchIndex + 1}/${reprocessBatches.length}完了`);
       }
@@ -1252,68 +1253,6 @@ export default class StreamProcessorV2 {
     return result - 1; // 0ベースのインデックスに変換
   }
 
-  /**
-   * 回答が空白のセルをチェックして再実行
-   * @param {string} column - チェック対象の列
-   * @param {Array} tasks - 該当列のタスク一覧
-   * @param {boolean} isTestMode - テストモード
-   */
-  async checkAndRetryEmptyAnswers(column, tasks, isTestMode) {
-    this.logger.log(`[StreamProcessorV2] 🔍 ${column}列の回答確認中...`);
-    
-    const emptyTasks = [];
-    
-    // 各タスクの回答をチェック
-    for (const task of tasks) {
-      try {
-        const { spreadsheetId, gid } = this.spreadsheetData;
-        const range = `${task.column}${task.row}`;
-        
-        // 現在のセルの値を取得
-        const response = await globalThis.sheetsClient?.getRange(
-          spreadsheetId,
-          range,
-          gid
-        );
-        
-        const cellValue = response?.values?.[0]?.[0] || '';
-        
-        if (!cellValue || cellValue.trim() === '') {
-          this.logger.warn(`[StreamProcessorV2] 📝 ${range}: 回答が空白です - 再実行対象に追加`);
-          emptyTasks.push(task);
-        } else {
-          this.logger.log(`[StreamProcessorV2] ✅ ${range}: 回答あり (${cellValue.length}文字)`);
-        }
-      } catch (error) {
-        this.logger.error(`[StreamProcessorV2] ${task.column}${task.row}の回答確認エラー:`, error);
-        // エラーの場合も再実行対象に追加
-        emptyTasks.push(task);
-      }
-    }
-    
-    if (emptyTasks.length === 0) {
-      this.logger.log(`[StreamProcessorV2] ✅ ${column}列: すべてのセルに回答があります`);
-      return;
-    }
-    
-    this.logger.log(`[StreamProcessorV2] 🔄 ${column}列: ${emptyTasks.length}個の空白セルを再実行します`);
-    
-    // 空白タスクを3つずつのバッチで再実行
-    const retryBatches = this.createBatches(emptyTasks, 3);
-    
-    for (let batchIndex = 0; batchIndex < retryBatches.length; batchIndex++) {
-      const batch = retryBatches[batchIndex];
-      
-      this.logger.log(`[StreamProcessorV2] 🔄 ${column}列 再実行バッチ${batchIndex + 1}/${retryBatches.length}`, {
-        retryTasks: batch.map(t => `${t.column}${t.row}`).join(', ')
-      });
-      
-      // バッチを再実行（モデル/機能選択失敗時はスキップ）
-      await this.processBatchWithSkip(batch, isTestMode);
-      
-      this.logger.log(`[StreamProcessorV2] ✅ ${column}列 再実行バッチ${batchIndex + 1}/${retryBatches.length}完了`);
-    }
-  }
 
   /**
    * モデル/機能選択失敗時にスキップするバッチ処理
