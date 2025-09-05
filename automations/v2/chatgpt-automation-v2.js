@@ -5,8 +5,10 @@
  * - テスト済みのロジックをそのまま使用
  * - モデル選択・機能選択・応答待機・テキスト取得の完全移植
  * - Deep Research/エージェントモード対応（最大40分待機）
+ * - ChatGPT Canvas機能対応（prosemirror-editor-containerからの取得）
  * 
- * @version 2.1.0
+ * @version 2.2.0
+ * @updated 2024-12-05 Canvas機能のテキスト取得を優先的に処理
  */
 (function() {
     'use strict';
@@ -1191,15 +1193,21 @@
                     'div[class*="prose"]'
                 ],
                 CANVAS_ARTIFACT: [
-                    // パターン1: サイドパネル型Canvas（優先度高）
-                    '.ProseMirror[contenteditable="false"]',
-                    'div.markdown.prose.ProseMirror',
-                    '[contenteditable="false"].markdown',
-                    'div#prosemirror-editor-container .ProseMirror',
-                    'div._main_5jn6z_1.markdown.prose',
+                    // パターン1: prosemirror-editor-container内のCanvas（最優先）
+                    '#prosemirror-editor-container .ProseMirror[contenteditable="false"]',
+                    '#prosemirror-editor-container .ProseMirror',
+                    'div#prosemirror-editor-container .markdown.prose',
                     
-                    // パターン2: インライン型Canvas
-                    '[data-message-author-role="assistant"] .markdown.prose',
+                    // パターン2: _main_5jn6z_1クラスを持つCanvas
+                    'div._main_5jn6z_1.markdown.prose.ProseMirror',
+                    'div._main_5jn6z_1.ProseMirror',
+                    
+                    // パターン3: サイドパネル型Canvas（一般的なセレクタ）
+                    '.ProseMirror[contenteditable="false"]',
+                    'div.markdown.prose.ProseMirror[contenteditable="false"]',
+                    '[contenteditable="false"].markdown.prose',
+                    
+                    // パターン4: インライン型Canvas
                     'div.markdown.prose:not([data-message-author-role])',
                     
                     // 既存のセレクタ（互換性のため残す）
@@ -1210,75 +1218,103 @@
                 ]
             };
             
-            // 方法1: アシスタントメッセージから取得
-            for (const msgSelector of textSelectors.ASSISTANT_MESSAGE) {
-                const assistantMessages = document.querySelectorAll(msgSelector);
-                if (assistantMessages.length > 0) {
-                    const lastMessage = assistantMessages[assistantMessages.length - 1];
+            // 【重要】Canvas/Artifactを最優先でチェック（ChatGPT Canvas機能対応）
+            log('Canvas/Artifactコンテンツを優先的に検索中...', 'info');
+            
+            for (const selector of textSelectors.CANVAS_ARTIFACT) {
+                const elements = document.querySelectorAll(selector);
+                
+                if (elements.length > 0) {
+                    log(`セレクタ "${selector}" で ${elements.length}個の要素を発見`, 'info');
                     
-                    // markdown形式のコンテンツを探す
-                    for (const contentSelector of textSelectors.MESSAGE_CONTENT) {
-                        const elements = lastMessage.querySelectorAll(contentSelector);
-                        for (const elem of elements) {
-                            const text = elem.textContent?.trim() || '';
-                            if (text && text.length > 10) {
-                                responseText = text;
-                                log(`アシスタントメッセージ取得成功 (${contentSelector}): ${text.length}文字`, 'success');
-                                log(`最初の100文字: ${text.substring(0, 100)}...`, 'info');
-                                break;
+                    for (const elem of elements) {
+                        const text = elem.textContent?.trim() || '';
+                        
+                        // Canvas要素の詳細情報をログ
+                        const isEditable = elem.getAttribute('contenteditable');
+                        const classList = elem.className || '';
+                        const hasProseMirror = elem.classList && elem.classList.contains('ProseMirror');
+                        
+                        log(`Canvas要素チェック: 文字数=${text.length}, contenteditable=${isEditable}, classes="${classList}"`, 'info');
+                        
+                        // 最低文字数のチェックを緩和（10文字→5文字）
+                        if (text && text.length > 5) {
+                            responseText = text;
+                            
+                            // Canvas要素の種類を判定
+                            if (selector.includes('prosemirror-editor-container')) {
+                                log(`✅ prosemirror-editor-container型Canvas取得成功: ${text.length}文字`, 'success');
+                            } else if (hasProseMirror) {
+                                log(`✅ ProseMirror型Canvas取得成功: ${text.length}文字`, 'success');
+                            } else {
+                                log(`✅ Canvas取得成功 (${selector}): ${text.length}文字`, 'success');
                             }
+                            
+                            log(`Canvas内容プレビュー: ${text.substring(0, 200)}...`, 'info');
+                            break;
+                        } else if (text) {
+                            log(`Canvas要素は見つかりましたが文字数が少なすぎます（${text.length}文字）`, 'warning');
                         }
-                        if (responseText) break;
                     }
                     if (responseText) break;
                 }
             }
             
-            // 方法2: Canvas/Artifact機能の内容を取得（2パターン対応）
+            // Canvasのデバッグ情報を詳細に出力
             if (!responseText) {
-                log('Canvas/Artifactコンテンツを検索中...', 'info');
+                log('⚠️ Canvasコンテンツが見つかりません。詳細な診断を実行中...', 'warning');
                 
-                for (const selector of textSelectors.CANVAS_ARTIFACT) {
-                    const elements = document.querySelectorAll(selector);
-                    
-                    for (const elem of elements) {
-                        // パターン1: サイドパネル型（ProseMirrorクラスを持つ）
-                        if (elem.classList && elem.classList.contains('ProseMirror')) {
-                            const text = elem.textContent?.trim() || '';
-                            if (text && text.length > 10) {
-                                responseText = text;
-                                log(`✅ サイドパネル型Canvas取得成功 (${selector}): ${text.length}文字`, 'success');
-                                log(`Canvas内容プレビュー: ${text.substring(0, 100)}...`, 'info');
-                                break;
-                            }
-                        }
-                        // パターン2: インライン型（アシスタントメッセージ外のmarkdown）
-                        else if (!elem.closest('[data-message-author-role]')) {
-                            const text = elem.textContent?.trim() || '';
-                            if (text && text.length > 10) {
-                                responseText = text;
-                                log(`✅ インライン型Canvas取得成功 (${selector}): ${text.length}文字`, 'success');
-                                log(`Canvas内容プレビュー: ${text.substring(0, 100)}...`, 'info');
-                                break;
-                            }
+                // prosemirror-editor-containerの存在確認
+                const editorContainer = document.getElementById('prosemirror-editor-container');
+                if (editorContainer) {
+                    log('✅ prosemirror-editor-containerが存在します', 'info');
+                    const proseMirrorInside = editorContainer.querySelector('.ProseMirror');
+                    if (proseMirrorInside) {
+                        const content = proseMirrorInside.textContent?.trim() || '';
+                        log(`  内部のProseMirror要素: 文字数=${content.length}`, 'info');
+                        if (content.length > 0) {
+                            log(`  内容の最初の100文字: ${content.substring(0, 100)}...`, 'info');
                         }
                     }
-                    if (responseText) break;
                 }
                 
-                // Canvasが見つからない場合のデバッグ情報
-                if (!responseText) {
-                    log('⚠️ Canvasコンテンツが見つかりません。利用可能な要素を確認中...', 'warning');
-                    
-                    // ProseMirrorクラスを持つ要素の存在確認
-                    const proseMirrorElements = document.querySelectorAll('.ProseMirror');
-                    if (proseMirrorElements.length > 0) {
-                        log(`ProseMirror要素が${proseMirrorElements.length}個見つかりました`, 'info');
-                        proseMirrorElements.forEach((elem, index) => {
-                            const contentLength = elem.textContent?.length || 0;
-                            const isEditable = elem.getAttribute('contenteditable');
-                            log(`  要素${index + 1}: 文字数=${contentLength}, contenteditable=${isEditable}`, 'info');
-                        });
+                // すべてのProseMirror要素を確認
+                const allProseMirror = document.querySelectorAll('.ProseMirror');
+                if (allProseMirror.length > 0) {
+                    log(`全ProseMirror要素: ${allProseMirror.length}個`, 'info');
+                    allProseMirror.forEach((elem, index) => {
+                        const content = elem.textContent?.trim() || '';
+                        const isEditable = elem.getAttribute('contenteditable');
+                        const parent = elem.parentElement?.id || elem.parentElement?.className || 'unknown';
+                        log(`  [${index}] 親要素="${parent}", 編集可能=${isEditable}, 文字数=${content.length}`, 'info');
+                    });
+                }
+            }
+            
+            // Canvas取得に失敗した場合のみ、アシスタントメッセージから取得を試みる
+            if (!responseText) {
+                log('Canvasが見つからないため、アシスタントメッセージから取得を試みます', 'info');
+                
+                for (const msgSelector of textSelectors.ASSISTANT_MESSAGE) {
+                    const assistantMessages = document.querySelectorAll(msgSelector);
+                    if (assistantMessages.length > 0) {
+                        const lastMessage = assistantMessages[assistantMessages.length - 1];
+                        
+                        // markdown形式のコンテンツを探す
+                        for (const contentSelector of textSelectors.MESSAGE_CONTENT) {
+                            const elements = lastMessage.querySelectorAll(contentSelector);
+                            for (const elem of elements) {
+                                const text = elem.textContent?.trim() || '';
+                                if (text && text.length > 10) {
+                                    responseText = text;
+                                    log(`アシスタントメッセージ取得成功 (${contentSelector}): ${text.length}文字`, 'success');
+                                    log(`最初の100文字: ${text.substring(0, 100)}...`, 'info');
+                                    break;
+                                }
+                            }
+                            if (responseText) break;
+                        }
+                        if (responseText) break;
                     }
                 }
             }
@@ -1561,17 +1597,43 @@
             
             await sleep(2000);
             
-            // テキスト取得
+            // テキスト取得（Canvas優先）
             let responseText = '';
-            const assistantMessages = document.querySelectorAll('[data-message-author-role="assistant"]');
-            if (assistantMessages.length > 0) {
-                const lastMessage = assistantMessages[assistantMessages.length - 1];
-                const elements = lastMessage.querySelectorAll('div.markdown.prose');
+            
+            // 最初にCanvas/Artifactをチェック（ChatGPT Canvas機能対応）
+            const canvasSelectors = [
+                '#prosemirror-editor-container .ProseMirror[contenteditable="false"]',
+                '#prosemirror-editor-container .ProseMirror',
+                'div._main_5jn6z_1.markdown.prose.ProseMirror',
+                '.ProseMirror[contenteditable="false"]',
+                'div.markdown.prose.ProseMirror[contenteditable="false"]'
+            ];
+            
+            for (const selector of canvasSelectors) {
+                const elements = document.querySelectorAll(selector);
                 for (const elem of elements) {
                     const text = elem.textContent?.trim() || '';
-                    if (text && text.length > 10) {
+                    if (text && text.length > 5) {
                         responseText = text;
+                        log(`✅ Canvas取得成功: ${text.length}文字`, 'success');
                         break;
+                    }
+                }
+                if (responseText) break;
+            }
+            
+            // Canvasが見つからない場合はアシスタントメッセージから取得
+            if (!responseText) {
+                const assistantMessages = document.querySelectorAll('[data-message-author-role="assistant"]');
+                if (assistantMessages.length > 0) {
+                    const lastMessage = assistantMessages[assistantMessages.length - 1];
+                    const elements = lastMessage.querySelectorAll('div.markdown.prose');
+                    for (const elem of elements) {
+                        const text = elem.textContent?.trim() || '';
+                        if (text && text.length > 10) {
+                            responseText = text;
+                            break;
+                        }
                     }
                 }
             }

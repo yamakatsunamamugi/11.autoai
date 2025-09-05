@@ -269,44 +269,84 @@ class FunctionInfoExtractor {
             aiType: 'ChatGPT',
             selectorFound: false,
             elementContent: null,
-            extractedFunction: null
+            extractedFunction: null,
+            attemptedSelectors: []
         };
         
         try {
             let functionName = '';
             
-            // 機能ボタン（data-pill="true"）からの取得
-            const functionButtons = document.querySelectorAll('button[data-pill="true"]');
-            if (functionButtons.length > 0) {
-                for (const button of functionButtons) {
-                    const text = button.textContent?.trim();
-                    if (text && text.length > 0) {
-                        functionName = text;
-                        debugInfo.selectorFound = true;
-                        debugInfo.elementContent = text;
-                        debugInfo.extractedFunction = text;
-                        break;
+            // 1. Canvas右側パネルの存在確認（最優先）
+            const canvasPanel = document.querySelector('#prosemirror-editor-container');
+            if (canvasPanel) {
+                functionName = 'canvas';
+                debugInfo.selectorFound = true;
+                debugInfo.elementContent = 'Canvas panel detected';
+                debugInfo.extractedFunction = functionName;
+                debugInfo.attemptedSelectors.push('#prosemirror-editor-container - Found Canvas panel');
+                console.log(`[FunctionInfoExtractor][ChatGPT] ✅ Canvasパネル検出により機能を判定: "canvas"`);
+            }
+            
+            // 2. 機能ボタン（data-pill="true"）からの取得
+            if (!functionName) {
+                debugInfo.attemptedSelectors.push('button[data-pill="true"]');
+                const functionButtons = document.querySelectorAll('button[data-pill="true"]');
+                if (functionButtons.length > 0) {
+                    for (const button of functionButtons) {
+                        const text = button.textContent?.trim();
+                        if (text && text.length > 0) {
+                            functionName = text;
+                            debugInfo.selectorFound = true;
+                            debugInfo.elementContent = text;
+                            debugInfo.extractedFunction = text;
+                            break;
+                        }
                     }
+                } else {
+                    debugInfo.attemptedSelectors.push('button[data-pill="true"] - Not found');
                 }
             }
             
-            // Canvasや他の機能の表示要素を探す（新しいUI対応）
+            // 3. Canvasアイコンやインジケーターを探す
             if (!functionName) {
-                // Canvas表示要素のセレクタを試す
-                const canvasIndicators = document.querySelectorAll(
-                    '[class*="canvas"], [aria-label*="canvas"], [title*="canvas"], ' +
-                    '[data-testid*="canvas"], button:has(svg):has(span), ' +
-                    'button[aria-haspopup="menu"] span'
-                );
-                for (const elem of canvasIndicators) {
-                    const text = elem.textContent?.trim()?.toLowerCase();
-                    if (text && (text === 'canvas' || text.includes('canvas'))) {
-                        functionName = 'canvas';
-                        debugInfo.selectorFound = true;
-                        debugInfo.elementContent = text;
-                        debugInfo.extractedFunction = functionName;
-                        break;
+                // 複数のセレクタパターンを試す
+                const canvasSelectors = [
+                    // Canvas関連のクラスや属性
+                    '[class*="canvas"]',
+                    '[aria-label*="canvas"]',
+                    '[aria-label*="Canvas"]',
+                    '[title*="canvas"]',
+                    '[title*="Canvas"]',
+                    '[data-testid*="canvas"]',
+                    // アイコンボタン
+                    'button[aria-label*="キャンバス"]',
+                    'button[title*="キャンバス"]',
+                    // 右側パネルのインジケーター
+                    '.composer-parent [role="button"]',
+                    // ChatGPT UIの機能表示エリア
+                    'div[class*="composer"] button[class*="rounded"]'
+                ];
+                
+                for (const selector of canvasSelectors) {
+                    debugInfo.attemptedSelectors.push(selector);
+                    const elements = document.querySelectorAll(selector);
+                    for (const elem of elements) {
+                        const text = elem.textContent?.trim()?.toLowerCase();
+                        const ariaLabel = elem.getAttribute('aria-label')?.toLowerCase();
+                        const title = elem.getAttribute('title')?.toLowerCase();
+                        
+                        if ((text && (text === 'canvas' || text.includes('canvas'))) ||
+                            (ariaLabel && ariaLabel.includes('canvas')) ||
+                            (title && title.includes('canvas'))) {
+                            functionName = 'canvas';
+                            debugInfo.selectorFound = true;
+                            debugInfo.elementContent = text || ariaLabel || title;
+                            debugInfo.extractedFunction = functionName;
+                            debugInfo.attemptedSelectors[debugInfo.attemptedSelectors.length - 1] += ' - Found';
+                            break;
+                        }
                     }
+                    if (functionName) break;
                 }
             }
             
