@@ -374,6 +374,60 @@ export default class StreamProcessorV2 {
             );
             
             this.logger.log(`[StreamProcessorV2] 📝 ${range}に応答を書き込みました`);
+            
+            // SpreadsheetLoggerでログを記録
+            if (this.spreadsheetLogger && context.task.logColumns && context.task.logColumns.length > 0) {
+              try {
+                this.logger.log(`[StreamProcessorV2] ログ書き込み開始: ${context.task.logColumns[0]}${context.task.row}`);
+                
+                // 現在のURLを取得
+                let currentUrl = 'N/A';
+                try {
+                  const tab = await chrome.tabs.get(context.tabId);
+                  currentUrl = tab.url || 'N/A';
+                } catch (e) {
+                  // URLの取得に失敗しても処理は継続
+                }
+                
+                // タスクにモデル情報を追加
+                const taskWithModel = {
+                  ...context.task,
+                  model: context.task.model || 'Auto',
+                  function: context.task.function || '通常',
+                  displayedModel: result.displayedModel || context.task.model || 'Auto',
+                  displayedFunction: result.displayedFunction || context.task.function || '通常'
+                };
+                
+                // ログセルを特定
+                const logCellKey = `${context.task.logColumns[0]}_${context.task.row}`;
+                const isFirstForThisCell = !this.processedCells.has(logCellKey);
+                
+                await this.spreadsheetLogger.writeLogToSpreadsheet(taskWithModel, {
+                  url: currentUrl,
+                  sheetsClient: globalThis.sheetsClient,
+                  spreadsheetId,
+                  gid,
+                  isFirstTask: isFirstForThisCell,
+                  enableWriteVerification: false
+                });
+                
+                // このセルを処理済みとしてマーク
+                this.processedCells.add(logCellKey);
+                this.logger.log(`[StreamProcessorV2] ✅ ログを書き込み: ${context.task.logColumns[0]}${context.task.row}`);
+                
+              } catch (logError) {
+                this.logger.warn(
+                  `[StreamProcessorV2] ログ書き込みエラー（処理は続行）`,
+                  logError.message
+                );
+              }
+            } else {
+              this.logger.log(`[StreamProcessorV2] ログ書き込みをスキップ（logColumns未設定）:`, {
+                hasSpreadsheetLogger: !!this.spreadsheetLogger,
+                hasLogColumns: !!context.task.logColumns,
+                logColumns: context.task.logColumns
+              });
+            }
           }
         } else {
           this.logger.error(`[StreamProcessorV2] ⚠️ ${context.cell}の応答が取得できませんでした`);

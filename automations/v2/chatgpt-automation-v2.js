@@ -1578,7 +1578,30 @@
             
             if (responseText) {
                 log(`✅ 応答取得成功: ${responseText.length}文字`, 'success');
-                return { success: true, response: responseText };
+                
+                // 現在表示されているモデルと機能を取得
+                let displayedModel = '';
+                let displayedFunction = '';
+                
+                try {
+                    // ModelInfoExtractorを使用（グローバルに登録されている）
+                    if (window.ModelInfoExtractor) {
+                        displayedModel = window.ModelInfoExtractor.extract('ChatGPT') || '';
+                    }
+                    // FunctionInfoExtractorを使用
+                    if (window.FunctionInfoExtractor) {
+                        displayedFunction = window.FunctionInfoExtractor.extract('ChatGPT') || '';
+                    }
+                } catch (e) {
+                    log('モデル/機能情報の取得に失敗（処理は継続）', 'warn');
+                }
+                
+                return { 
+                    success: true, 
+                    response: responseText,
+                    displayedModel: displayedModel,
+                    displayedFunction: displayedFunction
+                };
             } else {
                 throw new Error('応答テキストを取得できませんでした');
             }
