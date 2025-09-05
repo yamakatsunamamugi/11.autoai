@@ -73,6 +73,16 @@ export class SpreadsheetLogger {
     const model = selectedModel === displayedModel ? selectedModel : `${selectedModel} / ${displayedModel}`;
     const selectedFunction = task.function || task.specialOperation || '指定なし';
     const displayedFunction = task.displayedFunction || selectedFunction;
+    
+    // デバッグログ
+    console.log('[SpreadsheetLogger] formatLogEntry - 機能情報:', {
+      selectedFunction,
+      displayedFunction,
+      'task.function': task.function,
+      'task.displayedFunction': task.displayedFunction,
+      'task.specialOperation': task.specialOperation
+    });
+    
     const functionName = selectedFunction === displayedFunction ? selectedFunction : `${selectedFunction} / ${displayedFunction}`;
     
     // 経過時間を計算（秒単位）

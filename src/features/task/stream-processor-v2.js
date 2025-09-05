@@ -530,11 +530,17 @@ export default class StreamProcessorV2 {
                 
                 // タスクにモデル情報を追加
                 // displayedFunctionは既にフェーズ3で取得済み
+                this.logger.log(`[StreamProcessorV2] SpreadsheetLogger用データ準備:`, {
+                  'context.task.displayedFunction': context.task.displayedFunction,
+                  'result.displayedFunction': result.displayedFunction,
+                  'context.task.function': context.task.function
+                });
+                
                 const taskWithModel = {
                   ...context.task,
                   model: context.task.model || 'Auto',
                   function: context.task.function || '通常',
-                  displayedModel: result.displayedModel || context.task.model || 'Auto',
+                  displayedModel: result.displayedModel || context.task.displayedModel || context.task.model || 'Auto',
                   displayedFunction: context.task.displayedFunction || result.displayedFunction || context.task.function || '通常'
                 };
                 
