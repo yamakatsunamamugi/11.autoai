@@ -358,21 +358,93 @@ export default class StreamProcessorV2 {
       await this.delay(2000);
       
       // ========================================
-      // フェーズ3: 機能を順番に選択
+      // フェーズ3: 機能を順番に選択（リトライ機能付き）
       // ========================================
       this.logger.log(`[StreamProcessorV2] 📋 フェーズ3: 機能選択（順番に）`);
       
       for (let index = 0; index < taskContexts.length; index++) {
         const context = taskContexts[index];
-        this.logger.log(`[StreamProcessorV2] 機能選択${index + 1}/${taskContexts.length}: ${context.cell}`);
+        let retryCount = 0;
+        const maxRetries = 3;
+        let functionResult = null;
         
-        // タブにフォーカスを移して機能選択を実行
-        const functionResult = await this.executePhaseOnTab(context.tabId, context.task, 'function');
-        
-        // 実際に選択された機能を保存
-        if (functionResult && functionResult.displayedFunction !== undefined) {
-          context.task.displayedFunction = functionResult.displayedFunction;
-          this.logger.log(`[StreamProcessorV2] 選択された機能を記録: ${context.task.function || '通常'} → ${functionResult.displayedFunction || '(取得できず)'}`);
+        // 最大3回まで再試行
+        while (retryCount < maxRetries) {
+          this.logger.log(`[StreamProcessorV2] 機能選択${index + 1}/${taskContexts.length}: ${context.cell}${retryCount > 0 ? ` (再試行 ${retryCount}/${maxRetries})` : ''}`);
+          
+          // タブにフォーカスを移して機能選択を実行
+          functionResult = await this.executePhaseOnTab(context.tabId, context.task, 'function');
+          
+          // 機能選択が成功したかチェック
+          if (functionResult && functionResult.success !== false && 
+              (functionResult.displayedFunction !== undefined && functionResult.displayedFunction !== '')) {
+            // 成功：実際に選択された機能を保存
+            context.task.displayedFunction = functionResult.displayedFunction;
+            this.logger.log(`[StreamProcessorV2] ✅ 選択された機能を記録: ${context.task.function || '通常'} → ${functionResult.displayedFunction || '(取得できず)'}`);
+            break; // 成功したらループを抜ける
+          }
+          
+          // 失敗した場合
+          retryCount++;
+          if (retryCount < maxRetries) {
+            this.logger.warn(`[StreamProcessorV2] ⚠️ 機能選択失敗（${context.cell}）、ウィンドウを再作成して再試行します...`);
+            
+            // 現在のウィンドウを閉じる
+            try {
+              const tab = await chrome.tabs.get(context.tabId);
+              if (tab && tab.windowId) {
+                await chrome.windows.remove(tab.windowId);
+                this.logger.log(`[StreamProcessorV2] 古いウィンドウを閉じました: WindowID ${tab.windowId}`);
+              }
+            } catch (e) {
+              // エラーが発生しても処理は継続
+            }
+            
+            await this.delay(2000); // ウィンドウを閉じた後の待機
+            
+            // 新しいウィンドウを作成
+            const newTabId = await this.createWindowForTask(context.task, context.position);
+            if (!newTabId) {
+              this.logger.error(`[StreamProcessorV2] 新しいウィンドウの作成に失敗: ${context.cell}`);
+              break;
+            }
+            
+            // コンテキストのtabIdを更新
+            context.tabId = newTabId;
+            
+            await this.delay(3000); // ページ読み込み待機
+            
+            // スクリプトを注入
+            this.logger.log(`[StreamProcessorV2] スクリプト再注入中: ${context.task.aiType}`);
+            await this.injectScriptsForTab(newTabId, context.task.aiType);
+            
+            // テキストを再入力
+            this.logger.log(`[StreamProcessorV2] テキスト再入力: ${context.cell}`);
+            const textResult = await this.executePhaseOnTab(newTabId, context.task, 'text');
+            if (!textResult || !textResult.success) {
+              this.logger.error(`[StreamProcessorV2] テキスト再入力失敗: ${context.cell}`);
+            }
+            
+            await this.delay(2000);
+            
+            // モデルを再選択
+            this.logger.log(`[StreamProcessorV2] モデル再選択: ${context.cell}`);
+            const modelResult = await this.executePhaseOnTab(newTabId, context.task, 'model');
+            if (modelResult && modelResult.displayedModel !== undefined) {
+              context.task.displayedModel = modelResult.displayedModel;
+            }
+            
+            await this.delay(2000);
+            
+            // 機能選択を再試行（次のループで）
+          } else {
+            this.logger.error(`[StreamProcessorV2] ❌ 機能選択が${maxRetries}回失敗しました: ${context.cell}`);
+            // 失敗タスクとして記録
+            if (!this.failedTasksByColumn.has(context.task.column)) {
+              this.failedTasksByColumn.set(context.task.column, new Set());
+            }
+            this.failedTasksByColumn.get(context.task.column).add(context.task);
+          }
         }
         
         await this.delay(1000); // 各機能選択後の待機

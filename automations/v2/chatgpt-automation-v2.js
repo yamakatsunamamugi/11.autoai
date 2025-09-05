@@ -1176,47 +1176,41 @@
             // テキスト取得の改善版（ui-selectorsを使用）
             let responseText = '';
             
-            // ui-selectorsから取得、フォールバック付き
-            const textSelectors = ChatGPTSelectors.TEXT_EXTRACTION || {
-                ASSISTANT_MESSAGE: [
-                    '[data-message-author-role="assistant"]',
-                    'div[class*="agent-turn"]',
-                    'div[class*="model-response"]',
-                    'article[class*="message"]'
-                ],
-                MESSAGE_CONTENT: [
-                    'div.markdown.prose',
-                    'div.markdown',
-                    'div[class*="markdown"]',
-                    'div.text-base',
-                    'div[class*="text-message"]',
-                    'div[class*="prose"]'
-                ],
-                CANVAS_ARTIFACT: [
-                    // パターン1: prosemirror-editor-container内のCanvas（最優先）
-                    '#prosemirror-editor-container .ProseMirror[contenteditable="false"]',
-                    '#prosemirror-editor-container .ProseMirror',
-                    'div#prosemirror-editor-container .markdown.prose',
-                    
-                    // パターン2: _main_5jn6z_1クラスを持つCanvas
-                    'div._main_5jn6z_1.markdown.prose.ProseMirror',
-                    'div._main_5jn6z_1.ProseMirror',
-                    
-                    // パターン3: サイドパネル型Canvas（一般的なセレクタ）
-                    '.ProseMirror[contenteditable="false"]',
-                    'div.markdown.prose.ProseMirror[contenteditable="false"]',
-                    '[contenteditable="false"].markdown.prose',
-                    
-                    // パターン4: インライン型Canvas
-                    'div.markdown.prose:not([data-message-author-role])',
-                    
-                    // 既存のセレクタ（互換性のため残す）
-                    '#canvas-content',
-                    '[data-testid="canvas-content"]',
-                    'div[class*="canvas"]',
-                    'div[class*="artifact"]'
-                ]
-            };
+            // ui-selectorsから取得（フォールバックあり）
+            // UI_SELECTORSはui-selectors.jsから自動的に注入される
+            const textSelectors = (window.UI_SELECTORS && window.UI_SELECTORS.ChatGPT && window.UI_SELECTORS.ChatGPT.TEXT_EXTRACTION) || 
+                ChatGPTSelectors.TEXT_EXTRACTION || {
+                    ASSISTANT_MESSAGE: [
+                        '[data-message-author-role="assistant"]',
+                        'div[class*="agent-turn"]',
+                        'div[class*="model-response"]',
+                        'article[class*="message"]'
+                    ],
+                    MESSAGE_CONTENT: [
+                        'div.markdown.prose',
+                        'div.markdown',
+                        'div[class*="markdown"]',
+                        'div.text-base',
+                        'div[class*="text-message"]',
+                        'div[class*="prose"]'
+                    ],
+                    CANVAS_ARTIFACT: [
+                        // ui-selectors.jsの最新定義を使用（動的に取得）
+                        '#prosemirror-editor-container .ProseMirror[contenteditable="false"]',
+                        '#prosemirror-editor-container .ProseMirror',
+                        'div#prosemirror-editor-container .markdown.prose',
+                        'div._main_5jn6z_1.markdown.prose.ProseMirror',
+                        'div._main_5jn6z_1.ProseMirror',
+                        '.ProseMirror[contenteditable="false"]',
+                        'div.markdown.prose.ProseMirror[contenteditable="false"]',
+                        '[contenteditable="false"].markdown.prose',
+                        'div.markdown.prose:not([data-message-author-role])',
+                        '#canvas-content',
+                        '[data-testid="canvas-content"]',
+                        'div[class*="canvas"]',
+                        'div[class*="artifact"]'
+                    ]
+                };
             
             // 【重要】Canvas/Artifactを最優先でチェック（ChatGPT Canvas機能対応）
             log('Canvas/Artifactコンテンツを優先的に検索中...', 'info');
@@ -1629,13 +1623,15 @@
             let responseText = '';
             
             // 最初にCanvas/Artifactをチェック（ChatGPT Canvas機能対応）
-            const canvasSelectors = [
-                '#prosemirror-editor-container .ProseMirror[contenteditable="false"]',
-                '#prosemirror-editor-container .ProseMirror',
-                'div._main_5jn6z_1.markdown.prose.ProseMirror',
-                '.ProseMirror[contenteditable="false"]',
-                'div.markdown.prose.ProseMirror[contenteditable="false"]'
-            ];
+            // ui-selectors.jsから取得、またはフォールバック
+            const canvasSelectors = (window.UI_SELECTORS && window.UI_SELECTORS.ChatGPT && window.UI_SELECTORS.ChatGPT.TEXT_EXTRACTION && window.UI_SELECTORS.ChatGPT.TEXT_EXTRACTION.CANVAS_ARTIFACT) ||
+                [
+                    '#prosemirror-editor-container .ProseMirror[contenteditable="false"]',
+                    '#prosemirror-editor-container .ProseMirror',
+                    'div._main_5jn6z_1.markdown.prose.ProseMirror',
+                    '.ProseMirror[contenteditable="false"]',
+                    'div.markdown.prose.ProseMirror[contenteditable="false"]'
+                ];
             
             for (const selector of canvasSelectors) {
                 const elements = document.querySelectorAll(selector);

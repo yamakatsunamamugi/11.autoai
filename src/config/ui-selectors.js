@@ -164,14 +164,30 @@ export const UI_SELECTORS = {
                 'div[class*="text-message"]',
                 'div[class*="prose"]'
             ],
-            // Canvas/Artifact機能の内容
+            // Canvas/Artifact機能の内容（2024-12-05更新: Canvas対応強化）
             CANVAS_ARTIFACT: [
+                // パターン1: prosemirror-editor-container内のCanvas（最優先）
+                '#prosemirror-editor-container .ProseMirror[contenteditable="false"]',
+                '#prosemirror-editor-container .ProseMirror',
+                'div#prosemirror-editor-container .markdown.prose',
+                
+                // パターン2: _main_5jn6z_1クラスを持つCanvas
+                'div._main_5jn6z_1.markdown.prose.ProseMirror',
+                'div._main_5jn6z_1.ProseMirror',
+                
+                // パターン3: サイドパネル型Canvas（一般的なセレクタ）
+                '.ProseMirror[contenteditable="false"]',
+                'div.markdown.prose.ProseMirror[contenteditable="false"]',
+                '[contenteditable="false"].markdown.prose',
+                
+                // パターン4: インライン型Canvas
+                'div.markdown.prose:not([data-message-author-role])',
+                
+                // 既存のセレクタ（互換性のため残す）
                 '#canvas-content',
                 '[data-testid="canvas-content"]',
                 'div[class*="canvas"]',
-                'div[class*="artifact"]',
-                '.prose-mirror',
-                '[contenteditable="false"] .markdown'
+                'div[class*="artifact"]'
             ]
         }
     },
