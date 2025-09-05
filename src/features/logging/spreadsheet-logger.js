@@ -259,12 +259,13 @@ export class SpreadsheetLogger {
       // ログエントリーを生成
       const newLog = this.formatLogEntry(
         task,
-        url || window.location.href,
+        url || (typeof window !== 'undefined' ? window.location.href : 'N/A'),
         sendTimeInfo.time,
         writeTime
       );
       
       // 3種類AIグループタスクの場合、段階的にログを記載
+      console.log(`[SpreadsheetLogger] グループタスク判定: isGroupTask=${options.isGroupTask}`);
       if (options.isGroupTask) {
         const rowKey = `${task.row}`;
         
@@ -288,7 +289,7 @@ export class SpreadsheetLogger {
           this.pendingLogs.get(rowKey).push({
             aiType: sendTimeInfo.aiType,
             content: newLog,
-            url: url || window.location.href,
+            url: url || (typeof window !== 'undefined' ? window.location.href : 'N/A'),
             timestamp: new Date()
           });
           
@@ -458,11 +459,14 @@ export class SpreadsheetLogger {
       
     } catch (error) {
       // エラーが発生してもメイン処理は続行
+      console.error('[SpreadsheetLogger] ログ書き込みエラー詳細:', error);
       this.logger.error('[SpreadsheetLogger] ログ書き込みエラー:', {
         message: error.message,
         stack: error.stack,
         taskId: task.id,
-        row: task.row
+        row: task.row,
+        errorName: error.name,
+        errorString: error.toString()
       });
       
       // エラー時もコールバックを実行（エラー情報付き）

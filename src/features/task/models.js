@@ -43,6 +43,8 @@ class Task {
       // metadata: this.metadata,  // 削除：サイズ削減
       logColumns: this.logColumns,
       groupId: this.groupId,
+      groupType: this.groupType,        // 3種類AIグループタイプ
+      groupPosition: this.groupPosition, // グループ内の位置（0,1,2）
       groupInfo: this.groupInfo,
       // specialSettings: this.specialSettings,  // 削除：サイズ削減
       // controlFlags: this.controlFlags,  // 削除：サイズ削減

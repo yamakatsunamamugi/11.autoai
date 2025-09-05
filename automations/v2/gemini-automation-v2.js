@@ -517,14 +517,20 @@
                 
                 // ui-selectorsから取得、フォールバック付き
                 const textSelectors = GeminiSelectorsFromUI.TEXT_EXTRACTION || {
-                    DEEP_RESEARCH: [
+                    EXTENDED_RESPONSE: [
+                        // Deep ResearchとCanvas共通の拡張応答セレクタ
+                        '#extended-response-markdown-content .ProseMirror',
+                        '#extended-response-message-content .ProseMirror',
+                        '.immersive-editor .ProseMirror',
                         '#extended-response-markdown-content',
                         '.extended-response-markdown-content',
-                        '[id="extended-response-markdown-content"]',
-                        'div[id="extended-response-markdown-content"]',
+                        '.ProseMirror[contenteditable="true"]',
+                        '.ProseMirror',
                         '.markdown.markdown-main-panel',
                         'div[class*="deep-research"]',
-                        'div[class*="research-result"]'
+                        'div[class*="research-result"]',
+                        'div[contenteditable="true"]',
+                        'div[class*="canvas"]'
                     ],
                     MESSAGE_CONTAINER: [
                         '.model-response-text',
@@ -539,13 +545,6 @@
                         '.prose',
                         'div[class*="text-base"]'
                     ],
-                    CANVAS_CONTENT: [
-                        '.ProseMirror[contenteditable="true"]',
-                        '.ProseMirror',
-                        'div[contenteditable="true"]',
-                        'div[class*="canvas"]',
-                        'div[class*="code-block"]'
-                    ],
                     GENERIC_RESPONSE: [
                         'div[data-message-role="model"]',
                         'div[class*="message"][class*="assistant"]',
@@ -554,16 +553,16 @@
                     ]
                 };
                 
-                // 方法1: DeepResearch結果を優先的にチェック
-                if (featureName && featureName.toLowerCase().includes('research')) {
-                    log('DeepResearch結果を探しています...');
+                // 方法1: Deep ResearchまたはCanvasモードの拡張応答を取得
+                if (isDeepResearchMode || isCanvasMode) {
+                    log(`${isDeepResearchMode ? 'Deep Research' : 'Canvas'}の拡張応答を探しています...`);
                     
-                    for (const selector of textSelectors.DEEP_RESEARCH) {
+                    for (const selector of textSelectors.EXTENDED_RESPONSE) {
                         textElement = findElement([selector]);
                         if (textElement) {
                             text = textElement.textContent?.trim() || '';
                             if (text && text.length > 10) {
-                                log(`DeepResearch結果取得成功 (${selector}): ${text.length}文字`, 'success');
+                                log(`拡張応答取得成功 (${selector}): ${text.length}文字`, 'success');
                                 break;
                             }
                         }
@@ -612,21 +611,9 @@
                     }
                 }
                 
-                // 方法3: Canvas/ProseMirrorエディタの内容を取得
-                if (!text) {
-                    for (const selector of textSelectors.CANVAS_CONTENT) {
-                        textElement = findElement([selector]);
-                        if (textElement) {
-                            text = textElement.textContent?.trim() || '';
-                            if (text && text.length > 10) {
-                                log(`Canvas/Editor取得成功 (${selector}): ${text.length}文字`, 'success');
-                                break;
-                            }
-                        }
-                    }
-                }
+                // 方法3: 削除（EXTENDED_RESPONSEに統合済み）
                 
-                // 方法4: より汎用的なセレクタで探す
+                // 方法3: より汎用的なセレクタで探す
                 if (!text) {
                     for (const selector of textSelectors.GENERIC_RESPONSE) {
                         const elements = findElements([selector]);

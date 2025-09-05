@@ -418,6 +418,13 @@ export default class StreamProcessorV2 {
             };
             
             // 3種類AIグループかどうかを判定
+            console.log(`[StreamProcessorV2] グループ判定デバッグ:`, {
+              taskId: task.id,
+              groupId: task.groupId,
+              groupType: task.groupType,
+              groupPosition: task.groupPosition,
+              multiAI: task.multiAI
+            });
             const isGroupTask = task.groupId && task.groupType === '3type';
             const isFirstInGroup = isGroupTask && task.groupPosition === 0;
             const isLastInGroup = isGroupTask && task.groupPosition === 2;
