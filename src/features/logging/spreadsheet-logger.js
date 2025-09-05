@@ -258,6 +258,7 @@ export class SpreadsheetLogger {
       
       // ログエントリーを生成
       let newLog;
+      let mergedLog;
       try {
         newLog = this.formatLogEntry(
           task,

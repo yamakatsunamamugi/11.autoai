@@ -76,7 +76,7 @@ export default class TaskGeneratorV2 {
               continue;
             }
             
-            const functionValue = this.getFunction(spreadsheetData, answerCol);
+            const functionValue = this.getFunction(spreadsheetData, answerCol, promptGroup.promptColumns);
             
             // ログ列を特定（プロンプト列の1列前）
             const logColumnIndex = Math.max(0, Math.min(...promptGroup.promptColumns) - 1);
@@ -91,7 +91,7 @@ export default class TaskGeneratorV2 {
               column: answerCol.column,  // F列、G列、H列など（回答列）
               promptColumns: promptGroup.promptColumns,  // D,E列（プロンプト列）
               aiType: answerCol.type,  // ChatGPT, Claude, Gemini
-              model: this.getModel(spreadsheetData, answerCol),
+              model: this.getModel(spreadsheetData, answerCol, promptGroup.promptColumns),
               function: functionValue,
               cellInfo: {
                 row: workRow.number,
@@ -131,7 +131,7 @@ export default class TaskGeneratorV2 {
             const aiType = promptGroup.aiType.toLowerCase();  // 小文字に統一（'Claude' → 'claude'）
             
             // Taskインスタンスを作成
-            const functionValue = this.getFunction(spreadsheetData, answerCol);
+            const functionValue = this.getFunction(spreadsheetData, answerCol, promptGroup.promptColumns);
             
             // ログ列を特定（プロンプト列の1列前）
             // promptColumnsは既にインデックスの配列なので、.map(col => col.index)は不要
@@ -145,7 +145,7 @@ export default class TaskGeneratorV2 {
               column: answerCol.column,
               promptColumns: promptGroup.promptColumns,  // プロンプト列の位置のみ
               aiType: aiType,
-              model: this.getModel(spreadsheetData, answerCol),
+              model: this.getModel(spreadsheetData, answerCol, promptGroup.promptColumns),
               function: functionValue,
               cellInfo: {
                 row: workRow.number,
@@ -387,14 +387,33 @@ export default class TaskGeneratorV2 {
 
   /**
    * モデル情報を取得
+   * @param {Object} data - スプレッドシートデータ
+   * @param {Object} answerCol - 回答列情報
+   * @param {Array} promptColumns - プロンプト列のインデックス配列（通常処理用）
    */
-  getModel(data, answerCol) {
+  getModel(data, answerCol, promptColumns = null) {
     const modelRow = data.values.find(row => 
       row[0] && (row[0] === 'モデル' || row[0].toLowerCase() === 'model')
     );
     
     if (modelRow) {
-      // 回答列から取得を試みる
+      // まず回答列の機能を確認
+      const functionRow = data.values.find(row => 
+        row[0] && (row[0] === '機能' || row[0].toLowerCase() === 'function')
+      );
+      
+      const functionValue = functionRow ? functionRow[answerCol.index] : null;
+      
+      // 機能が「通常」の場合、プロンプト列から取得
+      if (functionValue === '通常' && promptColumns && promptColumns.length > 0) {
+        // プロンプト列の最初の列からモデルを取得
+        const promptModelValue = modelRow[promptColumns[0]];
+        if (promptModelValue) {
+          return promptModelValue;
+        }
+      }
+      
+      // それ以外は回答列から取得
       const modelValue = modelRow[answerCol.index];
       if (modelValue) {
         return modelValue;
@@ -415,16 +434,31 @@ export default class TaskGeneratorV2 {
 
   /**
    * 機能情報を取得
+   * @param {Object} data - スプレッドシートデータ
+   * @param {Object} answerCol - 回答列情報
+   * @param {Array} promptColumns - プロンプト列のインデックス配列（通常処理用）
    */
-  getFunction(data, answerCol) {
+  getFunction(data, answerCol, promptColumns = null) {
     const functionRow = data.values.find(row => 
       row[0] && (row[0] === '機能' || row[0].toLowerCase() === 'function')
     );
     
     if (functionRow) {
-      const functionValue = functionRow[answerCol.index];
-      if (functionValue) {
-        return functionValue;
+      // まず回答列の機能を確認
+      const answerFunctionValue = functionRow[answerCol.index];
+      
+      // 機能が「通常」の場合、プロンプト列から取得
+      if (answerFunctionValue === '通常' && promptColumns && promptColumns.length > 0) {
+        // プロンプト列の最初の列から機能を取得
+        const promptFunctionValue = functionRow[promptColumns[0]];
+        if (promptFunctionValue) {
+          return promptFunctionValue;
+        }
+      }
+      
+      // それ以外は回答列の値を返す
+      if (answerFunctionValue) {
+        return answerFunctionValue;
       }
     }
     

@@ -708,15 +708,123 @@
                     if (moreBtn) {
                         // テストコードの実装をそのまま使用
                         log('「さらに表示」をクリック', 'info');
+                        
+                        // 🔍 デバッグ: クリック前の詳細な状態を記録
+                        console.log('🔥🔥🔥 [重要デバッグ] さらに表示ボタンクリック処理開始 🔥🔥🔥');
+                        console.log('📋 [クリック前] ボタンの完全な情報:');
+                        console.log('  - ボタン要素:', moreBtn);
+                        console.log('  - テキスト:', moreBtn.textContent?.trim());
+                        console.log('  - タグ名:', moreBtn.tagName);
+                        console.log('  - クラス名:', moreBtn.className);
+                        console.log('  - ID:', moreBtn.id || 'なし');
+                        
+                        // HTML属性を全て記録
+                        console.log('📋 [クリック前] HTML属性:');
+                        console.log('  - role:', moreBtn.getAttribute('role'));
+                        console.log('  - aria-haspopup:', moreBtn.getAttribute('aria-haspopup'));
+                        console.log('  - aria-expanded:', moreBtn.getAttribute('aria-expanded'));
+                        console.log('  - data-has-submenu:', moreBtn.getAttribute('data-has-submenu'));
+                        console.log('  - data-testid:', moreBtn.getAttribute('data-testid'));
+                        console.log('  - data-state:', moreBtn.getAttribute('data-state'));
+                        
+                        // ボタンの位置とサイズ
+                        const rect = moreBtn.getBoundingClientRect();
+                        console.log('📋 [クリック前] ボタンの位置とサイズ:');
+                        console.log('  - 位置:', { x: rect.x, y: rect.y });
+                        console.log('  - サイズ:', { width: rect.width, height: rect.height });
+                        console.log('  - 表示状態:', moreBtn.offsetParent !== null ? '表示' : '非表示');
+                        
+                        // スタイル情報
+                        const computed = window.getComputedStyle(moreBtn);
+                        console.log('📋 [クリック前] スタイル情報:');
+                        console.log('  - pointerEvents:', computed.pointerEvents);
+                        console.log('  - cursor:', computed.cursor);
+                        console.log('  - display:', computed.display);
+                        console.log('  - visibility:', computed.visibility);
+                        console.log('  - opacity:', computed.opacity);
+                        
+                        // イベントリスナー情報
+                        console.log('📋 [クリック前] イベントリスナー情報:');
+                        console.log('  - onclick関数:', typeof moreBtn.onclick);
+                        const reactKeys = Object.keys(moreBtn).filter(key => key.startsWith('__react'));
+                        console.log('  - Reactプロパティ:', reactKeys);
+                        if (reactKeys.length > 0) {
+                            reactKeys.forEach(key => {
+                                console.log(`    - ${key}:`, typeof moreBtn[key]);
+                            });
+                        }
+                        
+                        // 親要素の情報
+                        console.log('📋 [クリック前] 親要素の情報:');
+                        console.log('  - 親要素タグ:', moreBtn.parentElement?.tagName);
+                        console.log('  - 親要素role:', moreBtn.parentElement?.getAttribute('role'));
+                        console.log('  - 親要素クラス:', moreBtn.parentElement?.className);
+                        
+                        // 現在のメニュー状態
+                        console.log('📋 [クリック前] メニュー状態:');
+                        const menus = document.querySelectorAll('[role="menu"]');
+                        console.log('  - メニュー数:', menus.length);
+                        menus.forEach((menu, idx) => {
+                            console.log(`  - メニュー${idx}:`, {
+                                dataState: menu.getAttribute('data-state'),
+                                dataSide: menu.getAttribute('data-side'),
+                                子要素数: menu.children.length
+                            });
+                        });
+                        
+                        // クリック実行
+                        console.log('🎯 [クリック実行] moreBtn.click()を実行');
                         moreBtn.click();
+                        console.log('✅ [クリック完了] click()メソッド実行完了');
+                        
+                        // クリック直後の状態確認（待機なし）
+                        console.log('📋 [クリック直後] 即座の状態:');
+                        console.log('  - メニュー数:', document.querySelectorAll('[role="menu"]').length);
+                        console.log('  - アクティブ要素:', document.activeElement?.tagName);
+                        console.log('  - aria-expanded:', moreBtn.getAttribute('aria-expanded'));
+                        
                         await sleep(1000);
                         
-                        // テストコードのサブメニュー検出をそのまま使用
-                        const subMenu = document.querySelector('[data-side="right"]');
+                        // 待機後の状態を詳細に記録
+                        console.log('🔍 [デバッグ] 1秒待機後の状態:');
+                        const allMenusAfter = document.querySelectorAll('[role="menu"]');
+                        console.log('  - 全メニュー数:', allMenusAfter.length);
+                        allMenusAfter.forEach((menu, idx) => {
+                            console.log(`  - メニュー${idx}:`, {
+                                dataSide: menu.getAttribute('data-side'),
+                                dataState: menu.getAttribute('data-state'),
+                                子要素数: menu.children.length,
+                                menuitemradio数: menu.querySelectorAll('[role="menuitemradio"]').length
+                            });
+                        });
+                        
+                        // サブメニューを複数の方法で検索
+                        let subMenu = document.querySelector('[data-side="right"]');
+                        if (!subMenu) {
+                            console.log('⚠️ [デバッグ] data-side="right"のメニューが見つかりません');
+                            // 代替方法1: 最後のメニューをチェック
+                            if (allMenusAfter.length > 1) {
+                                subMenu = allMenusAfter[allMenusAfter.length - 1];
+                                console.log('🔍 [デバッグ] 最後のメニューをサブメニューとして使用');
+                            }
+                        }
+                        
+                        if (!subMenu) {
+                            // 代替方法2: menuitemradioを含むメニューを探す
+                            for (const menu of allMenusAfter) {
+                                if (menu.querySelectorAll('[role="menuitemradio"]').length > 0) {
+                                    subMenu = menu;
+                                    console.log('🔍 [デバッグ] menuitemradioを含むメニューをサブメニューとして使用');
+                                    break;
+                                }
+                            }
+                        }
                         
                         // 6-3: サブメニューで機能を探す（テストコードの実装）
                         log('6-3. サブメニューで機能を選択', 'step');
                         if (subMenu) {
+                            console.log('✅ [デバッグ] サブメニュー検出成功');
+                            console.log('  - サブメニューのmenuitemradio数:', subMenu.querySelectorAll('[role="menuitemradio"]').length);
                             // テストコードの実装をそのまま使用
                             const subMenuItems = subMenu.querySelectorAll('[role="menuitemradio"]');
                             for (const item of subMenuItems) {
@@ -735,10 +843,32 @@
                             
                             console.log(`🔍 [機能検索] サブメニューで "${mappedFeatureName}" を検索: ${featureElement ? '見つかった' : '見つからない'}`);
                         } else {
-                            console.log(`⚠️ [機能検索] サブメニューが見つかりません`);
+                            console.log(`❌ [デバッグ] サブメニューが見つかりません`);
+                            console.log('  - 問題: さらに表示クリック後もサブメニューが開かない');
+                            console.log('  - 可能な原因:');
+                            console.log('    1. メニューが閉じてしまった');
+                            console.log('    2. クリックイベントが正しく処理されなかった');
+                            console.log('    3. UIの状態が不安定');
+                            
+                            // エラー時の追加情報収集
+                            const bodyClick = document.querySelector('body');
+                            const activeElement = document.activeElement;
+                            console.log('  - 現在のフォーカス要素:', activeElement?.tagName, activeElement?.className);
+                            console.log('  - body要素の状態:', {
+                                クリック可能: !!bodyClick,
+                                スクロール位置: window.scrollY
+                            });
                         }
                     } else {
                         console.log(`⚠️ [機能検索] "さらに表示"ボタンが見つかりません`);
+                        console.log('  - 利用可能なmenuitem:');
+                        const allMenuItems = document.querySelectorAll('[role="menuitem"]');
+                        allMenuItems.forEach((item, idx) => {
+                            const text = item.textContent?.trim();
+                            if (text && text.length < 50) {
+                                console.log(`    [${idx}] "${text}"`);
+                            }
+                        });
                     }
                 }
                 

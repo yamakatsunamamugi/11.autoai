@@ -109,8 +109,8 @@ export default class StreamProcessorV2 {
     // テスト用: F列の最初の3タスクのみ処理
     let tasksToProcess = taskList.tasks;
     
-    if (isTestMode || taskList.tasks.length > 30) {
-      // F列のタスクのみ抽出して最初の3つに制限
+    if (isTestMode) {
+      // テストモードの場合のみF列のタスクを最初の3つに制限
       const fColumnTasks = taskList.tasks.filter(task => task.column === 'F').slice(0, 3);
       tasksToProcess = fColumnTasks.length > 0 ? fColumnTasks : taskList.tasks.slice(0, 3);
     }
@@ -119,7 +119,7 @@ export default class StreamProcessorV2 {
       元タスク数: taskList.tasks.length,
       処理タスク数: tasksToProcess.length,
       テストモード: isTestMode,
-      制限適用: taskList.tasks.length > 30 ? 'あり' : 'なし'
+      制限適用: isTestMode ? 'テストモード制限' : 'なし'
     });
 
     try {

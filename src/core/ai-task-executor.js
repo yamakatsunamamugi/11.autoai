@@ -229,9 +229,13 @@ export class AITaskExecutor {
             // 統合テストと同じAI自動化オブジェクト検索方式（V2版を優先）
             const automationMap = {
               'Claude': ['ClaudeAutomationV2', 'ClaudeAutomation', 'Claude'],
+              'claude': ['ClaudeAutomationV2', 'ClaudeAutomation', 'Claude'],
               'ChatGPT': ['ChatGPTAutomationV2', 'ChatGPTAutomation', 'ChatGPT'],
+              'chatgpt': ['ChatGPTAutomationV2', 'ChatGPTAutomation', 'ChatGPT'],
               'Gemini': ['GeminiAutomation', 'Gemini'],
-              'Genspark': ['GensparkAutomation', 'Genspark']
+              'gemini': ['GeminiAutomation', 'Gemini'],
+              'Genspark': ['GensparkAutomation', 'Genspark'],
+              'genspark': ['GensparkAutomation', 'Genspark']
             };
 
             const possibleNames = automationMap[taskData.aiType] || [`${taskData.aiType}Automation`];
