@@ -384,6 +384,15 @@ export default class StreamProcessorV2 {
         
         this.logger.log(`[StreamProcessorV2] 送信開始 ${index + 1}/${taskContexts.length}: ${context.cell}`);
         
+        // 送信時刻を記録
+        if (this.spreadsheetLogger) {
+          this.spreadsheetLogger.recordSendTime(context.task.id, {
+            aiType: context.task.aiType,
+            model: context.task.model
+          });
+          this.logger.log(`[StreamProcessorV2] 送信時刻記録: ${context.task.id}`);
+        }
+        
         // タブにフォーカスを移して送信を実行
         const result = await this.executePhaseOnTab(context.tabId, context.task, 'send');
         
