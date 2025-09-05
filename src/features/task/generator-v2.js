@@ -130,8 +130,15 @@ export default class TaskGeneratorV2 {
             // AI種別を設定
             const aiType = promptGroup.aiType.toLowerCase();  // 小文字に統一（'Claude' → 'claude'）
             
-            // Taskインスタンスを作成
-            const functionValue = this.getFunction(spreadsheetData, answerCol, promptGroup.promptColumns);
+            // 単独AIの場合、プロンプト列の設定を使用
+            const promptCol = {
+              index: promptGroup.promptColumns[0],
+              column: this.indexToColumn(promptGroup.promptColumns[0])
+            };
+            
+            // プロンプト列からモデルと機能を取得
+            const model = this.getModel(spreadsheetData, promptCol);
+            const functionValue = this.getFunction(spreadsheetData, promptCol);
             
             // ログ列を特定（プロンプト列の1列前）
             // promptColumnsは既にインデックスの配列なので、.map(col => col.index)は不要
@@ -145,7 +152,7 @@ export default class TaskGeneratorV2 {
               column: answerCol.column,
               promptColumns: promptGroup.promptColumns,  // プロンプト列の位置のみ
               aiType: aiType,
-              model: this.getModel(spreadsheetData, answerCol, promptGroup.promptColumns),
+              model: model,
               function: functionValue,
               cellInfo: {
                 row: workRow.number,
