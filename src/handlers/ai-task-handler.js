@@ -199,7 +199,10 @@ export class AITaskHandler {
         success: true,
         response: sendResult.response || "[Request interrupted by user]回答テキスト取得できない　エラー",
         aiType: sendResult.aiType || 'unknown',
-        model: sendResult.model,  // モデル情報を追加
+        model: sendResult.model,  // 選択されたモデル
+        displayedModel: sendResult.displayedModel,  // 実際に表示されているモデル
+        function: sendResult.function,  // 選択された機能
+        displayedFunction: sendResult.displayedFunction,  // 実際に表示されている機能
         taskId: taskId
       };
       

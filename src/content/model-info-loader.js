@@ -245,6 +245,197 @@ class ModelInfoExtractor {
     }
 }
 
+// FunctionInfoExtractor クラスの追加
+class FunctionInfoExtractor {
+    
+    static extract(aiType) {
+        const normalizedAiType = aiType.toLowerCase();
+        
+        switch (normalizedAiType) {
+            case 'chatgpt':
+                return this.extractChatGPTFunction();
+            case 'claude':
+                return this.extractClaudeFunction();
+            case 'gemini':
+                return this.extractGeminiFunction();
+            default:
+                console.warn(`[FunctionInfoExtractor] サポートされていないAI種別: ${aiType}`);
+                return '';
+        }
+    }
+    
+    static extractChatGPTFunction() {
+        const debugInfo = {
+            aiType: 'ChatGPT',
+            selectorFound: false,
+            elementContent: null,
+            extractedFunction: null
+        };
+        
+        try {
+            let functionName = '';
+            
+            // 機能ボタン（data-pill="true"）からの取得
+            const functionButtons = document.querySelectorAll('button[data-pill="true"]');
+            if (functionButtons.length > 0) {
+                for (const button of functionButtons) {
+                    const text = button.textContent?.trim();
+                    if (text && text.length > 0) {
+                        functionName = text;
+                        debugInfo.selectorFound = true;
+                        debugInfo.elementContent = text;
+                        debugInfo.extractedFunction = text;
+                        break;
+                    }
+                }
+            }
+            
+            // 選択状態のメニューアイテムから取得
+            if (!functionName) {
+                const selectedItems = document.querySelectorAll('[role="menuitemradio"][aria-checked="true"]');
+                for (const item of selectedItems) {
+                    const text = item.textContent?.trim();
+                    if (text && text.length > 0 && !text.includes('ChatGPT') && !text.includes('GPT')) {
+                        functionName = text;
+                        debugInfo.selectorFound = true;
+                        debugInfo.elementContent = text;
+                        debugInfo.extractedFunction = text;
+                        break;
+                    }
+                }
+            }
+            
+            console.log(`[FunctionInfoExtractor][ChatGPT] 🔍 機能情報取得詳細:`, debugInfo);
+            
+            if (functionName) {
+                console.log(`[FunctionInfoExtractor][ChatGPT] ✅ 機能情報取得成功: "${functionName}"`);
+            }
+            
+            return functionName;
+            
+        } catch (error) {
+            console.error(`[FunctionInfoExtractor][ChatGPT] ❌ 機能情報取得エラー:`, {
+                error: error.message,
+                debugInfo
+            });
+            return '';
+        }
+    }
+    
+    static extractClaudeFunction() {
+        const debugInfo = {
+            aiType: 'Claude',
+            selectorFound: false,
+            elementContent: null,
+            extractedFunction: null
+        };
+        
+        try {
+            let functionName = '';
+            
+            // 機能インジケーターから取得
+            const functionIndicators = document.querySelectorAll('.function-pill, .selected-function, [class*="function"], [data-function]');
+            for (const indicator of functionIndicators) {
+                const text = indicator.textContent?.trim();
+                if (text && text.length > 0 && !text.includes('Claude')) {
+                    functionName = text;
+                    debugInfo.selectorFound = true;
+                    debugInfo.elementContent = text;
+                    debugInfo.extractedFunction = text;
+                    break;
+                }
+            }
+            
+            // 選択されたメニューアイテムから取得
+            if (!functionName) {
+                const selectedItems = document.querySelectorAll('[role="menuitemradio"][aria-checked="true"], [role="menuitem"][aria-selected="true"]');
+                for (const item of selectedItems) {
+                    const text = item.textContent?.trim();
+                    if (text && text.length > 0 && !text.includes('Claude') && !text.includes('Sonnet') && !text.includes('Opus') && !text.includes('Haiku')) {
+                        functionName = text;
+                        debugInfo.selectorFound = true;
+                        debugInfo.elementContent = text;
+                        debugInfo.extractedFunction = text;
+                        break;
+                    }
+                }
+            }
+            
+            console.log(`[FunctionInfoExtractor][Claude] 🔍 機能情報取得詳細:`, debugInfo);
+            
+            if (functionName) {
+                console.log(`[FunctionInfoExtractor][Claude] ✅ 機能情報取得成功: "${functionName}"`);
+            }
+            
+            return functionName;
+            
+        } catch (error) {
+            console.error(`[FunctionInfoExtractor][Claude] ❌ 機能情報取得エラー:`, {
+                error: error.message,
+                debugInfo
+            });
+            return '';
+        }
+    }
+    
+    static extractGeminiFunction() {
+        const debugInfo = {
+            aiType: 'Gemini',
+            selectorFound: false,
+            elementContent: null,
+            extractedFunction: null
+        };
+        
+        try {
+            let functionName = '';
+            
+            // 機能ラベルから取得
+            const functionLabels = document.querySelectorAll('.function-label, .selected-function, [class*="function"], [class*="tool"]');
+            for (const label of functionLabels) {
+                const text = label.textContent?.trim();
+                if (text && text.length > 0 && !text.includes('Gemini') && !text.includes('Google')) {
+                    functionName = text;
+                    debugInfo.selectorFound = true;
+                    debugInfo.elementContent = text;
+                    debugInfo.extractedFunction = text;
+                    break;
+                }
+            }
+            
+            // DeepResearchインジケーターから取得
+            if (!functionName) {
+                const deepResearchIndicators = document.querySelectorAll('[class*="deep"], [class*="research"], [title*="Deep"], [title*="Research"]');
+                for (const indicator of deepResearchIndicators) {
+                    const text = indicator.textContent?.trim() || indicator.title?.trim();
+                    if (text && text.length > 0) {
+                        functionName = text;
+                        debugInfo.selectorFound = true;
+                        debugInfo.elementContent = text;
+                        debugInfo.extractedFunction = text;
+                        break;
+                    }
+                }
+            }
+            
+            console.log(`[FunctionInfoExtractor][Gemini] 🔍 機能情報取得詳細:`, debugInfo);
+            
+            if (functionName) {
+                console.log(`[FunctionInfoExtractor][Gemini] ✅ 機能情報取得成功: "${functionName}"`);
+            }
+            
+            return functionName;
+            
+        } catch (error) {
+            console.error(`[FunctionInfoExtractor][Gemini] ❌ 機能情報取得エラー:`, {
+                error: error.message,
+                debugInfo
+            });
+            return '';
+        }
+    }
+}
+
 // グローバルに登録
 window.ModelInfoExtractor = ModelInfoExtractor;
-console.log('✅ [11.autoai] ModelInfoExtractorをグローバルに登録しました');
+window.FunctionInfoExtractor = FunctionInfoExtractor;
+console.log('✅ [11.autoai] ModelInfoExtractorとFunctionInfoExtractorをグローバルに登録しました');

@@ -773,9 +773,99 @@
                         });
                         
                         // クリック実行
-                        console.log('🎯 [クリック実行] moreBtn.click()を実行');
+                        // 重要: フォーカスを維持してクリックする必要がある
+                        // 理由: ChatGPTのメニューはフォーカスを失うと自動的に閉じる
+                        console.log('🎯 [クリック実行] フォーカスを設定してからクリック');
+                        
+                        // フォーカスを明示的に設定
+                        moreBtn.focus();
+                        console.log('  ✅ フォーカスを設定');
+                        await sleep(100); // フォーカスが安定するまで待機
+                        
+                        // onclickの詳細を調査
+                        console.log('🔍 [onclick詳細分析]');
+                        console.log('  - onclick型:', typeof moreBtn.onclick);
+                        console.log('  - onclick値:', moreBtn.onclick);
+                        if (moreBtn.onclick && typeof moreBtn.onclick === 'object') {
+                            console.log('  - onclickオブジェクトのキー:', Object.keys(moreBtn.onclick));
+                            console.log('  - コンストラクタ名:', moreBtn.onclick.constructor?.name);
+                            // オブジェクトの中身を詳しく調査
+                            try {
+                                console.log('  - onclick JSON:', JSON.stringify(moreBtn.onclick));
+                            } catch (e) {
+                                console.log('  - onclick JSON変換失敗:', e.message);
+                            }
+                        }
+                        
+                        // メインメニューが閉じる原因を調査
+                        console.log('🔍 [メニュー閉じる問題の調査]');
+                        const mainMenu = document.querySelector('[role="menu"]');
+                        if (mainMenu) {
+                            console.log('  - メインメニューのdata-state:', mainMenu.getAttribute('data-state'));
+                            console.log('  - メインメニューのaria-hidden:', mainMenu.getAttribute('aria-hidden'));
+                            // イベントリスナーを一時的に追加して閉じる原因を特定
+                            const handleClose = (e) => {
+                                console.log('⚠️ メニューが閉じられようとしています!', e.type);
+                            };
+                            mainMenu.addEventListener('focusout', handleClose);
+                            mainMenu.addEventListener('blur', handleClose);
+                            mainMenu.addEventListener('mouseleave', handleClose);
+                        }
+                        
+                        // クリック実行（フォーカスを維持）
+                        console.log('  🖱️ クリック実行');
+                        
+                        // preventDefaultでfocusoutを防ぐ
+                        const preventFocusLoss = (e) => {
+                            console.log('  🛡️ フォーカス喪失を防止:', e.type);
+                            e.preventDefault();
+                            e.stopPropagation();
+                        };
+                        
+                        // 一時的にfocusoutを無効化
+                        moreBtn.addEventListener('focusout', preventFocusLoss, true);
+                        moreBtn.addEventListener('blur', preventFocusLoss, true);
+                        
                         moreBtn.click();
-                        console.log('✅ [クリック完了] click()メソッド実行完了');
+                        
+                        // クリック後もフォーカスを維持
+                        console.log('  🎯 クリック後、フォーカスを強制維持');
+                        setTimeout(() => {
+                            moreBtn.focus();
+                            // サブメニューが開くまでフォーカスを保持
+                            const keepFocus = setInterval(() => {
+                                if (document.activeElement !== moreBtn) {
+                                    moreBtn.focus();
+                                }
+                            }, 50);
+                            
+                            // 500ms後にフォーカス保持を解除
+                            setTimeout(() => {
+                                clearInterval(keepFocus);
+                                moreBtn.removeEventListener('focusout', preventFocusLoss, true);
+                                moreBtn.removeEventListener('blur', preventFocusLoss, true);
+                            }, 500);
+                        }, 10);
+                        
+                        console.log('✅ [クリック完了] フォーカス保護付きclick()実行完了');
+                        
+                        // クリック後の変化を段階的に記録
+                        for (let i = 0; i < 5; i++) {
+                            await sleep(200);
+                            const elapsed = (i + 1) * 200;
+                            console.log(`📊 [クリック後 ${elapsed}ms]:`, {
+                                'aria-expanded': moreBtn.getAttribute('aria-expanded'),
+                                'data-state': moreBtn.getAttribute('data-state'),
+                                'メニュー数': document.querySelectorAll('[role="menu"]').length,
+                                'サブメニュー存在': !!document.querySelector('[data-side="right"]')
+                            });
+                            
+                            // サブメニューが開いたら即座に記録
+                            if (document.querySelector('[data-side="right"]')) {
+                                console.log('🎉 サブメニューが開きました！');
+                                break;
+                            }
+                        }
                         
                         // クリック直後の状態確認（待機なし）
                         console.log('📋 [クリック直後] 即座の状態:');
@@ -1237,11 +1327,236 @@
     }
     
     // ========================================
+    // フェーズ別実行関数（順次処理用）
+    // ========================================
+    
+    /**
+     * テキスト入力のみ実行
+     */
+    async function inputTextOnly(prompt) {
+        try {
+            log('📝 テキスト入力のみ実行', 'info');
+            const input = await findElement(SELECTORS.textInput, 'テキスト入力欄');
+            if (!input) {
+                throw new Error('入力欄が見つかりません');
+            }
+            
+            // テキスト入力処理
+            if (input.classList.contains('ProseMirror') || input.classList.contains('ql-editor')) {
+                input.innerHTML = '';
+                const p = document.createElement('p');
+                p.textContent = prompt;
+                input.appendChild(p);
+                input.classList.remove('ql-blank');
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+            } else {
+                input.textContent = prompt;
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+            
+            log('✅ テキスト入力完了', 'success');
+            return { success: true };
+        } catch (error) {
+            log(`❌ テキスト入力エラー: ${error.message}`, 'error');
+            return { success: false, error: error.message };
+        }
+    }
+    
+    /**
+     * モデル選択のみ実行
+     */
+    async function selectModelOnly(modelName) {
+        try {
+            if (!modelName) {
+                log('モデル名が指定されていません', 'warning');
+                return { success: true };
+            }
+            
+            log(`📝 モデル選択のみ実行: ${modelName}`, 'info');
+            
+            // モデルメニューを開く
+            const modelBtn = await findElement(SELECTORS.modelButton, 'モデルボタン');
+            if (!modelBtn) {
+                throw new Error('モデルボタンが見つかりません');
+            }
+            
+            modelBtn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+            await sleep(100);
+            modelBtn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+            await sleep(1500);
+            
+            const modelMenuEl = await findElement(SELECTORS.modelMenu, 'モデルメニュー');
+            if (!modelMenuEl) {
+                throw new Error('モデルメニューが開きません');
+            }
+            
+            // モデルを選択
+            const allMenuItems = document.querySelectorAll('[role="menuitem"]');
+            const targetItem = Array.from(allMenuItems).find(item => {
+                const text = getCleanText(item);
+                return text === modelName || text.includes(modelName);
+            });
+            
+            if (targetItem) {
+                targetItem.click();
+                await sleep(2000);
+                log(`✅ モデル選択完了: ${modelName}`, 'success');
+            } else {
+                log(`⚠️ モデル "${modelName}" が見つかりません`, 'warning');
+            }
+            
+            return { success: true };
+        } catch (error) {
+            log(`❌ モデル選択エラー: ${error.message}`, 'error');
+            return { success: false, error: error.message };
+        }
+    }
+    
+    /**
+     * 機能選択のみ実行
+     */
+    async function selectFunctionOnly(functionName) {
+        try {
+            if (!functionName || functionName === '' || functionName === 'none' || functionName === '通常') {
+                log('機能選択をスキップ', 'info');
+                return { success: true };
+            }
+            
+            log(`📝 機能選択のみ実行: ${functionName}`, 'info');
+            
+            // 機能メニューを開く
+            const funcMenuBtn = await findElement(SELECTORS.menuButton, 'メニューボタン');
+            if (!funcMenuBtn) {
+                throw new Error('機能メニューボタンが見つかりません');
+            }
+            
+            funcMenuBtn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+            await sleep(100);
+            funcMenuBtn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+            await sleep(2000);
+            
+            const funcMenu = await findElement(SELECTORS.mainMenu, 'メインメニュー');
+            if (!funcMenu) {
+                throw new Error('機能メニューが開きません');
+            }
+            
+            // 機能を探す
+            let featureElement = findElementByText('[role="menuitemradio"]', functionName);
+            
+            if (!featureElement) {
+                // さらに表示ボタンを探してクリック
+                let moreBtn = findElementByText('[role="menuitem"]', 'さらに表示');
+                if (moreBtn) {
+                    log('「さらに表示」をクリック', 'info');
+                    
+                    // フォーカスを設定してからクリック
+                    moreBtn.focus();
+                    await sleep(100);
+                    moreBtn.click();
+                    moreBtn.focus(); // クリック後もフォーカスを維持
+                    
+                    await sleep(1000);
+                    
+                    // サブメニューで機能を探す
+                    const subMenu = document.querySelector('[data-side="right"]');
+                    if (subMenu) {
+                        featureElement = findElementByText('[role="menuitemradio"]', functionName, subMenu);
+                    }
+                }
+            }
+            
+            if (featureElement) {
+                featureElement.click();
+                await sleep(1500);
+                log(`✅ 機能選択完了: ${functionName}`, 'success');
+            } else {
+                log(`⚠️ 機能 "${functionName}" が見つかりません`, 'warning');
+            }
+            
+            // メニューを閉じる
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape' }));
+            await sleep(1000);
+            
+            return { success: true };
+        } catch (error) {
+            log(`❌ 機能選択エラー: ${error.message}`, 'error');
+            return { success: false, error: error.message };
+        }
+    }
+    
+    /**
+     * 送信と応答取得のみ実行
+     */
+    async function sendAndGetResponse() {
+        try {
+            log('📝 送信と応答取得を実行', 'info');
+            
+            // 送信ボタンをクリック
+            const sendBtn = await findElement(SELECTORS.sendButton, '送信ボタン');
+            if (!sendBtn) {
+                throw new Error('送信ボタンが見つかりません');
+            }
+            
+            sendBtn.click();
+            log('✅ 送信ボタンをクリック', 'success');
+            await sleep(1000);
+            
+            // 停止ボタンが消えるまで待機（最大5分）
+            let stopBtn = await findElement(SELECTORS.stopButton, '停止ボタン', 1);
+            if (stopBtn) {
+                log('応答待機中...', 'info');
+                for (let i = 0; i < 300; i++) {
+                    stopBtn = await findElement(SELECTORS.stopButton, '停止ボタン', 1);
+                    if (!stopBtn) {
+                        log('応答完了', 'success');
+                        break;
+                    }
+                    await sleep(1000);
+                }
+            }
+            
+            await sleep(2000);
+            
+            // テキスト取得
+            let responseText = '';
+            const assistantMessages = document.querySelectorAll('[data-message-author-role="assistant"]');
+            if (assistantMessages.length > 0) {
+                const lastMessage = assistantMessages[assistantMessages.length - 1];
+                const elements = lastMessage.querySelectorAll('div.markdown.prose');
+                for (const elem of elements) {
+                    const text = elem.textContent?.trim() || '';
+                    if (text && text.length > 10) {
+                        responseText = text;
+                        break;
+                    }
+                }
+            }
+            
+            if (responseText) {
+                log(`✅ 応答取得成功: ${responseText.length}文字`, 'success');
+                return { success: true, response: responseText };
+            } else {
+                throw new Error('応答テキストを取得できませんでした');
+            }
+            
+        } catch (error) {
+            log(`❌ 送信・応答取得エラー: ${error.message}`, 'error');
+            return { success: false, error: error.message };
+        }
+    }
+    
+    // ========================================
     // グローバル公開
     // ========================================
     window.ChatGPTAutomationV2 = {
         executeTask,
-        runAutomation
+        runAutomation,
+        // フェーズ別メソッド（順次処理用）
+        inputTextOnly,
+        selectModelOnly,
+        selectFunctionOnly,
+        sendAndGetResponse
     };
     
     console.log('✅ ChatGPT Automation V2 準備完了');

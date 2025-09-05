@@ -1343,8 +1343,9 @@ async function handleAITaskPrompt(request, sendResponse) {
         error: response?.error
       });
       
-      // モデル情報を取得して応答に含める
+      // モデル情報と機能情報を取得して応答に含める
       const currentModel = getModelInfo();
+      const currentFunction = getFunctionInfo();
       
       // 応答をそのまま返す
       sendResponse({
@@ -1352,7 +1353,10 @@ async function handleAITaskPrompt(request, sendResponse) {
         response: response?.response || '',
         error: response?.error,
         aiType: AI_TYPE,
-        model: currentModel,  // モデル情報を追加
+        model: currentModel,  // 選択されたモデル情報
+        displayedModel: currentModel,  // 実際に表示されているモデル
+        function: currentFunction,  // 選択された機能
+        displayedFunction: currentFunction,  // 実際に表示されている機能
         taskId: taskId
       });
     }
@@ -1968,6 +1972,31 @@ function getModelInfo() {
 }
 
 /**
+ * AI機能情報を取得（FunctionInfoExtractor使用）
+ * @returns {string} 機能名
+ */
+function getFunctionInfo() {
+  try {
+    // FunctionInfoExtractorが利用可能かチェック
+    if (typeof window.FunctionInfoExtractor !== 'undefined') {
+      // グローバルからFunctionInfoExtractorを使用
+      const functionName = window.FunctionInfoExtractor.extract(AI_TYPE);
+      console.log(`[11.autoai][${AI_TYPE}] 🔧 FunctionInfoExtractor使用: "${functionName || '取得失敗'}"`);
+      return functionName;
+    } 
+    
+    // フォールバック: 従来の直接取得方式
+    console.warn(`[11.autoai][${AI_TYPE}] ⚠️ FunctionInfoExtractorが利用できません。フォールバック方式を使用`);
+    return getFunctionInfoFallback();
+    
+  } catch (error) {
+    console.error(`[11.autoai][${AI_TYPE}] ❌ 機能情報取得エラー:`, error);
+    // エラー時もフォールバックを試行
+    return getFunctionInfoFallback();
+  }
+}
+
+/**
  * フォールバック用モデル情報取得関数
  * ModelInfoExtractorが利用できない場合の従来方式
  */
@@ -2021,6 +2050,67 @@ function getModelInfoFallback() {
   }
   
   return modelName;
+}
+
+/**
+ * フォールバック用機能情報取得関数
+ * FunctionInfoExtractorが利用できない場合の従来方式
+ * @returns {string} 機能名
+ */
+function getFunctionInfoFallback() {
+  let functionName = '';
+  
+  try {
+    switch(AI_TYPE) {
+      case 'ChatGPT':
+      case 'chatgpt':
+        // 機能ボタン（data-pill="true"）からの取得
+        const functionButtons = document.querySelectorAll('button[data-pill="true"]');
+        if (functionButtons.length > 0) {
+          for (const button of functionButtons) {
+            const text = button.textContent?.trim();
+            if (text && text.length > 0) {
+              functionName = text;
+              break;
+            }
+          }
+        }
+        break;
+      
+      case 'Claude':
+      case 'claude':
+        // 機能インジケーターから取得
+        const functionIndicators = document.querySelectorAll('.function-pill, .selected-function, [class*="function"], [data-function]');
+        for (const indicator of functionIndicators) {
+          const text = indicator.textContent?.trim();
+          if (text && text.length > 0 && !text.includes('Claude')) {
+            functionName = text;
+            break;
+          }
+        }
+        break;
+        
+      case 'Gemini':
+      case 'gemini':
+        // 機能ラベルから取得
+        const functionLabels = document.querySelectorAll('.function-label, .selected-function, [class*="function"], [class*="tool"]');
+        for (const label of functionLabels) {
+          const text = label.textContent?.trim();
+          if (text && text.length > 0 && !text.includes('Gemini') && !text.includes('Google')) {
+            functionName = text;
+            break;
+          }
+        }
+        break;
+    }
+    
+    console.log(`[11.autoai][${AI_TYPE}] 📋 機能フォールバック取得結果: "${functionName || '取得失敗'}"`);
+    
+  } catch (error) {
+    console.error(`[11.autoai][${AI_TYPE}] ❌ 機能フォールバック取得エラー:`, error);
+  }
+  
+  return functionName;
 }
 
 /**
@@ -2200,6 +2290,10 @@ async function handleExecuteTask(request, sendResponse) {
         responseLength: result.response?.length || 0
       });
 
+      // モデル情報と機能情報を取得
+      const currentModel = getModelInfo();
+      const currentFunction = getFunctionInfo();
+      
       sendResponse({
         success: true,
         taskId,
@@ -2207,6 +2301,10 @@ async function handleExecuteTask(request, sendResponse) {
         response: result.response || "",
         chunks: 1,
         aiType: AI_TYPE,
+        model: currentModel,  // 選択されたモデル
+        displayedModel: currentModel,  // 実際に表示されているモデル
+        function: currentFunction,  // 選択された機能
+        displayedFunction: currentFunction,  // 実際に表示されている機能
         timestamp: new Date().toISOString(),
       });
     } else {

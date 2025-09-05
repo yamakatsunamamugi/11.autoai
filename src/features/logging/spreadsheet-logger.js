@@ -68,8 +68,12 @@ export class SpreadsheetLogger {
    */
   formatLogEntry(task, url, sendTime, writeTime) {
     const aiType = task.aiType || 'Unknown';
-    const model = task.model || '不明';
-    const functionName = task.function || task.specialOperation || '指定なし';
+    const selectedModel = task.model || '不明';
+    const displayedModel = task.displayedModel || selectedModel;
+    const model = selectedModel === displayedModel ? selectedModel : `${selectedModel} / ${displayedModel}`;
+    const selectedFunction = task.function || task.specialOperation || '指定なし';
+    const displayedFunction = task.displayedFunction || selectedFunction;
+    const functionName = selectedFunction === displayedFunction ? selectedFunction : `${selectedFunction} / ${displayedFunction}`;
     
     // 経過時間を計算（秒単位）
     const elapsedMs = writeTime.getTime() - sendTime.getTime();
@@ -596,7 +600,12 @@ export class SpreadsheetLogger {
    */
   formatSimpleLogEntry(task, url) {
     const aiType = task.aiType || 'Unknown';
-    const model = task.model || '不明';
+    const selectedModel = task.model || '不明';
+    const displayedModel = task.displayedModel || selectedModel;
+    const model = selectedModel === displayedModel ? selectedModel : `${selectedModel} / ${displayedModel}`;
+    const selectedFunction = task.function || task.specialOperation || '通常';
+    const displayedFunction = task.displayedFunction || selectedFunction;
+    const functionName = selectedFunction === displayedFunction ? selectedFunction : `${selectedFunction} / ${displayedFunction}`;
     const currentTime = new Date();
     
     const timeStr = currentTime.toLocaleString('ja-JP', {
@@ -613,6 +622,7 @@ export class SpreadsheetLogger {
     const logEntry = [
       `---------- ${aiDisplayName} ----------`,
       `モデル: ${model}`,
+      `機能: ${functionName}`,
       `URL: ${url || 'URLが取得できませんでした'}`,
       `記載時刻: ${timeStr}`
     ].join('\n');

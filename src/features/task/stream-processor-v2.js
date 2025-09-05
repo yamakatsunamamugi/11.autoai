@@ -233,61 +233,168 @@ export default class StreamProcessorV2 {
   }
 
   /**
-   * バッチ内のタスクを並列処理（5秒間隔で開始）
+   * バッチ内のタスクを順次処理（フェーズ分け実行）
+   * フェーズ1: 全ウィンドウを開いてテキスト入力
+   * フェーズ2: モデルを順番に選択
+   * フェーズ3: 機能を順番に選択  
+   * フェーズ4: 5秒間隔で送信
    */
   async processBatch(batch, isTestMode) {
-    this.logger.log(`[StreamProcessorV2] 🚀 バッチ並列処理開始`, {
+    this.logger.log(`[StreamProcessorV2] 🚀 バッチ順次処理開始（新フロー）`, {
       tasks: batch.map(t => `${t.column}${t.row}`).join(', '),
       taskCount: batch.length,
-      interval: '5秒間隔で開始'
+      mode: '順次実行（フェーズ分け）'
     });
 
-    const taskPromises = [];
+    if (isTestMode) {
+      // テストモードの処理
+      for (const task of batch) {
+        this.completedTasks.add(task.id);
+        this.writtenCells.set(`${task.column}${task.row}`, true);
+      }
+      return;
+    }
+
+    const taskContexts = []; // 各タスクのコンテキスト（ウィンドウ情報など）を保持
     
-    // バッチ内のタスクを5秒間隔で開始（並列実行）
-    for (let index = 0; index < batch.length; index++) {
-      const task = batch[index];
+    try {
+      // ========================================
+      // フェーズ1: 全ウィンドウを開いてテキスト入力
+      // ========================================
+      this.logger.log(`[StreamProcessorV2] 📋 フェーズ1: ウィンドウ準備とテキスト入力`);
       
-      try {
-        this.logger.log(`[StreamProcessorV2] タスク${index + 1}/${batch.length}開始: ${task.column}${task.row}`);
-        
-        // ウィンドウ位置を設定（3つのウィンドウを4分割で配置）
+      for (let index = 0; index < batch.length; index++) {
+        const task = batch[index];
         const position = index; // 0: 左上、1: 右上、2: 左下
         
-        // タスクを開始（awaitしない - 並列実行）
-        const taskPromise = this.processTask(task, isTestMode, position)
-          .then(() => {
-            this.logger.log(`[StreamProcessorV2] ✅ タスク完了: ${task.column}${task.row}`);
-          })
-          .catch(error => {
-            this.logger.error(`[StreamProcessorV2] ❌ タスクエラー: ${task.column}${task.row}`, error);
-          });
+        this.logger.log(`[StreamProcessorV2] ウィンドウ${index + 1}/${batch.length}を準備: ${task.column}${task.row}`);
         
-        taskPromises.push(taskPromise);
-        
-        // 最後のタスクでない場合は5秒待機してから次のタスクを開始
-        if (index < batch.length - 1) {
-          this.logger.log(`[StreamProcessorV2] 次のタスク開始まで5秒待機...`);
-          await this.delay(5000);
+        // ウィンドウを作成
+        const tabId = await this.createWindowForTask(task, position);
+        if (!tabId) {
+          throw new Error(`Failed to create window for ${task.aiType}`);
         }
         
-      } catch (error) {
-        this.logger.error(`[StreamProcessorV2] タスク${index + 1}開始エラー:`, error);
-        // エラーが発生しても次のタスクを継続
+        // プロンプトを取得
+        const prompt = await this.getPromptForTask(task);
+        
+        taskContexts.push({
+          task: { ...task, prompt }, // プロンプトをタスクに追加
+          tabId,
+          position,
+          cell: `${task.column}${task.row}`
+        });
+        
+        // ウィンドウが開いたら、スクリプトを注入してからテキスト入力を実行
+        await this.delay(3000); // ページ読み込み待機（少し長めに）
+        
+        // スクリプトを注入
+        this.logger.log(`[StreamProcessorV2] スクリプト注入中: ${task.aiType}`);
+        await this.injectScriptsForTab(tabId, task.aiType);
+        
+        this.logger.log(`[StreamProcessorV2] テキスト入力${index + 1}/${batch.length}: ${task.column}${task.row}`);
+        const textResult = await this.executePhaseOnTab(tabId, { ...task, prompt }, 'text');
+        
+        if (!textResult || !textResult.success) {
+          this.logger.error(`[StreamProcessorV2] テキスト入力失敗: ${task.column}${task.row}`, textResult?.error);
+        }
+        
+        // 各ウィンドウ作成後に短い待機
+        if (index < batch.length - 1) {
+          await this.delay(1000);
+        }
       }
+      
+      this.logger.log(`[StreamProcessorV2] ✅ フェーズ1完了: 全ウィンドウ準備済み`);
+      await this.delay(2000); // フェーズ間の待機
+      
+      // ========================================
+      // フェーズ2: モデルを順番に選択
+      // ========================================
+      this.logger.log(`[StreamProcessorV2] 📋 フェーズ2: モデル選択（順番に）`);
+      
+      for (let index = 0; index < taskContexts.length; index++) {
+        const context = taskContexts[index];
+        this.logger.log(`[StreamProcessorV2] モデル選択${index + 1}/${taskContexts.length}: ${context.cell}`);
+        
+        // タブにフォーカスを移してモデル選択を実行
+        await this.executePhaseOnTab(context.tabId, context.task, 'model');
+        
+        await this.delay(1000); // 各モデル選択後の待機
+      }
+      
+      this.logger.log(`[StreamProcessorV2] ✅ フェーズ2完了: 全モデル選択済み`);
+      await this.delay(2000);
+      
+      // ========================================
+      // フェーズ3: 機能を順番に選択
+      // ========================================
+      this.logger.log(`[StreamProcessorV2] 📋 フェーズ3: 機能選択（順番に）`);
+      
+      for (let index = 0; index < taskContexts.length; index++) {
+        const context = taskContexts[index];
+        this.logger.log(`[StreamProcessorV2] 機能選択${index + 1}/${taskContexts.length}: ${context.cell}`);
+        
+        // タブにフォーカスを移して機能選択を実行
+        await this.executePhaseOnTab(context.tabId, context.task, 'function');
+        
+        await this.delay(1000); // 各機能選択後の待機
+      }
+      
+      this.logger.log(`[StreamProcessorV2] ✅ フェーズ3完了: 全機能選択済み`);
+      await this.delay(2000);
+      
+      // ========================================
+      // フェーズ4: 送信と応答取得（5秒間隔）
+      // ========================================
+      this.logger.log(`[StreamProcessorV2] 📋 フェーズ4: 送信と応答取得（5秒間隔）`);
+      
+      for (let index = 0; index < taskContexts.length; index++) {
+        const context = taskContexts[index];
+        this.logger.log(`[StreamProcessorV2] 送信${index + 1}/${taskContexts.length}: ${context.cell}`);
+        
+        // タブにフォーカスを移して送信を実行
+        const result = await this.executePhaseOnTab(context.tabId, context.task, 'send');
+        
+        // 結果を処理
+        if (result && result.response) {
+          this.completedTasks.add(context.task.id);
+          this.writtenCells.set(context.cell, result.response);
+          
+          // スプレッドシートに書き込み
+          if (this.spreadsheetData) {
+            const { spreadsheetId, gid } = this.spreadsheetData;
+            const range = context.cell;
+            
+            await globalThis.sheetsClient?.updateCell(
+              spreadsheetId,
+              range,
+              result.response,
+              gid
+            );
+            
+            this.logger.log(`[StreamProcessorV2] 📝 ${range}に応答を書き込みました`);
+          }
+        } else {
+          this.logger.error(`[StreamProcessorV2] ⚠️ ${context.cell}の応答が取得できませんでした`);
+        }
+        
+        // 最後のタスクでない場合は5秒待機
+        if (index < taskContexts.length - 1) {
+          this.logger.log(`[StreamProcessorV2] 次の送信まで5秒待機...`);
+          await this.delay(5000);
+        }
+      }
+      
+      this.logger.log(`[StreamProcessorV2] ✅ フェーズ4完了: 全タスク送信済み`);
+      
+    } catch (error) {
+      this.logger.error(`[StreamProcessorV2] バッチ処理エラー:`, error);
+      throw error;
     }
     
-    // すべてのタスクの完了を待つ
-    this.logger.log(`[StreamProcessorV2] 全タスクの完了を待機中...`);
-    const results = await Promise.allSettled(taskPromises);
-    
-    // 結果をログ出力
-    const completed = results.filter(r => r.status === 'fulfilled').length;
-    const failed = results.filter(r => r.status === 'rejected').length;
-    
     this.logger.log(`[StreamProcessorV2] ✅ バッチ処理完了`, {
-      完了: completed,
-      失敗: failed,
+      完了: this.completedTasks.size,
       合計: batch.length
     });
   }
@@ -414,11 +521,13 @@ export default class StreamProcessorV2 {
               // URLの取得に失敗しても処理は継続
             }
             
-            // モデル情報を追加したタスクオブジェクトを作成
+            // モデル情報を追加したタスクオブジェクトを作成（結果から表示値も追加）
             const taskWithModel = {
               ...task,
               model: task.model || 'Auto',
-              function: task.function || '通常'
+              function: task.function || '通常',
+              displayedModel: result.displayedModel || task.model || 'Auto',
+              displayedFunction: result.displayedFunction || task.function || '通常'
             };
             
             // 3種類AIグループかどうかを判定
