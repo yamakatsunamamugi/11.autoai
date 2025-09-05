@@ -290,6 +290,26 @@ class FunctionInfoExtractor {
                 }
             }
             
+            // Canvasや他の機能の表示要素を探す（新しいUI対応）
+            if (!functionName) {
+                // Canvas表示要素のセレクタを試す
+                const canvasIndicators = document.querySelectorAll(
+                    '[class*="canvas"], [aria-label*="canvas"], [title*="canvas"], ' +
+                    '[data-testid*="canvas"], button:has(svg):has(span), ' +
+                    'button[aria-haspopup="menu"] span'
+                );
+                for (const elem of canvasIndicators) {
+                    const text = elem.textContent?.trim()?.toLowerCase();
+                    if (text && (text === 'canvas' || text.includes('canvas'))) {
+                        functionName = 'canvas';
+                        debugInfo.selectorFound = true;
+                        debugInfo.elementContent = text;
+                        debugInfo.extractedFunction = functionName;
+                        break;
+                    }
+                }
+            }
+            
             // 選択状態のメニューアイテムから取得
             if (!functionName) {
                 const selectedItems = document.querySelectorAll('[role="menuitemradio"][aria-checked="true"]');
