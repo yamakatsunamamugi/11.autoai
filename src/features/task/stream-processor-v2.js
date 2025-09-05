@@ -376,14 +376,28 @@ export default class StreamProcessorV2 {
           functionResult = await this.executePhaseOnTab(context.tabId, context.task, 'function');
           
           // 機能選択が成功したかチェック
-          if (functionResult && functionResult.success !== false) {
-            // 成功：実際に選択された機能を保存（空文字でも保存）
-            if (functionResult.displayedFunction !== undefined) {
-              context.task.displayedFunction = functionResult.displayedFunction;
-              this.logger.log(`[StreamProcessorV2] ✅ 選択された機能を記録: ${context.task.function || '通常'} → ${functionResult.displayedFunction || '(空/通常)'}`);
-            }
+          // 成功条件: displayedFunctionが存在し、かつ要求された機能が選択されている
+          const requestedFunction = context.task.function || '通常';
+          const isSuccess = functionResult && 
+                           functionResult.success !== false && 
+                           functionResult.displayedFunction !== undefined &&
+                           (requestedFunction === '通常' || functionResult.displayedFunction !== '');
+          
+          if (isSuccess) {
+            // 成功：実際に選択された機能を保存
+            context.task.displayedFunction = functionResult.displayedFunction;
+            this.logger.log(`[StreamProcessorV2] ✅ 選択された機能を記録: ${requestedFunction} → ${functionResult.displayedFunction || '通常'}`);
             break; // 成功したらループを抜ける
           }
+          
+          // 失敗の詳細をログ出力
+          this.logger.warn(`[StreamProcessorV2] 機能選択チェック失敗:`, {
+            cell: context.cell,
+            requested: requestedFunction,
+            displayed: functionResult?.displayedFunction,
+            success: functionResult?.success,
+            willRetry: retryCount < maxRetries - 1
+          });
           
           // 失敗した場合
           retryCount++;
@@ -608,11 +622,10 @@ export default class StreamProcessorV2 {
         'gemini': 'automations/v2/gemini-automation-v2.js'
       };
       
-      // 共通スクリプト
+      // 共通スクリプト（model-info-loaderは既にページに存在する可能性があるため除外）
       const commonScripts = [
         'automations/feature-constants.js',
-        'automations/common-ai-handler.js',
-        'src/content/model-info-loader.js'  // FunctionInfoExtractorとModelInfoExtractorを含む
+        'automations/common-ai-handler.js'
       ];
       
       // AI固有のスクリプト
