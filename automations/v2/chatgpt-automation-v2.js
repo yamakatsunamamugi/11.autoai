@@ -708,10 +708,82 @@
                     }
                     
                     if (moreBtn) {
-                        // テストコードの実装をそのまま使用
-                        log('「さらに表示」をクリック', 'info');
+                        log('「さらに表示」にホバーしてサブメニューを開く', 'info');
                         
-                        // 🔍 デバッグ: クリック前の詳細な状態を記録
+                        // まずホバーイベントを試す
+                        moreBtn.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+                        moreBtn.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+                        await sleep(500);
+                        
+                        // サブメニューが開いたかチェック
+                        let subMenu = document.querySelector('[data-side="right"]');
+                        if (!subMenu) {
+                            log('ホバーでサブメニューが開かないため、クリックを試行', 'info');
+                            
+                            // クリック前にフォーカスを設定
+                            moreBtn.focus();
+                            await sleep(100);
+                            
+                            // クリックイベントを発火
+                            moreBtn.click();
+                            await sleep(500);
+                            
+                            // 再度チェック
+                            subMenu = document.querySelector('[data-side="right"]');
+                        }
+                        
+                        // それでも開かない場合は、ポインターイベントで試す
+                        if (!subMenu) {
+                            log('サブメニューが開きませんでした', 'warn');
+                            
+                            // ポインターイベントを試す
+                            const rect = moreBtn.getBoundingClientRect();
+                            const x = rect.left + rect.width / 2;
+                            const y = rect.top + rect.height / 2;
+                            
+                            moreBtn.dispatchEvent(new PointerEvent('pointerenter', {
+                                bubbles: true,
+                                clientX: x,
+                                clientY: y
+                            }));
+                            
+                            moreBtn.dispatchEvent(new PointerEvent('pointerover', {
+                                bubbles: true,
+                                clientX: x,
+                                clientY: y
+                            }));
+                            
+                            await sleep(500);
+                            subMenu = document.querySelector('[data-side="right"]');
+                        }
+                        
+                        // 最終手段: キーボード操作
+                        if (!subMenu) {
+                            log('最終手段: キーボード操作を試行', 'warn');
+                            
+                            // Enterキーを押す
+                            moreBtn.focus();
+                            await sleep(100);
+                            
+                            moreBtn.dispatchEvent(new KeyboardEvent('keydown', {
+                                key: 'Enter',
+                                code: 'Enter',
+                                bubbles: true
+                            }));
+                            
+                            moreBtn.dispatchEvent(new KeyboardEvent('keyup', {
+                                key: 'Enter',
+                                code: 'Enter',
+                                bubbles: true
+                            }));
+                            
+                            await sleep(500);
+                            subMenu = document.querySelector('[data-side="right"]');
+                        }
+                        
+                        // デバッグ用の詳細ログ（失敗時のみ）
+                        if (!subMenu) {
+                            // 🔍 デバッグ: クリック前の詳細な状態を記録
                         console.log('🔥🔥🔥 [重要デバッグ] さらに表示ボタンクリック処理開始 🔥🔥🔥');
                         console.log('📋 [クリック前] ボタンの完全な情報:');
                         console.log('  - ボタン要素:', moreBtn);
@@ -869,45 +941,34 @@
                             }
                         }
                         
-                        // クリック直後の状態確認（待機なし）
-                        console.log('📋 [クリック直後] 即座の状態:');
-                        console.log('  - メニュー数:', document.querySelectorAll('[role="menu"]').length);
-                        console.log('  - アクティブ要素:', document.activeElement?.tagName);
-                        console.log('  - aria-expanded:', moreBtn.getAttribute('aria-expanded'));
-                        
-                        await sleep(1000);
-                        
-                        // 待機後の状態を詳細に記録
-                        console.log('🔍 [デバッグ] 1秒待機後の状態:');
-                        const allMenusAfter = document.querySelectorAll('[role="menu"]');
-                        console.log('  - 全メニュー数:', allMenusAfter.length);
-                        allMenusAfter.forEach((menu, idx) => {
-                            console.log(`  - メニュー${idx}:`, {
-                                dataSide: menu.getAttribute('data-side'),
-                                dataState: menu.getAttribute('data-state'),
-                                子要素数: menu.children.length,
-                                menuitemradio数: menu.querySelectorAll('[role="menuitemradio"]').length
-                            });
-                        });
-                        
-                        // サブメニューを複数の方法で検索
-                        let subMenu = document.querySelector('[data-side="right"]');
-                        if (!subMenu) {
-                            console.log('⚠️ [デバッグ] data-side="right"のメニューが見つかりません');
-                            // 代替方法1: 最後のメニューをチェック
-                            if (allMenusAfter.length > 1) {
-                                subMenu = allMenusAfter[allMenusAfter.length - 1];
-                                console.log('🔍 [デバッグ] 最後のメニューをサブメニューとして使用');
-                            }
+                            // すべての方法が失敗した場合のみデバッグログを出力
+                            console.log('❌ [エラー] すべての方法でサブメニューを開けませんでした');
+                            console.log('  - 試した方法: ホバー、クリック、ポインターイベント、キーボード');
+                            console.log('  - 現在のメニュー数:', document.querySelectorAll('[role="menu"]').length);
+                            
+                            // 機能選択を失敗として返す
+                            return {
+                                success: false,
+                                error: 'サブメニューを開けませんでした',
+                                displayedFunction: ''
+                            };
                         }
                         
+                        // サブメニューが正常に開いた場合
+                        subMenu = document.querySelector('[data-side="right"]');
                         if (!subMenu) {
-                            // 代替方法2: menuitemradioを含むメニューを探す
-                            for (const menu of allMenusAfter) {
-                                if (menu.querySelectorAll('[role="menuitemradio"]').length > 0) {
-                                    subMenu = menu;
-                                    console.log('🔍 [デバッグ] menuitemradioを含むメニューをサブメニューとして使用');
-                                    break;
+                            // 代替方法: 最後のメニューまたはmenuitemradioを含むメニューを探す
+                            const allMenusAfter = document.querySelectorAll('[role="menu"]');
+                            if (allMenusAfter.length > 1) {
+                                subMenu = allMenusAfter[allMenusAfter.length - 1];
+                            }
+                            
+                            if (!subMenu) {
+                                for (const menu of allMenusAfter) {
+                                    if (menu.querySelectorAll('[role="menuitemradio"]').length > 0) {
+                                        subMenu = menu;
+                                        break;
+                                    }
                                 }
                             }
                         }
