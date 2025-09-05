@@ -285,6 +285,9 @@ export class SpreadsheetLogger {
         newLog = `${task.aiType || 'Unknown'} - ${writeTime.toLocaleString('ja-JP')} - エラーにより簡易ログ`;
       }
       
+      // mergedLogを初期化（デフォルトは新規ログ）
+      let mergedLog = newLog;
+      
       // 3種類AIグループタスクの場合、段階的にログを記載
       console.log(`[SpreadsheetLogger] グループタスク判定: isGroupTask=${options.isGroupTask}`);
       if (options.isGroupTask) {
@@ -345,44 +348,41 @@ export class SpreadsheetLogger {
         }
       }
       
-      if (options.isFirstTask && !options.isGroupTask) {
-        // 通常の最初のタスクの場合のみクリアして新規作成（3種類AIグループは除外）
-        console.log(`🔄 [SpreadsheetLogger] ログをクリアして新規作成: ${logCell}`);
-        // mergedLogはそのまま使用（既に設定済み）
-      } else {
-        // 2回目以降は既存ログに追加
-        let existingLog = '';
-        try {
-          console.log(`🔍 [SpreadsheetLogger] 既存ログ取得開始: ${logCell} (AI: ${sendTimeInfo.aiType})`);
-          const response = await sheetsClient.getSheetData(
-            spreadsheetId,
-            logCell,
-            gid
-          );
-          existingLog = response?.values?.[0]?.[0] || '';
-          console.log(`📄 [SpreadsheetLogger] 既存ログ内容 (${existingLog.length}文字):`, {
-            aiType: sendTimeInfo.aiType,
-            hasContent: !!existingLog,
-            preview: existingLog.substring(0, 100) + (existingLog.length > 100 ? '...' : '')
-          });
-        } catch (error) {
-          // 既存ログの取得に失敗しても続行
-          this.logger.warn('[SpreadsheetLogger] 既存ログの取得に失敗:', error.message);
-        }
-        
-        // 既存ログに追加（上書きではなく追加）
-        if (existingLog && existingLog.trim() !== '') {
-          if (options.isGroupTask && options.isLastInGroup) {
-            // 3種類AIグループの最後：既存ログにグループ全体を追加（明確な区切りで）
-            mergedLog = `${existingLog}\n\n📋========== 3種類AI実行ログ ==========📋\n\n${mergedLog}`;
-            console.log(`➕ [SpreadsheetLogger] 既存ログに3種類AIグループを追加`);
-          } else {
+      // グループタスクではない通常タスクの処理
+      if (!options.isGroupTask) {
+        if (options.isFirstTask) {
+          // 通常の最初のタスク：新規作成
+          console.log(`🔄 [SpreadsheetLogger] ログをクリアして新規作成: ${logCell}`);
+          // mergedLogはそのまま使用（既に設定済み）
+        } else {
+          // 通常の2回目以降：既存ログに追加
+          let existingLog = '';
+          try {
+            console.log(`🔍 [SpreadsheetLogger] 既存ログ取得開始: ${logCell} (AI: ${sendTimeInfo.aiType})`);
+            const response = await sheetsClient.getSheetData(
+              spreadsheetId,
+              logCell,
+              gid
+            );
+            existingLog = response?.values?.[0]?.[0] || '';
+            console.log(`📄 [SpreadsheetLogger] 既存ログ内容 (${existingLog.length}文字):`, {
+              aiType: sendTimeInfo.aiType,
+              hasContent: !!existingLog,
+              preview: existingLog.substring(0, 100) + (existingLog.length > 100 ? '...' : '')
+            });
+          } catch (error) {
+            // 既存ログの取得に失敗しても続行
+            this.logger.warn('[SpreadsheetLogger] 既存ログの取得に失敗:', error.message);
+          }
+          
+          // 既存ログに追加（上書きではなく追加）
+          if (existingLog && existingLog.trim() !== '') {
             // 通常タスク：既存ログとマージ（同じAIのログは置換）
             mergedLog = this.mergeWithExistingLog(existingLog, mergedLog, sendTimeInfo.aiType);
             console.log(`🔄 [SpreadsheetLogger] 既存ログとマージ完了 (AI: ${sendTimeInfo.aiType})`);
+          } else {
+            console.log(`➕ [SpreadsheetLogger] 新規ログ作成 (AI: ${sendTimeInfo.aiType})`);
           }
-        } else {
-          console.log(`➕ [SpreadsheetLogger] 新規ログ作成 (${options.isGroupTask ? '3種類AIグループ' : 'AI: ' + sendTimeInfo.aiType})`);
         }
       }
       
