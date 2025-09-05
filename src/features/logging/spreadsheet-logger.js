@@ -68,19 +68,24 @@ export class SpreadsheetLogger {
    */
   formatLogEntry(task, url, sendTime, writeTime) {
     const aiType = task.aiType || 'Unknown';
-    const selectedModel = task.model || '不明';
+    const selectedModel = task.model || '通常';
     const displayedModel = task.displayedModel || selectedModel;
     const model = selectedModel === displayedModel ? selectedModel : `${selectedModel} / ${displayedModel}`;
-    const selectedFunction = task.function || task.specialOperation || '指定なし';
+    const selectedFunction = task.function || task.specialOperation || '通常';
     const displayedFunction = task.displayedFunction || selectedFunction;
     
     // デバッグログ
-    console.log('[SpreadsheetLogger] formatLogEntry - 機能情報:', {
+    console.log('[SpreadsheetLogger] formatLogEntry - 完全情報:', {
+      'task.model': task.model,
+      'task.displayedModel': task.displayedModel,
+      selectedModel,
+      displayedModel,
+      model,
+      'task.function': task.function,  
+      'task.displayedFunction': task.displayedFunction,
       selectedFunction,
       displayedFunction,
-      'task.function': task.function,
-      'task.displayedFunction': task.displayedFunction,
-      'task.specialOperation': task.specialOperation
+      functionName: selectedFunction === displayedFunction ? selectedFunction : `${selectedFunction} / ${displayedFunction}`
     });
     
     const functionName = selectedFunction === displayedFunction ? selectedFunction : `${selectedFunction} / ${displayedFunction}`;
