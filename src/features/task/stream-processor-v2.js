@@ -358,13 +358,19 @@ export default class StreamProcessorV2 {
       await this.delay(2000);
       
       // ========================================
-      // フェーズ4: 送信と応答取得（5秒間隔）
+      // フェーズ4: 送信と応答取得（並列処理、5秒間隔）
       // ========================================
-      this.logger.log(`[StreamProcessorV2] 📋 フェーズ4: 送信と応答取得（5秒間隔）`);
+      this.logger.log(`[StreamProcessorV2] 📋 フェーズ4: 送信と応答取得（並列処理、5秒間隔）`);
       
-      for (let index = 0; index < taskContexts.length; index++) {
-        const context = taskContexts[index];
-        this.logger.log(`[StreamProcessorV2] 送信${index + 1}/${taskContexts.length}: ${context.cell}`);
+      // 各ウィンドウの送信を並列で実行（開始タイミングを5秒ずつずらす）
+      const sendPromises = taskContexts.map(async (context, index) => {
+        // 各ウィンドウの開始を5秒ずつ遅らせる
+        if (index > 0) {
+          this.logger.log(`[StreamProcessorV2] ウィンドウ${index + 1}の送信を${index * 5}秒後に開始`);
+          await this.delay(index * 5000);
+        }
+        
+        this.logger.log(`[StreamProcessorV2] 送信開始 ${index + 1}/${taskContexts.length}: ${context.cell}`);
         
         // タブにフォーカスを移して送信を実行
         const result = await this.executePhaseOnTab(context.tabId, context.task, 'send');
@@ -387,20 +393,6 @@ export default class StreamProcessorV2 {
             );
             
             this.logger.log(`[StreamProcessorV2] 📝 ${range}に応答を書き込みました`);
-            
-            // デバッグ: SpreadsheetLoggerの状態確認
-            this.logger.log(`[StreamProcessorV2] ログ書き込み前チェック:`, {
-              hasSpreadsheetLogger: !!this.spreadsheetLogger,
-              spreadsheetLoggerType: typeof this.spreadsheetLogger,
-              hasTask: !!context.task,
-              taskLogColumns: context.task?.logColumns,
-              logColumnsLength: context.task?.logColumns?.length || 0,
-              taskDetails: {
-                id: context.task?.id,
-                row: context.task?.row,
-                column: context.task?.column
-              }
-            });
             
             // SpreadsheetLoggerでログを記録
             if (this.spreadsheetLogger && context.task.logColumns && context.task.logColumns.length > 0) {
@@ -448,24 +440,19 @@ export default class StreamProcessorV2 {
                   logError.message
                 );
               }
-            } else {
-              this.logger.log(`[StreamProcessorV2] ログ書き込みをスキップ（logColumns未設定）:`, {
-                hasSpreadsheetLogger: !!this.spreadsheetLogger,
-                hasLogColumns: !!context.task.logColumns,
-                logColumns: context.task.logColumns
-              });
             }
           }
         } else {
           this.logger.error(`[StreamProcessorV2] ⚠️ ${context.cell}の応答が取得できませんでした`);
         }
         
-        // 最後のタスクでない場合は5秒待機
-        if (index < taskContexts.length - 1) {
-          this.logger.log(`[StreamProcessorV2] 次の送信まで5秒待機...`);
-          await this.delay(5000);
-        }
-      }
+        this.logger.log(`[StreamProcessorV2] ✅ 送信完了: ${context.cell}`);
+        return result;
+      });
+      
+      // すべての送信が完了するまで待つ
+      const results = await Promise.all(sendPromises);
+      this.logger.log(`[StreamProcessorV2] ✅ バッチ内の全送信完了（${results.length}個）`);
       
       this.logger.log(`[StreamProcessorV2] ✅ フェーズ4完了: 全タスク送信済み`);
       
