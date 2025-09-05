@@ -407,6 +407,206 @@ export default class StreamProcessorV2 {
   }
 
   /**
+   * タブにスクリプトを注入
+   * @param {number} tabId - タブID
+   * @param {string} aiType - AIタイプ
+   */
+  async injectScriptsForTab(tabId, aiType) {
+    try {
+      const aiTypeLower = aiType.toLowerCase();
+      
+      // V2スクリプトマップ
+      const v2ScriptMap = {
+        'claude': 'automations/v2/claude-automation-v2.js',
+        'chatgpt': 'automations/v2/chatgpt-automation-v2.js',
+        'gemini': 'automations/v2/gemini-automation-v2.js'
+      };
+      
+      // 共通スクリプト
+      const commonScripts = [
+        'automations/feature-constants.js',
+        'automations/common-ai-handler.js'
+      ];
+      
+      // AI固有のスクリプト
+      const aiScript = v2ScriptMap[aiTypeLower] || `automations/${aiTypeLower}-automation.js`;
+      
+      // スクリプトを順番に注入
+      const scriptsToInject = [...commonScripts, aiScript];
+      
+      for (const scriptFile of scriptsToInject) {
+        this.logger.log(`[StreamProcessorV2] 📝 スクリプト注入: ${scriptFile}`);
+        await chrome.scripting.executeScript({
+          target: { tabId },
+          files: [scriptFile]
+        });
+      }
+      
+      // スクリプトが完全に読み込まれるまで待機
+      await this.delay(1000);
+      
+      // スクリプトが読み込まれたか確認
+      const checkResult = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: (aiType) => {
+          const automationMap = {
+            'claude': ['ClaudeAutomationV2', 'ClaudeAutomation'],
+            'chatgpt': ['ChatGPTAutomationV2', 'ChatGPTAutomation'],
+            'gemini': ['GeminiAutomation']
+          };
+          
+          const possibleNames = automationMap[aiType.toLowerCase()] || [];
+          const found = possibleNames.find(name => window[name] !== undefined);
+          return !!found;
+        },
+        args: [aiType]
+      });
+      
+      if (!checkResult?.[0]?.result) {
+        this.logger.warn(`[StreamProcessorV2] ⚠️ ${aiType}のAutomationオブジェクトが見つかりません`);
+      }
+      
+      return true;
+    } catch (error) {
+      this.logger.error(`[StreamProcessorV2] スクリプト注入エラー:`, error);
+      return false;
+    }
+  }
+  
+  /**
+   * 特定のタブで指定フェーズを実行
+   * @param {number} tabId - タブID
+   * @param {Object} task - タスク情報
+   * @param {string} phase - 実行フェーズ ('text', 'model', 'function', 'send')
+   */
+  async executePhaseOnTab(tabId, task, phase) {
+    try {
+      // タブにフォーカスを移す
+      await chrome.tabs.update(tabId, { active: true });
+      await this.delay(500); // フォーカス安定待機
+      
+      let result;
+      
+      // フェーズに応じた処理を実行
+      switch(phase) {
+        case 'text':
+          // テキスト入力のみ実行
+          result = await chrome.scripting.executeScript({
+            target: { tabId },
+            func: async (prompt) => {
+              if (window.ChatGPTAutomationV2) {
+                return await window.ChatGPTAutomationV2.inputTextOnly(prompt);
+              }
+              return { success: false, error: 'ChatGPTAutomationV2 not found' };
+            },
+            args: [task.prompt || task.text || '']
+          });
+          break;
+          
+        case 'model':
+          // モデル選択のみ実行
+          result = await chrome.scripting.executeScript({
+            target: { tabId },
+            func: async (model) => {
+              if (window.ChatGPTAutomationV2) {
+                return await window.ChatGPTAutomationV2.selectModelOnly(model);
+              }
+              return { success: false, error: 'ChatGPTAutomationV2 not found' };
+            },
+            args: [task.model]
+          });
+          break;
+          
+        case 'function':
+          // 機能選択のみ実行
+          result = await chrome.scripting.executeScript({
+            target: { tabId },
+            func: async (functionName) => {
+              if (window.ChatGPTAutomationV2) {
+                return await window.ChatGPTAutomationV2.selectFunctionOnly(functionName);
+              }
+              return { success: false, error: 'ChatGPTAutomationV2 not found' };
+            },
+            args: [task.function]
+          });
+          break;
+          
+        case 'send':
+          // 送信と応答取得
+          result = await chrome.scripting.executeScript({
+            target: { tabId },
+            func: async () => {
+              if (window.ChatGPTAutomationV2) {
+                return await window.ChatGPTAutomationV2.sendAndGetResponse();
+              }
+              return { success: false, error: 'ChatGPTAutomationV2 not found' };
+            },
+            args: []
+          });
+          break;
+          
+        default:
+          throw new Error(`Unknown phase: ${phase}`);
+      }
+      
+      // 結果を返す
+      if (result && result[0]) {
+        return result[0].result;
+      }
+      return { success: false, error: 'No result' };
+      
+    } catch (error) {
+      this.logger.error(`[StreamProcessorV2] フェーズ実行エラー (${phase}):`, error);
+      return { success: false, error: error.message };
+    }
+  }
+  
+  /**
+   * タスクからプロンプトを取得
+   * @param {Object} task - タスクオブジェクト
+   * @returns {Promise<string>} プロンプト文字列
+   */
+  async getPromptForTask(task) {
+    try {
+      // プロンプトがすでに設定されている場合
+      if (task.prompt || task.text) {
+        return task.prompt || task.text;
+      }
+      
+      // スプレッドシートデータからプロンプトを取得
+      if (this.spreadsheetData && task.promptColumns) {
+        const prompts = [];
+        // promptColumnsが配列の配列になっている場合の対処
+        const columns = Array.isArray(task.promptColumns[0]) ? task.promptColumns[0] : task.promptColumns;
+        
+        for (const col of columns) {
+          // colが文字列であることを確認
+          if (typeof col === 'string' && col.length > 0) {
+            const colIndex = col.charCodeAt(0) - 65; // A=0, B=1...
+            const value = this.spreadsheetData.values?.[task.row - 1]?.[colIndex];
+            if (value) {
+              prompts.push(value);
+            }
+          } else if (typeof col === 'number') {
+            // colが数値の場合（インデックス）
+            const value = this.spreadsheetData.values?.[task.row - 1]?.[col];
+            if (value) {
+              prompts.push(value);
+            }
+          }
+        }
+        return prompts.join('\n');
+      }
+      
+      // デフォルトプロンプト
+      return `タスク ${task.column}${task.row} のプロンプト`;
+    } catch (error) {
+      this.logger.error('[StreamProcessorV2] プロンプト取得エラー:', error);
+      return '';
+    }
+  }
+
+  /**
    * 単一タスクを処理
    * @param {Object} task - タスクオブジェクト
    * @param {boolean} isTestMode - テストモード

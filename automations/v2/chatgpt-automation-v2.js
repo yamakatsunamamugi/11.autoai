@@ -1445,23 +1445,66 @@
             let featureElement = findElementByText('[role="menuitemradio"]', functionName);
             
             if (!featureElement) {
-                // さらに表示ボタンを探してクリック
+                // さらに表示ボタンを探してホバー（ChatGPTはホバーでメニューが開く）
                 let moreBtn = findElementByText('[role="menuitem"]', 'さらに表示');
+                if (!moreBtn) {
+                    // 英語版の場合
+                    moreBtn = findElementByText('[role="menuitem"]', 'Show more');
+                }
+                
                 if (moreBtn) {
-                    log('「さらに表示」をクリック', 'info');
+                    log('「さらに表示」にホバーしてサブメニューを開く', 'info');
                     
-                    // フォーカスを設定してからクリック
-                    moreBtn.focus();
-                    await sleep(100);
-                    moreBtn.click();
-                    moreBtn.focus(); // クリック後もフォーカスを維持
+                    // マウスホバーイベントを発火（ChatGPTのメニューはホバーで開く）
+                    moreBtn.dispatchEvent(new MouseEvent('mouseenter', { 
+                        bubbles: true, 
+                        cancelable: true,
+                        view: window
+                    }));
+                    await sleep(50);
                     
-                    await sleep(1000);
+                    moreBtn.dispatchEvent(new MouseEvent('mouseover', { 
+                        bubbles: true,
+                        cancelable: true,
+                        view: window
+                    }));
+                    await sleep(50);
                     
-                    // サブメニューで機能を探す
-                    const subMenu = document.querySelector('[data-side="right"]');
+                    // PointerEventも試す（より現代的なイベント）
+                    moreBtn.dispatchEvent(new PointerEvent('pointerenter', {
+                        bubbles: true,
+                        cancelable: true,
+                        pointerType: 'mouse'
+                    }));
+                    await sleep(50);
+                    
+                    moreBtn.dispatchEvent(new PointerEvent('pointerover', {
+                        bubbles: true,
+                        cancelable: true,
+                        pointerType: 'mouse'
+                    }));
+                    
+                    // サブメニューが開くまで待機
+                    await sleep(800);
+                    
+                    // サブメニューが開いたか確認
+                    let subMenu = document.querySelector('[data-side="right"]');
+                    
+                    // サブメニューが開かない場合、フォールバックとして1回だけクリックを試みる
+                    if (!subMenu) {
+                        log('ホバーでサブメニューが開かないため、クリックを試行', 'info');
+                        moreBtn.focus();
+                        await sleep(100);
+                        moreBtn.click();
+                        await sleep(800);
+                        subMenu = document.querySelector('[data-side="right"]');
+                    }
+                    
                     if (subMenu) {
+                        log('サブメニューが開きました', 'success');
                         featureElement = findElementByText('[role="menuitemradio"]', functionName, subMenu);
+                    } else {
+                        log('⚠️ サブメニューが開きませんでした', 'warning');
                     }
                 }
             }
