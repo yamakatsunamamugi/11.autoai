@@ -719,16 +719,10 @@
                         let subMenu = document.querySelector('[data-side="right"]');
                         if (!subMenu) {
                             log('ホバーでサブメニューが開かないため、クリックを試行', 'info');
-                            
-                            // クリック前にフォーカスを設定
                             moreBtn.focus();
                             await sleep(100);
-                            
-                            // クリックイベントを発火
                             moreBtn.click();
                             await sleep(500);
-                            
-                            // 再度チェック
                             subMenu = document.querySelector('[data-side="right"]');
                         }
                         
@@ -1598,40 +1592,9 @@
                     // サブメニューが開かない場合、複数の方法を試す
                     if (!subMenu) {
                         log('ホバーでサブメニューが開かないため、クリックを試行', 'info');
-                        
-                        // フォーカスを維持してクリック（ChatGPTのメニューはフォーカスを失うと閉じる）
-                        const preventFocusLoss = (e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                        };
-                        
-                        // 一時的にfocusoutを無効化
-                        moreBtn.addEventListener('focusout', preventFocusLoss, true);
-                        moreBtn.addEventListener('blur', preventFocusLoss, true);
-                        
-                        // フォーカスを設定してクリック
                         moreBtn.focus();
                         await sleep(100);
                         moreBtn.click();
-                        
-                        // クリック後もフォーカスを維持
-                        setTimeout(() => {
-                            moreBtn.focus();
-                            // サブメニューが開くまでフォーカスを保持
-                            const keepFocus = setInterval(() => {
-                                if (document.activeElement !== moreBtn) {
-                                    moreBtn.focus();
-                                }
-                            }, 50);
-                            
-                            // 500ms後にフォーカス保持を解除
-                            setTimeout(() => {
-                                clearInterval(keepFocus);
-                                moreBtn.removeEventListener('focusout', preventFocusLoss, true);
-                                moreBtn.removeEventListener('blur', preventFocusLoss, true);
-                            }, 500);
-                        }, 10);
-                        
                         await sleep(800);
                         subMenu = document.querySelector('[data-side="right"]');
                     }
