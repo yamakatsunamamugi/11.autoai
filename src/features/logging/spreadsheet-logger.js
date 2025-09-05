@@ -287,7 +287,7 @@ export class SpreadsheetLogger {
       }
       
       // mergedLogを初期化（デフォルトは新規ログ）
-      let mergedLog = newLog;
+      mergedLog = newLog;
       
       // 3種類AIグループタスクの場合、段階的にログを記載
       console.log(`[SpreadsheetLogger] グループタスク判定: isGroupTask=${options.isGroupTask}`);

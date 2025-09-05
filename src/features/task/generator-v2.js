@@ -447,10 +447,28 @@ export default class TaskGeneratorV2 {
       // まず回答列の機能を確認
       const answerFunctionValue = functionRow[answerCol.index];
       
+      // デバッグログ追加
+      console.log('[DEBUG] getFunction:', {
+        answerCol: answerCol.column,
+        answerIndex: answerCol.index,
+        answerValue: answerFunctionValue,
+        promptColumns: promptColumns,
+        hasPromptColumns: promptColumns && promptColumns.length > 0
+      });
+      
       // 機能が「通常」の場合、プロンプト列から取得
       if (answerFunctionValue === '通常' && promptColumns && promptColumns.length > 0) {
         // プロンプト列の最初の列から機能を取得
         const promptFunctionValue = functionRow[promptColumns[0]];
+        
+        // デバッグログ追加
+        console.log('[DEBUG] プロンプト列から取得:', {
+          promptIndex: promptColumns[0],
+          promptValue: promptFunctionValue,
+          functionRowLength: functionRow.length,
+          fullRow: functionRow
+        });
+        
         if (promptFunctionValue) {
           return promptFunctionValue;
         }
