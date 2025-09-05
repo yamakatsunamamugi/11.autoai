@@ -456,8 +456,8 @@ export default class TaskGeneratorV2 {
         hasPromptColumns: promptColumns && promptColumns.length > 0
       });
       
-      // 機能が「通常」の場合、プロンプト列から取得
-      if (answerFunctionValue === '通常' && promptColumns && promptColumns.length > 0) {
+      // 機能が「通常」または空の場合、プロンプト列から取得
+      if ((answerFunctionValue === '通常' || !answerFunctionValue || answerFunctionValue === '') && promptColumns && promptColumns.length > 0) {
         // プロンプト列の最初の列から機能を取得
         const promptFunctionValue = functionRow[promptColumns[0]];
         
