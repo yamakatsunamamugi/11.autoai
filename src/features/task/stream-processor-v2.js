@@ -343,7 +343,13 @@ export default class StreamProcessorV2 {
         this.logger.log(`[StreamProcessorV2] モデル選択${index + 1}/${taskContexts.length}: ${context.cell}`);
         
         // タブにフォーカスを移してモデル選択を実行
-        await this.executePhaseOnTab(context.tabId, context.task, 'model');
+        const modelResult = await this.executePhaseOnTab(context.tabId, context.task, 'model');
+        
+        // 実際に選択されたモデルを保存
+        if (modelResult && modelResult.displayedModel !== undefined) {
+          context.task.displayedModel = modelResult.displayedModel;
+          this.logger.log(`[StreamProcessorV2] 選択されたモデルを記録: ${context.task.model || 'Auto'} → ${modelResult.displayedModel || '(取得できず)'}`);
+        }
         
         await this.delay(1000); // 各モデル選択後の待機
       }
@@ -361,7 +367,13 @@ export default class StreamProcessorV2 {
         this.logger.log(`[StreamProcessorV2] 機能選択${index + 1}/${taskContexts.length}: ${context.cell}`);
         
         // タブにフォーカスを移して機能選択を実行
-        await this.executePhaseOnTab(context.tabId, context.task, 'function');
+        const functionResult = await this.executePhaseOnTab(context.tabId, context.task, 'function');
+        
+        // 実際に選択された機能を保存
+        if (functionResult && functionResult.displayedFunction !== undefined) {
+          context.task.displayedFunction = functionResult.displayedFunction;
+          this.logger.log(`[StreamProcessorV2] 選択された機能を記録: ${context.task.function || '通常'} → ${functionResult.displayedFunction || '(取得できず)'}`);
+        }
         
         await this.delay(1000); // 各機能選択後の待機
       }
@@ -430,12 +442,13 @@ export default class StreamProcessorV2 {
                 }
                 
                 // タスクにモデル情報を追加
+                // displayedFunctionは既にフェーズ3で取得済み
                 const taskWithModel = {
                   ...context.task,
                   model: context.task.model || 'Auto',
                   function: context.task.function || '通常',
                   displayedModel: result.displayedModel || context.task.model || 'Auto',
-                  displayedFunction: result.displayedFunction || context.task.function || '通常'
+                  displayedFunction: context.task.displayedFunction || result.displayedFunction || context.task.function || '通常'
                 };
                 
                 // ログセルを特定

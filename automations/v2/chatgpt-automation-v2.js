@@ -1442,7 +1442,21 @@
                 log(`⚠️ モデル "${modelName}" が見つかりません`, 'warning');
             }
             
-            return { success: true };
+            // 選択後の実際のモデルを取得
+            let actualSelectedModel = '';
+            try {
+                if (window.ModelInfoExtractor) {
+                    actualSelectedModel = window.ModelInfoExtractor.extract('ChatGPT') || '';
+                    log(`📊 実際に選択されたモデル: "${actualSelectedModel}"`, 'info');
+                }
+            } catch (e) {
+                log(`モデル情報取得エラー: ${e.message}`, 'warn');
+            }
+            
+            return { 
+                success: true,
+                displayedModel: actualSelectedModel
+            };
         } catch (error) {
             log(`❌ モデル選択エラー: ${error.message}`, 'error');
             return { success: false, error: error.message };
@@ -1557,7 +1571,21 @@
             document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape' }));
             await sleep(1000);
             
-            return { success: true };
+            // 選択後の実際の機能を取得
+            let actualSelectedFunction = '';
+            try {
+                if (window.FunctionInfoExtractor) {
+                    actualSelectedFunction = window.FunctionInfoExtractor.extract('ChatGPT') || '';
+                    log(`📊 実際に選択された機能: "${actualSelectedFunction}"`, 'info');
+                }
+            } catch (e) {
+                log(`機能情報取得エラー: ${e.message}`, 'warn');
+            }
+            
+            return { 
+                success: true, 
+                displayedFunction: actualSelectedFunction 
+            };
         } catch (error) {
             log(`❌ 機能選択エラー: ${error.message}`, 'error');
             return { success: false, error: error.message };
