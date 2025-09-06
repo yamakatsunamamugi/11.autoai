@@ -703,14 +703,22 @@
             model: taskData.model,
             function: taskData.function,
             promptLength: taskData.prompt?.length || taskData.text?.length || 0,
-            hasPrompt: !!(taskData.prompt || taskData.text)
+            hasPrompt: !!(taskData.prompt || taskData.text),
+            cellInfo: taskData.cellInfo
         });
         
         try {
             // パラメータ準備（スプレッドシートの値をそのまま使用）
-            const prompt = taskData.prompt || taskData.text || '';
+            let prompt = taskData.prompt || taskData.text || '';
             const modelName = taskData.model || '';
             const featureName = taskData.function || null;
+            
+            // セル情報をプロンプトに追加（ChatGPT風）
+            if (taskData.cellInfo && taskData.cellInfo.column && taskData.cellInfo.row) {
+                const cellPosition = `${taskData.cellInfo.column}${taskData.cellInfo.row}`;
+                prompt = `[${cellPosition}セル] ${prompt}`;
+                console.log(`📍 セル情報をプロンプトに追加: ${cellPosition}`);
+            }
             
             // Deep Researchの判定
             const isDeepResearch = featureName && (
@@ -1197,17 +1205,26 @@
     /**
      * テキスト入力のみ実行
      * @param {string} prompt - 入力するテキスト
+     * @param {object} config - 設定オブジェクト（cellInfo等を含む）
      */
-    async function inputTextOnly(prompt) {
+    async function inputTextOnly(prompt, config = {}) {
         try {
             console.log('📝 [ClaudeV2] テキスト入力のみ実行');
+            
+            // セル情報をプロンプトに追加（ChatGPT風）
+            let finalPrompt = prompt;
+            if (config.cellInfo && config.cellInfo.column && config.cellInfo.row) {
+                const cellPosition = `${config.cellInfo.column}${config.cellInfo.row}`;
+                finalPrompt = `[${cellPosition}セル] ${prompt}`;
+                console.log(`📍 セル情報をプロンプトに追加: ${cellPosition}`);
+            }
             
             const inputResult = await findClaudeElement(claudeSelectors['1_テキスト入力欄']);
             if (!inputResult) {
                 throw new Error('入力欄が見つかりません');
             }
             
-            const success = await inputText(inputResult.element, prompt);
+            const success = await inputText(inputResult.element, finalPrompt);
             if (!success) {
                 throw new Error('テキスト入力に失敗しました');
             }

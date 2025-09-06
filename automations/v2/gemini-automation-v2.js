@@ -630,7 +630,14 @@
             // タスクデータから情報を取得（機能名マッピング処理あり）
             const modelName = taskData.model;  // そのまま（変換しない）
             let featureName = taskData.function;
-            const promptText = taskData.prompt || taskData.text || '桃太郎を2000文字で解説して';
+            let promptText = taskData.prompt || taskData.text || '桃太郎を2000文字で解説して';
+            
+            // セル情報をプロンプトに追加（ChatGPT風）
+            if (taskData.cellInfo && taskData.cellInfo.column && taskData.cellInfo.row) {
+                const cellPosition = `${taskData.cellInfo.column}${taskData.cellInfo.row}`;
+                promptText = `[${cellPosition}セル] ${promptText}`;
+                log(`📍 セル情報をプロンプトに追加: ${cellPosition}`, 'info');
+            }
             
             // 機能名マッピング（スプレッドシート値 → Gemini UI表記）
             const featureMapping = {
@@ -699,24 +706,33 @@
     /**
      * テキスト入力のみ実行
      * @param {string} prompt - 入力するテキスト
+     * @param {object} config - 設定オブジェクト（cellInfo等を含む）
      */
-    async function inputTextOnly(prompt) {
+    async function inputTextOnly(prompt, config = {}) {
         try {
             log('📝 [GeminiV2] テキスト入力のみ実行', 'info');
+            
+            // セル情報をプロンプトに追加（ChatGPT風）
+            let finalPrompt = prompt;
+            if (config.cellInfo && config.cellInfo.column && config.cellInfo.row) {
+                const cellPosition = `${config.cellInfo.column}${config.cellInfo.row}`;
+                finalPrompt = `[${cellPosition}セル] ${prompt}`;
+                log(`📍 セル情報をプロンプトに追加: ${cellPosition}`, 'info');
+            }
             
             const editor = findElement(['.ql-editor']);
             if (!editor) {
                 throw new Error("テキスト入力欄 (.ql-editor) が見つかりません。");
             }
             
-            editor.textContent = prompt;
+            editor.textContent = finalPrompt;
             if (editor.classList.contains('ql-blank')) {
                 editor.classList.remove('ql-blank');
             }
             editor.dispatchEvent(new Event('input', { bubbles: true }));
             editor.dispatchEvent(new Event('change', { bubbles: true }));
             
-            log(`✅ [GeminiV2] テキスト入力完了（${prompt.length}文字）`, 'success');
+            log(`✅ [GeminiV2] テキスト入力完了（${finalPrompt.length}文字）`, 'success');
             return { success: true };
         } catch (error) {
             log(`❌ [GeminiV2] テキスト入力エラー: ${error.message}`, 'error');
