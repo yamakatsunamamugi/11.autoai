@@ -716,6 +716,17 @@ export default class TaskGeneratorV2 {
       aiType: targetPromptGroup.aiType
     });
     
+    // デバッグ：H列のインデックスを確認
+    const hColumn = targetPromptGroup.answerColumns.find(col => col.column === 'H');
+    if (hColumn) {
+      this.logger.log(`[DEBUG] H列のインデックス: ${hColumn.index}`);
+      this.logger.log(`[DEBUG] スプレッドシートのデータ行数: ${spreadsheetData.values ? spreadsheetData.values.length : 'undefined'}`);
+      if (spreadsheetData.values && spreadsheetData.values[16]) { // H17 = 16行目（0-indexed）
+        this.logger.log(`[DEBUG] 行17のデータ長: ${spreadsheetData.values[16].length}`);
+        this.logger.log(`[DEBUG] H17(index ${hColumn.index})の値: "${spreadsheetData.values[16][hColumn.index] ? String(spreadsheetData.values[16][hColumn.index]).substring(0, 50) + '...' : spreadsheetData.values[16][hColumn.index]}"`);
+      }
+    }
+    
     let taskCount = 0;
     const skippedCells = []; // スキップされたセルを収集
     
@@ -753,6 +764,23 @@ export default class TaskGeneratorV2 {
           
           // すでに回答が記載されている場合はスキップ
           const existingAnswer = this.getCellValue(spreadsheetData, workRow.index, answerCol.index);
+          
+          // デバッグログ：H列の値を詳細に出力
+          if (answerCol.column === 'H') {
+            this.logger.log(`[DEBUG] H${workRow.number}の確認:`)
+            this.logger.log(`  - workRow.index: ${workRow.index}`);
+            this.logger.log(`  - answerCol.index: ${answerCol.index}`);
+            this.logger.log(`  - 取得値: "${existingAnswer ? existingAnswer.substring(0, 50) + '...' : existingAnswer}"`);
+            this.logger.log(`  - hasAnswer判定: ${this.hasAnswer(existingAnswer)}`);
+            
+            // spreadsheetDataの該当行を確認
+            if (spreadsheetData.values && spreadsheetData.values[workRow.index]) {
+              const rowData = spreadsheetData.values[workRow.index];
+              this.logger.log(`  - 行データ長: ${rowData.length}`);
+              this.logger.log(`  - H列(index ${answerCol.index})の生データ: "${rowData[answerCol.index] ? String(rowData[answerCol.index]).substring(0, 50) + '...' : rowData[answerCol.index]}"`);
+            }
+          }
+          
           if (this.hasAnswer(existingAnswer)) {
             skippedCells.push(`${answerCol.column}${workRow.number}`);
             continue;
@@ -801,6 +829,23 @@ export default class TaskGeneratorV2 {
           
           // すでに回答が記載されている場合はスキップ
           const existingAnswer = this.getCellValue(spreadsheetData, workRow.index, answerCol.index);
+          
+          // デバッグログ：H列の値を詳細に出力
+          if (answerCol.column === 'H') {
+            this.logger.log(`[DEBUG] H${workRow.number}の確認:`)
+            this.logger.log(`  - workRow.index: ${workRow.index}`);
+            this.logger.log(`  - answerCol.index: ${answerCol.index}`);
+            this.logger.log(`  - 取得値: "${existingAnswer ? existingAnswer.substring(0, 50) + '...' : existingAnswer}"`);
+            this.logger.log(`  - hasAnswer判定: ${this.hasAnswer(existingAnswer)}`);
+            
+            // spreadsheetDataの該当行を確認
+            if (spreadsheetData.values && spreadsheetData.values[workRow.index]) {
+              const rowData = spreadsheetData.values[workRow.index];
+              this.logger.log(`  - 行データ長: ${rowData.length}`);
+              this.logger.log(`  - H列(index ${answerCol.index})の生データ: "${rowData[answerCol.index] ? String(rowData[answerCol.index]).substring(0, 50) + '...' : rowData[answerCol.index]}"`);
+            }
+          }
+          
           if (this.hasAnswer(existingAnswer)) {
             skippedCells.push(`${answerCol.column}${workRow.number}`);
             continue;
