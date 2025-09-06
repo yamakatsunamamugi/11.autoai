@@ -302,6 +302,37 @@ export const UI_SELECTORS = {
             'button:contains("リサーチ")'
         ],
         
+        // 機能ボタンのSVGパス（機能選択後の確認用）
+        FEATURE_BUTTON_SVG: {
+            // じっくり考える機能のSVGパス
+            DEEP_THINKING: 'M10.3857 2.50977',
+            // リサーチ/Web検索機能のSVGパス
+            RESEARCH: 'M8.5 2C12.0899'
+        },
+        
+        // 機能ボタンセレクタ（機能選択後の確認用）
+        FEATURE_BUTTONS: {
+            // じっくり考える機能のボタン
+            DEEP_THINKING: [
+                'button[type="button"][aria-pressed="true"]:has(svg path[d*="M10.3857 2.50977"])',
+                'button[aria-pressed="true"]:has(svg path[d*="M10.3857"])',
+                'button.text-accent-secondary-100[aria-pressed="true"]'
+            ],
+            // リサーチ機能のボタン（Web検索/Deep Research）
+            RESEARCH: [
+                'button[type="button"][aria-pressed]:has(svg path[d*="M8.5 2C12.0899"])',
+                'button[aria-pressed]:has(svg path[d*="M8.5 2"])',
+                'button:has(svg path[d*="M8.5"]):has(p:contains("リサーチ"))',
+                'button.text-accent-secondary-100[aria-pressed="true"]:has(svg)',
+                'button.text-text-300[aria-pressed="false"]:has(svg)'  // 非アクティブ時
+            ],
+            // 汎用（任意のaria-pressed="true"ボタン）
+            ANY_ACTIVE: [
+                'button[type="button"][aria-pressed="true"]',
+                'button[aria-pressed="true"]'
+            ]
+        },
+        
         // プレビューボタン
         PREVIEW_BUTTON: [
             'button[aria-label="内容をプレビュー"]'

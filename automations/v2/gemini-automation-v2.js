@@ -693,12 +693,298 @@
     }
     
     // ================================================================
+    // フェーズ別実行メソッド（順次処理用）
+    // ================================================================
+    
+    /**
+     * テキスト入力のみ実行
+     * @param {string} prompt - 入力するテキスト
+     */
+    async function inputTextOnly(prompt) {
+        try {
+            log('📝 [GeminiV2] テキスト入力のみ実行', 'info');
+            
+            const editor = findElement(['.ql-editor']);
+            if (!editor) {
+                throw new Error("テキスト入力欄 (.ql-editor) が見つかりません。");
+            }
+            
+            editor.textContent = prompt;
+            if (editor.classList.contains('ql-blank')) {
+                editor.classList.remove('ql-blank');
+            }
+            editor.dispatchEvent(new Event('input', { bubbles: true }));
+            editor.dispatchEvent(new Event('change', { bubbles: true }));
+            
+            log(`✅ [GeminiV2] テキスト入力完了（${prompt.length}文字）`, 'success');
+            return { success: true };
+        } catch (error) {
+            log(`❌ [GeminiV2] テキスト入力エラー: ${error.message}`, 'error');
+            return { success: false, error: error.message };
+        }
+    }
+    
+    /**
+     * モデル選択のみ実行
+     * @param {string} modelName - 選択するモデル名
+     */
+    async function selectModelOnly(modelName) {
+        try {
+            if (!modelName || modelName === '') {
+                log('⚠️ [GeminiV2] モデル名が指定されていません', 'warn');
+                return { success: true };
+            }
+            
+            log(`📝 [GeminiV2] モデル選択のみ実行: ${modelName}`, 'info');
+            
+            // まずモデルと機能のリストを取得
+            await discoverModelsAndFeatures();
+            
+            // モデル選択（null/undefined以外の場合）
+            const menuButton = findElement([
+                '.gds-mode-switch-button.logo-pill-btn',
+                'button[class*="logo-pill-btn"]',
+                'button.gds-mode-switch-button'
+            ]);
+            
+            if (menuButton) {
+                menuButton.click();
+                await wait(1500);
+                
+                const modelOptions = findElements([
+                    'button.bard-mode-list-button',
+                    'button[role="menuitemradio"]'
+                ]);
+                
+                const modelButtonToClick = modelOptions.find(btn => {
+                    const text = getCleanText(btn);
+                    return text.toLowerCase().includes(modelName.toLowerCase());
+                });
+                
+                if (modelButtonToClick) {
+                    modelButtonToClick.click();
+                    await wait(2000);
+                    log(`✅ [GeminiV2] モデル選択完了: ${modelName}`, 'success');
+                } else {
+                    log(`⚠️ モデル "${modelName}" が見つからないため、デフォルトを使用`, 'warn');
+                }
+            } else {
+                log('⚠️ モデルメニューボタンが見つかりません', 'warn');
+            }
+            
+            return { success: true };
+        } catch (error) {
+            log(`❌ [GeminiV2] モデル選択エラー: ${error.message}`, 'error');
+            return { success: false, error: error.message };
+        }
+    }
+    
+    /**
+     * 機能選択のみ実行
+     * @param {string} functionName - 選択する機能名
+     */
+    async function selectFunctionOnly(functionName) {
+        try {
+            if (!functionName || functionName === '' || functionName === 'none' || functionName === '通常') {
+                log('⚠️ [GeminiV2] 機能が指定されていません', 'warn');
+                return { success: true };
+            }
+            
+            log(`📝 [GeminiV2] 機能選択のみ実行: ${functionName}`, 'info');
+            
+            // まずメインツールバーから探す
+            let featureButton = findElements([
+                'toolbox-drawer-item button .label',
+                '.toolbox-drawer-menu-item button .label'
+            ]).find(el => {
+                const text = el.textContent.trim();
+                return text.toLowerCase().includes(functionName.toLowerCase());
+            })?.closest('button');
+            
+            // メインツールバーにない場合は、その他メニューから探す
+            if (!featureButton) {
+                const moreButton = findElement(['button[aria-label="その他"]']);
+                if (moreButton) {
+                    moreButton.click();
+                    await wait(1000);
+                    
+                    featureButton = findElements([
+                        '.cdk-overlay-pane .toolbox-drawer-menu-item button .label'
+                    ]).find(el => {
+                        const text = el.textContent.trim();
+                        return text.toLowerCase().includes(functionName.toLowerCase());
+                    })?.closest('button');
+                }
+            }
+            
+            if (featureButton) {
+                featureButton.click();
+                await wait(1000);
+                log(`✅ [GeminiV2] 機能選択完了: ${functionName}`, 'success');
+            } else {
+                log(`⚠️ 機能 "${functionName}" が見つからないため、スキップ`, 'warn');
+            }
+            
+            // オーバーレイを閉じる
+            const overlay = document.querySelector('.cdk-overlay-backdrop.cdk-overlay-backdrop-showing');
+            if (overlay) overlay.click();
+            
+            return { success: true };
+        } catch (error) {
+            log(`❌ [GeminiV2] 機能選択エラー: ${error.message}`, 'error');
+            return { success: false, error: error.message };
+        }
+    }
+    
+    /**
+     * 送信と応答取得のみ実行
+     */
+    async function sendAndGetResponse() {
+        try {
+            log('📝 [GeminiV2] 送信と応答取得を実行', 'info');
+            
+            // 送信ボタンを5回まで再試行
+            let sendSuccess = false;
+            let sendAttempts = 0;
+            const maxSendAttempts = 5;
+            
+            while (!sendSuccess && sendAttempts < maxSendAttempts) {
+                sendAttempts++;
+                log(`送信試行 ${sendAttempts}/${maxSendAttempts}`, 'step');
+                
+                const sendButton = findElement([
+                    'button.send-button.submit:not(.stop)',
+                    'button[aria-label="プロンプトを送信"]:not(.stop)'
+                ]);
+                
+                if (!sendButton) {
+                    if (sendAttempts === maxSendAttempts) {
+                        throw new Error('送信ボタンが見つかりません');
+                    }
+                    log(`送信ボタンが見つかりません。2秒後に再試行...`);
+                    await wait(2000);
+                    continue;
+                }
+                
+                sendButton.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+                await wait(100);
+                sendButton.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+                await wait(100);
+                sendButton.click();
+                
+                log(`送信ボタンをクリックしました（試行${sendAttempts}）`);
+                await wait(2000);
+                
+                // 停止ボタンの出現を確認
+                const stopButton = findElement([
+                    'button.send-button.stop',
+                    'button.stop',
+                    'button[aria-label="生成を停止"]'
+                ]);
+                
+                if (stopButton) {
+                    sendSuccess = true;
+                    log('停止ボタンが表示されました - 送信成功', 'success');
+                    break;
+                } else {
+                    log(`送信反応が確認できません。再試行します...`);
+                    await wait(2000);
+                }
+            }
+            
+            if (!sendSuccess) {
+                throw new Error(`${maxSendAttempts}回試行しても送信が成功しませんでした`);
+            }
+            
+            // 送信時刻を記録
+            if (window.AIHandler && window.AIHandler.recordSendTimestamp) {
+                try {
+                    await window.AIHandler.recordSendTimestamp('Gemini');
+                    log(`✅ 送信時刻記録成功`);
+                } catch (error) {
+                    log(`⚠️ 送信時刻記録エラー: ${error.message}`);
+                }
+            }
+            
+            // 応答待機（通常モード）
+            log("応答待機開始...");
+            await wait(10000); // 初期待機
+            
+            let waitTime = 0;
+            const maxWait = 60000;
+            
+            // 停止ボタンが消えるまで待機
+            await new Promise((resolve) => {
+                const checker = setInterval(() => {
+                    if (!findElement(['button.send-button.stop', 'button.stop'])) {
+                        clearInterval(checker);
+                        resolve("応答が完了しました（停止ボタンが消えました）。");
+                        return;
+                    }
+                    
+                    if (waitTime >= maxWait) {
+                        clearInterval(checker);
+                        resolve("応答待機がタイムアウトしました（60秒）。処理を続行します。");
+                        return;
+                    }
+                    
+                    waitTime += 2000;
+                }, 2000);
+            });
+            
+            // テキスト取得
+            await wait(2000); // 少し待ってから取得
+            
+            // 応答テキストを取得
+            const responseElements = findElements([
+                '.message-content .model-response-text',
+                '.model-response-text',
+                '.response-container',
+                '.conversation-turn .message'
+            ]);
+            
+            let responseText = '';
+            if (responseElements.length > 0) {
+                const lastResponse = responseElements[responseElements.length - 1];
+                responseText = lastResponse.textContent?.trim() || '';
+            }
+            
+            // Canvas機能の場合
+            if (!responseText) {
+                const canvasEditor = findElement(['.ProseMirror']);
+                if (canvasEditor) {
+                    responseText = canvasEditor.textContent?.trim() || '';
+                }
+            }
+            
+            if (responseText) {
+                log(`✅ [GeminiV2] 応答取得完了: ${responseText.length}文字`, 'success');
+                return {
+                    success: true,
+                    response: responseText
+                };
+            } else {
+                throw new Error('応答テキストを取得できませんでした');
+            }
+            
+        } catch (error) {
+            log(`❌ [GeminiV2] 送信・応答取得エラー: ${error.message}`, 'error');
+            return { success: false, error: error.message };
+        }
+    }
+    
+    // ================================================================
     // グローバル公開
     // ================================================================
     window.GeminiAutomation = {
         executeTask,
         executeCore,
         discoverModelsAndFeatures,
+        // フェーズ別メソッド（順次処理用）
+        inputTextOnly,
+        selectModelOnly,
+        selectFunctionOnly,
+        sendAndGetResponse,
         
         // ユーティリティも公開
         utils: {

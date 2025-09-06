@@ -671,19 +671,33 @@ export default class StreamProcessorV2 {
       
       let result;
       
+      // AIタイプを取得
+      const aiType = task.aiType || 'chatgpt';
+      
       // フェーズに応じた処理を実行
       switch(phase) {
         case 'text':
           // テキスト入力のみ実行
           result = await chrome.scripting.executeScript({
             target: { tabId },
-            func: async (prompt) => {
-              if (window.ChatGPTAutomationV2) {
-                return await window.ChatGPTAutomationV2.inputTextOnly(prompt);
+            func: async (prompt, aiType) => {
+              // AIタイプに応じたAutomationオブジェクトを取得
+              const automationMap = {
+                'claude': ['ClaudeAutomationV2', 'ClaudeAutomation'],
+                'chatgpt': ['ChatGPTAutomationV2', 'ChatGPTAutomation'],
+                'gemini': ['GeminiAutomation']
+              };
+              
+              const possibleNames = automationMap[aiType.toLowerCase()] || [];
+              const automationName = possibleNames.find(name => window[name] !== undefined);
+              const automation = automationName ? window[automationName] : null;
+              
+              if (automation && automation.inputTextOnly) {
+                return await automation.inputTextOnly(prompt);
               }
-              return { success: false, error: 'ChatGPTAutomationV2 not found' };
+              return { success: false, error: `${aiType} automation not found or inputTextOnly not supported` };
             },
-            args: [task.prompt || task.text || '']
+            args: [task.prompt || task.text || '', aiType]
           });
           break;
           
@@ -691,41 +705,94 @@ export default class StreamProcessorV2 {
           // モデル選択のみ実行
           result = await chrome.scripting.executeScript({
             target: { tabId },
-            func: async (model) => {
-              if (window.ChatGPTAutomationV2) {
-                return await window.ChatGPTAutomationV2.selectModelOnly(model);
+            func: async (model, aiType) => {
+              // AIタイプに応じたAutomationオブジェクトを取得
+              const automationMap = {
+                'claude': ['ClaudeAutomationV2', 'ClaudeAutomation'],
+                'chatgpt': ['ChatGPTAutomationV2', 'ChatGPTAutomation'],
+                'gemini': ['GeminiAutomation']
+              };
+              
+              const possibleNames = automationMap[aiType.toLowerCase()] || [];
+              const automationName = possibleNames.find(name => window[name] !== undefined);
+              const automation = automationName ? window[automationName] : null;
+              
+              if (automation && automation.selectModelOnly) {
+                return await automation.selectModelOnly(model);
               }
-              return { success: false, error: 'ChatGPTAutomationV2 not found' };
+              return { success: false, error: `${aiType} automation not found or selectModelOnly not supported` };
             },
-            args: [task.model]
+            args: [task.model, aiType]
           });
           break;
           
         case 'function':
           // 機能選択のみ実行
+          console.log(`🔍 [DEBUG] 機能選択実行開始 - タブ: ${tabId}, 機能: ${task.function}, AI: ${aiType}`);
+          
           result = await chrome.scripting.executeScript({
             target: { tabId },
-            func: async (functionName) => {
-              if (window.ChatGPTAutomationV2) {
-                return await window.ChatGPTAutomationV2.selectFunctionOnly(functionName);
+            func: async (functionName, aiType) => {
+              console.log(`🔍 [DEBUG] タブ内実行開始 - 機能: "${functionName}", AI: ${aiType}`);
+              
+              // AIタイプに応じたAutomationオブジェクトを取得
+              const automationMap = {
+                'claude': ['ClaudeAutomationV2', 'ClaudeAutomation'],
+                'chatgpt': ['ChatGPTAutomationV2', 'ChatGPTAutomation'],
+                'gemini': ['GeminiAutomation']
+              };
+              
+              const possibleNames = automationMap[aiType.toLowerCase()] || [];
+              console.log(`🔍 [DEBUG] 探索対象: ${possibleNames.join(', ')}`);
+              
+              const automationName = possibleNames.find(name => {
+                const exists = window[name] !== undefined;
+                console.log(`🔍 [DEBUG] ${name} 存在確認: ${exists}`);
+                return exists;
+              });
+              
+              const automation = automationName ? window[automationName] : null;
+              console.log(`🔍 [DEBUG] 使用するAutomation: ${automationName || 'なし'}`);
+              
+              if (automation && automation.selectFunctionOnly) {
+                console.log(`🔍 [DEBUG] selectFunctionOnly実行開始`);
+                const result = await automation.selectFunctionOnly(functionName);
+                console.log(`🔍 [DEBUG] selectFunctionOnly実行完了 - 結果:`, result);
+                return result;
               }
-              return { success: false, error: 'ChatGPTAutomationV2 not found' };
+              
+              const errorResult = { success: false, error: `${aiType} automation not found or selectFunctionOnly not supported` };
+              console.log(`🔍 [DEBUG] エラー終了:`, errorResult);
+              return errorResult;
             },
-            args: [task.function]
+            args: [task.function, aiType]
           });
+          
+          console.log(`🔍 [DEBUG] chrome.scripting.executeScript完了 - 結果:`, result);
           break;
           
         case 'send':
           // 送信と応答取得
           result = await chrome.scripting.executeScript({
             target: { tabId },
-            func: async () => {
-              if (window.ChatGPTAutomationV2) {
-                return await window.ChatGPTAutomationV2.sendAndGetResponse();
+            func: async (aiType) => {
+              // AIタイプに応じたAutomationオブジェクトを取得
+              const automationMap = {
+                'claude': ['ClaudeAutomationV2', 'ClaudeAutomation'],
+                'chatgpt': ['ChatGPTAutomationV2', 'ChatGPTAutomation'],
+                'gemini': ['GeminiAutomation']
+              };
+              
+              const possibleNames = automationMap[aiType.toLowerCase()] || [];
+              const automationName = possibleNames.find(name => window[name] !== undefined);
+              const automation = automationName ? window[automationName] : null;
+              
+              if (automation && automation.sendAndGetResponse) {
+                return await automation.sendAndGetResponse();
               }
-              return { success: false, error: 'ChatGPTAutomationV2 not found' };
+              return { success: false, error: `${aiType} automation not found or sendAndGetResponse not supported` };
             },
-            args: []
+            args: [aiType]
           });
           break;
           
@@ -734,10 +801,27 @@ export default class StreamProcessorV2 {
       }
       
       // 結果を返す
+      console.log(`🔍 [DEBUG] 結果処理開始 - result:`, result);
+      console.log(`🔍 [DEBUG] result配列長:`, result?.length);
+      
       if (result && result[0]) {
-        return result[0].result;
+        const finalResult = result[0].result;
+        console.log(`🔍 [DEBUG] 最終結果 - result[0].result:`, finalResult);
+        console.log(`🔍 [DEBUG] 最終結果の型:`, typeof finalResult);
+        console.log(`🔍 [DEBUG] 成功フラグ:`, finalResult?.success);
+        
+        if (finalResult && typeof finalResult === 'object' && finalResult.hasOwnProperty('success')) {
+          console.log(`🔍 [DEBUG] 正常な結果オブジェクトを返却:`, finalResult);
+          return finalResult;
+        } else {
+          console.log(`❌ [DEBUG] 不正な結果形式 - デフォルト失敗を返却`);
+          return { success: false, error: 'Invalid result format', rawResult: finalResult };
+        }
       }
-      return { success: false, error: 'No result' };
+      
+      const noResultError = { success: false, error: 'No result' };
+      console.log(`❌ [DEBUG] 結果なし - エラーを返却:`, noResultError);
+      return noResultError;
       
     } catch (error) {
       this.logger.error(`[StreamProcessorV2] フェーズ実行エラー (${phase}):`, error);

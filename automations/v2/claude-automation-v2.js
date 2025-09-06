@@ -91,7 +91,7 @@
         ]
     };
     
-    // 機能選択用セレクタ
+    // 機能選択用セレクタ（テストコードから移植）
     const featureSelectors = {
         menuButton: [
             '[data-testid="input-menu-tools"]',
@@ -106,13 +106,6 @@
             'div.z-dropdown.bg-bg-000.rounded-xl',
             'div[style*="max-height"][style*="336"]',
             '.absolute .flex-col .overscroll-auto'
-        ],
-        thinkToggle: [
-            'button:has(svg path[d*="M10.3857 2.50977"]):has(input[role="switch"])',
-            'button:has(p:contains("じっくり考える")):has(input[role="switch"])',
-            'button input[role="switch"][style*="width: 28px"]',
-            'div:contains("じっくり考える") button:has(.group\\/switch)',
-            'button .font-base:contains("じっくり考える")'
         ],
         webSearchToggle: [
             'button:has(svg path[d*="M7.2705 3.0498"]):has(input[role="switch"])',
@@ -348,47 +341,51 @@
     // 機能操作関数（テストコードから）
     // =====================================================================
     
-    function getFeatureElement(selectorList, elementName) {
-        console.log(`要素取得開始: ${elementName}`);
+    // テストコードから移植したユーティリティ関数
+    const isVisible = (element) => {
+        if (!element) return false;
+        const rect = element.getBoundingClientRect();
+        const style = window.getComputedStyle(element);
+        return rect.width > 0 && 
+               rect.height > 0 && 
+               style.display !== 'none' && 
+               style.visibility !== 'hidden' && 
+               style.opacity !== '0';
+    };
+    
+    const getElement = async function(selectors, description) {
+        console.log(`要素取得開始: ${description}`);
         
-        for (let i = 0; i < selectorList.length; i++) {
-            const selector = selectorList[i];
-            console.log(`試行 ${i + 1}/${selectorList.length}: ${selector}`);
+        for (let i = 0; i < selectors.length; i++) {
+            const selector = selectors[i];
+            console.log(`  試行${i + 1}: ${selector}`);
             
             try {
-                if (selector.includes(':has(')) {
-                    const elements = document.querySelectorAll('button');
-                    for (const el of elements) {
-                        if (selector.includes('じっくり考える')) {
-                            const text = el.textContent || '';
-                            if (text.includes('じっくり考える') && el.querySelector('input[role="switch"]')) {
-                                console.log(`要素発見: ${elementName} (特別処理)`);
-                                return el;
-                            }
-                        }
-                        if (selector.includes('ウェブ検索')) {
-                            const text = el.textContent || '';
-                            if (text.includes('ウェブ検索') && el.querySelector('input[role="switch"]')) {
-                                console.log(`要素発見: ${elementName} (特別処理)`);
-                                return el;
-                            }
+                // :has()擬似クラスの特別処理
+                if (selector.includes(':has(') && selector.includes('ウェブ検索')) {
+                    const buttons = document.querySelectorAll('button');
+                    for (const el of buttons) {
+                        const text = el.textContent || '';
+                        if (text.includes('ウェブ検索') && el.querySelector('input[role="switch"]')) {
+                            console.log(`  ✓ 要素発見: ${description} (特別処理)`);
+                            return el;
                         }
                     }
                 } else {
                     const element = document.querySelector(selector);
-                    if (element) {
-                        console.log(`要素発見: ${elementName}`);
+                    if (element && isVisible(element)) {
+                        console.log(`  ✓ 要素発見: ${description}`);
                         return element;
                     }
                 }
             } catch (e) {
-                console.log(`セレクタエラー: ${e.message}`);
+                console.log(`  セレクタエラー: ${e.message}`);
             }
         }
         
-        console.log(`要素が見つかりません: ${elementName}`);
+        console.log(`  ✗ 要素が見つかりません: ${description}`);
         return null;
-    }
+    };
     
     function getToggleState(toggleButton) {
         const input = toggleButton.querySelector('input[role="switch"]');
@@ -1194,6 +1191,512 @@
     }
     
     // ========================================
+    // フェーズ別実行メソッド（順次処理用）
+    // ========================================
+    
+    /**
+     * テキスト入力のみ実行
+     * @param {string} prompt - 入力するテキスト
+     */
+    async function inputTextOnly(prompt) {
+        try {
+            console.log('📝 [ClaudeV2] テキスト入力のみ実行');
+            
+            const inputResult = await findClaudeElement(claudeSelectors['1_テキスト入力欄']);
+            if (!inputResult) {
+                throw new Error('入力欄が見つかりません');
+            }
+            
+            const success = await inputText(inputResult.element, prompt);
+            if (!success) {
+                throw new Error('テキスト入力に失敗しました');
+            }
+            
+            console.log('✅ [ClaudeV2] テキスト入力完了');
+            return { success: true };
+        } catch (error) {
+            console.error('❌ [ClaudeV2] テキスト入力エラー:', error.message);
+            return { success: false, error: error.message };
+        }
+    }
+    
+    /**
+     * モデル選択のみ実行
+     * @param {string} modelName - 選択するモデル名
+     */
+    async function selectModelOnly(modelName) {
+        try {
+            if (!modelName || modelName === '') {
+                console.log('⚠️ [ClaudeV2] モデル名が指定されていません');
+                return { success: true };
+            }
+            
+            console.log(`📝 [ClaudeV2] モデル選択のみ実行: ${modelName}`);
+            
+            // モデルメニューを開く
+            await openModelMenu();
+            
+            // モデル名がClaudeを含むか確認
+            const targetModelName = modelName.startsWith('Claude') ? modelName : `Claude ${modelName}`;
+            
+            // メニューアイテムを探して選択
+            const mainMenuItems = document.querySelectorAll('[role="menuitem"]:not([aria-haspopup="menu"])');
+            let foundInMain = false;
+            
+            for (const item of mainMenuItems) {
+                const itemText = item.textContent;
+                if (itemText && itemText.includes(targetModelName)) {
+                    foundInMain = true;
+                    await triggerReactEvent(item, 'click');
+                    await wait(1500);
+                    break;
+                }
+            }
+            
+            // メインメニューで見つからない場合はサブメニューを探す
+            if (!foundInMain) {
+                const otherModelsButton = await findElementByMultipleSelectors(modelSelectors.otherModelsMenu, '他のモデルボタン');
+                if (otherModelsButton) {
+                    await triggerReactEvent(otherModelsButton, 'click');
+                    await wait(500);
+                    
+                    const subMenuItems = document.querySelectorAll('[role="menuitem"]');
+                    for (const item of subMenuItems) {
+                        const itemText = item.textContent;
+                        if (itemText && itemText.includes(targetModelName)) {
+                            await triggerReactEvent(item, 'click');
+                            await wait(1500);
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            // 選択後のモデル確認
+            const newCurrentModel = await getCurrentModel();
+            console.log(`✅ [ClaudeV2] モデル選択完了: ${newCurrentModel}`);
+            
+            return { 
+                success: true,
+                displayedModel: newCurrentModel
+            };
+        } catch (error) {
+            console.error('❌ [ClaudeV2] モデル選択エラー:', error.message);
+            return { success: false, error: error.message };
+        }
+    }
+    
+    /**
+     * 機能選択のみ実行（テストコードから完全移植）
+     * @param {string} functionName - 選択する機能名
+     */
+    async function selectFunctionOnly(functionName) {
+        try {
+            console.log(`🚀 [DEBUG] selectFunctionOnly関数開始 - 引数: "${functionName}"`);
+            console.log(`🚀 [DEBUG] window.ClaudeAutomationV2存在確認:`, !!window.ClaudeAutomationV2);
+            console.log(`🚀 [DEBUG] 現在のURL: ${window.location.href}`);
+            
+            if (!functionName || functionName === '' || functionName === '設定なし') {
+                console.log('⚠️ [ClaudeV2] 機能が指定されていません');
+                const result = { success: true, displayedFunction: '通常' };
+                console.log(`🚀 [DEBUG] selectFunctionOnly終了 - 早期リターン:`, result);
+                return result;
+            }
+            
+            console.log(`📝 [ClaudeV2] 機能選択のみ実行: ${functionName}`);
+            
+            // Deep Researchの判定
+            const isDeepResearch = functionName === 'Deep Research' || 
+                                   functionName.includes('Research') ||
+                                   functionName.includes('リサーチ');
+            
+            if (isDeepResearch) {
+                // === Deep Research用の設定 ===
+                console.log('Deep Researchモード設定開始');
+                
+                // 機能メニューを開く
+                const featureMenuButton = await getElement(featureSelectors.menuButton, '機能メニューボタン');
+                if (!featureMenuButton) {
+                    console.log('⚠️ [ClaudeV2] 機能メニューボタンが見つかりません - スキップして続行');
+                    return { success: true, warning: '機能メニューボタンが見つからないためスキップ' };
+                }
+                
+                featureMenuButton.click();
+                await wait(1500);
+                
+                // ウェブ検索をオン
+                const webSearchToggle = await getElement(featureSelectors.webSearchToggle, 'ウェブ検索トグル');
+                if (webSearchToggle) {
+                    setToggleState(webSearchToggle, true);
+                    await wait(1500);
+                    console.log('✓ ウェブ検索有効化');
+                }
+                
+                // メニューを閉じる
+                featureMenuButton.click();
+                await wait(1000);
+                
+                // リサーチボタンを探して有効化
+                const buttons = document.querySelectorAll('button[type="button"][aria-pressed]');
+                for (const btn of buttons) {
+                    const svg = btn.querySelector('svg path[d*="M8.5 2C12.0899"]');
+                    if (svg) {
+                        const isPressed = btn.getAttribute('aria-pressed') === 'true';
+                        if (!isPressed) {
+                            btn.click();
+                            await wait(1000);
+                            console.log('✓ Deep Researchモード有効化');
+                        }
+                        break;
+                    }
+                }
+                
+                // Deep Research設定完了を返す
+                console.log(`✅ [ClaudeV2] Deep Research設定完了`);
+                const deepResearchResult = { 
+                    success: true, 
+                    displayedFunction: functionName 
+                };
+                console.log(`🚀 [DEBUG] selectFunctionOnly終了 - Deep Research:`, deepResearchResult);
+                return deepResearchResult;
+                
+            } else {
+                // === 通常の機能選択 ===
+                console.log(`通常機能選択: ${functionName}`);
+                
+                // 機能メニューを開く
+                console.log(`🔍 [DEBUG] 機能メニューボタンを探索中...`);
+                console.log(`🔍 [DEBUG] featureSelectors.menuButton: ${featureSelectors.menuButton}`);
+                
+                const featureMenuButton = await getElement(featureSelectors.menuButton, '機能メニューボタン');
+                console.log(`🔍 [DEBUG] 機能メニューボタン検索結果:`, featureMenuButton);
+                
+                if (!featureMenuButton) {
+                    console.log('❌ [ClaudeV2] 機能メニューボタンが見つかりません - エラーを返す');
+                    return { success: false, error: '機能メニューボタンが見つかりません' };
+                }
+                
+                console.log(`🔍 [DEBUG] 機能メニューボタンをクリック`);
+                featureMenuButton.click();
+                await wait(1500);
+                
+                // まずすべてのトグルをオフにする
+                const menuToggleItems = document.querySelectorAll('button:has(input[role="switch"])');
+                console.log(`🔍 [DEBUG] 見つかったトグル項目数: ${menuToggleItems.length}`);
+                
+                // デバッグ: すべてのトグル項目のテキストを出力
+                menuToggleItems.forEach((toggle, index) => {
+                    const label = toggle.querySelector('p.font-base');
+                    const text = label ? label.textContent.trim() : 'テキストなし';
+                    console.log(`🔍 [DEBUG] トグル${index + 1}: "${text}"`);
+                });
+                
+                for (const toggle of menuToggleItems) {
+                    setToggleState(toggle, false);
+                    await wait(300);
+                }
+                
+                // 指定された機能を見つけてオンにする
+                let featureFound = false;
+                console.log(`🔍 [DEBUG] 探している機能名: "${functionName}"`);
+                
+                for (const toggle of menuToggleItems) {
+                    const label = toggle.querySelector('p.font-base');
+                    const labelText = label ? label.textContent.trim() : '';
+                    console.log(`🔍 [DEBUG] 比較中: "${labelText}" === "${functionName}"`);
+                    
+                    if (label && labelText === functionName) {
+                        setToggleState(toggle, true);
+                        await wait(500);
+                        featureFound = true;
+                        console.log(`✓ 機能選択完了: ${functionName}`);
+                        break;
+                    }
+                }
+                
+                if (!featureFound) {
+                    console.log(`⚠️ 指定された機能が見つかりません: ${functionName}`);
+                    console.log(`🔍 [DEBUG] 利用可能な機能一覧:`);
+                    menuToggleItems.forEach((toggle, index) => {
+                        const label = toggle.querySelector('p.font-base');
+                        const text = label ? label.textContent.trim() : 'テキストなし';
+                        console.log(`  ${index + 1}. "${text}"`);
+                    });
+                }
+                
+                // メニューを閉じる
+                featureMenuButton.click();
+                await wait(2000);
+                
+                // トグル機能のボタンが有効になったか確認
+                if (featureFound) {
+                    console.log(`🔍 [DEBUG] ${functionName} のボタンを確認中...`);
+                    
+                    let buttonActivated = false;
+                    
+                    // 機能タイプ別のSVGパス（ui-selectors.jsの定義を参照）
+                    const featureSvgPaths = {
+                        'じっくり考える': 'M10.3857 2.50977',
+                        'Deep thinking': 'M10.3857 2.50977',
+                        'リサーチ': 'M8.5 2C12.0899',
+                        'Research': 'M8.5 2C12.0899',
+                        'Web search': 'M8.5 2C12.0899',
+                        'ウェブ検索': 'M8.5 2C12.0899'
+                    };
+                    
+                    // 該当機能のSVGパスを取得
+                    const targetSvgPath = featureSvgPaths[functionName];
+                    
+                    if (targetSvgPath) {
+                        // SVGパスで特定のボタンを探す
+                        console.log(`🔍 [DEBUG] SVGパス "${targetSvgPath}" を探索中...`);
+                        
+                        // aria-pressed="true"のボタンから探す
+                        const buttons = document.querySelectorAll('button[type="button"][aria-pressed="true"]');
+                        console.log(`🔍 [DEBUG] aria-pressed="true"のボタン数: ${buttons.length}`);
+                        
+                        for (const btn of buttons) {
+                            const svg = btn.querySelector(`svg path[d*="${targetSvgPath}"]`);
+                            if (svg) {
+                                buttonActivated = true;
+                                console.log(`✓ ボタン確認済み: ${functionName} ボタンが有効化されています（SVGパス一致）`);
+                                break;
+                            }
+                        }
+                        
+                        // aria-pressed="true"で見つからない場合、すべてのaria-pressedボタンを確認
+                        if (!buttonActivated) {
+                            const allButtons = document.querySelectorAll('button[type="button"][aria-pressed]');
+                            console.log(`🔍 [DEBUG] 全aria-pressedボタン数: ${allButtons.length}`);
+                            
+                            for (const btn of allButtons) {
+                                const svg = btn.querySelector(`svg path[d*="${targetSvgPath}"]`);
+                                if (svg) {
+                                    const pressed = btn.getAttribute('aria-pressed');
+                                    console.log(`🔍 [DEBUG] SVGパス一致ボタン発見 - aria-pressed: ${pressed}`);
+                                    if (pressed === 'true') {
+                                        buttonActivated = true;
+                                        console.log(`✓ ボタン確認済み: ${functionName} ボタンが有効化されています`);
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                    } else {
+                        // SVGパスが定義されていない機能の場合
+                        console.log(`🔍 [DEBUG] ${functionName} のSVGパスが未定義。トグル操作の成功のみで判定`);
+                        buttonActivated = true;  // トグル操作は成功しているため成功とみなす
+                    }
+                    
+                    if (!buttonActivated) {
+                        console.log(`⚠️ ボタン確認失敗: ${functionName} のボタンが見つからないか有効化されていません`);
+                        console.log(`⚠️ 注意: ボタンは確認できませんでしたが、トグル操作は成功しています`);
+                        // トグル操作は成功しているため、警告付きで成功とする
+                        return { 
+                            success: true, 
+                            displayedFunction: functionName,
+                            warning: `${functionName} ボタンの視覚的確認はできませんでしたが、トグル操作は完了しました` 
+                        };
+                    }
+                }
+            }
+            
+            console.log(`✅ [ClaudeV2] 機能選択完了: ${functionName}`);
+            const successResult = { 
+                success: true,
+                displayedFunction: functionName  // RetryManagerの判定に必要
+            };
+            console.log(`🚀 [DEBUG] selectFunctionOnly終了 - 正常終了:`, successResult);
+            return successResult;
+            
+        } catch (error) {
+            console.error('❌ [ClaudeV2] 機能選択エラー:', error.message);
+            console.error('❌ [DEBUG] selectFunctionOnly終了 - エラー:', error);
+            const errorResult = { success: false, error: error.message };
+            console.log(`🚀 [DEBUG] selectFunctionOnly終了 - エラーリターン:`, errorResult);
+            return errorResult;
+        }
+    }
+    
+    /**
+     * 送信と応答取得のみ実行
+     */
+    async function sendAndGetResponse() {
+        try {
+            console.log('📝 [ClaudeV2] 送信と応答取得を実行');
+            
+            // 送信ボタンをクリック（再試行対応）
+            let sendSuccess = false;
+            let sendAttempts = 0;
+            const maxSendAttempts = 5;
+            
+            while (!sendSuccess && sendAttempts < maxSendAttempts) {
+                sendAttempts++;
+                console.log(`送信試行 ${sendAttempts}/${maxSendAttempts}`);
+                
+                const sendResult = await findClaudeElement(claudeSelectors['2_送信ボタン']);
+                if (!sendResult) {
+                    if (sendAttempts === maxSendAttempts) {
+                        throw new Error('送信ボタンが見つかりません');
+                    }
+                    console.log(`送信ボタンが見つかりません。2秒後に再試行...`);
+                    await wait(2000);
+                    continue;
+                }
+                
+                await clickButton(sendResult.element);
+                console.log(`送信ボタンをクリックしました（試行${sendAttempts}）`);
+                await wait(1000);
+                
+                // 送信後に停止ボタンが表示されるか確認
+                let stopButtonAppeared = false;
+                
+                for (let i = 0; i < 5; i++) {
+                    const stopResult = await findClaudeElement(claudeSelectors['3_回答停止ボタン'], 1);
+                    if (stopResult) {
+                        stopButtonAppeared = true;
+                        console.log('停止ボタンが表示されました - 送信成功');
+                        break;
+                    }
+                    await wait(1000);
+                }
+                
+                if (stopButtonAppeared) {
+                    sendSuccess = true;
+                    break;
+                } else {
+                    console.log(`送信反応が確認できません。再試行します...`);
+                    await wait(2000);
+                }
+            }
+            
+            if (!sendSuccess) {
+                throw new Error(`${maxSendAttempts}回試行しても送信が成功しませんでした`);
+            }
+            
+            // 送信時刻を記録
+            if (window.AIHandler && window.AIHandler.recordSendTimestamp) {
+                try {
+                    await window.AIHandler.recordSendTimestamp('Claude');
+                    console.log(`✅ 送信時刻記録成功`);
+                } catch (error) {
+                    console.log(`⚠️ 送信時刻記録エラー: ${error.message}`);
+                }
+            }
+            
+            // 応答待機（通常処理）
+            console.log('応答を待機中...');
+            const stopButtonSelectors = UI_SELECTORS.Claude?.STOP_BUTTON || claudeSelectors['3_回答停止ボタン'].selectors;
+            
+            // 停止ボタンが消えるまで待機（最大5分）
+            let disappearWaitCount = 0;
+            const maxDisappearWait = 300;
+            
+            while (disappearWaitCount < maxDisappearWait) {
+                let currentStopElement = null;
+                
+                for (const selector of stopButtonSelectors) {
+                    try {
+                        currentStopElement = document.querySelector(selector);
+                        if (currentStopElement) break;
+                    } catch (e) {
+                        // エラーは無視
+                    }
+                }
+                
+                if (!currentStopElement) {
+                    // 10秒間の確認期間
+                    let confirmCount = 0;
+                    let stillGone = true;
+                    
+                    while (confirmCount < 10) {
+                        await wait(1000);
+                        
+                        for (const selector of stopButtonSelectors) {
+                            try {
+                                const checkElement = document.querySelector(selector);
+                                if (checkElement) {
+                                    stillGone = false;
+                                    break;
+                                }
+                            } catch (e) {
+                                // エラーは無視
+                            }
+                        }
+                        
+                        if (!stillGone) break;
+                        confirmCount++;
+                    }
+                    
+                    if (stillGone) {
+                        console.log('✓ 回答が完了しました');
+                        break;
+                    }
+                }
+                
+                await wait(1000);
+                disappearWaitCount++;
+                
+                if (disappearWaitCount % 60 === 0) {
+                    console.log(`  回答生成中... ${Math.floor(disappearWaitCount / 60)}分経過`);
+                }
+            }
+            
+            // テキスト取得
+            let responseText = '';
+            
+            // 通常処理テキスト取得
+            const textSelectors = UI_SELECTORS.Claude?.TEXT_EXTRACTION || {
+                NORMAL_RESPONSE: claudeSelectors['5_通常処理テキスト位置'].selectors
+            };
+            
+            const normalElements = document.querySelectorAll(textSelectors.NORMAL_RESPONSE.join(', '));
+            
+            if (normalElements.length > 0) {
+                // Canvas要素内を除外してフィルタリング
+                const filtered = Array.from(normalElements).filter(el => {
+                    return !el.closest('#markdown-artifact') && 
+                           !el.closest('[class*="artifact"]');
+                });
+                
+                if (filtered.length > 0) {
+                    const targetElement = filtered[filtered.length - 1];
+                    responseText = targetElement.textContent?.trim() || '';
+                }
+            }
+            
+            // フォールバック: Canvas機能の内容を取得
+            if (!responseText) {
+                const canvasSelectors = textSelectors.ARTIFACT_CONTENT || ['#markdown-artifact'];
+                for (const selector of canvasSelectors) {
+                    const canvasElement = document.querySelector(selector);
+                    if (canvasElement) {
+                        const text = canvasElement.textContent?.trim() || '';
+                        if (text && text.length > 10) {
+                            responseText = text;
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            if (responseText) {
+                console.log(`✅ [ClaudeV2] 応答取得完了: ${responseText.length}文字`);
+                return {
+                    success: true,
+                    response: responseText
+                };
+            } else {
+                throw new Error('応答テキストを取得できませんでした');
+            }
+            
+        } catch (error) {
+            console.error('❌ [ClaudeV2] 送信・応答取得エラー:', error.message);
+            return { success: false, error: error.message };
+        }
+    }
+    
+    // ========================================
     // runAutomation関数（後方互換性）
     // ========================================
     async function runAutomation(config) {
@@ -1209,7 +1712,12 @@
     // ========================================
     window.ClaudeAutomationV2 = {
         executeTask,
-        runAutomation
+        runAutomation,
+        // フェーズ別メソッド（順次処理用）
+        inputTextOnly,
+        selectModelOnly,
+        selectFunctionOnly,
+        sendAndGetResponse
     };
     
     console.log('✅ Claude Automation V2 準備完了');

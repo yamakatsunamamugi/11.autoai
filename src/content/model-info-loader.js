@@ -122,9 +122,8 @@ const UI_SELECTORS_LOCAL = window.UI_SELECTORS || {
     }
 };
 
-// グローバルにクラスが存在しない場合のみ定義
-if (typeof window.ModelInfoExtractor === 'undefined') {
-    class ModelInfoExtractor {
+// ModelInfoExtractorクラスを定義
+class ModelInfoExtractor {
     
     static extract(aiType) {
         const normalizedAiType = aiType.toLowerCase();
@@ -306,12 +305,10 @@ if (typeof window.ModelInfoExtractor === 'undefined') {
         }
     }
 }
-}
 
 // FunctionInfoExtractor クラスの追加
-// グローバルにクラスが存在しない場合のみ定義
-if (typeof window.FunctionInfoExtractor === 'undefined') {
-    class FunctionInfoExtractor {
+// FunctionInfoExtractorクラスを定義 - Updated: 2025-09-06 09:35
+class FunctionInfoExtractor {
     
     static extract(aiType) {
         const normalizedAiType = aiType.toLowerCase();
@@ -558,7 +555,6 @@ if (typeof window.FunctionInfoExtractor === 'undefined') {
             return '';
         }
     }
-}
 }
 
 // グローバルに登録（既に存在する場合はスキップ）
