@@ -673,4 +673,175 @@ export default class TaskGeneratorV2 {
     const random = Math.random().toString(36).substring(2, 9);
     return `${column}${row}_${timestamp}_${random}`;
   }
+
+  /**
+   * 特定のプロンプトグループのタスクのみを生成
+   * 
+   * プロンプトグループとは、プロンプト列と回答列のセットのこと。
+   * 例：
+   * - グループ1: D,E列（プロンプト） → F列（Claude回答）
+   * - グループ2: D,E列（プロンプト） → F,G,H列（ChatGPT, Claude, Gemini回答）
+   * - グループ3: J列（プロンプト） → K列（ChatGPT回答）
+   * 
+   * この関数は、指定されたグループのタスクのみを生成する。
+   * グループ1が完了してから、グループ2のタスクを生成することで、
+   * メモリ効率的な処理を実現する。
+   * 
+   * @param {Object} spreadsheetData - スプレッドシートデータ
+   * @param {number} promptGroupIndex - プロンプトグループのインデックス（0始まり）
+   * @returns {Promise<TaskList>} タスクリスト
+   */
+  async generateTasksForPromptGroup(spreadsheetData, promptGroupIndex) {
+    this.logger.log(`[TaskGeneratorV2] 🎯 プロンプトグループ${promptGroupIndex + 1}のタスク生成開始`);
+    
+    this.data = spreadsheetData;
+    const taskList = new TaskList();
+    
+    // スプレッドシートの構造を解析（メニュー行、AI行、作業行などを特定）
+    const structure = this.analyzeStructure(spreadsheetData);
+    const { rows, promptGroups, controls, workRows } = structure;
+    
+    // 指定されたインデックスのプロンプトグループを取得
+    // promptGroupsは左から右への順序で格納されている
+    if (!promptGroups[promptGroupIndex]) {
+      this.logger.warn(`[TaskGeneratorV2] プロンプトグループ${promptGroupIndex}が存在しません`);
+      return taskList;
+    }
+    
+    const targetPromptGroup = promptGroups[promptGroupIndex];
+    
+    this.logger.log(`[TaskGeneratorV2] 📊 プロンプトグループ${promptGroupIndex + 1}:`, {
+      promptColumns: targetPromptGroup.promptColumns.map(i => this.indexToColumn(i)),
+      answerColumns: targetPromptGroup.answerColumns.map(col => col.column),
+      aiType: targetPromptGroup.aiType
+    });
+    
+    let taskCount = 0;
+    
+    // 各作業行（9行目以降）に対してタスクを生成
+    // 注意：このループは指定されたプロンプトグループのタスクのみを生成する
+    for (const workRow of workRows) {
+      // 「この行から処理」「この行で停止」などの行制御をチェック
+      if (!this.shouldProcessRow(workRow.number, controls.row)) {
+        continue;
+      }
+      
+      // 「この列から処理」「この列で停止」などの列制御をチェック
+      if (!this.shouldProcessColumn(targetPromptGroup, controls.column)) {
+        continue;
+      }
+      
+      // この行にプロンプトが存在するか確認（空行はスキップ）
+      const hasPromptInRow = this.hasPromptInRow(spreadsheetData, workRow, targetPromptGroup);
+      if (!hasPromptInRow) {
+        continue;
+      }
+      
+      // このグループが3種類AI（ChatGPT, Claude, Gemini並列）かどうかを判定
+      // AI行に「3種類」と記載されている場合、3つのAIが同じプロンプトを処理する
+      const is3TypeAI = targetPromptGroup.aiType.includes('3種類') || targetPromptGroup.aiType.includes('３種類');
+      
+      if (is3TypeAI) {
+        // ========================================
+        // 3種類AI列の処理（F,G,H列が同時に処理される）
+        // 例：D,E列のプロンプト → F列(ChatGPT), G列(Claude), H列(Gemini)
+        // ========================================
+        for (let i = 0; i < targetPromptGroup.answerColumns.length; i++) {
+          const answerCol = targetPromptGroup.answerColumns[i];
+          
+          // すでに回答が記載されている場合はスキップ
+          const existingAnswer = this.getCellValue(spreadsheetData, workRow.index, answerCol.index);
+          if (this.hasAnswer(existingAnswer)) {
+            continue;
+          }
+          
+          const functionValue = this.getFunction(spreadsheetData, answerCol, targetPromptGroup.promptColumns);
+          const logColumnIndex = Math.max(0, Math.min(...targetPromptGroup.promptColumns) - 1);
+          const logColumn = this.indexToColumn(logColumnIndex);
+          const groupPosition = i;
+          
+          const taskData = {
+            id: this.generateTaskId(answerCol.column, workRow.number),
+            row: workRow.number,
+            column: answerCol.column,
+            promptColumns: targetPromptGroup.promptColumns,
+            aiType: answerCol.type,
+            model: this.getModel(spreadsheetData, answerCol, targetPromptGroup.promptColumns),
+            function: functionValue,
+            cellInfo: {
+              row: workRow.number,
+              column: answerCol.column,
+              columnIndex: answerCol.index
+            },
+            logColumns: [logColumn],
+            multiAI: true,
+            groupId: `group_${workRow.number}_${this.indexToColumn(targetPromptGroup.promptColumns[0])}`,
+            groupType: '3type',
+            groupPosition: groupPosition,
+            prompt: '',
+            taskType: 'ai',
+            createdAt: Date.now(),
+            version: '2.0'
+          };
+          
+          const task = new Task(taskData);
+          taskList.add(task);
+          taskCount++;
+        }
+      } else {
+        // ========================================
+        // 通常の単独AI列の処理（1つのAIが1つの回答列を担当）
+        // 例：J列のプロンプト → K列(ChatGPT回答)
+        // ========================================
+        for (let answerIndex = 0; answerIndex < targetPromptGroup.answerColumns.length; answerIndex++) {
+          const answerCol = targetPromptGroup.answerColumns[answerIndex];
+          
+          // すでに回答が記載されている場合はスキップ
+          const existingAnswer = this.getCellValue(spreadsheetData, workRow.index, answerCol.index);
+          if (this.hasAnswer(existingAnswer)) {
+            continue;
+          }
+          
+          const aiType = targetPromptGroup.aiType.toLowerCase();
+          const promptCol = {
+            index: targetPromptGroup.promptColumns[0],
+            column: this.indexToColumn(targetPromptGroup.promptColumns[0])
+          };
+          
+          const model = this.getModel(spreadsheetData, promptCol);
+          const functionValue = this.getFunction(spreadsheetData, promptCol);
+          const logColumnIndex = Math.max(0, Math.min(...targetPromptGroup.promptColumns) - 1);
+          const logColumn = this.indexToColumn(logColumnIndex);
+          
+          const taskData = {
+            id: this.generateTaskId(answerCol.column, workRow.number),
+            row: workRow.number,
+            column: answerCol.column,
+            promptColumns: targetPromptGroup.promptColumns,
+            aiType: aiType,
+            model: model,
+            function: functionValue,
+            cellInfo: {
+              row: workRow.number,
+              column: answerCol.column,
+              columnIndex: answerCol.index
+            },
+            logColumns: [logColumn],
+            multiAI: false,
+            prompt: '',
+            taskType: 'ai',
+            createdAt: Date.now(),
+            version: '2.0'
+          };
+          
+          const task = new Task(taskData);
+          taskList.add(task);
+          taskCount++;
+        }
+      }
+    }
+    
+    this.logger.log(`[TaskGeneratorV2] ✅ プロンプトグループ${promptGroupIndex + 1}のタスク生成完了: ${taskCount}個`);
+    return taskList;
+  }
 }

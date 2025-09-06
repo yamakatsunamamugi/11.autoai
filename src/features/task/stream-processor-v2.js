@@ -12,6 +12,7 @@ import { WindowService } from '../../services/window-service.js';
 import { aiUrlManager } from '../../core/ai-url-manager.js';
 import TaskQueue from './queue.js';
 import { RetryManager } from '../../utils/retry-manager.js';
+import TaskGeneratorV2 from './generator-v2.js';
 
 // SpreadsheetLoggerをキャッシュ
 let SpreadsheetLogger = null;
@@ -43,6 +44,7 @@ export default class StreamProcessorV2 {
     this.logger = logger;
     this.aiTaskExecutor = new AITaskExecutor(logger);
     this.retryManager = new RetryManager(logger);
+    this.taskGenerator = new TaskGeneratorV2(logger); // タスクジェネレータを追加
     this.completedTasks = new Set();
     this.failedTasks = new Set();
     this.writtenCells = new Map();
@@ -150,13 +152,8 @@ export default class StreamProcessorV2 {
     });
 
     try {
-      // タスクを列ごとにグループ化
-      const columnGroups = this.organizeTasksByColumn(tasksToProcess);
-      
-      // 各列を順次処理（列内は3行バッチ並列）
-      for (const [column, tasks] of columnGroups) {
-        await this.processColumn(column, tasks, isTestMode);
-      }
+      // プロンプトグループごとにタスクを生成して処理
+      await this.processColumnsSequentially(taskList, spreadsheetData, isTestMode);
 
       const endTime = Date.now();
       const totalTime = Math.round((endTime - startTime) / 1000);
@@ -1709,4 +1706,187 @@ export default class StreamProcessorV2 {
     this.logger.log(`[StreamProcessorV2] ❌ ${column}列の再実行タイマーをキャンセル`);
   }
 
+  /**
+   * プロンプトグループごとに順次タスクを生成して処理
+   * 
+   * 処理の流れ：
+   * 1. プロンプトグループ1（D,E→F）のタスクを生成して並列処理
+   * 2. グループ1完了後、プロンプトグループ2（D,E→F,G,H）のタスクを生成して並列処理
+   * 3. グループ2完了後、プロンプトグループ3（J→K）のタスクを生成して並列処理
+   * 
+   * 各グループ内では従来通り並列処理（3ウィンドウで3タスクずつ）
+   * 
+   * @param {TaskList} initialTaskList - 初期タスクリスト（未使用、互換性のため残す）
+   * @param {Object} spreadsheetData - スプレッドシートデータ
+   * @param {boolean} isTestMode - テストモード
+   */
+  async processColumnsSequentially(initialTaskList, spreadsheetData, isTestMode) {
+    this.logger.log('[StreamProcessorV2] 🚀 プロンプトグループごとの順次処理開始');
+    
+    // スプレッドシートからプロンプトグループ情報を取得
+    const promptGroups = this.getPromptGroups(spreadsheetData);
+    this.logger.log(`[StreamProcessorV2] 📊 プロンプトグループ数: ${promptGroups.length}`);
+    
+    // 各プロンプトグループを順番に処理
+    for (let groupIndex = 0; groupIndex < promptGroups.length; groupIndex++) {
+      const promptGroup = promptGroups[groupIndex];
+      
+      this.logger.log(`[StreamProcessorV2] \n${'='.repeat(50)}`);
+      this.logger.log(`[StreamProcessorV2] 📋 プロンプトグループ${groupIndex + 1}/${promptGroups.length}の処理開始`, {
+        プロンプト列: promptGroup.promptColumns.map(i => this.indexToColumn(i)),
+        回答列: promptGroup.answerColumns.map(col => col.column),
+        AIタイプ: promptGroup.aiType
+      });
+      
+      // このプロンプトグループのタスクを生成
+      const groupTaskList = await this.taskGenerator.generateTasksForPromptGroup(
+        spreadsheetData,
+        groupIndex
+      );
+      
+      if (!groupTaskList || groupTaskList.tasks.length === 0) {
+        this.logger.log(`[StreamProcessorV2] グループ${groupIndex + 1}にタスクなし（すべて回答済み）`);
+        continue;
+      }
+      
+      this.logger.log(`[StreamProcessorV2] ✅ グループ${groupIndex + 1}のタスク生成完了: ${groupTaskList.tasks.length}個`);
+      
+      // タスクを列ごとにグループ化
+      const columnGroups = this.organizeTasksByColumn(groupTaskList.tasks);
+      
+      // 3種類AIグループの場合は特別な処理
+      const is3TypeAI = promptGroup.aiType.includes('3種類') || promptGroup.aiType.includes('３種類');
+      
+      if (is3TypeAI) {
+        // 3種類AI: F,G,H列を3ウィンドウで同時処理
+        await this.process3TypeAIGroup(columnGroups, isTestMode);
+      } else {
+        // 通常AI: 各列を順次処理（列内は3行バッチ並列）
+        for (const [column, tasks] of columnGroups) {
+          await this.processColumn(column, tasks, isTestMode);
+        }
+      }
+      
+      this.logger.log(`[StreamProcessorV2] ✅ プロンプトグループ${groupIndex + 1}の処理完了`);
+      this.logger.log(`[StreamProcessorV2] ${'='.repeat(50)}\n`);
+    }
+    
+    this.logger.log('[StreamProcessorV2] 🎉 全プロンプトグループの処理完了');
+  }
+
+  /**
+   * 3種類AIグループを処理（F,G,H列を同時に3ウィンドウで処理）
+   * @param {string} column - 対象列
+   * @param {Object} promptGroup - プロンプトグループ情報
+   * @param {Object} spreadsheetData - スプレッドシートデータ
+   * @returns {Array} タスクの配列
+   */
+  async process3TypeAIGroup(columnGroups, isTestMode) {
+    this.logger.log(`[StreamProcessorV2] 🎯 3種類AIグループの処理開始`);
+    
+    // F,G,H列のタスクを行ごとにまとめる
+    const rowBatches = new Map();
+    
+    for (const [column, tasks] of columnGroups) {
+      for (const task of tasks) {
+        if (!rowBatches.has(task.row)) {
+          rowBatches.set(task.row, []);
+        }
+        rowBatches.get(task.row).push(task);
+      }
+    }
+    
+    // 行番号順にソート
+    const sortedRows = Array.from(rowBatches.keys()).sort((a, b) => a - b);
+    
+    // 各行のF,G,H列を3ウィンドウで同時処理
+    for (const row of sortedRows) {
+      const rowTasks = rowBatches.get(row);
+      this.logger.log(`[StreamProcessorV2] 行${row}の3種類AI処理: ${rowTasks.map(t => t.column + t.row).join(', ')}`);
+      
+      // この行のタスクを並列処理（最大3ウィンドウ）
+      await this.processBatch(rowTasks, isTestMode);
+    }
+    
+    this.logger.log(`[StreamProcessorV2] ✅ 3種類AIグループの処理完了`);
+  }
+
+
+  /**
+   * プロンプトグループ情報を取得
+   * @param {Object} spreadsheetData - スプレッドシートデータ
+   * @returns {Array} プロンプトグループの配列
+   */
+  getPromptGroups(spreadsheetData) {
+    // TaskGeneratorV2の構造解析機能を利用
+    const structure = this.taskGenerator.analyzeStructure(spreadsheetData);
+    return structure.promptGroups || [];
+  }
+
+  /**
+   * 作業行を取得
+   * @param {Object} spreadsheetData - スプレッドシートデータ
+   * @returns {Array} 作業行の配列
+   */
+  getWorkRows(spreadsheetData) {
+    const structure = this.taskGenerator.analyzeStructure(spreadsheetData);
+    return structure.workRows || [];
+  }
+
+  /**
+   * セル値を取得
+   * @param {Object} spreadsheetData - スプレッドシートデータ
+   * @param {number} rowIndex - 行インデックス（0-indexed）
+   * @param {number} colIndex - 列インデックス（0-indexed）
+   * @returns {string} セル値
+   */
+  getCellValue(spreadsheetData, rowIndex, colIndex) {
+    if (!spreadsheetData?.values?.[rowIndex]) return '';
+    return spreadsheetData.values[rowIndex][colIndex] || '';
+  }
+
+  /**
+   * モデル情報を取得
+   */
+  getModel(spreadsheetData, answerCol, promptColumns) {
+    return this.taskGenerator.getModel(spreadsheetData, answerCol, promptColumns);
+  }
+
+  /**
+   * 機能情報を取得
+   */
+  getFunction(spreadsheetData, answerCol, promptColumns) {
+    return this.taskGenerator.getFunction(spreadsheetData, answerCol, promptColumns);
+  }
+
+  /**
+   * 列名からAIタイプを推定
+   */
+  getAITypeFromColumn(column) {
+    // この実装は簡易版。実際のマッピングロジックに応じて調整必要
+    if (column.includes('ChatGPT')) return 'chatgpt';
+    if (column.includes('Claude')) return 'claude';
+    if (column.includes('Gemini')) return 'gemini';
+    return 'chatgpt'; // デフォルト
+  }
+
+  /**
+   * タスクIDを生成
+   */
+  generateTaskId(column, row) {
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(2, 9);
+    return `${column}${row}_${timestamp}_${random}`;
+  }
+
+  /**
+   * 列名をインデックスに変換
+   */
+  columnToIndex(column) {
+    let index = 0;
+    for (let i = 0; i < column.length; i++) {
+      index = index * 26 + (column.charCodeAt(i) - 65) + 1;
+    }
+    return index - 1;
+  }
 }
