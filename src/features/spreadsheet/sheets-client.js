@@ -444,10 +444,25 @@ class SheetsClient {
 
     if (!response.ok) {
       const error = await response.json();
+      console.error(`[SheetsClient] ❌ API書き込みエラー:`, {
+        status: response.status,
+        error: error.error,
+        range: range,
+        valueLength: value.length
+      });
       throw new Error(`Sheets API error: ${error.error.message}`);
     }
 
-    return await response.json();
+    const result = await response.json();
+    
+    // 書き込み成功を確認
+    if (result && result.updatedCells) {
+      console.log(`[SheetsClient] ✅ 書き込み成功: ${range} (${result.updatedCells}セル更新)`);
+    } else {
+      console.warn(`[SheetsClient] ⚠️ 書き込み結果が不明: ${range}`, result);
+    }
+
+    return result;
   }
 
   /**

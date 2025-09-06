@@ -543,7 +543,7 @@ export class SpreadsheetLogger {
       console.log(`🔍 [SpreadsheetLogger] 書き込み確認開始: ${logCell}`);
       
       // 少し待ってから確認（APIの遅延を考慮）
-      await this._sleep(1000);
+      await this._sleep(2000);  // 待機時間を増やす
       
       // 実際のセルの内容を取得
       const actualData = await sheetsClient.getSheetData(

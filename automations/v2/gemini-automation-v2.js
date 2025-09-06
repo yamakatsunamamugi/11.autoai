@@ -228,34 +228,56 @@
                 
                 // 機能を選択（null/undefined/'none'/'通常'以外の場合）
                 if (featureName && featureName !== 'none' && featureName !== '通常') {
-                    // まずメインツールバーから探す
-                    let featureButton = findElements([
-                        'toolbox-drawer-item button .label',
-                        '.toolbox-drawer-menu-item button .label'
-                    ]).find(el => {
-                        const text = el.textContent.trim();
-                        return text.toLowerCase().includes(featureName.toLowerCase());
-                    })?.closest('button');
+                    let featureButton = null;
                     
-                    // メインツールバーにない場合は、その他メニューから探す
+                    // 1. まずメインの機能ボタンから探す（テストコードと同じロジック）
+                    const allButtons = findElements(['toolbox-drawer-item > button']);
+                    log(`🔍 メインボタン数: ${allButtons.length}`, 'info');
+                    
+                    featureButton = Array.from(allButtons).find(btn => {
+                        const labelElement = findElement(['.label'], btn);
+                        if (labelElement) {
+                            const text = getCleanText(labelElement);
+                            return text.toLowerCase() === featureName.toLowerCase() || 
+                                   text.toLowerCase().includes(featureName.toLowerCase());
+                        }
+                        return false;
+                    });
+                    
+                    // 2. メインにない場合は「その他」メニューを開く
                     if (!featureButton) {
                         const moreButton = findElement(['button[aria-label="その他"]']);
                         if (moreButton) {
                             moreButton.click();
-                            await wait(1000);
+                            await wait(1500); // 待機時間を増やす
                             
-                            featureButton = findElements([
-                                '.cdk-overlay-pane .toolbox-drawer-menu-item button .label'
-                            ]).find(el => {
-                                const text = el.textContent.trim();
-                                return text.toLowerCase().includes(featureName.toLowerCase());
-                            })?.closest('button');
+                            // サブメニュー内から機能を探す
+                            const menuButtons = findElements(['.cdk-overlay-pane .toolbox-drawer-menu-item button']);
+                            featureButton = Array.from(menuButtons).find(btn => {
+                                const labelElement = findElement(['.label'], btn);
+                                if (labelElement) {
+                                    const text = getCleanText(labelElement);
+                                    return text.toLowerCase() === featureName.toLowerCase() || 
+                                           text.toLowerCase().includes(featureName.toLowerCase());
+                                }
+                                return false;
+                            });
                         }
                     }
                     
                     if (featureButton) {
                         featureButton.click();
-                        await wait(1000);
+                        await wait(2000); // 選択後の待機時間を増やす
+                        log(`✅ 機能「${featureName}」を選択しました`, 'success');
+                        
+                        // 選択状態の検証
+                        const selectedButton = findElement([
+                            '.toolbox-drawer-item-button button.is-selected',
+                            '.toolbox-drawer-button.has-selected-item'
+                        ]);
+                        if (!selectedButton) {
+                            log(`⚠️ 機能の選択状態が確認できません`, 'warn');
+                        }
                     } else {
                         log(`機能 "${featureName}" が見つからないため、スキップ`, 'warn');
                     }
@@ -748,7 +770,14 @@
         try {
             if (!modelName || modelName === '') {
                 log('⚠️ [GeminiV2] モデル名が指定されていません', 'warn');
-                return { success: true };
+                // 現在表示されているモデル名を取得して返す
+                const currentModelDisplay = findElement([
+                    '.logo-pill-label-container',
+                    '.gds-mode-switch-button .mdc-button__label div',
+                    '.gds-mode-switch-button .label'
+                ]);
+                const displayText = currentModelDisplay ? getCleanText(currentModelDisplay) : 'Gemini';
+                return { success: true, displayedModel: displayText };
             }
             
             log(`📝 [GeminiV2] モデル選択のみ実行: ${modelName}`, 'info');
@@ -767,12 +796,18 @@
                 menuButton.click();
                 await wait(1500);
                 
-                const modelOptions = findElements([
-                    'button.bard-mode-list-button',
-                    'button[role="menuitemradio"]'
+                // メニューコンテナを明示的に取得（テストコードと同じ方法）
+                const menuContainer = findElement([
+                    '.cdk-overlay-pane .menu-inner-container',
+                    '.cdk-overlay-pane mat-action-list[data-test-id="mobile-nested-mode-menu"]',
+                    '.cdk-overlay-pane'
                 ]);
                 
-                const modelButtonToClick = modelOptions.find(btn => {
+                const modelOptions = menuContainer ? 
+                    findElements(['button.bard-mode-list-button[mat-menu-item]', 'button[role="menuitemradio"]'], menuContainer) :
+                    findElements(['button.bard-mode-list-button', 'button[role="menuitemradio"]']);
+                
+                const modelButtonToClick = Array.from(modelOptions).find(btn => {
                     const text = getCleanText(btn);
                     return text.toLowerCase().includes(modelName.toLowerCase());
                 });
@@ -783,12 +818,29 @@
                     log(`✅ [GeminiV2] モデル選択完了: ${modelName}`, 'success');
                 } else {
                     log(`⚠️ モデル "${modelName}" が見つからないため、デフォルトを使用`, 'warn');
+                    // メニューを閉じる
+                    const backdrop = document.querySelector('.cdk-overlay-backdrop');
+                    if (backdrop) backdrop.click();
+                    await wait(500);
                 }
             } else {
                 log('⚠️ モデルメニューボタンが見つかりません', 'warn');
             }
             
-            return { success: true };
+            // 現在表示されているモデル名を取得
+            const currentModelDisplay = findElement([
+                '.logo-pill-label-container',
+                '.gds-mode-switch-button .mdc-button__label div',
+                '.gds-mode-switch-button .label'
+            ]);
+            const displayText = currentModelDisplay ? getCleanText(currentModelDisplay) : modelName;
+            
+            log(`📊 [GeminiV2] 現在のモデル表示: ${displayText}`, 'info');
+            
+            return { 
+                success: true,
+                displayedModel: displayText
+            };
         } catch (error) {
             log(`❌ [GeminiV2] モデル選択エラー: ${error.message}`, 'error');
             return { success: false, error: error.message };
@@ -808,56 +860,152 @@
             
             log(`📝 [GeminiV2] 機能選択のみ実行: ${functionName}`, 'info');
             
-            // まずメインツールバーから探す
-            let featureButton = findElements([
-                'toolbox-drawer-item button .label',
-                '.toolbox-drawer-menu-item button .label'
-            ]).find(el => {
-                const text = el.textContent.trim();
-                return text.toLowerCase().includes(functionName.toLowerCase());
-            })?.closest('button');
+            // テストコードのロジックに合わせて修正
+            let featureButton = null;
             
-            // メインツールバーにない場合は、その他メニューから探す
-            if (!featureButton) {
-                const moreButton = findElement(['button[aria-label="その他"]']);
-                if (moreButton) {
-                    moreButton.click();
-                    await wait(1000);
-                    
-                    featureButton = findElements([
-                        '.cdk-overlay-pane .toolbox-drawer-menu-item button .label'
-                    ]).find(el => {
-                        const text = el.textContent.trim();
-                        return text.toLowerCase().includes(functionName.toLowerCase());
-                    })?.closest('button');
+            // 1. まずメインの機能ボタンから探す
+            const allButtons = findElements(['toolbox-drawer-item > button']);
+            log(`🔍 メインボタン数: ${allButtons.length}`, 'info');
+            
+            featureButton = Array.from(allButtons).find(btn => {
+                const labelElement = findElement(['.label'], btn);
+                if (labelElement) {
+                    const text = getCleanText(labelElement);
+                    log(`   チェック中: "${text}" vs "${functionName}"`, 'info');
+                    return text.toLowerCase() === functionName.toLowerCase() || 
+                           text.toLowerCase().includes(functionName.toLowerCase());
                 }
+                return false;
+            });
+            
+            // 2. メインにない場合は「その他」メニューを開く
+            if (!featureButton) {
+                log('📝 メインボタンに見つからないため、「その他」メニューを確認', 'info');
+                const moreButton = findElement(['button[aria-label="その他"]']);
+                
+                if (!moreButton) {
+                    log('⚠️ 「その他」ボタンが見つかりません', 'warn');
+                    return { success: false, error: '「その他」ボタンが見つかりません' };
+                }
+                
+                // サブメニューを開く
+                moreButton.click();
+                await wait(1500); // 待機時間を増やす
+                
+                // サブメニュー内から機能を探す
+                const menuButtons = findElements(['.cdk-overlay-pane .toolbox-drawer-menu-item button']);
+                log(`🔍 サブメニューボタン数: ${menuButtons.length}`, 'info');
+                
+                featureButton = Array.from(menuButtons).find(btn => {
+                    const labelElement = findElement(['.label'], btn);
+                    if (labelElement) {
+                        const text = getCleanText(labelElement);
+                        log(`   チェック中（サブメニュー）: "${text}" vs "${functionName}"`, 'info');
+                        return text.toLowerCase() === functionName.toLowerCase() || 
+                               text.toLowerCase().includes(functionName.toLowerCase());
+                    }
+                    return false;
+                });
             }
             
-            if (featureButton) {
-                featureButton.click();
-                await wait(1000);
-                log(`✅ [GeminiV2] 機能選択完了: ${functionName}`, 'success');
+            // 3. 見つかった機能ボタンをクリック
+            if (!featureButton) {
+                log(`❌ 機能ボタン "${functionName}" が見つかりませんでした`, 'error');
+                // オーバーレイを閉じる
+                const overlay = document.querySelector('.cdk-overlay-backdrop');
+                if (overlay) {
+                    overlay.click();
+                    await wait(500);
+                }
+                return { success: false, error: `機能 "${functionName}" が見つかりません` };
+            }
+            
+            featureButton.click();
+            await wait(2000); // 選択後の待機時間を増やす
+            log(`✅ 機能ボタンをクリックしました: ${functionName}`, 'success');
+            
+            // 4. 選択状態の検証（画面サイズに対応）
+            let displayedFunction = functionName || '通常';
+            
+            // 機能アイコンのマッピング（画面が小さい場合の「その他」ボタン用）
+            const iconToFunction = {
+                'photo_prints': '画像',
+                'image': '画像',
+                'note_stack_add': 'Canvas',
+                'canvas': 'Canvas',
+                'science': 'Deep Research',
+                'research': 'Deep Research',
+                // 必要に応じて他の機能も追加
+            };
+            
+            // 通常の選択ボタンを確認
+            const selectedButton = findElement([
+                '.toolbox-drawer-item-button button.is-selected',
+                '.toolbox-drawer-button.has-selected-item'
+            ]);
+            
+            if (selectedButton) {
+                log(`✅ 機能「${functionName}」の選択状態を確認しました`, 'success');
+                
+                // 「その他」ボタンの場合、アイコンから実際の機能を特定
+                if (selectedButton.classList.contains('has-selected-item')) {
+                    const iconElement = selectedButton.querySelector('mat-icon[data-mat-icon-name]');
+                    if (iconElement) {
+                        const iconName = iconElement.getAttribute('data-mat-icon-name');
+                        log(`🔍 「その他」ボタンのアイコン: ${iconName}`, 'info');
+                        
+                        // アイコン名から機能名を取得
+                        const detectedFunction = iconToFunction[iconName];
+                        if (detectedFunction) {
+                            displayedFunction = detectedFunction;
+                            log(`✅ アイコンから機能を特定: ${detectedFunction}`, 'success');
+                        } else {
+                            log(`⚠️ 未知のアイコン: ${iconName}`, 'warn');
+                        }
+                    }
+                }
             } else {
-                log(`⚠️ 機能 "${functionName}" が見つからないため、スキップ`, 'warn');
+                log(`⚠️ 「${functionName}」を選択しましたが、選択状態が確認できません`, 'warn');
+                // 選択自体は実行されたため、成功として扱う
             }
             
-            // オーバーレイを閉じる
-            const overlay = document.querySelector('.cdk-overlay-backdrop.cdk-overlay-backdrop-showing');
-            if (overlay) overlay.click();
+            // オーバーレイが残っている場合は閉じる
+            const overlay = document.querySelector('.cdk-overlay-backdrop');
+            if (overlay) {
+                overlay.click();
+                await wait(500);
+            }
             
-            return { success: true };
+            log(`📊 [GeminiV2] 選択された機能: ${displayedFunction}`, 'info');
+            return { success: true, displayedFunction: displayedFunction };
         } catch (error) {
             log(`❌ [GeminiV2] 機能選択エラー: ${error.message}`, 'error');
+            // オーバーレイを閉じる（エラー時も）
+            const overlay = document.querySelector('.cdk-overlay-backdrop');
+            if (overlay) {
+                overlay.click();
+                await wait(500);
+            }
             return { success: false, error: error.message };
         }
     }
     
     /**
      * 送信と応答取得のみ実行
+     * @param {Object} taskData - タスク情報（function含む）
      */
-    async function sendAndGetResponse() {
+    async function sendAndGetResponse(taskData) {
         try {
             log('📝 [GeminiV2] 送信と応答取得を実行', 'info');
+            
+            // taskDataのデバッグログ
+            log(`🔍 [GeminiV2] taskData受信: ${JSON.stringify(taskData)}`, 'info');
+            
+            // Canvas機能の判定（テストコードと同じロジック）
+            const isCanvasMode = taskData && taskData.function && 
+                taskData.function.toLowerCase().includes('canvas');
+            
+            log(`📊 [GeminiV2] モード判定: ${isCanvasMode ? '🎨 Canvas' : '💬 通常'} (機能: "${taskData?.function || '未指定'}")`, 'info');
             
             // 送信ボタンを5回まで再試行
             let sendSuccess = false;
@@ -922,54 +1070,150 @@
                 }
             }
             
-            // 応答待機（通常モード）
-            log("応答待機開始...");
-            await wait(10000); // 初期待機
-            
-            let waitTime = 0;
-            const maxWait = 60000;
-            
-            // 停止ボタンが消えるまで待機
-            await new Promise((resolve) => {
-                const checker = setInterval(() => {
-                    if (!findElement(['button.send-button.stop', 'button.stop'])) {
-                        clearInterval(checker);
-                        resolve("応答が完了しました（停止ボタンが消えました）。");
-                        return;
-                    }
+            // 応答待機（Canvas/通常モード判定）
+            if (isCanvasMode) {
+                // Canvasモード: テストコードと完全に同じ実装
+                log('🎨 Canvasモード: 初期待機30秒...', 'info');
+                await wait(30000); // 30秒待機
+                
+                log('🎨 Canvasモード: テキスト生成の監視を開始します。', 'info');
+                
+                // テキスト安定性監視
+                await new Promise((resolve, reject) => {
+                    let lastLength = -1;
+                    let lastChangeTime = Date.now();
+                    const maxWaitTime = 300000; // 5分
+                    const stabilityDuration = 10000; // 10秒
+                    const monitorInterval = 2000; // 2秒
                     
-                    if (waitTime >= maxWait) {
-                        clearInterval(checker);
-                        resolve("応答待機がタイムアウトしました（60秒）。処理を続行します。");
-                        return;
-                    }
-                    
-                    waitTime += 2000;
-                }, 2000);
-            });
+                    const monitor = setInterval(() => {
+                        const canvasEditor = findElement(['.ProseMirror']);
+                        if (!canvasEditor) {
+                            log('⚠️ Canvas要素(.ProseMirror)が見つかりません', 'warn');
+                            return;
+                        }
+                        
+                        const currentLength = canvasEditor.textContent.length;
+                        log(`[監視中] Canvas文字数: ${currentLength}`, 'info');
+                        
+                        if (currentLength > lastLength) {
+                            lastLength = currentLength;
+                            lastChangeTime = Date.now();
+                        }
+                        
+                        // 10秒間変化がなければ完了とみなす
+                        if (Date.now() - lastChangeTime > stabilityDuration) {
+                            clearInterval(monitor);
+                            log(`✅ Canvasのテキストが${stabilityDuration / 1000}秒間安定しました。`, 'success');
+                            resolve('Canvasの応答が安定しました。');
+                        }
+                        
+                        // タイムアウトチェック
+                        if (Date.now() - (Date.now() - currentLength) > maxWaitTime) {
+                            clearInterval(monitor);
+                            reject(new Error(`Canvasの応答が${maxWaitTime / 1000}秒以内に完了しませんでした。`));
+                        }
+                    }, monitorInterval);
+                });
+                
+            } else {
+                // 通常モード: 既存の処理
+                log("通常モード: 応答待機開始...");
+                await wait(10000); // 初期待機
+                
+                let waitTime = 0;
+                const maxWait = 60000;
+                
+                // 停止ボタンが消えるまで待機
+                await new Promise((resolve) => {
+                    const checker = setInterval(() => {
+                        if (!findElement(['button.send-button.stop', 'button.stop'])) {
+                            clearInterval(checker);
+                            resolve("応答が完了しました（停止ボタンが消えました）。");
+                            return;
+                        }
+                        
+                        if (waitTime >= maxWait) {
+                            clearInterval(checker);
+                            resolve("応答待機がタイムアウトしました（60秒）。処理を続行します。");
+                            return;
+                        }
+                        
+                        log(`[待機中] 応答生成を待っています... (${waitTime / 1000}秒)`, 'info');
+                        waitTime += 2000;
+                    }, 2000);
+                });
+            }
             
             // テキスト取得
             await wait(2000); // 少し待ってから取得
             
             // 応答テキストを取得
-            const responseElements = findElements([
-                '.message-content .model-response-text',
-                '.model-response-text',
-                '.response-container',
-                '.conversation-turn .message'
-            ]);
+            log('📝 [GeminiV2] 応答テキスト取得開始', 'info');
             
             let responseText = '';
-            if (responseElements.length > 0) {
-                const lastResponse = responseElements[responseElements.length - 1];
-                responseText = lastResponse.textContent?.trim() || '';
-            }
             
-            // Canvas機能の場合
-            if (!responseText) {
+            if (isCanvasMode) {
+                // Canvasモード: .ProseMirrorから直接取得（テストコードと同じ）
                 const canvasEditor = findElement(['.ProseMirror']);
                 if (canvasEditor) {
-                    responseText = canvasEditor.textContent?.trim() || '';
+                    responseText = canvasEditor.textContent || '';
+                    log(`✅ [GeminiV2] Canvas応答取得: ${responseText.length}文字`, 'success');
+                    if (responseText.length <= 200) {
+                        log(`Canvas内容: ${responseText}`, 'info');
+                    } else {
+                        log(`Canvas内容（先頭100文字）: ${responseText.substring(0, 100)}...`, 'info');
+                        log(`Canvas内容（末尾100文字）: ...${responseText.substring(responseText.length - 100)}`, 'info');
+                    }
+                } else {
+                    log('❌ [GeminiV2] Canvas要素(.ProseMirror)が見つかりません', 'error');
+                }
+            }
+            
+            // Canvas応答が取得できない場合は通常の応答要素をチェック
+            if (!responseText) {
+                log('📝 [GeminiV2] 通常の応答要素を確認', 'info');
+                const responseElements = findElements([
+                    '.message-content .model-response-text',
+                    '.model-response-text',
+                    '.response-container',
+                    '.conversation-turn .message',
+                    '.message-content',
+                    '[data-message-author="assistant"]',
+                    '.model-message'
+                ]);
+                
+                if (responseElements.length > 0) {
+                    const lastResponse = responseElements[responseElements.length - 1];
+                    responseText = lastResponse.textContent?.trim() || '';
+                    if (responseText) {
+                        log(`✅ [GeminiV2] 通常応答取得: ${responseText.substring(0, 100)}...`, 'success');
+                    }
+                }
+            }
+            
+            // それでも取得できない場合、より広範囲に探す
+            if (!responseText) {
+                log('⚠️ [GeminiV2] 応答テキストが見つからない。全体を探索中...', 'warn');
+                
+                // メインコンテナから探す
+                const mainContainer = findElement([
+                    '.conversation-container',
+                    '.chat-container',
+                    'main',
+                    '[role="main"]'
+                ]);
+                
+                if (mainContainer) {
+                    // 最後のメッセージを探す
+                    const allMessages = mainContainer.querySelectorAll('[class*="message"], [class*="response"]');
+                    if (allMessages.length > 0) {
+                        const lastMessage = allMessages[allMessages.length - 1];
+                        responseText = lastMessage.textContent?.trim() || '';
+                        if (responseText) {
+                            log(`✅ [GeminiV2] 全体探索で応答取得: ${responseText.substring(0, 100)}...`, 'success');
+                        }
+                    }
                 }
             }
             

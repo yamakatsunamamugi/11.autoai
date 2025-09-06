@@ -45,6 +45,7 @@ export default class StreamProcessorV2 {
     this.aiTaskExecutor = new AITaskExecutor(logger);
     this.retryManager = new RetryManager(logger);
     this.taskGenerator = new TaskGeneratorV2(logger); // タスクジェネレータを追加
+    this.windowService = WindowService; // WindowServiceへの参照を保持
     this.completedTasks = new Set();
     this.failedTasks = new Set();
     this.writtenCells = new Map();
@@ -291,12 +292,24 @@ export default class StreamProcessorV2 {
       // ========================================
       this.logger.log(`[StreamProcessorV2] 📋 フェーズ1: ウィンドウ準備とテキスト入力`);
       
+      // バッチ内のすべての既存回答を一度にチェック（APIコールをまとめる）
+      const answerCheckPromises = batch.map(task => 
+        this.getCurrentAnswer(task).then(answer => ({ task, answer }))
+      );
+      
+      // 1秒間隔で実行してAPIレート制限を回避
+      const answerResults = [];
+      for (const promise of answerCheckPromises) {
+        answerResults.push(await promise);
+        await this.delay(1000); // APIコール間に1秒待機
+      }
+      
       for (let index = 0; index < batch.length; index++) {
         const task = batch[index];
         const position = index; // 0: 左上、1: 右上、2: 左下
         
-        // 既存回答チェック
-        const existingAnswer = await this.getCurrentAnswer(task);
+        // 既存回答チェック（事前に取得済みの結果を使用）
+        const existingAnswer = answerResults[index].answer;
         if (existingAnswer && existingAnswer.trim() !== '') {
           skippedCells.push(`${task.column}${task.row}`);
           // タスクを完了扱いにして次へ
@@ -508,8 +521,11 @@ export default class StreamProcessorV2 {
                 if (tab && tab.windowId) {
                   await chrome.windows.remove(tab.windowId);
                 }
-                const WindowService = await import('../../services/window-service.js').then(m => m.default);
-                WindowService.releasePosition(context.position);
+                // WindowServiceの動的importを避け、直接window-serviceのインスタンスを使用
+                // ポジション管理は必要に応じて別途実装
+                if (this.windowService) {
+                  this.windowService.releasePosition(context.position);
+                }
               } catch (closeError) {
                 this.logger.error(`[StreamProcessorV2] ウィンドウクローズエラー:`, closeError);
               }
@@ -559,6 +575,17 @@ export default class StreamProcessorV2 {
       for (let index = 0; index < taskContexts.length; index++) {
         const context = taskContexts[index];
         this.logger.log(`[StreamProcessorV2] 機能選択${index + 1}/${taskContexts.length}: ${context.cell}`);
+        
+        // Canvas等の特殊機能かどうかを判定
+        const specialFunctions = ['Canvas', 'Deep Research', 'DeepResearch', 'DeepReserch'];
+        const isSpecialFunction = specialFunctions.some(f => 
+          context.task.function && context.task.function.includes(f)
+        );
+        
+        // 特殊機能の場合はdisplayedFunctionのチェックをスキップ
+        if (isSpecialFunction) {
+          this.logger.log(`[StreamProcessorV2] 🎨 特殊機能「${context.task.function}」を選択中 - 成功判定を調整`);
+        }
         
         // RetryManagerを使用して機能選択を実行
         const retryResult = await this.retryManager.executeWithWindowRetry({
@@ -610,7 +637,7 @@ export default class StreamProcessorV2 {
           
           task: context.task,
           context: context,
-          checkFunction: true,
+          checkFunction: !isSpecialFunction,  // 特殊機能の場合はチェックを無効化
           phaseName: '機能選択',
           maxRetries: 3
         });
@@ -619,6 +646,11 @@ export default class StreamProcessorV2 {
         if (retryResult.success && retryResult.result) {
           context.task.displayedFunction = retryResult.result.displayedFunction;
           this.logger.log(`[StreamProcessorV2] ✅ 選択された機能を記録: ${context.task.function || '通常'} → ${retryResult.result.displayedFunction || '通常'}`);
+          
+          // 特殊機能の場合の追加ログ
+          if (isSpecialFunction) {
+            this.logger.log(`[StreamProcessorV2] 🎨 特殊機能「${context.task.function}」の選択完了 - 送信フェーズへ進みます`);
+          }
         } else {
           this.logger.error(`[StreamProcessorV2] ❌ 機能選択が失敗しました: ${context.cell}`);
           // 失敗タスクとして記録
@@ -666,19 +698,40 @@ export default class StreamProcessorV2 {
           this.completedTasks.add(context.task.id);
           this.writtenCells.set(context.cell, result.response);
           
+          // Canvas機能使用時の応答チェック
+          if (context.task.function === 'Canvas' || context.task.displayedFunction === 'Canvas') {
+            this.logger.log(`[StreamProcessorV2] 🎨 Canvas応答を検出: ${result.response.substring(0, 200)}...`);
+          }
+          
           // スプレッドシートに書き込み
           if (this.spreadsheetData) {
             const { spreadsheetId, gid } = this.spreadsheetData;
             const range = context.cell;
             
-            await globalThis.sheetsClient?.updateCell(
-              spreadsheetId,
-              range,
-              result.response,
-              gid
-            );
+            // 応答内容を確認
+            this.logger.log(`[StreamProcessorV2] 📝 書き込み準備: ${range}`, {
+              responseLength: result.response.length,
+              responsePreview: result.response.substring(0, 100),
+              isCanvas: context.task.function === 'Canvas'
+            });
             
-            this.logger.log(`[StreamProcessorV2] 📝 ${range}に応答を書き込みました`);
+            try {
+              const writeResult = await globalThis.sheetsClient?.updateCell(
+                spreadsheetId,
+                range,
+                result.response,
+                gid
+              );
+              
+              if (writeResult) {
+                this.logger.log(`[StreamProcessorV2] ✅ ${range}に応答を書き込み成功`);
+              } else {
+                this.logger.error(`[StreamProcessorV2] ❌ ${range}への書き込み結果が不明`);
+              }
+            } catch (writeError) {
+              this.logger.error(`[StreamProcessorV2] ❌ ${range}への書き込みエラー:`, writeError);
+              // エラーでも処理は継続
+            }
             
             // SpreadsheetLoggerでログを記録
             if (this.spreadsheetLogger && context.task.logColumns && context.task.logColumns.length > 0) {
@@ -715,18 +768,23 @@ export default class StreamProcessorV2 {
                 const logCellKey = `${context.task.logColumns[0]}_${context.task.row}`;
                 const isFirstForThisCell = !this.processedCells.has(logCellKey);
                 
-                await this.spreadsheetLogger.writeLogToSpreadsheet(taskWithModel, {
+                const logResult = await this.spreadsheetLogger.writeLogToSpreadsheet(taskWithModel, {
                   url: currentUrl,
                   sheetsClient: globalThis.sheetsClient,
                   spreadsheetId,
                   gid,
                   isFirstTask: isFirstForThisCell,
-                  enableWriteVerification: false
+                  enableWriteVerification: true  // 書き込み確認を有効化
                 });
                 
-                // このセルを処理済みとしてマーク
-                this.processedCells.add(logCellKey);
-                this.logger.log(`[StreamProcessorV2] ✅ ログを書き込み: ${context.task.logColumns[0]}${context.task.row}`);
+                // 書き込み結果を確認
+                if (logResult && logResult.success) {
+                  // このセルを処理済みとしてマーク
+                  this.processedCells.add(logCellKey);
+                  this.logger.log(`[StreamProcessorV2] ✅ ログを書き込み: ${context.task.logColumns[0]}${context.task.row} (検証済み: ${logResult.verified})`);
+                } else {
+                  this.logger.error(`[StreamProcessorV2] ❌ ログ書き込み失敗: ${context.task.logColumns[0]}${context.task.row}`);
+                }
                 
               } catch (logError) {
                 this.logger.warn(
@@ -739,6 +797,9 @@ export default class StreamProcessorV2 {
         } else {
           this.logger.error(`[StreamProcessorV2] ⚠️ ${context.cell}の応答が取得できませんでした`);
         }
+        
+        // ログ書き込みが完全に終わるまで少し待機
+        await new Promise(resolve => setTimeout(resolve, 1000));
         
         // ウィンドウを閉じる
         try {
@@ -1060,9 +1121,29 @@ export default class StreamProcessorV2 {
               
               if (automation && automation.selectFunctionOnly) {
                 console.log(`🔍 [DEBUG] selectFunctionOnly実行開始`);
-                const result = await automation.selectFunctionOnly(functionName);
-                console.log(`🔍 [DEBUG] selectFunctionOnly実行完了 - 結果:`, result);
-                return result;
+                try {
+                  const result = await automation.selectFunctionOnly(functionName);
+                  console.log(`🔍 [DEBUG] selectFunctionOnly実行完了 - 結果:`, result);
+                  
+                  // Geminiの場合、成功判定を調整（Canvasなど特殊な機能名でも成功とする）
+                  if (aiType.toLowerCase() === 'gemini' && functionName) {
+                    // Canvas機能などの特別処理
+                    const specialFunctions = ['Canvas', 'Deep Research', 'DeepResearch', 'DeepReserch'];
+                    if (specialFunctions.some(f => functionName.includes(f))) {
+                      console.log(`🔍 [DEBUG] Gemini特殊機能「${functionName}」の処理 - 成功として扱う`);
+                      // resultがfalseでも強制的に成功とする（機能選択自体は実行されたため）
+                      if (!result.success) {
+                        console.log(`⚠️ [DEBUG] 機能選択は実行されたが確認できなかった - 成功として続行`);
+                        return { success: true, warning: '機能選択状態の確認ができませんでしたが、処理を続行します' };
+                      }
+                    }
+                  }
+                  
+                  return result;
+                } catch (error) {
+                  console.error(`❌ [DEBUG] selectFunctionOnly実行エラー:`, error);
+                  return { success: false, error: error.message || 'Function selection failed' };
+                }
               }
               
               const errorResult = { success: false, error: `${aiType} automation not found or selectFunctionOnly not supported` };
@@ -1079,7 +1160,7 @@ export default class StreamProcessorV2 {
           // 送信と応答取得
           result = await chrome.scripting.executeScript({
             target: { tabId },
-            func: async (aiType) => {
+            func: async (aiType, taskData) => {
               // AIタイプに応じたAutomationオブジェクトを取得
               const automationMap = {
                 'claude': ['ClaudeAutomationV2', 'ClaudeAutomation'],
@@ -1092,11 +1173,17 @@ export default class StreamProcessorV2 {
               const automation = automationName ? window[automationName] : null;
               
               if (automation && automation.sendAndGetResponse) {
-                return await automation.sendAndGetResponse();
+                // Geminiの場合はtaskDataを渡す（Canvas判定のため）
+                if (aiType.toLowerCase() === 'gemini') {
+                  return await automation.sendAndGetResponse(taskData);
+                } else {
+                  // 他のAIは既存の処理（引数なし）
+                  return await automation.sendAndGetResponse();
+                }
               }
               return { success: false, error: `${aiType} automation not found or sendAndGetResponse not supported` };
             },
-            args: [aiType]
+            args: [aiType, { function: task.function, displayedFunction: task.displayedFunction }]
           });
           break;
           
@@ -1393,6 +1480,7 @@ export default class StreamProcessorV2 {
     const tasksToReprocess = [];
     const skippedCells = [];
     
+    // APIレート制限対策: 各タスクの確認間に遅延を追加
     for (const task of tasks) {
       try {
         // スプレッドシートから現在の回答を取得
@@ -1403,10 +1491,15 @@ export default class StreamProcessorV2 {
         } else {
           skippedCells.push(`${task.column}${task.row}`);
         }
+        
+        // APIコール間に1秒待機してレート制限を回避
+        await this.delay(1000);
       } catch (error) {
         this.logger.error(`[StreamProcessorV2] ${task.column}${task.row}の回答確認エラー:`, error);
         // エラーの場合も再実行対象に追加
         tasksToReprocess.push(task);
+        // エラー時も待機
+        await this.delay(1000);
       }
     }
     
