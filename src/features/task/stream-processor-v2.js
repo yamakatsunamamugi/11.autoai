@@ -391,12 +391,67 @@ export default class StreamProcessorV2 {
         }
         
         this.logger.log(`[StreamProcessorV2] テキスト入力${index + 1}/${batch.length}: ${task.column}${task.row}`);
-        const textResult = await this.executePhaseOnTab(currentTabId, { ...task, prompt }, 'text');
         
-        if (!textResult || !textResult.success) {
-          this.logger.error(`[StreamProcessorV2] テキスト入力失敗: ${task.column}${task.row}`, textResult?.error);
-          // エラーでも続行する
-          this.logger.warn(`[StreamProcessorV2] ⚠️ エラーが発生しましたが処理を続行します`);
+        // テキスト入力をリトライ付きで実行
+        let textSuccess = false;
+        let textRetryCount = 0;
+        const maxTextRetries = 3;
+        
+        while (!textSuccess && textRetryCount < maxTextRetries) {
+          const textResult = await this.executePhaseOnTab(currentTabId, { ...task, prompt }, 'text');
+          
+          if (textResult && textResult.success) {
+            textSuccess = true;
+            this.logger.log(`[StreamProcessorV2] ✅ テキスト入力成功: ${task.column}${task.row}`);
+          } else {
+            textRetryCount++;
+            this.logger.error(`[StreamProcessorV2] ❌ テキスト入力失敗 (試行 ${textRetryCount}/${maxTextRetries}): ${task.column}${task.row}`, textResult?.error);
+            
+            if (textRetryCount < maxTextRetries) {
+              await this.delay(3000); // リトライ前に待機
+            }
+          }
+        }
+        
+        if (!textSuccess) {
+          this.logger.error(`[StreamProcessorV2] ❌ 最終的にテキスト入力失敗: ${task.column}${task.row}`);
+          
+          // テキスト入力が最終的に失敗した場合、ウィンドウを閉じて再作成
+          try {
+            const WindowService = await import('../../services/window-service.js').then(m => m.default);
+            await WindowService.closeWindow(currentTabId);
+            WindowService.releasePosition(position);
+            
+            await this.delay(2000);
+            
+            // 新しいウィンドウを作成してリトライ
+            const newTabId = await this.createWindowForTask(task, position);
+            if (newTabId) {
+              currentTabId = newTabId;
+              taskContexts[taskContexts.length - 1].tabId = newTabId;
+              
+              await this.delay(2000);
+              await this.injectScriptsForTab(newTabId, task.aiType);
+              
+              // 最後の試行
+              const finalResult = await this.executePhaseOnTab(newTabId, { ...task, prompt }, 'text');
+              if (finalResult && finalResult.success) {
+                this.logger.log(`[StreamProcessorV2] ✅ ウィンドウ再作成後のテキスト入力成功`);
+              } else {
+                this.logger.error(`[StreamProcessorV2] ❌ ウィンドウ再作成後もテキスト入力失敗 - タスクをスキップ`);
+                taskContexts.pop(); // 失敗したタスクを削除
+                continue;
+              }
+            } else {
+              this.logger.error(`[StreamProcessorV2] ❌ ウィンドウ再作成失敗 - タスクをスキップ`);
+              taskContexts.pop();
+              continue;
+            }
+          } catch (error) {
+            this.logger.error(`[StreamProcessorV2] ウィンドウ再作成エラー:`, error);
+            taskContexts.pop();
+            continue;
+          }
         }
         
         // 各ウィンドウ作成後に短い待機
@@ -415,7 +470,7 @@ export default class StreamProcessorV2 {
       await this.delay(2000); // フェーズ間の待機
       
       // ========================================
-      // フェーズ2: モデルを順番に選択
+      // フェーズ2: モデルを順番に選択（リトライ機能付き）
       // ========================================
       this.logger.log(`[StreamProcessorV2] 📋 フェーズ2: モデル選択（順番に）`);
       
@@ -423,13 +478,71 @@ export default class StreamProcessorV2 {
         const context = taskContexts[index];
         this.logger.log(`[StreamProcessorV2] モデル選択${index + 1}/${taskContexts.length}: ${context.cell}`);
         
-        // タブにフォーカスを移してモデル選択を実行
-        const modelResult = await this.executePhaseOnTab(context.tabId, context.task, 'model');
+        let modelSuccess = false;
+        let retryCount = 0;
+        const maxRetries = 3;
         
-        // 実際に選択されたモデルを保存
-        if (modelResult && modelResult.success !== false && modelResult.displayedModel !== undefined) {
-          context.task.displayedModel = modelResult.displayedModel;
-          this.logger.log(`[StreamProcessorV2] 選択されたモデルを記録: ${context.task.model || 'Auto'} → ${modelResult.displayedModel || '(取得できず)'}`);
+        while (!modelSuccess && retryCount < maxRetries) {
+          try {
+            // モデル選択を実行
+            const modelResult = await this.executePhaseOnTab(context.tabId, context.task, 'model');
+            
+            if (modelResult && modelResult.success !== false && modelResult.displayedModel !== undefined) {
+              context.task.displayedModel = modelResult.displayedModel;
+              this.logger.log(`[StreamProcessorV2] ✅ モデル選択成功: ${context.task.model || 'Auto'} → ${modelResult.displayedModel || '(取得できず)'}`);
+              modelSuccess = true;
+            } else {
+              throw new Error(`モデル選択失敗: ${context.cell}`);
+            }
+          } catch (error) {
+            retryCount++;
+            this.logger.error(`[StreamProcessorV2] ❌ モデル選択失敗 (試行 ${retryCount}/${maxRetries}): ${context.cell}`, error);
+            
+            if (retryCount < maxRetries) {
+              // ウィンドウを閉じて再作成
+              this.logger.log(`[StreamProcessorV2] 🔄 ウィンドウを再作成してリトライします`);
+              
+              try {
+                // 既存ウィンドウを閉じる
+                const tab = await chrome.tabs.get(context.tabId);
+                if (tab && tab.windowId) {
+                  await chrome.windows.remove(tab.windowId);
+                }
+                const WindowService = await import('../../services/window-service.js').then(m => m.default);
+                WindowService.releasePosition(context.position);
+              } catch (closeError) {
+                this.logger.error(`[StreamProcessorV2] ウィンドウクローズエラー:`, closeError);
+              }
+              
+              await this.delay(2000);
+              
+              // 新しいウィンドウを作成
+              const newTabId = await this.createWindowForTask(context.task, context.position);
+              if (newTabId) {
+                context.tabId = newTabId;
+                await this.delay(2000);
+                
+                // スクリプトを注入
+                await this.injectScriptsForTab(newTabId, context.task.aiType);
+                
+                // テキストを再入力
+                this.logger.log(`[StreamProcessorV2] テキスト再入力: ${context.cell}`);
+                const textResult = await this.executePhaseOnTab(newTabId, context.task, 'text');
+                if (!textResult || !textResult.success) {
+                  this.logger.error(`[StreamProcessorV2] テキスト再入力失敗: ${context.cell}`);
+                }
+                
+                await this.delay(2000);
+              } else {
+                this.logger.error(`[StreamProcessorV2] ウィンドウ再作成失敗`);
+              }
+            }
+          }
+        }
+        
+        if (!modelSuccess) {
+          this.logger.error(`[StreamProcessorV2] ❌ 最終的にモデル選択失敗: ${context.cell} - このタスクをスキップします`);
+          context.failed = true;
         }
         
         await this.delay(1000); // 各モデル選択後の待機
@@ -1341,10 +1454,14 @@ export default class StreamProcessorV2 {
         gid
       );
       
-      if (response && response.values && response.values.length > 0 && response.values[0].length > 0) {
-        return response.values[0][0];
+      // getSheetDataは配列を直接返す（response.valuesではない）
+      if (response && response.length > 0 && response[0].length > 0) {
+        const value = response[0][0];
+        this.logger.log(`[StreamProcessorV2] 📊 ${task.column}${task.row}の既存回答: "${value?.substring(0, 50)}..."`);
+        return value;
       }
       
+      this.logger.log(`[StreamProcessorV2] 📊 ${task.column}${task.row}: 回答なし`);
       return '';
     } catch (error) {
       this.logger.error(`[StreamProcessorV2] ${task.column}${task.row}の回答取得エラー:`, error);
