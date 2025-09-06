@@ -318,15 +318,22 @@ export default class StreamProcessorV2 {
         // ウィンドウが開いたら、スクリプトを注入してからテキスト入力を実行
         await this.delay(3000); // ページ読み込み待機（少し長めに）
         
-        // スクリプトを注入
+        // スクリプトを注入（エラーハンドリング強化）
         this.logger.log(`[StreamProcessorV2] スクリプト注入中: ${task.aiType}`);
-        await this.injectScriptsForTab(tabId, task.aiType);
+        const injectionResult = await this.injectScriptsForTab(tabId, task.aiType);
+        
+        if (!injectionResult) {
+          this.logger.error(`[StreamProcessorV2] ⚠️ スクリプト注入に失敗しましたが、処理を続行します: ${task.column}${task.row}`);
+          // スクリプト注入失敗でも続行を試みる
+        }
         
         this.logger.log(`[StreamProcessorV2] テキスト入力${index + 1}/${batch.length}: ${task.column}${task.row}`);
         const textResult = await this.executePhaseOnTab(tabId, { ...task, prompt }, 'text');
         
         if (!textResult || !textResult.success) {
           this.logger.error(`[StreamProcessorV2] テキスト入力失敗: ${task.column}${task.row}`, textResult?.error);
+          // エラーでも続行する
+          this.logger.warn(`[StreamProcessorV2] ⚠️ エラーが発生しましたが処理を続行します`);
         }
         
         // 各ウィンドウ作成後に短い待機
@@ -591,11 +598,52 @@ export default class StreamProcessorV2 {
   }
 
   /**
-   * タブにスクリプトを注入
+   * タブにスクリプトを注入（タイムアウト・リトライ付き）
    * @param {number} tabId - タブID
    * @param {string} aiType - AIタイプ
+   * @param {number} maxRetries - 最大リトライ回数
    */
-  async injectScriptsForTab(tabId, aiType) {
+  async injectScriptsForTab(tabId, aiType, maxRetries = 3) {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        this.logger.log(`[StreamProcessorV2] 🔄 スクリプト注入試行 ${attempt}/${maxRetries}`);
+        
+        // タイムアウト付きで実行（30秒）
+        const result = await Promise.race([
+          this._injectScriptsCore(tabId, aiType),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Script injection timeout (30s)')), 30000)
+          )
+        ]);
+        
+        if (result) {
+          this.logger.log(`[StreamProcessorV2] ✅ スクリプト注入成功 (試行 ${attempt})`);
+          return true;
+        }
+      } catch (error) {
+        this.logger.error(`[StreamProcessorV2] ❌ スクリプト注入失敗 (試行 ${attempt}/${maxRetries}):`, error);
+        
+        if (attempt === maxRetries) {
+          this.logger.error(`[StreamProcessorV2] ❌ 最大リトライ回数に達しました`);
+          return false;
+        }
+        
+        // リトライ前に待機（段階的に増やす）
+        const waitTime = 2000 * attempt;
+        this.logger.log(`[StreamProcessorV2] ⏳ ${waitTime}ms待機してリトライ...`);
+        await this.delay(waitTime);
+      }
+    }
+    return false;
+  }
+  
+  /**
+   * スクリプト注入のコア処理
+   * @private
+   */
+  async _injectScriptsCore(tabId, aiType) {
+    const startTime = Date.now();
+    
     try {
       const aiTypeLower = aiType.toLowerCase();
       
@@ -606,7 +654,7 @@ export default class StreamProcessorV2 {
         'gemini': 'automations/v2/gemini-automation-v2.js'
       };
       
-      // 共通スクリプト（model-info-loaderは既にページに存在する可能性があるため除外）
+      // 共通スクリプト
       const commonScripts = [
         'automations/feature-constants.js',
         'automations/common-ai-handler.js'
@@ -620,10 +668,16 @@ export default class StreamProcessorV2 {
       
       for (const scriptFile of scriptsToInject) {
         this.logger.log(`[StreamProcessorV2] 📝 スクリプト注入: ${scriptFile}`);
-        await chrome.scripting.executeScript({
-          target: { tabId },
-          files: [scriptFile]
-        });
+        
+        try {
+          await chrome.scripting.executeScript({
+            target: { tabId },
+            files: [scriptFile]
+          });
+        } catch (scriptError) {
+          this.logger.error(`[StreamProcessorV2] ❌ スクリプト ${scriptFile} の注入失敗:`, scriptError);
+          throw new Error(`Failed to inject ${scriptFile}: ${scriptError.message}`);
+        }
       }
       
       // スクリプトが完全に読み込まれるまで待機
@@ -647,13 +701,19 @@ export default class StreamProcessorV2 {
       });
       
       if (!checkResult?.[0]?.result) {
-        this.logger.warn(`[StreamProcessorV2] ⚠️ ${aiType}のAutomationオブジェクトが見つかりません`);
+        const errorMsg = `${aiType}のAutomationオブジェクトが見つかりません`;
+        this.logger.error(`[StreamProcessorV2] ❌ ${errorMsg}`);
+        throw new Error(errorMsg);
       }
       
+      const elapsedTime = Date.now() - startTime;
+      this.logger.log(`[StreamProcessorV2] ✅ スクリプト注入完了 (${elapsedTime}ms)`);
       return true;
+      
     } catch (error) {
-      this.logger.error(`[StreamProcessorV2] スクリプト注入エラー:`, error);
-      return false;
+      const elapsedTime = Date.now() - startTime;
+      this.logger.error(`[StreamProcessorV2] スクリプト注入エラー (${elapsedTime}ms):`, error);
+      throw error;
     }
   }
   
