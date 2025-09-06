@@ -713,10 +713,12 @@
             const modelName = taskData.model || '';
             const featureName = taskData.function || null;
             
-            // セル情報をプロンプトに追加（ChatGPT風）
+            // セル情報をプロンプトに追加（column-processor.js形式）
             if (taskData.cellInfo && taskData.cellInfo.column && taskData.cellInfo.row) {
                 const cellPosition = `${taskData.cellInfo.column}${taskData.cellInfo.row}`;
-                prompt = `[${cellPosition}セル] ${prompt}`;
+                prompt = `【現在${cellPosition}セルを処理中です】
+
+${prompt}`;
                 console.log(`📍 セル情報をプロンプトに追加: ${cellPosition}`);
             }
             
@@ -1211,11 +1213,13 @@
         try {
             console.log('📝 [ClaudeV2] テキスト入力のみ実行');
             
-            // セル情報をプロンプトに追加（ChatGPT風）
+            // セル情報をプロンプトに追加（column-processor.js形式）
             let finalPrompt = prompt;
             if (config.cellInfo && config.cellInfo.column && config.cellInfo.row) {
                 const cellPosition = `${config.cellInfo.column}${config.cellInfo.row}`;
-                finalPrompt = `[${cellPosition}セル] ${prompt}`;
+                finalPrompt = `【現在${cellPosition}セルを処理中です】
+
+${prompt}`;
                 console.log(`📍 セル情報をプロンプトに追加: ${cellPosition}`);
             }
             

@@ -2102,11 +2102,20 @@
             
             // テキスト入力
             if (config.text) {
-                const inputResult = await inputText(config.text);
+                let finalText = config.text;
+                
+                // セル情報をプロンプトの冒頭に追加（column-processor.js形式）
+                if (config.cellInfo && config.cellInfo.column && config.cellInfo.row) {
+                    const cellPosition = `${config.cellInfo.column}${config.cellInfo.row}`;
+                    finalText = `【現在${cellPosition}セルを処理中です】\n\n${config.text}`;
+                    log(`📍 セル情報をプロンプトに追加: ${cellPosition}`, 'INFO');
+                }
+                
+                const inputResult = await inputText(finalText);
                 if (!inputResult) {
                     throw new Error('テキスト入力に失敗しました');
                 }
-                result.text = config.text;
+                result.text = config.text;  // 元のテキストを保存
             }
             
             // 送信

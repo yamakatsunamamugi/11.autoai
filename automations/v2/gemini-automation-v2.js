@@ -632,10 +632,10 @@
             let featureName = taskData.function;
             let promptText = taskData.prompt || taskData.text || '桃太郎を2000文字で解説して';
             
-            // セル情報をプロンプトに追加（ChatGPT風）
+            // セル情報をプロンプトに追加（column-processor.js形式）
             if (taskData.cellInfo && taskData.cellInfo.column && taskData.cellInfo.row) {
                 const cellPosition = `${taskData.cellInfo.column}${taskData.cellInfo.row}`;
-                promptText = `[${cellPosition}セル] ${promptText}`;
+                promptText = `【現在${cellPosition}セルを処理中です】\n\n${promptText}`;
                 log(`📍 セル情報をプロンプトに追加: ${cellPosition}`, 'info');
             }
             
@@ -712,11 +712,11 @@
         try {
             log('📝 [GeminiV2] テキスト入力のみ実行', 'info');
             
-            // セル情報をプロンプトに追加（ChatGPT風）
+            // セル情報をプロンプトに追加（column-processor.js形式）
             let finalPrompt = prompt;
             if (config.cellInfo && config.cellInfo.column && config.cellInfo.row) {
                 const cellPosition = `${config.cellInfo.column}${config.cellInfo.row}`;
-                finalPrompt = `[${cellPosition}セル] ${prompt}`;
+                finalPrompt = `【現在${cellPosition}セルを処理中です】\n\n${prompt}`;
                 log(`📍 セル情報をプロンプトに追加: ${cellPosition}`, 'info');
             }
             
