@@ -720,6 +720,7 @@ export default class TaskGeneratorV2 {
     
     // 各作業行（9行目以降）に対してタスクを生成
     // 注意：このループは指定されたプロンプトグループのタスクのみを生成する
+    this.logger.log(`[TaskGeneratorV2] 作業行数: ${workRows.length}, 開始行: ${workRows[0]?.number}`);
     for (const workRow of workRows) {
       // 「この行から処理」「この行で停止」などの行制御をチェック
       if (!this.shouldProcessRow(workRow.number, controls.row)) {
@@ -752,6 +753,7 @@ export default class TaskGeneratorV2 {
           // すでに回答が記載されている場合はスキップ
           const existingAnswer = this.getCellValue(spreadsheetData, workRow.index, answerCol.index);
           if (this.hasAnswer(existingAnswer)) {
+            this.logger.log(`[TaskGeneratorV2] ${answerCol.column}${workRow.number}はスキップ（既存回答: "${existingAnswer?.substring(0, 30)}..."）`);
             continue;
           }
           
@@ -799,6 +801,7 @@ export default class TaskGeneratorV2 {
           // すでに回答が記載されている場合はスキップ
           const existingAnswer = this.getCellValue(spreadsheetData, workRow.index, answerCol.index);
           if (this.hasAnswer(existingAnswer)) {
+            this.logger.log(`[TaskGeneratorV2] ${answerCol.column}${workRow.number}はスキップ（既存回答: "${existingAnswer?.substring(0, 30)}..."）`);
             continue;
           }
           
