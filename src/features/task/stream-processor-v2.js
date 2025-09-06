@@ -1334,7 +1334,8 @@ export default class StreamProcessorV2 {
       const { spreadsheetId, gid } = this.spreadsheetData;
       const range = `${task.column}${task.row}`;
       
-      const response = await globalThis.sheetsClient.getRange(
+      // getSheetDataを使用（getRangeは存在しない）
+      const response = await globalThis.sheetsClient.getSheetData(
         spreadsheetId,
         range,
         gid
