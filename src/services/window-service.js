@@ -589,7 +589,7 @@ export class WindowService {
       await this.closeWindow(existingWindowId);
       
       // 削除完了を確認するための追加待機（競合回避）
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 500));
       console.log(`[WindowService] ポジション${position}の削除完了確認、新規作成開始`);
     }
     

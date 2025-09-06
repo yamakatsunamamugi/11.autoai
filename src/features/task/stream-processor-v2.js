@@ -320,8 +320,23 @@ export default class StreamProcessorV2 {
         const injectionResult = await this.injectScriptsForTab(tabId, task.aiType);
         
         if (!injectionResult) {
-          this.logger.error(`[StreamProcessorV2] ⚠️ スクリプト注入に失敗しましたが、処理を続行します: ${task.column}${task.row}`);
-          // スクリプト注入失敗でも続行を試みる
+          this.logger.error(`[StreamProcessorV2] ❌ スクリプト注入失敗: ${task.column}${task.row} - ウィンドウをクリーンアップします`);
+          
+          // ウィンドウを閉じてポジションを解放
+          try {
+            const WindowService = await import('../../services/window-service.js').then(m => m.default);
+            await WindowService.closeWindow(tabId);
+            WindowService.releasePosition(position);
+            this.logger.log(`[StreamProcessorV2] 🧹 ウィンドウ${tabId}をクリーンアップしました`);
+          } catch (cleanupError) {
+            this.logger.error(`[StreamProcessorV2] ウィンドウクリーンアップエラー:`, cleanupError);
+          }
+          
+          // このタスクをコンテキストから削除（最後に追加したものを削除）
+          taskContexts.pop();
+          
+          // 処理を続行（次のタスクへ）
+          continue;
         }
         
         this.logger.log(`[StreamProcessorV2] テキスト入力${index + 1}/${batch.length}: ${task.column}${task.row}`);
@@ -605,11 +620,11 @@ export default class StreamProcessorV2 {
       try {
         this.logger.log(`[StreamProcessorV2] 🔄 スクリプト注入試行 ${attempt}/${maxRetries}`);
         
-        // タイムアウト付きで実行（30秒）
+        // タイムアウト付きで実行（60秒）
         const result = await Promise.race([
           this._injectScriptsCore(tabId, aiType),
           new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Script injection timeout (30s)')), 30000)
+            setTimeout(() => reject(new Error('Script injection timeout (60s)')), 60000)
           )
         ]);
         
@@ -1443,7 +1458,26 @@ export default class StreamProcessorV2 {
         });
         
         await this.delay(3000);
-        await this.injectScriptsForTab(tabId, task.aiType);
+        
+        // スクリプト注入（失敗時はウィンドウをクリーンアップ）
+        const injectionResult = await this.injectScriptsForTab(tabId, task.aiType);
+        if (!injectionResult) {
+          this.logger.error(`[StreamProcessorV2] ❌ スクリプト注入失敗: ${task.column}${task.row} - ウィンドウをクリーンアップしてスキップ`);
+          
+          // ウィンドウを閉じてポジションを解放
+          try {
+            const WindowService = await import('../../services/window-service.js').then(m => m.default);
+            await WindowService.closeWindow(tabId);
+            WindowService.releasePosition(position);
+            this.logger.log(`[StreamProcessorV2] 🧹 ウィンドウ${tabId}をクリーンアップしました`);
+          } catch (cleanupError) {
+            this.logger.error(`[StreamProcessorV2] ウィンドウクリーンアップエラー:`, cleanupError);
+          }
+          
+          // このタスクをコンテキストから削除
+          taskContexts.pop();
+          continue;
+        }
         
         const textResult = await this.executePhaseOnTab(tabId, { ...task, prompt }, 'text');
         if (!textResult || !textResult.success) {
