@@ -283,6 +283,7 @@ export default class StreamProcessorV2 {
     }
 
     const taskContexts = []; // 各タスクのコンテキスト（ウィンドウ情報など）を保持
+    const skippedCells = []; // スキップされたセルを収集
     
     try {
       // ========================================
@@ -297,7 +298,7 @@ export default class StreamProcessorV2 {
         // 既存回答チェック
         const existingAnswer = await this.getCurrentAnswer(task);
         if (existingAnswer && existingAnswer.trim() !== '') {
-          this.logger.log(`[StreamProcessorV2] ✅ ${task.column}${task.row}: 既存回答あり、処理をスキップ (${existingAnswer.length}文字: "${existingAnswer.substring(0, 50)}...")`);
+          skippedCells.push(`${task.column}${task.row}`);
           // タスクを完了扱いにして次へ
           this.completedTasks.add(task.id);
           this.writtenCells.set(`${task.column}${task.row}`, existingAnswer);
@@ -402,6 +403,12 @@ export default class StreamProcessorV2 {
         if (index < batch.length - 1) {
           await this.delay(1000);
         }
+      }
+      
+      // スキップされたセルをまとめてログ出力
+      if (skippedCells.length > 0) {
+        const ranges = this.formatCellRanges(skippedCells);
+        this.logger.log(`[StreamProcessorV2] 📊 既存回答ありでスキップ: ${ranges} (計${skippedCells.length}セル)`);
       }
       
       this.logger.log(`[StreamProcessorV2] ✅ フェーズ1完了: 全ウィンドウ準備済み`);
@@ -1271,6 +1278,7 @@ export default class StreamProcessorV2 {
     this.logger.log(`[StreamProcessorV2] 🔍 ${column}列の回答確認と再実行開始`);
     
     const tasksToReprocess = [];
+    const skippedCells = [];
     
     for (const task of tasks) {
       try {
@@ -1278,10 +1286,9 @@ export default class StreamProcessorV2 {
         const currentAnswer = await this.getCurrentAnswer(task);
         
         if (!currentAnswer || currentAnswer.trim() === '') {
-          this.logger.warn(`[StreamProcessorV2] 🔄 ${task.column}${task.row}: 回答がないため再実行対象に追加`);
           tasksToReprocess.push(task);
         } else {
-          this.logger.log(`[StreamProcessorV2] ✅ ${task.column}${task.row}: 既存回答あり、スキップ (${currentAnswer.length}文字: "${currentAnswer.substring(0, 50)}...")`);
+          skippedCells.push(`${task.column}${task.row}`);
         }
       } catch (error) {
         this.logger.error(`[StreamProcessorV2] ${task.column}${task.row}の回答確認エラー:`, error);
@@ -1290,8 +1297,16 @@ export default class StreamProcessorV2 {
       }
     }
     
+    // スキップされたセルをまとめてログ出力
+    if (skippedCells.length > 0) {
+      const ranges = this.formatCellRanges(skippedCells);
+      this.logger.log(`[StreamProcessorV2] ✅ 既存回答ありでスキップ: ${ranges} (計${skippedCells.length}セル)`);
+    }
+    
     if (tasksToReprocess.length > 0) {
-      this.logger.log(`[StreamProcessorV2] 🔄 ${column}列: ${tasksToReprocess.length}個のタスクを再実行します`);
+      const reprocessCells = tasksToReprocess.map(t => `${t.column}${t.row}`);
+      const reprocessRanges = this.formatCellRanges(reprocessCells);
+      this.logger.log(`[StreamProcessorV2] 🔄 ${column}列: 再実行対象 ${reprocessRanges} (計${tasksToReprocess.length}セル)`);
       
       // 再実行タスクをバッチ処理
       const reprocessBatches = this.createBatches(tasksToReprocess, 3);
@@ -1539,6 +1554,63 @@ export default class StreamProcessorV2 {
   }
 
   /**
+   * セルのリストを連続する範囲にまとめてフォーマット
+   * 例: ["H9", "H10", "H11", "H13", "H14"] -> "H9-H11, H13-H14"
+   */
+  formatCellRanges(cells) {
+    if (!cells || cells.length === 0) return '';
+    
+    // セルを列ごとにグループ化
+    const columnGroups = {};
+    cells.forEach(cell => {
+      const match = cell.match(/^([A-Z]+)(\d+)$/);
+      if (match) {
+        const [, column, row] = match;
+        if (!columnGroups[column]) {
+          columnGroups[column] = [];
+        }
+        columnGroups[column].push(parseInt(row));
+      }
+    });
+    
+    // 各列の連続範囲をフォーマット
+    const ranges = [];
+    Object.keys(columnGroups).sort().forEach(column => {
+      const rows = columnGroups[column].sort((a, b) => a - b);
+      let rangeStart = rows[0];
+      let rangeEnd = rows[0];
+      
+      for (let i = 1; i < rows.length; i++) {
+        if (rows[i] === rangeEnd + 1) {
+          rangeEnd = rows[i];
+        } else {
+          // 範囲を追加
+          if (rangeStart === rangeEnd) {
+            ranges.push(`${column}${rangeStart}`);
+          } else if (rangeEnd - rangeStart === 1) {
+            ranges.push(`${column}${rangeStart}, ${column}${rangeEnd}`);
+          } else {
+            ranges.push(`${column}${rangeStart}-${column}${rangeEnd}`);
+          }
+          rangeStart = rows[i];
+          rangeEnd = rows[i];
+        }
+      }
+      
+      // 最後の範囲を追加
+      if (rangeStart === rangeEnd) {
+        ranges.push(`${column}${rangeStart}`);
+      } else if (rangeEnd - rangeStart === 1) {
+        ranges.push(`${column}${rangeStart}, ${column}${rangeEnd}`);
+      } else {
+        ranges.push(`${column}${rangeStart}-${column}${rangeEnd}`);
+      }
+    });
+    
+    return ranges.join(', ');
+  }
+  
+  /**
    * インデックスを列名に変換
    * @param {number} index - インデックス（0, 1, 2, ...）
    * @returns {string} 列名（A, B, C, ...）
@@ -1589,6 +1661,7 @@ export default class StreamProcessorV2 {
     }
 
     const taskContexts = [];
+    const skippedCells = []; // スキップされたセルを収集
     
     try {
       // フェーズ1: ウィンドウ準備とテキスト入力
@@ -1599,7 +1672,7 @@ export default class StreamProcessorV2 {
         // 既存回答チェック
         const existingAnswer = await this.getCurrentAnswer(task);
         if (existingAnswer && existingAnswer.trim() !== '') {
-          this.logger.log(`[StreamProcessorV2] ✅ ${task.column}${task.row}: 既存回答あり、処理をスキップ (${existingAnswer.length}文字: "${existingAnswer.substring(0, 50)}...")`);
+          skippedCells.push(`${task.column}${task.row}`);
           // タスクを完了扱いにして次へ
           this.completedTasks.add(task.id);
           this.writtenCells.set(`${task.column}${task.row}`, existingAnswer);
@@ -1654,6 +1727,12 @@ export default class StreamProcessorV2 {
         if (index < batch.length - 1) {
           await this.delay(1000);
         }
+      }
+      
+      // スキップされたセルをまとめてログ出力
+      if (skippedCells.length > 0) {
+        const ranges = this.formatCellRanges(skippedCells);
+        this.logger.log(`[StreamProcessorV2] 📊 既存回答ありでスキップ: ${ranges} (計${skippedCells.length}セル)`);
       }
       
       await this.delay(2000);
@@ -1928,6 +2007,11 @@ export default class StreamProcessorV2 {
     const promptGroups = this.getPromptGroups(spreadsheetData);
     this.logger.log(`[StreamProcessorV2] 📊 プロンプトグループ数: ${promptGroups.length}`);
     
+    // workRowsを取得（デバッグログ付き）
+    this.logger.log(`[StreamProcessorV2] 🔍 workRows取得前...`);
+    const workRows = this.getWorkRows(spreadsheetData);
+    this.logger.log(`[StreamProcessorV2] 🔍 workRows取得後: ${workRows ? workRows.length : 'undefined'}件`);
+    
     // 各プロンプトグループを順番に処理
     for (let groupIndex = 0; groupIndex < promptGroups.length; groupIndex++) {
       const promptGroup = promptGroups[groupIndex];
@@ -1952,7 +2036,14 @@ export default class StreamProcessorV2 {
       
       this.logger.log(`[StreamProcessorV2] ✅ グループ${groupIndex + 1}のタスク生成完了: ${groupTaskList.tasks.length}個`);
       
-      // スキップされたタスクの推定
+      // スキップされたタスクの推定（デバッグログ付き）
+      this.logger.log(`[StreamProcessorV2] 🔍 デバッグ: workRows=${workRows ? `${workRows.length}件` : 'undefined'}, answerColumns=${promptGroup.answerColumns ? promptGroup.answerColumns.length : 'undefined'}`);
+      
+      if (!workRows) {
+        this.logger.error(`[StreamProcessorV2] ❌ エラー: workRowsが未定義です`);
+        continue;
+      }
+      
       const expectedTasks = workRows.length * promptGroup.answerColumns.length;
       const actualTasks = groupTaskList.tasks.length;
       const skippedCount = expectedTasks - actualTasks;
@@ -2039,8 +2130,24 @@ export default class StreamProcessorV2 {
    * @returns {Array} 作業行の配列
    */
   getWorkRows(spreadsheetData) {
+    this.logger.log(`[StreamProcessorV2] 🔍 getWorkRows開始`);
+    
+    if (!this.taskGenerator) {
+      this.logger.error(`[StreamProcessorV2] ❌ taskGeneratorが未定義です`);
+      return [];
+    }
+    
     const structure = this.taskGenerator.analyzeStructure(spreadsheetData);
-    return structure.workRows || [];
+    
+    if (!structure) {
+      this.logger.error(`[StreamProcessorV2] ❌ analyzeStructureがnullを返しました`);
+      return [];
+    }
+    
+    const workRows = structure.workRows || [];
+    this.logger.log(`[StreamProcessorV2] 🔍 getWorkRows完了: ${workRows.length}件`);
+    
+    return workRows;
   }
 
   /**

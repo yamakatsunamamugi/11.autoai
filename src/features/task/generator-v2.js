@@ -717,6 +717,7 @@ export default class TaskGeneratorV2 {
     });
     
     let taskCount = 0;
+    const skippedCells = []; // スキップされたセルを収集
     
     // 各作業行（9行目以降）に対してタスクを生成
     // 注意：このループは指定されたプロンプトグループのタスクのみを生成する
@@ -753,7 +754,7 @@ export default class TaskGeneratorV2 {
           // すでに回答が記載されている場合はスキップ
           const existingAnswer = this.getCellValue(spreadsheetData, workRow.index, answerCol.index);
           if (this.hasAnswer(existingAnswer)) {
-            this.logger.log(`[TaskGeneratorV2] ${answerCol.column}${workRow.number}はスキップ（既存回答: "${existingAnswer?.substring(0, 30)}..."）`);
+            skippedCells.push(`${answerCol.column}${workRow.number}`);
             continue;
           }
           
@@ -801,7 +802,7 @@ export default class TaskGeneratorV2 {
           // すでに回答が記載されている場合はスキップ
           const existingAnswer = this.getCellValue(spreadsheetData, workRow.index, answerCol.index);
           if (this.hasAnswer(existingAnswer)) {
-            this.logger.log(`[TaskGeneratorV2] ${answerCol.column}${workRow.number}はスキップ（既存回答: "${existingAnswer?.substring(0, 30)}..."）`);
+            skippedCells.push(`${answerCol.column}${workRow.number}`);
             continue;
           }
           
@@ -844,7 +845,71 @@ export default class TaskGeneratorV2 {
       }
     }
     
+    // スキップされたセルをまとめてログ出力
+    if (skippedCells.length > 0) {
+      // 連続する範囲をまとめる
+      const ranges = this.formatCellRanges(skippedCells);
+      this.logger.log(`[TaskGeneratorV2] 📊 既存回答ありでスキップ: ${ranges} (計${skippedCells.length}セル)`);
+    }
+    
     this.logger.log(`[TaskGeneratorV2] ✅ プロンプトグループ${promptGroupIndex + 1}のタスク生成完了: ${taskCount}個`);
     return taskList;
+  }
+
+  /**
+   * セルのリストを連続する範囲にまとめてフォーマット
+   * 例: ["H9", "H10", "H11", "H13", "H14"] -> "H9-H11, H13-H14"
+   */
+  formatCellRanges(cells) {
+    if (!cells || cells.length === 0) return '';
+    
+    // セルを列ごとにグループ化
+    const columnGroups = {};
+    cells.forEach(cell => {
+      const match = cell.match(/^([A-Z]+)(\d+)$/);
+      if (match) {
+        const [, column, row] = match;
+        if (!columnGroups[column]) {
+          columnGroups[column] = [];
+        }
+        columnGroups[column].push(parseInt(row));
+      }
+    });
+    
+    // 各列の連続範囲をフォーマット
+    const ranges = [];
+    Object.keys(columnGroups).sort().forEach(column => {
+      const rows = columnGroups[column].sort((a, b) => a - b);
+      let rangeStart = rows[0];
+      let rangeEnd = rows[0];
+      
+      for (let i = 1; i < rows.length; i++) {
+        if (rows[i] === rangeEnd + 1) {
+          rangeEnd = rows[i];
+        } else {
+          // 範囲を追加
+          if (rangeStart === rangeEnd) {
+            ranges.push(`${column}${rangeStart}`);
+          } else if (rangeEnd - rangeStart === 1) {
+            ranges.push(`${column}${rangeStart}, ${column}${rangeEnd}`);
+          } else {
+            ranges.push(`${column}${rangeStart}-${column}${rangeEnd}`);
+          }
+          rangeStart = rows[i];
+          rangeEnd = rows[i];
+        }
+      }
+      
+      // 最後の範囲を追加
+      if (rangeStart === rangeEnd) {
+        ranges.push(`${column}${rangeStart}`);
+      } else if (rangeEnd - rangeStart === 1) {
+        ranges.push(`${column}${rangeStart}, ${column}${rangeEnd}`);
+      } else {
+        ranges.push(`${column}${rangeStart}-${column}${rangeEnd}`);
+      }
+    });
+    
+    return ranges.join(', ');
   }
 }
