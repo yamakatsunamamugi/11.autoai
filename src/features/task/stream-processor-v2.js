@@ -740,7 +740,7 @@ export default class StreamProcessorV2 {
           // テキスト入力のみ実行
           result = await chrome.scripting.executeScript({
             target: { tabId },
-            func: async (prompt, aiType) => {
+            func: async (prompt, aiType, cellInfo) => {
               // AIタイプに応じたAutomationオブジェクトを取得
               const automationMap = {
                 'claude': ['ClaudeAutomationV2', 'ClaudeAutomation'],
@@ -753,11 +753,13 @@ export default class StreamProcessorV2 {
               const automation = automationName ? window[automationName] : null;
               
               if (automation && automation.inputTextOnly) {
-                return await automation.inputTextOnly(prompt);
+                // ClaudeV2とGeminiV2用にconfigオブジェクトを渡す
+                const config = { cellInfo: cellInfo };
+                return await automation.inputTextOnly(prompt, config);
               }
               return { success: false, error: `${aiType} automation not found or inputTextOnly not supported` };
             },
-            args: [task.prompt || task.text || '', aiType]
+            args: [task.prompt || task.text || '', aiType, task.cellInfo || { column: task.column, row: task.row }]
           });
           break;
           

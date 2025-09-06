@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>セル位置情報テスト</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background: #f0f0f0;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            background: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-button {
+            padding: 10px 20px;
+            margin: 5px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .test-button:hover {
+            background: #45a049;
+        }
+        .output {
+            margin-top: 10px;
+            padding: 10px;
+            background: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            white-space: pre-wrap;
+            font-size: 12px;
+        }
+        h2 {
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 セル位置情報テスト</h1>
+    
+    <div class="test-section">
+        <h2>テスト用データ</h2>
+        <div class="output" id="test-data">
+cellInfo: {
+    column: "G",
+    row: 10
+}
+prompt: "これはテストプロンプトです"
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>ChatGPT形式のテスト</h2>
+        <button class="test-button" onclick="testChatGPT()">ChatGPTテスト実行</button>
+        <div class="output" id="chatgpt-output"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Claude形式のテスト</h2>
+        <button class="test-button" onclick="testClaude()">Claudeテスト実行</button>
+        <div class="output" id="claude-output"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Gemini形式のテスト</h2>
+        <button class="test-button" onclick="testGemini()">Geminiテスト実行</button>
+        <div class="output" id="gemini-output"></div>
+    </div>
+
+    <script>
+        // ChatGPTのセル位置追加ロジック（修正版）
+        function testChatGPT() {
+            const config = {
+                text: "これはテストプロンプトです",
+                cellInfo: {
+                    column: "G",
+                    row: 10
+                }
+            };
+            
+            let finalText = config.text;
+            
+            // セル情報をプロンプトの冒頭に追加（column-processor.js形式）
+            if (config.cellInfo && config.cellInfo.column && config.cellInfo.row) {
+                const cellPosition = `${config.cellInfo.column}${config.cellInfo.row}`;
+                finalText = `【現在${cellPosition}セルを処理中です】\n\n${config.text}`;
+                console.log(`📍 セル情報をプロンプトに追加: ${cellPosition}`);
+            }
+            
+            document.getElementById('chatgpt-output').textContent = 
+                `入力プロンプト:\n${finalText}\n\nログ:\n📍 セル情報をプロンプトに追加: G10`;
+        }
+        
+        // Claudeのセル位置追加ロジック（修正版）
+        function testClaude() {
+            const taskData = {
+                prompt: "これはテストプロンプトです",
+                cellInfo: {
+                    column: "H",
+                    row: 14
+                }
+            };
+            
+            let prompt = taskData.prompt;
+            
+            // セル情報をプロンプトに追加（column-processor.js形式）
+            if (taskData.cellInfo && taskData.cellInfo.column && taskData.cellInfo.row) {
+                const cellPosition = `${taskData.cellInfo.column}${taskData.cellInfo.row}`;
+                prompt = `【現在${cellPosition}セルを処理中です】\n\n${prompt}`;
+                console.log(`📍 セル情報をプロンプトに追加: ${cellPosition}`);
+            }
+            
+            document.getElementById('claude-output').textContent = 
+                `入力プロンプト:\n${prompt}\n\nログ:\n📍 セル情報をプロンプトに追加: H14`;
+        }
+        
+        // Geminiのセル位置追加ロジック（修正版）
+        function testGemini() {
+            const taskData = {
+                prompt: "これはテストプロンプトです",
+                cellInfo: {
+                    column: "J",
+                    row: 20
+                }
+            };
+            
+            let promptText = taskData.prompt;
+            
+            // セル情報をプロンプトに追加（column-processor.js形式）
+            if (taskData.cellInfo && taskData.cellInfo.column && taskData.cellInfo.row) {
+                const cellPosition = `${taskData.cellInfo.column}${taskData.cellInfo.row}`;
+                promptText = `【現在${cellPosition}セルを処理中です】\n\n${promptText}`;
+                console.log(`📍 セル情報をプロンプトに追加: ${cellPosition}`);
+            }
+            
+            document.getElementById('gemini-output').textContent = 
+                `入力プロンプト:\n${promptText}\n\nログ:\n📍 セル情報をプロンプトに追加: J20`;
+        }
+        
+        // ページ読み込み時にコンソールにメッセージ表示
+        console.log('%c🧪 セル位置情報テストページ', 'color: #4CAF50; font-weight: bold; font-size: 16px');
+        console.log('各ボタンをクリックして、セル位置情報が正しく追加されるか確認してください。');
+    </script>
+</body>
+</html>
