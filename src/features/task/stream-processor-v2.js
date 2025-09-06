@@ -294,6 +294,16 @@ export default class StreamProcessorV2 {
         const task = batch[index];
         const position = index; // 0: 左上、1: 右上、2: 左下
         
+        // 既存回答チェック
+        const existingAnswer = await this.getCurrentAnswer(task);
+        if (existingAnswer && existingAnswer.trim() !== '') {
+          this.logger.log(`[StreamProcessorV2] ✅ ${task.column}${task.row}: 既存回答あり、処理をスキップ (${existingAnswer.length}文字: "${existingAnswer.substring(0, 50)}...")`);
+          // タスクを完了扱いにして次へ
+          this.completedTasks.add(task.id);
+          this.writtenCells.set(`${task.column}${task.row}`, existingAnswer);
+          continue;
+        }
+        
         this.logger.log(`[StreamProcessorV2] ウィンドウ${index + 1}/${batch.length}を準備: ${task.column}${task.row}`);
         
         // ウィンドウを作成
@@ -312,35 +322,75 @@ export default class StreamProcessorV2 {
           cell: `${task.column}${task.row}`
         });
         
-        // ウィンドウが開いたら、スクリプトを注入してからテキスト入力を実行
-        await this.delay(3000); // ページ読み込み待機（少し長めに）
+        // スクリプト注入をリトライ付きで実行（ウィンドウ再作成含む）
+        let injectionSuccess = false;
+        let currentTabId = tabId;
         
-        // スクリプトを注入（エラーハンドリング強化）
-        this.logger.log(`[StreamProcessorV2] スクリプト注入中: ${task.aiType}`);
-        const injectionResult = await this.injectScriptsForTab(tabId, task.aiType);
-        
-        if (!injectionResult) {
-          this.logger.error(`[StreamProcessorV2] ❌ スクリプト注入失敗: ${task.column}${task.row} - ウィンドウをクリーンアップします`);
-          
-          // ウィンドウを閉じてポジションを解放
-          try {
-            const WindowService = await import('../../services/window-service.js').then(m => m.default);
-            await WindowService.closeWindow(tabId);
-            WindowService.releasePosition(position);
-            this.logger.log(`[StreamProcessorV2] 🧹 ウィンドウ${tabId}をクリーンアップしました`);
-          } catch (cleanupError) {
-            this.logger.error(`[StreamProcessorV2] ウィンドウクリーンアップエラー:`, cleanupError);
+        for (let retryCount = 0; retryCount < 3; retryCount++) {
+          if (retryCount > 0) {
+            this.logger.log(`[StreamProcessorV2] 🔄 ウィンドウ再作成試行 ${retryCount}/3`);
+            
+            // 既存ウィンドウを閉じる
+            try {
+              const WindowService = await import('../../services/window-service.js').then(m => m.default);
+              await WindowService.closeWindow(currentTabId);
+              WindowService.releasePosition(position);
+              await this.delay(1000); // ウィンドウクリーンアップ待機
+            } catch (cleanupError) {
+              this.logger.error(`[StreamProcessorV2] ウィンドウクリーンアップエラー:`, cleanupError);
+            }
+            
+            // 新しいウィンドウを作成
+            try {
+              currentTabId = await this.createWindowForTask(task, position);
+              if (!currentTabId) {
+                this.logger.error(`[StreamProcessorV2] ウィンドウ再作成失敗`);
+                continue;
+              }
+              
+              // タスクコンテキストを更新
+              taskContexts[taskContexts.length - 1].tabId = currentTabId;
+            } catch (error) {
+              this.logger.error(`[StreamProcessorV2] ウィンドウ再作成エラー:`, error);
+              continue;
+            }
           }
           
-          // このタスクをコンテキストから削除（最後に追加したものを削除）
-          taskContexts.pop();
+          // 追加の待機時間（ページ読み込み用）
+          await this.delay(2000);
           
-          // 処理を続行（次のタスクへ）
+          // スクリプト注入試行
+          this.logger.log(`[StreamProcessorV2] スクリプト注入中: ${task.aiType} (試行 ${retryCount + 1}/3)`);
+          const injectionResult = await this.injectScriptsForTab(currentTabId, task.aiType);
+          
+          if (injectionResult) {
+            injectionSuccess = true;
+            this.logger.log(`[StreamProcessorV2] ✅ スクリプト注入成功`);
+            break;
+          }
+          
+          this.logger.error(`[StreamProcessorV2] ❌ スクリプト注入失敗 (試行 ${retryCount + 1}/3)`);
+        }
+        
+        if (!injectionSuccess) {
+          this.logger.error(`[StreamProcessorV2] ❌ 最終的にスクリプト注入失敗: ${task.column}${task.row}`);
+          
+          // 最終クリーンアップ
+          try {
+            const WindowService = await import('../../services/window-service.js').then(m => m.default);
+            await WindowService.closeWindow(currentTabId);
+            WindowService.releasePosition(position);
+          } catch (cleanupError) {
+            this.logger.error(`[StreamProcessorV2] 最終クリーンアップエラー:`, cleanupError);
+          }
+          
+          // このタスクをコンテキストから削除
+          taskContexts.pop();
           continue;
         }
         
         this.logger.log(`[StreamProcessorV2] テキスト入力${index + 1}/${batch.length}: ${task.column}${task.row}`);
-        const textResult = await this.executePhaseOnTab(tabId, { ...task, prompt }, 'text');
+        const textResult = await this.executePhaseOnTab(currentTabId, { ...task, prompt }, 'text');
         
         if (!textResult || !textResult.success) {
           this.logger.error(`[StreamProcessorV2] テキスト入力失敗: ${task.column}${task.row}`, textResult?.error);
@@ -650,6 +700,60 @@ export default class StreamProcessorV2 {
   }
   
   /**
+   * ページの基本要素が存在するか検証
+   * @param {number} tabId - タブID
+   * @param {string} aiType - AIタイプ
+   * @returns {Promise<boolean>} 検証成功したらtrue
+   */
+  async validatePageElements(tabId, aiType) {
+    try {
+      const result = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: (aiType) => {
+          // 基本的なDOM要素の存在確認
+          const aiTypeLower = aiType.toLowerCase();
+          
+          // AI別の要素チェック
+          if (aiTypeLower === 'claude') {
+            // Claudeの入力フィールドを探す
+            const hasTextarea = document.querySelector('div[contenteditable="true"]') !== null ||
+                               document.querySelector('textarea') !== null ||
+                               document.querySelector('[role="textbox"]') !== null;
+            return hasTextarea;
+          } else if (aiTypeLower === 'chatgpt') {
+            // ChatGPTの入力フィールドを探す
+            const hasTextarea = document.querySelector('textarea') !== null ||
+                               document.querySelector('[contenteditable="true"]') !== null;
+            return hasTextarea;
+          } else if (aiTypeLower === 'gemini') {
+            // Geminiの入力フィールドを探す
+            const hasTextarea = document.querySelector('[contenteditable="true"]') !== null ||
+                               document.querySelector('textarea') !== null ||
+                               document.querySelector('.ql-editor') !== null;
+            return hasTextarea;
+          }
+          
+          // デフォルト：bodyが存在すればOK
+          return document.body !== null;
+        },
+        args: [aiType]
+      });
+      
+      const isValid = result?.[0]?.result || false;
+      if (isValid) {
+        this.logger.log(`[StreamProcessorV2] ✅ ページ要素検証成功: ${aiType}`);
+      } else {
+        this.logger.warn(`[StreamProcessorV2] ⚠️ ページ要素が見つかりません: ${aiType}`);
+      }
+      
+      return isValid;
+    } catch (error) {
+      this.logger.error(`[StreamProcessorV2] ページ要素検証エラー:`, error);
+      return false;
+    }
+  }
+
+  /**
    * スクリプト注入のコア処理
    * @private
    */
@@ -657,6 +761,12 @@ export default class StreamProcessorV2 {
     const startTime = Date.now();
     
     try {
+      // ページ要素の検証
+      const pageValid = await this.validatePageElements(tabId, aiType);
+      if (!pageValid) {
+        throw new Error(`ページ要素が正しく読み込まれていません: ${aiType}`);
+      }
+      
       const aiTypeLower = aiType.toLowerCase();
       
       // V2スクリプトマップ
@@ -1171,7 +1281,7 @@ export default class StreamProcessorV2 {
           this.logger.warn(`[StreamProcessorV2] 🔄 ${task.column}${task.row}: 回答がないため再実行対象に追加`);
           tasksToReprocess.push(task);
         } else {
-          this.logger.log(`[StreamProcessorV2] ✅ ${task.column}${task.row}: 回答あり (${currentAnswer.length}文字)`);
+          this.logger.log(`[StreamProcessorV2] ✅ ${task.column}${task.row}: 既存回答あり、スキップ (${currentAnswer.length}文字: "${currentAnswer.substring(0, 50)}...")`);
         }
       } catch (error) {
         this.logger.error(`[StreamProcessorV2] ${task.column}${task.row}の回答確認エラー:`, error);
@@ -1227,6 +1337,47 @@ export default class StreamProcessorV2 {
   }
 
   /**
+   * ページの読み込み完了を待つ
+   * @param {number} tabId - タブID
+   * @param {number} timeout - タイムアウト時間（ミリ秒）
+   * @returns {Promise<boolean>} 読み込み完了したらtrue
+   */
+  async waitForPageLoad(tabId, timeout = 30000) {
+    return new Promise((resolve) => {
+      const startTime = Date.now();
+      
+      // タブの状態を監視
+      const checkTabStatus = async () => {
+        try {
+          const tab = await chrome.tabs.get(tabId);
+          
+          if (tab.status === 'complete') {
+            this.logger.log(`[StreamProcessorV2] ✅ ページ読み込み完了: TabID ${tabId}`);
+            resolve(true);
+            return;
+          }
+          
+          // タイムアウトチェック
+          if (Date.now() - startTime > timeout) {
+            this.logger.warn(`[StreamProcessorV2] ⚠️ ページ読み込みタイムアウト: TabID ${tabId}`);
+            resolve(false);
+            return;
+          }
+          
+          // 再チェック
+          setTimeout(checkTabStatus, 500);
+        } catch (error) {
+          // タブが存在しない場合
+          this.logger.error(`[StreamProcessorV2] タブ状態取得エラー: TabID ${tabId}`, error);
+          resolve(false);
+        }
+      };
+      
+      checkTabStatus();
+    });
+  }
+
+  /**
    * タスク用のウィンドウを作成
    * @param {Object} task - タスクオブジェクト
    * @param {number} position - ウィンドウ位置（0:左上、1:右上、2:左下）
@@ -1259,6 +1410,12 @@ export default class StreamProcessorV2 {
 
       const tabId = window.tabs[0].id;
       this.logger.log(`[StreamProcessorV2] ✅ ウィンドウ作成成功 - TabID: ${tabId} (位置: ${position})`);
+      
+      // ページの読み込み完了を待つ
+      const pageLoaded = await this.waitForPageLoad(tabId, 30000);
+      if (!pageLoaded) {
+        this.logger.warn(`[StreamProcessorV2] ⚠️ ページ読み込みが完了しませんでした: TabID ${tabId}`);
+      }
       
       return tabId;
     } catch (error) {
@@ -1438,6 +1595,16 @@ export default class StreamProcessorV2 {
       for (let index = 0; index < batch.length; index++) {
         const task = batch[index];
         const position = index;
+        
+        // 既存回答チェック
+        const existingAnswer = await this.getCurrentAnswer(task);
+        if (existingAnswer && existingAnswer.trim() !== '') {
+          this.logger.log(`[StreamProcessorV2] ✅ ${task.column}${task.row}: 既存回答あり、処理をスキップ (${existingAnswer.length}文字: "${existingAnswer.substring(0, 50)}...")`);
+          // タスクを完了扱いにして次へ
+          this.completedTasks.add(task.id);
+          this.writtenCells.set(`${task.column}${task.row}`, existingAnswer);
+          continue;
+        }
         
         this.logger.log(`[StreamProcessorV2] ウィンドウ${index + 1}/${batch.length}を準備: ${task.column}${task.row}`);
         
@@ -1784,6 +1951,15 @@ export default class StreamProcessorV2 {
       }
       
       this.logger.log(`[StreamProcessorV2] ✅ グループ${groupIndex + 1}のタスク生成完了: ${groupTaskList.tasks.length}個`);
+      
+      // スキップされたタスクの推定
+      const expectedTasks = workRows.length * promptGroup.answerColumns.length;
+      const actualTasks = groupTaskList.tasks.length;
+      const skippedCount = expectedTasks - actualTasks;
+      
+      if (skippedCount > 0) {
+        this.logger.log(`[StreamProcessorV2] 📊 グループ${groupIndex + 1}: ${skippedCount}個のセルは既存回答ありのためスキップされました`);
+      }
       
       // タスクを列ごとにグループ化
       const columnGroups = this.organizeTasksByColumn(groupTaskList.tasks);
