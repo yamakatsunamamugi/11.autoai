@@ -2216,7 +2216,17 @@ async function sendPromptToAI(prompt, options = {}) {
  */
 async function handleExecuteTask(request, sendResponse) {
   // Chrome Power APIでスクリーンセイバー防止を開始
-  chrome.runtime.sendMessage({type: 'START_AI_PROCESSING'});
+  console.log('🚀 [Content] AI処理開始 - START_AI_PROCESSING送信', {
+    url: window.location.href,
+    timestamp: new Date().toISOString()
+  });
+  
+  try {
+    const response = await chrome.runtime.sendMessage({type: 'START_AI_PROCESSING'});
+    console.log('✅ [Content] START_AI_PROCESSING送信成功:', response);
+  } catch (error) {
+    console.error('❌ [Content] START_AI_PROCESSING送信失敗:', error);
+  }
   
   try {
     const {
@@ -2323,7 +2333,17 @@ async function handleExecuteTask(request, sendResponse) {
     });
   } finally {
     // Chrome Power APIでスクリーンセイバー防止を解除
-    chrome.runtime.sendMessage({type: 'STOP_AI_PROCESSING'});
+    console.log('🏁 [Content] handleExecuteTask終了 - STOP_AI_PROCESSING送信', {
+      url: window.location.href,
+      timestamp: new Date().toISOString()
+    });
+    
+    try {
+      const response = await chrome.runtime.sendMessage({type: 'STOP_AI_PROCESSING'});
+      console.log('✅ [Content] STOP_AI_PROCESSING送信成功:', response);
+    } catch (error) {
+      console.error('❌ [Content] STOP_AI_PROCESSING送信失敗:', error);
+    }
   }
 }
 

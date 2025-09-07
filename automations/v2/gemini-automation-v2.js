@@ -1070,51 +1070,102 @@
                 }
             }
             
+            // Canvas応答テキストを外側のスコープで定義
+            let canvasResponseText = '';
+            
             // 応答待機（Canvas/通常モード判定）
             if (isCanvasMode) {
-                // Canvasモード: テストコードと完全に同じ実装
-                log('🎨 Canvasモード: 初期待機30秒...', 'info');
-                await wait(30000); // 30秒待機
+                // Canvasモード: 最大3回リトライ
+                let retryCount = 0;
+                const maxRetries = 3;
                 
-                log('🎨 Canvasモード: テキスト生成の監視を開始します。', 'info');
-                
-                // テキスト安定性監視
-                await new Promise((resolve, reject) => {
-                    let lastLength = -1;
-                    let lastChangeTime = Date.now();
-                    const maxWaitTime = 300000; // 5分
-                    const stabilityDuration = 10000; // 10秒
-                    const monitorInterval = 2000; // 2秒
+                while (retryCount < maxRetries) {
+                    retryCount++;
+                    log(`🎨 Canvasモード: 試行 ${retryCount}/${maxRetries}`, 'info');
                     
-                    const monitor = setInterval(() => {
-                        const canvasEditor = findElement(['.ProseMirror']);
-                        if (!canvasEditor) {
-                            log('⚠️ Canvas要素(.ProseMirror)が見つかりません', 'warn');
-                            return;
-                        }
+                    // 初期待機30秒
+                    log('🎨 Canvasモード: 初期待機30秒...', 'info');
+                    await wait(30000);
+                    
+                    log('🎨 Canvasモード: テキスト生成の監視を開始します。', 'info');
+                    
+                    // テキスト安定性監視（5分タイムアウト）
+                    canvasResponseText = await new Promise((resolve) => {
+                        let lastLength = -1;
+                        let lastChangeTime = Date.now();
+                        const monitorStartTime = Date.now();
+                        const maxWaitTime = 300000; // 5分
+                        const stabilityDuration = 10000; // 10秒
+                        const monitorInterval = 2000; // 2秒
+                        let canvasNotFoundCount = 0;
+                        const maxCanvasNotFound = 5; // Canvas要素が5回連続で見つからなければ終了
                         
-                        const currentLength = canvasEditor.textContent.length;
-                        log(`[監視中] Canvas文字数: ${currentLength}`, 'info');
-                        
-                        if (currentLength > lastLength) {
-                            lastLength = currentLength;
-                            lastChangeTime = Date.now();
-                        }
-                        
-                        // 10秒間変化がなければ完了とみなす
-                        if (Date.now() - lastChangeTime > stabilityDuration) {
-                            clearInterval(monitor);
-                            log(`✅ Canvasのテキストが${stabilityDuration / 1000}秒間安定しました。`, 'success');
-                            resolve('Canvasの応答が安定しました。');
-                        }
-                        
-                        // タイムアウトチェック
-                        if (Date.now() - (Date.now() - currentLength) > maxWaitTime) {
-                            clearInterval(monitor);
-                            reject(new Error(`Canvasの応答が${maxWaitTime / 1000}秒以内に完了しませんでした。`));
-                        }
-                    }, monitorInterval);
-                });
+                        const monitor = setInterval(() => {
+                            const canvasEditor = findElement(['.ProseMirror']);
+                            if (!canvasEditor) {
+                                canvasNotFoundCount++;
+                                log(`⚠️ Canvas要素(.ProseMirror)が見つかりません (${canvasNotFoundCount}/${maxCanvasNotFound})`, 'warn');
+                                
+                                // 5回連続で見つからない場合は空文字列で終了
+                                if (canvasNotFoundCount >= maxCanvasNotFound) {
+                                    clearInterval(monitor);
+                                    log('⚠️ Canvas要素が見つからないため、このリトライを終了します', 'warn');
+                                    resolve('');
+                                }
+                                return;
+                            }
+                            
+                            // Canvas要素が見つかったらカウンターをリセット
+                            canvasNotFoundCount = 0;
+                            
+                            const currentText = canvasEditor.textContent || '';
+                            const currentLength = currentText.length;
+                            log(`[監視中] Canvas文字数: ${currentLength}`, 'info');
+                            
+                            if (currentLength > lastLength) {
+                                lastLength = currentLength;
+                                lastChangeTime = Date.now();
+                            }
+                            
+                            // 10秒間変化がなく、かつテキストがある場合は完了
+                            if (Date.now() - lastChangeTime > stabilityDuration && currentLength > 0) {
+                                clearInterval(monitor);
+                                log(`✅ Canvasのテキストが${stabilityDuration / 1000}秒間安定しました（${currentLength}文字）`, 'success');
+                                resolve(currentText);
+                            }
+                            
+                            // 5分タイムアウト - 現在のテキストを返す
+                            if (Date.now() - monitorStartTime > maxWaitTime) {
+                                clearInterval(monitor);
+                                const finalText = canvasEditor ? (canvasEditor.textContent || '') : '';
+                                if (finalText.length > 0) {
+                                    log(`⏱️ 5分タイムアウト - 現在のテキストを取得（${finalText.length}文字）`, 'warn');
+                                } else {
+                                    log(`⏱️ 5分タイムアウト - テキストが取得できませんでした`, 'warn');
+                                }
+                                resolve(finalText);
+                            }
+                        }, monitorInterval);
+                    });
+                    
+                    // テキストが取得できたら終了
+                    if (canvasResponseText && canvasResponseText.length > 0) {
+                        log(`✅ Canvas応答取得成功: ${canvasResponseText.length}文字`, 'success');
+                        break;
+                    }
+                    
+                    // リトライ
+                    if (retryCount < maxRetries) {
+                        log(`⚠️ Canvas応答が空です。10秒後にリトライします...`, 'warn');
+                        await wait(10000);
+                    }
+                }
+                
+                // 最終的にテキストが取得できなかった場合
+                if (!canvasResponseText || canvasResponseText.length === 0) {
+                    log('❌ 3回リトライしてもCanvas応答を取得できませんでした', 'error');
+                    // エラーをthrowせずに処理を継続（空文字列として扱う）
+                }
                 
             } else {
                 // 通常モード: 既存の処理
@@ -1154,11 +1205,10 @@
             let responseText = '';
             
             if (isCanvasMode) {
-                // Canvasモード: .ProseMirrorから直接取得（テストコードと同じ）
-                const canvasEditor = findElement(['.ProseMirror']);
-                if (canvasEditor) {
-                    responseText = canvasEditor.textContent || '';
-                    log(`✅ [GeminiV2] Canvas応答取得: ${responseText.length}文字`, 'success');
+                // Canvasモード: リトライ処理で取得済みのテキストを使用
+                if (typeof canvasResponseText !== 'undefined' && canvasResponseText) {
+                    responseText = canvasResponseText;
+                    log(`✅ [GeminiV2] Canvas応答使用: ${responseText.length}文字`, 'success');
                     if (responseText.length <= 200) {
                         log(`Canvas内容: ${responseText}`, 'info');
                     } else {
@@ -1166,7 +1216,15 @@
                         log(`Canvas内容（末尾100文字）: ...${responseText.substring(responseText.length - 100)}`, 'info');
                     }
                 } else {
-                    log('❌ [GeminiV2] Canvas要素(.ProseMirror)が見つかりません', 'error');
+                    // フォールバック: 再度Canvas要素を探す
+                    const canvasEditor = findElement(['.ProseMirror']);
+                    if (canvasEditor) {
+                        responseText = canvasEditor.textContent || '';
+                        log(`✅ [GeminiV2] Canvas応答取得（フォールバック）: ${responseText.length}文字`, 'success');
+                    } else {
+                        log('⚠️ [GeminiV2] Canvas要素(.ProseMirror)が見つかりません - 空文字列として処理を継続', 'warn');
+                        responseText = '';
+                    }
                 }
             }
             

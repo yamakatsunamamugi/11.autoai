@@ -131,6 +131,55 @@ globalThis.SpreadsheetLogger = SpreadsheetLogger;
 // グローバルにPowerManagerを設定（スリープ防止統一管理）
 globalThis.powerManager = new PowerManager();
 
+// ===== アイドル状態の監視 =====
+// スクリーンセイバーやスリープの検知
+if (chrome.idle) {
+  // 15秒ごとにアイドル状態をチェック
+  chrome.idle.setDetectionInterval(15);
+  
+  // アイドル状態の変化を監視
+  chrome.idle.onStateChanged.addListener((newState) => {
+    const timestamp = new Date().toISOString();
+    console.log(`🖥️ [Background] アイドル状態変化: ${newState} at ${timestamp}`);
+    
+    // LogManagerに記録
+    if (globalThis.logManager) {
+      globalThis.logManager.log(`システムアイドル状態: ${newState}`, {
+        level: 'info',
+        category: 'system',
+        metadata: {
+          state: newState,
+          timestamp,
+          powerManagerStatus: globalThis.powerManager.getStatus()
+        }
+      });
+    }
+    
+    // 状態に応じてログ
+    switch(newState) {
+      case 'active':
+        console.log('✅ [Background] ユーザーがアクティブになりました');
+        break;
+      case 'idle':
+        console.log('⏸️ [Background] システムがアイドル状態になりました');
+        break;
+      case 'locked':
+        console.log('🔒 [Background] スクリーンがロック/スリープ状態になりました');
+        // スリープ防止が有効な場合は警告
+        if (globalThis.powerManager.isActive) {
+          console.warn('⚠️ [Background] スリープ防止が有効なのにスクリーンがロックされました！');
+          console.warn('⚠️ [Background] PowerManager状態:', globalThis.powerManager.getStatus());
+        }
+        break;
+    }
+  });
+  
+  // 初回のアイドル状態をチェック
+  chrome.idle.queryState(15, (state) => {
+    console.log(`🖥️ [Background] 初期アイドル状態: ${state}`);
+  });
+}
+
 // ===== ログマネージャー =====
 class LogManager {
   constructor() {
@@ -537,6 +586,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // Keep-Aliveメッセージの処理
     case "KEEP_ALIVE_PING":
       // PowerManagerからのKeep-Aliveメッセージ（処理不要、ログのみ）
+      console.log('🏓 [Background] KEEP_ALIVE_PING受信', {
+        timestamp: request.timestamp,
+        currentTime: Date.now()
+      });
       sendResponse({ success: true });
       return false;
     // ===== AI詳細ログメッセージ受信 =====

@@ -34,6 +34,7 @@ class PowerManager {
     this.activeProcessCount++;
     
     console.log(`🛡️ [PowerManager] 保護開始要求 from ${source} (カウント: ${this.activeProcessCount})`);
+    console.log(`📊 [PowerManager] 現在の状態: isActive=${this.isActive}, timestamp=${new Date().toISOString()}`);
     
     if (!this.isActive) {
       this.isActive = true;
@@ -41,15 +42,18 @@ class PowerManager {
       
       try {
         // 1. Chrome Power API でスクリーンセイバーを防止（メイン防止策）
+        console.log('🔄 [PowerManager] Chrome Power API呼び出し前');
         chrome.power.requestKeepAwake('display');
         console.log('✅ [PowerManager] Chrome Power API: スクリーンセイバー防止を開始');
+        console.log(`✅ [PowerManager] requestKeepAwake実行完了 at ${new Date().toISOString()}`);
         
         // 2. Keep-Alive インターバル（補助策）
         // 30秒ごとにダミーメッセージを送信してService Workerの活性を維持
         this.keepAliveInterval = setInterval(() => {
           try {
-            chrome.runtime.sendMessage({ type: 'KEEP_ALIVE_PING', timestamp: Date.now() });
-            console.log('📡 [PowerManager] Keep-Alive ping送信');
+            const pingTime = Date.now();
+            chrome.runtime.sendMessage({ type: 'KEEP_ALIVE_PING', timestamp: pingTime });
+            console.log(`📡 [PowerManager] Keep-Alive ping送信 at ${new Date(pingTime).toISOString()}`);
           } catch (error) {
             console.error('❌ [PowerManager] Keep-Alive pingエラー:', error);
           }
@@ -70,6 +74,12 @@ class PowerManager {
         }
       } catch (error) {
         console.error('❌ [PowerManager] スリープ防止の開始に失敗:', error);
+        console.error('❌ [PowerManager] エラー詳細:', {
+          message: error.message,
+          stack: error.stack,
+          source,
+          timestamp: new Date().toISOString()
+        });
         this.isActive = false;
         this.activeProcessCount--;
       }
@@ -88,6 +98,7 @@ class PowerManager {
     this.activeProcessCount--;
     
     console.log(`🔓 [PowerManager] 保護解除要求 from ${source} (カウント: ${this.activeProcessCount})`);
+    console.log(`📊 [PowerManager] 解除前の状態: isActive=${this.isActive}, timestamp=${new Date().toISOString()}`);
     
     // カウントが0以下になったら完全に停止
     if (this.activeProcessCount <= 0 && this.isActive) {
@@ -96,8 +107,10 @@ class PowerManager {
       
       try {
         // Chrome Power APIを解除
+        console.log('🔄 [PowerManager] Chrome Power API解除呼び出し前');
         chrome.power.releaseKeepAwake();
         console.log('✅ [PowerManager] Chrome Power API: スクリーンセイバー防止を解除');
+        console.log(`✅ [PowerManager] releaseKeepAwake実行完了 at ${new Date().toISOString()}`);
         
         // Keep-Aliveインターバルを停止
         if (this.keepAliveInterval) {
@@ -125,6 +138,12 @@ class PowerManager {
         this.startTime = null;
       } catch (error) {
         console.error('❌ [PowerManager] スリープ防止の解除に失敗:', error);
+        console.error('❌ [PowerManager] 解除エラー詳細:', {
+          message: error.message,
+          stack: error.stack,
+          source,
+          timestamp: new Date().toISOString()
+        });
       }
     } else if (this.activeProcessCount < 0) {
       // 異常な状態をリセット
@@ -141,12 +160,15 @@ class PowerManager {
    * @returns {Object} 現在の状態
    */
   getStatus() {
-    return {
+    const status = {
       isActive: this.isActive,
       activeProcessCount: this.activeProcessCount,
       hasKeepAlive: !!this.keepAliveInterval,
-      runningTime: this.startTime ? Math.round((Date.now() - this.startTime) / 1000) : 0
+      runningTime: this.startTime ? Math.round((Date.now() - this.startTime) / 1000) : 0,
+      timestamp: new Date().toISOString()
     };
+    console.log('📋 [PowerManager] 現在のステータス:', status);
+    return status;
   }
 
   /**
