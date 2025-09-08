@@ -1001,12 +1001,6 @@
             // taskDataのデバッグログ
             log(`🔍 [GeminiV2] taskData受信: ${JSON.stringify(taskData)}`, 'info');
             
-            // Canvas機能の判定（テストコードと同じロジック）
-            const isCanvasMode = taskData && taskData.function && 
-                taskData.function.toLowerCase().includes('canvas');
-            
-            log(`📊 [GeminiV2] モード判定: ${isCanvasMode ? '🎨 Canvas' : '💬 通常'} (機能: "${taskData?.function || '未指定'}")`, 'info');
-            
             // 送信ボタンを5回まで再試行
             let sendSuccess = false;
             let sendAttempts = 0;
@@ -1068,6 +1062,49 @@
                 } catch (error) {
                     log(`⚠️ 送信時刻記録エラー: ${error.message}`);
                 }
+            }
+            
+            // 送信後、Canvas要素の出現を待つ（最大10秒）
+            log('📝 [GeminiV2] 応答タイプを判定中...', 'info');
+            
+            let isCanvasMode = false;
+            let checkAttempts = 0;
+            const maxCheckAttempts = 5; // 5回チェック（2秒ごと = 最大10秒）
+            
+            while (checkAttempts < maxCheckAttempts) {
+                checkAttempts++;
+                await wait(2000); // 2秒待機
+                
+                // Canvas要素の存在とテキストの有無を確認
+                const canvasEditor = findElement(['.ProseMirror']);
+                const canvasText = canvasEditor ? (canvasEditor.textContent || '').trim() : '';
+                
+                if (canvasText.length > 0) {
+                    isCanvasMode = true;
+                    log(`🎨 [GeminiV2] Canvas要素にテキスト生成を検出（${canvasText.length}文字）- 試行${checkAttempts}/${maxCheckAttempts}`, 'success');
+                    break;
+                } else if (canvasEditor) {
+                    log(`⏳ [GeminiV2] Canvas要素は存在するがテキストなし - 試行${checkAttempts}/${maxCheckAttempts}`, 'info');
+                } else {
+                    log(`⏳ [GeminiV2] Canvas要素が見つからない - 試行${checkAttempts}/${maxCheckAttempts}`, 'info');
+                }
+                
+                // 通常の応答要素が表示され始めたら通常モードと判定
+                const normalResponse = findElement([
+                    '.message-content .model-response-text',
+                    '.model-response-text',
+                    'button.send-button.stop',
+                    'button.stop'
+                ]);
+                
+                if (normalResponse && checkAttempts >= 2) {
+                    log(`💬 [GeminiV2] 通常の応答要素を検出 - 通常モードで処理`, 'info');
+                    break;
+                }
+            }
+            
+            if (!isCanvasMode) {
+                log(`💬 [GeminiV2] Canvas要素にテキストが生成されなかったため、通常モードで処理`, 'info');
             }
             
             // Canvas応答テキストを外側のスコープで定義
