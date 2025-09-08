@@ -2259,37 +2259,64 @@ export default class StreamProcessorV2 {
    */
   /**
    * V3: シンプルなグループ順次処理（列制御・行制御・3種類AI対応）
+   * 動的にグループ構造を再解析して次のタスクを生成
    */
   async processGroupsSequentiallyV3(spreadsheetData, isTestMode) {
-    this.logger.log('[StreamProcessorV2] 🚀 V3グループ順次処理開始');
-    
-    // スプレッドシート構造を解析（列制御・行制御を含む）
-    const structure = this.taskGenerator.analyzeStructure(spreadsheetData);
-    const { promptGroups, controls, workRows } = structure;
-    
-    this.logger.log(`[StreamProcessorV2] 📊 構造解析完了:`, {
-      グループ数: promptGroups.length,
-      作業行数: workRows ? workRows.length : 0,
-      行制御: controls.row.length,
-      列制御: controls.column.length
-    });
+    this.logger.log('[StreamProcessorV2] 🚀 V3グループ順次処理開始（動的タスク生成モード）');
     
     let totalProcessed = 0;
     let totalFailed = 0;
     
-    // 列制御をチェック（「この列で停止」があるか確認）
-    let shouldStopAfterColumn = null;
-    if (controls.column && controls.column.length > 0) {
-      const untilControl = controls.column.find(c => c.type === 'until');
-      if (untilControl) {
-        shouldStopAfterColumn = untilControl.index;
-        this.logger.log(`[StreamProcessorV2] ⚠️ 列制御: ${this.indexToColumn(untilControl.index)}列で停止`);
-      }
-    }
+    // 処理済みグループを追跡（重複処理防止）
+    const processedGroupKeys = new Set();
+    let groupIndex = 0;
     
-    // 各グループを順番に処理
-    for (let groupIndex = 0; groupIndex < promptGroups.length; groupIndex++) {
+    // 無限ループ防止のため最大グループ数を設定
+    const MAX_GROUPS = 50;
+    
+    while (groupIndex < MAX_GROUPS) {
+      // 毎回構造を再解析（動的にグループを発見）
+      this.logger.log(`[StreamProcessorV2] 📊 構造を再解析中（イテレーション${groupIndex + 1}）...`);
+      const structure = this.taskGenerator.analyzeStructure(spreadsheetData);
+      const { promptGroups, controls, workRows } = structure;
+      
+      // 初回のみ構造情報をログ出力
+      if (groupIndex === 0) {
+        this.logger.log(`[StreamProcessorV2] 📊 初期構造解析完了:`, {
+          グループ数: promptGroups.length,
+          作業行数: workRows ? workRows.length : 0,
+          行制御: controls.row.length,
+          列制御: controls.column.length
+        });
+      }
+      
+      // 処理可能なグループがなければ終了
+      if (groupIndex >= promptGroups.length) {
+        this.logger.log(`[StreamProcessorV2] ✅ すべてのグループ処理完了（合計${groupIndex}グループ）`);
+        break;
+      }
+      
       const promptGroup = promptGroups[groupIndex];
+      
+      // グループのキーを生成（重複処理防止）
+      const groupKey = promptGroup.promptColumns.join(',');
+      if (processedGroupKeys.has(groupKey)) {
+        this.logger.log(`[StreamProcessorV2] ⚠️ グループ${groupIndex + 1}は既に処理済み、スキップ`);
+        groupIndex++;
+        continue;
+      }
+      
+      // 列制御をチェック（「この列で停止」があるか確認）
+      let shouldStopAfterColumn = null;
+      if (controls.column && controls.column.length > 0) {
+        const untilControl = controls.column.find(c => c.type === 'until');
+        if (untilControl) {
+          shouldStopAfterColumn = untilControl.index;
+          if (groupIndex === 0) {
+            this.logger.log(`[StreamProcessorV2] ⚠️ 列制御: ${this.indexToColumn(untilControl.index)}列で停止`);
+          }
+        }
+      }
       
       // 「この列で停止」制御のチェック
       if (shouldStopAfterColumn !== null) {
@@ -2315,6 +2342,9 @@ export default class StreamProcessorV2 {
       
       if (!groupTaskList || groupTaskList.tasks.length === 0) {
         this.logger.log(`[StreamProcessorV2] グループ${groupIndex + 1}にタスクなし（すべて回答済みまたは列制御でスキップ）`);
+        // 処理済みとしてマーク
+        processedGroupKeys.add(groupKey);
+        groupIndex++;
         continue;
       }
       
@@ -2349,16 +2379,25 @@ export default class StreamProcessorV2 {
         }
       }
       
+      // このグループを処理済みとしてマーク
+      processedGroupKeys.add(groupKey);
+      
       this.logger.log(`[StreamProcessorV2] ✅ グループ${groupIndex + 1}の処理完了`);
       this.logger.log(`[StreamProcessorV2] ${'='.repeat(50)}\n`);
       
-      // 最後のグループでなければ、スプレッドシートを再読み込み（オプション）
-      if (this.sheetsClient && groupIndex < promptGroups.length - 1) {
+      // スプレッドシートを再読み込み（次のグループのタスクを動的に発見するため）
+      // sheetsClientが存在しない場合は、spreadsheetDataからSheetsClientを取得
+      let sheetsClient = this.sheetsClient;
+      if (!sheetsClient && this.spreadsheetLogger?.sheetsClient) {
+        sheetsClient = this.spreadsheetLogger.sheetsClient;
+      }
+      
+      if (sheetsClient && spreadsheetData.spreadsheetId && spreadsheetData.gid !== undefined) {
         try {
-          this.logger.log('[StreamProcessorV2] 📊 スプレッドシートを再読み込み中...');
-          const updatedData = await this.sheetsClient.loadAutoAIData(
-            this.spreadsheetData.spreadsheetId,
-            this.spreadsheetData.gid
+          this.logger.log('[StreamProcessorV2] 📊 次のグループのためにスプレッドシートを再読み込み中...');
+          const updatedData = await sheetsClient.loadAutoAIData(
+            spreadsheetData.spreadsheetId,
+            spreadsheetData.gid
           );
           if (updatedData) {
             // 全体のデータ構造を更新
@@ -2367,14 +2406,20 @@ export default class StreamProcessorV2 {
           }
         } catch (error) {
           this.logger.error('[StreamProcessorV2] ❌ スプレッドシート再読み込みエラー:', error);
+          // エラーが発生しても処理は継続
         }
+      } else {
+        this.logger.log('[StreamProcessorV2] ⚠️ スプレッドシート再読み込みスキップ（SheetsClientまたは必要な情報が不足）');
       }
+      
+      // 次のグループへ
+      groupIndex++;
     }
     
-    this.logger.log('[StreamProcessorV2] 🎉 V3グループ順次処理完了', {
+    this.logger.log('[StreamProcessorV2] 🎉 V3グループ順次処理完了（動的タスク生成）', {
       処理済み: totalProcessed,
       失敗: totalFailed,
-      グループ数: promptGroups.length
+      処理グループ数: processedGroupKeys.size
     });
     
     return {
