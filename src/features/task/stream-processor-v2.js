@@ -534,9 +534,12 @@ export default class StreamProcessorV2 {
             // モデル選択を実行
             const modelResult = await this.executePhaseOnTab(context.tabId, context.task, 'model');
             
-            if (modelResult && modelResult.success !== false && modelResult.displayedModel !== undefined) {
-              context.task.displayedModel = modelResult.displayedModel;
-              this.logger.log(`[StreamProcessorV2] ✅ モデル選択成功: ${context.task.model || 'Auto'} → ${modelResult.displayedModel || '(取得できず)'}`);
+            if (modelResult && modelResult.success !== false) {
+              // displayedModelがあれば記録、なくても成功とする
+              if (modelResult.displayedModel !== undefined) {
+                context.task.displayedModel = modelResult.displayedModel;
+              }
+              this.logger.log(`[StreamProcessorV2] ✅ モデル選択成功: ${context.task.model || 'Auto'} → ${modelResult.displayedModel || '(モデル未指定)'}`);
               modelSuccess = true;
             } else {
               throw new Error(`モデル選択失敗: ${context.cell}`);
@@ -3729,7 +3732,9 @@ export default class StreamProcessorV2 {
           sheetName: spreadsheetData.sheetName || '不明',
           model: spreadsheetData.modelRow?.[taskInfo.columnIndex] || '',
           function: spreadsheetData.functionRow?.[taskInfo.columnIndex] || '',
-          createdAt: Date.now()
+          createdAt: Date.now(),
+          // ログ列を追加（プロンプト列の1列前）
+          logColumns: [this.indexToColumn(Math.max(0, Math.min(...promptColIndices) - 1))]
         };
         
         taskObjects.push(task);
