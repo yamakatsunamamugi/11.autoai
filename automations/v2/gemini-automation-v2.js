@@ -1077,6 +1077,14 @@
                 checkAttempts++;
                 await wait(2000); // 2秒待機
                 
+                // まずCanvasボタンをチェック
+                const canvasButtonSelectors = GeminiSelectors.CANVAS_BUTTON || [
+                    'div.container.is-open.clickable[data-test-id="container"]',
+                    'div.container.clickable[data-test-id="container"]',
+                    'div[data-test-id="container"].clickable'
+                ];
+                const canvasButton = findElement(canvasButtonSelectors);
+                
                 // Canvas要素の存在とテキストの有無を確認（ui-selectorsから取得）
                 const canvasSelectors = GeminiSelectors.CANVAS_EDITOR || [
                     '.ProseMirror',
@@ -1085,6 +1093,28 @@
                     '#extended-response-markdown-content .ProseMirror'
                 ];
                 const canvasEditor = findElement(canvasSelectors);
+                
+                // Canvasボタンがあるが、Canvas要素が開いていない場合
+                if (canvasButton && !canvasEditor) {
+                    log('🎨 [GeminiV2] Canvasボタンを検出 - クリックして開きます', 'info');
+                    canvasButton.click();
+                    await wait(2000); // Canvas展開を待つ
+                    
+                    // 再度Canvas要素を確認
+                    const canvasEditorAfterClick = findElement(canvasSelectors);
+                    if (canvasEditorAfterClick) {
+                        const canvasTextAfterClick = (canvasEditorAfterClick.textContent || '').trim();
+                        if (canvasTextAfterClick.length > 0) {
+                            isCanvasMode = true;
+                            canvasResponseText = canvasTextAfterClick;
+                            log(`🎨 [GeminiV2] Canvasを開いてテキストを取得（${canvasTextAfterClick.length}文字）`, 'success');
+                            log(`🎨 [GeminiV2] 検出したテキストの先頭100文字: ${canvasTextAfterClick.substring(0, 100)}...`, 'info');
+                            break;
+                        }
+                    }
+                }
+                
+                // 通常のCanvas要素チェック
                 const canvasText = canvasEditor ? (canvasEditor.textContent || '').trim() : '';
                 
                 if (canvasText.length > 0) {
@@ -1096,8 +1126,10 @@
                     break;
                 } else if (canvasEditor) {
                     log(`⏳ [GeminiV2] Canvas要素は存在するがテキストなし - 試行${checkAttempts}/${maxCheckAttempts}`, 'info');
+                } else if (canvasButton) {
+                    log(`⏳ [GeminiV2] Canvasボタンは存在するがCanvas要素が見つからない - 試行${checkAttempts}/${maxCheckAttempts}`, 'info');
                 } else {
-                    log(`⏳ [GeminiV2] Canvas要素が見つからない - 試行${checkAttempts}/${maxCheckAttempts}`, 'info');
+                    log(`⏳ [GeminiV2] Canvas要素もボタンも見つからない - 試行${checkAttempts}/${maxCheckAttempts}`, 'info');
                 }
                 
                 // 通常の応答要素が表示され始めたら通常モードと判定

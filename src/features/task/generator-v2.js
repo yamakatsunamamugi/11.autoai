@@ -23,6 +23,17 @@ export default class TaskGeneratorV2 {
   async generateTasks(spreadsheetData) {
     this.logger.log('[TaskGeneratorV2] 🚀 タスク生成開始');
     
+    // データ配列の実際のサイズを確認
+    if (spreadsheetData.values && spreadsheetData.values.length > 0) {
+      const maxCols = Math.max(...spreadsheetData.values.map(row => row ? row.length : 0));
+      console.log(`[DEBUG] スプレッドシートデータ: ${spreadsheetData.values.length}行 x 最大${maxCols}列`);
+      
+      // メニュー行のデータを確認
+      if (spreadsheetData.menuRow) {
+        console.log(`[DEBUG] メニュー行の列数: ${spreadsheetData.menuRow.data ? spreadsheetData.menuRow.data.length : 0}列`);
+      }
+    }
+    
     this.data = spreadsheetData;
     const taskList = new TaskList();
     
@@ -395,8 +406,9 @@ export default class TaskGeneratorV2 {
       return null;
     }
     if (colIndex >= data.values[rowIndex].length) {
-      console.log(`[DEBUG] getCellValue: 行${rowIndex}の列${colIndex}が範囲外です（行の長さ: ${data.values[rowIndex].length}）`);
-      return null;
+      console.log(`[DEBUG] getCellValue: 行${rowIndex}の列${colIndex}(${this.indexToColumn(colIndex)})が範囲外です（行の長さ: ${data.values[rowIndex].length}列）`);
+      // 範囲外の場合は空文字を返す（nullではなく）
+      return "";
     }
     return data.values[rowIndex][colIndex] || null;
   }
@@ -592,8 +604,11 @@ export default class TaskGeneratorV2 {
       shouldProcess = false;
     }
     
+    // "この列で停止" - 制御列を含むグループまでは処理する
+    // （制御列より後のグループを停止）
     if (untilControl && groupStart > untilControl.index) {
       shouldProcess = false;
+      console.log(`[DEBUG] 列制御「${untilControl.column}列で停止」により、グループ(開始:${this.indexToColumn(groupStart)})をスキップ`);
     }
     
     return shouldProcess;

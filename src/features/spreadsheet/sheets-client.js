@@ -102,7 +102,8 @@ class SheetsClient {
     
     const token = await globalThis.authService.getAuthToken();
     const encodedRange = encodeURIComponent(range);
-    const url = `${this.baseUrl}/${spreadsheetId}/values/${encodedRange}`;
+    // valueRenderOptionを追加して、空セルも含めて全データを取得
+    const url = `${this.baseUrl}/${spreadsheetId}/values/${encodedRange}?valueRenderOption=FORMULA`;
     
     this.logger.log("SheetsClient", `API URL: ${url}`);
 
@@ -158,8 +159,14 @@ class SheetsClient {
     }
     
 
-    // まず全体のデータを取得（A1:Z1000の範囲）
-    const rawData = await this.getSheetData(spreadsheetId, "A1:Z1000", gid);
+    // まず全体のデータを取得（A1:AZ1000の範囲 - より多くの列を含む）
+    const rawData = await this.getSheetData(spreadsheetId, "A1:AZ1000", gid);
+    
+    // デバッグ: 取得したデータの列数を確認
+    if (rawData.length > 0) {
+      const maxColumns = Math.max(...rawData.map(row => row ? row.length : 0));
+      this.logger.log("SheetsClient", `取得データ: ${rawData.length}行 x 最大${maxColumns}列`);
+    }
 
     if (rawData.length === 0) {
       throw new Error("スプレッドシートにデータがありません");

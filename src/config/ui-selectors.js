@@ -461,6 +461,16 @@ export const UI_SELECTORS = {
             'rich-textarea .ql-editor'
         ],
         
+        // Canvasボタン（Canvas機能を開くためのボタン）
+        CANVAS_BUTTON: [
+            'div.container.is-open.clickable[data-test-id="container"]',
+            'div.container.clickable[data-test-id="container"]',
+            'div[data-test-id="container"]:has(mat-icon[data-mat-icon-name="article"])',
+            'div.container:has(div[data-test-id="artifact-text"])',
+            'div.container.is-open',
+            'div[data-test-id="container"].clickable'
+        ],
+        
         // Canvas要素（Canvas機能のテキスト取得用）
         CANVAS_EDITOR: [
             '.ProseMirror',
