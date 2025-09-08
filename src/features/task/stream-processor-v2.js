@@ -568,7 +568,9 @@ export default class StreamProcessorV2 {
           AI: ai,
           モデル: model,
           機能: func,
-          promptColumns: context.task.promptColumns
+          promptColumns: context.task.promptColumns,
+          '元のtask.aiType': context.task.aiType,
+          'aiTypeの変更': context.task.aiType !== ai ? `${context.task.aiType} → ${ai}` : '変更なし'
         });
         
         let modelSuccess = false;
@@ -1777,8 +1779,23 @@ export default class StreamProcessorV2 {
     const maxRetries = 2; // 最大リトライ回数
     
     try {
+      // デバッグ：タスクのAI情報を詳細出力
+      this.logger.log(`[DEBUG] createWindowForTask - タスクAI情報:`, {
+        'task.aiType': task.aiType,
+        'task.column': task.column,
+        'task.row': task.row,
+        'task.multiAI': task.multiAI,
+        'task.groupType': task.groupType,
+        'タスク生成時aiType': task.originalAiType || '未記録'
+      });
+      
       // AIタイプを正規化（ChatGPT → chatgpt, Claude → claude, Gemini → gemini）
       const normalizedAIType = this.normalizeAIType(task.aiType);
+      
+      this.logger.log(`[DEBUG] AI正規化結果:`, {
+        'input': task.aiType,
+        'normalized': normalizedAIType
+      });
       
       // AIタイプからURLを取得
       const url = aiUrlManager.getUrl(normalizedAIType);
@@ -3893,7 +3910,25 @@ export default class StreamProcessorV2 {
     
     // 各タスクグループを順番に処理
     for (const group of taskGroups) {
+      // グループ処理開始前に全ウィンドウを閉じる
+      this.logger.log(`[DEBUG] グループ処理開始前 - 全ウィンドウクローズ実行`);
+      try {
+        await WindowService.closeAllWindows();
+        this.logger.log(`[DEBUG] 全ウィンドウクローズ完了`);
+      } catch (error) {
+        this.logger.warn(`[DEBUG] ウィンドウクローズ中にエラー:`, error);
+      }
+      
       this.logger.log(`[StreamProcessorV2] 📋 グループ処理開始: ${group.name} (${group.startColumn}-${group.endColumn}列)`);
+      
+      // デバッグ：グループAI情報を詳細出力
+      this.logger.log(`[DEBUG] グループAI情報:`, {
+        'group.name': group.name,
+        'group.aiType': group.aiType,
+        'group.columnRange': group.columnRange,
+        'startColumn': group.startColumn,
+        'endColumn': group.endColumn
+      });
       
       // グループの列情報からインデックス配列を作成
       const promptColIndices = group.columnRange.promptColumns.map(col => this.columnToIndex(col));
@@ -3936,6 +3971,16 @@ export default class StreamProcessorV2 {
           return this.columnToIndex(colStr) === taskInfo.columnIndex;
         });
         const aiType = answerCol?.aiType || 'Claude'; // デフォルトはClaude
+        
+        // デバッグ：AI値設定の詳細確認
+        this.logger.log(`[DEBUG] タスクAI値設定:`, {
+          'taskInfo.column': taskInfo.column,
+          'taskInfo.row': taskInfo.row,
+          'answerCol': answerCol,
+          'answerCol.aiType': answerCol?.aiType,
+          'detectedAiType': aiType,
+          'answerColKeys': answerCol ? Object.keys(answerCol) : 'answerCol is null/undefined'
+        });
         
         // タスクオブジェクトを作成（モデルと機能は実行時に動的取得）
         const task = {
