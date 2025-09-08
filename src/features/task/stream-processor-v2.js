@@ -3789,7 +3789,13 @@ export default class StreamProcessorV2 {
           functionValue: functionValue,
           modelValue: modelValue,
           finalFunctionValue: finalFunctionValue,
-          取得元: functionValue === '通常' ? 'プロンプト列' : '回答列'
+          取得元: functionValue === '通常' ? 'プロンプト列' : '回答列',
+          hasModelRow: !!spreadsheetData.modelRow,
+          hasTaskRow: !!spreadsheetData.taskRow,
+          modelRowLength: spreadsheetData.modelRow?.data?.length,
+          taskRowLength: spreadsheetData.taskRow?.data?.length,
+          回答列の値: spreadsheetData.modelRow?.data?.[taskInfo.columnIndex],
+          プロンプト列の値: spreadsheetData.modelRow?.data?.[promptColIndices[0]]
         });
         
         // タスクオブジェクトを作成

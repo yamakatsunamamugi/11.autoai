@@ -1174,7 +1174,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               spreadsheetUrl: request.spreadsheetUrl,
               gid: request.gid,
               sheetName: sheetData.sheetName || request.sheetName || null,
-              values: sheetData.values || []
+              values: sheetData.values || [],
+              modelRow: sheetData.modelRow || null,
+              taskRow: sheetData.taskRow || null
             };
             
             console.log(`[Background] 📊 スプレッドシートデータ取得完了:`, {
