@@ -283,11 +283,29 @@ export default class StreamProcessorV2 {
   }
 
   /**
-   * バッチ内のタスクを順次処理（フェーズ分け実行）
-   * フェーズ1: 全ウィンドウを開いてテキスト入力
-   * フェーズ2: モデルを順番に選択
-   * フェーズ3: 機能を順番に選択  
-   * フェーズ4: 5秒間隔で送信
+   * バッチ処理を実行（最大3つのタスクを並列処理）
+   * 
+   * 【処理フロー】
+   * 1. フェーズ1: ウィンドウ準備とテキスト入力
+   *    - 3つのウィンドウを同時に開く（左、中央、右の位置）
+   *    - 各ウィンドウにプロンプトを入力
+   * 
+   * 2. フェーズ2: モデル選択（並列実行）
+   *    - 全ウィンドウで同時にモデル選択を実行
+   *    - Promise.allSettledで並列処理
+   * 
+   * 3. フェーズ3: 機能選択（並列実行）
+   *    - 全ウィンドウで同時に機能選択を実行
+   *    - Promise.allSettledで並列処理
+   * 
+   * 4. フェーズ4: 5秒間隔で順次送信
+   *    - タスク1送信 → 5秒待機
+   *    - タスク2送信 → 5秒待機
+   *    - タスク3送信
+   * 
+   * @param {Array} batch - 処理するタスク配列（最大3つ）
+   * @param {boolean} isTestMode - テストモードフラグ
+   * @returns {Promise<void>}
    */
   async processBatch(batch, isTestMode) {
     this.logger.log(`[StreamProcessorV2] 🚀 バッチ順次処理開始（新フロー）`, {
@@ -3523,14 +3541,6 @@ export default class StreamProcessorV2 {
   }
 
   /**
-   * バッチ完了を待機
-   */
-  async waitForBatchCompletion() {
-    // 簡単な待機処理（実際の処理は必要に応じて拡張）
-    await new Promise(resolve => setTimeout(resolve, 5000)); // 5秒待機
-  }
-
-  /**
    * 動的タスク生成：プロンプト有り×回答無しのセルを特定
    * @param {Object} spreadsheetData - スプレッドシートデータ
    * @param {Array} promptCols - プロンプト列インデックス配列
@@ -3693,10 +3703,11 @@ export default class StreamProcessorV2 {
       // タスクを処理
       this.logger.log(`[StreamProcessorV2] 🔄 ${group.name}: ${tasks.length}個のタスク実行`);
       
-      // タスクをTaskオブジェクト形式に変換して実行
-      for (let i = 0; i < tasks.length; i++) {
-        const taskInfo = tasks[i];
-        
+      // ========================================
+      // タスクをTaskオブジェクト形式に変換
+      // ========================================
+      const taskObjects = [];
+      for (const taskInfo of tasks) {
         // AIタイプを取得（グループから）
         const answerCol = group.columnRange.answerColumns.find(col => {
           const colStr = typeof col === 'string' ? col : col.column;
@@ -3721,21 +3732,28 @@ export default class StreamProcessorV2 {
           createdAt: Date.now()
         };
         
+        taskObjects.push(task);
+      }
+      
+      // ========================================
+      // 3つずつのバッチに分割して処理
+      // ========================================
+      const batchSize = 3;
+      for (let i = 0; i < taskObjects.length; i += batchSize) {
+        const batch = taskObjects.slice(i, Math.min(i + batchSize, taskObjects.length));
+        
+        this.logger.log(`[StreamProcessorV2] 📦 バッチ${Math.floor(i/batchSize) + 1}/${Math.ceil(taskObjects.length/batchSize)}を処理`, {
+          タスク: batch.map(t => `${t.column}${t.row}`).join(', '),
+          グループ: group.name
+        });
+        
         try {
-          // 3つずつバッチ処理（位置を指定）
-          const position = i % 3;
-          await this.processTask(task, false, position);
-          
-          // 3つ処理したら待機
-          if ((i + 1) % 3 === 0 && i < tasks.length - 1) {
-            this.logger.log(`[StreamProcessorV2] 3タスク完了、次のバッチまで待機...`);
-            await this.waitForBatchCompletion();
-          }
-          
-          totalCompleted++;
+          // 既存のprocessBatchメソッドを使用（並列処理＋フェーズ分け）
+          await this.processBatch(batch, false);
+          totalCompleted += batch.length;
         } catch (error) {
-          this.logger.error(`[StreamProcessorV2] タスク実行エラー: ${task.column}${task.row}`, error);
-          totalFailed++;
+          this.logger.error(`[StreamProcessorV2] バッチ処理エラー:`, error);
+          totalFailed += batch.length;
         }
       }
     }
