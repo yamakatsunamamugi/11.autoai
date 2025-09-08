@@ -534,9 +534,12 @@ export default class StreamProcessorV2 {
             // モデル選択を実行
             const modelResult = await this.executePhaseOnTab(context.tabId, context.task, 'model');
             
-            if (modelResult && modelResult.success !== false && modelResult.displayedModel !== undefined) {
-              context.task.displayedModel = modelResult.displayedModel;
-              this.logger.log(`[StreamProcessorV2] ✅ モデル選択成功: ${context.task.model || 'Auto'} → ${modelResult.displayedModel || '(取得できず)'}`);
+            if (modelResult && modelResult.success !== false) {
+              // displayedModelがあれば記録、なくても成功とする
+              if (modelResult.displayedModel !== undefined) {
+                context.task.displayedModel = modelResult.displayedModel;
+              }
+              this.logger.log(`[StreamProcessorV2] ✅ モデル選択成功: ${context.task.model || 'Auto'} → ${modelResult.displayedModel || '(モデル未指定)'}`);
               modelSuccess = true;
             } else {
               throw new Error(`モデル選択失敗: ${context.cell}`);
