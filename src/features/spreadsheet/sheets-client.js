@@ -464,6 +464,8 @@ class SheetsClient {
           data: row,
         };
         this.logger.log("SheetsClient", `モデル行検出: 行${i + 1}, A列="${firstCell}"`);
+        // デバッグ: モデル行の値を表示（インデックス20-30: U列〜AE列あたり）
+        this.logger.log("SheetsClient", `[DEBUG] モデル行の値 (index 20-30):`, row.slice(20, 31).map((val, idx) => `[${20+idx}]: "${val || '空'}"`));
       }
 
       // 機能行を検索（A列が「機能」と完全一致）
