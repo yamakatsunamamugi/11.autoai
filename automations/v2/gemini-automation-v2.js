@@ -13,7 +13,7 @@
     
     // ui-selectorsからインポート（Chrome拡張機能のインジェクトコンテキスト）
     const UI_SELECTORS = window.UI_SELECTORS || {};
-    const GeminiSelectorsFromUI = UI_SELECTORS.Gemini || {};
+    const GeminiSelectors = UI_SELECTORS.Gemini || {};
     
     // ================================================================
     // グローバル変数
@@ -1077,13 +1077,14 @@
                 checkAttempts++;
                 await wait(2000); // 2秒待機
                 
-                // Canvas要素の存在とテキストの有無を確認（セレクタを拡張）
-                const canvasEditor = findElement([
+                // Canvas要素の存在とテキストの有無を確認（ui-selectorsから取得）
+                const canvasSelectors = GeminiSelectors.CANVAS_EDITOR || [
                     '.ProseMirror',
                     'immersive-editor .ProseMirror',
                     '.immersive-editor .ProseMirror',
                     '#extended-response-markdown-content .ProseMirror'
-                ]);
+                ];
+                const canvasEditor = findElement(canvasSelectors);
                 const canvasText = canvasEditor ? (canvasEditor.textContent || '').trim() : '';
                 
                 if (canvasText.length > 0) {
@@ -1151,12 +1152,14 @@
                         const maxCanvasNotFound = 5; // Canvas要素が5回連続で見つからなければ終了
                         
                         const monitor = setInterval(() => {
-                            const canvasEditor = findElement([
+                            // ui-selectorsから取得
+                            const canvasSelectors = GeminiSelectors.CANVAS_EDITOR || [
                                 '.ProseMirror',
                                 'immersive-editor .ProseMirror',
                                 '.immersive-editor .ProseMirror',
                                 '#extended-response-markdown-content .ProseMirror'
-                            ]);
+                            ];
+                            const canvasEditor = findElement(canvasSelectors);
                             if (!canvasEditor) {
                                 canvasNotFoundCount++;
                                 log(`⚠️ Canvas要素(.ProseMirror)が見つかりません (${canvasNotFoundCount}/${maxCanvasNotFound})`, 'warn');
@@ -1273,7 +1276,8 @@
                     }
                 } else {
                     // フォールバック: 再度Canvas要素を探す
-                    const canvasEditor = findElement(['.ProseMirror']);
+                    const canvasSelectors = GeminiSelectors.CANVAS_EDITOR || ['.ProseMirror'];
+                    const canvasEditor = findElement(canvasSelectors);
                     if (canvasEditor) {
                         responseText = canvasEditor.textContent || '';
                         log(`✅ [GeminiV2] Canvas応答取得（フォールバック）: ${responseText.length}文字`, 'success');

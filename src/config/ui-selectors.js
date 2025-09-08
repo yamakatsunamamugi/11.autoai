@@ -461,6 +461,15 @@ export const UI_SELECTORS = {
             'rich-textarea .ql-editor'
         ],
         
+        // Canvas要素（Canvas機能のテキスト取得用）
+        CANVAS_EDITOR: [
+            '.ProseMirror',
+            'immersive-editor .ProseMirror',
+            '.immersive-editor .ProseMirror',
+            '#extended-response-markdown-content .ProseMirror',
+            '.immersive-editor-markdown-content .ProseMirror'
+        ],
+        
         // 送信ボタン
         SEND_BUTTON: [
             'button[aria-label="送信"]',
