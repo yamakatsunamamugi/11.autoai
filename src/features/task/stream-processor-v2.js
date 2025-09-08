@@ -535,11 +535,9 @@ export default class StreamProcessorV2 {
             const modelResult = await this.executePhaseOnTab(context.tabId, context.task, 'model');
             
             if (modelResult && modelResult.success !== false) {
-              // displayedModelがあれば記録、なくても成功とする
-              if (modelResult.displayedModel !== undefined) {
-                context.task.displayedModel = modelResult.displayedModel;
-              }
-              this.logger.log(`[StreamProcessorV2] ✅ モデル選択成功: ${context.task.model || 'Auto'} → ${modelResult.displayedModel || '(モデル未指定)'}`);
+              // displayedModelを必ず設定（値がない場合はモデル名またはデフォルト値を使用）
+              context.task.displayedModel = modelResult.displayedModel || context.task.model || 'デフォルト';
+              this.logger.log(`[StreamProcessorV2] ✅ モデル選択成功: ${context.task.model || 'Auto'} → ${context.task.displayedModel}`);
               modelSuccess = true;
             } else {
               throw new Error(`モデル選択失敗: ${context.cell}`);
@@ -681,14 +679,17 @@ export default class StreamProcessorV2 {
         
         // 結果を処理
         if (retryResult.success && retryResult.result) {
-          context.task.displayedFunction = retryResult.result.displayedFunction;
-          this.logger.log(`[StreamProcessorV2] ✅ 選択された機能を記録: ${context.task.function || '通常'} → ${retryResult.result.displayedFunction || '通常'}`);
+          // displayedFunctionを必ず設定（値がない場合は機能名またはデフォルト値を使用）
+          context.task.displayedFunction = retryResult.result.displayedFunction || context.task.function || '通常';
+          this.logger.log(`[StreamProcessorV2] ✅ 選択された機能を記録: ${context.task.function || '通常'} → ${context.task.displayedFunction}`);
           
           // 特殊機能の場合の追加ログ
           if (isSpecialFunction) {
             this.logger.log(`[StreamProcessorV2] 🎨 特殊機能「${context.task.function}」の選択完了 - 送信フェーズへ進みます`);
           }
         } else {
+          // 失敗しても機能名を設定
+          context.task.displayedFunction = context.task.function || '通常';
           this.logger.error(`[StreamProcessorV2] ❌ 機能選択が失敗しました: ${context.cell}`);
           // 失敗タスクとして記録
           if (!this.failedTasksByColumn.has(context.task.column)) {
@@ -772,6 +773,12 @@ export default class StreamProcessorV2 {
             }
             
             // SpreadsheetLoggerでログを記録
+            this.logger.log(`🔍 [DEBUG] SpreadsheetLogger条件チェック:`, {
+              'this.spreadsheetLogger': !!this.spreadsheetLogger,
+              'context.task.logColumns': context.task.logColumns,
+              'logColumns.length': context.task.logColumns?.length || 0
+            });
+            
             if (this.spreadsheetLogger && context.task.logColumns && context.task.logColumns.length > 0) {
               try {
                 this.logger.log(`[StreamProcessorV2] ログ書き込み開始: ${context.task.logColumns[0]}${context.task.row}`);
@@ -1078,7 +1085,11 @@ export default class StreamProcessorV2 {
       }
       
       const elapsedTime = Date.now() - startTime;
-      this.logger.log(`[StreamProcessorV2] ✅ スクリプト注入完了 (${elapsedTime}ms)`);
+      this.logger.log(`[StreamProcessorV2] ✅ スクリプト注入完了 (${elapsedTime}ms)`, {
+        aiType: aiType,
+        注入したスクリプト数: scripts.length,
+        スクリプト: scripts
+      });
       return true;
       
     } catch (error) {
@@ -1136,9 +1147,13 @@ export default class StreamProcessorV2 {
           
         case 'model':
           // モデル選択のみ実行
+          this.logger.log(`🔍 [DEBUG] モデル選択実行開始 - タブ: ${tabId}, モデル: ${task.model}, AI: ${aiType}`);
+          
           result = await chrome.scripting.executeScript({
             target: { tabId },
             func: async (model, aiType) => {
+              console.log(`🔍 [DEBUG] タブ内モデル選択開始 - モデル: "${model}", AI: ${aiType}`);
+              
               // AIタイプに応じたAutomationオブジェクトを取得
               const automationMap = {
                 'claude': ['ClaudeAutomationV2', 'ClaudeAutomation'],
@@ -1147,16 +1162,37 @@ export default class StreamProcessorV2 {
               };
               
               const possibleNames = automationMap[aiType.toLowerCase()] || [];
-              const automationName = possibleNames.find(name => window[name] !== undefined);
+              console.log(`🔍 [DEBUG] 探索対象: ${possibleNames.join(', ')}`);
+              
+              const automationName = possibleNames.find(name => {
+                const exists = window[name] !== undefined;
+                console.log(`🔍 [DEBUG] ${name} 存在確認: ${exists}`);
+                return exists;
+              });
+              
               const automation = automationName ? window[automationName] : null;
+              console.log(`🔍 [DEBUG] 使用するAutomation: ${automationName || 'なし'}`);
               
               if (automation && automation.selectModelOnly) {
-                return await automation.selectModelOnly(model);
+                console.log(`🔍 [DEBUG] selectModelOnly実行開始`);
+                try {
+                  const result = await automation.selectModelOnly(model);
+                  console.log(`🔍 [DEBUG] selectModelOnly実行完了 - 結果:`, result);
+                  return result;
+                } catch (error) {
+                  console.error(`❌ [DEBUG] selectModelOnly実行エラー:`, error);
+                  return { success: false, error: error.message || 'Model selection failed' };
+                }
               }
-              return { success: false, error: `${aiType} automation not found or selectModelOnly not supported` };
+              
+              const errorResult = { success: false, error: `${aiType} automation not found or selectModelOnly not supported` };
+              console.log(`🔍 [DEBUG] エラー終了:`, errorResult);
+              return errorResult;
             },
             args: [task.model, aiType]
           });
+          
+          this.logger.log(`🔍 [DEBUG] モデル選択結果:`, result);
           break;
           
         case 'function':
@@ -3730,8 +3766,8 @@ export default class StreamProcessorV2 {
           promptColumn: this.indexToColumn(promptColIndices[0]),
           promptColumns: promptColIndices,  // 配列形式で設定（fetchPromptFromTaskが使用）
           sheetName: spreadsheetData.sheetName || '不明',
-          model: spreadsheetData.modelRow?.[taskInfo.columnIndex] || '',
-          function: spreadsheetData.functionRow?.[taskInfo.columnIndex] || '',
+          model: spreadsheetData.modelRow?.data?.[taskInfo.columnIndex] || '',
+          function: spreadsheetData.taskRow?.data?.[taskInfo.columnIndex] || '',
           createdAt: Date.now(),
           // ログ列を追加（プロンプト列の1列前）
           logColumns: [this.indexToColumn(Math.max(0, Math.min(...promptColIndices) - 1))]
