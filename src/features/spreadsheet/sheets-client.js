@@ -12,9 +12,7 @@ class SheetsClient {
       maxBatchUpdates: 100           // バッチ更新の最大件数
     };
     
-    // キャッシュ設定
-    this._sheetDataCache = new Map();
-    this._cacheExpiry = 5 * 60 * 1000; // 5分間キャッシュ
+    // キャッシュ機能削除
   }
 
   /**
@@ -309,20 +307,7 @@ class SheetsClient {
    * @returns {Promise<Object>} 解析されたデータ構造
    */
   async loadSheet(spreadsheetId, gid) {
-    // キャッシュキーを生成
-    const cacheKey = `raw_${spreadsheetId}_${gid}`;
-    const now = Date.now();
-    
-    // キャッシュを確認
-    if (this._sheetDataCache.has(cacheKey)) {
-      const cached = this._sheetDataCache.get(cacheKey);
-      if (now - cached.timestamp < this._cacheExpiry) {
-        this.logger.log("SheetsClient", "キャッシュからデータを返却");
-        return cached.data;
-      }
-      // 期限切れのキャッシュを削除
-      this._sheetDataCache.delete(cacheKey);
-    }
+    // キャッシュ機能削除 - 常に最新データを取得
     
     this.logger.log('SheetsClient', 'スプレッドシート読み込み:', spreadsheetId, '(gid:', gid + ')');
     
@@ -368,11 +353,7 @@ class SheetsClient {
 
     const parsedData = this.parseSheetData(filteredData);
     
-    // キャッシュに保存
-    this._sheetDataCache.set(cacheKey, {
-      data: parsedData,
-      timestamp: now
-    });
+    // キャッシュ機能削除 - 保存しない
 
     return parsedData;
   }
@@ -691,20 +672,7 @@ class SheetsClient {
    * @returns {Promise<Object>} 解析されたデータ構造
    */
   async loadAutoAIData(spreadsheetId, gid = null) {
-    // キャッシュキーを生成
-    const cacheKey = `${spreadsheetId}_${gid}`;
-    const now = Date.now();
-    
-    // キャッシュを確認
-    if (this._sheetDataCache.has(cacheKey)) {
-      const cached = this._sheetDataCache.get(cacheKey);
-      if (now - cached.timestamp < this._cacheExpiry) {
-        this.logger.log("SheetsClient", "キャッシュからデータを返却");
-        return cached.data;
-      }
-      // 期限切れのキャッシュを削除
-      this._sheetDataCache.delete(cacheKey);
-    }
+    // キャッシュ機能を削除 - 常に最新データを取得
     
     this.logger.log(
       "SheetsClient",
@@ -969,22 +937,11 @@ class SheetsClient {
       sheetName: result.sheetName
     });
 
-    // キャッシュに保存
-    this._sheetDataCache.set(cacheKey, {
-      data: result,
-      timestamp: now
-    });
+    // キャッシュ機能削除 - 保存しない
 
     return result;
   }
   
-  /**
-   * キャッシュをクリア
-   */
-  clearSheetDataCache() {
-    this._sheetDataCache.clear();
-    this.logger.log("SheetsClient", "キャッシュをクリアしました");
-  }
 
   /**
    * バッチでセルを更新

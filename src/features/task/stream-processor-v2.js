@@ -109,7 +109,15 @@ export default class StreamProcessorV2 {
    * @returns {Promise<Object>} 実行結果
    */
   async processTaskStream(taskList, spreadsheetData, options = {}) {
-    // タスクリストが空の場合は早期リターン
+    this.spreadsheetData = spreadsheetData;
+    
+    // 動的モードの場合はタスクグループから処理
+    if (options.dynamicMode && !taskList) {
+      this.logger.log('[StreamProcessorV2] 動的モードでタスクグループ処理を開始');
+      return await this.processDynamicTaskGroups(spreadsheetData, options);
+    }
+    
+    // 通常モード：タスクリストが空の場合は早期リターン
     if (!taskList || taskList.tasks.length === 0) {
       this.logger.log('[StreamProcessorV2] タスクリストが空です');
       return {
@@ -120,8 +128,6 @@ export default class StreamProcessorV2 {
         totalTime: '0秒'
       };
     }
-
-    this.spreadsheetData = spreadsheetData;
     const isTestMode = options.testMode || false;
     const startTime = Date.now();
     
@@ -308,17 +314,11 @@ export default class StreamProcessorV2 {
       // ========================================
       this.logger.log(`[StreamProcessorV2] 📋 フェーズ1: ウィンドウ準備とテキスト入力`);
       
-      // バッチ内のすべての既存回答を一度にチェック（APIコールをまとめる）
-      const answerCheckPromises = batch.map(task => 
-        this.getCurrentAnswer(task).then(answer => ({ task, answer }))
-      );
-      
-      // 1秒間隔で実行してAPIレート制限を回避
-      const answerResults = [];
-      for (const promise of answerCheckPromises) {
-        answerResults.push(await promise);
-        await this.delay(1000); // APIコール間に1秒待機
-      }
+      // バッチ内のすべての既存回答を同期チェック（高速化）
+      const answerResults = batch.map(task => ({ 
+        task, 
+        answer: this.getCurrentAnswer(task) 
+      }));
       
       for (let index = 0; index < batch.length; index++) {
         const task = batch[index];
@@ -1531,7 +1531,7 @@ export default class StreamProcessorV2 {
     for (const task of tasks) {
       try {
         // スプレッドシートから現在の回答を取得
-        const currentAnswer = await this.getCurrentAnswer(task);
+        const currentAnswer = this.getCurrentAnswer(task);
         
         if (!currentAnswer || currentAnswer.trim() === '') {
           tasksToReprocess.push(task);
@@ -1539,8 +1539,6 @@ export default class StreamProcessorV2 {
           skippedCells.push(`${task.column}${task.row}`);
         }
         
-        // APIコール間に1秒待機してレート制限を回避
-        await this.delay(1000);
       } catch (error) {
         this.logger.error(`[StreamProcessorV2] ${task.column}${task.row}の回答確認エラー:`, error);
         // エラーの場合も再実行対象に追加
@@ -1580,24 +1578,33 @@ export default class StreamProcessorV2 {
   }
   
   /**
-   * タスクの現在の回答をスプレッドシートから取得
+   * タスクの現在の回答を既取得データから取得（高速化）
    */
-  async getCurrentAnswer(task) {
+  getCurrentAnswer(task) {
     try {
-      const { spreadsheetId, gid } = this.spreadsheetData;
-      const range = `${task.column}${task.row}`;
+      if (!this.spreadsheetData?.values) {
+        this.logger.warn(`[StreamProcessorV2] スプレッドシートデータが無効です`);
+        return '';
+      }
       
-      // getSheetDataを使用（getRangeは存在しない）
-      const response = await globalThis.sheetsClient.getSheetData(
-        spreadsheetId,
-        range,
-        gid
-      );
+      const rowIndex = task.row - 1; // 0ベースに変換
+      const columnIndex = task.columnIndex || this.columnToIndex(task.column);
       
-      // getSheetDataは配列を直接返す（response.valuesではない）
-      if (response && response.length > 0 && response[0].length > 0) {
-        const value = response[0][0];
-        this.logger.log(`[StreamProcessorV2] 📊 ${task.column}${task.row}の既存回答: "${value?.substring(0, 50)}..."`);
+      // 配列の範囲チェック
+      if (rowIndex < 0 || rowIndex >= this.spreadsheetData.values.length) {
+        this.logger.log(`[StreamProcessorV2] 📊 ${task.column}${task.row}: 行範囲外`);
+        return '';
+      }
+      
+      const row = this.spreadsheetData.values[rowIndex];
+      if (!row || columnIndex >= row.length) {
+        this.logger.log(`[StreamProcessorV2] 📊 ${task.column}${task.row}: 回答なし`);
+        return '';
+      }
+      
+      const value = row[columnIndex];
+      if (value && typeof value === 'string' && value.trim().length > 0) {
+        this.logger.log(`[StreamProcessorV2] 📊 ${task.column}${task.row}の既存回答: "${value.substring(0, 50)}..."`);
         return value;
       }
       
@@ -1935,7 +1942,7 @@ export default class StreamProcessorV2 {
         const position = index;
         
         // 既存回答チェック
-        const existingAnswer = await this.getCurrentAnswer(task);
+        const existingAnswer = this.getCurrentAnswer(task);
         if (existingAnswer && existingAnswer.trim() !== '') {
           skippedCells.push(`${task.column}${task.row}`);
           // タスクを完了扱いにして次へ
@@ -2372,11 +2379,20 @@ export default class StreamProcessorV2 {
         AIタイプ: promptGroup.aiType
       });
       
-      // このグループのタスクを生成（列制御・行制御を適用）
-      const groupTaskList = await this.taskGenerator.generateTasksForPromptGroup(
-        spreadsheetData,
-        groupIndex
-      );
+      // 動的タスク生成：プロンプト有り×回答無しをスキャン（API呼び出し0回）
+      const promptCols = promptGroup.promptColumns;
+      const answerCols = promptGroup.answerColumns.map(col => col.index);
+      const tasks = this.scanGroupTasks(spreadsheetData, promptCols, answerCols);
+      
+      // TaskListオブジェクト形式に変換（互換性維持）
+      const groupTaskList = {
+        tasks: tasks.map(task => ({
+          ...task,
+          aiType: promptGroup.aiType,
+          spreadsheetId: spreadsheetData.spreadsheetId,
+          gid: spreadsheetData.gid
+        }))
+      };
       
       if (!groupTaskList || groupTaskList.tasks.length === 0) {
         this.logger.log(`[StreamProcessorV2] グループ${groupIndex + 1}にタスクなし（すべて回答済みまたは列制御でスキップ）`);
@@ -2540,10 +2556,19 @@ export default class StreamProcessorV2 {
       const hasPromptData = this.checkPromptColumnsHaveData(promptGroup, spreadsheetData);
       
       if (isFirstGroup || hasPromptData) {
-        const groupTaskList = await this.taskGenerator.generateTasksForPromptGroup(
-          spreadsheetData,
-          i
-        );
+        // 動的タスク生成：プロンプト有り×回答無しをスキャン
+        const promptCols = promptGroup.promptColumns;
+        const answerCols = promptGroup.answerColumns.map(col => col.index);
+        const tasks = this.scanGroupTasks(spreadsheetData, promptCols, answerCols);
+        
+        const groupTaskList = {
+          tasks: tasks.map(task => ({
+            ...task,
+            aiType: promptGroup.aiType,
+            spreadsheetId: spreadsheetData.spreadsheetId,
+            gid: spreadsheetData.gid
+          }))
+        };
         
         if (groupTaskList && groupTaskList.tasks.length > 0) {
           this.logger.log(`[StreamProcessorV2] グループ${i + 1}から初期タスク生成: ${groupTaskList.tasks.length}個`);
@@ -3055,11 +3080,19 @@ export default class StreamProcessorV2 {
           AIタイプ: promptGroup.aiType
         });
         
-        // このプロンプトグループのタスクを生成
-        const groupTaskList = await this.taskGenerator.generateTasksForPromptGroup(
-          spreadsheetData,
-          groupIndex
-        );
+        // 動的タスク生成：プロンプト有り×回答無しをスキャン
+        const promptCols = promptGroup.promptColumns;
+        const answerCols = promptGroup.answerColumns.map(col => col.index);
+        const tasks = this.scanGroupTasks(spreadsheetData, promptCols, answerCols);
+        
+        const groupTaskList = {
+          tasks: tasks.map(task => ({
+            ...task,
+            aiType: promptGroup.aiType,
+            spreadsheetId: spreadsheetData.spreadsheetId,
+            gid: spreadsheetData.gid
+          }))
+        };
         
         if (!groupTaskList || groupTaskList.tasks.length === 0) {
           this.logger.log(`[StreamProcessorV2] グループ${groupIndex + 1}にタスクなし（すべて回答済み）`);
@@ -3339,5 +3372,440 @@ export default class StreamProcessorV2 {
       index = index * 26 + (column.charCodeAt(i) - 65) + 1;
     }
     return index - 1;
+  }
+
+  /**
+   * インデックスを列名に変換
+   */
+  indexToColumn(index) {
+    let column = '';
+    while (index >= 0) {
+      column = String.fromCharCode((index % 26) + 65) + column;
+      index = Math.floor(index / 26) - 1;
+    }
+    return column;
+  }
+
+  /**
+   * 行制御をチェック（generator.jsと同じロジック）
+   */
+  shouldProcessRow(rowNumber, rowControls) {
+    if (!rowControls || rowControls.length === 0) {
+      return true;
+    }
+    
+    // "この行のみ処理"が優先
+    const onlyControls = rowControls.filter(c => c.type === 'only');
+    if (onlyControls.length > 0) {
+      return onlyControls.some(c => c.row === rowNumber);
+    }
+    
+    // "この行から処理"
+    const fromControl = rowControls.find(c => c.type === 'from');
+    if (fromControl) {
+      if (rowNumber < fromControl.row) {
+        return false;
+      }
+    }
+    
+    // "この行で停止"
+    const untilControl = rowControls.find(c => c.type === 'until');
+    if (untilControl) {
+      if (rowNumber > untilControl.row) {
+        return false;
+      }
+    }
+    
+    return true;
+  }
+
+  /**
+   * 列制御をチェック（generator.jsと同じロジック）
+   */
+  shouldProcessColumn(promptGroup, columnControls) {
+    if (!columnControls || columnControls.length === 0) {
+      return true;
+    }
+    
+    // "この列のみ処理"が優先
+    const onlyControls = columnControls.filter(c => c.type === 'only');
+    if (onlyControls.length > 0) {
+      // グループ内のプロンプト列または回答列がマッチするか
+      const promptMatch = promptGroup.promptColumns.some(colIndex => 
+        onlyControls.some(ctrl => ctrl.index === colIndex)
+      );
+      const answerMatch = promptGroup.answerColumns.some(answerCol => {
+        const idx = typeof answerCol === 'number' ? answerCol : answerCol.index;
+        return onlyControls.some(ctrl => ctrl.index === idx);
+      });
+      
+      return promptMatch || answerMatch;
+    }
+    
+    // "この列から処理"と"この列で停止"
+    const fromControl = columnControls.find(c => c.type === 'from');
+    const untilControl = columnControls.find(c => c.type === 'until');
+    
+    // グループの範囲を判定
+    const groupStart = Math.min(...promptGroup.promptColumns);
+    const answerIndices = promptGroup.answerColumns.map(a => typeof a === 'number' ? a : a.index);
+    const groupEnd = Math.max(...answerIndices);
+    
+    let shouldProcess = true;
+    
+    if (fromControl && groupEnd < fromControl.index) {
+      shouldProcess = false;
+    }
+    
+    // "この列で停止" - 制御列を含むグループまでは処理する
+    if (untilControl && groupStart > untilControl.index) {
+      shouldProcess = false;
+      this.logger.log(`[StreamProcessorV2] 列制御「${untilControl.column}列で停止」により、グループ(開始:${this.indexToColumn(groupStart)})をスキップ`);
+    }
+    
+    return shouldProcess;
+  }
+
+  /**
+   * 行制御情報を取得（generator.jsと同じ形式）
+   */
+  getRowControl(data) {
+    const controls = [];
+    
+    // B列で制御文字列を探す（generator.jsと同じ）
+    for (let i = 0; i < data.values.length; i++) {
+      const row = data.values[i];
+      if (!row) continue;
+      
+      const cellB = row[1]; // B列
+      if (cellB && typeof cellB === 'string') {
+        if (cellB.includes('この行から処理')) {
+          controls.push({ type: 'from', row: i + 1 });
+        } else if (cellB.includes('この行で停止') || cellB.includes('この行の処理後に停止')) {
+          controls.push({ type: 'until', row: i + 1 });
+        } else if (cellB.includes('この行のみ処理')) {
+          controls.push({ type: 'only', row: i + 1 });
+        }
+      }
+    }
+    
+    return controls;
+  }
+
+  /**
+   * 列制御情報を取得（generator.jsと同じ形式）
+   */
+  getColumnControl(data) {
+    const controls = [];
+    
+    // 制御行1-10で制御文字列を探す（generator.jsと同じ）
+    for (let i = 0; i < Math.min(10, data.values.length); i++) {
+      const row = data.values[i];
+      if (!row) continue;
+      
+      for (let j = 0; j < row.length; j++) {
+        const cell = row[j];
+        if (cell && typeof cell === 'string') {
+          const column = this.indexToColumn(j);
+          
+          if (cell.includes('この列から処理')) {
+            controls.push({ type: 'from', column, index: j });
+          } else if (cell.includes('この列で停止') || cell.includes('この列の処理後に停止')) {
+            controls.push({ type: 'until', column, index: j });
+          } else if (cell.includes('この列のみ処理')) {
+            controls.push({ type: 'only', column, index: j });
+          }
+        }
+      }
+    }
+    
+    return controls;
+  }
+
+  /**
+   * バッチ完了を待機
+   */
+  async waitForBatchCompletion() {
+    // 簡単な待機処理（実際の処理は必要に応じて拡張）
+    await new Promise(resolve => setTimeout(resolve, 5000)); // 5秒待機
+  }
+
+  /**
+   * 動的タスク生成：プロンプト有り×回答無しのセルを特定
+   * @param {Object} spreadsheetData - スプレッドシートデータ
+   * @param {Array} promptCols - プロンプト列インデックス配列
+   * @param {Array} answerCols - 回答列インデックス配列  
+   * @returns {Array} タスクリスト
+   */
+  scanGroupTasks(spreadsheetData, promptCols, answerCols) {
+    const tasks = [];
+    
+    if (!spreadsheetData?.values || !Array.isArray(spreadsheetData.values)) {
+      this.logger.warn('[StreamProcessorV2] scanGroupTasks: 無効なスプレッドシートデータ');
+      return tasks;
+    }
+    
+    // 制御情報を取得
+    const rowControls = this.getRowControl(spreadsheetData);
+    const columnControls = this.getColumnControl(spreadsheetData);
+    
+    // 現在のグループ情報を作成（列制御チェック用）
+    const promptGroup = {
+      promptColumns: promptCols,
+      answerColumns: answerCols
+    };
+    
+    // 列制御チェック（グループ全体）
+    if (!this.shouldProcessColumn(promptGroup, columnControls)) {
+      this.logger.log(`[StreamProcessorV2] このグループは列制御によりスキップ`);
+      return tasks;
+    }
+    
+    // 作業行範囲を特定（通常は9行目以降）
+    const startRow = 8; // 0ベース（9行目）
+    const endRow = spreadsheetData.values.length;
+    
+    // カウンタ
+    let totalRowsChecked = 0;
+    let rowSkippedByControl = 0;
+    let promptFoundCount = 0;
+    let answerExistCount = 0;
+    
+    this.logger.log(`[StreamProcessorV2] 📊 グループタスクスキャン開始:`, {
+      プロンプト列: promptCols.map(idx => this.indexToColumn(idx)),
+      回答列: answerCols.map(idx => this.indexToColumn(idx)), 
+      対象行: `${startRow + 1}～${endRow}行目（計${endRow - startRow}行）`,
+      行制御: rowControls.length > 0 ? `${rowControls.length}件` : 'なし',
+      列制御: columnControls.length > 0 ? `${columnControls.length}件` : 'なし'
+    });
+    
+    for (let rowIndex = startRow; rowIndex < endRow; rowIndex++) {
+      totalRowsChecked++;
+      const row = spreadsheetData.values[rowIndex];
+      if (!row) continue;
+      
+      // 行制御チェック
+      if (!this.shouldProcessRow(rowIndex + 1, rowControls)) {
+        rowSkippedByControl++;
+        continue;
+      }
+      
+      // プロンプト列にデータがあるかチェック
+      const hasPrompt = promptCols.some(colIndex => {
+        const cellValue = row[colIndex];
+        return cellValue && typeof cellValue === 'string' && cellValue.trim().length > 0;
+      });
+      
+      if (!hasPrompt) continue;
+      promptFoundCount++;
+      
+      // 対応する回答列のチェック
+      for (const answerColIndex of answerCols) {
+        const answerValue = row[answerColIndex];
+        const hasAnswer = answerValue && typeof answerValue === 'string' && answerValue.trim().length > 0;
+        
+        if (hasAnswer) {
+          answerExistCount++;
+        } else {
+          // プロンプト有り×回答無し = タスク対象
+          tasks.push({
+            row: rowIndex + 1, // 1ベース行番号
+            column: this.indexToColumn(answerColIndex),
+            columnIndex: answerColIndex
+          });
+        }
+      }
+    }
+    
+    this.logger.log(`[StreamProcessorV2] 📊 グループタスクスキャン完了:`, {
+      全対象行: `${totalRowsChecked}行`,
+      行制御スキップ: `${rowSkippedByControl}行`,
+      プロンプト有り: `${promptFoundCount}行`,
+      既存回答有り: `${answerExistCount}セル`,
+      実際のタスク: `${tasks.length}個`
+    });
+    
+    return tasks;
+  }
+
+  /**
+   * 動的タスクグループ処理
+   * @param {Object} spreadsheetData - スプレッドシートデータ
+   * @param {Object} options - オプション
+   * @returns {Promise<Object>} 実行結果
+   */
+  async processDynamicTaskGroups(spreadsheetData, options = {}) {
+    const startTime = Date.now();
+    let totalCompleted = 0;
+    let totalFailed = 0;
+    
+    // SpreadsheetLoggerを初期化
+    await this.initializeSpreadsheetLogger();
+    
+    // タスクグループ情報を取得（optionsから渡されたものを使用）
+    const taskGroups = options.taskGroups || [];
+    
+    if (!taskGroups || taskGroups.length === 0) {
+      this.logger.warn('[StreamProcessorV2] タスクグループが見つかりません');
+      return {
+        success: false,
+        total: 0,
+        completed: 0,
+        failed: 0,
+        totalTime: '0秒',
+        error: 'タスクグループが見つかりません'
+      };
+    }
+    
+    this.logger.log(`[StreamProcessorV2] 🚀 動的タスクグループ処理開始: ${taskGroups.length}グループ`);
+    
+    // 各タスクグループを順番に処理
+    for (const group of taskGroups) {
+      this.logger.log(`[StreamProcessorV2] 📋 グループ処理開始: ${group.name} (${group.startColumn}-${group.endColumn}列)`);
+      
+      // グループの列情報からインデックス配列を作成
+      const promptColIndices = group.columnRange.promptColumns.map(col => this.columnToIndex(col));
+      const answerColIndices = group.columnRange.answerColumns.map(answerCol => {
+        // answerColumnsはオブジェクト配列の場合がある
+        const col = typeof answerCol === 'string' ? answerCol : answerCol.column;
+        return this.columnToIndex(col);
+      });
+      
+      this.logger.log(`[StreamProcessorV2] 列情報:`, {
+        プロンプト列: group.columnRange.promptColumns,
+        回答列: group.columnRange.answerColumns.map(a => typeof a === 'string' ? a : a.column),
+        プロンプトインデックス: promptColIndices,
+        回答インデックス: answerColIndices
+      });
+      
+      // このグループのタスクを動的にスキャン
+      const tasks = this.scanGroupTasks(
+        spreadsheetData,
+        promptColIndices,
+        answerColIndices
+      );
+      
+      if (tasks.length === 0) {
+        this.logger.log(`[StreamProcessorV2] ⏭️ ${group.name}: タスクなし、スキップ`);
+        continue;
+      }
+      
+      // タスクを処理
+      this.logger.log(`[StreamProcessorV2] 🔄 ${group.name}: ${tasks.length}個のタスク実行`);
+      
+      // タスクをTaskオブジェクト形式に変換して実行
+      for (let i = 0; i < tasks.length; i++) {
+        const taskInfo = tasks[i];
+        
+        // AIタイプを取得（グループから）
+        const answerCol = group.columnRange.answerColumns.find(col => {
+          const colStr = typeof col === 'string' ? col : col.column;
+          return this.columnToIndex(colStr) === taskInfo.columnIndex;
+        });
+        const aiType = answerCol?.aiType || 'Claude'; // デフォルトはClaude
+        
+        // タスクオブジェクトを作成
+        const task = {
+          id: `${taskInfo.column}${taskInfo.row}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+          column: taskInfo.column,
+          row: taskInfo.row,
+          aiType: aiType.toLowerCase() === 'chatgpt' ? 'chatgpt' : 
+                  aiType.toLowerCase() === 'gemini' ? 'gemini' :
+                  aiType.toLowerCase() === 'claude' ? 'claude' : 'claude',
+          // promptは削除（fetchPromptFromTaskで動的取得）
+          promptColumn: this.indexToColumn(promptColIndices[0]),
+          promptColumns: promptColIndices,  // 配列形式で設定（fetchPromptFromTaskが使用）
+          sheetName: spreadsheetData.sheetName || '不明',
+          model: spreadsheetData.modelRow?.[taskInfo.columnIndex] || '',
+          function: spreadsheetData.functionRow?.[taskInfo.columnIndex] || '',
+          createdAt: Date.now()
+        };
+        
+        try {
+          // 3つずつバッチ処理（位置を指定）
+          const position = i % 3;
+          await this.processTask(task, false, position);
+          
+          // 3つ処理したら待機
+          if ((i + 1) % 3 === 0 && i < tasks.length - 1) {
+            this.logger.log(`[StreamProcessorV2] 3タスク完了、次のバッチまで待機...`);
+            await this.waitForBatchCompletion();
+          }
+          
+          totalCompleted++;
+        } catch (error) {
+          this.logger.error(`[StreamProcessorV2] タスク実行エラー: ${task.column}${task.row}`, error);
+          totalFailed++;
+        }
+      }
+    }
+    
+    const totalTime = Math.round((Date.now() - startTime) / 1000);
+    
+    return {
+      success: true,
+      total: totalCompleted + totalFailed,
+      completed: totalCompleted,
+      failed: totalFailed,
+      totalTime: `${totalTime}秒`
+    };
+  }
+  
+  /**
+   * メニュー行からタスクグループ情報を抽出
+   * @param {Object} spreadsheetData - スプレッドシートデータ
+   * @returns {Array} タスクグループ配列
+   */
+  extractTaskGroups(spreadsheetData) {
+    if (!spreadsheetData?.values || !Array.isArray(spreadsheetData.values)) {
+      return [];
+    }
+    
+    // メニュー行を探す（A列が"メニュー"の行）
+    let menuRowIndex = -1;
+    for (let i = 0; i < spreadsheetData.values.length; i++) {
+      const row = spreadsheetData.values[i];
+      if (row && row[0] === 'メニュー') {
+        menuRowIndex = i;
+        break;
+      }
+    }
+    
+    if (menuRowIndex === -1) {
+      this.logger.warn('[StreamProcessorV2] メニュー行が見つかりません');
+      return [];
+    }
+    
+    const menuRow = spreadsheetData.values[menuRowIndex];
+    const groups = [];
+    
+    // デバッグ：メニュー行の内容を確認
+    this.logger.log('[StreamProcessorV2] メニュー行の内容:', menuRow.slice(0, 50));
+    
+    // AI列（3列セット）を検出してグループ化
+    for (let i = 1; i < menuRow.length; i++) {
+      const cellValue = menuRow[i];
+      if (cellValue && cellValue.includes('-')) {
+        this.logger.log(`[StreamProcessorV2] メニュー行[${i}]: "${cellValue}"`);
+        // "G-I", "J-L"のような形式を想定
+        const columns = cellValue.split('-').map(c => c.trim());
+        if (columns.length === 2) {
+          const startCol = columns[0];
+          const endCol = columns[1];
+          const startIdx = this.columnToIndex(startCol);
+          
+          // 3列セット（プロンプト、回答、ログ）として扱う
+          groups.push({
+            columns: [startCol, String.fromCharCode(startCol.charCodeAt(0) + 1), endCol],
+            promptColIndices: [startIdx],
+            answerColIndices: [startIdx + 1],
+            logColIndices: [startIdx + 2]
+          });
+        }
+      }
+    }
+    
+    this.logger.log(`[StreamProcessorV2] タスクグループ検出: ${groups.length}グループ`);
+    return groups;
   }
 }

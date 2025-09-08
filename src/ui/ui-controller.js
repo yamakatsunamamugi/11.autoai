@@ -1748,6 +1748,7 @@ async function processMultipleUrls(urls) {
   // まずスプレッドシートが読み込まれているか確認
   const storageResult = await chrome.storage.local.get(['savedTasks']);
   let savedTasks = storageResult.savedTasks;
+  let loadResponse = null; // スコープ外でも参照できるように定義
   
   if (!savedTasks || !savedTasks.tasks || savedTasks.tasks.length === 0) {
     // スプレッドシートが読み込まれていない場合、自動的に読み込む
@@ -1755,7 +1756,7 @@ async function processMultipleUrls(urls) {
     
     try {
       // loadSheetsBtnのクリック処理と同じロジックを実行
-      const loadResponse = await chrome.runtime.sendMessage({
+      loadResponse = await chrome.runtime.sendMessage({
         action: "loadSpreadsheets",
         urls: [currentUrl],
       });
@@ -1764,24 +1765,17 @@ async function processMultipleUrls(urls) {
         throw new Error("スプレッドシート読み込みエラー: " + (loadResponse?.error || "不明なエラー"));
       }
 
-      console.log("loadResponse内容:", loadResponse);
-      
-      // タスクはストレージに保存されているので、少し待ってから取得
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      const updatedStorage = await chrome.storage.local.get(['savedTasks']);
-      
-      if (updatedStorage.savedTasks && updatedStorage.savedTasks.tasks && updatedStorage.savedTasks.tasks.length > 0) {
-        // ストレージから取得
-        savedTasks = updatedStorage.savedTasks;
-      } else {
-        // それでも取得できない場合はTaskQueueから直接取得
-        const taskQueue = new (await import("../features/task/queue.js")).default();
-        savedTasks = await taskQueue.loadTaskList();
-        
-        if (!savedTasks || !savedTasks.tasks || savedTasks.tasks.length === 0) {
-          throw new Error("タスクなし");
-        }
+      // タスクグループが作成されていることを確認
+      if (!loadResponse.taskGroups || loadResponse.taskGroups.length === 0) {
+        throw new Error("タスクグループが作成されていません");
       }
+
+      console.log("loadResponse内容:", loadResponse);
+      console.log(`✅ ${loadResponse.taskGroups.length}個のタスクグループが準備完了`);
+      
+      // 動的タスク生成モードではタスクリストは不要
+      console.log("✅ 動的タスク生成モード - 実行時にタスクを判定します");
+      savedTasks = null; // タスクは実行時に動的生成
     } catch (error) {
       console.error("スプレッドシート自動読み込みエラー:", error);
       updateStatus("スプレッドシート読み込みエラー: " + error.message, "error");
@@ -1841,22 +1835,21 @@ async function processMultipleUrls(urls) {
       ) : 0;
     console.log("[UI] AI列数:", aiColumnsCount);
 
-    if (!savedTasks || !savedTasks.tasks || savedTasks.tasks.length === 0) {
-      console.error(
-        "[UI] タスクが見つかりません。AI列情報:",
-        savedTasks?.aiColumns,
-        "AI列数:",
-        aiColumnsCount
-      );
-      throw new Error("実行可能なタスクがありません");
+    // 動的タスク生成モードではsavedTasksは不要
+    // タスクグループが存在すれば実行可能
+    if (!loadResponse || !loadResponse.taskGroups || loadResponse.taskGroups.length === 0) {
+      console.error("[UI] タスクグループが見つかりません", loadResponse);
+      throw new Error("タスクグループが作成されていません。スプレッドシートを再読み込みしてください。");
     }
+    
+    console.log(`[UI] ✅ ${loadResponse.taskGroups.length}個のタスクグループで動的実行準備完了`);
 
     // タスクが生成されたら、ストリーミング処理を開始
     // 統合AIテストと同じstreamProcessTaskListを使用（統一化）
     const response = await Promise.race([
       chrome.runtime.sendMessage({
         action: "streamProcessTaskList",
-        taskList: savedTasks, // TaskListオブジェクトをそのまま送信
+        taskList: null, // 動的生成モードではタスクリストは不要
         spreadsheetId: spreadsheetId, // スプレッドシートIDを追加
         spreadsheetUrl: currentUrl, // URL情報も追加
         gid: gid, // シートIDも追加

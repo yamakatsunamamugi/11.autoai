@@ -85,7 +85,6 @@ import { SpreadsheetLogger } from "./src/features/logging/spreadsheet-logger.js"
 // Step 5 - タスク関連ファイル
 import "./src/features/task/generator.js";
 import TaskGenerator from "./src/features/task/generator.js";
-import TaskQueue from "./src/features/task/queue.js";
 import StreamProcessor from "./src/features/task/stream-processor.js";
 
 // V2版モジュール（静的インポート）
@@ -995,43 +994,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           }
           
 
-          // 4. タスクを生成
+          // 4. タスクグループ情報は作成済み（processedData.taskGroupsに格納）
+          // 実行時に各グループごとに動的にタスクを判定するため、起動時のタスク生成は不要
+          console.log("✅ タスクグループ準備完了 - 実行時に動的タスク判定を行います");
           
-          // V2モード切り替えフラグ
-          const USE_V2_MODE = true; // true: V2版を使用, false: 従来版を使用
-          
-          let taskGenerator;
-          if (USE_V2_MODE) {
-            taskGenerator = new TaskGeneratorV2();
-          } else {
-            taskGenerator = new TaskGenerator();
-          }
-          
-          const taskList = await taskGenerator.generateTasks(processedData);  // awaitを追加
-          
-          // taskListとtasksの存在を確認
-          if (!taskList || !taskList.tasks) {
-            console.error("タスク生成失敗 - taskList:", taskList);
-            const errorDetails = {
-              taskListExists: !!taskList,
-              tasksProperty: taskList ? !!taskList.tasks : false,
-              taskListType: typeof taskList,
-              spreadsheetData: processedData ? Object.keys(processedData) : null
-            };
-            console.error("詳細エラー情報:", errorDetails);
-            throw new Error(`タスク生成に失敗しました: タスクリストが空です (詳細: ${JSON.stringify(errorDetails)})`);
-          }
-          
-          // タスクが0件の場合の処理
-          if (taskList.tasks.length === 0) {
-            console.warn("タスクが0件生成されました。スプレッドシートに処理対象データがない可能性があります。");
-            throw new Error("タスクなし");
-          }
-          
-
-          // 5. タスクを保存
-          const taskQueue = new TaskQueue();
-          const saveResult = await taskQueue.saveTaskList(taskList);
+          // TaskQueue保存は不要（動的生成のため）
 
           // 6. レスポンスを返す（大きなデータを除外してメッセージサイズを削減）
           const response = {
@@ -1042,8 +1009,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             sheetName: processedData.sheetName,
             modelRow: processedData.modelRow,
             taskRow: processedData.taskRow,
-            taskCount: taskList.tasks ? taskList.tasks.length : 0,
-            taskQueueStatus: saveResult,
+            // タスクは実行時に動的生成するため、起動時は0件で正常
+            message: "タスクグループ作成完了 - 実行時に動的タスク判定"
           };
           sendResponse(response);
         } catch (error) {
@@ -1160,8 +1127,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       
     // ===== タスクリストストリーミング処理（AI Orchestratorから） =====
     case "streamProcessTaskList":
-      console.log(`[Background] 📋 タスクリストストリーミング処理:`, {
-        taskListSize: request.taskList?.tasks?.length || 0,
+      console.log(`[Background] 📋 動的タスク生成ストリーミング処理:`, {
+        isDynamicMode: !request.taskList,
         testMode: request.testMode,
         spreadsheetId: request.spreadsheetId,
         hasSpreadsheetUrl: !!request.spreadsheetUrl
@@ -1193,6 +1160,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           
           // スプレッドシートデータを取得
           let spreadsheetData;
+          let processedData = { taskGroups: [] }; // 初期化
+          
           if (request.spreadsheetId) {
             // スプレッドシートのデータを読み込み
             const sheetData = await globalThis.sheetsClient.loadAutoAIData(
@@ -1213,6 +1182,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               columns: spreadsheetData.values[0]?.length || 0,
               sheetName: spreadsheetData.sheetName
             });
+            
+            // スプレッドシートデータを処理してタスクグループを作成
+            processedData = processSpreadsheetData(sheetData);
+            console.log(`[Background] タスクグループ作成完了: ${processedData.taskGroups.length}グループ`);
           } else {
             // スプレッドシートIDがない場合は空のデータ
             spreadsheetData = {
@@ -1224,10 +1197,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             };
           }
           
-          // タスクリストを処理
-          const result = await processor.processTaskStream(request.taskList, spreadsheetData, {
+          // 動的タスク生成モード（タスクリストは実行時に生成）
+          const result = await processor.processTaskStream(null, spreadsheetData, {
             testMode: request.testMode || false,
-            taskListMode: true
+            dynamicMode: true,
+            taskGroups: processedData.taskGroups || []  // タスクグループ情報を渡す
           });
           
         } catch (error) {
