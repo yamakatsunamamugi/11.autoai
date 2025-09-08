@@ -1926,19 +1926,32 @@ export default class StreamProcessorV2 {
       let func = '';
       let ai = '';
       
-      if (promptFunctionValue === '通常') {
-        // 通常処理：プロンプト列から取得
-        model = modelRow[promptIndex] || '';
-        func = functionRow[promptIndex] || '通常';
-        ai = aiRow ? (aiRow[promptIndex] || '') : '';
-        this.logger.log(`[StreamProcessorV2] 通常処理: プロンプト列(${this.indexToColumn(promptIndex)})から取得 - AI: "${ai}", モデル: "${model}", 機能: "${func}"`);
-      } else {
+      // 判定理由をログ出力
+      const isMultiAI = task.multiAI === true;
+      const is3TypeGroup = task.groupType === '3type';
+      const judgmentReason = isMultiAI ? 'task.multiAI=true' : is3TypeGroup ? 'groupType=3type' : 'デフォルト（通常処理）';
+      
+      this.logger.log(`[StreamProcessorV2] 🔍 処理タイプ判定:`, {
+        multiAI: task.multiAI,
+        groupType: task.groupType,
+        promptFunctionValue,
+        判定結果: (isMultiAI || is3TypeGroup) ? '3種類AI' : '通常処理',
+        判定理由: judgmentReason
+      });
+      
+      if (isMultiAI || is3TypeGroup) {
         // 3種類AI：回答列から取得
         const answerColumnIndex = this.columnToIndex(task.column);
         model = modelRow[answerColumnIndex] || '';
         func = functionRow[answerColumnIndex] || '';
         ai = aiRow ? (aiRow[answerColumnIndex] || '') : '';
         this.logger.log(`[StreamProcessorV2] 3種類AI: 回答列(${task.column})から取得 - AI: "${ai}", モデル: "${model}", 機能: "${func}"`);
+      } else {
+        // 通常処理：プロンプト列から取得（機能値に関係なく）
+        model = modelRow[promptIndex] || '';
+        func = functionRow[promptIndex] || '';
+        ai = aiRow ? (aiRow[promptIndex] || '') : '';
+        this.logger.log(`[StreamProcessorV2] 通常処理: プロンプト列(${this.indexToColumn(promptIndex)})から取得 - AI: "${ai}", モデル: "${model}", 機能: "${func}"`);
       }
       
       return { model, function: func, ai };
