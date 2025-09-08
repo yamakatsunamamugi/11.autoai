@@ -537,7 +537,7 @@ export default class StreamProcessorV2 {
             if (modelResult && modelResult.success !== false) {
               // displayedModelを必ず設定（値がない場合はモデル名またはデフォルト値を使用）
               context.task.displayedModel = modelResult.displayedModel || context.task.model || 'デフォルト';
-              this.logger.log(`[StreamProcessorV2] ✅ モデル選択成功: ${context.task.model || 'Auto'} → ${context.task.displayedModel}`);
+              this.logger.log(`[StreamProcessorV2] ✅ モデル選択成功: "${context.task.model}" (空文字: ${context.task.model === ''}) → "${context.task.displayedModel}"`);
               modelSuccess = true;
             } else {
               throw new Error(`モデル選択失敗: ${context.cell}`);
@@ -681,7 +681,7 @@ export default class StreamProcessorV2 {
         if (retryResult.success && retryResult.result) {
           // displayedFunctionを必ず設定（値がない場合は機能名またはデフォルト値を使用）
           context.task.displayedFunction = retryResult.result.displayedFunction || context.task.function || '通常';
-          this.logger.log(`[StreamProcessorV2] ✅ 選択された機能を記録: ${context.task.function || '通常'} → ${context.task.displayedFunction}`);
+          this.logger.log(`[StreamProcessorV2] ✅ 選択された機能を記録: "${context.task.function}" (空文字: ${context.task.function === ''}) → "${context.task.displayedFunction}"`);
           
           // 特殊機能の場合の追加ログ
           if (isSpecialFunction) {
@@ -1147,12 +1147,12 @@ export default class StreamProcessorV2 {
           
         case 'model':
           // モデル選択のみ実行
-          this.logger.log(`🔍 [DEBUG] モデル選択実行開始 - タブ: ${tabId}, モデル: ${task.model}, AI: ${aiType}`);
+          this.logger.log(`🔍 [DEBUG] モデル選択実行開始 - タブ: ${tabId}, モデル: "${task.model}" (長さ: ${task.model?.length}), AI: ${aiType}, タスク: ${task.column}${task.row}`);
           
           result = await chrome.scripting.executeScript({
             target: { tabId },
             func: async (model, aiType) => {
-              console.log(`🔍 [DEBUG] タブ内モデル選択開始 - モデル: "${model}", AI: ${aiType}`);
+              console.log(`🔍 [DEBUG] タブ内モデル選択開始 - モデル: "${model}" (長さ: ${model?.length}, 空文字: ${model === ''}), AI: ${aiType}`);
               
               // AIタイプに応じたAutomationオブジェクトを取得
               const automationMap = {
@@ -1197,12 +1197,12 @@ export default class StreamProcessorV2 {
           
         case 'function':
           // 機能選択のみ実行
-          console.log(`🔍 [DEBUG] 機能選択実行開始 - タブ: ${tabId}, 機能: ${task.function}, AI: ${aiType}`);
+          this.logger.log(`🔍 [DEBUG] 機能選択実行開始 - タブ: ${tabId}, 機能: "${task.function}" (長さ: ${task.function?.length}), AI: ${aiType}, タスク: ${task.column}${task.row}`);
           
           result = await chrome.scripting.executeScript({
             target: { tabId },
             func: async (functionName, aiType) => {
-              console.log(`🔍 [DEBUG] タブ内実行開始 - 機能: "${functionName}", AI: ${aiType}`);
+              console.log(`🔍 [DEBUG] タブ内機能選択開始 - 機能: "${functionName}" (長さ: ${functionName?.length}, 空文字: ${functionName === ''}), AI: ${aiType}`);
               
               // AIタイプに応じたAutomationオブジェクトを取得
               const automationMap = {
@@ -3753,6 +3753,16 @@ export default class StreamProcessorV2 {
           return this.columnToIndex(colStr) === taskInfo.columnIndex;
         });
         const aiType = answerCol?.aiType || 'Claude'; // デフォルトはClaude
+        
+        // デバッグ: スプレッドシートデータの確認
+        this.logger.log(`[DEBUG] モデル/機能取得:`, {
+          column: taskInfo.column,
+          columnIndex: taskInfo.columnIndex,
+          modelRowData: spreadsheetData.modelRow?.data?.slice(taskInfo.columnIndex - 1, taskInfo.columnIndex + 2),
+          taskRowData: spreadsheetData.taskRow?.data?.slice(taskInfo.columnIndex - 1, taskInfo.columnIndex + 2),
+          modelValue: spreadsheetData.modelRow?.data?.[taskInfo.columnIndex],
+          functionValue: spreadsheetData.taskRow?.data?.[taskInfo.columnIndex]
+        });
         
         // タスクオブジェクトを作成
         const task = {
