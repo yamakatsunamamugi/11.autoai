@@ -1771,8 +1771,11 @@ export default class StreamProcessorV2 {
    * タスク用のウィンドウを作成
    * @param {Object} task - タスクオブジェクト
    * @param {number} position - ウィンドウ位置（0:左上、1:右上、2:左下）
+   * @param {number} retryCount - リトライ回数（デフォルト: 0）
    */
-  async createWindowForTask(task, position = 0) {
+  async createWindowForTask(task, position = 0, retryCount = 0) {
+    const maxRetries = 2; // 最大リトライ回数
+    
     try {
       // AIタイプを正規化（ChatGPT → chatgpt, Claude → claude, Gemini → gemini）
       const normalizedAIType = this.normalizeAIType(task.aiType);
@@ -1783,7 +1786,8 @@ export default class StreamProcessorV2 {
         throw new Error(`Unsupported AI type: ${task.aiType} (normalized: ${normalizedAIType})`);
       }
 
-      this.logger.log(`[StreamProcessorV2] ウィンドウ作成: ${task.aiType} (${normalizedAIType}) - ${url}`, {
+      const retryText = retryCount > 0 ? ` (リトライ ${retryCount}/${maxRetries})` : '';
+      this.logger.log(`[StreamProcessorV2] ウィンドウ作成: ${task.aiType} (${normalizedAIType}) - ${url}${retryText}`, {
         position: position,
         cell: `${task.column}${task.row}`
       });
@@ -1799,12 +1803,37 @@ export default class StreamProcessorV2 {
       }
 
       const tabId = window.tabs[0].id;
-      this.logger.log(`[StreamProcessorV2] ✅ ウィンドウ作成成功 - TabID: ${tabId} (位置: ${position})`);
+      this.logger.log(`[StreamProcessorV2] ✅ ウィンドウ作成成功 - TabID: ${tabId} (位置: ${position})${retryText}`);
       
       // ページの読み込み完了を待つ
       const pageLoaded = await this.waitForPageLoad(tabId, 30000);
       if (!pageLoaded) {
-        this.logger.warn(`[StreamProcessorV2] ⚠️ ページ読み込みが完了しませんでした: TabID ${tabId}`);
+        this.logger.warn(`[StreamProcessorV2] ⚠️ ページ読み込みが完了しませんでした: TabID ${tabId}${retryText}`);
+        
+        // タイムアウト時の処理：ウィンドウを閉じて再試行
+        if (retryCount < maxRetries) {
+          this.logger.log(`[StreamProcessorV2] 🔄 ウィンドウを閉じて再作成します (${retryCount + 1}/${maxRetries})`);
+          
+          try {
+            // 失敗したタブ/ウィンドウを閉じる
+            await chrome.tabs.remove(tabId);
+            await new Promise(resolve => setTimeout(resolve, 1000)); // 1秒待機
+          } catch (closeError) {
+            this.logger.warn(`[StreamProcessorV2] タブ閉じるエラー: ${closeError.message}`);
+          }
+          
+          // 再帰的にリトライ
+          return await this.createWindowForTask(task, position, retryCount + 1);
+        } else {
+          this.logger.error(`[StreamProcessorV2] ❌ 最大リトライ回数に達しました。ウィンドウ作成を諦めます: TabID ${tabId}`);
+          // 失敗したタブを閉じる
+          try {
+            await chrome.tabs.remove(tabId);
+          } catch (closeError) {
+            this.logger.warn(`[StreamProcessorV2] タブ閉じるエラー: ${closeError.message}`);
+          }
+          throw new Error(`Page load timeout after ${maxRetries} retries`);
+        }
       }
       
       return tabId;
@@ -1851,6 +1880,15 @@ export default class StreamProcessorV2 {
       const functionRow = this.spreadsheetData.values.find(row => row[0] === '機能');
       const aiRow = this.spreadsheetData.values.find(row => row[0] === 'AI');
       
+      // デバッグログ：スプレッドシートデータの構造確認
+      this.logger.log(`[StreamProcessorV2] 🔍 スプレッドシートデータ構造確認:`, {
+        totalRows: this.spreadsheetData.values.length,
+        modelRowFound: !!modelRow,
+        functionRowFound: !!functionRow,
+        aiRowFound: !!aiRow,
+        firstColumnValues: this.spreadsheetData.values.map((row, idx) => `${idx}: "${row[0] || '空'}"`)
+      });
+      
       if (!modelRow || !functionRow) {
         this.logger.warn('[StreamProcessorV2] モデル行または機能行が見つかりません');
         return { model: '', function: '', ai: '' };
@@ -1859,6 +1897,14 @@ export default class StreamProcessorV2 {
       // プロンプト列のインデックスを取得
       const promptIndex = task.promptColumns && task.promptColumns.length > 0 ? task.promptColumns[0] : null;
       
+      // デバッグログ：タスクとプロンプト列の情報
+      this.logger.log(`[StreamProcessorV2] 🔍 タスク情報確認:`, {
+        taskColumn: task.column,
+        promptColumns: task.promptColumns,
+        promptIndex,
+        promptIndexType: typeof promptIndex
+      });
+      
       if (!promptIndex) {
         this.logger.warn('[StreamProcessorV2] プロンプト列が見つかりません');
         return { model: '', function: '', ai: '' };
@@ -1866,6 +1912,15 @@ export default class StreamProcessorV2 {
       
       // プロンプト列の機能値で通常処理かどうか判定
       const promptFunctionValue = functionRow[promptIndex] || '';
+      
+      // デバッグログ：各行の値確認
+      this.logger.log(`[StreamProcessorV2] 🔍 行の値確認:`, {
+        promptIndex,
+        promptColumn: this.indexToColumn(promptIndex),
+        promptFunctionValue,
+        promptModelValue: modelRow[promptIndex] || '',
+        promptAiValue: aiRow ? (aiRow[promptIndex] || '') : 'AI行なし'
+      });
       
       let model = '';
       let func = '';
