@@ -1448,6 +1448,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return true;
 
     // ===== スプレッドシート読み込み（ColumnProcessor用） =====
+    // 注意: このケースは line 784 で既に処理されているため、コメントアウト
+    // 重複によるエラーを防ぐため
+    /*
     case "loadSpreadsheet":
       (async () => {
         try {
@@ -1470,6 +1473,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         }
       })();
       return true;
+    */
 
     // ===== プロンプト動的取得（V2用） =====
     case "fetchPromptFromSpreadsheet":
