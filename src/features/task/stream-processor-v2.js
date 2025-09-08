@@ -2356,18 +2356,13 @@ export default class StreamProcessorV2 {
       if (this.sheetsClient && groupIndex < promptGroups.length - 1) {
         try {
           this.logger.log('[StreamProcessorV2] 📊 スプレッドシートを再読み込み中...');
-          const updatedData = await this.sheetsClient.readSpreadsheet();
+          const updatedData = await this.sheetsClient.loadAutoAIData(
+            this.spreadsheetData.spreadsheetId,
+            this.spreadsheetData.gid
+          );
           if (updatedData) {
-            // データ構造に応じて更新
-            if (updatedData.values) {
-              spreadsheetData.values = updatedData.values;
-            } else if (updatedData.data && updatedData.data.values) {
-              spreadsheetData.values = updatedData.data.values;
-            } else if (updatedData.data) {
-              spreadsheetData.data = updatedData.data;
-            } else {
-              spreadsheetData = updatedData;
-            }
+            // 全体のデータ構造を更新
+            Object.assign(spreadsheetData, updatedData);
             this.logger.log('[StreamProcessorV2] ✅ スプレッドシート再読み込み完了');
           }
         } catch (error) {
@@ -2560,9 +2555,13 @@ export default class StreamProcessorV2 {
       if (iteration > 1 && this.sheetsClient) {
         try {
           this.logger.log('[StreamProcessorV2] 📊 スプレッドシートデータを再読み込み中...');
-          const updatedData = await this.sheetsClient.readSpreadsheet();
-          if (updatedData && updatedData.data) {
-            spreadsheetData.data = updatedData.data;
+          const updatedData = await this.sheetsClient.loadAutoAIData(
+            spreadsheetData.spreadsheetId,
+            spreadsheetData.gid
+          );
+          if (updatedData) {
+            // 全体のデータ構造を更新
+            Object.assign(spreadsheetData, updatedData);
             this.logger.log('[StreamProcessorV2] ✅ スプレッドシートデータ再読み込み完了');
           }
         } catch (error) {

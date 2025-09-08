@@ -146,7 +146,10 @@ export class DynamicTaskQueue {
     // スプレッドシートデータを再読み込み
     if (this.sheetsClient) {
       try {
-        const updatedData = await this.sheetsClient.readSpreadsheet();
+        const updatedData = await this.sheetsClient.loadAutoAIData(
+          this.spreadsheetData.spreadsheetId,
+          this.spreadsheetData.gid
+        );
         if (updatedData) {
           // データ構造に応じて更新
           if (updatedData.values) {
