@@ -9,6 +9,7 @@
  * - メニュー操作（モデル選択、機能選択）の共通処理
  * - メッセージ送信・応答待機の共通処理
  * - AI別のクリック戦略の実装
+ * - 統一された待機時間設定を使用
  * 
  * 【ファイル間の関係】
  * ui-selectors.js（セレクタ定義）→ 当ファイル → 各AI個別ファイル
@@ -19,10 +20,23 @@
  * 
  * 【依存関係】
  * - src/config/ui-selectors.js: UIセレクタ定義
+ * - automations/v2/ai-wait-config.js: 待機時間設定
  * - 各AI個別ファイル: このハンドラーを使用
  */
 (() => {
   "use strict";
+  
+  // 統一された待機時間設定を取得
+  const AI_WAIT_CONFIG = window.AI_WAIT_CONFIG || {
+    INITIAL_WAIT: 30000,
+    MAX_WAIT: 300000,
+    CHECK_INTERVAL: 2000,
+    TINY_WAIT: 500,
+    SHORT_WAIT: 1000,
+    MEDIUM_WAIT: 2000,
+    ELEMENT_SEARCH_WAIT: 5000,
+    MENU_WAIT: 8000
+  };
 
   // ========================================
   // UI_SELECTORSを読み込み
@@ -178,23 +192,23 @@
   // ========================================
   const CONFIG = {
     DELAYS: {
-      elementSearch: 100,    // 要素検索の間隔
-      click: 50,            // クリック後の待機
-      textInput: 500,       // テキスト入力後の待機
-      betweenActions: 1000, // アクション間の待機
-      menuOpen: 2000,       // メニュー表示待機（1500→2000ms）
-      menuClose: 1000,      // メニュー閉じる待機
-      modelSwitch: 2000,    // モデル切替待機
-      submenuOpen: 1000,    // サブメニュー表示待機
-      submit: 1000,         // 送信後の待機
-      responseCheck: 500    // 応答チェック間隔
+      elementSearch: 100,                         // 要素検索の間隔
+      click: 50,                                  // クリック後の待機
+      textInput: AI_WAIT_CONFIG.TINY_WAIT,       // テキスト入力後の待機
+      betweenActions: AI_WAIT_CONFIG.SHORT_WAIT, // アクション間の待機
+      menuOpen: AI_WAIT_CONFIG.MEDIUM_WAIT,      // メニュー表示待機
+      menuClose: AI_WAIT_CONFIG.SHORT_WAIT,      // メニュー閉じる待機
+      modelSwitch: AI_WAIT_CONFIG.MEDIUM_WAIT,   // モデル切替待機
+      submenuOpen: AI_WAIT_CONFIG.SHORT_WAIT,    // サブメニュー表示待機
+      submit: AI_WAIT_CONFIG.SHORT_WAIT,         // 送信後の待機
+      responseCheck: AI_WAIT_CONFIG.TINY_WAIT    // 応答チェック間隔
     },
     TIMEOUTS: {
-      elementSearch: 3000,  // 要素検索のタイムアウト
-      menuWait: 8000,       // メニュー表示待機（5000→8000ms）
-      responseWait: 60000   // 応答待機のデフォルト
+      elementSearch: AI_WAIT_CONFIG.ELEMENT_SEARCH_WAIT,  // 要素検索のタイムアウト
+      menuWait: AI_WAIT_CONFIG.MENU_WAIT,                 // メニュー表示待機
+      responseWait: AI_WAIT_CONFIG.MAX_WAIT                // 応答待機のデフォルト
     },
-    claudeWaitTime: 500,    // Claude専用待機時間
+    claudeWaitTime: AI_WAIT_CONFIG.TINY_WAIT,    // Claude専用待機時間
     maxRetries: 3
   };
 
@@ -718,6 +732,23 @@
       
       if (!stopButton) {
         // 停止ボタンがない = 応答完了
+        
+        // [DEBUG] 停止ボタン消滅時のDOM状態
+        console.log('🔍 [DEBUG] 停止ボタン消滅時のDOM:', {
+          timestamp: new Date().toISOString(),
+          aiType: ai,
+          elapsedTime: Date.now() - startTime,
+          messageContents: document.querySelectorAll('message-content').length,
+          markdowns: document.querySelectorAll('.markdown').length,
+          modelResponseTexts: document.querySelectorAll('.model-response-text').length,
+          responseTexts: Array.from(document.querySelectorAll('.model-response-text'))
+            .map((el, idx) => ({
+              index: idx,
+              length: el.textContent?.length || 0,
+              preview: el.textContent?.substring(0, 100)
+            }))
+        });
+        
         await wait(1000); // 念のため1秒待つ
         
         // 応答要素の存在を確認

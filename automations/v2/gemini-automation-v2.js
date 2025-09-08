@@ -3,6 +3,11 @@
  * 
  * スプレッドシートからのタスクを受け取り、Geminiで自動実行する
  * V2の堅牢なロジックを保ちながらシンプルな構造を実現
+ * 
+ * 待機時間設定:
+ * - 初期待機: 30秒（全モード統一）
+ * - 最大待機: 5分（通常モード・Canvasモード共通）
+ * - チェック間隔: 2秒
  */
 
 (function() {
@@ -476,7 +481,7 @@
                 } else if (isCanvasMode) {
                     // Canvasモード: 30秒初期待機 + テキスト変化監視
                     log("Canvasモード: 初期待機30秒...");
-                    await wait(30000);
+                    await wait(30000);  // 統一: 30秒
                     log("Canvasモード: テキスト生成の監視を開始します。");
                     
                     let lastLength = -1;
@@ -504,11 +509,11 @@
                     
                 } else {
                     // 通常モード: 停止ボタンが消えるまで待機
-                    log("通常モード: 初期待機10秒...");
-                    await wait(10000);
+                    log("通常モード: 初期待機30秒...");
+                    await wait(30000);  // 統一: 30秒
                     
                     let waitTime = 0;
-                    const maxWait = 60000;
+                    const maxWait = 300000;  // 統一: 5分
                     
                     const checker = setInterval(() => {
                         if (!findElement(['button.send-button.stop', 'button.stop'])) {
@@ -519,7 +524,7 @@
                         
                         if (waitTime >= maxWait) {
                             clearInterval(checker);
-                            reject(new Error("応答が60秒以内に完了しませんでした。"));
+                            reject(new Error("応答が5分以内に完了しませんでした。"));
                             return;
                         }
                         
@@ -1166,9 +1171,9 @@
                         retryCount++;
                         log(`🎨 Canvasモード: 追加監視試行 ${retryCount}/${maxRetries}`, 'info');
                         
-                        // 初期待機を短縮（10秒）
-                        log('🎨 Canvasモード: 追加待機10秒...', 'info');
-                        await wait(10000);
+                        // 初期待機を統一（30秒）
+                        log('🎨 Canvasモード: 追加待機30秒...', 'info');
+                        await wait(30000);  // 統一: 30秒
                     
                     log('🎨 Canvasモード: テキスト生成の監視を開始します。', 'info');
                     
@@ -1261,10 +1266,10 @@
             } else {
                 // 通常モード: 既存の処理
                 log("通常モード: 応答待機開始...");
-                await wait(10000); // 初期待機
+                await wait(30000); // 初期待機を30秒に統一
                 
                 let waitTime = 0;
-                const maxWait = 60000;
+                const maxWait = 300000;  // 最大待機を5分に統一
                 
                 // 停止ボタンが消えるまで待機
                 await new Promise((resolve) => {
@@ -1277,7 +1282,7 @@
                         
                         if (waitTime >= maxWait) {
                             clearInterval(checker);
-                            resolve("応答待機がタイムアウトしました（60秒）。処理を続行します。");
+                            resolve("応答待機がタイムアウトしました（5分）。処理を続行します。");
                             return;
                         }
                         
@@ -1293,6 +1298,19 @@
             // 応答テキストを取得
             log('📝 [GeminiV2] 応答テキスト取得開始', 'info');
             
+            // [DEBUG] DOM状態の確認
+            console.log('🔍 [DEBUG] Gemini応答取得時のDOM状態:', {
+                timestamp: new Date().toISOString(),
+                messageContents: document.querySelectorAll('.message-content').length,
+                modelResponseTexts: document.querySelectorAll('.model-response-text').length,
+                proseMirrors: document.querySelectorAll('.ProseMirror').length,
+                allTexts: Array.from(document.querySelectorAll('.model-response-text, .ProseMirror')).map(el => ({
+                    className: el.className,
+                    textLength: el.textContent?.length || 0,
+                    preview: el.textContent?.substring(0, 200)
+                }))
+            });
+            
             let responseText = '';
             
             if (isCanvasMode) {
@@ -1300,6 +1318,13 @@
                 if (typeof canvasResponseText !== 'undefined' && canvasResponseText) {
                     responseText = canvasResponseText;
                     log(`✅ [GeminiV2] Canvas応答使用: ${responseText.length}文字`, 'success');
+                    
+                    // [DEBUG] Canvas取得テキストの詳細
+                    console.log('🔍 [DEBUG] Canvas取得テキスト:', {
+                        length: responseText.length,
+                        preview: responseText.substring(0, 500),
+                        fullText: responseText
+                    });
                     if (responseText.length <= 200) {
                         log(`Canvas内容: ${responseText}`, 'info');
                     } else {
@@ -1333,9 +1358,28 @@
                     '.model-message'
                 ]);
                 
+                // [DEBUG] 通常応答要素の詳細
+                console.log('🔍 [DEBUG] 通常応答要素の詳細:', {
+                    elementCount: responseElements.length,
+                    elements: Array.from(responseElements).map((el, idx) => ({
+                        index: idx,
+                        className: el.className,
+                        textLength: el.textContent?.length || 0,
+                        preview: el.textContent?.substring(0, 200)
+                    }))
+                });
+                
                 if (responseElements.length > 0) {
                     const lastResponse = responseElements[responseElements.length - 1];
                     responseText = lastResponse.textContent?.trim() || '';
+                    
+                    // [DEBUG] 最後の応答要素の詳細
+                    console.log('🔍 [DEBUG] 最後の応答要素から取得:', {
+                        length: responseText.length,
+                        preview: responseText.substring(0, 500),
+                        fullText: responseText
+                    });
+                    
                     if (responseText) {
                         log(`✅ [GeminiV2] 通常応答取得: ${responseText.substring(0, 100)}...`, 'success');
                     }
@@ -1369,11 +1413,34 @@
             
             if (responseText) {
                 log(`✅ [GeminiV2] 応答取得完了: ${responseText.length}文字`, 'success');
+                
+                // [DEBUG] 最終的に返すテキスト
+                console.log('🔍 [DEBUG] Gemini最終応答テキスト:', {
+                    timestamp: new Date().toISOString(),
+                    length: responseText.length,
+                    preview: responseText.substring(0, 500),
+                    fullText: responseText,
+                    isCanvasMode: isCanvasMode
+                });
+                
                 return {
                     success: true,
                     response: responseText
                 };
             } else {
+                // [DEBUG] 応答取得失敗時のDOM状態
+                console.log('🔍 [DEBUG] 応答取得失敗時のDOM:', {
+                    timestamp: new Date().toISOString(),
+                    bodyTextLength: document.body.textContent?.length || 0,
+                    visibleElements: Array.from(document.querySelectorAll('*')).filter(el => 
+                        el.offsetHeight > 0 && el.textContent?.trim().length > 100
+                    ).map(el => ({
+                        tagName: el.tagName,
+                        className: el.className,
+                        textLength: el.textContent?.length || 0
+                    }))
+                });
+                
                 throw new Error('応答テキストを取得できませんでした');
             }
             

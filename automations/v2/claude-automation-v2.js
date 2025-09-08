@@ -5,13 +5,26 @@
  * - テスト済みのロジックをそのまま使用
  * - モデル選択・機能選択・応答待機・テキスト取得の完全移植
  * - Deep Research対応（最大40分待機）
+ * - 統一された待機時間設定を使用
  * 
- * @version 2.1.0
+ * @version 2.2.0
  */
 (function() {
     'use strict';
     
     console.log(`Claude Automation V2 - 初期化時刻: ${new Date().toLocaleString('ja-JP')}`);
+    
+    // 統一された待機時間設定を取得
+    const AI_WAIT_CONFIG = window.AI_WAIT_CONFIG || {
+        INITIAL_WAIT: 30000,
+        MAX_WAIT: 300000,
+        CHECK_INTERVAL: 2000,
+        DEEP_RESEARCH_WAIT: 2400000,
+        SHORT_WAIT: 1000,
+        MEDIUM_WAIT: 2000,
+        STOP_BUTTON_INITIAL_WAIT: 30000,
+        STOP_BUTTON_DISAPPEAR_WAIT: 300000
+    };
     
     // ui-selectorsからインポート（Chrome拡張機能のインジェクトコンテキスト）
     const UI_SELECTORS = window.UI_SELECTORS || {};
@@ -553,7 +566,7 @@
             
             let stopButtonFound = false;
             let waitCount = 0;
-            const maxInitialWait = 120; // 初期待機最大2分
+            const maxInitialWait = AI_WAIT_CONFIG.STOP_BUTTON_INITIAL_WAIT / 1000; // 統一設定: 30秒
             
             while (!stopButtonFound && waitCount < maxInitialWait) {
                 const deepResearchSelectors = getDeepResearchSelectors();
@@ -620,7 +633,7 @@
             console.log('\n【ステップ1-4】回答停止ボタンが出現するまで待機');
             stopButtonFound = false;
             waitCount = 0;
-            const maxWaitCount = 2400; // 最大40分
+            const maxWaitCount = AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT / 1000; // 統一設定: 40分
             
             while (!stopButtonFound && waitCount < maxWaitCount) {
                 const deepResearchSelectors = getDeepResearchSelectors();
@@ -646,7 +659,7 @@
                 console.log('\n【ステップ1-5】回答停止ボタンが10秒間消滅するまで待機');
                 let stopButtonGone = false;
                 let disappearWaitCount = 0;
-                const maxDisappearWait = 2400; // 最大40分
+                const maxDisappearWait = AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT / 1000; // 統一設定: 40分
                 let lastLogTime = Date.now();
                 
                 while (!stopButtonGone && disappearWaitCount < maxDisappearWait) {
@@ -944,7 +957,7 @@ ${prompt}`;
                 console.log('\n【ステップ8-1】送信停止ボタンが出てくるまで待機（最大60秒）');
                 let stopButtonFound = false;
                 let waitCount = 0;
-                const maxWaitCount = 60; // 30秒→60秒に延長
+                const maxWaitCount = AI_WAIT_CONFIG.STOP_BUTTON_INITIAL_WAIT / 1000; // 統一設定: 30秒
                 
                 // 停止ボタンの出現を待機
                 while (!stopButtonFound && waitCount < maxWaitCount) {
@@ -1021,7 +1034,7 @@ ${prompt}`;
                     console.log('停止ボタンが10秒間消えるまで待機（最大5分）');
                     let stopButtonGone = false;
                     let disappearWaitCount = 0;
-                    const maxDisappearWait = 300;
+                    const maxDisappearWait = AI_WAIT_CONFIG.STOP_BUTTON_DISAPPEAR_WAIT / 1000; // 統一設定: 5分
                     
                     while (!stopButtonGone && disappearWaitCount < maxDisappearWait) {
                         let currentStopElement = null;

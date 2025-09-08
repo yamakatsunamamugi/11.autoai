@@ -6,12 +6,25 @@
 class AuthService {
   constructor() {
     this.logger = typeof logger !== "undefined" ? logger : console;
+    
+    // トークンキャッシュ
+    this._tokenCache = null;
+    this._tokenTimestamp = null;
+    this._tokenExpiry = 50 * 60 * 1000; // 50分間有効（Google tokenは通常1時間）
   }
 
   /**
-   * OAuth2認証トークンを取得
+   * OAuth2認証トークンを取得（キャッシュ機能付き）
    */
   async getAuthToken() {
+    const now = Date.now();
+    
+    // キャッシュが有効な場合は返す
+    if (this._tokenCache && this._tokenTimestamp && 
+        (now - this._tokenTimestamp) < this._tokenExpiry) {
+      return this._tokenCache;
+    }
+    
     return new Promise((resolve, reject) => {
       chrome.identity.getAuthToken({ interactive: true }, (token) => {
         if (chrome.runtime.lastError) {
@@ -22,6 +35,10 @@ class AuthService {
           );
           reject(chrome.runtime.lastError);
         } else {
+          // トークンをキャッシュ
+          this._tokenCache = token;
+          this._tokenTimestamp = now;
+          
           this.logger.log("AuthService", "Auth token obtained successfully");
           resolve(token);
         }
@@ -60,11 +77,24 @@ class AuthService {
    * 認証をクリア（ログアウト）
    */
   async clearAuth() {
+    // キャッシュもクリア
+    this._tokenCache = null;
+    this._tokenTimestamp = null;
+    
     return new Promise((resolve) => {
       chrome.identity.removeCachedAuthToken({}, () => {
         resolve();
       });
     });
+  }
+  
+  /**
+   * トークンキャッシュをクリア
+   */
+  clearTokenCache() {
+    this._tokenCache = null;
+    this._tokenTimestamp = null;
+    this.logger.log("AuthService", "Token cache cleared");
   }
 }
 

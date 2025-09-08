@@ -2517,6 +2517,15 @@ async function getResponseWithCanvas() {
       if (window.ClaudeAutomation?.getResponse) {
         console.log(`[Claude] ClaudeAutomation.getResponse()を使用`);
         const response = await window.ClaudeAutomation.getResponse();
+        
+        // [DEBUG] ClaudeAutomation.getResponse結果
+        console.log('🔍 [DEBUG] ClaudeAutomation.getResponse結果:', {
+          timestamp: new Date().toISOString(),
+          responseLength: response?.length || 0,
+          responsePreview: response?.substring(0, 500),
+          fullResponse: response
+        });
+        
         return response;
       }
       

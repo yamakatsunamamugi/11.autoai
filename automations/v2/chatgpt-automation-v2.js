@@ -6,14 +6,29 @@
  * - モデル選択・機能選択・応答待機・テキスト取得の完全移植
  * - Deep Research/エージェントモード対応（最大40分待機）
  * - ChatGPT Canvas機能対応（prosemirror-editor-containerからの取得）
+ * - 統一された待機時間設定を使用
  * 
- * @version 2.2.0
- * @updated 2024-12-05 Canvas機能のテキスト取得を優先的に処理
+ * @version 2.3.0
+ * @updated 2024-12-05 統一された待機時間設定を適用
  */
 (function() {
     'use strict';
     
     console.log(`ChatGPT Automation V2 - 初期化時刻: ${new Date().toLocaleString('ja-JP')}`);
+    
+    // 統一された待機時間設定を取得
+    const AI_WAIT_CONFIG = window.AI_WAIT_CONFIG || {
+        INITIAL_WAIT: 30000,
+        MAX_WAIT: 300000,
+        CHECK_INTERVAL: 2000,
+        DEEP_RESEARCH_WAIT: 2400000,
+        MICRO_WAIT: 100,
+        TINY_WAIT: 500,
+        SHORT_WAIT: 1000,
+        MEDIUM_WAIT: 2000,
+        LONG_WAIT: 3000,
+        STOP_BUTTON_DISAPPEAR_WAIT: 300000
+    };
     
     // ui-selectorsからインポート（Chrome拡張機能のインジェクトコンテキスト）
     const UI_SELECTORS = window.UI_SELECTORS || {};
@@ -217,7 +232,7 @@
             }
             
             if (retry < maxRetries - 1) {
-                await sleep(500);
+                await sleep(AI_WAIT_CONFIG.TINY_WAIT);
             }
         }
         
@@ -255,7 +270,7 @@
                 if (i % 10 === 0 && i > 0) {
                     log(`停止ボタン待機中... ${i}秒経過`, 'info');
                 }
-                await sleep(1000);
+                await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
             }
             
             if (!stopBtn) {
@@ -285,14 +300,14 @@
                     log(`停止ボタン存在確認中... (${minutes}分${seconds}秒経過 / 2分まで)`, 'info');
                 }
                 
-                await sleep(1000);
+                await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
             }
             
             // 1-3: 2分以内に停止ボタンが消滅した場合
             if (disappeared) {
                 log('1-3. 回答停止が2分以内に消滅したため、「いいから元のプロンプトを確認して作業をして」と再送信', 'step');
                 
-                await sleep(2000); // 少し待機
+                await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT); // 少し待機
                 
                 // テキスト入力欄を取得
                 const input = await findElement(SELECTORS.textInput, 'テキスト入力欄');
@@ -318,14 +333,14 @@
                 }
                 
                 log(`再送信メッセージ入力完了: "${retryMessage}"`, 'success');
-                await sleep(1000);
+                await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
                 
                 // 送信ボタンをクリック
                 const sendBtn = await findElement(SELECTORS.sendButton, '送信ボタン');
                 if (sendBtn) {
                     sendBtn.click();
                     log('再送信しました', 'success');
-                    await sleep(3000);
+                    await sleep(AI_WAIT_CONFIG.LONG_WAIT);
                     
                     // 再送信後、停止ボタンが再出現するのを待つ
                     for (let i = 0; i < 30; i++) {
@@ -334,7 +349,7 @@
                             log('再送信後、停止ボタンが再表示されました', 'success');
                             break;
                         }
-                        await sleep(1000);
+                        await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
                     }
                 } else {
                     log('送信ボタンが見つかりません', 'error');
@@ -346,7 +361,7 @@
             // 1-4: 回答停止ボタンが10秒間連続で消滅するまで待機（最大40分）
             log('1-4. 回答停止ボタンが10秒間連続で消滅するまで待機（最大40分）', 'step');
             
-            const maxWaitTime = 40 * 60; // 40分 = 2400秒
+            const maxWaitTime = AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT / 1000; // 統一設定: 40分
             let consecutiveAbsent = 0;
             
             for (let i = 0; i < maxWaitTime; i++) {
@@ -376,14 +391,14 @@
                     log(`待機中... (${minutes}分${seconds}秒経過 / 最大40分)`, 'info');
                 }
                 
-                await sleep(1000);
+                await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
             }
             
             if (consecutiveAbsent < 10) {
                 log('最大待機時間（40分）に達しました', 'warning');
             }
             
-            await sleep(2000);
+            await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
             log('Deep Research/エージェントモード特別処理完了', 'success');
             return true;
             
@@ -430,7 +445,7 @@
             const isFirstTask = !window.ChatGPTAutomationV2._initialized;
             if (isFirstTask) {
                 log('初回タスク実行を検知。追加の初期化待機を行います', 'info');
-                await sleep(3000); // 初回は3秒待機
+                await sleep(AI_WAIT_CONFIG.LONG_WAIT); // 初回は3秒待機
                 window.ChatGPTAutomationV2._initialized = true;
             }
             
@@ -448,7 +463,7 @@
                 }
                 
                 if (!allElementsReady) {
-                    await sleep(2000);
+                    await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
                     retryCount++;
                 }
             }
@@ -459,14 +474,14 @@
             
             // 2. React/DOM の安定化待機
             log('DOM安定化待機中...', 'info');
-            await sleep(1500);
+            await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT - 500);
             
             // 3. 既存の開いているメニューを全て閉じる
             const openMenus = document.querySelectorAll('[role="menu"][data-state="open"]');
             if (openMenus.length > 0) {
                 log(`開いているメニュー(${openMenus.length}個)を閉じます`, 'info');
                 document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape' }));
-                await sleep(500);
+                await sleep(AI_WAIT_CONFIG.TINY_WAIT);
             }
             
             log('ページ初期化チェック完了', 'success');
@@ -487,9 +502,9 @@
                 const modelButton = await findElement(SELECTORS.modelButton, 'モデル切り替えボタン');
                 if (modelButton) {
                     modelButton.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
-                    await sleep(100);
+                    await sleep(AI_WAIT_CONFIG.MICRO_WAIT);
                     modelButton.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
-                    await sleep(1500);
+                    await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT - 500);
                     
                     const modelMenu = await findElement(SELECTORS.modelMenu, 'モデルメニュー');
                     if (modelMenu) {
@@ -515,7 +530,7 @@
                             
                             if (legacyButton) {
                                 legacyButton.click();
-                                await sleep(1500);
+                                await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT - 500);
                                 
                                 const allMenus = document.querySelectorAll('[role="menu"]');
                                 for (const menu of allMenus) {
@@ -539,7 +554,7 @@
                         
                         // メニューを閉じる
                         document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape' }));
-                        await sleep(1000);
+                        await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
                     }
                 }
             }
@@ -569,7 +584,7 @@
             }
             
             log('テキスト入力完了', 'success');
-            await sleep(1000);
+            await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
             
             // ========================================
             // ステップ5: モデル選択（テスト済みコード）
@@ -590,9 +605,9 @@
                 }
                 
                 modelBtn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
-                await sleep(100);
+                await sleep(AI_WAIT_CONFIG.MICRO_WAIT);
                 modelBtn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
-                await sleep(1500);
+                await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT - 500);
                 
                 const modelMenuEl = await findElement(SELECTORS.modelMenu, 'モデルメニュー');
                 if (!modelMenuEl) {
@@ -607,7 +622,7 @@
                     if (legacyBtn) {
                         log('レガシーモデルメニューを開く', 'info');
                         legacyBtn.click();
-                        await sleep(1500);
+                        await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT - 500);
                     }
                 }
                 
@@ -633,7 +648,7 @@
                 
                 if (targetItem) {
                     targetItem.click();
-                    await sleep(2000);
+                    await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
                     const selectedName = selectedModel ? selectedModel.name : modelName;
                     log(`モデル選択完了: ${selectedName}`, 'success');
                 } else {
@@ -670,13 +685,13 @@
                 // 初回タスクの場合は追加待機
                 if (isFirstTask) {
                     log('初回タスクのため、メニュー操作前に追加待機', 'info');
-                    await sleep(1000);
+                    await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
                 }
                 
                 funcMenuBtn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
-                await sleep(100);
+                await sleep(AI_WAIT_CONFIG.MICRO_WAIT);
                 funcMenuBtn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
-                await sleep(2000); // メニュー表示の待機時間を増やす
+                await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT); // メニュー表示の待機時間を増やす
                 
                 const funcMenu = await findElement(SELECTORS.mainMenu, 'メインメニュー');
                 if (!funcMenu) {
@@ -713,16 +728,16 @@
                         // まずホバーイベントを試す
                         moreBtn.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
                         moreBtn.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
-                        await sleep(500);
+                        await sleep(AI_WAIT_CONFIG.TINY_WAIT);
                         
                         // サブメニューが開いたかチェック
                         let subMenu = document.querySelector('[data-side="right"]');
                         if (!subMenu) {
                             log('ホバーでサブメニューが開かないため、クリックを試行', 'info');
                             moreBtn.focus();
-                            await sleep(100);
+                            await sleep(AI_WAIT_CONFIG.MICRO_WAIT);
                             moreBtn.click();
-                            await sleep(500);
+                            await sleep(AI_WAIT_CONFIG.TINY_WAIT);
                             subMenu = document.querySelector('[data-side="right"]');
                         }
                         
@@ -747,7 +762,7 @@
                                 clientY: y
                             }));
                             
-                            await sleep(500);
+                            await sleep(AI_WAIT_CONFIG.TINY_WAIT);
                             subMenu = document.querySelector('[data-side="right"]');
                         }
                         
@@ -757,7 +772,7 @@
                             
                             // Enterキーを押す
                             moreBtn.focus();
-                            await sleep(100);
+                            await sleep(AI_WAIT_CONFIG.MICRO_WAIT);
                             
                             moreBtn.dispatchEvent(new KeyboardEvent('keydown', {
                                 key: 'Enter',
@@ -771,7 +786,7 @@
                                 bubbles: true
                             }));
                             
-                            await sleep(500);
+                            await sleep(AI_WAIT_CONFIG.TINY_WAIT);
                             subMenu = document.querySelector('[data-side="right"]');
                         }
                         
@@ -848,7 +863,7 @@
                         // フォーカスを明示的に設定
                         moreBtn.focus();
                         console.log('  ✅ フォーカスを設定');
-                        await sleep(100); // フォーカスが安定するまで待機
+                        await sleep(AI_WAIT_CONFIG.MICRO_WAIT); // フォーカスが安定するまで待機
                         
                         // onclickの詳細を調査
                         console.log('🔍 [onclick詳細分析]');
@@ -1022,7 +1037,7 @@
                 // すべての検索が終わってから判定
                 if (featureElement) {
                     featureElement.click();
-                    await sleep(1500);
+                    await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT - 500);
                     log(`機能選択完了: ${mappedFeatureName}`, 'success');
                     
                     // 6-4: 機能が選択されているか確認
@@ -1073,7 +1088,7 @@
                 // 6-5: メニューを閉じる
                 log('6-5. 機能メニューを閉じる', 'step');
                 document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape' }));
-                await sleep(1000);
+                await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
             }
             
             // ========================================
@@ -1096,14 +1111,14 @@
                         throw new Error('送信ボタンが見つかりません');
                     }
                     log(`送信ボタンが見つかりません。2秒後に再試行...`, 'warning');
-                    await sleep(2000);
+                    await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
                     continue;
                 }
                 
                 // 送信ボタンをクリック
                 sendBtn.click();
                 log(`送信ボタンをクリックしました（試行${sendAttempts}）`, 'success');
-                await sleep(1000);
+                await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
                 
                 // 送信後に停止ボタンが表示されるか、または送信ボタンが消えるまで5秒待機
                 let stopButtonAppeared = false;
@@ -1126,7 +1141,7 @@
                         break;
                     }
                     
-                    await sleep(1000);
+                    await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
                 }
                 
                 if (stopButtonAppeared || sendButtonDisappeared) {
@@ -1134,7 +1149,7 @@
                     break;
                 } else {
                     log(`送信反応が確認できません。再試行します...`, 'warning');
-                    await sleep(2000);
+                    await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
                 }
             }
             
@@ -1156,7 +1171,7 @@
                 log(`⚠️ AIHandler または recordSendTimestamp が利用できません`, 'warning');
             }
             
-            await sleep(1000);
+            await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
             
             // ========================================
             // ステップ8: 応答待機
@@ -1199,7 +1214,7 @@
                         log('停止ボタンが表示されました', 'success');
                         break;
                     }
-                    await sleep(1000);
+                    await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
                 }
                 
                 // 停止ボタンが消えるまで待機（最大5分）
@@ -1216,12 +1231,12 @@
                             const seconds = i % 60;
                             log(`応答待機中... (${minutes}分${seconds}秒経過)`, 'info');
                         }
-                        await sleep(1000);
+                        await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
                     }
                 }
             }
             
-            await sleep(2000); // 追加の待機
+            await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT); // 追加の待機
             
             // ========================================
             // ステップ9: テキスト取得と表示  
@@ -1469,7 +1484,7 @@
             modelBtn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
             await sleep(100);
             modelBtn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
-            await sleep(1500);
+            await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT - 500);
             
             const modelMenuEl = await findElement(SELECTORS.modelMenu, 'モデルメニュー');
             if (!modelMenuEl) {
@@ -1485,7 +1500,7 @@
             
             if (targetItem) {
                 targetItem.click();
-                await sleep(2000);
+                await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
                 log(`✅ モデル選択完了: ${modelName}`, 'success');
             } else {
                 log(`⚠️ モデル "${modelName}" が見つかりません`, 'warning');
@@ -1533,7 +1548,7 @@
             funcMenuBtn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
             await sleep(100);
             funcMenuBtn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
-            await sleep(2000);
+            await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
             
             const funcMenu = await findElement(SELECTORS.mainMenu, 'メインメニュー');
             if (!funcMenu) {
@@ -1593,7 +1608,7 @@
                     if (!subMenu) {
                         log('ホバーでサブメニューが開かないため、クリックを試行', 'info');
                         moreBtn.focus();
-                        await sleep(100);
+                        await sleep(AI_WAIT_CONFIG.MICRO_WAIT);
                         moreBtn.click();
                         await sleep(800);
                         subMenu = document.querySelector('[data-side="right"]');
@@ -1612,7 +1627,7 @@
                             clientY: y
                         }));
                         
-                        await sleep(500);
+                        await sleep(AI_WAIT_CONFIG.TINY_WAIT);
                         subMenu = document.querySelector('[data-side="right"]');
                     }
                     
@@ -1620,7 +1635,7 @@
                     if (!subMenu) {
                         log('最終手段: キーボード操作を試行', 'warn');
                         moreBtn.focus();
-                        await sleep(100);
+                        await sleep(AI_WAIT_CONFIG.MICRO_WAIT);
                         
                         moreBtn.dispatchEvent(new KeyboardEvent('keydown', {
                             key: 'Enter',
@@ -1628,7 +1643,7 @@
                             bubbles: true
                         }));
                         
-                        await sleep(500);
+                        await sleep(AI_WAIT_CONFIG.TINY_WAIT);
                         subMenu = document.querySelector('[data-side="right"]');
                     }
                     
@@ -1649,7 +1664,7 @@
             
             if (featureElement) {
                 featureElement.click();
-                await sleep(1500);
+                await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT - 500);
                 log(`✅ 機能選択完了: ${functionName}`, 'success');
             } else {
                 log(`⚠️ 機能 "${functionName}" が見つかりません`, 'warning');
@@ -1657,7 +1672,7 @@
             
             // メニューを閉じる
             document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape' }));
-            await sleep(1000);
+            await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
             
             // 選択後の実際の機能を取得
             let actualSelectedFunction = '';
@@ -1695,7 +1710,7 @@
             
             sendBtn.click();
             log('✅ 送信ボタンをクリック', 'success');
-            await sleep(1000);
+            await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
             
             // 停止ボタンが消えるまで待機（最大5分）
             let stopBtn = await findElement(SELECTORS.stopButton, '停止ボタン', 1);
@@ -1707,11 +1722,11 @@
                         log('応答完了', 'success');
                         break;
                     }
-                    await sleep(1000);
+                    await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
                 }
             }
             
-            await sleep(2000);
+            await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
             
             // テキスト取得（Canvas優先）
             let responseText = '';

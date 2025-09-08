@@ -1356,11 +1356,34 @@
     log('応答要素の表示待機完了', 'DEBUG');
 
     try {
+      // [DEBUG] getResponse開始時のDOM状態
+      console.log('🔍 [DEBUG] getResponse開始時のDOM状態:', {
+        timestamp: new Date().toISOString(),
+        messageElements: document.querySelectorAll('message-content').length,
+        markdownElements: document.querySelectorAll('.markdown').length,
+        modelResponseElements: document.querySelectorAll('.model-response-text').length,
+        allMessageContents: Array.from(document.querySelectorAll('message-content')).map(el => ({
+          id: el.id,
+          className: el.className,
+          textLength: el.textContent?.length || 0,
+          preview: el.textContent?.substring(0, 100)
+        }))
+      });
+      
       // ========================================
       // 1. まずCanvas/Artifactsをチェック（DeepResearch等）
       // ========================================
       log('Canvas/Artifactsの確認を開始', 'DEBUG');
       const canvasResult = await getCanvasContent(true);  // expandIfNeeded=true
+      
+      // [DEBUG] Canvas/Artifacts取得試行結果
+      console.log('🔍 [DEBUG] Canvas/Artifacts取得試行結果:', {
+        success: canvasResult?.success,
+        hasText: !!canvasResult?.text,
+        textLength: canvasResult?.text?.length || 0,
+        isCanvas: canvasResult?.isCanvas,
+        isDeepResearch: canvasResult?.isDeepResearch
+      });
       
       if (canvasResult?.success && canvasResult?.text) {
         const responseLength = canvasResult.text.length;
@@ -1400,11 +1423,26 @@
       let finalMessages = null;
       let usedSelector = null;
       
+      // [DEBUG] 通常メッセージ取得試行
+      console.log('🔍 [DEBUG] 通常メッセージ取得開始:', {
+        selectors: responseSelectors,
+        selectorCount: responseSelectors.length
+      });
+      
       // ui-selectors.js定義の全セレクタを順番に試行
       for (const selector of responseSelectors) {
         try {
           const messages = document.querySelectorAll(selector);
           log(`セレクタ "${selector}": ${messages.length}個`, 'DEBUG');
+          
+          // [DEBUG] 各セレクタの詳細
+          console.log(`🔍 [DEBUG] セレクタ "${selector}" の結果:`, {
+            found: messages.length,
+            elements: Array.from(messages).map(el => ({
+              textLength: el.textContent?.length || 0,
+              preview: el.textContent?.substring(0, 100)
+            }))
+          });
           
           if (messages.length > 0) {
             finalMessages = messages;
@@ -1453,11 +1491,26 @@
       
       log(`最終的に使用: ${finalMessages.length}個のメッセージから最新を取得`, 'DEBUG');
       
+      // [DEBUG] 最後のメッセージの詳細
+      console.log('🔍 [DEBUG] 最後のメッセージの詳細:', {
+        usedSelector: usedSelector,
+        messageCount: finalMessages.length,
+        lastMessageTextLength: lastMessage.textContent?.length || 0,
+        lastMessagePreview: lastMessage.textContent?.substring(0, 200),
+        lastMessageFullText: lastMessage.textContent
+      });
+      
       log(`最新メッセージを処理中...`, 'DEBUG');
       
       // 思考プロセス削除: ui-selectors.js のヘルパー関数を使用 
       // ※ Chrome拡張機能環境では ui-selectors.js をimportできないため、同じロジックを直接実装
       log('思考プロセス要素の削除開始...', 'DEBUG');
+      
+      // [DEBUG] 思考プロセス削除前の状態
+      console.log('🔍 [DEBUG] 思考プロセス削除前:', {
+        cloneTextLength: clone.textContent?.length || 0,
+        clonePreview: clone.textContent?.substring(0, 200)
+      });
       
       const allButtons = clone.querySelectorAll('button');
       let removedCount = 0;
@@ -1502,6 +1555,14 @@
       });
       
       log(`削除した思考プロセス要素: ${removedCount}個`, 'DEBUG');
+      
+      // [DEBUG] 思考プロセス削除後の状態
+      console.log('🔍 [DEBUG] 思考プロセス削除後:', {
+        removedCount: removedCount,
+        cloneTextLength: clone.textContent?.length || 0,
+        clonePreview: clone.textContent?.substring(0, 200),
+        cloneFullText: clone.textContent
+      });
       
       const responseText = clone.textContent?.trim();
       
@@ -1809,8 +1870,24 @@
           elapsedTime: `${step5Duration}ms`
         });
         
+        // [DEBUG] 応答取得前のDOM状態
+        console.log('🔍 [DEBUG] getResponse呼び出し前のDOM状態:', {
+          timestamp: new Date().toISOString(),
+          messageElements: document.querySelectorAll('message-content').length,
+          markdownElements: document.querySelectorAll('.markdown').length,
+          modelResponseElements: document.querySelectorAll('.model-response-text').length,
+          domReadyState: document.readyState
+        });
+        
         const response = await getResponse();
         result.response = response;
+        
+        // [DEBUG] 取得した応答の詳細
+        console.log('🔍 [DEBUG] waitForResponse直後の取得テキスト:', {
+          length: response?.length || 0,
+          preview: response?.substring(0, 500),
+          fullText: response // 全文をログ
+        });
         
         if (response) {
           const step5EndDuration = Date.now() - step3StartTime;
