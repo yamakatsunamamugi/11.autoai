@@ -20,6 +20,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         }
         
         console.log(request.message);
+        sendResponse({ success: true });
+        return false; // 同期応答
     }
 });
 
@@ -27,6 +29,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.type === 'GET_LOGS') {
         sendResponse({ logs: logs });
+        return false; // 同期応答
     }
 });
 
@@ -43,6 +46,10 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
         
         // コンテンツスクリプトの準備状態を確認
         chrome.tabs.sendMessage(tabId, { type: 'PING' }, (response) => {
+            if (chrome.runtime.lastError) {
+                // エラーを無視（コンテンツスクリプトがまだ準備できていない可能性）
+                return;
+            }
             if (response && response.status === 'ready') {
                 tabStates[tabId].ready = true;
                 console.log(`Claude tab ${tabId} is ready`);

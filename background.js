@@ -1067,7 +1067,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         }
       })();
       
-      return false; // 同期応答（既にsendResponseを呼び出し済み）
+      return true; // 非同期応答（バックグラウンド処理を実行）
 
     // ===== テストウィンドウ作成 =====
     case "createTestWindow":

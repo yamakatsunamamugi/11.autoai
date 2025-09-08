@@ -250,6 +250,20 @@ export default class TaskGeneratorV2 {
     const menuRow = data.values[rows.menu];
     const aiRow = data.values[rows.ai];
     
+    // デバッグ: メニュー行の内容を出力
+    console.log('[DEBUG] メニュー行の内容:');
+    for (let i = 0; i < menuRow.length; i++) {
+      if (menuRow[i]) {
+        console.log(`  列${this.indexToColumn(i)}(index:${i}): "${menuRow[i]}"`);
+      }
+    }
+    console.log('[DEBUG] AI行の内容:');
+    for (let i = 0; i < aiRow.length; i++) {
+      if (aiRow[i]) {
+        console.log(`  列${this.indexToColumn(i)}(index:${i}): "${aiRow[i]}"`);
+      }
+    }
+    
     let currentGroup = null;
     
     for (let i = 0; i < menuRow.length; i++) {
@@ -258,6 +272,7 @@ export default class TaskGeneratorV2 {
       
       // プロンプト列を検出
       if (menuCell && menuCell.includes('プロンプト')) {
+        console.log(`[DEBUG] 列${this.indexToColumn(i)}をプロンプト列として認識: "${menuCell}"`);
         if (!currentGroup) {
           currentGroup = {
             promptColumns: [],
@@ -269,6 +284,7 @@ export default class TaskGeneratorV2 {
       }
       // 回答列を検出
       else if (menuCell && (menuCell.includes('回答') || menuCell.includes('答'))) {
+        console.log(`[DEBUG] 列${this.indexToColumn(i)}を回答列として認識: "${menuCell}"`);
         if (currentGroup) {
           // AIタイプを判定（AI行またはメニュー行から）
           let aiType = 'ChatGPT'; // デフォルト
@@ -306,7 +322,9 @@ export default class TaskGeneratorV2 {
       }
       // グループの終了を検出
       else if (currentGroup && currentGroup.promptColumns.length > 0) {
+        console.log(`[DEBUG] 列${this.indexToColumn(i)}でグループ終了を検出: "${menuCell}"`);
         if (currentGroup.answerColumns.length > 0) {
+          console.log(`[DEBUG] グループを追加: プロンプト列=${currentGroup.promptColumns.map(idx => this.indexToColumn(idx))}, 回答列=${currentGroup.answerColumns.map(col => col.column)}`);
           groups.push(currentGroup);
         }
         currentGroup = null;
@@ -355,12 +373,16 @@ export default class TaskGeneratorV2 {
    * プロンプトが存在するかチェック（内容は取得しない）
    */
   hasPromptInRow(data, workRow, promptGroup) {
+    console.log(`[DEBUG] hasPromptInRow - 行${workRow.number}のプロンプト確認:`);
     for (const colIndex of promptGroup.promptColumns) {
       const cell = this.getCellValue(data, workRow.index, colIndex);
+      console.log(`  列${this.indexToColumn(colIndex)}(index:${colIndex}): "${cell ? cell.substring(0, 50) : null}"`);
       if (cell && cell.trim()) {
+        console.log(`  → プロンプトあり`);
         return true;
       }
     }
+    console.log(`  → プロンプトなし（すべて空）`);
     return false;
   }
 
@@ -369,6 +391,11 @@ export default class TaskGeneratorV2 {
    */
   getCellValue(data, rowIndex, colIndex) {
     if (!data.values[rowIndex]) {
+      console.log(`[DEBUG] getCellValue: 行${rowIndex}が存在しません`);
+      return null;
+    }
+    if (colIndex >= data.values[rowIndex].length) {
+      console.log(`[DEBUG] getCellValue: 行${rowIndex}の列${colIndex}が範囲外です（行の長さ: ${data.values[rowIndex].length}）`);
       return null;
     }
     return data.values[rowIndex][colIndex] || null;
