@@ -2399,20 +2399,17 @@ export default class StreamProcessorV2 {
         await this.process3TypeAIGroup(columnGroups, isTestMode);
         totalProcessed += groupTaskList.tasks.length;
       } else {
-        // 通常AI: 3個ずつバッチ処理
-        this.logger.log(`[StreamProcessorV2] 🎯 通常モードで処理（3個ずつバッチ）`);
-        const tasks = groupTaskList.tasks;
+        // 通常AI: 各列を順次処理（列内は3行バッチ並列）
+        this.logger.log(`[StreamProcessorV2] 🎯 通常モードで処理（列ごと順次処理）`);
+        const columnGroups = this.organizeTasksByColumn(groupTaskList.tasks);
         
-        for (let i = 0; i < tasks.length; i += 3) {
-          const batch = tasks.slice(i, i + 3);
-          this.logger.log(`[StreamProcessorV2] バッチ${Math.floor(i/3) + 1}: ${batch.map(t => `${t.column}${t.row}`).join(', ')}`);
-          
+        for (const [column, tasks] of columnGroups) {
           try {
-            await this.processBatch(batch, isTestMode);
-            totalProcessed += batch.length;
+            await this.processColumn(column, tasks, isTestMode);
+            totalProcessed += tasks.length;
           } catch (error) {
-            this.logger.error(`[StreamProcessorV2] バッチ処理エラー:`, error);
-            totalFailed += batch.length;
+            this.logger.error(`[StreamProcessorV2] ${column}列処理エラー:`, error);
+            totalFailed += tasks.length;
           }
         }
       }
@@ -2879,6 +2876,88 @@ export default class StreamProcessorV2 {
     if (column.includes('Claude')) return 'claude';
     if (column.includes('Gemini')) return 'gemini';
     return 'chatgpt'; // デフォルト
+  }
+
+  /**
+   * 3種類AIグループを処理（F,G,H列を同時に3ウィンドウで処理）
+   * @param {Map} columnGroups - 列ごとのタスクグループ
+   * @param {boolean} isTestMode - テストモード
+   */
+  async process3TypeAIGroup(columnGroups, isTestMode) {
+    this.logger.log(`[StreamProcessorV2] 🎯 3種類AIグループの処理開始`);
+    
+    // F,G,H列のタスクを行ごとにまとめる
+    const rowBatches = new Map();
+    
+    for (const [column, tasks] of columnGroups) {
+      for (const task of tasks) {
+        if (!rowBatches.has(task.row)) {
+          rowBatches.set(task.row, []);
+        }
+        rowBatches.get(task.row).push(task);
+      }
+    }
+    
+    // 行番号順にソート
+    const sortedRows = Array.from(rowBatches.keys()).sort((a, b) => a - b);
+    
+    // 各行のF,G,H列を3ウィンドウで同時処理
+    for (const row of sortedRows) {
+      const rowTasks = rowBatches.get(row);
+      this.logger.log(`[StreamProcessorV2] 行${row}の3種類AI処理: ${rowTasks.map(t => t.column + t.row).join(', ')}`);
+      
+      // この行のタスクを並列処理（最大3ウィンドウ）
+      await this.processBatch(rowTasks, isTestMode);
+    }
+    
+    this.logger.log(`[StreamProcessorV2] ✅ 3種類AIグループの処理完了`);
+  }
+
+  /**
+   * 列を3行バッチで処理
+   * @param {string} column - 列名
+   * @param {Array} tasks - タスク配列
+   * @param {boolean} isTestMode - テストモード
+   */
+  async processColumn(column, tasks, isTestMode) {
+    this.logger.log(`[StreamProcessorV2] 📋 ${column}列の処理開始`, {
+      taskCount: tasks.length,
+      aiType: tasks[0]?.aiType
+    });
+
+    // 3行ずつのバッチを作成
+    const batches = this.createBatches(tasks, 3);
+    
+    // バッチごとに処理（各バッチは3つまで並列）
+    for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+      const batch = batches[batchIndex];
+      
+      this.logger.log(`[StreamProcessorV2] 🔄 ${column}列 バッチ${batchIndex + 1}/${batches.length}処理開始`, {
+        batchTasks: batch.map(t => `${t.column}${t.row}`).join(', '),
+        batchSize: batch.length
+      });
+      
+      // バッチ内のタスクを並列実行
+      await this.processBatch(batch, isTestMode);
+      
+      this.logger.log(`[StreamProcessorV2] ✅ ${column}列 バッチ${batchIndex + 1}/${batches.length}処理完了`);
+    }
+
+    this.logger.log(`[StreamProcessorV2] ✅ ${column}列の処理完了`);
+  }
+
+  /**
+   * タスク配列をバッチに分割
+   * @param {Array} tasks - タスク配列
+   * @param {number} batchSize - バッチサイズ
+   * @returns {Array} バッチの配列
+   */
+  createBatches(tasks, batchSize = 3) {
+    const batches = [];
+    for (let i = 0; i < tasks.length; i += batchSize) {
+      batches.push(tasks.slice(i, i + batchSize));
+    }
+    return batches;
   }
 
   /**
