@@ -103,7 +103,7 @@ class SheetsClient {
     const token = await globalThis.authService.getAuthToken();
     const encodedRange = encodeURIComponent(range);
     // valueRenderOptionを追加して、空セルも含めて全データを取得
-    const url = `${this.baseUrl}/${spreadsheetId}/values/${encodedRange}?valueRenderOption=FORMULA`;
+    const url = `${this.baseUrl}/${spreadsheetId}/values/${encodedRange}?valueRenderOption=FORMATTED_VALUE`;
     
     this.logger.log("SheetsClient", `API URL: ${url}`);
 

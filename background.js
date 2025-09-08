@@ -504,9 +504,14 @@ function processSpreadsheetData(spreadsheetData) {
   }
 
   // メニュー行とAI行から情報を取得
-  const menuRow = spreadsheetData.menuRow?.data || spreadsheetData.values[0];
+  const menuRow = spreadsheetData.menuRow?.data || spreadsheetData.values[0] || [];
   const aiRow = spreadsheetData.aiRow?.data || [];
   
+  // menuRowが配列でない場合は空配列として処理
+  if (!Array.isArray(menuRow)) {
+    console.warn("[processSpreadsheetData] menuRowが配列ではありません:", menuRow);
+    return result;
+  }
   
   // 各列を解析
   menuRow.forEach((header, index) => {
@@ -816,11 +821,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           await autoSetup.executeAutoSetup(spreadsheetId, token, gid);
 
           // 3. データを整形（AI列情報を抽出）
-          const processedData = processSpreadsheetData(updatedSpreadsheetData);
-          
-          // modelRowとtaskRowも含める
-          processedData.modelRow = updatedSpreadsheetData.modelRow;
-          processedData.taskRow = updatedSpreadsheetData.taskRow;
+          let processedData;
+          try {
+            processedData = processSpreadsheetData(updatedSpreadsheetData);
+            
+            // modelRowとtaskRowも含める
+            processedData.modelRow = updatedSpreadsheetData.modelRow;
+            processedData.taskRow = updatedSpreadsheetData.taskRow;
+          } catch (processError) {
+            console.error("[MessageHandler] processSpreadsheetDataエラー:", processError);
+            // エラーが発生してもデフォルトのデータを使用
+            processedData = {
+              ...updatedSpreadsheetData,
+              aiColumns: {},
+              columnMapping: {}
+            };
+          }
           
 
           // 4. タスクを生成
