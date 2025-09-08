@@ -496,6 +496,7 @@ function processSpreadsheetData(spreadsheetData) {
     ...spreadsheetData,
     aiColumns: {},
     columnMapping: {},
+    taskGroups: [],  // タスクグループ情報を追加
   };
   
 
@@ -513,8 +514,13 @@ function processSpreadsheetData(spreadsheetData) {
     return result;
   }
   
-  // 各列を解析
-  menuRow.forEach((header, index) => {
+  // タスクグループを識別するためのデータ構造
+  let currentGroup = null;
+  let groupCounter = 1;
+  
+  try {
+    // 各列を解析
+    menuRow.forEach((header, index) => {
     const columnLetter = getColumnName(index);
     const trimmedHeader = header ? header.trim() : "";
     const aiValue = aiRow[index] ? aiRow[index].trim() : "";
@@ -529,7 +535,85 @@ function processSpreadsheetData(spreadsheetData) {
     if (index < 20) {
     }
     
-    // プロンプト列の検出（プロンプト2等は除外）
+    // ログ列の検出（新グループの開始）
+    if (trimmedHeader === "ログ") {
+      // 前のグループがあれば完了させる
+      if (currentGroup && currentGroup.columnRange.answerColumns.length > 0) {
+        result.taskGroups.push(currentGroup);
+        groupCounter++;
+      }
+      
+      // 新しいグループを開始
+      currentGroup = {
+        id: `group_${groupCounter}`,
+        name: `タスクグループ${groupCounter}`,
+        startColumn: columnLetter,
+        endColumn: columnLetter,  // 暫定、後で更新
+        columnRange: {
+          logColumn: columnLetter,
+          promptColumns: [],
+          answerColumns: []
+        },
+        groupType: null,  // 後で判定
+        aiType: null,     // 後で判定
+        dependencies: groupCounter > 1 ? [`group_${groupCounter - 1}`] : [],
+        sequenceOrder: groupCounter
+      };
+    }
+    
+    // プロンプト列の検出
+    if (currentGroup && trimmedHeader.includes("プロンプト")) {
+      currentGroup.columnRange.promptColumns.push(columnLetter);
+      
+      // AI行の値からグループタイプを判定
+      if (aiValue.includes("3種類")) {
+        currentGroup.groupType = "3type";
+        currentGroup.aiType = aiValue;
+      } else if (aiValue) {
+        currentGroup.groupType = "single";
+        currentGroup.aiType = aiValue;
+      }
+    }
+    
+    // 回答列の検出
+    if (currentGroup && (trimmedHeader.includes("回答") || trimmedHeader.includes("答"))) {
+      // AIタイプを判定（AI行またはメニュー行から）
+      let detectedAiType = 'Claude'; // デフォルト
+      
+      // まずAI行の値から判定
+      if (aiValue && aiValue.trim() !== '') {
+        const aiCellLower = aiValue.toLowerCase();
+        if (aiCellLower.includes('chatgpt') || aiCellLower.includes('gpt')) {
+          detectedAiType = 'ChatGPT';
+        } else if (aiCellLower.includes('claude')) {
+          detectedAiType = 'Claude';
+        } else if (aiCellLower.includes('gemini')) {
+          detectedAiType = 'Gemini';
+        }
+      }
+      // AI行が空の場合はメニュー行から判定（3種類AIの場合）
+      else {
+        const menuCellLower = trimmedHeader.toLowerCase();
+        if (menuCellLower.includes('chatgpt') || menuCellLower.includes('gpt')) {
+          detectedAiType = 'ChatGPT';
+        } else if (menuCellLower.includes('claude')) {
+          detectedAiType = 'Claude';
+        } else if (menuCellLower.includes('gemini')) {
+          detectedAiType = 'Gemini';
+        }
+      }
+      
+      currentGroup.columnRange.answerColumns.push({
+        column: columnLetter,
+        aiType: detectedAiType,
+        index: index
+      });
+      
+      // グループの終了列を更新
+      currentGroup.endColumn = columnLetter;
+    }
+    
+    // 既存のaiColumns処理（互換性のため維持）
     if (trimmedHeader === "プロンプト") {
       // AI行の値を確認して3種類AIレイアウトを検出
       let aiType = null;
@@ -554,8 +638,31 @@ function processSpreadsheetData(spreadsheetData) {
         };
       }
     }
-  });
+    });
+    
+    // 最後のグループを追加
+    if (currentGroup && currentGroup.columnRange.answerColumns.length > 0) {
+      result.taskGroups.push(currentGroup);
+    }
+    
+  } catch (taskGroupError) {
+    console.error("[processSpreadsheetData] taskGroups生成エラー:", taskGroupError);
+    // エラーが発生してもtaskGroupsは空配列として継続
+  }
   
+  // デバッグ用ログ出力
+  console.log("[processSpreadsheetData] タスクグループ検出結果:", {
+    totalGroups: result.taskGroups.length,
+    groups: result.taskGroups.map(group => ({
+      id: group.id,
+      name: group.name,
+      range: `${group.startColumn}-${group.endColumn}`,
+      type: group.groupType,
+      promptColumns: group.columnRange.promptColumns,
+      answerColumns: group.columnRange.answerColumns.map(col => `${col.column}(${col.aiType})`),
+      dependencies: group.dependencies
+    }))
+  });
 
   return result;
 }
@@ -882,6 +989,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             success: true,
             aiColumns: processedData.aiColumns,
             columnMapping: processedData.columnMapping,
+            taskGroups: processedData.taskGroups,  // タスクグループ情報を追加
             sheetName: processedData.sheetName,
             modelRow: processedData.modelRow,
             taskRow: processedData.taskRow,

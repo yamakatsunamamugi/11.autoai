@@ -531,6 +531,7 @@ function processSpreadsheetData(spreadsheetData) {
     ...spreadsheetData,
     aiColumns: {},
     columnMapping: {},
+    taskGroups: [],  // タスクグループ情報を追加
   };
 
   if (!spreadsheetData.values || spreadsheetData.values.length === 0) {
@@ -618,7 +619,97 @@ function processSpreadsheetData(spreadsheetData) {
     }
   });
   
+  // taskGroups生成ロジックを追加（background.jsと同じ）
+  let currentGroup = null;
+  let groupCounter = 1;
+  
+  menuRow.forEach((header, index) => {
+    const columnLetter = getColumnName(index);
+    const trimmedHeader = header ? header.trim() : "";
+    const aiValue = aiRow[index] ? aiRow[index].trim() : "";
+    
+    // ログ列の検出（新グループの開始）
+    if (trimmedHeader === "ログ") {
+      // 前のグループがあれば完了させる
+      if (currentGroup && currentGroup.columnRange.answerColumns.length > 0) {
+        result.taskGroups.push(currentGroup);
+        groupCounter++;
+      }
+      
+      // 新しいグループを開始
+      currentGroup = {
+        id: `group_${groupCounter}`,
+        name: `タスクグループ${groupCounter}`,
+        startColumn: columnLetter,
+        endColumn: columnLetter,
+        columnRange: {
+          logColumn: columnLetter,
+          promptColumns: [],
+          answerColumns: []
+        },
+        groupType: null,
+        aiType: null,
+        dependencies: groupCounter > 1 ? [`group_${groupCounter - 1}`] : [],
+        sequenceOrder: groupCounter
+      };
+    }
+    
+    // プロンプト列の検出
+    if (currentGroup && trimmedHeader.includes("プロンプト")) {
+      currentGroup.columnRange.promptColumns.push(columnLetter);
+      
+      // AI行の値からグループタイプを判定
+      if (aiValue.includes("3種類")) {
+        currentGroup.groupType = "3type";
+        currentGroup.aiType = aiValue;
+      } else if (aiValue) {
+        currentGroup.groupType = "single";
+        currentGroup.aiType = aiValue;
+      }
+    }
+    
+    // 回答列の検出
+    if (currentGroup && (trimmedHeader.includes("回答") || trimmedHeader.includes("答"))) {
+      // AIタイプを判定
+      let detectedAiType = 'Claude';
+      
+      if (aiValue && aiValue.trim() !== '') {
+        const aiCellLower = aiValue.toLowerCase();
+        if (aiCellLower.includes('chatgpt') || aiCellLower.includes('gpt')) {
+          detectedAiType = 'ChatGPT';
+        } else if (aiCellLower.includes('claude')) {
+          detectedAiType = 'Claude';
+        } else if (aiCellLower.includes('gemini')) {
+          detectedAiType = 'Gemini';
+        }
+      } else {
+        const menuCellLower = trimmedHeader.toLowerCase();
+        if (menuCellLower.includes('chatgpt') || menuCellLower.includes('gpt')) {
+          detectedAiType = 'ChatGPT';
+        } else if (menuCellLower.includes('claude')) {
+          detectedAiType = 'Claude';
+        } else if (menuCellLower.includes('gemini')) {
+          detectedAiType = 'Gemini';
+        }
+      }
+      
+      currentGroup.columnRange.answerColumns.push({
+        column: columnLetter,
+        aiType: detectedAiType,
+        index: index
+      });
+      
+      currentGroup.endColumn = columnLetter;
+    }
+  });
+  
+  // 最後のグループを追加
+  if (currentGroup && currentGroup.columnRange.answerColumns.length > 0) {
+    result.taskGroups.push(currentGroup);
+  }
+  
   console.log("[Test] 処理後のaiColumns:", result.aiColumns);
+  console.log("[Test] 生成されたtaskGroups:", result.taskGroups);
 
   return result;
 }
@@ -634,6 +725,12 @@ function analyzeDataStructure(data) {
   }
   if (elements.aiColumns) {
     elements.aiColumns.textContent = Object.keys(data.aiColumns || {}).length;
+  }
+  
+  // taskGroups数を表示（新規追加）
+  const taskGroupsElement = document.getElementById('taskGroups');
+  if (taskGroupsElement) {
+    taskGroupsElement.textContent = data.taskGroups ? data.taskGroups.length : 0;
   }
   
   // 構造ツリーの表示
@@ -747,6 +844,49 @@ function displayStructureTree(data) {
   }
   
   elements.structureTree.appendChild(aiColumnsSection);
+  
+  // セクション3: taskGroups情報
+  const taskGroupsSection = document.createElement('div');
+  taskGroupsSection.className = 'structure-section';
+  taskGroupsSection.innerHTML = '<h4>🎯 タスクグループ情報</h4>';
+  
+  if (data.taskGroups && data.taskGroups.length > 0) {
+    const groupsContainer = document.createElement('div');
+    groupsContainer.className = 'task-groups-container';
+    
+    data.taskGroups.forEach((group, index) => {
+      const groupDiv = document.createElement('div');
+      groupDiv.className = 'task-group-item';
+      groupDiv.innerHTML = `
+        <div class="group-header">
+          <h5>${group.name} (${group.id})</h5>
+          <span class="sequence-badge">実行順序: ${group.sequenceOrder}</span>
+        </div>
+        <div class="group-details">
+          <div class="group-range">
+            <strong>列範囲:</strong> ${group.startColumn} 〜 ${group.endColumn}
+          </div>
+          <div class="group-columns">
+            <div><strong>ログ列:</strong> ${group.columnRange.logColumn}</div>
+            <div><strong>プロンプト列:</strong> ${group.columnRange.promptColumns.join(', ')}</div>
+            <div><strong>回答列:</strong> ${group.columnRange.answerColumns.map(col => `${col.column}(${col.aiType})`).join(', ')}</div>
+          </div>
+          <div class="group-meta">
+            <div><strong>グループタイプ:</strong> ${group.groupType || '未定義'}</div>
+            <div><strong>AIタイプ:</strong> ${group.aiType || '未定義'}</div>
+            <div><strong>依存関係:</strong> ${group.dependencies.length > 0 ? group.dependencies.join(', ') : 'なし'}</div>
+          </div>
+        </div>
+      `;
+      groupsContainer.appendChild(groupDiv);
+    });
+    
+    taskGroupsSection.appendChild(groupsContainer);
+  } else {
+    taskGroupsSection.innerHTML += '<p class="no-data">タスクグループが検出されていません</p>';
+  }
+  
+  elements.structureTree.appendChild(taskGroupsSection);
 }
 
 // スプレッドシートテーブルの表示

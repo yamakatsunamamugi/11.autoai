@@ -1003,8 +1003,9 @@ export default class StreamProcessorV2 {
         'gemini': 'automations/v2/gemini-automation-v2.js'
       };
       
-      // 共通スクリプト
+      // 共通スクリプト（ai-wait-configを最初に読み込む）
       const commonScripts = [
+        'automations/v2/ai-wait-config.js',
         'automations/feature-constants.js',
         'automations/common-ai-handler.js'
       ];
@@ -1614,6 +1615,13 @@ export default class StreamProcessorV2 {
    * @param {number} timeout - タイムアウト時間（ミリ秒）
    * @returns {Promise<boolean>} 読み込み完了したらtrue
    */
+  /**
+   * 指定された時間だけ待機
+   */
+  async wait(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
   async waitForPageLoad(tabId, timeout = 30000) {
     return new Promise((resolve) => {
       const startTime = Date.now();
@@ -2298,8 +2306,38 @@ export default class StreamProcessorV2 {
       
       const promptGroup = promptGroups[groupIndex];
       
+      // taskGroups情報から依存関係を確認
+      let canProcessGroup = true;
+      let taskGroupInfo = null;
+      
+      if (spreadsheetData.taskGroups && spreadsheetData.taskGroups.length > groupIndex) {
+        taskGroupInfo = spreadsheetData.taskGroups[groupIndex];
+        
+        // 依存関係のチェック
+        if (taskGroupInfo.dependencies && taskGroupInfo.dependencies.length > 0) {
+          for (const dependencyId of taskGroupInfo.dependencies) {
+            if (!processedGroupKeys.has(dependencyId)) {
+              this.logger.log(`[StreamProcessorV2] ⏳ グループ${groupIndex + 1}(${taskGroupInfo.id})は依存関係待ち: ${dependencyId}が未完了`);
+              canProcessGroup = false;
+              break;
+            }
+          }
+        }
+        
+        if (canProcessGroup) {
+          this.logger.log(`[StreamProcessorV2] ✅ グループ${groupIndex + 1}(${taskGroupInfo.id})の依存関係クリア`);
+        }
+      }
+      
+      // 依存関係が満たされていない場合は次のイテレーションで再試行
+      if (!canProcessGroup) {
+        // 他のグループが処理可能か確認するため、groupIndexを進めずに次のループへ
+        await this.wait(5000); // 5秒待機
+        continue;
+      }
+      
       // グループのキーを生成（重複処理防止）
-      const groupKey = promptGroup.promptColumns.join(',');
+      const groupKey = taskGroupInfo ? taskGroupInfo.id : promptGroup.promptColumns.join(',');
       if (processedGroupKeys.has(groupKey)) {
         this.logger.log(`[StreamProcessorV2] ⚠️ グループ${groupIndex + 1}は既に処理済み、スキップ`);
         groupIndex++;
@@ -2402,7 +2440,19 @@ export default class StreamProcessorV2 {
           if (updatedData) {
             // 全体のデータ構造を更新
             Object.assign(spreadsheetData, updatedData);
-            this.logger.log('[StreamProcessorV2] ✅ スプレッドシート再読み込み完了');
+            
+            // taskGroups情報も再生成（プロンプトが更新されている可能性があるため）
+            if (globalThis.processSpreadsheetData) {
+              const reprocessedData = globalThis.processSpreadsheetData(spreadsheetData);
+              if (reprocessedData.taskGroups) {
+                spreadsheetData.taskGroups = reprocessedData.taskGroups;
+                this.logger.log('[StreamProcessorV2] 📊 taskGroups情報も更新されました:', {
+                  グループ数: spreadsheetData.taskGroups.length
+                });
+              }
+            }
+            
+            this.logger.log('[StreamProcessorV2] ✅ スプレッドシート再読み込み完了（taskGroups更新含む）');
           }
         } catch (error) {
           this.logger.error('[StreamProcessorV2] ❌ スプレッドシート再読み込みエラー:', error);
@@ -2617,6 +2667,19 @@ export default class StreamProcessorV2 {
       // スプレッドシートからプロンプトグループ情報を再取得（構造も再解析）
       const promptGroups = this.getPromptGroups(spreadsheetData);
       this.logger.log(`[StreamProcessorV2] 📊 プロンプトグループ数: ${promptGroups.length}`);
+      
+      // taskGroups情報のデバッグ出力
+      if (spreadsheetData.taskGroups) {
+        this.logger.log(`[StreamProcessorV2] 📊 taskGroups情報:`, {
+          totalGroups: spreadsheetData.taskGroups.length,
+          groups: spreadsheetData.taskGroups.map(group => ({
+            id: group.id,
+            name: group.name,
+            sequenceOrder: group.sequenceOrder,
+            dependencies: group.dependencies
+          }))
+        });
+      }
       
       // workRowsを取得（デバッグログ付き）
       this.logger.log(`[StreamProcessorV2] 🔍 workRows取得前...`);

@@ -251,8 +251,17 @@ export default class TaskGeneratorV2 {
 
   /**
    * プロンプトグループを特定
+   * taskGroups情報があれば優先的に使用し、なければ従来のロジックで解析
    */
   identifyPromptGroups(data, rows) {
+    // processSpreadsheetData()で生成されたtaskGroups情報があればそれを使用
+    if (data.taskGroups && data.taskGroups.length > 0) {
+      console.log('[TaskGeneratorV2] taskGroups情報を使用してプロンプトグループを構築');
+      return this.convertTaskGroupsToPromptGroups(data.taskGroups);
+    }
+    
+    // フォールバック: 従来のロジックで解析
+    console.log('[TaskGeneratorV2] taskGroups情報がないため、従来のロジックで解析');
     const groups = [];
     
     if (!rows.menu || !rows.ai) {
@@ -262,19 +271,10 @@ export default class TaskGeneratorV2 {
     const menuRow = data.values[rows.menu];
     const aiRow = data.values[rows.ai];
     
-    // デバッグ: メニュー行の内容を出力
-    console.log('[DEBUG] メニュー行の内容:');
-    for (let i = 0; i < menuRow.length; i++) {
-      if (menuRow[i]) {
-        console.log(`  列${this.indexToColumn(i)}(index:${i}): "${menuRow[i]}"`);
-      }
-    }
-    console.log('[DEBUG] AI行の内容:');
-    for (let i = 0; i < aiRow.length; i++) {
-      if (aiRow[i]) {
-        console.log(`  列${this.indexToColumn(i)}(index:${i}): "${aiRow[i]}"`);
-      }
-    }
+    // 構造解析のデバッグログ（簡潔版）
+    const menuNonEmpty = menuRow.filter(cell => cell && cell.trim()).length;
+    const aiNonEmpty = aiRow.filter(cell => cell && cell.trim()).length;
+    console.log(`[TaskGeneratorV2] 構造解析: メニュー行${menuNonEmpty}列, AI行${aiNonEmpty}列`);
     
     let currentGroup = null;
     
@@ -284,7 +284,6 @@ export default class TaskGeneratorV2 {
       
       // プロンプト列を検出
       if (menuCell && menuCell.includes('プロンプト')) {
-        console.log(`[DEBUG] 列${this.indexToColumn(i)}をプロンプト列として認識: "${menuCell}"`);
         if (!currentGroup) {
           currentGroup = {
             promptColumns: [],
@@ -296,7 +295,6 @@ export default class TaskGeneratorV2 {
       }
       // 回答列を検出
       else if (menuCell && (menuCell.includes('回答') || menuCell.includes('答'))) {
-        console.log(`[DEBUG] 列${this.indexToColumn(i)}を回答列として認識: "${menuCell}"`);
         if (currentGroup) {
           // AIタイプを判定（AI行またはメニュー行から）
           let aiType = 'ChatGPT'; // デフォルト
@@ -334,9 +332,7 @@ export default class TaskGeneratorV2 {
       }
       // グループの終了を検出
       else if (currentGroup && currentGroup.promptColumns.length > 0) {
-        console.log(`[DEBUG] 列${this.indexToColumn(i)}でグループ終了を検出: "${menuCell}"`);
         if (currentGroup.answerColumns.length > 0) {
-          console.log(`[DEBUG] グループを追加: プロンプト列=${currentGroup.promptColumns.map(idx => this.indexToColumn(idx))}, 回答列=${currentGroup.answerColumns.map(col => col.column)}`);
           groups.push(currentGroup);
         }
         currentGroup = null;
@@ -349,6 +345,83 @@ export default class TaskGeneratorV2 {
     }
     
     return groups;
+  }
+
+  /**
+   * taskGroups情報をTaskGeneratorV2が期待するpromptGroups形式に変換
+   */
+  convertTaskGroupsToPromptGroups(taskGroups) {
+    const promptGroups = [];
+    
+    try {
+      if (!taskGroups || !Array.isArray(taskGroups)) {
+        console.warn('[TaskGeneratorV2] taskGroupsが無効です:', taskGroups);
+        return promptGroups;
+      }
+      
+      for (const taskGroup of taskGroups) {
+        try {
+          // タスクグループの必須フィールドをチェック
+          if (!taskGroup.columnRange || !taskGroup.columnRange.promptColumns || !taskGroup.columnRange.answerColumns) {
+            console.warn('[TaskGeneratorV2] 無効なtaskGroup構造をスキップ:', taskGroup);
+            continue;
+          }
+          
+          // プロンプト列のインデックスを取得
+          const promptColumns = taskGroup.columnRange.promptColumns.map(col => {
+            if (typeof col === 'string') {
+              return this.columnToIndex(col);
+            }
+            return col; // 既にインデックスの場合
+          });
+          
+          // 回答列情報を変換
+          const answerColumns = taskGroup.columnRange.answerColumns.map(answerCol => {
+            if (typeof answerCol === 'object' && answerCol.column) {
+              return {
+                index: answerCol.index !== undefined ? answerCol.index : this.columnToIndex(answerCol.column),
+                column: answerCol.column,
+                type: answerCol.aiType || 'Claude'
+              };
+            }
+            // フォールバック処理
+            return {
+              index: this.columnToIndex(answerCol),
+              column: answerCol,
+              type: 'Claude'
+            };
+          });
+          
+          // TaskGeneratorV2の形式に変換
+          const promptGroup = {
+            promptColumns: promptColumns,
+            answerColumns: answerColumns,
+            aiType: taskGroup.aiType || 'Claude',
+            groupId: taskGroup.id || `group_${promptGroups.length + 1}`,
+            groupType: taskGroup.groupType || 'single',
+            sequenceOrder: taskGroup.sequenceOrder || promptGroups.length + 1
+          };
+          
+          promptGroups.push(promptGroup);
+          
+          console.log(`[TaskGeneratorV2] taskGroup ${promptGroup.groupId} を promptGroup に変換:`, {
+            promptColumns: promptGroup.promptColumns.map(idx => this.indexToColumn(idx)),
+            answerColumns: promptGroup.answerColumns.map(col => `${col.column}(${col.type})`),
+            aiType: promptGroup.aiType,
+            groupType: promptGroup.groupType
+          });
+          
+        } catch (groupError) {
+          console.error(`[TaskGeneratorV2] taskGroup変換エラー (${taskGroup.id || 'unknown'}):`, groupError);
+          continue; // エラーが発生したグループをスキップして続行
+        }
+      }
+      
+    } catch (error) {
+      console.error('[TaskGeneratorV2] convertTaskGroupsToPromptGroups エラー:', error);
+    }
+    
+    return promptGroups;
   }
 
   /**
@@ -385,17 +458,13 @@ export default class TaskGeneratorV2 {
    * プロンプトが存在するかチェック（内容は取得しない）
    */
   hasPromptInRow(data, workRow, promptGroup) {
-    console.log(`[DEBUG] hasPromptInRow - 行${workRow.number}のプロンプト確認:`);
     for (const colIndex of promptGroup.promptColumns) {
       const cell = this.getCellValue(data, workRow.index, colIndex);
-      console.log(`  列${this.indexToColumn(colIndex)}(index:${colIndex}): "${cell ? cell.substring(0, 50) : 'null'}"`);
       // 空文字列や"null"文字列は無視
       if (cell && cell !== "" && cell !== "null" && cell.trim()) {
-        console.log(`  → プロンプトあり`);
         return true;
       }
     }
-    console.log(`  → プロンプトなし（すべて空）`);
     return false;
   }
 
@@ -754,6 +823,18 @@ export default class TaskGeneratorV2 {
     
     const targetPromptGroup = promptGroups[promptGroupIndex];
     
+    // taskGroups情報からの追加情報を取得
+    let taskGroupInfo = null;
+    if (spreadsheetData.taskGroups && spreadsheetData.taskGroups.length > promptGroupIndex) {
+      taskGroupInfo = spreadsheetData.taskGroups[promptGroupIndex];
+      this.logger.log(`[TaskGeneratorV2] taskGroups情報を使用:`, {
+        groupId: taskGroupInfo.id,
+        groupName: taskGroupInfo.name,
+        dependencies: taskGroupInfo.dependencies,
+        sequenceOrder: taskGroupInfo.sequenceOrder
+      });
+    }
+    
     this.logger.log(`[TaskGeneratorV2] 📊 プロンプトグループ${promptGroupIndex + 1}:`, {
       promptColumns: targetPromptGroup.promptColumns.map(i => this.indexToColumn(i)),
       answerColumns: targetPromptGroup.answerColumns.map(col => col.column),
@@ -850,9 +931,11 @@ export default class TaskGeneratorV2 {
             },
             logColumns: [logColumn],
             multiAI: true,
-            groupId: `group_${workRow.number}_${this.indexToColumn(targetPromptGroup.promptColumns[0])}`,
-            groupType: '3type',
+            groupId: taskGroupInfo ? taskGroupInfo.id : `group_${workRow.number}_${this.indexToColumn(targetPromptGroup.promptColumns[0])}`,
+            groupType: taskGroupInfo ? taskGroupInfo.groupType : '3type',
             groupPosition: groupPosition,
+            sequenceOrder: taskGroupInfo ? taskGroupInfo.sequenceOrder : promptGroupIndex + 1,
+            dependencies: taskGroupInfo ? taskGroupInfo.dependencies : [],
             prompt: '',
             taskType: 'ai',
             createdAt: Date.now(),
@@ -921,6 +1004,10 @@ export default class TaskGeneratorV2 {
             },
             logColumns: [logColumn],
             multiAI: false,
+            groupId: taskGroupInfo ? taskGroupInfo.id : `group_${workRow.number}_${this.indexToColumn(targetPromptGroup.promptColumns[0])}`,
+            groupType: taskGroupInfo ? taskGroupInfo.groupType : 'single',
+            sequenceOrder: taskGroupInfo ? taskGroupInfo.sequenceOrder : promptGroupIndex + 1,
+            dependencies: taskGroupInfo ? taskGroupInfo.dependencies : [],
             prompt: '',
             taskType: 'ai',
             createdAt: Date.now(),
