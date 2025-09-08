@@ -388,8 +388,9 @@ export default class TaskGeneratorV2 {
     console.log(`[DEBUG] hasPromptInRow - 行${workRow.number}のプロンプト確認:`);
     for (const colIndex of promptGroup.promptColumns) {
       const cell = this.getCellValue(data, workRow.index, colIndex);
-      console.log(`  列${this.indexToColumn(colIndex)}(index:${colIndex}): "${cell ? cell.substring(0, 50) : null}"`);
-      if (cell && cell.trim()) {
+      console.log(`  列${this.indexToColumn(colIndex)}(index:${colIndex}): "${cell ? cell.substring(0, 50) : 'null'}"`);
+      // 空文字列や"null"文字列は無視
+      if (cell && cell !== "" && cell !== "null" && cell.trim()) {
         console.log(`  → プロンプトあり`);
         return true;
       }
