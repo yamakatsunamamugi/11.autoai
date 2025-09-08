@@ -418,22 +418,40 @@ export class SpreadsheetLogger {
       const richTextData = this.parseLogToRichText(mergedLog);
       
       // リッチテキストメソッドが利用可能な場合は使用、そうでなければ通常の更新
-      if (sheetsClient.updateCellWithRichText && richTextData.some(item => item.url)) {
-        console.log(`🔗 [SpreadsheetLogger] リッチテキスト形式で書き込み（リンク付き）`);
-        await sheetsClient.updateCellWithRichText(
-          spreadsheetId,
-          logCell,
-          richTextData,
-          gid
+      // タイムアウト付きでAPI呼び出しを実行
+      const writeWithTimeout = async (writePromise, timeoutMs = 30000) => {
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('スプレッドシート書き込みタイムアウト')), timeoutMs)
         );
-      } else {
-        // 通常のテキストとして書き込み
-        await sheetsClient.updateCell(
-          spreadsheetId,
-          logCell,
-          mergedLog,
-          gid
-        );
+        return Promise.race([writePromise, timeoutPromise]);
+      };
+      
+      try {
+        if (sheetsClient.updateCellWithRichText && richTextData.some(item => item.url)) {
+          console.log(`🔗 [SpreadsheetLogger] リッチテキスト形式で書き込み（リンク付き）`);
+          await writeWithTimeout(
+            sheetsClient.updateCellWithRichText(
+              spreadsheetId,
+              logCell,
+              richTextData,
+              gid
+            )
+          );
+        } else {
+          // 通常のテキストとして書き込み
+          await writeWithTimeout(
+            sheetsClient.updateCell(
+              spreadsheetId,
+              logCell,
+              mergedLog,
+              gid
+            )
+          );
+        }
+      } catch (timeoutError) {
+        console.error(`❌ [SpreadsheetLogger] 書き込みエラー: ${logCell}`, timeoutError);
+        this.logger.error(`[SpreadsheetLogger] 書き込み失敗: ${logCell} - ${timeoutError.message}`);
+        // エラーでも処理は継続
       }
       
       console.log(`✅ [SpreadsheetLogger] ログ書き込み完了: ${logCell}`);
