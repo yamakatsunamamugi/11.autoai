@@ -78,32 +78,27 @@ export default class StreamProcessorV2 {
    */
   initializeDataProcessor() {
     try {
-      // SpreadsheetDataProcessorをスクリプトとして動的ロード
-      if (typeof window !== 'undefined' && !window.SpreadsheetDataProcessor) {
-        const script = document.createElement('script');
-        script.src = chrome.runtime.getURL('src/features/spreadsheet/data-processor.js');
-        document.head.appendChild(script);
-        
-        script.onload = () => {
+      // ブラウザ環境でのみSpreadsheetDataProcessorをロード
+      if (typeof window !== 'undefined') {
+        // ブラウザ環境：SpreadsheetDataProcessorをスクリプトとして動的ロード
+        if (!window.SpreadsheetDataProcessor) {
+          const script = document.createElement('script');
+          script.src = chrome.runtime.getURL('src/features/spreadsheet/data-processor.js');
+          document.head.appendChild(script);
+          
+          script.onload = () => {
+            this.dataProcessor = new window.SpreadsheetDataProcessor(this.logger);
+          };
+        } else {
           this.dataProcessor = new window.SpreadsheetDataProcessor(this.logger);
-        };
-      } else if (window.SpreadsheetDataProcessor) {
-        this.dataProcessor = new window.SpreadsheetDataProcessor(this.logger);
+        }
       } else {
-        // フォールバック：基本的なデータ処理機能を提供
-        this.dataProcessor = {
-          getAIModelFunction: (spreadsheetData, task) => {
-            return { ai: '', model: '', function: '' };
-          }
-        };
+        // Node.js環境（background.js）：フォールバック機能を提供
+        this.dataProcessor = null; // 後で必要に応じて初期化
       }
     } catch (error) {
       this.logger.error('[StreamProcessorV2] DataProcessor初期化エラー:', error);
-      this.dataProcessor = {
-        getAIModelFunction: (spreadsheetData, task) => {
-          return { ai: '', model: '', function: '' };
-        }
-      };
+      this.dataProcessor = null;
     }
   }
   
