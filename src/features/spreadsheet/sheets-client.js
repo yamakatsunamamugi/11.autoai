@@ -159,13 +159,36 @@ class SheetsClient {
     }
     
 
-    // まず全体のデータを取得（A1:AZ1000の範囲 - より多くの列を含む）
-    const rawData = await this.getSheetData(spreadsheetId, "A1:AZ1000", gid);
+    // まず全体のデータを取得（A1:CZ1000の範囲 - 104列まで対応）
+    // AZ=52列, BZ=78列, CZ=104列まで取得可能
+    const rawData = await this.getSheetData(spreadsheetId, "A1:CZ1000", gid);
     
     // デバッグ: 取得したデータの列数を確認
     if (rawData.length > 0) {
       const maxColumns = Math.max(...rawData.map(row => row ? row.length : 0));
       this.logger.log("SheetsClient", `取得データ: ${rawData.length}行 x 最大${maxColumns}列`);
+      
+      // メニュー行の列数を基準にパディング処理
+      // メニュー行を探す（A列が"メニュー"の行）
+      let targetColumns = maxColumns;
+      for (let row of rawData) {
+        if (row && row[0] === "メニュー") {
+          targetColumns = row.length;
+          this.logger.log("SheetsClient", `メニュー行の列数: ${targetColumns}列 - この列数でパディング`);
+          break;
+        }
+      }
+      
+      // 全ての行をメニュー行の列数に合わせてパディング
+      for (let i = 0; i < rawData.length; i++) {
+        if (!rawData[i]) {
+          rawData[i] = [];
+        }
+        while (rawData[i].length < targetColumns) {
+          rawData[i].push("");
+        }
+      }
+      this.logger.log("SheetsClient", `パディング完了: 全行を${targetColumns}列に統一`);
     }
 
     if (rawData.length === 0) {
