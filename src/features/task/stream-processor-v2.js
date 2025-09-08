@@ -1087,8 +1087,8 @@ export default class StreamProcessorV2 {
       const elapsedTime = Date.now() - startTime;
       this.logger.log(`[StreamProcessorV2] ✅ スクリプト注入完了 (${elapsedTime}ms)`, {
         aiType: aiType,
-        注入したスクリプト数: scripts.length,
-        スクリプト: scripts
+        注入したスクリプト数: scriptsToInject.length,
+        スクリプト: scriptsToInject
       });
       return true;
       
