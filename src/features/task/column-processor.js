@@ -1060,7 +1060,8 @@ ${prompt}`;
       const firstCell = this.getCellValue(i, 0);
       if (!firstCell) continue;
       
-      const lower = firstCell.toLowerCase();
+      // firstCellを文字列に変換してからtoLowerCaseを呼び出す
+      const lower = String(firstCell).toLowerCase();
       if (lower.includes('メニュー')) menuRow = i;
       else if (lower === 'ai') aiRow = i;
       else if (lower === 'モデル' || lower === 'model') modelRow = i;

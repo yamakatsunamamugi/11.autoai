@@ -220,7 +220,8 @@ export default class TaskGeneratorV2 {
       const firstCell = data.values[i][0];
       if (!firstCell) continue;
       
-      const cellValue = firstCell.toLowerCase();
+      // firstCellを文字列に変換してからtoLowerCaseを呼び出す
+      const cellValue = String(firstCell).toLowerCase();
       
       if (cellValue.includes('メニュー')) {
         rows.menu = i;
