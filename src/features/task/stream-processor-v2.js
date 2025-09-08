@@ -3740,6 +3740,9 @@ export default class StreamProcessorV2 {
     let totalCompleted = 0;
     let totalFailed = 0;
     
+    // spreadsheetDataをインスタンス変数に保存（動的取得メソッドで使用）
+    this.spreadsheetData = spreadsheetData;
+    
     // デバッグ: spreadsheetDataの内容確認
     this.logger.log('[DEBUG] processDynamicTaskGroups - spreadsheetData構造:', {
       hasValues: !!spreadsheetData?.values,
