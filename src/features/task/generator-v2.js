@@ -779,6 +779,24 @@ export default class TaskGeneratorV2 {
   }
 
   /**
+   * 列名を列インデックスに変換
+   */
+  columnToIndex(column) {
+    if (typeof column !== 'string' || column.length === 0) {
+      return 0;
+    }
+    
+    let index = 0;
+    const upperColumn = column.toUpperCase();
+    
+    for (let i = 0; i < upperColumn.length; i++) {
+      index = index * 26 + (upperColumn.charCodeAt(i) - 64);
+    }
+    
+    return index - 1; // 0ベースインデックスに変換
+  }
+
+  /**
    * タスクIDを生成
    */
   generateTaskId(column, row) {
