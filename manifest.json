@@ -133,6 +133,7 @@
         "src/features/spreadsheet/sheets-client.js",
         "src/features/spreadsheet/reader.js",
         "src/features/spreadsheet/config.js",
+        "src/features/spreadsheet/data-processor.js",
         "tests/test-spreadsheet.html",
         "tests/test-spreadsheet.js",
         "tests/test-debugger.js",

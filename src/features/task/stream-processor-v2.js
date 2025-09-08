@@ -52,6 +52,7 @@ export default class StreamProcessorV2 {
     this.writtenCells = new Map();
     this.spreadsheetData = null;
     this.spreadsheetLogger = null;
+    this.dataProcessor = null; // SpreadsheetDataProcessorのインスタンス
     this.processedCells = new Set(); // セル単位で処理済みを追跡
     this.dynamicQueue = new DynamicTaskQueue(logger); // 動的タスクキューを追加
     
@@ -69,6 +70,41 @@ export default class StreamProcessorV2 {
     };
     
     // SpreadsheetLoggerは processTaskStream で初期化する
+    this.initializeDataProcessor();
+  }
+
+  /**
+   * SpreadsheetDataProcessorを初期化
+   */
+  initializeDataProcessor() {
+    try {
+      // SpreadsheetDataProcessorをスクリプトとして動的ロード
+      if (typeof window !== 'undefined' && !window.SpreadsheetDataProcessor) {
+        const script = document.createElement('script');
+        script.src = chrome.runtime.getURL('src/features/spreadsheet/data-processor.js');
+        document.head.appendChild(script);
+        
+        script.onload = () => {
+          this.dataProcessor = new window.SpreadsheetDataProcessor(this.logger);
+        };
+      } else if (window.SpreadsheetDataProcessor) {
+        this.dataProcessor = new window.SpreadsheetDataProcessor(this.logger);
+      } else {
+        // フォールバック：基本的なデータ処理機能を提供
+        this.dataProcessor = {
+          getAIModelFunction: (spreadsheetData, task) => {
+            return { ai: '', model: '', function: '' };
+          }
+        };
+      }
+    } catch (error) {
+      this.logger.error('[StreamProcessorV2] DataProcessor初期化エラー:', error);
+      this.dataProcessor = {
+        getAIModelFunction: (spreadsheetData, task) => {
+          return { ai: '', model: '', function: '' };
+        }
+      };
+    }
   }
   
   /**
@@ -525,10 +561,20 @@ export default class StreamProcessorV2 {
         const context = taskContexts[index];
         this.logger.log(`[StreamProcessorV2] モデル選択${index + 1}/${taskContexts.length}: ${context.cell}`);
         
-        // モデルと機能を動的に取得
-        const { model, function: func } = await this.fetchModelAndFunctionFromTask(context.task);
+        // モデル、機能、AIを動的に取得
+        const { model, function: func, ai } = await this.fetchModelAndFunctionFromTask(context.task);
         context.task.model = model;
         context.task.function = func;
+        context.task.aiType = ai;
+        
+        // スプレッドシートから取得したデータを詳細ログ出力
+        this.logger.log(`[StreamProcessorV2] 📊 スプレッドシートから取得:`, {
+          cell: context.cell,
+          AI: ai,
+          モデル: model,
+          機能: func,
+          promptColumns: context.task.promptColumns
+        });
         
         let modelSuccess = false;
         let retryCount = 0;
@@ -1797,7 +1843,7 @@ export default class StreamProcessorV2 {
   }
 
   /**
-   * タスクからモデルと機能を動的に取得
+   * タスクからモデル、機能、AIを動的に取得
    */
   async fetchModelAndFunctionFromTask(task) {
     try {
@@ -1805,41 +1851,50 @@ export default class StreamProcessorV2 {
         throw new Error('Spreadsheet data not available');
       }
 
-      // モデル行と機能行を探す
+      // モデル行、機能行、AI行を探す
       const modelRow = this.spreadsheetData.values.find(row => row[0] === 'モデル');
       const functionRow = this.spreadsheetData.values.find(row => row[0] === '機能');
+      const aiRow = this.spreadsheetData.values.find(row => row[0] === 'AI');
       
       if (!modelRow || !functionRow) {
         this.logger.warn('[StreamProcessorV2] モデル行または機能行が見つかりません');
-        return { model: '', function: '' };
+        return { model: '', function: '', ai: '' };
       }
 
-      // 回答列のインデックス（Y列など）
-      const answerColumnIndex = this.columnToIndex(task.column);
+      // プロンプト列のインデックスを取得
+      const promptIndex = task.promptColumns && task.promptColumns.length > 0 ? task.promptColumns[0] : null;
       
-      // まず回答列の機能を確認
-      const functionValue = functionRow[answerColumnIndex] || '';
-      
-      let model = '';
-      let func = functionValue;
-      
-      if (functionValue === '通常' && task.promptColumns && task.promptColumns.length > 0) {
-        // 通常処理の場合：プロンプト列から取得
-        const promptIndex = task.promptColumns[0];
-        model = modelRow[promptIndex] || '';
-        func = functionRow[promptIndex] || '通常';
-        this.logger.log(`[StreamProcessorV2] 通常処理: プロンプト列(${this.indexToColumn(promptIndex)})からモデル取得: "${model}"`);
-      } else {
-        // 3種類AIの場合：回答列から取得
-        model = modelRow[answerColumnIndex] || '';
-        func = functionRow[answerColumnIndex] || '';
-        this.logger.log(`[StreamProcessorV2] 3種類AI: 回答列(${task.column})からモデル取得: "${model}"`);
+      if (!promptIndex) {
+        this.logger.warn('[StreamProcessorV2] プロンプト列が見つかりません');
+        return { model: '', function: '', ai: '' };
       }
       
-      return { model, function: func };
+      // プロンプト列の機能値で通常処理かどうか判定
+      const promptFunctionValue = functionRow[promptIndex] || '';
+      
+      let model = '';
+      let func = '';
+      let ai = '';
+      
+      if (promptFunctionValue === '通常') {
+        // 通常処理：プロンプト列から取得
+        model = modelRow[promptIndex] || '';
+        func = functionRow[promptIndex] || '通常';
+        ai = aiRow ? (aiRow[promptIndex] || '') : '';
+        this.logger.log(`[StreamProcessorV2] 通常処理: プロンプト列(${this.indexToColumn(promptIndex)})から取得 - AI: "${ai}", モデル: "${model}", 機能: "${func}"`);
+      } else {
+        // 3種類AI：回答列から取得
+        const answerColumnIndex = this.columnToIndex(task.column);
+        model = modelRow[answerColumnIndex] || '';
+        func = functionRow[answerColumnIndex] || '';
+        ai = aiRow ? (aiRow[answerColumnIndex] || '') : '';
+        this.logger.log(`[StreamProcessorV2] 3種類AI: 回答列(${task.column})から取得 - AI: "${ai}", モデル: "${model}", 機能: "${func}"`);
+      }
+      
+      return { model, function: func, ai };
     } catch (error) {
-      this.logger.error('[StreamProcessorV2] モデル/機能取得エラー:', error);
-      return { model: '', function: '' };
+      this.logger.error('[StreamProcessorV2] モデル/機能/AI取得エラー:', error);
+      return { model: '', function: '', ai: '' };
     }
   }
 
