@@ -156,6 +156,7 @@
         "automations/gemini-automation.js",
         "automations/gemini-dynamic-automation.js",
         "automations/genspark-automation.js",
+        "automations/v2/ai-wait-config.js",
         "automations/v2/chatgpt-automation-v2.js",
         "automations/v2/claude-automation-v2.js",
         "automations/v2/gemini-automation-v2.js",

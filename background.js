@@ -488,6 +488,32 @@ function getColumnName(index) {
 
 // ===== メッセージハンドラー =====
 /**
+ * グループタイプを判定するヘルパー関数
+ */
+function determineGroupType(trimmedHeader) {
+  if (trimmedHeader === "レポート化") {
+    return "report";
+  } else if (trimmedHeader.includes("Genspark（")) {
+    return "genspark";
+  }
+  return null;
+}
+
+/**
+ * AIタイプを判定するヘルパー関数
+ */
+function determineAIType(trimmedHeader) {
+  if (trimmedHeader === "レポート化") {
+    return "Report";
+  } else if (trimmedHeader.includes("Genspark（スライド）")) {
+    return "Genspark-Slides";
+  } else if (trimmedHeader.includes("Genspark（ファクトチェック）")) {
+    return "Genspark-FactCheck";
+  }
+  return null;
+}
+
+/**
  * processSpreadsheetData関数
  */
 function processSpreadsheetData(spreadsheetData) {
@@ -535,8 +561,11 @@ function processSpreadsheetData(spreadsheetData) {
     if (index < 20) {
     }
     
-    // ログ列の検出（新グループの開始）
-    if (trimmedHeader === "ログ") {
+    // ログ列または特別列の検出（新グループの開始）
+    if (trimmedHeader === "ログ" || 
+        trimmedHeader === "レポート化" || 
+        trimmedHeader.includes("Genspark（スライド）") ||
+        trimmedHeader.includes("Genspark（ファクトチェック）")) {
       // 前のグループがあれば完了させる
       if (currentGroup && currentGroup.columnRange.answerColumns.length > 0) {
         result.taskGroups.push(currentGroup);
@@ -550,12 +579,12 @@ function processSpreadsheetData(spreadsheetData) {
         startColumn: columnLetter,
         endColumn: columnLetter,  // 暫定、後で更新
         columnRange: {
-          logColumn: columnLetter,
-          promptColumns: [],
+          logColumn: trimmedHeader === "ログ" ? columnLetter : null,
+          promptColumns: trimmedHeader !== "ログ" ? [columnLetter] : [],
           answerColumns: []
         },
-        groupType: null,  // 後で判定
-        aiType: null,     // 後で判定
+        groupType: determineGroupType(trimmedHeader),
+        aiType: determineAIType(trimmedHeader),
         dependencies: groupCounter > 1 ? [`group_${groupCounter - 1}`] : [],
         sequenceOrder: groupCounter
       };
@@ -589,6 +618,10 @@ function processSpreadsheetData(spreadsheetData) {
           detectedAiType = 'Claude';
         } else if (aiCellLower.includes('gemini')) {
           detectedAiType = 'Gemini';
+        } else if (aiCellLower.includes('genspark')) {
+          detectedAiType = 'Genspark';
+        } else if (aiCellLower.includes('レポート') || aiCellLower.includes('report')) {
+          detectedAiType = 'Report';
         }
       }
       // AI行が空の場合はメニュー行から判定（3種類AIの場合）
@@ -600,6 +633,10 @@ function processSpreadsheetData(spreadsheetData) {
           detectedAiType = 'Claude';
         } else if (menuCellLower.includes('gemini')) {
           detectedAiType = 'Gemini';
+        } else if (menuCellLower.includes('genspark')) {
+          detectedAiType = 'Genspark';
+        } else if (menuCellLower.includes('レポート') || menuCellLower.includes('report')) {
+          detectedAiType = 'Report';
         }
       }
       
@@ -643,6 +680,18 @@ function processSpreadsheetData(spreadsheetData) {
     // 最後のグループを追加
     if (currentGroup && currentGroup.columnRange.answerColumns.length > 0) {
       result.taskGroups.push(currentGroup);
+    }
+    
+    // タスクグループ作成完了ログを出力
+    if (result.taskGroups.length > 0) {
+      console.log("[processSpreadsheetData] 📋 タスクグループ作成完了:");
+      result.taskGroups.forEach((group, index) => {
+        const aiType = group.aiType || (group.columnRange.answerColumns.length > 1 ? '複数AI' : 'AI');
+        console.log(`  タスクグループ${index + 1} ${group.startColumn}列〜${group.endColumn}列　使うAI: ${aiType}`);
+      });
+      console.log(`[processSpreadsheetData] ✅ 合計${result.taskGroups.length}個のタスクグループが作成されました`);
+    } else {
+      console.log("[processSpreadsheetData] ⚠️ タスクグループが作成されませんでした");
     }
     
   } catch (taskGroupError) {

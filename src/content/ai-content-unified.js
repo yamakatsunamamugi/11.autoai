@@ -1178,30 +1178,63 @@ async function loadAutomationScript() {
       return;
     }
     
-    // 共通ハンドラーを先に読み込む
-    const commonScript = document.createElement('script');
-    commonScript.src = chrome.runtime.getURL('automations/common-ai-handler.js');
-    commonScript.onload = () => {
-      console.log(`[11.autoai][${AI_TYPE}] ✅ 共通ハンドラー読み込み完了`);
+    // ai-wait-configを最初に読み込む
+    const waitConfigScript = document.createElement('script');
+    waitConfigScript.src = chrome.runtime.getURL('automations/v2/ai-wait-config.js');
+    waitConfigScript.onload = () => {
+      console.log(`[11.autoai] ✅ ai-wait-config.js 読み込み完了`);
       
-      // AI固有のスクリプトを読み込む
-      const aiScript = document.createElement('script');
-      aiScript.src = chrome.runtime.getURL(scriptPath);
-      aiScript.onload = () => {
-        console.log(`[11.autoai][${AI_TYPE}] ✅ ${AI_TYPE}自動化スクリプト読み込み完了`);
-        resolve(true);
+      // 共通ハンドラーを次に読み込む
+      const commonScript = document.createElement('script');
+      commonScript.src = chrome.runtime.getURL('automations/common-ai-handler.js');
+      commonScript.onload = () => {
+        console.log(`[11.autoai][${AI_TYPE}] ✅ 共通ハンドラー読み込み完了`);
+        
+        // AI固有のスクリプトを読み込む
+        const aiScript = document.createElement('script');
+        aiScript.src = chrome.runtime.getURL(scriptPath);
+        aiScript.onload = () => {
+          console.log(`[11.autoai][${AI_TYPE}] ✅ ${AI_TYPE}自動化スクリプト読み込み完了`);
+          resolve(true);
+        };
+        aiScript.onerror = (error) => {
+          console.error(`[11.autoai][${AI_TYPE}] ❌ ${AI_TYPE}自動化スクリプト読み込みエラー:`, error);
+          resolve(false);
+        };
+        document.head.appendChild(aiScript);
       };
-      aiScript.onerror = (error) => {
-        console.error(`[11.autoai][${AI_TYPE}] ❌ ${AI_TYPE}自動化スクリプト読み込みエラー:`, error);
+      commonScript.onerror = (error) => {
+        console.error(`[11.autoai][${AI_TYPE}] ❌ 共通ハンドラー読み込みエラー:`, error);
         resolve(false);
       };
-      document.head.appendChild(aiScript);
+      document.head.appendChild(commonScript);
     };
-    commonScript.onerror = (error) => {
-      console.error(`[11.autoai][${AI_TYPE}] ❌ 共通ハンドラー読み込みエラー:`, error);
-      resolve(false);
+    waitConfigScript.onerror = (error) => {
+      console.error(`[11.autoai] ❌ ai-wait-config.js 読み込みエラー:`, error);
+      // エラーでも続行（フォールバック値を使用）
+      const commonScript = document.createElement('script');
+      commonScript.src = chrome.runtime.getURL('automations/common-ai-handler.js');
+      commonScript.onload = () => {
+        console.log(`[11.autoai][${AI_TYPE}] ✅ 共通ハンドラー読み込み完了（wait-configなし）`);
+        const aiScript = document.createElement('script');
+        aiScript.src = chrome.runtime.getURL(scriptPath);
+        aiScript.onload = () => {
+          console.log(`[11.autoai][${AI_TYPE}] ✅ ${AI_TYPE}自動化スクリプト読み込み完了`);
+          resolve(true);
+        };
+        aiScript.onerror = (error) => {
+          console.error(`[11.autoai][${AI_TYPE}] ❌ ${AI_TYPE}自動化スクリプト読み込みエラー:`, error);
+          resolve(false);
+        };
+        document.head.appendChild(aiScript);
+      };
+      commonScript.onerror = (error) => {
+        console.error(`[11.autoai][${AI_TYPE}] ❌ 共通ハンドラー読み込みエラー:`, error);
+        resolve(false);
+      };
+      document.head.appendChild(commonScript);
     };
-    document.head.appendChild(commonScript);
+    document.head.appendChild(waitConfigScript);
   });
 }
 

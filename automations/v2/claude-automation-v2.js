@@ -1624,7 +1624,7 @@ ${prompt}`;
             
             // 停止ボタンが消えるまで待機（最大5分）
             let disappearWaitCount = 0;
-            const maxDisappearWait = 300;
+            const maxDisappearWait = AI_WAIT_CONFIG.STOP_BUTTON_DISAPPEAR_WAIT / 1000; // 統一設定: 5分
             
             while (disappearWaitCount < maxDisappearWait) {
                 let currentStopElement = null;

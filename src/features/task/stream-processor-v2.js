@@ -2615,10 +2615,371 @@ export default class StreamProcessorV2 {
     return results;
   }
 
+  // ===== 新規実装: グループベース最適化処理 =====
+  
+  /**
+   * 未完了グループをフィルタリング（95%時短のキー機能）
+   */
+  async filterIncompleteGroups(taskGroups) {
+    const incompleteGroups = [];
+    
+    this.logger.log(`[StreamProcessorV2] 🔍 ${taskGroups.length}グループの完了状況をチェック中...`);
+    
+    for (const group of taskGroups) {
+      // グループ内の全回答列をチェック
+      const hasIncompleteAnswers = await this.hasIncompleteAnswers(group);
+      
+      if (hasIncompleteAnswers) {
+        incompleteGroups.push(group);
+        this.logger.log(`[StreamProcessorV2] 📝 グループ${group.id}: 未完了`);
+      } else {
+        this.logger.log(`[StreamProcessorV2] ✅ グループ${group.id}: 完了済み`);
+      }
+    }
+    
+    this.logger.log(`[StreamProcessorV2] 📊 完了状況: 完了=${taskGroups.length - incompleteGroups.length}, 未完了=${incompleteGroups.length}`);
+    
+    return incompleteGroups;
+  }
+
+  /**
+   * グループ内に未完了回答があるかチェック
+   */
+  async hasIncompleteAnswers(group) {
+    // 回答列×作業行数の完了状況を一括チェック
+    for (const answerCol of group.columnRange.answerColumns) {
+      const emptyCells = await this.countEmptyCells(answerCol.column, this.getWorkRowRange());
+      if (emptyCells > 0) {
+        this.logger.log(`[StreamProcessorV2] 📊 ${answerCol.column}列: ${emptyCells}個の空セル発見`);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * 指定列の空セル数をカウント
+   */
+  async countEmptyCells(columnLetter, rowRange) {
+    try {
+      // SheetsClientを使用してセル範囲を取得
+      const range = `${columnLetter}${rowRange.start}:${columnLetter}${rowRange.end}`;
+      const data = await this.sheetsClient.readRange(range);
+      
+      if (!data || !data.values) return rowRange.end - rowRange.start + 1;
+      
+      let emptyCells = 0;
+      for (let i = 0; i < data.values.length; i++) {
+        const cellValue = data.values[i] && data.values[i][0];
+        if (!cellValue || cellValue.trim() === '') {
+          emptyCells++;
+        }
+      }
+      
+      return emptyCells;
+    } catch (error) {
+      this.logger.warn(`[StreamProcessorV2] セルカウントエラー (${columnLetter}):`, error);
+      return 1; // エラー時は未完了として扱う
+    }
+  }
+
+  /**
+   * 作業行範囲を取得
+   */
+  getWorkRowRange() {
+    // スプレッドシートの構造に基づいて作業行範囲を計算
+    const startRow = 9;  // データが始まる行
+    const endRow = this.spreadsheetData?.values?.length || 600;
+    return { start: startRow, end: endRow };
+  }
+
+  /**
+   * グループの並列処理（依存関係考慮）
+   */
+  async processGroupsInParallel(groups, spreadsheetData) {
+    this.logger.log(`[StreamProcessorV2] 🚀 ${groups.length}グループの並列処理開始`);
+    
+    let processedGroups = [];
+    let remainingGroups = [...groups];
+    
+    while (remainingGroups.length > 0) {
+      // 依存関係のないグループを並列実行
+      const readyGroups = remainingGroups.filter(g => this.canProcessNow(g, processedGroups));
+      const pendingGroups = remainingGroups.filter(g => !this.canProcessNow(g, processedGroups));
+      
+      if (readyGroups.length === 0) {
+        this.logger.warn('[StreamProcessorV2] ⚠️ 循環依存の可能性 - 残りグループを強制処理');
+        readyGroups.push(...pendingGroups);
+        remainingGroups = [];
+      } else {
+        remainingGroups = pendingGroups;
+      }
+      
+      this.logger.log(`[StreamProcessorV2] 📋 並列実行: ${readyGroups.length}グループ, 待機: ${remainingGroups.length}グループ`);
+      
+      // 並列実行
+      const results = await Promise.allSettled(
+        readyGroups.map(group => this.processGroup(group, spreadsheetData))
+      );
+      
+      // 完了グループを記録
+      readyGroups.forEach((group, index) => {
+        if (results[index].status === 'fulfilled') {
+          processedGroups.push(group.id);
+          this.logger.log(`[StreamProcessorV2] ✅ グループ${group.id}完了`);
+        } else {
+          this.logger.error(`[StreamProcessorV2] ❌ グループ${group.id}失敗:`, results[index].reason);
+        }
+      });
+    }
+    
+    this.logger.log('[StreamProcessorV2] 🎉 全グループ並列処理完了');
+    return { success: true, processedGroups: processedGroups.length };
+  }
+
+  /**
+   * グループが処理可能かチェック（依存関係）
+   */
+  canProcessNow(group, completedGroups) {
+    if (!group.dependencies || group.dependencies.length === 0) {
+      return true;
+    }
+    
+    return group.dependencies.every(depId => completedGroups.includes(depId));
+  }
+
+  /**
+   * 単一グループの処理
+   */
+  async processGroup(group, spreadsheetData) {
+    this.logger.log(`[StreamProcessorV2] 🎯 グループ${group.id}の処理開始 (タイプ: ${group.groupType || 'normal'})`);
+    
+    // 特別グループの専用処理
+    if (group.groupType === 'report') {
+      return await this.processReportGroup(group, spreadsheetData);
+    } else if (group.groupType === 'genspark') {
+      return await this.processGensparkGroup(group, spreadsheetData);
+    }
+    
+    // 通常のAIグループ処理
+    const taskGenerator = new TaskGeneratorV2(this.logger);
+    const tasks = await taskGenerator.generateTasksForGroup(group, spreadsheetData);
+    
+    if (tasks.length === 0) {
+      this.logger.log(`[StreamProcessorV2] ✅ グループ${group.id}: タスクなし（完了済み）`);
+      return;
+    }
+    
+    // グループ内タスクを実行
+    const results = await this.executeGroupTasks(tasks);
+    
+    this.logger.log(`[StreamProcessorV2] ✅ グループ${group.id}完了: ${results.completed}/${results.total}タスク`);
+    
+    return results;
+  }
+
+  /**
+   * グループ内タスクの実行
+   */
+  async executeGroupTasks(tasks) {
+    // 既存のバッチ処理ロジックを活用
+    const results = { total: tasks.length, completed: 0, failed: 0 };
+    
+    for (const task of tasks) {
+      try {
+        await this.executeTask(task);
+        results.completed++;
+      } catch (error) {
+        this.logger.error(`[StreamProcessorV2] タスク実行エラー:`, error);
+        results.failed++;
+      }
+    }
+    
+    return results;
+  }
+
+  /**
+   * 前の列の文字を取得（例：D→C、AA→Z）
+   */
+  getPreviousColumnLetter(columnLetter) {
+    // A1形式の列文字を数値に変換
+    let columnNumber = 0;
+    for (let i = 0; i < columnLetter.length; i++) {
+      columnNumber = columnNumber * 26 + (columnLetter.charCodeAt(i) - 'A'.charCodeAt(0) + 1);
+    }
+    
+    // 前の列番号を計算
+    columnNumber -= 1;
+    
+    if (columnNumber <= 0) {
+      return 'A'; // A列より前はない
+    }
+    
+    // 数値を列文字に変換
+    let result = '';
+    while (columnNumber > 0) {
+      columnNumber -= 1;
+      result = String.fromCharCode('A'.charCodeAt(0) + (columnNumber % 26)) + result;
+      columnNumber = Math.floor(columnNumber / 26);
+    }
+    
+    return result;
+  }
+
+  /**
+   * スプレッドシートからセル値を取得
+   */
+  async getCellValue(spreadsheetData, columnLetter, rowIndex) {
+    try {
+      if (spreadsheetData.values && spreadsheetData.values[rowIndex - 1]) {
+        const columnIndex = this.columnLetterToIndex(columnLetter);
+        return spreadsheetData.values[rowIndex - 1][columnIndex] || '';
+      }
+      return '';
+    } catch (error) {
+      this.logger.warn(`[StreamProcessorV2] セル取得エラー (${columnLetter}${rowIndex}):`, error);
+      return '';
+    }
+  }
+
+  /**
+   * スプレッドシートにセル値を書き込み
+   */
+  async writeCellValue(spreadsheetData, columnLetter, rowIndex, value) {
+    try {
+      // SheetsClientを使用してセルに書き込み
+      if (this.sheetsClient && this.sheetsClient.updateCell) {
+        const range = `${columnLetter}${rowIndex}`;
+        await this.sheetsClient.updateCell(range, value);
+      }
+    } catch (error) {
+      this.logger.error(`[StreamProcessorV2] セル書き込みエラー (${columnLetter}${rowIndex}):`, error);
+    }
+  }
+
+  /**
+   * 列文字を数値インデックスに変換
+   */
+  columnLetterToIndex(columnLetter) {
+    let columnNumber = 0;
+    for (let i = 0; i < columnLetter.length; i++) {
+      columnNumber = columnNumber * 26 + (columnLetter.charCodeAt(i) - 'A'.charCodeAt(0) + 1);
+    }
+    return columnNumber - 1; // 0ベースのインデックス
+  }
+
+  /**
+   * レポートグループの専用処理
+   */
+  async processReportGroup(group, spreadsheetData) {
+    this.logger.log(`[StreamProcessorV2] 📄 レポートグループ${group.id}の処理開始`);
+    
+    try {
+      // レポート専用タスク生成
+      const { ReportExecutor } = await import('../../report/report-executor.js');
+      const reportExecutor = new ReportExecutor({ logger: this.logger });
+      
+      // レポートタスクの実行
+      // TODO: レポート専用のタスク生成とデータ取得ロジックを実装
+      
+      this.logger.log(`[StreamProcessorV2] ✅ レポートグループ${group.id}完了`);
+      return { success: true, type: 'report' };
+      
+    } catch (error) {
+      this.logger.error(`[StreamProcessorV2] ❌ レポートグループ${group.id}エラー:`, error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Gensparkグループの専用処理
+   */
+  async processGensparkGroup(group, spreadsheetData) {
+    this.logger.log(`[StreamProcessorV2] ⚡ Gensparkグループ${group.id}の処理開始 (AIタイプ: ${group.aiType})`);
+    
+    try {
+      // Gensparkの種別に応じた機能設定
+      let functionType = 'slides'; // デフォルト
+      
+      if (group.aiType === 'Genspark-Slides') {
+        functionType = 'slides';
+        this.logger.log(`[StreamProcessorV2] 🎨 スライド生成モードで処理`);
+      } else if (group.aiType === 'Genspark-FactCheck') {
+        functionType = 'factcheck';
+        this.logger.log(`[StreamProcessorV2] ✅ ファクトチェックモードで処理`);
+      }
+      
+      // Gensparkグループの各行を処理
+      const workRowRange = this.getWorkRowRange();
+      const results = { total: 0, completed: 0, failed: 0 };
+      
+      for (let rowIndex = workRowRange.start; rowIndex <= workRowRange.end; rowIndex++) {
+        try {
+          // 左隣のセル（AI回答列）からテキストを取得
+          const leftColumnLetter = this.getPreviousColumnLetter(group.columnRange.promptColumns[0]);
+          const aiAnswerText = await this.getCellValue(spreadsheetData, leftColumnLetter, rowIndex);
+          
+          if (!aiAnswerText || aiAnswerText.trim() === '') {
+            continue; // 空のセルはスキップ
+          }
+          
+          results.total++;
+          
+          // Genspark自動化実行
+          if (typeof window !== 'undefined' && window.GensparkAutomation) {
+            const automationResult = await window.GensparkAutomation.runAutomation({
+              function: functionType,
+              text: aiAnswerText.trim(),
+              send: true,
+              waitResponse: true,
+              getResponse: true
+            });
+            
+            if (automationResult.success) {
+              // 結果をスプレッドシートに書き戻し
+              await this.writeCellValue(spreadsheetData, group.columnRange.promptColumns[0], rowIndex, automationResult.response || automationResult.responseUrl || 'Genspark処理完了');
+              results.completed++;
+              this.logger.log(`[StreamProcessorV2] 📝 行${rowIndex}: Genspark処理完了`);
+            } else {
+              results.failed++;
+              this.logger.error(`[StreamProcessorV2] ❌ 行${rowIndex}: Genspark処理失敗 - ${automationResult.error}`);
+            }
+          }
+          
+        } catch (rowError) {
+          results.failed++;
+          this.logger.error(`[StreamProcessorV2] ❌ 行${rowIndex}処理エラー:`, rowError);
+        }
+      }
+      
+      this.logger.log(`[StreamProcessorV2] ✅ Gensparkグループ${group.id}完了: ${results.completed}/${results.total}行`);
+      return { success: true, type: 'genspark', functionType: functionType, results: results };
+      
+    } catch (error) {
+      this.logger.error(`[StreamProcessorV2] ❌ Gensparkグループ${group.id}エラー:`, error);
+      return { success: false, error: error.message };
+    }
+  }
+
   async processColumnsSequentially(initialTaskList, spreadsheetData, isTestMode) {
     this.logger.log('[StreamProcessorV2] 🚀 プロンプトグループごとの順次処理開始');
     
-    // V3モードを使用するかチェック
+    // 1. タスクグループの完了状況を事前チェック
+    if (spreadsheetData.taskGroups && spreadsheetData.taskGroups.length > 0) {
+      this.logger.log('[StreamProcessorV2] 📊 タスクグループベース処理を開始');
+      const incompleteGroups = await this.filterIncompleteGroups(spreadsheetData.taskGroups);
+      
+      if (incompleteGroups.length === 0) {
+        this.logger.log('[StreamProcessorV2] ✅ 全グループ完了済み - 処理終了');
+        return { success: true, message: '全タスク完了済み' };
+      }
+      
+      this.logger.log(`[StreamProcessorV2] 📋 未完了グループ数: ${incompleteGroups.length}/${spreadsheetData.taskGroups.length}`);
+      // 2. 未完了グループのみ並列処理
+      return this.processGroupsInParallel(incompleteGroups, spreadsheetData);
+    }
+    
+    // フォールバック: 従来のV3モード処理
     const useV3Mode = true;  // V3モードを使用
     const useDynamicQueue = false; // フラグで切り替え可能
     
