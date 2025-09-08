@@ -1067,6 +1067,8 @@
             // 送信後、Canvas要素の出現を待つ（最大10秒）
             log('📝 [GeminiV2] 応答タイプを判定中...', 'info');
             
+            // Canvas応答テキストを外側のスコープで定義（最初に定義）
+            let canvasResponseText = '';
             let isCanvasMode = false;
             let checkAttempts = 0;
             const maxCheckAttempts = 5; // 5回チェック（2秒ごと = 最大10秒）
@@ -1075,13 +1077,21 @@
                 checkAttempts++;
                 await wait(2000); // 2秒待機
                 
-                // Canvas要素の存在とテキストの有無を確認
-                const canvasEditor = findElement(['.ProseMirror']);
+                // Canvas要素の存在とテキストの有無を確認（セレクタを拡張）
+                const canvasEditor = findElement([
+                    '.ProseMirror',
+                    'immersive-editor .ProseMirror',
+                    '.immersive-editor .ProseMirror',
+                    '#extended-response-markdown-content .ProseMirror'
+                ]);
                 const canvasText = canvasEditor ? (canvasEditor.textContent || '').trim() : '';
                 
                 if (canvasText.length > 0) {
                     isCanvasMode = true;
+                    // ★重要: 最初に検出したテキストを保存
+                    canvasResponseText = canvasText;
                     log(`🎨 [GeminiV2] Canvas要素にテキスト生成を検出（${canvasText.length}文字）- 試行${checkAttempts}/${maxCheckAttempts}`, 'success');
+                    log(`🎨 [GeminiV2] 検出したテキストの先頭100文字: ${canvasText.substring(0, 100)}...`, 'info');
                     break;
                 } else if (canvasEditor) {
                     log(`⏳ [GeminiV2] Canvas要素は存在するがテキストなし - 試行${checkAttempts}/${maxCheckAttempts}`, 'info');
@@ -1107,22 +1117,25 @@
                 log(`💬 [GeminiV2] Canvas要素にテキストが生成されなかったため、通常モードで処理`, 'info');
             }
             
-            // Canvas応答テキストを外側のスコープで定義
-            let canvasResponseText = '';
-            
             // 応答待機（Canvas/通常モード判定）
             if (isCanvasMode) {
-                // Canvasモード: 最大3回リトライ
-                let retryCount = 0;
-                const maxRetries = 3;
-                
-                while (retryCount < maxRetries) {
-                    retryCount++;
-                    log(`🎨 Canvasモード: 試行 ${retryCount}/${maxRetries}`, 'info');
+                // 既に取得済みのテキストがある場合はそれを使用
+                if (canvasResponseText && canvasResponseText.length > 0) {
+                    log(`✅ [GeminiV2] Canvas応答を最初の検出時に取得済み: ${canvasResponseText.length}文字`, 'success');
+                    // 既にテキストがあるので、リトライ処理はスキップ
+                } else {
+                    // テキストがない場合のみ、追加の待機と監視を実行
+                    // Canvasモード: 最大3回リトライ
+                    let retryCount = 0;
+                    const maxRetries = 3;
                     
-                    // 初期待機1分
-                    log('🎨 Canvasモード: 初期待機1分...', 'info');
-                    await wait(60000);
+                    while (retryCount < maxRetries) {
+                        retryCount++;
+                        log(`🎨 Canvasモード: 追加監視試行 ${retryCount}/${maxRetries}`, 'info');
+                        
+                        // 初期待機を短縮（10秒）
+                        log('🎨 Canvasモード: 追加待機10秒...', 'info');
+                        await wait(10000);
                     
                     log('🎨 Canvasモード: テキスト生成の監視を開始します。', 'info');
                     
@@ -1138,7 +1151,12 @@
                         const maxCanvasNotFound = 5; // Canvas要素が5回連続で見つからなければ終了
                         
                         const monitor = setInterval(() => {
-                            const canvasEditor = findElement(['.ProseMirror']);
+                            const canvasEditor = findElement([
+                                '.ProseMirror',
+                                'immersive-editor .ProseMirror',
+                                '.immersive-editor .ProseMirror',
+                                '#extended-response-markdown-content .ProseMirror'
+                            ]);
                             if (!canvasEditor) {
                                 canvasNotFoundCount++;
                                 log(`⚠️ Canvas要素(.ProseMirror)が見つかりません (${canvasNotFoundCount}/${maxCanvasNotFound})`, 'warn');
@@ -1198,10 +1216,11 @@
                     }
                 }
                 
-                // 最終的にテキストが取得できなかった場合
-                if (!canvasResponseText || canvasResponseText.length === 0) {
-                    log('❌ 3回リトライしてもCanvas応答を取得できませんでした', 'error');
-                    // エラーをthrowせずに処理を継続（空文字列として扱う）
+                    // 最終的にテキストが取得できなかった場合
+                    if (!canvasResponseText || canvasResponseText.length === 0) {
+                        log('❌ 3回リトライしてもCanvas応答を取得できませんでした', 'error');
+                        // エラーをthrowせずに処理を継続（空文字列として扱う）
+                    }
                 }
                 
             } else {
