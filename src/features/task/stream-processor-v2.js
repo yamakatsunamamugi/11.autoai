@@ -3688,6 +3688,16 @@ export default class StreamProcessorV2 {
     let totalCompleted = 0;
     let totalFailed = 0;
     
+    // デバッグ: spreadsheetDataの内容確認
+    this.logger.log('[DEBUG] processDynamicTaskGroups - spreadsheetData構造:', {
+      hasValues: !!spreadsheetData?.values,
+      hasModelRow: !!spreadsheetData?.modelRow,
+      hasTaskRow: !!spreadsheetData?.taskRow,
+      modelRowData: spreadsheetData?.modelRow?.data?.slice(0, 5),
+      taskRowData: spreadsheetData?.taskRow?.data?.slice(0, 5),
+      keys: Object.keys(spreadsheetData || {})
+    });
+    
     // SpreadsheetLoggerを初期化
     await this.initializeSpreadsheetLogger();
     
@@ -3754,14 +3764,32 @@ export default class StreamProcessorV2 {
         });
         const aiType = answerCol?.aiType || 'Claude'; // デフォルトはClaude
         
+        // 機能の値を先に取得（通常処理か3種類AIかを判定するため）
+        const functionValue = spreadsheetData.taskRow?.data?.[taskInfo.columnIndex] || '';
+        
+        // モデルと機能を適切な列から取得
+        let modelValue = '';
+        let finalFunctionValue = functionValue;
+        
+        if (functionValue === '通常' && promptColIndices.length > 0) {
+          // 通常処理の場合：プロンプト列から取得
+          modelValue = spreadsheetData.modelRow?.data?.[promptColIndices[0]] || '';
+          finalFunctionValue = spreadsheetData.taskRow?.data?.[promptColIndices[0]] || '通常';
+        } else {
+          // 3種類AIの場合：回答列から取得
+          modelValue = spreadsheetData.modelRow?.data?.[taskInfo.columnIndex] || '';
+          finalFunctionValue = spreadsheetData.taskRow?.data?.[taskInfo.columnIndex] || '';
+        }
+        
         // デバッグ: スプレッドシートデータの確認
         this.logger.log(`[DEBUG] モデル/機能取得:`, {
           column: taskInfo.column,
           columnIndex: taskInfo.columnIndex,
-          modelRowData: spreadsheetData.modelRow?.data?.slice(taskInfo.columnIndex - 1, taskInfo.columnIndex + 2),
-          taskRowData: spreadsheetData.taskRow?.data?.slice(taskInfo.columnIndex - 1, taskInfo.columnIndex + 2),
-          modelValue: spreadsheetData.modelRow?.data?.[taskInfo.columnIndex],
-          functionValue: spreadsheetData.taskRow?.data?.[taskInfo.columnIndex]
+          promptIndex: promptColIndices[0],
+          functionValue: functionValue,
+          modelValue: modelValue,
+          finalFunctionValue: finalFunctionValue,
+          取得元: functionValue === '通常' ? 'プロンプト列' : '回答列'
         });
         
         // タスクオブジェクトを作成
@@ -3776,8 +3804,8 @@ export default class StreamProcessorV2 {
           promptColumn: this.indexToColumn(promptColIndices[0]),
           promptColumns: promptColIndices,  // 配列形式で設定（fetchPromptFromTaskが使用）
           sheetName: spreadsheetData.sheetName || '不明',
-          model: spreadsheetData.modelRow?.data?.[taskInfo.columnIndex] || '',
-          function: spreadsheetData.taskRow?.data?.[taskInfo.columnIndex] || '',
+          model: modelValue,
+          function: finalFunctionValue,
           createdAt: Date.now(),
           // ログ列を追加（プロンプト列の1列前）
           logColumns: [this.indexToColumn(Math.max(0, Math.min(...promptColIndices) - 1))]
