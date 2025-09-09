@@ -4308,6 +4308,13 @@ export default class StreamProcessorV2 {
       const spreadsheetId = this.spreadsheetUrl ? this.extractSpreadsheetId(this.spreadsheetUrl) : null;
       const sheetName = this.spreadsheetData?.sheetName || '1.メルマガ';
       
+      this.logger.log(`[StreamProcessorV2] 🔍 プロンプトスキャン開始:`, {
+        spreadsheetId: spreadsheetId ? 'あり' : 'なし',
+        sheetName,
+        sheetsClient: globalThis.sheetsClient ? 'あり' : 'なし',
+        promptCols
+      });
+      
       if (!spreadsheetId || !globalThis.sheetsClient) {
         this.logger.warn('[StreamProcessorV2] プロンプトスキャンに必要なデータが不足');
         return [];
@@ -4316,14 +4323,27 @@ export default class StreamProcessorV2 {
       // 各プロンプト列をスキャン
       for (const colIndex of promptCols) {
         const columnName = this.indexToColumn(colIndex);
-        this.logger.log(`[StreamProcessorV2] プロンプト列スキャン開始: ${columnName}`);
+        this.logger.log(`[StreamProcessorV2] プロンプト列スキャン開始: ${columnName} (インデックス: ${colIndex})`);
         
         // 列全体を取得（9行目以降の範囲で確認）
         const startRow = 9; // 1ベース
         const endRow = 100; // とりあえず100行まで確認
         const range = `${columnName}${startRow}:${columnName}${endRow}`;
         
+        this.logger.log(`[StreamProcessorV2] 🔍 API呼び出し準備:`, {
+          range,
+          spreadsheetId,
+          sheetName,
+          fullUrl: `${columnName}${startRow}から${columnName}${endRow}まで`
+        });
+        
         const cellValues = await globalThis.sheetsClient.getCellValues(spreadsheetId, sheetName, range);
+        
+        this.logger.log(`[StreamProcessorV2] 📊 API応答:`, {
+          columnName,
+          取得セル数: cellValues?.length || 0,
+          データサンプル: cellValues?.slice(0, 5) || []
+        });
         
         // プロンプトがある行を特定
         for (let i = 0; i < cellValues.length; i++) {

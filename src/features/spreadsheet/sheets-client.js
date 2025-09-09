@@ -1094,7 +1094,7 @@ class SheetsClient {
       const token = await globalThis.authService.getAuthToken();
       const encodedSheetName = encodeURIComponent(sheetName);
       const fullRange = `'${encodedSheetName}'!${range}`;
-      const url = `${this.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(fullRange)}?valueRenderOption=FORMATTED_VALUE`;
+      const url = `${this.baseUrl}/${spreadsheetId}/values/${fullRange}?valueRenderOption=FORMATTED_VALUE`;
       
       const response = await fetch(url, {
         method: "GET",
