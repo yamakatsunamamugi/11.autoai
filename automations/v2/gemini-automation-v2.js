@@ -1414,18 +1414,46 @@
             if (responseText) {
                 log(`✅ [GeminiV2] 応答取得完了: ${responseText.length}文字`, 'success');
                 
+                // 現在表示されているモデルと機能を取得
+                let displayedModel = '';
+                let displayedFunction = '';
+                
+                try {
+                    // ModelInfoExtractorを使用（グローバルに登録されている）
+                    if (window.ModelInfoExtractor) {
+                        displayedModel = window.ModelInfoExtractor.extract('Gemini') || '';
+                        log(`📊 ModelInfoExtractor結果: "${displayedModel}"`, 'info');
+                    } else {
+                        log('⚠️ ModelInfoExtractorが利用できません', 'warn');
+                    }
+                    
+                    // FunctionInfoExtractorを使用
+                    if (window.FunctionInfoExtractor) {
+                        displayedFunction = window.FunctionInfoExtractor.extract('Gemini') || '';
+                        log(`📊 FunctionInfoExtractor結果: "${displayedFunction}"`, 'info');
+                    } else {
+                        log('⚠️ FunctionInfoExtractorが利用できません', 'warn');
+                    }
+                } catch (error) {
+                    log(`⚠️ モデル/機能情報取得エラー: ${error.message}`, 'warn');
+                }
+                
                 // [DEBUG] 最終的に返すテキスト
                 console.log('🔍 [DEBUG] Gemini最終応答テキスト:', {
                     timestamp: new Date().toISOString(),
                     length: responseText.length,
                     preview: responseText.substring(0, 500),
                     fullText: responseText,
-                    isCanvasMode: isCanvasMode
+                    isCanvasMode: isCanvasMode,
+                    displayedModel: displayedModel,
+                    displayedFunction: displayedFunction
                 });
                 
                 return {
                     success: true,
-                    response: responseText
+                    response: responseText,
+                    displayedModel: displayedModel,
+                    displayedFunction: displayedFunction
                 };
             } else {
                 // [DEBUG] 応答取得失敗時のDOM状態

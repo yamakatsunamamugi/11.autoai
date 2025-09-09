@@ -13,7 +13,7 @@ class SheetsClient {
       maxBatchUpdates: 100           // バッチ更新の最大件数
     };
     
-    // クォータ管理
+    // クォータ管理と監視
     this.quotaManager = {
       lastRequestTime: 0,
       requestCount: 0,
@@ -24,6 +24,135 @@ class SheetsClient {
       maxInterval: 60000, // 最大リクエスト間隔 (1分)
       windowDuration: 60000 // ウィンドウ期間 (1分)
     };
+    
+    // エラー監視と統計
+    this.errorMonitor = {
+      totalErrors: 0,
+      quotaErrors: 0,
+      timeoutErrors: 0,
+      otherErrors: 0,
+      lastErrorTime: 0,
+      errorHistory: [], // 最新100件のエラー履歴
+      maxHistorySize: 100,
+      recoveryAttempts: 0,
+      successfulRecoveries: 0
+    };
+  }
+
+  /**
+   * エラーを監視・記録
+   * @param {Error} error - エラーオブジェクト
+   * @param {string} context - エラー発生コンテキスト
+   */
+  recordError(error, context = 'unknown') {
+    const now = Date.now();
+    this.errorMonitor.totalErrors++;
+    this.errorMonitor.lastErrorTime = now;
+    
+    // エラータイプ別の統計
+    if (this.isQuotaError(error)) {
+      this.errorMonitor.quotaErrors++;
+    } else if (error.name === 'TimeoutError' || error.message.includes('timeout')) {
+      this.errorMonitor.timeoutErrors++;
+    } else {
+      this.errorMonitor.otherErrors++;
+    }
+    
+    // エラー履歴に追加
+    const errorRecord = {
+      timestamp: now,
+      context: context,
+      type: this.isQuotaError(error) ? 'quota' : 
+            error.name === 'TimeoutError' ? 'timeout' : 'other',
+      message: error.message,
+      name: error.name,
+      httpStatus: error.status || null
+    };
+    
+    this.errorMonitor.errorHistory.push(errorRecord);
+    
+    // 履歴サイズを制限
+    if (this.errorMonitor.errorHistory.length > this.errorMonitor.maxHistorySize) {
+      this.errorMonitor.errorHistory.shift();
+    }
+  }
+
+  /**
+   * エラー統計情報を取得
+   * @returns {Object} エラー統計
+   */
+  getErrorStats() {
+    const recentErrors = this.errorMonitor.errorHistory.filter(
+      error => Date.now() - error.timestamp < 60 * 60 * 1000 // 1時間以内
+    );
+    
+    return {
+      total: this.errorMonitor.totalErrors,
+      quota: this.errorMonitor.quotaErrors,
+      timeout: this.errorMonitor.timeoutErrors,
+      other: this.errorMonitor.otherErrors,
+      lastErrorTime: this.errorMonitor.lastErrorTime,
+      recentErrorCount: recentErrors.length,
+      recoveryAttempts: this.errorMonitor.recoveryAttempts,
+      successfulRecoveries: this.errorMonitor.successfulRecoveries,
+      recoveryRate: this.errorMonitor.recoveryAttempts > 0 ? 
+        (this.errorMonitor.successfulRecoveries / this.errorMonitor.recoveryAttempts * 100).toFixed(2) + '%' : 
+        'N/A',
+      quotaManagerStatus: {
+        backoffMultiplier: this.quotaManager.backoffMultiplier,
+        requestCount: this.quotaManager.requestCount,
+        currentInterval: this.quotaManager.minInterval * this.quotaManager.backoffMultiplier
+      }
+    };
+  }
+
+  /**
+   * システムの健康状態をチェック
+   * @returns {Object} 健康状態情報
+   */
+  getHealthStatus() {
+    const now = Date.now();
+    const recentErrorWindow = 5 * 60 * 1000; // 5分
+    const recentErrors = this.errorMonitor.errorHistory.filter(
+      error => now - error.timestamp < recentErrorWindow
+    );
+    
+    const status = {
+      healthy: true,
+      level: 'good', // good, warning, critical
+      issues: [],
+      recommendations: []
+    };
+    
+    // 最近のエラー頻度チェック
+    if (recentErrors.length > 10) {
+      status.healthy = false;
+      status.level = 'critical';
+      status.issues.push(`直近5分で${recentErrors.length}件のエラーが発生`);
+      status.recommendations.push('一時的な処理停止を推奨');
+    } else if (recentErrors.length > 5) {
+      status.level = 'warning';
+      status.issues.push(`直近5分で${recentErrors.length}件のエラーが発生`);
+      status.recommendations.push('処理頻度の調整を推奨');
+    }
+    
+    // クォータエラーの頻度チェック
+    const recentQuotaErrors = recentErrors.filter(e => e.type === 'quota');
+    if (recentQuotaErrors.length > 3) {
+      status.healthy = false;
+      status.level = 'critical';
+      status.issues.push(`クォータエラーが頻発: ${recentQuotaErrors.length}件`);
+      status.recommendations.push('API使用量の大幅削減が必要');
+    }
+    
+    // バックオフ状態チェック
+    if (this.quotaManager.backoffMultiplier > 5) {
+      status.level = status.level === 'critical' ? 'critical' : 'warning';
+      status.issues.push(`高いバックオフ倍率: ${this.quotaManager.backoffMultiplier}x`);
+      status.recommendations.push('システム負荷軽減のため処理間隔の延長');
+    }
+    
+    return status;
   }
 
   /**
@@ -105,12 +234,28 @@ class SheetsClient {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         await this.waitForQuota();
-        return await requestFunc();
+        const result = await requestFunc();
+        
+        // 成功時の回復記録
+        if (attempt > 1) {
+          this.errorMonitor.successfulRecoveries++;
+          this.detailedLog('info', `リトライ成功: ${requestType}`, {
+            attempt,
+            recoveryAttempts: this.errorMonitor.recoveryAttempts,
+            successfulRecoveries: this.errorMonitor.successfulRecoveries
+          });
+        }
+        
+        return result;
       } catch (error) {
         lastError = error;
         
+        // エラーを記録
+        this.recordError(error, requestType);
+        
         if (this.isQuotaError(error)) {
           this.handleQuotaError(error);
+          this.errorMonitor.recoveryAttempts++;
           
           if (attempt < maxRetries) {
             const retryDelay = Math.min(
@@ -122,12 +267,23 @@ class SheetsClient {
               requestType,
               attempt,
               retryDelay,
-              error: error
+              error: error,
+              errorStats: this.getErrorStats()
             });
             
             await sleep(retryDelay);
             continue;
           }
+        }
+        
+        // 致命的な状況のチェック
+        const healthStatus = this.getHealthStatus();
+        if (!healthStatus.healthy) {
+          this.detailedLog('error', `システム健康状態が悪化`, {
+            requestType,
+            healthStatus,
+            errorStats: this.getErrorStats()
+          });
         }
         
         // クォータエラー以外、または最大リトライ回数に達した場合はそのまま投げる
@@ -390,9 +546,9 @@ class SheetsClient {
         result: chunkResult
       });
 
-      // API レート制限を避けるため少し待機
+      // API レート制限を避けるため待機（クォータ管理により自動調整）
       if (i < chunks.length - 1) {
-        await sleep(200);
+        await sleep(1000); // 200ms → 1000ms に変更
       }
     }
 
@@ -730,54 +886,56 @@ class SheetsClient {
       return {};
     }
     
-    // シート名を取得
-    let sheetName = null;
-    if (gid) {
-      sheetName = await this.getSheetNameFromGid(spreadsheetId, gid);
-    }
-    
-    // 範囲にシート名を追加
-    const fullRanges = ranges.map(range => {
-      if (sheetName && !range.includes("!")) {
-        return `'${sheetName}'!${range}`;
+    return await this.executeWithQuotaManagement(async () => {
+      // シート名を取得
+      let sheetName = null;
+      if (gid) {
+        sheetName = await this.getSheetNameFromGid(spreadsheetId, gid);
       }
-      return range;
-    });
-    
-    const token = await globalThis.authService.getAuthToken();
-    const rangesParam = fullRanges.map(r => `ranges=${encodeURIComponent(r)}`).join('&');
-    const url = `${this.baseUrl}/${spreadsheetId}/values:batchGet?${rangesParam}&valueRenderOption=FORMATTED_VALUE`;
-    
-    const response = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-    });
-    
-    if (!response.ok) {
-      const error = await response.json();
-      this.detailedLog('error', `バッチ取得APIエラー`, {
-        error: error,
-        errorType: 'batch_get_error',
-        httpStatus: response.status
+      
+      // 範囲にシート名を追加
+      const fullRanges = ranges.map(range => {
+        if (sheetName && !range.includes("!")) {
+          return `'${sheetName}'!${range}`;
+        }
+        return range;
       });
-      throw new Error(`Sheets API error: ${error.error?.message || 'Unknown error'}`);
-    }
-    
-    const data = await response.json();
-    const result = {};
-    
-    // レスポンスを元の範囲にマッピング
-    if (data.valueRanges) {
-      data.valueRanges.forEach((valueRange, index) => {
-        const originalRange = ranges[index];
-        // 行全体のデータを返す（最初のセルだけでなく）
-        result[originalRange] = valueRange.values && valueRange.values[0] ? valueRange.values[0] : [];
+      
+      const token = await globalThis.authService.getAuthToken();
+      const rangesParam = fullRanges.map(r => `ranges=${encodeURIComponent(r)}`).join('&');
+      const url = `${this.baseUrl}/${spreadsheetId}/values:batchGet?${rangesParam}&valueRenderOption=FORMATTED_VALUE`;
+      
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
       });
-    }
-    
-    return result;
+      
+      if (!response.ok) {
+        const error = await response.json();
+        this.detailedLog('error', `バッチ取得APIエラー`, {
+          error: error,
+          errorType: 'batch_get_error',
+          httpStatus: response.status
+        });
+        throw new Error(`Sheets API error: ${error.error?.message || 'Unknown error'}`);
+      }
+      
+      const data = await response.json();
+      const result = {};
+      
+      // レスポンスを元の範囲にマッピング
+      if (data.valueRanges) {
+        data.valueRanges.forEach((valueRange, index) => {
+          const originalRange = ranges[index];
+          // 行全体のデータを返す（最初のセルだけでなく）
+          result[originalRange] = valueRange.values && valueRange.values[0] ? valueRange.values[0] : [];
+        });
+      }
+      
+      return result;
+    }, 'batchGetSheetData');
   }
 
   /**
@@ -788,88 +946,72 @@ class SheetsClient {
    * @returns {Promise<Array>} セルデータの2次元配列
    */
   async getSheetData(spreadsheetId, range, gid = null) {
-    
-    // デバッグログ追加
-    console.log(`🔍 [SheetsClient] getSheetData呼び出し:`, {
-      spreadsheetId,
-      range,
-      gid,
-      rangeIncludesSheet: range.includes("!")
-    });
-    
-    // gidが指定されている場合、シート名を取得して範囲を更新
-    if (gid) {
-      const sheetName = await this.getSheetNameFromGid(spreadsheetId, gid);
-      if (sheetName) {
-        // 範囲にシート名が含まれていない場合は追加
-        if (!range.includes("!")) {
-          const oldRange = range;
-          range = `'${sheetName}'!${range}`;
-          console.log(`🔍 [SheetsClient] 範囲にシート名追加: ${oldRange} → ${range}`);
-        } else {
-          // すでにシート名が含まれている場合は置き換え
-          const oldRange = range;
-          range = `'${sheetName}'!${range.split("!")[1]}`;
-          console.log(`🔍 [SheetsClient] シート名置換: ${oldRange} → ${range}`);
+    return await this.executeWithQuotaManagement(async () => {
+      
+      // デバッグログ追加
+      console.log(`🔍 [SheetsClient] getSheetData呼び出し:`, {
+        spreadsheetId,
+        range,
+        gid,
+        rangeIncludesSheet: range.includes("!")
+      });
+      
+      // gidが指定されている場合、シート名を取得して範囲を更新
+      if (gid) {
+        const sheetName = await this.getSheetNameFromGid(spreadsheetId, gid);
+        if (sheetName) {
+          // 範囲にシート名が含まれていない場合は追加
+          if (!range.includes("!")) {
+            const oldRange = range;
+            range = `'${sheetName}'!${range}`;
+            console.log(`🔍 [SheetsClient] 範囲にシート名追加: ${oldRange} → ${range}`);
+          } else {
+            // すでにシート名が含まれている場合は置き換え
+            const oldRange = range;
+            range = `'${sheetName}'!${range.split("!")[1]}`;
+            console.log(`🔍 [SheetsClient] シート名置換: ${oldRange} → ${range}`);
+          }
         }
       }
-    } else {
-      // rangeからシート名を抽出してみる
-      const match = range.match(/^'(.+?)'!/);
-      if (match) {
-      } else if (range.includes("!")) {
-        const sheetName = range.split("!")[0];
-      } else {
-      }
-    }
 
-    
-    const token = await globalThis.authService.getAuthToken();
-    // valueRenderOptionを追加して、空セルも含めて全データを取得
-    const url = `${this.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(range)}?valueRenderOption=FORMATTED_VALUE`;
-    
-
-    const response = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-    });
-
-    
-    if (!response.ok) {
-      const error = await response.json();
-      this.detailedLog('error', `APIエラー`, {
-        error: error,
-        errorType: 'get_sheet_data_error',
-        httpStatus: response.status,
-        range: range
+      const token = await globalThis.authService.getAuthToken();
+      // valueRenderOptionを追加して、空セルも含めて全データを取得
+      const url = `${this.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(range)}?valueRenderOption=FORMATTED_VALUE`;
+      
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
       });
-      throw new Error(`Sheets API error: ${error.error?.message || 'Unknown error'}`);
-    }
 
-    const data = await response.json();
-    
-    const result = data.values || [];
-    
-    // デバッグログ追加
-    console.log(`🔍 [SheetsClient] getSheetData結果:`, {
-      range,
-      hasData: !!data.values,
-      resultLength: result.length,
-      firstRowLength: result[0]?.length || 0,
-      firstCellValue: result[0]?.[0] ? result[0][0].substring(0, 50) : '(空)',
-      dataPreview: JSON.stringify(result).substring(0, 200)
-    });
-    
-    if (result.length > 0) {
-      const firstRow = result[0];
-      const firstRowPreview = Array.isArray(firstRow) ? 
-        `[配列: ${firstRow.length}列]` : 
-        `[オブジェクト]`;
-    }
-    
-    return result;
+      if (!response.ok) {
+        const error = await response.json();
+        this.detailedLog('error', `APIエラー`, {
+          error: error,
+          errorType: 'get_sheet_data_error',
+          httpStatus: response.status,
+          range: range
+        });
+        throw new Error(`Sheets API error: ${error.error?.message || 'Unknown error'}`);
+      }
+
+      const data = await response.json();
+      
+      const result = data.values || [];
+      
+      // デバッグログ追加
+      console.log(`🔍 [SheetsClient] getSheetData結果:`, {
+        range,
+        hasData: !!data.values,
+        resultLength: result.length,
+        firstRowLength: result[0]?.length || 0,
+        firstCellValue: result[0]?.[0] ? result[0][0].substring(0, 50) : '(空)',
+        dataPreview: JSON.stringify(result).substring(0, 200)
+      });
+      
+      return result;
+    }, 'getSheetData');
   }
 
   /**
@@ -1378,132 +1520,134 @@ class SheetsClient {
 
     const startTime = Date.now();
 
-    try {
-      // 1. データサイズ検証
-      const validation = this.validateDataSize(value, range);
-      
-      if (validation.warnings.length > 0) {
-        this.detailedLog('warn', `データサイズ警告: ${range}`, validation);
-      }
-
-      // 2. 文字数制限チェック
-      if (!validation.isValid) {
-        if (enableSplitting && validation.errors.some(e => e.includes('文字数制限超過'))) {
-          this.detailedLog('info', `大容量データを分割書き込みに切り替え: ${range}`);
-          return await this.updateCellWithSplitting(spreadsheetId, range, value, gid);
-        } else {
-          this.detailedLog('error', `書き込み前検証失敗: ${range}`, validation);
-          throw new Error(`データ検証エラー: ${validation.errors.join(', ')}`);
+    return await this.executeWithQuotaManagement(async () => {
+      try {
+        // 1. データサイズ検証
+        const validation = this.validateDataSize(value, range);
+        
+        if (validation.warnings.length > 0) {
+          this.detailedLog('warn', `データサイズ警告: ${range}`, validation);
         }
-      }
 
-      // 3. シート名の処理
-      let processedRange = range;
-      if (gid && !range.includes("!")) {
-        const sheetName = await this.getSheetNameFromGid(spreadsheetId, gid);
-        if (sheetName) {
-          processedRange = `'${sheetName}'!${range}`;
-        }
-      }
-      
-      // 4. API実行
-      const token = await globalThis.authService.getAuthToken();
-      const url = `${this.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(processedRange)}?valueInputOption=USER_ENTERED`;
-
-      const requestBody = {
-        values: [[value]],
-      };
-
-      // [DEBUG] Spreadsheetに書き込むデータのログ
-      console.log('🔍 [DEBUG] Spreadsheetに書き込むデータ:', {
-        timestamp: new Date().toISOString(),
-        range: processedRange,
-        valueLength: value?.length || 0,
-        valueType: typeof value,
-        preview: String(value).substring(0, 500),
-        fullValue: value // 実際の値
-      });
-
-      this.detailedLog('info', `書き込み実行開始: ${processedRange}`, validation.stats);
-
-      const response = await fetch(url, {
-        method: "PUT",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        this.detailedLog('error', `API書き込みエラー: ${processedRange}`, {
-          status: response.status,
-          error: error.error,
-          range: processedRange,
-          ...validation.stats
-        });
-        throw new Error(`Sheets API error: ${error.error.message}`);
-      }
-
-      const result = await response.json();
-      
-      // 5. 書き込み結果の確認
-      const duration = Date.now() - startTime;
-      if (result && result.updatedCells) {
-        this.detailedLog('info', `書き込み成功: ${processedRange}`, {
-          updatedCells: result.updatedCells,
-          duration: `${duration}ms`,
-          ...validation.stats
-        });
-      } else {
-        this.detailedLog('warn', `書き込み結果が不明: ${processedRange}`, { result, duration });
-      }
-
-      // 6. 書き込み後の検証（有効な場合）
-      if (enableValidation && result && result.updatedCells) {
-        try {
-          const verificationResult = await this.verifyWrittenData(spreadsheetId, processedRange, value, gid);
-          
-          if (!verificationResult.isMatch) {
-            if (verificationResult.truncated) {
-              this.detailedLog('error', `データ切り詰めを検出: ${processedRange}`, verificationResult.stats);
-              // 切り詰めが検出された場合、分割書き込みを試行
-              if (enableSplitting) {
-                this.detailedLog('info', `切り詰め対応として分割書き込みを実行: ${processedRange}`);
-                return await this.updateCellWithSplitting(spreadsheetId, range, value, gid);
-              }
-            } else {
-              this.detailedLog('warn', `書き込み内容の不一致を検出: ${processedRange}`, verificationResult.stats);
-            }
+        // 2. 文字数制限チェック
+        if (!validation.isValid) {
+          if (enableSplitting && validation.errors.some(e => e.includes('文字数制限超過'))) {
+            this.detailedLog('info', `大容量データを分割書き込みに切り替え: ${range}`);
+            return await this.updateCellWithSplitting(spreadsheetId, range, value, gid);
+          } else {
+            this.detailedLog('error', `書き込み前検証失敗: ${range}`, validation);
+            throw new Error(`データ検証エラー: ${validation.errors.join(', ')}`);
           }
-
-          return {
-            ...result,
-            validation: validation,
-            verification: verificationResult,
-            duration: Date.now() - startTime
-          };
-        } catch (verifyError) {
-          this.detailedLog('warn', `書き込み検証中にエラー: ${verifyError.message}`);
-          // 検証エラーでも書き込み自体が成功していれば続行
         }
+
+        // 3. シート名の処理
+        let processedRange = range;
+        if (gid && !range.includes("!")) {
+          const sheetName = await this.getSheetNameFromGid(spreadsheetId, gid);
+          if (sheetName) {
+            processedRange = `'${sheetName}'!${range}`;
+          }
+        }
+        
+        // 4. API実行
+        const token = await globalThis.authService.getAuthToken();
+        const url = `${this.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(processedRange)}?valueInputOption=USER_ENTERED`;
+
+        const requestBody = {
+          values: [[value]],
+        };
+
+        // [DEBUG] Spreadsheetに書き込むデータのログ
+        console.log('🔍 [DEBUG] Spreadsheetに書き込むデータ:', {
+          timestamp: new Date().toISOString(),
+          range: processedRange,
+          valueLength: value?.length || 0,
+          valueType: typeof value,
+          preview: String(value).substring(0, 500),
+          fullValue: value // 実際の値
+        });
+
+        this.detailedLog('info', `書き込み実行開始: ${processedRange}`, validation.stats);
+
+        const response = await fetch(url, {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(requestBody),
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          this.detailedLog('error', `API書き込みエラー: ${processedRange}`, {
+            status: response.status,
+            error: error,
+            range: processedRange,
+            ...validation.stats
+          });
+          throw new Error(`Sheets API error: ${error.error?.message || 'Unknown error'}`);
+        }
+
+        const result = await response.json();
+        
+        // 5. 書き込み結果の確認
+        const duration = Date.now() - startTime;
+        if (result && result.updatedCells) {
+          this.detailedLog('info', `書き込み成功: ${processedRange}`, {
+            updatedCells: result.updatedCells,
+            duration: `${duration}ms`,
+            ...validation.stats
+          });
+        } else {
+          this.detailedLog('warn', `書き込み結果が不明: ${processedRange}`, { result, duration });
+        }
+
+        // 6. 書き込み後の検証（有効な場合）
+        if (enableValidation && result && result.updatedCells) {
+          try {
+            const verificationResult = await this.verifyWrittenData(spreadsheetId, processedRange, value, gid);
+            
+            if (!verificationResult.isMatch) {
+              if (verificationResult.truncated) {
+                this.detailedLog('error', `データ切り詰めを検出: ${processedRange}`, verificationResult.stats);
+                // 切り詰めが検出された場合、分割書き込みを試行
+                if (enableSplitting) {
+                  this.detailedLog('info', `切り詰め対応として分割書き込みを実行: ${processedRange}`);
+                  return await this.updateCellWithSplitting(spreadsheetId, range, value, gid);
+                }
+              } else {
+                this.detailedLog('warn', `書き込み内容の不一致を検出: ${processedRange}`, verificationResult.stats);
+              }
+            }
+
+            return {
+              ...result,
+              validation: validation,
+              verification: verificationResult,
+              duration: Date.now() - startTime
+            };
+          } catch (verifyError) {
+            this.detailedLog('warn', `書き込み検証中にエラー: ${verifyError.message}`);
+            // 検証エラーでも書き込み自体が成功していれば続行
+          }
+        }
+
+        return {
+          ...result,
+          validation: validation,
+          duration: Date.now() - startTime
+        };
+
+      } catch (error) {
+        const duration = Date.now() - startTime;
+        this.detailedLog('error', `書き込み処理エラー: ${range}`, {
+          error: error,
+          duration: `${duration}ms`
+        });
+        throw error;
       }
-
-      return {
-        ...result,
-        validation: validation,
-        duration: Date.now() - startTime
-      };
-
-    } catch (error) {
-      const duration = Date.now() - startTime;
-      this.detailedLog('error', `書き込み処理エラー: ${range}`, {
-        error: error.message,
-        duration: `${duration}ms`
-      });
-      throw error;
-    }
+    }, 'updateCell');
   }
 
   /**
