@@ -513,6 +513,75 @@ function determineAIType(trimmedHeader) {
 }
 
 /**
+ * 列名をインデックスに変換（ヘルパー関数）
+ */
+function columnToIndex(column) {
+  if (typeof column !== 'string' || column.length === 0) {
+    return -1;
+  }
+  
+  let index = 0;
+  for (let i = 0; i < column.length; i++) {
+    index = index * 26 + (column.charCodeAt(i) - 'A'.charCodeAt(0) + 1);
+  }
+  return index - 1; // 0ベースに変換
+}
+
+/**
+ * 列制御をタスクグループに適用
+ */
+function applyColumnControlsToGroups(taskGroups, columnControls) {
+  if (!columnControls || columnControls.length === 0) {
+    return taskGroups;
+  }
+  
+  // "この列のみ処理"が最優先
+  const onlyControls = columnControls.filter(c => c.type === 'only');
+  if (onlyControls.length > 0) {
+    // 指定列を含むグループのみを選択
+    const filteredGroups = taskGroups.filter(group => {
+      // グループ内のすべての列をチェック
+      const allColumns = [
+        ...group.columnRange.promptColumns,
+        ...group.columnRange.answerColumns.map(a => typeof a === 'string' ? a : a.column)
+      ];
+      
+      // 指定列のいずれかがグループに含まれているか
+      return onlyControls.some(ctrl => allColumns.includes(ctrl.column));
+    });
+    
+    console.log(`[列制御] "この列のみ処理"により${taskGroups.length}グループから${filteredGroups.length}グループに絞り込み`);
+    return filteredGroups;
+  }
+  
+  // "この列から処理"と"この列で停止"の処理
+  const fromControl = columnControls.find(c => c.type === 'from');
+  const untilControl = columnControls.find(c => c.type === 'until');
+  
+  let filteredGroups = taskGroups;
+  
+  if (fromControl) {
+    // 指定列以降のグループのみ
+    filteredGroups = filteredGroups.filter(group => {
+      const groupStartIndex = columnToIndex(group.startColumn);
+      return groupStartIndex >= fromControl.index;
+    });
+    console.log(`[列制御] "${fromControl.column}列から処理"によりグループをフィルタ`);
+  }
+  
+  if (untilControl) {
+    // 指定列までのグループのみ
+    filteredGroups = filteredGroups.filter(group => {
+      const groupEndIndex = columnToIndex(group.endColumn);
+      return groupEndIndex <= untilControl.index;
+    });
+    console.log(`[列制御] "${untilControl.column}列で停止"によりグループをフィルタ`);
+  }
+  
+  return filteredGroups;
+}
+
+/**
  * processSpreadsheetData関数
  */
 function processSpreadsheetData(spreadsheetData) {
@@ -527,6 +596,61 @@ function processSpreadsheetData(spreadsheetData) {
 
   if (!spreadsheetData.values || spreadsheetData.values.length === 0) {
     return result;
+  }
+  
+  // 列制御情報を収集
+  let columnControls = [];
+  if (spreadsheetData.controlCandidateRows && spreadsheetData.controlCandidateRows.length > 0) {
+    // 制御候補行から列制御を検出
+    for (const controlRow of spreadsheetData.controlCandidateRows) {
+      const rowData = controlRow.data;
+      if (!rowData) continue;
+      
+      for (let col = 0; col < rowData.length; col++) {
+        const cellValue = rowData[col];
+        if (!cellValue || typeof cellValue !== 'string') continue;
+        
+        const columnLetter = getColumnName(col);
+        
+        // 列制御パターンをチェック
+        if (cellValue.includes('この列のみ処理')) {
+          columnControls.push({ type: 'only', column: columnLetter, index: col });
+          console.log(`[列制御] 「この列のみ処理」検出: ${columnLetter}列`);
+        } else if (cellValue.includes('この列から処理')) {
+          columnControls.push({ type: 'from', column: columnLetter, index: col });
+          console.log(`[列制御] 「この列から処理」検出: ${columnLetter}列`);
+        } else if (cellValue.includes('この列の処理後に停止') || cellValue.includes('この列で停止')) {
+          columnControls.push({ type: 'until', column: columnLetter, index: col });
+          console.log(`[列制御] 「この列で停止」検出: ${columnLetter}列`);
+        }
+        
+        // 特定列指定パターン（例：P列のみ処理、Q列から処理）
+        const specificColumnMatch = cellValue.match(/([A-Z]+)列(のみ処理|だけ処理|から処理|で停止|の処理後に停止)/);
+        if (specificColumnMatch) {
+          const targetColumn = specificColumnMatch[1];
+          const controlType = specificColumnMatch[2];
+          const targetIndex = columnToIndex(targetColumn);
+          
+          if (controlType.includes('のみ') || controlType.includes('だけ')) {
+            columnControls.push({ type: 'only', column: targetColumn, index: targetIndex });
+            console.log(`[列制御] 「${targetColumn}列のみ処理」検出`);
+          } else if (controlType.includes('から')) {
+            columnControls.push({ type: 'from', column: targetColumn, index: targetIndex });
+            console.log(`[列制御] 「${targetColumn}列から処理」検出`);
+          } else if (controlType.includes('停止')) {
+            columnControls.push({ type: 'until', column: targetColumn, index: targetIndex });
+            console.log(`[列制御] 「${targetColumn}列で停止」検出`);
+          }
+        }
+      }
+    }
+  }
+  
+  // 列制御情報をresultに保存
+  result.columnControls = columnControls;
+  
+  if (columnControls.length > 0) {
+    console.log(`[列制御] 総計${columnControls.length}件の列制御を検出`);
   }
 
   // メニュー行とAI行から情報を取得
@@ -605,26 +729,26 @@ function processSpreadsheetData(spreadsheetData) {
     
     // 回答列の検出
     if (currentGroup && (trimmedHeader.includes("回答") || trimmedHeader.includes("答"))) {
-      // AIタイプを判定（AI行またはメニュー行から）
+      // デバッグ：AB列の判定過程を詳細ログ出力
+      if (columnLetter === 'AB') {
+        console.log(`[DEBUG] AB列判定開始:`, {
+          columnLetter: columnLetter,
+          currentGroupAiType: currentGroup.aiType,
+          aiValue: `"${aiValue}"`,
+          trimmedHeader: `"${trimmedHeader}"`,
+          'aiValue.trim()': aiValue ? `"${aiValue.trim()}"` : 'null',
+          'aiValue.length': aiValue ? aiValue.length : 0,
+          'aiValueType': typeof aiValue,
+          'isEmpty': !aiValue || aiValue.trim() === ''
+        });
+      }
+      
+      // AIタイプを判定
       let detectedAiType = 'Claude'; // デフォルト
       
-      // まずAI行の値から判定
-      if (aiValue && aiValue.trim() !== '') {
-        const aiCellLower = aiValue.toLowerCase();
-        if (aiCellLower.includes('chatgpt') || aiCellLower.includes('gpt')) {
-          detectedAiType = 'ChatGPT';
-        } else if (aiCellLower.includes('claude')) {
-          detectedAiType = 'Claude';
-        } else if (aiCellLower.includes('gemini')) {
-          detectedAiType = 'Gemini';
-        } else if (aiCellLower.includes('genspark')) {
-          detectedAiType = 'Genspark';
-        } else if (aiCellLower.includes('レポート') || aiCellLower.includes('report')) {
-          detectedAiType = 'Report';
-        }
-      }
-      // AI行が空の場合はメニュー行から判定（3種類AIの場合）
-      else {
+      // 3種類AIの判定（グループタイプが3typeの場合）
+      if (currentGroup.groupType === '3type') {
+        // 3種類AIの場合は、メニュー行の回答列名から判定
         const menuCellLower = trimmedHeader.toLowerCase();
         if (menuCellLower.includes('chatgpt') || menuCellLower.includes('gpt')) {
           detectedAiType = 'ChatGPT';
@@ -637,6 +761,21 @@ function processSpreadsheetData(spreadsheetData) {
         } else if (menuCellLower.includes('レポート') || menuCellLower.includes('report')) {
           detectedAiType = 'Report';
         }
+      } else {
+        // 通常処理の場合は、グループのAIタイプ（プロンプト列から設定済み）を使用
+        detectedAiType = currentGroup.aiType || 'Claude';
+      }
+      
+      // デバッグ：AB列の最終判定結果を出力
+      if (columnLetter === 'AB') {
+        console.log(`[DEBUG] AB列判定完了:`, {
+          columnLetter: columnLetter,
+          groupType: currentGroup.groupType,
+          detectedAiType: `"${detectedAiType}"`,
+          'AI判定方法': currentGroup.groupType === '3type' ? '3種類AI（メニュー行から）' : 'プロンプト列のAI行から',
+          '判定に使用した値': currentGroup.groupType === '3type' ? `trimmedHeader="${trimmedHeader}"` : `currentGroup.aiType="${currentGroup.aiType}"`,
+          '最終aiType': `"${detectedAiType}"`
+        });
       }
       
       currentGroup.columnRange.answerColumns.push({
@@ -681,6 +820,13 @@ function processSpreadsheetData(spreadsheetData) {
       result.taskGroups.push(currentGroup);
     }
     
+    // 列制御をタスクグループに適用
+    if (columnControls.length > 0) {
+      const originalCount = result.taskGroups.length;
+      result.taskGroups = applyColumnControlsToGroups(result.taskGroups, columnControls);
+      console.log(`[列制御] 適用: ${originalCount}グループ → ${result.taskGroups.length}グループ`);
+    }
+    
     // タスクグループ作成完了ログを出力
     if (result.taskGroups.length > 0) {
       console.log("[processSpreadsheetData] 📋 タスクグループ作成完了:");
@@ -714,6 +860,9 @@ function processSpreadsheetData(spreadsheetData) {
 
   return result;
 }
+
+// Service Workerのグローバルスコープに関数を設定
+globalThis.processSpreadsheetData = processSpreadsheetData;
 
 // ポート接続リスナー（ログビューアー用）
 chrome.runtime.onConnect.addListener((port) => {

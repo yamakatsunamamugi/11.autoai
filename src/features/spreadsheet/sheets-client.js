@@ -592,7 +592,8 @@ class SheetsClient {
     if (data.valueRanges) {
       data.valueRanges.forEach((valueRange, index) => {
         const originalRange = ranges[index];
-        result[originalRange] = valueRange.values && valueRange.values[0] ? valueRange.values[0][0] : '';
+        // 行全体のデータを返す（最初のセルだけでなく）
+        result[originalRange] = valueRange.values && valueRange.values[0] ? valueRange.values[0] : [];
       });
     }
     
@@ -678,7 +679,7 @@ class SheetsClient {
     
     this.logger.log(
       "SheetsClient",
-      `スプレッドシート読み込み: ${spreadsheetId}${gid ? ` (gid: ${gid})` : ""}`,
+      `スプレッドシート読み込み開始（効率化版）: ${spreadsheetId}${gid ? ` (gid: ${gid})` : ""}`,
     );
 
     // シート名を取得（gidが指定されている場合）
@@ -693,47 +694,195 @@ class SheetsClient {
       sheetName = "Sheet1";  // デフォルトのシート名
     }
     
-
-    // まず全体のデータを取得（A1:CZ1000の範囲 - 104列まで対応）
-    // AZ=52列, BZ=78列, CZ=104列まで取得可能
-    const rawData = await this.getSheetData(spreadsheetId, "A1:CZ1000", gid);
+    // ===== STEP 1: A列のみを読み込んで行構造を把握 =====
+    const columnAData = await this.getSheetData(spreadsheetId, "A:A", gid);
+    this.logger.log("SheetsClient", `A列読み込み完了: ${columnAData.length}行`);
     
-    // デバッグ: 取得したデータの列数を確認
-    if (rawData.length > 0) {
-      const maxColumns = Math.max(...rawData.map(row => row ? row.length : 0));
-      this.logger.log("SheetsClient", `取得データ: ${rawData.length}行 x 最大${maxColumns}列`);
-      
-      // メニュー行の列数を基準にパディング処理
-      // メニュー行を探す（A列が"メニュー"の行）
-      let targetColumns = maxColumns;
-      for (let row of rawData) {
-        if (row && row[0] === "メニュー") {
-          targetColumns = row.length;
-          this.logger.log("SheetsClient", `メニュー行の列数: ${targetColumns}列 - この列数でパディング`);
-          break;
-        }
-      }
-      
-      // 全ての行をメニュー行の列数に合わせてパディング
-      for (let i = 0; i < rawData.length; i++) {
-        if (!rawData[i]) {
-          rawData[i] = [];
-        }
-        while (rawData[i].length < targetColumns) {
-          rawData[i].push("");
-        }
-      }
-      this.logger.log("SheetsClient", `パディング完了: 全行を${targetColumns}列に統一`);
+    // 設定を取得
+    const config = typeof SPREADSHEET_CONFIG !== "undefined"
+        ? SPREADSHEET_CONFIG
+        : null;
+        
+    if (!config) {
+      throw new Error("SPREADSHEET_CONFIG が見つかりません。config.js を読み込んでください。");
     }
-
-    if (rawData.length === 0) {
-      throw new Error("スプレッドシートにデータがありません");
+    
+    // ===== STEP 2: A列から必要な行番号を特定 =====
+    let menuRowIndex = -1;
+    let controlRowIndex = -1;
+    let aiRowIndex = -1;
+    let modelRowIndex = -1;
+    let taskRowIndex = -1;
+    const workRows = [];
+    const controlRows = []; // 列制御の可能性がある行（1-10行目）
+    
+    for (let i = 0; i < columnAData.length; i++) {
+      const firstCell = columnAData[i] ? columnAData[i][0] : "";
+      
+      // 制御行候補（1-10行目）を記録
+      if (i < 10) {
+        controlRows.push(i);
+      }
+      
+      // メニュー行
+      if (firstCell === config.rowIdentifiers.menuRow.keyword) {
+        menuRowIndex = i;
+        this.logger.log("SheetsClient", `メニュー行検出: 行${i + 1}`);
+      }
+      // 制御行
+      else if (firstCell === config.rowIdentifiers.controlRow.keyword) {
+        controlRowIndex = i;
+        this.logger.log("SheetsClient", `制御行検出: 行${i + 1}`);
+      }
+      // AI行
+      else if (firstCell === config.rowIdentifiers.aiRow.keyword) {
+        aiRowIndex = i;
+        this.logger.log("SheetsClient", `AI行検出: 行${i + 1}`);
+      }
+      // モデル行
+      else if (firstCell === config.rowIdentifiers.modelRow.keyword) {
+        modelRowIndex = i;
+        this.logger.log("SheetsClient", `モデル行検出: 行${i + 1}`);
+      }
+      // 機能行
+      else if (firstCell === config.rowIdentifiers.taskRow.keyword) {
+        taskRowIndex = i;
+        this.logger.log("SheetsClient", `機能行検出: 行${i + 1}`);
+      }
+      // 作業行（数字で始まる行）
+      else if (/^\d+$/.test(firstCell)) {
+        const lastControlRowIndex = Math.max(
+          menuRowIndex, controlRowIndex, aiRowIndex, modelRowIndex, taskRowIndex
+        );
+        if (i > lastControlRowIndex) {
+          workRows.push({
+            index: i,
+            number: i + 1,
+            aValue: firstCell
+          });
+        }
+      }
+    }
+    
+    this.logger.log("SheetsClient", `行構造解析完了: 作業行${workRows.length}行検出`);
+    
+    // ===== STEP 3: 必要な行だけを読み込み =====
+    const rowsToFetch = [];
+    const rowLabels = {};
+    
+    // メニュー行は必須
+    if (menuRowIndex >= 0) {
+      rowsToFetch.push(menuRowIndex + 1); // 1ベースの行番号
+      rowLabels[menuRowIndex + 1] = 'menu';
+    } else {
+      throw new Error("メニュー行が見つかりません");
+    }
+    
+    // 制御行（明示的な「制御」行）
+    if (controlRowIndex >= 0) {
+      rowsToFetch.push(controlRowIndex + 1);
+      rowLabels[controlRowIndex + 1] = 'control';
+    }
+    
+    // 列制御の可能性がある行（1-10行目）も読み込む
+    for (const rowIndex of controlRows) {
+      const rowNum = rowIndex + 1;
+      if (!rowsToFetch.includes(rowNum)) {
+        rowsToFetch.push(rowNum);
+        rowLabels[rowNum] = `control_candidate_${rowNum}`;
+      }
+    }
+    
+    // AI行（タスクグループ作成時に必要）
+    if (aiRowIndex >= 0) {
+      rowsToFetch.push(aiRowIndex + 1);
+      rowLabels[aiRowIndex + 1] = 'ai';
+    }
+    
+    // モデル行と機能行は実行時に動的取得するため、ここでは読み込まない
+    // ただし、位置情報は保持
+    
+    this.logger.log("SheetsClient", `読み込む行: ${rowsToFetch.join(', ')}`);
+    
+    // バッチで必要な行を取得
+    // 列範囲を明示的に指定して、すべての列データを確実に取得（A列からCZ列まで）
+    const ranges = rowsToFetch.map(rowNum => `A${rowNum}:CZ${rowNum}`);
+    const batchData = await this.batchGetSheetData(spreadsheetId, ranges, gid);
+    
+    // デバッグ: 行9のデータを詳細に確認
+    if (batchData['A9:CZ9']) {
+      this.logger.log("SheetsClient", `[DEBUG] 行9のデータ長: ${batchData['A9:CZ9'].length}`);
+      this.logger.log("SheetsClient", `[DEBUG] 行9のAD列(index 29): "${batchData['A9:CZ9'][29]}"`);
+      this.logger.log("SheetsClient", `[DEBUG] 行9のAE列(index 30): "${batchData['A9:CZ9'][30]}"`);
+      this.logger.log("SheetsClient", `[DEBUG] 行9のAG列(index 32): "${batchData['A9:CZ9'][32]}"`);
+      this.logger.log("SheetsClient", `[DEBUG] 行9のAJ列(index 35): "${batchData['A9:CZ9'][35]}"`);
+    }
+    
+    // ===== STEP 4: データ構造を構築 =====
+    // メニュー行のデータを取得（新しい範囲形式に対応）
+    const menuRowData = batchData[`A${menuRowIndex + 1}:CZ${menuRowIndex + 1}`] || [];
+    const maxColumns = menuRowData.length;
+    this.logger.log("SheetsClient", `メニュー行の列数: ${maxColumns}列`);
+    
+    // 他の必要な行データを取得（新しい範囲形式に対応）
+    const aiRowData = aiRowIndex >= 0 ? (batchData[`A${aiRowIndex + 1}:CZ${aiRowIndex + 1}`] || []) : [];
+    const controlRowData = controlRowIndex >= 0 ? (batchData[`A${controlRowIndex + 1}:CZ${controlRowIndex + 1}`] || []) : [];
+    
+    // 列制御候補行を収集
+    const controlCandidateRows = [];
+    for (const rowIndex of controlRows) {
+      const rowNum = rowIndex + 1;
+      const rowData = batchData[`A${rowNum}:CZ${rowNum}`] || [];
+      if (rowData.length > 0) {
+        controlCandidateRows.push({
+          index: rowIndex,
+          data: rowData
+        });
+      }
+    }
+    
+    // 全ての行データをメニュー行の列数に合わせてパディング
+    const paddedRows = {};
+    for (const [range, rowData] of Object.entries(batchData)) {
+      const paddedRow = [...rowData];
+      while (paddedRow.length < maxColumns) {
+        paddedRow.push("");
+      }
+      paddedRows[range] = paddedRow;
+    }
+    
+    // ダミーのrawDataを作成（互換性のため）
+    // ただし、必要最小限の行のみ
+    const rawData = [];
+    const maxRowNum = Math.max(...rowsToFetch);
+    for (let i = 0; i < maxRowNum; i++) {
+      rawData[i] = new Array(maxColumns).fill("");
+    }
+    
+    // 取得したデータをrawDataに反映
+    for (const [range, rowData] of Object.entries(paddedRows)) {
+      // 新しい範囲形式（A9:CZ9）から行番号を抽出
+      const match = range.match(/A(\d+):CZ\d+/);
+      if (match) {
+        const rowNum = parseInt(match[1]) - 1; // 0ベースに変換
+        if (rowNum >= 0 && rowNum < rawData.length) {
+          rawData[rowNum] = rowData;
+        }
+      }
+    }
+    
+    // A列のデータもrawDataに反映（作業行のため）
+    for (let i = 0; i < columnAData.length && i < rawData.length; i++) {
+      if (columnAData[i] && columnAData[i][0]) {
+        rawData[i][0] = columnAData[i][0];
+      }
     }
 
     // データ構造を解析
     const result = {
       menuRow: null,
       controlRow: null,
+      controlCandidateRows: controlCandidateRows, // 列制御候補行を追加
       aiRow: null,
       modelRow: null,
       taskRow: null,
@@ -746,137 +895,100 @@ class SheetsClient {
     };
     
 
-    // 基本的な設定定数を定義（SPREADSHEET_CONFIGがない場合のフォールバック）
-    // SPREADSHEET_CONFIGを使用（グローバル変数またはインポート）
-    const config = typeof SPREADSHEET_CONFIG !== "undefined"
-        ? SPREADSHEET_CONFIG
-        : null;
+    // メニュー行を設定
+    if (menuRowIndex >= 0) {
+      result.menuRow = {
+        index: menuRowIndex,
+        data: paddedRows[`${menuRowIndex + 1}:${menuRowIndex + 1}`] || menuRowData
+      };
+      // 列マッピングを作成
+      for (let j = 0; j < menuRowData.length; j++) {
+        const cellValue = menuRowData[j];
+        const columnLetter = this.getColumnName(j);
         
-    if (!config) {
-      throw new Error("SPREADSHEET_CONFIG が見つかりません。config.js を読み込んでください。");
+        // プロンプト列の検出とAI列としての登録（メインのプロンプト列のみ）
+        if (cellValue && cellValue === "プロンプト") {
+          // AI行の値を確認（AI行が存在する場合）
+          let aiType = "single"; // デフォルト
+          if (aiRowData && aiRowData[j]) {
+            const aiValue = aiRowData[j]; // プロンプト列自体のAI行の値
+            if (aiValue && aiValue.includes("3種類")) {
+              aiType = "3type";
+            }
+          }
+          
+          // aiColumnsに登録
+          result.aiColumns[columnLetter] = {
+            index: j,
+            letter: columnLetter,
+            header: cellValue,
+            type: aiType,
+            promptDescription: ""
+          };
+          
+          this.logger.log("SheetsClient", `AI列検出: ${columnLetter}列 (${aiType})`);
+        }
+        
+        // columnTypesのマッピング
+        for (const [key, columnConfig] of Object.entries(
+          config.columnTypes,
+        )) {
+          if (cellValue === columnConfig.keyword) {
+            result.columnMapping[j] = {
+              type: columnConfig.type,
+              aiType: columnConfig.aiType,
+              keyword: columnConfig.keyword,
+              columnIndex: j,
+            };
+          }
+        }
+      }
     }
 
-    // 各行を解析
-    for (let i = 0; i < rawData.length; i++) {
-      const row = rawData[i];
-      const firstCell = row[0] || "";
+    // 制御行を設定
+    if (controlRowIndex >= 0) {
+      result.controlRow = {
+        index: controlRowIndex,
+        data: paddedRows[`${controlRowIndex + 1}:${controlRowIndex + 1}`] || controlRowData
+      };
+    }
 
-      // メニュー行を検索
-      if (firstCell === config.rowIdentifiers.menuRow.keyword) {
-        result.menuRow = {
-          index: i,
-          data: row,
-        };
-        // 列マッピングを作成
-        for (let j = 0; j < row.length; j++) {
-          const cellValue = row[j];
-          const columnLetter = this.getColumnName(j);
-          
-          // プロンプト列の検出とAI列としての登録（メインのプロンプト列のみ）
-          if (cellValue && cellValue === "プロンプト") {
-            // AI行の値を確認（AI行が存在する場合）
-            let aiType = "single"; // デフォルト
-            if (result.aiRow && result.aiRow.data) {
-              const aiValue = result.aiRow.data[j]; // プロンプト列自体のAI行の値
-              if (aiValue && aiValue.includes("3種類")) {
-                aiType = "3type";
-              }
-            }
-            
-            // aiColumnsに登録
-            result.aiColumns[columnLetter] = {
-              index: j,
-              letter: columnLetter,
-              header: cellValue,
-              type: aiType,
-              promptDescription: ""
-            };
-            
-            this.logger.log("SheetsClient", `AI列検出: ${columnLetter}列 (${aiType})`);
-          }
-          
-          for (const [key, columnConfig] of Object.entries(
-            config.columnTypes,
-          )) {
-            if (cellValue === columnConfig.keyword) {
-              result.columnMapping[j] = {
-                type: columnConfig.type,
-                aiType: columnConfig.aiType,
-                keyword: columnConfig.keyword,
-                columnIndex: j,
-              };
-            }
-          }
-        }
-      }
+    // AI行を設定
+    if (aiRowIndex >= 0) {
+      result.aiRow = {
+        index: aiRowIndex,
+        data: paddedRows[`${aiRowIndex + 1}:${aiRowIndex + 1}`] || aiRowData
+      };
+    }
 
-      // 制御行を検索
-      if (firstCell === config.rowIdentifiers.controlRow.keyword) {
-        result.controlRow = {
-          index: i,
-          data: row,
-        };
-      }
+    // モデル行を設定（位置情報のみ、データは実行時に取得）
+    if (modelRowIndex >= 0) {
+      result.modelRow = {
+        index: modelRowIndex,
+        data: null // 実行時に動的取得
+      };
+      this.logger.log("SheetsClient", `モデル行位置: 行${modelRowIndex + 1}`);
+    }
 
-      // AI行を検索
-      if (firstCell === config.rowIdentifiers.aiRow.keyword) {
-        result.aiRow = {
-          index: i,
-          data: row,
-        };
-      }
+    // 機能行を設定（位置情報のみ、データは実行時に取得）
+    if (taskRowIndex >= 0) {
+      result.taskRow = {
+        index: taskRowIndex,
+        data: null // 実行時に動的取得
+      };
+      this.logger.log("SheetsClient", `機能行位置: 行${taskRowIndex + 1}`);
+    }
 
-      // モデル行を検索（A列が「モデル」と完全一致）
-      if (firstCell === config.rowIdentifiers.modelRow.keyword) {
-        result.modelRow = {
-          index: i,
-          data: row,
-        };
-        this.logger.log("SheetsClient", `モデル行検出: 行${i + 1}, A列="${firstCell}"`);
-      }
-
-      // 機能行を検索（A列が「機能」と完全一致）
-      if (firstCell === config.rowIdentifiers.taskRow.keyword) {
-        result.taskRow = {
-          index: i,
-          data: row,
-        };
-        this.logger.log("SheetsClient", `機能行検出: 行${i + 1}, A列="${firstCell}"`);
-      }
-
-      // 作業行を検索（A列が「1」から始まる数字）
-      if (/^\d+$/.test(firstCell)) {
-        // 最後の制御行を特定
-        const lastControlRowIndex = Math.max(
-          result.menuRow ? result.menuRow.index : -1,
-          result.controlRow ? result.controlRow.index : -1,
-          result.aiRow ? result.aiRow.index : -1,
-          result.modelRow ? result.modelRow.index : -1,
-          result.taskRow ? result.taskRow.index : -1,
-        );
-
-        // 現在の行がすべての制御行より後にある場合のみ作業行として扱う
-        if (i > lastControlRowIndex) {
-          const workRow = {
-            index: i,
-            number: i + 1, // 実際の行番号（1ベース）を使用
-            data: row,
-            control: row[1] || null, // B列の制御情報
-          };
-
-          // プロンプトを収集
-          workRow.prompts = {};
-          for (const [colIndex, mapping] of Object.entries(
-            result.columnMapping,
-          )) {
-            if (mapping.type === "prompt" && row[colIndex]) {
-              workRow.prompts[colIndex] = row[colIndex];
-            }
-          }
-
-          result.workRows.push(workRow);
-        }
-      }
+    // 作業行を設定（A列から収集済み）
+    for (const workRowInfo of workRows) {
+      const workRow = {
+        index: workRowInfo.index,
+        number: workRowInfo.number,
+        data: rawData[workRowInfo.index] || [], // ダミーデータ
+        control: null, // B列の制御情報は実行時に取得
+        prompts: {} // プロンプトも実行時に取得
+      };
+      result.workRows.push(workRow);
     }
 
     // 作業行検出結果をログ出力
@@ -887,51 +999,9 @@ class SheetsClient {
       );
     }
     
-    // AI列の最終処理（メニュー行とAI行の両方が揃った後）
-    if (result.menuRow && result.menuRow.data) {
-      const menuRowData = result.menuRow.data;
-      const aiRowData = result.aiRow ? result.aiRow.data : [];
-      
-      for (let j = 0; j < menuRowData.length; j++) {
-        const cellValue = menuRowData[j];
-        const columnLetter = this.getColumnName(j);
-        
-        // プロンプト列の検出（メインのプロンプト列のみ）
-        if (cellValue && cellValue === "プロンプト") {
-          let aiType = "single"; // デフォルト
-          
-          // AI行の値を確認
-          if (aiRowData && aiRowData[j] && aiRowData[j].includes("3種類")) {
-            aiType = "3type";
-          }
-          // メニュー行の次の列をチェック（3種類AIレイアウト）
-          else if (
-            (menuRowData[j + 1] && menuRowData[j + 1].includes("ChatGPT") &&
-             menuRowData[j + 2] && menuRowData[j + 2].includes("Claude") &&
-             menuRowData[j + 3] && menuRowData[j + 3].includes("Gemini")) ||
-            (menuRowData[j + 1] && menuRowData[j + 1].includes("回答") &&
-             menuRowData[j + 2] && menuRowData[j + 2].includes("回答") &&
-             menuRowData[j + 3] && menuRowData[j + 3].includes("回答"))
-          ) {
-            aiType = "3type";
-          }
-          
-          // aiColumnsに登録（上書き）
-          result.aiColumns[columnLetter] = {
-            index: j,
-            letter: columnLetter,
-            header: cellValue,
-            type: aiType,
-            promptDescription: ""
-          };
-          
-          this.logger.log("SheetsClient", `AI列最終検出: ${columnLetter}列 (${aiType})`);
-        }
-      }
-    }
+    // AI列の最終処理は既に完了済み（メニュー行処理時に実施）
 
-    
-    this.logger.log("SheetsClient", "読み込み完了", {
+    this.logger.log("SheetsClient", "読み込み完了（効率化版）", {
       menuRowFound: !!result.menuRow,
       workRowsCount: result.workRows.length,
       columnTypes: Object.keys(result.columnMapping).length,
@@ -944,6 +1014,88 @@ class SheetsClient {
     return result;
   }
   
+
+  /**
+   * 単一セルの値を取得
+   * @param {string} spreadsheetId - スプレッドシートID
+   * @param {string} sheetName - シート名
+   * @param {string} cell - セル（例: 'AD9'）
+   * @returns {Promise<any>} セルの値
+   */
+  async getCellValue(spreadsheetId, sheetName, cell) {
+    try {
+      const token = await globalThis.authService.getAuthToken();
+      const encodedSheetName = encodeURIComponent(sheetName);
+      const range = `'${encodedSheetName}'!${cell}`;
+      const url = `${this.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(range)}?valueRenderOption=FORMATTED_VALUE`;
+      
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(`Failed to get cell ${cell}: ${error.error.message}`);
+      }
+
+      const data = await response.json();
+      // values配列の最初の行の最初の値を返す
+      return data.values && data.values[0] && data.values[0][0] ? data.values[0][0] : '';
+    } catch (error) {
+      this.logger.error('SheetsClient', `セル取得エラー ${cell}:`, error);
+      return '';
+    }
+  }
+
+  /**
+   * 複数セルの値を一括取得
+   * @param {string} spreadsheetId - スプレッドシートID
+   * @param {string} sheetName - シート名
+   * @param {Array<string>} cells - セルの配列（例: ['AD9', 'AE9']）
+   * @returns {Promise<Object>} セル名をキー、値を値とするオブジェクト
+   */
+  async getBatchCellValues(spreadsheetId, sheetName, cells) {
+    try {
+      const token = await globalThis.authService.getAuthToken();
+      const encodedSheetName = encodeURIComponent(sheetName);
+      
+      // 各セルに対してrangeを作成
+      const ranges = cells.map(cell => `'${encodedSheetName}'!${cell}`);
+      const rangesParam = ranges.map(r => encodeURIComponent(r)).join('&ranges=');
+      const url = `${this.baseUrl}/${spreadsheetId}/values:batchGet?ranges=${rangesParam}&valueRenderOption=FORMATTED_VALUE`;
+      
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(`Failed to get cells: ${error.error.message}`);
+      }
+
+      const data = await response.json();
+      const result = {};
+      
+      // 各範囲の値を対応するセル名にマッピング
+      data.valueRanges.forEach((valueRange, index) => {
+        const cell = cells[index];
+        const value = valueRange.values && valueRange.values[0] && valueRange.values[0][0] 
+                      ? valueRange.values[0][0] : '';
+        result[cell] = value;
+      });
+      
+      return result;
+    } catch (error) {
+      this.logger.error('SheetsClient', `バッチセル取得エラー:`, error);
+      return {};
+    }
+  }
 
   /**
    * バッチでセルを更新

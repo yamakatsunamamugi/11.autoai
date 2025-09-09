@@ -141,6 +141,7 @@ export default class StreamProcessorV2 {
    */
   async processTaskStream(taskList, spreadsheetData, options = {}) {
     this.spreadsheetData = spreadsheetData;
+    this.spreadsheetUrl = spreadsheetData?.spreadsheetUrl; // spreadsheetUrlを保存
     
     // 動的モードの場合はタスクグループから処理
     if (options.dynamicMode && !taskList) {
@@ -385,14 +386,28 @@ export default class StreamProcessorV2 {
         
         this.logger.log(`[StreamProcessorV2] ウィンドウ${index + 1}/${batch.length}を準備: ${task.column}${task.row}`);
         
+        // AI/モデル/機能を動的に取得（ウィンドウ作成前に）
+        // 常に最新データを取得（キャッシュは使用しない）
+        const { model, function: func, ai } = await this.fetchModelAndFunctionFromTask(task);
+        task.model = model;
+        task.function = func;
+        task.aiType = ai;
+        
+        this.logger.log(`[StreamProcessorV2] 📊 動的取得（ウィンドウ作成前）:`, {
+          cell: `${task.column}${task.row}`,
+          AI: ai,
+          モデル: model,
+          機能: func
+        });
+        
         // ウィンドウを作成
         const tabId = await this.createWindowForTask(task, position);
         if (!tabId) {
           throw new Error(`Failed to create window for ${task.aiType}`);
         }
         
-        // プロンプトを取得
-        const prompt = await this.getPromptForTask(task);
+        // プロンプトを取得（個別セルから直接取得）
+        const prompt = await this.fetchPromptFromTask(task);
         
         taskContexts.push({
           task: { ...task, prompt }, // プロンプトをタスクに追加
@@ -469,6 +484,15 @@ export default class StreamProcessorV2 {
         }
         
         this.logger.log(`[StreamProcessorV2] テキスト入力${index + 1}/${batch.length}: ${task.column}${task.row}`);
+        
+        // デバッグ: プロンプトの内容を詳細にログ出力
+        this.logger.log(`[StreamProcessorV2] [DEBUG] プロンプト詳細:`, {
+          セル: `${task.column}${task.row}`,
+          プロンプト長: prompt ? prompt.length : 0,
+          プロンプト型: typeof prompt,
+          最初の200文字: prompt ? String(prompt).substring(0, 200) : 'プロンプトなし',
+          プロンプト全体: prompt
+        });
         
         // テキスト入力をリトライ付きで実行
         let textSuccess = false;
@@ -556,7 +580,7 @@ export default class StreamProcessorV2 {
         const context = taskContexts[index];
         this.logger.log(`[StreamProcessorV2] モデル選択${index + 1}/${taskContexts.length}: ${context.cell}`);
         
-        // モデル、機能、AIを動的に取得
+        // モデル、機能、AIを動的に取得（常に最新データ）
         const { model, function: func, ai } = await this.fetchModelAndFunctionFromTask(context.task);
         context.task.model = model;
         context.task.function = func;
@@ -1086,8 +1110,9 @@ export default class StreamProcessorV2 {
         'automations/common-ai-handler.js'
       ];
       
-      // AI固有のスクリプト
-      const aiScript = v2ScriptMap[aiTypeLower] || `automations/${aiTypeLower}-automation.js`;
+      // AI固有のスクリプト（aiTypeが空の場合はデフォルトでchatgptを使用）
+      const finalAiType = aiTypeLower || 'chatgpt';
+      const aiScript = v2ScriptMap[finalAiType] || `automations/${finalAiType}-automation.js`;
       
       // スクリプトを順番に注入
       const scriptsToInject = [...commonScripts, aiScript];
@@ -1885,9 +1910,11 @@ export default class StreamProcessorV2 {
 
   /**
    * タスクからモデル、機能、AIを動的に取得
+   * @param {Object} task - タスクオブジェクト
    */
   async fetchModelAndFunctionFromTask(task) {
     try {
+      // 常にスプレッドシートから最新データを取得
       if (!this.spreadsheetData || !this.spreadsheetData.values) {
         throw new Error('Spreadsheet data not available');
       }
@@ -1912,10 +1939,17 @@ export default class StreamProcessorV2 {
       }
 
       // プロンプト列のインデックスを取得
-      const promptIndex = task.promptColumns && task.promptColumns.length > 0 ? task.promptColumns[0] : null;
+      let promptIndex = null;
+      if (task.promptColumns && task.promptColumns.length > 0) {
+        const firstPromptCol = task.promptColumns[0];
+        // 文字列の場合はcolumnToIndex、数値の場合はそのまま使用
+        promptIndex = typeof firstPromptCol === 'string' ? 
+                     this.columnToIndex(firstPromptCol) : 
+                     firstPromptCol;
+      }
       
       // デバッグログ：タスクとプロンプト列の情報
-      this.logger.log(`[StreamProcessorV2] 🔍 タスク情報確認:`, {
+      this.logger.log(`[直接取得] スプレッドシートから取得:`, {
         taskColumn: task.column,
         promptColumns: task.promptColumns,
         promptIndex,
@@ -1983,58 +2017,69 @@ export default class StreamProcessorV2 {
    */
   async fetchPromptFromTask(task) {
     try {
-      // スプレッドシートからプロンプトを取得
-      if (!this.spreadsheetData || !this.spreadsheetData.values) {
-        throw new Error('Spreadsheet data not available');
+      // スプレッドシートIDとシート名を取得
+      const spreadsheetId = this.spreadsheetUrl ? this.extractSpreadsheetId(this.spreadsheetUrl) : null;
+      const sheetName = this.spreadsheetData?.sheetName || '1.メルマガ';
+      
+      if (!spreadsheetId) {
+        throw new Error('Spreadsheet ID not available');
       }
 
-      // 行インデックスを計算（配列は0ベース、スプレッドシートの行番号は1ベース）
-      const rowIndex = task.row - 1; // 行10 → index 9, 行11 → index 10
+      // SheetsClientのインスタンスを取得
+      const SheetsClient = await import('../spreadsheet/sheets-client.js').then(m => m.default);
+      const sheetsClient = new SheetsClient();
       
-      // プロンプト列のインデックスを取得（3種類AIの場合はpromptColumnsから取得）
-      let promptColumns = [];
+      // プロンプト列を取得
+      let promptCells = [];
       if (task.promptColumns && task.promptColumns.length > 0) {
         // タスクにpromptColumns情報がある場合は、全てのプロンプト列を使用
-        promptColumns = task.promptColumns;
-        this.logger.log(`[StreamProcessorV2] プロンプト列情報使用: ${promptColumns.length}列 (${promptColumns.map(i => this.indexToColumn(i)).join(', ')})`);
+        for (const col of task.promptColumns) {
+          const columnName = typeof col === 'string' ? col : this.indexToColumn(col);
+          promptCells.push(`${columnName}${task.row}`);
+        }
+        this.logger.log(`[StreamProcessorV2] プロンプト列情報使用: ${promptCells.length}セル (${promptCells.join(', ')})`);
       } else {
-        // フォールバック：task.columnを使用（通常のAI列の場合）
-        const promptColIndex = this.columnToIndex(task.column);
-        promptColumns = [promptColIndex];
-        this.logger.log(`[StreamProcessorV2] タスク列使用: ${task.column} (index=${promptColIndex})`);
+        // フォールバック：プロンプト列を推測（回答列の左隣）
+        const answerColIndex = this.columnToIndex(task.column);
+        const promptColIndex = answerColIndex - 1;
+        const promptColName = this.indexToColumn(promptColIndex);
+        promptCells = [`${promptColName}${task.row}`];
+        this.logger.log(`[StreamProcessorV2] プロンプト列推測: ${promptCells[0]}`);
       }
       
       this.logger.log(`[StreamProcessorV2] プロンプト取得試行`, {
         タスク列: task.column,
-        プロンプト列: promptColumns.map(i => this.indexToColumn(i)),
+        プロンプトセル: promptCells,
         行番号: task.row,
-        インデックス: rowIndex,
-        配列長: this.spreadsheetData.values.length
+        spreadsheetId: spreadsheetId,
+        sheetName: sheetName
       });
 
-      if (rowIndex < 0 || rowIndex >= this.spreadsheetData.values.length) {
-        throw new Error(`Row ${task.row} not found in spreadsheet data (index: ${rowIndex}, array length: ${this.spreadsheetData.values.length})`);
-      }
-
-      const row = this.spreadsheetData.values[rowIndex];
+      // 複数セルの値を一括取得
+      const cellValues = await sheetsClient.getBatchCellValues(spreadsheetId, sheetName, promptCells);
+      
+      // デバッグ：取得した値を確認
+      this.logger.log(`[StreamProcessorV2] セル値取得結果:`, cellValues);
       
       // 複数のプロンプト列から内容を取得して連結
       const prompts = [];
       const promptDetails = [];
       
-      for (const promptColIndex of promptColumns) {
-        const columnName = this.indexToColumn(promptColIndex);
+      for (const cell of promptCells) {
+        const value = cellValues[cell];
         
-        if (!row || promptColIndex >= row.length) {
-          // セルが存在しない場合はスキップ
-          this.logger.warn(`[StreamProcessorV2] Cell at ${columnName}${task.row} not found, skipping`);
-          continue;
-        }
+        this.logger.log(`[StreamProcessorV2] セル値確認:`, {
+          セル: cell,
+          値: value,
+          値の型: typeof value,
+          値の長さ: value ? value.length : 0,
+          最初の100文字: value ? String(value).substring(0, 100) : 'なし'
+        });
         
-        const value = row[promptColIndex];
         if (value && value.trim()) {
           const trimmedValue = value.trim();
           prompts.push(trimmedValue);
+          const columnName = cell.replace(/\d+$/, ''); // 数字を除去して列名を取得
           promptDetails.push({
             column: columnName,
             length: trimmedValue.length,
@@ -2203,7 +2248,7 @@ export default class StreamProcessorV2 {
           continue;
         }
         
-        const prompt = await this.getPromptForTask(task);
+        const prompt = await this.fetchPromptFromTask(task);
         
         taskContexts.push({
           task: { ...task, prompt },
@@ -3865,6 +3910,153 @@ export default class StreamProcessorV2 {
   }
 
   /**
+   * タスクグループの処理前にデータをバッチ取得
+   * （現在は使用していないが、将来的な最適化のために保持）
+   * @param {Object} group - タスクグループ
+   * @param {Object} spreadsheetData - スプレッドシートデータ
+   * @returns {Promise<Object>} バッチ取得したデータ
+   */
+  async preprocessTaskGroup(group, spreadsheetData) {
+    this.logger.log(`[preprocessTaskGroup] グループ ${group.name} のデータを事前取得開始`);
+    
+    // 必要な範囲を収集
+    const requiredRanges = [];
+    const rangeMap = {}; // 範囲とその用途をマッピング
+    
+    // モデル行と機能行の位置を取得
+    const modelRowIndex = spreadsheetData.modelRow?.index;
+    const functionRowIndex = spreadsheetData.taskRow?.index; // taskRowが機能行
+    
+    if (modelRowIndex == null || functionRowIndex == null) {
+      this.logger.warn(`[preprocessTaskGroup] モデル行または機能行が見つかりません`);
+      return {};
+    }
+    
+    // プロンプト列と回答列のインデックスを取得
+    const promptColIndices = group.columnRange.promptColumns.map(col => 
+      typeof col === 'string' ? this.columnToIndex(col) : col
+    );
+    const answerColIndices = group.columnRange.answerColumns.map(answerCol => {
+      const col = typeof answerCol === 'string' ? answerCol : answerCol.column;
+      return this.columnToIndex(col);
+    });
+    
+    // 1. モデル行の必要な列
+    for (const colIndex of promptColIndices) {
+      const colLetter = this.indexToColumn(colIndex);
+      const range = `${colLetter}${modelRowIndex + 1}`;
+      requiredRanges.push(range);
+      rangeMap[range] = { type: 'model', column: colLetter, rowIndex: modelRowIndex };
+    }
+    
+    // 2. 機能行の必要な列
+    for (const colIndex of promptColIndices) {
+      const colLetter = this.indexToColumn(colIndex);
+      const range = `${colLetter}${functionRowIndex + 1}`;
+      requiredRanges.push(range);
+      rangeMap[range] = { type: 'function', column: colLetter, rowIndex: functionRowIndex };
+    }
+    
+    // 3. 作業行のスキャン（プロンプトがある行を特定）
+    const startRow = 8; // 0ベース（9行目）
+    const endRow = Math.min(spreadsheetData.values?.length || 0, 1000); // 最大1000行まで
+    const workRows = [];
+    
+    for (let rowIndex = startRow; rowIndex < endRow; rowIndex++) {
+      const row = spreadsheetData.values[rowIndex];
+      if (!row) continue;
+      
+      // プロンプト列にデータがあるかチェック
+      const hasPrompt = promptColIndices.some(colIndex => {
+        const cellValue = row[colIndex];
+        return cellValue && typeof cellValue === 'string' && cellValue.trim().length > 0;
+      });
+      
+      if (hasPrompt) {
+        workRows.push(rowIndex);
+        
+        // この行のプロンプト列データを取得対象に追加
+        for (const colIndex of promptColIndices) {
+          const colLetter = this.indexToColumn(colIndex);
+          const range = `${colLetter}${rowIndex + 1}`;
+          requiredRanges.push(range);
+          rangeMap[range] = { type: 'prompt', column: colLetter, rowIndex: rowIndex };
+        }
+        
+        // B列（制御情報）も追加
+        const bRange = `B${rowIndex + 1}`;
+        requiredRanges.push(bRange);
+        rangeMap[bRange] = { type: 'control', column: 'B', rowIndex: rowIndex };
+      }
+    }
+    
+    this.logger.log(`[preprocessTaskGroup] バッチ取得対象:`, {
+      グループ: group.name,
+      範囲数: requiredRanges.length,
+      作業行数: workRows.length,
+      プロンプト列: promptColIndices.map(idx => this.indexToColumn(idx)),
+      回答列: answerColIndices.map(idx => this.indexToColumn(idx))
+    });
+    
+    // バッチでデータを取得
+    if (requiredRanges.length > 0) {
+      try {
+        const batchData = await globalThis.sheetsClient.batchGetSheetData(
+          spreadsheetData.spreadsheetId,
+          requiredRanges,
+          spreadsheetData.gid
+        );
+        
+        // 取得したデータを整理
+        const organizedData = {
+          modelData: {},
+          functionData: {},
+          promptData: {},
+          controlData: {},
+          workRows: workRows
+        };
+        
+        for (const [range, value] of Object.entries(batchData)) {
+          const rangeInfo = rangeMap[range];
+          if (!rangeInfo) continue;
+          
+          switch (rangeInfo.type) {
+            case 'model':
+              organizedData.modelData[rangeInfo.column] = value;
+              break;
+            case 'function':
+              organizedData.functionData[rangeInfo.column] = value;
+              break;
+            case 'prompt':
+              if (!organizedData.promptData[rangeInfo.rowIndex]) {
+                organizedData.promptData[rangeInfo.rowIndex] = {};
+              }
+              organizedData.promptData[rangeInfo.rowIndex][rangeInfo.column] = value;
+              break;
+            case 'control':
+              organizedData.controlData[rangeInfo.rowIndex] = value;
+              break;
+          }
+        }
+        
+        this.logger.log(`[preprocessTaskGroup] バッチ取得完了:`, {
+          モデルデータ: Object.keys(organizedData.modelData).length,
+          機能データ: Object.keys(organizedData.functionData).length,
+          プロンプトデータ: Object.keys(organizedData.promptData).length,
+          制御データ: Object.keys(organizedData.controlData).length
+        });
+        
+        return organizedData;
+      } catch (error) {
+        this.logger.error(`[preprocessTaskGroup] バッチ取得エラー:`, error);
+        return {};
+      }
+    }
+    
+    return {};
+  }
+  
+  /**
    * 動的タスクグループ処理
    * @param {Object} spreadsheetData - スプレッドシートデータ
    * @param {Object} options - オプション
@@ -3877,6 +4069,7 @@ export default class StreamProcessorV2 {
     
     // spreadsheetDataをインスタンス変数に保存（動的取得メソッドで使用）
     this.spreadsheetData = spreadsheetData;
+    this.spreadsheetUrl = spreadsheetData?.spreadsheetUrl; // spreadsheetUrlを保存
     
     // デバッグ: spreadsheetDataの内容確認
     this.logger.log('[DEBUG] processDynamicTaskGroups - spreadsheetData構造:', {
@@ -3918,6 +4111,11 @@ export default class StreamProcessorV2 {
       } catch (error) {
         this.logger.warn(`[DEBUG] ウィンドウクローズ中にエラー:`, error);
       }
+      
+      // 5秒待機してからグループ処理を開始
+      this.logger.log(`[DEBUG] ウィンドウクローズ後、5秒待機開始`);
+      await this.delay(5000);
+      this.logger.log(`[DEBUG] 5秒待機完了、グループ処理開始`);
       
       this.logger.log(`[StreamProcessorV2] 📋 グループ処理開始: ${group.name} (${group.startColumn}-${group.endColumn}列)`);
       
@@ -3966,39 +4164,60 @@ export default class StreamProcessorV2 {
       const taskObjects = [];
       for (const taskInfo of tasks) {
         // AIタイプを取得（グループから）
+        // デバッグ：検索前の詳細情報を出力
+        this.logger.log(`[DEBUG] answerCol検索開始:`, {
+          'taskInfo.column': taskInfo.column,
+          'taskInfo.columnIndex': taskInfo.columnIndex,
+          'group.columnRange.answerColumns': group.columnRange.answerColumns,
+          'answerColumns詳細': group.columnRange.answerColumns.map(col => ({
+            'original': col,
+            'type': typeof col,
+            'column': typeof col === 'string' ? col : col.column,
+            'index': typeof col === 'string' ? this.columnToIndex(col) : col.index,
+            'aiType': typeof col === 'string' ? 'N/A' : col.aiType
+          }))
+        });
+
         const answerCol = group.columnRange.answerColumns.find(col => {
           const colStr = typeof col === 'string' ? col : col.column;
-          return this.columnToIndex(colStr) === taskInfo.columnIndex;
+          const colIndex = this.columnToIndex(colStr);
+          
+          this.logger.log(`[DEBUG] answerCol検索中:`, {
+            'col': col,
+            'colStr': colStr,
+            'colIndex': colIndex,
+            'taskInfo.columnIndex': taskInfo.columnIndex,
+            'match': colIndex === taskInfo.columnIndex
+          });
+          
+          return colIndex === taskInfo.columnIndex;
         });
-        const aiType = answerCol?.aiType || 'Claude'; // デフォルトはClaude
+        // AIタイプは設定しない（実行時にfetchModelAndFunctionFromTaskで取得）
         
-        // デバッグ：AI値設定の詳細確認
-        this.logger.log(`[DEBUG] タスクAI値設定:`, {
+        // デバッグ：タスク作成情報
+        this.logger.log(`[DEBUG] タスク作成:`, {
           'taskInfo.column': taskInfo.column,
           'taskInfo.row': taskInfo.row,
-          'answerCol': answerCol,
-          'answerCol.aiType': answerCol?.aiType,
-          'detectedAiType': aiType,
-          'answerColKeys': answerCol ? Object.keys(answerCol) : 'answerCol is null/undefined'
+          'promptColumns': promptColIndices,
+          'AIタイプ': '実行時に動的取得'
         });
         
-        // タスクオブジェクトを作成（モデルと機能は実行時に動的取得）
+        // タスクオブジェクトを作成（AI/モデル/機能は実行時に動的取得）
         const task = {
+          groupId: group.id, // グループIDを追加（キャッシュデータ参照用）
           id: `${taskInfo.column}${taskInfo.row}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
           column: taskInfo.column,
           row: taskInfo.row,
-          aiType: aiType.toLowerCase() === 'chatgpt' ? 'chatgpt' : 
-                  aiType.toLowerCase() === 'gemini' ? 'gemini' :
-                  aiType.toLowerCase() === 'claude' ? 'claude' : 'claude',
+          aiType: group.aiType || '',  // グループのAIタイプを設定
           // promptは削除（fetchPromptFromTaskで動的取得）
           promptColumn: this.indexToColumn(promptColIndices[0]),
-          promptColumns: promptColIndices,  // 配列形式で設定（fetchPromptFromTaskが使用）
+          promptColumns: promptColIndices.map(idx => this.indexToColumn(idx)),  // 文字列の配列に変換
           sheetName: spreadsheetData.sheetName || '不明',
           model: '',  // 実行時に動的取得
           function: '',  // 実行時に動的取得
           createdAt: Date.now(),
-          // ログ列を追加（プロンプト列の1列前）
-          logColumns: [this.indexToColumn(Math.max(0, Math.min(...promptColIndices) - 1))]
+          // ログ列を追加（グループにログ列が設定されていれば使用）
+          logColumns: group.columnRange.logColumn ? [group.columnRange.logColumn] : []
         };
         
         taskObjects.push(task);
@@ -4016,6 +4235,9 @@ export default class StreamProcessorV2 {
           グループ: group.name
         });
         
+        // 現在処理中のグループを設定（キャッシュデータ参照用）
+        this.currentProcessingGroup = group;
+        
         try {
           // 既存のprocessBatchメソッドを使用（並列処理＋フェーズ分け）
           await this.processBatch(batch, false);
@@ -4023,6 +4245,9 @@ export default class StreamProcessorV2 {
         } catch (error) {
           this.logger.error(`[StreamProcessorV2] バッチ処理エラー:`, error);
           totalFailed += batch.length;
+        } finally {
+          // 処理後にクリア
+          this.currentProcessingGroup = null;
         }
       }
     }
@@ -4094,5 +4319,13 @@ export default class StreamProcessorV2 {
     
     this.logger.log(`[StreamProcessorV2] タスクグループ検出: ${groups.length}グループ`);
     return groups;
+  }
+
+  /**
+   * スプレッドシートURLからIDを抽出
+   */
+  extractSpreadsheetId(url) {
+    const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+    return match ? match[1] : null;
   }
 }
