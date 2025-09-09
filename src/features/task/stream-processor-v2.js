@@ -3801,6 +3801,13 @@ export default class StreamProcessorV2 {
     if (maxPromptRow >= spreadsheetData.values.length) {
       this.logger.log(`[StreamProcessorV2] 📥 追加データ読み込み: 現在${spreadsheetData.values.length}行 → ${maxPromptRow + 1}行まで`);
       await this.loadAdditionalRows(maxPromptRow);
+      
+      // 重要：追加データ読み込み後に行制御を再取得
+      this.logger.log(`[StreamProcessorV2] 📊 行制御を再取得（全${spreadsheetData.values.length}行から）`);
+      rowControls = this.getRowControl(spreadsheetData);
+      if (rowControls.length > 0) {
+        this.logger.log(`[StreamProcessorV2] 行制御発見:`, rowControls.map(c => `${c.type}:${c.row}行`));
+      }
     }
     
     // 作業行範囲を更新
@@ -3852,9 +3859,21 @@ export default class StreamProcessorV2 {
         const answerValue = row[answerColIndex];
         const hasAnswer = answerValue && typeof answerValue === 'string' && answerValue.trim().length > 0;
         
-        // デバッグ：最初の5行と問題のある行の回答状態を確認
-        if (debugCount < 5 || (rowIndex >= 10 && rowIndex <= 15)) {
-          this.logger.log(`[DEBUG] 行${rowIndex + 1} 回答列${this.indexToColumn(answerColIndex)}[${answerColIndex}]: "${answerValue ? answerValue.substring(0, 30) : '(空)'}" → ${hasAnswer ? '回答済み' : '未回答'}`);
+        // デバッグ：最初の5行と問題のある行（40-42行目）の回答状態を確認
+        if (debugCount < 5 || (rowIndex >= 39 && rowIndex <= 42)) {
+          this.logger.log(`[DEBUG] 行${rowIndex + 1} 回答列${this.indexToColumn(answerColIndex)}[${answerColIndex}]: "${answerValue ? answerValue.substring(0, 50) : '(空)'}" → ${hasAnswer ? '回答済み' : '未回答'}`);
+          
+          // 41行目の詳細デバッグ
+          if (rowIndex === 40) { // 0ベースなので40が41行目
+            this.logger.log(`[DEBUG] ⚠️ 41行目詳細:`, {
+              row長: row.length,
+              B列: row[1] || '(空)',
+              H列: row[7] || '(空)', 
+              I列: row[8] || '(空)',
+              I列型: typeof row[8],
+              制御チェック: this.shouldProcessRow(41, rowControls) ? '処理対象' : 'スキップ'
+            });
+          }
           debugCount++;
         }
         
@@ -4414,29 +4433,45 @@ export default class StreamProcessorV2 {
       // 追加行を読み込み（全列を取得）
       const startRow = currentRows + 1; // 1ベース
       const endRow = maxRowIndex + 1; // 1ベース
-      const range = `${sheetName}!A${startRow}:CZ${endRow}`;
       
-      this.logger.log(`[StreamProcessorV2] 追加データ取得中: ${range}`);
+      this.logger.log(`[StreamProcessorV2] 追加データ取得中: 行${startRow}〜${endRow}`);
       
-      // Sheets APIを直接呼び出して全列データを取得
-      const response = await fetch(
-        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${await globalThis.authService.getAuthToken()}`
-          }
-        }
-      );
-      
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
+      // SheetsClientのbatchGetSheetDataを使用して全列データを取得
+      const ranges = [];
+      for (let row = startRow; row <= endRow; row++) {
+        ranges.push(`A${row}:CZ${row}`);
       }
       
-      const data = await response.json();
-      const additionalData = data.values || [];
+      // バッチで取得（最大100行ずつ）
+      const batchSize = 100;
+      const additionalData = [];
+      
+      for (let i = 0; i < ranges.length; i += batchSize) {
+        const batchRanges = ranges.slice(i, i + batchSize);
+        const batchResult = await globalThis.sheetsClient.batchGetSheetData(
+          spreadsheetId,
+          batchRanges,
+          this.spreadsheetData.gid
+        );
+        
+        // 結果を行データに変換
+        for (const range of batchRanges) {
+          const rowData = batchResult[range] || [];
+          additionalData.push(Array.isArray(rowData) ? rowData : []);
+        }
+      }
       
       // デバッグ：取得したデータを確認
       this.logger.log(`[DEBUG] 追加データ取得結果: ${additionalData.length}行 x ${additionalData[0]?.length || 0}列`);
+      
+      // 特定行のデバッグ（40-42行目）
+      for (let i = 39; i <= 41 && i < startRow + additionalData.length - 1; i++) {
+        const rowIndex = i - startRow + 1;
+        if (rowIndex >= 0 && rowIndex < additionalData.length) {
+          const row = additionalData[rowIndex];
+          this.logger.log(`[DEBUG] 行${i + 1}のデータ: B列="${row[1] || ''}", I列="${row[8] || ''}"`);
+        }
+      }
       
       // spreadsheetData.valuesに追加
       if (additionalData && Array.isArray(additionalData)) {
