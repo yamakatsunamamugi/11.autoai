@@ -200,7 +200,9 @@ export const UI_SELECTORS = {
         INPUT: [
             '.ProseMirror[contenteditable="true"]',
             'div[contenteditable="true"][role="textbox"]',
+            '[aria-label="クロードにプロンプトを入力してください"]',  // 完全一致を追加
             '[aria-label*="プロンプト"]',
+            'div.ProseMirror',  // シンプルなセレクター追加
             'div[contenteditable="true"]',
             'textarea[placeholder*="メッセージ"]'
         ],

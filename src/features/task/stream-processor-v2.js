@@ -424,9 +424,13 @@ export default class StreamProcessorV2 {
             
             // 既存ウィンドウを閉じる
             try {
-              const WindowService = await import('../../services/window-service.js').then(m => m.default);
-              await WindowService.closeWindow(currentTabId);
-              WindowService.releasePosition(position);
+              // Service Worker環境では動的インポートが禁止されているため、既存のwindowServiceを使用
+              if (this.windowService) {
+                await this.windowService.closeWindow(currentTabId);
+                this.windowService.releasePosition(position);
+              } else {
+                console.warn('[StreamProcessorV2] WindowServiceが利用できません - ウィンドウクリーンアップをスキップ');
+              }
               await this.delay(1000); // ウィンドウクリーンアップ待機
             } catch (cleanupError) {
               this.logger.error(`[StreamProcessorV2] ウィンドウクリーンアップエラー:`, cleanupError);
@@ -2279,10 +2283,14 @@ export default class StreamProcessorV2 {
           
           // ウィンドウを閉じてポジションを解放
           try {
-            const WindowService = await import('../../services/window-service.js').then(m => m.default);
-            await WindowService.closeWindow(tabId);
-            WindowService.releasePosition(position);
-            this.logger.log(`[StreamProcessorV2] 🧹 ウィンドウ${tabId}をクリーンアップしました`);
+            // Service Worker環境では動的インポートが禁止されているため、既存のwindowServiceを使用
+            if (this.windowService) {
+              await this.windowService.closeWindow(tabId);
+              this.windowService.releasePosition(position);
+              this.logger.log(`[StreamProcessorV2] 🧹 ウィンドウ${tabId}をクリーンアップしました`);
+            } else {
+              console.warn('[StreamProcessorV2] WindowServiceが利用できません - ウィンドウクリーンアップをスキップ');
+            }
           } catch (cleanupError) {
             this.logger.error(`[StreamProcessorV2] ウィンドウクリーンアップエラー:`, cleanupError);
           }
@@ -3202,7 +3210,12 @@ export default class StreamProcessorV2 {
     
     try {
       // レポート専用タスク生成
-      const { ReportExecutor } = await import('../../report/report-executor.js');
+      // Service Worker環境では動的インポートが禁止されているため、グローバル変数を使用
+      const ReportExecutor = globalThis.ReportExecutor || null;
+      if (!ReportExecutor) {
+        this.logger.warn('[StreamProcessorV2] ReportExecutorが利用できません');
+        return;
+      }
       const reportExecutor = new ReportExecutor({ logger: this.logger });
       
       // レポートタスクの実行

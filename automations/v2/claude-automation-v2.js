@@ -345,8 +345,13 @@
     // Claude動作関数（テストコードから）
     // =====================================================================
     
-    const findClaudeElement = async (selectorInfo, retryCount = 3, debug = false) => {
+    const findClaudeElement = async (selectorInfo, retryCount = 5, debug = false) => {
         const results = [];
+        
+        // 初回の待機時間を追加（ページの動的レンダリングを待つ）
+        if (selectorInfo.description && selectorInfo.description.includes('入力欄')) {
+            await wait(1000);  // 入力欄の場合は1秒待機
+        }
         
         for (let retry = 0; retry < retryCount; retry++) {
             for (let i = 0; i < selectorInfo.selectors.length; i++) {
