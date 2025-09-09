@@ -711,9 +711,8 @@ function processSpreadsheetData(spreadsheetData) {
         // 既存のグループにログ列を設定し、開始列を更新
         currentGroup.columnRange.logColumn = columnLetter;
         // ログ列がプロンプト列より前にある場合、startColumnを更新
-        if (index < menuHeaders.indexOf(currentGroup.startColumn)) {
-          currentGroup.startColumn = columnLetter;
-        }
+        // indexは現在の列位置なので直接比較可能
+        currentGroup.startColumn = columnLetter;
       }
     }
     
