@@ -688,9 +688,37 @@ function processSpreadsheetData(spreadsheetData) {
     };
     
     
-    // ログ列または特別列の検出（新グループの開始）
-    if (trimmedHeader === "ログ" || 
-        trimmedHeader === "レポート化" || 
+    // ログ列の検出（グループの一部として）
+    if (trimmedHeader === "ログ") {
+      // 現在のグループがない場合、新しいグループを開始
+      if (!currentGroup) {
+        currentGroup = {
+          id: `group_${groupCounter}`,
+          name: `タスクグループ${groupCounter}`,
+          startColumn: columnLetter,
+          endColumn: columnLetter,  // 暫定、後で更新
+          columnRange: {
+            logColumn: columnLetter,
+            promptColumns: [],
+            answerColumns: []
+          },
+          groupType: 'single',
+          aiType: 'Claude',
+          dependencies: groupCounter > 1 ? [`group_${groupCounter - 1}`] : [],
+          sequenceOrder: groupCounter
+        };
+      } else if (!currentGroup.columnRange.logColumn) {
+        // 既存のグループにログ列を設定し、開始列を更新
+        currentGroup.columnRange.logColumn = columnLetter;
+        // ログ列がプロンプト列より前にある場合、startColumnを更新
+        if (index < menuHeaders.indexOf(currentGroup.startColumn)) {
+          currentGroup.startColumn = columnLetter;
+        }
+      }
+    }
+    
+    // 特別列の検出（新グループの開始）
+    if (trimmedHeader === "レポート化" || 
         trimmedHeader.includes("Genspark（スライド）") ||
         trimmedHeader.includes("Genspark（ファクトチェック）")) {
       // 前のグループがあれば完了させる
@@ -706,8 +734,8 @@ function processSpreadsheetData(spreadsheetData) {
         startColumn: columnLetter,
         endColumn: columnLetter,  // 暫定、後で更新
         columnRange: {
-          logColumn: trimmedHeader === "ログ" ? columnLetter : null,
-          promptColumns: trimmedHeader !== "ログ" ? [columnLetter] : [],
+          logColumn: null,
+          promptColumns: [columnLetter],
           answerColumns: []
         },
         groupType: determineGroupType(trimmedHeader),
@@ -718,8 +746,36 @@ function processSpreadsheetData(spreadsheetData) {
     }
     
     // プロンプト列の検出
-    if (currentGroup && trimmedHeader.includes("プロンプト")) {
-      currentGroup.columnRange.promptColumns.push(columnLetter);
+    if (trimmedHeader.includes("プロンプト")) {
+      // 前のグループが完成していれば新しいグループを開始
+      if (currentGroup && currentGroup.columnRange.promptColumns.length > 0 && 
+          currentGroup.columnRange.answerColumns.length > 0) {
+        result.taskGroups.push(currentGroup);
+        groupCounter++;
+        currentGroup = null;
+      }
+      
+      // 現在のグループがない場合、新しいグループを開始
+      if (!currentGroup) {
+        currentGroup = {
+          id: `group_${groupCounter}`,
+          name: `タスクグループ${groupCounter}`,
+          startColumn: columnLetter,
+          endColumn: columnLetter,  // 暫定、後で更新
+          columnRange: {
+            logColumn: null,  // ログ列は後で検出される可能性がある
+            promptColumns: [columnLetter],
+            answerColumns: []
+          },
+          groupType: 'single',
+          aiType: 'Claude',
+          dependencies: groupCounter > 1 ? [`group_${groupCounter - 1}`] : [],
+          sequenceOrder: groupCounter
+        };
+      } else {
+        // 既存のグループにプロンプト列を追加
+        currentGroup.columnRange.promptColumns.push(columnLetter);
+      }
       
       // AI行の値からグループタイプを判定
       if (aiValue.includes("3種類")) {

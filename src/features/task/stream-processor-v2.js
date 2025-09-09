@@ -4068,8 +4068,8 @@ export default class StreamProcessorV2 {
       // プロンプト列のインデックスを取得
       const promptColIndices = promptColumns.map(col => this.columnToIndex(col));
       
-      // 作業行範囲（9行目以降）をチェック
-      for (let rowIndex = 8; rowIndex < Math.min(spreadsheetData.values.length, 20); rowIndex++) {
+      // 作業行範囲（9行目以降）をチェック - 全データをチェック
+      for (let rowIndex = 8; rowIndex < spreadsheetData.values.length; rowIndex++) {
         const rowData = spreadsheetData.values[rowIndex] || [];
         
         // A列の番号チェック（作業行かどうか）
@@ -4388,7 +4388,7 @@ export default class StreamProcessorV2 {
         
         // 列全体を取得（9行目以降の範囲で確認）
         const startRow = 9; // 1ベース
-        const endRow = Math.min(40, this.spreadsheetData?.values?.length || 40); // 最大40行まで、またはデータ行数まで
+        const endRow = 500; // 最大500行まで確認
         const range = `${columnName}${startRow}:${columnName}${endRow}`;
         
         this.logger.log(`[StreamProcessorV2] 🔍 API呼び出し準備:`, {
@@ -4406,7 +4406,10 @@ export default class StreamProcessorV2 {
           データサンプル: cellValues?.slice(0, 5) || []
         });
         
-        // プロンプトがある行を特定
+        // プロンプトがある行を特定（効率化：連続する空行で終了）
+        let emptyRowCount = 0;
+        const maxEmptyRows = 20; // 連続する20個の空行で終了
+        
         for (let i = 0; i < cellValues.length; i++) {
           const rowIndex = startRow - 1 + i; // 0ベースに変換
           const value = cellValues[i];
@@ -4414,6 +4417,14 @@ export default class StreamProcessorV2 {
           if (value && value.trim() && value.trim() !== '') {
             if (!promptRows.includes(rowIndex)) {
               promptRows.push(rowIndex);
+            }
+            emptyRowCount = 0; // 値があればカウントリセット
+          } else {
+            emptyRowCount++;
+            // 連続する空行が多い場合は終了
+            if (emptyRowCount >= maxEmptyRows) {
+              this.logger.log(`[StreamProcessorV2] ${columnName}列: ${maxEmptyRows}個の連続空行で検索終了（行${rowIndex + 1}）`);
+              break;
             }
           }
         }
