@@ -3782,13 +3782,30 @@ export default class StreamProcessorV2 {
       return tasks;
     }
     
-    // 作業行範囲を特定（通常は9行目以降、最大50行まで）
-    const startRow = 8; // 0ベース（9行目）
-    const maxCheckRows = 50; // 最大チェック行数を制限
-    let endRow = Math.min(startRow + maxCheckRows, spreadsheetData.values.length);
+    // ========== 重要：プロンプト列を最後まで読み込む ==========
+    this.logger.log(`[StreamProcessorV2] 📊 プロンプト列を最後まで読み込み開始...`);
     
-    // 注：scanPromptRowsは使用しない（不要なAPI呼び出しを避ける）
-    // 既存のspreadsheetDataから直接チェックする
+    // scanPromptRowsを使ってプロンプトがある行を全て検出
+    const promptRows = await this.scanPromptRows(promptCols);
+    
+    if (!promptRows || promptRows.length === 0) {
+      this.logger.log(`[StreamProcessorV2] プロンプトが見つかりません`);
+      return tasks;
+    }
+    
+    // プロンプトがある最大行を特定
+    const maxPromptRow = Math.max(...promptRows);
+    this.logger.log(`[StreamProcessorV2] プロンプト発見: ${promptRows.length}行、最大行: ${maxPromptRow + 1}`);
+    
+    // 現在のデータが不足している場合、追加読み込み
+    if (maxPromptRow >= spreadsheetData.values.length) {
+      this.logger.log(`[StreamProcessorV2] 📥 追加データ読み込み: 現在${spreadsheetData.values.length}行 → ${maxPromptRow + 1}行まで`);
+      await this.loadAdditionalRows(maxPromptRow);
+    }
+    
+    // 作業行範囲を更新
+    const startRow = 8; // 0ベース（9行目）
+    let endRow = Math.min(maxPromptRow + 1, spreadsheetData.values.length)
     
     // カウンタ
     let totalRowsChecked = 0;
@@ -3797,16 +3814,18 @@ export default class StreamProcessorV2 {
     let answerExistCount = 0;
     let skippedCompleted = 0;
     
-    this.logger.log(`[StreamProcessorV2] 📊 グループタスクスキャン開始:`, {
+    this.logger.log(`[StreamProcessorV2] 📊 タスク生成開始:`, {
       プロンプト列: promptCols.map(idx => this.indexToColumn(idx)),
       回答列: answerCols.map(idx => this.indexToColumn(idx)), 
-      対象行: `${startRow + 1}～${endRow}行目（計${endRow - startRow}行）`,
-      行制御: rowControls.length > 0 ? `${rowControls.length}件` : 'なし',
-      列制御: columnControls.length > 0 ? `${columnControls.length}件` : 'なし'
+      対象行: `${startRow + 1}～${endRow}行目`,
+      プロンプト行数: promptRows.length
     });
     
-    // 既存のデータから直接チェック（API呼び出しなし）
-    for (let rowIndex = startRow; rowIndex < endRow; rowIndex++) {
+    // プロンプトがある行のみを処理（promptRowsを使用）
+    for (const rowIndex of promptRows) {
+      // 範囲外チェック
+      if (rowIndex < startRow || rowIndex >= endRow) continue;
+      
       totalRowsChecked++;
       const row = spreadsheetData.values[rowIndex];
       if (!row) continue;
@@ -3817,20 +3836,6 @@ export default class StreamProcessorV2 {
         continue;
       }
       
-      // プロンプト列にデータがあるかチェック
-      let hasPrompt = false;
-      let promptValue = null;
-      
-      for (const colIndex of promptCols) {
-        const cellValue = row[colIndex];
-        if (cellValue && typeof cellValue === 'string' && cellValue.trim().length > 0) {
-          hasPrompt = true;
-          promptValue = cellValue;
-          break;
-        }
-      }
-      
-      if (!hasPrompt) continue;
       promptFoundCount++;
       
       // 対応する回答列をチェック
@@ -3842,7 +3847,6 @@ export default class StreamProcessorV2 {
           // 回答済み - スキップ
           answerExistCount++;
           skippedCompleted++;
-          this.logger.log(`[StreamProcessorV2] ⏭️ 行${rowIndex + 1}: 回答済みのためスキップ`);
         } else {
           // プロンプトあり＆回答なし = タスク対象
           tasks.push({
@@ -3850,19 +3854,18 @@ export default class StreamProcessorV2 {
             column: this.indexToColumn(answerColIndex),
             columnIndex: answerColIndex
           });
-          this.logger.log(`[StreamProcessorV2] ✅ 行${rowIndex + 1}: タスク追加 (${this.indexToColumn(answerColIndex)}列)`);
         }
       }
     }
     
-    this.logger.log(`[StreamProcessorV2] 📊 scanGroupTasks完了:`, {
-      チェック済み行数: totalRowsChecked,
-      行制御でスキップ: rowSkippedByControl,
-      プロンプト発見: promptFoundCount,
-      回答済みスキップ: skippedCompleted,
-      生成タスク数: tasks.length,
-      タスクリスト: tasks.map(t => `${t.column}${t.row}`).join(', ')
-    });
+    // ログを簡略化
+    this.logger.log(`[StreamProcessorV2] ✅ タスク生成完了: プロンプト${promptFoundCount}個、回答済み${skippedCompleted}個、処理対象${tasks.length}個`);
+    
+    // タスクがある場合のみ詳細表示
+    if (tasks.length > 0) {
+      const taskRanges = this.formatCellRanges(tasks.map(t => `${t.column}${t.row}`));
+      this.logger.log(`[StreamProcessorV2] 📝 処理対象: ${taskRanges}`);
+    }
   
     return tasks;
   }
