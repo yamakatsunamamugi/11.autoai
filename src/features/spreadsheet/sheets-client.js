@@ -309,23 +309,19 @@ class SheetsClient {
   async loadSheet(spreadsheetId, gid) {
     // キャッシュ機能削除 - 常に最新データを取得
     
-    this.logger.log('SheetsClient', 'スプレッドシート読み込み:', spreadsheetId, '(gid:', gid + ')');
-    
     // GIDからシート名を取得
     const sheetName = await this.getSheetNameFromGid(spreadsheetId, gid);
     if (!sheetName) {
       throw new Error(`GID ${gid} に対応するシートが見つかりません`);
     }
 
-    // シート名をエンコード
-    const encodedSheetName = encodeURIComponent(sheetName);
-
     // Google Sheets API でデータを取得
     const accessToken = await globalThis.authService.getAuthToken();
+    const encodedSheetName = encodeURIComponent(sheetName);
     const range = `'${encodedSheetName}'!A1:CZ1000`;
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}?valueRenderOption=FORMATTED_VALUE`;
     
-    this.logger.log('SheetsClient', 'API URL:', url);
+    this.logger.log('SheetsClient', `スプレッドシート読み込み開始: ${sheetName}`);
     
     const response = await fetch(url, {
       headers: {
@@ -363,18 +359,15 @@ class SheetsClient {
    * @private
    */
   parseSheetData(data) {
-    // データ配列の実際のサイズを確認
+    // データ配列の実際のサイズを確認とパディング処理
     if (data.length > 0) {
       const maxColumns = Math.max(...data.map(row => row ? row.length : 0));
-      this.logger.log("SheetsClient", `取得データ: ${data.length}行 x 最大${maxColumns}列`);
       
       // メニュー行の列数を基準にパディング処理
-      // メニュー行を探す（A列が"メニュー"の行）
       let targetColumns = maxColumns;
       for (let row of data) {
         if (row && row[0] === "メニュー") {
           targetColumns = row.length;
-          this.logger.log("SheetsClient", `メニュー行の列数: ${targetColumns}列 - この列数でパディング`);
           break;
         }
       }
@@ -388,7 +381,8 @@ class SheetsClient {
           data[i].push("");
         }
       }
-      this.logger.log("SheetsClient", `パディング完了: 全行を${targetColumns}列に統一`);
+      
+      this.logger.log("SheetsClient", `データ処理完了: ${data.length}行 x ${targetColumns}列`);
     }
 
     // データ構造を解析
@@ -451,8 +445,6 @@ class SheetsClient {
               type: aiType,
               promptDescription: ""
             };
-            
-            this.logger.log("SheetsClient", `AI列検出: ${columnLetter}列 (${aiType})`);
           }
         }
       }
@@ -463,9 +455,7 @@ class SheetsClient {
           index: i,
           data: row,
         };
-        this.logger.log("SheetsClient", `モデル行検出: 行${i + 1}, A列="${firstCell}"`);
-        // デバッグ: モデル行の値を表示（インデックス20-30: U列〜AE列あたり）
-        this.logger.log("SheetsClient", `[DEBUG] モデル行の値 (index 20-30):`, row.slice(20, 31).map((val, idx) => `[${20+idx}]: "${val || '空'}"`));
+        this.logger.log("SheetsClient", `モデル行検出: 行${i + 1}`);
       }
 
       // 機能行を検索（A列が「機能」と完全一致）
@@ -474,7 +464,7 @@ class SheetsClient {
           index: i,
           data: row,
         };
-        this.logger.log("SheetsClient", `機能行検出: 行${i + 1}, A列="${firstCell}"`);
+        this.logger.log("SheetsClient", `機能行検出: 行${i + 1}`);
       }
 
       // 作業行を検索（A列が「1」から始まる数字）
@@ -532,10 +522,17 @@ class SheetsClient {
             type: aiType,
             promptDescription: ""
           };
-          
-          this.logger.log("SheetsClient", `AI列最終検出: ${columnLetter}列 (${aiType})`);
         }
       }
+    }
+
+    // AI列の検出結果を集約してログ出力
+    const aiColumnCount = Object.keys(result.aiColumns).length;
+    if (aiColumnCount > 0) {
+      const aiColumnSummary = Object.entries(result.aiColumns)
+        .map(([letter, info]) => `${letter}列(${info.type})`)
+        .join(', ');
+      this.logger.log("SheetsClient", `AI列検出完了: ${aiColumnCount}列 - ${aiColumnSummary}`);
     }
 
     this.logger.log("SheetsClient", "読み込み完了", result);
@@ -917,8 +914,6 @@ class SheetsClient {
             type: aiType,
             promptDescription: ""
           };
-          
-          this.logger.log("SheetsClient", `AI列検出: ${columnLetter}列 (${aiType})`);
         }
         
         // columnTypesのマッピング
@@ -1086,6 +1081,46 @@ class SheetsClient {
     } catch (error) {
       this.logger.error('SheetsClient', `バッチセル取得エラー:`, error);
       return {};
+    }
+  }
+
+  /**
+   * セル範囲の値を取得（範囲指定版）
+   * @param {string} spreadsheetId - スプレッドシートID
+   * @param {string} sheetName - シート名
+   * @param {string} range - セル範囲（例: 'AD9:AD20'）
+   * @returns {Promise<Array>} セル値の配列
+   */
+  async getCellValues(spreadsheetId, sheetName, range) {
+    try {
+      const token = await globalThis.authService.getAuthToken();
+      const encodedSheetName = encodeURIComponent(sheetName);
+      const fullRange = `'${encodedSheetName}'!${range}`;
+      const url = `${this.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(fullRange)}?valueRenderOption=FORMATTED_VALUE`;
+      
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(`Failed to get cell range ${range}: ${error.error.message}`);
+      }
+
+      const data = await response.json();
+      
+      // 縦方向の範囲の場合、各行の最初の値を配列として返す
+      if (data.values) {
+        return data.values.map(row => row[0] || '');
+      }
+      
+      return [];
+    } catch (error) {
+      this.logger.error('SheetsClient', `セル範囲取得エラー ${range}:`, error);
+      return [];
     }
   }
 
