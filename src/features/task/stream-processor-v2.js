@@ -3796,43 +3796,89 @@ export default class StreamProcessorV2 {
       列制御: columnControls.length > 0 ? `${columnControls.length}件` : 'なし'
     });
     
-    for (let rowIndex = startRow; rowIndex < endRow; rowIndex++) {
-      totalRowsChecked++;
-      const row = spreadsheetData.values[rowIndex];
-      if (!row) continue;
-      
-      // 行制御チェック
-      if (!this.shouldProcessRow(rowIndex + 1, rowControls)) {
-        rowSkippedByControl++;
-        continue;
-      }
-      
-      // プロンプト列にデータがあるかチェック
-      const hasPrompt = promptCols.some(colIndex => {
-        const cellValue = row[colIndex];
-        return cellValue && typeof cellValue === 'string' && cellValue.trim().length > 0;
-      });
-      
-      if (!hasPrompt) continue;
-      promptFoundCount++;
-      
-      // 対応する回答列のチェック
-      for (const answerColIndex of answerCols) {
-        const answerValue = row[answerColIndex];
-        const hasAnswer = answerValue && typeof answerValue === 'string' && answerValue.trim().length > 0;
+    // 動的プロンプトスキャンの結果を使用してタスクを生成
+    const targetRows = promptRowsFound.length > 0 ? promptRowsFound : [];
+    
+    this.logger.log(`[StreamProcessorV2] 🎯 処理対象行:`, {
+      動的スキャン結果: promptRowsFound.length > 0 ? `${promptRowsFound.length}行` : 'なし',
+      対象行リスト: targetRows.map(r => r + 1).join(', '),
+      従来範囲: `${startRow + 1}～${endRow}行目`
+    });
+    
+    // 動的スキャン結果がある場合はそれを使用、なければ従来のループ処理
+    if (targetRows.length > 0) {
+      // 動的スキャンで発見された行のみを処理
+      for (const rowIndex of targetRows) {
+        totalRowsChecked++;
+        const row = spreadsheetData.values[rowIndex];
+        if (!row) continue;
         
-        if (hasAnswer) {
-          answerExistCount++;
-        } else {
-          // プロンプト有り×回答無し = タスク対象
-          tasks.push({
-            row: rowIndex + 1, // 1ベース行番号
-            column: this.indexToColumn(answerColIndex),
-            columnIndex: answerColIndex
-          });
+        // 行制御チェック
+        if (!this.shouldProcessRow(rowIndex + 1, rowControls)) {
+          rowSkippedByControl++;
+          continue;
         }
+        
+        // 既に動的スキャンでプロンプトありと確認済み
+        promptFoundCount++;
+        
+        // 対応する回答列のチェック
+        answerExistCount += this.processRowForTasks(row, rowIndex, answerCols, tasks);
+      }
+    } else {
+      // 従来のループ処理（フォールバック）
+      for (let rowIndex = startRow; rowIndex < endRow; rowIndex++) {
+        totalRowsChecked++;
+        const row = spreadsheetData.values[rowIndex];
+        if (!row) continue;
+        
+        // 行制御チェック
+        if (!this.shouldProcessRow(rowIndex + 1, rowControls)) {
+          rowSkippedByControl++;
+          continue;
+        }
+        
+        // プロンプト列にデータがあるかチェック
+        const hasPrompt = promptCols.some(colIndex => {
+          const cellValue = row[colIndex];
+          return cellValue && typeof cellValue === 'string' && cellValue.trim().length > 0;
+        });
+        
+        if (!hasPrompt) continue;
+        promptFoundCount++;
+        
+        // 対応する回答列のチェック
+        answerExistCount += this.processRowForTasks(row, rowIndex, answerCols, tasks);
       }
     }
+  }
+  
+  /**
+   * 行のタスク処理を共通化
+   * @returns {number} 既存回答の数
+   */
+  processRowForTasks(row, rowIndex, answerCols, tasks) {
+    let answerExistCount = 0;
+    
+    // 対応する回答列のチェック
+    for (const answerColIndex of answerCols) {
+      const answerValue = row[answerColIndex];
+      const hasAnswer = answerValue && typeof answerValue === 'string' && answerValue.trim().length > 0;
+      
+      if (hasAnswer) {
+        answerExistCount++;
+      } else {
+        // プロンプト有り×回答無し = タスク対象
+        tasks.push({
+          row: rowIndex + 1, // 1ベース行番号
+          column: this.indexToColumn(answerColIndex),
+          columnIndex: answerColIndex
+        });
+      }
+    }
+    
+    return answerExistCount;
+  }
     
     this.logger.log(`[StreamProcessorV2] 📊 グループタスクスキャン完了:`, {
       全対象行: `${totalRowsChecked}行`,
