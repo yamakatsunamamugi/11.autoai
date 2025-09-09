@@ -13,7 +13,129 @@ class SheetsClient {
       maxBatchUpdates: 100           // バッチ更新の最大件数
     };
     
-    // キャッシュ機能削除
+    // クォータ管理
+    this.quotaManager = {
+      lastRequestTime: 0,
+      requestCount: 0,
+      windowStart: Date.now(),
+      quotaErrors: 0,
+      backoffMultiplier: 1,
+      minInterval: 1000, // 最小リクエスト間隔 (1秒)
+      maxInterval: 60000, // 最大リクエスト間隔 (1分)
+      windowDuration: 60000 // ウィンドウ期間 (1分)
+    };
+  }
+
+  /**
+   * クォータエラーを検出
+   * @param {Object} error - API エラーオブジェクト
+   * @returns {boolean} クォータエラーかどうか
+   */
+  isQuotaError(error) {
+    const errorMessage = error?.error?.message || error?.message || '';
+    return errorMessage.includes('Quota exceeded') || 
+           errorMessage.includes('quota') ||
+           errorMessage.includes('rateLimitExceeded');
+  }
+
+  /**
+   * APIリクエスト前の待機処理
+   * クォータ制限を考慮した適切な間隔を確保
+   * @returns {Promise<void>}
+   */
+  async waitForQuota() {
+    const now = Date.now();
+    const timeSinceLastRequest = now - this.quotaManager.lastRequestTime;
+    
+    // ウィンドウをリセット（1分経過した場合）
+    if (now - this.quotaManager.windowStart >= this.quotaManager.windowDuration) {
+      this.quotaManager.requestCount = 0;
+      this.quotaManager.windowStart = now;
+      this.quotaManager.backoffMultiplier = Math.max(1, this.quotaManager.backoffMultiplier * 0.9);
+    }
+    
+    // 必要な待機時間を計算
+    const requiredInterval = Math.min(
+      this.quotaManager.minInterval * this.quotaManager.backoffMultiplier,
+      this.quotaManager.maxInterval
+    );
+    
+    if (timeSinceLastRequest < requiredInterval) {
+      const waitTime = requiredInterval - timeSinceLastRequest;
+      this.detailedLog('info', `クォータ制限対応で待機中: ${waitTime}ms`, {
+        requestCount: this.quotaManager.requestCount,
+        backoffMultiplier: this.quotaManager.backoffMultiplier,
+        quotaErrors: this.quotaManager.quotaErrors
+      });
+      await sleep(waitTime);
+    }
+    
+    this.quotaManager.lastRequestTime = Date.now();
+    this.quotaManager.requestCount++;
+  }
+
+  /**
+   * クォータエラー発生時の処理
+   * @param {Object} error - エラーオブジェクト
+   */
+  handleQuotaError(error) {
+    this.quotaManager.quotaErrors++;
+    this.quotaManager.backoffMultiplier = Math.min(
+      this.quotaManager.backoffMultiplier * 2,
+      10 // 最大10倍まで
+    );
+    
+    this.detailedLog('warn', `クォータエラーを検出: バックオフ倍率を調整`, {
+      quotaErrors: this.quotaManager.quotaErrors,
+      newBackoffMultiplier: this.quotaManager.backoffMultiplier,
+      nextMinInterval: this.quotaManager.minInterval * this.quotaManager.backoffMultiplier
+    });
+  }
+
+  /**
+   * APIリクエストをクォータ管理付きで実行
+   * @param {Function} requestFunc - 実行するAPIリクエスト関数
+   * @param {string} requestType - リクエストタイプ（ログ用）
+   * @returns {Promise} リクエスト結果
+   */
+  async executeWithQuotaManagement(requestFunc, requestType = 'unknown') {
+    let lastError;
+    const maxRetries = 3;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        await this.waitForQuota();
+        return await requestFunc();
+      } catch (error) {
+        lastError = error;
+        
+        if (this.isQuotaError(error)) {
+          this.handleQuotaError(error);
+          
+          if (attempt < maxRetries) {
+            const retryDelay = Math.min(
+              5000 * Math.pow(2, attempt - 1), // エクスポネンシャル・バックオフ
+              60000 // 最大1分
+            );
+            
+            this.detailedLog('warn', `クォータエラー - リトライ ${attempt}/${maxRetries}`, {
+              requestType,
+              attempt,
+              retryDelay,
+              error: error
+            });
+            
+            await sleep(retryDelay);
+            continue;
+          }
+        }
+        
+        // クォータエラー以外、または最大リトライ回数に達した場合はそのまま投げる
+        throw error;
+      }
+    }
+    
+    throw lastError;
   }
 
   /**
@@ -62,11 +184,13 @@ class SheetsClient {
    */
   detailedLog(level, message, data = {}) {
     const timestamp = new Date().toISOString();
+    
+    // データを安全にシリアライズ
     const logData = {
       timestamp,
       level,
       message,
-      ...data
+      ...this.safeSerialize(data)
     };
 
     if (level === 'error') {
@@ -79,6 +203,48 @@ class SheetsClient {
 
     // 既存のloggerも使用
     this.logger.log?.("SheetsClient", message, logData);
+  }
+
+  /**
+   * オブジェクトを安全にシリアライズ
+   * [object Object] エラーを防ぐため
+   * @param {*} data - シリアライズするデータ
+   * @returns {Object} 安全にシリアライズされたデータ
+   */
+  safeSerialize(data) {
+    try {
+      if (!data || typeof data !== 'object') {
+        return data;
+      }
+
+      const result = {};
+      for (const [key, value] of Object.entries(data)) {
+        if (value instanceof Error) {
+          // エラーオブジェクトを適切に処理
+          result[key] = {
+            name: value.name,
+            message: value.message,
+            stack: value.stack,
+            ...(value.response ? { response: this.safeSerialize(value.response) } : {})
+          };
+        } else if (value && typeof value === 'object') {
+          try {
+            // 循環参照を避けてJSONシリアライズ可能かチェック
+            JSON.stringify(value);
+            result[key] = value;
+          } catch {
+            // シリアライズ不可能な場合は文字列に変換
+            result[key] = String(value);
+          }
+        } else {
+          result[key] = value;
+        }
+      }
+      return result;
+    } catch (error) {
+      // フォールバック
+      return { serialized: String(data), serializationError: error.message };
+    }
   }
 
   /**
@@ -133,7 +299,11 @@ class SheetsClient {
 
       return result;
     } catch (error) {
-      this.detailedLog('error', `書き込み検証エラー: ${error.message}`, { range, error: error.message });
+      this.detailedLog('error', `書き込み検証エラー: ${error.message}`, { 
+        range, 
+        error: error,
+        errorType: 'verification_error'
+      });
       return {
         isMatch: false,
         error: error.message,
@@ -265,22 +435,24 @@ class SheetsClient {
    * @returns {Promise<Object>} メタデータ
    */
   async getSpreadsheetMetadata(spreadsheetId) {
-    const token = await globalThis.authService.getAuthToken();
-    const url = `${this.baseUrl}/${spreadsheetId}?fields=properties,sheets(properties)`;
+    return await this.executeWithQuotaManagement(async () => {
+      const token = await globalThis.authService.getAuthToken();
+      const url = `${this.baseUrl}/${spreadsheetId}?fields=properties,sheets(properties)`;
 
-    const response = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-    });
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(`Sheets API error: ${error.error.message}`);
-    }
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(`Sheets API error: ${error.error?.message || 'Unknown error'}`);
+      }
 
-    return await response.json();
+      return await response.json();
+    }, 'getSpreadsheetMetadata');
   }
 
   /**
@@ -308,50 +480,57 @@ class SheetsClient {
    * @returns {Promise<Object>} 解析されたデータ構造
    */
   async loadSheet(spreadsheetId, gid) {
-    // キャッシュ機能削除 - 常に最新データを取得
-    
-    // GIDからシート名を取得
-    const sheetName = await this.getSheetNameFromGid(spreadsheetId, gid);
-    if (!sheetName) {
-      throw new Error(`GID ${gid} に対応するシートが見つかりません`);
-    }
-
-    // Google Sheets API でデータを取得
-    const accessToken = await globalThis.authService.getAuthToken();
-    const range = `'${sheetName}'!A1:CZ1000`;
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueRenderOption=FORMATTED_VALUE`;
-    
-    this.logger.log('SheetsClient', `スプレッドシート読み込み開始: ${sheetName}`);
-    
-    const response = await fetch(url, {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`
+    return await this.executeWithQuotaManagement(async () => {
+      // キャッシュ機能削除 - 常に最新データを取得
+      
+      // GIDからシート名を取得
+      const sheetName = await this.getSheetNameFromGid(spreadsheetId, gid);
+      if (!sheetName) {
+        throw new Error(`GID ${gid} に対応するシートが見つかりません`);
       }
-    });
 
-    if (!response.ok) {
-      const error = await response.text();
-      console.error('SheetsClient', 'API エラー:', error);
-      throw new Error(`スプレッドシートの読み込みに失敗: ${error}`);
-    }
+      // Google Sheets API でデータを取得
+      const accessToken = await globalThis.authService.getAuthToken();
+      const range = `'${sheetName}'!A1:CZ1000`;
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueRenderOption=FORMATTED_VALUE`;
+      
+      this.logger.log('SheetsClient', `スプレッドシート読み込み開始: ${sheetName}`);
+      
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      });
 
-    const result = await response.json();
-    
-    // values が空の場合は空配列を設定
-    const data = result.values || [];
-    
-    // 無効な行（undefinedやnullを含む行）をフィルタ
-    const filteredData = data.filter(row => {
-      if (!Array.isArray(row)) return false;
-      // 少なくとも1つの有効な値があるかチェック
-      return row.some(cell => cell !== undefined && cell !== null && cell !== '');
-    });
+      if (!response.ok) {
+        const error = await response.text();
+        this.detailedLog('error', 'API エラー', {
+          error: error,
+          errorType: 'load_sheet_error',
+          httpStatus: response.status,
+          sheetName: sheetName
+        });
+        throw new Error(`スプレッドシートの読み込みに失敗: ${error}`);
+      }
 
-    const parsedData = this.parseSheetData(filteredData);
-    
-    // キャッシュ機能削除 - 保存しない
+      const result = await response.json();
+      
+      // values が空の場合は空配列を設定
+      const data = result.values || [];
+      
+      // 無効な行（undefinedやnullを含む行）をフィルタ
+      const filteredData = data.filter(row => {
+        if (!Array.isArray(row)) return false;
+        // 少なくとも1つの有効な値があるかチェック
+        return row.some(cell => cell !== undefined && cell !== null && cell !== '');
+      });
 
-    return parsedData;
+      const parsedData = this.parseSheetData(filteredData);
+      
+      // キャッシュ機能削除 - 保存しない
+
+      return parsedData;
+    }, 'loadSheet');
   }
 
   /**
@@ -578,8 +757,12 @@ class SheetsClient {
     
     if (!response.ok) {
       const error = await response.json();
-      console.error(`[SheetsClient] ❌ バッチ取得エラー:`, error);
-      throw new Error(`Sheets API error: ${error.error.message}`);
+      this.detailedLog('error', `バッチ取得APIエラー`, {
+        error: error,
+        errorType: 'batch_get_error',
+        httpStatus: response.status
+      });
+      throw new Error(`Sheets API error: ${error.error?.message || 'Unknown error'}`);
     }
     
     const data = await response.json();
@@ -656,8 +839,13 @@ class SheetsClient {
     
     if (!response.ok) {
       const error = await response.json();
-      console.error(`[SheetsClient] ❌ APIエラー:`, error);
-      throw new Error(`Sheets API error: ${error.error.message}`);
+      this.detailedLog('error', `APIエラー`, {
+        error: error,
+        errorType: 'get_sheet_data_error',
+        httpStatus: response.status,
+        range: range
+      });
+      throw new Error(`Sheets API error: ${error.error?.message || 'Unknown error'}`);
     }
 
     const data = await response.json();
