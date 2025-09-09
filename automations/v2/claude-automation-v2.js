@@ -350,7 +350,7 @@
         
         // 初回の待機時間を追加（ページの動的レンダリングを待つ）
         if (selectorInfo.description && selectorInfo.description.includes('入力欄')) {
-            await wait(1000);  // 入力欄の場合は1秒待機
+            await wait(1500);  // 入力欄の場合は1.5秒待機（改善）
         }
         
         for (let retry = 0; retry < retryCount; retry++) {
@@ -393,7 +393,10 @@
             }
             
             if (retry < retryCount - 1) {
-                await wait(1000);
+                // 段階的にリトライ間隔を延長
+                const waitTime = 1000 + (retry * 500);  // 1秒→1.5秒→2秒
+                console.log(`🔄 要素検索リトライ中... (${retry + 1}/${retryCount}) 次回まで${waitTime}ms待機`);
+                await wait(waitTime);
             }
         }
         

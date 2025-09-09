@@ -14,6 +14,11 @@ import TaskQueue from './queue.js';
 import { RetryManager } from '../../utils/retry-manager.js';
 import TaskGeneratorV2 from './generator-v2.js';
 import { DynamicTaskQueue } from './dynamic-task-queue.js';
+import { ExclusiveControlManager } from '../../utils/exclusive-control-manager.js';
+import EXCLUSIVE_CONTROL_CONFIG, { 
+  getTimeoutForFunction, 
+  getRetryIntervalForFunction 
+} from '../../config/exclusive-control-config.js';
 
 // SpreadsheetLoggerをキャッシュ
 let SpreadsheetLogger = null;
@@ -41,13 +46,29 @@ async function getSpreadsheetLogger() {
 }
 
 export default class StreamProcessorV2 {
-  constructor(logger = console) {
+  constructor(logger = console, config = {}) {
     this.logger = logger;
     this.aiTaskExecutor = new AITaskExecutor(logger);
     this.retryManager = new RetryManager(logger);
     this.taskGenerator = new TaskGeneratorV2(logger); // タスクジェネレータを追加
     this.windowService = WindowService; // WindowServiceへの参照を保持
     this.completedTasks = new Set();
+    
+    // 排他制御マネージャーを初期化
+    this.exclusiveManager = new ExclusiveControlManager({
+      controlConfig: {
+        timeouts: EXCLUSIVE_CONTROL_CONFIG.timeouts,
+        markerFormat: EXCLUSIVE_CONTROL_CONFIG.markerFormat,
+        ...config.exclusiveControl
+      },
+      logger: this.logger
+    });
+    
+    // 設定を保存
+    this.config = {
+      exclusiveControl: EXCLUSIVE_CONTROL_CONFIG,
+      ...config
+    };
     this.failedTasks = new Set();
     this.writtenCells = new Map();
     this.spreadsheetData = null;
@@ -71,6 +92,9 @@ export default class StreamProcessorV2 {
     
     // SpreadsheetLoggerは processTaskStream で初期化する
     this.initializeDataProcessor();
+    
+    // 排他制御のイベントフックを設定
+    this.setupExclusiveControlHooks();
   }
 
   /**
@@ -119,6 +143,64 @@ export default class StreamProcessorV2 {
     }
   }
 
+  /**
+   * 排他制御のイベントフックを設定
+   */
+  setupExclusiveControlHooks() {
+    // ロック取得時にSpreadsheetLoggerに記録
+    this.exclusiveManager.on('afterAcquire', async ({ task, cellRef, marker, success }) => {
+      if (this.spreadsheetLogger && success) {
+        try {
+          await this.spreadsheetLogger.writeLogToSpreadsheet(task, {
+            action: 'EXCLUSIVE_CONTROL',
+            type: 'LOCK_ACQUIRED',
+            cell: cellRef,
+            marker: marker,
+            timestamp: new Date().toISOString()
+          });
+        } catch (error) {
+          this.logger.error('[StreamProcessorV2] 排他制御ログ記録エラー:', error);
+        }
+      }
+    });
+
+    // ロック解放時にSpreadsheetLoggerに記録
+    this.exclusiveManager.on('afterRelease', async ({ task, cellRef }) => {
+      if (this.spreadsheetLogger) {
+        try {
+          await this.spreadsheetLogger.writeLogToSpreadsheet(task, {
+            action: 'EXCLUSIVE_CONTROL',
+            type: 'LOCK_RELEASED',
+            cell: cellRef,
+            timestamp: new Date().toISOString()
+          });
+        } catch (error) {
+          this.logger.error('[StreamProcessorV2] 排他制御ログ記録エラー:', error);
+        }
+      }
+    });
+
+    // タイムアウト時にSpreadsheetLoggerに記録
+    this.exclusiveManager.on('timeout', async ({ marker, task }) => {
+      if (this.spreadsheetLogger) {
+        try {
+          const cellRef = `${task.column}${task.row}`;
+          await this.spreadsheetLogger.writeLogToSpreadsheet(task, {
+            action: 'EXCLUSIVE_CONTROL',
+            type: 'TIMEOUT_DETECTED',
+            cell: cellRef,
+            oldMarker: marker,
+            timestamp: new Date().toISOString()
+          });
+        } catch (error) {
+          this.logger.error('[StreamProcessorV2] 排他制御タイムアウトログ記録エラー:', error);
+        }
+      }
+    });
+
+    // 排他制御マネージャーにSpreadsheetLogger参照を設定
+    this.exclusiveManager.spreadsheetLogger = this.spreadsheetLogger;
+  }
 
   /**
    * タスクストリームを処理（3行バッチ並列処理）
@@ -153,6 +235,9 @@ export default class StreamProcessorV2 {
     
     // SpreadsheetLoggerを初期化
     await this.initializeSpreadsheetLogger();
+    
+    // SpreadsheetLogger初期化後に排他制御マネージャーを更新
+    this.exclusiveManager.spreadsheetLogger = this.spreadsheetLogger;
     
     // テスト用: F列の最初の3タスクのみ処理
     let tasksToProcess = taskList.tasks;
@@ -365,22 +450,7 @@ export default class StreamProcessorV2 {
           continue;
         }
         
-        // 回答がない場合、排他制御マーカーを設定
-        try {
-          const { spreadsheetId, gid } = this.spreadsheetData || {};
-          if (spreadsheetId && globalThis.sheetsClient) {
-            await globalThis.sheetsClient.updateCell(
-              spreadsheetId,
-              `${task.column}${task.row}`,
-              '現在操作中です',
-              gid
-            );
-            this.logger.log(`[StreamProcessorV2] 🔒 ${task.column}${task.row}: 排他制御マーカー設定`);
-          }
-        } catch (lockError) {
-          this.logger.error(`[StreamProcessorV2] ❌ ${task.column}${task.row}: マーカー設定失敗`, lockError);
-          // マーカー設定に失敗しても処理は継続（リトライ機能があるため）
-        }
+        // 排他制御ロックは既に上記で取得済み
         
         this.logger.log(`[StreamProcessorV2] ウィンドウ${index + 1}/${batch.length}を準備: ${task.column}${task.row}`);
         
@@ -427,7 +497,7 @@ export default class StreamProcessorV2 {
               // Service Worker環境では動的インポートが禁止されているため、既存のwindowServiceを使用
               if (this.windowService) {
                 await this.windowService.closeWindow(currentTabId);
-                this.windowService.releasePosition(position);
+                // releasePositionは不要（closeWindowが自動的に解放）
               } else {
                 console.warn('[StreamProcessorV2] WindowServiceが利用できません - ウィンドウクリーンアップをスキップ');
               }
@@ -475,7 +545,7 @@ export default class StreamProcessorV2 {
           try {
             const WindowService = await import('../../services/window-service.js').then(m => m.default);
             await WindowService.closeWindow(currentTabId);
-            WindowService.releasePosition(position);
+            // releasePositionは不要（closeWindowが自動的に解放）
           } catch (cleanupError) {
             this.logger.error(`[StreamProcessorV2] 最終クリーンアップエラー:`, cleanupError);
           }
@@ -521,7 +591,7 @@ export default class StreamProcessorV2 {
           try {
             // WindowServiceは既にimportされているため、直接使用
             await this.windowService.closeWindow(currentTabId);
-            this.windowService.releasePosition(position);
+            // releasePositionは不要（closeWindowが自動的に解放）
             
             await this.delay(2000);
             
@@ -540,18 +610,15 @@ export default class StreamProcessorV2 {
                 this.logger.log(`[StreamProcessorV2] ✅ ウィンドウ再作成後のテキスト入力成功`);
               } else {
                 this.logger.error(`[StreamProcessorV2] ❌ ウィンドウ再作成後もテキスト入力失敗 - タスクをスキップ`);
-                // エラー時のクリーンアップ: 「現在操作中です」マーカーを削除
-                try {
-                  await globalThis.sheetsClient?.updateCell(
-                    spreadsheetId,
-                    `${task.column}${task.row}`,
-                    '',  // マーカーをクリア
-                    gid
-                  );
-                  this.logger.log(`[StreamProcessorV2] 🧹 エラークリーンアップ: ${task.column}${task.row}のマーカーを削除`);
-                } catch (cleanupError) {
-                  this.logger.error(`[StreamProcessorV2] クリーンアップエラー:`, cleanupError);
-                }
+                // エラー時の排他制御クリーンアップ
+                await this.exclusiveManager.cleanupOnError(
+                  task,
+                  globalThis.sheetsClient,
+                  {
+                    spreadsheetId: this.spreadsheetData?.spreadsheetId,
+                    gid: this.spreadsheetData?.gid
+                  }
+                );
                 taskContexts.pop(); // 失敗したタスクを削除
                 continue;
               }
@@ -666,7 +733,7 @@ export default class StreamProcessorV2 {
                 // WindowServiceの動的importを避け、直接window-serviceのインスタンスを使用
                 // ポジション管理は必要に応じて別途実装
                 if (this.windowService) {
-                  this.windowService.releasePosition(context.position);
+                  // releasePositionは不要（closeWindowが自動的に解放）
                 }
               } catch (closeError) {
                 this.logger.error(`[StreamProcessorV2] ウィンドウクローズエラー:`, closeError);
@@ -862,33 +929,33 @@ export default class StreamProcessorV2 {
             });
             
             try {
-              // 「現在操作中です」マーカーを削除して実際の回答を書き込み
-              const writeResult = await globalThis.sheetsClient?.updateCell(
-                spreadsheetId,
-                range,
+              // 排他制御マネージャーを使ってロック解放（応答書き込みと同時）
+              const releaseResult = await this.exclusiveManager.releaseLock(
+                context.task,
                 result.response,
-                gid
+                globalThis.sheetsClient,
+                {
+                  spreadsheetId: spreadsheetId,
+                  gid: gid
+                }
               );
               
-              if (writeResult) {
+              if (releaseResult.success) {
                 this.logger.log(`[StreamProcessorV2] ✅ ${range}に応答を書き込み成功（排他制御解除）`);
               } else {
                 this.logger.error(`[StreamProcessorV2] ❌ ${range}への書き込み結果が不明`);
               }
             } catch (writeError) {
               this.logger.error(`[StreamProcessorV2] ❌ ${range}への書き込みエラー:`, writeError);
-              // エラー時も排他制御をクリア
-              try {
-                await globalThis.sheetsClient?.updateCell(
-                  spreadsheetId,
-                  range,
-                  '',  // 空文字でマーカーをクリア
-                  gid
-                );
-                this.logger.log(`[StreamProcessorV2] 🔓 ${range}: エラー時の排他制御クリア`);
-              } catch (clearError) {
-                this.logger.error(`[StreamProcessorV2] ❌ ${range}: 排他制御クリア失敗`, clearError);
-              }
+              // エラー時の排他制御クリーンアップ
+              await this.exclusiveManager.cleanupOnError(
+                context.task,
+                globalThis.sheetsClient,
+                {
+                  spreadsheetId: spreadsheetId,
+                  gid: gid
+                }
+              );
             }
             
             // SpreadsheetLoggerでログを記録
@@ -2286,7 +2353,7 @@ export default class StreamProcessorV2 {
             // Service Worker環境では動的インポートが禁止されているため、既存のwindowServiceを使用
             if (this.windowService) {
               await this.windowService.closeWindow(tabId);
-              this.windowService.releasePosition(position);
+              // releasePositionは不要（closeWindowが自動的に解放）
               this.logger.log(`[StreamProcessorV2] 🧹 ウィンドウ${tabId}をクリーンアップしました`);
             } else {
               console.warn('[StreamProcessorV2] WindowServiceが利用できません - ウィンドウクリーンアップをスキップ');
