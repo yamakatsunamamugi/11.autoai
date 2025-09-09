@@ -3821,14 +3821,23 @@ export default class StreamProcessorV2 {
       プロンプト行数: promptRows.length
     });
     
+    // デバッグ：制御情報の状態
+    if (rowControls.length > 0 || columnControls.length > 0) {
+      this.logger.log(`[StreamProcessorV2] 制御適用: 行制御${rowControls.length}件、列制御${columnControls.length}件`);
+    }
+    
     // プロンプトがある行のみを処理（promptRowsを使用）
+    let debugCount = 0;
     for (const rowIndex of promptRows) {
       // 範囲外チェック
       if (rowIndex < startRow || rowIndex >= endRow) continue;
       
       totalRowsChecked++;
       const row = spreadsheetData.values[rowIndex];
-      if (!row) continue;
+      if (!row) {
+        this.logger.warn(`[StreamProcessorV2] ⚠️ 行${rowIndex + 1}のデータなし`);
+        continue;
+      }
       
       // 行制御チェック
       if (!this.shouldProcessRow(rowIndex + 1, rowControls)) {
@@ -3842,6 +3851,12 @@ export default class StreamProcessorV2 {
       for (const answerColIndex of answerCols) {
         const answerValue = row[answerColIndex];
         const hasAnswer = answerValue && typeof answerValue === 'string' && answerValue.trim().length > 0;
+        
+        // デバッグ：最初の5行と問題のある行の回答状態を確認
+        if (debugCount < 5 || (rowIndex >= 10 && rowIndex <= 15)) {
+          this.logger.log(`[DEBUG] 行${rowIndex + 1} 回答列${this.indexToColumn(answerColIndex)}[${answerColIndex}]: "${answerValue ? answerValue.substring(0, 30) : '(空)'}" → ${hasAnswer ? '回答済み' : '未回答'}`);
+          debugCount++;
+        }
         
         if (hasAnswer) {
           // 回答済み - スキップ
@@ -4396,17 +4411,47 @@ export default class StreamProcessorV2 {
         return;
       }
       
-      // 追加行を読み込み
+      // 追加行を読み込み（全列を取得）
       const startRow = currentRows + 1; // 1ベース
       const endRow = maxRowIndex + 1; // 1ベース
-      const range = `A${startRow}:CZ${endRow}`;
+      const range = `${sheetName}!A${startRow}:CZ${endRow}`;
       
-      const additionalData = await globalThis.sheetsClient.getCellValues(spreadsheetId, sheetName, range);
+      this.logger.log(`[StreamProcessorV2] 追加データ取得中: ${range}`);
+      
+      // Sheets APIを直接呼び出して全列データを取得
+      const response = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${await globalThis.authService.getAuthToken()}`
+          }
+        }
+      );
+      
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      const additionalData = data.values || [];
+      
+      // デバッグ：取得したデータを確認
+      this.logger.log(`[DEBUG] 追加データ取得結果: ${additionalData.length}行 x ${additionalData[0]?.length || 0}列`);
       
       // spreadsheetData.valuesに追加
       if (additionalData && Array.isArray(additionalData)) {
-        this.spreadsheetData.values.push(...additionalData);
-        this.logger.log(`[StreamProcessorV2] 追加行読み込み完了: ${additionalRowsNeeded}行追加`);
+        // 各行を既存データと同じ幅にパディング
+        const maxColumns = Math.max(...this.spreadsheetData.values.map(row => row.length));
+        const paddedData = additionalData.map(row => {
+          const paddedRow = [...row];
+          while (paddedRow.length < maxColumns) {
+            paddedRow.push('');
+          }
+          return paddedRow;
+        });
+        
+        this.spreadsheetData.values.push(...paddedData);
+        this.logger.log(`[StreamProcessorV2] 追加行読み込み完了: ${additionalData.length}行追加（全${maxColumns}列）`);
       }
       
     } catch (error) {
