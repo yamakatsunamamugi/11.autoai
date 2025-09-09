@@ -108,23 +108,11 @@ export default class StreamProcessorV2 {
   async initializeSpreadsheetLogger() {
     try {
       const LoggerClass = await getSpreadsheetLogger();
-      this.logger.log(`[StreamProcessorV2] SpreadsheetLogger初期化:`, {
-        LoggerClassFound: !!LoggerClass,
-        globalSpreadsheetLogger: !!globalThis.spreadsheetLogger,
-        globalSpreadsheetLoggerType: typeof globalThis.spreadsheetLogger
-      });
-      
       if (LoggerClass) {
         this.spreadsheetLogger = globalThis.spreadsheetLogger || new LoggerClass(this.logger);
         if (!globalThis.spreadsheetLogger) {
           globalThis.spreadsheetLogger = this.spreadsheetLogger;
         }
-        this.logger.log(`[StreamProcessorV2] SpreadsheetLogger初期化完了:`, {
-          spreadsheetLoggerSet: !!this.spreadsheetLogger,
-          hasWriteMethod: !!(this.spreadsheetLogger?.writeLogToSpreadsheet)
-        });
-      } else {
-        this.logger.warn(`[StreamProcessorV2] SpreadsheetLoggerクラスが見つかりません`);
       }
     } catch (error) {
       this.logger.error(`[StreamProcessorV2] SpreadsheetLogger初期化エラー:`, error);
@@ -164,17 +152,7 @@ export default class StreamProcessorV2 {
     const startTime = Date.now();
     
     // SpreadsheetLoggerを初期化
-    this.logger.log('[StreamProcessorV2] SpreadsheetLogger初期化前:', {
-      spreadsheetLogger: !!this.spreadsheetLogger,
-      globalSpreadsheetLogger: !!globalThis.SpreadsheetLogger
-    });
-    
     await this.initializeSpreadsheetLogger();
-    
-    this.logger.log('[StreamProcessorV2] SpreadsheetLogger初期化後:', {
-      spreadsheetLogger: !!this.spreadsheetLogger,
-      hasWriteMethod: !!(this.spreadsheetLogger?.writeLogToSpreadsheet)
-    });
     
     // テスト用: F列の最初の3タスクのみ処理
     let tasksToProcess = taskList.tasks;
@@ -194,10 +172,7 @@ export default class StreamProcessorV2 {
 
     // スリープ防止を開始
     if (globalThis.powerManager) {
-      this.logger.log('[StreamProcessorV2] 🛡️ スリープ防止を開始');
       await globalThis.powerManager.startProtection('stream-processor-v2');
-    } else {
-      this.logger.warn('[StreamProcessorV2] ⚠️ PowerManagerが見つかりません');
     }
 
     try {
@@ -234,7 +209,6 @@ export default class StreamProcessorV2 {
     } finally {
       // スリープ防止を解除
       if (globalThis.powerManager) {
-        this.logger.log('[StreamProcessorV2] 🔓 スリープ防止を解除');
         await globalThis.powerManager.stopProtection('stream-processor-v2');
       }
     }
@@ -485,13 +459,10 @@ export default class StreamProcessorV2 {
         
         this.logger.log(`[StreamProcessorV2] テキスト入力${index + 1}/${batch.length}: ${task.column}${task.row}`);
         
-        // デバッグ: プロンプトの内容を詳細にログ出力
-        this.logger.log(`[StreamProcessorV2] [DEBUG] プロンプト詳細:`, {
-          セル: `${task.column}${task.row}`,
+        // プロンプト取得状況をログ出力（詳細なプロンプト内容は表示しない）
+        this.logger.log(`[StreamProcessorV2] プロンプト取得完了: ${task.column}${task.row}`, {
           プロンプト長: prompt ? prompt.length : 0,
-          プロンプト型: typeof prompt,
-          最初の200文字: prompt ? String(prompt).substring(0, 200) : 'プロンプトなし',
-          プロンプト全体: prompt
+          有効性: !!prompt
         });
         
         // テキスト入力をリトライ付きで実行
@@ -2058,8 +2029,8 @@ export default class StreamProcessorV2 {
       // 複数セルの値を一括取得
       const cellValues = await sheetsClient.getBatchCellValues(spreadsheetId, sheetName, promptCells);
       
-      // デバッグ：取得した値を確認
-      this.logger.log(`[StreamProcessorV2] セル値取得結果:`, cellValues);
+      // セル値取得結果の確認（詳細なログは表示しない）
+      this.logger.log(`[StreamProcessorV2] セル値取得完了: ${promptCells.length}セル`);
       
       // 複数のプロンプト列から内容を取得して連結
       const prompts = [];
@@ -2067,14 +2038,6 @@ export default class StreamProcessorV2 {
       
       for (const cell of promptCells) {
         const value = cellValues[cell];
-        
-        this.logger.log(`[StreamProcessorV2] セル値確認:`, {
-          セル: cell,
-          値: value,
-          値の型: typeof value,
-          値の長さ: value ? value.length : 0,
-          最初の100文字: value ? String(value).substring(0, 100) : 'なし'
-        });
         
         if (value && value.trim()) {
           const trimmedValue = value.trim();
