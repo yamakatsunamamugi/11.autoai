@@ -606,6 +606,14 @@ class SheetsClient {
    */
   async getSheetData(spreadsheetId, range, gid = null) {
     
+    // デバッグログ追加
+    console.log(`🔍 [SheetsClient] getSheetData呼び出し:`, {
+      spreadsheetId,
+      range,
+      gid,
+      rangeIncludesSheet: range.includes("!")
+    });
+    
     // gidが指定されている場合、シート名を取得して範囲を更新
     if (gid) {
       const sheetName = await this.getSheetNameFromGid(spreadsheetId, gid);
@@ -614,10 +622,12 @@ class SheetsClient {
         if (!range.includes("!")) {
           const oldRange = range;
           range = `'${sheetName}'!${range}`;
+          console.log(`🔍 [SheetsClient] 範囲にシート名追加: ${oldRange} → ${range}`);
         } else {
           // すでにシート名が含まれている場合は置き換え
           const oldRange = range;
           range = `'${sheetName}'!${range.split("!")[1]}`;
+          console.log(`🔍 [SheetsClient] シート名置換: ${oldRange} → ${range}`);
         }
       }
     } else {
@@ -654,6 +664,17 @@ class SheetsClient {
     const data = await response.json();
     
     const result = data.values || [];
+    
+    // デバッグログ追加
+    console.log(`🔍 [SheetsClient] getSheetData結果:`, {
+      range,
+      hasData: !!data.values,
+      resultLength: result.length,
+      firstRowLength: result[0]?.length || 0,
+      firstCellValue: result[0]?.[0] ? result[0][0].substring(0, 50) : '(空)',
+      dataPreview: JSON.stringify(result).substring(0, 200)
+    });
+    
     if (result.length > 0) {
       const firstRow = result[0];
       const firstRowPreview = Array.isArray(firstRow) ? 
@@ -1322,11 +1343,12 @@ class SheetsClient {
     const columnLetters = cellMatch[1];
     const rowNumber = parseInt(cellMatch[2]);
     
-    // 列文字をインデックスに変換（A=0, B=1, ...）
+    // 列文字をインデックスに変換（A=0, B=1, ..., Z=25, AA=26, AB=27, AC=28, ...）
     let columnIndex = 0;
     for (let i = 0; i < columnLetters.length; i++) {
-      columnIndex = columnIndex * 26 + (columnLetters.charCodeAt(i) - 65);
+      columnIndex = columnIndex * 26 + (columnLetters.charCodeAt(i) - 65 + 1);
     }
+    columnIndex--; // 0ベースに調整
     
     // 全体のテキストを構築
     let fullText = '';
@@ -1373,6 +1395,20 @@ class SheetsClient {
     }];
     
     const batchUpdateUrl = `${this.baseUrl}/${spreadsheetId}:batchUpdate`;
+    
+    // デバッグログ追加
+    console.log(`🔍 [SheetsClient] updateCellWithRichText実行:`, {
+      range,
+      columnLetters,
+      columnIndex,
+      rowNumber,
+      fullTextLength: fullText.length,
+      fullTextPreview: fullText.substring(0, 100),
+      hasLinks: textFormatRuns.length > 0,
+      gid,
+      sheetId: gid ? parseInt(gid) : 0
+    });
+    
     const response = await fetch(batchUpdateUrl, {
       method: "POST",
       headers: {
@@ -1384,10 +1420,17 @@ class SheetsClient {
     
     if (!response.ok) {
       const error = await response.json();
+      console.error(`❌ [SheetsClient] updateCellWithRichText失敗:`, error);
       throw new Error(`Sheets API batchUpdate error: ${error.error.message}`);
     }
     
-    return await response.json();
+    const result = await response.json();
+    console.log(`✅ [SheetsClient] updateCellWithRichText成功:`, {
+      range,
+      updatedCells: result.replies?.[0]?.updateCells?.updatedCells
+    });
+    
+    return result;
   }
 
   /**

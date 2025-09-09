@@ -954,8 +954,31 @@ export default class TaskGeneratorV2 {
           }
           
           const functionValue = this.getFunction(spreadsheetData, answerCol, targetPromptGroup.promptColumns);
-          const logColumnIndex = Math.max(0, Math.min(...targetPromptGroup.promptColumns) - 1);
-          const logColumn = this.indexToColumn(logColumnIndex);
+          
+          // タスクグループからログ列を取得（設定されていれば）
+          let logColumn = null;
+          console.log(`[DEBUG] マルチAI - taskGroupInfo内容:`, {
+            exists: !!taskGroupInfo,
+            columnRange: taskGroupInfo?.columnRange,
+            logColumn: taskGroupInfo?.columnRange?.logColumn,
+            promptColumns: targetPromptGroup.promptColumns.map(idx => this.indexToColumn(idx)),
+            groupIndex: promptGroupIndex
+          });
+          
+          if (taskGroupInfo?.columnRange?.logColumn) {
+            logColumn = taskGroupInfo.columnRange.logColumn;
+            console.log(`[TaskGeneratorV2] ✅ マルチAI - タスクグループからログ列を取得: ${logColumn}`);
+            this.logger.log(`[TaskGeneratorV2] タスクグループからログ列を取得: ${logColumn}`);
+          }
+          
+          // タスクグループにログ列が設定されていない場合のみ計算
+          if (!logColumn) {
+            const logColumnIndex = Math.max(0, Math.min(...targetPromptGroup.promptColumns) - 1);
+            logColumn = this.indexToColumn(logColumnIndex);
+            console.log(`[TaskGeneratorV2] ❌ マルチAI - デフォルトログ列を使用: ${logColumn} (プロンプト列の1列前)`);
+            this.logger.log(`[TaskGeneratorV2] デフォルトログ列を使用: ${logColumn} (プロンプト列の1列前)`);
+          }
+          
           const groupPosition = i;
           
           const taskData = {
@@ -1028,8 +1051,30 @@ export default class TaskGeneratorV2 {
           
           const model = this.getModel(spreadsheetData, promptCol);
           const functionValue = this.getFunction(spreadsheetData, promptCol);
-          const logColumnIndex = Math.max(0, Math.min(...targetPromptGroup.promptColumns) - 1);
-          const logColumn = this.indexToColumn(logColumnIndex);
+          
+          // タスクグループからログ列を取得（設定されていれば）
+          let logColumn = null;
+          console.log(`[DEBUG] 単独AI - taskGroupInfo内容:`, {
+            exists: !!taskGroupInfo,
+            columnRange: taskGroupInfo?.columnRange,
+            logColumn: taskGroupInfo?.columnRange?.logColumn,
+            promptColumns: targetPromptGroup.promptColumns.map(idx => this.indexToColumn(idx)),
+            groupIndex: promptGroupIndex
+          });
+          
+          if (taskGroupInfo?.columnRange?.logColumn) {
+            logColumn = taskGroupInfo.columnRange.logColumn;
+            console.log(`[TaskGeneratorV2] ✅ 単独AI - タスクグループからログ列を取得: ${logColumn}`);
+            this.logger.log(`[TaskGeneratorV2] タスクグループからログ列を取得: ${logColumn}`);
+          }
+          
+          // タスクグループにログ列が設定されていない場合のみ計算
+          if (!logColumn) {
+            const logColumnIndex = Math.max(0, Math.min(...targetPromptGroup.promptColumns) - 1);
+            logColumn = this.indexToColumn(logColumnIndex);
+            console.log(`[TaskGeneratorV2] ❌ 単独AI - デフォルトログ列を使用: ${logColumn} (プロンプト列の1列前)`);
+            this.logger.log(`[TaskGeneratorV2] デフォルトログ列を使用: ${logColumn} (プロンプト列の1列前)`);
+          }
           
           const taskData = {
             id: this.generateTaskId(answerCol.column, workRow.number),

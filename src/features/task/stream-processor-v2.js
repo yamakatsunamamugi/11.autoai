@@ -4223,7 +4223,7 @@ export default class StreamProcessorV2 {
           model: '',  // 実行時に動的取得
           function: '',  // 実行時に動的取得
           createdAt: Date.now(),
-          // ログ列を追加（グループにログ列が設定されていれば使用）
+          // ログ列：タスクリストで指定されたものをそのまま使用（なければ空配列）
           logColumns: group.columnRange.logColumn ? [group.columnRange.logColumn] : []
         };
         

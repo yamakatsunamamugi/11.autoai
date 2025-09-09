@@ -671,6 +671,18 @@ export class SpreadsheetLogger {
         gid
       );
       
+      // デバッグ用ログ追加
+      console.log(`🔍 [SpreadsheetLogger] getSheetData戻り値:`, {
+        logCell,
+        actualDataType: typeof actualData,
+        isArray: Array.isArray(actualData),
+        actualDataLength: actualData?.length,
+        firstRowType: actualData?.[0] ? typeof actualData[0] : 'undefined',
+        firstRowIsArray: Array.isArray(actualData?.[0]),
+        firstRowLength: actualData?.[0]?.length,
+        actualDataPreview: JSON.stringify(actualData).substring(0, 200)
+      });
+      
       const actualContent = actualData?.[0]?.[0] || '';
       
       // 内容が期待された内容と一致するかチェック

@@ -688,32 +688,32 @@ function processSpreadsheetData(spreadsheetData) {
     };
     
     
-    // ログ列の検出（グループの一部として）
+    // ログ列の検出（常に新しいグループを開始）
     if (trimmedHeader === "ログ") {
-      // 現在のグループがない場合、新しいグループを開始
-      if (!currentGroup) {
-        currentGroup = {
-          id: `group_${groupCounter}`,
-          name: `タスクグループ${groupCounter}`,
-          startColumn: columnLetter,
-          endColumn: columnLetter,  // 暫定、後で更新
-          columnRange: {
-            logColumn: columnLetter,
-            promptColumns: [],
-            answerColumns: []
-          },
-          groupType: 'single',
-          aiType: 'Claude',
-          dependencies: groupCounter > 1 ? [`group_${groupCounter - 1}`] : [],
-          sequenceOrder: groupCounter
-        };
-      } else if (!currentGroup.columnRange.logColumn) {
-        // 既存のグループにログ列を設定し、開始列を更新
-        currentGroup.columnRange.logColumn = columnLetter;
-        // ログ列がプロンプト列より前にある場合、startColumnを更新
-        // indexは現在の列位置なので直接比較可能
-        currentGroup.startColumn = columnLetter;
+      // 前のグループがあれば完了させる
+      if (currentGroup && currentGroup.columnRange.answerColumns.length > 0) {
+        result.taskGroups.push(currentGroup);
+        groupCounter++;
       }
+      
+      // 新しいグループを開始
+      currentGroup = {
+        id: `group_${groupCounter}`,
+        name: `タスクグループ${groupCounter}`,
+        startColumn: columnLetter,
+        endColumn: columnLetter,  // 暫定、後で更新
+        columnRange: {
+          logColumn: columnLetter,
+          promptColumns: [],
+          answerColumns: []
+        },
+        groupType: 'single',
+        aiType: 'Claude',
+        dependencies: groupCounter > 1 ? [`group_${groupCounter - 1}`] : [],
+        sequenceOrder: groupCounter
+      };
+      
+      console.log(`[DEBUG] ログ列検出: ${columnLetter}列でタスクグループ${groupCounter}作成`);
     }
     
     // 特別列の検出（新グループの開始）
