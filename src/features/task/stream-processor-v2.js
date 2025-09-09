@@ -3896,6 +3896,17 @@ export default class StreamProcessorV2 {
     
     return answerExistCount;
   }
+    
+    this.logger.log(`[StreamProcessorV2] 📊 グループタスクスキャン完了:`, {
+      全対象行: `${totalRowsChecked}行`,
+      行制御スキップ: `${rowSkippedByControl}行`,
+      プロンプト有り: `${promptFoundCount}行`,
+      既存回答有り: `${answerExistCount}セル`,
+      実際のタスク: `${tasks.length}個`
+    });
+    
+    return tasks;
+  }
 
   /**
    * タスクグループの処理前にデータをバッチ取得
@@ -4177,7 +4188,13 @@ export default class StreamProcessorV2 {
         answerColIndices
       );
       
-      if (tasks.length === 0) {
+      this.logger.log(`[StreamProcessorV2] 📊 スキャン結果:`, {
+        tasks: tasks ? `${tasks.length}個` : 'undefined',
+        tasksType: typeof tasks,
+        isArray: Array.isArray(tasks)
+      });
+      
+      if (!tasks || !Array.isArray(tasks) || tasks.length === 0) {
         this.logger.log(`[StreamProcessorV2] ⏭️ ${group.name}: タスクなし、スキップ`);
         continue;
       }
