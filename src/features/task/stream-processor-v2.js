@@ -3867,41 +3867,16 @@ export default class StreamProcessorV2 {
         // 対応する回答列のチェック
         answerExistCount += this.processRowForTasks(row, rowIndex, answerCols, tasks);
       }
-    } else {
-      // 従来のループ処理（フォールバック）
-      for (let rowIndex = startRow; rowIndex < endRow; rowIndex++) {
-        totalRowsChecked++;
-        const row = spreadsheetData.values[rowIndex];
-        if (!row) continue;
-        
-        // 行制御チェック
-        if (!this.shouldProcessRow(rowIndex + 1, rowControls)) {
-          rowSkippedByControl++;
-          continue;
-        }
-        
-        // プロンプト列にデータがあるかチェック
-        const hasPrompt = promptCols.some(colIndex => {
-          const cellValue = row[colIndex];
-          return cellValue && typeof cellValue === 'string' && cellValue.trim().length > 0;
-        });
-        
-        if (!hasPrompt) continue;
-        promptFoundCount++;
-        
-        // 対応する回答列のチェック
-        answerExistCount += this.processRowForTasks(row, rowIndex, answerCols, tasks);
-      }
     }
     
-    this.logger.log(`[StreamProcessorV2] 📊 グループタスクスキャン完了:`, {
-      全対象行: `${totalRowsChecked}行`,
-      行制御スキップ: `${rowSkippedByControl}行`,
-      プロンプト有り: `${promptFoundCount}行`,
-      既存回答有り: `${answerExistCount}セル`,
-      実際のタスク: `${tasks.length}個`
+    this.logger.log(`[StreamProcessorV2] 📊 scanGroupTasks完了:`, {
+      チェック済み行数: totalRowsChecked,
+      行制御でスキップ: rowSkippedByControl,
+      プロンプト発見: promptFoundCount,
+      既存回答: answerExistCount,
+      生成タスク数: tasks.length
     });
-    
+  
     return tasks;
   }
   
