@@ -3767,7 +3767,7 @@ export default class StreamProcessorV2 {
     }
     
     // 制御情報を取得
-    const rowControls = this.getRowControl(spreadsheetData);
+    let rowControls = this.getRowControl(spreadsheetData);
     const columnControls = this.getColumnControl(spreadsheetData);
     
     // 現在のグループ情報を作成（列制御チェック用）
@@ -4465,11 +4465,11 @@ export default class StreamProcessorV2 {
       this.logger.log(`[DEBUG] 追加データ取得結果: ${additionalData.length}行 x ${additionalData[0]?.length || 0}列`);
       
       // 特定行のデバッグ（40-42行目）
-      for (let i = 39; i <= 41 && i < startRow + additionalData.length - 1; i++) {
-        const rowIndex = i - startRow + 1;
-        if (rowIndex >= 0 && rowIndex < additionalData.length) {
-          const row = additionalData[rowIndex];
-          this.logger.log(`[DEBUG] 行${i + 1}のデータ: B列="${row[1] || ''}", I列="${row[8] || ''}"`);
+      for (let i = 39; i <= 41; i++) {
+        const dataIndex = i - currentRows;  // additionalDataのインデックス
+        if (dataIndex >= 0 && dataIndex < additionalData.length) {
+          const row = additionalData[dataIndex];
+          this.logger.log(`[DEBUG] 行${i + 1}のデータ (index=${dataIndex}): B列="${row[1] || ''}", I列="${row[8] || ''}", 列数=${row.length}`);
         }
       }
       
