@@ -170,14 +170,14 @@ export default class StreamProcessorV2 {
       }
     });
 
-    // ロック解放時にSpreadsheetLoggerに記録
-    this.exclusiveManager.on('afterRelease', async (eventData) => {
-      try {
-        await this.exclusiveLoggerHelper.logLockReleased(eventData);
-      } catch (error) {
-        this.logger.error('[StreamProcessorV2] 排他制御ログ記録エラー:', error);
-      }
-    });
+    // 排他制御ログは無効化 - StreamProcessorV2で統一管理
+    // this.exclusiveManager.on('afterRelease', async (eventData) => {
+    //   try {
+    //     await this.exclusiveLoggerHelper.logLockReleased(eventData);
+    //   } catch (error) {
+    //     this.logger.error('[StreamProcessorV2] 排他制御ログ記録エラー:', error);
+    //   }
+    // });
 
     // タイムアウト時にSpreadsheetLoggerに記録
     this.exclusiveManager.on('timeout', async (eventData) => {
@@ -991,8 +991,11 @@ export default class StreamProcessorV2 {
             }
             
             // SpreadsheetLoggerでログを記録
+            // 排他制御ログを無効化したため、重複チェックを簡素化
+            const logCellKey = `${context.task.logColumns[0]}_${context.task.row}`;
+            const isLogAlreadyProcessed = this.processedCells.has(logCellKey);
             
-            if (this.spreadsheetLogger && context.task.logColumns && context.task.logColumns.length > 0) {
+            if (this.spreadsheetLogger && context.task.logColumns && context.task.logColumns.length > 0 && !isLogAlreadyProcessed) {
               try {
                 this.logger.log(`[StreamProcessorV2] ログ書き込み開始: ${context.task.logColumns[0]}${context.task.row}`);
                 
@@ -1115,6 +1118,8 @@ export default class StreamProcessorV2 {
                   logError.message
                 );
               }
+            } else if (isLogAlreadyProcessed) {
+              this.logger.log(`[StreamProcessorV2] ⏭️ ログ書き込みスキップ: ${context.task.logColumns[0]}${context.task.row} (既に処理済み)`);
             }
           }
         } else {
@@ -4432,6 +4437,16 @@ export default class StreamProcessorV2 {
     let totalCompleted = 0;
     let totalFailed = 0;
     
+    // スリープ防止を開始
+    try {
+      if (globalThis.powerManager) {
+        await globalThis.powerManager.startProtection('stream-processor-dynamic');
+        this.logger.log('[StreamProcessorV2] 🛡️ 動的タスクグループ処理: スリープ防止を開始');
+      }
+    } catch (error) {
+      this.logger.error('[StreamProcessorV2] スリープ防止開始エラー:', error);
+    }
+    
     // spreadsheetDataをインスタンス変数に保存（動的取得メソッドで使用）
     this.spreadsheetData = spreadsheetData;
     this.spreadsheetUrl = spreadsheetData?.spreadsheetUrl; // spreadsheetUrlを保存
@@ -4447,6 +4462,17 @@ export default class StreamProcessorV2 {
     
     if (!taskGroups || taskGroups.length === 0) {
       this.logger.warn('[StreamProcessorV2] タスクグループが見つかりません');
+      
+      // スリープ防止を解除（早期リターン時）
+      try {
+        if (globalThis.powerManager) {
+          await globalThis.powerManager.stopProtection('stream-processor-dynamic');
+          this.logger.log('[StreamProcessorV2] 🔓 早期リターン: スリープ防止を解除');
+        }
+      } catch (error) {
+        this.logger.error('[StreamProcessorV2] スリープ防止解除エラー（早期リターン）:', error);
+      }
+      
       return {
         success: false,
         total: 0,
@@ -4586,6 +4612,16 @@ export default class StreamProcessorV2 {
     }
     
     const totalTime = Math.round((Date.now() - startTime) / 1000);
+    
+    // スリープ防止を解除
+    try {
+      if (globalThis.powerManager) {
+        await globalThis.powerManager.stopProtection('stream-processor-dynamic');
+        this.logger.log('[StreamProcessorV2] 🔓 動的タスクグループ処理: スリープ防止を解除');
+      }
+    } catch (error) {
+      this.logger.error('[StreamProcessorV2] スリープ防止解除エラー:', error);
+    }
     
     return {
       success: true,

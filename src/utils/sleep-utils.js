@@ -30,9 +30,37 @@
  * - 旧: await new Promise(resolve => setTimeout(resolve, 1000)) → 新: await sleep(1000)
  */
 
-// AI待機設定をインポート
-import { AI_WAIT_CONFIG } from '../../automations/v2/ai-wait-config.js';
-import { globalWakeLockManager } from './wake-lock-manager.js';
+// AI待機設定をグローバル変数からアクセス
+function getAI_WAIT_CONFIG() {
+  if (typeof window !== 'undefined' && window.AI_WAIT_CONFIG) {
+    return window.AI_WAIT_CONFIG;
+  }
+  // フォールバック設定
+  return {
+    DEFAULT_DELAYS: {
+      SHORT: 1000,
+      MEDIUM: 3000,
+      LONG: 5000
+    },
+    AI_SPECIFIC: {
+      chatgpt: { response_wait: 3000 },
+      claude: { response_wait: 3000 },
+      gemini: { response_wait: 3000 }
+    }
+  };
+}
+
+// Wake Lock Manager（インライン実装）
+function getWakeLockManager() {
+  if (typeof window !== 'undefined' && window.globalWakeLockManager) {
+    return window.globalWakeLockManager;
+  }
+  // フォールバック
+  return {
+    requestWakeLock: () => Promise.resolve(),
+    releaseWakeLock: () => Promise.resolve()
+  };
+}
 
 /**
  * 基本的なスリープ関数
@@ -48,17 +76,29 @@ export function sleep(ms) {
  * @param {number} ms - 待機時間（ミリ秒）
  * @param {string} context - コンテキスト（ログ用）
  * @param {Function} logger - ログ関数（オプション）
+ * @param {Object} options - オプション設定
+ * @param {boolean} options.forceLog - 1秒未満でも強制的にログ出力
+ * @param {number} options.logThreshold - ログ出力の閾値（ミリ秒、デフォルト1000）
  * @returns {Promise<void>} 待機Promise
  */
-export async function sleepWithLog(ms, context = 'sleep', logger = console.log) {
-  if (ms > 1000) {
-    logger(`[${context}] ${ms / 1000}秒待機開始`);
+export async function sleepWithLog(ms, context = 'sleep', logger = console.log, options = {}) {
+  const {
+    forceLog = false,
+    logThreshold = 1000
+  } = options;
+  
+  const shouldLog = forceLog || (ms >= logThreshold);
+  
+  if (shouldLog) {
+    const duration = ms >= 1000 ? `${ms / 1000}秒` : `${ms}ミリ秒`;
+    logger(`[${context}] ${duration}待機開始`);
   }
   
   await sleep(ms);
   
-  if (ms > 1000) {
-    logger(`[${context}] ${ms / 1000}秒待機完了`);
+  if (shouldLog) {
+    const duration = ms >= 1000 ? `${ms / 1000}秒` : `${ms}ミリ秒`;
+    logger(`[${context}] ${duration}待機完了`);
   }
 }
 
@@ -93,7 +133,8 @@ export async function randomSleep(min = 5, max = 15, context = 'randomSleep', lo
  * @returns {Promise<void>} 待機Promise
  */
 export async function aiWait(type = 'SHORT_WAIT', context = 'aiWait', logger = console.log) {
-  const waitTime = AI_WAIT_CONFIG[type] || AI_WAIT_CONFIG.SHORT_WAIT;
+  const config = getAI_WAIT_CONFIG();
+  const waitTime = config[type] || config.SHORT_WAIT;
   await sleepWithLog(waitTime, `${context}(${type})`, logger);
 }
 
@@ -205,26 +246,31 @@ export async function mockableSleep(ms) {
 }
 
 /**
- * プリセット待機時間定数
+ * プリセット待機時間定数を取得
  */
-export const PRESET_WAITS = {
-  // UI操作用
-  MICRO: AI_WAIT_CONFIG.MICRO_WAIT || 100,
-  TINY: AI_WAIT_CONFIG.TINY_WAIT || 500,
-  SHORT: AI_WAIT_CONFIG.SHORT_WAIT || 1000,
-  MEDIUM: AI_WAIT_CONFIG.MEDIUM_WAIT || 2000,
-  LONG: AI_WAIT_CONFIG.LONG_WAIT || 3000,
-  
-  // 要素待機用
-  ELEMENT_SEARCH: AI_WAIT_CONFIG.ELEMENT_SEARCH_WAIT || 5000,
-  MENU: AI_WAIT_CONFIG.MENU_WAIT || 8000,
-  
-  // AI応答待機用
-  INITIAL: AI_WAIT_CONFIG.INITIAL_WAIT || 30000,
-  MAX_RESPONSE: AI_WAIT_CONFIG.MAX_WAIT || 300000,
-  DEEP_RESEARCH: AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT || 2400000,
-  CANVAS: AI_WAIT_CONFIG.CANVAS_MAX_WAIT || 300000
-};
+function getPRESET_WAITS() {
+  const config = getAI_WAIT_CONFIG();
+  return {
+    // UI操作用
+    MICRO: config.MICRO_WAIT || 100,
+    TINY: config.TINY_WAIT || 500,
+    SHORT: config.SHORT_WAIT || 1000,
+    MEDIUM: config.MEDIUM_WAIT || 2000,
+    LONG: config.LONG_WAIT || 3000,
+    
+    // 要素待機用
+    ELEMENT_SEARCH: config.ELEMENT_SEARCH_WAIT || 5000,
+    MENU: config.MENU_WAIT || 8000,
+    
+    // AI応答待機用
+    INITIAL: config.INITIAL_WAIT || 30000,
+    MAX_RESPONSE: config.MAX_WAIT || 300000,
+    DEEP_RESEARCH: config.DEEP_RESEARCH_WAIT || 2400000,
+    CANVAS: config.CANVAS_MAX_WAIT || 300000
+  };
+}
+
+export const PRESET_WAITS = getPRESET_WAITS();
 
 /**
  * プリセット待機の実行
@@ -247,6 +293,65 @@ export function debugSleepUtils() {
     mockMultiplier,
     presetWaits: PRESET_WAITS
   });
+}
+
+/**
+ * スリープ防止状況の詳細デバッグ情報を表示
+ */
+export function debugSleepPrevention() {
+  console.log('🛡️ [SleepUtils] スリープ防止デバッグ情報:');
+  
+  // PowerManager状態確認
+  if (typeof globalThis !== 'undefined' && globalThis.powerManager) {
+    const powerStatus = globalThis.powerManager.getStatus();
+    console.log('📊 [PowerManager] 状態:', powerStatus);
+  } else {
+    console.log('⚠️ [PowerManager] 利用不可');
+  }
+  
+  // WakeLockManager状態確認
+  if (typeof window !== 'undefined' && window.globalWakeLockManager) {
+    const wakeLockStatus = window.globalWakeLockManager.getStatus();
+    console.log('📊 [WakeLockManager] 状態:', wakeLockStatus);
+  } else {
+    console.log('⚠️ [WakeLockManager] 利用不可');
+  }
+  
+  // Wake Lock API対応状況
+  if (typeof navigator !== 'undefined') {
+    const wakeLockSupported = 'wakeLock' in navigator;
+    console.log('🔧 [Wake Lock API] サポート状況:', wakeLockSupported);
+  }
+  
+  // Chrome Power API対応状況（Extension環境）
+  if (typeof chrome !== 'undefined' && chrome.power) {
+    console.log('🔧 [Chrome Power API] 利用可能');
+  } else {
+    console.log('⚠️ [Chrome Power API] 利用不可');
+  }
+  
+  console.log('💡 [ヒント] StreamProcessorV2処理中は自動でスリープ防止が有効化されます');
+}
+
+/**
+ * スリープ防止の統計情報を表示
+ */
+export function showSleepPreventionStats() {
+  console.log('📈 [SleepUtils] スリープ防止統計:');
+  
+  // PowerManager統計
+  if (typeof globalThis !== 'undefined' && globalThis.powerManager) {
+    const status = globalThis.powerManager.getStatus();
+    console.log('⏱️ [PowerManager] 実行時間:', status.runningTime + '秒');
+    console.log('🔢 [PowerManager] アクティブプロセス数:', status.activeProcessCount);
+  }
+  
+  // WakeLockManager統計
+  if (typeof window !== 'undefined' && window.globalWakeLockManager) {
+    const status = window.globalWakeLockManager.getStatus();
+    console.log('⏱️ [WakeLockManager] 実行時間:', Math.round(status.duration / 1000) + '秒');
+    console.log('📊 [WakeLockManager] 統計:', status.stats);
+  }
 }
 
 /**
@@ -313,9 +418,9 @@ export function getWaitTimeForFunction(functionName) {
     'agent': PRESET_WAITS.DEEP_RESEARCH,
     'canvas': PRESET_WAITS.CANVAS,
     'キャンバス': PRESET_WAITS.CANVAS,
-    'ウェブ検索': AI_WAIT_CONFIG.ELEMENT_SEARCH_WAIT || 8000,
-    'websearch': AI_WAIT_CONFIG.ELEMENT_SEARCH_WAIT || 8000,
-    'web search': AI_WAIT_CONFIG.ELEMENT_SEARCH_WAIT || 8000,
+    'ウェブ検索': PRESET_WAITS.ELEMENT_SEARCH,
+    'websearch': PRESET_WAITS.ELEMENT_SEARCH,
+    'web search': PRESET_WAITS.ELEMENT_SEARCH,
     '通常': PRESET_WAITS.MAX_RESPONSE,
     'normal': PRESET_WAITS.MAX_RESPONSE,
     'default': PRESET_WAITS.MAX_RESPONSE
@@ -338,22 +443,36 @@ export async function waitForFunction(functionName, context = 'functionWait', lo
 
 /**
  * 長時間処理用スリープ - Wake Lock付き
- * 5分以上の待機時にはシステムスリープを防止
+ * 5分以上の待機時にはシステムスリープを防止（オプションで即座に防止可能）
  * @param {number} ms - 待機時間（ミリ秒）
  * @param {string} context - コンテキスト（ログ用）
  * @param {Function} logger - ログ関数（オプション）
+ * @param {Object} options - オプション設定
+ * @param {boolean} options.forceWakeLock - 時間に関係なく強制的にWake Lock取得
+ * @param {number} options.wakeLockThreshold - Wake Lock取得の閾値（ミリ秒、デフォルト300000=5分）
  * @returns {Promise<void>} 待機Promise
  */
-export async function longSleep(ms, context = 'longSleep', logger = console.log) {
-  const isLongProcess = ms >= 300000; // 5分以上
+export async function longSleep(ms, context = 'longSleep', logger = console.log, options = {}) {
+  const {
+    forceWakeLock = false,
+    wakeLockThreshold = 300000 // 5分
+  } = options;
+  
+  const isLongProcess = forceWakeLock || (ms >= wakeLockThreshold);
   let wakeLockAcquired = false;
   
   try {
-    // 長時間処理の場合はWake Lock取得
+    // 長時間処理の場合またはforceWakeLockがtrueの場合はWake Lock取得
     if (isLongProcess) {
-      wakeLockAcquired = await globalWakeLockManager.acquire(`${context} (${Math.round(ms/1000/60)}分待機)`);
+      const wakeLockManager = getWakeLockManager();
+      const duration = ms >= 60000 ? `${Math.round(ms/1000/60)}分待機` : `${Math.round(ms/1000)}秒待機`;
+      wakeLockAcquired = await wakeLockManager.requestWakeLock(`${context} (${duration})`);
       if (wakeLockAcquired) {
-        logger(`[${context}] システムスリープ防止を有効化 (${Math.round(ms/1000/60)}分)`);
+        if (forceWakeLock) {
+          logger(`[${context}] システムスリープ防止を強制有効化 (${duration})`);
+        } else {
+          logger(`[${context}] システムスリープ防止を有効化 (${duration})`);
+        }
       }
     }
     
@@ -363,10 +482,22 @@ export async function longSleep(ms, context = 'longSleep', logger = console.log)
   } finally {
     // Wake Lock解放
     if (wakeLockAcquired) {
-      await globalWakeLockManager.release();
+      const wakeLockManager = getWakeLockManager();
+      await wakeLockManager.releaseWakeLock();
       logger(`[${context}] システムスリープ防止を解除`);
     }
   }
+}
+
+/**
+ * 強制スリープ防止付きスリープ - 時間に関係なく必ずWake Lock取得
+ * @param {number} ms - 待機時間（ミリ秒）
+ * @param {string} context - コンテキスト（ログ用）
+ * @param {Function} logger - ログ関数（オプション）
+ * @returns {Promise<void>} 待機Promise
+ */
+export async function forceSleep(ms, context = 'forceSleep', logger = console.log) {
+  return await longSleep(ms, context, logger, { forceWakeLock: true });
 }
 
 /**
@@ -378,10 +509,11 @@ export async function longSleep(ms, context = 'longSleep', logger = console.log)
  * @returns {Promise<void>} 待機Promise
  */
 export async function aiResponseSleep(mode = 'normal', context = 'AI応答待機', logger = console.log) {
+  const config = getAI_WAIT_CONFIG();
   const waitTimes = {
-    'normal': AI_WAIT_CONFIG.MAX_WAIT || 300000,        // 5分
-    'deep-research': AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT || 2400000, // 40分
-    'canvas': AI_WAIT_CONFIG.CANVAS_MAX_WAIT || 300000   // 5分
+    'normal': config.MAX_WAIT || 300000,        // 5分
+    'deep-research': config.DEEP_RESEARCH_WAIT || 2400000, // 40分
+    'canvas': config.CANVAS_MAX_WAIT || 300000   // 5分
   };
   
   const waitTime = waitTimes[mode] || waitTimes.normal;

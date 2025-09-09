@@ -322,7 +322,11 @@ export class SpreadsheetLogger {
       if (!sheetsClient || !spreadsheetId) {
         console.error('❌ [SpreadsheetLogger] SheetsClientまたはスプレッドシートIDが未設定');
         this.logger.error('[SpreadsheetLogger] SheetsClientまたはスプレッドシートIDが未設定');
-        return;
+        return {
+          success: false,
+          verified: false,
+          error: 'SheetsClientまたはスプレッドシートIDが未設定'
+        };
       }
       
       // タスクからログ列を取得（ハードコーディングしない）
@@ -372,7 +376,11 @@ export class SpreadsheetLogger {
       if (!sendTimeInfo) {
         console.warn(`⚠️ [SpreadsheetLogger] タスク${task.id}の送信時刻が記録されていません`);
         this.logger.warn(`[SpreadsheetLogger] タスク${task.id}の送信時刻が記録されていません`);
-        return;
+        return {
+          success: false,
+          verified: false,
+          error: `タスク${task.id}の送信時刻が記録されていません`
+        };
       }
       
       // 記載時刻（現在時刻）
