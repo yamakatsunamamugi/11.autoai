@@ -809,14 +809,6 @@ class SheetsClient {
     const ranges = rowsToFetch.map(rowNum => `A${rowNum}:CZ${rowNum}`);
     const batchData = await this.batchGetSheetData(spreadsheetId, ranges, gid);
     
-    // デバッグ: 行9のデータを詳細に確認
-    if (batchData['A9:CZ9']) {
-      this.logger.log("SheetsClient", `[DEBUG] 行9のデータ長: ${batchData['A9:CZ9'].length}`);
-      this.logger.log("SheetsClient", `[DEBUG] 行9のAD列(index 29): "${batchData['A9:CZ9'][29]}"`);
-      this.logger.log("SheetsClient", `[DEBUG] 行9のAE列(index 30): "${batchData['A9:CZ9'][30]}"`);
-      this.logger.log("SheetsClient", `[DEBUG] 行9のAG列(index 32): "${batchData['A9:CZ9'][32]}"`);
-      this.logger.log("SheetsClient", `[DEBUG] 行9のAJ列(index 35): "${batchData['A9:CZ9'][35]}"`);
-    }
     
     // ===== STEP 4: データ構造を構築 =====
     // メニュー行のデータを取得（新しい範囲形式に対応）
@@ -1064,7 +1056,7 @@ class SheetsClient {
       
       // 各セルに対してrangeを作成
       const ranges = cells.map(cell => `'${encodedSheetName}'!${cell}`);
-      const rangesParam = ranges.map(r => encodeURIComponent(r)).join('&ranges=');
+      const rangesParam = ranges.join('&ranges='); // encodeURIComponentを削除（既にencodedSheetNameでエンコード済み）
       const url = `${this.baseUrl}/${spreadsheetId}/values:batchGet?ranges=${rangesParam}&valueRenderOption=FORMATTED_VALUE`;
       
       const response = await fetch(url, {
