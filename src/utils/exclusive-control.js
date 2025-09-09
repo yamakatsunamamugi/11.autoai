@@ -90,46 +90,33 @@ export class ExclusiveControl {
       return null;
     }
 
-    // 基本的なマーカーパターン: 現在操作中です_タイムスタンプ_PC識別子
-    const basicPattern = new RegExp(
-      `^${this.markerFormat.prefix}${this.markerFormat.separator}(.+?)${this.markerFormat.separator}(.+)`
-    );
+    // マーカーパターン: 現在操作中です_タイムスタンプ_PC識別子_機能名（オプション）
+    const parts = marker.split(this.markerFormat.separator);
     
-    const match = marker.match(basicPattern);
-    
-    if (match) {
-      const timestamp = match[1];
-      const pcId = match[2];
+    if (parts.length >= 3) {
+      const timestamp = parts[1];
+      const pcId = parts[2];
+      const functionName = parts.length >= 4 ? parts[3] : null;
       
-      // 機能名が含まれている場合の処理
-      let functionName = null;
-      let actualPCId = pcId;
-      
-      if (pcId.includes(this.markerFormat.separator)) {
-        const parts = pcId.split(this.markerFormat.separator);
-        actualPCId = parts[0];
-        functionName = parts[1];
+        try {
+          const timestampDate = new Date(timestamp);
+          const age = Date.now() - timestampDate.getTime();
+          
+          return {
+            original: marker,
+            timestamp: timestampDate,
+            timestampString: timestamp,
+            pcId: pcId,
+            functionName: functionName,
+            age: age,
+            ageMinutes: Math.floor(age / (60 * 1000)),
+            isValid: !isNaN(timestampDate.getTime())
+          };
+        } catch (error) {
+          this.logger.warn('[ExclusiveControl] マーカー解析エラー:', error);
+          return null;
+        }
       }
-      
-      try {
-        const timestampDate = new Date(timestamp);
-        const age = Date.now() - timestampDate.getTime();
-        
-        return {
-          original: marker,
-          timestamp: timestampDate,
-          timestampString: timestamp,
-          pcId: actualPCId,
-          functionName: functionName,
-          age: age,
-          ageMinutes: Math.floor(age / (60 * 1000)),
-          isValid: !isNaN(timestampDate.getTime())
-        };
-      } catch (error) {
-        this.logger.warn('[ExclusiveControl] マーカー解析エラー:', error);
-        return null;
-      }
-    }
 
     // 旧形式のマーカー（タイムスタンプなし）の場合
     if (marker === this.markerFormat.prefix || marker === '現在操作中です') {

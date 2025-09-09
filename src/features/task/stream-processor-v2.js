@@ -435,31 +435,53 @@ export default class StreamProcessorV2 {
         
         // 既存回答チェック（事前に取得済みの結果を使用）
         const existingAnswer = answerResults[index].answer;
-        if (existingAnswer && existingAnswer.trim() !== '') {
-          // 「現在操作中です」マーカーがある場合は他PCが作業中
-          if (existingAnswer === '現在操作中です') {
-            skippedCells.push(`${task.column}${task.row}`);
-            this.logger.log(`[StreamProcessorV2] 🔒 ${task.column}${task.row}: 他PCが作業中のためスキップ`);
-            continue;
+        // 排他制御システムでロック取得を試みる
+        const lockResult = await this.exclusiveManager.acquireLock(
+          task,
+          globalThis.sheetsClient,
+          {
+            spreadsheetId: this.spreadsheetData?.spreadsheetId,
+            gid: this.spreadsheetData?.gid,
+            strategy: 'smart'
           }
-          // 既に完成した回答がある場合
+        );
+        
+        if (!lockResult.success) {
           skippedCells.push(`${task.column}${task.row}`);
-          // タスクを完了扱いにして次へ
-          this.completedTasks.add(task.id);
-          this.writtenCells.set(`${task.column}${task.row}`, existingAnswer);
+          this.logger.log(`[StreamProcessorV2] 🔒 ${task.column}${task.row}: ${lockResult.reason} - スキップ`);
           continue;
         }
         
-        // 排他制御ロックは既に上記で取得済み
+        // ロック取得成功
+        this.logger.log(`[StreamProcessorV2] 🔓 ${task.column}${task.row}: 排他制御ロック取得成功`);
         
         this.logger.log(`[StreamProcessorV2] ウィンドウ${index + 1}/${batch.length}を準備: ${task.column}${task.row}`);
         
         // AI/モデル/機能を動的に取得（ウィンドウ作成前に）
-        // 常に最新データを取得（キャッシュは使用しない）
+        // 排他制御マーカーに機能名を含めるため、事前に取得
         const { model, function: func, ai } = await this.fetchModelAndFunctionFromTask(task);
         task.model = model;
         task.function = func;
         task.aiType = ai;
+        
+        // ロックマーカーを機能名付きで更新（既に取得したロックを機能名付きに変更）
+        try {
+          const functionAwareMarker = this.exclusiveManager.control.createMarker(
+            this.exclusiveManager.pcId,
+            { function: func || '通常' }
+          );
+          
+          await globalThis.sheetsClient?.updateCell(
+            this.spreadsheetData?.spreadsheetId,
+            `${task.column}${task.row}`,
+            functionAwareMarker,
+            this.spreadsheetData?.gid
+          );
+          
+          this.logger.log(`[StreamProcessorV2] 📝 ${task.column}${task.row}: 機能名付きマーカー更新 (${func || '通常'})`);
+        } catch (markerUpdateError) {
+          this.logger.warn(`[StreamProcessorV2] マーカー更新エラー:`, markerUpdateError);
+        }
         
         this.logger.log(`[StreamProcessorV2] 📊 動的取得（ウィンドウ作成前）:`, {
           cell: `${task.column}${task.row}`,

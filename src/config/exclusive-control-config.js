@@ -52,11 +52,39 @@ export const EXCLUSIVE_CONTROL_CONFIG = {
     // 短時間待機（通常機能用）
     short: 5 * 60 * 1000,      // 5分
     
-    // 中時間待機（Canvas等）
+    // 中時間待機（Canvas、ウェブ検索等）
     medium: 10 * 60 * 1000,    // 10分
     
     // 長時間待機（Deep Research/エージェント用）
     long: 40 * 60 * 1000       // 40分
+  },
+
+  /**
+   * 機能別の詳細な再試行間隔設定
+   */
+  functionSpecificRetryIntervals: {
+    // Deep Research系 - 40分待機
+    'Deep Research': 40 * 60 * 1000,
+    'ディープリサーチ': 40 * 60 * 1000,
+    'DeepResearch': 40 * 60 * 1000,
+    
+    // エージェント系 - 40分待機
+    'エージェント': 40 * 60 * 1000,
+    'エージェントモード': 40 * 60 * 1000,
+    'Agent': 40 * 60 * 1000,
+    
+    // Canvas系 - 10分待機
+    'Canvas': 10 * 60 * 1000,
+    'キャンバス': 10 * 60 * 1000,
+    
+    // Web検索系 - 8分待機
+    'ウェブ検索': 8 * 60 * 1000,
+    'Web Search': 8 * 60 * 1000,
+    'WebSearch': 8 * 60 * 1000,
+    
+    // 通常機能 - 5分待機
+    '通常': 5 * 60 * 1000,
+    'Normal': 5 * 60 * 1000
   },
 
   /**
@@ -85,8 +113,8 @@ export const EXCLUSIVE_CONTROL_CONFIG = {
     // PC識別子を含めるか
     includePCId: true,
     
-    // 機能名を含めるか（デバッグ用）
-    includeFunction: false
+    // 機能名を含めるか（推奨: true）
+    includeFunction: true
   },
 
   /**
@@ -194,17 +222,24 @@ export function getTimeoutForFunction(functionName) {
 export function getRetryIntervalForFunction(functionName) {
   const normalized = normalizeFunctionName(functionName);
   
-  // Deep Research/エージェントは長時間待機
+  // まず詳細設定から検索
+  const specificInterval = EXCLUSIVE_CONTROL_CONFIG.functionSpecificRetryIntervals[functionName] ||
+                          EXCLUSIVE_CONTROL_CONFIG.functionSpecificRetryIntervals[normalized];
+  
+  if (specificInterval) {
+    return specificInterval;
+  }
+  
+  // 詳細設定がない場合は従来のロジック
   if (normalized === 'Deep Research' || normalized === 'エージェント') {
     return EXCLUSIVE_CONTROL_CONFIG.retryIntervals.long;
   }
   
-  // Canvasは中時間待機
   if (normalized === 'Canvas') {
     return EXCLUSIVE_CONTROL_CONFIG.retryIntervals.medium;
   }
   
-  // その他は短時間待機
+  // デフォルトは短時間待機
   return EXCLUSIVE_CONTROL_CONFIG.retryIntervals.short;
 }
 
