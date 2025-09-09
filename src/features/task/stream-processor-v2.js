@@ -856,6 +856,7 @@ export default class StreamProcessorV2 {
                   sheetsClient: globalThis.sheetsClient,
                   spreadsheetId,
                   gid,
+                  spreadsheetData: this.spreadsheetData, // スプレッドシートデータを追加
                   isFirstTask: isFirstForThisCell,
                   enableWriteVerification: true  // 書き込み確認を有効化
                 });
@@ -1515,6 +1516,7 @@ export default class StreamProcessorV2 {
               sheetsClient: globalThis.sheetsClient,
               spreadsheetId,
               gid,
+              spreadsheetData: this.spreadsheetData, // スプレッドシートデータを追加
               isFirstTask: false,  // 常に追加モード（上書きを防ぐ）
               isGroupTask: isGroupTask,
               isLastInGroup: isLastInGroup,

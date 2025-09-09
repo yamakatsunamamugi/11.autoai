@@ -18,9 +18,10 @@ export default class TaskGeneratorV2 {
   /**
    * タスクを生成（プロンプトは含まない）
    * @param {Object} spreadsheetData - スプレッドシートデータ
+   * @param {Array} taskGroups - タスクグループ情報（オプション）
    * @returns {Promise<TaskList>} タスクリスト
    */
-  async generateTasks(spreadsheetData) {
+  async generateTasks(spreadsheetData, taskGroups = null) {
     this.logger.log('[TaskGeneratorV2] 🚀 タスク生成開始');
     
     // データ配列の実際のサイズを確認
@@ -91,9 +92,29 @@ export default class TaskGeneratorV2 {
             
             const functionValue = this.getFunction(spreadsheetData, answerCol, promptGroup.promptColumns);
             
-            // ログ列を特定（プロンプト列の1列前）
-            const logColumnIndex = Math.max(0, Math.min(...promptGroup.promptColumns) - 1);
-            const logColumn = this.indexToColumn(logColumnIndex);
+            // ログ列を特定（タスクグループから取得、なければプロンプト列の1列前）
+            let logColumn = null;
+            if (taskGroups && taskGroups.length > 0) {
+              // タスクグループからログ列を探す
+              const matchingGroup = taskGroups.find(group => {
+                // プロンプト列が一致するグループを探す
+                const groupPromptIndices = group.columnRange?.promptColumns?.map(col => 
+                  typeof col === 'string' ? this.columnToIndex(col) : col
+                ) || [];
+                return groupPromptIndices.some(idx => promptGroup.promptColumns.includes(idx));
+              });
+              if (matchingGroup?.columnRange?.logColumn) {
+                logColumn = matchingGroup.columnRange.logColumn;
+                this.logger.log(`[TaskGeneratorV2] タスクグループからログ列を取得: ${logColumn}`);
+              }
+            }
+            
+            // タスクグループにログ列がない場合はデフォルト（プロンプト列の1列前）
+            if (!logColumn) {
+              const logColumnIndex = Math.max(0, Math.min(...promptGroup.promptColumns) - 1);
+              logColumn = this.indexToColumn(logColumnIndex);
+              this.logger.log(`[TaskGeneratorV2] デフォルトログ列を使用: ${logColumn} (プロンプト列の1列前)`);
+            }
             
             // グループポジションを決定（ChatGPT:0, Claude:1, Gemini:2）
             const groupPosition = i;
@@ -153,10 +174,29 @@ export default class TaskGeneratorV2 {
             const model = this.getModel(spreadsheetData, promptCol);
             const functionValue = this.getFunction(spreadsheetData, promptCol);
             
-            // ログ列を特定（プロンプト列の1列前）
-            // promptColumnsは既にインデックスの配列なので、.map(col => col.index)は不要
-            const logColumnIndex = Math.max(0, Math.min(...promptGroup.promptColumns) - 1);
-            const logColumn = this.indexToColumn(logColumnIndex);
+            // ログ列を特定（タスクグループから取得、なければプロンプト列の1列前）
+            let logColumn = null;
+            if (taskGroups && taskGroups.length > 0) {
+              // タスクグループからログ列を探す
+              const matchingGroup = taskGroups.find(group => {
+                // プロンプト列が一致するグループを探す
+                const groupPromptIndices = group.columnRange?.promptColumns?.map(col => 
+                  typeof col === 'string' ? this.columnToIndex(col) : col
+                ) || [];
+                return groupPromptIndices.some(idx => promptGroup.promptColumns.includes(idx));
+              });
+              if (matchingGroup?.columnRange?.logColumn) {
+                logColumn = matchingGroup.columnRange.logColumn;
+                this.logger.log(`[TaskGeneratorV2] タスクグループからログ列を取得: ${logColumn}`);
+              }
+            }
+            
+            // タスクグループにログ列がない場合はデフォルト（プロンプト列の1列前）
+            if (!logColumn) {
+              const logColumnIndex = Math.max(0, Math.min(...promptGroup.promptColumns) - 1);
+              logColumn = this.indexToColumn(logColumnIndex);
+              this.logger.log(`[TaskGeneratorV2] デフォルトログ列を使用: ${logColumn} (プロンプト列の1列前)`);
+            }
             
             
             const taskData = {

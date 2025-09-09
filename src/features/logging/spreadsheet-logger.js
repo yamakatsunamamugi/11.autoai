@@ -209,6 +209,87 @@ export class SpreadsheetLogger {
   }
 
   /**
+   * ログ列の妥当性を検証
+   * @param {string} logColumn - 検証するログ列
+   * @param {Object} spreadsheetData - スプレッドシートデータ
+   * @returns {Promise<{isValid: boolean, validLogColumns: Array, error?: string}>}
+   */
+  async validateLogColumn(logColumn, spreadsheetData) {
+    try {
+      // スプレッドシートデータがない場合は検証をスキップ（デフォルトを許可）
+      if (!spreadsheetData || !spreadsheetData.menuRow) {
+        console.warn('[SpreadsheetLogger] スプレッドシートデータが提供されていないため、ログ列検証をスキップ');
+        return {
+          isValid: true,
+          validLogColumns: [logColumn],
+          warning: 'スプレッドシートデータなしで続行'
+        };
+      }
+      
+      // メニュー行から「ログ」という名前の列を検索
+      const validLogColumns = [];
+      const menuRowData = spreadsheetData.menuRow.data || [];
+      
+      for (let i = 0; i < menuRowData.length; i++) {
+        const cellValue = menuRowData[i];
+        if (cellValue && typeof cellValue === 'string' && cellValue.trim() === 'ログ') {
+          const columnLetter = this.indexToColumn(i);
+          validLogColumns.push(columnLetter);
+        }
+      }
+      
+      // 有効なログ列が見つからない場合（デフォルトB列を許可）
+      if (validLogColumns.length === 0) {
+        console.warn('[SpreadsheetLogger] メニュー行に「ログ」列が見つかりません。デフォルトB列を許可');
+        return {
+          isValid: true,
+          validLogColumns: ['B'],
+          warning: 'ログ列が見つからないため、デフォルトB列を使用'
+        };
+      }
+      
+      // 指定されたログ列が有効なログ列に含まれているかチェック
+      const isValid = validLogColumns.includes(logColumn);
+      
+      if (!isValid) {
+        return {
+          isValid: false,
+          validLogColumns: validLogColumns,
+          error: `指定されたログ列 ${logColumn} は有効なログ列ではありません`
+        };
+      }
+      
+      return {
+        isValid: true,
+        validLogColumns: validLogColumns
+      };
+      
+    } catch (error) {
+      console.error('[SpreadsheetLogger] ログ列検証エラー:', error);
+      // エラーが発生した場合は安全のため続行を許可
+      return {
+        isValid: true,
+        validLogColumns: [logColumn],
+        warning: `検証エラー: ${error.message}`
+      };
+    }
+  }
+  
+  /**
+   * 列インデックスを列名（A, B, C...）に変換
+   * @param {number} index - 列インデックス（0ベース）
+   * @returns {string} 列名
+   */
+  indexToColumn(index) {
+    let column = '';
+    while (index >= 0) {
+      column = String.fromCharCode((index % 26) + 65) + column;
+      index = Math.floor(index / 26) - 1;
+    }
+    return column;
+  }
+
+  /**
    * スプレッドシートにログを書き込み
    * @param {Object} task - タスクオブジェクト
    * @param {Object} options - オプション
@@ -244,6 +325,26 @@ export class SpreadsheetLogger {
       
       // タスクからログ列を取得（ハードコーディングしない）
       const logColumn = task.logColumns?.[0] || 'B'; // デフォルトはB列
+      
+      // ログ列の妥当性を検証
+      const validationResult = await this.validateLogColumn(logColumn, options.spreadsheetData);
+      if (!validationResult.isValid) {
+        console.error(`❌ [SpreadsheetLogger] 不正なログ列が指定されました:`, {
+          指定されたログ列: logColumn,
+          有効なログ列: validationResult.validLogColumns,
+          エラー: validationResult.error,
+          タスク: `${task.column}${task.row}`,
+          タスクID: task.id
+        });
+        
+        // エラーを返すが処理は続行（ログ書き込みはスキップ）
+        return {
+          success: false,
+          verified: false,
+          error: `不正なログ列: ${logColumn}。有効なログ列: ${validationResult.validLogColumns.join(', ')}`
+        };
+      }
+      
       const logCell = `${logColumn}${task.row}`;
       
       // デバッグ: ログセルの詳細確認
