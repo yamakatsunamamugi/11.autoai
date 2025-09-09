@@ -4065,17 +4065,31 @@ export default class StreamProcessorV2 {
         return false;
       }
 
-      // 軽量チェック：作業行が存在するかのみ確認（詳細は実行時チェック）
+      // プロンプト列のインデックスを取得
+      const promptColIndices = promptColumns.map(col => this.columnToIndex(col));
+      
+      // 作業行範囲（9行目以降）をチェック
       for (let rowIndex = 8; rowIndex < Math.min(spreadsheetData.values.length, 20); rowIndex++) {
         const rowData = spreadsheetData.values[rowIndex] || [];
+        
+        // A列の番号チェック（作業行かどうか）
         const aValue = rowData[0];
         if (aValue && /^\d+$/.test(String(aValue).trim())) {
-          // 作業行が存在する = 詳細チェックは実行時に委ねる
-          return true;
+          // プロンプト列にデータがあるかチェック
+          const hasPrompt = promptColIndices.some(colIndex => {
+            const cellValue = rowData[colIndex];
+            return cellValue && typeof cellValue === 'string' && cellValue.trim().length > 0;
+          });
+          
+          if (hasPrompt) {
+            this.logger.log(`[hasTasksInGroup] ${group.name}: 行${rowIndex + 1}にプロンプト発見`);
+            return true;
+          }
         }
       }
       
-      return false; // 作業行自体が存在しない
+      this.logger.log(`[hasTasksInGroup] ${group.name}: プロンプトなし、スキップ`);
+      return false; // プロンプトが見つからない
     } catch (error) {
       this.logger.warn(`[hasTasksInGroup] エラー: ${error.message}`);
       return true; // エラー時は安全のため処理ありとして扱う
@@ -4374,7 +4388,7 @@ export default class StreamProcessorV2 {
         
         // 列全体を取得（9行目以降の範囲で確認）
         const startRow = 9; // 1ベース
-        const endRow = 100; // とりあえず100行まで確認
+        const endRow = Math.min(40, this.spreadsheetData?.values?.length || 40); // 最大40行まで、またはデータ行数まで
         const range = `${columnName}${startRow}:${columnName}${endRow}`;
         
         this.logger.log(`[StreamProcessorV2] 🔍 API呼び出し準備:`, {
