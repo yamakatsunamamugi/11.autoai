@@ -3867,7 +3867,42 @@ export default class StreamProcessorV2 {
         // 対応する回答列のチェック
         answerExistCount += this.processRowForTasks(row, rowIndex, answerCols, tasks);
       }
+    } else {
+      // 従来のループ処理（フォールバック）
+      for (let rowIndex = startRow; rowIndex < endRow; rowIndex++) {
+        totalRowsChecked++;
+        const row = spreadsheetData.values[rowIndex];
+        if (!row) continue;
+        
+        // 行制御チェック
+        if (!this.shouldProcessRow(rowIndex + 1, rowControls)) {
+          rowSkippedByControl++;
+          continue;
+        }
+        
+        // プロンプト列にデータがあるかチェック
+        const hasPrompt = promptCols.some(colIndex => {
+          const cellValue = row[colIndex];
+          return cellValue && typeof cellValue === 'string' && cellValue.trim().length > 0;
+        });
+        
+        if (!hasPrompt) continue;
+        promptFoundCount++;
+        
+        // 対応する回答列のチェック
+        answerExistCount += this.processRowForTasks(row, rowIndex, answerCols, tasks);
+      }
     }
+    
+    this.logger.log(`[StreamProcessorV2] 📊 グループタスクスキャン完了:`, {
+      全対象行: `${totalRowsChecked}行`,
+      行制御スキップ: `${rowSkippedByControl}行`,
+      プロンプト有り: `${promptFoundCount}行`,
+      既存回答有り: `${answerExistCount}セル`,
+      実際のタスク: `${tasks.length}個`
+    });
+    
+    return tasks;
   }
   
   /**
@@ -3895,17 +3930,6 @@ export default class StreamProcessorV2 {
     }
     
     return answerExistCount;
-  }
-    
-    this.logger.log(`[StreamProcessorV2] 📊 グループタスクスキャン完了:`, {
-      全対象行: `${totalRowsChecked}行`,
-      行制御スキップ: `${rowSkippedByControl}行`,
-      プロンプト有り: `${promptFoundCount}行`,
-      既存回答有り: `${answerExistCount}セル`,
-      実際のタスク: `${tasks.length}個`
-    });
-    
-    return tasks;
   }
 
   /**
@@ -4066,40 +4090,17 @@ export default class StreamProcessorV2 {
         return false;
       }
 
-      // 簡単な作業行チェック（9行目以降で数字があるもの）
-      let hasTask = false;
-      for (let rowIndex = 8; rowIndex < spreadsheetData.values.length; rowIndex++) {
+      // 軽量チェック：作業行が存在するかのみ確認（詳細は実行時チェック）
+      for (let rowIndex = 8; rowIndex < Math.min(spreadsheetData.values.length, 20); rowIndex++) {
         const rowData = spreadsheetData.values[rowIndex] || [];
-        
-        // A列に数字があるかチェック（作業行判定）
         const aValue = rowData[0];
-        if (!aValue || !/^\d+$/.test(String(aValue).trim())) {
-          continue;
-        }
-
-        // プロンプト列のいずれかにデータがあるかチェック
-        const hasPrompt = promptColumns.some(promptCol => {
-          const colIndex = this.columnToIndex(promptCol);
-          return colIndex >= 0 && rowData[colIndex] && String(rowData[colIndex]).trim();
-        });
-
-        if (!hasPrompt) {
-          continue;
-        }
-
-        // 回答列がすべて空かチェック
-        const allAnswersEmpty = answerColumns.every(answerCol => {
-          const colIndex = this.columnToIndex(answerCol.column || answerCol);
-          return colIndex < 0 || !rowData[colIndex] || !String(rowData[colIndex]).trim();
-        });
-
-        if (allAnswersEmpty) {
-          hasTask = true;
-          break;
+        if (aValue && /^\d+$/.test(String(aValue).trim())) {
+          // 作業行が存在する = 詳細チェックは実行時に委ねる
+          return true;
         }
       }
-
-      return hasTask;
+      
+      return false; // 作業行自体が存在しない
     } catch (error) {
       this.logger.warn(`[hasTasksInGroup] エラー: ${error.message}`);
       return true; // エラー時は安全のため処理ありとして扱う
@@ -4181,26 +4182,28 @@ export default class StreamProcessorV2 {
         回答インデックス: answerColIndices
       });
       
-      // このグループのタスクを動的にスキャン
+      // タスクを処理（実行時にタスクを動的生成）
+      this.logger.log(`[StreamProcessorV2] 🔄 ${group.name}: タスクを動的生成して実行`);
+      
+      // ========================================
+      // 実行時にタスクを動的生成
+      // ========================================
       const tasks = await this.scanGroupTasks(
         spreadsheetData,
         promptColIndices,
         answerColIndices
       );
       
-      this.logger.log(`[StreamProcessorV2] 📊 スキャン結果:`, {
+      this.logger.log(`[StreamProcessorV2] 📊 実行時スキャン結果:`, {
         tasks: tasks ? `${tasks.length}個` : 'undefined',
         tasksType: typeof tasks,
         isArray: Array.isArray(tasks)
       });
       
       if (!tasks || !Array.isArray(tasks) || tasks.length === 0) {
-        this.logger.log(`[StreamProcessorV2] ⏭️ ${group.name}: タスクなし、スキップ`);
+        this.logger.log(`[StreamProcessorV2] ⏭️ ${group.name}: 実行時チェックでタスクなし、スキップ`);
         continue;
       }
-      
-      // タスクを処理
-      this.logger.log(`[StreamProcessorV2] 🔄 ${group.name}: ${tasks.length}個のタスク実行`);
       
       // ========================================
       // タスクをTaskオブジェクト形式に変換
