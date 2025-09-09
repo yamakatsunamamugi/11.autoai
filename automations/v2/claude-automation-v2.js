@@ -76,43 +76,23 @@
         }
     });
     
-    // モデル選択用セレクタ
+    // モデル選択用セレクタ（ui-selectorsから取得）
     const modelSelectors = {
-        menuButton: [
-            { selector: 'button[data-testid="model-selector-dropdown"]', description: 'data-testid属性' },
-            { selector: 'button[aria-haspopup="menu"]', description: 'aria-haspopup属性' },
-            { selector: '#radix-_r_g_', description: 'ID属性（動的生成の可能性）' },
-            { selector: 'button.inline-flex.items-center.justify-center', description: '複合クラス名' },
-            { selector: 'button:has(svg.claude-logo-model-selector)', description: 'ロゴを含むボタン（フォールバック）' }
-        ],
+        menuButton: (UI_SELECTORS.Claude?.MODEL_BUTTON || []).map(selector => ({ selector, description: 'モデル選択ボタン' })),
         menuContainer: [
-            { selector: '[role="menu"][data-state="open"]', description: 'role + data-state属性' },
-            { selector: '[data-radix-menu-content][data-state="open"]', description: 'data-radix属性' },
-            { selector: 'div.z-dropdown[role="menu"]', description: 'クラス名 + role属性' },
-            { selector: '[aria-orientation="vertical"][data-state="open"]', description: 'aria-orientation属性' },
-            { selector: 'div[role="menu"]:not([data-state="closed"])', description: 'role属性（閉じていない）' }
+            { selector: UI_SELECTORS.Claude?.MENU?.CONTAINER || '[role="menu"][data-state="open"]', description: 'メニューコンテナ' }
         ],
         otherModelsMenu: [
             { selector: '[role="menuitem"][aria-haspopup="menu"]', description: 'role + aria-haspopup属性' },
             { selector: '[role="menuitem"]:has(svg)', description: 'SVGアイコンを持つメニュー項目' },
             { selector: 'div[role="menuitem"]:last-child', description: '最後のメニュー項目' }
         ],
-        modelDisplay: [
-            { selector: '.font-claude-response', description: 'font-claude-responseクラス' },
-            { selector: 'div:has(svg.claude-logo-model-selector)', description: 'Claudeロゴを含むdiv' },
-            { selector: 'button[data-testid="model-selector-dropdown"] .font-claude-response', description: 'ボタン内のレスポンス' }
-        ]
+        modelDisplay: (UI_SELECTORS.Claude?.MODEL_INFO?.TEXT_ELEMENT || []).slice(0, 3).map(selector => ({ selector, description: 'モデル表示要素' }))
     };
     
-    // 機能選択用セレクタ（テストコードから移植）
+    // 機能選択用セレクタ（ui-selectorsとテストコードのマージ）
     const featureSelectors = {
-        menuButton: [
-            '[data-testid="input-menu-tools"]',
-            '[aria-label="ツールメニューを開く"]',
-            '#input-tools-menu-trigger',
-            'button[aria-expanded][aria-haspopup="listbox"]',
-            'button svg path[d*="M40,88H73a32"]'
-        ],
+        menuButton: UI_SELECTORS.Claude?.FUNCTION_MENU_BUTTON || [],
         menuContainer: [
             '[aria-labelledby="input-tools-menu-trigger"]',
             '.w-\\[20rem\\].absolute.max-w-\\[calc\\(100vw-16px\\)\\].block',
@@ -127,7 +107,7 @@
             'div:contains("ウェブ検索") button:has(.group\\/switch)',
             'button .font-base:contains("ウェブ検索")'
         ],
-        researchButton: [
+        researchButton: UI_SELECTORS.Claude?.FEATURE_BUTTONS?.RESEARCH || [
             'button[aria-pressed]:has(svg path[d*="M8.5 2C12.0899"])',
             'button:has(p:contains("リサーチ"))',
             'button.text-accent-secondary-100:has(svg)',
@@ -136,57 +116,26 @@
         ]
     };
     
-    // Claude動作用セレクタ
+    // Claude動作用セレクタ（ui-selectorsから取得）
     const claudeSelectors = {
         '1_テキスト入力欄': {
-            selectors: [
-                '[aria-label="クロードにプロンプトを入力してください"]',
-                '.ProseMirror[contenteditable="true"]',
-                '[role="textbox"][contenteditable="true"]',
-                'div[contenteditable="true"][translate="no"]',
-                '.ProseMirror',
-                'div[enterkeyhint="enter"][role="textbox"]'
-            ],
+            selectors: UI_SELECTORS.Claude?.INPUT || [],
             description: 'テキスト入力欄（ProseMirrorエディタ）'
         },
         '2_送信ボタン': {
-            selectors: [
-                '[aria-label="メッセージを送信"]',
-                'button[aria-label="メッセージを送信"]',
-                '[data-state="closed"] button[type="button"]',
-                'button.bg-accent-main-000',
-                'button svg path[d*="M208.49,120.49"]'
-            ],
+            selectors: UI_SELECTORS.Claude?.SEND_BUTTON || [],
             description: '送信ボタン'
         },
         '3_回答停止ボタン': {
-            selectors: [
-                '[aria-label="応答を停止"]',
-                'button[aria-label="応答を停止"]',
-                '[data-state="closed"][aria-label="応答を停止"]',
-                'button.border-border-200[aria-label="応答を停止"]',
-                'button svg path[d*="M128,20A108"]'
-            ],
+            selectors: UI_SELECTORS.Claude?.STOP_BUTTON || [],
             description: '回答停止ボタン'
         },
         '4_Canvas機能テキスト位置': {
-            selectors: [
-                '#markdown-artifact',
-                '[id="markdown-artifact"]',
-                '.font-claude-response#markdown-artifact',
-                '[tabindex="0"]#markdown-artifact',
-                'div.mx-auto.max-w-3xl#markdown-artifact'
-            ],
+            selectors: UI_SELECTORS.Claude?.TEXT_EXTRACTION?.ARTIFACT_CONTENT || [],
             description: 'Canvas機能のテキスト表示エリア'
         },
         '5_通常処理テキスト位置': {
-            selectors: [
-                '.standard-markdown',
-                'div.standard-markdown',
-                '.grid.gap-2\\.5.standard-markdown',
-                'div.grid-cols-1.standard-markdown',
-                '[class*="standard-markdown"]'
-            ],
+            selectors: UI_SELECTORS.Claude?.TEXT_EXTRACTION?.NORMAL_RESPONSE || [],
             description: '通常処理のテキスト表示エリア'
         }
     };
@@ -429,7 +378,7 @@
     // Claude動作関数（テストコードから）
     // =====================================================================
     
-    const findClaudeElement = async (selectorInfo, retryCount = 3) => {
+    const findClaudeElement = async (selectorInfo, retryCount = 3, debug = false) => {
         const results = [];
         
         for (let retry = 0; retry < retryCount; retry++) {
@@ -477,7 +426,12 @@
         }
         
         console.warn(`✗ 要素未発見: ${selectorInfo.description}`);
-        console.log('  試行結果:', results);
+        console.log('  コンテキスト:', window.location.href);
+        console.log('  スタック トレース:', new Error().stack.split('\n')[2]);
+        if (debug) {
+            console.log('  試行結果:', results);
+            console.log('  使用セレクタ:', selectorInfo.selectors);
+        }
         return null;
     };
     
@@ -570,7 +524,7 @@
             
             while (!stopButtonFound && waitCount < maxInitialWait) {
                 const deepResearchSelectors = getDeepResearchSelectors();
-                const stopResult = await findClaudeElement(deepResearchSelectors['3_回答停止ボタン'], 1);
+                const stopResult = await findClaudeElement(deepResearchSelectors['3_回答停止ボタン'], 3, true);
                 
                 if (stopResult) {
                     stopButtonFound = true;
@@ -593,7 +547,7 @@
             
             while ((Date.now() - startTime) < 120000) { // 2分間
                 const deepResearchSelectors = getDeepResearchSelectors();
-                const stopResult = await findClaudeElement(deepResearchSelectors['3_回答停止ボタン'], 1);
+                const stopResult = await findClaudeElement(deepResearchSelectors['3_回答停止ボタン'], 3, true);
                 
                 if (!stopResult) {
                     disappeared = true;
@@ -637,7 +591,7 @@
             
             while (!stopButtonFound && waitCount < maxWaitCount) {
                 const deepResearchSelectors = getDeepResearchSelectors();
-                const stopResult = await findClaudeElement(deepResearchSelectors['3_回答停止ボタン'], 1);
+                const stopResult = await findClaudeElement(deepResearchSelectors['3_回答停止ボタン'], 3, true);
                 
                 if (stopResult) {
                     stopButtonFound = true;
@@ -664,7 +618,7 @@
                 
                 while (!stopButtonGone && disappearWaitCount < maxDisappearWait) {
                     const deepResearchSelectors = getDeepResearchSelectors();
-                    const stopResult = await findClaudeElement(deepResearchSelectors['3_回答停止ボタン'], 1);
+                    const stopResult = await findClaudeElement(deepResearchSelectors['3_回答停止ボタン'], 3, true);
                     
                     if (!stopResult) {
                         // 10秒間確認
@@ -674,7 +628,7 @@
                         while (confirmCount < 10) {
                             await wait(1000);
                             const deepResearchSelectors = getDeepResearchSelectors();
-                            const checkResult = await findClaudeElement(deepResearchSelectors['3_回答停止ボタン'], 1);
+                            const checkResult = await findClaudeElement(deepResearchSelectors['3_回答停止ボタン'], 2);
                             if (checkResult) {
                                 stillGone = false;
                                 break;
@@ -898,7 +852,7 @@ ${prompt}`;
                 let stopButtonAppeared = false;
                 
                 for (let i = 0; i < 5; i++) {
-                    const stopResult = await findClaudeElement(claudeSelectors['3_回答停止ボタン'], 1);
+                    const stopResult = await findClaudeElement(claudeSelectors['3_回答停止ボタン'], 3, true);
                     if (stopResult) {
                         stopButtonAppeared = true;
                         console.log('停止ボタンが表示されました - 送信成功');
@@ -1586,7 +1540,7 @@ ${prompt}`;
                 let stopButtonAppeared = false;
                 
                 for (let i = 0; i < 5; i++) {
-                    const stopResult = await findClaudeElement(claudeSelectors['3_回答停止ボタン'], 1);
+                    const stopResult = await findClaudeElement(claudeSelectors['3_回答停止ボタン'], 3, true);
                     if (stopResult) {
                         stopButtonAppeared = true;
                         console.log('停止ボタンが表示されました - 送信成功');

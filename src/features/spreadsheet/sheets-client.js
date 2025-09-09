@@ -1380,7 +1380,8 @@ class SheetsClient {
           values: [{
             userEnteredValue: { 
               stringValue: fullText 
-            }
+            },
+            textFormatRuns: textFormatRuns.length > 0 ? textFormatRuns : undefined
           }]
         }],
         range: {
@@ -1390,7 +1391,7 @@ class SheetsClient {
           startColumnIndex: columnIndex,
           endColumnIndex: columnIndex + 1
         },
-        fields: "userEnteredValue"
+        fields: "userEnteredValue,textFormatRuns"
       }
     }];
     

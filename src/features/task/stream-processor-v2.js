@@ -351,11 +351,35 @@ export default class StreamProcessorV2 {
         // 既存回答チェック（事前に取得済みの結果を使用）
         const existingAnswer = answerResults[index].answer;
         if (existingAnswer && existingAnswer.trim() !== '') {
+          // 「現在操作中です」マーカーがある場合は他PCが作業中
+          if (existingAnswer === '現在操作中です') {
+            skippedCells.push(`${task.column}${task.row}`);
+            this.logger.log(`[StreamProcessorV2] 🔒 ${task.column}${task.row}: 他PCが作業中のためスキップ`);
+            continue;
+          }
+          // 既に完成した回答がある場合
           skippedCells.push(`${task.column}${task.row}`);
           // タスクを完了扱いにして次へ
           this.completedTasks.add(task.id);
           this.writtenCells.set(`${task.column}${task.row}`, existingAnswer);
           continue;
+        }
+        
+        // 回答がない場合、排他制御マーカーを設定
+        try {
+          const { spreadsheetId, gid } = this.spreadsheetData || {};
+          if (spreadsheetId && globalThis.sheetsClient) {
+            await globalThis.sheetsClient.updateCell(
+              spreadsheetId,
+              `${task.column}${task.row}`,
+              '現在操作中です',
+              gid
+            );
+            this.logger.log(`[StreamProcessorV2] 🔒 ${task.column}${task.row}: 排他制御マーカー設定`);
+          }
+        } catch (lockError) {
+          this.logger.error(`[StreamProcessorV2] ❌ ${task.column}${task.row}: マーカー設定失敗`, lockError);
+          // マーカー設定に失敗しても処理は継続（リトライ機能があるため）
         }
         
         this.logger.log(`[StreamProcessorV2] ウィンドウ${index + 1}/${batch.length}を準備: ${task.column}${task.row}`);
@@ -798,6 +822,7 @@ export default class StreamProcessorV2 {
             });
             
             try {
+              // 「現在操作中です」マーカーを削除して実際の回答を書き込み
               const writeResult = await globalThis.sheetsClient?.updateCell(
                 spreadsheetId,
                 range,
@@ -806,13 +831,24 @@ export default class StreamProcessorV2 {
               );
               
               if (writeResult) {
-                this.logger.log(`[StreamProcessorV2] ✅ ${range}に応答を書き込み成功`);
+                this.logger.log(`[StreamProcessorV2] ✅ ${range}に応答を書き込み成功（排他制御解除）`);
               } else {
                 this.logger.error(`[StreamProcessorV2] ❌ ${range}への書き込み結果が不明`);
               }
             } catch (writeError) {
               this.logger.error(`[StreamProcessorV2] ❌ ${range}への書き込みエラー:`, writeError);
-              // エラーでも処理は継続
+              // エラー時も排他制御をクリア
+              try {
+                await globalThis.sheetsClient?.updateCell(
+                  spreadsheetId,
+                  range,
+                  '',  // 空文字でマーカーをクリア
+                  gid
+                );
+                this.logger.log(`[StreamProcessorV2] 🔓 ${range}: エラー時の排他制御クリア`);
+              } catch (clearError) {
+                this.logger.error(`[StreamProcessorV2] ❌ ${range}: 排他制御クリア失敗`, clearError);
+              }
             }
             
             // SpreadsheetLoggerでログを記録
@@ -880,6 +916,21 @@ export default class StreamProcessorV2 {
           }
         } else {
           this.logger.error(`[StreamProcessorV2] ⚠️ ${context.cell}の応答が取得できませんでした`);
+          // 応答取得失敗時は排他制御をクリア
+          try {
+            const { spreadsheetId, gid } = this.spreadsheetData || {};
+            if (spreadsheetId && globalThis.sheetsClient) {
+              await globalThis.sheetsClient.updateCell(
+                spreadsheetId,
+                context.cell,
+                '',  // 空文字でマーカーをクリア
+                gid
+              );
+              this.logger.log(`[StreamProcessorV2] 🔓 ${context.cell}: 失敗時の排他制御クリア`);
+            }
+          } catch (clearError) {
+            this.logger.error(`[StreamProcessorV2] ❌ ${context.cell}: 排他制御クリア失敗`, clearError);
+          }
         }
         
         // ログ書き込みが完全に終わるまで少し待機

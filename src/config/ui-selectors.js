@@ -220,6 +220,11 @@ export const UI_SELECTORS = {
         STOP_BUTTON: [
             'button[aria-label="応答を停止"]',  // 最優先：統合テストで実証済み
             '[aria-label="応答を停止"]',
+            'button[data-state="closed"][aria-label="応答を停止"]',
+            'button.border-border-200[aria-label="応答を停止"]',
+            'button.h-8.w-8[aria-label="応答を停止"]',
+            'button svg path[d*="M128,20A108"]',
+            'button svg path[d*="M128,20A108,108"]',
             '[aria-label="Stop generating"]',
             '[data-testid="stop-button"]',
             'button[aria-label*="stop"]',
