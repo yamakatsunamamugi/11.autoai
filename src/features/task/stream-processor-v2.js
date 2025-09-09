@@ -3744,8 +3744,25 @@ export default class StreamProcessorV2 {
   async scanGroupTasks(spreadsheetData, promptCols, answerCols) {
     const tasks = [];
     
+    this.logger.log(`[StreamProcessorV2] 📊 scanGroupTasks開始:`, {
+      spreadsheetData: spreadsheetData ? 'あり' : 'なし',
+      values: spreadsheetData?.values ? `${spreadsheetData.values.length}行` : 'なし',
+      promptCols: promptCols || 'なし',
+      answerCols: answerCols || 'なし'
+    });
+    
     if (!spreadsheetData?.values || !Array.isArray(spreadsheetData.values)) {
       this.logger.warn('[StreamProcessorV2] scanGroupTasks: 無効なスプレッドシートデータ');
+      return tasks;
+    }
+    
+    if (!promptCols || !Array.isArray(promptCols) || promptCols.length === 0) {
+      this.logger.warn('[StreamProcessorV2] scanGroupTasks: 無効なプロンプト列データ');
+      return tasks;
+    }
+    
+    if (!answerCols || !Array.isArray(answerCols) || answerCols.length === 0) {
+      this.logger.warn('[StreamProcessorV2] scanGroupTasks: 無効な回答列データ');
       return tasks;
     }
     
@@ -3770,8 +3787,8 @@ export default class StreamProcessorV2 {
     let endRow = spreadsheetData.values.length;
     
     // プロンプト列をスキャンしてプロンプトがある行を動的に特定
-    const promptRowsFound = await this.scanPromptRows(promptCols);
-    if (promptRowsFound.length > 0) {
+    const promptRowsFound = await this.scanPromptRows(promptCols) || [];
+    if (promptRowsFound && promptRowsFound.length > 0) {
       const maxPromptRow = Math.max(...promptRowsFound);
       if (maxPromptRow >= endRow) {
         // 必要に応じてendRowを拡張し、追加データを読み込み
@@ -3797,11 +3814,11 @@ export default class StreamProcessorV2 {
     });
     
     // 動的プロンプトスキャンの結果を使用してタスクを生成
-    const targetRows = promptRowsFound.length > 0 ? promptRowsFound : [];
+    const targetRows = (promptRowsFound && promptRowsFound.length > 0) ? promptRowsFound : [];
     
     this.logger.log(`[StreamProcessorV2] 🎯 処理対象行:`, {
-      動的スキャン結果: promptRowsFound.length > 0 ? `${promptRowsFound.length}行` : 'なし',
-      対象行リスト: targetRows.map(r => r + 1).join(', '),
+      動的スキャン結果: (promptRowsFound && promptRowsFound.length > 0) ? `${promptRowsFound.length}行` : 'なし',
+      対象行リスト: targetRows && targetRows.length > 0 ? targetRows.map(r => r + 1).join(', ') : 'なし',
       従来範囲: `${startRow + 1}～${endRow}行目`
     });
     
@@ -3878,17 +3895,6 @@ export default class StreamProcessorV2 {
     }
     
     return answerExistCount;
-  }
-    
-    this.logger.log(`[StreamProcessorV2] 📊 グループタスクスキャン完了:`, {
-      全対象行: `${totalRowsChecked}行`,
-      行制御スキップ: `${rowSkippedByControl}行`,
-      プロンプト有り: `${promptFoundCount}行`,
-      既存回答有り: `${answerExistCount}セル`,
-      実際のタスク: `${tasks.length}個`
-    });
-    
-    return tasks;
   }
 
   /**
@@ -4409,9 +4415,10 @@ export default class StreamProcessorV2 {
       
     } catch (error) {
       this.logger.error(`[StreamProcessorV2] プロンプトスキャンエラー:`, error);
+      return []; // エラー時は空配列を返す
     }
     
-    return promptRows;
+    return promptRows || []; // 念のため空配列保証
   }
   
   /**
