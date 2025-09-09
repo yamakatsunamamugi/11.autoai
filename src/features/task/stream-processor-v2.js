@@ -588,67 +588,69 @@ export default class StreamProcessorV2 {
           this.logger.error(`[StreamProcessorV2] ❌ 最終的にテキスト入力失敗: ${task.column}${task.row}`);
           
           // テキスト入力が最終的に失敗した場合、ウィンドウを閉じて再作成
-          try {
-            // WindowServiceは既にimportされているため、直接使用
-            await this.windowService.closeWindow(currentTabId);
-            // releasePositionは不要（closeWindowが自動的に解放）
-            
-            await this.delay(2000);
-            
-            // 新しいウィンドウを作成してリトライ
-            const newTabId = await this.createWindowForTask(task, position);
-            if (newTabId) {
-              currentTabId = newTabId;
-              taskContexts[taskContexts.length - 1].tabId = newTabId;
-              
-              await this.delay(2000);
-              await this.injectScriptsForTab(newTabId, task.aiType);
-              
-              // 最後の試行
-              const finalResult = await this.executePhaseOnTab(newTabId, { ...task, prompt }, 'text');
-              if (finalResult && finalResult.success) {
-                this.logger.log(`[StreamProcessorV2] ✅ ウィンドウ再作成後のテキスト入力成功`);
-              } else {
-                this.logger.error(`[StreamProcessorV2] ❌ ウィンドウ再作成後もテキスト入力失敗 - タスクをスキップ`);
-                // エラー時の排他制御クリーンアップ
-                await this.exclusiveManager.cleanupOnError(
-                  task,
-                  globalThis.sheetsClient,
-                  {
-                    spreadsheetId: this.spreadsheetData?.spreadsheetId,
-                    gid: this.spreadsheetData?.gid
-                  }
-                );
-                taskContexts.pop(); // 失敗したタスクを削除
-                continue;
+          this.logger.log(`[StreamProcessorV2] 🔄 テキスト入力失敗のため、ウィンドウを再作成してリトライ`);
+          let retrySuccess = false;
+          
+          // ウィンドウ再作成を3回まで試行
+          for (let windowRetry = 0; windowRetry < 3; windowRetry++) {
+            try {
+              // 既存ウィンドウを閉じる
+              if (currentTabId) {
+                await this.windowService.closeWindow(currentTabId);
+                await this.delay(1500);
               }
-            } else {
-              this.logger.error(`[StreamProcessorV2] ❌ ウィンドウ再作成失敗 - タスクをスキップ`);
-              // エラー時のクリーンアップ: 「現在操作中です」マーカーを削除
-              try {
-                await globalThis.sheetsClient?.updateCell(
+              
+              // 新しいウィンドウを作成
+              this.logger.log(`[StreamProcessorV2] 🔄 ウィンドウ再作成試行 ${windowRetry + 1}/3`);
+              const newTabId = await this.createWindowForTask(task, position);
+              
+              if (newTabId) {
+                currentTabId = newTabId;
+                taskContexts[taskContexts.length - 1].tabId = newTabId;
+                
+                // ページロードを待つ
+                await this.delay(3000);
+                await this.injectScriptsForTab(newTabId, task.aiType);
+                await this.delay(1000);
+                
+                // テキスト入力を再試行（3回まで）
+                for (let textRetry = 0; textRetry < 3; textRetry++) {
+                  const finalResult = await this.executePhaseOnTab(newTabId, { ...task, prompt }, 'text');
+                  if (finalResult && finalResult.success) {
+                    this.logger.log(`[StreamProcessorV2] ✅ ウィンドウ再作成後のテキスト入力成功（試行 ${textRetry + 1}）`);
+                    retrySuccess = true;
+                    break;
+                  }
+                  if (textRetry < 2) {
+                    this.logger.log(`[StreamProcessorV2] テキスト入力再試行 ${textRetry + 2}/3`);
+                    await this.delay(2000);
+                  }
+                }
+                
+                if (retrySuccess) break;
+              }
+            } catch (error) {
+              this.logger.error(`[StreamProcessorV2] ウィンドウ再作成エラー（試行 ${windowRetry + 1}）:`, error);
+            }
+            
+            if (windowRetry < 2 && !retrySuccess) {
+              await this.delay(2000);
+            }
+          }
+          
+          // 最終的に失敗した場合のクリーンアップ
+          if (!retrySuccess) {
+            this.logger.error(`[StreamProcessorV2] ❌ すべてのリトライが失敗 - タスクをスキップ`);
+            try {
+              const { spreadsheetId, gid } = this.spreadsheetData || {};
+              if (spreadsheetId && globalThis.sheetsClient) {
+                await globalThis.sheetsClient.updateCell(
                   spreadsheetId,
                   `${task.column}${task.row}`,
                   '',  // マーカーをクリア
                   gid
                 );
-                this.logger.log(`[StreamProcessorV2] 🧹 エラークリーンアップ: ${task.column}${task.row}のマーカーを削除`);
-              } catch (cleanupError) {
-                this.logger.error(`[StreamProcessorV2] クリーンアップエラー:`, cleanupError);
               }
-              taskContexts.pop();
-              continue;
-            }
-          } catch (error) {
-            this.logger.error(`[StreamProcessorV2] ウィンドウ再作成エラー:`, error);
-            // エラー時のクリーンアップ: 「現在操作中です」マーカーを削除
-            try {
-              await globalThis.sheetsClient?.updateCell(
-                spreadsheetId,
-                `${task.column}${task.row}`,
-                '',  // マーカーをクリア
-                gid
-              );
               this.logger.log(`[StreamProcessorV2] 🧹 エラークリーンアップ: ${task.column}${task.row}のマーカーを削除`);
             } catch (cleanupError) {
               this.logger.error(`[StreamProcessorV2] クリーンアップエラー:`, cleanupError);
