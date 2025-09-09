@@ -515,9 +515,9 @@ export default class StreamProcessorV2 {
           
           // テキスト入力が最終的に失敗した場合、ウィンドウを閉じて再作成
           try {
-            const WindowService = await import('../../services/window-service.js').then(m => m.default);
-            await WindowService.closeWindow(currentTabId);
-            WindowService.releasePosition(position);
+            // WindowServiceは既にimportされているため、直接使用
+            await this.windowService.closeWindow(currentTabId);
+            this.windowService.releasePosition(position);
             
             await this.delay(2000);
             
@@ -536,16 +536,52 @@ export default class StreamProcessorV2 {
                 this.logger.log(`[StreamProcessorV2] ✅ ウィンドウ再作成後のテキスト入力成功`);
               } else {
                 this.logger.error(`[StreamProcessorV2] ❌ ウィンドウ再作成後もテキスト入力失敗 - タスクをスキップ`);
+                // エラー時のクリーンアップ: 「現在操作中です」マーカーを削除
+                try {
+                  await globalThis.sheetsClient?.updateCell(
+                    spreadsheetId,
+                    `${task.column}${task.row}`,
+                    '',  // マーカーをクリア
+                    gid
+                  );
+                  this.logger.log(`[StreamProcessorV2] 🧹 エラークリーンアップ: ${task.column}${task.row}のマーカーを削除`);
+                } catch (cleanupError) {
+                  this.logger.error(`[StreamProcessorV2] クリーンアップエラー:`, cleanupError);
+                }
                 taskContexts.pop(); // 失敗したタスクを削除
                 continue;
               }
             } else {
               this.logger.error(`[StreamProcessorV2] ❌ ウィンドウ再作成失敗 - タスクをスキップ`);
+              // エラー時のクリーンアップ: 「現在操作中です」マーカーを削除
+              try {
+                await globalThis.sheetsClient?.updateCell(
+                  spreadsheetId,
+                  `${task.column}${task.row}`,
+                  '',  // マーカーをクリア
+                  gid
+                );
+                this.logger.log(`[StreamProcessorV2] 🧹 エラークリーンアップ: ${task.column}${task.row}のマーカーを削除`);
+              } catch (cleanupError) {
+                this.logger.error(`[StreamProcessorV2] クリーンアップエラー:`, cleanupError);
+              }
               taskContexts.pop();
               continue;
             }
           } catch (error) {
             this.logger.error(`[StreamProcessorV2] ウィンドウ再作成エラー:`, error);
+            // エラー時のクリーンアップ: 「現在操作中です」マーカーを削除
+            try {
+              await globalThis.sheetsClient?.updateCell(
+                spreadsheetId,
+                `${task.column}${task.row}`,
+                '',  // マーカーをクリア
+                gid
+              );
+              this.logger.log(`[StreamProcessorV2] 🧹 エラークリーンアップ: ${task.column}${task.row}のマーカーを削除`);
+            } catch (cleanupError) {
+              this.logger.error(`[StreamProcessorV2] クリーンアップエラー:`, cleanupError);
+            }
             taskContexts.pop();
             continue;
           }

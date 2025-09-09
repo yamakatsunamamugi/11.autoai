@@ -46,32 +46,15 @@
             description: '回答停止ボタン'
         },
         '4_Canvas機能テキスト位置': {
-            selectors: UI_SELECTORS.Claude?.TEXT_EXTRACTION?.ARTIFACT_CONTENT || [
-                '#markdown-artifact',
-                '[id="markdown-artifact"]',
-                '.font-claude-response#markdown-artifact',
-                '[tabindex="0"]#markdown-artifact',
-                'div.mx-auto.max-w-3xl#markdown-artifact'
-            ],
+            selectors: UI_SELECTORS.Claude?.TEXT_EXTRACTION?.ARTIFACT_CONTENT || [],
             description: 'Canvas機能のテキスト表示エリア'
         },
         '4_2_Canvas開くボタン': {
-            selectors: UI_SELECTORS.Claude?.PREVIEW_BUTTON || [
-                '[aria-label="内容をプレビュー"]',
-                '[role="button"][aria-label="内容をプレビュー"]',
-                '.artifact-block-cell',
-                '[class*="artifact-block"]'
-            ],
+            selectors: UI_SELECTORS.Claude?.DEEP_RESEARCH?.CANVAS_PREVIEW || UI_SELECTORS.Claude?.PREVIEW_BUTTON || [],
             description: 'Canvas機能を開くボタン'
         },
         '5_通常処理テキスト位置': {
-            selectors: UI_SELECTORS.Claude?.TEXT_EXTRACTION?.NORMAL_RESPONSE || [
-                '.standard-markdown',
-                'div.standard-markdown',
-                '.grid.gap-2\\.5.standard-markdown',
-                'div.grid-cols-1.standard-markdown',
-                '[class*="standard-markdown"]'
-            ],
+            selectors: UI_SELECTORS.Claude?.TEXT_EXTRACTION?.NORMAL_RESPONSE || [],
             description: '通常処理のテキスト表示エリア'
         }
     });
@@ -82,31 +65,15 @@
         menuContainer: [
             { selector: UI_SELECTORS.Claude?.MENU?.CONTAINER || '[role="menu"][data-state="open"]', description: 'メニューコンテナ' }
         ],
-        otherModelsMenu: [
-            { selector: '[role="menuitem"][aria-haspopup="menu"]', description: 'role + aria-haspopup属性' },
-            { selector: '[role="menuitem"]:has(svg)', description: 'SVGアイコンを持つメニュー項目' },
-            { selector: 'div[role="menuitem"]:last-child', description: '最後のメニュー項目' }
-        ],
+        otherModelsMenu: (UI_SELECTORS.Claude?.MENU?.OTHER_MODELS || []).map(selector => ({ selector, description: 'その他のモデルメニュー' })),
         modelDisplay: (UI_SELECTORS.Claude?.MODEL_INFO?.TEXT_ELEMENT || []).slice(0, 3).map(selector => ({ selector, description: 'モデル表示要素' }))
     };
     
     // 機能選択用セレクタ（ui-selectorsとテストコードのマージ）
     const featureSelectors = {
         menuButton: UI_SELECTORS.Claude?.FUNCTION_MENU_BUTTON || [],
-        menuContainer: [
-            '[aria-labelledby="input-tools-menu-trigger"]',
-            '.w-\\[20rem\\].absolute.max-w-\\[calc\\(100vw-16px\\)\\].block',
-            'div.z-dropdown.bg-bg-000.rounded-xl',
-            'div[style*="max-height"][style*="336"]',
-            '.absolute .flex-col .overscroll-auto'
-        ],
-        webSearchToggle: [
-            'button:has(svg path[d*="M7.2705 3.0498"]):has(input[role="switch"])',
-            'button:has(p:contains("ウェブ検索")):has(input[role="switch"])',
-            'button.text-primary-500:has(input[role="switch"])',
-            'div:contains("ウェブ検索") button:has(.group\\/switch)',
-            'button .font-base:contains("ウェブ検索")'
-        ],
+        menuContainer: UI_SELECTORS.Claude?.FEATURE_MENU?.CONTAINER || [],
+        webSearchToggle: UI_SELECTORS.Claude?.FEATURE_MENU?.WEB_SEARCH_TOGGLE || [],
         researchButton: UI_SELECTORS.Claude?.FEATURE_BUTTONS?.RESEARCH || [
             'button[aria-pressed]:has(svg path[d*="M8.5 2C12.0899"])',
             'button:has(p:contains("リサーチ"))',

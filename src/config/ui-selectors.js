@@ -358,6 +358,29 @@ export const UI_SELECTORS = {
             CONTAINER: '[role="menu"][data-state="open"], [role="menu"]',
             ITEM: '[role="option"], [role="menuitem"]',
             MODEL_ITEM: 'button[role="option"]:has(span)',  // モデル選択用
+            OTHER_MODELS: [
+                '[role="menuitem"][aria-haspopup="menu"]',
+                '[role="menuitem"]:has(svg)',
+                'div[role="menuitem"]:last-child'
+            ]
+        },
+        
+        // 機能メニュー関連
+        FEATURE_MENU: {
+            CONTAINER: [
+                '[aria-labelledby="input-tools-menu-trigger"]',
+                '.w-\\[20rem\\].absolute.max-w-\\[calc\\(100vw-16px\\)\\].block',
+                'div.z-dropdown.bg-bg-000.rounded-xl',
+                'div[style*="max-height"][style*="336"]',
+                '.absolute .flex-col .overscroll-auto'
+            ],
+            WEB_SEARCH_TOGGLE: [
+                'button:has(svg path[d*="M7.2705 3.0498"]):has(input[role="switch"])',
+                'button:has(p:contains("ウェブ検索")):has(input[role="switch"])',
+                'button.text-primary-500:has(input[role="switch"])',
+                'div:contains("ウェブ検索") button:has(.group\\/switch)',
+                'button .font-base:contains("ウェブ検索")'
+            ]
         },
         
         // メニューアイテム（拡張）
@@ -366,6 +389,16 @@ export const UI_SELECTORS = {
             '[role="menuitem"]',
             '[role="menuitemradio"]'  // ラジオボタン機能（Deep Research、エージェントモード等）に必要
         ],
+        
+        // DeepResearch用セレクタ
+        DEEP_RESEARCH: {
+            CANVAS_PREVIEW: [
+                '[aria-label="内容をプレビュー"]',
+                '[role="button"][aria-label="内容をプレビュー"]',
+                '.artifact-block-cell',
+                '[class*="artifact-block"]'
+            ]
+        },
         
         // Canvas関連（Claude特有）- DeepResearch/Artifacts対応
         CANVAS: {
