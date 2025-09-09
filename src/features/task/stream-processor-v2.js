@@ -1996,9 +1996,11 @@ export default class StreamProcessorV2 {
         throw new Error('Spreadsheet ID not available');
       }
 
-      // SheetsClientのインスタンスを取得
-      const SheetsClient = await import('../spreadsheet/sheets-client.js').then(m => m.default);
-      const sheetsClient = new SheetsClient();
+      // SheetsClientのインスタンスを取得（Service Worker環境ではglobalThisから取得）
+      if (!globalThis.sheetsClient) {
+        throw new Error('SheetsClient not available in Service Worker environment');
+      }
+      const sheetsClient = globalThis.sheetsClient;
       
       // プロンプト列を取得
       let promptCells = [];
@@ -2072,8 +2074,8 @@ export default class StreamProcessorV2 {
       return combinedPrompt;
     } catch (error) {
       this.logger.error(`[StreamProcessorV2] プロンプト取得エラー:`, error);
-      // エラーをthrowせず、デフォルトのプロンプトを返す
-      return `テスト - ${task.column}${task.row}`;
+      // エラー時は適切にthrow（フォールバックは削除）
+      throw new Error(`Failed to fetch prompt for ${task.column}${task.row}: ${error.message}`);
     }
   }
 
