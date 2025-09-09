@@ -1805,26 +1805,8 @@ async function processMultipleUrls(urls) {
       savedTasks = storageData.savedTasks;
     }
     
-    // タスクがまだない場合は、スプレッドシートを読み込む
-    if (!savedTasks || !savedTasks.tasks || savedTasks.tasks.length === 0) {
-      const loadResponse = await chrome.runtime.sendMessage({
-        action: "loadSpreadsheet",
-        url: currentUrl,
-      });
-
-      console.log("[UI] loadSpreadsheet レスポンス:", loadResponse);
-
-      if (!loadResponse || !loadResponse.success) {
-        throw new Error(loadResponse?.error || "スプレッドシート読み込みエラー");
-      }
-
-      // 少し待ってからタスクを取得
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // タスクQueueから保存されたタスクを取得して処理
-      const taskQueue = new (await import("../features/task/queue.js")).default();
-      savedTasks = await taskQueue.loadTaskList();
-    }
+    // 動的モードではタスクは実行時に生成されるため、ここでの再読み込みをスキップ
+    // すでに上記の自動読み込みでスプレッドシートデータは取得済み
 
     
     // AI列数の正しい計算（savedTasksから取得）
@@ -3348,28 +3330,15 @@ async function fetchAndDisplaySelectorInfo(aiType) {
 
     // まずChrome Storageからセレクタデータを確認
     const result = await chrome.storage.local.get(['ai_selector_data']);
-    console.log(`🔍 Chrome Storage全体のデータ:`, result.ai_selector_data);
     
     // aiTypeは'chatgpt', 'claude', 'gemini'の小文字で渡される
     const storedData = result.ai_selector_data?.[aiType];
-    console.log(`🔍 ${aiType}の保存データ:`, storedData);
     
     // セレクタデータを取得（selectorDataプロパティの中にある場合とない場合の両方に対応）
     const storedSelectors = storedData?.selectorData || storedData;
-    console.log(`🔍 ${aiType}のセレクタデータ:`, storedSelectors);
-    
-    // 詳細なデバッグ情報を追加
-    if (storedSelectors) {
-      console.log(`🔍 ${aiType} セレクタキー:`, Object.keys(storedSelectors));
-      console.log(`🔍 ${aiType} input値:`, storedSelectors.input);
-      console.log(`🔍 ${aiType} send値:`, storedSelectors.send);
-      console.log(`🔍 ${aiType} stop値:`, storedSelectors.stop);
-      console.log(`🔍 ${aiType} response値:`, storedSelectors.response);
-    }
     
     // ストレージにデータがある場合は優先的に表示
     if (storedSelectors && (storedSelectors.input || storedSelectors.send || storedSelectors.response || storedSelectors.stop)) {
-      console.log(`📊 Chrome Storageからセレクタデータを取得: ${aiType}`, storedSelectors);
       
       const aiNameMap = {
         'chatgpt': 'ChatGPT',

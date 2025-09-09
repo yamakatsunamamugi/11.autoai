@@ -636,7 +636,6 @@ class SheetsClient {
     // valueRenderOptionを追加して、空セルも含めて全データを取得
     const url = `${this.baseUrl}/${spreadsheetId}/values/${encodedRange}?valueRenderOption=FORMATTED_VALUE`;
     
-    this.logger.log("SheetsClient", `API URL: ${url}`);
 
     const response = await fetch(url, {
       headers: {
@@ -674,10 +673,7 @@ class SheetsClient {
   async loadAutoAIData(spreadsheetId, gid = null) {
     // キャッシュ機能を削除 - 常に最新データを取得
     
-    this.logger.log(
-      "SheetsClient",
-      `スプレッドシート読み込み開始（効率化版）: ${spreadsheetId}${gid ? ` (gid: ${gid})` : ""}`,
-    );
+    this.logger.log("SheetsClient", `スプレッドシート読み込み開始`);
 
     // シート名を取得（gidが指定されている場合）
     let sheetName = null;
@@ -693,7 +689,6 @@ class SheetsClient {
     
     // ===== STEP 1: A列のみを読み込んで行構造を把握 =====
     const columnAData = await this.getSheetData(spreadsheetId, "A:A", gid);
-    this.logger.log("SheetsClient", `A列読み込み完了: ${columnAData.length}行`);
     
     // 設定を取得
     const config = typeof SPREADSHEET_CONFIG !== "undefined"
@@ -724,27 +719,22 @@ class SheetsClient {
       // メニュー行
       if (firstCell === config.rowIdentifiers.menuRow.keyword) {
         menuRowIndex = i;
-        this.logger.log("SheetsClient", `メニュー行検出: 行${i + 1}`);
       }
       // 制御行
       else if (firstCell === config.rowIdentifiers.controlRow.keyword) {
         controlRowIndex = i;
-        this.logger.log("SheetsClient", `制御行検出: 行${i + 1}`);
       }
       // AI行
       else if (firstCell === config.rowIdentifiers.aiRow.keyword) {
         aiRowIndex = i;
-        this.logger.log("SheetsClient", `AI行検出: 行${i + 1}`);
       }
       // モデル行
       else if (firstCell === config.rowIdentifiers.modelRow.keyword) {
         modelRowIndex = i;
-        this.logger.log("SheetsClient", `モデル行検出: 行${i + 1}`);
       }
       // 機能行
       else if (firstCell === config.rowIdentifiers.taskRow.keyword) {
         taskRowIndex = i;
-        this.logger.log("SheetsClient", `機能行検出: 行${i + 1}`);
       }
       // 作業行（数字で始まる行）
       else if (/^\d+$/.test(firstCell)) {
@@ -761,7 +751,15 @@ class SheetsClient {
       }
     }
     
-    this.logger.log("SheetsClient", `行構造解析完了: 作業行${workRows.length}行検出`);
+    // 解析結果のサマリーログ
+    const detectedRows = [
+      menuRowIndex >= 0 ? 'メニュー' : null,
+      controlRowIndex >= 0 ? '制御' : null,
+      aiRowIndex >= 0 ? 'AI' : null,
+      modelRowIndex >= 0 ? 'モデル' : null,
+      taskRowIndex >= 0 ? '機能' : null
+    ].filter(Boolean);
+    this.logger.log("SheetsClient", `行構造解析完了: ${detectedRows.join('・')}行検出, 作業行${workRows.length}行`);
     
     // ===== STEP 3: 必要な行だけを読み込み =====
     const rowsToFetch = [];

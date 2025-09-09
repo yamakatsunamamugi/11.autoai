@@ -73,15 +73,13 @@ class WindowManager {
     this.refreshWindowLocationBtn = document.getElementById('refreshWindowLocationBtn');
     this.closeWindowLocationBtn = document.getElementById('closeWindowLocationBtn');
     
-    // ■ DOM要素の存在確認（デバッグ用ログ出力）
-    console.log('[WindowManager] DOM要素確認:');
-    console.log('- 拡張機能モニター番号入力:', !!this.extensionWindowNumberInput);
-    console.log('- スプレッドシートモニター番号入力:', !!this.spreadsheetWindowNumberInput);
-    console.log('- モニター場所確認ボタン:', !!this.checkWindowLocationsBtn);
-    console.log('- ダイアログ要素:', !!this.windowLocationDialog);
-    console.log('- リスト要素:', !!this.windowLocationList);
-    console.log('- 更新ボタン:', !!this.refreshWindowLocationBtn);
-    console.log('- 閉じるボタン:', !!this.closeWindowLocationBtn);
+    // ■ DOM要素の存在確認（まとめて1行で表示）
+    const elementStatus = [
+      this.extensionWindowNumberInput, this.spreadsheetWindowNumberInput, 
+      this.checkWindowLocationsBtn, this.windowLocationDialog, 
+      this.windowLocationList, this.refreshWindowLocationBtn, this.closeWindowLocationBtn
+    ].filter(Boolean).length;
+    console.log(`[WindowManager] DOM要素確認: ${elementStatus}/7 要素が利用可能`);
     
     // ■ 重要な要素の存在チェック
     // モニター番号入力欄が見つからない場合は警告を表示

@@ -816,11 +816,6 @@ export default class StreamProcessorV2 {
             }
             
             // SpreadsheetLoggerでログを記録
-            this.logger.log(`🔍 [DEBUG] SpreadsheetLogger条件チェック:`, {
-              'this.spreadsheetLogger': !!this.spreadsheetLogger,
-              'context.task.logColumns': context.task.logColumns,
-              'logColumns.length': context.task.logColumns?.length || 0
-            });
             
             if (this.spreadsheetLogger && context.task.logColumns && context.task.logColumns.length > 0) {
               try {
@@ -1191,13 +1186,10 @@ export default class StreamProcessorV2 {
           
         case 'model':
           // モデル選択のみ実行
-          this.logger.log(`🔍 [DEBUG] モデル選択実行開始 - タブ: ${tabId}, モデル: "${task.model}" (長さ: ${task.model?.length}), AI: ${aiType}, タスク: ${task.column}${task.row}`);
           
           result = await chrome.scripting.executeScript({
             target: { tabId },
             func: async (model, aiType) => {
-              console.log(`🔍 [DEBUG] タブ内モデル選択開始 - モデル: "${model}" (長さ: ${model?.length}, 空文字: ${model === ''}), AI: ${aiType}`);
-              
               // AIタイプに応じたAutomationオブジェクトを取得
               const automationMap = {
                 'claude': ['ClaudeAutomationV2', 'ClaudeAutomation'],
@@ -1206,48 +1198,32 @@ export default class StreamProcessorV2 {
               };
               
               const possibleNames = automationMap[aiType.toLowerCase()] || [];
-              console.log(`🔍 [DEBUG] 探索対象: ${possibleNames.join(', ')}`);
-              
-              const automationName = possibleNames.find(name => {
-                const exists = window[name] !== undefined;
-                console.log(`🔍 [DEBUG] ${name} 存在確認: ${exists}`);
-                return exists;
-              });
-              
+              const automationName = possibleNames.find(name => window[name] !== undefined);
               const automation = automationName ? window[automationName] : null;
-              console.log(`🔍 [DEBUG] 使用するAutomation: ${automationName || 'なし'}`);
               
               if (automation && automation.selectModelOnly) {
-                console.log(`🔍 [DEBUG] selectModelOnly実行開始`);
                 try {
                   const result = await automation.selectModelOnly(model);
-                  console.log(`🔍 [DEBUG] selectModelOnly実行完了 - 結果:`, result);
                   return result;
                 } catch (error) {
-                  console.error(`❌ [DEBUG] selectModelOnly実行エラー:`, error);
+                  console.error(`❌ Model selection error:`, error);
                   return { success: false, error: error.message || 'Model selection failed' };
                 }
               }
               
-              const errorResult = { success: false, error: `${aiType} automation not found or selectModelOnly not supported` };
-              console.log(`🔍 [DEBUG] エラー終了:`, errorResult);
-              return errorResult;
+              return { success: false, error: `${aiType} automation not found or selectModelOnly not supported` };
             },
             args: [task.model, aiType]
           });
           
-          this.logger.log(`🔍 [DEBUG] モデル選択結果:`, result);
           break;
           
         case 'function':
           // 機能選択のみ実行
-          this.logger.log(`🔍 [DEBUG] 機能選択実行開始 - タブ: ${tabId}, 機能: "${task.function}" (長さ: ${task.function?.length}), AI: ${aiType}, タスク: ${task.column}${task.row}`);
           
           result = await chrome.scripting.executeScript({
             target: { tabId },
             func: async (functionName, aiType) => {
-              console.log(`🔍 [DEBUG] タブ内機能選択開始 - 機能: "${functionName}" (長さ: ${functionName?.length}, 空文字: ${functionName === ''}), AI: ${aiType}`);
-              
               // AIタイプに応じたAutomationオブジェクトを取得
               const automationMap = {
                 'claude': ['ClaudeAutomationV2', 'ClaudeAutomation'],
@@ -1256,32 +1232,18 @@ export default class StreamProcessorV2 {
               };
               
               const possibleNames = automationMap[aiType.toLowerCase()] || [];
-              console.log(`🔍 [DEBUG] 探索対象: ${possibleNames.join(', ')}`);
-              
-              const automationName = possibleNames.find(name => {
-                const exists = window[name] !== undefined;
-                console.log(`🔍 [DEBUG] ${name} 存在確認: ${exists}`);
-                return exists;
-              });
-              
+              const automationName = possibleNames.find(name => window[name] !== undefined);
               const automation = automationName ? window[automationName] : null;
-              console.log(`🔍 [DEBUG] 使用するAutomation: ${automationName || 'なし'}`);
               
               if (automation && automation.selectFunctionOnly) {
-                console.log(`🔍 [DEBUG] selectFunctionOnly実行開始`);
                 try {
                   const result = await automation.selectFunctionOnly(functionName);
-                  console.log(`🔍 [DEBUG] selectFunctionOnly実行完了 - 結果:`, result);
                   
                   // Geminiの場合、成功判定を調整（Canvasなど特殊な機能名でも成功とする）
                   if (aiType.toLowerCase() === 'gemini' && functionName) {
-                    // Canvas機能などの特別処理
                     const specialFunctions = ['Canvas', 'Deep Research', 'DeepResearch', 'DeepReserch'];
                     if (specialFunctions.some(f => functionName.includes(f))) {
-                      console.log(`🔍 [DEBUG] Gemini特殊機能「${functionName}」の処理 - 成功として扱う`);
-                      // resultがfalseでも強制的に成功とする（機能選択自体は実行されたため）
                       if (!result.success) {
-                        console.log(`⚠️ [DEBUG] 機能選択は実行されたが確認できなかった - 成功として続行`);
                         return { success: true, warning: '機能選択状態の確認ができませんでしたが、処理を続行します' };
                       }
                     }
@@ -1289,19 +1251,16 @@ export default class StreamProcessorV2 {
                   
                   return result;
                 } catch (error) {
-                  console.error(`❌ [DEBUG] selectFunctionOnly実行エラー:`, error);
+                  console.error(`Function selection error:`, error);
                   return { success: false, error: error.message || 'Function selection failed' };
                 }
               }
               
-              const errorResult = { success: false, error: `${aiType} automation not found or selectFunctionOnly not supported` };
-              console.log(`🔍 [DEBUG] エラー終了:`, errorResult);
-              return errorResult;
+              return { success: false, error: `${aiType} automation not found or selectFunctionOnly not supported` };
             },
             args: [task.function, aiType]
           });
           
-          console.log(`🔍 [DEBUG] chrome.scripting.executeScript完了 - 結果:`, result);
           break;
           
         case 'send':
@@ -1340,8 +1299,6 @@ export default class StreamProcessorV2 {
       }
       
       // 結果を返す
-      console.log(`🔍 [DEBUG] 結果処理開始 - result:`, result);
-      console.log(`🔍 [DEBUG] result配列長:`, result?.length);
       
       if (result && result[0]) {
         const finalResult = result[0].result;
@@ -2637,7 +2594,7 @@ export default class StreamProcessorV2 {
       // 動的タスク生成：プロンプト有り×回答無しをスキャン（API呼び出し0回）
       const promptCols = promptGroup.promptColumns;
       const answerCols = promptGroup.answerColumns.map(col => col.index);
-      const tasks = this.scanGroupTasks(spreadsheetData, promptCols, answerCols);
+      const tasks = await this.scanGroupTasks(spreadsheetData, promptCols, answerCols);
       
       // TaskListオブジェクト形式に変換（互換性維持）
       const groupTaskList = {
@@ -2814,7 +2771,7 @@ export default class StreamProcessorV2 {
         // 動的タスク生成：プロンプト有り×回答無しをスキャン
         const promptCols = promptGroup.promptColumns;
         const answerCols = promptGroup.answerColumns.map(col => col.index);
-        const tasks = this.scanGroupTasks(spreadsheetData, promptCols, answerCols);
+        const tasks = await this.scanGroupTasks(spreadsheetData, promptCols, answerCols);
         
         const groupTaskList = {
           tasks: tasks.map(task => ({
@@ -3338,7 +3295,7 @@ export default class StreamProcessorV2 {
         // 動的タスク生成：プロンプト有り×回答無しをスキャン
         const promptCols = promptGroup.promptColumns;
         const answerCols = promptGroup.answerColumns.map(col => col.index);
-        const tasks = this.scanGroupTasks(spreadsheetData, promptCols, answerCols);
+        const tasks = await this.scanGroupTasks(spreadsheetData, promptCols, answerCols);
         
         const groupTaskList = {
           tasks: tasks.map(task => ({
@@ -3784,7 +3741,7 @@ export default class StreamProcessorV2 {
    * @param {Array} answerCols - 回答列インデックス配列  
    * @returns {Array} タスクリスト
    */
-  scanGroupTasks(spreadsheetData, promptCols, answerCols) {
+  async scanGroupTasks(spreadsheetData, promptCols, answerCols) {
     const tasks = [];
     
     if (!spreadsheetData?.values || !Array.isArray(spreadsheetData.values)) {
@@ -3810,7 +3767,20 @@ export default class StreamProcessorV2 {
     
     // 作業行範囲を特定（通常は9行目以降）
     const startRow = 8; // 0ベース（9行目）
-    const endRow = spreadsheetData.values.length;
+    let endRow = spreadsheetData.values.length;
+    
+    // プロンプト列をスキャンしてプロンプトがある行を動的に特定
+    const promptRowsFound = await this.scanPromptRows(promptCols);
+    if (promptRowsFound.length > 0) {
+      const maxPromptRow = Math.max(...promptRowsFound);
+      if (maxPromptRow >= endRow) {
+        // 必要に応じてendRowを拡張し、追加データを読み込み
+        const additionalRows = maxPromptRow - endRow + 1;
+        this.logger.log(`[StreamProcessorV2] プロンプトが${maxPromptRow + 1}行目まで発見、${additionalRows}行分のデータを追加読み込み`);
+        await this.loadAdditionalRows(maxPromptRow);
+        endRow = maxPromptRow + 1;
+      }
+    }
     
     // カウンタ
     let totalRowsChecked = 0;
@@ -4005,12 +3975,6 @@ export default class StreamProcessorV2 {
           }
         }
         
-        this.logger.log(`[preprocessTaskGroup] バッチ取得完了:`, {
-          モデルデータ: Object.keys(organizedData.modelData).length,
-          機能データ: Object.keys(organizedData.functionData).length,
-          プロンプトデータ: Object.keys(organizedData.promptData).length,
-          制御データ: Object.keys(organizedData.controlData).length
-        });
         
         return organizedData;
       } catch (error) {
@@ -4022,6 +3986,63 @@ export default class StreamProcessorV2 {
     return {};
   }
   
+  /**
+   * グループに処理すべきタスクがあるかチェック（軽量版）
+   * @param {Object} group - タスクグループ
+   * @param {Object} spreadsheetData - スプレッドシートデータ
+   * @returns {boolean} タスクがあるかどうか
+   */
+  hasTasksInGroup(group, spreadsheetData) {
+    try {
+      if (!spreadsheetData?.values || !group?.columnRange) {
+        return false;
+      }
+
+      const { promptColumns, answerColumns } = group.columnRange;
+      if (!promptColumns?.length || !answerColumns?.length) {
+        return false;
+      }
+
+      // 簡単な作業行チェック（9行目以降で数字があるもの）
+      let hasTask = false;
+      for (let rowIndex = 8; rowIndex < spreadsheetData.values.length; rowIndex++) {
+        const rowData = spreadsheetData.values[rowIndex] || [];
+        
+        // A列に数字があるかチェック（作業行判定）
+        const aValue = rowData[0];
+        if (!aValue || !/^\d+$/.test(String(aValue).trim())) {
+          continue;
+        }
+
+        // プロンプト列のいずれかにデータがあるかチェック
+        const hasPrompt = promptColumns.some(promptCol => {
+          const colIndex = this.columnToIndex(promptCol);
+          return colIndex >= 0 && rowData[colIndex] && String(rowData[colIndex]).trim();
+        });
+
+        if (!hasPrompt) {
+          continue;
+        }
+
+        // 回答列がすべて空かチェック
+        const allAnswersEmpty = answerColumns.every(answerCol => {
+          const colIndex = this.columnToIndex(answerCol.column || answerCol);
+          return colIndex < 0 || !rowData[colIndex] || !String(rowData[colIndex]).trim();
+        });
+
+        if (allAnswersEmpty) {
+          hasTask = true;
+          break;
+        }
+      }
+
+      return hasTask;
+    } catch (error) {
+      this.logger.warn(`[hasTasksInGroup] エラー: ${error.message}`);
+      return true; // エラー時は安全のため処理ありとして扱う
+    }
+  }
+
   /**
    * 動的タスクグループ処理
    * @param {Object} spreadsheetData - スプレッドシートデータ
@@ -4037,15 +4058,8 @@ export default class StreamProcessorV2 {
     this.spreadsheetData = spreadsheetData;
     this.spreadsheetUrl = spreadsheetData?.spreadsheetUrl; // spreadsheetUrlを保存
     
-    // デバッグ: spreadsheetDataの内容確認
-    this.logger.log('[DEBUG] processDynamicTaskGroups - spreadsheetData構造:', {
-      hasValues: !!spreadsheetData?.values,
-      hasModelRow: !!spreadsheetData?.modelRow,
-      hasTaskRow: !!spreadsheetData?.taskRow,
-      modelRowData: spreadsheetData?.modelRow?.data?.slice(0, 5),
-      taskRowData: spreadsheetData?.taskRow?.data?.slice(0, 5),
-      keys: Object.keys(spreadsheetData || {})
-    });
+    // spreadsheetData構造確認（簡潔版）
+    this.logger.log('[DEBUG] スプレッドシートデータ確認完了');
     
     // SpreadsheetLoggerを初期化
     await this.initializeSpreadsheetLogger();
@@ -4069,30 +4083,25 @@ export default class StreamProcessorV2 {
     
     // 各タスクグループを順番に処理
     for (const group of taskGroups) {
-      // グループ処理開始前に全ウィンドウを閉じる
-      this.logger.log(`[DEBUG] グループ処理開始前 - 全ウィンドウクローズ実行`);
-      try {
-        await WindowService.closeAllWindows();
-        this.logger.log(`[DEBUG] 全ウィンドウクローズ完了`);
-      } catch (error) {
-        this.logger.warn(`[DEBUG] ウィンドウクローズ中にエラー:`, error);
+      // 事前チェック：このグループに処理すべきタスクがあるか？
+      if (!this.hasTasksInGroup(group, spreadsheetData)) {
+        this.logger.log(`[StreamProcessorV2] ⏭️ ${group.name}: 作業なし、スキップ`);
+        continue; // 次のグループへ
       }
       
-      // 5秒待機してからグループ処理を開始
-      this.logger.log(`[DEBUG] ウィンドウクローズ後、5秒待機開始`);
-      await this.delay(5000);
-      this.logger.log(`[DEBUG] 5秒待機完了、グループ処理開始`);
-      
+      // 作業がある場合のみ重い処理を実行
       this.logger.log(`[StreamProcessorV2] 📋 グループ処理開始: ${group.name} (${group.startColumn}-${group.endColumn}列)`);
       
-      // デバッグ：グループAI情報を詳細出力
-      this.logger.log(`[DEBUG] グループAI情報:`, {
-        'group.name': group.name,
-        'group.aiType': group.aiType,
-        'group.columnRange': group.columnRange,
-        'startColumn': group.startColumn,
-        'endColumn': group.endColumn
-      });
+      // グループ処理開始前に全ウィンドウを閉じる
+      try {
+        await WindowService.closeAllWindows();
+      } catch (error) {
+        this.logger.warn(`ウィンドウクローズエラー:`, error);
+      }
+      
+      // 少し待機してからグループ処理を開始
+      await this.delay(2000); // 5秒 → 2秒に短縮
+      
       
       // グループの列情報からインデックス配列を作成
       const promptColIndices = group.columnRange.promptColumns.map(col => this.columnToIndex(col));
@@ -4110,7 +4119,7 @@ export default class StreamProcessorV2 {
       });
       
       // このグループのタスクを動的にスキャン
-      const tasks = this.scanGroupTasks(
+      const tasks = await this.scanGroupTasks(
         spreadsheetData,
         promptColIndices,
         answerColIndices
@@ -4285,6 +4294,96 @@ export default class StreamProcessorV2 {
     
     this.logger.log(`[StreamProcessorV2] タスクグループ検出: ${groups.length}グループ`);
     return groups;
+  }
+
+  /**
+   * プロンプト列をスキャンしてプロンプトがある行を特定
+   * @param {Array} promptCols - プロンプト列のインデックス配列
+   * @returns {Array} プロンプトがある行のインデックス配列（0ベース）
+   */
+  async scanPromptRows(promptCols) {
+    const promptRows = [];
+    
+    try {
+      const spreadsheetId = this.spreadsheetUrl ? this.extractSpreadsheetId(this.spreadsheetUrl) : null;
+      const sheetName = this.spreadsheetData?.sheetName || '1.メルマガ';
+      
+      if (!spreadsheetId || !globalThis.sheetsClient) {
+        this.logger.warn('[StreamProcessorV2] プロンプトスキャンに必要なデータが不足');
+        return [];
+      }
+      
+      // 各プロンプト列をスキャン
+      for (const colIndex of promptCols) {
+        const columnName = this.indexToColumn(colIndex);
+        this.logger.log(`[StreamProcessorV2] プロンプト列スキャン開始: ${columnName}`);
+        
+        // 列全体を取得（9行目以降の範囲で確認）
+        const startRow = 9; // 1ベース
+        const endRow = 100; // とりあえず100行まで確認
+        const range = `${columnName}${startRow}:${columnName}${endRow}`;
+        
+        const cellValues = await globalThis.sheetsClient.getCellValues(spreadsheetId, sheetName, range);
+        
+        // プロンプトがある行を特定
+        for (let i = 0; i < cellValues.length; i++) {
+          const rowIndex = startRow - 1 + i; // 0ベースに変換
+          const value = cellValues[i];
+          
+          if (value && value.trim() && value.trim() !== '') {
+            if (!promptRows.includes(rowIndex)) {
+              promptRows.push(rowIndex);
+            }
+          }
+        }
+      }
+      
+      promptRows.sort((a, b) => a - b);
+      this.logger.log(`[StreamProcessorV2] プロンプト有り行を発見: ${promptRows.map(r => r + 1).join(', ')}`);
+      
+    } catch (error) {
+      this.logger.error(`[StreamProcessorV2] プロンプトスキャンエラー:`, error);
+    }
+    
+    return promptRows;
+  }
+  
+  /**
+   * 追加行データを読み込み
+   * @param {number} maxRowIndex - 必要な最大行インデックス（0ベース）
+   */
+  async loadAdditionalRows(maxRowIndex) {
+    try {
+      const spreadsheetId = this.spreadsheetUrl ? this.extractSpreadsheetId(this.spreadsheetUrl) : null;
+      const sheetName = this.spreadsheetData?.sheetName || '1.メルマガ';
+      
+      if (!spreadsheetId || !globalThis.sheetsClient) {
+        return;
+      }
+      
+      const currentRows = this.spreadsheetData.values.length;
+      const additionalRowsNeeded = maxRowIndex + 1 - currentRows;
+      
+      if (additionalRowsNeeded <= 0) {
+        return;
+      }
+      
+      // 追加行を読み込み
+      const startRow = currentRows + 1; // 1ベース
+      const endRow = maxRowIndex + 1; // 1ベース
+      const range = `A${startRow}:CZ${endRow}`;
+      
+      const additionalData = await globalThis.sheetsClient.getCellValues(spreadsheetId, sheetName, range);
+      
+      // spreadsheetData.valuesに追加
+      if (additionalData && Array.isArray(additionalData)) {
+        this.spreadsheetData.values.push(...additionalData);
+        this.logger.log(`[StreamProcessorV2] 追加行読み込み完了: ${additionalRowsNeeded}行追加`);
+      }
+      
+    } catch (error) {
+      this.logger.error(`[StreamProcessorV2] 追加行読み込みエラー:`, error);
+    }
   }
 
   /**

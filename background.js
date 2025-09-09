@@ -392,6 +392,13 @@ setTimeout(() => {
 
 // ===== グローバル変数 =====
 let isProcessing = false;
+// タスクグループキャッシュ（processSpreadsheetDataの結果を保存）
+let taskGroupCache = {
+  spreadsheetId: null,
+  gid: null,
+  taskGroups: null,
+  timestamp: null
+};
 
 // ===== AI実行制御（共通モジュールを使用） =====
 /**
@@ -680,9 +687,6 @@ function processSpreadsheetData(spreadsheetData) {
       header: trimmedHeader,
     };
     
-    // デバッグログ
-    if (index < 20) {
-    }
     
     // ログ列または特別列の検出（新グループの開始）
     if (trimmedHeader === "ログ" || 
@@ -729,19 +733,7 @@ function processSpreadsheetData(spreadsheetData) {
     
     // 回答列の検出
     if (currentGroup && (trimmedHeader.includes("回答") || trimmedHeader.includes("答"))) {
-      // デバッグ：AB列の判定過程を詳細ログ出力
-      if (columnLetter === 'AB') {
-        console.log(`[DEBUG] AB列判定開始:`, {
-          columnLetter: columnLetter,
-          currentGroupAiType: currentGroup.aiType,
-          aiValue: `"${aiValue}"`,
-          trimmedHeader: `"${trimmedHeader}"`,
-          'aiValue.trim()': aiValue ? `"${aiValue.trim()}"` : 'null',
-          'aiValue.length': aiValue ? aiValue.length : 0,
-          'aiValueType': typeof aiValue,
-          'isEmpty': !aiValue || aiValue.trim() === ''
-        });
-      }
+      // AB列の判定（デバッグログ削除）
       
       // AIタイプを判定
       let detectedAiType = 'Claude'; // デフォルト
@@ -766,17 +758,7 @@ function processSpreadsheetData(spreadsheetData) {
         detectedAiType = currentGroup.aiType || 'Claude';
       }
       
-      // デバッグ：AB列の最終判定結果を出力
-      if (columnLetter === 'AB') {
-        console.log(`[DEBUG] AB列判定完了:`, {
-          columnLetter: columnLetter,
-          groupType: currentGroup.groupType,
-          detectedAiType: `"${detectedAiType}"`,
-          'AI判定方法': currentGroup.groupType === '3type' ? '3種類AI（メニュー行から）' : 'プロンプト列のAI行から',
-          '判定に使用した値': currentGroup.groupType === '3type' ? `trimmedHeader="${trimmedHeader}"` : `currentGroup.aiType="${currentGroup.aiType}"`,
-          '最終aiType': `"${detectedAiType}"`
-        });
-      }
+      // AB列の判定完了
       
       currentGroup.columnRange.answerColumns.push({
         column: columnLetter,
@@ -827,14 +809,9 @@ function processSpreadsheetData(spreadsheetData) {
       console.log(`[列制御] 適用: ${originalCount}グループ → ${result.taskGroups.length}グループ`);
     }
     
-    // タスクグループ作成完了ログを出力
+    // タスクグループ作成完了（簡潔版ログ）
     if (result.taskGroups.length > 0) {
-      console.log("[processSpreadsheetData] 📋 タスクグループ作成完了:");
-      result.taskGroups.forEach((group, index) => {
-        const aiType = group.aiType || (group.columnRange.answerColumns.length > 1 ? '複数AI' : 'AI');
-        console.log(`  タスクグループ${index + 1} ${group.startColumn}列〜${group.endColumn}列　使うAI: ${aiType}`);
-      });
-      console.log(`[processSpreadsheetData] ✅ 合計${result.taskGroups.length}個のタスクグループが作成されました`);
+      console.log(`[processSpreadsheetData] ✅ タスクグループ: ${result.taskGroups.length}個作成`);
     } else {
       console.log("[processSpreadsheetData] ⚠️ タスクグループが作成されませんでした");
     }
@@ -844,19 +821,8 @@ function processSpreadsheetData(spreadsheetData) {
     // エラーが発生してもtaskGroupsは空配列として継続
   }
   
-  // デバッグ用ログ出力
-  console.log("[processSpreadsheetData] タスクグループ検出結果:", {
-    totalGroups: result.taskGroups.length,
-    groups: result.taskGroups.map(group => ({
-      id: group.id,
-      name: group.name,
-      range: `${group.startColumn}-${group.endColumn}`,
-      type: group.groupType,
-      promptColumns: group.columnRange.promptColumns,
-      answerColumns: group.columnRange.answerColumns.map(col => `${col.column}(${col.aiType})`),
-      dependencies: group.dependencies
-    }))
-  });
+  // タスクグループ検出結果（簡潔版）
+  console.log(`[processSpreadsheetData] タスクグループ: ${result.taskGroups.length}個`);
 
   return result;
 }
@@ -1132,6 +1098,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             // modelRowとtaskRowも含める
             processedData.modelRow = updatedSpreadsheetData.modelRow;
             processedData.taskRow = updatedSpreadsheetData.taskRow;
+            
+            // タスクグループをキャッシュに保存
+            taskGroupCache = {
+              spreadsheetId: spreadsheetId,
+              gid: gid,
+              taskGroups: processedData.taskGroups,
+              timestamp: Date.now()
+            };
+            console.log(`[MessageHandler] タスクグループをキャッシュに保存: ${processedData.taskGroups?.length || 0}グループ`);
           } catch (processError) {
             console.error("[MessageHandler] processSpreadsheetDataエラー:", processError);
             // エラーが発生してもデフォルトのデータを使用
@@ -1335,9 +1310,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               sheetName: spreadsheetData.sheetName
             });
             
-            // スプレッドシートデータを処理してタスクグループを作成
-            processedData = processSpreadsheetData(sheetData);
-            console.log(`[Background] タスクグループ作成完了: ${processedData.taskGroups.length}グループ`);
+            // キャッシュされたタスクグループを使用するか、新規作成
+            if (taskGroupCache.spreadsheetId === request.spreadsheetId && 
+                taskGroupCache.gid === request.gid && 
+                taskGroupCache.taskGroups) {
+              // キャッシュを使用
+              processedData = {
+                taskGroups: taskGroupCache.taskGroups
+              };
+              console.log(`[Background] キャッシュされたタスクグループを使用: ${taskGroupCache.taskGroups.length}グループ`);
+            } else {
+              // スプレッドシートデータを処理してタスクグループを作成
+              processedData = processSpreadsheetData(sheetData);
+              console.log(`[Background] タスクグループ作成完了: ${processedData.taskGroups.length}グループ`);
+            }
           } else {
             // スプレッドシートIDがない場合は空のデータ
             spreadsheetData = {
