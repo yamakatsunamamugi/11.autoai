@@ -1,4 +1,5 @@
 // sheets-client.js - Google Sheets APIクライアント
+import { sleep } from '../../utils/sleep-utils.js';
 
 class SheetsClient {
   constructor() {
@@ -91,7 +92,7 @@ class SheetsClient {
   async verifyWrittenData(spreadsheetId, range, originalValue, gid = null) {
     try {
       // 少し待機してからデータを取得（API遅延を考慮）
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await sleep(1000);
       
       // 実際のセル内容を取得
       const actualData = await this.getSheetData(spreadsheetId, range, gid);
@@ -221,7 +222,7 @@ class SheetsClient {
 
       // API レート制限を避けるため少し待機
       if (i < chunks.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await sleep(200);
       }
     }
 
@@ -317,9 +318,8 @@ class SheetsClient {
 
     // Google Sheets API でデータを取得
     const accessToken = await globalThis.authService.getAuthToken();
-    const encodedSheetName = encodeURIComponent(sheetName);
-    const range = `'${encodedSheetName}'!A1:CZ1000`;
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}?valueRenderOption=FORMATTED_VALUE`;
+    const range = `'${sheetName}'!A1:CZ1000`;
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueRenderOption=FORMATTED_VALUE`;
     
     this.logger.log('SheetsClient', `スプレッドシート読み込み開始: ${sheetName}`);
     
@@ -642,9 +642,8 @@ class SheetsClient {
 
     
     const token = await globalThis.authService.getAuthToken();
-    const encodedRange = encodeURIComponent(range);
     // valueRenderOptionを追加して、空セルも含めて全データを取得
-    const url = `${this.baseUrl}/${spreadsheetId}/values/${encodedRange}?valueRenderOption=FORMATTED_VALUE`;
+    const url = `${this.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(range)}?valueRenderOption=FORMATTED_VALUE`;
     
 
     const response = await fetch(url, {
@@ -1031,8 +1030,7 @@ class SheetsClient {
   async getCellValue(spreadsheetId, sheetName, cell) {
     try {
       const token = await globalThis.authService.getAuthToken();
-      const encodedSheetName = encodeURIComponent(sheetName);
-      const range = `'${encodedSheetName}'!${cell}`;
+      const range = `'${sheetName}'!${cell}`;
       const url = `${this.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(range)}?valueRenderOption=FORMATTED_VALUE`;
       
       const response = await fetch(url, {
@@ -1066,11 +1064,10 @@ class SheetsClient {
   async getBatchCellValues(spreadsheetId, sheetName, cells) {
     try {
       const token = await globalThis.authService.getAuthToken();
-      const encodedSheetName = encodeURIComponent(sheetName);
       
       // 各セルに対してrangeを作成
-      const ranges = cells.map(cell => `'${encodedSheetName}'!${cell}`);
-      const rangesParam = ranges.join('&ranges='); // encodeURIComponentを削除（既にencodedSheetNameでエンコード済み）
+      const ranges = cells.map(cell => `'${sheetName}'!${cell}`);
+      const rangesParam = ranges.map(range => encodeURIComponent(range)).join('&ranges=');
       const url = `${this.baseUrl}/${spreadsheetId}/values:batchGet?ranges=${rangesParam}&valueRenderOption=FORMATTED_VALUE`;
       
       const response = await fetch(url, {
@@ -1113,9 +1110,8 @@ class SheetsClient {
   async getCellValues(spreadsheetId, sheetName, range) {
     try {
       const token = await globalThis.authService.getAuthToken();
-      const encodedSheetName = encodeURIComponent(sheetName);
-      const fullRange = `'${encodedSheetName}'!${range}`;
-      const url = `${this.baseUrl}/${spreadsheetId}/values/${fullRange}?valueRenderOption=FORMATTED_VALUE`;
+      const fullRange = `'${sheetName}'!${range}`;
+      const url = `${this.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(fullRange)}?valueRenderOption=FORMATTED_VALUE`;
       
       const response = await fetch(url, {
         method: "GET",

@@ -7,7 +7,7 @@
  * スプレッドシート自動セットアップクラス
  */
 export class SpreadsheetAutoSetup {
-  constructor() {
+  constructor(logger = console) {
     this.spreadsheetId = null;
     this.token = null;
     this.sheetData = null;
@@ -17,6 +17,26 @@ export class SpreadsheetAutoSetup {
     this.sheetName = null; // シート名
     this.targetGid = null; // ターゲットgid
     this.addedColumns = []; // 追加された列の記録
+    this.logger = logger; // ログ出力用
+  }
+
+  /**
+   * 安全なログ出力メソッド
+   * @param {string} level - ログレベル (log, warn, error)
+   * @param {string} message - メッセージ
+   * @param {...any} args - 追加引数
+   */
+  safeLog(level, message, ...args) {
+    try {
+      if (this.logger && typeof this.logger[level] === 'function') {
+        this.logger[level](message, ...args);
+      } else {
+        console[level](message, ...args);
+      }
+    } catch (error) {
+      console.error(`[AutoSetup] ログ出力エラー: ${error.message}`);
+      console[level](message, ...args);
+    }
   }
 
   /**
@@ -370,12 +390,30 @@ export class SpreadsheetAutoSetup {
    * 3種類AIの特別処理（正しい順番での配置と位置確認対応）
    */
   async process3TypeAIColumns() {
+    // タイムアウト設定（最大30分）
+    const startTime = Date.now();
+    const maxDuration = 30 * 60 * 1000; // 30分
+    const maxIterations = 100; // 最大反復回数
+    let iterationCount = 0;
 
     // 処理済みの列位置を記録
     const processedPositions = new Set();
 
-    // 処理が必要な3種類AI列を特定するループ
+    // 処理が必要な3種類AI列を特定するループ（タイムアウト付き）
     while (true) {
+      // タイムアウトチェック
+      const elapsed = Date.now() - startTime;
+      if (elapsed > maxDuration) {
+        this.safeLog('warn', `[process3TypeAIColumns] タイムアウト: ${Math.round(elapsed / 1000 / 60)}分経過`);
+        break;
+      }
+      
+      // 反復回数チェック
+      iterationCount++;
+      if (iterationCount > maxIterations) {
+        this.safeLog('warn', `[process3TypeAIColumns] 最大反復回数到達: ${iterationCount}回`);
+        break;
+      }
       // 最新のデータを再読み込み
       await this.loadSpreadsheetData();
 
@@ -403,8 +441,11 @@ export class SpreadsheetAutoSetup {
       }
 
       if (threeTypeAIColumns.length === 0) {
+        this.safeLog('log', `[process3TypeAIColumns] 処理完了: ${iterationCount}回の反復で完了`);
         break;
       }
+      
+      this.safeLog('log', `[process3TypeAIColumns] 反復 ${iterationCount}: ${threeTypeAIColumns.length}個の3種類AI列を検出`);
 
 
       // 最も右にある3種類AI列を1つ処理

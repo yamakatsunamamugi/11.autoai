@@ -3,15 +3,36 @@
  * 各AI固有のDeepResearchボタン/トグルを操作
  */
 
-import { deepResearchConfig } from "../config/deepresearch-config.js";
+// Sleep utility function (inline implementation)
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// DeepResearch config access helper
+function getDeepResearchConfig() {
+  if (typeof window !== 'undefined' && window.deepResearchConfig) {
+    return window.deepResearchConfig;
+  }
+  // Fallback minimal config
+  return {
+    getConfigForAI: (aiType) => ({
+      specific: {
+        SELECTORS: {},
+        ACTIVATION: {}
+      }
+    }),
+    log: console.log
+  };
+}
 
 /**
  * AI別DeepResearch有効化クラス
  */
-export class AIDeepResearchActivator {
+class AIDeepResearchActivator {
   constructor(aiType) {
     this.aiType = aiType;
-    this.config = deepResearchConfig.getConfigForAI(aiType);
+    this.deepResearchConfig = getDeepResearchConfig();
+    this.config = this.deepResearchConfig.getConfigForAI(aiType);
     this.selectors = this.config.specific.SELECTORS;
     this.activation = this.config.specific.ACTIVATION;
   }
@@ -23,7 +44,7 @@ export class AIDeepResearchActivator {
    */
   async activate(enable = true) {
     try {
-      deepResearchConfig.log(
+      this.this.deepResearchConfig.log(
         `${this.aiType} DeepResearch ${enable ? "有効化" : "無効化"}開始`,
       );
 
@@ -35,11 +56,11 @@ export class AIDeepResearchActivator {
         case "gemini":
           return await this._activateGemini(enable);
         default:
-          deepResearchConfig.log(`未対応AI: ${this.aiType}`);
+          this.deepResearchConfig.log(`未対応AI: ${this.aiType}`);
           return false;
       }
     } catch (error) {
-      deepResearchConfig.log(
+      this.deepResearchConfig.log(
         `DeepResearch有効化エラー: ${error.message}`,
         error,
       );
@@ -62,7 +83,7 @@ export class AIDeepResearchActivator {
       return true;
     }
 
-    deepResearchConfig.log("ChatGPT DeepResearch有効化に失敗");
+    this.deepResearchConfig.log("ChatGPT DeepResearch有効化に失敗");
     return false;
   }
 
@@ -82,7 +103,7 @@ export class AIDeepResearchActivator {
       );
       if (!toggle) {
         console.log(`❌ [DeepResearch] Web検索トグルが見つからない`);
-        deepResearchConfig.log("Web検索トグルが見つからない");
+        this.deepResearchConfig.log("Web検索トグルが見つからない");
         return false;
       }
 
@@ -97,14 +118,14 @@ export class AIDeepResearchActivator {
         console.log(
           `ℹ️ [DeepResearch] Web検索は既に${enable ? "有効" : "無効"}です`,
         );
-        deepResearchConfig.log(`Web検索は既に${enable ? "有効" : "無効"}です`);
+        this.deepResearchConfig.log(`Web検索は既に${enable ? "有効" : "無効"}です`);
         return true;
       }
 
       // トグルをクリック
       console.log(`🖱️ [DeepResearch] Web検索トグルをクリック実行中...`);
       toggle.click();
-      await this._sleep(this.activation.WAIT_AFTER_CLICK);
+      await sleep(this.activation.WAIT_AFTER_CLICK);
 
       // 状態確認
       const newState = toggle.getAttribute("aria-checked") === "true";
@@ -114,12 +135,12 @@ export class AIDeepResearchActivator {
         `📊 [DeepResearch] クリック後の状態: ${newState}, 成功: ${success}`,
       );
 
-      deepResearchConfig.log(
+      this.deepResearchConfig.log(
         `Web検索トグル${success ? "成功" : "失敗"}: ${currentState} → ${newState}`,
       );
       return success;
     } catch (error) {
-      deepResearchConfig.log("Web検索トグルエラー:", error);
+      this.deepResearchConfig.log("Web検索トグルエラー:", error);
       return false;
     }
   }
@@ -141,7 +162,7 @@ export class AIDeepResearchActivator {
       );
       if (!toolButton) {
         console.log(`❌ [DeepResearch] ツールボタンが見つからない`);
-        deepResearchConfig.log("ツールボタンが見つからない");
+        this.deepResearchConfig.log("ツールボタンが見つからない");
         return false;
       }
 
@@ -150,7 +171,7 @@ export class AIDeepResearchActivator {
       // メニューを開く
       if (toolButton.getAttribute("data-state") !== "open") {
         console.log(`🔓 [DeepResearch] ツールメニューを開く`);
-        deepResearchConfig.log("ツールメニューを開く");
+        this.deepResearchConfig.log("ツールメニューを開く");
 
         // PointerEventでクリック（より確実）
         const pointerDown = new PointerEvent("pointerdown", {
@@ -169,9 +190,9 @@ export class AIDeepResearchActivator {
         });
 
         toolButton.dispatchEvent(pointerDown);
-        await this._sleep(50);
+        await sleep(50);
         toolButton.dispatchEvent(pointerUp);
-        await this._sleep(500);
+        await sleep(500);
       }
 
       // Deep Research項目を探す
@@ -182,13 +203,13 @@ export class AIDeepResearchActivator {
         const text = item.textContent || "";
         if (text.includes("Deep Research") || text.includes("Search the web")) {
           deepResearchItem = item;
-          deepResearchConfig.log("Deep Research項目発見");
+          this.deepResearchConfig.log("Deep Research項目発見");
           break;
         }
       }
 
       if (!deepResearchItem) {
-        deepResearchConfig.log("Deep Research項目が見つからない");
+        this.deepResearchConfig.log("Deep Research項目が見つからない");
         return false;
       }
 
@@ -197,7 +218,7 @@ export class AIDeepResearchActivator {
         deepResearchItem.getAttribute("aria-checked") === "true";
 
       if (currentState === enable) {
-        deepResearchConfig.log(
+        this.deepResearchConfig.log(
           `Deep Researchは既に${enable ? "有効" : "無効"}です`,
         );
         return true;
@@ -205,18 +226,18 @@ export class AIDeepResearchActivator {
 
       // 状態を切り替え
       deepResearchItem.click();
-      await this._sleep(this.activation.WAIT_AFTER_CLICK);
+      await sleep(this.activation.WAIT_AFTER_CLICK);
 
       // 状態変更を確認
       const newState = deepResearchItem.getAttribute("aria-checked") === "true";
       const success = newState === enable;
 
-      deepResearchConfig.log(
+      this.deepResearchConfig.log(
         `ツールメニュー${success ? "成功" : "失敗"}: ${currentState} → ${newState}`,
       );
       return success;
     } catch (error) {
-      deepResearchConfig.log("ツールメニューエラー:", error);
+      this.deepResearchConfig.log("ツールメニューエラー:", error);
       return false;
     }
   }
@@ -238,7 +259,7 @@ export class AIDeepResearchActivator {
       );
       if (!researchButton) {
         console.log(`❌ [DeepResearch] Claude リサーチボタンが見つからない`);
-        deepResearchConfig.log("Claude リサーチボタンが見つからない");
+        this.deepResearchConfig.log("Claude リサーチボタンが見つからない");
         return false;
       }
 
@@ -264,7 +285,7 @@ export class AIDeepResearchActivator {
       // ボタンをクリック
       console.log(`🖱️ [DeepResearch] Claude リサーチボタンをクリック実行中...`);
       researchButton.click();
-      await this._sleep(this.activation.WAIT_AFTER_CLICK);
+      await sleep(this.activation.WAIT_AFTER_CLICK);
 
       // 状態確認
       const newState = researchButton.getAttribute("aria-checked") === "true";
@@ -273,11 +294,11 @@ export class AIDeepResearchActivator {
         `📊 [DeepResearch] Claude クリック後の状態: ${newState}, 成功: ${success}`,
       );
 
-      deepResearchConfig.log("Claude DeepResearch有効化完了");
+      this.deepResearchConfig.log("Claude DeepResearch有効化完了");
       return success;
     } catch (error) {
       console.error(`💥 [DeepResearch] Claude DeepResearchエラー:`, error);
-      deepResearchConfig.log("Claude DeepResearchエラー:", error);
+      this.deepResearchConfig.log("Claude DeepResearchエラー:", error);
       return false;
     }
   }
@@ -296,7 +317,7 @@ export class AIDeepResearchActivator {
         console.log(
           `❌ [DeepResearch] Gemini DeepResearchボタンが見つからない`,
         );
-        deepResearchConfig.log("Gemini DeepResearchボタンが見つからない");
+        this.deepResearchConfig.log("Gemini DeepResearchボタンが見つからない");
         return false;
       }
 
@@ -317,7 +338,7 @@ export class AIDeepResearchActivator {
         console.log(
           `ℹ️ [DeepResearch] Gemini DeepResearchは既に${enable ? "有効" : "無効"}です`,
         );
-        deepResearchConfig.log(
+        this.deepResearchConfig.log(
           `Gemini DeepResearchは既に${enable ? "有効" : "無効"}です`,
         );
         return true;
@@ -328,7 +349,7 @@ export class AIDeepResearchActivator {
         `🖱️ [DeepResearch] Gemini DeepResearchボタンをクリック実行中...`,
       );
       deepResearchButton.click();
-      await this._sleep(this.activation.WAIT_AFTER_CLICK);
+      await sleep(this.activation.WAIT_AFTER_CLICK);
 
       // 状態確認（動作確認済みの状態チェック）
       const newState =
@@ -339,13 +360,13 @@ export class AIDeepResearchActivator {
         `📊 [DeepResearch] Gemini クリック後の状態: ${newState}, 成功: ${success}`,
       );
 
-      deepResearchConfig.log(
+      this.deepResearchConfig.log(
         `Gemini DeepResearch${success ? "成功" : "失敗"}: ${currentState} → ${newState}`,
       );
       return success;
     } catch (error) {
       console.error(`💥 [DeepResearch] Gemini DeepResearchエラー:`, error);
-      deepResearchConfig.log("Gemini DeepResearchエラー:", error);
+      this.deepResearchConfig.log("Gemini DeepResearchエラー:", error);
       return false;
     }
   }
@@ -367,7 +388,7 @@ export class AIDeepResearchActivator {
           return null;
       }
     } catch (error) {
-      deepResearchConfig.log(`状態取得エラー: ${error.message}`);
+      this.deepResearchConfig.log(`状態取得エラー: ${error.message}`);
       return null;
     }
   }
@@ -440,7 +461,7 @@ export class AIDeepResearchActivator {
       if (element) {
         return element;
       }
-      await this._sleep(100);
+      await sleep(100);
     }
 
     return null;
@@ -494,16 +515,15 @@ export class AIDeepResearchActivator {
     return null;
   }
 
-  /**
-   * スリープ
-   * @private
-   */
-  _sleep(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-  }
 }
 
 // AI別のファクトリー関数
-export function createDeepResearchActivator(aiType) {
+function createDeepResearchActivator(aiType) {
   return new AIDeepResearchActivator(aiType);
+}
+
+// グローバル変数として公開
+if (typeof window !== 'undefined') {
+  window.AIDeepResearchActivator = AIDeepResearchActivator;
+  window.createDeepResearchActivator = createDeepResearchActivator;
 }

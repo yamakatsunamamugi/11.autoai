@@ -16,6 +16,7 @@ import TaskGeneratorV2 from './generator-v2.js';
 import { DynamicTaskQueue } from './dynamic-task-queue.js';
 import { ExclusiveControlManager } from '../../utils/exclusive-control-manager.js';
 import { ExclusiveControlLoggerHelper } from '../../utils/exclusive-control-logger-helper.js';
+import { sleep } from '../../utils/sleep-utils.js';
 import EXCLUSIVE_CONTROL_CONFIG, { 
   getTimeoutForFunction, 
   getRetryIntervalForFunction 
@@ -995,14 +996,78 @@ export default class StreamProcessorV2 {
               try {
                 this.logger.log(`[StreamProcessorV2] ログ書き込み開始: ${context.task.logColumns[0]}${context.task.row}`);
                 
-                // 現在のURLを取得
+                // 現在のURLを取得（改善版）
                 let currentUrl = 'N/A';
+                let urlSource = 'fallback';
+                
+                // 詳細なエラーハンドリングでURL取得を試行
                 try {
+                  this.logger.log(`[StreamProcessorV2] URL取得開始: tabId=${context.tabId}`);
+                  
+                  if (!context.tabId || context.tabId <= 0) {
+                    throw new Error(`無効なtabId: ${context.tabId}`);
+                  }
+                  
                   const tab = await chrome.tabs.get(context.tabId);
-                  currentUrl = tab.url || 'N/A';
+                  this.logger.log(`[StreamProcessorV2] タブ情報取得成功:`, {
+                    tabId: context.tabId,
+                    url: tab.url ? `${tab.url.substring(0, 50)}...` : 'null',
+                    status: tab.status,
+                    title: tab.title ? `${tab.title.substring(0, 30)}...` : 'null'
+                  });
+                  
+                  if (tab.url && tab.url !== 'about:blank') {
+                    currentUrl = tab.url;
+                    urlSource = 'chrome.tabs.get';
+                  } else {
+                    this.logger.warn(`[StreamProcessorV2] タブURLが無効: ${tab.url}`);
+                    throw new Error(`無効なタブURL: ${tab.url}`);
+                  }
                 } catch (e) {
-                  // URLの取得に失敗しても処理は継続
+                  this.logger.warn(`[StreamProcessorV2] chrome.tabs.get失敗: ${e.message}`, {
+                    tabId: context.tabId,
+                    errorName: e.name,
+                    errorMessage: e.message
+                  });
+                  
+                  // フォールバック1: window.location.href (ブラウザ環境の場合)
+                  try {
+                    if (typeof window !== 'undefined' && window.location && window.location.href) {
+                      currentUrl = window.location.href;
+                      urlSource = 'window.location.href';
+                      this.logger.log(`[StreamProcessorV2] フォールバック成功 (window.location): ${currentUrl.substring(0, 50)}...`);
+                    }
+                  } catch (windowError) {
+                    this.logger.warn(`[StreamProcessorV2] window.location取得失敗: ${windowError.message}`);
+                  }
+                  
+                  // フォールバック2: globalThisからの取得
+                  try {
+                    if (currentUrl === 'N/A' && globalThis.currentPageUrl) {
+                      currentUrl = globalThis.currentPageUrl;
+                      urlSource = 'globalThis.currentPageUrl';
+                      this.logger.log(`[StreamProcessorV2] フォールバック成功 (globalThis): ${currentUrl.substring(0, 50)}...`);
+                    }
+                  } catch (globalError) {
+                    this.logger.warn(`[StreamProcessorV2] globalThis.currentPageUrl取得失敗: ${globalError.message}`);
+                  }
+                  
+                  // すべて失敗した場合
+                  if (currentUrl === 'N/A') {
+                    this.logger.error(`[StreamProcessorV2] 全てのURL取得方法が失敗しました`, {
+                      tabId: context.tabId,
+                      taskId: context.task.id,
+                      cell: context.cell,
+                      originalError: e.message
+                    });
+                  }
                 }
+                
+                this.logger.log(`[StreamProcessorV2] URL取得完了:`, {
+                  url: currentUrl === 'N/A' ? 'N/A' : `${currentUrl.substring(0, 50)}...`,
+                  source: urlSource,
+                  tabId: context.tabId
+                });
                 
                 // タスクにモデル情報を追加
                 // displayedFunctionは既にフェーズ3で取得済み
@@ -1072,7 +1137,7 @@ export default class StreamProcessorV2 {
         }
         
         // ログ書き込みが完全に終わるまで少し待機
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await sleep(1000);
         
         // ウィンドウを閉じる
         try {
@@ -1139,7 +1204,7 @@ export default class StreamProcessorV2 {
    * 指定時間待機
    */
   async delay(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return sleep(ms);
   }
 
   /**
@@ -1666,14 +1731,77 @@ export default class StreamProcessorV2 {
               multiAI: task.multiAI
             });
             
-            // 現在のURLを取得
+            // 現在のURLを取得（改善版）
             let currentUrl = 'N/A';
+            let urlSource = 'fallback';
+            
+            // 詳細なエラーハンドリングでURL取得を試行
             try {
+              this.logger.log(`[StreamProcessorV2] URL取得開始: tabId=${tabId}`);
+              
+              if (!tabId || tabId <= 0) {
+                throw new Error(`無効なtabId: ${tabId}`);
+              }
+              
               const tab = await chrome.tabs.get(tabId);
-              currentUrl = tab.url || 'N/A';
+              this.logger.log(`[StreamProcessorV2] タブ情報取得成功:`, {
+                tabId: tabId,
+                url: tab.url ? `${tab.url.substring(0, 50)}...` : 'null',
+                status: tab.status,
+                title: tab.title ? `${tab.title.substring(0, 30)}...` : 'null'
+              });
+              
+              if (tab.url && tab.url !== 'about:blank') {
+                currentUrl = tab.url;
+                urlSource = 'chrome.tabs.get';
+              } else {
+                this.logger.warn(`[StreamProcessorV2] タブURLが無効: ${tab.url}`);
+                throw new Error(`無効なタブURL: ${tab.url}`);
+              }
             } catch (e) {
-              // URLの取得に失敗しても処理は継続
+              this.logger.warn(`[StreamProcessorV2] chrome.tabs.get失敗: ${e.message}`, {
+                tabId: tabId,
+                errorName: e.name,
+                errorMessage: e.message
+              });
+              
+              // フォールバック1: window.location.href (ブラウザ環境の場合)
+              try {
+                if (typeof window !== 'undefined' && window.location && window.location.href) {
+                  currentUrl = window.location.href;
+                  urlSource = 'window.location.href';
+                  this.logger.log(`[StreamProcessorV2] フォールバック成功 (window.location): ${currentUrl.substring(0, 50)}...`);
+                }
+              } catch (windowError) {
+                this.logger.warn(`[StreamProcessorV2] window.location取得失敗: ${windowError.message}`);
+              }
+              
+              // フォールバック2: globalThisからの取得
+              try {
+                if (currentUrl === 'N/A' && globalThis.currentPageUrl) {
+                  currentUrl = globalThis.currentPageUrl;
+                  urlSource = 'globalThis.currentPageUrl';
+                  this.logger.log(`[StreamProcessorV2] フォールバック成功 (globalThis): ${currentUrl.substring(0, 50)}...`);
+                }
+              } catch (globalError) {
+                this.logger.warn(`[StreamProcessorV2] globalThis.currentPageUrl取得失敗: ${globalError.message}`);
+              }
+              
+              // すべて失敗した場合
+              if (currentUrl === 'N/A') {
+                this.logger.error(`[StreamProcessorV2] 全てのURL取得方法が失敗しました`, {
+                  tabId: tabId,
+                  taskId: task.id,
+                  originalError: e.message
+                });
+              }
             }
+            
+            this.logger.log(`[StreamProcessorV2] URL取得完了:`, {
+              url: currentUrl === 'N/A' ? 'N/A' : `${currentUrl.substring(0, 50)}...`,
+              source: urlSource,
+              tabId: tabId
+            });
             
             // モデル情報を追加したタスクオブジェクトを作成（結果から表示値も追加）
             const taskWithModel = {
@@ -1875,7 +2003,7 @@ export default class StreamProcessorV2 {
    * 指定された時間だけ待機
    */
   async wait(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return sleep(ms);
   }
 
   async waitForPageLoad(tabId, timeout = 30000) {
@@ -1978,7 +2106,7 @@ export default class StreamProcessorV2 {
           try {
             // 失敗したタブ/ウィンドウを閉じる
             await chrome.tabs.remove(tabId);
-            await new Promise(resolve => setTimeout(resolve, 1000)); // 1秒待機
+            await sleep(1000); // 1秒待機
           } catch (closeError) {
             this.logger.warn(`[StreamProcessorV2] タブ閉じるエラー: ${closeError.message}`);
           }

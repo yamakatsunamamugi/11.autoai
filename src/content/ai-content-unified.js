@@ -2412,7 +2412,7 @@ async function ensureDeepResearchScripts() {
     }
     
     // 100ms待機して再試行
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await sleep(100);
   }
   
   console.warn(`[11.autoai][${AI_TYPE}] DeepResearchスクリプトの読み込みがタイムアウトしました`);

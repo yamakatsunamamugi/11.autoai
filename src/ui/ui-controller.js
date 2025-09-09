@@ -1,5 +1,10 @@
 // ui-controller.js - AutoAI Minimal コントロールパネル
 //
+// Sleep function (inline implementation to avoid module import issues)
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+//
 // このファイルは、Chrome拡張機能のメインUIを管理します。
 // ユーザーがスプレッドシートを設定し、AI処理を制御するためのインターフェースを提供します。
 //
@@ -2180,7 +2185,7 @@ async function injectAutomationScripts(tabId, aiName) {
       
       // 少し待ってから実行
       console.log(`⏳ スクリプト初期化を待機中...`);
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      await sleep(3000);
       
       // リサーチを実行
       const detectorName = 'ClaudeResearchDetector';
@@ -2485,7 +2490,7 @@ async function injectAutomationScripts(tabId, aiName) {
       
       // 少し待ってから実行
       console.log(`⏳ スクリプト初期化を待機中...`);
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      await sleep(3000);
       
       // リサーチを実行
       const detectorName = 'GeminiResearchDetector';
@@ -2692,7 +2697,7 @@ async function injectAutomationScripts(tabId, aiName) {
       
       // 少し待ってから実行
       console.log(`⏳ スクリプト初期化を待機中...`);
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      await sleep(3000);
       
       // リサーチを実行
       const detectorName = 'ChatGPTResearchDetector';
@@ -3106,7 +3111,7 @@ async function create4PaneLayoutForMutationObserver() {
     });
     
     // スクリプト初期化を少し待つ
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await sleep(500);
   }
   
   if (!window.TestRunner || !window.TestRunner.createAIWindow) {
@@ -3141,7 +3146,7 @@ async function create4PaneLayoutForMutationObserver() {
       }
       
       // 各ウィンドウ作成間で少し待機
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await sleep(1000);
       
     } catch (error) {
       console.error(`❌ ${site.name}ウィンドウ作成エラー:`, error);
@@ -3201,7 +3206,7 @@ async function checkAndOpenAISites() {
           });
           targetTabs.push(tab);
           // 各サイト間で少し待機
-          await new Promise(resolve => setTimeout(resolve, 500));
+          await sleep(500);
         } catch (error) {
           console.error(`❌ ${site.name}開始エラー:`, error);
         }
@@ -4265,7 +4270,7 @@ if (testIntegratedAiBtn) {
               focused: true,
               drawAttention: true
             });
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await sleep(500);
           }
         }
       } else {

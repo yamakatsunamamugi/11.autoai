@@ -10,6 +10,7 @@
  */
 
 import { AITaskHandler } from './ai-task-handler.js';
+import { sleep } from '../utils/sleep-utils.js';
 
 /**
  * プラグインインターフェース
@@ -85,7 +86,7 @@ export class TestModePlugin extends TaskHandlerPlugin {
         const delay = Math.random() * 
           (this.config.delayRange.max - this.config.delayRange.min) + 
           this.config.delayRange.min;
-        await this._sleep(delay);
+        await sleep(delay);
       }
 
       return {
@@ -100,9 +101,6 @@ export class TestModePlugin extends TaskHandlerPlugin {
     return result;
   }
 
-  _sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
 }
 
 /**
@@ -202,7 +200,7 @@ export class RetryPlugin extends TaskHandlerPlugin {
     const delay = this._calculateDelay(attemptCount);
     console.log(`[RetryPlugin] タスクをリトライします (${attemptCount}/${this.config.maxAttempts}): ${delay}ms後`);
     
-    await this._sleep(delay);
+    await sleep(delay);
     
     context.attemptCount = attemptCount + 1;
     context.isRetry = true;
@@ -240,9 +238,6 @@ export class RetryPlugin extends TaskHandlerPlugin {
     return this.config.baseDelay;
   }
 
-  _sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
 }
 
 /**

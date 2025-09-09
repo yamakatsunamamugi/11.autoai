@@ -3,6 +3,8 @@
  * 3つのタスクを並列で効率的に処理
  */
 
+import { sleep } from '../../utils/sleep-utils.js';
+
 export class BatchExecutor {
   constructor(windowManager, aiTaskExecutor, spreadsheetLogger, logger = console) {
     this.windowManager = windowManager;
@@ -251,7 +253,7 @@ export class BatchExecutor {
    * 遅延処理
    */
   async delay(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return sleep(ms);
   }
 
   /**

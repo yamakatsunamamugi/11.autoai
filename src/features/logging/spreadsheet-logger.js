@@ -11,6 +11,8 @@
  * - 既存ログとのマージ処理
  */
 
+import { sleep } from '../../utils/sleep-utils.js';
+
 export class SpreadsheetLogger {
   constructor(logger = console) {
     this.logger = logger;
@@ -662,7 +664,7 @@ export class SpreadsheetLogger {
       console.log(`🔍 [SpreadsheetLogger] 書き込み確認開始: ${logCell}`);
       
       // 少し待ってから確認（APIの遅延を考慮）
-      await this._sleep(2000);  // 待機時間を増やす
+      await sleep(2000);  // 待機時間を増やす
       
       // 実際のセルの内容を取得
       const actualData = await sheetsClient.getSheetData(
@@ -734,9 +736,6 @@ export class SpreadsheetLogger {
    * @param {number} ms - 待機時間（ミリ秒）
    * @returns {Promise<void>}
    */
-  _sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
 
   /**
    * 簡易ログ生成（送信時刻なしの場合）

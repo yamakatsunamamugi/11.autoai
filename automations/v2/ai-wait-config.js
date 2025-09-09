@@ -72,7 +72,7 @@ function getWaitConfig(mode = 'normal') {
 }
 
 /**
- * 共通の応答待機関数
+ * 共通の応答待機関数（Wake Lock対応）
  * @param {Function} findElement - DOM要素を検索する関数
  * @param {Array} stopButtonSelectors - 停止ボタンのセレクタ配列
  * @param {Function} log - ログ出力関数
@@ -83,45 +83,75 @@ async function waitForResponse(findElement, stopButtonSelectors, log, mode = 'no
     const config = getWaitConfig(mode);
     const startTime = Date.now();
     
-    // 初期待機
-    log(`初期待機: ${config.initialWait / 1000}秒`, 'info');
-    await new Promise(resolve => setTimeout(resolve, config.initialWait));
+    // Wake Lock管理（長時間処理の場合）
+    let wakeLockManager = null;
+    const isLongProcess = config.maxWait >= 300000; // 5分以上
     
-    return new Promise((resolve, reject) => {
-        let waitTime = 0;
-        let lastLogTime = Date.now();
+    try {
+        // Wake Lock設定（長時間処理時）
+        if (isLongProcess && typeof window !== 'undefined' && window.globalWakeLockManager) {
+            wakeLockManager = window.globalWakeLockManager;
+            await wakeLockManager.acquire(`AI応答待機(${mode})`);
+            log(`システムスリープ防止を有効化 (最大${Math.round(config.maxWait/1000/60)}分)`, 'info');
+        }
         
-        const checker = setInterval(() => {
-            const currentTime = Date.now();
-            const elapsedTime = currentTime - startTime;
+        // 初期待機
+        log(`初期待機: ${config.initialWait / 1000}秒`, 'info');
+        await new Promise(resolve => setTimeout(resolve, config.initialWait));
+    
+        return new Promise((resolve, reject) => {
+            let waitTime = 0;
+            let lastLogTime = Date.now();
             
-            // 停止ボタンの存在確認
-            const stopButton = findElement(stopButtonSelectors);
+            const cleanup = async () => {
+                // Wake Lock解放
+                if (wakeLockManager) {
+                    await wakeLockManager.release();
+                    log('システムスリープ防止を解除', 'info');
+                }
+            };
             
-            if (!stopButton) {
-                clearInterval(checker);
-                log(`応答が完了しました（停止ボタンが消えました）- ${Math.round(elapsedTime / 1000)}秒`, 'success');
-                resolve(`応答完了（${Math.round(elapsedTime / 1000)}秒）`);
-                return;
-            }
-            
-            // 最大待機時間チェック
-            if (waitTime >= config.maxWait) {
-                clearInterval(checker);
-                log(`最大待機時間（${config.maxWait / 1000}秒）に達しました。処理を続行します。`, 'warn');
-                resolve(`タイムアウト（${config.maxWait / 1000}秒）- 処理続行`);
-                return;
-            }
-            
-            // 定期的なログ出力
-            if (currentTime - lastLogTime >= config.logInterval) {
-                log(`[待機中] 応答生成を待っています... (${Math.round(waitTime / 1000)}秒 / 最大${config.maxWait / 1000}秒)`, 'info');
-                lastLogTime = currentTime;
-            }
-            
-            waitTime += config.checkInterval;
-        }, config.checkInterval);
-    });
+            const checker = setInterval(async () => {
+                const currentTime = Date.now();
+                const elapsedTime = currentTime - startTime;
+                
+                // 停止ボタンの存在確認
+                const stopButton = findElement(stopButtonSelectors);
+                
+                if (!stopButton) {
+                    clearInterval(checker);
+                    await cleanup();
+                    log(`応答が完了しました（停止ボタンが消えました）- ${Math.round(elapsedTime / 1000)}秒`, 'success');
+                    resolve(`応答完了（${Math.round(elapsedTime / 1000)}秒）`);
+                    return;
+                }
+                
+                // 最大待機時間チェック
+                if (waitTime >= config.maxWait) {
+                    clearInterval(checker);
+                    await cleanup();
+                    log(`最大待機時間（${config.maxWait / 1000}秒）に達しました。処理を続行します。`, 'warn');
+                    resolve(`タイムアウト（${config.maxWait / 1000}秒）- 処理続行`);
+                    return;
+                }
+                
+                // 定期的なログ出力
+                if (currentTime - lastLogTime >= config.logInterval) {
+                    log(`[待機中] 応答生成を待っています... (${Math.round(waitTime / 1000)}秒 / 最大${config.maxWait / 1000}秒)`, 'info');
+                    lastLogTime = currentTime;
+                }
+                
+                waitTime += config.checkInterval;
+            }, config.checkInterval);
+        });
+        
+    } catch (error) {
+        // エラー発生時もWake Lockを確実に解放
+        if (wakeLockManager) {
+            await wakeLockManager.release();
+        }
+        throw error;
+    }
 }
 
 // グローバルに公開（Chrome拡張機能のcontent script用）
@@ -130,6 +160,9 @@ if (typeof window !== 'undefined') {
     window.getWaitConfig = getWaitConfig;
     window.waitForResponse = waitForResponse;
 }
+
+// ES6 モジュール用のエクスポート（コメントアウト - 通常スクリプトとして使用）
+// export { AI_WAIT_CONFIG, getWaitConfig, waitForResponse };
 
 // Node.js/モジュール環境用のエクスポート
 if (typeof module !== 'undefined' && module.exports) {
