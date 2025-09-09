@@ -15,6 +15,7 @@ import { RetryManager } from '../../utils/retry-manager.js';
 import TaskGeneratorV2 from './generator-v2.js';
 import { DynamicTaskQueue } from './dynamic-task-queue.js';
 import { ExclusiveControlManager } from '../../utils/exclusive-control-manager.js';
+import { ExclusiveControlLoggerHelper } from '../../utils/exclusive-control-logger-helper.js';
 import EXCLUSIVE_CONTROL_CONFIG, { 
   getTimeoutForFunction, 
   getRetryIntervalForFunction 
@@ -61,6 +62,11 @@ export default class StreamProcessorV2 {
         markerFormat: EXCLUSIVE_CONTROL_CONFIG.markerFormat,
         ...config.exclusiveControl
       },
+      logger: this.logger
+    });
+    
+    // 排他制御ログヘルパーを初期化
+    this.exclusiveLoggerHelper = new ExclusiveControlLoggerHelper({
       logger: this.logger
     });
     
@@ -137,6 +143,13 @@ export default class StreamProcessorV2 {
         if (!globalThis.spreadsheetLogger) {
           globalThis.spreadsheetLogger = this.spreadsheetLogger;
         }
+        
+        // ヘルパーの設定を更新
+        this.exclusiveLoggerHelper.updateConfig({
+          spreadsheetLogger: this.spreadsheetLogger,
+          spreadsheetData: this.spreadsheetData,
+          sheetsClient: globalThis.sheetsClient
+        });
       }
     } catch (error) {
       this.logger.error(`[StreamProcessorV2] SpreadsheetLogger初期化エラー:`, error);
@@ -148,53 +161,47 @@ export default class StreamProcessorV2 {
    */
   setupExclusiveControlHooks() {
     // ロック取得時にSpreadsheetLoggerに記録
-    this.exclusiveManager.on('afterAcquire', async ({ task, cellRef, marker, success }) => {
-      if (this.spreadsheetLogger && success) {
-        try {
-          await this.spreadsheetLogger.writeLogToSpreadsheet(task, {
-            action: 'EXCLUSIVE_CONTROL',
-            type: 'LOCK_ACQUIRED',
-            cell: cellRef,
-            marker: marker,
-            timestamp: new Date().toISOString()
-          });
-        } catch (error) {
-          this.logger.error('[StreamProcessorV2] 排他制御ログ記録エラー:', error);
-        }
+    this.exclusiveManager.on('afterAcquire', async (eventData) => {
+      try {
+        await this.exclusiveLoggerHelper.logLockAcquired(eventData);
+      } catch (error) {
+        this.logger.error('[StreamProcessorV2] 排他制御ログ記録エラー:', error);
       }
     });
 
     // ロック解放時にSpreadsheetLoggerに記録
-    this.exclusiveManager.on('afterRelease', async ({ task, cellRef }) => {
-      if (this.spreadsheetLogger) {
-        try {
-          await this.spreadsheetLogger.writeLogToSpreadsheet(task, {
-            action: 'EXCLUSIVE_CONTROL',
-            type: 'LOCK_RELEASED',
-            cell: cellRef,
-            timestamp: new Date().toISOString()
-          });
-        } catch (error) {
-          this.logger.error('[StreamProcessorV2] 排他制御ログ記録エラー:', error);
-        }
+    this.exclusiveManager.on('afterRelease', async (eventData) => {
+      try {
+        await this.exclusiveLoggerHelper.logLockReleased(eventData);
+      } catch (error) {
+        this.logger.error('[StreamProcessorV2] 排他制御ログ記録エラー:', error);
       }
     });
 
     // タイムアウト時にSpreadsheetLoggerに記録
-    this.exclusiveManager.on('timeout', async ({ marker, task }) => {
-      if (this.spreadsheetLogger) {
-        try {
-          const cellRef = `${task.column}${task.row}`;
-          await this.spreadsheetLogger.writeLogToSpreadsheet(task, {
-            action: 'EXCLUSIVE_CONTROL',
-            type: 'TIMEOUT_DETECTED',
-            cell: cellRef,
-            oldMarker: marker,
-            timestamp: new Date().toISOString()
-          });
-        } catch (error) {
-          this.logger.error('[StreamProcessorV2] 排他制御タイムアウトログ記録エラー:', error);
-        }
+    this.exclusiveManager.on('timeout', async (eventData) => {
+      try {
+        await this.exclusiveLoggerHelper.logTimeout(eventData);
+      } catch (error) {
+        this.logger.error('[StreamProcessorV2] 排他制御タイムアウトログ記録エラー:', error);
+      }
+    });
+    
+    // ロック取得拒否時にSpreadsheetLoggerに記録
+    this.exclusiveManager.on('lockDenied', async (eventData) => {
+      try {
+        await this.exclusiveLoggerHelper.logLockDenied(eventData);
+      } catch (error) {
+        this.logger.error('[StreamProcessorV2] 排他制御拒否ログ記録エラー:', error);
+      }
+    });
+    
+    // エラー時にSpreadsheetLoggerに記録
+    this.exclusiveManager.on('acquireError', async (eventData) => {
+      try {
+        await this.exclusiveLoggerHelper.logError(eventData);
+      } catch (error) {
+        this.logger.error('[StreamProcessorV2] 排他制御エラーログ記録エラー:', error);
       }
     });
 

@@ -88,12 +88,66 @@ export class ExclusiveControlManager {
       // フック: ロック取得前
       await this.trigger('beforeAcquire', { task, cellRef });
       
-      // 現在の値を取得
-      const currentValue = await sheetsClient.getCell(
-        spreadsheetId,
-        cellRef,
-        gid
-      );
+      // 現在の値を取得（シート名を取得してgetCellValueを使用）
+      this.logger.log(`[ExclusiveControlManager] デバッグ情報:`, {
+        spreadsheetId: spreadsheetId ? `${spreadsheetId.substring(0, 10)}...` : 'null',
+        gid: gid,
+        cellRef: cellRef,
+        sheetsClientType: typeof sheetsClient,
+        hasGetSheetNameFromGid: sheetsClient && typeof sheetsClient.getSheetNameFromGid,
+        hasGetCellValue: sheetsClient && typeof sheetsClient.getCellValue
+      });
+      
+      let sheetName;
+      let currentValue;
+      let useNewMethod = true;
+      
+      // 新しいメソッド（getCellValue + getSheetNameFromGid）を試行
+      try {
+        sheetName = await sheetsClient.getSheetNameFromGid(spreadsheetId, gid);
+        this.logger.log(`[ExclusiveControlManager] シート名取得成功: ${sheetName} (GID: ${gid})`);
+        
+        if (!sheetName) {
+          throw new Error(`シート名が空です (GID: ${gid})`);
+        }
+        
+        this.logger.log(`[ExclusiveControlManager] セル値取得中: ${sheetName}!${cellRef}`);
+        currentValue = await sheetsClient.getCellValue(
+          spreadsheetId,
+          sheetName,
+          cellRef
+        );
+        this.logger.log(`[ExclusiveControlManager] セル値取得成功: "${currentValue}" (${typeof currentValue})`);
+        
+      } catch (newMethodError) {
+        this.logger.warn(`[ExclusiveControlManager] 新メソッド失敗、フォールバック処理を実行:`, newMethodError);
+        useNewMethod = false;
+        
+        // フォールバック: 従来のgetCellメソッドを使用
+        try {
+          if (sheetsClient.getCell && typeof sheetsClient.getCell === 'function') {
+            this.logger.log(`[ExclusiveControlManager] フォールバック: getCell使用中`);
+            currentValue = await sheetsClient.getCell(
+              spreadsheetId,
+              cellRef,
+              gid
+            );
+            this.logger.log(`[ExclusiveControlManager] フォールバック成功: "${currentValue}" (${typeof currentValue})`);
+          } else {
+            throw new Error('フォールバック用のgetCellメソッドが存在しません');
+          }
+        } catch (fallbackError) {
+          this.logger.error(`[ExclusiveControlManager] フォールバック処理も失敗:`, fallbackError);
+          throw new Error(`セル値を取得できませんでした (${cellRef}, GID: ${gid}): 新メソッド失敗 (${newMethodError.message}), フォールバック失敗 (${fallbackError.message})`);
+        }
+      }
+      
+      this.logger.log(`[ExclusiveControlManager] 使用メソッド: ${useNewMethod ? '新メソッド' : 'フォールバック'}`);
+      
+      if (currentValue === undefined || currentValue === null) {
+        this.logger.warn(`[ExclusiveControlManager] セル値が空です: ${cellRef}`);
+        currentValue = '';
+      }
       
       // 既存のマーカーチェック
       if (currentValue && currentValue.includes('現在操作中です')) {
@@ -135,13 +189,7 @@ export class ExclusiveControlManager {
         acquiredAt: new Date()
       });
       
-      // SpreadsheetLoggerに記録
-      await this.logToSpreadsheet(task, {
-        action: 'LOCK_ACQUIRED',
-        marker: newMarker,
-        cell: cellRef,
-        pcId: this.pcId
-      });
+      // SpreadsheetLoggerへの記録はイベントフックで実行される
       
       // フック: ロック取得後
       await this.trigger('afterAcquire', { 
@@ -199,13 +247,7 @@ export class ExclusiveControlManager {
       const lockInfo = this.activeLocks.get(cellRef);
       this.activeLocks.delete(cellRef);
       
-      // SpreadsheetLoggerに記録
-      await this.logToSpreadsheet(task, {
-        action: 'LOCK_RELEASED',
-        cell: cellRef,
-        lockDuration: lockInfo ? Date.now() - lockInfo.acquiredAt.getTime() : 0,
-        success: true
-      });
+      // SpreadsheetLoggerへの記録はイベントフックで実行される
       
       // フック: ロック解放後
       await this.trigger('afterRelease', { task, cellRef, success: true });
@@ -248,12 +290,7 @@ export class ExclusiveControlManager {
       // アクティブロックから削除
       this.activeLocks.delete(cellRef);
       
-      // SpreadsheetLoggerに記録
-      await this.logToSpreadsheet(task, {
-        action: 'LOCK_CLEANUP',
-        cell: cellRef,
-        reason: 'error'
-      });
+      // SpreadsheetLoggerへの記録はイベントフックで実行される
       
       this.logger.log(`[ExclusiveControlManager] エラークリーンアップ完了: ${cellRef}`);
       
@@ -286,13 +323,7 @@ export class ExclusiveControlManager {
     const strategyFn = strategies[strategy] || strategies.default;
     const result = await strategyFn();
     
-    // SpreadsheetLoggerに記録
-    await this.logToSpreadsheet(task, {
-      action: 'MARKER_HANDLED',
-      strategy: strategy,
-      existingMarker: marker,
-      result: result
-    });
+    // SpreadsheetLoggerへの記録はイベントフックで実行される
     
     return result;
   }
@@ -387,12 +418,7 @@ export class ExclusiveControlManager {
       try {
         await callback();
         
-        // SpreadsheetLoggerに記録
-        await this.logToSpreadsheet(task, {
-          action: 'RETRY_EXECUTED',
-          cell: cellRef,
-          waitTimeMinutes: Math.round(waitTime / (60 * 1000))
-        });
+        // SpreadsheetLoggerへの記録はイベントフックで実行される
         
       } catch (error) {
         this.logger.error(`[ExclusiveControlManager] 再処理エラー: ${cellRef}`, error);
@@ -426,6 +452,7 @@ export class ExclusiveControlManager {
         taskFunction: task.function || task.displayedFunction || '通常'
       };
       
+      // SpreadsheetLoggerを直接呼び出し（SheetsClientやspreadsheetIdは不要）
       await this.spreadsheetLogger.writeLogToSpreadsheet(task, enrichedData);
       
     } catch (error) {
