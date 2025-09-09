@@ -2054,9 +2054,10 @@ export default class StreamProcessorV2 {
       }
       
       if (prompts.length === 0) {
-        // 全てのプロンプト列が空の場合
-        this.logger.warn(`[StreamProcessorV2] All prompt columns empty at row ${task.row}`);
-        return `テスト - ${task.column}${task.row}`;
+        // 全てのプロンプト列が空の場合はエラーをthrow
+        const errorMsg = `All prompt columns empty for task ${task.column}${task.row}. Checked cells: ${promptCells.join(', ')}`;
+        this.logger.error(`[StreamProcessorV2] ${errorMsg}`);
+        throw new Error(errorMsg);
       }
       
       // セル位置を特定（回答列を使用）
