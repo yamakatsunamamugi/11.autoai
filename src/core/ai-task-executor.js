@@ -155,8 +155,8 @@ export class AITaskExecutor {
         this.logger.error(`[AITaskExecutor] V2チェックエラー:`, e);
       }
 
-      // ページ読み込み完了を待つ
-      await new Promise(resolve => setTimeout(resolve, 3000)); // 3秒待機
+      // ページ読み込み完了を待つ（ネット環境を考慮して延長）
+      await new Promise(resolve => setTimeout(resolve, 5000)); // 5秒待機
       
       // スクリプト初期化を動的に確認（最大15秒、100ms間隔でポーリング）
       const initStartTime = performance.now();
