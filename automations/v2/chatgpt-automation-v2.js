@@ -417,6 +417,10 @@
         window.__v2_execution_complete = false;
         window.__v2_execution_result = null;
         
+        // ページ初期読み込み待機（ネット環境を考慮）
+        console.log('⏳ ページ初期読み込み待機中...');
+        await sleep(3000);  // 3秒待機
+        
         console.log('%c🚀 ChatGPT V2 タスク実行開始', 'color: #00BCD4; font-weight: bold; font-size: 16px');
         console.log('受信したタスクデータ:', {
             model: taskData.model,
@@ -1436,6 +1440,10 @@
     async function inputTextOnly(prompt) {
         try {
             log('📝 テキスト入力のみ実行', 'info');
+            
+            // 初期待機（要素の動的レンダリングを待つ）
+            await sleep(2000);  // 2秒待機
+            
             const input = await findElement(SELECTORS.textInput, 'テキスト入力欄');
             if (!input) {
                 throw new Error('入力欄が見つかりません');

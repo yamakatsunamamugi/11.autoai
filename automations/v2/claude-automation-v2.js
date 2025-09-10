@@ -349,8 +349,8 @@
         
         // 初回の待機時間を追加（ページの動的レンダリングを待つ）
         if (selectorInfo.description && selectorInfo.description.includes('入力欄')) {
-            console.log(`⏳ [findClaudeElement] 入力欄の初期待機: 2000ms`);
-            await wait(2000);  // 入力欄の場合は2秒待機（改善）
+            console.log(`⏳ [findClaudeElement] 入力欄の初期待機: 3000ms`);
+            await wait(3000);  // 入力欄の場合は3秒待機（改善）
             
             // DOMの読み込み状態を確認
             console.log(`🌐 [findClaudeElement] DOM読み込み状態:`, document.readyState);
@@ -364,6 +364,9 @@
                     }
                 });
                 console.log(`✅ [findClaudeElement] DOM読み込み完了`);
+                // DOM読み込み後に追加で待機（動的コンテンツの生成を待つ）
+                await wait(1000);
+                console.log(`✅ [findClaudeElement] 追加待機完了`);
             }
         }
         
@@ -432,7 +435,7 @@
             
             if (retry < retryCount - 1) {
                 // 段階的にリトライ間隔を延長
-                const waitTime = 1500 + (retry * 1000);  // 1.5秒→2.5秒→3.5秒
+                const waitTime = 2000 + (retry * 1000);  // 2秒→3秒→4秒
                 console.log(`🔄 要素検索リトライ中... (${retry + 1}/${retryCount}) 次回まで${waitTime}ms待機`);
                 await wait(waitTime);
                 
@@ -1213,30 +1216,88 @@ ${prompt}`;
                 console.log(`📍 セル情報をプロンプトに追加: ${cellPosition}`);
             }
             
+            // 入力欄の初期待機時間を増やす
+            console.log('⏳ [ClaudeV2] 入力欄の出現を待機中...');
+            await wait(5000);  // 5秒待機
+            
             // 入力欄のセレクタ情報をログ
             console.log('🔍 [ClaudeV2] 入力欄セレクタ情報:', claudeSelectors['1_テキスト入力欄']);
             
-            const inputResult = await findClaudeElement(claudeSelectors['1_テキスト入力欄']);
+            // 複数回リトライで入力欄を探す
+            let inputResult = null;
+            let retryCount = 0;
+            const maxRetries = 5;
+            
+            while (!inputResult && retryCount < maxRetries) {
+                inputResult = await findClaudeElement(claudeSelectors['1_テキスト入力欄']);
+                
+                if (!inputResult) {
+                    console.log(`⚠️ [ClaudeV2] 入力欄未検出 (試行 ${retryCount + 1}/${maxRetries})`);
+                    
+                    // ページの状態を詳細に確認
+                    const pageState = document.readyState;
+                    const bodyExists = !!document.body;
+                    const hasContent = document.body ? document.body.children.length : 0;
+                    const url = window.location.href;
+                    const title = document.title;
+                    
+                    console.log(`📊 [ClaudeV2] ページ状態:`, {
+                        readyState: pageState,
+                        bodyExists,
+                        childrenCount: hasContent,
+                        url,
+                        title
+                    });
+                    
+                    // ProseMirrorエディタの存在確認
+                    const pmElements = document.querySelectorAll('.ProseMirror');
+                    console.log(`📊 [ClaudeV2] ProseMirror要素数: ${pmElements.length}`);
+                    
+                    if (pmElements.length > 0) {
+                        pmElements.forEach((el, index) => {
+                            console.log(`  ProseMirror[${index}]:`, {
+                                contentEditable: el.contentEditable,
+                                className: el.className,
+                                isVisible: el.offsetWidth > 0 && el.offsetHeight > 0,
+                                width: el.offsetWidth,
+                                height: el.offsetHeight
+                            });
+                        });
+                    }
+                    
+                    // 入力欄関連の要素を幅広く検索
+                    const alternativeSelectors = [
+                        'div[contenteditable="true"]',
+                        '.ProseMirror',
+                        '[role="textbox"]',
+                        'div.ql-editor',
+                        'div[data-placeholder]'
+                    ];
+                    
+                    console.log('🔍 [ClaudeV2] 代替セレクタで検索中...');
+                    for (const selector of alternativeSelectors) {
+                        const elements = document.querySelectorAll(selector);
+                        if (elements.length > 0) {
+                            console.log(`  ${selector}: ${elements.length}個発見`);
+                        }
+                    }
+                    
+                    // 待機時間を段階的に増やす
+                    const waitTime = 3000 + (retryCount * 2000);  // 3秒、5秒、7秒、9秒、11秒
+                    console.log(`⏳ [ClaudeV2] ${waitTime}ms待機中...`);
+                    await wait(waitTime);
+                    retryCount++;
+                } else {
+                    console.log(`✅ [ClaudeV2] 入力欄検出成功 (試行 ${retryCount + 1})`);
+                }
+            }
+            
             if (!inputResult) {
-                console.error('❌ [ClaudeV2] 入力欄検出失敗');
+                console.error('❌ [ClaudeV2] 入力欄検出失敗（最大リトライ回数超過）');
                 console.error('❌ [ClaudeV2] セレクタ:', claudeSelectors['1_テキスト入力欄'].selectors);
                 console.error('❌ [ClaudeV2] 現在のURL:', window.location.href);
                 console.error('❌ [ClaudeV2] ページタイトル:', document.title);
-                
-                // ProseMirrorエディタの存在確認
-                const pmElements = document.querySelectorAll('.ProseMirror');
-                console.error('❌ [ClaudeV2] ProseMirror要素数:', pmElements.length);
-                if (pmElements.length > 0) {
-                    pmElements.forEach((el, index) => {
-                        console.error(`  ProseMirror[${index}]:`, {
-                            contentEditable: el.contentEditable,
-                            className: el.className,
-                            isVisible: el.offsetWidth > 0 && el.offsetHeight > 0
-                        });
-                    });
-                }
-                
-                throw new Error('入力欄が見つかりません');
+                throw new Error('入力欄が見つかりません（最大リトライ回数超過）');
             }
             
             const success = await inputText(inputResult.element, finalPrompt);

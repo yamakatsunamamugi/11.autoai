@@ -5,6 +5,7 @@
  * V2の堅牢なロジックを保ちながらシンプルな構造を実現
  * 
  * 待機時間設定:
+ * - ページ初期読み込み: 3秒（ネット環境を考慮）
  * - 初期待機: 30秒（全モード統一）
  * - 最大待機: 5分（通常モード・Canvasモード共通）
  * - チェック間隔: 2秒
@@ -222,7 +223,7 @@
             const moreButton = findElement(['button[aria-label="その他"]']);
             if (moreButton) {
                 moreButton.click();
-                await wait(1000);
+                await wait(1500);  // メニュー表示の待機時間を増やす
                 
                 findElements(['.cdk-overlay-pane .toolbox-drawer-menu-item button .label']).forEach(label => {
                     const text = label.textContent.trim().replace(/\s*arrow_drop_down\s*/, '');
@@ -254,6 +255,10 @@
     // コア実行関数
     // ================================================================
     async function executeCore(modelName, featureName, promptText) {
+        // ページ初期読み込み待機（ネット環境を考慮）
+        log('ページ初期読み込み待機中...', 'info');
+        await wait(3000);  // 3秒待機
+        
         const testResults = [];
         const isCanvasMode = featureName && featureName.toLowerCase().includes('canvas');
         const isDeepResearchMode = featureName && (
@@ -310,7 +315,7 @@
                         
                         if (modelButtonToClick) {
                             modelButtonToClick.click();
-                            await wait(2000);
+                            await wait(2500);  // モデル選択後の待機時間を増やす
                         } else {
                             log(`モデル "${modelName}" が見つからないため、デフォルトを使用`, 'warn');
                         }

@@ -664,6 +664,30 @@ export class WindowService {
         ...chromeOptions
       });
       
+      // ウィンドウ作成後にページが読み込まれるまで待機
+      if (window.tabs && window.tabs.length > 0) {
+        const tabId = window.tabs[0].id;
+        let retryCount = 0;
+        const maxRetries = 10;
+        
+        while (retryCount < maxRetries) {
+          try {
+            const tab = await chrome.tabs.get(tabId);
+            if (tab.status === 'complete') {
+              console.log(`[WindowService] ポジション${position}のタブ読み込み完了`);
+              break;
+            }
+          } catch (e) {
+            // エラーは無視
+          }
+          await new Promise(resolve => setTimeout(resolve, 500));
+          retryCount++;
+        }
+        
+        // 追加待機（動的コンテンツの生成を待つ）
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+      
       return window;
     } catch (error) {
       console.error('[WindowService] ウィンドウ作成エラー:', error);

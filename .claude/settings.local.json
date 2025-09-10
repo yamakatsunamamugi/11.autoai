@@ -54,7 +54,8 @@
       "Read(///**)",
       "Read(///**)",
       "Bash(git rev-parse:*)",
-      "Bash(rg:*)"
+      "Bash(rg:*)",
+      "Bash(git fetch:*)"
     ],
     "defaultMode": "acceptEdits",
     "additionalDirectories": [

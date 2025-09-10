@@ -8,6 +8,25 @@
 // 初期化とAI種別検出
 // ========================================
 
+// ページが完全に読み込まれるまで待機
+async function waitForPageReady() {
+  return new Promise((resolve) => {
+    // すでに読み込み済みの場合
+    if (document.readyState === 'complete') {
+      // 動的コンテンツの生成を待つ
+      setTimeout(resolve, 2000);
+      return;
+    }
+    
+    // ページ読み込み完了を待つ
+    window.addEventListener('load', () => {
+      console.log('[AI Content] ページ読み込み完了、動的コンテンツを待機中...');
+      // 動的コンテンツの生成を待つ
+      setTimeout(resolve, 2000);
+    }, { once: true });
+  });
+}
+
 // UI_SELECTORSの読み込み状態を管理
 let UI_SELECTORS_LOADED = false;
 let UI_SELECTORS_PROMISE = null;
@@ -2911,10 +2930,14 @@ async function initializeWithDefaults() {
 // AI種別が検出できた場合のみ初期化
 if (AI_TYPE) {
   console.log(`🚀 [11.autoai] ${AI_TYPE} サイトでContent Script初期化開始`);
-
-  // RetryManagerの初期化
-  const manager = initializeRetryManager();
-  if (manager) {
+  
+  // ページが完全に読み込まれるまで待機してから初期化
+  waitForPageReady().then(() => {
+    console.log(`[11.autoai] ${AI_TYPE} ページ準備完了、初期化実行`);
+    
+    // RetryManagerの初期化
+    const manager = initializeRetryManager();
+    if (manager) {
     console.log('[11.autoai] RetryManager初期化完了');
   }
   
@@ -2929,7 +2952,10 @@ if (AI_TYPE) {
     } else {
       console.log("✅ [11.autoai] DeepResearch設定は正常に読み込まれています");
     }
-  }, 3000);
+    }, 3000);
+  }).catch(error => {
+    console.error(`[11.autoai] ページ準備待機エラー:`, error);
+  });
 } else {
   console.log("[11.autoai] 対応外のサイトです:", window.location.hostname);
 }

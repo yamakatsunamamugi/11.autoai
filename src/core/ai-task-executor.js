@@ -121,7 +121,44 @@ export class AITaskExecutor {
       this.logger.log(`[AITaskExecutor] ✅ [${taskData.aiType}] スクリプト注入完了 (${injectionTime}ms)、初期化確認中...`);
 
       // スクリプト実行完了を待つ
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, 1000)); // 1秒に延長
+      
+      // ページが真っ暗かどうかチェック
+      try {
+        const [pageCheck] = await chrome.scripting.executeScript({
+          target: { tabId: tabId },
+          func: () => {
+            // bodyの背景色をチェック
+            const bodyStyle = window.getComputedStyle(document.body);
+            const bgColor = bodyStyle.backgroundColor;
+            const isDark = bgColor === 'rgb(0, 0, 0)' || bgColor === 'black';
+            
+            // 主要な要素が存在するかチェック
+            const hasContent = document.body.children.length > 0;
+            const hasVisibleContent = Array.from(document.body.children).some(el => {
+              const style = window.getComputedStyle(el);
+              return style.display !== 'none' && style.visibility !== 'hidden';
+            });
+            
+            return {
+              isDark,
+              hasContent,
+              hasVisibleContent,
+              bodyChildrenCount: document.body.children.length
+            };
+          }
+        });
+        
+        if (pageCheck?.result?.isDark && !pageCheck?.result?.hasVisibleContent) {
+          this.logger.warn(`[AITaskExecutor] ⚠️ ページが真っ暗な可能性があります。リロードを試みます...`);
+          
+          // ページをリロード
+          await chrome.tabs.reload(tabId);
+          await new Promise(resolve => setTimeout(resolve, 5000)); // リロード後5秒待機
+        }
+      } catch (e) {
+        this.logger.warn(`[AITaskExecutor] ページチェックエラー:`, e);
+      }
 
       // V2版の存在を確認（全AIタイプ）
       try {
@@ -155,6 +192,35 @@ export class AITaskExecutor {
         this.logger.error(`[AITaskExecutor] V2チェックエラー:`, e);
       }
 
+      // タブの状態を確認
+      let tabReady = false;
+      let retryCount = 0;
+      const maxRetries = 10;
+      
+      while (!tabReady && retryCount < maxRetries) {
+        try {
+          const tab = await chrome.tabs.get(tabId);
+          this.logger.log(`[AITaskExecutor] タブ状態確認 (${retryCount + 1}/${maxRetries}): status=${tab.status}, url=${tab.url}`);
+          
+          // タブがcompleteで、URLが正しく読み込まれているか確認
+          if (tab.status === 'complete' && tab.url && !tab.url.startsWith('chrome://')) {
+            tabReady = true;
+            this.logger.log(`[AITaskExecutor] ✅ タブ準備完了: ${tab.url}`);
+          } else {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            retryCount++;
+          }
+        } catch (error) {
+          this.logger.error(`[AITaskExecutor] タブ状態確認エラー:`, error);
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          retryCount++;
+        }
+      }
+      
+      if (!tabReady) {
+        this.logger.warn(`[AITaskExecutor] ⚠️ タブが完全に読み込まれていない可能性があります`);
+      }
+      
       // ページ読み込み完了を待つ（ネット環境を考慮して延長）
       await new Promise(resolve => setTimeout(resolve, 5000)); // 5秒待機
       
