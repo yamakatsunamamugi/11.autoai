@@ -180,23 +180,34 @@ class SheetsClient {
     if (now - this.quotaManager.windowStart >= this.quotaManager.windowDuration) {
       this.quotaManager.requestCount = 0;
       this.quotaManager.windowStart = now;
-      this.quotaManager.backoffMultiplier = Math.max(1, this.quotaManager.backoffMultiplier * 0.9);
+      
+      // エラーがしばらく発生していない場合のみバックオフを減少
+      const timeSinceLastError = now - this.errorMonitor.lastErrorTime;
+      if (timeSinceLastError > 60000) { // 1分以上エラーなし
+        this.quotaManager.backoffMultiplier = Math.max(1, this.quotaManager.backoffMultiplier * 0.9);
+      }
     }
     
-    // 必要な待機時間を計算
-    const requiredInterval = Math.min(
-      this.quotaManager.minInterval * this.quotaManager.backoffMultiplier,
-      this.quotaManager.maxInterval
-    );
+    // クォータエラーが最近発生した場合のみ待機
+    const shouldWait = this.quotaManager.backoffMultiplier > 1 || this.quotaManager.quotaErrors > 0;
     
-    if (timeSinceLastRequest < requiredInterval) {
-      const waitTime = requiredInterval - timeSinceLastRequest;
-      this.detailedLog('info', `クォータ制限対応で待機中: ${waitTime}ms`, {
-        requestCount: this.quotaManager.requestCount,
-        backoffMultiplier: this.quotaManager.backoffMultiplier,
-        quotaErrors: this.quotaManager.quotaErrors
-      });
-      await sleep(waitTime);
+    if (shouldWait) {
+      // 必要な待機時間を計算
+      const requiredInterval = Math.min(
+        this.quotaManager.minInterval * this.quotaManager.backoffMultiplier,
+        this.quotaManager.maxInterval
+      );
+      
+      if (timeSinceLastRequest < requiredInterval) {
+        const waitTime = requiredInterval - timeSinceLastRequest;
+        this.detailedLog('info', `クォータ制限対応で待機中: ${waitTime}ms`, {
+          requestCount: this.quotaManager.requestCount,
+          backoffMultiplier: this.quotaManager.backoffMultiplier,
+          quotaErrors: this.quotaManager.quotaErrors,
+          reason: 'quota_error_detected'
+        });
+        await sleep(waitTime);
+      }
     }
     
     this.quotaManager.lastRequestTime = Date.now();
@@ -233,10 +244,17 @@ class SheetsClient {
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        await this.waitForQuota();
+        // 初回または成功が続いている場合は待機しない
+        if (attempt === 1 && this.quotaManager.backoffMultiplier === 1) {
+          // 待機なしで直接実行
+        } else {
+          // リトライ時またはエラー後は待機
+          await this.waitForQuota();
+        }
+        
         const result = await requestFunc();
         
-        // 成功時の回復記録
+        // 成功時の処理
         if (attempt > 1) {
           this.errorMonitor.successfulRecoveries++;
           this.detailedLog('info', `リトライ成功: ${requestType}`, {
@@ -244,6 +262,15 @@ class SheetsClient {
             recoveryAttempts: this.errorMonitor.recoveryAttempts,
             successfulRecoveries: this.errorMonitor.successfulRecoveries
           });
+        }
+        
+        // 成功が続いた場合、バックオフを徐々にリセット
+        if (this.quotaManager.backoffMultiplier > 1) {
+          this.quotaManager.backoffMultiplier = Math.max(1, this.quotaManager.backoffMultiplier * 0.8);
+          if (this.quotaManager.backoffMultiplier === 1) {
+            this.quotaManager.quotaErrors = 0; // エラーカウンタもリセット
+            this.detailedLog('info', 'クォータ制限が解除されました');
+          }
         }
         
         return result;
@@ -258,15 +285,27 @@ class SheetsClient {
           this.errorMonitor.recoveryAttempts++;
           
           if (attempt < maxRetries) {
-            const retryDelay = Math.min(
-              5000 * Math.pow(2, attempt - 1), // エクスポネンシャル・バックオフ
-              60000 // 最大1分
-            );
+            // Retry-Afterヘッダーをチェック
+            let retryDelay;
+            const retryAfter = error.response?.headers?.['retry-after'];
+            
+            if (retryAfter) {
+              // Retry-Afterヘッダーがある場合はそれに従う
+              retryDelay = parseInt(retryAfter) * 1000; // 秒をミリ秒に変換
+              this.detailedLog('info', `Retry-Afterヘッダーを検出: ${retryAfter}秒後に再試行`);
+            } else {
+              // エクスポネンシャル・バックオフ
+              retryDelay = Math.min(
+                5000 * Math.pow(2, attempt - 1),
+                60000 // 最大1分
+              );
+            }
             
             this.detailedLog('warn', `クォータエラー - リトライ ${attempt}/${maxRetries}`, {
               requestType,
               attempt,
               retryDelay,
+              hasRetryAfter: !!retryAfter,
               error: error,
               errorStats: this.getErrorStats()
             });
