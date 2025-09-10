@@ -86,7 +86,14 @@
     // Claude動作用セレクタ（ui-selectorsから取得）
     const claudeSelectors = {
         '1_テキスト入力欄': {
-            selectors: UI_SELECTORS.Claude?.INPUT || [],
+            selectors: UI_SELECTORS.Claude?.INPUT || [
+                'div.ProseMirror[contenteditable="true"]',
+                '.ProseMirror[contenteditable="true"]',
+                'div[contenteditable="true"].ProseMirror',
+                '[data-placeholder][contenteditable="true"]',
+                'div.min-h-\\[3rem\\].ProseMirror',
+                'div[role="textbox"][contenteditable="true"]'
+            ],
             description: 'テキスト入力欄（ProseMirrorエディタ）'
         },
         '2_送信ボタン': {
@@ -348,27 +355,68 @@
     const findClaudeElement = async (selectorInfo, retryCount = 5, debug = false) => {
         const results = [];
         
+        console.log(`🔍 [findClaudeElement] 要素検索開始: ${selectorInfo.description}`);
+        console.log(`🔍 [findClaudeElement] セレクタ数: ${selectorInfo.selectors.length}`);
+        console.log(`🔍 [findClaudeElement] セレクタリスト:`, selectorInfo.selectors);
+        
         // 初回の待機時間を追加（ページの動的レンダリングを待つ）
         if (selectorInfo.description && selectorInfo.description.includes('入力欄')) {
-            await wait(1500);  // 入力欄の場合は1.5秒待機（改善）
+            console.log(`⏳ [findClaudeElement] 入力欄の初期待機: 2000ms`);
+            await wait(2000);  // 入力欄の場合は2秒待機（改善）
+            
+            // DOMの読み込み状態を確認
+            console.log(`🌐 [findClaudeElement] DOM読み込み状態:`, document.readyState);
+            if (document.readyState !== 'complete') {
+                console.log(`⏳ [findClaudeElement] DOM完全読み込み待機中...`);
+                await new Promise(resolve => {
+                    if (document.readyState === 'complete') {
+                        resolve();
+                    } else {
+                        window.addEventListener('load', resolve, { once: true });
+                    }
+                });
+                console.log(`✅ [findClaudeElement] DOM読み込み完了`);
+            }
         }
         
         for (let retry = 0; retry < retryCount; retry++) {
+            console.log(`🔄 [findClaudeElement] リトライ ${retry + 1}/${retryCount}`);
+            
             for (let i = 0; i < selectorInfo.selectors.length; i++) {
                 const selector = selectorInfo.selectors[i];
+                console.log(`🔎 [findClaudeElement] セレクタ検索 #${i + 1}: ${selector}`);
                 try {
                     if (selector.includes('svg path')) {
                         const paths = document.querySelectorAll(selector);
+                        console.log(`   📊 [findClaudeElement] SVGパス要素数: ${paths.length}`);
                         if (paths.length > 0) {
                             const button = paths[0].closest('button');
                             if (button) {
                                 console.log(`✓ 要素発見 (SVG経由): ${selectorInfo.description}`);
+                                console.log(`   📍 [findClaudeElement] ボタン要素:`, button);
+                                console.log(`   📍 [findClaudeElement] ボタンクラス:`, button.className);
                                 return { element: button, selector, method: 'svg-parent' };
+                            } else {
+                                console.log(`   ⚠️ [findClaudeElement] SVGの親ボタンが見つかりません`);
                             }
                         }
                     }
                     
                     const elements = document.querySelectorAll(selector);
+                    console.log(`   📊 [findClaudeElement] マッチした要素数: ${elements.length}`);
+                    
+                    // 要素が見つかった場合、詳細情報をログ出力
+                    if (elements.length > 0) {
+                        console.log(`   📍 [findClaudeElement] 最初の要素:`, elements[0]);
+                        console.log(`   📍 [findClaudeElement] タグ名: ${elements[0].tagName}`);
+                        console.log(`   📍 [findClaudeElement] クラス: ${elements[0].className}`);
+                        console.log(`   📍 [findClaudeElement] ID: ${elements[0].id || 'なし'}`);
+                        console.log(`   📍 [findClaudeElement] 表示状態:`, {
+                            display: window.getComputedStyle(elements[0]).display,
+                            visibility: window.getComputedStyle(elements[0]).visibility,
+                            opacity: window.getComputedStyle(elements[0]).opacity
+                        });
+                    }
                     
                     if (selectorInfo.description.includes('通常処理')) {
                         const filtered = Array.from(elements).filter(el => {
@@ -387,26 +435,36 @@
                     }
                     
                     results.push({ selector, found: false });
+                    console.log(`   ❌ [findClaudeElement] セレクタ ${selector} に一致する要素なし`);
                 } catch (e) {
                     results.push({ selector, error: e.message });
+                    console.log(`   ⚠️ [findClaudeElement] セレクタエラー: ${e.message}`);
                 }
             }
             
             if (retry < retryCount - 1) {
                 // 段階的にリトライ間隔を延長
-                const waitTime = 1000 + (retry * 500);  // 1秒→1.5秒→2秒
+                const waitTime = 1500 + (retry * 1000);  // 1.5秒→2.5秒→3.5秒
                 console.log(`🔄 要素検索リトライ中... (${retry + 1}/${retryCount}) 次回まで${waitTime}ms待機`);
                 await wait(waitTime);
+                
+                // リトライ前にDOM状態を再確認
+                console.log(`🌐 [findClaudeElement] リトライ前 DOM状態: readyState=${document.readyState}, body存在=${!!document.body}`);
             }
         }
         
         console.warn(`✗ 要素未発見: ${selectorInfo.description}`);
         console.log('  コンテキスト:', window.location.href);
         console.log('  スタック トレース:', new Error().stack.split('\n')[2]);
-        if (debug) {
-            console.log('  試行結果:', results);
-            console.log('  使用セレクタ:', selectorInfo.selectors);
-        }
+        console.log('  試行結果:', results);
+        console.log('  使用セレクタ:', selectorInfo.selectors);
+        
+        // 現在のDOM状態をログ出力（デバッグ用）
+        console.log(`🌐 [findClaudeElement] 現在のページURL:`, window.location.href);
+        console.log(`🌐 [findClaudeElement] ページタイトル:`, document.title);
+        console.log(`🌐 [findClaudeElement] body要素の存在:`, !!document.body);
+        console.log(`🌐 [findClaudeElement] body内の子要素数:`, document.body ? document.body.children.length : 0);
+        
         return null;
     };
     
@@ -1154,6 +1212,8 @@ ${prompt}`;
     async function inputTextOnly(prompt, config = {}) {
         try {
             console.log('📝 [ClaudeV2] テキスト入力のみ実行');
+            console.log('📝 [ClaudeV2] プロンプト長:', prompt ? prompt.length : 0);
+            console.log('📝 [ClaudeV2] 設定:', config);
             
             // セル情報をプロンプトに追加（column-processor.js形式）
             let finalPrompt = prompt;
@@ -1165,8 +1225,29 @@ ${prompt}`;
                 console.log(`📍 セル情報をプロンプトに追加: ${cellPosition}`);
             }
             
+            // 入力欄のセレクタ情報をログ
+            console.log('🔍 [ClaudeV2] 入力欄セレクタ情報:', claudeSelectors['1_テキスト入力欄']);
+            
             const inputResult = await findClaudeElement(claudeSelectors['1_テキスト入力欄']);
             if (!inputResult) {
+                console.error('❌ [ClaudeV2] 入力欄検出失敗');
+                console.error('❌ [ClaudeV2] セレクタ:', claudeSelectors['1_テキスト入力欄'].selectors);
+                console.error('❌ [ClaudeV2] 現在のURL:', window.location.href);
+                console.error('❌ [ClaudeV2] ページタイトル:', document.title);
+                
+                // ProseMirrorエディタの存在確認
+                const pmElements = document.querySelectorAll('.ProseMirror');
+                console.error('❌ [ClaudeV2] ProseMirror要素数:', pmElements.length);
+                if (pmElements.length > 0) {
+                    pmElements.forEach((el, index) => {
+                        console.error(`  ProseMirror[${index}]:`, {
+                            contentEditable: el.contentEditable,
+                            className: el.className,
+                            isVisible: el.offsetWidth > 0 && el.offsetHeight > 0
+                        });
+                    });
+                }
+                
                 throw new Error('入力欄が見つかりません');
             }
             
@@ -1179,6 +1260,7 @@ ${prompt}`;
             return { success: true };
         } catch (error) {
             console.error('❌ [ClaudeV2] テキスト入力エラー:', error.message);
+            console.error('❌ [ClaudeV2] エラースタック:', error.stack);
             return { success: false, error: error.message };
         }
     }

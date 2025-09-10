@@ -1915,7 +1915,7 @@ export default class StreamProcessorV2 {
         // スプレッドシートから現在の回答を取得
         const currentAnswer = this.getCurrentAnswer(task);
         
-        if (!currentAnswer || currentAnswer.trim() === '') {
+        if (!currentAnswer || currentAnswer.trim() === '' || currentAnswer.startsWith('現在操作中です')) {
           tasksToReprocess.push(task);
         } else {
           skippedCells.push(`${task.column}${task.row}`);
@@ -4562,9 +4562,10 @@ export default class StreamProcessorV2 {
         
         
         // タスクオブジェクトを作成（AI/モデル/機能は実行時に動的取得）
+        const taskId = this.generateTaskId(taskInfo.column, taskInfo.row);
         const task = {
           groupId: group.id, // グループIDを追加（キャッシュデータ参照用）
-          id: `${taskInfo.column}${taskInfo.row}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+          id: taskId,
           column: taskInfo.column,
           row: taskInfo.row,
           aiType: group.aiType || '',  // グループのAIタイプを設定
@@ -4578,6 +4579,9 @@ export default class StreamProcessorV2 {
           // ログ列：タスクリストで指定されたものをそのまま使用（なければ空配列）
           logColumns: group.columnRange.logColumn ? [group.columnRange.logColumn] : []
         };
+        
+        // タスクIDの確認ログ
+        this.logger.log(`[StreamProcessorV2] タスクID生成: ${taskId} for ${taskInfo.column}${taskInfo.row}`);
         
         taskObjects.push(task);
       }
