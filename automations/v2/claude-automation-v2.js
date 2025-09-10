@@ -251,12 +251,41 @@
     
     const getCurrentModel = async () => {
         try {
+            // デバッグログを追加
+            console.log('🔍 [getCurrentModel] モデル取得開始');
+            
+            // セレクタで要素を探す
             const displayElement = await findElementByMultipleSelectors(modelSelectors.modelDisplay, 'モデル表示部分');
-            const modelTexts = Array.from(displayElement.querySelectorAll('div')).map(el => el.textContent.trim());
-            const modelName = modelTexts.find(text => text && !text.includes('svg'));
-            return modelName ? `Claude${modelName}` : '不明';
+            
+            if (!displayElement) {
+                console.log('❌ [getCurrentModel] displayElement が見つかりません');
+                return '不明';
+            }
+            
+            // 要素の内容をログ出力
+            console.log('📝 [getCurrentModel] displayElement HTML:', displayElement.innerHTML.substring(0, 200));
+            console.log('📝 [getCurrentModel] displayElement textContent:', displayElement.textContent);
+            
+            // より柔軟なテキスト取得方法
+            let modelName = displayElement.textContent?.trim();
+            
+            // モデル名が既に"Claude"で始まっているかチェック
+            if (modelName && modelName.startsWith('Claude')) {
+                console.log('✅ [getCurrentModel] モデル名取得成功:', modelName);
+                return modelName;
+            }
+            
+            // "Claude"が含まれていない場合は追加
+            if (modelName && !modelName.includes('Claude')) {
+                const result = `Claude ${modelName}`;
+                console.log('✅ [getCurrentModel] モデル名取得成功（Claudeを追加）:', result);
+                return result;
+            }
+            
+            console.log('⚠️ [getCurrentModel] モデル名が空または取得失敗');
+            return '不明';
         } catch (error) {
-            console.error('現在のモデル取得エラー:', error.message);
+            console.error('❌ [getCurrentModel] エラー:', error.message);
             return '取得失敗';
         }
     };
@@ -782,7 +811,9 @@ ${prompt}`;
                 
                 console.log('\n【ステップ5-2】モデルが表示され一致しているか確認');
                 const newCurrentModel = await getCurrentModel();
-                console.log(`選択後のモデル: ${newCurrentModel}`);
+                console.log(`選択後のモデル: "${newCurrentModel}"`);
+                console.log(`期待されるモデル: "${targetModelName}"`);
+                console.log(`モデル一致: ${newCurrentModel === targetModelName ? '✅' : '❌'}`);
             }
             
             // ===== ステップ6: 機能選択 =====
