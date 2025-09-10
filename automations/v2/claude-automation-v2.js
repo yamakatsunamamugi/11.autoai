@@ -27,6 +27,8 @@
     };
     
     // ui-selectorsからインポート（Chrome拡張機能のインジェクトコンテキスト）
+    // 重要: UI_SELECTORSは必ずsrc/config/ui-selectors.jsから取得する
+    // ハードコードされたセレクタは使用禁止
     const UI_SELECTORS = window.UI_SELECTORS || {};
     
     // =====================================================================
@@ -34,15 +36,10 @@
     // =====================================================================
     
     // Deep Research用セレクタ（ui-selectorsから取得）
+    // 重要: セレクタは必ずsrc/config/ui-selectors.jsで管理すること
     const getDeepResearchSelectors = () => ({
         '3_回答停止ボタン': {
-            selectors: UI_SELECTORS.Claude?.STOP_BUTTON || [
-                '[aria-label="応答を停止"]',
-                'button[aria-label="応答を停止"]',
-                '[data-state="closed"][aria-label="応答を停止"]',
-                'button.border-border-200[aria-label="応答を停止"]',
-                'button svg path[d*="M128,20A108"]'
-            ],
+            selectors: UI_SELECTORS.Claude?.STOP_BUTTON || [],
             description: '回答停止ボタン'
         },
         '4_Canvas機能テキスト位置': {
@@ -60,6 +57,7 @@
     });
     
     // モデル選択用セレクタ（ui-selectorsから取得）
+    // 重要: セレクタは必ずsrc/config/ui-selectors.jsで管理すること
     const modelSelectors = {
         menuButton: (UI_SELECTORS.Claude?.MODEL_BUTTON || []).map(selector => ({ selector, description: 'モデル選択ボタン' })),
         menuContainer: [
@@ -69,31 +67,21 @@
         modelDisplay: (UI_SELECTORS.Claude?.MODEL_INFO?.TEXT_ELEMENT || []).slice(0, 3).map(selector => ({ selector, description: 'モデル表示要素' }))
     };
     
-    // 機能選択用セレクタ（ui-selectorsとテストコードのマージ）
+    // 機能選択用セレクタ（ui-selectorsから取得）
+    // 重要: セレクタは必ずsrc/config/ui-selectors.jsで管理すること
     const featureSelectors = {
         menuButton: UI_SELECTORS.Claude?.FUNCTION_MENU_BUTTON || [],
         menuContainer: UI_SELECTORS.Claude?.FEATURE_MENU?.CONTAINER || [],
         webSearchToggle: UI_SELECTORS.Claude?.FEATURE_MENU?.WEB_SEARCH_TOGGLE || [],
-        researchButton: UI_SELECTORS.Claude?.FEATURE_BUTTONS?.RESEARCH || [
-            'button[aria-pressed]:has(svg path[d*="M8.5 2C12.0899"])',
-            'button:has(p:contains("リサーチ"))',
-            'button.text-accent-secondary-100:has(svg)',
-            'button[type="button"]:has(.min-w-0.pl-1.text-xs)',
-            '.flex.shrink button:has(svg)'
-        ]
+        researchButton: UI_SELECTORS.Claude?.FEATURE_BUTTONS?.RESEARCH || []
     };
     
     // Claude動作用セレクタ（ui-selectorsから取得）
+    // 重要: セレクタは必ずsrc/config/ui-selectors.jsで管理すること
+    // ハードコードは禁止 - UI_SELECTORSを必ず使用する
     const claudeSelectors = {
         '1_テキスト入力欄': {
-            selectors: UI_SELECTORS.Claude?.INPUT || [
-                'div.ProseMirror[contenteditable="true"]',
-                '.ProseMirror[contenteditable="true"]',
-                'div[contenteditable="true"].ProseMirror',
-                '[data-placeholder][contenteditable="true"]',
-                'div.min-h-\\[3rem\\].ProseMirror',
-                'div[role="textbox"][contenteditable="true"]'
-            ],
+            selectors: UI_SELECTORS.Claude?.INPUT || [],
             description: 'テキスト入力欄（ProseMirrorエディタ）'
         },
         '2_送信ボタン': {
