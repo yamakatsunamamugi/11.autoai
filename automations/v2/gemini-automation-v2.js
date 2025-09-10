@@ -71,6 +71,92 @@
         }
     };
     
+    // Canvas形式の構造化されたテキストを取得
+    const getStructuredCanvasContent = (element) => {
+        if (!element) return '';
+        
+        try {
+            let result = [];
+            
+            const processNode = (node, depth = 0) => {
+                if (node.nodeType === Node.TEXT_NODE) {
+                    const text = node.textContent.trim();
+                    if (text) {
+                        result.push(text);
+                    }
+                } else if (node.nodeType === Node.ELEMENT_NODE) {
+                    const tagName = node.tagName.toLowerCase();
+                    
+                    // 見出し処理
+                    if (tagName.match(/^h[1-4]$/)) {
+                        const level = parseInt(tagName.charAt(1));
+                        const prefix = '#'.repeat(level);
+                        const text = node.textContent.trim();
+                        if (text) {
+                            result.push('\n' + prefix + ' ' + text + '\n');
+                        }
+                    }
+                    // リスト処理
+                    else if (tagName === 'ul' || tagName === 'ol') {
+                        result.push('\n');
+                        const items = node.querySelectorAll('li');
+                        items.forEach((item, index) => {
+                            const prefix = tagName === 'ol' ? `${index + 1}. ` : '• ';
+                            const text = item.textContent.trim();
+                            if (text) {
+                                result.push(prefix + text);
+                            }
+                        });
+                        result.push('\n');
+                    }
+                    // 段落処理
+                    else if (tagName === 'p') {
+                        const text = node.textContent.trim();
+                        if (text) {
+                            result.push('\n' + text + '\n');
+                        }
+                    }
+                    // 強調処理
+                    else if (tagName === 'strong' || tagName === 'b') {
+                        const text = node.textContent.trim();
+                        if (text) {
+                            result.push('**' + text + '**');
+                        }
+                    }
+                    // イタリック処理
+                    else if (tagName === 'em' || tagName === 'i') {
+                        const text = node.textContent.trim();
+                        if (text) {
+                            result.push('*' + text + '*');
+                        }
+                    }
+                    // その他の要素は子要素を処理
+                    else if (!['script', 'style', 'li'].includes(tagName)) {
+                        for (const child of node.childNodes) {
+                            processNode(child, depth + 1);
+                        }
+                    }
+                }
+            };
+            
+            // ルート要素から処理開始
+            for (const child of element.childNodes) {
+                processNode(child);
+            }
+            
+            // 結果を結合して返す
+            const structuredText = result.join(' ').replace(/\s+/g, ' ').replace(/\n\s+/g, '\n').trim();
+            
+            // 構造化テキストが取得できない場合は通常のテキストを返す
+            return structuredText || element.textContent?.trim() || '';
+            
+        } catch (error) {
+            log(`⚠️ Canvas構造化テキスト取得エラー: ${error.message}`, 'warn');
+            // エラー時はフォールバック
+            return element.textContent?.trim() || '';
+        }
+    };
+    
     // ================================================================
     // モデルと機能の探索
     // ================================================================
@@ -1091,7 +1177,10 @@
                     '.ProseMirror[contenteditable="true"]',
                     'div[contenteditable="true"].ProseMirror',
                     '.immersive-editor .ProseMirror',
-                    '#extended-response-markdown-content .ProseMirror'
+                    'immersive-editor .ProseMirror',
+                    '#extended-response-markdown-content .ProseMirror',
+                    '#extended-response-message-content .ProseMirror',
+                    '.immersive-editor-container .ProseMirror'
                 ];
                 const canvasEditor = findElement(canvasSelectors);
                 
@@ -1199,9 +1288,13 @@
                             // ui-selectorsから取得
                             const canvasSelectors = GeminiSelectors.CANVAS_EDITOR || [
                                 '.ProseMirror',
-                                'immersive-editor .ProseMirror',
+                                '.ProseMirror[contenteditable="true"]',
+                                'div[contenteditable="true"].ProseMirror',
                                 '.immersive-editor .ProseMirror',
-                                '#extended-response-markdown-content .ProseMirror'
+                                'immersive-editor .ProseMirror',
+                                '#extended-response-markdown-content .ProseMirror',
+                                '#extended-response-message-content .ProseMirror',
+                                '.immersive-editor-container .ProseMirror'
                             ];
                             const canvasEditor = findElement(canvasSelectors);
                             if (!canvasEditor) {
@@ -1271,16 +1364,46 @@
                 }
                 
             } else {
-                // 通常モード: 既存の処理
-                log("通常モード: 応答待機開始...");
+                // 通常モード: Canvas動的検出機能付き
+                log("通常モード: 応答待機開始（Canvas検出機能付き）...");
                 await wait(30000); // 初期待機を30秒に統一
                 
                 let waitTime = 0;
                 const maxWait = 300000;  // 最大待機を5分に統一
+                let dynamicCanvasDetected = false;
                 
-                // 停止ボタンが消えるまで待機
-                await new Promise((resolve) => {
+                // 停止ボタンが消えるまで待機（Canvas検出も同時に行う）
+                const waitResult = await new Promise((resolve) => {
                     const checker = setInterval(() => {
+                        // Canvas要素の動的チェック
+                        const canvasSelectors = GeminiSelectors.CANVAS_EDITOR || [
+                            '.ProseMirror',
+                            '.ProseMirror[contenteditable="true"]',
+                            'div[contenteditable="true"].ProseMirror',
+                            '.immersive-editor .ProseMirror',
+                            'immersive-editor .ProseMirror',
+                            '#extended-response-markdown-content .ProseMirror',
+                            '#extended-response-message-content .ProseMirror',
+                            '.immersive-editor-container .ProseMirror'
+                        ];
+                        const canvasEditor = findElement(canvasSelectors);
+                        
+                        // Canvas要素が検出された場合
+                        if (canvasEditor) {
+                            const currentText = getStructuredCanvasContent(canvasEditor) || canvasEditor.textContent?.trim() || '';
+                            if (currentText.length > 0) {
+                                clearInterval(checker);
+                                dynamicCanvasDetected = true;
+                                isCanvasMode = true; // 外側のスコープの変数を更新
+                                canvasResponseText = currentText; // 外側のスコープの変数を更新
+                                log(`🎨 [動的検出] Canvas形式を検出！モードを切り替えます（${currentText.length}文字）`, 'success');
+                                log(`🎨 [動的検出] 検出したテキストの先頭100文字: ${currentText.substring(0, 100)}...`, 'info');
+                                resolve("Canvas形式が検出されました。Canvas監視モードに切り替えます。");
+                                return;
+                            }
+                        }
+                        
+                        // 通常の停止ボタンチェック
                         if (!findElement(['button.send-button.stop', 'button.stop'])) {
                             clearInterval(checker);
                             resolve("応答が完了しました（停止ボタンが消えました）。");
@@ -1293,10 +1416,74 @@
                             return;
                         }
                         
-                        log(`[待機中] 応答生成を待っています... (${waitTime / 1000}秒)`, 'info');
+                        log(`[待機中] 応答生成を待っています... (${waitTime / 1000}秒) Canvas検出中...`, 'info');
                         waitTime += 2000;
                     }, 2000);
                 });
+                
+                // Canvas形式が動的に検出された場合、Canvas監視モードに移行
+                if (dynamicCanvasDetected) {
+                    log('🎨 Canvas監視モードでテキスト生成の完了を待機します...', 'info');
+                    
+                    // Canvas用のテキスト安定性監視
+                    canvasResponseText = await new Promise((resolve) => {
+                        let lastLength = canvasResponseText ? canvasResponseText.length : 0;
+                        let lastChangeTime = Date.now();
+                        const monitorStartTime = Date.now();
+                        const maxWaitTime = 300000; // 5分
+                        const stabilityDuration = 10000; // 10秒
+                        const monitorInterval = 2000; // 2秒
+                        
+                        const monitor = setInterval(() => {
+                            const canvasSelectors = GeminiSelectors.CANVAS_EDITOR || [
+                                '.ProseMirror',
+                                '.ProseMirror[contenteditable="true"]',
+                                'div[contenteditable="true"].ProseMirror',
+                                '.immersive-editor .ProseMirror',
+                                'immersive-editor .ProseMirror',
+                                '#extended-response-markdown-content .ProseMirror',
+                                '#extended-response-message-content .ProseMirror',
+                                '.immersive-editor-container .ProseMirror'
+                            ];
+                            const canvasEditor = findElement(canvasSelectors);
+                            
+                            if (!canvasEditor) {
+                                log('⚠️ Canvas要素が消失しました。現在のテキストで終了します。', 'warn');
+                                clearInterval(monitor);
+                                resolve(canvasResponseText || '');
+                                return;
+                            }
+                            
+                            const currentText = getStructuredCanvasContent(canvasEditor) || canvasEditor.textContent || '';
+                            const currentLength = currentText.length;
+                            log(`[Canvas監視中] 文字数: ${currentLength}`, 'info');
+                            
+                            if (currentLength > lastLength) {
+                                canvasResponseText = currentText;
+                                lastLength = currentLength;
+                                lastChangeTime = Date.now();
+                            }
+                            
+                            // 10秒間変化がなく、かつテキストがある場合は完了
+                            if (Date.now() - lastChangeTime > stabilityDuration && currentLength > 0) {
+                                clearInterval(monitor);
+                                log(`✅ Canvasのテキストが${stabilityDuration / 1000}秒間安定しました（${currentLength}文字）`, 'success');
+                                resolve(currentText);
+                            }
+                            
+                            // 5分タイムアウト
+                            if (Date.now() - monitorStartTime > maxWaitTime) {
+                                clearInterval(monitor);
+                                log(`⏱️ 5分タイムアウト - 現在のテキストを取得（${currentLength}文字）`, 'warn');
+                                resolve(currentText);
+                            }
+                        }, monitorInterval);
+                    });
+                    
+                    log(`✅ Canvas応答取得完了: ${canvasResponseText.length}文字`, 'success');
+                }
+                
+                log(`通常モード待機結果: ${waitResult}`, 'info');
             }
             
             // テキスト取得

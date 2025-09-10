@@ -41,12 +41,12 @@ class PowerManager {
       this.startTime = Date.now();
       
       try {
-        // 1. Chrome Power API でシステムスリープを防止（メイン防止策）
-        console.log('🔄 [PowerManager] Chrome Power API呼び出し前 - systemレベル');
-        chrome.power.requestKeepAwake('system');
-        console.log('✅ [PowerManager] Chrome Power API: システムスリープ防止を開始');
-        console.log(`✅ [PowerManager] requestKeepAwake('system')実行完了 at ${new Date().toISOString()}`);
-        console.log('📊 [PowerManager] 防止レベル: system (ディスプレイオフも防止)');
+        // 1. Chrome Power API でディスプレイとシステムスリープを防止（メイン防止策）
+        console.log('🔄 [PowerManager] Chrome Power API呼び出し前 - displayレベル');
+        chrome.power.requestKeepAwake('display');
+        console.log('✅ [PowerManager] Chrome Power API: ディスプレイとシステムスリープ防止を開始');
+        console.log(`✅ [PowerManager] requestKeepAwake('display')実行完了 at ${new Date().toISOString()}`);
+        console.log('📊 [PowerManager] 防止レベル: display (画面オフも防止)');
         
         // 2. Keep-Alive インターバル（補助策）
         // 15秒ごとにダミーメッセージを送信してService Workerの活性を維持
@@ -86,11 +86,11 @@ class PowerManager {
         console.warn('⚠️ [PowerManager] エラー発生しましたが、スリープ防止を維持します');
         console.log(`📊 [PowerManager] 現在のカウント: ${this.activeProcessCount}`);
         
-        // フォールバック: displayレベルで再試行
+        // フォールバック: systemレベルで再試行（ディスプレイAPIが失敗した場合）
         try {
-          console.log('🔄 [PowerManager] フォールバック: displayレベルで再試行');
-          chrome.power.requestKeepAwake('display');
-          console.log('✅ [PowerManager] フォールバック成功: displayレベルで防止開始');
+          console.log('🔄 [PowerManager] フォールバック: systemレベルで再試行');
+          chrome.power.requestKeepAwake('system');
+          console.log('✅ [PowerManager] フォールバック成功: systemレベルで防止開始（画面はオフになる可能性あり）');
         } catch (fallbackError) {
           console.error('❌ [PowerManager] フォールバックも失敗:', fallbackError);
           // 最終的に失敗した場合のみリセット
