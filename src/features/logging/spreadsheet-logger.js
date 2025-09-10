@@ -12,10 +12,14 @@
  */
 
 import { sleep } from '../../utils/sleep-utils.js';
+import { ModelExtractor } from './extractors/model-extractor.js';
+import { FunctionExtractor } from './extractors/function-extractor.js';
 
 export class SpreadsheetLogger {
   constructor(logger = console) {
     this.logger = logger;
+    this.modelExtractor = ModelExtractor;
+    this.functionExtractor = FunctionExtractor;
     this.sendTimestamps = new Map(); // key: taskId, value: { time: Date, aiType: string, model: string }
     this.pendingLogs = new Map(); // key: row, value: array of log entries
     this.writingInProgress = new Set(); // Set of cells currently being written
