@@ -661,6 +661,9 @@ export const UI_SELECTORS = {
         // モデル情報取得
         MODEL_INFO: {
             BUTTON: [
+                '.gds-mode-switch-button.logo-pill-btn',  // selectModelOnlyで使用
+                'button[class*="logo-pill-btn"]',
+                'button.gds-mode-switch-button',
                 '.logo-pill-label-container',  // モデルラベルコンテナ
                 'button[aria-label*="モデル"]',
                 'button[aria-label*="Model"]',
@@ -668,7 +671,15 @@ export const UI_SELECTORS = {
                 '[data-testid*="model"]'
             ],
             TEXT_ELEMENT: [
-                '.logo-pill-label-container span',  // 最優先：現在確認済み
+                '.logo-pill-label-container',  // selectModelOnlyと同じセレクタを最優先に（コンテナ全体）
+                '.gds-mode-switch-button .mdc-button__label div',  // selectModelOnlyで使用
+                '.gds-mode-switch-button .label',  // selectModelOnlyで使用
+                '.logo-pill-label-container > span:first-child',  // 直接の子span（矢印アイコンを除外）
+                '.logo-pill-label-container span:not([aria-hidden])',  // aria-hidden="true"でないspan
+                '.logo-pill-label-container span:not(mat-icon)',  // mat-icon以外のspan
+                '.logo-pill-label-container span',  // spanタグ（フォールバック）
+                '.logo-pill-label-container .mode-title',  // モデルタイトル要素
+                '.mode-title',                      // モデルタイトル直接
                 '.logo-pill-label-container .model-name',  // モデル名要素
                 '.logo-pill-label-container div',   // コンテナ内のdiv
                 '.model-indicator span',            // モデルインジケーター

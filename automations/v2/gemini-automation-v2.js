@@ -1069,20 +1069,48 @@
                 }
             }
             
-            // 送信後、Canvas要素の出現を待つ（最大10秒）
-            log('📝 [GeminiV2] 応答タイプを判定中...', 'info');
+            // 送信後、応答形式（通常/Canvas）を判定
+            log('📝 [GeminiV2] 応答形式を判定中...', 'info');
+            
+            // 初期待機（AIが応答形式を決定する時間）
+            await wait(5000); // 5秒待機（AIの応答形式決定を待つ）
             
             // Canvas応答テキストを外側のスコープで定義（最初に定義）
             let canvasResponseText = '';
             let isCanvasMode = false;
             let checkAttempts = 0;
-            const maxCheckAttempts = 5; // 5回チェック（2秒ごと = 最大10秒）
+            const maxCheckAttempts = 3; // 3回チェック（3秒ごと = 最大9秒）
             
             while (checkAttempts < maxCheckAttempts) {
                 checkAttempts++;
-                await wait(2000); // 2秒待機
+                await wait(3000); // 3秒待機
                 
-                // まずCanvasボタンをチェック
+                // Canvas要素（.ProseMirror）の存在をチェック - これがAIの応答形式判定の鍵
+                const canvasSelectors = GeminiSelectors.CANVAS_EDITOR || [
+                    '.ProseMirror',
+                    '.ProseMirror[contenteditable="true"]',
+                    'div[contenteditable="true"].ProseMirror',
+                    '.immersive-editor .ProseMirror',
+                    '#extended-response-markdown-content .ProseMirror'
+                ];
+                const canvasEditor = findElement(canvasSelectors);
+                
+                // Canvas要素が存在 = AIがCanvas形式を選択した
+                if (canvasEditor) {
+                    isCanvasMode = true;
+                    const currentText = getStructuredCanvasContent(canvasEditor) || canvasEditor.textContent?.trim() || '';
+                    
+                    if (currentText.length > 0) {
+                        canvasResponseText = currentText;
+                        log(`🎨 [GeminiV2] Canvas形式の応答を検出（${currentText.length}文字）- 試行${checkAttempts}/${maxCheckAttempts}`, 'success');
+                        log(`🎨 [GeminiV2] 検出したテキストの先頭100文字: ${currentText.substring(0, 100)}...`, 'info');
+                    } else {
+                        log(`🎨 [GeminiV2] Canvas形式検出、テキスト生成待機中 - 試行${checkAttempts}/${maxCheckAttempts}`, 'info');
+                    }
+                    break; // Canvas要素が見つかったらループを抜ける
+                }
+                
+                // Canvasボタンのチェック（表示されているが未展開の場合）
                 const canvasButtonSelectors = GeminiSelectors.CANVAS_BUTTON || [
                     'div.container.is-open.clickable[data-test-id="container"]',
                     'div.container.clickable[data-test-id="container"]',
@@ -1090,17 +1118,8 @@
                 ];
                 const canvasButton = findElement(canvasButtonSelectors);
                 
-                // Canvas要素の存在とテキストの有無を確認（ui-selectorsから取得）
-                const canvasSelectors = GeminiSelectors.CANVAS_EDITOR || [
-                    '.ProseMirror',
-                    'immersive-editor .ProseMirror',
-                    '.immersive-editor .ProseMirror',
-                    '#extended-response-markdown-content .ProseMirror'
-                ];
-                const canvasEditor = findElement(canvasSelectors);
-                
-                // Canvasボタンがあるが、Canvas要素が開いていない場合
-                if (canvasButton && !canvasEditor) {
+                // Canvasボタンがある場合はクリックして展開
+                if (canvasButton) {
                     log('🎨 [GeminiV2] Canvasボタンを検出 - クリックして開きます', 'info');
                     canvasButton.click();
                     await wait(2000); // Canvas展開を待つ
@@ -1108,51 +1127,39 @@
                     // 再度Canvas要素を確認
                     const canvasEditorAfterClick = findElement(canvasSelectors);
                     if (canvasEditorAfterClick) {
-                        const canvasTextAfterClick = (canvasEditorAfterClick.textContent || '').trim();
+                        isCanvasMode = true;
+                        const canvasTextAfterClick = getStructuredCanvasContent(canvasEditorAfterClick) || canvasEditorAfterClick.textContent?.trim() || '';
                         if (canvasTextAfterClick.length > 0) {
-                            isCanvasMode = true;
                             canvasResponseText = canvasTextAfterClick;
-                            log(`🎨 [GeminiV2] Canvasを開いてテキストを取得（${canvasTextAfterClick.length}文字）`, 'success');
-                            log(`🎨 [GeminiV2] 検出したテキストの先頭100文字: ${canvasTextAfterClick.substring(0, 100)}...`, 'info');
-                            break;
+                            log(`🎨 [GeminiV2] Canvas形式の応答を展開して取得（${canvasTextAfterClick.length}文字）`, 'success');
+                        } else {
+                            log(`🎨 [GeminiV2] Canvas形式を展開、テキスト生成待機中`, 'info');
                         }
+                        break;
                     }
                 }
                 
-                // 通常のCanvas要素チェック
-                const canvasText = canvasEditor ? (canvasEditor.textContent || '').trim() : '';
-                
-                if (canvasText.length > 0) {
-                    isCanvasMode = true;
-                    // ★重要: 最初に検出したテキストを保存
-                    canvasResponseText = canvasText;
-                    log(`🎨 [GeminiV2] Canvas要素にテキスト生成を検出（${canvasText.length}文字）- 試行${checkAttempts}/${maxCheckAttempts}`, 'success');
-                    log(`🎨 [GeminiV2] 検出したテキストの先頭100文字: ${canvasText.substring(0, 100)}...`, 'info');
-                    break;
-                } else if (canvasEditor) {
-                    log(`⏳ [GeminiV2] Canvas要素は存在するがテキストなし - 試行${checkAttempts}/${maxCheckAttempts}`, 'info');
-                } else if (canvasButton) {
-                    log(`⏳ [GeminiV2] Canvasボタンは存在するがCanvas要素が見つからない - 試行${checkAttempts}/${maxCheckAttempts}`, 'info');
-                } else {
-                    log(`⏳ [GeminiV2] Canvas要素もボタンも見つからない - 試行${checkAttempts}/${maxCheckAttempts}`, 'info');
-                }
-                
-                // 通常の応答要素が表示され始めたら通常モードと判定
-                const normalResponse = findElement([
-                    '.message-content .model-response-text',
-                    '.model-response-text',
-                    'button.send-button.stop',
-                    'button.stop'
-                ]);
-                
-                if (normalResponse && checkAttempts >= 2) {
-                    log(`💬 [GeminiV2] 通常の応答要素を検出 - 通常モードで処理`, 'info');
-                    break;
+                // Canvas要素が見つからない場合、通常形式の応答をチェック
+                if (!isCanvasMode) {
+                    // 通常の応答要素（停止ボタンは判定から除外）
+                    const normalResponse = findElement([
+                        '.message-content .model-response-text',
+                        '.model-response-text',
+                        '.markdown.markdown-main-panel',
+                        '.conversation-turn .markdown'
+                    ]);
+                    
+                    if (normalResponse) {
+                        log(`💬 [GeminiV2] 通常形式の応答を検出`, 'info');
+                        break;
+                    } else {
+                        log(`⏳ [GeminiV2] 応答形式を判定中 - 試行${checkAttempts}/${maxCheckAttempts}`, 'info');
+                    }
                 }
             }
             
             if (!isCanvasMode) {
-                log(`💬 [GeminiV2] Canvas要素にテキストが生成されなかったため、通常モードで処理`, 'info');
+                log(`💬 [GeminiV2] 通常形式の応答として処理`, 'info');
             }
             
             // 応答待機（Canvas/通常モード判定）

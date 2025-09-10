@@ -208,17 +208,39 @@ export class ModelInfoExtractor {
         try {
             const selectors = UI_SELECTORS.Gemini.MODEL_INFO;
             
-            // テキスト要素を直接取得（Geminiはボタンではなくラベル）
+            // テキスト要素を取得（コンテナ要素も考慮）
             let modelText = '';
             for (const selector of selectors.TEXT_ELEMENT) {
                 const textElement = document.querySelector(selector);
-                if (textElement && textElement.textContent.trim()) {
-                    modelText = textElement.textContent.trim();
-                    debugInfo.selectorFound = true;
-                    debugInfo.elementContent = modelText;
-                    debugInfo.extractedModel = modelText;
-                    debugInfo.selector = selector;
-                    break;
+                if (textElement) {
+                    // getCleanText関数と同様の処理を実装
+                    const rawText = textElement.textContent.trim();
+                    
+                    if (rawText) {
+                        // コンテナ要素の場合、不要な要素を除外してテキストを取得
+                        if (selector === '.logo-pill-label-container' || 
+                            selector.includes('.gds-mode-switch-button')) {
+                            // クローンを作成して不要な要素を削除
+                            const clone = textElement.cloneNode(true);
+                            // mat-iconやその他の不要な要素を削除
+                            const unwantedElements = clone.querySelectorAll(
+                                'mat-icon, .mat-ripple, .mat-mdc-button-persistent-ripple, ' +
+                                '.mat-focus-indicator, .mat-mdc-button-touch-target, .cdk-visually-hidden'
+                            );
+                            unwantedElements.forEach(el => el.remove());
+                            modelText = clone.textContent.trim().replace(/\s+/g, ' ');
+                        } else {
+                            modelText = rawText;
+                        }
+                        
+                        if (modelText) {
+                            debugInfo.selectorFound = true;
+                            debugInfo.elementContent = rawText;
+                            debugInfo.extractedModel = modelText;
+                            debugInfo.selector = selector;
+                            break;
+                        }
+                    }
                 }
             }
             

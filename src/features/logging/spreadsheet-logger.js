@@ -71,10 +71,14 @@ export class SpreadsheetLogger {
   formatLogEntry(task, url, sendTime, writeTime) {
     const aiType = task.aiType || 'Unknown';
     const selectedModel = task.model || '通常';
-    const displayedModel = task.displayedModel || selectedModel;
-    const model = selectedModel === displayedModel ? selectedModel : `${selectedModel} / ${displayedModel}`;
+    const displayedModel = task.displayedModel || '不明';
+    // 常に両方のモデルを表示する形式に変更
+    const model = `選択: ${selectedModel} / 表示: ${displayedModel}`;
     const selectedFunction = task.function || task.specialOperation || '通常';
-    const displayedFunction = task.displayedFunction || selectedFunction;
+    const displayedFunction = task.displayedFunction || '不明';
+    
+    // 機能も同様に常に両方表示
+    const functionName = `選択: ${selectedFunction} / 表示: ${displayedFunction}`;
     
     // デバッグログ
     console.log('[SpreadsheetLogger] formatLogEntry - 完全情報:', {
@@ -87,10 +91,8 @@ export class SpreadsheetLogger {
       'task.displayedFunction': task.displayedFunction,
       selectedFunction,
       displayedFunction,
-      functionName: selectedFunction === displayedFunction ? selectedFunction : `${selectedFunction} / ${displayedFunction}`
+      functionName
     });
-    
-    const functionName = selectedFunction === displayedFunction ? selectedFunction : `${selectedFunction} / ${displayedFunction}`;
     
     // 経過時間を計算（秒単位）
     const elapsedMs = writeTime.getTime() - sendTime.getTime();
@@ -754,11 +756,13 @@ export class SpreadsheetLogger {
   formatSimpleLogEntry(task, url) {
     const aiType = task.aiType || 'Unknown';
     const selectedModel = task.model || '不明';
-    const displayedModel = task.displayedModel || selectedModel;
-    const model = selectedModel === displayedModel ? selectedModel : `${selectedModel} / ${displayedModel}`;
+    const displayedModel = task.displayedModel || '不明';
+    // 常に両方のモデルを表示する形式に変更
+    const model = `選択: ${selectedModel} / 表示: ${displayedModel}`;
     const selectedFunction = task.function || task.specialOperation || '通常';
-    const displayedFunction = task.displayedFunction || selectedFunction;
-    const functionName = selectedFunction === displayedFunction ? selectedFunction : `${selectedFunction} / ${displayedFunction}`;
+    const displayedFunction = task.displayedFunction || '不明';
+    // 機能も同様に常に両方表示
+    const functionName = `選択: ${selectedFunction} / 表示: ${displayedFunction}`;
     const currentTime = new Date();
     
     const timeStr = currentTime.toLocaleString('ja-JP', {
