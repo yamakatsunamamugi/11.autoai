@@ -337,7 +337,7 @@ export class ExclusiveControlManager {
     const parsed = this.control.parseMarker(marker);
     
     // 自分のマーカーの場合は即座に処理可能
-    if (parsed && parsed.pcId === this.pcId) {
+    if (this.control.isMarkerFromPC(marker, this.pcId)) {
       this.logger.log('[ExclusiveControlManager] 自分のマーカーを検出 - 処理続行');
       return { canProceed: true, reason: 'own-marker' };
     }

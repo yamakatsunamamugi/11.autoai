@@ -31,6 +31,20 @@
     // ハードコードされたセレクタは使用禁止
     const UI_SELECTORS = window.UI_SELECTORS || {};
     
+    // UI_SELECTORSの状態を詳細にログ出力
+    console.log('🔧 [ClaudeV2] UI_SELECTORS初期化確認:');
+    console.log('  window.UI_SELECTORS存在:', !!window.UI_SELECTORS);
+    if (window.UI_SELECTORS) {
+        console.log('  UI_SELECTORS.Claude存在:', !!window.UI_SELECTORS.Claude);
+        if (window.UI_SELECTORS.Claude) {
+            console.log('  UI_SELECTORS.Claude.INPUT:', window.UI_SELECTORS.Claude.INPUT);
+            console.log('  UI_SELECTORS.Claude.SEND_BUTTON:', window.UI_SELECTORS.Claude.SEND_BUTTON);
+            console.log('  UI_SELECTORS.Claude.STOP_BUTTON:', window.UI_SELECTORS.Claude.STOP_BUTTON);
+        }
+    } else {
+        console.warn('⚠️ [ClaudeV2] UI_SELECTORSが未定義です！デフォルト値を使用します。');
+    }
+    
     // =====================================================================
     // セレクタ定義（ui-selectorsからマージ、テストコードから完全移植）
     // =====================================================================
@@ -79,17 +93,44 @@
     // Claude動作用セレクタ（ui-selectorsから取得）
     // 重要: セレクタは必ずsrc/config/ui-selectors.jsで管理すること
     // ハードコードは禁止 - UI_SELECTORSを必ず使用する
+    
+    // デフォルトセレクタ（フォールバック用）
+    const DEFAULT_SELECTORS = {
+        INPUT: [
+            '.ProseMirror',
+            'div.ProseMirror[contenteditable="true"]',
+            '[data-placeholder*="Message Claude"]',
+            'div[contenteditable="true"][role="textbox"]'
+        ],
+        SEND_BUTTON: [
+            'button[aria-label="Send Message"]',
+            'button[type="submit"][aria-label*="Send"]',
+            'button svg path[d*="M320 448"]'
+        ],
+        STOP_BUTTON: [
+            'button[aria-label="応答を停止"]',
+            '[aria-label="応答を停止"]',
+            'button svg path[d*="M128,20A108"]'
+        ]
+    };
+    
     const claudeSelectors = {
         '1_テキスト入力欄': {
-            selectors: UI_SELECTORS.Claude?.INPUT || [],
+            selectors: (UI_SELECTORS.Claude?.INPUT && UI_SELECTORS.Claude.INPUT.length > 0) 
+                ? UI_SELECTORS.Claude.INPUT 
+                : DEFAULT_SELECTORS.INPUT,
             description: 'テキスト入力欄（ProseMirrorエディタ）'
         },
         '2_送信ボタン': {
-            selectors: UI_SELECTORS.Claude?.SEND_BUTTON || [],
+            selectors: (UI_SELECTORS.Claude?.SEND_BUTTON && UI_SELECTORS.Claude.SEND_BUTTON.length > 0)
+                ? UI_SELECTORS.Claude.SEND_BUTTON
+                : DEFAULT_SELECTORS.SEND_BUTTON,
             description: '送信ボタン'
         },
         '3_回答停止ボタン': {
-            selectors: UI_SELECTORS.Claude?.STOP_BUTTON || [],
+            selectors: (UI_SELECTORS.Claude?.STOP_BUTTON && UI_SELECTORS.Claude.STOP_BUTTON.length > 0)
+                ? UI_SELECTORS.Claude.STOP_BUTTON
+                : DEFAULT_SELECTORS.STOP_BUTTON,
             description: '回答停止ボタン'
         },
         '4_Canvas機能テキスト位置': {
@@ -101,6 +142,16 @@
             description: '通常処理のテキスト表示エリア'
         }
     };
+    
+    // セレクタの最終状態をログ出力
+    console.log('📋 [ClaudeV2] claudeSelectors最終設定:');
+    console.log('  入力欄セレクタ数:', claudeSelectors['1_テキスト入力欄'].selectors.length);
+    console.log('  送信ボタンセレクタ数:', claudeSelectors['2_送信ボタン'].selectors.length);
+    console.log('  停止ボタンセレクタ数:', claudeSelectors['3_回答停止ボタン'].selectors.length);
+    
+    if (claudeSelectors['1_テキスト入力欄'].selectors.length === 0) {
+        console.error('❌ [ClaudeV2] 致命的エラー: 入力欄セレクタが空です！');
+    }
     
     // =====================================================================
     // ユーティリティ関数群（テストコードから）
@@ -372,9 +423,13 @@
     const findClaudeElement = async (selectorInfo, retryCount = 5, debug = false) => {
         const results = [];
         
+        console.log(`\n${'='.repeat(60)}`);
         console.log(`🔍 [findClaudeElement] 要素検索開始: ${selectorInfo.description}`);
         console.log(`🔍 [findClaudeElement] セレクタ数: ${selectorInfo.selectors.length}`);
-        console.log(`🔍 [findClaudeElement] セレクタリスト:`, selectorInfo.selectors);
+        console.log(`🔍 [findClaudeElement] セレクタリスト:`, JSON.stringify(selectorInfo.selectors, null, 2));
+        console.log(`🔍 [findClaudeElement] リトライ回数: ${retryCount}`);
+        console.log(`🔍 [findClaudeElement] デバッグモード: ${debug}`);
+        console.log(`${'='.repeat(60)}\n`);
         
         // 初回の待機時間を追加（ページの動的レンダリングを待つ）
         if (selectorInfo.description && selectorInfo.description.includes('入力欄')) {
@@ -383,6 +438,10 @@
             
             // DOMの読み込み状態を確認
             console.log(`🌐 [findClaudeElement] DOM読み込み状態:`, document.readyState);
+            console.log(`🌐 [findClaudeElement] 現在のURL:`, window.location.href);
+            console.log(`🌐 [findClaudeElement] ページタイトル:`, document.title);
+            console.log(`🌐 [findClaudeElement] body要素の存在:`, !!document.body);
+            
             if (document.readyState !== 'complete') {
                 console.log(`⏳ [findClaudeElement] DOM完全読み込み待機中...`);
                 await new Promise(resolve => {
@@ -397,14 +456,49 @@
                 await wait(1000);
                 console.log(`✅ [findClaudeElement] 追加待機完了`);
             }
+            
+            // ProseMirrorエディタの状態を詳細にチェック
+            console.log(`\n📝 [findClaudeElement] エディタ要素の詳細検索開始`);
+            const editorChecks = [
+                { selector: '.ProseMirror', name: 'ProseMirror' },
+                { selector: 'div[contenteditable="true"]', name: 'ContentEditable' },
+                { selector: '[role="textbox"]', name: 'RoleTextbox' },
+                { selector: 'div.ql-editor', name: 'QuillEditor' },
+                { selector: 'div[data-placeholder]', name: 'PlaceholderDiv' }
+            ];
+            
+            for (const check of editorChecks) {
+                const elements = document.querySelectorAll(check.selector);
+                if (elements.length > 0) {
+                    console.log(`  ✅ ${check.name}: ${elements.length}個発見`);
+                    elements.forEach((el, idx) => {
+                        const rect = el.getBoundingClientRect();
+                        console.log(`    [${idx}] visible: ${rect.width > 0 && rect.height > 0}, ` +
+                                  `size: ${rect.width}x${rect.height}, ` +
+                                  `classes: "${el.className}"` +
+                                  `${el.contentEditable ? `, contentEditable: ${el.contentEditable}` : ''}`);
+                    });
+                } else {
+                    console.log(`  ❌ ${check.name}: 0個`);
+                }
+            }
+            console.log(`${'─'.repeat(40)}\n`);
         }
         
         for (let retry = 0; retry < retryCount; retry++) {
-            console.log(`🔄 [findClaudeElement] リトライ ${retry + 1}/${retryCount}`);
+            console.log(`\n🔄 [findClaudeElement] リトライ ${retry + 1}/${retryCount}`);
+            console.log(`${'─'.repeat(40)}`);
             
             for (let i = 0; i < selectorInfo.selectors.length; i++) {
                 const selector = selectorInfo.selectors[i];
-                console.log(`🔎 [findClaudeElement] セレクタ検索 #${i + 1}: ${selector}`);
+                console.log(`\n🔎 [findClaudeElement] セレクタ検索 #${i + 1}/${selectorInfo.selectors.length}: "${selector}"`);
+                
+                // セレクタが空の場合の警告
+                if (!selector || selector.trim() === '') {
+                    console.log(`  ⚠️ [findClaudeElement] 警告: 空のセレクタ`);
+                    continue;
+                }
+                
                 try {
                     if (selector.includes('svg path')) {
                         const paths = document.querySelectorAll(selector);
@@ -431,11 +525,33 @@
                         console.log(`   📍 [findClaudeElement] タグ名: ${elements[0].tagName}`);
                         console.log(`   📍 [findClaudeElement] クラス: ${elements[0].className}`);
                         console.log(`   📍 [findClaudeElement] ID: ${elements[0].id || 'なし'}`);
+                        
+                        const rect = elements[0].getBoundingClientRect();
+                        const styles = window.getComputedStyle(elements[0]);
                         console.log(`   📍 [findClaudeElement] 表示状態:`, {
-                            display: window.getComputedStyle(elements[0]).display,
-                            visibility: window.getComputedStyle(elements[0]).visibility,
-                            opacity: window.getComputedStyle(elements[0]).opacity
+                            display: styles.display,
+                            visibility: styles.visibility,
+                            opacity: styles.opacity,
+                            position: styles.position,
+                            zIndex: styles.zIndex
                         });
+                        console.log(`   📍 [findClaudeElement] サイズ:`, {
+                            width: rect.width,
+                            height: rect.height,
+                            top: rect.top,
+                            left: rect.left,
+                            visible: rect.width > 0 && rect.height > 0
+                        });
+                        
+                        // contentEditableの詳細チェック
+                        if (elements[0].contentEditable) {
+                            console.log(`   📍 [findClaudeElement] contentEditable: ${elements[0].contentEditable}`);
+                        }
+                        if (elements[0].getAttribute('role')) {
+                            console.log(`   📍 [findClaudeElement] role: ${elements[0].getAttribute('role')}`);
+                        }
+                    } else {
+                        console.log(`   ❌ [findClaudeElement] 要素が見つかりませんでした`);
                     }
                     
                     if (selectorInfo.description.includes('通常処理')) {
@@ -1233,9 +1349,21 @@ ${prompt}`;
      */
     async function inputTextOnly(prompt, config = {}) {
         try {
-            console.log('📝 [ClaudeV2] テキスト入力のみ実行');
+            console.log('\n' + '='.repeat(70));
+            console.log('📝 [ClaudeV2/inputTextOnly] テキスト入力開始');
+            console.log('='.repeat(70));
             console.log('📝 [ClaudeV2] プロンプト長:', prompt ? prompt.length : 0);
-            console.log('📝 [ClaudeV2] 設定:', config);
+            console.log('📝 [ClaudeV2] 設定:', JSON.stringify(config, null, 2));
+            
+            // UI_SELECTORSの状態を確認
+            console.log('\n🔍 [ClaudeV2] UI_SELECTORS確認:');
+            console.log('  window.UI_SELECTORS存在:', !!window.UI_SELECTORS);
+            console.log('  UI_SELECTORS.Claude存在:', !!(window.UI_SELECTORS && window.UI_SELECTORS.Claude));
+            console.log('  UI_SELECTORS.Claude.INPUT存在:', !!(window.UI_SELECTORS && window.UI_SELECTORS.Claude && window.UI_SELECTORS.Claude.INPUT));
+            
+            if (window.UI_SELECTORS && window.UI_SELECTORS.Claude && window.UI_SELECTORS.Claude.INPUT) {
+                console.log('  UI_SELECTORS.Claude.INPUT内容:', JSON.stringify(window.UI_SELECTORS.Claude.INPUT, null, 2));
+            }
             
             // セル情報をプロンプトに追加（column-processor.js形式）
             let finalPrompt = prompt;
@@ -1248,11 +1376,14 @@ ${prompt}`;
             }
             
             // 入力欄の初期待機時間を増やす
-            console.log('⏳ [ClaudeV2] 入力欄の出現を待機中...');
+            console.log('\n⏳ [ClaudeV2] 入力欄の出現を待機中...');
             await wait(5000);  // 5秒待機
             
-            // 入力欄のセレクタ情報をログ
-            console.log('🔍 [ClaudeV2] 入力欄セレクタ情報:', claudeSelectors['1_テキスト入力欄']);
+            // 入力欄のセレクタ情報を詳細にログ
+            console.log('\n🔍 [ClaudeV2] 入力欄セレクタ情報:');
+            console.log('  description:', claudeSelectors['1_テキスト入力欄'].description);
+            console.log('  selectors配列長:', claudeSelectors['1_テキスト入力欄'].selectors.length);
+            console.log('  selectors内容:', JSON.stringify(claudeSelectors['1_テキスト入力欄'].selectors, null, 2));
             
             // 複数回リトライで入力欄を探す
             let inputResult = null;
@@ -1260,10 +1391,17 @@ ${prompt}`;
             const maxRetries = 5;
             
             while (!inputResult && retryCount < maxRetries) {
-                inputResult = await findClaudeElement(claudeSelectors['1_テキスト入力欄']);
+                console.log(`\n🔄 [ClaudeV2] 入力欄検索試行 ${retryCount + 1}/${maxRetries}`);
+                console.log('─'.repeat(50));
+                
+                // findClaudeElementを呼び出す前の状態確認
+                console.log('📋 [ClaudeV2] findClaudeElement呼び出し前:');
+                console.log('  セレクタ情報:', claudeSelectors['1_テキスト入力欄']);
+                
+                inputResult = await findClaudeElement(claudeSelectors['1_テキスト入力欄'], 5, true);  // デバッグモードを有効化
                 
                 if (!inputResult) {
-                    console.log(`⚠️ [ClaudeV2] 入力欄未検出 (試行 ${retryCount + 1}/${maxRetries})`);
+                    console.log(`\n⚠️ [ClaudeV2] 入力欄未検出 (試行 ${retryCount + 1}/${maxRetries})`);
                     
                     // ページの状態を詳細に確認
                     const pageState = document.readyState;
@@ -1272,12 +1410,13 @@ ${prompt}`;
                     const url = window.location.href;
                     const title = document.title;
                     
-                    console.log(`📊 [ClaudeV2] ページ状態:`, {
+                    console.log(`\n📊 [ClaudeV2] ページ状態詳細:`, {
                         readyState: pageState,
                         bodyExists,
                         childrenCount: hasContent,
                         url,
-                        title
+                        title,
+                        timestamp: new Date().toISOString()
                     });
                     
                     // ProseMirrorエディタの存在確認
@@ -1324,10 +1463,30 @@ ${prompt}`;
             }
             
             if (!inputResult) {
+                console.error('\n' + '='.repeat(70));
                 console.error('❌ [ClaudeV2] 入力欄検出失敗（最大リトライ回数超過）');
-                console.error('❌ [ClaudeV2] セレクタ:', claudeSelectors['1_テキスト入力欄'].selectors);
+                console.error('='.repeat(70));
+                console.error('❌ [ClaudeV2] 使用したセレクタ:', JSON.stringify(claudeSelectors['1_テキスト入力欄'].selectors, null, 2));
                 console.error('❌ [ClaudeV2] 現在のURL:', window.location.href);
                 console.error('❌ [ClaudeV2] ページタイトル:', document.title);
+                console.error('❌ [ClaudeV2] DOM状態:', {
+                    readyState: document.readyState,
+                    bodyExists: !!document.body,
+                    bodyChildren: document.body ? document.body.children.length : 0
+                });
+                
+                // デバッグ用: 現在のDOM構造の一部を出力
+                console.error('❌ [ClaudeV2] body内の主要要素:');
+                if (document.body) {
+                    const mainElements = document.body.querySelectorAll('main, div[role="main"], div[class*="main"], div[id*="main"]');
+                    console.error('  main要素数:', mainElements.length);
+                    mainElements.forEach((el, idx) => {
+                        if (idx < 3) {  // 最初の3つだけ表示
+                            console.error(`  [${idx}] tag: ${el.tagName}, class: "${el.className}", id: "${el.id}"`);
+                        }
+                    });
+                }
+                
                 throw new Error('入力欄が見つかりません（最大リトライ回数超過）');
             }
             

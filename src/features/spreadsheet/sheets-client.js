@@ -1398,25 +1398,32 @@ class SheetsClient {
    */
   async getCellValue(spreadsheetId, sheetName, cell) {
     try {
-      const token = await globalThis.authService.getAuthToken();
-      const range = `'${sheetName}'!${cell}`;
-      const url = `${this.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(range)}?valueRenderOption=FORMATTED_VALUE`;
-      
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      // executeWithQuotaManagementでラップしてリトライ機能を有効化
+      const result = await this.executeWithQuotaManagement(async () => {
+        const token = await globalThis.authService.getAuthToken();
+        const range = `'${sheetName}'!${cell}`;
+        const url = `${this.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(range)}?valueRenderOption=FORMATTED_VALUE`;
+        
+        const response = await fetch(url, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(`Failed to get cell ${cell}: ${error.error.message}`);
-      }
+        if (!response.ok) {
+          const error = await response.json();
+          const errorObj = new Error(`Failed to get cell ${cell}: ${error.error.message}`);
+          errorObj.error = error.error;
+          errorObj.response = response;
+          throw errorObj;
+        }
 
-      const data = await response.json();
+        return await response.json();
+      }, `getCellValue_${cell}`);
+
       // values配列の最初の行の最初の値を返す
-      return data.values && data.values[0] && data.values[0][0] ? data.values[0][0] : '';
+      return result.values && result.values[0] && result.values[0][0] ? result.values[0][0] : '';
     } catch (error) {
       this.logger.error('SheetsClient', `セル取得エラー ${cell}:`, error);
       return '';
@@ -1432,26 +1439,33 @@ class SheetsClient {
    */
   async getBatchCellValues(spreadsheetId, sheetName, cells) {
     try {
-      const token = await globalThis.authService.getAuthToken();
-      
-      // 各セルに対してrangeを作成
-      const ranges = cells.map(cell => `'${sheetName}'!${cell}`);
-      const rangesParam = ranges.map(range => encodeURIComponent(range)).join('&ranges=');
-      const url = `${this.baseUrl}/${spreadsheetId}/values:batchGet?ranges=${rangesParam}&valueRenderOption=FORMATTED_VALUE`;
-      
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      // executeWithQuotaManagementでラップしてリトライ機能を有効化
+      const data = await this.executeWithQuotaManagement(async () => {
+        const token = await globalThis.authService.getAuthToken();
+        
+        // 各セルに対してrangeを作成
+        const ranges = cells.map(cell => `'${sheetName}'!${cell}`);
+        const rangesParam = ranges.map(range => encodeURIComponent(range)).join('&ranges=');
+        const url = `${this.baseUrl}/${spreadsheetId}/values:batchGet?ranges=${rangesParam}&valueRenderOption=FORMATTED_VALUE`;
+        
+        const response = await fetch(url, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(`Failed to get cells: ${error.error.message}`);
-      }
+        if (!response.ok) {
+          const error = await response.json();
+          const errorObj = new Error(`Failed to get cells: ${error.error.message}`);
+          errorObj.error = error.error;
+          errorObj.response = response;
+          throw errorObj;
+        }
 
-      const data = await response.json();
+        return await response.json();
+      }, `getBatchCellValues_${cells.length}cells`);
+
       const result = {};
       
       // 各範囲の値を対応するセル名にマッピング
@@ -1478,27 +1492,33 @@ class SheetsClient {
    */
   async getCellValues(spreadsheetId, sheetName, range) {
     try {
-      const token = await globalThis.authService.getAuthToken();
-      const fullRange = `'${sheetName}'!${range}`;
-      const url = `${this.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(fullRange)}?valueRenderOption=FORMATTED_VALUE`;
-      
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      // executeWithQuotaManagementでラップしてリトライ機能を有効化
+      const result = await this.executeWithQuotaManagement(async () => {
+        const token = await globalThis.authService.getAuthToken();
+        const fullRange = `'${sheetName}'!${range}`;
+        const url = `${this.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(fullRange)}?valueRenderOption=FORMATTED_VALUE`;
+        
+        const response = await fetch(url, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(`Failed to get cell range ${range}: ${error.error.message}`);
-      }
+        if (!response.ok) {
+          const error = await response.json();
+          const errorObj = new Error(`Failed to get cell range ${range}: ${error.error.message}`);
+          errorObj.error = error.error;
+          errorObj.response = response;
+          throw errorObj;
+        }
 
-      const data = await response.json();
-      
+        return await response.json();
+      }, `getCellValues_${range}`);
+
       // 縦方向の範囲の場合、各行の最初の値を配列として返す
-      if (data.values) {
-        return data.values.map(row => row[0] || '');
+      if (result.values) {
+        return result.values.map(row => row[0] || '');
       }
       
       return [];
@@ -1515,29 +1535,34 @@ class SheetsClient {
    * @returns {Promise<Object>} 更新結果
    */
   async batchUpdate(spreadsheetId, updates) {
-    const token = await globalThis.authService.getAuthToken();
-    const url = `${this.baseUrl}/${spreadsheetId}/values:batchUpdate`;
+    return await this.executeWithQuotaManagement(async () => {
+      const token = await globalThis.authService.getAuthToken();
+      const url = `${this.baseUrl}/${spreadsheetId}/values:batchUpdate`;
 
-    const requestBody = {
-      valueInputOption: "USER_ENTERED",
-      data: updates,
-    };
+      const requestBody = {
+        valueInputOption: "USER_ENTERED",
+        data: updates,
+      };
 
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(requestBody),
-    });
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+      });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(`Sheets API error: ${error.error.message}`);
-    }
+      if (!response.ok) {
+        const error = await response.json();
+        const errorObj = new Error(`Sheets API error: ${error.error.message}`);
+        errorObj.error = error.error;
+        errorObj.response = response;
+        throw errorObj;
+      }
 
-    return await response.json();
+      return await response.json();
+    }, `batchUpdate_${updates.length}updates`);
   }
 
   /**
