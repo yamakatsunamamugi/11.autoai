@@ -427,9 +427,9 @@ export default class StreamProcessorV2 {
     
     try {
       // ========================================
-      // フェーズ1: 全ウィンドウを開いてテキスト入力
+      // フェーズ1: 全ウィンドウを同時に開いてテキスト入力（並列処理）
       // ========================================
-      this.logger.log(`[StreamProcessorV2] 📋 フェーズ1: ウィンドウ準備とテキスト入力`);
+      this.logger.log(`[StreamProcessorV2] 📋 フェーズ1: ウィンドウ準備とテキスト入力（並列処理）`);
       
       // バッチ内のすべての既存回答を同期チェック（高速化）
       const answerResults = batch.map(task => ({ 
@@ -437,12 +437,44 @@ export default class StreamProcessorV2 {
         answer: this.getCurrentAnswer(task) 
       }));
       
+      // ウィンドウを事前に並列作成（高速化）
+      this.logger.log(`[StreamProcessorV2] 🚀 ウィンドウを並列作成中...`);
+      const windowCreationPromises = batch.map(async (task, index) => {
+        const position = index; // 0: 左上、1: 右上、2: 左下
+        
+        try {
+          // AI/モデル/機能を動的に取得（ウィンドウ作成前に必要）
+          const { model, function: func, ai } = await this.fetchModelAndFunctionFromTask(task);
+          task.model = model;
+          task.function = func;
+          task.aiType = ai;
+          
+          // ウィンドウを作成
+          const tabId = await this.createWindowForTask(task, position);
+          if (!tabId) {
+            return { success: false, error: `Failed to create window for ${task.aiType}`, index };
+          }
+          
+          return { success: true, tabId, task, index };
+        } catch (error) {
+          this.logger.error(`[StreamProcessorV2] ❌ ウィンドウ作成エラー: ${task.column}${task.row}`, error);
+          return { success: false, error, index };
+        }
+      });
+      
+      const windowResults = await Promise.all(windowCreationPromises);
+      this.logger.log(`[StreamProcessorV2] ✅ ウィンドウ並列作成完了`);
+      
+      // 段階2: 排他制御とロック取得（順次実行が必要）
+      this.logger.log(`[StreamProcessorV2] 🔄 フェーズ1-2: 排他制御とロック取得開始`);
+      const lockResults = [];
+      
       for (let index = 0; index < batch.length; index++) {
         const task = batch[index];
-        const position = index; // 0: 左上、1: 右上、2: 左下
         
         // 既存回答チェック（事前に取得済みの結果を使用）
         const existingAnswer = answerResults[index].answer;
+        
         // 排他制御システムでロック取得を試みる
         const lockResult = await this.exclusiveManager.acquireLock(
           task,
@@ -457,26 +489,43 @@ export default class StreamProcessorV2 {
         if (!lockResult.success) {
           skippedCells.push(`${task.column}${task.row}`);
           this.logger.log(`[StreamProcessorV2] 🔒 ${task.column}${task.row}: ${lockResult.reason} - スキップ`);
-          continue;
+          lockResults.push({ success: false, index, reason: lockResult.reason });
+        } else {
+          this.logger.log(`[StreamProcessorV2] 🔓 ${task.column}${task.row}: 排他制御ロック取得成功`);
+          lockResults.push({ success: true, index });
         }
         
-        // ロック取得成功
-        this.logger.log(`[StreamProcessorV2] 🔓 ${task.column}${task.row}: 排他制御ロック取得成功`);
-        
-        this.logger.log(`[StreamProcessorV2] ウィンドウ${index + 1}/${batch.length}を準備: ${task.column}${task.row}`);
-        
-        // AI/モデル/機能を動的に取得（ウィンドウ作成前に）
-        // 排他制御マーカーに機能名を含めるため、事前に取得
-        const { model, function: func, ai } = await this.fetchModelAndFunctionFromTask(task);
-        task.model = model;
-        task.function = func;
-        task.aiType = ai;
-        
-        // ロックマーカーを機能名付きで更新（既に取得したロックを機能名付きに変更）
+        // 事前作成されたウィンドウ情報を確認
+        const windowResult = windowResults[index];
+        if (!windowResult.success) {
+          this.logger.log(`[StreamProcessorV2] ❌ ウィンドウ作成済み失敗: ${task.column}${task.row} - スキップ`);
+          skippedCells.push(`${task.column}${task.row}`);
+          lockResults[index] = { success: false, index, reason: 'ウィンドウ作成失敗' };
+        }
+      }
+
+      // 段階3: スクリプト注入を並列実行
+      this.logger.log(`[StreamProcessorV2] 🔄 フェーズ1-3: スクリプト注入（並列）開始`);
+      const injectionPromises = lockResults.map(async (lockResult, index) => {
+        if (!lockResult.success) {
+          return { success: false, index, error: lockResult.reason };
+        }
+
+        const task = batch[index];
+        const windowResult = windowResults[index];
+        let currentTabId = windowResult.tabId;
+        let injectionSuccess = false;
+
+        // タスクにウィンドウ結果の情報を設定
+        task.model = windowResult.task.model;
+        task.function = windowResult.task.function;
+        task.aiType = windowResult.task.aiType;
+
+        // ロックマーカーを機能名付きで更新
         try {
           const functionAwareMarker = this.exclusiveManager.control.createMarker(
             this.exclusiveManager.pcId,
-            { function: func || '通常' }
+            { function: windowResult.task.function || '通常' }
           );
           
           await globalThis.sheetsClient?.updateCell(
@@ -486,173 +535,150 @@ export default class StreamProcessorV2 {
             this.spreadsheetData?.gid
           );
           
-          this.logger.log(`[StreamProcessorV2] 📝 ${task.column}${task.row}: 機能名付きマーカー更新 (${func || '通常'})`);
+          this.logger.log(`[StreamProcessorV2] 📝 ${task.column}${task.row}: 機能名付きマーカー更新 (${windowResult.task.function || '通常'})`);
         } catch (markerUpdateError) {
           this.logger.warn(`[StreamProcessorV2] マーカー更新エラー:`, markerUpdateError);
         }
-        
-        this.logger.log(`[StreamProcessorV2] 📊 動的取得（ウィンドウ作成前）:`, {
-          cell: `${task.column}${task.row}`,
-          AI: ai,
-          モデル: model,
-          機能: func
-        });
-        
-        // ウィンドウを作成
-        const tabId = await this.createWindowForTask(task, position);
-        if (!tabId) {
-          throw new Error(`Failed to create window for ${task.aiType}`);
-        }
-        
-        // プロンプトを取得（個別セルから直接取得）
-        const prompt = await this.fetchPromptFromTask(task);
-        
-        taskContexts.push({
-          task: { ...task, prompt }, // プロンプトをタスクに追加
-          tabId,
-          position,
-          cell: `${task.column}${task.row}`
-        });
-        
-        // スクリプト注入をリトライ付きで実行（ウィンドウ再作成含む）
-        let injectionSuccess = false;
-        let currentTabId = tabId;
-        
+
+        // スクリプト注入をリトライ付きで実行
         for (let retryCount = 0; retryCount < 3; retryCount++) {
           if (retryCount > 0) {
-            this.logger.log(`[StreamProcessorV2] 🔄 ウィンドウ再作成試行 ${retryCount}/3`);
+            this.logger.log(`[StreamProcessorV2] 🔄 ウィンドウ再作成試行 ${retryCount}/3: ${task.column}${task.row}`);
             
             // 既存ウィンドウを閉じる
             try {
-              // Service Worker環境では動的インポートが禁止されているため、既存のwindowServiceを使用
               if (this.windowService) {
                 await this.windowService.closeWindow(currentTabId);
-                // releasePositionは不要（closeWindowが自動的に解放）
-              } else {
-                console.warn('[StreamProcessorV2] WindowServiceが利用できません - ウィンドウクリーンアップをスキップ');
               }
-              await this.delay(1000); // ウィンドウクリーンアップ待機
+              await this.delay(1000);
             } catch (cleanupError) {
               this.logger.error(`[StreamProcessorV2] ウィンドウクリーンアップエラー:`, cleanupError);
             }
             
             // 新しいウィンドウを作成
             try {
-              currentTabId = await this.createWindowForTask(task, position);
+              currentTabId = await this.createWindowForTask(task, index);
               if (!currentTabId) {
-                this.logger.error(`[StreamProcessorV2] ウィンドウ再作成失敗`);
                 continue;
               }
-              
-              // タスクコンテキストを更新
-              taskContexts[taskContexts.length - 1].tabId = currentTabId;
             } catch (error) {
               this.logger.error(`[StreamProcessorV2] ウィンドウ再作成エラー:`, error);
               continue;
             }
           }
           
-          // 追加の待機時間（ページ読み込み用）
+          // ページ読み込み待機
           await this.delay(2000);
           
           // スクリプト注入試行
-          this.logger.log(`[StreamProcessorV2] スクリプト注入中: ${task.aiType} (試行 ${retryCount + 1}/3)`);
+          this.logger.log(`[StreamProcessorV2] スクリプト注入中: ${task.aiType} (${task.column}${task.row}) 試行 ${retryCount + 1}/3`);
           const injectionResult = await this.injectScriptsForTab(currentTabId, task.aiType);
           
           if (injectionResult) {
             injectionSuccess = true;
-            this.logger.log(`[StreamProcessorV2] ✅ スクリプト注入成功`);
+            this.logger.log(`[StreamProcessorV2] ✅ スクリプト注入成功: ${task.column}${task.row}`);
             break;
           }
           
-          this.logger.error(`[StreamProcessorV2] ❌ スクリプト注入失敗 (試行 ${retryCount + 1}/3)`);
+          this.logger.error(`[StreamProcessorV2] ❌ スクリプト注入失敗: ${task.column}${task.row} (試行 ${retryCount + 1}/3)`);
         }
-        
+
         if (!injectionSuccess) {
           this.logger.error(`[StreamProcessorV2] ❌ 最終的にスクリプト注入失敗: ${task.column}${task.row}`);
           
-          // 最終クリーンアップ
+          // クリーンアップ
           try {
-            const WindowService = await import('../../services/window-service.js').then(m => m.default);
-            await WindowService.closeWindow(currentTabId);
-            // releasePositionは不要（closeWindowが自動的に解放）
+            if (this.windowService) {
+              await this.windowService.closeWindow(currentTabId);
+            }
           } catch (cleanupError) {
             this.logger.error(`[StreamProcessorV2] 最終クリーンアップエラー:`, cleanupError);
           }
           
-          // このタスクをコンテキストから削除
-          taskContexts.pop();
-          continue;
+          return { success: false, index, error: 'スクリプト注入失敗' };
         }
-        
-        this.logger.log(`[StreamProcessorV2] テキスト入力${index + 1}/${batch.length}: ${task.column}${task.row}`);
-        
-        // プロンプト取得状況をログ出力（詳細なプロンプト内容は表示しない）
+
+        return { success: true, index, tabId: currentTabId, task };
+      });
+
+      const injectionResults = await Promise.allSettled(injectionPromises);
+
+      // 段階4: テキスト入力を並列実行
+      this.logger.log(`[StreamProcessorV2] 🔄 フェーズ1-4: テキスト入力（並列）開始`);
+      const textPromises = injectionResults.map(async (injectionResult, index) => {
+        if (injectionResult.status !== 'fulfilled' || !injectionResult.value.success) {
+          return { success: false, index, error: 'スクリプト注入段階失敗' };
+        }
+
+        const task = batch[index];
+        const { tabId, task: injectedTask } = injectionResult.value;
+
+        // プロンプト取得
+        let prompt;
+        try {
+          prompt = await this.fetchPromptFromTask(task);
+          if (!prompt || prompt.trim() === '') {
+            this.logger.error(`[StreamProcessorV2] ❌ プロンプトが取得できませんでした: ${task.column}${task.row}`);
+            return { success: false, index, error: 'プロンプト取得失敗' };
+          }
+        } catch (error) {
+          this.logger.error(`[StreamProcessorV2] プロンプト取得エラー: ${task.column}${task.row}`, error);
+          return { success: false, index, error: 'プロンプト取得エラー' };
+        }
+
         this.logger.log(`[StreamProcessorV2] プロンプト取得完了: ${task.column}${task.row}`, {
-          プロンプト長: prompt ? prompt.length : 0,
-          有効性: !!prompt
+          プロンプト長: prompt.length,
+          有効性: true
         });
-        
+
         // テキスト入力をリトライ付きで実行
         let textSuccess = false;
-        let textRetryCount = 0;
-        const maxTextRetries = 3;
+        let currentTabId = tabId;
         
-        while (!textSuccess && textRetryCount < maxTextRetries) {
-          const textResult = await this.executePhaseOnTab(currentTabId, { ...task, prompt }, 'text');
+        for (let textRetryCount = 0; textRetryCount < 3; textRetryCount++) {
+          const textResult = await this.executePhaseOnTab(currentTabId, { ...injectedTask, prompt }, 'text');
           
           if (textResult && textResult.success) {
             textSuccess = true;
             this.logger.log(`[StreamProcessorV2] ✅ テキスト入力成功: ${task.column}${task.row}`);
+            break;
           } else {
-            textRetryCount++;
-            this.logger.error(`[StreamProcessorV2] ❌ テキスト入力失敗 (試行 ${textRetryCount}/${maxTextRetries}): ${task.column}${task.row}`, textResult?.error);
+            this.logger.error(`[StreamProcessorV2] ❌ テキスト入力失敗: ${task.column}${task.row} (試行 ${textRetryCount + 1}/3)`, textResult?.error);
             
-            if (textRetryCount < maxTextRetries) {
-              await this.delay(3000); // リトライ前に待機
+            if (textRetryCount < 2) {
+              await this.delay(3000);
             }
           }
         }
-        
+
         if (!textSuccess) {
-          this.logger.error(`[StreamProcessorV2] ❌ 最終的にテキスト入力失敗: ${task.column}${task.row}`);
-          
-          // テキスト入力が最終的に失敗した場合、ウィンドウを閉じて再作成
-          this.logger.log(`[StreamProcessorV2] 🔄 テキスト入力失敗のため、ウィンドウを再作成してリトライ`);
+          // ウィンドウ再作成リトライ
           let retrySuccess = false;
           
-          // ウィンドウ再作成を3回まで試行
           for (let windowRetry = 0; windowRetry < 3; windowRetry++) {
             try {
-              // 既存ウィンドウを閉じる
               if (currentTabId) {
                 await this.windowService.closeWindow(currentTabId);
                 await this.delay(1500);
               }
               
-              // 新しいウィンドウを作成
-              this.logger.log(`[StreamProcessorV2] 🔄 ウィンドウ再作成試行 ${windowRetry + 1}/3`);
-              const newTabId = await this.createWindowForTask(task, position);
+              this.logger.log(`[StreamProcessorV2] 🔄 ウィンドウ再作成試行 ${windowRetry + 1}/3: ${task.column}${task.row}`);
+              const newTabId = await this.createWindowForTask(injectedTask, index);
               
               if (newTabId) {
                 currentTabId = newTabId;
-                taskContexts[taskContexts.length - 1].tabId = newTabId;
-                
-                // ページロードを待つ
                 await this.delay(3000);
-                await this.injectScriptsForTab(newTabId, task.aiType);
+                await this.injectScriptsForTab(newTabId, injectedTask.aiType);
                 await this.delay(1000);
                 
-                // テキスト入力を再試行（3回まで）
                 for (let textRetry = 0; textRetry < 3; textRetry++) {
-                  const finalResult = await this.executePhaseOnTab(newTabId, { ...task, prompt }, 'text');
+                  const finalResult = await this.executePhaseOnTab(newTabId, { ...injectedTask, prompt }, 'text');
                   if (finalResult && finalResult.success) {
-                    this.logger.log(`[StreamProcessorV2] ✅ ウィンドウ再作成後のテキスト入力成功（試行 ${textRetry + 1}）`);
+                    this.logger.log(`[StreamProcessorV2] ✅ ウィンドウ再作成後のテキスト入力成功: ${task.column}${task.row}`);
                     retrySuccess = true;
                     break;
                   }
                   if (textRetry < 2) {
-                    this.logger.log(`[StreamProcessorV2] テキスト入力再試行 ${textRetry + 2}/3`);
                     await this.delay(2000);
                   }
                 }
@@ -660,24 +686,23 @@ export default class StreamProcessorV2 {
                 if (retrySuccess) break;
               }
             } catch (error) {
-              this.logger.error(`[StreamProcessorV2] ウィンドウ再作成エラー（試行 ${windowRetry + 1}）:`, error);
+              this.logger.error(`[StreamProcessorV2] ウィンドウ再作成エラー: ${task.column}${task.row}`, error);
             }
             
-            if (windowRetry < 2 && !retrySuccess) {
+            if (windowRetry < 2) {
               await this.delay(2000);
             }
           }
           
-          // 最終的に失敗した場合のクリーンアップ
           if (!retrySuccess) {
-            this.logger.error(`[StreamProcessorV2] ❌ すべてのリトライが失敗 - タスクをスキップ`);
+            this.logger.error(`[StreamProcessorV2] ❌ すべてのリトライが失敗: ${task.column}${task.row}`);
             try {
               const { spreadsheetId, gid } = this.spreadsheetData || {};
               if (spreadsheetId && globalThis.sheetsClient) {
                 await globalThis.sheetsClient.updateCell(
                   spreadsheetId,
                   `${task.column}${task.row}`,
-                  '',  // マーカーをクリア
+                  '',
                   gid
                 );
               }
@@ -685,16 +710,162 @@ export default class StreamProcessorV2 {
             } catch (cleanupError) {
               this.logger.error(`[StreamProcessorV2] クリーンアップエラー:`, cleanupError);
             }
-            taskContexts.pop();
-            continue;
+            return { success: false, index, error: 'テキスト入力最終失敗' };
+          } else {
+            // 成功時はtaskContextsに追加
+            taskContexts.push({
+              task: { ...injectedTask, prompt },
+              tabId: currentTabId,
+              position: index,
+              cell: `${task.column}${task.row}`
+            });
           }
+        } else {
+          // 成功時はtaskContextsに追加
+          taskContexts.push({
+            task: { ...injectedTask, prompt },
+            tabId: currentTabId,
+            position: index,
+            cell: `${task.column}${task.row}`
+          });
         }
+
+        return { success: textSuccess || retrySuccess, index, tabId: currentTabId };
+      });
+
+      // 各タスクの完全パイプライン関数を定義
+      const setupCompleteTask = async (task, index) => {
+        const position = index; // 0: 左上、1: 右上、2: 左下
+        let currentTabId = null;
         
-        // 各ウィンドウ作成後に短い待機
-        if (index < batch.length - 1) {
+        try {
+          // 既存回答チェック
+          const existingAnswer = this.getCurrentAnswer(task);
+          if (existingAnswer) {
+            skippedCells.push(`${task.column}${task.row}`);
+            return { success: false, reason: '既存回答あり', index };
+          }
+          
+          // AI/モデル/機能を動的に取得
+          const { model, function: func, ai } = await this.fetchModelAndFunctionFromTask(task);
+          task.model = model;
+          task.function = func;
+          task.aiType = ai;
+          
+          this.logger.log(`[StreamProcessorV2] パイプライン ${index + 1}/${batch.length} 開始: ${task.column}${task.row} (${ai})`);
+          
+          // 排他制御ロック取得
+          const lockResult = await this.exclusiveManager.acquireLock(
+            task,
+            globalThis.sheetsClient,
+            {
+              spreadsheetId: this.spreadsheetData?.spreadsheetId,
+              gid: this.spreadsheetData?.gid,
+              strategy: 'smart'
+            }
+          );
+          
+          if (!lockResult.success) {
+            skippedCells.push(`${task.column}${task.row}`);
+            return { success: false, reason: lockResult.reason, index };
+          }
+          
+          // ステップ1: ウィンドウ作成
+          currentTabId = await this.createWindowForTask(task, position);
+          if (!currentTabId) {
+            return { success: false, error: 'ウィンドウ作成失敗', index };
+          }
+          
+          // ステップ2: スクリプト注入とテキスト入力
+          await this.delay(2000); // ページ読み込み待機
+          
+          const injectionResult = await this.injectScriptsForTab(currentTabId, task.aiType);
+          if (!injectionResult) {
+            throw new Error('スクリプト注入失敗');
+          }
+          
+          // プロンプト取得とテキスト入力
+          const prompt = await this.fetchPromptFromTask(task);
+          if (!prompt || prompt.trim() === '') {
+            throw new Error('プロンプト取得失敗');
+          }
+          
+          const textResult = await this.executePhaseOnTab(currentTabId, { ...task, prompt }, 'text');
+          if (!textResult || !textResult.success) {
+            throw new Error('テキスト入力失敗');
+          }
+          
           await this.delay(1000);
+          
+          // ステップ3: モデル選択
+          this.logger.log(`[StreamProcessorV2] モデル選択: ${task.column}${task.row} - ${model}`);
+          const modelResult = await this.executePhaseOnTab(currentTabId, task, 'model');
+          if (!modelResult || modelResult.success === false) {
+            throw new Error('モデル選択失敗');
+          }
+          
+          task.displayedModel = modelResult.displayedModel || model || 'デフォルト';
+          await this.delay(1000);
+          
+          // ステップ4: 機能選択
+          this.logger.log(`[StreamProcessorV2] 機能選択: ${task.column}${task.row} - ${func}`);
+          
+          const functionResult = await this.executePhaseOnTab(currentTabId, task, 'function');
+          if (!functionResult || functionResult.success === false) {
+            throw new Error('機能選択失敗');
+          }
+          
+          task.displayedFunction = functionResult.displayedFunction || func || '通常';
+          
+          this.logger.log(`[StreamProcessorV2] ✅ パイプライン完了: ${task.column}${task.row}`);
+          
+          return {
+            success: true,
+            task: { ...task, prompt },
+            tabId: currentTabId,
+            position: index,
+            cell: `${task.column}${task.row}`,
+            index
+          };
+          
+        } catch (error) {
+          this.logger.error(`[StreamProcessorV2] ❌ パイプラインエラー: ${task.column}${task.row}`, error);
+          
+          // クリーンアップ
+          if (currentTabId) {
+            try {
+              await this.windowService.closeWindow(currentTabId);
+            } catch (cleanupError) {
+              this.logger.error(`[StreamProcessorV2] クリーンアップエラー:`, cleanupError);
+            }
+          }
+          
+          return { success: false, error: error.message, index };
         }
-      }
+      };
+      
+      // 全パイプラインを並列実行
+      this.logger.log(`[StreamProcessorV2] 🚀 ${batch.length}個のパイプラインを並列実行中...`);
+      const pipelinePromises = batch.map((task, index) => setupCompleteTask(task, index));
+      const pipelineResults = await Promise.allSettled(pipelinePromises);
+      
+      // パイプライン結果の処理
+      const successfulTasks = [];
+      const failedTasks = [];
+      
+      pipelineResults.forEach((result, index) => {
+        if (result.status === 'fulfilled' && result.value.success) {
+          const taskContext = result.value;
+          taskContexts.push(taskContext);
+          successfulTasks.push(taskContext.cell);
+          this.logger.log(`[StreamProcessorV2] ✅ パイプライン成功: ${taskContext.cell}`);
+        } else {
+          const task = batch[index];
+          const error = result.status === 'fulfilled' ? result.value.error || result.value.reason : result.reason;
+          failedTasks.push(`${task.column}${task.row}`);
+          this.logger.log(`[StreamProcessorV2] ❌ パイプライン失敗: ${task.column}${task.row} - ${error}`);
+        }
+      });
       
       // スキップされたセルをまとめてログ出力
       if (skippedCells.length > 0) {
@@ -702,8 +873,7 @@ export default class StreamProcessorV2 {
         this.logger.log(`[StreamProcessorV2] 📊 既存回答ありでスキップ: ${ranges} (計${skippedCells.length}セル)`);
       }
       
-      this.logger.log(`[StreamProcessorV2] ✅ フェーズ1完了: 全ウィンドウ準備済み`);
-      await this.delay(2000); // フェーズ間の待機
+      this.logger.log(`[StreamProcessorV2] 📊 並列パイプライン完了: 成功 ${successfulTasks.length}件, 失敗 ${failedTasks.length}件`);
       
       // ========================================
       // フェーズ2: モデルを順番に選択（リトライ機能付き）
@@ -2418,22 +2588,6 @@ export default class StreamProcessorV2 {
     return ranges.join(', ');
   }
   
-  /**
-   * インデックスを列名に変換
-   * @param {number} index - インデックス（0, 1, 2, ...）
-   * @returns {string} 列名（A, B, C, ...）
-   */
-  indexToColumn(index) {
-    let column = '';
-    let temp = index;
-    
-    while (temp >= 0) {
-      column = String.fromCharCode((temp % 26) + 65) + column;
-      temp = Math.floor(temp / 26) - 1;
-    }
-    
-    return column;
-  }
 
   /**
    * 列名を数値インデックスに変換
@@ -2830,6 +2984,9 @@ export default class StreamProcessorV2 {
     const MAX_GROUPS = 50;
     
     while (groupIndex < MAX_GROUPS) {
+      // ★ 新規追加：グループ開始前の動的チェック
+      await this.performPreGroupChecks(spreadsheetData, groupIndex);
+      
       // 毎回構造を再解析（動的にグループを発見）
       this.logger.log(`[StreamProcessorV2] 📊 構造を再解析中（イテレーション${groupIndex + 1}）...`);
       const structure = this.taskGenerator.analyzeStructure(spreadsheetData);
@@ -4862,5 +5019,288 @@ export default class StreamProcessorV2 {
   extractSpreadsheetId(url) {
     const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
     return match ? match[1] : null;
+  }
+
+  /**
+   * タスクグループ開始前の動的チェック
+   * @param {Object} spreadsheetData - スプレッドシートデータ
+   * @param {number} groupIndex - 処理するグループのインデックス
+   */
+  async performPreGroupChecks(spreadsheetData, groupIndex) {
+    this.logger.log(`[StreamProcessorV2] 🔍 グループ${groupIndex + 1}開始前チェック開始`);
+    
+    try {
+      // 1. スプレッドシートデータを最新に更新（変更検出付き）
+      const hasDataChanges = await this.updateSpreadsheetDataIfNeeded(spreadsheetData);
+      
+      // 2. タスクグループ情報を更新（変更があった場合のみ）
+      if (hasDataChanges) {
+        this.updateTaskGroupsInfo(spreadsheetData);
+      }
+      
+      // 3. 現在のグループ範囲内の制御情報をチェック
+      await this.checkControlsInGroupRange(spreadsheetData, groupIndex);
+      
+      this.logger.log(`[StreamProcessorV2] ✅ グループ${groupIndex + 1}開始前チェック完了`);
+    } catch (error) {
+      this.logger.error(`[StreamProcessorV2] ❌ グループ${groupIndex + 1}開始前チェックエラー:`, error);
+      // エラーが発生しても処理は継続
+    }
+  }
+
+  /**
+   * 必要な場合のみスプレッドシートデータを更新
+   * @param {Object} spreadsheetData - スプレッドシートデータ
+   * @returns {boolean} 変更があったかどうか
+   */
+  async updateSpreadsheetDataIfNeeded(spreadsheetData) {
+    try {
+      // 現在のデータのハッシュ値を計算（簡易版）
+      const currentHash = this.calculateDataHash(spreadsheetData);
+      
+      // SheetsClientで最新データを取得
+      const sheetsClient = this.sheetsClient || this.spreadsheetLogger?.sheetsClient;
+      if (!sheetsClient) {
+        this.logger.warn('[StreamProcessorV2] SheetsClientが利用できません');
+        return false;
+      }
+      
+      const latestData = await sheetsClient.loadAutoAIData(
+        spreadsheetData.spreadsheetId,
+        spreadsheetData.gid
+      );
+      
+      if (!latestData) {
+        this.logger.warn('[StreamProcessorV2] 最新データの取得に失敗');
+        return false;
+      }
+      
+      // 新しいデータのハッシュ値を計算
+      const newHash = this.calculateDataHash(latestData);
+      
+      // 変更があった場合のみ更新
+      if (currentHash !== newHash) {
+        this.logger.log('[StreamProcessorV2] 📊 スプレッドシートデータに変更を検出、更新中...');
+        Object.assign(spreadsheetData, latestData);
+        return true; // 変更あり
+      }
+      
+      return false; // 変更なし
+    } catch (error) {
+      this.logger.error('[StreamProcessorV2] データ更新チェックエラー:', error);
+      return false;
+    }
+  }
+
+  /**
+   * データのハッシュ値を計算（簡易版）
+   * @param {Object} data - ハッシュ計算対象のデータ
+   * @returns {string} ハッシュ値
+   */
+  calculateDataHash(data) {
+    try {
+      if (!data || !data.values) {
+        return 'empty';
+      }
+      
+      // 堅牢なハッシュ：行数、列数、主要セルの値、プロンプトエリアを組み合わせ
+      const rowCount = data.values.length;
+      const firstRowLength = data.values[0]?.length || 0;
+      const lastRowLength = data.values[data.values.length - 1]?.length || 0;
+      
+      // 重要な行（AI、モデル、機能行）の内容も含める
+      const aiRow = data.values.find(row => row[0] === 'AI');
+      const modelRow = data.values.find(row => row[0] === 'モデル');
+      const functionRow = data.values.find(row => row[0] === '機能');
+      
+      const keyContent = [
+        aiRow ? aiRow.slice(0, 10).join('|') : '',
+        modelRow ? modelRow.slice(0, 10).join('|') : '',
+        functionRow ? functionRow.slice(0, 10).join('|') : ''
+      ].join('##');
+      
+      // プロンプトエリア（9行目以降）のサンプル内容も追加
+      let promptAreaSample = '';
+      const startRow = 8; // 0ベースなので8が9行目
+      const sampleRows = Math.min(5, data.values.length - startRow); // 最大5行をサンプル
+      
+      for (let i = 0; i < sampleRows && (startRow + i) < data.values.length; i++) {
+        const row = data.values[startRow + i];
+        if (row && row.length > 0) {
+          // 各行の最初の3セルをサンプル
+          const rowSample = row.slice(0, 3).map(cell => cell ? cell.toString().substring(0, 20) : '').join('|');
+          promptAreaSample += `R${startRow + i + 1}:${rowSample}##`;
+        }
+      }
+      
+      // 簡単なCRC32風のハッシュ値を生成
+      const fullContent = keyContent + '###' + promptAreaSample;
+      let hash = 0;
+      for (let i = 0; i < fullContent.length; i++) {
+        const char = fullContent.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // 32bit整数に変換
+      }
+      
+      return `${rowCount}-${firstRowLength}-${lastRowLength}-${Math.abs(hash)}`;
+    } catch (error) {
+      this.logger.error('[StreamProcessorV2] ハッシュ計算エラー:', error);
+      return 'error';
+    }
+  }
+
+  /**
+   * タスクグループ情報を更新
+   * @param {Object} spreadsheetData - スプレッドシートデータ
+   */
+  updateTaskGroupsInfo(spreadsheetData) {
+    try {
+      this.logger.log('[StreamProcessorV2] 📊 タスクグループ情報を再生成中...');
+      
+      // taskGroups情報を再生成（プロンプトが更新されている可能性があるため）
+      if (globalThis.processSpreadsheetData) {
+        const reprocessedData = globalThis.processSpreadsheetData(spreadsheetData);
+        if (reprocessedData.taskGroups) {
+          spreadsheetData.taskGroups = reprocessedData.taskGroups;
+          this.logger.log('[StreamProcessorV2] 📊 taskGroups情報更新完了:', {
+            グループ数: spreadsheetData.taskGroups.length
+          });
+        }
+      }
+    } catch (error) {
+      this.logger.error('[StreamProcessorV2] タスクグループ情報更新エラー:', error);
+    }
+  }
+
+  /**
+   * 特定グループ範囲内の制御情報をチェック
+   * @param {Object} spreadsheetData - スプレッドシートデータ
+   * @param {number} groupIndex - グループインデックス
+   */
+  async checkControlsInGroupRange(spreadsheetData, groupIndex) {
+    try {
+      // 構造解析でグループ情報を取得
+      const structure = this.taskGenerator.analyzeStructure(spreadsheetData);
+      const { promptGroups } = structure;
+      
+      if (groupIndex >= promptGroups.length) {
+        return;
+      }
+      
+      const targetGroup = promptGroups[groupIndex];
+      
+      // グループの列範囲を特定
+      const groupColumnRange = {
+        start: Math.min(...targetGroup.promptColumns),
+        end: Math.max(...targetGroup.answerColumns.map(col => col.index))
+      };
+      
+      // グループに関係する行範囲を特定（プロンプトがある行）
+      const groupRowRange = this.getGroupRowRange(spreadsheetData, targetGroup);
+      
+      this.logger.log(`[StreamProcessorV2] 🎯 グループ${groupIndex + 1}範囲チェック:`, {
+        列範囲: `${this.indexToColumn(groupColumnRange.start)}-${this.indexToColumn(groupColumnRange.end)}`,
+        行範囲: `${groupRowRange.start}-${groupRowRange.end}行`
+      });
+      
+      // 範囲内の制御を検出
+      const controlsInRange = this.detectControlsInRange(
+        spreadsheetData, 
+        groupColumnRange, 
+        groupRowRange
+      );
+      
+      if (controlsInRange.length > 0) {
+        this.logger.log(`[StreamProcessorV2] ⚠️ グループ${groupIndex + 1}内に制御を検出:`, 
+          controlsInRange.map(c => `${c.type}(${c.location})`));
+      }
+    } catch (error) {
+      this.logger.error('[StreamProcessorV2] グループ範囲内制御チェックエラー:', error);
+    }
+  }
+
+  /**
+   * グループの行範囲を取得
+   * @param {Object} spreadsheetData - スプレッドシートデータ
+   * @param {Object} targetGroup - 対象グループ
+   * @returns {Object} 行範囲 {start, end}
+   */
+  getGroupRowRange(spreadsheetData, targetGroup) {
+    try {
+      const values = spreadsheetData.values;
+      let minRow = values.length;
+      let maxRow = 1;
+      
+      // プロンプト列でプロンプトがある行を探索
+      for (const promptCol of targetGroup.promptColumns) {
+        for (let rowIndex = 0; rowIndex < values.length; rowIndex++) {
+          const row = values[rowIndex];
+          if (row && row[promptCol] && row[promptCol].trim() !== '') {
+            minRow = Math.min(minRow, rowIndex + 1);
+            maxRow = Math.max(maxRow, rowIndex + 1);
+          }
+        }
+      }
+      
+      return {
+        start: minRow,
+        end: maxRow
+      };
+    } catch (error) {
+      this.logger.error('[StreamProcessorV2] グループ行範囲取得エラー:', error);
+      return { start: 1, end: spreadsheetData.values?.length || 1 };
+    }
+  }
+
+  /**
+   * 指定範囲内の制御を検出
+   * @param {Object} spreadsheetData - スプレッドシートデータ
+   * @param {Object} columnRange - 列範囲 {start, end}
+   * @param {Object} rowRange - 行範囲 {start, end}
+   * @returns {Array} 検出された制御の配列
+   */
+  detectControlsInRange(spreadsheetData, columnRange, rowRange) {
+    const controls = [];
+    const values = spreadsheetData.values;
+    
+    try {
+      for (let rowIndex = rowRange.start - 1; rowIndex < rowRange.end && rowIndex < values.length; rowIndex++) {
+        const row = values[rowIndex];
+        if (!row) continue;
+        
+        for (let colIndex = columnRange.start; colIndex <= columnRange.end && colIndex < row.length; colIndex++) {
+          const cellValue = row[colIndex];
+          if (!cellValue || typeof cellValue !== 'string') continue;
+          
+          const trimmedValue = cellValue.trim();
+          
+          // 行制御の検出
+          if (trimmedValue === 'ここまで' || trimmedValue === 'この行まで') {
+            controls.push({
+              type: 'row_control',
+              location: `${this.indexToColumn(colIndex)}${rowIndex + 1}`,
+              value: trimmedValue,
+              rowIndex: rowIndex + 1,
+              colIndex: colIndex
+            });
+          }
+          
+          // 列制御の検出
+          if (trimmedValue === 'この列で停止') {
+            controls.push({
+              type: 'column_control',
+              location: `${this.indexToColumn(colIndex)}${rowIndex + 1}`,
+              value: trimmedValue,
+              rowIndex: rowIndex + 1,
+              colIndex: colIndex
+            });
+          }
+        }
+      }
+    } catch (error) {
+      this.logger.error('[StreamProcessorV2] 制御検出エラー:', error);
+    }
+    
+    return controls;
   }
 }
