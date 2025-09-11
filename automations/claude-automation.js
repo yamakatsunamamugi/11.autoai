@@ -1994,7 +1994,7 @@ ${prompt}`;
     // ========================================
     // グローバル公開
     // ========================================
-    window.ClaudeAutomationV2 = {
+    const automationAPI = {
         executeTask,
         runAutomation,
         // フェーズ別メソッド（順次処理用）
@@ -2004,7 +2004,12 @@ ${prompt}`;
         sendAndGetResponse
     };
     
+    // v2名と標準名の両方をサポート（下位互換性保持）
+    window.ClaudeAutomationV2 = automationAPI;
+    window.ClaudeAutomation = automationAPI;
+    
     console.log('✅ Claude Automation V2 準備完了');
-    console.log('使用方法: ClaudeAutomationV2.executeTask({ model: "3.5 Sonnet", function: "Deep Research", prompt: "..." })');
+    console.log('使用方法: ClaudeAutomation.executeTask({ model: "3.5 Sonnet", function: "Deep Research", prompt: "..." })');
+    console.log('✅ 下位互換性: ClaudeAutomation と ClaudeAutomationV2 の両方で利用可能');
     
 })();

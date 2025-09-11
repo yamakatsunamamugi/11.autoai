@@ -1853,7 +1853,7 @@
     // ========================================
     // グローバル公開
     // ========================================
-    window.ChatGPTAutomationV2 = {
+    const automationAPI = {
         executeTask,
         runAutomation,
         // フェーズ別メソッド（順次処理用）
@@ -1863,7 +1863,12 @@
         sendAndGetResponse
     };
     
+    // v2名と標準名の両方をサポート（下位互換性保持）
+    window.ChatGPTAutomationV2 = automationAPI;
+    window.ChatGPTAutomation = automationAPI;
+    
     console.log('✅ ChatGPT Automation V2 準備完了');
-    console.log('使用方法: ChatGPTAutomationV2.executeTask({ model: "GPT-4o", function: "Deep Research", prompt: "..." })');
+    console.log('使用方法: ChatGPTAutomation.executeTask({ model: "GPT-4o", function: "Deep Research", prompt: "..." })');
+    console.log('✅ 下位互換性: ChatGPTAutomation と ChatGPTAutomationV2 の両方で利用可能');
     
 })();
