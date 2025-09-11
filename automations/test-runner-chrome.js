@@ -309,9 +309,9 @@
       
       // AI固有のスクリプト
       const scriptFileMap = {
-        'claude': 'automations/claude-automation-dynamic.js',
+        'claude': 'automations/claude-automation.js',
         'chatgpt': 'automations/chatgpt-automation.js', 
-        'gemini': 'automations/gemini-dynamic-automation.js',
+        'gemini': 'automations/gemini-automation.js',
         'genspark': 'automations/genspark-automation.js'
       };
       

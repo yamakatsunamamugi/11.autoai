@@ -23,8 +23,8 @@
                 // 既存の設定ファイル
                 'ai-models-config': '/genspark-extension/config/ai-models.js',
                 'chatgpt-selector': '/src/ui/chatgpt-model-function-selector.js',
-                'claude-automation': '/automations/claude-automation-dynamic.js',
-                'gemini-automation': '/automations/gemini-dynamic-automation.js'
+                'claude-automation': '/automations/claude-automation.js',
+                'gemini-automation': '/automations/gemini-automation.js'
             };
             
             // 同期設定
