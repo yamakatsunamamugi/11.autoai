@@ -13,7 +13,6 @@
  * 【依存関係】
  * - common-ai-handler.js: window.AIHandlerを使用
  * - ui-selectors.js: Claude用セレクタを使用
- * - claude-deepresearch-selector.js: DeepResearch選択ロジック
  * 
  * 【グローバル公開】
  * window.ClaudeAutomation: コンソールから直接呼び出し可能
@@ -663,28 +662,20 @@
         const deepResearchDetails = '深層調査モード - 推定時間: 最大40分';
         log(`${deepResearchMessage} (${deepResearchDetails})`, 'INFO');
         
-        // 共有モジュールを使用してDeepResearchを選択
-        if (window.ClaudeDeepResearchSelector && window.ClaudeDeepResearchSelector.select) {
-          log('ClaudeDeepResearchSelectorを使用', 'DEBUG');
-          const result = await window.ClaudeDeepResearchSelector.select();
-          
-          if (result.success) {
-            if (result.alreadyEnabled) {
-              log('DeepResearchは既に有効です', 'INFO');
-              endOperation(operationName, { success: true, alreadyEnabled: true });
-            } else {
-              log('DeepResearchボタンをクリックしました', 'SUCCESS');
-              endOperation(operationName, { success: true, action: 'enabled' });
-            }
-            return true;
+        // DeepResearchボタンを選択
+        const result = await selectClaudeDeepResearch();
+        
+        if (result.success) {
+          if (result.alreadyEnabled) {
+            log('DeepResearchは既に有効です', 'INFO');
+            endOperation(operationName, { success: true, alreadyEnabled: true });
           } else {
-            const error = 'DeepResearchボタンが見つかりません';
-            log(error, 'ERROR');
-            endOperation(operationName, { success: false, error });
-            return false;
+            log('DeepResearchボタンをクリックしました', 'SUCCESS');
+            endOperation(operationName, { success: true, action: 'enabled' });
           }
+          return true;
         } else {
-          const error = 'ClaudeDeepResearchSelectorモジュールが見つかりません';
+          const error = 'DeepResearchボタンが見つかりません';
           log(error, 'ERROR');
           endOperation(operationName, { success: false, error });
           return false;
@@ -773,6 +764,97 @@
 
     log('リサーチボタンが見つかりません', 'ERROR');
     return false;
+  }
+
+  // ========================================
+  // DeepResearch選択関数（claude-deepresearch-selector.jsから統合）
+  // ========================================
+  async function selectClaudeDeepResearch() {
+    log('Claude DeepResearch選択処理を開始');
+
+    // リサーチボタンを探す（複数の方法で試行）
+    const researchSelectors = [
+        'button[aria-pressed]:has(svg path[d*="M8.5 2C12"])',  // SVGパスの特徴的な部分で検索
+        'button[aria-pressed]:has(svg)',  // aria-pressed属性を持つSVGボタン
+        'button[aria-label*="Research"]',
+        'button[aria-label*="リサーチ"]',
+        'button[aria-label*="Deep Research"]',
+        'button:has(svg[class*="research"])',
+        'button[data-testid*="research"]'
+    ];
+    
+    let researchButton = null;
+    
+    // 優先順位付きセレクタで検索
+    for (const selector of researchSelectors) {
+        try {
+            researchButton = document.querySelector(selector);
+            if (researchButton) {
+                log(`DeepResearchボタンをセレクタ ${selector} で発見`, 'SUCCESS');
+                break;
+            }
+        } catch (e) {
+            // 無効なセレクタの場合はスキップ
+        }
+    }
+    
+    // それでも見つからない場合は、aria-pressed属性を持つSVGボタンを探す
+    if (!researchButton) {
+        const deepResearchSelectors = window.AIHandler?.getSelectors?.('Claude', 'DEEP_RESEARCH_BUTTON') || ['button[aria-pressed]'];
+        let allPressButtons = [];
+        for (const selector of deepResearchSelectors) {
+            allPressButtons.push(...document.querySelectorAll(selector));
+        }
+        
+        // 機能メニュー外（入力フィールド近く）にあるボタンを探す
+        researchButton = allPressButtons.find(button => {
+            // SVGアイコンを含む
+            const hasSvg = button.querySelector('svg') !== null;
+            // テキストがない（アイコンのみ）
+            const hasNoText = !button.textContent?.trim() || button.textContent?.trim().length < 3;
+            // 機能メニュー内ではない（toggleやcheckboxを含まない）
+            const notInMenu = !button.querySelector('input[type="checkbox"]');
+            
+            return hasSvg && hasNoText && notInMenu;
+        });
+        
+        if (researchButton) {
+            log('SVGアイコンボタンとしてDeepResearchボタンを発見', 'SUCCESS');
+        }
+    }
+    
+    if (researchButton) {
+        const isPressed = researchButton.getAttribute('aria-pressed') === 'true';
+        
+        if (!isPressed) {
+            // ボタンがまだ押されていない場合はクリック
+            log('DeepResearchボタンをクリックして有効化');
+            const clicked = await clickElement(researchButton);
+            
+            if (clicked) {
+                await wait(1500); // クリック後の状態変更を待つ
+                
+                // 再度状態を確認
+                const nowPressed = researchButton.getAttribute('aria-pressed') === 'true';
+                if (nowPressed) {
+                    log('DeepResearchモードが有効になりました', 'SUCCESS');
+                    return { success: true, button: researchButton };
+                } else {
+                    log('DeepResearchボタンのクリック後も状態が変わりませんでした', 'WARNING');
+                    return { success: false, button: researchButton };
+                }
+            } else {
+                log('DeepResearchボタンのクリックに失敗しました', 'ERROR');
+                return { success: false, button: researchButton };
+            }
+        } else {
+            log('DeepResearchモードは既に有効です', 'SUCCESS');
+            return { success: true, button: researchButton, alreadyEnabled: true };
+        }
+    } else {
+        log('DeepResearchボタンが見つかりませんでした', 'ERROR');
+        return { success: false, button: null };
+    }
   }
 
   // ========================================
