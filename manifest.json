@@ -153,7 +153,7 @@
         "automations/chatgpt-automation.js",
         "automations/claude-automation.js",
         "automations/gemini-automation.js",
-        "automations/genspark-automation.js",
+        "automations/v2/genspark-automation-v2.js",
         "automations/v2/ai-wait-config.js",
         "automations/ai-mutation-observer.js",
         "automations/test-runner.js",

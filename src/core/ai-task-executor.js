@@ -298,8 +298,8 @@ export class AITaskExecutor {
               'chatgpt': ['ChatGPTAutomationV2', 'ChatGPTAutomation', 'ChatGPT'],
               'Gemini': ['GeminiAutomation', 'Gemini'],
               'gemini': ['GeminiAutomation', 'Gemini'],
-              'Genspark': ['GensparkAutomation', 'Genspark'],
-              'genspark': ['GensparkAutomation', 'Genspark']
+              'Genspark': ['GensparkAutomationV2', 'GensparkAutomation', 'Genspark'],
+              'genspark': ['GensparkAutomationV2', 'GensparkAutomation', 'Genspark']
             };
 
             const possibleNames = automationMap[taskData.aiType] || [`${taskData.aiType}Automation`];

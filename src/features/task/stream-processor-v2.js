@@ -3495,19 +3495,13 @@ export default class StreamProcessorV2 {
           
           results.total++;
           
-          // Genspark自動化実行
-          if (typeof window !== 'undefined' && window.GensparkAutomation) {
-            const automationResult = await window.GensparkAutomation.runAutomation({
-              function: functionType,
-              text: aiAnswerText.trim(),
-              send: true,
-              waitResponse: true,
-              getResponse: true
-            });
+          // Genspark自動化実行（V2使用）
+          if (typeof window !== 'undefined' && window.GensparkAutomationV2) {
+            const automationResult = await window.GensparkAutomationV2.sendMessage(aiAnswerText.trim());
             
             if (automationResult.success) {
               // 結果をスプレッドシートに書き戻し
-              await this.writeCellValue(spreadsheetData, group.columnRange.promptColumns[0], rowIndex, automationResult.response || automationResult.responseUrl || 'Genspark処理完了');
+              await this.writeCellValue(spreadsheetData, group.columnRange.promptColumns[0], rowIndex, automationResult.text || automationResult.extractedUrls?.[0] || 'Genspark処理完了');
               results.completed++;
               this.logger.log(`[StreamProcessorV2] 📝 行${rowIndex}: Genspark処理完了`);
             } else {

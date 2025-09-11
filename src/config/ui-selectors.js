@@ -779,39 +779,73 @@ export const UI_SELECTORS = {
     // Genspark セレクタ（特殊なAI）
     // ========================================
     Genspark: {
-        // 停止ボタン
-        STOP_BUTTON: [
-            '.enter-icon-wrapper[class*="bg-[#232425]"]'
-        ],
-        
-        // モデル選択
-        MODEL_BUTTON: [
-            '[data-model]',
-            '.model-selector',
-            'select[name="model"]'
-        ],
-        
-        // メッセージ要素
-        MESSAGE: [
-            '[class*="message"]',
-            '[class*="response"]',
-            'div[role="article"]'
-        ],
-        
-        // ボタン全般
-        ALL_BUTTONS: [
-            'button',
-            '[role="button"]'
-        ],
-        
-        // 入力欄
+        // テキスト入力欄
         INPUT: [
+            'textarea[placeholder*="質問"]',
+            'textarea[placeholder*="スライド"]',
+            'textarea[placeholder*="factcheck"]',
             'textarea',
-            'input',
+            'input[type="text"]',
             '[contenteditable="true"]'
         ],
         
-        // 全要素（診断用）
+        // 送信ボタン
+        SEND_BUTTON: [
+            '.enter-icon-wrapper',
+            'button[type="submit"]',
+            'button:has(svg.enter-icon)',
+            '[aria-label*="送信"]',
+            '[aria-label*="submit"]'
+        ],
+        
+        // 停止ボタン（V1の実績セレクタを保持）
+        STOP_BUTTON: [
+            '.enter-icon-wrapper[class*="bg-[#232425]"]',  // V1で動作確認済み
+            '.enter-icon-wrapper:has(.stop-icon)',
+            'button:has(svg.stop-icon)',
+            '[aria-label*="停止"]',
+            '[aria-label*="stop"]'
+        ],
+        
+        // レスポンス・メッセージ要素
+        MESSAGE: [
+            '.response-content',
+            '.message-content',
+            '[data-testid="response"]',
+            '[class*="response"]',
+            '[class*="message"]',
+            'div[role="article"]',
+            '.markdown-content'
+        ],
+        
+        // レスポンス待機要素
+        RESPONSE: [
+            '.response-content',
+            '.message-content',
+            '[data-testid="response"]',
+            '[class*="response"]:last-child'
+        ],
+        
+        // モデル選択（Gensparkにはモデル選択がないため空定義）
+        MODEL_BUTTON: [],
+        
+        // 機能選択（URL基づく自動判定のため空定義）
+        FUNCTION_BUTTON: [],
+        
+        // メニュー関連（Gensparkには複雑なメニューがないため空定義）
+        MENU: {
+            CONTAINER: [],
+            ITEM: [],
+            POPPER: []
+        },
+        
+        // 診断・デバッグ用
+        ALL_BUTTONS: [
+            'button',
+            '[role="button"]',
+            '.enter-icon-wrapper'
+        ],
+        
         ALL_ELEMENTS: [
             '*'
         ]

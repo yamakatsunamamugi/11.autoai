@@ -345,7 +345,7 @@
                   'Claude': ['ClaudeAutomation', 'Claude'],
                   'ChatGPT': ['ChatGPTAutomation', 'ChatGPT'], 
                   'Gemini': ['Gemini', 'GeminiAutomation'],
-                  'Genspark': ['GensparkAutomation', 'Genspark']
+                  'Genspark': ['GensparkAutomationV2', 'GensparkAutomation', 'Genspark']
                 };
                 
                 const possibleNames = automationMap[aiName] || [`${aiName}Automation`];
