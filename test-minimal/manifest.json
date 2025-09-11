@@ -1,8 +1,0 @@
-{
-  "manifest_version": 3,
-  "name": "Test Minimal",
-  "version": "1.0",
-  "background": {
-    "service_worker": "background.js"
-  }
-}
