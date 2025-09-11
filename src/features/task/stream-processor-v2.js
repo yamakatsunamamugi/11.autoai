@@ -1324,9 +1324,9 @@ export default class StreamProcessorV2 {
       
       // V2スクリプトマップ
       const v2ScriptMap = {
-        'claude': 'automations/v2/claude-automation-v2.js',
-        'chatgpt': 'automations/v2/chatgpt-automation-v2.js',
-        'gemini': 'automations/v2/gemini-automation-v2.js'
+        'claude': 'automations/claude-automation.js',
+        'chatgpt': 'automations/chatgpt-automation.js',
+        'gemini': 'automations/gemini-automation.js'
       };
       
       // 共通スクリプト（ai-wait-configを最初に読み込む）

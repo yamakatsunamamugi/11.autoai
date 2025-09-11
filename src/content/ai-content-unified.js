@@ -1186,8 +1186,8 @@ async function loadAutomationScript() {
     
     const scriptMap = {
       'ChatGPT': 'automations/chatgpt-automation.js',
-      'Claude': 'automations/claude-automation-dynamic.js',
-      'Gemini': 'automations/gemini-dynamic-automation.js'
+      'Claude': 'automations/claude-automation.js',
+      'Gemini': 'automations/gemini-automation.js'
     };
     
     const scriptPath = scriptMap[AI_TYPE];

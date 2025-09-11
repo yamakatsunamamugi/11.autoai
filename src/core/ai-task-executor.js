@@ -63,10 +63,10 @@ export class AITaskExecutor {
 
     try {
       // V2ファイルマップを定義（共通で使用）
-      const v2ScriptMap = {
-        'claude': 'automations/v2/claude-automation-v2.js',
-        'chatgpt': 'automations/v2/chatgpt-automation-v2.js',
-        'gemini': 'automations/v2/gemini-automation-v2.js'
+      const scriptMap = {
+        'claude': 'automations/claude-automation.js',
+        'chatgpt': 'automations/chatgpt-automation.js',
+        'gemini': 'automations/gemini-automation.js'
       };
       
       // すべてのAIタイプで共通の処理を使用
@@ -78,24 +78,22 @@ export class AITaskExecutor {
       }
       
       const aiTypeLower = taskData.aiType.toLowerCase();
-      const hasV2 = v2ScriptMap.hasOwnProperty(aiTypeLower);
-      const isV2Available = hasV2;
       
-      // AI固有のスクリプトマップ（V2版を常に使用）
+      // AI固有のスクリプトマップ
       const scriptFileMap = {
-        'claude': v2ScriptMap['claude'],
-        'chatgpt': v2ScriptMap['chatgpt'],
-        'gemini': v2ScriptMap['gemini'],
+        'claude': scriptMap['claude'],
+        'chatgpt': scriptMap['chatgpt'],
+        'gemini': scriptMap['gemini'],
         'genspark': 'automations/genspark-automation.js'
       };
 
-      // V2版でも基本的な共通スクリプトは必要
+      // 基本的な共通スクリプトは必要
       const commonScripts = [
         'automations/feature-constants.js',
         'automations/common-ai-handler.js'
       ];
 
-      // AI固有のスクリプトを追加（V2版を優先）
+      // AI固有のスクリプトを追加
       const aiScript = scriptFileMap[aiTypeLower] || 
                        `automations/${aiTypeLower}-automation.js`;
       
