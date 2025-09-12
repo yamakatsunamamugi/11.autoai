@@ -51,7 +51,7 @@
 
 import { Task, TaskList, TaskFactory } from "./models.js";
 import { AnswerFilter } from "./filters/index.js";
-import StreamProcessor from "./stream-processor.js";
+import StreamProcessorV2 from "./stream-processor-v2.js";
 import ReportTaskFactory from "../report/report-task-factory.js";
 // getDynamicConfigManager import削除 - スプレッドシート設定を直接使用するため不要
 
@@ -62,7 +62,7 @@ import ReportTaskFactory from "../report/report-task-factory.js";
 class TaskGenerator {
   constructor() {
     this.answerFilter = new AnswerFilter();
-    this.streamProcessor = new StreamProcessor();
+    this.streamProcessor = new StreamProcessorV2();
     this.reportTaskFactory = new ReportTaskFactory();
     // dynamicConfigManager削除 - スプレッドシート設定を直接使用するため不要
   }

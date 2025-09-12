@@ -436,8 +436,6 @@ export default class StreamProcessorV2 {
         let currentTabId = null;
         
         try {
-          // 回答チェック完全削除：bulkAnswerCheckで事前フィルタリング済み
-          this.logger.log(`[StreamProcessorV2] ${task.column}${task.row}: 事前一括チェック済み、回答チェックをスキップ`);
           
           // AI/モデル/機能を動的に取得
           const { model, function: func, ai } = await this.fetchModelAndFunctionFromTask(task);
@@ -4380,24 +4378,12 @@ export default class StreamProcessorV2 {
         continue;
       }
       
-      // ========================================
-      // 一括回答チェック（効率化の核心）
-      // ========================================
-      this.logger.log(`[StreamProcessorV2] 🔍 ${group.name}: 全${tasks.length}タスクを一括回答チェック開始`);
-      const unprocessedTasks = await this.bulkAnswerCheck(tasks, spreadsheetData);
-      
-      this.logger.log(`[StreamProcessorV2] 📊 一括チェック結果: ${tasks.length}個 → ${unprocessedTasks.length}個（${tasks.length - unprocessedTasks.length}個は既存回答でスキップ）`);
-      
-      if (unprocessedTasks.length === 0) {
-        this.logger.log(`[StreamProcessorV2] ⏭️ ${group.name}: 全タスクが既存回答済み、グループをスキップ`);
-        continue;
-      }
       
       // ========================================
       // 未回答タスクのみをTaskオブジェクト形式に変換
       // ========================================
       const taskObjects = [];
-      for (const taskInfo of unprocessedTasks) {
+      for (const taskInfo of tasks) {
         // AIタイプを取得（グループから）
 
         const answerCol = group.columnRange.answerColumns.find(col => {
@@ -5022,83 +5008,7 @@ export default class StreamProcessorV2 {
     }
   }
 
-  /**
-   * タスクの一括回答チェック（効率化の核心機能）
-   * @param {Array} tasks - チェック対象タスク配列
-   * @param {Object} spreadsheetData - スプレッドシートデータ
-   * @returns {Array} 未回答タスクのみの配列
-   */
-  async bulkAnswerCheck(tasks, spreadsheetData) {
-    const unprocessedTasks = [];
-    let processedCount = 0;
-    let skippedCount = 0;
-    
-    this.logger.log(`[StreamProcessorV2] 🔍 一括回答チェック: ${tasks.length}個のタスクを確認`);
-    
-    for (const taskInfo of tasks) {
-      try {
-        const rowIndex = taskInfo.row - 1; // 0ベースに変換
-        const columnIndex = taskInfo.columnIndex || this.columnToIndex(taskInfo.column);
-        
-        // スプレッドシートデータから直接取得
-        if (rowIndex >= 0 && rowIndex < spreadsheetData.values.length) {
-          const row = spreadsheetData.values[rowIndex];
-          if (row && columnIndex < row.length) {
-            const value = row[columnIndex];
-            
-            // 回答判定
-            if (this.hasValidAnswer(value)) {
-              skippedCount++;
-              continue; // 既存回答あり → スキップ
-            }
-          }
-        }
-        
-        // 未回答 → 処理対象に追加
-        unprocessedTasks.push(taskInfo);
-        processedCount++;
-        
-      } catch (error) {
-        this.logger.warn(`[StreamProcessorV2] ${taskInfo.column}${taskInfo.row}のチェックエラー:`, error);
-        // エラーの場合は安全側に倒して処理対象に含める
-        unprocessedTasks.push(taskInfo);
-        processedCount++;
-      }
-    }
-    
-    this.logger.log(`[StreamProcessorV2] 📊 一括チェック完了: 処理対象${processedCount}個、スキップ${skippedCount}個`);
-    return unprocessedTasks;
-  }
 
-  /**
-   * セル値が有効な回答かどうかを判定
-   * @param {string} value - セル値
-   * @returns {boolean} 有効な回答の場合true
-   */
-  hasValidAnswer(value) {
-    if (!value || typeof value !== 'string') {
-      return false;
-    }
-    
-    const trimmed = value.trim();
-    if (trimmed.length === 0) {
-      return false;
-    }
-    
-    // 排他制御マーカーの場合はタイムアウトチェック
-    if (trimmed.startsWith('現在操作中です_')) {
-      return !this.waitManager.isMarkerTimeout(trimmed);
-    }
-    
-    // 待機テキストは回答なし
-    if (trimmed === 'お待ちください...' || trimmed === '現在操作中です') {
-      return false;
-    }
-    
-    
-    // それ以外は有効な回答
-    return true;
-  }
 
   /**
    * リアルタイムスキャニングによる処理

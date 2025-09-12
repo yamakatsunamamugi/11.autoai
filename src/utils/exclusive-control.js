@@ -70,6 +70,13 @@ export class ExclusiveControl {
       // 時間部分 (HH:MM:SS)
       const timeStr = jstDate.toISOString().split('T')[1].split('.')[0];
       parts.push(timeStr);
+      
+      this.logger?.log('[ExclusiveControl] 新形式マーカー作成:', {
+        日付: dateStr,
+        時刻: timeStr,
+        JST: true,
+        形式: '現在操作中です_日付_時刻_PC識別子'
+      });
     }
 
     // PC識別子
