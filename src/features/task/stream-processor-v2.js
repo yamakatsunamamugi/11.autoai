@@ -92,6 +92,13 @@ export default class StreamProcessorV2 {
     
     // 再実行管理状態（RetryManagerに移行済み）
     this.failedTasksByColumn = new Map(); // column -> Set<task> - 互換性のため残す
+    this.retryCountByColumn = new Map(); // column -> retryCount
+    this.retryTimers = new Map(); // column -> timer
+    this.retryStats = {
+      totalRetries: 0,
+      successfulRetries: 0,
+      retriesByColumn: new Map() // column -> { attempts: 0, successes: 0 }
+    };
     
     // SpreadsheetLoggerは processTaskStream で初期化する
     this.initializeDataProcessor();
