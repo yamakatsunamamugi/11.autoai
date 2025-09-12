@@ -36,6 +36,7 @@
 
 // WindowServiceをインポート
 import { WindowService } from '../../services/window-service.js';
+import { RetryManager } from '../../utils/retry-manager.js';
 
 // ReportManagerを動的にインポート
 // Chrome拡張機能環境でのES6モジュール制限のため動的インポートを使用
@@ -199,6 +200,9 @@ class StreamProcessor {
     this.modelManager =
       dependencies.modelManager || globalContext.modelManager;
     this.logger = dependencies.logger || console;
+    
+    // RetryManagerを初期化
+    this.retryManager = new RetryManager(this.logger);
     
     // DynamicConfigManager削除 - スプレッドシート設定を直接使用するため不要
     

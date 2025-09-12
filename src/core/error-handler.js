@@ -1,16 +1,22 @@
 // error-handler.js - 統一エラーハンドリングシステム
 //
 // 企業レベルのエラー管理:
-// - エクスポネンシャルバックオフリトライ
+// - エクスポネンシャルバックオフリトライ（RetryManagerに統合済み）
 // - サーキットブレーカーパターン
 // - エラー分類と自動復旧
 // - 詳細なエラーメトリクスと監視
 
+import { RetryManager } from '../utils/retry-manager.js';
+
 export class ErrorHandler {
   constructor(options = {}) {
     this.logger = options.logger || console;
+    
+    // RetryManagerを初期化
+    this.retryManager = new RetryManager(this.logger);
+    
     this.config = {
-      // リトライ設定
+      // リトライ設定（RetryManagerに移行済み、互換性のために保持）
       retry: {
         maxAttempts: 3,
         initialDelay: 1000,
@@ -121,54 +127,35 @@ export class ErrorHandler {
   }
 
   /**
-   * リトライ付きでタスクを実行
+   * リトライ付きでタスクを実行（RetryManagerを使用）
    * @param {Function} task - 実行するタスク
    * @param {Object} options - オプション
    * @returns {Promise<*>} タスクの結果
    */
   async executeWithRetry(task, options = {}) {
     const retryConfig = { ...this.config.retry, ...options };
-    let lastError = null;
+    
+    // RetryManagerのexecuteWithExponentialBackoffを使用
+    const result = await this.retryManager.executeWithExponentialBackoff({
+      action: task,
+      isSuccess: (result) => result !== undefined && result !== null,
+      maxRetries: retryConfig.maxAttempts,
+      initialDelay: retryConfig.initialDelay,
+      maxDelay: retryConfig.maxDelay,
+      actionName: options.actionName || '処理',
+      context: options.context || {}
+    });
 
-    for (let attempt = 1; attempt <= retryConfig.maxAttempts; attempt++) {
-      try {
-        const result = await task();
-
-        // 成功時
-        if (attempt > 1) {
-          this.metrics.recoverySuccesses++;
-          this.logger.info(`リトライ成功: ${attempt}回目の試行で成功`);
-        }
-
-        return result;
-      } catch (error) {
-        lastError = error;
-
-        // リトライ可能エラーかチェック
-        if (!this.isRetryableError(error, retryConfig)) {
-          throw error;
-        }
-
-        // 最後の試行の場合はリトライしない
-        if (attempt === retryConfig.maxAttempts) {
-          break;
-        }
-
-        // 遅延計算と待機
-        const delay = this.calculateDelay(attempt, retryConfig);
-        this.logger.warn(
-          `リトライ ${attempt}/${retryConfig.maxAttempts}: ${delay}ms後に再試行`,
-          {
-            error: this.serializeError(error),
-          },
-        );
-
-        await this.delay(delay);
-        this.metrics.retriedErrors++;
+    if (result.success) {
+      if (result.retryCount > 0) {
+        this.metrics.recoverySuccesses++;
+        this.logger.info(`リトライ成功: ${result.retryCount + 1}回目の試行で成功`);
       }
+      return result.result;
+    } else {
+      this.metrics.retriedErrors += result.retryCount;
+      throw result.error || new Error('処理が失敗しました');
     }
-
-    throw lastError;
   }
 
   /**
@@ -271,7 +258,7 @@ export class ErrorHandler {
         if (context.task) {
           return await this.executeWithRetry(
             context.task,
-            context.retryOptions,
+            { ...context.retryOptions, actionName: 'エラー復旧リトライ' },
           );
         } else {
           return {
@@ -386,31 +373,30 @@ export class ErrorHandler {
 
   /**
    * 遅延時間計算（エクスポネンシャルバックオフ）
+   * @deprecated RetryManagerに移行済み。互換性のために残存
    * @param {number} attempt - 試行回数
    * @param {Object} config - リトライ設定
    * @returns {number} 遅延時間（ms）
    */
   calculateDelay(attempt, config) {
-    const baseDelay =
-      config.initialDelay * Math.pow(config.backoffMultiplier, attempt - 1);
-    const cappedDelay = Math.min(baseDelay, config.maxDelay);
-
-    // ジッター追加（ランダム要素）
-    if (config.enableJitter) {
-      const jitter = cappedDelay * 0.1 * Math.random();
-      return Math.floor(cappedDelay + jitter);
-    }
-
-    return cappedDelay;
+    // RetryManagerのdelayメソッドを使用
+    return this.retryManager.delay ? 
+      Math.min(
+        config.initialDelay * Math.pow(config.backoffMultiplier, attempt - 1),
+        config.maxDelay
+      ) : 
+      config.initialDelay;
   }
 
   /**
    * 遅延実行
+   * @deprecated RetryManagerに移行済み。互換性のために残存
    * @param {number} ms - 遅延時間（ms）
    * @returns {Promise<void>}
    */
   delay(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+    // RetryManagerのdelayメソッドを使用
+    return this.retryManager.delay(ms);
   }
 
   /**

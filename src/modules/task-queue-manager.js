@@ -6,6 +6,7 @@
  */
 
 import { WindowService } from '../services/window-service.js';
+import { RetryManager } from '../utils/retry-manager.js';
 
 export class TaskQueueManager {
   constructor() {
@@ -14,10 +15,13 @@ export class TaskQueueManager {
     this.processingTasks = new Map(); // taskId -> task
     this.failedTasks = new Map(); // taskId -> {task, error, retryCount}
     
+    // RetryManagerを初期化
+    this.retryManager = new RetryManager(console);
+    
     // 設定
     this.maxConcurrentTasks = 4;
-    this.maxRetries = 3;
-    this.retryDelay = 2000;
+    this.maxRetries = 3; // RetryManagerに移行予定
+    this.retryDelay = 2000; // RetryManagerに移行予定
     
     // 状態管理
     this.isProcessing = false;
@@ -174,32 +178,48 @@ export class TaskQueueManager {
   }
   
   /**
-   * タスクエラーを処理
+   * タスクエラーを処理（RetryManagerを使用）
    * @param {Object} task - タスク
    * @param {Error} error - エラー
    */
   async handleTaskError(task, error) {
     const taskId = task.id;
-    let failedInfo = this.failedTasks.get(taskId) || { task, error, retryCount: 0 };
     
-    failedInfo.retryCount++;
-    failedInfo.error = error;
+    // RetryManagerを使用してリトライ処理
+    const retryResult = await this.retryManager.executeWithRetry({
+      action: async () => {
+        // タスクを再実行
+        if (task.execute) {
+          const position = await this.waitForAvailablePosition();
+          if (position !== -1) {
+            await task.execute(position);
+            return { success: true };
+          } else {
+            throw new Error('利用可能なポジションがありません');
+          }
+        } else {
+          throw new Error('タスクにexecute関数がありません');
+        }
+      },
+      isSuccess: (result) => result && result.success,
+      maxRetries: this.maxRetries,
+      retryDelay: this.retryDelay,
+      actionName: `タスク実行 (${taskId})`,
+      context: { taskId, task }
+    });
     
-    if (failedInfo.retryCount < this.maxRetries) {
-      // リトライ
-      this.failedTasks.set(taskId, failedInfo);
-      
-      // 遅延後に再度キューに追加
-      await new Promise(resolve => setTimeout(resolve, this.retryDelay));
-      this.enqueue(task, true); // 優先的に再実行
-      
+    if (retryResult.success) {
+      // 成功した場合
+      if (this.onTaskComplete) {
+        this.onTaskComplete(task);
+      }
     } else {
       // 最終的に失敗
-      console.error(`[TaskQueueManager] タスク最終失敗: ${taskId}`);
+      console.error(`[TaskQueueManager] タスク最終失敗: ${taskId}`, retryResult.error);
       this.failedTasks.delete(taskId);
       
       if (this.onTaskFailed) {
-        this.onTaskFailed(task, error);
+        this.onTaskFailed(task, retryResult.error || error);
       }
     }
   }
