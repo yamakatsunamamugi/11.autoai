@@ -1,0 +1,43 @@
+{
+  "waitingTextPatterns": [
+    "お待ちください...",
+    "現在操作中です"
+  ],
+  "retryConfig": {
+    "maxRetryCount": 10,
+    "minCharacterThreshold": 100,
+    "retryDelays": [
+      5000,
+      10000,
+      30000,
+      60000,
+      120000,
+      300000,
+      600000,
+      1200000,
+      1800000,
+      3600000
+    ],
+    "delayDescriptions": [
+      "5秒",
+      "10秒",
+      "30秒",
+      "1分",
+      "2分",
+      "5分",
+      "10分",
+      "20分",
+      "30分",
+      "1時間"
+    ]
+  },
+  "description": {
+    "waitingTextPatterns": "リトライ対象となる待機中を示すテキストパターン。完全一致で判定されます。",
+    "retryConfig": {
+      "maxRetryCount": "最大リトライ回数",
+      "minCharacterThreshold": "リトライ対象とする最小文字数の閾値。この文字数以下の回答はリトライ対象となります。",
+      "retryDelays": "各リトライの遅延時間（ミリ秒）。段階的に増加します。",
+      "delayDescriptions": "遅延時間の説明（ログ出力用）"
+    }
+  }
+}

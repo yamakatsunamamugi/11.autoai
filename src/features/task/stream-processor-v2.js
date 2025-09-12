@@ -14,6 +14,7 @@ import TaskQueue from './queue.js';
 import { RetryManager } from '../../utils/retry-manager.js';
 import TaskGeneratorV2 from './generator-v2.js';
 import { DynamicTaskQueue } from './dynamic-task-queue.js';
+import { getTimeoutForFunction } from '../../config/exclusive-control-config.js';
 import { ExclusiveControlManager } from '../../utils/exclusive-control-manager.js';
 import { ExclusiveControlLoggerHelper } from '../../utils/exclusive-control-logger-helper.js';
 import { sleep } from '../../utils/sleep-utils.js';
@@ -84,7 +85,10 @@ export default class StreamProcessorV2 {
     this.processedCells = new Set(); // セル単位で処理済みを追跡
     this.dynamicQueue = new DynamicTaskQueue(logger); // 動的タスクキューを追加
     
-    // 再実行管理状態
+    // 現在処理中のグループID
+    this.currentGroupId = null;
+    
+    // 再実行管理状態（後でRetryManagerに移行予定）
     this.failedTasksByColumn = new Map(); // column -> Set<task>
     this.retryCountByColumn = new Map(); // column -> retryCount
     this.maxRetryCount = 3; // 最大再実行回数
@@ -356,18 +360,11 @@ export default class StreamProcessorV2 {
       this.logger.log(`[StreamProcessorV2] ✅ ${column}列 バッチ${batchIndex + 1}/${batches.length}処理完了`);
     }
     
-    // 🔄 列完了時の自動再実行チェック
-    await this.checkAndProcessFailedTasks(column);
-    
-    // 🔄 回答が空白のセルを再実行（既存メソッドを使用、失敗時スキップモード）
-    await this.verifyAndReprocessColumn(column, tasks, isTestMode);
-    
+    // リトライ処理は削除（グループ完了時に移動）
+    // 列処理完了をログ
     this.logger.log(`[StreamProcessorV2] 🎉 ${column}列の処理完了`, {
       completedTasks: tasks.length
     });
-    
-    // 列完了時に再実行統計を表示
-    this.logRetryStats();
   }
 
   /**
@@ -427,311 +424,10 @@ export default class StreamProcessorV2 {
     
     try {
       // ========================================
-      // フェーズ1: 全ウィンドウを同時に開いてテキスト入力（並列処理）
+      // 並列パイプライン: ウィンドウ作成→モデル選択→機能選択を同時実行
       // ========================================
-      this.logger.log(`[StreamProcessorV2] 📋 フェーズ1: ウィンドウ準備とテキスト入力（並列処理）`);
-      
-      // バッチ内のすべての既存回答を同期チェック（高速化）
-      const answerResults = batch.map(task => ({ 
-        task, 
-        answer: this.getCurrentAnswer(task) 
-      }));
-      
-      // ウィンドウを事前に並列作成（高速化）
-      this.logger.log(`[StreamProcessorV2] 🚀 ウィンドウを並列作成中...`);
-      const windowCreationPromises = batch.map(async (task, index) => {
-        const position = index; // 0: 左上、1: 右上、2: 左下
-        
-        try {
-          // AI/モデル/機能を動的に取得（ウィンドウ作成前に必要）
-          const { model, function: func, ai } = await this.fetchModelAndFunctionFromTask(task);
-          task.model = model;
-          task.function = func;
-          task.aiType = ai;
-          
-          // ウィンドウを作成
-          const tabId = await this.createWindowForTask(task, position);
-          if (!tabId) {
-            return { success: false, error: `Failed to create window for ${task.aiType}`, index };
-          }
-          
-          return { success: true, tabId, task, index };
-        } catch (error) {
-          this.logger.error(`[StreamProcessorV2] ❌ ウィンドウ作成エラー: ${task.column}${task.row}`, error);
-          return { success: false, error, index };
-        }
-      });
-      
-      const windowResults = await Promise.all(windowCreationPromises);
-      this.logger.log(`[StreamProcessorV2] ✅ ウィンドウ並列作成完了`);
-      
-      // 段階2: 排他制御とロック取得（順次実行が必要）
-      this.logger.log(`[StreamProcessorV2] 🔄 フェーズ1-2: 排他制御とロック取得開始`);
-      const lockResults = [];
-      
-      for (let index = 0; index < batch.length; index++) {
-        const task = batch[index];
-        
-        // 既存回答チェック（事前に取得済みの結果を使用）
-        const existingAnswer = answerResults[index].answer;
-        
-        // 排他制御システムでロック取得を試みる
-        const lockResult = await this.exclusiveManager.acquireLock(
-          task,
-          globalThis.sheetsClient,
-          {
-            spreadsheetId: this.spreadsheetData?.spreadsheetId,
-            gid: this.spreadsheetData?.gid,
-            strategy: 'smart'
-          }
-        );
-        
-        if (!lockResult.success) {
-          skippedCells.push(`${task.column}${task.row}`);
-          this.logger.log(`[StreamProcessorV2] 🔒 ${task.column}${task.row}: ${lockResult.reason} - スキップ`);
-          lockResults.push({ success: false, index, reason: lockResult.reason });
-        } else {
-          this.logger.log(`[StreamProcessorV2] 🔓 ${task.column}${task.row}: 排他制御ロック取得成功`);
-          lockResults.push({ success: true, index });
-        }
-        
-        // 事前作成されたウィンドウ情報を確認
-        const windowResult = windowResults[index];
-        if (!windowResult.success) {
-          this.logger.log(`[StreamProcessorV2] ❌ ウィンドウ作成済み失敗: ${task.column}${task.row} - スキップ`);
-          skippedCells.push(`${task.column}${task.row}`);
-          lockResults[index] = { success: false, index, reason: 'ウィンドウ作成失敗' };
-        }
-      }
+      this.logger.log(`[StreamProcessorV2] 📋 並列パイプライン開始: ウィンドウ作成→モデル→機能選択（完全並列）`);
 
-      // 段階3: スクリプト注入を並列実行
-      this.logger.log(`[StreamProcessorV2] 🔄 フェーズ1-3: スクリプト注入（並列）開始`);
-      const injectionPromises = lockResults.map(async (lockResult, index) => {
-        if (!lockResult.success) {
-          return { success: false, index, error: lockResult.reason };
-        }
-
-        const task = batch[index];
-        const windowResult = windowResults[index];
-        let currentTabId = windowResult.tabId;
-        let injectionSuccess = false;
-
-        // タスクにウィンドウ結果の情報を設定
-        task.model = windowResult.task.model;
-        task.function = windowResult.task.function;
-        task.aiType = windowResult.task.aiType;
-
-        // ロックマーカーを機能名付きで更新
-        try {
-          const functionAwareMarker = this.exclusiveManager.control.createMarker(
-            this.exclusiveManager.pcId,
-            { function: windowResult.task.function || '通常' }
-          );
-          
-          await globalThis.sheetsClient?.updateCell(
-            this.spreadsheetData?.spreadsheetId,
-            `${task.column}${task.row}`,
-            functionAwareMarker,
-            this.spreadsheetData?.gid
-          );
-          
-          this.logger.log(`[StreamProcessorV2] 📝 ${task.column}${task.row}: 機能名付きマーカー更新 (${windowResult.task.function || '通常'})`);
-        } catch (markerUpdateError) {
-          this.logger.warn(`[StreamProcessorV2] マーカー更新エラー:`, markerUpdateError);
-        }
-
-        // スクリプト注入をリトライ付きで実行
-        for (let retryCount = 0; retryCount < 3; retryCount++) {
-          if (retryCount > 0) {
-            this.logger.log(`[StreamProcessorV2] 🔄 ウィンドウ再作成試行 ${retryCount}/3: ${task.column}${task.row}`);
-            
-            // 既存ウィンドウを閉じる
-            try {
-              if (this.windowService) {
-                await this.windowService.closeWindow(currentTabId);
-              }
-              await this.delay(1000);
-            } catch (cleanupError) {
-              this.logger.error(`[StreamProcessorV2] ウィンドウクリーンアップエラー:`, cleanupError);
-            }
-            
-            // 新しいウィンドウを作成
-            try {
-              currentTabId = await this.createWindowForTask(task, index);
-              if (!currentTabId) {
-                continue;
-              }
-            } catch (error) {
-              this.logger.error(`[StreamProcessorV2] ウィンドウ再作成エラー:`, error);
-              continue;
-            }
-          }
-          
-          // ページ読み込み待機
-          await this.delay(2000);
-          
-          // スクリプト注入試行
-          this.logger.log(`[StreamProcessorV2] スクリプト注入中: ${task.aiType} (${task.column}${task.row}) 試行 ${retryCount + 1}/3`);
-          const injectionResult = await this.injectScriptsForTab(currentTabId, task.aiType);
-          
-          if (injectionResult) {
-            injectionSuccess = true;
-            this.logger.log(`[StreamProcessorV2] ✅ スクリプト注入成功: ${task.column}${task.row}`);
-            break;
-          }
-          
-          this.logger.error(`[StreamProcessorV2] ❌ スクリプト注入失敗: ${task.column}${task.row} (試行 ${retryCount + 1}/3)`);
-        }
-
-        if (!injectionSuccess) {
-          this.logger.error(`[StreamProcessorV2] ❌ 最終的にスクリプト注入失敗: ${task.column}${task.row}`);
-          
-          // クリーンアップ
-          try {
-            if (this.windowService) {
-              await this.windowService.closeWindow(currentTabId);
-            }
-          } catch (cleanupError) {
-            this.logger.error(`[StreamProcessorV2] 最終クリーンアップエラー:`, cleanupError);
-          }
-          
-          return { success: false, index, error: 'スクリプト注入失敗' };
-        }
-
-        return { success: true, index, tabId: currentTabId, task };
-      });
-
-      const injectionResults = await Promise.allSettled(injectionPromises);
-
-      // 段階4: テキスト入力を並列実行
-      this.logger.log(`[StreamProcessorV2] 🔄 フェーズ1-4: テキスト入力（並列）開始`);
-      const textPromises = injectionResults.map(async (injectionResult, index) => {
-        if (injectionResult.status !== 'fulfilled' || !injectionResult.value.success) {
-          return { success: false, index, error: 'スクリプト注入段階失敗' };
-        }
-
-        const task = batch[index];
-        const { tabId, task: injectedTask } = injectionResult.value;
-
-        // プロンプト取得
-        let prompt;
-        try {
-          prompt = await this.fetchPromptFromTask(task);
-          if (!prompt || prompt.trim() === '') {
-            this.logger.error(`[StreamProcessorV2] ❌ プロンプトが取得できませんでした: ${task.column}${task.row}`);
-            return { success: false, index, error: 'プロンプト取得失敗' };
-          }
-        } catch (error) {
-          this.logger.error(`[StreamProcessorV2] プロンプト取得エラー: ${task.column}${task.row}`, error);
-          return { success: false, index, error: 'プロンプト取得エラー' };
-        }
-
-        this.logger.log(`[StreamProcessorV2] プロンプト取得完了: ${task.column}${task.row}`, {
-          プロンプト長: prompt.length,
-          有効性: true
-        });
-
-        // テキスト入力をリトライ付きで実行
-        let textSuccess = false;
-        let currentTabId = tabId;
-        
-        for (let textRetryCount = 0; textRetryCount < 3; textRetryCount++) {
-          const textResult = await this.executePhaseOnTab(currentTabId, { ...injectedTask, prompt }, 'text');
-          
-          if (textResult && textResult.success) {
-            textSuccess = true;
-            this.logger.log(`[StreamProcessorV2] ✅ テキスト入力成功: ${task.column}${task.row}`);
-            break;
-          } else {
-            this.logger.error(`[StreamProcessorV2] ❌ テキスト入力失敗: ${task.column}${task.row} (試行 ${textRetryCount + 1}/3)`, textResult?.error);
-            
-            if (textRetryCount < 2) {
-              await this.delay(3000);
-            }
-          }
-        }
-
-        if (!textSuccess) {
-          // ウィンドウ再作成リトライ
-          let retrySuccess = false;
-          
-          for (let windowRetry = 0; windowRetry < 3; windowRetry++) {
-            try {
-              if (currentTabId) {
-                await this.windowService.closeWindow(currentTabId);
-                await this.delay(1500);
-              }
-              
-              this.logger.log(`[StreamProcessorV2] 🔄 ウィンドウ再作成試行 ${windowRetry + 1}/3: ${task.column}${task.row}`);
-              const newTabId = await this.createWindowForTask(injectedTask, index);
-              
-              if (newTabId) {
-                currentTabId = newTabId;
-                await this.delay(3000);
-                await this.injectScriptsForTab(newTabId, injectedTask.aiType);
-                await this.delay(1000);
-                
-                for (let textRetry = 0; textRetry < 3; textRetry++) {
-                  const finalResult = await this.executePhaseOnTab(newTabId, { ...injectedTask, prompt }, 'text');
-                  if (finalResult && finalResult.success) {
-                    this.logger.log(`[StreamProcessorV2] ✅ ウィンドウ再作成後のテキスト入力成功: ${task.column}${task.row}`);
-                    retrySuccess = true;
-                    break;
-                  }
-                  if (textRetry < 2) {
-                    await this.delay(2000);
-                  }
-                }
-                
-                if (retrySuccess) break;
-              }
-            } catch (error) {
-              this.logger.error(`[StreamProcessorV2] ウィンドウ再作成エラー: ${task.column}${task.row}`, error);
-            }
-            
-            if (windowRetry < 2) {
-              await this.delay(2000);
-            }
-          }
-          
-          if (!retrySuccess) {
-            this.logger.error(`[StreamProcessorV2] ❌ すべてのリトライが失敗: ${task.column}${task.row}`);
-            try {
-              const { spreadsheetId, gid } = this.spreadsheetData || {};
-              if (spreadsheetId && globalThis.sheetsClient) {
-                await globalThis.sheetsClient.updateCell(
-                  spreadsheetId,
-                  `${task.column}${task.row}`,
-                  '',
-                  gid
-                );
-              }
-              this.logger.log(`[StreamProcessorV2] 🧹 エラークリーンアップ: ${task.column}${task.row}のマーカーを削除`);
-            } catch (cleanupError) {
-              this.logger.error(`[StreamProcessorV2] クリーンアップエラー:`, cleanupError);
-            }
-            return { success: false, index, error: 'テキスト入力最終失敗' };
-          } else {
-            // 成功時はtaskContextsに追加
-            taskContexts.push({
-              task: { ...injectedTask, prompt },
-              tabId: currentTabId,
-              position: index,
-              cell: `${task.column}${task.row}`
-            });
-          }
-        } else {
-          // 成功時はtaskContextsに追加
-          taskContexts.push({
-            task: { ...injectedTask, prompt },
-            tabId: currentTabId,
-            position: index,
-            cell: `${task.column}${task.row}`
-          });
-        }
-
-        return { success: textSuccess || retrySuccess, index, tabId: currentTabId };
-      });
 
       // 各タスクの完全パイプライン関数を定義
       const setupCompleteTask = async (task, index) => {
@@ -874,211 +570,7 @@ export default class StreamProcessorV2 {
       }
       
       this.logger.log(`[StreamProcessorV2] 📊 並列パイプライン完了: 成功 ${successfulTasks.length}件, 失敗 ${failedTasks.length}件`);
-      
-      // ========================================
-      // フェーズ2: モデルを順番に選択（リトライ機能付き）
-      // ========================================
-      this.logger.log(`[StreamProcessorV2] 📋 フェーズ2: モデル選択（順番に）`);
-      
-      for (let index = 0; index < taskContexts.length; index++) {
-        const context = taskContexts[index];
-        this.logger.log(`[StreamProcessorV2] モデル選択${index + 1}/${taskContexts.length}: ${context.cell}`);
-        
-        // モデル、機能、AIを動的に取得（常に最新データ）
-        const { model, function: func, ai } = await this.fetchModelAndFunctionFromTask(context.task);
-        context.task.model = model;
-        context.task.function = func;
-        context.task.aiType = ai;
-        
-        // スプレッドシートから取得したデータを詳細ログ出力
-        this.logger.log(`[StreamProcessorV2] 📊 スプレッドシートから取得:`, {
-          cell: context.cell,
-          AI: ai,
-          モデル: model,
-          機能: func,
-          promptColumns: context.task.promptColumns,
-          '元のtask.aiType': context.task.aiType,
-          'aiTypeの変更': context.task.aiType !== ai ? `${context.task.aiType} → ${ai}` : '変更なし'
-        });
-        
-        let modelSuccess = false;
-        let retryCount = 0;
-        const maxRetries = 3;
-        
-        while (!modelSuccess && retryCount < maxRetries) {
-          try {
-            // モデル選択を実行
-            const modelResult = await this.executePhaseOnTab(context.tabId, context.task, 'model');
-            
-            if (modelResult && modelResult.success !== false) {
-              // displayedModelを必ず設定（値がない場合はモデル名またはデフォルト値を使用）
-              context.task.displayedModel = modelResult.displayedModel || context.task.model || 'デフォルト';
-              this.logger.log(`[StreamProcessorV2] ✅ モデル選択成功: "${context.task.model}" (空文字: ${context.task.model === ''}) → "${context.task.displayedModel}"`);
-              modelSuccess = true;
-            } else {
-              throw new Error(`モデル選択失敗: ${context.cell}`);
-            }
-          } catch (error) {
-            retryCount++;
-            this.logger.error(`[StreamProcessorV2] ❌ モデル選択失敗 (試行 ${retryCount}/${maxRetries}): ${context.cell}`, error);
-            
-            if (retryCount < maxRetries) {
-              // ウィンドウを閉じて再作成
-              this.logger.log(`[StreamProcessorV2] 🔄 ウィンドウを再作成してリトライします`);
-              
-              try {
-                // 既存ウィンドウを閉じる
-                const tab = await chrome.tabs.get(context.tabId);
-                if (tab && tab.windowId) {
-                  await chrome.windows.remove(tab.windowId);
-                }
-                // WindowServiceの動的importを避け、直接window-serviceのインスタンスを使用
-                // ポジション管理は必要に応じて別途実装
-                if (this.windowService) {
-                  // releasePositionは不要（closeWindowが自動的に解放）
-                }
-              } catch (closeError) {
-                this.logger.error(`[StreamProcessorV2] ウィンドウクローズエラー:`, closeError);
-              }
-              
-              await this.delay(2000);
-              
-              // 新しいウィンドウを作成
-              const newTabId = await this.createWindowForTask(context.task, context.position);
-              if (newTabId) {
-                context.tabId = newTabId;
-                await this.delay(2000);
-                
-                // スクリプトを注入
-                await this.injectScriptsForTab(newTabId, context.task.aiType);
-                
-                // テキストを再入力
-                this.logger.log(`[StreamProcessorV2] テキスト再入力: ${context.cell}`);
-                const textResult = await this.executePhaseOnTab(newTabId, context.task, 'text');
-                if (!textResult || !textResult.success) {
-                  this.logger.error(`[StreamProcessorV2] テキスト再入力失敗: ${context.cell}`);
-                }
-                
-                await this.delay(2000);
-              } else {
-                this.logger.error(`[StreamProcessorV2] ウィンドウ再作成失敗`);
-              }
-            }
-          }
-        }
-        
-        if (!modelSuccess) {
-          this.logger.error(`[StreamProcessorV2] ❌ 最終的にモデル選択失敗: ${context.cell} - このタスクをスキップします`);
-          context.failed = true;
-        }
-        
-        await this.delay(1000); // 各モデル選択後の待機
-      }
-      
-      this.logger.log(`[StreamProcessorV2] ✅ フェーズ2完了: 全モデル選択済み`);
-      await this.delay(2000);
-      
-      // ========================================
-      // フェーズ3: 機能を順番に選択（リトライ機能付き）
-      // ========================================
-      this.logger.log(`[StreamProcessorV2] 📋 フェーズ3: 機能選択（順番に）`);
-      
-      for (let index = 0; index < taskContexts.length; index++) {
-        const context = taskContexts[index];
-        this.logger.log(`[StreamProcessorV2] 機能選択${index + 1}/${taskContexts.length}: ${context.cell}`);
-        
-        // Canvas等の特殊機能かどうかを判定
-        const specialFunctions = ['Canvas', 'Deep Research', 'DeepResearch', 'DeepReserch'];
-        const isSpecialFunction = specialFunctions.some(f => 
-          context.task.function && context.task.function.includes(f)
-        );
-        
-        // 特殊機能の場合はdisplayedFunctionのチェックをスキップ
-        if (isSpecialFunction) {
-          this.logger.log(`[StreamProcessorV2] 🎨 特殊機能「${context.task.function}」を選択中 - 成功判定を調整`);
-        }
-        
-        // RetryManagerを使用して機能選択を実行
-        const retryResult = await this.retryManager.executeWithWindowRetry({
-          executePhase: async (tabId, task) => {
-            return await this.executePhaseOnTab(tabId, task, 'function');
-          },
-          
-          createWindow: async (task, position) => {
-            return await this.createWindowForTask(task, position);
-          },
-          
-          closeWindow: async (tabId) => {
-            try {
-              const tab = await chrome.tabs.get(tabId);
-              if (tab && tab.windowId) {
-                await chrome.windows.remove(tab.windowId);
-                this.logger.log(`[StreamProcessorV2] ウィンドウを閉じました: WindowID ${tab.windowId}`);
-              }
-            } catch (e) {
-              // エラーが発生しても処理は継続
-            }
-          },
-          
-          setupWindow: async (tabId, task) => {
-            await this.delay(3000); // ページ読み込み待機
-            
-            // スクリプトを注入
-            this.logger.log(`[StreamProcessorV2] スクリプト注入中: ${task.aiType}`);
-            await this.injectScriptsForTab(tabId, task.aiType);
-            
-            // テキストを再入力
-            this.logger.log(`[StreamProcessorV2] テキスト入力: ${context.cell}`);
-            const textResult = await this.executePhaseOnTab(tabId, task, 'text');
-            if (!textResult || !textResult.success) {
-              this.logger.error(`[StreamProcessorV2] テキスト入力失敗: ${context.cell}`);
-            }
-            
-            await this.delay(2000);
-            
-            // モデルを再選択
-            this.logger.log(`[StreamProcessorV2] モデル選択: ${context.cell}`);
-            const modelResult = await this.executePhaseOnTab(tabId, task, 'model');
-            if (modelResult && modelResult.displayedModel !== undefined) {
-              task.displayedModel = modelResult.displayedModel;
-            }
-            
-            await this.delay(2000);
-          },
-          
-          task: context.task,
-          context: context,
-          checkFunction: !isSpecialFunction,  // 特殊機能の場合はチェックを無効化
-          phaseName: '機能選択',
-          maxRetries: 3
-        });
-        
-        // 結果を処理
-        if (retryResult.success && retryResult.result) {
-          // displayedFunctionを必ず設定（値がない場合は機能名またはデフォルト値を使用）
-          context.task.displayedFunction = retryResult.result.displayedFunction || context.task.function || '通常';
-          this.logger.log(`[StreamProcessorV2] ✅ 選択された機能を記録: "${context.task.function}" (空文字: ${context.task.function === ''}) → "${context.task.displayedFunction}"`);
-          
-          // 特殊機能の場合の追加ログ
-          if (isSpecialFunction) {
-            this.logger.log(`[StreamProcessorV2] 🎨 特殊機能「${context.task.function}」の選択完了 - 送信フェーズへ進みます`);
-          }
-        } else {
-          // 失敗しても機能名を設定
-          context.task.displayedFunction = context.task.function || '通常';
-          this.logger.error(`[StreamProcessorV2] ❌ 機能選択が失敗しました: ${context.cell}`);
-          // 失敗タスクとして記録
-          if (!this.failedTasksByColumn.has(context.task.column)) {
-            this.failedTasksByColumn.set(context.task.column, new Set());
-          }
-          this.failedTasksByColumn.get(context.task.column).add(context.task);
-        }
-        
-        await this.delay(1000); // 各機能選択後の待機
-      }
-      
-      this.logger.log(`[StreamProcessorV2] ✅ フェーズ3完了: 全機能選択済み`);
-      await this.delay(2000);
+      await this.delay(2000); // フェーズ間の待機
       
       // ========================================
       // フェーズ4: 送信と応答取得（並列処理、5秒間隔）
@@ -1294,6 +786,18 @@ export default class StreamProcessorV2 {
           }
         } else {
           this.logger.error(`[StreamProcessorV2] ⚠️ ${context.cell}の応答が取得できませんでした`);
+          
+          // 【即座に記録】AI操作ごとに応答取得失敗を記録
+          // このエラーは発生時点で即座にRetryManagerに記録される
+          if (this.currentGroupId && this.retryManager) {
+            const task = {
+              column: context.cell.match(/^[A-Z]+/)[0],
+              row: parseInt(context.cell.match(/\d+$/)[0]),
+              aiType: context.aiType
+            };
+            this.retryManager.recordResponseFailure(this.currentGroupId, task);
+          }
+          
           // 応答取得失敗時は排他制御をクリア
           try {
             const { spreadsheetId, gid } = this.spreadsheetData || {};
@@ -2048,6 +1552,13 @@ export default class StreamProcessorV2 {
           this.failedTasksByColumn.set(task.column, new Set());
         }
         this.failedTasksByColumn.get(task.column).add(task);
+        
+        // 【即座に記録】AI操作ごとに処理失敗を記録
+        // このエラーは発生時点で即座にRetryManagerに記録される
+        if (this.currentGroupId && this.retryManager) {
+          this.retryManager.recordFailedTask(this.currentGroupId, task);
+        }
+        
         this.logger.log(`[StreamProcessorV2] 🔄 失敗タスクを記録: ${task.column}${task.row}`);
       }
       
@@ -2065,15 +1576,37 @@ export default class StreamProcessorV2 {
         this.failedTasksByColumn.set(task.column, new Set());
       }
       this.failedTasksByColumn.get(task.column).add(task);
+      
+      // RetryManagerにも記録（グループリトライ用）
+      if (this.currentGroupId && this.retryManager) {
+        this.retryManager.recordFailedTask(this.currentGroupId, task);
+      }
+      
       this.logger.log(`[StreamProcessorV2] 🔄 失敗タスクを記録 (例外): ${task.column}${task.row}`);
       throw error;
     }
   }
 
+  // 削除: verifyAndReprocessColumn - グループリトライに統合
+  // 削除: checkAndProcessFailedTasks - グループリトライに統合
+  // 削除: logRetryStats - RetryManagerに移行
+  // 削除: cancelAllRetryTimers - RetryManagerに移行
+  // 削除: cancelRetryTimer - RetryManagerに移行
+  
   /**
-   * 列の作業終了後、回答列を確認して回答がない場合は再実行
+   * (以下のメソッドは削除されました - RetryManagerのグループリトライ機能に統合)
+   * - verifyAndReprocessColumn: 空白セルの再実行
+   * - checkAndProcessFailedTasks: 失敗タスクの自動再実行
+   * - logRetryStats: 再実行統計情報の表示
+   * - cancelAllRetryTimers: 全タイマーのキャンセル
+   * - cancelRetryTimer: 特定タイマーのキャンセル
    */
-  async verifyAndReprocessColumn(column, tasks, isTestMode) {
+
+  /**
+   * 列の作業終了後、回答列を確認して回答がない場合は再実行（削除済み）
+   * @deprecated RetryManagerのグループリトライ機能に統合
+   */
+  async verifyAndReprocessColumn_REMOVED(column, tasks, isTestMode) {
     this.logger.log(`[StreamProcessorV2] 🔍 ${column}列の回答確認と再実行開始`);
     
     const tasksToReprocess = [];
@@ -3101,6 +2634,9 @@ export default class StreamProcessorV2 {
       
       this.logger.log(`[StreamProcessorV2] ✅ グループ${groupIndex + 1}のタスク生成完了: ${groupTaskList.tasks.length}個`);
       
+      // 現在のグループIDを設定（リトライ管理用）
+      this.currentGroupId = groupKey;
+      
       // 3種類AIかどうかを判定
       const is3TypeAI = promptGroup.aiType && 
         (promptGroup.aiType.includes('3種類') || promptGroup.aiType.includes('３種類'));
@@ -3131,6 +2667,232 @@ export default class StreamProcessorV2 {
       processedGroupKeys.add(groupKey);
       
       this.logger.log(`[StreamProcessorV2] ✅ グループ${groupIndex + 1}の処理完了`);
+      
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // グループ完了後のリトライ処理
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // 【タイミング】
+      // - AI操作中に記録: recordFailedTask, recordResponseFailure
+      // - グループ完了後にチェック: 空白セル、待機テキスト
+      // 
+      // 【処理フロー】
+      // 1. グループ内の全タスクが完了するまで待機
+      // 2. 待機テキストがクリアされるまでチェック（5秒間隔、最大10分）
+      // 3. リトライ対象を収集して実行
+      
+      if (this.retryManager) {
+        // 機能名を判定してタイムアウトを決定
+        let maxWaitTime = 5 * 60 * 1000; // デフォルト5分
+        let detectedFunction = '通常';
+        
+        // 処理中のマーカーから機能名を取得
+        let sheetsClient = this.sheetsClient;
+        if (!sheetsClient && this.spreadsheetLogger?.sheetsClient) {
+          sheetsClient = this.spreadsheetLogger.sheetsClient;
+        }
+        
+        if (sheetsClient && spreadsheetData.spreadsheetId) {
+          try {
+            const latestData = await sheetsClient.loadAutoAIData(
+              spreadsheetData.spreadsheetId,
+              spreadsheetData.gid
+            );
+            
+            if (latestData) {
+              for (const task of groupTaskList.tasks) {
+                const answer = this.retryManager.getCurrentAnswer(task, latestData);
+                
+                if (answer && answer.startsWith('現在操作中です_')) {
+                  const parts = answer.split('_');
+                  if (parts.length >= 4) {
+                    const functionName = parts[3];
+                    // DeepResearch, エージェント等を判定
+                    if (functionName.includes('Deep') || functionName.includes('エージェント')) {
+                      detectedFunction = functionName;
+                      maxWaitTime = 40 * 60 * 1000; // 40分
+                      this.logger.log(`[StreamProcessorV2] 長時間処理を検出: ${functionName}`);
+                      break;
+                    }
+                  }
+                }
+              }
+            }
+          } catch (error) {
+            this.logger.warn(`[StreamProcessorV2] 機能判定中のエラー:`, error);
+          }
+        }
+        
+        this.logger.log(`[StreamProcessorV2] 検出された機能: ${detectedFunction}, 最大待機: ${maxWaitTime/60000}分`);
+        
+        // 完了チェック関数: 待機テキストが残っていないか確認
+        const checkGroupCompletion = async (groupId) => {
+          // スプレッドシートを再読み込み
+          let sheetsClient = this.sheetsClient;
+          if (!sheetsClient && this.spreadsheetLogger?.sheetsClient) {
+            sheetsClient = this.spreadsheetLogger.sheetsClient;
+          }
+          
+          if (sheetsClient && spreadsheetData.spreadsheetId) {
+            try {
+              const latestData = await sheetsClient.loadAutoAIData(
+                spreadsheetData.spreadsheetId,
+                spreadsheetData.gid
+              );
+              
+              if (latestData) {
+                // 待機テキストがあるかチェック
+                for (const task of groupTaskList.tasks) {
+                  const answer = this.retryManager.getCurrentAnswer(task, latestData);
+                  if (this.retryManager.isWaitingText(answer)) {
+                    this.logger.log(`[StreamProcessorV2] 待機中: ${task.column}${task.row} - "${answer}"`);
+                    return false; // まだ完了していない
+                  }
+                }
+              }
+            } catch (error) {
+              this.logger.warn(`[StreamProcessorV2] 完了チェック中のエラー:`, error);
+            }
+          }
+          
+          return true; // すべて完了
+        };
+        
+        // グループ完了を待機（機能に応じた設定）
+        const isComplete = await this.retryManager.waitForGroupCompletion(
+          groupKey,
+          checkGroupCompletion,
+          60000,      // 1分ごとにチェック（5秒から変更）
+          maxWaitTime // 機能に応じた最大待機時間
+        );
+        
+        if (!isComplete) {
+          this.logger.warn(`[StreamProcessorV2] グループ${groupIndex + 1}の完了待機がタイムアウトしました`);
+        }
+        
+        // スプレッドシートを再読み込みして最新状態を取得
+        let latestSpreadsheetData = spreadsheetData;
+        let sheetsClient = this.sheetsClient;
+        if (!sheetsClient && this.spreadsheetLogger?.sheetsClient) {
+          sheetsClient = this.spreadsheetLogger.sheetsClient;
+        }
+        
+        if (sheetsClient && spreadsheetData.spreadsheetId) {
+          try {
+            const latestData = await sheetsClient.loadAutoAIData(
+              spreadsheetData.spreadsheetId,
+              spreadsheetData.gid
+            );
+            if (latestData) {
+              latestSpreadsheetData = latestData;
+            }
+          } catch (error) {
+            this.logger.error(`[StreamProcessorV2] 最新データ取得エラー:`, error);
+          }
+        }
+        
+        // グループ完了時のリトライ処理
+        const retryResults = await this.retryManager.executeGroupRetries(
+          groupKey,  // グループID
+          async (column, tasks) => this.processColumn(column, tasks, isTestMode),
+          isTestMode,
+          latestSpreadsheetData // 最新のスプレッドシートデータを渡す
+        );
+        
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        // グループ処理停止判定
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        if (retryResults.shouldStopProcessing) {
+          this.logger.error(`[StreamProcessorV2] ⛔ グループ${groupIndex + 1}に未完了タスクが残っています`);
+          this.logger.error(`[StreamProcessorV2] ⛔ 以降のグループ処理を停止します`);
+          
+          // 最終状態をチェック
+          const finalStatus = this.retryManager.checkFinalGroupStatus(groupKey, latestSpreadsheetData);
+          
+          this.logger.error(`[StreamProcessorV2] ⛔ 未完了タスク数: ${finalStatus.uncompletedCount}`);
+          finalStatus.uncompletedTasks.forEach(task => {
+            this.logger.error(`[StreamProcessorV2] ⛔ - ${task.column}${task.row}`);
+          });
+          
+          // 処理結果を返して終了
+          return {
+            success: false,
+            total: totalProcessed + totalFailed,
+            completed: totalProcessed,
+            failed: totalFailed,
+            stoppedAtGroup: groupIndex + 1,
+            reason: 'グループ内に未完了タスクが残っているため処理を停止'
+          };
+        }
+        
+        if (retryResults.hasRetries) {
+          this.logger.log(`[StreamProcessorV2] 🔄 グループ${groupIndex + 1}のリトライ完了`, {
+            成功: retryResults.successful,
+            失敗: retryResults.failed,
+            総タスク数: retryResults.total
+          });
+          totalProcessed += retryResults.successful;
+          totalFailed += retryResults.failed;
+        }
+        
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        // 最終的な空白・未完了チェック
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        if (sheetsClient && spreadsheetData.spreadsheetId) {
+          try {
+            const finalData = await sheetsClient.loadAutoAIData(
+              spreadsheetData.spreadsheetId,
+              spreadsheetData.gid
+            );
+            
+            if (finalData) {
+              let hasIncomplete = false;
+              const incompleteList = [];
+              
+              for (const task of groupTaskList.tasks) {
+                const answer = this.retryManager.getCurrentAnswer(task, finalData);
+                const cellRef = `${task.column}${task.row}`;
+                
+                // 空白チェック
+                if (!answer || answer.trim() === '') {
+                  hasIncomplete = true;
+                  incompleteList.push(`${cellRef}: 空白`);
+                } 
+                // 排他制御マーカー（自分以外）
+                else if (answer.startsWith('現在操作中です_')) {
+                  const parts = answer.split('_');
+                  if (parts[2] !== this.retryManager.pcId) {
+                    hasIncomplete = true;
+                    incompleteList.push(`${cellRef}: 他PCが処理中`);
+                  }
+                }
+                // 文字数チェック
+                else if (answer.length <= this.retryManager.minCharacterThreshold) {
+                  hasIncomplete = true;
+                  incompleteList.push(`${cellRef}: 文字数不足(${answer.length}文字)`);
+                }
+              }
+              
+              if (hasIncomplete) {
+                this.logger.error(`[StreamProcessorV2] ⛔ グループ${groupIndex + 1}に未完了タスクがあります`);
+                incompleteList.forEach(item => this.logger.error(`[StreamProcessorV2] ⛔ ${item}`));
+                this.logger.error(`[StreamProcessorV2] ⛔ 以降のグループ処理を停止します`);
+                
+                return {
+                  success: false,
+                  total: totalProcessed + totalFailed,
+                  completed: totalProcessed,
+                  failed: totalFailed,
+                  stoppedAtGroup: groupIndex + 1,
+                  reason: `未完了タスク${incompleteList.length}件のため処理停止`
+                };
+              }
+            }
+          } catch (error) {
+            this.logger.error(`[StreamProcessorV2] 最終チェック中のエラー:`, error);
+          }
+        }
+      }
+      
       this.logger.log(`[StreamProcessorV2] ${'='.repeat(50)}\n`);
       
       // スプレッドシートを再読み込み（次のグループのタスクを動的に発見するため）
@@ -4033,6 +3795,7 @@ export default class StreamProcessorV2 {
       this.logger.log(`[StreamProcessorV2] ✅ ${column}列 バッチ${batchIndex + 1}/${batches.length}処理完了`);
     }
 
+    // リトライ処理は削除（グループ完了時に移動）
     this.logger.log(`[StreamProcessorV2] ✅ ${column}列の処理完了`);
   }
 
