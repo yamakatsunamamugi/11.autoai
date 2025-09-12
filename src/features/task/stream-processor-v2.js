@@ -14,6 +14,7 @@ import { RetryManager } from '../../utils/retry-manager.js';
 import TaskGeneratorV2 from './generator-v2.js';
 import { GroupCompletionChecker } from './group-completion-checker.js';
 import { TaskWaitManager } from './task-wait-manager.js';
+import { TaskGroupScanner } from './task-group-scanner.js';
 import { ExclusiveControlManager } from '../../utils/exclusive-control-manager.js';
 import { ExclusiveControlLoggerHelper } from '../../utils/exclusive-control-logger-helper.js';
 import { sleep } from '../../utils/sleep-utils.js';
@@ -72,6 +73,23 @@ export default class StreamProcessorV2 {
     // 排他制御ログヘルパーを初期化
     this.exclusiveLoggerHelper = new ExclusiveControlLoggerHelper({
       logger: this.logger
+    });
+    
+    // タスクグループスキャナーを初期化
+    this.taskScanner = new TaskGroupScanner({
+      logger: this.logger,
+      exclusiveManager: this.exclusiveManager,
+      waitManager: this.waitManager,
+      processedAnswerCells: this.processedAnswerCells,
+      // ヘルパーメソッドの参照を渡す
+      indexToColumn: this.indexToColumn.bind(this),
+      columnToIndex: this.columnToIndex.bind(this),
+      shouldProcessRow: this.shouldProcessRow.bind(this),
+      shouldProcessColumn: this.shouldProcessColumn.bind(this),
+      getRowControl: this.getRowControl.bind(this),
+      getColumnControl: this.getColumnControl.bind(this),
+      scanPromptRows: this.scanPromptRows.bind(this),
+      loadAdditionalRows: this.loadAdditionalRows.bind(this)
     });
     
     // 設定を保存
@@ -2712,7 +2730,7 @@ export default class StreamProcessorV2 {
       // 動的タスク生成：プロンプト有り×回答無しをスキャン（API呼び出し0回）
       const promptCols = promptGroup.promptColumns;
       const answerCols = promptGroup.answerColumns.map(col => col.index);
-      const tasks = await this.scanGroupTasks(spreadsheetData, promptCols, answerCols);
+      const tasks = await this.taskScanner.scanGroupTasks(spreadsheetData, promptCols, answerCols);
       
       // TaskListオブジェクト形式に変換（互換性維持）
       const groupTaskList = {
@@ -2957,7 +2975,7 @@ export default class StreamProcessorV2 {
         // 動的タスク生成：プロンプト有り×回答無しをスキャン
         const promptCols = promptGroup.promptColumns;
         const answerCols = promptGroup.answerColumns.map(col => col.index);
-        const tasks = await this.scanGroupTasks(spreadsheetData, promptCols, answerCols);
+        const tasks = await this.taskScanner.scanGroupTasks(spreadsheetData, promptCols, answerCols);
         
         const groupTaskList = {
           tasks: tasks.map(task => ({
@@ -3473,7 +3491,7 @@ export default class StreamProcessorV2 {
         // 動的タスク生成：プロンプト有り×回答無しをスキャン
         const promptCols = promptGroup.promptColumns;
         const answerCols = promptGroup.answerColumns.map(col => col.index);
-        const tasks = await this.scanGroupTasks(spreadsheetData, promptCols, answerCols);
+        const tasks = await this.taskScanner.scanGroupTasks(spreadsheetData, promptCols, answerCols);
         
         const groupTaskList = {
           tasks: tasks.map(task => ({
@@ -3914,12 +3932,11 @@ export default class StreamProcessorV2 {
   }
 
   /**
-   * 動的タスク生成：プロンプト有り×回答無しのセルを特定
-   * @param {Object} spreadsheetData - スプレッドシートデータ
-   * @param {Array} promptCols - プロンプト列インデックス配列
-   * @param {Array} answerCols - 回答列インデックス配列  
-   * @returns {Array} タスクリスト
+   * scanGroupTasksメソッドはTaskGroupScannerクラスに移動しました
+   * this.taskScanner.scanGroupTasks()を使用してください
    */
+  
+  /* 削除開始: 以下のメソッドはTaskGroupScannerに移動
   async scanGroupTasks(spreadsheetData, promptCols, answerCols) {
     const tasks = [];
     const MAX_TASKS_PER_BATCH = 3; // バッチあたりの最大タスク数
@@ -4359,6 +4376,7 @@ export default class StreamProcessorV2 {
     
     return true;
   }
+  削除終了 */
 
   /**
    * タスクグループの処理前にデータをバッチ取得
@@ -4680,7 +4698,7 @@ export default class StreamProcessorV2 {
         }
         
         // タスクをスキャン
-        const tasks = await this.scanGroupTasks(
+        const tasks = await this.taskScanner.scanGroupTasks(
           spreadsheetData,
           promptColIndices,
           answerColIndices
