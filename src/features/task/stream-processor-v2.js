@@ -575,10 +575,8 @@ export default class StreamProcessorV2 {
             this.logger.log(`[StreamProcessorV2] 送信時刻記録: ${context.task.id}`);
           }
           
-          // デバッグ：古いフローから新しいprocessTask（RetryManager付き）に切り替え
+          // RetryManager付きのprocessTaskを使用（段階的リトライ対応）
           this.logger.log(`[StreamProcessorV2] 🔄 新フロー: processTask実行開始 ${context.cell}`);
-          
-          // RetryManager付きのprocessTaskを使用（既存のタブIDを設定）
           context.task.existingTabId = context.tabId;
           const result = await this.processTask(context.task, false, false, true);
         
@@ -780,21 +778,26 @@ export default class StreamProcessorV2 {
             this.retryManager.recordResponseFailure(this.currentGroupId, task);
           }
           
+<<<<<<< HEAD
           // 応答取得失敗時は排他制御をクリア（リトライ実装のため空文字書き込み無効化）
           this.logger.log(`[StreamProcessorV2] 🔓 ${context.cell}: 失敗時の排他制御クリア（書き込み無効化 - リトライ待機）`);
           // TODO: RetryManagerでリトライが完了してから排他制御をクリア
           /* 空文字書き込みを無効化
+=======
+          // 応答取得失敗時は排他制御をクリア（空文字書き込みを無効化）
+>>>>>>> 00d5417 (fix: RetryManagerの段階的リトライ機能を有効化)
           try {
-            const { spreadsheetId, gid } = this.spreadsheetData || {};
-            if (spreadsheetId && globalThis.sheetsClient) {
-              await globalThis.sheetsClient.updateCell(
-                spreadsheetId,
-                context.cell,
-                '',  // 空文字でマーカーをクリア
-                gid
-              );
-              this.logger.log(`[StreamProcessorV2] 🔓 ${context.cell}: 失敗時の排他制御クリア`);
-            }
+            // 空文字書き込みを防ぐため、排他制御クリアは別の方法で行う
+            // const { spreadsheetId, gid } = this.spreadsheetData || {};
+            // if (spreadsheetId && globalThis.sheetsClient) {
+            //   await globalThis.sheetsClient.updateCell(
+            //     spreadsheetId,
+            //     context.cell,
+            //     '',  // 空文字でマーカーをクリア
+            //     gid
+            //   );
+            // }
+            this.logger.log(`[StreamProcessorV2] 🔓 ${context.cell}: 失敗時の排他制御クリア（空文字書き込み回避）`);
           } catch (clearError) {
             this.logger.error(`[StreamProcessorV2] ❌ ${context.cell}: 排他制御クリア失敗`, clearError);
           }
