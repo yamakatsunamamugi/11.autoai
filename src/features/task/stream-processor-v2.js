@@ -575,8 +575,12 @@ export default class StreamProcessorV2 {
             this.logger.log(`[StreamProcessorV2] 送信時刻記録: ${context.task.id}`);
           }
           
-          // タブにフォーカスを移して送信を実行
-          const result = await this.executePhaseOnTab(context.tabId, context.task, 'send');
+          // デバッグ：古いフローから新しいprocessTask（RetryManager付き）に切り替え
+          this.logger.log(`[StreamProcessorV2] 🔄 新フロー: processTask実行開始 ${context.cell}`);
+          
+          // RetryManager付きのprocessTaskを使用（既存のタブIDを設定）
+          context.task.existingTabId = context.tabId;
+          const result = await this.processTask(context.task, false, false, true);
         
         // 結果を処理
         if (result && result.response) {
@@ -776,7 +780,10 @@ export default class StreamProcessorV2 {
             this.retryManager.recordResponseFailure(this.currentGroupId, task);
           }
           
-          // 応答取得失敗時は排他制御をクリア
+          // 応答取得失敗時は排他制御をクリア（リトライ実装のため空文字書き込み無効化）
+          this.logger.log(`[StreamProcessorV2] 🔓 ${context.cell}: 失敗時の排他制御クリア（書き込み無効化 - リトライ待機）`);
+          // TODO: RetryManagerでリトライが完了してから排他制御をクリア
+          /* 空文字書き込みを無効化
           try {
             const { spreadsheetId, gid } = this.spreadsheetData || {};
             if (spreadsheetId && globalThis.sheetsClient) {
@@ -791,6 +798,7 @@ export default class StreamProcessorV2 {
           } catch (clearError) {
             this.logger.error(`[StreamProcessorV2] ❌ ${context.cell}: 排他制御クリア失敗`, clearError);
           }
+          */
         }
         
         // ログ書き込みが完全に終わるまで少し待機
@@ -1290,13 +1298,14 @@ export default class StreamProcessorV2 {
    */
   async processTask(task, isTestMode, position = 0) {
     try {
-      // タスクの全プロパティを確認
-      this.logger.log(`[StreamProcessorV2] タスク処理開始`, {
+      // デバッグ：processTaskが呼ばれたことを確認
+      this.logger.log(`[StreamProcessorV2] 🚀 processTask開始 (RetryManager付き)`, {
         cell: `${task.column}${task.row}`,
         aiType: task.aiType,
         taskId: task.id ? task.id.substring(0, 8) : 'ID未設定',
         model: task.model || '❌モデル未設定',
         function: task.function || '❌機能未設定',
+        existingTabId: task.existingTabId || '新規作成',
         全プロパティ: Object.keys(task).join(', ')
       });
       
@@ -1311,16 +1320,29 @@ export default class StreamProcessorV2 {
         return;
       }
       
-      // 実際のAI処理（ウィンドウ作成とAI実行）
-      const tabId = await this.createWindowForTask(task, position);
-      if (!tabId) {
-        throw new Error(`Failed to create window for ${task.aiType}`);
+      // 実際のAI処理（ウィンドウ作成またはexistingTabIdを使用）
+      let tabId;
+      if (task.existingTabId) {
+        this.logger.log(`[StreamProcessorV2] 既存タブを使用: TabID ${task.existingTabId}`);
+        tabId = task.existingTabId;
+      } else {
+        tabId = await this.createWindowForTask(task, position);
+        if (!tabId) {
+          throw new Error(`Failed to create window for ${task.aiType}`);
+        }
       }
       
-      // プロンプトを動的取得
-      const prompt = await this.fetchPromptFromTask(task);
-      if (!prompt) {
-        throw new Error(`Empty prompt for ${task.column}${task.row}`);
+      // プロンプトを取得（既存タブの場合はスキップ）
+      let prompt;
+      if (task.existingTabId) {
+        // 既存タブの場合はプロンプト取得済み
+        prompt = task.prompt || 'プロンプト既設定';
+        this.logger.log(`[StreamProcessorV2] 既存タブ処理: プロンプト取得スキップ`);
+      } else {
+        prompt = await this.fetchPromptFromTask(task);
+        if (!prompt) {
+          throw new Error(`Empty prompt for ${task.column}${task.row}`);
+        }
       }
       
       // タスクリストの値をそのまま使用（promptだけ追加）
@@ -1345,6 +1367,9 @@ export default class StreamProcessorV2 {
       let result;
       
       if (this.retryManager) {
+        // デバッグ：RetryManagerでリトライ開始
+        this.logger.log(`[StreamProcessorV2] 🔄 executeWithProgressiveRetryを開始: ${task.column}${task.row}`);
+        
         // RetryManagerのexecuteWithProgressiveRetryを使用（段階的な遅延時間で10回リトライ）
         const retryResult = await this.retryManager.executeWithProgressiveRetry({
           action: async () => await this.aiTaskExecutor.executeAITask(tabId, taskData),
@@ -1363,6 +1388,13 @@ export default class StreamProcessorV2 {
         result = await this.aiTaskExecutor.executeAITask(tabId, taskData);
       }
       
+      // デバッグ: リトライ結果を確認
+      this.logger.log(`[StreamProcessorV2] 🔍 リトライ結果確認: ${task.column}${task.row}`, {
+        success: result?.success,
+        hasResponse: !!result?.response,
+        error: result?.error
+      });
+
       // 結果が成功の場合、スプレッドシートに書き込み
       if (result && result.success && result.response) {
         const { spreadsheetId, gid } = this.spreadsheetData;
