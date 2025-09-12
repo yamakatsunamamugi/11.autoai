@@ -1578,7 +1578,7 @@ export default class StreamProcessorV2 {
       }
       
       this.logger.log(`[StreamProcessorV2] 🔄 失敗タスクを記録 (例外): ${task.column}${task.row}`);
-      throw error;
+      // throw error; // エラーをスローせず、処理を継続してリトライ処理に到達させる
     }
   }
 
