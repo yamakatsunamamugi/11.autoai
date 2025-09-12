@@ -14,7 +14,8 @@ import TaskQueue from './queue.js';
 import { RetryManager } from '../../utils/retry-manager.js';
 import TaskGeneratorV2 from './generator-v2.js';
 import { DynamicTaskQueue } from './dynamic-task-queue.js';
-import { getTimeoutForFunction } from '../../config/exclusive-control-config.js';
+import { GroupCompletionChecker } from './group-completion-checker.js';
+import { TaskWaitManager } from './task-wait-manager.js';
 import { ExclusiveControlManager } from '../../utils/exclusive-control-manager.js';
 import { ExclusiveControlLoggerHelper } from '../../utils/exclusive-control-logger-helper.js';
 import { sleep } from '../../utils/sleep-utils.js';
@@ -54,6 +55,8 @@ export default class StreamProcessorV2 {
     this.aiTaskExecutor = new AITaskExecutor(logger);
     this.retryManager = new RetryManager(logger);
     this.taskGenerator = new TaskGeneratorV2(logger); // タスクジェネレータを追加
+    this.completionChecker = new GroupCompletionChecker(this.retryManager, logger);
+    this.waitManager = new TaskWaitManager(logger);
     this.windowService = WindowService; // WindowServiceへの参照を保持
     this.completedTasks = new Set();
     
@@ -2681,88 +2684,51 @@ export default class StreamProcessorV2 {
       // 3. リトライ対象を収集して実行
       
       if (this.retryManager) {
-        // 機能名を判定してタイムアウトを決定
-        let maxWaitTime = 5 * 60 * 1000; // デフォルト5分
-        let detectedFunction = '通常';
-        
-        // 処理中のマーカーから機能名を取得
+        // SheetsClientを取得
         let sheetsClient = this.sheetsClient;
         if (!sheetsClient && this.spreadsheetLogger?.sheetsClient) {
           sheetsClient = this.spreadsheetLogger.sheetsClient;
         }
         
+        // 最新のスプレッドシートデータを取得
+        let latestSpreadsheetData = spreadsheetData;
         if (sheetsClient && spreadsheetData.spreadsheetId) {
           try {
             const latestData = await sheetsClient.loadAutoAIData(
               spreadsheetData.spreadsheetId,
               spreadsheetData.gid
             );
-            
             if (latestData) {
-              for (const task of groupTaskList.tasks) {
-                const answer = this.retryManager.getCurrentAnswer(task, latestData);
-                
-                if (answer && answer.startsWith('現在操作中です_')) {
-                  const parts = answer.split('_');
-                  if (parts.length >= 4) {
-                    const functionName = parts[3];
-                    // DeepResearch, エージェント等を判定
-                    if (functionName.includes('Deep') || functionName.includes('エージェント')) {
-                      detectedFunction = functionName;
-                      maxWaitTime = 40 * 60 * 1000; // 40分
-                      this.logger.log(`[StreamProcessorV2] 長時間処理を検出: ${functionName}`);
-                      break;
-                    }
-                  }
-                }
-              }
+              latestSpreadsheetData = latestData;
             }
           } catch (error) {
-            this.logger.warn(`[StreamProcessorV2] 機能判定中のエラー:`, error);
+            this.logger.warn(`[StreamProcessorV2] 最新データ取得エラー:`, error);
           }
         }
         
-        this.logger.log(`[StreamProcessorV2] 検出された機能: ${detectedFunction}, 最大待機: ${maxWaitTime/60000}分`);
+        // 待機戦略を決定（TaskWaitManagerを使用）
+        const waitStrategy = await this.waitManager.determineWaitStrategy(
+          groupTaskList.tasks,
+          this.retryManager,
+          latestSpreadsheetData
+        );
         
-        // 完了チェック関数: 待機テキストが残っていないか確認
+        // 完了チェック関数（GroupCompletionCheckerを使用）
         const checkGroupCompletion = async (groupId) => {
-          // スプレッドシートを再読み込み
-          let sheetsClient = this.sheetsClient;
-          if (!sheetsClient && this.spreadsheetLogger?.sheetsClient) {
-            sheetsClient = this.spreadsheetLogger.sheetsClient;
-          }
-          
-          if (sheetsClient && spreadsheetData.spreadsheetId) {
-            try {
-              const latestData = await sheetsClient.loadAutoAIData(
-                spreadsheetData.spreadsheetId,
-                spreadsheetData.gid
-              );
-              
-              if (latestData) {
-                // 待機テキストがあるかチェック
-                for (const task of groupTaskList.tasks) {
-                  const answer = this.retryManager.getCurrentAnswer(task, latestData);
-                  if (this.retryManager.isWaitingText(answer)) {
-                    this.logger.log(`[StreamProcessorV2] 待機中: ${task.column}${task.row} - "${answer}"`);
-                    return false; // まだ完了していない
-                  }
-                }
-              }
-            } catch (error) {
-              this.logger.warn(`[StreamProcessorV2] 完了チェック中のエラー:`, error);
-            }
-          }
-          
-          return true; // すべて完了
+          return await this.completionChecker.checkGroupCompletion(
+            groupId,
+            groupTaskList.tasks,
+            spreadsheetData,
+            sheetsClient
+          );
         };
         
-        // グループ完了を待機（機能に応じた設定）
-        const isComplete = await this.retryManager.waitForGroupCompletion(
+        // グループ完了を待機（TaskWaitManagerを使用）
+        const isComplete = await this.waitManager.executeWaitLoop(
           groupKey,
           checkGroupCompletion,
-          60000,      // 1分ごとにチェック（5秒から変更）
-          maxWaitTime // 機能に応じた最大待機時間
+          waitStrategy.checkInterval,
+          waitStrategy.maxWaitTime
         );
         
         if (!isComplete) {
@@ -2771,7 +2737,8 @@ export default class StreamProcessorV2 {
         
         // スプレッドシートを再読み込みして最新状態を取得
         let latestSpreadsheetData = spreadsheetData;
-        let sheetsClient = this.sheetsClient;
+        // sheetsClientは既に2688行目で宣言済み
+        sheetsClient = this.sheetsClient;
         if (!sheetsClient && this.spreadsheetLogger?.sheetsClient) {
           sheetsClient = this.spreadsheetLogger.sheetsClient;
         }
@@ -2835,61 +2802,28 @@ export default class StreamProcessorV2 {
         }
         
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // 最終的な空白・未完了チェック
+        // 最終的な空白・未完了チェック（GroupCompletionCheckerを使用）
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        if (sheetsClient && spreadsheetData.spreadsheetId) {
-          try {
-            const finalData = await sheetsClient.loadAutoAIData(
-              spreadsheetData.spreadsheetId,
-              spreadsheetData.gid
-            );
-            
-            if (finalData) {
-              let hasIncomplete = false;
-              const incompleteList = [];
-              
-              for (const task of groupTaskList.tasks) {
-                const answer = this.retryManager.getCurrentAnswer(task, finalData);
-                const cellRef = `${task.column}${task.row}`;
-                
-                // 空白チェック
-                if (!answer || answer.trim() === '') {
-                  hasIncomplete = true;
-                  incompleteList.push(`${cellRef}: 空白`);
-                } 
-                // 排他制御マーカー（自分以外）
-                else if (answer.startsWith('現在操作中です_')) {
-                  const parts = answer.split('_');
-                  if (parts[2] !== this.retryManager.pcId) {
-                    hasIncomplete = true;
-                    incompleteList.push(`${cellRef}: 他PCが処理中`);
-                  }
-                }
-                // 文字数チェック
-                else if (answer.length <= this.retryManager.minCharacterThreshold) {
-                  hasIncomplete = true;
-                  incompleteList.push(`${cellRef}: 文字数不足(${answer.length}文字)`);
-                }
-              }
-              
-              if (hasIncomplete) {
-                this.logger.error(`[StreamProcessorV2] ⛔ グループ${groupIndex + 1}に未完了タスクがあります`);
-                incompleteList.forEach(item => this.logger.error(`[StreamProcessorV2] ⛔ ${item}`));
-                this.logger.error(`[StreamProcessorV2] ⛔ 以降のグループ処理を停止します`);
-                
-                return {
-                  success: false,
-                  total: totalProcessed + totalFailed,
-                  completed: totalProcessed,
-                  failed: totalFailed,
-                  stoppedAtGroup: groupIndex + 1,
-                  reason: `未完了タスク${incompleteList.length}件のため処理停止`
-                };
-              }
-            }
-          } catch (error) {
-            this.logger.error(`[StreamProcessorV2] 最終チェック中のエラー:`, error);
-          }
+        const finalCheckResult = await this.completionChecker.performFinalCompletionCheck(
+          groupTaskList.tasks,
+          spreadsheetData,
+          sheetsClient,
+          this.retryManager.pcId
+        );
+        
+        if (!finalCheckResult.isComplete) {
+          // 未完了の詳細をログ出力
+          this.completionChecker.logIncompleteDetails(groupIndex, finalCheckResult);
+          
+          return {
+            success: false,
+            total: totalProcessed + totalFailed,
+            completed: totalProcessed,
+            failed: totalFailed,
+            stoppedAtGroup: groupIndex + 1,
+            reason: `未完了タスク${finalCheckResult.incompleteList.length}件のため処理停止`,
+            incompleteDetails: finalCheckResult.incompleteList
+          };
         }
       }
       
