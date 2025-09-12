@@ -1656,14 +1656,6 @@ export default class StreamProcessorV2 {
             this.logger.log(`[StreamProcessorV2] 📊 ${task.column}${task.row}: 待機テキスト → 未回答扱い`);
             return '';
           }
-          // エラーマーカーも回答なしとして扱う
-          else if (trimmed.toLowerCase().includes('error') || 
-                   trimmed.toLowerCase().includes('エラー') ||
-                   trimmed.toLowerCase().includes('failed') ||
-                   trimmed.toLowerCase().includes('失敗')) {
-            this.logger.log(`[StreamProcessorV2] 📊 ${task.column}${task.row}: エラーマーカー → 未回答扱い`);
-            return '';
-          }
           // それ以外は通常の回答
           else {
             this.logger.log(`[StreamProcessorV2] 📊 ${task.column}${task.row}の既存回答: "${value.substring(0, 50)}..."`);
