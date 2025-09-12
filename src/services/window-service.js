@@ -7,7 +7,12 @@
  * @class WindowService
  */
 
+import { RetryManager } from '../utils/retry-manager.js';
+
 export class WindowService {
+  // RetryManagerインスタンス
+  static retryManager = new RetryManager(console);
+  
   // アクティブなウィンドウを管理するMap
   static activeWindows = new Map();
   
@@ -664,25 +669,25 @@ export class WindowService {
         ...chromeOptions
       });
       
-      // ウィンドウ作成後にページが読み込まれるまで待機
+      // ウィンドウ作成後にページが読み込まれるまで待機（RetryManagerを使用）
       if (window.tabs && window.tabs.length > 0) {
         const tabId = window.tabs[0].id;
-        let retryCount = 0;
-        const maxRetries = 10;
         
-        while (retryCount < maxRetries) {
-          try {
+        await this.retryManager.executeSimpleRetry({
+          action: async () => {
             const tab = await chrome.tabs.get(tabId);
             if (tab.status === 'complete') {
               console.log(`[WindowService] ポジション${position}のタブ読み込み完了`);
-              break;
+              return true;
             }
-          } catch (e) {
-            // エラーは無視
-          }
-          await new Promise(resolve => setTimeout(resolve, 500));
-          retryCount++;
-        }
+            return null;
+          },
+          isSuccess: (result) => result === true,
+          maxRetries: 10,
+          interval: 500,
+          actionName: 'タブ読み込み待機',
+          context: { tabId, position, url }
+        });
         
         // 追加待機（動的コンテンツの生成を待つ）
         await new Promise(resolve => setTimeout(resolve, 2000));

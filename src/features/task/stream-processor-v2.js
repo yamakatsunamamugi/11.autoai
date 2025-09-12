@@ -90,18 +90,8 @@ export default class StreamProcessorV2 {
     // 現在処理中のグループID
     this.currentGroupId = null;
     
-    // 再実行管理状態（後でRetryManagerに移行予定）
-    this.failedTasksByColumn = new Map(); // column -> Set<task>
-    this.retryCountByColumn = new Map(); // column -> retryCount
-    this.maxRetryCount = 3; // 最大再実行回数
-    this.retryDelays = [5 * 60 * 1000, 30 * 60 * 1000, 60 * 60 * 1000]; // 5分, 30分, 1時間
-    this.retryTimers = new Map(); // column -> timer
-    this.retryStats = {
-      totalRetries: 0,
-      successfulRetries: 0,
-      failedRetries: 0,
-      retriesByColumn: new Map() // column -> { attempts: number, successes: number }
-    };
+    // 再実行管理状態（RetryManagerに移行済み）
+    this.failedTasksByColumn = new Map(); // column -> Set<task> - 互換性のため残す
     
     // SpreadsheetLoggerは processTaskStream で初期化する
     this.initializeDataProcessor();
@@ -1777,10 +1767,8 @@ export default class StreamProcessorV2 {
    * タスク用のウィンドウを作成
    * @param {Object} task - タスクオブジェクト
    * @param {number} position - ウィンドウ位置（0:左上、1:右上、2:左下）
-   * @param {number} retryCount - リトライ回数（デフォルト: 0）
    */
-  async createWindowForTask(task, position = 0, retryCount = 0) {
-    const maxRetries = 2; // 最大リトライ回数
+  async createWindowForTask(task, position = 0) {
     
     try {
       // デバッグ：タスクのAI情報を詳細出力
@@ -1807,8 +1795,7 @@ export default class StreamProcessorV2 {
         throw new Error(`Unsupported AI type: ${task.aiType} (normalized: ${normalizedAIType})`);
       }
 
-      const retryText = retryCount > 0 ? ` (リトライ ${retryCount}/${maxRetries})` : '';
-      this.logger.log(`[StreamProcessorV2] ウィンドウ作成: ${task.aiType} (${normalizedAIType}) - ${url}${retryText}`, {
+      this.logger.log(`[StreamProcessorV2] ウィンドウ作成: ${task.aiType} (${normalizedAIType}) - ${url}`, {
         position: position,
         cell: `${task.column}${task.row}`
       });
@@ -1824,36 +1811,50 @@ export default class StreamProcessorV2 {
       }
 
       const tabId = window.tabs[0].id;
-      this.logger.log(`[StreamProcessorV2] ✅ ウィンドウ作成成功 - TabID: ${tabId} (位置: ${position})${retryText}`);
+      this.logger.log(`[StreamProcessorV2] ✅ ウィンドウ作成成功 - TabID: ${tabId} (位置: ${position})`);
       
-      // ページの読み込み完了を待つ
-      const pageLoaded = await this.waitForPageLoad(tabId, 30000);
-      if (!pageLoaded) {
-        this.logger.warn(`[StreamProcessorV2] ⚠️ ページ読み込みが完了しませんでした: TabID ${tabId}${retryText}`);
+      // ページの読み込み完了を待つ（RetryManagerでリトライ）
+      if (this.retryManager) {
+        const pageLoadResult = await this.retryManager.executeWithRetry({
+          action: async () => {
+            const loaded = await this.waitForPageLoad(tabId, 10000); // 各試行は10秒タイムアウト
+            if (!loaded) {
+              throw new Error(`Page load timeout for TabID ${tabId}`);
+            }
+            return loaded;
+          },
+          isSuccess: (result) => result === true,
+          onRetry: async () => {
+            // リトライ前にタブを再読み込み
+            try {
+              await chrome.tabs.reload(tabId);
+              await sleep(1000);
+            } catch (error) {
+              this.logger.warn(`[StreamProcessorV2] タブ再読み込みエラー: ${error.message}`);
+            }
+          },
+          maxRetries: 3,
+          retryDelay: 2000,
+          actionName: 'ページ読み込み',
+          context: { tabId, aiType: task.aiType }
+        });
         
-        // タイムアウト時の処理：ウィンドウを閉じて再試行
-        if (retryCount < maxRetries) {
-          this.logger.log(`[StreamProcessorV2] 🔄 ウィンドウを閉じて再作成します (${retryCount + 1}/${maxRetries})`);
-          
-          try {
-            // 失敗したタブ/ウィンドウを閉じる
-            await chrome.tabs.remove(tabId);
-            await sleep(1000); // 1秒待機
-          } catch (closeError) {
-            this.logger.warn(`[StreamProcessorV2] タブ閉じるエラー: ${closeError.message}`);
-          }
-          
-          // 再帰的にリトライ
-          return await this.createWindowForTask(task, position, retryCount + 1);
-        } else {
-          this.logger.error(`[StreamProcessorV2] ❌ 最大リトライ回数に達しました。ウィンドウ作成を諦めます: TabID ${tabId}`);
+        if (!pageLoadResult.success) {
+          this.logger.error(`[StreamProcessorV2] ❌ ページ読み込み失敗: TabID ${tabId}`);
           // 失敗したタブを閉じる
           try {
             await chrome.tabs.remove(tabId);
           } catch (closeError) {
             this.logger.warn(`[StreamProcessorV2] タブ閉じるエラー: ${closeError.message}`);
           }
-          throw new Error(`Page load timeout after ${maxRetries} retries`);
+          throw new Error(`Page load failed after retries`);
+        }
+      } else {
+        // RetryManagerがない場合は通常処理
+        const pageLoaded = await this.waitForPageLoad(tabId, 30000);
+        if (!pageLoaded) {
+          this.logger.error(`[StreamProcessorV2] ❌ ページ読み込み失敗: TabID ${tabId}`);
+          throw new Error(`Page load timeout`);
         }
       }
       

@@ -454,6 +454,170 @@ export class RetryManager {
   }
 
   /**
+   * エクスポネンシャル・バックオフでリトライを実行
+   * @param {Object} config - リトライ設定
+   * @param {Function} config.action - 実行する処理
+   * @param {Function} config.isSuccess - 成功判定関数
+   * @param {number} config.maxRetries - 最大リトライ回数（デフォルト: 3）
+   * @param {number} config.initialDelay - 初期遅延時間（ミリ秒、デフォルト: 1000）
+   * @param {number} config.maxDelay - 最大遅延時間（ミリ秒、デフォルト: 60000）
+   * @param {string} config.actionName - 処理名（ログ用）
+   * @param {Object} config.context - 処理のコンテキスト情報
+   * @returns {Promise<Object>} 処理結果
+   */
+  async executeWithExponentialBackoff(config) {
+    const {
+      action,
+      isSuccess = (result) => result && result.success !== false,
+      maxRetries = 3,
+      initialDelay = 1000,
+      maxDelay = 60000,
+      actionName = '処理',
+      context = {}
+    } = config;
+
+    let retryCount = 0;
+    let lastResult = null;
+    let lastError = null;
+
+    while (retryCount < maxRetries) {
+      try {
+        // リトライの場合はログ出力
+        if (retryCount > 0) {
+          const delay = Math.min(initialDelay * Math.pow(2, retryCount - 1), maxDelay);
+          const delayDisplay = delay < 1000 ? `${delay}ms` : `${Math.round(delay / 1000)}秒`;
+          this.logger.log(`[RetryManager] ${actionName} 再試行 ${retryCount}/${maxRetries} (${delayDisplay}待機後)`, context);
+        }
+
+        // 処理を実行
+        lastResult = await action();
+
+        // 成功判定
+        if (isSuccess(lastResult)) {
+          if (retryCount > 0) {
+            this.logger.log(`[RetryManager] ✅ ${actionName} 成功（${retryCount}回目の試行）`, context);
+          }
+          return {
+            success: true,
+            result: lastResult,
+            retryCount
+          };
+        }
+
+        // 失敗の詳細をログ
+        this.logger.warn(`[RetryManager] ${actionName} 失敗`, {
+          ...context,
+          attempt: retryCount + 1,
+          result: lastResult
+        });
+
+      } catch (error) {
+        lastError = error;
+        this.logger.error(`[RetryManager] ${actionName} エラー`, {
+          ...context,
+          attempt: retryCount + 1,
+          error: error.message
+        });
+      }
+
+      // 最大リトライ回数に達した場合
+      retryCount++;
+      if (retryCount >= maxRetries) {
+        this.logger.error(`[RetryManager] ❌ ${actionName} が${maxRetries}回失敗しました`, context);
+        return {
+          success: false,
+          result: lastResult,
+          error: lastError,
+          retryCount
+        };
+      }
+
+      // エクスポネンシャル・バックオフで待機
+      const delay = Math.min(initialDelay * Math.pow(2, retryCount - 1), maxDelay);
+      await this.delay(delay);
+    }
+
+    return {
+      success: false,
+      result: lastResult,
+      error: lastError,
+      retryCount
+    };
+  }
+
+  /**
+   * シンプルなリトライ（固定間隔）
+   * @param {Object} config - リトライ設定
+   * @param {Function} config.action - 実行する処理
+   * @param {Function} config.isSuccess - 成功判定関数
+   * @param {number} config.maxRetries - 最大リトライ回数（デフォルト: 10）
+   * @param {number} config.interval - リトライ間隔（ミリ秒、デフォルト: 1000）
+   * @param {string} config.actionName - 処理名（ログ用）
+   * @param {Object} config.context - 処理のコンテキスト情報
+   * @returns {Promise<Object>} 処理結果
+   */
+  async executeSimpleRetry(config) {
+    const {
+      action,
+      isSuccess = (result) => result !== undefined && result !== null,
+      maxRetries = 10,
+      interval = 1000,
+      actionName = '処理',
+      context = {}
+    } = config;
+
+    let retryCount = 0;
+    let lastResult = null;
+    let lastError = null;
+
+    while (retryCount < maxRetries) {
+      try {
+        // 処理を実行
+        lastResult = await action();
+
+        // 成功判定
+        if (isSuccess(lastResult)) {
+          if (retryCount > 0) {
+            this.logger.log(`[RetryManager] ✅ ${actionName} 成功（${retryCount + 1}/${maxRetries}回目）`, context);
+          }
+          return {
+            success: true,
+            result: lastResult,
+            retryCount
+          };
+        }
+
+      } catch (error) {
+        lastError = error;
+        if (retryCount === 0) {
+          this.logger.log(`[RetryManager] ${actionName} 初回エラー、リトライ開始`, context);
+        }
+      }
+
+      retryCount++;
+      if (retryCount >= maxRetries) {
+        this.logger.error(`[RetryManager] ❌ ${actionName} が${maxRetries}回失敗しました`, context);
+        return {
+          success: false,
+          result: lastResult,
+          error: lastError,
+          retryCount
+        };
+      }
+
+      // 固定間隔で待機
+      await this.delay(interval);
+    }
+
+    return {
+      success: false,
+      result: lastResult,
+      error: lastError,
+      retryCount
+    };
+  }
+
+  /**
    * 【AI操作時に即座に記録】処理失敗タスクを記録
    * AI処理でエラーが発生した瞬間に記録される
    * @param {string} groupId - グループID
