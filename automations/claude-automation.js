@@ -1510,9 +1510,38 @@ ${prompt}`;
      */
     async function selectModelOnly(modelName) {
         try {
+            // モデル名が空または指定されていない場合、一番上のモデルを自動選択
             if (!modelName || modelName === '') {
-                console.log('⚠️ [ClaudeV2] モデル名が指定されていません');
-                return { success: true };
+                console.log('📝 [ClaudeV2] モデル名が指定されていません。一番上のモデルを自動選択します');
+                
+                // モデルメニューを開く
+                await openModelMenu();
+                await wait(1000);
+                
+                // メニューアイテムから一番上のモデルを取得
+                const mainMenuItems = document.querySelectorAll('[role="menuitem"]:not([aria-haspopup="menu"])');
+                if (mainMenuItems && mainMenuItems.length > 0) {
+                    // 一番上のモデルを選択
+                    const firstModel = mainMenuItems[0];
+                    const firstModelText = firstModel.textContent?.trim() || '';
+                    
+                    console.log(`📝 [ClaudeV2] 一番上のモデルを選択: ${firstModelText}`);
+                    await triggerReactEvent(firstModel, 'click');
+                    await wait(1500);
+                    
+                    // 選択後のモデル確認
+                    const selectedModel = await getCurrentModel();
+                    console.log(`✅ [ClaudeV2] 一番上のモデル選択完了: ${selectedModel}`);
+                    
+                    return { 
+                        success: true,
+                        selectedModel: selectedModel || firstModelText,
+                        displayedModel: selectedModel || firstModelText
+                    };
+                }
+                
+                console.log('⚠️ [ClaudeV2] メニューアイテムが見つかりません');
+                return { success: false, error: 'メニューアイテムが見つかりません' };
             }
             
             console.log(`📝 [ClaudeV2] モデル選択のみ実行: ${modelName}`);

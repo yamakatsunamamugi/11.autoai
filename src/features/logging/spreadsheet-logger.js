@@ -38,6 +38,69 @@ export class SpreadsheetLogger {
   }
 
   /**
+   * AI切り替えイベントをログに記録
+   * @param {Object} eventData - イベントデータ
+   * @param {string} eventData.cell - セル位置
+   * @param {string} eventData.fromAI - 元のAI
+   * @param {string} eventData.toAI - 切り替え先のAI
+   * @param {string} eventData.fromFunction - 元の機能
+   * @param {string} eventData.toFunction - 切り替え先の機能
+   * @param {string} eventData.toModel - 切り替え先のモデル
+   * @param {string} eventData.reason - 切り替え理由
+   * @param {string} eventData.timestamp - タイムスタンプ
+   * @param {string} eventData.taskId - タスクID
+   */
+  async logAISwitchEvent(eventData) {
+    const logEntry = {
+      type: 'AI_SWITCH',
+      timestamp: eventData.timestamp || new Date().toLocaleString('ja-JP'),
+      cell: eventData.cell,
+      details: `🔄 AI自動切り替え: ${eventData.fromAI}→${eventData.toAI}`,
+      fromAI: eventData.fromAI,
+      toAI: eventData.toAI,
+      fromFunction: eventData.fromFunction || '通常',
+      toFunction: eventData.toFunction,
+      toModel: eventData.toModel,
+      reason: eventData.reason,
+      taskId: eventData.taskId
+    };
+    
+    this.logger.log('[SpreadsheetLogger] AI切り替えイベント記録:', logEntry);
+    
+    // 送信時刻記録に追加（切り替え情報付き）
+    if (eventData.taskId) {
+      this.sendTimestamps.set(eventData.taskId, {
+        time: new Date(),
+        aiType: eventData.toAI,
+        model: eventData.toModel,
+        aiSwitched: true,
+        switchFrom: eventData.fromAI
+      });
+    }
+    
+    return logEntry;
+  }
+
+  /**
+   * AI切り替え成功をログに記録
+   * @param {Object} successData - 成功データ
+   */
+  async logAISwitchSuccess(successData) {
+    const logEntry = {
+      type: 'AI_SWITCH_SUCCESS',
+      timestamp: successData.timestamp || new Date().toLocaleString('ja-JP'),
+      cell: successData.cell,
+      details: `✅ AI切り替え成功: ${successData.fromAI}→${successData.toAI}`,
+      model: successData.model,
+      function: successData.function,
+      responseLength: successData.responseLength
+    };
+    
+    this.logger.log('[SpreadsheetLogger] AI切り替え成功記録:', logEntry);
+    return logEntry;
+  }
+
+  /**
    * 送信時刻を記録
    * @param {string} taskId - タスクID
    * @param {Object} info - 追加情報

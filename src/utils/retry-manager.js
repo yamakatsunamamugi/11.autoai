@@ -862,6 +862,108 @@ export class RetryManager {
     }
     return index - 1;
   }
+
+  /**
+   * AI自動切り替え機能付きリトライ
+   * @param {Object} config - リトライ設定
+   * @param {Function} config.executeTask - タスク実行関数
+   * @param {Function} config.isSuccess - 成功判定関数
+   * @param {Function} config.createFallbackTask - フォールバックタスク作成関数
+   * @param {Object} config.originalTask - 元のタスク情報
+   * @param {string} config.fallbackAI - フォールバック先AI
+   * @param {string} config.fallbackModel - フォールバック先モデル
+   * @param {string} config.fallbackFunction - フォールバック先機能
+   * @param {Function} config.onAISwitchLog - AI切り替えログ関数
+   * @returns {Promise<Object>} 実行結果
+   */
+  async executeWithAIFallback(config) {
+    const {
+      executeTask,
+      isSuccess = (result) => result && result.success !== false,
+      createFallbackTask,
+      originalTask,
+      fallbackAI = 'Claude',
+      fallbackModel = '', // 空文字で最上位モデルを自動選択
+      fallbackFunction = 'じっくり考える',
+      onAISwitchLog,
+      maxRetries = 1
+    } = config;
+
+    try {
+      // 最初のAIで実行
+      const originalResult = await executeTask(originalTask);
+      
+      // 成功判定
+      if (isSuccess(originalResult)) {
+        this.logger.log(`[RetryManager] ✅ ${originalTask.aiType}での実行成功`);
+        return {
+          success: true,
+          result: originalResult,
+          aiSwitched: false,
+          finalAI: originalTask.aiType
+        };
+      }
+
+      // 失敗時のフォールバック処理
+      this.logger.log(`[RetryManager] ❌ ${originalTask.aiType}での実行失敗、${fallbackAI}に切り替えます`);
+      
+      // AI切り替えログ
+      if (onAISwitchLog) {
+        await onAISwitchLog({
+          cell: `${originalTask.column}${originalTask.row}`,
+          fromAI: originalTask.aiType,
+          toAI: fallbackAI,
+          fromFunction: originalTask.function || '通常',
+          toFunction: fallbackFunction,
+          toModel: fallbackModel || '最上位モデル',
+          reason: 'AI処理失敗による自動切り替え',
+          taskId: originalTask.taskId
+        });
+      }
+
+      // フォールバックタスクを作成
+      const fallbackTask = createFallbackTask ? 
+        createFallbackTask(originalTask, fallbackAI, fallbackModel, fallbackFunction) :
+        {
+          ...originalTask,
+          aiType: fallbackAI,
+          model: fallbackModel,
+          function: fallbackFunction
+        };
+
+      // フォールバックAIで実行
+      const fallbackResult = await executeTask(fallbackTask);
+      
+      if (isSuccess(fallbackResult)) {
+        this.logger.log(`[RetryManager] ✅ ${fallbackAI}での実行成功`);
+        return {
+          success: true,
+          result: fallbackResult,
+          aiSwitched: true,
+          finalAI: fallbackAI,
+          originalAI: originalTask.aiType
+        };
+      } else {
+        this.logger.error(`[RetryManager] ❌ ${fallbackAI}での実行も失敗`);
+        return {
+          success: false,
+          result: fallbackResult,
+          aiSwitched: true,
+          finalAI: fallbackAI,
+          originalAI: originalTask.aiType,
+          error: 'フォールバックAIも失敗'
+        };
+      }
+
+    } catch (error) {
+      this.logger.error(`[RetryManager] AIフォールバック実行エラー:`, error);
+      return {
+        success: false,
+        error: error.message,
+        aiSwitched: false
+      };
+    }
+  }
 }
 
 // デフォルトインスタンスをエクスポート
