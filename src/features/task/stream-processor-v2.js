@@ -1368,15 +1368,39 @@ export default class StreamProcessorV2 {
         // デバッグ：RetryManagerでリトライ開始
         this.logger.log(`[StreamProcessorV2] 🔄 executeWithProgressiveRetryを開始: ${task.column}${task.row}`);
         
-        // RetryManagerのexecuteWithProgressiveRetryを使用（段階的な遅延時間で10回リトライ）
-        const retryResult = await this.retryManager.executeWithProgressiveRetry({
-          action: async () => await this.aiTaskExecutor.executeAITask(tabId, taskData),
-          isSuccess: (res) => res && res.success,
-          actionName: `タスク${task.column}${task.row}実行`,
-          context: { 
-            cell: `${task.column}${task.row}`, 
+        // RetryManagerのexecuteWithWindowRetryを使用（ウィンドウ再作成リトライ）
+        const retryResult = await this.retryManager.executeWithWindowRetry({
+          createWindow: async (task, position) => {
+            const newTabId = await this.createWindowForTask(task, position || 0);
+            if (newTabId) {
+              // スクリプト注入も再実行
+              await this.injectScriptsForTab(newTabId, task.aiType);
+              await this.delay(2000); // ページ読み込み待機
+            }
+            return newTabId;
+          },
+          closeWindow: async (tabId) => {
+            if (tabId) {
+              await WindowService.closeWindow(tabId);
+            }
+          },
+          setupWindow: async (tabId, task) => {
+            // プロンプト再入力
+            const prompt = await this.fetchPromptFromTask(task);
+            if (prompt) {
+              await this.executePhaseOnTab(tabId, { ...task, prompt }, 'text');
+            }
+          },
+          executePhase: async () => {
+            return await this.aiTaskExecutor.executeAITask(tabId, taskData);
+          },
+          task: task,
+          context: {
+            cell: `${task.column}${task.row}`,
             aiType: task.aiType,
-            model: task.model
+            model: task.model,
+            tabId: tabId,
+            position: context?.position || 0
           }
         });
         
