@@ -388,26 +388,113 @@ export default class StreamProcessorV2 {
   }
 
   /**
-   * バッチ処理を実行（最大3つのタスクを並列処理）
+   * シンプルな並列バッチ処理（新メソッド）
+   * 各タスクを完全に独立して並列実行
    * 
-   * 【処理フロー】
-   * 1. フェーズ1: ウィンドウ準備とテキスト入力
-   *    - 3つのウィンドウを同時に開く（左、中央、右の位置）
-   *    - 各ウィンドウにプロンプトを入力
+   * @param {Array} batch - 処理するタスク配列（最大3つ）
+   * @param {boolean} isTestMode - テストモードフラグ
+   * @returns {Promise<Array>} 処理結果の配列
+   */
+  async processParallelTasks(batch, isTestMode) {
+    this.logger.log(`[StreamProcessorV2] 🚀 シンプル並列処理開始`, {
+      tasks: batch.map(t => `${t.column}${t.row}`).join(', '),
+      count: batch.length
+    });
+
+    if (isTestMode) {
+      // テストモードの処理
+      for (const task of batch) {
+        this.completedTasks.add(task.id);
+        this.writtenCells.set(`${task.column}${task.row}`, true);
+      }
+      return batch.map(task => ({ success: true, task }));
+    }
+
+    // 各タスクを完全に独立して処理
+    const taskPromises = batch.map(async (task, index) => {
+      const cell = `${task.column}${task.row}`;
+      
+      try {
+        // 5秒間隔で開始（オプション）
+        if (index > 0) {
+          this.logger.log(`[StreamProcessorV2] ${index * 5}秒待機後に${cell}を開始`);
+          await this.delay(index * 5000);
+        }
+
+        // 1. ウィンドウ作成
+        const tabId = await this.createWindowForTask(task, index);
+        this.logger.log(`[StreamProcessorV2] ✅ ${cell}: ウィンドウ作成完了`);
+
+        // 2. タスク実行（プロンプト入力、モデル選択、機能選択、送信）
+        task.existingTabId = tabId;
+        const result = await this.processTask(task, false, false, true);
+        this.logger.log(`[StreamProcessorV2] ✅ ${cell}: タスク実行完了`);
+
+        // 3. 結果をスプレッドシートに書き込み
+        if (result && result.response) {
+          await this.writeToSpreadsheet(cell, result.response);
+          this.completedTasks.add(task.id);
+          this.writtenCells.set(cell, result.response);
+        }
+
+        // 4. ウィンドウを閉じる
+        try {
+          const tab = await chrome.tabs.get(tabId);
+          if (tab && tab.windowId) {
+            await chrome.windows.remove(tab.windowId);
+          }
+        } catch (e) {
+          // ウィンドウが既に閉じられている場合は無視
+        }
+
+        return { success: true, task, result, cell };
+        
+      } catch (error) {
+        this.logger.error(`[StreamProcessorV2] ❌ ${cell}: エラー`, error);
+        return { success: false, task, error, cell };
+      }
+    });
+
+    // 全タスクの完了を待つ（1つが失敗しても他は継続）
+    const results = await Promise.allSettled(taskPromises);
+    
+    // 結果をログ出力
+    const successCount = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
+    const failureCount = results.filter(r => r.status === 'rejected' || !r.value.success).length;
+    
+    this.logger.log(`[StreamProcessorV2] ✅ 並列処理完了: 成功=${successCount}, 失敗=${failureCount}`);
+    
+    return results.map(r => r.status === 'fulfilled' ? r.value : { success: false, error: r.reason });
+  }
+
+  /**
+   * スプレッドシートに書き込み（シンプル版）
+   */
+  async writeToSpreadsheet(cell, response) {
+    if (!this.spreadsheetData || !globalThis.sheetsClient) {
+      return;
+    }
+
+    const { spreadsheetId, gid } = this.spreadsheetData;
+    
+    try {
+      await globalThis.sheetsClient.updateCell(
+        spreadsheetId,
+        cell,
+        response,
+        gid
+      );
+      this.logger.log(`[StreamProcessorV2] 📝 ${cell}に書き込み完了`);
+    } catch (error) {
+      this.logger.error(`[StreamProcessorV2] ❌ ${cell}への書き込み失敗:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 旧バッチ処理（互換性のため残す - 修正版で複雑な処理を実行）
    * 
-   * 2. フェーズ2: モデル選択（並列実行）
-   *    - 全ウィンドウで同時にモデル選択を実行
-   *    - Promise.allSettledで並列処理
-   * 
-   * 3. フェーズ3: 機能選択（並列実行）
-   *    - 全ウィンドウで同時に機能選択を実行
-   *    - Promise.allSettledで並列処理
-   * 
-   * 4. フェーズ4: 5秒間隔で順次送信
-   *    - タスク1送信 → 5秒待機
-   *    - タスク2送信 → 5秒待機
-   *    - タスク3送信
-   * 
+   * @deprecated processParallelTasksを使用してください
    * @param {Array} batch - 処理するタスク配列（最大3つ）
    * @param {boolean} isTestMode - テストモードフラグ
    * @returns {Promise<void>}
@@ -603,80 +690,85 @@ export default class StreamProcessorV2 {
           // RetryManager付きのprocessTaskを使用（段階的リトライ対応）
           this.logger.log(`[StreamProcessorV2] 🔄 新フロー: processTask実行開始 ${context.cell}`);
           context.task.existingTabId = context.tabId;
-          const result = await this.processTask(context.task, false, false, true);
-        
-        // 結果を処理
-        if (result && result.response) {
-          this.completedTasks.add(context.task.id);
-          this.writtenCells.set(context.cell, result.response);
           
-          // Canvas機能使用時の応答チェック
-          if (context.task.function === 'Canvas' || context.task.displayedFunction === 'Canvas') {
-            this.logger.log(`[StreamProcessorV2] 🎨 Canvas応答を検出: ${result.response.substring(0, 200)}...`);
-          }
+          // awaitを削除して並列実行を可能にする
+          // 結果はPromiseとして返され、後でPromise.allで待機
+          const resultPromise = this.processTask(context.task, false, false, true);
           
-          // スプレッドシートに書き込み
-          if (this.spreadsheetData) {
-            const { spreadsheetId, gid } = this.spreadsheetData;
-            const range = context.cell;
-            
-            // 応答内容を確認
-            this.logger.log(`[StreamProcessorV2] 📝 書き込み準備: ${range}`, {
-              responseLength: result.response.length,
-              responsePreview: result.response.substring(0, 100),
-              isCanvas: context.task.function === 'Canvas'
-            });
-            
-            try {
-              // 排他制御マネージャーを使ってロック解放（応答書き込みと同時）
-              const releaseResult = await this.exclusiveManager.releaseLock(
-                context.task,
-                result.response,
-                globalThis.sheetsClient,
-                {
-                  spreadsheetId: spreadsheetId,
-                  gid: gid
-                }
-              );
+          // Promiseが解決した時の処理を設定
+          return resultPromise.then(async result => {
+            // 結果を処理
+            if (result && result.response) {
+              this.completedTasks.add(context.task.id);
+              this.writtenCells.set(context.cell, result.response);
               
-              if (releaseResult.success) {
-                this.logger.log(`[StreamProcessorV2] ✅ ${range}に応答を書き込み成功（排他制御解除）`);
-                // 処理済みセルとして記録（重複処理防止）
-                this.processedAnswerCells.add(range);
-              } else {
-                this.logger.error(`[StreamProcessorV2] ❌ ${range}への書き込み結果が不明`);
+              // Canvas機能使用時の応答チェック
+              if (context.task.function === 'Canvas' || context.task.displayedFunction === 'Canvas') {
+                this.logger.log(`[StreamProcessorV2] 🎨 Canvas応答を検出: ${result.response.substring(0, 200)}...`);
               }
-            } catch (writeError) {
-              this.logger.error(`[StreamProcessorV2] ❌ ${range}への書き込みエラー:`, writeError);
-              // エラー時の排他制御クリーンアップ
-              await this.exclusiveManager.cleanupOnError(
-                context.task,
-                globalThis.sheetsClient,
-                {
-                  spreadsheetId: spreadsheetId,
-                  gid: gid
-                }
-              );
-            }
-            
-            // SpreadsheetLoggerでログを記録
-            // 排他制御ログを無効化したため、重複チェックを簡素化
-            const logCellKey = `${context.task.logColumns[0]}_${context.task.row}`;
-            const isLogAlreadyProcessed = this.processedCells.has(logCellKey);
-            
-            if (this.spreadsheetLogger && context.task.logColumns && context.task.logColumns.length > 0 && !isLogAlreadyProcessed) {
-              try {
-                this.logger.log(`[StreamProcessorV2] ログ書き込み開始: ${context.task.logColumns[0]}${context.task.row}`);
+              
+              // スプレッドシートに書き込み
+              if (this.spreadsheetData) {
+                const { spreadsheetId, gid } = this.spreadsheetData;
+                const range = context.cell;
                 
-                // 現在のURLを取得（改善版）
-                let currentUrl = 'N/A';
-                let urlSource = 'fallback';
+                // 応答内容を確認
+                this.logger.log(`[StreamProcessorV2] 📝 書き込み準備: ${range}`, {
+                  responseLength: result.response.length,
+                  responsePreview: result.response.substring(0, 100),
+                  isCanvas: context.task.function === 'Canvas'
+                });
                 
-                // 詳細なエラーハンドリングでURL取得を試行
                 try {
-                  this.logger.log(`[StreamProcessorV2] URL取得開始: tabId=${context.tabId}`);
+                  // 排他制御マネージャーを使ってロック解放（応答書き込みと同時）
+                  const releaseResult = await this.exclusiveManager.releaseLock(
+                    context.task,
+                    result.response,
+                    globalThis.sheetsClient,
+                    {
+                      spreadsheetId: spreadsheetId,
+                      gid: gid
+                    }
+                  );
                   
-                  if (!context.tabId || context.tabId <= 0) {
+                  if (releaseResult.success) {
+                    this.logger.log(`[StreamProcessorV2] ✅ ${range}に応答を書き込み成功（排他制御解除）`);
+                    // 処理済みセルとして記録（重複処理防止）
+                    this.processedAnswerCells.add(range);
+                  } else {
+                    this.logger.error(`[StreamProcessorV2] ❌ ${range}への書き込み結果が不明`);
+                  }
+                } catch (writeError) {
+                  this.logger.error(`[StreamProcessorV2] ❌ ${range}への書き込みエラー:`, writeError);
+                  // エラー時の排他制御クリーンアップ
+                  await this.exclusiveManager.cleanupOnError(
+                    context.task,
+                    globalThis.sheetsClient,
+                    {
+                      spreadsheetId: spreadsheetId,
+                      gid: gid
+                    }
+                  );
+                }
+                
+                // SpreadsheetLoggerでログを記録
+                // 排他制御ログを無効化したため、重複チェックを簡素化
+                const logCellKey = `${context.task.logColumns[0]}_${context.task.row}`;
+                const isLogAlreadyProcessed = this.processedCells.has(logCellKey);
+                
+                if (this.spreadsheetLogger && context.task.logColumns && context.task.logColumns.length > 0 && !isLogAlreadyProcessed) {
+                  try {
+                    this.logger.log(`[StreamProcessorV2] ログ書き込み開始: ${context.task.logColumns[0]}${context.task.row}`);
+                    
+                    // 現在のURLを取得（改善版）
+                    let currentUrl = 'N/A';
+                    let urlSource = 'fallback';
+                    
+                    // 詳細なエラーハンドリングでURL取得を試行
+                    try {
+                      this.logger.log(`[StreamProcessorV2] URL取得開始: tabId=${context.tabId}`);
+                      
+                      if (!context.tabId || context.tabId <= 0) {
                     throw new Error(`無効なtabId: ${context.tabId}`);
                   }
                   
@@ -772,38 +864,38 @@ export default class StreamProcessorV2 {
                   enableWriteVerification: true  // 書き込み確認を有効化
                 });
                 
-                // 書き込み結果を確認
-                if (logResult && logResult.success) {
-                  // このセルを処理済みとしてマーク
-                  this.processedCells.add(logCellKey);
-                  this.logger.log(`[StreamProcessorV2] ✅ ログを書き込み: ${context.task.logColumns[0]}${context.task.row} (検証済み: ${logResult.verified})`);
-                } else {
-                  this.logger.error(`[StreamProcessorV2] ❌ ログ書き込み失敗: ${context.task.logColumns[0]}${context.task.row}`);
+                    // 書き込み結果を確認
+                    if (logResult && logResult.success) {
+                      // このセルを処理済みとしてマーク
+                      this.processedCells.add(logCellKey);
+                      this.logger.log(`[StreamProcessorV2] ✅ ログを書き込み: ${context.task.logColumns[0]}${context.task.row} (検証済み: ${logResult.verified})`);
+                    } else {
+                      this.logger.error(`[StreamProcessorV2] ❌ ログ書き込み失敗: ${context.task.logColumns[0]}${context.task.row}`);
+                    }
+                    
+                  } catch (logError) {
+                    this.logger.warn(
+                      `[StreamProcessorV2] ログ書き込みエラー（処理は続行）`,
+                      logError.message
+                    );
+                  }
+                } else if (isLogAlreadyProcessed) {
+                  this.logger.log(`[StreamProcessorV2] ⏭️ ログ書き込みスキップ: ${context.task.logColumns[0]}${context.task.row} (既に処理済み)`);
                 }
-                
-              } catch (logError) {
-                this.logger.warn(
-                  `[StreamProcessorV2] ログ書き込みエラー（処理は続行）`,
-                  logError.message
-                );
               }
-            } else if (isLogAlreadyProcessed) {
-              this.logger.log(`[StreamProcessorV2] ⏭️ ログ書き込みスキップ: ${context.task.logColumns[0]}${context.task.row} (既に処理済み)`);
-            }
-          }
-        } else {
-          this.logger.error(`[StreamProcessorV2] ⚠️ ${context.cell}の応答が取得できませんでした`);
-          
-          // 【即座に記録】AI操作ごとに応答取得失敗を記録
-          // このエラーは発生時点で即座にRetryManagerに記録される
-          if (this.currentGroupId && this.retryManager) {
-            const task = {
-              column: context.cell.match(/^[A-Z]+/)[0],
-              row: parseInt(context.cell.match(/\d+$/)[0]),
-              aiType: context.aiType
-            };
-            this.retryManager.recordResponseFailure(this.currentGroupId, task);
-          }
+            } else {
+              this.logger.error(`[StreamProcessorV2] ⚠️ ${context.cell}の応答が取得できませんでした`);
+              
+              // 【即座に記録】AI操作ごとに応答取得失敗を記録
+              // このエラーは発生時点で即座にRetryManagerに記録される
+              if (this.currentGroupId && this.retryManager) {
+                const task = {
+                  column: context.cell.match(/^[A-Z]+/)[0],
+                  row: parseInt(context.cell.match(/\d+$/)[0]),
+                  aiType: context.aiType
+                };
+                this.retryManager.recordResponseFailure(this.currentGroupId, task);
+              }
           
           // 応答取得失敗時は排他制御をクリア（空文字書き込みを無効化）
           this.logger.log(`[StreamProcessorV2] 🔓 ${context.cell}: 失敗時の排他制御クリア（書き込み無効化 - リトライ待機）`);
@@ -4342,9 +4434,10 @@ export default class StreamProcessorV2 {
         this.currentGroupId = group.id;
         
         try {
-          // 既存のprocessBatchメソッドを使用（並列処理＋フェーズ分け）
-          await this.processBatch(taskObjects, false);
-          totalCompleted += taskObjects.length;
+          // 新しいシンプルな並列処理メソッドを使用
+          const results = await this.processParallelTasks(taskObjects, false);
+          const successCount = results.filter(r => r.success).length;
+          totalCompleted += successCount;
           
           this.logger.log(`[StreamProcessorV2] ✅ バッチ処理完了、再スキャンします...`);
         } catch (error) {
