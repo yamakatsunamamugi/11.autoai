@@ -4031,7 +4031,46 @@ export default class StreamProcessorV2 {
       // 対応する回答列をチェック
       for (const answerColIndex of answerCols) {
         const answerValue = row[answerColIndex];
-        const hasAnswer = answerValue && typeof answerValue === 'string' && answerValue.trim().length > 0;
+        
+        // 回答の判定ロジック
+        let hasAnswer = false;
+        if (answerValue && typeof answerValue === 'string') {
+          const trimmed = answerValue.trim();
+          if (trimmed.length > 0) {
+            // 排他制御マーカーの場合
+            if (trimmed.startsWith('現在操作中です_')) {
+              // TaskWaitManagerのisMarkerTimeoutメソッドを使用
+              const isTimeout = this.waitManager.isMarkerTimeout(trimmed);
+              
+              if (isTimeout) {
+                hasAnswer = false;  // タイムアウト済み → タスクを生成
+                
+                // マーカーの経過時間を計算（ログ用）
+                const age = this.waitManager.calculateMarkerAge(trimmed);
+                if (age !== null) {
+                  this.logger.log(`[scanGroupTasks] 排他制御マーカーがタイムアウト: ${this.indexToColumn(answerColIndex)}${rowIndex + 1} (経過: ${Math.floor(age/60000)}分)`);
+                }
+              } else {
+                hasAnswer = true;   // まだタイムアウトしていない → タスクをスキップ
+              }
+            }
+            // 待機テキストは回答なしとして扱う  
+            else if (trimmed === 'お待ちください...' || trimmed === '現在操作中です') {
+              hasAnswer = false;
+            }
+            // エラーマーカーも回答なしとして扱う
+            else if (trimmed.toLowerCase().includes('error') || 
+                     trimmed.toLowerCase().includes('エラー') ||
+                     trimmed.toLowerCase().includes('failed') ||
+                     trimmed.toLowerCase().includes('失敗')) {
+              hasAnswer = false;
+            }
+            // それ以外は回答ありとして扱う
+            else {
+              hasAnswer = true;
+            }
+          }
+        }
         
         // デバッグ：最初の5行と問題のある行（40-42行目）の回答状態を確認
         if (debugCount < 5 || (rowIndex >= 39 && rowIndex <= 42)) {
