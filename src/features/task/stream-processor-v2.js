@@ -388,113 +388,26 @@ export default class StreamProcessorV2 {
   }
 
   /**
-   * シンプルな並列バッチ処理（新メソッド）
-   * 各タスクを完全に独立して並列実行
+   * バッチ処理を実行（最大3つのタスクを並列処理）
    * 
-   * @param {Array} batch - 処理するタスク配列（最大3つ）
-   * @param {boolean} isTestMode - テストモードフラグ
-   * @returns {Promise<Array>} 処理結果の配列
-   */
-  async processParallelTasks(batch, isTestMode) {
-    this.logger.log(`[StreamProcessorV2] 🚀 シンプル並列処理開始`, {
-      tasks: batch.map(t => `${t.column}${t.row}`).join(', '),
-      count: batch.length
-    });
-
-    if (isTestMode) {
-      // テストモードの処理
-      for (const task of batch) {
-        this.completedTasks.add(task.id);
-        this.writtenCells.set(`${task.column}${task.row}`, true);
-      }
-      return batch.map(task => ({ success: true, task }));
-    }
-
-    // 各タスクを完全に独立して処理
-    const taskPromises = batch.map(async (task, index) => {
-      const cell = `${task.column}${task.row}`;
-      
-      try {
-        // 5秒間隔で開始（オプション）
-        if (index > 0) {
-          this.logger.log(`[StreamProcessorV2] ${index * 5}秒待機後に${cell}を開始`);
-          await this.delay(index * 5000);
-        }
-
-        // 1. ウィンドウ作成
-        const tabId = await this.createWindowForTask(task, index);
-        this.logger.log(`[StreamProcessorV2] ✅ ${cell}: ウィンドウ作成完了`);
-
-        // 2. タスク実行（プロンプト入力、モデル選択、機能選択、送信）
-        task.existingTabId = tabId;
-        const result = await this.processTask(task, false, false, true);
-        this.logger.log(`[StreamProcessorV2] ✅ ${cell}: タスク実行完了`);
-
-        // 3. 結果をスプレッドシートに書き込み
-        if (result && result.response) {
-          await this.writeToSpreadsheet(cell, result.response);
-          this.completedTasks.add(task.id);
-          this.writtenCells.set(cell, result.response);
-        }
-
-        // 4. ウィンドウを閉じる
-        try {
-          const tab = await chrome.tabs.get(tabId);
-          if (tab && tab.windowId) {
-            await chrome.windows.remove(tab.windowId);
-          }
-        } catch (e) {
-          // ウィンドウが既に閉じられている場合は無視
-        }
-
-        return { success: true, task, result, cell };
-        
-      } catch (error) {
-        this.logger.error(`[StreamProcessorV2] ❌ ${cell}: エラー`, error);
-        return { success: false, task, error, cell };
-      }
-    });
-
-    // 全タスクの完了を待つ（1つが失敗しても他は継続）
-    const results = await Promise.allSettled(taskPromises);
-    
-    // 結果をログ出力
-    const successCount = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
-    const failureCount = results.filter(r => r.status === 'rejected' || !r.value.success).length;
-    
-    this.logger.log(`[StreamProcessorV2] ✅ 並列処理完了: 成功=${successCount}, 失敗=${failureCount}`);
-    
-    return results.map(r => r.status === 'fulfilled' ? r.value : { success: false, error: r.reason });
-  }
-
-  /**
-   * スプレッドシートに書き込み（シンプル版）
-   */
-  async writeToSpreadsheet(cell, response) {
-    if (!this.spreadsheetData || !globalThis.sheetsClient) {
-      return;
-    }
-
-    const { spreadsheetId, gid } = this.spreadsheetData;
-    
-    try {
-      await globalThis.sheetsClient.updateCell(
-        spreadsheetId,
-        cell,
-        response,
-        gid
-      );
-      this.logger.log(`[StreamProcessorV2] 📝 ${cell}に書き込み完了`);
-    } catch (error) {
-      this.logger.error(`[StreamProcessorV2] ❌ ${cell}への書き込み失敗:`, error);
-      throw error;
-    }
-  }
-
-  /**
-   * 旧バッチ処理（互換性のため残す - 修正版で複雑な処理を実行）
+   * 【処理フロー】
+   * 1. フェーズ1: ウィンドウ準備とテキスト入力
+   *    - 3つのウィンドウを同時に開く（左、中央、右の位置）
+   *    - 各ウィンドウにプロンプトを入力
    * 
-   * @deprecated processParallelTasksを使用してください
+   * 2. フェーズ2: モデル選択（並列実行）
+   *    - 全ウィンドウで同時にモデル選択を実行
+   *    - Promise.allSettledで並列処理
+   * 
+   * 3. フェーズ3: 機能選択（並列実行）
+   *    - 全ウィンドウで同時に機能選択を実行
+   *    - Promise.allSettledで並列処理
+   * 
+   * 4. フェーズ4: 5秒間隔で順次送信
+   *    - タスク1送信 → 5秒待機
+   *    - タスク2送信 → 5秒待機
+   *    - タスク3送信
+   * 
    * @param {Array} batch - 処理するタスク配列（最大3つ）
    * @param {boolean} isTestMode - テストモードフラグ
    * @returns {Promise<void>}
@@ -4338,7 +4251,7 @@ export default class StreamProcessorV2 {
               continue;
             }
             
-            const latestData = await sheetsClient.getSpreadsheetData(
+            const latestData = await sheetsClient.loadAutoAIData(
               spreadsheetData.spreadsheetId,
               spreadsheetData.sheetName
             );
@@ -4438,10 +4351,9 @@ export default class StreamProcessorV2 {
         this.currentGroupId = group.id;
         
         try {
-          // 新しいシンプルな並列処理メソッドを使用
-          const results = await this.processParallelTasks(taskObjects, false);
-          const successCount = results.filter(r => r.success).length;
-          totalCompleted += successCount;
+          // 既存のprocessBatchメソッドを使用（並列処理＋フェーズ分け）
+          await this.processBatch(taskObjects, false);
+          totalCompleted += taskObjects.length;
           
           this.logger.log(`[StreamProcessorV2] ✅ バッチ処理完了、再スキャンします...`);
         } catch (error) {
