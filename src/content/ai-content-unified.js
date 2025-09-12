@@ -30,31 +30,7 @@ async function waitForPageReady() {
 // UI_SELECTORSの読み込み状態を管理
 let UI_SELECTORS_LOADED = false;
 let UI_SELECTORS_PROMISE = null;
-let retryManager = null; // RetryManagerインスタンス
-
-// RetryManagerの初期化（同期的）
-function initializeRetryManager() {
-  if (retryManager) return retryManager;
-  
-  // RetryManagerは既にmanifest.jsonのcontent_scriptsで読み込み済み
-  if (typeof window.RetryManager === 'function') {
-    retryManager = new window.RetryManager({
-      maxRetries: 3,
-      retryDelay: 5000,
-      debugMode: true
-    });
-    
-    // executeTask関数を上書き
-    retryManager.executeTask = async (taskConfig) => {
-      return await executeTaskInternal(taskConfig);
-    };
-    
-    return retryManager;
-  } else {
-    console.error('❌ [11.autoai] RetryManagerクラスが見つかりません');
-    return null;
-  }
-}
+// RetryManagerは削除（Service Worker側でのみ使用）
 
 // 内部タスク実行関数
 async function executeTaskInternal(taskConfig) {
@@ -2935,11 +2911,7 @@ if (AI_TYPE) {
   waitForPageReady().then(() => {
     console.log(`[11.autoai] ${AI_TYPE} ページ準備完了、初期化実行`);
     
-    // RetryManagerの初期化
-    const manager = initializeRetryManager();
-    if (manager) {
-    console.log('[11.autoai] RetryManager初期化完了');
-  }
+    // RetryManagerの初期化は削除（Service Worker側で処理）
   
   // UI Selectors読み込みから開始
   loadUISelectors();

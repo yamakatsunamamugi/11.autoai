@@ -17,7 +17,6 @@ import { GroupCompletionChecker } from './group-completion-checker.js';
 import { TaskWaitManager } from './task-wait-manager.js';
 import { ExclusiveControlManager } from '../../utils/exclusive-control-manager.js';
 import { ExclusiveControlLoggerHelper } from '../../utils/exclusive-control-logger-helper.js';
-import { RealtimeTaskScanner } from './realtime-task-scanner.js';
 import { sleep } from '../../utils/sleep-utils.js';
 import EXCLUSIVE_CONTROL_CONFIG, { 
   getTimeoutForFunction, 
@@ -87,7 +86,6 @@ export default class StreamProcessorV2 {
     this.dataProcessor = null; // SpreadsheetDataProcessorのインスタンス
     this.processedCells = new Set(); // セル単位で処理済みを追跡
     this.dynamicQueue = new DynamicTaskQueue(logger); // 動的タスクキューを追加
-    this.realtimeScanner = new RealtimeTaskScanner(this, logger); // リアルタイムタスクスキャナーを追加
     
     // 現在処理中のグループID
     this.currentGroupId = null;
@@ -235,11 +233,6 @@ export default class StreamProcessorV2 {
       return await this.processDynamicTaskGroups(spreadsheetData, options);
     }
     
-    // リアルタイムモードの場合はリアルタイムスキャナーを使用
-    if (options.realtimeMode && !taskList) {
-      this.logger.log('[StreamProcessorV2] リアルタイムモードでタスク処理を開始');
-      return await this.processWithRealtimeScanning(spreadsheetData, options);
-    }
     
     // 通常モード：タスクリストが空の場合は早期リターン
     if (!taskList || taskList.tasks.length === 0) {
@@ -1665,11 +1658,60 @@ export default class StreamProcessorV2 {
   }
 
   /**
-   * ページの読み込み完了を待つ
-   * @param {number} tabId - タブID
-   * @param {number} timeout - タイムアウト時間（ミリ秒）
-   * @returns {Promise<boolean>} 読み込み完了したらtrue
+   * 統一されたグループリトライ処理
+   * RetryManagerを使用してグループ完了後のリトライを実行
+   * @param {string} groupId - グループID
+   * @param {string} groupName - グループ名
+   * @param {Object} spreadsheetData - スプレッドシートデータ
+   * @param {Function} processFunc - リトライ時の処理関数
+   * @param {boolean} isTestMode - テストモード
+   * @returns {Promise<Object>} リトライ結果
    */
+  async executeGroupRetryLogic(groupId, groupName, spreadsheetData, processFunc, isTestMode = false) {
+    if (!this.retryManager || !groupId) {
+      return { hasRetries: false, successful: 0, failed: 0, total: 0 };
+    }
+    
+    this.logger.log(`[StreamProcessorV2] 🔄 グループ${groupName}のリトライ処理を開始`);
+    
+    // 最新のスプレッドシートデータを取得
+    let latestSpreadsheetData = spreadsheetData;
+    const sheetsClient = globalThis.sheetsClient || this.sheetsClient;
+    
+    if (sheetsClient && spreadsheetData.spreadsheetId) {
+      try {
+        const latestData = await sheetsClient.loadAutoAIData(
+          spreadsheetData.spreadsheetId,
+          spreadsheetData.gid
+        );
+        if (latestData) {
+          latestSpreadsheetData = latestData;
+          this.logger.log(`[StreamProcessorV2] 最新データ取得成功`);
+        }
+      } catch (error) {
+        this.logger.warn(`[StreamProcessorV2] 最新データ取得エラー:`, error);
+      }
+    }
+    
+    // グループ完了時のリトライ処理（RetryManagerに委譲）
+    const retryResults = await this.retryManager.executeGroupRetries(
+      groupId,
+      processFunc,
+      isTestMode,
+      latestSpreadsheetData
+    );
+    
+    if (retryResults.hasRetries) {
+      this.logger.log(`[StreamProcessorV2] 🔄 グループ${groupName}のリトライ完了`, {
+        成功: retryResults.successful,
+        失敗: retryResults.failed,
+        総タスク数: retryResults.total
+      });
+    }
+    
+    return retryResults;
+  }
+
   /**
    * 指定された時間だけ待機
    */
@@ -2666,56 +2708,13 @@ export default class StreamProcessorV2 {
           }
         }
         
-        // 待機戦略を決定（TaskWaitManagerを使用）
-        const waitStrategy = await this.waitManager.determineWaitStrategy(
-          groupTaskList.tasks,
-          this.retryManager,
-          latestSpreadsheetData
-        );
-        
-        // 完了チェック関数（GroupCompletionCheckerを使用）
-        const checkGroupCompletion = async (groupId) => {
-          return await this.completionChecker.checkGroupCompletion(
-            groupId,
-            groupTaskList.tasks,
-            spreadsheetData,
-            sheetsClient
-          );
-        };
-        
-        // グループ完了を待機（TaskWaitManagerを使用）
-        const isComplete = await this.waitManager.executeWaitLoop(
+        // 統一されたリトライ処理を呼び出し
+        const retryResults = await this.executeGroupRetryLogic(
           groupKey,
-          checkGroupCompletion,
-          waitStrategy.checkInterval,
-          waitStrategy.maxWaitTime
-        );
-        
-        if (!isComplete) {
-          this.logger.warn(`[StreamProcessorV2] グループ${groupIndex + 1}の完了待機がタイムアウトしました`);
-        }
-        
-        // スプレッドシートを再読み込みして最新状態を取得（既存の変数を再利用）
-        if (sheetsClient && spreadsheetData.spreadsheetId) {
-          try {
-            const latestData = await sheetsClient.loadAutoAIData(
-              spreadsheetData.spreadsheetId,
-              spreadsheetData.gid
-            );
-            if (latestData) {
-              latestSpreadsheetData = latestData;
-            }
-          } catch (error) {
-            this.logger.error(`[StreamProcessorV2] 最新データ取得エラー:`, error);
-          }
-        }
-        
-        // グループ完了時のリトライ処理
-        const retryResults = await this.retryManager.executeGroupRetries(
-          groupKey,  // グループID
+          `グループ${groupIndex + 1}`,
+          spreadsheetData,
           async (column, tasks) => this.processColumn(column, tasks, isTestMode),
-          isTestMode,
-          latestSpreadsheetData // 最新のスプレッドシートデータを渡す
+          isTestMode
         );
         
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -4359,93 +4358,142 @@ export default class StreamProcessorV2 {
       this.logger.log(`[StreamProcessorV2] 🔄 ${group.name}: タスクを動的生成して実行`);
       
       // ========================================
-      // 実行時にタスクを動的生成
+      // グループ内でタスクがなくなるまで繰り返し処理
       // ========================================
-      const tasks = await this.scanGroupTasks(
-        spreadsheetData,
-        promptColIndices,
-        answerColIndices
-      );
+      let emptyScans = 0;
+      let groupTaskCount = 0;
       
-      this.logger.log(`[StreamProcessorV2] 📊 実行時スキャン結果:`, {
-        tasks: tasks ? `${tasks.length}個` : 'undefined',
-        tasksType: typeof tasks,
-        isArray: Array.isArray(tasks)
-      });
-      
-      if (!tasks || !Array.isArray(tasks) || tasks.length === 0) {
-        this.logger.log(`[StreamProcessorV2] ⏭️ ${group.name}: 実行時チェックでタスクなし、スキップ`);
-        continue;
-      }
-      
-      
-      // ========================================
-      // 未回答タスクのみをTaskオブジェクト形式に変換
-      // ========================================
-      const taskObjects = [];
-      for (const taskInfo of tasks) {
-        // AIタイプを取得（グループから）
-
-        const answerCol = group.columnRange.answerColumns.find(col => {
-          const colStr = typeof col === 'string' ? col : col.column;
-          const colIndex = this.columnToIndex(colStr);
-          
-          return colIndex === taskInfo.columnIndex;
+      while (emptyScans < 3) {
+        // タスクをスキャン
+        const tasks = await this.scanGroupTasks(
+          spreadsheetData,
+          promptColIndices,
+          answerColIndices
+        );
+        
+        this.logger.log(`[StreamProcessorV2] 📊 ${group.name} スキャン結果:`, {
+          見つかったタスク: tasks ? `${tasks.length}個` : '0個',
+          空スキャン回数: emptyScans
         });
-        // AIタイプは設定しない（実行時にfetchModelAndFunctionFromTaskで取得）
         
+        if (!tasks || !Array.isArray(tasks) || tasks.length === 0) {
+          emptyScans++;
+          if (emptyScans >= 3) {
+            this.logger.log(`[StreamProcessorV2] ✅ ${group.name}: 3回連続空スキャン、グループ完了`);
+            break;
+          }
+          this.logger.log(`[StreamProcessorV2] ⏳ ${group.name}: タスクなし、2秒待機... (${emptyScans}/3)`);
+          await this.delay(2000);
+          continue;
+        }
         
-        // タスクオブジェクトを作成（AI/モデル/機能は実行時に動的取得）
-        const taskId = this.generateTaskId(taskInfo.column, taskInfo.row);
-        const task = {
-          groupId: group.id, // グループIDを追加（キャッシュデータ参照用）
-          id: taskId,
-          column: taskInfo.column,
-          row: taskInfo.row,
-          aiType: group.aiType || '',  // グループのAIタイプを設定
-          // promptは削除（fetchPromptFromTaskで動的取得）
-          promptColumn: this.indexToColumn(promptColIndices[0]),
-          promptColumns: promptColIndices.map(idx => this.indexToColumn(idx)),  // 文字列の配列に変換
-          sheetName: spreadsheetData.sheetName || '不明',
-          model: '',  // 実行時に動的取得
-          function: '',  // 実行時に動的取得
-          createdAt: Date.now(),
-          // ログ列：タスクリストで指定されたものをそのまま使用（なければ空配列）
-          logColumns: group.columnRange.logColumn ? [group.columnRange.logColumn] : []
-        };
+        // タスクが見つかったらリセット
+        emptyScans = 0;
         
-        // タスクIDの確認ログ
-        this.logger.log(`[StreamProcessorV2] タスクID生成: ${taskId} for ${taskInfo.column}${taskInfo.row}`);
+        // 最大3タスクだけ取得
+        const batchTasks = tasks.slice(0, 3);
         
-        taskObjects.push(task);
-      }
-      
-      // ========================================
-      // 動的バッチサイズで処理（効率化）
-      // ========================================
-      const batchSize = this.calculateOptimalBatchSize(taskObjects.length);
-      for (let i = 0; i < taskObjects.length; i += batchSize) {
-        const batch = taskObjects.slice(i, Math.min(i + batchSize, taskObjects.length));
+        // ========================================
+        // 3タスクをTaskオブジェクト形式に変換
+        // ========================================
+        const taskObjects = [];
+        for (const taskInfo of batchTasks) {
+          // AIタイプを取得（グループから）
+
+          const answerCol = group.columnRange.answerColumns.find(col => {
+            const colStr = typeof col === 'string' ? col : col.column;
+            const colIndex = this.columnToIndex(colStr);
+            
+            return colIndex === taskInfo.columnIndex;
+          });
+          // AIタイプは設定しない（実行時にfetchModelAndFunctionFromTaskで取得）
+          
+          
+          // タスクオブジェクトを作成（AI/モデル/機能は実行時に動的取得）
+          const taskId = this.generateTaskId(taskInfo.column, taskInfo.row);
+          const task = {
+            groupId: group.id, // グループIDを追加（キャッシュデータ参照用）
+            id: taskId,
+            column: taskInfo.column,
+            row: taskInfo.row,
+            aiType: group.aiType || '',  // グループのAIタイプを設定
+            // promptは削除（fetchPromptFromTaskで動的取得）
+            promptColumn: this.indexToColumn(promptColIndices[0]),
+            promptColumns: promptColIndices.map(idx => this.indexToColumn(idx)),  // 文字列の配列に変換
+            sheetName: spreadsheetData.sheetName || '不明',
+            model: '',  // 実行時に動的取得
+            function: '',  // 実行時に動的取得
+            createdAt: Date.now(),
+            // ログ列：タスクリストで指定されたものをそのまま使用（なければ空配列）
+            logColumns: group.columnRange.logColumn ? [group.columnRange.logColumn] : []
+          };
+          
+          // タスクIDの確認ログ
+          this.logger.log(`[StreamProcessorV2] タスクID生成: ${taskId} for ${taskInfo.column}${taskInfo.row}`);
+          
+          taskObjects.push(task);
+        }
         
-        this.logger.log(`[StreamProcessorV2] 📦 バッチ${Math.floor(i/batchSize) + 1}/${Math.ceil(taskObjects.length/batchSize)}を処理`, {
-          タスク: batch.map(t => `${t.column}${t.row}`).join(', '),
-          グループ: group.name
+        // ========================================
+        // 3タスクをバッチ処理
+        // ========================================
+        groupTaskCount += taskObjects.length;
+        this.logger.log(`[StreamProcessorV2] 📦 ${group.name}: ${taskObjects.length}タスクを処理`, {
+          タスク: taskObjects.map(t => `${t.column}${t.row}`).join(', '),
+          グループ累計: `${groupTaskCount}タスク`
         });
         
         // 現在処理中のグループを設定（キャッシュデータ参照用）
         this.currentProcessingGroup = group;
+        // 現在のグループIDを設定（リトライ管理用）
+        this.currentGroupId = group.id;
         
         try {
           // 既存のprocessBatchメソッドを使用（並列処理＋フェーズ分け）
-          await this.processBatch(batch, false);
-          totalCompleted += batch.length;
+          await this.processBatch(taskObjects, false);
+          totalCompleted += taskObjects.length;
+          
+          this.logger.log(`[StreamProcessorV2] ✅ バッチ処理完了、再スキャンします...`);
         } catch (error) {
           this.logger.error(`[StreamProcessorV2] バッチ処理エラー:`, error);
-          totalFailed += batch.length;
+          totalFailed += taskObjects.length;
         } finally {
           // 処理後にクリア
           this.currentProcessingGroup = null;
         }
+      }
+      
+      // 統一されたリトライ処理を呼び出し
+      if (this.currentGroupId) {
+        const retryResults = await this.executeGroupRetryLogic(
+          this.currentGroupId,
+          group.name,
+          spreadsheetData,
+          async (column, tasks) => {
+            // 列ごとのリトライ処理
+            this.logger.log(`[StreamProcessorV2] ${column}列の${tasks.length}個のタスクをリトライ`);
+            
+            // リトライ用のバッチを作成
+            const retryBatch = tasks.map(task => ({
+              ...task,
+              groupId: group.id,
+              promptColumns: [this.indexToColumn(promptColIndices[0])],
+              logColumns: group.columnRange.logColumn ? [group.columnRange.logColumn] : []
+            }));
+            
+            // バッチ処理を実行
+            await this.processBatch(retryBatch, false);
+          },
+          false  // isTestMode
+        );
+        
+        if (retryResults.hasRetries) {
+          totalCompleted += retryResults.successful;
+          totalFailed += retryResults.failed;
+        }
+        
+        // グループIDをクリア
+        this.currentGroupId = null;
       }
     }
     
@@ -5010,42 +5058,4 @@ export default class StreamProcessorV2 {
 
 
 
-  /**
-   * リアルタイムスキャニングによる処理
-   * @param {Object} spreadsheetData - スプレッドシートデータ
-   * @param {Object} options - オプション設定
-   * @returns {Promise<Object>} 処理結果
-   */
-  async processWithRealtimeScanning(spreadsheetData, options = {}) {
-    this.logger.log('[StreamProcessorV2] 🚀 リアルタイムスキャニング処理を開始');
-    
-    try {
-      // リアルタイムスキャナーの設定を更新
-      const scannerOptions = {
-        scanInterval: options.scanInterval || 5000,
-        maxTasksPerScan: options.maxTasksPerScan || 50,
-        maxConcurrentTasks: options.maxConcurrentTasks || 3
-      };
-      
-      // タスクグループが提供されている場合は渡す
-      if (options.taskGroups) {
-        scannerOptions.taskGroups = options.taskGroups;
-      }
-      
-      // リアルタイム処理を実行
-      const result = await this.realtimeScanner.startRealtimeProcessing(scannerOptions);
-      
-      this.logger.log('[StreamProcessorV2] ✅ リアルタイムスキャニング処理完了', result);
-      
-      return result;
-      
-    } catch (error) {
-      this.logger.error('[StreamProcessorV2] リアルタイムスキャニング処理エラー:', error);
-      return {
-        success: false,
-        error: error.message,
-        totalTime: '0秒'
-      };
-    }
-  }
 }

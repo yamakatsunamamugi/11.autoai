@@ -59,7 +59,6 @@
         "https://www.genspark.ai/*"
       ],
       "js": [
-        "src/modules/retry-manager.js",
         "src/content/model-info-loader.js",
         "src/content/ai-content-unified.js"
       ],
