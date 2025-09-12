@@ -4121,8 +4121,8 @@ export default class StreamProcessorV2 {
                 hasAnswer = true;   // まだタイムアウトしていない → タスクをスキップ
               }
             }
-            // 待機テキストは回答なしとして扱う  
-            else if (trimmed === 'お待ちください...' || trimmed === '現在操作中です') {
+            // 待機テキストや処理完了は回答なしとして扱う  
+            else if (trimmed === 'お待ちください...' || trimmed === '現在操作中です' || trimmed === '処理完了') {
               hasAnswer = false;
             }
             // それ以外は回答ありとして扱う
