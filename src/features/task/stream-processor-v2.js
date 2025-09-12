@@ -1605,65 +1605,6 @@ export default class StreamProcessorV2 {
    * - cancelRetryTimer: 特定タイマーのキャンセル
    */
 
-  /**
-   * 列の作業終了後、回答列を確認して回答がない場合は再実行（削除済み）
-   * @deprecated RetryManagerのグループリトライ機能に統合
-   */
-  async verifyAndReprocessColumn_REMOVED(column, tasks, isTestMode) {
-    this.logger.log(`[StreamProcessorV2] 🔍 ${column}列の回答確認と再実行開始`);
-    
-    const tasksToReprocess = [];
-    const skippedCells = [];
-    
-    // APIレート制限対策: 各タスクの確認間に遅延を追加
-    for (const task of tasks) {
-      try {
-        // スプレッドシートから現在の回答を取得
-        const currentAnswer = this.getCurrentAnswer(task);
-        
-        if (!currentAnswer || currentAnswer.trim() === '' || currentAnswer.startsWith('現在操作中です')) {
-          tasksToReprocess.push(task);
-        } else {
-          skippedCells.push(`${task.column}${task.row}`);
-        }
-        
-      } catch (error) {
-        this.logger.error(`[StreamProcessorV2] ${task.column}${task.row}の回答確認エラー:`, error);
-        // エラーの場合も再実行対象に追加
-        tasksToReprocess.push(task);
-        // エラー時も待機
-        await this.delay(1000);
-      }
-    }
-    
-    // スキップされたセルをまとめてログ出力
-    if (skippedCells.length > 0) {
-      const ranges = this.formatCellRanges(skippedCells);
-      this.logger.log(`[StreamProcessorV2] ✅ 既存回答ありでスキップ: ${ranges} (計${skippedCells.length}セル)`);
-    }
-    
-    if (tasksToReprocess.length > 0) {
-      const reprocessCells = tasksToReprocess.map(t => `${t.column}${t.row}`);
-      const reprocessRanges = this.formatCellRanges(reprocessCells);
-      this.logger.log(`[StreamProcessorV2] 🔄 ${column}列: 再実行対象 ${reprocessRanges} (計${tasksToReprocess.length}セル)`);
-      
-      // 再実行タスクをバッチ処理
-      const reprocessBatches = this.createBatches(tasksToReprocess, 3);
-      
-      for (let batchIndex = 0; batchIndex < reprocessBatches.length; batchIndex++) {
-        const batch = reprocessBatches[batchIndex];
-        
-        this.logger.log(`[StreamProcessorV2] 🔄 ${column}列 再実行バッチ${batchIndex + 1}/${reprocessBatches.length}開始`);
-        
-        // 失敗時スキップモードで再実行（モデル/機能選択が失敗してもスキップして続行）
-        await this.processBatchWithSkip(batch, isTestMode);
-        
-        this.logger.log(`[StreamProcessorV2] ✅ ${column}列 再実行バッチ${batchIndex + 1}/${reprocessBatches.length}完了`);
-      }
-    } else {
-      this.logger.log(`[StreamProcessorV2] ✅ ${column}列: すべてのタスクに回答があります`);
-    }
-  }
   
   /**
    * タスクの現在の回答を既取得データから取得（高速化）
@@ -1691,9 +1632,44 @@ export default class StreamProcessorV2 {
       }
       
       const value = row[columnIndex];
-      if (value && typeof value === 'string' && value.trim().length > 0) {
-        this.logger.log(`[StreamProcessorV2] 📊 ${task.column}${task.row}の既存回答: "${value.substring(0, 50)}..."`);
-        return value;
+      if (value && typeof value === 'string') {
+        const trimmed = value.trim();
+        if (trimmed.length > 0) {
+          // 排他制御マーカーの場合
+          if (trimmed.startsWith('現在操作中です_')) {
+            const isTimeout = this.waitManager.isMarkerTimeout(trimmed);
+            
+            if (isTimeout) {
+              // マーカーの経過時間を計算（ログ用）
+              const age = this.waitManager.calculateMarkerAge(trimmed);
+              if (age !== null) {
+                this.logger.log(`[StreamProcessorV2] 📊 ${task.column}${task.row}: 排他制御マーカーがタイムアウト (経過: ${Math.floor(age/60000)}分) → 未回答扱い`);
+              }
+              return '';  // タイムアウト済み → 未回答として扱う
+            } else {
+              this.logger.log(`[StreamProcessorV2] 📊 ${task.column}${task.row}の既存回答: "${value.substring(0, 50)}..." (排他制御マーカー)`);
+              return value;   // まだタイムアウトしていない → 回答済み
+            }
+          }
+          // 待機テキストは回答なしとして扱う  
+          else if (trimmed === 'お待ちください...' || trimmed === '現在操作中です') {
+            this.logger.log(`[StreamProcessorV2] 📊 ${task.column}${task.row}: 待機テキスト → 未回答扱い`);
+            return '';
+          }
+          // エラーマーカーも回答なしとして扱う
+          else if (trimmed.toLowerCase().includes('error') || 
+                   trimmed.toLowerCase().includes('エラー') ||
+                   trimmed.toLowerCase().includes('failed') ||
+                   trimmed.toLowerCase().includes('失敗')) {
+            this.logger.log(`[StreamProcessorV2] 📊 ${task.column}${task.row}: エラーマーカー → 未回答扱い`);
+            return '';
+          }
+          // それ以外は通常の回答
+          else {
+            this.logger.log(`[StreamProcessorV2] 📊 ${task.column}${task.row}の既存回答: "${value.substring(0, 50)}..."`);
+            return value;
+          }
+        }
       }
       
       this.logger.log(`[StreamProcessorV2] 📊 ${task.column}${task.row}: 回答なし`);

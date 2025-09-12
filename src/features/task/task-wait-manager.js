@@ -76,10 +76,17 @@ export class TaskWaitManager {
       return null;
     }
 
-    // マーカー形式: 現在操作中です_timestamp_pcId_function
     const parts = marker.split('_');
     
-    if (parts.length >= 4) {
+    // 新形式の判定: parts.length >= 4 かつ parts[2] が時刻形式 (HH:MM:SS)
+    if (parts.length >= 4 && /^\d{2}:\d{2}:\d{2}$/.test(parts[2])) {
+      // 新形式: 現在操作中です_2025-09-12_16:43:37_PC1
+      // 新形式では機能名がないため、PC IDをデフォルト機能名として返す
+      const pcId = parts[3];
+      this.logger.debug('[TaskWaitManager] 新形式マーカー: PC ID', pcId, 'をデフォルト機能として使用');
+      return 'default'; // デフォルト機能名を返す
+    } else if (parts.length >= 4) {
+      // 旧形式: 現在操作中です_timestamp_pcId_function
       return parts.slice(3).join('_'); // 機能名部分（_を含む可能性があるため）
     }
     
@@ -196,7 +203,19 @@ export class TaskWaitManager {
     const parts = marker.split('_');
     if (parts.length >= 2) {
       try {
-        const timestamp = new Date(parts[1]);
+        let timestampStr;
+        
+        // 新形式の判定: parts.length >= 4 かつ parts[2] が時刻形式 (HH:MM:SS)
+        if (parts.length >= 4 && /^\d{2}:\d{2}:\d{2}$/.test(parts[2])) {
+          // 新形式: 現在操作中です_2025-09-12_16:43:37_PC1
+          timestampStr = parts[1] + 'T' + parts[2];
+          this.logger.debug('[TaskWaitManager] 新マーカー形式を検出:', timestampStr);
+        } else {
+          // 旧形式: 現在操作中です_2025-09-12T07:36:12.695Z_pcId_function
+          timestampStr = parts[1];
+        }
+        
+        const timestamp = new Date(timestampStr);
         if (!isNaN(timestamp.getTime())) {
           return Date.now() - timestamp.getTime();
         }

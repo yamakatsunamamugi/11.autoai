@@ -57,9 +57,19 @@ export class ExclusiveControl {
     // プレフィックス
     parts.push(this.markerFormat.prefix);
 
-    // タイムスタンプ
+    // タイムスタンプ（日本時間）
     if (this.markerFormat.includeTimestamp) {
-      parts.push(new Date().toISOString());
+      const now = new Date();
+      const jstOffset = 9 * 60 * 60 * 1000; // +9時間をミリ秒に変換
+      const jstDate = new Date(now.getTime() + jstOffset);
+      
+      // 日付部分 (YYYY-MM-DD)
+      const dateStr = jstDate.toISOString().split('T')[0];
+      parts.push(dateStr);
+      
+      // 時間部分 (HH:MM:SS)
+      const timeStr = jstDate.toISOString().split('T')[1].split('.')[0];
+      parts.push(timeStr);
     }
 
     // PC識別子

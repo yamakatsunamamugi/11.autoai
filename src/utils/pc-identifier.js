@@ -53,23 +53,8 @@ export class PCIdentifier {
    * @returns {string} 識別子
    */
   generateId() {
-    // Chrome拡張のランタイムID（最初の8文字）
-    let extensionId = 'unknown';
-    try {
-      if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id) {
-        extensionId = chrome.runtime.id.substring(0, 8);
-      }
-    } catch (error) {
-      console.warn('[PCIdentifier] Chrome runtime ID取得失敗:', error);
-    }
-
-    // ランダム値（5文字）
-    const randomId = Math.random().toString(36).substring(2, 7);
-    
-    // タイムスタンプベースの値（最後の4文字）
-    const timeId = Date.now().toString(36).slice(-4);
-    
-    return `${extensionId}_${randomId}_${timeId}`;
+    // シンプルなPC識別子を返す
+    return 'PC1';
   }
 
   /**
