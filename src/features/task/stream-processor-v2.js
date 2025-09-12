@@ -1351,37 +1351,26 @@ export default class StreamProcessorV2 {
         function: task.function
       });
       
-      // AIタスクを実行して結果を取得（RetryManagerの設定でリトライ）
-      let result = await this.aiTaskExecutor.executeAITask(tabId, taskData);
+      // AIタスクを実行して結果を取得（RetryManagerでリトライ）
+      let result;
       
-      // Geminiの送信失敗時、RetryManagerの設定通りリトライ
-      if (!result.success && this.retryManager) {
-        let retryCount = 0;
-        const maxRetries = this.retryManager.maxGroupRetryCount || 10;
-        const retryDelays = this.retryManager.groupRetryDelays || [
-          5000, 10000, 30000, 60000, 120000,
-          300000, 600000, 1200000, 1800000, 3600000
-        ];
-        
-        while (!result.success && retryCount < maxRetries) {
-          const delay = retryDelays[retryCount] || retryDelays[retryDelays.length - 1];
-          const delaySeconds = Math.round(delay / 1000);
-          const delayDisplay = delaySeconds < 60 ? `${delaySeconds}秒` : `${Math.round(delaySeconds / 60)}分`;
-          
-          this.logger.log(`[StreamProcessorV2] 🔄 ${task.column}${task.row}: ${delayDisplay}後にリトライ (${retryCount + 1}/${maxRetries}回目)`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-          
-          result = await this.aiTaskExecutor.executeAITask(tabId, taskData);
-          retryCount++;
-          
-          if (result.success) {
-            this.logger.log(`[StreamProcessorV2] ✅ リトライ成功: ${task.column}${task.row} (${retryCount}回目の試行)`);
+      if (this.retryManager) {
+        // RetryManagerのexecuteWithProgressiveRetryを使用（段階的な遅延時間で10回リトライ）
+        const retryResult = await this.retryManager.executeWithProgressiveRetry({
+          action: async () => await this.aiTaskExecutor.executeAITask(tabId, taskData),
+          isSuccess: (res) => res && res.success,
+          actionName: `タスク${task.column}${task.row}実行`,
+          context: { 
+            cell: `${task.column}${task.row}`, 
+            aiType: task.aiType,
+            model: task.model
           }
-        }
+        });
         
-        if (!result.success) {
-          this.logger.error(`[StreamProcessorV2] ❌ ${task.column}${task.row}: ${maxRetries}回リトライしても失敗しました`);
-        }
+        result = retryResult.result || retryResult;
+      } else {
+        // RetryManagerがない場合は通常実行
+        result = await this.aiTaskExecutor.executeAITask(tabId, taskData);
       }
       
       // 結果が成功の場合、スプレッドシートに書き込み

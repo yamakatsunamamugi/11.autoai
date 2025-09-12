@@ -275,6 +275,102 @@ export class RetryManager {
   }
 
   /**
+   * 段階的な遅延時間でリトライを実行
+   * @param {Object} config - リトライ設定
+   * @param {Function} config.action - 実行する処理
+   * @param {Function} config.isSuccess - 成功判定関数
+   * @param {string} config.actionName - 処理名（ログ用）
+   * @param {Object} config.context - 処理のコンテキスト情報
+   * @returns {Promise<Object>} 処理結果
+   */
+  async executeWithProgressiveRetry(config) {
+    const {
+      action,
+      isSuccess = (result) => result && result.success !== false,
+      actionName = '処理',
+      context = {}
+    } = config;
+
+    let retryCount = 0;
+    let lastResult = null;
+    let lastError = null;
+    const maxRetries = this.maxGroupRetryCount || 10;
+    const retryDelays = this.groupRetryDelays || [
+      5000, 10000, 30000, 60000, 120000,
+      300000, 600000, 1200000, 1800000, 3600000
+    ];
+
+    while (retryCount < maxRetries) {
+      try {
+        // リトライの場合はログ出力
+        if (retryCount > 0) {
+          const delay = retryDelays[retryCount - 1] || retryDelays[retryDelays.length - 1];
+          const delaySeconds = Math.round(delay / 1000);
+          const delayDisplay = delaySeconds < 60 ? `${delaySeconds}秒` : `${Math.round(delaySeconds / 60)}分`;
+          this.logger.log(`[RetryManager] ${actionName} 再試行 ${retryCount}/${maxRetries} (${delayDisplay}待機後)`, context);
+        }
+
+        // 処理を実行
+        lastResult = await action();
+
+        // 成功判定
+        if (isSuccess(lastResult)) {
+          if (retryCount > 0) {
+            this.logger.log(`[RetryManager] ✅ ${actionName} 成功（${retryCount}回目の試行）`, context);
+          }
+          return {
+            success: true,
+            result: lastResult,
+            retryCount
+          };
+        }
+
+        // 失敗の詳細をログ
+        this.logger.warn(`[RetryManager] ${actionName} 失敗`, {
+          ...context,
+          attempt: retryCount + 1,
+          result: lastResult
+        });
+
+      } catch (error) {
+        lastError = error;
+        this.logger.error(`[RetryManager] ${actionName} エラー`, {
+          ...context,
+          attempt: retryCount + 1,
+          error: error.message
+        });
+      }
+
+      // 最大リトライ回数に達した場合
+      retryCount++;
+      if (retryCount >= maxRetries) {
+        this.logger.error(`[RetryManager] ❌ ${actionName} が${maxRetries}回失敗しました`, context);
+        return {
+          success: false,
+          result: lastResult,
+          error: lastError,
+          retryCount
+        };
+      }
+
+      // 段階的な遅延時間で待機
+      const delay = retryDelays[retryCount - 1] || retryDelays[retryDelays.length - 1];
+      const delaySeconds = Math.round(delay / 1000);
+      const delayDisplay = delaySeconds < 60 ? `${delaySeconds}秒` : `${Math.round(delaySeconds / 60)}分`;
+      this.logger.log(`[RetryManager] ${delayDisplay}待機中...`);
+      await this.delay(delay);
+    }
+
+    // ここには到達しないはず
+    return {
+      success: false,
+      result: lastResult,
+      error: lastError,
+      retryCount
+    };
+  }
+
+  /**
    * ウィンドウ再作成を伴うリトライ
    * @param {Object} config - リトライ設定
    * @param {Function} config.createWindow - ウィンドウ作成関数
