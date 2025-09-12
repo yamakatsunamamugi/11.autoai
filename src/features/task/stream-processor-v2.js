@@ -12,7 +12,6 @@ import { WindowService } from '../../services/window-service.js';
 import { aiUrlManager } from '../../core/ai-url-manager.js';
 import { RetryManager } from '../../utils/retry-manager.js';
 import TaskGeneratorV2 from './generator-v2.js';
-import { DynamicTaskQueue } from './dynamic-task-queue.js';
 import { GroupCompletionChecker } from './group-completion-checker.js';
 import { TaskWaitManager } from './task-wait-manager.js';
 import { ExclusiveControlManager } from '../../utils/exclusive-control-manager.js';
@@ -87,7 +86,6 @@ export default class StreamProcessorV2 {
     this.dataProcessor = null; // SpreadsheetDataProcessorのインスタンス
     this.processedCells = new Set(); // セル単位で処理済みを追跡
     this.processedAnswerCells = new Set(); // 回答済みセルを追跡（重複処理防止）
-    this.dynamicQueue = new DynamicTaskQueue(logger); // 動的タスクキューを追加
     
     // 現在処理中のグループID
     this.currentGroupId = null;
@@ -2935,48 +2933,6 @@ export default class StreamProcessorV2 {
     };
   }
 
-  /**
-   * 動的タスクキューを使用した新しい処理方式
-   */
-  async processWithDynamicQueue(spreadsheetData, isTestMode) {
-    this.logger.log('[StreamProcessorV2] 🚀 動的タスクキュー処理開始');
-    
-    // SheetsClientを取得（spreadsheetDataから）
-    const sheetsClient = spreadsheetData?.sheetsClient || this.spreadsheetLogger?.sheetsClient || null;
-    
-    // 動的キューを初期化
-    this.dynamicQueue.initialize({
-      sheetsClient: sheetsClient,
-      taskGenerator: this.taskGenerator,
-      spreadsheetData: spreadsheetData,
-      onTaskCompleted: async (batch) => {
-        // バッチ処理を実行
-        return await this.processBatchForQueue(batch, isTestMode);
-      }
-    });
-    
-    // 初期タスクを生成
-    const initialTasks = await this.generateInitialTasks(spreadsheetData);
-    if (initialTasks.length === 0) {
-      this.logger.log('[StreamProcessorV2] 初期タスクがありません');
-      return { success: true, total: 0, completed: 0 };
-    }
-    
-    // キューに初期タスクを追加
-    this.dynamicQueue.enqueue(initialTasks);
-    this.logger.log(`[StreamProcessorV2] 初期タスク${initialTasks.length}個をキューに追加`);
-    
-    // 処理を実行
-    const result = await this.dynamicQueue.processAll();
-    
-    this.logger.log('[StreamProcessorV2] 🎉 動的タスクキュー処理完了', result);
-    return {
-      success: true,
-      total: result.processed,
-      completed: result.processed,
-      iterations: result.iterations
-    };
-  }
   
   /**
    * 初期タスクを生成（最初に処理可能なグループから）
@@ -3445,15 +3401,8 @@ export default class StreamProcessorV2 {
       return this.processGroupsInParallel(incompleteGroups, spreadsheetData);
     }
     
-    // フォールバック: 従来のV3モード処理
-    const useV3Mode = true;  // V3モードを使用
-    const useDynamicQueue = false; // フラグで切り替え可能
-    
-    if (useV3Mode) {
-      return await this.processGroupsSequentiallyV3(spreadsheetData, isTestMode);
-    } else if (useDynamicQueue) {
-      return await this.processWithDynamicQueue(spreadsheetData, isTestMode);
-    }
+    // V3モード処理を使用（動的タスク生成）
+    return await this.processGroupsSequentiallyV3(spreadsheetData, isTestMode);
     
     // 以下は既存のコード（フォールバック用）
     // 再チェックループの最大回数
@@ -4064,6 +4013,12 @@ export default class StreamProcessorV2 {
       this.logger.log(`[StreamProcessorV2] 制御適用: 行制御${rowControls.length}件、列制御${columnControls.length}件`);
     }
     
+    // ========== 最適化: バッチで回答状態をチェック ==========
+    this.logger.log(`[StreamProcessorV2] 🚀 バッチチェック開始: ${promptRows.length}行 × ${answerCols.length}列`);
+    
+    // バッチで回答状態を取得
+    const answerStatusMap = await this.batchCheckAnswers(spreadsheetData, promptRows, answerCols);
+    
     // プロンプトがある行のみを処理（promptRowsを使用）
     let debugCount = 0;
     for (const rowIndex of promptRows) {
@@ -4097,37 +4052,51 @@ export default class StreamProcessorV2 {
         if (tasks.length >= MAX_TASKS_PER_BATCH) {
           break;
         }
-        const answerValue = row[answerColIndex];
         
-        // 回答の判定ロジック
+        // バッチチェック結果から回答状態を取得
+        const answerStatusKey = `${rowIndex}-${answerColIndex}`;
+        const answerStatus = answerStatusMap.get(answerStatusKey);
+        
         let hasAnswer = false;
-        if (answerValue && typeof answerValue === 'string') {
-          const trimmed = answerValue.trim();
-          if (trimmed.length > 0) {
-            // 排他制御マーカーの場合
-            if (trimmed.startsWith('現在操作中です_')) {
-              // TaskWaitManagerのisMarkerTimeoutメソッドを使用
-              const isTimeout = this.waitManager.isMarkerTimeout(trimmed);
-              
-              if (isTimeout) {
-                hasAnswer = false;  // タイムアウト済み → タスクを生成
+        let answerValue = '';
+        
+        if (answerStatus) {
+          // バッチチェック結果を使用（高速）
+          hasAnswer = answerStatus.hasAnswer;
+          answerValue = answerStatus.value;
+        } else {
+          // フォールバック：従来の方法でチェック（バッチ取得に失敗した場合）
+          answerValue = row[answerColIndex];
+          
+          // 回答の判定ロジック
+          if (answerValue && typeof answerValue === 'string') {
+            const trimmed = answerValue.trim();
+            if (trimmed.length > 0) {
+              // 排他制御マーカーの場合
+              if (trimmed.startsWith('現在操作中です_')) {
+                // TaskWaitManagerのisMarkerTimeoutメソッドを使用
+                const isTimeout = this.waitManager.isMarkerTimeout(trimmed);
                 
-                // マーカーの経過時間を計算（ログ用）
-                const age = this.waitManager.calculateMarkerAge(trimmed);
-                if (age !== null) {
-                  this.logger.log(`[scanGroupTasks] 排他制御マーカーがタイムアウト: ${this.indexToColumn(answerColIndex)}${rowIndex + 1} (経過: ${Math.floor(age/60000)}分)`);
+                if (isTimeout) {
+                  hasAnswer = false;  // タイムアウト済み → タスクを生成
+                  
+                  // マーカーの経過時間を計算（ログ用）
+                  const age = this.waitManager.calculateMarkerAge(trimmed);
+                  if (age !== null) {
+                    this.logger.log(`[scanGroupTasks] 排他制御マーカーがタイムアウト: ${this.indexToColumn(answerColIndex)}${rowIndex + 1} (経過: ${Math.floor(age/60000)}分)`);
+                  }
+                } else {
+                  hasAnswer = true;   // まだタイムアウトしていない → タスクをスキップ
                 }
-              } else {
-                hasAnswer = true;   // まだタイムアウトしていない → タスクをスキップ
               }
-            }
-            // 待機テキストや処理完了は回答なしとして扱う  
-            else if (trimmed === 'お待ちください...' || trimmed === '現在操作中です' || trimmed === '処理完了') {
-              hasAnswer = false;
-            }
-            // それ以外は回答ありとして扱う
-            else {
-              hasAnswer = true;
+              // 待機テキストや処理完了は回答なしとして扱う  
+              else if (trimmed === 'お待ちください...' || trimmed === '現在操作中です' || trimmed === '処理完了') {
+                hasAnswer = false;
+              }
+              // それ以外は回答ありとして扱う
+              else {
+                hasAnswer = true;
+              }
             }
           }
         }
@@ -4268,6 +4237,127 @@ export default class StreamProcessorV2 {
     }
   
     return tasks;
+  }
+
+  /**
+   * バッチで複数セルの回答状態をチェック
+   * @param {Object} spreadsheetData - スプレッドシートデータ
+   * @param {Array} promptRows - プロンプトがある行のインデックス配列
+   * @param {Array} answerCols - 回答列のインデックス配列
+   * @returns {Promise<Map>} セル位置 -> 回答状態のマップ
+   */
+  async batchCheckAnswers(spreadsheetData, promptRows, answerCols) {
+    const answerStatusMap = new Map();
+    
+    if (!globalThis.sheetsClient) {
+      this.logger.warn('[batchCheckAnswers] sheetsClientが利用できません');
+      return answerStatusMap;
+    }
+    
+    try {
+      // バッチ取得する範囲を構築
+      const ranges = [];
+      const cellToRange = new Map();
+      
+      for (const rowIndex of promptRows) {
+        for (const colIndex of answerCols) {
+          const colLetter = this.indexToColumn(colIndex);
+          const range = `${colLetter}${rowIndex + 1}`;
+          ranges.push(range);
+          cellToRange.set(range, { rowIndex, colIndex });
+        }
+      }
+      
+      if (ranges.length === 0) {
+        return answerStatusMap;
+      }
+      
+      // 100セルずつバッチ取得（API制限対策）
+      const batchSize = 100;
+      for (let i = 0; i < ranges.length; i += batchSize) {
+        const batchRanges = ranges.slice(i, i + batchSize);
+        
+        try {
+          const batchResult = await globalThis.sheetsClient.batchGetSheetData(
+            spreadsheetData.spreadsheetId,
+            batchRanges,
+            spreadsheetData.sheetName
+          );
+          
+          // 結果を解析
+          if (batchResult && batchResult.valueRanges) {
+            batchResult.valueRanges.forEach((rangeData, index) => {
+              const range = batchRanges[index];
+              const { rowIndex, colIndex } = cellToRange.get(range);
+              const value = rangeData.values?.[0]?.[0] || '';
+              
+              // 回答状態を判定
+              const hasAnswer = this.checkIfHasAnswer(value);
+              answerStatusMap.set(`${rowIndex}-${colIndex}`, {
+                value,
+                hasAnswer,
+                rowIndex,
+                colIndex
+              });
+            });
+          }
+        } catch (error) {
+          this.logger.warn(`[batchCheckAnswers] バッチ取得エラー:`, error);
+        }
+      }
+      
+      this.logger.log(`[batchCheckAnswers] ${answerStatusMap.size}セルの状態をチェック完了`);
+      
+    } catch (error) {
+      this.logger.error('[batchCheckAnswers] エラー:', error);
+    }
+    
+    return answerStatusMap;
+  }
+
+  /**
+   * セルの値が回答済みかチェック
+   * @param {string} value - セルの値
+   * @returns {boolean} 回答済みの場合true
+   */
+  checkIfHasAnswer(value) {
+    if (!value || typeof value !== 'string') {
+      return false;
+    }
+    
+    const trimmed = value.trim();
+    
+    // 空文字は未回答
+    if (!trimmed) {
+      return false;
+    }
+    
+    // 特定のマーカーは未回答とみなす
+    if (trimmed === 'お待ちください...' || 
+        trimmed === '現在操作中です' || 
+        trimmed === '処理完了' ||
+        trimmed === 'TODO' ||
+        trimmed === 'PENDING' ||
+        trimmed === '-' ||
+        trimmed === 'N/A' ||
+        trimmed === '未回答' ||
+        trimmed === '未処理' ||
+        trimmed === '処理中' ||
+        trimmed === 'エラー' ||
+        trimmed === 'ERROR') {
+      return false;
+    }
+    
+    // 排他制御マーカーのチェック
+    if (trimmed.startsWith('現在操作中です_')) {
+      const parsed = this.exclusiveManager?.parseMarker(trimmed);
+      if (parsed && this.exclusiveManager?.isTimeout(trimmed, {})) {
+        return false; // タイムアウトしていれば未回答扱い
+      }
+      return true; // タイムアウトしていなければ回答済み扱い
+    }
+    
+    return true;
   }
 
   /**
@@ -4569,7 +4659,14 @@ export default class StreamProcessorV2 {
         if (emptyScans > 0 || groupTaskCount > 0) {
           await this.delay(3000); // Google Sheets APIの書き込み反映を待つ
           try {
-            const latestData = await this.sheetsClient.getSpreadsheetData(
+            // sheetsClientを取得（globalThisから）
+            const sheetsClient = globalThis.sheetsClient;
+            if (!sheetsClient) {
+              this.logger.warn('[StreamProcessorV2] ⚠️ sheetsClientが利用できません');
+              continue;
+            }
+            
+            const latestData = await sheetsClient.getSpreadsheetData(
               spreadsheetData.spreadsheetId,
               spreadsheetData.sheetName
             );
