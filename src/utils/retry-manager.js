@@ -711,18 +711,74 @@ export class RetryManager {
   isWaitingText(text) {
     if (!text) return false;
     
+    // 「処理完了」もリトライ対象とする
+    if (text === '処理完了') {
+      this.logger.log(`[RetryManager] 処理完了を検出、リトライ対象: ${text}`);
+      return true;
+    }
+    
     // 排他制御マーカー（前方一致）をチェック
     if (text.startsWith('現在操作中です_')) {
-      // マーカー形式: 現在操作中です_timestamp_pcId_function
+      // 新形式: 現在操作中です_日付_時刻_pcId_機能（オプション）
+      // 旧形式: 現在操作中です_timestamp_pcId_機能
       const parts = text.split('_');
-      if (parts.length >= 3) {
-        const markerPcId = parts[2];
-        
-        // 自分のPCのマーカーなら待機しない
-        if (markerPcId === this.pcId) {
-          this.logger.log(`[RetryManager] 自分のマーカーをスキップ: ${markerPcId}`);
-          return false;
+      
+      // タイムアウトチェック
+      let timestamp, functionName;
+      if (parts.length >= 4 && parts[1].match(/^\d{4}-\d{2}-\d{2}$/)) {
+        // 新形式（日付と時刻が分離）
+        timestamp = `${parts[1]}T${parts[2]}`;
+        functionName = parts.length >= 5 ? parts[4] : '通常';
+      } else if (parts.length >= 3) {
+        // 旧形式
+        timestamp = parts[1];
+        functionName = parts.length >= 4 ? parts[3] : '通常';
+      }
+      
+      // タイムスタンプからの経過時間を計算
+      if (timestamp) {
+        try {
+          const markerTime = new Date(timestamp).getTime();
+          const age = Date.now() - markerTime;
+          
+          // 機能別のタイムアウト設定（ミリ秒）
+          const timeouts = {
+            'Deep Research': 40 * 60 * 1000,    // 40分
+            'ディープリサーチ': 40 * 60 * 1000, // 40分
+            'エージェント': 40 * 60 * 1000,     // 40分
+            'Canvas': 10 * 60 * 1000,           // 10分
+            'ウェブ検索': 8 * 60 * 1000,        // 8分
+            '通常': 5 * 60 * 1000,              // 5分
+            'default': 5 * 60 * 1000            // デフォルト5分
+          };
+          
+          const timeout = timeouts[functionName] || timeouts.default;
+          
+          if (age > timeout) {
+            this.logger.log(`[RetryManager] 排他制御マーカーがタイムアウト、リトライ対象: ${text.substring(0, 50)}... (経過: ${Math.floor(age / 60000)}分, タイムアウト: ${Math.floor(timeout / 60000)}分)`);
+            return true; // タイムアウトした場合はリトライ対象
+          }
+        } catch (error) {
+          this.logger.warn(`[RetryManager] タイムスタンプ解析エラー: ${error.message}`);
+          // 解析できない場合はリトライ対象とする
+          return true;
         }
+      }
+      
+      // PC IDの位置を判定（新形式なら4番目、旧形式なら3番目）
+      let markerPcId;
+      if (parts.length >= 4 && parts[1].match(/^\d{4}-\d{2}-\d{2}$/)) {
+        // 新形式（日付形式を検出）
+        markerPcId = parts[3];
+      } else if (parts.length >= 3) {
+        // 旧形式
+        markerPcId = parts[2];
+      }
+      
+      // 自分のPCのマーカーなら待機しない
+      if (markerPcId === this.pcId) {
+        this.logger.log(`[RetryManager] 自分のマーカーをスキップ: ${markerPcId}`);
+        return false;
       }
       
       // 他のPCのマーカーなら待機

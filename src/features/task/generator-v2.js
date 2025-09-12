@@ -533,10 +533,24 @@ export default class TaskGeneratorV2 {
     const trimmed = value.trim();
     if (!trimmed) return false;
     
+    // 「処理完了」は未回答として扱う
+    if (trimmed === '処理完了') {
+      this.logger?.log(`[TaskGeneratorV2] 「処理完了」を検出 → 未回答として扱う: "${trimmed}"`);
+      return false;
+    }
+    
+    // 排他制御マーカーは未回答として扱う
+    // タイムアウト判定はRetryManagerで行う
+    if (trimmed.startsWith('現在操作中です_')) {
+      this.logger?.log(`[TaskGeneratorV2] 排他制御マーカーを検出 → 未回答として扱う: "${trimmed.substring(0, 50)}..."`);
+      return false;
+    }
+    
     // エラーマーカーは回答なしとして扱う
     const errorMarkers = ['error', 'エラー', 'failed', '失敗', '×'];
     for (const marker of errorMarkers) {
       if (trimmed.toLowerCase().includes(marker)) {
+        this.logger?.log(`[TaskGeneratorV2] エラーマーカーを検出 → 未回答として扱う: "${trimmed}"`);
         return false;
       }
     }

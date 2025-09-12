@@ -1,7 +1,8 @@
 {
   "waitingTextPatterns": [
     "お待ちください...",
-    "現在操作中です"
+    "現在操作中です",
+    "処理完了"
   ],
   "retryConfig": {
     "maxRetryCount": 10,

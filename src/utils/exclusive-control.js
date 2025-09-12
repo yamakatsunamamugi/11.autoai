@@ -111,9 +111,22 @@ export class ExclusiveControl {
     const parts = marker.split(this.markerFormat.separator);
     
     if (parts.length >= 3) {
-      const timestamp = parts[1];
-      const pcId = parts[2];
-      const functionName = parts.length >= 4 ? parts[3] : null;
+      let timestamp, pcId, functionName;
+      
+      // 新形式のチェック（日付_時刻が分離）: 現在操作中です_2025-09-13_04:50:56_ooeehlmj_98ae8_通常
+      if (parts.length >= 4 && parts[1].match(/^\d{4}-\d{2}-\d{2}$/)) {
+        // 新形式
+        const dateStr = parts[1]; // 2025-09-13
+        const timeStr = parts[2]; // 04:50:56
+        timestamp = `${dateStr}T${timeStr}`;
+        pcId = parts[3];
+        functionName = parts.length >= 5 ? parts[4] : null;
+      } else {
+        // 旧形式
+        timestamp = parts[1];
+        pcId = parts[2];
+        functionName = parts.length >= 4 ? parts[3] : null;
+      }
       
         try {
           const timestampDate = new Date(timestamp);

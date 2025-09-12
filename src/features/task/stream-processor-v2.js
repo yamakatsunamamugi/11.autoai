@@ -22,6 +22,7 @@ import EXCLUSIVE_CONTROL_CONFIG, {
   getTimeoutForFunction, 
   getRetryIntervalForFunction 
 } from '../../config/exclusive-control-config.js';
+import { pcIdentifier } from '../../utils/pc-identifier.js';
 
 // SpreadsheetLoggerをキャッシュ
 let SpreadsheetLogger = null;
@@ -85,6 +86,7 @@ export default class StreamProcessorV2 {
     this.spreadsheetLogger = null;
     this.dataProcessor = null; // SpreadsheetDataProcessorのインスタンス
     this.processedCells = new Set(); // セル単位で処理済みを追跡
+    this.processedAnswerCells = new Set(); // 回答済みセルを追跡（重複処理防止）
     this.dynamicQueue = new DynamicTaskQueue(logger); // 動的タスクキューを追加
     
     // 現在処理中のグループID
@@ -623,6 +625,8 @@ export default class StreamProcessorV2 {
               
               if (releaseResult.success) {
                 this.logger.log(`[StreamProcessorV2] ✅ ${range}に応答を書き込み成功（排他制御解除）`);
+                // 処理済みセルとして記録（重複処理防止）
+                this.processedAnswerCells.add(range);
               } else {
                 this.logger.error(`[StreamProcessorV2] ❌ ${range}への書き込み結果が不明`);
               }
@@ -1625,6 +1629,12 @@ export default class StreamProcessorV2 {
       
       this.logger.log(`[StreamProcessorV2] ✅ ${task.column}${task.row}処理完了`);
       
+      // 成功時の戻り値を返す（重要！これがないと失敗扱いになる）
+      return {
+        success: true,
+        response: result?.response || '処理完了'
+      };
+      
     } catch (error) {
       this.logger.error(`[StreamProcessorV2] タスク処理エラー ${task.column}${task.row}:`, error);
       this.failedTasks.add(task.id);
@@ -1641,6 +1651,12 @@ export default class StreamProcessorV2 {
       }
       
       this.logger.log(`[StreamProcessorV2] 🔄 失敗タスクを記録 (例外): ${task.column}${task.row}`);
+      
+      // 失敗時の戻り値を返す
+      return {
+        success: false,
+        error: error.message
+      };
       // throw error; // エラーをスローせず、処理を継続してリトライ処理に到達させる
     }
   }
@@ -3957,6 +3973,7 @@ export default class StreamProcessorV2 {
    */
   async scanGroupTasks(spreadsheetData, promptCols, answerCols) {
     const tasks = [];
+    const MAX_TASKS_PER_BATCH = 3; // バッチあたりの最大タスク数
     
     this.logger.log(`[StreamProcessorV2] 📊 scanGroupTasks開始:`, {
       spreadsheetData: spreadsheetData ? 'あり' : 'なし',
@@ -4050,6 +4067,12 @@ export default class StreamProcessorV2 {
     // プロンプトがある行のみを処理（promptRowsを使用）
     let debugCount = 0;
     for (const rowIndex of promptRows) {
+      // 最大タスク数に達したら終了
+      if (tasks.length >= MAX_TASKS_PER_BATCH) {
+        this.logger.log(`[StreamProcessorV2] 📦 最大タスク数(${MAX_TASKS_PER_BATCH})に達したため、スキャン終了`);
+        break;
+      }
+      
       // 範囲外チェック
       if (rowIndex < startRow || rowIndex >= endRow) continue;
       
@@ -4070,6 +4093,10 @@ export default class StreamProcessorV2 {
       
       // 対応する回答列をチェック
       for (const answerColIndex of answerCols) {
+        // 最大タスク数に達したら内側ループも終了
+        if (tasks.length >= MAX_TASKS_PER_BATCH) {
+          break;
+        }
         const answerValue = row[answerColIndex];
         
         // 回答の判定ロジック
@@ -4105,6 +4132,14 @@ export default class StreamProcessorV2 {
           }
         }
         
+        // 処理済みセルチェック（重複処理防止）
+        const cellKey = `${this.indexToColumn(answerColIndex)}${rowIndex + 1}`;
+        if (this.processedAnswerCells.has(cellKey)) {
+          hasAnswer = true;  // 既に処理済みのセル
+          debugCount++;
+          continue;
+        }
+        
         // デバッグ：最初の5行と問題のある行（40-42行目）の回答状態を確認
         if (debugCount < 5 || (rowIndex >= 39 && rowIndex <= 42)) {
           this.logger.log(`[DEBUG] 行${rowIndex + 1} 回答列${this.indexToColumn(answerColIndex)}[${answerColIndex}]: "${answerValue ? answerValue.substring(0, 50) : '(空)'}" → ${hasAnswer ? '回答済み' : '未回答'}`);
@@ -4128,12 +4163,97 @@ export default class StreamProcessorV2 {
           answerExistCount++;
           skippedCompleted++;
         } else {
-          // プロンプトあり＆回答なし = タスク対象
-          tasks.push({
-            row: rowIndex + 1, // 1ベース行番号
-            column: this.indexToColumn(answerColIndex),
-            columnIndex: answerColIndex
-          });
+          // プロンプトあり＆回答なし = 予約処理を試みる
+          const taskCell = `${this.indexToColumn(answerColIndex)}${rowIndex + 1}`;
+          
+          // 未処理のセルのみ予約を試みる
+          if (!this.processedAnswerCells.has(taskCell)) {
+            // sheetsClientの取得
+            const sheetsClient = globalThis.sheetsClient;
+            
+            // sheetsClientが未定義の場合は通常のタスク処理
+            if (!sheetsClient) {
+              this.logger.warn('[scanGroupTasks] sheetsClient未定義、予約処理をスキップしてタスク追加');
+              // 最大タスク数チェック
+              if (tasks.length < MAX_TASKS_PER_BATCH) {
+                tasks.push({
+                  row: rowIndex + 1, // 1ベース行番号
+                  column: this.indexToColumn(answerColIndex),
+                  columnIndex: answerColIndex
+                });
+              }
+              continue;
+            }
+            
+            // 予約処理（複数PC対応）
+            const pcId = pcIdentifier.getId();
+            const uniqueId = `${Date.now()}_${Math.random().toString(36).substr(2,5)}`;
+            const myMarker = `予約_${pcId}_${uniqueId}`;
+            
+            try {
+              // 1. 予約マーカーを書き込み
+              await sheetsClient.updateCell(
+                spreadsheetData.spreadsheetId,
+                taskCell,
+                myMarker,
+                spreadsheetData.gid
+              );
+              
+              // 2. 2秒待機（第1段階）
+              await this.delay(2000);
+              
+              // 3. 中間チェック
+              const midCheck = await sheetsClient.getCellValue(
+                spreadsheetData.spreadsheetId,
+                spreadsheetData.sheetName,
+                taskCell
+              );
+              
+              if (!midCheck || !midCheck.includes(pcId)) {
+                this.logger.log(`[scanGroupTasks] 予約失敗（2秒後）: ${taskCell}`);
+                continue; // 他PCに取られた
+              }
+              
+              // 4. 3秒追加待機（第2段階）
+              await this.delay(3000);
+              
+              // 5. 最終チェック
+              const finalCheck = await sheetsClient.getCellValue(
+                spreadsheetData.spreadsheetId,
+                spreadsheetData.sheetName,
+                taskCell
+              );
+              
+              if (finalCheck && finalCheck.includes(pcId)) {
+                // 予約成功！
+                this.logger.log(`[scanGroupTasks] ✅ 予約成功: ${taskCell}`);
+                
+                // 処理開始マーカーに更新
+                const timestamp = new Date().toISOString().replace('T', '_').split('.')[0];
+                await sheetsClient.updateCell(
+                  spreadsheetData.spreadsheetId,
+                  taskCell,
+                  `現在操作中です_${timestamp}_${pcId}`,
+                  spreadsheetData.gid
+                );
+                
+                // タスクとして追加
+                tasks.push({
+                  row: rowIndex + 1, // 1ベース行番号
+                  column: this.indexToColumn(answerColIndex),
+                  columnIndex: answerColIndex
+                });
+                
+                // 処理済みセルとして記録
+                this.processedAnswerCells.add(taskCell);
+              } else {
+                this.logger.log(`[scanGroupTasks] 予約失敗（5秒後）: ${taskCell}`);
+              }
+              
+            } catch (error) {
+              this.logger.warn(`[scanGroupTasks] 予約処理エラー: ${taskCell}`, error);
+            }
+          }
         }
       }
     }
@@ -4445,6 +4565,23 @@ export default class StreamProcessorV2 {
       let groupTaskCount = 0;
       
       while (emptyScans < 3) {
+        // 最新のスプレッドシートデータを取得（書き込み反映のため）
+        if (emptyScans > 0 || groupTaskCount > 0) {
+          await this.delay(3000); // Google Sheets APIの書き込み反映を待つ
+          try {
+            const latestData = await this.sheetsClient.getSpreadsheetData(
+              spreadsheetData.spreadsheetId,
+              spreadsheetData.sheetName
+            );
+            if (latestData && latestData.values) {
+              spreadsheetData.values = latestData.values;
+              this.logger.log('[StreamProcessorV2] 📊 最新データを取得しました');
+            }
+          } catch (error) {
+            this.logger.warn('[StreamProcessorV2] ⚠️ 最新データ取得エラー:', error);
+          }
+        }
+        
         // タスクをスキャン
         const tasks = await this.scanGroupTasks(
           spreadsheetData,
@@ -4463,8 +4600,8 @@ export default class StreamProcessorV2 {
             this.logger.log(`[StreamProcessorV2] ✅ ${group.name}: 3回連続空スキャン、グループ完了`);
             break;
           }
-          this.logger.log(`[StreamProcessorV2] ⏳ ${group.name}: タスクなし、2秒待機... (${emptyScans}/3)`);
-          await this.delay(2000);
+          this.logger.log(`[StreamProcessorV2] ⏳ ${group.name}: タスクなし、5秒待機... (${emptyScans}/3)`);
+          await this.delay(5000);
           continue;
         }
         
@@ -4491,7 +4628,9 @@ export default class StreamProcessorV2 {
           
           
           // タスクオブジェクトを作成（AI/モデル/機能は実行時に動的取得）
-          const taskId = this.generateTaskId(taskInfo.column, taskInfo.row);
+          // セル位置ベースのIDを生成（処理済みチェックで一貫性を保つ）
+          const cellKey = `${taskInfo.column}${taskInfo.row}`;
+          const taskId = `${cellKey}_${Date.now()}_${Math.random().toString(36).substr(2, 7)}`;
           const task = {
             groupId: group.id, // グループIDを追加（キャッシュデータ参照用）
             id: taskId,

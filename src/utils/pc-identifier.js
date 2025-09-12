@@ -53,8 +53,28 @@ export class PCIdentifier {
    * @returns {string} 識別子
    */
   generateId() {
-    // シンプルなPC識別子を返す
-    return 'PC1';
+    // Chrome拡張のランタイムIDとランダム値を組み合わせて一意性を確保
+    try {
+      let baseId = 'PC';
+      
+      // Chrome拡張のランタイムIDを取得
+      if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id) {
+        // ランタイムIDの末尾8文字を使用（長すぎると見づらいため）
+        const runtimeId = chrome.runtime.id;
+        baseId = runtimeId.substring(runtimeId.length - 8);
+      }
+      
+      // ランダムなサフィックスを追加（5文字）
+      const randomSuffix = Math.random().toString(36).substring(2, 7);
+      
+      // 組み合わせて返す（例: "abcd1234_x7k9m"）
+      return `${baseId}_${randomSuffix}`;
+      
+    } catch (error) {
+      console.warn('[PCIdentifier] ID生成エラー:', error);
+      // エラー時はランダムIDを生成
+      return `PC_${Math.random().toString(36).substring(2, 10)}`;
+    }
   }
 
   /**
