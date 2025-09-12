@@ -2735,14 +2735,7 @@ export default class StreamProcessorV2 {
           this.logger.warn(`[StreamProcessorV2] グループ${groupIndex + 1}の完了待機がタイムアウトしました`);
         }
         
-        // スプレッドシートを再読み込みして最新状態を取得
-        let latestSpreadsheetData = spreadsheetData;
-        // sheetsClientは既に2688行目で宣言済み
-        sheetsClient = this.sheetsClient;
-        if (!sheetsClient && this.spreadsheetLogger?.sheetsClient) {
-          sheetsClient = this.spreadsheetLogger.sheetsClient;
-        }
-        
+        // スプレッドシートを再読み込みして最新状態を取得（既存の変数を再利用）
         if (sheetsClient && spreadsheetData.spreadsheetId) {
           try {
             const latestData = await sheetsClient.loadAutoAIData(
