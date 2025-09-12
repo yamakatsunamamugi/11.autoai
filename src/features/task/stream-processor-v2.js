@@ -916,39 +916,43 @@ export default class StreamProcessorV2 {
             this.logger.error(`[StreamProcessorV2] ❌ ${context.cell}: 排他制御クリア失敗`, clearError);
           }
           */
-        }
-        
-        // ログ書き込みが完全に終わるまで少し待機
-        await sleep(1000);
-        
-        // ウィンドウを閉じる
-        try {
-          const tab = await chrome.tabs.get(context.tabId);
-          if (tab && tab.windowId) {
-            await chrome.windows.remove(tab.windowId);
-            this.logger.log(`[StreamProcessorV2] 🔒 ウィンドウを閉じました: ${context.cell} - WindowID: ${tab.windowId}`);
-          }
-        } catch (error) {
-          this.logger.warn(`[StreamProcessorV2] ウィンドウを閉じる際にエラー (${context.cell}):`, error);
-        }
-        
-          this.logger.log(`[StreamProcessorV2] ✅ 送信完了: ${context.cell}`);
-          return { status: 'fulfilled', value: result, cell: context.cell };
-          
+            }
+            
+            // ログ書き込みが完全に終わるまで少し待機
+            await sleep(1000);
+            
+            // ウィンドウを閉じる
+            try {
+              const tab = await chrome.tabs.get(context.tabId);
+              if (tab && tab.windowId) {
+                await chrome.windows.remove(tab.windowId);
+                this.logger.log(`[StreamProcessorV2] 🔒 ウィンドウを閉じました: ${context.cell} - WindowID: ${tab.windowId}`);
+              }
+            } catch (error) {
+              this.logger.warn(`[StreamProcessorV2] ウィンドウを閉じる際にエラー (${context.cell}):`, error);
+            }
+            
+            this.logger.log(`[StreamProcessorV2] ✅ 送信完了: ${context.cell}`);
+            return { status: 'fulfilled', value: result, cell: context.cell };
+            
+          }).catch(async error => {
+            this.logger.error(`[StreamProcessorV2] ❌ ${context.cell}の送信エラー:`, error);
+            
+            // エラー時もウィンドウを閉じる
+            try {
+              const tab = await chrome.tabs.get(context.tabId);
+              if (tab && tab.windowId) {
+                await chrome.windows.remove(tab.windowId);
+                this.logger.log(`[StreamProcessorV2] 🔒 エラー後にウィンドウを閉じました: ${context.cell}`);
+              }
+            } catch (closeError) {
+              this.logger.warn(`[StreamProcessorV2] ウィンドウクローズエラー:`, closeError);
+            }
+            
+            return { status: 'rejected', reason: error, cell: context.cell };
+          });
         } catch (error) {
           this.logger.error(`[StreamProcessorV2] ❌ ${context.cell}の送信エラー:`, error);
-          
-          // エラー時もウィンドウを閉じる
-          try {
-            const tab = await chrome.tabs.get(context.tabId);
-            if (tab && tab.windowId) {
-              await chrome.windows.remove(tab.windowId);
-              this.logger.log(`[StreamProcessorV2] 🔒 エラー後にウィンドウを閉じました: ${context.cell}`);
-            }
-          } catch (closeError) {
-            this.logger.warn(`[StreamProcessorV2] ウィンドウクローズエラー:`, closeError);
-          }
-          
           return { status: 'rejected', reason: error, cell: context.cell };
         }
       });
