@@ -1391,7 +1391,7 @@ export default class StreamProcessorV2 {
               await this.executePhaseOnTab(tabId, { ...task, prompt }, 'text');
             }
           },
-          executePhase: async () => {
+          executePhase: async (tabId, taskData) => {
             return await this.aiTaskExecutor.executeAITask(tabId, taskData);
           },
           task: task,
@@ -1400,7 +1400,7 @@ export default class StreamProcessorV2 {
             aiType: task.aiType,
             model: task.model,
             tabId: tabId,
-            position: context?.position || 0
+            position: position || 0
           }
         });
         
