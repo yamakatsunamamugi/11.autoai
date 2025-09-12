@@ -562,7 +562,7 @@ export default class StreamProcessorV2 {
           const task = batch[index];
           const error = result.status === 'fulfilled' ? result.value.error || result.value.reason : result.reason;
           failedTasks.push(`${task.column}${task.row}`);
-          this.logger.log(`[StreamProcessorV2] ❌ パイプライン失敗: ${task.column}${task.row} - ${error}`);
+          this.logger.log(`[StreamProcessorV2] スキップ: ${task.column}${task.row} - ${error}`);
         }
       });
       
