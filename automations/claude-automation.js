@@ -783,13 +783,13 @@ ${prompt}`;
 
                     // ポインターイベントを使用してメニューを開く
                     console.log('アクション: PointerEventを使用してモデルメニューを開きます');
-                    console.log('  - pointerdownイベントを発火');
+                    console.log('  ステップ 2.2.1.1: pointerdownイベントを発火');
                     menuButton.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, view: window }));
                     await wait(100);
-                    console.log('  - 100ms待機');
-                    console.log('  - pointerupイベントを発火');
+                    console.log('  ステップ 2.2.1.2: 100ms待機');
+                    console.log('  ステップ 2.2.1.3: pointerupイベントを発火');
                     menuButton.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, view: window }));
-                    console.log('  - 1500ms待機（メニュー展開待ち）');
+                    console.log('  ステップ 2.2.1.4: 1500ms待機（メニュー展開待ち）');
                     await wait(1500);
                     console.log('結果: モデルメニューを開きました');
                     console.log('■■■ ステップ 2.2.1 完了 ■■■');
