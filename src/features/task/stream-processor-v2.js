@@ -654,64 +654,214 @@ export default class StreamProcessorV2 {
         this.logger.log(`[StreamProcessorV2] ✅ 全応答処理完了`);
       }
       
-      // 以下の送信処理は削除（setupCompleteTask内で実行済み）
-      return;
+      // 送信処理はsetupCompleteTask内で実行済み
+    } catch (error) {
+      this.logger.error(`[StreamProcessorV2] バッチ処理エラー:`, error);
+      throw error;
+    }
+    
+    this.logger.log(`[StreamProcessorV2] ✅ バッチ処理完了`, {
+      完了: this.completedTasks.size,
+      合計: batch.length
+    });
+  }
+
+  /**
+   * 指定時間待機
+   */
+  async delay(ms) {
+    return sleep(ms);
+  }
+
+  /**
+   * タブにスクリプトを注入（タイムアウト・リトライ付き）
+   * @param {number} tabId - タブID
+   * @param {string} aiType - AIタイプ
+   * @param {number} maxRetries - 最大リトライ回数
+   */
+  async injectScriptsForTab(tabId, aiType, maxRetries = 3) {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        this.logger.log(`[StreamProcessorV2] 🔄 スクリプト注入試行 ${attempt}/${maxRetries}`);
+        
+        // タイムアウト付きで実行（60秒）
+        const result = await Promise.race([
+          this._injectScriptsCore(tabId, aiType),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Script injection timeout (60s)')), 60000)
+          )
+        ]);
+        
+        if (result) {
+          this.logger.log(`[StreamProcessorV2] ✅ スクリプト注入成功 (試行 ${attempt})`);
+          return true;
+        }
+      } catch (error) {
+        this.logger.error(`[StreamProcessorV2] ❌ スクリプト注入失敗 (試行 ${attempt}/${maxRetries}):`, error);
+        
+        if (attempt === maxRetries) {
+          throw new Error(`Script injection failed after ${maxRetries} attempts: ${error.message}`);
+        }
+        
+        // リトライ前に待機
+        await this.delay(3000);
+      }
+    }
+    return false;
+  }
+
+  /**
+   * スクリプト注入のコア処理
+   * @private
+   */
+  async _injectScriptsCore(tabId, aiType) {
+    const startTime = Date.now();
+    
+    this.logger.log(`[StreamProcessorV2] 📦 ${aiType}用スクリプト注入開始 (タブ: ${tabId})`);
+    
+    // AIタイプの判定
+    const aiTypeLower = aiType ? aiType.toLowerCase() : 'chatgpt';
+    
+    // 注入するスクリプトをAIタイプに応じて決定
+    let scriptPaths = [];
+    
+    if (aiTypeLower === 'claude') {
+      scriptPaths = [
+        'src/config/ui-selectors.js',
+        'automations/common-ai-handler.js',
+        'automations/claude-automation.js'
+      ];
+    } else if (aiTypeLower === 'chatgpt') {
+      scriptPaths = [
+        'src/config/ui-selectors.js',
+        'automations/common-ai-handler.js',
+        'automations/chatgpt-automation.js'
+      ];
+    } else if (aiTypeLower === 'gemini') {
+      scriptPaths = [
+        'src/config/ui-selectors.js',
+        'automations/common-ai-handler.js',
+        'automations/gemini-automation.js'
+      ];
+    } else {
+      throw new Error(`Unsupported AI type: ${aiType}`);
+    }
+    
+    // スクリプトを順番に注入
+    for (const scriptPath of scriptPaths) {
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId },
+          files: [scriptPath],
+          world: 'MAIN'
+        });
+        this.logger.log(`[StreamProcessorV2] ✅ スクリプト注入成功: ${scriptPath}`);
+      } catch (error) {
+        this.logger.error(`[StreamProcessorV2] ❌ スクリプト注入失敗: ${scriptPath}`, error);
+        throw error;
+      }
+    }
+    
+    const elapsed = Date.now() - startTime;
+    this.logger.log(`[StreamProcessorV2] ✨ 全スクリプト注入完了 (${elapsed}ms)`);
+    
+    return { success: true };
+  }
+
+  /**
+   * ページ要素の検証
+   */
+  async validatePageElements(tabId, aiType) {
+    try {
+      const result = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: (aiType) => {
+          // 基本的なDOM要素の存在確認
+          const aiTypeLower = aiType.toLowerCase();
+          
+          if (aiTypeLower === 'claude') {
+            return {
+              hasTextarea: !!document.querySelector('div[contenteditable="true"]'),
+              hasInterface: !!document.querySelector('main')
+            };
+          } else if (aiTypeLower === 'chatgpt') {
+            return {
+              hasTextarea: !!document.querySelector('textarea'),
+              hasInterface: !!document.querySelector('main')
+            };
+          } else if (aiTypeLower === 'gemini') {
+            return {
+              hasTextarea: !!document.querySelector('rich-textarea'),
+              hasInterface: !!document.querySelector('main')
+            };
+          }
+          
+          return { hasTextarea: false, hasInterface: false };
+        },
+        args: [aiType]
+      });
       
-      // 削除される送信処理
-      const sendPromises = taskContexts.map(async (context, index) => {
-        try {
-          // 各ウィンドウの開始を5秒ずつ遅らせる
-          if (index > 0) {
-            this.logger.log(`[StreamProcessorV2] ウィンドウ${index + 1}の送信を${index * 5}秒後に開始`);
-            await this.delay(index * 5000);
-          }
-          
-          this.logger.log(`[StreamProcessorV2] 送信開始 ${index + 1}/${taskContexts.length}: ${context.cell}`);
-          
-          // 送信時刻を記録
-          if (this.spreadsheetLogger) {
-            this.spreadsheetLogger.recordSendTime(context.task.id, {
-              aiType: context.task.aiType,
-              model: context.task.model
-            });
-            this.logger.log(`[StreamProcessorV2] 送信時刻記録: ${context.task.id}`);
-          }
-          
-          // RetryManager付きのprocessTaskを使用（段階的リトライ対応）
-          this.logger.log(`[StreamProcessorV2] 🔄 新フロー: processTask実行開始 ${context.cell}`);
-          // 並行処理のため既存タブIDの設定を削除（各タスクが独自ウィンドウを作成）
-          
-          // awaitを削除して並列実行を可能にする
-          // 結果はPromiseとして返され、後でPromise.allで待機
-          const resultPromise = this.processTask(context.task, false, false, true);
-          
-          // Promiseが解決した時の処理を設定
-          return resultPromise.then(async result => {
-            // 結果を処理
-            if (result && result.response) {
-              this.completedTasks.add(context.task.id);
-              this.writtenCells.set(context.cell, result.response);
-              
-              // Canvas機能使用時の応答チェック
-              if (context.task.function === 'Canvas' || context.task.displayedFunction === 'Canvas') {
-                this.logger.log(`[StreamProcessorV2] 🎨 Canvas応答を検出: ${result.response.substring(0, 200)}...`);
-              }
-              
-              // スプレッドシートに書き込み
-              if (this.spreadsheetData) {
-                const { spreadsheetId, gid } = this.spreadsheetData;
-                const range = context.cell;
-                
-                // 応答内容を確認
-                this.logger.log(`[StreamProcessorV2] 📝 書き込み準備: ${range}`, {
-                  responseLength: result.response.length,
-                  responsePreview: result.response.substring(0, 100),
-                  isCanvas: context.task.function === 'Canvas'
-                });
-                
-                try {
-                  // 排他制御マネージャーを使ってロック解放（応答書き込みと同時）
-                  const releaseResult = await this.exclusiveManager.releaseLock(
+      if (result && result[0] && result[0].result) {
+        const validation = result[0].result;
+        this.logger.log(`[StreamProcessorV2] ページ要素検証:`, validation);
+        return validation.hasTextarea && validation.hasInterface;
+      }
+      
+      return false;
+    } catch (error) {
+      this.logger.error(`[StreamProcessorV2] ページ要素検証エラー:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * 指定時間待機
+   */
+  async delay(ms) {
+    return sleep(ms);
+  }
+
+  /**
+   * タブにスクリプトを注入（タイムアウト・リトライ付き）
+   * @param {number} tabId - タブID
+   * @param {string} aiType - AIタイプ
+   * @param {number} maxRetries - 最大リトライ回数
+   */
+  async injectScriptsForTab(tabId, aiType, maxRetries = 3) {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        this.logger.log(`[StreamProcessorV2] 🔄 スクリプト注入試行 ${attempt}/${maxRetries}`);
+        
+        // タイムアウト付きで実行（60秒）
+        const result = await Promise.race([
+          this._injectScriptsCore(tabId, aiType),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Script injection timeout (60s)')), 60000)
+          )
+        ]);
+        
+        if (result) {
+          this.logger.log(`[StreamProcessorV2] ✅ スクリプト注入成功 (試行 ${attempt})`);
+          return true;
+        }
+      } catch (error) {
+        this.logger.error(`[StreamProcessorV2] ❌ スクリプト注入失敗 (試行 ${attempt}/${maxRetries}):`, error);
+        
+        if (attempt === maxRetries) {
+          throw new Error(`Script injection failed after ${maxRetries} attempts: ${error.message}`);
+        }
+        
+        // リトライ前に待機
+        await this.delay(3000);
+      }
+    }
+    return false;
+  }
+
+  /**
+   * createWindowForTask
+   */
+  async createWindowForTask(task, positionIndex) {
                     context.task,
                     result.response,
                     globalThis.sheetsClient,
