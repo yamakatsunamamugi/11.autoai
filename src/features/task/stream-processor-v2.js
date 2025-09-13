@@ -3573,8 +3573,7 @@ export default class StreamProcessorV2 {
             results.failed++;
             this.logger.error(`[StreamProcessorV2] ❌ 行${rowIndex}: Genspark処理失敗 - ${response?.error || 'Unknown error'}`);
           }
-          }
-          
+
         } catch (rowError) {
           results.failed++;
           this.logger.error(`[StreamProcessorV2] ❌ 行${rowIndex}処理エラー:`, rowError);
