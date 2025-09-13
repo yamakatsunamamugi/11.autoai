@@ -221,25 +221,7 @@ export class TaskGroupScanner {
           debugCount++;
           continue;
         }
-        
-        // デバッグ：最初の5行と問題のある行（40-42行目）の回答状態を確認
-        if (debugCount < 5 || (rowIndex >= 39 && rowIndex <= 42)) {
-          this.logger.log(`[DEBUG] 行${rowIndex + 1} 回答列${this.indexToColumn(answerColIndex)}[${answerColIndex}]: "${answerValue ? answerValue.substring(0, 50) : '(空)'}" → ${hasAnswer ? '回答済み' : '未回答'}`);
-          
-          // 41行目の詳細デバッグ
-          if (rowIndex === 40) { // 0ベースなので40が41行目
-            this.logger.log(`[DEBUG] ⚠️ 41行目詳細:`, {
-              row長: row.length,
-              B列: row[1] || '(空)',
-              H列: row[7] || '(空)', 
-              I列: row[8] || '(空)',
-              I列型: typeof row[8],
-              制御チェック: this.shouldProcessRow(41, rowControls) ? '処理対象' : 'スキップ'
-            });
-          }
-          debugCount++;
-        }
-        
+
         if (hasAnswer) {
           // 回答済み - スキップ
           answerExistCount++;

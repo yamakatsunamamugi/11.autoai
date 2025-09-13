@@ -135,22 +135,43 @@
           "[data-testid=\"canvas-content\"]",
           "div[class*=\"canvas\"]",
           "div[class*=\"artifact\"]"
+        ],
+        "NORMAL_RESPONSE": [
+          ".grid-cols-1.grid",
+          "div[class*=\"grid-cols-1\"][class*=\"grid\"]",
+          ".font-claude-message",
+          "[data-is-streaming=\"false\"]",
+          "div[class*=\"font-claude-message\"]",
+          ".group.relative.-tracking-[0.015em]",
+          ".standard-markdown"
+        ],
+        "ARTIFACT_CONTENT": [
+          "[data-testid=\"canvas-content\"]",
+          "#canvas-content",
+          "div[class*=\"artifact\"]",
+          "div[class*=\"canvas\"]"
         ]
       }
     },
     "Claude": {
       "INPUT": [
-        ".ProseMirror[contenteditable=\"true\"]",
-        "div[contenteditable=\"true\"][role=\"textbox\"]",
         "[aria-label=\"クロードにプロンプトを入力してください\"]",
+        ".ProseMirror[contenteditable=\"true\"]",
+        "[role=\"textbox\"][contenteditable=\"true\"]",
+        "div[contenteditable=\"true\"][translate=\"no\"]",
+        "div[contenteditable=\"true\"][role=\"textbox\"]",
         "[aria-label*=\"プロンプト\"]",
         "div.ProseMirror",
+        "div[enterkeyhint=\"enter\"][role=\"textbox\"]",
         "div[contenteditable=\"true\"]",
         "textarea[placeholder*=\"メッセージ\"]"
       ],
       "SEND_BUTTON": [
-        "button[aria-label=\"メッセージを送信\"]",
         "[aria-label=\"メッセージを送信\"]",
+        "button[aria-label=\"メッセージを送信\"]",
+        "[data-state=\"closed\"] button[type=\"button\"]",
+        "button.bg-accent-main-000",
+        "button svg path[d*=\"M208.49,120.49\"]",
         "button[type=\"submit\"]",
         ".send-button",
         "button[aria-label*=\"送信\"]",
@@ -158,8 +179,9 @@
         "button[data-testid*=\"send\"]"
       ],
       "STOP_BUTTON": [
-        "button[aria-label=\"応答を停止\"]",
         "[aria-label=\"応答を停止\"]",
+        "button[aria-label=\"応答を停止\"]",
+        "[data-state=\"closed\"][aria-label=\"応答を停止\"]",
         "button[data-state=\"closed\"][aria-label=\"応答を停止\"]",
         "button.border-border-200[aria-label=\"応答を停止\"]",
         "button.h-8.w-8[aria-label=\"応答を停止\"]",
@@ -172,6 +194,9 @@
       ],
       "MODEL_BUTTON": [
         "[data-testid=\"model-selector-dropdown\"]",
+        "button[data-testid=\"model-selector-dropdown\"]",
+        ".claude-logo-model-selector",
+        "button[type=\"button\"][aria-haspopup=\"menu\"]",
         "button[data-value*=\"claude\"]",
         "button.cursor-pointer:has(span.font-medium)",
         "button[aria-label*=\"モデル\"]",
@@ -182,8 +207,10 @@
       ],
       "FUNCTION_MENU_BUTTON": [
         "[data-testid=\"input-menu-tools\"]",
-        "#input-tools-menu-trigger",
         "[aria-label=\"ツールメニューを開く\"]",
+        "#input-tools-menu-trigger",
+        "button[aria-expanded][aria-haspopup=\"listbox\"]",
+        "button svg path[d*=\"M40,88H73a32\"]",
         "[data-testid=\"input-menu-trigger\"]",
         "button[aria-label*=\"機能\"]"
       ],
@@ -243,6 +270,10 @@
           "button[type=\"button\"][aria-pressed]:has(svg path[d*=\"M8.5 2C12.0899\"])",
           "button[aria-pressed]:has(svg path[d*=\"M8.5 2\"])",
           "button:has(svg path[d*=\"M8.5\"]):has(p:contains(\"リサーチ\"))",
+          "button:has(p:contains(\"リサーチ\"))",
+          "button.text-accent-secondary-100:has(svg)",
+          "button[type=\"button\"]:has(.min-w-0.pl-1.text-xs)",
+          ".flex.shrink button:has(svg)",
           "button.text-accent-secondary-100[aria-pressed=\"true\"]:has(svg)",
           "button.text-text-300[aria-pressed=\"false\"]:has(svg)"
         ],
@@ -263,12 +294,15 @@
         ".group.relative.-tracking-\\[0\\.015em\\]"
       ],
       "MENU": {
-        "CONTAINER": "[role=\"menu\"][data-state=\"open\"], [role=\"menu\"]",
+        "CONTAINER": "[role=\"menu\"][data-state=\"open\"], [role=\"menu\"], [data-radix-menu-content], .z-dropdown, [aria-orientation=\"vertical\"][role=\"menu\"]",
         "ITEM": "[role=\"option\"], [role=\"menuitem\"]",
         "MODEL_ITEM": "button[role=\"option\"]:has(span)",
         "OTHER_MODELS": [
           "[role=\"menuitem\"][aria-haspopup=\"menu\"]",
           "[role=\"menuitem\"]:has(svg)",
+          "[role=\"menuitem\"]:has(.group-hover\\:text-text-100)",
+          "[aria-haspopup=\"menu\"][role=\"menuitem\"]",
+          "div[role=\"menuitem\"] div.text-sm",
           "div[role=\"menuitem\"]:last-child"
         ]
       },
@@ -322,6 +356,27 @@
         "SECTION": "h2.text-xl",
         "PARAGRAPH": "p.whitespace-normal, p[class*=\"whitespace\"]"
       },
+      "FUNCTION_BUTTONS": [
+        "button[aria-pressed=\"true\"]"
+      ],
+      "WEB_SEARCH_TOGGLE": [
+        "input[role=\"switch\"]"
+      ],
+      "GENERIC_BUTTONS": [
+        "button"
+      ],
+      "OTHER_MODELS_BUTTON": [
+        "[role=\"menuitem\"][aria-haspopup=\"menu\"]"
+      ],
+      "MENU_ITEMS": [
+        "[role=\"menuitem\"]"
+      ],
+      "WEB_SEARCH_TOGGLE_BUTTON": [
+        "button:has(p:contains(\"ウェブ検索\")):has(input[role=\"switch\"])"
+      ],
+      "DEEP_RESEARCH_BUTTON": [
+        "button[type=\"button\"][aria-pressed]"
+      ],
       "MODEL_INFO": {
         "BUTTON": [
           "button[data-testid=\"model-selector-dropdown\"]",

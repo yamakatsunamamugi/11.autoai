@@ -388,15 +388,7 @@ class SheetsClient {
       ...this.safeSerialize(data)
     };
 
-    if (level === 'error') {
-      console.error(`[SheetsClient] ❌ ${message}`, logData);
-    } else if (level === 'warn') {
-      console.warn(`[SheetsClient] ⚠️ ${message}`, logData);
-    } else {
-      console.log(`[SheetsClient] ✅ ${message}`, logData);
-    }
-
-    // 既存のloggerも使用
+    // 既存のloggerのみ使用（コンソール重複を避ける）
     this.logger.log?.("SheetsClient", message, logData);
   }
 
@@ -987,14 +979,6 @@ class SheetsClient {
   async getSheetData(spreadsheetId, range, gid = null) {
     return await this.executeWithQuotaManagement(async () => {
       
-      // デバッグログ追加
-      console.log(`🔍 [SheetsClient] getSheetData呼び出し:`, {
-        spreadsheetId,
-        range,
-        gid,
-        rangeIncludesSheet: range.includes("!")
-      });
-      
       // gidが指定されている場合、シート名を取得して範囲を更新
       if (gid) {
         const sheetName = await this.getSheetNameFromGid(spreadsheetId, gid);
@@ -1003,12 +987,10 @@ class SheetsClient {
           if (!range.includes("!")) {
             const oldRange = range;
             range = `'${sheetName}'!${range}`;
-            console.log(`🔍 [SheetsClient] 範囲にシート名追加: ${oldRange} → ${range}`);
           } else {
             // すでにシート名が含まれている場合は置き換え
             const oldRange = range;
             range = `'${sheetName}'!${range.split("!")[1]}`;
-            console.log(`🔍 [SheetsClient] シート名置換: ${oldRange} → ${range}`);
           }
         }
       }
@@ -1038,17 +1020,7 @@ class SheetsClient {
       const data = await response.json();
       
       const result = data.values || [];
-      
-      // デバッグログ追加
-      console.log(`🔍 [SheetsClient] getSheetData結果:`, {
-        range,
-        hasData: !!data.values,
-        resultLength: result.length,
-        firstRowLength: result[0]?.length || 0,
-        firstCellValue: result[0]?.[0] ? result[0][0].substring(0, 50) : '(空)',
-        dataPreview: JSON.stringify(result).substring(0, 200)
-      });
-      
+
       return result;
     }, 'getSheetData');
   }
@@ -1621,15 +1593,6 @@ class SheetsClient {
           values: [[value]],
         };
 
-        // [DEBUG] Spreadsheetに書き込むデータのログ
-        console.log('🔍 [DEBUG] Spreadsheetに書き込むデータ:', {
-          timestamp: new Date().toISOString(),
-          range: processedRange,
-          valueLength: value?.length || 0,
-          valueType: typeof value,
-          preview: String(value).substring(0, 500),
-          fullValue: value // 実際の値
-        });
 
         this.detailedLog('info', `書き込み実行開始: ${processedRange}`, validation.stats);
 
@@ -1788,20 +1751,7 @@ class SheetsClient {
     }];
     
     const batchUpdateUrl = `${this.baseUrl}/${spreadsheetId}:batchUpdate`;
-    
-    // デバッグログ追加
-    console.log(`🔍 [SheetsClient] updateCellWithRichText実行:`, {
-      range,
-      columnLetters,
-      columnIndex,
-      rowNumber,
-      fullTextLength: fullText.length,
-      fullTextPreview: fullText.substring(0, 100),
-      hasLinks: textFormatRuns.length > 0,
-      gid,
-      sheetId: gid ? parseInt(gid) : 0
-    });
-    
+
     const response = await fetch(batchUpdateUrl, {
       method: "POST",
       headers: {

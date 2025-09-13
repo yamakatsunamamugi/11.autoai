@@ -36,7 +36,6 @@ class PowerManager {
     this.activeProcessCount++;
     
     console.log(`🛡️ [PowerManager] 保護開始要求 from ${source} (カウント: ${this.activeProcessCount})`);
-    console.log(`📊 [PowerManager] 現在の状態: isActive=${this.isActive}, timestamp=${new Date().toISOString()}`);
     
     if (!this.isActive) {
       this.isActive = true;
@@ -46,7 +45,6 @@ class PowerManager {
         // 1. Chrome Power API でディスプレイとシステムスリープを防止（メイン防止策）
         console.log('🔄 [PowerManager] Chrome Power API呼び出し前 - displayレベル');
         chrome.power.requestKeepAwake('display');
-        console.log('✅ [PowerManager] Chrome Power API: ディスプレイとシステムスリープ防止を開始');
         console.log(`✅ [PowerManager] requestKeepAwake('display')実行完了 at ${new Date().toISOString()}`);
         console.log('📊 [PowerManager] 防止レベル: display (画面オフも防止)');
         
@@ -56,7 +54,6 @@ class PowerManager {
           try {
             const pingTime = Date.now();
             chrome.runtime.sendMessage({ type: 'KEEP_ALIVE_PING', timestamp: pingTime });
-            console.log(`📡 [PowerManager] Keep-Alive ping送信 at ${new Date(pingTime).toISOString()}`);
           } catch (error) {
             console.error('❌ [PowerManager] Keep-Alive pingエラー:', error);
           }

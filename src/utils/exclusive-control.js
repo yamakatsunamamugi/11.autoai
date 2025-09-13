@@ -40,9 +40,13 @@ export class ExclusiveControl {
 
     // バリデーター（拡張用）
     this.validators = {};
-    
+
     // ロガー
     this.logger = config.logger || console;
+
+    // タイムアウトログの集約用
+    this.timeoutLogBuffer = [];
+    this.timeoutLogTimer = null;
   }
 
   /**
@@ -173,7 +177,7 @@ export class ExclusiveControl {
    */
   isTimeout(marker, task, customRules = {}) {
     const parsed = this.parseMarker(marker);
-    
+
     if (!parsed) {
       // 解析できない場合はタイムアウトとみなす
       return true;
@@ -187,24 +191,28 @@ export class ExclusiveControl {
 
     // 機能名を取得（タスクから、またはマーカーから）
     const functionName = task?.function || task?.displayedFunction || parsed.functionName || 'default';
-    
+
     // タイムアウト時間を決定（優先順位: カスタムルール > 機能別設定 > デフォルト）
-    const timeout = customRules[functionName] || 
-                   this.timeoutConfig[functionName] || 
+    const timeout = customRules[functionName] ||
+                   this.timeoutConfig[functionName] ||
                    this.timeoutConfig.default;
-    
+
     const isTimedOut = parsed.age > timeout;
-    
+
     if (isTimedOut) {
-      this.logger.log(`[ExclusiveControl] マーカータイムアウト検出:`, {
-        cell: `${task?.column}${task?.row}`,
+      // セル位置を安全に取得
+      const cell = (task?.column && task?.row) ? `${task.column}${task.row}` : 'unknown';
+
+      // タイムアウトログをバッファに追加
+      this.addTimeoutLog({
+        cell: cell,
         function: functionName,
         ageMinutes: parsed.ageMinutes,
         timeoutMinutes: Math.floor(timeout / (60 * 1000)),
         pcId: parsed.pcId
       });
     }
-    
+
     return isTimedOut;
   }
 
@@ -302,11 +310,11 @@ export class ExclusiveControl {
    */
   formatMarkerForLog(marker) {
     const parsed = this.parseMarker(marker);
-    
+
     if (!parsed) {
-      return { 
+      return {
         status: 'invalid',
-        marker: marker 
+        marker: marker
       };
     }
 
@@ -318,6 +326,57 @@ export class ExclusiveControl {
       function: parsed.functionName,
       isTimeout: parsed.age > (this.timeoutConfig.default)
     };
+  }
+
+  /**
+   * タイムアウトログをバッファに追加し、まとめて出力
+   * @param {Object} logData - ログデータ
+   */
+  addTimeoutLog(logData) {
+    this.timeoutLogBuffer.push(logData);
+
+    // 既存のタイマーをクリア
+    if (this.timeoutLogTimer) {
+      clearTimeout(this.timeoutLogTimer);
+    }
+
+    // 100ms後にまとめて出力
+    this.timeoutLogTimer = setTimeout(() => {
+      if (this.timeoutLogBuffer.length > 0) {
+        // 同じ関数・PCIDでグループ化
+        const grouped = {};
+        this.timeoutLogBuffer.forEach(log => {
+          const key = `${log.function}_${log.pcId}`;
+          if (!grouped[key]) {
+            grouped[key] = {
+              function: log.function,
+              pcId: log.pcId,
+              timeoutMinutes: log.timeoutMinutes,
+              cells: [],
+              ages: []
+            };
+          }
+          grouped[key].cells.push(log.cell);
+          grouped[key].ages.push(log.ageMinutes);
+        });
+
+        // グループごとにログ出力
+        Object.values(grouped).forEach(group => {
+          const avgAge = Math.floor(group.ages.reduce((a, b) => a + b, 0) / group.ages.length);
+          this.logger.log(`[ExclusiveControl] マーカータイムアウト検出 (${group.cells.length}件):`, {
+            cells: group.cells.join(', '),
+            function: group.function,
+            avgAgeMinutes: avgAge,
+            timeoutMinutes: group.timeoutMinutes,
+            pcId: group.pcId
+          });
+        });
+
+        // バッファをクリア
+        this.timeoutLogBuffer = [];
+      }
+      this.timeoutLogTimer = null;
+    }, 100);
   }
 }
 
