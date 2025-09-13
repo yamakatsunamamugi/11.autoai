@@ -856,7 +856,6 @@
               await chrome.scripting.executeScript({
                 target: { tabId: targetTab.id },
                 files: [
-                  'src/config/ui-selectors.js',
                   'automations/common-ai-handler.js',
                   'automations/ai-mutation-observer.js'
                 ]
@@ -936,7 +935,6 @@
             await chrome.scripting.executeScript({
               target: { tabId: windowInfo.tabId },
               files: [
-                'src/config/ui-selectors.js',
                 'automations/common-ai-handler.js'
               ]
             });

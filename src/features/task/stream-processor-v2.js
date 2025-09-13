@@ -1026,7 +1026,6 @@ export default class StreamProcessorV2 {
       // 共通スクリプト（ai-wait-configを最初に読み込む）
       const commonScripts = [
         'automations/v2/ai-wait-config.js',
-        'src/config/ui-selectors.js',  // UI_SELECTORSを提供
         'automations/feature-constants.js',
         'automations/common-ai-handler.js'
       ];

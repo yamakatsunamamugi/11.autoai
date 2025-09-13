@@ -91,7 +91,6 @@ export class AITaskExecutor {
 
       // 基本的な共通スクリプトは必要
       const commonScripts = [
-        'src/config/ui-selectors.js',  // UI_SELECTORSを提供
         'automations/feature-constants.js',
         'automations/common-ai-handler.js'
       ];

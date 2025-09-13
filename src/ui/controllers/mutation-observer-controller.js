@@ -649,9 +649,8 @@ async function injectAIAutomationScript(tabId, aiType) {
   logToExtensionUI(`🔧 ${aiType}にtest-runner-chrome.jsと同じスクリプトを注入中...`, "info", aiType);
   
   try {
-    // test-runner-chrome.jsと完全に同じスクリプト構成 + ui-selectors.js
+    // test-runner-chrome.jsと完全に同じスクリプト構成
     const commonScripts = [
-      'src/config/ui-selectors.js',  // セレクタ定義を追加
       'automations/feature-constants.js',
       'automations/common-ai-handler.js',
       'automations/deepresearch-handler.js',

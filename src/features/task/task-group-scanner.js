@@ -470,8 +470,8 @@ export class TaskGroupScanner {
     
     // 排他制御マーカーのチェック
     if (trimmed.startsWith('現在操作中です_')) {
-      const parsed = this.exclusiveManager?.parseMarker(trimmed);
-      if (parsed && this.exclusiveManager?.isTimeout(trimmed, {})) {
+      const parsed = this.exclusiveManager?.control?.parseMarker(trimmed);
+      if (parsed && this.exclusiveManager?.control?.isTimeout(trimmed, {})) {
         return false; // タイムアウトしていれば未回答扱い
       }
       return true; // タイムアウトしていなければ回答済み扱い
