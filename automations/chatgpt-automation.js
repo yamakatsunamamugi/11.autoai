@@ -17,7 +17,12 @@
 (async function() {
     'use strict';
 
+    // デバッグマーカー（すぐに設定）
+    window.CHATGPT_SCRIPT_LOADED = true;
+    window.CHATGPT_SCRIPT_INIT_TIME = Date.now();
+
     console.log(`ChatGPT Automation V2 - 初期化時刻: ${new Date().toLocaleString('ja-JP')}`);
+    console.log(`[DEBUG] ChatGPT Script Loaded - Marker Set`);
 
     // 統一された待機時間設定を取得（Claudeと同じ方式）
     const AI_WAIT_CONFIG = window.AI_WAIT_CONFIG || {
@@ -162,40 +167,49 @@
                style.opacity !== '0';
     }
     
-    // 複数セレクタで要素検索
-    async function findElement(selectors, maxRetries = 3) {
+    // 複数セレクタで要素検索（テスト済みコードより改善版）
+    async function findElement(selectors, description = '', maxRetries = 3) {
         for (let retry = 0; retry < maxRetries; retry++) {
             for (const selector of selectors) {
                 try {
                     let element;
-                    
+
                     if (selector.includes(':contains(')) {
                         const match = selector.match(/\:contains\("([^"]+)"\)/);
                         if (match) {
                             const text = match[1];
                             const baseSelector = selector.split(':contains(')[0];
                             const elements = document.querySelectorAll(baseSelector || '*');
-                            element = Array.from(elements).find(el => 
+                            element = Array.from(elements).find(el =>
                                 el.textContent && el.textContent.includes(text)
                             );
                         }
                     } else {
                         element = document.querySelector(selector);
                     }
-                    
+
                     if (element && isElementInteractable(element)) {
+                        if (description && retry > 0) {
+                            log(`${description}を発見: ${selector} (${retry + 1}回目の試行)`, 'success');
+                        }
                         return element;
                     }
                 } catch (e) {
                     // セレクタエラーを無視
                 }
             }
-            
+
             if (retry < maxRetries - 1) {
-                await sleep(AI_WAIT_CONFIG.TINY_WAIT);
+                if (description && retry === 0) {
+                    log(`${description}が見つかりません。待機中... (${retry + 1}/${maxRetries})`, 'warning');
+                }
+                await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
             }
         }
-        
+
+        if (description) {
+            log(`${description}の検索に失敗しました (${maxRetries}回試行)`, 'error');
+        }
         return null;
     }
     
@@ -489,74 +503,146 @@
             }
             
             // ========================================
-            // ステップ2: テキスト入力
+            // ステップ2: テキスト入力（堅牢性強化版）
             // ========================================
             log('\n【ステップ2】テキスト入力', 'step');
-            
-            const input = await findElement(SELECTORS.textInput, 'テキスト入力欄');
+
+            // 複数回試行してテキスト入力欄を検索
+            let input = null;
+            let inputAttempts = 0;
+            const maxInputAttempts = 10;
+
+            while (!input && inputAttempts < maxInputAttempts) {
+                inputAttempts++;
+                input = await findElement(SELECTORS.textInput, 'テキスト入力欄', 3);
+
+                if (!input) {
+                    if (inputAttempts < maxInputAttempts) {
+                        log(`テキスト入力欄が見つかりません。待機中... (${inputAttempts}/${maxInputAttempts})`, 'warning');
+                        await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
+                    }
+                }
+            }
+
             if (!input) {
-                throw new Error('入力欄が見つかりません');
+                // 最後の手段として、より広範囲の検索を試行
+                log('最後の手段として広範囲検索を実行', 'warning');
+                const allEditableElements = document.querySelectorAll('[contenteditable="true"], textarea, input[type="text"]');
+                for (const elem of allEditableElements) {
+                    if (isElementInteractable(elem)) {
+                        input = elem;
+                        log('代替入力欄を発見', 'success');
+                        break;
+                    }
+                }
             }
-            
-            // ChatGPT動作コードのテキスト入力処理をそのまま使用
-            if (input.classList.contains('ProseMirror') || input.classList.contains('ql-editor')) {
-                input.innerHTML = '';
-                const p = document.createElement('p');
-                p.textContent = prompt;
-                input.appendChild(p);
-                input.classList.remove('ql-blank');
-                input.dispatchEvent(new Event('input', { bubbles: true }));
-                input.dispatchEvent(new Event('change', { bubbles: true }));
-            } else {
-                input.textContent = prompt;
-                input.dispatchEvent(new Event('input', { bubbles: true }));
+
+            if (!input) {
+                throw new Error(`${maxInputAttempts}回試行してもテキスト入力欄が見つかりません`);
             }
-            
-            log('テキスト入力完了', 'success');
+
+            log('テキスト入力欄を発見、テキストを入力中...', 'success');
+
+            // ChatGPT動作コードのテキスト入力処理（テスト済み）
+            try {
+                if (input.classList.contains('ProseMirror') || input.classList.contains('ql-editor')) {
+                    // ProseMirrorエディタ用の処理
+                    input.innerHTML = '';
+                    const p = document.createElement('p');
+                    p.textContent = prompt;
+                    input.appendChild(p);
+                    input.classList.remove('ql-blank');
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                    input.dispatchEvent(new Event('change', { bubbles: true }));
+                    log('ProseMirrorエディタにテキスト入力完了', 'success');
+                } else if (input.tagName === 'TEXTAREA' || input.tagName === 'INPUT') {
+                    // 通常のテキストエリア/入力フィールド用
+                    input.value = prompt;
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                    input.dispatchEvent(new Event('change', { bubbles: true }));
+                    log('通常の入力フィールドにテキスト入力完了', 'success');
+                } else {
+                    // contenteditable要素用
+                    input.textContent = prompt;
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                    input.dispatchEvent(new Event('change', { bubbles: true }));
+                    log('contenteditable要素にテキスト入力完了', 'success');
+                }
+
+                // 入力内容の検証
+                await sleep(500);
+                const inputContent = input.textContent || input.value || '';
+                if (inputContent.includes(prompt.substring(0, 50))) {
+                    log(`入力内容検証成功: ${inputContent.length}文字入力済み`, 'success');
+                } else {
+                    log('入力内容の検証に失敗しましたが、続行します', 'warning');
+                }
+
+            } catch (error) {
+                log(`テキスト入力エラー: ${error.message}`, 'error');
+                throw new Error(`テキスト入力に失敗しました: ${error.message}`);
+            }
+
             await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
             
             // ========================================
-            // ステップ3: モデル選択（テスト済みコード）
+            // ステップ3: モデル選択（動的検索強化版）
             // ========================================
             if (modelName) {
                 log('\n【ステップ3】モデル選択', 'step');
 
-                // 動的モデル選択ロジック（Gemini方式を適用）
-                let resolvedModel = modelName;
+                // 3-0: 現在のモデルを確認
+                const currentModelButton = await findElement(SELECTORS.modelButton, 'モデルボタン');
+                if (currentModelButton) {
+                    const currentModelText = getCleanText(currentModelButton);
+                    log(`現在のモデル: ${currentModelText}`, 'info');
+                }
 
-                // 3-0: モデルメニューを開いて利用可能なモデルを取得
-                log('【ステップ3-0】利用可能なモデル一覧を取得', 'step');
+                // 3-1: モデルメニューを開いて利用可能なモデルを動的取得
+                log('【ステップ3-1】モデルメニューを開いて利用可能なモデルを取得', 'step');
                 const modelBtn = await findElement(SELECTORS.modelButton, 'モデルボタン');
                 if (!modelBtn) {
                     throw new Error('モデルボタンが見つかりません');
                 }
 
+                // ポインターイベントでメニューを開く（テスト済みコードより）
                 modelBtn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
                 await sleep(AI_WAIT_CONFIG.MICRO_WAIT);
                 modelBtn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
-                await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT - 500);
+                await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
 
                 const modelMenuEl = await findElement(SELECTORS.modelMenu, 'モデルメニュー');
                 if (!modelMenuEl) {
                     throw new Error('モデルメニューが開きません');
                 }
 
-                // 利用可能なモデル一覧を動的に取得
+                // 3-2: 利用可能なモデル一覧を動的に取得
+                log('【ステップ3-2】利用可能なモデル一覧を取得', 'step');
                 const availableModels = [];
+
+                // メインメニューのモデル取得
                 const mainMenuItems = modelMenuEl.querySelectorAll('[role="menuitem"][data-testid^="model-switcher-"]');
                 mainMenuItems.forEach(item => {
-                    const name = getCleanText(item);
-                    if (name && !name.includes('レガシー')) {
-                        availableModels.push({ name, element: item, type: 'Current' });
+                    const modelDisplayName = getCleanText(item);
+                    if (modelDisplayName && !modelDisplayName.includes('レガシー')) {
+                        availableModels.push({
+                            name: modelDisplayName,
+                            testId: item.getAttribute('data-testid'),
+                            element: item,
+                            type: 'Current',
+                            location: 'main'
+                        });
+                        log(`メインモデル発見: ${modelDisplayName}`, 'info');
                     }
                 });
 
-                // レガシーモデルもチェック
+                // レガシーモデルチェック（テスト済みコードロジック）
                 const legacyButton = modelMenuEl.querySelector('[role="menuitem"][data-has-submenu]') ||
                                     Array.from(modelMenuEl.querySelectorAll('[role="menuitem"]'))
                                         .find(el => el.textContent && el.textContent.includes('レガシーモデル'));
 
                 if (legacyButton) {
+                    log('レガシーモデルボタンを発見、サブメニューをチェック', 'info');
                     legacyButton.click();
                     await sleep(1500);
 
@@ -565,57 +651,67 @@
                         if (menu !== modelMenuEl) {
                             const items = menu.querySelectorAll('[role="menuitem"]');
                             items.forEach(item => {
-                                const name = getCleanText(item);
-                                if (name && name.includes('GPT')) {
-                                    availableModels.push({ name, element: item, type: 'Legacy' });
+                                const modelDisplayName = getCleanText(item);
+                                if (modelDisplayName && modelDisplayName.includes('GPT')) {
+                                    availableModels.push({
+                                        name: modelDisplayName,
+                                        element: item,
+                                        type: 'Legacy',
+                                        location: 'submenu'
+                                    });
+                                    log(`レガシーモデル発見: ${modelDisplayName}`, 'info');
                                 }
                             });
                         }
                     });
                 }
 
-                log(`取得したモデル一覧: ${availableModels.map(m => m.name).join(', ')}`, 'info');
+                log(`取得したモデル一覧 (${availableModels.length}個): ${availableModels.map(m => m.name).join(', ')}`, 'success');
 
-                // 動的選択ロジック（番号指定または名前マッチング）
+                // 3-3: 動的選択ロジック（番号指定または名前マッチング）
+                log('【ステップ3-3】モデル選択ロジックを実行', 'step');
+                let selectedModel = null;
+                let resolvedModel = modelName;
+
                 if (typeof modelName === 'number') {
                     // 番号指定: modelName: 1 → availableModels[0]
                     if (modelName >= 1 && modelName <= availableModels.length) {
-                        const selectedModelObj = availableModels[modelName - 1];
-                        resolvedModel = selectedModelObj.name;
-                        selectedModel = selectedModelObj.element;
-                        log(`番号指定によるモデル選択: ${modelName} → "${resolvedModel}"`, 'info');
+                        selectedModel = availableModels[modelName - 1];
+                        resolvedModel = selectedModel.name;
+                        log(`番号指定による選択: ${modelName} → "${resolvedModel}"`, 'success');
                     } else {
                         log(`無効な番号指定: ${modelName} (1-${availableModels.length}の範囲で指定してください)`, 'error');
-                        resolvedModel = availableModels[0]?.name || modelName;
-                        selectedModel = availableModels[0]?.element;
+                        selectedModel = availableModels[0] || null;
+                        resolvedModel = selectedModel?.name || modelName;
                     }
                 } else if (modelName && modelName !== '' && modelName !== 'default' &&
                           (typeof modelName !== 'string' || modelName.toLowerCase() !== 'auto')) {
                     // 名前マッチング: 部分一致で探す
                     const found = availableModels.find(m =>
-                        m.name.toLowerCase().includes(modelName.toLowerCase())
+                        m.name.toLowerCase().includes(modelName.toLowerCase()) ||
+                        modelName.toLowerCase().includes(m.name.toLowerCase())
                     );
                     if (found) {
+                        selectedModel = found;
                         resolvedModel = found.name;
-                        selectedModel = found.element;
-                        log(`名前マッチングによるモデル選択: "${modelName}" → "${resolvedModel}"`, 'info');
+                        log(`名前マッチングによる選択: "${modelName}" → "${resolvedModel}"`, 'success');
                     } else {
                         log(`マッチするモデルが見つかりません: "${modelName}"`, 'warning');
-                        log(`利用可能なモデル: ${availableModels.map(m => m.name).join(', ')}`, 'info');
+                        log(`利用可能なモデル: ${availableModels.map((m, i) => `${i+1}. ${m.name}`).join(', ')}`, 'info');
                         selectedModel = null;
                     }
                 } else {
-                    log(`デフォルトモデルを使用`, 'info');
+                    log('デフォルトモデルを使用', 'info');
                     selectedModel = null;
                 }
 
-                // メニューを一旦閉じて、選択が決定したら再度開く
+                // メニューを一旦閉じる
                 document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape' }));
                 await sleep(500);
 
                 if (selectedModel) {
-                    // 3-1: モデルメニューを開く（選択対象が決定済み）
-                    log('【ステップ3-1】モデルのメニューを開く', 'step');
+                    // 3-4: モデル選択を実行
+                    log('【ステップ3-4】モデル選択のためメニューを再度開く', 'step');
                     const modelBtn2 = await findElement(SELECTORS.modelButton, 'モデルボタン');
                     if (!modelBtn2) {
                         throw new Error('モデルボタンが見つかりません');
@@ -624,32 +720,50 @@
                     modelBtn2.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
                     await sleep(AI_WAIT_CONFIG.MICRO_WAIT);
                     modelBtn2.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
-                    await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT - 500);
+                    await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
 
                     const modelMenuEl2 = await findElement(SELECTORS.modelMenu, 'モデルメニュー');
                     if (!modelMenuEl2) {
                         throw new Error('モデルメニューが開きません');
                     }
 
-                    // レガシーモデルの場合
+                    // レガシーモデルの場合はサブメニューを開く
                     if (selectedModel.type === 'Legacy') {
                         const legacyBtn = modelMenuEl2.querySelector('[role="menuitem"][data-has-submenu]') ||
                                         Array.from(modelMenuEl2.querySelectorAll('[role="menuitem"]'))
                                             .find(el => el.textContent && el.textContent.includes('レガシーモデル'));
                         if (legacyBtn) {
-                            log('レガシーモデルメニューを開く', 'info');
+                            log('【ステップ3-5】レガシーモデルメニューを開く', 'step');
                             legacyBtn.click();
-                            await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT - 500);
+                            await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
                         }
                     }
 
-                    // 3-2: 該当のモデルを選択
-                    log('【ステップ3-2】該当のモデルを選択する', 'step');
+                    // 3-6: 該当のモデルを選択
+                    log('【ステップ3-6】該当のモデルを選択実行', 'step');
 
-                    // 動的に取得した要素をそのまま使用
-                    selectedModel.element.click();
-                    await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
-                    log(`モデル選択完了: ${resolvedModel}`, 'success');
+                    // 要素を再検索（DOM変更の可能性があるため）
+                    const allMenus = document.querySelectorAll('[role="menu"]');
+                    let targetElement = null;
+                    for (const menu of allMenus) {
+                        const items = menu.querySelectorAll('[role="menuitem"]');
+                        for (const item of items) {
+                            if (getCleanText(item) === selectedModel.name ||
+                                (selectedModel.testId && item.getAttribute('data-testid') === selectedModel.testId)) {
+                                targetElement = item;
+                                break;
+                            }
+                        }
+                        if (targetElement) break;
+                    }
+
+                    if (targetElement) {
+                        targetElement.click();
+                        await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
+                        log(`モデル選択完了: ${resolvedModel}`, 'success');
+                    } else {
+                        throw new Error(`モデル要素が見つかりません: ${selectedModel.name}`);
+                    }
                 } else {
                     log('選択するモデルが特定できませんでした。現在のモデルを使用します。', 'warning');
                 }
@@ -658,25 +772,23 @@
             }
             
             // ========================================
-            // ステップ4: 機能選択（機能名マッピング対応）
+            // ステップ4: 機能選択（動的検索強化版）
             // ========================================
             let resolvedFeature = featureName;
             if (featureName && featureName !== '' && featureName !== 'none' && featureName !== '通常') {
                 log('\n【ステップ4】機能選択', 'step');
 
-                // 動的機能選択ロジック（Gemini方式を適用）
                 // 機能名マッピング（スプレッドシート値 → ChatGPT UI表記）
                 const featureMapping = {
-                    'DeepReserch': 'Deep Research'  // スペルミスの修正のみ
+                    'DeepReserch': 'Deep Research',
+                    'DeepResearch': 'Deep Research'
                 };
 
                 let mappedFeatureName = featureMapping[featureName] || featureName;
-                console.log(`🔄 [機能名マッピング] "${featureName}" → "${mappedFeatureName}"`);
+                log(`機能名マッピング: "${featureName}" → "${mappedFeatureName}"`, 'info');
 
-                // 4-0: 機能メニューを開いて利用可能な機能を取得
-                log('【ステップ4-0】利用可能な機能一覧を取得', 'step');
-
-                // 選択されている機能があれば解除
+                // 4-0: 選択されている機能を解除
+                log('【ステップ4-0】既存の機能選択を解除', 'step');
                 const selectedButtons = document.querySelectorAll('button[data-pill="true"]');
                 selectedButtons.forEach(btn => {
                     const closeBtn = btn.querySelector('button[aria-label*="削除"]');
@@ -684,7 +796,9 @@
                 });
                 await sleep(500);
 
-                const funcMenuBtn = await findElement(SELECTORS.menuButton, 'メニューボタン');
+                // 4-1: 機能メニューを開いて利用可能な機能を動的取得
+                log('【ステップ4-1】機能メニューを開いて利用可能な機能を取得', 'step');
+                const funcMenuBtn = await findElement(SELECTORS.menuButton, '機能メニューボタン');
                 if (!funcMenuBtn) {
                     throw new Error('機能メニューボタンが見つかりません');
                 }
@@ -705,13 +819,15 @@
                 menuItems.forEach(item => {
                     const name = getCleanText(item);
                     if (name) {
-                        availableFeatures.push({ name, element: item });
+                        availableFeatures.push({ name, element: item, location: 'main' });
+                        log(`メイン機能発見: ${name}`, 'info');
                     }
                 });
 
-                // さらに表示ボタンチェック
-                const moreButton = findElementByText('[role="menuitem"]', 'さらに表示');
+                // サブメニュー（「さらに表示」）の機能も取得
+                const moreButton = findElementByText('[role="menuitem"]', 'さらに表示', funcMenu);
                 if (moreButton) {
+                    log('「さらに表示」ボタンを発見、サブメニューをチェック', 'info');
                     moreButton.click();
                     await sleep(1000);
 
@@ -721,23 +837,23 @@
                         subMenuItems.forEach(item => {
                             const name = getCleanText(item);
                             if (name) {
-                                availableFeatures.push({ name, element: item });
+                                availableFeatures.push({ name, element: item, location: 'submenu' });
+                                log(`サブメニュー機能発見: ${name}`, 'info');
                             }
                         });
                     }
                 }
 
-                log(`取得した機能一覧: ${availableFeatures.map(f => f.name).join(', ')}`, 'info');
+                log(`取得した機能一覧 (${availableFeatures.length}個): ${availableFeatures.map(f => f.name).join(', ')}`, 'success');
 
                 // 動的選択ロジック（番号指定または名前マッチング）
                 let selectedFeature = null;
                 if (typeof featureName === 'number') {
                     // 番号指定: featureName: 1 → availableFeatures[0]
                     if (featureName >= 1 && featureName <= availableFeatures.length) {
-                        const selectedFeatureObj = availableFeatures[featureName - 1];
-                        resolvedFeature = selectedFeatureObj.name;
-                        selectedFeature = selectedFeatureObj;
-                        log(`番号指定による機能選択: ${featureName} → "${resolvedFeature}"`, 'info');
+                        selectedFeature = availableFeatures[featureName - 1];
+                        resolvedFeature = selectedFeature.name;
+                        log(`番号指定による機能選択: ${featureName} → "${resolvedFeature}"`, 'success');
                     } else {
                         log(`無効な番号指定: ${featureName} (1-${availableFeatures.length}の範囲で指定してください)`, 'error');
                         selectedFeature = availableFeatures[0] || null;
@@ -746,27 +862,28 @@
                 } else {
                     // 名前マッチング: 部分一致で探す（マッピング後の名前で）
                     const found = availableFeatures.find(f =>
-                        f.name.toLowerCase().includes(mappedFeatureName.toLowerCase())
+                        f.name.toLowerCase().includes(mappedFeatureName.toLowerCase()) ||
+                        mappedFeatureName.toLowerCase().includes(f.name.toLowerCase())
                     );
                     if (found) {
-                        resolvedFeature = found.name;
                         selectedFeature = found;
-                        log(`名前マッチングによる機能選択: "${mappedFeatureName}" → "${resolvedFeature}"`, 'info');
+                        resolvedFeature = found.name;
+                        log(`名前マッチングによる機能選択: "${mappedFeatureName}" → "${resolvedFeature}"`, 'success');
                     } else {
                         log(`マッチする機能が見つかりません: "${mappedFeatureName}"`, 'warning');
-                        log(`利用可能な機能: ${availableFeatures.map(f => f.name).join(', ')}`, 'info');
+                        log(`利用可能な機能: ${availableFeatures.map((f, i) => `${i+1}. ${f.name}`).join(', ')}`, 'info');
                         selectedFeature = null;
                     }
                 }
 
-                // メニューを一旦閉じてから再度開く
+                // メニューを一旦閉じる
                 document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape' }));
                 await sleep(1000);
 
                 if (selectedFeature) {
-                    // 4-1: 機能メニューを開く（選択対象が決定済み）
-                    log('【ステップ4-1】機能メニューボタンをクリック', 'step');
-                    const funcMenuBtn2 = await findElement(SELECTORS.menuButton, 'メニューボタン');
+                    // 4-2: 機能メニューを再度開いて選択実行
+                    log('【ステップ4-2】機能選択のためメニューを再度開く', 'step');
+                    const funcMenuBtn2 = await findElement(SELECTORS.menuButton, '機能メニューボタン');
                     if (!funcMenuBtn2) {
                         throw new Error('機能メニューボタンが見つかりません');
                     }
@@ -781,26 +898,43 @@
                         throw new Error('機能メニューが開きません');
                     }
 
-                    // サブメニューが必要かチェック
-                    let targetElement = selectedFeature.element;
-                    if (!funcMenu2.contains(targetElement)) {
-                        // サブメニューの機能の場合、さらに表示ボタンをクリック
+                    // サブメニューが必要な場合は「さらに表示」をクリック
+                    if (selectedFeature.location === 'submenu') {
                         const moreBtn = findElementByText('[role="menuitem"]', 'さらに表示', funcMenu2);
                         if (moreBtn) {
-                            log('【ステップ4-2】サブメニューを開く', 'step');
+                            log('【ステップ4-3】サブメニューを開く', 'step');
                             moreBtn.click();
                             await sleep(1000);
                         }
                     }
 
-                    // 4-3: 機能を選択
-                    log('【ステップ4-3】機能を選択する', 'step');
-                    selectedFeature.element.click();
-                    await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
-                    log(`機能選択完了: ${resolvedFeature}`, 'success');
+                    // 4-4: 機能を選択
+                    log('【ステップ4-4】機能を選択実行', 'step');
 
-                    // 4-4: メニューを閉じる
-                    log('【ステップ4-4】機能メニューを閉じる', 'step');
+                    // 要素を再検索（DOM変更の可能性があるため）
+                    const allMenus = document.querySelectorAll('[role="menu"]');
+                    let targetElement = null;
+                    for (const menu of allMenus) {
+                        const items = menu.querySelectorAll('[role="menuitemradio"]');
+                        for (const item of items) {
+                            if (getCleanText(item) === selectedFeature.name) {
+                                targetElement = item;
+                                break;
+                            }
+                        }
+                        if (targetElement) break;
+                    }
+
+                    if (targetElement) {
+                        targetElement.click();
+                        await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
+                        log(`機能選択完了: ${resolvedFeature}`, 'success');
+                    } else {
+                        throw new Error(`機能要素が見つかりません: ${selectedFeature.name}`);
+                    }
+
+                    // 4-5: メニューを閉じる
+                    log('【ステップ4-5】機能メニューを閉じる', 'step');
                     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape' }));
                     await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
                 } else {
@@ -894,7 +1028,7 @@
             log('\n【ステップ6】応答待機', 'step');
             
             // Deep Research/エージェントモードの判定
-            const finalFeatureName = mappedFeatureName || featureName;
+            const finalFeatureName = resolvedFeature || featureName;
             const isSpecialMode = finalFeatureName && (
                 finalFeatureName === 'Deep Research' ||
                 finalFeatureName.includes('エージェント') ||
@@ -1049,20 +1183,26 @@
     // ========================================
     // グローバル公開
     // ========================================
+    console.log('[DEBUG] グローバル公開セクションに到達');
+    console.log('[DEBUG] executeTask関数の存在:', typeof executeTask);
+    console.log('[DEBUG] runAutomation関数の存在:', typeof runAutomation);
+
     const automationAPI = {
         executeTask,
-        runAutomation,
-        // フェーズ別メソッド（順次処理用）
-        inputTextOnly,
-        selectModelOnly,
-        selectFunctionOnly,
-        sendAndGetResponse
+        runAutomation
     };
+
+    console.log('[DEBUG] automationAPI作成成功');
     
+    console.log('[DEBUG] automationAPI作成完了、windowに設定開始');
+
     // v2名と標準名の両方をサポート（下位互換性保持）
     window.ChatGPTAutomationV2 = automationAPI;
     window.ChatGPTAutomation = automationAPI;
-    
+
+    console.log('[DEBUG] window.ChatGPTAutomationV2設定完了');
+    console.log('[DEBUG] typeof window.ChatGPTAutomationV2:', typeof window.ChatGPTAutomationV2);
+
     console.log('✅ ChatGPT Automation V2 準備完了');
     console.log('使用方法: ChatGPTAutomation.executeTask({ model: "GPT-4o", function: "Deep Research", prompt: "..." })');
     console.log('✅ 下位互換性: ChatGPTAutomation と ChatGPTAutomationV2 の両方で利用可能');

@@ -5,9 +5,13 @@
   "selectors": {
     "ChatGPT": {
       "INPUT": [
-        "#prompt-textarea",
-        "[contenteditable=\"true\"]",
         ".ProseMirror",
+        "#prompt-textarea",
+        "[contenteditable=\"true\"][translate=\"no\"]",
+        "div[data-virtualkeyboard=\"true\"]",
+        "div.ProseMirror.text-token-text-primary",
+        ".ql-editor",
+        "[contenteditable=\"true\"]",
         "div[contenteditable=\"true\"]",
         "textarea[data-testid=\"conversation-textarea\"]",
         "textarea[placeholder*=\"メッセージ\"]",
@@ -16,7 +20,9 @@
       "SEND_BUTTON": [
         "[data-testid=\"send-button\"]",
         "#composer-submit-button",
-        "[aria-label=\"プロンプトを送信する\"]",
+        "button[aria-label=\"プロンプトを送信する\"]",
+        "button.composer-submit-btn.composer-submit-button-color",
+        "button:has(svg[width=\"20\"][height=\"20\"])",
         "[aria-label=\"Send prompt\"]",
         "[aria-label*=\"送信\"]",
         "button[data-testid=\"composer-send-button\"]",
@@ -25,6 +31,9 @@
       ],
       "STOP_BUTTON": [
         "[data-testid=\"stop-button\"]",
+        "#composer-submit-button[aria-label=\"ストリーミングの停止\"]",
+        "button.composer-submit-btn.composer-secondary-button-color",
+        "button:has(svg path[d*=\"M4.5 5.75\"])",
         "[aria-label=\"ストリーミングの停止\"]",
         "#composer-submit-button[aria-label*=\"停止\"]",
         "[aria-label=\"Stop generating\"]",
@@ -35,6 +44,10 @@
       ],
       "MODEL_BUTTON": [
         "[data-testid=\"model-switcher-dropdown-button\"]",
+        "button[aria-label*=\"モデル セレクター\"]",
+        "button[aria-label*=\"モデル\"][aria-haspopup=\"menu\"]",
+        "#radix-\\:r2m\\:",
+        "button.group.flex.cursor-pointer[aria-haspopup=\"menu\"]",
         "button[aria-label*=\"モデル\"]",
         "button[aria-label*=\"Model\"]",
         "[aria-label=\"Model selector\"]",
@@ -43,6 +56,10 @@
       ],
       "FUNCTION_MENU_BUTTON": [
         "[data-testid=\"composer-plus-btn\"]",
+        "button[aria-haspopup=\"menu\"]",
+        "#radix-\\:R2eij4im4pact9a4mj5\\:",
+        "button.composer-btn",
+        "div[class*=\"leading\"] button",
         "[data-testid=\"input-menu-trigger\"]",
         "[aria-label=\"Add\"]",
         "button[aria-label*=\"Add\"]"
@@ -59,12 +76,25 @@
         ".assistant-message"
       ],
       "MENU": {
-        "CONTAINER": "[data-radix-popper-content-wrapper], [role=\"menu\"][data-state=\"open\"], [data-radix-menu-content], [role=\"menu\"]",
+        "CONTAINER": [
+          "[role=\"menu\"][data-radix-menu-content]",
+          "[role=\"menu\"][data-state=\"open\"]",
+          "div.z-50.max-w-xs.rounded-2xl.popover[role=\"menu\"]",
+          "[aria-labelledby*=\"radix\"][role=\"menu\"]",
+          "div[data-radix-popper-content-wrapper] [role=\"menu\"]",
+          "[data-radix-popper-content-wrapper]",
+          "[data-radix-menu-content]",
+          "[role=\"menu\"]"
+        ],
         "ITEM": "[data-testid^=\"model-switcher-\"], [role=\"menuitem\"], [role=\"menuitemradio\"]",
         "POPPER": "[data-radix-popper-content-wrapper]",
         "LABEL": ".__menu-label, div:not([role])",
         "SUBMENU_ITEM": "button:has(span)",
         "SUBMENU_TRIGGERS": [
+          "[data-testid=\"レガシーモデル-submenu\"]",
+          "[role=\"menuitem\"][data-has-submenu]:contains(\"レガシーモデル\")",
+          "div.__menu-item:contains(\"レガシーモデル\")",
+          "[role=\"menuitem\"][aria-haspopup=\"menu\"]:last-of-type",
           "[data-has-submenu]",
           "[aria-haspopup=\"menu\"]",
           "[aria-expanded]",

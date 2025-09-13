@@ -506,7 +506,7 @@ export default class StreamProcessorV2 {
       // 動的タスク生成
       const promptCols = promptGroup.promptColumns;
       const answerCols = promptGroup.answerColumns.map(col => col.index);
-      const tasks = await this.taskScanner.scanGroupTasks(spreadsheetData, promptCols, answerCols);
+      const tasks = await this.taskScanner.scanGroupTasks(spreadsheetData, promptCols, answerCols, promptGroup);
 
       if (!tasks || tasks.length === 0) {
         this.logger.log(`[StreamProcessorV2] グループ${groupIndex + 1}にタスクなし（すべて回答済み）`);
@@ -1161,19 +1161,23 @@ export default class StreamProcessorV2 {
   /**
    * タスク用のウィンドウを作成
    * @param {Object} task - タスク
-   * @param {number} position - ウィンドウ位置
+   * @param {number} position - ウィンドウ位置（0=左上, 1=右上, 2=左下）
    * @returns {Promise<Object>} ウィンドウ情報
    */
   async createWindowForTask(task, position = 0) {
     const url = aiUrlManager.getUrl(task.aiType);
-    const windowOptions = this.getWindowOptions(position);
 
-    const windowInfo = await this.windowService.createWindow({
-      url: url,
-      ...windowOptions
+    // WindowServiceのcreateWindowWithPositionを使用（Claudeと同じ方式）
+    const window = await WindowService.createWindowWithPosition(url, position, {
+      type: 'popup',
+      aiType: task.aiType
     });
 
-    return windowInfo;
+    return {
+      ...window,
+      tabId: window.tabs && window.tabs.length > 0 ? window.tabs[0].id : null,
+      windowId: window.id
+    };
   }
 
   /**

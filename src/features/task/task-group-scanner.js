@@ -54,9 +54,10 @@ export class TaskGroupScanner {
    * @param {Object} spreadsheetData - スプレッドシートデータ
    * @param {Array} promptCols - プロンプト列のインデックス配列
    * @param {Array} answerCols - 回答列のインデックス配列
+   * @param {Object} promptGroup - プロンプトグループ情報（aiType, model, function等）
    * @returns {Promise<Array>} 見つかったタスクの配列
    */
-  async scanGroupTasks(spreadsheetData, promptCols, answerCols) {
+  async scanGroupTasks(spreadsheetData, promptCols, answerCols, promptGroup = {}) {
     const tasks = [];
     const MAX_TASKS_PER_BATCH = 3; // バッチあたりの最大タスク数
     
@@ -82,13 +83,13 @@ export class TaskGroupScanner {
     const columnControls = this.getColumnControl(spreadsheetData);
     
     // 現在のグループ情報を作成（列制御チェック用）
-    const promptGroup = {
+    const currentGroup = {
       promptColumns: promptCols,
       answerColumns: answerCols
     };
-    
+
     // 列制御チェック（グループ全体）
-    if (!this.shouldProcessColumn(promptGroup, columnControls)) {
+    if (!this.shouldProcessColumn(currentGroup, columnControls)) {
       this.log('このグループは列制御によりスキップ', 'info', '3-4-2');
       return tasks;
     }
@@ -258,10 +259,55 @@ export class TaskGroupScanner {
               this.logger.warn('[TaskGroupScanner] sheetsClient未定義、予約処理をスキップしてタスク追加');
               // 最大タスク数チェック
               if (tasks.length < MAX_TASKS_PER_BATCH) {
+                // 完全なタスクオブジェクトを作成
+                const taskCell = `${this.indexToColumn(answerColIndex)}${rowIndex + 1}`;
+                const taskId = `${taskCell}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+                // プロンプトを取得（実行時に動的取得されるため、ここでは空）
+                let prompt = '';
+                try {
+                  // プロンプト列からプロンプトテキストを結合
+                  const promptTexts = [];
+                  for (const promptColIndex of promptCols) {
+                    const promptValue = spreadsheetData.values[rowIndex]?.[promptColIndex];
+                    if (promptValue && typeof promptValue === 'string' && promptValue.trim()) {
+                      promptTexts.push(promptValue.trim());
+                    }
+                  }
+                  prompt = promptTexts.join('\n\n');
+                } catch (error) {
+                  this.logger.warn(`[TaskGroupScanner] プロンプト取得エラー ${taskCell}:`, error);
+                }
+
                 tasks.push({
+                  // 基本情報
+                  taskId: taskId,
                   row: rowIndex + 1, // 1ベース行番号
                   column: this.indexToColumn(answerColIndex),
-                  columnIndex: answerColIndex
+                  columnIndex: answerColIndex,
+
+                  // AI情報
+                  aiType: promptGroup.aiType || 'claude',
+                  model: promptGroup.model || 'default',
+                  function: promptGroup.function || 'default',
+
+                  // プロンプト情報
+                  prompt: prompt,
+                  promptColumns: promptCols || [],
+
+                  // セル情報
+                  cellInfo: {
+                    row: rowIndex + 1,
+                    column: this.indexToColumn(answerColIndex),
+                    columnIndex: answerColIndex
+                  },
+
+                  // タスク設定
+                  taskType: 'ai',
+                  waitResponse: true,
+                  getResponse: true,
+                  createdAt: Date.now(),
+                  version: '2.0'
                 });
               }
               continue;
@@ -320,10 +366,54 @@ export class TaskGroupScanner {
                 
                 // タスクリストに追加
                 if (tasks.length < MAX_TASKS_PER_BATCH) {
+                  // 完全なタスクオブジェクトを作成（予約成功時）
+                  const taskId = `${taskCell}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+                  // プロンプトを取得
+                  let prompt = '';
+                  try {
+                    // プロンプト列からプロンプトテキストを結合
+                    const promptTexts = [];
+                    for (const promptColIndex of promptCols) {
+                      const promptValue = spreadsheetData.values[rowIndex]?.[promptColIndex];
+                      if (promptValue && typeof promptValue === 'string' && promptValue.trim()) {
+                        promptTexts.push(promptValue.trim());
+                      }
+                    }
+                    prompt = promptTexts.join('\n\n');
+                  } catch (error) {
+                    this.logger.warn(`[TaskGroupScanner] プロンプト取得エラー ${taskCell}:`, error);
+                  }
+
                   tasks.push({
+                    // 基本情報
+                    taskId: taskId,
                     row: rowIndex + 1,
                     column: this.indexToColumn(answerColIndex),
-                    columnIndex: answerColIndex
+                    columnIndex: answerColIndex,
+
+                    // AI情報
+                    aiType: promptGroup.aiType || 'claude',
+                    model: promptGroup.model || 'default',
+                    function: promptGroup.function || 'default',
+
+                    // プロンプト情報
+                    prompt: prompt,
+                    promptColumns: promptCols || [],
+
+                    // セル情報
+                    cellInfo: {
+                      row: rowIndex + 1,
+                      column: this.indexToColumn(answerColIndex),
+                      columnIndex: answerColIndex
+                    },
+
+                    // タスク設定
+                    taskType: 'ai',
+                    waitResponse: true,
+                    getResponse: true,
+                    createdAt: Date.now(),
+                    version: '2.0'
                   });
                   this.processedAnswerCells.add(taskCell);
                 }

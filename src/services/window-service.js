@@ -131,8 +131,15 @@ export class WindowService {
         createdAt: Date.now(),
         ...options
       });
-      
-      return window;
+
+      // タブIDを取得してwindowオブジェクトに追加
+      const tabId = window.tabs && window.tabs.length > 0 ? window.tabs[0].id : null;
+
+      return {
+        ...window,
+        tabId: tabId,
+        windowId: window.id
+      };
     } catch (error) {
       console.error('[WindowService] ウィンドウ作成エラー:', error);
       throw error;
