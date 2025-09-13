@@ -83,13 +83,15 @@ export default class StreamProcessorV2 {
    * @param {Object} config - 設定オブジェクト
    */
   constructor(logger = console, config = {}) {
-    this.log('StreamProcessorV2 初期化開始', 'step', '0');
-
     // ========================================
-    // ステップ0-1: 基本サービス初期化
+    // ステップ0-1: 基本サービス初期化（最優先）
     // ========================================
-    this.log('基本サービスを初期化', 'info', '0-1');
+    // 最初にloggerを設定（this.log()を使用するため）
     this.logger = logger;
+
+    // ログ関数が使用可能になった後に初期化ログ出力
+    this.log('StreamProcessorV2 初期化開始', 'step', '0');
+    this.log('基本サービスを初期化', 'info', '0-1');
     this.aiTaskExecutor = new AITaskExecutor(logger);
     this.retryManager = new RetryManager(logger);
 
