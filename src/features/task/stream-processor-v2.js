@@ -1455,21 +1455,28 @@ export default class StreamProcessorV2 {
 
       // 結果が成功の場合、スプレッドシートに書き込み
       if (result && result.success && result.response) {
+        this.logger.log(`[StreamProcessorV2] 📝 スプレッドシート書き込み開始: ${task.column}${task.row}`);
+        
         const { spreadsheetId, gid } = this.spreadsheetData;
         const range = `${task.column}${task.row}`;
         
-        // スプレッドシートに応答を書き込む
-        await globalThis.sheetsClient.updateCell(
-          spreadsheetId,
-          range,
-          result.response,
-          gid
-        );
-        
-        this.logger.log(`[StreamProcessorV2] 📝 ${range}に応答を書き込みました`, {
-          文字数: result.response.length,
-          プレビュー: result.response.substring(0, 50) + '...'
-        });
+        try {
+          // スプレッドシートに応答を書き込む
+          await globalThis.sheetsClient.updateCell(
+            spreadsheetId,
+            range,
+            result.response,
+            gid
+          );
+          
+          this.logger.log(`[StreamProcessorV2] 📝 ${range}に応答を書き込み完了`, {
+            文字数: result.response.length,
+            プレビュー: result.response.substring(0, 50) + '...'
+          });
+        } catch (writeError) {
+          this.logger.error(`[StreamProcessorV2] ❌ スプレッドシート書き込みエラー: ${range}`, writeError);
+          throw writeError; // エラーを再スローして失敗扱いにする
+        }
         
         // 再実行が成功した場合の統計更新
         const retryCount = this.retryCountByColumn.get(task.column) || 0;
@@ -1482,6 +1489,11 @@ export default class StreamProcessorV2 {
         }
         
         // ログを書き込み（SpreadsheetLoggerを使用）
+        this.logger.log(`[StreamProcessorV2] 📋 ログ書き込み判定: ${task.column}${task.row}`, {
+          hasLogger: !!this.spreadsheetLogger,
+          hasLogColumns: !!(task.logColumns && task.logColumns.length > 0),
+          logColumns: task.logColumns
+        });
         
         if (this.spreadsheetLogger && task.logColumns && task.logColumns.length > 0) {
           try {
@@ -1620,12 +1632,15 @@ export default class StreamProcessorV2 {
         }
         
         // ウィンドウを閉じる
+        this.logger.log(`[StreamProcessorV2] 🔒 ウィンドウクローズ開始: ${task.column}${task.row} (TabID: ${tabId})`);
         try {
           // タブIDからウィンドウIDを取得
           const tab = await chrome.tabs.get(tabId);
           if (tab && tab.windowId) {
             await WindowService.closeWindow(tab.windowId);
             this.logger.log(`[StreamProcessorV2] 🔒 ウィンドウを閉じました - WindowID: ${tab.windowId}`);
+          } else {
+            this.logger.warn(`[StreamProcessorV2] ⚠️ ウィンドウ情報が取得できません: TabID ${tabId}`);
           }
         } catch (error) {
           this.logger.warn(`[StreamProcessorV2] ウィンドウを閉じる際にエラー:`, error);
