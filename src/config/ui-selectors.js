@@ -1,23 +1,28 @@
 /**
  * @fileoverview 11.autoai UI セレクタ集中管理
- * 
+ *
  * 【役割】
  * 全AI（ChatGPT、Claude、Gemini、Genspark）のUIセレクタを一元管理
- * 
+ *
  * 【使用方法】
- * import { UI_SELECTORS } from './src/config/ui-selectors.js';
- * const selectors = UI_SELECTORS.ChatGPT.INPUT;
- * 
+ * window.UI_SELECTORS から取得
+ * const selectors = window.UI_SELECTORS.ChatGPT.INPUT;
+ *
  * 【使用者】
  * - common-ai-handler.js: getSelectors関数経由で使用
  * - 各AI個別ファイル: window.AIHandler経由で使用
  * - deepresearch-handler.js: DeepResearch用セレクタを使用
- * 
+ *
  * 【更新履歴】
  * - 2025-08-17: 参考コードから最新セレクタを反映
+ * - 2025-09-13: ES6モジュールからIIFE形式に変換（executeScript対応）
  */
 
-export const UI_SELECTORS = {
+// IIFE形式でグローバル変数に直接設定
+(function() {
+    'use strict';
+
+    const UI_SELECTORS = {
     // ========================================
     // ChatGPT セレクタ
     // ========================================
@@ -856,13 +861,13 @@ export const UI_SELECTORS = {
 // ヘルパー関数
 // ========================================
 
-/**
- * 指定されたAIとセレクタタイプのセレクタ配列を取得
- * @param {string} aiType - 'ChatGPT', 'Claude', 'Gemini'
- * @param {string} selectorType - 'INPUT', 'SEND_BUTTON', 'STOP_BUTTON' など
- * @returns {Array<string>} セレクタの配列
- */
-export function getSelectors(aiType, selectorType) {
+    /**
+     * 指定されたAIとセレクタタイプのセレクタ配列を取得
+     * @param {string} aiType - 'ChatGPT', 'Claude', 'Gemini'
+     * @param {string} selectorType - 'INPUT', 'SEND_BUTTON', 'STOP_BUTTON' など
+     * @returns {Array<string>} セレクタの配列
+     */
+    function getSelectors(aiType, selectorType) {
     const ai = UI_SELECTORS[aiType];
     if (!ai) {
         console.warn(`Unknown AI type: ${aiType}`);
@@ -878,13 +883,13 @@ export function getSelectors(aiType, selectorType) {
     return Array.isArray(selectors) ? selectors : [];
 }
 
-/**
- * Claude思考プロセス要素を検出・削除するヘルパー関数
- * test-claude-response-final.js のロジックを移植
- * @param {Element} element - 検査対象の要素
- * @returns {Element} 思考プロセスが削除された要素のクローン
- */
-export function removeClaudeThinkingProcess(element) {
+    /**
+     * Claude思考プロセス要素を検出・削除するヘルパー関数
+     * test-claude-response-final.js のロジックを移植
+     * @param {Element} element - 検査対象の要素
+     * @returns {Element} 思考プロセスが削除された要素のクローン
+     */
+    function removeClaudeThinkingProcess(element) {
     if (!element) return null;
     
     // 要素をクローンして元の要素を変更しないようにする
@@ -933,13 +938,13 @@ export function removeClaudeThinkingProcess(element) {
     return clone;
 }
 
-/**
- * 複数のセレクタから最初に見つかった要素を取得
- * @param {Array<string>} selectors - セレクタの配列
- * @param {Document} doc - ドキュメントオブジェクト（デフォルト: document）
- * @returns {Element|null} 見つかった要素またはnull
- */
-export function findElementBySelectors(selectors, doc = document) {
+    /**
+     * 複数のセレクタから最初に見つかった要素を取得
+     * @param {Array<string>} selectors - セレクタの配列
+     * @param {Document} doc - ドキュメントオブジェクト（デフォルト: document）
+     * @returns {Element|null} 見つかった要素またはnull
+     */
+    function findElementBySelectors(selectors, doc = document) {
     for (const selector of selectors) {
         try {
             const element = doc.querySelector(selector);
@@ -952,13 +957,13 @@ export function findElementBySelectors(selectors, doc = document) {
     return null;
 }
 
-/**
- * 複数のセレクタから全ての要素を取得
- * @param {Array<string>} selectors - セレクタの配列
- * @param {Document} doc - ドキュメントオブジェクト（デフォルト: document）
- * @returns {Array<Element>} 見つかった要素の配列
- */
-export function findAllElementsBySelectors(selectors, doc = document) {
+    /**
+     * 複数のセレクタから全ての要素を取得
+     * @param {Array<string>} selectors - セレクタの配列
+     * @param {Document} doc - ドキュメントオブジェクト（デフォルト: document）
+     * @returns {Array<Element>} 見つかった要素の配列
+     */
+    function findAllElementsBySelectors(selectors, doc = document) {
     const elements = [];
     for (const selector of selectors) {
         try {
@@ -972,11 +977,11 @@ export function findAllElementsBySelectors(selectors, doc = document) {
     return elements;
 }
 
-/**
- * AIタイプを自動検出
- * @returns {string|null} 検出されたAIタイプまたはnull
- */
-export function detectAIType() {
+    /**
+     * AIタイプを自動検出
+     * @returns {string|null} 検出されたAIタイプまたはnull
+     */
+    function detectAIType() {
     const url = window.location.href;
     
     if (url.includes('chatgpt.com') || url.includes('chat.openai.com')) {
@@ -990,10 +995,14 @@ export function detectAIType() {
     return null;
 }
 
-// デフォルトエクスポート
-export default UI_SELECTORS;
+    // グローバル変数として公開
+    if (typeof window !== 'undefined') {
+        window.UI_SELECTORS = UI_SELECTORS;
+        window.getSelectors = getSelectors;
+        window.removeClaudeThinkingProcess = removeClaudeThinkingProcess;
+        window.findElementBySelectors = findElementBySelectors;
+        window.findAllElementsBySelectors = findAllElementsBySelectors;
+        window.detectAIType = detectAIType;
+    }
 
-// Chrome拡張機能の注入スクリプトコンテキストで利用可能にする
-if (typeof window !== 'undefined') {
-    window.UI_SELECTORS = UI_SELECTORS;
-}
+})();

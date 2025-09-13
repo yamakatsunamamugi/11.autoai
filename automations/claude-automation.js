@@ -30,26 +30,30 @@
     // 重要: UI_SELECTORSは必ずsrc/config/ui-selectors.jsから取得する
     // ハードコードされたセレクタは使用禁止
 
-    // UI_SELECTORSが読み込まれるまで待機
+    // UI_SELECTORSが読み込まれるまで待機（即時実行非同期関数でラップ）
     let UI_SELECTORS = window.UI_SELECTORS;
-    if (!UI_SELECTORS) {
-        console.log('⏳ [ClaudeV2] UI_SELECTORSの読み込みを待機中...');
-        let retryCount = 0;
-        const maxRetries = 50;
 
-        while (!window.UI_SELECTORS && retryCount < maxRetries) {
-            await new Promise(resolve => setTimeout(resolve, 100));
-            retryCount++;
+    // UI_SELECTORSの初期化待機処理
+    await (async function waitForUISelectors() {
+        if (!UI_SELECTORS) {
+            console.log('⏳ [ClaudeV2] UI_SELECTORSの読み込みを待機中...');
+            let retryCount = 0;
+            const maxRetries = 50;
+
+            while (!window.UI_SELECTORS && retryCount < maxRetries) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                retryCount++;
+            }
+
+            UI_SELECTORS = window.UI_SELECTORS || {};
+
+            if (!window.UI_SELECTORS) {
+                console.error('❌ [ClaudeV2] UI_SELECTORSの読み込みに失敗しました（タイムアウト）');
+            } else {
+                console.log(`✅ [ClaudeV2] UI_SELECTORSの読み込み成功（${retryCount * 100}ms後）`);
+            }
         }
-
-        UI_SELECTORS = window.UI_SELECTORS || {};
-
-        if (!window.UI_SELECTORS) {
-            console.error('❌ [ClaudeV2] UI_SELECTORSの読み込みに失敗しました（タイムアウト）');
-        } else {
-            console.log(`✅ [ClaudeV2] UI_SELECTORSの読み込み成功（${retryCount * 100}ms後）`);
-        }
-    }
+    })();
 
     // UI_SELECTORSの状態を詳細にログ出力
     console.log('🔧 [ClaudeV2] UI_SELECTORS初期化確認:');
