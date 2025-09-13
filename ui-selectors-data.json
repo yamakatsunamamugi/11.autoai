@@ -1,0 +1,658 @@
+{
+  "version": "1.0.0",
+  "lastUpdated": "2025-09-13",
+  "description": "UI selectors for ChatGPT, Claude, Gemini, and Genspark automation",
+  "selectors": {
+    "ChatGPT": {
+      "INPUT": [
+        "#prompt-textarea",
+        "[contenteditable=\"true\"]",
+        ".ProseMirror",
+        "div[contenteditable=\"true\"]",
+        "textarea[data-testid=\"conversation-textarea\"]",
+        "textarea[placeholder*=\"メッセージ\"]",
+        "textarea"
+      ],
+      "SEND_BUTTON": [
+        "[data-testid=\"send-button\"]",
+        "#composer-submit-button",
+        "[aria-label=\"プロンプトを送信する\"]",
+        "[aria-label=\"Send prompt\"]",
+        "[aria-label*=\"送信\"]",
+        "button[data-testid=\"composer-send-button\"]",
+        "button[class*=\"send\"]",
+        "button[type=\"submit\"]"
+      ],
+      "STOP_BUTTON": [
+        "[data-testid=\"stop-button\"]",
+        "[aria-label=\"ストリーミングの停止\"]",
+        "#composer-submit-button[aria-label*=\"停止\"]",
+        "[aria-label=\"Stop generating\"]",
+        "[aria-label=\"Stop\"]",
+        "button[aria-label*=\"Stop\"]",
+        "button[aria-label*=\"stop\"]",
+        "[data-testid=\"composer-moderation-stop-button\"]"
+      ],
+      "MODEL_BUTTON": [
+        "[data-testid=\"model-switcher-dropdown-button\"]",
+        "button[aria-label*=\"モデル\"]",
+        "button[aria-label*=\"Model\"]",
+        "[aria-label=\"Model selector\"]",
+        "button[aria-haspopup=\"menu\"]",
+        "[data-testid=\"model-selector\"]"
+      ],
+      "FUNCTION_MENU_BUTTON": [
+        "[data-testid=\"composer-plus-btn\"]",
+        "[data-testid=\"input-menu-trigger\"]",
+        "[aria-label=\"Add\"]",
+        "button[aria-label*=\"Add\"]"
+      ],
+      "FUNCTION_BUTTON": [
+        "[data-testid=\"composer-plus-btn\"]",
+        "[data-testid=\"input-menu-trigger\"]",
+        "[aria-label=\"Add\"]",
+        "button[aria-label*=\"Add\"]"
+      ],
+      "MESSAGE": [
+        "[data-message-author-role=\"assistant\"]",
+        ".message-content",
+        ".assistant-message"
+      ],
+      "MENU": {
+        "CONTAINER": "[data-radix-popper-content-wrapper], [role=\"menu\"][data-state=\"open\"], [data-radix-menu-content], [role=\"menu\"]",
+        "ITEM": "[data-testid^=\"model-switcher-\"], [role=\"menuitem\"], [role=\"menuitemradio\"]",
+        "POPPER": "[data-radix-popper-content-wrapper]",
+        "LABEL": ".__menu-label, div:not([role])",
+        "SUBMENU_ITEM": "button:has(span)",
+        "SUBMENU_TRIGGERS": [
+          "[data-has-submenu]",
+          "[aria-haspopup=\"menu\"]",
+          "[aria-expanded]",
+          "div:contains(\"レガシーモデル\")",
+          "div:contains(\"さらに表示\")"
+        ]
+      },
+      "POPPER_CONTAINER": [
+        "[data-radix-popper-content-wrapper]"
+      ],
+      "MENU_ITEM": [
+        "[role=\"option\"]",
+        "[role=\"menuitem\"]",
+        "[role=\"menuitemradio\"]"
+      ],
+      "RESPONSE": [
+        "div[data-message-author-role=\"assistant\"]:last-child .markdown.prose",
+        "div[data-message-author-role=\"assistant\"]:last-child .markdown",
+        "[data-message-author-role=\"assistant\"]:last-child .prose",
+        "[data-message-author-role=\"assistant\"]",
+        ".text-message[data-message-author-role=\"assistant\"]",
+        "div[data-message-author-role=\"assistant\"]",
+        ".markdown.prose:last-of-type",
+        ".prose:last-of-type"
+      ],
+      "MODEL_INFO": {
+        "BUTTON": [
+          "button[data-testid=\"model-switcher-dropdown-button\"]",
+          "button[aria-label*=\"モデル\"]",
+          "button[aria-label*=\"Model\"]",
+          "button[class*=\"model\"]",
+          "[data-testid*=\"model-switcher\"]"
+        ],
+        "TEXT_ELEMENT": [
+          "button[data-testid=\"model-switcher-dropdown-button\"] div",
+          "button[data-testid=\"model-switcher-dropdown-button\"] span",
+          "[data-testid=\"model-switcher-dropdown-button\"] .text-sm",
+          "[data-testid=\"model-switcher-dropdown-button\"] *"
+        ]
+      },
+      "TEXT_EXTRACTION": {
+        "ASSISTANT_MESSAGE": [
+          "[data-message-author-role=\"assistant\"]",
+          "div[class*=\"agent-turn\"]",
+          "div[class*=\"model-response\"]",
+          "article[class*=\"message\"]",
+          "div[class*=\"chat-message\"]"
+        ],
+        "MESSAGE_CONTENT": [
+          "div.markdown.prose",
+          "div.markdown",
+          "div[class*=\"markdown\"]",
+          "div.text-base",
+          "div[class*=\"text-message\"]",
+          "div[class*=\"prose\"]"
+        ],
+        "CANVAS_ARTIFACT": [
+          "#prosemirror-editor-container .ProseMirror[contenteditable=\"false\"]",
+          "#prosemirror-editor-container .ProseMirror",
+          "div#prosemirror-editor-container .markdown.prose",
+          "div._main_5jn6z_1.markdown.prose.ProseMirror",
+          "div._main_5jn6z_1.ProseMirror",
+          ".ProseMirror[contenteditable=\"false\"]",
+          "div.markdown.prose.ProseMirror[contenteditable=\"false\"]",
+          "[contenteditable=\"false\"].markdown.prose",
+          "div.markdown.prose:not([data-message-author-role])",
+          "#canvas-content",
+          "[data-testid=\"canvas-content\"]",
+          "div[class*=\"canvas\"]",
+          "div[class*=\"artifact\"]"
+        ]
+      }
+    },
+    "Claude": {
+      "INPUT": [
+        ".ProseMirror[contenteditable=\"true\"]",
+        "div[contenteditable=\"true\"][role=\"textbox\"]",
+        "[aria-label=\"クロードにプロンプトを入力してください\"]",
+        "[aria-label*=\"プロンプト\"]",
+        "div.ProseMirror",
+        "div[contenteditable=\"true\"]",
+        "textarea[placeholder*=\"メッセージ\"]"
+      ],
+      "SEND_BUTTON": [
+        "button[aria-label=\"メッセージを送信\"]",
+        "[aria-label=\"メッセージを送信\"]",
+        "button[type=\"submit\"]",
+        ".send-button",
+        "button[aria-label*=\"送信\"]",
+        "button:has(svg)",
+        "button[data-testid*=\"send\"]"
+      ],
+      "STOP_BUTTON": [
+        "button[aria-label=\"応答を停止\"]",
+        "[aria-label=\"応答を停止\"]",
+        "button[data-state=\"closed\"][aria-label=\"応答を停止\"]",
+        "button.border-border-200[aria-label=\"応答を停止\"]",
+        "button.h-8.w-8[aria-label=\"応答を停止\"]",
+        "button svg path[d*=\"M128,20A108\"]",
+        "button svg path[d*=\"M128,20A108,108\"]",
+        "[aria-label=\"Stop generating\"]",
+        "[data-testid=\"stop-button\"]",
+        "button[aria-label*=\"stop\"]",
+        "button[aria-label*=\"Stop\"]"
+      ],
+      "MODEL_BUTTON": [
+        "[data-testid=\"model-selector-dropdown\"]",
+        "button[data-value*=\"claude\"]",
+        "button.cursor-pointer:has(span.font-medium)",
+        "button[aria-label*=\"モデル\"]",
+        "button[aria-label*=\"Model\"]",
+        "[aria-label=\"モデルを選択\"]",
+        "button[aria-haspopup=\"menu\"]",
+        "[data-testid=\"model-selector\"]"
+      ],
+      "FUNCTION_MENU_BUTTON": [
+        "[data-testid=\"input-menu-tools\"]",
+        "#input-tools-menu-trigger",
+        "[aria-label=\"ツールメニューを開く\"]",
+        "[data-testid=\"input-menu-trigger\"]",
+        "button[aria-label*=\"機能\"]"
+      ],
+      "FUNCTION_BUTTON": [
+        "[data-testid=\"input-menu-tools\"]",
+        "#input-tools-menu-trigger",
+        "[aria-label=\"ツールメニューを開く\"]",
+        "[data-testid=\"input-menu-trigger\"]",
+        "button[aria-label*=\"機能\"]"
+      ],
+      "MESSAGE": [
+        ".grid-cols-1.grid",
+        "div[class*=\"grid-cols-1\"][class*=\"grid\"]",
+        ".font-claude-message",
+        "[data-is-streaming=\"false\"]",
+        "div[class*=\"font-claude-message\"]",
+        ".group.relative.-tracking-\\[0\\.015em\\]"
+      ],
+      "THINKING_PROCESS": {
+        "TEXT_PATTERNS": [
+          "思考プロセス",
+          "Analyzed",
+          "Pondered",
+          "Thought",
+          "Considered",
+          "Evaluated",
+          "Reviewed"
+        ],
+        "ELEMENTS": [
+          "button:has(.tabular-nums)",
+          "svg path[d*=\"M10.3857 2.50977\"]",
+          ".tabular-nums"
+        ],
+        "PARENT_CLASSES": [
+          "rounded-lg",
+          "border-0.5",
+          "transition-all",
+          "my-3"
+        ]
+      },
+      "DEEP_RESEARCH_BUTTON": [
+        "button:has-text(\"リサーチ\")",
+        "button[aria-pressed]",
+        "button:contains(\"リサーチ\")"
+      ],
+      "FEATURE_BUTTON_SVG": {
+        "DEEP_THINKING": "M10.3857 2.50977",
+        "RESEARCH": "M8.5 2C12.0899"
+      },
+      "FEATURE_BUTTONS": {
+        "DEEP_THINKING": [
+          "button[type=\"button\"][aria-pressed=\"true\"]:has(svg path[d*=\"M10.3857 2.50977\"])",
+          "button[aria-pressed=\"true\"]:has(svg path[d*=\"M10.3857\"])",
+          "button.text-accent-secondary-100[aria-pressed=\"true\"]"
+        ],
+        "RESEARCH": [
+          "button[type=\"button\"][aria-pressed]:has(svg path[d*=\"M8.5 2C12.0899\"])",
+          "button[aria-pressed]:has(svg path[d*=\"M8.5 2\"])",
+          "button:has(svg path[d*=\"M8.5\"]):has(p:contains(\"リサーチ\"))",
+          "button.text-accent-secondary-100[aria-pressed=\"true\"]:has(svg)",
+          "button.text-text-300[aria-pressed=\"false\"]:has(svg)"
+        ],
+        "ANY_ACTIVE": [
+          "button[type=\"button\"][aria-pressed=\"true\"]",
+          "button[aria-pressed=\"true\"]"
+        ]
+      },
+      "PREVIEW_BUTTON": [
+        "button[aria-label=\"内容をプレビュー\"]"
+      ],
+      "RESPONSE": [
+        ".grid-cols-1.grid",
+        "div[class*=\"grid-cols-1\"][class*=\"grid\"]",
+        ".font-claude-message",
+        "[data-is-streaming=\"false\"]",
+        "div[class*=\"font-claude-message\"]",
+        ".group.relative.-tracking-\\[0\\.015em\\]"
+      ],
+      "MENU": {
+        "CONTAINER": "[role=\"menu\"][data-state=\"open\"], [role=\"menu\"]",
+        "ITEM": "[role=\"option\"], [role=\"menuitem\"]",
+        "MODEL_ITEM": "button[role=\"option\"]:has(span)",
+        "OTHER_MODELS": [
+          "[role=\"menuitem\"][aria-haspopup=\"menu\"]",
+          "[role=\"menuitem\"]:has(svg)",
+          "div[role=\"menuitem\"]:last-child"
+        ]
+      },
+      "FEATURE_MENU": {
+        "CONTAINER": [
+          "[aria-labelledby=\"input-tools-menu-trigger\"]",
+          ".w-\\[20rem\\].absolute.max-w-\\[calc\\(100vw-16px\\)\\].block",
+          "div.z-dropdown.bg-bg-000.rounded-xl",
+          "div[style*=\"max-height\"][style*=\"336\"]",
+          ".absolute .flex-col .overscroll-auto"
+        ],
+        "WEB_SEARCH_TOGGLE": [
+          "button:has(svg path[d*=\"M7.2705 3.0498\"]):has(input[role=\"switch\"])",
+          "button:has(p:contains(\"ウェブ検索\")):has(input[role=\"switch\"])",
+          "button.text-primary-500:has(input[role=\"switch\"])",
+          "div:contains(\"ウェブ検索\") button:has(.group\\/switch)",
+          "button .font-base:contains(\"ウェブ検索\")"
+        ]
+      },
+      "MENU_ITEM": [
+        "[role=\"option\"]",
+        "[role=\"menuitem\"]",
+        "[role=\"menuitemradio\"]"
+      ],
+      "DEEP_RESEARCH": {
+        "CANVAS_PREVIEW": [
+          "[aria-label=\"内容をプレビュー\"]",
+          "[role=\"button\"][aria-label=\"内容をプレビュー\"]",
+          ".artifact-block-cell",
+          "[class*=\"artifact-block\"]"
+        ]
+      },
+      "CANVAS": {
+        "CONTAINER": [
+          ".grid-cols-1.grid:has(h1)",
+          ".grid-cols-1.grid",
+          "[class*=\"grid-cols-1\"][class*=\"grid\"]",
+          "div:has(> h1.text-2xl)",
+          ".overflow-y-auto:has(h1)"
+        ],
+        "PREVIEW_TEXT": [
+          ".absolute.inset-0"
+        ],
+        "PREVIEW_BUTTON": [
+          "button[aria-label=\"内容をプレビュー\"]",
+          "button[aria-label*=\"プレビュー\"]",
+          "button[aria-label*=\"preview\"]",
+          "button[aria-label=\"View content\"]"
+        ],
+        "TITLE": "h1.text-2xl",
+        "SECTION": "h2.text-xl",
+        "PARAGRAPH": "p.whitespace-normal, p[class*=\"whitespace\"]"
+      },
+      "MODEL_INFO": {
+        "BUTTON": [
+          "button[data-testid=\"model-selector-dropdown\"]",
+          "button[aria-haspopup=\"menu\"]",
+          "button.cursor-pointer:has(span.font-medium)",
+          "button[aria-label*=\"モデル\"]",
+          "button[aria-label*=\"Model\"]"
+        ],
+        "TEXT_ELEMENT": [
+          "button[data-testid=\"model-selector-dropdown\"] .whitespace-nowrap.tracking-tight.select-none",
+          "button[data-testid=\"model-selector-dropdown\"] span",
+          "button[data-testid=\"model-selector-dropdown\"] div",
+          "button[aria-haspopup=\"menu\"] .whitespace-nowrap",
+          "button[aria-haspopup=\"menu\"] span.font-medium"
+        ]
+      },
+      "TEXT_EXTRACTION": {
+        "MESSAGE_CONTAINER": [
+          "[data-message-author-role=\"assistant\"]",
+          "div[class*=\"assistant-message\"]",
+          "div[class*=\"claude-message\"]",
+          "div[data-testid*=\"message\"]"
+        ],
+        "MESSAGE_CONTENT": [
+          ".standard-markdown",
+          "div[class*=\"markdown\"]",
+          ".prose",
+          "div[class*=\"text-base\"]",
+          "div[class*=\"message-content\"]"
+        ],
+        "NORMAL_RESPONSE": [
+          ".standard-markdown",
+          "div.standard-markdown",
+          ".grid.gap-2\\.5.standard-markdown",
+          "div.grid-cols-1.standard-markdown",
+          "[class*=\"standard-markdown\"]"
+        ],
+        "ARTIFACT_CONTENT": [
+          "#markdown-artifact",
+          "[id*=\"artifact\"]",
+          "div[class*=\"artifact\"]",
+          ".artifact-content",
+          "[data-testid=\"artifact-content\"]",
+          "div[class*=\"canvas\"]"
+        ],
+        "GENERIC_RESPONSE": [
+          "div.font-claude-message",
+          "div[class*=\"response\"]",
+          "article[class*=\"message\"]",
+          "div.conversation-turn"
+        ]
+      }
+    },
+    "Gemini": {
+      "INPUT": [
+        ".ql-editor.new-input-ui[contenteditable=\"true\"]",
+        ".ql-editor[contenteditable=\"true\"]",
+        "div.ql-editor.textarea",
+        "[contenteditable=\"true\"][role=\"textbox\"]",
+        "rich-textarea .ql-editor"
+      ],
+      "CANVAS_BUTTON": [
+        "div.container.is-open.clickable[data-test-id=\"container\"]",
+        "div.container.clickable[data-test-id=\"container\"]",
+        "div[data-test-id=\"container\"]:has(mat-icon[data-mat-icon-name=\"article\"])",
+        "div.container:has(div[data-test-id=\"artifact-text\"])",
+        "div.container.is-open",
+        "div[data-test-id=\"container\"].clickable"
+      ],
+      "CANVAS_EDITOR": [
+        ".ProseMirror",
+        "immersive-editor .ProseMirror",
+        ".immersive-editor .ProseMirror",
+        "#extended-response-markdown-content .ProseMirror",
+        ".immersive-editor-markdown-content .ProseMirror"
+      ],
+      "SEND_BUTTON": [
+        "button[aria-label=\"送信\"]",
+        "button[mattooltip=\"送信\"]",
+        ".send-button-container button",
+        "button.send-button:not(.stop)",
+        "[aria-label=\"プロンプトを送信\"]",
+        "button:has(mat-icon[data-mat-icon-name=\"send\"])",
+        "button[aria-label*=\"Send\"]",
+        "[data-testid=\"send-button\"]",
+        "button[type=\"submit\"]"
+      ],
+      "STOP_BUTTON": [
+        "div.blue-circle.stop-icon",
+        "div.stop-icon mat-icon[data-mat-icon-name=\"stop\"]",
+        ".blue-circle.stop-icon",
+        "button[aria-label=\"回答を停止\"]",
+        "button.send-button.stop",
+        "button.stop",
+        ".stop-icon",
+        "mat-icon[data-mat-icon-name=\"stop\"]",
+        "[aria-label=\"Stop response\"]",
+        "button[aria-label*=\"停止\"]",
+        "button[aria-label*=\"stop\"]",
+        ".stop-button"
+      ],
+      "MODEL_BUTTON": [
+        ".gds-mode-switch-button",
+        "button.logo-pill-btn",
+        "button[mat-flat-button]:has(.logo-pill-label-container)",
+        "button[aria-haspopup=\"menu\"][aria-expanded=\"false\"]",
+        "button:has(.mode-title)",
+        "button[aria-label*=\"モデル\"]",
+        "button[mattooltip*=\"モデル\"]",
+        "button.model-selector-button",
+        "button:has(.model-name)",
+        ".model-selector"
+      ],
+      "FUNCTION_BUTTONS": {
+        "DEEP_THINK": [
+          "button:has-text(\"Deep Think\")",
+          "button[aria-label*=\"Deep Think\"]"
+        ],
+        "IMAGE": [
+          "button:has(mat-icon[data-mat-icon-name=\"image\"])",
+          "button[mattooltip*=\"画像\"]"
+        ],
+        "VIDEO": [
+          "button:has(mat-icon[data-mat-icon-name=\"smart_display\"])",
+          "button[mattooltip*=\"動画\"]"
+        ]
+      },
+      "DEEP_RESEARCH": {
+        "BUTTON": [
+          "button[aria-label=\"リサーチを開始\"]",
+          "button[data-test-id=\"confirm-button\"][aria-label=\"リサーチを開始\"]",
+          "button:contains(\"リサーチを開始\")",
+          "button[aria-label*=\"リサーチ\"]",
+          "button[class*=\"research\"]"
+        ],
+        "RESPONSE": [
+          "#extended-response-markdown-content",
+          ".extended-response-markdown-content",
+          "[id=\"extended-response-markdown-content\"]",
+          "div[id=\"extended-response-markdown-content\"]",
+          ".markdown.markdown-main-panel"
+        ]
+      },
+      "MESSAGE": [
+        ".conversation-turn.model-turn",
+        ".model-response-text",
+        "message-content"
+      ],
+      "MENU": {
+        "BUTTON": "button.input-area-buttons",
+        "CONTAINER": ".cdk-overlay-pane, .mat-mdc-menu-panel, .menu-container",
+        "ITEM": "[role=\"menuitemradio\"], [role=\"menuitem\"], .menu-item",
+        "MODEL_ITEM": "[role=\"menuitemradio\"]"
+      },
+      "MORE_BUTTON": [
+        "button[aria-label=\"その他\"]",
+        "button[mattooltip=\"その他\"]",
+        "button:has(mat-icon[data-mat-icon-name=\"more_vert\"])"
+      ],
+      "MENU_TRIGGER": [
+        ".mat-mdc-menu-trigger[aria-expanded=\"true\"]"
+      ],
+      "MENU_ITEM": [
+        "[role=\"menuitemradio\"]",
+        "[role=\"menuitem\"]",
+        "button[mat-list-item]",
+        ".toolbox-drawer-item-list-button"
+      ],
+      "FUNCTION_BUTTON": [
+        "button[aria-label=\"その他\"]",
+        "button[aria-label*=\"その他\"]",
+        "button mat-icon[fonticon=\"more_horiz\"]"
+      ],
+      "RESPONSE": [
+        ".response-container",
+        ".conversation-turn",
+        ".message-container",
+        ".markdown"
+      ],
+      "TOOLBOX": {
+        "CONTAINER": [
+          ".toolbox-drawer",
+          ".toolbox-container"
+        ]
+      },
+      "MODEL_INFO": {
+        "BUTTON": [
+          ".gds-mode-switch-button.logo-pill-btn",
+          "button[class*=\"logo-pill-btn\"]",
+          "button.gds-mode-switch-button",
+          ".logo-pill-label-container",
+          "button[aria-label*=\"モデル\"]",
+          "button[aria-label*=\"Model\"]",
+          ".model-selector-button",
+          "[data-testid*=\"model\"]"
+        ],
+        "TEXT_ELEMENT": [
+          ".logo-pill-label-container",
+          ".gds-mode-switch-button .mdc-button__label div",
+          ".gds-mode-switch-button .label",
+          ".logo-pill-label-container > span:first-child",
+          ".logo-pill-label-container span:not([aria-hidden])",
+          ".logo-pill-label-container span:not(mat-icon)",
+          ".logo-pill-label-container span",
+          ".logo-pill-label-container .mode-title",
+          ".mode-title",
+          ".logo-pill-label-container .model-name",
+          ".logo-pill-label-container div",
+          ".model-indicator span",
+          "[class*=\"model-\"] span"
+        ]
+      },
+      "TEXT_EXTRACTION": {
+        "DEEP_RESEARCH": [
+          "#extended-response-markdown-content",
+          ".extended-response-markdown-content",
+          "[id=\"extended-response-markdown-content\"]",
+          "div[id=\"extended-response-markdown-content\"]",
+          ".markdown.markdown-main-panel",
+          "div[class*=\"deep-research\"]",
+          "div[class*=\"research-result\"]"
+        ],
+        "MESSAGE_CONTAINER": [
+          ".model-response-text",
+          "div[class*=\"model-response\"]",
+          ".message-content",
+          "div[class*=\"gemini-response\"]",
+          "div[class*=\"assistant-message\"]"
+        ],
+        "MESSAGE_CONTENT": [
+          ".markdown",
+          "div[class*=\"markdown\"]",
+          ".prose",
+          "div[class*=\"text-base\"]"
+        ],
+        "NORMAL_RESPONSE": [
+          ".model-response-text .markdown",
+          ".model-response-text",
+          ".conversation-turn .markdown",
+          "div[class*=\"model-response\"] .markdown"
+        ],
+        "CANVAS_CONTENT": [
+          ".ProseMirror[contenteditable=\"true\"]",
+          ".ProseMirror",
+          "div[contenteditable=\"true\"]",
+          "div[class*=\"canvas\"]",
+          "div[class*=\"code-block\"]"
+        ],
+        "GENERIC_RESPONSE": [
+          "div[data-message-role=\"model\"]",
+          "div[class*=\"message\"][class*=\"assistant\"]",
+          "article[class*=\"response\"]",
+          "section[class*=\"output\"]"
+        ]
+      }
+    },
+    "COMMON": {
+      "ERROR_MESSAGE": [
+        ".error-message",
+        "[role=\"alert\"]",
+        ".alert-danger"
+      ],
+      "LOADING": [
+        ".loading-spinner",
+        "[aria-busy=\"true\"]",
+        ".processing-indicator"
+      ],
+      "MODAL": [
+        "[role=\"dialog\"]",
+        ".modal",
+        "[aria-modal=\"true\"]"
+      ]
+    },
+    "TEST": {
+      "STATUS_INDICATOR": [
+        ".status-indicator"
+      ]
+    },
+    "Genspark": {
+      "INPUT": [
+        "textarea[placeholder*=\"質問\"]",
+        "textarea[placeholder*=\"スライド\"]",
+        "textarea[placeholder*=\"factcheck\"]",
+        "textarea",
+        "input[type=\"text\"]",
+        "[contenteditable=\"true\"]"
+      ],
+      "SEND_BUTTON": [
+        ".enter-icon-wrapper",
+        "button[type=\"submit\"]",
+        "button:has(svg.enter-icon)",
+        "[aria-label*=\"送信\"]",
+        "[aria-label*=\"submit\"]"
+      ],
+      "STOP_BUTTON": [
+        ".enter-icon-wrapper[class*=\"bg-[#232425]\"]",
+        ".enter-icon-wrapper:has(.stop-icon)",
+        "button:has(svg.stop-icon)",
+        "[aria-label*=\"停止\"]",
+        "[aria-label*=\"stop\"]"
+      ],
+      "MESSAGE": [
+        ".response-content",
+        ".message-content",
+        "[data-testid=\"response\"]",
+        "[class*=\"response\"]",
+        "[class*=\"message\"]",
+        "div[role=\"article\"]",
+        ".markdown-content"
+      ],
+      "RESPONSE": [
+        ".response-content",
+        ".message-content",
+        "[data-testid=\"response\"]",
+        "[class*=\"response\"]:last-child"
+      ],
+      "MODEL_BUTTON": [],
+      "FUNCTION_BUTTON": [],
+      "MENU": {
+        "CONTAINER": [],
+        "ITEM": [],
+        "POPPER": []
+      },
+      "ALL_BUTTONS": [
+        "button",
+        "[role=\"button\"]",
+        ".enter-icon-wrapper"
+      ],
+      "ALL_ELEMENTS": [
+        "*"
+      ]
+    }
+  }
+}

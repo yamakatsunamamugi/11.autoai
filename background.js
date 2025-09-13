@@ -1,4 +1,16 @@
-// background.js - Service Worker 
+// background.js - Service Worker
+
+// ui-selectors-loaderを使用してJSONから読み込み
+import { loadSelectors } from './src/config/ui-selectors-loader.js';
+
+// UI_SELECTORSをグローバルに保持
+let UI_SELECTORS = {};
+
+// 起動時にセレクタを読み込み
+(async () => {
+  UI_SELECTORS = await loadSelectors();
+  console.log('✅ Background: UI Selectors loaded');
+})();
 
 // ポップアップウィンドウの管理
 let popupWindowId = null;

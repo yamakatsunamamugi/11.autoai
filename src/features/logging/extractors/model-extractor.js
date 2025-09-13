@@ -11,27 +11,39 @@
  */
 
 import { BaseExtractor } from './base-extractor.js';
-import { UI_SELECTORS } from '../../../config/ui-selectors.js';
+import { loadSelectors } from '../../../config/ui-selectors-loader.js';
 
 class ModelExtractorImpl extends BaseExtractor {
     constructor(aiType) {
         super(aiType);
+        this.UI_SELECTORS = null;
     }
-    
+
+    /**
+     * セレクタをロード（初回のみ）
+     */
+    async ensureSelectorsLoaded() {
+        if (!this.UI_SELECTORS) {
+            this.UI_SELECTORS = await loadSelectors();
+        }
+    }
+
     /**
      * ChatGPTからモデル情報を取得
      * @returns {string} モデル名
      */
-    extractChatGPTModel() {
+    async extractChatGPTModel() {
+        await this.ensureSelectorsLoaded();
+
         const debugInfo = {
             aiType: 'ChatGPT',
             selectorFound: false,
             elementContent: null,
             extractedModel: null
         };
-        
+
         try {
-            const selectors = UI_SELECTORS.ChatGPT.MODEL_INFO;
+            const selectors = this.UI_SELECTORS.ChatGPT.MODEL_INFO;
             
             // ボタン要素を取得
             let buttonElement = null;
@@ -92,7 +104,8 @@ class ModelExtractorImpl extends BaseExtractor {
      * Claudeからモデル情報を取得
      * @returns {string} モデル名
      */
-    extractClaudeModel() {
+    async extractClaudeModel() {
+        await this.ensureSelectorsLoaded();
         const debugInfo = {
             aiType: 'Claude',
             selectorFound: false,
@@ -102,7 +115,7 @@ class ModelExtractorImpl extends BaseExtractor {
         };
         
         try {
-            const selectors = UI_SELECTORS.Claude.MODEL_INFO;
+            const selectors = this.UI_SELECTORS.Claude.MODEL_INFO;
             
             // ボタン要素を取得
             let buttonElement = null;
@@ -169,7 +182,8 @@ class ModelExtractorImpl extends BaseExtractor {
      * Geminiからモデル情報を取得
      * @returns {string} モデル名
      */
-    extractGeminiModel() {
+    async extractGeminiModel() {
+        await this.ensureSelectorsLoaded();
         const debugInfo = {
             aiType: 'Gemini',
             selectorFound: false,
@@ -178,7 +192,7 @@ class ModelExtractorImpl extends BaseExtractor {
         };
         
         try {
-            const selectors = UI_SELECTORS.Gemini.MODEL_INFO;
+            const selectors = this.UI_SELECTORS.Gemini.MODEL_INFO;
             
             // テキスト要素を取得（コンテナ要素も考慮）
             let modelText = '';
@@ -225,7 +239,7 @@ class ModelExtractorImpl extends BaseExtractor {
      * 指定されたAI種別からモデル情報を取得
      * @returns {string} モデル名（取得失敗時は空文字）
      */
-    extract() {
+    async extract() {
         const normalizedAiType = this.aiType.toLowerCase();
         
         switch (normalizedAiType) {
@@ -251,9 +265,9 @@ export class ModelExtractor {
      * @param {string} aiType - AI種別 ('chatgpt', 'claude', 'gemini')
      * @returns {string} モデル名（取得失敗時は空文字）
      */
-    static extract(aiType) {
+    static async extract(aiType) {
         const extractor = new ModelExtractorImpl(aiType);
-        return extractor.extract();
+        return await extractor.extract();
     }
 }
 

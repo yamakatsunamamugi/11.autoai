@@ -69,6 +69,8 @@
   "web_accessible_resources": [
     {
       "resources": [
+        "ui-selectors-data.json",
+        "src/config/ui-selectors-loader.js",
         "src/ui/ui.html",
         "src/ui/ui-controller.js",
         "src/config/timeout-config.js",

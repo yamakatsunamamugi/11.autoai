@@ -26,32 +26,21 @@
         STOP_BUTTON_DISAPPEAR_WAIT: 300000
     };
     
-    // ui-selectorsからインポート（Chrome拡張機能のインジェクトコンテキスト）
-    // 重要: UI_SELECTORSは必ずsrc/config/ui-selectors.jsから取得する
-    // ハードコードされたセレクタは使用禁止
+    // UI_SELECTORSをJSONから読み込み
+    let UI_SELECTORS = {};
 
-    // UI_SELECTORSが読み込まれるまで待機（即時実行非同期関数でラップ）
-    let UI_SELECTORS = window.UI_SELECTORS;
-
-    // UI_SELECTORSの初期化待機処理
-    await (async function waitForUISelectors() {
-        if (!UI_SELECTORS) {
-            console.log('⏳ [ClaudeV2] UI_SELECTORSの読み込みを待機中...');
-            let retryCount = 0;
-            const maxRetries = 50;
-
-            while (!window.UI_SELECTORS && retryCount < maxRetries) {
-                await new Promise(resolve => setTimeout(resolve, 100));
-                retryCount++;
-            }
-
+    // JSONファイルから非同期で読み込み
+    (async () => {
+        try {
+            const response = await fetch(chrome.runtime.getURL('ui-selectors-data.json'));
+            const data = await response.json();
+            UI_SELECTORS = data.selectors;
+            window.UI_SELECTORS = UI_SELECTORS;
+            console.log(`✅ [ClaudeV2] UI Selectors loaded (v${data.version})`);
+        } catch (error) {
+            console.error('❌ [ClaudeV2] Failed to load ui-selectors-data.json:', error);
+            // フォールバック: windowから取得を試みる
             UI_SELECTORS = window.UI_SELECTORS || {};
-
-            if (!window.UI_SELECTORS) {
-                console.error('❌ [ClaudeV2] UI_SELECTORSの読み込みに失敗しました（タイムアウト）');
-            } else {
-                console.log(`✅ [ClaudeV2] UI_SELECTORSの読み込み成功（${retryCount * 100}ms後）`);
-            }
         }
     })();
 
