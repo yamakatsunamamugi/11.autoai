@@ -31,12 +31,13 @@
         try {
             // Chrome拡張機能として動作している場合
             if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getURL) {
-                const url = chrome.runtime.getURL('src/config/ui-selectors.js');
-                const module = await import(url);
-                UI_SELECTORS = module.UI_SELECTORS;
+                // ui-selectors-data.jsonから読み込み
+                const response = await fetch(chrome.runtime.getURL('ui-selectors-data.json'));
+                const data = await response.json();
+                UI_SELECTORS = data.selectors;
             }
         } catch (error) {
-            console.log('[DeepResearch] ui-selectors.jsの読み込みに失敗、内蔵セレクタを使用します');
+            console.log('[DeepResearch] ui-selectors-data.jsonの読み込みに失敗、内蔵セレクタを使用します');
         }
     }
 

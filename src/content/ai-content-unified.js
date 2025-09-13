@@ -133,23 +133,22 @@ async function waitForResponseEnhanced(enableDeepResearch = false, customTimeout
 // UI Selectors、タイムアウト設定とDeepResearch設定を読み込み
 const loadUISelectors = () => {
   
-  UI_SELECTORS_PROMISE = new Promise((resolve) => {
-    const script = document.createElement("script");
-    script.type = "module";
-    script.src = chrome.runtime.getURL("src/config/ui-selectors.js");
-    script.onload = () => {
+  // ui-selectors-data.jsonから読み込み
+  UI_SELECTORS_PROMISE = fetch(chrome.runtime.getURL('ui-selectors-data.json'))
+    .then(response => response.json())
+    .then(data => {
+      window.UI_SELECTORS = data.selectors;
       UI_SELECTORS_LOADED = true;
-      resolve(true);
+      console.log(`✅ [11.autoai] UI Selectors loaded from JSON (v${data.version})`);
       loadTimeoutConfig();
-    };
-    script.onerror = (error) => {
+      return true;
+    })
+    .catch(error => {
       console.error("❌ [11.autoai] UI Selectors読み込みエラー:", error);
       UI_SELECTORS_LOADED = false;
-      resolve(false); // エラーでも続行
       loadTimeoutConfig();
-    };
-    document.head.appendChild(script);
-  });
+      return false;
+    });
   
   return UI_SELECTORS_PROMISE;
 };

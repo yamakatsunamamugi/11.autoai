@@ -59,12 +59,13 @@
       try {
         loadAttempted = true;
         log('UI_SELECTORSの読み込み開始...', 'INFO');
-        
+
         // Chrome拡張機能として動作している場合
         if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getURL) {
-          const url = chrome.runtime.getURL('src/config/ui-selectors.js');
-          const module = await import(url);
-          UI_SELECTORS = module.UI_SELECTORS;
+          // ui-selectors-data.jsonから読み込み
+          const response = await fetch(chrome.runtime.getURL('ui-selectors-data.json'));
+          const data = await response.json();
+          UI_SELECTORS = data.selectors;
           log('UI_SELECTORSの読み込み成功', 'SUCCESS');
         } else {
           log('Chrome拡張機能環境ではありません', 'WARNING');
