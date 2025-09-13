@@ -4439,13 +4439,29 @@ export default class StreamProcessorV2 {
         this.currentGroupId = group.id;
         
         try {
-          // 既存のprocessBatchメソッドを使用（並列処理＋フェーズ分け）
-          await this.processBatch(taskObjects, false);
-          totalCompleted += taskObjects.length;
+          // processTaskで順次処理（ウィンドウ作成→全フェーズ→送信→スプレッドシート書き込み→ウィンドウ閉じる）
+          for (let i = 0; i < taskObjects.length; i++) {
+            const task = taskObjects[i];
+            this.logger.log(`[StreamProcessorV2] タスク${i + 1}/${taskObjects.length}を順次処理: ${task.column}${task.row}`);
+            
+            try {
+              await this.processTask(task, false, i);
+              totalCompleted += 1;
+              this.logger.log(`[StreamProcessorV2] ✅ タスク完了: ${task.column}${task.row}`);
+            } catch (taskError) {
+              this.logger.error(`[StreamProcessorV2] タスク処理エラー: ${task.column}${task.row}`, taskError);
+              totalFailed += 1;
+            }
+            
+            // タスク間の間隔
+            if (i < taskObjects.length - 1) {
+              await this.delay(2000);
+            }
+          }
           
-          this.logger.log(`[StreamProcessorV2] ✅ バッチ処理完了、再スキャンします...`);
+          this.logger.log(`[StreamProcessorV2] ✅ 順次処理完了、再スキャンします...`);
         } catch (error) {
-          this.logger.error(`[StreamProcessorV2] バッチ処理エラー:`, error);
+          this.logger.error(`[StreamProcessorV2] 順次処理エラー:`, error);
           totalFailed += taskObjects.length;
         } finally {
           // 処理後にクリア
