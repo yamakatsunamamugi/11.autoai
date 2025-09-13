@@ -159,7 +159,6 @@
         "automations/ai-mutation-observer.js",
         "automations/test-runner.js",
         "automations/test-runner-chrome.js",
-        "src/config/ui-selectors.js",
         "src/modules/retry-manager.js",
         "ai-platforms/chatgpt/chatgpt-mode-control.js",
         "ai-platforms/chatgpt/chatgpt-research-detector.js",
