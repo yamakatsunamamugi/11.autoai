@@ -746,31 +746,42 @@ function processSpreadsheetData(spreadsheetData) {
     }
     
     // 特別列の検出（新グループの開始）
-    if (trimmedHeader === "レポート化" || 
+    if (trimmedHeader === "レポート化" ||
         trimmedHeader.includes("Genspark（スライド）") ||
         trimmedHeader.includes("Genspark（ファクトチェック）")) {
       // 前のグループがあれば完了させる
-      if (currentGroup && currentGroup.columnRange.answerColumns.length > 0) {
-        result.taskGroups.push(currentGroup);
-        groupCounter++;
+      if (currentGroup) {
+        if (currentGroup.columnRange.answerColumns.length > 0 ||
+            ['report', 'genspark_slide', 'genspark_factcheck', 'genspark'].includes(currentGroup.groupType)) {
+          result.taskGroups.push(currentGroup);
+          groupCounter++;
+        }
       }
-      
-      // 新しいグループを開始
-      currentGroup = {
+
+      // 特殊グループを作成
+      const specialGroup = {
         id: `group_${groupCounter}`,
         name: `タスクグループ${groupCounter}`,
         startColumn: columnLetter,
-        endColumn: columnLetter,  // 暫定、後で更新
+        endColumn: columnLetter,
         columnRange: {
           logColumn: null,
           promptColumns: [columnLetter],
-          answerColumns: []
+          answerColumns: []  // 特殊グループは回答列を持たない
         },
         groupType: determineGroupType(trimmedHeader),
         aiType: determineAIType(trimmedHeader),
         dependencies: groupCounter > 1 ? [`group_${groupCounter - 1}`] : [],
-        sequenceOrder: groupCounter
+        sequenceOrder: groupCounter,
+        isSpecialGroup: true  // 特殊グループフラグ
       };
+
+      // 特殊グループは即座に追加（次の列を待たない）
+      result.taskGroups.push(specialGroup);
+      groupCounter++;
+      currentGroup = null;  // 現在のグループをクリア
+
+      console.log(`[processSpreadsheetData] 特殊グループ検出: ${trimmedHeader} (${columnLetter}列) - ${specialGroup.groupType}`);
     }
     
     // プロンプト列の検出
@@ -882,8 +893,12 @@ function processSpreadsheetData(spreadsheetData) {
     });
     
     // 最後のグループを追加
-    if (currentGroup && currentGroup.columnRange.answerColumns.length > 0) {
-      result.taskGroups.push(currentGroup);
+    // 特殊グループ（レポート化、Genspark）は回答列がなくても追加
+    if (currentGroup) {
+      if (currentGroup.columnRange.answerColumns.length > 0 ||
+          ['report', 'genspark_slide', 'genspark_factcheck', 'genspark'].includes(currentGroup.groupType)) {
+        result.taskGroups.push(currentGroup);
+      }
     }
     
     // 列制御をタスクグループに適用
