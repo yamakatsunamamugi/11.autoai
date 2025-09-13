@@ -675,7 +675,17 @@ function processSpreadsheetData(spreadsheetData) {
   }
   
   // メニュー行の内容をデバッグ出力
-  console.log("[DEBUG] メニュー行の全内容:", menuRow.map((header, index) => `${getColumnName(index)}:${header}`).filter(item => item.split(':')[1]));
+  const menuRowDetails = menuRow.map((header, index) => `${getColumnName(index)}:${header}`);
+  console.log("[DEBUG] メニュー行の全内容（空でない）:", menuRowDetails.filter(item => item.split(':')[1]));
+  
+  // レポート化関連の列を特別に検索
+  const reportColumns = menuRow.map((header, index) => {
+    if (header && header.toString().includes('レポート')) {
+      return `${getColumnName(index)}:「${header}」`;
+    }
+    return null;
+  }).filter(item => item);
+  console.log("[DEBUG] レポート関連列:", reportColumns);
   
   // タスクグループを識別するためのデータ構造
   let currentGroup = null;
