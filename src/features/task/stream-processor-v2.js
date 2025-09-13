@@ -1087,6 +1087,82 @@ export default class StreamProcessorV2 {
   }
 
   /**
+   * 動的タスクグループを処理
+   */
+  async processDynamicTaskGroups(spreadsheetData, options = {}) {
+    const startTime = Date.now();
+    
+    // スリープ防止を開始
+    try {
+      if (globalThis.powerManager) {
+        await globalThis.powerManager.startProtection('stream-processor-dynamic');
+        this.logger.log('[StreamProcessorV2] 🛡️ 動的タスクグループ処理: スリープ防止を開始');
+      }
+    } catch (error) {
+      this.logger.error('[StreamProcessorV2] スリープ防止開始エラー:', error);
+    }
+    
+    // spreadsheetDataをインスタンス変数に保存
+    this.spreadsheetData = spreadsheetData;
+    this.spreadsheetUrl = spreadsheetData?.spreadsheetUrl;
+    
+    // SpreadsheetLoggerを初期化
+    await this.initializeSpreadsheetLogger();
+    
+    // タスクグループ情報を取得
+    const taskGroups = options.taskGroups || [];
+    
+    if (!taskGroups || taskGroups.length === 0) {
+      this.logger.warn('[StreamProcessorV2] タスクグループが見つかりません');
+      
+      // スリープ防止を解除
+      try {
+        if (globalThis.powerManager) {
+          await globalThis.powerManager.stopProtection('stream-processor-dynamic');
+        }
+      } catch (error) {
+        this.logger.error('[StreamProcessorV2] スリープ防止解除エラー:', error);
+      }
+      
+      return {
+        success: false,
+        total: 0,
+        completed: 0,
+        failed: 0,
+        totalTime: '0秒',
+        error: 'タスクグループが見つかりません'
+      };
+    }
+    
+    this.logger.log(`[StreamProcessorV2] 🚀 動的タスクグループ処理開始: ${taskGroups.length}グループ`);
+    
+    // TODO: 実際のタスクグループ処理ロジックを実装
+    // 現在は仮の実装
+    this.logger.log('[StreamProcessorV2] ⚠️ processDynamicTaskGroups: 実装が不完全です');
+    
+    const endTime = Date.now();
+    const totalTime = Math.round((endTime - startTime) / 1000);
+    
+    // スリープ防止を解除
+    try {
+      if (globalThis.powerManager) {
+        await globalThis.powerManager.stopProtection('stream-processor-dynamic');
+      }
+    } catch (error) {
+      this.logger.error('[StreamProcessorV2] スリープ防止解除エラー:', error);
+    }
+    
+    return {
+      success: true,
+      total: 0,
+      completed: 0,
+      failed: 0,
+      totalTime: `${totalTime}秒`,
+      message: 'タスクグループ処理（仮実装）'
+    };
+  }
+
+  /**
    * formatCellRanges
    */
   formatCellRanges(cells) {

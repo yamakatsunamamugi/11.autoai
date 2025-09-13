@@ -499,10 +499,14 @@ function getColumnName(index) {
 function determineGroupType(trimmedHeader) {
   if (trimmedHeader === "レポート化") {
     return "report";
+  } else if (trimmedHeader.includes("Genspark（スライド）")) {
+    return "genspark_slide";
+  } else if (trimmedHeader.includes("Genspark（ファクトチェック）")) {
+    return "genspark_factcheck";
   } else if (trimmedHeader.includes("Genspark（")) {
     return "genspark";
   }
-  return null;
+  return "standard";
 }
 
 /**
@@ -713,7 +717,7 @@ function processSpreadsheetData(spreadsheetData) {
         sequenceOrder: groupCounter
       };
       
-      console.log(`[DEBUG] ログ列検出: ${columnLetter}列でタスクグループ${groupCounter}作成`);
+      // ログ列検出時の詳細ログ出力を削除（後でまとめて出力）
     }
     
     // 特別列の検出（新グループの開始）
@@ -864,9 +868,57 @@ function processSpreadsheetData(spreadsheetData) {
       console.log(`[列制御] 適用: ${originalCount}グループ → ${result.taskGroups.length}グループ`);
     }
     
-    // タスクグループ作成完了（簡潔版ログ）
+    // タスクグループ作成完了（詳細ログ）
     if (result.taskGroups.length > 0) {
-      console.log(`[processSpreadsheetData] ✅ タスクグループ: ${result.taskGroups.length}個作成`);
+      console.log(`[processSpreadsheetData] ✅ タスクグループ検出完了: ${result.taskGroups.length}個`);
+      
+      // 全タスクグループの詳細をまとめてログ出力
+      const groupSummary = result.taskGroups.map((group, index) => {
+        const logCol = group.columnRange.logColumn || 'なし';
+        
+        // メニュー列の計算（ログ列の次の列）
+        let menuCol = 'なし';
+        let menuContent = '';
+        if (group.columnRange.logColumn) {
+          const logIndex = columnToIndex(group.columnRange.logColumn);
+          menuCol = getColumnName(logIndex + 1);
+          // メニュー列の内容を取得（2行目のデータ）
+          if (result.values && result.values[1]) {
+            menuContent = result.values[1][logIndex + 1] || '';
+          }
+        }
+        
+        const promptCols = group.columnRange.promptColumns.join(', ') || 'なし';
+        
+        // 回答列を文字列として表示（オブジェクトではなく）
+        const answerCols = group.columnRange.answerColumns.map(col => 
+          typeof col === 'object' ? col.column || JSON.stringify(col) : col
+        ).join(', ') || 'なし';
+        
+        // グループタイプを含める
+        const groupType = group.groupType || 'standard';
+        const aiType = group.aiType || 'Claude';
+        
+        // 特殊グループの場合は明記
+        let groupLabel = `グループ${index + 1}`;
+        if (groupType === 'report') {
+          groupLabel += '(レポート化)';
+        } else if (groupType === 'genspark_slide') {
+          groupLabel += '(Genspark-スライド)';
+        } else if (groupType === 'genspark_factcheck') {
+          groupLabel += '(Genspark-ファクトチェック)';
+        }
+        
+        return `${groupLabel}: ` +
+               `タイプ=${groupType}, ` +
+               `AI=${aiType}, ` +
+               `ログ=${logCol}, ` +
+               `メニュー=${menuCol}${menuContent ? `(${menuContent})` : ''}, ` +
+               `プロンプト=[${promptCols}], ` +
+               `回答=[${answerCols}]`;
+      }).join('\n  ');
+      
+      console.log(`[タスクグループ構造]\n  ${groupSummary}`);
     } else {
       console.log("[processSpreadsheetData] ⚠️ タスクグループが作成されませんでした");
     }
