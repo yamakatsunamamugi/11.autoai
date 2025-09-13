@@ -1879,6 +1879,10 @@ ${prompt}`;
      * 送信と応答取得のみ実行
      */
     async function sendAndGetResponse() {
+        // セレクタを確実に読み込む
+        await loadSelectors();
+        const claudeSelectors = getClaudeSelectors();
+
         try {
             console.log('📝 [ClaudeV2] 送信と応答取得を実行');
             
