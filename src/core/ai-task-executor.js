@@ -392,12 +392,7 @@ export class AITaskExecutor {
               
               // V2版のexecuteTaskを直接実行し、その結果を待つ
               // CSP回避のため、Promiseを作成してthenで処理
-              const executePromise = automation.executeTask({
-                model: taskData.model,
-                function: taskData.function,
-                prompt: taskData.prompt,
-                text: taskData.prompt
-              });
+              const executePromise = automation.executeTask(taskData);
               
               // Promiseの結果を同期的に取得するため、グローバル変数を使用
               window.__v2_execution_result = null;

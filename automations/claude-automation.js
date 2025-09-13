@@ -643,23 +643,44 @@
             // ===== 1.2.1: タスクデータ受信 =====
             console.log('\n■■■ ステップ 1.2.1 開始 ■■■');
             console.log('ステップ 1.2.1: タスクデータ受信');
-            console.log('概要: ユーザーが指定したモデル名、機能名、プロンプト（質問文）を受け取る');
-            console.log('\n受信したタスクデータ:', {
+            console.log('概要: スプレッドシートから取得したタスクデータを受け取る');
+
+            // スプレッドシートから取得したデータの詳細表示
+            console.log('\n📊 スプレッドシートから取得したデータ:');
+            console.log(`  📍 セル位置: ${taskData.cellInfo ? `${taskData.cellInfo.column}${taskData.cellInfo.row}` : '未指定'}`);
+            console.log(`  🤖 モデル: "${taskData.model || '空（自動選択）'}"`);
+            console.log(`  ⚙️ 機能: "${taskData.function || '空（通常処理）'}"`);
+            console.log(`  📝 プロンプト: ${taskData.prompt || taskData.text ? '取得済み' : '❌ 空'}`);
+            if (taskData.prompt || taskData.text) {
+                const promptText = taskData.prompt || taskData.text;
+                console.log(`     内容: "${promptText.substring(0, 100)}${promptText.length > 100 ? '...' : ''}"`);
+                console.log(`     文字数: ${promptText.length}文字`);
+            }
+
+            console.log('\n受信したタスクデータ（詳細）:', {
                 model: taskData.model,
                 function: taskData.function,
                 promptLength: taskData.prompt?.length || taskData.text?.length || 0,
                 hasPrompt: !!(taskData.prompt || taskData.text),
-                cellInfo: taskData.cellInfo
+                cellInfo: taskData.cellInfo,
+                taskId: taskData.taskId,
+                aiType: taskData.aiType
             });
             console.log('■■■ ステップ 1.2.1 完了 ■■■');
 
             // ===== 1.2.3: パラメータ準備 =====
             console.log('\n■■■ ステップ 1.2.3 開始 ■■■');
             console.log('ステップ 1.2.3: パラメータ準備');
-            console.log('概要: 受け取ったデータを実際の処理で使いやすい形に整理・変換');
+            console.log('概要: スプレッドシートのデータを実際の処理で使いやすい形に整理・変換');
+
             let prompt = taskData.prompt || taskData.text || '';
             const modelName = taskData.model || '';
             const featureName = taskData.function || null;
+
+            console.log('\n📋 変換後のパラメータ:');
+            console.log(`  プロンプト: ${prompt ? `設定済み（${prompt.length}文字）` : '❌ 空'}`);
+            console.log(`  モデル名: "${modelName || '未指定'}"` );
+            console.log(`  機能名: "${featureName || '設定なし'}"`);
             console.log('■■■ ステップ 1.2.3 完了 ■■■');
 
             // ===== 1.3.2: プロンプト最終化 =====
