@@ -301,10 +301,30 @@
     // コア実行関数
     // ================================================================
     async function executeCore(modelName, featureName, promptText) {
+        // ========================================
+        // ステップ1: ページ初期化チェック
+        // ========================================
+        log('【ステップ1】ページ初期化チェック', 'step');
+
         // ページ初期読み込み待機（ネット環境を考慮）
         log('ページ初期読み込み待機中...', 'info');
         await wait(3000);  // 3秒待機
-        
+
+        // 基本要素の存在確認
+        const criticalElements = {
+            'テキスト入力欄': SELECTORS.textInput,
+            '送信ボタン': SELECTORS.sendButton
+        };
+
+        for (const [name, selectors] of Object.entries(criticalElements)) {
+            const element = findElement(selectors);
+            if (!element) {
+                log(`⚠️ ${name}が見つかりません`, 'warn');
+            } else {
+                log(`✅ ${name}を確認`, 'success');
+            }
+        }
+
         const testResults = [];
         const isCanvasMode = featureName && featureName.toLowerCase().includes('canvas');
         const isDeepResearchMode = featureName && (
@@ -432,8 +452,10 @@
                 return `モデル: ${modelName}, 機能: ${featureName} を選択しました。`;
             });
             
+            // ========================================
             // ステップ2: テキスト入力
-            await logStep('ステップ2: テキスト入力', async () => {
+            // ========================================
+            await logStep('【ステップ2】テキスト入力', async () => {
                 const editor = findElement(['.ql-editor']);
                 if (!editor) throw new Error("テキスト入力欄 (.ql-editor) が見つかりません。");
                 
@@ -447,8 +469,10 @@
                 return `プロンプトを入力しました（${promptText.length}文字）`;
             });
             
+            // ========================================
             // ステップ3: メッセージ送信（再試行対応）
-            await logStep('ステップ3: メッセージ送信（再試行対応）', async () => {
+            // ========================================
+            await logStep('【ステップ3】メッセージ送信（再試行対応）', async () => {
                 // 送信ボタンを5回まで再試行
                 let sendSuccess = false;
                 let sendAttempts = 0;
@@ -456,7 +480,7 @@
                 
                 while (!sendSuccess && sendAttempts < maxSendAttempts) {
                     sendAttempts++;
-                    log(`送信試行 ${sendAttempts}/${maxSendAttempts}`, 'step');
+                    log(`【ステップ3-${sendAttempts}】送信試行 ${sendAttempts}/${maxSendAttempts}`, 'step');
                     
                     const sendButton = findElement([
                         'button.send-button.submit:not(.stop)',
@@ -522,8 +546,10 @@
                 return "メッセージを送信しました。";
             });
             
+            // ========================================
             // ステップ4: 応答待機
-            const responseText = await logStep('ステップ4: 応答待機', () => new Promise(async (resolve, reject) => {
+            // ========================================
+            const responseText = await logStep('【ステップ4】応答待機', () => new Promise(async (resolve, reject) => {
                 // Deep Researchモードの判定（executeCoreで定義済みの変数を使用）
                 console.log(`🔍 [機能判定] Gemini機能チェック:`, {
                     featureName: featureName,
@@ -554,17 +580,17 @@
                     
                     try {
                         // ステップ1: 初期応答の停止ボタンが出現するまで待機
-                        logDr('ステップ1: 初期応答の開始を待機中...');
+                        logDr('【ステップ4-1】初期応答の開始を待機中...');
                         while (!findElement(['button.send-button.stop'])) {
                             if (Date.now() - startTime > 30000) {
                                 throw new Error('30秒以内に初期応答が開始されませんでした。');
                             }
                             await wait(1000);
                         }
-                        logDr('ステップ1完了: 初期応答が開始されました。', 'success');
+                        logDr('【ステップ4-1完了】初期応答が開始されました。', 'success');
                         
                         // ステップ2: 初期応答が完了して「リサーチを開始」ボタンが出現するまで待機
-                        logDr('ステップ2: 初期応答の完了を待機中...');
+                        logDr('【ステップ4-2】初期応答の完了を待機中...');
                         while (findElement(['button.send-button.stop'])) {
                             if (Date.now() - startTime > 2 * 60 * 1000) {
                                 throw new Error('2分以内に初期応答が完了しませんでした。');
@@ -578,11 +604,11 @@
                             throw new Error('「リサーチを開始」ボタンが見つかりませんでした。');
                         }
                         researchButton.click();
-                        logDr('ステップ2完了: 「リサーチを開始」ボタンをクリックしました。', 'success');
+                        logDr('【ステップ4-2完了】「リサーチを開始」ボタンをクリックしました。', 'success');
                         await wait(2000);
                         
                         // ステップ3: 本応答の完了を待つ
-                        logDr('ステップ3: 本応答の完了を待機中...');
+                        logDr('【ステップ4-3】本応答の完了を待機中...');
                         
                         // 定期的な状態チェック
                         const loggingInterval = setInterval(() => {
@@ -605,7 +631,7 @@
                                 clearInterval(checkInterval);
                                 clearInterval(loggingInterval);
                                 clearTimeout(timeoutId);
-                                logDr('ステップ3完了: Deep Researchの応答が完了しました。', 'success');
+                                logDr('【ステップ4-3完了】Deep Researchの応答が完了しました。', 'success');
                                 resolve('Deep Researchの応答が完了しました。');
                             }
                         }, 2000);
@@ -671,8 +697,10 @@
                 }
             }));
             
+            // ========================================
             // ステップ5: テキスト取得（ui-selectorsを使用）
-            await logStep('ステップ5: テキスト取得', async () => {
+            // ========================================
+            await logStep('【ステップ5】テキスト取得', async () => {
                 let text = '';
                 
                 // 方法1: Canvas/拡張応答を実際のDOM要素で判定して優先的に取得
@@ -762,11 +790,37 @@
                 return text;
             });
             
+            // 現在表示されているモデルと機能を取得（選択後確認）
+            let displayedModel = '';
+            let displayedFunction = '';
+
+            try {
+                // ModelInfoExtractorを使用
+                if (window.ModelInfoExtractor) {
+                    displayedModel = window.ModelInfoExtractor.extract('Gemini') || '';
+                    log(`📊 選択後確認 - 実際のモデル: "${displayedModel}"`, 'info');
+                } else {
+                    log('⚠️ ModelInfoExtractorが利用できません', 'warn');
+                }
+
+                // FunctionInfoExtractorを使用
+                if (window.FunctionInfoExtractor) {
+                    displayedFunction = window.FunctionInfoExtractor.extract('Gemini') || '';
+                    log(`📊 選択後確認 - 実際の機能: "${displayedFunction}"`, 'info');
+                } else {
+                    log('⚠️ FunctionInfoExtractorが利用できません', 'warn');
+                }
+            } catch (error) {
+                log(`⚠️ モデル/機能情報取得エラー: ${error.message}`, 'warn');
+            }
+
             // 最終的な成功レスポンス
             return {
                 success: true,
                 response: testResults[testResults.length - 1]?.details || '',
-                testResults: testResults
+                testResults: testResults,
+                displayedModel: displayedModel,
+                displayedFunction: displayedFunction
             };
             
         } catch (error) {

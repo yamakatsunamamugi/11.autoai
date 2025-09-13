@@ -243,7 +243,7 @@
 
     // 6-1: 停止ボタン出現待機
     async function waitForStopButton() {
-        log('6-1. 停止ボタン出現待機', 'step');
+        log('【ステップ6-1】停止ボタン出現待機', 'step');
         for (let i = 0; i < 60; i++) {
             const stopBtn = await findElement(SELECTORS.stopButton, 1);
             if (stopBtn) {
@@ -261,7 +261,7 @@
 
     // 6-2: 2分間初期待機
     async function initialWaitCheck() {
-        log('6-2. 2分間初期待機チェック', 'step');
+        log('【ステップ6-2】2分間初期待機チェック', 'step');
         for (let i = 0; i < 120; i++) {
             const stopBtn = await findElement(SELECTORS.stopButton, 1);
             if (!stopBtn) {
@@ -280,7 +280,7 @@
 
     // 6-3: 再送信処理
     async function retryWithPrompt() {
-        log('6-3. 再送信処理（「いいから元のプロンプトを確認して作業をして」）', 'step');
+        log('【ステップ6-3】再送信処理（「いいから元のプロンプトを確認して作業をして」）', 'step');
         const input = await findElement(SELECTORS.textInput);
         if (!input) return;
 
@@ -310,7 +310,7 @@
 
     // 6-4: 最終待機処理
     async function finalWaitForCompletion() {
-        log('6-4. 最終待機（最大40分）', 'step');
+        log('【ステップ6-4】最終待機（最大40分）', 'step');
         const maxWaitTime = AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT / 1000;
         let consecutiveAbsent = 0;
 
@@ -520,68 +520,138 @@
             // ========================================
             if (modelName) {
                 log('\n【ステップ3】モデル選択', 'step');
-                
-                // selectedModelが事前検索で見つからなかった場合の情報を出力
-                if (!selectedModel) {
-                    log(`事前検索でモデル "${modelName}" が見つかりませんでした。再検索を試みます。`, 'warning');
-                }
-                
-                // 3-1: モデルメニューを開く
-                log('3-1. モデルのメニューを開く', 'step');
+
+                // 動的モデル選択ロジック（Gemini方式を適用）
+                let resolvedModel = modelName;
+
+                // 3-0: モデルメニューを開いて利用可能なモデルを取得
+                log('【ステップ3-0】利用可能なモデル一覧を取得', 'step');
                 const modelBtn = await findElement(SELECTORS.modelButton, 'モデルボタン');
                 if (!modelBtn) {
                     throw new Error('モデルボタンが見つかりません');
                 }
-                
+
                 modelBtn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
                 await sleep(AI_WAIT_CONFIG.MICRO_WAIT);
                 modelBtn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
                 await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT - 500);
-                
+
                 const modelMenuEl = await findElement(SELECTORS.modelMenu, 'モデルメニュー');
                 if (!modelMenuEl) {
                     throw new Error('モデルメニューが開きません');
                 }
-                
-                // レガシーモデルの場合（テスト済みコードのロジック）
-                if (selectedModel.type === 'Legacy') {
-                    const legacyBtn = modelMenuEl.querySelector('[role="menuitem"][data-has-submenu]') ||
+
+                // 利用可能なモデル一覧を動的に取得
+                const availableModels = [];
+                const mainMenuItems = modelMenuEl.querySelectorAll('[role="menuitem"][data-testid^="model-switcher-"]');
+                mainMenuItems.forEach(item => {
+                    const name = getCleanText(item);
+                    if (name && !name.includes('レガシー')) {
+                        availableModels.push({ name, element: item, type: 'Current' });
+                    }
+                });
+
+                // レガシーモデルもチェック
+                const legacyButton = modelMenuEl.querySelector('[role="menuitem"][data-has-submenu]') ||
                                     Array.from(modelMenuEl.querySelectorAll('[role="menuitem"]'))
                                         .find(el => el.textContent && el.textContent.includes('レガシーモデル'));
-                    if (legacyBtn) {
-                        log('レガシーモデルメニューを開く', 'info');
-                        legacyBtn.click();
-                        await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT - 500);
+
+                if (legacyButton) {
+                    legacyButton.click();
+                    await sleep(1500);
+
+                    const allMenus = document.querySelectorAll('[role="menu"]');
+                    allMenus.forEach(menu => {
+                        if (menu !== modelMenuEl) {
+                            const items = menu.querySelectorAll('[role="menuitem"]');
+                            items.forEach(item => {
+                                const name = getCleanText(item);
+                                if (name && name.includes('GPT')) {
+                                    availableModels.push({ name, element: item, type: 'Legacy' });
+                                }
+                            });
+                        }
+                    });
+                }
+
+                log(`取得したモデル一覧: ${availableModels.map(m => m.name).join(', ')}`, 'info');
+
+                // 動的選択ロジック（番号指定または名前マッチング）
+                if (typeof modelName === 'number') {
+                    // 番号指定: modelName: 1 → availableModels[0]
+                    if (modelName >= 1 && modelName <= availableModels.length) {
+                        const selectedModelObj = availableModels[modelName - 1];
+                        resolvedModel = selectedModelObj.name;
+                        selectedModel = selectedModelObj.element;
+                        log(`番号指定によるモデル選択: ${modelName} → "${resolvedModel}"`, 'info');
+                    } else {
+                        log(`無効な番号指定: ${modelName} (1-${availableModels.length}の範囲で指定してください)`, 'error');
+                        resolvedModel = availableModels[0]?.name || modelName;
+                        selectedModel = availableModels[0]?.element;
                     }
+                } else if (modelName && modelName !== '' && modelName !== 'default' &&
+                          (typeof modelName !== 'string' || modelName.toLowerCase() !== 'auto')) {
+                    // 名前マッチング: 部分一致で探す
+                    const found = availableModels.find(m =>
+                        m.name.toLowerCase().includes(modelName.toLowerCase())
+                    );
+                    if (found) {
+                        resolvedModel = found.name;
+                        selectedModel = found.element;
+                        log(`名前マッチングによるモデル選択: "${modelName}" → "${resolvedModel}"`, 'info');
+                    } else {
+                        log(`マッチするモデルが見つかりません: "${modelName}"`, 'warning');
+                        log(`利用可能なモデル: ${availableModels.map(m => m.name).join(', ')}`, 'info');
+                        selectedModel = null;
+                    }
+                } else {
+                    log(`デフォルトモデルを使用`, 'info');
+                    selectedModel = null;
                 }
-                
-                // 3-2: 該当のモデルを選択（テスト済みコードのロジック）
-                log('3-2. 該当のモデルを選択する', 'step');
-                const allMenuItems = document.querySelectorAll('[role="menuitem"]');
-                
-                // selectedModelがない場合は、modelNameで直接検索
-                let targetItem = null;
+
+                // メニューを一旦閉じて、選択が決定したら再度開く
+                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape' }));
+                await sleep(500);
+
                 if (selectedModel) {
-                    targetItem = Array.from(allMenuItems).find(item => {
-                        const text = getCleanText(item);
-                        return text === selectedModel.name || 
-                               (selectedModel.testId && item.getAttribute('data-testid') === selectedModel.testId);
-                    });
-                } else {
-                    // selectedModelがない場合、modelNameで直接検索
-                    targetItem = Array.from(allMenuItems).find(item => {
-                        const text = getCleanText(item);
-                        return text === modelName || text.includes(modelName);
-                    });
-                }
-                
-                if (targetItem) {
-                    targetItem.click();
+                    // 3-1: モデルメニューを開く（選択対象が決定済み）
+                    log('【ステップ3-1】モデルのメニューを開く', 'step');
+                    const modelBtn2 = await findElement(SELECTORS.modelButton, 'モデルボタン');
+                    if (!modelBtn2) {
+                        throw new Error('モデルボタンが見つかりません');
+                    }
+
+                    modelBtn2.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+                    await sleep(AI_WAIT_CONFIG.MICRO_WAIT);
+                    modelBtn2.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+                    await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT - 500);
+
+                    const modelMenuEl2 = await findElement(SELECTORS.modelMenu, 'モデルメニュー');
+                    if (!modelMenuEl2) {
+                        throw new Error('モデルメニューが開きません');
+                    }
+
+                    // レガシーモデルの場合
+                    if (selectedModel.type === 'Legacy') {
+                        const legacyBtn = modelMenuEl2.querySelector('[role="menuitem"][data-has-submenu]') ||
+                                        Array.from(modelMenuEl2.querySelectorAll('[role="menuitem"]'))
+                                            .find(el => el.textContent && el.textContent.includes('レガシーモデル'));
+                        if (legacyBtn) {
+                            log('レガシーモデルメニューを開く', 'info');
+                            legacyBtn.click();
+                            await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT - 500);
+                        }
+                    }
+
+                    // 3-2: 該当のモデルを選択
+                    log('【ステップ3-2】該当のモデルを選択する', 'step');
+
+                    // 動的に取得した要素をそのまま使用
+                    selectedModel.element.click();
                     await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
-                    const selectedName = selectedModel ? selectedModel.name : modelName;
-                    log(`モデル選択完了: ${selectedName}`, 'success');
+                    log(`モデル選択完了: ${resolvedModel}`, 'success');
                 } else {
-                    log(`モデル "${modelName}" が見つかりません。デフォルトモデルを使用します。`, 'warning');
+                    log('選択するモデルが特定できませんでした。現在のモデルを使用します。', 'warning');
                 }
             } else {
                 log('モデル選択をスキップ（モデル名が指定されていません）', 'info');
@@ -590,198 +660,155 @@
             // ========================================
             // ステップ4: 機能選択（機能名マッピング対応）
             // ========================================
-            let mappedFeatureName = null;
+            let resolvedFeature = featureName;
             if (featureName && featureName !== '' && featureName !== 'none' && featureName !== '通常') {
+                log('\n【ステップ4】機能選択', 'step');
+
+                // 動的機能選択ロジック（Gemini方式を適用）
                 // 機能名マッピング（スプレッドシート値 → ChatGPT UI表記）
-                // 必要最小限のマッピングのみ（スペルミスの修正など）
                 const featureMapping = {
                     'DeepReserch': 'Deep Research'  // スペルミスの修正のみ
                 };
-                
-                mappedFeatureName = featureMapping[featureName] || featureName;
-                
+
+                let mappedFeatureName = featureMapping[featureName] || featureName;
                 console.log(`🔄 [機能名マッピング] "${featureName}" → "${mappedFeatureName}"`);
-                
-                log('\n【ステップ4】機能選択', 'step');
-                
-                // 4-1: 機能メニューボタンをクリック
-                log('4-1. 機能メニューボタンをクリック', 'step');
+
+                // 4-0: 機能メニューを開いて利用可能な機能を取得
+                log('【ステップ4-0】利用可能な機能一覧を取得', 'step');
+
+                // 選択されている機能があれば解除
+                const selectedButtons = document.querySelectorAll('button[data-pill="true"]');
+                selectedButtons.forEach(btn => {
+                    const closeBtn = btn.querySelector('button[aria-label*="削除"]');
+                    if (closeBtn) closeBtn.click();
+                });
+                await sleep(500);
+
                 const funcMenuBtn = await findElement(SELECTORS.menuButton, 'メニューボタン');
                 if (!funcMenuBtn) {
                     throw new Error('機能メニューボタンが見つかりません');
                 }
-                
-                // 初回タスクの場合は追加待機
-                if (isFirstTask) {
-                    log('初回タスクのため、メニュー操作前に追加待機', 'info');
-                    await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
-                }
-                
+
                 funcMenuBtn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
                 await sleep(AI_WAIT_CONFIG.MICRO_WAIT);
                 funcMenuBtn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
-                await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT); // メニュー表示の待機時間を増やす
-                
+                await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
+
                 const funcMenu = await findElement(SELECTORS.mainMenu, 'メインメニュー');
                 if (!funcMenu) {
                     throw new Error('機能メニューが開きません');
                 }
-                
-                // メインメニューで機能を探す（マッピングした機能名を使用）
-                let featureElement = findElementByText('[role="menuitemradio"]', mappedFeatureName);
-                
-                console.log(`🔍 [機能検索] メインメニューで "${mappedFeatureName}" を検索: ${featureElement ? '見つかった' : '見つからない'}`);
-                
-                if (!featureElement) {
-                    // 4-2: さらに表示ボタンをクリック
-                    log('4-2. 機能メニューの中のさらに表示ボタンをクリック', 'step');
-                    
-                    // さらに表示ボタンを複数の方法で探す
-                    let moreBtn = findElementByText('[role="menuitem"]', 'さらに表示');
-                    if (!moreBtn) {
-                        // 別のパターンで検索
-                        const allMenuItems = funcMenu.querySelectorAll('[role="menuitem"]');
-                        for (const item of allMenuItems) {
-                            const text = getCleanText(item);
-                            if (text === 'さらに表示' || text.includes('さらに表示')) {
-                                moreBtn = item;
-                                console.log(`🔍 [機能検索] 別のパターンで"さらに表示"ボタンを発見`);
-                                break;
-                            }
-                        }
+
+                // 利用可能な機能一覧を動的に取得
+                const availableFeatures = [];
+                const menuItems = funcMenu.querySelectorAll('[role="menuitemradio"]');
+                menuItems.forEach(item => {
+                    const name = getCleanText(item);
+                    if (name) {
+                        availableFeatures.push({ name, element: item });
                     }
-                    
-                    if (moreBtn) {
-                        log('「さらに表示」にホバーしてサブメニューを開く', 'info');
-                        
-                        // まずホバーイベントを試す
-                        moreBtn.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
-                        moreBtn.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
-                        await sleep(AI_WAIT_CONFIG.TINY_WAIT);
-                        
-                        // サブメニューが開いたかチェック
-                        let subMenu = document.querySelector('[data-side="right"]');
-                        if (!subMenu) {
-                            log('ホバーでサブメニューが開かないため、クリックを試行', 'info');
-                            moreBtn.focus();
-                            await sleep(AI_WAIT_CONFIG.MICRO_WAIT);
-                            moreBtn.click();
-                            await sleep(AI_WAIT_CONFIG.TINY_WAIT);
-                            subMenu = document.querySelector('[data-side="right"]');
-                        }
-                        
-                        // それでも開かない場合は、ポインターイベントで試す
-                        if (!subMenu) {
-                            log('サブメニューが開きませんでした', 'warn');
-                            
-                            // ポインターイベントを試す
-                            const rect = moreBtn.getBoundingClientRect();
-                            const x = rect.left + rect.width / 2;
-                            const y = rect.top + rect.height / 2;
-                            
-                            moreBtn.dispatchEvent(new PointerEvent('pointerenter', {
-                                bubbles: true,
-                                clientX: x,
-                                clientY: y
-                            }));
-                            
-                            moreBtn.dispatchEvent(new PointerEvent('pointerover', {
-                                bubbles: true,
-                                clientX: x,
-                                clientY: y
-                            }));
-                            
-                            await sleep(AI_WAIT_CONFIG.TINY_WAIT);
-                            subMenu = document.querySelector('[data-side="right"]');
-                        }
-                        
-                        // 最終手段: キーボード操作
-                        if (!subMenu) {
-                            log('最終手段: キーボード操作を試行', 'warn');
-                            
-                            // Enterキーを押す
-                            moreBtn.focus();
-                            await sleep(AI_WAIT_CONFIG.MICRO_WAIT);
-                            
-                            moreBtn.dispatchEvent(new KeyboardEvent('keydown', {
-                                key: 'Enter',
-                                code: 'Enter',
-                                bubbles: true
-                            }));
-                            
-                            moreBtn.dispatchEvent(new KeyboardEvent('keyup', {
-                                key: 'Enter',
-                                code: 'Enter',
-                                bubbles: true
-                            }));
-                            
-                            await sleep(AI_WAIT_CONFIG.TINY_WAIT);
-                            subMenu = document.querySelector('[data-side="right"]');
-                        }
-                        
-                        // デバッグ用の詳細ログ（失敗時のみ）
-                        if (!subMenu) {
-                            // サブメニューを開く処理（簡潔版）
-                        log('サブメニューを開く処理を実行', 'info');
+                });
 
-                            // サブメニューを開けなかった場合
-                            log('サブメニューを開けませんでした', 'warning');
-                        }
-                        
-                        // サブメニューで機能を探す
-                        subMenu = document.querySelector('[data-side="right"]') ||
-                                 Array.from(document.querySelectorAll('[role="menu"]')).pop();
+                // さらに表示ボタンチェック
+                const moreButton = findElementByText('[role="menuitem"]', 'さらに表示');
+                if (moreButton) {
+                    moreButton.click();
+                    await sleep(1000);
 
-                        if (subMenu) {
-                            log('4-3. サブメニューで機能を選択', 'step');
-                            const subMenuItems = subMenu.querySelectorAll('[role="menuitemradio"]');
-                            for (const item of subMenuItems) {
-                                const featureName = getCleanText(item);
-                                if (featureName === mappedFeatureName) {
-                                    featureElement = item;
-                                    log(`サブメニュー機能発見: ${featureName}`, 'success');
-                                    break;
-                                }
+                    const subMenu = document.querySelector('[data-side="right"]');
+                    if (subMenu) {
+                        const subMenuItems = subMenu.querySelectorAll('[role="menuitemradio"]');
+                        subMenuItems.forEach(item => {
+                            const name = getCleanText(item);
+                            if (name) {
+                                availableFeatures.push({ name, element: item });
                             }
-
-                            if (!featureElement) {
-                                featureElement = findElementByText('[role="menuitemradio"]', mappedFeatureName, subMenu);
-                            }
-                        }
-                    } else {
-                        log('"さらに表示"ボタンが見つかりません', 'warning');
+                        });
                     }
                 }
-                
-                // 機能選択の実行
-                if (featureElement) {
-                    featureElement.click();
-                    await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT - 500);
-                    log(`機能選択完了: ${mappedFeatureName}`, 'success');
 
-                    // 機能が選択されているか確認
-                    const buttons = document.querySelectorAll('button[data-pill="true"]');
-                    if (buttons.length > 0) {
-                        for (const button of buttons) {
-                            const text = getCleanText(button);
-                            if (text) {
-                                log(`選択された機能ボタン: ${text}`, 'success');
-                            }
-                        }
+                log(`取得した機能一覧: ${availableFeatures.map(f => f.name).join(', ')}`, 'info');
+
+                // 動的選択ロジック（番号指定または名前マッチング）
+                let selectedFeature = null;
+                if (typeof featureName === 'number') {
+                    // 番号指定: featureName: 1 → availableFeatures[0]
+                    if (featureName >= 1 && featureName <= availableFeatures.length) {
+                        const selectedFeatureObj = availableFeatures[featureName - 1];
+                        resolvedFeature = selectedFeatureObj.name;
+                        selectedFeature = selectedFeatureObj;
+                        log(`番号指定による機能選択: ${featureName} → "${resolvedFeature}"`, 'info');
+                    } else {
+                        log(`無効な番号指定: ${featureName} (1-${availableFeatures.length}の範囲で指定してください)`, 'error');
+                        selectedFeature = availableFeatures[0] || null;
+                        resolvedFeature = selectedFeature?.name || featureName;
                     }
                 } else {
-                    log(`指定された機能 "${mappedFeatureName}" が見つかりません`, 'warning');
+                    // 名前マッチング: 部分一致で探す（マッピング後の名前で）
+                    const found = availableFeatures.find(f =>
+                        f.name.toLowerCase().includes(mappedFeatureName.toLowerCase())
+                    );
+                    if (found) {
+                        resolvedFeature = found.name;
+                        selectedFeature = found;
+                        log(`名前マッチングによる機能選択: "${mappedFeatureName}" → "${resolvedFeature}"`, 'info');
+                    } else {
+                        log(`マッチする機能が見つかりません: "${mappedFeatureName}"`, 'warning');
+                        log(`利用可能な機能: ${availableFeatures.map(f => f.name).join(', ')}`, 'info');
+                        selectedFeature = null;
+                    }
                 }
-                
-                // 4-4: メニューを閉じる
-                log('4-4. 機能メニューを閉じる', 'step');
+
+                // メニューを一旦閉じてから再度開く
                 document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape' }));
-                await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
+                await sleep(1000);
+
+                if (selectedFeature) {
+                    // 4-1: 機能メニューを開く（選択対象が決定済み）
+                    log('【ステップ4-1】機能メニューボタンをクリック', 'step');
+                    const funcMenuBtn2 = await findElement(SELECTORS.menuButton, 'メニューボタン');
+                    if (!funcMenuBtn2) {
+                        throw new Error('機能メニューボタンが見つかりません');
+                    }
+
+                    funcMenuBtn2.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+                    await sleep(AI_WAIT_CONFIG.MICRO_WAIT);
+                    funcMenuBtn2.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+                    await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
+
+                    const funcMenu2 = await findElement(SELECTORS.mainMenu, 'メインメニュー');
+                    if (!funcMenu2) {
+                        throw new Error('機能メニューが開きません');
+                    }
+
+                    // サブメニューが必要かチェック
+                    let targetElement = selectedFeature.element;
+                    if (!funcMenu2.contains(targetElement)) {
+                        // サブメニューの機能の場合、さらに表示ボタンをクリック
+                        const moreBtn = findElementByText('[role="menuitem"]', 'さらに表示', funcMenu2);
+                        if (moreBtn) {
+                            log('【ステップ4-2】サブメニューを開く', 'step');
+                            moreBtn.click();
+                            await sleep(1000);
+                        }
+                    }
+
+                    // 4-3: 機能を選択
+                    log('【ステップ4-3】機能を選択する', 'step');
+                    selectedFeature.element.click();
+                    await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
+                    log(`機能選択完了: ${resolvedFeature}`, 'success');
+
+                    // 4-4: メニューを閉じる
+                    log('【ステップ4-4】機能メニューを閉じる', 'step');
+                    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape' }));
+                    await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
+                } else {
+                    log('選択する機能が特定できませんでした。機能なしで続行します。', 'warning');
+                }
+            } else {
+                log('機能選択をスキップ', 'info');
             }
-            
-            // ========================================
-            // ステップ5: メッセージ送信（再試行対応）
-            // ========================================
             log('\n【ステップ5】メッセージ送信（再試行対応）', 'step');
             
             // 送信ボタンを5回まで再試行
@@ -791,7 +818,7 @@
             
             while (!sendSuccess && sendAttempts < maxSendAttempts) {
                 sendAttempts++;
-                log(`送信試行 ${sendAttempts}/${maxSendAttempts}`, 'step');
+                log(`【ステップ5-${sendAttempts}】送信試行 ${sendAttempts}/${maxSendAttempts}`, 'step');
                 
                 const sendBtn = await findElement(SELECTORS.sendButton, '送信ボタン');
                 if (!sendBtn) {
@@ -948,16 +975,44 @@
             }
             
             if (responseText) {
+                // 現在表示されているモデルと機能を取得（選択後確認）
+                let displayedModel = '';
+                let displayedFunction = '';
+
+                try {
+                    // ModelInfoExtractorを使用
+                    if (window.ModelInfoExtractor) {
+                        displayedModel = window.ModelInfoExtractor.extract('ChatGPT') || '';
+                        log(`📊 選択後確認 - 実際のモデル: "${displayedModel}"`, 'info');
+                    } else {
+                        log('⚠️ ModelInfoExtractorが利用できません', 'warn');
+                    }
+
+                    // FunctionInfoExtractorを使用
+                    if (window.FunctionInfoExtractor) {
+                        displayedFunction = window.FunctionInfoExtractor.extract('ChatGPT') || '';
+                        log(`📊 選択後確認 - 実際の機能: "${displayedFunction}"`, 'info');
+                    } else {
+                        log('⚠️ FunctionInfoExtractorが利用できません', 'warn');
+                    }
+                } catch (error) {
+                    log(`⚠️ モデル/機能情報取得エラー: ${error.message}`, 'warn');
+                }
+
                 console.log('✅ ChatGPT V2 タスク実行完了');
                 // 実行完了フラグを設定（AITaskExecutorが確認）
                 window.__v2_execution_complete = true;
                 window.__v2_execution_result = {
                     success: true,
-                    response: responseText
+                    response: responseText,
+                    displayedModel: displayedModel,
+                    displayedFunction: displayedFunction
                 };
                 return {
                     success: true,
-                    response: responseText
+                    response: responseText,
+                    displayedModel: displayedModel,
+                    displayedFunction: displayedFunction
                 };
             } else {
                 throw new Error('応答テキストを取得できませんでした');

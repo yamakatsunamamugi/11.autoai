@@ -1377,6 +1377,8 @@ export default class StreamProcessorV2 {
    * プロンプト行スキャン - 指定列からプロンプトがある行を検出
    */
   async scanPromptRows(promptColumns) {
+    this.log(`🔍 scanPromptRows が呼ばれました: ${JSON.stringify(promptColumns)}`, 'info');
+
     if (!promptColumns || !Array.isArray(promptColumns)) {
       this.log(`scanPromptRows: 無効なプロンプト列指定`, 'warn');
       return [];
