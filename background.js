@@ -674,6 +674,9 @@ function processSpreadsheetData(spreadsheetData) {
     return result;
   }
   
+  // メニュー行の内容をデバッグ出力
+  console.log("[DEBUG] メニュー行の全内容:", menuRow.map((header, index) => `${getColumnName(index)}:${header}`).filter(item => item.split(':')[1]));
+  
   // タスクグループを識別するためのデータ構造
   let currentGroup = null;
   let groupCounter = 1;
