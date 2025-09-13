@@ -1320,10 +1320,43 @@ export default class StreamProcessorV2 {
   }
 
   /**
-   * 列処理判定（プレースホルダー実装）
+   * 列処理判定 - タスクグループの列制御チェック
    */
-  shouldProcessColumn(columnIndex) {
-    return columnIndex >= 0; // すべての列を処理対象
+  shouldProcessColumn(promptGroup, columnControls) {
+    // パラメータがない場合は処理対象とする
+    if (!promptGroup || !columnControls) {
+      return true;
+    }
+
+    // promptGroupがオブジェクトでない場合（後方互換性）
+    if (typeof promptGroup === 'number') {
+      return promptGroup >= 0;
+    }
+
+    // プロンプト列とアンサー列の制御チェック
+    const { promptColumns, answerColumns } = promptGroup;
+
+    // プロンプト列の制御チェック
+    if (promptColumns && promptColumns.length > 0) {
+      for (const col of promptColumns) {
+        const colIndex = typeof col === 'string' ? this.columnToIndex(col) : col;
+        if (colIndex >= 0) {
+          return true; // 有効な列が1つでもあれば処理対象
+        }
+      }
+    }
+
+    // アンサー列の制御チェック
+    if (answerColumns && answerColumns.length > 0) {
+      for (const col of answerColumns) {
+        const colIndex = typeof col === 'string' ? this.columnToIndex(col) : col;
+        if (colIndex >= 0) {
+          return true; // 有効な列が1つでもあれば処理対象
+        }
+      }
+    }
+
+    return false; // 有効な列がない場合はスキップ
   }
 
   /**
@@ -1341,10 +1374,64 @@ export default class StreamProcessorV2 {
   }
 
   /**
-   * プロンプト行スキャン（プレースホルダー実装）
+   * プロンプト行スキャン - 指定列からプロンプトがある行を検出
    */
-  scanPromptRows(startRow, endRow) {
-    return []; // 実装時にスキャンロジックを追加
+  async scanPromptRows(promptColumns) {
+    if (!promptColumns || !Array.isArray(promptColumns)) {
+      this.log(`scanPromptRows: 無効なプロンプト列指定`, 'warn');
+      return [];
+    }
+
+    const promptRows = [];
+
+    try {
+      // スプレッドシートから作業行データを取得
+      const spreadsheetId = this.currentSpreadsheetData?.spreadsheetId;
+      if (!spreadsheetId) {
+        this.log(`scanPromptRows: スプレッドシートIDが見つからない`, 'warn');
+        return [];
+      }
+
+      // 各プロンプト列をスキャン
+      for (const col of promptColumns) {
+        const colIndex = typeof col === 'string' ? this.columnToIndex(col) : col;
+        if (colIndex < 0) continue;
+
+        const columnLetter = this.indexToColumn(colIndex);
+        this.log(`scanPromptRows: ${columnLetter}列をスキャン中...`, 'info');
+
+        // 作業行の範囲でプロンプト列をチェック（行10以降から検索）
+        const startRow = 10; // 通常9行目から開始
+        const endRow = 100; // まずは100行まで確認
+
+        for (let rowIndex = startRow; rowIndex <= endRow; rowIndex++) {
+          const range = `${columnLetter}${rowIndex}:${columnLetter}${rowIndex}`;
+          try {
+            // SheetsClientのAPIを使用してセルデータを取得
+            const cellData = await this.sheetsClient.getSheetData(spreadsheetId, range);
+            const cellValue = cellData && cellData.values && cellData.values[0] && cellData.values[0][0];
+
+            if (cellValue && typeof cellValue === 'string' && cellValue.trim().length > 0) {
+              // プロンプトが見つかった行を記録
+              if (!promptRows.includes(rowIndex)) {
+                promptRows.push(rowIndex);
+                this.log(`scanPromptRows: ${columnLetter}${rowIndex}でプロンプト発見: "${cellValue.substring(0, 50)}..."`, 'info');
+              }
+            }
+          } catch (error) {
+            // 個別セルエラーは無視して継続
+            continue;
+          }
+        }
+      }
+
+      this.log(`scanPromptRows: スキャン完了 - ${promptRows.length}行のプロンプトを発見`, 'info');
+      return promptRows.sort((a, b) => a - b);
+
+    } catch (error) {
+      this.log(`scanPromptRows エラー: ${error.message}`, 'error');
+      return [];
+    }
   }
 
   /**
