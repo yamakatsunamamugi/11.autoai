@@ -1447,12 +1447,15 @@ export default class StreamProcessorV2 {
             }
           },
           executePhase: async (tabId, task) => {
+            // プロンプトを動的に取得
+            const prompt = await this.fetchPromptFromTask(task);
+
             // タスク実行時にtaskDataを正しく作成
             const taskData = {
               ...task,
               taskId: task.id,
-              prompt: task.prompt || task.text || '',
-              text: task.prompt || task.text || '',
+              prompt: prompt || task.prompt || task.text || '',
+              text: prompt || task.prompt || task.text || '',
               cellInfo: {
                 column: task.column,
                 row: task.row
@@ -2196,9 +2199,13 @@ export default class StreamProcessorV2 {
 
       // 複数セルの値を一括取得
       const cellValues = await sheetsClient.getBatchCellValues(spreadsheetId, sheetName, promptCells);
-      
-      // セル値取得結果の確認（詳細なログは表示しない）
-      this.logger.log(`[StreamProcessorV2] セル値取得完了: ${promptCells.length}セル`);
+
+      // セル値取得結果の確認
+      this.logger.log(`[StreamProcessorV2] 📊 セル値取得完了:`, {
+        セル数: promptCells.length,
+        セル: promptCells,
+        取得値: cellValues
+      });
       
       // 複数のプロンプト列から内容を取得して連結
       const prompts = [];
@@ -2228,9 +2235,11 @@ export default class StreamProcessorV2 {
       
       // セル位置を特定（回答列を使用）
       const cellPosition = `${task.column}${task.row}`;
-      
-      // 「現在は〇〇のセルです。」を先頭に追加してプロンプトを連結
-      const combinedPrompt = `現在は${cellPosition}のセルです。\n${prompts.join('\n')}`;
+
+      // 「【現在〇〇セルを処理中です】」を先頭に追加してプロンプトを連結
+      const combinedPrompt = prompts.length > 0 ?
+        `【現在${cellPosition}セルを処理中です】\n\n${prompts.join('\n')}` :
+        `【現在${cellPosition}セルを処理中です】\n\n`;
       
       this.logger.log(`[StreamProcessorV2] プロンプト連結成功: 回答セル ${cellPosition}`, {
         プロンプト数: prompts.length,
