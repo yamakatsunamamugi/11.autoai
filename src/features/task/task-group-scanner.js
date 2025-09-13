@@ -27,6 +27,29 @@ export class TaskGroupScanner {
   }
 
   /**
+   * ステップ番号付きログ出力ヘルパー
+   */
+  log(message, type = 'info', step = null) {
+    const timestamp = new Date().toLocaleTimeString('ja-JP', {
+      hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+    const prefix = `[${timestamp}]`;
+    const stepPrefix = step ? `[Step ${step}]` : '';
+
+    let emoji = '';
+    switch (type) {
+      case 'step': emoji = '📍'; break;
+      case 'info': emoji = 'ℹ️'; break;
+      case 'success': emoji = '✅'; break;
+      case 'warn': emoji = '⚠️'; break;
+      case 'error': emoji = '❌'; break;
+      default: emoji = 'ℹ️';
+    }
+
+    console.log(`${prefix} ${stepPrefix} ${emoji} ${message}`);
+  }
+
+  /**
    * タスクグループをスキャンして処理対象を見つける
    * @param {Object} spreadsheetData - スプレッドシートデータ
    * @param {Array} promptCols - プロンプト列のインデックス配列
@@ -37,25 +60,20 @@ export class TaskGroupScanner {
     const tasks = [];
     const MAX_TASKS_PER_BATCH = 3; // バッチあたりの最大タスク数
     
-    this.logger.log(`[TaskGroupScanner] 📊 スキャン開始:`, {
-      spreadsheetData: spreadsheetData ? 'あり' : 'なし',
-      values: spreadsheetData?.values ? `${spreadsheetData.values.length}行` : 'なし',
-      promptCols: promptCols || 'なし',
-      answerCols: answerCols || 'なし'
-    });
+    this.log(`タスクグループスキャン開始: データ=${spreadsheetData ? spreadsheetData.values.length + '行' : 'なし'}, プロンプト列=${promptCols?.length || 0}個`, 'step', '3-4');
     
     if (!spreadsheetData?.values || !Array.isArray(spreadsheetData.values)) {
-      this.logger.warn('[TaskGroupScanner] 無効なスプレッドシートデータ');
+      this.log('無効なスプレッドシートデータ', 'warn', '3-4-1');
       return tasks;
     }
     
     if (!promptCols || !Array.isArray(promptCols) || promptCols.length === 0) {
-      this.logger.warn('[TaskGroupScanner] 無効なプロンプト列データ');
+      this.log('無効なプロンプト列データ', 'warn', '3-4-1');
       return tasks;
     }
     
     if (!answerCols || !Array.isArray(answerCols) || answerCols.length === 0) {
-      this.logger.warn('[TaskGroupScanner] 無効な回答列データ');
+      this.log('無効な回答列データ', 'warn', '3-4-1');
       return tasks;
     }
     
@@ -71,24 +89,24 @@ export class TaskGroupScanner {
     
     // 列制御チェック（グループ全体）
     if (!this.shouldProcessColumn(promptGroup, columnControls)) {
-      this.logger.log(`[TaskGroupScanner] このグループは列制御によりスキップ`);
+      this.log('このグループは列制御によりスキップ', 'info', '3-4-2');
       return tasks;
     }
     
     // ========== 重要：プロンプト列を最後まで読み込む ==========
-    this.logger.log(`[TaskGroupScanner] 📊 プロンプト列を最後まで読み込み開始...`);
+    this.log('プロンプト列を最後まで読み込み開始', 'info', '3-4-3');
     
     // scanPromptRowsを使ってプロンプトがある行を全て検出
     const promptRows = await this.scanPromptRows(promptCols);
     
     if (!promptRows || promptRows.length === 0) {
-      this.logger.log(`[TaskGroupScanner] プロンプトが見つかりません`);
+      this.log('プロンプトが見つかりません', 'warn', '3-4-3');
       return tasks;
     }
     
     // プロンプトがある最大行を特定
     const maxPromptRow = Math.max(...promptRows);
-    this.logger.log(`[TaskGroupScanner] プロンプト発見: ${promptRows.length}行、最大行: ${maxPromptRow + 1}`);
+    this.log(`プロンプト発見: ${promptRows.length}行、最大行: ${maxPromptRow + 1}`, 'success', '3-4-3');
     
     // 現在のデータが不足している場合、追加読み込み
     if (maxPromptRow >= spreadsheetData.values.length) {

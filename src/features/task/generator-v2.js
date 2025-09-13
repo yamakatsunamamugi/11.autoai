@@ -16,6 +16,29 @@ export default class TaskGeneratorV2 {
   }
 
   /**
+   * ステップ番号付きログ出力ヘルパー
+   */
+  log(message, type = 'info', step = null) {
+    const timestamp = new Date().toLocaleTimeString('ja-JP', {
+      hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+    const prefix = `[${timestamp}]`;
+    const stepPrefix = step ? `[Step ${step}]` : '';
+
+    let emoji = '';
+    switch (type) {
+      case 'step': emoji = '📍'; break;
+      case 'info': emoji = 'ℹ️'; break;
+      case 'success': emoji = '✅'; break;
+      case 'warn': emoji = '⚠️'; break;
+      case 'error': emoji = '❌'; break;
+      default: emoji = 'ℹ️';
+    }
+
+    console.log(`${prefix} ${stepPrefix} ${emoji} ${message}`);
+  }
+
+  /**
    * タスクを生成（プロンプトは含まない）
    * @param {Object} spreadsheetData - スプレッドシートデータ
    * @param {Array} taskGroups - タスクグループ情報（オプション）
@@ -301,7 +324,7 @@ export default class TaskGeneratorV2 {
     }
     
     // フォールバック: 従来のロジックで解析
-    console.log('[TaskGeneratorV2] taskGroups情報がないため、従来のロジックで解析');
+    this.log('taskGroups情報がないため、従来のロジックで解析', 'info', '3-2-1');
     const groups = [];
     
     if (!rows.menu || !rows.ai) {
@@ -314,7 +337,7 @@ export default class TaskGeneratorV2 {
     // 構造解析のデバッグログ（簡潔版）
     const menuNonEmpty = menuRow.filter(cell => cell && cell.trim()).length;
     const aiNonEmpty = aiRow.filter(cell => cell && cell.trim()).length;
-    console.log(`[TaskGeneratorV2] 構造解析: メニュー行${menuNonEmpty}列, AI行${aiNonEmpty}列`);
+    this.log(`構造解析: メニュー行${menuNonEmpty}列, AI行${aiNonEmpty}列`, 'info', '3-2-2');
     
     let currentGroup = null;
     
