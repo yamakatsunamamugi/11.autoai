@@ -29,20 +29,38 @@
     // ui-selectorsからインポート（Chrome拡張機能のインジェクトコンテキスト）
     // 重要: UI_SELECTORSは必ずsrc/config/ui-selectors.jsから取得する
     // ハードコードされたセレクタは使用禁止
-    const UI_SELECTORS = window.UI_SELECTORS || {};
-    
+
+    // UI_SELECTORSが読み込まれるまで待機
+    let UI_SELECTORS = window.UI_SELECTORS;
+    if (!UI_SELECTORS) {
+        console.log('⏳ [ClaudeV2] UI_SELECTORSの読み込みを待機中...');
+        let retryCount = 0;
+        const maxRetries = 50;
+
+        while (!window.UI_SELECTORS && retryCount < maxRetries) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            retryCount++;
+        }
+
+        UI_SELECTORS = window.UI_SELECTORS || {};
+
+        if (!window.UI_SELECTORS) {
+            console.error('❌ [ClaudeV2] UI_SELECTORSの読み込みに失敗しました（タイムアウト）');
+        } else {
+            console.log(`✅ [ClaudeV2] UI_SELECTORSの読み込み成功（${retryCount * 100}ms後）`);
+        }
+    }
+
     // UI_SELECTORSの状態を詳細にログ出力
     console.log('🔧 [ClaudeV2] UI_SELECTORS初期化確認:');
     console.log('  window.UI_SELECTORS存在:', !!window.UI_SELECTORS);
     if (window.UI_SELECTORS) {
         console.log('  UI_SELECTORS.Claude存在:', !!window.UI_SELECTORS.Claude);
         if (window.UI_SELECTORS.Claude) {
-            console.log('  UI_SELECTORS.Claude.INPUT:', window.UI_SELECTORS.Claude.INPUT);
-            console.log('  UI_SELECTORS.Claude.SEND_BUTTON:', window.UI_SELECTORS.Claude.SEND_BUTTON);
-            console.log('  UI_SELECTORS.Claude.STOP_BUTTON:', window.UI_SELECTORS.Claude.STOP_BUTTON);
+            console.log('  INPUT セレクタ数:', window.UI_SELECTORS.Claude.INPUT?.length || 0);
+            console.log('  SEND_BUTTON セレクタ数:', window.UI_SELECTORS.Claude.SEND_BUTTON?.length || 0);
+            console.log('  STOP_BUTTON セレクタ数:', window.UI_SELECTORS.Claude.STOP_BUTTON?.length || 0);
         }
-    } else {
-        console.warn('⚠️ [ClaudeV2] UI_SELECTORSが未定義です！デフォルト値を使用します。');
     }
     
     // =====================================================================
@@ -134,44 +152,18 @@
     // Claude動作用セレクタ（ui-selectorsから取得）
     // 重要: セレクタは必ずsrc/config/ui-selectors.jsで管理すること
     // ハードコードは禁止 - UI_SELECTORSを必ず使用する
-    
-    // デフォルトセレクタ（フォールバック用）
-    const DEFAULT_SELECTORS = {
-        INPUT: [
-            '.ProseMirror',
-            'div.ProseMirror[contenteditable="true"]',
-            '[data-placeholder*="Message Claude"]',
-            'div[contenteditable="true"][role="textbox"]'
-        ],
-        SEND_BUTTON: [
-            'button[aria-label="Send Message"]',
-            'button[type="submit"][aria-label*="Send"]',
-            'button svg path[d*="M320 448"]'
-        ],
-        STOP_BUTTON: [
-            'button[aria-label="応答を停止"]',
-            '[aria-label="応答を停止"]',
-            'button svg path[d*="M128,20A108"]'
-        ]
-    };
-    
+
     const claudeSelectors = {
         '1_テキスト入力欄': {
-            selectors: (UI_SELECTORS.Claude?.INPUT && UI_SELECTORS.Claude.INPUT.length > 0) 
-                ? UI_SELECTORS.Claude.INPUT 
-                : DEFAULT_SELECTORS.INPUT,
+            selectors: UI_SELECTORS.Claude?.INPUT || [],
             description: 'テキスト入力欄（ProseMirrorエディタ）'
         },
         '2_送信ボタン': {
-            selectors: (UI_SELECTORS.Claude?.SEND_BUTTON && UI_SELECTORS.Claude.SEND_BUTTON.length > 0)
-                ? UI_SELECTORS.Claude.SEND_BUTTON
-                : DEFAULT_SELECTORS.SEND_BUTTON,
+            selectors: UI_SELECTORS.Claude?.SEND_BUTTON || [],
             description: '送信ボタン'
         },
         '3_回答停止ボタン': {
-            selectors: (UI_SELECTORS.Claude?.STOP_BUTTON && UI_SELECTORS.Claude.STOP_BUTTON.length > 0)
-                ? UI_SELECTORS.Claude.STOP_BUTTON
-                : DEFAULT_SELECTORS.STOP_BUTTON,
+            selectors: UI_SELECTORS.Claude?.STOP_BUTTON || [],
             description: '回答停止ボタン'
         },
         '4_Canvas機能テキスト位置': {

@@ -57,7 +57,8 @@
       "Bash(rg:*)",
       "Bash(git fetch:*)",
       "WebFetch(domain:claude.ai)",
-      "Read(//private/tmp/**)"
+      "Read(//private/tmp/**)",
+      "Bash(git reflog:*)"
     ],
     "defaultMode": "acceptEdits",
     "additionalDirectories": [
