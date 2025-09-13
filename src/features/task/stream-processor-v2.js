@@ -1446,7 +1446,28 @@ export default class StreamProcessorV2 {
               await this.executePhaseOnTab(tabId, { ...task, prompt }, 'text');
             }
           },
-          executePhase: async (tabId, taskData) => {
+          executePhase: async (tabId, task) => {
+            // タスク実行時にtaskDataを正しく作成
+            const taskData = {
+              ...task,
+              taskId: task.id,
+              prompt: task.prompt || task.text || '',
+              text: task.prompt || task.text || '',
+              cellInfo: {
+                column: task.column,
+                row: task.row
+              }
+            };
+
+            this.logger.log(`[StreamProcessorV2] 📊 executePhase - taskData送信:`, {
+              taskId: taskData.taskId,
+              model: taskData.model || '❌未設定',
+              function: taskData.function || '❌未設定',
+              aiType: taskData.aiType,
+              cellInfo: taskData.cellInfo,
+              promptLength: taskData.prompt?.length || 0
+            });
+
             return await this.aiTaskExecutor.executeAITask(tabId, taskData);
           },
           task: task,
@@ -4431,6 +4452,24 @@ export default class StreamProcessorV2 {
           // AIタイプは設定しない（実行時にfetchModelAndFunctionFromTaskで取得）
           
           
+          // モデルと機能を取得（スプレッドシートから）
+          const modelRow = spreadsheetData.values?.find(row =>
+            row[0] && (row[0] === 'モデル' || row[0].toLowerCase() === 'model')
+          );
+          const functionRow = spreadsheetData.values?.find(row =>
+            row[0] && (row[0] === '機能' || row[0].toLowerCase() === 'function')
+          );
+
+          // プロンプト列からモデルと機能を取得
+          const modelValue = modelRow ? modelRow[promptColIndices[0]] || '' : '';
+          const functionValue = functionRow ? functionRow[promptColIndices[0]] || '' : '';
+
+          this.logger.log(`[StreamProcessorV2] 📊 ${taskInfo.column}${taskInfo.row} - モデル/機能取得:`, {
+            モデル: modelValue || '❌未設定',
+            機能: functionValue || '❌未設定',
+            プロンプト列: this.indexToColumn(promptColIndices[0])
+          });
+
           // タスクオブジェクトを作成（AI/モデル/機能は実行時に動的取得）
           // セル位置ベースのIDを生成（処理済みチェックで一貫性を保つ）
           const cellKey = `${taskInfo.column}${taskInfo.row}`;
@@ -4445,8 +4484,8 @@ export default class StreamProcessorV2 {
             promptColumn: this.indexToColumn(promptColIndices[0]),
             promptColumns: promptColIndices.map(idx => this.indexToColumn(idx)),  // 文字列の配列に変換
             sheetName: spreadsheetData.sheetName || '不明',
-            model: '',  // 実行時に動的取得
-            function: '',  // 実行時に動的取得
+            model: modelValue || '',  // スプレッドシートから取得
+            function: functionValue || '',  // スプレッドシートから取得
             createdAt: Date.now(),
             // ログ列：タスクリストで指定されたものをそのまま使用（なければ空配列）
             logColumns: group.columnRange.logColumn ? [group.columnRange.logColumn] : []
