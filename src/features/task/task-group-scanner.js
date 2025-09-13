@@ -116,7 +116,7 @@ export class TaskGroupScanner {
       // 重要：追加データ読み込み後に行制御を再取得
       this.logger.log(`[TaskGroupScanner] 📊 行制御を再取得（全${spreadsheetData.values.length}行から）`);
       rowControls = this.getRowControl(spreadsheetData);
-      if (rowControls.length > 0) {
+      if (rowControls && rowControls.length > 0) {
         this.logger.log(`[TaskGroupScanner] 行制御発見:`, rowControls.map(c => `${c.type}:${c.row}行`));
       }
     }
@@ -133,19 +133,19 @@ export class TaskGroupScanner {
     let skippedCompleted = 0;
     
     this.logger.log(`[TaskGroupScanner] 📊 タスク生成開始:`, {
-      プロンプト列: promptCols.map(idx => this.indexToColumn(idx)),
-      回答列: answerCols.map(idx => this.indexToColumn(idx)), 
+      プロンプト列: (promptCols || []).map(idx => this.indexToColumn(idx)),
+      回答列: (answerCols || []).map(idx => this.indexToColumn(idx)),
       対象行: `${startRow + 1}～${endRow}行目`,
-      プロンプト行数: promptRows.length
+      プロンプト行数: promptRows?.length || 0
     });
     
     // デバッグ：制御情報の状態
-    if (rowControls.length > 0 || columnControls.length > 0) {
-      this.logger.log(`[TaskGroupScanner] 制御適用: 行制御${rowControls.length}件、列制御${columnControls.length}件`);
+    if ((rowControls && rowControls.length > 0) || (columnControls && columnControls.length > 0)) {
+      this.logger.log(`[TaskGroupScanner] 制御適用: 行制御${rowControls?.length || 0}件、列制御${columnControls?.length || 0}件`);
     }
     
     // ========== 最適化: バッチで回答状態をチェック ==========
-    this.logger.log(`[TaskGroupScanner] 🚀 バッチチェック開始: ${promptRows.length}行 × ${answerCols.length}列`);
+    this.logger.log(`[TaskGroupScanner] 🚀 バッチチェック開始: ${promptRows?.length || 0}行 × ${answerCols?.length || 0}列`);
     
     // バッチで回答状態を取得
     const answerStatusMap = await this.batchCheckAnswers(spreadsheetData, promptRows, answerCols);
@@ -350,7 +350,7 @@ export class TaskGroupScanner {
     });
     
     // タスク範囲を簡潔に表示
-    if (tasks.length > 0) {
+    if (tasks && tasks.length > 0) {
       const taskRanges = tasks.map(t => `${t.column}${t.row}`).join(', ');
       this.logger.log(`[TaskGroupScanner] 📝 処理対象: ${taskRanges}`);
     }

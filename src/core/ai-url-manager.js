@@ -94,6 +94,12 @@ export class AIUrlManager {
    * @returns {string} URL
    */
   getUrl(aiType) {
+    // aiTypeのnullチェックとデフォルト値設定
+    if (!aiType || typeof aiType !== 'string') {
+      console.warn(`[AIUrlManager] Invalid aiType: ${aiType}, using default 'chatgpt'`);
+      aiType = 'chatgpt'; // デフォルト値
+    }
+
     const lowerAiType = aiType.toLowerCase();
     const config = this.aiConfigs[lowerAiType];
 

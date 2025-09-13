@@ -904,11 +904,7 @@ export default class StreamProcessorV2 {
       const windowInfo = await this.createWindowForTask(task, position);
 
       // タスクを実行
-      const result = await this.aiTaskExecutor.executeTask(task, {
-        tabId: windowInfo.tabId,
-        windowId: windowInfo.windowId,
-        isTestMode: isTestMode
-      });
+      const result = await this.aiTaskExecutor.executeAITask(windowInfo.tabId, task);
 
       // ウィンドウをクローズ
       await this.windowService.closeWindow(windowInfo.windowId);
@@ -1005,28 +1001,61 @@ export default class StreamProcessorV2 {
 
     try {
       // 待機テキストがクリアされるまで待機
-      await this.waitManager.waitForClearance(spreadsheetData);
+      // TODO: waitForClearanceメソッドが実装されていないため一時的にコメントアウト
+      // await this.waitManager.waitForClearance(spreadsheetData);
 
-      // 失敗タスクを収集
-      const failedTasks = this.retryManager.getFailedTasks(groupId);
+      // 失敗タスクを収集（RetryManagerのデータ構造から直接取得）
+      const failedTasks = this.retryManager.groupFailedTasks.get(groupId) || new Map();
+      const emptyTasks = this.retryManager.groupEmptyTasks.get(groupId) || new Map();
+      const responseFailed = this.retryManager.groupResponseFailures.get(groupId) || new Map();
 
-      if (failedTasks.length === 0) {
+      // 全ての失敗タスク数をカウント
+      let totalFailedCount = 0;
+      for (const [, tasks] of failedTasks) totalFailedCount += tasks.size;
+      for (const [, tasks] of emptyTasks) totalFailedCount += tasks.size;
+      for (const [, tasks] of responseFailed) totalFailedCount += tasks.size;
+
+      if (totalFailedCount === 0) {
         this.logger.log(`[StreamProcessorV2] ${groupName}: リトライ対象なし`);
         return { shouldStopProcessing: false };
       }
 
       // リトライ実行
-      this.logger.log(`[StreamProcessorV2] ${groupName}: ${failedTasks.length}件をリトライ`);
+      this.logger.log(`[StreamProcessorV2] ${groupName}: ${totalFailedCount}件をリトライ`);
 
-      for (const task of failedTasks) {
-        await processFunc(task.column, [task]);
+      // 各カテゴリのタスクをリトライ実行
+      for (const [column, tasks] of failedTasks) {
+        const taskArray = Array.from(tasks);
+        if (taskArray.length > 0) {
+          await processFunc(column, taskArray);
+        }
+      }
+      for (const [column, tasks] of emptyTasks) {
+        const taskArray = Array.from(tasks);
+        if (taskArray.length > 0) {
+          await processFunc(column, taskArray);
+        }
+      }
+      for (const [column, tasks] of responseFailed) {
+        const taskArray = Array.from(tasks);
+        if (taskArray.length > 0) {
+          await processFunc(column, taskArray);
+        }
       }
 
-      // 完了チェック
-      const stillFailed = this.retryManager.getFailedTasks(groupId);
+      // 完了チェック（同様にデータ構造を直接参照）
+      const stillFailedTasks = this.retryManager.groupFailedTasks.get(groupId) || new Map();
+      const stillEmptyTasks = this.retryManager.groupEmptyTasks.get(groupId) || new Map();
+      const stillResponseFailed = this.retryManager.groupResponseFailures.get(groupId) || new Map();
 
-      if (stillFailed.length > 0) {
-        this.logger.error(`[StreamProcessorV2] ${groupName}: ${stillFailed.length}件が依然として失敗`);
+      // 残った失敗タスク数をカウント
+      let stillFailedCount = 0;
+      for (const [, tasks] of stillFailedTasks) stillFailedCount += tasks.size;
+      for (const [, tasks] of stillEmptyTasks) stillFailedCount += tasks.size;
+      for (const [, tasks] of stillResponseFailed) stillFailedCount += tasks.size;
+
+      if (stillFailedCount > 0) {
+        this.logger.error(`[StreamProcessorV2] ${groupName}: ${stillFailedCount}件が依然として失敗`);
         return { shouldStopProcessing: true };
       }
 
@@ -1136,7 +1165,7 @@ export default class StreamProcessorV2 {
    * @returns {Promise<Object>} ウィンドウ情報
    */
   async createWindowForTask(task, position = 0) {
-    const url = aiUrlManager.getUrlForTask(task);
+    const url = aiUrlManager.getUrl(task.aiType);
     const windowOptions = this.getWindowOptions(position);
 
     const windowInfo = await this.windowService.createWindow({
