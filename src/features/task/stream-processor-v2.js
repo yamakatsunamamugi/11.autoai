@@ -445,13 +445,28 @@ export default class StreamProcessorV2 {
         
         try {
           
-          // AI/モデル/機能を動的に取得
-          const { model, function: func, ai } = await this.fetchModelAndFunctionFromTask(task);
-          task.model = model;
-          task.function = func;
-          task.aiType = ai;
+          // AI/モデル/機能を動的に取得（既に設定されていない場合のみ）
+          if (!task.model || !task.function || !task.aiType) {
+            const { model, function: func, ai } = await this.fetchModelAndFunctionFromTask(task);
+            // 既存の値を優先し、未設定の場合のみ動的取得した値を使用
+            if (!task.model) task.model = model;
+            if (!task.function) task.function = func;
+            if (!task.aiType) task.aiType = ai;
+
+            this.logger.log(`[StreamProcessorV2] 未設定の値を動的取得で補完:`, {
+              model: task.model || '❌未設定',
+              function: task.function || '❌未設定',
+              aiType: task.aiType || '❌未設定'
+            });
+          } else {
+            this.logger.log(`[StreamProcessorV2] モデル/機能/AI既に設定済み（上書きしない）:`, {
+              model: task.model,
+              function: task.function,
+              aiType: task.aiType
+            });
+          }
           
-          this.logger.log(`[StreamProcessorV2] パイプライン ${index + 1}/${batch.length} 開始: ${task.column}${task.row} (${ai})`);
+          this.logger.log(`[StreamProcessorV2] パイプライン ${index + 1}/${batch.length} 開始: ${task.column}${task.row} (${task.aiType})`);
           
           // 排他制御ロック取得
           const lockResult = await this.exclusiveManager.acquireLock(
