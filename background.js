@@ -1586,10 +1586,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             };
           }
           
-          // 動的タスク生成モード（タスクリストは実行時に生成）
-          const result = await processor.processTaskStream(null, spreadsheetData, {
+          // 動的タスク生成モード（StreamProcessorV2のメインエントリーポイント）
+          const result = await processor.processDynamicTaskGroups(spreadsheetData, {
             testMode: request.testMode || false,
-            dynamicMode: true,
             taskGroups: processedData.taskGroups || []  // タスクグループ情報を渡す
           });
           
