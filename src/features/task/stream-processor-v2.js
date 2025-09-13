@@ -1,11 +1,17 @@
 /**
- * @fileoverview StreamProcessor V2 - 動的タスクグループ処理システム（整理版）
+ * @fileoverview StreamProcessor V2 - 動的タスクグループ処理システム
  *
- * ============================================================================
- * 概要:
- * ============================================================================
- * このクラスは、Googleスプレッドシートのタスクを動的に処理するためのコアシステムです。
- * タスクグループを順次処理し、各グループ内では並列処理を行います。
+ * 【ステップ構成】
+ * ステップ0: 初期化・コンストラクタ
+ * ステップ1: SpreadsheetLogger初期化
+ * ステップ2: メインエントリーポイント（スリープ防止・データ検証）
+ * ステップ3: V3グループ順次処理（動的構造解析）
+ * ステップ4: 特殊グループ処理（レポート化・Genspark）
+ * ステップ5: タスク生成・整理
+ * ステップ6: 標準タスク実行（列・バッチ・個別処理）
+ * ステップ7: 特殊タスク実行（3種類AI並列処理）
+ * ステップ8: リトライ・エラー処理
+ * ステップ9: ユーティリティ・ヘルパー関数
  *
  * ============================================================================
  * 主要機能:
@@ -16,24 +22,8 @@
  * 4. 特殊グループ対応: レポート化、Genspark等の特殊処理
  * 5. リトライ機能: 失敗したタスクの自動リトライ
  *
- * ============================================================================
- * 処理フロー:
- * ============================================================================
- * 1. processDynamicTaskGroups() - エントリーポイント
- *    ↓
- * 2. processGroupsSequentiallyV3() - グループ順次処理
- *    ↓
- * 3. scanGroupTasks() - 動的タスク生成
- *    ↓
- * 4. processColumn() / process3TypeAIGroup() - タスク実行
- *    ↓
- * 5. executeGroupRetryLogic() - リトライ処理
- *
- * ============================================================================
- * Version: 2.0.0
- * Created: 2024
- * Last Modified: 2025-09-14
- * ============================================================================
+ * @version 3.0.0
+ * @updated 2025-09-14 ステップ番号体系統一、コード整理
  */
 
 import { AITaskExecutor } from '../../core/ai-task-executor.js';
@@ -79,36 +69,44 @@ async function getSpreadsheetLogger() {
 }
 
 export default class StreamProcessorV2 {
-  // ========================================================================
-  // セクション1: 初期化とコンストラクタ
-  // ========================================================================
+  // ========================================
+  // ステップ0: 初期化・コンストラクタ
+  // ========================================
 
   /**
    * コンストラクタ
    *
    * StreamProcessorV2のインスタンスを初期化します。
-   * 各種サービスとマネージャーのインスタンスを作成し、設定を行います。
+   * ChatGPTのステップ構成を参考に、明確なステップで初期化を実行します。
    *
    * @param {Object} logger - ログ出力用オブジェクト（デフォルト: console）
    * @param {Object} config - 設定オブジェクト
    */
   constructor(logger = console, config = {}) {
-    // ===== Step 1.1: 基本サービスの初期化 =====
-    // ログ、タスク実行、リトライ管理の基本サービスを設定
+    this.log('StreamProcessorV2 初期化開始', 'step', '0');
+
+    // ========================================
+    // ステップ0-1: 基本サービス初期化
+    // ========================================
+    this.log('基本サービスを初期化', 'info', '0-1');
     this.logger = logger;
     this.aiTaskExecutor = new AITaskExecutor(logger);
     this.retryManager = new RetryManager(logger);
 
-    // ===== Step 1.2: タスク生成・管理系の初期化 =====
-    // タスクの生成、完了チェック、待機管理を行うコンポーネント
+    // ========================================
+    // ステップ0-2: タスク生成・管理系初期化
+    // ========================================
+    this.log('タスク生成・管理系コンポーネントを初期化', 'info', '0-2');
     this.taskGenerator = new TaskGeneratorV2(logger);
     this.completionChecker = new GroupCompletionChecker(this.retryManager, logger);
     this.waitManager = new TaskWaitManager(logger);
     this.windowService = WindowService;
     this.completedTasks = new Set();
 
-    // ===== Step 1.3: 排他制御の初期化 =====
-    // 複数プロセス間でのタスク競合を防ぐための排他制御機構
+    // ========================================
+    // ステップ0-3: 排他制御システム初期化
+    // ========================================
+    this.log('排他制御システムを初期化', 'info', '0-3');
     this.exclusiveManager = new ExclusiveControlManager({
       controlConfig: {
         timeouts: EXCLUSIVE_CONTROL_CONFIG.timeouts,
@@ -122,8 +120,10 @@ export default class StreamProcessorV2 {
       logger: this.logger
     });
 
-    // ===== Step 1.4: タスクスキャナーの初期化 =====
-    // 動的タスク生成のためのスキャナーを設定
+    // ========================================
+    // ステップ0-4: タスクスキャナー初期化
+    // ========================================
+    this.log('動的タスクスキャナーを初期化', 'info', '0-4');
     this.taskScanner = new TaskGroupScanner({
       logger: this.logger,
       exclusiveManager: this.exclusiveManager,
@@ -140,7 +140,10 @@ export default class StreamProcessorV2 {
       loadAdditionalRows: this.loadAdditionalRows.bind(this)
     });
 
-    // ===== Step 1.5: 設定とステート管理 =====
+    // ========================================
+    // ステップ0-5: 設定・状態管理初期化
+    // ========================================
+    this.log('設定と状態管理を初期化', 'info', '0-5');
     this.config = {
       exclusiveControl: EXCLUSIVE_CONTROL_CONFIG,
       ...config
@@ -155,8 +158,47 @@ export default class StreamProcessorV2 {
     this.sheetsClient = null;
     this.spreadsheetData = null;
     this.spreadsheetUrl = null;
+
+    this.log('StreamProcessorV2 初期化完了', 'success', '0');
   }
 
+  // ========================================
+  // 統一ログ関数（ChatGPT方式）
+  // ========================================
+  /**
+   * 統一ログ出力関数
+   * @param {string} message - ログメッセージ
+   * @param {string} type - ログタイプ (info, error, success, warning, step)
+   * @param {string} step - ステップ番号（オプション）
+   */
+  log(message, type = 'info', step = null) {
+    const timestamp = new Date().toLocaleTimeString('ja-JP', {
+      hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+    const prefix = `[${timestamp}]`;
+    const stepPrefix = step ? `[Step ${step}]` : '';
+
+    switch(type) {
+      case 'error':
+        this.logger.error(`${prefix} ${stepPrefix} ❌ ${message}`);
+        break;
+      case 'success':
+        this.logger.log(`${prefix} ${stepPrefix} ✅ ${message}`);
+        break;
+      case 'warning':
+        this.logger.warn(`${prefix} ${stepPrefix} ⚠️ ${message}`);
+        break;
+      case 'step':
+        this.logger.log(`${prefix} ${stepPrefix} 📍 ${message}`);
+        break;
+      default:
+        this.logger.log(`${prefix} ${stepPrefix} ℹ️ ${message}`);
+    }
+  }
+
+  // ========================================
+  // ステップ1: SpreadsheetLogger初期化
+  // ========================================
   /**
    * SpreadsheetLoggerの初期化
    *
@@ -165,81 +207,93 @@ export default class StreamProcessorV2 {
    * グローバルスペースから取得します。
    */
   async initializeSpreadsheetLogger() {
+    this.log('SpreadsheetLogger初期化開始', 'step', '1');
+
+    // ステップ1-1: 既存インスタンスチェック
     if (this.spreadsheetLogger) {
+      this.log('SpreadsheetLogger既に初期化済み', 'info', '1-1');
       return;
     }
 
     try {
+      // ステップ1-2: SpreadsheetLoggerクラス取得
+      this.log('SpreadsheetLoggerクラスを取得', 'info', '1-2');
       const SpreadsheetLoggerClass = await getSpreadsheetLogger();
 
       if (SpreadsheetLoggerClass && this.spreadsheetUrl) {
+        // ステップ1-3: インスタンス作成
+        this.log('SpreadsheetLoggerインスタンスを作成', 'info', '1-3');
         this.spreadsheetLogger = new SpreadsheetLoggerClass({
           spreadsheetUrl: this.spreadsheetUrl,
           logger: this.logger
         });
 
+        // ステップ1-4: SheetsClient参照取得
         if (this.spreadsheetLogger.sheetsClient) {
           this.sheetsClient = this.spreadsheetLogger.sheetsClient;
+          this.log('SheetsClient参照取得完了', 'info', '1-4');
         }
 
-        this.logger.log('[StreamProcessorV2] SpreadsheetLogger初期化完了');
+        this.log('SpreadsheetLogger初期化完了', 'success', '1');
+      } else {
+        this.log('SpreadsheetLoggerClass または spreadsheetUrl が未設定', 'warning', '1');
       }
     } catch (error) {
-      this.logger.warn('[StreamProcessorV2] SpreadsheetLogger初期化エラー:', error);
+      this.log(`SpreadsheetLogger初期化エラー: ${error.message}`, 'error', '1');
     }
   }
 
-  // ========================================================================
-  // セクション2: メインエントリーポイント
-  // ========================================================================
+  // ========================================
+  // ステップ2: メインエントリーポイント
+  // ========================================
 
   /**
    * 動的タスクグループ処理（メインエントリーポイント）
    *
-   * ============================================
-   * 処理の流れ:
-   * ============================================
-   * 1. スリープ防止を開始
-   * 2. タスクグループ情報を取得
-   * 3. 最初のタスクありグループを特定
-   * 4. グループごとに順次処理
-   * 5. 完了後、スリープ防止を解除
+   * 全体の処理フローを制御するメイン関数です。
+   * ChatGPTのステップ構成を参考に、明確な段階で処理を実行します。
    *
    * @param {Object} spreadsheetData - スプレッドシートデータ
    * @param {Object} options - 処理オプション
    * @returns {Promise<Object>} 処理結果
    */
   async processDynamicTaskGroups(spreadsheetData, options = {}) {
+    this.log('動的タスクグループ処理開始', 'step', '2');
     const startTime = Date.now();
     let totalCompleted = 0;
     let totalFailed = 0;
 
-    // ===== Step 1: スリープ防止を開始 =====
-    // 長時間の処理中にPCがスリープしないように保護
+    // ========================================
+    // ステップ2-1: スリープ防止開始
+    // ========================================
+    this.log('スリープ防止を開始', 'info', '2-1');
     try {
       if (globalThis.powerManager) {
         await globalThis.powerManager.startProtection('stream-processor-dynamic');
-        this.logger.log('[StreamProcessorV2] 🛡️ 動的タスクグループ処理: スリープ防止を開始');
+        this.log('PowerManager保護開始', 'success', '2-1');
       }
     } catch (error) {
-      this.logger.error('[StreamProcessorV2] スリープ防止開始エラー:', error);
+      this.log(`スリープ防止開始エラー: ${error.message}`, 'error', '2-1');
     }
 
-    // ===== Step 2: データの保存と初期化 =====
-    // スプレッドシートデータをインスタンス変数に保存
+    // ========================================
+    // ステップ2-2: データ保存・初期化
+    // ========================================
+    this.log('スプレッドシートデータを保存・初期化', 'info', '2-2');
     this.spreadsheetData = spreadsheetData;
     this.spreadsheetUrl = spreadsheetData?.spreadsheetUrl;
 
     // SpreadsheetLoggerを初期化
     await this.initializeSpreadsheetLogger();
 
-    // ===== Step 3: タスクグループの取得と検証 =====
+    // ========================================
+    // ステップ2-3: タスクグループ検証
+    // ========================================
+    this.log('タスクグループを検証', 'info', '2-3');
     const taskGroups = options.taskGroups || [];
 
     if (!taskGroups || taskGroups.length === 0) {
-      this.logger.warn('[StreamProcessorV2] タスクグループが見つかりません');
-
-      // スリープ防止を解除（早期リターン時）
+      this.log('タスクグループが見つからない - 早期終了', 'warning', '2-3');
       await this.cleanupAndStopProtection('早期リターン');
 
       return {
@@ -252,13 +306,16 @@ export default class StreamProcessorV2 {
       };
     }
 
-    this.logger.log(`[StreamProcessorV2] 🚀 動的タスクグループ処理開始: ${taskGroups.length}グループ`);
+    this.log(`タスクグループ検証完了: ${taskGroups.length}グループ`, 'success', '2-3');
 
-    // ===== Step 4: 最初のタスクありグループを特定 =====
+    // ========================================
+    // ステップ2-4: 最初のグループ特定
+    // ========================================
+    this.log('最初のタスクありグループを特定', 'info', '2-4');
     const firstTaskGroupIndex = this.findFirstTaskGroupIndex(taskGroups, spreadsheetData);
 
     if (firstTaskGroupIndex === -1) {
-      this.logger.log(`[StreamProcessorV2] 📊 処理対象グループなし、処理を終了`);
+      this.log('処理対象グループなし - 正常終了', 'info', '2-4');
       await this.cleanupAndStopProtection('処理完了');
 
       return {
@@ -271,27 +328,30 @@ export default class StreamProcessorV2 {
       };
     }
 
-    // ===== Step 5: グループごとの処理を実行 =====
-    this.logger.log(`[StreamProcessorV2] 📋 処理開始インデックス: ${firstTaskGroupIndex}`);
+    this.log(`処理開始インデックス: ${firstTaskGroupIndex}`, 'success', '2-4');
 
+    // ========================================
+    // ステップ2-5: グループ処理実行
+    // ========================================
+    this.log('V3グループ順次処理を実行', 'info', '2-5');
     try {
-      // V3処理（動的タスク生成）を使用
       const result = await this.processGroupsSequentiallyV3(spreadsheetData, options.testMode);
-
       totalCompleted = result.completed || 0;
       totalFailed = result.failed || 0;
-
+      this.log(`グループ処理完了: 成功${totalCompleted}件, 失敗${totalFailed}件`, 'success', '2-5');
     } catch (error) {
-      this.logger.error('[StreamProcessorV2] 処理エラー:', error);
+      this.log(`グループ処理エラー: ${error.message}`, 'error', '2-5');
       totalFailed++;
     }
 
-    // ===== Step 6: クリーンアップと結果返却 =====
+    // ========================================
+    // ステップ2-6: クリーンアップ・結果返却
+    // ========================================
+    this.log('クリーンアップと結果返却', 'info', '2-6');
     await this.cleanupAndStopProtection('処理完了');
 
     const totalTime = this.formatTime(Date.now() - startTime);
-
-    return {
+    const result = {
       success: totalFailed === 0,
       total: totalCompleted + totalFailed,
       completed: totalCompleted,
@@ -299,36 +359,27 @@ export default class StreamProcessorV2 {
       totalTime: totalTime,
       message: `処理完了: 成功${totalCompleted}件, 失敗${totalFailed}件`
     };
+
+    this.log(`動的タスクグループ処理完了 (${totalTime})`, 'success', '2');
+    return result;
   }
+
+  // ========================================
+  // ステップ3: V3グループ順次処理
+  // ========================================
 
   /**
    * V3グループ順次処理（メインループ）
    *
-   * ============================================
-   * 処理の特徴:
-   * ============================================
-   * - 動的にグループ構造を再解析
-   * - 依存関係に従って順次処理
-   * - 特殊グループ（レポート化、Genspark）に対応
-   * - リトライ機能付き
-   *
-   * ============================================
-   * 処理ステップ:
-   * ============================================
-   * 1. グループ前チェック
-   * 2. 構造の動的再解析
-   * 3. 依存関係チェック
-   * 4. 特殊グループ判定と処理
-   * 5. 通常グループのタスク生成と実行
-   * 6. リトライ処理
-   * 7. 次グループへ移行
+   * 動的にグループ構造を解析し、依存関係に従って順次処理します。
+   * ChatGPTのステップ構成を参考に、明確な段階で処理を実行します。
    *
    * @param {Object} spreadsheetData - スプレッドシートデータ
    * @param {boolean} isTestMode - テストモードフラグ
    * @returns {Promise<Object>} 処理結果
    */
   async processGroupsSequentiallyV3(spreadsheetData, isTestMode) {
-    this.logger.log('[StreamProcessorV2] 🚀 V3グループ順次処理開始（動的タスク生成モード）');
+    this.log('V3グループ順次処理開始（動的タスク生成モード）', 'step', '3');
 
     let totalProcessed = 0;
     let totalFailed = 0;
@@ -535,9 +586,9 @@ export default class StreamProcessorV2 {
     };
   }
 
-  // ========================================================================
-  // セクション3: タスクグループ処理
-  // ========================================================================
+  // ========================================
+  // ステップ4: 特殊グループ処理
+  // ========================================
 
   /**
    * レポートグループの専用処理
@@ -736,9 +787,9 @@ export default class StreamProcessorV2 {
     }
   }
 
-  // ========================================================================
-  // セクション4: タスク生成
-  // ========================================================================
+  // ========================================
+  // ステップ5: タスク生成・整理
+  // ========================================
 
   /**
    * タスクを列ごとに整理
@@ -763,9 +814,9 @@ export default class StreamProcessorV2 {
     return columnGroups;
   }
 
-  // ========================================================================
-  // セクション5: タスク実行
-  // ========================================================================
+  // ========================================
+  // ステップ6: 標準タスク実行
+  // ========================================
 
   /**
    * 列単位でタスクを処理
@@ -868,6 +919,10 @@ export default class StreamProcessorV2 {
     }
   }
 
+  // ========================================
+  // ステップ7: 特殊タスク実行（3種類AI並列処理）
+  // ========================================
+
   /**
    * 3種類AIグループの処理
    *
@@ -878,26 +933,29 @@ export default class StreamProcessorV2 {
    * @param {boolean} isTestMode - テストモード
    */
   async process3TypeAIGroup(columnGroups, isTestMode) {
-    this.logger.log(`[StreamProcessorV2] 🎯 3種類AIグループの処理開始`);
+    this.log('3種類AIグループ処理開始', 'step', '7');
 
-    // 各列を並列で処理
+    // ステップ7-1: 列並列処理の準備
+    this.log('各列を並列処理用に準備', 'info', '7-1');
     const columnPromises = [];
     let position = 0;
 
     for (const [column, tasks] of columnGroups) {
-      // 各列に位置を割り当て（最大3列）
+      // ステップ7-2: 位置割り当て（最大3列）
       const columnPosition = position % 3;
       position++;
 
+      this.log(`${column}列をポジション${columnPosition}で処理準備`, 'info', '7-2');
       columnPromises.push(
         this.processColumnFor3TypeAI(column, tasks, isTestMode, columnPosition)
       );
     }
 
-    // すべての列の処理を待機
+    // ステップ7-3: 並列実行と待機
+    this.log(`${columnPromises.length}列の並列処理を開始`, 'info', '7-3');
     await Promise.allSettled(columnPromises);
 
-    this.logger.log(`[StreamProcessorV2] ✅ 3種類AIグループの処理完了`);
+    this.log('3種類AIグループ処理完了', 'success', '7');
   }
 
   /**
@@ -909,18 +967,23 @@ export default class StreamProcessorV2 {
    * @param {number} position - ウィンドウ位置
    */
   async processColumnFor3TypeAI(column, tasks, isTestMode, position) {
+    this.log(`${column}列の3種類AI処理開始 (${tasks.length}タスク)`, 'info', '7-4');
+
     for (const task of tasks) {
       try {
         await this.processTask(task, isTestMode, position);
+        this.log(`${column}列タスク完了: ${task.column}${task.row}`, 'success', '7-4');
       } catch (error) {
-        this.logger.error(`[StreamProcessorV2] 3種類AI処理エラー (${task.column}${task.row}):`, error);
+        this.log(`${column}列タスクエラー (${task.column}${task.row}): ${error.message}`, 'error', '7-4');
       }
     }
+
+    this.log(`${column}列の3種類AI処理完了`, 'success', '7-4');
   }
 
-  // ========================================================================
-  // セクション6: リトライ・エラー処理
-  // ========================================================================
+  // ========================================
+  // ステップ8: リトライ・エラー処理
+  // ========================================
 
   /**
    * グループ完了後のリトライ処理
@@ -973,9 +1036,9 @@ export default class StreamProcessorV2 {
     }
   }
 
-  // ========================================================================
-  // セクション7: ユーティリティメソッド
-  // ========================================================================
+  // ========================================
+  // ステップ9: ユーティリティ・ヘルパー関数
+  // ========================================
 
   /**
    * 待機処理
@@ -1136,6 +1199,156 @@ export default class StreamProcessorV2 {
     }
   }
 
-  // その他の既存メソッドは、適切なセクションに配置する必要があります
-  // （行制御、列制御、ヘルパーメソッドなど）
+  // ========================================
+  // ステップ0-補助: 不足メソッド実装
+  // ========================================
+
+  /**
+   * グループ処理前のチェック処理
+   * @param {Object} spreadsheetData - スプレッドシートデータ
+   * @param {number} groupIndex - グループインデックス
+   */
+  async performPreGroupChecks(spreadsheetData, groupIndex) {
+    this.log(`グループ${groupIndex + 1}の前処理チェックを実行`, 'info', `3-1`);
+
+    try {
+      // スプレッドシートの最新状態確認
+      if (this.sheetsClient && this.sheetsClient.checkConnection) {
+        await this.sheetsClient.checkConnection();
+      }
+
+      // 排他制御状態の確認
+      if (this.exclusiveManager && this.exclusiveManager.checkStatus) {
+        await this.exclusiveManager.checkStatus();
+      }
+
+      this.log(`グループ${groupIndex + 1}前処理チェック完了`, 'success', `3-1`);
+    } catch (error) {
+      this.log(`グループ${groupIndex + 1}前処理チェックエラー: ${error.message}`, 'error', `3-1`);
+    }
+  }
+
+  /**
+   * 列制御のチェック処理
+   * @param {Object} controls - 制御情報
+   * @param {number} groupIndex - グループインデックス
+   * @param {Object} promptGroup - プロンプトグループ
+   * @returns {boolean} 停止すべきかどうか
+   */
+  async checkColumnControl(controls, groupIndex, promptGroup) {
+    this.log(`グループ${groupIndex + 1}の列制御をチェック`, 'info', `3-3`);
+
+    try {
+      // 列制御の「この列で停止」チェック
+      if (controls && controls.column) {
+        for (const control of controls.column) {
+          if (control.action === 'stop' && control.targetColumn) {
+            const targetColumn = this.columnToIndex(control.targetColumn);
+            if (promptGroup.promptColumns.includes(targetColumn)) {
+              this.log(`列制御により停止: ${control.targetColumn}列`, 'warning', `3-3`);
+              return true;
+            }
+          }
+        }
+      }
+
+      this.log(`列制御チェック完了 - 継続`, 'success', `3-3`);
+      return false;
+    } catch (error) {
+      this.log(`列制御チェックエラー: ${error.message}`, 'error', `3-3`);
+      return false;
+    }
+  }
+
+  /**
+   * 最初のタスクありグループを特定
+   * @param {Array} taskGroups - タスクグループリスト
+   * @param {Object} spreadsheetData - スプレッドシートデータ
+   * @returns {number} グループインデックス（-1は見つからない）
+   */
+  findFirstTaskGroupIndex(taskGroups, spreadsheetData) {
+    this.log('最初のタスクありグループを検索', 'info', '2-4');
+
+    try {
+      for (let i = 0; i < taskGroups.length; i++) {
+        const group = taskGroups[i];
+
+        // グループに未処理タスクがあるかチェック
+        if (group && group.columnRange && group.columnRange.promptColumns) {
+          // 簡易チェック: プロンプト列が存在すれば処理対象とする
+          if (group.columnRange.promptColumns.length > 0) {
+            this.log(`タスクありグループ発見: インデックス${i}`, 'success', '2-4');
+            return i;
+          }
+        }
+      }
+
+      this.log('タスクありグループが見つかりません', 'warning', '2-4');
+      return -1;
+    } catch (error) {
+      this.log(`グループ検索エラー: ${error.message}`, 'error', '2-4');
+      return -1;
+    }
+  }
+
+  /**
+   * スプレッドシートデータの再読み込み
+   * @param {Object} spreadsheetData - スプレッドシートデータ
+   */
+  async reloadSpreadsheetData(spreadsheetData) {
+    this.log('スプレッドシートデータを再読み込み', 'info', '3-7');
+
+    try {
+      if (this.sheetsClient && this.sheetsClient.reloadData) {
+        await this.sheetsClient.reloadData();
+        this.log('スプレッドシートデータ再読み込み完了', 'success', '3-7');
+      } else {
+        this.log('SheetsClientが未初期化 - 再読み込みスキップ', 'warning', '3-7');
+      }
+    } catch (error) {
+      this.log(`データ再読み込みエラー: ${error.message}`, 'error', '3-7');
+    }
+  }
+
+  /**
+   * 行処理判定（プレースホルダー実装）
+   */
+  shouldProcessRow(rowIndex) {
+    return rowIndex >= 9; // 通常9行目から開始
+  }
+
+  /**
+   * 列処理判定（プレースホルダー実装）
+   */
+  shouldProcessColumn(columnIndex) {
+    return columnIndex >= 0; // すべての列を処理対象
+  }
+
+  /**
+   * 行制御取得（プレースホルダー実装）
+   */
+  getRowControl(rowIndex) {
+    return null; // 実装時に制御ロジックを追加
+  }
+
+  /**
+   * 列制御取得（プレースホルダー実装）
+   */
+  getColumnControl(columnIndex) {
+    return null; // 実装時に制御ロジックを追加
+  }
+
+  /**
+   * プロンプト行スキャン（プレースホルダー実装）
+   */
+  scanPromptRows(startRow, endRow) {
+    return []; // 実装時にスキャンロジックを追加
+  }
+
+  /**
+   * 追加行読み込み（プレースホルダー実装）
+   */
+  async loadAdditionalRows(currentRows) {
+    return currentRows; // 実装時に追加読み込みロジックを追加
+  }
 }
