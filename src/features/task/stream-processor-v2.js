@@ -1091,6 +1091,8 @@ export default class StreamProcessorV2 {
    */
   async processDynamicTaskGroups(spreadsheetData, options = {}) {
     const startTime = Date.now();
+    let totalCompleted = 0;
+    let totalFailed = 0;
     
     // スリープ防止を開始
     try {
@@ -1102,26 +1104,30 @@ export default class StreamProcessorV2 {
       this.logger.error('[StreamProcessorV2] スリープ防止開始エラー:', error);
     }
     
-    // spreadsheetDataをインスタンス変数に保存
+    // spreadsheetDataをインスタンス変数に保存（動的取得メソッドで使用）
     this.spreadsheetData = spreadsheetData;
-    this.spreadsheetUrl = spreadsheetData?.spreadsheetUrl;
+    this.spreadsheetUrl = spreadsheetData?.spreadsheetUrl; // spreadsheetUrlを保存
+    
+    // spreadsheetData構造確認（簡潔版）
+    this.logger.log('[DEBUG] スプレッドシートデータ確認完了');
     
     // SpreadsheetLoggerを初期化
     await this.initializeSpreadsheetLogger();
     
-    // タスクグループ情報を取得
+    // タスクグループ情報を取得（optionsから渡されたものを使用）
     const taskGroups = options.taskGroups || [];
     
     if (!taskGroups || taskGroups.length === 0) {
       this.logger.warn('[StreamProcessorV2] タスクグループが見つかりません');
       
-      // スリープ防止を解除
+      // スリープ防止を解除（早期リターン時）
       try {
         if (globalThis.powerManager) {
           await globalThis.powerManager.stopProtection('stream-processor-dynamic');
+          this.logger.log('[StreamProcessorV2] 🔓 早期リターン: スリープ防止を解除');
         }
       } catch (error) {
-        this.logger.error('[StreamProcessorV2] スリープ防止解除エラー:', error);
+        this.logger.error('[StreamProcessorV2] スリープ防止解除エラー（早期リターン）:', error);
       }
       
       return {
@@ -1136,17 +1142,212 @@ export default class StreamProcessorV2 {
     
     this.logger.log(`[StreamProcessorV2] 🚀 動的タスクグループ処理開始: ${taskGroups.length}グループ`);
     
-    // TODO: 実際のタスクグループ処理ロジックを実装
-    // 現在は仮の実装
-    this.logger.log('[StreamProcessorV2] ⚠️ processDynamicTaskGroups: 実装が不完全です');
+    // 最初のタスクありグループを特定（シンプル版）
+    const firstTaskGroupIndex = this.findFirstTaskGroupIndex(taskGroups, spreadsheetData);
     
-    const endTime = Date.now();
-    const totalTime = Math.round((endTime - startTime) / 1000);
+    if (firstTaskGroupIndex === -1) {
+      this.logger.log(`[StreamProcessorV2] 📊 処理対象グループなし、処理を終了`);
+      
+      // スリープ防止を解除
+      try {
+        if (globalThis.powerManager) {
+          await globalThis.powerManager.stopProtection('stream-processor-dynamic');
+          this.logger.log('[StreamProcessorV2] 🔓 処理完了: スリープ防止を解除');
+        }
+      } catch (error) {
+        this.logger.error('[StreamProcessorV2] スリープ防止解除エラー:', error);
+      }
+      
+      return {
+        success: true,
+        total: 0,
+        completed: 0,
+        failed: 0,
+        totalTime: '0秒',
+        message: '処理対象のタスクがありません'
+      };
+    }
+    
+    this.logger.log(`[StreamProcessorV2] 📋 処理開始インデックス: ${firstTaskGroupIndex}`);
+    
+    // 最初のタスクありグループから最後まで順番に処理
+    for (let i = firstTaskGroupIndex; i < taskGroups.length; i++) {
+      const group = taskGroups[i];
+      
+      // グループごとにタスクをスキャンして処理
+      
+      // 作業がある場合のみ重い処理を実行
+      this.logger.log(`[StreamProcessorV2] 📋 グループ処理開始: ${group.name} (${group.startColumn}-${group.endColumn}列)`);
+      
+      // グループ処理開始前に全ウィンドウを閉じる
+      try {
+        await WindowService.closeAllWindows();
+      } catch (error) {
+        this.logger.warn(`ウィンドウクローズエラー:`, error);
+      }
+      
+      // 少し待機してからグループ処理を開始
+      await this.delay(2000); // 5秒 → 2秒に短縮
+      
+      
+      // グループの列情報からインデックス配列を作成
+      const promptColIndices = group.columnRange.promptColumns.map(col => this.columnToIndex(col));
+      const answerColIndices = group.columnRange.answerColumns.map(answerCol => {
+        // answerColumnsはオブジェクト配列の場合がある
+        const col = typeof answerCol === 'string' ? answerCol : answerCol.column;
+        return this.columnToIndex(col);
+      });
+      
+      this.logger.log(`[StreamProcessorV2] 列情報:`, {
+        プロンプト列: group.columnRange.promptColumns,
+        回答列: group.columnRange.answerColumns.map(a => typeof a === 'string' ? a : a.column),
+        プロンプトインデックス: promptColIndices,
+        回答インデックス: answerColIndices
+      });
+      
+      // タスクを処理（実行時にタスクを動的生成）
+      this.logger.log(`[StreamProcessorV2] 🔄 ${group.name}: タスクを動的生成して実行`);
+      
+      // ========================================
+      // グループ内でタスクがなくなるまで繰り返し処理
+      // ========================================
+      let emptyScans = 0;
+      let groupTaskCount = 0;
+      
+      while (emptyScans < 3) {
+        // 最新のスプレッドシートデータを取得（書き込み反映のため）
+        if (emptyScans > 0 || groupTaskCount > 0) {
+          await this.delay(3000); // Google Sheets APIの書き込み反映を待つ
+          try {
+            // sheetsClientを取得（globalThisから）
+            const sheetsClient = globalThis.sheetsClient;
+            if (!sheetsClient) {
+              this.logger.warn('[StreamProcessorV2] ⚠️ sheetsClientが利用できません');
+              continue;
+            }
+            
+            const latestData = await sheetsClient.loadAutoAIData(
+              spreadsheetData.spreadsheetId,
+              spreadsheetData.sheetName
+            );
+            if (latestData && latestData.values) {
+              spreadsheetData.values = latestData.values;
+              this.logger.log('[StreamProcessorV2] 📊 最新データを取得しました');
+            }
+          } catch (error) {
+            this.logger.warn('[StreamProcessorV2] ⚠️ 最新データ取得エラー:', error);
+          }
+        }
+        
+        // タスクをスキャン
+        const tasks = await this.taskScanner.scanGroupTasks(
+          spreadsheetData,
+          promptColIndices,
+          answerColIndices
+        );
+        
+        this.logger.log(`[StreamProcessorV2] 📊 ${group.name} スキャン結果:`, {
+          見つかったタスク: tasks ? `${tasks.length}個` : '0個',
+          空スキャン回数: emptyScans
+        });
+        
+        if (!tasks || !Array.isArray(tasks) || tasks.length === 0) {
+          emptyScans++;
+          if (emptyScans >= 3) {
+            this.logger.log(`[StreamProcessorV2] ✅ ${group.name}: 3回連続空スキャン、グループ完了`);
+            break;
+          }
+          this.logger.log(`[StreamProcessorV2] ⏳ ${group.name}: タスクなし、5秒待機... (${emptyScans}/3)`);
+          await this.delay(5000);
+          continue;
+        }
+        
+        // タスクが見つかったらリセット
+        emptyScans = 0;
+        
+        // 最大3タスクだけ取得
+        const batchTasks = tasks.slice(0, 3);
+        
+        // ========================================
+        // 3タスクをTaskオブジェクト形式に変換
+        // ========================================
+        const taskObjects = [];
+        for (const taskInfo of batchTasks) {
+          // AIタイプを取得（グループから）
+
+          const answerCol = group.columnRange.answerColumns.find(col => {
+            const colStr = typeof col === 'string' ? col : col.column;
+            const colIndex = this.columnToIndex(colStr);
+            
+            return colIndex === taskInfo.columnIndex;
+          });
+          // AIタイプは設定しない（実行時にfetchModelAndFunctionFromTaskで取得）
+          
+          
+          // タスクオブジェクトを作成（AI/モデル/機能は実行時に動的取得）
+          // セル位置ベースのIDを生成（処理済みチェックで一貫性を保つ）
+          const cellKey = `${taskInfo.column}${taskInfo.row}`;
+          const taskId = `${cellKey}_${Date.now()}_${Math.random().toString(36).substr(2, 7)}`;
+          const task = {
+            groupId: group.id, // グループIDを追加（キャッシュデータ参照用）
+            id: taskId,
+            column: taskInfo.column,
+            row: taskInfo.row,
+            aiType: group.aiType || '',  // グループのAIタイプを設定
+            // promptは削除（fetchPromptFromTaskで動的取得）
+            promptColumn: this.indexToColumn(promptColIndices[0]),
+            promptColumns: promptColIndices.map(idx => this.indexToColumn(idx)),  // 文字列の配列に変換
+            sheetName: spreadsheetData.sheetName || '不明',
+            model: '',  // 実行時に動的取得
+            function: '',  // 実行時に動的取得
+            createdAt: Date.now(),
+            // ログ列：タスクリストで指定されたものをそのまま使用（なければ空配列）
+            logColumns: group.columnRange.logColumn ? [group.columnRange.logColumn] : []
+          };
+          
+          // タスクIDの確認ログ
+          this.logger.log(`[StreamProcessorV2] タスクID生成: ${taskId} for ${taskInfo.column}${taskInfo.row}`);
+          
+          taskObjects.push(task);
+        }
+        
+        // ========================================
+        // 3タスクをバッチ処理
+        // ========================================
+        groupTaskCount += taskObjects.length;
+        this.logger.log(`[StreamProcessorV2] 📦 ${group.name}: ${taskObjects.length}タスクを処理`, {
+          タスク: taskObjects.map(t => `${t.column}${t.row}`).join(', '),
+          グループ累計: `${groupTaskCount}タスク`
+        });
+        
+        // 現在処理中のグループを設定（キャッシュデータ参照用）
+        this.currentProcessingGroup = group;
+        // 現在のグループIDを設定（リトライ管理用）
+        this.currentGroupId = group.id;
+        
+        try {
+          // 既存のprocessBatchメソッドを使用（並列処理＋フェーズ分け）
+          await this.processBatch(taskObjects, false);
+          totalCompleted += taskObjects.length;
+          
+          this.logger.log(`[StreamProcessorV2] ✅ バッチ処理完了、再スキャンします...`);
+        } catch (error) {
+          this.logger.error(`[StreamProcessorV2] バッチ処理エラー:`, error);
+          totalFailed += taskObjects.length;
+        } finally {
+          // 処理後にクリア
+          this.currentProcessingGroup = null;
+        }
+      }
+    }
+    
+    const totalTime = Math.round((Date.now() - startTime) / 1000);
     
     // スリープ防止を解除
     try {
       if (globalThis.powerManager) {
         await globalThis.powerManager.stopProtection('stream-processor-dynamic');
+        this.logger.log('[StreamProcessorV2] 🔓 動的タスクグループ処理: スリープ防止を解除');
       }
     } catch (error) {
       this.logger.error('[StreamProcessorV2] スリープ防止解除エラー:', error);
@@ -1154,12 +1355,69 @@ export default class StreamProcessorV2 {
     
     return {
       success: true,
-      total: 0,
-      completed: 0,
-      failed: 0,
-      totalTime: `${totalTime}秒`,
-      message: 'タスクグループ処理（仮実装）'
+      total: totalCompleted + totalFailed,
+      completed: totalCompleted,
+      failed: totalFailed,
+      totalTime: `${totalTime}秒`
     };
+  }
+
+  /**
+   * 最初のタスクありグループを特定（シンプル版）
+   * @param {Array} taskGroups - タスクグループ配列
+   * @param {Object} spreadsheetData - スプレッドシートデータ
+   * @returns {number} 最初のタスクありグループのインデックス（見つからない場合は-1）
+   */
+  findFirstTaskGroupIndex(taskGroups, spreadsheetData) {
+    this.logger.log(`[StreamProcessorV2] 📊 最初のタスクありグループを検索中...`);
+    
+    // 各グループを左から順にチェック
+    for (let i = 0; i < taskGroups.length; i++) {
+      const group = taskGroups[i];
+      
+      // プロンプト列にデータがあるか簡易チェック
+      const promptColIndices = group.columnRange.promptColumns.map(col => this.columnToIndex(col));
+      const answerColIndices = group.columnRange.answerColumns.map(answerCol => {
+        const col = typeof answerCol === 'string' ? answerCol : answerCol.column;
+        return this.columnToIndex(col);
+      });
+      
+      // 作業行をチェック（9行目以降、最初の100行まで）
+      let hasTask = false;
+      for (let rowIndex = 8; rowIndex < Math.min(spreadsheetData.values.length, 100); rowIndex++) {
+        const rowData = spreadsheetData.values[rowIndex] || [];
+        
+        // A列が数字（作業行）かチェック
+        const aValue = rowData[0];
+        if (!aValue || !/^\d+$/.test(String(aValue).trim())) continue;
+        
+        // プロンプトと回答をチェック
+        for (let j = 0; j < promptColIndices.length; j++) {
+          const promptValue = rowData[promptColIndices[j]];
+          const answerValue = rowData[answerColIndices[j]];
+          
+          // プロンプトあり＆回答なし/特殊マーカー
+          if (promptValue && promptValue.trim()) {
+            if (!answerValue || !answerValue.trim() || 
+                answerValue === '処理完了' || 
+                answerValue === 'お待ちください...' ||
+                answerValue === '現在操作中です') {
+              hasTask = true;
+              break;
+            }
+          }
+        }
+        if (hasTask) break;
+      }
+      
+      if (hasTask) {
+        this.logger.log(`[StreamProcessorV2] ✅ 最初のタスクありグループ: ${group.name}（インデックス: ${i}）`);
+        return i;
+      }
+    }
+    
+    this.logger.log(`[StreamProcessorV2] ⚠️ タスクありグループが見つかりません`);
+    return -1;
   }
 
   /**
