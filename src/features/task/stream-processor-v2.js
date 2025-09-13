@@ -1388,9 +1388,10 @@ export default class StreamProcessorV2 {
 
     try {
       // スプレッドシートから作業行データを取得
-      const spreadsheetId = this.currentSpreadsheetData?.spreadsheetId;
+      const spreadsheetId = this.spreadsheetData?.spreadsheetId;
       if (!spreadsheetId) {
         this.log(`scanPromptRows: スプレッドシートIDが見つからない`, 'warn');
+        this.log(`デバッグ: this.spreadsheetData = ${JSON.stringify(this.spreadsheetData)}`, 'warn');
         return [];
       }
 
