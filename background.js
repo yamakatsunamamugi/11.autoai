@@ -882,9 +882,9 @@ function processSpreadsheetData(spreadsheetData) {
         if (group.columnRange.logColumn) {
           const logIndex = columnToIndex(group.columnRange.logColumn);
           menuCol = getColumnName(logIndex + 1);
-          // メニュー列の内容を取得（2行目のデータ）
-          if (result.values && result.values[1]) {
-            menuContent = result.values[1][logIndex + 1] || '';
+          // メニュー列の内容を取得（メニュー行のデータ）
+          if (menuRow && menuRow[logIndex + 1]) {
+            menuContent = menuRow[logIndex + 1].toString().trim();
           }
         }
         
@@ -899,21 +899,50 @@ function processSpreadsheetData(spreadsheetData) {
         const groupType = group.groupType || 'standard';
         const aiType = group.aiType || 'Claude';
         
+        // メニュー内容の表示を決定
+        let displayMenuContent = '';
+        if (groupType === 'report') {
+          // レポート化の場合はそのまま表示
+          displayMenuContent = 'レポート化';
+        } else if (groupType === 'genspark_slide') {
+          // Gensparkスライドの場合
+          displayMenuContent = 'Genspark（スライド）';
+        } else if (groupType === 'genspark_factcheck') {
+          // Gensparkファクトチェックの場合
+          displayMenuContent = 'Genspark（ファクトチェック）';
+        } else if (groupType === 'genspark') {
+          // その他のGenspark
+          displayMenuContent = menuContent || 'Genspark';
+        } else {
+          // 通常処理の場合
+          // 複数のAIタイプがあるかチェック
+          const aiTypes = new Set();
+          if (group.columnRange.answerColumns && group.columnRange.answerColumns.length > 0) {
+            group.columnRange.answerColumns.forEach(col => {
+              if (typeof col === 'object' && col.aiType) {
+                aiTypes.add(col.aiType);
+              }
+            });
+          }
+          
+          if (aiTypes.size >= 3) {
+            // 3種類以上のAIを使用している場合
+            displayMenuContent = '3種類AI';
+          } else {
+            // 単一AIまたは2種類の場合
+            const mainAiType = aiType || 'Claude';
+            displayMenuContent = `通常処理（${mainAiType}）`;
+          }
+        }
+        
         // 特殊グループの場合は明記
         let groupLabel = `グループ${index + 1}`;
-        if (groupType === 'report') {
-          groupLabel += '(レポート化)';
-        } else if (groupType === 'genspark_slide') {
-          groupLabel += '(Genspark-スライド)';
-        } else if (groupType === 'genspark_factcheck') {
-          groupLabel += '(Genspark-ファクトチェック)';
-        }
         
         return `${groupLabel}: ` +
                `タイプ=${groupType}, ` +
                `AI=${aiType}, ` +
                `ログ=${logCol}, ` +
-               `メニュー=${menuCol}${menuContent ? `(${menuContent})` : ''}, ` +
+               `メニュー=${menuCol}(${displayMenuContent}), ` +
                `プロンプト=[${promptCols}], ` +
                `回答=[${answerCols}]`;
       }).join('\n  ');
