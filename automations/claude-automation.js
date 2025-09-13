@@ -781,7 +781,10 @@ ${prompt}`;
                         throw new Error('モデルメニューボタンが見つかりません');
                     }
 
-                    await triggerReactEvent(menuButton, 'click');
+                    // ポインターイベントを使用してメニューを開く
+                    menuButton.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, view: window }));
+                    await wait(100);
+                    menuButton.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, view: window }));
                     await wait(1500);
                     console.log('結果: モデルメニューを開きました');
                     console.log('■■■ ステップ 2.2.1 完了 ■■■');

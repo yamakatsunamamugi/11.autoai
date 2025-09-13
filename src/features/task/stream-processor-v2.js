@@ -2762,7 +2762,42 @@ export default class StreamProcessorV2 {
         groupIndex++;
         continue;
       }
-      
+
+      // ★★★ 特殊グループタイプの処理 ★★★
+      // レポート化、Genspark（スライド）、Genspark（ファクトチェック）の処理
+      if (taskGroupInfo && taskGroupInfo.groupType) {
+        const specialGroupTypes = ['report', 'genspark_slide', 'genspark_factcheck'];
+
+        if (specialGroupTypes.includes(taskGroupInfo.groupType)) {
+          this.logger.log(`[StreamProcessorV2] 🎯 特殊グループ検出: ${taskGroupInfo.groupType} (${taskGroupInfo.name})`);
+
+          // 特殊グループ用の処理を実行
+          let specialResult = null;
+
+          if (taskGroupInfo.groupType === 'report') {
+            // レポート化処理
+            specialResult = await this.processReportGroup(taskGroupInfo, spreadsheetData);
+          } else if (taskGroupInfo.groupType === 'genspark_slide' || taskGroupInfo.groupType === 'genspark_factcheck') {
+            // Genspark処理（スライドまたはファクトチェック）
+            specialResult = await this.processGensparkGroup(taskGroupInfo, spreadsheetData);
+          }
+
+          // 処理済みとしてマーク
+          processedGroupKeys.add(groupKey);
+
+          if (specialResult && specialResult.success) {
+            this.logger.log(`[StreamProcessorV2] ✅ 特殊グループ${groupIndex + 1}の処理完了`);
+            totalProcessed++;
+          } else {
+            this.logger.error(`[StreamProcessorV2] ❌ 特殊グループ${groupIndex + 1}の処理失敗`);
+            totalFailed++;
+          }
+
+          groupIndex++;
+          continue; // 次のグループへ
+        }
+      }
+
       // 列制御をチェック（「この列で停止」があるか確認）
       let shouldStopAfterColumn = null;
       if (controls.column && controls.column.length > 0) {
@@ -3378,23 +3413,80 @@ export default class StreamProcessorV2 {
    */
   async processReportGroup(group, spreadsheetData) {
     this.logger.log(`[StreamProcessorV2] 📄 レポートグループ${group.id}の処理開始`);
-    
+
     try {
-      // レポート専用タスク生成
-      // Service Worker環境では動的インポートが禁止されているため、グローバル変数を使用
-      const ReportExecutor = globalThis.ReportExecutor || null;
-      if (!ReportExecutor) {
-        this.logger.warn('[StreamProcessorV2] ReportExecutorが利用できません');
-        return;
+      // レポート化列の位置を取得
+      const reportColumn = group.columnRange.promptColumns[0];
+      const reportColumnLetter = this.indexToColumn(reportColumn);
+
+      // 左隣の列（AI回答列）を特定
+      const answerColumnLetter = this.indexToColumn(reportColumn - 1);
+
+      this.logger.log(`[StreamProcessorV2] 📋 レポート化列: ${reportColumnLetter}, AI回答列: ${answerColumnLetter}`);
+
+      // 作業行範囲を取得
+      const workRowRange = this.getWorkRowRange();
+      const results = { total: 0, completed: 0, failed: 0 };
+
+      // 各行を処理
+      for (let rowIndex = workRowRange.start; rowIndex <= workRowRange.end; rowIndex++) {
+        try {
+          // AI回答を取得
+          const aiAnswerText = await this.getCellValue(spreadsheetData, answerColumnLetter, rowIndex);
+
+          if (!aiAnswerText || aiAnswerText.trim() === '') {
+            continue; // 空のセルはスキップ
+          }
+
+          // すでにレポート化済みかチェック
+          const existingReport = await this.getCellValue(spreadsheetData, reportColumnLetter, rowIndex);
+          if (existingReport && existingReport.trim() !== '') {
+            this.logger.log(`[StreamProcessorV2] 行${rowIndex}: すでにレポート化済み`);
+            continue;
+          }
+
+          results.total++;
+
+          // レポート生成処理（タスクとしてメッセージ送信）
+          const task = {
+            taskType: 'report',
+            row: rowIndex,
+            sourceColumn: answerColumnLetter,
+            reportColumn: reportColumnLetter,
+            spreadsheetId: spreadsheetData.spreadsheetId,
+            sheetGid: spreadsheetData.gid,
+            text: aiAnswerText,
+            createdAt: Date.now()
+          };
+
+          // タスクをbackgroundに送信
+          const response = await chrome.runtime.sendMessage({
+            action: 'executeReportTask',
+            task: task
+          });
+
+          if (response && response.success) {
+            results.completed++;
+            this.logger.log(`[StreamProcessorV2] ✅ 行${rowIndex}: レポート作成完了`);
+
+            // URLをスプレッドシートに書き込み
+            if (response.url) {
+              await this.writeCellValue(spreadsheetData, reportColumnLetter, rowIndex, response.url);
+            }
+          } else {
+            results.failed++;
+            this.logger.error(`[StreamProcessorV2] ❌ 行${rowIndex}: レポート作成失敗`);
+          }
+
+        } catch (rowError) {
+          results.failed++;
+          this.logger.error(`[StreamProcessorV2] ❌ 行${rowIndex}処理エラー:`, rowError);
+        }
       }
-      const reportExecutor = new ReportExecutor({ logger: this.logger });
-      
-      // レポートタスクの実行
-      // TODO: レポート専用のタスク生成とデータ取得ロジックを実装
-      
-      this.logger.log(`[StreamProcessorV2] ✅ レポートグループ${group.id}完了`);
-      return { success: true, type: 'report' };
-      
+
+      this.logger.log(`[StreamProcessorV2] ✅ レポートグループ${group.id}完了: ${results.completed}/${results.total}件`);
+      return { success: true, type: 'report', results: results };
+
     } catch (error) {
       this.logger.error(`[StreamProcessorV2] ❌ レポートグループ${group.id}エラー:`, error);
       return { success: false, error: error.message };
@@ -3405,49 +3497,82 @@ export default class StreamProcessorV2 {
    * Gensparkグループの専用処理
    */
   async processGensparkGroup(group, spreadsheetData) {
-    this.logger.log(`[StreamProcessorV2] ⚡ Gensparkグループ${group.id}の処理開始 (AIタイプ: ${group.aiType})`);
-    
+    this.logger.log(`[StreamProcessorV2] ⚡ Gensparkグループ${group.id}の処理開始 (タイプ: ${group.groupType}, AIタイプ: ${group.aiType})`);
+
     try {
       // Gensparkの種別に応じた機能設定
       let functionType = 'slides'; // デフォルト
-      
-      if (group.aiType === 'Genspark-Slides') {
+
+      if (group.groupType === 'genspark_slide' || group.aiType === 'Genspark-Slides') {
         functionType = 'slides';
         this.logger.log(`[StreamProcessorV2] 🎨 スライド生成モードで処理`);
-      } else if (group.aiType === 'Genspark-FactCheck') {
+      } else if (group.groupType === 'genspark_factcheck' || group.aiType === 'Genspark-FactCheck') {
         functionType = 'factcheck';
         this.logger.log(`[StreamProcessorV2] ✅ ファクトチェックモードで処理`);
       }
-      
-      // Gensparkグループの各行を処理
+
+      // Genspark列の位置を取得
+      const gensparkColumn = group.columnRange.promptColumns[0];
+      const gensparkColumnLetter = this.indexToColumn(gensparkColumn);
+
+      // 左隣の列（AI回答列）を特定
+      const answerColumnLetter = this.indexToColumn(gensparkColumn - 1);
+
+      this.logger.log(`[StreamProcessorV2] 📋 Genspark列: ${gensparkColumnLetter}, AI回答列: ${answerColumnLetter}`);
+
+      // 作業行範囲を取得
       const workRowRange = this.getWorkRowRange();
       const results = { total: 0, completed: 0, failed: 0 };
-      
+
       for (let rowIndex = workRowRange.start; rowIndex <= workRowRange.end; rowIndex++) {
         try {
-          // 左隣のセル（AI回答列）からテキストを取得
-          const leftColumnLetter = this.getPreviousColumnLetter(group.columnRange.promptColumns[0]);
-          const aiAnswerText = await this.getCellValue(spreadsheetData, leftColumnLetter, rowIndex);
-          
+          // AI回答を取得
+          const aiAnswerText = await this.getCellValue(spreadsheetData, answerColumnLetter, rowIndex);
+
           if (!aiAnswerText || aiAnswerText.trim() === '') {
             continue; // 空のセルはスキップ
           }
-          
+
+          // すでにGenspark処理済みかチェック
+          const existingResult = await this.getCellValue(spreadsheetData, gensparkColumnLetter, rowIndex);
+          if (existingResult && existingResult.trim() !== '') {
+            this.logger.log(`[StreamProcessorV2] 行${rowIndex}: すでにGenspark処理済み`);
+            continue;
+          }
+
           results.total++;
-          
-          // Genspark自動化実行（V2使用）
-          if (typeof window !== 'undefined' && window.GensparkAutomationV2) {
-            const automationResult = await window.GensparkAutomationV2.sendMessage(aiAnswerText.trim());
-            
-            if (automationResult.success) {
-              // 結果をスプレッドシートに書き戻し
-              await this.writeCellValue(spreadsheetData, group.columnRange.promptColumns[0], rowIndex, automationResult.text || automationResult.extractedUrls?.[0] || 'Genspark処理完了');
-              results.completed++;
-              this.logger.log(`[StreamProcessorV2] 📝 行${rowIndex}: Genspark処理完了`);
-            } else {
-              results.failed++;
-              this.logger.error(`[StreamProcessorV2] ❌ 行${rowIndex}: Genspark処理失敗 - ${automationResult.error}`);
-            }
+
+          // Gensparkタスクを作成
+          const task = {
+            taskType: 'genspark',
+            functionType: functionType,
+            row: rowIndex,
+            column: gensparkColumnLetter,
+            sourceColumn: answerColumnLetter,
+            spreadsheetId: spreadsheetData.spreadsheetId,
+            sheetGid: spreadsheetData.gid,
+            text: aiAnswerText,
+            aiType: 'Genspark',
+            createdAt: Date.now()
+          };
+
+          // タスクをbackgroundに送信してGenspark処理を実行
+          const response = await chrome.runtime.sendMessage({
+            action: 'executeGensparkTask',
+            task: task
+          });
+
+          if (response && response.success) {
+            results.completed++;
+            this.logger.log(`[StreamProcessorV2] ✅ 行${rowIndex}: Genspark処理完了`);
+
+            // 結果をスプレッドシートに書き込み
+            const resultText = response.url || response.text || `Genspark${functionType === 'slides' ? 'スライド' : 'ファクトチェック'}完了`;
+            await this.writeCellValue(spreadsheetData, gensparkColumnLetter, rowIndex, resultText);
+          } else {
+            results.failed++;
+            this.logger.error(`[StreamProcessorV2] ❌ 行${rowIndex}: Genspark処理失敗 - ${response?.error || 'Unknown error'}`);
+          }
           }
           
         } catch (rowError) {

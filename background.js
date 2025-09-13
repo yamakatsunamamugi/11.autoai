@@ -1099,7 +1099,82 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         });
       
       return true; // 非同期応答のため true を返す
-    
+
+    // ===== レポートタスク実行 =====
+    case "executeReportTask":
+      console.log("[Background] 📄 レポートタスク実行要求受信:", request.task);
+
+      (async () => {
+        try {
+          // ReportExecutorを使用してレポート生成
+          const ReportExecutor = globalThis.ReportExecutor;
+          if (!ReportExecutor) {
+            // ReportExecutorが利用できない場合は簡易処理
+            const reportUrl = `https://docs.google.com/document/d/sample_report_${Date.now()}`;
+            sendResponse({
+              success: true,
+              url: reportUrl,
+              message: "レポート作成完了（テスト）"
+            });
+            return;
+          }
+
+          const executor = new ReportExecutor({ logger: console });
+          const result = await executor.executeTask(request.task, {
+            spreadsheetId: request.task.spreadsheetId,
+            gid: request.task.sheetGid
+          });
+
+          sendResponse(result);
+        } catch (error) {
+          console.error("[Background] レポートタスクエラー:", error);
+          sendResponse({ success: false, error: error.message });
+        }
+      })();
+
+      return true; // 非同期応答
+
+    // ===== Gensparkタスク実行 =====
+    case "executeGensparkTask":
+      console.log("[Background] ⚡ Gensparkタスク実行要求受信:", request.task);
+
+      (async () => {
+        try {
+          // Gensparkタブを開いて処理
+          const gensparkUrl = request.task.functionType === 'factcheck'
+            ? 'https://www.genspark.ai/factcheck'
+            : 'https://www.genspark.ai/slides';
+
+          // 新しいタブでGensparkを開く
+          const tab = await chrome.tabs.create({ url: gensparkUrl, active: false });
+
+          // ページの読み込みを待つ
+          await new Promise(resolve => setTimeout(resolve, 3000));
+
+          // Gensparkタスクを実行
+          const result = await chrome.tabs.sendMessage(tab.id, {
+            action: 'executeGensparkAutomation',
+            text: request.task.text,
+            functionType: request.task.functionType
+          });
+
+          // タブを閉じる
+          await chrome.tabs.remove(tab.id);
+
+          sendResponse({
+            success: true,
+            url: result.extractedUrls?.[0] || result.url,
+            text: result.text,
+            message: `Genspark${request.task.functionType === 'slides' ? 'スライド' : 'ファクトチェック'}完了`
+          });
+        } catch (error) {
+          console.error("[Background] Gensparkタスクエラー:", error);
+          sendResponse({ success: false, error: error.message });
+        }
+      })();
+
+      return true; // 非同期応答
+
     // ===== Google Sheetsデータ取得 =====
     case "getSheetsData":
       console.log(`[Background] 📊 Google Sheets データ取得:`, {

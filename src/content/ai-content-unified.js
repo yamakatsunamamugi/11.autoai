@@ -848,17 +848,60 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       isAsync = true;
       break;
 
+    // ===== Genspark自動化実行 =====
+    case "executeGensparkAutomation":
+      isAsync = true;
+      console.log(`[11.autoai][Genspark] 自動化実行要求受信:`, request);
+
+      (async () => {
+        try {
+          // GensparkAutomationV2が利用可能になるまで待つ
+          let retries = 0;
+          while (!window.GensparkAutomationV2 && retries < 20) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+            retries++;
+          }
+
+          if (!window.GensparkAutomationV2) {
+            sendResponse({
+              success: false,
+              error: 'GensparkAutomationV2が利用できません'
+            });
+            return;
+          }
+
+          // Gensparkで処理を実行
+          const result = await window.GensparkAutomationV2.sendMessage(request.text, {
+            functionType: request.functionType
+          });
+
+          sendResponse({
+            success: result.success,
+            text: result.text,
+            url: result.extractedUrls?.[0],
+            extractedUrls: result.extractedUrls
+          });
+        } catch (error) {
+          console.error('[11.autoai][Genspark] 自動化エラー:', error);
+          sendResponse({
+            success: false,
+            error: error.message
+          });
+        }
+      })();
+      break;
+
     case "getAIType":
       // AI_TYPEを正規化して表示名で返す（シンプルなマッピング）
       const displayNameMap = {
         'chatgpt': 'ChatGPT',
-        'claude': 'Claude', 
+        'claude': 'Claude',
         'gemini': 'Gemini',
         'genspark': 'Genspark'
       };
       const normalized = (AI_TYPE || '').toLowerCase();
       let displayName = AI_TYPE;
-      
+
       // 部分マッチで表示名を決定
       if (normalized.includes('chatgpt') || normalized.includes('gpt') || normalized.includes('openai')) {
         displayName = 'ChatGPT';
