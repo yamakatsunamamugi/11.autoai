@@ -602,7 +602,7 @@ export default class StreamProcessorV2 {
           
           // RetryManager付きのprocessTaskを使用（段階的リトライ対応）
           this.logger.log(`[StreamProcessorV2] 🔄 新フロー: processTask実行開始 ${context.cell}`);
-          context.task.existingTabId = context.tabId;
+          // 並行処理のため既存タブIDの設定を削除（各タスクが独自ウィンドウを作成）
           
           // awaitを削除して並列実行を可能にする
           // 結果はPromiseとして返され、後でPromise.allで待機
@@ -1354,29 +1354,20 @@ export default class StreamProcessorV2 {
         return;
       }
       
-      // 実際のAI処理（ウィンドウ作成またはexistingTabIdを使用）
+      // 実際のAI処理（各タスクに新しいウィンドウを作成）
       let tabId;
-      if (task.existingTabId) {
-        this.logger.log(`[StreamProcessorV2] 既存タブを使用: TabID ${task.existingTabId}`);
-        tabId = task.existingTabId;
-      } else {
-        tabId = await this.createWindowForTask(task, position);
-        if (!tabId) {
-          throw new Error(`Failed to create window for ${task.aiType}`);
-        }
+      
+      // 並行処理のため、既存タブ再利用を無効化し、常に新しいウィンドウを作成
+      this.logger.log(`[StreamProcessorV2] 新しいウィンドウを作成: ${task.column}${task.row}`);
+      tabId = await this.createWindowForTask(task, position);
+      if (!tabId) {
+        throw new Error(`Failed to create window for ${task.aiType}`);
       }
       
-      // プロンプトを取得（既存タブの場合はスキップ）
-      let prompt;
-      if (task.existingTabId) {
-        // 既存タブの場合はプロンプト取得済み
-        prompt = task.prompt || 'プロンプト既設定';
-        this.logger.log(`[StreamProcessorV2] 既存タブ処理: プロンプト取得スキップ`);
-      } else {
-        prompt = await this.fetchPromptFromTask(task);
-        if (!prompt) {
-          throw new Error(`Empty prompt for ${task.column}${task.row}`);
-        }
+      // プロンプトを取得（新しいウィンドウなので常に取得）
+      let prompt = await this.fetchPromptFromTask(task);
+      if (!prompt) {
+        throw new Error(`Empty prompt for ${task.column}${task.row}`);
       }
       
       // タスクリストの値をそのまま使用（promptだけ追加）
