@@ -47,10 +47,10 @@
             UI_SELECTORS = data.selectors;
             window.UI_SELECTORS = UI_SELECTORS;
             selectorsLoaded = true;
-            log('✅ UI Selectors loaded from JSON', 'success');
+            log('【ステップ0-1】✅ UI Selectors loaded from JSON', 'success');
             return UI_SELECTORS;
         } catch (error) {
-            log('❌ Failed to load ui-selectors-data.json: ' + error.message, 'error');
+            log('【ステップ0-2】❌ Failed to load ui-selectors-data.json: ' + error.message, 'error');
             // フォールバックとしてwindow.UI_SELECTORSを使用
             UI_SELECTORS = window.UI_SELECTORS || {};
             selectorsLoaded = true;
@@ -91,7 +91,7 @@
         for (let i = 0; i < 30; i++) {
             stopBtn = await findElement(SELECTORS.stopButton, 1);
             if (stopBtn) {
-                log('停止ボタンが表示されました', 'success');
+                log('【ステップ6-1】停止ボタンが表示されました', 'success');
                 break;
             }
             await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
@@ -99,11 +99,11 @@
 
         // 停止ボタンが消えるまで待機（最大5分）
         if (stopBtn) {
-            log('停止ボタンが消えるまで待機（最大5分）', 'info');
+            log('【ステップ6-2】停止ボタンが消えるまで待機（最大5分）', 'info');
             for (let i = 0; i < 300; i++) {
                 stopBtn = await findElement(SELECTORS.stopButton, 1);
                 if (!stopBtn) {
-                    log('応答完了', 'success');
+                    log('【ステップ6-2】応答完了', 'success');
                     break;
                 }
                 if (i % 30 === 0 && i > 0) {
@@ -216,7 +216,7 @@
     async function handleSpecialModeWaiting(featureName) {
         try {
             log(`【${featureName}モード特別処理】開始`, 'step');
-            log('最大回答待機時間: 40分', 'info');
+            log('【ステップ6-1】最大回答待機時間: 40分', 'info');
 
             // ステップ6-1: 停止ボタン出現待機
             let stopBtn = await waitForStopButton();
@@ -255,7 +255,7 @@
             }
             await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
         }
-        log('停止ボタンが表示されませんでした', 'warning');
+        log('【ステップ6-1】停止ボタンが表示されませんでした', 'warning');
         return null;
     }
 
@@ -303,7 +303,7 @@
         const sendBtn = await findElement(SELECTORS.sendButton);
         if (sendBtn) {
             sendBtn.click();
-            log('再送信完了', 'success');
+            log('【ステップ6-2】再送信完了', 'success');
             await sleep(AI_WAIT_CONFIG.LONG_WAIT);
         }
     }
@@ -320,7 +320,7 @@
             if (!stopBtn) {
                 consecutiveAbsent++;
                 if (consecutiveAbsent >= 10) {
-                    log('停止ボタンが10秒間連続で消滅。完了！', 'success');
+                    log('【ステップ6-3】停止ボタンが10秒間連続で消滅。完了！', 'success');
                     break;
                 }
             } else {
@@ -343,7 +343,7 @@
         window.__v2_execution_result = null;
         
         // ページ初期読み込み待機（ネット環境を考慮）
-        console.log('⏳ ページ初期読み込み待機中...');
+        console.log('【ステップ1-0】⏳ ページ初期読み込み待機中...');
         await sleep(3000);  // 3秒待機
         
         console.log('%c🚀 ChatGPT V2 タスク実行開始', 'color: #00BCD4; font-weight: bold; font-size: 16px');

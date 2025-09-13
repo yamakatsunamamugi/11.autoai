@@ -1374,65 +1374,57 @@ export default class StreamProcessorV2 {
   }
 
   /**
-   * プロンプト行スキャン - 指定列からプロンプトがある行を検出
+   * プロンプト行スキャン - 既読み込み済みデータからプロンプトがある行を検出
    */
-  async scanPromptRows(promptColumns) {
-    this.log(`🔍 scanPromptRows が呼ばれました: ${JSON.stringify(promptColumns)}`, 'info');
+  scanPromptRows(promptColumns, spreadsheetData) {
+    this.log(`🔍 scanPromptRows が呼ばれました: ${JSON.stringify(promptColumns)}`, 'info', '3-4-4');
 
     if (!promptColumns || !Array.isArray(promptColumns)) {
-      this.log(`scanPromptRows: 無効なプロンプト列指定`, 'warn');
+      this.log(`無効なプロンプト列指定`, 'warn', '3-4-4');
+      return [];
+    }
+
+    if (!spreadsheetData?.values) {
+      this.log(`無効なスプレッドシートデータ`, 'warn', '3-4-4');
       return [];
     }
 
     const promptRows = [];
+    const values = spreadsheetData.values;
 
     try {
-      // スプレッドシートから作業行データを取得
-      const spreadsheetId = this.spreadsheetData?.spreadsheetId;
-      if (!spreadsheetId) {
-        this.log(`scanPromptRows: スプレッドシートIDが見つからない`, 'warn');
-        this.log(`デバッグ: this.spreadsheetData = ${JSON.stringify(this.spreadsheetData)}`, 'warn');
-        return [];
-      }
-
       // 各プロンプト列をスキャン
       for (const col of promptColumns) {
         const colIndex = typeof col === 'string' ? this.columnToIndex(col) : col;
         if (colIndex < 0) continue;
 
         const columnLetter = this.indexToColumn(colIndex);
-        this.log(`scanPromptRows: ${columnLetter}列をスキャン中...`, 'info');
+        this.log(`${columnLetter}列をスキャン中...`, 'info', '3-4-4');
 
-        // 作業行の範囲でプロンプト列をチェック（行10以降から検索）
-        const startRow = 10; // 通常9行目から開始
-        const endRow = 100; // まずは100行まで確認
+        // 作業行の範囲でプロンプト列をチェック（行9以降から検索、0ベース）
+        const startRow = 8; // 0ベース（9行目）
+        const endRow = Math.min(values.length, 600); // データ範囲まで
 
-        for (let rowIndex = startRow; rowIndex <= endRow; rowIndex++) {
-          const range = `${columnLetter}${rowIndex}:${columnLetter}${rowIndex}`;
-          try {
-            // SheetsClientのAPIを使用してセルデータを取得
-            const cellData = await this.sheetsClient.getSheetData(spreadsheetId, range);
-            const cellValue = cellData && cellData.values && cellData.values[0] && cellData.values[0][0];
+        for (let rowIndex = startRow; rowIndex < endRow; rowIndex++) {
+          const row = values[rowIndex];
+          if (!row || !Array.isArray(row)) continue;
 
-            if (cellValue && typeof cellValue === 'string' && cellValue.trim().length > 0) {
-              // プロンプトが見つかった行を記録
-              if (!promptRows.includes(rowIndex)) {
-                promptRows.push(rowIndex);
-                this.log(`scanPromptRows: ${columnLetter}${rowIndex}でプロンプト発見: "${cellValue.substring(0, 50)}..."`, 'info');
-              }
+          const cellValue = row[colIndex];
+          if (cellValue && typeof cellValue === 'string' && cellValue.trim().length > 0) {
+            // プロンプトが見つかった行を記録
+            if (!promptRows.includes(rowIndex)) {
+              promptRows.push(rowIndex);
+              this.log(`${columnLetter}${rowIndex + 1}でプロンプト発見: "${cellValue.substring(0, 50)}..."`, 'info', '3-4-4');
             }
-          } catch (error) {
-            // 個別セルエラーは無視して継続
-            continue;
           }
         }
       }
 
-      this.log(`scanPromptRows: スキャン完了 - ${promptRows.length}行のプロンプトを発見`, 'info');
+      this.log(`スキャン完了 - ${promptRows.length}行のプロンプトを発見`, 'success', '3-4-4');
       return promptRows.sort((a, b) => a - b);
 
     } catch (error) {
-      this.log(`scanPromptRows エラー: ${error.message}`, 'error');
+      this.log(`scanPromptRows エラー: ${error.message}`, 'error', '3-4-4');
       return [];
     }
   }

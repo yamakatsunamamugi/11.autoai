@@ -97,7 +97,7 @@ export class TaskGroupScanner {
     this.log('プロンプト列を最後まで読み込み開始', 'info', '3-4-3');
     
     // scanPromptRowsを使ってプロンプトがある行を全て検出
-    const promptRows = await this.scanPromptRows(promptCols);
+    const promptRows = this.scanPromptRows(promptCols, spreadsheetData);
     
     if (!promptRows || promptRows.length === 0) {
       this.log('プロンプトが見つかりません', 'warn', '3-4-3');
