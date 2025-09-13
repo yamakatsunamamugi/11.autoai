@@ -75,23 +75,6 @@ export default class StreamProcessorV2 {
       logger: this.logger
     });
     
-    // タスクグループスキャナーを初期化
-    this.taskScanner = new TaskGroupScanner({
-      logger: this.logger,
-      exclusiveManager: this.exclusiveManager,
-      waitManager: this.waitManager,
-      processedAnswerCells: this.processedAnswerCells,
-      // ヘルパーメソッドの参照を渡す
-      indexToColumn: this.indexToColumn.bind(this),
-      columnToIndex: this.columnToIndex.bind(this),
-      shouldProcessRow: this.shouldProcessRow.bind(this),
-      shouldProcessColumn: this.shouldProcessColumn.bind(this),
-      getRowControl: this.getRowControl.bind(this),
-      getColumnControl: this.getColumnControl.bind(this),
-      scanPromptRows: this.scanPromptRows.bind(this),
-      loadAdditionalRows: this.loadAdditionalRows.bind(this)
-    });
-    
     // 設定を保存
     this.config = {
       exclusiveControl: EXCLUSIVE_CONTROL_CONFIG,
@@ -123,6 +106,14 @@ export default class StreamProcessorV2 {
     
     // 排他制御のイベントフックを設定
     this.setupExclusiveControlHooks();
+    
+    // タスクスキャナーは簡易初期化（メソッドは使用時に渡す）
+    this.taskScanner = new TaskGroupScanner({
+      logger: this.logger,
+      exclusiveManager: this.exclusiveManager,
+      waitManager: this.waitManager,
+      processedAnswerCells: this.processedAnswerCells
+    });
   }
 
   /**
@@ -1060,6 +1051,39 @@ export default class StreamProcessorV2 {
     return {
       success: true
     };
+  }
+
+  /**
+   * 列インデックスを列名に変換
+   */
+  indexToColumn(index) {
+    let column = '';
+    let temp = index;
+    
+    while (temp >= 0) {
+      column = String.fromCharCode((temp % 26) + 65) + column;
+      temp = Math.floor(temp / 26) - 1;
+    }
+    
+    return column;
+  }
+
+  /**
+   * 列名を列インデックスに変換
+   */
+  columnToIndex(column) {
+    if (typeof column !== 'string' || column.length === 0) {
+      return 0;
+    }
+    
+    let index = 0;
+    const upperColumn = column.toUpperCase();
+    
+    for (let i = 0; i < upperColumn.length; i++) {
+      index = index * 26 + (upperColumn.charCodeAt(i) - 64);
+    }
+    
+    return index - 1;
   }
 
   /**
