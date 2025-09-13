@@ -2233,14 +2233,12 @@ export default class StreamProcessorV2 {
         throw new Error(errorMsg);
       }
       
-      // セル位置を特定（回答列を使用）
+      // プロンプトを連結（セル位置はclaude-automation.js側で追加）
+      const combinedPrompt = prompts.join('\n');
+
+      // セル位置を特定（ログ用）
       const cellPosition = `${task.column}${task.row}`;
 
-      // 「【現在〇〇セルを処理中です】」を先頭に追加してプロンプトを連結
-      const combinedPrompt = prompts.length > 0 ?
-        `【現在${cellPosition}セルを処理中です】\n\n${prompts.join('\n')}` :
-        `【現在${cellPosition}セルを処理中です】\n\n`;
-      
       this.logger.log(`[StreamProcessorV2] プロンプト連結成功: 回答セル ${cellPosition}`, {
         プロンプト数: prompts.length,
         総文字数: combinedPrompt.length,
