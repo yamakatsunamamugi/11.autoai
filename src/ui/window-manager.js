@@ -55,7 +55,9 @@ class WindowManager {
    * HTML内のモニター管理に必要な要素を取得し、存在確認を行う
    */
   initializeElements() {
-    console.log('[WindowManager] DOM要素初期化開始');
+    if (globalThis.CONFIG?.DEBUG) {
+      console.log('[WindowManager] DOM要素初期化開始');
+    }
     
     // ■ メイン機能のDOM要素を取得
     // 拡張機能のモニター番号を指定する入力欄
@@ -79,7 +81,9 @@ class WindowManager {
       this.checkWindowLocationsBtn, this.windowLocationDialog, 
       this.windowLocationList, this.refreshWindowLocationBtn, this.closeWindowLocationBtn
     ].filter(Boolean).length;
-    console.log(`[WindowManager] DOM要素確認: ${elementStatus}/7 要素が利用可能`);
+    if (globalThis.CONFIG?.DEBUG) {
+      console.log(`[WindowManager] DOM要素確認: ${elementStatus}/7 要素が利用可能`);
+    }
     
     // ■ 重要な要素の存在チェック
     // モニター番号入力欄が見つからない場合は警告を表示
@@ -88,7 +92,9 @@ class WindowManager {
       console.warn('HTML要素が正しく読み込まれているか確認してください');
     }
     
-    console.log('[WindowManager] DOM要素初期化完了');
+    if (globalThis.CONFIG?.DEBUG) {
+      console.log('[WindowManager] DOM要素初期化完了');
+    }
   }
 
   /**
@@ -96,14 +102,20 @@ class WindowManager {
    * ボタンクリックや入力値変更時の処理を登録
    */
   setupEventListeners() {
-    console.log('[WindowManager] イベントリスナー設定開始');
+    if (globalThis.CONFIG?.DEBUG) {
+      console.log('[WindowManager] イベントリスナー設定開始');
+    }
     
     // ■ メインボタンのイベントリスナー設定
     // 「モニター場所確認」ボタンのクリックイベント
     if (this.checkWindowLocationsBtn) {
-      console.log('[WindowManager] モニター場所確認ボタンにクリックイベント設定');
+      if (globalThis.CONFIG?.DEBUG) {
+        console.log('[WindowManager] モニター場所確認ボタンにクリックイベント設定');
+      }
       this.checkWindowLocationsBtn.addEventListener('click', () => {
-        console.log('[WindowManager] モニター場所確認ボタンがクリックされました');
+        if (globalThis.CONFIG?.DEBUG) {
+          console.log('[WindowManager] モニター場所確認ボタンがクリックされました');
+        }
         // 各モニターに番号を表示する処理を実行
         this.checkAllWindowLocations();
       });
@@ -144,7 +156,9 @@ class WindowManager {
       });
     }
     
-    console.log('[WindowManager] イベントリスナー設定完了');
+    if (globalThis.CONFIG?.DEBUG) {
+      console.log('[WindowManager] イベントリスナー設定完了');
+    }
   }
 
   /**
@@ -167,7 +181,9 @@ class WindowManager {
         this.spreadsheetWindowNumberInput.value = settings.spreadsheetWindowNumber;
       }
       
-      console.log('[WindowManager] モニター設定読み込み完了:', settings);
+      if (globalThis.CONFIG?.DEBUG) {
+        console.log('[WindowManager] モニター設定読み込み完了:', settings);
+      }
     } catch (error) {
       console.error('[WindowManager] モニター設定読み込みエラー:', error);
     }
@@ -189,7 +205,9 @@ class WindowManager {
       
       // chrome.storage.localに設定を保存
       await chrome.storage.local.set({ windowSettings: settings });
-      console.log('[WindowManager] モニター設定保存完了:', settings);
+      if (globalThis.CONFIG?.DEBUG) {
+        console.log('[WindowManager] モニター設定保存完了:', settings);
+      }
     } catch (error) {
       console.error('[WindowManager] モニター設定保存エラー:', error);
     }
@@ -707,5 +725,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // グローバルに公開されたWindowManagerのインスタンスを作成
   // 他のスクリプトから window.windowManager でアクセス可能
   window.windowManager = new WindowManager();
-  console.log('[WindowManager] システム初期化完了 - モニター管理機能が利用可能です');
+  
+  // システム全体の初期化完了をログ出力
+  console.log('✅ [11.autoai] システム初期化完了 - AI自動処理システムが利用可能です');
 });

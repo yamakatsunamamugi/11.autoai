@@ -404,11 +404,12 @@ export class TaskGroupScanner {
           );
           
           // 結果を解析
-          if (batchResult && batchResult.valueRanges) {
-            batchResult.valueRanges.forEach((rangeData, index) => {
-              const range = batchRanges[index];
+          if (batchResult) {
+            // batchGetSheetDataは range -> 値の配列 のマップを返す
+            batchRanges.forEach((range, index) => {
               const { rowIndex, colIndex } = cellToRange.get(range);
-              const value = rangeData.values?.[0]?.[0] || '';
+              const cellData = batchResult[range] || [];
+              const value = cellData[0] || '';
               
               // 回答状態を判定
               const hasAnswer = this.checkIfHasAnswer(value);

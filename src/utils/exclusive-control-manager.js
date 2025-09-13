@@ -39,10 +39,12 @@ export class ExclusiveControlManager {
     // 再試行スケジュール管理
     this.retrySchedules = new Map();
     
-    this.logger.log('[ExclusiveControlManager] 初期化完了', {
-      pcId: this.pcId,
-      metadata: this.pcIdentifier.getMetadata()
-    });
+    if (globalThis.CONFIG?.DEBUG) {
+      this.logger.log('[ExclusiveControlManager] 初期化完了', {
+        pcId: this.pcId,
+        metadata: this.pcIdentifier.getMetadata()
+      });
+    }
   }
 
   /**

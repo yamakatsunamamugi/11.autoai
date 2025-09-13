@@ -55,7 +55,8 @@
       "Read(///**)",
       "Bash(git rev-parse:*)",
       "Bash(rg:*)",
-      "Bash(git fetch:*)"
+      "Bash(git fetch:*)",
+      "WebFetch(domain:claude.ai)"
     ],
     "defaultMode": "acceptEdits",
     "additionalDirectories": [

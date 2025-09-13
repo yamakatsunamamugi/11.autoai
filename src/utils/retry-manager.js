@@ -75,18 +75,38 @@ const dirname = null;
 import { PCIdentifier } from '../utils/pc-identifier.js';
 
 export class RetryManager {
+  static instance = null;
+  
+  static getInstance(logger = console) {
+    if (!RetryManager.instance) {
+      RetryManager.instance = new RetryManager(logger);
+    }
+    return RetryManager.instance;
+  }
+  
   constructor(logger = console) {
+    // シングルトンチェック
+    if (RetryManager.instance) {
+      return RetryManager.instance;
+    }
+    
     this.logger = logger;
     
     // PC識別子を取得
     try {
       this.pcIdentifier = PCIdentifier.getInstance();
       this.pcId = this.pcIdentifier.getId();
-      this.logger.log(`[RetryManager] PC ID: ${this.pcId}`);
+      
+      // DEBUG モードの場合のみPC IDをログ出力
+      if (globalThis.CONFIG?.DEBUG) {
+        this.logger.log(`[RetryManager] PC ID: ${this.pcId}`);
+      }
     } catch (error) {
       this.pcId = 'unknown';
       this.logger.warn('[RetryManager] PC ID取得失敗:', error);
     }
+    
+    RetryManager.instance = this;
     
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // 設定ファイル読み込み
@@ -138,7 +158,9 @@ export class RetryManager {
         7200000, // 9回目: 120分待機
         9000000  // 10回目: 150分待機
       ];
-      this.logger.log('[RetryManager] ブラウザ環境のため、デフォルト設定を使用します');
+      if (globalThis.CONFIG?.DEBUG) {
+        this.logger.log('[RetryManager] ブラウザ環境のため、デフォルト設定を使用します');
+      }
       return;
     }
     
@@ -157,11 +179,13 @@ export class RetryManager {
         300000, 600000, 1200000, 1800000, 3600000
       ];
       
-      this.logger.log('[RetryManager] 設定ファイルを読み込みました:', {
-        待機パターン数: this.waitingTextPatterns.length,
-        最大リトライ回数: this.maxGroupRetryCount,
-        最小文字数閾値: this.minCharacterThreshold
-      });
+      if (globalThis.CONFIG?.DEBUG) {
+        this.logger.log('[RetryManager] 設定ファイルを読み込みました:', {
+          待機パターン数: this.waitingTextPatterns.length,
+          最大リトライ回数: this.maxGroupRetryCount,
+          最小文字数閾値: this.minCharacterThreshold
+        });
+      }
     } catch (error) {
       this.logger.warn('[RetryManager] 設定ファイルの読み込みに失敗。デフォルト値を使用します:', error.message);
       // デフォルト値を設定
@@ -1306,5 +1330,5 @@ export class RetryManager {
   }
 }
 
-// デフォルトインスタンスをエクスポート
-export const retryManager = new RetryManager();
+// デフォルトインスタンスをエクスポート（シングルトン）
+export const retryManager = RetryManager.getInstance();

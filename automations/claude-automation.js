@@ -49,6 +49,47 @@
     // セレクタ定義（ui-selectorsからマージ、テストコードから完全移植）
     // =====================================================================
     
+    // getFeatureElement関数の定義（CommonAIHandlerのfindElementを使用）
+    const getFeatureElement = async (selectors, description) => {
+        try {
+            // CommonAIHandlerが利用可能な場合はそれを使用
+            if (window.CommonAIHandler && window.CommonAIHandler.utils && window.CommonAIHandler.utils.findElement) {
+                return await window.CommonAIHandler.utils.findElement(selectors, null, 3000);
+            }
+            
+            // フォールバック: 独自実装
+            console.log(`\n🔍 [${description}] 要素検索開始`);
+            
+            if (!Array.isArray(selectors)) {
+                selectors = [{ selector: selectors, description: description }];
+            }
+            
+            for (let i = 0; i < selectors.length; i++) {
+                const selectorObj = typeof selectors[i] === 'string' 
+                    ? { selector: selectors[i], description: `Selector ${i + 1}` }
+                    : selectors[i];
+                    
+                console.log(`  試行 ${i + 1}/${selectors.length}: ${selectorObj.description || selectorObj.selector}`);
+                
+                try {
+                    const element = document.querySelector(selectorObj.selector);
+                    if (element && element.offsetParent !== null) { // 要素が表示されているかチェック
+                        console.log(`  ✅ 成功: ${selectorObj.description || selectorObj.selector}`);
+                        return element;
+                    }
+                } catch (error) {
+                    console.log(`  ❌ 失敗: ${error.message}`);
+                }
+            }
+            
+            console.warn(`⚠️ ${description} の要素が見つかりません`);
+            return null;
+        } catch (error) {
+            console.error(`❌ getFeatureElement エラー (${description}):`, error);
+            return null;
+        }
+    };
+    
     // Deep Research用セレクタ（ui-selectorsから取得）
     // 重要: セレクタは必ずsrc/config/ui-selectors.jsで管理すること
     const getDeepResearchSelectors = () => ({

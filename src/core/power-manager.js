@@ -21,7 +21,9 @@ class PowerManager {
     // デバッグログ用
     this.startTime = null;
     
-    console.log('🔧 [PowerManager] 初期化完了');
+    if (globalThis.CONFIG?.DEBUG) {
+      console.log('🔧 [PowerManager] 初期化完了');
+    }
   }
 
   /**
