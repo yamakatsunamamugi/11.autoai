@@ -27,22 +27,32 @@
     };
     
     // UI_SELECTORSをJSONから読み込み
-    let UI_SELECTORS = {};
+    let UI_SELECTORS = window.UI_SELECTORS || {};
+    let selectorsLoaded = false;
 
     // JSONファイルから非同期で読み込み
-    (async () => {
+    const loadSelectors = async () => {
+        if (selectorsLoaded) return UI_SELECTORS;
+
         try {
             const response = await fetch(chrome.runtime.getURL('ui-selectors-data.json'));
             const data = await response.json();
             UI_SELECTORS = data.selectors;
             window.UI_SELECTORS = UI_SELECTORS;
+            selectorsLoaded = true;
             console.log(`✅ [ClaudeV2] UI Selectors loaded (v${data.version})`);
+            return UI_SELECTORS;
         } catch (error) {
             console.error('❌ [ClaudeV2] Failed to load ui-selectors-data.json:', error);
             // フォールバック: windowから取得を試みる
             UI_SELECTORS = window.UI_SELECTORS || {};
+            selectorsLoaded = true;
+            return UI_SELECTORS;
         }
-    })();
+    };
+
+    // 初期読み込みを実行
+    loadSelectors();
 
     // UI_SELECTORSの状態を詳細にログ出力
     console.log('🔧 [ClaudeV2] UI_SELECTORS初期化確認:');
@@ -146,38 +156,33 @@
     // 重要: セレクタは必ずsrc/config/ui-selectors.jsで管理すること
     // ハードコードは禁止 - UI_SELECTORSを必ず使用する
 
-    const claudeSelectors = {
-        '1_テキスト入力欄': {
-            selectors: UI_SELECTORS.Claude?.INPUT || [],
-            description: 'テキスト入力欄（ProseMirrorエディタ）'
-        },
-        '2_送信ボタン': {
-            selectors: UI_SELECTORS.Claude?.SEND_BUTTON || [],
-            description: '送信ボタン'
-        },
-        '3_回答停止ボタン': {
-            selectors: UI_SELECTORS.Claude?.STOP_BUTTON || [],
-            description: '回答停止ボタン'
-        },
-        '4_Canvas機能テキスト位置': {
-            selectors: UI_SELECTORS.Claude?.TEXT_EXTRACTION?.ARTIFACT_CONTENT || [],
-            description: 'Canvas機能のテキスト表示エリア'
-        },
-        '5_通常処理テキスト位置': {
-            selectors: UI_SELECTORS.Claude?.TEXT_EXTRACTION?.NORMAL_RESPONSE || [],
-            description: '通常処理のテキスト表示エリア'
-        }
+    // Claude用セレクタを関数で取得（遅延評価）
+    const getClaudeSelectors = () => {
+        return {
+            '1_テキスト入力欄': {
+                selectors: UI_SELECTORS.Claude?.INPUT || [],
+                description: 'テキスト入力欄（ProseMirrorエディタ）'
+            },
+            '2_送信ボタン': {
+                selectors: UI_SELECTORS.Claude?.SEND_BUTTON || [],
+                description: '送信ボタン'
+            },
+            '3_回答停止ボタン': {
+                selectors: UI_SELECTORS.Claude?.STOP_BUTTON || [],
+                description: '回答停止ボタン'
+            },
+            '4_Canvas機能テキスト位置': {
+                selectors: UI_SELECTORS.Claude?.TEXT_EXTRACTION?.ARTIFACT_CONTENT || [],
+                description: 'Canvas機能のテキスト表示エリア'
+            },
+            '5_通常処理テキスト位置': {
+                selectors: UI_SELECTORS.Claude?.TEXT_EXTRACTION?.NORMAL_RESPONSE || [],
+                description: '通常処理のテキスト表示エリア'
+            }
+        };
     };
     
-    // セレクタの最終状態をログ出力
-    console.log('📋 [ClaudeV2] claudeSelectors最終設定:');
-    console.log('  入力欄セレクタ数:', claudeSelectors['1_テキスト入力欄'].selectors.length);
-    console.log('  送信ボタンセレクタ数:', claudeSelectors['2_送信ボタン'].selectors.length);
-    console.log('  停止ボタンセレクタ数:', claudeSelectors['3_回答停止ボタン'].selectors.length);
-    
-    if (claudeSelectors['1_テキスト入力欄'].selectors.length === 0) {
-        console.error('❌ [ClaudeV2] 致命的エラー: 入力欄セレクタが空です！');
-    }
+    // セレクタ状態の確認は初回使用時に行う
     
     // =====================================================================
     // ユーティリティ関数群（テストコードから）
@@ -860,6 +865,9 @@
     // =====================================================================
     
     async function executeTask(taskData) {
+        // セレクタを確実に読み込む
+        await loadSelectors();
+
         console.log('%c🚀 Claude V2 タスク実行開始', 'color: #9C27B0; font-weight: bold; font-size: 16px');
         console.log('受信したタスクデータ:', {
             model: taskData.model,
@@ -1374,6 +1382,10 @@ ${prompt}`;
      * @param {object} config - 設定オブジェクト（cellInfo等を含む）
      */
     async function inputTextOnly(prompt, config = {}) {
+        // セレクタを確実に読み込む
+        await loadSelectors();
+        const claudeSelectors = getClaudeSelectors();
+
         try {
             console.log('\n' + '='.repeat(70));
             console.log('📝 [ClaudeV2/inputTextOnly] テキスト入力開始');
@@ -1535,6 +1547,9 @@ ${prompt}`;
      * @param {string} modelName - 選択するモデル名
      */
     async function selectModelOnly(modelName) {
+        // セレクタを確実に読み込む
+        await loadSelectors();
+
         try {
             // モデル名が空または指定されていない場合、一番上のモデルを自動選択
             if (!modelName || modelName === '') {
@@ -1630,6 +1645,9 @@ ${prompt}`;
      * @param {string} functionName - 選択する機能名
      */
     async function selectFunctionOnly(functionName) {
+        // セレクタを確実に読み込む
+        await loadSelectors();
+
         try {
             console.log(`🚀 [DEBUG] selectFunctionOnly関数開始 - 引数: "${functionName}"`);
             console.log(`🚀 [DEBUG] window.ClaudeAutomationV2存在確認:`, !!window.ClaudeAutomationV2);
