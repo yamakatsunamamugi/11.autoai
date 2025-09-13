@@ -995,14 +995,22 @@ export default class TaskGeneratorV2 {
           
           const groupPosition = i;
           
+          // モデルと機能の取得をデバッグ
+          const modelValue = this.getModel(spreadsheetData, answerCol, targetPromptGroup.promptColumns);
+          console.log(`[TaskGeneratorV2] 📊 ${answerCol.column}${workRow.number} - モデル取得:`, {
+            取得値: modelValue || '❌空',
+            answerCol: answerCol.column,
+            promptColumns: targetPromptGroup.promptColumns.map(idx => this.indexToColumn(idx))
+          });
+
           const taskData = {
             id: this.generateTaskId(answerCol.column, workRow.number),
             row: workRow.number,
             column: answerCol.column,
             promptColumns: targetPromptGroup.promptColumns,
             aiType: answerCol.type,
-            model: this.getModel(spreadsheetData, answerCol, targetPromptGroup.promptColumns),
-            function: functionValue,
+            model: modelValue || '',
+            function: functionValue || '',
             cellInfo: {
               row: workRow.number,
               column: answerCol.column,
@@ -1015,7 +1023,8 @@ export default class TaskGeneratorV2 {
             groupPosition: groupPosition,
             sequenceOrder: taskGroupInfo ? taskGroupInfo.sequenceOrder : promptGroupIndex + 1,
             dependencies: taskGroupInfo ? taskGroupInfo.dependencies : [],
-            prompt: '',
+            prompt: '',  // 実行時に動的取得
+            text: '',    // 互換性のため追加
             taskType: 'ai',
             createdAt: Date.now(),
             version: '2.0'
@@ -1065,6 +1074,14 @@ export default class TaskGeneratorV2 {
           
           const model = this.getModel(spreadsheetData, promptCol);
           const functionValue = this.getFunction(spreadsheetData, promptCol);
+
+          // デバッグ：モデルと機能の取得状況
+          console.log(`[TaskGeneratorV2] 📊 ${answerCol.column}${workRow.number} - 単独AI設定:`, {
+            モデル: model || '❌空',
+            機能: functionValue || '❌空',
+            aiType: aiType,
+            promptCol: promptCol.column
+          });
           
           // タスクグループからログ列を取得（設定されていれば）
           let logColumn = null;
@@ -1096,8 +1113,8 @@ export default class TaskGeneratorV2 {
             column: answerCol.column,
             promptColumns: targetPromptGroup.promptColumns,
             aiType: aiType,
-            model: model,
-            function: functionValue,
+            model: model || '',
+            function: functionValue || '',
             cellInfo: {
               row: workRow.number,
               column: answerCol.column,
@@ -1109,7 +1126,8 @@ export default class TaskGeneratorV2 {
             groupType: taskGroupInfo ? taskGroupInfo.groupType : 'single',
             sequenceOrder: taskGroupInfo ? taskGroupInfo.sequenceOrder : promptGroupIndex + 1,
             dependencies: taskGroupInfo ? taskGroupInfo.dependencies : [],
-            prompt: '',
+            prompt: '',  // 実行時に動的取得
+            text: '',    // 互換性のため追加
             taskType: 'ai',
             createdAt: Date.now(),
             version: '2.0'

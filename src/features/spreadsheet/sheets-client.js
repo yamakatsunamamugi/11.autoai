@@ -378,18 +378,8 @@ class SheetsClient {
    * @param {Object} data - 追加データ
    */
   detailedLog(level, message, data = {}) {
-    const timestamp = new Date().toISOString();
-    
-    // データを安全にシリアライズ
-    const logData = {
-      timestamp,
-      level,
-      message,
-      ...this.safeSerialize(data)
-    };
-
-    // 既存のloggerのみ使用（コンソール重複を避ける）
-    this.logger.log?.("SheetsClient", message, logData);
+    // ログ出力を完全に無効化（冗長なログを除去）
+    return;
   }
 
   /**

@@ -1384,12 +1384,31 @@ export default class StreamProcessorV2 {
         ...task,  // タスクリストの全データをそのまま使用
         taskId: task.id,  // task.idをtaskIdとして明示的に設定
         prompt: prompt,  // プロンプトだけ上書き
+        text: prompt,  // textフィールドも設定（互換性のため）
         cellInfo: {
           column: task.column,
           row: task.row
         }
       };
-      
+
+      // 詳細なデバッグログを追加
+      this.logger.log(`[StreamProcessorV2] 📊 タスクデータ詳細確認: ${task.column}${task.row}`, {
+        '元のtask': {
+          model: task.model || '❌未設定',
+          function: task.function || '❌未設定',
+          promptColumns: task.promptColumns,
+          aiType: task.aiType
+        },
+        '作成したtaskData': {
+          model: taskData.model || '❌未設定',
+          function: taskData.function || '❌未設定',
+          prompt: taskData.prompt ? `${taskData.prompt.length}文字` : '❌未設定',
+          text: taskData.text ? `${taskData.text.length}文字` : '❌未設定',
+          taskId: taskData.taskId,
+          aiType: taskData.aiType
+        }
+      });
+
       this.logger.log(`[StreamProcessorV2] AIタスク実行: ${task.column}${task.row}`, {
         aiType: task.aiType,
         taskId: task.id,
