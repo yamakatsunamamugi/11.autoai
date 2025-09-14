@@ -63,7 +63,9 @@
       "Bash(for f in src/features/task/*.js)",
       "Bash(head:*)",
       "Bash(for file in column-processor batch-executor task-group-builder task-factory window-manager task-wait-manager group-completion-checker column-control-simple task-executor-adapter)",
-      "Bash(do echo \"=== $file ===\")"
+      "Bash(do echo \"=== $file ===\")",
+      "Bash(for:*)",
+      "Bash(do wc:*)"
     ],
     "defaultMode": "acceptEdits",
     "additionalDirectories": [
