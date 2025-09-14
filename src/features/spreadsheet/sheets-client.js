@@ -1955,6 +1955,300 @@ class SheetsClient {
       throw error;
     }
   }
+
+  // ========================================
+  // ステップ9: URL解析機能（統合：url-parser.js）
+  //
+  // 【運用ガイド】
+  // - 既存コード: globalThis.parseSpreadsheetUrl(url) で後方互換
+  // - 新規コード: SheetsClient.parseSpreadsheetUrl(url) を推奨
+  // - 使用箇所: background.js、ui-controller.js等でURL処理時
+  // - 機能: Google SheetsのURL文字列からspreadsheetIdとgidを抽出
+  // ========================================
+
+  /**
+   * ステップ9-1: スプレッドシートURLからIDとgidを抽出
+   * @param {string} url - スプレッドシートのURL
+   * @returns {{spreadsheetId: string, gid: string|null}}
+   */
+  static parseSpreadsheetUrl(url) {
+    // ステップ9-1-1: 結果オブジェクトの初期化
+    const result = {
+      spreadsheetId: null,
+      gid: null,
+    };
+
+    try {
+      // ステップ9-1-2: URLオブジェクトの作成と検証
+      const urlObj = new URL(url);
+
+      // ステップ9-1-3: スプレッドシートIDを抽出（/d/[ID]/の形式）
+      const idMatch = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+      if (idMatch) {
+        result.spreadsheetId = idMatch[1];
+        console.log(`ステップ9-1-3: スプレッドシートID抽出成功: ${result.spreadsheetId}`);
+      }
+
+      // ステップ9-1-4: gidを抽出（#gid=数値 または ?gid=数値）
+      const gidMatch = url.match(/[#&?]gid=(\d+)/);
+      if (gidMatch) {
+        result.gid = gidMatch[1];
+        console.log(`ステップ9-1-4: gid抽出成功: ${result.gid}`);
+      }
+
+      console.log("ステップ9-1: URL解析完了:", { url, result });
+    } catch (error) {
+      console.error("ステップ9-1: URL解析エラー:", error);
+    }
+
+    return result;
+  }
+
+  /**
+   * ステップ9-2: 複数のスプレッドシートURLを一括解析
+   * @param {string[]} urls - URLの配列
+   * @returns {Array<{url: string, spreadsheetId: string, gid: string|null}>}
+   */
+  static parseMultipleUrls(urls) {
+    console.log(`ステップ9-2: ${urls.length}個のURLを一括解析開始`);
+
+    // ステップ9-2-1: 各URLを個別に解析して結果を収集
+    const results = urls.map((url, index) => {
+      console.log(`ステップ9-2-1-${index + 1}: URL解析中: ${url}`);
+      return {
+        url,
+        ...SheetsClient.parseSpreadsheetUrl(url),
+      };
+    });
+
+    // ステップ9-2-2: 有効なIDを持つもののみフィルタリング
+    const validResults = results.filter((item) => {
+      const isValid = item.spreadsheetId;
+      if (!isValid) {
+        console.warn(`ステップ9-2-2: 無効なURL（スプレッドシートIDなし）: ${item.url}`);
+      }
+      return isValid;
+    });
+
+    console.log(`ステップ9-2: 一括解析完了: ${validResults.length}/${urls.length}個が有効`);
+    return validResults;
+  }
+
+  // ========================================
+  // ステップ10: データ処理機能（統合：data-processor.js）
+  //
+  // 【運用ガイド】
+  // - 重複コード解消: 各ファイルの列変換ロジックを統一メソッドに置換
+  // - 推奨使用: globalThis.sheetsClient.columnToIndex() / indexToColumn()
+  // - 新機能: getAIModelFunction() でAI設定一括取得
+  // - 使用箇所: spreadsheet-auto-setup.js、stream-processor-v2.js等
+  // - 標準化: 全て【SheetsClient-ステップN-M】ログ形式で動作追跡可能
+  // ========================================
+
+  /**
+   * ステップ10-1: スプレッドシートデータから指定された行を検索
+   * @param {Object} spreadsheetData - スプレッドシートデータ
+   * @param {string} rowKeyword - 検索するキーワード（例：'AI', 'モデル', '機能'）
+   * @returns {Array|null} 見つかった行データまたはnull
+   */
+  findRow(spreadsheetData, rowKeyword) {
+    // ステップ10-1-1: データ存在確認
+    if (!spreadsheetData || !spreadsheetData.values) {
+      console.warn(`ステップ10-1-1: スプレッドシートデータまたはvaluesが存在しません`);
+      return null;
+    }
+
+    // ステップ10-1-2: 指定キーワードで行を検索
+    const foundRow = spreadsheetData.values.find(row => row[0] === rowKeyword);
+
+    if (foundRow) {
+      console.log(`ステップ10-1-2: ${rowKeyword}行を発見しました`);
+    } else {
+      console.warn(`ステップ10-1-2: ${rowKeyword}行が見つかりませんでした`);
+    }
+
+    return foundRow;
+  }
+
+  /**
+   * ステップ10-2: タスクに基づいてAI、モデル、機能を取得
+   * @param {Object} spreadsheetData - スプレッドシートデータ
+   * @param {Object} task - タスクオブジェクト
+   * @returns {Object} - {ai, model, function}
+   */
+  getAIModelFunction(spreadsheetData, task) {
+    try {
+      // ステップ10-2-1: 必要な行データを取得
+      console.log("ステップ10-2-1: 必要な行データ（AI、モデル、機能）の取得開始");
+      const aiRow = this.findRow(spreadsheetData, 'AI');
+      const modelRow = this.findRow(spreadsheetData, 'モデル');
+      const functionRow = this.findRow(spreadsheetData, '機能');
+
+      // ステップ10-2-2: 必須行の存在確認
+      if (!modelRow || !functionRow) {
+        console.error('ステップ10-2-2: モデル行または機能行が見つかりません');
+        return { ai: '', model: '', function: '' };
+      }
+
+      // ステップ10-2-3: プロンプト列のインデックス確認
+      const promptIndex = task.promptColumns && task.promptColumns.length > 0 ? task.promptColumns[0] : null;
+
+      if (!promptIndex) {
+        console.error('ステップ10-2-3: プロンプト列が見つかりません');
+        return { ai: '', model: '', function: '' };
+      }
+
+      // ステップ10-2-4: 処理モード判定（通常 vs 3種類AI）
+      const promptFunctionValue = functionRow[promptIndex] || '';
+      console.log(`ステップ10-2-4: 処理モード判定 - プロンプト列機能値: "${promptFunctionValue}"`);
+
+      let ai = '';
+      let model = '';
+      let func = '';
+
+      if (promptFunctionValue === '通常') {
+        // ステップ10-2-5: 通常処理モード - プロンプト列から取得
+        console.log('ステップ10-2-5: 通常処理モード開始');
+        ai = aiRow ? (aiRow[promptIndex] || '') : '';
+        model = modelRow[promptIndex] || '';
+        func = functionRow[promptIndex] || '通常';
+
+        console.log(`ステップ10-2-5: 通常処理データ取得完了`, {
+          column: this.indexToColumn(promptIndex),
+          ai,
+          model,
+          function: func
+        });
+      } else {
+        // ステップ10-2-6: 3種類AIモード - 回答列から取得
+        console.log('ステップ10-2-6: 3種類AIモード開始');
+        const answerColumnIndex = this.columnToIndex(task.column);
+        ai = aiRow ? (aiRow[answerColumnIndex] || '') : '';
+        model = modelRow[answerColumnIndex] || '';
+        func = functionRow[answerColumnIndex] || '';
+
+        console.log(`ステップ10-2-6: 3種類AIデータ取得完了`, {
+          column: task.column,
+          ai,
+          model,
+          function: func
+        });
+      }
+
+      return { ai, model, function: func };
+    } catch (error) {
+      console.error('ステップ10-2: データ取得処理エラー:', error);
+      return { ai: '', model: '', function: '' };
+    }
+  }
+
+  /**
+   * ステップ10-3: 列文字を数値インデックスに変換（例：'A' → 0, 'B' → 1, 'AA' → 26）
+   * @param {string|number} column - 列文字または数値
+   * @returns {number} 0ベースの数値インデックス
+   */
+  columnToIndex(column) {
+    // ステップ10-3-1: 既に数値の場合はそのまま返す
+    if (typeof column === 'number') {
+      console.log(`ステップ10-3-1: 数値入力のためそのまま返却: ${column}`);
+      return column;
+    }
+
+    // ステップ10-3-2: 文字列を大文字に変換
+    let index = 0;
+    const columnStr = column.toString().toUpperCase();
+    console.log(`ステップ10-3-2: 列文字変換開始: "${column}" → "${columnStr}"`);
+
+    // ステップ10-3-3: 各文字を26進数として計算
+    for (let i = 0; i < columnStr.length; i++) {
+      index = index * 26 + (columnStr.charCodeAt(i) - 'A'.charCodeAt(0) + 1);
+    }
+
+    // ステップ10-3-4: 0ベースに変換して結果を返す
+    const result = index - 1;
+    console.log(`ステップ10-3-4: 列変換完了: "${columnStr}" → ${result}`);
+    return result;
+  }
+
+  /**
+   * ステップ10-4: 数値インデックスを列文字に変換（例：0 → 'A', 1 → 'B', 26 → 'AA'）
+   * @param {string|number} index - 数値インデックスまたは文字列
+   * @returns {string} 列文字
+   */
+  indexToColumn(index) {
+    // ステップ10-4-1: 既に文字列の場合はそのまま返す
+    if (typeof index === 'string') {
+      console.log(`ステップ10-4-1: 文字列入力のためそのまま返却: "${index}"`);
+      return index;
+    }
+
+    // ステップ10-4-2: 変換処理の初期化
+    let column = '';
+    let num = index + 1; // 1ベースに変換
+    console.log(`ステップ10-4-2: インデックス変換開始: ${index} → 1ベース: ${num}`);
+
+    // ステップ10-4-3: 26進数として各桁を計算
+    while (num > 0) {
+      num--; // 0ベースに調整
+      column = String.fromCharCode('A'.charCodeAt(0) + (num % 26)) + column;
+      num = Math.floor(num / 26);
+    }
+
+    console.log(`ステップ10-4-3: インデックス変換完了: ${index} → "${column}"`);
+    return column;
+  }
+
+  /**
+   * ステップ10-5: スプレッドシートデータの構造を検証
+   * @param {Object} spreadsheetData - 検証するスプレッドシートデータ
+   * @returns {Object} 検証結果オブジェクト
+   */
+  validateSpreadsheetData(spreadsheetData) {
+    // ステップ10-5-1: 検証結果オブジェクトの初期化
+    const validation = {
+      valid: true,
+      missing: [],
+      available: {}
+    };
+
+    console.log("ステップ10-5-1: スプレッドシートデータ構造検証開始");
+
+    // ステップ10-5-2: 基本データ構造の確認
+    if (!spreadsheetData || !spreadsheetData.values) {
+      console.error('ステップ10-5-2: スプレッドシートデータまたはvaluesプロパティが存在しません');
+      validation.valid = false;
+      validation.missing.push('spreadsheetData.values');
+      return validation;
+    }
+
+    // ステップ10-5-3: 必要な行の存在確認
+    console.log("ステップ10-5-3: 必要な行（AI、モデル、機能）の存在確認開始");
+    const requiredRows = ['AI', 'モデル', '機能'];
+
+    requiredRows.forEach((rowKeyword, index) => {
+      console.log(`ステップ10-5-3-${index + 1}: ${rowKeyword}行の存在確認`);
+      const row = this.findRow(spreadsheetData, rowKeyword);
+
+      if (row) {
+        validation.available[rowKeyword] = true;
+        console.log(`ステップ10-5-3-${index + 1}: ${rowKeyword}行を確認しました`);
+      } else {
+        validation.valid = false;
+        validation.missing.push(`${rowKeyword}行`);
+        console.error(`ステップ10-5-3-${index + 1}: ${rowKeyword}行が見つかりません`);
+      }
+    });
+
+    // ステップ10-5-4: 検証結果の集計とログ出力
+    const status = validation.valid ? '成功' : '失敗';
+    console.log(`ステップ10-5-4: データ構造検証${status}`, {
+      有効: validation.valid,
+      不足項目数: validation.missing.length,
+      利用可能項目: Object.keys(validation.available).length
+    });
+
+    return validation;
+  }
 }
 
 // グローバルスコープに追加
@@ -1963,4 +2257,7 @@ self.SheetsClient = SheetsClient;
 // シングルトンインスタンスを作成してグローバルに公開
 if (typeof globalThis !== "undefined") {
   globalThis.sheetsClient = new SheetsClient();
+  // 後方互換性のため、旧関数をグローバルに公開
+  globalThis.parseSpreadsheetUrl = SheetsClient.parseSpreadsheetUrl;
+  globalThis.parseMultipleUrls = SheetsClient.parseMultipleUrls;
 }

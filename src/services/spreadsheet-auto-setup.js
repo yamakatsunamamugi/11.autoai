@@ -245,6 +245,7 @@ export class SpreadsheetAutoSetup {
           promptGroups.push({
             firstIndex: colIndex,
             lastIndex: lastPromptIndex,
+            // 統合機能使用推奨: globalThis.sheetsClient.indexToColumn(colIndex) - ステップ10-4で詳細ログ
             column: this.indexToColumn(colIndex),
             aiType: (aiRow[colIndex] || "").toString(),
           });

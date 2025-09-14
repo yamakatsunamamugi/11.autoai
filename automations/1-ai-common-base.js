@@ -835,6 +835,94 @@
   }
 
   // ========================================
+  // 3-4. RetryManager - 失敗時の自動リトライ処理（統合）
+  // ========================================
+
+  function createRetryManager(logger = console) {
+    return {
+      logger: logger,
+      pcId: 'AI-Common-Base',
+      maxGroupRetryCount: 10,
+      groupRetryDelays: [30000, 60000, 300000, 600000, 1200000, 2400000, 3600000, 5400000, 7200000, 9000000],
+      waitingTextPatterns: ['お待ちください...', '現在操作中です'],
+      groupFailedTasks: new Map(),
+      groupEmptyTasks: new Map(),
+      groupResponseFailures: new Map(),
+      groupRetryCount: new Map(),
+      groupRetryStats: new Map(),
+      groupRetryTimers: new Map(),
+
+      recordFailedTask(groupId, task) {
+        if (!this.groupFailedTasks.has(groupId)) {
+          this.groupFailedTasks.set(groupId, new Map());
+        }
+        const columnMap = this.groupFailedTasks.get(groupId);
+        if (!columnMap.has(task.column)) {
+          columnMap.set(task.column, new Set());
+        }
+        columnMap.get(task.column).add(task);
+        this.logger.log(`【AI共通基盤-RetryManager】失敗タスクを記録: グループ${groupId} - ${task.column}${task.row}`);
+      },
+
+      recordEmptyTask(groupId, task) {
+        if (!this.groupEmptyTasks.has(groupId)) {
+          this.groupEmptyTasks.set(groupId, new Map());
+        }
+        const columnMap = this.groupEmptyTasks.get(groupId);
+        if (!columnMap.has(task.column)) {
+          columnMap.set(task.column, new Set());
+        }
+        columnMap.get(task.column).add(task);
+        this.logger.log(`【AI共通基盤-RetryManager】空白セルを記録: グループ${groupId} - ${task.column}${task.row}`);
+      },
+
+      isWaitingText(text) {
+        if (!text) return false;
+        if (text === '処理完了') return true;
+        if (text.startsWith('現在操作中です_')) return true;
+        return this.waitingTextPatterns.some(pattern => text === pattern);
+      },
+
+      async executeWithRetry(config) {
+        const { action, isSuccess = (result) => result && result.success !== false, maxRetries = 3, retryDelay = 2000, actionName = '処理', context = {} } = config;
+        let retryCount = 0;
+        let lastResult = null;
+        let lastError = null;
+
+        while (retryCount < maxRetries) {
+          try {
+            if (retryCount > 0) {
+              this.logger.log(`【AI共通基盤-RetryManager】${actionName} 再試行 ${retryCount}/${maxRetries}`, context);
+            }
+            lastResult = await action();
+            if (isSuccess(lastResult)) {
+              if (retryCount > 0) {
+                this.logger.log(`【AI共通基盤-RetryManager】✅ ${actionName} 成功（${retryCount}回目の試行）`, context);
+              }
+              return { success: true, result: lastResult, retryCount };
+            }
+          } catch (error) {
+            lastError = error;
+            this.logger.error(`【AI共通基盤-RetryManager】${actionName} エラー`, { ...context, attempt: retryCount + 1, error: error.message });
+          }
+          retryCount++;
+          if (retryCount >= maxRetries) {
+            return { success: false, result: lastResult, error: lastError, retryCount };
+          }
+          if (retryDelay > 0) {
+            await sleep(retryDelay);
+          }
+        }
+        return { success: false, result: lastResult, error: lastError, retryCount };
+      },
+
+      async delay(ms) {
+        return sleep(ms);
+      }
+    };
+  }
+
+  // ========================================
   // 4. API公開
   // ========================================
 
@@ -883,7 +971,10 @@
       DOMObserver
     },
 
-    // 4-1-4. バージョン情報
+    // 4-1-4. RetryManager - 失敗時の自動リトライ処理（統合）
+    RetryManager: createRetryManager(),
+
+    // 4-1-5. バージョン情報
     version: '1.0.0',
     lastUpdated: '2024-12-14'
   };

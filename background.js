@@ -1292,7 +1292,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             return;
           }
 
-          // URLを解析してスプレッドシートIDとシートIDを取得
+          // ステップ1-1: URL解析でスプレッドシートIDとgidを取得
+          // 使用方法: SheetsClient.parseSpreadsheetUrl(url) または globalThis.parseSpreadsheetUrl(url)
+          // 機能: /spreadsheets/d/[ID]/ 形式からIDを抽出、#gid=数値 からgidを抽出
           const { spreadsheetId, gid } = globalThis.parseSpreadsheetUrl(url);
           if (!spreadsheetId) {
             sendResponse({
@@ -1342,7 +1344,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             return;
           }
 
-          // 1. URLを解析
+          // ステップ1-1: URL解析でスプレッドシートIDとgidを取得
+          // 統合機能: SheetsClient.parseSpreadsheetUrl() - ステップ9-1で詳細ログ出力
           const { spreadsheetId, gid } = globalThis.parseSpreadsheetUrl(url);
           if (!spreadsheetId) {
             sendResponse({

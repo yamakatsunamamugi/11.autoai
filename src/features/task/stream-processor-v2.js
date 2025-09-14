@@ -34,15 +34,14 @@
 import { AITaskExecutor } from '../../core/ai-task-executor.js';
 import { WindowService } from '../../services/window-service.js';
 import { aiUrlManager } from '../../core/ai-url-manager.js';
-import { RetryManager } from '../../utils/retry-manager.js';
-import { ExclusiveControlManager } from '../../utils/exclusive-control-manager.js';
-import { ExclusiveControlLoggerHelper } from '../../utils/exclusive-control-logger-helper.js';
+// RetryManager機能はStep 10に統合済み
+// ExclusiveControl機能はStep 0-4-1, 0-4-2に統合済み
+// ExclusiveControlLoggerHelper機能はStep 1-6に統合済み
 import { sleep } from '../../utils/sleep-utils.js';
 import EXCLUSIVE_CONTROL_CONFIG, {
   getTimeoutForFunction,
   getRetryIntervalForFunction
 } from '../../config/exclusive-control-config.js';
-import { pcIdentifier } from '../../utils/pc-identifier.js';
 
 // SpreadsheetLoggerをキャッシュ
 let SpreadsheetLogger = null;
@@ -95,7 +94,19 @@ export default class StreamProcessorV2 {
     this.log('StreamProcessorV2 初期化開始', 'step', 'Step 0');
     this.log('基本サービスを初期化', 'info', 'Step 0-1');
     this.aiTaskExecutor = new AITaskExecutor(logger);
-    this.retryManager = new RetryManager(logger);
+    // RetryManager機能はStep 10に統合済み
+
+    // ========================================
+    // Step 0-1-3: PC識別システム初期化
+    // ========================================
+    this.log('【StreamProcessor-ステップ0-1-3】PC識別システム初期化開始', 'info', 'Step 0-1-3');
+    this.initializePCIdentifier();
+
+    // ========================================
+    // Step 0-1-4: 共通スリープユーティリティ初期化
+    // ========================================
+    this.log('【StreamProcessor-ステップ0-1-4】共通スリープユーティリティ初期化開始', 'info', 'Step 0-1-4');
+    this.initializeSleepUtils();
 
     // ========================================
     // Step 0-2: タスク生成・管理系初期化
@@ -103,6 +114,24 @@ export default class StreamProcessorV2 {
     this.log('タスク生成・管理系コンポーネントを初期化', 'info', 'Step 0-2');
     this.windowService = WindowService;
     this.completedTasks = new Set();
+
+    // ========================================
+    // Step 0-2-3: スプレッドシート設定初期化
+    // ========================================
+    this.log('【StreamProcessor-ステップ0-2-3】スプレッドシート設定初期化開始', 'info', 'Step 0-2-3');
+    this.initializeSpreadsheetConfig();
+
+    // ========================================
+    // Step 0-4-1: 排他制御ユーティリティ初期化
+    // ========================================
+    this.log('【StreamProcessor-ステップ0-4-1】排他制御ユーティリティ初期化開始', 'info', 'Step 0-4-1');
+    this.initializeExclusiveControl();
+
+    // ========================================
+    // Step 0-4-2: 排他制御マネージャー初期化
+    // ========================================
+    this.log('【StreamProcessor-ステップ0-4-2】排他制御マネージャー初期化開始', 'info', 'Step 0-4-2');
+    this.initializeExclusiveControlManager();
 
     // ========================================
     // Step 0-3: モニター管理システム初期化
@@ -114,6 +143,13 @@ export default class StreamProcessorV2 {
     // Step 0-4: 排他制御システム初期化
     // ========================================
     this.log('排他制御システムを初期化', 'info', 'Step 0-4');
+
+    // Step 0-4-1: 排他制御ユーティリティ初期化（exclusive-control.js統合）
+    this.log('【StreamProcessor-ステップ0-4-1】排他制御ユーティリティ初期化開始', 'info', 'Step 0-4-1');
+    this.initializeExclusiveControl();
+
+    // Step 0-4-2: 排他制御マネージャー初期化（exclusive-control-manager.js統合）
+    this.log('【StreamProcessor-ステップ0-4-2】排他制御マネージャー初期化開始', 'info', 'Step 0-4-2');
     this.exclusiveManager = new ExclusiveControlManager({
       controlConfig: {
         timeouts: EXCLUSIVE_CONTROL_CONFIG.timeouts,
@@ -230,6 +266,18 @@ export default class StreamProcessorV2 {
         }
 
         this.log('SpreadsheetLogger初期化完了', 'success', 'Step 1');
+
+        // ========================================
+        // Step 1-5: ChatGPTツール制御システム初期化
+        // ========================================
+        this.log('【StreamProcessor-ステップ1-5】ChatGPTツール制御システム初期化開始', 'info', 'Step 1-5');
+        this.initializeChatGPTToolControl();
+
+        // ========================================
+        // Step 1-6: 排他制御ログヘルパー初期化
+        // ========================================
+        this.log('【StreamProcessor-ステップ1-6】排他制御ログヘルパー初期化開始', 'info', 'Step 1-6');
+        this.initializeExclusiveControlLoggerHelper();
       } else {
         this.log('SpreadsheetLoggerClass または spreadsheetUrl が未設定', 'warning', 'Step 1');
       }
@@ -3119,5 +3167,1383 @@ export default class StreamProcessorV2 {
       this.log('【StreamProcessor-ステップ3-0】❌ マルチモニター4分割配置エラー: ' + error.message, 'error');
       throw error;
     }
+  }
+
+  // ========================================
+  // Step 0-1-3: PC識別システム（統合）
+  // pc-identifier.js から統合 - PC識別子ユーティリティ
+  // ========================================
+
+  /**
+   * PC識別システム初期化
+   * Chrome拡張のランタイムIDを使用したユニーク識別子を生成
+   */
+  initializePCIdentifier() {
+    this.log('【StreamProcessor-ステップ0-1-3-1】PC識別子生成開始', 'info', 'Step 0-1-3-1');
+
+    this._pcIdentifier = null;
+    this._pcMetadata = {};
+
+    this.log('【StreamProcessor-ステップ0-1-3-2】PC識別システム初期化完了', 'info', 'Step 0-1-3-2');
+  }
+
+  /**
+   * PC識別子を取得（一度生成したら同じ値を返す）
+   * @returns {Object} 識別子情報
+   */
+  getPCIdentifier() {
+    if (!this._pcIdentifier) {
+      this.log('【StreamProcessor-ステップ0-1-3-3】新規PC識別子生成中', 'info', 'Step 0-1-3-3');
+
+      this._pcIdentifier = {
+        id: this.generatePCId(),
+        timestamp: new Date().toISOString(),
+        metadata: this.getPCMetadata()
+      };
+
+      this.log(`【StreamProcessor-ステップ0-1-3-4】PC識別子生成完了: ${this._pcIdentifier.id}`, 'info', 'Step 0-1-3-4');
+    }
+    return this._pcIdentifier;
+  }
+
+  /**
+   * 識別子文字列のみを取得
+   * @returns {string} 識別子文字列
+   */
+  getPCId() {
+    return this.getPCIdentifier().id;
+  }
+
+  /**
+   * ユニークな識別子を生成
+   * @returns {string} 識別子
+   */
+  generatePCId() {
+    try {
+      let baseId = 'PC';
+
+      // Chrome拡張のランタイムIDを取得
+      if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id) {
+        // ランタイムIDの末尾8文字を使用（長すぎると見づらいため）
+        const runtimeId = chrome.runtime.id;
+        baseId = runtimeId.substring(runtimeId.length - 8);
+      }
+
+      // ランダムなサフィックスを追加（5文字）
+      const randomSuffix = Math.random().toString(36).substring(2, 7);
+
+      // 組み合わせて返す（例: "abcd1234_x7k9m"）
+      return `${baseId}_${randomSuffix}`;
+
+    } catch (error) {
+      this.log(`【StreamProcessor-ステップ0-1-3】PC識別子生成エラー: ${error.message}`, 'error', 'Step 0-1-3');
+      // エラー時はランダムIDを生成
+      return `PC_${Math.random().toString(36).substring(2, 10)}`;
+    }
+  }
+
+  /**
+   * メタデータを取得
+   * @returns {Object} メタデータ
+   */
+  getPCMetadata() {
+    return {
+      ...this._pcMetadata,
+      userAgent: this.getUserAgent(),
+      platform: this.getPlatform(),
+      extensionVersion: this.getExtensionVersion()
+    };
+  }
+
+  /**
+   * ユーザーエージェントを取得
+   * @returns {string} ユーザーエージェント
+   */
+  getUserAgent() {
+    try {
+      return navigator?.userAgent || 'unknown';
+    } catch {
+      return 'unknown';
+    }
+  }
+
+  /**
+   * プラットフォームを取得
+   * @returns {string} プラットフォーム
+   */
+  getPlatform() {
+    try {
+      return navigator?.platform || 'unknown';
+    } catch {
+      return 'unknown';
+    }
+  }
+
+  /**
+   * 拡張機能のバージョンを取得
+   * @returns {string} バージョン
+   */
+  getExtensionVersion() {
+    try {
+      if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getManifest) {
+        const manifest = chrome.runtime.getManifest();
+        return manifest.version || 'unknown';
+      }
+    } catch (error) {
+      this.log(`【StreamProcessor-ステップ0-1-3】Extension version取得失敗: ${error.message}`, 'warning', 'Step 0-1-3');
+    }
+    return 'unknown';
+  }
+
+  /**
+   * 識別子が自分のものかチェック
+   * @param {string} id - チェックする識別子
+   * @returns {boolean} 自分の識別子の場合true
+   */
+  isMyPCIdentifier(id) {
+    return id === this.getPCId();
+  }
+
+  // ========================================
+  // Step 0-2-3: スプレッドシート設定（統合）
+  // spreadsheet/config.js から統合 - スプレッドシート構造の定義
+  // ========================================
+
+  /**
+   * スプレッドシート設定システム初期化
+   */
+  initializeSpreadsheetConfig() {
+    this.log('【StreamProcessor-ステップ0-2-3-1】スプレッドシート設定定義開始', 'info', 'Step 0-2-3-1');
+
+    this.SPREADSHEET_CONFIG = {
+      // 行の識別定義
+      rowIdentifiers: {
+        // A列で検索する行
+        menuRow: {
+          keyword: "メニュー",
+          name: "メニュー行",
+          expectedTexts: [
+            "ログ",
+            "プロンプト",
+            "回答",
+            "ChatGPT回答",
+            "Claude回答",
+            "Gemini回答",
+          ],
+        },
+
+        controlRow: {
+          keyword: "列制御",
+          name: "列制御",
+          expectedTexts: [
+            "この列のみ処理",
+            "この列から処理",
+            "この列の処理後に停止",
+          ],
+        },
+
+        aiRow: {
+          keyword: "AI",
+          name: "AI行",
+          expectedTexts: [
+            "ChatGPT",
+            "Claude",
+            "Gemini",
+            "3種類（ChatGPT・Gemini・Claude）",
+          ],
+          aiModels: {
+            ChatGPT: { type: "chatgpt", displayName: "ChatGPT" },
+            Claude: { type: "claude", displayName: "Claude" },
+            Gemini: { type: "gemini", displayName: "Gemini" },
+            "3種類（ChatGPT・Gemini・Claude）": {
+              type: "multi",
+              displayName: "マルチAI",
+            },
+          },
+        },
+
+        modelRow: {
+          keyword: "モデル",
+          name: "モデル行",
+          expectedTexts: ["o3（推論）", "o3-pro（鬼推論）"],
+        },
+
+        taskRow: {
+          keyword: "機能",
+          name: "機能行",
+          expectedTexts: ["DeepReserch"],
+        },
+      },
+
+      // 作業行の定義
+      workRow: {
+        startMarker: "1", // A列が「1」から始まる
+        name: "作業行",
+      },
+
+      // 行制御の定義（B列）
+      rowControl: {
+        column: "B",
+        types: {
+          stopAfter: "この行の処理後に停止",
+          startFrom: "この行から処理",
+          onlyThis: "この行のみ処理",
+        },
+      },
+
+      // 列の種別識別（メニュー行で使用）
+      columnTypes: {
+        log: {
+          keyword: "ログ",
+          type: "log",
+        },
+        prompt: {
+          keyword: "プロンプト",
+          type: "prompt",
+        },
+        prompt2: {
+          keyword: "プロンプト2",
+          type: "prompt",
+        },
+        prompt3: {
+          keyword: "プロンプト3",
+          type: "prompt",
+        },
+        prompt4: {
+          keyword: "プロンプト4",
+          type: "prompt",
+        },
+        prompt5: {
+          keyword: "プロンプト5",
+          type: "prompt",
+        },
+        answer: {
+          keyword: "回答",
+          type: "answer",
+        },
+        chatgptAnswer: {
+          keyword: "ChatGPT回答",
+          type: "answer",
+          aiType: "chatgpt",
+        },
+        claudeAnswer: {
+          keyword: "Claude回答",
+          type: "answer",
+          aiType: "claude",
+        },
+        geminiAnswer: {
+          keyword: "Gemini回答",
+          type: "answer",
+          aiType: "gemini",
+        },
+        history: {
+          keyword: "処理履歴を記録",
+          type: "history",
+        },
+        report: {
+          keyword: "レポート化",
+          type: "report",
+        },
+      },
+
+      // その他の設定
+      settings: {
+        maxColumns: 26, // A-Z列まで
+        defaultTimeout: 30000, // 30秒
+        retryCount: 3,
+      },
+    };
+
+    // Chrome拡張機能で使用できるようにグローバルに公開
+    if (typeof globalThis !== "undefined") {
+      globalThis.SPREADSHEET_CONFIG = this.SPREADSHEET_CONFIG;
+    }
+
+    this.log('【StreamProcessor-ステップ0-2-3-2】スプレッドシート設定システム初期化完了', 'info', 'Step 0-2-3-2');
+  }
+
+  // ========================================
+  // Step 1-5: ChatGPTツール制御システム（統合）
+  // chatgpt-tool-control.js から統合 - ChatGPTツールモード制御
+  // ========================================
+
+  /**
+   * ChatGPTツール制御システム初期化
+   */
+  initializeChatGPTToolControl() {
+    this.log('【StreamProcessor-ステップ1-5-1】ChatGPTツール制御初期化開始', 'info', 'Step 1-5-1');
+
+    this.chatgptToolControl = {
+      isMenuOpen: false,
+      selectedTools: new Set()
+    };
+
+    this.log('【StreamProcessor-ステップ1-5-2】ChatGPTツール制御システム初期化完了', 'info', 'Step 1-5-2');
+  }
+
+  /**
+   * 既存の選択ツールを解除
+   */
+  async clearChatGPTSelectedTools() {
+    this.log('【StreamProcessor-ステップ1-5-3】選択中ツール解除開始', 'info', 'Step 1-5-3');
+
+    const selectedButtons = document.querySelectorAll(
+      'button[data-is-selected="true"]',
+    );
+
+    if (selectedButtons.length > 0) {
+      this.log(
+        `【StreamProcessor-ステップ1-5-4】選択中のツールを解除 (${selectedButtons.length}個)`,
+        'info',
+        'Step 1-5-4'
+      );
+
+      selectedButtons.forEach((btn) => {
+        const toolName =
+          btn.querySelector('[data-label="true"]')?.textContent?.trim() ||
+          "ツール";
+        this.log(`【StreamProcessor-ステップ1-5-5】${toolName}を解除`, 'info', 'Step 1-5-5');
+        btn.click();
+      });
+
+      // 解除処理の完了を待つ
+      await new Promise((resolve) => setTimeout(resolve, 800));
+    }
+
+    return selectedButtons.length;
+  }
+
+  /**
+   * ツールメニューを開く
+   */
+  async openChatGPTToolsMenu() {
+    this.log('【StreamProcessor-ステップ1-5-6】ツールメニューを開く', 'info', 'Step 1-5-6');
+
+    const toolButton = Array.from(document.querySelectorAll("button")).find(
+      (btn) =>
+        btn.textContent?.trim() === "ツール" &&
+        btn.classList.contains("composer-btn"),
+    );
+
+    if (!toolButton) {
+      this.log('【StreamProcessor-ステップ1-5-7】ツールボタンが見つかりません', 'error', 'Step 1-5-7');
+      return false;
+    }
+
+    // focus + Enterキーで確実に開く
+    toolButton.focus();
+    const keyEvent = new KeyboardEvent("keydown", {
+      key: "Enter",
+      code: "Enter",
+      keyCode: 13,
+      bubbles: true,
+    });
+    toolButton.dispatchEvent(keyEvent);
+
+    // メニューが開くまで待機
+    return new Promise((resolve) => {
+      let attempts = 0;
+      const maxAttempts = 10;
+
+      const checkMenu = () => {
+        attempts++;
+        const menuItems = document.querySelectorAll('[role="menuitemradio"]');
+
+        if (menuItems.length > 0) {
+          this.log('【StreamProcessor-ステップ1-5-8】ツールメニューが開きました', 'info', 'Step 1-5-8');
+          this.chatgptToolControl.isMenuOpen = true;
+          resolve(true);
+        } else if (attempts >= maxAttempts) {
+          this.log('【StreamProcessor-ステップ1-5-9】メニューを開けませんでした', 'error', 'Step 1-5-9');
+          resolve(false);
+        } else {
+          setTimeout(checkMenu, 200);
+        }
+      };
+
+      setTimeout(checkMenu, 200);
+    });
+  }
+
+  /**
+   * 利用可能なツール一覧を取得
+   */
+  getChatGPTAvailableTools() {
+    const menuItems = document.querySelectorAll('[role="menuitemradio"]');
+    const tools = [];
+
+    menuItems.forEach((item, i) => {
+      const text = item.textContent?.trim();
+      const isChecked =
+        item.getAttribute("aria-checked") === "true" ||
+        item.getAttribute("data-state") === "checked";
+      tools.push({
+        index: i,
+        name: text,
+        selected: isChecked,
+        element: item,
+      });
+    });
+
+    return tools;
+  }
+
+  /**
+   * 特定のツールを選択
+   */
+  async selectChatGPTTool(toolName) {
+    this.log(`【StreamProcessor-ステップ1-5-10】${toolName}ツール選択開始`, 'info', 'Step 1-5-10');
+
+    // 既存の選択を解除
+    await this.clearChatGPTSelectedTools();
+
+    // メニューを開く
+    if (!(await this.openChatGPTToolsMenu())) {
+      return false;
+    }
+
+    const tools = this.getChatGPTAvailableTools();
+    const tool = tools.find((t) =>
+      t.name?.toLowerCase().includes(toolName.toLowerCase()),
+    );
+
+    if (!tool) {
+      this.log(`【StreamProcessor-ステップ1-5-11】${toolName}が見つかりません`, 'error', 'Step 1-5-11');
+      return false;
+    }
+
+    if (!tool.selected) {
+      tool.element.click();
+      this.log(`【StreamProcessor-ステップ1-5-12】${toolName}を選択しました`, 'info', 'Step 1-5-12');
+    } else {
+      this.log(`【StreamProcessor-ステップ1-5-13】${toolName}は既に選択されています`, 'info', 'Step 1-5-13');
+    }
+
+    this.chatgptToolControl.selectedTools.clear();
+    this.chatgptToolControl.selectedTools.add(toolName);
+
+    return true;
+  }
+
+  /**
+   * 現在選択されているツールを確認
+   */
+  getChatGPTCurrentTool() {
+    const selectedBtn = document.querySelector(
+      'button[data-is-selected="true"]',
+    );
+
+    if (selectedBtn) {
+      const toolName = selectedBtn
+        .querySelector('[data-label="true"]')
+        ?.textContent?.trim();
+      return toolName;
+    }
+
+    return null;
+  }
+
+  /**
+   * ツールモード設定（統合用）
+   */
+  async enableChatGPTToolMode(toolType) {
+    this.log(`【StreamProcessor-ステップ1-5-14】${toolType}モードを有効化`, 'info', 'Step 1-5-14');
+
+    const toolMap = {
+      ChatGPTAgent: "エージェントモード",
+      ChatGPTCanvas: "canvas",
+      ChatGPTWebSearch: "ウェブ検索",
+      ChatGPTImage: "画像を作成",
+      DeepResearch: "Deep Research",
+    };
+
+    const toolName = toolMap[toolType];
+    if (!toolName) {
+      this.log(`【StreamProcessor-ステップ1-5-15】未知のツールタイプ: ${toolType}`, 'error', 'Step 1-5-15');
+      return false;
+    }
+
+    return await this.selectChatGPTTool(toolName);
+  }
+
+  /**
+   * すべてのツールを無効化
+   */
+  async disableChatGPTAllTools() {
+    this.log('【StreamProcessor-ステップ1-5-16】全ツール無効化開始', 'info', 'Step 1-5-16');
+
+    const count = await this.clearChatGPTSelectedTools();
+    this.log(`【StreamProcessor-ステップ1-5-17】${count}個のツールを無効化しました`, 'info', 'Step 1-5-17');
+    this.chatgptToolControl.selectedTools.clear();
+    return count;
+  }
+
+  // ================================================================================
+  // Step 0-4-1: 排他制御ユーティリティ (exclusive-control.js統合)
+  // ================================================================================
+
+  /**
+   * 排他制御ユーティリティの初期化
+   */
+  initializeExclusiveControl() {
+    // タイムアウト設定（ミリ秒）
+    this.exclusiveControlTimeouts = {
+      'Deep Research': 40 * 60 * 1000,    // 40分
+      'ディープリサーチ': 40 * 60 * 1000, // 40分（日本語）
+      'エージェント': 40 * 60 * 1000,     // 40分
+      'エージェントモード': 40 * 60 * 1000, // 40分
+      'Canvas': 10 * 60 * 1000,           // 10分
+      'ウェブ検索': 8 * 60 * 1000,        // 8分
+      'Web Search': 8 * 60 * 1000,        // 8分
+      '通常': 5 * 60 * 1000,              // 5分
+      'default': 5 * 60 * 1000,           // 5分（デフォルト）
+    };
+
+    // マーカーフォーマット設定
+    this.markerFormat = {
+      prefix: '現在操作中です',
+      separator: '_',
+      includeTimestamp: true,
+      includePCId: true,
+      includeFunction: false,
+    };
+
+    // タイムアウトログのバッファ
+    this.timeoutLogBuffer = [];
+    this.timeoutLogTimer = null;
+
+    this.log('【StreamProcessor-ステップ0-4-1】排他制御ユーティリティ初期化完了', 'info', 'Step 0-4-1');
+  }
+
+  /**
+   * 排他制御マーカーを作成
+   * @param {string} pcId - PC識別子
+   * @param {Object} additionalData - 追加データ
+   * @returns {string} マーカー文字列
+   */
+  createExclusiveMarker(pcId, additionalData = {}) {
+    const parts = [];
+
+    // プレフィックス
+    parts.push(this.markerFormat.prefix);
+
+    // タイムスタンプ（日本時間）
+    if (this.markerFormat.includeTimestamp) {
+      const now = new Date();
+      const jstOffset = 9 * 60 * 60 * 1000; // +9時間をミリ秒に変換
+      const jstDate = new Date(now.getTime() + jstOffset);
+
+      // 日付部分 (YYYY-MM-DD)
+      const dateStr = jstDate.toISOString().split('T')[0];
+      parts.push(dateStr);
+
+      // 時間部分 (HH:MM:SS)
+      const timeStr = jstDate.toISOString().split('T')[1].split('.')[0];
+      parts.push(timeStr);
+
+      this.log('【StreamProcessor-ステップ0-4-1】新形式マーカー作成', 'debug', 'Step 0-4-1', {
+        日付: dateStr,
+        時刻: timeStr,
+        JST: true,
+        形式: '現在操作中です_日付_時刻_PC識別子'
+      });
+    }
+
+    // PC識別子
+    if (this.markerFormat.includePCId) {
+      parts.push(pcId);
+    }
+
+    // 機能名（オプション）
+    if (this.markerFormat.includeFunction && additionalData.function) {
+      parts.push(additionalData.function);
+    }
+
+    // 追加のカスタムデータ
+    if (additionalData.custom) {
+      parts.push(additionalData.custom);
+    }
+
+    return parts.join(this.markerFormat.separator);
+  }
+
+  /**
+   * マーカーを解析
+   * @param {string} marker - マーカー文字列
+   * @returns {Object|null} 解析結果
+   */
+  parseExclusiveMarker(marker) {
+    if (!marker || typeof marker !== 'string') {
+      return null;
+    }
+
+    // マーカーパターン: 現在操作中です_タイムスタンプ_PC識別子_機能名（オプション）
+    const parts = marker.split(this.markerFormat.separator);
+
+    if (parts.length >= 3) {
+      let timestamp, pcId, functionName;
+
+      // 新形式のチェック（日付_時刻が分離）: 現在操作中です_2025-09-13_04:50:56_ooeehlmj_98ae8_通常
+      if (parts.length >= 4 && parts[1].match(/^\d{4}-\d{2}-\d{2}$/)) {
+        // 新形式
+        const dateStr = parts[1]; // 2025-09-13
+        const timeStr = parts[2]; // 04:50:56
+        timestamp = `${dateStr}T${timeStr}`;
+        pcId = parts[3];
+        functionName = parts.length >= 5 ? parts[4] : null;
+      } else {
+        // 旧形式
+        timestamp = parts[1];
+        pcId = parts[2];
+        functionName = parts.length >= 4 ? parts[3] : null;
+      }
+
+      try {
+        const timestampDate = new Date(timestamp);
+        const age = Date.now() - timestampDate.getTime();
+
+        return {
+          original: marker,
+          timestamp: timestampDate,
+          timestampString: timestamp,
+          pcId: pcId,
+          functionName: functionName,
+          age: age,
+          ageMinutes: Math.floor(age / (60 * 1000)),
+          isValid: !isNaN(timestampDate.getTime())
+        };
+      } catch (error) {
+        this.log('【StreamProcessor-ステップ0-4-1】マーカー解析エラー', 'warn', 'Step 0-4-1', error);
+        return null;
+      }
+    }
+
+    // 旧形式のマーカー（タイムスタンプなし）の場合
+    if (marker === this.markerFormat.prefix || marker === '現在操作中です') {
+      return {
+        original: marker,
+        timestamp: null,
+        pcId: 'unknown',
+        age: Infinity, // 古いものとして扱う
+        ageMinutes: Infinity,
+        isValid: false,
+        isLegacy: true
+      };
+    }
+
+    return null;
+  }
+
+  /**
+   * マーカーがタイムアウトしているか判定
+   * @param {string} marker - マーカー文字列
+   * @param {Object} task - タスクオブジェクト
+   * @param {Object} customRules - カスタムルール
+   * @returns {boolean} タイムアウトしている場合true
+   */
+  isExclusiveTimeout(marker, task, customRules = {}) {
+    const parsed = this.parseExclusiveMarker(marker);
+
+    if (!parsed) {
+      // 解析できない場合はタイムアウトとみなす
+      return true;
+    }
+
+    // 旧形式のマーカーは即座にタイムアウト
+    if (parsed.isLegacy) {
+      this.log('【StreamProcessor-ステップ0-4-1】旧形式マーカーを検出 - タイムアウトとして処理', 'info', 'Step 0-4-1');
+      return true;
+    }
+
+    // 機能名を取得（タスクから、またはマーカーから）
+    const functionName = task?.function || task?.displayedFunction || parsed.functionName || 'default';
+
+    // タイムアウト時間を決定（優先順位: カスタムルール > 機能別設定 > デフォルト）
+    const timeout = customRules[functionName] ||
+                   this.exclusiveControlTimeouts[functionName] ||
+                   this.exclusiveControlTimeouts.default;
+
+    const isTimedOut = parsed.age > timeout;
+
+    if (isTimedOut) {
+      // セル位置を安全に取得
+      const cell = (task?.column && task?.row) ? `${task.column}${task.row}` : 'unknown';
+
+      // タイムアウトログをバッファに追加
+      this.addExclusiveTimeoutLog({
+        cell: cell,
+        function: functionName,
+        ageMinutes: parsed.ageMinutes,
+        timeoutMinutes: Math.floor(timeout / (60 * 1000)),
+        pcId: parsed.pcId
+      });
+    }
+
+    return isTimedOut;
+  }
+
+  /**
+   * マーカーが有効かチェック
+   * @param {string} marker - マーカー文字列
+   * @returns {boolean} 有効な場合true
+   */
+  isValidExclusiveMarker(marker) {
+    const parsed = this.parseExclusiveMarker(marker);
+    return parsed && parsed.isValid && !parsed.isLegacy;
+  }
+
+  /**
+   * マーカーの年齢を取得（分単位）
+   * @param {string} marker - マーカー文字列
+   * @returns {number} 年齢（分）
+   */
+  getExclusiveMarkerAge(marker) {
+    const parsed = this.parseExclusiveMarker(marker);
+    return parsed ? parsed.ageMinutes : Infinity;
+  }
+
+  /**
+   * 特定のPC IDのマーカーかチェック
+   * @param {string} marker - マーカー文字列
+   * @param {string} pcId - チェックするPC ID
+   * @returns {boolean} 一致する場合true
+   */
+  isMarkerFromPC(marker, pcId) {
+    const parsed = this.parseExclusiveMarker(marker);
+    return parsed && parsed.pcId === pcId;
+  }
+
+  /**
+   * 推奨待機時間を取得
+   * @param {string} marker - マーカー文字列
+   * @param {Object} task - タスクオブジェクト
+   * @returns {number} 推奨待機時間（ミリ秒）
+   */
+  getRecommendedWaitTime(marker, task) {
+    const parsed = this.parseExclusiveMarker(marker);
+
+    if (!parsed || parsed.isLegacy) {
+      return 0; // 即座に処理可能
+    }
+
+    const functionName = task?.function || parsed.functionName || 'default';
+    const timeout = this.exclusiveControlTimeouts[functionName] || this.exclusiveControlTimeouts.default;
+    const remaining = timeout - parsed.age;
+
+    // 残り時間がある場合はその時間、ない場合は0
+    return Math.max(0, remaining);
+  }
+
+  /**
+   * タイムアウトログをバッファに追加し、まとめて出力
+   * @param {Object} logData - ログデータ
+   */
+  addExclusiveTimeoutLog(logData) {
+    this.timeoutLogBuffer.push(logData);
+
+    // 既存のタイマーをクリア
+    if (this.timeoutLogTimer) {
+      clearTimeout(this.timeoutLogTimer);
+    }
+
+    // 100ms後にまとめて出力
+    this.timeoutLogTimer = setTimeout(() => {
+      if (this.timeoutLogBuffer.length > 0) {
+        // 同じ関数・PCIDでグループ化
+        const grouped = {};
+        this.timeoutLogBuffer.forEach(log => {
+          const key = `${log.function}_${log.pcId}`;
+          if (!grouped[key]) {
+            grouped[key] = {
+              function: log.function,
+              pcId: log.pcId,
+              timeoutMinutes: log.timeoutMinutes,
+              cells: [],
+              ages: []
+            };
+          }
+          grouped[key].cells.push(log.cell);
+          grouped[key].ages.push(log.ageMinutes);
+        });
+
+        // グループごとにログ出力
+        Object.values(grouped).forEach(group => {
+          const avgAge = Math.floor(group.ages.reduce((a, b) => a + b, 0) / group.ages.length);
+          this.log(`【StreamProcessor-ステップ0-4-1】マーカータイムアウト検出 (${group.cells.length}件)`, 'info', 'Step 0-4-1', {
+            cells: group.cells.join(', '),
+            function: group.function,
+            avgAgeMinutes: avgAge,
+            timeoutMinutes: group.timeoutMinutes,
+            pcId: group.pcId
+          });
+        });
+
+        // バッファをクリア
+        this.timeoutLogBuffer = [];
+      }
+      this.timeoutLogTimer = null;
+    }, 100);
+  }
+
+  // ================================================================================
+  // Step 0-4-2: 排他制御マネージャー (exclusive-control-manager.js統合)
+  // ================================================================================
+
+  /**
+   * 排他制御マネージャーの初期化
+   */
+  initializeExclusiveControlManager() {
+    // イベントフック管理
+    this.exclusiveControlHooks = {};
+
+    // 処理中のロック情報を管理
+    this.activeLocks = new Map();
+
+    // 再試行スケジュール管理
+    this.retrySchedules = new Map();
+
+    this.log('【StreamProcessor-ステップ0-4-2】排他制御マネージャー初期化完了', 'info', 'Step 0-4-2', {
+      pcId: this.pcId || 'StreamProcessor-integrated'
+    });
+  }
+
+  /**
+   * 排他制御イベントフックを登録
+   * @param {string} event - イベント名
+   * @param {Function} callback - コールバック関数
+   */
+  onExclusiveControlEvent(event, callback) {
+    if (!this.exclusiveControlHooks[event]) {
+      this.exclusiveControlHooks[event] = [];
+    }
+    this.exclusiveControlHooks[event].push(callback);
+  }
+
+  /**
+   * 排他制御イベントをトリガー
+   * @param {string} event - イベント名
+   * @param {Object} data - イベントデータ
+   */
+  async triggerExclusiveControlEvent(event, data) {
+    const callbacks = this.exclusiveControlHooks[event] || [];
+    for (const callback of callbacks) {
+      try {
+        await callback(data);
+      } catch (error) {
+        this.log(`【StreamProcessor-ステップ0-4-2】イベントフックエラー (${event})`, 'error', 'Step 0-4-2', error);
+      }
+    }
+  }
+
+  /**
+   * ロックを取得
+   * @param {Object} task - タスクオブジェクト
+   * @param {Object} sheetsClient - Google Sheets クライアント
+   * @param {Object} options - オプション
+   * @returns {Object} 取得結果
+   */
+  async acquireExclusiveLock(task, sheetsClient, options = {}) {
+    const { spreadsheetId, gid } = options;
+    const cellRef = `${task.column}${task.row}`;
+
+    try {
+      // フック: ロック取得前
+      await this.triggerExclusiveControlEvent('beforeAcquire', { task, cellRef });
+
+      // 現在の値を取得
+      let sheetName;
+      let currentValue;
+
+      try {
+        sheetName = await sheetsClient.getSheetNameFromGid(spreadsheetId, gid);
+        this.log(`【StreamProcessor-ステップ0-4-2】シート名取得成功: ${sheetName}`, 'debug', 'Step 0-4-2');
+
+        currentValue = await sheetsClient.getCellValue(
+          spreadsheetId,
+          sheetName,
+          cellRef
+        );
+      } catch (error) {
+        // フォールバック: 従来のgetCellメソッドを使用
+        if (sheetsClient.getCell && typeof sheetsClient.getCell === 'function') {
+          currentValue = await sheetsClient.getCell(
+            spreadsheetId,
+            cellRef,
+            gid
+          );
+        } else {
+          throw error;
+        }
+      }
+
+      // 既存のマーカーチェック
+      if (currentValue && currentValue.includes('現在操作中です')) {
+        const handled = await this.handleExistingMarker(
+          currentValue,
+          task,
+          sheetsClient,
+          options
+        );
+
+        if (!handled.canProceed) {
+          await this.triggerExclusiveControlEvent('lockDenied', { task, cellRef, reason: handled.reason });
+          return {
+            success: false,
+            reason: handled.reason,
+            marker: currentValue,
+            recommendedWaitTime: handled.recommendedWaitTime
+          };
+        }
+      }
+
+      // 新しいマーカーを作成
+      const newMarker = this.createExclusiveMarker(this.pcId || 'StreamProcessor', {
+        function: task.function || task.displayedFunction
+      });
+
+      // マーカーを設定
+      await sheetsClient.updateCell(
+        spreadsheetId,
+        cellRef,
+        newMarker,
+        gid
+      );
+
+      // アクティブロックとして記録
+      this.activeLocks.set(cellRef, {
+        marker: newMarker,
+        task: task,
+        acquiredAt: new Date()
+      });
+
+      // フック: ロック取得後
+      await this.triggerExclusiveControlEvent('afterAcquire', {
+        task,
+        cellRef,
+        marker: newMarker,
+        success: true
+      });
+
+      this.log(`【StreamProcessor-ステップ0-4-2】ロック取得成功: ${cellRef}`, 'info', 'Step 0-4-2');
+
+      return {
+        success: true,
+        marker: newMarker,
+        cellRef: cellRef
+      };
+
+    } catch (error) {
+      this.log(`【StreamProcessor-ステップ0-4-2】ロック取得エラー: ${cellRef}`, 'error', 'Step 0-4-2', error);
+
+      await this.triggerExclusiveControlEvent('acquireError', { task, cellRef, error });
+
+      return {
+        success: false,
+        reason: 'error',
+        error: error
+      };
+    }
+  }
+
+  /**
+   * ロックを解放
+   * @param {Object} task - タスクオブジェクト
+   * @param {string} newValue - 新しい値（AIの応答など）
+   * @param {Object} sheetsClient - Google Sheets クライアント
+   * @param {Object} options - オプション
+   */
+  async releaseExclusiveLock(task, newValue, sheetsClient, options = {}) {
+    const { spreadsheetId, gid } = options;
+    const cellRef = `${task.column}${task.row}`;
+
+    try {
+      // フック: ロック解放前
+      await this.triggerExclusiveControlEvent('beforeRelease', { task, cellRef, newValue });
+
+      // 新しい値を書き込み（マーカーを上書き）
+      await sheetsClient.updateCell(
+        spreadsheetId,
+        cellRef,
+        newValue,
+        gid
+      );
+
+      // アクティブロックから削除
+      this.activeLocks.delete(cellRef);
+
+      // フック: ロック解放後
+      await this.triggerExclusiveControlEvent('afterRelease', { task, cellRef, success: true });
+
+      this.log(`【StreamProcessor-ステップ0-4-2】ロック解放成功: ${cellRef}`, 'info', 'Step 0-4-2');
+
+      return { success: true };
+
+    } catch (error) {
+      this.log(`【StreamProcessor-ステップ0-4-2】ロック解放エラー: ${cellRef}`, 'error', 'Step 0-4-2', error);
+
+      await this.triggerExclusiveControlEvent('releaseError', { task, cellRef, error });
+
+      return {
+        success: false,
+        error: error
+      };
+    }
+  }
+
+  /**
+   * 既存マーカーの処理
+   * @param {string} marker - 既存のマーカー
+   * @param {Object} task - タスクオブジェクト
+   * @param {Object} sheetsClient - Google Sheets クライアント
+   * @param {Object} options - オプション
+   * @returns {Object} 処理結果
+   */
+  async handleExistingMarker(marker, task, sheetsClient, options = {}) {
+    const strategy = options.strategy || 'smart';
+
+    const strategies = {
+      'aggressive': () => this.aggressiveExclusiveStrategy(marker, task),
+      'polite': () => this.politeExclusiveStrategy(marker, task),
+      'smart': () => this.smartExclusiveStrategy(marker, task),
+      'default': () => this.smartExclusiveStrategy(marker, task)
+    };
+
+    const strategyFn = strategies[strategy] || strategies.default;
+    return await strategyFn();
+  }
+
+  /**
+   * スマート戦略（推奨）
+   * @param {string} marker - マーカー
+   * @param {Object} task - タスクオブジェクト
+   */
+  async smartExclusiveStrategy(marker, task) {
+    // 自分のマーカーの場合は即座に処理可能
+    if (this.isMarkerFromPC(marker, this.pcId || 'StreamProcessor')) {
+      this.log('【StreamProcessor-ステップ0-4-2】自分のマーカーを検出 - 処理続行', 'info', 'Step 0-4-2');
+      return { canProceed: true, reason: 'own-marker' };
+    }
+
+    // タイムアウトチェック
+    if (this.isExclusiveTimeout(marker, task)) {
+      this.log('【StreamProcessor-ステップ0-4-2】タイムアウトしたマーカー - 上書き可能', 'info', 'Step 0-4-2');
+      return { canProceed: true, reason: 'timeout' };
+    }
+
+    // まだタイムアウトしていない場合
+    const recommendedWaitTime = this.getRecommendedWaitTime(marker, task);
+
+    this.log('【StreamProcessor-ステップ0-4-2】他PCが作業中 - 待機推奨', 'info', 'Step 0-4-2', {
+      recommendedWaitMinutes: Math.ceil(recommendedWaitTime / (60 * 1000))
+    });
+
+    return {
+      canProceed: false,
+      reason: 'locked-by-other',
+      recommendedWaitTime: recommendedWaitTime
+    };
+  }
+
+  /**
+   * アグレッシブ戦略（強制上書き）
+   * @param {string} marker - マーカー
+   * @param {Object} task - タスクオブジェクト
+   */
+  async aggressiveExclusiveStrategy(marker, task) {
+    this.log('【StreamProcessor-ステップ0-4-2】アグレッシブ戦略 - 強制上書き', 'warn', 'Step 0-4-2');
+    return { canProceed: true, reason: 'forced' };
+  }
+
+  /**
+   * ポライト戦略（常に待機）
+   * @param {string} marker - マーカー
+   * @param {Object} task - タスクオブジェクト
+   */
+  async politeExclusiveStrategy(marker, task) {
+    const recommendedWaitTime = this.getRecommendedWaitTime(marker, task);
+
+    this.log('【StreamProcessor-ステップ0-4-2】ポライト戦略 - 待機', 'info', 'Step 0-4-2');
+
+    return {
+      canProceed: false,
+      reason: 'polite-wait',
+      recommendedWaitTime: recommendedWaitTime || 5 * 60 * 1000 // 最低5分待機
+    };
+  }
+
+  /**
+   * 再処理をスケジュール
+   * @param {Object} task - タスクオブジェクト
+   * @param {number} waitTime - 待機時間（ミリ秒）
+   * @param {Function} callback - コールバック関数
+   */
+  scheduleExclusiveRetry(task, waitTime, callback) {
+    const cellRef = `${task.column}${task.row}`;
+
+    // 既存のスケジュールをキャンセル
+    if (this.retrySchedules.has(cellRef)) {
+      clearTimeout(this.retrySchedules.get(cellRef));
+    }
+
+    const timeoutId = setTimeout(async () => {
+      this.log(`【StreamProcessor-ステップ0-4-2】再処理実行: ${cellRef}`, 'info', 'Step 0-4-2');
+
+      try {
+        await callback();
+      } catch (error) {
+        this.log(`【StreamProcessor-ステップ0-4-2】再処理エラー: ${cellRef}`, 'error', 'Step 0-4-2', error);
+      } finally {
+        this.retrySchedules.delete(cellRef);
+      }
+    }, waitTime);
+
+    this.retrySchedules.set(cellRef, timeoutId);
+
+    this.log(`【StreamProcessor-ステップ0-4-2】再処理スケジュール設定: ${cellRef}`, 'info', 'Step 0-4-2', {
+      waitMinutes: Math.round(waitTime / (60 * 1000))
+    });
+  }
+
+  /**
+   * アクティブロックの状態を取得
+   * @returns {Object} ロック状態
+   */
+  getActiveExclusiveLocks() {
+    const locks = {};
+    for (const [cellRef, lockInfo] of this.activeLocks.entries()) {
+      locks[cellRef] = {
+        marker: lockInfo.marker,
+        acquiredAt: lockInfo.acquiredAt.toISOString(),
+        durationMs: Date.now() - lockInfo.acquiredAt.getTime()
+      };
+    }
+    return locks;
+  }
+
+  /**
+   * すべてのアクティブロックをクリア（緊急用）
+   */
+  clearAllExclusiveLocks() {
+    const count = this.activeLocks.size;
+    this.activeLocks.clear();
+
+    for (const [cellRef, timeoutId] of this.retrySchedules.entries()) {
+      clearTimeout(timeoutId);
+    }
+    this.retrySchedules.clear();
+
+    this.log(`【StreamProcessor-ステップ0-4-2】すべてのロックをクリア: ${count}個`, 'warn', 'Step 0-4-2');
+
+    return count;
+  }
+
+  // ================================================================================
+  // Step 1-6: 排他制御ログヘルパー (exclusive-control-logger-helper.js統合)
+  // ================================================================================
+
+  /**
+   * 排他制御ログヘルパーの初期化
+   */
+  initializeExclusiveControlLoggerHelper() {
+    // ログヘルパーの設定
+    this.exclusiveLoggerConfig = {
+      spreadsheetLogger: this.spreadsheetLogger || null,
+      spreadsheetData: this.spreadsheetData || null,
+      sheetsClient: this.sheetsClient || null
+    };
+
+    this.log('【StreamProcessor-ステップ1-6】排他制御ログヘルパー初期化完了', 'info', 'Step 1-6', {
+      hasSpreadsheetLogger: !!this.exclusiveLoggerConfig.spreadsheetLogger,
+      hasSpreadsheetData: !!this.exclusiveLoggerConfig.spreadsheetData,
+      hasSheetsClient: !!this.exclusiveLoggerConfig.sheetsClient
+    });
+
+    // 排他制御イベントフックを設定
+    this.setupExclusiveControlEventHooks();
+  }
+
+  /**
+   * 排他制御イベントフックの設定
+   */
+  setupExclusiveControlEventHooks() {
+    // ロック取得成功時
+    this.onExclusiveControlEvent('afterAcquire', async (eventData) => {
+      if (eventData.success) {
+        await this.logExclusiveControlEvent(eventData.task, {
+          action: 'EXCLUSIVE_CONTROL',
+          type: 'LOCK_ACQUIRED',
+          cell: eventData.cellRef,
+          marker: eventData.marker
+        });
+      }
+    });
+
+    // ロック解放時
+    this.onExclusiveControlEvent('afterRelease', async (eventData) => {
+      await this.logExclusiveControlEvent(eventData.task, {
+        action: 'EXCLUSIVE_CONTROL',
+        type: 'LOCK_RELEASED',
+        cell: eventData.cellRef
+      });
+    });
+
+    // ロック取得拒否時
+    this.onExclusiveControlEvent('lockDenied', async (eventData) => {
+      await this.logExclusiveControlEvent(eventData.task, {
+        action: 'EXCLUSIVE_CONTROL',
+        type: 'LOCK_DENIED',
+        cell: eventData.cellRef,
+        reason: eventData.reason
+      });
+    });
+
+    // エラー時
+    this.onExclusiveControlEvent('acquireError', async (eventData) => {
+      await this.logExclusiveControlEvent(eventData.task, {
+        action: 'EXCLUSIVE_CONTROL',
+        type: 'ERROR',
+        cell: eventData.cellRef,
+        error: eventData.error?.message || 'Unknown error'
+      });
+    });
+
+    this.log('【StreamProcessor-ステップ1-6】イベントフック設定完了', 'info', 'Step 1-6');
+  }
+
+  /**
+   * 排他制御ログヘルパー設定の更新
+   * @param {Object} config - 設定オブジェクト
+   */
+  updateExclusiveLoggerConfig(config) {
+    const oldConfig = {
+      hasSpreadsheetLogger: !!this.exclusiveLoggerConfig.spreadsheetLogger,
+      hasSpreadsheetData: !!this.exclusiveLoggerConfig.spreadsheetData,
+      hasSheetsClient: !!this.exclusiveLoggerConfig.sheetsClient
+    };
+
+    this.exclusiveLoggerConfig.spreadsheetLogger = config.spreadsheetLogger || this.exclusiveLoggerConfig.spreadsheetLogger;
+    this.exclusiveLoggerConfig.spreadsheetData = config.spreadsheetData || this.exclusiveLoggerConfig.spreadsheetData;
+    this.exclusiveLoggerConfig.sheetsClient = config.sheetsClient || this.exclusiveLoggerConfig.sheetsClient;
+
+    const newConfig = {
+      hasSpreadsheetLogger: !!this.exclusiveLoggerConfig.spreadsheetLogger,
+      hasSpreadsheetData: !!this.exclusiveLoggerConfig.spreadsheetData,
+      hasSheetsClient: !!this.exclusiveLoggerConfig.sheetsClient
+    };
+
+    this.log('【StreamProcessor-ステップ1-6】設定更新完了', 'info', 'Step 1-6', {
+      before: oldConfig,
+      after: newConfig,
+      spreadsheetId: this.exclusiveLoggerConfig.spreadsheetData?.spreadsheetId ?
+        `${this.exclusiveLoggerConfig.spreadsheetData.spreadsheetId.substring(0, 10)}...` : 'null'
+    });
+  }
+
+  /**
+   * 排他制御イベントをSpreadsheetLoggerに記録
+   * @param {Object} task - タスクオブジェクト
+   * @param {Object} logData - ログデータ
+   * @returns {Promise<boolean>} 成功/失敗
+   */
+  async logExclusiveControlEvent(task, logData) {
+    if (!this.exclusiveLoggerConfig.spreadsheetLogger) {
+      this.log('【StreamProcessor-ステップ1-6】SpreadsheetLoggerが未設定', 'warn', 'Step 1-6');
+      return false;
+    }
+
+    try {
+      // 共通パラメータを生成
+      const commonParams = this.generateExclusiveLogParams();
+
+      // ログデータにタイムスタンプを追加
+      const enrichedLogData = {
+        ...logData,
+        timestamp: new Date().toISOString(),
+        isFirstTask: false // 排他制御ログは追加モード
+      };
+
+      this.log('【StreamProcessor-ステップ1-6】ログ記録実行', 'debug', 'Step 1-6', {
+        action: enrichedLogData.action,
+        type: enrichedLogData.type,
+        cell: enrichedLogData.cell
+      });
+
+      // SpreadsheetLoggerを呼び出し
+      await this.exclusiveLoggerConfig.spreadsheetLogger.writeLogToSpreadsheet(task, {
+        ...commonParams,
+        ...enrichedLogData
+      });
+
+      this.log('【StreamProcessor-ステップ1-6】ログ記録成功', 'debug', 'Step 1-6');
+      return true;
+
+    } catch (error) {
+      this.log('【StreamProcessor-ステップ1-6】ログ記録エラー', 'error', 'Step 1-6', {
+        errorMessage: error.message,
+        taskInfo: task ? `${task.column}${task.row}` : 'null',
+        logDataAction: logData.action
+      });
+      return false;
+    }
+  }
+
+  /**
+   * 排他制御ログ用共通パラメータを生成
+   * @returns {Object} 共通パラメータ
+   */
+  generateExclusiveLogParams() {
+    const params = {
+      url: 'N/A', // 排他制御ログなのでURL不要
+      sheetsClient: this.exclusiveLoggerConfig.sheetsClient || this.sheetsClient || globalThis.sheetsClient,
+      spreadsheetId: this.exclusiveLoggerConfig.spreadsheetData?.spreadsheetId,
+      gid: this.exclusiveLoggerConfig.spreadsheetData?.gid,
+      spreadsheetData: this.exclusiveLoggerConfig.spreadsheetData
+    };
+
+    this.log('【StreamProcessor-ステップ1-6】共通パラメータ生成', 'debug', 'Step 1-6', {
+      hasLocalSheetsClient: !!this.exclusiveLoggerConfig.sheetsClient,
+      hasGlobalSheetsClient: !!globalThis.sheetsClient,
+      hasSpreadsheetData: !!this.exclusiveLoggerConfig.spreadsheetData,
+      spreadsheetId: params.spreadsheetId ? `${params.spreadsheetId.substring(0, 10)}...` : 'null',
+      gid: params.gid
+    });
+
+    return params;
+  }
+
+  /**
+   * 排他制御ログヘルパー設定の有効性をチェック
+   * @returns {Object} 設定チェック結果
+   */
+  validateExclusiveLoggerConfig() {
+    const result = {
+      isValid: true,
+      warnings: [],
+      errors: []
+    };
+
+    if (!this.exclusiveLoggerConfig.spreadsheetLogger) {
+      result.errors.push('SpreadsheetLoggerが設定されていません');
+      result.isValid = false;
+    }
+
+    if (!this.exclusiveLoggerConfig.spreadsheetData) {
+      result.warnings.push('spreadsheetDataが設定されていません');
+    } else {
+      if (!this.exclusiveLoggerConfig.spreadsheetData.spreadsheetId) {
+        result.errors.push('spreadsheetIdが設定されていません');
+        result.isValid = false;
+      }
+      if (!this.exclusiveLoggerConfig.spreadsheetData.gid) {
+        result.warnings.push('gidが設定されていません');
+      }
+    }
+
+    if (!this.exclusiveLoggerConfig.sheetsClient && !globalThis.sheetsClient) {
+      result.errors.push('sheetsClientが設定されていません');
+      result.isValid = false;
+    }
+
+    return result;
   }
 }

@@ -16,12 +16,12 @@
 
 // タイムアウト設定をインポート
 import '../config/timeout-config.js';
-import { RetryManager } from '../utils/retry-manager.js';
+// RetryManager機能を統合済み
 
 export class AITaskExecutor {
   constructor(logger = console) {
     this.logger = logger;
-    this.retryManager = new RetryManager(logger);
+    // RetryManager機能はAI共通基盤に統合済み
   }
 
   /**
