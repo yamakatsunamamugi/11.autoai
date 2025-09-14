@@ -1356,10 +1356,44 @@ export default class StreamProcessorV2 {
   }
 
   /**
-   * 行処理判定（プレースホルダー実装）
+   * 行処理判定 - 行制御に基づいて処理対象かチェック
+   * ステップ3-4-5: 行制御による処理対象判定
    */
-  shouldProcessRow(rowIndex) {
-    return rowIndex >= 9; // 通常9行目から開始
+  shouldProcessRow(rowNumber, rowControls) {
+    // ステップ3-4-5-1: 行制御がない場合は全て処理
+    if (!rowControls || rowControls.length === 0) {
+      this.log(`行制御なし - 行${rowNumber}を処理対象とする`, 'info', '3-4-5-1');
+      return true;
+    }
+
+    // ステップ3-4-5-2: "この行のみ処理"が優先
+    const onlyControls = rowControls.filter(c => c.type === 'only');
+    if (onlyControls.length > 0) {
+      const shouldProcess = onlyControls.some(c => c.row === rowNumber);
+      this.log(`"この行のみ処理"制御: 行${rowNumber} = ${shouldProcess}`, 'info', '3-4-5-2');
+      return shouldProcess;
+    }
+
+    // ステップ3-4-5-3: "この行から処理"チェック
+    const fromControl = rowControls.find(c => c.type === 'from');
+    if (fromControl) {
+      if (rowNumber < fromControl.row) {
+        this.log(`"この行から処理"制御: 行${rowNumber} < ${fromControl.row} = スキップ`, 'info', '3-4-5-3');
+        return false;
+      }
+    }
+
+    // ステップ3-4-5-4: "この行で停止"チェック
+    const untilControl = rowControls.find(c => c.type === 'until');
+    if (untilControl) {
+      if (rowNumber > untilControl.row) {
+        this.log(`"この行で停止"制御: 行${rowNumber} > ${untilControl.row} = スキップ`, 'info', '3-4-5-4');
+        return false;
+      }
+    }
+
+    this.log(`行${rowNumber}は処理対象`, 'success', '3-4-5');
+    return true;
   }
 
   /**
@@ -1403,17 +1437,104 @@ export default class StreamProcessorV2 {
   }
 
   /**
-   * 行制御取得（プレースホルダー実装）
+   * 行制御取得 - スプレッドシートのB列から行制御を解析
+   * ステップ3-4-6: 行制御情報の取得
    */
-  getRowControl(rowIndex) {
-    return null; // 実装時に制御ロジックを追加
+  getRowControl(data) {
+    this.log('行制御を取得中...', 'info', '3-4-6');
+    const controls = [];
+
+    if (!data || !data.values) {
+      this.log('データなし - 行制御なし', 'warn', '3-4-6-1');
+      return controls;
+    }
+
+    // ステップ3-4-6-1: B列で制御文字列を探す
+    for (let i = 0; i < data.values.length; i++) {
+      const row = data.values[i];
+      if (!row) continue;
+
+      const cellB = row[1]; // B列
+      if (cellB && typeof cellB === 'string') {
+        // ステップ3-4-6-2: "この行から処理"チェック
+        if (cellB.includes('この行から処理')) {
+          controls.push({ type: 'from', row: i + 1 });
+          this.log(`行制御検出: "この行から処理" at 行${i + 1}`, 'success', '3-4-6-2');
+        }
+        // ステップ3-4-6-3: "この行で停止"チェック
+        else if (cellB.includes('この行で停止') || cellB.includes('この行の処理後に停止')) {
+          controls.push({ type: 'until', row: i + 1 });
+          this.log(`行制御検出: "この行で停止" at 行${i + 1}`, 'success', '3-4-6-3');
+        }
+        // ステップ3-4-6-4: "この行のみ処理"チェック
+        else if (cellB.includes('この行のみ処理')) {
+          controls.push({ type: 'only', row: i + 1 });
+          this.log(`行制御検出: "この行のみ処理" at 行${i + 1}`, 'success', '3-4-6-4');
+        }
+      }
+    }
+
+    if (controls.length > 0) {
+      this.log(`行制御検出結果: ${controls.length}件`, 'success', '3-4-6');
+      controls.forEach(c => {
+        this.log(`  - ${c.type}: 行${c.row}`, 'info', '3-4-6');
+      });
+    } else {
+      this.log('行制御なし', 'info', '3-4-6');
+    }
+
+    return controls;
   }
 
   /**
-   * 列制御取得（プレースホルダー実装）
+   * 列制御取得 - スプレッドシートから列制御を解析
+   * ステップ3-4-7: 列制御情報の取得
    */
-  getColumnControl(columnIndex) {
-    return null; // 実装時に制御ロジックを追加
+  getColumnControl(data) {
+    this.log('列制御を取得中...', 'info', '3-4-7');
+    const controls = [];
+
+    if (!data || !data.values) {
+      this.log('データなし - 列制御なし', 'warn', '3-4-7-1');
+      return controls;
+    }
+
+    // ステップ3-4-7-1: 制御行1-10で制御文字列を探す
+    for (let i = 0; i < Math.min(10, data.values.length); i++) {
+      const row = data.values[i];
+      if (!row) continue;
+
+      for (let j = 0; j < row.length; j++) {
+        const cell = row[j];
+        if (cell && typeof cell === 'string') {
+          const column = this.indexToColumn(j);
+
+          // ステップ3-4-7-2: "この列から処理"チェック
+          if (cell.includes('この列から処理')) {
+            controls.push({ type: 'from', column, index: j });
+            this.log(`列制御検出: "この列から処理" at ${column}列`, 'success', '3-4-7-2');
+          }
+          // ステップ3-4-7-3: "この列で停止"チェック
+          else if (cell.includes('この列で停止') || cell.includes('この列の処理後に停止')) {
+            controls.push({ type: 'until', column, index: j });
+            this.log(`列制御検出: "この列で停止" at ${column}列`, 'success', '3-4-7-3');
+          }
+          // ステップ3-4-7-4: "この列のみ処理"チェック
+          else if (cell.includes('この列のみ処理')) {
+            controls.push({ type: 'only', column, index: j });
+            this.log(`列制御検出: "この列のみ処理" at ${column}列`, 'success', '3-4-7-4');
+          }
+        }
+      }
+    }
+
+    if (controls.length > 0) {
+      this.log(`列制御検出結果: ${controls.length}件`, 'success', '3-4-7');
+    } else {
+      this.log('列制御なし', 'info', '3-4-7');
+    }
+
+    return controls;
   }
 
   /**
