@@ -32,8 +32,6 @@ import { AITaskExecutor } from '../../core/ai-task-executor.js';
 import { WindowService } from '../../services/window-service.js';
 import { aiUrlManager } from '../../core/ai-url-manager.js';
 import { RetryManager } from '../../utils/retry-manager.js';
-import { GroupCompletionChecker } from './group-completion-checker.js';
-import { TaskWaitManager } from './task-wait-manager.js';
 import { ExclusiveControlManager } from '../../utils/exclusive-control-manager.js';
 import { ExclusiveControlLoggerHelper } from '../../utils/exclusive-control-logger-helper.js';
 import { sleep } from '../../utils/sleep-utils.js';
@@ -100,8 +98,6 @@ export default class StreamProcessorV2 {
     // Step 0-2: タスク生成・管理系初期化
     // ========================================
     this.log('タスク生成・管理系コンポーネントを初期化', 'info', 'Step 0-2');
-    this.completionChecker = new GroupCompletionChecker(this.retryManager, logger);
-    this.waitManager = new TaskWaitManager(logger);
     this.windowService = WindowService;
     this.completedTasks = new Set();
 
@@ -1363,7 +1359,6 @@ export default class StreamProcessorV2 {
     try {
       // 待機テキストがクリアされるまで待機
       // TODO: waitForClearanceメソッドが実装されていないため一時的にコメントアウト
-      // await this.waitManager.waitForClearance(spreadsheetData);
 
       // 失敗タスクを収集（RetryManagerのデータ構造から直接取得）
       const failedTasks = this.retryManager.groupFailedTasks.get(groupId) || new Map();
