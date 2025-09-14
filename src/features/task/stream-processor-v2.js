@@ -401,6 +401,16 @@ export default class StreamProcessorV2 {
       // ===== Step 2: 構造の動的再解析 =====
       // 毎回構造を再解析して、動的にグループを発見
       this.logger.log(`[StreamProcessorV2] 📊 構造を再解析中（イテレーション${groupIndex + 1}）...`);
+
+      // データサイズを確認
+      if (groupIndex === 0) {
+        console.log(`[DEBUG] StreamProcessor: spreadsheetData.values.length=${spreadsheetData.values ? spreadsheetData.values.length : 'undefined'}`);
+        if (spreadsheetData.values) {
+          const nonEmptyRows = spreadsheetData.values.filter(row => row && row.some(cell => cell)).length;
+          console.log(`[DEBUG] StreamProcessor: 非空行数=${nonEmptyRows}`);
+        }
+      }
+
       const structure = this.taskGenerator.analyzeStructure(spreadsheetData);
       const { promptGroups, controls, workRows } = structure;
 

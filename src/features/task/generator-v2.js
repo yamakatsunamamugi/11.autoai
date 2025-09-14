@@ -499,21 +499,30 @@ export default class TaskGeneratorV2 {
       (rows.function || 0) + 1,
       8  // 最低でも9行目から
     );
-    
+
+    // デバッグ情報を出力
+    console.log(`[DEBUG] identifyWorkRows: data.values.length=${data.values.length}, startRow=${startRow}`);
+    console.log(`[DEBUG] identifyWorkRows: rows構造:`, rows);
+
     for (let i = startRow; i < data.values.length; i++) {
       const row = data.values[i];
-      
+
       // 空行はスキップ
       if (!row || row.every(cell => !cell)) {
         continue;
       }
-      
+
       workRows.push({
         index: i,
         number: i + 1  // 1-based行番号
       });
     }
-    
+
+    console.log(`[DEBUG] identifyWorkRows: 検出した作業行数=${workRows.length}`);
+    if (workRows.length < 10) {
+      console.log(`[DEBUG] identifyWorkRows: 検出した作業行:`, workRows.map(w => `行${w.number}`).join(', '));
+    }
+
     return workRows;
   }
 
