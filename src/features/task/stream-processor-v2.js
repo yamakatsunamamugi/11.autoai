@@ -872,6 +872,10 @@ export default class StreamProcessorV2 {
     const startRow = 8; // 0ベース（9行目）
     const endRow = Math.min(maxPromptRow + 1, spreadsheetData.values.length);
 
+    // 処理対象行とスキップ行を収集
+    const processedRows = [];
+    const skippedRows = [];
+
     for (const rowIndex of promptRows) {
       // 最大タスク数に達したら終了
       if (tasks.length >= MAX_TASKS_PER_BATCH) {
@@ -883,9 +887,12 @@ export default class StreamProcessorV2 {
       if (rowIndex < startRow || rowIndex >= endRow) continue;
 
       // 行制御チェック
-      if (!this.shouldProcessRow(rowIndex + 1, rowControls)) {
+      const rowNumber = rowIndex + 1;
+      if (!this.shouldProcessRow(rowNumber, rowControls, true)) {
+        skippedRows.push(rowNumber);
         continue;
       }
+      processedRows.push(rowNumber);
 
       // 対応する回答列をチェック
       for (const answerColIndex of answerCols) {
@@ -977,6 +984,21 @@ export default class StreamProcessorV2 {
           this.processedAnswerCells.add(taskCell);
         }
       }
+    }
+
+    // 処理対象行とスキップ行のサマリーログ
+    if (processedRows.length > 0) {
+      const displayRows = processedRows.length > 10
+        ? `行${processedRows[0]}-${processedRows[processedRows.length - 1]}（${processedRows.length}行）`
+        : `行${processedRows.join(', ')}`;
+      this.log(`処理対象: ${displayRows}`, 'success', '3-4-5');
+    }
+
+    if (skippedRows.length > 0) {
+      const displaySkipped = skippedRows.length > 10
+        ? `行${skippedRows[0]}-${skippedRows[skippedRows.length - 1]}（${skippedRows.length}行）`
+        : `行${skippedRows.join(', ')}`;
+      this.log(`制御によりスキップ: ${displaySkipped}`, 'info', '3-4-5-4');
     }
 
     // ステップ5-1-6: 結果ログ
@@ -1697,10 +1719,10 @@ export default class StreamProcessorV2 {
    * 行処理判定 - 行制御に基づいて処理対象かチェック
    * Step 4-1: 行制御による処理対象判定
    */
-  shouldProcessRow(rowNumber, rowControls) {
+  shouldProcessRow(rowNumber, rowControls, silent = false) {
     // Step 4-1-1: 行制御がない場合は全て処理
     if (!rowControls || rowControls.length === 0) {
-      this.log(`行制御なし - 行${rowNumber}を処理対象とする`, 'info', 'Step 4-1-1');
+      if (!silent) this.log(`行制御なし - 行${rowNumber}を処理対象とする`, 'info', 'Step 4-1-1');
       return true;
     }
 
@@ -1708,7 +1730,7 @@ export default class StreamProcessorV2 {
     const onlyControls = rowControls.filter(c => c.type === 'only');
     if (onlyControls.length > 0) {
       const shouldProcess = onlyControls.some(c => c.row === rowNumber);
-      this.log(`"この行のみ処理"制御: 行${rowNumber} = ${shouldProcess}`, 'info', '3-4-5-2');
+      if (!silent) this.log(`"この行のみ処理"制御: 行${rowNumber} = ${shouldProcess}`, 'info', '3-4-5-2');
       return shouldProcess;
     }
 
@@ -1716,7 +1738,7 @@ export default class StreamProcessorV2 {
     const fromControl = rowControls.find(c => c.type === 'from');
     if (fromControl) {
       if (rowNumber < fromControl.row) {
-        this.log(`"この行から処理"制御: 行${rowNumber} < ${fromControl.row} = スキップ`, 'info', '3-4-5-3');
+        if (!silent) this.log(`"この行から処理"制御: 行${rowNumber} < ${fromControl.row} = スキップ`, 'info', '3-4-5-3');
         return false;
       }
     }
@@ -1725,12 +1747,12 @@ export default class StreamProcessorV2 {
     const untilControl = rowControls.find(c => c.type === 'until');
     if (untilControl) {
       if (rowNumber > untilControl.row) {
-        this.log(`"この行で停止"制御: 行${rowNumber} > ${untilControl.row} = スキップ`, 'info', '3-4-5-4');
+        if (!silent) this.log(`"この行で停止"制御: 行${rowNumber} > ${untilControl.row} = スキップ`, 'info', '3-4-5-4');
         return false;
       }
     }
 
-    this.log(`行${rowNumber}は処理対象`, 'success', '3-4-5');
+    if (!silent) this.log(`行${rowNumber}は処理対象`, 'success', '3-4-5');
     return true;
   }
 
@@ -2001,6 +2023,7 @@ export default class StreamProcessorV2 {
 
     const menuRow = data.values[rows.menu];
     const aiRow = rows.ai ? data.values[rows.ai] : [];
+    const detectedAIColumns = []; // AI列情報を収集
 
     menuRow.forEach((header, index) => {
       const columnLetter = this.indexToColumn(index);
@@ -2036,9 +2059,14 @@ export default class StreamProcessorV2 {
           aiValue
         };
 
-        this.log(`AI列検出: ${columnLetter}列 - ${aiType}`, 'info', 'Step 5-2');
+        detectedAIColumns.push(`${columnLetter}(${aiType})`);
       }
     });
+
+    // AI列検出のサマリーログ
+    if (detectedAIColumns.length > 0) {
+      this.log(`AI列検出: ${detectedAIColumns.join(', ')}`, 'info', 'Step 5-2');
+    }
 
     return aiColumns;
   }

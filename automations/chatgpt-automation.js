@@ -770,6 +770,30 @@ ${prompt}`;
                         targetElement.click();
                         await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
                         log(`モデル選択完了: ${resolvedModel}`, 'success');
+
+                        // ========================================
+                        // ステップ3-7: モデル選択確認（テストコード準拠）
+                        // ========================================
+                        log('【ステップ3-7】モデル選択確認', 'step');
+                        await sleep(1000); // 表示更新を待機
+
+                        const currentModelButton = await findElement(SELECTORS.modelButton, 'モデルボタン');
+                        if (currentModelButton) {
+                            const currentModelText = getCleanText(currentModelButton);
+                            log(`現在表示されているモデル: "${currentModelText}"`, 'info');
+
+                            // 部分一致で確認（"GPT-4o" が "4o" で選択された場合など）
+                            const isMatch = currentModelText.toLowerCase().includes(resolvedModel.toLowerCase()) ||
+                                           resolvedModel.toLowerCase().includes(currentModelText.toLowerCase());
+
+                            if (isMatch) {
+                                log(`✅ モデル選択確認成功: 期待通りのモデル「${currentModelText}」が選択されています`, 'success');
+                            } else {
+                                log(`⚠️ モデル選択確認: 期待されたモデル「${resolvedModel}」と異なるモデル「${currentModelText}」が表示されていますが、処理を継続します`, 'warning');
+                            }
+                        } else {
+                            log('⚠️ モデル選択確認: モデルボタンが見つからないため確認をスキップします', 'warning');
+                        }
                     } else {
                         throw new Error(`モデル要素が見つかりません: ${selectedModel.name}`);
                     }
@@ -938,6 +962,39 @@ ${prompt}`;
                         targetElement.click();
                         await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
                         log(`機能選択完了: ${resolvedFeature}`, 'success');
+
+                        // ========================================
+                        // ステップ4-4: 機能選択確認（テストコード準拠）
+                        // ========================================
+                        log('【ステップ4-4】機能選択確認', 'step');
+                        await sleep(1500); // 機能の表示更新を待機
+
+                        // 選択された機能ボタンを確認
+                        const selectedFunctionButtons = document.querySelectorAll('button[data-pill="true"]');
+                        let confirmationSuccess = false;
+
+                        if (selectedFunctionButtons.length > 0) {
+                            selectedFunctionButtons.forEach(btn => {
+                                const buttonText = getCleanText(btn);
+                                log(`選択された機能ボタン: "${buttonText}"`, 'info');
+
+                                // 部分一致で確認
+                                const isMatch = buttonText.toLowerCase().includes(resolvedFeature.toLowerCase()) ||
+                                               resolvedFeature.toLowerCase().includes(buttonText.toLowerCase());
+
+                                if (isMatch) {
+                                    log(`✅ 機能選択確認成功: 期待通りの機能「${buttonText}」が選択されています`, 'success');
+                                    confirmationSuccess = true;
+                                }
+                            });
+
+                            if (!confirmationSuccess) {
+                                const buttonTexts = Array.from(selectedFunctionButtons).map(btn => getCleanText(btn)).join(', ');
+                                log(`⚠️ 機能選択確認: 期待された機能「${resolvedFeature}」と異なる機能「${buttonTexts}」が選択されていますが、処理を継続します`, 'warning');
+                            }
+                        } else {
+                            log(`⚠️ 機能選択確認: 機能ボタンが表示されていません。機能「${resolvedFeature}」の選択が失敗した可能性があります`, 'warning');
+                        }
                     } else {
                         throw new Error(`機能要素が見つかりません: ${selectedFeature.name}`);
                     }

@@ -5,10 +5,10 @@
  * ステップ0: 初期化（UI_SELECTORS読み込み）
  * ステップ1: ページ準備状態チェック
  * ステップ2: テキスト入力
- * ステップ3: モデル選択（条件付き）
- * ステップ4: 機能選択（条件付き）
+ * ステップ3: モデル選択（条件付き） + 選択後確認
+ * ステップ4: 機能選択（条件付き） + 選択後確認
  * ステップ5: メッセージ送信
- * ステップ6: 応答待機（通常/Canvasモード）
+ * ステップ6: 応答待機（通常/Canvas/Deep Researchモード）
  * ステップ7: テキスト取得
  *
  * @version 3.0.0
@@ -348,9 +348,11 @@
         };
         
         try {
-            // ステップ1: モデルと機能の選択
-            await logStep('ステップ1: モデルと機能の選択', async () => {
-                log(`【ステップ1-1】選択: モデル='${modelName}', 機能='${featureName}'`, 'info');
+            // ========================================
+            // ステップ3: モデル選択（条件付き）
+            // ========================================
+            await logStep('【ステップ3】モデル選択', async () => {
+                log(`【ステップ3-1】選択するモデル: '${modelName}'`, 'info');
                 
                 // モデルを選択（常に実行、Autoでもデフォルトモデルを明示的に選択）
                 const useDefault = !modelName || modelName === 'default' || 
@@ -382,12 +384,40 @@
                         if (modelButtonToClick) {
                             modelButtonToClick.click();
                             await wait(2500);  // モデル選択後の待機時間を増やす
+
+                            // モデル選択確認（テストコードの検証ロジックを追加）
+                            const currentModelDisplay = findElement([
+                                '.logo-pill-label-container',
+                                '.gds-mode-switch-button .mdc-button__label div',
+                                '.gds-mode-switch-button .logo-pill-label'
+                            ]);
+
+                            if (currentModelDisplay) {
+                                const displayText = getCleanText(currentModelDisplay);
+                                // "2.5 Pro" -> "Pro" のような部分一致にも対応
+                                const normalizedModelName = modelName.replace('2.5 ', '');
+
+                                if (displayText.includes(normalizedModelName)) {
+                                    log(`【ステップ1-3】✅ モデル選択確認成功: 「${displayText}」が選択されています`, 'success');
+                                } else {
+                                    log(`【ステップ1-3】⚠️ モデル表示が期待値と異なります。期待値: ${modelName}, 実際: ${displayText}`, 'warn');
+                                }
+                            }
                         } else {
                             log(`【ステップ1-3】モデル "${modelName}" が見つからないため、デフォルトを使用`, 'warn');
                         }
                     }
                 }
-                
+
+                return `モデル選択完了: ${modelName || 'デフォルト'}`;
+            });
+
+            // ========================================
+            // ステップ4: 機能選択（条件付き）
+            // ========================================
+            await logStep('【ステップ4】機能選択', async () => {
+                log(`【ステップ4-1】選択する機能: '${featureName || '設定なし'}'`, 'info');
+
                 // 機能を選択（null/undefined/'none'/'通常'以外の場合）
                 if (featureName && featureName !== 'none' && featureName !== '通常') {
                     let featureButton = null;
@@ -431,25 +461,36 @@
                         featureButton.click();
                         await wait(2000); // 選択後の待機時間を増やす
                         log(`【ステップ1-5】✅ 機能「${featureName}」を選択しました`, 'success');
-                        
-                        // 選択状態の検証
+
+                        // 機能選択確認（テストコードの検証ロジックを追加）
                         const selectedButton = findElement([
                             '.toolbox-drawer-item-button button.is-selected',
                             '.toolbox-drawer-button.has-selected-item'
                         ]);
-                        if (!selectedButton) {
+
+                        if (selectedButton) {
+                            const selectedLabel = findElement(['.label'], selectedButton);
+                            const selectedText = selectedLabel ? getCleanText(selectedLabel) : '';
+
+                            if (selectedText.toLowerCase() === featureName.toLowerCase() ||
+                                selectedText.toLowerCase().includes(featureName.toLowerCase())) {
+                                log(`【ステップ1-5】✅ 機能選択確認成功: 「${selectedText}」が有効化されています`, 'success');
+                            } else {
+                                log(`【ステップ1-5】⚠️ 機能選択確認: 期待された機能「${featureName}」と異なる機能「${selectedText}」が選択されています`, 'warn');
+                            }
+                        } else {
                             log(`【ステップ1-5】⚠️ 機能の選択状態が確認できません`, 'warn');
                         }
                     } else {
                         log(`【ステップ1-5】機能 "${featureName}" が見つからないため、スキップ`, 'warn');
                     }
                 }
-                
+
                 // オーバーレイを閉じる
                 const overlay = document.querySelector('.cdk-overlay-backdrop.cdk-overlay-backdrop-showing');
                 if (overlay) overlay.click();
-                
-                return `モデル: ${modelName}, 機能: ${featureName} を選択しました。`;
+
+                return `機能選択完了: ${featureName || '設定なし'}`;
             });
             
             // ========================================
