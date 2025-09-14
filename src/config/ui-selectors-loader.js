@@ -15,10 +15,17 @@ let CACHED_SELECTORS = null;
 export async function loadSelectors() {
   if (!CACHED_SELECTORS) {
     try {
-      const response = await fetch(chrome.runtime.getURL('ui-selectors-data.json'));
-      const data = await response.json();
-      CACHED_SELECTORS = data.selectors;
-      console.log(`✅ UI Selectors loaded (v${data.version}, updated: ${data.lastUpdated})`);
+      // chrome.runtime.getURLが利用可能か確認
+      if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getURL) {
+        const response = await fetch(chrome.runtime.getURL('ui-selectors-data.json'));
+        const data = await response.json();
+        CACHED_SELECTORS = data.selectors;
+        console.log(`✅ UI Selectors loaded (v${data.version}, updated: ${data.lastUpdated})`);
+      } else {
+        // フォールバック: 直接URLを使用
+        console.warn('⚠️ chrome.runtime.getURL not available, using fallback');
+        CACHED_SELECTORS = {};
+      }
     } catch (error) {
       console.error('❌ Failed to load ui-selectors-data.json:', error);
       CACHED_SELECTORS = {};

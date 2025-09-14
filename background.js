@@ -1,5 +1,14 @@
 // background.js - Service Worker
 
+// エラーハンドリングを追加
+self.addEventListener('error', (event) => {
+  console.error('Service Worker Error:', event);
+});
+
+self.addEventListener('unhandledrejection', (event) => {
+  console.error('Service Worker Unhandled Rejection:', event);
+});
+
 // ui-selectors-loaderを使用してJSONから読み込み
 import { loadSelectors } from './src/config/ui-selectors-loader.js';
 
@@ -8,8 +17,13 @@ let UI_SELECTORS = {};
 
 // 起動時にセレクタを読み込み
 (async () => {
-  UI_SELECTORS = await loadSelectors();
-  console.log('✅ Background: UI Selectors loaded');
+  try {
+    UI_SELECTORS = await loadSelectors();
+    console.log('✅ Background: UI Selectors loaded');
+  } catch (error) {
+    console.error('❌ Background: Failed to load UI Selectors:', error);
+    UI_SELECTORS = {};
+  }
 })();
 
 // ポップアップウィンドウの管理
