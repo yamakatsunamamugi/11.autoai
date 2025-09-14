@@ -14,8 +14,7 @@
  * @module AITaskExecutor
  */
 
-// タイムアウト設定をインポート
-import '../config/timeout-config.js';
+// タイムアウト設定は削除済み - デフォルト値を使用
 // RetryManager機能を統合済み
 
 export class AITaskExecutor {
@@ -504,7 +503,7 @@ export class AITaskExecutor {
         if (resultData.waitForCompletion) {
           this.logger.log(`[AITaskExecutor] 📝 [${taskData.aiType}] タスク実行開始、完了待機中 [${cellPosition}セル]`);
           
-          // V2/V1実行の完了を待つ（timeout-config.jsから設定を取得）
+          // V2/V1実行の完了を待つ（デフォルトタイムアウト値を使用）
           const isV2 = resultData.v2Executing;
           const isDeepResearchOrAgent = taskData.function && (
             taskData.function.toLowerCase().includes('deep research') ||
@@ -512,14 +511,14 @@ export class AITaskExecutor {
             taskData.function.toLowerCase().includes('エージェント') ||
             taskData.function.toLowerCase().includes('agent')
           );
-          
-          // timeout-config.jsから適切なタイムアウト値を取得（Service Worker対応）
-          const globalCtx = (typeof globalThis !== 'undefined' ? globalThis : 
-                            typeof self !== 'undefined' ? self : 
+
+          // デフォルトタイムアウト値を使用（Service Worker対応）
+          const globalCtx = (typeof globalThis !== 'undefined' ? globalThis :
+                            typeof self !== 'undefined' ? self :
                             typeof window !== 'undefined' ? window : {});
           const aiConfig = globalCtx.getAIConfig ? globalCtx.getAIConfig(taskData.aiType) : null;
-          const defaultTimeout = globalCtx.CONFIG?.TIMEOUT?.RESPONSE_WAIT || 300000; // デフォルト5分
-          const deepTimeout = globalCtx.CONFIG?.TIMEOUT?.DEEP_RESEARCH || 2400000; // デフォルト40分
+          const defaultTimeout = 300000; // デフォルト5分
+          const deepTimeout = 2400000; // デフォルト40分
           
           let maxWaitTime;
           if (isDeepResearchOrAgent) {

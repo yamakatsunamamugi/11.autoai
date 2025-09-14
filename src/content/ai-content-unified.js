@@ -169,20 +169,8 @@ async function waitForUISelectors() {
 }
 
 const loadTimeoutConfig = () => {
-  const script = document.createElement("script");
-  script.src = chrome.runtime.getURL("src/config/timeout-config.js");
-  script.onload = () => {
-    // DeepResearch設定は1-ai-common-base.jsに統合済み
-  };
-  script.onerror = (error) => {
-    console.error("❌ [11.autoai] タイムアウト設定の読み込みエラー:", error);
-    console.log(
-      "🔄 [11.autoai] フォールバック: DeepResearch設定を直接読み込み",
-    );
-    // フォールバック: DeepResearch設定を直接読み込み
-    // DeepResearch設定は1-ai-common-base.jsに統合済み
-  };
-  document.head.appendChild(script);
+  // timeout-config.jsは削除済み - 設定は1-ai-common-base.jsに統合済み
+  console.log("🔄 [11.autoai] タイムアウト設定は1-ai-common-base.jsに統合済み");
 };
 
 // DeepResearch設定を読み込み

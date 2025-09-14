@@ -51,14 +51,13 @@ import {
 import './src/services/auth-service.js';
 import './src/services/window-service.js';
 import './src/features/spreadsheet/sheets-client.js';
-import './src/services/docs-client.js';
-import './src/features/spreadsheet/spreadsheet-auto-setup.js';
 import './src/features/logging/spreadsheet-logger.js';
 import { getStreamingServiceManager } from './src/core/streaming-service-manager.js';
 import { AITaskExecutor } from './src/core/ai-task-executor.js';
 import { AITaskHandler } from './src/handlers/ai-task-handler.js';
-import { ReportExecutor } from './automations/2-5-report-automation.js';
-import { GensparkAutomation } from './automations/2-4-genspark-automation.js';
+// automationファイルはコンテンツスクリプト用なので削除
+// import { ReportExecutor } from './automations/2-5-report-automation.js';
+// import { GensparkAutomation } from './automations/2-4-genspark-automation.js';
 import SpreadsheetAutoSetup from './src/services/spreadsheet-auto-setup.js';
 import StreamProcessorV2 from './src/features/task/stream-processor-v2.js';
 
@@ -85,8 +84,9 @@ globalThis.processSpreadsheetData = processSpreadsheetData;
 globalThis.taskGroupCache = taskGroupCache;
 globalThis.getColumnName = getColumnName;
 globalThis.columnToIndex = columnToIndex;
-globalThis.ReportExecutor = ReportExecutor;
-globalThis.GensparkAutomation = GensparkAutomation;
+// automationファイルはコンテンツスクリプト用なので削除
+// globalThis.ReportExecutor = ReportExecutor;
+// globalThis.GensparkAutomation = GensparkAutomation;
 globalThis.SpreadsheetAutoSetup = SpreadsheetAutoSetup;
 globalThis.StreamProcessorV2 = StreamProcessorV2;
 globalThis.aiTaskExecutor = new AITaskExecutor();
@@ -161,6 +161,9 @@ chrome.runtime.onInstalled.addListener((details) => {
 })();
 
 // Step 4-16: StreamingServiceManager初期化
+// 現在、初期化に問題があるため一時的に無効化
+// TODO: ConfigManager, EventBus, ErrorHandlerの実装後に有効化
+/*
 (async () => {
   try {
     console.log('[Step 4-17] StreamingServiceManager初期化開始');
@@ -173,6 +176,8 @@ chrome.runtime.onInstalled.addListener((details) => {
     console.error('[Step 4-19] ❌ StreamingServiceManager初期化エラー:', error);
   }
 })();
+*/
+console.log('[Step 4-17] StreamingServiceManager初期化をスキップ（一時的）');
 
 console.log('[Step 4-20] Service Worker初期化完了');
 

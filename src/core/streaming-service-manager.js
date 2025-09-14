@@ -7,7 +7,7 @@
 // 4. 統一ログ・エラーハンドリング
 // 5. テスト可能な設計
 
-import { ServiceRegistry } from "./service-registry.js";
+// ServiceRegistryは削除済み - 直接管理に変更
 import { ConfigManager } from "./config-manager.js";
 import { EventBus } from "./event-bus.js";
 import { ErrorHandler } from "./error-handler.js";
@@ -28,12 +28,14 @@ class StreamingServiceManager {
     // 設定管理（優先順位: 引数 > 環境変数 > デフォルト設定）
     this.config = ConfigManager.getInstance(config);
 
-    // 統一ログシステム
-    this.logger = Logger.create("StreamingServiceManager", {
-      level: this.config.get("logging.level", "info"),
-      format: this.config.get("logging.format", "json"),
-      transport: this.config.get("logging.transport", "console"),
-    });
+    // 統一ログシステム - Loggerが未定義のためconsoleを使用
+    this.logger = {
+      log: (...args) => console.log('[StreamingServiceManager]', ...args),
+      info: (...args) => console.log('[StreamingServiceManager]', ...args),
+      error: (...args) => console.error('[StreamingServiceManager]', ...args),
+      warn: (...args) => console.warn('[StreamingServiceManager]', ...args),
+      debug: (...args) => console.debug('[StreamingServiceManager]', ...args)
+    };
 
     // 統一エラーハンドリング
     this.errorHandler = new ErrorHandler({
@@ -45,8 +47,8 @@ class StreamingServiceManager {
     // イベントバス（疎結合なコンポーネント間通信）
     this.eventBus = EventBus.getInstance();
 
-    // サービスレジストリ（DI コンテナ）
-    this.serviceRegistry = new ServiceRegistry(this.config);
+    // サービスレジストリは削除済み - 直接管理
+    this.services = new Map();
 
     // 処理状態
     this.state = {
@@ -68,7 +70,7 @@ class StreamingServiceManager {
     try {
       await this.initialize();
     } catch (error) {
-      this.logger.error("非同期初期化エラー", { error });
+      this.logger.error("非同期初期化エラー", error);
     }
   }
   
@@ -124,7 +126,7 @@ class StreamingServiceManager {
         config: this.config.getPublicConfig(),
       });
     } catch (error) {
-      this.logger.error("StreamingServiceManager初期化失敗", { error });
+      this.logger.error("StreamingServiceManager初期化失敗", error);
       throw new Error(`初期化失敗: ${error.message}`);
     }
   }
@@ -214,7 +216,7 @@ class StreamingServiceManager {
       return {
         manager: {
           isInitialized: false,
-          error: "ServiceRegistry not initialized",
+          error: "Services not initialized",
         },
       };
     }
@@ -264,7 +266,7 @@ class StreamingServiceManager {
         changes: newConfig,
       });
     } catch (error) {
-      this.logger.error("設定更新失敗", { error });
+      this.logger.error("設定更新失敗", error);
       throw error;
     }
   }
@@ -305,35 +307,35 @@ class StreamingServiceManager {
    */
   async registerCoreServices() {
     // StreamProcessor（静的インポートに変更）
-    this.serviceRegistry.register(
+    this.services.set(
       "StreamProcessor",
-      () =>
-        new StreamProcessorV2({
-          config: this.config.get("streaming", {}),
-          logger: this.logger.child("StreamProcessor"),
-          eventBus: this.eventBus,
-          windowManager: globalThis.aiWindowManager, // グローバルのWindowManagerを使用
-        }),
+      new StreamProcessorV2({
+        config: this.config.get("streaming", {}),
+        logger: this.logger,
+        eventBus: this.eventBus,
+        windowManager: globalThis.aiWindowManager, // グローバルのWindowManagerを使用
+      })
     );
 
     // TaskGenerator -> StreamProcessorV2に統合
-    this.serviceRegistry.register(
+    this.services.set(
       "TaskGenerator",
-      () =>
-        new StreamProcessorV2({
-          config: this.config.get("task", {}),
-          logger: this.logger.child("TaskGenerator"),
-        }),
+      new StreamProcessorV2({
+        config: this.config.get("task", {}),
+        logger: this.logger,
+      })
     );
 
     // WindowManager（将来の拡張ポイント）
-    this.serviceRegistry.register("WindowManager", () =>
-      globalThis.aiWindowManager || this.createWindowManager(),
+    this.services.set(
+      "WindowManager",
+      globalThis.aiWindowManager || this.createWindowManager()
     );
 
     // AuthenticationService
-    this.serviceRegistry.register("AuthenticationService", () =>
-      this.createAuthenticationService(),
+    this.services.set(
+      "AuthenticationService",
+      this.createAuthenticationService()
     );
   }
 
@@ -374,7 +376,7 @@ class StreamingServiceManager {
    */
   async performHealthCheck() {
     const checks = [
-      () => this.checkServiceRegistry(),
+      () => this.checkServices(),
       () => this.checkConfiguration(),
       () => this.checkDependencies(),
     ];
@@ -517,9 +519,9 @@ class StreamingServiceManager {
     // 実装は省略
   }
 
-  checkServiceRegistry() {
-    // サービスレジストリの健全性チェック
-    return this.serviceRegistry.isHealthy();
+  checkServices() {
+    // サービスの健全性チェック
+    return this.services.size > 0;
   }
 
   checkConfiguration() {

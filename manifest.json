@@ -73,7 +73,6 @@
         "src/config/ui-selectors-loader.js",
         "src/ui/ui.html",
         "src/ui/ui-controller.js",
-        "src/config/timeout-config.js",
         "src/services/auth-service.js",
         "src/features/spreadsheet/docs-client.js",
         "src/features/spreadsheet/sheets-client.js",

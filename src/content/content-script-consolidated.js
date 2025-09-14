@@ -100,15 +100,8 @@ const loadUISelectors = () => {
  * 【Step 1.3】タイムアウト設定の読み込み
  */
 const loadTimeoutConfig = () => {
-  const script = document.createElement("script");
-  script.src = chrome.runtime.getURL("src/config/timeout-config.js");
-  script.onload = () => {
-    console.log('[Step 1.3] ✅ [11.autoai] タイムアウト設定読み込み完了');
-  };
-  script.onerror = (error) => {
-    console.error("[Step 1.3] ❌ [11.autoai] タイムアウト設定の読み込みエラー:", error);
-  };
-  document.head.appendChild(script);
+  // timeout-config.jsは削除済み - 設定は1-ai-common-base.jsに統合済み
+  console.log('[Step 1.3] ✅ [11.autoai] タイムアウト設定は1-ai-common-base.jsに統合済み');
 };
 
 /**
