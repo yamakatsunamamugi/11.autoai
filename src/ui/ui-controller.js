@@ -1537,14 +1537,6 @@ if (typeof editNameInput !== 'undefined' && editNameInput) {
 }
 */
 
-// ===== イベントリスナー: URL入力欄追加 =====
-// datalist方式では不要なため削除
-// const addUrlBtn = document.getElementById("addUrlBtn");
-// if (addUrlBtn) {
-//   addUrlBtn.addEventListener("click", () => {
-//     addUrlInput();
-//   });
-// }
 
 // ===== イベントリスナー: スプレッドシート読み込み（startBtnに統合済み） =====
 // loadSheetsBtnの処理はstartBtnに統合されました
@@ -3917,78 +3909,6 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
-// ===== URLボタンのイベントリスナー（旧実装の削除） =====
-// 以下のquickSaveBtn関連は新実装では不要
-/*
-const quickSaveBtn = document.getElementById("quickSaveBtn");
-if (quickSaveBtn) {
-  quickSaveBtn.addEventListener("click", () => {
-    const url = spreadsheetInput.value.trim();
-    
-    if (!url) {
-      showFeedback("URLを入力してください", "warning");
-      return;
-    }
-    
-    // URLのバリデーション
-    if (!url.includes("docs.google.com/spreadsheets")) {
-      showFeedback("有効なGoogleスプレッドシートURLを入力してください", "error");
-      return;
-    }
-    
-    // 名前入力ダイアログを表示
-    const name = prompt("保存名を入力してください（空欄の場合はURLの一部が使用されます）");
-    
-    if (name === null) {
-      // キャンセルされた場合
-      return;
-    }
-    
-    // 名前が空の場合はスプレッドシートIDを使用
-    let saveName = name.trim();
-    if (!saveName) {
-      const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
-      saveName = match ? `シート_${match[1].substring(0, 8)}` : "新規シート";
-    }
-    
-    // 保存処理
-    chrome.storage.local.get(['savedSpreadsheets'], (result) => {
-      let savedUrls = result.savedSpreadsheets || [];
-      
-      // 既存のURLかチェック
-      const existingIndex = savedUrls.findIndex(item => item.url === url);
-      if (existingIndex !== -1) {
-        // 既存の場合は更新
-        savedUrls[existingIndex].name = saveName;
-        showFeedback("URLを更新しました", "success");
-      } else {
-        // 新規追加
-        savedUrls.push({
-          url: url,
-          name: saveName,
-          createdAt: new Date().toISOString()
-        });
-        showFeedback("URLを保存しました", "success");
-      }
-      
-      // ストレージに保存
-      chrome.storage.local.set({ savedSpreadsheets: savedUrls }, () => {
-        loadSavedUrls(); // データリストを更新
-        
-        // ボタンのアニメーション
-        quickSaveBtn.style.background = "#218838";
-        quickSaveBtn.innerHTML = "<span>✓</span>";
-        setTimeout(() => {
-          quickSaveBtn.style.background = "#28a745";
-          quickSaveBtn.innerHTML = "<span>+</span>";
-        }, 1000);
-      });
-    });
-  });
-}
-*/
-
-// 旧実装のcancelSaveBtnは削除済み（新実装のcancelSaveUrlBtnを使用）
 
 // ストレージの変更を監視（AI変更検出システムが実行されたときに更新）
 chrome.storage.onChanged.addListener((changes, areaName) => {
