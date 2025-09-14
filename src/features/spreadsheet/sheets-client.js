@@ -1147,13 +1147,21 @@ class SheetsClient {
     
     // モデル行と機能行は実行時に動的取得するため、ここでは読み込まない
     // ただし、位置情報は保持
-    
-    this.logger.log("SheetsClient", `読み込む行: ${rowsToFetch.join(', ')}`);
-    
-    // バッチで必要な行を取得
-    // 列範囲を明示的に指定して、すべての列データを確実に取得（A列からCZ列まで）
-    const ranges = rowsToFetch.map(rowNum => `A${rowNum}:CZ${rowNum}`);
-    const batchData = await this.batchGetSheetData(spreadsheetId, ranges, gid);
+
+    // 作業行も読み込むために、全データを一括取得する方法に変更
+    // A1からCZ列の最後の行まですべて取得
+    const lastRowNum = Math.max(columnAData.length, 600); // 最低600行まで読み込み
+    const fullRangeData = await this.getSheetData(spreadsheetId, `A1:CZ${lastRowNum}`, gid);
+
+    this.logger.log("SheetsClient", `全データ読み込み: ${fullRangeData.length}行 x ${fullRangeData[0]?.length || 0}列`);
+
+    // バッチデータの代わりに全データから必要な行を抽出
+    const batchData = {};
+    for (const rowNum of rowsToFetch) {
+      if (fullRangeData[rowNum - 1]) {
+        batchData[`A${rowNum}:CZ${rowNum}`] = fullRangeData[rowNum - 1];
+      }
+    }
     
     
     // ===== STEP 4: データ構造を構築 =====
@@ -1189,32 +1197,16 @@ class SheetsClient {
       paddedRows[range] = paddedRow;
     }
     
-    // ダミーのrawDataを作成（互換性のため）
-    // ただし、必要最小限の行のみ
-    const rawData = [];
-    const maxRowNum = Math.max(...rowsToFetch);
-    for (let i = 0; i < maxRowNum; i++) {
-      rawData[i] = new Array(maxColumns).fill("");
-    }
-    
-    // 取得したデータをrawDataに反映
-    for (const [range, rowData] of Object.entries(paddedRows)) {
-      // 新しい範囲形式（A9:CZ9）から行番号を抽出
-      const match = range.match(/A(\d+):CZ\d+/);
-      if (match) {
-        const rowNum = parseInt(match[1]) - 1; // 0ベースに変換
-        if (rowNum >= 0 && rowNum < rawData.length) {
-          rawData[rowNum] = rowData;
-        }
+    // rawDataを作成 - 全データをそのまま使用
+    // fullRangeDataには全行のデータが含まれている
+    const rawData = fullRangeData.map(row => {
+      // 各行をmaxColumnsまでパディング
+      const paddedRow = [...(row || [])];
+      while (paddedRow.length < maxColumns) {
+        paddedRow.push("");
       }
-    }
-    
-    // A列のデータもrawDataに反映（作業行のため）
-    for (let i = 0; i < columnAData.length && i < rawData.length; i++) {
-      if (columnAData[i] && columnAData[i][0]) {
-        rawData[i][0] = columnAData[i][0];
-      }
-    }
+      return paddedRow;
+    });
 
     // データ構造を解析
     const result = {
