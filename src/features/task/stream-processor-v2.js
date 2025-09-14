@@ -2,16 +2,18 @@
  * @fileoverview StreamProcessor V2 - 動的タスクグループ処理システム
  *
  * 【ステップ構成】
- * ステップ0: 初期化・コンストラクタ
- * ステップ1: SpreadsheetLogger初期化
- * ステップ2: メインエントリーポイント（スリープ防止・データ検証）
- * ステップ3: V3グループ順次処理（動的構造解析）
- * ステップ4: 特殊グループ処理（レポート化・Genspark）
- * ステップ5: タスク生成・整理
- * ステップ6: 標準タスク実行（列・バッチ・個別処理）
- * ステップ7: 特殊タスク実行（3種類AI並列処理）
- * ステップ8: リトライ・エラー処理
- * ステップ9: ユーティリティ・ヘルパー関数
+ * Step 0: 初期化・コンストラクタ - システムの基本設定とサービス初期化
+ * Step 1: SpreadsheetLogger初期化 - スプレッドシートへのログ出力機能の準備
+ * Step 2: メインエントリーポイント - スリープ防止とデータ検証を行う処理の開始点
+ * Step 3: V3グループ順次処理 - 動的にタスクグループを解析し依存関係に従って実行
+ * Step 4: 制御系メソッド - 行制御・列制御による処理範囲の制限機能
+ * Step 5: 構造解析系メソッド - スプレッドシートの構造を分析しタスクグループを生成
+ * Step 6: タスク生成・整理 - プロンプトと回答列からタスクを動的に生成
+ * Step 7: 特殊グループ処理 - レポート化やGensparkなど特別な処理を実行
+ * Step 8: 標準タスク実行 - 通常のAIタスクを列ごと・バッチごとに処理
+ * Step 9: 特殊タスク実行 - ChatGPT/Claude/Geminiの3種類AIを並列実行
+ * Step 10: リトライ・エラー処理 - 失敗したタスクの自動リトライとエラー管理
+ * Step 11: ユーティリティ・ヘルパー関数 - 共通で使用する補助関数群
  *
  * ============================================================================
  * 主要機能:
@@ -68,7 +70,8 @@ async function getSpreadsheetLogger() {
 
 export default class StreamProcessorV2 {
   // ========================================
-  // ステップ0: 初期化・コンストラクタ
+  // Step 0: 初期化・コンストラクタ
+  // システム全体の基本設定と各種サービスの初期化を行う
   // ========================================
 
   /**
@@ -82,30 +85,30 @@ export default class StreamProcessorV2 {
    */
   constructor(logger = console, config = {}) {
     // ========================================
-    // ステップ0-1: 基本サービス初期化（最優先）
+    // Step 0-1: 基本サービス初期化（最優先）
     // ========================================
     // 最初にloggerを設定（this.log()を使用するため）
     this.logger = logger;
 
     // ログ関数が使用可能になった後に初期化ログ出力
-    this.log('StreamProcessorV2 初期化開始', 'step', '0');
-    this.log('基本サービスを初期化', 'info', '0-1');
+    this.log('StreamProcessorV2 初期化開始', 'step', 'Step 0');
+    this.log('基本サービスを初期化', 'info', 'Step 0-1');
     this.aiTaskExecutor = new AITaskExecutor(logger);
     this.retryManager = new RetryManager(logger);
 
     // ========================================
-    // ステップ0-2: タスク生成・管理系初期化
+    // Step 0-2: タスク生成・管理系初期化
     // ========================================
-    this.log('タスク生成・管理系コンポーネントを初期化', 'info', '0-2');
+    this.log('タスク生成・管理系コンポーネントを初期化', 'info', 'Step 0-2');
     this.completionChecker = new GroupCompletionChecker(this.retryManager, logger);
     this.waitManager = new TaskWaitManager(logger);
     this.windowService = WindowService;
     this.completedTasks = new Set();
 
     // ========================================
-    // ステップ0-3: 排他制御システム初期化
+    // Step 0-3: 排他制御システム初期化
     // ========================================
-    this.log('排他制御システムを初期化', 'info', '0-3');
+    this.log('排他制御システムを初期化', 'info', 'Step 0-3');
     this.exclusiveManager = new ExclusiveControlManager({
       controlConfig: {
         timeouts: EXCLUSIVE_CONTROL_CONFIG.timeouts,
@@ -120,15 +123,15 @@ export default class StreamProcessorV2 {
     });
 
     // ========================================
-    // ステップ0-4: 内部状態初期化
+    // Step 0-4: 内部状態初期化
     // ========================================
-    this.log('内部状態を初期化', 'info', '0-4');
+    this.log('内部状態を初期化', 'info', 'Step 0-4');
     // TaskGroupScannerの機能は統合されたため、直接メソッドを使用
 
     // ========================================
-    // ステップ0-5: 設定・状態管理初期化
+    // Step 0-5: 設定・状態管理初期化
     // ========================================
-    this.log('設定と状態管理を初期化', 'info', '0-5');
+    this.log('設定と状態管理を初期化', 'info', 'Step 0-5');
     this.config = {
       exclusiveControl: EXCLUSIVE_CONTROL_CONFIG,
       ...config
@@ -144,7 +147,7 @@ export default class StreamProcessorV2 {
     this.spreadsheetData = null;
     this.spreadsheetUrl = null;
 
-    this.log('StreamProcessorV2 初期化完了', 'success', '0');
+    this.log('StreamProcessorV2 初期化完了', 'success', 'Step 0');
   }
 
   // ========================================
@@ -182,7 +185,9 @@ export default class StreamProcessorV2 {
   }
 
   // ========================================
-  // ステップ1: SpreadsheetLogger初期化
+  // Step 1: SpreadsheetLogger初期化
+  // スプレッドシートへのログ出力機能を初期化し、
+  // SheetsClientへの参照を取得する
   // ========================================
   /**
    * SpreadsheetLoggerの初期化
@@ -192,44 +197,46 @@ export default class StreamProcessorV2 {
    * グローバルスペースから取得します。
    */
   async initializeSpreadsheetLogger() {
-    this.log('SpreadsheetLogger初期化開始', 'step', '1');
+    this.log('SpreadsheetLogger初期化開始', 'step', 'Step 1');
 
-    // ステップ1-1: 既存インスタンスチェック
+    // Step 1-1: 既存インスタンスチェック
     if (this.spreadsheetLogger) {
-      this.log('SpreadsheetLogger既に初期化済み', 'info', '1-1');
+      this.log('SpreadsheetLogger既に初期化済み', 'info', 'Step 1-1');
       return;
     }
 
     try {
-      // ステップ1-2: SpreadsheetLoggerクラス取得
-      this.log('SpreadsheetLoggerクラスを取得', 'info', '1-2');
+      // Step 1-2: SpreadsheetLoggerクラス取得
+      this.log('SpreadsheetLoggerクラスを取得', 'info', 'Step 1-2');
       const SpreadsheetLoggerClass = await getSpreadsheetLogger();
 
       if (SpreadsheetLoggerClass && this.spreadsheetUrl) {
-        // ステップ1-3: インスタンス作成
-        this.log('SpreadsheetLoggerインスタンスを作成', 'info', '1-3');
+        // Step 1-3: インスタンス作成
+        this.log('SpreadsheetLoggerインスタンスを作成', 'info', 'Step 1-3');
         this.spreadsheetLogger = new SpreadsheetLoggerClass({
           spreadsheetUrl: this.spreadsheetUrl,
           logger: this.logger
         });
 
-        // ステップ1-4: SheetsClient参照取得
+        // Step 1-4: SheetsClient参照取得
         if (this.spreadsheetLogger.sheetsClient) {
           this.sheetsClient = this.spreadsheetLogger.sheetsClient;
-          this.log('SheetsClient参照取得完了', 'info', '1-4');
+          this.log('SheetsClient参照取得完了', 'info', 'Step 1-4');
         }
 
-        this.log('SpreadsheetLogger初期化完了', 'success', '1');
+        this.log('SpreadsheetLogger初期化完了', 'success', 'Step 1');
       } else {
-        this.log('SpreadsheetLoggerClass または spreadsheetUrl が未設定', 'warning', '1');
+        this.log('SpreadsheetLoggerClass または spreadsheetUrl が未設定', 'warning', 'Step 1');
       }
     } catch (error) {
-      this.log(`SpreadsheetLogger初期化エラー: ${error.message}`, 'error', '1');
+      this.log(`SpreadsheetLogger初期化エラー: ${error.message}`, 'error', 'Step 1');
     }
   }
 
   // ========================================
-  // ステップ2: メインエントリーポイント
+  // Step 2: メインエントリーポイント
+  // スリープ防止を開始し、データを検証してから
+  // V3グループ順次処理を呼び出すメイン処理
   // ========================================
 
   /**
@@ -243,28 +250,28 @@ export default class StreamProcessorV2 {
    * @returns {Promise<Object>} 処理結果
    */
   async processDynamicTaskGroups(spreadsheetData, options = {}) {
-    this.log('動的タスクグループ処理開始', 'step', '2');
+    this.log('動的タスクグループ処理開始', 'step', 'Step 2');
     const startTime = Date.now();
     let totalCompleted = 0;
     let totalFailed = 0;
 
     // ========================================
-    // ステップ2-1: スリープ防止開始
+    // Step 2-1: スリープ防止開始
     // ========================================
-    this.log('スリープ防止を開始', 'info', '2-1');
+    this.log('スリープ防止を開始', 'info', 'Step 2-1');
     try {
       if (globalThis.powerManager) {
         await globalThis.powerManager.startProtection('stream-processor-dynamic');
-        this.log('PowerManager保護開始', 'success', '2-1');
+        this.log('PowerManager保護開始', 'success', 'Step 2-1');
       }
     } catch (error) {
-      this.log(`スリープ防止開始エラー: ${error.message}`, 'error', '2-1');
+      this.log(`スリープ防止開始エラー: ${error.message}`, 'error', 'Step 2-1');
     }
 
     // ========================================
-    // ステップ2-2: データ保存・初期化
+    // Step 2-2: データ保存・初期化
     // ========================================
-    this.log('スプレッドシートデータを保存・初期化', 'info', '2-2');
+    this.log('スプレッドシートデータを保存・初期化', 'info', 'Step 2-2');
     this.spreadsheetData = spreadsheetData;
     this.spreadsheetUrl = spreadsheetData?.spreadsheetUrl;
 
@@ -272,13 +279,13 @@ export default class StreamProcessorV2 {
     await this.initializeSpreadsheetLogger();
 
     // ========================================
-    // ステップ2-3: タスクグループ検証
+    // Step 2-3: タスクグループ検証
     // ========================================
-    this.log('タスクグループを検証', 'info', '2-3');
+    this.log('タスクグループを検証', 'info', 'Step 2-3');
     const taskGroups = options.taskGroups || [];
 
     if (!taskGroups || taskGroups.length === 0) {
-      this.log('タスクグループが見つからない - 早期終了', 'warning', '2-3');
+      this.log('タスクグループが見つからない - 早期終了', 'warning', 'Step 2-3');
       await this.cleanupAndStopProtection('早期リターン');
 
       return {
@@ -291,16 +298,16 @@ export default class StreamProcessorV2 {
       };
     }
 
-    this.log(`タスクグループ検証完了: ${taskGroups.length}グループ`, 'success', '2-3');
+    this.log(`タスクグループ検証完了: ${taskGroups.length}グループ`, 'success', 'Step 2-3');
 
     // ========================================
-    // ステップ2-4: 最初のグループ特定
+    // Step 2-4: 最初のグループ特定
     // ========================================
-    this.log('最初のタスクありグループを特定', 'info', '2-4');
+    this.log('最初のタスクありグループを特定', 'info', 'Step 2-4');
     const firstTaskGroupIndex = this.findFirstTaskGroupIndex(taskGroups, spreadsheetData);
 
     if (firstTaskGroupIndex === -1) {
-      this.log('処理対象グループなし - 正常終了', 'info', '2-4');
+      this.log('処理対象グループなし - 正常終了', 'info', 'Step 2-4');
       await this.cleanupAndStopProtection('処理完了');
 
       return {
@@ -313,26 +320,26 @@ export default class StreamProcessorV2 {
       };
     }
 
-    this.log(`処理開始インデックス: ${firstTaskGroupIndex}`, 'success', '2-4');
+    this.log(`処理開始インデックス: ${firstTaskGroupIndex}`, 'success', 'Step 2-4');
 
     // ========================================
-    // ステップ2-5: グループ処理実行
+    // Step 2-5: グループ処理実行
     // ========================================
-    this.log('V3グループ順次処理を実行', 'info', '2-5');
+    this.log('V3グループ順次処理を実行', 'info', 'Step 2-5');
     try {
       const result = await this.processGroupsSequentiallyV3(spreadsheetData, options.testMode);
       totalCompleted = result.completed || 0;
       totalFailed = result.failed || 0;
-      this.log(`グループ処理完了: 成功${totalCompleted}件, 失敗${totalFailed}件`, 'success', '2-5');
+      this.log(`グループ処理完了: 成功${totalCompleted}件, 失敗${totalFailed}件`, 'success', 'Step 2-5');
     } catch (error) {
-      this.log(`グループ処理エラー: ${error.message}`, 'error', '2-5');
+      this.log(`グループ処理エラー: ${error.message}`, 'error', 'Step 2-5');
       totalFailed++;
     }
 
     // ========================================
-    // ステップ2-6: クリーンアップ・結果返却
+    // Step 2-6: クリーンアップ・結果返却
     // ========================================
-    this.log('クリーンアップと結果返却', 'info', '2-6');
+    this.log('クリーンアップと結果返却', 'info', 'Step 2-6');
     await this.cleanupAndStopProtection('処理完了');
 
     const totalTime = this.formatTime(Date.now() - startTime);
@@ -345,12 +352,14 @@ export default class StreamProcessorV2 {
       message: `処理完了: 成功${totalCompleted}件, 失敗${totalFailed}件`
     };
 
-    this.log(`動的タスクグループ処理完了 (${totalTime})`, 'success', '2');
+    this.log(`動的タスクグループ処理完了 (${totalTime})`, 'success', 'Step 2');
     return result;
   }
 
   // ========================================
-  // ステップ3: V3グループ順次処理
+  // Step 3: V3グループ順次処理
+  // 動的にタスクグループを解析し、依存関係に従って
+  // 順番にグループを処理していくメインループ
   // ========================================
 
   /**
@@ -364,7 +373,7 @@ export default class StreamProcessorV2 {
    * @returns {Promise<Object>} 処理結果
    */
   async processGroupsSequentiallyV3(spreadsheetData, isTestMode) {
-    this.log('V3グループ順次処理開始（動的タスク生成モード）', 'step', '3');
+    this.log('V3グループ順次処理開始（動的タスク生成モード）', 'step', 'Step 3');
 
     let totalProcessed = 0;
     let totalFailed = 0;
@@ -582,7 +591,9 @@ export default class StreamProcessorV2 {
   }
 
   // ========================================
-  // ステップ4: 特殊グループ処理
+  // Step 7: 特殊グループ処理
+  // レポート化やGenspark（スライド/ファクトチェック）など
+  // 特別な処理が必要なグループを専用ロジックで処理
   // ========================================
 
   /**
@@ -783,7 +794,9 @@ export default class StreamProcessorV2 {
   }
 
   // ========================================
-  // ステップ5: タスク生成・整理
+  // Step 6: タスク生成・整理
+  // プロンプトと回答列から動的にタスクを生成し、
+  // バッチ処理用に整理・グループ化する
   // ========================================
 
   /**
@@ -803,23 +816,23 @@ export default class StreamProcessorV2 {
    * 4. モデルと機能情報を適切に設定
    */
   async scanGroupTasks(spreadsheetData, promptCols, answerCols, promptGroup = {}) {
-    this.log('タスクグループスキャン開始', 'info', '5-1');
+    this.log('タスクグループスキャン開始', 'info', 'Step 6-1');
     const tasks = [];
     const MAX_TASKS_PER_BATCH = 3; // バッチあたりの最大タスク数
 
     // ステップ5-1-1: パラメータ検証
     if (!spreadsheetData?.values || !Array.isArray(spreadsheetData.values)) {
-      this.log('無効なスプレッドシートデータ', 'warn', '5-1-1');
+      this.log('無効なスプレッドシートデータ', 'warn', 'Step 6-1');
       return tasks;
     }
 
     if (!promptCols || !Array.isArray(promptCols) || promptCols.length === 0) {
-      this.log('無効なプロンプト列データ', 'warn', '5-1-1');
+      this.log('無効なプロンプト列データ', 'warn', 'Step 6-1');
       return tasks;
     }
 
     if (!answerCols || !Array.isArray(answerCols) || answerCols.length === 0) {
-      this.log('無効な回答列データ', 'warn', '5-1-1');
+      this.log('無効な回答列データ', 'warn', 'Step 6-1');
       return tasks;
     }
 
@@ -835,24 +848,24 @@ export default class StreamProcessorV2 {
 
     // 列制御チェック（グループ全体）
     if (!this.shouldProcessColumn(currentGroup, columnControls)) {
-      this.log('このグループは列制御によりスキップ', 'info', '5-1-2');
+      this.log('このグループは列制御によりスキップ', 'info', 'Step 6-1');
       return tasks;
     }
 
     // ステップ5-1-3: プロンプト行の検出
-    this.log('プロンプト行を検出中...', 'info', '5-1-3');
+    this.log('プロンプト行を検出中...', 'info', 'Step 6-1');
     const promptRows = this.scanPromptRows(promptCols, spreadsheetData);
 
     if (!promptRows || promptRows.length === 0) {
-      this.log('プロンプトが見つかりません', 'warn', '5-1-3');
+      this.log('プロンプトが見つかりません', 'warn', 'Step 6-1');
       return tasks;
     }
 
     const maxPromptRow = Math.max(...promptRows);
-    this.log(`プロンプト発見: ${promptRows.length}行、最大行: ${maxPromptRow + 1}`, 'success', '5-1-3');
+    this.log(`プロンプト発見: ${promptRows.length}行、最大行: ${maxPromptRow + 1}`, 'success', 'Step 6-1');
 
     // ステップ5-1-4: バッチで回答状態をチェック
-    this.log(`バッチチェック開始: ${promptRows.length}行 × ${answerCols.length}列`, 'info', '5-1-4');
+    this.log(`バッチチェック開始: ${promptRows.length}行 × ${answerCols.length}列`, 'info', 'Step 6-1');
     const answerStatusMap = await this.batchCheckAnswers(spreadsheetData, promptRows, answerCols);
 
     // ステップ5-1-5: タスク生成
@@ -862,7 +875,7 @@ export default class StreamProcessorV2 {
     for (const rowIndex of promptRows) {
       // 最大タスク数に達したら終了
       if (tasks.length >= MAX_TASKS_PER_BATCH) {
-        this.log(`最大タスク数(${MAX_TASKS_PER_BATCH})に達したため、スキャン終了`, 'info', '5-1-5');
+        this.log(`最大タスク数(${MAX_TASKS_PER_BATCH})に達したため、スキャン終了`, 'info', 'Step 6-1');
         break;
       }
 
@@ -917,7 +930,7 @@ export default class StreamProcessorV2 {
             }
             prompt = promptTexts.join('\n\n');
           } catch (error) {
-            this.log(`プロンプト取得エラー ${taskCell}: ${error.message}`, 'warn', '5-1-5');
+            this.log(`プロンプト取得エラー ${taskCell}: ${error.message}`, 'warn', 'Step 6-1');
           }
 
           // モデルと機能を取得（重要：ここを修正）
@@ -967,11 +980,11 @@ export default class StreamProcessorV2 {
     }
 
     // ステップ5-1-6: 結果ログ
-    this.log(`スキャン完了: ${tasks.length}件のタスクを生成`, 'success', '5-1');
+    this.log(`スキャン完了: ${tasks.length}件のタスクを生成`, 'success', 'Step 6-1');
 
     if (tasks.length > 0) {
       const taskRanges = tasks.map(t => `${t.column}${t.row}`).join(', ');
-      this.log(`処理対象: ${taskRanges}`, 'info', '5-1');
+      this.log(`処理対象: ${taskRanges}`, 'info', 'Step 6-1');
     }
 
     return tasks;
@@ -990,11 +1003,11 @@ export default class StreamProcessorV2 {
    * 100セルずつバッチ処理してAPI制限を回避します。
    */
   async batchCheckAnswers(spreadsheetData, promptRows, answerCols) {
-    this.log('バッチ回答チェック開始', 'info', '5-2');
+    this.log('バッチ回答チェック開始', 'info', 'Step 6-2');
     const answerStatusMap = new Map();
 
     if (!globalThis.sheetsClient) {
-      this.log('sheetsClientが利用できません', 'warn', '5-2');
+      this.log('sheetsClientが利用できません', 'warn', 'Step 6-2');
       return answerStatusMap;
     }
 
@@ -1046,14 +1059,14 @@ export default class StreamProcessorV2 {
             });
           }
         } catch (error) {
-          this.log(`バッチ取得エラー: ${error.message}`, 'warn', '5-2-2');
+          this.log(`バッチ取得エラー: ${error.message}`, 'warn', 'Step 6-2');
         }
       }
 
-      this.log(`${answerStatusMap.size}セルの状態をチェック完了`, 'success', '5-2');
+      this.log(`${answerStatusMap.size}セルの状態をチェック完了`, 'success', 'Step 6-2');
 
     } catch (error) {
-      this.log(`バッチチェックエラー: ${error.message}`, 'error', '5-2');
+      this.log(`バッチチェックエラー: ${error.message}`, 'error', 'Step 6-2');
     }
 
     return answerStatusMap;
@@ -1137,7 +1150,9 @@ export default class StreamProcessorV2 {
   }
 
   // ========================================
-  // ステップ6: 標準タスク実行
+  // Step 8: 標準タスク実行
+  // 通常のAIタスクを列ごとに順次処理し、
+  // 列内では3タスクずつバッチで並列実行
   // ========================================
 
   /**
@@ -1238,7 +1253,9 @@ export default class StreamProcessorV2 {
   }
 
   // ========================================
-  // ステップ7: 特殊タスク実行（3種類AI並列処理）
+  // Step 9: 特殊タスク実行（3種類AI並列処理）
+  // ChatGPT、Claude、Geminiの3つのAIを同時に使用し、
+  // 同じプロンプトを並列で処理する特殊モード
   // ========================================
 
   /**
@@ -1251,10 +1268,10 @@ export default class StreamProcessorV2 {
    * @param {boolean} isTestMode - テストモード
    */
   async process3TypeAIGroup(columnGroups, isTestMode) {
-    this.log('3種類AIグループ処理開始', 'step', '7');
+    this.log('3種類AIグループ処理開始', 'step', 'Step 9');
 
     // ステップ7-1: 列並列処理の準備
-    this.log('各列を並列処理用に準備', 'info', '7-1');
+    this.log('各列を並列処理用に準備', 'info', 'Step 9-1');
     const columnPromises = [];
     let position = 0;
 
@@ -1263,17 +1280,17 @@ export default class StreamProcessorV2 {
       const columnPosition = position % 3;
       position++;
 
-      this.log(`${column}列をポジション${columnPosition}で処理準備`, 'info', '7-2');
+      this.log(`${column}列をポジション${columnPosition}で処理準備`, 'info', 'Step 9-2');
       columnPromises.push(
         this.processColumnFor3TypeAI(column, tasks, isTestMode, columnPosition)
       );
     }
 
     // ステップ7-3: 並列実行と待機
-    this.log(`${columnPromises.length}列の並列処理を開始`, 'info', '7-3');
+    this.log(`${columnPromises.length}列の並列処理を開始`, 'info', 'Step 9-3');
     await Promise.allSettled(columnPromises);
 
-    this.log('3種類AIグループ処理完了', 'success', '7');
+    this.log('3種類AIグループ処理完了', 'success', 'Step 9');
   }
 
   /**
@@ -1285,7 +1302,7 @@ export default class StreamProcessorV2 {
    * @param {number} position - ウィンドウ位置
    */
   async processColumnFor3TypeAI(column, tasks, isTestMode, position) {
-    this.log(`${column}列の3種類AI処理開始 (${tasks.length}タスク)`, 'info', '7-4');
+    this.log(`${column}列の3種類AI処理開始 (${tasks.length}タスク)`, 'info', 'Step 9-4');
 
     for (const task of tasks) {
       try {
@@ -1300,7 +1317,9 @@ export default class StreamProcessorV2 {
   }
 
   // ========================================
-  // ステップ8: リトライ・エラー処理
+  // Step 10: リトライ・エラー処理
+  // 失敗したタスクの自動リトライやエラー情報の記録、
+  // グループ完了後のリトライロジックを管理
   // ========================================
 
   /**
@@ -1388,7 +1407,9 @@ export default class StreamProcessorV2 {
   }
 
   // ========================================
-  // ステップ9: ユーティリティ・ヘルパー関数
+  // Step 11: ユーティリティ・ヘルパー関数
+  // 全体で共通して使用する補助関数群
+  // 文字列変換、数値計算、データ処理等のユーティリティ
   // ========================================
 
   /**
@@ -1585,13 +1606,14 @@ export default class StreamProcessorV2 {
 
   /**
    * 列制御のチェック処理
+   * Step 4-5: 列制御による停止判定
    * @param {Object} controls - 制御情報
    * @param {number} groupIndex - グループインデックス
    * @param {Object} promptGroup - プロンプトグループ
    * @returns {boolean} 停止すべきかどうか
    */
   async checkColumnControl(controls, groupIndex, promptGroup) {
-    this.log(`グループ${groupIndex + 1}の列制御をチェック`, 'info', `3-3`);
+    this.log(`グループ${groupIndex + 1}の列制御をチェック`, 'info', 'Step 4-5');
 
     try {
       // 列制御の「この列で停止」チェック
@@ -1600,17 +1622,17 @@ export default class StreamProcessorV2 {
           if (control.action === 'stop' && control.targetColumn) {
             const targetColumn = this.columnToIndex(control.targetColumn);
             if (promptGroup.promptColumns.includes(targetColumn)) {
-              this.log(`列制御により停止: ${control.targetColumn}列`, 'warning', `3-3`);
+              this.log(`列制御により停止: ${control.targetColumn}列`, 'warning', 'Step 4-5');
               return true;
             }
           }
         }
       }
 
-      this.log(`列制御チェック完了 - 継続`, 'success', `3-3`);
+      this.log(`列制御チェック完了 - 継続`, 'success', 'Step 4-5');
       return false;
     } catch (error) {
-      this.log(`列制御チェックエラー: ${error.message}`, 'error', `3-3`);
+      this.log(`列制御チェックエラー: ${error.message}`, 'error', 'Step 4-5');
       return false;
     }
   }
@@ -1622,7 +1644,7 @@ export default class StreamProcessorV2 {
    * @returns {number} グループインデックス（-1は見つからない）
    */
   findFirstTaskGroupIndex(taskGroups, spreadsheetData) {
-    this.log('最初のタスクありグループを検索', 'info', '2-4');
+    this.log('最初のタスクありグループを検索', 'info', 'Step 2-4');
 
     try {
       for (let i = 0; i < taskGroups.length; i++) {
@@ -1632,16 +1654,16 @@ export default class StreamProcessorV2 {
         if (group && group.columnRange && group.columnRange.promptColumns) {
           // 簡易チェック: プロンプト列が存在すれば処理対象とする
           if (group.columnRange.promptColumns.length > 0) {
-            this.log(`タスクありグループ発見: インデックス${i}`, 'success', '2-4');
+            this.log(`タスクありグループ発見: インデックス${i}`, 'success', 'Step 2-4');
             return i;
           }
         }
       }
 
-      this.log('タスクありグループが見つかりません', 'warning', '2-4');
+      this.log('タスクありグループが見つかりません', 'warning', 'Step 2-4');
       return -1;
     } catch (error) {
-      this.log(`グループ検索エラー: ${error.message}`, 'error', '2-4');
+      this.log(`グループ検索エラー: ${error.message}`, 'error', 'Step 2-4');
       return -1;
     }
   }
@@ -1651,32 +1673,38 @@ export default class StreamProcessorV2 {
    * @param {Object} spreadsheetData - スプレッドシートデータ
    */
   async reloadSpreadsheetData(spreadsheetData) {
-    this.log('スプレッドシートデータを再読み込み', 'info', '3-7');
+    this.log('スプレッドシートデータを再読み込み', 'info', 'Step 3-7');
 
     try {
       if (this.sheetsClient && this.sheetsClient.reloadData) {
         await this.sheetsClient.reloadData();
-        this.log('スプレッドシートデータ再読み込み完了', 'success', '3-7');
+        this.log('スプレッドシートデータ再読み込み完了', 'success', 'Step 3-7');
       } else {
-        this.log('SheetsClientが未初期化 - 再読み込みスキップ', 'warning', '3-7');
+        this.log('SheetsClientが未初期化 - 再読み込みスキップ', 'warning', 'Step 3-7');
       }
     } catch (error) {
       this.log(`データ再読み込みエラー: ${error.message}`, 'error', '3-7');
     }
   }
 
+  // ========================================
+  // Step 4: 制御系メソッド（行制御・列制御）
+  // スプレッドシート内の制御指示に基づいて
+  // 処理範囲を制限・調整する機能群
+  // ========================================
+
   /**
    * 行処理判定 - 行制御に基づいて処理対象かチェック
-   * ステップ3-4-5: 行制御による処理対象判定
+   * Step 4-1: 行制御による処理対象判定
    */
   shouldProcessRow(rowNumber, rowControls) {
-    // ステップ3-4-5-1: 行制御がない場合は全て処理
+    // Step 4-1-1: 行制御がない場合は全て処理
     if (!rowControls || rowControls.length === 0) {
-      this.log(`行制御なし - 行${rowNumber}を処理対象とする`, 'info', '3-4-5-1');
+      this.log(`行制御なし - 行${rowNumber}を処理対象とする`, 'info', 'Step 4-1-1');
       return true;
     }
 
-    // ステップ3-4-5-2: "この行のみ処理"が優先
+    // Step 4-1-2: "この行のみ処理"が優先
     const onlyControls = rowControls.filter(c => c.type === 'only');
     if (onlyControls.length > 0) {
       const shouldProcess = onlyControls.some(c => c.row === rowNumber);
@@ -1684,7 +1712,7 @@ export default class StreamProcessorV2 {
       return shouldProcess;
     }
 
-    // ステップ3-4-5-3: "この行から処理"チェック
+    // Step 4-1-3: "この行から処理"チェック
     const fromControl = rowControls.find(c => c.type === 'from');
     if (fromControl) {
       if (rowNumber < fromControl.row) {
@@ -1693,7 +1721,7 @@ export default class StreamProcessorV2 {
       }
     }
 
-    // ステップ3-4-5-4: "この行で停止"チェック
+    // Step 4-1-4: "この行で停止"チェック
     const untilControl = rowControls.find(c => c.type === 'until');
     if (untilControl) {
       if (rowNumber > untilControl.row) {
@@ -1708,6 +1736,7 @@ export default class StreamProcessorV2 {
 
   /**
    * 列処理判定 - タスクグループの列制御チェック
+   * Step 4-2: 列制御による処理対象判定
    */
   shouldProcessColumn(promptGroup, columnControls) {
     // パラメータがない場合は処理対象とする
@@ -1748,49 +1777,49 @@ export default class StreamProcessorV2 {
 
   /**
    * 行制御取得 - スプレッドシートのB列から行制御を解析
-   * ステップ3-4-6: 行制御情報の取得
+   * Step 4-3: 行制御情報の取得
    */
   getRowControl(data) {
-    this.log('行制御を取得中...', 'info', '3-4-6');
+    this.log('行制御を取得中...', 'info', 'Step 4-3');
     const controls = [];
 
     if (!data || !data.values) {
-      this.log('データなし - 行制御なし', 'warn', '3-4-6-1');
+      this.log('データなし - 行制御なし', 'warn', 'Step 4-3-1');
       return controls;
     }
 
-    // ステップ3-4-6-1: B列で制御文字列を探す
+    // Step 4-3-1: B列で制御文字列を探す
     for (let i = 0; i < data.values.length; i++) {
       const row = data.values[i];
       if (!row) continue;
 
       const cellB = row[1]; // B列
       if (cellB && typeof cellB === 'string') {
-        // ステップ3-4-6-2: "この行から処理"チェック
+        // Step 4-3-2: "この行から処理"チェック
         if (cellB.includes('この行から処理')) {
           controls.push({ type: 'from', row: i + 1 });
-          this.log(`行制御検出: "この行から処理" at 行${i + 1}`, 'success', '3-4-6-2');
+          this.log(`行制御検出: "この行から処理" at 行${i + 1}`, 'success', 'Step 4-3-2');
         }
-        // ステップ3-4-6-3: "この行で停止"チェック
+        // Step 4-3-3: "この行で停止"チェック
         else if (cellB.includes('この行で停止') || cellB.includes('この行の処理後に停止')) {
           controls.push({ type: 'until', row: i + 1 });
-          this.log(`行制御検出: "この行で停止" at 行${i + 1}`, 'success', '3-4-6-3');
+          this.log(`行制御検出: "この行で停止" at 行${i + 1}`, 'success', 'Step 4-3-3');
         }
-        // ステップ3-4-6-4: "この行のみ処理"チェック
+        // Step 4-3-4: "この行のみ処理"チェック
         else if (cellB.includes('この行のみ処理')) {
           controls.push({ type: 'only', row: i + 1 });
-          this.log(`行制御検出: "この行のみ処理" at 行${i + 1}`, 'success', '3-4-6-4');
+          this.log(`行制御検出: "この行のみ処理" at 行${i + 1}`, 'success', 'Step 4-3-4');
         }
       }
     }
 
     if (controls.length > 0) {
-      this.log(`行制御検出結果: ${controls.length}件`, 'success', '3-4-6');
+      this.log(`行制御検出結果: ${controls.length}件`, 'success', 'Step 4-3');
       controls.forEach(c => {
-        this.log(`  - ${c.type}: 行${c.row}`, 'info', '3-4-6');
+        this.log(`  - ${c.type}: 行${c.row}`, 'info', 'Step 4-3');
       });
     } else {
-      this.log('行制御なし', 'info', '3-4-6');
+      this.log('行制御なし', 'info', 'Step 4-3');
     }
 
     return controls;
@@ -1798,18 +1827,18 @@ export default class StreamProcessorV2 {
 
   /**
    * 列制御取得 - スプレッドシートから列制御を解析
-   * ステップ3-4-7: 列制御情報の取得
+   * Step 4-4: 列制御情報の取得
    */
   getColumnControl(data) {
-    this.log('列制御を取得中...', 'info', '3-4-7');
+    this.log('列制御を取得中...', 'info', 'Step 4-4');
     const controls = [];
 
     if (!data || !data.values) {
-      this.log('データなし - 列制御なし', 'warn', '3-4-7-1');
+      this.log('データなし - 列制御なし', 'warn', 'Step 4-4-1');
       return controls;
     }
 
-    // ステップ3-4-7-1: 制御行1-10で制御文字列を探す
+    // Step 4-4-1: 制御行1-10で制御文字列を探す
     for (let i = 0; i < Math.min(10, data.values.length); i++) {
       const row = data.values[i];
       if (!row) continue;
@@ -1819,29 +1848,29 @@ export default class StreamProcessorV2 {
         if (cell && typeof cell === 'string') {
           const column = this.indexToColumn(j);
 
-          // ステップ3-4-7-2: "この列から処理"チェック
+          // Step 4-4-2: "この列から処理"チェック
           if (cell.includes('この列から処理')) {
             controls.push({ type: 'from', column, index: j });
-            this.log(`列制御検出: "この列から処理" at ${column}列`, 'success', '3-4-7-2');
+            this.log(`列制御検出: "この列から処理" at ${column}列`, 'success', 'Step 4-4-2');
           }
-          // ステップ3-4-7-3: "この列で停止"チェック
+          // Step 4-4-3: "この列で停止"チェック
           else if (cell.includes('この列で停止') || cell.includes('この列の処理後に停止')) {
             controls.push({ type: 'until', column, index: j });
-            this.log(`列制御検出: "この列で停止" at ${column}列`, 'success', '3-4-7-3');
+            this.log(`列制御検出: "この列で停止" at ${column}列`, 'success', 'Step 4-4-3');
           }
-          // ステップ3-4-7-4: "この列のみ処理"チェック
+          // Step 4-4-4: "この列のみ処理"チェック
           else if (cell.includes('この列のみ処理')) {
             controls.push({ type: 'only', column, index: j });
-            this.log(`列制御検出: "この列のみ処理" at ${column}列`, 'success', '3-4-7-4');
+            this.log(`列制御検出: "この列のみ処理" at ${column}列`, 'success', 'Step 4-4-4');
           }
         }
       }
     }
 
     if (controls.length > 0) {
-      this.log(`列制御検出結果: ${controls.length}件`, 'success', '3-4-7');
+      this.log(`列制御検出結果: ${controls.length}件`, 'success', 'Step 4-4');
     } else {
-      this.log('列制御なし', 'info', '3-4-7');
+      this.log('列制御なし', 'info', 'Step 4-4');
     }
 
     return controls;
@@ -1849,16 +1878,24 @@ export default class StreamProcessorV2 {
 
   /**
    * ========================================
-   * ステップ3-5: 構造解析系メソッド
+   * Step 5: 構造解析系メソッド
+   * スプレッドシートの構造を分析し、AI列、タスクグループ、
+   * プロンプトグループ等を識別してデータ構造を作成
    * ========================================
    */
 
   /**
-   * スプレッドシート構造を解析
-   * ステップ3-5: メイン構造解析
+   * スプレッドシート構造を解析（processSpreadsheetData統合版）
+   * Step 5: メイン構造解析
+   *
+   * background.jsのprocessSpreadsheetData機能を統合:
+   * - AI列の検出
+   * - 列マッピングの作成
+   * - タスクグループの生成
+   * - 特殊グループ（レポート化、Genspark）の検出
    */
   analyzeStructure(data) {
-    this.log('スプレッドシート構造を解析中...', 'info', '3-5');
+    this.log('スプレッドシート構造を解析中...', 'info', 'Step 5');
 
     const rows = {
       menu: null,
@@ -1867,7 +1904,7 @@ export default class StreamProcessorV2 {
       function: null
     };
 
-    // ステップ3-5-1: 制御行を検索
+    // Step 5-1: 制御行を検索
     for (let i = 0; i < Math.min(10, data.values.length); i++) {
       const firstCell = data.values[i][0];
       if (!firstCell) continue;
@@ -1876,51 +1913,380 @@ export default class StreamProcessorV2 {
 
       if (cellValue.includes('メニュー')) {
         rows.menu = i;
-        this.log(`メニュー行検出: 行${i + 1}`, 'info', '3-5-1');
+        this.log(`メニュー行検出: 行${i + 1}`, 'info', 'Step 5-1');
       } else if (cellValue === 'ai') {
         rows.ai = i;
-        this.log(`AI行検出: 行${i + 1}`, 'info', '3-5-1');
+        this.log(`AI行検出: 行${i + 1}`, 'info', 'Step 5-1');
       } else if (cellValue === 'モデル' || cellValue === 'model') {
         rows.model = i;
-        this.log(`モデル行検出: 行${i + 1}`, 'info', '3-5-1');
+        this.log(`モデル行検出: 行${i + 1}`, 'info', 'Step 5-1');
       } else if (cellValue === '機能' || cellValue === 'function') {
         rows.function = i;
-        this.log(`機能行検出: 行${i + 1}`, 'info', '3-5-1');
+        this.log(`機能行検出: 行${i + 1}`, 'info', 'Step 5-1');
       }
     }
 
-    // ステップ3-5-2: プロンプトグループを特定
-    const promptGroups = this.identifyPromptGroups(data, rows);
-    this.log(`プロンプトグループ: ${promptGroups.length}個検出`, 'success', '3-5-2');
+    // Step 5-2: AI列情報を収集
+    const aiColumns = this.detectAIColumns(data, rows);
+    this.log(`AI列: ${Object.keys(aiColumns).length}列検出`, 'success', 'Step 5-2');
 
-    // ステップ3-5-3: 制御情報を取得
+    // Step 5-3: 列マッピングを作成
+    const columnMapping = this.createColumnMapping(data, rows);
+    this.log(`列マッピング: ${Object.keys(columnMapping).length}個作成`, 'success', 'Step 5-3');
+
+    // Step 5-4: タスクグループを生成（processSpreadsheetData互換）
+    const taskGroups = this.generateTaskGroups(data, rows, aiColumns);
+    this.log(`タスクグループ: ${taskGroups.length}個生成`, 'success', 'Step 5-4');
+
+    // Step 5-5: プロンプトグループを特定（従来のロジック）
+    const promptGroups = this.identifyPromptGroups(data, rows);
+    this.log(`プロンプトグループ: ${promptGroups.length}個検出`, 'success', 'Step 5-5');
+
+    // Step 5-6: 制御情報を取得
     const controls = {
       row: this.getRowControl(data),
       column: this.getColumnControl(data)
     };
 
-    // ステップ3-5-4: 作業行を特定
+    // Step 5-7: 作業行を特定
     const workRows = this.identifyWorkRows(data, rows);
-    this.log(`作業行: ${workRows.length}行検出`, 'success', '3-5-4');
+    this.log(`作業行: ${workRows.length}行検出`, 'success', 'Step 5-7');
 
-    return { rows, promptGroups, controls, workRows };
+    // processSpreadsheetData互換のために追加フィールドを含める
+    return {
+      rows,
+      promptGroups,
+      controls,
+      workRows,
+      aiColumns,       // processSpreadsheetData互換
+      columnMapping,   // processSpreadsheetData互換
+      taskGroups,      // processSpreadsheetData互換
+      ...data          // 元のデータも保持
+    };
+  }
+
+  /**
+   * processSpreadsheetData互換メソッド
+   * background.jsからの移行を容易にするためのラッパー
+   * @param {Object} spreadsheetData - スプレッドシートデータ
+   * @returns {Object} processSpreadsheetData互換の結果
+   */
+  processSpreadsheetData(spreadsheetData) {
+    this.log('processSpreadsheetDataラッパー実行', 'info', 'Step 5');
+
+    // analyzeStructureを呼び出して結果を返す
+    const result = this.analyzeStructure(spreadsheetData);
+
+    // background.jsのprocessSpreadsheetDataと同じ形式で返す
+    return {
+      ...spreadsheetData,
+      ...result,
+      aiColumns: result.aiColumns || {},
+      columnMapping: result.columnMapping || {},
+      taskGroups: result.taskGroups || []
+    };
+  }
+
+  /**
+   * AI列情報を検出
+   * Step 5-2: AI列の検出と情報収集
+   */
+  detectAIColumns(data, rows) {
+    this.log('AI列情報を検出中...', 'info', 'Step 5-2');
+    const aiColumns = {};
+
+    if (!rows.menu || !data.values[rows.menu]) {
+      return aiColumns;
+    }
+
+    const menuRow = data.values[rows.menu];
+    const aiRow = rows.ai ? data.values[rows.ai] : [];
+
+    menuRow.forEach((header, index) => {
+      const columnLetter = this.indexToColumn(index);
+      const trimmedHeader = header ? header.trim() : '';
+      const aiValue = aiRow[index] ? aiRow[index].trim() : '';
+
+      // AI関連列を検出
+      if (trimmedHeader.includes('回答') || trimmedHeader.includes('答') ||
+          trimmedHeader.includes('ChatGPT') || trimmedHeader.includes('Claude') ||
+          trimmedHeader.includes('Gemini') || trimmedHeader.includes('Genspark')) {
+
+        let aiType = 'Claude'; // デフォルト
+
+        // AIタイプを判定
+        const headerLower = trimmedHeader.toLowerCase();
+        if (headerLower.includes('chatgpt') || headerLower.includes('gpt')) {
+          aiType = 'ChatGPT';
+        } else if (headerLower.includes('claude')) {
+          aiType = 'Claude';
+        } else if (headerLower.includes('gemini')) {
+          aiType = 'Gemini';
+        } else if (headerLower.includes('genspark')) {
+          aiType = 'Genspark';
+        } else if (aiValue) {
+          // AI行の値から判定
+          aiType = aiValue;
+        }
+
+        aiColumns[columnLetter] = {
+          index,
+          header: trimmedHeader,
+          aiType,
+          aiValue
+        };
+
+        this.log(`AI列検出: ${columnLetter}列 - ${aiType}`, 'info', 'Step 5-2');
+      }
+    });
+
+    return aiColumns;
+  }
+
+  /**
+   * 列マッピングを作成
+   * Step 5-3: 列情報のマッピング作成
+   */
+  createColumnMapping(data, rows) {
+    this.log('列マッピングを作成中...', 'info', 'Step 5-3');
+    const columnMapping = {};
+
+    if (!rows.menu || !data.values[rows.menu]) {
+      return columnMapping;
+    }
+
+    const menuRow = data.values[rows.menu];
+
+    menuRow.forEach((header, index) => {
+      const columnLetter = this.indexToColumn(index);
+      const trimmedHeader = header ? header.trim() : '';
+
+      columnMapping[columnLetter] = {
+        index,
+        header: trimmedHeader,
+        type: this.determineColumnType(trimmedHeader)
+      };
+    });
+
+    return columnMapping;
+  }
+
+  /**
+   * 列タイプを判定
+   */
+  determineColumnType(header) {
+    if (!header) return 'unknown';
+
+    const h = header.toLowerCase();
+    if (h.includes('プロンプト')) return 'prompt';
+    if (h.includes('回答') || h.includes('答')) return 'answer';
+    if (h.includes('ログ')) return 'log';
+    if (h.includes('レポート')) return 'report';
+    if (h.includes('genspark')) return 'genspark';
+    return 'other';
+  }
+
+  /**
+   * タスクグループを生成（processSpreadsheetData互換）
+   * Step 5-4: タスクグループの生成
+   */
+  generateTaskGroups(data, rows, aiColumns) {
+    this.log('タスクグループを生成中...', 'info', 'Step 5-4');
+    const taskGroups = [];
+    let currentGroup = null;
+    let groupCounter = 1;
+
+    if (!rows.menu || !data.values[rows.menu]) {
+      return taskGroups;
+    }
+
+    const menuRow = data.values[rows.menu];
+    const aiRow = rows.ai ? data.values[rows.ai] : [];
+
+    menuRow.forEach((header, index) => {
+      const columnLetter = this.indexToColumn(index);
+      const trimmedHeader = header ? header.trim() : '';
+      const aiValue = aiRow[index] ? aiRow[index].trim() : '';
+
+      // ログ列の検出（常に新しいグループを開始）
+      if (trimmedHeader === 'ログ') {
+        // 前のグループがあれば完了させる
+        if (currentGroup && currentGroup.columnRange.answerColumns.length > 0) {
+          taskGroups.push(currentGroup);
+          groupCounter++;
+        }
+
+        // 新しいグループを開始
+        currentGroup = {
+          id: `group_${groupCounter}`,
+          name: `タスクグループ${groupCounter}`,
+          startColumn: columnLetter,
+          endColumn: columnLetter,
+          columnRange: {
+            logColumn: columnLetter,
+            promptColumns: [],
+            answerColumns: []
+          },
+          groupType: 'single',
+          aiType: 'Claude',
+          dependencies: groupCounter > 1 ? [`group_${groupCounter - 1}`] : [],
+          sequenceOrder: groupCounter
+        };
+      }
+
+      // 特殊グループの検出（レポート化、Genspark）
+      if (trimmedHeader === 'レポート化' ||
+          trimmedHeader.includes('Genspark（スライド）') ||
+          trimmedHeader.includes('Genspark（ファクトチェック）')) {
+
+        // 前のグループがあれば完了させる
+        if (currentGroup) {
+          if (currentGroup.columnRange.answerColumns.length > 0 ||
+              ['report', 'genspark_slide', 'genspark_factcheck'].includes(currentGroup.groupType)) {
+            taskGroups.push(currentGroup);
+            groupCounter++;
+          }
+        }
+
+        // 特殊グループを作成
+        const specialGroup = {
+          id: `group_${groupCounter}`,
+          name: `タスクグループ${groupCounter}`,
+          startColumn: columnLetter,
+          endColumn: columnLetter,
+          columnRange: {
+            logColumn: null,
+            promptColumns: [columnLetter],
+            answerColumns: []
+          },
+          groupType: this.determineGroupType(trimmedHeader),
+          aiType: this.determineAIType(trimmedHeader),
+          dependencies: groupCounter > 1 ? [`group_${groupCounter - 1}`] : [],
+          sequenceOrder: groupCounter,
+          isSpecialGroup: true
+        };
+
+        taskGroups.push(specialGroup);
+        groupCounter++;
+        currentGroup = null;
+
+        this.log(`特殊グループ検出: ${trimmedHeader} (${columnLetter}列)`, 'info', 'Step 5-4');
+      }
+
+      // プロンプト列の検出
+      if (trimmedHeader.includes('プロンプト')) {
+        // 前のグループが完成していれば新しいグループを開始
+        if (currentGroup && currentGroup.columnRange.promptColumns.length > 0 &&
+            currentGroup.columnRange.answerColumns.length > 0) {
+          taskGroups.push(currentGroup);
+          groupCounter++;
+          currentGroup = null;
+        }
+
+        // 現在のグループがない場合、新しいグループを開始
+        if (!currentGroup) {
+          currentGroup = {
+            id: `group_${groupCounter}`,
+            name: `タスクグループ${groupCounter}`,
+            startColumn: columnLetter,
+            endColumn: columnLetter,
+            columnRange: {
+              logColumn: null,
+              promptColumns: [columnLetter],
+              answerColumns: []
+            },
+            groupType: 'single',
+            aiType: 'Claude',
+            dependencies: groupCounter > 1 ? [`group_${groupCounter - 1}`] : [],
+            sequenceOrder: groupCounter
+          };
+        } else {
+          // 既存のグループにプロンプト列を追加
+          currentGroup.columnRange.promptColumns.push(columnLetter);
+        }
+
+        // AI行の値からグループタイプを判定
+        if (aiValue.includes('3種類')) {
+          currentGroup.groupType = '3type';
+          currentGroup.aiType = aiValue;
+        } else if (aiValue) {
+          currentGroup.groupType = 'single';
+          currentGroup.aiType = aiValue;
+        }
+      }
+
+      // 回答列の検出
+      if (currentGroup && (trimmedHeader.includes('回答') || trimmedHeader.includes('答'))) {
+        currentGroup.columnRange.answerColumns.push({
+          column: columnLetter,
+          index: index,
+          aiType: this.detectAITypeFromHeader(trimmedHeader, currentGroup.groupType)
+        });
+        currentGroup.endColumn = columnLetter;
+      }
+    });
+
+    // 最後のグループを追加
+    if (currentGroup && currentGroup.columnRange.answerColumns.length > 0) {
+      taskGroups.push(currentGroup);
+    }
+
+    return taskGroups;
+  }
+
+  /**
+   * グループタイプを判定
+   */
+  determineGroupType(header) {
+    if (header.includes('レポート化')) return 'report';
+    if (header.includes('Genspark（スライド）')) return 'genspark_slide';
+    if (header.includes('Genspark（ファクトチェック）')) return 'genspark_factcheck';
+    return 'single';
+  }
+
+  /**
+   * AIタイプを判定
+   */
+  determineAIType(header) {
+    const h = header.toLowerCase();
+    if (h.includes('genspark')) {
+      if (h.includes('スライド')) return 'Genspark-Slides';
+      if (h.includes('ファクトチェック')) return 'Genspark-FactCheck';
+      return 'Genspark';
+    }
+    if (h.includes('レポート')) return 'Report';
+    return 'Claude';
+  }
+
+  /**
+   * ヘッダーからAIタイプを検出
+   */
+  detectAITypeFromHeader(header, groupType) {
+    if (groupType === '3type') {
+      const h = header.toLowerCase();
+      if (h.includes('chatgpt') || h.includes('gpt')) return 'ChatGPT';
+      if (h.includes('claude')) return 'Claude';
+      if (h.includes('gemini')) return 'Gemini';
+      if (h.includes('genspark')) return 'Genspark';
+    }
+    return 'Claude';
   }
 
   /**
    * プロンプトグループを特定
-   * ステップ3-5-1: プロンプトグループ識別
+   * Step 5-5: プロンプトグループ識別（従来ロジック）
    */
   identifyPromptGroups(data, rows) {
-    this.log('プロンプトグループを識別中...', 'info', '3-5-1');
+    this.log('プロンプトグループを識別中...', 'info', 'Step 5-5');
 
     // processSpreadsheetData()で生成されたtaskGroups情報があればそれを使用
     if (data.taskGroups && data.taskGroups.length > 0) {
-      this.log('taskGroups情報を使用してプロンプトグループを構築', 'info', '3-5-1');
+      this.log('taskGroups情報を使用してプロンプトグループを構築', 'info', 'Step 5-5');
       return this.convertTaskGroupsToPromptGroups(data.taskGroups);
     }
 
     // フォールバック: 従来のロジックで解析
-    this.log('taskGroups情報がないため、従来のロジックで解析', 'info', '3-5-1');
+    this.log('taskGroups情報がないため、従来のロジックで觢析', 'info', 'Step 5-5');
     const groups = [];
 
     if (!rows.menu || !rows.ai) {
@@ -2007,12 +2373,12 @@ export default class StreamProcessorV2 {
    * ステップ3-5-3: タスクグループ変換
    */
   convertTaskGroupsToPromptGroups(taskGroups) {
-    this.log('taskGroupsをpromptGroups形式に変換中...', 'info', '3-5-3');
+    this.log('taskGroupsをpromptGroups形式に変換中...', 'info', 'Step 3-5-3');
     const promptGroups = [];
 
     try {
       if (!taskGroups || !Array.isArray(taskGroups)) {
-        this.log('taskGroupsが無効です', 'warn', '3-5-3');
+        this.log('taskGroupsが無効です', 'warn', 'Step 3-5-3');
         return promptGroups;
       }
 
@@ -2020,7 +2386,7 @@ export default class StreamProcessorV2 {
         try {
           // タスクグループの必須フィールドをチェック
           if (!taskGroup.columnRange || !taskGroup.columnRange.promptColumns || !taskGroup.columnRange.answerColumns) {
-            this.log('無効なtaskGroup構造をスキップ', 'warn', '3-5-3');
+            this.log('無効なtaskGroup構造をスキップ', 'warn', 'Step 3-5-3');
             continue;
           }
 
@@ -2081,7 +2447,7 @@ export default class StreamProcessorV2 {
    * ステップ3-5-2: 作業行識別
    */
   identifyWorkRows(data, rows) {
-    this.log('作業行を特定中...', 'info', '3-5-2');
+    this.log('作業行を特定中...', 'info', 'Step 3-5-2');
 
     const workRows = [];
     const startRow = Math.max(
@@ -2108,9 +2474,9 @@ export default class StreamProcessorV2 {
       });
     }
 
-    this.log(`作業行検出完了: ${workRows.length}行`, 'success', '3-5-2');
+    this.log(`作業行検出完了: ${workRows.length}行`, 'success', 'Step 5-7');
     if (workRows.length < 10) {
-      this.log(`検出した作業行: ${workRows.map(w => `行${w.number}`).join(', ')}`, 'info', '3-5-2');
+      this.log(`検出した作業行: ${workRows.map(w => `行${w.number}`).join(', ')}`, 'info', 'Step 5-7');
     }
 
     return workRows;

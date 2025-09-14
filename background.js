@@ -605,8 +605,32 @@ function applyColumnControlsToGroups(taskGroups, columnControls) {
 
 /**
  * processSpreadsheetData関数
+ * StreamProcessorV2.processSpreadsheetDataへ委譲
  */
 function processSpreadsheetData(spreadsheetData) {
+  try {
+    // StreamProcessorV2のインスタンスを作成
+    const processor = new StreamProcessorV2(console);
+
+    // StreamProcessorV2のprocessSpreadsheetDataメソッドを使用
+    const result = processor.processSpreadsheetData(spreadsheetData);
+
+    console.log(`[processSpreadsheetData] StreamProcessorV2で処理完了: タスクグループ${result.taskGroups?.length || 0}個`);
+
+    return result;
+  } catch (error) {
+    console.error('[processSpreadsheetData] StreamProcessorV2でエラー:', error);
+
+    // フォールバック: 旧実装を使用
+    return processSpreadsheetDataLegacy(spreadsheetData);
+  }
+}
+
+/**
+ * processSpreadsheetData関数（旧実装）
+ * StreamProcessorV2が失敗した場合のフォールバック
+ */
+function processSpreadsheetDataLegacy(spreadsheetData) {
   
   const result = {
     ...spreadsheetData,
