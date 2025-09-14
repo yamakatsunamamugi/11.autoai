@@ -353,18 +353,54 @@ function updateAIStatus() {
   // ストレージから設定を取得
   chrome.storage.local.get(['ai_config_persistence'], (result) => {
     const config = result.ai_config_persistence || {};
-    
-    // 各AIのステータスを更新
-    updateAIStatusCard('chatgpt', config.chatgpt);
-    updateAIStatusCard('claude', config.claude);
-    updateAIStatusCard('gemini', config.gemini);
-    
-    // 統合表示ボタンを追加
-    addIntegratedViewButton();
-    
-    // データクリーンアップボタンも追加
-    addDataCleanupButton();
+
+    // 各AIのテーブル形式でステータスを更新
+    updateAIModelsTable('chatgpt', config.chatgpt);
+    updateAIModelsTable('claude', config.claude);
+    updateAIModelsTable('gemini', config.gemini);
   });
+}
+
+// 新しいテーブル形式のAIステータス更新
+function updateAIModelsTable(aiType, aiConfig) {
+  const modelCountEl = document.getElementById(`${aiType}-model-count`);
+  const functionCountEl = document.getElementById(`${aiType}-function-count`);
+  const modelsListEl = document.getElementById(`${aiType}-models-list`);
+  const functionsListEl = document.getElementById(`${aiType}-functions-list`);
+
+  if (!modelCountEl || !functionCountEl || !modelsListEl || !functionsListEl) return;
+
+  if (aiConfig && (aiConfig.models || aiConfig.functions)) {
+    // モデル数とリストを更新
+    const modelCount = aiConfig.models ? aiConfig.models.length : 0;
+    modelCountEl.textContent = modelCount.toString();
+
+    if (aiConfig.models && aiConfig.models.length > 0) {
+      modelsListEl.innerHTML = aiConfig.models.map(model =>
+        `<tr><td style="padding: 8px; border-bottom: 1px solid #e0e0e0; font-size: 0.9em;">${model}</td></tr>`
+      ).join('');
+    } else {
+      modelsListEl.innerHTML = '<tr><td style="padding: 8px; text-align: center; color: #999;">モデルデータなし</td></tr>';
+    }
+
+    // 機能数とリストを更新
+    const functionCount = aiConfig.functions ? aiConfig.functions.length : 0;
+    functionCountEl.textContent = functionCount.toString();
+
+    if (aiConfig.functions && aiConfig.functions.length > 0) {
+      functionsListEl.innerHTML = aiConfig.functions.map(func =>
+        `<tr><td style="padding: 8px; border-bottom: 1px solid #e0e0e0; font-size: 0.9em;">${func}</td></tr>`
+      ).join('');
+    } else {
+      functionsListEl.innerHTML = '<tr><td style="padding: 8px; text-align: center; color: #999;">機能データなし</td></tr>';
+    }
+  } else {
+    // データなしの場合
+    modelCountEl.textContent = '0';
+    functionCountEl.textContent = '0';
+    modelsListEl.innerHTML = '<tr><td style="padding: 8px; text-align: center; color: #999;">データを取得するには上記のボタンを実行してください</td></tr>';
+    functionsListEl.innerHTML = '<tr><td style="padding: 8px; text-align: center; color: #999;">データを取得するには上記のボタンを実行してください</td></tr>';
+  }
 }
 
 // 統合表示ボタンを追加する関数
@@ -3910,6 +3946,45 @@ function escapeHtml(text) {
 }
 
 
+// ===== AIタブ切り替え機能 =====
+function initAITabsSystem() {
+  const aiTabs = document.querySelectorAll('.ai-tab');
+  const aiPanels = document.querySelectorAll('.ai-panel');
+
+  if (aiTabs.length === 0 || aiPanels.length === 0) return;
+
+  aiTabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      const aiType = tab.dataset.ai;
+
+      // すべてのタブを非アクティブ化
+      aiTabs.forEach(t => {
+        t.classList.remove('active');
+        t.style.borderBottom = '2px solid transparent';
+        t.style.color = '#666';
+      });
+
+      // すべてのパネルを非表示
+      aiPanels.forEach(p => p.style.display = 'none');
+
+      // クリックされたタブをアクティブ化
+      tab.classList.add('active');
+      const colors = {
+        chatgpt: '#10a37f',
+        claude: '#d97757',
+        gemini: '#4285f4'
+      };
+      tab.style.borderBottom = `2px solid ${colors[aiType]}`;
+      tab.style.color = colors[aiType];
+      tab.style.fontWeight = '600';
+
+      // 対応するパネルを表示
+      const panel = document.getElementById(`${aiType}-panel`);
+      if (panel) panel.style.display = 'block';
+    });
+  });
+}
+
 // ストレージの変更を監視（AI変更検出システムが実行されたときに更新）
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName === 'local' && changes.ai_config_persistence) {
@@ -3917,6 +3992,8 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   }
 });
 
+// AIタブシステムを初期化
+initAITabsSystem();
 
 // ===== グローバル関数公開 =====
 // 他のモジュールから使用できるように関数をwindowオブジェクトに公開
