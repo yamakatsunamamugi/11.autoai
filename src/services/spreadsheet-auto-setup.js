@@ -164,12 +164,18 @@ export class SpreadsheetAutoSetup {
    */
   async findKeyRows() {
 
-    // configから設定を取得
-    const config = typeof SPREADSHEET_CONFIG !== "undefined" ? SPREADSHEET_CONFIG : null;
-    if (!config) {
-      throw new Error("SPREADSHEET_CONFIG が見つかりません。config.js を読み込んでください。");
+    // SPREADSHEET_CONFIGが利用可能かチェック
+    if (typeof SPREADSHEET_CONFIG === "undefined") {
+      throw new Error("SPREADSHEET_CONFIG が初期化されていません。StreamProcessorV2 の初期化を確認してください。");
     }
 
+    return this.findKeyRowsWithConfig(SPREADSHEET_CONFIG);
+  }
+
+  /**
+   * 指定されたconfigでメニュー行とAI行を検索
+   */
+  findKeyRowsWithConfig(config) {
     for (let i = 0; i < this.sheetData.length; i++) {
       const row = this.sheetData[i];
       if (!row || row.length === 0) continue;
@@ -180,26 +186,33 @@ export class SpreadsheetAutoSetup {
 
       const cellValue = cellA.toString().trim();
 
+      // configの構造に応じて検索キーワードを取得
+      const menuKeyword = config.rowIdentifiers?.menuRow?.keyword || config.keyIndicators?.menuRow || 'メニュー';
+      const aiKeyword = config.rowIdentifiers?.aiRow?.keyword || config.keyIndicators?.aiRow || 'AI';
+
       // メニュー行を検索
-      if (cellValue === config.rowIdentifiers.menuRow.keyword) {
+      if (cellValue === menuKeyword) {
         this.menuRowIndex = i;
       }
 
       // AI行を検索
-      if (cellValue === config.rowIdentifiers.aiRow.keyword) {
+      if (cellValue === aiKeyword) {
         this.aiRowIndex = i;
       }
     }
 
+    const menuKeyword = config.rowIdentifiers?.menuRow?.keyword || config.keyIndicators?.menuRow || 'メニュー';
+    const aiKeyword = config.rowIdentifiers?.aiRow?.keyword || config.keyIndicators?.aiRow || 'AI';
+
     if (this.menuRowIndex === -1) {
       throw new Error(
-        `メニュー行が見つかりません（A列に「${config.rowIdentifiers.menuRow.keyword}」を含むセルが必要）`,
+        `メニュー行が見つかりません（A列に「${menuKeyword}」を含むセルが必要）`,
       );
     }
 
     if (this.aiRowIndex === -1) {
       throw new Error(
-        `AI行が見つかりません（A列に「${config.rowIdentifiers.aiRow.keyword}」を含むセルが必要）`,
+        `AI行が見つかりません（A列に「${aiKeyword}」を含むセルが必要）`,
       );
     }
   }

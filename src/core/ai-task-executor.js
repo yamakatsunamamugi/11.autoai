@@ -119,8 +119,8 @@ export class AITaskExecutor {
       const injectionTime = (performance.now() - injectionStartTime).toFixed(0);
       this.logger.log(`[AITaskExecutor] ✅ [${taskData.aiType}] スクリプト注入完了 (${injectionTime}ms)、初期化確認中...`);
 
-      // スクリプト実行完了を待つ
-      await new Promise(resolve => setTimeout(resolve, 1000)); // 1秒に延長
+      // スクリプト実行完了を待つ（初期化完了のため延長）
+      await new Promise(resolve => setTimeout(resolve, 3000)); // 3秒に延長
       
       // ページが真っ暗かどうかチェック
       try {
@@ -159,67 +159,120 @@ export class AITaskExecutor {
         this.logger.warn(`[AITaskExecutor] ページチェックエラー:`, e);
       }
 
-      // V2版の存在を確認（全AIタイプ）
-      try {
-        const [v2Check] = await chrome.scripting.executeScript({
-          target: { tabId: tabId },
-          func: (aiType) => {
-            // 全てのAutomation関連オブジェクトをリスト
-            const allAutomations = Object.keys(window).filter(key => key.includes('Automation'));
-            console.log(`[V2チェック] 全Automationオブジェクト:`, allAutomations);
+      // V2版の存在を確認（リトライ機能付き）
+      let v2CheckSuccess = false;
+      let v2CheckAttempts = 0;
+      const maxV2CheckAttempts = 5; // 5秒間リトライ
 
-            // ChatGPT固有のチェック
-            console.log(`[V2チェック] window.ChatGPTAutomationV2:`, window.ChatGPTAutomationV2);
-            console.log(`[V2チェック] window.ChatGPTAutomation:`, window.ChatGPTAutomation);
-            console.log(`[V2チェック] typeof ChatGPTAutomationV2:`, typeof window.ChatGPTAutomationV2);
-            console.log(`[V2チェック] typeof ChatGPTAutomation:`, typeof window.ChatGPTAutomation);
+      while (!v2CheckSuccess && v2CheckAttempts < maxV2CheckAttempts) {
+        v2CheckAttempts++;
+        this.logger.log(`[AITaskExecutor] V2チェック試行 ${v2CheckAttempts}/${maxV2CheckAttempts}`);
 
-            // スクリプト読み込み状況確認
-            const scripts = Array.from(document.querySelectorAll('script')).map(s => s.src).filter(src => src.includes('chatgpt'));
-            console.log(`[V2チェック] ChatGPT関連スクリプト:`, scripts);
+        try {
+          const [v2Check] = await chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            func: (aiType, attempt) => {
+              console.log(`[V2チェック] ${aiType}のV2スクリプト確認開始（試行${attempt}）`);
 
-            // スクリプトマーカー確認
-            console.log(`[V2チェック] CHATGPT_SCRIPT_LOADED:`, window.CHATGPT_SCRIPT_LOADED);
-            console.log(`[V2チェック] CHATGPT_SCRIPT_INIT_TIME:`, window.CHATGPT_SCRIPT_INIT_TIME);
+              // 全てのAutomation関連オブジェクトをリスト
+              const allAutomations = Object.keys(window).filter(key => key.includes('Automation'));
+              console.log(`[V2チェック] 全Automationオブジェクト:`, allAutomations);
 
-            // より詳細な情報
-            if (window.CHATGPT_SCRIPT_LOADED) {
-              const elapsed = Date.now() - (window.CHATGPT_SCRIPT_INIT_TIME || 0);
-              console.log(`[V2チェック] スクリプト初期化から経過時間:`, elapsed + 'ms');
-              console.log(`[V2チェック] 現在時刻:`, new Date().toLocaleTimeString());
+              // ChatGPT固有のチェック
+              console.log(`[V2チェック] window.ChatGPTAutomationV2:`, window.ChatGPTAutomationV2);
+              console.log(`[V2チェック] window.ChatGPTAutomation:`, window.ChatGPTAutomation);
+              console.log(`[V2チェック] typeof ChatGPTAutomationV2:`, typeof window.ChatGPTAutomationV2);
+              console.log(`[V2チェック] typeof ChatGPTAutomation:`, typeof window.ChatGPTAutomation);
+
+              // スクリプト読み込み状況確認
+              const scripts = Array.from(document.querySelectorAll('script')).map(s => s.src).filter(src => src.includes('chatgpt'));
+              console.log(`[V2チェック] ChatGPT関連スクリプト:`, scripts);
+
+              // スクリプトマーカー確認
+              console.log(`[V2チェック] CHATGPT_SCRIPT_LOADED:`, window.CHATGPT_SCRIPT_LOADED);
+              console.log(`[V2チェック] CHATGPT_SCRIPT_INIT_TIME:`, window.CHATGPT_SCRIPT_INIT_TIME);
+
+              // より詳細な情報
+              if (window.CHATGPT_SCRIPT_LOADED) {
+                const elapsed = Date.now() - (window.CHATGPT_SCRIPT_INIT_TIME || 0);
+                console.log(`[V2チェック] スクリプト初期化から経過時間:`, elapsed + 'ms');
+                console.log(`[V2チェック] 現在時刻:`, new Date().toLocaleTimeString());
+              }
+
+              // 初期化マーカーの確認ロジック
+              const initMarkers = {
+                'chatgpt': { marker: 'CHATGPT_SCRIPT_LOADED', time: 'CHATGPT_SCRIPT_INIT_TIME' },
+                'claude': { marker: 'CLAUDE_SCRIPT_LOADED', time: 'CLAUDE_SCRIPT_INIT_TIME' },
+                'gemini': { marker: 'GEMINI_SCRIPT_LOADED', time: 'GEMINI_SCRIPT_INIT_TIME' }
+              };
+
+              const currentMarker = initMarkers[aiType.toLowerCase()];
+              const markerExists = currentMarker && window[currentMarker.marker];
+              const initTime = currentMarker && window[currentMarker.time];
+
+              console.log(`[V2チェック] ${currentMarker?.marker}:`, markerExists);
+              if (initTime) {
+                console.log(`[V2チェック] 初期化時刻:`, new Date(initTime).toLocaleTimeString());
+              }
+
+              const v2Names = {
+                'chatgpt': 'ChatGPTAutomationV2',
+                'claude': 'ClaudeAutomationV2',
+                'gemini': 'GeminiAutomation'  // GeminiはV2でも同じ名前
+              };
+              const v2Name = v2Names[aiType.toLowerCase()];
+              const v2ObjectExists = v2Name && typeof window[v2Name] !== 'undefined';
+
+              // 初期化マーカーとV2オブジェクトの両方が存在する場合のみ成功とする
+              const exists = v2ObjectExists && (markerExists || aiType.toLowerCase() === 'gemini');
+
+              if (v2ObjectExists) {
+                console.log(`[V2チェック] ${v2Name}のメソッド:`, Object.keys(window[v2Name]));
+              }
+
+              console.log(`[V2チェック] 総合判定: V2Object=${v2ObjectExists}, InitMarker=${markerExists}, 最終結果=${exists}`);
+
+              return {
+                exists,
+                v2Name,
+                allAutomations,
+                hasV2: typeof window.ChatGPTAutomationV2 !== 'undefined',
+                hasV1: typeof window.ChatGPTAutomation !== 'undefined',
+                markerExists,
+                v2ObjectExists,
+                initTime
+              };
+            },
+            args: [taskData.aiType, v2CheckAttempts]
+          });
+
+          this.logger.log(`[AITaskExecutor] 📋 V2チェック結果（試行${v2CheckAttempts}）:`, v2Check?.result);
+
+          if (v2Check?.result?.exists) {
+            v2CheckSuccess = true;
+            this.logger.log(`[AITaskExecutor] ✅ V2スクリプト確認成功（${v2CheckAttempts}回目）`);
+          } else {
+            if (v2CheckAttempts < maxV2CheckAttempts) {
+              this.logger.warn(`[AITaskExecutor] ⚠️ V2スクリプト未確認、1秒後にリトライ...（${v2CheckAttempts}/${maxV2CheckAttempts}）`);
+              this.logger.warn(`[AITaskExecutor] 状況: V2Object=${v2Check?.result?.v2ObjectExists}, InitMarker=${v2Check?.result?.markerExists}`);
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            } else {
+              this.logger.warn(`[AITaskExecutor] ⚠️ ${taskData.aiType}のV2スクリプト初期化が完了していませんが、処理を継続します`);
+              this.logger.warn(`[AITaskExecutor] 詳細分析:`);
+              this.logger.warn(`  - 全Automationオブジェクト: ${v2Check?.result?.allAutomations?.join(', ') || 'なし'}`);
+              this.logger.warn(`  - ${taskData.aiType}V2オブジェクト存在: ${v2Check?.result?.v2ObjectExists || false}`);
+              this.logger.warn(`  - 初期化マーカー存在: ${v2Check?.result?.markerExists || false}`);
+              this.logger.warn(`  - 初期化時刻: ${v2Check?.result?.initTime ? new Date(v2Check?.result?.initTime).toLocaleString() : '不明'}`);
+              this.logger.warn(`  - 経過時間: ${v2Check?.result?.initTime ? Math.round((Date.now() - v2Check?.result?.initTime) / 1000) + '秒' : '不明'}`);
+              this.logger.warn(`[AITaskExecutor] 推奨対応: スクリプトの読み込み完了を確認してください`);
             }
-
-            const v2Names = {
-              'chatgpt': 'ChatGPTAutomationV2',
-              'claude': 'ClaudeAutomationV2',
-              'gemini': 'GeminiAutomation'  // GeminiはV2でも同じ名前
-            };
-            const v2Name = v2Names[aiType.toLowerCase()];
-            const exists = v2Name && typeof window[v2Name] !== 'undefined';
-
-            if (exists) {
-              console.log(`[V2チェック] ${v2Name}のメソッド:`, Object.keys(window[v2Name]));
-            }
-
-            return {
-              exists,
-              v2Name,
-              allAutomations,
-              hasV2: typeof window.ChatGPTAutomationV2 !== 'undefined',
-              hasV1: typeof window.ChatGPTAutomation !== 'undefined'
-            };
-          },
-          args: [taskData.aiType]
-        });
-        this.logger.log(`[AITaskExecutor] 📋 V2チェック結果:`, v2Check?.result);
-
-        // V2が読み込まれていない場合はエラー
-        if (!v2Check?.result?.exists) {
-          this.logger.error(`[AITaskExecutor] ❌ ${taskData.aiType}のV2スクリプトが読み込まれていません`);
-          this.logger.error(`[AITaskExecutor] 詳細: 全Automations=${v2Check?.result?.allAutomations}, hasV2=${v2Check?.result?.hasV2}, hasV1=${v2Check?.result?.hasV1}`);
+          }
+        } catch (e) {
+          this.logger.error(`[AITaskExecutor] V2チェックエラー（試行${v2CheckAttempts}）:`, e);
+          if (v2CheckAttempts < maxV2CheckAttempts) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
         }
-      } catch (e) {
-        this.logger.error(`[AITaskExecutor] V2チェックエラー:`, e);
       }
 
       // タブの状態を確認（RetryManagerを使用）
@@ -343,6 +396,20 @@ export class AITaskExecutor {
 
             console.log(`[ExecuteAITask] 🔍 ${taskData.aiType}の自動化オブジェクトを探しています...`);
             console.log(`[ExecuteAITask] 📋 利用可能な候補: ${possibleNames.join(', ')}`);
+
+            // 初期化マーカーの詳細確認
+            const initMarkers = {
+              'chatgpt': 'CHATGPT_SCRIPT_LOADED',
+              'claude': 'CLAUDE_SCRIPT_LOADED',
+              'gemini': 'GEMINI_SCRIPT_LOADED'
+            };
+            const currentMarker = initMarkers[taskData.aiType.toLowerCase()];
+            console.log(`[ExecuteAITask] 🔍 初期化マーカー確認:`, {
+              marker: currentMarker,
+              exists: currentMarker ? window[currentMarker] : 'N/A',
+              windowKeys: Object.keys(window).filter(k => k.includes('SCRIPT_LOADED'))
+            });
+
             console.log(`[ExecuteAITask] 📝 プロンプト確認:`, {
               hasPrompt: !!taskData.prompt,
               promptLength: taskData.prompt?.length || 0,
@@ -354,8 +421,11 @@ export class AITaskExecutor {
                 key.includes('Automation') || key.includes(taskData.aiType)
               );
               console.error(`[ExecuteAITask] ❌ ${taskData.aiType}の自動化オブジェクトが見つかりません`);
+              console.error(`[ExecuteAITask] ❌ V2スクリプトの初期化に失敗しています - フォールバックは無効化されています`);
               console.log(`[ExecuteAITask] 📋 ウィンドウで利用可能: ${availableKeys.join(', ')}`);
-              return { success: false, error: `${taskData.aiType}の自動化オブジェクトが見つかりません` };
+
+              // フォールバック無効化 - エラーで停止
+              throw new Error(`${taskData.aiType}の自動化オブジェクトが見つかりません。V2スクリプトの初期化を確認してください。`);
             }
 
             console.log(`[ExecuteAITask] ✅ ${foundName}を発見、実行開始`);
@@ -418,7 +488,6 @@ export class AITaskExecutor {
             // V2版はexecuteTaskを優先、従来版はrunAutomationを使用
             if (typeof automation.executeTask === 'function') {
               console.log(`[ExecuteAITask] 🎯 ${foundName}.executeTask（V2）を実行中...`);
-              const execStartTime = Date.now();
               
               // V2版のexecuteTaskを直接実行し、その結果を待つ
               // CSP回避のため、Promiseを作成してthenで処理

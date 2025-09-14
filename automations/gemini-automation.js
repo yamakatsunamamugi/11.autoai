@@ -20,6 +20,30 @@
 
     console.log(`🚀 Gemini Automation V3 初期化`);
 
+    // 初期化マーカー設定
+    window.GEMINI_SCRIPT_LOADED = true;
+    window.GEMINI_SCRIPT_INIT_TIME = Date.now();
+
+    // AI共通基盤からRetryManagerを取得（現在の共通処理関数を活用）
+    const getRetryManager = () => {
+        try {
+            if (typeof window !== 'undefined' && window.AICommonBase) {
+                return window.AICommonBase.RetryManager;
+            }
+            if (typeof globalThis !== 'undefined' && globalThis.AICommonBase) {
+                return globalThis.AICommonBase.RetryManager;
+            }
+            console.log('📝 AI共通基盤が見つかりません、独自実装を使用');
+            return null;
+        } catch (error) {
+            console.log('📝 RetryManager取得失敗、独自実装を使用:', error.message);
+            return null;
+        }
+    };
+
+    // RetryManagerの取得を試行
+    const retryManager = getRetryManager();
+
     // 統一された待機時間設定を取得（Claude/ChatGPTと同じ方式）
     const AI_WAIT_CONFIG = window.AI_WAIT_CONFIG || {
         DEEP_RESEARCH_WAIT: 2400000, // 40分（Geminiでは未使用）
@@ -220,8 +244,7 @@
             ]);
             
             if (menuButton) {
-                menuButton.click();
-                await wait(1500);
+                await openGeminiModelMenu(menuButton);
                 
                 const menuContainer = findElement([
                     '.cdk-overlay-pane .menu-inner-container',
@@ -248,9 +271,7 @@
             log('【Gemini-ステップ1-1】モデル探索エラー: ' + e.message, 'error');
         } finally {
             // メニューを閉じる
-            const overlay = document.querySelector('.cdk-overlay-backdrop.cdk-overlay-backdrop-showing');
-            if (overlay) overlay.click();
-            await wait(500);
+            await closeGeminiMenu();
         }
         
         // 機能探索
@@ -286,9 +307,7 @@
             log('【Gemini-ステップ1-2】機能探索エラー: ' + e.message, 'error');
         } finally {
             // メニューを閉じる
-            const overlay = document.querySelector('.cdk-overlay-backdrop.cdk-overlay-backdrop-showing');
-            if (overlay) overlay.click();
-            await wait(500);
+            await closeGeminiMenu();
         }
         
         return {
@@ -874,6 +893,251 @@
         }
     }
     
+    // ========================================
+    // 【関数一覧】検出システム用エクスポート関数
+    // ========================================
+
+    /*
+    ┌─────────────────────────────────────────────────────┐
+    │                【メニュー操作関数】                    │
+    │   本番executeTask内のコードをそのまま関数化           │
+    └─────────────────────────────────────────────────────┘
+    */
+
+    /**
+     * 🔧 Geminiモデルメニューを開く
+     * @description 本番executeTask内の行223-224のコードをそのまま関数化
+     * @param {Element} menuButton - メニューボタン要素
+     * @returns {Promise<boolean>} メニュー開放成功フラグ
+     */
+    async function openGeminiModelMenu(menuButton) {
+        if (!menuButton) {
+            console.error('[Gemini-openModelMenu] モデルボタンが見つかりません');
+            return false;
+        }
+
+        try {
+            menuButton.click();
+            await wait(1500);
+
+            // メニュー出現確認
+            const menuItems = document.querySelectorAll('[role="menuitem"], [role="option"], mat-option');
+            if (menuItems.length > 0) {
+                console.log('[Gemini-openModelMenu] ✅ モデルメニュー開放成功');
+                return true;
+            } else {
+                console.warn('[Gemini-openModelMenu] ⚠️ メニュー開放したがDOM確認できず');
+                return false;
+            }
+        } catch (error) {
+            console.error('[Gemini-openModelMenu] ❌ エラー:', error);
+            return false;
+        }
+    }
+
+    /**
+     * 🔧 Gemini機能メニューを開く（スキップ）
+     * @description Geminiでは明示的な機能メニューが少ないためスキップ
+     * @param {Element} functionButton - 機能メニューボタン要素
+     * @returns {Promise<boolean>} 常にfalse（機能メニューなし）
+     */
+    async function openGeminiFunctionMenu(functionButton) {
+        console.log('[Gemini-openFunctionMenu] Geminiでは機能メニューをスキップ');
+        return false; // 機能メニューなし
+    }
+
+    /**
+     * 🔧 Geminiメニューを閉じる
+     * @description 本番executeTask内の行252のコードをそのまま関数化（オーバーレイクリック）
+     * @returns {Promise<void>}
+     */
+    async function closeGeminiMenu() {
+        const overlay = document.querySelector('.cdk-overlay-backdrop.cdk-overlay-backdrop-showing');
+        if (overlay) overlay.click();
+        await wait(500);
+    }
+
+    /*
+    ┌─────────────────────────────────────────────────────┐
+    │                【基本操作関数】                        │
+    │        Geminiでの基本的なUI操作を関数化              │
+    └─────────────────────────────────────────────────────┘
+    */
+
+    /**
+     * ✏️ Geminiテキスト入力処理
+     * @description GeminiのcontentEditable要素にHTMLとしてテキストを入力
+     * @param {string} text - 入力するテキスト
+     * @returns {Promise<Element>} 入力要素
+     * @throws {Error} テキスト入力欄が見つからない場合
+     */
+    async function inputTextGemini(text) {
+        const inputSelectors = [
+            '.ql-editor[contenteditable="true"]',
+            '[data-placeholder*="Gemini"]',
+            'div[contenteditable="true"]'
+        ];
+
+        let inputElement = null;
+        for (const selector of inputSelectors) {
+            inputElement = document.querySelector(selector);
+            if (inputElement) break;
+        }
+
+        if (!inputElement) throw new Error('テキスト入力欄が見つかりません');
+
+        inputElement.focus();
+        await wait(100);
+
+        // GeminiのRichTextEditor形式で入力
+        inputElement.innerHTML = `<p>${text}</p>`;
+        await wait(500);
+
+        return inputElement;
+    }
+
+    /**
+     * 📤 Geminiメッセージ送信処理
+     * @description Geminiの送信ボタンをクリックしてメッセージを送信
+     * @returns {Promise<boolean>} 送信成功フラグ
+     * @throws {Error} 送信ボタンが見つからない場合
+     */
+    async function sendMessageGemini() {
+        const sendSelectors = [
+            'button[aria-label="送信"]:not([disabled])',
+            'button[aria-label*="Send"]:not([disabled])',
+            '.send-button:not([disabled])'
+        ];
+
+        let sendButton = null;
+        for (const selector of sendSelectors) {
+            sendButton = document.querySelector(selector);
+            if (sendButton) break;
+        }
+
+        if (!sendButton) throw new Error('送信ボタンが見つかりません');
+
+        sendButton.click();
+        await wait(1000);
+
+        return true;
+    }
+
+    /**
+     * ⏳ Geminiレスポンス待機処理
+     * @description Geminiのレスポンス生成完了まで待機（ローディングインジケータの消失を監視）
+     * @returns {Promise<boolean>} 待機完了フラグ
+     * @throws {Error} タイムアウト（2分）の場合
+     */
+    async function waitForResponseGemini() {
+        const maxWaitTime = 120000; // 2分
+        const checkInterval = 1000;
+        let elapsedTime = 0;
+
+        while (elapsedTime < maxWaitTime) {
+            // Geminiの実行中インジケータをチェック
+            const loadingIndicators = document.querySelectorAll([
+                '.loading-indicator',
+                '[aria-label*="thinking"]',
+                '[aria-label*="generating"]'
+            ].join(','));
+
+            if (loadingIndicators.length === 0) {
+                // ローディングインジケータがない = レスポンス完了
+                await wait(2000);
+                return true;
+            }
+
+            await wait(checkInterval);
+            elapsedTime += checkInterval;
+        }
+
+        throw new Error('レスポンス待機タイムアウト');
+    }
+
+    /**
+     * 📥 Geminiレスポンステキスト取得処理
+     * @description Geminiの最新の回答を取得
+     * @returns {Promise<string>} レスポンステキスト
+     * @throws {Error} Geminiの回答が見つからない場合
+     */
+    async function getResponseTextGemini() {
+        const responseSelectors = [
+            '[data-response-index]:last-child',
+            '.model-response:last-child',
+            '[role="presentation"]:last-child'
+        ];
+
+        let responseElement = null;
+        for (const selector of responseSelectors) {
+            const elements = document.querySelectorAll(selector);
+            if (elements.length > 0) {
+                responseElement = elements[elements.length - 1];
+                break;
+            }
+        }
+
+        if (!responseElement) {
+            throw new Error('Geminiの回答が見つかりません');
+        }
+
+        const responseText = responseElement.textContent?.trim() || '';
+        return responseText;
+    }
+
+    /*
+    ┌─────────────────────────────────────────────────────┐
+    │                【選択操作関数】                        │
+    │        モデルや機能の選択処理を関数化                 │
+    └─────────────────────────────────────────────────────┘
+    */
+
+    /**
+     * 🎯 Geminiモデル選択処理
+     * @description 指定されたモデル名のモデルを選択
+     * @param {string} modelName - 選択するモデル名（例: "Gemini-1.5-Pro", "Gemini-1.5-Flash"）
+     * @returns {Promise<boolean>} 選択成功フラグ
+     * @throws {Error} モデルが見つからない場合
+     */
+    async function selectModelGemini(modelName) {
+        const menuButton = findElement([
+            'button[aria-label*="モデル"]',
+            'button.gds-mode-switch-button',
+            'button.logo-pill-btn'
+        ]);
+
+        if (!menuButton) throw new Error('モデルボタンが見つかりません');
+
+        await openGeminiModelMenu(menuButton);
+
+        // モデル選択
+        const modelOptions = document.querySelectorAll('.cdk-overlay-pane [role="menuitem"], .cdk-overlay-pane .model-option');
+        for (const option of modelOptions) {
+            if (option.textContent?.includes(modelName)) {
+                option.click();
+                await wait(1000);
+                await closeGeminiMenu();
+                return true;
+            }
+        }
+
+        throw new Error(`モデル '${modelName}' が見つかりません`);
+    }
+
+    /**
+     * 🎯 Gemini機能選択処理
+     * @description Geminiでは機能選択は主にプロンプト内で制御する方式
+     * @param {string} functionName - 指定する機能名（プロンプト内で活用）
+     * @returns {Promise<boolean>} 選択成功フラグ
+     * @note Geminiでは明示的な機能メニューが少ないため、プロンプト内で機能を指定
+     */
+    async function selectFunctionGemini(functionName) {
+        // Geminiでは明示的な機能メニューが少ないため、
+        // プロンプト内で機能を指定する方式が主流
+        console.log(`Gemini機能選択: ${functionName} (プロンプト内で制御推奨)`);
+        return true;
+    }
+
     // ================================================================
     // メインエントリポイント: executeTask
     // ================================================================
@@ -991,5 +1255,65 @@
     } else {
         console.error('❌ window.GeminiAutomation の公開に失敗しました');
     }
-    
+
 })();
+
+/*
+┌─────────────────────────────────────────────────────┐
+│                【使用例】                              │
+└─────────────────────────────────────────────────────┘
+
+// 基本的な使用の流れ
+import {
+    selectModelGemini,
+    inputTextGemini,
+    sendMessageGemini,
+    waitForResponseGemini,
+    getResponseTextGemini
+} from './gemini-automation.js';
+
+async function chatWithGemini() {
+    try {
+        // 1. モデル選択
+        await selectModelGemini('Gemini-1.5-Pro');
+
+        // 2. テキスト入力（GeminiのRichTextEditor形式）
+        await inputTextGemini('こんにちは！機械学習のベストプラクティスを教えて');
+
+        // 3. 送信
+        await sendMessageGemini();
+
+        // 4. レスポンス待機
+        await waitForResponseGemini();
+
+        // 5. 結果取得
+        const response = await getResponseTextGemini();
+        console.log('Gemini回答:', response);
+
+        return response;
+    } catch (error) {
+        console.error('Gemini操作エラー:', error);
+        throw error;
+    }
+}
+
+*/
+
+// ========================================
+// 【エクスポート】検出システム用関数一覧
+// ========================================
+export {
+    // 🔧 メニュー操作
+    openGeminiModelMenu,     // モデルメニューを開く
+    closeGeminiMenu,         // メニューを閉じる
+
+    // ✏️ 基本操作
+    inputTextGemini,         // テキスト入力
+    sendMessageGemini,       // メッセージ送信
+    waitForResponseGemini,   // レスポンス待機
+    getResponseTextGemini,   // レスポンス取得
+
+    // 🎯 選択操作
+    selectModelGemini,       // モデル選択
+    selectFunctionGemini     // 機能選択（プロンプト制御）
+};

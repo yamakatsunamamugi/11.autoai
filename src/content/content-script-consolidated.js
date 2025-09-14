@@ -18,6 +18,7 @@
  * 【動作フロー】
  * Step 0: 初期化
  * Step 1: 設定とセレクタの読み込み
+
  * Step 2: AI種別の検出
  * Step 3: ユーティリティ関数の定義
  * Step 4: モデル/機能情報抽出クラスの定義
@@ -35,11 +36,11 @@
 // ================================================================================
 
 // 【Step 0.1】グローバル変数定義
-let UI_SELECTORS_LOADED = false;
-let UI_SELECTORS_PROMISE = null;
+let CONTENT_CONSOLIDATED_UI_SELECTORS_LOADED = false;
+let CONTENT_CONSOLIDATED_UI_SELECTORS_PROMISE = null;
 
 // 【Step 0.2】AI種別の自動検出
-const AI_TYPE = (() => {
+const CONTENT_CONSOLIDATED_AI_TYPE = (() => {
   const hostname = window.location.hostname;
   if (hostname.includes("chatgpt.com") || hostname.includes("chat.openai.com"))
     return "ChatGPT";
@@ -48,7 +49,7 @@ const AI_TYPE = (() => {
   return null;
 })();
 
-console.log(`[Step 0.2] 🎯 [11.autoai] 統合AIコンテンツスクリプト起動 - ${AI_TYPE} モード`);
+console.log(`[Step 0.2] 🎯 [11.autoai] 統合AIコンテンツスクリプト起動 - ${CONTENT_CONSOLIDATED_AI_TYPE} モード`);
 
 // ================================================================================
 // STEP 1: 初期化と設定読み込み
@@ -77,23 +78,23 @@ async function waitForPageReady() {
  * 各AIサイトのDOM要素を特定するためのセレクタ情報をJSONファイルから読み込む
  */
 const loadUISelectors = () => {
-  UI_SELECTORS_PROMISE = fetch(chrome.runtime.getURL('ui-selectors-data.json'))
+  CONTENT_CONSOLIDATED_UI_SELECTORS_PROMISE = fetch(chrome.runtime.getURL('ui-selectors-data.json'))
     .then(response => response.json())
     .then(data => {
       window.UI_SELECTORS = data.selectors;
-      UI_SELECTORS_LOADED = true;
+      CONTENT_CONSOLIDATED_UI_SELECTORS_LOADED = true;
       console.log(`[Step 1.2] ✅ [11.autoai] UI Selectors loaded from JSON (v${data.version})`);
       loadTimeoutConfig();
       return true;
     })
     .catch(error => {
       console.error("[Step 1.2] ❌ [11.autoai] UI Selectors読み込みエラー:", error);
-      UI_SELECTORS_LOADED = false;
+      CONTENT_CONSOLIDATED_UI_SELECTORS_LOADED = false;
       loadTimeoutConfig();
       return false;
     });
 
-  return UI_SELECTORS_PROMISE;
+  return CONTENT_CONSOLIDATED_UI_SELECTORS_PROMISE;
 };
 
 /**
@@ -108,12 +109,12 @@ const loadTimeoutConfig = () => {
  * 【Step 1.4】UIセレクタの読み込み完了待機
  */
 async function waitForUISelectors() {
-  if (UI_SELECTORS_LOADED) {
+  if (CONTENT_CONSOLIDATED_UI_SELECTORS_LOADED) {
     return true;
   }
 
-  if (UI_SELECTORS_PROMISE) {
-    const result = await UI_SELECTORS_PROMISE;
+  if (CONTENT_CONSOLIDATED_UI_SELECTORS_PROMISE) {
+    const result = await CONTENT_CONSOLIDATED_UI_SELECTORS_PROMISE;
     return result;
   }
 
@@ -241,11 +242,11 @@ const handleError = (error, context = "", details = {}) => {
     context,
     timestamp: new Date().toISOString(),
     url: window.location.href,
-    aiType: AI_TYPE,
+    aiType: CONTENT_CONSOLIDATED_AI_TYPE,
     ...details,
   };
 
-  console.error(`[Step 3.3] [11.autoai][${AI_TYPE}] ${context}:`, errorInfo);
+  console.error(`[Step 3.3] [11.autoai][${CONTENT_CONSOLIDATED_AI_TYPE}] ${context}:`, errorInfo);
   return errorInfo;
 };
 
@@ -260,7 +261,7 @@ const retryAsync = async (fn, maxAttempts = 3, delay = 1000) => {
       if (attempt === maxAttempts) {
         throw error;
       }
-      console.warn(`[Step 3.4] [11.autoai][${AI_TYPE}] Retry ${attempt}/${maxAttempts} failed:`, error.message);
+      console.warn(`[Step 3.4] [11.autoai][${CONTENT_CONSOLIDATED_AI_TYPE}] Retry ${attempt}/${maxAttempts} failed:`, error.message);
       await sleep(delay * attempt); // 指数バックオフ
     }
   }
@@ -686,7 +687,7 @@ class FunctionInfoExtractor {
  */
 async function checkDeepResearchState() {
   try {
-    switch (AI_TYPE) {
+    switch (CONTENT_CONSOLIDATED_AI_TYPE) {
       case "ChatGPT":
         // ChatGPTのWeb検索状態を確認するロジック
         break;
@@ -739,7 +740,7 @@ async function checkDeepResearchState() {
     }
     return "unknown";
   } catch (error) {
-    console.error(`[11.autoai][${AI_TYPE}] DeepResearch状態確認エラー:`, error);
+    console.error(`[11.autoai][${CONTENT_CONSOLIDATED_AI_TYPE}] DeepResearch状態確認エラー:`, error);
     return "unknown";
   }
 }
@@ -752,9 +753,9 @@ async function enableDeepResearchSimple() {
   try {
     // 【Step 5.2.1】現在の状態を確認
     const currentState = await checkDeepResearchState();
-    console.log(`[11.autoai][${AI_TYPE}] 🔍 DeepResearch現在の状態: ${currentState}`);
+    console.log(`[11.autoai][${CONTENT_CONSOLIDATED_AI_TYPE}] 🔍 DeepResearch現在の状態: ${currentState}`);
 
-    switch (AI_TYPE) {
+    switch (CONTENT_CONSOLIDATED_AI_TYPE) {
       case "ChatGPT":
         // 【Step 5.2.2】ChatGPTのWeb検索有効化
         try {
@@ -925,13 +926,13 @@ async function enableDeepResearchSimple() {
     // 【Step 5.2.5】有効化後の状態を確認
     await sleep(1000);
     const afterState = await checkDeepResearchState();
-    console.log(`[11.autoai][${AI_TYPE}] ✅ DeepResearch有効化後の状態: ${afterState}`);
+    console.log(`[11.autoai][${CONTENT_CONSOLIDATED_AI_TYPE}] ✅ DeepResearch有効化後の状態: ${afterState}`);
 
     if (afterState !== "enabled") {
-      console.warn(`[11.autoai][${AI_TYPE}] ⚠️ DeepResearchが有効化されていません！`);
+      console.warn(`[11.autoai][${CONTENT_CONSOLIDATED_AI_TYPE}] ⚠️ DeepResearchが有効化されていません！`);
     }
   } catch (error) {
-    console.error(`[11.autoai][${AI_TYPE}] DeepResearch有効化エラー:`, error);
+    console.error(`[11.autoai][${CONTENT_CONSOLIDATED_AI_TYPE}] DeepResearch有効化エラー:`, error);
   }
 }
 
@@ -945,13 +946,13 @@ async function enableDeepResearchSimple() {
  */
 async function handlePreSendModeSetup(specialMode, enableDeepResearch) {
   try {
-    console.log(`[11.autoai][${AI_TYPE}] 🔄 送信前モード設定:`, {
+    console.log(`[11.autoai][${CONTENT_CONSOLIDATED_AI_TYPE}] 🔄 送信前モード設定:`, {
       specialMode,
       enableDeepResearch,
-      aiType: AI_TYPE,
+      aiType: CONTENT_CONSOLIDATED_AI_TYPE,
     });
 
-    switch (AI_TYPE) {
+    switch (CONTENT_CONSOLIDATED_AI_TYPE) {
       case "Gemini":
         // 【Step 6.1.1】Geminiの特殊モード設定
         console.log(`[11.autoai][Gemini] 🔄 ${specialMode}モードを設定中...`);
@@ -1055,14 +1056,14 @@ async function handlePreSendModeSetup(specialMode, enableDeepResearch) {
         break;
 
       default:
-        console.log(`[11.autoai][${AI_TYPE || "Unknown"}] ❌ 未対応のAI種別`);
+        console.log(`[11.autoai][${CONTENT_CONSOLIDATED_AI_TYPE || "Unknown"}] ❌ 未対応のAI種別`);
         break;
     }
 
     // 設定後少し待機
     await sleep(500);
   } catch (error) {
-    console.error(`[11.autoai][${AI_TYPE}] 送信前モード設定エラー:`, error);
+    console.error(`[11.autoai][${CONTENT_CONSOLIDATED_AI_TYPE}] 送信前モード設定エラー:`, error);
   }
 }
 
@@ -1079,7 +1080,7 @@ async function handleSendPrompt(request, sendResponse) {
       specialMode = null,
     } = request;
 
-    console.log(`[11.autoai][${AI_TYPE}] プロンプト送信開始: ${taskId}`, {
+    console.log(`[11.autoai][${CONTENT_CONSOLIDATED_AI_TYPE}] プロンプト送信開始: ${taskId}`, {
       enableDeepResearch,
       enableSearchMode,
       specialMode,
@@ -1089,8 +1090,8 @@ async function handleSendPrompt(request, sendResponse) {
     await handlePreSendModeSetup(specialMode, enableDeepResearch);
 
     // 【Step 6.2.2】Claude検索モード有効化（送信前）
-    if (enableSearchMode && AI_TYPE === "Claude") {
-      console.log(`[11.autoai][${AI_TYPE}] 🔍 検索モード有効化開始`);
+    if (enableSearchMode && CONTENT_CONSOLIDATED_AI_TYPE === "Claude") {
+      console.log(`[11.autoai][${CONTENT_CONSOLIDATED_AI_TYPE}] 🔍 検索モード有効化開始`);
 
       try {
         // ツールメニューを開く
@@ -1115,23 +1116,23 @@ async function handleSendPrompt(request, sendResponse) {
           const isAlreadyOn = webSearchButton.classList.contains("text-primary-500");
 
           if (!isAlreadyOn) {
-            console.log(`[11.autoai][${AI_TYPE}] 🔄 ウェブ検索を有効化中...`);
+            console.log(`[11.autoai][${CONTENT_CONSOLIDATED_AI_TYPE}] 🔄 ウェブ検索を有効化中...`);
             webSearchButton.click();
             await sleep(500);
-            console.log(`[11.autoai][${AI_TYPE}] ✅ 検索モード有効化完了`);
+            console.log(`[11.autoai][${CONTENT_CONSOLIDATED_AI_TYPE}] ✅ 検索モード有効化完了`);
           } else {
-            console.log(`[11.autoai][${AI_TYPE}] ℹ️ 検索モードは既に有効です`);
+            console.log(`[11.autoai][${CONTENT_CONSOLIDATED_AI_TYPE}] ℹ️ 検索モードは既に有効です`);
           }
         } else {
-          console.warn(`[11.autoai][${AI_TYPE}] ⚠️ ウェブ検索ボタンが見つかりません`);
+          console.warn(`[11.autoai][${CONTENT_CONSOLIDATED_AI_TYPE}] ⚠️ ウェブ検索ボタンが見つかりません`);
         }
       } catch (error) {
-        console.error(`[11.autoai][${AI_TYPE}] 💥 検索モード有効化エラー:`, error);
+        console.error(`[11.autoai][${CONTENT_CONSOLIDATED_AI_TYPE}] 💥 検索モード有効化エラー:`, error);
       }
     }
 
     // 【Step 6.2.3】プロンプト送信（runAutomation方式）
-    console.log(`[11.autoai][${AI_TYPE}] runAutomationを使用してプロンプト送信`);
+    console.log(`[11.autoai][${CONTENT_CONSOLIDATED_AI_TYPE}] runAutomationを使用してプロンプト送信`);
 
     const config = {
       text: prompt,
@@ -1143,7 +1144,7 @@ async function handleSendPrompt(request, sendResponse) {
     };
 
     // Gemini V2モードの判定
-    if (AI_TYPE === 'Gemini') {
+    if (CONTENT_CONSOLIDATED_AI_TYPE === 'Gemini') {
       if (config.model || (config.function && config.function !== 'none')) {
         config.useV2 = true;
         console.log(`[11.autoai][Gemini] 🚀 V2モード有効（handleSendPrompt）`);
@@ -1151,7 +1152,7 @@ async function handleSendPrompt(request, sendResponse) {
     }
 
     let result = null;
-    switch (AI_TYPE) {
+    switch (CONTENT_CONSOLIDATED_AI_TYPE) {
       case "Claude":
         if (window.ClaudeAutomation?.runAutomation) {
           result = await window.ClaudeAutomation.runAutomation(config);
@@ -1177,7 +1178,7 @@ async function handleSendPrompt(request, sendResponse) {
       success: true,
       taskId,
       message: "プロンプト送信完了",
-      aiType: AI_TYPE,
+      aiType: CONTENT_CONSOLIDATED_AI_TYPE,
       deepResearchEnabled: enableDeepResearch,
     });
   } catch (error) {
@@ -1188,7 +1189,7 @@ async function handleSendPrompt(request, sendResponse) {
       success: false,
       error: errorInfo.message,
       errorDetails: errorInfo,
-      aiType: AI_TYPE,
+      aiType: CONTENT_CONSOLIDATED_AI_TYPE,
     });
   } finally {
     // Chrome Power APIでスクリーンセイバー防止を解除
@@ -1212,7 +1213,7 @@ async function waitForResponseEnhanced(enableDeepResearch = false, customTimeout
       timeout: timeout,
       extendedTimeout: enableDeepResearch ? timeout : 30 * 60 * 1000,
       sendStartTime: Date.now()
-    }, AI_TYPE);
+    }, CONTENT_CONSOLIDATED_AI_TYPE);
 
     // 新しい形式の戻り値に対応
     if (typeof result === 'object' && result !== null) {
@@ -1266,26 +1267,26 @@ async function handleGetResponse(request, sendResponse) {
     // DeepResearchモードの場合はタイムアウトを40分に調整
     const actualTimeout = enableDeepResearch ? 3600000 : timeout;
 
-    console.log(`[11.autoai][${AI_TYPE}] 応答収集開始: ${taskId}`, {
+    console.log(`[11.autoai][${CONTENT_CONSOLIDATED_AI_TYPE}] 応答収集開始: ${taskId}`, {
       timeout: actualTimeout,
       enableDeepResearch: enableDeepResearch,
       useRetry: useRetry
     });
 
     // 【Step 7.4.1】停止ボタン監視開始
-    console.log(`[11.autoai][${AI_TYPE}] 停止ボタン監視開始`);
+    console.log(`[11.autoai][${CONTENT_CONSOLIDATED_AI_TYPE}] 停止ボタン監視開始`);
     const waitResult = await waitForResponseEnhanced(enableDeepResearch, actualTimeout);
 
     if (!waitResult.success) {
       // エラー時にリトライが必要かチェック
       if (waitResult.needsRetry) {
-        console.log(`[11.autoai][${AI_TYPE}] リトライが必要なエラー:`, waitResult);
+        console.log(`[11.autoai][${CONTENT_CONSOLIDATED_AI_TYPE}] リトライが必要なエラー:`, waitResult);
         // 新規ウィンドウでリトライを要求
         chrome.runtime.sendMessage({
           type: 'RETRY_WITH_NEW_WINDOW',
           taskId: taskId,
           prompt: request.prompt || '',
-          aiType: AI_TYPE,
+          aiType: CONTENT_CONSOLIDATED_AI_TYPE,
           enableDeepResearch: enableDeepResearch,
           specialMode: request.specialMode,
           error: waitResult.error,
@@ -1296,14 +1297,14 @@ async function handleGetResponse(request, sendResponse) {
     }
 
     // 【Step 7.4.2】Canvas機能対応の回答取得
-    console.log(`[11.autoai][${AI_TYPE}] Canvas機能対応の回答取得開始`);
+    console.log(`[11.autoai][${CONTENT_CONSOLIDATED_AI_TYPE}] Canvas機能対応の回答取得開始`);
     const response = await getResponseWithCanvas();
 
     if (!response || response.trim().length === 0) {
       throw new Error("空レスポンス");
     }
 
-    console.log(`[11.autoai][${AI_TYPE}] 応答収集完了: ${taskId}`, {
+    console.log(`[11.autoai][${CONTENT_CONSOLIDATED_AI_TYPE}] 応答収集完了: ${taskId}`, {
       responseLength: response.length,
       preview: response.substring(0, 100),
     });
@@ -1313,7 +1314,7 @@ async function handleGetResponse(request, sendResponse) {
       response: response,
       chunks: 1,
       taskId,
-      aiType: AI_TYPE,
+      aiType: CONTENT_CONSOLIDATED_AI_TYPE,
     });
   } catch (error) {
     const errorInfo = handleError(error, "handleGetResponse", {
@@ -1324,7 +1325,7 @@ async function handleGetResponse(request, sendResponse) {
       error: errorInfo.message,
       errorDetails: errorInfo,
       taskId: request.taskId,
-      aiType: AI_TYPE,
+      aiType: CONTENT_CONSOLIDATED_AI_TYPE,
     });
   } finally {
     // Chrome Power APIでスクリーンセイバー防止を解除
@@ -1341,10 +1342,10 @@ async function handleGetResponse(request, sendResponse) {
  * background.jsや他のスクリプトからのメッセージを処理
  */
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  console.log(`[11.autoai][${AI_TYPE}] メッセージ受信:`, request.action, request);
+  console.log(`[11.autoai][${CONTENT_CONSOLIDATED_AI_TYPE}] メッセージ受信:`, request.action, request);
 
   // ChatGPTの場合、追加のデバッグ情報を出力
-  if (AI_TYPE === "ChatGPT") {
+  if (CONTENT_CONSOLIDATED_AI_TYPE === "ChatGPT") {
     console.log(`[11.autoai][ChatGPT] デバッグ - action: ${request.action}, taskId: ${request.taskId}`);
   }
 
@@ -1355,7 +1356,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // 【Step 8.2】プロンプト送信要求
     case "sendPrompt":
       isAsync = true;
-      console.log(`[11.autoai][${AI_TYPE}] sendPromptメッセージ受信 - 判定開始:`, {
+      console.log(`[11.autoai][${CONTENT_CONSOLIDATED_AI_TYPE}] sendPromptメッセージ受信 - 判定開始:`, {
         hasTaskId: !!request.taskId,
         taskId: request.taskId,
         promptLength: request.prompt?.length || 0,
@@ -1364,11 +1365,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
       if (request.taskId) {
         // AITaskHandlerからの要求の場合
-        console.log(`[11.autoai][${AI_TYPE}] ✓ AITaskHandler経由と判定 - handleAITaskPrompt呼び出し`);
+        console.log(`[11.autoai][${CONTENT_CONSOLIDATED_AI_TYPE}] ✓ AITaskHandler経由と判定 - handleAITaskPrompt呼び出し`);
         handleAITaskPrompt(request, sendResponse);
       } else {
         // 通常のプロンプト送信
-        console.log(`[11.autoai][${AI_TYPE}] ✓ 通常のプロンプト送信と判定 - handleSendPrompt呼び出し`);
+        console.log(`[11.autoai][${CONTENT_CONSOLIDATED_AI_TYPE}] ✓ 通常のプロンプト送信と判定 - handleSendPrompt呼び出し`);
         handleSendPrompt(request, sendResponse);
       }
       break;
@@ -1390,7 +1391,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         const uiSelectorsLoaded = await waitForUISelectors();
         sendResponse({
           ready: true,
-          aiType: AI_TYPE,
+          aiType: CONTENT_CONSOLIDATED_AI_TYPE,
           uiSelectorsLoaded: uiSelectorsLoaded
         });
       })();
@@ -1405,8 +1406,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         'gemini': 'Gemini',
         'genspark': 'Genspark'
       };
-      const normalized = (AI_TYPE || '').toLowerCase();
-      let displayName = AI_TYPE;
+      const normalized = (CONTENT_CONSOLIDATED_AI_TYPE || '').toLowerCase();
+      let displayName = CONTENT_CONSOLIDATED_AI_TYPE;
 
       // 部分マッチで表示名を決定
       if (normalized.includes('chatgpt') || normalized.includes('gpt') || normalized.includes('openai')) {
@@ -1431,7 +1432,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       break;
 
     default:
-      console.warn(`[11.autoai][${AI_TYPE}] 未処理のアクション: ${request.action}`);
+      console.warn(`[11.autoai][${CONTENT_CONSOLIDATED_AI_TYPE}] 未処理のアクション: ${request.action}`);
       sendResponse({ success: false, error: "未対応のアクション" });
       break;
   }
@@ -1455,7 +1456,7 @@ async function executeTaskInternal(taskConfig) {
     const sendResult = await sendPromptToAI(prompt, {
       model: null,
       specialOperation: specialMode,
-      aiType: aiType || AI_TYPE,
+      aiType: aiType || CONTENT_CONSOLIDATED_AI_TYPE,
       taskId
     });
 
@@ -1491,7 +1492,7 @@ async function executeTaskInternal(taskConfig) {
       success: true,
       response: response,
       taskId: taskId,
-      aiType: aiType || AI_TYPE
+      aiType: aiType || CONTENT_CONSOLIDATED_AI_TYPE
     };
 
   } catch (error) {
@@ -1538,7 +1539,7 @@ function handleGetTaskStatus(request, sendResponse) {
   sendResponse({
     success: true,
     status: "ready",
-    aiType: AI_TYPE,
+    aiType: CONTENT_CONSOLIDATED_AI_TYPE,
     capabilities: {
       sendPrompt: true,
       getResponse: true,
@@ -1618,7 +1619,14 @@ if (typeof window.FunctionInfoExtractor === 'undefined') {
  * 【Step 12.1】初期化処理の実行
  */
 (async function initializeContentScript() {
-  console.log(`[11.autoai][${AI_TYPE}] コンテンツスクリプト初期化中...`);
+  // ===== 重複注入防止 =====
+  if (window.AUTOAI_CONTENT_SCRIPT_LOADED) {
+    console.log(`[11.autoai][${CONTENT_CONSOLIDATED_AI_TYPE}] コンテンツスクリプトは既に読み込み済み - 重複注入を防止`);
+    return; // 何も実行せず終了
+  }
+
+  window.AUTOAI_CONTENT_SCRIPT_LOADED = true;
+  console.log(`[11.autoai][${CONTENT_CONSOLIDATED_AI_TYPE}] コンテンツスクリプト初期化中...`);
 
   // 【Step 12.1.1】ページ読み込み完了を待つ
   await waitForPageReady();
@@ -1631,15 +1639,15 @@ if (typeof window.FunctionInfoExtractor === 'undefined') {
     try {
       chrome.runtime.sendMessage({
         type: 'contentScriptReady',
-        aiType: AI_TYPE
+        aiType: CONTENT_CONSOLIDATED_AI_TYPE
       });
-      console.log(`[11.autoai][${AI_TYPE}] ✅ 初期化完了通知送信`);
+      console.log(`[11.autoai][${CONTENT_CONSOLIDATED_AI_TYPE}] ✅ 初期化完了通知送信`);
     } catch (error) {
-      console.warn(`[11.autoai][${AI_TYPE}] 初期化完了通知送信失敗:`, error);
+      console.warn(`[11.autoai][${CONTENT_CONSOLIDATED_AI_TYPE}] 初期化完了通知送信失敗:`, error);
     }
   }
 
-  console.log(`[11.autoai][${AI_TYPE}] ✅ コンテンツスクリプト初期化完了`);
+  console.log(`[11.autoai][${CONTENT_CONSOLIDATED_AI_TYPE}] ✅ コンテンツスクリプト初期化完了`);
 })();
 
 // ================================================================================

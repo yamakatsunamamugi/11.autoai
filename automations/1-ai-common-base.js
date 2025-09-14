@@ -453,24 +453,55 @@
   // 2-1-3. AI判定
   // 現在のサイトがどのAIか判定（Service Worker対応）
   function detectAI() {
-    // Service Worker環境ではlocation情報がない場合がある
-    if (typeof window === 'undefined' || !window.location) {
+    // Step 2-1-3-1: Web Page環境での従来の判定
+    if (typeof window !== 'undefined' && window.location) {
+      const url = window.location.href;
+
+      if (url.includes('chatgpt.com') || url.includes('chat.openai.com')) {
+        return AI_TYPES.CHATGPT;
+      } else if (url.includes('claude.ai')) {
+        return AI_TYPES.CLAUDE;
+      } else if (url.includes('gemini.google.com') || url.includes('bard.google.com')) {
+        return AI_TYPES.GEMINI;
+      } else if (url.includes('genspark.ai')) {
+        return AI_TYPES.GENSPARK;
+      }
+
       return null;
     }
-    const url = window.location.href;
-    const hostname = window.location.hostname;
 
-    if (url.includes('chatgpt.com') || url.includes('chat.openai.com')) {
-      return AI_TYPES.CHATGPT;
-    } else if (url.includes('claude.ai')) {
-      return AI_TYPES.CLAUDE;
-    } else if (url.includes('gemini.google.com') || url.includes('bard.google.com')) {
-      return AI_TYPES.GEMINI;
-    } else if (url.includes('genspark.ai')) {
-      return AI_TYPES.GENSPARK;
+    // Step 2-1-3-2: Service Worker環境では既に保存された結果を返す
+    if (typeof globalThis !== 'undefined' && globalThis._detectedAI) {
+      return globalThis._detectedAI;
     }
 
-    return null;
+    // Step 2-1-3-3: Chrome Extension APIでアクティブタブから判定（非同期）
+    if (typeof chrome !== 'undefined' && chrome.tabs) {
+      // 非同期でAI検出を実行し、結果をglobalThisに保存
+      chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+        if (tabs && tabs[0] && tabs[0].url) {
+          const url = tabs[0].url;
+          let detectedAI = null;
+
+          if (url.includes('chatgpt.com') || url.includes('chat.openai.com')) {
+            detectedAI = AI_TYPES.CHATGPT;
+          } else if (url.includes('claude.ai')) {
+            detectedAI = AI_TYPES.CLAUDE;
+          } else if (url.includes('gemini.google.com') || url.includes('bard.google.com')) {
+            detectedAI = AI_TYPES.GEMINI;
+          } else if (url.includes('genspark.ai')) {
+            detectedAI = AI_TYPES.GENSPARK;
+          }
+
+          if (detectedAI) {
+            globalThis._detectedAI = detectedAI;
+            log(`Service Worker AI検出: ${detectedAI}`, 'info');
+          }
+        }
+      });
+    }
+
+    return null; // 初回は null、次回から保存された値を返す
   }
 
   // ----------------------------------------

@@ -11,7 +11,7 @@
  */
 
 // ===== Step 1: 初期化とエラーハンドリング =====
-console.log('[Step 1-1] Service Worker起動開始');
+console.log('[ServiceWorker] 起動開始');
 
 // Step 1-2: エラーハンドリングを追加
 self.addEventListener('error', (event) => {
@@ -23,7 +23,7 @@ self.addEventListener('unhandledrejection', (event) => {
 });
 
 // ===== Step 2: モジュールインポート =====
-console.log('[Step 2-1] モジュールインポート開始');
+console.log('[ServiceWorker] モジュールインポート開始');
 
 // Step 2-2: 設定とユーティリティ
 import { loadSelectors } from './src/config/ui-selectors-loader.js';
@@ -49,7 +49,7 @@ import {
 
 // Step 2-5: その他のサービス
 import './src/services/auth-service.js';
-import './src/services/window-service.js';
+import { default as WindowService } from './src/services/window-service.js';
 import './src/features/spreadsheet/sheets-client.js';
 import './src/features/logging/spreadsheet-logger.js';
 import { getStreamingServiceManager } from './src/core/streaming-service-manager.js';
@@ -61,10 +61,10 @@ import { AITaskHandler } from './src/handlers/ai-task-handler.js';
 import SpreadsheetAutoSetup from './src/services/spreadsheet-auto-setup.js';
 import StreamProcessorV2 from './src/features/task/stream-processor-v2.js';
 
-console.log('[Step 2-6] モジュールインポート完了');
+console.log('[ServiceWorker] モジュールインポート完了');
 
 // ===== Step 3: グローバル変数初期化 =====
-console.log('[Step 3-1] グローバル変数初期化開始');
+// グローバル変数初期化（詳細ログは削除）
 
 // Step 3-2: UI_SELECTORSをグローバルに保持
 let UI_SELECTORS = {};
@@ -89,6 +89,11 @@ globalThis.columnToIndex = columnToIndex;
 // globalThis.GensparkAutomation = GensparkAutomation;
 globalThis.SpreadsheetAutoSetup = SpreadsheetAutoSetup;
 globalThis.StreamProcessorV2 = StreamProcessorV2;
+
+// StreamProcessorV2のインスタンスを早期作成してSPREADSHEET_CONFIGを初期化
+console.log('[Background] StreamProcessorV2インスタンスを早期初期化');
+globalThis.streamProcessorV2Instance = new StreamProcessorV2();
+
 globalThis.aiTaskExecutor = new AITaskExecutor();
 globalThis.aiTaskHandler = new AITaskHandler();
 
@@ -111,18 +116,18 @@ globalThis.parseSpreadsheetUrl = (url) => {
   return { spreadsheetId, gid };
 };
 
-console.log('[Step 3-6] グローバル変数初期化完了');
+// グローバル変数初期化完了
 
 // ===== Step 4: Service Worker起動時の初期化 =====
-console.log('[Step 4-1] Service Worker初期化開始');
+console.log('[ServiceWorker] 初期化開始');
 
 // Step 4-2: 起動時にセレクタを読み込み
 (async () => {
   try {
-    console.log('[Step 4-3] UI Selectors読み込み開始');
+    // UI Selectors読み込み開始
     UI_SELECTORS = await loadSelectors();
     globalThis.UI_SELECTORS = UI_SELECTORS;
-    console.log('[Step 4-4] ✅ UI Selectors loaded');
+    console.log('[ServiceWorker] ✅ UI Selectors loaded');
   } catch (error) {
     console.error('[Step 4-5] ❌ Failed to load UI Selectors:', error);
     UI_SELECTORS = {};
@@ -179,6 +184,7 @@ chrome.runtime.onInstalled.addListener((details) => {
 */
 console.log('[Step 4-17] StreamingServiceManager初期化をスキップ（一時的）');
 
+
 console.log('[Step 4-20] Service Worker初期化完了');
 
 // ===== Step 5: メッセージハンドラー設定 =====
@@ -201,37 +207,9 @@ chrome.runtime.onConnect.addListener((port) => {
 });
 
 // ===== Step 7: コンテンツスクリプト自動実行 =====
-// ChatGPT、Claude、Geminiのページが開かれたときに自動でコンテンツスクリプトを注入
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (changeInfo.status === 'complete' && tab.url) {
-    // Step 7-1: 対象URLかチェック
-    const targetUrls = [
-      'https://chatgpt.com',
-      'https://claude.ai',
-      'https://gemini.google.com',
-      'https://www.genspark.ai'
-    ];
-
-    const isTargetUrl = targetUrls.some(url => tab.url.includes(url));
-
-    if (isTargetUrl) {
-      console.log(`[Step 7-2] コンテンツスクリプト自動注入: ${tab.url}`);
-
-      // Step 7-3: コンテンツスクリプトを注入
-      chrome.scripting.executeScript({
-        target: { tabId: tabId },
-        files: ['src/content/content-script-consolidated.js']
-      }).then(() => {
-        console.log(`[Step 7-4] ✅ コンテンツスクリプト注入成功: Tab ${tabId}`);
-      }).catch(error => {
-        // Step 7-5: 既に注入済みの場合はエラーを無視
-        if (!error.message.includes('already exists')) {
-          console.error(`[Step 7-6] ❌ コンテンツスクリプト注入エラー:`, error);
-        }
-      });
-    }
-  }
-});
+// 注意: コンテンツスクリプトはmanifest.jsonで自動注入される
+// 手動注入は重複エラーの原因となるため削除
+console.log('[Step 7] コンテンツスクリプトはmanifest.jsonで自動注入されます');
 
 // ===== Step 8: Keep-Alive機能 =====
 // Service Workerがアイドル状態で終了されないようにする
@@ -264,4 +242,4 @@ self.addEventListener('deactivate', (event) => {
   })());
 });
 
-console.log('[Step 10] 🚀 11.autoai Service Worker準備完了');
+console.log('[ServiceWorker] 🚀 11.autoai 準備完了');

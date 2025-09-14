@@ -438,7 +438,12 @@ export function setupMessageHandler() {
               return;
             }
 
-            // Step 12-5: 既存のSpreadsheetAutoSetupクラスを使用して列追加を実行
+            // Step 12-5: StreamProcessorV2初期化を確保してからSpreadsheetAutoSetupを実行
+            if (!globalThis.SPREADSHEET_CONFIG) {
+              console.log('[Step 12-5-1] SPREADSHEET_CONFIG未初期化、StreamProcessorV2を初期化');
+              new globalThis.StreamProcessorV2();
+            }
+
             const autoSetup = new SpreadsheetAutoSetup();
             const token = await globalThis.authService.getAuthToken();
             const result = await autoSetup.executeAutoSetup(spreadsheetId, token, gid);
@@ -494,7 +499,12 @@ export function setupMessageHandler() {
             const updatedSpreadsheetData =
               await globalThis.sheetsClient.loadAutoAIData(spreadsheetId, gid);
 
-            // Step 13-7: 自動セットアップ
+            // Step 13-7: StreamProcessorV2初期化を確保してから自動セットアップ
+            if (!globalThis.SPREADSHEET_CONFIG) {
+              console.log('[Step 13-7-1] SPREADSHEET_CONFIG未初期化、StreamProcessorV2を初期化');
+              new globalThis.StreamProcessorV2();
+            }
+
             const autoSetup = new SpreadsheetAutoSetup();
             const token = await globalThis.authService.getAuthToken();
             await autoSetup.executeAutoSetup(spreadsheetId, token, gid);

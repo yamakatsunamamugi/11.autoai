@@ -14,6 +14,12 @@
  * @version 3.0.0
  * @updated 2024-12-14 ステップ番号体系統一、コード整理
  */
+
+// ========================================
+// 本番メニュー開閉関数のエクスポート（検出システム用）
+// executeTask内の既存コードをそのまま関数化
+// ========================================
+
 (async function() {
     'use strict';
 
@@ -23,6 +29,26 @@
 
     console.log(`ChatGPT Automation V2 - 初期化時刻: ${new Date().toLocaleString('ja-JP')}`);
     console.log(`[DEBUG] ChatGPT Script Loaded - Marker Set`);
+
+    // AI共通基盤からRetryManagerを取得（現在の共通処理関数を活用）
+    const getRetryManager = () => {
+        try {
+            if (typeof window !== 'undefined' && window.AICommonBase) {
+                return window.AICommonBase.RetryManager;
+            }
+            if (typeof globalThis !== 'undefined' && globalThis.AICommonBase) {
+                return globalThis.AICommonBase.RetryManager;
+            }
+            console.log('📝 AI共通基盤が見つかりません、独自実装を使用');
+            return null;
+        } catch (error) {
+            console.log('📝 RetryManager取得失敗、独自実装を使用:', error.message);
+            return null;
+        }
+    };
+
+    // RetryManagerの取得を試行
+    const retryManager = getRetryManager();
 
     // 統一された待機時間設定を取得（Claudeと同じ方式）
     const AI_WAIT_CONFIG = window.AI_WAIT_CONFIG || {
@@ -349,6 +375,234 @@
     }
     
     // ========================================
+    // 【関数一覧】検出システム用エクスポート関数
+    // ========================================
+
+    /*
+    ┌─────────────────────────────────────────────────────┐
+    │                【メニュー操作関数】                    │
+    │   本番executeTask内のコードをそのまま関数化           │
+    └─────────────────────────────────────────────────────┘
+    */
+
+    /**
+     * 🔧 ChatGPTモデルメニューを開く
+     * @description 本番executeTask内の行497-500のコードをそのまま関数化
+     * @param {Element} modelButton - モデルボタン要素
+     * @returns {Promise<boolean>} メニュー開放成功フラグ
+     */
+    async function openModelMenu(modelButton) {
+        if (!modelButton) {
+            console.error('[ChatGPT-openModelMenu] モデルボタンが見つかりません');
+            return false;
+        }
+
+        try {
+            modelButton.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+            await sleep(AI_WAIT_CONFIG.MICRO_WAIT);
+            modelButton.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+            await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT - 500);
+
+            // メニュー出現確認
+            const menuContainer = await findElement(SELECTORS.modelMenu, 'モデルメニュー', 1);
+            if (menuContainer) {
+                console.log('[ChatGPT-openModelMenu] ✅ モデルメニュー開放成功');
+                return true;
+            } else {
+                console.warn('[ChatGPT-openModelMenu] ⚠️ メニュー開放したがDOM確認できず');
+                return false;
+            }
+        } catch (error) {
+            console.error('[ChatGPT-openModelMenu] ❌ エラー:', error);
+            return false;
+        }
+    }
+
+    /**
+     * 🔧 ChatGPT機能メニューを開く
+     * @description 本番executeTask内の行880-883のコードをそのまま関数化
+     * @param {Element} funcMenuBtn - 機能メニューボタン要素
+     * @returns {Promise<boolean>} メニュー開放成功フラグ
+     */
+    async function openFunctionMenu(funcMenuBtn) {
+        if (!funcMenuBtn) {
+            console.error('[ChatGPT-openFunctionMenu] 機能メニューボタンが見つかりません');
+            return false;
+        }
+
+        try {
+            funcMenuBtn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+            await sleep(AI_WAIT_CONFIG.MICRO_WAIT);
+            funcMenuBtn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+            await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
+
+            // メニュー出現確認
+            const menuContainer = await findElement(SELECTORS.mainMenu, '機能メニュー', 1);
+            if (menuContainer) {
+                console.log('[ChatGPT-openFunctionMenu] ✅ 機能メニュー開放成功');
+                return true;
+            } else {
+                console.warn('[ChatGPT-openFunctionMenu] ⚠️ メニュー開放したがDOM確認できず');
+                return false;
+            }
+        } catch (error) {
+            console.error('[ChatGPT-openFunctionMenu] ❌ エラー:', error);
+            return false;
+        }
+    }
+
+    /*
+    ┌─────────────────────────────────────────────────────┐
+    │                【基本操作関数】                        │
+    │        ChatGPTでの基本的なUI操作を関数化             │
+    └─────────────────────────────────────────────────────┘
+    */
+
+    /**
+     * ✏️ ChatGPTテキスト入力処理
+     * @description ChatGPTのテキスト入力欄にテキストを入力し、React環境での値変更イベントを発火
+     * @param {string} text - 入力するテキスト
+     * @returns {Promise<Element>} 入力要素
+     * @throws {Error} テキスト入力欄が見つからない場合
+     */
+    async function inputTextChatGPT(text) {
+        const inputElement = await findElement(SELECTORS.textInput, 'テキスト入力欄');
+        if (!inputElement) throw new Error('テキスト入力欄が見つかりません');
+
+        inputElement.focus();
+        await sleep(100);
+        inputElement.value = text;
+
+        // React環境での値変更イベント発火
+        const inputEvent = new Event('input', { bubbles: true });
+        inputElement.dispatchEvent(inputEvent);
+        await sleep(500);
+
+        return inputElement;
+    }
+
+    /**
+     * 📤 ChatGPTメッセージ送信処理
+     * @description ChatGPTの送信ボタンをクリックしてメッセージを送信
+     * @returns {Promise<boolean>} 送信成功フラグ
+     * @throws {Error} 送信ボタンが見つからない場合
+     */
+    async function sendMessageChatGPT() {
+        const sendButton = await findElement(SELECTORS.sendButton, '送信ボタン');
+        if (!sendButton) throw new Error('送信ボタンが見つかりません');
+
+        sendButton.click();
+        await sleep(1000);
+
+        return true;
+    }
+
+    /**
+     * ⏳ ChatGPTレスポンス待機処理
+     * @description ChatGPTのレスポンス生成完了まで待機（停止ボタンの消失を監視）
+     * @returns {Promise<boolean>} 待機完了フラグ
+     * @throws {Error} タイムアウト（2分）の場合
+     */
+    async function waitForResponseChatGPT() {
+        const maxWaitTime = 120000; // 2分
+        const checkInterval = 1000;
+        let elapsedTime = 0;
+
+        while (elapsedTime < maxWaitTime) {
+            const stopButton = document.querySelector(SELECTORS.stopButton);
+            if (!stopButton) {
+                // 停止ボタンがない = レスポンス完了
+                await sleep(2000); // 安全のため追加待機
+                return true;
+            }
+
+            await sleep(checkInterval);
+            elapsedTime += checkInterval;
+        }
+
+        throw new Error('レスポンス待機タイムアウト');
+    }
+
+    /**
+     * 📥 ChatGPTレスポンステキスト取得処理
+     * @description ChatGPTの最新のアシスタント回答を取得
+     * @returns {Promise<string>} レスポンステキスト
+     * @throws {Error} アシスタントの回答が見つからない場合
+     */
+    async function getResponseTextChatGPT() {
+        const responseElements = document.querySelectorAll('[data-message-author-role="assistant"]');
+        if (responseElements.length === 0) {
+            throw new Error('アシスタントの回答が見つかりません');
+        }
+
+        const latestResponse = responseElements[responseElements.length - 1];
+        const responseText = getCleanText(latestResponse);
+
+        return responseText;
+    }
+
+    /*
+    ┌─────────────────────────────────────────────────────┐
+    │                【選択操作関数】                        │
+    │        モデルや機能の選択処理を関数化                 │
+    └─────────────────────────────────────────────────────┘
+    */
+
+    /**
+     * 🎯 ChatGPTモデル選択処理
+     * @description 指定されたモデル名のモデルを選択
+     * @param {string} modelName - 選択するモデル名（例: "GPT-4", "GPT-3.5"）
+     * @returns {Promise<boolean>} 選択成功フラグ
+     * @throws {Error} モデルが見つからない場合
+     */
+    async function selectModelChatGPT(modelName) {
+        const modelButton = await findElement(SELECTORS.modelButton, 'モデルボタン');
+        await openModelMenu(modelButton);
+
+        const modelMenuEl = await findElement(SELECTORS.modelMenu, 'モデルメニュー');
+        if (!modelMenuEl) throw new Error('モデルメニューが開きません');
+
+        // メインメニューから検索
+        const mainMenuItems = modelMenuEl.querySelectorAll('[role="menuitem"][data-testid^="model-switcher-"]');
+        for (const item of mainMenuItems) {
+            if (getCleanText(item).includes(modelName)) {
+                item.click();
+                await sleep(1000);
+                return true;
+            }
+        }
+
+        throw new Error(`モデル '${modelName}' が見つかりません`);
+    }
+
+    /**
+     * 🎯 ChatGPT機能選択処理
+     * @description 指定された機能名の機能を選択
+     * @param {string} functionName - 選択する機能名（例: "Code Interpreter", "Browse with Bing"）
+     * @returns {Promise<boolean>} 選択成功フラグ
+     * @throws {Error} 機能が見つからない場合
+     */
+    async function selectFunctionChatGPT(functionName) {
+        const funcMenuBtn = await findElement(SELECTORS.menuButton, '機能メニューボタン');
+        await openFunctionMenu(funcMenuBtn);
+
+        const funcMenu = await findElement(SELECTORS.mainMenu, 'メインメニュー');
+        if (!funcMenu) throw new Error('機能メニューが開きません');
+
+        // メニューアイテムから検索
+        const menuItems = funcMenu.querySelectorAll('[role="menuitemradio"]');
+        for (const item of menuItems) {
+            if (getCleanText(item).includes(functionName)) {
+                item.click();
+                await sleep(1000);
+                return true;
+            }
+        }
+
+        throw new Error(`機能 '${functionName}' が見つかりません`);
+    }
+
+    // ========================================
     // メイン実行関数
     // ========================================
     async function executeTask(taskData) {
@@ -453,10 +707,7 @@ ${prompt}`;
                 // 利用可能なモデルを検索してselectedModelオブジェクトを作成
                 const modelButton = await findElement(SELECTORS.modelButton, 'モデル切り替えボタン');
                 if (modelButton) {
-                    modelButton.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
-                    await sleep(AI_WAIT_CONFIG.MICRO_WAIT);
-                    modelButton.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
-                    await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT - 500);
+                    await openModelMenu(modelButton);
                     
                     const modelMenu = await findElement(SELECTORS.modelMenu, 'モデルメニュー');
                     if (modelMenu) {
@@ -615,10 +866,7 @@ ${prompt}`;
                 }
 
                 // ポインターイベントでメニューを開く（テスト済みコードより）
-                modelBtn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
-                await sleep(AI_WAIT_CONFIG.MICRO_WAIT);
-                modelBtn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
-                await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
+                await openModelMenu(modelBtn);
 
                 const modelMenuEl = await findElement(SELECTORS.modelMenu, 'モデルメニュー');
                 if (!modelMenuEl) {
@@ -726,10 +974,7 @@ ${prompt}`;
                         throw new Error('モデルボタンが見つかりません');
                     }
 
-                    modelBtn2.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
-                    await sleep(AI_WAIT_CONFIG.MICRO_WAIT);
-                    modelBtn2.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
-                    await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
+                    await openModelMenu(modelBtn2);
 
                     const modelMenuEl2 = await findElement(SELECTORS.modelMenu, 'モデルメニュー');
                     if (!modelMenuEl2) {
@@ -836,10 +1081,7 @@ ${prompt}`;
                     throw new Error('機能メニューボタンが見つかりません');
                 }
 
-                funcMenuBtn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
-                await sleep(AI_WAIT_CONFIG.MICRO_WAIT);
-                funcMenuBtn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
-                await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
+                await openFunctionMenu(funcMenuBtn);
 
                 const funcMenu = await findElement(SELECTORS.mainMenu, 'メインメニュー');
                 if (!funcMenu) {
@@ -921,10 +1163,7 @@ ${prompt}`;
                         throw new Error('機能メニューボタンが見つかりません');
                     }
 
-                    funcMenuBtn2.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
-                    await sleep(AI_WAIT_CONFIG.MICRO_WAIT);
-                    funcMenuBtn2.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
-                    await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
+                    await openFunctionMenu(funcMenuBtn2);
 
                     const funcMenu2 = await findElement(SELECTORS.mainMenu, 'メインメニュー');
                     if (!funcMenu2) {
@@ -1272,5 +1511,66 @@ ${prompt}`;
     console.log('✅ ChatGPT Automation V2 準備完了');
     console.log('使用方法: ChatGPTAutomation.executeTask({ model: "GPT-4o", function: "Deep Research", prompt: "..." })');
     console.log('✅ 下位互換性: ChatGPTAutomation と ChatGPTAutomationV2 の両方で利用可能');
-    
+
+
 })();
+
+/*
+┌─────────────────────────────────────────────────────┐
+│                【使用例】                              │
+└─────────────────────────────────────────────────────┘
+
+// 基本的な使用の流れ
+import {
+    selectModelChatGPT,
+    inputTextChatGPT,
+    sendMessageChatGPT,
+    waitForResponseChatGPT,
+    getResponseTextChatGPT
+} from './chatgpt-automation.js';
+
+async function chatWithChatGPT() {
+    try {
+        // 1. モデル選択
+        await selectModelChatGPT('GPT-4');
+
+        // 2. テキスト入力
+        await inputTextChatGPT('こんにちは、世界！JavaScriptについて教えて');
+
+        // 3. 送信
+        await sendMessageChatGPT();
+
+        // 4. レスポンス待機
+        await waitForResponseChatGPT();
+
+        // 5. 結果取得
+        const response = await getResponseTextChatGPT();
+        console.log('ChatGPT回答:', response);
+
+        return response;
+    } catch (error) {
+        console.error('ChatGPT操作エラー:', error);
+        throw error;
+    }
+}
+
+*/
+
+// ========================================
+// 【エクスポート】検出システム用関数一覧
+// ========================================
+export {
+    // 🔧 メニュー操作
+    openModelMenu,           // モデルメニューを開く
+    openFunctionMenu,        // 機能メニューを開く
+
+    // ✏️ 基本操作
+    inputTextChatGPT,        // テキスト入力
+    sendMessageChatGPT,      // メッセージ送信
+    waitForResponseChatGPT,  // レスポンス待機
+    getResponseTextChatGPT,  // レスポンス取得
+
+    // 🎯 選択操作
+    selectModelChatGPT,      // モデル選択
+    selectFunctionChatGPT    // 機能選択
+};

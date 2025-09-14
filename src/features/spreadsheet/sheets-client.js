@@ -23,8 +23,8 @@ class SheetsClient {
       windowStart: Date.now(),
       quotaErrors: 0,
       backoffMultiplier: 1,
-      minInterval: 1000, // 最小リクエスト間隔 (1秒)
-      maxInterval: 60000, // 最大リクエスト間隔 (1分)
+      minInterval: 100, // 最小リクエスト間隔 (0.1秒に短縮)
+      maxInterval: 5000, // 最大リクエスト間隔 (5秒に短縮)
       windowDuration: 60000 // ウィンドウ期間 (1分)
     };
     
@@ -191,8 +191,8 @@ class SheetsClient {
       }
     }
     
-    // クォータエラーが最近発生した場合のみ待機
-    const shouldWait = this.quotaManager.backoffMultiplier > 1 || this.quotaManager.quotaErrors > 0;
+    // クォータエラーが最近発生し、かつ深刻な場合のみ待機
+    const shouldWait = this.quotaManager.backoffMultiplier > 2 && this.quotaManager.quotaErrors > 2;
     
     if (shouldWait) {
       // 必要な待機時間を計算

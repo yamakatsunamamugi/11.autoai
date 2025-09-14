@@ -17,7 +17,7 @@
 // ===== Step 1: LogManagerクラス定義 =====
 export class LogManager {
   constructor() {
-    console.log('[Step 1-1] LogManager初期化開始');
+    // LogManager初期化開始
 
     // Step 1-2: 基本設定
     this.logs = [];
@@ -36,7 +36,7 @@ export class LogManager {
       ERROR: 'error'
     };
 
-    console.log('[Step 1-4] LogManager初期化完了');
+    // LogManager初期化完了
   }
 
   /**

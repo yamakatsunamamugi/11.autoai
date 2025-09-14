@@ -1087,7 +1087,7 @@ export default class StreamProcessorV2 {
     this.log('バッチ回答チェック開始', 'info', 'Step 6-2');
     const answerStatusMap = new Map();
 
-    if (!globalThis.sheetsClient) {
+    if (!this.sheetsClient) {
       this.log('sheetsClientが利用できません', 'warn', 'Step 6-2');
       return answerStatusMap;
     }
@@ -1116,32 +1116,11 @@ export default class StreamProcessorV2 {
         const batchRanges = ranges.slice(i, i + batchSize);
 
         try {
-          let batchResult;
-
-          // batchGetSheetDataメソッドの存在確認
-          if (globalThis.sheetsClient && typeof globalThis.sheetsClient.batchGetSheetData === 'function') {
-            batchResult = await globalThis.sheetsClient.batchGetSheetData(
-              spreadsheetData.spreadsheetId,
-              batchRanges,
-              spreadsheetData.sheetName
-            );
-          } else {
-            // バッチ取得の代替実装：個別にgetSheetDataを呼び出し
-            batchResult = {};
-            for (const range of batchRanges) {
-              try {
-                const cellData = await globalThis.sheetsClient.getSheetData(
-                  spreadsheetData.spreadsheetId,
-                  range,
-                  spreadsheetData.sheetName
-                );
-                batchResult[range] = cellData.values || [];
-              } catch (cellError) {
-                this.log(`バッチ取得代替エラー（範囲: ${range}）: ${cellError.message}`, 'warning');
-                batchResult[range] = [];
-              }
-            }
-          }
+          const batchResult = await this.sheetsClient.batchGetSheetData(
+            spreadsheetData.spreadsheetId,
+            batchRanges,
+            spreadsheetData.sheetName
+          );
 
           // ステップ5-2-3: 結果を解析
           if (batchResult) {
@@ -1345,7 +1324,12 @@ export default class StreamProcessorV2 {
       // Step 8-2: ウィンドウを作成
       const windowInfo = await this.createWindowForTask(task, position);
 
-      // Step 8-3: タスクを実行
+      // Step 8-3: SPREADSHEET_CONFIG初期化確認後にタスクを実行
+      if (!globalThis.SPREADSHEET_CONFIG) {
+        this.logger.warn('SPREADSHEET_CONFIG が未初期化、初期化を実行');
+        this.initializeSpreadsheetConfig();
+      }
+
       const result = await this.aiTaskExecutor.executeAITask(windowInfo.tabId, task);
 
       // Step 8-4: タスク完了ログ記録
@@ -4695,7 +4679,7 @@ export default class StreamProcessorV2 {
   generateExclusiveLogParams() {
     const params = {
       url: 'N/A', // 排他制御ログなのでURL不要
-      sheetsClient: this.exclusiveLoggerConfig.sheetsClient || this.sheetsClient || globalThis.sheetsClient,
+      sheetsClient: this.exclusiveLoggerConfig.sheetsClient || this.sheetsClient,
       spreadsheetId: this.exclusiveLoggerConfig.spreadsheetData?.spreadsheetId,
       gid: this.exclusiveLoggerConfig.spreadsheetData?.gid,
       spreadsheetData: this.exclusiveLoggerConfig.spreadsheetData
@@ -4703,7 +4687,7 @@ export default class StreamProcessorV2 {
 
     this.log('【StreamProcessor-ステップ1-6】共通パラメータ生成', 'debug', 'Step 1-6', {
       hasLocalSheetsClient: !!this.exclusiveLoggerConfig.sheetsClient,
-      hasGlobalSheetsClient: !!globalThis.sheetsClient,
+      hasThisSheetsClient: !!this.sheetsClient,
       hasSpreadsheetData: !!this.exclusiveLoggerConfig.spreadsheetData,
       spreadsheetId: params.spreadsheetId ? `${params.spreadsheetId.substring(0, 10)}...` : 'null',
       gid: params.gid
@@ -4740,7 +4724,7 @@ export default class StreamProcessorV2 {
       }
     }
 
-    if (!this.exclusiveLoggerConfig.sheetsClient && !globalThis.sheetsClient) {
+    if (!this.exclusiveLoggerConfig.sheetsClient && !this.sheetsClient) {
       result.errors.push('sheetsClientが設定されていません');
       result.isValid = false;
     }

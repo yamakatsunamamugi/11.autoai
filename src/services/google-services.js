@@ -40,31 +40,33 @@ class GoogleAuthManager {
     this._isAuthenticated = false;
     this._authCheckPromise = null;
 
-    this.logger.log('[Step 2-1-1] GoogleAuthManager初期化完了');
+    // 統合ログで出力するため個別ログは削除
   }
 
   /**
    * Step 2-1-2: OAuth2認証トークンの取得
    * キャッシュ機能付きで効率的にトークンを管理
    */
-  async getAuthToken() {
+  async getAuthToken(suppressLogs = false) {
     const now = Date.now();
 
     // Step 2-1-2-1: キャッシュの有効性チェック
     if (this._tokenCache && this._tokenTimestamp &&
         (now - this._tokenTimestamp) < this._tokenExpiry) {
-      this.logger.log('[Step 2-1-2-1] キャッシュからトークン取得');
+      if (!suppressLogs) {
+        this.logger.log('[Step 2-1-2-1] キャッシュからトークン取得');
+      }
       return this._tokenCache;
     }
 
     // Step 2-1-2-2: 新規トークンの取得
     return new Promise((resolve, reject) => {
-      this.logger.log('[Step 2-1-2-2] 新規認証トークンを取得中...');
+      this.logger.log('[Auth] 新規認証トークンを取得中...');
 
       chrome.identity.getAuthToken({ interactive: true }, (token) => {
         if (chrome.runtime.lastError) {
           // Step 2-1-2-3: エラー処理
-          this.logger.error('[Step 2-1-2-3] 認証トークン取得失敗:', chrome.runtime.lastError);
+          this.logger.error('[Auth] 認証トークン取得失敗:', chrome.runtime.lastError);
           this._isAuthenticated = false;
           reject(chrome.runtime.lastError);
         } else {
@@ -73,7 +75,7 @@ class GoogleAuthManager {
           this._tokenTimestamp = now;
           this._isAuthenticated = true;
 
-          this.logger.log('[Step 2-1-2-4] 認証トークン取得成功');
+          this.logger.log('[Auth] 認証トークン取得成功');
           resolve(token);
         }
       });
@@ -152,59 +154,121 @@ class SheetsReader {
     this.cache = new Map();
     this.cacheTimeout = 60000; // 1分間キャッシュ
 
-    this.logger.log('[Step 2-2-1] SheetsReader初期化完了');
+    // Step 2-2-1-3: Google Sheets APIクォータ制限対策（緩和版）
+    this.requestCount = 0;
+    this.lastRequestTime = 0;
+    this.requestWindowMs = 1000; // 1秒間のウィンドウ
+    this.maxRequestsPerSecond = 100; // 1秒間に100リクエストまで（大幅緩和）
+    this.quotaRetryDelay = 1000; // クォータエラー時の基本待機時間（1秒に短縮）
+    this.maxRetryAttempts = 3; // 最大リトライ回数
+
+    // 統合ログで出力するため個別ログは削除
   }
 
   /**
    * Step 2-2-2: スプレッドシートデータの取得
    * @param {string} spreadsheetId - スプレッドシートID
    * @param {string} range - 取得範囲（例: 'Sheet1!A1:Z100'）
+   * @param {string} sheetName - シート名（オプション）
+   * @param {boolean} suppressLogs - バッチ操作時のログ抑制（オプション）
    */
-  async getSheetData(spreadsheetId, range) {
-    try {
-      // Step 2-2-2-1: キャッシュチェック
-      const cacheKey = `${spreadsheetId}_${range}`;
-      const cached = this.cache.get(cacheKey);
-      if (cached && (Date.now() - cached.timestamp) < this.cacheTimeout) {
-        this.logger.log('[Step 2-2-2-1] キャッシュからデータ取得');
-        return cached.data;
-      }
+  async getSheetData(spreadsheetId, range, sheetName = null, suppressLogs = false) {
+    let retryCount = 0;
 
-      // Step 2-2-2-2: 認証トークン取得
-      const token = await this.authManager.getAuthToken();
-
-      // Step 2-2-2-3: API URLの構築
-      const url = `${this.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(range)}`;
-
-      // Step 2-2-2-4: APIリクエスト実行
-      this.logger.log(`[Step 2-2-2-4] Sheets API呼び出し: ${range}`);
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
+    while (retryCount <= this.maxRetryAttempts) {
+      try {
+        // Step 2-2-2-1: キャッシュチェック
+        const cacheKey = `${spreadsheetId}_${range}`;
+        const cached = this.cache.get(cacheKey);
+        if (cached && (Date.now() - cached.timestamp) < this.cacheTimeout) {
+          if (!suppressLogs) {
+            this.logger.log('[Sheets] キャッシュからデータ取得');
+          }
+          return cached.data;
         }
-      });
 
-      // Step 2-2-2-5: レスポンス処理
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(`Sheets API Error: ${error.error?.message || response.statusText}`);
+        // Step 2-2-2-2: Google Sheets APIクォータ制限チェック
+        await this.enforceRateLimit();
+
+        // Step 2-2-2-3: 認証トークン取得
+        const token = await this.authManager.getAuthToken(suppressLogs);
+
+        // Step 2-2-2-4: API URLの構築
+        const url = `${this.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(range)}`;
+
+        // Step 2-2-2-5: APIリクエスト実行
+        if (!suppressLogs) {
+          this.logger.log(`[Sheets] API呼び出し: ${range} (試行${retryCount + 1}/${this.maxRetryAttempts + 1})`);
+        }
+
+        // クォータ追跡のためリクエストカウンター更新
+        this.updateRequestCounter();
+
+        const response = await fetch(url, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        // Step 2-2-2-6: レスポンス処理
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          const errorMessage = errorData.error?.message || response.statusText;
+
+          // クォータ制限エラーの検出
+          if (errorMessage.includes('Quota exceeded') ||
+              errorMessage.includes('Rate Limit Exceeded') ||
+              response.status === 429) {
+
+            const waitTime = this.calculateQuotaRetryDelay(retryCount);
+            if (!suppressLogs) {
+              this.logger.warn(`[Sheets] クォータ制限エラー: ${errorMessage}, ${waitTime / 1000}秒待機中...`);
+            }
+
+            await this.sleep(waitTime);
+            retryCount++;
+            continue; // リトライ
+          }
+
+          throw new Error(`Sheets API Error: ${errorMessage}`);
+        }
+
+        const data = await response.json();
+
+        // Step 2-2-2-7: キャッシュ保存
+        this.cache.set(cacheKey, {
+          data: data,
+          timestamp: Date.now()
+        });
+
+        if (!suppressLogs) {
+          this.logger.log(`[Sheets] データ取得完了: ${data.values?.length || 0}行`);
+        }
+        return data;
+
+      } catch (error) {
+        if (retryCount >= this.maxRetryAttempts) {
+          this.logger.error(`[Sheets] データ取得エラー（最大リトライ回数到達）:`, error);
+          throw error;
+        }
+
+        // クォータエラー以外でもリトライを試行
+        if (error.message.includes('Quota exceeded') ||
+            error.message.includes('Rate Limit Exceeded')) {
+          const waitTime = this.calculateQuotaRetryDelay(retryCount);
+          if (!suppressLogs) {
+            this.logger.warn(`[Sheets] リトライ中（${retryCount + 1}/${this.maxRetryAttempts}）: ${waitTime / 1000}秒待機`);
+          }
+          await this.sleep(waitTime);
+          retryCount++;
+          continue;
+        }
+
+        // その他のエラーは即座に投げる
+        this.logger.error('[Sheets] データ取得エラー:', error);
+        throw error;
       }
-
-      const data = await response.json();
-
-      // Step 2-2-2-6: キャッシュ保存
-      this.cache.set(cacheKey, {
-        data: data,
-        timestamp: Date.now()
-      });
-
-      this.logger.log(`[Step 2-2-2-6] データ取得完了: ${data.values?.length || 0}行`);
-      return data;
-
-    } catch (error) {
-      this.logger.error('[Step 2-2-2] データ取得エラー:', error);
-      throw error;
     }
   }
 
@@ -271,8 +335,16 @@ class SheetsReader {
    */
   async getSheetName(spreadsheetId, gid) {
     try {
-      // Step 2-2-4-1: スプレッドシートのメタデータ取得
+      // Step 2-2-4-1: Google Sheets APIクォータ制限チェック
+      await this.enforceRateLimit();
+
+      // Step 2-2-4-2: 認証トークン取得
       const token = await this.authManager.getAuthToken();
+
+      // クォータ追跡のためリクエストカウンター更新
+      this.updateRequestCounter();
+
+      // Step 2-2-4-3: スプレッドシートのメタデータ取得
       const url = `${this.baseUrl}/${spreadsheetId}`;
 
       const response = await fetch(url, {
@@ -287,7 +359,7 @@ class SheetsReader {
 
       const data = await response.json();
 
-      // Step 2-2-4-2: GIDからシート名を検索
+      // Step 2-2-4-4: GIDからシート名を検索
       if (gid && data.sheets) {
         const sheet = data.sheets.find(s => s.properties.sheetId === parseInt(gid));
         if (sheet) {
@@ -295,13 +367,97 @@ class SheetsReader {
         }
       }
 
-      // Step 2-2-4-3: デフォルトシート名
+      // Step 2-2-4-5: デフォルトシート名
       return data.sheets?.[0]?.properties?.title || null;
 
     } catch (error) {
       this.logger.warn('[Step 2-2-4] シート名取得エラー:', error);
       return null;
     }
+  }
+
+  /**
+   * Step 2-2-5: Google Sheets APIクォータ制限の実行
+   * 1秒間に5リクエストを超えないようにリクエストレートを制御
+   */
+  async enforceRateLimit() {
+    const now = Date.now();
+
+    // Step 2-2-5-1: 新しいウィンドウの開始チェック
+    if (now - this.lastRequestTime >= this.requestWindowMs) {
+      // 新しい1秒ウィンドウの開始 - カウンターリセット
+      this.requestCount = 0;
+      this.lastRequestTime = now;
+    }
+
+    // Step 2-2-5-2: 現在のウィンドウでのリクエスト数チェック
+    if (this.requestCount >= this.maxRequestsPerSecond) {
+      // 制限に達している場合、次のウィンドウまで待機
+      const waitTime = this.requestWindowMs - (now - this.lastRequestTime);
+      if (waitTime > 0) {
+        this.logger.log(`[RateLimit] ${waitTime}ms待機中...`);
+        await this.sleep(waitTime);
+
+        // 待機後、新しいウィンドウを開始
+        this.requestCount = 0;
+        this.lastRequestTime = Date.now();
+      }
+    }
+  }
+
+  /**
+   * Step 2-2-6: リクエストカウンターの更新
+   */
+  updateRequestCounter() {
+    const now = Date.now();
+
+    // Step 2-2-6-1: 新しいウィンドウか確認
+    if (now - this.lastRequestTime >= this.requestWindowMs) {
+      this.requestCount = 1;
+      this.lastRequestTime = now;
+    } else {
+      // Step 2-2-6-2: 現在のウィンドウでカウンター増加
+      this.requestCount++;
+    }
+  }
+
+  /**
+   * Step 2-2-7: クォータ制限エラー時のリトライ待機時間計算
+   * 指数バックオフ戦略を使用
+   */
+  calculateQuotaRetryDelay(retryCount) {
+    // Step 2-2-7-1: 基本待機時間（5秒）からスタート
+    const baseDelay = this.quotaRetryDelay;
+
+    // Step 2-2-7-2: 指数バックオフ（2^retryCount）
+    const exponentialDelay = baseDelay * Math.pow(2, retryCount);
+
+    // Step 2-2-7-3: 最大60秒まで制限
+    return Math.min(exponentialDelay, 60000);
+  }
+
+  /**
+   * Step 2-2-8: sleep ユーティリティ関数
+   */
+  async sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Step 2-2-9: クォータ状態の取得（デバッグ用）
+   */
+  getQuotaStatus() {
+    const now = Date.now();
+    const timeSinceLastRequest = now - this.lastRequestTime;
+    const requestsRemaining = Math.max(0, this.maxRequestsPerSecond - this.requestCount);
+
+    return {
+      requestCount: this.requestCount,
+      requestsRemaining: requestsRemaining,
+      timeSinceLastRequest: timeSinceLastRequest,
+      windowTimeRemaining: Math.max(0, this.requestWindowMs - timeSinceLastRequest),
+      isWindowActive: timeSinceLastRequest < this.requestWindowMs
+    };
   }
 }
 
@@ -327,7 +483,7 @@ class SheetsWriter {
     this.batchTimeout = null;
     this.batchDelay = 500; // 500ms待ってバッチ処理
 
-    this.logger.log('[Step 2-3-1] SheetsWriter初期化完了');
+    // 統合ログで出力するため個別ログは削除
   }
 
   /**
@@ -524,7 +680,7 @@ class SpreadsheetLogger {
     this.flushInterval = 5000; // 5秒ごとにフラッシュ
     this.startFlushTimer();
 
-    this.logger.log('[Step 2-4-1] SpreadsheetLogger初期化完了');
+    // 統合ログで出力するため個別ログは削除
   }
 
   /**
@@ -684,7 +840,7 @@ class SpreadsheetAutoSetup {
       afterPrompt: ['回答']
     };
 
-    this.logger.log('[Step 2-5-1] SpreadsheetAutoSetup初期化完了');
+    // 統合ログで出力するため個別ログは削除
   }
 
   /**
@@ -937,7 +1093,7 @@ class DocsReportGenerator {
       sections: []
     };
 
-    this.logger.log('[Step 2-6-1] DocsReportGenerator初期化完了');
+    // 統合ログで出力するため個別ログは削除
   }
 
   /**
@@ -1102,6 +1258,7 @@ export class GoogleServices {
   constructor() {
     // Step 2-7-1: 統合サービスの初期化
     this.logger = console;
+    this.logger.log('[GoogleServices] 7つのサービス初期化中...');
 
     // Step 2-7-1-1: 各サービスのインスタンス化
     this.authManager = new GoogleAuthManager();
@@ -1118,7 +1275,7 @@ export class GoogleServices {
       sheetName: null
     };
 
-    this.logger.log('[Step 2-7-1] GoogleServices統合初期化完了');
+    this.logger.log('[GoogleServices] 7つのサービス初期化完了');
   }
 
   /**

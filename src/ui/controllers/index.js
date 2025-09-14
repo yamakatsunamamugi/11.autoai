@@ -8,7 +8,7 @@
 // 各コントローラーの動的インポート関数
 export const controllers = {
   /**
-   * 1. テスト用AIモデル・機能変更検出システム
+   * 1. AIモデル・機能変更検出システム (統合関数版)
    */
   aiDetection: {
     async load() {
@@ -34,15 +34,25 @@ export const controllers = {
  * @returns {Promise<Object>} コントローラーモジュール
  */
 export async function loadController(controllerName) {
+  console.log(`🔴 [DEBUG] loadController開始: ${controllerName}`);
+  console.log(`🔴 [DEBUG] 利用可能なコントローラー:`, Object.keys(controllers));
+
   if (!controllers[controllerName]) {
-    throw new Error(`Controller '${controllerName}' not found`);
+    const error = `Controller '${controllerName}' not found`;
+    console.error(`❌ [DEBUG] ${error}`);
+    throw new Error(error);
   }
 
   try {
+    console.log(`🔴 [DEBUG] ${controllerName}コントローラーのload()実行開始`);
     const module = await controllers[controllerName].load();
+    console.log(`🟢 [DEBUG] ${controllerName}モジュール読み込み成功:`, module);
+    console.log(`🟢 [DEBUG] モジュールのエクスポート:`, Object.keys(module));
     console.log(`✅ Controller '${controllerName}' loaded successfully`);
     return module;
   } catch (error) {
+    console.error(`❌ [DEBUG] ${controllerName}コントローラー読み込みエラー:`, error);
+    console.error(`❌ [DEBUG] エラー詳細:`, error.stack);
     console.error(`❌ Failed to load controller '${controllerName}':`, error);
     throw error;
   }

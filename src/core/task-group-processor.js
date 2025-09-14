@@ -184,5 +184,5 @@ if (typeof globalThis !== 'undefined') {
   globalThis.applyColumnControlsToGroups = applyColumnControlsToGroups;
   globalThis.getColumnName = getColumnName;
   globalThis.columnToIndex = columnToIndex;
-  console.log('[Step 7] タスクグループ処理をグローバル空間に登録完了');
+  // タスクグループ処理をグローバル空間に登録完了
 }

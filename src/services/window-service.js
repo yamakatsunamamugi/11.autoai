@@ -757,6 +757,154 @@ export class WindowService {
     this.positionToWindow.clear();
     console.log('[WindowService] すべてのポジションをクリアしました');
   }
+
+  // ===== AIサイト一括管理機能 =====
+
+  /**
+   * AIサイトを一括で開く（統合機能）
+   * 既存チェック、4分割レイアウト、エラーハンドリングを統合
+   */
+  static async openAllAISites() {
+    console.log('[WindowService] AIサイト一括オープン開始');
+    const startTime = performance.now();
+
+    try {
+      // Step 1: 現在開いているタブをチェック
+      const tabs = await new Promise((resolve, reject) => {
+        chrome.tabs.query({}, (tabs) => {
+          if (chrome.runtime.lastError) {
+            reject(chrome.runtime.lastError);
+          } else {
+            resolve(tabs);
+          }
+        });
+      });
+
+      // Step 2: AIサイト定義（4分割レイアウト）
+      const aiSites = [
+        { name: 'ChatGPT', url: this.AI_URLS.chatgpt, position: 0 },  // 左上
+        { name: 'Claude', url: this.AI_URLS.claude, position: 1 },    // 右上
+        { name: 'Gemini', url: this.AI_URLS.gemini, position: 2 }     // 左下
+      ];
+
+      // Step 3: 既に開いているAIサイトをチェック
+      const openAISites = aiSites.filter(site =>
+        tabs.some(tab => tab.url && tab.url.includes(site.url.replace('https://', '')))
+      );
+
+      console.log(`[WindowService] 既に開かれているAIサイト: ${openAISites.length}/3`);
+      console.log(`[WindowService] 開かれているサイト: ${openAISites.map(s => s.name).join(', ') || 'なし'}`);
+
+      // Step 4: 未開放サイトを4分割レイアウトで作成
+      const createdWindows = [];
+      const unopenedSites = aiSites.filter(site =>
+        !openAISites.some(openSite => openSite.name === site.name)
+      );
+
+      if (unopenedSites.length === 0) {
+        console.log('[WindowService] すべてのAIサイトが既に開かれています');
+        return { success: true, created: 0, existing: 3 };
+      }
+
+      for (const site of unopenedSites) {
+        try {
+          console.log(`[WindowService] ${site.name}を位置${site.position}に作成中...`);
+
+          // WindowServiceの既存機能を使用
+          const window = await this.createWindowWithPosition(site.url, site.position, {
+            type: 'popup',
+            focused: false  // 連続作成時は最前面にしない
+          });
+
+          createdWindows.push({
+            name: site.name,
+            windowId: window.id,
+            position: site.position,
+            url: site.url
+          });
+
+          console.log(`[WindowService] ✅ ${site.name}作成完了 (Window ${window.id})`);
+
+          // 連続作成の負荷軽減
+          if (unopenedSites.indexOf(site) < unopenedSites.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 800));
+          }
+
+        } catch (error) {
+          console.error(`[WindowService] ❌ ${site.name}作成エラー:`, error);
+          // エラーが発生しても他のサイトの作成を続行
+        }
+      }
+
+      const totalTime = (performance.now() - startTime).toFixed(0);
+      console.log(`[WindowService] AIサイト一括オープン完了: ${createdWindows.length}個作成 (${totalTime}ms)`);
+
+      return {
+        success: true,
+        created: createdWindows.length,
+        existing: openAISites.length,
+        windows: createdWindows,
+        totalTime: totalTime
+      };
+
+    } catch (error) {
+      const totalTime = (performance.now() - startTime).toFixed(0);
+      console.error(`[WindowService] AIサイト一括オープンエラー (${totalTime}ms):`, error);
+      return {
+        success: false,
+        error: error.message,
+        totalTime: totalTime
+      };
+    }
+  }
+
+  /**
+   * 全AIサイトの状態をチェック
+   */
+  static async checkAISitesStatus() {
+    try {
+      const tabs = await new Promise((resolve, reject) => {
+        chrome.tabs.query({}, (tabs) => {
+          if (chrome.runtime.lastError) {
+            reject(chrome.runtime.lastError);
+          } else {
+            resolve(tabs);
+          }
+        });
+      });
+
+      const aiSites = [
+        { name: 'ChatGPT', url: this.AI_URLS.chatgpt },
+        { name: 'Claude', url: this.AI_URLS.claude },
+        { name: 'Gemini', url: this.AI_URLS.gemini }
+      ];
+
+      const status = aiSites.map(site => {
+        const isOpen = tabs.some(tab =>
+          tab.url && tab.url.includes(site.url.replace('https://', ''))
+        );
+        return {
+          name: site.name,
+          url: site.url,
+          isOpen: isOpen,
+          tab: isOpen ? tabs.find(tab =>
+            tab.url && tab.url.includes(site.url.replace('https://', ''))
+          ) : null
+        };
+      });
+
+      return {
+        total: aiSites.length,
+        open: status.filter(s => s.isOpen).length,
+        closed: status.filter(s => !s.isOpen).length,
+        sites: status
+      };
+
+    } catch (error) {
+      console.error('[WindowService] AIサイト状態チェックエラー:', error);
+      return { error: error.message };
+    }
+  }
 }
 
 // デフォルトエクスポート
