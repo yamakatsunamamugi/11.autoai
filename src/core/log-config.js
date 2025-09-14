@@ -79,7 +79,6 @@ class LogConfig {
 
     setupLoggers() {
         const components = [
-            'TaskGeneratorV2',
             'StreamProcessorV2', 
             'WindowManager',
             'UIController',

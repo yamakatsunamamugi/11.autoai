@@ -22,7 +22,7 @@ export default class ColumnProcessor {
   }
 
   /**
-   * タスクリストを処理（TaskGeneratorV2で生成済み、行制御・列制御適用済み）
+   * タスクリストを処理（StreamProcessorV2で生成済み、行制御・列制御適用済み）
    * @param {TaskList} taskList - タスクリスト
    * @param {Object} spreadsheetData - スプレッドシートデータ
    * @returns {Promise<Object>} 処理結果
@@ -186,7 +186,7 @@ export default class ColumnProcessor {
       for (let taskIndex = 0; taskIndex < batch.length; taskIndex++) {
         const task = batch[taskIndex];
         
-        // タスクからプロンプトを取得（TaskGeneratorV2では空なので動的取得）
+        // タスクからプロンプトを取得（StreamProcessorV2では空なので動的取得）
         const prompt = await this.fetchPromptFromTask(task);
         if (!prompt) {
           this.logger.warn(`[ColumnProcessor] ⚠️ プロンプトが空: ${task.column}${task.row}`);
@@ -643,7 +643,7 @@ ${prompt}`;
         const cellPosition = `${this.indexToColumn(task.answerColumn)}${task.row}`;
         const promptWithPosition = `【現在${cellPosition}セルを処理中です】\n\n${prompt}`;
         
-        // モデルと機能を取得（TaskGeneratorV2と同じロジック）
+        // モデルと機能を取得（StreamProcessorV2と同じロジック）
         let model, func;
         if (group.is3TypeAI) {
           // 3種類AIの場合は回答列のモデル・機能を使用

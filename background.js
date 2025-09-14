@@ -100,7 +100,6 @@ import TaskGenerator from "./src/features/task/generator.js";
 import StreamProcessor from "./src/features/task/stream-processor.js";
 
 // V2版モジュール（静的インポート）
-import TaskGeneratorV2 from "./src/features/task/generator-v2.js";
 import StreamProcessorV2 from "./src/features/task/stream-processor-v2.js";
 
 // Step 6 - サービスファイル
