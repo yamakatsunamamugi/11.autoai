@@ -376,6 +376,12 @@ export default class StreamProcessorV2 {
     this.log(`処理開始インデックス: ${firstTaskGroupIndex}`, 'success', 'Step 2-4');
 
     // ========================================
+    // Step 2-4-1: SpreadsheetLoggerのログ記録機能を初期化
+    // ========================================
+    this.log('SpreadsheetLoggerのログ記録機能を初期化', 'info', 'Step 2-4-1');
+    await this.initializeLoggingFeatures(spreadsheetData, options);
+
+    // ========================================
     // Step 2-5: グループ処理実行
     // ========================================
     this.log('V3グループ順次処理を実行', 'info', 'Step 2-5');
@@ -393,6 +399,11 @@ export default class StreamProcessorV2 {
     // Step 2-6: クリーンアップ・結果返却
     // ========================================
     this.log('クリーンアップと結果返却', 'info', 'Step 2-6');
+
+    // ログバッファをフラッシュ
+    if (this.spreadsheetLogger && this.spreadsheetLogger.flushLogBuffer) {
+      await this.spreadsheetLogger.flushLogBuffer();
+    }
     await this.cleanupAndStopProtection('処理完了');
 
     const totalTime = this.formatTime(Date.now() - startTime);
@@ -1310,19 +1321,37 @@ export default class StreamProcessorV2 {
    */
   async processTask(task, isTestMode, position = 0) {
     try {
-      // ウィンドウを作成
+      // Step 8-1: タスク実行開始ログ記録
+      if (this.spreadsheetLogger && this.spreadsheetLogger.logTaskExecution) {
+        await this.spreadsheetLogger.logTaskExecution(task);
+      }
+
+      // Step 8-2: ウィンドウを作成
       const windowInfo = await this.createWindowForTask(task, position);
 
-      // タスクを実行
+      // Step 8-3: タスクを実行
       const result = await this.aiTaskExecutor.executeAITask(windowInfo.tabId, task);
 
-      // ウィンドウをクローズ
+      // Step 8-4: タスク完了ログ記録
+      if (this.spreadsheetLogger && this.spreadsheetLogger.logTaskCompletion) {
+        const taskId = `${task.column}${task.row}_${task.aiType || 'AI'}`;
+        await this.spreadsheetLogger.logTaskCompletion(taskId, result?.response);
+      }
+
+      // Step 8-5: ウィンドウをクローズ
       await this.windowService.closeWindow(windowInfo.windowId);
 
       return result;
 
     } catch (error) {
       this.logger.error(`[StreamProcessorV2] タスク処理エラー (${task.column}${task.row}):`, error);
+
+      // Step 8-6: エラー時もログ記録
+      if (this.spreadsheetLogger && this.spreadsheetLogger.logTaskCompletion) {
+        const taskId = `${task.column}${task.row}_${task.aiType || 'AI'}`;
+        await this.spreadsheetLogger.logTaskCompletion(taskId, null);
+      }
+
       throw error;
     }
   }
@@ -1532,6 +1561,150 @@ export default class StreamProcessorV2 {
       index = index * 26 + (column.charCodeAt(i) - 65 + 1);
     }
     return index - 1;
+  }
+
+  /**
+   * Step 1-7: SpreadsheetLoggerのログ記録機能を初期化
+   * @param {Object} spreadsheetData - スプレッドシートデータ
+   * @param {Object} options - オプション
+   */
+  async initializeLoggingFeatures(spreadsheetData, options = {}) {
+    // ログ機能が有効かチェック
+    const enableLogging = options.enableLogging !== false;
+
+    if (enableLogging && spreadsheetData) {
+      this.spreadsheetLogger = {
+        spreadsheetId: spreadsheetData.spreadsheetId,
+        logColumn: 'A',
+        currentRow: 10,
+        isEnabled: true,
+        logBuffer: [],
+        flushInterval: 5000,
+        sendTimestamps: new Map(),
+        receiveTimestamps: new Map(),
+
+        // Step 1-7-1: タスク実行ログの記録
+        async logTaskExecution(task) {
+          if (!this.isEnabled) return;
+
+          const taskId = `${task.column}${task.row}_${task.aiType || 'AI'}`;
+          const sendTime = new Date();
+
+          // Step 1-7-1-1: 送信時刻の記録
+          this.sendTimestamps.set(taskId, {
+            time: sendTime,
+            task: task
+          });
+
+          // Step 1-7-1-2: ログエントリの作成
+          const logEntry = {
+            timestamp: sendTime.toISOString(),
+            taskId: taskId,
+            aiType: task.aiType || 'AI',
+            model: task.model || 'default',
+            function: task.function || 'process',
+            status: 'executing',
+            cell: `${task.column}${task.row}`
+          };
+
+          // Step 1-7-1-3: ログメッセージの生成
+          const logMessage = `[${logEntry.timestamp}] ${logEntry.aiType} - ${logEntry.model} - ${logEntry.function} - ${logEntry.status}`;
+
+          this.logBuffer.push({
+            row: this.currentRow++,
+            column: this.logColumn,
+            value: logMessage
+          });
+
+          console.log(`[Step 1-7-1] タスク実行ログ: ${logMessage}`);
+        },
+
+        // Step 1-7-2: タスク完了ログの記録
+        async logTaskCompletion(taskId, response) {
+          if (!this.isEnabled) return;
+
+          // Step 1-7-2-1: 受信時刻の記録
+          const receiveTime = new Date();
+          this.receiveTimestamps.set(taskId, receiveTime);
+
+          // Step 1-7-2-2: 実行時間の計算
+          const sendInfo = this.sendTimestamps.get(taskId);
+          let executionTime = 'unknown';
+          if (sendInfo) {
+            executionTime = ((receiveTime - sendInfo.time) / 1000).toFixed(1) + '秒';
+          }
+
+          // Step 1-7-2-3: 完了ログエントリの作成
+          const logEntry = {
+            timestamp: receiveTime.toISOString(),
+            taskId: taskId,
+            status: response ? 'completed' : 'failed',
+            executionTime: executionTime,
+            responseLength: response?.length || 0
+          };
+
+          // Step 1-7-2-4: ログメッセージの生成と記録
+          const logMessage = `[${logEntry.timestamp}] Task ${logEntry.taskId} - ${logEntry.status} - ${logEntry.executionTime}`;
+
+          this.logBuffer.push({
+            row: this.currentRow++,
+            column: this.logColumn,
+            value: logMessage
+          });
+
+          console.log(`[Step 1-7-2] 完了ログ記録: ${logMessage}`);
+
+          // Step 1-7-2-5: バッファが一定量溜まったらフラッシュ
+          if (this.logBuffer.length >= 10) {
+            await this.flushLogBuffer();
+          }
+        },
+
+        // Step 1-7-3: バッファのフラッシュ
+        async flushLogBuffer() {
+          if (!this.isEnabled || this.logBuffer.length === 0) return;
+
+          // Step 1-7-3-1: バッファの取り出し
+          const logsToWrite = [...this.logBuffer];
+          this.logBuffer = [];
+
+          // Step 1-7-3-2: バッチ更新の準備
+          const updates = logsToWrite.map(log => ({
+            range: `${log.column}${log.row}`,
+            value: log.value
+          }));
+
+          try {
+            // Step 1-7-3-3: バッチ書き込み実行
+            for (const update of updates) {
+              await chrome.runtime.sendMessage({
+                action: 'writeToSpreadsheet',
+                spreadsheetId: this.spreadsheetId,
+                range: update.range,
+                value: update.value
+              });
+            }
+            console.log(`[Step 1-7-3] ログフラッシュ完了: ${updates.length}件`);
+          } catch (error) {
+            // Step 1-7-3-4: エラー時はバッファに戻す
+            this.logBuffer.unshift(...logsToWrite);
+            console.error('[Step 1-7-3] ログフラッシュエラー:', error);
+          }
+        }
+      };
+
+      // Step 1-7-4: 定期フラッシュタイマーの開始
+      setInterval(() => {
+        if (this.spreadsheetLogger && this.spreadsheetLogger.flushLogBuffer) {
+          this.spreadsheetLogger.flushLogBuffer();
+        }
+      }, this.spreadsheetLogger.flushInterval);
+
+      this.logger.log('[StreamProcessorV2] Step 1-7: ログ記録機能を初期化しました');
+    } else {
+      this.spreadsheetLogger = null;
+      this.logger.log('[StreamProcessorV2] Step 1-7: ログ記録機能は無効です');
+    }
   }
 
   /**

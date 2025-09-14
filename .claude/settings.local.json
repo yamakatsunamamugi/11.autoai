@@ -75,7 +75,8 @@
       "Bash(do if [[ \"$file\" == *\"/\"* ]])",
       "Bash(then if [ ! -f \"$file\" ])",
       "Bash(then echo \"MISSING: $file\" fi fi done)",
-      "Bash(xargs:*)"
+      "Bash(xargs:*)",
+      "Bash(tree:*)"
     ],
     "defaultMode": "acceptEdits",
     "additionalDirectories": [
