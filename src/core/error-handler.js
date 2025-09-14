@@ -1,19 +1,14 @@
 // error-handler.js - 統一エラーハンドリングシステム
 //
 // 企業レベルのエラー管理:
-// - エクスポネンシャルバックオフリトライ（RetryManagerに統合済み）
+// - エクスポネンシャルバックオフリトライ（AI共通基盤に統合済み）
 // - サーキットブレーカーパターン
 // - エラー分類と自動復旧
 // - 詳細なエラーメトリクスと監視
 
-import { RetryManager } from '../utils/retry-manager.js';
-
 export class ErrorHandler {
   constructor(options = {}) {
     this.logger = options.logger || console;
-    
-    // RetryManagerを初期化
-    this.retryManager = new RetryManager(this.logger);
     
     this.config = {
       // リトライ設定（RetryManagerに移行済み、互換性のために保持）

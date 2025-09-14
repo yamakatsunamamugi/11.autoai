@@ -107,16 +107,12 @@ import "./src/features/spreadsheet/docs-client.js";
 import { SpreadsheetLogger } from "./src/features/logging/spreadsheet-logger.js";
 
 // Step 5 - タスク関連ファイル
-// import "./src/features/task/generator.js"; // StreamProcessorV2に統合
-// import TaskGenerator from "./src/features/task/generator.js"; // StreamProcessorV2に統合
-// import StreamProcessor from "./src/features/task/stream-processor.js"; // V2に統合済み
 
 // V2版モジュール（静的インポート）
 import StreamProcessorV2 from "./src/features/task/stream-processor-v2.js";
 
 // Step 6 - サービスファイル
 import SpreadsheetAutoSetup from "./src/services/spreadsheet-auto-setup.js";
-// 削除済み: import SpreadsheetColumnRemover from "./src/services/spreadsheet-column-remover.js";
 
 // Step 7 - コアモジュール
 import "./src/core/streaming-service-manager.js";
@@ -124,8 +120,6 @@ import { getStreamingServiceManager } from "./src/core/streaming-service-manager
 
 // DeepResearchモジュールは削除（1-ai-common-base.jsに統合済み）
 
-// PowerManagerモジュール - 削除済み（power-config.jsに統合）
-// import PowerManager from "./src/core/power-manager.js";
 
 // ===== AIタスク実行ハンドラー =====
 // StreamProcessorからのAIタスク実行要求を処理
@@ -137,9 +131,6 @@ import { aiTaskHandler } from "./src/handlers/ai-task-handler.js";
 import { AITaskExecutor } from "./src/core/ai-task-executor.js";
 const aiTaskExecutor = new AITaskExecutor();
 
-// ===== ウィンドウマネージャー (削除済み) =====
-// import { TestWindowManager } from "./src/ui/test-window-manager.js";
-// globalThis.aiWindowManager = new TestWindowManager();
 
 // グローバルにAIタスクハンドラーを設定（StreamProcessorから直接アクセス可能にする）
 globalThis.aiTaskHandler = aiTaskHandler;

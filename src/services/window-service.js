@@ -7,11 +7,7 @@
  * @class WindowService
  */
 
-import { RetryManager } from '../utils/retry-manager.js';
-
 export class WindowService {
-  // RetryManagerインスタンス
-  static retryManager = new RetryManager(console);
   
   // アクティブなウィンドウを管理するMap
   static activeWindows = new Map();

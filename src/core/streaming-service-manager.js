@@ -10,10 +10,8 @@
 import { ServiceRegistry } from "./service-registry.js";
 import { ConfigManager } from "./config-manager.js";
 import { EventBus } from "./event-bus.js";
-// import { Logger } from "./logger.js"; // 削除済み - console.logを直接使用
 import { ErrorHandler } from "./error-handler.js";
 import StreamProcessorV2 from "../features/task/stream-processor-v2.js";
-// import TaskGenerator from "../features/task/generator.js"; // StreamProcessorV2に統合
 
 /**
  * ストリーミング処理サービス管理クラス
