@@ -1531,17 +1531,20 @@ async function handlePreSendModeSetup(specialMode, enableDeepResearch) {
         if (!window.chatGPTToolControl) {
           try {
             console.log(
-              "[11.autoai][ChatGPT] ChatGPTToolControlモジュールを動的インポート中...",
+              "[11.autoai][ChatGPT] ChatGPTツール制御機能はStreamProcessor V2に統合済み",
             );
 
-            // 動的インポートを使用
+            // ChatGPTツール制御機能はStreamProcessor V2（Step 1-5）に統合済み
+            // 旧モジュールは削除されたため、この機能は無効化
+            /*
             const moduleUrl = chrome.runtime.getURL(
               "src/features/chatgpt/chatgpt-tool-control.js",
             );
             const module = await import(moduleUrl);
+            */
 
-            // ChatGPTToolControlクラスをインスタンス化
-            if (module.ChatGPTToolControl) {
+            // ChatGPTToolControlクラスの代替処理
+            if (false) { // 一時的に無効化
               window.chatGPTToolControl = new module.ChatGPTToolControl();
               console.log(
                 "[11.autoai][ChatGPT] ✅ ChatGPTToolControlを初期化しました",

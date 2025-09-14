@@ -93,17 +93,15 @@ async function movePopupToBottomRight() {
   }
 }
 
-// 段階的復元: Step 1 - 基本サービスのみ（問題のあるファイルを除外）
+// 段階的復元: Step 1 - 基本サービスのみ
 import "./src/services/auth-service.js";
-import "./src/features/spreadsheet/config.js";
-import "./src/features/spreadsheet/url-parser.js";
+// 削除済み: config.js, url-parser.js, reader.js（StreamProcessor V2に統合）
 
 // Step 3 - SheetsClientを追加
 import "./src/features/spreadsheet/sheets-client.js";
 
 // Step 4 - その他の基本ファイル
 import "./src/features/spreadsheet/docs-client.js";
-import "./src/features/spreadsheet/reader.js";
 
 // SpreadsheetLogger - Service Worker環境で利用するためグローバル設定
 import { SpreadsheetLogger } from "./src/features/logging/spreadsheet-logger.js";
