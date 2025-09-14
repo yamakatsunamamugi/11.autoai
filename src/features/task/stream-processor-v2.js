@@ -30,7 +30,6 @@ import { AITaskExecutor } from '../../core/ai-task-executor.js';
 import { WindowService } from '../../services/window-service.js';
 import { aiUrlManager } from '../../core/ai-url-manager.js';
 import { RetryManager } from '../../utils/retry-manager.js';
-import TaskGeneratorV2 from './generator-v2.js';
 import { GroupCompletionChecker } from './group-completion-checker.js';
 import { TaskWaitManager } from './task-wait-manager.js';
 import { TaskGroupScanner } from './task-group-scanner.js';
@@ -99,7 +98,6 @@ export default class StreamProcessorV2 {
     // ステップ0-2: タスク生成・管理系初期化
     // ========================================
     this.log('タスク生成・管理系コンポーネントを初期化', 'info', '0-2');
-    this.taskGenerator = new TaskGeneratorV2(logger);
     this.completionChecker = new GroupCompletionChecker(this.retryManager, logger);
     this.waitManager = new TaskWaitManager(logger);
     this.windowService = WindowService;
@@ -411,7 +409,7 @@ export default class StreamProcessorV2 {
         }
       }
 
-      const structure = this.taskGenerator.analyzeStructure(spreadsheetData);
+      const structure = this.analyzeStructure(spreadsheetData);
       const { promptGroups, controls, workRows } = structure;
 
       // 初回のみ構造情報をログ出力
@@ -1538,6 +1536,275 @@ export default class StreamProcessorV2 {
   }
 
   /**
+   * ========================================
+   * ステップ3-5: 構造解析系メソッド
+   * ========================================
+   */
+
+  /**
+   * スプレッドシート構造を解析
+   * ステップ3-5: メイン構造解析
+   */
+  analyzeStructure(data) {
+    this.log('スプレッドシート構造を解析中...', 'info', '3-5');
+
+    const rows = {
+      menu: null,
+      ai: null,
+      model: null,
+      function: null
+    };
+
+    // ステップ3-5-1: 制御行を検索
+    for (let i = 0; i < Math.min(10, data.values.length); i++) {
+      const firstCell = data.values[i][0];
+      if (!firstCell) continue;
+
+      const cellValue = String(firstCell).toLowerCase();
+
+      if (cellValue.includes('メニュー')) {
+        rows.menu = i;
+        this.log(`メニュー行検出: 行${i + 1}`, 'info', '3-5-1');
+      } else if (cellValue === 'ai') {
+        rows.ai = i;
+        this.log(`AI行検出: 行${i + 1}`, 'info', '3-5-1');
+      } else if (cellValue === 'モデル' || cellValue === 'model') {
+        rows.model = i;
+        this.log(`モデル行検出: 行${i + 1}`, 'info', '3-5-1');
+      } else if (cellValue === '機能' || cellValue === 'function') {
+        rows.function = i;
+        this.log(`機能行検出: 行${i + 1}`, 'info', '3-5-1');
+      }
+    }
+
+    // ステップ3-5-2: プロンプトグループを特定
+    const promptGroups = this.identifyPromptGroups(data, rows);
+    this.log(`プロンプトグループ: ${promptGroups.length}個検出`, 'success', '3-5-2');
+
+    // ステップ3-5-3: 制御情報を取得
+    const controls = {
+      row: this.getRowControl(data),
+      column: this.getColumnControl(data)
+    };
+
+    // ステップ3-5-4: 作業行を特定
+    const workRows = this.identifyWorkRows(data, rows);
+    this.log(`作業行: ${workRows.length}行検出`, 'success', '3-5-4');
+
+    return { rows, promptGroups, controls, workRows };
+  }
+
+  /**
+   * プロンプトグループを特定
+   * ステップ3-5-1: プロンプトグループ識別
+   */
+  identifyPromptGroups(data, rows) {
+    this.log('プロンプトグループを識別中...', 'info', '3-5-1');
+
+    // processSpreadsheetData()で生成されたtaskGroups情報があればそれを使用
+    if (data.taskGroups && data.taskGroups.length > 0) {
+      this.log('taskGroups情報を使用してプロンプトグループを構築', 'info', '3-5-1');
+      return this.convertTaskGroupsToPromptGroups(data.taskGroups);
+    }
+
+    // フォールバック: 従来のロジックで解析
+    this.log('taskGroups情報がないため、従来のロジックで解析', 'info', '3-5-1');
+    const groups = [];
+
+    if (!rows.menu || !rows.ai) {
+      return groups;
+    }
+
+    const menuRow = data.values[rows.menu];
+    const aiRow = data.values[rows.ai];
+
+    // 構造解析のデバッグログ（簡潔版）
+    const menuNonEmpty = menuRow.filter(cell => cell && cell.trim()).length;
+    const aiNonEmpty = aiRow.filter(cell => cell && cell.trim()).length;
+    this.log(`構造解析: メニュー行${menuNonEmpty}列, AI行${aiNonEmpty}列`, 'info', '3-5-1');
+
+    let currentGroup = null;
+
+    for (let i = 0; i < menuRow.length; i++) {
+      const menuCell = menuRow[i];
+      const aiCell = aiRow[i];
+
+      // プロンプト列を検出
+      if (menuCell && menuCell.includes('プロンプト')) {
+        if (!currentGroup) {
+          currentGroup = {
+            promptColumns: [],
+            answerColumns: [],
+            aiType: aiCell || 'Claude'
+          };
+        }
+        currentGroup.promptColumns.push(i);
+      }
+      // 回答列を検出
+      else if (menuCell && (menuCell.includes('回答') || menuCell.includes('答'))) {
+        if (currentGroup) {
+          // AIタイプを判定
+          let aiType = 'ChatGPT';
+
+          if (aiCell && aiCell.trim() !== '') {
+            const aiCellLower = aiCell.toLowerCase();
+            if (aiCellLower.includes('chatgpt') || aiCellLower.includes('gpt')) {
+              aiType = 'ChatGPT';
+            } else if (aiCellLower.includes('claude')) {
+              aiType = 'Claude';
+            } else if (aiCellLower.includes('gemini')) {
+              aiType = 'Gemini';
+            }
+          } else {
+            const menuCellLower = menuCell.toLowerCase();
+            if (menuCellLower.includes('chatgpt') || menuCellLower.includes('gpt')) {
+              aiType = 'ChatGPT';
+            } else if (menuCellLower.includes('claude')) {
+              aiType = 'Claude';
+            } else if (menuCellLower.includes('gemini')) {
+              aiType = 'Gemini';
+            }
+          }
+
+          currentGroup.answerColumns.push({
+            index: i,
+            column: this.indexToColumn(i),
+            type: aiType
+          });
+        }
+      }
+      // グループの終了を検出
+      else if (currentGroup && currentGroup.promptColumns.length > 0) {
+        if (currentGroup.answerColumns.length > 0) {
+          groups.push(currentGroup);
+        }
+        currentGroup = null;
+      }
+    }
+
+    // 最後のグループを追加
+    if (currentGroup && currentGroup.answerColumns.length > 0) {
+      groups.push(currentGroup);
+    }
+
+    return groups;
+  }
+
+  /**
+   * taskGroups情報をpromptGroups形式に変換
+   * ステップ3-5-3: タスクグループ変換
+   */
+  convertTaskGroupsToPromptGroups(taskGroups) {
+    this.log('taskGroupsをpromptGroups形式に変換中...', 'info', '3-5-3');
+    const promptGroups = [];
+
+    try {
+      if (!taskGroups || !Array.isArray(taskGroups)) {
+        this.log('taskGroupsが無効です', 'warn', '3-5-3');
+        return promptGroups;
+      }
+
+      for (const taskGroup of taskGroups) {
+        try {
+          // タスクグループの必須フィールドをチェック
+          if (!taskGroup.columnRange || !taskGroup.columnRange.promptColumns || !taskGroup.columnRange.answerColumns) {
+            this.log('無効なtaskGroup構造をスキップ', 'warn', '3-5-3');
+            continue;
+          }
+
+          // プロンプト列のインデックスを取得
+          const promptColumns = taskGroup.columnRange.promptColumns.map(col => {
+            if (typeof col === 'string') {
+              return this.columnToIndex(col);
+            }
+            return col;
+          });
+
+          // 回答列情報を変換
+          const answerColumns = taskGroup.columnRange.answerColumns.map(answerCol => {
+            if (typeof answerCol === 'object' && answerCol.column) {
+              return {
+                index: answerCol.index !== undefined ? answerCol.index : this.columnToIndex(answerCol.column),
+                column: answerCol.column,
+                type: answerCol.aiType || 'Claude'
+              };
+            }
+            // フォールバック処理
+            return {
+              index: this.columnToIndex(answerCol),
+              column: answerCol,
+              type: 'Claude'
+            };
+          });
+
+          // promptGroup形式に変換
+          const promptGroup = {
+            promptColumns: promptColumns,
+            answerColumns: answerColumns,
+            aiType: taskGroup.aiType || 'Claude',
+            groupId: taskGroup.id || `group_${promptGroups.length + 1}`,
+            groupType: taskGroup.groupType || 'single',
+            sequenceOrder: taskGroup.sequenceOrder || promptGroups.length + 1
+          };
+
+          promptGroups.push(promptGroup);
+
+          this.log(`taskGroup ${promptGroup.groupId} を変換完了`, 'success', '3-5-3');
+
+        } catch (groupError) {
+          this.log(`taskGroup変換エラー: ${groupError.message}`, 'error', '3-5-3');
+          continue;
+        }
+      }
+
+    } catch (error) {
+      this.log(`convertTaskGroupsToPromptGroups エラー: ${error.message}`, 'error', '3-5-3');
+    }
+
+    return promptGroups;
+  }
+
+  /**
+   * 作業行を特定
+   * ステップ3-5-2: 作業行識別
+   */
+  identifyWorkRows(data, rows) {
+    this.log('作業行を特定中...', 'info', '3-5-2');
+
+    const workRows = [];
+    const startRow = Math.max(
+      (rows.menu || 0) + 1,
+      (rows.ai || 0) + 1,
+      (rows.model || 0) + 1,
+      (rows.function || 0) + 1,
+      8  // 最低でも9行目から
+    );
+
+    this.log(`作業行開始: 行${startRow + 1}から`, 'info', '3-5-2');
+
+    for (let i = startRow; i < data.values.length; i++) {
+      const row = data.values[i];
+
+      // 空行はスキップ
+      if (!row || row.every(cell => !cell)) {
+        continue;
+      }
+
+      workRows.push({
+        index: i,
+        number: i + 1  // 1-based行番号
+      });
+    }
+
+    this.log(`作業行検出完了: ${workRows.length}行`, 'success', '3-5-2');
+    if (workRows.length < 10) {
+      this.log(`検出した作業行: ${workRows.map(w => `行${w.number}`).join(', ')}`, 'info', '3-5-2');
+    }
+
+    return workRows;
+  }
+
+  /**
    * プロンプト行スキャン - 既読み込み済みデータからプロンプトがある行を検出
    */
   scanPromptRows(promptColumns, spreadsheetData) {
@@ -1598,5 +1865,259 @@ export default class StreamProcessorV2 {
    */
   async loadAdditionalRows(currentRows) {
     return currentRows; // 実装時に追加読み込みロジックを追加
+  }
+
+  /**
+   * ========================================
+   * ステップ9-2: データアクセス系ヘルパーメソッド
+   * ========================================
+   *
+   * このセクションには、スプレッドシートのデータにアクセスし、
+   * 値を取得・判定するためのユーティリティメソッドが含まれています。
+   * これらのメソッドは他のメソッドから頻繁に呼び出される基本的な機能です。
+   */
+
+  /**
+   * プロンプトが存在するかチェック（内容は取得しない）
+   * ステップ9-2-1: プロンプト存在確認
+   *
+   * @param {Object} data - スプレッドシートデータ
+   * @param {Object} workRow - 作業行情報（index: 0ベース行番号, number: 1ベース行番号）
+   * @param {Object} promptGroup - プロンプトグループ（promptColumnsを含む）
+   * @returns {boolean} プロンプトが存在する場合true
+   *
+   * 例：行10のG列〜I列にプロンプトがあるかチェック
+   */
+  hasPromptInRow(data, workRow, promptGroup) {
+    // プロンプト列を1つずつチェック
+    for (const colIndex of promptGroup.promptColumns) {
+      const cell = this.getCellValue(data, workRow.index, colIndex);
+
+      // セルに有効な値があるかチェック
+      // 空文字列や"null"文字列は無視
+      if (cell && cell !== "" && cell !== "null" && cell.trim()) {
+        return true; // プロンプトが見つかった
+      }
+    }
+    return false; // プロンプトが見つからなかった
+  }
+
+  /**
+   * セルの値を取得
+   * ステップ9-2-2: セル値取得
+   *
+   * @param {Object} data - スプレッドシートデータ
+   * @param {number} rowIndex - 行インデックス（0ベース）
+   * @param {number} colIndex - 列インデックス（0ベース）
+   * @returns {string|null} セルの値、存在しない場合はnullまたは空文字
+   *
+   * 例：10行目のG列（列インデックス6）の値を取得
+   */
+  getCellValue(data, rowIndex, colIndex) {
+    // 行が存在しない場合
+    if (!data.values[rowIndex]) {
+      this.log(`行${rowIndex}が存在しません`, 'warn', '9-2-2');
+      return null;
+    }
+
+    // 列が範囲外の場合
+    if (colIndex >= data.values[rowIndex].length) {
+      // 範囲外の場合は空文字を返す（エラーではなく正常な動作）
+      return "";
+    }
+
+    // セルの値を返す（値がない場合はnull）
+    return data.values[rowIndex][colIndex] || null;
+  }
+
+  /**
+   * 回答が既に存在するかチェック
+   * ステップ9-2-3: 回答存在確認
+   *
+   * @param {string} value - チェックする値
+   * @returns {boolean} 有効な回答が存在する場合true
+   *
+   * このメソッドは以下の値を「回答なし」として扱います：
+   * - 空文字、null、undefined
+   * - '処理完了'（処理済みマーカー）
+   * - '現在操作中です_'で始まる文字列（排他制御マーカー）
+   * - エラーマーカー（'error', 'エラー', 'failed', '失敗', '×'）
+   */
+  hasAnswer(value) {
+    // 値がない場合
+    if (!value) return false;
+
+    const trimmed = value.trim();
+    if (!trimmed) return false;
+
+    // 「処理完了」は未回答として扱う（再処理可能にするため）
+    if (trimmed === '処理完了') {
+      this.log(`「処理完了」を検出 → 未回答として扱う`, 'info', '9-2-3');
+      return false;
+    }
+
+    // 排他制御マーカーは未回答として扱う
+    // 例："現在操作中です_2024-01-01_10-00-00_PC001"
+    if (trimmed.startsWith('現在操作中です_')) {
+      this.log(`排他制御マーカーを検出 → 未回答として扱う`, 'info', '9-2-3');
+      return false;
+    }
+
+    // エラーマーカーは回答なしとして扱う（再処理が必要）
+    const errorMarkers = ['error', 'エラー', 'failed', '失敗', '×'];
+    for (const marker of errorMarkers) {
+      if (trimmed.toLowerCase().includes(marker)) {
+        this.log(`エラーマーカーを検出 → 未回答として扱う: "${trimmed}"`, 'info', '9-2-3');
+        return false;
+      }
+    }
+
+    // 上記以外は有効な回答として扱う
+    return true;
+  }
+
+  /**
+   * モデル情報を取得
+   * ステップ9-2-4: モデル情報取得
+   *
+   * @param {Object} data - スプレッドシートデータ
+   * @param {Object} answerCol - 回答列情報
+   * @param {Array} promptColumns - プロンプト列のインデックス配列（通常処理用）
+   * @returns {string} モデル名（例：'Claude Opus 4.1', 'GPT-4'）
+   *
+   * モデル行から対応する列のモデル情報を取得します。
+   * 機能が「通常」の場合はプロンプト列から、それ以外は回答列から取得。
+   */
+  getModel(data, answerCol, promptColumns = null) {
+    // モデル行を探す（A列が「モデル」または「model」）
+    const modelRow = data.values.find(row =>
+      row[0] && (row[0] === 'モデル' || row[0].toLowerCase() === 'model')
+    );
+
+    if (modelRow) {
+      // 機能行も確認
+      const functionRow = data.values.find(row =>
+        row[0] && (row[0] === '機能' || row[0].toLowerCase() === 'function')
+      );
+
+      const functionValue = functionRow ? functionRow[answerCol.index] : null;
+
+      // 機能が「通常」の場合、プロンプト列からモデルを取得
+      if (functionValue === '通常' && promptColumns && promptColumns.length > 0) {
+        const promptModelValue = modelRow[promptColumns[0]];
+        if (promptModelValue) {
+          return promptModelValue;
+        }
+      }
+
+      // それ以外は回答列から取得
+      const modelValue = modelRow[answerCol.index];
+      if (modelValue) {
+        return modelValue;
+      }
+    }
+
+    // デフォルトモデル（AI種別に応じて）
+    const defaultModels = {
+      'claude': 'Claude Opus 4.1',
+      'chatgpt': 'GPT-4',
+      'gemini': 'Gemini Pro',
+      'genspark': 'Genspark'
+    };
+
+    const aiTypeLower = answerCol.type ? answerCol.type.toLowerCase() : 'claude';
+    return defaultModels[aiTypeLower] || 'Claude Opus 4.1';
+  }
+
+  /**
+   * 機能情報を取得
+   * ステップ9-2-5: 機能情報取得
+   *
+   * @param {Object} data - スプレッドシートデータ
+   * @param {Object} answerCol - 回答列情報
+   * @param {Array} promptColumns - プロンプト列のインデックス配列（通常処理用）
+   * @returns {string} 機能名（例：'通常', 'チャット', 'レポート化'）
+   *
+   * 機能行から対応する列の機能情報を取得します。
+   */
+  getFunction(data, answerCol, promptColumns = null) {
+    // 機能行を探す（A列が「機能」または「function」）
+    const functionRow = data.values.find(row =>
+      row[0] && (row[0] === '機能' || row[0].toLowerCase() === 'function')
+    );
+
+    if (functionRow) {
+      // まず回答列の値を確認
+      const functionValue = functionRow[answerCol.index];
+      if (functionValue) {
+        return functionValue;
+      }
+
+      // 回答列が空の場合、プロンプト列から取得を試みる
+      if (promptColumns && promptColumns.length > 0) {
+        const promptFunctionValue = functionRow[promptColumns[0]];
+        if (promptFunctionValue) {
+          return promptFunctionValue;
+        }
+      }
+    }
+
+    // デフォルトは「通常」
+    return '通常';
+  }
+
+  /**
+   * 制御値をパース（カンマ区切りや範囲指定を解析）
+   * ステップ9-2-6: 制御値パース
+   *
+   * @param {string} str - パースする文字列（例："1,3,5-7,10"）
+   * @returns {Array<number>} 数値の配列（例：[1,3,5,6,7,10]）
+   *
+   * 以下の形式をサポート：
+   * - 単一の数値: "5" → [5]
+   * - カンマ区切り: "1,3,5" → [1,3,5]
+   * - 範囲指定: "5-8" → [5,6,7,8]
+   * - 組み合わせ: "1,3-5,8" → [1,3,4,5,8]
+   */
+  parseControlValues(str) {
+    const values = [];
+    const parts = str.split(',');
+
+    for (const part of parts) {
+      const trimmed = part.trim();
+
+      // 単一の数値
+      if (/^\d+$/.test(trimmed)) {
+        values.push(parseInt(trimmed, 10));
+      }
+      // 範囲指定（例："5-8"）
+      else if (/^\d+-\d+$/.test(trimmed)) {
+        const [start, end] = trimmed.split('-').map(n => parseInt(n, 10));
+        for (let i = start; i <= end; i++) {
+          values.push(i);
+        }
+      }
+    }
+
+    return values;
+  }
+
+  /**
+   * タスクIDを生成
+   * ステップ9-2-7: タスクID生成
+   *
+   * @param {string} column - 列名（例：'G'）
+   * @param {number} row - 行番号（1ベース、例：10）
+   * @returns {string} ユニークなタスクID（例："G10_1704067200000_abc123"）
+   *
+   * タスクIDは以下の要素で構成されます：
+   * - セル位置（列名+行番号）
+   * - タイムスタンプ（ミリ秒）
+   * - ランダム文字列（重複防止）
+   */
+  generateTaskId(column, row) {
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(2, 9);
+    return `${column}${row}_${timestamp}_${random}`;
   }
 }
