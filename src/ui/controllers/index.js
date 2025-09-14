@@ -27,55 +27,7 @@ export const controllers = {
     }
   },
 
-  /**
-   * 3. スプレッドシート読み込みテスト
-   */
-  spreadsheetTest: {
-    async load() {
-      const module = await import('./spreadsheet-test-controller.js');
-      return module;
-    }
-  },
-
-  /**
-   * 4. ウィンドウ作成テスト
-   */
-  windowCreationTest: {
-    async load() {
-      const module = await import('./window-creation-controller.js');
-      return module;
-    }
-  },
-
-  /**
-   * 5. 統合AIテスト開始
-   */
-  integratedTest: {
-    async load() {
-      const module = await import('./integrated-test-controller.js');
-      return module;
-    }
-  },
-
-  /**
-   * 6. レポート化テスト
-   */
-  reportTest: {
-    async load() {
-      const module = await import('./report-test-controller.js');
-      return module;
-    }
-  },
-
-  /**
-   * 7. AIステータス表示
-   */
-  aiStatus: {
-    async load() {
-      const module = await import('./ai-status-controller.js');
-      return module;
-    }
-  }
+  // Test controllers removed - only keeping model/function detection
 };
 
 /**

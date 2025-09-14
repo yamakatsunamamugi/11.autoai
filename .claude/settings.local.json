@@ -65,7 +65,17 @@
       "Bash(for file in column-processor batch-executor task-group-builder task-factory window-manager task-wait-manager group-completion-checker column-control-simple task-executor-adapter)",
       "Bash(do echo \"=== $file ===\")",
       "Bash(for:*)",
-      "Bash(do wc:*)"
+      "Bash(do wc:*)",
+      "Bash(do echo \"### $file の参照:\")",
+      "Bash(do)",
+      "Bash(if [ ! -f \"$file\" ])",
+      "Bash(then)",
+      "Bash(fi)",
+      "Bash(while read file)",
+      "Bash(do if [[ \"$file\" == *\"/\"* ]])",
+      "Bash(then if [ ! -f \"$file\" ])",
+      "Bash(then echo \"MISSING: $file\" fi fi done)",
+      "Bash(xargs:*)"
     ],
     "defaultMode": "acceptEdits",
     "additionalDirectories": [

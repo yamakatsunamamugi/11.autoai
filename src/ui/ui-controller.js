@@ -919,9 +919,10 @@ const startBtn = document.getElementById("startBtn");
 const stopBtn = document.getElementById("stopBtn");
 const clearLogBtn = document.getElementById("clearLogBtn");
 const deleteAnswersBtn = document.getElementById("deleteAnswersBtn");
-const startIntegratedTestBtn = document.getElementById(
-  "startIntegratedTestBtn",
-);
+// Test button removed - integrated test functionality deleted
+// const startIntegratedTestBtn = document.getElementById(
+//   "startIntegratedTestBtn",
+// );
 const aiDetectionSystemBtn = document.getElementById("aiDetectionSystemBtn");
 const aiSelectorMutationSystemBtn = document.getElementById("aiSelectorMutationSystemBtn");
 const statusDiv = document.getElementById("status");
@@ -3233,87 +3234,13 @@ async function checkAndOpenAISites() {
   }
 }
 
-// ===== イベントリスナー: テスト実行（統合AIテスト開始） =====
-/**
- * 【テスト用ボタン】
- * AI Orchestratorを開いてテスト環境を起動します。
- * 本番実行は「処理を開始」ボタンを使用してください。
- */
-startIntegratedTestBtn.addEventListener("click", async () => {
-  try {
-    const manager = await loadControllerManager();
-    const controller = await manager.loadController('integratedTest');
-    
-    if (controller && controller.runIntegratedAITest) {
-      await controller.runIntegratedAITest();
-    } else {
-      console.error('❌ 統合テストコントローラーが正しく読み込まれていません');
-      updateStatus('統合テストコントローラー読み込みエラー', 'error');
-    }
-  } catch (error) {
-    console.error('統合テスト制御エラー:', error);
-    updateStatus('統合テスト制御エラー', 'error');
-  }
-});
+// Integrated test button listener removed
 
-// ===== イベントリスナー: レポート生成 =====
-const generateReportBtn = document.getElementById("generateReportBtn");
-generateReportBtn.addEventListener("click", async () => {
-  await bringWindowToFront(); // ウィンドウを最前面に表示
-  try {
-    const manager = await loadControllerManager();
-    const controller = await manager.loadController('reportTest');
-    
-    if (controller && controller.runReportTest) {
-      controller.runReportTest(updateStatus);
-    } else {
-      console.error('❌ レポートテストコントローラーが正しく読み込まれていません');
-      updateStatus('レポートテストコントローラー読み込みエラー', 'error');
-    }
-  } catch (error) {
-    console.error('レポートテスト制御エラー:', error);
-    updateStatus('レポートテスト制御エラー', 'error');
-  }
-});
+// Report generation test button removed
 
-// ===== イベントリスナー: ウィンドウ作成テスト =====
-const windowCreationTestBtn = document.getElementById("windowCreationTestBtn");
-windowCreationTestBtn.addEventListener("click", async () => {
-  await bringWindowToFront(); // ウィンドウを最前面に表示
-  try {
-    const manager = await loadControllerManager();
-    const controller = await manager.loadController('windowCreationTest');
-    
-    if (controller && controller.runWindowCreationTest) {
-      controller.runWindowCreationTest(updateStatus);
-    } else {
-      console.error('❌ ウィンドウ作成テストコントローラーが正しく読み込まれていません');
-      updateStatus('ウィンドウ作成テストコントローラー読み込みエラー', 'error');
-    }
-  } catch (error) {
-    console.error('ウィンドウ作成テスト制御エラー:', error);
-    updateStatus('ウィンドウ作成テスト制御エラー', 'error');
-  }
-});
+// Window creation test button removed
 
-// ===== イベントリスナー: スプレッドシート読み込みテスト =====
-const showTaskListTestBtn = document.getElementById("showTaskListTestBtn");
-showTaskListTestBtn.addEventListener("click", async () => {
-  try {
-    const manager = await loadControllerManager();
-    const controller = await manager.loadController('spreadsheetTest');
-    
-    if (controller && controller.runSpreadsheetTest) {
-      controller.runSpreadsheetTest(updateStatus);
-    } else {
-      console.error('❌ スプレッドシートテストコントローラーが正しく読み込まれていません');
-      updateStatus('スプレッドシートテストコントローラー読み込みエラー', 'error');
-    }
-  } catch (error) {
-    console.error('スプレッドシートテスト制御エラー:', error);
-    updateStatus('スプレッドシートテスト制御エラー', 'error');
-  }
-});
+// Spreadsheet test button removed
 
 // ===== セレクタ情報動的取得関数 =====
 /**
@@ -3632,27 +3559,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
-// ===== イベントリスナー: AIステータス表示 =====
-const showAIStatusBtn = document.getElementById("showAIStatusBtn");
-if (showAIStatusBtn) {
-  showAIStatusBtn.addEventListener("click", async () => {
-    await bringWindowToFront(); // ウィンドウを最前面に表示
-    try {
-      const manager = await loadControllerManager();
-      const controller = await manager.loadController('aiStatus');
-      
-      if (controller && controller.showAIStatus) {
-        controller.showAIStatus(updateStatus);
-      } else {
-        console.error('❌ AIステータスコントローラーが正しく読み込まれていません');
-        updateStatus('AIステータスコントローラー読み込みエラー', 'error');
-      }
-    } catch (error) {
-      console.error('AIステータス制御エラー:', error);
-      updateStatus('AIステータス制御エラー', 'error');
-    }
-  });
-}
+// AI status display button removed
 
 // テスト実行関数（別ウィンドウ版）
 

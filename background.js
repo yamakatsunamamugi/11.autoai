@@ -126,11 +126,9 @@ import { aiTaskHandler } from "./src/handlers/ai-task-handler.js";
 import { AITaskExecutor } from "./src/core/ai-task-executor.js";
 const aiTaskExecutor = new AITaskExecutor();
 
-// ===== ウィンドウマネージャー =====
-import { TestWindowManager } from "./src/ui/test-window-manager.js";
-
-// グローバルにウィンドウマネージャーを設定
-globalThis.aiWindowManager = new TestWindowManager();
+// ===== ウィンドウマネージャー (削除済み) =====
+// import { TestWindowManager } from "./src/ui/test-window-manager.js";
+// globalThis.aiWindowManager = new TestWindowManager();
 
 // グローバルにAIタスクハンドラーを設定（StreamProcessorから直接アクセス可能にする）
 globalThis.aiTaskHandler = aiTaskHandler;
