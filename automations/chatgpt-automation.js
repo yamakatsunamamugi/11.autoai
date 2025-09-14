@@ -1312,17 +1312,37 @@ ${prompt}`;
             }
             
             // 送信時刻を記録（SpreadsheetLogger用）
-            log(`🔍 送信時刻記録開始 - AIHandler: ${!!window.AIHandler}, recordSendTimestamp: ${!!window.AIHandler?.recordSendTimestamp}, currentAITaskInfo: ${!!window.currentAITaskInfo}`, 'info');
-            if (window.AIHandler && window.AIHandler.recordSendTimestamp) {
+            log(`🔍 送信時刻記録開始 - currentAITaskInfo: ${!!window.currentAITaskInfo}`, 'info');
+            if (window.currentAITaskInfo) {
                 try {
-                    log(`📝 送信時刻記録実行開始 - タスクID: ${window.currentAITaskInfo?.taskId}`, 'info');
-                    await window.AIHandler.recordSendTimestamp('ChatGPT');
-                    log(`✅ 送信時刻記録成功`, 'success');
+                    // タスク情報から必要な情報を取得
+                    const { taskId, row, column } = window.currentAITaskInfo;
+                    const timestamp = new Date().toLocaleString('ja-JP');
+
+                    // スプレッドシートにログを記録
+                    if (chrome?.runtime?.sendMessage) {
+                        await chrome.runtime.sendMessage({
+                            action: 'logToSpreadsheet',
+                            data: {
+                                taskId,
+                                row,
+                                column,
+                                aiType: 'ChatGPT',
+                                model: taskData.model || modelName || '',
+                                function: taskData.function || featureName || '',
+                                timestamp,
+                                type: 'SEND',
+                                message: `📤 送信: ${prompt.substring(0, 50)}...`
+                            }
+                        });
+                        log(`✅ 送信時刻記録成功 - ${timestamp}`, 'success');
+                    }
                 } catch (error) {
-                    log(`❌ 送信時刻記録エラー: ${error.message}`, 'error');
+                    log(`⚠️ 送信時刻記録エラー: ${error.message}`, 'warning');
+                    // エラーが発生しても処理は継続
                 }
             } else {
-                log(`⚠️ AIHandler または recordSendTimestamp が利用できません`, 'warning');
+                log(`⚠️ currentAITaskInfo が利用できません`, 'warning');
             }
             
             await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
@@ -1439,6 +1459,33 @@ ${prompt}`;
                 }
 
                 console.log('✅ ChatGPT V2 タスク実行完了');
+
+                // 完了時刻を記録（SpreadsheetLogger用）
+                if (window.currentAITaskInfo && chrome?.runtime?.sendMessage) {
+                    try {
+                        const { taskId, row, column } = window.currentAITaskInfo;
+                        const timestamp = new Date().toLocaleString('ja-JP');
+                        await chrome.runtime.sendMessage({
+                            action: 'logToSpreadsheet',
+                            data: {
+                                taskId,
+                                row,
+                                column,
+                                aiType: 'ChatGPT',
+                                model: displayedModel || taskData.model || modelName || '',
+                                function: displayedFunction || taskData.function || featureName || '',
+                                timestamp,
+                                type: 'COMPLETE',
+                                response: responseText.substring(0, 200),
+                                message: `✅ 完了: ${responseText.length}文字の回答`
+                            }
+                        });
+                        log(`✅ 完了時刻記録成功 - ${timestamp}`, 'success');
+                    } catch (error) {
+                        log(`⚠️ 完了時刻記録エラー: ${error.message}`, 'warning');
+                    }
+                }
+
                 // 実行完了フラグを設定（AITaskExecutorが確認）
                 window.__v2_execution_complete = true;
                 window.__v2_execution_result = {
@@ -1557,9 +1604,11 @@ async function chatWithChatGPT() {
 */
 
 // ========================================
-// 【エクスポート】検出システム用関数一覧
+// 【グローバル公開】検出システム用関数一覧
+// コンテンツスクリプトはES6モジュールをサポートしないため、
+// window オブジェクトに直接公開
 // ========================================
-export {
+window.ChatGPTAutomation = {
     // 🔧 メニュー操作
     openModelMenu,           // モデルメニューを開く
     openFunctionMenu,        // 機能メニューを開く

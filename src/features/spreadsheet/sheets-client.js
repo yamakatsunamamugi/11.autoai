@@ -1,13 +1,13 @@
 // sheets-client.js - Google Sheets APIクライアント
-// Step 3: sleep-utils.jsから1-ai-common-base.jsに移行
-import { getGlobalAICommonBase } from '../../../automations/1-ai-common-base.js';
+// Step 3: sleep-utils.jsから1-ai-common-base.jsに移行（グローバル関数として利用）
+import '../../../automations/1-ai-common-base.js';
 
 class SheetsClient {
   constructor() {
     this.baseUrl = "https://sheets.googleapis.com/v4/spreadsheets";
     this.logger = typeof logger !== "undefined" ? logger : console;
-    // Step 3: AI共通基盤からsleep関数を取得
-    this.aiCommonBase = getGlobalAICommonBase();
+    // Step 3: AI共通基盤からsleep関数を取得（グローバル関数を使用）
+    this.aiCommonBase = globalThis.getGlobalAICommonBase?.() || window?.getGlobalAICommonBase?.();
     
     // Google Sheets API制限
     this.limits = {

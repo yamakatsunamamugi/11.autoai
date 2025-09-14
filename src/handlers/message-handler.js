@@ -25,88 +25,8 @@ import StreamProcessorV2 from '../features/task/stream-processor-v2.js';
 import SpreadsheetAutoSetup from '../services/spreadsheet-auto-setup.js';
 import { getStreamingServiceManager } from '../core/streaming-service-manager.js';
 
-// Step 1-1: AIタスク実行インスタンス
-const aiTaskExecutor = new AITaskExecutor();
 
-// Step 1-2: 処理状態管理
-let isProcessing = false;
 
-// ===== Step 2: AI実行制御（共通モジュールを使用） =====
-/**
- * AIタスクを実行する中央制御関数
- * 共通のAITaskExecutorモジュールを使用
- */
-async function executeAITask(tabId, taskData) {
-  console.log('[Step 2-1] executeAITask開始');
-  const startTime = Date.now();
-
-  // Step 2-2: セル位置情報を含む詳細ログ
-  const cellInfo = taskData.cellInfo || {};
-  const cellPosition = cellInfo.column && cellInfo.row ? `${cellInfo.column}${cellInfo.row}` : '不明';
-
-  logManager.logAI(taskData.aiType, `📊 (${taskData.aiType}) Step2-3: スプレッドシート処理開始 [${cellPosition}セル]`, {
-    level: 'info',
-    metadata: {
-      tabId,
-      taskId: taskData.taskId,
-      cellPosition,
-      column: cellInfo.column,
-      row: cellInfo.row,
-      step: 'Step 2-3',
-      process: 'スプレッドシート読み込み',
-      model: taskData.model,
-      function: taskData.function,
-      promptLength: taskData.prompt?.length
-    }
-  });
-
-  try {
-    // Step 2-4: 共通モジュールを使用してAIタスクを実行
-    const result = await aiTaskExecutor.executeAITask(tabId, taskData);
-
-    const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
-
-    if (result.success) {
-      // Step 2-5: 成功ログ
-      logManager.logAI(taskData.aiType, `✅ 全プロセス完了 [${cellPosition}セル] (${totalTime}秒)`, {
-        level: 'success',
-        metadata: {
-          taskId: taskData.taskId,
-          cellPosition,
-          column: cellInfo.column,
-          row: cellInfo.row,
-          totalTime: `${totalTime}秒`,
-          responseLength: result.response?.length || 0,
-          allStepsCompleted: true,
-          finalStep: 'Step 2-5',
-          process: '完了'
-        }
-      });
-    } else {
-      // Step 2-6: エラーログ
-      logManager.logAI(taskData.aiType, `❌ 処理失敗 [${cellPosition}セル]: ${result.error}`, {
-        level: 'error',
-        metadata: {
-          taskId: taskData.taskId,
-          cellPosition,
-          column: cellInfo.column,
-          row: cellInfo.row,
-          totalTime: `${totalTime}秒`,
-          error: result.error,
-          failedProcess: result.failedStep || '不明',
-          step: 'Step 2-6'
-        }
-      });
-    }
-
-    return result;
-  } catch (error) {
-    // Step 2-7: 例外エラー処理
-    const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
-    logManager.error(`[${taskData.aiType}] AIタスク実行エラー: ${error.message}`, error);
-    return { success: false, error: error.message };
-  }
-}
 
 // ===== Step 3: ポップアップ移動関数 =====
 async function movePopupToBottomRight() {
@@ -264,8 +184,9 @@ export function setupMessageHandler() {
           return false;
         }
 
-        // Step 8-3: 非同期でAIタスクを実行
-        executeAITask(sender.tab.id, request.taskData)
+        // Step 8-3: 非同期でAIタスクを実行（AITaskExecutorインスタンスを作成）
+        const aiTaskExecutor = new AITaskExecutor();
+        aiTaskExecutor.executeAITask(sender.tab.id, request.taskData)
           .then(result => {
             console.log("[Step 8-4] ✅ AIタスク実行成功:", {
               aiType: request.taskData?.aiType,
@@ -440,8 +361,8 @@ export function setupMessageHandler() {
 
             // Step 12-5: StreamProcessorV2初期化を確保してからSpreadsheetAutoSetupを実行
             if (!globalThis.SPREADSHEET_CONFIG) {
-              console.log('[Step 12-5-1] SPREADSHEET_CONFIG未初期化、StreamProcessorV2を初期化');
-              new globalThis.StreamProcessorV2();
+              console.log('[Step 12-5-1] SPREADSHEET_CONFIG未初期化、StreamProcessorV2シングルトンを取得');
+              globalThis.StreamProcessorV2.getInstance();
             }
 
             const autoSetup = new SpreadsheetAutoSetup();
@@ -501,8 +422,8 @@ export function setupMessageHandler() {
 
             // Step 13-7: StreamProcessorV2初期化を確保してから自動セットアップ
             if (!globalThis.SPREADSHEET_CONFIG) {
-              console.log('[Step 13-7-1] SPREADSHEET_CONFIG未初期化、StreamProcessorV2を初期化');
-              new globalThis.StreamProcessorV2();
+              console.log('[Step 13-7-1] SPREADSHEET_CONFIG未初期化、StreamProcessorV2シングルトンを取得');
+              globalThis.StreamProcessorV2.getInstance();
             }
 
             const autoSetup = new SpreadsheetAutoSetup();
@@ -696,12 +617,8 @@ export function setupMessageHandler() {
             // Step 18-5: V2モード切り替えフラグ（上部の設定と同じ値を使用）
             const USE_V2_MODE = true; // true: V2版を使用, false: 従来版を使用
 
-            let processor;
-            if (USE_V2_MODE) {
-              processor = new StreamProcessorV2();
-            } else {
-              processor = new StreamProcessorV2();
-            }
+            // シングルトンインスタンスを取得
+            const processor = StreamProcessorV2.getInstance();
 
             // Step 18-6: スプレッドシートデータを取得
             let spreadsheetData;
@@ -1137,6 +1054,5 @@ export function setupMessageHandler() {
 
 // Step 100: エクスポート
 export default {
-  setupMessageHandler,
-  executeAITask
+  setupMessageHandler
 };

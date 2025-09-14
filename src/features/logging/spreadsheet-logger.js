@@ -11,16 +11,16 @@
  * - 既存ログとのマージ処理
  */
 
-// Step 3: sleep-utils.jsから1-ai-common-base.jsに移行
-import { getGlobalAICommonBase } from '../../../automations/1-ai-common-base.js';
+// Step 3: sleep-utils.jsから1-ai-common-base.jsに移行（グローバル関数として利用）
+import '../../../automations/1-ai-common-base.js';
 import { ModelExtractor } from './extractors/model-extractor.js';
 import { FunctionExtractor } from './extractors/function-extractor.js';
 
 export class SpreadsheetLogger {
   constructor(logger = console) {
     this.logger = logger;
-    // Step 3: AI共通基盤からsleep関数を取得
-    this.aiCommonBase = getGlobalAICommonBase();
+    // Step 3: AI共通基盤からsleep関数を取得（グローバル関数を使用）
+    this.aiCommonBase = globalThis.getGlobalAICommonBase?.() || window?.getGlobalAICommonBase?.();
     this.modelExtractor = ModelExtractor;
     this.functionExtractor = FunctionExtractor;
     this.sendTimestamps = new Map(); // key: taskId, value: { time: Date, aiType: string, model: string }

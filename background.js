@@ -90,9 +90,9 @@ globalThis.columnToIndex = columnToIndex;
 globalThis.SpreadsheetAutoSetup = SpreadsheetAutoSetup;
 globalThis.StreamProcessorV2 = StreamProcessorV2;
 
-// StreamProcessorV2のインスタンスを早期作成してSPREADSHEET_CONFIGを初期化
-console.log('[Background] StreamProcessorV2インスタンスを早期初期化');
-globalThis.streamProcessorV2Instance = new StreamProcessorV2();
+// StreamProcessorV2のシングルトンインスタンスを取得してSPREADSHEET_CONFIGを初期化
+console.log('[Background] StreamProcessorV2シングルトンインスタンスを取得');
+globalThis.streamProcessorV2Instance = StreamProcessorV2.getInstance();
 
 globalThis.aiTaskExecutor = new AITaskExecutor();
 globalThis.aiTaskHandler = new AITaskHandler();

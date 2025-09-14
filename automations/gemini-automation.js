@@ -91,8 +91,8 @@
         textInput: UI_SELECTORS.Gemini?.INPUT || [],
         sendButton: UI_SELECTORS.Gemini?.SEND_BUTTON || [],
         stopButton: UI_SELECTORS.Gemini?.STOP_BUTTON || [],
-        modelMenu: UI_SELECTORS.Gemini?.MODEL_MENU || [],
-        functionMenu: UI_SELECTORS.Gemini?.FUNCTION_MENU || [],
+        modelMenu: UI_SELECTORS.Gemini?.MENU || [],
+        functionMenu: UI_SELECTORS.Gemini?.MORE_BUTTON || [],
         response: UI_SELECTORS.Gemini?.RESPONSE || [],
         canvas: UI_SELECTORS.Gemini?.CANVAS || []
     };
@@ -1300,9 +1300,11 @@ async function chatWithGemini() {
 */
 
 // ========================================
-// 【エクスポート】検出システム用関数一覧
+// 【グローバル公開】検出システム用関数一覧
+// コンテンツスクリプトはES6モジュールをサポートしないため、
+// window オブジェクトに直接公開
 // ========================================
-export {
+window.GeminiAutomation = {
     // 🔧 メニュー操作
     openGeminiModelMenu,     // モデルメニューを開く
     closeGeminiMenu,         // メニューを閉じる
