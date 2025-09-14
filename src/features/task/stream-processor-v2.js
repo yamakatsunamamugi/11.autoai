@@ -482,6 +482,15 @@ export default class StreamProcessorV2 {
   async processGroupsSequentiallyV3(spreadsheetData, isTestMode) {
     this.log('V3グループ順次処理開始（動的タスク生成モード）', 'step', '3');
 
+    // 🔍 [DEBUG] optionsを保存してログで確認
+    if (spreadsheetData.options) {
+      this.currentOptions = spreadsheetData.options;
+      console.log(`🔍 [DEBUG] V3処理開始 - options保存完了:`);
+      console.log(`- options.taskGroups数: ${spreadsheetData.options.taskGroups?.length}`);
+    } else {
+      console.log(`🔍 [DEBUG] V3処理開始 - spreadsheetData.optionsが存在しない`);
+    }
+
     let totalProcessed = 0;
     let totalFailed = 0;
 
@@ -689,6 +698,19 @@ export default class StreamProcessorV2 {
       processedGroupKeys.add(groupKey);
 
       this.logger.log(`[StreamProcessorV2] ✅ グループ${groupIndex + 1}の処理完了`);
+
+      // 🔍 [DEBUG] taskGroupInfo状態確認
+      console.log(`🔍 [DEBUG] グループ${groupIndex + 1}完了時の状態:`);
+      console.log(`- spreadsheetData.taskGroups存在: ${!!spreadsheetData.taskGroups}`);
+      console.log(`- spreadsheetData.taskGroups.length: ${spreadsheetData.taskGroups?.length}`);
+      console.log(`- options.taskGroups存在: ${!!(this.currentOptions && this.currentOptions.taskGroups)}`);
+      console.log(`- options.taskGroups.length: ${this.currentOptions?.taskGroups?.length}`);
+      console.log(`- groupIndex: ${groupIndex}`);
+      console.log(`- taskGroupInfo: ${taskGroupInfo ? '存在' : 'null'}`);
+      if (taskGroupInfo) {
+        console.log(`- taskGroupInfo.id: ${taskGroupInfo.id}`);
+        console.log(`- taskGroupInfo.name: ${taskGroupInfo.name}`);
+      }
 
       // ===== Step 5-1: グループ完了時のログ・回答記録 =====
       if (taskGroupInfo) {
@@ -1393,6 +1415,13 @@ export default class StreamProcessorV2 {
    */
   async processTask(task, isTestMode, position = 0) {
     try {
+      // 🔍 [DEBUG] タスク実行前の排他制御状態確認
+      console.log(`🔍 [DEBUG] タスク実行前 - ${task.column}${task.row}:`);
+      console.log(`- 排他制御マネージャー存在: ${!!this.exclusiveManager}`);
+      console.log(`- sheetsClient存在: ${!!this.sheetsClient}`);
+      console.log(`- exclusiveLoggerConfig存在: ${!!this.exclusiveLoggerConfig}`);
+      console.log(`- exclusiveLoggerConfig.enabled: ${this.exclusiveLoggerConfig?.enabled}`);
+
       // Step 8-1: タスク実行開始ログ記録
       if (this.spreadsheetLogger && this.spreadsheetLogger.logTaskExecution) {
         await this.spreadsheetLogger.logTaskExecution(task);
@@ -4832,16 +4861,27 @@ export default class StreamProcessorV2 {
     try {
       this.logger.log(`[StreamProcessorV2] 📝 グループログ・回答記録開始: ${taskGroupInfo.id}`);
 
+      // 🔍 [DEBUG] 記録処理状態確認
+      console.log(`🔍 [DEBUG] 記録処理開始 - グループID: ${taskGroupInfo?.id}`);
+      console.log(`- taskGroupInfo存在: ${!!taskGroupInfo}`);
+      console.log(`- globalThis.logManager存在: ${!!globalThis.logManager}`);
+      console.log(`- globalThis.logManager.spreadsheetLogger存在: ${!!globalThis.logManager?.spreadsheetLogger}`);
+
       // 外部SpreadsheetLoggerを取得
       const externalLogger = globalThis.logManager?.spreadsheetLogger;
       if (!externalLogger) {
+        console.log(`🔍 [DEBUG] ❌ 外部SpreadsheetLoggerが見つかりません`);
         this.logger.warn('[StreamProcessorV2] 外部SpreadsheetLoggerが見つかりません');
         return;
       }
 
       // グループの作業行範囲を取得
       const workRows = this.getWorkRowRange();
+      console.log(`🔍 [DEBUG] 作業行取得結果:`);
+      console.log(`- workRows存在: ${!!workRows}`);
+      console.log(`- workRows数: ${workRows?.length}`);
       if (!workRows || workRows.length === 0) {
+        console.log(`🔍 [DEBUG] ❌ 作業行が見つかりません`);
         this.logger.warn('[StreamProcessorV2] 作業行が見つかりません');
         return;
       }
@@ -4849,6 +4889,14 @@ export default class StreamProcessorV2 {
       // グループのログ列と回答列を特定
       const logColumn = taskGroupInfo.columnRange?.logColumn;
       const answerColumns = taskGroupInfo.columnRange?.answerColumns || [];
+
+      // 🔍 [DEBUG] カラム情報確認
+      console.log(`🔍 [DEBUG] カラム情報:`);
+      console.log(`- logColumn: ${logColumn}`);
+      console.log(`- answerColumns数: ${answerColumns?.length}`);
+      console.log(`- answerColumns: ${JSON.stringify(answerColumns)}`);
+      console.log(`- taskGroupInfo.columnRange: ${JSON.stringify(taskGroupInfo.columnRange)}`);
+      console.log(`- sheetsClient存在: ${!!this.sheetsClient}`);
 
       this.logger.log(`[StreamProcessorV2] グループ構造:`, {
         logColumn: logColumn,
