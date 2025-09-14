@@ -32,7 +32,6 @@ import { aiUrlManager } from '../../core/ai-url-manager.js';
 import { RetryManager } from '../../utils/retry-manager.js';
 import { GroupCompletionChecker } from './group-completion-checker.js';
 import { TaskWaitManager } from './task-wait-manager.js';
-import { TaskGroupScanner } from './task-group-scanner.js';
 import { ExclusiveControlManager } from '../../utils/exclusive-control-manager.js';
 import { ExclusiveControlLoggerHelper } from '../../utils/exclusive-control-logger-helper.js';
 import { sleep } from '../../utils/sleep-utils.js';
@@ -121,24 +120,10 @@ export default class StreamProcessorV2 {
     });
 
     // ========================================
-    // ステップ0-4: タスクスキャナー初期化
+    // ステップ0-4: 内部状態初期化
     // ========================================
-    this.log('動的タスクスキャナーを初期化', 'info', '0-4');
-    this.taskScanner = new TaskGroupScanner({
-      logger: this.logger,
-      exclusiveManager: this.exclusiveManager,
-      waitManager: this.waitManager,
-      processedAnswerCells: this.processedAnswerCells,
-      // ヘルパーメソッドの参照を渡す
-      indexToColumn: this.indexToColumn.bind(this),
-      columnToIndex: this.columnToIndex.bind(this),
-      shouldProcessRow: this.shouldProcessRow.bind(this),
-      shouldProcessColumn: this.shouldProcessColumn.bind(this),
-      getRowControl: this.getRowControl.bind(this),
-      getColumnControl: this.getColumnControl.bind(this),
-      scanPromptRows: this.scanPromptRows.bind(this),
-      loadAdditionalRows: this.loadAdditionalRows.bind(this)
-    });
+    this.log('内部状態を初期化', 'info', '0-4');
+    // TaskGroupScannerの機能は統合されたため、直接メソッドを使用
 
     // ========================================
     // ステップ0-5: 設定・状態管理初期化
@@ -514,7 +499,7 @@ export default class StreamProcessorV2 {
       // 動的タスク生成
       const promptCols = promptGroup.promptColumns;
       const answerCols = promptGroup.answerColumns.map(col => col.index);
-      const tasks = await this.taskScanner.scanGroupTasks(spreadsheetData, promptCols, answerCols, promptGroup);
+      const tasks = await this.scanGroupTasks(spreadsheetData, promptCols, answerCols, promptGroup);
 
       if (!tasks || tasks.length === 0) {
         this.logger.log(`[StreamProcessorV2] グループ${groupIndex + 1}にタスクなし（すべて回答済み）`);
@@ -800,6 +785,333 @@ export default class StreamProcessorV2 {
   // ========================================
   // ステップ5: タスク生成・整理
   // ========================================
+
+  /**
+   * タスクグループをスキャンして処理対象を見つける
+   * ステップ5-1: タスクグループスキャン
+   *
+   * @param {Object} spreadsheetData - スプレッドシートデータ
+   * @param {Array} promptCols - プロンプト列のインデックス配列
+   * @param {Array} answerCols - 回答列のインデックス配列
+   * @param {Object} promptGroup - プロンプトグループ情報
+   * @returns {Promise<Array>} 見つかったタスクの配列
+   *
+   * このメソッドは以下の処理を行います：
+   * 1. プロンプトがある行を検出
+   * 2. 回答がまだないセルを特定
+   * 3. 排他制御を行いながらタスクを生成
+   * 4. モデルと機能情報を適切に設定
+   */
+  async scanGroupTasks(spreadsheetData, promptCols, answerCols, promptGroup = {}) {
+    this.log('タスクグループスキャン開始', 'info', '5-1');
+    const tasks = [];
+    const MAX_TASKS_PER_BATCH = 3; // バッチあたりの最大タスク数
+
+    // ステップ5-1-1: パラメータ検証
+    if (!spreadsheetData?.values || !Array.isArray(spreadsheetData.values)) {
+      this.log('無効なスプレッドシートデータ', 'warn', '5-1-1');
+      return tasks;
+    }
+
+    if (!promptCols || !Array.isArray(promptCols) || promptCols.length === 0) {
+      this.log('無効なプロンプト列データ', 'warn', '5-1-1');
+      return tasks;
+    }
+
+    if (!answerCols || !Array.isArray(answerCols) || answerCols.length === 0) {
+      this.log('無効な回答列データ', 'warn', '5-1-1');
+      return tasks;
+    }
+
+    // ステップ5-1-2: 制御情報取得
+    let rowControls = this.getRowControl(spreadsheetData);
+    const columnControls = this.getColumnControl(spreadsheetData);
+
+    // 現在のグループ情報を作成（列制御チェック用）
+    const currentGroup = {
+      promptColumns: promptCols,
+      answerColumns: answerCols
+    };
+
+    // 列制御チェック（グループ全体）
+    if (!this.shouldProcessColumn(currentGroup, columnControls)) {
+      this.log('このグループは列制御によりスキップ', 'info', '5-1-2');
+      return tasks;
+    }
+
+    // ステップ5-1-3: プロンプト行の検出
+    this.log('プロンプト行を検出中...', 'info', '5-1-3');
+    const promptRows = this.scanPromptRows(promptCols, spreadsheetData);
+
+    if (!promptRows || promptRows.length === 0) {
+      this.log('プロンプトが見つかりません', 'warn', '5-1-3');
+      return tasks;
+    }
+
+    const maxPromptRow = Math.max(...promptRows);
+    this.log(`プロンプト発見: ${promptRows.length}行、最大行: ${maxPromptRow + 1}`, 'success', '5-1-3');
+
+    // ステップ5-1-4: バッチで回答状態をチェック
+    this.log(`バッチチェック開始: ${promptRows.length}行 × ${answerCols.length}列`, 'info', '5-1-4');
+    const answerStatusMap = await this.batchCheckAnswers(spreadsheetData, promptRows, answerCols);
+
+    // ステップ5-1-5: タスク生成
+    const startRow = 8; // 0ベース（9行目）
+    const endRow = Math.min(maxPromptRow + 1, spreadsheetData.values.length);
+
+    for (const rowIndex of promptRows) {
+      // 最大タスク数に達したら終了
+      if (tasks.length >= MAX_TASKS_PER_BATCH) {
+        this.log(`最大タスク数(${MAX_TASKS_PER_BATCH})に達したため、スキャン終了`, 'info', '5-1-5');
+        break;
+      }
+
+      // 範囲外チェック
+      if (rowIndex < startRow || rowIndex >= endRow) continue;
+
+      // 行制御チェック
+      if (!this.shouldProcessRow(rowIndex + 1, rowControls)) {
+        continue;
+      }
+
+      // 対応する回答列をチェック
+      for (const answerColIndex of answerCols) {
+        // 最大タスク数に達したら内側ループも終了
+        if (tasks.length >= MAX_TASKS_PER_BATCH) {
+          break;
+        }
+
+        // バッチチェック結果から回答状態を取得
+        const answerStatusKey = `${rowIndex}-${answerColIndex}`;
+        const answerStatus = answerStatusMap.get(answerStatusKey);
+
+        let hasAnswer = false;
+        if (answerStatus) {
+          hasAnswer = answerStatus.hasAnswer;
+        } else {
+          // フォールバック：直接チェック
+          const answerValue = spreadsheetData.values[rowIndex]?.[answerColIndex];
+          hasAnswer = this.checkIfHasAnswer(answerValue);
+        }
+
+        // 処理済みセルチェック（重複処理防止）
+        const cellKey = `${this.indexToColumn(answerColIndex)}${rowIndex + 1}`;
+        if (this.processedAnswerCells.has(cellKey)) {
+          continue;
+        }
+
+        if (!hasAnswer) {
+          // プロンプトあり＆回答なし = タスクを生成
+          const taskCell = `${this.indexToColumn(answerColIndex)}${rowIndex + 1}`;
+          const taskId = `${taskCell}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+          // プロンプトを取得
+          let prompt = '';
+          try {
+            const promptTexts = [];
+            for (const promptColIndex of promptCols) {
+              const promptValue = spreadsheetData.values[rowIndex]?.[promptColIndex];
+              if (promptValue && typeof promptValue === 'string' && promptValue.trim()) {
+                promptTexts.push(promptValue.trim());
+              }
+            }
+            prompt = promptTexts.join('\n\n');
+          } catch (error) {
+            this.log(`プロンプト取得エラー ${taskCell}: ${error.message}`, 'warn', '5-1-5');
+          }
+
+          // モデルと機能を取得（重要：ここを修正）
+          const answerColInfo = {
+            index: answerColIndex,
+            column: this.indexToColumn(answerColIndex),
+            type: promptGroup.aiType || 'claude'
+          };
+
+          const model = this.getModel(spreadsheetData, answerColInfo, promptCols);
+          const functionValue = this.getFunction(spreadsheetData, answerColInfo, promptCols);
+
+          tasks.push({
+            // 基本情報
+            taskId: taskId,
+            row: rowIndex + 1,
+            column: this.indexToColumn(answerColIndex),
+            columnIndex: answerColIndex,
+
+            // AI情報（修正：適切なモデルと機能を設定）
+            aiType: promptGroup.aiType || 'claude',
+            model: model,  // getModelから取得した値
+            function: functionValue,  // getFunctionから取得した値
+
+            // プロンプト情報
+            prompt: prompt,
+            promptColumns: promptCols || [],
+
+            // セル情報
+            cellInfo: {
+              row: rowIndex + 1,
+              column: this.indexToColumn(answerColIndex),
+              columnIndex: answerColIndex
+            },
+
+            // タスク設定
+            taskType: 'ai',
+            waitResponse: true,
+            getResponse: true,
+            createdAt: Date.now(),
+            version: '2.0'
+          });
+
+          this.processedAnswerCells.add(taskCell);
+        }
+      }
+    }
+
+    // ステップ5-1-6: 結果ログ
+    this.log(`スキャン完了: ${tasks.length}件のタスクを生成`, 'success', '5-1');
+
+    if (tasks.length > 0) {
+      const taskRanges = tasks.map(t => `${t.column}${t.row}`).join(', ');
+      this.log(`処理対象: ${taskRanges}`, 'info', '5-1');
+    }
+
+    return tasks;
+  }
+
+  /**
+   * バッチで複数セルの回答状態をチェック
+   * ステップ5-2: バッチ回答チェック
+   *
+   * @param {Object} spreadsheetData - スプレッドシートデータ
+   * @param {Array} promptRows - プロンプトがある行のインデックス配列
+   * @param {Array} answerCols - 回答列のインデックス配列
+   * @returns {Promise<Map>} セル位置 -> 回答状態のマップ
+   *
+   * Google Sheets APIを使用して、複数のセルを効率的にチェックします。
+   * 100セルずつバッチ処理してAPI制限を回避します。
+   */
+  async batchCheckAnswers(spreadsheetData, promptRows, answerCols) {
+    this.log('バッチ回答チェック開始', 'info', '5-2');
+    const answerStatusMap = new Map();
+
+    if (!globalThis.sheetsClient) {
+      this.log('sheetsClientが利用できません', 'warn', '5-2');
+      return answerStatusMap;
+    }
+
+    try {
+      // ステップ5-2-1: バッチ取得する範囲を構築
+      const ranges = [];
+      const cellToRange = new Map();
+
+      for (const rowIndex of promptRows) {
+        for (const colIndex of answerCols) {
+          const colLetter = this.indexToColumn(colIndex);
+          const range = `${colLetter}${rowIndex + 1}`;
+          ranges.push(range);
+          cellToRange.set(range, { rowIndex, colIndex });
+        }
+      }
+
+      if (ranges.length === 0) {
+        return answerStatusMap;
+      }
+
+      // ステップ5-2-2: 100セルずつバッチ取得（API制限対策）
+      const batchSize = 100;
+      for (let i = 0; i < ranges.length; i += batchSize) {
+        const batchRanges = ranges.slice(i, i + batchSize);
+
+        try {
+          const batchResult = await globalThis.sheetsClient.batchGetSheetData(
+            spreadsheetData.spreadsheetId,
+            batchRanges,
+            spreadsheetData.sheetName
+          );
+
+          // ステップ5-2-3: 結果を解析
+          if (batchResult) {
+            batchRanges.forEach((range) => {
+              const { rowIndex, colIndex } = cellToRange.get(range);
+              const cellData = batchResult[range] || [];
+              const value = cellData[0] || '';
+
+              // 回答状態を判定
+              const hasAnswer = this.checkIfHasAnswer(value);
+              answerStatusMap.set(`${rowIndex}-${colIndex}`, {
+                value,
+                hasAnswer,
+                rowIndex,
+                colIndex
+              });
+            });
+          }
+        } catch (error) {
+          this.log(`バッチ取得エラー: ${error.message}`, 'warn', '5-2-2');
+        }
+      }
+
+      this.log(`${answerStatusMap.size}セルの状態をチェック完了`, 'success', '5-2');
+
+    } catch (error) {
+      this.log(`バッチチェックエラー: ${error.message}`, 'error', '5-2');
+    }
+
+    return answerStatusMap;
+  }
+
+  /**
+   * セルの値が回答済みかチェック
+   * ステップ5-3: 回答存在確認
+   *
+   * @param {string} value - チェックする値
+   * @returns {boolean} 回答済みの場合true
+   *
+   * 以下の値は「未回答」として扱います：
+   * - 空文字、null、undefined
+   * - 'お待ちください...'、'現在操作中です'、'処理完了'などの特殊マーカー
+   * - '現在操作中です_'で始まる排他制御マーカー（タイムアウト判定あり）
+   */
+  checkIfHasAnswer(value) {
+    if (!value || typeof value !== 'string') {
+      return false;
+    }
+
+    const trimmed = value.trim();
+
+    // 空文字は未回答
+    if (!trimmed) {
+      return false;
+    }
+
+    // 特定のマーカーは未回答とみなす
+    const noAnswerMarkers = [
+      'お待ちください...',
+      '現在操作中です',
+      '処理完了',
+      'TODO',
+      'PENDING',
+      '-',
+      'N/A',
+      '未回答',
+      '未処理',
+      '処理中',
+      'エラー',
+      'ERROR'
+    ];
+
+    if (noAnswerMarkers.includes(trimmed)) {
+      return false;
+    }
+
+    // 排他制御マーカーのチェック
+    if (trimmed.startsWith('現在操作中です_')) {
+      // タイムアウト判定が必要な場合はここで実装
+      // 現在はシンプルに未回答扱い
+      return false;
+    }
+
+    return true;
+  }
 
   /**
    * タスクを列ごとに整理
@@ -1822,6 +2134,7 @@ export default class StreamProcessorV2 {
 
     const promptRows = [];
     const values = spreadsheetData.values;
+    const promptDetails = []; // プロンプトの詳細情報を保存
 
     try {
       // 各プロンプト列をスキャン
@@ -1845,9 +2158,22 @@ export default class StreamProcessorV2 {
             // プロンプトが見つかった行を記録
             if (!promptRows.includes(rowIndex)) {
               promptRows.push(rowIndex);
-              this.log(`${columnLetter}${rowIndex + 1}でプロンプト発見: "${cellValue.substring(0, 50)}..."`, 'info', '3-4-4');
+              promptDetails.push(`${columnLetter}${rowIndex + 1}`);
             }
           }
+        }
+      }
+
+      // まとめてログ出力
+      if (promptDetails.length > 0) {
+        const MAX_DISPLAY = 10; // 最初の10個だけ表示
+        const displayCells = promptDetails.slice(0, MAX_DISPLAY).join(', ');
+        const remainingCount = promptDetails.length - MAX_DISPLAY;
+
+        if (remainingCount > 0) {
+          this.log(`プロンプトを検出: ${displayCells} ... 他${remainingCount}セル`, 'info', '3-4-4');
+        } else {
+          this.log(`プロンプトを検出: ${displayCells}`, 'info', '3-4-4');
         }
       }
 
