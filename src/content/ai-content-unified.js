@@ -202,24 +202,10 @@ const loadDeepResearchConfig = () => {
   script.onload = () => {
   };
 
-  const deepResearchConfigUrl = chrome.runtime.getURL(
-    "src/config/deepresearch-config.js",
-  );
-  const activatorUrl = chrome.runtime.getURL(
-    "src/modules/ai-deepresearch-activator.js",
-  );
+  // DeepResearchモジュールローダーは削除済み
+  console.log("🔗 [11.autoai] DeepResearch設定は簡素化されました");
 
-  console.log("🔗 [11.autoai] DeepResearch設定URL:", deepResearchConfigUrl);
-  console.log("🔗 [11.autoai] Activator URL:", activatorUrl);
-
-  // CSPエラーを回避するため、外部ファイルとして読み込む
-  script.type = "module";
-  script.src = chrome.runtime.getURL("src/modules/deepresearch-loader.js");
-
-  // DeepResearchモジュールのURLをdata属性として渡す
-  script.dataset.deepresearchConfigUrl = deepResearchConfigUrl;
-  script.dataset.activatorUrl = activatorUrl;
-  document.head.appendChild(script);
+  // スクリプト要素は不要
 };
 
 // AI種別の自動検出

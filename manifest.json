@@ -75,8 +75,6 @@
         "src/ui/ui-controller.js",
         "src/config/timeout-config.js",
         "src/config/deepresearch-config.js",
-        "src/modules/ai-deepresearch-activator.js",
-        "src/modules/deepresearch-loader.js",
         "src/features/chatgpt/chatgpt-tool-control.js",
         "src/services/auth-service.js",
         "src/features/spreadsheet/docs-client.js",
