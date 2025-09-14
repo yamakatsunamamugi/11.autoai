@@ -97,7 +97,7 @@ import { SpreadsheetLogger } from "./src/features/logging/spreadsheet-logger.js"
 // Step 5 - タスク関連ファイル
 import "./src/features/task/generator.js";
 import TaskGenerator from "./src/features/task/generator.js";
-import StreamProcessor from "./src/features/task/stream-processor.js";
+// import StreamProcessor from "./src/features/task/stream-processor.js"; // V2に統合済み
 
 // V2版モジュール（静的インポート）
 import StreamProcessorV2 from "./src/features/task/stream-processor-v2.js";
@@ -1553,7 +1553,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           if (USE_V2_MODE) {
             processor = new StreamProcessorV2();
           } else {
-            processor = new StreamProcessor();
+            processor = new StreamProcessorV2();
           }
           
           // スプレッドシートデータを取得

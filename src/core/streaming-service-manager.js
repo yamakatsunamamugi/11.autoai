@@ -12,7 +12,7 @@ import { ConfigManager } from "./config-manager.js";
 import { EventBus } from "./event-bus.js";
 import { Logger } from "./logger.js";
 import { ErrorHandler } from "./error-handler.js";
-import StreamProcessor from "../features/task/stream-processor.js";
+import StreamProcessorV2 from "../features/task/stream-processor-v2.js";
 import TaskGenerator from "../features/task/generator.js";
 
 /**
@@ -310,7 +310,7 @@ class StreamingServiceManager {
     this.serviceRegistry.register(
       "StreamProcessor",
       () =>
-        new StreamProcessor({
+        new StreamProcessorV2({
           config: this.config.get("streaming", {}),
           logger: this.logger.child("StreamProcessor"),
           eventBus: this.eventBus,

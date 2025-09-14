@@ -536,11 +536,11 @@
     const aiType = targetId.replace('-prompt', '');
     
     try {
-      // StreamProcessorを直接使用（タスクリストが既に作成済み）
-      const { default: StreamProcessor } = await import('/src/features/task/stream-processor.js');
-      
-      // StreamProcessorのインスタンスを作成
-      const processor = new StreamProcessor();
+      // StreamProcessorV2を直接使用（タスクリストが既に作成済み）
+      const { default: StreamProcessorV2 } = await import('/src/features/task/stream-processor-v2.js');
+
+      // StreamProcessorV2のインスタンスを作成
+      const processor = new StreamProcessorV2();
       
       
       // タスクリストを直接実行（TaskGenerator不要）
