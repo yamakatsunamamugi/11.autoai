@@ -13,7 +13,7 @@ import { EventBus } from "./event-bus.js";
 import { Logger } from "./logger.js";
 import { ErrorHandler } from "./error-handler.js";
 import StreamProcessorV2 from "../features/task/stream-processor-v2.js";
-import TaskGenerator from "../features/task/generator.js";
+// import TaskGenerator from "../features/task/generator.js"; // StreamProcessorV2に統合
 
 /**
  * ストリーミング処理サービス管理クラス
@@ -318,11 +318,11 @@ class StreamingServiceManager {
         }),
     );
 
-    // TaskGenerator（静的インポートに変更）
+    // TaskGenerator -> StreamProcessorV2に統合
     this.serviceRegistry.register(
       "TaskGenerator",
       () =>
-        new TaskGenerator({
+        new StreamProcessorV2({
           config: this.config.get("task", {}),
           logger: this.logger.child("TaskGenerator"),
         }),

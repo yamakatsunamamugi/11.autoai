@@ -13,12 +13,12 @@
  * @module TaskFactory
  */
 
-import TaskGenerator from './generator.js';
+import StreamProcessorV2 from './stream-processor-v2.js';
 
 export class TaskFactory {
   constructor(logger = console) {
     this.logger = logger;
-    this.taskGenerator = new TaskGenerator();
+    this.streamProcessor = new StreamProcessorV2();
   }
 
   /**
@@ -45,7 +45,7 @@ export class TaskFactory {
           throw new Error('spreadsheetDataが必要です');
         }
         
-        const result = this.taskGenerator.generateTasks(options.spreadsheetData);
+        const result = this.streamProcessor.generateTasks(options.spreadsheetData);
         
         this.logger.log(`[TaskFactory] スプレッドシートからタスク生成完了:`, {
           totalTasks: result.tasks.length,

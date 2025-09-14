@@ -95,8 +95,8 @@ import "./src/features/spreadsheet/reader.js";
 import { SpreadsheetLogger } from "./src/features/logging/spreadsheet-logger.js";
 
 // Step 5 - タスク関連ファイル
-import "./src/features/task/generator.js";
-import TaskGenerator from "./src/features/task/generator.js";
+// import "./src/features/task/generator.js"; // StreamProcessorV2に統合
+// import TaskGenerator from "./src/features/task/generator.js"; // StreamProcessorV2に統合
 // import StreamProcessor from "./src/features/task/stream-processor.js"; // V2に統合済み
 
 // V2版モジュール（静的インポート）
