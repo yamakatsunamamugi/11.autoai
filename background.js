@@ -116,7 +116,7 @@ import StreamProcessorV2 from "./src/features/task/stream-processor-v2.js";
 
 // Step 6 - サービスファイル
 import SpreadsheetAutoSetup from "./src/services/spreadsheet-auto-setup.js";
-import SpreadsheetColumnRemover from "./src/services/spreadsheet-column-remover.js";
+// 削除済み: import SpreadsheetColumnRemover from "./src/services/spreadsheet-column-remover.js";
 
 // Step 7 - コアモジュール
 import "./src/core/streaming-service-manager.js";
@@ -124,8 +124,8 @@ import { getStreamingServiceManager } from "./src/core/streaming-service-manager
 
 // DeepResearchモジュールは削除（1-ai-common-base.jsに統合済み）
 
-// PowerManagerモジュール - スリープ防止の統一管理
-import PowerManager from "./src/core/power-manager.js";
+// PowerManagerモジュール - 削除済み（power-config.jsに統合）
+// import PowerManager from "./src/core/power-manager.js";
 
 // ===== AIタスク実行ハンドラー =====
 // StreamProcessorからのAIタスク実行要求を処理
@@ -147,8 +147,8 @@ globalThis.aiTaskHandler = aiTaskHandler;
 // グローバルにSpreadsheetLoggerクラスを設定（Service Worker環境でのアクセス用）
 globalThis.SpreadsheetLogger = SpreadsheetLogger;
 
-// グローバルにPowerManagerを設定（スリープ防止統一管理）
-globalThis.powerManager = new PowerManager();
+// PowerManager削除済み（power-config.jsに統合）
+// globalThis.powerManager = new PowerManager();
 
 // ===== アイドル状態の監視 =====
 // スクリーンセイバーやスリープの検知
@@ -169,7 +169,7 @@ if (chrome.idle) {
         metadata: {
           state: newState,
           timestamp,
-          powerManagerStatus: globalThis.powerManager.getStatus()
+          // powerManagerStatus: globalThis.powerManager.getStatus() // 削除済み
         }
       });
     }
@@ -185,10 +185,11 @@ if (chrome.idle) {
       case 'locked':
         console.log('🔒 [Background] スクリーンがロック/スリープ状態になりました');
         // スリープ防止が有効な場合は警告
-        if (globalThis.powerManager.isActive) {
-          console.warn('⚠️ [Background] スリープ防止が有効なのにスクリーンがロックされました！');
-          console.warn('⚠️ [Background] PowerManager状態:', globalThis.powerManager.getStatus());
-        }
+        // PowerManager削除済み
+        // if (globalThis.powerManager.isActive) {
+        //   console.warn('⚠️ [Background] スリープ防止が有効なのにスクリーンがロックされました！');
+        //   console.warn('⚠️ [Background] PowerManager状態:', globalThis.powerManager.getStatus());
+        // }
         break;
     }
   });
@@ -1054,14 +1055,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // ===== PowerManager制御（スクリーンセイバー防止） =====
     case "START_AI_PROCESSING":
       (async () => {
-        await globalThis.powerManager.startProtection('message-handler');
+        // PowerManager削除済み - power-config.jsを使用してください
+        // await globalThis.powerManager.startProtection('message-handler');
+        console.log('⚠️ PowerManager削除済み - power-config.jsを使用してください');
         sendResponse({ success: true });
       })();
       return true;
       
     case "STOP_AI_PROCESSING":
       (async () => {
-        await globalThis.powerManager.stopProtection('message-handler');
+        // PowerManager削除済み - power-config.jsを使用してください
+        // await globalThis.powerManager.stopProtection('message-handler');
+        console.log('⚠️ PowerManager削除済み - power-config.jsを使用してください');
         sendResponse({ success: true });
       })();
       return true;
