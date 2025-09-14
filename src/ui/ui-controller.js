@@ -3125,7 +3125,9 @@ async function create4PaneLayoutForMutationObserver() {
   if (!window.TestRunner || !window.TestRunner.createAIWindow) {
     // test-runner-chrome.jsを動的読み込み
     const script = document.createElement('script');
-    script.src = chrome.runtime.getURL('automations/test-runner-chrome.js');
+    // 削除済み: script.src = chrome.runtime.getURL('automations/test-runner-chrome.js');
+    console.warn('⚠️ test-runner-chrome.jsは削除されました');
+    return; // スクリプトが存在しないため処理を中止
     
     await new Promise((resolve, reject) => {
       script.onload = () => {

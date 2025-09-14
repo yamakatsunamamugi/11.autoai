@@ -989,7 +989,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           // ai-mutation-observer.jsを動的読み込み
           if (!window.AIMutationObserver) {
             const script = document.createElement('script');
-            script.src = chrome.runtime.getURL('automations/ai-mutation-observer.js');
+            // 削除済み: script.src = chrome.runtime.getURL('automations/ai-mutation-observer.js');
+            console.warn('⚠️ ai-mutation-observer.jsは削除されました');
             script.onload = () => {
               console.log(`[${AI_TYPE}] ai-mutation-observer.js読み込み完了`);
               startMutationObserverInContent();
@@ -1183,13 +1184,17 @@ async function loadAutomationScript() {
     
     // ai-wait-configを最初に読み込む
     const waitConfigScript = document.createElement('script');
-    waitConfigScript.src = chrome.runtime.getURL('automations/v2/ai-wait-config.js');
+    // 削除済み: waitConfigScript.src = chrome.runtime.getURL('automations/v2/ai-wait-config.js');
+    console.warn('⚠️ ai-wait-config.jsは削除されました');
+    return; // スクリプトが存在しないため処理を中止
     waitConfigScript.onload = () => {
       console.log(`[11.autoai] ✅ ai-wait-config.js 読み込み完了`);
       
       // 共通ハンドラーを次に読み込む
       const commonScript = document.createElement('script');
-      commonScript.src = chrome.runtime.getURL('automations/common-ai-handler.js');
+      // 削除済み: commonScript.src = chrome.runtime.getURL('automations/common-ai-handler.js');
+      console.warn('⚠️ common-ai-handler.jsは削除されました');
+      return; // スクリプトが存在しないため処理を中止
       commonScript.onload = () => {
         console.log(`[11.autoai][${AI_TYPE}] ✅ 共通ハンドラー読み込み完了`);
         
@@ -1216,7 +1221,9 @@ async function loadAutomationScript() {
       console.error(`[11.autoai] ❌ ai-wait-config.js 読み込みエラー:`, error);
       // エラーでも続行（フォールバック値を使用）
       const commonScript = document.createElement('script');
-      commonScript.src = chrome.runtime.getURL('automations/common-ai-handler.js');
+      // 削除済み: commonScript.src = chrome.runtime.getURL('automations/common-ai-handler.js');
+      console.warn('⚠️ common-ai-handler.jsは削除されました');
+      return; // スクリプトが存在しないため処理を中止
       commonScript.onload = () => {
         console.log(`[11.autoai][${AI_TYPE}] ✅ 共通ハンドラー読み込み完了（wait-configなし）`);
         const aiScript = document.createElement('script');
