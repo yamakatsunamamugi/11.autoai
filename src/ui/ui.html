@@ -109,21 +109,17 @@
               <h4 style="margin: 0 0 10px 0; font-size: 14px; color: #495057;">🖥️ モニター管理</h4>
               <div class="window-number-section" style="display: flex; gap: 15px; margin-bottom: 10px; align-items: center;">
                 <label style="font-size: 13px; white-space: nowrap;">
-                  拡張機能モニター番号: 
-                  <input type="number" id="extensionWindowNumber" value="1" min="1" max="10" 
+                  拡張機能モニター番号:
+                  <input type="number" id="extensionWindowNumber" value="1" min="1" max="10"
                          style="width: 60px; padding: 4px; border: 1px solid #ccc; border-radius: 3px; margin-left: 5px;">
                 </label>
                 <label style="font-size: 13px; white-space: nowrap;">
-                  スプレッドシートモニター番号: 
-                  <input type="number" id="spreadsheetWindowNumber" value="2" min="1" max="10" 
+                  スプレッドシートモニター番号:
+                  <input type="number" id="spreadsheetWindowNumber" value="2" min="1" max="10"
                          style="width: 60px; padding: 4px; border: 1px solid #ccc; border-radius: 3px; margin-left: 5px;">
                 </label>
               </div>
               <div class="window-action-buttons" style="display: flex; gap: 8px;">
-                <button id="checkWindowLocationsBtn" class="btn btn-info" style="font-size: 12px; padding: 6px 12px; background: #17a2b8; color: white;">
-                  <span class="btn-icon">🔍</span>
-                  モニター場所確認
-                </button>
                 <button id="addColumnsBtn" class="btn btn-success" style="font-size: 12px; padding: 6px 12px; background: #28a745; color: white;">
                   <span class="btn-icon">➕</span>
                   列追加
@@ -177,17 +173,6 @@
               </div>
             </div>
 
-            <!-- ウィンドウ場所確認ダイアログ -->
-            <div id="windowLocationDialog" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1), 0 0 0 9999px rgba(0,0,0,0.5); z-index: 9999; min-width: 600px; max-height: 500px;">
-              <h3 style="margin-top: 0;">🪟 ウィンドウ場所情報</h3>
-              <div id="windowLocationList" style="max-height: 350px; overflow-y: auto; margin-bottom: 15px; font-family: monospace; font-size: 12px; background: #f8f9fa; padding: 10px; border-radius: 4px;">
-                <div class="loading-message">ウィンドウ情報を取得中...</div>
-              </div>
-              <div style="display: flex; gap: 10px; justify-content: flex-end;">
-                <button id="refreshWindowLocationBtn" class="btn btn-secondary">更新</button>
-                <button id="closeWindowLocationBtn" class="btn btn-primary">閉じる</button>
-              </div>
-            </div>
           </div>
           <div id="loadFeedback" class="feedback-message"></div>
           

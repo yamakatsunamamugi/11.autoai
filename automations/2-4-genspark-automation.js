@@ -230,24 +230,24 @@
         sendStartTime = Date.now();
         currentFunction = detectFunction();
 
-        log(`【ステップ1-1】🚀 ${currentFunction}機能でメッセージ送信開始`, 'INFO');
-        log(`【ステップ1-1】📝 送信テキスト: "${text.substring(0, 50)}..."`, 'INFO');
+        log(`【Genspark-ステップ1-1】🚀 ${currentFunction}機能でメッセージ送信開始`, 'INFO');
+        log(`【Genspark-ステップ1-1】📝 送信テキスト: "${text.substring(0, 50)}..."`, 'INFO');
 
         // UI Selectors初期化
-        log(`【ステップ1-2】📋 UI Selectors初期化中...`, 'INFO');
+        log(`【Genspark-ステップ1-2】📋 UI Selectors初期化中...`, 'INFO');
         await loadUISelectors();
-        log(`【ステップ1-2】✅ UI Selectors初期化完了`, 'SUCCESS');
+        log(`【Genspark-ステップ1-2】✅ UI Selectors初期化完了`, 'SUCCESS');
 
         // 入力欄を探す
-        log(`【ステップ2-1】🔍 入力欄を検索中...`, 'INFO');
+        log(`【Genspark-ステップ2-1】🔍 入力欄を検索中...`, 'INFO');
         const inputElement = await findElement(UI_SELECTORS.INPUT);
         if (!inputElement) {
           throw new Error('入力欄が見つかりません');
         }
-        log(`【ステップ2-1】✅ 入力欄を発見`, 'SUCCESS');
+        log(`【Genspark-ステップ2-1】✅ 入力欄を発見`, 'SUCCESS');
 
         // テキスト入力
-        log(`【ステップ2-2】✏️ テキスト入力中...`, 'INFO');
+        log(`【Genspark-ステップ2-2】✏️ テキスト入力中...`, 'INFO');
         inputElement.focus();
         await wait(CONFIG.INPUT_DELAY);
 
@@ -264,31 +264,31 @@
         inputElement.dispatchEvent(new Event('input', { bubbles: true }));
         inputElement.dispatchEvent(new Event('change', { bubbles: true }));
 
-        log(`【ステップ2-2】✅ テキスト入力完了（${finalText.length}文字）`, 'SUCCESS');
+        log(`【Genspark-ステップ2-2】✅ テキスト入力完了（${finalText.length}文字）`, 'SUCCESS');
 
         // 送信ボタンを探す
-        log(`【ステップ2-3】🔍 送信ボタンを検索中...`, 'INFO');
+        log(`【Genspark-ステップ2-3】🔍 送信ボタンを検索中...`, 'INFO');
         const sendButton = await findElement(UI_SELECTORS.SEND_BUTTON);
         if (!sendButton) {
           throw new Error('送信ボタンが見つかりません');
         }
-        log(`【ステップ2-3】✅ 送信ボタンを発見`, 'SUCCESS');
+        log(`【Genspark-ステップ2-3】✅ 送信ボタンを発見`, 'SUCCESS');
 
         // 送信実行
-        log(`【ステップ2-4】📤 メッセージ送信実行中...`, 'INFO');
+        log(`【Genspark-ステップ2-4】📤 メッセージ送信実行中...`, 'INFO');
         sendButton.click();
         await wait(CONFIG.CLICK_DELAY);
-        log(`【ステップ2-4】✅ メッセージ送信完了`, 'SUCCESS');
+        log(`【Genspark-ステップ2-4】✅ メッセージ送信完了`, 'SUCCESS');
 
         // 応答待機
-        log(`【ステップ3-1】⏱️ 応答待機開始（最大${(options.timeout || CONFIG.DEFAULT_TIMEOUT) / 60000}分）...`, 'INFO');
+        log(`【Genspark-ステップ3-1】⏱️ 応答待機開始（最大${(options.timeout || CONFIG.DEFAULT_TIMEOUT) / 60000}分）...`, 'INFO');
         const response = await this.waitForResponse(options.timeout || CONFIG.DEFAULT_TIMEOUT);
-        log(`【ステップ3-1】✅ 応答受信完了`, 'SUCCESS');
+        log(`【Genspark-ステップ3-1】✅ 応答受信完了`, 'SUCCESS');
 
         // レスポンスURL抽出
-        log(`【ステップ3-2】🔍 URL抽出処理中...`, 'INFO');
+        log(`【Genspark-ステップ3-2】🔍 URL抽出処理中...`, 'INFO');
         const extractedUrls = extractResponseUrls(response.text);
-        log(`【ステップ3-2】📋 抽出されたURL: ${extractedUrls.length}件`, extractedUrls.length > 0 ? 'SUCCESS' : 'INFO');
+        log(`【Genspark-ステップ3-2】📋 抽出されたURL: ${extractedUrls.length}件`, extractedUrls.length > 0 ? 'SUCCESS' : 'INFO');
 
         const result = {
           success: true,
@@ -324,25 +324,25 @@
      */
     async waitForResponse(timeout = CONFIG.DEFAULT_TIMEOUT) {
       try {
-        log(`【ステップ4-1】⏱️ 応答待機処理開始（タイムアウト: ${timeout / 60000}分）`, 'INFO');
+        log(`【Genspark-ステップ4-1】⏱️ 応答待機処理開始（タイムアウト: ${timeout / 60000}分）`, 'INFO');
 
         // 停止ボタンが表示されるまで待機
-        log(`【ステップ4-2】🔍 停止ボタンの出現を監視中...`, 'INFO');
+        log(`【Genspark-ステップ4-2】🔍 停止ボタンの出現を監視中...`, 'INFO');
         const stopButton = await findElement(UI_SELECTORS.STOP_BUTTON, 10000);
 
         if (stopButton) {
-          log(`【ステップ4-2】✅ 停止ボタンを確認（応答生成開始）`, 'SUCCESS');
+          log(`【Genspark-ステップ4-2】✅ 停止ボタンを確認（応答生成開始）`, 'SUCCESS');
 
           // 停止ボタンが消えるまで待機（応答完了まで）
-          log(`【ステップ4-3】⏳ 応答生成完了まで待機中...`, 'INFO');
+          log(`【Genspark-ステップ4-3】⏳ 応答生成完了まで待機中...`, 'INFO');
           await this._waitUntilElementDisappears(UI_SELECTORS.STOP_BUTTON, timeout);
-          log(`【ステップ4-3】✅ 応答生成完了を確認`, 'SUCCESS');
+          log(`【Genspark-ステップ4-3】✅ 応答生成完了を確認`, 'SUCCESS');
         } else {
-          log(`【ステップ4-2】⚠️ 停止ボタンが確認できません（即座完了の可能性）`, 'WARNING');
+          log(`【Genspark-ステップ4-2】⚠️ 停止ボタンが確認できません（即座完了の可能性）`, 'WARNING');
         }
 
         // 最終的な応答テキストを取得
-        log(`【ステップ4-4】📝 応答テキストを取得中...`, 'INFO');
+        log(`【Genspark-ステップ4-4】📝 応答テキストを取得中...`, 'INFO');
         await wait(1000); // レンダリング安定化待ち
 
         const responseElements = findElements(UI_SELECTORS.RESPONSE);
@@ -358,7 +358,7 @@
           throw new Error('応答テキストを取得できませんでした');
         }
 
-        log(`【ステップ4-4】✅ 応答テキスト取得完了（${responseText.length}文字）`, 'SUCCESS');
+        log(`【Genspark-ステップ4-4】✅ 応答テキスト取得完了（${responseText.length}文字）`, 'SUCCESS');
 
         return {
           success: true,
@@ -368,7 +368,7 @@
         };
 
       } catch (error) {
-        log(`【ステップ4-失敗】❌ 応答待機エラー: ${error.message}`, 'ERROR');
+        log(`【Genspark-ステップ4-失敗】❌ 応答待機エラー: ${error.message}`, 'ERROR');
         return {
           success: false,
           error: error.message,
@@ -447,7 +447,7 @@
         // 10秒ごとに進行状況をログ出力
         if (checkCount % 20 === 0) {  // 500ms * 20 = 10秒
           const elapsed = Math.round((Date.now() - startTime) / 1000);
-          log(`【ステップ4-3】⏱️ 応答生成監視中: ${elapsed}秒経過 - 停止ボタン: ${element ? '表示中' : '非表示'}`, 'INFO');
+          log(`【Genspark-ステップ4-3】⏱️ 応答生成監視中: ${elapsed}秒経過 - 停止ボタン: ${element ? '表示中' : '非表示'}`, 'INFO');
         }
 
         if (!element) {

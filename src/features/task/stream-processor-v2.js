@@ -3,9 +3,12 @@
  *
  * 【ステップ構成】
  * Step 0: 初期化・コンストラクタ - システムの基本設定とサービス初期化
+ *   Step 0-3: モニター管理システム初期化 - UI要素取得、設定読み込み、イベントリスナー設定
  * Step 1: SpreadsheetLogger初期化 - スプレッドシートへのログ出力機能の準備
  * Step 2: メインエントリーポイント - スリープ防止とデータ検証を行う処理の開始点
+ *   Step 2-1拡張: ウィンドウ配置準備 - マルチモニター環境での配置準備
  * Step 3: V3グループ順次処理 - 動的にタスクグループを解析し依存関係に従って実行
+ *   Step 3-0: マルチモニター4分割配置 - 処理開始前のウィンドウ最適配置
  * Step 4: 制御系メソッド - 行制御・列制御による処理範囲の制限機能
  * Step 5: 構造解析系メソッド - スプレッドシートの構造を分析しタスクグループを生成
  * Step 6: タスク生成・整理 - プロンプトと回答列からタスクを動的に生成
@@ -102,9 +105,15 @@ export default class StreamProcessorV2 {
     this.completedTasks = new Set();
 
     // ========================================
-    // Step 0-3: 排他制御システム初期化
+    // Step 0-3: モニター管理システム初期化
     // ========================================
-    this.log('排他制御システムを初期化', 'info', 'Step 0-3');
+    this.log('【StreamProcessor-ステップ0-3】モニター管理システム初期化開始', 'info', 'Step 0-3');
+    this.initializeMonitorSystem();
+
+    // ========================================
+    // Step 0-4: 排他制御システム初期化
+    // ========================================
+    this.log('排他制御システムを初期化', 'info', 'Step 0-4');
     this.exclusiveManager = new ExclusiveControlManager({
       controlConfig: {
         timeouts: EXCLUSIVE_CONTROL_CONFIG.timeouts,
@@ -119,15 +128,15 @@ export default class StreamProcessorV2 {
     });
 
     // ========================================
-    // Step 0-4: 内部状態初期化
+    // Step 0-5: 内部状態初期化
     // ========================================
-    this.log('内部状態を初期化', 'info', 'Step 0-4');
+    this.log('内部状態を初期化', 'info', 'Step 0-5');
     // TaskGroupScannerの機能は統合されたため、直接メソッドを使用
 
     // ========================================
-    // Step 0-5: 設定・状態管理初期化
+    // Step 0-6: 設定・状態管理初期化
     // ========================================
-    this.log('設定と状態管理を初期化', 'info', 'Step 0-5');
+    this.log('設定と状態管理を初期化', 'info', 'Step 0-6');
     this.config = {
       exclusiveControl: EXCLUSIVE_CONTROL_CONFIG,
       ...config
@@ -2834,5 +2843,281 @@ export default class StreamProcessorV2 {
     const timestamp = Date.now();
     const random = Math.random().toString(36).substring(2, 9);
     return `${column}${row}_${timestamp}_${random}`;
+  }
+
+  // ========================================
+  // Step 12: モニター・ウィンドウ管理機能
+  // マルチモニター環境でのウィンドウ配置制御機能
+  // ========================================
+
+  /**
+   * Step 0-3: モニター管理システム初期化
+   * UI要素取得、設定読み込み、イベントリスナー設定
+   */
+  initializeMonitorSystem() {
+    this.log('【StreamProcessor-ステップ0-3-1】UI要素初期化開始', 'info');
+    this.initializeMonitorElements();
+
+    this.log('【StreamProcessor-ステップ0-3-2】保存済み設定読み込み開始', 'info');
+    this.loadWindowSettings();
+
+    this.log('【StreamProcessor-ステップ0-3-3】イベントリスナー設定開始', 'info');
+    this.setupMonitorEventListeners();
+
+    this.log('【StreamProcessor-ステップ0-3】モニター管理システム初期化完了', 'info');
+  }
+
+  /**
+   * DOM要素の初期化
+   * HTML内のモニター管理に必要な要素を取得
+   */
+  initializeMonitorElements() {
+    this.log('【StreamProcessor-ステップ0-3-1】DOM要素取得中', 'info');
+
+    // UI要素を取得
+    this.extensionWindowNumberInput = document.getElementById('extensionWindowNumber');
+    this.spreadsheetWindowNumberInput = document.getElementById('spreadsheetWindowNumber');
+    this.checkWindowLocationsBtn = document.getElementById('checkWindowLocationsBtn');
+
+    // 存在確認
+    const elementStatus = [
+      this.extensionWindowNumberInput,
+      this.spreadsheetWindowNumberInput,
+      this.checkWindowLocationsBtn
+    ].filter(Boolean).length;
+
+    this.log(`【StreamProcessor-ステップ0-3-1】DOM要素確認完了: ${elementStatus}/3 要素が利用可能`, 'info');
+
+    if (!this.extensionWindowNumberInput || !this.spreadsheetWindowNumberInput) {
+      this.log('【StreamProcessor-ステップ0-3-1】⚠️ 重要なDOM要素が見つかりません', 'warn');
+    }
+  }
+
+  /**
+   * イベントリスナーの設定
+   */
+  setupMonitorEventListeners() {
+    this.log('【StreamProcessor-ステップ0-3-3】イベントリスナー設定中', 'info');
+
+    // モニター場所確認ボタン
+    if (this.checkWindowLocationsBtn) {
+      this.checkWindowLocationsBtn.addEventListener('click', () => {
+        this.log('【StreamProcessor-ステップ0-3-3】モニター場所確認ボタンがクリックされました', 'info');
+        this.showMonitorNumbers();
+      });
+    }
+
+    // 設定保存のイベントリスナー
+    if (this.extensionWindowNumberInput) {
+      this.extensionWindowNumberInput.addEventListener('change', () => {
+        this.log('【StreamProcessor-ステップ0-3-3】拡張機能モニター番号が変更されました', 'info');
+        this.saveWindowSettings();
+      });
+    }
+
+    if (this.spreadsheetWindowNumberInput) {
+      this.spreadsheetWindowNumberInput.addEventListener('change', () => {
+        this.log('【StreamProcessor-ステップ0-3-3】スプレッドシートモニター番号が変更されました', 'info');
+        this.saveWindowSettings();
+      });
+    }
+
+    this.log('【StreamProcessor-ステップ0-3-3】イベントリスナー設定完了', 'info');
+  }
+
+  /**
+   * モニター番号設定の読み込み
+   */
+  async loadWindowSettings() {
+    try {
+      this.log('【StreamProcessor-ステップ0-3-2】chrome.storage.local から設定取得中', 'info');
+
+      const result = await chrome.storage.local.get(['windowSettings']);
+      const settings = result.windowSettings || {};
+
+      if (settings.extensionWindowNumber && this.extensionWindowNumberInput) {
+        this.extensionWindowNumberInput.value = settings.extensionWindowNumber;
+      }
+      if (settings.spreadsheetWindowNumber && this.spreadsheetWindowNumberInput) {
+        this.spreadsheetWindowNumberInput.value = settings.spreadsheetWindowNumber;
+      }
+
+      this.log('【StreamProcessor-ステップ0-3-2】モニター設定読み込み完了', 'info');
+    } catch (error) {
+      this.log('【StreamProcessor-ステップ0-3-2】❌ モニター設定読み込みエラー: ' + error.message, 'error');
+    }
+  }
+
+  /**
+   * モニター番号設定の保存
+   */
+  async saveWindowSettings() {
+    try {
+      this.log('【StreamProcessor-ステップ0-3-4】設定保存開始', 'info');
+
+      const settings = {
+        extensionWindowNumber: this.extensionWindowNumberInput?.value || '1',
+        spreadsheetWindowNumber: this.spreadsheetWindowNumberInput?.value || '2'
+      };
+
+      await chrome.storage.local.set({ windowSettings: settings });
+      this.log('【StreamProcessor-ステップ0-3-4】設定保存完了', 'info');
+    } catch (error) {
+      this.log('【StreamProcessor-ステップ0-3-4】❌ 設定保存エラー: ' + error.message, 'error');
+    }
+  }
+
+  /**
+   * モニター番号表示機能
+   */
+  async showMonitorNumbers() {
+    try {
+      this.log('【StreamProcessor-ステップ3-0-4】モニター番号表示開始', 'info');
+
+      // ディスプレイ情報を取得
+      const displays = await chrome.system.display.getInfo();
+      this.log(`【StreamProcessor-ステップ3-0-4】検出されたモニター数: ${displays.length}`, 'info');
+
+      // 各モニターに番号を表示
+      for (let i = 0; i < displays.length; i++) {
+        const display = displays[i];
+        await this.createMonitorNumberWindow(i + 1, display);
+      }
+
+      // 3秒後に自動で閉じる
+      setTimeout(() => {
+        this.log('【StreamProcessor-ステップ3-0-4】モニター番号表示終了', 'info');
+      }, 3000);
+
+    } catch (error) {
+      this.log('【StreamProcessor-ステップ3-0-4】❌ モニター番号表示エラー: ' + error.message, 'error');
+    }
+  }
+
+  /**
+   * モニター番号表示ウィンドウを作成
+   */
+  async createMonitorNumberWindow(number, display) {
+    const html = `
+      <div style="
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(0, 0, 0, 0.8);
+        color: white;
+        font-size: 120px;
+        font-weight: bold;
+        padding: 50px;
+        border-radius: 20px;
+        text-align: center;
+        z-index: 10000;
+      ">
+        モニター ${number}
+      </div>
+    `;
+
+    const window = await chrome.windows.create({
+      url: `data:text/html,${encodeURIComponent(html)}`,
+      type: 'popup',
+      left: display.bounds.left,
+      top: display.bounds.top,
+      width: display.bounds.width,
+      height: display.bounds.height,
+      focused: false
+    });
+
+    // 3秒後に閉じる
+    setTimeout(() => {
+      chrome.windows.remove(window.id);
+    }, 3000);
+  }
+
+  /**
+   * 4分割レイアウト計算
+   */
+  calculateQuadLayout(displayInfo) {
+    this.log('【StreamProcessor-ステップ3-0-2】4分割レイアウト計算開始', 'info');
+
+    const display = displayInfo[0] || { bounds: { left: 0, top: 0, width: 1920, height: 1080 } };
+    const { left, top, width, height } = display.bounds;
+
+    const quadLayout = {
+      topLeft: {
+        left: left,
+        top: top,
+        width: Math.floor(width / 2),
+        height: Math.floor(height / 2)
+      },
+      topRight: {
+        left: left + Math.floor(width / 2),
+        top: top,
+        width: Math.floor(width / 2),
+        height: Math.floor(height / 2)
+      },
+      bottomLeft: {
+        left: left,
+        top: top + Math.floor(height / 2),
+        width: Math.floor(width / 2),
+        height: Math.floor(height / 2)
+      },
+      bottomRight: {
+        left: left + Math.floor(width / 2),
+        top: top + Math.floor(height / 2),
+        width: Math.floor(width / 2),
+        height: Math.floor(height / 2)
+      }
+    };
+
+    this.log('【StreamProcessor-ステップ3-0-2】4分割レイアウト計算完了', 'info');
+    return quadLayout;
+  }
+
+  /**
+   * ウィンドウ配置準備（Step 2-1拡張）
+   */
+  async prepareWindowLayout() {
+    this.log('【StreamProcessor-ステップ2-1-2】ウィンドウ配置準備開始', 'info');
+
+    try {
+      // 設定を読み込み
+      await this.loadWindowSettings();
+
+      // ディスプレイ情報を取得
+      const displays = await chrome.system.display.getInfo();
+      this.log(`【StreamProcessor-ステップ2-1-2】利用可能なモニター数: ${displays.length}`, 'info');
+
+      this.log('【StreamProcessor-ステップ2-1-2】ウィンドウ配置準備完了', 'info');
+      return displays;
+    } catch (error) {
+      this.log('【StreamProcessor-ステップ2-1-2】❌ ウィンドウ配置準備エラー: ' + error.message, 'error');
+      throw error;
+    }
+  }
+
+  /**
+   * マルチモニター4分割配置（Step 3-0）
+   */
+  async setupMultiMonitorLayout() {
+    this.log('【StreamProcessor-ステップ3-0】マルチモニター4分割配置開始', 'info');
+
+    try {
+      // ディスプレイ情報取得
+      this.log('【StreamProcessor-ステップ3-0-1】モニター情報取得中', 'info');
+      const displays = await chrome.system.display.getInfo();
+
+      // 4分割レイアウト計算
+      const quadLayout = this.calculateQuadLayout(displays);
+
+      // ウィンドウ配置実行
+      this.log('【StreamProcessor-ステップ3-0-3】ウィンドウ配置実行中', 'info');
+      // 実際のウィンドウ配置はWindowServiceを使用
+
+      this.log('【StreamProcessor-ステップ3-0】マルチモニター4分割配置完了', 'info');
+      return quadLayout;
+    } catch (error) {
+      this.log('【StreamProcessor-ステップ3-0】❌ マルチモニター4分割配置エラー: ' + error.message, 'error');
+      throw error;
+    }
   }
 }

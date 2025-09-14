@@ -52,10 +52,10 @@
             UI_SELECTORS = data.selectors;
             window.UI_SELECTORS = UI_SELECTORS;
             selectorsLoaded = true;
-            log('【ステップ0-1】✅ UI Selectors loaded from JSON', 'success');
+            log('【ChatGPT-ステップ0-1】✅ UI Selectors loaded from JSON', 'success');
             return UI_SELECTORS;
         } catch (error) {
-            log('【ステップ0-2】❌ Failed to load ui-selectors-data.json: ' + error.message, 'error');
+            log('【ChatGPT-ステップ0-2】❌ Failed to load ui-selectors-data.json: ' + error.message, 'error');
             // フォールバックとしてwindow.UI_SELECTORSを使用
             UI_SELECTORS = window.UI_SELECTORS || {};
             selectorsLoaded = true;
@@ -96,7 +96,7 @@
         for (let i = 0; i < 30; i++) {
             stopBtn = await findElement(SELECTORS.stopButton, 1);
             if (stopBtn) {
-                log('【ステップ6-1】停止ボタンが表示されました', 'success');
+                log('【ChatGPT-ステップ6-1】停止ボタンが表示されました', 'success');
                 break;
             }
             await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
@@ -104,11 +104,11 @@
 
         // 停止ボタンが消えるまで待機（最大5分）
         if (stopBtn) {
-            log('【ステップ6-2】停止ボタンが消えるまで待機（最大5分）', 'info');
+            log('【ChatGPT-ステップ6-2】停止ボタンが消えるまで待機（最大5分）', 'info');
             for (let i = 0; i < 300; i++) {
                 stopBtn = await findElement(SELECTORS.stopButton, 1);
                 if (!stopBtn) {
-                    log('【ステップ6-2】応答完了', 'success');
+                    log('【ChatGPT-ステップ6-2】応答完了', 'success');
                     break;
                 }
                 if (i % 30 === 0 && i > 0) {
@@ -230,7 +230,7 @@
     async function handleSpecialModeWaiting(featureName) {
         try {
             log(`【${featureName}モード特別処理】開始`, 'step');
-            log('【ステップ6-1】最大回答待機時間: 40分', 'info');
+            log('【ChatGPT-ステップ6-1】最大回答待機時間: 40分', 'info');
 
             // ステップ6-1: 停止ボタン出現待機
             let stopBtn = await waitForStopButton();
@@ -257,7 +257,7 @@
 
     // 6-1: 停止ボタン出現待機
     async function waitForStopButton() {
-        log('【ステップ6-1】停止ボタン出現待機', 'step');
+        log('【ChatGPT-ステップ6-1】停止ボタン出現待機', 'step');
         for (let i = 0; i < 60; i++) {
             const stopBtn = await findElement(SELECTORS.stopButton, 1);
             if (stopBtn) {
@@ -269,13 +269,13 @@
             }
             await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
         }
-        log('【ステップ6-1】停止ボタンが表示されませんでした', 'warning');
+        log('【ChatGPT-ステップ6-1】停止ボタンが表示されませんでした', 'warning');
         return null;
     }
 
     // 6-2: 2分間初期待機
     async function initialWaitCheck() {
-        log('【ステップ6-2】2分間初期待機チェック', 'step');
+        log('【ChatGPT-ステップ6-2】2分間初期待機チェック', 'step');
         for (let i = 0; i < 120; i++) {
             const stopBtn = await findElement(SELECTORS.stopButton, 1);
             if (!stopBtn) {
@@ -294,7 +294,7 @@
 
     // 6-3: 再送信処理
     async function retryWithPrompt() {
-        log('【ステップ6-3】再送信処理（「いいから元のプロンプトを確認して作業をして」）', 'step');
+        log('【ChatGPT-ステップ6-3】再送信処理（「いいから元のプロンプトを確認して作業をして」）', 'step');
         const input = await findElement(SELECTORS.textInput);
         if (!input) return;
 
@@ -317,14 +317,14 @@
         const sendBtn = await findElement(SELECTORS.sendButton);
         if (sendBtn) {
             sendBtn.click();
-            log('【ステップ6-2】再送信完了', 'success');
+            log('【ChatGPT-ステップ6-2】再送信完了', 'success');
             await sleep(AI_WAIT_CONFIG.LONG_WAIT);
         }
     }
 
     // 6-4: 最終待機処理
     async function finalWaitForCompletion() {
-        log('【ステップ6-4】最終待機（最大40分）', 'step');
+        log('【ChatGPT-ステップ6-4】最終待機（最大40分）', 'step');
         const maxWaitTime = AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT / 1000;
         let consecutiveAbsent = 0;
 
@@ -334,7 +334,7 @@
             if (!stopBtn) {
                 consecutiveAbsent++;
                 if (consecutiveAbsent >= 10) {
-                    log('【ステップ6-3】停止ボタンが10秒間連続で消滅。完了！', 'success');
+                    log('【ChatGPT-ステップ6-3】停止ボタンが10秒間連続で消滅。完了！', 'success');
                     break;
                 }
             } else {
@@ -357,7 +357,7 @@
         window.__v2_execution_result = null;
         
         // ページ初期読み込み待機（ネット環境を考慮）
-        console.log('【ステップ1-0】⏳ ページ初期読み込み待機中...');
+        console.log('【ChatGPT-ステップ1-0】⏳ ページ初期読み込み待機中...');
         await sleep(3000);  // 3秒待機
         
         console.log('%c🚀 ChatGPT V2 タスク実行開始', 'color: #00BCD4; font-weight: bold; font-size: 16px');
@@ -372,7 +372,7 @@
             // ========================================
             // ステップ1: ページ準備状態チェック（初回実行の問題を解決）
             // ========================================
-            log('\n【ステップ1】ページ初期化チェック', 'step');
+            log('\n【ChatGPT-ステップ1】ページ初期化チェック', 'step');
             
             // 1-1. ChatGPT UIの基本要素が存在するか確認
             const criticalElements = {
@@ -514,7 +514,7 @@ ${prompt}`;
             // ========================================
             // ステップ2: テキスト入力（堅牢性強化版）
             // ========================================
-            log('\n【ステップ2】テキスト入力', 'step');
+            log('\n【ChatGPT-ステップ2】テキスト入力', 'step');
 
             // 複数回試行してテキスト入力欄を検索
             let input = null;
@@ -598,7 +598,7 @@ ${prompt}`;
             // ステップ3: モデル選択（動的検索強化版）
             // ========================================
             if (modelName) {
-                log('\n【ステップ3】モデル選択', 'step');
+                log('\n【ChatGPT-ステップ3】モデル選択', 'step');
 
                 // 3-0: 現在のモデルを確認
                 const currentModelButton = await findElement(SELECTORS.modelButton, 'モデルボタン');
@@ -608,7 +608,7 @@ ${prompt}`;
                 }
 
                 // 3-1: モデルメニューを開いて利用可能なモデルを動的取得
-                log('【ステップ3-1】モデルメニューを開いて利用可能なモデルを取得', 'step');
+                log('【ChatGPT-ステップ3-1】モデルメニューを開いて利用可能なモデルを取得', 'step');
                 const modelBtn = await findElement(SELECTORS.modelButton, 'モデルボタン');
                 if (!modelBtn) {
                     throw new Error('モデルボタンが見つかりません');
@@ -626,7 +626,7 @@ ${prompt}`;
                 }
 
                 // 3-2: 利用可能なモデル一覧を動的に取得
-                log('【ステップ3-2】利用可能なモデル一覧を取得', 'step');
+                log('【ChatGPT-ステップ3-2】利用可能なモデル一覧を取得', 'step');
                 const availableModels = [];
 
                 // メインメニューのモデル取得
@@ -678,7 +678,7 @@ ${prompt}`;
                 log(`取得したモデル一覧 (${availableModels.length}個): ${availableModels.map(m => m.name).join(', ')}`, 'success');
 
                 // 3-3: 動的選択ロジック（番号指定または名前マッチング）
-                log('【ステップ3-3】モデル選択ロジックを実行', 'step');
+                log('【ChatGPT-ステップ3-3】モデル選択ロジックを実行', 'step');
                 let selectedModel = null;
                 let resolvedModel = modelName;
 
@@ -720,7 +720,7 @@ ${prompt}`;
 
                 if (selectedModel) {
                     // 3-4: モデル選択を実行
-                    log('【ステップ3-4】モデル選択のためメニューを再度開く', 'step');
+                    log('【ChatGPT-ステップ3-4】モデル選択のためメニューを再度開く', 'step');
                     const modelBtn2 = await findElement(SELECTORS.modelButton, 'モデルボタン');
                     if (!modelBtn2) {
                         throw new Error('モデルボタンが見つかりません');
@@ -742,14 +742,14 @@ ${prompt}`;
                                         Array.from(modelMenuEl2.querySelectorAll('[role="menuitem"]'))
                                             .find(el => el.textContent && el.textContent.includes('レガシーモデル'));
                         if (legacyBtn) {
-                            log('【ステップ3-5】レガシーモデルメニューを開く', 'step');
+                            log('【ChatGPT-ステップ3-5】レガシーモデルメニューを開く', 'step');
                             legacyBtn.click();
                             await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
                         }
                     }
 
                     // 3-6: 該当のモデルを選択
-                    log('【ステップ3-6】該当のモデルを選択実行', 'step');
+                    log('【ChatGPT-ステップ3-6】該当のモデルを選択実行', 'step');
 
                     // 要素を再検索（DOM変更の可能性があるため）
                     const allMenus = document.querySelectorAll('[role="menu"]');
@@ -774,7 +774,7 @@ ${prompt}`;
                         // ========================================
                         // ステップ3-7: モデル選択確認（テストコード準拠）
                         // ========================================
-                        log('【ステップ3-7】モデル選択確認', 'step');
+                        log('【ChatGPT-ステップ3-7】モデル選択確認', 'step');
                         await sleep(1000); // 表示更新を待機
 
                         const currentModelButton = await findElement(SELECTORS.modelButton, 'モデルボタン');
@@ -809,7 +809,7 @@ ${prompt}`;
             // ========================================
             let resolvedFeature = featureName;
             if (featureName && featureName !== '' && featureName !== 'none' && featureName !== '通常') {
-                log('\n【ステップ4】機能選択', 'step');
+                log('\n【ChatGPT-ステップ4】機能選択', 'step');
 
                 // 機能名マッピング（スプレッドシート値 → ChatGPT UI表記）
                 const featureMapping = {
@@ -821,7 +821,7 @@ ${prompt}`;
                 log(`機能名マッピング: "${featureName}" → "${mappedFeatureName}"`, 'info');
 
                 // 4-0: 選択されている機能を解除
-                log('【ステップ4-0】既存の機能選択を解除', 'step');
+                log('【ChatGPT-ステップ4-0】既存の機能選択を解除', 'step');
                 const selectedButtons = document.querySelectorAll('button[data-pill="true"]');
                 selectedButtons.forEach(btn => {
                     const closeBtn = btn.querySelector('button[aria-label*="削除"]');
@@ -830,7 +830,7 @@ ${prompt}`;
                 await sleep(500);
 
                 // 4-1: 機能メニューを開いて利用可能な機能を動的取得
-                log('【ステップ4-1】機能メニューを開いて利用可能な機能を取得', 'step');
+                log('【ChatGPT-ステップ4-1】機能メニューを開いて利用可能な機能を取得', 'step');
                 const funcMenuBtn = await findElement(SELECTORS.menuButton, '機能メニューボタン');
                 if (!funcMenuBtn) {
                     throw new Error('機能メニューボタンが見つかりません');
@@ -915,7 +915,7 @@ ${prompt}`;
 
                 if (selectedFeature) {
                     // 4-2: 機能メニューを再度開いて選択実行
-                    log('【ステップ4-2】機能選択のためメニューを再度開く', 'step');
+                    log('【ChatGPT-ステップ4-2】機能選択のためメニューを再度開く', 'step');
                     const funcMenuBtn2 = await findElement(SELECTORS.menuButton, '機能メニューボタン');
                     if (!funcMenuBtn2) {
                         throw new Error('機能メニューボタンが見つかりません');
@@ -935,14 +935,14 @@ ${prompt}`;
                     if (selectedFeature.location === 'submenu') {
                         const moreBtn = findElementByText('[role="menuitem"]', 'さらに表示', funcMenu2);
                         if (moreBtn) {
-                            log('【ステップ4-3】サブメニューを開く', 'step');
+                            log('【ChatGPT-ステップ4-3】サブメニューを開く', 'step');
                             moreBtn.click();
                             await sleep(1000);
                         }
                     }
 
                     // 4-4: 機能を選択
-                    log('【ステップ4-4】機能を選択実行', 'step');
+                    log('【ChatGPT-ステップ4-4】機能を選択実行', 'step');
 
                     // 要素を再検索（DOM変更の可能性があるため）
                     const allMenus = document.querySelectorAll('[role="menu"]');
@@ -966,7 +966,7 @@ ${prompt}`;
                         // ========================================
                         // ステップ4-4: 機能選択確認（テストコード準拠）
                         // ========================================
-                        log('【ステップ4-4】機能選択確認', 'step');
+                        log('【ChatGPT-ステップ4-4】機能選択確認', 'step');
                         await sleep(1500); // 機能の表示更新を待機
 
                         // 選択された機能ボタンを確認
@@ -1000,7 +1000,7 @@ ${prompt}`;
                     }
 
                     // 4-5: メニューを閉じる
-                    log('【ステップ4-5】機能メニューを閉じる', 'step');
+                    log('【ChatGPT-ステップ4-5】機能メニューを閉じる', 'step');
                     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape' }));
                     await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
                 } else {
@@ -1009,7 +1009,7 @@ ${prompt}`;
             } else {
                 log('機能選択をスキップ', 'info');
             }
-            log('\n【ステップ5】メッセージ送信（再試行対応）', 'step');
+            log('\n【ChatGPT-ステップ5】メッセージ送信（再試行対応）', 'step');
             
             // 送信ボタンを5回まで再試行
             let sendSuccess = false;
@@ -1018,7 +1018,7 @@ ${prompt}`;
             
             while (!sendSuccess && sendAttempts < maxSendAttempts) {
                 sendAttempts++;
-                log(`【ステップ5-${sendAttempts}】送信試行 ${sendAttempts}/${maxSendAttempts}`, 'step');
+                log(`【ChatGPT-ステップ5-${sendAttempts}】送信試行 ${sendAttempts}/${maxSendAttempts}`, 'step');
                 
                 const sendBtn = await findElement(SELECTORS.sendButton, '送信ボタン');
                 if (!sendBtn) {
@@ -1091,7 +1091,7 @@ ${prompt}`;
             // ========================================
             // ステップ6: 応答待機（Deep Research/エージェントモード統合処理）
             // ========================================
-            log('\n【ステップ6】応答待機', 'step');
+            log('\n【ChatGPT-ステップ6】応答待機', 'step');
             
             // Deep Research/エージェントモードの判定
             const finalFeatureName = resolvedFeature || featureName;
@@ -1115,7 +1115,7 @@ ${prompt}`;
             // ========================================
             // ステップ7: テキスト取得と表示
             // ========================================
-            log('\n【ステップ7】テキスト取得と表示', 'step');
+            log('\n【ChatGPT-ステップ7】テキスト取得と表示', 'step');
 
             // テキスト取得（ui-selectors-data.jsonを使用）
             let responseText = '';
