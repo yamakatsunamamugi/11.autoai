@@ -172,7 +172,7 @@ const loadTimeoutConfig = () => {
   const script = document.createElement("script");
   script.src = chrome.runtime.getURL("src/config/timeout-config.js");
   script.onload = () => {
-    loadDeepResearchConfig();
+    // DeepResearch設定は1-ai-common-base.jsに統合済み
   };
   script.onerror = (error) => {
     console.error("❌ [11.autoai] タイムアウト設定の読み込みエラー:", error);
@@ -180,33 +180,13 @@ const loadTimeoutConfig = () => {
       "🔄 [11.autoai] フォールバック: DeepResearch設定を直接読み込み",
     );
     // フォールバック: DeepResearch設定を直接読み込み
-    loadDeepResearchConfig();
+    // DeepResearch設定は1-ai-common-base.jsに統合済み
   };
   document.head.appendChild(script);
 };
 
 // DeepResearch設定を読み込み
-const loadDeepResearchConfig = () => {
-
-  const script = document.createElement("script");
-  script.type = "module";
-
-  // エラーハンドリングを追加
-  script.onerror = (error) => {
-    console.error(
-      "❌ [11.autoai] DeepResearchモジュール読み込みエラー:",
-      error,
-    );
-  };
-
-  script.onload = () => {
-  };
-
-  // DeepResearchモジュールローダーは削除済み
-  console.log("🔗 [11.autoai] DeepResearch設定は簡素化されました");
-
-  // スクリプト要素は不要
-};
+// DeepResearch設定は1-ai-common-base.jsに統合済みのため削除
 
 // AI種別の自動検出
 const AI_TYPE = (() => {
@@ -2944,15 +2924,8 @@ if (AI_TYPE) {
   // UI Selectors読み込みから開始
   loadUISelectors();
 
-  // フォールバック: 3秒後にDeepResearch設定が未読み込みなら強制実行
-  setTimeout(() => {
-    if (!window.deepResearchConfigLoaded) {
-      console.log("⚠️ [11.autoai] DeepResearch設定が未読み込み - 強制実行");
-      loadDeepResearchConfig();
-    } else {
-      console.log("✅ [11.autoai] DeepResearch設定は正常に読み込まれています");
-    }
-    }, 3000);
+  // DeepResearch設定チェックは削除（1-ai-common-base.jsに統合済み）
+  console.log("✅ [11.autoai] DeepResearch機能は統合済みです");
   }).catch(error => {
     console.error(`[11.autoai] ページ準備待機エラー:`, error);
   });

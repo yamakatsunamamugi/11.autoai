@@ -661,6 +661,91 @@ export class AITaskExecutor {
     
     return Promise.all(results);
   }
+
+  /**
+   * AI検出専用のタスク実行メソッド
+   *
+   * AI検出システム用に最適化されたメソッドです。
+   * 通常のexecuteAITaskとは異なり、検出モードで実行します。
+   *
+   * @param {number} tabId - 実行対象のタブID
+   * @param {Object} detectionConfig - 検出設定
+   * @param {string} detectionConfig.aiType - AI種別 (claude, chatgpt, gemini)
+   * @param {string} detectionConfig.aiName - AI表示名
+   * @returns {Promise<Object>} 検出結果
+   */
+  async executeDetectionTask(tabId, detectionConfig) {
+    const startTime = Date.now();
+    const { aiType, aiName } = detectionConfig;
+
+    this.logger.log(`[AITaskExecutor] 🔍 AI検出タスク開始 [${aiName}]:`, {
+      tabId,
+      aiType,
+      aiName,
+      timestamp: new Date().toLocaleTimeString()
+    });
+
+    try {
+      // 検出用タスクデータの作成
+      const detectionTaskData = {
+        aiType: aiType,
+        taskId: `detection_${aiName.toLowerCase()}_${Date.now()}`,
+        prompt: 'AI_DETECTION_MODE', // 特殊フラグで検出モードを指示
+        isDetectionMode: true,
+        model: 'auto', // 自動検出
+        function: 'auto', // 自動検出
+        cellInfo: { column: 'DETECT', row: 1 } // 検出用の仮想セル情報
+      };
+
+      // 本番のexecuteAITaskを検出モードで実行
+      const result = await this.executeAITask(tabId, detectionTaskData);
+
+      const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+
+      if (result.success) {
+        this.logger.log(`[AITaskExecutor] ✅ [${aiName}] 検出成功:`, {
+          aiName,
+          totalTime: `${totalTime}秒`,
+          hasData: !!(result.detectionData || result.saveData)
+        });
+
+        return {
+          success: true,
+          aiName: aiName,
+          saveData: result.detectionData || result.saveData || {},
+          detectionResult: result
+        };
+      } else {
+        this.logger.error(`[AITaskExecutor] ❌ [${aiName}] 検出失敗:`, {
+          aiName,
+          error: result.error,
+          totalTime: `${totalTime}秒`
+        });
+
+        return {
+          success: false,
+          aiName: aiName,
+          error: result.error || '検出処理が失敗しました'
+        };
+      }
+
+    } catch (error) {
+      const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+
+      this.logger.error(`[AITaskExecutor] ❌ [${aiName}] 検出エラー:`, {
+        aiName,
+        error: error.message,
+        stack: error.stack,
+        totalTime: `${totalTime}秒`
+      });
+
+      return {
+        success: false,
+        aiName: aiName,
+        error: error.message
+      };
+    }
+  }
 }
 
 // デフォルトインスタンスをエクスポート

@@ -8,21 +8,21 @@
 // 各コントローラーの動的インポート関数
 export const controllers = {
   /**
-   * 1. モデル・機能変更検出システム
+   * 1. モデル・機能変更検出テストシステム
    */
   aiDetection: {
     async load() {
-      const module = await import('./ai-detection-controller.js');
+      const module = await import('./ai-detection-test-controller.js');
       return module;
     }
   },
 
   /**
-   * 2. AIセレクタ変更検出システム
+   * 2. AIセレクタ変更検出システム（ai-detection-test-controller.jsに統合済み）
    */
   mutationObserver: {
     async load() {
-      const module = await import('./mutation-observer-controller.js');
+      const module = await import('./ai-detection-test-controller.js');
       return module;
     }
   },

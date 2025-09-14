@@ -30,7 +30,7 @@
 (async function() {
     'use strict';
 
-    console.log('Claude V2 自動化ワークフロー - 初期化開始');
+    console.log('【Claude V2 自動化】🚀 ワークフロー初期化開始');
 
     // ===== リトライ機能のための関数定義 =====
 
@@ -39,20 +39,23 @@
      * エラー時にウィンドウを閉じて新しいウィンドウで作業を続行
      */
     const recreateWindow = async () => {
-        console.log('🔄 ウィンドウ再作成を実行中...');
+        console.log('【ウィンドウ再作成】🔄 処理開始...');
 
         try {
             // 現在のウィンドウを閉じる
+            console.log('【ウィンドウ再作成】ステップ1: タブリロード実行中...');
             await chrome.tabs.reload();
+            console.log('【ウィンドウ再作成】ステップ2: 安定化待機中（2秒）...');
             await wait(2000);
 
             // ページを再読み込みしてセレクタを再ロード
+            console.log('【ウィンドウ再作成】ステップ3: セレクタ再読み込み中...');
             await loadSelectors();
 
-            console.log('✅ ウィンドウ再作成完了');
+            console.log('【ウィンドウ再作成】✅ 全工程完了');
             return true;
         } catch (error) {
-            console.error('❌ ウィンドウ再作成エラー:', error);
+            console.error('【ウィンドウ再作成】❌ エラー発生:', error);
             return false;
         }
     };
@@ -67,27 +70,30 @@
     const executeStepWithRetry = async (stepFunction, stepName, maxRetries = 3) => {
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
-                console.log(`\n🔄 ${stepName} (試行 ${attempt}/${maxRetries})`);
+                console.log(`\n【${stepName}】🔄 (試行 ${attempt}/${maxRetries})`);
                 const result = await stepFunction();
-                console.log(`✅ ${stepName} 成功`);
+                console.log(`【${stepName}】✅ 成功`);
                 return result;
             } catch (error) {
-                console.error(`❌ ${stepName} 失敗 (試行 ${attempt}/${maxRetries}):`, error);
+                console.error(`【${stepName}】❌ 失敗 (試行 ${attempt}/${maxRetries}):`, error);
 
                 if (attempt < maxRetries) {
-                    console.log(`🔄 ${stepName} をリトライします...`);
+                    console.log(`【${stepName}】🔄 リトライを実行します...`);
 
                     // ウィンドウ再作成
+                    console.log(`【${stepName}】🔧 ウィンドウ再作成中...`);
                     const recreateSuccess = await recreateWindow();
                     if (!recreateSuccess) {
-                        console.error(`❌ ウィンドウ再作成失敗、${stepName} を中断`);
+                        console.error(`【${stepName}】❌ ウィンドウ再作成失敗、処理を中断`);
                         throw error;
                     }
+                    console.log(`【${stepName}】✅ ウィンドウ再作成完了`);
 
                     // 少し待機してからリトライ
+                    console.log(`【${stepName}】⏱️ リトライ準備中（3秒待機）...`);
                     await wait(3000);
                 } else {
-                    console.error(`❌ ${stepName} が${maxRetries}回失敗しました`);
+                    console.error(`【${stepName}】❌ ${maxRetries}回試行して最終失敗`);
                     throw error;
                 }
             }
@@ -111,15 +117,18 @@
         if (selectorsLoaded) return UI_SELECTORS;
 
         try {
+            console.log('【セレクタ初期化】ステップ1: JSONファイル読み込み中...');
             const response = await fetch(chrome.runtime.getURL('ui-selectors-data.json'));
+            console.log('【セレクタ初期化】ステップ2: データパース中...');
             const data = await response.json();
             UI_SELECTORS = data.selectors;
             window.UI_SELECTORS = UI_SELECTORS;
             selectorsLoaded = true;
-            console.log('✅ UI Selectors loaded');
+            console.log('【セレクタ初期化】✅ UI Selectors読み込み完了');
             return UI_SELECTORS;
         } catch (error) {
-            console.error('❌ Failed to load ui-selectors-data.json:', error);
+            console.error('【セレクタ初期化】❌ ui-selectors-data.json読み込み失敗:', error);
+            console.log('【セレクタ初期化】🔧 フォールバック: 既存セレクタを使用');
             UI_SELECTORS = window.UI_SELECTORS || {};
             selectorsLoaded = true;
             return UI_SELECTORS;
@@ -127,7 +136,7 @@
     };
 
     await loadSelectors();
-    console.log('🔧 UI_SELECTORS初期化完了');
+    console.log('【Claude V2 自動化】✅ UI_SELECTORS初期化完了');
 
     // 基本ユーティリティ
     const wait = async (ms) => new Promise(resolve => setTimeout(resolve, ms));

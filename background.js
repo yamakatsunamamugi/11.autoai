@@ -110,8 +110,7 @@ import SpreadsheetColumnRemover from "./src/services/spreadsheet-column-remover.
 import "./src/core/streaming-service-manager.js";
 import { getStreamingServiceManager } from "./src/core/streaming-service-manager.js";
 
-// DeepResearchモジュール
-import { deepResearchHandler } from "./src/modules/deep-research-handler.js";
+// DeepResearchモジュールは削除（1-ai-common-base.jsに統合済み）
 
 // PowerManagerモジュール - スリープ防止の統一管理
 import PowerManager from "./src/core/power-manager.js";

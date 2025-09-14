@@ -515,23 +515,33 @@
     // 3-1-1-3. メニューを開く
     // モデル選択メニューを開く
     async openModelMenu() {
+      this.log(`ステップ1: ${this.aiType}モデル選択ボタンを検索中...`, 'info');
       const menuButton = findElement(this.selectors.modelButton);
       if (!menuButton) {
+        this.log('❌ ステップ1失敗: モデル選択ボタンが見つかりません', 'error');
         throw new Error('モデル選択ボタンが見つかりません');
       }
+      this.log('✅ ステップ1完了: モデル選択ボタンを発見', 'success');
 
+      this.log('ステップ2: メニューを開く操作を実行中...', 'info');
       if (this.aiType === AI_TYPES.CHATGPT) {
         triggerReactEvent(menuButton, 'pointer');
+        this.log('📱 ChatGPT用Reactイベントトリガーを実行', 'info');
       } else {
         menuButton.click();
+        this.log('🖱️ 標準クリックを実行', 'info');
       }
 
+      this.log(`ステップ3: メニュー表示待機中（${AI_WAIT_CONFIG.MEDIUM_WAIT}ms）...`, 'info');
       await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
 
+      this.log('ステップ4: モデルメニューの表示確認中...', 'info');
       const menu = findElement(this.selectors.modelMenu);
       if (!menu) {
+        this.log('❌ ステップ4失敗: モデルメニューが開きませんでした', 'error');
         throw new Error('モデルメニューが開きませんでした');
       }
+      this.log('✅ ステップ4完了: モデルメニューが正常に表示されました', 'success');
 
       return menu;
     }
@@ -565,35 +575,46 @@
     // 3-1-1-6. モデル選択
     // 指定されたモデルを選択
     async selectModel(modelName) {
+      this.log(`🎯 モデル選択開始: ${modelName || 'デフォルト'}`, 'info');
+
       if (!modelName || modelName === 'default' || modelName === 'auto') {
-        this.log('デフォルトモデルを使用', 'info');
+        this.log('✅ デフォルトモデルを使用（選択操作をスキップ）', 'success');
         return;
       }
 
       try {
+        this.log('ステップ1: モデル選択メニューを開く...', 'info');
         const menu = await this.openModelMenu();
 
-        // モデルを探して選択
+        this.log('ステップ2: メニュー項目を検索中...', 'info');
         const modelItems = findElements(['[role="menuitem"]'], menu);
-        let selected = false;
+        this.log(`📋 検索対象: ${modelItems.length}個のメニュー項目`, 'info');
 
-        for (const item of modelItems) {
+        let selected = false;
+        for (let i = 0; i < modelItems.length; i++) {
+          const item = modelItems[i];
           const itemText = getCleanText(item);
+          this.log(`検査中[${i+1}/${modelItems.length}]: "${itemText}"`, 'info');
+
           if (itemText.toLowerCase().includes(modelName.toLowerCase())) {
+            this.log(`✅ ステップ3: 対象モデル発見 - "${itemText}"`, 'success');
+            this.log('ステップ4: モデル選択クリックを実行...', 'info');
             item.click();
             selected = true;
-            this.log(`モデル選択: ${itemText}`, 'success');
+            this.log(`✅ モデル選択完了: ${itemText}`, 'success');
             break;
           }
         }
 
         if (!selected) {
-          this.log(`モデル "${modelName}" が見つかりません`, 'warning');
+          this.log(`❌ ステップ3失敗: モデル "${modelName}" が見つかりません`, 'error');
         }
 
+        this.log(`ステップ5: 操作完了待機中（${AI_WAIT_CONFIG.MEDIUM_WAIT}ms）...`, 'info');
         await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
+        this.log('✅ モデル選択処理完了', 'success');
       } catch (error) {
-        this.log(`モデル選択エラー: ${error.message}`, 'error');
+        this.log(`❌ モデル選択エラー: ${error.message}`, 'error');
       }
     }
 
@@ -641,30 +662,40 @@
     // 3-2-1-2. 通常モード待機
     // 通常の応答完了を待機
     async waitNormalResponse() {
+      this.log(`🔄 ${this.aiType} 応答待機開始`, 'info');
       const startTime = Date.now();
 
       // 初期待機
-      this.log(`初期待機: ${AI_WAIT_CONFIG.INITIAL_WAIT / 1000}秒`, 'info');
+      this.log(`ステップ1: 初期待機中（${AI_WAIT_CONFIG.INITIAL_WAIT / 1000}秒）...`, 'info');
       await sleep(AI_WAIT_CONFIG.INITIAL_WAIT);
 
       return new Promise((resolve, reject) => {
         let waitTime = 0;
         const maxWait = AI_WAIT_CONFIG.MAX_WAIT;
+        let checkCount = 0;
+
+        this.log(`ステップ2: 応答完了監視開始（最大${maxWait / 1000}秒）`, 'info');
 
         const checker = setInterval(() => {
+          checkCount++;
           const stopButton = findElement(this.selectors.stopButton);
+
+          // 10秒ごとに進行状況をログ出力
+          if (checkCount % (10000 / AI_WAIT_CONFIG.CHECK_INTERVAL) === 0) {
+            this.log(`⏱️ 経過時間: ${Math.round(waitTime / 1000)}秒 - 停止ボタン: ${stopButton ? '表示中' : '非表示'}`, 'info');
+          }
 
           if (!stopButton) {
             clearInterval(checker);
             const elapsedTime = Date.now() - startTime;
-            this.log(`応答完了（${Math.round(elapsedTime / 1000)}秒）`, 'success');
+            this.log(`✅ ステップ3完了: 応答完了を検出（${Math.round(elapsedTime / 1000)}秒）`, 'success');
             resolve(`応答完了`);
             return;
           }
 
           if (waitTime >= maxWait) {
             clearInterval(checker);
-            this.log(`タイムアウト（${maxWait / 1000}秒）`, 'warning');
+            this.log(`❌ ステップ3失敗: タイムアウト（${maxWait / 1000}秒）`, 'warning');
             resolve(`タイムアウト`);
             return;
           }
@@ -723,8 +754,10 @@
     // 3-2-1-4. Deep Researchモード待機
     // Deep Research機能の応答完了を待機（Claude専用）
     async waitDeepResearchResponse() {
+      this.log(`🔬 ${this.aiType} Deep Research応答待機開始`, 'info');
       const startTime = Date.now();
       const MAX_WAIT = SPECIAL_MODE_CONFIG.DEEP_RESEARCH_WAIT;
+      this.log(`⏰ Deep Research最大待機時間: ${MAX_WAIT / 60000}分`, 'info');
 
       this.log('Deep Researchモードで応答を監視します', 'info');
 
