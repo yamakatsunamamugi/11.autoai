@@ -252,10 +252,176 @@
   // 2-1. 基本関数
   // ----------------------------------------
 
-  // 2-1-1. sleep関数
+  // 2-1-1. sleep関数群（Step 1: sleep-utils.jsから統合）
   // 指定時間待機する基本関数
   function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  // デバッグログ付きスリープ関数
+  async function sleepWithLog(ms, context = 'sleep', logger = console.log, options = {}) {
+    const {
+      forceLog = false,
+      logThreshold = 1000
+    } = options;
+
+    const shouldLog = forceLog || (ms >= logThreshold);
+
+    if (shouldLog) {
+      const duration = ms >= 1000 ? `${ms / 1000}秒` : `${ms}ミリ秒`;
+      logger(`[${context}] ${duration}待機開始`);
+    }
+
+    await sleep(ms);
+
+    if (shouldLog) {
+      const duration = ms >= 1000 ? `${ms / 1000}秒` : `${ms}ミリ秒`;
+      logger(`[${context}] ${duration}待機完了`);
+    }
+  }
+
+  // ランダム待機時間生成
+  function randomWaitTime(min = 5, max = 15) {
+    return Math.floor(Math.random() * ((max - min) * 1000 + 1)) + (min * 1000);
+  }
+
+  // ランダム待機実行
+  async function randomSleep(min = 5, max = 15, context = 'randomSleep', logger = console.log) {
+    const waitTime = randomWaitTime(min, max);
+    await sleepWithLog(waitTime, context, logger);
+  }
+
+  // AI待機設定に基づく待機
+  async function aiWait(type = 'SHORT_WAIT', context = 'aiWait', logger = console.log) {
+    const config = {...AI_WAIT_CONFIG, ...SPECIAL_MODE_CONFIG};
+    const waitTime = config[type] || config.SHORT_WAIT;
+    await sleepWithLog(waitTime, `${context}(${type})`, logger);
+  }
+
+  // 条件付き待機
+  async function waitForCondition(
+    condition,
+    interval = 1000,
+    maxWait = 30000,
+    context = 'waitForCondition',
+    logger = console.log
+  ) {
+    const startTime = Date.now();
+    let lastLogTime = startTime;
+
+    while (Date.now() - startTime < maxWait) {
+      try {
+        if (await condition()) {
+          const elapsedTime = Date.now() - startTime;
+          if (elapsedTime > 1000) {
+            logger(`[${context}] 条件満了 (${Math.round(elapsedTime / 1000)}秒)`);
+          }
+          return true;
+        }
+      } catch (error) {
+        logger(`[${context}] 条件チェックエラー:`, error);
+      }
+
+      const currentTime = Date.now();
+      if (currentTime - lastLogTime >= 10000) {
+        const elapsedSeconds = Math.round((currentTime - startTime) / 1000);
+        const maxSeconds = Math.round(maxWait / 1000);
+        logger(`[${context}] 条件待機中... (${elapsedSeconds}秒 / 最大${maxSeconds}秒)`);
+        lastLogTime = currentTime;
+      }
+
+      await sleep(interval);
+    }
+
+    logger(`[${context}] タイムアウト (${Math.round(maxWait / 1000)}秒)`);
+    return false;
+  }
+
+  // 指数バックオフ待機
+  async function exponentialBackoffSleep(
+    baseDelay = 1000,
+    attempt = 0,
+    maxDelay = 30000,
+    context = 'exponentialBackoff',
+    logger = console.log
+  ) {
+    const delay = Math.min(baseDelay * Math.pow(2, attempt), maxDelay);
+    await sleepWithLog(delay, `${context}(試行${attempt + 1}回目)`, logger);
+  }
+
+  // プリセット待機時間を取得
+  function getPRESET_WAITS() {
+    return {
+      // UI操作用
+      MICRO: AI_WAIT_CONFIG.MICRO_WAIT || 100,
+      TINY: AI_WAIT_CONFIG.TINY_WAIT || 500,
+      SHORT: AI_WAIT_CONFIG.SHORT_WAIT || 1000,
+      MEDIUM: AI_WAIT_CONFIG.MEDIUM_WAIT || 2000,
+      LONG: AI_WAIT_CONFIG.LONG_WAIT || 3000,
+
+      // 要素待機用
+      ELEMENT_SEARCH: AI_WAIT_CONFIG.ELEMENT_SEARCH_WAIT || 5000,
+      MENU: AI_WAIT_CONFIG.MENU_WAIT || 8000,
+
+      // AI応答待機用
+      INITIAL: AI_WAIT_CONFIG.INITIAL_WAIT || 30000,
+      MAX_RESPONSE: AI_WAIT_CONFIG.MAX_WAIT || 300000,
+      DEEP_RESEARCH: SPECIAL_MODE_CONFIG.DEEP_RESEARCH_WAIT || 2400000,
+      CANVAS: SPECIAL_MODE_CONFIG.CANVAS_MAX_WAIT || 300000
+    };
+  }
+
+  const PRESET_WAITS = getPRESET_WAITS();
+
+  // プリセット待機の実行
+  async function presetSleep(preset, context = 'presetSleep', logger = console.log) {
+    const waitTime = PRESET_WAITS[preset] || PRESET_WAITS.SHORT;
+    await sleepWithLog(waitTime, `${context}(${preset})`, logger);
+  }
+
+  // よく使用される待機パターンのヘルパー関数
+  async function waitForUI(context = 'UI操作', logger = console.log) {
+    await aiWait('SHORT_WAIT', context, logger);
+  }
+
+  async function waitForMenu(context = 'メニュー表示', logger = console.log) {
+    await aiWait('MENU_WAIT', context, logger);
+  }
+
+  async function waitForResponse(context = 'AI応答', logger = console.log) {
+    await aiWait('INITIAL_WAIT', context, logger);
+  }
+
+  async function waitForDeepResearch(context = 'Deep Research', logger = console.log) {
+    await aiWait('DEEP_RESEARCH_WAIT', context, logger);
+  }
+
+  // 機能別待機時間取得
+  function getWaitTimeForFunction(functionName) {
+    const normalized = functionName?.toLowerCase().replace(/\s+/g, '') || 'default';
+    const functionMapping = {
+      'deepresearch': PRESET_WAITS.DEEP_RESEARCH,
+      'ディープリサーチ': PRESET_WAITS.DEEP_RESEARCH,
+      'deep research': PRESET_WAITS.DEEP_RESEARCH,
+      'エージェント': PRESET_WAITS.DEEP_RESEARCH,
+      'エージェントモード': PRESET_WAITS.DEEP_RESEARCH,
+      'agent': PRESET_WAITS.DEEP_RESEARCH,
+      'canvas': PRESET_WAITS.CANVAS,
+      'キャンバス': PRESET_WAITS.CANVAS,
+      'ウェブ検索': PRESET_WAITS.ELEMENT_SEARCH,
+      'websearch': PRESET_WAITS.ELEMENT_SEARCH,
+      'web search': PRESET_WAITS.ELEMENT_SEARCH,
+      '通常': PRESET_WAITS.MAX_RESPONSE,
+      'normal': PRESET_WAITS.MAX_RESPONSE,
+      'default': PRESET_WAITS.MAX_RESPONSE
+    };
+    return functionMapping[normalized] || PRESET_WAITS.MAX_RESPONSE;
+  }
+
+  // 機能に基づく待機実行
+  async function waitForFunction(functionName, context = 'functionWait', logger = console.log) {
+    const waitTime = getWaitTimeForFunction(functionName);
+    await sleepWithLog(waitTime, `${context}(${functionName})`, logger);
   }
 
   // 2-1-2. ログ出力
@@ -285,8 +451,12 @@
   }
 
   // 2-1-3. AI判定
-  // 現在のサイトがどのAIか判定
+  // 現在のサイトがどのAIか判定（Service Worker対応）
   function detectAI() {
+    // Service Worker環境ではlocation情報がない場合がある
+    if (typeof window === 'undefined' || !window.location) {
+      return null;
+    }
     const url = window.location.href;
     const hostname = window.location.hostname;
 
@@ -350,9 +520,11 @@
   }
 
   // 2-2-3. 要素の可視性チェック
-  // 要素がクリック可能か確認
+  // 要素がクリック可能か確認（Service Worker対応）
   function isElementInteractable(element) {
     if (!element) return false;
+    // Service Worker環境では DOM操作不可
+    if (typeof window === 'undefined') return false;
 
     const rect = element.getBoundingClientRect();
     const style = window.getComputedStyle(element);
@@ -918,6 +1090,39 @@
 
       async delay(ms) {
         return sleep(ms);
+      },
+
+      // WindowService用のシンプルなリトライメソッド
+      async executeSimpleRetry({ action, isSuccess, maxRetries = 10, interval = 500, actionName = '', context = {} }) {
+        let retryCount = 0;
+        let lastResult = null;
+        let lastError = null;
+
+        while (retryCount < maxRetries) {
+          try {
+            if (retryCount > 0) {
+              this.logger.log(`【AI共通基盤-RetryManager】${actionName} 再試行 ${retryCount}/${maxRetries}`, context);
+            }
+            lastResult = await action();
+            if (isSuccess(lastResult)) {
+              if (retryCount > 0) {
+                this.logger.log(`【AI共通基盤-RetryManager】✅ ${actionName} 成功（${retryCount}回目の試行）`, context);
+              }
+              return { success: true, result: lastResult, retryCount };
+            }
+          } catch (error) {
+            lastError = error;
+            this.logger.error(`【AI共通基盤-RetryManager】${actionName} エラー`, { ...context, attempt: retryCount + 1, error: error.message });
+          }
+          retryCount++;
+          if (retryCount >= maxRetries) {
+            return { success: false, result: lastResult, error: lastError, retryCount };
+          }
+          if (interval > 0) {
+            await sleep(interval);
+          }
+        }
+        return { success: false, result: lastResult, error: lastError, retryCount };
       }
     };
   }
@@ -927,8 +1132,9 @@
   // ========================================
 
   // 4-1. グローバルAPI設定
-  // 各種機能をwindowオブジェクトに公開
-  window.AICommonBase = {
+  // Service Worker対応: windowまたはglobalThisに公開
+  const globalScope = typeof window !== 'undefined' ? window : globalThis;
+  globalScope.AICommonBase = {
     // 4-1-1. 設定
     config: {
       wait: AI_WAIT_CONFIG,
@@ -942,12 +1148,27 @@
       }
     },
 
-    // 4-1-2. ユーティリティ
+    // 4-1-2. ユーティリティ（Step 1: sleep-utils関数群を追加）
     utils: {
       // 基本関数
       sleep,
       log,
       detectAI,
+
+      // sleep-utils統合関数群
+      sleepWithLog,
+      randomWaitTime,
+      randomSleep,
+      aiWait,
+      waitForCondition,
+      exponentialBackoffSleep,
+      presetSleep,
+      waitForUI,
+      waitForMenu,
+      waitForResponse,
+      waitForDeepResearch,
+      getWaitTimeForFunction,
+      waitForFunction,
 
       // DOM操作
       findElement,
@@ -979,14 +1200,30 @@
     lastUpdated: '2024-12-14'
   };
 
-  // レガシー互換性（既存コードとの互換性維持）
-  window.AI_WAIT_CONFIG = AI_WAIT_CONFIG;
-  window.AIHandler = window.AIHandler || {};
-  window.AIHandler.MenuHandler = MenuHandler;
-  window.AIHandler.utils = window.AICommonBase.utils;
+  // レガシー互換性（Service Worker対応）
+  if (typeof window !== 'undefined') {
+    window.AI_WAIT_CONFIG = AI_WAIT_CONFIG;
+    window.AIHandler = window.AIHandler || {};
+    window.AIHandler.MenuHandler = MenuHandler;
+    window.AIHandler.utils = globalScope.AICommonBase.utils;
+  }
 
   log('AI共通基盤 v1.0.0 初期化完了', 'success');
   log(`検出されたAI: ${detectAI() || 'なし'}`, 'info');
 
-  return window.AICommonBase;
+  return globalScope.AICommonBase;
 })();
+
+// ESモジュール用エクスポート
+export function getGlobalAICommonBase() {
+  // グローバル変数から取得
+  if (typeof window !== 'undefined' && window.AICommonBase) {
+    return window.AICommonBase;
+  }
+  // Service Worker環境の場合
+  if (typeof globalThis !== 'undefined' && globalThis.AICommonBase) {
+    return globalThis.AICommonBase;
+  }
+  // Step 2: フォールバック削除 - 該当環境がない場合はnullを返す
+  return null;
+}

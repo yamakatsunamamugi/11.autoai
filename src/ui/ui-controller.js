@@ -2944,37 +2944,387 @@ function showChangeNotification(aiName, changes) {
   }, 1000); // 1秒後に表示（ログ出力の後）
 }
 
-// ===== コントローラー統合管理システム =====
-let controllerManager = null;
+// ===== AI検出システム実装 =====
 
-// コントローラーマネージャーの動的読み込み
-async function loadControllerManager() {
-  if (controllerManager) return controllerManager;
-  
-  try {
-    // モジュールインポートを試してみる
-    const module = await import('./controllers/index.js');
-    controllerManager = module.default;
-    console.log('✅ コントローラーマネージャーをモジュールとして読み込み');
-    return controllerManager;
-  } catch (error) {
-    console.error('❌ コントローラーマネージャーの読み込み失敗:', error);
-    throw error;
+// AI検出システムの実行
+async function runAIDetectionSystem(updateStatus, injectAutomationScripts) {
+  console.log('🔍 AI検出システムを開始します');
+  updateStatus('AI検出システムを開始中...', 'loading');
+
+  const aiSites = [
+    { name: 'ChatGPT', url: 'https://chatgpt.com', ai: 'chatgpt' },
+    { name: 'Claude', url: 'https://claude.ai', ai: 'claude' },
+    { name: 'Gemini', url: 'https://gemini.google.com', ai: 'gemini' }
+  ];
+
+  const allResults = {
+    chatgpt: { models: [], functions: [] },
+    claude: { models: [], functions: [] },
+    gemini: { models: [], functions: [] }
+  };
+
+  for (const site of aiSites) {
+    console.log(`🔍 ${site.name}の検出を開始...`);
+    updateStatus(`${site.name}の検出中...`, 'loading');
+
+    try {
+      // タブを開く
+      const tab = await chrome.tabs.create({ url: site.url, active: false });
+
+      // ページの読み込みを待つ
+      await new Promise(resolve => {
+        const listener = (tabId, changeInfo) => {
+          if (tabId === tab.id && changeInfo.status === 'complete') {
+            chrome.tabs.onUpdated.removeListener(listener);
+            resolve();
+          }
+        };
+        chrome.tabs.onUpdated.addListener(listener);
+      });
+
+      // 本番コードでスクリプトを注入して検出実行
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: detectAIModelsAndFeaturesProduction,
+        args: [site.ai]
+      });
+
+      // 結果を取得
+      const results = await chrome.tabs.sendMessage(tab.id, {
+        type: 'GET_AI_DETECTION_RESULTS'
+      });
+
+      if (results) {
+        allResults[site.ai] = results;
+        console.log(`✅ ${site.name}の検出完了:`, results);
+      }
+
+      // タブを閉じる
+      await chrome.tabs.remove(tab.id);
+
+    } catch (error) {
+      console.error(`❌ ${site.name}の検出エラー:`, error);
+    }
   }
+
+  // 結果をストレージに保存
+  chrome.storage.local.set({ ai_config_persistence: allResults }, () => {
+    console.log('💾 AI設定をストレージに保存しました');
+  });
+
+  // 統合表を更新
+  updateIntegratedTable(allResults);
+  updateStatus('AI検出完了', 'success');
+  console.log('🎉 全AIサイトの検出が完了しました:', allResults);
+}
+
+// 本番のコードを使用したAIモデルと機能の検出
+function detectAIModelsAndFeaturesProduction(aiType) {
+  // 順序ですべての結果を格納するアレイ
+  const results = { models: [], functions: [] };
+
+  // 本番のコードで使用されているセレクタを定義
+  const PRODUCTION_SELECTORS = {
+    chatgpt: {
+      modelButton: [
+        '[data-testid="model-switcher-dropdown-button"]',
+        'button[aria-label*="モデル セレクター"]',
+        'button[aria-label*="モデル"][aria-haspopup="menu"]'
+      ],
+      modelMenu: [
+        '[role="menu"][data-radix-menu-content]',
+        '[role="menu"][data-state="open"]',
+        'div.z-50.max-w-xs.rounded-2xl.popover[role="menu"]'
+      ],
+      menuButton: [
+        '[data-testid="composer-plus-btn"]',
+        'button[aria-haspopup="menu"]'
+      ],
+      features: {
+        canvas: ['canvas', 'Canvas'],
+        codeInterpreter: ['Code Interpreter', 'コード インタープリター'],
+        browsing: ['Web Search', 'ウェブ検索'],
+        dalle: ['DALL·E', 'DALL-E', '画像生成'],
+        memory: ['Memory', 'メモリー'],
+        deepResearch: ['Deep Research', '深い研究']
+      }
+    },
+    claude: {
+      modelButton: [
+        'button[data-testid*="model-selector"]',
+        'button[aria-label*="モデル"]',
+        'div.font-medium button'
+      ],
+      modelMenu: [
+        '[role="menu"][data-state="open"]',
+        'div[data-radix-menu-content]'
+      ],
+      features: {
+        projects: ['Projects', 'プロジェクト'],
+        artifacts: ['Artifacts', 'アーティファクト'],
+        vision: ['Vision', '画像認識'],
+        codeAnalysis: ['Code Analysis', 'コード解析'],
+        deepResearch: ['Deep Research', '深い研究']
+      }
+    },
+    gemini: {
+      modelButton: [
+        '.gds-mode-switch-button.logo-pill-btn',
+        'button[class*="logo-pill-btn"]',
+        'button.gds-mode-switch-button'
+      ],
+      modelMenu: [
+        '.cdk-overlay-pane .menu-inner-container',
+        '.cdk-overlay-pane mat-action-list[data-test-id="mobile-nested-mode-menu"]'
+      ],
+      features: {
+        imageGeneration: ['Image Generation', '画像生成'],
+        codeExecution: ['Code Execution', 'コード実行'],
+        googleSearch: ['Google Search', 'Google検索'],
+        youtube: ['YouTube'],
+        maps: ['Google Maps', 'Maps'],
+        deepThink: ['Deep Think', '深思考'],
+        deepResearch: ['Deep Research', '深い研究']
+      }
+    }
+  };
+
+  // ユーティリティ関数
+  function findElement(selectors) {
+    for (const selector of selectors) {
+      try {
+        const element = document.querySelector(selector);
+        if (element) return element;
+      } catch (e) {
+        console.debug(`Selector failed: ${selector}`);
+      }
+    }
+    return null;
+  }
+
+  function getCleanText(element) {
+    if (!element) return '';
+    const clone = element.cloneNode(true);
+    const decorativeElements = clone.querySelectorAll('mat-icon, mat-ripple, svg, .icon, .ripple');
+    decorativeElements.forEach(el => el.remove());
+    return clone.textContent?.trim() || '';
+  }
+
+  console.log(`🔍 ${aiType} 検出開始 - 本番コード使用`);
+
+  const aiSelectors = PRODUCTION_SELECTORS[aiType];
+  if (!aiSelectors) {
+    console.error(`未対応のAIタイプ: ${aiType}`);
+    return results;
+  }
+
+  try {
+    // モデル検出 - 本番のメニューシステムを使用
+    console.log(`🔍 ${aiType} モデルボタンを検索...`);
+    const modelButton = findElement(aiSelectors.modelButton);
+    if (modelButton) {
+      const buttonText = getCleanText(modelButton);
+      if (buttonText) {
+        console.log(`✅ 現在のモデル: ${buttonText}`);
+        results.models.push(buttonText);
+      }
+
+      // モデルメニューを開いて全モデルを取得
+      try {
+        if (aiType === 'chatgpt') {
+          // ChatGPT用Reactイベントトリガー
+          const events = ['mousedown', 'mouseup', 'click', 'pointerdown', 'pointerup'];
+          events.forEach(eventType => {
+            modelButton.dispatchEvent(new PointerEvent(eventType, {
+              bubbles: true,
+              cancelable: true,
+              pointerId: 1
+            }));
+          });
+        } else {
+          modelButton.click();
+        }
+
+        // メニュー表示待機（同期処理）
+        let menu = null;
+        for (let i = 0; i < 10; i++) {
+          setTimeout(() => {}, 200); // 200ms待機
+          menu = findElement(aiSelectors.modelMenu);
+          if (menu) break;
+        }
+
+        if (menu) {
+          const menuItems = menu.querySelectorAll('[role="menuitem"], button, .menu-item');
+          console.log(`📝 ${aiType} メニュー項目: ${menuItems.length}個`);
+
+          menuItems.forEach(item => {
+            const text = getCleanText(item);
+            if (text && !results.models.includes(text)) {
+              // モデル名らしいテキストのみ追加
+              if (text.match(/(GPT|Claude|Gemini|o1|Sonnet|Haiku|Opus|Flash|Pro|Ultra)/i)) {
+                results.models.push(text);
+                console.log(`✅ モデル登録: ${text}`);
+              }
+            }
+          });
+
+          // メニューを閉じる
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+        }
+      } catch (e) {
+        console.debug('メニュー操作エラー:', e);
+      }
+    }
+
+    // 機能検出 - 本番の機能リストを使用
+    console.log(`🔍 ${aiType} 機能を検索...`);
+    const features = aiSelectors.features;
+    if (features) {
+      Object.keys(features).forEach(featureKey => {
+        const featureNames = features[featureKey];
+        for (const featureName of featureNames) {
+          // ページ内で機能名を検索
+          const found = Array.from(document.querySelectorAll('*')).some(el => {
+            const text = el.textContent;
+            return text && text.includes(featureName);
+          });
+
+          if (found && !results.functions.includes(featureName)) {
+            results.functions.push(featureName);
+            console.log(`✅ 機能登録: ${featureName}`);
+          }
+        }
+      });
+    }
+
+    console.log(`✅ ${aiType} 検出完了:`, results);
+
+  } catch (error) {
+    console.error(`❌ ${aiType} 検出エラー:`, error);
+  }
+
+  // メッセージリスナーを設定
+  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.type === 'GET_AI_DETECTION_RESULTS') {
+      sendResponse(results);
+    }
+  });
+
+  return results;
+}
+
+// 6列統合表を更新する関数
+function updateIntegratedTable(config) {
+  console.log('📊 AI統合モデル・機能一覧を表示します:', config);
+
+  const tbody = document.getElementById('ai-integrated-tbody');
+  if (!tbody) return;
+
+  // 各列のデータを準備
+  const columns = [
+    { key: 'chatgpt', dataKey: 'models', name: 'ChatGPTモデル' },
+    { key: 'claude', dataKey: 'models', name: 'Claudeモデル' },
+    { key: 'gemini', dataKey: 'models', name: 'Geminiモデル' },
+    { key: 'chatgpt', dataKey: 'functions', name: 'ChatGPT機能' },
+    { key: 'claude', dataKey: 'functions', name: 'Claude機能' },
+    { key: 'gemini', dataKey: 'functions', name: 'Gemini機能' }
+  ];
+
+  // 各列のデータを取得
+  const columnData = columns.map(col => {
+    const aiConfig = config[col.key];
+    const items = aiConfig && aiConfig[col.dataKey] ? aiConfig[col.dataKey] : [];
+
+    return items.map(item => {
+      let itemName = '';
+
+      // 文字列またはオブジェクトの処理
+      if (typeof item === 'string') {
+        itemName = item;
+      } else if (typeof item === 'object' && item !== null) {
+        itemName = item.name || item.text || item.label || item.value || item.title || 'Unknown';
+      } else {
+        itemName = String(item);
+      }
+
+      // Claudeのモデル名から説明文を除去
+      if (col.key === 'claude' && col.dataKey === 'models' && itemName && typeof itemName === 'string') {
+        const descriptionPatterns = [
+          '情報を', '高性能', 'スマート', '最適な', '高速な', '軽量な', '大規模', '小規模',
+          '複雑な', '日常利用', '課題に対応', '効率的', 'に対応できる', 'なモデル'
+        ];
+
+        for (const pattern of descriptionPatterns) {
+          const patternIndex = itemName.indexOf(pattern);
+          if (patternIndex > 0) {
+            itemName = itemName.substring(0, patternIndex).trim();
+            break;
+          }
+        }
+      }
+
+      return itemName;
+    });
+  });
+
+  // 最大行数を計算
+  const maxRows = Math.max(...columnData.map(col => col.length), 1);
+
+  // テーブルボディをクリア
+  tbody.innerHTML = '';
+
+  // 各行を作成
+  for (let rowIndex = 0; rowIndex < maxRows; rowIndex++) {
+    const row = document.createElement('tr');
+
+    // 各列のセルを作成
+    for (let colIndex = 0; colIndex < 6; colIndex++) {
+      const cell = document.createElement('td');
+      cell.style.cssText = 'border: 1px solid #dee2e6; padding: 8px; vertical-align: top; font-size: 13px;';
+
+      const item = columnData[colIndex][rowIndex];
+      if (item) {
+        // データがある場合
+        cell.innerHTML = `<div style="color: #495057;">${item}</div>`;
+      } else {
+        // データがない場合（空セル）
+        cell.innerHTML = '<div style="color: #dee2e6; text-align: center;">-</div>';
+      }
+
+      row.appendChild(cell);
+    }
+
+    tbody.appendChild(row);
+  }
+
+  // データがない場合の表示
+  if (maxRows === 0 || (maxRows === 1 && columnData.every(col => col.length === 0))) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="6" style="border: 1px solid #dee2e6; padding: 20px; text-align: center; color: #999;">
+          データがありません。上記の「モデル・機能変更検出システム」ボタンをクリックしてデータを取得してください。
+        </td>
+      </tr>
+    `;
+  }
+}
+
+// ストレージからデータを読み込んで表を更新
+function loadAndDisplayIntegratedTable() {
+  chrome.storage.local.get(['ai_config_persistence'], (result) => {
+    const config = result.ai_config_persistence || {
+      chatgpt: { models: [], functions: [] },
+      claude: { models: [], functions: [] },
+      gemini: { models: [], functions: [] }
+    };
+    updateIntegratedTable(config);
+  });
 }
 
 // ===== イベントリスナー: AI変更検出システム =====
 aiDetectionSystemBtn.addEventListener("click", async () => {
   try {
-    const manager = await loadControllerManager();
-    const controller = await manager.loadController('aiDetection');
-    
-    if (controller && controller.runAIDetectionSystem) {
-      await controller.runAIDetectionSystem(updateStatus, injectAutomationScripts);
-    } else {
-      console.error('❌ AI検出コントローラーが正しく読み込まれていません');
-      updateStatus('AI検出コントローラー読み込みエラー', 'error');
-    }
+    await runAIDetectionSystem(updateStatus, injectAutomationScripts);
   } catch (error) {
     console.error('AI検出制御エラー:', error);
     updateStatus('AI検出制御エラー', 'error');
@@ -2983,20 +3333,55 @@ aiDetectionSystemBtn.addEventListener("click", async () => {
 
 
 // ===== イベントリスナー: AIセレクタ変更検出システム =====
+// AISelectorValidationSystemモジュールを使用
+import AISelectorValidationSystem from '../features/ai-selector-validation.js';
+
+let aiValidationSystem = null;
+
 aiSelectorMutationSystemBtn.addEventListener("click", async () => {
+  console.log('🔍 AIセレクタ変更検出システム開始', 'step');
+
   try {
-    const manager = await loadControllerManager();
-    const controller = await manager.loadController('mutationObserver');
-    
-    if (controller && controller.toggleMutationObserverMonitoring) {
-      await controller.toggleMutationObserverMonitoring(aiSelectorMutationSystemBtn, updateStatus);
+    if (!aiValidationSystem) {
+      aiValidationSystem = new AISelectorValidationSystem();
+    }
+
+    if (aiValidationSystem.isRunning) {
+      await aiValidationSystem.stopAISelectorMutationSystem();
+      aiSelectorMutationSystemBtn.textContent = '👁️ AIセレクタ変更検出システム';
+      aiSelectorMutationSystemBtn.style.backgroundColor = '';
+      updateStatus('AIセレクタ変更検出システムが停止されました', 'success');
     } else {
-      console.error('❌ MutationObserverコントローラーが正しく読み込まれていません');
-      updateStatus('MutationObserverコントローラー読み込みエラー', 'error');
+      aiSelectorMutationSystemBtn.textContent = '👁️ AIセレクタ変更検出システム (停止)';
+      aiSelectorMutationSystemBtn.style.backgroundColor = '#dc3545';
+      updateStatus('AIセレクタ変更検出システムを開始中...', 'loading');
+
+      await aiValidationSystem.startAISelectorMutationSystem();
+
+      aiSelectorMutationSystemBtn.textContent = '👁️ AIセレクタ変更検出システム';
+      aiSelectorMutationSystemBtn.style.backgroundColor = '';
+      updateStatus('AIセレクタ変更検出システムが完了しました', 'success');
     }
   } catch (error) {
-    console.error('MutationObserver制御エラー:', error);
-    updateStatus('MutationObserver制御エラー', 'error');
+    console.error('❌ AIセレクタ変更検出システムエラー:', error);
+    updateStatus(`AIセレクタ変更検出システムエラー: ${error.message}`, 'error');
+    aiSelectorMutationSystemBtn.textContent = '👁️ AIセレクタ変更検出システム';
+    aiSelectorMutationSystemBtn.style.backgroundColor = '';
+  }
+});
+
+
+// 古い検証関数は削除済み（ai-selector-validation.jsに移行）
+// async function validateAllSelectorsForAI(windowInfo) { ... } - 削除済み
+
+// 古い実装は削除済み（ai-selector-validation.jsモジュールに移行）
+
+// ストレージの変更を監視（AI変更検出システムが実行されたときに更新）
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === 'local' && changes.ai_config_persistence) {
+    console.log('📊 AI設定が更新されました。統合表を更新します。');
+    const newConfig = changes.ai_config_persistence.newValue || {};
+    updateIntegratedTable(newConfig);
   }
 });
 
@@ -3550,8 +3935,11 @@ document.querySelectorAll('.selector-tab').forEach(tab => {
   });
 });
 
-// 初期表示（ChatGPTタブ）
+// 初期表示（ChatGPTタブと統合表）
 document.addEventListener('DOMContentLoaded', () => {
+  // 統合表を初期化
+  loadAndDisplayIntegratedTable();
+
   // 初期状態でChatGPTのセレクタ情報を表示
   const initialTab = document.querySelector('.selector-tab[data-ai="chatgpt"]');
   if (initialTab && initialTab.classList.contains('active')) {

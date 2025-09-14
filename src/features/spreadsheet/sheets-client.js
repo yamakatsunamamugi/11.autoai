@@ -1,10 +1,13 @@
 // sheets-client.js - Google Sheets APIクライアント
-import { sleep } from '../../utils/sleep-utils.js';
+// Step 3: sleep-utils.jsから1-ai-common-base.jsに移行
+import { getGlobalAICommonBase } from '../../../automations/1-ai-common-base.js';
 
 class SheetsClient {
   constructor() {
     this.baseUrl = "https://sheets.googleapis.com/v4/spreadsheets";
     this.logger = typeof logger !== "undefined" ? logger : console;
+    // Step 3: AI共通基盤からsleep関数を取得
+    this.aiCommonBase = getGlobalAICommonBase();
     
     // Google Sheets API制限
     this.limits = {
@@ -206,7 +209,8 @@ class SheetsClient {
           quotaErrors: this.quotaManager.quotaErrors,
           reason: 'quota_error_detected'
         });
-        await sleep(waitTime);
+        // Step 3: AI共通基盤のsleep関数を使用
+        await this.aiCommonBase.utils.sleep(waitTime);
       }
     }
     
@@ -310,7 +314,8 @@ class SheetsClient {
               errorStats: this.getErrorStats()
             });
             
-            await sleep(retryDelay);
+            // Step 3: AI共通基盤のsleep関数を使用
+            await this.aiCommonBase.utils.sleep(retryDelay);
             continue;
           }
         }
@@ -435,7 +440,8 @@ class SheetsClient {
   async verifyWrittenData(spreadsheetId, range, originalValue, gid = null) {
     try {
       // 少し待機してからデータを取得（API遅延を考慮）
-      await sleep(1000);
+      // Step 3: AI共通基盤のsleep関数を使用
+      await this.aiCommonBase.utils.sleep(1000);
       
       // 実際のセル内容を取得
       const actualData = await this.getSheetData(spreadsheetId, range, gid);
@@ -569,7 +575,8 @@ class SheetsClient {
 
       // API レート制限を避けるため待機（クォータ管理により自動調整）
       if (i < chunks.length - 1) {
-        await sleep(1000); // 200ms → 1000ms に変更
+        // Step 3: AI共通基盤のsleep関数を使用
+      await this.aiCommonBase.utils.sleep(1000); // 200ms → 1000ms に変更
       }
     }
 

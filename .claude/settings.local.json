@@ -76,7 +76,10 @@
       "Bash(then if [ ! -f \"$file\" ])",
       "Bash(then echo \"MISSING: $file\" fi fi done)",
       "Bash(xargs:*)",
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "Bash(do if [ ! -f \"$file\" ])",
+      "Bash(then echo \"MISSING: $file\")",
+      "Bash(do echo \"=== Checking: $file ===\")"
     ],
     "defaultMode": "acceptEdits",
     "additionalDirectories": [

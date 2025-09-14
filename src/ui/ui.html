@@ -162,123 +162,31 @@
         </div>
       </section>
 
-      <!-- AIモデル・機能表示セクション -->
+      <!-- AIモデル・機能統合表示セクション -->
       <section class="ai-models-functions-section" style="margin-bottom: 30px;">
         <h2>🤖 AI モデル・機能一覧</h2>
 
-        <!-- AI Tabs -->
-        <div class="ai-tabs" style="display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid #ddd;">
-          <button class="ai-tab active" data-ai="chatgpt" style="padding: 10px 20px; border: none; background: none; cursor: pointer; border-bottom: 2px solid #10a37f; color: #10a37f; font-weight: 600;">ChatGPT</button>
-          <button class="ai-tab" data-ai="claude" style="padding: 10px 20px; border: none; background: none; cursor: pointer; border-bottom: 2px solid transparent; color: #666;">Claude</button>
-          <button class="ai-tab" data-ai="gemini" style="padding: 10px 20px; border: none; background: none; cursor: pointer; border-bottom: 2px solid transparent; color: #666;">Gemini</button>
-        </div>
-
-        <!-- ChatGPT Panel -->
-        <div class="ai-panel" id="chatgpt-panel" style="display: block;">
-          <div style="display: flex; gap: 20px; margin-bottom: 20px;">
-            <div style="flex: 1;">
-              <h3 style="margin-bottom: 10px; color: #10a37f;">🤖 ChatGPT モデル <span id="chatgpt-model-count" style="background: #f0f0f0; padding: 2px 8px; border-radius: 12px; font-size: 0.8em; color: #666;">0</span></h3>
-              <div style="max-height: 200px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 6px;">
-                <table style="width: 100%; border-collapse: collapse;">
-                  <thead>
-                    <tr style="background: #f8f9fa;">
-                      <th style="padding: 8px; text-align: left; border-bottom: 1px solid #e0e0e0; font-size: 0.9em;">モデル名</th>
-                    </tr>
-                  </thead>
-                  <tbody id="chatgpt-models-list">
-                    <tr><td style="padding: 8px; text-align: center; color: #999;">データを取得するには上記のボタンを実行してください</td></tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-            <div style="flex: 1;">
-              <h3 style="margin-bottom: 10px; color: #10a37f;">⚡ ChatGPT 機能 <span id="chatgpt-function-count" style="background: #f0f0f0; padding: 2px 8px; border-radius: 12px; font-size: 0.8em; color: #666;">0</span></h3>
-              <div style="max-height: 200px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 6px;">
-                <table style="width: 100%; border-collapse: collapse;">
-                  <thead>
-                    <tr style="background: #f8f9fa;">
-                      <th style="padding: 8px; text-align: left; border-bottom: 1px solid #e0e0e0; font-size: 0.9em;">機能名</th>
-                    </tr>
-                  </thead>
-                  <tbody id="chatgpt-functions-list">
-                    <tr><td style="padding: 8px; text-align: center; color: #999;">データを取得するには上記のボタンを実行してください</td></tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Claude Panel -->
-        <div class="ai-panel" id="claude-panel" style="display: none;">
-          <div style="display: flex; gap: 20px; margin-bottom: 20px;">
-            <div style="flex: 1;">
-              <h3 style="margin-bottom: 10px; color: #d97757;">🔮 Claude モデル <span id="claude-model-count" style="background: #f0f0f0; padding: 2px 8px; border-radius: 12px; font-size: 0.8em; color: #666;">0</span></h3>
-              <div style="max-height: 200px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 6px;">
-                <table style="width: 100%; border-collapse: collapse;">
-                  <thead>
-                    <tr style="background: #f8f9fa;">
-                      <th style="padding: 8px; text-align: left; border-bottom: 1px solid #e0e0e0; font-size: 0.9em;">モデル名</th>
-                    </tr>
-                  </thead>
-                  <tbody id="claude-models-list">
-                    <tr><td style="padding: 8px; text-align: center; color: #999;">データを取得するには上記のボタンを実行してください</td></tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-            <div style="flex: 1;">
-              <h3 style="margin-bottom: 10px; color: #d97757;">⚡ Claude 機能 <span id="claude-function-count" style="background: #f0f0f0; padding: 2px 8px; border-radius: 12px; font-size: 0.8em; color: #666;">0</span></h3>
-              <div style="max-height: 200px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 6px;">
-                <table style="width: 100%; border-collapse: collapse;">
-                  <thead>
-                    <tr style="background: #f8f9fa;">
-                      <th style="padding: 8px; text-align: left; border-bottom: 1px solid #e0e0e0; font-size: 0.9em;">機能名</th>
-                    </tr>
-                  </thead>
-                  <tbody id="claude-functions-list">
-                    <tr><td style="padding: 8px; text-align: center; color: #999;">データを取得するには上記のボタンを実行してください</td></tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Gemini Panel -->
-        <div class="ai-panel" id="gemini-panel" style="display: none;">
-          <div style="display: flex; gap: 20px; margin-bottom: 20px;">
-            <div style="flex: 1;">
-              <h3 style="margin-bottom: 10px; color: #4285f4;">✨ Gemini モデル <span id="gemini-model-count" style="background: #f0f0f0; padding: 2px 8px; border-radius: 12px; font-size: 0.8em; color: #666;">0</span></h3>
-              <div style="max-height: 200px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 6px;">
-                <table style="width: 100%; border-collapse: collapse;">
-                  <thead>
-                    <tr style="background: #f8f9fa;">
-                      <th style="padding: 8px; text-align: left; border-bottom: 1px solid #e0e0e0; font-size: 0.9em;">モデル名</th>
-                    </tr>
-                  </thead>
-                  <tbody id="gemini-models-list">
-                    <tr><td style="padding: 8px; text-align: center; color: #999;">データを取得するには上記のボタンを実行してください</td></tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-            <div style="flex: 1;">
-              <h3 style="margin-bottom: 10px; color: #4285f4;">⚡ Gemini 機能 <span id="gemini-function-count" style="background: #f0f0f0; padding: 2px 8px; border-radius: 12px; font-size: 0.8em; color: #666;">0</span></h3>
-              <div style="max-height: 200px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 6px;">
-                <table style="width: 100%; border-collapse: collapse;">
-                  <thead>
-                    <tr style="background: #f8f9fa;">
-                      <th style="padding: 8px; text-align: left; border-bottom: 1px solid #e0e0e0; font-size: 0.9em;">機能名</th>
-                    </tr>
-                  </thead>
-                  <tbody id="gemini-functions-list">
-                    <tr><td style="padding: 8px; text-align: center; color: #999;">データを取得するには上記のボタンを実行してください</td></tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
+        <!-- 6列統合表 -->
+        <div style="overflow-x: auto; border: 1px solid #dee2e6; border-radius: 8px;">
+          <table id="ai-integrated-table" style="width: 100%; border-collapse: collapse; font-size: 14px;">
+            <thead>
+              <tr>
+                <th style="border: 1px solid #dee2e6; padding: 12px; background: #f8f9fa; text-align: center; font-weight: 600; min-width: 150px;">🤖 ChatGPTモデル</th>
+                <th style="border: 1px solid #dee2e6; padding: 12px; background: #f8f9fa; text-align: center; font-weight: 600; min-width: 150px;">🔮 Claudeモデル</th>
+                <th style="border: 1px solid #dee2e6; padding: 12px; background: #f8f9fa; text-align: center; font-weight: 600; min-width: 150px;">✨ Geminiモデル</th>
+                <th style="border: 1px solid #dee2e6; padding: 12px; background: #f8f9fa; text-align: center; font-weight: 600; min-width: 150px;">⚡ ChatGPT機能</th>
+                <th style="border: 1px solid #dee2e6; padding: 12px; background: #f8f9fa; text-align: center; font-weight: 600; min-width: 150px;">🔧 Claude機能</th>
+                <th style="border: 1px solid #dee2e6; padding: 12px; background: #f8f9fa; text-align: center; font-weight: 600; min-width: 150px;">🛠️ Gemini機能</th>
+              </tr>
+            </thead>
+            <tbody id="ai-integrated-tbody">
+              <tr>
+                <td colspan="6" style="border: 1px solid #dee2e6; padding: 20px; text-align: center; color: #999;">
+                  データを読み込み中...
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </section>
 

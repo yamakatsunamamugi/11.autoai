@@ -11,13 +11,16 @@
  * - 既存ログとのマージ処理
  */
 
-import { sleep } from '../../utils/sleep-utils.js';
+// Step 3: sleep-utils.jsから1-ai-common-base.jsに移行
+import { getGlobalAICommonBase } from '../../../automations/1-ai-common-base.js';
 import { ModelExtractor } from './extractors/model-extractor.js';
 import { FunctionExtractor } from './extractors/function-extractor.js';
 
 export class SpreadsheetLogger {
   constructor(logger = console) {
     this.logger = logger;
+    // Step 3: AI共通基盤からsleep関数を取得
+    this.aiCommonBase = getGlobalAICommonBase();
     this.modelExtractor = ModelExtractor;
     this.functionExtractor = FunctionExtractor;
     this.sendTimestamps = new Map(); // key: taskId, value: { time: Date, aiType: string, model: string }
@@ -741,7 +744,8 @@ export class SpreadsheetLogger {
       console.log(`🔍 [SpreadsheetLogger] 書き込み確認開始: ${logCell}`);
       
       // 少し待ってから確認（APIの遅延を考慮）
-      await sleep(2000);  // 待機時間を増やす
+      // Step 3: AI共通基盤のsleep関数を使用
+      await this.aiCommonBase.utils.sleep(2000);  // 待機時間を増やす
       
       // 実際のセルの内容を取得
       const actualData = await sheetsClient.getSheetData(

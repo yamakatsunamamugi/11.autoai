@@ -16,11 +16,17 @@
 
 // タイムアウト設定は削除済み - デフォルト値を使用
 // RetryManager機能を統合済み
+import { getGlobalAICommonBase } from '../../automations/1-ai-common-base.js';
 
 export class AITaskExecutor {
   constructor(logger = console) {
     this.logger = logger;
-    // RetryManager機能はAI共通基盤に統合済み
+    // AI共通基盤からRetryManagerを取得
+    const aiCommonBase = getGlobalAICommonBase();
+    this.retryManager = aiCommonBase?.RetryManager;
+    if (!this.retryManager) {
+      this.logger.error('[AITaskExecutor] RetryManagerが取得できませんでした');
+    }
   }
 
   /**
@@ -88,18 +94,12 @@ export class AITaskExecutor {
         'genspark': 'automations/genspark-automation.js'
       };
 
-      // 基本的な共通スクリプトは必要
-      const commonScripts = [
-        'automations/feature-constants.js',
-        'automations/common-ai-handler.js'
-      ];
-
       // AI固有のスクリプトを追加
-      const aiScript = scriptFileMap[aiTypeLower] || 
+      const aiScript = scriptFileMap[aiTypeLower] ||
                        `automations/${aiTypeLower}-automation.js`;
-      
-      // 共通スクリプトを順番に注入
-      let scriptsToInject = [...commonScripts, aiScript];
+
+      // 共通スクリプトを順番に注入（現在はAI固有のスクリプトのみ）
+      let scriptsToInject = [aiScript];
 
       const injectionStartTime = performance.now();
       this.logger.log(`[AITaskExecutor] 📝 [${taskData.aiType}] スクリプト注入開始:`, {

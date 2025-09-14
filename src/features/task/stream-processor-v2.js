@@ -37,7 +37,8 @@ import { aiUrlManager } from '../../core/ai-url-manager.js';
 // RetryManager機能はStep 10に統合済み
 // ExclusiveControl機能はStep 0-4-1, 0-4-2に統合済み
 // ExclusiveControlLoggerHelper機能はStep 1-6に統合済み
-import { sleep } from '../../utils/sleep-utils.js';
+// Step 3: sleep-utils.jsから1-ai-common-base.jsに移行
+import { getGlobalAICommonBase } from '../../../automations/1-ai-common-base.js';
 import EXCLUSIVE_CONTROL_CONFIG, {
   getTimeoutForFunction,
   getRetryIntervalForFunction
@@ -106,7 +107,7 @@ export default class StreamProcessorV2 {
     // Step 0-1-4: 共通スリープユーティリティ初期化
     // ========================================
     this.log('【StreamProcessor-ステップ0-1-4】共通スリープユーティリティ初期化開始', 'info', 'Step 0-1-4');
-    this.initializeSleepUtils();
+    // スリープユーティリティは別途読み込み済み
 
     // ========================================
     // Step 0-2: タスク生成・管理系初期化
@@ -137,7 +138,12 @@ export default class StreamProcessorV2 {
     // Step 0-3: モニター管理システム初期化
     // ========================================
     this.log('【StreamProcessor-ステップ0-3】モニター管理システム初期化開始', 'info', 'Step 0-3');
-    this.initializeMonitorSystem();
+    // Service Worker環境ではDOM操作をスキップ
+    if (typeof document !== 'undefined') {
+      this.initializeMonitorSystem();
+    } else {
+      this.log('【StreamProcessor-ステップ0-3】Service Worker環境のためモニター管理をスキップ', 'info');
+    }
 
     // ========================================
     // Step 0-4: 排他制御システム初期化
@@ -150,18 +156,7 @@ export default class StreamProcessorV2 {
 
     // Step 0-4-2: 排他制御マネージャー初期化（exclusive-control-manager.js統合）
     this.log('【StreamProcessor-ステップ0-4-2】排他制御マネージャー初期化開始', 'info', 'Step 0-4-2');
-    this.exclusiveManager = new ExclusiveControlManager({
-      controlConfig: {
-        timeouts: EXCLUSIVE_CONTROL_CONFIG.timeouts,
-        markerFormat: EXCLUSIVE_CONTROL_CONFIG.markerFormat,
-        ...config.exclusiveControl
-      },
-      logger: this.logger
-    });
-
-    this.exclusiveLoggerHelper = new ExclusiveControlLoggerHelper({
-      logger: this.logger
-    });
+    this.initializeExclusiveControlManager();
 
     // ========================================
     // Step 0-5: 内部状態初期化
@@ -1121,11 +1116,32 @@ export default class StreamProcessorV2 {
         const batchRanges = ranges.slice(i, i + batchSize);
 
         try {
-          const batchResult = await globalThis.sheetsClient.batchGetSheetData(
-            spreadsheetData.spreadsheetId,
-            batchRanges,
-            spreadsheetData.sheetName
-          );
+          let batchResult;
+
+          // batchGetSheetDataメソッドの存在確認
+          if (globalThis.sheetsClient && typeof globalThis.sheetsClient.batchGetSheetData === 'function') {
+            batchResult = await globalThis.sheetsClient.batchGetSheetData(
+              spreadsheetData.spreadsheetId,
+              batchRanges,
+              spreadsheetData.sheetName
+            );
+          } else {
+            // バッチ取得の代替実装：個別にgetSheetDataを呼び出し
+            batchResult = {};
+            for (const range of batchRanges) {
+              try {
+                const cellData = await globalThis.sheetsClient.getSheetData(
+                  spreadsheetData.spreadsheetId,
+                  range,
+                  spreadsheetData.sheetName
+                );
+                batchResult[range] = cellData.values || [];
+              } catch (cellError) {
+                this.log(`バッチ取得代替エラー（範囲: ${range}）: ${cellError.message}`, 'warning');
+                batchResult[range] = [];
+              }
+            }
+          }
 
           // ステップ5-2-3: 結果を解析
           if (batchResult) {
@@ -1145,7 +1161,7 @@ export default class StreamProcessorV2 {
             });
           }
         } catch (error) {
-          this.log(`バッチ取得エラー: ${error.message}`, 'warn', 'Step 6-2');
+          this.log(`バッチ取得代替処理エラー: ${error.message}`, 'warn', 'Step 6-2');
         }
       }
 
@@ -3095,6 +3111,12 @@ export default class StreamProcessorV2 {
   initializeMonitorElements() {
     this.log('【StreamProcessor-ステップ0-3-1】DOM要素取得中', 'info');
 
+    // Service Worker環境チェック
+    if (typeof document === 'undefined') {
+      this.log('【StreamProcessor-ステップ0-3-1】Service Worker環境のためDOM要素取得をスキップ', 'info');
+      return;
+    }
+
     // UI要素を取得
     this.extensionWindowNumberInput = document.getElementById('extensionWindowNumber');
     this.spreadsheetWindowNumberInput = document.getElementById('spreadsheetWindowNumber');
@@ -3151,6 +3173,12 @@ export default class StreamProcessorV2 {
    */
   async loadWindowSettings() {
     try {
+      // Service Worker環境チェック
+      if (typeof document === 'undefined') {
+        this.log('【StreamProcessor-ステップ0-3-2】Service Worker環境のため設定読み込みをスキップ', 'info');
+        return;
+      }
+
       this.log('【StreamProcessor-ステップ0-3-2】chrome.storage.local から設定取得中', 'info');
 
       const result = await chrome.storage.local.get(['windowSettings']);

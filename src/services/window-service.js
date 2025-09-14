@@ -1,13 +1,27 @@
 /**
  * @fileoverview ウィンドウ管理サービス
- * 
+ *
  * Chrome拡張機能のウィンドウ操作を一元管理するサービスクラス。
  * ウィンドウの作成、位置計算、管理、タブ操作などの機能を提供。
- * 
+ *
  * @class WindowService
  */
 
+// RetryManagerのインポート
+import { getGlobalAICommonBase } from '../../automations/1-ai-common-base.js';
+
 export class WindowService {
+
+  // RetryManagerの初期化
+  static retryManager = null;
+
+  static getRetryManager() {
+    if (!this.retryManager) {
+      const aiCommonBase = getGlobalAICommonBase();
+      this.retryManager = aiCommonBase.RetryManager;
+    }
+    return this.retryManager;
+  }
   
   // アクティブなウィンドウを管理するMap
   static activeWindows = new Map();
@@ -672,26 +686,44 @@ export class WindowService {
         ...chromeOptions
       });
       
-      // ウィンドウ作成後にページが読み込まれるまで待機（RetryManagerを使用）
+      // ウィンドウ作成後にページが読み込まれるまで待機
       if (window.tabs && window.tabs.length > 0) {
         const tabId = window.tabs[0].id;
-        
-        await this.retryManager.executeSimpleRetry({
-          action: async () => {
-            const tab = await chrome.tabs.get(tabId);
-            if (tab.status === 'complete') {
-              console.log(`[WindowService] ポジション${position}のタブ読み込み完了`);
-              return true;
+
+        const retryManager = this.getRetryManager();
+        if (retryManager && retryManager.executeSimpleRetry) {
+          await retryManager.executeSimpleRetry({
+            action: async () => {
+              const tab = await chrome.tabs.get(tabId);
+              if (tab.status === 'complete') {
+                console.log(`[WindowService] ポジション${position}のタブ読み込み完了`);
+                return true;
+              }
+              return null;
+            },
+            isSuccess: (result) => result === true,
+            maxRetries: 10,
+            interval: 500,
+            actionName: 'タブ読み込み待機',
+            context: { tabId, position, url }
+          });
+        } else {
+          // フォールバック: 簡易的なリトライ実装
+          const maxRetries = 10;
+          for (let i = 0; i < maxRetries; i++) {
+            try {
+              const tab = await chrome.tabs.get(tabId);
+              if (tab.status === 'complete') {
+                console.log(`[WindowService] ポジション${position}のタブ読み込み完了`);
+                break;
+              }
+            } catch (e) {
+              // タブが見つからない場合は継続
             }
-            return null;
-          },
-          isSuccess: (result) => result === true,
-          maxRetries: 10,
-          interval: 500,
-          actionName: 'タブ読み込み待機',
-          context: { tabId, position, url }
-        });
-        
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+        }
+
         // 追加待機（動的コンテンツの生成を待つ）
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
