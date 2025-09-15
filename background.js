@@ -148,15 +148,18 @@ chrome.runtime.onInstalled.addListener((details) => {
 });
 
 // Step 4-12: Service Worker起動時のGoogle Services初期化
+// TODO: googleServicesモジュールのインポートが必要
+/*
 (async () => {
   try {
     console.log('[Step 4-13] Google Services初期化開始');
-    await googleServices.initialize();
+    // await googleServices.initialize();
     console.log('[Step 4-14] ✅ Google Services初期化完了');
   } catch (error) {
     console.error('[Step 4-15] ❌ Google Services初期化エラー:', error);
   }
 })();
+*/
 
 // Step 4-16: StreamingServiceManager初期化
 // 現在、初期化に問題があるため一時的に無効化
@@ -231,7 +234,8 @@ self.addEventListener('deactivate', (event) => {
   event.waitUntil((async () => {
     try {
       // Step 9-2: Google Servicesのクリーンアップ
-      await googleServices.cleanup();
+      // TODO: googleServicesモジュールのインポートが必要
+      // await googleServices.cleanup();
       console.log('[Step 9-3] ✅ クリーンアップ完了');
     } catch (error) {
       console.error('[Step 9-4] ❌ クリーンアップエラー:', error);
