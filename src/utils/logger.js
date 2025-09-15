@@ -22,11 +22,22 @@ class Logger {
   }
 
   /**
-   * デバッグモードをlocalStorageから取得
+   * デバッグモードを取得
+   * Service WorkerではlocalStorageが使えないため、chrome.storageを使用
    */
   _getDebugMode() {
-    if (typeof localStorage === 'undefined') return false;
-    return localStorage.getItem('debug_mode') === 'true';
+    // Service Worker環境ではlocalStorageが使えない
+    if (typeof chrome !== 'undefined' && chrome.storage) {
+      // 非同期のため、初期値はfalseで後で更新
+      chrome.storage.local.get('debug_mode', (result) => {
+        this.debugMode = result.debug_mode === true;
+      });
+      return false;
+    }
+    if (typeof localStorage !== 'undefined') {
+      return localStorage.getItem('debug_mode') === 'true';
+    }
+    return false;
   }
 
   /**
