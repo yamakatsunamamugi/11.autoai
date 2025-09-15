@@ -3,45 +3,78 @@
  */
 
 export default {
-  // ESモジュール対応
+  // テスト環境
   testEnvironment: 'node',
+
+  // ESモジュールサポート
   extensionsToTreatAsEsm: ['.js'],
   transform: {},
-  
-  // テストファイルのパターン
+
+  // テストファイルパターン
   testMatch: [
-    '**/test/**/*.test.js',
-    '**/test/**/*.spec.js'
+    '**/tests/**/*.test.js',
+    '**/__tests__/**/*.js'
   ],
-  
-  // カバレッジ対象
+
+  // カバレッジ設定
+  collectCoverage: true,
   collectCoverageFrom: [
     'src/**/*.js',
     '!src/**/*.test.js',
-    '!src/**/*.spec.js'
+    '!src/**/__tests__/**',
+    '!**/node_modules/**',
+    '!**/vendor/**'
   ],
-  
+
   // カバレッジレポート
-  coverageDirectory: 'coverage',
-  coverageReporters: ['text', 'lcov', 'html'],
-  
-  // グローバル設定
-  globals: {
-    chrome: {
-      runtime: { lastError: null },
-      identity: {
-        getAuthToken: jest.fn(),
-        removeCachedAuthToken: jest.fn()
-      }
+  coverageReporters: [
+    'text',
+    'text-summary',
+    'html',
+    'lcov'
+  ],
+
+  // カバレッジ閾値
+  coverageThresholds: {
+    global: {
+      branches: 70,
+      functions: 70,
+      lines: 70,
+      statements: 70
     }
   },
-  
+
+  // モジュール解決
+  moduleNameMapper: {
+    '^@/(.*)$': '<rootDir>/src/$1',
+    '^@tests/(.*)$': '<rootDir>/tests/$1'
+  },
+
   // セットアップファイル
-  setupFilesAfterEnv: ['<rootDir>/test/setup.js'],
-  
-  // タイムアウト
-  testTimeout: 10000,
-  
-  // 詳細なエラー情報
-  verbose: true
+  setupFilesAfterEnv: [
+    '<rootDir>/tests/setup.js'
+  ],
+
+  // グローバル設定
+  globals: {
+    __DEV__: true
+  },
+
+  // タイムアウト設定
+  testTimeout: 30000,
+
+  // 詳細出力
+  verbose: true,
+
+  // ウォッチモード除外
+  watchPathIgnorePatterns: [
+    '/node_modules/',
+    '/dist/',
+    '/coverage/'
+  ],
+
+  // クリアモック
+  clearMocks: true,
+  resetMocks: true,
+  restoreMocks: true
 };
