@@ -1245,11 +1245,8 @@
   return globalScope.AICommonBase;
 })();
 
-// グローバル関数として公開（コンテンツスクリプト互換）
-// ES6モジュールのexportはコンテンツスクリプトでは使用できないため
-// globalScopeを再定義してアクセス
-const globalScope2 = typeof window !== 'undefined' ? window : globalThis;
-globalScope2.getGlobalAICommonBase = function() {
+// ESモジュール用エクスポート
+export function getGlobalAICommonBase() {
   // グローバル変数から取得
   if (typeof window !== 'undefined' && window.AICommonBase) {
     return window.AICommonBase;
@@ -1260,4 +1257,4 @@ globalScope2.getGlobalAICommonBase = function() {
   }
   // Step 2: フォールバック削除 - 該当環境がない場合はnullを返す
   return null;
-};
+}

@@ -317,9 +317,7 @@ class PowerConfiguration {
     if (this.batterySupported) {
       navigator.getBattery().then(battery => {
         battery.addEventListener('levelchange', this.onBatteryChange);
-      }).catch((error) => {
-        console.warn('[PowerConfig] Battery API registration failed:', error);
-      });
+      }).catch(() => {});
     }
   }
 
@@ -335,9 +333,7 @@ class PowerConfiguration {
     if (this.batterySupported) {
       navigator.getBattery().then(battery => {
         battery.removeEventListener('levelchange', this.onBatteryChange);
-      }).catch((error) => {
-        console.warn('[PowerConfig] Battery API unregistration failed:', error);
-      });
+      }).catch(() => {});
     }
   }
 

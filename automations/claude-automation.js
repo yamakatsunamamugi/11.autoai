@@ -149,44 +149,22 @@
     let selectorsLoaded = false;
 
     const loadSelectors = async () => {
-        if (selectorsLoaded) {
-            console.log('📋 [DEBUG] セレクタ既に読み込み済み:', UI_SELECTORS);
-            return UI_SELECTORS;
-        }
+        if (selectorsLoaded) return UI_SELECTORS;
 
         try {
-            console.log('🔄 [DEBUG] JSONファイル読み込み開始...');
-            console.log('📍 [DEBUG] chrome.runtime.getURL存在確認:', typeof chrome.runtime.getURL);
-
-            const url = chrome.runtime.getURL('ui-selectors-data.json');
-            console.log('📍 [DEBUG] JSON URL:', url);
-
-            const response = await fetch(url);
-            console.log('📍 [DEBUG] fetch response status:', response.status);
-
-            console.log('🔄 [DEBUG] データパース中...');
+            console.log('🔄 JSONファイル読み込み中...');
+            const response = await fetch(chrome.runtime.getURL('ui-selectors-data.json'));
+            console.log('🔄 データパース中...');
             const data = await response.json();
-            console.log('📍 [DEBUG] JSONデータ取得:', data);
-            console.log('📍 [DEBUG] data.selectors存在確認:', !!data.selectors);
-
             UI_SELECTORS = data.selectors;
             window.UI_SELECTORS = UI_SELECTORS;
             selectorsLoaded = true;
-
-            console.log('✅ [DEBUG] UI Selectors読み込み完了');
-            console.log('📋 [DEBUG] Claude selectors:', UI_SELECTORS.Claude);
-            console.log('📋 [DEBUG] Claude TEXT_INPUT:', UI_SELECTORS.Claude?.TEXT_INPUT);
-
+            console.log('✅ UI Selectors読み込み完了');
             return UI_SELECTORS;
         } catch (error) {
-            console.error('❌ [DEBUG] ui-selectors-data.json読み込み失敗:', error);
-            console.error('📍 [DEBUG] エラー詳細:', error.message, error.stack);
-            console.log('🔧 [DEBUG] フォールバック: 既存セレクタを使用');
-            console.log('📍 [DEBUG] window.UI_SELECTORS存在確認:', !!window.UI_SELECTORS);
-
+            console.error('❌ ui-selectors-data.json読み込み失敗:', error);
+            console.log('🔧 フォールバック: 既存セレクタを使用');
             UI_SELECTORS = window.UI_SELECTORS || {};
-            console.log('📋 [DEBUG] フォールバック後のUI_SELECTORS:', UI_SELECTORS);
-
             selectorsLoaded = true;
             return UI_SELECTORS;
         }
@@ -217,13 +195,7 @@
 
         // 要素取得（複数セレクタ対応）
         const getElement = async (selectors, description = '') => {
-            console.log(`🔍 [DEBUG] getElement開始: ${description}`);
-            console.log('📍 [DEBUG] 検索するセレクタリスト:', selectors);
-
-            for (let i = 0; i < selectors.length; i++) {
-                const selector = selectors[i];
-                console.log(`📍 [DEBUG] セレクタ${i+1}/${selectors.length}を試行:`, selector);
-
+            for (const selector of selectors) {
                 try {
                     // 特別処理：ウェブ検索トグル
                     if (typeof selector === 'string' && selector.includes('ウェブ検索')) {
@@ -503,19 +475,10 @@ ${prompt}`;
             // ===== ステップ4: テキスト入力（リトライ付き） =====
             await executeStepWithRetry(async () => {
                 console.log('\n■■■ ステップ4: テキスト入力 ■■■');
-                console.log('📍 [DEBUG] UI_SELECTORS全体:', UI_SELECTORS);
-                console.log('📍 [DEBUG] UI_SELECTORS.Claude:', UI_SELECTORS.Claude);
-
-                const inputSelectors = UI_SELECTORS.Claude?.INPUT || UI_SELECTORS.Claude?.TEXT_INPUT || [];
-                console.log('📍 [DEBUG] inputSelectors:', inputSelectors);
-                console.log('📍 [DEBUG] inputSelectors長さ:', inputSelectors.length);
-
+                const inputSelectors = UI_SELECTORS.Claude?.INPUT || [];
                 const inputElement = await getElement(inputSelectors, 'テキスト入力欄');
-                console.log('📍 [DEBUG] inputElement取得結果:', inputElement);
 
                 if (!inputElement) {
-                    console.error('❌ [DEBUG] テキスト入力欄が見つかりません');
-                    console.error('📍 [DEBUG] 検索したセレクタ:', inputSelectors);
                     throw new Error('テキスト入力欄が見つかりません');
                 }
 

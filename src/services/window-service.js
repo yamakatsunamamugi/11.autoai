@@ -7,8 +7,8 @@
  * @class WindowService
  */
 
-// RetryManagerのインポート（グローバル関数として利用）
-import '../../automations/1-ai-common-base.js';
+// RetryManagerのインポート
+import { getGlobalAICommonBase } from '../../automations/1-ai-common-base.js';
 
 export class WindowService {
 
@@ -17,8 +17,8 @@ export class WindowService {
 
   static getRetryManager() {
     if (!this.retryManager) {
-      const aiCommonBase = globalThis.getGlobalAICommonBase?.() || window?.getGlobalAICommonBase?.();
-      this.retryManager = aiCommonBase?.RetryManager;
+      const aiCommonBase = getGlobalAICommonBase();
+      this.retryManager = aiCommonBase.RetryManager;
     }
     return this.retryManager;
   }

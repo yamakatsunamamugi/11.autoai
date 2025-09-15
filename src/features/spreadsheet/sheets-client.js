@@ -1,14 +1,13 @@
 // sheets-client.js - Google Sheets APIクライアント
-// Step 3: sleep-utils.jsから1-ai-common-base.jsに移行（グローバル関数として利用）
-import '../../../automations/1-ai-common-base.js';
+// Step 3: sleep-utils.jsから1-ai-common-base.jsに移行
+import { getGlobalAICommonBase } from '../../../automations/1-ai-common-base.js';
 
 class SheetsClient {
-  constructor(dependencies = {}) {
+  constructor() {
     this.baseUrl = "https://sheets.googleapis.com/v4/spreadsheets";
-    this.logger = dependencies.logger || (typeof logger !== "undefined" ? logger : console);
-    this.authService = dependencies.authService || null;
-    // Step 3: AI共通基盤からsleep関数を取得（グローバル関数を使用）
-    this.aiCommonBase = globalThis.getGlobalAICommonBase?.() || window?.getGlobalAICommonBase?.();
+    this.logger = typeof logger !== "undefined" ? logger : console;
+    // Step 3: AI共通基盤からsleep関数を取得
+    this.aiCommonBase = getGlobalAICommonBase();
     
     // Google Sheets API制限
     this.limits = {
@@ -597,21 +596,6 @@ class SheetsClient {
   }
 
   /**
-   * 認証トークンを取得
-   * DIコンテナまたはglobalThisから取得
-   */
-  async getAuthToken() {
-    if (this.authService) {
-      return await this.authService.getAuthToken();
-    }
-    // フォールバック: globalThisから取得
-    if (globalThis.authService) {
-      return await globalThis.authService.getAuthToken();
-    }
-    throw new Error('AuthService not available');
-  }
-
-  /**
    * 列名生成関数（A, B, ..., Z, AA, AB, ...）
    */
   getColumnName(index) {
@@ -636,7 +620,7 @@ class SheetsClient {
    */
   async getSpreadsheetMetadata(spreadsheetId) {
     return await this.executeWithQuotaManagement(async () => {
-      const token = await this.getAuthToken();
+      const token = await globalThis.authService.getAuthToken();
       const url = `${this.baseUrl}/${spreadsheetId}?fields=properties,sheets(properties)`;
 
       const response = await fetch(url, {
@@ -690,7 +674,7 @@ class SheetsClient {
       }
 
       // Google Sheets API でデータを取得
-      const accessToken = await this.getAuthToken();
+      const accessToken = await globalThis.authService.getAuthToken();
       const range = `'${sheetName}'!A1:CZ1000`;
       const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueRenderOption=FORMATTED_VALUE`;
       
@@ -945,7 +929,7 @@ class SheetsClient {
         return range;
       });
       
-      const token = await this.getAuthToken();
+      const token = await globalThis.authService.getAuthToken();
       const rangesParam = fullRanges.map(r => `ranges=${encodeURIComponent(r)}`).join('&');
       const url = `${this.baseUrl}/${spreadsheetId}/values:batchGet?${rangesParam}&valueRenderOption=FORMATTED_VALUE`;
       
@@ -1008,7 +992,7 @@ class SheetsClient {
         }
       }
 
-      const token = await this.getAuthToken();
+      const token = await globalThis.authService.getAuthToken();
       // valueRenderOptionを追加して、空セルも含めて全データを取得
       const url = `${this.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(range)}?valueRenderOption=FORMATTED_VALUE`;
       
@@ -1377,7 +1361,7 @@ class SheetsClient {
     try {
       // executeWithQuotaManagementでラップしてリトライ機能を有効化
       const result = await this.executeWithQuotaManagement(async () => {
-        const token = await this.getAuthToken();
+        const token = await globalThis.authService.getAuthToken();
         const range = `'${sheetName}'!${cell}`;
         const url = `${this.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(range)}?valueRenderOption=FORMATTED_VALUE`;
         
@@ -1418,7 +1402,7 @@ class SheetsClient {
     try {
       // executeWithQuotaManagementでラップしてリトライ機能を有効化
       const data = await this.executeWithQuotaManagement(async () => {
-        const token = await this.getAuthToken();
+        const token = await globalThis.authService.getAuthToken();
         
         // 各セルに対してrangeを作成
         const ranges = cells.map(cell => `'${sheetName}'!${cell}`);
@@ -1471,7 +1455,7 @@ class SheetsClient {
     try {
       // executeWithQuotaManagementでラップしてリトライ機能を有効化
       const result = await this.executeWithQuotaManagement(async () => {
-        const token = await this.getAuthToken();
+        const token = await globalThis.authService.getAuthToken();
         const fullRange = `'${sheetName}'!${range}`;
         const url = `${this.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(fullRange)}?valueRenderOption=FORMATTED_VALUE`;
         
@@ -1513,7 +1497,7 @@ class SheetsClient {
    */
   async batchUpdate(spreadsheetId, updates) {
     return await this.executeWithQuotaManagement(async () => {
-      const token = await this.getAuthToken();
+      const token = await globalThis.authService.getAuthToken();
       const url = `${this.baseUrl}/${spreadsheetId}/values:batchUpdate`;
 
       const requestBody = {
@@ -1591,7 +1575,7 @@ class SheetsClient {
         }
         
         // 4. API実行
-        const token = await this.getAuthToken();
+        const token = await globalThis.authService.getAuthToken();
         const url = `${this.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(processedRange)}?valueInputOption=USER_ENTERED`;
 
         const requestBody = {
@@ -1692,7 +1676,7 @@ class SheetsClient {
    * @returns {Promise<Object>} 更新結果
    */
   async updateCellWithRichText(spreadsheetId, range, richTextData, gid = null) {
-    const token = await this.getAuthToken();
+    const token = await globalThis.authService.getAuthToken();
     
     // 範囲をA1記法からインデックスに変換
     const cellMatch = range.match(/^([A-Z]+)(\d+)$/);
@@ -2274,16 +2258,11 @@ class SheetsClient {
   }
 }
 
-// デフォルトエクスポート
-export default SheetsClient;
+// グローバルスコープに追加
+self.SheetsClient = SheetsClient;
 
-// グローバルスコープに追加（移行期間用）
-if (typeof self !== "undefined") {
-  self.SheetsClient = SheetsClient;
-}
-
-// シングルトンインスタンスを作成してグローバルに公開（移行期間用）
-if (typeof globalThis !== "undefined" && !globalThis.sheetsClient) {
+// シングルトンインスタンスを作成してグローバルに公開
+if (typeof globalThis !== "undefined") {
   globalThis.sheetsClient = new SheetsClient();
   // 後方互換性のため、旧関数をグローバルに公開
   globalThis.parseSpreadsheetUrl = SheetsClient.parseSpreadsheetUrl;

@@ -1,12 +1,9 @@
 /**
  * @fileoverview Authentication Service
  * OAuth2認証処理を管理するサービス
- *
- * @note google-services.jsのGoogleAuthManagerから統合
- * DIコンテナで管理される統一認証サービス
  */
 
-export class AuthService {
+class AuthService {
   constructor() {
     this.logger = typeof logger !== "undefined" ? logger : console;
     
@@ -101,25 +98,10 @@ export class AuthService {
   }
 }
 
-// デフォルトエクスポート
-export default AuthService;
+// グローバルスコープに追加
+self.AuthService = AuthService;
 
-// 後方互換性のためのシングルトンインスタンス
-let authServiceInstance = null;
-
-export function getAuthService() {
-  if (!authServiceInstance) {
-    authServiceInstance = new AuthService();
-  }
-  return authServiceInstance;
-}
-
-// グローバルスコープに追加（移行期間用）
-if (typeof self !== "undefined") {
-  self.AuthService = AuthService;
-}
-
-// Chrome拡張機能環境でグローバルに公開（移行期間用）
-if (typeof globalThis !== "undefined" && !globalThis.authService) {
-  globalThis.authService = getAuthService();
+// シングルトンインスタンスを作成してグローバルに公開
+if (typeof globalThis !== "undefined") {
+  globalThis.authService = new AuthService();
 }

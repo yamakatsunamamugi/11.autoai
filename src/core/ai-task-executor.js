@@ -16,17 +16,16 @@
 
 // タイムアウト設定は削除済み - デフォルト値を使用
 // RetryManager機能を統合済み
+import { getGlobalAICommonBase } from '../../automations/1-ai-common-base.js';
 
 export class AITaskExecutor {
   constructor(logger = console) {
     this.logger = logger;
-    // AI共通基盤からRetryManagerを取得（グローバル関数経由）
-    const aiCommonBase = typeof globalThis.getGlobalAICommonBase === 'function'
-      ? globalThis.getGlobalAICommonBase()
-      : null;
+    // AI共通基盤からRetryManagerを取得
+    const aiCommonBase = getGlobalAICommonBase();
     this.retryManager = aiCommonBase?.RetryManager;
     if (!this.retryManager) {
-      this.logger.warn('[AITaskExecutor] RetryManagerが取得できませんでした - AI共通基盤未初期化の可能性');
+      this.logger.error('[AITaskExecutor] RetryManagerが取得できませんでした');
     }
   }
 

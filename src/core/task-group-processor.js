@@ -28,8 +28,8 @@ export let taskGroupCache = {
 export function processSpreadsheetData(spreadsheetData) {
   console.log('[Step 2-1] processSpreadsheetData開始');
 
-  // Step 2-2: StreamProcessorV2のシングルトンインスタンスを取得
-  const processor = StreamProcessorV2.getInstance(console);
+  // Step 2-2: StreamProcessorV2のインスタンスを作成
+  const processor = new StreamProcessorV2(console);
 
   // Step 2-3: StreamProcessorV2のprocessSpreadsheetDataメソッドを使用
   const result = processor.processSpreadsheetData(spreadsheetData);

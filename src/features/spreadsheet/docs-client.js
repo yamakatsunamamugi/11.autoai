@@ -1,24 +1,18 @@
 // docs-client.js - Google Docs APIクライアント
 
+// authServiceをグローバルから取得
+const getAuthService = () => {
+  if (globalThis.authService) {
+    return globalThis.authService;
+  }
+  console.warn("AuthService not found in globalThis");
+  return null;
+};
+
 class DocsClient {
-  constructor(dependencies = {}) {
+  constructor() {
     this.docsBaseUrl = "https://docs.googleapis.com/v1/documents";
     this.driveBaseUrl = "https://www.googleapis.com/drive/v3/files";
-    this.authService = dependencies.authService || null;
-  }
-
-  /**
-   * 認証トークンを取得
-   */
-  async getAuthToken() {
-    if (this.authService) {
-      return await this.authService.getAuthToken();
-    }
-    // フォールバック: globalThisから取得
-    if (globalThis.authService) {
-      return await globalThis.authService.getAuthToken();
-    }
-    throw new Error('AuthService not available');
   }
 
   /**
@@ -27,7 +21,9 @@ class DocsClient {
    * @returns {Promise<Object>} 作成されたドキュメント情報
    */
   async createDocument(title) {
-    const token = await this.getAuthToken();
+    const authService = getAuthService();
+    if (!authService) throw new Error("AuthService not available");
+    const token = await authService.getAuthToken();
 
     // ドキュメントを作成
     const createResponse = await fetch(this.docsBaseUrl, {
@@ -67,7 +63,9 @@ class DocsClient {
    * @returns {Promise<Object>} 更新結果
    */
   async insertText(documentId, text, index = 1) {
-    const token = await this.getAuthToken();
+    const authService = getAuthService();
+    if (!authService) throw new Error("AuthService not available");
+    const token = await authService.getAuthToken();
     const url = `${this.docsBaseUrl}/${documentId}:batchUpdate`;
 
     const requests = [
@@ -107,7 +105,9 @@ class DocsClient {
    * @returns {Promise<Object>} 更新結果
    */
   async updateTitle(documentId, newTitle) {
-    const token = await this.getAuthToken();
+    const authService = getAuthService();
+    if (!authService) throw new Error("AuthService not available");
+    const token = await authService.getAuthToken();
     const url = `${this.driveBaseUrl}/${documentId}`;
 
     const response = await fetch(url, {

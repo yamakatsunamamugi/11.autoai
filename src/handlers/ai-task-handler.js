@@ -28,9 +28,6 @@
 // WindowServiceをインポート（ウィンドウ管理の一元化）
 import { WindowService } from '../services/window-service.js';
 
-// DIコンテナからサービスを取得するためのインポート
-import { getGlobalContainer } from '../core/service-registry.js';
-
 export class AITaskHandler {
   constructor() {
     this.logger = console;
@@ -329,6 +326,7 @@ export class AITaskHandler {
     console.log(`[AITaskHandler] STEP 1: 入力パラメータ確認`);
     console.log(`[AITaskHandler]   - spreadsheetId: ${spreadsheetId}`);
     console.log(`[AITaskHandler]   - row: ${row}`);
+    console.log(`[AITaskHandler]   - promptColumns: ${JSON.stringify(promptColumns)}`);
     console.log(`[AITaskHandler]   - sheetName: "${sheetName}" (type: ${typeof sheetName})`);
     
     this.log(`[AITaskHandler] 📋 fetchPromptFromSpreadsheet開始:`, {
@@ -351,6 +349,7 @@ export class AITaskHandler {
       // 列名を取得（例: ['G', 'H', 'I']）
       const columnLetters = promptColumns.map((col, index) => {
         const letter = typeof col === 'string' ? col : this.indexToColumn(col);
+        console.log(`[AITaskHandler]   - promptColumns[${index}]: ${col} -> 列名: ${letter}`);
         return letter;
       });
       
@@ -371,29 +370,19 @@ export class AITaskHandler {
       this.log(`[AITaskHandler] 📊 スプレッドシートから範囲取得: ${range}`);
       
       console.log(`[AITaskHandler] STEP 4: sheetsClient確認`);
-
-      // DIコンテナからsheetsClientを取得
-      let sheetsClient;
-      try {
-        const container = await getGlobalContainer();
-        sheetsClient = await container.get('sheetsClient');
-      } catch (error) {
-        // フォールバック: globalThisから取得
-        sheetsClient = globalThis.sheetsClient;
-      }
-
-      if (!sheetsClient) {
+      // sheetsClientを直接使用（background.jsのグローバル変数）
+      if (!globalThis.sheetsClient) {
         console.error(`[AITaskHandler] ❌ sheetsClientが初期化されていません`);
         this.error(`[AITaskHandler] ❌ sheetsClientが初期化されていません`);
         throw new Error('sheetsClientが初期化されていません');
       }
       console.log(`[AITaskHandler]   - sheetsClient: 利用可能`);
-
+      
       console.log(`[AITaskHandler] STEP 5: Google Sheets API呼び出し`);
       console.log(`[AITaskHandler]   - 呼び出し: sheetsClient.getSheetData("${spreadsheetId}", "${range}")`);
-
+      
       // Google Sheets APIを直接呼び出し
-      const data = await sheetsClient.getSheetData(spreadsheetId, range);
+      const data = await globalThis.sheetsClient.getSheetData(spreadsheetId, range);
       
       console.log(`[AITaskHandler] STEP 6: APIレスポンス受信`);
       console.log('[AITaskHandler]   - Raw API data:', data);
@@ -431,6 +420,7 @@ export class AITaskHandler {
         valuesCount: values.length
       });
       
+      console.log(`[AITaskHandler] STEP 9: プロンプト抽出`);
       const prompts = [];
       
       for (let i = 0; i < values.length; i++) {
@@ -446,6 +436,11 @@ export class AITaskHandler {
         }
       }
       
+      console.log(`[AITaskHandler] STEP 10: プロンプト結果確認`);
+      console.log(`[AITaskHandler]   - 抽出されたプロンプト数: ${prompts.length}`);
+      if (prompts.length > 0) {
+        console.log(`[AITaskHandler]   - 結合後の総文字数: ${prompts.join('\n').length}`);
+      }
       
       this.log(`[AITaskHandler] 📝 プロンプト取得成功:`, {
         count: prompts.length,
