@@ -17,6 +17,11 @@
       "genspark": ["default"]
     }
   },
+  "taskProcessor": {
+    "type": "TaskProcessorV2",
+    "fallbackType": "StreamProcessor",
+    "description": "TaskProcessorV2 | StreamProcessor"
+  },
   "window": {
     "maxCount": 4,
     "positions": [

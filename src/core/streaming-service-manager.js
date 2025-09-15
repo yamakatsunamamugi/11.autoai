@@ -12,6 +12,8 @@ import { ConfigManager } from "./config-manager.js";
 import { EventBus } from "./event-bus.js";
 import { ErrorHandler } from "./error-handler.js";
 import StreamProcessorV2 from "../features/task/stream-processor-v2.js";
+import ProcessorFactory from "./processor-factory.js";
+import TaskGenerator from "../features/task/generator.js";
 
 /**
  * ストリーミング処理サービス管理クラス

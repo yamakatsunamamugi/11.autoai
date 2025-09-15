@@ -28,7 +28,13 @@ console.log('[ServiceWorker] モジュールインポート開始');
 // Step 2-2: 設定とユーティリティ
 import { loadSelectors } from './src/config/ui-selectors-loader.js';
 
-// Step 2-3: 分離したコアモジュール
+// Step 2-3: タスク関連ファイル
+import "./src/features/task/generator.js";
+import TaskGenerator from "./src/features/task/generator.js";
+import TaskQueue from "./src/features/task/queue.js";
+import ProcessorFactory from "./src/core/processor-factory.js";
+
+// Step 2-4: 分離したコアモジュール
 import { logManager } from './src/core/log-manager.js';
 import {
   processSpreadsheetData,
