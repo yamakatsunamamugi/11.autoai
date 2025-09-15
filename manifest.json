@@ -40,7 +40,7 @@
     "default_icon": "icon.png"
   },
   "background": {
-    "service_worker": "background-minimal.js"
+    "service_worker": "background.js"
   },
   "icons": {
     "16": "icon.png",
