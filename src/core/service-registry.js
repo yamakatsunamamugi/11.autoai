@@ -35,7 +35,7 @@ export async function initializeServices() {
   // ========================================
 
   // SheetsClient - スプレッドシート操作（統合版）
-  container.register('sheetsClient', async () => {
+  container.register('sheetsClient', async (container) => {
     // 既存のglobalThis.sheetsClientがあれば使用（移行期間用）
     if (globalThis.sheetsClient) {
       return globalThis.sheetsClient;
@@ -45,8 +45,18 @@ export async function initializeServices() {
     const module = await import('../features/spreadsheet/sheets-client.js');
     const SheetsClient = module.default || module.SheetsClient;
 
-    // 新しいインスタンスを作成
-    const client = new SheetsClient();
+    // AuthServiceを取得
+    let authService = null;
+    try {
+      authService = await container.get('authService');
+    } catch (e) {
+      console.warn('AuthService not available for SheetsClient');
+    }
+
+    // 新しいインスタンスを作成（依存性注入）
+    const client = new SheetsClient({
+      authService: authService
+    });
 
     // グローバル変数にも設定（後方互換性）
     globalThis.sheetsClient = client;

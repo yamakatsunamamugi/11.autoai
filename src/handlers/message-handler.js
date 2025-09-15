@@ -25,6 +25,7 @@ import StreamProcessorV2 from '../features/task/stream-processor-v2.js';
 import SpreadsheetAutoSetup from '../services/spreadsheet-auto-setup.js';
 import { getStreamingServiceManager } from '../core/streaming-service-manager.js';
 import { getGlobalContainer, getService } from '../core/service-registry.js';
+import { parseSpreadsheetUrl } from '../utils/spreadsheet-utils.js';
 
 // DIコンテナから必要なサービスを遅延取得
 let containerInitialized = false;
@@ -242,6 +243,7 @@ export function setupMessageHandler() {
         (async () => {
           try {
             // Step 9-2: ReportExecutorを使用してレポート生成
+            // ReportExecutorはまだ移行が必要
             const ReportExecutor = globalThis.ReportExecutor;
             if (!ReportExecutor) {
               // Step 9-3: ReportExecutorが利用できない場合は簡易処理
@@ -379,7 +381,7 @@ export function setupMessageHandler() {
             }
 
             // Step 12-3: URL解析でスプレッドシートIDとgidを取得
-            const { spreadsheetId, gid } = globalThis.parseSpreadsheetUrl(url);
+            const { spreadsheetId, gid } = parseSpreadsheetUrl(url);
             if (!spreadsheetId) {
               console.error('[Step 12-4] 無効なスプレッドシートURL');
               sendResponse({
@@ -392,11 +394,12 @@ export function setupMessageHandler() {
             // Step 12-5: StreamProcessorV2初期化を確保してからSpreadsheetAutoSetupを実行
             if (!globalThis.SPREADSHEET_CONFIG) {
               console.log('[Step 12-5-1] SPREADSHEET_CONFIG未初期化、StreamProcessorV2シングルトンを取得');
-              globalThis.StreamProcessorV2.getInstance();
+              StreamProcessorV2.getInstance();
             }
 
             const autoSetup = new SpreadsheetAutoSetup();
-            const token = await globalThis.authService.getAuthToken();
+            await initializeServices();
+            const token = await services.authService.getAuthToken();
             const result = await autoSetup.executeAutoSetup(spreadsheetId, token, gid);
 
             // Step 12-6: 結果をUIに返す
@@ -436,7 +439,7 @@ export function setupMessageHandler() {
             }
 
             // Step 13-4: URL解析でスプレッドシートIDとgidを取得
-            const { spreadsheetId, gid } = globalThis.parseSpreadsheetUrl(url);
+            const { spreadsheetId, gid } = parseSpreadsheetUrl(url);
             if (!spreadsheetId) {
               console.error('[Step 13-5] 無効なスプレッドシートURL');
               sendResponse({
@@ -448,16 +451,18 @@ export function setupMessageHandler() {
 
             // Step 13-6: データを読み込み
             const updatedSpreadsheetData =
-              await globalThis.sheetsClient.loadAutoAIData(spreadsheetId, gid);
+              await initializeServices();
+              await services.sheetsClient.loadAutoAIData(spreadsheetId, gid);
 
             // Step 13-7: StreamProcessorV2初期化を確保してから自動セットアップ
             if (!globalThis.SPREADSHEET_CONFIG) {
               console.log('[Step 13-7-1] SPREADSHEET_CONFIG未初期化、StreamProcessorV2シングルトンを取得');
-              globalThis.StreamProcessorV2.getInstance();
+              StreamProcessorV2.getInstance();
             }
 
             const autoSetup = new SpreadsheetAutoSetup();
-            const token = await globalThis.authService.getAuthToken();
+            await initializeServices();
+            const token = await services.authService.getAuthToken();
             await autoSetup.executeAutoSetup(spreadsheetId, token, gid);
 
             // Step 13-8: データを整形（AI列情報を抽出）
@@ -793,6 +798,7 @@ export function setupMessageHandler() {
             const { spreadsheetId, row, promptColumns, sheetName, gid } = request;
 
             // Step 21-2: AITaskHandlerのfetchPromptFromSpreadsheet関数を呼び出し
+            // aiTaskHandlerは移行が必要
             if (globalThis.aiTaskHandler) {
               const prompt = await globalThis.aiTaskHandler.fetchPromptFromSpreadsheet(
                 spreadsheetId,
@@ -856,8 +862,9 @@ export function setupMessageHandler() {
             }
 
             // Step 23-4: グローバルSpreadsheetLoggerを使用（フォールバック）
-            if (!spreadsheetLogger && globalThis.spreadsheetLogger) {
-              spreadsheetLogger = globalThis.spreadsheetLogger;
+            if (!spreadsheetLogger) {
+              await initializeServices();
+              spreadsheetLogger = services.spreadsheetLogger;
             }
 
             console.log(`[Step 23-5] ⏰ 送信時刻記録:`, {
