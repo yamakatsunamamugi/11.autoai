@@ -141,7 +141,74 @@
             return element.textContent.trim().replace(/\s+/g, ' ');
         }
     };
-    
+
+    // 要素の可視性チェック
+    const isElementInteractable = (element) => {
+        if (!element) return false;
+        const rect = element.getBoundingClientRect();
+        const style = window.getComputedStyle(element);
+        return rect.width > 0 &&
+               rect.height > 0 &&
+               style.display !== 'none' &&
+               style.visibility !== 'hidden' &&
+               style.opacity !== '0';
+    };
+
+    // ========================================
+    // ステップ0: ページ準備確認
+    // ========================================
+    const waitForPageReady = async () => {
+        log('\n【Gemini-ステップ0】ページ準備確認', 'step');
+        const maxAttempts = 30; // 最大30秒待機
+        let attempts = 0;
+
+        while (attempts < maxAttempts) {
+            attempts++;
+            log(`[ステップ0] 準備確認 (${attempts}/${maxAttempts})`, 'info');
+
+            // テキスト入力欄の存在をチェック
+            const inputElement = findElement(SELECTORS.textInput);
+
+            if (inputElement && isElementInteractable(inputElement)) {
+                log('✅ [ステップ0] ページ準備完了', 'success');
+                return true;
+            }
+
+            await wait(1000);
+        }
+
+        log('❌ [ステップ0] ページ準備タイムアウト', 'error');
+        throw new Error('ページが準備できませんでした');
+    };
+
+    // ========================================
+    // ステップ0-1: 要素取得リトライ機能
+    // ========================================
+    const getElementWithWait = async (selectors, description = '', timeout = 10000) => {
+        log(`[ステップ0-1] ${description}を取得中...`, 'info');
+        const startTime = Date.now();
+        let attempts = 0;
+
+        while (Date.now() - startTime < timeout) {
+            attempts++;
+            const element = findElement(selectors);
+
+            if (element && isElementInteractable(element)) {
+                log(`✅ [ステップ0-1] ${description}取得成功 (試行${attempts}回)`, 'success');
+                return element;
+            }
+
+            if (attempts % 5 === 0) {
+                log(`[ステップ0-1] ${description}を探索中... (${Math.floor((Date.now() - startTime) / 1000)}秒経過)`, 'info');
+            }
+
+            await wait(500);
+        }
+
+        log(`❌ [ステップ0-1] ${description}取得タイムアウト`, 'error');
+        return null;
+    };
+
     // Canvas形式の構造化されたテキストを取得
     const getStructuredCanvasContent = (element) => {
         if (!element) return '';
@@ -321,13 +388,14 @@
     // ================================================================
     async function executeCore(modelName, featureName, promptText) {
         // ========================================
+        // ステップ0: ページ準備確認
+        // ========================================
+        await waitForPageReady();
+
+        // ========================================
         // ステップ1: ページ初期化チェック
         // ========================================
         log('【Gemini-ステップ1】ページ初期化チェック', 'step');
-
-        // ページ初期読み込み待機（ネット環境を考慮）
-        log('【Gemini-ステップ1-0】ページ初期読み込み待機中...', 'info');
-        await wait(3000);  // 3秒待機
 
         // 基本要素の存在確認
         const criticalElements = {
@@ -516,7 +584,7 @@
             // ステップ2: テキスト入力
             // ========================================
             await logStep('【Gemini-ステップ2】テキスト入力', async () => {
-                const editor = findElement(['.ql-editor']);
+                const editor = await getElementWithWait(['.ql-editor'], 'テキスト入力欄', 10000);
                 if (!editor) throw new Error("テキスト入力欄 (.ql-editor) が見つかりません。");
                 
                 editor.textContent = promptText;

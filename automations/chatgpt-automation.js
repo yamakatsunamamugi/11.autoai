@@ -194,7 +194,7 @@
     }
     
     // 複数セレクタで要素検索（テスト済みコードより改善版）
-    async function findElement(selectors, description = '', maxRetries = 3) {
+    async function findElement(selectors, description = '', maxRetries = 5) {
         for (let retry = 0; retry < maxRetries; retry++) {
             for (const selector of selectors) {
                 try {
@@ -249,7 +249,62 @@
         }
         return null;
     }
-    
+
+    // ========================================
+    // ステップ0: ページ準備確認
+    // ========================================
+    async function waitForPageReady() {
+        log('\n【ChatGPT-ステップ0】ページ準備確認', 'step');
+        const maxAttempts = 30; // 最大30秒待機
+        let attempts = 0;
+
+        while (attempts < maxAttempts) {
+            attempts++;
+            log(`[ステップ0] 準備確認 (${attempts}/${maxAttempts})`, 'info');
+
+            // テキスト入力欄の存在をチェック
+            const inputElement = await findElement(SELECTORS.textInput, 'テキスト入力欄', 1);
+
+            if (inputElement && isElementInteractable(inputElement)) {
+                log('✅ [ステップ0] ページ準備完了', 'success');
+                return true;
+            }
+
+            await sleep(1000);
+        }
+
+        log('❌ [ステップ0] ページ準備タイムアウト', 'error');
+        throw new Error('ページが準備できませんでした');
+    }
+
+    // ========================================
+    // ステップ0-1: 要素取得リトライ機能
+    // ========================================
+    async function getElementWithWait(selectors, description = '', timeout = 10000) {
+        log(`[ステップ0-1] ${description}を取得中...`, 'info');
+        const startTime = Date.now();
+        let attempts = 0;
+
+        while (Date.now() - startTime < timeout) {
+            attempts++;
+            const element = await findElement(selectors, description, 1);
+
+            if (element && isElementInteractable(element)) {
+                log(`✅ [ステップ0-1] ${description}取得成功 (試行${attempts}回)`, 'success');
+                return element;
+            }
+
+            if (attempts % 5 === 0) {
+                log(`[ステップ0-1] ${description}を探索中... (${Math.floor((Date.now() - startTime) / 1000)}秒経過)`, 'info');
+            }
+
+            await sleep(500);
+        }
+
+        log(`❌ [ステップ0-1] ${description}取得タイムアウト`, 'error');
+        return null;
+    }
+
     // ========================================
     // Deep Research/エージェントモード統合処理
     // ========================================
@@ -610,10 +665,6 @@
         window.__v2_execution_complete = false;
         window.__v2_execution_result = null;
         
-        // ページ初期読み込み待機（ネット環境を考慮）
-        console.log('【ChatGPT-ステップ1-0】⏳ ページ初期読み込み待機中...');
-        await sleep(3000);  // 3秒待機
-        
         console.log('%c🚀 ChatGPT V2 タスク実行開始', 'color: #00BCD4; font-weight: bold; font-size: 16px');
         console.log('受信したタスクデータ:', {
             model: taskData.model,
@@ -621,8 +672,13 @@
             promptLength: taskData.prompt?.length || taskData.text?.length || 0,
             hasPrompt: !!(taskData.prompt || taskData.text)
         });
-        
+
         try {
+            // ========================================
+            // ステップ0: ページ準備確認
+            // ========================================
+            await waitForPageReady();
+
             // ========================================
             // ステップ1: ページ準備状態チェック（初回実行の問題を解決）
             // ========================================
@@ -767,22 +823,8 @@ ${prompt}`;
             // ========================================
             log('\n【ChatGPT-ステップ2】テキスト入力', 'step');
 
-            // 複数回試行してテキスト入力欄を検索
-            let input = null;
-            let inputAttempts = 0;
-            const maxInputAttempts = 10;
-
-            while (!input && inputAttempts < maxInputAttempts) {
-                inputAttempts++;
-                input = await findElement(SELECTORS.textInput, 'テキスト入力欄', 3);
-
-                if (!input) {
-                    if (inputAttempts < maxInputAttempts) {
-                        log(`テキスト入力欄が見つかりません。待機中... (${inputAttempts}/${maxInputAttempts})`, 'warning');
-                        await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
-                    }
-                }
-            }
+            // getElementWithWaitを使用してテキスト入力欄を検索
+            let input = await getElementWithWait(SELECTORS.textInput, 'テキスト入力欄', 10000);
 
             if (!input) {
                 // 最後の手段として、より広範囲の検索を試行
