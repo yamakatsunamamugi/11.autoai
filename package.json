@@ -14,7 +14,15 @@
     "format": "prettier --write 'src/**/*.js'",
     "dev": "echo 'Chrome拡張機能として実行してください'",
     "setup": "./scripts/setup.sh",
-    "clean": "rm -rf node_modules backup_files/*.backup"
+    "clean": "rm -rf node_modules backup_files/*.backup",
+    "build": "node scripts/build.js",
+    "build:dev": "NODE_ENV=development node scripts/build.js",
+    "build:prod": "NODE_ENV=production node scripts/build.js",
+    "release": "./scripts/release.sh",
+    "release:patch": "./scripts/release.sh patch",
+    "release:minor": "./scripts/release.sh minor",
+    "release:major": "./scripts/release.sh major",
+    "package": "cd dist && zip -r extension.zip build/*"
   },
   "keywords": [
     "chrome-extension",
