@@ -1109,13 +1109,17 @@ export class SpreadsheetLogger {
         aiTypes: pendingLogs.map(log => log.aiType)
       });
       
-      // スプレッドシートに書き込み（globalThisから取得）
-      if (globalThis.sheetsClient) {
-        await globalThis.sheetsClient.updateCell(
-          globalThis.currentSpreadsheetId || '',
+      // スプレッドシートに書き込み
+      const sheetsClient = this.sheetsClient || globalThis.sheetsClient;
+      const spreadsheetId = globalThis.currentSpreadsheetId || '';
+      const gid = globalThis.currentGid || '0';
+
+      if (sheetsClient) {
+        await sheetsClient.updateCell(
+          spreadsheetId,
           logCell,
           mergedLog,
-          globalThis.currentGid || '0'
+          gid
         );
         
         console.log(`✅ [SpreadsheetLogger] 部分統合書き込み完了: ${logCell}`);

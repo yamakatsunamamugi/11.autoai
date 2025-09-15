@@ -151,21 +151,25 @@ export async function initializeServices() {
     const module = await import('../features/logging/spreadsheet-logger.js');
     const SpreadsheetLogger = module.default || module.SpreadsheetLogger;
 
-    // SheetsClientを取得（必要に応じて）
+    // 依存サービスを取得
     let sheetsClient = null;
+    let logManager = null;
     try {
       sheetsClient = await container.get('sheetsClient');
     } catch (e) {
       console.warn('SpreadsheetLogger: sheetsClientが利用できません', e);
     }
-
-    // 新しいインスタンスを作成
-    const logger = new SpreadsheetLogger(console);
-
-    // sheetsClientがあれば設定
-    if (sheetsClient) {
-      logger.sheetsClient = sheetsClient;
+    try {
+      logManager = await container.get('logManager');
+    } catch (e) {
+      // logManagerは後から作成されるのでエラーを無視
     }
+
+    // 新しいインスタンスを作成（依存性注入）
+    const logger = new SpreadsheetLogger(console, {
+      sheetsClient: sheetsClient,
+      logManager: logManager
+    });
 
     // グローバル変数にも設定（後方互換性）
     globalThis.spreadsheetLogger = logger;

@@ -44,6 +44,40 @@ import EXCLUSIVE_CONTROL_CONFIG, {
   getRetryIntervalForFunction
 } from '../../config/exclusive-control-config.js';
 
+// DIコンテナからサービスを取得
+let servicesCache = {};
+let servicesInitialized = false;
+
+/**
+ * DIコンテナからサービスを取得（キャッシュ付き）
+ */
+async function getServices() {
+  if (servicesInitialized) return servicesCache;
+
+  try {
+    // DIコンテナから取得を試みる
+    const { getGlobalContainer } = await import('../../core/service-registry.js');
+    const container = await getGlobalContainer();
+
+    servicesCache.spreadsheetLogger = await container.get('spreadsheetLogger');
+    servicesCache.sheetsClient = await container.get('sheetsClient');
+    servicesCache.authService = await container.get('authService');
+    servicesCache.powerManager = await container.get('powerManager');
+
+    servicesInitialized = true;
+  } catch (error) {
+    console.warn('[StreamProcessorV2] DIコンテナからサービス取得失敗、globalThisを使用:', error);
+
+    // フォールバック: globalThisから取得
+    servicesCache.spreadsheetLogger = globalThis.spreadsheetLogger || null;
+    servicesCache.sheetsClient = globalThis.sheetsClient || null;
+    servicesCache.authService = globalThis.authService || null;
+    servicesCache.powerManager = globalThis.powerManager || null;
+  }
+
+  return servicesCache;
+}
+
 // SpreadsheetLoggerをキャッシュ
 let SpreadsheetLogger = null;
 
@@ -55,7 +89,10 @@ let SpreadsheetLogger = null;
 async function getSpreadsheetLogger() {
   if (!SpreadsheetLogger) {
     try {
-      if (globalThis.SpreadsheetLogger) {
+      const services = await getServices();
+      if (services.spreadsheetLogger) {
+        SpreadsheetLogger = services.spreadsheetLogger.constructor || services.spreadsheetLogger;
+      } else if (globalThis.SpreadsheetLogger) {
         SpreadsheetLogger = globalThis.SpreadsheetLogger;
       } else if (globalThis.spreadsheetLogger) {
         SpreadsheetLogger = globalThis.spreadsheetLogger.constructor;
@@ -236,7 +273,7 @@ export default class StreamProcessorV2 {
    */
   log(message, type = 'info', step = null) {
     // デバッグレベルのログはスキップ（本番環境でのパフォーマンス向上）
-    const LOG_LEVEL = globalThis.LOG_LEVEL || 'info'; // debug, info, warning, error
+    const LOG_LEVEL = (typeof globalThis !== 'undefined' && globalThis.LOG_LEVEL) || 'info'; // debug, info, warning, error
     const levels = { debug: 0, info: 1, warning: 2, error: 3, success: 1, step: 1 };
 
     if (levels[type] < levels[LOG_LEVEL]) {
@@ -360,7 +397,8 @@ export default class StreamProcessorV2 {
     this.log('スリープ防止を開始', 'info', '2-1');
     try {
       // powerManagerはthisまたはglobalThisから取得
-      const powerManager = this.powerManager || globalThis.powerManager;
+      const services = await getServices();
+      const powerManager = this.powerManager || services.powerManager || globalThis.powerManager;
       if (powerManager) {
         await powerManager.startProtection('stream-processor-dynamic');
         this.log('PowerManager保護開始', 'success', '2-1');
@@ -1913,8 +1951,10 @@ export default class StreamProcessorV2 {
    */
   async cleanupAndStopProtection(reason) {
     try {
-      if (globalThis.powerManager) {
-        await globalThis.powerManager.stopProtection('stream-processor-dynamic');
+      const services = await getServices();
+      const powerManager = services.powerManager || globalThis.powerManager;
+      if (powerManager) {
+        await powerManager.stopProtection('stream-processor-dynamic');
         this.logger.log(`[StreamProcessorV2] 🔓 ${reason}: スリープ防止を解除`);
       }
     } catch (error) {

@@ -1,0 +1,123 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop, 'fix-*', 'feature-*' ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Run linter
+      run: npm run lint || true  # 現在はESLint未設定のためエラーを無視
+
+    - name: Run tests
+      run: npm test
+
+    - name: Run Node.js tests
+      run: |
+        node test/test-di-container.js
+        node test/test-log-service.js
+
+    - name: Generate coverage report
+      run: npm run test:coverage || true
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage/lcov.info
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
+
+  build:
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Use Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: 18.x
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Check Chrome Extension manifest
+      run: |
+        echo "🔍 Checking manifest.json..."
+        if [ -f "manifest.json" ]; then
+          node -e "const m = require('./manifest.json'); console.log('✅ Manifest version:', m.version);"
+        else
+          echo "❌ manifest.json not found!"
+          exit 1
+        fi
+
+    - name: Validate project structure
+      run: |
+        echo "📁 Validating project structure..."
+        required_files=("background.js" "manifest.json" "package.json")
+        for file in "${required_files[@]}"; do
+          if [ -f "$file" ]; then
+            echo "✅ $file exists"
+          else
+            echo "❌ $file is missing!"
+            exit 1
+          fi
+        done
+
+    - name: Create Chrome Extension ZIP
+      run: |
+        echo "📦 Creating extension package..."
+        zip -r chrome-extension.zip manifest.json background.js src/ ui/ icons/ -x "*.test.js" -x "*/.git/*" -x "*/node_modules/*"
+        echo "✅ Extension package created: chrome-extension.zip"
+
+    - name: Upload extension artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: chrome-extension-${{ github.sha }}
+        path: chrome-extension.zip
+        retention-days: 30
+
+  security:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Run security audit
+      run: npm audit --audit-level=moderate || true
+
+    - name: Check for secrets
+      run: |
+        echo "🔐 Checking for exposed secrets..."
+        # 簡易的なシークレットチェック
+        if grep -r "api_key\|secret_key\|password" --include="*.js" --exclude-dir=node_modules --exclude-dir=.git .; then
+          echo "⚠️ Warning: Potential secrets found in code"
+        else
+          echo "✅ No obvious secrets found"
+        fi

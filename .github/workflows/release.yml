@@ -1,0 +1,76 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Use Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: 18.x
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Run tests
+      run: npm test
+
+    - name: Update manifest version
+      run: |
+        VERSION=${GITHUB_REF#refs/tags/v}
+        echo "🏷️ Updating manifest.json version to $VERSION"
+        node -e "const fs = require('fs'); const m = require('./manifest.json'); m.version = '$VERSION'; fs.writeFileSync('./manifest.json', JSON.stringify(m, null, 2));"
+
+    - name: Create Chrome Extension package
+      run: |
+        echo "📦 Creating Chrome Extension package..."
+        mkdir -p dist
+        zip -r dist/chrome-extension-${GITHUB_REF#refs/tags/}.zip manifest.json background.js src/ ui/ icons/ -x "*.test.js" -x "*/.git/*" -x "*/node_modules/*" -x "*/test/*"
+        echo "✅ Package created"
+
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ github.ref }}
+        body: |
+          ## 🎆 Release ${{ github.ref }}
+
+          ### ✨ 新機能
+          - DIコンテナシステム
+          - ログサービス統合
+          - テストフレームワーク
+
+          ### 🔧 改善
+          - globalThis使用の削減
+          - コード品質の向上
+
+          ### 📦 インストール
+          1. chrome-extension.zipをダウンロード
+          2. Chromeの拡張機能管理で「パッケージ化されていない拡張機能を読み込む」
+          3. ZIPファイルを選択
+        draft: false
+        prerelease: false
+
+    - name: Upload Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./dist/chrome-extension-${{ github.ref_name }}.zip
+        asset_name: chrome-extension-${{ github.ref_name }}.zip
+        asset_content_type: application/zip
