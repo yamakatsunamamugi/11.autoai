@@ -1,0 +1,43 @@
+{
+  "name": "autoai-chrome-extension",
+  "version": "1.0.0",
+  "description": "AI自動化Chrome拡張機能 - スプレッドシート連携で複数AIを並列処理",
+  "type": "module",
+  "main": "background.js",
+  "scripts": {
+    "test": "node test/test-di-container.js",
+    "test:all": "node test/run-all-tests.js",
+    "lint": "eslint src/**/*.js",
+    "format": "prettier --write 'src/**/*.js'",
+    "dev": "echo 'Chrome拡張機能として実行してください'",
+    "setup": "./scripts/setup.sh",
+    "clean": "rm -rf node_modules backup_files/*.backup"
+  },
+  "keywords": [
+    "chrome-extension",
+    "ai",
+    "automation",
+    "google-sheets",
+    "chatgpt",
+    "claude",
+    "gemini"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "eslint": "^8.50.0",
+    "prettier": "^3.0.3",
+    "jest": "^29.7.0"
+  },
+  "dependencies": {},
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/11.autoai.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/11.autoai/issues"
+  }
+}

@@ -2258,11 +2258,16 @@ class SheetsClient {
   }
 }
 
-// グローバルスコープに追加
-self.SheetsClient = SheetsClient;
+// デフォルトエクスポート
+export default SheetsClient;
 
-// シングルトンインスタンスを作成してグローバルに公開
-if (typeof globalThis !== "undefined") {
+// グローバルスコープに追加（移行期間用）
+if (typeof self !== "undefined") {
+  self.SheetsClient = SheetsClient;
+}
+
+// シングルトンインスタンスを作成してグローバルに公開（移行期間用）
+if (typeof globalThis !== "undefined" && !globalThis.sheetsClient) {
   globalThis.sheetsClient = new SheetsClient();
   // 後方互換性のため、旧関数をグローバルに公開
   globalThis.parseSpreadsheetUrl = SheetsClient.parseSpreadsheetUrl;

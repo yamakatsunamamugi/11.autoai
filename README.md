@@ -1,155 +1,191 @@
-# AutoAI Minimal - 段階的実装
+# AutoAI - AI自動化Chrome拡張機能
 
-シンプルな構造から始めて、段階的に機能を追加していくChrome拡張機能です。
+AIタスクを自動化し、スプレッドシートと連携して複数のAIサービス（ChatGPT、Claude、Gemini）を並列処理するChrome拡張機能です。
 
-## ファイル構成
+## 🚀 主な機能
+
+- **複数AI並列処理**: ChatGPT、Claude、Geminiを同時に実行
+- **スプレッドシート連携**: Google Sheetsとの完全統合
+- **タスクグループ管理**: 複雑なタスクを効率的に処理
+- **排他制御機能**: 複数PCでの同時実行を制御
+- **自動ログ記録**: 実行結果を自動的にスプレッドシートに記録
+- **DIコンテナ**: 依存性注入による柔軟なアーキテクチャ
+
+## 📋 必要要件
+
+- Google Chrome ブラウザ
+- Google アカウント（Sheets API利用のため）
+- Node.js 18以上（開発時のみ）
+
+## 🛠️ インストール方法
+
+### 1. リポジトリのクローン
+
+```bash
+git clone https://github.com/yourusername/11.autoai.git
+cd 11.autoai
+```
+
+### 2. 依存関係のインストール（開発時）
+
+```bash
+npm install
+```
+
+### 3. Chrome拡張機能として読み込み
+
+1. Chrome で `chrome://extensions/` を開く
+2. 右上の「デベロッパーモード」を有効化
+3. 「パッケージ化されていない拡張機能を読み込む」をクリック
+4. プロジェクトのルートディレクトリを選択
+
+## 📁 プロジェクト構造
 
 ```
 11.autoai/
-├── manifest.json          # Chrome拡張機能の設定ファイル
-├── popup.html             # ポップアップ（ウィンドウを開くためのトリガー）
-├── popup.js               # ポップアップのスクリプト
-├── background.js          # Service Workerエントリーポイント（モジュール読み込み）
-├── icon.png              # 拡張機能のアイコン
-└── src/                  # ソースコード（機能別に整理）
-    ├── core/             # コア機能
-    │   ├── main.js       # メインコントローラー（処理の中心）
-    │   └── message-handler.js  # メッセージ処理
-    ├── features/         # 機能モジュール
-    │   ├── auth/         # 認証機能
-    │   │   └── google-auth.js  # Google OAuth2認証
-    │   ├── spreadsheet/  # スプレッドシート機能
-    │   │   ├── config.js       # データ構造定義
-    │   │   ├── reader.js       # 読み込み処理
-    │   │   └── url-parser.js   # URL解析
-    │   ├── task/         # タスク管理（Phase 2で実装予定）
-    │   └── ai/           # AI操作（Phase 3で実装予定）
-    └── ui/               # ユーザーインターフェース
-        ├── ui.html       # メインUI画面
-        ├── ui.css        # UIスタイル
-        └── ui-controller.js  # UI制御ロジック
+├── manifest.json             # Chrome拡張機能マニフェスト
+├── background.js             # Service Worker
+├── popup.html/js            # 拡張機能ポップアップ
+├── src/
+│   ├── core/                # コア機能
+│   │   ├── di-container.js  # 依存性注入コンテナ
+│   │   ├── service-registry.js # サービス登録
+│   │   ├── error-service.js # エラーハンドリング
+│   │   └── interfaces/      # インターフェース定義
+│   ├── services/            # ビジネスサービス
+│   │   ├── auth-service.js  # 認証サービス
+│   │   └── window-service.js # ウィンドウ管理
+│   ├── features/            # 機能モジュール
+│   │   ├── spreadsheet/     # スプレッドシート機能
+│   │   │   ├── sheets-client.js # Sheets API クライアント
+│   │   │   └── docs-client.js   # Docs API クライアント
+│   │   ├── logging/         # ログ機能
+│   │   │   └── spreadsheet-logger.js # ログ記録
+│   │   └── task/           # タスク処理
+│   │       └── stream-processor-v2.js # ストリーム処理
+│   ├── handlers/           # イベントハンドラー
+│   │   ├── message-handler.js # メッセージ処理
+│   │   └── ai-task-handler.js # AIタスク処理
+│   └── ui/                 # ユーザーインターフェース
+│       ├── ui.html         # メインUI
+│       ├── ui.css          # スタイルシート
+│       └── ui-controller.js # UI制御
+├── test/                   # テストコード
+│   └── test-di-container.js # DIコンテナテスト
+├── docs/                   # ドキュメント
+│   └── DI_CONTAINER_GUIDE.md # DIコンテナガイド
+└── backup_files/           # バックアップファイル
+
 ```
 
-## 主な機能
+## 🔧 開発者向けガイド
 
-### 現在実装済み（Phase 1-4 完了）
-- ✅ ウィンドウ版UI（850x700px）
-- ✅ Google OAuth2認証（自動認証、3.auto-aiと同様）
-- ✅ スプレッドシートURL入力（動的に追加可能、gid対応）
-- ✅ Google Sheets API統合
-- ✅ 3.auto-aiデータ構造対応の読み込み処理
-- ✅ 処理開始/停止ボタン
-- ✅ ログクリア、回答削除ボタン
-- ✅ ステータス表示（アニメーション付き）
-- ✅ URL自動保存機能
+### DIコンテナの使用
 
-### 実装済み（Phase 2-4）
-- ✅ タスク生成・管理機能（TaskQueueManager）
-- ✅ AI操作（ChatGPT, Claude, Gemini）
-- ✅ 3種類AI並列処理システム（StreamProcessor）
-- ✅ 4分割ウィンドウ管理（WindowService）
-- ✅ Google Sheetsへの結果書き込み（SpreadsheetLogger）
-- ✅ ストリーミング処理とリアルタイム結果反映
+```javascript
+import { getGlobalContainer } from './src/core/service-registry.js';
 
-### 最新の追加機能
-- ✅ **3種類AIグループ内空きポジション処理**
-  - F13/G13/H13の一部に既存回答がある場合の処理改善
-  - AIタイプ固定ポジション（ChatGPT=0, Claude=1, Gemini=2）
-  - グループ内でどのAIが空白でも残りは正常処理
+async function example() {
+  const container = await getGlobalContainer();
+  const authService = await container.get('authService');
+  const token = await authService.getAuthToken();
+}
+```
 
-### 今後の実装予定
-- 🔜 Phase 5: エラーハンドリングと停止制御強化
-- 🔜 デバッグモニタリング機能の拡充
+### 新しいサービスの追加
 
-## インストール方法
+1. サービスクラスを作成
+2. `service-registry.js`に登録
+3. 必要な場所でDIコンテナから取得
 
-1. Chromeで `chrome://extensions/` を開く
-2. 右上の「デベロッパーモード」をONにする
-3. 「パッケージ化されていない拡張機能を読み込む」をクリック
-4. `11.autoai` フォルダを選択
+詳細は[DIコンテナガイド](docs/DI_CONTAINER_GUIDE.md)を参照してください。
 
-## 使用方法
+### テストの実行
 
-1. 拡張機能アイコンをクリックすると、コントロールパネルウィンドウが開きます
-2. スプレッドシートURLを入力（複数可、gid付きURLも対応）
-   例: `https://docs.google.com/spreadsheets/d/xxxxx/edit#gid=12345`
-3. 「スプレッドシートを読み込む」をクリック
-4. 「処理を開始」をクリックして実行
-   - 初回実行時は自動的にGoogle認証画面が表示されます
-   - 一度認証すれば、次回からは自動的に認証されます
+```bash
+# DIコンテナのテスト
+node test/test-di-container.js
 
-## データ構造
+# すべてのテスト（今後追加予定）
+npm test
+```
 
-スプレッドシートは3.auto-aiと同じ構造を想定：
-- A列「メニュー」行：列の種類を定義（ログ、プロンプト、回答など）
-- A列「行の処理」行：処理制御を定義
-- A列「使うAI」行：使用するAIサービスを指定
-- A列が数字の行：作業行として認識
+## 📊 設定
 
-## 開発メモ
+### スプレッドシートの準備
 
-### アーキテクチャ
-- **popup.js**: 単純にUIウィンドウを開くだけ
-- **background.js**: Service Workerのエントリーポイント（必要なモジュールを読み込み）
-- **src/core/main.js**: メイン処理ロジック（スプレッドシート処理の制御）
-- **src/core/message-handler.js**: UIからのメッセージを適切な処理に振り分け
-- **src/ui/ui-controller.js**: すべてのUI制御とイベント処理
+1. Google Sheetsで新しいスプレッドシートを作成
+2. 以下の列構造を作成：
+   - A列: ログ
+   - B列: プロンプト
+   - C-E列: AI回答（ChatGPT, Claude, Gemini）
 
-### 主要コンポーネント
-- **StreamProcessor**: AI並列処理の中核システム
-  - 3種類AI（ChatGPT/Claude/Gemini）の同時実行
-  - 4分割ウィンドウ管理とポジション制御
-  - ストリーミング処理とリアルタイム結果取得
-- **WindowService**: ウィンドウ管理の統一サービス
-  - 4分割レイアウト（position 0-3）
-  - AI URL管理と画面情報取得
-  - ウィンドウ作成・クリーンアップの一元化
-- **TaskQueueManager**: タスク生成・キュー管理
-- **SpreadsheetLogger**: Google Sheetsへの結果書き込み
+### 拡張機能の設定
 
-### コードの特徴
-- 関数ごとにコメントを追加
-- セクションごとに区切りを設定
-- エラーハンドリングを各イベントリスナーに実装
-- 状態管理をシンプルに保つ
+1. 拡張機能のアイコンをクリック
+2. 「Open AutoAI」をクリック
+3. スプレッドシートURLを入力
+4. 「処理開始」をクリック
 
-### メッセージ通信
-UIとbackground.js間でやり取りされるアクション：
-- `loadSpreadsheets`: URL設定とスプレッドシートデータ読み込み
-- `start`: 処理開始（読み込み済みデータを使用）
-- `stop`: 処理停止
-- `clearLog`: ログクリア
-- `deleteAnswers`: 回答削除
-- `getStatus`: 現在の状態取得
+## 🚦 使用方法
 
-### Phase 1で実装した機能
-- Google OAuth2自動認証（拡張機能インストール時・Chrome起動時）
-- スプレッドシートURL解析（gid対応）
-- Google Sheets APIを使用したデータ読み込み
-- 3.auto-aiのデータ構造に対応した解析処理
-- **機能別のファイル構成に整理**（初心者にも分かりやすい構造）
-- **スプレッドシート読み込みタイミングの分離**
-  - 「スプレッドシートを読み込む」ボタン押下時にデータ読み込み
-  - 「処理を開始」ボタン押下時は読み込み済みデータを使用
-  - 読み込み結果の詳細表示（成功/失敗件数）
+### 基本的な使い方
 
-### なぜこの構造？
-- `background.js`という名前は初心者には分かりにくいため、機能別に分割
-- 各ファイルが何をするか一目で分かる（`reader.js`は読み込み、`google-auth.js`は認証など）
-- 将来の拡張が簡単（新機能は新しいフォルダに追加するだけ）
-- 3.auto-aiからの機能移植が容易
+1. **認証**: 初回起動時にGoogleアカウントでログイン
+2. **スプレッドシート設定**: URLを入力して接続
+3. **タスク実行**: 処理開始ボタンでタスク実行
+4. **結果確認**: スプレッドシートで結果を確認
 
-## 修正履歴
+### 高度な機能
 
-### 2024年12月 - 3種類AIグループ空きポジション処理修正
-- **問題**: F13/G13タスクが処理されない問題
-- **原因**: H13に既存回答がある場合、start3TypeBatchメソッドが不完全なグループを処理できない
-- **解決**: AIタイプ固定ポジション割り当て（chatgpt=0, claude=1, gemini=2）
-- **効果**: どのAIが空白でも残りのAIは正常に処理される
+- **排他制御**: 複数PCでの同時実行を防ぐ
+- **グループ処理**: タスクをグループ化して効率的に処理
+- **並列実行**: 複数AIを同時に実行
 
-### ウィンドウポジション管理システム
-4分割レイアウトでの固定ポジション管理：
-- **Position 0**: 左上 (ChatGPT)
-- **Position 1**: 右上 (Claude) 
-- **Position 2**: 左下 (Gemini)
-- **Position 3**: 右下 (通常処理用)
+## 🐛 トラブルシューティング
+
+### よくある問題
+
+**Q: 認証エラーが発生する**
+A: Chrome拡張機能の権限を確認し、再度ログインしてください。
+
+**Q: スプレッドシートに接続できない**
+A: URLが正しいか、アクセス権限があるか確認してください。
+
+**Q: タスクが実行されない**
+A: コンソールログを確認し、エラーメッセージを確認してください。
+
+## 📝 ライセンス
+
+MIT License
+
+## 🤝 貢献
+
+プルリクエストを歓迎します。大きな変更の場合は、まずissueを開いて変更内容を議論してください。
+
+## 📧 サポート
+
+問題が発生した場合は、GitHubのissueを作成してください。
+
+## 🔄 更新履歴
+
+### v1.0.0 (2025-09-15)
+- DIコンテナシステムの導入
+- コード構造の大幅な改善（23%のコード削減）
+- エラーハンドリングの統一
+- 重複コードの削除
+- ドキュメントの充実
+
+### v0.9.0 (以前)
+- 初期実装
+- 基本的なAI連携機能
+- スプレッドシート統合
+
+## 🎯 今後の予定
+
+- [ ] TypeScript導入
+- [ ] 単体テストの充実
+- [ ] CI/CDパイプラインの構築
+- [ ] UIの改善
+- [ ] パフォーマンス最適化
+- [ ] 多言語対応

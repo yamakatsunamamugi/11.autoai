@@ -359,8 +359,10 @@ export default class StreamProcessorV2 {
     // ========================================
     this.log('スリープ防止を開始', 'info', '2-1');
     try {
-      if (globalThis.powerManager) {
-        await globalThis.powerManager.startProtection('stream-processor-dynamic');
+      // powerManagerはthisまたはglobalThisから取得
+      const powerManager = this.powerManager || globalThis.powerManager;
+      if (powerManager) {
+        await powerManager.startProtection('stream-processor-dynamic');
         this.log('PowerManager保護開始', 'success', '2-1');
       }
     } catch (error) {

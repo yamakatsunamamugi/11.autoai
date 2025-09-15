@@ -24,6 +24,33 @@ import { AITaskExecutor } from '../core/ai-task-executor.js';
 import StreamProcessorV2 from '../features/task/stream-processor-v2.js';
 import SpreadsheetAutoSetup from '../services/spreadsheet-auto-setup.js';
 import { getStreamingServiceManager } from '../core/streaming-service-manager.js';
+import { getGlobalContainer, getService } from '../core/service-registry.js';
+
+// DIコンテナから必要なサービスを遅延取得
+let containerInitialized = false;
+let services = {};
+
+async function initializeServices() {
+  if (containerInitialized) return services;
+
+  try {
+    const container = await getGlobalContainer();
+    services.authService = await container.get('authService');
+    services.sheetsClient = await container.get('sheetsClient');
+    services.spreadsheetLogger = await container.get('spreadsheetLogger');
+    services.taskProcessor = await container.get('taskProcessor');
+    containerInitialized = true;
+    console.log('[DI] サービス初期化完了');
+  } catch (error) {
+    console.error('[DI] サービス初期化エラー:', error);
+    // フォールバック: globalThisから取得
+    services.authService = globalThis.authService;
+    services.sheetsClient = globalThis.sheetsClient;
+    services.spreadsheetLogger = globalThis.spreadsheetLogger;
+  }
+
+  return services;
+}
 
 
 
@@ -300,8 +327,11 @@ export function setupMessageHandler() {
           return false;
         }
 
-        // Step 11-3: SheetsClientインスタンスがグローバルに存在するか確認
-        if (typeof globalThis.sheetsClient === 'undefined') {
+        // Step 11-3: サービスを初期化
+        await initializeServices();
+
+        // Step 11-4: SheetsClientインスタンスを確認
+        if (!services.sheetsClient) {
           console.error("[Step 11-4] ❌ sheetsClientが初期化されていません");
           sendResponse({
             success: false,
@@ -311,7 +341,7 @@ export function setupMessageHandler() {
         }
 
         // Step 11-5: Google Sheets APIを呼び出してデータ取得（Promise形式）
-        globalThis.sheetsClient.getSheetData(request.spreadsheetId, request.range)
+        services.sheetsClient.getSheetData(request.spreadsheetId, request.range)
           .then(data => {
             console.log("[Step 11-6] ✅ Sheetsデータ取得成功:", {
               rowsCount: data?.values?.length || 0,
@@ -484,7 +514,8 @@ export function setupMessageHandler() {
         console.log('[Step 14-1] 認証ステータス取得');
         (async () => {
           try {
-            const status = await globalThis.authService.checkAuthStatus();
+            await initializeServices();
+            const status = await services.authService.checkAuthStatus();
             sendResponse(status);
           } catch (error) {
             console.error('[Step 14-2] 認証ステータス取得エラー:', error);
@@ -497,7 +528,8 @@ export function setupMessageHandler() {
         console.log('[Step 14-3] 認証実行');
         (async () => {
           try {
-            const token = await globalThis.authService.getAuthToken();
+            await initializeServices();
+            const token = await services.authService.getAuthToken();
             sendResponse({ success: true });
           } catch (error) {
             console.error('[Step 14-4] 認証エラー:', error);
@@ -625,8 +657,9 @@ export function setupMessageHandler() {
             let processedData = { taskGroups: [] }; // 初期化
 
             if (request.spreadsheetId) {
-              // Step 18-7: スプレッドシートのデータを読み込み
-              const sheetData = await globalThis.sheetsClient.loadAutoAIData(
+              // Step 18-7: サービスを初期化してスプレッドシートのデータを読み込み
+              await initializeServices();
+              const sheetData = await services.sheetsClient.loadAutoAIData(
                 request.spreadsheetId,
                 request.gid
               );
@@ -702,8 +735,9 @@ export function setupMessageHandler() {
               throw new Error("スプレッドシートIDが指定されていません");
             }
 
-            // Step 19-3: SheetsClientを使用してログをクリア
-            const result = await globalThis.sheetsClient.clearSheetLogs(request.spreadsheetId);
+            // Step 19-3: サービスを初期化してログをクリア
+            await initializeServices();
+            const result = await services.sheetsClient.clearSheetLogs(request.spreadsheetId);
 
             console.log('[Step 19-4] ログクリア成功:', result.clearedCount);
             sendResponse({
@@ -731,8 +765,9 @@ export function setupMessageHandler() {
               throw new Error("スプレッドシートIDが指定されていません");
             }
 
-            // Step 20-3: SheetsClientを使用してAI回答を削除
-            const result = await globalThis.sheetsClient.deleteAnswers(request.spreadsheetId);
+            // Step 20-3: サービスを初期化してAI回答を削除
+            await initializeServices();
+            const result = await services.sheetsClient.deleteAnswers(request.spreadsheetId);
 
             console.log('[Step 20-4] AI回答削除成功:', result.deletedCount);
             sendResponse({
@@ -784,14 +819,16 @@ export function setupMessageHandler() {
           try {
             const { spreadsheetId, range, value, sheetName } = request;
 
-            if (!globalThis.sheetsClient) {
+            // Step 22-2: サービスを初期化
+            await initializeServices();
+            if (!services.sheetsClient) {
               console.error('[Step 22-2] SheetsClient not available');
               throw new Error("SheetsClient not available");
             }
 
             // Step 22-3: スプレッドシートに書き込み
             const fullRange = sheetName ? `'${sheetName}'!${range}` : range;
-            const result = await globalThis.sheetsClient.writeValue(spreadsheetId, fullRange, value);
+            const result = await services.sheetsClient.writeValue(spreadsheetId, fullRange, value);
 
             console.log('[Step 22-4] 書き込み成功');
             sendResponse({ success: true, result });

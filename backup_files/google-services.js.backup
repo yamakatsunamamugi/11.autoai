@@ -1398,15 +1398,24 @@ export const docsClient = googleServices.docsGenerator;
 export const spreadsheetLogger = googleServices.spreadsheetLogger;
 
 // Step 2-8-3: グローバル設定（Chrome拡張機能用）
+// 注意: DIコンテナへの移行のため、重複設定を防ぐ
 if (typeof globalThis !== 'undefined') {
   // 統合サービス
   globalThis.GoogleServices = googleServices;
 
-  // 個別サービス（互換性維持）
-  globalThis.authService = authService;
-  globalThis.sheetsClient = sheetsClient;
-  globalThis.docsClient = docsClient;
-  globalThis.spreadsheetLogger = spreadsheetLogger;
+  // 個別サービス（互換性維持、既存がない場合のみ設定）
+  if (!globalThis.authService) {
+    globalThis.authService = authService;
+  }
+  if (!globalThis.sheetsClient) {
+    globalThis.sheetsClient = sheetsClient;
+  }
+  if (!globalThis.docsClient) {
+    globalThis.docsClient = docsClient;
+  }
+  if (!globalThis.spreadsheetLogger) {
+    globalThis.spreadsheetLogger = spreadsheetLogger;
+  }
 
   // ユーティリティ関数
   globalThis.parseSpreadsheetUrl = (url) => {
