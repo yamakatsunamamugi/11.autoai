@@ -655,6 +655,12 @@ export default class StreamProcessorV2 {
         // 動的タスク生成
         const promptCols = promptGroup.promptColumns;
         const answerCols = promptGroup.answerColumns.map(col => col.index);
+
+        // タスクグループのログ列情報をpromptGroupに追加
+        if (taskGroupInfo && taskGroupInfo.columnRange) {
+          promptGroup.logColumn = taskGroupInfo.columnRange.logColumn;
+        }
+
         const tasks = await this.scanGroupTasks(spreadsheetData, promptCols, answerCols, promptGroup);
 
         if (!tasks || tasks.length === 0) {
@@ -1123,6 +1129,9 @@ export default class StreamProcessorV2 {
             column: this.indexToColumn(answerColIndex),
             columnIndex: answerColIndex,
 
+            // ログ列情報
+            logColumn: promptGroup.logColumn || null,
+
             // AI情報（修正：適切なモデルと機能を設定）
             aiType: promptGroup.aiType || 'claude',
             model: model,  // getModelから取得した値
@@ -1488,9 +1497,9 @@ export default class StreamProcessorV2 {
             error: result?.error || null
           };
 
-          // ログ列（AZなど）に書き込み
-          const logColumn = 'AZ'; // または設定から取得
-          const logRow = this.currentLogRow || 9; // 現在のログ行
+          // ログ列に書き込み（タスクから取得、なければAZをフォールバック）
+          const logColumn = task.logColumn || 'AZ';
+          const logRow = task.row; // タスクと同じ行に書き込み
           const logCellRef = `${logColumn}${logRow}`;
 
           const logText = `[${logEntry.step}] [${logEntry.timestamp}] ${logEntry.cell} - ${logEntry.aiType}/${logEntry.model}/${logEntry.function} - ${logEntry.status} - ${logEntry.responseLength}文字${logEntry.error ? ` - ERROR: ${logEntry.error}` : ''}`;
@@ -1501,7 +1510,6 @@ export default class StreamProcessorV2 {
             logText
           );
 
-          this.currentLogRow = (this.currentLogRow || 9) + 1; // 次の行へ
           this.logger.log(`[Step 8-3.6] 📝 ログ書き込み成功: ${logCellRef}`);
         } catch (logError) {
           this.logger.error(`[Step 8-3.6] ❌ ログ書き込みエラー:`, logError);
