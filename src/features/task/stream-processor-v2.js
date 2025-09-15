@@ -306,9 +306,17 @@ export default class StreamProcessorV2 {
         });
 
         // Step 1-4: SheetsClient参照取得
-        if (this.spreadsheetLogger.sheetsClient) {
-          this.sheetsClient = this.spreadsheetLogger.sheetsClient;
-          this.log('SheetsClient参照取得完了', 'info', '1-4');
+        // background.jsで設定されたglobalThis.sheetsClientを使用
+        if (globalThis.sheetsClient) {
+          this.sheetsClient = globalThis.sheetsClient;
+          this.log('globalThis.sheetsClientから取得完了', 'info', '1-4');
+
+          // SpreadsheetLoggerにもSheetsClientを設定
+          if (this.spreadsheetLogger) {
+            this.spreadsheetLogger.sheetsClient = this.sheetsClient;
+          }
+        } else {
+          this.log('SheetsClientが利用できません - globalThis.sheetsClientが未設定', 'warn', '1-4');
         }
 
         this.log('SpreadsheetLogger初期化完了', 'success', '1');
@@ -1437,6 +1445,68 @@ export default class StreamProcessorV2 {
       }
 
       const result = await this.aiTaskExecutor.executeAITask(windowInfo.tabId, task);
+
+      // Step 8-3.5: 回答をスプレッドシートに書き込み
+      if (result?.success && result?.response && this.sheetsClient) {
+        try {
+          const cellRef = `${task.column}${task.row}`;
+          await this.sheetsClient.updateCell(
+            this.spreadsheetData.spreadsheetId,
+            cellRef,
+            result.response
+          );
+          this.logger.log(`[Step 8-3.5] ✅ 回答書き込み成功: ${cellRef} (${result.response.length}文字)`);
+        } catch (writeError) {
+          this.logger.error(`[Step 8-3.5] ❌ 回答書き込みエラー: ${cellRef}`, {
+            error: writeError.message,
+            taskId: task.taskId,
+            aiType: task.aiType,
+            model: task.model
+          });
+        }
+      } else {
+        this.logger.warn(`[Step 8-3.5] ⚠️ 回答書き込みスキップ`, {
+          success: result?.success,
+          hasResponse: !!result?.response,
+          hasSheetsClient: !!this.sheetsClient,
+          cell: `${task.column}${task.row}`
+        });
+      }
+
+      // Step 8-3.6: ログをスプレッドシートに書き込み
+      if (this.spreadsheetLogger && this.sheetsClient) {
+        try {
+          const logEntry = {
+            timestamp: new Date().toISOString(),
+            step: 'Step 8-3.6',
+            cell: `${task.column}${task.row}`,
+            aiType: task.aiType || 'Unknown',
+            model: task.model || 'Unknown',
+            function: task.function || 'Unknown',
+            status: result?.success ? 'SUCCESS' : 'FAILED',
+            responseLength: result?.response?.length || 0,
+            error: result?.error || null
+          };
+
+          // ログ列（AZなど）に書き込み
+          const logColumn = 'AZ'; // または設定から取得
+          const logRow = this.currentLogRow || 9; // 現在のログ行
+          const logCellRef = `${logColumn}${logRow}`;
+
+          const logText = `[${logEntry.step}] [${logEntry.timestamp}] ${logEntry.cell} - ${logEntry.aiType}/${logEntry.model}/${logEntry.function} - ${logEntry.status} - ${logEntry.responseLength}文字${logEntry.error ? ` - ERROR: ${logEntry.error}` : ''}`;
+
+          await this.sheetsClient.updateCell(
+            this.spreadsheetData.spreadsheetId,
+            logCellRef,
+            logText
+          );
+
+          this.currentLogRow = (this.currentLogRow || 9) + 1; // 次の行へ
+          this.logger.log(`[Step 8-3.6] 📝 ログ書き込み成功: ${logCellRef}`);
+        } catch (logError) {
+          this.logger.error(`[Step 8-3.6] ❌ ログ書き込みエラー:`, logError);
+        }
+      }
 
       // Step 8-4: タスク完了ログ記録
       if (this.spreadsheetLogger && this.spreadsheetLogger.logTaskCompletion) {

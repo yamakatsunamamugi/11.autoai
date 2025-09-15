@@ -71,19 +71,38 @@
 
       const response = await fetch(chrome.runtime.getURL('ui-selectors-data.json'));
       const data = await response.json();
-      UI_SELECTORS = data.selectors.Genspark || {};
-      selectorsLoaded = true;
 
-      log('【初期化ステップ0-1】✅ UI Selectors読み込み完了', 'SUCCESS');
-      return UI_SELECTORS;
+      // ui-selectors-data.jsonからGensparkセレクタを取得
+      if (data.selectors && data.selectors.Genspark) {
+        UI_SELECTORS = data.selectors.Genspark;
+        window.UI_SELECTORS = data.selectors; // 他のAIとの互換性のため全体も保存
+        selectorsLoaded = true;
+        log('【初期化ステップ0-1】✅ UI Selectors読み込み完了', 'SUCCESS');
+        log(`【初期化ステップ0-1】📋 読み込まれたセレクタ: INPUT=${UI_SELECTORS.INPUT?.length || 0}個, SEND_BUTTON=${UI_SELECTORS.SEND_BUTTON?.length || 0}個`, 'INFO');
+        return UI_SELECTORS;
+      } else {
+        throw new Error('Gensparkセレクタが見つかりません');
+      }
     } catch (error) {
-      log(`【初期化ステップ0-1】❌ UI Selectors読み込み失敗: ${error.message}`, 'ERROR');
-      // フォールバック用の基本セレクタ
+      log(`【初期化ステップ0-1】⚠️ UI Selectors読み込みエラー: ${error.message}`, 'WARNING');
+      log('【初期化ステップ0-1】📋 フォールバックセレクタを使用します', 'INFO');
+
+      // フォールバック: window.UI_SELECTORSから取得を試みる
+      if (window.UI_SELECTORS && window.UI_SELECTORS.Genspark) {
+        UI_SELECTORS = window.UI_SELECTORS.Genspark;
+        selectorsLoaded = true;
+        log('【初期化ステップ0-1】✅ window.UI_SELECTORSから取得成功', 'SUCCESS');
+        return UI_SELECTORS;
+      }
+
+      // 最終フォールバック: ハードコードされたセレクタ
+      log('【初期化ステップ0-1】⚠️ 最終フォールバック: ハードコードセレクタを使用', 'WARNING');
       UI_SELECTORS = {
-        INPUT: ['textarea', '[contenteditable="true"]'],
-        SEND_BUTTON: ['.enter-icon-wrapper', 'button[type="submit"]'],
-        STOP_BUTTON: ['.enter-icon-wrapper[class*="bg-[#232425]"]'],
-        RESPONSE: ['.response-content', '.message-content']
+        INPUT: ['textarea[placeholder*="質問"]', 'textarea[placeholder*="スライド"]', 'textarea[placeholder*="factcheck"]', 'textarea', '[contenteditable="true"]'],
+        SEND_BUTTON: ['.enter-icon-wrapper', 'button[type="submit"]', 'button:has(svg.enter-icon)'],
+        STOP_BUTTON: ['.enter-icon-wrapper[class*="bg-[#232425]"]', '.enter-icon-wrapper:has(.stop-icon)', 'button:has(svg.stop-icon)'],
+        MESSAGE: ['.response-content', '.message-content', '[data-testid="response"]'],
+        RESPONSE: ['.response-content', '.message-content', '[data-testid="response"]']
       };
       selectorsLoaded = true;
       return UI_SELECTORS;
