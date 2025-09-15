@@ -64,6 +64,36 @@ export async function initializeServices() {
     return client;
   });
 
+  // DocsClient - Google Docs操作
+  container.register('docsClient', async (container) => {
+    // 既存のglobalThis.docsClientがあれば使用
+    if (globalThis.docsClient) {
+      return globalThis.docsClient;
+    }
+
+    // docs-client.jsからインポート
+    const module = await import('../features/spreadsheet/docs-client.js');
+    const DocsClient = module.default || module.DocsClient;
+
+    // AuthServiceを取得
+    let authService = null;
+    try {
+      authService = await container.get('authService');
+    } catch (e) {
+      console.warn('AuthService not available for DocsClient');
+    }
+
+    // 新しいインスタンスを作成（依存性注入）
+    const client = new DocsClient({
+      authService: authService
+    });
+
+    // グローバル変数にも設定（後方互換性）
+    globalThis.docsClient = client;
+
+    return client;
+  });
+
   // AuthService - 認証サービス（統合版）
   container.register('authService', async () => {
     // 既存のグローバルインスタンスを確認

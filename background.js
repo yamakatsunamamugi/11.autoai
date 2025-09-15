@@ -38,20 +38,11 @@ import {
 } from './src/core/task-group-processor.js';
 import { setupMessageHandler } from './src/handlers/message-handler.js';
 
-// Step 2-4: Google Services統合モジュール
-import {
-  googleServices,
-  authService,
-  sheetsClient,
-  docsClient,
-  spreadsheetLogger
-} from './src/services/google-services.js';
+// Step 2-4: DIコンテナとサービスレジストリ
+import { getGlobalContainer, getService } from './src/core/service-registry.js';
 
 // Step 2-5: その他のサービス
-import './src/services/auth-service.js';
 import { default as WindowService } from './src/services/window-service.js';
-import './src/features/spreadsheet/sheets-client.js';
-import './src/features/logging/spreadsheet-logger.js';
 import { getStreamingServiceManager } from './src/core/streaming-service-manager.js';
 import { AITaskExecutor } from './src/core/ai-task-executor.js';
 import { AITaskHandler } from './src/handlers/ai-task-handler.js';
@@ -73,20 +64,29 @@ let UI_SELECTORS = {};
 let isProcessing = false;
 const USE_V2_MODE = true; // V2版StreamProcessorを使用
 
-// Step 3-4: グローバル参照の設定
+// Step 3-4: DIコンテナからサービスを取得してグローバル参照を設定
+(async () => {
+  try {
+    const container = await getGlobalContainer();
+
+    // サービスを取得（既にglobalThisに設定される）
+    await container.get('authService');
+    await container.get('sheetsClient');
+    await container.get('docsClient');
+    await container.get('spreadsheetLogger');
+
+    console.log('[Background] DIコンテナからサービス取得完了');
+  } catch (error) {
+    console.error('[Background] サービス初期化エラー:', error);
+  }
+})();
+
+// 既存のグローバル参照（段階的に削減予定）
 globalThis.logManager = logManager;
-globalThis.googleServices = googleServices;
-globalThis.authService = authService;
-globalThis.sheetsClient = sheetsClient;
-globalThis.docsClient = docsClient;
-globalThis.spreadsheetLogger = spreadsheetLogger;
 globalThis.processSpreadsheetData = processSpreadsheetData;
 globalThis.taskGroupCache = taskGroupCache;
 globalThis.getColumnName = getColumnName;
 globalThis.columnToIndex = columnToIndex;
-// automationファイルはコンテンツスクリプト用なので削除
-// globalThis.ReportExecutor = ReportExecutor;
-// globalThis.GensparkAutomation = GensparkAutomation;
 globalThis.SpreadsheetAutoSetup = SpreadsheetAutoSetup;
 globalThis.StreamProcessorV2 = StreamProcessorV2;
 
@@ -97,24 +97,9 @@ globalThis.streamProcessorV2Instance = StreamProcessorV2.getInstance();
 globalThis.aiTaskExecutor = new AITaskExecutor();
 globalThis.aiTaskHandler = new AITaskHandler();
 
-// Step 3-5: parseSpreadsheetUrl関数
-globalThis.parseSpreadsheetUrl = (url) => {
-  console.log('[Step 3-5-1] parseSpreadsheetUrl実行:', url);
-
-  if (!url || typeof url !== 'string') {
-    console.warn('[Step 3-5-2] 無効なURL:', url);
-    return { spreadsheetId: null, gid: null };
-  }
-
-  const spreadsheetMatch = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
-  const spreadsheetId = spreadsheetMatch ? spreadsheetMatch[1] : null;
-
-  const gidMatch = url.match(/[#&]gid=([0-9]+)/);
-  const gid = gidMatch ? gidMatch[1] : null;
-
-  console.log('[Step 3-5-3] URL解析結果:', { spreadsheetId, gid });
-  return { spreadsheetId, gid };
-};
+// Step 3-5: parseSpreadsheetUrl関数（spreadsheet-utils.jsから自動設定される）
+import { parseSpreadsheetUrl } from './src/utils/spreadsheet-utils.js';
+// globalThisへの設定はspreadsheet-utils.js内で実行される
 
 // グローバル変数初期化完了
 
