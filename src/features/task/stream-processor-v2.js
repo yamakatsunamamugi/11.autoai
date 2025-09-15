@@ -1453,6 +1453,13 @@ export default class StreamProcessorV2 {
         this.initializeSpreadsheetConfig();
       }
 
+      // Step 8-3.1: 送信時刻を記録（ログ用）
+      if (this.spreadsheetLogger) {
+        const taskId = `${task.column}${task.row}_${task.aiType || 'AI'}`;
+        this.spreadsheetLogger.recordSendTimestamp(taskId, task);
+        this.logger.log(`[Step 8-3.1] ⏰ 送信時刻記録: ${taskId}`);
+      }
+
       const result = await this.aiTaskExecutor.executeAITask(windowInfo.tabId, task);
 
       // Step 8-3.5: 回答をスプレッドシートに書き込み
@@ -1482,38 +1489,48 @@ export default class StreamProcessorV2 {
         });
       }
 
-      // Step 8-3.6: ログをスプレッドシートに書き込み
-      if (this.spreadsheetLogger && this.sheetsClient) {
+      // Step 8-3.6: 詳細ログをスプレッドシートに書き込み（送信時刻、記載時刻、選択/表示モデル）
+      if (this.spreadsheetLogger) {
         try {
-          const logEntry = {
-            timestamp: new Date().toISOString(),
-            step: 'Step 8-3.6',
-            cell: `${task.column}${task.row}`,
-            aiType: task.aiType || 'Unknown',
-            model: task.model || 'Unknown',
-            function: task.function || 'Unknown',
-            status: result?.success ? 'SUCCESS' : 'FAILED',
-            responseLength: result?.response?.length || 0,
-            error: result?.error || null
+          // タスクIDを生成
+          const taskId = `${task.column}${task.row}_${task.aiType || 'AI'}`;
+
+          // 送信時刻を記録（既に記録されていない場合）
+          if (!this.spreadsheetLogger.getSendTime(taskId)) {
+            // タスク実行時に既に記録されているはずだが、念のため確認
+            this.logger.warn(`[Step 8-3.6] 送信時刻が未記録のため、現在時刻で記録: ${taskId}`);
+            this.spreadsheetLogger.recordSendTimestamp(taskId, task);
+          }
+
+          // タスクオブジェクトにlogColumns配列形式を追加（spreadsheet-logger.jsが期待する形式）
+          const logTask = {
+            ...task,
+            id: taskId,
+            logColumns: task.logColumn ? [task.logColumn] : [],
+            // displayedModelとdisplayedFunctionは実際のAI実行時に取得されるべき
+            displayedModel: result?.displayedModel || task.model || '不明',
+            displayedFunction: result?.displayedFunction || task.function || '不明'
           };
 
-          // ログ列に書き込み（タスクから取得、なければAZをフォールバック）
-          const logColumn = task.logColumn || 'AZ';
-          const logRow = task.row; // タスクと同じ行に書き込み
-          const logCellRef = `${logColumn}${logRow}`;
+          // 詳細ログを書き込み
+          const logResult = await this.spreadsheetLogger.writeLogToSpreadsheet(logTask, {
+            sheetsClient: this.sheetsClient,
+            spreadsheetId: this.spreadsheetData.spreadsheetId,
+            gid: this.spreadsheetData.gid,
+            spreadsheetData: this.spreadsheetData,
+            url: result?.url || 'N/A'
+          });
 
-          const logText = `[${logEntry.step}] [${logEntry.timestamp}] ${logEntry.cell} - ${logEntry.aiType}/${logEntry.model}/${logEntry.function} - ${logEntry.status} - ${logEntry.responseLength}文字${logEntry.error ? ` - ERROR: ${logEntry.error}` : ''}`;
-
-          await this.sheetsClient.updateCell(
-            this.spreadsheetData.spreadsheetId,
-            logCellRef,
-            logText
-          );
-
-          this.logger.log(`[Step 8-3.6] 📝 ログ書き込み成功: ${logCellRef}`);
+          if (logResult.success) {
+            this.logger.log(`[Step 8-3.6] 📝 詳細ログ書き込み成功: ${logTask.logColumns[0]}${task.row}`);
+          } else {
+            this.logger.error(`[Step 8-3.6] ❌ 詳細ログ書き込み失敗:`, logResult.error);
+          }
         } catch (logError) {
           this.logger.error(`[Step 8-3.6] ❌ ログ書き込みエラー:`, logError);
         }
+      } else {
+        this.logger.warn(`[Step 8-3.6] ⚠️ SpreadsheetLoggerが未初期化のためログ書き込みスキップ`);
       }
 
       // Step 8-4: タスク完了ログ記録

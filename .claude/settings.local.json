@@ -79,7 +79,8 @@
       "Bash(tree:*)",
       "Bash(do if [ ! -f \"$file\" ])",
       "Bash(then echo \"MISSING: $file\")",
-      "Bash(do echo \"=== Checking: $file ===\")"
+      "Bash(do echo \"=== Checking: $file ===\")",
+      "Bash(gh workflow list:*)"
     ],
     "defaultMode": "acceptEdits",
     "additionalDirectories": [

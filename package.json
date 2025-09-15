@@ -5,7 +5,8 @@
   "type": "module",
   "main": "background.js",
   "scripts": {
-    "test": "jest",
+    "test": "jest --forceExit --detectOpenHandles",
+    "test:ci": "jest --ci --coverage --maxWorkers=2 --forceExit --detectOpenHandles",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "test:node": "node test/test-di-container.js",
