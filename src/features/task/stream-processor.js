@@ -3734,8 +3734,8 @@ ${formattedGemini}`;
    */
   checkAvailablePositionWithoutReserve() {
     for (let i = 0; i < this.maxConcurrentWindows; i++) {
-      // WindowServiceでポジション利用可能性をチェック（仮実装）
-      if (true) { // TODO: WindowService.isPositionAvailable(i)を使用
+      // WindowServiceでポジション利用可能性をチェック
+      if (WindowService.isPositionAvailable(i)) {
         return i;
       }
     }

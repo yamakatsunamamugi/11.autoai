@@ -143,7 +143,16 @@ export const UI_SELECTORS = {
                 '[data-testid="model-switcher-dropdown-button"] .text-sm',  // 小さいテキスト
                 '[data-testid="model-switcher-dropdown-button"] *'  // ボタン内の全要素（最終手段）
             ]
-        }
+        },
+
+        // Web検索トグル
+        WEB_SEARCH_TOGGLE: [
+            'button[aria-label*="web search"]',
+            'button[aria-label*="ウェブ検索"]',
+            '[data-testid="web-search-toggle"]',
+            'input[type="checkbox"][aria-label*="search"]',
+            '.web-search-toggle'
+        ]
     },
     
     // ========================================

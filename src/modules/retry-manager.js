@@ -311,3 +311,6 @@ if (typeof window !== 'undefined') {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = RetryManager;
 }
+
+// ES6モジュールエクスポート
+export default RetryManager;

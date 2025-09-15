@@ -385,14 +385,15 @@ async function checkDeepResearchState() {
   try {
     switch (AI_TYPE) {
       case "ChatGPT":
-        // TODO: WEB_SEARCH_TOGGLEセレクタをui-selectors.jsに追加する必要あり
-        // const toggle = document.querySelector(
-        //   SELECTOR_CONFIG.ChatGPT.WEB_SEARCH_TOGGLE,
-        // );
-        // if (toggle) {
-        //   const isChecked = toggle.getAttribute("aria-checked") === "true";
-        //   return isChecked ? "enabled" : "disabled";
-        // }
+        // Web検索トグルの状態を確認
+        for (const selector of SELECTOR_CONFIG.ChatGPT.WEB_SEARCH_TOGGLE) {
+          const toggle = document.querySelector(selector);
+          if (toggle) {
+            const isChecked = toggle.getAttribute("aria-checked") === "true" ||
+                            toggle.checked === true;
+            return isChecked ? "enabled" : "disabled";
+          }
+        }
         break;
 
       case "Claude":
