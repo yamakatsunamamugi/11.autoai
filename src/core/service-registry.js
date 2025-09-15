@@ -93,6 +93,13 @@ export async function initializeServices() {
   // Phase 2: ログ・監視サービス
   // ========================================
 
+  // LogService - 統合ログサービス
+  container.register('logService', async (container) => {
+    const module = await import('./log-service.js');
+    const createLogService = module.createLogService;
+    return await createLogService(container);
+  });
+
   // SpreadsheetLogger - スプレッドシートログ（統合版）
   container.register('spreadsheetLogger', async (container) => {
     // 既存のglobalThis.spreadsheetLoggerがあれば使用
