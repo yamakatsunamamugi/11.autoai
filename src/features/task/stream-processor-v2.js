@@ -1448,8 +1448,8 @@ export default class StreamProcessorV2 {
 
       // Step 8-3.5: 回答をスプレッドシートに書き込み
       if (result?.success && result?.response && this.sheetsClient) {
+        const cellRef = `${task.column}${task.row}`;
         try {
-          const cellRef = `${task.column}${task.row}`;
           await this.sheetsClient.updateCell(
             this.spreadsheetData.spreadsheetId,
             cellRef,
