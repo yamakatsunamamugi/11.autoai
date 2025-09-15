@@ -1,0 +1,125 @@
+name: Deploy to Chrome Web Store
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Check lint
+        run: npm run lint
+
+      - name: Build extension
+        run: npm run build:prod
+        env:
+          NODE_ENV: production
+
+      - name: Create release package
+        run: |
+          mkdir -p dist
+          zip -r dist/extension.zip \
+            manifest.json \
+            background.js \
+            popup.html \
+            popup.js \
+            log-viewer.html \
+            log-viewer.js \
+            monitoring-dashboard.html \
+            monitoring-dashboard.js \
+            src/ \
+            automations/ \
+            config/ \
+            -x "*.test.js" \
+            -x "*.spec.js" \
+            -x "node_modules/*" \
+            -x ".git/*" \
+            -x "tests/*"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: chrome-extension
+          path: dist/extension.zip
+
+  deploy-staging:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event.inputs.environment == 'staging' || contains(github.ref, '-beta')
+    environment: staging
+
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: chrome-extension
+
+      - name: Deploy to staging
+        run: |
+          echo "Deploying to staging environment..."
+          # ステージング環境へのデプロイロジック
+
+  deploy-production:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event.inputs.environment == 'production' || startsWith(github.ref, 'refs/tags/v')
+    environment: production
+
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: chrome-extension
+          path: dist/
+
+      - name: Setup Chrome Web Store credentials
+        run: |
+          echo "${{ secrets.CHROME_WEBSTORE_KEY }}" > webstore-key.json
+
+      - name: Upload to Chrome Web Store
+        uses: mnao305/chrome-extension-upload@v4.0.1
+        with:
+          file-path: dist/extension.zip
+          extension-id: ${{ secrets.EXTENSION_ID }}
+          client-id: ${{ secrets.CLIENT_ID }}
+          client-secret: ${{ secrets.CLIENT_SECRET }}
+          refresh-token: ${{ secrets.REFRESH_TOKEN }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: dist/extension.zip
+          generate_release_notes: true
+          draft: false
+          prerelease: contains(github.ref, '-beta')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
