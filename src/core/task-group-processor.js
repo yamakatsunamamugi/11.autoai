@@ -25,28 +25,11 @@ export let taskGroupCache = {
  * Step 2: processSpreadsheetData関数
  * StreamProcessorV2.processSpreadsheetDataへ委譲
  */
-export async function processSpreadsheetData(spreadsheetData) {
+export function processSpreadsheetData(spreadsheetData) {
   console.log('[Step 2-1] processSpreadsheetData開始');
 
-  // Step 2-2: StreamProcessorV2のインスタンスを作成（依存性注入）
-  let sheetsClient = null;
-  let SpreadsheetLogger = null;
-
-  try {
-    // ServiceRegistryから依存性を取得
-    const { getService } = await import('./service-registry.js');
-    sheetsClient = await getService('sheetsClient');
-    const module = await import('../features/logging/spreadsheet-logger.js');
-    SpreadsheetLogger = module.default || module.SpreadsheetLogger;
-  } catch (e) {
-    // フォールバック
-    console.warn('依存性取得失敗、nullで初期化:', e.message);
-  }
-
-  const processor = new StreamProcessorV2(console, {
-    sheetsClient: sheetsClient,
-    SpreadsheetLogger: SpreadsheetLogger
-  });
+  // Step 2-2: StreamProcessorV2のシングルトンインスタンスを取得
+  const processor = StreamProcessorV2.getInstance();
 
   // Step 2-3: StreamProcessorV2のprocessSpreadsheetDataメソッドを使用
   const result = processor.processSpreadsheetData(spreadsheetData);

@@ -306,38 +306,20 @@ class StreamingServiceManager {
    * コアサービスの登録
    */
   async registerCoreServices() {
-    // StreamProcessor（静的インポートに変更）
-    // ServiceRegistryから依存性を取得して注入
-    let sheetsClient = null;
-    let SpreadsheetLogger = null;
-    try {
-      const { getService } = await import('./service-registry.js');
-      sheetsClient = await getService('sheetsClient');
-      const module = await import('../features/logging/spreadsheet-logger.js');
-      SpreadsheetLogger = module.default || module.SpreadsheetLogger;
-    } catch (e) {
-      console.warn('StreamingServiceManager: 依存性取得失敗', e.message);
-    }
-
+    // StreamProcessor（シングルトンインスタンスを使用）
     this.services.set(
       "StreamProcessor",
-      new StreamProcessorV2(this.logger, {
+      StreamProcessorV2.getInstance(this.logger, {
         ...this.config.get("streaming", {}),
         eventBus: this.eventBus,
-        windowManager: globalThis.aiWindowManager, // グローバルのWindowManagerを使用
-        sheetsClient: sheetsClient,
-        SpreadsheetLogger: SpreadsheetLogger
+        windowManager: globalThis.aiWindowManager // グローバルのWindowManagerを使用
       })
     );
 
-    // TaskGenerator -> StreamProcessorV2に統合
+    // TaskGenerator -> StreamProcessorV2のシングルトンを共有
     this.services.set(
       "TaskGenerator",
-      new StreamProcessorV2(this.logger, {
-        ...this.config.get("task", {}),
-        sheetsClient: sheetsClient,
-        SpreadsheetLogger: SpreadsheetLogger
-      })
+      StreamProcessorV2.getInstance()
     );
 
     // WindowManager（将来の拡張ポイント）
