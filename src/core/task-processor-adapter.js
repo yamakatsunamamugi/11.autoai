@@ -28,8 +28,11 @@ export class TaskProcessorAdapter {
     this.taskExecutor = dependencies.taskExecutor;
     this.logger = dependencies.logger || console;
 
-    // 内部でStreamProcessorV2を使用
-    this.v2Processor = new StreamProcessorV2();
+    // 内部でStreamProcessorV2を使用（依存性を渡す）
+    this.v2Processor = new StreamProcessorV2(this.logger, {
+      sheetsClient: this.sheetsClient,
+      SpreadsheetLogger: dependencies.SpreadsheetLogger
+    });
 
     // 依存を注入（可能な範囲で）
     this.injectDependencies();
@@ -159,6 +162,14 @@ export async function createTaskProcessorAdapter(container) {
     }
   } catch (e) {
     console.warn('spreadsheetLogger取得失敗:', e.message);
+  }
+
+  // SpreadsheetLoggerクラスも取得
+  try {
+    const module = await import('../features/logging/spreadsheet-logger.js');
+    dependencies.SpreadsheetLogger = module.default || module.SpreadsheetLogger;
+  } catch (e) {
+    console.warn('SpreadsheetLoggerクラス取得失敗:', e.message);
   }
 
   try {

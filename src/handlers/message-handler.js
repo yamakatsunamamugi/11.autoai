@@ -441,7 +441,14 @@ export function setupMessageHandler() {
             // Step 12-5: StreamProcessorV2初期化を確保してからSpreadsheetAutoSetupを実行
             if (!globalThis.SPREADSHEET_CONFIG) {
               console.log('[Step 12-5-1] SPREADSHEET_CONFIG未初期化、StreamProcessorV2を初期化');
-              new globalThis.StreamProcessorV2();
+              // 依存性を取得して初期化
+              const { getService } = await import('../core/service-registry.js');
+              const sheetsClient = await getService('sheetsClient');
+              const SpreadsheetLogger = (await import('../features/logging/spreadsheet-logger.js')).default;
+              new StreamProcessorV2(console, {
+                sheetsClient: sheetsClient,
+                SpreadsheetLogger: SpreadsheetLogger
+              });
             }
 
             const autoSetup = new SpreadsheetAutoSetup();
@@ -502,7 +509,14 @@ export function setupMessageHandler() {
             // Step 13-7: StreamProcessorV2初期化を確保してから自動セットアップ
             if (!globalThis.SPREADSHEET_CONFIG) {
               console.log('[Step 13-7-1] SPREADSHEET_CONFIG未初期化、StreamProcessorV2を初期化');
-              new globalThis.StreamProcessorV2();
+              // 依存性を取得して初期化
+              const { getService } = await import('../core/service-registry.js');
+              const sheetsClient = await getService('sheetsClient');
+              const SpreadsheetLogger = (await import('../features/logging/spreadsheet-logger.js')).default;
+              new StreamProcessorV2(console, {
+                sheetsClient: sheetsClient,
+                SpreadsheetLogger: SpreadsheetLogger
+              });
             }
 
             const autoSetup = new SpreadsheetAutoSetup();
@@ -696,11 +710,32 @@ export function setupMessageHandler() {
             // Step 18-5: V2モード切り替えフラグ（上部の設定と同じ値を使用）
             const USE_V2_MODE = true; // true: V2版を使用, false: 従来版を使用
 
+            // ServiceRegistryから依存性を取得（エラーハンドリング付き）
+            let sheetsClient = null;
+            let SpreadsheetLogger = null;
+
+            try {
+              // ServiceRegistryを使用（使えない場合はglobalThisから取得）
+              const { getService } = await import('../core/service-registry.js');
+              sheetsClient = await getService('sheetsClient');
+              SpreadsheetLogger = (await import('../features/logging/spreadsheet-logger.js')).default;
+            } catch (e) {
+              // フォールバック: globalThisから取得
+              sheetsClient = globalThis.sheetsClient;
+              SpreadsheetLogger = globalThis.SpreadsheetLogger;
+            }
+
             let processor;
             if (USE_V2_MODE) {
-              processor = new StreamProcessorV2();
+              processor = new StreamProcessorV2(console, {
+                sheetsClient: sheetsClient,
+                SpreadsheetLogger: SpreadsheetLogger
+              });
             } else {
-              processor = new StreamProcessorV2();
+              processor = new StreamProcessorV2(console, {
+                sheetsClient: sheetsClient,
+                SpreadsheetLogger: SpreadsheetLogger
+              });
             }
 
             // Step 18-6: スプレッドシートデータを取得

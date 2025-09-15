@@ -52,21 +52,9 @@ let SpreadsheetLogger = null;
  * Service Worker環境では動的インポートが制限されるため、
  * グローバル空間に事前に登録されたクラスを使用
  */
-async function getSpreadsheetLogger() {
-  if (!SpreadsheetLogger) {
-    try {
-      if (globalThis.SpreadsheetLogger) {
-        SpreadsheetLogger = globalThis.SpreadsheetLogger;
-      } else if (globalThis.spreadsheetLogger) {
-        SpreadsheetLogger = globalThis.spreadsheetLogger.constructor;
-      } else {
-        return null;
-      }
-    } catch (error) {
-      return null;
-    }
-  }
-  return SpreadsheetLogger;
+async function getSpreadsheetLogger(SpreadsheetLoggerClass) {
+  // 引数として受け取ったクラスを返す（グローバル変数を使わない）
+  return SpreadsheetLoggerClass || null;
 }
 
 // シングルトンインスタンスを保持
@@ -189,7 +177,8 @@ export default class StreamProcessorV2 {
     this.activeWindows = new Map();
     this.currentGroupId = null;
     this.spreadsheetLogger = null;
-    this.sheetsClient = null;
+    this.sheetsClient = config.sheetsClient || null;
+    this.SpreadsheetLoggerClass = config.SpreadsheetLogger || null;
     this.spreadsheetData = null;
     this.spreadsheetUrl = null;
 
@@ -293,30 +282,20 @@ export default class StreamProcessorV2 {
     }
 
     try {
-      // Step 1-2: SpreadsheetLoggerクラス取得
+      // Step 1-2: SpreadsheetLoggerクラス取得（依存性注入から）
       this.log('SpreadsheetLoggerクラスを取得', 'info', '1-2');
-      const SpreadsheetLoggerClass = await getSpreadsheetLogger();
+      const SpreadsheetLoggerClass = await getSpreadsheetLogger(this.SpreadsheetLoggerClass);
 
-      if (SpreadsheetLoggerClass && this.spreadsheetUrl) {
-        // Step 1-3: インスタンス作成
+      if (SpreadsheetLoggerClass) {
+        // Step 1-3: インスタンス作成（spreadsheetUrlの有無に関わらず作成）
         this.log('SpreadsheetLoggerインスタンスを作成', 'info', '1-3');
-        this.spreadsheetLogger = new SpreadsheetLoggerClass({
-          spreadsheetUrl: this.spreadsheetUrl,
-          logger: this.logger
-        });
+        this.spreadsheetLogger = new SpreadsheetLoggerClass(this.logger);
 
-        // Step 1-4: SheetsClient参照取得
-        // background.jsで設定されたglobalThis.sheetsClientを使用
-        if (globalThis.sheetsClient) {
-          this.sheetsClient = globalThis.sheetsClient;
-          this.log('globalThis.sheetsClientから取得完了', 'info', '1-4');
-
-          // SpreadsheetLoggerにもSheetsClientを設定
-          if (this.spreadsheetLogger) {
-            this.spreadsheetLogger.sheetsClient = this.sheetsClient;
-          }
+        // Step 1-4: SheetsClient確認（コンストラクタで受け取ったものを使用）
+        if (this.sheetsClient) {
+          this.log('SheetsClientを確認', 'info', '1-4');
         } else {
-          this.log('SheetsClientが利用できません - globalThis.sheetsClientが未設定', 'warn', '1-4');
+          this.log('SheetsClientが未設定 - 必要時に設定してください', 'info', '1-4');
         }
 
         this.log('SpreadsheetLogger初期化完了', 'success', '1');
@@ -333,7 +312,7 @@ export default class StreamProcessorV2 {
         this.log('排他制御ログヘルパー初期化開始', 'info', '1-6');
         this.initializeExclusiveControlLoggerHelper();
       } else {
-        this.log('SpreadsheetLoggerClass または spreadsheetUrl が未設定', 'warning', '1');
+        this.log(`SpreadsheetLoggerClass が取得できませんでした`, 'warn', '1-3');
       }
     } catch (error) {
       this.log(`SpreadsheetLogger初期化エラー: ${error.message}`, 'error', '1');
@@ -380,7 +359,9 @@ export default class StreamProcessorV2 {
     // ========================================
     this.log('スプレッドシートデータを保存・初期化', 'info', '2-2');
     this.spreadsheetData = spreadsheetData;
-    this.spreadsheetUrl = spreadsheetData?.spreadsheetUrl;
+    this.spreadsheetUrl = spreadsheetData?.spreadsheetUrl ||
+                         spreadsheetData?.spreadsheetId ||
+                         this.spreadsheetUrl;  // 既存値を保持
 
     // SpreadsheetLoggerを初期化
     await this.initializeSpreadsheetLogger();
@@ -430,10 +411,10 @@ export default class StreamProcessorV2 {
     this.log(`処理開始インデックス: ${firstTaskGroupIndex}`, 'success', '2-4');
 
     // ========================================
-    // Step 2-4-1: SpreadsheetLoggerのログ記録機能を初期化
+    // Step 2-4-1: SpreadsheetLoggerのログ記録機能は既に初期化済み
     // ========================================
-    this.log('SpreadsheetLoggerのログ記録機能を初期化', 'info', '2-4-1');
-    await this.initializeLoggingFeatures(spreadsheetData, options);
+    this.log('SpreadsheetLoggerは既にコンストラクタで初期化済み', 'info', '2-4-1');
+    // initializeLoggingFeaturesの呼び出しを削除 - spreadsheetLoggerの二重初期化を防ぐ
 
     // ========================================
     // Step 2-5: グループ処理実行
@@ -1456,8 +1437,21 @@ export default class StreamProcessorV2 {
       // Step 8-3.1: 送信時刻を記録（ログ用）
       if (this.spreadsheetLogger) {
         const taskId = `${task.column}${task.row}_${task.aiType || 'AI'}`;
-        this.spreadsheetLogger.recordSendTimestamp(taskId, task);
-        this.logger.log(`[Step 8-3.1] ⏰ 送信時刻記録: ${taskId}`);
+        // メソッドの存在をチェック
+        if (typeof this.spreadsheetLogger.recordSendTimestamp === 'function') {
+          this.spreadsheetLogger.recordSendTimestamp(taskId, task);
+          this.logger.log(`[Step 8-3.1] ⏰ 送信時刻記録: ${taskId}`);
+        } else if (typeof this.spreadsheetLogger.recordSendTime === 'function') {
+          // フォールバック: 古いメソッドを使用
+          this.spreadsheetLogger.recordSendTime(taskId, {
+            aiType: task.aiType || 'Claude',
+            model: task.model || 'Claude Opus 4.1',
+            function: task.function || '通常'
+          });
+          this.logger.log(`[Step 8-3.1] ⏰ 送信時刻記録（旧メソッド）: ${taskId}`);
+        } else {
+          this.logger.warn(`[Step 8-3.1] ⚠️ 送信時刻記録メソッドが見つかりません`);
+        }
       }
 
       const result = await this.aiTaskExecutor.executeAITask(windowInfo.tabId, task);
@@ -1496,10 +1490,20 @@ export default class StreamProcessorV2 {
           const taskId = `${task.column}${task.row}_${task.aiType || 'AI'}`;
 
           // 送信時刻を記録（既に記録されていない場合）
-          if (!this.spreadsheetLogger.getSendTime(taskId)) {
-            // タスク実行時に既に記録されているはずだが、念のため確認
-            this.logger.warn(`[Step 8-3.6] 送信時刻が未記録のため、現在時刻で記録: ${taskId}`);
-            this.spreadsheetLogger.recordSendTimestamp(taskId, task);
+          if (typeof this.spreadsheetLogger.getSendTime === 'function') {
+            if (!this.spreadsheetLogger.getSendTime(taskId)) {
+              // タスク実行時に既に記録されているはずだが、念のため確認
+              this.logger.warn(`[Step 8-3.6] 送信時刻が未記録のため、現在時刻で記録: ${taskId}`);
+              if (typeof this.spreadsheetLogger.recordSendTimestamp === 'function') {
+                this.spreadsheetLogger.recordSendTimestamp(taskId, task);
+              } else if (typeof this.spreadsheetLogger.recordSendTime === 'function') {
+                this.spreadsheetLogger.recordSendTime(taskId, {
+                  aiType: task.aiType || 'Claude',
+                  model: task.model || 'Claude Opus 4.1',
+                  function: task.function || '通常'
+                });
+              }
+            }
           }
 
           // タスクオブジェクトにlogColumns配列形式を追加（spreadsheet-logger.jsが期待する形式）
@@ -1764,141 +1768,9 @@ export default class StreamProcessorV2 {
     return index - 1;
   }
 
-  /**
-   * Step 1-7: SpreadsheetLoggerのログ記録機能を初期化
-   * @param {Object} spreadsheetData - スプレッドシートデータ
-   * @param {Object} options - オプション
-   */
-  async initializeLoggingFeatures(spreadsheetData, options = {}) {
-    // ログ機能が有効かチェック
-    const enableLogging = options.enableLogging !== false;
-
-    if (enableLogging && spreadsheetData) {
-      this.spreadsheetLogger = {
-        spreadsheetId: spreadsheetData.spreadsheetId,
-        logColumn: 'A',
-        currentRow: 10,
-        isEnabled: true,
-        logBuffer: [],
-        flushInterval: 1000,
-        sendTimestamps: new Map(),
-        receiveTimestamps: new Map(),
-
-        // Step 1-7-1: タスク実行ログの記録
-        async logTaskExecution(task) {
-          if (!this.isEnabled) return;
-
-          const taskId = `${task.column}${task.row}_${task.aiType || 'AI'}`;
-          const sendTime = new Date();
-
-          // Step 1-7-1-1: 送信時刻の記録
-          this.sendTimestamps.set(taskId, {
-            time: sendTime,
-            task: task
-          });
-
-          // Step 1-7-1-2: ログエントリの作成
-          const logEntry = {
-            timestamp: sendTime.toISOString(),
-            taskId: taskId,
-            aiType: task.aiType || 'AI',
-            model: task.model || 'default',
-            function: task.function || 'process',
-            status: 'executing',
-            cell: `${task.column}${task.row}`
-          };
-
-          // Step 1-7-1-3: ログメッセージの生成
-          const logMessage = `[${logEntry.timestamp}] ${logEntry.aiType} - ${logEntry.model} - ${logEntry.function} - ${logEntry.status}`;
-
-          this.logBuffer.push({
-            row: this.currentRow++,
-            column: this.logColumn,
-            value: logMessage
-          });
-
-          console.log(`[Step 1-7-1] タスク実行ログ: ${logMessage}`);
-        },
-
-        // Step 1-7-2: タスク完了ログの記録
-        async logTaskCompletion(taskId, response) {
-          if (!this.isEnabled) return;
-
-          // Step 1-7-2-1: 受信時刻の記録
-          const receiveTime = new Date();
-          this.receiveTimestamps.set(taskId, receiveTime);
-
-          // Step 1-7-2-2: 実行時間の計算
-          const sendInfo = this.sendTimestamps.get(taskId);
-          let executionTime = 'unknown';
-          if (sendInfo) {
-            executionTime = ((receiveTime - sendInfo.time) / 1000).toFixed(1) + '秒';
-          }
-
-          // Step 1-7-2-3: 完了ログエントリの作成
-          const logEntry = {
-            timestamp: receiveTime.toISOString(),
-            taskId: taskId,
-            status: response ? 'completed' : 'failed',
-            executionTime: executionTime,
-            responseLength: response?.length || 0
-          };
-
-          // Step 1-7-2-4: ログメッセージの生成と記録
-          const logMessage = `[${logEntry.timestamp}] Task ${logEntry.taskId} - ${logEntry.status} - ${logEntry.executionTime}`;
-
-          this.logBuffer.push({
-            row: this.currentRow++,
-            column: this.logColumn,
-            value: logMessage
-          });
-
-          console.log(`[Step 1-7-2] 完了ログ記録: ${logMessage}`);
-
-          // Step 1-7-2-5: バッファリング削除 - フラッシュ機能は使用しない
-        },
-
-        // Step 1-7-3: バッファのフラッシュ
-        async flushLogBuffer() {
-          if (!this.isEnabled || this.logBuffer.length === 0) return;
-
-          // Step 1-7-3-1: バッファの取り出し
-          const logsToWrite = [...this.logBuffer];
-          this.logBuffer = [];
-
-          // Step 1-7-3-2: バッチ更新の準備
-          const updates = logsToWrite.map(log => ({
-            range: `${log.column}${log.row}`,
-            value: log.value
-          }));
-
-          try {
-            // Step 1-7-3-3: バッチ書き込み実行
-            for (const update of updates) {
-              await chrome.runtime.sendMessage({
-                action: 'writeToSpreadsheet',
-                spreadsheetId: this.spreadsheetId,
-                range: update.range,
-                value: update.value
-              });
-            }
-            console.log(`[Step 1-7-3] ログフラッシュ完了: ${updates.length}件`);
-          } catch (error) {
-            // Step 1-7-3-4: エラー時はバッファに戻す
-            this.logBuffer.unshift(...logsToWrite);
-            console.error('[Step 1-7-3] ログフラッシュエラー:', error);
-          }
-        }
-      };
-
-      // Step 1-7-4: 定期フラッシュタイマーは削除（フラッシュ機能不使用）
-
-      this.logger.log('[StreamProcessorV2] Step 1-7: ログ記録機能を初期化しました');
-    } else {
-      this.spreadsheetLogger = null;
-      this.logger.log('[StreamProcessorV2] Step 1-7: ログ記録機能は無効です');
-    }
-  }
+  // initializeLoggingFeatures関数を削除
+  // spreadsheetLoggerはコンストラクタで正しくSpreadsheetLoggerクラスとして初期化されているため
+  // この関数による二重初期化（単純オブジェクトへの上書き）を防ぐ
 
   /**
    * セル値を取得
