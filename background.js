@@ -69,11 +69,13 @@ const USE_V2_MODE = true; // V2版StreamProcessorを使用
   try {
     const container = await getGlobalContainer();
 
-    // サービスを取得（既にglobalThisに設定される）
-    await container.get('authService');
-    await container.get('sheetsClient');
-    await container.get('docsClient');
-    await container.get('spreadsheetLogger');
+    // サービスを並列で取得（パフォーマンス最適化）
+    const [authService, sheetsClient, docsClient, spreadsheetLogger] = await Promise.all([
+      container.get('authService'),
+      container.get('sheetsClient'),
+      container.get('docsClient'),
+      container.get('spreadsheetLogger')
+    ]);
 
     console.log('[Background] DIコンテナからサービス取得完了');
   } catch (error) {
@@ -207,8 +209,12 @@ setInterval(() => {
   chrome.runtime.sendMessage({
     type: 'KEEP_ALIVE_PING',
     timestamp: Date.now()
-  }).catch(() => {
-    // Step 8-3: エラーは無視（正常動作）
+  }).catch((error) => {
+    // Step 8-3: Keep-aliveメッセージのエラーは正常動作の一部
+    // Service Workerが再起動された場合などに発生
+    if (error?.message && !error.message.includes('receiving end does not exist')) {
+      console.debug('[Keep-Alive] Non-critical error:', error.message);
+    }
   });
 }, KEEP_ALIVE_INTERVAL);
 

@@ -468,10 +468,14 @@
         
         if (connected) {
             statusDot.className = 'status-dot status-connected';
-            elements.connectionStatus.innerHTML = '<span class="status-dot status-connected"></span> 接続中';
+            elements.connectionStatus.textContent = '';
+            elements.connectionStatus.appendChild(statusDot.cloneNode());
+            elements.connectionStatus.appendChild(document.createTextNode(' 接続中'));
         } else {
             statusDot.className = 'status-dot status-disconnected';
-            elements.connectionStatus.innerHTML = '<span class="status-dot status-disconnected"></span> 切断';
+            elements.connectionStatus.textContent = '';
+            elements.connectionStatus.appendChild(statusDot.cloneNode());
+            elements.connectionStatus.appendChild(document.createTextNode(' 切断'));
         }
     }
 
