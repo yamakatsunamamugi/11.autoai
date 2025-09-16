@@ -876,20 +876,26 @@ ${prompt}`;
                     console.log('⚠️ 通常テキスト要素が1つも見つかりませんでした');
                 }
 
-                // 3. 通常テキストとCanvasテキストを結合
+                // 3. Canvas優先テキスト統合システム
                 let extractedText = '';
-                if (normalText) {
-                    extractedText = normalText;
-                }
+
+                // Canvas優先取得：Canvasがある場合は優先
                 if (canvasTexts.length > 0) {
                     const canvasContent = canvasTexts.join('\n\n--- Canvas ---\n\n');
-                    if (extractedText) {
-                        extractedText = extractedText + '\n\n--- Canvas ---\n\n' + canvasContent;
-                    } else {
-                        extractedText = canvasContent;
+                    extractedText = canvasContent;
+                    console.log(`✅ Canvas優先取得: ${canvasTexts.length}個のCanvas, ${canvasContent.length}文字`);
+
+                    // 通常テキストが意味のある内容かチェック（短すぎるか英語の説明文の場合は除外）
+                    if (normalText && normalText.length > 500 && !normalText.includes('Canvas feature')) {
+                        extractedText = normalText + '\n\n--- Canvas ---\n\n' + canvasContent;
+                        console.log(`通常+Canvas統合: 通常${normalText.length}文字 + Canvas${canvasContent.length}文字`);
                     }
-                    console.log(`Canvasテキスト結合完了 (${canvasTexts.length}個のCanvas)`);
+                } else if (normalText) {
+                    extractedText = normalText;
+                    console.log(`通常テキスト取得: ${normalText.length}文字`);
                 }
+
+                console.log(`Canvas優先システム適用後の総文字数: ${extractedText.length}文字`);
 
                 if (!extractedText) {
                     throw new Error('応答テキストを取得できませんでした');
