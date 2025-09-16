@@ -1,6 +1,4 @@
 // sheets-client.js - Google Sheets APIクライアント
-// Step 3: sleep-utils.jsから1-ai-common-base.jsに移行
-import { getGlobalAICommonBase } from '../../../automations/1-ai-common-base.js';
 import { getService } from '../../core/service-registry.js';
 import { ConsoleLogger } from '../../utils/console-logger.js';
 
@@ -8,8 +6,6 @@ class SheetsClient {
   constructor() {
     this.baseUrl = "https://sheets.googleapis.com/v4/spreadsheets";
     this.logger = new ConsoleLogger('sheets-client');
-    // Step 3: AI共通基盤からsleep関数を取得
-    this.aiCommonBase = getGlobalAICommonBase();
     
     // Google Sheets API制限
     this.limits = {
@@ -45,6 +41,15 @@ class SheetsClient {
 
     // AuthServiceのキャッシュ（遅延初期化用）
     this._authService = null;
+  }
+
+  /**
+   * Sleep function - wait for specified milliseconds
+   * @param {number} ms - milliseconds to wait
+   * @returns {Promise} Promise that resolves after the delay
+   */
+  sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   /**
@@ -236,7 +241,7 @@ class SheetsClient {
           reason: 'quota_error_detected'
         });
         // Step 3: AI共通基盤のsleep関数を使用
-        await this.aiCommonBase.utils.sleep(waitTime);
+        await this.sleep(waitTime);
       }
     }
     
@@ -341,7 +346,7 @@ class SheetsClient {
             });
             
             // Step 3: AI共通基盤のsleep関数を使用
-            await this.aiCommonBase.utils.sleep(retryDelay);
+            await this.sleep(retryDelay);
             continue;
           }
         }
@@ -467,7 +472,7 @@ class SheetsClient {
     try {
       // 少し待機してからデータを取得（API遅延を考慮）
       // Step 3: AI共通基盤のsleep関数を使用
-      await this.aiCommonBase.utils.sleep(1000);
+      await this.sleep(1000);
       
       // 実際のセル内容を取得
       const actualData = await this.getSheetData(spreadsheetId, range, gid);
@@ -602,7 +607,7 @@ class SheetsClient {
       // API レート制限を避けるため待機（クォータ管理により自動調整）
       if (i < chunks.length - 1) {
         // Step 3: AI共通基盤のsleep関数を使用
-      await this.aiCommonBase.utils.sleep(1000); // 200ms → 1000ms に変更
+      await this.sleep(1000); // 200ms → 1000ms に変更
       }
     }
 

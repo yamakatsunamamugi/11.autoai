@@ -109,8 +109,8 @@ const loadUISelectors = () => {
  * 【Step 1.3】タイムアウト設定の読み込み
  */
 const loadTimeoutConfig = () => {
-  // timeout-config.jsは削除済み - 設定は1-ai-common-base.jsに統合済み
-  console.log('[Step 1.3] ✅ [11.autoai] タイムアウト設定は1-ai-common-base.jsに統合済み');
+  // timeout-config.jsは削除済み - 設定は各モジュールに統合済み
+  console.log('[Step 1.3] ✅ [11.autoai] タイムアウト設定は各モジュールに統合済み');
 };
 
 /**

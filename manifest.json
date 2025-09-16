@@ -76,7 +76,6 @@
         "src/features/spreadsheet/docs-client.js",
         "src/features/spreadsheet/sheets-client.js",
         "src/services/spreadsheet-auto-setup.js",
-        "automations/1-ai-common-base.js",
         "automations/chatgpt-automation.js",
         "automations/claude-automation.js",
         "automations/gemini-automation.js",

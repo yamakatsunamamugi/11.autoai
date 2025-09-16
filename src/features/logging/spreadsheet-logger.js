@@ -11,8 +11,7 @@
  * - 既存ログとのマージ処理
  */
 
-// 依存関係: sleep-utils.jsから1-ai-common-base.jsに移行
-import { getGlobalAICommonBase } from '../../../automations/1-ai-common-base.js';
+// sleep関数の独自実装
 import { ModelExtractor } from './extractors/model-extractor.js';
 import { FunctionExtractor } from './extractors/function-extractor.js';
 import { ConsoleLogger } from '../../utils/console-logger.js';
@@ -23,8 +22,8 @@ export class SpreadsheetLogger {
     // ConsoleLoggerインスタンスを作成（シンプルなログ用）
     this.logger = new ConsoleLogger('spreadsheet-logger', logger);
 
-    // AI共通基盤からsleep関数を取得
-    this.aiCommonBase = getGlobalAICommonBase();
+    // sleep関数の定義
+    this.sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     this.modelExtractor = ModelExtractor;
     this.functionExtractor = FunctionExtractor;
     this.sendTimestamps = new Map(); // key: taskId, value: { time: Date, aiType: string, model: string }
@@ -817,7 +816,7 @@ export class SpreadsheetLogger {
 
       // 少し待ってから確認（APIの遅延を考慮）
       // AI共通基盤のsleep関数を使用
-      await this.aiCommonBase.utils.sleep(2000);  // 待機時間を増やす
+      await this.sleep(2000);  // 待機時間を増やす
 
       // 実際のセルの内容を取得
       const sheetsClient = await this.getSheetsClient();

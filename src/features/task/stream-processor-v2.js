@@ -39,8 +39,7 @@ import { ConsoleLogger } from '../../utils/console-logger.js';
 // RetryManager機能はStep 10に統合済み
 // ExclusiveControl機能はStep 0-4-1, 0-4-2に統合済み
 // ExclusiveControlLoggerHelper機能はStep 1-6に統合済み
-// Step 3: sleep-utils.jsから1-ai-common-base.jsに移行（グローバル関数として利用）
-import '../../../automations/1-ai-common-base.js';
+// Removed dependency on 1-ai-common-base.js
 import EXCLUSIVE_CONTROL_CONFIG, {
   getTimeoutForFunction,
   getRetryIntervalForFunction

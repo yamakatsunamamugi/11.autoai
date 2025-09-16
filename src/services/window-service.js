@@ -8,18 +8,14 @@
  */
 
 // RetryManagerのインポート
-import { getGlobalAICommonBase } from '../../automations/1-ai-common-base.js';
+import { RetryManager } from '../utils/retry-manager.js';
 
 export class WindowService {
 
   // RetryManagerの初期化
-  static retryManager = null;
+  static retryManager = new RetryManager();
 
   static getRetryManager() {
-    if (!this.retryManager) {
-      const aiCommonBase = getGlobalAICommonBase();
-      this.retryManager = aiCommonBase.RetryManager;
-    }
     return this.retryManager;
   }
   
@@ -690,39 +686,23 @@ export class WindowService {
       if (window.tabs && window.tabs.length > 0) {
         const tabId = window.tabs[0].id;
 
+        // RetryManagerを使用
         const retryManager = this.getRetryManager();
-        if (retryManager && retryManager.executeSimpleRetry) {
-          await retryManager.executeSimpleRetry({
-            action: async () => {
-              const tab = await chrome.tabs.get(tabId);
-              if (tab.status === 'complete') {
-                console.log(`[WindowService] ポジション${position}のタブ読み込み完了`);
-                return true;
-              }
-              return null;
-            },
-            isSuccess: (result) => result === true,
-            maxRetries: 20,
-            interval: 500,
-            actionName: 'タブ読み込み待機',
-            context: { tabId, position, url }
-          });
-        } else {
-          // フォールバック: 簡易的なリトライ実装
-          const maxRetries = 10;
-          for (let i = 0; i < maxRetries; i++) {
-            try {
-              const tab = await chrome.tabs.get(tabId);
-              if (tab.status === 'complete') {
-                console.log(`[WindowService] ポジション${position}のタブ読み込み完了`);
-                break;
-              }
-            } catch (e) {
-              // タブが見つからない場合は継続
+        await retryManager.executeSimpleRetry({
+          action: async () => {
+            const tab = await chrome.tabs.get(tabId);
+            if (tab.status === 'complete') {
+              console.log(`[WindowService] ポジション${position}のタブ読み込み完了`);
+              return true;
             }
-            await new Promise(resolve => setTimeout(resolve, 500));
-          }
-        }
+            return null;
+          },
+          isSuccess: (result) => result === true,
+          maxRetries: 20,
+          interval: 500,
+          actionName: 'タブ読み込み待機',
+          context: { tabId, position, url }
+        });
 
         // 追加待機（動的コンテンツの生成を待つ）
         await new Promise(resolve => setTimeout(resolve, 2000));

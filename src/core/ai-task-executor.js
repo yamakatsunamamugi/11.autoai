@@ -15,12 +15,15 @@
  */
 
 // タイムアウト設定は削除済み - デフォルト値を使用
+import { RetryManager } from '../utils/retry-manager.js';
 import { ConsoleLogger } from '../utils/console-logger.js';
 
 export class AITaskExecutor {
   constructor(logger = console) {
     // ConsoleLoggerインスタンスを作成（互換性を保持）
     this.logger = logger instanceof ConsoleLogger ? logger : new ConsoleLogger('ai-task-executor', logger);
+    // RetryManagerを初期化
+    this.retryManager = new RetryManager(this.logger);
   }
 
   /**
@@ -269,29 +272,27 @@ export class AITaskExecutor {
         }
       }
 
-      // タブの状態を確認（シンプルなリトライ実装）
-      let tabReady = false;
-      for (let i = 0; i < 10; i++) {
-        try {
+      // タブの状態を確認（RetryManagerを使用）
+      const tabReadyResult = await this.retryManager.executeSimpleRetry({
+        action: async () => {
           const tab = await chrome.tabs.get(tabId);
           this.logger.log(`[AITaskExecutor] タブ状態確認: status=${tab.status}, url=${tab.url}`);
 
           // タブがcompleteで、URLが正しく読み込まれているか確認
           if (tab.status === 'complete' && tab.url && !tab.url.startsWith('chrome://')) {
             this.logger.log(`[AITaskExecutor] ✅ タブ準備完了: ${tab.url}`);
-            tabReady = true;
-            break;
+            return true;
           }
-        } catch (e) {
-          this.logger.debug(`タブ状態確認エラー: ${e.message}`);
-        }
+          return null; // まだ準備ができていない
+        },
+        isSuccess: (result) => result === true,
+        maxRetries: 10,
+        interval: 1000,
+        actionName: 'タブ状態確認',
+        context: { tabId, aiType: taskData.aiType }
+      });
 
-        if (i < 9) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-      }
-
-      if (!tabReady) {
+      if (!tabReadyResult.success) {
         this.logger.warn(`[AITaskExecutor] ⚠️ タブが完全に読み込まれていない可能性があります`);
       }
       
