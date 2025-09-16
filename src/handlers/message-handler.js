@@ -24,6 +24,7 @@ import { AITaskExecutor } from '../core/ai-task-executor.js';
 import StreamProcessorV2 from '../features/task/stream-processor-v2.js';
 import SpreadsheetAutoSetup from '../services/spreadsheet-auto-setup.js';
 import { getStreamingServiceManager } from '../core/streaming-service-manager.js';
+import SpreadsheetLogger from '../features/logging/spreadsheet-logger.js';
 
 // Step 1-1: AIタスク実行インスタンス
 const aiTaskExecutor = new AITaskExecutor();
@@ -442,14 +443,18 @@ export function setupMessageHandler() {
             if (!globalThis.SPREADSHEET_CONFIG) {
               console.log('[Step 12-5-1] SPREADSHEET_CONFIG未初期化、StreamProcessorV2を初期化');
               // 依存性を取得してシングルトンに設定
-              const { getService } = await import('../core/service-registry.js');
-              const sheetsClient = await getService('sheetsClient');
-              const SpreadsheetLogger = (await import('../features/logging/spreadsheet-logger.js')).default;
-              const processor = StreamProcessorV2.getInstance();
-              await processor.setDependencies({
-                sheetsClient: sheetsClient,
-                SpreadsheetLogger: SpreadsheetLogger
-              });
+              try {
+                const { getService } = await import('../core/service-registry.js');
+                const sheetsClient = await getService('sheetsClient');
+                const processor = StreamProcessorV2.getInstance();
+                await processor.setDependencies({
+                  sheetsClient: sheetsClient,
+                  SpreadsheetLogger: SpreadsheetLogger
+                });
+              } catch (e) {
+                // Service Worker環境では動的インポート失敗
+                console.warn('Service Worker環境で依存性設定をスキップ:', e.message);
+              }
             }
 
             const autoSetup = new SpreadsheetAutoSetup();
@@ -511,14 +516,18 @@ export function setupMessageHandler() {
             if (!globalThis.SPREADSHEET_CONFIG) {
               console.log('[Step 13-7-1] SPREADSHEET_CONFIG未初期化、StreamProcessorV2を初期化');
               // 依存性を取得してシングルトンに設定
-              const { getService } = await import('../core/service-registry.js');
-              const sheetsClient = await getService('sheetsClient');
-              const SpreadsheetLogger = (await import('../features/logging/spreadsheet-logger.js')).default;
-              const processor = StreamProcessorV2.getInstance();
-              await processor.setDependencies({
-                sheetsClient: sheetsClient,
-                SpreadsheetLogger: SpreadsheetLogger
-              });
+              try {
+                const { getService } = await import('../core/service-registry.js');
+                const sheetsClient = await getService('sheetsClient');
+                const processor = StreamProcessorV2.getInstance();
+                await processor.setDependencies({
+                  sheetsClient: sheetsClient,
+                  SpreadsheetLogger: SpreadsheetLogger
+                });
+              } catch (e) {
+                // Service Worker環境では動的インポート失敗
+                console.warn('Service Worker環境で依存性設定をスキップ:', e.message);
+              }
             }
 
             const autoSetup = new SpreadsheetAutoSetup();
@@ -712,27 +721,21 @@ export function setupMessageHandler() {
             // Step 18-5: V2モード切り替えフラグ（上部の設定と同じ値を使用）
             const USE_V2_MODE = true; // true: V2版を使用, false: 従来版を使用
 
-            // ServiceRegistryから依存性を取得（エラーハンドリング付き）
-            let sheetsClient = null;
-            let SpreadsheetLogger = null;
-
-            try {
-              // ServiceRegistryを使用（使えない場合はglobalThisから取得）
-              const { getService } = await import('../core/service-registry.js');
-              sheetsClient = await getService('sheetsClient');
-              SpreadsheetLogger = (await import('../features/logging/spreadsheet-logger.js')).default;
-            } catch (e) {
-              // フォールバック: globalThisから取得
-              sheetsClient = globalThis.sheetsClient;
-              SpreadsheetLogger = globalThis.SpreadsheetLogger;
-            }
-
             // シングルトンインスタンスを取得して依存性を設定
             const processor = StreamProcessorV2.getInstance();
-            await processor.setDependencies({
-              sheetsClient: sheetsClient,
-              SpreadsheetLogger: SpreadsheetLogger
-            });
+
+            // Service Worker環境では動的インポートが失敗するため、try-catch
+            try {
+              const { getService } = await import('../core/service-registry.js');
+              const sheetsClient = await getService('sheetsClient');
+              await processor.setDependencies({
+                sheetsClient: sheetsClient,
+                SpreadsheetLogger: SpreadsheetLogger
+              });
+            } catch (e) {
+              // Service Worker環境：依存性設定をスキップ
+              console.warn('Service Worker環境で依存性設定をスキップ:', e.message);
+            }
 
             // Step 18-6: スプレッドシートデータを取得
             let spreadsheetData;
