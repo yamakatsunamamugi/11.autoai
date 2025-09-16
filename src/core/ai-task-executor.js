@@ -15,20 +15,12 @@
  */
 
 // タイムアウト設定は削除済み - デフォルト値を使用
-// RetryManager機能を統合済み
-import { getGlobalAICommonBase } from '../../automations/1-ai-common-base.js';
 import { ConsoleLogger } from '../utils/console-logger.js';
 
 export class AITaskExecutor {
   constructor(logger = console) {
     // ConsoleLoggerインスタンスを作成（互換性を保持）
     this.logger = logger instanceof ConsoleLogger ? logger : new ConsoleLogger('ai-task-executor', logger);
-    // AI共通基盤からRetryManagerを取得
-    const aiCommonBase = getGlobalAICommonBase();
-    this.retryManager = aiCommonBase?.RetryManager;
-    if (!this.retryManager) {
-      this.logger.error('[Step 0-1: RetryManager取得失敗] RetryManagerが取得できませんでした');
-    }
   }
 
   /**
@@ -277,27 +269,29 @@ export class AITaskExecutor {
         }
       }
 
-      // タブの状態を確認（RetryManagerを使用）
-      const tabReadyResult = await this.retryManager.executeSimpleRetry({
-        action: async () => {
+      // タブの状態を確認（シンプルなリトライ実装）
+      let tabReady = false;
+      for (let i = 0; i < 10; i++) {
+        try {
           const tab = await chrome.tabs.get(tabId);
           this.logger.log(`[AITaskExecutor] タブ状態確認: status=${tab.status}, url=${tab.url}`);
-          
+
           // タブがcompleteで、URLが正しく読み込まれているか確認
           if (tab.status === 'complete' && tab.url && !tab.url.startsWith('chrome://')) {
             this.logger.log(`[AITaskExecutor] ✅ タブ準備完了: ${tab.url}`);
-            return true;
+            tabReady = true;
+            break;
           }
-          return null; // まだ準備ができていない
-        },
-        isSuccess: (result) => result === true,
-        maxRetries: 10,
-        interval: 1000,
-        actionName: 'タブ状態確認',
-        context: { tabId, aiType: taskData.aiType }
-      });
-      
-      if (!tabReadyResult.success) {
+        } catch (e) {
+          this.logger.debug(`タブ状態確認エラー: ${e.message}`);
+        }
+
+        if (i < 9) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+
+      if (!tabReady) {
         this.logger.warn(`[AITaskExecutor] ⚠️ タブが完全に読み込まれていない可能性があります`);
       }
       

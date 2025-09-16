@@ -30,25 +30,8 @@
     console.log(`ChatGPT Automation V2 - 初期化時刻: ${new Date().toLocaleString('ja-JP')}`);
     console.log(`[DEBUG] ChatGPT Script Loaded - Marker Set`);
 
-    // AI共通基盤からRetryManagerを取得（現在の共通処理関数を活用）
-    const getRetryManager = () => {
-        try {
-            if (typeof window !== 'undefined' && window.AICommonBase) {
-                return window.AICommonBase.RetryManager;
-            }
-            if (typeof globalThis !== 'undefined' && globalThis.AICommonBase) {
-                return globalThis.AICommonBase.RetryManager;
-            }
-            console.log('📝 AI共通基盤が見つかりません、独自実装を使用');
-            return null;
-        } catch (error) {
-            console.log('📝 RetryManager取得失敗、独自実装を使用:', error.message);
-            return null;
-        }
-    };
-
-    // RetryManagerの取得を試行
-    const retryManager = getRetryManager();
+    // RetryManagerは使用しない（独自実装を使用）
+    const retryManager = null;
 
     // 統一された待機時間設定を取得（Claudeと同じ方式）
     const AI_WAIT_CONFIG = window.AI_WAIT_CONFIG || {
