@@ -2256,6 +2256,17 @@ class SheetsClient {
 
     return validation;
   }
+
+  /**
+   * スプレッドシートデータを再読み込み
+   * StreamProcessorV2から呼び出される際の互換性メソッド
+   * @returns {Promise<void>}
+   */
+  async reloadData() {
+    console.log('[SheetsClient] reloadData呼び出し - 現在は何もしません（互換性のため）');
+    // 現在は特に何もしない
+    // 将来的に必要に応じてキャッシュのクリアや再初期化を実装
+  }
 }
 
 // グローバルスコープに追加

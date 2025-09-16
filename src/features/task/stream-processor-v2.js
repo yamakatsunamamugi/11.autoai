@@ -34,6 +34,7 @@
 import { AITaskExecutor } from '../../core/ai-task-executor.js';
 import { WindowService } from '../../services/window-service.js';
 import { aiUrlManager } from '../../core/ai-url-manager.js';
+import { getService } from '../../core/service-registry.js';
 // RetryManager機能はStep 10に統合済み
 // ExclusiveControl機能はStep 0-4-1, 0-4-2に統合済み
 // ExclusiveControlLoggerHelper機能はStep 1-6に統合済み
@@ -231,7 +232,6 @@ export default class StreamProcessorV2 {
       // SheetsClientが未設定でdependenciesにもない場合、Service Registry経由で取得を試行
       this.log('SheetsClientが未設定 - Service Registry経由で取得を試行', 'info');
       try {
-        const { getService } = await import('../../core/service-registry.js');
         this.sheetsClient = await getService('sheetsClient');
         this.log('Service Registry経由でSheetsClientを取得しました', 'success');
       } catch (error) {
@@ -251,7 +251,6 @@ export default class StreamProcessorV2 {
       // SpreadsheetLoggerが未設定の場合、Service Registry経由で取得を試行
       this.log('SpreadsheetLoggerが未設定 - Service Registry経由で取得を試行', 'info');
       try {
-        const { getService } = await import('../../core/service-registry.js');
         const spreadsheetLogger = await getService('spreadsheetLogger');
         if (spreadsheetLogger && spreadsheetLogger.constructor) {
           this.SpreadsheetLoggerClass = spreadsheetLogger.constructor;
@@ -2041,7 +2040,6 @@ export default class StreamProcessorV2 {
       if (!this.sheetsClient) {
         this.log('SheetsClientが未設定 - Service Registry経由で取得を試行', 'info', 'Step 3-7');
         try {
-          const { getService } = await import('../../core/service-registry.js');
           this.sheetsClient = await getService('sheetsClient');
           this.log('Service Registry経由でSheetsClientを取得しました', 'success', 'Step 3-7');
         } catch (registryError) {

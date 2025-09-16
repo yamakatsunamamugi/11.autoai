@@ -44,13 +44,6 @@ export async function initializeServices() {
 
   // SheetsClient - スプレッドシート操作（統合版）
   container.register('sheetsClient', async (container) => {
-    // 既存のglobalThis.sheetsClientがあれば使用（移行期間用）
-    if (globalThis.sheetsClient) {
-      return globalThis.sheetsClient;
-    }
-
-    // sheets-client.jsからインポート（static import使用）
-
     // AuthServiceを取得
     let authService = null;
     try {
@@ -64,21 +57,11 @@ export async function initializeServices() {
       authService: authService
     });
 
-    // グローバル変数にも設定（後方互換性）
-    globalThis.sheetsClient = client;
-
     return client;
   });
 
   // DocsClient - Google Docs操作
   container.register('docsClient', async (container) => {
-    // 既存のglobalThis.docsClientがあれば使用
-    if (globalThis.docsClient) {
-      return globalThis.docsClient;
-    }
-
-    // docs-client.jsからインポート（static import使用）
-
     // AuthServiceを取得
     let authService = null;
     try {
@@ -92,32 +75,18 @@ export async function initializeServices() {
       authService: authService
     });
 
-    // グローバル変数にも設定（後方互換性）
-    globalThis.docsClient = client;
-
     return client;
   });
 
   // AuthService - 認証サービス（統合版）
   container.register('authService', async () => {
-    // 既存のグローバルインスタンスを確認
-    if (globalThis.authService) {
-      return globalThis.authService;
-    }
-
-    // auth-service.jsからインポート（static import使用）
-
-    // getAuthServiceがあればシングルトンを使用
+    // getAuthServiceシングルトンを使用
     if (getAuthService) {
-      const service = getAuthService();
-      globalThis.authService = service;
-      return service;
+      return getAuthService();
     }
 
     // フォールバック：新しいインスタンスを作成
-    const service = new AuthService();
-    globalThis.authService = service;
-    return service;
+    return new AuthService();
   });
 
   // PowerManager - スリープ防止
@@ -141,13 +110,6 @@ export async function initializeServices() {
 
   // SpreadsheetLogger - スプレッドシートログ（統合版）
   container.register('spreadsheetLogger', async (container) => {
-    // 既存のglobalThis.spreadsheetLoggerがあれば使用
-    if (globalThis.spreadsheetLogger) {
-      return globalThis.spreadsheetLogger;
-    }
-
-    // features/logging/spreadsheet-logger.jsからインポート（static import使用）
-
     // 依存サービスを取得
     let sheetsClient = null;
     let logManager = null;
@@ -167,9 +129,6 @@ export async function initializeServices() {
       sheetsClient: sheetsClient,
       logManager: logManager
     });
-
-    // グローバル変数にも設定（後方互換性）
-    globalThis.spreadsheetLogger = logger;
 
     return logger;
   });

@@ -84,24 +84,45 @@ const USE_V2_MODE = true; // V2版StreamProcessorを使用
 globalThis.logManager = logManager;
 globalThis.StreamProcessorV2 = StreamProcessorV2;
 
-// StreamProcessorV2の依存性設定（グローバル変数を使わずService Registry経由）
+// StreamProcessorV2の依存性設定（Service Registry経由、エラーハンドリング強化）
 (async () => {
-  try {
-    console.log('[Background] StreamProcessorV2依存性設定開始');
+  const maxRetries = 3;
+  let retryCount = 0;
 
-    // ServiceRegistryから依存性を取得（static importを使用）
-    const sheetsClientFromRegistry = await getService('sheetsClient');
-    const SpreadsheetLoggerClass = SpreadsheetLogger;
+  while (retryCount < maxRetries) {
+    try {
+      console.log(`[Background] StreamProcessorV2依存性設定開始 (試行${retryCount + 1}/${maxRetries})`);
 
-    // StreamProcessorV2のシングルトンに依存性を設定
-    const processor = StreamProcessorV2.getInstance();
-    await processor.setDependencies({
-      sheetsClient: sheetsClientFromRegistry,
-      SpreadsheetLogger: SpreadsheetLoggerClass
-    });
-    console.log('[Background] StreamProcessorV2依存性設定完了');
-  } catch (e) {
-    console.error('[Background] 依存性設定失敗:', e.message);
+      // ServiceRegistryから依存性を取得（static importを使用）
+      const sheetsClientFromRegistry = await getService('sheetsClient');
+      const SpreadsheetLoggerClass = SpreadsheetLogger;
+
+      console.log('[Background] 依存性取得成功:', {
+        sheetsClient: !!sheetsClientFromRegistry,
+        SpreadsheetLogger: !!SpreadsheetLoggerClass
+      });
+
+      // StreamProcessorV2のシングルトンに依存性を設定
+      const processor = StreamProcessorV2.getInstance();
+      await processor.setDependencies({
+        sheetsClient: sheetsClientFromRegistry,
+        SpreadsheetLogger: SpreadsheetLoggerClass
+      });
+
+      console.log('[Background] StreamProcessorV2依存性設定完了');
+      break; // 成功したらループを抜ける
+
+    } catch (e) {
+      retryCount++;
+      console.error(`[Background] 依存性設定失敗 (試行${retryCount}/${maxRetries}):`, e.message);
+
+      if (retryCount < maxRetries) {
+        console.log(`[Background] ${1000 * retryCount}ms後にリトライします`);
+        await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+      } else {
+        console.error('[Background] 最大リトライ回数に達しました。依存性設定をスキップします。');
+      }
+    }
   }
 })();
 
