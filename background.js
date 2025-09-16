@@ -79,49 +79,21 @@ let UI_SELECTORS = {};
 let isProcessing = false;
 const USE_V2_MODE = true; // V2版StreamProcessorを使用
 
-// Step 3-4: グローバル参照の設定
+// Step 3-4: 後方互換性のため必要最小限のグローバル参照のみ設定
+// Service Registry経由でアクセスするよう段階的に移行中
 globalThis.logManager = logManager;
-globalThis.googleServices = googleServices;
-globalThis.authService = authService;
-// globalThis.sheetsClient = sheetsClient;  // SheetsReaderで上書きしないようにコメントアウト（sheets-client.jsの正しいインスタンスを使用）
-globalThis.docsClient = docsClient;
-globalThis.spreadsheetLogger = spreadsheetLogger;
-globalThis.processSpreadsheetData = processSpreadsheetData;
-globalThis.taskGroupCache = taskGroupCache;
-globalThis.getColumnName = getColumnName;
-globalThis.columnToIndex = columnToIndex;
-// automationファイルはコンテンツスクリプト用なので削除
-// globalThis.ReportExecutor = ReportExecutor;
-// globalThis.GensparkAutomation = GensparkAutomation;
-globalThis.SpreadsheetAutoSetup = SpreadsheetAutoSetup;
 globalThis.StreamProcessorV2 = StreamProcessorV2;
 
-// StreamProcessorV2のインスタンスを早期作成してSPREADSHEET_CONFIGを初期化
-console.log('[Background] StreamProcessorV2インスタンスを早期初期化');
-globalThis.streamProcessorV2Instance = new StreamProcessorV2();
-
-// 依存性を事前に設定（ServiceRegistryを使用）
+// StreamProcessorV2の依存性設定（グローバル変数を使わずService Registry経由）
 (async () => {
   try {
-    // Google Servicesが初期化されるまで待機
-    await new Promise(resolve => {
-      if (globalThis.sheetsClient) {
-        resolve();
-      } else {
-        const checkInterval = setInterval(() => {
-          if (globalThis.sheetsClient) {
-            clearInterval(checkInterval);
-            resolve();
-          }
-        }, 100);
-      }
-    });
+    console.log('[Background] StreamProcessorV2依存性設定開始');
 
     // ServiceRegistryから依存性を取得（static importを使用）
     const sheetsClientFromRegistry = await getService('sheetsClient');
     const SpreadsheetLoggerClass = SpreadsheetLogger;
 
-    // 依存性を設定
+    // StreamProcessorV2のシングルトンに依存性を設定
     const processor = StreamProcessorV2.getInstance();
     await processor.setDependencies({
       sheetsClient: sheetsClientFromRegistry,
@@ -133,8 +105,7 @@ globalThis.streamProcessorV2Instance = new StreamProcessorV2();
   }
 })();
 
-globalThis.aiTaskExecutor = new AITaskExecutor();
-globalThis.aiTaskHandler = new AITaskHandler();
+// AITaskExecutorとAITaskHandlerはService Registry経由でアクセス
 
 // Step 3-5: parseSpreadsheetUrl関数
 globalThis.parseSpreadsheetUrl = (url) => {

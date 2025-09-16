@@ -227,6 +227,16 @@ export default class StreamProcessorV2 {
     if (dependencies.sheetsClient) {
       this.sheetsClient = dependencies.sheetsClient;
       this.log('SheetsClientを設定しました', 'info');
+    } else if (!this.sheetsClient) {
+      // SheetsClientが未設定でdependenciesにもない場合、Service Registry経由で取得を試行
+      this.log('SheetsClientが未設定 - Service Registry経由で取得を試行', 'info');
+      try {
+        const { getService } = await import('../../core/service-registry.js');
+        this.sheetsClient = await getService('sheetsClient');
+        this.log('Service Registry経由でSheetsClientを取得しました', 'success');
+      } catch (error) {
+        this.log(`Service Registry経由のSheetsClient取得に失敗: ${error.message}`, 'warning');
+      }
     }
 
     // SpreadsheetLoggerクラスを設定して再初期化
@@ -237,6 +247,20 @@ export default class StreamProcessorV2 {
       // SpreadsheetLoggerを再初期化
       await this.initializeSpreadsheetLogger();
       this.log('SpreadsheetLoggerを再初期化しました', 'info');
+    } else if (!this.SpreadsheetLoggerClass) {
+      // SpreadsheetLoggerが未設定の場合、Service Registry経由で取得を試行
+      this.log('SpreadsheetLoggerが未設定 - Service Registry経由で取得を試行', 'info');
+      try {
+        const { getService } = await import('../../core/service-registry.js');
+        const spreadsheetLogger = await getService('spreadsheetLogger');
+        if (spreadsheetLogger && spreadsheetLogger.constructor) {
+          this.SpreadsheetLoggerClass = spreadsheetLogger.constructor;
+          await this.initializeSpreadsheetLogger();
+          this.log('Service Registry経由でSpreadsheetLoggerを取得しました', 'success');
+        }
+      } catch (error) {
+        this.log(`Service Registry経由のSpreadsheetLogger取得に失敗: ${error.message}`, 'warning');
+      }
     }
   }
 
@@ -2013,11 +2037,23 @@ export default class StreamProcessorV2 {
     this.log('スプレッドシートデータを再読み込み', 'info', 'Step 3-7');
 
     try {
+      // SheetsClientが未設定の場合、Service Registryから取得を試行
+      if (!this.sheetsClient) {
+        this.log('SheetsClientが未設定 - Service Registry経由で取得を試行', 'info', 'Step 3-7');
+        try {
+          const { getService } = await import('../../core/service-registry.js');
+          this.sheetsClient = await getService('sheetsClient');
+          this.log('Service Registry経由でSheetsClientを取得しました', 'success', 'Step 3-7');
+        } catch (registryError) {
+          this.log(`Service Registry経由のSheetsClient取得に失敗: ${registryError.message}`, 'warning', 'Step 3-7');
+        }
+      }
+
       if (this.sheetsClient && this.sheetsClient.reloadData) {
         await this.sheetsClient.reloadData();
         this.log('スプレッドシートデータ再読み込み完了', 'success', 'Step 3-7');
       } else {
-        this.log('SheetsClientが未初期化 - 再読み込みスキップ', 'warning', 'Step 3-7');
+        this.log('SheetsClientが利用できません - 再読み込みスキップ', 'warning', 'Step 3-7');
       }
     } catch (error) {
       this.log(`データ再読み込みエラー: ${error.message}`, 'error', '3-7');
