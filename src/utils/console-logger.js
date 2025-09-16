@@ -49,11 +49,15 @@ export class ConsoleLogger {
     // [Step 0-2: ステップ管理] ステップ名マッピングの初期化
     this.stepNames = new Map();
 
+    // ソースコードキャッシュ（パフォーマンス向上のため）
+    this.sourceCache = new Map();
+
     // [Step 0-3: 設定] ログ設定の初期化
     this.config = {
       enableStackTrace: true,  // スタックトレースからファイル名を取得
       enableTimestamp: false,  // タイムスタンプを表示
-      enableLineNumber: false, // 行番号を表示
+      enableLineNumber: true,  // 行番号を表示
+      enableAutoStep: true,    // コメントからステップ番号を自動取得
       logLevel: 'all'         // all, warn, error
     };
 
@@ -114,6 +118,42 @@ export class ConsoleLogger {
   }
 
   /**
+   * [Step 2-3: ソースコードからステップ情報を取得]
+   * 呼び出し元のソースコードを解析してステップ番号を取得
+   * @param {Object} caller - 呼び出し元情報
+   * @returns {string|null} ステップ情報
+   */
+  async getStepFromSource(caller) {
+    if (!this.config.enableAutoStep) return null;
+
+    try {
+      // ブラウザ環境では実行不可
+      if (typeof window !== 'undefined') return null;
+
+      // Node.js環境でファイルを読み込む（Service Workerでは制限あり）
+      // 実際にはError.stackから情報を解析
+      const error = new Error();
+      const stack = error.stack || '';
+      const lines = stack.split('\n');
+
+      // 呼び出し元付近から[Step X-X-X]パターンを探す
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const stepMatch = line.match(/\[Step ([\d\-]+(?:\-\d+)*)(?:\s*:\s*([^\]]+))?\]/i);
+        if (stepMatch) {
+          const stepNumber = stepMatch[1];
+          const stepName = stepMatch[2] || '';
+          return `[Step ${stepNumber}${stepName ? ': ' + stepName : ''}]`;
+        }
+      }
+    } catch (e) {
+      // エラー時は null を返す
+    }
+
+    return null;
+  }
+
+  /**
    * [Step 3: スタックトレース解析]
    * スタックトレースから呼び出し元情報を取得
    * @param {number} depth - スタックの深さ（デフォルト: 3）
@@ -171,31 +211,47 @@ export class ConsoleLogger {
   /**
    * [Step 4: ログフォーマット生成]
    * 統一フォーマットでログメッセージを生成
-   * @param {string} stepNumber - ステップ番号
+   * @param {string|null} stepNumber - ステップ番号（省略可能、自動検出）
    * @param {string} customStepName - カスタムステップ名（オプション）
    * @param {string} message - ログメッセージ
    * @param {string} level - ログレベル (log, warn, error)
+   * @param {*} data - 追加データ
    * @returns {string} フォーマット済みメッセージ
    */
-  formatMessage(stepNumber, customStepName, message, level = 'log') {
+  formatMessage(stepNumber, customStepName, message, level = 'log', data = null) {
     // [Step 4-1: 呼び出し元情報取得]
     const caller = this.getCallerInfo(4); // formatMessageの呼び出し元を取得
 
-    // [Step 4-2: ステップ名の決定]
-    const registeredName = this.stepNames.get(stepNumber);
-    const stepName = customStepName || registeredName || '';
-
-    // [Step 4-3: ファイル名の決定]
-    const fileName = caller.fileName;
-
-    // [Step 4-4: ステップ部分の構築]
-    let stepPart = `Step ${stepNumber}`;
-    if (stepName) {
-      stepPart += `: ${stepName}`;
+    // [Step 4-2: メッセージからステップ番号を自動抽出]
+    let autoStep = null;
+    let cleanMessage = message;
+    if (this.config.enableAutoStep && !stepNumber) {
+      const stepMatch = message.match(/^\[Step ([\d\-]+(?:\-\d+)*)(?:\s*:\s*([^\]]+))?\]\s*(.*)/);
+      if (stepMatch) {
+        autoStep = `Step ${stepMatch[1]}${stepMatch[2] ? ': ' + stepMatch[2] : ''}`;
+        cleanMessage = stepMatch[3] || message;
+      }
     }
 
+    // [Step 4-3: ステップ名の決定]
+    let stepPart = '';
+    if (stepNumber) {
+      const registeredName = this.stepNames.get(stepNumber);
+      const stepName = customStepName || registeredName || '';
+      stepPart = `Step ${stepNumber}${stepName ? ': ' + stepName : ''}`;
+    } else if (autoStep) {
+      stepPart = autoStep;
+    }
+
+    // [Step 4-4: ファイル名の決定]
+    const fileName = caller.fileName;
+
     // [Step 4-5: オプション情報の追加]
-    const parts = [`[${fileName}]`, `[${stepPart}]`];
+    const parts = [`[${fileName}]`];
+
+    if (stepPart) {
+      parts.push(`[${stepPart}]`);
+    }
 
     if (this.config.enableLineNumber && caller.lineNumber > 0) {
       parts.push(`[L${caller.lineNumber}]`);
@@ -219,7 +275,46 @@ export class ConsoleLogger {
     const indicator = levelIndicators[level] || '';
 
     // [Step 4-7: 最終フォーマット生成]
-    return `${parts.join(' ')} ${indicator}${indicator ? ' ' : ''}${message}`;
+    const baseMessage = `${parts.join(' ')} ${indicator}${indicator ? ' ' : ''}${cleanMessage}`;
+
+    // データがある場合は追加情報として表示
+    if (data !== null && data !== undefined) {
+      // オブジェクトの場合は整形
+      if (typeof data === 'object') {
+        const dataStr = this.formatDataForLog(data, level);
+        if (dataStr) {
+          return `${baseMessage}\n  ${dataStr}`;
+        }
+      }
+    }
+
+    return baseMessage;
+  }
+
+  /**
+   * [Step 4-8: データフォーマット]
+   * オブジェクトデータをログ用に整形
+   * @param {*} data - データ
+   * @param {string} level - ログレベル
+   * @returns {string} 整形済みデータ
+   */
+  formatDataForLog(data, level) {
+    try {
+      if (data instanceof Error) {
+        return `Error: ${data.message}${data.stack ? '\n' + data.stack : ''}`;
+      }
+
+      // 小さいオブジェクトは1行で表示
+      const str = JSON.stringify(data);
+      if (str.length < 100) {
+        return `Data: ${str}`;
+      }
+
+      // 大きいオブジェクトは整形して表示
+      return `Data: ${JSON.stringify(data, null, 2)}`;
+    } catch (e) {
+      return `Data: [Circular or Complex Object]`;
+    }
   }
 
   /**
@@ -228,30 +323,45 @@ export class ConsoleLogger {
 
   /**
    * [Step 5-1: 通常ログ]
-   * @param {string} stepNumber - ステップ番号
-   * @param {string} stepNameOrMessage - ステップ名またはメッセージ
-   * @param {string} message - メッセージ（stepNameOrMessageがステップ名の場合）
-   * @param {*} data - 追加データ
+   * シンプルなAPI: log(message, data) または従来API対応
+   * @param {string} messageOrStep - メッセージまたはステップ番号
+   * @param {*} dataOrStepName - データまたはステップ名
+   * @param {string} message - メッセージ（従来API用）
+   * @param {*} data - 追加データ（従来API用）
    */
-  log(stepNumber, stepNameOrMessage, message = null, data = null) {
-    // [Step 5-1-1: 引数の解釈]
+  log(messageOrStep, dataOrStepName = null, message = null, data = null) {
+    // [Step 5-1-1: 引数パターンの判定]
+    let stepNumber = null;
     let stepName = null;
-    let actualMessage = message;
+    let actualMessage = '';
+    let actualData = null;
 
-    if (message === null) {
-      // 2引数の場合: stepNumber, message
-      actualMessage = stepNameOrMessage;
-    } else {
-      // 3引数以上の場合: stepNumber, stepName, message
-      stepName = stepNameOrMessage;
+    // パターン1: log("メッセージ") または log("メッセージ", data)
+    if (typeof messageOrStep === 'string' && message === null) {
+      // メッセージ内に[Step X-X-X]が含まれている場合は自動抽出
+      actualMessage = messageOrStep;
+      actualData = dataOrStepName;
+    }
+    // パターン2: log("ステップ番号", "メッセージ")
+    else if (typeof messageOrStep === 'string' && typeof dataOrStepName === 'string' && message === null) {
+      stepNumber = messageOrStep;
+      actualMessage = dataOrStepName;
+      actualData = data;
+    }
+    // パターン3: log("ステップ番号", "ステップ名", "メッセージ", data) - 従来API
+    else if (message !== null) {
+      stepNumber = messageOrStep;
+      stepName = dataOrStepName;
+      actualMessage = message;
+      actualData = data;
     }
 
     // [Step 5-1-2: フォーマット済みメッセージ生成]
-    const formatted = this.formatMessage(stepNumber, stepName, actualMessage, 'log');
+    const formatted = this.formatMessage(stepNumber, stepName, actualMessage, 'log', actualData);
 
     // [Step 5-1-3: 出力]
-    if (data !== null && data !== undefined) {
-      this.console.log(formatted, data);
+    if (actualData !== null && actualData !== undefined) {
+      this.console.log(formatted, actualData);
     } else {
       this.console.log(formatted);
     }
@@ -260,23 +370,33 @@ export class ConsoleLogger {
   /**
    * [Step 5-2: 警告ログ]
    */
-  warn(stepNumber, stepNameOrMessage, message = null, data = null) {
-    // [Step 5-2-1: 引数の解釈]
+  warn(messageOrStep, dataOrStepName = null, message = null, data = null) {
+    // [Step 5-2-1: 引数パターンの判定]
+    let stepNumber = null;
     let stepName = null;
-    let actualMessage = message;
+    let actualMessage = '';
+    let actualData = null;
 
-    if (message === null) {
-      actualMessage = stepNameOrMessage;
-    } else {
-      stepName = stepNameOrMessage;
+    if (typeof messageOrStep === 'string' && message === null) {
+      actualMessage = messageOrStep;
+      actualData = dataOrStepName;
+    } else if (typeof messageOrStep === 'string' && typeof dataOrStepName === 'string' && message === null) {
+      stepNumber = messageOrStep;
+      actualMessage = dataOrStepName;
+      actualData = data;
+    } else if (message !== null) {
+      stepNumber = messageOrStep;
+      stepName = dataOrStepName;
+      actualMessage = message;
+      actualData = data;
     }
 
     // [Step 5-2-2: フォーマット済みメッセージ生成]
-    const formatted = this.formatMessage(stepNumber, stepName, actualMessage, 'warn');
+    const formatted = this.formatMessage(stepNumber, stepName, actualMessage, 'warn', actualData);
 
     // [Step 5-2-3: 出力]
-    if (data !== null && data !== undefined) {
-      this.console.warn(formatted, data);
+    if (actualData !== null && actualData !== undefined) {
+      this.console.warn(formatted, actualData);
     } else {
       this.console.warn(formatted);
     }
@@ -285,23 +405,33 @@ export class ConsoleLogger {
   /**
    * [Step 5-3: エラーログ]
    */
-  error(stepNumber, stepNameOrMessage, message = null, data = null) {
-    // [Step 5-3-1: 引数の解釈]
+  error(messageOrStep, dataOrStepName = null, message = null, data = null) {
+    // [Step 5-3-1: 引数パターンの判定]
+    let stepNumber = null;
     let stepName = null;
-    let actualMessage = message;
+    let actualMessage = '';
+    let actualData = null;
 
-    if (message === null) {
-      actualMessage = stepNameOrMessage;
-    } else {
-      stepName = stepNameOrMessage;
+    if (typeof messageOrStep === 'string' && message === null) {
+      actualMessage = messageOrStep;
+      actualData = dataOrStepName;
+    } else if (typeof messageOrStep === 'string' && typeof dataOrStepName === 'string' && message === null) {
+      stepNumber = messageOrStep;
+      actualMessage = dataOrStepName;
+      actualData = data;
+    } else if (message !== null) {
+      stepNumber = messageOrStep;
+      stepName = dataOrStepName;
+      actualMessage = message;
+      actualData = data;
     }
 
     // [Step 5-3-2: フォーマット済みメッセージ生成]
-    const formatted = this.formatMessage(stepNumber, stepName, actualMessage, 'error');
+    const formatted = this.formatMessage(stepNumber, stepName, actualMessage, 'error', actualData);
 
     // [Step 5-3-3: 出力]
-    if (data !== null && data !== undefined) {
-      this.console.error(formatted, data);
+    if (actualData !== null && actualData !== undefined) {
+      this.console.error(formatted, actualData);
     } else {
       this.console.error(formatted);
     }
@@ -310,21 +440,30 @@ export class ConsoleLogger {
   /**
    * [Step 5-4: 情報ログ]
    */
-  info(stepNumber, stepNameOrMessage, message = null, data = null) {
-    // [Step 5-4-1: メッセージ生成と出力]
+  info(messageOrStep, dataOrStepName = null, message = null, data = null) {
+    let stepNumber = null;
     let stepName = null;
-    let actualMessage = message;
+    let actualMessage = '';
+    let actualData = null;
 
-    if (message === null) {
-      actualMessage = stepNameOrMessage;
-    } else {
-      stepName = stepNameOrMessage;
+    if (typeof messageOrStep === 'string' && message === null) {
+      actualMessage = messageOrStep;
+      actualData = dataOrStepName;
+    } else if (typeof messageOrStep === 'string' && typeof dataOrStepName === 'string' && message === null) {
+      stepNumber = messageOrStep;
+      actualMessage = dataOrStepName;
+      actualData = data;
+    } else if (message !== null) {
+      stepNumber = messageOrStep;
+      stepName = dataOrStepName;
+      actualMessage = message;
+      actualData = data;
     }
 
-    const formatted = this.formatMessage(stepNumber, stepName, actualMessage, 'info');
+    const formatted = this.formatMessage(stepNumber, stepName, actualMessage, 'info', actualData);
 
-    if (data !== null && data !== undefined) {
-      this.console.log(formatted, data);
+    if (actualData !== null && actualData !== undefined) {
+      this.console.log(formatted, actualData);
     } else {
       this.console.log(formatted);
     }
@@ -333,21 +472,30 @@ export class ConsoleLogger {
   /**
    * [Step 5-5: 成功ログ]
    */
-  success(stepNumber, stepNameOrMessage, message = null, data = null) {
-    // [Step 5-5-1: メッセージ生成と出力]
+  success(messageOrStep, dataOrStepName = null, message = null, data = null) {
+    let stepNumber = null;
     let stepName = null;
-    let actualMessage = message;
+    let actualMessage = '';
+    let actualData = null;
 
-    if (message === null) {
-      actualMessage = stepNameOrMessage;
-    } else {
-      stepName = stepNameOrMessage;
+    if (typeof messageOrStep === 'string' && message === null) {
+      actualMessage = messageOrStep;
+      actualData = dataOrStepName;
+    } else if (typeof messageOrStep === 'string' && typeof dataOrStepName === 'string' && message === null) {
+      stepNumber = messageOrStep;
+      actualMessage = dataOrStepName;
+      actualData = data;
+    } else if (message !== null) {
+      stepNumber = messageOrStep;
+      stepName = dataOrStepName;
+      actualMessage = message;
+      actualData = data;
     }
 
-    const formatted = this.formatMessage(stepNumber, stepName, actualMessage, 'success');
+    const formatted = this.formatMessage(stepNumber, stepName, actualMessage, 'success', actualData);
 
-    if (data !== null && data !== undefined) {
-      this.console.log(formatted, data);
+    if (actualData !== null && actualData !== undefined) {
+      this.console.log(formatted, actualData);
     } else {
       this.console.log(formatted);
     }
@@ -356,26 +504,35 @@ export class ConsoleLogger {
   /**
    * [Step 5-6: デバッグログ]
    */
-  debug(stepNumber, stepNameOrMessage, message = null, data = null) {
+  debug(messageOrStep, dataOrStepName = null, message = null, data = null) {
     // [Step 5-6-1: デバッグレベルチェック]
     if (this.config.logLevel !== 'all' && this.config.logLevel !== 'debug') {
       return;
     }
 
-    // [Step 5-6-2: メッセージ生成と出力]
+    let stepNumber = null;
     let stepName = null;
-    let actualMessage = message;
+    let actualMessage = '';
+    let actualData = null;
 
-    if (message === null) {
-      actualMessage = stepNameOrMessage;
-    } else {
-      stepName = stepNameOrMessage;
+    if (typeof messageOrStep === 'string' && message === null) {
+      actualMessage = messageOrStep;
+      actualData = dataOrStepName;
+    } else if (typeof messageOrStep === 'string' && typeof dataOrStepName === 'string' && message === null) {
+      stepNumber = messageOrStep;
+      actualMessage = dataOrStepName;
+      actualData = data;
+    } else if (message !== null) {
+      stepNumber = messageOrStep;
+      stepName = dataOrStepName;
+      actualMessage = message;
+      actualData = data;
     }
 
-    const formatted = this.formatMessage(stepNumber, stepName, actualMessage, 'debug');
+    const formatted = this.formatMessage(stepNumber, stepName, actualMessage, 'debug', actualData);
 
-    if (data !== null && data !== undefined) {
-      this.console.log(formatted, data);
+    if (actualData !== null && actualData !== undefined) {
+      this.console.log(formatted, actualData);
     } else {
       this.console.log(formatted);
     }

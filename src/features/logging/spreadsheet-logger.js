@@ -11,7 +11,7 @@
  * - 既存ログとのマージ処理
  */
 
-// Step 3: sleep-utils.jsから1-ai-common-base.jsに移行
+// 依存関係: sleep-utils.jsから1-ai-common-base.jsに移行
 import { getGlobalAICommonBase } from '../../../automations/1-ai-common-base.js';
 import { ModelExtractor } from './extractors/model-extractor.js';
 import { FunctionExtractor } from './extractors/function-extractor.js';
@@ -19,32 +19,10 @@ import { ConsoleLogger } from '../../utils/console-logger.js';
 
 export class SpreadsheetLogger {
   constructor(logger = console) {
-    // ConsoleLoggerインスタンスを作成
+    // ConsoleLoggerインスタンスを作成（シンプルなログ用）
     this.logger = new ConsoleLogger('spreadsheet-logger', logger);
-    this.logger.registerSteps({
-      '1': 'AI切り替えログ',
-      '1-1': '切り替えイベント記録',
-      '1-2': '切り替え成功記録',
-      '2': '送信時刻管理',
-      '2-1': '送信時刻記録',
-      '2-2': '送信時刻取得',
-      '3': 'ログフォーマット',
-      '3-1': 'ログエントリー生成',
-      '3-2': 'AI名変換',
-      '3-3': 'ログマージ',
-      '4': 'スプレッドシート書き込み',
-      '4-1': '書き込み準備',
-      '4-2': 'ログ列検証',
-      '4-3': '既存ログ取得',
-      '4-4': 'データ書き込み',
-      '4-5': '書き込み確認',
-      '5': 'グループログ管理',
-      '5-1': 'グループログ追加',
-      '5-2': 'グループログ結合',
-      '5-3': 'グループログクリーンアップ'
-    });
 
-    // Step 3: AI共通基盤からsleep関数を取得
+    // AI共通基盤からsleep関数を取得
     this.aiCommonBase = getGlobalAICommonBase();
     this.modelExtractor = ModelExtractor;
     this.functionExtractor = FunctionExtractor;
@@ -72,10 +50,17 @@ export class SpreadsheetLogger {
    * SheetsClientを取得（遅延初期化対応）
    * @returns {Object|null} SheetsClientインスタンス
    */
-  getSheetsClient() {
-    if (!this._sheetsClient && globalThis.sheetsClient) {
-      this._sheetsClient = globalThis.sheetsClient;
-      this.logger.log('0-1', 'SheetsClient取得', 'SheetsClientを取得しました');
+  async getSheetsClient() {
+    if (!this._sheetsClient) {
+      try {
+        // ServiceRegistryから取得
+        const { getService } = await import('../../core/service-registry.js');
+        this._sheetsClient = await getService('sheetsClient');
+        // [Step 0-1: SheetsClient取得]
+        this.logger.log('[Step 0-1: SheetsClient取得] SheetsClientをServiceRegistryから取得しました');
+      } catch (error) {
+        this.logger.warn('[Step 0-1: SheetsClient取得失敗] ServiceRegistryからの取得に失敗:', error.message);
+      }
     }
     return this._sheetsClient;
   }
@@ -108,7 +93,8 @@ export class SpreadsheetLogger {
       taskId: eventData.taskId
     };
 
-    this.logger.log('1-1', 'AI切り替えイベント記録:', logEntry);
+    // [Step 1-1: AI切り替えイベント記録]
+    this.logger.log('[Step 1-1: AI切り替えイベント記録]', logEntry);
     
     // 送信時刻記録に追加（切り替え情報付き）
     if (eventData.taskId) {
@@ -138,7 +124,7 @@ export class SpreadsheetLogger {
       function: successData.function,
       responseLength: successData.responseLength
     };
-    this.logger.log('1-2', 'AI切り替え成功記録:', logEntry);
+    this.logger.log('[Step 1-2: AI切り替え成功記録]', logEntry);
     return logEntry;
   }
 
@@ -157,7 +143,7 @@ export class SpreadsheetLogger {
       model: info.model || '不明'
     });
 
-    this.logger.log('2-1', `送信時刻記録: タスク=${taskId}, 時刻=${timestamp.toLocaleString('ja-JP')}`);
+    this.logger.log(`[Step 2-1: 送信時刻記録] タスク=${taskId}, 時刻=${timestamp.toLocaleString('ja-JP')}`);
   }
 
   /**
@@ -176,7 +162,7 @@ export class SpreadsheetLogger {
       column: task.column
     });
 
-    this.logger.log('2-1', `送信時刻記録: タスク=${taskId}, モデル=${task.model}, 機能=${task.function}, 時刻=${timestamp.toLocaleString('ja-JP')}`);
+    this.logger.log(`[Step 2-1: 送信時刻記録] タスク=${taskId}, モデル=${task.model}, 機能=${task.function}, 時刻=${timestamp.toLocaleString('ja-JP')}`);
   }
 
   /**
@@ -208,8 +194,8 @@ export class SpreadsheetLogger {
     // 機能も同様に常に両方表示
     const functionName = `選択: ${selectedFunction} / 表示: ${displayedFunction}`;
     
-    // デバッグログ
-    this.logger.debug('3-1', 'formatLogEntry - 完全情報:', {
+    // [Step 3-1: モデル情報デバッグ]
+    this.logger.debug('[Step 3-1: モデル情報デバッグ] formatLogEntry完全情報:', {
       'task.model': task.model,
       'task.displayedModel': task.displayedModel,
       selectedModel,
@@ -287,7 +273,8 @@ export class SpreadsheetLogger {
    * @returns {string} マージ済みログ
    */
   mergeWithExistingLog(existingLog, newLog, aiType = '') {
-    this.logger.log('3-3', 'マージ処理開始', '🔄 マージ処理開始:', {
+    // [Step 3-3: マージ処理開始]
+    this.logger.log('[Step 3-3: マージ処理開始] 🔄 マージ処理開始:', {
       aiType,
       hasExistingLog: !!existingLog && existingLog.trim() !== '',
       existingLength: existingLog.length,
@@ -295,24 +282,26 @@ export class SpreadsheetLogger {
     });
     
     if (!existingLog || existingLog.trim() === '') {
-      this.logger.log('3-3-1', '新規ログ追加', `➕ 空のログに新規追加 (AI: ${aiType})`);
+      // [Step 3-3-1: 新規ログ追加]
+      this.logger.log(`[Step 3-3-1: 新規ログ追加] ➕ 空のログに新規追加 (AI: ${aiType})`);
       return newLog;
     }
     
     // AIタイプから日本語表記を取得
     const aiDisplayName = this.getAIDisplayName(aiType);
-    this.logger.log('3-2', `🔍 AI名変換: ${aiType} → ${aiDisplayName}`);
+    // [Step 3-2: AI名変換]
+    this.logger.log(`[Step 3-2: AI名変換] 🔍 AI名変換: ${aiType} → ${aiDisplayName}`);
     
     // 既存ログに同じAIのログが既に存在するかチェック
     const duplicateCheck = existingLog.includes(`---------- ${aiDisplayName} ----------`);
-    this.logger.log('3-3-2', '重複チェック', '🔍 重複チェック結果:', {
+    this.logger.log('[Step 3-3-2: 重複チェック] 🔍 重複チェック結果:', {
       aiDisplayName,
       isDuplicate: duplicateCheck,
       searchPattern: `---------- ${aiDisplayName} ----------`
     });
     
     if (duplicateCheck) {
-      this.logger.warn('3-3-3', 'ログ上書き', `⚠️ 既存の${aiDisplayName}ログを上書き更新`);
+      this.logger.warn(`[Step 3-3-3: ログ上書き] ⚠️ 既存の${aiDisplayName}ログを上書き更新`);
       
       // 同じAIのログ部分を新しいログで置換
       // 正規表現のエスケープを修正
@@ -320,7 +309,7 @@ export class SpreadsheetLogger {
       const logPattern = new RegExp(`---------- ${escapedName} ----------[\\s\\S]*?(?=\\n\\n---------- |$)`, 'g');
       const updatedLog = existingLog.replace(logPattern, newLog);
       
-      this.logger.log('3-3-4', '置換処理', '🔄 置換処理結果:', {
+      this.logger.log('[Step 3-3-4: 置換処理] 🔄 置換処理結果:', {
         succeeded: updatedLog !== existingLog,
         originalLength: existingLog.length,
         updatedLength: updatedLog.length
@@ -328,7 +317,7 @@ export class SpreadsheetLogger {
       
       // 置換に失敗した場合は末尾に追加
       if (updatedLog === existingLog) {
-        this.logger.warn('3-3-5', '置換失敗', '⚠️ 置換失敗、末尾に追加');
+        this.logger.warn('[Step 3-3-5: 置換失敗] ⚠️ 置換失敗、末尾に追加');
         return `${existingLog}\n\n═══════════════════════\n\n${newLog}`;
       }
       
@@ -336,7 +325,7 @@ export class SpreadsheetLogger {
     }
     
     // 新しいAIのログなので末尾に追加
-    this.logger.log('3-3-6', '末尾追加', `➕ 新しいAIログを末尾に追加 (AI: ${aiDisplayName})`);
+    this.logger.log(`[Step 3-3-6: 末尾追加] ➕ 新しいAIログを末尾に追加 (AI: ${aiDisplayName})`);
     return `${existingLog}\n\n═══════════════════════\n\n${newLog}`;
   }
 
@@ -350,7 +339,7 @@ export class SpreadsheetLogger {
     try {
       // スプレッドシートデータがない場合は検証をスキップ（デフォルトを許可）
       if (!spreadsheetData || !spreadsheetData.menuRow) {
-        this.logger.warn('4-2', '⚠️ スプレッドシートデータが提供されていないため、ログ列検証をスキップ');
+        this.logger.warn('[Step 4-2: ログ列検証スキップ] ⚠️ スプレッドシートデータが提供されていないため、ログ列検証をスキップ');
         return {
           isValid: true,
           validLogColumns: [logColumn],
@@ -372,7 +361,7 @@ export class SpreadsheetLogger {
       
       // 有効なログ列が見つからない場合（デフォルトB列を許可）
       if (validLogColumns.length === 0) {
-        this.logger.warn('4-2-1', 'デフォルト列使用', '⚠️ メニュー行に「ログ」列が見つかりません。デフォルトB列を許可');
+        this.logger.warn('[Step 4-2-1: デフォルト列使用] ⚠️ メニュー行に「ログ」列が見つかりません。デフォルトB列を許可');
         return {
           isValid: true,
           validLogColumns: ['B'],
@@ -397,7 +386,7 @@ export class SpreadsheetLogger {
       };
       
     } catch (error) {
-      this.logger.error('4-2-2', '検証エラー', `❌ ログ列検証エラー: ${error.message}`);
+      this.logger.error(`[Step 4-2-2: 検証エラー] ❌ ログ列検証エラー: ${error.message}`);
       // エラーが発生した場合は安全のため続行を許可
       return {
         isValid: true,
@@ -440,7 +429,7 @@ export class SpreadsheetLogger {
     try {
       const { url, sheetsClient, spreadsheetId, gid } = options;
       
-      this.logger.log('4-1', '🔍 ログ書き込み開始:', {
+      this.logger.log('[Step 4-1: ログ書き込み開始] 🔍 ログ書き込み開始:', {
         taskId: task.id,
         row: task.row,
         logColumns: task.logColumns,
@@ -450,7 +439,7 @@ export class SpreadsheetLogger {
       });
       
       if (!sheetsClient || !spreadsheetId) {
-        this.logger.error('4-1-1', 'エラー', '❌ SheetsClientまたはスプレッドシートIDが未設定');
+        this.logger.error('[Step 4-1-1: エラー] ❌ SheetsClientまたはスプレッドシートIDが未設定');
         return {
           success: false,
           verified: false,
@@ -464,7 +453,7 @@ export class SpreadsheetLogger {
       // ログ列の妥当性を検証
       const validationResult = await this.validateLogColumn(logColumn, options.spreadsheetData);
       if (!validationResult.isValid) {
-        this.logger.error('4-2-3', '不正なログ列', '❌ 不正なログ列が指定されました:', {
+        this.logger.error('[Step 4-2-3: 不正なログ列] ❌ 不正なログ列が指定されました:', {
           指定されたログ列: logColumn,
           有効なログ列: validationResult.validLogColumns,
           エラー: validationResult.error,
@@ -483,7 +472,7 @@ export class SpreadsheetLogger {
       const logCell = `${logColumn}${task.row}`;
       
       // デバッグ: ログセルの詳細確認
-      console.log(`🔍 [ログセル詳細デバッグ]`, {
+      this.logger.debug('[Step 4-1-2: ログセル詳細] 🔍 ログセル詳細デバッグ:', {
         logColumn: logColumn,
         taskRow: task.row,
         結果セル: logCell,
@@ -492,18 +481,18 @@ export class SpreadsheetLogger {
         logColumns配列: task.logColumns
       });
       
-      console.log(`📍 [SpreadsheetLogger] ログセル特定: ${logCell} (logColumns: ${JSON.stringify(task.logColumns)})`);
-      
+      this.logger.log(`[Step 4-1-3: ログセル特定] 📍 ログセル特定: ${logCell} (logColumns: ${JSON.stringify(task.logColumns)})`);
+
       // 送信時刻を取得
       const sendTimeInfo = this.getSendTime(task.id);
-      console.log(`⏰ [SpreadsheetLogger] 送信時刻情報:`, {
+      this.logger.log('[Step 4-1-4: 送信時刻確認] ⏰ 送信時刻情報:', {
         taskId: task.id,
         sendTimeInfo: sendTimeInfo,
         availableTaskIds: Array.from(this.sendTimestamps.keys())
       });
       
       if (!sendTimeInfo) {
-        this.logger.warn('4-1-5', '送信時刻なし', `⚠️ タスク${task.id}の送信時刻が記録されていません`);
+        this.logger.warn(`[Step 4-1-5: 送信時刻なし] ⚠️ タスク${task.id}の送信時刻が記録されていません`);
         return {
           success: false,
           verified: false,
@@ -525,8 +514,8 @@ export class SpreadsheetLogger {
           writeTime
         );
       } catch (formatError) {
-        console.error('[SpreadsheetLogger] formatLogEntryエラー:', formatError);
-        console.error('[SpreadsheetLogger] エラー詳細:', {
+        this.logger.error('[Step 3-1-1: フォーマットエラー] formatLogEntryエラー:', formatError);
+        this.logger.error('[Step 3-1-2: エラー詳細] エラー詳細:', {
           errorMessage: formatError.message,
           errorStack: formatError.stack,
           taskData: {
@@ -548,7 +537,7 @@ export class SpreadsheetLogger {
       mergedLog = newLog;
       
       // 3種類AIグループタスクの場合、段階的にログを記載
-      console.log(`[SpreadsheetLogger] グループタスク判定: isGroupTask=${options.isGroupTask}`);
+      this.logger.log(`[Step 5-1: グループタスク判定] isGroupTask=${options.isGroupTask}`);
       if (options.isGroupTask) {
         const rowKey = `${task.row}`;
         
@@ -560,7 +549,7 @@ export class SpreadsheetLogger {
             
             // タイムアウト設定（メモリリーク防止）
             const timeoutId = setTimeout(() => {
-              console.warn(`⏰ [SpreadsheetLogger] グループログタイムアウト: 行${task.row}`);
+              this.logger.warn(`[Step 5-3: グループログタイムアウト] ⏰ グループログタイムアウト: 行${task.row}`);
               this._cleanupPendingLog(rowKey, 'timeout');
               this.stats.timeoutGroups++;
             }, this.PENDING_LOG_TIMEOUT);
@@ -577,11 +566,11 @@ export class SpreadsheetLogger {
           });
           
           const pendingLogsForRow = this.pendingLogs.get(rowKey);
-          console.log(`📦 [SpreadsheetLogger] グループログ処理: ${logCell} (AI: ${sendTimeInfo.aiType}) - 累積${pendingLogsForRow.length}件`);
+          this.logger.log(`[Step 5-1-1: グループログ処理] 📦 グループログ処理: ${logCell} (AI: ${sendTimeInfo.aiType}) - 累積${pendingLogsForRow.length}件`);
           
           // 現在までのログをすべて結合（1つ目、2つ目、3つ目と増えていく）
           mergedLog = this.combineGroupLogs(pendingLogsForRow);
-          console.log(`✅ [SpreadsheetLogger] 段階的ログ結合: ${pendingLogsForRow.length}件 → ${mergedLog.length}文字 (${logCell})`);
+          this.logger.success(`[Step 5-2: 段階的ログ結合] ✅ 段階的ログ結合: ${pendingLogsForRow.length}件 → ${mergedLog.length}文字 (${logCell})`);
           
           // 統計情報の更新
           if (pendingLogsForRow.length === 3) {
@@ -600,7 +589,7 @@ export class SpreadsheetLogger {
           // ここでmergedLogを書き込むため、returnせずに処理を続行
           
         } catch (error) {
-          console.error(`❌ [SpreadsheetLogger] グループログ処理エラー:`, error);
+          this.logger.error(`[Step 5-1-2: グループログエラー] ❌ グループログ処理エラー: ${error.message}`);
           this.stats.errorGroups++;
           // エラー時でも個別ログを使用（フェールセーフ）
           mergedLog = newLog;
@@ -611,16 +600,16 @@ export class SpreadsheetLogger {
       if (!options.isGroupTask) {
         if (options.isFirstTask) {
           // 通常の最初のタスク：新規作成
-          console.log(`🔄 [SpreadsheetLogger] ログをクリアして新規作成: ${logCell}`);
+          this.logger.log(`[Step 4-3: ログ新規作成] 🔄 ログをクリアして新規作成: ${logCell}`);
           // mergedLogはそのまま使用（既に設定済み）
         } else {
           // 通常の2回目以降：既存ログに追加
           let existingLog = '';
           try {
-            console.log(`🔍 [SpreadsheetLogger] 既存ログ取得開始: ${logCell} (AI: ${sendTimeInfo.aiType})`);
-            const sheetsClient = this.getSheetsClient();
+            this.logger.log(`[Step 4-3-1: 既存ログ取得] 🔍 既存ログ取得開始: ${logCell} (AI: ${sendTimeInfo.aiType})`);
+            const sheetsClient = await this.getSheetsClient();
             if (!sheetsClient) {
-              console.warn('[SpreadsheetLogger] SheetsClient未初期化 - 既存ログ読み込みスキップ');
+              this.logger.warn('[Step 4-3-2: SheetsClient未初期化] ⚠️ SheetsClient未初期化 - 既存ログ読み込みスキップ');
               return;
             }
             const response = await sheetsClient.getSheetData(
@@ -629,29 +618,29 @@ export class SpreadsheetLogger {
               gid
             );
             existingLog = response?.values?.[0]?.[0] || '';
-            console.log(`📄 [SpreadsheetLogger] 既存ログ内容 (${existingLog.length}文字):`, {
+            this.logger.log('[Step 4-3-3: 既存ログ内容] 📄 既存ログ内容', {
               aiType: sendTimeInfo.aiType,
               hasContent: !!existingLog,
               preview: existingLog.substring(0, 100) + (existingLog.length > 100 ? '...' : '')
             });
           } catch (error) {
             // 既存ログの取得に失敗しても続行
-            this.logger.warn('[SpreadsheetLogger] 既存ログの取得に失敗:', error.message);
+            this.logger.warn(`[Step 4-3-4: 既存ログ取得失敗] ⚠️ 既存ログの取得に失敗: ${error.message}`);
           }
           
           // 既存ログに追加（上書きではなく追加）
           if (existingLog && existingLog.trim() !== '') {
             // 通常タスク：既存ログとマージ（同じAIのログは置換）
             mergedLog = this.mergeWithExistingLog(existingLog, mergedLog, sendTimeInfo.aiType);
-            console.log(`🔄 [SpreadsheetLogger] 既存ログとマージ完了 (AI: ${sendTimeInfo.aiType})`);
+            this.logger.log(`[Step 4-3-5: ログマージ完了] 🔄 既存ログとマージ完了 (AI: ${sendTimeInfo.aiType})`);
           } else {
-            console.log(`➕ [SpreadsheetLogger] 新規ログ作成 (AI: ${sendTimeInfo.aiType})`);
+            this.logger.log(`[Step 4-3-6: 新規ログ作成] ➕ 新規ログ作成 (AI: ${sendTimeInfo.aiType})`);
           }
         }
       }
       
       // スプレッドシートに書き込み（リッチテキスト対応）
-      console.log(`💾 [SpreadsheetLogger] スプレッドシート書き込み実行:`, {
+      this.logger.log('[Step 4-4: スプレッドシート書き込み実行] 💾 スプレッドシート書き込み実行:', {
         spreadsheetId,
         logCell,
         gid,
@@ -671,13 +660,13 @@ export class SpreadsheetLogger {
       };
       
       try {
-        const sheetsClient = this.getSheetsClient();
+        const sheetsClient = await this.getSheetsClient();
         if (!sheetsClient) {
-          console.warn('[SpreadsheetLogger] SheetsClient未初期化 - ログ書き込みスキップ');
+          this.logger.warn('[Step 4-4-1: SheetsClient未初期化] ⚠️ SheetsClient未初期化 - ログ書き込みスキップ');
           return;
         }
         if (sheetsClient.updateCellWithRichText && richTextData.some(item => item.url)) {
-          console.log(`🔗 [SpreadsheetLogger] リッチテキスト形式で書き込み（リンク付き）`);
+          this.logger.log('[Step 4-4-2: リッチテキスト書き込み] 🔗 リッチテキスト形式で書き込み（リンク付き）');
           await writeWithTimeout(
             sheetsClient.updateCellWithRichText(
               spreadsheetId,
@@ -698,13 +687,11 @@ export class SpreadsheetLogger {
           );
         }
       } catch (timeoutError) {
-        console.error(`❌ [SpreadsheetLogger] 書き込みエラー: ${logCell}`, timeoutError);
-        this.logger.error(`[SpreadsheetLogger] 書き込み失敗: ${logCell} - ${timeoutError.message}`);
+        this.logger.error(`[Step 4-4-3: 書き込みエラー] ❌ 書き込みエラー: ${logCell}`, timeoutError);
         // エラーでも処理は継続
       }
       
-      console.log(`✅ [SpreadsheetLogger] ログ書き込み完了: ${logCell}`);
-      this.logger.log(`[SpreadsheetLogger] ログを書き込み: ${logCell}`);
+      this.logger.success(`[Step 4-4-4: 書き込み完了] ✅ ログ書き込み完了: ${logCell}`);
       
       // 書き込み確認を実行（有効な場合）
       let writeVerified = true;
@@ -738,7 +725,7 @@ export class SpreadsheetLogger {
       this.sendTimestamps.delete(task.id);
       
       // デバッグ: コールバックの存在確認
-      console.log(`🔍 [SpreadsheetLogger] コールバック確認:`, {
+      this.logger.debug('[Step 4-5: コールバック確認] 🔍 コールバック確認:', {
         hasOnComplete: !!options.onComplete,
         typeOfOnComplete: typeof options.onComplete,
         isFunction: typeof options.onComplete === 'function',
@@ -747,15 +734,15 @@ export class SpreadsheetLogger {
       
       // 完了コールバックを実行
       if (typeof options.onComplete === 'function') {
-        console.log(`🔔 [SpreadsheetLogger] 完了コールバック実行: ${logCell}`);
+        this.logger.log(`[Step 4-5-1: コールバック実行] 🔔 完了コールバック実行: ${logCell}`);
         try {
           await options.onComplete(task, logCell, writeVerified);
-          console.log(`✅ [SpreadsheetLogger] コールバック実行成功: ${logCell}`);
+          this.logger.success(`[Step 4-5-2: コールバック成功] ✅ コールバック実行成功: ${logCell}`);
         } catch (callbackError) {
-          console.error(`❌ [SpreadsheetLogger] コールバックエラー:`, callbackError);
+          this.logger.error('[Step 4-5-3: コールバックエラー] ❌ コールバックエラー:', callbackError);
         }
       } else {
-        console.warn(`⚠️ [SpreadsheetLogger] コールバックが存在しないかfunction型ではありません`);
+        this.logger.warn('[Step 4-5-4: コールバックなし] ⚠️ コールバックが存在しないかfunction型ではありません');
       }
       
       // 結果を返す
@@ -767,8 +754,7 @@ export class SpreadsheetLogger {
       
     } catch (error) {
       // エラーが発生してもメイン処理は続行
-      console.error('[SpreadsheetLogger] ログ書き込みエラー詳細:', error);
-      this.logger.error('[SpreadsheetLogger] ログ書き込みエラー:', {
+      this.logger.error('[Step 4-6: エラーハンドリング] ログ書き込みエラー:', {
         message: error.message,
         stack: error.stack,
         taskId: task.id,
@@ -776,14 +762,14 @@ export class SpreadsheetLogger {
         errorName: error.name,
         errorString: error.toString()
       });
-      
+
       // エラー時もコールバックを実行（エラー情報付き）
       if (typeof options.onComplete === 'function') {
-        console.log(`🔔 [SpreadsheetLogger] エラー時のコールバック実行`);
+        this.logger.log(`[Step 4-6-1: エラー時コールバック] 🔔 エラー時のコールバック実行`);
         try {
           await options.onComplete(task, null, false, error);
         } catch (callbackError) {
-          console.error(`❌ [SpreadsheetLogger] コールバックエラー:`, callbackError);
+          this.logger.error(`[Step 4-6-2: コールバックエラー] ❌ コールバックエラー:`, callbackError);
         }
       }
       
@@ -807,16 +793,16 @@ export class SpreadsheetLogger {
    */
   async verifyWriteSuccess(sheetsClient, spreadsheetId, logCell, expectedContent, gid) {
     try {
-      console.log(`🔍 [SpreadsheetLogger] 書き込み確認開始: ${logCell}`);
-      
+      this.logger.log(`[Step 7-1: 書き込み確認開始] 🔍 書き込み確認開始: ${logCell}`);
+
       // 少し待ってから確認（APIの遅延を考慮）
-      // Step 3: AI共通基盤のsleep関数を使用
+      // AI共通基盤のsleep関数を使用
       await this.aiCommonBase.utils.sleep(2000);  // 待機時間を増やす
-      
+
       // 実際のセルの内容を取得
-      const sheetsClient = this.getSheetsClient();
+      const sheetsClient = await this.getSheetsClient();
       if (!sheetsClient) {
-        console.warn('[SpreadsheetLogger] SheetsClient未初期化 - 検証スキップ');
+        this.logger.warn('[Step 7-1-1: SheetsClient未初期化] SheetsClient未初期化 - 検証スキップ');
         return;
       }
       const actualData = await sheetsClient.getSheetData(
@@ -824,9 +810,9 @@ export class SpreadsheetLogger {
         logCell,
         gid
       );
-      
+
       // デバッグ用ログ追加
-      console.log(`🔍 [SpreadsheetLogger] getSheetData戻り値:`, {
+      this.logger.debug(`[Step 7-1-2: データ取得確認] 🔍 getSheetData戻り値:`, {
         logCell,
         actualDataType: typeof actualData,
         isArray: Array.isArray(actualData),
@@ -836,25 +822,25 @@ export class SpreadsheetLogger {
         firstRowLength: actualData?.[0]?.length,
         actualDataPreview: JSON.stringify(actualData).substring(0, 200)
       });
-      
+
       const actualContent = actualData?.[0]?.[0] || '';
-      
+
       // 内容が期待された内容と一致するかチェック
-      const isMatched = actualContent.length > 0 && 
-                       (actualContent === expectedContent || 
+      const isMatched = actualContent.length > 0 &&
+                       (actualContent === expectedContent ||
                         actualContent.includes(expectedContent.substring(0, 100)));
-      
-      console.log(`📊 [SpreadsheetLogger] 書き込み確認結果:`, {
+
+      this.logger.log(`[Step 7-1-3: 書き込み確認結果] 📊 書き込み確認結果:`, {
         logCell,
         expectedLength: expectedContent.length,
         actualLength: actualContent.length,
         isMatched,
         preview: actualContent.substring(0, 100) + (actualContent.length > 100 ? '...' : '')
       });
-      
+
       if (!isMatched) {
-        console.warn(`⚠️ [SpreadsheetLogger] 書き込み確認失敗: ${logCell} - 期待される内容と一致しません`);
-        
+        this.logger.warn(`[Step 7-1-4: 書き込み確認失敗] ⚠️ 書き込み確認失敗: ${logCell} - 期待される内容と一致しません`);
+
         // 詳細なエラー情報をログに記録
         if (globalThis.logManager) {
           globalThis.logManager.log(`⚠️ スプレッドシート書き込み確認失敗: ${logCell}`, {
@@ -869,15 +855,14 @@ export class SpreadsheetLogger {
           });
         }
       } else {
-        console.log(`✅ [SpreadsheetLogger] 書き込み確認成功: ${logCell}`);
+        this.logger.success(`[Step 7-1-5: 書き込み確認成功] ✅ 書き込み確認成功: ${logCell}`);
       }
-      
+
       return isMatched;
-      
+
     } catch (error) {
-      console.error(`❌ [SpreadsheetLogger] 書き込み確認エラー:`, error);
-      this.logger.error('[SpreadsheetLogger] 書き込み確認エラー:', error.message);
-      
+      this.logger.error(`[Step 7-1-6: 書き込み確認エラー] ❌ 書き込み確認エラー:`, error);
+
       // エラーの場合は確認失敗として扱う
       return false;
     }
@@ -934,7 +919,7 @@ export class SpreadsheetLogger {
    */
   clear() {
     this.sendTimestamps.clear();
-    this.logger.log('6', 'メモリクリア', 'タイムスタンプをクリアしました');
+    this.logger.log('[Step 6: メモリクリア] タイムスタンプをクリアしました');
   }
 
   /**
@@ -1036,7 +1021,7 @@ export class SpreadsheetLogger {
       return orderA - orderB;
     });
     
-    console.log(`📊 [SpreadsheetLogger] ログ順番ソート結果:`, 
+    this.logger.log(`[Step 8-1: ログ順番ソート] 📊 ログ順番ソート結果:`,
       normalizedLogs.map(log => log.aiType));
     
     // contentのみを取り出して結合
@@ -1124,7 +1109,7 @@ export class SpreadsheetLogger {
     if (this.pendingLogs.has(rowKey)) {
       const logCount = this.pendingLogs.get(rowKey).length;
       this.pendingLogs.delete(rowKey);
-      console.log(`🧹 [SpreadsheetLogger] 一時保存ログをクリーンアップ: 行${rowKey}, ${logCount}件, 理由: ${reason}`);
+      this.logger.log(`[Step 9-1: 一時ログクリーンアップ] 🧹 一時保存ログをクリーンアップ: 行${rowKey}, ${logCount}件, 理由: ${reason}`);
     }
   }
 
@@ -1132,19 +1117,19 @@ export class SpreadsheetLogger {
    * 全ての一時保存ログを強制クリーンアップ（デバッグ・メンテナンス用）
    */
   forceCleanupAll() {
-    console.warn(`🧹 [SpreadsheetLogger] 全一時保存ログを強制クリーンアップ`);
-    
+    this.logger.warn(`[Step 10-1: 全一時ログクリーンアップ] 🧹 全一時保存ログを強制クリーンアップ`);
+
     // 全タイムアウトをクリア
     for (const timeoutId of this.pendingLogTimeouts.values()) {
       clearTimeout(timeoutId);
     }
     this.pendingLogTimeouts.clear();
-    
+
     // 一時保存ログをクリア
     const pendingCount = this.pendingLogs.size;
     this.pendingLogs.clear();
-    
-    console.log(`✅ [SpreadsheetLogger] ${pendingCount}件の一時保存ログをクリーンアップ完了`);
+
+    this.logger.success(`[Step 10-2: クリーンアップ完了] ✅ ${pendingCount}件の一時保存ログをクリーンアップ完了`);
   }
 
   /**
@@ -1157,31 +1142,31 @@ export class SpreadsheetLogger {
     const pendingLogs = this.pendingLogs.get(rowKey);
     
     if (!pendingLogs || pendingLogs.length === 0) {
-      console.log(`🔍 [SpreadsheetLogger] 部分統合: ログなし ${rowKey}`);
+      this.logger.log(`[Step 11-1: 部分統合ログなし] 🔍 部分統合: ログなし ${rowKey}`);
       return;
     }
-    
-    console.warn(`⚠️ [SpreadsheetLogger] 部分完了グループを強制統合開始: 行${row}, ${pendingLogs.length}件のログ`);
-    
+
+    this.logger.warn(`[Step 11-2: 部分統合開始] ⚠️ 部分完了グループを強制統合開始: 行${row}, ${pendingLogs.length}件のログ`);
+
     try {
       // 部分ログを統合
       const mergedLog = this.combineGroupLogs(pendingLogs);
-      
+
       // ログセルを特定（最初のログのAIタイプを基準）
       const firstLog = pendingLogs[0];
       const logColumn = 'B'; // デフォルトのログ列
       const logCell = `${logColumn}${row}`;
-      
-      console.log(`📦 [SpreadsheetLogger] 部分統合実行:`, {
+
+      this.logger.log(`[Step 11-3: 部分統合実行] 📦 部分統合実行:`, {
         rowKey,
         logCell,
         logCount: pendingLogs.length,
         mergedLength: mergedLog.length,
         aiTypes: pendingLogs.map(log => log.aiType)
       });
-      
+
       // スプレッドシートに書き込み
-      const sheetsClient = this.getSheetsClient();
+      const sheetsClient = await this.getSheetsClient();
       if (sheetsClient) {
         await sheetsClient.updateCell(
           globalThis.currentSpreadsheetId || '',
@@ -1189,16 +1174,16 @@ export class SpreadsheetLogger {
           mergedLog,
           globalThis.currentGid || '0'
         );
-        
-        console.log(`✅ [SpreadsheetLogger] 部分統合書き込み完了: ${logCell}`);
+
+        this.logger.success(`[Step 11-4: 部分統合書き込み完了] ✅ 部分統合書き込み完了: ${logCell}`);
         this.stats.completedGroups++;
       } else {
-        console.error(`❌ [SpreadsheetLogger] SheetsClientが利用不可、部分統合失敗`);
+        this.logger.error(`[Step 11-5: SheetsClient利用不可] ❌ SheetsClientが利用不可、部分統合失敗`);
         this.stats.errorGroups++;
       }
-      
+
     } catch (error) {
-      console.error(`❌ [SpreadsheetLogger] 部分統合エラー:`, error);
+      this.logger.error(`[Step 11-6: 部分統合エラー] ❌ 部分統合エラー:`, error);
       this.stats.errorGroups++;
     } finally {
       // クリーンアップ

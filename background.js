@@ -94,15 +94,14 @@ globalThis.StreamProcessorV2 = StreamProcessorV2;
 console.log('[Background] StreamProcessorV2インスタンスを早期初期化');
 globalThis.streamProcessorV2Instance = new StreamProcessorV2();
 
-// 依存性を事前に設定（グローバル変数として利用可能になった後）
+// 依存性を事前に設定（ServiceRegistryを使用）
 (async () => {
   try {
-    // Google Servicesが初期化された後に依存性を設定
+    // Google Servicesが初期化されるまで待機
     await new Promise(resolve => {
       if (globalThis.sheetsClient) {
         resolve();
       } else {
-        // sheetsClientが利用可能になるまで待機
         const checkInterval = setInterval(() => {
           if (globalThis.sheetsClient) {
             clearInterval(checkInterval);
@@ -112,15 +111,20 @@ globalThis.streamProcessorV2Instance = new StreamProcessorV2();
       }
     });
 
+    // ServiceRegistryから依存性を取得
+    const { getService } = await import('./src/core/service-registry.js');
+    const sheetsClient = await getService('sheetsClient');
+    const SpreadsheetLogger = (await import('./src/features/logging/spreadsheet-logger.js')).default;
+
     // 依存性を設定
     const processor = StreamProcessorV2.getInstance();
     await processor.setDependencies({
-      sheetsClient: globalThis.sheetsClient,
-      SpreadsheetLogger: globalThis.SpreadsheetLogger
+      sheetsClient: sheetsClient,
+      SpreadsheetLogger: SpreadsheetLogger
     });
     console.log('[Background] StreamProcessorV2依存性設定完了');
   } catch (e) {
-    console.warn('[Background] 依存性設定エラー:', e.message);
+    console.error('[Background] 依存性設定失敗:', e.message);
   }
 })();
 

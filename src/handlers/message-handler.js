@@ -371,28 +371,24 @@ export function setupMessageHandler() {
           range: request.range
         });
 
-        if (!request.spreadsheetId || !request.range) {
-          console.error('[Step 11-2] パラメータ不足');
-          sendResponse({
-            success: false,
-            error: "spreadsheetIdとrangeが必要です"
-          });
-          return false;
-        }
+        (async () => {
+          try {
+            if (!request.spreadsheetId || !request.range) {
+              console.error('[Step 11-2] パラメータ不足');
+              sendResponse({
+                success: false,
+                error: "spreadsheetIdとrangeが必要です"
+              });
+              return;
+            }
 
-        // Step 11-3: SheetsClientインスタンスがグローバルに存在するか確認
-        if (typeof globalThis.sheetsClient === 'undefined') {
-          console.error("[Step 11-4] ❌ sheetsClientが初期化されていません");
-          sendResponse({
-            success: false,
-            error: "sheetsClientが初期化されていません"
-          });
-          return false;
-        }
+            // Step 11-3: ServiceRegistryからSheetsClientを取得
+            const { getService } = await import('../core/service-registry.js');
+            const sheetsClient = await getService('sheetsClient');
 
-        // Step 11-5: Google Sheets APIを呼び出してデータ取得（Promise形式）
-        globalThis.sheetsClient.getSheetData(request.spreadsheetId, request.range)
-          .then(data => {
+            // Step 11-5: Google Sheets APIを呼び出してデータ取得
+            const data = await sheetsClient.getSheetData(request.spreadsheetId, request.range);
+
             console.log("[Step 11-6] ✅ Sheetsデータ取得成功:", {
               rowsCount: data?.values?.length || 0,
               firstRow: data?.values?.[0]
@@ -401,14 +397,14 @@ export function setupMessageHandler() {
               success: true,
               data: data
             });
-          })
-          .catch(error => {
+          } catch (error) {
             console.error("[Step 11-7] ❌ Sheetsデータ取得エラー:", error);
             sendResponse({
               success: false,
               error: error.message
             });
-          });
+          }
+        })();
 
         return true; // 非同期応答
 
@@ -509,8 +505,10 @@ export function setupMessageHandler() {
             }
 
             // Step 13-6: データを読み込み
+            const { getService } = await import('../core/service-registry.js');
+            const sheetsClient = await getService('sheetsClient');
             const updatedSpreadsheetData =
-              await globalThis.sheetsClient.loadAutoAIData(spreadsheetId, gid);
+              await sheetsClient.loadAutoAIData(spreadsheetId, gid);
 
             // Step 13-7: StreamProcessorV2初期化を確保してから自動セットアップ
             if (!globalThis.SPREADSHEET_CONFIG) {
@@ -743,7 +741,9 @@ export function setupMessageHandler() {
 
             if (request.spreadsheetId) {
               // Step 18-7: スプレッドシートのデータを読み込み
-              const sheetData = await globalThis.sheetsClient.loadAutoAIData(
+              const { getService: getService752 } = await import('../core/service-registry.js');
+            const sheetsClient752 = await getService752('sheetsClient');
+            const sheetData = await sheetsClient752.loadAutoAIData(
                 request.spreadsheetId,
                 request.gid
               );
@@ -820,7 +820,9 @@ export function setupMessageHandler() {
             }
 
             // Step 19-3: SheetsClientを使用してログをクリア
-            const result = await globalThis.sheetsClient.clearSheetLogs(request.spreadsheetId);
+            const { getService: getService829 } = await import('../core/service-registry.js');
+            const sheetsClient829 = await getService829('sheetsClient');
+            const result = await sheetsClient829.clearSheetLogs(request.spreadsheetId);
 
             console.log('[Step 19-4] ログクリア成功:', result.clearedCount);
             sendResponse({
@@ -849,7 +851,9 @@ export function setupMessageHandler() {
             }
 
             // Step 20-3: SheetsClientを使用してAI回答を削除
-            const result = await globalThis.sheetsClient.deleteAnswers(request.spreadsheetId);
+            const { getService: getService858 } = await import('../core/service-registry.js');
+            const sheetsClient858 = await getService858('sheetsClient');
+            const result = await sheetsClient858.deleteAnswers(request.spreadsheetId);
 
             console.log('[Step 20-4] AI回答削除成功:', result.deletedCount);
             sendResponse({
@@ -901,14 +905,24 @@ export function setupMessageHandler() {
           try {
             const { spreadsheetId, range, value, sheetName } = request;
 
-            if (!globalThis.sheetsClient) {
+            let sheetsClient910;
+            try {
+              const { getService } = await import('../core/service-registry.js');
+              sheetsClient910 = await getService('sheetsClient');
+            } catch (e) {
+              console.error('sheetsClient取得エラー:', e.message);
+              sendResponse({ success: false, error: 'sheetsClient取得に失敗しました' });
+              return false;
+            }
+
+            if (!sheetsClient910) {
               console.error('[Step 22-2] SheetsClient not available');
               throw new Error("SheetsClient not available");
             }
 
             // Step 22-3: スプレッドシートに書き込み
             const fullRange = sheetName ? `'${sheetName}'!${range}` : range;
-            const result = await globalThis.sheetsClient.writeValue(spreadsheetId, fullRange, value);
+            const result = await sheetsClient910.writeValue(spreadsheetId, fullRange, value);
 
             console.log('[Step 22-4] 書き込み成功');
             sendResponse({ success: true, result });

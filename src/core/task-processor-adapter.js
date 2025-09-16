@@ -57,10 +57,7 @@ export class TaskProcessorAdapter {
       this.v2Processor.spreadsheetLogger = this.spreadsheetLogger;
     }
 
-    // グローバル変数も更新（後方互換性のため）
-    if (this.sheetsClient && !globalThis.sheetsClient) {
-      globalThis.sheetsClient = this.sheetsClient;
-    }
+    // グローバル変数への設定を削除（ServiceRegistryに移行）
   }
 
   /**
