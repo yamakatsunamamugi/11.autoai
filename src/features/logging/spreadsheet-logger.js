@@ -15,10 +15,35 @@
 import { getGlobalAICommonBase } from '../../../automations/1-ai-common-base.js';
 import { ModelExtractor } from './extractors/model-extractor.js';
 import { FunctionExtractor } from './extractors/function-extractor.js';
+import { ConsoleLogger } from '../../utils/console-logger.js';
 
 export class SpreadsheetLogger {
   constructor(logger = console) {
-    this.logger = logger;
+    // ConsoleLoggerインスタンスを作成
+    this.logger = new ConsoleLogger('spreadsheet-logger', logger);
+    this.logger.registerSteps({
+      '1': 'AI切り替えログ',
+      '1-1': '切り替えイベント記録',
+      '1-2': '切り替え成功記録',
+      '2': '送信時刻管理',
+      '2-1': '送信時刻記録',
+      '2-2': '送信時刻取得',
+      '3': 'ログフォーマット',
+      '3-1': 'ログエントリー生成',
+      '3-2': 'AI名変換',
+      '3-3': 'ログマージ',
+      '4': 'スプレッドシート書き込み',
+      '4-1': '書き込み準備',
+      '4-2': 'ログ列検証',
+      '4-3': '既存ログ取得',
+      '4-4': 'データ書き込み',
+      '4-5': '書き込み確認',
+      '5': 'グループログ管理',
+      '5-1': 'グループログ追加',
+      '5-2': 'グループログ結合',
+      '5-3': 'グループログクリーンアップ'
+    });
+
     // Step 3: AI共通基盤からsleep関数を取得
     this.aiCommonBase = getGlobalAICommonBase();
     this.modelExtractor = ModelExtractor;
@@ -26,11 +51,11 @@ export class SpreadsheetLogger {
     this.sendTimestamps = new Map(); // key: taskId, value: { time: Date, aiType: string, model: string }
     this.pendingLogs = new Map(); // key: row, value: array of log entries
     this.writingInProgress = new Set(); // Set of cells currently being written
-    
+
     // タイムアウト管理（メモリリーク防止）
     this.pendingLogTimeouts = new Map(); // key: row, value: timeoutId
     this.PENDING_LOG_TIMEOUT = 10 * 60 * 1000; // 10分でタイムアウト
-    
+
     // 統計情報
     this.stats = {
       totalGroups: 0,
@@ -38,6 +63,21 @@ export class SpreadsheetLogger {
       timeoutGroups: 0,
       errorGroups: 0
     };
+
+    // SheetsClientのキャッシュ（遅延初期化用）
+    this._sheetsClient = null;
+  }
+
+  /**
+   * SheetsClientを取得（遅延初期化対応）
+   * @returns {Object|null} SheetsClientインスタンス
+   */
+  getSheetsClient() {
+    if (!this._sheetsClient && globalThis.sheetsClient) {
+      this._sheetsClient = globalThis.sheetsClient;
+      this.logger.log('0-1', 'SheetsClient取得', 'SheetsClientを取得しました');
+    }
+    return this._sheetsClient;
   }
 
   /**
@@ -117,8 +157,27 @@ export class SpreadsheetLogger {
       aiType: info.aiType || 'Unknown',
       model: info.model || '不明'
     });
-    
+
     this.logger.log(`[SpreadsheetLogger] 送信時刻記録: タスク=${taskId}, 時刻=${timestamp.toLocaleString('ja-JP')}`);
+  }
+
+  /**
+   * 送信時刻を記録（タスクオブジェクト版）
+   * @param {string} taskId - タスクID
+   * @param {Object} task - タスクオブジェクト全体
+   */
+  recordSendTimestamp(taskId, task) {
+    const timestamp = new Date();
+    this.sendTimestamps.set(taskId, {
+      time: timestamp,
+      aiType: task.aiType || 'Claude',
+      model: task.model || 'Claude Opus 4.1',  // getModel()で既に設定済みのはず
+      function: task.function || '通常',
+      row: task.row,
+      column: task.column
+    });
+
+    this.logger.log(`[SpreadsheetLogger] 送信時刻記録: タスク=${taskId}, モデル=${task.model}, 機能=${task.function}, 時刻=${timestamp.toLocaleString('ja-JP')}`);
   }
 
   /**
@@ -562,6 +621,11 @@ export class SpreadsheetLogger {
           let existingLog = '';
           try {
             console.log(`🔍 [SpreadsheetLogger] 既存ログ取得開始: ${logCell} (AI: ${sendTimeInfo.aiType})`);
+            const sheetsClient = this.getSheetsClient();
+            if (!sheetsClient) {
+              console.warn('[SpreadsheetLogger] SheetsClient未初期化 - 既存ログ読み込みスキップ');
+              return;
+            }
             const response = await sheetsClient.getSheetData(
               spreadsheetId,
               logCell,
@@ -610,6 +674,11 @@ export class SpreadsheetLogger {
       };
       
       try {
+        const sheetsClient = this.getSheetsClient();
+        if (!sheetsClient) {
+          console.warn('[SpreadsheetLogger] SheetsClient未初期化 - ログ書き込みスキップ');
+          return;
+        }
         if (sheetsClient.updateCellWithRichText && richTextData.some(item => item.url)) {
           console.log(`🔗 [SpreadsheetLogger] リッチテキスト形式で書き込み（リンク付き）`);
           await writeWithTimeout(
@@ -748,6 +817,11 @@ export class SpreadsheetLogger {
       await this.aiCommonBase.utils.sleep(2000);  // 待機時間を増やす
       
       // 実際のセルの内容を取得
+      const sheetsClient = this.getSheetsClient();
+      if (!sheetsClient) {
+        console.warn('[SpreadsheetLogger] SheetsClient未初期化 - 検証スキップ');
+        return;
+      }
       const actualData = await sheetsClient.getSheetData(
         spreadsheetId,
         logCell,
@@ -1109,9 +1183,10 @@ export class SpreadsheetLogger {
         aiTypes: pendingLogs.map(log => log.aiType)
       });
       
-      // スプレッドシートに書き込み（globalThisから取得）
-      if (globalThis.sheetsClient) {
-        await globalThis.sheetsClient.updateCell(
+      // スプレッドシートに書き込み
+      const sheetsClient = this.getSheetsClient();
+      if (sheetsClient) {
+        await sheetsClient.updateCell(
           globalThis.currentSpreadsheetId || '',
           logCell,
           mergedLog,
