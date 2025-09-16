@@ -229,24 +229,10 @@
         "button[aria-expanded][aria-haspopup=\"listbox\"]",
         "button svg path[d*=\"M40,88H73a32\"]"
       ],
-      "_FUNCTION_BUTTON_COMMENT": "[
-        \"[data-testid=\\\"input-menu-tools\\\"]\",
-        \"#input-tools-menu-trigger\",
-        \"[aria-label=\\\"ツールメニューを開く\\\"]\",
-        \"[data-testid=\\\"input-menu-trigger\\\"]\",
-        \"button[aria-label*=\\\"機能\\\"]\"]",
-      "_MESSAGE_COMMENT": "[
-        \".grid-cols-1.grid\",
-        \"div[class*=\\\"grid-cols-1\\\"][class*=\\\"grid\\\"]\",
-        \".font-claude-message\",
-        \"[data-is-streaming=\\\"false\\\"]\",
-        \"div[class*=\\\"font-claude-message\\\"]\",
-        \".group.relative.-tracking-\\\\[0\\\\.015em\\\\]\"]",
+      "_FUNCTION_BUTTON_COMMENT": "テスト済み以外はコメントアウト済み",
+      "_MESSAGE_COMMENT": "テスト済み以外はコメントアウト済み",
       "_THINKING_PROCESS_COMMENT": "{ TEXT_PATTERNS, ELEMENTS, PARENT_CLASSES - コメントアウト済み }",
-      "_DEEP_RESEARCH_BUTTON_COMMENT": "[
-        \"button:has-text(\\\"リサーチ\\\")\",
-        \"button[aria-pressed]\",
-        \"button:contains(\\\"リサーチ\\\")\"]",
+      "_DEEP_RESEARCH_BUTTON_COMMENT": "テスト済み以外はコメントアウト済み",
       "_FEATURE_BUTTON_SVG_COMMENT": "{ DEEP_THINKING, RESEARCH - コメントアウト済み }",
       "FEATURE_BUTTONS": {
         "DEEP_THINKING": [
@@ -271,15 +257,8 @@
           "button[aria-pressed=\"true\"]"
         ]
       },
-      "_PREVIEW_BUTTON_COMMENT": "[
-        \"button[aria-label=\\\"内容をプレビュー\\\"]\"]",
-      "_RESPONSE_COMMENT": "[
-        \".grid-cols-1.grid\",
-        \"div[class*=\\\"grid-cols-1\\\"][class*=\\\"grid\\\"]\",
-        \".font-claude-message\",
-        \"[data-is-streaming=\\\"false\\\"]\",
-        \"div[class*=\\\"font-claude-message\\\"]\",
-        \".group.relative.-tracking-\\\\[0\\\\.015em\\\\]\"]",
+      "_PREVIEW_BUTTON_COMMENT": "テスト済み以外はコメントアウト済み",
+      "_RESPONSE_COMMENT": "テスト済み以外はコメントアウト済み",
       "MENU": {
         "CONTAINER": [
           "[role=\"menu\"][data-state=\"open\"]",
