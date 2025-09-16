@@ -69,17 +69,17 @@
         },
         '4_Canvas機能テキスト位置': {
             selectors: [
-                // 最新Canvas UI対応
-                '.grid-cols-1.grid.gap-2\\.5',
-                'div.grid-cols-1.grid',
-                '[class*="grid-cols-1"][class*="gap-2.5"]',
-                'div[class*="grid"][class*="gap-2.5"]',
-                // 後方互換性
+                // Canvas固有セレクタを最優先
                 '#markdown-artifact',
                 '[id="markdown-artifact"]',
                 '.font-claude-response#markdown-artifact',
                 '[tabindex="0"]#markdown-artifact',
-                'div.mx-auto.max-w-3xl#markdown-artifact'
+                'div.mx-auto.max-w-3xl#markdown-artifact',
+                // 汎用セレクタは最後（フォールバック用）
+                '.grid-cols-1.grid.gap-2\\.5:not(.standard-markdown)',
+                'div.grid-cols-1.grid:not(.standard-markdown)',
+                '[class*="grid-cols-1"][class*="gap-2.5"]:not([class*="standard-markdown"])',
+                'div[class*="grid"][class*="gap-2.5"]:not([class*="standard-markdown"])'
             ],
             description: 'Canvas機能のテキスト表示エリア'
         },
@@ -91,6 +91,17 @@
                 'button.inline-flex:contains("続ける")'
             ],
             description: 'Canvas機能の続けるボタン'
+        },
+        '4_4_Canvasプレビューボタン': {
+            selectors: [
+                'div[aria-label="内容をプレビュー"][role="button"]',
+                '[aria-label="内容をプレビュー"]',
+                'div[role="button"][tabindex="0"]:has(div.artifact-block-cell)',
+                'div.artifact-block-cell',
+                '.flex.text-left.font-ui.rounded-lg[role="button"]',
+                'div[role="button"]:contains("ドキュメント")'
+            ],
+            description: 'Canvas機能のプレビューボタン'
         },
         '4_2_Canvas開くボタン': {
             selectors: UI_SELECTORS.Claude?.DEEP_RESEARCH?.CANVAS_PREVIEW || UI_SELECTORS.Claude?.PREVIEW_BUTTON || [],
@@ -168,17 +179,17 @@
         },
         '4_Canvas機能テキスト位置': {
             selectors: [
-                // 最新Canvas UI対応
-                '.grid-cols-1.grid.gap-2\\.5',
-                'div.grid-cols-1.grid',
-                '[class*="grid-cols-1"][class*="gap-2.5"]',
-                'div[class*="grid"][class*="gap-2.5"]',
-                // 後方互換性
+                // Canvas固有セレクタを最優先
                 '#markdown-artifact',
                 '[id="markdown-artifact"]',
                 '.font-claude-response#markdown-artifact',
                 '[tabindex="0"]#markdown-artifact',
-                'div.mx-auto.max-w-3xl#markdown-artifact'
+                'div.mx-auto.max-w-3xl#markdown-artifact',
+                // 汎用セレクタは最後（フォールバック用）
+                '.grid-cols-1.grid.gap-2\\.5:not(.standard-markdown)',
+                'div.grid-cols-1.grid:not(.standard-markdown)',
+                '[class*="grid-cols-1"][class*="gap-2.5"]:not([class*="standard-markdown"])',
+                'div[class*="grid"][class*="gap-2.5"]:not([class*="standard-markdown"])'
             ],
             description: 'Canvas機能のテキスト表示エリア'
         },
@@ -190,6 +201,17 @@
                 'button.inline-flex:contains("続ける")'
             ],
             description: 'Canvas機能の続けるボタン'
+        },
+        '4_4_Canvasプレビューボタン': {
+            selectors: [
+                'div[aria-label="内容をプレビュー"][role="button"]',
+                '[aria-label="内容をプレビュー"]',
+                'div[role="button"][tabindex="0"]:has(div.artifact-block-cell)',
+                'div.artifact-block-cell',
+                '.flex.text-left.font-ui.rounded-lg[role="button"]',
+                'div[role="button"]:contains("ドキュメント")'
+            ],
+            description: 'Canvas機能のプレビューボタン'
         },
         '5_通常処理テキスト位置': {
             selectors: [
@@ -1040,11 +1062,107 @@
 
                 if (stopButtonFound) {
                     console.log('\n停止ボタンが消えるまで待機中...');
+                    const deepResearchSelectors = getDeepResearchSelectors();
                     let stopButtonGone = false;
+                    let isCanvasMode = false;
                     waitCount = 0;
                     const maxDisappearWait = AI_WAIT_CONFIG.MAX_WAIT / 1000;
 
                     while (!stopButtonGone && waitCount < maxDisappearWait) {
+                        // Canvasプレビューボタンをチェック（Canvas未処理の場合のみ）
+                        if (!isCanvasMode) {
+                            const previewButton = await findClaudeElement(deepResearchSelectors['4_4_Canvasプレビューボタン'], 2, true);
+                            if (previewButton) {
+                                console.log(`\n✓ Canvas プレビューボタンを検出！（${waitCount}秒後）`);
+                                console.log('📱 Canvas処理モードに切り替えます');
+                                isCanvasMode = true;
+
+                                // Canvas プレビューボタンのクリックとリトライ処理
+                                console.log('🔄 Canvas プレビューボタンをクリック中...');
+                                let canvasLoaded = false;
+                                const maxRetries = 5; // 最大5回リトライ
+                                const retryDelays = [2000, 3000, 5000, 8000, 10000]; // 段階的に待機時間を延長
+
+                                for (let retryCount = 0; retryCount < maxRetries && !canvasLoaded; retryCount++) {
+                                    if (retryCount > 0) {
+                                        console.log(`🔄 リトライ ${retryCount}/${maxRetries}: Canvas プレビューボタンを再クリック...`);
+                                        // ボタンを再取得（DOM更新の可能性があるため）
+                                        const retryButton = await findClaudeElement(deepResearchSelectors['4_4_Canvasプレビューボタン'], 2, true);
+                                        if (retryButton) {
+                                            retryButton.click();
+                                        } else {
+                                            console.log('⚠ プレビューボタンが見つかりません');
+                                            break;
+                                        }
+                                    } else {
+                                        previewButton.click();
+                                    }
+
+                                    // 各リトライの待機時間
+                                    const waitTime = retryDelays[retryCount] || 10000;
+                                    console.log(`⏳ Canvas表示を${waitTime/1000}秒間待機中...`);
+
+                                    let loadWaitCount = 0;
+                                    const maxLoadWait = waitTime / 1000;
+
+                                    while (!canvasLoaded && loadWaitCount < maxLoadWait) {
+                                        const canvasContent = await findClaudeElement(deepResearchSelectors['4_Canvas機能テキスト位置'], 2, true);
+
+                                        if (canvasContent) {
+                                            // 方法1: ID による判定（最も確実）
+                                            const hasMarkdownArtifactId = canvasContent.id === 'markdown-artifact' ||
+                                                                         canvasContent.querySelector && canvasContent.querySelector('#markdown-artifact');
+
+                                            // 方法2: Canvas固有のクラスによる判定
+                                            const hasFontClaudeResponse = canvasContent.classList &&
+                                                                         canvasContent.classList.contains('font-claude-response');
+
+                                            // 方法3: 通常回答の除外（通常回答特有のクラスを持たない）
+                                            const isNotNormalResponse = canvasContent.classList &&
+                                                                       !canvasContent.classList.contains('standard-markdown') &&
+                                                                       !canvasContent.classList.contains('pt-0') &&
+                                                                       !canvasContent.classList.contains('pr-8');
+
+                                            // 方法4: Canvas固有のtabindex属性
+                                            const hasTabIndex = canvasContent.getAttribute &&
+                                                              canvasContent.getAttribute('tabindex') === '0' &&
+                                                              canvasContent.id === 'markdown-artifact';
+
+                                            // いずれかの条件を満たせばCanvas内容と判定
+                                            if (hasMarkdownArtifactId || hasFontClaudeResponse || hasTabIndex) {
+                                                canvasLoaded = true;
+                                                const textLength = canvasContent.textContent ? canvasContent.textContent.trim().length : 0;
+                                                console.log(`✅ Canvas内容が表示されました（リトライ${retryCount}、${loadWaitCount}秒後）`);
+                                                console.log(`   - 判定理由: ${hasMarkdownArtifactId ? 'ID=markdown-artifact' :
+                                                                           hasFontClaudeResponse ? 'font-claude-responseクラス' :
+                                                                           hasTabIndex ? 'tabindex属性' : '条件一致'}`);
+                                                console.log(`   - 要素ID: ${canvasContent.id || '(なし)'}`);
+                                                console.log(`   - クラス: ${canvasContent.className ? canvasContent.className.substring(0, 80) : '(なし)'}`);
+                                                console.log(`   - テキスト長: ${textLength}文字`);
+                                                break;
+                                            }
+                                        }
+                                        await wait(1000);
+                                        loadWaitCount++;
+                                    }
+
+                                    if (canvasLoaded) {
+                                        break;
+                                    } else if (retryCount < maxRetries - 1) {
+                                        console.log(`⚠ Canvas表示待機タイムアウト。再試行します...`);
+                                        await wait(1000); // リトライ前の小休止
+                                    }
+                                }
+
+                                if (!canvasLoaded) {
+                                    console.log('❌ Canvas内容の表示に失敗しました（すべてのリトライを使い切りました）');
+                                }
+                                await wait(1000);
+                                // Canvas処理後も停止ボタンの消滅を待機するため、breakせずに続行
+                            }
+                        }
+
+                        // 停止ボタンの状態をチェック
                         const stopResult = await findClaudeElement(claudeSelectors['3_回答停止ボタン'], 2, true);
 
                         if (!stopResult) {
@@ -1091,7 +1209,7 @@
             // Canvas機能のテキストを確認
             const deepResearchSelectors = getDeepResearchSelectors();
 
-            // 「続ける」ボタンがあればクリック
+            // 「続ける」ボタンがあればクリック（Canvas内で続ける操作が必要な場合）
             const continueButton = await findClaudeElement(deepResearchSelectors['4_3_Canvas続けるボタン'], 3, true);
             if (continueButton) {
                 console.log('✓ Canvas「続ける」ボタンを発見、クリック中...');
