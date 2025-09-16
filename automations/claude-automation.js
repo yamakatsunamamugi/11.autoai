@@ -749,47 +749,87 @@ ${prompt}`;
 
                 // 2. テキスト安定化待機（10秒間）
                 console.log('テキスト安定化待機開始（10秒間）...');
-                let lastTextLength = 0;
+                let lastTextContent = '';
                 let stableCount = 0;
-                const requiredStableCount = 3; // 3回連続で同じ長さなら安定とみなす
+                const requiredStableCount = 3; // 3回連続で同じ内容なら安定とみなす
+                let stableText = ''; // 安定化したテキストを保存
 
                 for (let i = 0; i < 10; i++) {
                     await wait(1000);
 
-                    // 現在のテキスト長を確認
+                    // 現在のテキスト内容を取得
                     const normalSelectors = UI_SELECTORS.Claude?.TEXT_EXTRACTION?.NORMAL_RESPONSE || [];
                     const canvasSelectors = UI_SELECTORS.Claude?.TEXT_EXTRACTION?.ARTIFACT_CONTENT || [];
 
-                    let currentTextLength = 0;
-                    for (const selector of normalSelectors) {
-                        const elements = document.querySelectorAll(selector);
-                        currentTextLength += Array.from(elements).reduce((sum, el) => sum + (el.textContent?.length || 0), 0);
-                    }
-                    for (const selector of canvasSelectors) {
-                        const elements = document.querySelectorAll(selector);
-                        currentTextLength += Array.from(elements).reduce((sum, el) => sum + (el.textContent?.length || 0), 0);
+                    // 通常テキスト取得（フィルタリングなし）
+                    let currentTextContent = '';
+                    const normalElements = document.querySelectorAll(normalSelectors.join(', '));
+                    if (normalElements.length > 0) {
+                        const texts = Array.from(normalElements)
+                            .map(el => el.textContent?.trim() || '')
+                            .filter(text => text.length > 0);
+                        currentTextContent = texts.join('\n');
                     }
 
-                    if (currentTextLength === lastTextLength) {
+                    // Canvas/Artifactテキスト取得
+                    for (const selector of canvasSelectors) {
+                        const elements = document.querySelectorAll(selector);
+                        if (elements.length > 0) {
+                            const canvasTexts = Array.from(elements)
+                                .map(el => el.textContent?.trim() || '')
+                                .filter(text => text.length > 0);
+                            if (canvasTexts.length > 0) {
+                                currentTextContent += '\n\n--- Canvas Content ---\n\n' + canvasTexts.join('\n');
+                            }
+                        }
+                    }
+
+                    const currentLength = currentTextContent.length;
+                    const lastLength = lastTextContent.length;
+
+                    if (currentTextContent === lastTextContent) {
                         stableCount++;
                         if (stableCount >= requiredStableCount) {
-                            console.log(`✅ テキスト安定化確認 (${i + 1}秒後, ${currentTextLength}文字)`);
+                            console.log(`✅ テキスト安定化確認 (${i + 1}秒後, ${currentLength}文字)`);
+                            stableText = currentTextContent;
                             break;
                         }
                     } else {
                         stableCount = 0;
-                        console.log(`テキスト変化検出: ${lastTextLength} → ${currentTextLength}文字`);
+                        console.log(`テキスト変化検出: ${lastLength} → ${currentLength}文字`);
+                        if (currentLength > lastLength) {
+                            console.log(`  追加された文字数: ${currentLength - lastLength}`);
+                        } else if (currentLength < lastLength) {
+                            console.log(`  削除された文字数: ${lastLength - currentLength}`);
+                        }
                     }
 
-                    lastTextLength = currentTextLength;
+                    lastTextContent = currentTextContent;
                 }
 
+                // 最終的なテキストを保存
+                if (!stableText) {
+                    stableText = lastTextContent;
+                    console.log(`⚠️ テキスト安定化せず。最終状態のテキストを使用 (${stableText.length}文字)`);
+                }
+
+                // グローバル変数に保存して後で使用
+                window.__stabilizedText = stableText;
+                console.log(`📝 安定化テキストを保存 (${stableText.length}文字)`);
+
                 console.log('■■■ テキスト安定化待機完了 ■■■');
-                return { success: true };
+                return { success: true, stabilizedText: stableText };
             }, 'テキスト安定化待機', 2);
 
             // ===== 結果取得（リトライ付き） =====
             let responseText = await executeStepWithRetry(async () => {
+                // まず安定化待機で取得したテキストを優先使用
+                if (window.__stabilizedText && window.__stabilizedText.length > 100) {
+                    console.log(`📝 安定化待機で取得済みのテキストを使用 (${window.__stabilizedText.length}文字)`);
+                    return window.__stabilizedText;
+                }
+                console.log('⚠️ 安定化テキストが不十分。DOM再取得を実行');
+
                 let normalText = '';
                 let canvasTexts = [];
 
@@ -906,22 +946,21 @@ ${prompt}`;
                 console.log(`統合結果: ${normalElements.length}個のテキスト要素を発見`);
 
                 if (normalElements.length > 0) {
-                    const filtered = Array.from(normalElements).filter(el => {
-                        return !el.closest('#markdown-artifact') &&
-                               !el.closest('[class*="artifact"]');
-                    });
-                    console.log(`フィルタリング後 ${filtered.length}個の要素`);
+                    // フィルタリングを削除：全ての要素を使用
+                    console.log('フィルタリング削除: 全要素を使用');
 
-                    if (filtered.length > 0) {
-                        // すべての要素のテキストを結合（Claudeの回答が複数要素に分かれている場合に対応）
-                        normalText = filtered
-                            .map(el => el.textContent?.trim() || '')
-                            .filter(text => text.length > 0)
-                            .join('\n');
-                        console.log(`通常テキスト取得成功 (${normalText.length}文字, ${filtered.length}要素から結合)`);
-                        if (normalText.length > 100) {
-                            console.log(`取得テキスト先頭100文字: "${normalText.substring(0, 100)}..."`);
-                        }
+                    // すべての要素のテキストを結合（Claudeの回答が複数要素に分かれている場合に対応）
+                    normalText = Array.from(normalElements)
+                        .map(el => el.textContent?.trim() || '')
+                        .filter(text => text.length > 0)
+                        .join('\n');
+
+                    console.log(`通常テキスト取得成功 (${normalText.length}文字, ${normalElements.length}要素から結合)`);
+                    if (normalText.length > 100) {
+                        console.log(`取得テキスト先頭100文字: "${normalText.substring(0, 100)}..."`);
+                    }
+                    if (normalText.length > 1000) {
+                        console.log(`取得テキスト末尾100文字: "...${normalText.substring(normalText.length - 100)}"`);
                     }
                 } else {
                     console.log('⚠️ 通常テキスト要素が1つも見つかりませんでした');

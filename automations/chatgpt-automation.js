@@ -92,6 +92,17 @@
     // セレクタを読み込み
     await loadSelectors();
 
+    // テスト済みセレクタをUI_SELECTORSに統合
+    if (!UI_SELECTORS.ChatGPT) {
+        UI_SELECTORS.ChatGPT = {};
+    }
+
+    // テスト済みの確実なセレクタで上書き/追加
+    UI_SELECTORS.ChatGPT.STOP_BUTTON = ['[aria-label="応答を停止"]'];
+    UI_SELECTORS.ChatGPT.CANVAS_TEXT = ['#markdown-artifact'];
+    UI_SELECTORS.ChatGPT.ASSISTANT_MESSAGE = ['[data-message-author-role="assistant"]'];
+    UI_SELECTORS.ChatGPT.STANDARD_MARKDOWN = ['.standard-markdown'];
+
     // ChatGPT用セレクタを取得
     const SELECTORS = {
         modelButton: UI_SELECTORS.ChatGPT?.MODEL_BUTTON || [],
@@ -101,11 +112,11 @@
         subMenu: UI_SELECTORS.ChatGPT?.MENU?.SUBMENU_TRIGGERS || [],
         textInput: UI_SELECTORS.ChatGPT?.INPUT || [],
         sendButton: UI_SELECTORS.ChatGPT?.SEND_BUTTON || [],
-        stopButton: UI_SELECTORS.ChatGPT?.STOP_BUTTON || [],
-        canvasText: UI_SELECTORS.ChatGPT?.TEXT_EXTRACTION?.CANVAS_ARTIFACT || [],
-        normalText: UI_SELECTORS.ChatGPT?.MESSAGE || [],
+        stopButton: UI_SELECTORS.ChatGPT.STOP_BUTTON,
+        canvasText: UI_SELECTORS.ChatGPT.CANVAS_TEXT,
+        normalText: UI_SELECTORS.ChatGPT.ASSISTANT_MESSAGE,
         menuItem: UI_SELECTORS.ChatGPT?.MENU_ITEM || [],
-        response: UI_SELECTORS.ChatGPT?.RESPONSE || []
+        response: UI_SELECTORS.ChatGPT.STANDARD_MARKDOWN
     };
     
     // ========================================
@@ -128,21 +139,31 @@
             await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
         }
 
-        // 停止ボタンが消えるまで待機（最大5分）
+        // 停止ボタンが消えるまで待機（テストコード準拠：10秒間連続非表示で完了、最大5分）
         if (stopBtn) {
-            log('【ChatGPT-ステップ6-2】停止ボタンが消えるまで待機（最大5分）', 'info');
-            for (let i = 0; i < 300; i++) {
-                stopBtn = await findElement(SELECTORS.stopButton, 1);
+            log('【ChatGPT-ステップ6-2】停止ボタンが10秒間消えるまで待機（最大5分）', 'info');
+            let disappearWaitCount = 0;
+            let confirmCount = 0;
+
+            while (disappearWaitCount < 300) {
+                stopBtn = await findElement(SELECTORS.stopButton, '停止ボタン');
+
                 if (!stopBtn) {
-                    log('【ChatGPT-ステップ6-2】応答完了', 'success');
-                    break;
+                    confirmCount++;
+                    if (confirmCount >= 10) {
+                        log('【ChatGPT-ステップ6-2】✅ 応答完了（停止ボタンが10秒間非表示）', 'success');
+                        break;
+                    }
+                } else {
+                    confirmCount = 0;
                 }
-                if (i % 30 === 0 && i > 0) {
-                    const minutes = Math.floor(i / 60);
-                    const seconds = i % 60;
-                    log(`応答待機中... (${minutes}分${seconds}秒経過)`, 'info');
+
+                await sleep(1000);
+                disappearWaitCount++;
+
+                if (disappearWaitCount % 60 === 0) {
+                    log(`応答生成中... ${Math.floor(disappearWaitCount / 60)}分経過`, 'info');
                 }
-                await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
             }
         }
     }
@@ -194,6 +215,7 @@
     }
     
     // 複数セレクタで要素検索（テスト済みコードより改善版）
+    // 要素検索（UI_SELECTORS対応 + テスト済みセレクタ強化版）
     async function findElement(selectors, description = '', maxRetries = 5) {
         for (let retry = 0; retry < maxRetries; retry++) {
             for (const selector of selectors) {
@@ -214,7 +236,7 @@
                         element = document.querySelector(selector);
                     }
 
-                    if (element && isElementInteractable(element)) {
+                    if (element && isVisible(element)) {
                         if (description && retry > 0) {
                             log(`${description}を発見: ${selector} (${retry + 1}回目の試行)`, 'success');
                         }
@@ -238,6 +260,7 @@
         }
         return null;
     }
+
     
     // テキストで要素を検索
     function findElementByText(selector, text, parent = document) {
@@ -1392,6 +1415,10 @@ ${prompt}`;
             }
             
             await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT); // 追加の待機
+
+            // 追加安全チェック: テキスト取得前にDOMの安定性を確認
+            log('【ChatGPT-ステップ6-3】テキスト取得前の安定性チェック', 'info');
+            await sleep(3000); // DOM安定化のための追加待機
             
             // ========================================
             // ステップ7: テキスト取得と表示
@@ -1401,27 +1428,17 @@ ${prompt}`;
             // テキスト取得（ui-selectors-data.jsonを使用）
             let responseText = '';
 
-            // Canvas/Artifactを最優先でチェック
+            // Canvas/Artifactを最優先でチェック（UI_SELECTORS使用）
             log('Canvas/Artifactコンテンツを検索中...', 'info');
 
-            const canvasSelectors = UI_SELECTORS.ChatGPT?.TEXT_EXTRACTION?.CANVAS_ARTIFACT || SELECTORS.canvasText;
-            for (const selector of canvasSelectors) {
-                const elements = document.querySelectorAll(selector);
-                
-                if (elements.length > 0) {
-                    log(`セレクタ "${selector}" で ${elements.length}個の要素を発見`, 'info');
-                    
-                    for (const elem of elements) {
-                        const text = elem.textContent?.trim() || '';
-                        
-                        // 最低文字数のチェックを緩和（10文字→5文字）
-                        if (text && text.length > 5) {
-                            responseText = text;
-                            log(`Canvas取得成功: ${text.length}文字`, 'success');
-                            break;
-                        }
-                    }
-                    if (responseText) break;
+            const canvasElement = await findElement(SELECTORS.canvasText, 'Canvas要素', 1);
+            if (canvasElement) {
+                const text = canvasElement.textContent?.trim() || '';
+                if (text && text.length > 10) {
+                    responseText = text;
+                    log(`Canvas取得成功: ${text.length}文字`, 'success');
+                } else {
+                    log(`Canvasは見つかりましたが、テキストが短すぎます: ${text.length}文字`, 'warning');
                 }
             }
             
@@ -1434,28 +1451,45 @@ ${prompt}`;
             if (!responseText) {
                 log('Canvasが見つからないため、アシスタントメッセージから取得', 'info');
 
-                const messageSelectors = UI_SELECTORS.ChatGPT?.MESSAGE || SELECTORS.normalText;
-                const assistantMessages = document.querySelectorAll(messageSelectors[0]);
+                // UI_SELECTORSを使用した確実な方式
+                const assistantMessages = document.querySelectorAll(SELECTORS.normalText[0]);
                 if (assistantMessages.length > 0) {
                     const lastMessage = assistantMessages[assistantMessages.length - 1];
-                    const contentSelectors = UI_SELECTORS.ChatGPT?.RESPONSE || ['div.markdown.prose', 'div.markdown'];
 
-                    for (const selector of contentSelectors) {
-                        const elements = lastMessage.querySelectorAll(selector);
-                        for (const elem of elements) {
-                            const text = elem.textContent?.trim() || '';
-                            if (text && text.length > 10) {
-                                responseText = text;
-                                log(`アシスタントメッセージ取得成功: ${text.length}文字`, 'success');
-                                break;
-                            }
+                    // 通常処理のテキスト取得（UI_SELECTORS使用）
+                    const normalElements = Array.from(document.querySelectorAll(SELECTORS.response[0]));
+                    const normalElement = normalElements.filter(el => {
+                        return !el.closest(SELECTORS.canvasText[0]) &&
+                               !el.closest('[class*="artifact"]');
+                    })[normalElements.length - 1];
+
+                    if (normalElement) {
+                        responseText = normalElement.textContent?.trim() || '';
+                        if (responseText.length > 10) {
+                            log(`テキスト取得成功: ${responseText.length}文字`, 'success');
+                        } else {
+                            log(`テキストが短すぎます: ${responseText.length}文字`, 'warning');
+                            responseText = ''; // リセット
                         }
-                        if (responseText) break;
                     }
+
+                    // 上記で取得できない場合のフォールバック
+                    if (!responseText) {
+                        const text = getCleanText(lastMessage);
+                        if (text && text.length > 10) {
+                            responseText = text;
+                            log(`フォールバック取得成功: ${text.length}文字`, 'success');
+                        }
+                    }
+                } else {
+                    log('❌ アシスタントメッセージが見つかりません', 'error');
                 }
             }
             
             if (responseText) {
+                // テストコード準拠のシンプルな最終確認
+                log('【ChatGPT-ステップ7-1】テキスト取得完了', 'success');
+
                 // 現在表示されているモデルと機能を取得（選択後確認）
                 let displayedModel = '';
                 let displayedFunction = '';

@@ -680,12 +680,16 @@ export default class StreamProcessorV2 {
             this.logger.log(`[StreamProcessorV2] ✅ 特殊グループ${groupIndex + 1}の処理完了`);
 
             // ===== Step 4-1: 特殊グループ完了時のログ・回答記録 =====
+            // 注意: この処理は重複しており、パフォーマンスを低下させるため無効化
+            // AIタスク実行時に既にログ・回答は記録されている
+            /*
             try {
               await this.writeGroupLogsAndResponses(taskGroupInfo, spreadsheetData);
               this.logger.log(`[StreamProcessorV2] 📝 特殊グループ${groupIndex + 1}のログ・回答記録完了`);
             } catch (recordError) {
               this.logger.error(`[StreamProcessorV2] ❌ 特殊グループ${groupIndex + 1}のログ・回答記録エラー:`, recordError);
             }
+            */
 
             totalProcessed++;
           } else {
