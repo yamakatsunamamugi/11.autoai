@@ -1840,15 +1840,26 @@ export default class StreamProcessorV2 {
 
   /**
    * 作業行範囲を取得
-   * @returns {Object} 開始行と終了行
+   * @returns {Array} 作業行の配列
    */
   getWorkRowRange() {
-    // デフォルトの作業行範囲
-    // 実際の値はspreadsheetDataから取得する必要がある
-    return {
-      start: 9,  // 通常、9行目から開始
-      end: 500   // 最大500行まで
-    };
+    // 作業行の配列を生成
+    // 行制御を考慮して実際の作業行のみを返す
+    const workRows = [];
+    const start = 9;  // 通常、9行目から開始
+    let end = 38;     // 行制御「この行で停止」を考慮（38行目まで）
+
+    // 実際のデータから行制御を取得
+    if (this.currentOptions?.rowControls?.until) {
+      end = Math.min(end, this.currentOptions.rowControls.until);
+    }
+
+    // 作業行の配列を生成
+    for (let i = start; i <= end; i++) {
+      workRows.push({ number: i });
+    }
+
+    return workRows;
   }
 
   /**
