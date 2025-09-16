@@ -98,7 +98,19 @@ class AuthService {
   }
 }
 
-// グローバルスコープに追加
+// Export for ES modules
+export { AuthService };
+export default AuthService;
+
+// シングルトンファクトリ関数を提供
+export function getAuthService() {
+  if (!globalThis.authService) {
+    globalThis.authService = new AuthService();
+  }
+  return globalThis.authService;
+}
+
+// グローバルスコープに追加（後方互換性）
 self.AuthService = AuthService;
 
 // シングルトンインスタンスを作成してグローバルに公開

@@ -16,11 +16,11 @@ import DIContainer from './di-container.js';
 import { getErrorService } from './error-service.js';
 import SheetsClient from '../features/spreadsheet/sheets-client.js';
 import DocsClient from '../features/spreadsheet/docs-client.js';
-import AuthService from '../services/auth-service.js';
+import AuthService, { getAuthService } from '../services/auth-service.js';
 import { getLogService } from './log-service.js';
 import SpreadsheetLogger from '../features/logging/spreadsheet-logger.js';
 import { AITaskExecutor } from './ai-task-executor.js';
-import { TaskProcessorAdapter } from './task-processor-adapter.js';
+import { TaskProcessorAdapter, createTaskProcessorAdapter } from './task-processor-adapter.js';
 
 /**
  * メインのサービスコンテナを初期化
@@ -106,7 +106,6 @@ export async function initializeServices() {
     }
 
     // auth-service.jsからインポート（static import使用）
-    const getAuthService = AuthService.getAuthService;
 
     // getAuthServiceがあればシングルトンを使用
     if (getAuthService) {
@@ -241,7 +240,7 @@ export async function initializeServices() {
   // TaskProcessor - タスクプロセッサー（アダプター経由）
   container.register('taskProcessor', async (container) => {
     // TaskProcessorAdapterを使用（static import使用）
-    const adapter = new TaskProcessorAdapter({});
+    const adapter = await createTaskProcessorAdapter(container);
 
     return adapter;
   });

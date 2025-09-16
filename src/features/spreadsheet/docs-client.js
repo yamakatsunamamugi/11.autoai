@@ -220,3 +220,4 @@ const docsClient = new DocsClient();
 if (typeof globalThis !== "undefined") {
   globalThis.docsClient = docsClient;
 }
+export { DocsClient }; export default DocsClient;

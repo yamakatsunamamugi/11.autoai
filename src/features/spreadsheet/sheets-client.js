@@ -2268,3 +2268,4 @@ if (typeof globalThis !== "undefined") {
   globalThis.parseSpreadsheetUrl = SheetsClient.parseSpreadsheetUrl;
   globalThis.parseMultipleUrls = SheetsClient.parseMultipleUrls;
 }
+export { SheetsClient }; export default SheetsClient;
