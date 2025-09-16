@@ -583,7 +583,7 @@ export class AITaskExecutor {
                             typeof self !== 'undefined' ? self :
                             typeof window !== 'undefined' ? window : {});
           const aiConfig = globalCtx.getAIConfig ? globalCtx.getAIConfig(taskData.aiType) : null;
-          const defaultTimeout = 300000; // デフォルト5分
+          const defaultTimeout = 600000; // デフォルト10分
           const deepTimeout = 2400000; // デフォルト40分
           
           let maxWaitTime;
