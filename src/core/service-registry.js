@@ -12,6 +12,16 @@
 
 import DIContainer from './di-container.js';
 
+// Static imports for Service Worker compatibility
+import { getErrorService } from './error-service.js';
+import SheetsClient from '../features/spreadsheet/sheets-client.js';
+import DocsClient from '../features/spreadsheet/docs-client.js';
+import AuthService from '../services/auth-service.js';
+import { getLogService } from './log-service.js';
+import SpreadsheetLogger from '../features/logging/spreadsheet-logger.js';
+import { AITaskExecutor } from './ai-task-executor.js';
+import { TaskProcessorAdapter } from './task-processor-adapter.js';
+
 /**
  * メインのサービスコンテナを初期化
  * @returns {Promise<DIContainer>} 初期化済みのDIコンテナ
@@ -25,8 +35,6 @@ export async function initializeServices() {
 
   // ErrorService - エラーハンドリング
   container.register('errorService', async () => {
-    const module = await import('./error-service.js');
-    const getErrorService = module.getErrorService;
     return getErrorService();
   });
 
@@ -41,9 +49,7 @@ export async function initializeServices() {
       return globalThis.sheetsClient;
     }
 
-    // sheets-client.jsからインポート（メイン実装）
-    const module = await import('../features/spreadsheet/sheets-client.js');
-    const SheetsClient = module.default || module.SheetsClient;
+    // sheets-client.jsからインポート（static import使用）
 
     // AuthServiceを取得
     let authService = null;
@@ -71,9 +77,7 @@ export async function initializeServices() {
       return globalThis.docsClient;
     }
 
-    // docs-client.jsからインポート
-    const module = await import('../features/spreadsheet/docs-client.js');
-    const DocsClient = module.default || module.DocsClient;
+    // docs-client.jsからインポート（static import使用）
 
     // AuthServiceを取得
     let authService = null;
@@ -101,10 +105,8 @@ export async function initializeServices() {
       return globalThis.authService;
     }
 
-    // auth-service.jsからインポート
-    const module = await import('../services/auth-service.js');
-    const AuthService = module.default || module.AuthService;
-    const getAuthService = module.getAuthService;
+    // auth-service.jsからインポート（static import使用）
+    const getAuthService = AuthService.getAuthService;
 
     // getAuthServiceがあればシングルトンを使用
     if (getAuthService) {
@@ -135,9 +137,7 @@ export async function initializeServices() {
 
   // LogService - 統合ログサービス
   container.register('logService', async (container) => {
-    const module = await import('./log-service.js');
-    const createLogService = module.createLogService;
-    return await createLogService(container);
+    return await getLogService(container);
   });
 
   // SpreadsheetLogger - スプレッドシートログ（統合版）
@@ -147,9 +147,7 @@ export async function initializeServices() {
       return globalThis.spreadsheetLogger;
     }
 
-    // features/logging/spreadsheet-logger.jsからインポート（メイン実装）
-    const module = await import('../features/logging/spreadsheet-logger.js');
-    const SpreadsheetLogger = module.default || module.SpreadsheetLogger;
+    // features/logging/spreadsheet-logger.jsからインポート（static import使用）
 
     // 依存サービスを取得
     let sheetsClient = null;
@@ -213,8 +211,6 @@ export async function initializeServices() {
 
   // AITaskExecutor - AI実行エンジン
   container.register('taskExecutor', async (container) => {
-    const module = await import('../core/ai-task-executor.js');
-    const AITaskExecutor = module.default || module.AITaskExecutor;
     const retryManager = await container.get('retryManager');
 
     return new AITaskExecutor({
@@ -244,12 +240,8 @@ export async function initializeServices() {
 
   // TaskProcessor - タスクプロセッサー（アダプター経由）
   container.register('taskProcessor', async (container) => {
-    // TaskProcessorAdapterを使用
-    const module = await import('./task-processor-adapter.js');
-    const createTaskProcessorAdapter = module.createTaskProcessorAdapter;
-
-    // アダプターを作成（DIコンテナを渡す）
-    const adapter = await createTaskProcessorAdapter(container);
+    // TaskProcessorAdapterを使用（static import使用）
+    const adapter = new TaskProcessorAdapter({});
 
     return adapter;
   });

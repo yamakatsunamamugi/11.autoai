@@ -25,6 +25,7 @@ import StreamProcessorV2 from '../features/task/stream-processor-v2.js';
 import SpreadsheetAutoSetup from '../services/spreadsheet-auto-setup.js';
 import { getStreamingServiceManager } from '../core/streaming-service-manager.js';
 import SpreadsheetLogger from '../features/logging/spreadsheet-logger.js';
+import { getService } from '../core/service-registry.js';
 
 // Step 1-1: AIタスク実行インスタンス
 const aiTaskExecutor = new AITaskExecutor();
@@ -382,8 +383,7 @@ export function setupMessageHandler() {
               return;
             }
 
-            // Step 11-3: ServiceRegistryからSheetsClientを取得
-            const { getService } = await import('../core/service-registry.js');
+            // Step 11-3: ServiceRegistryからSheetsClientを取得（static import使用）
             const sheetsClient = await getService('sheetsClient');
 
             // Step 11-5: Google Sheets APIを呼び出してデータ取得
@@ -438,9 +438,8 @@ export function setupMessageHandler() {
             // Step 12-5: StreamProcessorV2初期化を確保してからSpreadsheetAutoSetupを実行
             if (!globalThis.SPREADSHEET_CONFIG) {
               console.log('[Step 12-5-1] SPREADSHEET_CONFIG未初期化、StreamProcessorV2を初期化');
-              // 依存性を取得してシングルトンに設定
+              // 依存性を取得してシングルトンに設定（static import使用）
               try {
-                const { getService } = await import('../core/service-registry.js');
                 const sheetsClient = await getService('sheetsClient');
                 const processor = StreamProcessorV2.getInstance();
                 await processor.setDependencies({
@@ -504,8 +503,7 @@ export function setupMessageHandler() {
               return;
             }
 
-            // Step 13-6: データを読み込み
-            const { getService } = await import('../core/service-registry.js');
+            // Step 13-6: データを読み込み（static import使用）
             const sheetsClient = await getService('sheetsClient');
             const updatedSpreadsheetData =
               await sheetsClient.loadAutoAIData(spreadsheetId, gid);
@@ -515,7 +513,6 @@ export function setupMessageHandler() {
               console.log('[Step 13-7-1] SPREADSHEET_CONFIG未初期化、StreamProcessorV2を初期化');
               // 依存性を取得してシングルトンに設定
               try {
-                const { getService } = await import('../core/service-registry.js');
                 const sheetsClient = await getService('sheetsClient');
                 const processor = StreamProcessorV2.getInstance();
                 await processor.setDependencies({
@@ -724,7 +721,7 @@ export function setupMessageHandler() {
 
             // Service Worker環境では動的インポートが失敗するため、try-catch
             try {
-              const { getService } = await import('../core/service-registry.js');
+              // ServiceRegistry使用 (static import)
               const sheetsClient = await getService('sheetsClient');
               await processor.setDependencies({
                 sheetsClient: sheetsClient,
@@ -741,8 +738,8 @@ export function setupMessageHandler() {
 
             if (request.spreadsheetId) {
               // Step 18-7: スプレッドシートのデータを読み込み
-              const { getService: getService752 } = await import('../core/service-registry.js');
-            const sheetsClient752 = await getService752('sheetsClient');
+              // ServiceRegistry使用 (static import)
+            const sheetsClient752 = await getService('sheetsClient');
             const sheetData = await sheetsClient752.loadAutoAIData(
                 request.spreadsheetId,
                 request.gid
@@ -820,8 +817,8 @@ export function setupMessageHandler() {
             }
 
             // Step 19-3: SheetsClientを使用してログをクリア
-            const { getService: getService829 } = await import('../core/service-registry.js');
-            const sheetsClient829 = await getService829('sheetsClient');
+            // ServiceRegistry使用 (static import)
+            const sheetsClient829 = await getService('sheetsClient');
             const result = await sheetsClient829.clearSheetLogs(request.spreadsheetId);
 
             console.log('[Step 19-4] ログクリア成功:', result.clearedCount);
@@ -851,8 +848,8 @@ export function setupMessageHandler() {
             }
 
             // Step 20-3: SheetsClientを使用してAI回答を削除
-            const { getService: getService858 } = await import('../core/service-registry.js');
-            const sheetsClient858 = await getService858('sheetsClient');
+            // ServiceRegistry使用 (static import)
+            const sheetsClient858 = await getService('sheetsClient');
             const result = await sheetsClient858.deleteAnswers(request.spreadsheetId);
 
             console.log('[Step 20-4] AI回答削除成功:', result.deletedCount);
@@ -907,7 +904,7 @@ export function setupMessageHandler() {
 
             let sheetsClient910;
             try {
-              const { getService } = await import('../core/service-registry.js');
+              // ServiceRegistry使用 (static import)
               sheetsClient910 = await getService('sheetsClient');
             } catch (e) {
               console.error('sheetsClient取得エラー:', e.message);

@@ -16,6 +16,7 @@ import { getGlobalAICommonBase } from '../../../automations/1-ai-common-base.js'
 import { ModelExtractor } from './extractors/model-extractor.js';
 import { FunctionExtractor } from './extractors/function-extractor.js';
 import { ConsoleLogger } from '../../utils/console-logger.js';
+import { getService } from '../../core/service-registry.js';
 
 export class SpreadsheetLogger {
   constructor(logger = console) {
@@ -53,8 +54,7 @@ export class SpreadsheetLogger {
   async getSheetsClient() {
     if (!this._sheetsClient) {
       try {
-        // ServiceRegistryから取得
-        const { getService } = await import('../../core/service-registry.js');
+        // ServiceRegistryから取得（static import使用）
         this._sheetsClient = await getService('sheetsClient');
         // [Step 0-1: SheetsClient取得]
         this.logger.log('[Step 0-1: SheetsClient取得] SheetsClientをServiceRegistryから取得しました');
