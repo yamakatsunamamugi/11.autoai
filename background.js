@@ -203,26 +203,6 @@ chrome.runtime.onInstalled.addListener((details) => {
   }
 })();
 
-// Step 4-16: StreamingServiceManager初期化
-// 現在、初期化に問題があるため一時的に無効化
-// TODO: ConfigManager, EventBus, ErrorHandlerの実装後に有効化
-/*
-(async () => {
-  try {
-    console.log('[Step 4-17] StreamingServiceManager初期化開始');
-    const manager = getStreamingServiceManager();
-    if (manager) {
-      await manager.waitForInitialization();
-      console.log('[Step 4-18] ✅ StreamingServiceManager初期化完了');
-    }
-  } catch (error) {
-    console.error('[Step 4-19] ❌ StreamingServiceManager初期化エラー:', error);
-  }
-})();
-*/
-logger.warn('[Step 4-17: StreamingServiceManager初期化スキップ] StreamingServiceManager初期化をスキップ（一時的）');
-
-
 logger.success('[Step 4-20: Service Worker初期化完了] Service Worker初期化完了');
 
 // ===== Step 5: メッセージハンドラー設定 =====
