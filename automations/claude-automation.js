@@ -851,11 +851,29 @@ ${prompt}`;
                                     console.log(`Canvas要素発見: セレクタ"${selector}" ${elements.length}個`);
                                     elements.forEach(element => {
                                         const text = element.textContent?.trim() || '';
-                                        if (text && text.length > 10 && !canvasTexts.includes(text)) {
-                                            canvasTexts.push(text);
-                                            console.log(`Canvasテキスト発見 (${text.length}文字)`);
-                                            if (text.length > 100) {
-                                                console.log(`Canvas内容先頭100文字: "${text.substring(0, 100)}..."`);
+                                        if (text && text.length > 10) {
+                                            // 重複チェック：完全一致または部分一致を確認
+                                            const isDuplicate = canvasTexts.some(existing => {
+                                                return existing === text ||
+                                                       existing.includes(text) ||
+                                                       text.includes(existing);
+                                            });
+
+                                            if (!isDuplicate) {
+                                                canvasTexts.push(text);
+                                                console.log(`Canvasテキスト発見 (${text.length}文字)`);
+                                                if (text.length > 100) {
+                                                    console.log(`Canvas内容先頭100文字: "${text.substring(0, 100)}..."`);
+                                                    console.log(`Canvas内容末尾100文字: "...${text.substring(text.length - 100)}"`);
+                                                }
+
+                                                // 不完全なテキストの検出
+                                                const lastChars = text.slice(-10);
+                                                if (lastChars.match(/[、。！？\n]/) === null && text.length > 500) {
+                                                    console.log('⚠️ テキストが不完全な可能性があります（文末が不自然）');
+                                                }
+                                            } else {
+                                                console.log('⚠️ 重複したCanvasテキストをスキップ');
                                             }
                                         }
                                     });
@@ -908,12 +926,12 @@ ${prompt}`;
                             subtree: true
                         });
 
-                        // 15秒タイムアウト
+                        // 30秒タイムアウト（より確実に取得するため延長）
                         timeoutId = setTimeout(() => {
                             observer.disconnect();
-                            console.log(`Canvas要素待機タイムアウト (15秒) - 見つかった: ${canvasTexts.length}個`);
+                            console.log(`Canvas要素待機タイムアウト (30秒) - 見つかった: ${canvasTexts.length}個`);
                             resolve();
-                        }, 15000);
+                        }, 30000);
                     });
                 };
 
@@ -989,6 +1007,15 @@ ${prompt}`;
                     console.log(`📝 通常テキスト取得: ${normalText.length}文字`);
                 } else {
                     console.log('❌ テキスト取得失敗: 通常・Canvasともに空');
+                }
+
+                // 最終的なテキストの完全性チェック
+                if (extractedText) {
+                    const lastChars = extractedText.slice(-20);
+                    if (!lastChars.match(/[。！？\n%]/) && extractedText.length > 500) {
+                        console.log('⚠️ 警告: テキストが途中で切れている可能性があります');
+                        console.log(`末尾20文字: "${lastChars}"`);
+                    }
                 }
 
                 console.log(`Canvas-Firstシステム適用後の総文字数: ${extractedText.length}文字`);
