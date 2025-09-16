@@ -579,12 +579,71 @@
         }
     };
 
-    // ステップ1-9: テキストプレビュー取得関数
+    // ステップ1-9: テキストプレビュー取得関数（改善版）
     const getTextPreview = (element) => {
         if (!element) return null;
 
-        const fullText = element.textContent.trim();
+        console.log('📊 [getTextPreview] テキスト取得開始');
+        console.log('  - 要素タグ:', element.tagName);
+        console.log('  - 要素ID:', element.id || '(なし)');
+        console.log('  - 要素クラス:', element.className ? element.className.substring(0, 100) : '(なし)');
+        console.log('  - 子要素数:', element.children.length);
+
+        // 複数の方法でテキスト取得を試みる
+        let fullText = '';
+
+        // 方法1: innerText（表示されているテキスト）
+        if (element.innerText) {
+            fullText = element.innerText.trim();
+            console.log('  - innerText長:', fullText.length);
+        }
+
+        // 方法2: textContent（全テキスト）
+        if (!fullText || fullText.length < 100) {
+            const textContent = element.textContent.trim();
+            console.log('  - textContent長:', textContent.length);
+            if (textContent.length > fullText.length) {
+                fullText = textContent;
+            }
+        }
+
+        // 方法3: 特定の子要素からテキスト取得（Canvasの場合）
+        if (element.id === 'markdown-artifact' || element.querySelector('#markdown-artifact')) {
+            console.log('  📝 Canvas要素を検出、特別処理を実行');
+
+            // pre/codeブロックを探す
+            const codeBlocks = element.querySelectorAll('pre, code, .prose');
+            console.log('  - コードブロック数:', codeBlocks.length);
+
+            if (codeBlocks.length > 0) {
+                let combinedText = '';
+                codeBlocks.forEach((block, index) => {
+                    const blockText = block.innerText || block.textContent || '';
+                    console.log(`    - ブロック${index + 1}: ${blockText.length}文字`);
+                    combinedText += blockText + '\n';
+                });
+
+                if (combinedText.trim().length > fullText.length) {
+                    fullText = combinedText.trim();
+                    console.log('  - 結合テキスト長:', fullText.length);
+                }
+            }
+
+            // 段落要素を探す
+            const paragraphs = element.querySelectorAll('p, div.prose');
+            if (paragraphs.length > 0) {
+                console.log('  - 段落数:', paragraphs.length);
+            }
+        }
+
         const length = fullText.length;
+        console.log('  ✅ 最終テキスト長:', length);
+
+        if (length === 0) {
+            console.warn('  ⚠️ テキストが空です！');
+            console.log('  - element.innerHTML長:', element.innerHTML ? element.innerHTML.length : 0);
+            console.log('  - element.outerHTML冒頭:', element.outerHTML ? element.outerHTML.substring(0, 200) : '(なし)');
+        }
 
         if (length <= 200) {
             return { full: fullText, preview: fullText, length };
