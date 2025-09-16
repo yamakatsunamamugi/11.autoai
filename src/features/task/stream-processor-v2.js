@@ -337,7 +337,21 @@ export default class StreamProcessorV2 {
     try {
       // Step 1-2: SpreadsheetLoggerクラス取得（依存性注入から）
       this.log('SpreadsheetLoggerクラスを取得', 'info', '1-2');
-      const SpreadsheetLoggerClass = await getSpreadsheetLogger(this.SpreadsheetLoggerClass);
+
+      // SpreadsheetLoggerClassが設定されていない場合はService Registryから取得
+      let SpreadsheetLoggerClass = this.SpreadsheetLoggerClass;
+      if (!SpreadsheetLoggerClass) {
+        this.log('SpreadsheetLoggerClass未設定 - Service Registry経由で取得試行', 'info', '1-2-1');
+        try {
+          const { default: ImportedSpreadsheetLogger } = await import('../logging/spreadsheet-logger.js');
+          SpreadsheetLoggerClass = ImportedSpreadsheetLogger;
+          this.SpreadsheetLoggerClass = SpreadsheetLoggerClass;
+          this.log('SpreadsheetLoggerクラスをimportから取得', 'success', '1-2-2');
+        } catch (importError) {
+          this.log(`SpreadsheetLoggerクラスのimport失敗: ${importError.message}`, 'error', '1-2-3');
+          return;
+        }
+      }
 
       if (SpreadsheetLoggerClass) {
         // Step 1-3: インスタンス作成（spreadsheetUrlの有無に関わらず作成）
@@ -4942,13 +4956,13 @@ export default class StreamProcessorV2 {
       console.log(`🔍 [DEBUG] 記録処理開始 - グループID: ${taskGroupInfo?.id}`);
       console.log(`- taskGroupInfo存在: ${!!taskGroupInfo}`);
       console.log(`- globalThis.logManager存在: ${!!globalThis.logManager}`);
-      console.log(`- globalThis.logManager.spreadsheetLogger存在: ${!!globalThis.logManager?.spreadsheetLogger}`);
+      console.log(`- this.spreadsheetLogger存在: ${!!this.spreadsheetLogger}`);
 
-      // 外部SpreadsheetLoggerを取得
-      const externalLogger = globalThis.logManager?.spreadsheetLogger;
+      // 内部のSpreadsheetLoggerを使用
+      const externalLogger = this.spreadsheetLogger;
       if (!externalLogger) {
-        console.log(`🔍 [DEBUG] ❌ 外部SpreadsheetLoggerが見つかりません`);
-        this.logger.warn('[StreamProcessorV2] 外部SpreadsheetLoggerが見つかりません');
+        console.log(`🔍 [DEBUG] ❌ SpreadsheetLoggerが初期化されていません`);
+        this.logger.warn('[StreamProcessorV2] SpreadsheetLoggerが初期化されていません');
         return;
       }
 
