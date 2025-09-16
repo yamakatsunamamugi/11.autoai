@@ -108,6 +108,13 @@ export async function initializeServices() {
     return await getLogService(container);
   });
 
+  // LogManager - ログマネージャー（グローバルインスタンス）
+  container.register('logManager', async () => {
+    // log-manager.jsからインポート
+    const { logManager } = await import('./log-manager.js');
+    return logManager;
+  });
+
   // SpreadsheetLogger - スプレッドシートログ（統合版）
   container.register('spreadsheetLogger', async (container) => {
     // 依存サービスを取得

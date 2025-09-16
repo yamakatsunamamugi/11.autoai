@@ -4967,13 +4967,13 @@ export default class StreamProcessorV2 {
       }
 
       // グループの作業行範囲を取得
-      const workRows = this.getWorkRowRange();
+      const workRowRange = this.getWorkRowRange();
       console.log(`🔍 [DEBUG] 作業行取得結果:`);
-      console.log(`- workRows存在: ${!!workRows}`);
-      console.log(`- workRows数: ${workRows?.length}`);
-      if (!workRows || workRows.length === 0) {
-        console.log(`🔍 [DEBUG] ❌ 作業行が見つかりません`);
-        this.logger.warn('[StreamProcessorV2] 作業行が見つかりません');
+      console.log(`- workRowRange存在: ${!!workRowRange}`);
+      console.log(`- workRowRange: ${JSON.stringify(workRowRange)}`);
+      if (!workRowRange || !workRowRange.start || !workRowRange.end) {
+        console.log(`🔍 [DEBUG] ❌ 作業行範囲が不正です`);
+        this.logger.warn('[StreamProcessorV2] 作業行範囲が取得できません');
         return;
       }
 
@@ -4992,12 +4992,12 @@ export default class StreamProcessorV2 {
       this.logger.log(`[StreamProcessorV2] グループ構造:`, {
         logColumn: logColumn,
         answerColumnsCount: answerColumns.length,
-        workRowsCount: workRows.length
+        workRowStart: workRowRange.start,
+        workRowEnd: workRowRange.end
       });
 
-      // 各作業行に対してログと回答を記録
-      for (const workRow of workRows) {
-        const rowNumber = workRow.number;
+      // 各作業行に対してログと回答を記録（startからendまでループ）
+      for (let rowNumber = workRowRange.start; rowNumber <= workRowRange.end; rowNumber++) {
 
         // ログ列への記録
         if (logColumn) {
