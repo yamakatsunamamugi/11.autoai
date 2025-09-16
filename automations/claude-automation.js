@@ -833,109 +833,57 @@ ${prompt}`;
                 let normalText = '';
                 let canvasTexts = [];
 
-                // 1. Canvas/Artifact テキスト取得（タイミング対応強化）
+                // 1. Canvas/Artifact テキスト取得（最後に1回だけ取得）
                 const canvasSelectors = UI_SELECTORS.Claude?.TEXT_EXTRACTION?.ARTIFACT_CONTENT || [];
                 console.log(`Canvas/Artifact用セレクタ: ${canvasSelectors.length}個`);
 
-                // Canvas要素の動的検出（MutationObserver + タイムアウト）
-                const waitForCanvasElements = () => {
-                    return new Promise((resolve) => {
-                        let timeoutId;
-                        let foundCanvas = false;
+                // Canvas要素を最後に1回だけチェック（シンプルな方法）
+                const checkCanvasOnce = () => {
+                    console.log('🔍 Canvas要素の最終チェックを実行');
 
-                        // 即座にチェック
-                        const checkCanvas = () => {
-                            for (const selector of canvasSelectors) {
-                                const elements = document.querySelectorAll(selector);
-                                if (elements.length > 0) {
-                                    console.log(`Canvas要素発見: セレクタ"${selector}" ${elements.length}個`);
-                                    elements.forEach(element => {
-                                        const text = element.textContent?.trim() || '';
-                                        if (text && text.length > 10) {
-                                            // 重複チェック：完全一致または部分一致を確認
-                                            const isDuplicate = canvasTexts.some(existing => {
-                                                return existing === text ||
-                                                       existing.includes(text) ||
-                                                       text.includes(existing);
-                                            });
+                    for (const selector of canvasSelectors) {
+                        const elements = document.querySelectorAll(selector);
+                        if (elements.length > 0) {
+                            console.log(`Canvas要素発見: セレクタ"${selector}" ${elements.length}個`);
 
-                                            if (!isDuplicate) {
-                                                canvasTexts.push(text);
-                                                console.log(`Canvasテキスト発見 (${text.length}文字)`);
-                                                if (text.length > 100) {
-                                                    console.log(`Canvas内容先頭100文字: "${text.substring(0, 100)}..."`);
-                                                    console.log(`Canvas内容末尾100文字: "...${text.substring(text.length - 100)}"`);
-                                                }
+                            elements.forEach((element, index) => {
+                                const text = element.textContent?.trim() || '';
+                                if (text && text.length > 10) {
+                                    // 重複チェック
+                                    const isDuplicate = canvasTexts.some(existing => existing === text);
 
-                                                // 不完全なテキストの検出
-                                                const lastChars = text.slice(-10);
-                                                if (lastChars.match(/[、。！？\n]/) === null && text.length > 500) {
-                                                    console.log('⚠️ テキストが不完全な可能性があります（文末が不自然）');
-                                                }
-                                            } else {
-                                                console.log('⚠️ 重複したCanvasテキストをスキップ');
-                                            }
+                                    if (!isDuplicate) {
+                                        canvasTexts.push(text);
+                                        console.log(`✅ Canvasテキスト[${index}]取得成功 (${text.length}文字)`);
+
+                                        if (text.length > 100) {
+                                            console.log(`Canvas内容先頭100文字: "${text.substring(0, 100)}..."`);
+                                            console.log(`Canvas内容末尾100文字: "...${text.substring(text.length - 100)}"`);
                                         }
-                                    });
-                                    foundCanvas = true;
-                                }
-                            }
-                            return foundCanvas;
-                        };
 
-                        // 即座チェック
-                        if (checkCanvas()) {
-                            resolve();
-                            return;
-                        }
-
-                        // MutationObserver で動的要素を監視
-                        const observer = new MutationObserver((mutations) => {
-                            let shouldCheck = false;
-                            mutations.forEach((mutation) => {
-                                if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
-                                    for (const node of mutation.addedNodes) {
-                                        if (node.nodeType === 1) { // Element node
-                                            if (node.id && node.id.includes('markdown')) {
-                                                console.log(`✅ Canvas要素追加検出: id="${node.id}"`);
-                                                shouldCheck = true;
-                                                break;
-                                            }
-                                            // 子要素もチェック
-                                            const canvasChildren = node.querySelectorAll && node.querySelectorAll('[id*="markdown"]');
-                                            if (canvasChildren && canvasChildren.length > 0) {
-                                                console.log(`✅ 子Canvas要素検出: ${canvasChildren.length}個`);
-                                                shouldCheck = true;
-                                                break;
-                                            }
+                                        // 不完全なテキストの検出
+                                        const lastChars = text.slice(-20);
+                                        if (!lastChars.match(/[。！？\n%]/) && text.length > 500) {
+                                            console.log('⚠️ テキストが不完全な可能性があります（文末が不自然）');
+                                            console.log(`文末20文字: "${lastChars}"`);
                                         }
+                                    } else {
+                                        console.log(`⚠️ Canvasテキスト[${index}]は重複のためスキップ`);
                                     }
                                 }
                             });
+                        }
+                    }
 
-                            if (shouldCheck && checkCanvas() && !foundCanvas) {
-                                foundCanvas = true;
-                                clearTimeout(timeoutId);
-                                observer.disconnect();
-                                resolve();
-                            }
-                        });
-
-                        observer.observe(document.body, {
-                            childList: true,
-                            subtree: true
-                        });
-
-                        // 30秒タイムアウト（より確実に取得するため延長）
-                        timeoutId = setTimeout(() => {
-                            observer.disconnect();
-                            console.log(`Canvas要素待機タイムアウト (30秒) - 見つかった: ${canvasTexts.length}個`);
-                            resolve();
-                        }, 30000);
-                    });
+                    if (canvasTexts.length === 0) {
+                        console.log('💭 Canvas要素が見つかりませんでした（通常のテキスト応答の可能性）');
+                    } else {
+                        console.log(`🎯 Canvasテキスト取得完了: 合計${canvasTexts.length}個`);
+                    }
                 };
 
-                await waitForCanvasElements();
+                // テキスト生成完了後に1回だけ実行
+                checkCanvasOnce();
 
                 if (canvasTexts.length === 0) {
                     console.log('⚠️ Canvas/Artifactテキストが1つも見つかりませんでした');
