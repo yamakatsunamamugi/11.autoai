@@ -1192,9 +1192,7 @@ export class SpreadsheetLogger {
   }
 }
 
-// グローバルインスタンスを作成（必要に応じて）
-if (typeof globalThis !== 'undefined') {
-  globalThis.spreadsheetLogger = globalThis.spreadsheetLogger || new SpreadsheetLogger();
-}
+// グローバル変数の使用を避け、Service Registry経由でのアクセスを推奨
+console.log('[SpreadsheetLogger] Service Registry経由でのアクセスを推奨します');
 
 export default SpreadsheetLogger;

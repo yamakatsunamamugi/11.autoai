@@ -2272,10 +2272,9 @@ class SheetsClient {
 // グローバルスコープに追加
 self.SheetsClient = SheetsClient;
 
-// シングルトンインスタンスを作成してグローバルに公開
+// グローバル変数の使用を避け、Service Registry経由でのアクセスを推奨
+// parseSpreadsheetUrlのみレガシー互換性のため保持
 if (typeof globalThis !== "undefined") {
-  globalThis.sheetsClient = new SheetsClient();
-  // 後方互換性のため、旧関数をグローバルに公開
   globalThis.parseSpreadsheetUrl = SheetsClient.parseSpreadsheetUrl;
   globalThis.parseMultipleUrls = SheetsClient.parseMultipleUrls;
 }

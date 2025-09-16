@@ -1397,18 +1397,12 @@ export const sheetsClient = googleServices.sheetsReader;
 export const docsClient = googleServices.docsGenerator;
 export const spreadsheetLogger = googleServices.spreadsheetLogger;
 
-// Step 2-8-3: グローバル設定（Chrome拡張機能用）
+// グローバル変数の使用を避け、Service Registry経由でアクセスを推奨
+// 必要最小限のグローバル設定のみ保持
 if (typeof globalThis !== 'undefined') {
-  // 統合サービス
-  globalThis.GoogleServices = googleServices;
+  console.log('[GoogleServices] グローバル変数の設定をスキップ - Service Registry使用を推奨');
 
-  // 個別サービス（互換性維持）
-  globalThis.authService = authService;
-  globalThis.sheetsClient = sheetsClient;
-  globalThis.docsClient = docsClient;
-  globalThis.spreadsheetLogger = spreadsheetLogger;
-
-  // ユーティリティ関数
+  // parseSpreadsheetUrl関数のみ保持（レガシー互換性のため）
   globalThis.parseSpreadsheetUrl = (url) => {
     if (!url || typeof url !== 'string') {
       return { spreadsheetId: null, gid: null };

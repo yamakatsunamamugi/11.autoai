@@ -102,18 +102,19 @@ class AuthService {
 export { AuthService };
 export default AuthService;
 
+// プライベートシングルトンインスタンス（グローバル変数を使用しない）
+let authServiceInstance = null;
+
 // シングルトンファクトリ関数を提供
 export function getAuthService() {
-  if (!globalThis.authService) {
-    globalThis.authService = new AuthService();
+  if (!authServiceInstance) {
+    authServiceInstance = new AuthService();
   }
-  return globalThis.authService;
+  return authServiceInstance;
 }
 
 // グローバルスコープに追加（後方互換性）
 self.AuthService = AuthService;
 
-// シングルトンインスタンスを作成してグローバルに公開
-if (typeof globalThis !== "undefined") {
-  globalThis.authService = new AuthService();
-}
+// グローバル変数の使用をやめ、Service Registry経由でのアクセスを推奨
+console.log('[AuthService] Service Registry経由でのアクセスを推奨します');

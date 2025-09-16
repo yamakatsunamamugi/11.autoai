@@ -213,11 +213,6 @@ class DocsClient {
   }
 }
 
-// シングルトンインスタンスを作成してエクスポート
-const docsClient = new DocsClient();
-
-// グローバルに公開
-if (typeof globalThis !== "undefined") {
-  globalThis.docsClient = docsClient;
-}
+// グローバル変数の使用を避け、Service Registry経由でのアクセスを推奨
+console.log('[DocsClient] Service Registry経由でのアクセスを推奨します');
 export { DocsClient }; export default DocsClient;

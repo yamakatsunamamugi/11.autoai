@@ -27,6 +27,7 @@
 
 // WindowServiceをインポート（ウィンドウ管理の一元化）
 import { WindowService } from '../services/window-service.js';
+import { getService } from '../core/service-registry.js';
 
 export class AITaskHandler {
   constructor() {
@@ -370,8 +371,9 @@ export class AITaskHandler {
       this.log(`[AITaskHandler] 📊 スプレッドシートから範囲取得: ${range}`);
       
       console.log(`[AITaskHandler] STEP 4: sheetsClient確認`);
-      // sheetsClientを直接使用（background.jsのグローバル変数）
-      if (!globalThis.sheetsClient) {
+      // Service Registry経由でsheetsClientを取得
+      const sheetsClient = await getService('sheetsClient');
+      if (!sheetsClient) {
         console.error(`[AITaskHandler] ❌ sheetsClientが初期化されていません`);
         this.error(`[AITaskHandler] ❌ sheetsClientが初期化されていません`);
         throw new Error('sheetsClientが初期化されていません');
@@ -380,9 +382,9 @@ export class AITaskHandler {
       
       console.log(`[AITaskHandler] STEP 5: Google Sheets API呼び出し`);
       console.log(`[AITaskHandler]   - 呼び出し: sheetsClient.getSheetData("${spreadsheetId}", "${range}")`);
-      
+
       // Google Sheets APIを直接呼び出し
-      const data = await globalThis.sheetsClient.getSheetData(spreadsheetId, range);
+      const data = await sheetsClient.getSheetData(spreadsheetId, range);
       
       console.log(`[AITaskHandler] STEP 6: APIレスポンス受信`);
       console.log('[AITaskHandler]   - Raw API data:', data);
