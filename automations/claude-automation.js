@@ -68,7 +68,13 @@
             description: '回答停止ボタン'
         },
         '4_Canvas機能テキスト位置': {
-            selectors: UI_SELECTORS.Claude?.TEXT_EXTRACTION?.ARTIFACT_CONTENT || [],
+            selectors: [
+                '#markdown-artifact',
+                '[id="markdown-artifact"]',
+                '.font-claude-response#markdown-artifact',
+                '[tabindex="0"]#markdown-artifact',
+                'div.mx-auto.max-w-3xl#markdown-artifact'
+            ],
             description: 'Canvas機能のテキスト表示エリア'
         },
         '4_2_Canvas開くボタン': {
@@ -76,7 +82,13 @@
             description: 'Canvas機能を開くボタン'
         },
         '5_通常処理テキスト位置': {
-            selectors: UI_SELECTORS.Claude?.TEXT_EXTRACTION?.NORMAL_RESPONSE || [],
+            selectors: [
+                '.standard-markdown',
+                'div.standard-markdown',
+                '.grid.gap-2\\.5.standard-markdown',
+                'div.grid-cols-1.standard-markdown',
+                '[class*="standard-markdown"]'
+            ],
             description: '通常処理のテキスト表示エリア'
         }
     });
@@ -140,11 +152,23 @@
             description: '回答停止ボタン'
         },
         '4_Canvas機能テキスト位置': {
-            selectors: UI_SELECTORS.Claude?.TEXT_EXTRACTION?.ARTIFACT_CONTENT || [],
+            selectors: [
+                '#markdown-artifact',
+                '[id="markdown-artifact"]',
+                '.font-claude-response#markdown-artifact',
+                '[tabindex="0"]#markdown-artifact',
+                'div.mx-auto.max-w-3xl#markdown-artifact'
+            ],
             description: 'Canvas機能のテキスト表示エリア'
         },
         '5_通常処理テキスト位置': {
-            selectors: UI_SELECTORS.Claude?.TEXT_EXTRACTION?.NORMAL_RESPONSE || [],
+            selectors: [
+                '.standard-markdown',
+                'div.standard-markdown',
+                '.grid.gap-2\\.5.standard-markdown',
+                'div.grid-cols-1.standard-markdown',
+                '[class*="standard-markdown"]'
+            ],
             description: '通常処理のテキスト表示エリア'
         }
     };
@@ -563,6 +587,38 @@
         return null;
     };
 
+    // ステップ1-12: すべての機能トグルをオフにする関数
+    const turnOffAllFeatureToggles = () => {
+        console.log('\n🔄 すべての機能トグルをオフに設定中...');
+        let toggleCount = 0;
+
+        // 機能メニュー内のすべてのトグルを探す
+        const toggles = document.querySelectorAll('button:has(input[role="switch"])');
+
+        for (const toggle of toggles) {
+            try {
+                const inputElement = toggle.querySelector('input[role="switch"]');
+                if (inputElement) {
+                    const isCurrentlyOn = inputElement.checked || inputElement.getAttribute('aria-checked') === 'true';
+
+                    if (isCurrentlyOn) {
+                        const label = toggle.querySelector('p.font-base');
+                        const featureName = label ? label.textContent.trim() : 'Unknown';
+
+                        console.log(`  🔘 ${featureName}をオフに設定`);
+                        toggle.click();
+                        toggleCount++;
+                    }
+                }
+            } catch (error) {
+                console.warn('  ⚠️ トグル処理エラー:', error.message);
+            }
+        }
+
+        console.log(`✅ ${toggleCount}個のトグルをオフにしました`);
+        return toggleCount;
+    };
+
     // ========================================
     // ステップ1-12: Deep Research専用処理関数
     // ========================================
@@ -846,6 +902,11 @@
                     featureMenuBtn.click();
                     await wait(1500);
 
+                    // 機能選択前にすべてのトグルをオフにする
+                    console.log('\n【ステップ4-1-1】全トグルをオフに設定');
+                    turnOffAllFeatureToggles();
+                    await wait(500);
+
                     if (isDeepResearch) {
                         // ウェブ検索をオンにする
                         const webSearchToggle = getFeatureElement(featureSelectors.webSearchToggle, 'ウェブ検索トグル');
@@ -957,9 +1018,23 @@
                         const stopResult = await findClaudeElement(claudeSelectors['3_回答停止ボタン'], 2, true);
 
                         if (!stopResult) {
-                            stopButtonGone = true;
-                            console.log(`✓ 応答生成完了（${waitCount}秒後）`);
-                            break;
+                            // 10秒間確認
+                            let stillGone = true;
+                            for (let confirmCount = 0; confirmCount < 10; confirmCount++) {
+                                await wait(1000);
+                                const reconfirmResult = await findClaudeElement(claudeSelectors['3_回答停止ボタン'], 2, true);
+                                if (reconfirmResult) {
+                                    stillGone = false;
+                                    console.log(`  停止ボタン再出現（${confirmCount + 1}秒後）`);
+                                    break;
+                                }
+                            }
+
+                            if (stillGone) {
+                                stopButtonGone = true;
+                                console.log(`✓ 応答生成完了（${waitCount}秒後）`);
+                                break;
+                            }
                         }
 
                         await wait(1000);
@@ -1106,6 +1181,22 @@
 
             featureMenuBtn.click();
             await wait(1500);
+
+            // 機能選択前にすべてのトグルをオフにする
+            console.log('【Phase】全トグルをオフに設定');
+            turnOffAllFeatureToggles();
+            await wait(500);
+
+            // 指定の機能を有効にする
+            const toggles = document.querySelectorAll('button:has(input[role="switch"])');
+            for (const toggle of toggles) {
+                const label = toggle.querySelector('p.font-base');
+                if (label && label.textContent.trim() === featureName) {
+                    setToggleState(toggle, true);
+                    await wait(1000);
+                    break;
+                }
+            }
 
             return { success: true, phase: 'function', selected: featureName };
         } catch (error) {
