@@ -156,10 +156,12 @@
             const response = await fetch(chrome.runtime.getURL('ui-selectors-data.json'));
             console.log('🔄 データパース中...');
             const data = await response.json();
-            UI_SELECTORS = data.selectors;
+            // Claude用のセレクタのみを取得
+            UI_SELECTORS = data.selectors.Claude || {};
             window.UI_SELECTORS = UI_SELECTORS;
             selectorsLoaded = true;
             console.log('✅ UI Selectors読み込み完了');
+            console.log('📋 利用可能なセレクタ:', Object.keys(UI_SELECTORS));
             return UI_SELECTORS;
         } catch (error) {
             console.error('❌ ui-selectors-data.json読み込み失敗:', error);
@@ -195,27 +197,45 @@
 
         // 要素取得（複数セレクタ対応）
         const getElement = async (selectors, description = '') => {
+            console.log(`🔍 要素取得開始: ${description}`);
             for (const selector of selectors) {
                 try {
                     // 特別処理：ウェブ検索トグル
                     if (typeof selector === 'string' && selector.includes('ウェブ検索')) {
+                        console.log('  特別処理: ウェブ検索トグル検索');
                         const buttons = document.querySelectorAll('button');
                         for (const el of buttons) {
                             const text = el.textContent || '';
                             if (text.includes('ウェブ検索') && el.querySelector('input[role="switch"]')) {
+                                console.log(`  ✅ ${description}発見（ウェブ検索特別処理）`);
+                                return el;
+                            }
+                        }
+                    }
+                    // 特別処理：じっくり考える
+                    else if (typeof selector === 'string' && selector.includes('じっくり考える')) {
+                        console.log('  特別処理: じっくり考える検索');
+                        const buttons = document.querySelectorAll('button');
+                        for (const el of buttons) {
+                            const text = el.textContent || '';
+                            if (text.includes('じっくり考える') && el.querySelector('input[role="switch"]')) {
+                                console.log(`  ✅ ${description}発見（じっくり考える特別処理）`);
                                 return el;
                             }
                         }
                     } else {
                         const element = document.querySelector(selector);
                         if (element && isVisible(element)) {
+                            console.log(`  ✅ ${description}発見: ${selector}`);
                             return element;
                         }
                     }
                 } catch (error) {
+                    console.log(`  ⚠️ セレクタエラー: ${error.message}`);
                     continue;
                 }
             }
+            console.log(`  ❌ ${description}が見つかりません`);
             return null;
         };
 
@@ -478,7 +498,7 @@
 
             // ===== ステップ1: タスクデータ受信・ログ出力 =====
             console.log('\n■■■ ステップ1: タスクデータ受信 ■■■');
-            console.log('受信したタスクデータ:', {
+            console.log('📦 受信したタスクデータ:', {
                 model: taskData.model,
                 function: taskData.function,
                 promptLength: taskData.prompt?.length || taskData.text?.length || 0,
@@ -487,6 +507,11 @@
                 taskId: taskData.taskId,
                 aiType: taskData.aiType
             });
+            console.log('🔍 デバッグ情報:');
+            console.log(`  taskData.modelの型: ${typeof taskData.model}`);
+            console.log(`  taskData.modelの値: "${taskData.model}"`);
+            console.log(`  taskData.functionの型: ${typeof taskData.function}`);
+            console.log(`  taskData.functionの値: "${taskData.function}"`);
             console.log('■■■ ステップ1完了 ■■■');
 
             // ===== ステップ2: パラメータ準備 =====
@@ -495,10 +520,16 @@
             const modelName = taskData.model || '';
             const featureName = taskData.function || null;
 
-            console.log(`変換後のパラメータ:`);
+            console.log(`🔄 変換後のパラメータ:`);
             console.log(`  プロンプト: ${prompt ? `設定済み（${prompt.length}文字）` : '❌ 空'}`);
             console.log(`  モデル名: "${modelName || '未指定'}"` );
             console.log(`  機能名: "${featureName || '設定なし'}"`);
+            console.log(`🔍 変数の状態:`);
+            console.log(`  modelNameのTruthy判定: ${!!modelName}`);
+            console.log(`  modelName !== '': ${modelName !== ''}`);
+            console.log(`  featureNameのTruthy判定: ${!!featureName}`);
+            console.log(`  featureName !== '': ${featureName !== ''}`);
+            console.log(`  featureName !== '設定なし': ${featureName !== '設定なし'}`);
             console.log('■■■ ステップ2完了 ■■■');
 
             // ===== ステップ3: プロンプト最終化（セル情報追加） =====
@@ -556,37 +587,56 @@ ${prompt}`;
             if (modelName && modelName !== '') {
                 await executeStepWithRetry(async () => {
                     console.log('\n■■■ ステップ5: モデル選択 ■■■');
-                    const menuSelectors = UI_SELECTORS.Claude?.MODEL_BUTTON || [];
+                    console.log(`🎯 選択するモデル: "${modelName}"`);
+
+                    // UI_SELECTORSからモデルボタンセレクタを取得
+                    const menuSelectors = UI_SELECTORS.MODEL_BUTTON || [];
+                    console.log(`🔍 モデルボタンセレクタ数: ${menuSelectors.length}`);
+
                     const menuButton = await getElementWithWait(menuSelectors, 'モデルメニューボタン', 10000);
 
                     if (!menuButton) {
                         throw new Error('モデルメニューボタンが見つかりません');
                     }
 
+                    console.log('🔍 PointerEventでメニューを開く');
                     // ポインターイベントを使用してメニューを開く
                     menuButton.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, view: window }));
-                    await wait(100);
+                    await wait(50);
                     menuButton.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, view: window }));
                     await wait(1500);
 
                     // 他のモデルメニューボタン
-                    const otherModelsSelectors = UI_SELECTORS.Claude?.OTHER_MODELS_BUTTON || ['[role="menuitem"][aria-haspopup="menu"]'];
+                    const otherModelsSelectors = UI_SELECTORS.MENU?.OTHER_MODELS || UI_SELECTORS.OTHER_MODELS_BUTTON || ['[role="menuitem"][aria-haspopup="menu"]'];
                     let otherModelsBtn = null;
                     for (const selector of otherModelsSelectors) {
                         otherModelsBtn = document.querySelector(selector);
-                        if (otherModelsBtn) break;
+                        if (otherModelsBtn) {
+                            console.log(`🔍 他のモデルボタン発見: ${selector}`);
+                            break;
+                        }
                     }
                     if (otherModelsBtn) {
+                        console.log('🔍 他のモデルメニューを開く');
                         await triggerReactEvent(otherModelsBtn, 'click');
                         await wait(1000);
                     }
 
                     // 目標モデル選択
                     const targetModelName = modelName.startsWith('Claude') ? modelName : `Claude ${modelName}`;
-                    const menuItemSelectors = UI_SELECTORS.Claude?.MENU_ITEMS || ['[role="menuitem"]'];
+                    console.log(`🔍 検索するモデル名: "${targetModelName}"`);
+
+                    const menuItemSelectors = UI_SELECTORS.MENU_ITEMS || UI_SELECTORS.MENU?.ITEM || ['[role="menuitem"]'];
                     const modelElements = Array.from(document.querySelectorAll(menuItemSelectors.join(', ')));
+                    console.log(`🔍 メニューアイテム数: ${modelElements.length}`);
+
                     const targetModel = modelElements.find(el => {
-                        return el.textContent?.includes(targetModelName);
+                        const text = el.textContent?.trim();
+                        const found = text?.includes(targetModelName);
+                        if (found) {
+                            console.log(`  ✅ マッチ: "${text}"`);
+                        }
+                        return found;
                     });
 
                     if (targetModel) {
@@ -597,6 +647,7 @@ ${prompt}`;
                         console.log(`⚠️ 指定モデルが見つかりません、デフォルトモデルを選択`);
                         const firstModel = modelElements[0];
                         if (firstModel) {
+                            console.log(`  🎯 デフォルト: "${firstModel.textContent?.trim()}"`);
                             await triggerReactEvent(firstModel, 'click');
                             await wait(1500);
                         } else {
@@ -616,11 +667,11 @@ ${prompt}`;
             if (featureName && featureName !== '' && featureName !== '設定なし') {
                 await executeStepWithRetry(async () => {
                     console.log('\n■■■ ステップ6: 機能選択 ■■■');
-                    console.log(`指定された機能: ${featureName}`);
+                    console.log(`🎯 指定された機能: "${featureName}"`);
 
                     if (isDeepResearch) {
-                        console.log('Deep Research設定を実行中...');
-                        const featureMenuSelectors = UI_SELECTORS.Claude?.FUNCTION_MENU_BUTTON || [];
+                        console.log('🔍 Deep Research設定を実行中...');
+                        const featureMenuSelectors = UI_SELECTORS.FUNCTION_MENU_BUTTON || [];
                         const featureMenuBtn = await getElementWithWait(featureMenuSelectors, '機能メニューボタン', 10000);
 
                         if (!featureMenuBtn) {
@@ -631,7 +682,7 @@ ${prompt}`;
                         await wait(1500);
 
                         // ウェブ検索をオン
-                        const webSearchToggleSelectors = UI_SELECTORS.Claude?.WEB_SEARCH_TOGGLE_BUTTON || ['button:has(p:contains("ウェブ検索")):has(input[role="switch"])'];
+                        const webSearchToggleSelectors = UI_SELECTORS.FEATURE_MENU?.WEB_SEARCH_TOGGLE || UI_SELECTORS.WEB_SEARCH_TOGGLE_BUTTON || ['button:has(p:contains("ウェブ検索")):has(input[role="switch"])'];
                         const webSearchToggle = await getElement(webSearchToggleSelectors, 'ウェブ検索トグル');
                         if (webSearchToggle) {
                             setToggleState(webSearchToggle, true);
@@ -644,10 +695,10 @@ ${prompt}`;
                         await wait(1000);
 
                         // リサーチボタンを有効化
-                        const deepResearchButtonSelectors = UI_SELECTORS.Claude?.DEEP_RESEARCH_BUTTON || ['button[type="button"][aria-pressed]'];
-                        const buttons = document.querySelectorAll(deepResearchButtonSelectors.join(', '));
+                        const researchButtonSelectors = UI_SELECTORS.FEATURE_BUTTONS?.RESEARCH || UI_SELECTORS.DEEP_RESEARCH_BUTTON || ['button[type="button"][aria-pressed]'];
+                        const buttons = document.querySelectorAll(researchButtonSelectors.join(', '));
                         let researchButtonFound = false;
-                        const svgPaths = UI_SELECTORS.Claude?.FEATURE_BUTTON_SVG || {
+                        const svgPaths = UI_SELECTORS.FEATURE_BUTTON_SVG || {
                             RESEARCH: 'M8.5 2C12.0899'
                         };
                         for (const btn of buttons) {
@@ -665,10 +716,91 @@ ${prompt}`;
                         }
 
                         if (!researchButtonFound) {
-                            throw new Error('Deep Researchボタンが見つかりません');
+                            console.log('⚠️ Deep Researchボタンが見つかりません - フォールバック処理');
+                        }
+                    } else if (featureName === 'じっくり考える' || featureName.includes('Deep Thinking') || featureName.includes('思考')) {
+                        console.log('🤔 じっくり考える機能を設定中...');
+
+                        // Deep Thinkingボタンを有効化（メニューを開かずに直接）
+                        const deepThinkSelectors = UI_SELECTORS.FEATURE_BUTTONS?.DEEP_THINKING ||
+                            ['button[type="button"][aria-pressed]:has(svg path[d*="M10.3857 2.50977"])'];
+
+                        const deepThinkBtn = await getElement(deepThinkSelectors, 'じっくり考えるボタン');
+                        if (deepThinkBtn) {
+                            const isPressed = deepThinkBtn.getAttribute('aria-pressed') === 'true';
+                            if (!isPressed) {
+                                deepThinkBtn.click();
+                                await wait(1000);
+                                console.log('✅ じっくり考えるモード有効化');
+                            } else {
+                                console.log('📝 じっくり考えるモードは既に有効');
+                            }
+                        } else {
+                            console.log('⚠️ じっくり考えるボタンが見つかりません');
+
+                            // フォールバック: 機能メニューから探す
+                            const featureMenuSelectors = UI_SELECTORS.FUNCTION_MENU_BUTTON || [];
+                            const featureMenuBtn = await getElementWithWait(featureMenuSelectors, '機能メニューボタン', 5000);
+
+                            if (featureMenuBtn) {
+                                featureMenuBtn.click();
+                                await wait(1500);
+
+                                // メニュー内のトグルを探す
+                                const toggleButtons = document.querySelectorAll('button:has(input[role="switch"])');
+                                for (const toggle of toggleButtons) {
+                                    const label = toggle.querySelector('p.font-base') || toggle;
+                                    const labelText = label.textContent || '';
+                                    if (labelText.includes('じっくり考える') || labelText.includes('Deep Thinking')) {
+                                        setToggleState(toggle, true);
+                                        console.log('✅ メニューからじっくり考えるを有効化');
+                                        break;
+                                    }
+                                }
+
+                                // メニューを閉じる
+                                featureMenuBtn.click();
+                                await wait(1000);
+                            }
                         }
                     } else {
-                        console.log(`その他の機能選択: ${featureName}`);
+                        console.log(`🔧 その他の機能選択: ${featureName}`);
+
+                        // 機能メニューを開く
+                        const featureMenuSelectors = UI_SELECTORS.FUNCTION_MENU_BUTTON || [];
+                        const featureMenuBtn = await getElementWithWait(featureMenuSelectors, '機能メニューボタン', 10000);
+
+                        if (featureMenuBtn) {
+                            featureMenuBtn.click();
+                            await wait(1500);
+
+                            // メニュー内のトグルから指定された機能を探す
+                            const toggleButtons = document.querySelectorAll('button:has(input[role="switch"])');
+                            let found = false;
+
+                            for (const toggle of toggleButtons) {
+                                const label = toggle.querySelector('p.font-base') || toggle;
+                                const labelText = label.textContent || '';
+                                console.log(`  📝 チェック: "${labelText}"`);
+
+                                if (labelText.includes(featureName)) {
+                                    setToggleState(toggle, true);
+                                    console.log(`✅ ${featureName}を有効化`);
+                                    found = true;
+                                    break;
+                                }
+                            }
+
+                            if (!found) {
+                                console.log(`⚠️ 機能 "${featureName}" がメニューに見つかりません`);
+                            }
+
+                            // メニューを閉じる
+                            featureMenuBtn.click();
+                            await wait(1000);
+                        } else {
+                            console.log('⚠️ 機能メニューボタンが見つかりません');
+                        }
                     }
 
                     console.log('■■■ ステップ6完了 ■■■');
