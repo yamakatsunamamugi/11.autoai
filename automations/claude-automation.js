@@ -783,7 +783,7 @@
             let waitCount = 0;
 
             while (!stopButtonFound && waitCount < AI_WAIT_CONFIG.STOP_BUTTON_WAIT / 1000) {
-                const stopButton = await getElement(stopSelectors);
+                const stopButton = document.querySelector(stopSelectors[0]);
                 if (stopButton) {
                     stopButtonFound = true;
                     console.log('✓ 停止ボタン出現確認');
@@ -798,7 +798,7 @@
                 let confirmCount = 0;
 
                 while (Date.now() - startTime < maxWait) {
-                    const stopButton = await getElement(stopSelectors);
+                    const stopButton = document.querySelector(stopSelectors[0]);
 
                     if (!stopButton) {
                         confirmCount++;
@@ -833,9 +833,9 @@
 
                 // テキスト入力欄の存在をチェック
                 const inputSelectors = UI_SELECTORS.Claude?.INPUT || [];
-                const inputElement = await getElement(inputSelectors, 'テキスト入力欄');
+                const inputElement = await waitForElement(inputSelectors[0], 5, 500);
 
-                if (inputElement && isVisible(inputElement)) {
+                if (inputElement) {
                     console.log('✅ [ステップ0] ページ準備完了');
                     return true;
                 }
@@ -847,31 +847,7 @@
             throw new Error('ページが準備できませんでした');
         };
 
-        // ===== ステップ0-1: 要素取得リトライ機能 =====
-        const getElementWithWait = async (selectors, description = '', timeout = 10000) => {
-            console.log(`[ステップ0-1] ${description}を取得中...`);
-            const startTime = Date.now();
-            let attempts = 0;
-
-            while (Date.now() - startTime < timeout) {
-                attempts++;
-                const element = await getElement(selectors, description);
-
-                if (element && isVisible(element)) {
-                    console.log(`✅ [ステップ0-1] ${description}取得成功 (試行${attempts}回)`);
-                    return element;
-                }
-
-                if (attempts % 5 === 0) {
-                    console.log(`[ステップ0-1] ${description}を探索中... (${Math.floor((Date.now() - startTime) / 1000)}秒経過)`);
-                }
-
-                await wait(500);
-            }
-
-            console.error(`❌ [ステップ0-1] ${description}取得タイムアウト`);
-            return null;
-        };
+        // ===== Deep Research版テスト済み関数のみ使用 =====
 
         try {
             // ===== ステップ0: ページ準備確認（リトライ付き） =====
@@ -949,7 +925,7 @@ ${prompt}`;
             await executeStepWithRetry(async () => {
                 console.log('\n■■■ ステップ4: テキスト入力 ■■■');
                 const inputSelectors = UI_SELECTORS.Claude?.INPUT || [];
-                const inputElement = await getElementWithWait(inputSelectors, 'テキスト入力欄', 10000);
+                const inputElement = await waitForElement(inputSelectors[0], 20, 500);
 
                 if (!inputElement) {
                     throw new Error('テキスト入力欄が見つかりません');
@@ -977,7 +953,7 @@ ${prompt}`;
                     const menuSelectors = UI_SELECTORS.MODEL_BUTTON || [];
                     console.log(`🔍 モデルボタンセレクタ数: ${menuSelectors.length}`);
 
-                    const menuButton = await getElementWithWait(menuSelectors, 'モデルメニューボタン', 10000);
+                    const menuButton = await waitForElement(menuSelectors[0], 20, 500);
 
                     if (!menuButton) {
                         throw new Error('モデルメニューボタンが見つかりません');
@@ -1056,7 +1032,7 @@ ${prompt}`;
                     if (isDeepResearch) {
                         console.log('🔍 Deep Research設定を実行中...');
                         const featureMenuSelectors = UI_SELECTORS.FUNCTION_MENU_BUTTON || [];
-                        const featureMenuBtn = await getElementWithWait(featureMenuSelectors, '機能メニューボタン', 10000);
+                        const featureMenuBtn = await waitForElement(featureMenuSelectors[0], 20, 500);
 
                         if (!featureMenuBtn) {
                             throw new Error('機能メニューボタンが見つかりません');
@@ -1067,7 +1043,7 @@ ${prompt}`;
 
                         // ウェブ検索をオン
                         const webSearchToggleSelectors = UI_SELECTORS.FEATURE_MENU?.WEB_SEARCH_TOGGLE || UI_SELECTORS.WEB_SEARCH_TOGGLE_BUTTON || ['button:has(p:contains("ウェブ検索")):has(input[role="switch"])'];
-                        const webSearchToggle = await getElement(webSearchToggleSelectors, 'ウェブ検索トグル');
+                        const webSearchToggle = getFeatureElement(webSearchToggleSelectors, 'ウェブ検索トグル');
                         if (webSearchToggle) {
                             setToggleState(webSearchToggle, true);
                             await wait(1500);
@@ -1109,7 +1085,7 @@ ${prompt}`;
                         const deepThinkSelectors = UI_SELECTORS.FEATURE_BUTTONS?.DEEP_THINKING ||
                             ['button[type="button"][aria-pressed]:has(svg path[d*="M10.3857 2.50977"])'];
 
-                        const deepThinkBtn = await getElement(deepThinkSelectors, 'じっくり考えるボタン');
+                        const deepThinkBtn = getFeatureElement(deepThinkSelectors, 'じっくり考えるボタン');
                         if (deepThinkBtn) {
                             const isPressed = deepThinkBtn.getAttribute('aria-pressed') === 'true';
                             if (!isPressed) {
@@ -1124,7 +1100,7 @@ ${prompt}`;
 
                             // フォールバック: 機能メニューから探す
                             const featureMenuSelectors = UI_SELECTORS.FUNCTION_MENU_BUTTON || [];
-                            const featureMenuBtn = await getElementWithWait(featureMenuSelectors, '機能メニューボタン', 5000);
+                            const featureMenuBtn = await waitForElement(featureMenuSelectors[0], 10, 500);
 
                             if (featureMenuBtn) {
                                 featureMenuBtn.click();
@@ -1152,7 +1128,7 @@ ${prompt}`;
 
                         // 機能メニューを開く
                         const featureMenuSelectors = UI_SELECTORS.FUNCTION_MENU_BUTTON || [];
-                        const featureMenuBtn = await getElementWithWait(featureMenuSelectors, '機能メニューボタン', 10000);
+                        const featureMenuBtn = await waitForElement(featureMenuSelectors[0], 20, 500);
 
                         if (featureMenuBtn) {
                             featureMenuBtn.click();
@@ -1201,7 +1177,7 @@ ${prompt}`;
 
                 // 送信ボタンをクリック
                 const sendSelectors = UI_SELECTORS.Claude?.SEND_BUTTON || [];
-                const sendButton = await getElementWithWait(sendSelectors, '送信ボタン', 10000);
+                const sendButton = await waitForElement(sendSelectors[0], 20, 500);
 
                 if (!sendButton) {
                     throw new Error('送信ボタンが見つかりません');
