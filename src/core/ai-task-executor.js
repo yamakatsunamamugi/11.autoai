@@ -1,31 +1,33 @@
 /**
  * @fileoverview AIタスク実行共通モジュール
- * 
+ *
  * 概要:
  * 統合テストと本番環境の両方で使用される共通のAIタスク実行ロジック。
  * background.jsのexecuteAITask関数を独立モジュール化したもの。
- * 
+ *
  * 特徴:
  * - スクリプト注入処理
  * - 自動化オブジェクトの検索と実行
  * - DeepResearch/Genspark対応のタイムアウト制御
  * - エラーハンドリング
- * 
+ *
  * @module AITaskExecutor
  */
 
 // タイムアウト設定は削除済み - デフォルト値を使用
 // RetryManager機能を統合済み
 import { getGlobalAICommonBase } from '../../automations/1-ai-common-base.js';
+import { ConsoleLogger } from '../utils/console-logger.js';
 
 export class AITaskExecutor {
   constructor(logger = console) {
-    this.logger = logger;
+    // ConsoleLoggerインスタンスを作成（互換性を保持）
+    this.logger = logger instanceof ConsoleLogger ? logger : new ConsoleLogger('ai-task-executor', logger);
     // AI共通基盤からRetryManagerを取得
     const aiCommonBase = getGlobalAICommonBase();
     this.retryManager = aiCommonBase?.RetryManager;
     if (!this.retryManager) {
-      this.logger.error('[AITaskExecutor] RetryManagerが取得できませんでした');
+      this.logger.error('[Step 0-1: RetryManager取得失敗] RetryManagerが取得できませんでした');
     }
   }
 
@@ -48,7 +50,7 @@ export class AITaskExecutor {
     
     // aiTypeのnullチェック追加
     if (!taskData.aiType) {
-      this.logger.error(`[AITaskExecutor] ❌ aiTypeが未定義です。デフォルトでChatGPTを使用します`, {
+      this.logger.error('[Step 1-1: aiType未定義] aiTypeが未定義です。デフォルトでChatGPTを使用します', {
         セル: cellPosition,
         taskId: taskData.taskId,
         全プロパティ: Object.keys(taskData).join(', ')
@@ -56,7 +58,7 @@ export class AITaskExecutor {
       taskData.aiType = 'ChatGPT'; // デフォルト値を設定
     }
     
-    this.logger.log(`[AITaskExecutor] 🚀 AIタスク実行開始 [${cellPosition}セル] [${taskData.aiType}]:`, {
+    this.logger.log(`[Step 1: タスク実行開始] 🚀 AIタスク実行開始 [${cellPosition}セル] [${taskData.aiType}]`, {
       セル: cellPosition,
       tabId,
       taskId: taskData.taskId,
@@ -102,14 +104,14 @@ export class AITaskExecutor {
       let scriptsToInject = [aiScript];
 
       const injectionStartTime = performance.now();
-      this.logger.log(`[AITaskExecutor] 📝 [${taskData.aiType}] スクリプト注入開始:`, {
+      this.logger.log(`[Step 2: スクリプト注入] 📝 [${taskData.aiType}] スクリプト注入開始`, {
         scripts: scriptsToInject.map(s => s.split('/').pop()),
         count: scriptsToInject.length
       });
 
       // スクリプトを注入（統合テストと同じ方式）
       for (const scriptFile of scriptsToInject) {
-        this.logger.log(`[AITaskExecutor] 📝 注入中: ${scriptFile}`);
+        this.logger.log(`[Step 2-1: スクリプト注入中] 📝 注入中: ${scriptFile}`);
         await chrome.scripting.executeScript({
           target: { tabId: tabId },
           files: [scriptFile]
@@ -117,7 +119,7 @@ export class AITaskExecutor {
       }
 
       const injectionTime = (performance.now() - injectionStartTime).toFixed(0);
-      this.logger.log(`[AITaskExecutor] ✅ [${taskData.aiType}] スクリプト注入完了 (${injectionTime}ms)、初期化確認中...`);
+      this.logger.log(`[Step 2-2: スクリプト注入完了] ✅ [${taskData.aiType}] スクリプト注入完了 (${injectionTime}ms)、初期化確認中...`);
 
       // スクリプト実行完了を待つ（初期化完了のため延長）
       await new Promise(resolve => setTimeout(resolve, 3000)); // 3秒に延長
@@ -166,7 +168,7 @@ export class AITaskExecutor {
 
       while (!v2CheckSuccess && v2CheckAttempts < maxV2CheckAttempts) {
         v2CheckAttempts++;
-        this.logger.log(`[AITaskExecutor] V2チェック試行 ${v2CheckAttempts}/${maxV2CheckAttempts}`);
+        this.logger.log(`[Step 3: V2チェック] V2チェック試行 ${v2CheckAttempts}/${maxV2CheckAttempts}`);
 
         try {
           const [v2Check] = await chrome.scripting.executeScript({
@@ -246,11 +248,11 @@ export class AITaskExecutor {
             args: [taskData.aiType, v2CheckAttempts]
           });
 
-          this.logger.log(`[AITaskExecutor] 📋 V2チェック結果（試行${v2CheckAttempts}）:`, v2Check?.result);
+          this.logger.log(`[Step 3-1: V2チェック結果] 📋 V2チェック結果（試行${v2CheckAttempts}）:`, v2Check?.result);
 
           if (v2Check?.result?.exists) {
             v2CheckSuccess = true;
-            this.logger.log(`[AITaskExecutor] ✅ V2スクリプト確認成功（${v2CheckAttempts}回目）`);
+            this.logger.log(`[Step 3-2: V2チェック成功] ✅ V2スクリプト確認成功（${v2CheckAttempts}回目）`);
           } else {
             if (v2CheckAttempts < maxV2CheckAttempts) {
               this.logger.warn(`[AITaskExecutor] ⚠️ V2スクリプト未確認、1秒後にリトライ...（${v2CheckAttempts}/${maxV2CheckAttempts}）`);
@@ -343,7 +345,7 @@ export class AITaskExecutor {
           if (result?.result) {
             isReady = true;
             const initTime = (performance.now() - initStartTime).toFixed(0);
-            this.logger.log(`[AITaskExecutor] 🎯 [${taskData.aiType}] スクリプト初期化完了 (${initTime}ms)`);
+            this.logger.log(`[Step 3-3: スクリプト初期化完了] 🎯 [${taskData.aiType}] スクリプト初期化完了 (${initTime}ms)`);
           } else {
             await new Promise(resolve => setTimeout(resolve, checkInterval));
           }
@@ -358,7 +360,7 @@ export class AITaskExecutor {
         this.logger.warn(`[AITaskExecutor] ⚠️ [${taskData.aiType}] スクリプト初期化確認タイムアウト、続行します`);
       }
 
-      this.logger.log(`[AITaskExecutor] 🔄 [${taskData.aiType}] タスク実行開始...`);
+      this.logger.log(`[Step 4: タスク実行] 🔄 [${taskData.aiType}] タスク実行開始...`);
       
       // タスクを実行
       let result;
@@ -555,7 +557,7 @@ export class AITaskExecutor {
         args: [taskData]
         });
         
-        this.logger.log(`[AITaskExecutor] 📊 executeScript完了、結果確認中...`);
+        this.logger.log(`[Step 4-1: executeScript完了] 📊 executeScript完了、結果確認中...`);
       } catch (scriptError) {
         this.logger.error(`[AITaskExecutor] ❌ executeScript実行エラー:`, scriptError);
         throw scriptError;
@@ -570,7 +572,7 @@ export class AITaskExecutor {
           : '不明';
         
         if (resultData.waitForCompletion) {
-          this.logger.log(`[AITaskExecutor] 📝 [${taskData.aiType}] タスク実行開始、完了待機中 [${cellPosition}セル]`);
+          this.logger.log(`[Step 4-2: タスク実行開始] 📝 [${taskData.aiType}] タスク実行開始、完了待機中 [${cellPosition}セル]`);
           
           // V2/V1実行の完了を待つ（デフォルトタイムアウト値を使用）
           const isV2 = resultData.v2Executing;
@@ -598,7 +600,7 @@ export class AITaskExecutor {
             maxWaitTime = aiConfig?.RESPONSE_TIMEOUT || defaultTimeout;
           }
           
-          this.logger.log(`[AITaskExecutor] タイムアウト設定: ${maxWaitTime / 1000}秒 (${isDeepResearchOrAgent ? 'DeepResearch/Agent' : '通常'})`);
+          this.logger.log(`[Step 4-3: タイムアウト設定] タイムアウト設定: ${maxWaitTime / 1000}秒 (${isDeepResearchOrAgent ? 'DeepResearch/Agent' : '通常'})`);
           const checkInterval = 500;
           const waitStartTime = Date.now();
           
@@ -618,7 +620,7 @@ export class AITaskExecutor {
             
             if (checkResult?.result?.complete) {
               const execResult = checkResult.result.result;
-              this.logger.log(`[AITaskExecutor] ✅ [${taskData.aiType}] 実行完了:`, execResult);
+              this.logger.log(`[Step 5: タスク完了] ✅ [${taskData.aiType}] 実行完了`, execResult);
               
               if (execResult?.success) {
                 // タブのURLを取得

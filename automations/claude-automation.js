@@ -722,9 +722,10 @@ ${prompt}`;
 
             // ===== 結果取得（リトライ付き） =====
             let responseText = await executeStepWithRetry(async () => {
-                let extractedText = '';
+                let normalText = '';
+                let canvasTexts = [];
 
-                // 通常テキスト取得
+                // 1. 通常テキスト取得
                 const normalSelectors = UI_SELECTORS.Claude?.TEXT_EXTRACTION?.NORMAL_RESPONSE || [];
                 const normalElements = document.querySelectorAll(normalSelectors.join(', '));
 
@@ -738,34 +739,47 @@ ${prompt}`;
 
                     if (filtered.length > 0) {
                         // すべての要素のテキストを結合（Claudeの回答が複数要素に分かれている場合に対応）
-                        extractedText = filtered
+                        normalText = filtered
                             .map(el => el.textContent?.trim() || '')
                             .filter(text => text.length > 0)
                             .join('\n');
-                        console.log(`通常テキスト取得成功 (${extractedText.length}文字, ${filtered.length}要素から結合)`);
+                        console.log(`通常テキスト取得成功 (${normalText.length}文字, ${filtered.length}要素から結合)`);
                     }
                 }
 
-                // Canvas テキスト取得
-                if (!extractedText) {
-                    const canvasSelectors = UI_SELECTORS.Claude?.TEXT_EXTRACTION?.ARTIFACT_CONTENT || [];
-                    for (const selector of canvasSelectors) {
-                        const canvasElement = document.querySelector(selector);
-                        if (canvasElement) {
-                            const text = canvasElement.textContent?.trim() || '';
-                            if (text && text.length > 10) {
-                                extractedText = text;
-                                console.log(`Canvasテキスト取得成功 (${text.length}文字)`);
-                                break;
-                            }
+                // 2. Canvas/Artifact テキスト取得（すべてのCanvasを取得）
+                const canvasSelectors = UI_SELECTORS.Claude?.TEXT_EXTRACTION?.ARTIFACT_CONTENT || [];
+                for (const selector of canvasSelectors) {
+                    const canvasElements = document.querySelectorAll(selector);
+                    canvasElements.forEach(canvasElement => {
+                        const text = canvasElement.textContent?.trim() || '';
+                        if (text && text.length > 10 && !canvasTexts.includes(text)) {
+                            canvasTexts.push(text);
+                            console.log(`Canvasテキスト発見 (${text.length}文字)`);
                         }
+                    });
+                }
+
+                // 3. 通常テキストとCanvasテキストを結合
+                let extractedText = '';
+                if (normalText) {
+                    extractedText = normalText;
+                }
+                if (canvasTexts.length > 0) {
+                    const canvasContent = canvasTexts.join('\n\n--- Canvas ---\n\n');
+                    if (extractedText) {
+                        extractedText = extractedText + '\n\n--- Canvas ---\n\n' + canvasContent;
+                    } else {
+                        extractedText = canvasContent;
                     }
+                    console.log(`Canvasテキスト結合完了 (${canvasTexts.length}個のCanvas)`);
                 }
 
                 if (!extractedText) {
                     throw new Error('応答テキストを取得できませんでした');
                 }
 
+                console.log(`最終結果: ${extractedText.length}文字 (通常: ${normalText.length}文字, Canvas: ${canvasTexts.length}個)`);
                 return extractedText;
             }, '結果取得', 3);
 
