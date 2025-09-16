@@ -32,6 +32,151 @@
 
     console.log('Claude V2 自動化ワークフロー - 初期化開始');
 
+    // ===== Claude専用セレクタ定義（内蔵版） =====
+    const CLAUDE_SELECTORS = {
+        INPUT: [
+            "[aria-label=\"クロードにプロンプトを入力してください\"]",
+            ".ProseMirror[contenteditable=\"true\"]",
+            "[role=\"textbox\"][contenteditable=\"true\"]",
+            "div[contenteditable=\"true\"][translate=\"no\"]",
+            ".ProseMirror",
+            "div[enterkeyhint=\"enter\"][role=\"textbox\"]"
+        ],
+        SEND_BUTTON: [
+            "[aria-label=\"メッセージを送信\"]",
+            "button[aria-label=\"メッセージを送信\"]",
+            "[data-state=\"closed\"] button[type=\"button\"]",
+            "button.bg-accent-main-000",
+            "button svg path[d*=\"M208.49,120.49\"]"
+        ],
+        STOP_BUTTON: [
+            "[aria-label=\"応答を停止\"]",
+            "button[aria-label=\"応答を停止\"]",
+            "[data-state=\"closed\"][aria-label=\"応答を停止\"]",
+            "button.border-border-200[aria-label=\"応答を停止\"]",
+            "button svg path[d*=\"M128,20A108\"]"
+        ],
+        MODEL_BUTTON: [
+            "button[data-testid=\"model-selector-dropdown\"]",
+            "button[aria-haspopup=\"menu\"]",
+            "#radix-_r_g_",
+            "button.inline-flex.items-center.justify-center",
+            "button:has(svg.claude-logo-model-selector)",
+            "[data-testid=\"model-selector-dropdown\"]",
+            ".claude-logo-model-selector",
+            "button[type=\"button\"][aria-haspopup=\"menu\"]",
+            "button[data-value*=\"claude\"]",
+            "button.cursor-pointer:has(span.font-medium)",
+            "button[aria-label*=\"モデル\"]",
+            "button[aria-label*=\"Model\"]",
+            "[aria-label=\"モデルを選択\"]",
+            "[data-testid=\"model-selector\"]"
+        ],
+        FUNCTION_MENU_BUTTON: [
+            "[data-testid=\"input-menu-tools\"]",
+            "[aria-label=\"ツールメニューを開く\"]",
+            "#input-tools-menu-trigger",
+            "button[aria-expanded][aria-haspopup=\"listbox\"]",
+            "button svg path[d*=\"M40,88H73a32\"]"
+        ],
+        FEATURE_BUTTONS: {
+            DEEP_THINKING: [
+                "button[type=\"button\"][aria-pressed=\"true\"]:has(svg path[d*=\"M10.3857 2.50977\"])",
+                "button[aria-pressed=\"true\"]:has(svg path[d*=\"M10.3857\"])",
+                "button.text-accent-secondary-100[aria-pressed=\"true\"]"
+            ],
+            RESEARCH: [
+                "button[aria-pressed]:has(svg path[d*=\"M8.5 2C12.0899\"])",
+                "button:has(p:contains(\"リサーチ\"))",
+                "button.text-accent-secondary-100:has(svg)",
+                "button[type=\"button\"]:has(.min-w-0.pl-1.text-xs)",
+                ".flex.shrink button:has(svg)",
+                "button[type=\"button\"][aria-pressed]:has(svg path[d*=\"M8.5 2C12.0899\"])",
+                "button[aria-pressed]:has(svg path[d*=\"M8.5 2\"])",
+                "button:has(svg path[d*=\"M8.5\"]):has(p:contains(\"リサーチ\"))",
+                "button.text-accent-secondary-100[aria-pressed=\"true\"]:has(svg)",
+                "button.text-text-300[aria-pressed=\"false\"]:has(svg)"
+            ]
+        },
+        MENU: {
+            CONTAINER: [
+                "[role=\"menu\"][data-state=\"open\"]",
+                "[data-radix-menu-content][data-state=\"open\"]",
+                "div.z-dropdown[role=\"menu\"]",
+                "[aria-orientation=\"vertical\"][data-state=\"open\"]",
+                "div[role=\"menu\"]:not([data-state=\"closed\"])",
+                "[role=\"menu\"]",
+                "[data-radix-menu-content]",
+                ".z-dropdown",
+                "[aria-orientation=\"vertical\"][role=\"menu\"]"
+            ],
+            ITEM: "[role=\"option\"], [role=\"menuitem\"]",
+            MODEL_ITEM: "button[role=\"option\"]:has(span)",
+            OTHER_MODELS: [
+                "[role=\"menuitem\"][aria-haspopup=\"menu\"]",
+                "[role=\"menuitem\"]:has(svg)",
+                "[role=\"menuitem\"]:has(.group-hover\\:text-text-100)",
+                "[aria-haspopup=\"menu\"][role=\"menuitem\"]",
+                "div[role=\"menuitem\"] div.text-sm",
+                "div[role=\"menuitem\"]:last-child"
+            ]
+        },
+        FEATURE_MENU: {
+            CONTAINER: [
+                "[aria-labelledby=\"input-tools-menu-trigger\"]",
+                ".w-\\[20rem\\].absolute.max-w-\\[calc\\(100vw-16px\\)\\].block",
+                "div.z-dropdown.bg-bg-000.rounded-xl",
+                "div[style*=\"max-height\"][style*=\"336\"]",
+                ".absolute .flex-col .overscroll-auto"
+            ],
+            WEB_SEARCH_TOGGLE: [
+                "button:has(svg path[d*=\"M7.2705 3.0498\"]):has(input[role=\"switch\"])",
+                "button:has(p:contains(\"ウェブ検索\")):has(input[role=\"switch\"])",
+                "button.text-primary-500:has(input[role=\"switch\"])",
+                "div:contains(\"ウェブ検索\") button:has(.group\\/switch)",
+                "button .font-base:contains(\"ウェブ検索\")"
+            ],
+            THINK_TOGGLE: [
+                "button:has(svg path[d*=\"M10.3857 2.50977\"]):has(input[role=\"switch\"])",
+                "button:has(p:contains(\"じっくり考える\")):has(input[role=\"switch\"])",
+                "button input[role=\"switch\"][style*=\"width: 28px\"]",
+                "div:contains(\"じっくり考える\") button:has(.group\\/switch)",
+                "button .font-base:contains(\"じっくり考える\")"
+            ]
+        },
+        TEXT_EXTRACTION: {
+            NORMAL_RESPONSE: [
+                ".standard-markdown",
+                "div.standard-markdown",
+                ".grid.gap-2\\.5.standard-markdown",
+                "div.grid-cols-1.standard-markdown",
+                "[class*=\"standard-markdown\"]",
+                ".standard-markdown p",
+                "div.grid-cols-1.grid.gap-2\\.5",
+                ".grid-cols-1.grid.gap-2\\.5 p",
+                "div[data-is-streaming=\"false\"] .standard-markdown",
+                "div.font-claude-response .standard-markdown"
+            ],
+            ARTIFACT_CONTENT: [
+                "#markdown-artifact",
+                "[id=\"markdown-artifact\"]",
+                ".font-claude-response#markdown-artifact",
+                "[tabindex=\"0\"]#markdown-artifact",
+                "div.mx-auto.max-w-3xl#markdown-artifact",
+                "[id*=\"markdown\"]",
+                ".artifact-block-cell",
+                "[class*=\"artifact-block\"]",
+                "div[class*=\"artifact\"]",
+                ".absolute.right-2[class*=\"whitespace-pre-wrap\"]",
+                "div[class*=\"font-mono\"][class*=\"whitespace-pre-wrap\"]",
+                "[data-testid=\"artifact-content\"]",
+                "div[class*=\"canvas\"]"
+            ]
+        }
+    };
+
+    console.log('✅ Claude専用セレクタ内蔵完了');
+
     // AI共通基盤からRetryManagerを取得（現在の共通処理関数を活用）
     const getRetryManager = () => {
         try {
@@ -62,12 +207,26 @@
         console.log('🔄 ウィンドウ再作成を実行中...');
 
         try {
+            // 拡張機能コンテキストの確認
+            if (!chrome || !chrome.tabs) {
+                throw new Error('Chrome拡張機能のコンテキストが無効です');
+            }
+
             // 現在のウィンドウを閉じる
-            await chrome.tabs.reload();
+            if (typeof chrome.tabs.reload === 'function') {
+                await chrome.tabs.reload();
+            } else {
+                // フォールバック: ページリロード
+                if (window && window.location) {
+                    window.location.reload();
+                } else {
+                    throw new Error('ページリロード機能が利用できません');
+                }
+            }
             await wait(2000);
 
-            // ページを再読み込みしてセレクタを再ロード
-            await loadSelectors();
+            // ページを再読み込み（セレクタは内蔵済み）
+            console.log('📝 ページ再読み込み完了');
 
             console.log('✅ ウィンドウ再作成完了');
             return true;
@@ -144,36 +303,75 @@
         STOP_BUTTON_WAIT: 30000      // 30秒
     };
 
-    // UI_SELECTORSをJSONから読み込み
-    let UI_SELECTORS = window.UI_SELECTORS || {};
-    let selectorsLoaded = false;
+    // ===== 複数セレクタ対応ユーティリティ関数 =====
 
-    const loadSelectors = async () => {
-        if (selectorsLoaded) return UI_SELECTORS;
-
-        try {
-            console.log('🔄 JSONファイル読み込み中...');
-            const response = await fetch(chrome.runtime.getURL('ui-selectors-data.json'));
-            console.log('🔄 データパース中...');
-            const data = await response.json();
-            // Claude用のセレクタのみを取得
-            UI_SELECTORS = data.selectors.Claude || {};
-            window.UI_SELECTORS = UI_SELECTORS;
-            selectorsLoaded = true;
-            console.log('✅ UI Selectors読み込み完了');
-            console.log('📋 利用可能なセレクタ:', Object.keys(UI_SELECTORS));
-            return UI_SELECTORS;
-        } catch (error) {
-            console.error('❌ ui-selectors-data.json読み込み失敗:', error);
-            console.log('🔧 フォールバック: 既存セレクタを使用');
-            UI_SELECTORS = window.UI_SELECTORS || {};
-            selectorsLoaded = true;
-            return UI_SELECTORS;
-        }
+    // 要素の可視性チェック
+    const isElementVisible = (element) => {
+        if (!element) return false;
+        const rect = element.getBoundingClientRect();
+        const style = window.getComputedStyle(element);
+        return rect.width > 0 &&
+               rect.height > 0 &&
+               style.display !== 'none' &&
+               style.visibility !== 'hidden' &&
+               style.opacity !== '0';
     };
 
-    await loadSelectors();
-    console.log('✅ UI_SELECTORS初期化完了');
+    // 複数セレクタから要素を検索
+    const findElementByMultipleSelectors = async (selectors, maxRetries = 10, retryDelay = 500) => {
+        for (let i = 0; i < maxRetries; i++) {
+            for (const selector of selectors) {
+                try {
+                    const element = document.querySelector(selector);
+                    if (element && isElementVisible(element)) {
+                        console.log(`✅ 要素発見: ${selector} (試行 ${i + 1}/${maxRetries})`);
+                        return element;
+                    }
+                } catch (error) {
+                    continue;
+                }
+            }
+            if (i < maxRetries - 1) {
+                await wait(retryDelay);
+            }
+        }
+        throw new Error(`要素が見つかりません。試行したセレクタ: ${selectors.join(', ')}`);
+    };
+
+    // 機能要素の取得（特別処理対応）
+    const getFeatureElement = (selectors, description = '') => {
+        console.log(`🔍 機能要素取得開始: ${description}`);
+        for (const selector of selectors) {
+            try {
+                // 特別処理：テキスト検索
+                if (typeof selector === 'string' && (selector.includes('ウェブ検索') || selector.includes('じっくり考える'))) {
+                    const buttons = document.querySelectorAll('button');
+                    for (const el of buttons) {
+                        const text = el.textContent || '';
+                        if (text.includes('ウェブ検索') || text.includes('じっくり考える')) {
+                            const hasSwitch = el.querySelector('input[role="switch"]');
+                            if (hasSwitch) {
+                                console.log(`✅ ${description}発見（テキスト検索）`);
+                                return el;
+                            }
+                        }
+                    }
+                } else {
+                    const element = document.querySelector(selector);
+                    if (element && isElementVisible(element)) {
+                        console.log(`✅ ${description}発見: ${selector}`);
+                        return element;
+                    }
+                }
+            } catch (error) {
+                continue;
+            }
+        }
+        console.log(`⚠️ ${description}が見つかりません`);
+        return null;
+    };
+
+    console.log('✅ セレクタユーティリティ関数初期化完了');
 
     // 基本ユーティリティ
     const wait = async (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -601,7 +799,7 @@
                     console.log('\n【ステップ1-3】いいから元のプロンプトを確認して作業をして」を送信');
 
                     const inputResult = await findClaudeElement({
-                        selectors: UI_SELECTORS.Claude?.INPUT || [],
+                        selectors: CLAUDE_SELECTORS.INPUT,
                         description: 'テキスト入力欄'
                     });
 
@@ -609,7 +807,7 @@
                         await inputText(inputResult.element, "いいから元のプロンプトを確認して作業をして");
 
                         const sendResult = await findClaudeElement({
-                            selectors: UI_SELECTORS.Claude?.SEND_BUTTON || [],
+                            selectors: CLAUDE_SELECTORS.SEND_BUTTON,
                             description: '送信ボタン'
                         });
 
@@ -777,7 +975,7 @@
         // 応答待機処理
         const waitForResponse = async (isDeepResearch = false) => {
             const maxWait = isDeepResearch ? AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT : AI_WAIT_CONFIG.NORMAL_WAIT;
-            const stopSelectors = UI_SELECTORS.Claude?.STOP_BUTTON || [];
+            const stopSelectors = CLAUDE_SELECTORS.STOP_BUTTON;
 
             let stopButtonFound = false;
             let waitCount = 0;
@@ -832,7 +1030,10 @@
                 console.log(`[ステップ0] 準備確認 (${attempts}/${maxAttempts})`);
 
                 // テキスト入力欄の存在をチェック
-                const inputSelectors = UI_SELECTORS.Claude?.INPUT || [];
+                const inputSelectors = CLAUDE_SELECTORS.INPUT;
+                if (!inputSelectors || inputSelectors.length === 0) {
+                    throw new Error('Claude INPUTセレクタが定義されていません');
+                }
                 const inputElement = await waitForElement(inputSelectors[0], 5, 500);
 
                 if (inputElement) {
@@ -924,8 +1125,11 @@ ${prompt}`;
             // ===== ステップ4: テキスト入力（リトライ付き） =====
             await executeStepWithRetry(async () => {
                 console.log('\n■■■ ステップ4: テキスト入力 ■■■');
-                const inputSelectors = UI_SELECTORS.Claude?.INPUT || [];
-                const inputElement = await waitForElement(inputSelectors[0], 20, 500);
+                const inputSelectors = CLAUDE_SELECTORS.INPUT;
+                if (!inputSelectors || inputSelectors.length === 0) {
+                    throw new Error('Claude INPUTセレクタが定義されていません');
+                }
+                const inputElement = await findElementByMultipleSelectors(inputSelectors, 20, 500);
 
                 if (!inputElement) {
                     throw new Error('テキスト入力欄が見つかりません');
@@ -949,11 +1153,11 @@ ${prompt}`;
                     console.log('\n■■■ ステップ5: モデル選択 ■■■');
                     console.log(`🎯 選択するモデル: "${modelName}"`);
 
-                    // UI_SELECTORSからモデルボタンセレクタを取得
-                    const menuSelectors = UI_SELECTORS.MODEL_BUTTON || [];
+                    // Claude内蔵セレクタからモデルボタンセレクタを取得
+                    const menuSelectors = CLAUDE_SELECTORS.MODEL_BUTTON;
                     console.log(`🔍 モデルボタンセレクタ数: ${menuSelectors.length}`);
 
-                    const menuButton = await waitForElement(menuSelectors[0], 20, 500);
+                    const menuButton = await findElementByMultipleSelectors(menuSelectors, 20, 500);
 
                     if (!menuButton) {
                         throw new Error('モデルメニューボタンが見つかりません');
@@ -967,7 +1171,7 @@ ${prompt}`;
                     await wait(1500);
 
                     // 他のモデルメニューボタン
-                    const otherModelsSelectors = UI_SELECTORS.MENU?.OTHER_MODELS || UI_SELECTORS.OTHER_MODELS_BUTTON || ['[role="menuitem"][aria-haspopup="menu"]'];
+                    const otherModelsSelectors = CLAUDE_SELECTORS.MENU.OTHER_MODELS;
                     let otherModelsBtn = null;
                     for (const selector of otherModelsSelectors) {
                         otherModelsBtn = document.querySelector(selector);
@@ -986,7 +1190,7 @@ ${prompt}`;
                     const targetModelName = modelName.startsWith('Claude') ? modelName : `Claude ${modelName}`;
                     console.log(`🔍 検索するモデル名: "${targetModelName}"`);
 
-                    const menuItemSelectors = UI_SELECTORS.MENU_ITEMS || UI_SELECTORS.MENU?.ITEM || ['[role="menuitem"]'];
+                    const menuItemSelectors = [CLAUDE_SELECTORS.MENU.ITEM];
                     const modelElements = Array.from(document.querySelectorAll(menuItemSelectors.join(', ')));
                     console.log(`🔍 メニューアイテム数: ${modelElements.length}`);
 
@@ -1031,8 +1235,8 @@ ${prompt}`;
 
                     if (isDeepResearch) {
                         console.log('🔍 Deep Research設定を実行中...');
-                        const featureMenuSelectors = UI_SELECTORS.FUNCTION_MENU_BUTTON || [];
-                        const featureMenuBtn = await waitForElement(featureMenuSelectors[0], 20, 500);
+                        const featureMenuSelectors = CLAUDE_SELECTORS.FUNCTION_MENU_BUTTON;
+                        const featureMenuBtn = await findElementByMultipleSelectors(featureMenuSelectors, 20, 500);
 
                         if (!featureMenuBtn) {
                             throw new Error('機能メニューボタンが見つかりません');
@@ -1042,7 +1246,7 @@ ${prompt}`;
                         await wait(1500);
 
                         // ウェブ検索をオン
-                        const webSearchToggleSelectors = UI_SELECTORS.FEATURE_MENU?.WEB_SEARCH_TOGGLE || UI_SELECTORS.WEB_SEARCH_TOGGLE_BUTTON || ['button:has(p:contains("ウェブ検索")):has(input[role="switch"])'];
+                        const webSearchToggleSelectors = CLAUDE_SELECTORS.FEATURE_MENU.WEB_SEARCH_TOGGLE;
                         const webSearchToggle = getFeatureElement(webSearchToggleSelectors, 'ウェブ検索トグル');
                         if (webSearchToggle) {
                             setToggleState(webSearchToggle, true);
@@ -1055,10 +1259,10 @@ ${prompt}`;
                         await wait(1000);
 
                         // リサーチボタンを有効化
-                        const researchButtonSelectors = UI_SELECTORS.FEATURE_BUTTONS?.RESEARCH || UI_SELECTORS.DEEP_RESEARCH_BUTTON || ['button[type="button"][aria-pressed]'];
+                        const researchButtonSelectors = CLAUDE_SELECTORS.FEATURE_BUTTONS.RESEARCH;
                         const buttons = document.querySelectorAll(researchButtonSelectors.join(', '));
                         let researchButtonFound = false;
-                        const svgPaths = UI_SELECTORS.FEATURE_BUTTON_SVG || {
+                        const svgPaths = {
                             RESEARCH: 'M8.5 2C12.0899'
                         };
                         for (const btn of buttons) {
@@ -1082,8 +1286,7 @@ ${prompt}`;
                         console.log('🤔 じっくり考える機能を設定中...');
 
                         // Deep Thinkingボタンを有効化（メニューを開かずに直接）
-                        const deepThinkSelectors = UI_SELECTORS.FEATURE_BUTTONS?.DEEP_THINKING ||
-                            ['button[type="button"][aria-pressed]:has(svg path[d*="M10.3857 2.50977"])'];
+                        const deepThinkSelectors = CLAUDE_SELECTORS.FEATURE_BUTTONS.DEEP_THINKING;
 
                         const deepThinkBtn = getFeatureElement(deepThinkSelectors, 'じっくり考えるボタン');
                         if (deepThinkBtn) {
@@ -1099,8 +1302,8 @@ ${prompt}`;
                             console.log('⚠️ じっくり考えるボタンが見つかりません');
 
                             // フォールバック: 機能メニューから探す
-                            const featureMenuSelectors = UI_SELECTORS.FUNCTION_MENU_BUTTON || [];
-                            const featureMenuBtn = await waitForElement(featureMenuSelectors[0], 10, 500);
+                            const featureMenuSelectors = CLAUDE_SELECTORS.FUNCTION_MENU_BUTTON;
+                            const featureMenuBtn = await findElementByMultipleSelectors(featureMenuSelectors, 10, 500);
 
                             if (featureMenuBtn) {
                                 featureMenuBtn.click();
@@ -1127,8 +1330,8 @@ ${prompt}`;
                         console.log(`🔧 その他の機能選択: ${featureName}`);
 
                         // 機能メニューを開く
-                        const featureMenuSelectors = UI_SELECTORS.FUNCTION_MENU_BUTTON || [];
-                        const featureMenuBtn = await waitForElement(featureMenuSelectors[0], 20, 500);
+                        const featureMenuSelectors = CLAUDE_SELECTORS.FUNCTION_MENU_BUTTON;
+                        const featureMenuBtn = await findElementByMultipleSelectors(featureMenuSelectors, 20, 500);
 
                         if (featureMenuBtn) {
                             featureMenuBtn.click();
@@ -1176,8 +1379,11 @@ ${prompt}`;
                 console.log('\n■■■ ステップ7: メッセージ送信・応答待機 ■■■');
 
                 // 送信ボタンをクリック
-                const sendSelectors = UI_SELECTORS.Claude?.SEND_BUTTON || [];
-                const sendButton = await waitForElement(sendSelectors[0], 20, 500);
+                const sendSelectors = CLAUDE_SELECTORS.SEND_BUTTON;
+                if (!sendSelectors || sendSelectors.length === 0) {
+                    throw new Error('Claude SEND_BUTTONセレクタが定義されていません');
+                }
+                const sendButton = await findElementByMultipleSelectors(sendSelectors, 20, 500);
 
                 if (!sendButton) {
                     throw new Error('送信ボタンが見つかりません');
@@ -1253,8 +1459,8 @@ ${prompt}`;
                     totalWaitTime++;
 
                     // 現在のテキスト内容を取得
-                    const normalSelectors = UI_SELECTORS.Claude?.TEXT_EXTRACTION?.NORMAL_RESPONSE || [];
-                    const canvasSelectors = UI_SELECTORS.Claude?.TEXT_EXTRACTION?.ARTIFACT_CONTENT || [];
+                    const normalSelectors = CLAUDE_SELECTORS.TEXT_EXTRACTION.NORMAL_RESPONSE;
+                    const canvasSelectors = CLAUDE_SELECTORS.TEXT_EXTRACTION.ARTIFACT_CONTENT;
 
                     // 通常テキスト取得（フィルタリングなし）
                     let currentTextContent = '';
@@ -1345,7 +1551,7 @@ ${prompt}`;
                 let canvasTexts = [];
 
                 // 1. Canvas/Artifact テキスト取得（最後に1回だけ取得）
-                const canvasSelectors = UI_SELECTORS.Claude?.TEXT_EXTRACTION?.ARTIFACT_CONTENT || [];
+                const canvasSelectors = CLAUDE_SELECTORS.TEXT_EXTRACTION.ARTIFACT_CONTENT;
                 console.log(`Canvas/Artifact用セレクタ: ${canvasSelectors.length}個`);
 
                 // Canvas要素を最後に1回だけチェック（シンプルな方法）
@@ -1403,7 +1609,7 @@ ${prompt}`;
                 }
 
                 // 2. 通常テキスト取得（デバッグ強化）
-                const normalSelectors = UI_SELECTORS.Claude?.TEXT_EXTRACTION?.NORMAL_RESPONSE || [];
+                const normalSelectors = CLAUDE_SELECTORS.TEXT_EXTRACTION.NORMAL_RESPONSE;
                 console.log(`通常テキスト用セレクタ: ${normalSelectors.length}個`);
 
                 // セレクタ別に取得結果をチェック
