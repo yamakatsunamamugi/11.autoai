@@ -342,12 +342,21 @@ export class SpreadsheetLogger {
   async validateLogColumn(logColumn, spreadsheetData) {
     try {
       // スプレッドシートデータがない場合は検証をスキップ（デフォルトを許可）
-      if (!spreadsheetData || !spreadsheetData.menuRow) {
+      if (!spreadsheetData) {
         this.logger.warn('[Step 4-2: ログ列検証スキップ] ⚠️ スプレッドシートデータが提供されていないため、ログ列検証をスキップ');
         return {
           isValid: true,
           validLogColumns: [logColumn],
           warning: 'スプレッドシートデータなしで続行'
+        };
+      }
+
+      // menuRowがない場合はデフォルトで通す（警告なし）
+      if (!spreadsheetData.menuRow) {
+        return {
+          isValid: true,
+          validLogColumns: [logColumn],
+          warning: 'menuRowなしで続行'
         };
       }
       
