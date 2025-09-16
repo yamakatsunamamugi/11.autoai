@@ -1094,7 +1094,7 @@
 
         while (retryCount < maxRetries) {
           try {
-            if (retryCount > 0) {
+            if (retryCount === 1 || retryCount === maxRetries - 1) {
               this.logger.log(`【AI共通基盤-RetryManager】${actionName} 再試行 ${retryCount}/${maxRetries}`, context);
             }
             lastResult = await action();
@@ -1124,14 +1124,14 @@
       },
 
       // WindowService用のシンプルなリトライメソッド
-      async executeSimpleRetry({ action, isSuccess, maxRetries = 10, interval = 500, actionName = '', context = {} }) {
+      async executeSimpleRetry({ action, isSuccess, maxRetries = 20, interval = 500, actionName = '', context = {} }) {
         let retryCount = 0;
         let lastResult = null;
         let lastError = null;
 
         while (retryCount < maxRetries) {
           try {
-            if (retryCount > 0) {
+            if (retryCount === 1 || retryCount === maxRetries - 1) {
               this.logger.log(`【AI共通基盤-RetryManager】${actionName} 再試行 ${retryCount}/${maxRetries}`, context);
             }
             lastResult = await action();

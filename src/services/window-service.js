@@ -702,7 +702,7 @@ export class WindowService {
               return null;
             },
             isSuccess: (result) => result === true,
-            maxRetries: 10,
+            maxRetries: 20,
             interval: 500,
             actionName: 'タブ読み込み待機',
             context: { tabId, position, url }
