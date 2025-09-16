@@ -181,213 +181,597 @@
     async function executeTask(taskData) {
         console.log('🚀 Claude V2 タスク実行開始');
 
-        // ===== ステップ内部ユーティリティ関数 =====
+        // ===== Deep Research版テスト済みユーティリティ関数群 =====
 
-        // 要素の可視性チェック
-        const isVisible = (element) => {
-            if (!element) return false;
-            const rect = element.getBoundingClientRect();
-            const style = window.getComputedStyle(element);
-            return rect.width > 0 &&
-                   rect.height > 0 &&
-                   style.display !== 'none' &&
-                   style.visibility !== 'hidden' &&
-                   style.opacity !== '0';
-        };
+        // 要素の可視性とクリック可能状態を確認
+        const waitForElement = async (selector, maxRetries = 10, retryDelay = 500) => {
+            const log = (msg) => console.log(`⏳ [待機] ${msg}`);
 
-        // 要素取得（複数セレクタ対応）
-        const getElement = async (selectors, description = '') => {
-            console.log(`🔍 要素取得開始: ${description}`);
-            for (const selector of selectors) {
+            for (let i = 0; i < maxRetries; i++) {
                 try {
-                    // 特別処理：ウェブ検索トグル
-                    if (typeof selector === 'string' && selector.includes('ウェブ検索')) {
-                        console.log('  特別処理: ウェブ検索トグル検索');
-                        const buttons = document.querySelectorAll('button');
-                        for (const el of buttons) {
-                            const text = el.textContent || '';
-                            if (text.includes('ウェブ検索') && el.querySelector('input[role="switch"]')) {
-                                console.log(`  ✅ ${description}発見（ウェブ検索特別処理）`);
-                                return el;
-                            }
-                        }
-                    }
-                    // 特別処理：じっくり考える
-                    else if (typeof selector === 'string' && selector.includes('じっくり考える')) {
-                        console.log('  特別処理: じっくり考える検索');
-                        const buttons = document.querySelectorAll('button');
-                        for (const el of buttons) {
-                            const text = el.textContent || '';
-                            if (text.includes('じっくり考える') && el.querySelector('input[role="switch"]')) {
-                                console.log(`  ✅ ${description}発見（じっくり考える特別処理）`);
-                                return el;
-                            }
-                        }
-                    } else {
-                        const element = document.querySelector(selector);
-                        if (element && isVisible(element)) {
-                            console.log(`  ✅ ${description}発見: ${selector}`);
+                    const element = document.querySelector(selector);
+                    if (element) {
+                        const rect = element.getBoundingClientRect();
+                        const isVisible = rect.width > 0 && rect.height > 0;
+                        const style = window.getComputedStyle(element);
+                        const isDisplayed = style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+
+                        if (isVisible && isDisplayed) {
+                            log(`✅ 要素発見: ${selector} (試行 ${i + 1}/${maxRetries})`);
                             return element;
                         }
                     }
                 } catch (error) {
-                    console.log(`  ⚠️ セレクタエラー: ${error.message}`);
-                    continue;
+                    log(`⚠️ 要素検索エラー: ${error.message}`);
+                }
+
+                if (i < maxRetries - 1) {
+                    await wait(retryDelay);
                 }
             }
-            console.log(`  ❌ ${description}が見つかりません`);
+
+            throw new Error(`要素が見つかりません: ${selector}`);
+        };
+
+        // React要素のプロパティを取得
+        const getReactProps = (element) => {
+            const keys = Object.keys(element || {});
+            const reactKey = keys.find(key => key.startsWith('__reactInternalInstance') || key.startsWith('__reactFiber'));
+            return reactKey ? element[reactKey] : null;
+        };
+
+        // 高度なイベント発火（Reactシンセティックイベント対応）
+        const triggerReactEvent = async (element, eventType = 'click') => {
+            const log = (msg) => console.log(`🎯 [イベント] ${msg}`);
+
+            try {
+                // React内部プロパティの検出
+                const reactProps = getReactProps(element);
+                if (reactProps) {
+                    log(`React要素検出: ${element.tagName}`);
+                }
+
+                // マウスイベントのフルシーケンス
+                if (eventType === 'click') {
+                    const rect = element.getBoundingClientRect();
+                    const x = rect.left + rect.width / 2;
+                    const y = rect.top + rect.height / 2;
+
+                    // pointer/mouse フルシーケンス（A3パターン）
+                    const events = [
+                        new PointerEvent('pointerover', { bubbles: true, cancelable: true, clientX: x, clientY: y }),
+                        new PointerEvent('pointerenter', { bubbles: false, cancelable: false, clientX: x, clientY: y }),
+                        new MouseEvent('mouseover', { bubbles: true, cancelable: true, clientX: x, clientY: y }),
+                        new MouseEvent('mouseenter', { bubbles: false, cancelable: false, clientX: x, clientY: y }),
+                        new PointerEvent('pointerdown', { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0, buttons: 1 }),
+                        new MouseEvent('mousedown', { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0, buttons: 1 }),
+                        new PointerEvent('pointerup', { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0, buttons: 0 }),
+                        new MouseEvent('mouseup', { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0, buttons: 0 }),
+                        new PointerEvent('click', { bubbles: true, cancelable: true, clientX: x, clientY: y })
+                    ];
+
+                    for (const event of events) {
+                        element.dispatchEvent(event);
+                        await wait(10);
+                    }
+
+                    // S1パターン: 直接クリック
+                    element.click();
+
+                    log(`✅ イベント発火完了: ${eventType}`);
+                }
+            } catch (error) {
+                log(`❌ イベント発火エラー: ${error.message}`);
+                throw error;
+            }
+        };
+
+        const findElementByMultipleSelectors = async (selectors, description) => {
+            console.log(`\n🔍 [${description}] 要素検索開始`);
+
+            for (let i = 0; i < selectors.length; i++) {
+                const selector = selectors[i];
+                console.log(`  試行 ${i + 1}/${selectors.length}: ${selector.description || selector}`);
+
+                try {
+                    const selectorStr = selector.selector || selector;
+                    const element = await waitForElement(selectorStr, 3, 200);
+                    if (element) {
+                        console.log(`  ✅ 成功: ${selector.description || selector}`);
+                        return element;
+                    }
+                } catch (error) {
+                    console.log(`  ❌ 失敗: ${error.message}`);
+                }
+            }
+
+            throw new Error(`${description} の要素が見つかりません`);
+        };
+
+        // セレクタ内の文字列検索用（特別処理対応）
+        function getFeatureElement(selectorList, elementName) {
+            console.log(`要素取得開始: ${elementName}`);
+
+            for (let i = 0; i < selectorList.length; i++) {
+                const selector = selectorList[i];
+                console.log(`試行 ${i + 1}/${selectorList.length}: ${selector}`);
+
+                try {
+                    if (selector.includes(':has(')) {
+                        const elements = document.querySelectorAll('button');
+                        for (const el of elements) {
+                            if (selector.includes('じっくり考える')) {
+                                const text = el.textContent || '';
+                                if (text.includes('じっくり考える') && el.querySelector('input[role="switch"]')) {
+                                    console.log(`要素発見: ${elementName} (特別処理)`);
+                                    return el;
+                                }
+                            }
+                            if (selector.includes('ウェブ検索')) {
+                                const text = el.textContent || '';
+                                if (text.includes('ウェブ検索') && el.querySelector('input[role="switch"]')) {
+                                    console.log(`要素発見: ${elementName} (特別処理)`);
+                                    return el;
+                                }
+                            }
+                        }
+                    } else {
+                        const element = document.querySelector(selector);
+                        if (element) {
+                            console.log(`要素発見: ${elementName}`);
+                            return element;
+                        }
+                    }
+                } catch (e) {
+                    console.log(`セレクタエラー: ${e.message}`);
+                }
+            }
+
+            console.log(`要素が見つかりません: ${elementName}`);
+            return null;
+        }
+
+        // Claude動作用セレクタとコンビネーションした要素取得
+        const findClaudeElement = async (selectorInfo, retryCount = 3) => {
+            const results = [];
+
+            for (let retry = 0; retry < retryCount; retry++) {
+                for (let i = 0; i < selectorInfo.selectors.length; i++) {
+                    const selector = selectorInfo.selectors[i];
+                    try {
+                        if (selector.includes('svg path')) {
+                            const paths = document.querySelectorAll(selector);
+                            if (paths.length > 0) {
+                                const button = paths[0].closest('button');
+                                if (button) {
+                                    console.log(`✓ 要素発見 (SVG経由): ${selectorInfo.description}`);
+                                    return { element: button, selector, method: 'svg-parent' };
+                                }
+                            }
+                        }
+
+                        const elements = document.querySelectorAll(selector);
+
+                        if (selectorInfo.description.includes('通常処理')) {
+                            const filtered = Array.from(elements).filter(el => {
+                                return !el.closest('#markdown-artifact') &&
+                                       !el.closest('[class*="artifact"]');
+                            });
+
+                            if (filtered.length > 0) {
+                                const element = filtered[filtered.length - 1];
+                                console.log(`✓ 要素発見 (フィルタ済み): ${selectorInfo.description} - セレクタ#${i + 1}`);
+                                return { element, selector, method: 'filtered' };
+                            }
+                        } else if (elements.length > 0) {
+                            console.log(`✓ 要素発見: ${selectorInfo.description} - セレクタ#${i + 1}`);
+                            return { element: elements[0], selector, method: 'direct' };
+                        }
+
+                        results.push({ selector, found: false });
+                    } catch (e) {
+                        results.push({ selector, error: e.message });
+                    }
+                }
+
+                if (retry < retryCount - 1) {
+                    await wait(1000);
+                }
+            }
+
+            console.warn(`✗ 要素未発見: ${selectorInfo.description}`);
+            console.log('  試行結果:', results);
             return null;
         };
 
-        // テキスト入力処理
+        // Deep Research版テキスト入力処理
         const inputText = async (element, text) => {
-            if (!element) {
-                console.log('❌ テキスト入力エラー: 入力欄要素がnullまたはundefined');
-                return false;
-            }
+            try {
+                element.focus();
+                await wait(100);
 
-            console.log(`📝 テキスト入力処理開始`);
-            console.log(`📝 入力テキスト: "${text.substring(0, 50)}..."`);
+                element.textContent = '';
 
-            element.focus();
-            await wait(100);
+                const placeholderP = element.querySelector('p.is-empty');
+                if (placeholderP) {
+                    placeholderP.remove();
+                }
 
-            element.textContent = '';
-            element.innerHTML = '';
+                const p = document.createElement('p');
+                p.textContent = text;
+                element.appendChild(p);
 
-            const placeholderP = element.querySelector('p.is-empty');
-            if (placeholderP) {
-                console.log('📝 プレースホルダー要素を削除');
-                placeholderP.remove();
-            }
+                element.classList.remove('ql-blank');
 
-            const p = document.createElement('p');
-            p.textContent = text;
-            element.appendChild(p);
-            console.log('📝 テキストを<p>タグで設定完了');
+                const inputEvent = new Event('input', { bubbles: true, cancelable: true });
+                const changeEvent = new Event('change', { bubbles: true, cancelable: true });
 
-            element.classList.remove('ql-blank');
+                element.dispatchEvent(inputEvent);
+                element.dispatchEvent(changeEvent);
 
-            console.log('🔥 Reactイベントを発火中...');
-            element.dispatchEvent(new Event('input', { bubbles: true }));
-            element.dispatchEvent(new Event('change', { bubbles: true }));
-            element.dispatchEvent(new Event('keydown', { bubbles: true }));
-            element.dispatchEvent(new Event('keyup', { bubbles: true }));
-
-            await wait(500);
-
-            console.log('🔍 入力結果を検証中...');
-            const actualText = element.textContent || element.innerText || '';
-            const textMatch = actualText.includes(text) || actualText.length > 0;
-
-            if (textMatch) {
-                console.log(`✅ テキスト入力成功！`);
-                console.log(`✅ 確認されたテキスト: "${actualText.substring(0, 50)}..."`);
+                console.log('✓ テキスト入力完了');
                 return true;
-            } else {
-                console.log(`❌ テキスト入力失敗！`);
-                console.log(`❌ 期待したテキスト: "${text.substring(0, 50)}..."`);
-                console.log(`❌ 実際のテキスト: "${actualText}"`);
+            } catch (e) {
+                console.error('✗ テキスト入力エラー:', e);
                 return false;
             }
         };
 
-        // ボタンクリック処理
+        // Deep Research版ボタンクリック処理
         const clickButton = async (button) => {
-            if (!button) {
-                console.log('❌ ボタンクリックエラー: ボタン要素がnullまたはundefined');
+            try {
+                button.focus();
+                await wait(50);
+
+                const mousedown = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+                const mouseup = new MouseEvent('mouseup', { bubbles: true, cancelable: true });
+                const click = new MouseEvent('click', { bubbles: true, cancelable: true });
+
+                button.dispatchEvent(mousedown);
+                await wait(10);
+                button.dispatchEvent(mouseup);
+                await wait(10);
+                button.dispatchEvent(click);
+
+                button.click();
+
+                console.log('✓ ボタンクリック完了');
+                return true;
+            } catch (e) {
+                console.error('✗ ボタンクリックエラー:', e);
                 return false;
             }
-
-            console.log('🖱️ ボタンクリック処理開始');
-
-            const initialDisabled = button.disabled;
-            const initialAriaLabel = button.getAttribute('aria-label');
-            console.log(`🖱️ 初期状態: disabled=${initialDisabled}, aria-label="${initialAriaLabel}"`);
-
-            button.focus();
-            await wait(50);
-
-            console.log('🔥 マウスイベントチェーンを発火中...');
-            const events = [
-                new MouseEvent('mousedown', { bubbles: true, cancelable: true }),
-                new MouseEvent('mouseup', { bubbles: true, cancelable: true }),
-                new MouseEvent('click', { bubbles: true, cancelable: true })
-            ];
-
-            for (const event of events) {
-                button.dispatchEvent(event);
-                await wait(10);
-            }
-
-            button.click();
-            await wait(500);
-
-            console.log('🔍 クリック結果を検証中...');
-
-            const afterDisabled = button.disabled;
-            const afterAriaLabel = button.getAttribute('aria-label');
-            const stateChanged = (initialDisabled !== afterDisabled) || (initialAriaLabel !== afterAriaLabel);
-
-            console.log(`🔍 結果状態: disabled=${afterDisabled}, aria-label="${afterAriaLabel}"`);
-
-            if (stateChanged) {
-                console.log('✅ ボタンクリック成功（状態変化を確認）');
-                return true;
-            } else {
-                const stopButtonSelectors = UI_SELECTORS.Claude?.STOP_BUTTON || [];
-                const stopButton = await getElement(stopButtonSelectors, '停止ボタン');
-
-                if (stopButton) {
-                    console.log('✅ ボタンクリック成功（停止ボタンが出現）');
-                    return true;
-                }
-
-                console.log('⚠️ ボタンクリックは実行されたが、明確な状態変化なし');
-                return true;
-            }
         };
 
-        // React要素クリック処理
-        const triggerReactEvent = async (element, eventType = 'click') => {
-            if (!element) return false;
+        // 重複削除：上記の高度なtriggerReactEvent関数を使用
 
-            if (eventType === 'click') {
-                const rect = element.getBoundingClientRect();
-                const x = rect.left + rect.width / 2;
-                const y = rect.top + rect.height / 2;
-
-                const events = [
-                    new MouseEvent('mousedown', { bubbles: true, cancelable: true, clientX: x, clientY: y }),
-                    new MouseEvent('mouseup', { bubbles: true, cancelable: true, clientX: x, clientY: y }),
-                    new MouseEvent('click', { bubbles: true, cancelable: true, clientX: x, clientY: y })
-                ];
-
-                for (const event of events) {
-                    element.dispatchEvent(event);
-                    await wait(10);
-                }
-
-                element.click();
-            }
-            return true;
-        };
-
-        // トグル状態取得・設定
-        const getToggleState = (toggleButton) => {
+        // Deep Research版トグル状態取得・設定
+        function getToggleState(toggleButton) {
             const input = toggleButton.querySelector('input[role="switch"]');
-            return input ? input.checked : null;
-        };
+            if (!input) {
+                console.log('トグルinput要素が見つかりません');
+                return null;
+            }
+            return input.checked;
+        }
 
-        const setToggleState = (toggleButton, targetState) => {
+        function setToggleState(toggleButton, targetState) {
             const currentState = getToggleState(toggleButton);
             if (currentState === null) return false;
 
+            console.log(`トグル現在状態: ${currentState}, 目標状態: ${targetState}`);
+
             if (currentState !== targetState) {
                 toggleButton.click();
+                console.log('トグルクリック実行');
                 return true;
             }
+
+            console.log('状態変更不要');
             return false;
+        }
+
+        function getMenuFeatures() {
+            const features = [];
+            const menuItems = document.querySelectorAll('button:has(input[role="switch"])');
+
+            menuItems.forEach(item => {
+                const label = item.querySelector('p.font-base');
+                if (label) {
+                    features.push(label.textContent.trim());
+                }
+            });
+
+            return features;
+        }
+
+        // Deep Research版テキスト取得（切り詰め処理付き）
+        const getTextPreview = function(element) {
+            if (!element) return null;
+
+            const fullText = element.textContent.trim();
+            const length = fullText.length;
+
+            if (length <= 200) {
+                return { full: fullText, preview: fullText, length };
+            } else {
+                const preview = fullText.substring(0, 100) + '\n...[中略]...\n' + fullText.substring(length - 100);
+                return { full: fullText, preview, length };
+            }
+        };
+
+        // ===== Deep Research専用処理関数 =====
+
+        // Deep Research専用セレクタ定義
+        const deepResearchSelectors = {
+            '3_回答停止ボタン': {
+                selectors: [
+                    '[aria-label="応答を停止"]',
+                    'button[aria-label="応答を停止"]',
+                    '[data-state="closed"][aria-label="応答を停止"]',
+                    'button.border-border-200[aria-label="応答を停止"]',
+                    'button svg path[d*="M128,20A108"]'
+                ],
+                description: '回答停止ボタン'
+            },
+            '4_Canvas機能テキスト位置': {
+                selectors: [
+                    '#markdown-artifact',
+                    '[id="markdown-artifact"]',
+                    '.font-claude-response#markdown-artifact',
+                    '[tabindex="0"]#markdown-artifact',
+                    'div.mx-auto.max-w-3xl#markdown-artifact'
+                ],
+                description: 'Canvas機能のテキスト表示エリア'
+            },
+            '4_2_Canvas開くボタン': {
+                selectors: [
+                    '[aria-label="内容をプレビュー"]',
+                    '[role="button"][aria-label="内容をプレビュー"]',
+                    '.artifact-block-cell',
+                    '[class*="artifact-block"]'
+                ],
+                description: 'Canvas機能を開くボタン'
+            },
+            '5_通常処理テキスト位置': {
+                selectors: [
+                    '.standard-markdown',
+                    'div.standard-markdown',
+                    '.grid.gap-2\\.5.standard-markdown',
+                    'div.grid-cols-1.standard-markdown',
+                    '[class*="standard-markdown"]'
+                ],
+                description: '通常処理のテキスト表示エリア'
+            }
+        };
+
+        const handleDeepResearchWait = async () => {
+            console.log('\n【Deep Research専用待機処理】');
+            console.log('─'.repeat(40));
+
+            try {
+                // ステップ1-1: 送信後、回答停止ボタンが出てくるまで待機
+                console.log('\n【ステップ1-1】送信後、回答停止ボタンが出てくるまで待機');
+
+                let stopButtonFound = false;
+                let waitCount = 0;
+                const maxInitialWait = 120; // 初期待機最大2分
+
+                while (!stopButtonFound && waitCount < maxInitialWait) {
+                    const stopResult = await findClaudeElement(deepResearchSelectors['3_回答停止ボタン'], 1);
+
+                    if (stopResult) {
+                        stopButtonFound = true;
+                        console.log('✓ 停止ボタンが出現しました');
+                        break;
+                    }
+
+                    await wait(1000);
+                    waitCount++;
+
+                    if (waitCount % 30 === 0) {
+                        console.log(`  待機中... ${waitCount}秒経過`);
+                    }
+                }
+
+                // ステップ1-2: 2分間待機して停止ボタンの状態を確認
+                console.log('\n【ステップ1-2】2分間待機して停止ボタンの状態を確認');
+                const startTime = Date.now();
+                let disappeared = false;
+
+                while ((Date.now() - startTime) < 120000) { // 2分間
+                    const stopResult = await findClaudeElement(deepResearchSelectors['3_回答停止ボタン'], 1);
+
+                    if (!stopResult) {
+                        disappeared = true;
+                        console.log('✓ 停止ボタンが消滅しました（2分以内）');
+                        break;
+                    }
+
+                    await wait(5000); // 5秒ごとにチェック
+
+                    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+                    if (elapsed % 30 === 0) {
+                        console.log(`  Deep Research処理中... ${elapsed}秒経過`);
+                    }
+                }
+
+                // ステップ1-3: 2分以内に消滅した場合、プロンプトを再送信
+                if (disappeared) {
+                    console.log('\n【ステップ1-3】いいから元のプロンプトを確認して作業をして」を送信');
+
+                    const inputResult = await findClaudeElement({
+                        selectors: UI_SELECTORS.Claude?.INPUT || [],
+                        description: 'テキスト入力欄'
+                    });
+
+                    if (inputResult) {
+                        await inputText(inputResult.element, "いいから元のプロンプトを確認して作業をして");
+
+                        const sendResult = await findClaudeElement({
+                            selectors: UI_SELECTORS.Claude?.SEND_BUTTON || [],
+                            description: '送信ボタン'
+                        });
+
+                        if (sendResult) {
+                            await clickButton(sendResult.element);
+                        }
+                    }
+                }
+
+                // ステップ1-4: 回答停止ボタンが出現するまで待機
+                console.log('\n【ステップ1-4】回答停止ボタンが出現するまで待機');
+                stopButtonFound = false;
+                waitCount = 0;
+                const maxWaitCount = 2400; // 最大40分
+
+                while (!stopButtonFound && waitCount < maxWaitCount) {
+                    const stopResult = await findClaudeElement(deepResearchSelectors['3_回答停止ボタン'], 1);
+
+                    if (stopResult) {
+                        stopButtonFound = true;
+                        console.log(`✓ 停止ボタンが出現しました（開始から${Math.floor(waitCount/60)}分${waitCount%60}秒後）`);
+                        break;
+                    }
+
+                    await wait(1000);
+                    waitCount++;
+
+                    // 1分ごとにログ出力
+                    if (waitCount % 60 === 0) {
+                        console.log(`  Deep Research処理中... ${Math.floor(waitCount/60)}分経過`);
+                    }
+                }
+
+                // ステップ1-5: 回答停止ボタンが10秒間消滅するまで待機
+                if (stopButtonFound) {
+                    console.log('\n【ステップ1-5】回答停止ボタンが10秒間消滅するまで待機');
+                    let stopButtonGone = false;
+                    let disappearWaitCount = 0;
+                    const maxDisappearWait = 2400; // 最大40分
+                    let lastLogTime = Date.now();
+
+                    while (!stopButtonGone && disappearWaitCount < maxDisappearWait) {
+                        const stopResult = await findClaudeElement(deepResearchSelectors['3_回答停止ボタン'], 1);
+
+                        if (!stopResult) {
+                            // 10秒間確認
+                            let confirmCount = 0;
+                            let stillGone = true;
+
+                            while (confirmCount < 10) {
+                                await wait(1000);
+                                const checkResult = await findClaudeElement(deepResearchSelectors['3_回答停止ボタン'], 1);
+                                if (checkResult) {
+                                    stillGone = false;
+                                    break;
+                                }
+                                confirmCount++;
+                            }
+
+                            if (stillGone) {
+                                stopButtonGone = true;
+                                console.log(`✓ Deep Research完了（総時間: ${Math.floor(disappearWaitCount/60)}分）`);
+                                break;
+                            }
+                        }
+
+                        await wait(1000);
+                        disappearWaitCount++;
+
+                        // 1分ごとにログ出力
+                        if (Date.now() - lastLogTime >= 60000) {
+                            console.log(`  Deep Research生成中... ${Math.floor(disappearWaitCount / 60)}分経過`);
+                            lastLogTime = Date.now();
+                        }
+                    }
+                }
+
+            } catch (error) {
+                console.error('❌ Deep Research待機処理エラー:', error.message);
+                throw error;
+            }
+        };
+
+        const getDeepResearchText = async () => {
+            console.log('\n【ステップ2】Deep Research テキスト取得');
+            console.log('─'.repeat(40));
+
+            const results = {
+                canvas: null,
+                normal: null
+            };
+
+            try {
+                // Canvas機能テキスト取得
+                console.log('\nCanvas機能テキスト取得試行');
+                let canvasResult = await findClaudeElement(deepResearchSelectors['4_Canvas機能テキスト位置'], 1);
+
+                if (!canvasResult) {
+                    console.log('Canvas機能を開くボタンを探します');
+                    const openButtonSelectors = deepResearchSelectors['4_2_Canvas開くボタン'].selectors;
+
+                    for (const selector of openButtonSelectors) {
+                        try {
+                            const openButton = document.querySelector(selector);
+                            if (openButton) {
+                                console.log('Canvas機能を開くボタンを発見、クリックします');
+                                await clickButton(openButton);
+                                await wait(1000);
+
+                                canvasResult = await findClaudeElement(deepResearchSelectors['4_Canvas機能テキスト位置'], 1);
+                                if (canvasResult) {
+                                    break;
+                                }
+                            }
+                        } catch (e) {
+                            // エラーは無視して次を試す
+                        }
+                    }
+                }
+
+                if (canvasResult) {
+                    results.canvas = getTextPreview(canvasResult.element);
+                    console.log('\n**取得したCanvasのテキスト**');
+                    console.log(`文字数: ${results.canvas.length}文字`);
+                    console.log(results.canvas.preview);
+                } else {
+                    console.log('⚠ Canvas機能のテキストが見つかりません');
+                }
+
+                // 通常処理テキスト取得（複数要素対応）
+                console.log('\n通常処理テキスト取得試行');
+                const normalElements = document.querySelectorAll('.standard-markdown');
+
+                if (normalElements.length > 0) {
+                    console.log(`通常処理要素数: ${normalElements.length}個`);
+
+                    // Canvas要素内を除外してフィルタリング
+                    const filtered = Array.from(normalElements).filter(el => {
+                        return !el.closest('#markdown-artifact') &&
+                               !el.closest('[class*="artifact"]');
+                    });
+
+                    if (filtered.length > 0) {
+                        // 最後の要素（最新の応答）を取得
+                        const targetElement = filtered[filtered.length - 1];
+                        results.normal = getTextPreview(targetElement);
+
+                        console.log('\n**取得した通常処理のテキスト**');
+                        console.log(`文字数: ${results.normal.length}文字`);
+                        console.log(results.normal.preview);
+                    }
+                }
+
+                if (!results.normal) {
+                    console.log('⚠ 通常処理のテキストが見つかりません');
+                }
+
+            } catch (error) {
+                console.error('❌ テキスト取得エラー:', error.message);
+            }
+
+            return results;
         };
 
         // 応答待機処理
@@ -963,14 +1347,23 @@ ${prompt}`;
                 return { success: true, stabilizedText: stableText };
             }, 'テキスト安定化待機', 2);
 
-            // ===== 結果取得（リトライ付き） =====
-            let responseText = await executeStepWithRetry(async () => {
-                // まず安定化待機で取得したテキストを優先使用
-                if (window.__stabilizedText && window.__stabilizedText.length > 100) {
-                    console.log(`📝 安定化待機で取得済みのテキストを使用 (${window.__stabilizedText.length}文字)`);
-                    return window.__stabilizedText;
-                }
-                console.log('⚠️ 安定化テキストが不十分。DOM再取得を実行');
+            // ===== 結果取得（Deep Research対応版） =====
+            let responseText;
+
+            // Deep Research機能がオンの場合、専用テキスト取得を実行
+            if (isDeepResearch) {
+                console.log('🔍 Deep Research有効 - 専用テキスト取得を開始');
+                responseText = await getDeepResearchText();
+                console.log(`✅ Deep Research完了: ${responseText.length}文字`);
+            } else {
+                // 通常のテキスト取得処理
+                responseText = await executeStepWithRetry(async () => {
+                    // まず安定化待機で取得したテキストを優先使用
+                    if (window.__stabilizedText && window.__stabilizedText.length > 100) {
+                        console.log(`📝 安定化待機で取得済みのテキストを使用 (${window.__stabilizedText.length}文字)`);
+                        return window.__stabilizedText;
+                    }
+                    console.log('⚠️ 安定化テキストが不十分。DOM再取得を実行');
 
                 let normalText = '';
                 let canvasTexts = [];
@@ -1114,9 +1507,10 @@ ${prompt}`;
                     throw new Error('応答テキストを取得できませんでした');
                 }
 
-                console.log(`最終結果: ${extractedText.length}文字 (通常: ${normalText.length}文字, Canvas: ${canvasTexts.length}個)`);
-                return extractedText;
-            }, '結果取得', 3);
+                    console.log(`最終結果: ${extractedText.length}文字 (通常: ${normalText.length}文字, Canvas: ${canvasTexts.length}個)`);
+                    return extractedText;
+                }, '結果取得', 3);
+            }
 
             // ===== 結果返却・完了 =====
             if (responseText) {
