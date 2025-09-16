@@ -35,6 +35,7 @@ import { AITaskExecutor } from '../../core/ai-task-executor.js';
 import { WindowService } from '../../services/window-service.js';
 import { aiUrlManager } from '../../core/ai-url-manager.js';
 import { getService } from '../../core/service-registry.js';
+import { ConsoleLogger } from '../../utils/console-logger.js';
 // RetryManager機能はStep 10に統合済み
 // ExclusiveControl機能はStep 0-4-1, 0-4-2に統合済み
 // ExclusiveControlLoggerHelper機能はStep 1-6に統合済み
@@ -86,8 +87,8 @@ export default class StreamProcessorV2 {
     // ========================================
     // Step 0-1: 基本サービス初期化（最優先）
     // ========================================
-    // 最初にloggerを設定（this.log()を使用するため）
-    this.logger = logger;
+    // ConsoleLoggerインスタンスを作成
+    this.logger = new ConsoleLogger('stream-processor-v2', logger);
     this.initialized = false;
 
     // ログ関数が使用可能になった後に初期化ログ出力
@@ -287,24 +288,28 @@ export default class StreamProcessorV2 {
     // Step番号の重複を防ぐ: 既に"Step"が含まれていれば[${step}]、なければ[Step ${step}]
     const stepPrefix = step ? (step.includes('Step') ? `[${step}]` : `[Step ${step}]`) : '';
 
+    // ConsoleLoggerのメソッドを使用して統一されたログフォーマットを適用
+    const stepNumber = step;
+    const formattedMessage = `${prefix} ${message}`;
+
     switch(type) {
       case 'error':
-        this.logger.error(`${prefix} ${stepPrefix} ❌ ${message}`);
+        this.logger.error(stepNumber, `❌ ${formattedMessage}`);
         break;
       case 'success':
-        this.logger.log(`${prefix} ${stepPrefix} ✅ ${message}`);
+        this.logger.success(stepNumber, `✅ ${formattedMessage}`);
         break;
       case 'warning':
-        this.logger.warn(`${prefix} ${stepPrefix} ⚠️ ${message}`);
+        this.logger.warn(stepNumber, `⚠️ ${formattedMessage}`);
         break;
       case 'step':
-        this.logger.log(`${prefix} ${stepPrefix} 📍 ${message}`);
+        this.logger.log(stepNumber, `📍 ${formattedMessage}`);
         break;
       case 'debug':
-        this.logger.log(`${prefix} ${stepPrefix} 🔧 ${message}`);
+        this.logger.debug(stepNumber, `🔧 ${formattedMessage}`);
         break;
       default:
-        this.logger.log(`${prefix} ${stepPrefix} ℹ️ ${message}`);
+        this.logger.info(stepNumber, `ℹ️ ${formattedMessage}`);
     }
   }
 
@@ -587,8 +592,16 @@ export default class StreamProcessorV2 {
       let canProcessGroup = true;
       let taskGroupInfo = null;
 
-      if (spreadsheetData.taskGroups && spreadsheetData.taskGroups.length > groupIndex) {
-        taskGroupInfo = spreadsheetData.taskGroups[groupIndex];
+      // optionsから渡されたtaskGroupsを使用
+      const taskGroups = this.currentOptions?.taskGroups || [];
+
+      if (taskGroups && taskGroups.length > groupIndex) {
+        taskGroupInfo = taskGroups[groupIndex];
+        this.logger.log(`[DEBUG] taskGroupInfo取得成功: グループ${groupIndex + 1}`, {
+          id: taskGroupInfo?.id,
+          columnRange: taskGroupInfo?.columnRange,
+          logColumn: taskGroupInfo?.columnRange?.logColumn
+        });
 
         // 依存関係のチェック
         if (taskGroupInfo.dependencies && taskGroupInfo.dependencies.length > 0) {
@@ -693,6 +706,9 @@ export default class StreamProcessorV2 {
         // タスクグループのログ列情報をpromptGroupに追加
         if (taskGroupInfo && taskGroupInfo.columnRange) {
           promptGroup.logColumn = taskGroupInfo.columnRange.logColumn;
+          this.logger.log(`[DEBUG] グループ${groupIndex + 1}のログ列設定: ${promptGroup.logColumn || 'なし'}`);
+        } else {
+          this.logger.warn(`[DEBUG] グループ${groupIndex + 1}のtaskGroupInfoまたはcolumnRangeが存在しません`);
         }
 
         const tasks = await this.scanGroupTasks(spreadsheetData, promptCols, answerCols, promptGroup);
