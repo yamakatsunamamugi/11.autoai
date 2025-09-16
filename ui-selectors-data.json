@@ -457,14 +457,14 @@
           "div.artifact-block-cell.group\\/artifact-block[role=\"button\"]"
         ],
         "ARTIFACT_CONTENT": [
+          "[id*=\"markdown\"]",
+          ".artifact-block-cell",
+          "[class*=\"artifact-block\"]",
+          "div[class*=\"artifact\"]",
+          ".absolute.right-2[class*=\"whitespace-pre-wrap\"]",
+          "div[class*=\"font-mono\"][class*=\"whitespace-pre-wrap\"]",
           "#markdown-artifact",
           "[id=\"markdown-artifact\"]",
-          ".font-claude-response#markdown-artifact",
-          "[tabindex=\"0\"]#markdown-artifact",
-          "div.mx-auto.max-w-3xl#markdown-artifact",
-          "[id*=\"artifact\"]",
-          "div[class*=\"artifact\"]",
-          ".artifact-content",
           "[data-testid=\"artifact-content\"]",
           "div[class*=\"canvas\"]"
         ],
