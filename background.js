@@ -47,6 +47,12 @@ import {
   spreadsheetLogger
 } from './src/services/google-services.js';
 
+// Step 2-6: ServiceRegistryをimport
+import { getService } from './src/core/service-registry.js';
+
+// Step 2-7: SpreadsheetLoggerクラスをimport
+import SpreadsheetLogger from './src/features/logging/spreadsheet-logger.js';
+
 // Step 2-5: その他のサービス
 import './src/services/auth-service.js';
 import { default as WindowService } from './src/services/window-service.js';
@@ -111,16 +117,15 @@ globalThis.streamProcessorV2Instance = new StreamProcessorV2();
       }
     });
 
-    // ServiceRegistryから依存性を取得
-    const { getService } = await import('./src/core/service-registry.js');
-    const sheetsClient = await getService('sheetsClient');
-    const SpreadsheetLogger = (await import('./src/features/logging/spreadsheet-logger.js')).default;
+    // ServiceRegistryから依存性を取得（static importを使用）
+    const sheetsClientFromRegistry = await getService('sheetsClient');
+    const SpreadsheetLoggerClass = SpreadsheetLogger;
 
     // 依存性を設定
     const processor = StreamProcessorV2.getInstance();
     await processor.setDependencies({
-      sheetsClient: sheetsClient,
-      SpreadsheetLogger: SpreadsheetLogger
+      sheetsClient: sheetsClientFromRegistry,
+      SpreadsheetLogger: SpreadsheetLoggerClass
     });
     console.log('[Background] StreamProcessorV2依存性設定完了');
   } catch (e) {
