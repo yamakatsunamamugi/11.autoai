@@ -421,6 +421,10 @@ export default class StreamProcessorV2 {
                          spreadsheetData?.spreadsheetId ||
                          this.spreadsheetUrl;  // 既存値を保持
 
+    // optionsを保存（taskGroups含む）
+    this.currentOptions = options || {};
+    this.log(`options保存完了: taskGroups数=${options?.taskGroups?.length || 0}`, 'info', '2-2');
+
     // SpreadsheetLoggerを初期化
     await this.initializeSpreadsheetLogger();
 
@@ -529,14 +533,9 @@ export default class StreamProcessorV2 {
   async processGroupsSequentiallyV3(spreadsheetData, isTestMode) {
     this.log('V3グループ順次処理開始（動的タスク生成モード）', 'step', '3');
 
-    // 🔍 [DEBUG] optionsを保存してログで確認
-    if (spreadsheetData.options) {
-      this.currentOptions = spreadsheetData.options;
-      console.log(`🔍 [DEBUG] V3処理開始 - options保存完了:`);
-      console.log(`- options.taskGroups数: ${spreadsheetData.options.taskGroups?.length}`);
-    } else {
-      console.log(`🔍 [DEBUG] V3処理開始 - spreadsheetData.optionsが存在しない`);
-    }
+    // 🔍 [DEBUG] currentOptionsの状態を確認
+    console.log(`🔍 [DEBUG] V3処理開始 - currentOptions状態:`);
+    console.log(`- taskGroups数: ${this.currentOptions?.taskGroups?.length || 0}`);
 
     let totalProcessed = 0;
     let totalFailed = 0;
@@ -594,6 +593,14 @@ export default class StreamProcessorV2 {
 
       // optionsから渡されたtaskGroupsを使用
       const taskGroups = this.currentOptions?.taskGroups || [];
+
+      // デバッグ情報を追加
+      this.logger.log(`[DEBUG] taskGroups情報:`, {
+        taskGroupsLength: taskGroups.length,
+        promptGroupsLength: promptGroups.length,
+        currentGroupIndex: groupIndex,
+        hasTaskGroups: taskGroups.length > 0
+      });
 
       if (taskGroups && taskGroups.length > groupIndex) {
         taskGroupInfo = taskGroups[groupIndex];
@@ -708,7 +715,15 @@ export default class StreamProcessorV2 {
           promptGroup.logColumn = taskGroupInfo.columnRange.logColumn;
           this.logger.log(`[DEBUG] グループ${groupIndex + 1}のログ列設定: ${promptGroup.logColumn || 'なし'}`);
         } else {
-          this.logger.warn(`[DEBUG] グループ${groupIndex + 1}のtaskGroupInfoまたはcolumnRangeが存在しません`);
+          // taskGroupInfoがない場合はデフォルト値を使用
+          this.logger.log(`[DEBUG] グループ${groupIndex + 1}のtaskGroupInfo未設定、デフォルト値使用`);
+          // promptGroupのanswerColumnsから最初の列の1つ前をログ列として使用
+          if (promptGroup.answerColumns && promptGroup.answerColumns.length > 0) {
+            const firstAnswerCol = promptGroup.answerColumns[0].index;
+            const logColIndex = this.columnToIndex(firstAnswerCol) - 1;
+            promptGroup.logColumn = this.indexToColumn(logColIndex);
+            this.logger.log(`[DEBUG] デフォルトログ列を設定: ${promptGroup.logColumn} (回答列${firstAnswerCol}の1つ前)`);
+          }
         }
 
         const tasks = await this.scanGroupTasks(spreadsheetData, promptCols, answerCols, promptGroup);
