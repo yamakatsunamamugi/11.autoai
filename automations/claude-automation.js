@@ -140,7 +140,7 @@
     // 統一された待機時間設定
     const AI_WAIT_CONFIG = window.AI_WAIT_CONFIG || {
         DEEP_RESEARCH_WAIT: 2400000, // 40分
-        NORMAL_WAIT: 300000,         // 5分
+        NORMAL_WAIT: 600000,         // 10分
         STOP_BUTTON_WAIT: 30000      // 30秒
     };
 
@@ -400,84 +400,13 @@
                         confirmCount++;
                         if (confirmCount >= 10) {
                             console.log('✓ 回答完了確認');
-
-                            // Canvasプレビューボタンをクリック
-                            console.log('Canvasプレビューボタンを検索中...');
-                            const previewSelectors = UI_SELECTORS.Claude?.CANVAS_PREVIEW_BUTTON || [];
-                            let clickedButtons = 0;
-                            for (const selector of previewSelectors) {
-                                const previewButtons = document.querySelectorAll(selector);
-                                for (const button of previewButtons) {
-                                    try {
-                                        button.click();
-                                        clickedButtons++;
-                                        console.log(`Canvasプレビューボタンクリック: ${clickedButtons}個目`);
-                                        await wait(500); // 各クリック間で0.5秒待機
-                                    } catch (error) {
-                                        console.log(`プレビューボタンクリックエラー: ${error.message}`);
-                                    }
-                                }
-                            }
-                            if (clickedButtons > 0) {
-                                console.log(`✓ ${clickedButtons}個のCanvasプレビューボタンをクリック完了`);
-                                await wait(2000); // Canvas表示のため2秒待機
-                            } else {
-                                console.log('プレビューボタンが見つかりませんでした');
-                            }
-
-                            console.log('テキスト安定化のため10秒待機中...');
-                            await wait(10000);
-                            console.log('✓ テキスト安定化完了');
                             return true;
                         }
                     } else {
                         confirmCount = 0;
                     }
 
-                    // 5秒おきにテキスト文字数を監視
-                    for (let i = 0; i < 5; i++) {
-                        await wait(1000);
-
-                        // テキスト文字数カウント（1秒、3秒、5秒時点で実行）
-                        if (i === 0 || i === 2 || i === 4) {
-                            try {
-                                // Canvas/Artifact テキスト取得
-                                const canvasSelectors = UI_SELECTORS.Claude?.TEXT_EXTRACTION?.ARTIFACT_CONTENT || [];
-                                let canvasCount = 0;
-                                for (const selector of canvasSelectors) {
-                                    const canvasElements = document.querySelectorAll(selector);
-                                    canvasElements.forEach(canvasElement => {
-                                        const text = canvasElement.textContent?.trim() || '';
-                                        if (text && text.length > 10) {
-                                            canvasCount += text.length;
-                                        }
-                                    });
-                                }
-
-                                // 通常テキスト取得
-                                const normalSelectors = UI_SELECTORS.Claude?.TEXT_EXTRACTION?.NORMAL_RESPONSE || [];
-                                const normalElements = document.querySelectorAll(normalSelectors.join(', '));
-                                let normalCount = 0;
-                                if (normalElements.length > 0) {
-                                    const filtered = Array.from(normalElements).filter(el => {
-                                        return !el.closest('#markdown-artifact') &&
-                                               !el.closest('[class*="artifact"]');
-                                    });
-                                    if (filtered.length > 0) {
-                                        const normalText = filtered
-                                            .map(el => el.textContent?.trim() || '')
-                                            .filter(text => text.length > 0)
-                                            .join('\n');
-                                        normalCount = normalText.length;
-                                    }
-                                }
-
-                                console.log(`テキスト監視: 通常=${normalCount}文字, Canvas=${canvasCount}文字`);
-                            } catch (error) {
-                                console.log('テキスト監視エラー:', error.message);
-                            }
-                        }
-                    }
+                    await wait(1000);
 
                     const elapsed = Math.floor((Date.now() - startTime) / 60000);
                     if (elapsed > 0 && (Date.now() - startTime) % 60000 < 1000) {
