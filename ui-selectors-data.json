@@ -184,7 +184,7 @@
       }
     },
     "Claude": {
-      "_COMMENT": "テスト済みコード以外は一時的にコメントアウト",
+      "_COMMENT": "テスト済みコード統合版 - Deep Research対応",
       "INPUT": [
         "[aria-label=\"クロードにプロンプトを入力してください\"]",
         ".ProseMirror[contenteditable=\"true\"]",
@@ -210,6 +210,7 @@
       "MODEL_BUTTON": [
         "button[data-testid=\"model-selector-dropdown\"]",
         "button[aria-haspopup=\"menu\"]",
+        "#radix-_r_g_",
         "button.inline-flex.items-center.justify-center",
         "button:has(svg.claude-logo-model-selector)",
         "[data-testid=\"model-selector-dropdown\"]",
@@ -405,6 +406,91 @@
           "article[class*=\"message\"]",
           "div.conversation-turn"
         ]
+      },
+      "DEEP_RESEARCH_SELECTORS": {
+        "CANVAS_TEXT": [
+          "#markdown-artifact",
+          "[id=\"markdown-artifact\"]",
+          ".font-claude-response#markdown-artifact",
+          "[tabindex=\"0\"]#markdown-artifact",
+          "div.mx-auto.max-w-3xl#markdown-artifact"
+        ],
+        "CANVAS_OPEN_BUTTON": [
+          "[aria-label=\"内容をプレビュー\"]",
+          "[role=\"button\"][aria-label=\"内容をプレビュー\"]",
+          ".artifact-block-cell",
+          "[class*=\"artifact-block\"]"
+        ],
+        "NORMAL_TEXT": [
+          ".standard-markdown",
+          "div.standard-markdown",
+          ".grid.gap-2\\.5.standard-markdown",
+          "div.grid-cols-1.standard-markdown",
+          "[class*=\"standard-markdown\"]"
+        ],
+        "MODEL_SELECTORS": {
+          "MENU_BUTTON": [
+            "button[data-testid=\"model-selector-dropdown\"]",
+            "button[aria-haspopup=\"menu\"]",
+            "#radix-_r_g_",
+            "button.inline-flex.items-center.justify-center",
+            "button:has(svg.claude-logo-model-selector)"
+          ],
+          "MENU_CONTAINER": [
+            "[role=\"menu\"][data-state=\"open\"]",
+            "[data-radix-menu-content][data-state=\"open\"]",
+            "div.z-dropdown[role=\"menu\"]",
+            "[aria-orientation=\"vertical\"][data-state=\"open\"]",
+            "div[role=\"menu\"]:not([data-state=\"closed\"])"
+          ],
+          "OTHER_MODELS_MENU": [
+            "[role=\"menuitem\"][aria-haspopup=\"menu\"]",
+            "[role=\"menuitem\"]:has(svg)",
+            "div[role=\"menuitem\"]:last-child"
+          ],
+          "MODEL_DISPLAY": [
+            ".font-claude-response",
+            "div:has(svg.claude-logo-model-selector)",
+            "button[data-testid=\"model-selector-dropdown\"] .font-claude-response"
+          ]
+        },
+        "FEATURE_SELECTORS": {
+          "MENU_BUTTON": [
+            "[data-testid=\"input-menu-tools\"]",
+            "[aria-label=\"ツールメニューを開く\"]",
+            "#input-tools-menu-trigger",
+            "button[aria-expanded][aria-haspopup=\"listbox\"]",
+            "button svg path[d*=\"M40,88H73a32\"]"
+          ],
+          "MENU_CONTAINER": [
+            "[aria-labelledby=\"input-tools-menu-trigger\"]",
+            ".w-\\[20rem\\].absolute.max-w-\\[calc\\(100vw-16px\\)\\].block",
+            "div.z-dropdown.bg-bg-000.rounded-xl",
+            "div[style*=\"max-height\"][style*=\"336\"]",
+            ".absolute .flex-col .overscroll-auto"
+          ],
+          "THINK_TOGGLE": [
+            "button:has(svg path[d*=\"M10.3857 2.50977\"]):has(input[role=\"switch\"])",
+            "button:has(p:contains(\"じっくり考える\")):has(input[role=\"switch\"])",
+            "button input[role=\"switch\"][style*=\"width: 28px\"]",
+            "div:contains(\"じっくり考える\") button:has(.group\\/switch)",
+            "button .font-base:contains(\"じっくり考える\")"
+          ],
+          "WEB_SEARCH_TOGGLE": [
+            "button:has(svg path[d*=\"M7.2705 3.0498\"]):has(input[role=\"switch\"])",
+            "button:has(p:contains(\"ウェブ検索\")):has(input[role=\"switch\"])",
+            "button.text-primary-500:has(input[role=\"switch\"])",
+            "div:contains(\"ウェブ検索\") button:has(.group\\/switch)",
+            "button .font-base:contains(\"ウェブ検索\")"
+          ],
+          "RESEARCH_BUTTON": [
+            "button[aria-pressed]:has(svg path[d*=\"M8.5 2C12.0899\"])",
+            "button:has(p:contains(\"リサーチ\"))",
+            "button.text-accent-secondary-100:has(svg)",
+            "button[type=\"button\"]:has(.min-w-0.pl-1.text-xs)",
+            ".flex.shrink button:has(svg)"
+          ]
+        }
       }
     },
     "Gemini": {

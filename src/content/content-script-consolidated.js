@@ -78,6 +78,14 @@ async function waitForPageReady() {
  * 各AIサイトのDOM要素を特定するためのセレクタ情報をJSONファイルから読み込む
  */
 const loadUISelectors = () => {
+  // 拡張機能コンテキストの確認
+  if (!chrome || !chrome.runtime || typeof chrome.runtime.getURL !== 'function') {
+    console.error("[Step 1.2] ❌ [11.autoai] Chrome拡張機能のコンテキストが無効です");
+    CONTENT_CONSOLIDATED_UI_SELECTORS_LOADED = false;
+    loadTimeoutConfig();
+    return Promise.resolve(false);
+  }
+
   CONTENT_CONSOLIDATED_UI_SELECTORS_PROMISE = fetch(chrome.runtime.getURL('ui-selectors-data.json'))
     .then(response => response.json())
     .then(data => {
