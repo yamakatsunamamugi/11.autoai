@@ -107,8 +107,8 @@ export class SpreadsheetLogger {
       reason: eventData.reason,
       taskId: eventData.taskId
     };
-    
-    this.logger.log('[SpreadsheetLogger] AI切り替えイベント記録:', logEntry);
+
+    this.logger.log('1-1', 'AI切り替えイベント記録:', logEntry);
     
     // 送信時刻記録に追加（切り替え情報付き）
     if (eventData.taskId) {
@@ -138,8 +138,7 @@ export class SpreadsheetLogger {
       function: successData.function,
       responseLength: successData.responseLength
     };
-    
-    this.logger.log('[SpreadsheetLogger] AI切り替え成功記録:', logEntry);
+    this.logger.log('1-2', 'AI切り替え成功記録:', logEntry);
     return logEntry;
   }
 
@@ -158,7 +157,7 @@ export class SpreadsheetLogger {
       model: info.model || '不明'
     });
 
-    this.logger.log(`[SpreadsheetLogger] 送信時刻記録: タスク=${taskId}, 時刻=${timestamp.toLocaleString('ja-JP')}`);
+    this.logger.log('2-1', `送信時刻記録: タスク=${taskId}, 時刻=${timestamp.toLocaleString('ja-JP')}`);
   }
 
   /**
@@ -177,7 +176,7 @@ export class SpreadsheetLogger {
       column: task.column
     });
 
-    this.logger.log(`[SpreadsheetLogger] 送信時刻記録: タスク=${taskId}, モデル=${task.model}, 機能=${task.function}, 時刻=${timestamp.toLocaleString('ja-JP')}`);
+    this.logger.log('2-1', `送信時刻記録: タスク=${taskId}, モデル=${task.model}, 機能=${task.function}, 時刻=${timestamp.toLocaleString('ja-JP')}`);
   }
 
   /**
@@ -210,7 +209,7 @@ export class SpreadsheetLogger {
     const functionName = `選択: ${selectedFunction} / 表示: ${displayedFunction}`;
     
     // デバッグログ
-    console.log('[SpreadsheetLogger] formatLogEntry - 完全情報:', {
+    this.logger.debug('3-1', 'formatLogEntry - 完全情報:', {
       'task.model': task.model,
       'task.displayedModel': task.displayedModel,
       selectedModel,
@@ -288,7 +287,7 @@ export class SpreadsheetLogger {
    * @returns {string} マージ済みログ
    */
   mergeWithExistingLog(existingLog, newLog, aiType = '') {
-    console.log(`🔄 [SpreadsheetLogger] マージ処理開始:`, {
+    this.logger.log('3-3', 'マージ処理開始', '🔄 マージ処理開始:', {
       aiType,
       hasExistingLog: !!existingLog && existingLog.trim() !== '',
       existingLength: existingLog.length,
@@ -296,24 +295,24 @@ export class SpreadsheetLogger {
     });
     
     if (!existingLog || existingLog.trim() === '') {
-      console.log(`➕ [SpreadsheetLogger] 空のログに新規追加 (AI: ${aiType})`);
+      this.logger.log('3-3-1', '新規ログ追加', `➕ 空のログに新規追加 (AI: ${aiType})`);
       return newLog;
     }
     
     // AIタイプから日本語表記を取得
     const aiDisplayName = this.getAIDisplayName(aiType);
-    console.log(`🔍 [SpreadsheetLogger] AI名変換: ${aiType} → ${aiDisplayName}`);
+    this.logger.log('3-2', `🔍 AI名変換: ${aiType} → ${aiDisplayName}`);
     
     // 既存ログに同じAIのログが既に存在するかチェック
     const duplicateCheck = existingLog.includes(`---------- ${aiDisplayName} ----------`);
-    console.log(`🔍 [SpreadsheetLogger] 重複チェック結果:`, {
+    this.logger.log('3-3-2', '重複チェック', '🔍 重複チェック結果:', {
       aiDisplayName,
       isDuplicate: duplicateCheck,
       searchPattern: `---------- ${aiDisplayName} ----------`
     });
     
     if (duplicateCheck) {
-      console.log(`⚠️ [SpreadsheetLogger] 既存の${aiDisplayName}ログを上書き更新`);
+      this.logger.warn('3-3-3', 'ログ上書き', `⚠️ 既存の${aiDisplayName}ログを上書き更新`);
       
       // 同じAIのログ部分を新しいログで置換
       // 正規表現のエスケープを修正
@@ -321,7 +320,7 @@ export class SpreadsheetLogger {
       const logPattern = new RegExp(`---------- ${escapedName} ----------[\\s\\S]*?(?=\\n\\n---------- |$)`, 'g');
       const updatedLog = existingLog.replace(logPattern, newLog);
       
-      console.log(`🔄 [SpreadsheetLogger] 置換処理結果:`, {
+      this.logger.log('3-3-4', '置換処理', '🔄 置換処理結果:', {
         succeeded: updatedLog !== existingLog,
         originalLength: existingLog.length,
         updatedLength: updatedLog.length
@@ -329,7 +328,7 @@ export class SpreadsheetLogger {
       
       // 置換に失敗した場合は末尾に追加
       if (updatedLog === existingLog) {
-        console.log(`⚠️ [SpreadsheetLogger] 置換失敗、末尾に追加`);
+        this.logger.warn('3-3-5', '置換失敗', '⚠️ 置換失敗、末尾に追加');
         return `${existingLog}\n\n═══════════════════════\n\n${newLog}`;
       }
       
@@ -337,7 +336,7 @@ export class SpreadsheetLogger {
     }
     
     // 新しいAIのログなので末尾に追加
-    console.log(`➕ [SpreadsheetLogger] 新しいAIログを末尾に追加 (AI: ${aiDisplayName})`);
+    this.logger.log('3-3-6', '末尾追加', `➕ 新しいAIログを末尾に追加 (AI: ${aiDisplayName})`);
     return `${existingLog}\n\n═══════════════════════\n\n${newLog}`;
   }
 
@@ -351,7 +350,7 @@ export class SpreadsheetLogger {
     try {
       // スプレッドシートデータがない場合は検証をスキップ（デフォルトを許可）
       if (!spreadsheetData || !spreadsheetData.menuRow) {
-        console.warn('[SpreadsheetLogger] スプレッドシートデータが提供されていないため、ログ列検証をスキップ');
+        this.logger.warn('4-2', '⚠️ スプレッドシートデータが提供されていないため、ログ列検証をスキップ');
         return {
           isValid: true,
           validLogColumns: [logColumn],
@@ -373,7 +372,7 @@ export class SpreadsheetLogger {
       
       // 有効なログ列が見つからない場合（デフォルトB列を許可）
       if (validLogColumns.length === 0) {
-        console.warn('[SpreadsheetLogger] メニュー行に「ログ」列が見つかりません。デフォルトB列を許可');
+        this.logger.warn('4-2-1', 'デフォルト列使用', '⚠️ メニュー行に「ログ」列が見つかりません。デフォルトB列を許可');
         return {
           isValid: true,
           validLogColumns: ['B'],
@@ -398,7 +397,7 @@ export class SpreadsheetLogger {
       };
       
     } catch (error) {
-      console.error('[SpreadsheetLogger] ログ列検証エラー:', error);
+      this.logger.error('4-2-2', '検証エラー', `❌ ログ列検証エラー: ${error.message}`);
       // エラーが発生した場合は安全のため続行を許可
       return {
         isValid: true,
@@ -441,7 +440,7 @@ export class SpreadsheetLogger {
     try {
       const { url, sheetsClient, spreadsheetId, gid } = options;
       
-      console.log(`🔍 [SpreadsheetLogger] ログ書き込み開始:`, {
+      this.logger.log('4-1', '🔍 ログ書き込み開始:', {
         taskId: task.id,
         row: task.row,
         logColumns: task.logColumns,
@@ -451,8 +450,7 @@ export class SpreadsheetLogger {
       });
       
       if (!sheetsClient || !spreadsheetId) {
-        console.error('❌ [SpreadsheetLogger] SheetsClientまたはスプレッドシートIDが未設定');
-        this.logger.error('[SpreadsheetLogger] SheetsClientまたはスプレッドシートIDが未設定');
+        this.logger.error('4-1-1', 'エラー', '❌ SheetsClientまたはスプレッドシートIDが未設定');
         return {
           success: false,
           verified: false,
@@ -466,7 +464,7 @@ export class SpreadsheetLogger {
       // ログ列の妥当性を検証
       const validationResult = await this.validateLogColumn(logColumn, options.spreadsheetData);
       if (!validationResult.isValid) {
-        console.error(`❌ [SpreadsheetLogger] 不正なログ列が指定されました:`, {
+        this.logger.error('4-2-3', '不正なログ列', '❌ 不正なログ列が指定されました:', {
           指定されたログ列: logColumn,
           有効なログ列: validationResult.validLogColumns,
           エラー: validationResult.error,
@@ -505,8 +503,7 @@ export class SpreadsheetLogger {
       });
       
       if (!sendTimeInfo) {
-        console.warn(`⚠️ [SpreadsheetLogger] タスク${task.id}の送信時刻が記録されていません`);
-        this.logger.warn(`[SpreadsheetLogger] タスク${task.id}の送信時刻が記録されていません`);
+        this.logger.warn('4-1-5', '送信時刻なし', `⚠️ タスク${task.id}の送信時刻が記録されていません`);
         return {
           success: false,
           verified: false,
@@ -937,7 +934,7 @@ export class SpreadsheetLogger {
    */
   clear() {
     this.sendTimestamps.clear();
-    this.logger.log('[SpreadsheetLogger] タイムスタンプをクリアしました');
+    this.logger.log('6', 'メモリクリア', 'タイムスタンプをクリアしました');
   }
 
   /**
