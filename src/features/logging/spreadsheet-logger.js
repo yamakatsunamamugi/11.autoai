@@ -19,7 +19,7 @@ import { ConsoleLogger } from '../../utils/console-logger.js';
 import { getService } from '../../core/service-registry.js';
 
 export class SpreadsheetLogger {
-  constructor(logger = console) {
+  constructor(logger = console, options = {}) {
     // ConsoleLoggerインスタンスを作成（シンプルなログ用）
     this.logger = new ConsoleLogger('spreadsheet-logger', logger);
 
@@ -30,6 +30,10 @@ export class SpreadsheetLogger {
     this.sendTimestamps = new Map(); // key: taskId, value: { time: Date, aiType: string, model: string }
     this.pendingLogs = new Map(); // key: row, value: array of log entries
     this.writingInProgress = new Set(); // Set of cells currently being written
+
+    // スプレッドシート情報を保持（globalThis依存を避けるため）
+    this.currentSpreadsheetId = options.spreadsheetId || null;
+    this.currentGid = options.gid || '0';
 
     // タイムアウト管理（メモリリーク防止）
     this.pendingLogTimeouts = new Map(); // key: row, value: timeoutId
@@ -427,7 +431,7 @@ export class SpreadsheetLogger {
    */
   async writeLogToSpreadsheet(task, options = {}) {
     try {
-      const { url, sheetsClient, spreadsheetId, gid } = options;
+      const { url, sheetsClient, spreadsheetId, gid, spreadsheetData } = options;
       
       this.logger.log('[Step 4-1: ログ書き込み開始] 🔍 ログ書き込み開始:', {
         taskId: task.id,
@@ -451,7 +455,7 @@ export class SpreadsheetLogger {
       const logColumn = task.logColumns?.[0] || 'B'; // デフォルトはB列
       
       // ログ列の妥当性を検証
-      const validationResult = await this.validateLogColumn(logColumn, options.spreadsheetData);
+      const validationResult = await this.validateLogColumn(logColumn, spreadsheetData);
       if (!validationResult.isValid) {
         this.logger.error('[Step 4-2-3: 不正なログ列] ❌ 不正なログ列が指定されました:', {
           指定されたログ列: logColumn,
@@ -705,9 +709,12 @@ export class SpreadsheetLogger {
         );
       }
       
-      // 拡張機能のログシステムにも記録
-      if (globalThis.logManager) {
-        globalThis.logManager.log(`📝 スプレッドシートログ書き込み完了: ${logCell}`, {
+      // 拡張機能のログシステムにも記録（Service Registry経由）
+      try {
+        const { getService } = await import('../../core/service-registry.js');
+        const logManager = await getService('logManager');
+        if (logManager) {
+          logManager.log(`📝 スプレッドシートログ書き込み完了: ${logCell}`, {
           category: 'system',
           level: writeVerified ? 'info' : 'warning',
           metadata: {
@@ -718,7 +725,11 @@ export class SpreadsheetLogger {
             elapsedSeconds: Math.round((writeTime.getTime() - sendTimeInfo.time.getTime()) / 1000),
             verified: writeVerified
           }
-        });
+          });
+        }
+      } catch (error) {
+        // LogManagerが利用できない場合はスキップ
+        console.log('[SpreadsheetLogger] LogManagerにアクセスできません');
       }
       
       // 送信時刻をクリア（メモリ節約）
@@ -841,18 +852,25 @@ export class SpreadsheetLogger {
       if (!isMatched) {
         this.logger.warn(`[Step 7-1-4: 書き込み確認失敗] ⚠️ 書き込み確認失敗: ${logCell} - 期待される内容と一致しません`);
 
-        // 詳細なエラー情報をログに記録
-        if (globalThis.logManager) {
-          globalThis.logManager.log(`⚠️ スプレッドシート書き込み確認失敗: ${logCell}`, {
-            category: 'system',
-            level: 'warning',
-            metadata: {
-              logCell,
-              expectedLength: expectedContent.length,
-              actualLength: actualContent.length,
-              hasContent: actualContent.length > 0
-            }
-          });
+        // 詳細なエラー情報をログに記録（Service Registry経由）
+        try {
+          const { getService } = await import('../../core/service-registry.js');
+          const logManager = await getService('logManager');
+          if (logManager) {
+            logManager.log(`⚠️ スプレッドシート書き込み確認失敗: ${logCell}`, {
+              category: 'system',
+              level: 'warning',
+              metadata: {
+                logCell,
+                expectedLength: expectedContent.length,
+                actualLength: actualContent.length,
+                hasContent: actualContent.length > 0
+              }
+            });
+          }
+        } catch (error) {
+          // LogManagerが利用できない場合はスキップ
+          console.log('[SpreadsheetLogger] LogManager書き込み確認失敗ログをスキップ');
         }
       } else {
         this.logger.success(`[Step 7-1-5: 書き込み確認成功] ✅ 書き込み確認成功: ${logCell}`);
@@ -1167,12 +1185,12 @@ export class SpreadsheetLogger {
 
       // スプレッドシートに書き込み
       const sheetsClient = await this.getSheetsClient();
-      if (sheetsClient) {
+      if (sheetsClient && this.currentSpreadsheetId) {
         await sheetsClient.updateCell(
-          globalThis.currentSpreadsheetId || '',
+          this.currentSpreadsheetId,
           logCell,
           mergedLog,
-          globalThis.currentGid || '0'
+          this.currentGid || '0'
         );
 
         this.logger.success(`[Step 11-4: 部分統合書き込み完了] ✅ 部分統合書き込み完了: ${logCell}`);

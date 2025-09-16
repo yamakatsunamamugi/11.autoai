@@ -27,6 +27,26 @@ import { getStreamingServiceManager } from '../core/streaming-service-manager.js
 import SpreadsheetLogger from '../features/logging/spreadsheet-logger.js';
 import { getService } from '../core/service-registry.js';
 
+// AuthServiceキャッシュ
+let _authService = null;
+
+/**
+ * AuthServiceを取得（Service Registry経由のみ）
+ * @returns {Object} AuthServiceインスタンス
+ * @throws {Error} AuthServiceが取得できない場合
+ */
+async function getAuthService() {
+  if (!_authService) {
+    try {
+      _authService = await getService('authService');
+      console.log('[MessageHandler] AuthServiceをService Registryから取得しました');
+    } catch (error) {
+      throw new Error(`AuthServiceの取得に失敗しました: ${error.message}`);
+    }
+  }
+  return _authService;
+}
+
 // Step 1-1: AIタスク実行インスタンス
 const aiTaskExecutor = new AITaskExecutor();
 
@@ -453,7 +473,8 @@ export function setupMessageHandler() {
             }
 
             const autoSetup = new SpreadsheetAutoSetup();
-            const token = await globalThis.authService.getAuthToken();
+            const authService = await getAuthService();
+            const token = await authService.getAuthToken();
             const result = await autoSetup.executeAutoSetup(spreadsheetId, token, gid);
 
             // Step 12-6: 結果をUIに返す
@@ -526,7 +547,8 @@ export function setupMessageHandler() {
             }
 
             const autoSetup = new SpreadsheetAutoSetup();
-            const token = await globalThis.authService.getAuthToken();
+            const authService = await getAuthService();
+            const token = await authService.getAuthToken();
             await autoSetup.executeAutoSetup(spreadsheetId, token, gid);
 
             // Step 13-8: データを整形（AI列情報を抽出）
@@ -583,7 +605,8 @@ export function setupMessageHandler() {
         console.log('[Step 14-1] 認証ステータス取得');
         (async () => {
           try {
-            const status = await globalThis.authService.checkAuthStatus();
+            const authService = await getAuthService();
+            const status = await authService.checkAuthStatus();
             sendResponse(status);
           } catch (error) {
             console.error('[Step 14-2] 認証ステータス取得エラー:', error);
@@ -596,7 +619,8 @@ export function setupMessageHandler() {
         console.log('[Step 14-3] 認証実行');
         (async () => {
           try {
-            const token = await globalThis.authService.getAuthToken();
+            const authService = await getAuthService();
+            const token = await authService.getAuthToken();
             sendResponse({ success: true });
           } catch (error) {
             console.error('[Step 14-4] 認証エラー:', error);

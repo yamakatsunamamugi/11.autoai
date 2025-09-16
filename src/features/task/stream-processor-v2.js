@@ -337,7 +337,12 @@ export default class StreamProcessorV2 {
       if (SpreadsheetLoggerClass) {
         // Step 1-3: インスタンス作成（spreadsheetUrlの有無に関わらず作成）
         this.log('SpreadsheetLoggerインスタンスを作成', 'info', '1-3');
-        this.spreadsheetLogger = new SpreadsheetLoggerClass(this.logger);
+        // SpreadsheetLoggerにspreadsheetIdとgidを渡して初期化
+        const loggerOptions = {
+          spreadsheetId: this.spreadsheetData?.spreadsheetId || null,
+          gid: this.spreadsheetData?.gid || '0'
+        };
+        this.spreadsheetLogger = new SpreadsheetLoggerClass(this.logger, loggerOptions);
 
         // Step 1-4: SheetsClient確認（コンストラクタで受け取ったものを使用）
         if (this.sheetsClient) {
@@ -1570,11 +1575,19 @@ export default class StreamProcessorV2 {
             spreadsheetId: this.spreadsheetData.spreadsheetId,
             gid: this.spreadsheetData.gid,
             spreadsheetData: this.spreadsheetData,
-            url: result?.url || 'N/A'
+            url: result?.url || 'N/A',
+            onComplete: (task, logCell, writeVerified, error) => {
+              if (error) {
+                this.logger.warn(`[Step 8-3.7] ⚠️ ログ書き込み完了コールバック - エラー: ${logCell}`, error);
+              } else {
+                this.logger.log(`[Step 8-3.7] ✅ ログ書き込み完了コールバック: ${logCell} (検証: ${writeVerified})`);
+              }
+            }
           });
 
           if (logResult.success) {
-            this.logger.log(`[Step 8-3.6] 📝 詳細ログ書き込み成功: ${logTask.logColumns[0]}${task.row}`);
+            const logColumn = logTask.logColumns && logTask.logColumns[0] ? logTask.logColumns[0] : 'Unknown';
+            this.logger.log(`[Step 8-3.6] 📝 詳細ログ書き込み成功: ${logColumn}${task.row}`);
           } else {
             this.logger.error(`[Step 8-3.6] ❌ 詳細ログ書き込み失敗:`, logResult.error);
           }
@@ -4797,7 +4810,14 @@ export default class StreamProcessorV2 {
       // SpreadsheetLoggerを呼び出し
       await this.exclusiveLoggerConfig.spreadsheetLogger.writeLogToSpreadsheet(task, {
         ...commonParams,
-        ...enrichedLogData
+        ...enrichedLogData,
+        onComplete: (task, logCell, writeVerified, error) => {
+          if (error) {
+            this.log('【StreamProcessor-ステップ1-7】ログ書き込み完了コールバック - エラー', 'warn', 'Step 1-7', { logCell, error });
+          } else {
+            this.log('【StreamProcessor-ステップ1-7】ログ書き込み完了コールバック', 'debug', 'Step 1-7', { logCell, writeVerified });
+          }
+        }
       });
 
       this.log('【StreamProcessor-ステップ1-6】ログ記録成功', 'debug', 'Step 1-6');
@@ -4997,7 +5017,14 @@ export default class StreamProcessorV2 {
         sheetsClient: this.sheetsClient,
         spreadsheetId: spreadsheetData.spreadsheetId,
         gid: spreadsheetData.gid,
-        spreadsheetData: spreadsheetData
+        spreadsheetData: spreadsheetData,
+        onComplete: (task, logCell, writeVerified, error) => {
+          if (error) {
+            this.logger.warn(`[StreamProcessorV2] ログ書き込み完了コールバック - エラー: ${logCell}`, error);
+          } else {
+            this.logger.log(`[StreamProcessorV2] ログ書き込み完了コールバック: ${logCell} (検証: ${writeVerified})`);
+          }
+        }
       });
 
       if (result.success) {

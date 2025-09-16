@@ -1,6 +1,7 @@
 // sheets-client.js - Google Sheets APIクライアント
 // Step 3: sleep-utils.jsから1-ai-common-base.jsに移行
 import { getGlobalAICommonBase } from '../../../automations/1-ai-common-base.js';
+import { getService } from '../../core/service-registry.js';
 
 class SheetsClient {
   constructor() {
@@ -40,6 +41,30 @@ class SheetsClient {
       recoveryAttempts: 0,
       successfulRecoveries: 0
     };
+
+    // AuthServiceのキャッシュ（遅延初期化用）
+    this._authService = null;
+  }
+
+  /**
+   * AuthServiceを取得（遅延初期化対応）
+   * @returns {Object|null} AuthServiceインスタンス
+   */
+  async getAuthService() {
+    if (!this._authService) {
+      try {
+        this._authService = await getService('authService');
+        this.logger.log('[SheetsClient] AuthServiceをService Registryから取得しました');
+      } catch (error) {
+        this.logger.warn('[SheetsClient] AuthServiceの取得に失敗:', error.message);
+        // フォールバック: グローバル変数を試行
+        if (globalThis.authService) {
+          this._authService = globalThis.authService;
+          this.logger.warn('[SheetsClient] フォールバック: グローバル変数からAuthServiceを取得');
+        }
+      }
+    }
+    return this._authService;
   }
 
   /**
@@ -620,7 +645,11 @@ class SheetsClient {
    */
   async getSpreadsheetMetadata(spreadsheetId) {
     return await this.executeWithQuotaManagement(async () => {
-      const token = await globalThis.authService.getAuthToken();
+      const authService = await this.getAuthService();
+      if (!authService) {
+        throw new Error('AuthServiceが利用できません');
+      }
+      const token = await authService.getAuthToken();
       const url = `${this.baseUrl}/${spreadsheetId}?fields=properties,sheets(properties)`;
 
       const response = await fetch(url, {
@@ -674,7 +703,11 @@ class SheetsClient {
       }
 
       // Google Sheets API でデータを取得
-      const accessToken = await globalThis.authService.getAuthToken();
+      const authService = await this.getAuthService();
+      if (!authService) {
+        throw new Error('AuthServiceが利用できません');
+      }
+      const accessToken = await authService.getAuthToken();
       const range = `'${sheetName}'!A1:CZ1000`;
       const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueRenderOption=FORMATTED_VALUE`;
       
@@ -928,8 +961,12 @@ class SheetsClient {
         }
         return range;
       });
-      
-      const token = await globalThis.authService.getAuthToken();
+
+      const authService = await this.getAuthService();
+      if (!authService) {
+        throw new Error('AuthServiceが利用できません');
+      }
+      const token = await authService.getAuthToken();
       const rangesParam = fullRanges.map(r => `ranges=${encodeURIComponent(r)}`).join('&');
       const url = `${this.baseUrl}/${spreadsheetId}/values:batchGet?${rangesParam}&valueRenderOption=FORMATTED_VALUE`;
       
@@ -992,7 +1029,11 @@ class SheetsClient {
         }
       }
 
-      const token = await globalThis.authService.getAuthToken();
+      const authService = await this.getAuthService();
+      if (!authService) {
+        throw new Error('AuthServiceが利用できません');
+      }
+      const token = await authService.getAuthToken();
       // valueRenderOptionを追加して、空セルも含めて全データを取得
       const url = `${this.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(range)}?valueRenderOption=FORMATTED_VALUE`;
       
@@ -1361,7 +1402,11 @@ class SheetsClient {
     try {
       // executeWithQuotaManagementでラップしてリトライ機能を有効化
       const result = await this.executeWithQuotaManagement(async () => {
-        const token = await globalThis.authService.getAuthToken();
+        const authService = await this.getAuthService();
+        if (!authService) {
+          throw new Error('AuthServiceが利用できません');
+        }
+        const token = await authService.getAuthToken();
         const range = `'${sheetName}'!${cell}`;
         const url = `${this.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(range)}?valueRenderOption=FORMATTED_VALUE`;
         
@@ -1402,7 +1447,11 @@ class SheetsClient {
     try {
       // executeWithQuotaManagementでラップしてリトライ機能を有効化
       const data = await this.executeWithQuotaManagement(async () => {
-        const token = await globalThis.authService.getAuthToken();
+        const authService = await this.getAuthService();
+        if (!authService) {
+          throw new Error('AuthServiceが利用できません');
+        }
+        const token = await authService.getAuthToken();
         
         // 各セルに対してrangeを作成
         const ranges = cells.map(cell => `'${sheetName}'!${cell}`);
@@ -1455,7 +1504,11 @@ class SheetsClient {
     try {
       // executeWithQuotaManagementでラップしてリトライ機能を有効化
       const result = await this.executeWithQuotaManagement(async () => {
-        const token = await globalThis.authService.getAuthToken();
+        const authService = await this.getAuthService();
+        if (!authService) {
+          throw new Error('AuthServiceが利用できません');
+        }
+        const token = await authService.getAuthToken();
         const fullRange = `'${sheetName}'!${range}`;
         const url = `${this.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(fullRange)}?valueRenderOption=FORMATTED_VALUE`;
         
@@ -1497,7 +1550,11 @@ class SheetsClient {
    */
   async batchUpdate(spreadsheetId, updates) {
     return await this.executeWithQuotaManagement(async () => {
-      const token = await globalThis.authService.getAuthToken();
+      const authService = await this.getAuthService();
+      if (!authService) {
+        throw new Error('AuthServiceが利用できません');
+      }
+      const token = await authService.getAuthToken();
       const url = `${this.baseUrl}/${spreadsheetId}/values:batchUpdate`;
 
       const requestBody = {
@@ -1575,7 +1632,11 @@ class SheetsClient {
         }
         
         // 4. API実行
-        const token = await globalThis.authService.getAuthToken();
+        const authService = await this.getAuthService();
+        if (!authService) {
+          throw new Error('AuthServiceが利用できません');
+        }
+        const token = await authService.getAuthToken();
         const url = `${this.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(processedRange)}?valueInputOption=USER_ENTERED`;
 
         const requestBody = {
@@ -1676,7 +1737,11 @@ class SheetsClient {
    * @returns {Promise<Object>} 更新結果
    */
   async updateCellWithRichText(spreadsheetId, range, richTextData, gid = null) {
-    const token = await globalThis.authService.getAuthToken();
+    const authService = await this.getAuthService();
+    if (!authService) {
+      throw new Error('AuthServiceが利用できません');
+    }
+    const token = await authService.getAuthToken();
     
     // 範囲をA1記法からインデックスに変換
     const cellMatch = range.match(/^([A-Z]+)(\d+)$/);
