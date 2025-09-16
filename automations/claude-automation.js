@@ -400,13 +400,84 @@
                         confirmCount++;
                         if (confirmCount >= 10) {
                             console.log('✓ 回答完了確認');
+
+                            // Canvasプレビューボタンをクリック
+                            console.log('Canvasプレビューボタンを検索中...');
+                            const previewSelectors = UI_SELECTORS.Claude?.CANVAS_PREVIEW_BUTTON || [];
+                            let clickedButtons = 0;
+                            for (const selector of previewSelectors) {
+                                const previewButtons = document.querySelectorAll(selector);
+                                for (const button of previewButtons) {
+                                    try {
+                                        button.click();
+                                        clickedButtons++;
+                                        console.log(`Canvasプレビューボタンクリック: ${clickedButtons}個目`);
+                                        await wait(500); // 各クリック間で0.5秒待機
+                                    } catch (error) {
+                                        console.log(`プレビューボタンクリックエラー: ${error.message}`);
+                                    }
+                                }
+                            }
+                            if (clickedButtons > 0) {
+                                console.log(`✓ ${clickedButtons}個のCanvasプレビューボタンをクリック完了`);
+                                await wait(2000); // Canvas表示のため2秒待機
+                            } else {
+                                console.log('プレビューボタンが見つかりませんでした');
+                            }
+
+                            console.log('テキスト安定化のため10秒待機中...');
+                            await wait(10000);
+                            console.log('✓ テキスト安定化完了');
                             return true;
                         }
                     } else {
                         confirmCount = 0;
                     }
 
-                    await wait(1000);
+                    // 5秒おきにテキスト文字数を監視
+                    for (let i = 0; i < 5; i++) {
+                        await wait(1000);
+
+                        // テキスト文字数カウント（1秒、3秒、5秒時点で実行）
+                        if (i === 0 || i === 2 || i === 4) {
+                            try {
+                                // Canvas/Artifact テキスト取得
+                                const canvasSelectors = UI_SELECTORS.Claude?.TEXT_EXTRACTION?.ARTIFACT_CONTENT || [];
+                                let canvasCount = 0;
+                                for (const selector of canvasSelectors) {
+                                    const canvasElements = document.querySelectorAll(selector);
+                                    canvasElements.forEach(canvasElement => {
+                                        const text = canvasElement.textContent?.trim() || '';
+                                        if (text && text.length > 10) {
+                                            canvasCount += text.length;
+                                        }
+                                    });
+                                }
+
+                                // 通常テキスト取得
+                                const normalSelectors = UI_SELECTORS.Claude?.TEXT_EXTRACTION?.NORMAL_RESPONSE || [];
+                                const normalElements = document.querySelectorAll(normalSelectors.join(', '));
+                                let normalCount = 0;
+                                if (normalElements.length > 0) {
+                                    const filtered = Array.from(normalElements).filter(el => {
+                                        return !el.closest('#markdown-artifact') &&
+                                               !el.closest('[class*="artifact"]');
+                                    });
+                                    if (filtered.length > 0) {
+                                        const normalText = filtered
+                                            .map(el => el.textContent?.trim() || '')
+                                            .filter(text => text.length > 0)
+                                            .join('\n');
+                                        normalCount = normalText.length;
+                                    }
+                                }
+
+                                console.log(`テキスト監視: 通常=${normalCount}文字, Canvas=${canvasCount}文字`);
+                            } catch (error) {
+                                console.log('テキスト監視エラー:', error.message);
+                            }
+                        }
+                    }
 
                     const elapsed = Math.floor((Date.now() - startTime) / 60000);
                     if (elapsed > 0 && (Date.now() - startTime) % 60000 < 1000) {
@@ -725,12 +796,65 @@ ${prompt}`;
                 let normalText = '';
                 let canvasTexts = [];
 
-                // 1. 通常テキスト取得
+                // 1. Canvas/Artifact テキスト取得（デバッグ強化）
+                const canvasSelectors = UI_SELECTORS.Claude?.TEXT_EXTRACTION?.ARTIFACT_CONTENT || [];
+                console.log(`Canvas/Artifact用セレクタ: ${canvasSelectors.length}個`);
+
+                // セレクタ別にCanvas/Artifact取得結果をチェック
+                for (let i = 0; i < canvasSelectors.length; i++) {
+                    const selector = canvasSelectors[i];
+                    const elements = document.querySelectorAll(selector);
+                    console.log(`Canvasセレクタ[${i}] "${selector}": ${elements.length}個の要素`);
+                    if (elements.length > 0) {
+                        elements.forEach((element, idx) => {
+                            const text = element.textContent?.trim() || '';
+                            console.log(`  要素[${idx}]: ${text.length}文字`);
+                            if (text.length > 100) {
+                                console.log(`    先頭100文字: "${text.substring(0, 100)}..."`);
+                            }
+                        });
+                    }
+                }
+
+                for (const selector of canvasSelectors) {
+                    const canvasElements = document.querySelectorAll(selector);
+                    canvasElements.forEach(canvasElement => {
+                        const text = canvasElement.textContent?.trim() || '';
+                        if (text && text.length > 10 && !canvasTexts.includes(text)) {
+                            canvasTexts.push(text);
+                            console.log(`Canvasテキスト発見 (${text.length}文字)`);
+                            if (text.length > 100) {
+                                console.log(`Canvas内容先頭100文字: "${text.substring(0, 100)}..."`);
+                            }
+                        }
+                    });
+                }
+
+                if (canvasTexts.length === 0) {
+                    console.log('⚠️ Canvas/Artifactテキストが1つも見つかりませんでした');
+                }
+
+                // 2. 通常テキスト取得（デバッグ強化）
                 const normalSelectors = UI_SELECTORS.Claude?.TEXT_EXTRACTION?.NORMAL_RESPONSE || [];
+                console.log(`通常テキスト用セレクタ: ${normalSelectors.length}個`);
+
+                // セレクタ別に取得結果をチェック
+                for (let i = 0; i < normalSelectors.length; i++) {
+                    const selector = normalSelectors[i];
+                    const elements = document.querySelectorAll(selector);
+                    if (elements.length > 0) {
+                        const totalText = Array.from(elements).map(el => el.textContent?.trim() || '').join('');
+                        console.log(`セレクタ[${i}] "${selector}": ${elements.length}個の要素, ${totalText.length}文字`);
+                        if (totalText.length > 100) {
+                            console.log(`  先頭100文字: "${totalText.substring(0, 100)}..."`);
+                        }
+                    }
+                }
+
                 const normalElements = document.querySelectorAll(normalSelectors.join(', '));
+                console.log(`統合結果: ${normalElements.length}個のテキスト要素を発見`);
 
                 if (normalElements.length > 0) {
-                    console.log(`${normalElements.length}個のテキスト要素を発見`);
                     const filtered = Array.from(normalElements).filter(el => {
                         return !el.closest('#markdown-artifact') &&
                                !el.closest('[class*="artifact"]');
@@ -744,20 +868,12 @@ ${prompt}`;
                             .filter(text => text.length > 0)
                             .join('\n');
                         console.log(`通常テキスト取得成功 (${normalText.length}文字, ${filtered.length}要素から結合)`);
-                    }
-                }
-
-                // 2. Canvas/Artifact テキスト取得（すべてのCanvasを取得）
-                const canvasSelectors = UI_SELECTORS.Claude?.TEXT_EXTRACTION?.ARTIFACT_CONTENT || [];
-                for (const selector of canvasSelectors) {
-                    const canvasElements = document.querySelectorAll(selector);
-                    canvasElements.forEach(canvasElement => {
-                        const text = canvasElement.textContent?.trim() || '';
-                        if (text && text.length > 10 && !canvasTexts.includes(text)) {
-                            canvasTexts.push(text);
-                            console.log(`Canvasテキスト発見 (${text.length}文字)`);
+                        if (normalText.length > 100) {
+                            console.log(`取得テキスト先頭100文字: "${normalText.substring(0, 100)}..."`);
                         }
-                    });
+                    }
+                } else {
+                    console.log('⚠️ 通常テキスト要素が1つも見つかりませんでした');
                 }
 
                 // 3. 通常テキストとCanvasテキストを結合

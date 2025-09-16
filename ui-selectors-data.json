@@ -442,10 +442,26 @@
           "div.standard-markdown",
           ".grid.gap-2\\.5.standard-markdown",
           "div.grid-cols-1.standard-markdown",
-          "[class*=\"standard-markdown\"]"
+          "[class*=\"standard-markdown\"]",
+          ".standard-markdown p",
+          ".grid-cols-1.grid.gap-2\\.5 p",
+          "div[data-is-streaming=\"false\"] p",
+          "div[data-is-streaming=\"false\"] .standard-markdown",
+          "div.font-claude-response .standard-markdown"
+        ],
+        "CANVAS_PREVIEW_BUTTON": [
+          "[aria-label=\"内容をプレビュー\"]",
+          "[role=\"button\"][aria-label*=\"プレビュー\"]",
+          ".artifact-block-cell[role=\"button\"]",
+          "div[role=\"button\"][tabindex=\"0\"][aria-label*=\"プレビュー\"]",
+          "div.artifact-block-cell.group\\/artifact-block[role=\"button\"]"
         ],
         "ARTIFACT_CONTENT": [
           "#markdown-artifact",
+          "[id=\"markdown-artifact\"]",
+          ".font-claude-response#markdown-artifact",
+          "[tabindex=\"0\"]#markdown-artifact",
+          "div.mx-auto.max-w-3xl#markdown-artifact",
           "[id*=\"artifact\"]",
           "div[class*=\"artifact\"]",
           ".artifact-content",
