@@ -791,47 +791,169 @@ ${prompt}`;
                 return sendButton;
             }, 'ステップ7: メッセージ送信・応答待機', 3);
 
+            // ===== テキスト安定化待機 =====
+            await executeStepWithRetry(async () => {
+                console.log('\n■■■ テキスト安定化待機 ■■■');
+
+                // 1. 応答停止ボタンの完全消失を確認
+                const stopButtonSelectors = ['[data-testid="stop-button"]'];
+                let stopButtonExists = true;
+                let waitCount = 0;
+
+                while (stopButtonExists && waitCount < 30) { // 最大30秒待機
+                    const stopButton = document.querySelector(stopButtonSelectors[0]);
+                    if (!stopButton) {
+                        stopButtonExists = false;
+                        console.log('✅ 応答停止ボタン消失確認');
+                    } else {
+                        await wait(1000);
+                        waitCount++;
+                        if (waitCount % 5 === 0) {
+                            console.log(`応答停止ボタン待機中... ${waitCount}秒`);
+                        }
+                    }
+                }
+
+                if (stopButtonExists) {
+                    console.log('⚠️ 応答停止ボタンが30秒後も残存しています');
+                }
+
+                // 2. テキスト安定化待機（10秒間）
+                console.log('テキスト安定化待機開始（10秒間）...');
+                let lastTextLength = 0;
+                let stableCount = 0;
+                const requiredStableCount = 3; // 3回連続で同じ長さなら安定とみなす
+
+                for (let i = 0; i < 10; i++) {
+                    await wait(1000);
+
+                    // 現在のテキスト長を確認
+                    const normalSelectors = UI_SELECTORS.Claude?.TEXT_EXTRACTION?.NORMAL_RESPONSE || [];
+                    const canvasSelectors = UI_SELECTORS.Claude?.TEXT_EXTRACTION?.ARTIFACT_CONTENT || [];
+
+                    let currentTextLength = 0;
+                    for (const selector of normalSelectors) {
+                        const elements = document.querySelectorAll(selector);
+                        currentTextLength += Array.from(elements).reduce((sum, el) => sum + (el.textContent?.length || 0), 0);
+                    }
+                    for (const selector of canvasSelectors) {
+                        const elements = document.querySelectorAll(selector);
+                        currentTextLength += Array.from(elements).reduce((sum, el) => sum + (el.textContent?.length || 0), 0);
+                    }
+
+                    if (currentTextLength === lastTextLength) {
+                        stableCount++;
+                        if (stableCount >= requiredStableCount) {
+                            console.log(`✅ テキスト安定化確認 (${i + 1}秒後, ${currentTextLength}文字)`);
+                            break;
+                        }
+                    } else {
+                        stableCount = 0;
+                        console.log(`テキスト変化検出: ${lastTextLength} → ${currentTextLength}文字`);
+                    }
+
+                    lastTextLength = currentTextLength;
+                }
+
+                console.log('■■■ テキスト安定化待機完了 ■■■');
+                return { success: true };
+            }, 'テキスト安定化待機', 2);
+
             // ===== 結果取得（リトライ付き） =====
             let responseText = await executeStepWithRetry(async () => {
                 let normalText = '';
                 let canvasTexts = [];
 
-                // 1. Canvas/Artifact テキスト取得（デバッグ強化）
+                // 1. Canvas/Artifact テキスト取得（タイミング対応強化）
                 const canvasSelectors = UI_SELECTORS.Claude?.TEXT_EXTRACTION?.ARTIFACT_CONTENT || [];
                 console.log(`Canvas/Artifact用セレクタ: ${canvasSelectors.length}個`);
 
-                // セレクタ別にCanvas/Artifact取得結果をチェック
-                for (let i = 0; i < canvasSelectors.length; i++) {
-                    const selector = canvasSelectors[i];
-                    const elements = document.querySelectorAll(selector);
-                    console.log(`Canvasセレクタ[${i}] "${selector}": ${elements.length}個の要素`);
-                    if (elements.length > 0) {
-                        elements.forEach((element, idx) => {
-                            const text = element.textContent?.trim() || '';
-                            console.log(`  要素[${idx}]: ${text.length}文字`);
-                            if (text.length > 100) {
-                                console.log(`    先頭100文字: "${text.substring(0, 100)}..."`);
+                // Canvas要素の動的検出（MutationObserver + タイムアウト）
+                const waitForCanvasElements = () => {
+                    return new Promise((resolve) => {
+                        let timeoutId;
+                        let foundCanvas = false;
+
+                        // 即座にチェック
+                        const checkCanvas = () => {
+                            for (const selector of canvasSelectors) {
+                                const elements = document.querySelectorAll(selector);
+                                if (elements.length > 0) {
+                                    console.log(`Canvas要素発見: セレクタ"${selector}" ${elements.length}個`);
+                                    elements.forEach(element => {
+                                        const text = element.textContent?.trim() || '';
+                                        if (text && text.length > 10 && !canvasTexts.includes(text)) {
+                                            canvasTexts.push(text);
+                                            console.log(`Canvasテキスト発見 (${text.length}文字)`);
+                                            if (text.length > 100) {
+                                                console.log(`Canvas内容先頭100文字: "${text.substring(0, 100)}..."`);
+                                            }
+                                        }
+                                    });
+                                    foundCanvas = true;
+                                }
+                            }
+                            return foundCanvas;
+                        };
+
+                        // 即座チェック
+                        if (checkCanvas()) {
+                            resolve();
+                            return;
+                        }
+
+                        // MutationObserver で動的要素を監視
+                        const observer = new MutationObserver((mutations) => {
+                            let shouldCheck = false;
+                            mutations.forEach((mutation) => {
+                                if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+                                    for (const node of mutation.addedNodes) {
+                                        if (node.nodeType === 1) { // Element node
+                                            if (node.id && node.id.includes('markdown')) {
+                                                console.log(`✅ Canvas要素追加検出: id="${node.id}"`);
+                                                shouldCheck = true;
+                                                break;
+                                            }
+                                            // 子要素もチェック
+                                            const canvasChildren = node.querySelectorAll && node.querySelectorAll('[id*="markdown"]');
+                                            if (canvasChildren && canvasChildren.length > 0) {
+                                                console.log(`✅ 子Canvas要素検出: ${canvasChildren.length}個`);
+                                                shouldCheck = true;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            });
+
+                            if (shouldCheck && checkCanvas() && !foundCanvas) {
+                                foundCanvas = true;
+                                clearTimeout(timeoutId);
+                                observer.disconnect();
+                                resolve();
                             }
                         });
-                    }
-                }
 
-                for (const selector of canvasSelectors) {
-                    const canvasElements = document.querySelectorAll(selector);
-                    canvasElements.forEach(canvasElement => {
-                        const text = canvasElement.textContent?.trim() || '';
-                        if (text && text.length > 10 && !canvasTexts.includes(text)) {
-                            canvasTexts.push(text);
-                            console.log(`Canvasテキスト発見 (${text.length}文字)`);
-                            if (text.length > 100) {
-                                console.log(`Canvas内容先頭100文字: "${text.substring(0, 100)}..."`);
-                            }
-                        }
+                        observer.observe(document.body, {
+                            childList: true,
+                            subtree: true
+                        });
+
+                        // 15秒タイムアウト
+                        timeoutId = setTimeout(() => {
+                            observer.disconnect();
+                            console.log(`Canvas要素待機タイムアウト (15秒) - 見つかった: ${canvasTexts.length}個`);
+                            resolve();
+                        }, 15000);
                     });
-                }
+                };
+
+                await waitForCanvasElements();
 
                 if (canvasTexts.length === 0) {
                     console.log('⚠️ Canvas/Artifactテキストが1つも見つかりませんでした');
+                } else {
+                    console.log(`✅ Canvas/Artifactテキスト取得完了: ${canvasTexts.length}個`);
                 }
 
                 // 2. 通常テキスト取得（デバッグ強化）
@@ -876,26 +998,32 @@ ${prompt}`;
                     console.log('⚠️ 通常テキスト要素が1つも見つかりませんでした');
                 }
 
-                // 3. Canvas優先テキスト統合システム
+                // 3. Canvas-First テキスト統合システム（修正版）
                 let extractedText = '';
 
-                // Canvas優先取得：Canvasがある場合は優先
+                // Canvas要素が存在する場合は常にCanvas優先
                 if (canvasTexts.length > 0) {
                     const canvasContent = canvasTexts.join('\n\n--- Canvas ---\n\n');
                     extractedText = canvasContent;
-                    console.log(`✅ Canvas優先取得: ${canvasTexts.length}個のCanvas, ${canvasContent.length}文字`);
+                    console.log(`✅ Canvas-First取得: ${canvasTexts.length}個のCanvas, ${canvasContent.length}文字`);
 
-                    // 通常テキストが意味のある内容かチェック（短すぎるか英語の説明文の場合は除外）
-                    if (normalText && normalText.length > 500 && !normalText.includes('Canvas feature')) {
-                        extractedText = normalText + '\n\n--- Canvas ---\n\n' + canvasContent;
-                        console.log(`通常+Canvas統合: 通常${normalText.length}文字 + Canvas${canvasContent.length}文字`);
+                    // 通常テキストは補足情報として最小限追加（Canvas説明文でない場合のみ）
+                    if (normalText && normalText.length > 200 &&
+                        !normalText.toLowerCase().includes('canvas') &&
+                        !normalText.toLowerCase().includes('artifact') &&
+                        !normalText.includes('Claude can make content') &&
+                        canvasContent.length < normalText.length * 2) {
+                        extractedText = normalText + '\n\n=== Canvas Content ===\n\n' + canvasContent;
+                        console.log(`🔄 例外的統合: 通常${normalText.length}文字 + Canvas${canvasContent.length}文字`);
                     }
                 } else if (normalText) {
                     extractedText = normalText;
-                    console.log(`通常テキスト取得: ${normalText.length}文字`);
+                    console.log(`📝 通常テキスト取得: ${normalText.length}文字`);
+                } else {
+                    console.log('❌ テキスト取得失敗: 通常・Canvasともに空');
                 }
 
-                console.log(`Canvas優先システム適用後の総文字数: ${extractedText.length}文字`);
+                console.log(`Canvas-Firstシステム適用後の総文字数: ${extractedText.length}文字`);
 
                 if (!extractedText) {
                     throw new Error('応答テキストを取得できませんでした');
