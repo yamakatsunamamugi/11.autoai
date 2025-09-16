@@ -621,10 +621,20 @@ export class AITaskExecutor {
               this.logger.log(`[AITaskExecutor] ✅ [${taskData.aiType}] 実行完了:`, execResult);
               
               if (execResult?.success) {
+                // タブのURLを取得
+                let tabUrl = 'N/A';
+                try {
+                  const tab = await chrome.tabs.get(tabId);
+                  tabUrl = tab.url || 'N/A';
+                } catch (e) {
+                  this.logger.debug(`タブURL取得失敗: ${e.message}`);
+                }
+
                 return {
                   success: true,
                   message: 'Task completed successfully',
-                  response: execResult.response || ''
+                  response: execResult.response || '',
+                  url: tabUrl
                 };
               } else {
                 return {

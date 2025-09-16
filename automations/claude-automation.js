@@ -737,9 +737,12 @@ ${prompt}`;
                     console.log(`フィルタリング後 ${filtered.length}個の要素`);
 
                     if (filtered.length > 0) {
-                        const targetElement = filtered[filtered.length - 1];
-                        extractedText = targetElement.textContent?.trim() || '';
-                        console.log(`通常テキスト取得成功 (${extractedText.length}文字)`);
+                        // すべての要素のテキストを結合（Claudeの回答が複数要素に分かれている場合に対応）
+                        extractedText = filtered
+                            .map(el => el.textContent?.trim() || '')
+                            .filter(text => text.length > 0)
+                            .join('\n');
+                        console.log(`通常テキスト取得成功 (${extractedText.length}文字, ${filtered.length}要素から結合)`);
                     }
                 }
 
