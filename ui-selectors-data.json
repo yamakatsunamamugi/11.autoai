@@ -189,12 +189,8 @@
         ".ProseMirror[contenteditable=\"true\"]",
         "[role=\"textbox\"][contenteditable=\"true\"]",
         "div[contenteditable=\"true\"][translate=\"no\"]",
-        "div[contenteditable=\"true\"][role=\"textbox\"]",
-        "[aria-label*=\"プロンプト\"]",
-        "div.ProseMirror",
-        "div[enterkeyhint=\"enter\"][role=\"textbox\"]",
-        "div[contenteditable=\"true\"]",
-        "textarea[placeholder*=\"メッセージ\"]"
+        ".ProseMirror",
+        "div[enterkeyhint=\"enter\"][role=\"textbox\"]"
       ],
       "SEND_BUTTON": [
         "[aria-label=\"メッセージを送信\"]",
