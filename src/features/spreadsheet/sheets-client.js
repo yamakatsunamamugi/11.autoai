@@ -2,11 +2,12 @@
 // Step 3: sleep-utils.jsから1-ai-common-base.jsに移行
 import { getGlobalAICommonBase } from '../../../automations/1-ai-common-base.js';
 import { getService } from '../../core/service-registry.js';
+import { ConsoleLogger } from '../../utils/console-logger.js';
 
 class SheetsClient {
   constructor() {
     this.baseUrl = "https://sheets.googleapis.com/v4/spreadsheets";
-    this.logger = typeof logger !== "undefined" ? logger : console;
+    this.logger = new ConsoleLogger('sheets-client');
     // Step 3: AI共通基盤からsleep関数を取得
     this.aiCommonBase = getGlobalAICommonBase();
     
@@ -2328,7 +2329,7 @@ class SheetsClient {
    * @returns {Promise<void>}
    */
   async reloadData() {
-    console.log('[SheetsClient] reloadData呼び出し - 現在は何もしません（互換性のため）');
+    this.logger.log('[Step reloadData: 互換性維持] reloadData呼び出し - 現在は何もしません（互換性のため）');
     // 現在は特に何もしない
     // 将来的に必要に応じてキャッシュのクリアや再初期化を実装
   }

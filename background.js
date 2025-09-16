@@ -13,6 +13,9 @@
 // ===== Step 1: 初期化とエラーハンドリング =====
 console.log('[ServiceWorker] 起動開始');
 
+// ConsoleLoggerインスタンスを作成（後でimportされるため、ここでは宣言のみ）
+let logger;
+
 // Step 1-2: エラーハンドリングを追加
 self.addEventListener('error', (event) => {
   console.error('[Step 1-3] Service Worker Error:', event);
@@ -27,6 +30,10 @@ console.log('[ServiceWorker] モジュールインポート開始');
 
 // Step 2-2: 設定とユーティリティ
 import { loadSelectors } from './src/config/ui-selectors-loader.js';
+import { ConsoleLogger } from './src/utils/console-logger.js';
+
+// ConsoleLoggerインスタンスを初期化
+logger = new ConsoleLogger('background');
 
 // Step 2-3: 分離したコアモジュール
 import { logManager } from './src/core/log-manager.js';
@@ -67,7 +74,7 @@ import { AITaskHandler } from './src/handlers/ai-task-handler.js';
 import SpreadsheetAutoSetup from './src/services/spreadsheet-auto-setup.js';
 import StreamProcessorV2 from './src/features/task/stream-processor-v2.js';
 
-console.log('[ServiceWorker] モジュールインポート完了');
+logger.log('[Step 2-8: モジュールインポート完了] モジュールインポート完了');
 
 // ===== Step 3: グローバル変数初期化 =====
 // グローバル変数初期化（詳細ログは削除）
@@ -188,11 +195,11 @@ chrome.runtime.onInstalled.addListener((details) => {
 // Step 4-12: Service Worker起動時のGoogle Services初期化
 (async () => {
   try {
-    console.log('[Step 4-13] Google Services初期化開始');
+    logger.log('[Step 4-13: Google Services初期化開始] Google Services初期化開始');
     await googleServices.initialize();
-    console.log('[Step 4-14] ✅ Google Services初期化完了');
+    logger.success('[Step 4-14: Google Services初期化完了] Google Services初期化完了');
   } catch (error) {
-    console.error('[Step 4-15] ❌ Google Services初期化エラー:', error);
+    logger.error('[Step 4-15: Google Services初期化エラー] Google Services初期化エラー', error);
   }
 })();
 
@@ -213,10 +220,10 @@ chrome.runtime.onInstalled.addListener((details) => {
   }
 })();
 */
-console.log('[Step 4-17] StreamingServiceManager初期化をスキップ（一時的）');
+logger.warn('[Step 4-17: StreamingServiceManager初期化スキップ] StreamingServiceManager初期化をスキップ（一時的）');
 
 
-console.log('[Step 4-20] Service Worker初期化完了');
+logger.success('[Step 4-20: Service Worker初期化完了] Service Worker初期化完了');
 
 // ===== Step 5: メッセージハンドラー設定 =====
 console.log('[Step 5-1] メッセージハンドラー設定開始');

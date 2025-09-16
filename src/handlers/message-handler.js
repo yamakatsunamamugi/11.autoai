@@ -11,6 +11,7 @@
 
 // ===== Step 1: 初期化とインポート =====
 import { logManager } from '../core/log-manager.js';
+import { ConsoleLogger } from '../utils/console-logger.js';
 import {
   processSpreadsheetData,
   taskGroupCache,
@@ -30,6 +31,9 @@ import { getService } from '../core/service-registry.js';
 // AuthServiceキャッシュ
 let _authService = null;
 
+// ConsoleLoggerインスタンス
+const logger = new ConsoleLogger('message-handler');
+
 /**
  * AuthServiceを取得（Service Registry経由のみ）
  * @returns {Object} AuthServiceインスタンス
@@ -39,7 +43,7 @@ async function getAuthService() {
   if (!_authService) {
     try {
       _authService = await getService('authService');
-      console.log('[MessageHandler] AuthServiceをService Registryから取得しました');
+      logger.log('[Step 1-1: AuthService取得] AuthServiceをService Registryから取得しました');
     } catch (error) {
       throw new Error(`AuthServiceの取得に失敗しました: ${error.message}`);
     }
@@ -59,7 +63,7 @@ let isProcessing = false;
  * 共通のAITaskExecutorモジュールを使用
  */
 async function executeAITask(tabId, taskData) {
-  console.log('[Step 2-1] executeAITask開始');
+  logger.log('[Step 2-1: executeAITask開始] executeAITask開始');
   const startTime = Date.now();
 
   // Step 2-2: セル位置情報を含む詳細ログ
@@ -132,7 +136,7 @@ async function executeAITask(tabId, taskData) {
 
 // ===== Step 3: ポップアップ移動関数 =====
 async function movePopupToBottomRight() {
-  console.log('[Step 3-1] ポップアップ移動開始');
+  logger.log('[Step 3-1: ポップアップ移動開始] ポップアップ移動開始');
   try {
     // Step 3-2: Chrome Storageから拡張機能のウィンドウIDを取得
     const storage = await chrome.storage.local.get('extensionWindowId');
