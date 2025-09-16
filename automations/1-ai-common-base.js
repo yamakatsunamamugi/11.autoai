@@ -615,16 +615,6 @@
     }
   }
 
-  // 2-3-2. プロンプト整形
-  // セル位置情報を追加してプロンプトを整形
-  function formatPromptWithCellInfo(prompt, cellInfo) {
-    if (!cellInfo || !cellInfo.column || !cellInfo.row) {
-      return prompt;
-    }
-
-    const cellPosition = `${cellInfo.column}${cellInfo.row}`;
-    return `【現在${cellPosition}セルを処理中です】\n\n${prompt}`;
-  }
 
   // ----------------------------------------
   // 2-4. イベント処理

@@ -470,7 +470,7 @@ export class AITaskExecutor {
             const config = {
               model: taskData.model,
               function: taskData.function,
-              text: taskData.prompt,
+              text: taskData.prompt,  // プロンプトをそのまま使用（実際の追加はautomations/*.jsで行われる）
               send: true,
               waitResponse: true,
               getResponse: true,

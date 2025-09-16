@@ -764,17 +764,16 @@
             
             // パラメータ準備（スプレッドシートの値をそのまま使用）
             let prompt = taskData.prompt || taskData.text || '';
-            const modelName = taskData.model || '';
-            const featureName = taskData.function || null;
 
-            // セル位置情報を追加（Claude方式）
+            // セル位置情報を追加
             if (taskData.cellInfo && taskData.cellInfo.column && taskData.cellInfo.row) {
                 const cellPosition = `${taskData.cellInfo.column}${taskData.cellInfo.row}`;
-                prompt = `【現在${cellPosition}セルを処理中です】
-
-${prompt}`;
-                log(`セル位置情報を追加: ${cellPosition}`, 'info');
+                prompt = `【現在${cellPosition}セルを処理中です】\n\n${prompt}`;
+                console.log(`📍 セル位置情報を追加: ${cellPosition}`);
             }
+
+            const modelName = taskData.model || '';
+            const featureName = taskData.function || null;
 
             log(`選択されたモデル: ${modelName}`, 'info');
             log(`選択された機能: ${featureName || '設定なし'}`, 'info');
