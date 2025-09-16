@@ -215,6 +215,31 @@ export default class StreamProcessorV2 {
     streamProcessorInstance = null;
   }
 
+  /**
+   * 依存性を後から設定するメソッド
+   * シングルトンパターンで早期初期化された場合に使用
+   * @param {Object} dependencies - 依存性オブジェクト
+   * @param {Object} dependencies.sheetsClient - SheetsClientインスタンス
+   * @param {Function} dependencies.SpreadsheetLogger - SpreadsheetLoggerクラス
+   */
+  async setDependencies(dependencies = {}) {
+    // SheetsClientを設定
+    if (dependencies.sheetsClient) {
+      this.sheetsClient = dependencies.sheetsClient;
+      this.log('SheetsClientを設定しました', 'info');
+    }
+
+    // SpreadsheetLoggerクラスを設定して再初期化
+    if (dependencies.SpreadsheetLogger) {
+      this.SpreadsheetLoggerClass = dependencies.SpreadsheetLogger;
+      // 既存のspreadsheetLoggerがあれば、まずクリア
+      this.spreadsheetLogger = null;
+      // SpreadsheetLoggerを再初期化
+      await this.initializeSpreadsheetLogger();
+      this.log('SpreadsheetLoggerを再初期化しました', 'info');
+    }
+  }
+
   // 統一ログ関数（ChatGPT方式）
   // ========================================
   /**

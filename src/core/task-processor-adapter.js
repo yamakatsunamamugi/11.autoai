@@ -28,11 +28,14 @@ export class TaskProcessorAdapter {
     this.taskExecutor = dependencies.taskExecutor;
     this.logger = dependencies.logger || console;
 
-    // 内部でStreamProcessorV2を使用（依存性を渡す）
-    this.v2Processor = new StreamProcessorV2(this.logger, {
+    // 内部でStreamProcessorV2のシングルトンを使用
+    this.v2Processor = StreamProcessorV2.getInstance(this.logger);
+
+    // 依存性を設定（非同期で後から実行される）
+    this.pendingDependencies = {
       sheetsClient: this.sheetsClient,
       SpreadsheetLogger: dependencies.SpreadsheetLogger
-    });
+    };
 
     // 依存を注入（可能な範囲で）
     this.injectDependencies();
@@ -70,6 +73,12 @@ export class TaskProcessorAdapter {
   async processTasks(spreadsheetData, taskGroups, options = {}) {
     try {
       this.logger.log('[TaskProcessorAdapter] タスク処理開始');
+
+      // 依存性を設定（初回のみ）
+      if (this.pendingDependencies) {
+        await this.v2Processor.setDependencies(this.pendingDependencies);
+        this.pendingDependencies = null; // 一度だけ実行
+      }
 
       // 依存を再注入（processDynamicTaskGroupsで初期化される前に）
       this.injectDependencies();

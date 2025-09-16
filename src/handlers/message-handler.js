@@ -441,11 +441,12 @@ export function setupMessageHandler() {
             // Step 12-5: StreamProcessorV2初期化を確保してからSpreadsheetAutoSetupを実行
             if (!globalThis.SPREADSHEET_CONFIG) {
               console.log('[Step 12-5-1] SPREADSHEET_CONFIG未初期化、StreamProcessorV2を初期化');
-              // 依存性を取得して初期化
+              // 依存性を取得してシングルトンに設定
               const { getService } = await import('../core/service-registry.js');
               const sheetsClient = await getService('sheetsClient');
               const SpreadsheetLogger = (await import('../features/logging/spreadsheet-logger.js')).default;
-              new StreamProcessorV2(console, {
+              const processor = StreamProcessorV2.getInstance();
+              await processor.setDependencies({
                 sheetsClient: sheetsClient,
                 SpreadsheetLogger: SpreadsheetLogger
               });
@@ -509,11 +510,12 @@ export function setupMessageHandler() {
             // Step 13-7: StreamProcessorV2初期化を確保してから自動セットアップ
             if (!globalThis.SPREADSHEET_CONFIG) {
               console.log('[Step 13-7-1] SPREADSHEET_CONFIG未初期化、StreamProcessorV2を初期化');
-              // 依存性を取得して初期化
+              // 依存性を取得してシングルトンに設定
               const { getService } = await import('../core/service-registry.js');
               const sheetsClient = await getService('sheetsClient');
               const SpreadsheetLogger = (await import('../features/logging/spreadsheet-logger.js')).default;
-              new StreamProcessorV2(console, {
+              const processor = StreamProcessorV2.getInstance();
+              await processor.setDependencies({
                 sheetsClient: sheetsClient,
                 SpreadsheetLogger: SpreadsheetLogger
               });
@@ -725,18 +727,12 @@ export function setupMessageHandler() {
               SpreadsheetLogger = globalThis.SpreadsheetLogger;
             }
 
-            let processor;
-            if (USE_V2_MODE) {
-              processor = new StreamProcessorV2(console, {
-                sheetsClient: sheetsClient,
-                SpreadsheetLogger: SpreadsheetLogger
-              });
-            } else {
-              processor = new StreamProcessorV2(console, {
-                sheetsClient: sheetsClient,
-                SpreadsheetLogger: SpreadsheetLogger
-              });
-            }
+            // シングルトンインスタンスを取得して依存性を設定
+            const processor = StreamProcessorV2.getInstance();
+            await processor.setDependencies({
+              sheetsClient: sheetsClient,
+              SpreadsheetLogger: SpreadsheetLogger
+            });
 
             // Step 18-6: スプレッドシートデータを取得
             let spreadsheetData;
