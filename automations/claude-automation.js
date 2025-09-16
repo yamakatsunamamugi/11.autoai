@@ -69,6 +69,12 @@
         },
         '4_Canvas機能テキスト位置': {
             selectors: [
+                // 最新Canvas UI対応
+                '.grid-cols-1.grid.gap-2\\.5',
+                'div.grid-cols-1.grid',
+                '[class*="grid-cols-1"][class*="gap-2.5"]',
+                'div[class*="grid"][class*="gap-2.5"]',
+                // 後方互換性
                 '#markdown-artifact',
                 '[id="markdown-artifact"]',
                 '.font-claude-response#markdown-artifact',
@@ -76,6 +82,15 @@
                 'div.mx-auto.max-w-3xl#markdown-artifact'
             ],
             description: 'Canvas機能のテキスト表示エリア'
+        },
+        '4_3_Canvas続けるボタン': {
+            selectors: [
+                'button[aria-label="続ける"]',
+                'button:contains("続ける")',
+                'button[type="button"]:has-text("続ける")',
+                'button.inline-flex:contains("続ける")'
+            ],
+            description: 'Canvas機能の続けるボタン'
         },
         '4_2_Canvas開くボタン': {
             selectors: UI_SELECTORS.Claude?.DEEP_RESEARCH?.CANVAS_PREVIEW || UI_SELECTORS.Claude?.PREVIEW_BUTTON || [],
@@ -153,6 +168,12 @@
         },
         '4_Canvas機能テキスト位置': {
             selectors: [
+                // 最新Canvas UI対応
+                '.grid-cols-1.grid.gap-2\\.5',
+                'div.grid-cols-1.grid',
+                '[class*="grid-cols-1"][class*="gap-2.5"]',
+                'div[class*="grid"][class*="gap-2.5"]',
+                // 後方互換性
                 '#markdown-artifact',
                 '[id="markdown-artifact"]',
                 '.font-claude-response#markdown-artifact',
@@ -160,6 +181,15 @@
                 'div.mx-auto.max-w-3xl#markdown-artifact'
             ],
             description: 'Canvas機能のテキスト表示エリア'
+        },
+        '4_3_Canvas続けるボタン': {
+            selectors: [
+                'button[aria-label="続ける"]',
+                'button:contains("続ける")',
+                'button[type="button"]:has-text("続ける")',
+                'button.inline-flex:contains("続ける")'
+            ],
+            description: 'Canvas機能の続けるボタン'
         },
         '5_通常処理テキスト位置': {
             selectors: [
@@ -1060,6 +1090,62 @@
 
             // Canvas機能のテキストを確認
             const deepResearchSelectors = getDeepResearchSelectors();
+
+            // 「続ける」ボタンがあればクリック
+            const continueButton = await findClaudeElement(deepResearchSelectors['4_3_Canvas続けるボタン'], 3, true);
+            if (continueButton) {
+                console.log('✓ Canvas「続ける」ボタンを発見、クリック中...');
+                continueButton.click();
+                await wait(2000);
+
+                // 回答停止ボタンが出現するまで待機
+                console.log('🔄 回答停止ボタンの出現を待機中...');
+                let stopButtonFound = false;
+                let waitCount = 0;
+                const maxWait = 30; // 30秒まで待機
+
+                while (!stopButtonFound && waitCount < maxWait) {
+                    const stopResult = await findClaudeElement(deepResearchSelectors['3_回答停止ボタン'], 2, true);
+                    if (stopResult) {
+                        stopButtonFound = true;
+                        console.log(`✓ 回答停止ボタンが出現（${waitCount}秒後）`);
+                        break;
+                    }
+                    await wait(1000);
+                    waitCount++;
+                }
+
+                // 回答停止ボタンが消滅するまで待機
+                if (stopButtonFound) {
+                    console.log('🔄 回答完了まで待機中...');
+                    while (waitCount < 600) { // 最大10分待機
+                        const stopResult = await findClaudeElement(deepResearchSelectors['3_回答停止ボタン'], 2, true);
+                        if (!stopResult) {
+                            // 10秒間確認
+                            let stillGone = true;
+                            for (let confirmCount = 0; confirmCount < 10; confirmCount++) {
+                                await wait(1000);
+                                const reconfirmResult = await findClaudeElement(deepResearchSelectors['3_回答停止ボタン'], 2, true);
+                                if (reconfirmResult) {
+                                    stillGone = false;
+                                    console.log(`  停止ボタン再出現（${confirmCount + 1}秒後）`);
+                                    break;
+                                }
+                            }
+
+                            if (stillGone) {
+                                console.log('✓ Canvas回答生成完了');
+                                break;
+                            }
+                        }
+                        await wait(1000);
+                        waitCount++;
+                    }
+                }
+
+                await wait(2000); // 追加待機
+            }
+
             const canvasResult = await findClaudeElement(deepResearchSelectors['4_Canvas機能テキスト位置'], 3, true);
 
             if (canvasResult) {
