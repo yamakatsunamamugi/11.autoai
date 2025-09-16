@@ -1550,6 +1550,10 @@ ${prompt}`;
     console.log('[DEBUG] window.ChatGPTAutomationV2設定完了');
     console.log('[DEBUG] typeof window.ChatGPTAutomationV2:', typeof window.ChatGPTAutomationV2);
 
+    // 初期化マーカー設定（グローバルに再設定）
+    window.CHATGPT_SCRIPT_LOADED = true;
+    window.CHATGPT_SCRIPT_INIT_TIME = Date.now();
+
     console.log('✅ ChatGPT Automation V2 準備完了');
     console.log('使用方法: ChatGPTAutomation.executeTask({ model: "GPT-4o", function: "Deep Research", prompt: "..." })');
     console.log('✅ 下位互換性: ChatGPTAutomation と ChatGPTAutomationV2 の両方で利用可能');

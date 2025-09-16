@@ -806,6 +806,9 @@ export default class StreamProcessorV2 {
       }
 
       // ===== Step 5-1: グループ完了時のログ・回答記録 =====
+      // 注意: この処理は重複しており、パフォーマンスを低下させるため無効化
+      // AIタスク実行時に既にログ・回答は記録されている
+      /*
       if (taskGroupInfo) {
         try {
           await this.writeGroupLogsAndResponses(taskGroupInfo, spreadsheetData);
@@ -814,6 +817,7 @@ export default class StreamProcessorV2 {
           this.logger.error(`[StreamProcessorV2] ❌ グループ${groupIndex + 1}のログ・回答記録エラー:`, recordError);
         }
       }
+      */
 
       // ===== Step 6: グループ完了後のリトライ処理 =====
       if (this.retryManager) {
