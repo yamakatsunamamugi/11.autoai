@@ -747,15 +747,18 @@ ${prompt}`;
                     console.log('⚠️ 応答停止ボタンが30秒後も残存しています');
                 }
 
-                // 2. テキスト安定化待機（10秒間）
-                console.log('テキスト安定化待機開始（10秒間）...');
+                // 2. テキスト安定化待機（変化が止まるまで待機）
+                console.log('テキスト安定化待機開始（変化が止まるまで待機）...');
                 let lastTextContent = '';
                 let stableCount = 0;
-                const requiredStableCount = 3; // 3回連続で同じ内容なら安定とみなす
+                const requiredStableCount = 5; // 5回連続で同じ内容なら安定とみなす（約5秒間変化なし）
                 let stableText = ''; // 安定化したテキストを保存
+                const maxWaitTime = 120; // 最大120秒待機（長い回答に対応）
+                let totalWaitTime = 0;
 
-                for (let i = 0; i < 10; i++) {
+                while (totalWaitTime < maxWaitTime) {
                     await wait(1000);
+                    totalWaitTime++;
 
                     // 現在のテキスト内容を取得
                     const normalSelectors = UI_SELECTORS.Claude?.TEXT_EXTRACTION?.NORMAL_RESPONSE || [];
@@ -790,13 +793,14 @@ ${prompt}`;
                     if (currentTextContent === lastTextContent) {
                         stableCount++;
                         if (stableCount >= requiredStableCount) {
-                            console.log(`✅ テキスト安定化確認 (${i + 1}秒後, ${currentLength}文字)`);
+                            console.log(`✅ テキスト安定化確認 (${totalWaitTime}秒後, ${currentLength}文字)`);
+                            console.log(`  ${requiredStableCount}秒間テキスト変化なし`);
                             stableText = currentTextContent;
                             break;
                         }
                     } else {
                         stableCount = 0;
-                        console.log(`テキスト変化検出: ${lastLength} → ${currentLength}文字`);
+                        console.log(`テキスト変化検出 (${totalWaitTime}秒経過): ${lastLength} → ${currentLength}文字`);
                         if (currentLength > lastLength) {
                             console.log(`  追加された文字数: ${currentLength - lastLength}`);
                         } else if (currentLength < lastLength) {
@@ -805,12 +809,18 @@ ${prompt}`;
                     }
 
                     lastTextContent = currentTextContent;
+
+                    // 10秒ごとに経過時間を表示
+                    if (totalWaitTime % 10 === 0) {
+                        console.log(`  待機中... ${totalWaitTime}秒経過`);
+                    }
                 }
 
                 // 最終的なテキストを保存
                 if (!stableText) {
                     stableText = lastTextContent;
-                    console.log(`⚠️ テキスト安定化せず。最終状態のテキストを使用 (${stableText.length}文字)`);
+                    console.log(`⚠️ ${maxWaitTime}秒経過。最終状態のテキストを使用 (${stableText.length}文字)`);
+                    console.log(`  ※まだテキストが変化している可能性があります`);
                 }
 
                 // グローバル変数に保存して後で使用
