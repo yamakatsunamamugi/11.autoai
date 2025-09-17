@@ -73,13 +73,16 @@
                 '#markdown-artifact',
                 '[id="markdown-artifact"]',
                 '.font-claude-response#markdown-artifact',
+                // 実際のCanvas構造に合わせて追加
+                'div.grid-cols-1.grid.gap-2\\.5:has(p.whitespace-pre-wrap)',
+                'div.grid-cols-1.grid.gap-2\\.5',
+                'div[class*="grid-cols-1"][class*="gap-2.5"]',
+                // 既存のセレクタも維持（互換性のため）
                 '[tabindex="0"]#markdown-artifact',
                 'div.mx-auto.max-w-3xl#markdown-artifact',
                 // 汎用セレクタは最後（フォールバック用）
-                '.grid-cols-1.grid.gap-2\\.5:not(.standard-markdown)',
-                'div.grid-cols-1.grid:not(.standard-markdown)',
-                '[class*="grid-cols-1"][class*="gap-2.5"]:not([class*="standard-markdown"])',
-                'div[class*="grid"][class*="gap-2.5"]:not([class*="standard-markdown"])'
+                '.grid-cols-1.grid:not(.standard-markdown)',
+                '[class*="grid"][class*="gap"]:not([class*="standard-markdown"])'
             ],
             description: 'Canvas機能のテキスト表示エリア'
         },
@@ -183,13 +186,16 @@
                 '#markdown-artifact',
                 '[id="markdown-artifact"]',
                 '.font-claude-response#markdown-artifact',
+                // 実際のCanvas構造に合わせて追加
+                'div.grid-cols-1.grid.gap-2\\.5:has(p.whitespace-pre-wrap)',
+                'div.grid-cols-1.grid.gap-2\\.5',
+                'div[class*="grid-cols-1"][class*="gap-2.5"]',
+                // 既存のセレクタも維持（互換性のため）
                 '[tabindex="0"]#markdown-artifact',
                 'div.mx-auto.max-w-3xl#markdown-artifact',
                 // 汎用セレクタは最後（フォールバック用）
-                '.grid-cols-1.grid.gap-2\\.5:not(.standard-markdown)',
-                'div.grid-cols-1.grid:not(.standard-markdown)',
-                '[class*="grid-cols-1"][class*="gap-2.5"]:not([class*="standard-markdown"])',
-                'div[class*="grid"][class*="gap-2.5"]:not([class*="standard-markdown"])'
+                '.grid-cols-1.grid:not(.standard-markdown)',
+                '[class*="grid"][class*="gap"]:not([class*="standard-markdown"])'
             ],
             description: 'Canvas機能のテキスト表示エリア'
         },
@@ -608,20 +614,31 @@
         }
 
         // 方法3: 特定の子要素からテキスト取得（Canvasの場合）
-        if (element.id === 'markdown-artifact' || element.querySelector('#markdown-artifact')) {
+        if (element.id === 'markdown-artifact' || element.querySelector('#markdown-artifact') ||
+            element.querySelector('.grid-cols-1.grid.gap-2\\.5')) {
             console.log('  📝 Canvas要素を検出、特別処理を実行');
 
-            // pre/codeブロックを探す
-            const codeBlocks = element.querySelectorAll('pre, code, .prose');
-            console.log('  - コードブロック数:', codeBlocks.length);
+            // すべての段落要素を取得（Canvasの主要コンテンツ）
+            const paragraphs = element.querySelectorAll('p');
+            console.log('  - 段落数:', paragraphs.length);
 
-            if (codeBlocks.length > 0) {
+            if (paragraphs.length > 0) {
                 let combinedText = '';
-                codeBlocks.forEach((block, index) => {
-                    const blockText = block.innerText || block.textContent || '';
-                    console.log(`    - ブロック${index + 1}: ${blockText.length}文字`);
-                    combinedText += blockText + '\n';
+                let totalChars = 0;
+                paragraphs.forEach((para, index) => {
+                    const paraText = para.innerText || para.textContent || '';
+                    if (paraText.trim()) {
+                        const charCount = paraText.length;
+                        totalChars += charCount;
+                        if (index < 5 || index >= paragraphs.length - 2) {
+                            // 最初の5段落と最後の2段落の詳細をログ
+                            console.log(`    - 段落${index + 1}: ${charCount}文字`);
+                        }
+                        combinedText += paraText.trim() + '\n\n';
+                    }
                 });
+
+                console.log(`  - 総文字数: ${totalChars}文字`);
 
                 if (combinedText.trim().length > fullText.length) {
                     fullText = combinedText.trim();
@@ -629,10 +646,22 @@
                 }
             }
 
-            // 段落要素を探す
-            const paragraphs = element.querySelectorAll('p, div.prose');
-            if (paragraphs.length > 0) {
-                console.log('  - 段落数:', paragraphs.length);
+            // pre/codeブロックも探す（コード例が含まれる場合）
+            const codeBlocks = element.querySelectorAll('pre, code');
+            if (codeBlocks.length > 0) {
+                console.log('  - コードブロック数:', codeBlocks.length);
+                let codeText = '';
+                codeBlocks.forEach((block, index) => {
+                    const blockText = block.innerText || block.textContent || '';
+                    if (blockText.trim() && !fullText.includes(blockText.trim())) {
+                        console.log(`    - コードブロック${index + 1}: ${blockText.length}文字`);
+                        codeText += blockText + '\n';
+                    }
+                });
+
+                if (codeText.trim()) {
+                    fullText += '\n\n' + codeText.trim();
+                }
             }
         }
 
@@ -1202,10 +1231,46 @@
                                                 console.log(`   - クラス: ${canvasContent.className ? canvasContent.className.substring(0, 80) : '(なし)'}`);
                                                 console.log(`   - テキスト長: ${textLength}文字`);
 
-                                                // Canvas内容を即座に取得して保存
+                                                // Canvas内容を取得して保存（改善版）
                                                 if (textLength > 0) {
-                                                    finalText = canvasContent.textContent.trim();
-                                                    console.log('📝 Canvas内容を取得・保存しました');
+                                                    // テキストが完全に読み込まれるまで待機
+                                                    console.log('⏳ テキスト完全読み込み待機中...');
+                                                    let previousLength = textLength;
+                                                    let stableCount = 0;
+                                                    const maxStableWait = 5; // 5秒間長さが変わらなければ完了
+
+                                                    for (let i = 0; i < maxStableWait; i++) {
+                                                        await wait(1000);
+                                                        const currentContent = await findClaudeElement(deepResearchSelectors['4_Canvas機能テキスト位置'], 1, true);
+                                                        if (currentContent) {
+                                                            const currentLength = currentContent.textContent ? currentContent.textContent.trim().length : 0;
+                                                            console.log(`    - ${i + 1}秒後: ${currentLength}文字`);
+
+                                                            if (currentLength === previousLength) {
+                                                                stableCount++;
+                                                                if (stableCount >= 2) {
+                                                                    console.log('  ✅ テキスト長が安定しました');
+                                                                    canvasContent = currentContent; // 最新の要素に更新
+                                                                    break;
+                                                                }
+                                                            } else {
+                                                                stableCount = 0;
+                                                                previousLength = currentLength;
+                                                            }
+                                                        }
+                                                    }
+
+                                                    // getTextPreviewで詳細にテキスト取得
+                                                    const textInfo = getTextPreview(canvasContent);
+                                                    if (textInfo && textInfo.full) {
+                                                        finalText = textInfo.full;
+                                                        console.log(`📝 Canvas内容を取得・保存しました（${finalText.length}文字）`);
+                                                    } else {
+                                                        // フォールバック: 直接取得
+                                                        finalText = canvasContent.innerText || canvasContent.textContent || '';
+                                                        finalText = finalText.trim();
+                                                        console.log(`📝 Canvas内容を直接取得しました（${finalText.length}文字）`);
+                                                    }
                                                 }
                                                 break;
                                             }
