@@ -56,14 +56,13 @@ import {
 
 // Step 2-6: [削除済み] ServiceRegistry
 
-// Step 2-7: SpreadsheetLoggerクラスをimport
-import SpreadsheetLogger from './src/features/logging/spreadsheet-logger.js';
+// Step 2-7: SpreadsheetLogger削除済み - SheetsClientに統合
 
 // Step 2-5: その他のサービス
 import './src/services/auth-service.js';
 import { default as WindowService } from './src/services/window-service.js';
 import './src/features/spreadsheet/sheets-client.js';
-import './src/features/logging/spreadsheet-logger.js';
+// SpreadsheetLogger削除済み - SheetsClientに統合
 import { getStreamingServiceManager } from './src/core/streaming-service-manager.js';
 import { AITaskExecutor } from './src/core/ai-task-executor.js';
 import { AITaskHandler } from './src/handlers/ai-task-handler.js';
@@ -102,18 +101,16 @@ globalThis.StreamProcessorV2 = StreamProcessorV2;
       // 直接依存性を作成
       const SheetsClientClass = (await import('./src/features/spreadsheet/sheets-client.js')).default;
       const sheetsClientFromRegistry = new SheetsClientClass();
-      const SpreadsheetLoggerClass = SpreadsheetLogger;
+      // SpreadsheetLogger削除済み - SheetsClientに統合
 
       console.log('[Background] 依存性取得成功:', {
-        sheetsClient: !!sheetsClientFromRegistry,
-        SpreadsheetLogger: !!SpreadsheetLoggerClass
+        sheetsClient: !!sheetsClientFromRegistry
       });
 
       // StreamProcessorV2のシングルトンに依存性を設定
       const processor = StreamProcessorV2.getInstance();
       await processor.setDependencies({
-        sheetsClient: sheetsClientFromRegistry,
-        SpreadsheetLogger: SpreadsheetLoggerClass
+        sheetsClient: sheetsClientFromRegistry
       });
 
       console.log('[Background] StreamProcessorV2依存性設定完了');

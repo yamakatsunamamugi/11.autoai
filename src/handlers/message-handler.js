@@ -26,7 +26,7 @@ import StreamProcessorV2 from '../features/task/stream-processor-v2.js';
 import SpreadsheetAutoSetup from '../services/spreadsheet-auto-setup.js';
 import SheetsClient from '../features/spreadsheet/sheets-client.js';
 import { getStreamingServiceManager } from '../core/streaming-service-manager.js';
-import SpreadsheetLogger from '../features/logging/spreadsheet-logger.js';
+// SpreadsheetLogger削除済み - SheetsClientに統合
 import { getAuthService } from '../services/auth-service.js';
 
 // ConsoleLoggerインスタンス

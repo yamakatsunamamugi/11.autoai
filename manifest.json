@@ -80,10 +80,7 @@
         "automations/claude-automation.js",
         "automations/gemini-automation.js",
         "automations/2-4-genspark-automation.js",
-        "automations/2-5-report-automation.js",
-        "log-viewer.html",
-        "log-viewer.js",
-        "log-viewer.css"
+        "automations/2-5-report-automation.js"
       ],
       "matches": ["<all_urls>"]
     }

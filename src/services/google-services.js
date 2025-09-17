@@ -1264,7 +1264,7 @@ export class GoogleServices {
     this.authManager = new GoogleAuthManager();
     this.sheetsReader = new SheetsReader(this.authManager);
     this.sheetsWriter = new SheetsWriter(this.authManager);
-    this.spreadsheetLogger = new SpreadsheetLogger(this.sheetsWriter);
+    // SpreadsheetLogger削除済み - SheetsClientに統合
     this.autoSetup = new SpreadsheetAutoSetup(this.sheetsReader, this.sheetsWriter);
     this.docsGenerator = new DocsReportGenerator(this.authManager);
 

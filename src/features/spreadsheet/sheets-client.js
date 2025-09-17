@@ -2071,6 +2071,272 @@ class SheetsClient {
   }
 
   /**
+   * 既存ログと新規ログをマージ
+   * @param {string} existingLog - 既存のログ
+   * @param {string} newLog - 新規ログ
+   * @param {string} aiType - AI種別（重複チェック用）
+   * @returns {string} マージ済みログ
+   */
+  mergeWithExistingLog(existingLog, newLog, aiType = '') {
+    if (!existingLog || existingLog.trim() === '') {
+      return newLog;
+    }
+
+    // AI名を日本語表記に変換
+    const aiDisplayName = this.getAIDisplayName(aiType);
+
+    // 既存ログに同じAIのログが既に存在するかチェック
+    const duplicateCheck = existingLog.includes(`---------- ${aiDisplayName} ----------`);
+
+    if (duplicateCheck) {
+      // 同じAIのログ部分を新しいログで置換
+      const escapedName = aiDisplayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const logPattern = new RegExp(`---------- ${escapedName} ----------[\\s\\S]*?(?=\\n\\n---------- |$)`, 'g');
+      const updatedLog = existingLog.replace(logPattern, newLog);
+
+      // 置換に失敗した場合は末尾に追加
+      if (updatedLog === existingLog) {
+        return `${existingLog}\n\n═══════════════════════\n\n${newLog}`;
+      }
+      return updatedLog;
+    }
+
+    // 新しいAIのログなので末尾に追加
+    return `${existingLog}\n\n═══════════════════════\n\n${newLog}`;
+  }
+
+  /**
+   * ログ列の妥当性を検証
+   * @param {string} logColumn - 検証するログ列
+   * @param {Object} spreadsheetData - スプレッドシートデータ
+   * @returns {Promise<{isValid: boolean, validLogColumns: Array, error?: string}>}
+   */
+  async validateLogColumn(logColumn, spreadsheetData) {
+    try {
+      // スプレッドシートデータがない場合は検証をスキップ
+      if (!spreadsheetData) {
+        return {
+          isValid: true,
+          validLogColumns: [logColumn],
+          warning: 'スプレッドシートデータなしで続行'
+        };
+      }
+
+      // menuRowがない場合はデフォルトで通す
+      if (!spreadsheetData.menuRow) {
+        return {
+          isValid: true,
+          validLogColumns: [logColumn],
+          warning: 'menuRowなしで続行'
+        };
+      }
+
+      // メニュー行から「ログ」という名前の列を検索
+      const validLogColumns = [];
+      const menuRowData = spreadsheetData.menuRow.data || [];
+
+      for (let i = 0; i < menuRowData.length; i++) {
+        const cellValue = menuRowData[i];
+        if (cellValue && typeof cellValue === 'string' && cellValue.trim() === 'ログ') {
+          const columnLetter = this.indexToColumn(i);
+          validLogColumns.push(columnLetter);
+        }
+      }
+
+      // 有効なログ列が見つからない場合
+      if (validLogColumns.length === 0) {
+        return {
+          isValid: true,
+          validLogColumns: ['B'],
+          warning: 'ログ列が見つからないため、デフォルトB列を使用'
+        };
+      }
+
+      // 指定されたログ列が有効かチェック
+      const isValid = validLogColumns.includes(logColumn);
+
+      if (!isValid) {
+        return {
+          isValid: false,
+          validLogColumns: validLogColumns,
+          error: `指定されたログ列 ${logColumn} は有効なログ列ではありません`
+        };
+      }
+
+      return {
+        isValid: true,
+        validLogColumns: validLogColumns
+      };
+
+    } catch (error) {
+      // エラーが発生した場合は安全のため続行を許可
+      return {
+        isValid: true,
+        validLogColumns: [logColumn],
+        warning: `検証エラー: ${error.message}`
+      };
+    }
+  }
+
+  /**
+   * 列インデックスを列名（A, B, C...）に変換
+   * @param {number} index - 列インデックス（0ベース）
+   * @returns {string} 列名
+   */
+  indexToColumn(index) {
+    let column = '';
+    while (index >= 0) {
+      column = String.fromCharCode((index % 26) + 65) + column;
+      index = Math.floor(index / 26) - 1;
+    }
+    return column;
+  }
+
+  /**
+   * グループログを結合
+   * @param {Array<Object|string>} logs - ログの配列
+   * @returns {string} 結合されたログ
+   */
+  combineGroupLogs(logs) {
+    // オブジェクト形式と文字列形式の両方に対応
+    const normalizedLogs = logs.map(log => {
+      if (typeof log === 'object' && log.content) {
+        return {
+          aiType: log.aiType,
+          content: log.content,
+          url: log.url
+        };
+      } else if (typeof log === 'string') {
+        // 文字列からAIタイプを推測
+        let aiType = 'unknown';
+        if (log.includes('---------- ChatGPT ----------')) {
+          aiType = 'chatgpt';
+        } else if (log.includes('---------- Claude ----------')) {
+          aiType = 'claude';
+        } else if (log.includes('---------- Gemini ----------')) {
+          aiType = 'gemini';
+        }
+        return {
+          aiType: aiType,
+          content: log,
+          url: null
+        };
+      }
+      return null;
+    }).filter(log => log !== null);
+
+    // AIタイプの順番を定義（ChatGPT → Claude → Gemini）
+    const aiOrder = {
+      'chatgpt': 1,
+      'claude': 2,
+      'gemini': 3,
+      'unknown': 4
+    };
+
+    // 順番でソート
+    normalizedLogs.sort((a, b) => {
+      const orderA = aiOrder[a.aiType.toLowerCase()] || 999;
+      const orderB = aiOrder[b.aiType.toLowerCase()] || 999;
+      return orderA - orderB;
+    });
+
+    // contentのみを取り出して結合
+    const sortedContents = normalizedLogs.map(log => log.content);
+
+    // テキスト形式で結合
+    return sortedContents.join('\n\n====================\n\n');
+  }
+
+  /**
+   * ログテキストをリッチテキストデータに変換
+   * @param {string} logText - ログテキスト
+   * @returns {Array<Object>} リッチテキストデータの配列
+   */
+  parseLogToRichText(logText) {
+    const richTextData = [];
+    const lines = logText.split('\n');
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+
+      // URL行を検出（"URL: "で始まる行）
+      if (line.startsWith('URL: ')) {
+        // "URL: "部分を追加
+        richTextData.push({ text: 'URL: ' });
+
+        // URL部分を抽出
+        const urlPart = line.substring(5);
+        const urlMatch = urlPart.match(/^(https?:\/\/[^\s]+)/);
+
+        if (urlMatch) {
+          // URLをリンクとして追加
+          richTextData.push({
+            text: urlMatch[1],
+            url: urlMatch[1]
+          });
+
+          // URL以降の残りのテキストがあれば追加
+          const remaining = urlPart.substring(urlMatch[1].length);
+          if (remaining) {
+            richTextData.push({ text: remaining });
+          }
+        } else {
+          // URLが見つからない場合は通常テキストとして追加
+          richTextData.push({ text: urlPart });
+        }
+      } else {
+        // 通常の行はそのまま追加
+        richTextData.push({ text: line });
+      }
+
+      // 改行を追加（最後の行以外）
+      if (i < lines.length - 1) {
+        richTextData.push({ text: '\n' });
+      }
+    }
+
+    return richTextData;
+  }
+
+  /**
+   * 簡易ログ生成（送信時刻なしの場合）
+   * @param {Object} task - タスクオブジェクト
+   * @param {string} url - 現在のURL
+   * @returns {string} フォーマット済みログ
+   */
+  formatSimpleLogEntry(task, url) {
+    const aiType = task.aiType || 'Unknown';
+    const selectedModel = task.model || '不明';
+    const displayedModel = task.displayedModel || '不明';
+    const model = `選択: ${selectedModel} / 表示: ${displayedModel}`;
+    const selectedFunction = task.function || task.specialOperation || '通常';
+    const displayedFunction = task.displayedFunction || '不明';
+    const functionName = `選択: ${selectedFunction} / 表示: ${displayedFunction}`;
+    const currentTime = new Date();
+
+    const timeStr = currentTime.toLocaleString('ja-JP', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+
+    const aiDisplayName = this.getAIDisplayName(aiType);
+
+    const logEntry = [
+      `---------- ${aiDisplayName} ----------`,
+      `モデル: ${model}`,
+      `機能: ${functionName}`,
+      `URL: ${url || 'URLが取得できませんでした'}`,
+      `記載時刻: ${timeStr}`
+    ].join('\n');
+
+    return logEntry;
+  }
+
+  /**
    * スプレッドシートのログをクリア
    *
    * 【概要】
