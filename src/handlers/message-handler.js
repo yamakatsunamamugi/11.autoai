@@ -1052,13 +1052,20 @@ export function setupMessageHandler() {
 
             // Step 23-4: グローバルSpreadsheetLoggerを使用（フォールバック）
             if (!spreadsheetLogger) {
-              // 複数のグローバルロケーションを確認
+              // Service Worker環境ではwindowオブジェクトが存在しない
+              const isServiceWorker = typeof window === 'undefined';
+              console.log('[Step 23-4] 環境検出:', isServiceWorker ? 'Service Worker' : 'Content Script/Popup');
+
+              // 環境に応じたグローバルロケーションを確認
               const possibleLocations = [
                 globalThis.spreadsheetLogger,
-                window?.spreadsheetLogger,
+                // Service Worker環境ではwindowを除外
+                ...(isServiceWorker ? [] : [window?.spreadsheetLogger]),
                 globalThis.logManager?.spreadsheetLogger,
                 globalThis.StreamProcessorV2?.getInstance()?.spreadsheetLogger
               ];
+
+              console.log('[Step 23-4] 探索対象数:', possibleLocations.filter(Boolean).length);
 
               for (const location of possibleLocations) {
                 if (location) {
@@ -1106,25 +1113,49 @@ export function setupMessageHandler() {
 
               sendResponse({ success: true });
             } else {
-              console.warn("[Step 23-8] ❌ SpreadsheetLoggerが利用できません - ローカル記録のみ");
+              // Claude専用のフォールバック処理
+              const isClaudeTask = request.taskInfo?.aiType === 'Claude';
+              const isServiceWorker = typeof window === 'undefined';
 
-              // ローカルストレージで最低限の送信時刻記録を保持
+              console.warn(`[Step 23-8] ❌ SpreadsheetLoggerが利用できません - 環境: ${isServiceWorker ? 'Service Worker' : 'Content Script'}, AI: ${request.taskInfo?.aiType}`);
+
+              // Service Worker環境でのClaudeタスクの特別処理
               try {
-                const localStorage = {
+                const fallbackRecord = {
                   taskId: request.taskId,
                   sendTime: request.sendTime,
                   aiType: request.taskInfo?.aiType,
                   model: request.taskInfo?.model,
-                  timestamp: new Date().toISOString()
+                  environment: isServiceWorker ? 'service-worker' : 'content-script',
+                  timestamp: new Date().toISOString(),
+                  fallbackReason: 'SpreadsheetLogger unavailable'
                 };
 
-                // コンソールに詳細を記録
-                console.log('[Step 23-8-alt] ローカル送信時刻記録:', localStorage);
+                // Service Worker環境でのコンソール記録
+                console.log('[Step 23-8-fallback] フォールバック送信時刻記録:', fallbackRecord);
 
-                sendResponse({ success: true, message: "Local recording only - SpreadsheetLogger unavailable" });
+                if (isClaudeTask && isServiceWorker) {
+                  // Claude + Service Workerの特別処理
+                  console.log('[Step 23-8-claude] Claude Service Workerフォールバック適用');
+
+                  // 将来的にはStorage APIやIndexedDBでの保存も検討
+                  globalThis.claudeSendTimeRecords = globalThis.claudeSendTimeRecords || new Map();
+                  globalThis.claudeSendTimeRecords.set(request.taskId, fallbackRecord);
+                }
+
+                sendResponse({
+                  success: true,
+                  message: `Fallback recording completed - ${isServiceWorker ? 'Service Worker' : 'Content Script'} environment`,
+                  fallbackUsed: true,
+                  environment: isServiceWorker ? 'service-worker' : 'content-script'
+                });
               } catch (altError) {
-                console.error('[Step 23-8-alt] ローカル記録も失敗:', altError);
-                sendResponse({ success: false, error: "SpreadsheetLogger not available and local recording failed" });
+                console.error('[Step 23-8-error] フォールバック記録も失敗:', altError);
+                sendResponse({
+                  success: false,
+                  error: `Fallback recording failed: ${altError.message}`,
+                  environment: isServiceWorker ? 'service-worker' : 'content-script'
+                });
               }
             }
           } catch (error) {

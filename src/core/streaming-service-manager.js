@@ -30,6 +30,11 @@ class StreamingServiceManager {
       get: (key, defaultValue = null) => defaultValue,
       set: (key, value) => {},
       isValid: () => true, // 基本的な有効性チェック
+      getPublicConfig: () => ({ // 公開用設定情報
+        environment: typeof window === 'undefined' ? 'service-worker' : 'content-script',
+        version: '1.0.0',
+        initialized: true
+      }),
       ...config
     };
 
