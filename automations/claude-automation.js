@@ -1403,6 +1403,20 @@
                 throw new Error('送信ボタンのクリックに失敗しました');
             }
 
+            // 送信時刻を記録（SpreadsheetLogger用）
+            console.log('🔍 送信時刻記録開始 - AIHandler:', !!window.AIHandler, 'recordSendTimestamp:', !!window.AIHandler?.recordSendTimestamp, 'currentAITaskInfo:', !!window.currentAITaskInfo);
+            if (window.AIHandler && window.AIHandler.recordSendTimestamp) {
+                try {
+                    console.log('📝 送信時刻記録実行開始 - タスクID:', window.currentAITaskInfo?.taskId);
+                    await window.AIHandler.recordSendTimestamp('Claude');
+                    console.log('✅ 送信時刻記録成功');
+                } catch (error) {
+                    console.log('❌ 送信時刻記録エラー:', error.message);
+                }
+            } else {
+                console.log('⚠️ AIHandler または recordSendTimestamp が利用できません');
+            }
+
             console.log('✅ メッセージ送信完了');
             ClaudeLogManager.logStep('Step5-Send', 'メッセージ送信完了');
             await wait(2000);

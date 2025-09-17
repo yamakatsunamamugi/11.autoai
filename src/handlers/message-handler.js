@@ -270,17 +270,57 @@ export function setupMessageHandler() {
         return true;
 
       case "DOWNLOAD_LOG_FILE":
-        console.log('[LogFile] ログファイルダウンロード要求');
+        console.log('🔥 [CRITICAL] DOWNLOAD_LOG_FILE メッセージ受信！', new Date().toISOString());
+        console.log('🔥 [CRITICAL] request全体:', request);
+        console.log('🔥 [CRITICAL] request.data詳細:', {
+          hasData: !!request.data,
+          hasFileName: !!request.data?.fileName,
+          hasContent: !!request.data?.content,
+          contentLength: request.data?.content?.length || 0,
+          contentPreview: request.data?.content?.substring(0, 200) + '...',
+          fileName: request.data?.fileName
+        });
+        console.log('🔥 [CRITICAL] sender情報:', {
+          tabId: sender?.tab?.id,
+          url: sender?.tab?.url,
+          frameId: sender?.frameId
+        });
+
+        // 即座にレスポンスを試みる
+        console.log('🔥 [CRITICAL] 即座のテストレスポンス送信開始');
+
         (async () => {
           try {
             const { fileName, content } = request.data;
 
+            console.log('🔍 [DEBUG-MessageHandler] Step 1: パラメータ確認完了');
+
             // Blob作成してダウンロード
+            console.log('🔍 [DEBUG-MessageHandler] Step 2: Blob作成開始');
             const blob = new Blob([content], { type: 'application/json' });
-            const dataUrl = await new Promise((resolve) => {
+            console.log('🔍 [DEBUG-MessageHandler] Step 3: Blob作成完了:', {
+              blobSize: blob.size,
+              blobType: blob.type
+            });
+
+            console.log('🔍 [DEBUG-MessageHandler] Step 4: DataURL変換開始');
+            const dataUrl = await new Promise((resolve, reject) => {
               const reader = new FileReader();
-              reader.onloadend = () => resolve(reader.result);
+              reader.onloadend = () => {
+                console.log('🔍 [DEBUG-MessageHandler] Step 5: DataURL変換完了');
+                resolve(reader.result);
+              };
+              reader.onerror = (error) => {
+                console.error('🔍 [DEBUG-MessageHandler] DataURL変換エラー:', error);
+                reject(error);
+              };
               reader.readAsDataURL(blob);
+            });
+
+            console.log('🔍 [DEBUG-MessageHandler] Step 6: Chrome Downloads API呼び出し開始:', {
+              fileName,
+              dataUrlLength: dataUrl.length,
+              chromeDownloads: !!chrome.downloads
             });
 
             // Chrome Downloads APIでダウンロード
@@ -291,11 +331,26 @@ export function setupMessageHandler() {
               conflictAction: 'uniquify'
             });
 
-            console.log(`[LogFile] ファイルダウンロード完了: ${fileName} (ID: ${downloadId})`);
+            console.log('🔍 [DEBUG-MessageHandler] Step 7: Chrome Downloads API成功:', {
+              downloadId,
+              fileName
+            });
+
+            console.log('🔍 [DEBUG-MessageHandler] Step 8: sendResponse呼び出し開始');
             sendResponse({ success: true, downloadId });
+            console.log('🔍 [DEBUG-MessageHandler] Step 9: sendResponse呼び出し完了');
           } catch (error) {
-            console.error('[LogFile] ファイルダウンロードエラー:', error);
-            sendResponse({ success: false, error: error.message });
+            console.error('🔍 [DEBUG-MessageHandler] DOWNLOAD_LOG_FILEエラー:', {
+              message: error.message,
+              stack: error.stack,
+              name: error.name
+            });
+            try {
+              sendResponse({ success: false, error: error.message });
+              console.log('🔍 [DEBUG-MessageHandler] エラーレスポンス送信完了');
+            } catch (responseError) {
+              console.error('🔍 [DEBUG-MessageHandler] sendResponseエラー:', responseError);
+            }
           }
         })();
         return true;
@@ -1394,6 +1449,16 @@ export function setupMessageHandler() {
           }
         })();
         return true;
+
+      // ===== Step 36: ログダウンロード完了通知 =====
+      case "LOG_DOWNLOAD_COMPLETED":
+        console.log('[Step 36-1] ログダウンロード完了通知:', {
+          fileName: request.data?.fileName,
+          timestamp: request.data?.timestamp
+        });
+        // 通知のみで特別な処理は不要
+        sendResponse({ success: true });
+        return false;
 
       default:
         console.warn("[Step 99] 未知のアクション:", request.action);

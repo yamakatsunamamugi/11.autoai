@@ -1461,7 +1461,24 @@ export default class StreamProcessorV2 {
       if (result?.success) {
         try {
           this.logger.log(`[Step 8-3.6] 🔄 個別タスクログDropboxアップロード開始: ${task.column}${task.row}`);
-          dropboxUploadResult = await this.uploadTaskLogToDropbox(task, result, this.spreadsheetData);
+          // spreadsheetDataのサイズを確認
+          const spreadsheetDataSize = this.spreadsheetData ? JSON.stringify(this.spreadsheetData).length : 0;
+          console.log('🔥 [CRITICAL] spreadsheetDataサイズ:', {
+            size: spreadsheetDataSize,
+            sizeMB: (spreadsheetDataSize / 1024 / 1024).toFixed(2),
+            hasValues: !!this.spreadsheetData?.values,
+            rowCount: this.spreadsheetData?.values?.length
+          });
+
+          // 必要最小限のデータのみ渡す（values配列を除外）
+          const minimalSpreadsheetData = {
+            spreadsheetId: this.spreadsheetData?.spreadsheetId,
+            spreadsheetUrl: this.spreadsheetData?.spreadsheetUrl,
+            gid: this.spreadsheetData?.gid,
+            sheetName: this.spreadsheetData?.sheetName
+          };
+
+          dropboxUploadResult = await this.uploadTaskLogToDropbox(task, result, minimalSpreadsheetData);
           if (dropboxUploadResult?.success) {
             this.logger.log(`[Step 8-3.6] ✅ 個別タスクログDropboxアップロード完了: ${dropboxUploadResult.url}`);
           } else {
@@ -4099,6 +4116,23 @@ export default class StreamProcessorV2 {
       });
 
       this.logger.log('📁 [個別タスクログ作成開始]', { taskId: task.taskId, cell: `${task.column}${task.row}` });
+
+      // データサイズを確認
+      const taskSize = JSON.stringify(task).length;
+      const resultSize = result ? JSON.stringify(result).length : 0;
+      const spreadsheetDataSize = spreadsheetData ? JSON.stringify(spreadsheetData).length : 0;
+
+      console.log('🔥 [CRITICAL] uploadTaskLogToDropbox - データサイズ:', {
+        taskSize,
+        taskSizeMB: (taskSize / 1024 / 1024).toFixed(3),
+        resultSize,
+        resultSizeMB: (resultSize / 1024 / 1024).toFixed(3),
+        responseLength: result?.response?.length || 0,
+        spreadsheetDataSize,
+        spreadsheetDataSizeMB: (spreadsheetDataSize / 1024 / 1024).toFixed(3),
+        totalSize: taskSize + resultSize + spreadsheetDataSize,
+        totalSizeMB: ((taskSize + resultSize + spreadsheetDataSize) / 1024 / 1024).toFixed(3)
+      });
 
       // Chrome StorageからDropbox設定を取得
       if (typeof chrome === 'undefined' || !chrome.storage) {

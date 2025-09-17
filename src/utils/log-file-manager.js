@@ -63,10 +63,17 @@ export class LogFileManager {
    * ログエントリを追加
    */
   addLog(entry) {
-    this.logs.push({
+    const logEntry = {
       timestamp: new Date().toISOString(),
       ...entry
-    });
+    };
+
+    this.logs.push(logEntry);
+
+    // デバッグ用：重要なログをコンソールに出力
+    if (entry.type === 'task_start' || entry.type === 'task_complete' || entry.type === 'ai_operation') {
+      console.log(`📝 [LogFileManager] ${entry.type}:`, logEntry);
+    }
 
     // 100件ごとに中間保存
     if (this.logs.length % this.intermediateInterval === 0) {
@@ -186,58 +193,8 @@ export class LogFileManager {
       chromeRuntime: typeof chrome !== 'undefined' && !!chrome.runtime
     });
 
-    // Chrome拡張機能のコンテキストで実行される場合
-    if (typeof chrome !== 'undefined' && chrome.runtime) {
-      console.log('🔍 [DEBUG-LogFileManager] Chrome runtime環境、メッセージ送信');
-      return new Promise((resolve, reject) => {
-        chrome.runtime.sendMessage({
-          type: 'DOWNLOAD_LOG_FILE',
-          data: {
-            fileName,
-            content
-          }
-        }, async (response) => {
-          console.log('🔍 [DEBUG-LogFileManager] Chrome runtime response:', response);
-
-          if (response?.success) {
-            console.log('🔍 [DEBUG-LogFileManager] ローカルダウンロード成功:', response.downloadId);
-            // ローカルダウンロード成功
-            resolve(response.downloadId);
-
-            // Dropbox自動アップロードをチェック
-            if (this.dropboxEnabled && this.dropboxAutoUpload) {
-              console.log('🔍 [DEBUG-LogFileManager] Dropbox自動アップロード開始');
-              try {
-                await this.uploadToDropbox(fileName, content);
-                console.log(`✅ [Dropbox] ${fileName} を自動アップロードしました`);
-                console.log('🔍 [DEBUG-LogFileManager] Dropbox自動アップロード完了');
-              } catch (uploadError) {
-                console.error('🔍 [DEBUG-LogFileManager] Dropbox自動アップロードエラー:', uploadError);
-
-                // Dropbox認証期限切れの場合は警告を表示するがファイル保存は継続
-                if (uploadError.message && uploadError.message.includes('認証が期限切れ')) {
-                  console.warn(`⚠️ [Dropbox] 認証期限切れによりアップロードをスキップしました: ${fileName}`);
-                  console.warn('💡 [Dropbox] UI画面でDropbox再認証を行ってください');
-                } else {
-                  console.error(`❌ [Dropbox] ${fileName} の自動アップロードに失敗:`, uploadError);
-                }
-              }
-            } else {
-              console.log('🔍 [DEBUG-LogFileManager] Dropbox自動アップロードスキップ:', {
-                dropboxEnabled: this.dropboxEnabled,
-                dropboxAutoUpload: this.dropboxAutoUpload
-              });
-            }
-          } else {
-            console.error('🔍 [DEBUG-LogFileManager] Chrome runtime response エラー:', response);
-            reject(new Error(response?.error || 'ダウンロードに失敗しました'));
-          }
-        });
-      });
-    } else {
-      console.log('🔍 [DEBUG-LogFileManager] ブラウザ環境、Blobダウンロード');
-
-      // ブラウザ環境ではBlobダウンロード
+    try {
+      // Content Script内で直接Blobダウンロードを実行（タイムアウト回避）
       const blob = new Blob([content], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -246,17 +203,35 @@ export class LogFileManager {
       a.click();
       URL.revokeObjectURL(url);
 
-      console.log('🔍 [DEBUG-LogFileManager] Blobダウンロード完了');
+      console.log('✅ [LogFileManager] ファイルダウンロード成功:', fileName);
+
+      // Chrome拡張機能のコンテキストで、かつメッセージサイズが小さい場合のみBackground Scriptに通知
+      if (typeof chrome !== 'undefined' && chrome.runtime) {
+        const notificationSize = JSON.stringify({ type: 'LOG_DOWNLOAD_COMPLETED', fileName }).length;
+        if (notificationSize < 1024 * 1024) { // 1MB未満の通知のみ送信
+          // 通知のみ送信（レスポンスは待たない）
+          chrome.runtime.sendMessage({
+            type: 'LOG_DOWNLOAD_COMPLETED',
+            data: { fileName, timestamp: new Date().toISOString() }
+          }, () => {
+            // エラーは無視（通知目的のため）
+            if (chrome.runtime.lastError) {
+              console.log('⚠️ Background Script通知エラー（無視）:', chrome.runtime.lastError.message);
+            }
+          });
+        }
+      }
 
       // Dropbox自動アップロード
+      let dropboxResult = null;
       if (this.dropboxEnabled && this.dropboxAutoUpload) {
-        console.log('🔍 [DEBUG-LogFileManager] Dropbox自動アップロード開始（ブラウザ）');
+        console.log('🔍 [DEBUG-LogFileManager] Dropbox自動アップロード開始');
         try {
-          await this.uploadToDropbox(fileName, content);
+          dropboxResult = await this.uploadToDropbox(fileName, content);
           console.log(`✅ [Dropbox] ${fileName} を自動アップロードしました`);
-          console.log('🔍 [DEBUG-LogFileManager] Dropbox自動アップロード完了（ブラウザ）');
+          console.log('🔍 [DEBUG-LogFileManager] Dropbox URL:', dropboxResult.dropboxUrl);
         } catch (uploadError) {
-          console.error('🔍 [DEBUG-LogFileManager] Dropbox自動アップロードエラー（ブラウザ）:', uploadError);
+          console.error('🔍 [DEBUG-LogFileManager] Dropbox自動アップロードエラー:', uploadError);
 
           // Dropbox認証期限切れの場合は警告を表示するがファイル保存は継続
           if (uploadError.message && uploadError.message.includes('認証が期限切れ')) {
@@ -267,11 +242,23 @@ export class LogFileManager {
           }
         }
       } else {
-        console.log('🔍 [DEBUG-LogFileManager] Dropbox自動アップロードスキップ（ブラウザ）:', {
+        console.log('🔍 [DEBUG-LogFileManager] Dropbox自動アップロードスキップ:', {
           dropboxEnabled: this.dropboxEnabled,
           dropboxAutoUpload: this.dropboxAutoUpload
         });
       }
+
+      // Dropboxアップロード結果を含めて返す
+      return {
+        fileName: fileName.split('/').pop(),
+        filePath: fileName,
+        dropboxUrl: dropboxResult?.dropboxUrl || null,
+        dropboxUploaded: !!dropboxResult,
+        uploadTime: new Date()
+      };
+    } catch (error) {
+      console.error('❌ [LogFileManager] ファイルダウンロードエラー:', error);
+      throw error;
     }
   }
 
@@ -314,7 +301,17 @@ export class LogFileManager {
       });
 
       console.log(`✅ [Dropbox] ファイルアップロード完了: ${result.filePath}`);
-      return result;
+
+      // Dropbox URLを生成
+      const dropboxUrl = `https://www.dropbox.com/home/log-report/${aiType}/${category}?preview=${actualFileName}`;
+
+      return {
+        ...result,
+        dropboxUrl: dropboxUrl,
+        fileName: actualFileName,
+        aiType: aiType,
+        category: category
+      };
     } catch (error) {
       console.error(`❌ [ファイル作成失敗] ${dropboxPath}`, {
         errorMessage: error.message,
@@ -844,7 +841,12 @@ export class LogFileManager {
         model: taskData.model,
         function: taskData.function,
         promptLength: taskData.prompt?.length || 0,
-        cellInfo: taskData.cellInfo
+        promptPreview: taskData.prompt?.substring(0, 100) + (taskData.prompt?.length > 100 ? '...' : ''),
+        cellInfo: taskData.cellInfo,
+        aiType: taskData.aiType,
+        row: taskData.row,
+        column: taskData.column,
+        timestamp: new Date().toISOString()
       }
     });
   }
@@ -858,7 +860,26 @@ export class LogFileManager {
       result: {
         success: result.success,
         responseLength: result.response?.length || 0,
-        error: result.error
+        responsePreview: result.response?.substring(0, 100) + (result.response?.length > 100 ? '...' : ''),
+        error: result.error,
+        url: result.url,
+        displayedModel: result.displayedModel,
+        displayedFunction: result.displayedFunction,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  /**
+   * AI操作を記録
+   */
+  logAIOperation(operation, details = {}) {
+    this.addLog({
+      type: 'ai_operation',
+      operation: operation,
+      details: {
+        ...details,
+        timestamp: new Date().toISOString()
       }
     });
   }
