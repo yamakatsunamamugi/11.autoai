@@ -46,29 +46,20 @@ import {
 import { setupMessageHandler } from './src/handlers/message-handler.js';
 
 // Step 2-4: Google Services統合モジュール
-import {
-  googleServices,
-  authService,
-  sheetsClient,
-  docsClient,
-  spreadsheetLogger
-} from './src/services/google-services.js';
+import { googleServices } from './src/services/google-services.js';
 
 // Step 2-6: [削除済み] ServiceRegistry
 
 // Step 2-7: SpreadsheetLogger削除済み - SheetsClientに統合
 
 // Step 2-5: その他のサービス
-import './src/services/auth-service.js';
+import { getAuthService } from './src/services/auth-service.js';
 import { default as WindowService } from './src/services/window-service.js';
-import './src/features/spreadsheet/sheets-client.js';
-// SpreadsheetLogger削除済み - SheetsClientに統合
+import SheetsClient from './src/features/spreadsheet/sheets-client.js';
+import DocsClient from './src/features/spreadsheet/docs-client.js';
 import { getStreamingServiceManager } from './src/core/streaming-service-manager.js';
 import { AITaskExecutor } from './src/core/ai-task-executor.js';
 import { AITaskHandler } from './src/handlers/ai-task-handler.js';
-// automationファイルはコンテンツスクリプト用なので削除
-// import { ReportExecutor } from './automations/2-5-report-automation.js';
-// import { GensparkAutomation } from './automations/2-4-genspark-automation.js';
 import SpreadsheetAutoSetup from './src/services/spreadsheet-auto-setup.js';
 import StreamProcessorV2 from './src/features/task/stream-processor-v2.js';
 
