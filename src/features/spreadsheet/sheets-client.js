@@ -1609,7 +1609,8 @@ class SheetsClient {
     const startTime = Date.now();
 
     // ログ記録: スプレッドシート書き込み開始（文字数付き）
-    const valueLength = typeof value === 'string' ? value.length : JSON.stringify(value).length;
+    const valueLength = typeof value === 'string' ? value.length :
+      (value != null ? JSON.stringify(value).length : 0);
     console.log(`📝 [SheetsClient] セル更新開始: ${range}`, {
       spreadsheetId: spreadsheetId.substring(0, 10) + '...',
       range: range,
@@ -2055,18 +2056,23 @@ class SheetsClient {
       // ログエントリーをリッチテキスト形式でフォーマット
       const logResult = this.formatLogEntry(task, url, sendTime, writeTime, true, dropboxUploadResult);
 
+      // formatLogEntryの戻り値の型をチェック（文字列 または {plainText, richTextData}）
+      const isRichTextResult = typeof logResult === 'object' && logResult !== null && 'plainText' in logResult;
+      const plainTextContent = isRichTextResult ? logResult.plainText : logResult;
+      const richTextData = isRichTextResult ? logResult.richTextData : null;
+
       // 既存のログを取得（options.isFirstTaskがfalseの場合）
-      let finalRichTextData = logResult.richTextData;
+      let finalRichTextData = richTextData;
       let existingLog = '';
       if (!options.isFirstTask) {
         try {
           const response = await this.getSheetData(spreadsheetId, logCell, gid);
           existingLog = response?.values?.[0]?.[0] || '';
-          if (existingLog && existingLog.trim() !== '') {
+          if (existingLog && existingLog.trim() !== '' && richTextData) {
             // 既存ログがある場合は、先頭に追加してからリッチテキストを続ける
             finalRichTextData = [
               { text: existingLog + '\n\n' },
-              ...logResult.richTextData
+              ...richTextData
             ];
           }
         } catch (error) {
@@ -2075,13 +2081,13 @@ class SheetsClient {
       }
 
       // リッチテキストでスプレッドシートに書き込み
-      if (logResult.richTextData && url) {
+      if (richTextData && url) {
         console.log('🔗 [SheetsClient] リッチテキスト形式でログ書き込み');
         await this.updateCellWithRichText(spreadsheetId, logCell, finalRichTextData, gid);
       } else {
         // URLがない場合は通常のテキストで書き込み
-        const finalLogContent = options.isFirstTask ? logResult.plainText :
-          (existingLog ? existingLog + '\n\n' + logResult.plainText : logResult.plainText);
+        const finalLogContent = options.isFirstTask ? plainTextContent :
+          (existingLog ? existingLog + '\n\n' + plainTextContent : plainTextContent);
         await this.updateCell(spreadsheetId, logCell, finalLogContent, gid, {
           isLog: true
         });
