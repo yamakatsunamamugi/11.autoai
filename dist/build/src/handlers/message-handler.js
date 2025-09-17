@@ -261,7 +261,7 @@ export function setupMessageHandler() {
         console.log('[Claude-Direct] 直接ログ書き込み要求');
         (async () => {
           try {
-            const { taskData, response, sendTime, writeTime, model, function: functionName, url } = request.data;
+            const { taskData, response, sendTime, writeTime, model, function: functionName, displayedModel, displayedFunction, url } = request.data;
 
             console.log('[Claude-Direct] ログ書き込み開始:', {
               taskId: taskData.cellInfo,
@@ -283,8 +283,11 @@ export function setupMessageHandler() {
               aiType: 'Claude',
               model: model,
               function: functionName,
+              displayedModel: displayedModel, // 実際の表示モデル
+              displayedFunction: displayedFunction, // 実際の表示機能
               column: taskData.cellInfo.column || 'A', // オブジェクト形式のcolumnプロパティ
-              row: taskData.cellInfo.row || '1' // オブジェクト形式のrowプロパティ
+              row: taskData.cellInfo.row || '1', // オブジェクト形式のrowプロパティ
+              logColumns: taskData.logColumn ? [taskData.logColumn] : [] // ログ列を配列形式で設定
             };
 
             await sheetsClient.writeLogToSpreadsheet(logTask, {
