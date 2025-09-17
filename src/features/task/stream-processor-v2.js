@@ -4124,13 +4124,17 @@ export default class StreamProcessorV2 {
         }
       };
 
-      // ファイル名を生成
+      // ファイル名を生成（ミリ秒まで含む）
       const timestamp = new Date().toISOString()
         .replace(/[:.]/g, '-')
         .replace('T', '_')
-        .slice(0, -5);
+        .slice(0, -1); // ミリ秒まで含む
       const fileName = `task-report_${taskGroupInfo.id}_${timestamp}.json`;
-      const uploadPath = `${settings.dropboxLogPath}/${fileName}`.replace(/\/+/g, '/');
+
+      // 新しい構造: /log-report/task-reports/ に保存
+      const uploadPath = `/log-report/task-reports/${fileName}`;
+
+      this.logger.log(`📁 [ファイル作成開始] ${uploadPath}`);
 
       // Dropboxサービスを使用（静的インポート済み）
       try {
@@ -4141,6 +4145,9 @@ export default class StreamProcessorV2 {
           this.logger.warn('[StreamProcessorV2] Dropbox未認証のためスキップ');
           return { success: false, error: 'Dropbox未認証' };
         }
+
+        // 重複ファイル処理の設定をログに記録
+        this.logger.log(`🔄 [重複処理設定] 上書きモード: 無効`);
 
         // レポートをアップロード
         await dropboxService.uploadFile(
@@ -4153,8 +4160,8 @@ export default class StreamProcessorV2 {
         const dropboxWebUrl = `https://www.dropbox.com/home${uploadPath}`;
 
         this.logger.log(`[StreamProcessorV2] ✅ Dropboxレポートアップロード完了: ${uploadPath}`);
-        this.logger.log(`[StreamProcessorV2] 📁 保存場所: Dropboxアプリ${uploadPath.replace(/^\//, '/')} フォルダ`);
-        this.logger.log(`[StreamProcessorV2] 💡 ファイル確認方法: Dropboxアプリまたは https://www.dropbox.com で "${settings.dropboxLogPath}" フォルダをご確認ください`);
+        this.logger.log(`[StreamProcessorV2] 📁 保存場所: Dropboxアプリ${uploadPath} フォルダ`);
+        this.logger.log(`[StreamProcessorV2] 💡 ファイル確認方法: Dropboxアプリまたは https://www.dropbox.com で "/log-report/task-reports" フォルダをご確認ください`);
 
         // LogFileManagerにも記録（互換性のため）
         if (globalThis.logManager) {
@@ -4180,12 +4187,23 @@ export default class StreamProcessorV2 {
         };
 
       } catch (error) {
-        this.logger.warn('[StreamProcessorV2] Dropboxアップロードエラー:', error.message);
+        this.logger.error(`❌ [ファイル作成失敗] ${uploadPath}`, {
+          errorMessage: error.message,
+          errorType: error.name,
+          taskGroupId: taskGroupInfo.id,
+          fileName: fileName,
+          retryInfo: 'タスクレポートのアップロードに失敗しました'
+        });
         return { success: false, error: error.message };
       }
 
     } catch (error) {
-      this.logger.warn('[StreamProcessorV2] Dropboxログ処理エラー:', error.message);
+      this.logger.error('❌ [Dropboxログ処理失敗]', {
+        errorMessage: error.message,
+        errorType: error.name,
+        taskGroupId: taskGroupInfo?.id,
+        context: 'TaskReport処理全般'
+      });
       return { success: false, error: error.message };
     }
   }
