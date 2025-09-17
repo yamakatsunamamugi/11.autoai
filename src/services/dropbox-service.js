@@ -159,9 +159,20 @@ export class DropboxService {
    * @returns {Promise<Object>}
    */
   async uploadFile(filePath, content, options = {}) {
+    console.log('🔍 [DEBUG-DropboxService] uploadFile開始:', {
+      filePath,
+      contentLength: content.length,
+      options,
+      isInitialized: this.isInitialized
+    });
+
     try {
+      console.log('🔍 [DEBUG-DropboxService] アクセストークン取得');
       const accessToken = await this.config.getAccessToken();
+      console.log('🔍 [DEBUG-DropboxService] アクセストークン存在:', !!accessToken);
+
       if (!accessToken) {
+        console.error('🔍 [DEBUG-DropboxService] アクセストークンなし');
         throw new Error('認証が必要です。先にDropbox認証を完了してください。');
       }
 
@@ -169,12 +180,21 @@ export class DropboxService {
       const fileSize = new Blob([content]).size;
       const isLargeFile = fileSize > 150 * 1024 * 1024;
 
+      console.log('🔍 [DEBUG-DropboxService] ファイルサイズ情報:', {
+        fileSize,
+        isLargeFile,
+        fileSizeMB: Math.round(fileSize / 1024 / 1024 * 100) / 100
+      });
+
       if (isLargeFile) {
+        console.log('🔍 [DEBUG-DropboxService] 大きいファイル処理開始');
         return await this.uploadLargeFile(filePath, content, accessToken, options);
       } else {
+        console.log('🔍 [DEBUG-DropboxService] 小さいファイル処理開始');
         return await this.uploadSmallFile(filePath, content, accessToken, options);
       }
     } catch (error) {
+      console.error('🔍 [DEBUG-DropboxService] uploadFile エラー:', error);
       console.error('[DropboxService] ファイルアップロードエラー:', error);
       throw error;
     }
@@ -189,37 +209,60 @@ export class DropboxService {
    * @returns {Promise<Object>}
    */
   async uploadSmallFile(filePath, content, accessToken, options = {}) {
-    const uploadSettings = await this.config.getUploadSettings();
-    const fullPath = `${uploadSettings.uploadPath}${filePath}`;
+    console.log('🔍 [DEBUG-DropboxService] uploadSmallFile開始:', { filePath });
 
-    const response = await fetch('https://content.dropboxapi.com/2/files/upload', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/octet-stream',
-        'Dropbox-API-Arg': JSON.stringify({
-          path: fullPath,
-          mode: options.overwrite ? 'overwrite' : 'add',
-          autorename: !options.overwrite,
-          mute: false,
-          strict_conflict: false
-        })
-      },
-      body: content
-    });
+    try {
+      console.log('🔍 [DEBUG-DropboxService] アップロード設定取得');
+      const uploadSettings = await this.config.getUploadSettings();
+      const fullPath = `${uploadSettings.uploadPath}${filePath}`;
 
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`アップロードエラー: ${error}`);
+      console.log('🔍 [DEBUG-DropboxService] アップロード設定:', {
+        uploadSettings,
+        fullPath
+      });
+
+      console.log('🔍 [DEBUG-DropboxService] Dropbox API呼び出し開始');
+      const response = await fetch('https://content.dropboxapi.com/2/files/upload', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/octet-stream',
+          'Dropbox-API-Arg': JSON.stringify({
+            path: fullPath,
+            mode: options.overwrite ? 'overwrite' : 'add',
+            autorename: !options.overwrite,
+            mute: false,
+            strict_conflict: false
+          })
+        },
+        body: content
+      });
+
+      console.log('🔍 [DEBUG-DropboxService] Dropbox APIレスポンス:', {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        console.error('🔍 [DEBUG-DropboxService] Dropbox APIエラー:', error);
+        throw new Error(`アップロードエラー: ${error}`);
+      }
+
+      const result = await response.json();
+      console.log('🔍 [DEBUG-DropboxService] アップロード成功:', result);
+
+      return {
+        success: true,
+        filePath: result.path_display,
+        size: result.size,
+        serverModified: result.server_modified
+      };
+    } catch (error) {
+      console.error('🔍 [DEBUG-DropboxService] uploadSmallFile エラー:', error);
+      throw error;
     }
-
-    const result = await response.json();
-    return {
-      success: true,
-      filePath: result.path_display,
-      size: result.size,
-      serverModified: result.server_modified
-    };
   }
 
   /**

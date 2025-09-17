@@ -4090,23 +4090,47 @@ export default class StreamProcessorV2 {
    */
   async uploadTaskLogToDropbox(task, result, spreadsheetData) {
     try {
+      console.log('🔍 [DEBUG] uploadTaskLogToDropbox開始:', {
+        taskId: task.taskId,
+        cell: `${task.column}${task.row}`,
+        aiType: task.aiType,
+        hasGlobalLogManager: !!globalThis.logManager,
+        chromeAvailable: typeof chrome !== 'undefined' && !!chrome.storage
+      });
+
       this.logger.log('📁 [個別タスクログ作成開始]', { taskId: task.taskId, cell: `${task.column}${task.row}` });
 
       // Chrome StorageからDropbox設定を取得
       if (typeof chrome === 'undefined' || !chrome.storage) {
+        console.log('🔍 [DEBUG] Chrome環境チェック失敗');
         this.logger.log('[StreamProcessorV2] ⚠️ Chrome環境ではないため個別タスクログスキップ');
         return { success: false, error: 'Chrome環境でない' };
       }
 
+      console.log('🔍 [DEBUG] Chrome環境OK、LogManager存在チェック:', !!globalThis.logManager);
+
       // LogFileManagerを活用してログを作成
       if (globalThis.logManager) {
+        console.log('🔍 [DEBUG] LogManager利用可能、タスクログ追加開始');
+
         // タスクログを追加
-        globalThis.logManager.logTaskStart(task);
-        globalThis.logManager.logTaskComplete(result);
+        try {
+          console.log('🔍 [DEBUG] logTaskStart呼び出し:', task);
+          globalThis.logManager.logTaskStart(task);
+          console.log('🔍 [DEBUG] logTaskComplete呼び出し:', result);
+          globalThis.logManager.logTaskComplete(result);
+          console.log('🔍 [DEBUG] ログ追加完了');
+        } catch (logError) {
+          console.error('🔍 [DEBUG] ログ追加エラー:', logError);
+          throw logError;
+        }
 
         // 個別ログファイルを保存
         try {
+          console.log('🔍 [DEBUG] saveToFile()呼び出し開始');
           const logFilePath = await globalThis.logManager.saveToFile();
+          console.log('🔍 [DEBUG] saveToFile()結果:', logFilePath);
+
           this.logger.log('✅ [個別タスクログ] Dropboxアップロード完了', { filePath: logFilePath });
 
           // Dropboxパスを生成（log-report構造）
@@ -4117,6 +4141,12 @@ export default class StreamProcessorV2 {
           // Dropbox共有URL（ファイル参照用）
           const dropboxUrl = `https://www.dropbox.com/home/log-report/${aiType}/complete?preview=${fileName}`;
 
+          console.log('🔍 [DEBUG] URL生成完了:', {
+            fileName,
+            dropboxPath,
+            dropboxUrl
+          });
+
           return {
             success: true,
             filePath: logFilePath,
@@ -4126,14 +4156,17 @@ export default class StreamProcessorV2 {
             uploadTime: new Date()
           };
         } catch (saveError) {
+          console.error('🔍 [DEBUG] saveToFile()エラー:', saveError);
           this.logger.error('❌ [個別タスクログ保存失敗]', saveError);
           return { success: false, error: saveError.message };
         }
       } else {
+        console.log('🔍 [DEBUG] LogManager未初期化');
         this.logger.warn('[StreamProcessorV2] ⚠️ LogManager未初期化のため個別ログスキップ');
         return { success: false, error: 'LogManager未初期化' };
       }
     } catch (error) {
+      console.error('🔍 [DEBUG] uploadTaskLogToDropbox全体エラー:', error);
       this.logger.error('❌ [個別タスクログ処理失敗]', error);
       return { success: false, error: error.message };
     }
