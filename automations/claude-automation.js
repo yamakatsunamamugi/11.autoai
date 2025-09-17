@@ -1862,6 +1862,23 @@
                 cellInfo: taskData.cellInfo
             });
 
+            // 実際の表示情報を取得（ChatGPT/Geminiと同様）
+            let displayedModel = '';
+            let displayedFunction = '';
+
+            try {
+                // 実際のモデル情報を取得
+                displayedModel = getCurrentModelInfo() || '';
+                console.log(`📊 [Claude-Direct] 実際のモデル: "${displayedModel}"`);
+
+                // 実際の機能情報を取得
+                const functionConfirmation = confirmFeatureSelection(featureName);
+                displayedFunction = functionConfirmation.detected.join(', ') || '';
+                console.log(`📊 [Claude-Direct] 実際の機能: "${displayedFunction}"`);
+            } catch (infoError) {
+                console.warn(`⚠️ [Claude-Direct] 表示情報取得エラー: ${infoError.message}`);
+            }
+
             // 直接スプレッドシートにログ書き込み（シンプル設計）
             const writeTime = new Date();
             try {
@@ -1872,7 +1889,9 @@
                     spreadsheetId: taskData.spreadsheetId,  // spreadsheetId確認
                     gid: taskData.gid,  // gid確認
                     hasSpreadsheetId: !!taskData.spreadsheetId,
-                    hasGid: taskData.gid !== undefined
+                    hasGid: taskData.gid !== undefined,
+                    displayedModel: displayedModel,
+                    displayedFunction: displayedFunction
                 });
 
                 await chrome.runtime.sendMessage({
@@ -1884,6 +1903,8 @@
                         writeTime: writeTime,
                         model: modelName,
                         function: featureName,
+                        displayedModel: displayedModel,
+                        displayedFunction: displayedFunction,
                         url: window.location.href
                     }
                 });

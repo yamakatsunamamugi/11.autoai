@@ -4159,6 +4159,37 @@ export default class StreamProcessorV2 {
 
       console.log('🔍 [DEBUG] Chrome環境OK、LogManager存在チェック:', !!globalThis.logManager);
 
+      // 🔍 [診断] LogManager詳細状態チェック
+      if (globalThis.logManager) {
+        console.log('🔍 [診断] LogManager詳細状態チェック開始');
+        console.log('📊 [LogManager状態]:', {
+          logManagerExists: !!globalThis.logManager,
+          fileManagerExists: !!globalThis.logManager.fileManager,
+          dropboxEnabled: globalThis.logManager.fileManager?.dropboxEnabled,
+          dropboxAutoUpload: globalThis.logManager.fileManager?.dropboxAutoUpload,
+          logCount: globalThis.logManager.fileManager?.logs?.length || 0
+        });
+
+        // Dropbox設定の詳細診断
+        const fileManager = globalThis.logManager.fileManager;
+        if (fileManager) {
+          console.log('🔍 [診断] FileManager Dropbox設定詳細:', {
+            dropboxEnabledFlag: fileManager.dropboxEnabled,
+            dropboxAutoUploadFlag: fileManager.dropboxAutoUpload,
+            両方有効: fileManager.dropboxEnabled && fileManager.dropboxAutoUpload,
+            aiType: task.aiType
+          });
+
+          if (!fileManager.dropboxEnabled) {
+            console.warn('⚠️ [診断警告] dropboxEnabledがfalse - Dropbox URLは記載されません');
+          }
+          if (!fileManager.dropboxAutoUpload) {
+            console.warn('⚠️ [診断警告] dropboxAutoUploadがfalse - Dropbox URLは記載されません');
+          }
+        }
+        console.log('✅ [診断] LogManager状態チェック完了');
+      }
+
       // LogFileManagerを活用してログを作成
       if (globalThis.logManager) {
         console.log('🔍 [DEBUG] LogManager利用可能、タスクログ追加開始');

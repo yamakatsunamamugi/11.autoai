@@ -256,13 +256,30 @@ export class LogFileManager {
 
       // Dropbox自動アップロード
       let dropboxResult = null;
+
+      // 🔍 [診断] Dropbox自動アップロード条件チェック
+      console.log('🔍 [診断] Dropbox自動アップロード条件チェック:', {
+        dropboxEnabled: this.dropboxEnabled,
+        dropboxAutoUpload: this.dropboxAutoUpload,
+        両方有効: this.dropboxEnabled && this.dropboxAutoUpload,
+        fileName: fileName
+      });
+
       if (this.dropboxEnabled && this.dropboxAutoUpload) {
+        console.log('✅ [診断] Dropbox自動アップロード条件クリア - アップロード開始');
         console.log('🔍 [DEBUG-LogFileManager] Dropbox自動アップロード開始');
         try {
           dropboxResult = await this.uploadToDropbox(fileName, content);
           console.log(`✅ [Dropbox] ${fileName} を自動アップロードしました`);
           console.log('🔍 [DEBUG-LogFileManager] Dropbox URL:', dropboxResult.dropboxUrl);
+          console.log('🔍 [診断] アップロード結果詳細:', {
+            success: !!dropboxResult,
+            hasUrl: !!dropboxResult?.dropboxUrl,
+            url: dropboxResult?.dropboxUrl,
+            filePath: dropboxResult?.filePath
+          });
         } catch (uploadError) {
+          console.error('❌ [診断エラー] Dropbox自動アップロード失敗');
           console.error('🔍 [DEBUG-LogFileManager] Dropbox自動アップロードエラー:', uploadError);
 
           // Dropbox認証期限切れの場合は警告を表示するがファイル保存は継続
@@ -274,9 +291,11 @@ export class LogFileManager {
           }
         }
       } else {
+        console.log('⚠️ [診断] Dropbox自動アップロードスキップ - 条件不一致');
         console.log('🔍 [DEBUG-LogFileManager] Dropbox自動アップロードスキップ:', {
           dropboxEnabled: this.dropboxEnabled,
-          dropboxAutoUpload: this.dropboxAutoUpload
+          dropboxAutoUpload: this.dropboxAutoUpload,
+          理由: !this.dropboxEnabled ? 'Dropbox認証なし' : 'AutoUpload無効'
         });
       }
 
@@ -313,6 +332,31 @@ export class LogFileManager {
     console.log('🚀 [Dropboxアップロード開始]');
     console.log('========================================');
 
+    // 🔍 [診断] Dropbox設定状態を詳細チェック
+    console.log('🔍 [診断] Dropbox設定状態詳細チェック開始');
+    console.log('📊 [Dropbox設定情報]:', {
+      dropboxEnabled: this.dropboxEnabled,
+      dropboxAutoUpload: this.dropboxAutoUpload,
+      chromeAvailable: typeof chrome !== 'undefined',
+      chromeStorageAvailable: typeof chrome !== 'undefined' && !!chrome.storage,
+      dropboxServiceAvailable: typeof dropboxService !== 'undefined' && !!dropboxService,
+      contentLength: content?.length || 0,
+      contentSizeMB: content ? (content.length / 1024 / 1024).toFixed(3) : 0
+    });
+
+    // 事前チェック：必須条件の確認
+    if (!this.dropboxEnabled) {
+      console.error('❌ [診断エラー] dropboxEnabledがfalse - Dropbox認証が必要');
+      throw new Error('Dropboxが認証されていません (dropboxEnabled: false)');
+    }
+
+    if (typeof dropboxService === 'undefined' || !dropboxService) {
+      console.error('❌ [診断エラー] dropboxServiceが利用不可');
+      throw new Error('DropboxServiceが初期化されていません');
+    }
+
+    console.log('✅ [診断] Dropbox設定チェック完了 - 続行可能');
+
     // ファイルパスを解析
     const pathParts = fileName.split('/');
     const aiType = pathParts[1]; // "11autoai-logs/claude/complete/file.json" -> "claude"
@@ -340,7 +384,8 @@ export class LogFileManager {
 
       if (typeof chrome !== 'undefined' && chrome.storage) {
         try {
-          const storageKey = `ai_log_folder_${aiType}`;
+          // 正しいキー名を使用
+          const storageKey = `ai_log_file_selection_${aiType}`;
           console.log(`🔍 [Chrome Storage検索] キー: ${storageKey}`);
 
           const result = await chrome.storage.local.get(storageKey);

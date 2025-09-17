@@ -5153,6 +5153,225 @@ async function updateAiLogFileSimple(aiType) {
   }
 }
 
+// 🔍 [診断機能] Dropbox設定状態を詳細チェック・表示
+async function checkDropboxConfigurationStatus() {
+  console.log('========================================');
+  console.log('🔍 [UI診断] Dropbox設定状態詳細チェック開始');
+  console.log('========================================');
+
+  try {
+    // Chrome Storage から各AIのフォルダ設定を取得
+    const aiTypes = ['chatgpt', 'claude', 'gemini'];
+    const storageKeys = aiTypes.map(type => `ai_log_folder_${type}`);
+
+    // 🔍 Chrome Storage全体をデバッグ確認
+    console.log('🔍 [診断] Chrome Storage確認中...');
+    const allStorage = await chrome.storage.local.get(null);
+    console.log('📦 [Chrome Storage全体]:', allStorage);
+
+    // 実際のキー名パターンを確認
+    const actualAiKeys = Object.keys(allStorage).filter(key =>
+      key.includes('chatgpt') || key.includes('claude') || key.includes('gemini')
+    );
+    console.log('🔍 [実際のAI関連キー]:', actualAiKeys);
+
+    const storageResult = await chrome.storage.local.get(storageKeys);
+    console.log('📦 [AI設定専用取得]:', storageResult);
+
+    // 実際のキー名で再取得を試行
+    const alternativeKeys = ['chatgpt_log_file', 'claude_log_file', 'gemini_log_file'];
+    const alternativeResult = await chrome.storage.local.get(alternativeKeys);
+    console.log('📦 [代替キー取得]:', alternativeResult);
+
+    // 🔍 Service WorkerからLogManager状態を取得を試行
+    let serviceWorkerLogManagerStatus = null;
+    try {
+      if (chrome.runtime && chrome.runtime.sendMessage) {
+        console.log('🔍 [診断] Service WorkerのLogManager状態を確認中...');
+        const response = await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => reject(new Error('タイムアウト')), 1000);
+          chrome.runtime.sendMessage({
+            type: 'CHECK_LOG_MANAGER_STATUS'
+          }, (response) => {
+            clearTimeout(timeout);
+            if (chrome.runtime.lastError) {
+              reject(new Error(chrome.runtime.lastError.message));
+            } else {
+              resolve(response);
+            }
+          });
+        });
+        serviceWorkerLogManagerStatus = response;
+        console.log('✅ [診断] Service WorkerからLogManager状態取得成功:', serviceWorkerLogManagerStatus);
+      }
+    } catch (error) {
+      console.log('ℹ️ [診断] Service WorkerからLogManager状態取得失敗（正常）:', error.message);
+    }
+
+    console.log('📊 [Dropbox設定診断結果]');
+    console.log('=================================');
+
+    // 各AIタイプの設定状況をチェック（複数のキー名パターンを確認）
+    const finalConfigs = {};
+    for (const aiType of aiTypes) {
+      // 複数のキー名パターンを試行（実際のキー名を最優先）
+      const possibleKeys = [
+        `ai_log_file_selection_${aiType}`,  // 実際のキー名
+        `ai_log_folder_${aiType}`,
+        `${aiType}_log_file`,
+        `${aiType}LogFile`,
+        `ai_log_${aiType}`
+      ];
+
+      let folderConfig = null;
+      let usedKey = null;
+
+      for (const key of possibleKeys) {
+        if (allStorage[key]) {
+          folderConfig = allStorage[key];
+          usedKey = key;
+          break;
+        }
+      }
+
+      console.log(`🎯 [${aiType.toUpperCase()}]`, {
+        フォルダ設定あり: !!folderConfig,
+        使用キー: usedKey || 'なし',
+        パス: folderConfig?.path || folderConfig?.path_display || 'デフォルトパス使用',
+        フォルダ名: folderConfig?.name || 'N/A',
+        設定内容: folderConfig
+      });
+
+      finalConfigs[aiType] = folderConfig;
+    }
+
+    // グローバルLogManagerの状態をチェック（UIコンテキスト対応）
+    let logManagerStatus = {
+      exists: false,
+      fileManagerExists: false,
+      dropboxEnabled: null,
+      dropboxAutoUpload: null,
+      uiContext: true,
+      message: 'UIコンテキストのため、LogManagerは直接アクセス不可'
+    };
+
+    // UIコンテキストではglobalThis.logManagerは通常存在しない
+    try {
+      if (typeof globalThis !== 'undefined' && globalThis.logManager) {
+        logManagerStatus = {
+          exists: !!globalThis.logManager,
+          fileManagerExists: !!globalThis.logManager?.fileManager,
+          dropboxEnabled: globalThis.logManager?.fileManager?.dropboxEnabled,
+          dropboxAutoUpload: globalThis.logManager?.fileManager?.dropboxAutoUpload,
+          uiContext: false,
+          message: 'LogManagerアクセス成功'
+        };
+      } else {
+        console.log('ℹ️ [診断情報] UIコンテキストではLogManagerが直接利用できません');
+        console.log('ℹ️ 実際のDropbox設定は、AI実行時（Service Worker/Content Script）で確認されます');
+      }
+    } catch (error) {
+      console.log('ℹ️ [診断情報] LogManagerアクセスエラー（正常）:', error.message);
+    }
+
+    console.log('📊 [LogManager状態診断]:', logManagerStatus);
+
+    // UIコンテキストでの警告とエラー表示
+    if (!logManagerStatus.exists && !logManagerStatus.uiContext) {
+      console.error('❌ [診断エラー] globalThis.logManagerが存在しません');
+    } else if (logManagerStatus.uiContext) {
+      console.log('ℹ️ [診断情報] LogManagerの詳細診断はAI実行時に表示されます');
+    } else if (!logManagerStatus.fileManagerExists) {
+      console.error('❌ [診断エラー] LogManager.fileManagerが存在しません');
+    } else {
+      if (!logManagerStatus.dropboxEnabled) {
+        console.warn('⚠️ [診断警告] dropboxEnabledがfalse - Dropbox認証が必要');
+      }
+      if (!logManagerStatus.dropboxAutoUpload) {
+        console.warn('⚠️ [診断警告] dropboxAutoUploadがfalse - 自動アップロードが無効');
+      }
+      if (logManagerStatus.dropboxEnabled && logManagerStatus.dropboxAutoUpload) {
+        console.log('✅ [診断正常] Dropboxアップロード設定はすべて有効');
+      }
+    }
+
+    console.log('========================================');
+    console.log('🔍 [UI診断] Dropbox設定状態チェック完了');
+    console.log('========================================');
+
+    // AI設定の確認（実際に見つかった設定を使用）
+    const aiConfigsOk = Object.values(finalConfigs).every(config => !!config);
+
+    // LogManager設定の確認（UIコンテキストでは部分的にのみ確認可能）
+    const logManagerOk = logManagerStatus.uiContext
+      ? true  // UIコンテキストではLogManagerチェックをスキップ
+      : (logManagerStatus.dropboxEnabled && logManagerStatus.dropboxAutoUpload);
+
+    return {
+      aiConfigs: finalConfigs,
+      logManagerStatus: logManagerStatus,
+      allConfigured: aiConfigsOk && logManagerOk,
+      uiLimitedCheck: logManagerStatus.uiContext,
+      storageDebug: {
+        originalResult: storageResult,
+        alternativeResult: alternativeResult,
+        actualAiKeys: actualAiKeys
+      }
+    };
+
+  } catch (error) {
+    console.error('❌ [UI診断エラー] Dropbox設定チェック失敗:', error);
+    return { error: error.message };
+  }
+}
+
+// 🎯 [UI機能] Dropbox設定状態をリアルタイム表示
+function displayDropboxStatus() {
+  console.log('🔍 [DEBUG] displayDropboxStatus関数が呼び出されました');
+
+  try {
+    checkDropboxConfigurationStatus().then(status => {
+      console.log('🔍 [DEBUG] checkDropboxConfigurationStatus結果:', status);
+
+      if (status.error) {
+        console.error('❌ [DEBUG] 診断エラー:', status.error);
+        showFeedback(`Dropbox設定診断エラー: ${status.error}`, 'error');
+        return;
+      }
+
+      let statusMessage, statusType;
+
+      if (status.uiLimitedCheck) {
+        // UIコンテキストでの限定チェック
+        const aiConfigsOk = Object.values(status.aiConfigs).every(config => !!config);
+        const configCount = Object.values(status.aiConfigs).filter(config => !!config).length;
+
+        if (aiConfigsOk) {
+          statusMessage = '✅ AI別フォルダ設定は正常です（詳細はAI実行時にチェック）';
+          statusType = 'success';
+        } else {
+          statusMessage = `⚠️ AI別フォルダ設定: ${configCount}/3 設定済み（コンソールを確認）`;
+          statusType = 'warning';
+        }
+      } else {
+        // 完全チェック
+        statusMessage = status.allConfigured
+          ? '✅ Dropbox設定はすべて正常です'
+          : '⚠️ Dropbox設定に問題があります（コンソールを確認）';
+        statusType = status.allConfigured ? 'success' : 'warning';
+      }
+      console.log('🔍 [DEBUG] フィードバック表示:', { statusMessage, statusType });
+      showFeedback(statusMessage, statusType);
+    }).catch(error => {
+      console.error('❌ [DEBUG] checkDropboxConfigurationStatus実行エラー:', error);
+      showFeedback(`診断実行エラー: ${error.message}`, 'error');
+    });
+  } catch (error) {
+    console.error('❌ [DEBUG] displayDropboxStatus実行エラー:', error);
+    showFeedback(`診断機能エラー: ${error.message}`, 'error');
+  }
+}
+
 // AI別ファイルステータス表示更新
 function updateAiFileStatusDisplay(aiType, fileName, fileInfo = null) {
   const statusElement = document.getElementById(`${aiType}FileStatus`);
@@ -6270,6 +6489,67 @@ document.addEventListener('DOMContentLoaded', () => {
     initDropboxAuth();
     initDropboxFileUpload();
     initAiLogFileSelectionSimple(); // 簡素化されたAI別ログファイル選択機能を初期化
+
+    // 🔍 [診断] Dropbox設定診断ボタンのイベントリスナーを追加
+    console.log('🔍 [DEBUG] ボタンイベントリスナー設定開始');
+
+    // 複数の方法でボタンを取得を試行
+    let checkDropboxStatusBtn = document.getElementById('checkDropboxStatusBtn');
+    console.log('🔍 [DEBUG] getElementById結果:', checkDropboxStatusBtn);
+
+    if (!checkDropboxStatusBtn) {
+      // querySelector でも試行
+      checkDropboxStatusBtn = document.querySelector('#checkDropboxStatusBtn');
+      console.log('🔍 [DEBUG] querySelector結果:', checkDropboxStatusBtn);
+    }
+
+    if (!checkDropboxStatusBtn) {
+      // すべてのボタンを検索
+      const allButtons = document.querySelectorAll('button');
+      console.log('🔍 [DEBUG] 全ボタン数:', allButtons.length);
+      for (let i = 0; i < allButtons.length; i++) {
+        const btn = allButtons[i];
+        if (btn.textContent && btn.textContent.includes('設定状態をチェック')) {
+          console.log('🔍 [DEBUG] テキストでボタン発見:', btn);
+          checkDropboxStatusBtn = btn;
+          break;
+        }
+      }
+    }
+
+    if (checkDropboxStatusBtn) {
+      console.log('✅ [DEBUG] ボタンが見つかりました - イベントリスナー追加中');
+      checkDropboxStatusBtn.addEventListener('click', (event) => {
+        console.log('🔍 [UI] Dropbox設定診断ボタンがクリックされました', event);
+        event.preventDefault();
+        event.stopPropagation();
+        try {
+          displayDropboxStatus();
+        } catch (error) {
+          console.error('❌ [UI] displayDropboxStatus実行エラー:', error);
+        }
+      });
+      console.log('✅ [DEBUG] イベントリスナー追加完了');
+
+      // 代替として、windowオブジェクトにも関数を公開
+      window.testDropboxStatus = displayDropboxStatus;
+      console.log('✅ [DEBUG] window.testDropboxStatus()も利用可能');
+
+    } else {
+      console.warn('⚠️ [UI] checkDropboxStatusBtnが見つかりません');
+      // DOMの全体状況をデバッグ
+      console.log('🔍 [DEBUG] DOM状況確認:', {
+        documentReady: document.readyState,
+        bodyExists: !!document.body,
+        allButtonsCount: document.querySelectorAll('button').length,
+        settingsSectionExists: !!document.querySelector('.settings-category')
+      });
+
+      // 代替として、windowオブジェクトに関数を公開
+      window.testDropboxStatus = displayDropboxStatus;
+      console.log('⚠️ [DEBUG] ボタンが見つからないため、window.testDropboxStatus()を手動実行してください');
+    }
+
     console.log('[UI-Controller] 初期化完了');
   }, 100);
 });
