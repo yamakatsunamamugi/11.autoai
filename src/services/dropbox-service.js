@@ -253,12 +253,22 @@ export class DropboxService {
       console.log('🔍 [DEBUG-DropboxService] Dropbox APIレスポンス:', {
         status: response.status,
         statusText: response.statusText,
-        ok: response.ok
+        ok: response.ok,
+        headers: {
+          contentType: response.headers.get('content-type'),
+          dropboxApiResult: response.headers.get('dropbox-api-result')
+        }
       });
 
       if (!response.ok) {
         const error = await response.text();
-        console.error('🔍 [DEBUG-DropboxService] Dropbox APIエラー:', error);
+        console.error('🔍 [DEBUG-DropboxService] Dropbox APIエラー詳細:', {
+          error,
+          status: response.status,
+          statusText: response.statusText,
+          fullPath: fullPath,
+          contentLength: content.length
+        });
 
         // 401エラーの場合は認証期限切れとして処理
         if (response.status === 401) {
@@ -269,14 +279,37 @@ export class DropboxService {
       }
 
       const result = await response.json();
-      console.log('🔍 [DEBUG-DropboxService] アップロード成功:', result);
 
-      return {
+      // レスポンスデータの詳細ログ
+      console.log('🔍 [DEBUG-DropboxService] APIレスポンスボディ:', {
+        path_lower: result.path_lower,
+        path_display: result.path_display,
+        id: result.id,
+        size: result.size,
+        client_modified: result.client_modified,
+        server_modified: result.server_modified,
+        rev: result.rev,
+        content_hash: result.content_hash ? result.content_hash.substring(0, 10) + '...' : 'N/A'
+      });
+
+      console.log('🔍 [DEBUG-DropboxService] アップロード成功詳細:', {
+        actualPath: result.path_display,
+        expectedPath: fullPath,
+        pathMatch: result.path_display === fullPath
+      });
+
+      const uploadResult = {
         success: true,
         filePath: result.path_display,
         size: result.size,
-        serverModified: result.server_modified
+        serverModified: result.server_modified,
+        id: result.id,
+        rev: result.rev
       };
+
+      console.log('🎯 [DEBUG-DropboxService] 最終アップロード結果:', uploadResult);
+
+      return uploadResult;
     } catch (error) {
       console.error('🔍 [DEBUG-DropboxService] uploadSmallFile エラー:', error);
       throw error;

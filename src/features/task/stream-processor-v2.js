@@ -4162,35 +4162,59 @@ export default class StreamProcessorV2 {
         // 個別ログファイルを保存
         try {
           console.log('🔍 [DEBUG] saveToFile()呼び出し開始');
-          const logFilePath = await globalThis.logManager.saveToFile();
-          console.log('🔍 [DEBUG] saveToFile()結果:', logFilePath);
+          const saveResult = await globalThis.logManager.saveToFile();
+          console.log('🔍 [DEBUG] saveToFile()結果:', saveResult);
 
-          this.logger.log('✅ [個別タスクログ] Dropboxアップロード完了', { filePath: logFilePath });
+          // saveResultがオブジェクトかどうかチェック
+          const isResultObject = typeof saveResult === 'object' && saveResult !== null;
 
-          // Dropboxパスを生成（log-report構造）
-          const fileName = logFilePath.split('/').pop();
-          const aiType = task.aiType.toLowerCase();
-          const dropboxPath = `/log-report/${aiType}/complete/${fileName}`;
+          if (isResultObject && saveResult.dropboxUploaded) {
+            this.logger.log('✅ [個別タスクログ] Dropboxアップロード完了', {
+              fileName: saveResult.fileName,
+              url: saveResult.dropboxUrl
+            });
 
-          // Dropbox共有URL（ファイル参照用）
-          const dropboxUrl = `https://www.dropbox.com/home/log-report/${aiType}/complete?preview=${fileName}`;
+            return {
+              success: true,
+              filePath: saveResult.filePath,
+              fileName: saveResult.fileName,
+              dropboxPath: saveResult.dropboxUrl ? saveResult.filePath : null,
+              url: saveResult.dropboxUrl,
+              uploadTime: saveResult.uploadTime
+            };
+          } else {
+            // Dropboxアップロードが失敗またはスキップされた場合
+            const fileName = isResultObject ? saveResult.fileName : (typeof saveResult === 'string' ? saveResult.split('/').pop() : 'unknown');
 
-          console.log('🔍 [DEBUG] URL生成完了:', {
-            fileName,
-            dropboxPath,
-            dropboxUrl
-          });
+            this.logger.warn('⚠️ [個別タスクログ] ローカル保存のみ（Dropboxアップロードなし）', {
+              fileName: fileName
+            });
 
-          return {
-            success: true,
-            filePath: logFilePath,
-            fileName: fileName,
-            dropboxPath: dropboxPath,
-            url: dropboxUrl,
-            uploadTime: new Date()
-          };
+            return {
+              success: true,
+              filePath: isResultObject ? saveResult.filePath : saveResult,
+              fileName: fileName,
+              dropboxPath: null,
+              url: null,
+              warning: 'Dropboxアップロードはスキップされました',
+              uploadTime: new Date()
+            };
+          }
         } catch (saveError) {
-          console.error('🔍 [DEBUG] saveToFile()エラー:', saveError);
+          console.error('🔍 [DEBUG] saveToFile()エラー詳細:', {
+            errorMessage: saveError.message,
+            errorStack: saveError.stack,
+            taskInfo: {
+              aiType: task.aiType,
+              row: task.row,
+              column: task.column
+            },
+            resultInfo: {
+              success: result?.success,
+              hasResponse: !!result?.response,
+              responseLength: result?.response?.length
+            }
+          });
           this.logger.error('❌ [個別タスクログ保存失敗]', saveError);
 
           // Dropbox認証期限切れの場合は特別なメッセージを返す（処理は継続）

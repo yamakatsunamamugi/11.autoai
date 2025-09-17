@@ -190,18 +190,50 @@ export class LogFileManager {
       contentLength: content.length,
       dropboxEnabled: this.dropboxEnabled,
       dropboxAutoUpload: this.dropboxAutoUpload,
-      chromeRuntime: typeof chrome !== 'undefined' && !!chrome.runtime
+      chromeRuntime: typeof chrome !== 'undefined' && !!chrome.runtime,
+      isServiceWorker: typeof document === 'undefined'
     });
 
     try {
-      // Content Script内で直接Blobダウンロードを実行（タイムアウト回避）
-      const blob = new Blob([content], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = fileName.split('/').pop();
-      a.click();
-      URL.revokeObjectURL(url);
+      // Service Worker環境とContent Script環境を判定
+      if (typeof document === 'undefined') {
+        // Service Worker環境: Chrome Downloads APIを使用
+        console.log('🔍 [DEBUG-LogFileManager] Service Worker環境検出 - Chrome Downloads APIを使用');
+
+        const blob = new Blob([content], { type: 'application/json' });
+
+        // BlobをDataURLに変換
+        const dataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+
+        // Chrome Downloads APIでダウンロード
+        if (chrome.downloads) {
+          const downloadId = await chrome.downloads.download({
+            url: dataUrl,
+            filename: fileName,
+            saveAs: false,
+            conflictAction: 'uniquify'
+          });
+          console.log('✅ [LogFileManager] Chrome Downloads APIでダウンロード成功:', { downloadId, fileName });
+        } else {
+          console.warn('⚠️ [LogFileManager] Chrome Downloads APIが利用できません');
+        }
+      } else {
+        // Content Script環境: 既存の方法を使用
+        console.log('🔍 [DEBUG-LogFileManager] Content Script環境検出 - 既存の方法を使用');
+
+        const blob = new Blob([content], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName.split('/').pop();
+        a.click();
+        URL.revokeObjectURL(url);
+      }
 
       console.log('✅ [LogFileManager] ファイルダウンロード成功:', fileName);
 
@@ -257,7 +289,14 @@ export class LogFileManager {
         uploadTime: new Date()
       };
     } catch (error) {
-      console.error('❌ [LogFileManager] ファイルダウンロードエラー:', error);
+      console.error('❌ [LogFileManager] ファイルダウンロードエラー詳細:', {
+        errorMessage: error.message,
+        errorStack: error.stack,
+        fileName,
+        contentLength: content?.length,
+        dropboxEnabled: this.dropboxEnabled,
+        dropboxAutoUpload: this.dropboxAutoUpload
+      });
       throw error;
     }
   }
@@ -316,9 +355,12 @@ export class LogFileManager {
       console.error(`❌ [ファイル作成失敗] ${dropboxPath}`, {
         errorMessage: error.message,
         errorType: error.name,
+        errorStack: error.stack,
         aiType,
         category,
-        fileName: actualFileName
+        fileName: actualFileName,
+        contentLength: content?.length,
+        dropboxEnabled: this.dropboxEnabled
       });
       throw error;
     }
@@ -630,14 +672,17 @@ export class LogFileManager {
 
       // ファイルにダウンロード（Dropbox自動アップロードも含む）
       console.log('🔍 [DEBUG-LogFileManager] downloadFile()呼び出し開始');
-      await this.downloadFile(filePath, JSON.stringify(logData, null, 2));
-      console.log('🔍 [DEBUG-LogFileManager] downloadFile()完了');
+      const downloadResult = await this.downloadFile(filePath, JSON.stringify(logData, null, 2));
+      console.log('🔍 [DEBUG-LogFileManager] downloadFile()完了:', downloadResult);
 
       console.log(`✅ [LogFileManager] 最終ログを保存しました: ${fileName}`);
       console.log(`  ・総ログ数: ${this.logs.length}`);
       console.log(`  ・エラー数: ${this.errorCount}`);
       console.log(`  ・中間保存数: ${this.intermediateCount}`);
       console.log(`  ・Dropbox連携: ${this.dropboxEnabled ? '有効' : '無効'}`);
+      if (downloadResult.dropboxUploaded) {
+        console.log(`  ・Dropbox URL: ${downloadResult.dropboxUrl}`);
+      }
 
       // Dropbox古いファイルの削除（週1回程度）
       if (this.dropboxEnabled && Math.random() < 0.1) { // 10%の確率
@@ -652,10 +697,17 @@ export class LogFileManager {
       this.errorCount = 0;
       this.intermediateCount = 0;
 
-      console.log('🔍 [DEBUG-LogFileManager] saveToFile完了、結果:', filePath);
-      return filePath;
+      console.log('🔍 [DEBUG-LogFileManager] saveToFile完了、結果:', downloadResult);
+      return downloadResult;
     } catch (error) {
-      console.error('🔍 [DEBUG-LogFileManager] saveToFile エラー:', error);
+      console.error('🔍 [DEBUG-LogFileManager] saveToFile エラー詳細:', {
+        errorMessage: error.message,
+        errorStack: error.stack,
+        logsCount: this.logs.length,
+        filePath,
+        dropboxEnabled: this.dropboxEnabled,
+        dropboxAutoUpload: this.dropboxAutoUpload
+      });
       console.error('[LogFileManager] ログ保存エラー:', error);
       throw error;
     }

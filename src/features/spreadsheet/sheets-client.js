@@ -1871,6 +1871,15 @@ class SheetsClient {
    * @returns {string|Object} フォーマット済みログ（文字列またはリッチテキストデータ）
    */
   formatLogEntry(task, url, sendTime, writeTime, returnRichText = false, dropboxUploadResult = null) {
+    console.log('🎨 [SheetsClient] formatLogEntry開始:', {
+      hasTask: !!task,
+      hasUrl: !!url,
+      returnRichText,
+      hasDropboxResult: !!dropboxUploadResult,
+      dropboxSuccess: dropboxUploadResult?.success,
+      dropboxUrl: dropboxUploadResult?.url
+    });
+
     const aiType = task.aiType || 'Unknown';
     const selectedModel = task.model || '通常';
     const displayedModel = task.displayedModel || '不明';
@@ -2042,8 +2051,24 @@ class SheetsClient {
       console.log(`📝 [SheetsClient] writeLogToSpreadsheet開始:`, {
         taskId: task.id,
         row: task.row,
-        logColumns: task.logColumns
+        logColumns: task.logColumns,
+        hasDropboxResult: !!dropboxUploadResult,
+        dropboxUrl: dropboxUploadResult?.url,
+        dropboxSuccess: dropboxUploadResult?.success
       });
+
+      // Dropboxアップロード結果の詳細ログ
+      if (dropboxUploadResult) {
+        console.log('📦 [SheetsClient] Dropboxアップロード結果詳細:', {
+          success: dropboxUploadResult.success,
+          url: dropboxUploadResult.url,
+          fileName: dropboxUploadResult.fileName,
+          filePath: dropboxUploadResult.filePath,
+          dropboxPath: dropboxUploadResult.dropboxPath,
+          uploadTime: dropboxUploadResult.uploadTime,
+          warning: dropboxUploadResult.warning
+        });
+      }
 
       // ログ列を取得（デフォルトはB列）
       const logColumn = task.logColumns?.[0] || 'B';
@@ -2060,6 +2085,18 @@ class SheetsClient {
       const isRichTextResult = typeof logResult === 'object' && logResult !== null && 'plainText' in logResult;
       const plainTextContent = isRichTextResult ? logResult.plainText : logResult;
       const richTextData = isRichTextResult ? logResult.richTextData : null;
+
+      // リッチテキストデータの詳細ログ
+      if (richTextData) {
+        console.log('🔗 [SheetsClient] リッチテキストデータ詳細:', {
+          itemCount: richTextData.length,
+          items: richTextData.map(item => ({
+            hasUrl: !!item.url,
+            textPreview: item.text?.substring(0, 50) + (item.text?.length > 50 ? '...' : ''),
+            url: item.url
+          }))
+        });
+      }
 
       // 既存のログを取得（options.isFirstTaskがfalseの場合）
       let finalRichTextData = richTextData;

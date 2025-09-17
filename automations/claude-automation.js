@@ -1404,17 +1404,31 @@
             }
 
             // 送信時刻を記録（SpreadsheetLogger用）
-            console.log('🔍 送信時刻記録開始 - AIHandler:', !!window.AIHandler, 'recordSendTimestamp:', !!window.AIHandler?.recordSendTimestamp, 'currentAITaskInfo:', !!window.currentAITaskInfo);
-            if (window.AIHandler && window.AIHandler.recordSendTimestamp) {
-                try {
-                    console.log('📝 送信時刻記録実行開始 - タスクID:', window.currentAITaskInfo?.taskId);
-                    await window.AIHandler.recordSendTimestamp('Claude');
-                    console.log('✅ 送信時刻記録成功');
-                } catch (error) {
-                    console.log('❌ 送信時刻記録エラー:', error.message);
+            const sendTime = new Date();
+            console.log('🔍 送信時刻記録開始 - ', sendTime.toISOString());
+
+            // taskDataからtaskIdを取得、なければ生成
+            const taskId = taskData.taskId || `Claude_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+            try {
+                // Chrome拡張機能のメッセージ送信で直接記録
+                if (chrome.runtime && chrome.runtime.sendMessage) {
+                    await chrome.runtime.sendMessage({
+                        type: 'recordSendTime',
+                        taskId: taskId,
+                        sendTime: sendTime.toISOString(),
+                        taskInfo: {
+                            aiType: 'Claude',
+                            model: modelName || '不明',
+                            function: featureName || '通常'
+                        }
+                    });
+                    console.log('✅ 送信時刻記録成功:', taskId, sendTime.toISOString());
+                } else {
+                    console.warn('⚠️ Chrome runtime APIが利用できません');
                 }
-            } else {
-                console.log('⚠️ AIHandler または recordSendTimestamp が利用できません');
+            } catch (error) {
+                console.log('❌ 送信時刻記録エラー:', error.message);
             }
 
             console.log('✅ メッセージ送信完了');
