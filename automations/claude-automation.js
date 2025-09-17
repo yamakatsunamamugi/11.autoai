@@ -615,16 +615,26 @@
         };
 
         try {
-            // じっくり考える/ゆっくり考えるボタンの確認
+            // じっくり考える/ゆっくり考えるボタンの確認（トグル状態も確認）
             const slowThinkingButtons = document.querySelectorAll('button');
             for (const button of slowThinkingButtons) {
                 const text = button.textContent?.trim() || '';
                 const hasClockIcon = button.querySelector('svg') || button.innerHTML.includes('clock');
+
+                // じっくり考える機能の正確な検出
                 if (text.includes('じっくり考える') || text.includes('ゆっくり考える') || (hasClockIcon && text.includes('考える'))) {
-                    confirmationResults.slowThinking = true;
-                    const detectedType = text.includes('じっくり考える') ? 'じっくり考える' : 'ゆっくり考える';
-                    confirmationResults.detected.push(detectedType);
-                    console.log(`  ✅ ${detectedType}ボタン発見`);
+                    // トグルスイッチがある場合は状態も確認
+                    const toggleInput = button.querySelector('input[role="switch"]');
+                    const isActive = toggleInput ?
+                        (toggleInput.checked || toggleInput.getAttribute('aria-checked') === 'true') :
+                        button.getAttribute('aria-pressed') === 'true';
+
+                    if (isActive) {
+                        confirmationResults.slowThinking = true;
+                        const detectedType = text.includes('じっくり考える') ? 'じっくり考える' : 'ゆっくり考える';
+                        confirmationResults.detected.push(detectedType);
+                        console.log(`  ✅ ${detectedType}ボタン（活性化状態）発見`);
+                    }
                     break;
                 }
             }
@@ -642,14 +652,24 @@
                 }
             }
 
-            // Deep Researchボタンの確認（aria-pressed属性をチェック）
-            const deepResearchButtons = document.querySelectorAll('button[type="button"][aria-pressed]');
-            for (const button of deepResearchButtons) {
+            // Deep Research/リサーチボタンの確認（正確な判定）
+            const researchButtons = document.querySelectorAll('button[type="button"][aria-pressed]');
+            for (const button of researchButtons) {
                 const text = button.textContent?.trim() || '';
-                if (text.includes('Research') || text.includes('research') || button.getAttribute('aria-pressed') === 'true') {
+                const isPressed = button.getAttribute('aria-pressed') === 'true';
+
+                // "リサーチ" ボタンでaria-pressed="true"の場合のみDeepResearch
+                if (text.includes('リサーチ') && isPressed) {
                     confirmationResults.deepResearch = true;
                     confirmationResults.detected.push('DeepResearch');
-                    console.log('  ✅ DeepResearchボタン発見');
+                    console.log('  ✅ DeepResearch（リサーチボタン活性化）発見');
+                    break;
+                }
+                // "Research"文字列を含むボタンも確認（英語表示対応）
+                else if ((text.includes('Research') || text.includes('research')) && isPressed) {
+                    confirmationResults.deepResearch = true;
+                    confirmationResults.detected.push('DeepResearch');
+                    console.log('  ✅ DeepResearch（Researchボタン活性化）発見');
                     break;
                 }
             }
