@@ -20,14 +20,13 @@
     console.log(`Claude Automation V2 - 初期化時刻: ${new Date().toLocaleString('ja-JP')}`);
 
     // ========================================
-    // ログ管理システムの初期化
+    // ログ管理システムの初期化（メッセージベース対応）
     // ========================================
-    const ClaudeLogManager = {
+    // Content scriptから直接importできないため、メッセージベースのログマネージャーを作成
+    window.claudeLogFileManager = {
         logs: [],
-        taskStartTime: null,
-        currentTaskData: null,
+        sessionStartTime: new Date().toISOString(),
 
-        // ログエントリを追加
         addLog(entry) {
             this.logs.push({
                 timestamp: new Date().toISOString(),
@@ -35,7 +34,6 @@
             });
         },
 
-        // ステップログを記録
         logStep(step, message, data = {}) {
             this.addLog({
                 type: 'step',
@@ -43,44 +41,45 @@
                 message,
                 data
             });
-            console.log(`📝 [ログ] ${step}: ${message}`);
         },
 
-        // エラーログを記録
         logError(step, error, context = {}) {
             this.addLog({
                 type: 'error',
                 step,
                 error: {
                     message: error.message,
-                    stack: error.stack
+                    stack: error.stack,
+                    name: error.name
                 },
                 context
             });
-            console.error(`❌ [エラーログ] ${step}:`, error);
         },
 
-        // タスク開始を記録
-        startTask(taskData) {
-            this.taskStartTime = Date.now();
-            this.currentTaskData = taskData;
+        logSuccess(step, message, result = {}) {
+            this.addLog({
+                type: 'success',
+                step,
+                message,
+                result
+            });
+        },
+
+        logTaskStart(taskData) {
             this.addLog({
                 type: 'task_start',
                 taskData: {
                     model: taskData.model,
                     function: taskData.function,
-                    promptLength: taskData.prompt?.length || taskData.text?.length || 0,
+                    promptLength: taskData.prompt?.length || 0,
                     cellInfo: taskData.cellInfo
                 }
             });
         },
 
-        // タスク完了を記録
-        completeTask(result) {
-            const duration = this.taskStartTime ? Date.now() - this.taskStartTime : 0;
+        logTaskComplete(result) {
             this.addLog({
                 type: 'task_complete',
-                duration,
                 result: {
                     success: result.success,
                     responseLength: result.response?.length || 0,
@@ -89,75 +88,160 @@
             });
         },
 
-        // ログをファイルに保存
+        async saveErrorImmediately(error, context = {}) {
+            try {
+                const timestamp = new Date().toISOString()
+                    .replace(/[:.]/g, '-')
+                    .replace('T', '_')
+                    .slice(0, -5);
+
+                const errorData = {
+                    timestamp: new Date().toISOString(),
+                    type: 'error',
+                    error: {
+                        message: error.message,
+                        stack: error.stack,
+                        name: error.name
+                    },
+                    context,
+                    sessionStart: this.sessionStartTime
+                };
+
+                const fileName = `11autoai-logs/claude/errors/error-${timestamp}.json`;
+
+                // バックグラウンドスクリプトにメッセージを送信
+                if (typeof chrome !== 'undefined' && chrome.runtime) {
+                    chrome.runtime.sendMessage({
+                        type: 'DOWNLOAD_LOG_FILE',
+                        data: {
+                            fileName,
+                            content: JSON.stringify(errorData, null, 2)
+                        }
+                    });
+                }
+                console.log(`❌ [エラー保存] ${fileName}`);
+            } catch (saveError) {
+                console.error('[エラー保存失敗]', saveError);
+            }
+        },
+
+        async saveIntermediate() {
+            // 実装は省略（必要に応じて追加）
+        },
+
         async saveToFile() {
             if (this.logs.length === 0) {
-                console.log('[ClaudeLogManager] 保存するログがありません');
+                console.log('[LogFileManager] 保存するログがありません');
                 return;
             }
 
             try {
-                // タイムスタンプ付きファイル名
                 const timestamp = new Date().toISOString()
                     .replace(/[:.]/g, '-')
                     .replace('T', '_')
                     .slice(0, -5);
 
                 const fileName = `claude-log-${timestamp}.json`;
+                const filePath = `11autoai-logs/claude/complete/${fileName}`;
+
                 const logData = {
-                    sessionStart: this.logs[0]?.timestamp,
+                    sessionStart: this.sessionStartTime,
                     sessionEnd: new Date().toISOString(),
                     totalLogs: this.logs.length,
-                    taskData: this.currentTaskData,
                     logs: this.logs
                 };
 
-                // LocalStorageに保存（Chrome拡張機能の制約のため）
-                // ディレクトリパスを含めたキー名に変更
-                const key = `claude_logs_log/3.Claudereport/${fileName}`;
-                localStorage.setItem(key, JSON.stringify(logData));
+                // バックグラウンドスクリプトにメッセージを送信
+                if (typeof chrome !== 'undefined' && chrome.runtime) {
+                    chrome.runtime.sendMessage({
+                        type: 'DOWNLOAD_LOG_FILE',
+                        data: {
+                            fileName: filePath,
+                            content: JSON.stringify(logData, null, 2)
+                        }
+                    });
+                }
 
-                // 古いログをローテーション
-                this.rotateLogs();
+                console.log(`✅ [LogFileManager] 最終ログを保存しました: ${fileName}`);
 
-                console.log(`✅ [ClaudeLogManager] ログを保存しました: ${fileName}`);
-                return fileName;
+                // ログをクリア
+                this.logs = [];
+                return filePath;
+            } catch (error) {
+                console.error('[LogFileManager] ログ保存エラー:', error);
+                throw error;
+            }
+        },
+
+        clearCurrentLogs() {
+            this.logs = [];
+            console.log('[LogFileManager] 現在のログをクリアしました');
+        }
+    };
+
+    const ClaudeLogManager = {
+        // LogFileManagerのプロキシとして動作
+        get logFileManager() {
+            return window.claudeLogFileManager || {
+                logStep: () => {},
+                logError: () => {},
+                logSuccess: () => {},
+                logTaskStart: () => {},
+                logTaskComplete: () => {},
+                saveToFile: () => {},
+                saveErrorImmediately: () => {},
+                saveIntermediate: () => {}
+            };
+        },
+
+        // ステップログを記録
+        logStep(step, message, data = {}) {
+            this.logFileManager.logStep(step, message, data);
+            console.log(`📝 [ログ] ${step}: ${message}`);
+        },
+
+        // エラーログを記録（即座にファイル保存）
+        async logError(step, error, context = {}) {
+            this.logFileManager.logError(step, error, context);
+            console.error(`❌ [エラーログ] ${step}:`, error);
+            // エラーは即座に保存
+            await this.logFileManager.saveErrorImmediately(error, { step, ...context });
+        },
+
+        // 成功ログを記録
+        logSuccess(step, message, result = {}) {
+            this.logFileManager.logSuccess(step, message, result);
+            console.log(`✅ [成功ログ] ${step}: ${message}`);
+        },
+
+        // タスク開始を記録
+        startTask(taskData) {
+            this.logFileManager.logTaskStart(taskData);
+            console.log(`🚀 [タスク開始]`, taskData);
+        },
+
+        // タスク完了を記録
+        completeTask(result) {
+            this.logFileManager.logTaskComplete(result);
+            console.log(`🏁 [タスク完了]`, result);
+        },
+
+        // ログをファイルに保存（最終保存）
+        async saveToFile() {
+            try {
+                const filePath = await this.logFileManager.saveToFile();
+                console.log(`✅ [ClaudeLogManager] 最終ログを保存しました: ${filePath}`);
+                return filePath;
             } catch (error) {
                 console.error('[ClaudeLogManager] ログ保存エラー:', error);
             }
         },
 
-        // 古いログを削除（10個を超えた分）
-        rotateLogs() {
-            const logKeys = [];
-            const prefix = 'claude_logs_log/3.Claudereport/';
-
-            // すべてのログキーを収集
-            for (let i = 0; i < localStorage.length; i++) {
-                const key = localStorage.key(i);
-                if (key && key.startsWith(prefix)) {
-                    logKeys.push(key);
-                }
-            }
-
-            // タイムスタンプでソート（新しい順）
-            logKeys.sort().reverse();
-
-            // 10個を超える古いログを削除
-            if (logKeys.length > 10) {
-                const keysToDelete = logKeys.slice(10);
-                keysToDelete.forEach(key => {
-                    localStorage.removeItem(key);
-                    console.log(`🗑️ [ClaudeLogManager] 古いログを削除: ${key}`);
-                });
-            }
-        },
-
         // ログをクリア
         clear() {
-            this.logs = [];
-            this.taskStartTime = null;
-            this.currentTaskData = null;
+            if (this.logFileManager.clearCurrentLogs) {
+                this.logFileManager.clearCurrentLogs();
+            }
         }
     };
 
@@ -753,7 +837,7 @@
 
     // ステップ1-9: テキストプレビュー取得関数（改善版）
     const getTextPreview = (element) => {
-        if (!element) return null;
+        if (!element) return { full: '', preview: '', length: 0 };
 
         console.log('📊 [getTextPreview] テキスト取得開始');
         console.log('  - 要素タグ:', element.tagName);
@@ -1457,16 +1541,14 @@
                                                         }
                                                     }
 
-                                                    // getTextPreviewで詳細にテキスト取得
+                                                    // Canvas検出確認のみ（最終テキストは停止ボタン消滅後に取得）
                                                     const textInfo = getTextPreview(canvasContent);
                                                     if (textInfo && textInfo.full) {
-                                                        finalText = textInfo.full;
-                                                        console.log(`📝 Canvas内容を取得・保存しました（${finalText.length}文字）`);
+                                                        console.log(`📝 Canvas内容を検出しました（${textInfo.length}文字） - 最終取得は停止ボタン消滅後`);
                                                     } else {
-                                                        // フォールバック: 直接取得
-                                                        finalText = canvasContent.innerText || canvasContent.textContent || '';
-                                                        finalText = finalText.trim();
-                                                        console.log(`📝 Canvas内容を直接取得しました（${finalText.length}文字）`);
+                                                        // フォールバック: 直接取得で確認
+                                                        const tempText = canvasContent.innerText || canvasContent.textContent || '';
+                                                        console.log(`📝 Canvas内容を検出しました（${tempText.trim().length}文字） - 最終取得は停止ボタン消滅後`);
                                                     }
                                                 }
                                                 break;
@@ -1534,10 +1616,25 @@
             console.log('\n【Claude-ステップ7】テキスト取得処理');
             console.log('─'.repeat(40));
 
-            // Canvas処理中に既にテキストを取得済みの場合はスキップ
-            if (finalText) {
-                console.log(`✅ 既にテキストを取得済み（${finalText.length}文字）`);
-            } else {
+            // Canvas処理後の最終テキスト取得（応答完了後に再取得）
+            console.log(`🔍 最終テキスト取得開始 - 現在のfinalText: ${finalText ? finalText.length + '文字' : 'なし'}`);
+
+            // Canvas機能のテキストを優先的に最終取得
+            const deepResearchSelectors = getDeepResearchSelectors();
+            const canvasResult = await findClaudeElement(deepResearchSelectors['4_Canvas機能テキスト位置'], 5, true);
+
+            if (canvasResult) {
+                console.log('🎨 Canvas機能の最終テキストを取得中...');
+                const textInfo = getTextPreview(canvasResult);
+                if (textInfo && textInfo.full && textInfo.full.length > 100) {
+                    finalText = textInfo.full;
+                    console.log(`📄 Canvas 最終テキスト取得完了 (${textInfo.length}文字)`);
+                    console.log('プレビュー:\n', textInfo.preview.substring(0, 200) + '...');
+                }
+            }
+
+            // Canvas以外の処理（既存のロジック）
+            if (!finalText) {
                 // Canvas機能のテキストを確認
                 const deepResearchSelectors = getDeepResearchSelectors();
 
@@ -1596,29 +1693,15 @@
                     await wait(2000); // 追加待機
                 }
 
-                const canvasResult = await findClaudeElement(deepResearchSelectors['4_Canvas機能テキスト位置'], 3, true);
-
-                if (canvasResult) {
-                    console.log('✓ Canvas機能のテキストを検出');
-                    const textInfo = getTextPreview(canvasResult);
-                    if (textInfo) {
+                // 通常のテキストを確認（Canvasが見つからない場合のフォールバック）
+                const normalResult = await findClaudeElement(deepResearchSelectors['5_通常処理テキスト位置'], 3, true);
+                if (normalResult) {
+                    console.log('✓ 通常処理のテキストを検出');
+                    const textInfo = getTextPreview(normalResult);
+                    if (textInfo && textInfo.full) {
                         finalText = textInfo.full;
-                        console.log(`📄 Canvas テキスト取得完了 (${textInfo.length}文字)`);
+                        console.log(`📄 通常 テキスト取得完了 (${textInfo.length}文字)`);
                         console.log('プレビュー:\n', textInfo.preview.substring(0, 200) + '...');
-                    }
-                }
-
-                // 通常のテキストを確認（Canvasが見つからない場合）
-                if (!finalText) {
-                    const normalResult = await findClaudeElement(deepResearchSelectors['5_通常処理テキスト位置'], 3, true);
-                    if (normalResult) {
-                        console.log('✓ 通常処理のテキストを検出');
-                        const textInfo = getTextPreview(normalResult);
-                        if (textInfo) {
-                            finalText = textInfo.full;
-                            console.log(`📄 通常 テキスト取得完了 (${textInfo.length}文字)`);
-                            console.log('プレビュー:\n', textInfo.preview.substring(0, 200) + '...');
-                        }
                     }
                 }
             }
