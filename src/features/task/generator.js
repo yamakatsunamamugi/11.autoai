@@ -51,7 +51,7 @@
 
 import { Task, TaskList, TaskFactory } from "./models.js";
 import { AnswerFilter } from "./filters/index.js";
-import ProcessorFactory from "../../core/processor-factory.js";
+// import ProcessorFactory from "../../core/processor-factory.js"; // 削除済み
 import ReportTaskFactory from "../report/report-task-factory.js";
 import logger from "../../utils/logger.js";
 // getDynamicConfigManager import削除 - スプレッドシート設定を直接使用するため不要
@@ -75,9 +75,9 @@ class TaskGenerator {
    */
   async getStreamProcessor() {
     if (!this.streamProcessor) {
-      this.streamProcessor = await ProcessorFactory.createProcessorFromConfig({
-        logger: this.logger.child ? this.logger.child("StreamProcessor") : this.logger
-      });
+      // ProcessorFactory削除済み - StreamProcessorV2を直接使用
+      const StreamProcessorV2 = (await import('../task/stream-processor-v2.js')).default;
+      this.streamProcessor = StreamProcessorV2.getInstance();
       
       this.logger.info('TaskGenerator', '🔧 プロセッサを設定ベースで初期化', {
         processorType: this.streamProcessor.constructor.name,

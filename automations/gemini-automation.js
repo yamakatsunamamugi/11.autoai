@@ -25,128 +25,88 @@
     window.GEMINI_SCRIPT_INIT_TIME = Date.now();
 
     // ========================================
-    // ログ管理システムの初期化
+    // ログ管理システムの初期化（ハイブリッド保存対応）
     // ========================================
-    const GeminiLogManager = {
-        logs: [],
-        taskStartTime: null,
-        currentTaskData: null,
+    import('../src/utils/log-file-manager.js').then(module => {
+        window.geminiLogFileManager = new module.LogFileManager('gemini');
+    }).catch(err => {
+        console.error('[Gemini] LogFileManager読み込みエラー:', err);
+        // フォールバック用のダミーオブジェクト
+        window.geminiLogFileManager = {
+            logStep: () => {},
+            logError: () => {},
+            logSuccess: () => {},
+            logTaskStart: () => {},
+            logTaskComplete: () => {},
+            saveToFile: () => {},
+            saveErrorImmediately: () => {},
+            saveIntermediate: () => {}
+        };
+    });
 
-        addLog(entry) {
-            this.logs.push({
-                timestamp: new Date().toISOString(),
-                ...entry
-            });
+    const GeminiLogManager = {
+        // LogFileManagerのプロキシとして動作
+        get logFileManager() {
+            return window.geminiLogFileManager || {
+                logStep: () => {},
+                logError: () => {},
+                logSuccess: () => {},
+                logTaskStart: () => {},
+                logTaskComplete: () => {},
+                saveToFile: () => {},
+                saveErrorImmediately: () => {},
+                saveIntermediate: () => {}
+            };
         },
 
+        // ステップログを記録
         logStep(step, message, data = {}) {
-            this.addLog({
-                type: 'step',
-                step,
-                message,
-                data
-            });
+            this.logFileManager.logStep(step, message, data);
             console.log(`📝 [ログ] ${step}: ${message}`);
         },
 
-        logError(step, error, context = {}) {
-            this.addLog({
-                type: 'error',
-                step,
-                error: {
-                    message: error.message,
-                    stack: error.stack
-                },
-                context
-            });
+        // エラーログを記録（即座にファイル保存）
+        async logError(step, error, context = {}) {
+            this.logFileManager.logError(step, error, context);
             console.error(`❌ [エラーログ] ${step}:`, error);
+            // エラーは即座に保存
+            await this.logFileManager.saveErrorImmediately(error, { step, ...context });
         },
 
+        // 成功ログを記録
+        logSuccess(step, message, result = {}) {
+            this.logFileManager.logSuccess(step, message, result);
+            console.log(`✅ [成功ログ] ${step}: ${message}`);
+        },
+
+        // タスク開始を記録
         startTask(taskData) {
-            this.taskStartTime = Date.now();
-            this.currentTaskData = taskData;
-            this.addLog({
-                type: 'task_start',
-                taskData: {
-                    model: taskData.model,
-                    function: taskData.function,
-                    promptLength: taskData.prompt?.length || taskData.text?.length || 0,
-                    cellInfo: taskData.cellInfo
-                }
-            });
+            this.logFileManager.logTaskStart(taskData);
+            console.log(`🚀 [タスク開始]`, taskData);
         },
 
+        // タスク完了を記録
         completeTask(result) {
-            const duration = this.taskStartTime ? Date.now() - this.taskStartTime : 0;
-            this.addLog({
-                type: 'task_complete',
-                duration,
-                result: {
-                    success: result.success,
-                    responseLength: result.response?.length || 0,
-                    error: result.error
-                }
-            });
+            this.logFileManager.logTaskComplete(result);
+            console.log(`🏁 [タスク完了]`, result);
         },
 
+        // ログをファイルに保存（最終保存）
         async saveToFile() {
-            if (this.logs.length === 0) {
-                console.log('[GeminiLogManager] 保存するログがありません');
-                return;
-            }
-
             try {
-                const timestamp = new Date().toISOString()
-                    .replace(/[:.]/g, '-')
-                    .replace('T', '_')
-                    .slice(0, -5);
-
-                const fileName = `gemini-log-${timestamp}.json`;
-                const logData = {
-                    sessionStart: this.logs[0]?.timestamp,
-                    sessionEnd: new Date().toISOString(),
-                    totalLogs: this.logs.length,
-                    taskData: this.currentTaskData,
-                    logs: this.logs
-                };
-
-                const key = `gemini_logs_log/1.Geminireport/${fileName}`;
-                localStorage.setItem(key, JSON.stringify(logData));
-                this.rotateLogs();
-
-                console.log(`✅ [GeminiLogManager] ログを保存しました: ${fileName}`);
-                return fileName;
+                const filePath = await this.logFileManager.saveToFile();
+                console.log(`✅ [GeminiLogManager] 最終ログを保存しました: ${filePath}`);
+                return filePath;
             } catch (error) {
                 console.error('[GeminiLogManager] ログ保存エラー:', error);
             }
         },
 
-        rotateLogs() {
-            const logKeys = [];
-            const prefix = 'gemini_logs_log/1.Geminireport/';
-
-            for (let i = 0; i < localStorage.length; i++) {
-                const key = localStorage.key(i);
-                if (key && key.startsWith(prefix)) {
-                    logKeys.push(key);
-                }
-            }
-
-            logKeys.sort().reverse();
-
-            if (logKeys.length > 10) {
-                const keysToDelete = logKeys.slice(10);
-                keysToDelete.forEach(key => {
-                    localStorage.removeItem(key);
-                    console.log(`🗑️ [GeminiLogManager] 古いログを削除: ${key}`);
-                });
-            }
-        },
-
+        // ログをクリア
         clear() {
-            this.logs = [];
-            this.taskStartTime = null;
-            this.currentTaskData = null;
+            if (this.logFileManager.clearCurrentLogs) {
+                this.logFileManager.clearCurrentLogs();
+            }
         }
     };
 

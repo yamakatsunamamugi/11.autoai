@@ -183,8 +183,93 @@
         decorativeElements.forEach(el => el.remove());
         return clone.textContent?.trim() || '';
     }
-    
-    
+
+    // ========================================
+    // ログ管理システムの初期化（ハイブリッド保存対応）
+    // ========================================
+    import('../src/utils/log-file-manager.js').then(module => {
+        window.chatgptLogFileManager = new module.LogFileManager('chatgpt');
+    }).catch(err => {
+        console.error('[ChatGPT] LogFileManager読み込みエラー:', err);
+        // フォールバック用のダミーオブジェクト
+        window.chatgptLogFileManager = {
+            logStep: () => {},
+            logError: () => {},
+            logSuccess: () => {},
+            logTaskStart: () => {},
+            logTaskComplete: () => {},
+            saveToFile: () => {},
+            saveErrorImmediately: () => {},
+            saveIntermediate: () => {}
+        };
+    });
+
+    const ChatGPTLogManager = {
+        // LogFileManagerのプロキシとして動作
+        get logFileManager() {
+            return window.chatgptLogFileManager || {
+                logStep: () => {},
+                logError: () => {},
+                logSuccess: () => {},
+                logTaskStart: () => {},
+                logTaskComplete: () => {},
+                saveToFile: () => {},
+                saveErrorImmediately: () => {},
+                saveIntermediate: () => {}
+            };
+        },
+
+        // ステップログを記録
+        logStep(step, message, data = {}) {
+            this.logFileManager.logStep(step, message, data);
+            log(`📝 [ログ] ${step}: ${message}`);
+        },
+
+        // エラーログを記録（即座にファイル保存）
+        async logError(step, error, context = {}) {
+            this.logFileManager.logError(step, error, context);
+            log(`❌ [エラーログ] ${step}: ${error.message}`, 'error');
+            // エラーは即座に保存
+            await this.logFileManager.saveErrorImmediately(error, { step, ...context });
+        },
+
+        // 成功ログを記録
+        logSuccess(step, message, result = {}) {
+            this.logFileManager.logSuccess(step, message, result);
+            log(`✅ [成功ログ] ${step}: ${message}`, 'success');
+        },
+
+        // タスク開始を記録
+        startTask(taskData) {
+            this.logFileManager.logTaskStart(taskData);
+            log(`🚀 [タスク開始]`, 'info');
+        },
+
+        // タスク完了を記録
+        completeTask(result) {
+            this.logFileManager.logTaskComplete(result);
+            log(`🏁 [タスク完了]`, 'info');
+        },
+
+        // ログをファイルに保存（最終保存）
+        async saveToFile() {
+            try {
+                const filePath = await this.logFileManager.saveToFile();
+                log(`✅ [ChatGPTLogManager] 最終ログを保存しました: ${filePath}`, 'success');
+                return filePath;
+            } catch (error) {
+                log(`[ChatGPTLogManager] ログ保存エラー: ${error.message}`, 'error');
+            }
+        },
+
+        // ログをクリア
+        clear() {
+            if (this.logFileManager.clearCurrentLogs) {
+                this.logFileManager.clearCurrentLogs();
+            }
+        }
+    };
+
     // 要素が可視かつクリック可能かチェック
     function isElementInteractable(element) {
         if (!element) return false;
@@ -670,7 +755,10 @@
         // 実行前にフラグをリセット（どの経路から呼ばれても適切に初期化）
         window.__v2_execution_complete = false;
         window.__v2_execution_result = null;
-        
+
+        // タスク開始をログに記録
+        ChatGPTLogManager.startTask(taskData);
+
         console.log('%c🚀 ChatGPT V2 タスク実行開始', 'color: #00BCD4; font-weight: bold; font-size: 16px');
         console.log('受信したタスクデータ:', {
             model: taskData.model,

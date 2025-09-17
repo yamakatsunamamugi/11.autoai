@@ -8,9 +8,9 @@
 // 5. テスト可能な設計
 
 // ServiceRegistryは削除済み - 直接管理に変更
-import { ConfigManager } from "./config-manager.js";
-import { EventBus } from "./event-bus.js";
-import { ErrorHandler } from "./error-handler.js";
+// import { ConfigManager } from "./config-manager.js"; // 削除済み
+// import { EventBus } from "./event-bus.js"; // 削除済み
+// import { ErrorHandler } from "./error-handler.js"; // 簡易版を使用
 import StreamProcessorV2 from "../features/task/stream-processor-v2.js";
 
 /**
@@ -25,8 +25,12 @@ import StreamProcessorV2 from "../features/task/stream-processor-v2.js";
  */
 class StreamingServiceManager {
   constructor(config = null) {
-    // 設定管理（優先順位: 引数 > 環境変数 > デフォルト設定）
-    this.config = ConfigManager.getInstance(config);
+    // 設定管理（簡易版）
+    this.config = {
+      get: (key, defaultValue = null) => defaultValue,
+      set: (key, value) => {},
+      ...config
+    };
 
     // 統一ログシステム - Loggerが未定義のためconsoleを使用
     this.logger = {
@@ -37,15 +41,27 @@ class StreamingServiceManager {
       debug: (...args) => console.debug('[StreamingServiceManager]', ...args)
     };
 
-    // 統一エラーハンドリング
-    this.errorHandler = new ErrorHandler({
-      logger: this.logger,
-      retryConfig: this.config.get("error.retry", {}),
-      circuitBreaker: this.config.get("error.circuitBreaker", {}),
-    });
+    // 統一エラーハンドリング（簡易版）
+    this.errorHandler = {
+      handle: (error) => this.logger.error('Error:', error),
+      retry: async (fn, retries = 3) => {
+        for (let i = 0; i < retries; i++) {
+          try {
+            return await fn();
+          } catch (error) {
+            if (i === retries - 1) throw error;
+            await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+          }
+        }
+      }
+    };
 
-    // イベントバス（疎結合なコンポーネント間通信）
-    this.eventBus = EventBus.getInstance();
+    // イベントバス（簡易版）
+    this.eventBus = {
+      emit: (event, data) => this.logger.debug('Event:', event, data),
+      on: (event, handler) => {},
+      off: (event, handler) => {}
+    };
 
     // サービスレジストリは削除済み - 直接管理
     this.services = new Map();

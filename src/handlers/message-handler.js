@@ -28,6 +28,7 @@ import SheetsClient from '../features/spreadsheet/sheets-client.js';
 import { getStreamingServiceManager } from '../core/streaming-service-manager.js';
 // SpreadsheetLogger削除済み - SheetsClientに統合
 import { getAuthService } from '../services/auth-service.js';
+import { dropboxService } from '../services/dropbox-service.js';
 
 // ConsoleLoggerインスタンス
 const logger = new ConsoleLogger('message-handler');
@@ -511,73 +512,6 @@ export function setupMessageHandler() {
         })();
 
         return true; // 非同期応答
-
-      // ===== Step 12: 列追加のみ実行（タスク生成なし） =====
-      case "executeAutoSetup":
-        console.log('[Step 12-1] 列追加処理開始');
-        (async () => {
-          try {
-            const url = request.urls && request.urls[0];
-
-            if (!url) {
-              console.error('[Step 12-2] URLが指定されていません');
-              sendResponse({
-                success: false,
-                error: "URLが指定されていません",
-              });
-              return;
-            }
-
-            // Step 12-3: URL解析でスプレッドシートIDとgidを取得
-            const { spreadsheetId, gid } = globalThis.parseSpreadsheetUrl(url);
-            if (!spreadsheetId) {
-              console.error('[Step 12-4] 無効なスプレッドシートURL');
-              sendResponse({
-                success: false,
-                error: "無効なスプレッドシートURLです",
-              });
-              return;
-            }
-
-            // Step 12-5: StreamProcessorV2初期化を確保してからSpreadsheetAutoSetupを実行
-            if (!globalThis.SPREADSHEET_CONFIG) {
-              console.log('[Step 12-5-1] SPREADSHEET_CONFIG未初期化、StreamProcessorV2を初期化');
-              // 依存性を取得してシングルトンに設定（static import使用）
-              try {
-                const sheetsClient = new SheetsClient();
-                const processor = StreamProcessorV2.getInstance();
-                await processor.setDependencies({
-                  sheetsClient: sheetsClient
-                  // SpreadsheetLogger削除済み - SheetsClientに統合
-                });
-              } catch (e) {
-                // Service Worker環境では動的インポート失敗
-                console.warn('Service Worker環境で依存性設定をスキップ:', e.message);
-              }
-            }
-
-            const autoSetup = new SpreadsheetAutoSetup();
-            const authService = await getAuthService();
-            const token = await authService.getAuthToken();
-            const result = await autoSetup.executeAutoSetup(spreadsheetId, token, gid);
-
-            // Step 12-6: 結果をUIに返す
-            sendResponse({
-              success: result.success,
-              message: result.message,
-              addedColumns: result.addedColumns?.length || 0,  // 追加された列の数
-              hasAdditions: result.hasAdditions,                // 列が追加されたかどうか
-              error: result.error
-            });
-          } catch (error) {
-            console.error("[Step 12-7] 列追加エラー:", error);
-            sendResponse({
-              success: false,
-              error: error.message,
-            });
-          }
-        })();
-        return true;  // 非同期処理のためtrueを返す
 
       // ===== Step 13: スプレッドシート読み込み（タスク生成含む） =====
       case "loadSpreadsheet":
@@ -1270,6 +1204,189 @@ export function setupMessageHandler() {
             }
           } catch (error) {
             console.error("[Step 27-8] リトライウィンドウ作成エラー:", error);
+            sendResponse({
+              success: false,
+              error: error.message
+            });
+          }
+        })();
+        return true;
+
+      // ===== Step 28: Dropbox認証 =====
+      case "authenticateDropbox":
+        console.log('[Step 28-1] Dropbox認証要求');
+        (async () => {
+          try {
+            const result = await dropboxService.authenticate();
+            sendResponse(result);
+          } catch (error) {
+            console.error("[Step 28-2] Dropbox認証エラー:", error);
+            sendResponse({
+              success: false,
+              error: error.message
+            });
+          }
+        })();
+        return true;
+
+      // ===== Step 29: Dropbox Client ID設定 =====
+      case "setDropboxClientId":
+        console.log('[Step 29-1] Dropbox Client ID設定要求');
+        (async () => {
+          try {
+            const { clientId } = request.data;
+            if (!clientId) {
+              throw new Error('Client IDが必要です');
+            }
+
+            await dropboxService.config.setClientId(clientId);
+            sendResponse({
+              success: true,
+              message: 'Dropbox Client IDを設定しました'
+            });
+          } catch (error) {
+            console.error("[Step 29-2] Dropbox Client ID設定エラー:", error);
+            sendResponse({
+              success: false,
+              error: error.message
+            });
+          }
+        })();
+        return true;
+
+      // ===== Step 30: Dropbox設定取得 =====
+      case "getDropboxSettings":
+        console.log('[Step 30-1] Dropbox設定取得要求');
+        (async () => {
+          try {
+            const settings = await dropboxService.config.getUploadSettings();
+            const isAuthenticated = await dropboxService.isAuthenticated();
+            const clientId = await dropboxService.config.loadClientId();
+
+            sendResponse({
+              success: true,
+              settings: {
+                ...settings,
+                isAuthenticated,
+                clientIdConfigured: !!clientId
+              }
+            });
+          } catch (error) {
+            console.error("[Step 30-2] Dropbox設定取得エラー:", error);
+            sendResponse({
+              success: false,
+              error: error.message
+            });
+          }
+        })();
+        return true;
+
+      // ===== Step 31: Dropbox設定更新 =====
+      case "updateDropboxSettings":
+        console.log('[Step 31-1] Dropbox設定更新要求');
+        (async () => {
+          try {
+            const { settings } = request.data;
+            await dropboxService.config.saveUploadSettings(settings);
+
+            sendResponse({
+              success: true,
+              message: 'Dropbox設定を更新しました'
+            });
+          } catch (error) {
+            console.error("[Step 31-2] Dropbox設定更新エラー:", error);
+            sendResponse({
+              success: false,
+              error: error.message
+            });
+          }
+        })();
+        return true;
+
+      // ===== Step 32: Dropboxファイルアップロード =====
+      case "uploadToDropbox":
+        console.log('[Step 32-1] Dropboxファイルアップロード要求');
+        (async () => {
+          try {
+            const { fileName, content, options = {} } = request.data;
+
+            if (!fileName || !content) {
+              throw new Error('ファイル名とコンテンツが必要です');
+            }
+
+            const result = await dropboxService.uploadFile(fileName, content, options);
+
+            sendResponse({
+              success: true,
+              result,
+              message: 'ファイルをDropboxにアップロードしました'
+            });
+          } catch (error) {
+            console.error("[Step 32-2] Dropboxアップロードエラー:", error);
+            sendResponse({
+              success: false,
+              error: error.message
+            });
+          }
+        })();
+        return true;
+
+      // ===== Step 33: Dropboxファイル一覧取得 =====
+      case "listDropboxFiles":
+        console.log('[Step 33-1] Dropboxファイル一覧取得要求');
+        (async () => {
+          try {
+            const { folderPath = '' } = request.data || {};
+            const files = await dropboxService.listFiles(folderPath);
+
+            sendResponse({
+              success: true,
+              files
+            });
+          } catch (error) {
+            console.error("[Step 33-2] Dropboxファイル一覧取得エラー:", error);
+            sendResponse({
+              success: false,
+              error: error.message
+            });
+          }
+        })();
+        return true;
+
+      // ===== Step 34: Dropboxユーザー情報取得 =====
+      case "getDropboxUserInfo":
+        console.log('[Step 34-1] Dropboxユーザー情報取得要求');
+        (async () => {
+          try {
+            const userInfo = await dropboxService.getUserInfo();
+
+            sendResponse({
+              success: true,
+              userInfo
+            });
+          } catch (error) {
+            console.error("[Step 34-2] Dropboxユーザー情報取得エラー:", error);
+            sendResponse({
+              success: false,
+              error: error.message
+            });
+          }
+        })();
+        return true;
+
+      // ===== Step 35: Dropboxログアウト =====
+      case "logoutDropbox":
+        console.log('[Step 35-1] Dropboxログアウト要求');
+        (async () => {
+          try {
+            const success = await dropboxService.logout();
+
+            sendResponse({
+              success,
+              message: success ? 'Dropboxからログアウトしました' : 'ログアウトに失敗しました'
+            });
+          } catch (error) {
+            console.error("[Step 35-2] Dropboxログアウトエラー:", error);
             sendResponse({
               success: false,
               error: error.message

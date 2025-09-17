@@ -4,7 +4,7 @@
  * 【ステップ構成】
  * Step 0: 初期化・コンストラクタ - システムの基本設定とサービス初期化
  *   Step 0-3: モニター管理システム初期化 - UI要素取得、設定読み込み、イベントリスナー設定
- * Step 1: SpreadsheetLogger初期化 - スプレッドシートへのログ出力機能の準備
+ * Step 1: SheetsClient初期化 - スプレッドシートへのログ出力機能の準備
  * Step 2: メインエントリーポイント - スリープ防止とデータ検証を行う処理の開始点
  *   Step 2-1拡張: ウィンドウ配置準備 - マルチモニター環境での配置準備
  * Step 3: V3グループ順次処理 - 動的にタスクグループを解析し依存関係に従って実行
@@ -37,6 +37,7 @@ import { aiUrlManager } from '../../core/ai-url-manager.js';
 import SheetsClient from '../spreadsheet/sheets-client.js';
 // SpreadsheetLogger削除済み - SheetsClientに統合
 import { ConsoleLogger } from '../../utils/console-logger.js';
+import { dropboxService } from '../../services/dropbox-service.js';
 // RetryManager機能はStep 10に統合済み
 // Removed dependency on 1-ai-common-base.js
 
@@ -139,7 +140,7 @@ export default class StreamProcessorV2 {
     this.currentGroupId = null;
     // spreadsheetLogger削除済み - sheetsClientに統合
     this.sheetsClient = config.sheetsClient || null;
-    // SpreadsheetLoggerClass削除済み - sheetsClientに統合
+    // SpreadsheetLogger削除済み - SheetsClientに統合
     this.spreadsheetData = null;
     this.spreadsheetUrl = null;
 
@@ -181,7 +182,6 @@ export default class StreamProcessorV2 {
    * シングルトンパターンで早期初期化された場合に使用
    * @param {Object} dependencies - 依存性オブジェクト
    * @param {Object} dependencies.sheetsClient - SheetsClientインスタンス
-   * @param {Function} dependencies.SpreadsheetLogger - SpreadsheetLoggerクラス
    */
   async setDependencies(dependencies = {}) {
     // SheetsClientを設定
@@ -199,12 +199,7 @@ export default class StreamProcessorV2 {
       }
     }
 
-    // SpreadsheetLoggerクラスを設定して再初期化
-    if (dependencies.SpreadsheetLogger) {
-      this.SpreadsheetLoggerClass = dependencies.SpreadsheetLogger;
-      // 既存のspreadsheetLoggerがあれば、まずクリア
-      // spreadsheetLogger削除済み - sheetsClientに統合
-    }
+    // SpreadsheetLogger削除済み - SheetsClientに統合
     // SpreadsheetLogger削除済み - sheetsClientに統合
   }
 
@@ -258,26 +253,10 @@ export default class StreamProcessorV2 {
   }
 
   // ========================================
-  // Step 1: SpreadsheetLogger初期化
+  // Step 1: SheetsClient初期化
   // スプレッドシートへのログ出力機能を初期化し、
   // SheetsClientへの参照を取得する
   // ========================================
-  /**
-   * SpreadsheetLoggerの初期化
-   *
-   * スプレッドシートへのログ出力機能を初期化します。
-   * Service Worker環境では動的インポートが制限されるため、
-   * グローバルスペースから取得します。
-   */
-  async initializeSpreadsheetLogger() {
-    // spreadsheetLogger削除済み - sheetsClientに統合
-    // この関数は互換性のために残していますが、実際の処理は行いません
-    this.log('SpreadsheetLogger削除済み - sheetsClientに統合', 'info', '1');
-
-    // ChatGPTツール制御システムの初期化は維持
-    this.log('ChatGPTツール制御システム初期化開始', 'info', '1-5');
-    this.initializeChatGPTToolControl();
-  }
 
   // ========================================
   // Step 2: メインエントリーポイント
@@ -327,8 +306,7 @@ export default class StreamProcessorV2 {
     this.currentOptions = options || {};
     this.log(`options保存完了: taskGroups数=${options?.taskGroups?.length || 0}`, 'info', '2-2');
 
-    // SpreadsheetLoggerを初期化
-    await this.initializeSpreadsheetLogger();
+    // SpreadsheetLogger削除済み - SheetsClientに統合
 
     // ========================================
     // Step 2-3: タスクグループ検証
@@ -375,10 +353,10 @@ export default class StreamProcessorV2 {
     this.log(`処理開始インデックス: ${firstTaskGroupIndex}`, 'success', '2-4');
 
     // ========================================
-    // Step 2-4-1: SpreadsheetLoggerのログ記録機能は既に初期化済み
+    // Step 2-4-1: SheetsClientのログ記録機能は既に初期化済み
     // ========================================
-    this.log('SpreadsheetLoggerは既にコンストラクタで初期化済み', 'info', '2-4-1');
-    // initializeLoggingFeaturesの呼び出しを削除 - spreadsheetLoggerの二重初期化を防ぐ
+    this.log('SheetsClientは既にコンストラクタで初期化済み', 'info', '2-4-1');
+    // initializeLoggingFeaturesの呼び出しを削除 - sheetsClientの二重初期化を防ぐ
 
     // ========================================
     // Step 2-5: グループ処理実行
@@ -697,19 +675,18 @@ export default class StreamProcessorV2 {
         console.log(`- taskGroupInfo.name: ${taskGroupInfo.name}`);
       }
 
-      // ===== Step 5-1: グループ完了時のログ・回答記録 =====
-      // 注意: この処理は重複しており、パフォーマンスを低下させるため無効化
-      // AIタスク実行時に既にログ・回答は記録されている
-      /*
+      // ===== Step 5-1: グループ完了時のログ・回答記録とDropboxアップロード =====
+      // Dropboxアップロードのために有効化
       if (taskGroupInfo) {
         try {
+          // 🔍 デバッグ: グループ処理完了を確認
+          this.logger.log(`[StreamProcessorV2] 📊 グループ${groupIndex + 1}処理完了 - Dropboxアップロードを開始`);
           await this.writeGroupLogsAndResponses(taskGroupInfo, spreadsheetData);
-          this.logger.log(`[StreamProcessorV2] 📝 グループ${groupIndex + 1}のログ・回答記録完了`);
+          this.logger.log(`[StreamProcessorV2] 📝 グループ${groupIndex + 1}のログ・回答記録とDropboxアップロード完了`);
         } catch (recordError) {
           this.logger.error(`[StreamProcessorV2] ❌ グループ${groupIndex + 1}のログ・回答記録エラー:`, recordError);
         }
       }
-      */
 
       // ===== Step 6: グループ完了後のリトライ処理 =====
       if (this.retryManager) {
@@ -1759,7 +1736,7 @@ export default class StreamProcessorV2 {
   }
 
   // initializeLoggingFeatures関数を削除
-  // spreadsheetLoggerはコンストラクタで正しくSpreadsheetLoggerクラスとして初期化されているため
+  // sheetsClientはコンストラクタで正しくSheetsClientクラスとして初期化されているため
   // この関数による二重初期化（単純オブジェクトへの上書き）を防ぐ
 
   /**
@@ -3966,74 +3943,80 @@ export default class StreamProcessorV2 {
       console.log(`- globalThis.logManager存在: ${!!globalThis.logManager}`);
       console.log(`- this.spreadsheetLogger存在: ${!!this.spreadsheetLogger}`);
 
-      // 内部のSpreadsheetLoggerを使用
-      const externalLogger = this.spreadsheetLogger;
-      if (!externalLogger) {
-        console.log(`🔍 [DEBUG] ❌ SpreadsheetLoggerが初期化されていません`);
-        this.logger.warn('[StreamProcessorV2] SpreadsheetLoggerが初期化されていません');
-        return;
+      // Dropboxログレポートアップロード（最初に実行）
+      const dropboxUploadResult = await this.uploadTaskReportToDropbox(taskGroupInfo, spreadsheetData);
+
+      // SheetsClientを使用（SpreadsheetLoggerは削除済み）
+      const sheetsClient = this.sheetsClient;
+      if (!sheetsClient) {
+        console.log(`🔍 [DEBUG] ⚠️ SheetsClientが初期化されていません - ログ記録をスキップ`);
+        this.logger.warn('[StreamProcessorV2] SheetsClientが初期化されていません - ログ記録をスキップしてDropboxアップロードを実行');
+        // returnを削除し、処理を継続
       }
 
-      // グループの作業行範囲を取得
-      const workRows = this.getWorkRowRange();
-      console.log(`🔍 [DEBUG] 作業行取得結果:`);
-      console.log(`- workRows存在: ${!!workRows}`);
-      console.log(`- workRows数: ${workRows?.length}`);
-      if (!workRows || workRows.length === 0) {
-        console.log(`🔍 [DEBUG] ❌ 作業行が見つかりません`);
-        this.logger.warn('[StreamProcessorV2] 作業行が見つかりません');
-        return;
-      }
+      // SheetsClientが存在する場合のみログ記録処理を実行
+      if (sheetsClient) {
+        // グループの作業行範囲を取得
+        const workRows = this.getWorkRowRange();
+        console.log(`🔍 [DEBUG] 作業行取得結果:`);
+        console.log(`- workRows存在: ${!!workRows}`);
+        console.log(`- workRows数: ${workRows?.length}`);
 
-      // グループのログ列と回答列を特定
-      const logColumn = taskGroupInfo.columnRange?.logColumn;
-      const answerColumns = taskGroupInfo.columnRange?.answerColumns || [];
+        if (!workRows || workRows.length === 0) {
+          console.log(`🔍 [DEBUG] ❌ 作業行が見つかりません`);
+          this.logger.warn('[StreamProcessorV2] 作業行が見つかりません');
+        } else {
+          // グループのログ列と回答列を特定
+          const logColumn = taskGroupInfo.columnRange?.logColumn;
+          const answerColumns = taskGroupInfo.columnRange?.answerColumns || [];
 
-      // 🔍 [DEBUG] カラム情報確認
-      console.log(`🔍 [DEBUG] カラム情報:`);
-      console.log(`- logColumn: ${logColumn}`);
-      console.log(`- answerColumns数: ${answerColumns?.length}`);
-      console.log(`- answerColumns: ${JSON.stringify(answerColumns)}`);
-      console.log(`- taskGroupInfo.columnRange: ${JSON.stringify(taskGroupInfo.columnRange)}`);
-      console.log(`- sheetsClient存在: ${!!this.sheetsClient}`);
+          // 🔍 [DEBUG] カラム情報確認
+          console.log(`🔍 [DEBUG] カラム情報:`);
+          console.log(`- logColumn: ${logColumn}`);
+          console.log(`- answerColumns数: ${answerColumns?.length}`);
+          console.log(`- answerColumns: ${JSON.stringify(answerColumns)}`);
+          console.log(`- taskGroupInfo.columnRange: ${JSON.stringify(taskGroupInfo.columnRange)}`);
+          console.log(`- sheetsClient存在: ${!!this.sheetsClient}`);
 
-      this.logger.log(`[StreamProcessorV2] グループ構造:`, {
-        logColumn: logColumn,
-        answerColumnsCount: answerColumns.length,
-        workRowsCount: workRows.length
-      });
+          this.logger.log(`[StreamProcessorV2] グループ構造:`, {
+            logColumn: logColumn,
+            answerColumnsCount: answerColumns.length,
+            workRowsCount: workRows.length
+          });
 
-      // 各作業行に対してログと回答を記録
-      for (const workRow of workRows) {
-        const rowNumber = workRow.number;
+          // 各作業行に対してログと回答を記録
+          for (const workRow of workRows) {
+            const rowNumber = workRow.number;
 
-        // ログ列への記録
-        if (logColumn) {
-          await this.writeGroupLogToCell(
-            logColumn,
-            rowNumber,
-            taskGroupInfo,
-            externalLogger,
-            spreadsheetData
-          );
+            // ログ列への記録
+            if (logColumn) {
+              await this.writeGroupLogToCellWithSheetsClient(
+                logColumn,
+                rowNumber,
+                taskGroupInfo,
+                sheetsClient,
+                spreadsheetData,
+                dropboxUploadResult
+              );
+            }
+
+            // 回答列への記録
+            for (const answerCol of answerColumns) {
+              await this.writeGroupResponseToCell(
+                answerCol,
+                rowNumber,
+                taskGroupInfo,
+                sheetsClient,
+                spreadsheetData
+              );
+            }
+          }
+
+          this.logger.log(`[StreamProcessorV2] ✅ グループログ・回答記録完了: ${taskGroupInfo.id}`);
         }
-
-        // 回答列への記録
-        for (const answerCol of answerColumns) {
-          await this.writeGroupResponseToCell(
-            answerCol,
-            rowNumber,
-            taskGroupInfo,
-            externalLogger,
-            spreadsheetData
-          );
-        }
+      } else {
+        this.logger.log(`[StreamProcessorV2] ⏭️ ログ記録をスキップ（SheetsClient未初期化）`);
       }
-
-      this.logger.log(`[StreamProcessorV2] ✅ グループログ・回答記録完了: ${taskGroupInfo.id}`);
-
-      // Dropboxログレポートアップロード（設定されている場合）
-      await this.uploadTaskReportToDropbox(taskGroupInfo, spreadsheetData);
 
     } catch (error) {
       this.logger.error('[StreamProcessorV2] グループログ・回答記録エラー:', error);
@@ -4041,65 +4024,12 @@ export default class StreamProcessorV2 {
     }
   }
 
-  /**
-   * グループログをセルに記録
-   * @param {string} logColumn - ログ列
-   * @param {number} rowNumber - 行番号
-   * @param {Object} taskGroupInfo - タスクグループ情報
-   * @param {Object} externalLogger - 外部SpreadsheetLogger
-   * @param {Object} spreadsheetData - スプレッドシートデータ
-   */
-  async writeGroupLogToCell(logColumn, rowNumber, taskGroupInfo, externalLogger, spreadsheetData) {
-    try {
-      // ダミータスクを作成（外部SpreadsheetLoggerのインターフェースに合わせる）
-      const dummyTask = {
-        id: `${taskGroupInfo.id}_log_${rowNumber}`,
-        row: rowNumber,
-        column: logColumn,
-        logColumns: [logColumn],
-        aiType: taskGroupInfo.aiType || 'Claude',
-        model: '通常',
-        displayedModel: '通常',
-        function: '通常',
-        displayedFunction: '通常'
-      };
-
-      // 送信時刻を記録（現在時刻で仮設定）
-      const currentTime = new Date();
-      externalLogger.recordSendTimestamp(dummyTask.id, dummyTask, currentTime);
-
-      // ログを記録
-      const result = await externalLogger.writeLogToSpreadsheet(dummyTask, {
-        sheetsClient: this.sheetsClient,
-        spreadsheetId: spreadsheetData.spreadsheetId,
-        gid: spreadsheetData.gid,
-        spreadsheetData: spreadsheetData,
-        onComplete: (task, logCell, writeVerified, error) => {
-          if (error) {
-            this.logger.warn(`[StreamProcessorV2] ログ書き込み完了コールバック - エラー: ${logCell}`, error);
-          } else {
-            this.logger.log(`[StreamProcessorV2] ログ書き込み完了コールバック: ${logCell} (検証: ${writeVerified})`);
-          }
-        }
-      });
-
-      if (result.success) {
-        this.logger.log(`[StreamProcessorV2] ログ記録成功: ${logColumn}${rowNumber}`);
-      } else {
-        this.logger.warn(`[StreamProcessorV2] ログ記録失敗: ${logColumn}${rowNumber} - ${result.error}`);
-      }
-
-    } catch (error) {
-      this.logger.error(`[StreamProcessorV2] ログ記録エラー ${logColumn}${rowNumber}:`, error);
-    }
-  }
 
   /**
    * グループ回答をセルに記録
    * @param {Object} answerCol - 回答列情報
    * @param {number} rowNumber - 行番号
    * @param {Object} taskGroupInfo - タスクグループ情報
-   * @param {Object} externalLogger - 外部SpreadsheetLogger
    * @param {Object} spreadsheetData - スプレッドシートデータ
    */
   async writeGroupResponseToCell(answerCol, rowNumber, taskGroupInfo, externalLogger, spreadsheetData) {
@@ -4139,15 +4069,23 @@ export default class StreamProcessorV2 {
    */
   async uploadTaskReportToDropbox(taskGroupInfo, spreadsheetData) {
     try {
+      // 🔍 デバッグ: 関数が呼ばれたことを確認
+      this.logger.log('[StreamProcessorV2] 🔍 Dropboxアップロード関数が呼ばれました');
+
       // Chrome StorageからDropbox設定を取得
       if (typeof chrome === 'undefined' || !chrome.storage) {
+        this.logger.log('[StreamProcessorV2] ⚠️ Chrome環境ではないためDropboxアップロードをスキップ');
         return; // Chrome環境でない場合はスキップ
       }
 
       const settings = await chrome.storage.local.get(['dropboxLogEnabled', 'dropboxLogPath']);
 
+      // 🔍 デバッグ: 設定内容を確認
+      this.logger.log(`[StreamProcessorV2] 📂 Dropbox設定: enabled=${settings.dropboxLogEnabled}, path="${settings.dropboxLogPath}"`);
+
       // Dropboxログが無効またはパスが設定されていない場合はスキップ
       if (!settings.dropboxLogEnabled || !settings.dropboxLogPath) {
+        this.logger.log('[StreamProcessorV2] ⏭️ Dropboxログが無効またはパス未設定のためスキップ');
         return;
       }
 
@@ -4192,15 +4130,14 @@ export default class StreamProcessorV2 {
       const fileName = `task-report_${taskGroupInfo.id}_${timestamp}.json`;
       const uploadPath = `${settings.dropboxLogPath}/${fileName}`.replace(/\/+/g, '/');
 
-      // Dropboxサービスを動的インポート
+      // Dropboxサービスを使用（静的インポート済み）
       try {
-        const { dropboxService } = await import('../../services/dropbox-service.js');
 
         // 認証確認
         const isAuthenticated = await dropboxService.isAuthenticated();
         if (!isAuthenticated) {
           this.logger.warn('[StreamProcessorV2] Dropbox未認証のためスキップ');
-          return;
+          return { success: false, error: 'Dropbox未認証' };
         }
 
         // レポートをアップロード
@@ -4210,26 +4147,94 @@ export default class StreamProcessorV2 {
           { overwrite: false }
         );
 
+        // Dropbox Web URLを生成
+        const dropboxWebUrl = `https://www.dropbox.com/home${uploadPath}`;
+
         this.logger.log(`[StreamProcessorV2] ✅ Dropboxレポートアップロード完了: ${uploadPath}`);
+        this.logger.log(`[StreamProcessorV2] 📁 保存場所: Dropboxアプリ${uploadPath.replace(/^\//, '/')} フォルダ`);
+        this.logger.log(`[StreamProcessorV2] 💡 ファイル確認方法: Dropboxアプリまたは https://www.dropbox.com で "${settings.dropboxLogPath}" フォルダをご確認ください`);
 
         // LogFileManagerにも記録（互換性のため）
         if (globalThis.logManager) {
-          globalThis.logManager.addLog({
-            type: 'dropbox_upload',
-            path: uploadPath,
-            taskGroupId: taskGroupInfo.id,
-            timestamp: new Date().toISOString()
+          globalThis.logManager.log(`Dropboxアップロード完了: ${uploadPath} → Dropboxアプリ${uploadPath} フォルダに保存`, {
+            category: 'system',
+            level: 'info',
+            metadata: {
+              type: 'dropbox_upload',
+              path: uploadPath,
+              dropboxLocation: `Dropboxアプリ${uploadPath}`,
+              taskGroupId: taskGroupInfo.id
+            }
           });
         }
 
+        // アップロード情報を返す
+        return {
+          success: true,
+          filePath: uploadPath,
+          fileName: fileName,
+          url: dropboxWebUrl,
+          uploadTime: new Date()
+        };
+
       } catch (error) {
         this.logger.warn('[StreamProcessorV2] Dropboxアップロードエラー:', error.message);
-        // エラーが発生してもメイン処理は継続
+        return { success: false, error: error.message };
       }
 
     } catch (error) {
       this.logger.warn('[StreamProcessorV2] Dropboxログ処理エラー:', error.message);
-      // エラーが発生してもメイン処理は継続
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * グループログをセルに記録（SheetsClient使用版）
+   * @param {string} logColumn - ログ列（A, B, Cなど）
+   * @param {number} rowNumber - 行番号
+   * @param {Object} taskGroupInfo - タスクグループ情報
+   * @param {Object} sheetsClient - SheetsClientインスタンス
+   * @param {Object} spreadsheetData - スプレッドシートデータ
+   * @param {Object} dropboxUploadResult - Dropboxアップロード結果（オプション）
+   */
+  async writeGroupLogToCellWithSheetsClient(logColumn, rowNumber, taskGroupInfo, sheetsClient, spreadsheetData, dropboxUploadResult = null) {
+    try {
+      // ダミータスクを作成（SheetsClientのインターフェースに合わせる）
+      const dummyTask = {
+        id: `${taskGroupInfo.id}_log_${rowNumber}`,
+        row: rowNumber,
+        column: logColumn,
+        logColumns: [logColumn],
+        aiType: taskGroupInfo.aiType || 'Claude',
+        model: '通常',
+        displayedModel: '通常',
+        function: '通常',
+        displayedFunction: '通常'
+      };
+
+      // ログを記録（SheetsClient.writeLogToSpreadsheetを直接使用）
+      const result = await sheetsClient.writeLogToSpreadsheet(dummyTask, {
+        spreadsheetId: spreadsheetData.spreadsheetId,
+        gid: spreadsheetData.gid,
+        spreadsheetData: spreadsheetData,
+        dropboxUploadResult: dropboxUploadResult,
+        onComplete: (task, logCell, writeVerified, error) => {
+          if (error) {
+            this.logger.warn(`[StreamProcessorV2] ログ書き込み完了コールバック - エラー: ${logCell}`, error);
+          } else {
+            this.logger.log(`[StreamProcessorV2] ログ書き込み完了コールバック: ${logCell} (検証: ${writeVerified})`);
+          }
+        }
+      });
+
+      if (result.success) {
+        this.logger.log(`[StreamProcessorV2] ログ記録成功: ${logColumn}${rowNumber}`);
+      } else {
+        this.logger.warn(`[StreamProcessorV2] ログ記録失敗: ${logColumn}${rowNumber} - ${result.error}`);
+      }
+
+    } catch (error) {
+      this.logger.error(`[StreamProcessorV2] ログ記録エラー ${logColumn}${rowNumber}:`, error);
     }
   }
 }

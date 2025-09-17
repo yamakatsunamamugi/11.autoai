@@ -2,7 +2,10 @@
  * @fileoverview ログファイル管理ユーティリティ
  *
  * Claudeの実行ログをファイルに保存し、ローテーション管理を行う
+ * Dropboxアップロード機能を含む
  */
+
+import { dropboxService } from '../services/dropbox-service.js';
 
 export class LogFileManager {
   constructor(aiType = 'claude') {
@@ -29,6 +32,31 @@ export class LogFileManager {
 
     // 5分ごとの自動保存タイマーを開始
     this.startAutoSaveTimer();
+
+    // Dropbox設定
+    this.dropboxEnabled = false;
+    this.dropboxAutoUpload = false;
+
+    // Dropboxサービス初期化
+    this.initializeDropbox();
+  }
+
+  /**
+   * Dropboxサービスを初期化
+   */
+  async initializeDropbox() {
+    try {
+      await dropboxService.initialize();
+      this.dropboxEnabled = await dropboxService.isAuthenticated();
+
+      if (this.dropboxEnabled) {
+        const settings = await dropboxService.config.getUploadSettings();
+        this.dropboxAutoUpload = settings.autoUpload;
+        console.log('[LogFileManager] Dropbox連携が有効です');
+      }
+    } catch (error) {
+      console.log('[LogFileManager] Dropbox初期化をスキップ:', error.message);
+    }
   }
 
   /**
@@ -82,7 +110,7 @@ export class LogFileManager {
       const timestamp = new Date().toISOString()
         .replace(/[:.]/g, '-')
         .replace('T', '_')
-        .slice(0, -5);
+        .slice(0, -1); // ミリ秒まで含む
 
       const errorData = {
         timestamp: new Date().toISOString(),
@@ -116,7 +144,7 @@ export class LogFileManager {
       const timestamp = new Date().toISOString()
         .replace(/[:.]/g, '-')
         .replace('T', '_')
-        .slice(0, -5);
+        .slice(0, -1); // ミリ秒まで含む
 
       const intermediateData = {
         sessionStart: this.sessionStartTime,
@@ -137,6 +165,7 @@ export class LogFileManager {
 
   /**
    * Chrome Downloads APIを使用してファイルをダウンロード
+   * 自動アップロードが有効な場合はDropboxにもアップロード
    */
   async downloadFile(fileName, content) {
     // Chrome拡張機能のコンテキストで実行される場合
@@ -148,9 +177,20 @@ export class LogFileManager {
             fileName,
             content
           }
-        }, response => {
+        }, async (response) => {
           if (response?.success) {
+            // ローカルダウンロード成功
             resolve(response.downloadId);
+
+            // Dropbox自動アップロードをチェック
+            if (this.dropboxEnabled && this.dropboxAutoUpload) {
+              try {
+                await this.uploadToDropbox(fileName, content);
+                console.log(`✅ [Dropbox] ${fileName} を自動アップロードしました`);
+              } catch (uploadError) {
+                console.error(`❌ [Dropbox] ${fileName} の自動アップロードに失敗:`, uploadError);
+              }
+            }
           } else {
             reject(new Error(response?.error || 'ダウンロードに失敗しました'));
           }
@@ -165,11 +205,312 @@ export class LogFileManager {
       a.download = fileName.split('/').pop();
       a.click();
       URL.revokeObjectURL(url);
+
+      // Dropbox自動アップロード
+      if (this.dropboxEnabled && this.dropboxAutoUpload) {
+        try {
+          await this.uploadToDropbox(fileName, content);
+          console.log(`✅ [Dropbox] ${fileName} を自動アップロードしました`);
+        } catch (uploadError) {
+          console.error(`❌ [Dropbox] ${fileName} の自動アップロードに失敗:`, uploadError);
+        }
+      }
+    }
+  }
+
+  /**
+   * ファイルをDropboxにアップロード
+   * @param {string} fileName - ファイル名
+   * @param {string} content - ファイル内容
+   * @param {Object} options - アップロードオプション
+   * @returns {Promise<Object>}
+   */
+  async uploadToDropbox(fileName, content, options = {}) {
+    try {
+      if (!this.dropboxEnabled) {
+        throw new Error('Dropboxが認証されていません');
+      }
+
+      // ファイルパスを生成（log-report/aiType/category構造を作成）
+      const pathParts = fileName.split('/');
+      const aiType = pathParts[1]; // "11autoai-logs/claude/complete/file.json" -> "claude"
+      const category = pathParts[2]; // "complete", "intermediate", "errors"
+      const actualFileName = pathParts[3]; // 実際のファイル名
+
+      const dropboxPath = `/log-report/${aiType}/${category}/${actualFileName}`;
+
+      // 進捗コールバック
+      const progressCallback = options.onProgress || ((progress) => {
+        console.log(`[Dropbox] アップロード進捗: ${progress}%`);
+      });
+
+      // ファイルをアップロード
+      const result = await dropboxService.uploadFile(dropboxPath, content, {
+        overwrite: options.overwrite || false,
+        onProgress: progressCallback
+      });
+
+      console.log(`✅ [Dropbox] ファイルアップロード完了: ${result.filePath}`);
+      return result;
+    } catch (error) {
+      console.error('[LogFileManager] Dropboxアップロードエラー:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Dropboxから特定のAIタイプのログファイル一覧を取得
+   * @param {string} aiType - AIタイプ ('claude', 'gemini', 'chatgpt')
+   * @returns {Promise<Array>}
+   */
+  async getDropboxLogs(aiType = null) {
+    try {
+      if (!this.dropboxEnabled) {
+        throw new Error('Dropboxが認証されていません');
+      }
+
+      const targetAiType = aiType || this.aiType;
+      const settings = await dropboxService.config.getUploadSettings();
+      const rootPath = settings.uploadPath || '/log-report';
+      const categories = ['complete', 'intermediate', 'errors'];
+      const allFiles = [];
+
+      for (const category of categories) {
+        const categoryPath = `${rootPath}/${targetAiType}/${category}`;
+
+        try {
+          const files = await dropboxService.listFiles(categoryPath);
+          const filteredFiles = files.filter(file =>
+            file.type === 'file' &&
+            file.name.includes(`${targetAiType}-log-`) &&
+            file.name.endsWith('.json')
+          );
+
+          filteredFiles.forEach(file => {
+            file.category = category;
+          });
+
+          allFiles.push(...filteredFiles);
+        } catch (error) {
+          if (!error.message.includes('path/not_found')) {
+            console.warn(`[LogFileManager] ${categoryPath}検索エラー:`, error.message);
+          }
+        }
+      }
+
+      return allFiles;
+    } catch (error) {
+      console.error('[LogFileManager] Dropboxログ一覧取得エラー:', error);
+      return [];
+    }
+  }
+
+  /**
+   * 特定のAIタイプの全ファイルを取得（全日付から）
+   * @param {string} targetAiType - 対象のAIタイプ ('claude', 'gemini', 'chatgpt')
+   * @returns {Promise<Array>} ファイル情報の配列
+   */
+  async getAllDropboxLogsByAIType(targetAiType) {
+    try {
+      if (!this.dropboxEnabled) {
+        return [];
+      }
+
+      console.log(`[LogFileManager] ${targetAiType}のファイル検索を開始`);
+
+      const allFiles = [];
+      const settings = await dropboxService.config.getUploadSettings();
+      const rootPath = settings.uploadPath || '/log-report';
+
+      // log-report/{aiType}の各カテゴリフォルダをチェック
+      const categories = ['complete', 'intermediate', 'errors'];
+
+      for (const category of categories) {
+        const categoryPath = `${rootPath}/${targetAiType}/${category}`;
+
+        try {
+          const files = await dropboxService.listFiles(categoryPath);
+          const filteredFiles = files.filter(file =>
+            file.type === 'file' &&
+            file.name.includes(`${targetAiType}-log-`) &&
+            file.name.endsWith('.json')
+          );
+
+          // ファイルパスを完全パスに修正
+          filteredFiles.forEach(file => {
+            file.fullPath = file.path;
+            file.category = category;
+          });
+
+          allFiles.push(...filteredFiles);
+        } catch (error) {
+          // フォルダが存在しない場合はスキップ
+          if (!error.message.includes('path/not_found')) {
+            console.warn(`[LogFileManager] ${categoryPath}フォルダ検索エラー:`, error.message);
+          }
+        }
+      }
+
+      // 更新日時でソート（新しい順）
+      allFiles.sort((a, b) => {
+        const dateA = new Date(a.modified || a.server_modified);
+        const dateB = new Date(b.modified || b.server_modified);
+        return dateB.getTime() - dateA.getTime();
+      });
+
+      console.log(`[LogFileManager] ${targetAiType}のファイル検索完了: ${allFiles.length}件`);
+      return allFiles;
+    } catch (error) {
+      console.error(`[LogFileManager] ${targetAiType}ファイル検索エラー:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Dropboxの古いログファイルを削除（日数ベース）
+   * @param {number} retentionDays - 保持日数
+   * @returns {Promise<number>} 削除したファイル数
+   */
+  async cleanupDropboxLogs(retentionDays = 30) {
+    try {
+      if (!this.dropboxEnabled) {
+        return 0;
+      }
+
+      const settings = await dropboxService.config.getUploadSettings();
+      const actualRetentionDays = settings.retentionDays || retentionDays;
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - actualRetentionDays);
+
+      let deletedCount = 0;
+
+      // 各AIタイプの古いファイルをチェック
+      const aiTypes = ['claude', 'gemini', 'chatgpt'];
+      const categories = ['complete', 'intermediate', 'errors'];
+
+      for (const aiType of aiTypes) {
+        for (const category of categories) {
+          const categoryPath = `${settings.uploadPath || '/log-report'}/${aiType}/${category}`;
+
+          try {
+            const files = await dropboxService.listFiles(categoryPath);
+            for (const file of files) {
+              const fileDate = new Date(file.modified || file.server_modified);
+              if (fileDate < cutoffDate) {
+                await dropboxService.deleteFile(file.path);
+                deletedCount++;
+                console.log(`🗑️ [Dropbox] 古いログを削除: ${file.path}`);
+              }
+            }
+          } catch (error) {
+            // フォルダが存在しない場合はスキップ
+            if (!error.message.includes('path/not_found')) {
+              console.error(`[Dropbox] ${categoryPath} の削除でエラー:`, error);
+            }
+          }
+        }
+      }
+
+      console.log(`✅ [Dropbox] ${deletedCount}個の古いログファイルを削除しました`);
+      return deletedCount;
+    } catch (error) {
+      console.error('[LogFileManager] Dropbox削除エラー:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * AIタイプ別にファイル数制限で削除（5件を超えた分を削除）
+   * @param {number} maxFiles - AIタイプ別の最大保持ファイル数
+   * @returns {Promise<number>} 削除したファイル数
+   */
+  async cleanupDropboxLogsByCount(maxFiles = 5) {
+    try {
+      if (!this.dropboxEnabled) {
+        return 0;
+      }
+
+      console.log(`[LogFileManager] ファイル数制限削除開始 (最大${maxFiles}件/AIタイプ)`);
+
+      const aiTypes = ['claude', 'gemini', 'chatgpt'];
+      let totalDeletedCount = 0;
+
+      for (const aiType of aiTypes) {
+        try {
+          // AIタイプ別の全ファイルを取得（更新日時順）
+          const allFiles = await this.getAllDropboxLogsByAIType(aiType);
+
+          if (allFiles.length <= maxFiles) {
+            console.log(`[LogFileManager] ${aiType}: ${allFiles.length}件 (削除不要)`);
+            continue;
+          }
+
+          // maxFiles件を超えた分を削除対象とする
+          const filesToDelete = allFiles.slice(maxFiles);
+          console.log(`[LogFileManager] ${aiType}: ${allFiles.length}件中${filesToDelete.length}件を削除対象`);
+
+          for (const file of filesToDelete) {
+            try {
+              await dropboxService.deleteFile(file.fullPath || file.path);
+              totalDeletedCount++;
+              console.log(`🗑️ [Dropbox] ${aiType}ログを削除: ${file.name} (${file.dateFolder || ''})`);
+            } catch (deleteError) {
+              console.error(`[LogFileManager] ${file.name}削除エラー:`, deleteError.message);
+            }
+          }
+
+          // 削除後の確認
+          console.log(`✅ [LogFileManager] ${aiType}: ${filesToDelete.length}件削除完了`);
+
+        } catch (aiTypeError) {
+          console.error(`[LogFileManager] ${aiType}の削除処理でエラー:`, aiTypeError.message);
+        }
+      }
+
+      console.log(`✅ [Dropbox] ファイル数制限削除完了: 合計${totalDeletedCount}件削除`);
+      return totalDeletedCount;
+
+    } catch (error) {
+      console.error('[LogFileManager] ファイル数制限削除エラー:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * 設定に基づいてDropbox削除を実行
+   * @returns {Promise<number>} 削除したファイル数
+   */
+  async performDropboxCleanup() {
+    try {
+      if (!this.dropboxEnabled) {
+        return 0;
+      }
+
+      const settings = await dropboxService.config.getUploadSettings();
+
+      if (settings.cleanupByFileCount) {
+        // ファイル数ベースの削除
+        const maxFiles = settings.maxFilesPerAI || 5;
+        console.log(`[LogFileManager] ファイル数ベース削除を実行 (${maxFiles}件/AIタイプ)`);
+        return await this.cleanupDropboxLogsByCount(maxFiles);
+      } else if (settings.cleanupByDays) {
+        // 日数ベースの削除
+        const retentionDays = settings.retentionDays || 30;
+        console.log(`[LogFileManager] 日数ベース削除を実行 (${retentionDays}日)`);
+        return await this.cleanupDropboxLogs(retentionDays);
+      } else {
+        console.log('[LogFileManager] 自動削除は無効です');
+        return 0;
+      }
+    } catch (error) {
+      console.error('[LogFileManager] Dropbox削除実行エラー:', error);
+      return 0;
     }
   }
 
   /**
    * 現在のログをファイルに保存（最終保存）
+   * Dropbox自動アップロードも実行
    */
   async saveToFile() {
     // タイマーを停止
@@ -180,11 +521,11 @@ export class LogFileManager {
     }
 
     try {
-      // タイムスタンプ付きファイル名を生成
+      // タイムスタンプ付きファイル名を生成（ミリ秒まで含む）
       const timestamp = new Date().toISOString()
         .replace(/[:.]/g, '-')
         .replace('T', '_')
-        .slice(0, -5); // YYYY-MM-DD_HH-mm-ss形式
+        .slice(0, -1); // YYYY-MM-DD_HH-mm-ss-sss形式（ミリ秒まで）
 
       const fileName = `${this.aiType}-log-${timestamp}.json`;
       const filePath = `11autoai-logs/${this.aiType}/complete/${fileName}`;
@@ -196,16 +537,26 @@ export class LogFileManager {
         totalLogs: this.logs.length,
         errorCount: this.errorCount,
         intermediatesSaved: this.intermediateCount,
+        dropboxEnabled: this.dropboxEnabled,
+        dropboxAutoUpload: this.dropboxAutoUpload,
         logs: this.logs
       };
 
-      // ファイルにダウンロード
+      // ファイルにダウンロード（Dropbox自動アップロードも含む）
       await this.downloadFile(filePath, JSON.stringify(logData, null, 2));
 
       console.log(`✅ [LogFileManager] 最終ログを保存しました: ${fileName}`);
       console.log(`  ・総ログ数: ${this.logs.length}`);
       console.log(`  ・エラー数: ${this.errorCount}`);
       console.log(`  ・中間保存数: ${this.intermediateCount}`);
+      console.log(`  ・Dropbox連携: ${this.dropboxEnabled ? '有効' : '無効'}`);
+
+      // Dropbox古いファイルの削除（週1回程度）
+      if (this.dropboxEnabled && Math.random() < 0.1) { // 10%の確率
+        this.performDropboxCleanup().catch(error => {
+          console.warn('[LogFileManager] Dropbox削除でエラー:', error);
+        });
+      }
 
       // ログをクリア
       this.logs = [];
@@ -288,7 +639,7 @@ export class LogFileManager {
         chrome.runtime.sendMessage({
           type: 'GET_LOG_FILES',
           data: {
-            directory: `${this.logDirectory}/${this.claudeReportDirectory}`
+            directory: `${this.logDirectory}/${this.reportDirectory}`
           }
         }, response => {
           resolve(response?.files || []);
@@ -416,6 +767,65 @@ export class LogFileManager {
         error: result.error
       }
     });
+  }
+
+  /**
+   * Dropbox設定を更新
+   * @param {Object} settings - Dropbox設定
+   * @returns {Promise<boolean>}
+   */
+  async updateDropboxSettings(settings) {
+    try {
+      await dropboxService.config.saveUploadSettings(settings);
+      this.dropboxAutoUpload = settings.autoUpload;
+      console.log('[LogFileManager] Dropbox設定を更新しました:', settings);
+      return true;
+    } catch (error) {
+      console.error('[LogFileManager] Dropbox設定更新エラー:', error);
+      return false;
+    }
+  }
+
+  /**
+   * 現在のDropbox設定を取得
+   * @returns {Promise<Object>}
+   */
+  async getDropboxSettings() {
+    try {
+      const settings = await dropboxService.config.getUploadSettings();
+      return {
+        ...settings,
+        isAuthenticated: this.dropboxEnabled,
+        clientIdConfigured: !!(await dropboxService.config.loadClientId())
+      };
+    } catch (error) {
+      console.error('[LogFileManager] Dropbox設定取得エラー:', error);
+      return {
+        autoUpload: false,
+        uploadPath: '/log-report',
+        compressionEnabled: true,
+        retentionDays: 30,
+        maxFilesPerAI: 5,
+        cleanupByFileCount: true,
+        cleanupByDays: false,
+        isAuthenticated: false,
+        clientIdConfigured: false
+      };
+    }
+  }
+
+  /**
+   * Dropbox認証状態を再初期化
+   * @returns {Promise<boolean>}
+   */
+  async refreshDropboxStatus() {
+    try {
+      await this.initializeDropbox();
+      return this.dropboxEnabled;
+    } catch (error) {
+      console.error('[LogFileManager] Dropbox状態更新エラー:', error);
+      return false;
+    }
   }
 }
 

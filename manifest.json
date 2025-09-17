@@ -24,7 +24,10 @@
     "https://claude.ai/*",
     "https://gemini.google.com/*",
     "https://genspark.com/*",
-    "https://www.genspark.ai/*"
+    "https://www.genspark.ai/*",
+    "https://api.dropboxapi.com/*",
+    "https://content.dropboxapi.com/*",
+    "https://www.dropbox.com/*"
   ],
   "oauth2": {
     "client_id": "262291163420-cfp8h5f7qqaljs2e9b0b1vje1pvpeeq1.apps.googleusercontent.com",
@@ -74,6 +77,8 @@
         "src/ui/ui.html",
         "src/ui/ui-controller.js",
         "src/services/auth-service.js",
+        "src/services/dropbox-service.js",
+        "src/config/dropbox-config.js",
         "src/features/spreadsheet/docs-client.js",
         "src/features/spreadsheet/sheets-client.js",
         "src/services/spreadsheet-auto-setup.js",

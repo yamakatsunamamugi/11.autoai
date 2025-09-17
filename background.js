@@ -89,9 +89,8 @@ globalThis.StreamProcessorV2 = StreamProcessorV2;
     try {
       console.log(`[Background] StreamProcessorV2依存性設定開始 (試行${retryCount + 1}/${maxRetries})`);
 
-      // 直接依存性を作成
-      const SheetsClientClass = (await import('./src/features/spreadsheet/sheets-client.js')).default;
-      const sheetsClientFromRegistry = new SheetsClientClass();
+      // 直接依存性を作成（Static Importを使用）
+      const sheetsClientFromRegistry = new SheetsClient();
       // SpreadsheetLogger削除済み - SheetsClientに統合
 
       console.log('[Background] 依存性取得成功:', {

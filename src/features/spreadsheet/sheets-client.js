@@ -1869,7 +1869,7 @@ class SheetsClient {
    * @param {boolean} returnRichText - リッチテキスト形式で返すかどうか
    * @returns {string|Object} フォーマット済みログ（文字列またはリッチテキストデータ）
    */
-  formatLogEntry(task, url, sendTime, writeTime, returnRichText = false) {
+  formatLogEntry(task, url, sendTime, writeTime, returnRichText = false, dropboxUploadResult = null) {
     const aiType = task.aiType || 'Unknown';
     const selectedModel = task.model || '通常';
     const displayedModel = task.displayedModel || '不明';
@@ -1905,14 +1905,38 @@ class SheetsClient {
     const aiDisplayName = this.getAIDisplayName(aiType);
 
     // プレーンテキストバージョン
-    const logEntry = [
+    const logEntryParts = [
       `---------- ${aiDisplayName} ----------`,
       `モデル: ${model}`,
       `機能: ${functionName}`,
       `URL: ${url || 'URLが取得できませんでした'}`,
       `送信時刻: ${sendTimeStr}`,
       `記載時刻: ${writeTimeStr} (${elapsedSeconds}秒後)`
-    ].join('\n');
+    ];
+
+    // Dropbox情報を追加
+    if (dropboxUploadResult && dropboxUploadResult.success) {
+      const dropboxTime = dropboxUploadResult.uploadTime
+        ? dropboxUploadResult.uploadTime.toLocaleString('ja-JP', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+          })
+        : writeTimeStr;
+
+      logEntryParts.push(
+        ``,
+        `---------- Dropbox ----------`,
+        `ファイル: ${dropboxUploadResult.fileName || 'レポートファイル'}`,
+        `URL: ${dropboxUploadResult.url}`,
+        `アップロード時刻: ${dropboxTime}`
+      );
+    }
+
+    const logEntry = logEntryParts.join('\n');
 
     // リッチテキスト形式で返す場合
     if (returnRichText && url) {
@@ -1942,6 +1966,42 @@ class SheetsClient {
       ].join('\n');
 
       richTextData.push({ text: footerInfo });
+
+      // Dropbox情報を追加（リッチテキスト版）
+      if (dropboxUploadResult && dropboxUploadResult.success) {
+        const dropboxTime = dropboxUploadResult.uploadTime
+          ? dropboxUploadResult.uploadTime.toLocaleString('ja-JP', {
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit'
+            })
+          : writeTimeStr;
+
+        const dropboxHeaderAndInfo = [
+          '',
+          `---------- Dropbox ----------`,
+          `ファイル: ${dropboxUploadResult.fileName || 'レポートファイル'}`,
+          `URL: `
+        ].join('\n');
+
+        richTextData.push({ text: dropboxHeaderAndInfo });
+
+        // Dropbox URL部分をリンクとして追加
+        richTextData.push({
+          text: dropboxUploadResult.url,
+          url: dropboxUploadResult.url
+        });
+
+        const dropboxFooterInfo = [
+          '',
+          `アップロード時刻: ${dropboxTime}`
+        ].join('\n');
+
+        richTextData.push({ text: dropboxFooterInfo });
+      }
 
       return {
         plainText: logEntry,
@@ -1976,7 +2036,7 @@ class SheetsClient {
    */
   async writeLogToSpreadsheet(task, options = {}) {
     try {
-      const { spreadsheetId, gid, url } = options;
+      const { spreadsheetId, gid, url, dropboxUploadResult } = options;
 
       console.log(`📝 [SheetsClient] writeLogToSpreadsheet開始:`, {
         taskId: task.id,
@@ -1993,7 +2053,7 @@ class SheetsClient {
       const writeTime = new Date();
 
       // ログエントリーをリッチテキスト形式でフォーマット
-      const logResult = this.formatLogEntry(task, url, sendTime, writeTime, true);
+      const logResult = this.formatLogEntry(task, url, sendTime, writeTime, true, dropboxUploadResult);
 
       // 既存のログを取得（options.isFirstTaskがfalseの場合）
       let finalRichTextData = logResult.richTextData;
