@@ -25,17 +25,53 @@ import StreamProcessorV2 from "../features/task/stream-processor-v2.js";
  */
 class StreamingServiceManager {
   constructor(config = null) {
-    // 設定管理（簡易版）
+    // 設定管理の実装
+    this.configStorage = new Map();
+
+    // デフォルト設定値を設定
+    const defaultConfig = {
+      'streaming.maxConcurrentWindows': 3,
+      'streaming.windowLayout': 'horizontal',
+      'ai.supportedTypes': ['Claude', 'ChatGPT', 'Gemini'],
+      'error.retry.maxAttempts': 3
+    };
+
+    // デフォルト値を設定
+    for (const [key, value] of Object.entries(defaultConfig)) {
+      this.configStorage.set(key, value);
+    }
+
+    // 渡された設定で上書き
+    if (config && typeof config === 'object') {
+      for (const [key, value] of Object.entries(config)) {
+        this.configStorage.set(key, value);
+      }
+    }
+
     this.config = {
-      get: (key, defaultValue = null) => defaultValue,
-      set: (key, value) => {},
+      get: (key, defaultValue = null) => {
+        return this.configStorage.has(key) ? this.configStorage.get(key) : defaultValue;
+      },
+      set: (key, value) => {
+        this.configStorage.set(key, value);
+      },
+      has: (key) => {
+        return this.configStorage.has(key);
+      },
+      update: (newConfig) => {
+        if (newConfig && typeof newConfig === 'object') {
+          for (const [key, value] of Object.entries(newConfig)) {
+            this.configStorage.set(key, value);
+          }
+        }
+      },
       isValid: () => true, // 基本的な有効性チェック
       getPublicConfig: () => ({ // 公開用設定情報
         environment: typeof window === 'undefined' ? 'service-worker' : 'content-script',
         version: '1.0.0',
-        initialized: true
-      }),
-      ...config
+        initialized: true,
+        settings: Object.fromEntries(this.configStorage)
+      })
     };
 
     // 統一ログシステム - Loggerが未定義のためconsoleを使用
@@ -328,7 +364,11 @@ class StreamingServiceManager {
     for (const key of requiredConfigs) {
       if (!hasConfig(key)) {
         // 必須設定が見つからない場合はデフォルト値を使用してスキップ
-        this.logger.warn(`必須設定が不足: ${key} - デフォルト値を使用`);
+        this.logger.info(`設定項目 ${key} が未設定のため、デフォルト値を使用します`);
+      } else {
+        // 設定が存在する場合は確認ログを出力
+        const value = getConfig(key);
+        this.logger.log(`設定確認: ${key} = ${JSON.stringify(value)}`);
       }
     }
 
@@ -633,6 +673,10 @@ export default StreamingServiceManager;
 export function getStreamingServiceManager(config = null) {
   if (!instance) {
     instance = new StreamingServiceManager(config);
+  } else if (config && typeof config === 'object') {
+    // 既存インスタンスに設定を更新
+    instance.config.update(config);
+    instance.logger.info('設定をシングルトンインスタンスに更新しました:', config);
   }
   return instance;
 }

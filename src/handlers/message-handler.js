@@ -221,6 +221,50 @@ export function setupMessageHandler() {
         })();
         return true;
 
+      // ===== Claude直接ログ書き込み処理（シンプル設計） =====
+      case "CLAUDE_DIRECT_LOG_WRITE":
+        console.log('[Claude-Direct] 直接ログ書き込み要求');
+        (async () => {
+          try {
+            const { taskData, response, sendTime, writeTime, model, function: functionName, url } = request.data;
+
+            console.log('[Claude-Direct] ログ書き込み開始:', {
+              taskId: taskData.cellInfo,
+              responseLength: response.length,
+              sendTime: new Date(sendTime).toISOString(),
+              writeTime: new Date(writeTime).toISOString()
+            });
+
+            // SheetsClientを使用してログ書き込み
+            const sheetsClient = new SheetsClient();
+
+            // タスクオブジェクトを構築
+            const logTask = {
+              ...taskData,
+              aiType: 'Claude',
+              model: model,
+              function: functionName,
+              column: taskData.cellInfo.charAt(0), // 例: "C3" -> "C"
+              row: taskData.cellInfo.slice(1) // 例: "C3" -> "3"
+            };
+
+            await sheetsClient.writeLogToSpreadsheet(logTask, {
+              spreadsheetId: taskData.spreadsheetId,
+              gid: taskData.gid,
+              url: url || 'N/A',
+              sendTime: new Date(sendTime),
+              writeTime: new Date(writeTime)
+            });
+
+            console.log('[Claude-Direct] ✅ ログ書き込み完了');
+            sendResponse({ success: true });
+          } catch (error) {
+            console.error('[Claude-Direct] ❌ ログ書き込み失敗:', error);
+            sendResponse({ success: false, error: error.message });
+          }
+        })();
+        return true;
+
       case "GET_LOG_FILES":
         console.log('[LogFile] ログファイルリスト取得要求');
         (async () => {

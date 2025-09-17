@@ -1166,6 +1166,11 @@
             cellInfo: taskData.cellInfo
         });
 
+        // 送信時刻をタスク開始時に記録（関数全体で使用可能）
+        const taskStartTime = new Date();
+        let sendTime = taskStartTime; // 実際の送信時刻で更新される
+        console.log('🕰️ タスク開始時刻:', taskStartTime.toISOString());
+
         // ログ記録開始
         ClaudeLogManager.startTask(taskData);
 
@@ -1357,8 +1362,8 @@
                 throw new Error('送信ボタンのクリックに失敗しました');
             }
 
-            // 送信時刻を記録（SpreadsheetLogger用）
-            const sendTime = new Date();
+            // 送信時刻を更新（実際の送信タイミング）
+            sendTime = new Date(); // 変数を更新
             console.log('🔍 送信時刻記録開始 - ', sendTime.toISOString());
 
             // taskDataからtaskIdを取得、なければ生成
@@ -1739,7 +1744,10 @@
                 response: finalText,
                 text: finalText,
                 model: modelName,
-                function: featureName
+                function: featureName,
+                sendTime: sendTime,
+                url: window.location.href,
+                cellInfo: taskData.cellInfo
             };
 
             // タスク完了をログに記録
@@ -1751,6 +1759,34 @@
                 function: featureName,
                 cellInfo: taskData.cellInfo
             });
+
+            // 直接スプレッドシートにログ書き込み（シンプル設計）
+            const writeTime = new Date();
+            try {
+                console.log('📝 [Claude-Direct] スプレッドシート直接書き込み開始', {
+                    sendTime: sendTime.toISOString(),
+                    writeTime: writeTime.toISOString(),
+                    taskId: taskData.cellInfo
+                });
+
+                await chrome.runtime.sendMessage({
+                    type: 'CLAUDE_DIRECT_LOG_WRITE',
+                    data: {
+                        taskData: taskData,
+                        response: finalText,
+                        sendTime: sendTime,
+                        writeTime: writeTime,
+                        model: modelName,
+                        function: featureName,
+                        url: window.location.href
+                    }
+                });
+
+                console.log('✅ [Claude-Direct] スプレッドシート書き込み完了');
+            } catch (logError) {
+                console.error('❌ [Claude-Direct] スプレッドシート書き込み失敗:', logError);
+                // ログ書き込み失敗してもタスクは成功とする
+            }
 
             return result;
 

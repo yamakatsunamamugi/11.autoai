@@ -41,6 +41,9 @@ class SheetsClient {
 
     // AuthServiceのキャッシュ（遅延初期化用）
     this._authService = null;
+
+    // 送信時刻記録用のストレージ
+    this.sendTimeRecords = new Map();
   }
 
   /**
@@ -2074,9 +2077,17 @@ class SheetsClient {
       const logColumn = task.logColumns?.[0] || 'B';
       const logCell = `${logColumn}${task.row}`;
 
-      // 送信時刻と記載時刻を設定
+      // 送信時刻と記載時刻を設定（シンプル設計）
+      // options.sendTime（Claude直接書き込み）または options.writeTime（従来）を使用
       const sendTime = options.sendTime || new Date();
-      const writeTime = new Date();
+      const writeTime = options.writeTime || new Date();
+
+      console.log(`[SheetsClient] ログ書き込み時刻設定:`, {
+        aiType: task.aiType,
+        sendTime: sendTime.toISOString(),
+        writeTime: writeTime.toISOString(),
+        usingOptions: !!options.sendTime
+      });
 
       // ログエントリーをリッチテキスト形式でフォーマット
       const logResult = this.formatLogEntry(task, url, sendTime, writeTime, true, dropboxUploadResult);
@@ -2989,6 +3000,34 @@ class SheetsClient {
     this.logger.log('[Step reloadData: 互換性維持] reloadData呼び出し - 現在は何もしません（互換性のため）');
     // 現在は特に何もしない
     // 将来的に必要に応じてキャッシュのクリアや再初期化を実装
+  }
+
+  /**
+   * 送信時刻を記録する
+   * @param {string} taskId - タスクID
+   * @param {Object} sendTimeData - 送信時刻データ
+   * @param {string} sendTimeData.aiType - AI種別
+   * @param {string} sendTimeData.model - モデル名
+   * @param {string} sendTimeData.function - 機能名
+   */
+  recordSendTime(taskId, sendTimeData) {
+    const sendTime = new Date();
+    this.sendTimeRecords.set(taskId, {
+      sendTime: sendTime,
+      aiType: sendTimeData.aiType || 'Claude',
+      model: sendTimeData.model || 'Claude',
+      function: sendTimeData.function || '通常'
+    });
+    this.logger.log(`[recordSendTime] 送信時刻記録: ${taskId} at ${sendTime.toISOString()}`);
+  }
+
+  /**
+   * recordSendTimestamp のエイリアス（互換性のため）
+   * @param {string} taskId - タスクID
+   * @param {Object} sendTimeData - 送信時刻データ
+   */
+  recordSendTimestamp(taskId, sendTimeData) {
+    return this.recordSendTime(taskId, sendTimeData);
   }
 }
 
