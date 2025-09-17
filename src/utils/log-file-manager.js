@@ -130,7 +130,12 @@ export class LogFileManager {
       this.errorCount++;
       console.log(`❌ [エラー保存] ${fileName}`);
     } catch (saveError) {
-      console.error('[エラー保存失敗]', saveError);
+      console.error('❌ [エラー保存失敗]', {
+        originalError: error.message,
+        saveError: saveError.message,
+        fileName,
+        aiType: this.aiType
+      });
     }
   }
 
@@ -159,7 +164,12 @@ export class LogFileManager {
       this.intermediateCount++;
       console.log(`💾 [中間保存] ${fileName} (ログ数: ${this.logs.length})`);
     } catch (saveError) {
-      console.error('[中間保存失敗]', saveError);
+      console.error('❌ [中間保存失敗]', {
+        saveError: saveError.message,
+        fileName,
+        logCount: this.logs.length,
+        aiType: this.aiType
+      });
     }
   }
 
@@ -239,21 +249,33 @@ export class LogFileManager {
 
       const dropboxPath = `/log-report/${aiType}/${category}/${actualFileName}`;
 
+      console.log(`📁 [ファイル作成開始] ${dropboxPath}`);
+
       // 進捗コールバック
       const progressCallback = options.onProgress || ((progress) => {
         console.log(`[Dropbox] アップロード進捗: ${progress}%`);
       });
 
+      // 重複ファイル処理の設定をログに記録
+      const overwriteMode = options.overwrite || false;
+      console.log(`🔄 [重複処理設定] 上書きモード: ${overwriteMode ? '有効' : '無効'}`);
+
       // ファイルをアップロード
       const result = await dropboxService.uploadFile(dropboxPath, content, {
-        overwrite: options.overwrite || false,
+        overwrite: overwriteMode,
         onProgress: progressCallback
       });
 
       console.log(`✅ [Dropbox] ファイルアップロード完了: ${result.filePath}`);
       return result;
     } catch (error) {
-      console.error('[LogFileManager] Dropboxアップロードエラー:', error);
+      console.error(`❌ [ファイル作成失敗] ${dropboxPath}`, {
+        errorMessage: error.message,
+        errorType: error.name,
+        aiType,
+        category,
+        fileName: actualFileName
+      });
       throw error;
     }
   }

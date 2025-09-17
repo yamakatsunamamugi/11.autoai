@@ -676,15 +676,17 @@ export default class StreamProcessorV2 {
       }
 
       // ===== Step 5-1: グループ完了時のログ・回答記録とDropboxアップロード =====
-      // Dropboxアップロードのために有効化
+      // 注意: この処理は重複しており、パフォーマンスを低下させるため無効化
+      // AIタスク実行時に既にログ・回答は記録されている
+      // Dropboxアップロードのみ独立して実行
       if (taskGroupInfo) {
         try {
           // 🔍 デバッグ: グループ処理完了を確認
           this.logger.log(`[StreamProcessorV2] 📊 グループ${groupIndex + 1}処理完了 - Dropboxアップロードを開始`);
-          await this.writeGroupLogsAndResponses(taskGroupInfo, spreadsheetData);
-          this.logger.log(`[StreamProcessorV2] 📝 グループ${groupIndex + 1}のログ・回答記録とDropboxアップロード完了`);
+          await this.uploadTaskReportToDropbox(taskGroupInfo, spreadsheetData);
+          this.logger.log(`[StreamProcessorV2] 📝 グループ${groupIndex + 1}のDropboxアップロード完了`);
         } catch (recordError) {
-          this.logger.error(`[StreamProcessorV2] ❌ グループ${groupIndex + 1}のログ・回答記録エラー:`, recordError);
+          this.logger.error(`[StreamProcessorV2] ❌ グループ${groupIndex + 1}のDropboxアップロードエラー:`, recordError);
         }
       }
 
