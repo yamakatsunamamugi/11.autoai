@@ -284,7 +284,8 @@ export function setupMessageHandler() {
               model: model,
               function: functionName,
               column: taskData.cellInfo.column || 'A', // オブジェクト形式のcolumnプロパティ
-              row: taskData.cellInfo.row || '1' // オブジェクト形式のrowプロパティ
+              row: taskData.cellInfo.row || '1', // オブジェクト形式のrowプロパティ
+              logColumns: taskData.logColumn ? [taskData.logColumn] : [] // ログ列を配列形式で設定
             };
 
             await sheetsClient.writeLogToSpreadsheet(logTask, {
