@@ -4156,8 +4156,8 @@ export default class StreamProcessorV2 {
           { overwrite: false }
         );
 
-        // Dropbox Web URLを生成
-        const dropboxWebUrl = `https://www.dropbox.com/home${uploadPath}`;
+        // Dropbox Web URLを生成（新しい統一構造に対応）
+        const dropboxWebUrl = `https://www.dropbox.com/home/log-report/task-reports/${fileName}`;
 
         this.logger.log(`[StreamProcessorV2] ✅ Dropboxレポートアップロード完了: ${uploadPath}`);
         this.logger.log(`[StreamProcessorV2] 📁 保存場所: Dropboxアプリ${uploadPath} フォルダ`);
