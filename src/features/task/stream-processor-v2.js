@@ -1506,8 +1506,8 @@ export default class StreamProcessorV2 {
           // タスクIDを生成
           const taskId = `${task.column}${task.row}_${task.aiType || 'AI'}`;
 
-          // 送信時刻管理はclaude-automation.jsで直接処理（シンプル設計）
-          console.log(`[Step 8-3.6.1] 送信時刻管理を claude-automation.js に委譲: ${taskId}`);
+          // 送信時刻管理は全AI統一フローで処理
+          console.log(`[Step 8-3.6.1] 送信時刻管理を統一フローで処理: ${taskId} [${task.aiType}]`);
 
           // タスクオブジェクトにlogColumns配列形式を追加
           const logTask = {
@@ -1519,26 +1519,30 @@ export default class StreamProcessorV2 {
             displayedFunction: result?.displayedFunction || task.function || '不明'
           };
 
-          // 詳細ログを書き込み（DropboxURLを含む）
+          // デバッグ: resultオブジェクトの内容を確認
+          console.log(`[DEBUG] result object for URL extraction:`, result);
+          console.log(`[DEBUG] result?.url value:`, result?.url);
 
-          // Claudeの場合はclaude-automation.jsで直接ログ書き込み済み（シンプル設計）
-          if (task.aiType !== 'Claude') {
-            const logResult = await this.sheetsClient.writeLogToSpreadsheet(logTask, {
-              spreadsheetId: this.spreadsheetData.spreadsheetId,
-              gid: this.spreadsheetData.gid,
-              url: result?.url || 'N/A',
-              dropboxUploadResult: dropboxUploadResult,  // Dropboxアップロード結果を追加
-              isFirstTask: false  // タスク処理では通常は追記モード
-            });
+          // 送信時刻と記載時刻を設定
+          const sendTime = result?.sendTime || new Date(); // Claude automation側で設定した時刻
+          const writeTime = new Date(); // 現在の記載時刻
 
-            if (logResult.success) {
-              const logColumn = logTask.logColumns && logTask.logColumns[0] ? logTask.logColumns[0] : 'B';
-              this.logger.log(`[Step 8-3.7] 📝 詳細ログ書き込み成功（DropboxURL含む）: ${logColumn}${task.row}`);
-            } else {
-              this.logger.error(`[Step 8-3.7] ❌ 詳細ログ書き込み失敗:`, logResult.error);
-            }
+          // 詳細ログを書き込み（DropboxURLを含む）- 全AIタイプ統一フロー
+          const logResult = await this.sheetsClient.writeLogToSpreadsheet(logTask, {
+            spreadsheetId: this.spreadsheetData.spreadsheetId,
+            gid: this.spreadsheetData.gid,
+            url: result?.url || 'N/A',
+            sendTime: sendTime,  // 送信時刻を明示的に渡す
+            writeTime: writeTime, // 記載時刻を明示的に渡す
+            dropboxUploadResult: dropboxUploadResult,  // Dropboxアップロード結果を追加
+            isFirstTask: false  // タスク処理では通常は追記モード
+          });
+
+          if (logResult.success) {
+            const logColumn = logTask.logColumns && logTask.logColumns[0] ? logTask.logColumns[0] : 'B';
+            this.logger.log(`[Step 8-3.7] 📝 詳細ログ書き込み成功（DropboxURL含む）: ${logColumn}${task.row} [${task.aiType}]`);
           } else {
-            console.log(`[Step 8-3.7] Claude用：ログ書き込みはclaude-automation.jsで処理済み`);
+            this.logger.error(`[Step 8-3.7] ❌ 詳細ログ書き込み失敗:`, logResult.error);
           }
         } catch (logError) {
           this.logger.error(`[Step 8-3.7] ❌ ログ書き込みエラー:`, logError);

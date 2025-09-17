@@ -1899,41 +1899,18 @@
                 console.warn(`⚠️ [Claude-Direct] 表示情報取得エラー: ${infoError.message}`);
             }
 
-            // 直接スプレッドシートにログ書き込み（シンプル設計）
-            const writeTime = new Date();
-            try {
-                console.log('📝 [Claude-Direct] スプレッドシート直接書き込み開始', {
-                    sendTime: sendTime.toISOString(),
-                    writeTime: writeTime.toISOString(),
-                    taskId: taskData.cellInfo,
-                    spreadsheetId: taskData.spreadsheetId,  // spreadsheetId確認
-                    gid: taskData.gid,  // gid確認
-                    hasSpreadsheetId: !!taskData.spreadsheetId,
-                    hasGid: taskData.gid !== undefined,
-                    displayedModel: displayedModel,
-                    displayedFunction: displayedFunction
-                });
+            // 統合フロー用にresultオブジェクトを拡張（ChatGPT/Geminiと同じ形式）
+            const sendTime = new Date();
+            result.displayedModel = displayedModel;
+            result.displayedFunction = displayedFunction;
+            result.sendTime = sendTime;
 
-                await chrome.runtime.sendMessage({
-                    type: 'CLAUDE_DIRECT_LOG_WRITE',
-                    data: {
-                        taskData: taskData,
-                        response: finalText,
-                        sendTime: sendTime,
-                        writeTime: writeTime,
-                        model: modelName,
-                        function: featureName,
-                        displayedModel: displayedModel,
-                        displayedFunction: displayedFunction,
-                        url: window.location.href
-                    }
-                });
-
-                console.log('✅ [Claude-Direct] スプレッドシート書き込み完了');
-            } catch (logError) {
-                console.error('❌ [Claude-Direct] スプレッドシート書き込み失敗:', logError);
-                // ログ書き込み失敗してもタスクは成功とする
-            }
+            console.log('✅ [Claude-Unified] タスク完了 - 統合フローでDropbox→スプレッドシートの順序で処理します', {
+                sendTime: sendTime.toISOString(),
+                taskId: taskData.cellInfo,
+                displayedModel: displayedModel,
+                displayedFunction: displayedFunction
+            });
 
             return result;
 
