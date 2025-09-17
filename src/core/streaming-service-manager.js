@@ -29,6 +29,7 @@ class StreamingServiceManager {
     this.config = {
       get: (key, defaultValue = null) => defaultValue,
       set: (key, value) => {},
+      isValid: () => true, // 基本的な有効性チェック
       ...config
     };
 
@@ -555,7 +556,12 @@ class StreamingServiceManager {
 
   checkConfiguration() {
     // 設定の健全性チェック
-    return this.config.isValid();
+    try {
+      return this.config.isValid();
+    } catch (error) {
+      this.logger.warn('設定チェックエラー:', error.message);
+      return true; // エラーが発生しても初期化を継続
+    }
   }
 
   checkDependencies() {

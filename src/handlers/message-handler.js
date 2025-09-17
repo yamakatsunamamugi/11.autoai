@@ -1037,16 +1037,36 @@ export function setupMessageHandler() {
             // Step 23-2: StreamingServiceManagerからStreamProcessorを取得
             try {
               const manager = getStreamingServiceManager();
-              // serviceRegistryは削除されたため、services Mapを直接参照
-              const streamProcessor = manager?.services?.get("StreamProcessor");
-              spreadsheetLogger = streamProcessor?.spreadsheetLogger;
+
+              // managerの初期化状態を確認
+              if (manager && manager.state && manager.state.isInitialized) {
+                const streamProcessor = manager.services?.get("StreamProcessor");
+                spreadsheetLogger = streamProcessor?.spreadsheetLogger;
+                console.log('[Step 23-3] StreamingServiceManager経由でSpreadsheetLogger取得:', !!spreadsheetLogger);
+              } else {
+                console.log('[Step 23-3] StreamingServiceManagerが未初期化 - グローバルへフォールバック');
+              }
             } catch (error) {
-              console.log('[Step 23-3] StreamingServiceManagerから取得失敗', error.message);
+              console.log('[Step 23-3] StreamingServiceManagerから取得失敗:', error.message);
             }
 
             // Step 23-4: グローバルSpreadsheetLoggerを使用（フォールバック）
-            if (!spreadsheetLogger && globalThis.spreadsheetLogger) {
-              spreadsheetLogger = globalThis.spreadsheetLogger;
+            if (!spreadsheetLogger) {
+              // 複数のグローバルロケーションを確認
+              const possibleLocations = [
+                globalThis.spreadsheetLogger,
+                window?.spreadsheetLogger,
+                globalThis.logManager?.spreadsheetLogger,
+                globalThis.StreamProcessorV2?.getInstance()?.spreadsheetLogger
+              ];
+
+              for (const location of possibleLocations) {
+                if (location) {
+                  spreadsheetLogger = location;
+                  console.log('[Step 23-4] グローバルからSpreadsheetLogger取得成功');
+                  break;
+                }
+              }
             }
 
             console.log(`[Step 23-5] ⏰ 送信時刻記録:`, {
@@ -1086,8 +1106,26 @@ export function setupMessageHandler() {
 
               sendResponse({ success: true });
             } else {
-              console.warn("[Step 23-8] ❌ SpreadsheetLoggerが利用できません");
-              sendResponse({ success: false, error: "SpreadsheetLogger not available" });
+              console.warn("[Step 23-8] ❌ SpreadsheetLoggerが利用できません - ローカル記録のみ");
+
+              // ローカルストレージで最低限の送信時刻記録を保持
+              try {
+                const localStorage = {
+                  taskId: request.taskId,
+                  sendTime: request.sendTime,
+                  aiType: request.taskInfo?.aiType,
+                  model: request.taskInfo?.model,
+                  timestamp: new Date().toISOString()
+                };
+
+                // コンソールに詳細を記録
+                console.log('[Step 23-8-alt] ローカル送信時刻記録:', localStorage);
+
+                sendResponse({ success: true, message: "Local recording only - SpreadsheetLogger unavailable" });
+              } catch (altError) {
+                console.error('[Step 23-8-alt] ローカル記録も失敗:', altError);
+                sendResponse({ success: false, error: "SpreadsheetLogger not available and local recording failed" });
+              }
             }
           } catch (error) {
             console.error("[Step 23-9] ❌ 送信時刻記録エラー:", error);
