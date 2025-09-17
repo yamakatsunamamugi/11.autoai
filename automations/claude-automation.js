@@ -1958,6 +1958,7 @@
     // Chrome Runtime Message Handler
     // ========================================
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+        // Claude専用のメッセージのみ処理
         if (request.type === 'CLAUDE_EXECUTE_TASK') {
             console.log('📨 [ClaudeAutomation] タスク実行リクエスト受信:', request.taskData);
 
@@ -1971,9 +1972,7 @@
             });
 
             return true; // 非同期レスポンスのためチャネルを保持
-        }
-
-        if (request.type === 'CLAUDE_CHECK_READY') {
+        } else if (request.type === 'CLAUDE_CHECK_READY') {
             // スクリプトの準備状態を確認
             sendResponse({
                 ready: true,
@@ -1982,6 +1981,10 @@
             });
             return false;
         }
+
+        // Claude専用のメッセージでない場合は何もしない
+        // （content-script-consolidated.jsに処理を委譲）
+        return false;
     });
 
     // 初期化完了マーカーを設定（ai-task-executorが期待する名前を使用）

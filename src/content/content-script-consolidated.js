@@ -1350,6 +1350,12 @@ async function handleGetResponse(request, sendResponse) {
  * background.jsや他のスクリプトからのメッセージを処理
  */
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  // actionプロパティがないメッセージは無視（他のスクリプト宛の可能性）
+  if (!request.action) {
+    // Claude Automationなど他のスクリプトが処理するメッセージの可能性
+    return false;
+  }
+
   console.log(`[11.autoai][${CONTENT_CONSOLIDATED_AI_TYPE}] メッセージ受信:`, request.action, request);
 
   // ChatGPTの場合、追加のデバッグ情報を出力
