@@ -123,7 +123,18 @@ export class DropboxConfig {
   async isAuthenticated() {
     const accessToken = await this.getAccessToken();
     const clientId = await this.loadClientId();
-    return !!(accessToken && clientId);
+
+    console.log('🔍 [DEBUG-DropboxConfig] isAuthenticated() チェック:', {
+      hasAccessToken: !!accessToken,
+      hasClientId: !!clientId,
+      accessTokenLength: accessToken ? accessToken.length : 0,
+      clientId: clientId ? `${clientId.substr(0, 8)}...` : null
+    });
+
+    const result = !!(accessToken && clientId);
+    console.log('🔍 [DEBUG-DropboxConfig] 認証結果:', result);
+
+    return result;
   }
 
   /**
