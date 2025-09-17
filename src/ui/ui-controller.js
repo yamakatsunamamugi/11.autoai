@@ -1687,85 +1687,6 @@ if (loadSheetsBtn) {
  * 4. 複数AIウィンドウで並列処理
  * 5. 結果をスプレッドシートに書き込み
  */
-/**
- * 列追加ボタンのイベントリスナー
- * 
- * 【機能概要】
- * スプレッドシートに必要な列（ログ列、回答列など）を自動で追加する機能
- * 
- * 【動作の流れ】
- * 1. ユーザーが「列追加」ボタンをクリック
- * 2. 入力されたスプレッドシートURLを取得
- * 3. background.jsの既存のSpreadsheetAutoSetupクラスを呼び出し
- * 4. プロンプト列の前後に必要な列を自動追加
- * 5. 結果をユーザーに表示
- * 
- * 【追加される列】
- * - ログ列: プロンプト列の左側に配置
- * - 回答列: プロンプト列の右側に配置
- *   - 通常AI: 1つの回答列
- *   - 3種類AI: ChatGPT回答、Claude回答、Gemini回答の3列
- * 
- * 【依存関係】
- * - background.js: executeAutoSetupメッセージハンドラ
- * - SpreadsheetAutoSetup: src/services/spreadsheet-auto-setup.js
- * 
- * @since 2025-08-23 列追加ボタン機能として追加
- */
-const addColumnsBtn = document.getElementById("addColumnsBtn");
-if (addColumnsBtn) {
-  addColumnsBtn.addEventListener("click", async () => {
-    
-    // 複数のURL入力欄から値を取得
-    const urlInputs = document.querySelectorAll('.spreadsheet-url-input');
-    const urls = [];
-    
-    urlInputs.forEach((input) => {
-      const url = input.value.trim();
-      if (url) {
-        urls.push(url);
-      }
-    });
-    
-    // バリデーション：URLが入力されているか確認
-    if (urls.length === 0) {
-      updateStatus("スプレッドシートのURLを入力してください", "error");
-      return;
-    }
-    
-    // ボタンを無効化（二重クリック防止）
-    addColumnsBtn.disabled = true;
-    updateStatus("列を追加中...", "loading");
-    
-    try {
-      // background.jsに列追加実行メッセージを送信
-      // SpreadsheetAutoSetup.executeAutoSetup()が実行される
-      const response = await chrome.runtime.sendMessage({
-        action: "executeAutoSetup",
-        urls: urls
-      });
-      
-      if (response && response.success) {
-        if (response.hasAdditions) {
-          // 列が追加された場合
-          updateStatus(`${response.addedColumns}個の列を追加しました`, "success");
-        } else {
-          // 必要な列が既に存在する場合
-          updateStatus("必要な列は既に存在します", "success");
-        }
-      } else {
-        throw new Error(response?.error || "列追加に失敗しました");
-      }
-    } catch (error) {
-      console.error("列追加エラー:", error);
-      updateStatus(`エラー: ${error.message}`, "error");
-    } finally {
-      // ボタンを再度有効化
-      addColumnsBtn.disabled = false;
-    }
-  });
-}
-
 startBtn.addEventListener("click", async () => {
 
   // 複数のURL入力欄から値を取得
@@ -4044,23 +3965,48 @@ class LogViewer {
     this.container.scrollTop = this.container.scrollHeight;
   }
   
+  /**
+   * URLを検出してリンクに変換する
+   * @param {string} text - 変換するテキスト
+   * @returns {string} リンク化されたHTML
+   */
+  linkifyUrls(text) {
+    // HTMLエスケープ処理
+    const escapeHtml = (str) => {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    };
+
+    // エスケープ後のテキストを取得
+    const escapedText = escapeHtml(text);
+
+    // URL正規表現パターン
+    const urlPattern = /(https?:\/\/[^\s<>"{}|\\^\[\]`]+)/gi;
+
+    // URLをリンクタグに変換
+    return escapedText.replace(urlPattern, (url) => {
+      return `<a href="${url}" target="_blank" style="color: #0066cc; text-decoration: underline;">${url}</a>`;
+    });
+  }
+
   appendLogEntry(log) {
     if (!this.container) return;
-    
+
     // 空メッセージチェックを削除
     if (this.container.querySelector('.log-empty')) {
       this.container.innerHTML = '';
     }
-    
+
     const entry = document.createElement('div');
     entry.className = `log-entry log-${log.level || 'info'}`;
-    
+
     // タイムスタンプ
     const timestamp = new Date(log.timestamp).toLocaleTimeString('ja-JP');
     const timestampSpan = document.createElement('span');
     timestampSpan.className = 'log-timestamp';
     timestampSpan.textContent = timestamp;
-    
+
     // ソース/AI名
     if (log.ai || log.source) {
       const sourceSpan = document.createElement('span');
@@ -4068,16 +4014,17 @@ class LogViewer {
       sourceSpan.textContent = `[${log.ai || log.source}]`;
       entry.appendChild(sourceSpan);
     }
-    
+
     entry.appendChild(timestampSpan);
-    
-    // メッセージ
+
+    // メッセージ（URLをリンク化）
     const messageSpan = document.createElement('span');
-    messageSpan.textContent = ` ${log.message}`;
+    const linkedMessage = this.linkifyUrls(` ${log.message}`);
+    messageSpan.innerHTML = linkedMessage;
     entry.appendChild(messageSpan);
-    
+
     this.container.appendChild(entry);
-    
+
     // 最新のログまでスクロール
     this.container.scrollTop = this.container.scrollHeight;
   }
