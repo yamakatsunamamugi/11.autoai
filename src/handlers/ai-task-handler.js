@@ -27,7 +27,7 @@
 
 // WindowServiceをインポート（ウィンドウ管理の一元化）
 import { WindowService } from '../services/window-service.js';
-import { getService } from '../core/service-registry.js';
+import SheetsClient from '../features/spreadsheet/sheets-client.js';
 
 export class AITaskHandler {
   constructor() {
@@ -372,7 +372,7 @@ export class AITaskHandler {
       
       console.log(`[AITaskHandler] STEP 4: sheetsClient確認`);
       // Service Registry経由でsheetsClientを取得
-      const sheetsClient = await getService('sheetsClient');
+      const sheetsClient = new SheetsClient();
       if (!sheetsClient) {
         console.error(`[AITaskHandler] ❌ sheetsClientが初期化されていません`);
         this.error(`[AITaskHandler] ❌ sheetsClientが初期化されていません`);

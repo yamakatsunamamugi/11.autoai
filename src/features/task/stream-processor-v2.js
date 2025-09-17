@@ -34,7 +34,8 @@
 import { AITaskExecutor } from '../../core/ai-task-executor.js';
 import { WindowService } from '../../services/window-service.js';
 import { aiUrlManager } from '../../core/ai-url-manager.js';
-import { getService } from '../../core/service-registry.js';
+import SheetsClient from '../spreadsheet/sheets-client.js';
+import SpreadsheetLoggerClass from '../logging/spreadsheet-logger.js';
 import { ConsoleLogger } from '../../utils/console-logger.js';
 // RetryManager機能はStep 10に統合済み
 // Removed dependency on 1-ai-common-base.js
@@ -202,7 +203,7 @@ export default class StreamProcessorV2 {
       // SheetsClientが未設定でdependenciesにもない場合、Service Registry経由で取得を試行
       this.log('SheetsClientが未設定 - Service Registry経由で取得を試行', 'info');
       try {
-        this.sheetsClient = await getService('sheetsClient');
+        this.sheetsClient = new SheetsClient();
         this.log('Service Registry経由でSheetsClientを取得しました', 'success');
       } catch (error) {
         this.log(`Service Registry経由のSheetsClient取得に失敗: ${error.message}`, 'warning');
@@ -1992,7 +1993,7 @@ export default class StreamProcessorV2 {
       if (!this.sheetsClient) {
         this.log('SheetsClientが未設定 - Service Registry経由で取得を試行', 'info', 'Step 3-7');
         try {
-          this.sheetsClient = await getService('sheetsClient');
+          this.sheetsClient = new SheetsClient();
           this.log('Service Registry経由でSheetsClientを取得しました', 'success', 'Step 3-7');
         } catch (registryError) {
           this.log(`Service Registry経由のSheetsClient取得に失敗: ${registryError.message}`, 'warning', 'Step 3-7');

@@ -24,32 +24,13 @@ import {
 import { AITaskExecutor } from '../core/ai-task-executor.js';
 import StreamProcessorV2 from '../features/task/stream-processor-v2.js';
 import SpreadsheetAutoSetup from '../services/spreadsheet-auto-setup.js';
+import SheetsClient from '../features/spreadsheet/sheets-client.js';
 import { getStreamingServiceManager } from '../core/streaming-service-manager.js';
 import SpreadsheetLogger from '../features/logging/spreadsheet-logger.js';
-import { getService } from '../core/service-registry.js';
-
-// AuthServiceキャッシュ
-let _authService = null;
+import { getAuthService } from '../services/auth-service.js';
 
 // ConsoleLoggerインスタンス
 const logger = new ConsoleLogger('message-handler');
-
-/**
- * AuthServiceを取得（Service Registry経由のみ）
- * @returns {Object} AuthServiceインスタンス
- * @throws {Error} AuthServiceが取得できない場合
- */
-async function getAuthService() {
-  if (!_authService) {
-    try {
-      _authService = await getService('authService');
-      logger.log('[Step 1-1: AuthService取得] AuthServiceをService Registryから取得しました');
-    } catch (error) {
-      throw new Error(`AuthServiceの取得に失敗しました: ${error.message}`);
-    }
-  }
-  return _authService;
-}
 
 // Step 1-1: AIタスク実行インスタンス
 const aiTaskExecutor = new AITaskExecutor();
@@ -216,6 +197,74 @@ export function setupMessageHandler() {
           // PowerManager削除済み - power-config.jsを使用してください
           console.log('[Step 5-2] ⚠️ PowerManager削除済み - power-config.jsを使用してください');
           sendResponse({ success: true });
+        })();
+        return true;
+
+      // ===== ログファイル保存処理 =====
+      case "SAVE_LOG_FILE":
+        console.log('[LogFile] ログファイル保存要求');
+        (async () => {
+          try {
+            const { filePath, content } = request.data;
+            // Chrome拡張機能のFile System APIを使用してファイル保存
+            // 現在はLocalStorageに保存（Chrome拡張機能の制限のため）
+            const key = `log_file_${filePath}`;
+            await chrome.storage.local.set({ [key]: content });
+
+            console.log(`[LogFile] ファイル保存完了: ${filePath}`);
+            sendResponse({ success: true, filePath });
+          } catch (error) {
+            console.error('[LogFile] ファイル保存エラー:', error);
+            sendResponse({ success: false, error: error.message });
+          }
+        })();
+        return true;
+
+      case "GET_LOG_FILES":
+        console.log('[LogFile] ログファイルリスト取得要求');
+        (async () => {
+          try {
+            const { directory } = request.data;
+            const storage = await chrome.storage.local.get();
+            const files = [];
+            const prefix = `log_file_${directory}/`;
+
+            for (const key in storage) {
+              if (key.startsWith(prefix)) {
+                const fileName = key.replace('log_file_', '');
+                const match = fileName.match(/claude-log-(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})/);
+                if (match) {
+                  files.push({
+                    name: fileName.split('/').pop(),
+                    path: fileName,
+                    timestamp: new Date(match[1].replace('_', 'T').replace(/-/g, ':')).getTime()
+                  });
+                }
+              }
+            }
+
+            sendResponse({ success: true, files });
+          } catch (error) {
+            console.error('[LogFile] ファイルリスト取得エラー:', error);
+            sendResponse({ success: false, error: error.message });
+          }
+        })();
+        return true;
+
+      case "DELETE_LOG_FILE":
+        console.log('[LogFile] ログファイル削除要求');
+        (async () => {
+          try {
+            const { filePath } = request.data;
+            const key = `log_file_${filePath}`;
+            await chrome.storage.local.remove(key);
+
+            console.log(`[LogFile] ファイル削除完了: ${filePath}`);
+            sendResponse({ success: true });
+          } catch (error) {
+            console.error('[LogFile] ファイル削除エラー:', error);
+            sendResponse({ success: false, error: error.message });
+          }
         })();
         return true;
 
@@ -408,7 +457,7 @@ export function setupMessageHandler() {
             }
 
             // Step 11-3: ServiceRegistryからSheetsClientを取得（static import使用）
-            const sheetsClient = await getService('sheetsClient');
+            const sheetsClient = new SheetsClient();
 
             // Step 11-5: Google Sheets APIを呼び出してデータ取得
             const data = await sheetsClient.getSheetData(request.spreadsheetId, request.range);
@@ -464,7 +513,7 @@ export function setupMessageHandler() {
               console.log('[Step 12-5-1] SPREADSHEET_CONFIG未初期化、StreamProcessorV2を初期化');
               // 依存性を取得してシングルトンに設定（static import使用）
               try {
-                const sheetsClient = await getService('sheetsClient');
+                const sheetsClient = new SheetsClient();
                 const processor = StreamProcessorV2.getInstance();
                 await processor.setDependencies({
                   sheetsClient: sheetsClient,
@@ -529,7 +578,7 @@ export function setupMessageHandler() {
             }
 
             // Step 13-6: データを読み込み（static import使用）
-            const sheetsClient = await getService('sheetsClient');
+            const sheetsClient = new SheetsClient();
             const updatedSpreadsheetData =
               await sheetsClient.loadAutoAIData(spreadsheetId, gid);
 
@@ -538,7 +587,7 @@ export function setupMessageHandler() {
               console.log('[Step 13-7-1] SPREADSHEET_CONFIG未初期化、StreamProcessorV2を初期化');
               // 依存性を取得してシングルトンに設定
               try {
-                const sheetsClient = await getService('sheetsClient');
+                const sheetsClient = new SheetsClient();
                 const processor = StreamProcessorV2.getInstance();
                 await processor.setDependencies({
                   sheetsClient: sheetsClient,
@@ -750,7 +799,7 @@ export function setupMessageHandler() {
             // Service Worker環境では動的インポートが失敗するため、try-catch
             try {
               // ServiceRegistry使用 (static import)
-              const sheetsClient = await getService('sheetsClient');
+              const sheetsClient = new SheetsClient();
               await processor.setDependencies({
                 sheetsClient: sheetsClient,
                 SpreadsheetLogger: SpreadsheetLogger
@@ -767,7 +816,7 @@ export function setupMessageHandler() {
             if (request.spreadsheetId) {
               // Step 18-7: スプレッドシートのデータを読み込み
               // ServiceRegistry使用 (static import)
-            const sheetsClient752 = await getService('sheetsClient');
+            const sheetsClient752 = new SheetsClient();
             const sheetData = await sheetsClient752.loadAutoAIData(
                 request.spreadsheetId,
                 request.gid
@@ -846,7 +895,7 @@ export function setupMessageHandler() {
 
             // Step 19-3: SheetsClientを使用してログをクリア
             // ServiceRegistry使用 (static import)
-            const sheetsClient829 = await getService('sheetsClient');
+            const sheetsClient829 = new SheetsClient();
             const result = await sheetsClient829.clearSheetLogs(request.spreadsheetId);
 
             console.log('[Step 19-4] ログクリア成功:', result.clearedCount);
@@ -877,7 +926,7 @@ export function setupMessageHandler() {
 
             // Step 20-3: SheetsClientを使用してAI回答を削除
             // ServiceRegistry使用 (static import)
-            const sheetsClient858 = await getService('sheetsClient');
+            const sheetsClient858 = new SheetsClient();
             const result = await sheetsClient858.deleteAnswers(request.spreadsheetId);
 
             console.log('[Step 20-4] AI回答削除成功:', result.deletedCount);
@@ -933,7 +982,7 @@ export function setupMessageHandler() {
             let sheetsClient910;
             try {
               // ServiceRegistry使用 (static import)
-              sheetsClient910 = await getService('sheetsClient');
+              sheetsClient910 = new SheetsClient();
             } catch (e) {
               console.error('sheetsClient取得エラー:', e.message);
               sendResponse({ success: false, error: 'sheetsClient取得に失敗しました' });

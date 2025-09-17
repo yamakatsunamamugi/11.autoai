@@ -54,8 +54,7 @@ import {
   spreadsheetLogger
 } from './src/services/google-services.js';
 
-// Step 2-6: ServiceRegistryをimport
-import { getService } from './src/core/service-registry.js';
+// Step 2-6: [削除済み] ServiceRegistry
 
 // Step 2-7: SpreadsheetLoggerクラスをimport
 import SpreadsheetLogger from './src/features/logging/spreadsheet-logger.js';
@@ -100,8 +99,9 @@ globalThis.StreamProcessorV2 = StreamProcessorV2;
     try {
       console.log(`[Background] StreamProcessorV2依存性設定開始 (試行${retryCount + 1}/${maxRetries})`);
 
-      // ServiceRegistryから依存性を取得（static importを使用）
-      const sheetsClientFromRegistry = await getService('sheetsClient');
+      // 直接依存性を作成
+      const SheetsClientClass = (await import('./src/features/spreadsheet/sheets-client.js')).default;
+      const sheetsClientFromRegistry = new SheetsClientClass();
       const SpreadsheetLoggerClass = SpreadsheetLogger;
 
       console.log('[Background] 依存性取得成功:', {

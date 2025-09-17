@@ -12,7 +12,11 @@
  * Step 8: 接続管理
  * Step 9: ログクリア
  * Step 10: ログ取得
+ * Step 11: ファイル保存
  */
+
+// LogFileManagerのインポート
+import { LogFileManager } from '../utils/log-file-manager.js';
 
 // ===== Step 1: LogManagerクラス定義 =====
 export class LogManager {
@@ -35,6 +39,9 @@ export class LogManager {
       SYSTEM: 'system',
       ERROR: 'error'
     };
+
+    // Step 1-4: ファイルマネージャーの初期化
+    this.fileManager = new LogFileManager();
 
     // LogManager初期化完了
   }
@@ -235,12 +242,67 @@ export class LogManager {
       return true;
     });
   }
+
+  /**
+   * Step 11: Claudeログをファイルに保存
+   */
+  async saveClaudeLogs() {
+    try {
+      // Step 11-1: Claudeのログのみフィルタ
+      const claudeLogs = this.getLogs({ ai: 'claude' });
+
+      if (claudeLogs.length === 0) {
+        console.log('[Step 11-2] 保存するClaudeログがありません');
+        return null;
+      }
+
+      // Step 11-3: FileManagerにログを転送
+      claudeLogs.forEach(log => {
+        this.fileManager.addLog({
+          type: 'claude_log',
+          level: log.level,
+          message: log.message,
+          metadata: log.metadata,
+          step: log.step
+        });
+      });
+
+      // Step 11-4: ファイルに保存
+      const filePath = await this.fileManager.saveToFile();
+      console.log(`[Step 11-5] Claudeログを保存しました: ${filePath}`);
+
+      // Step 11-6: 保存したログをメモリから削除（オプション）
+      // this.logs = this.logs.filter(log => log.ai !== 'claude');
+
+      return filePath;
+    } catch (error) {
+      console.error('[Step 11-Error] Claudeログ保存エラー:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Claudeタスクログを記録
+   */
+  logClaudeTask(taskData, result) {
+    // タスク開始ログ
+    this.fileManager.logTaskStart(taskData);
+
+    // 結果ログ
+    if (result.success) {
+      this.fileManager.logTaskComplete(result);
+    } else {
+      this.fileManager.logError('task_execution', new Error(result.error || 'Unknown error'), {
+        taskData
+      });
+    }
+  }
 }
 
-// Step 11: グローバルインスタンスの作成とエクスポート
+// Step 12: グローバルインスタンスの作成とエクスポート
 export const logManager = new LogManager();
 
-// Step 12: グローバル設定（Chrome拡張機能用）
+// Step 13: グローバル設定（Chrome拡張機能用）
 if (typeof globalThis !== 'undefined') {
   globalThis.logManager = logManager;
   console.log('[Step 12] LogManagerをグローバル空間に登録完了');

@@ -1,5 +1,5 @@
 // sheets-client.js - Google Sheets APIクライアント
-import { getService } from '../../core/service-registry.js';
+import { getAuthService } from '../../services/auth-service.js';
 import { ConsoleLogger } from '../../utils/console-logger.js';
 
 class SheetsClient {
@@ -59,8 +59,8 @@ class SheetsClient {
   async getAuthService() {
     if (!this._authService) {
       try {
-        this._authService = await getService('authService');
-        this.logger.log('[SheetsClient] AuthServiceをService Registryから取得しました');
+        this._authService = getAuthService();
+        this.logger.log('[SheetsClient] AuthServiceを取得しました');
       } catch (error) {
         this.logger.warn('[SheetsClient] AuthServiceの取得に失敗:', error.message);
         // フォールバック: グローバル変数を試行

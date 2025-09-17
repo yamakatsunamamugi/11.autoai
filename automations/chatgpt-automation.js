@@ -1497,36 +1497,58 @@
                 }
 
                 console.log('✅ ChatGPT V2 タスク実行完了');
+
+                const result = {
+                    success: true,
+                    response: responseText,
+                    displayedModel: displayedModel,
+                    displayedFunction: displayedFunction
+                };
+
+                // タスク完了をログに記録
+                ChatGPTLogManager.completeTask(result);
+                ChatGPTLogManager.logStep('Step7-Complete', 'タスク正常完了', {
+                    responseLength: responseText.length,
+                    model: modelName,
+                    function: functionName,
+                    displayedModel: displayedModel,
+                    displayedFunction: displayedFunction
+                });
+
                 // 実行完了フラグを設定（AITaskExecutorが確認）
                 window.__v2_execution_complete = true;
-                window.__v2_execution_result = {
-                    success: true,
-                    response: responseText,
-                    displayedModel: displayedModel,
-                    displayedFunction: displayedFunction
-                };
-                return {
-                    success: true,
-                    response: responseText,
-                    displayedModel: displayedModel,
-                    displayedFunction: displayedFunction
-                };
+                window.__v2_execution_result = result;
+
+                return result;
             } else {
                 throw new Error('応答テキストを取得できませんでした');
             }
             
         } catch (error) {
             console.error('❌ ChatGPT V2 タスク実行エラー:', error);
+
+            const result = {
+                success: false,
+                error: error.message
+            };
+
+            // エラーをログに記録
+            ChatGPTLogManager.logError('Task-Error', error, {
+                taskData,
+                errorMessage: error.message,
+                errorStack: error.stack,
+                errorName: error.name,
+                timestamp: new Date().toISOString(),
+                userAgent: navigator.userAgent,
+                url: window.location.href
+            });
+            ChatGPTLogManager.completeTask(result);
+
             // エラー時も完了フラグを設定
             window.__v2_execution_complete = true;
-            window.__v2_execution_result = {
-                success: false,
-                error: error.message
-            };
-            return {
-                success: false,
-                error: error.message
-            };
+            window.__v2_execution_result = result;
+
+            return result;
         }
     }
     
@@ -1617,6 +1639,24 @@ async function chatWithChatGPT() {
 }
 
 */
+
+// ========================================
+// ウィンドウ終了時のログ保存処理
+// ========================================
+window.addEventListener('beforeunload', async (event) => {
+    console.log('🔄 [ChatGPTAutomation] ウィンドウ終了検知 - ログ保存開始');
+
+    try {
+        const fileName = await ChatGPTLogManager.saveToFile();
+        if (fileName) {
+            console.log(`✅ [ChatGPTAutomation] ログ保存完了: ${fileName}`);
+        }
+    } catch (error) {
+        console.error('[ChatGPTAutomation] ログ保存エラー:', error);
+    }
+});
+
+window.ChatGPTLogManager = ChatGPTLogManager;
 
 // ========================================
 // 【エクスポート】検出システム用関数一覧

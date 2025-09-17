@@ -20,6 +20,148 @@
     console.log(`Claude Automation V2 - 初期化時刻: ${new Date().toLocaleString('ja-JP')}`);
 
     // ========================================
+    // ログ管理システムの初期化
+    // ========================================
+    const ClaudeLogManager = {
+        logs: [],
+        taskStartTime: null,
+        currentTaskData: null,
+
+        // ログエントリを追加
+        addLog(entry) {
+            this.logs.push({
+                timestamp: new Date().toISOString(),
+                ...entry
+            });
+        },
+
+        // ステップログを記録
+        logStep(step, message, data = {}) {
+            this.addLog({
+                type: 'step',
+                step,
+                message,
+                data
+            });
+            console.log(`📝 [ログ] ${step}: ${message}`);
+        },
+
+        // エラーログを記録
+        logError(step, error, context = {}) {
+            this.addLog({
+                type: 'error',
+                step,
+                error: {
+                    message: error.message,
+                    stack: error.stack
+                },
+                context
+            });
+            console.error(`❌ [エラーログ] ${step}:`, error);
+        },
+
+        // タスク開始を記録
+        startTask(taskData) {
+            this.taskStartTime = Date.now();
+            this.currentTaskData = taskData;
+            this.addLog({
+                type: 'task_start',
+                taskData: {
+                    model: taskData.model,
+                    function: taskData.function,
+                    promptLength: taskData.prompt?.length || taskData.text?.length || 0,
+                    cellInfo: taskData.cellInfo
+                }
+            });
+        },
+
+        // タスク完了を記録
+        completeTask(result) {
+            const duration = this.taskStartTime ? Date.now() - this.taskStartTime : 0;
+            this.addLog({
+                type: 'task_complete',
+                duration,
+                result: {
+                    success: result.success,
+                    responseLength: result.response?.length || 0,
+                    error: result.error
+                }
+            });
+        },
+
+        // ログをファイルに保存
+        async saveToFile() {
+            if (this.logs.length === 0) {
+                console.log('[ClaudeLogManager] 保存するログがありません');
+                return;
+            }
+
+            try {
+                // タイムスタンプ付きファイル名
+                const timestamp = new Date().toISOString()
+                    .replace(/[:.]/g, '-')
+                    .replace('T', '_')
+                    .slice(0, -5);
+
+                const fileName = `claude-log-${timestamp}.json`;
+                const logData = {
+                    sessionStart: this.logs[0]?.timestamp,
+                    sessionEnd: new Date().toISOString(),
+                    totalLogs: this.logs.length,
+                    taskData: this.currentTaskData,
+                    logs: this.logs
+                };
+
+                // LocalStorageに保存（Chrome拡張機能の制約のため）
+                // ディレクトリパスを含めたキー名に変更
+                const key = `claude_logs_log/3.Claudereport/${fileName}`;
+                localStorage.setItem(key, JSON.stringify(logData));
+
+                // 古いログをローテーション
+                this.rotateLogs();
+
+                console.log(`✅ [ClaudeLogManager] ログを保存しました: ${fileName}`);
+                return fileName;
+            } catch (error) {
+                console.error('[ClaudeLogManager] ログ保存エラー:', error);
+            }
+        },
+
+        // 古いログを削除（10個を超えた分）
+        rotateLogs() {
+            const logKeys = [];
+            const prefix = 'claude_logs_log/3.Claudereport/';
+
+            // すべてのログキーを収集
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && key.startsWith(prefix)) {
+                    logKeys.push(key);
+                }
+            }
+
+            // タイムスタンプでソート（新しい順）
+            logKeys.sort().reverse();
+
+            // 10個を超える古いログを削除
+            if (logKeys.length > 10) {
+                const keysToDelete = logKeys.slice(10);
+                keysToDelete.forEach(key => {
+                    localStorage.removeItem(key);
+                    console.log(`🗑️ [ClaudeLogManager] 古いログを削除: ${key}`);
+                });
+            }
+        },
+
+        // ログをクリア
+        clear() {
+            this.logs = [];
+            this.taskStartTime = null;
+            this.currentTaskData = null;
+        }
+    };
+
+    // ========================================
     // ステップ0: 初期化処理
     // ========================================
 
@@ -442,6 +584,12 @@
         if (!skipLog) {
             console.log(`${logPrefix}要素検索開始: ${selectorInfo.description}`);
             console.log(`${logPrefix}使用セレクタ数: ${selectorInfo.selectors.length}`);
+
+            // セレクタ詳細をログに記録
+            ClaudeLogManager.logStep('Selector-Search', `セレクタ検索開始: ${selectorInfo.description}`, {
+                selectorCount: selectorInfo.selectors.length,
+                selectors: selectorInfo.selectors.slice(0, 5) // 最初の5つを記録
+            });
         }
 
         const results = [];
@@ -472,6 +620,17 @@
                                     console.log(`${logPrefix}  セレクタ: ${selector}`);
                                     console.log(`${logPrefix}  要素タイプ: ${element.tagName}`);
                                     console.log(`${logPrefix}  位置: (${Math.round(rect.left)}, ${Math.round(rect.top)})`);
+
+                                    // セレクタヒットをログに記録
+                                    ClaudeLogManager.logStep('Selector-Hit', `セレクタがヒット: ${selectorInfo.description}`, {
+                                        selector: selector,
+                                        selectorIndex: i,
+                                        elementTag: element.tagName,
+                                        elementId: element.id || 'none',
+                                        elementClass: element.className || 'none',
+                                        position: { x: Math.round(rect.left), y: Math.round(rect.top) },
+                                        size: { width: Math.round(rect.width), height: Math.round(rect.height) }
+                                    });
                                 }
                                 return element;
                             }
@@ -510,6 +669,13 @@
         if (!skipLog) {
             console.warn(`${logPrefix}✗ 要素未発見: ${selectorInfo.description}`);
             console.log(`${logPrefix}  試行結果:`, results);
+
+            // セレクタミスをログに記録
+            ClaudeLogManager.logError('Selector-NotFound', new Error(`要素未発見: ${selectorInfo.description}`), {
+                description: selectorInfo.description,
+                attemptedSelectors: selectorInfo.selectors,
+                results: results
+            });
         }
 
         return null;
@@ -925,6 +1091,9 @@
             cellInfo: taskData.cellInfo
         });
 
+        // ログ記録開始
+        ClaudeLogManager.startTask(taskData);
+
         try {
             // パラメータ準備（スプレッドシートの値をそのまま使用）
             let prompt = taskData.prompt || taskData.text || '';
@@ -953,6 +1122,7 @@
             // ========================================
             console.log('\n【Claude-ステップ2】テキスト入力');
             console.log('─'.repeat(40));
+            ClaudeLogManager.logStep('Step2-TextInput', 'テキスト入力開始');
 
             const inputResult = await findClaudeElement(claudeSelectors['1_テキスト入力欄']);
             if (!inputResult) {
@@ -967,6 +1137,7 @@
             }
 
             console.log('✅ テキスト入力完了');
+            ClaudeLogManager.logStep('Step2-TextInput', 'テキスト入力完了', { promptLength: prompt.length });
             await wait(1000);
 
             // ========================================
@@ -1112,6 +1283,7 @@
             }
 
             console.log('✅ メッセージ送信完了');
+            ClaudeLogManager.logStep('Step5-Send', 'メッセージ送信完了');
             await wait(2000);
 
             // Canvas内容を保存する変数（スコープを広く）
@@ -1160,6 +1332,31 @@
                     const maxDisappearWait = AI_WAIT_CONFIG.MAX_WAIT / 1000;
 
                     while (!stopButtonGone && waitCount < maxDisappearWait) {
+                        // 待機中の文字数カウント（10秒ごと）
+                        if (waitCount % 10 === 0 && waitCount > 0) {
+                            // Canvasテキストをチェック
+                            const canvasElement = await findClaudeElement(deepResearchSelectors['4_Canvas機能テキスト位置'], 1, true);
+                            if (canvasElement) {
+                                const canvasTextLength = canvasElement.textContent ? canvasElement.textContent.trim().length : 0;
+                                console.log(`  📈 Canvasテキスト: ${canvasTextLength}文字`);
+                                ClaudeLogManager.logStep('Progress-Canvas', `Canvas文字数: ${canvasTextLength}文字`, {
+                                    charCount: canvasTextLength,
+                                    time: waitCount
+                                });
+                            }
+
+                            // 通常テキストをチェック
+                            const normalElement = await findClaudeElement(deepResearchSelectors['5_通常処理テキスト位置'], 1, true);
+                            if (normalElement) {
+                                const normalTextLength = normalElement.textContent ? normalElement.textContent.trim().length : 0;
+                                console.log(`  📈 通常テキスト: ${normalTextLength}文字`);
+                                ClaudeLogManager.logStep('Progress-Normal', `通常文字数: ${normalTextLength}文字`, {
+                                    charCount: normalTextLength,
+                                    time: waitCount
+                                });
+                            }
+                        }
+
                         // Canvasプレビューボタンをチェック（Canvas未処理の場合のみ）
                         if (!isCanvasMode) {
                             const previewButton = await findClaudeElement(deepResearchSelectors['4_4_Canvasプレビューボタン'], 2, true);
@@ -1435,7 +1632,7 @@
             console.log('%c✨ Claude V2 タスク完了', 'color: #4CAF50; font-weight: bold; font-size: 16px');
             console.log('='.repeat(60));
 
-            return {
+            const result = {
                 success: true,
                 response: finalText,
                 text: finalText,
@@ -1443,14 +1640,42 @@
                 function: featureName
             };
 
+            // タスク完了をログに記録
+            ClaudeLogManager.completeTask(result);
+            ClaudeLogManager.logStep('Step7-Complete', 'タスク正常完了', {
+                responseLength: finalText.length,
+                responsePreview: finalText.substring(0, 100) + '...',
+                model: modelName,
+                function: featureName,
+                cellInfo: taskData.cellInfo
+            });
+
+            return result;
+
         } catch (error) {
             console.error('❌ [ClaudeV2] タスク実行エラー:', error.message);
             console.error('スタックトレース:', error.stack);
-            return {
+
+            const result = {
                 success: false,
                 error: error.message,
                 text: 'エラーが発生しました: ' + error.message
             };
+
+            // エラーをログに記録（詳細情報付き）
+            ClaudeLogManager.logError('Task-Error', error, {
+                taskData,
+                errorMessage: error.message,
+                errorStack: error.stack,
+                errorName: error.name,
+                currentStep: ClaudeLogManager.logs[ClaudeLogManager.logs.length - 1]?.step || 'unknown',
+                timestamp: new Date().toISOString(),
+                userAgent: navigator.userAgent,
+                url: window.location.href
+            });
+            ClaudeLogManager.completeTask(result);
+
+            return result;
         }
     }
 
@@ -1646,5 +1871,25 @@
 
     console.log('✅ Claude Automation V2 準備完了');
     console.log('使用方法: ClaudeAutomationV2.executeTask({ model: "3.5 Sonnet", function: "Deep Research", prompt: "..." })');
+
+    // ========================================
+    // ウィンドウ終了時のログ保存処理
+    // ========================================
+    window.addEventListener('beforeunload', async (event) => {
+        console.log('🔄 [ClaudeAutomation] ウィンドウ終了検知 - ログ保存開始');
+
+        try {
+            // ログをファイルに保存
+            const fileName = await ClaudeLogManager.saveToFile();
+            if (fileName) {
+                console.log(`✅ [ClaudeAutomation] ログ保存完了: ${fileName}`);
+            }
+        } catch (error) {
+            console.error('[ClaudeAutomation] ログ保存エラー:', error);
+        }
+    });
+
+    // グローバルにログマネージャーを公開（デバッグ用）
+    window.ClaudeLogManager = ClaudeLogManager;
 
 })();

@@ -15,7 +15,7 @@
 import { ModelExtractor } from './extractors/model-extractor.js';
 import { FunctionExtractor } from './extractors/function-extractor.js';
 import { ConsoleLogger } from '../../utils/console-logger.js';
-import { getService } from '../../core/service-registry.js';
+import SheetsClient from '../spreadsheet/sheets-client.js';
 
 export class SpreadsheetLogger {
   constructor(logger = console, options = {}) {
@@ -58,9 +58,9 @@ export class SpreadsheetLogger {
     if (!this._sheetsClient) {
       try {
         // ServiceRegistryから取得（static import使用）
-        this._sheetsClient = await getService('sheetsClient');
+        this._sheetsClient = new SheetsClient();
         // [Step 0-1: SheetsClient取得]
-        this.logger.log('[Step 0-1: SheetsClient取得] SheetsClientをServiceRegistryから取得しました');
+        this.logger.log('[Step 0-1: SheetsClient取得] SheetsClientを作成しました');
       } catch (error) {
         this.logger.warn('[Step 0-1: SheetsClient取得失敗] ServiceRegistryからの取得に失敗:', error.message);
       }
@@ -719,8 +719,7 @@ export class SpreadsheetLogger {
       
       // 拡張機能のログシステムにも記録（Service Registry経由）
       try {
-        const { getService } = await import('../../core/service-registry.js');
-        const logManager = await getService('logManager');
+        const logManager = globalThis.logManager;
         if (logManager) {
           logManager.log(`📝 スプレッドシートログ書き込み完了: ${logCell}`, {
           category: 'system',
@@ -862,8 +861,7 @@ export class SpreadsheetLogger {
 
         // 詳細なエラー情報をログに記録（Service Registry経由）
         try {
-          const { getService } = await import('../../core/service-registry.js');
-          const logManager = await getService('logManager');
+          const logManager = globalThis.logManager;
           if (logManager) {
             logManager.log(`⚠️ スプレッドシート書き込み確認失敗: ${logCell}`, {
               category: 'system',

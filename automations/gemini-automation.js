@@ -24,6 +24,132 @@
     window.GEMINI_SCRIPT_LOADED = true;
     window.GEMINI_SCRIPT_INIT_TIME = Date.now();
 
+    // ========================================
+    // ログ管理システムの初期化
+    // ========================================
+    const GeminiLogManager = {
+        logs: [],
+        taskStartTime: null,
+        currentTaskData: null,
+
+        addLog(entry) {
+            this.logs.push({
+                timestamp: new Date().toISOString(),
+                ...entry
+            });
+        },
+
+        logStep(step, message, data = {}) {
+            this.addLog({
+                type: 'step',
+                step,
+                message,
+                data
+            });
+            console.log(`📝 [ログ] ${step}: ${message}`);
+        },
+
+        logError(step, error, context = {}) {
+            this.addLog({
+                type: 'error',
+                step,
+                error: {
+                    message: error.message,
+                    stack: error.stack
+                },
+                context
+            });
+            console.error(`❌ [エラーログ] ${step}:`, error);
+        },
+
+        startTask(taskData) {
+            this.taskStartTime = Date.now();
+            this.currentTaskData = taskData;
+            this.addLog({
+                type: 'task_start',
+                taskData: {
+                    model: taskData.model,
+                    function: taskData.function,
+                    promptLength: taskData.prompt?.length || taskData.text?.length || 0,
+                    cellInfo: taskData.cellInfo
+                }
+            });
+        },
+
+        completeTask(result) {
+            const duration = this.taskStartTime ? Date.now() - this.taskStartTime : 0;
+            this.addLog({
+                type: 'task_complete',
+                duration,
+                result: {
+                    success: result.success,
+                    responseLength: result.response?.length || 0,
+                    error: result.error
+                }
+            });
+        },
+
+        async saveToFile() {
+            if (this.logs.length === 0) {
+                console.log('[GeminiLogManager] 保存するログがありません');
+                return;
+            }
+
+            try {
+                const timestamp = new Date().toISOString()
+                    .replace(/[:.]/g, '-')
+                    .replace('T', '_')
+                    .slice(0, -5);
+
+                const fileName = `gemini-log-${timestamp}.json`;
+                const logData = {
+                    sessionStart: this.logs[0]?.timestamp,
+                    sessionEnd: new Date().toISOString(),
+                    totalLogs: this.logs.length,
+                    taskData: this.currentTaskData,
+                    logs: this.logs
+                };
+
+                const key = `gemini_logs_log/1.Geminireport/${fileName}`;
+                localStorage.setItem(key, JSON.stringify(logData));
+                this.rotateLogs();
+
+                console.log(`✅ [GeminiLogManager] ログを保存しました: ${fileName}`);
+                return fileName;
+            } catch (error) {
+                console.error('[GeminiLogManager] ログ保存エラー:', error);
+            }
+        },
+
+        rotateLogs() {
+            const logKeys = [];
+            const prefix = 'gemini_logs_log/1.Geminireport/';
+
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && key.startsWith(prefix)) {
+                    logKeys.push(key);
+                }
+            }
+
+            logKeys.sort().reverse();
+
+            if (logKeys.length > 10) {
+                const keysToDelete = logKeys.slice(10);
+                keysToDelete.forEach(key => {
+                    localStorage.removeItem(key);
+                    console.log(`🗑️ [GeminiLogManager] 古いログを削除: ${key}`);
+                });
+            }
+        },
+
+        clear() {
+            this.logs = [];
+            this.taskStartTime = null;
+            this.currentTaskData = null;
+        }
+    };
+
     // RetryManagerは使用しない（独自実装を使用）
     const retryManager = null;
 
@@ -1194,6 +1320,9 @@
     // ================================================================
     async function executeTask(taskData) {
         console.log('🚀 Gemini タスク実行開始', taskData);
+
+        // ログ記録開始
+        GeminiLogManager.startTask(taskData);
         
         try {
             // まず利用可能なモデルと機能を探索
@@ -1260,16 +1389,42 @@
             
             // コア実行
             const result = await executeCore(resolvedModel, resolvedFeature, promptText);
-            
+
             console.log('✅ Gemini タスク実行完了', result);
+
+            // タスク完了をログに記録
+            GeminiLogManager.completeTask(result);
+            if (result.success && result.response) {
+                GeminiLogManager.logStep('Step7-Complete', 'タスク正常完了', {
+                    responseLength: result.response.length,
+                    model: resolvedModel,
+                    feature: resolvedFeature
+                });
+            }
+
             return result;
             
         } catch (error) {
             console.error('❌ Gemini タスク実行エラー:', error);
-            return {
+
+            const result = {
                 success: false,
                 error: error.message
             };
+
+            // エラーをログに記録
+            GeminiLogManager.logError('Task-Error', error, {
+                taskData,
+                errorMessage: error.message,
+                errorStack: error.stack,
+                errorName: error.name,
+                timestamp: new Date().toISOString(),
+                userAgent: navigator.userAgent,
+                url: window.location.href
+            });
+            GeminiLogManager.completeTask(result);
+
+            return result;
         }
     }
     
@@ -1349,6 +1504,24 @@ async function chatWithGemini() {
 }
 
 */
+
+// ========================================
+// ウィンドウ終了時のログ保存処理
+// ========================================
+window.addEventListener('beforeunload', async (event) => {
+    console.log('🔄 [GeminiAutomation] ウィンドウ終了検知 - ログ保存開始');
+
+    try {
+        const fileName = await GeminiLogManager.saveToFile();
+        if (fileName) {
+            console.log(`✅ [GeminiAutomation] ログ保存完了: ${fileName}`);
+        }
+    } catch (error) {
+        console.error('[GeminiAutomation] ログ保存エラー:', error);
+    }
+});
+
+window.GeminiLogManager = GeminiLogManager;
 
 // ========================================
 // 【エクスポート】検出システム用関数一覧
