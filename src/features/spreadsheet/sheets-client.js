@@ -1608,11 +1608,20 @@ class SheetsClient {
 
     const startTime = Date.now();
 
+    // ログ記録: スプレッドシート書き込み開始（文字数付き）
+    const valueLength = typeof value === 'string' ? value.length : JSON.stringify(value).length;
+    console.log(`📝 [SheetsClient] セル更新開始: ${range}`, {
+      spreadsheetId: spreadsheetId.substring(0, 10) + '...',
+      range: range,
+      valueLength: valueLength,
+      valuePreview: typeof value === 'string' ? value.substring(0, 100) + '...' : value
+    });
+
     return await this.executeWithQuotaManagement(async () => {
       try {
         // 1. データサイズ検証
         const validation = this.validateDataSize(value, range);
-        
+
         if (validation.warnings.length > 0) {
           this.detailedLog('warn', `データサイズ警告: ${range}`, validation);
         }
@@ -1704,11 +1713,19 @@ class SheetsClient {
               }
             }
 
+            const duration = Date.now() - startTime;
+            console.log(`✅ [SheetsClient] セル更新完了: ${processedRange}`, {
+              range: processedRange,
+              valueLength: valueLength,
+              duration: `${duration}ms`,
+              verification: verificationResult.isMatch ? 'OK' : 'MISMATCH'
+            });
+
             return {
               ...result,
               validation: validation,
               verification: verificationResult,
-              duration: Date.now() - startTime
+              duration: duration
             };
           } catch (verifyError) {
             this.detailedLog('warn', `書き込み検証中にエラー: ${verifyError.message}`);
@@ -1716,10 +1733,17 @@ class SheetsClient {
           }
         }
 
+        const totalDuration = Date.now() - startTime;
+        console.log(`✅ [SheetsClient] セル更新完了: ${processedRange || range}`, {
+          range: processedRange || range,
+          valueLength: valueLength,
+          duration: `${totalDuration}ms`
+        });
+
         return {
           ...result,
           validation: validation,
-          duration: Date.now() - startTime
+          duration: totalDuration
         };
 
       } catch (error) {
@@ -1837,32 +1861,242 @@ class SheetsClient {
   }
 
   /**
+   * ログエントリーをフォーマット
+   * @param {Object} task - タスクオブジェクト
+   * @param {string} url - 現在のURL
+   * @param {Date} sendTime - 送信時刻
+   * @param {Date} writeTime - 記載時刻
+   * @returns {string} フォーマット済みログ
+   */
+  formatLogEntry(task, url, sendTime, writeTime) {
+    const aiType = task.aiType || 'Unknown';
+    const selectedModel = task.model || '通常';
+    const displayedModel = task.displayedModel || '不明';
+    const model = `選択: ${selectedModel} / 表示: ${displayedModel}`;
+    const selectedFunction = task.function || task.specialOperation || '通常';
+    const displayedFunction = task.displayedFunction || '不明';
+    const functionName = `選択: ${selectedFunction} / 表示: ${displayedFunction}`;
+
+    // 経過時間を計算（秒単位）
+    const elapsedMs = writeTime.getTime() - sendTime.getTime();
+    const elapsedSeconds = Math.round(elapsedMs / 1000);
+
+    // 日本語フォーマット
+    const sendTimeStr = sendTime.toLocaleString('ja-JP', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+
+    const writeTimeStr = writeTime.toLocaleString('ja-JP', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+
+    // AI名を日本語表記に
+    const aiDisplayName = this.getAIDisplayName(aiType);
+
+    // 常にテキスト形式で返す
+    const logEntry = [
+      `---------- ${aiDisplayName} ----------`,
+      `モデル: ${model}`,
+      `機能: ${functionName}`,
+      `URL: ${url || 'URLが取得できませんでした'}`,
+      `送信時刻: ${sendTimeStr}`,
+      `記載時刻: ${writeTimeStr} (${elapsedSeconds}秒後)`
+    ].join('\n');
+
+    return logEntry;
+  }
+
+  /**
+   * AI名を日本語表記に変換
+   * @param {string} aiType - AIタイプ
+   * @returns {string} 日本語のAI名
+   */
+  getAIDisplayName(aiType) {
+    const aiNameMap = {
+      'Claude': 'Claude',
+      'ChatGPT': 'ChatGPT',
+      'Gemini': 'Gemini',
+      'Copilot': 'Copilot'
+    };
+    return aiNameMap[aiType] || aiType;
+  }
+
+  /**
+   * ログをスプレッドシートに書き込む（完全版）
+   * @param {Object} task - タスクオブジェクト
+   * @param {Object} options - 追加オプション
+   * @returns {Promise<Object>} 書き込み結果
+   */
+  async writeLogToSpreadsheet(task, options = {}) {
+    try {
+      const { spreadsheetId, gid, url } = options;
+
+      console.log(`📝 [SheetsClient] writeLogToSpreadsheet開始:`, {
+        taskId: task.id,
+        row: task.row,
+        logColumns: task.logColumns
+      });
+
+      // ログ列を取得（デフォルトはB列）
+      const logColumn = task.logColumns?.[0] || 'B';
+      const logCell = `${logColumn}${task.row}`;
+
+      // 送信時刻と記載時刻を設定
+      const sendTime = options.sendTime || new Date();
+      const writeTime = new Date();
+
+      // ログエントリーをフォーマット
+      const logContent = this.formatLogEntry(task, url, sendTime, writeTime);
+
+      // 既存のログを取得（options.isFirstTaskがfalseの場合）
+      let finalLogContent = logContent;
+      if (!options.isFirstTask) {
+        try {
+          const response = await this.getSheetData(spreadsheetId, logCell, gid);
+          const existingLog = response?.values?.[0]?.[0] || '';
+          if (existingLog && existingLog.trim() !== '') {
+            // 既存ログと新規ログを結合
+            finalLogContent = existingLog + '\n\n' + logContent;
+          }
+        } catch (error) {
+          console.warn(`⚠️ [SheetsClient] 既存ログの取得に失敗:`, error.message);
+        }
+      }
+
+      // スプレッドシートに書き込み
+      await this.updateCell(spreadsheetId, logCell, finalLogContent, gid, {
+        isLog: true
+      });
+
+      console.log(`✅ [SheetsClient] ログ書き込み成功: ${logCell}`);
+
+      return {
+        success: true,
+        logCell,
+        verified: true
+      };
+
+    } catch (error) {
+      console.error(`❌ [SheetsClient] writeLogToSpreadsheet失敗:`, error);
+      return {
+        success: false,
+        error: error.message,
+        verified: false
+      };
+    }
+  }
+
+  /**
+   * ログをスプレッドシートに書き込む（簡易版）
+   * @param {string} spreadsheetId - スプレッドシートID
+   * @param {string} range - 書き込み範囲（例: 'B2'）
+   * @param {string} logContent - ログの内容
+   * @param {string} gid - シートのgid（オプション）
+   * @param {Object} options - 追加オプション
+   * @returns {Promise<Object>} 書き込み結果
+   */
+  async writeLog(spreadsheetId, range, logContent, gid = null, options = {}) {
+    try {
+      console.log(`📝 [SheetsClient] writeLog開始:`, {
+        spreadsheetId,
+        range,
+        contentLength: logContent?.length,
+        gid
+      });
+
+      // リッチテキストデータの処理（リンク付きログの場合）
+      if (options.richTextData && Array.isArray(options.richTextData)) {
+        const hasLinks = options.richTextData.some(item => item.url);
+        if (hasLinks) {
+          console.log('🔗 [SheetsClient] リッチテキスト形式でログ書き込み');
+          return await this.updateCellWithRichText(
+            spreadsheetId,
+            range,
+            options.richTextData,
+            gid
+          );
+        }
+      }
+
+      // 通常のテキストログとして書き込み
+      return await this.updateCell(spreadsheetId, range, logContent, gid, {
+        ...options,
+        isLog: true
+      });
+
+    } catch (error) {
+      console.error(`❌ [SheetsClient] writeLog失敗:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 回答をスプレッドシートに書き込む
+   * @param {string} spreadsheetId - スプレッドシートID
+   * @param {string} range - 書き込み範囲（例: 'C2'）
+   * @param {string} answer - 回答の内容
+   * @param {string} gid - シートのgid（オプション）
+   * @param {Object} options - 追加オプション
+   * @returns {Promise<Object>} 書き込み結果
+   */
+  async writeAnswer(spreadsheetId, range, answer, gid = null, options = {}) {
+    try {
+      console.log(`✍️ [SheetsClient] writeAnswer開始:`, {
+        spreadsheetId,
+        range,
+        answerLength: answer?.length,
+        gid
+      });
+
+      // 回答の書き込み（長いテキストの場合は自動分割）
+      return await this.updateCell(spreadsheetId, range, answer, gid, {
+        ...options,
+        isAnswer: true
+      });
+
+    } catch (error) {
+      console.error(`❌ [SheetsClient] writeAnswer失敗:`, error);
+      throw error;
+    }
+  }
+
+  /**
    * スプレッドシートのログをクリア
-   * 
+   *
    * 【概要】
    * スプレッドシートのメニュー行から「ログ」列を探し、その列の作業行データをクリアする機能。
    * background.jsと連携してA列のデータもクリアされる。
-   * 
+   *
    * 【依存関係】
    * - loadAutoAIData: スプレッドシートの構造を読み込む
    * - batchUpdate: 複数セルを一括更新
    * - background.js: A列のクリア処理を追加実行
-   * 
+   *
    * 【前提条件】
    * - メニュー行（1行目）に「ログ」という列が存在すること
    * - 「ログ」は完全一致で検索される（部分一致は不可）
    * - 作業行はメニュー行の「プロンプト」列にデータがある行
-   * 
+   *
    * 【動作フロー】
    * 1. スプレッドシート全体のデータを読み込み
    * 2. メニュー行から「ログ」列を完全一致で検索
    * 3. 見つかった場合、その列の作業行のセルをクリア
    * 4. background.jsでA列（A2:A1000）も同時にクリア
-   * 
+   *
    * 【注意事項】
    * - B列固定ではなく、メニュー行の「ログ」を動的に検索
    * - ログ列が見つからない場合はエラーを返す
-   * 
+   *
    * @param {string} spreadsheetId - スプレッドシートID
    * @param {string} gid - シートのgid（オプション）
    * @returns {Promise<Object>} クリア結果

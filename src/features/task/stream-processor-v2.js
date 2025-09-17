@@ -147,9 +147,9 @@ export default class StreamProcessorV2 {
     this.completedWindows = new Set();
     this.activeWindows = new Map();
     this.currentGroupId = null;
-    this.spreadsheetLogger = null;
+    // spreadsheetLogger削除済み - sheetsClientに統合
     this.sheetsClient = config.sheetsClient || null;
-    this.SpreadsheetLoggerClass = config.SpreadsheetLogger || null;
+    // SpreadsheetLoggerClass削除済み - sheetsClientに統合
     this.spreadsheetData = null;
     this.spreadsheetUrl = null;
 
@@ -213,24 +213,9 @@ export default class StreamProcessorV2 {
     if (dependencies.SpreadsheetLogger) {
       this.SpreadsheetLoggerClass = dependencies.SpreadsheetLogger;
       // 既存のspreadsheetLoggerがあれば、まずクリア
-      this.spreadsheetLogger = null;
-      // SpreadsheetLoggerを再初期化
-      await this.initializeSpreadsheetLogger();
-      this.log('SpreadsheetLoggerを再初期化しました', 'info');
-    } else if (!this.SpreadsheetLoggerClass) {
-      // SpreadsheetLoggerが未設定の場合、Service Registry経由で取得を試行
-      this.log('SpreadsheetLoggerが未設定 - Service Registry経由で取得を試行', 'info');
-      try {
-        const spreadsheetLogger = await getService('spreadsheetLogger');
-        if (spreadsheetLogger && spreadsheetLogger.constructor) {
-          this.SpreadsheetLoggerClass = spreadsheetLogger.constructor;
-          await this.initializeSpreadsheetLogger();
-          this.log('Service Registry経由でSpreadsheetLoggerを取得しました', 'success');
-        }
-      } catch (error) {
-        this.log(`Service Registry経由のSpreadsheetLogger取得に失敗: ${error.message}`, 'warning');
-      }
+      // spreadsheetLogger削除済み - sheetsClientに統合
     }
+    // SpreadsheetLogger削除済み - sheetsClientに統合
   }
 
   // 統一ログ関数（ChatGPT方式）
@@ -295,64 +280,13 @@ export default class StreamProcessorV2 {
    * グローバルスペースから取得します。
    */
   async initializeSpreadsheetLogger() {
-    this.log('SpreadsheetLogger初期化開始', 'step', '1');
+    // spreadsheetLogger削除済み - sheetsClientに統合
+    // この関数は互換性のために残していますが、実際の処理は行いません
+    this.log('SpreadsheetLogger削除済み - sheetsClientに統合', 'info', '1');
 
-    // Step 1-1: 既存インスタンスチェック
-    if (this.spreadsheetLogger) {
-      this.log('SpreadsheetLogger既に初期化済み', 'info', '1-1');
-      return;
-    }
-
-    try {
-      // Step 1-2: SpreadsheetLoggerクラス取得（依存性注入から）
-      this.log('SpreadsheetLoggerクラスを取得', 'info', '1-2');
-
-      // SpreadsheetLoggerClassが設定されていない場合はService Registryから取得
-      let SpreadsheetLoggerClass = this.SpreadsheetLoggerClass;
-      if (!SpreadsheetLoggerClass) {
-        this.log('SpreadsheetLoggerClass未設定 - Service Registry経由で取得試行', 'info', '1-2-1');
-        try {
-          const { default: ImportedSpreadsheetLogger } = await import('../logging/spreadsheet-logger.js');
-          SpreadsheetLoggerClass = ImportedSpreadsheetLogger;
-          this.SpreadsheetLoggerClass = SpreadsheetLoggerClass;
-          this.log('SpreadsheetLoggerクラスをimportから取得', 'success', '1-2-2');
-        } catch (importError) {
-          this.log(`SpreadsheetLoggerクラスのimport失敗: ${importError.message}`, 'error', '1-2-3');
-          return;
-        }
-      }
-
-      if (SpreadsheetLoggerClass) {
-        // Step 1-3: インスタンス作成（spreadsheetUrlの有無に関わらず作成）
-        this.log('SpreadsheetLoggerインスタンスを作成', 'info', '1-3');
-        // SpreadsheetLoggerにspreadsheetIdとgidを渡して初期化
-        const loggerOptions = {
-          spreadsheetId: this.spreadsheetData?.spreadsheetId || null,
-          gid: this.spreadsheetData?.gid || '0'
-        };
-        this.spreadsheetLogger = new SpreadsheetLoggerClass(this.logger, loggerOptions);
-
-        // Step 1-4: SheetsClient確認（コンストラクタで受け取ったものを使用）
-        if (this.sheetsClient) {
-          this.log('SheetsClientを確認', 'info', '1-4');
-        } else {
-          this.log('SheetsClientが未設定 - 必要時に設定してください', 'info', '1-4');
-        }
-
-        this.log('SpreadsheetLogger初期化完了', 'success', '1');
-
-        // ========================================
-        // Step 1-5: ChatGPTツール制御システム初期化
-        // ========================================
-        this.log('ChatGPTツール制御システム初期化開始', 'info', '1-5');
-        this.initializeChatGPTToolControl();
-
-      } else {
-        this.log(`SpreadsheetLoggerClass が取得できませんでした`, 'warn', '1-3');
-      }
-    } catch (error) {
-      this.log(`SpreadsheetLogger初期化エラー: ${error.message}`, 'error', '1');
-    }
+    // ChatGPTツール制御システムの初期化は維持
+    this.log('ChatGPTツール制御システム初期化開始', 'info', '1-5');
+    this.initializeChatGPTToolControl();
   }
 
   // ========================================
@@ -1530,7 +1464,7 @@ export default class StreamProcessorV2 {
       if (result?.success && result?.response && this.sheetsClient) {
         const cellRef = `${task.column}${task.row}`;
         try {
-          await this.sheetsClient.updateCell(
+          await this.sheetsClient.writeAnswer(
             this.spreadsheetData.spreadsheetId,
             cellRef,
             result.response
@@ -1554,29 +1488,16 @@ export default class StreamProcessorV2 {
       }
 
       // Step 8-3.6: 詳細ログをスプレッドシートに書き込み（送信時刻、記載時刻、選択/表示モデル）
-      if (this.spreadsheetLogger) {
+      if (this.sheetsClient) {
         try {
           // タスクIDを生成
           const taskId = `${task.column}${task.row}_${task.aiType || 'AI'}`;
 
-          // 送信時刻を記録（既に記録されていない場合）
-          if (typeof this.spreadsheetLogger.getSendTime === 'function') {
-            if (!this.spreadsheetLogger.getSendTime(taskId)) {
-              // タスク実行時に既に記録されているはずだが、念のため確認
-              this.logger.warn(`[Step 8-3.6] 送信時刻が未記録のため、現在時刻で記録: ${taskId}`);
-              if (typeof this.spreadsheetLogger.recordSendTimestamp === 'function') {
-                this.spreadsheetLogger.recordSendTimestamp(taskId, task);
-              } else if (typeof this.spreadsheetLogger.recordSendTime === 'function') {
-                this.spreadsheetLogger.recordSendTime(taskId, {
-                  aiType: task.aiType || 'Claude',
-                  model: task.model || 'Claude Opus 4.1',
-                  function: task.function || '通常'
-                });
-              }
-            }
-          }
+          // 送信時刻を記録
+          const sendTime = new Date();
+          this.logger.log(`[Step 8-3.6.1] 送信時刻記録: ${taskId}`);
 
-          // タスクオブジェクトにlogColumns配列形式を追加（spreadsheet-logger.jsが期待する形式）
+          // タスクオブジェクトにlogColumns配列形式を追加
           const logTask = {
             ...task,
             id: taskId,
@@ -1586,24 +1507,17 @@ export default class StreamProcessorV2 {
             displayedFunction: result?.displayedFunction || task.function || '不明'
           };
 
-          // 詳細ログを書き込み
-          const logResult = await this.spreadsheetLogger.writeLogToSpreadsheet(logTask, {
-            sheetsClient: this.sheetsClient,
+          // 詳細ログを書き込み（新しいwriteLogToSpreadsheetメソッドを使用）
+          const logResult = await this.sheetsClient.writeLogToSpreadsheet(logTask, {
             spreadsheetId: this.spreadsheetData.spreadsheetId,
             gid: this.spreadsheetData.gid,
-            spreadsheetData: this.spreadsheetData,
             url: result?.url || 'N/A',
-            onComplete: (task, logCell, writeVerified, error) => {
-              if (error) {
-                this.logger.warn(`[Step 8-3.7] ⚠️ ログ書き込み完了コールバック - エラー: ${logCell}`, error);
-              } else {
-                this.logger.log(`[Step 8-3.7] ✅ ログ書き込み完了コールバック: ${logCell} (検証: ${writeVerified})`);
-              }
-            }
+            sendTime: sendTime,
+            isFirstTask: false  // タスク処理では通常は追記モード
           });
 
           if (logResult.success) {
-            const logColumn = logTask.logColumns && logTask.logColumns[0] ? logTask.logColumns[0] : 'Unknown';
+            const logColumn = logTask.logColumns && logTask.logColumns[0] ? logTask.logColumns[0] : 'B';
             this.logger.log(`[Step 8-3.6] 📝 詳細ログ書き込み成功: ${logColumn}${task.row}`);
           } else {
             this.logger.error(`[Step 8-3.6] ❌ 詳細ログ書き込み失敗:`, logResult.error);
@@ -1612,14 +1526,11 @@ export default class StreamProcessorV2 {
           this.logger.error(`[Step 8-3.6] ❌ ログ書き込みエラー:`, logError);
         }
       } else {
-        this.logger.warn(`[Step 8-3.6] ⚠️ SpreadsheetLoggerが未初期化のためログ書き込みスキップ`);
+        this.logger.warn(`[Step 8-3.6] ⚠️ SheetsClientが未初期化のためログ書き込みスキップ`);
       }
 
       // Step 8-4: タスク完了ログ記録
-      if (this.spreadsheetLogger && this.spreadsheetLogger.logTaskCompletion) {
-        const taskId = `${task.column}${task.row}_${task.aiType || 'AI'}`;
-        await this.spreadsheetLogger.logTaskCompletion(taskId, result?.response);
-      }
+      // 注: logTaskCompletionはspreadsheetLoggerの機能なので、必要に応じて後で移行
 
       // Step 8-5: ウィンドウをクローズ
       await this.windowService.closeWindow(windowInfo.windowId);
