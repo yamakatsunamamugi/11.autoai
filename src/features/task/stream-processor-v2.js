@@ -4032,6 +4032,9 @@ export default class StreamProcessorV2 {
 
       this.logger.log(`[StreamProcessorV2] ✅ グループログ・回答記録完了: ${taskGroupInfo.id}`);
 
+      // Dropboxログレポートアップロード（設定されている場合）
+      await this.uploadTaskReportToDropbox(taskGroupInfo, spreadsheetData);
+
     } catch (error) {
       this.logger.error('[StreamProcessorV2] グループログ・回答記録エラー:', error);
       throw error;
@@ -4125,6 +4128,108 @@ export default class StreamProcessorV2 {
 
     } catch (error) {
       this.logger.error(`[StreamProcessorV2] 回答記録エラー ${answerCol.column}${rowNumber}:`, error);
+    }
+  }
+
+  /**
+   * タスクレポートをDropboxにアップロード
+   * スプレッドシート書き込み後に自動実行
+   * @param {Object} taskGroupInfo - タスクグループ情報
+   * @param {Object} spreadsheetData - スプレッドシートデータ
+   */
+  async uploadTaskReportToDropbox(taskGroupInfo, spreadsheetData) {
+    try {
+      // Chrome StorageからDropbox設定を取得
+      if (typeof chrome === 'undefined' || !chrome.storage) {
+        return; // Chrome環境でない場合はスキップ
+      }
+
+      const settings = await chrome.storage.local.get(['dropboxLogEnabled', 'dropboxLogPath']);
+
+      // Dropboxログが無効またはパスが設定されていない場合はスキップ
+      if (!settings.dropboxLogEnabled || !settings.dropboxLogPath) {
+        return;
+      }
+
+      this.logger.log('[StreamProcessorV2] 📤 Dropboxログレポートアップロード開始');
+
+      // ログレポートデータを作成
+      const reportData = {
+        timestamp: new Date().toISOString(),
+        taskGroupId: taskGroupInfo.id,
+        taskGroupName: taskGroupInfo.name || 'Unnamed Group',
+        aiType: taskGroupInfo.aiType || 'Unknown',
+        spreadsheetId: spreadsheetData?.id || 'Unknown',
+        spreadsheetUrl: spreadsheetData?.url || '',
+
+        // タスク統計
+        statistics: {
+          totalTasks: taskGroupInfo.taskCount || 0,
+          completedTasks: taskGroupInfo.completedCount || 0,
+          failedTasks: taskGroupInfo.failedCount || 0,
+          processingTime: taskGroupInfo.processingTime || 0
+        },
+
+        // 処理結果
+        results: taskGroupInfo.results || [],
+
+        // エラー情報
+        errors: taskGroupInfo.errors || [],
+
+        // メタデータ
+        metadata: {
+          processor: 'StreamProcessorV2',
+          version: '2.0',
+          environment: 'production'
+        }
+      };
+
+      // ファイル名を生成
+      const timestamp = new Date().toISOString()
+        .replace(/[:.]/g, '-')
+        .replace('T', '_')
+        .slice(0, -5);
+      const fileName = `task-report_${taskGroupInfo.id}_${timestamp}.json`;
+      const uploadPath = `${settings.dropboxLogPath}/${fileName}`.replace(/\/+/g, '/');
+
+      // Dropboxサービスを動的インポート
+      try {
+        const { dropboxService } = await import('../../services/dropbox-service.js');
+
+        // 認証確認
+        const isAuthenticated = await dropboxService.isAuthenticated();
+        if (!isAuthenticated) {
+          this.logger.warn('[StreamProcessorV2] Dropbox未認証のためスキップ');
+          return;
+        }
+
+        // レポートをアップロード
+        await dropboxService.uploadFile(
+          uploadPath,
+          JSON.stringify(reportData, null, 2),
+          { overwrite: false }
+        );
+
+        this.logger.log(`[StreamProcessorV2] ✅ Dropboxレポートアップロード完了: ${uploadPath}`);
+
+        // LogFileManagerにも記録（互換性のため）
+        if (globalThis.logManager) {
+          globalThis.logManager.addLog({
+            type: 'dropbox_upload',
+            path: uploadPath,
+            taskGroupId: taskGroupInfo.id,
+            timestamp: new Date().toISOString()
+          });
+        }
+
+      } catch (error) {
+        this.logger.warn('[StreamProcessorV2] Dropboxアップロードエラー:', error.message);
+        // エラーが発生してもメイン処理は継続
+      }
+
+    } catch (error) {
+      this.logger.warn('[StreamProcessorV2] Dropboxログ処理エラー:', error.message);
+      // エラーが発生してもメイン処理は継続
     }
   }
 }

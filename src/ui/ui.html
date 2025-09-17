@@ -277,6 +277,207 @@
         </div>
       </section>
 
+      <!-- 設定セクション -->
+      <section class="settings-section" style="margin-bottom: 30px;">
+        <h2>⚙️ 設定</h2>
+
+        <!-- Dropbox設定 -->
+        <div class="settings-category" style="border: 1px solid #dee2e6; border-radius: 8px; padding: 20px; margin-bottom: 20px;">
+          <h3 style="margin: 0 0 15px 0; color: #0061ff; display: flex; align-items: center; gap: 8px;">
+            <span>📦</span>
+            Dropbox設定
+          </h3>
+
+          <div class="dropbox-settings">
+            <div class="form-group" style="margin-bottom: 15px;">
+              <label for="dropboxClientId" style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">
+                Dropbox App Client ID:
+              </label>
+              <div style="display: flex; gap: 10px; align-items: center;">
+                <input
+                  type="text"
+                  id="dropboxClientId"
+                  placeholder="Dropbox App Consoleで取得したApp keyを入力してください"
+                  style="flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-family: monospace; font-size: 14px;"
+                >
+                <button
+                  id="saveDropboxSettings"
+                  class="btn btn-primary"
+                  style="padding: 10px 20px; background: #0061ff; color: white; border: none; border-radius: 6px; cursor: pointer;"
+                >
+                  保存
+                </button>
+              </div>
+              <p style="margin: 8px 0 0 0; font-size: 12px; color: #666; line-height: 1.4;">
+                <strong>手順:</strong>
+                1. <a href="https://www.dropbox.com/developers/apps" target="_blank" style="color: #0061ff;">Dropbox App Console</a> でアプリを作成
+                2. 「Settings」タブの「App key」をコピー
+                3. 上記の欄に貼り付けて保存
+              </p>
+            </div>
+
+            <div class="dropbox-status" style="padding: 10px; background: #f8f9fa; border-radius: 6px; border-left: 4px solid #17a2b8;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span id="dropboxStatusIcon">ℹ️</span>
+                <span id="dropboxStatusText">Client IDが設定されていません</span>
+              </div>
+            </div>
+
+            <!-- Dropbox認証セクション -->
+            <div class="dropbox-auth-section" style="margin-top: 15px; padding: 15px; background: #ffffff; border: 1px solid #ddd; border-radius: 6px;">
+              <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 10px;">
+                <button
+                  id="authenticateDropbox"
+                  class="btn btn-success"
+                  style="padding: 12px 24px; background: #0061ff; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 8px;"
+                >
+                  <span>🔐</span>
+                  Dropbox認証を開始
+                </button>
+                <button
+                  id="checkDropboxAuth"
+                  class="btn btn-secondary"
+                  style="padding: 12px 20px; background: #6c757d; color: white; border: none; border-radius: 6px; cursor: pointer;"
+                >
+                  認証状態確認
+                </button>
+                <button
+                  id="logoutDropbox"
+                  class="btn btn-danger"
+                  style="padding: 12px 20px; background: #dc3545; color: white; border: none; border-radius: 6px; cursor: pointer; display: none;"
+                >
+                  ログアウト
+                </button>
+              </div>
+
+              <!-- 認証状態詳細表示 -->
+              <div id="dropboxAuthDetails" style="display: none; padding: 10px; background: #f8f9fa; border-radius: 4px; border-left: 4px solid #28a745;">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                  <span style="color: #28a745; font-weight: 600;">✅ 認証済み</span>
+                </div>
+                <div style="font-size: 14px; color: #666;">
+                  <div><strong>ユーザー名:</strong> <span id="dropboxUserName">-</span></div>
+                  <div><strong>メールアドレス:</strong> <span id="dropboxUserEmail">-</span></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Dropboxファイル選択セクション -->
+            <div class="dropbox-file-browser" style="margin-top: 20px; padding: 20px; background: #ffffff; border: 1px solid #ddd; border-radius: 6px;">
+              <h4 style="margin: 0 0 15px 0; color: #333; display: flex; align-items: center; gap: 8px;">
+                <span>📁</span>
+                Dropboxファイル選択
+              </h4>
+
+              <!-- フォルダナビゲーション -->
+              <div class="folder-navigation" style="margin-bottom: 15px;">
+                <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 8px;">
+                  <label style="font-weight: 600; color: #333;">現在のフォルダ:</label>
+                  <input
+                    type="text"
+                    id="currentDropboxPath"
+                    value="/autoai-logs"
+                    style="flex: 1; padding: 6px; border: 1px solid #ddd; border-radius: 4px; background: #f8f9fa;"
+                    readonly
+                  >
+                  <button
+                    id="refreshDropboxFiles"
+                    class="btn btn-secondary"
+                    style="padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;"
+                  >
+                    📁 選択
+                  </button>
+                  <button
+                    id="saveToDropbox"
+                    class="btn btn-primary"
+                    style="padding: 6px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; margin-left: 8px;"
+                  >
+                    📝 使用するファイルを設定
+                  </button>
+                </div>
+
+                <!-- Dropboxログ設定表示 -->
+                <div id="dropboxLogSettings" style="display: none;"></div>
+
+                <!-- パンくずリスト -->
+                <div id="folderBreadcrumb" style="font-size: 12px; color: #666; display: flex; align-items: center; gap: 5px;">
+                  <span>📁 ルート</span>
+                </div>
+              </div>
+
+              <!-- ファイル・フォルダ一覧 -->
+              <div class="file-list-container" style="margin-bottom: 15px;">
+                <div id="fileListLoading" style="display: none; text-align: center; padding: 20px; color: #666;">
+                  <span>📂 ファイル一覧を読み込み中...</span>
+                </div>
+
+                <div id="fileListContainer" style="border: 1px solid #ddd; border-radius: 4px; max-height: 300px; overflow-y: auto; background: white;">
+                  <div id="fileListEmpty" style="text-align: center; padding: 40px; color: #999;">
+                    <span>📭</span><br>
+                    ファイルがありません<br>
+                    <small>「更新」ボタンでファイル一覧を取得してください</small>
+                  </div>
+
+                  <!-- ファイル一覧テーブル -->
+                  <table id="fileListTable" style="display: none; width: 100%; border-collapse: collapse;">
+                    <thead>
+                      <tr style="background: #f8f9fa; border-bottom: 1px solid #ddd;">
+                        <th style="padding: 8px; text-align: left; font-size: 12px; color: #666;">種類</th>
+                        <th style="padding: 8px; text-align: left; font-size: 12px; color: #666;">名前</th>
+                        <th style="padding: 8px; text-align: left; font-size: 12px; color: #666;">サイズ</th>
+                        <th style="padding: 8px; text-align: left; font-size: 12px; color: #666;">更新日</th>
+                        <th style="padding: 8px; text-align: center; font-size: 12px; color: #666;">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody id="fileListBody">
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- 選択ファイル情報 -->
+              <div id="selectedFileInfo" style="display: none; padding: 15px; background: #e8f5e8; border: 1px solid #d4edda; border-radius: 4px; margin-bottom: 15px;">
+                <h5 style="margin: 0 0 8px 0; color: #155724;">📄 選択されたファイル</h5>
+                <div id="selectedFileDetails" style="font-size: 14px; color: #155724;"></div>
+                <div style="margin-top: 10px;">
+                  <button
+                    id="useSelectedFile"
+                    class="btn btn-success"
+                    style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 8px;"
+                  >
+                    ✅ このファイルで作業開始
+                  </button>
+                  <button
+                    id="clearSelectedFile"
+                    class="btn btn-secondary"
+                    style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;"
+                  >
+                    ❌ 選択解除
+                  </button>
+                </div>
+              </div>
+
+              <!-- ファイル処理状況 -->
+              <div id="fileProcessStatus" style="display: none; padding: 10px; background: #f8f9fa; border-radius: 4px; border-left: 4px solid #007bff;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span id="fileProcessIcon">⏳</span>
+                  <span id="fileProcessText">処理中...</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 将来の設定項目用の枠組み -->
+        <div class="settings-category" style="border: 1px solid #dee2e6; border-radius: 8px; padding: 20px; opacity: 0.6;">
+          <h3 style="margin: 0 0 10px 0; color: #666; display: flex; align-items: center; gap: 8px;">
+            <span>🔧</span>
+            その他の設定
+          </h3>
+          <p style="margin: 0; color: #999; font-style: italic;">今後の機能拡張で設定項目が追加される予定です</p>
+        </div>
+      </section>
+
       <!-- ログビューアーセクション -->
       <section class="log-viewer-section">
         <h2>📝 実行ログ</h2>

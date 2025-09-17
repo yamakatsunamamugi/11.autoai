@@ -1014,6 +1014,18 @@ function updateStatus(text, type = "waiting") {
  * @param {string} type - メッセージタイプ (success, error, loading)
  */
 function showFeedback(message, type = "success") {
+  // loadFeedback要素の存在確認
+  if (!loadFeedback) {
+    console.error('[showFeedback] loadFeedback要素が見つかりません');
+    // フォールバックとしてalertを使用
+    if (type === 'success') {
+      alert(`✅ ${message}`);
+    } else if (type === 'error') {
+      alert(`❌ ${message}`);
+    }
+    return;
+  }
+
   // 既存のクラスをクリア
   loadFeedback.className = "feedback-message";
 
@@ -1026,12 +1038,17 @@ function showFeedback(message, type = "success") {
     loadFeedback.classList.add("show");
   }, 10);
 
-  // 自動非表示を無効化（メッセージはずっと表示）
-  // if (type !== "loading") {
-  //   setTimeout(() => {
-  //     loadFeedback.classList.remove("show");
-  //   }, 5000);
-  // }
+  // successメッセージは10秒間表示、errorは7秒、loadingはずっと表示
+  if (type === 'success') {
+    setTimeout(() => {
+      loadFeedback.classList.remove("show");
+    }, 10000); // 10秒
+  } else if (type === 'error') {
+    setTimeout(() => {
+      loadFeedback.classList.remove("show");
+    }, 7000); // 7秒
+  }
+  // loadingは明示的に消されるまで表示継続
 }
 
 /**
@@ -4314,6 +4331,1073 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 
 // AIタブシステムを初期化
 initAITabsSystem();
+
+// ===== Dropbox設定機能 =====
+
+// Dropbox設定の読み込み
+async function loadDropboxSettings() {
+  try {
+    const result = await new Promise((resolve) => {
+      chrome.storage.local.get(['dropboxClientId'], resolve);
+    });
+
+    const clientIdInput = document.getElementById('dropboxClientId');
+    const statusIcon = document.getElementById('dropboxStatusIcon');
+    const statusText = document.getElementById('dropboxStatusText');
+
+    if (clientIdInput && result.dropboxClientId) {
+      clientIdInput.value = result.dropboxClientId;
+      updateDropboxStatus(true);
+    } else {
+      updateDropboxStatus(false);
+    }
+  } catch (error) {
+    console.error('Dropbox設定の読み込みエラー:', error);
+    updateDropboxStatus(false);
+  }
+}
+
+// Dropbox設定の保存
+async function saveDropboxSettings() {
+  const clientIdInput = document.getElementById('dropboxClientId');
+  const clientId = clientIdInput?.value?.trim();
+
+  if (!clientId) {
+    showFeedback('Client IDを入力してください', 'warning');
+    return;
+  }
+
+  // 簡単な形式チェック（Dropbox App keyは通常英数字とピリオドを含む）
+  if (!/^[a-zA-Z0-9._-]+$/.test(clientId)) {
+    showFeedback('Client IDの形式が正しくありません', 'error');
+    return;
+  }
+
+  try {
+    await new Promise((resolve, reject) => {
+      chrome.storage.local.set({ dropboxClientId: clientId }, () => {
+        if (chrome.runtime.lastError) {
+          reject(chrome.runtime.lastError);
+        } else {
+          resolve();
+        }
+      });
+    });
+
+    showFeedback('Dropbox設定を保存しました', 'success');
+    updateDropboxStatus(true);
+  } catch (error) {
+    console.error('Dropbox設定の保存エラー:', error);
+    showFeedback('設定の保存に失敗しました', 'error');
+  }
+}
+
+// Dropboxステータス表示の更新
+function updateDropboxStatus(isConfigured) {
+  const statusIcon = document.getElementById('dropboxStatusIcon');
+  const statusText = document.getElementById('dropboxStatusText');
+
+  if (statusIcon && statusText) {
+    if (isConfigured) {
+      statusIcon.textContent = '✅';
+      statusText.textContent = 'Client IDが設定されています';
+      statusText.style.color = '#28a745';
+    } else {
+      statusIcon.textContent = 'ℹ️';
+      statusText.textContent = 'Client IDが設定されていません';
+      statusText.style.color = '#666';
+    }
+  }
+}
+
+// Dropbox設定のイベントリスナー初期化
+function initDropboxSettings() {
+  const saveButton = document.getElementById('saveDropboxSettings');
+  const clientIdInput = document.getElementById('dropboxClientId');
+
+  if (saveButton) {
+    saveButton.addEventListener('click', saveDropboxSettings);
+  }
+
+  // Enterキーでも保存
+  if (clientIdInput) {
+    clientIdInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        saveDropboxSettings();
+      }
+    });
+  }
+
+  // 初期設定を読み込み
+  loadDropboxSettings();
+}
+
+// ===== Dropbox認証機能 =====
+
+// Dropboxサービスのインポート
+let dropboxService = null;
+
+// Dropboxサービスを動的にインポート
+async function loadDropboxService() {
+  if (!dropboxService) {
+    try {
+      const module = await import('../services/dropbox-service.js');
+      dropboxService = module.dropboxService;
+      await dropboxService.initialize();
+    } catch (error) {
+      console.error('DropboxService読み込みエラー:', error);
+      showFeedback('Dropboxサービスの読み込みに失敗しました', 'error');
+      throw error;
+    }
+  }
+  return dropboxService;
+}
+
+// Dropbox認証の実行
+async function authenticateDropbox() {
+  const authButton = document.getElementById('authenticateDropbox');
+
+  try {
+    // ボタンを無効化
+    authButton.disabled = true;
+    authButton.textContent = '認証中...';
+
+    // Dropboxサービスをロード
+    const service = await loadDropboxService();
+
+    // Client IDが設定されているか確認
+    const clientIdInput = document.getElementById('dropboxClientId');
+    const clientId = clientIdInput?.value?.trim();
+
+    if (!clientId) {
+      throw new Error('Client IDが入力されていません。先にClient IDを設定してください。');
+    }
+
+    // Client IDをDropbox Configに設定（念のため再設定）
+    await service.config.setClientId(clientId);
+
+    showFeedback('Dropbox認証を開始します...', 'loading');
+
+    // 認証実行
+    const result = await service.authenticate();
+
+    if (result.success) {
+      showFeedback('Dropbox認証が完了しました！', 'success');
+      await updateDropboxAuthStatus();
+    } else {
+      throw new Error(result.error || '認証に失敗しました');
+    }
+  } catch (error) {
+    console.error('Dropbox認証エラー:', error);
+    showFeedback(`認証エラー: ${error.message}`, 'error');
+  } finally {
+    // ボタンを復活
+    authButton.disabled = false;
+    authButton.innerHTML = '<span>🔐</span> Dropbox認証を開始';
+  }
+}
+
+// 認証状態の確認
+async function checkDropboxAuth() {
+  try {
+    const service = await loadDropboxService();
+    const isAuthenticated = await service.isAuthenticated();
+
+    // 認証状態を確認
+
+    if (isAuthenticated) {
+      showFeedback('Dropbox認証済みです', 'success');
+      await updateDropboxAuthStatus();
+    } else {
+      showFeedback('Dropbox認証が必要です', 'warning');
+      updateDropboxAuthUI(false);
+    }
+  } catch (error) {
+    console.error('認証状態確認エラー:', error);
+    showFeedback(`認証状態確認エラー: ${error.message}`, 'error');
+  }
+}
+
+// Dropboxログアウト
+async function logoutDropbox() {
+  try {
+    const service = await loadDropboxService();
+    const success = await service.logout();
+
+    if (success) {
+      showFeedback('Dropboxからログアウトしました', 'success');
+      updateDropboxAuthUI(false);
+      updateDropboxStatus(false);
+    } else {
+      throw new Error('ログアウトに失敗しました');
+    }
+  } catch (error) {
+    console.error('ログアウトエラー:', error);
+    showFeedback(`ログアウトエラー: ${error.message}`, 'error');
+  }
+}
+
+// 認証状態の更新
+async function updateDropboxAuthStatus() {
+  try {
+    const service = await loadDropboxService();
+    const isAuthenticated = await service.isAuthenticated();
+
+    if (isAuthenticated) {
+      try {
+        // ユーザー情報を取得
+        const userInfo = await service.getUserInfo();
+        updateDropboxAuthUI(true, userInfo);
+      } catch (userInfoError) {
+        console.error('ユーザー情報取得エラー:', userInfoError);
+
+        // 認証はされているが、ユーザー情報取得に失敗した場合
+        if (userInfoError.message.includes('認証トークンが無効') || userInfoError.message.includes('missing_scope')) {
+          // トークンが無効またはスコープ不足の場合は再認証が必要
+          showFeedback('スコープ権限が不足しています。ログアウト後に再認証してください。', 'warning');
+          updateDropboxAuthUI(false);
+          // 自動的にログアウト
+          await logoutDropbox();
+        } else {
+          // その他のエラーの場合は、基本的な認証情報を表示
+          updateDropboxAuthUI(true, {
+            name: 'ユーザー情報取得に失敗',
+            email: 'API形式エラーまたはスコープ不足'
+          });
+          showFeedback('ユーザー情報の取得に失敗しましたが、認証は完了しています', 'warning');
+        }
+      }
+    } else {
+      updateDropboxAuthUI(false);
+    }
+  } catch (error) {
+    console.error('認証状態更新エラー:', error);
+    updateDropboxAuthUI(false);
+  }
+}
+
+// 認証UI表示の更新
+function updateDropboxAuthUI(isAuthenticated, userInfo = null) {
+  const authDetails = document.getElementById('dropboxAuthDetails');
+  const logoutButton = document.getElementById('logoutDropbox');
+  const authButton = document.getElementById('authenticateDropbox');
+  const userNameSpan = document.getElementById('dropboxUserName');
+  const userEmailSpan = document.getElementById('dropboxUserEmail');
+
+  if (isAuthenticated && userInfo) {
+    // 認証済み表示
+    authDetails.style.display = 'block';
+    logoutButton.style.display = 'inline-block';
+    authButton.style.display = 'none';
+
+    if (userNameSpan) userNameSpan.textContent = userInfo.name || '-';
+    if (userEmailSpan) userEmailSpan.textContent = userInfo.email || '-';
+  } else {
+    // 未認証表示
+    authDetails.style.display = 'none';
+    logoutButton.style.display = 'none';
+    authButton.style.display = 'flex';
+
+    if (userNameSpan) userNameSpan.textContent = '-';
+    if (userEmailSpan) userEmailSpan.textContent = '-';
+  }
+}
+
+// Dropbox認証のイベントリスナー初期化
+function initDropboxAuth() {
+  const authButton = document.getElementById('authenticateDropbox');
+  const checkButton = document.getElementById('checkDropboxAuth');
+  const logoutButton = document.getElementById('logoutDropbox');
+
+  if (authButton) {
+    authButton.addEventListener('click', authenticateDropbox);
+  }
+
+  if (checkButton) {
+    checkButton.addEventListener('click', checkDropboxAuth);
+  }
+
+  if (logoutButton) {
+    logoutButton.addEventListener('click', logoutDropbox);
+  }
+
+  // 初期状態の確認
+  setTimeout(checkDropboxAuth, 500);
+}
+
+// ===== Dropboxファイル選択機能 =====
+
+// 現在のフォルダパスと選択されたファイル情報
+let currentDropboxPath = ''; // ルートディレクトリから開始（デバッグ後に適切なパスに変更）
+let selectedDropboxFile = null;
+
+// Dropboxファイル一覧の取得と表示
+async function loadDropboxFiles(folderPath = null) {
+  console.log('[Dropbox] ファイル一覧取得開始', { folderPath, currentDropboxPath });
+
+  const fileListLoading = document.getElementById('fileListLoading');
+  const fileListEmpty = document.getElementById('fileListEmpty');
+  const fileListTable = document.getElementById('fileListTable');
+  const fileListBody = document.getElementById('fileListBody');
+  const currentPathInput = document.getElementById('currentDropboxPath');
+  const breadcrumb = document.getElementById('folderBreadcrumb');
+
+  console.log('[Dropbox] DOM要素確認:', {
+    fileListLoading: !!fileListLoading,
+    fileListEmpty: !!fileListEmpty,
+    fileListTable: !!fileListTable,
+    fileListBody: !!fileListBody,
+    currentPathInput: !!currentPathInput,
+    breadcrumb: !!breadcrumb
+  });
+
+  try {
+    // 表示状態を更新
+    if (fileListLoading) fileListLoading.style.display = 'block';
+    if (fileListEmpty) fileListEmpty.style.display = 'none';
+    if (fileListTable) fileListTable.style.display = 'none';
+
+    if (folderPath !== null) {
+      currentDropboxPath = folderPath;
+      console.log('[Dropbox] パス更新:', currentDropboxPath);
+    }
+
+    if (currentPathInput) {
+      currentPathInput.value = currentDropboxPath;
+    }
+
+    // パンくずリスト更新
+    updateBreadcrumb();
+
+    // Dropboxサービスを取得
+    console.log('[Dropbox] Dropboxサービス取得開始');
+    const service = await loadDropboxService();
+    console.log('[Dropbox] Dropboxサービス取得完了');
+
+    console.log('[Dropbox] 認証状態確認開始');
+    const isAuthenticated = await service.isAuthenticated();
+    console.log('[Dropbox] 認証状態:', isAuthenticated);
+
+    // より詳細な認証状態を確認
+    try {
+      const accessToken = await service.config.getAccessToken();
+      const clientId = await service.config.loadClientId();
+      console.log('[Dropbox] 認証詳細:', {
+        hasAccessToken: !!accessToken,
+        hasClientId: !!clientId,
+        accessTokenLength: accessToken ? accessToken.length : 0
+      });
+
+      // 現在のアカウント情報を取得して表示
+      if (isAuthenticated) {
+        try {
+          const userInfo = await service.getUserInfo();
+          console.log('[Dropbox] 現在のアカウント:', {
+            name: userInfo.name,
+            email: userInfo.email,
+            accountId: userInfo.accountId
+          });
+
+          // UIにもアカウント情報を表示
+          showFeedback(`Dropboxアカウント: ${userInfo.email}`, 'info');
+        } catch (userError) {
+          console.error('[Dropbox] ユーザー情報取得エラー:', userError);
+        }
+      }
+    } catch (authError) {
+      console.error('[Dropbox] 認証詳細確認エラー:', authError);
+    }
+
+    if (!isAuthenticated) {
+      throw new Error('Dropbox認証が必要です。先に認証を完了してください。');
+    }
+
+    // ファイル一覧を取得
+    console.log('[Dropbox] ファイル一覧API呼び出し開始', { path: currentDropboxPath });
+    const files = await service.listFiles(currentDropboxPath);
+    console.log('[Dropbox] ファイル一覧取得完了:', files);
+
+    // 各アイテムの詳細情報をログ出力
+    files.forEach((item, index) => {
+      console.log(`[Dropbox] アイテム ${index + 1}:`, {
+        name: item.name,
+        type: item.type,
+        dotTag: item['.tag'],
+        path: item.path,
+        size: item.size,
+        modified: item.modified,
+        rawData: item
+      });
+    });
+
+    // 表示を更新
+    console.log('[Dropbox] 表示更新開始', { filesCount: files.length });
+    if (fileListLoading) fileListLoading.style.display = 'none';
+
+    if (files.length === 0) {
+      console.log('[Dropbox] ファイルが0個のため空表示');
+      if (fileListEmpty) fileListEmpty.style.display = 'block';
+      if (fileListTable) fileListTable.style.display = 'none';
+    } else {
+      console.log('[Dropbox] ファイル一覧表示開始');
+      if (fileListEmpty) fileListEmpty.style.display = 'none';
+      if (fileListTable) fileListTable.style.display = 'table';
+
+      // テーブルの内容をクリア
+      if (fileListBody) {
+        fileListBody.innerHTML = '';
+        console.log('[Dropbox] テーブル内容クリア完了');
+      }
+
+      // ファイルとフォルダを分けてソート
+      const folders = files.filter(file => file.type === 'folder').sort((a, b) => a.name.localeCompare(b.name));
+      const filesOnly = files.filter(file => file.type === 'file').sort((a, b) => a.name.localeCompare(b.name));
+
+      console.log('[Dropbox] ファイル分類:', {
+        foldersCount: folders.length,
+        filesCount: filesOnly.length,
+        allTypes: files.map(f => f.type),
+        folders: folders.map(f => f.name),
+        files: filesOnly.map(f => f.name)
+      });
+
+      // 親フォルダへのリンク（ルートでない場合）
+      if (currentDropboxPath !== '' && currentDropboxPath !== '/') {
+        console.log('[Dropbox] 親フォルダリンク追加');
+        const parentRow = createFileRow({
+          name: '.. (親フォルダ)',
+          type: 'folder',
+          isParent: true
+        });
+        if (fileListBody) fileListBody.appendChild(parentRow);
+      }
+
+      // フォルダを先に表示
+      folders.forEach((folder, index) => {
+        console.log(`[Dropbox] フォルダ表示 ${index + 1}/${folders.length}:`, folder.name);
+        const row = createFileRow(folder);
+        if (fileListBody) fileListBody.appendChild(row);
+      });
+
+      // ファイルを表示
+      filesOnly.forEach((file, index) => {
+        console.log(`[Dropbox] ファイル表示 ${index + 1}/${filesOnly.length}:`, file.name);
+        const row = createFileRow(file);
+        if (fileListBody) fileListBody.appendChild(row);
+      });
+
+      console.log('[Dropbox] ファイル一覧表示完了');
+    }
+
+    showFeedback(`${files.length}個のアイテムを取得しました`, 'success');
+    console.log('[Dropbox] ファイル一覧取得処理完了');
+
+  } catch (error) {
+    console.error('Dropboxファイル一覧取得エラー:', error);
+    fileListLoading.style.display = 'none';
+    fileListEmpty.style.display = 'block';
+    fileListTable.style.display = 'none';
+
+    // パスが存在しない場合はルートに戻る
+    if (error.message.includes('path/not_found') || error.message.includes('not_found')) {
+      currentDropboxPath = '';
+      if (currentPathInput) {
+        currentPathInput.value = currentDropboxPath;
+      }
+      updateBreadcrumb();
+      showFeedback('フォルダが見つからないため、ルートディレクトリに移動しました', 'warning');
+
+      // ルートディレクトリで再試行
+      setTimeout(() => {
+        loadDropboxFiles('');
+      }, 1000);
+    } else {
+      showFeedback(`ファイル一覧取得エラー: ${error.message}`, 'error');
+    }
+  }
+}
+
+// パンくずリスト更新
+function updateBreadcrumb() {
+  const breadcrumb = document.getElementById('folderBreadcrumb');
+  if (!breadcrumb) return;
+
+  const pathParts = currentDropboxPath.split('/').filter(part => part);
+
+  // ルートのパンくず
+  let breadcrumbHTML = '<span style="cursor: pointer; color: #007bff;" onclick="navigateToFolder(\'/\')">/</span>';
+
+  // 各フォルダのパンくず
+  let currentPath = '';
+  pathParts.forEach((part, index) => {
+    currentPath += '/' + part;
+    const isLast = index === pathParts.length - 1;
+
+    if (isLast) {
+      breadcrumbHTML += ` / <span style="color: #666;">${part}</span>`;
+    } else {
+      breadcrumbHTML += ` / <span style="cursor: pointer; color: #007bff;" onclick="navigateToFolder('${currentPath}')">${part}</span>`;
+    }
+  });
+
+  breadcrumb.innerHTML = breadcrumbHTML;
+}
+
+// ファイル行の作成
+function createFileRow(file) {
+  const row = document.createElement('tr');
+  row.style.cursor = 'pointer';
+  row.style.borderBottom = '1px solid #eee';
+
+  // ホバー効果
+  row.addEventListener('mouseenter', () => {
+    row.style.backgroundColor = '#f8f9fa';
+  });
+  row.addEventListener('mouseleave', () => {
+    if (!row.classList.contains('selected')) {
+      row.style.backgroundColor = '';
+    }
+  });
+
+  // アイコンと種類
+  const typeCell = document.createElement('td');
+  typeCell.style.padding = '8px';
+  typeCell.style.textAlign = 'center';
+  typeCell.style.width = '40px';
+
+  if (file.isParent) {
+    typeCell.innerHTML = '📁';
+  } else if (file.type === 'folder') {
+    typeCell.innerHTML = '📁';
+  } else {
+    // ファイル拡張子に基づいてアイコンを設定
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (['jpg', 'jpeg', 'png', 'gif', 'bmp'].includes(ext)) {
+      typeCell.innerHTML = '🖼️';
+    } else if (['txt', 'log', 'md'].includes(ext)) {
+      typeCell.innerHTML = '📄';
+    } else if (['xlsx', 'xls', 'csv'].includes(ext)) {
+      typeCell.innerHTML = '📊';
+    } else if (['docx', 'doc'].includes(ext)) {
+      typeCell.innerHTML = '📝';
+    } else if (['pdf'].includes(ext)) {
+      typeCell.innerHTML = '📕';
+    } else {
+      typeCell.innerHTML = '📄';
+    }
+  }
+
+  // ファイル名
+  const nameCell = document.createElement('td');
+  nameCell.style.padding = '8px';
+  nameCell.textContent = file.name;
+  nameCell.style.fontWeight = file.type === 'folder' ? 'bold' : 'normal';
+
+  // サイズ
+  const sizeCell = document.createElement('td');
+  sizeCell.style.padding = '8px';
+  sizeCell.style.fontSize = '12px';
+  sizeCell.style.color = '#666';
+  if (file.type === 'folder') {
+    sizeCell.textContent = '-';
+  } else {
+    sizeCell.textContent = formatFileSize(file.size || 0);
+  }
+
+  // 更新日
+  const dateCell = document.createElement('td');
+  dateCell.style.padding = '8px';
+  dateCell.style.fontSize = '12px';
+  dateCell.style.color = '#666';
+  if (file.modified) {
+    const date = new Date(file.modified);
+    dateCell.textContent = date.toLocaleDateString('ja-JP') + ' ' + date.toLocaleTimeString('ja-JP', {hour: '2-digit', minute: '2-digit'});
+  } else {
+    dateCell.textContent = '-';
+  }
+
+  // 操作ボタン
+  const actionCell = document.createElement('td');
+  actionCell.style.padding = '8px';
+  actionCell.style.textAlign = 'center';
+
+  if (file.type === 'folder' || file.isParent) {
+    const openBtn = document.createElement('button');
+    openBtn.textContent = '開く';
+    openBtn.style.padding = '4px 8px';
+    openBtn.style.fontSize = '12px';
+    openBtn.style.background = '#007bff';
+    openBtn.style.color = 'white';
+    openBtn.style.border = 'none';
+    openBtn.style.borderRadius = '3px';
+    openBtn.style.cursor = 'pointer';
+
+    openBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (file.isParent) {
+        // 親フォルダに移動
+        const parentPath = currentDropboxPath.split('/').slice(0, -1).join('/') || '';
+        navigateToFolder(parentPath);
+      } else {
+        navigateToFolder(file.path);
+      }
+    });
+
+    actionCell.appendChild(openBtn);
+  } else {
+    const selectBtn = document.createElement('button');
+    selectBtn.textContent = '選択';
+    selectBtn.style.padding = '4px 8px';
+    selectBtn.style.fontSize = '12px';
+    selectBtn.style.background = '#28a745';
+    selectBtn.style.color = 'white';
+    selectBtn.style.border = 'none';
+    selectBtn.style.borderRadius = '3px';
+    selectBtn.style.cursor = 'pointer';
+
+    selectBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      selectFile(file, row);
+    });
+
+    actionCell.appendChild(selectBtn);
+  }
+
+  // クリックイベント（行全体）
+  row.addEventListener('click', () => {
+    if (file.type === 'folder' || file.isParent) {
+      if (file.isParent) {
+        const parentPath = currentDropboxPath.split('/').slice(0, -1).join('/') || '';
+        navigateToFolder(parentPath);
+      } else {
+        navigateToFolder(file.path);
+      }
+    } else {
+      selectFile(file, row);
+    }
+  });
+
+  row.appendChild(typeCell);
+  row.appendChild(nameCell);
+  row.appendChild(sizeCell);
+  row.appendChild(dateCell);
+  row.appendChild(actionCell);
+
+  return row;
+}
+
+// フォルダナビゲーション
+function navigateToFolder(folderPath) {
+  loadDropboxFiles(folderPath);
+}
+
+// ファイル選択機能
+function selectFile(file, row) {
+  // 既存の選択を解除
+  const previousSelected = document.querySelector('#fileListBody tr.selected');
+  if (previousSelected) {
+    previousSelected.classList.remove('selected');
+    previousSelected.style.backgroundColor = '';
+  }
+
+  // 新しい選択を設定
+  selectedDropboxFile = file;
+  row.classList.add('selected');
+  row.style.backgroundColor = '#e3f2fd';
+
+  // 選択ファイル情報を表示
+  displaySelectedFileInfo(file);
+
+  showFeedback(`ファイル "${file.name}" を選択しました`, 'success');
+}
+
+// 選択ファイル情報の表示
+function displaySelectedFileInfo(file) {
+  const selectedFileInfo = document.getElementById('selectedFileInfo');
+  const selectedFileDetails = document.getElementById('selectedFileDetails');
+
+  if (!selectedFileInfo || !selectedFileDetails) return;
+
+  const fileSize = formatFileSize(file.size || 0);
+  const modifiedDate = file.modified ? new Date(file.modified).toLocaleString('ja-JP') : '不明';
+
+  selectedFileDetails.innerHTML = `
+    <div style="margin-bottom: 8px;"><strong>📄 ファイル名:</strong> ${file.name}</div>
+    <div style="margin-bottom: 8px;"><strong>📍 パス:</strong> ${file.path}</div>
+    <div style="margin-bottom: 8px;"><strong>📊 サイズ:</strong> ${fileSize}</div>
+    <div><strong>📅 更新日:</strong> ${modifiedDate}</div>
+  `;
+
+  selectedFileInfo.style.display = 'block';
+}
+
+// 選択ファイルクリア
+function clearSelectedFile() {
+  selectedDropboxFile = null;
+
+  // テーブルの選択状態をクリア
+  const selectedRow = document.querySelector('#fileListBody tr.selected');
+  if (selectedRow) {
+    selectedRow.classList.remove('selected');
+    selectedRow.style.backgroundColor = '';
+  }
+
+  // 選択ファイル情報を非表示
+  const selectedFileInfo = document.getElementById('selectedFileInfo');
+  if (selectedFileInfo) {
+    selectedFileInfo.style.display = 'none';
+  }
+
+  showFeedback('ファイル選択を解除しました', 'info');
+}
+
+// 選択ファイルでAIタスク開始
+async function useSelectedFile() {
+  if (!selectedDropboxFile) {
+    showFeedback('ファイルが選択されていません', 'warning');
+    return;
+  }
+
+  const fileProcessStatus = document.getElementById('fileProcessStatus');
+  const fileProcessIcon = document.getElementById('fileProcessIcon');
+  const fileProcessText = document.getElementById('fileProcessText');
+
+  try {
+    // 処理状況を表示
+    if (fileProcessStatus) {
+      fileProcessIcon.textContent = '⏳';
+      fileProcessText.textContent = `"${selectedDropboxFile.name}" を処理中...`;
+      fileProcessStatus.style.display = 'block';
+    }
+
+    showFeedback('選択されたファイルでAI作業を開始します...', 'loading');
+
+    // 1. ファイル形式の確認
+    const fileExtension = selectedDropboxFile.name.split('.').pop().toLowerCase();
+    const supportedFormats = ['csv', 'xlsx', 'xls', 'txt', 'json'];
+
+    if (!supportedFormats.includes(fileExtension)) {
+      throw new Error(`サポートされていないファイル形式です: ${fileExtension}`);
+    }
+
+    // 2. 選択されたDropboxファイル情報を既存システムに渡す
+    const fileInfo = {
+      name: selectedDropboxFile.name,
+      path: selectedDropboxFile.path,
+      size: selectedDropboxFile.size,
+      modified: selectedDropboxFile.modified,
+      type: fileExtension,
+      source: 'dropbox'
+    };
+
+    // 3. 既存のAI処理システムとの統合
+    await processSelectedDropboxFile(fileInfo);
+
+    // 成功時の処理
+    if (fileProcessStatus) {
+      fileProcessIcon.textContent = '✅';
+      fileProcessText.textContent = `"${selectedDropboxFile.name}" の処理が完了しました`;
+    }
+
+    showFeedback(`ファイル "${selectedDropboxFile.name}" の処理が完了しました`, 'success');
+
+  } catch (error) {
+    console.error('ファイル処理エラー:', error);
+
+    // エラー時の処理
+    if (fileProcessStatus) {
+      fileProcessIcon.textContent = '❌';
+      fileProcessText.textContent = `処理エラー: ${error.message}`;
+    }
+
+    showFeedback(`ファイル処理エラー: ${error.message}`, 'error');
+  }
+}
+
+// Dropboxファイルを既存システムで処理
+async function processSelectedDropboxFile(fileInfo) {
+  console.log('Processing Dropbox file:', fileInfo);
+
+  // 既存のスプレッドシート処理システムとの統合
+  // 将来的にはここで実際のデータ処理を行う
+
+  // 1. ファイル情報をローカルストレージに保存（既存システムで参照）
+  if (typeof chrome !== 'undefined' && chrome.storage) {
+    await chrome.storage.local.set({
+      selectedDropboxFile: fileInfo,
+      fileProcessingMode: 'dropbox'
+    });
+  }
+
+  // 2. 既存のAIタスク処理に通知
+  // グローバルイベントを発火して他のモジュールに通知
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('dropboxFileSelected', {
+      detail: fileInfo
+    }));
+  }
+
+  // 3. UI更新：選択されたファイルでの作業開始を示す
+  showFeedback(`Dropboxファイル "${fileInfo.name}" が処理対象として設定されました`, 'success');
+
+  // 仮の処理時間（実際の処理に置き換え）
+  await new Promise(resolve => setTimeout(resolve, 1000));
+}
+
+// 選択されたDropboxのファイルを使用するファイルとして設定
+async function saveToSelectedDropboxLocation() {
+  try {
+    // 選択されたアイテムを確認
+    if (!selectedDropboxFile && !currentDropboxPath) {
+      showFeedback('フォルダを選択してください', 'warning');
+      return;
+    }
+
+    // フォルダパスを取得
+    let targetPath = '';
+
+    if (selectedDropboxFile) {
+      // 明示的に選択されたアイテムがある場合
+      if (selectedDropboxFile.type === 'folder') {
+        targetPath = selectedDropboxFile.path;
+      } else {
+        // ファイルが選択されている場合は、その親フォルダを使用
+        const pathParts = selectedDropboxFile.path.split('/');
+        pathParts.pop(); // ファイル名を除去
+        targetPath = pathParts.join('/') || '/';
+      }
+    } else {
+      // 現在のパスをフォルダとして使用
+      targetPath = currentDropboxPath || '/';
+    }
+
+    // ログレポート保存先を設定として保存
+    await chrome.storage.local.set({
+      dropboxLogPath: targetPath,
+      dropboxLogEnabled: true,
+      dropboxLogSettings: {
+        path: targetPath,
+        enabled: true,
+        timestamp: new Date().toISOString(),
+        folderName: targetPath.split('/').pop() || 'root'
+      }
+    });
+
+    // 成功メッセージを表示
+    const folderName = targetPath === '/' ? 'ルートフォルダ' : targetPath.split('/').pop();
+    showFeedback(`✅ ログレポート保存先ファイルを "${folderName}" に設定しました`, 'success');
+
+    // 設定表示を更新
+    updateDropboxSettingsDisplay(targetPath);
+
+    // 保存ボタンのテキストを一時的に変更
+    const saveButton = document.getElementById('saveToDropbox');
+    if (saveButton) {
+      const originalText = saveButton.textContent;
+      saveButton.textContent = '✅ ファイル設定済み';
+      saveButton.style.background = '#28a745';
+      setTimeout(() => {
+        saveButton.textContent = originalText;
+        saveButton.style.background = '#28a745';
+      }, 3000);
+    }
+
+  } catch (error) {
+    showFeedback(`設定エラー: ${error.message}`, 'error');
+  }
+}
+
+// Dropbox設定表示を更新
+function updateDropboxSettingsDisplay(path) {
+  const settingsDisplay = document.getElementById('dropboxLogSettings');
+  if (settingsDisplay) {
+    settingsDisplay.style.display = 'block';
+    settingsDisplay.innerHTML = `
+      <div style="padding: 12px; background: #d4edda; border-radius: 6px; margin-top: 10px; border-left: 4px solid #28a745; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+          <span style="font-size: 20px;">✅</span>
+          <strong style="color: #155724; font-size: 14px;">ログレポート使用ファイル設定済み</strong>
+        </div>
+        <div style="background: white; padding: 8px; border-radius: 4px; margin-bottom: 8px;">
+          <div style="font-size: 12px; color: #666; margin-bottom: 4px;">使用するファイルの保存先:</div>
+          <div style="font-family: monospace; color: #0066cc; font-size: 13px; word-break: break-all;">
+            📁 ${path === '/' ? '/（ルートフォルダ）' : path}
+          </div>
+        </div>
+        <div style="font-size: 12px; color: #666; margin-bottom: 8px;">
+          💡 AIタスク完了後、このフォルダに自動でレポートが保存されます
+        </div>
+        <button
+          onclick="clearDropboxLogSettings()"
+          style="padding: 6px 12px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; transition: background 0.2s;"
+          onmouseover="this.style.background='#5a6268'"
+          onmouseout="this.style.background='#6c757d'"
+        >
+          ❌ 設定をクリア
+        </button>
+      </div>
+    `;
+  }
+}
+
+// uploadLogToDropboxFolder関数は削除（不要な古い実装）
+// 現在はAIタスク完了後にstream-processor-v2.jsから自動でレポートがアップロードされる
+
+// ファイルサイズフォーマット
+function formatFileSize(bytes) {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+// ===== レガシー関数（無効化済み） =====
+// 新しいDropboxファイル選択機能に移行済み
+
+// ファイルクリア（レガシー）
+function clearSelectedFiles() {
+  console.log('レガシー機能: 新しいclearSelectedFile()を使用してください');
+}
+
+// パスプリセット選択（レガシー）
+function handlePathPresetChange() {
+  console.log('レガシー機能: 無効化済み');
+}
+
+// Dropboxへのファイルアップロード（レガシー）
+async function uploadFilesToDropbox() {
+  console.log('レガシー機能: 新しいファイル選択機能を使用してください');
+  showFeedback('この機能は新しいファイル選択機能に移行済みです', 'info');
+}
+
+// Dropboxファイルアップロードのイベントリスナー初期化（レガシー機能）
+function initDropboxFileUpload() {
+  // 新しいファイル選択機能に移行済み
+  // 古いアップロード機能は無効化
+  console.log('Dropboxファイル選択機能に移行済み');
+}
+
+// Dropboxファイル選択UIの初期化
+function initDropboxFileSelection() {
+  console.log('[Dropbox] ファイル選択UI初期化開始');
+
+  const refreshButton = document.getElementById('refreshDropboxFiles');
+  const saveButton = document.getElementById('saveToDropbox');
+  const useFileButton = document.getElementById('useSelectedFile');
+  const clearFileButton = document.getElementById('clearSelectedFile');
+
+  console.log('[Dropbox] UI要素確認:', {
+    refreshButton: !!refreshButton,
+    saveButton: !!saveButton,
+    useFileButton: !!useFileButton,
+    clearFileButton: !!clearFileButton
+  });
+
+  if (refreshButton) {
+    refreshButton.addEventListener('click', () => {
+      console.log('[Dropbox] 選択ボタンがクリックされました');
+      loadDropboxFiles();
+    });
+    console.log('[Dropbox] 選択ボタンのイベントリスナー設定完了');
+  } else {
+    console.error('[Dropbox] 選択ボタンが見つかりません');
+  }
+
+  if (saveButton) {
+    saveButton.addEventListener('click', saveToSelectedDropboxLocation);
+    console.log('[Dropbox] 保存ボタンのイベントリスナー設定完了');
+  } else {
+    console.warn('[Dropbox] 保存ボタンが見つかりません');
+  }
+
+  // アカウント再認証ボタンを追加（アカウント切り替え用）
+  const refreshButtonParent = refreshButton?.parentElement;
+  if (refreshButtonParent) {
+    const reAuthButton = document.createElement('button');
+    reAuthButton.textContent = '🔄 別のアカウントで再認証';
+    reAuthButton.style.cssText = 'margin-left: 8px; padding: 6px 12px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;';
+    reAuthButton.addEventListener('click', async () => {
+      console.log('[Dropbox] 再認証開始');
+      try {
+        const service = await loadDropboxService();
+        // 既存のトークンをクリア
+        await service.logout();
+        showFeedback('ログアウトしました。再度認証してください。', 'warning');
+        // 認証状態を更新
+        await updateDropboxAuthStatus();
+      } catch (error) {
+        console.error('[Dropbox] ログアウトエラー:', error);
+        showFeedback(`ログアウトエラー: ${error.message}`, 'error');
+      }
+    });
+    refreshButtonParent.appendChild(reAuthButton);
+  }
+
+  if (useFileButton) {
+    useFileButton.addEventListener('click', useSelectedFile);
+    console.log('[Dropbox] 作業開始ボタンのイベントリスナー設定完了');
+  } else {
+    console.warn('[Dropbox] 作業開始ボタンが見つかりません');
+  }
+
+  if (clearFileButton) {
+    clearFileButton.addEventListener('click', clearSelectedFile);
+    console.log('[Dropbox] 選択解除ボタンのイベントリスナー設定完了');
+  } else {
+    console.warn('[Dropbox] 選択解除ボタンが見つかりません');
+  }
+
+  // navigateToFolder関数をグローバルに公開（パンくずリストから使用）
+  window.navigateToFolder = navigateToFolder;
+
+  // 保存されたログ設定を読み込んで表示
+  loadAndDisplayDropboxLogSettings();
+
+  console.log('[Dropbox] ファイル選択UI初期化完了');
+}
+
+// Dropboxログ設定を読み込んで表示
+async function loadAndDisplayDropboxLogSettings() {
+  try {
+    const settings = await chrome.storage.local.get(['dropboxLogEnabled', 'dropboxLogPath', 'dropboxLogSettings']);
+
+    if (settings.dropboxLogEnabled && settings.dropboxLogPath) {
+      updateDropboxSettingsDisplay(settings.dropboxLogPath);
+    }
+  } catch (error) {
+    console.log('[Dropbox] ログ設定読み込みエラー:', error);
+  }
+}
+
+// Dropboxログ設定をクリア
+window.clearDropboxLogSettings = async function() {
+  try {
+    await chrome.storage.local.remove(['dropboxLogEnabled', 'dropboxLogPath', 'dropboxLogSettings']);
+
+    const settingsDisplay = document.getElementById('dropboxLogSettings');
+    if (settingsDisplay) {
+      settingsDisplay.style.display = 'none';
+      settingsDisplay.innerHTML = '';
+    }
+
+    showFeedback('ログレポート保存先設定をクリアしました', 'success');
+  } catch (error) {
+    console.error('[Dropbox] 設定クリアエラー:', error);
+    showFeedback('設定クリアエラー', 'error');
+  }
+}
+
+// DOMContentLoadedイベントでDropbox設定を初期化
+document.addEventListener('DOMContentLoaded', () => {
+  // 少し遅延させてDOM要素が確実に存在することを保証
+  setTimeout(() => {
+    initDropboxSettings();
+    initDropboxAuth();
+    initDropboxFileUpload();
+    initDropboxFileSelection();
+  }, 100);
+});
 
 // ===== グローバル関数公開 =====
 // 他のモジュールから使用できるように関数をwindowオブジェクトに公開
