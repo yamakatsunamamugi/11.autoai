@@ -1,0 +1,172 @@
+{
+  "application": {
+    "name": "AutoAI Chrome Extension",
+    "version": "2.0.0",
+    "environment": "development"
+  },
+  "ai": {
+    "types": ["chatgpt", "claude", "gemini", "genspark"],
+    "defaultSelections": ["chatgpt", "claude", "gemini"],
+    "timeout": 180000,
+    "retryAttempts": 3,
+    "retryDelay": 1000,
+    "supportedModels": {
+      "chatgpt": ["gpt-4", "gpt-3.5-turbo"],
+      "claude": ["claude-3-opus", "claude-3-sonnet", "claude-3-haiku"],
+      "gemini": ["gemini-pro", "gemini-pro-vision"],
+      "genspark": ["default"]
+    }
+  },
+  "taskProcessor": {
+    "type": "TaskProcessorV2",
+    "fallbackType": "StreamProcessor",
+    "description": "TaskProcessorV2 | StreamProcessor"
+  },
+  "window": {
+    "maxCount": 4,
+    "positions": [
+      { "id": 0, "name": "左上", "x": 100, "y": 100 },
+      { "id": 1, "name": "右上", "x": 800, "y": 100 },
+      { "id": 2, "name": "左下", "x": 100, "y": 600 },
+      { "id": 3, "name": "右下", "x": 800, "y": 600 }
+    ],
+    "columns": ["C", "F", "I", "L"],
+    "size": { "width": 1200, "height": 800 },
+    "closeDelay": 1000
+  },
+  "test": {
+    "enabled": true,
+    "environments": {
+      "development": {
+        "waitTime": { "min": 1, "max": 3 },
+        "retryAttempts": 1,
+        "retryDelay": 500,
+        "logLevel": "debug"
+      },
+      "testing": {
+        "waitTime": { "min": 2, "max": 5 },
+        "retryAttempts": 2,
+        "retryDelay": 1000,
+        "logLevel": "info"
+      },
+      "production": {
+        "waitTime": { "min": 5, "max": 15 },
+        "retryAttempts": 3,
+        "retryDelay": 1000,
+        "logLevel": "warning"
+      }
+    },
+    "execution": {
+      "defaultRepeatCount": 3,
+      "tasksPerWindow": 3,
+      "batchSize": 4,
+      "pauseBetweenTasks": 500,
+      "maxConcurrentTests": 2
+    },
+    "prompts": {
+      "test": [
+        "今日は何日ですか？",
+        "1+1は何ですか？",
+        "こんにちは、調子はどうですか？"
+      ],
+      "consecutive": [
+        "桃太郎について歴史を解説して",
+        "AIの未来について教えて",
+        "効率的な勉強方法を提案して"
+      ],
+      "performance": [
+        "短い回答をお願いします",
+        "はいかいいえで答えてください",
+        "一言で回答してください"
+      ],
+      "default": {
+        "chatgpt": "桃太郎について歴史を解説して",
+        "claude": "桃太郎について歴史を解説して",
+        "gemini": "桃太郎について歴史を解説して",
+        "genspark": "桃太郎について2枚のスライドで解説して"
+      }
+    }
+  },
+  "logging": {
+    "level": "info",
+    "levels": ["trace", "debug", "info", "warn", "error", "fatal"],
+    "appenders": {
+      "console": {
+        "enabled": true,
+        "includeTimestamp": true,
+        "includeLevel": true,
+        "includeContext": true,
+        "dateFormat": "TIME"
+      },
+      "dom": {
+        "enabled": true,
+        "maxEntries": 1000,
+        "autoScroll": true,
+        "showTimestamp": true,
+        "showLevel": true,
+        "colorize": true
+      },
+      "file": {
+        "enabled": false,
+        "filename": "autoai.log",
+        "maxFileSize": 10485760,
+        "maxFiles": 5
+      }
+    },
+    "categories": {
+      "StreamProcessor": "info",
+      "AITaskHandler": "info",
+      "WindowTest": "debug",
+      "IntegrationTest": "debug"
+    }
+  },
+  "performance": {
+    "trackMetrics": true,
+    "measureSteps": true,
+    "logSlowOperations": true,
+    "slowOperationThreshold": 5000,
+    "enableProfiling": false
+  },
+  "error": {
+    "logErrors": true,
+    "logLevel": "error",
+    "reportToService": false,
+    "serviceUrl": null,
+    "maxRetries": 3,
+    "retryDelay": 1000,
+    "enableUserNotification": true,
+    "enableMetrics": true,
+    "maxHistorySize": 1000
+  },
+  "ui": {
+    "updateInterval": 100,
+    "animationDuration": 300,
+    "theme": "light",
+    "autoSave": true,
+    "confirmOnExit": true,
+    "keyboardShortcuts": {
+      "startTest": "Ctrl+Enter",
+      "stopTest": "Ctrl+S",
+      "clearLog": "Ctrl+L",
+      "closeWindows": "Ctrl+W"
+    }
+  },
+  "security": {
+    "enableCSP": true,
+    "allowedOrigins": ["https://chat.openai.com", "https://claude.ai", "https://gemini.google.com"],
+    "maxPayloadSize": 1048576,
+    "rateLimit": {
+      "enabled": true,
+      "maxRequests": 100,
+      "windowMs": 60000
+    }
+  },
+  "features": {
+    "enableDeepResearch": true,
+    "enableBatchProcessing": true,
+    "enableAutomaticRetry": true,
+    "enablePerformanceMonitoring": true,
+    "enableErrorReporting": false,
+    "enableExperimentalFeatures": false
+  }
+}
