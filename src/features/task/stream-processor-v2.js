@@ -1456,7 +1456,23 @@ export default class StreamProcessorV2 {
         });
       }
 
-      // Step 8-3.6: 詳細ログをスプレッドシートに書き込み（送信時刻、記載時刻、選択/表示モデル）
+      // Step 8-3.6: 個別タスクログをDropboxにアップロード
+      let dropboxUploadResult = null;
+      if (result?.success) {
+        try {
+          this.logger.log(`[Step 8-3.6] 🔄 個別タスクログDropboxアップロード開始: ${task.column}${task.row}`);
+          dropboxUploadResult = await this.uploadTaskLogToDropbox(task, result, this.spreadsheetData);
+          if (dropboxUploadResult?.success) {
+            this.logger.log(`[Step 8-3.6] ✅ 個別タスクログDropboxアップロード完了: ${dropboxUploadResult.url}`);
+          } else {
+            this.logger.warn(`[Step 8-3.6] ⚠️ 個別タスクログDropboxアップロード失敗:`, dropboxUploadResult?.error);
+          }
+        } catch (dropboxError) {
+          this.logger.error(`[Step 8-3.6] ❌ 個別タスクログDropboxアップロードエラー:`, dropboxError);
+        }
+      }
+
+      // Step 8-3.7: 詳細ログをスプレッドシートに書き込み（送信時刻、記載時刻、選択/表示モデル、DropboxURL）
       if (this.sheetsClient) {
         try {
           // タスクIDを生成
@@ -1476,26 +1492,27 @@ export default class StreamProcessorV2 {
             displayedFunction: result?.displayedFunction || task.function || '不明'
           };
 
-          // 詳細ログを書き込み（新しいwriteLogToSpreadsheetメソッドを使用）
+          // 詳細ログを書き込み（DropboxURLを含む）
           const logResult = await this.sheetsClient.writeLogToSpreadsheet(logTask, {
             spreadsheetId: this.spreadsheetData.spreadsheetId,
             gid: this.spreadsheetData.gid,
             url: result?.url || 'N/A',
             sendTime: sendTime,
+            dropboxUploadResult: dropboxUploadResult,  // Dropboxアップロード結果を追加
             isFirstTask: false  // タスク処理では通常は追記モード
           });
 
           if (logResult.success) {
             const logColumn = logTask.logColumns && logTask.logColumns[0] ? logTask.logColumns[0] : 'B';
-            this.logger.log(`[Step 8-3.6] 📝 詳細ログ書き込み成功: ${logColumn}${task.row}`);
+            this.logger.log(`[Step 8-3.7] 📝 詳細ログ書き込み成功（DropboxURL含む）: ${logColumn}${task.row}`);
           } else {
-            this.logger.error(`[Step 8-3.6] ❌ 詳細ログ書き込み失敗:`, logResult.error);
+            this.logger.error(`[Step 8-3.7] ❌ 詳細ログ書き込み失敗:`, logResult.error);
           }
         } catch (logError) {
-          this.logger.error(`[Step 8-3.6] ❌ ログ書き込みエラー:`, logError);
+          this.logger.error(`[Step 8-3.7] ❌ ログ書き込みエラー:`, logError);
         }
       } else {
-        this.logger.warn(`[Step 8-3.6] ⚠️ SheetsClientが未初期化のためログ書き込みスキップ`);
+        this.logger.warn(`[Step 8-3.7] ⚠️ SheetsClientが未初期化のためログ書き込みスキップ`);
       }
 
       // Step 8-4: タスク完了ログ記録
@@ -4060,6 +4077,60 @@ export default class StreamProcessorV2 {
 
     } catch (error) {
       this.logger.error(`[StreamProcessorV2] 回答記録エラー ${answerCol.column}${rowNumber}:`, error);
+    }
+  }
+
+  /**
+   * 個別タスクログをDropboxにアップロード
+   * AI回答後に即座に実行
+   * @param {Object} task - タスク情報
+   * @param {Object} result - AI実行結果
+   * @param {Object} spreadsheetData - スプレッドシートデータ
+   * @returns {Promise<Object>} アップロード結果
+   */
+  async uploadTaskLogToDropbox(task, result, spreadsheetData) {
+    try {
+      this.logger.log('📁 [個別タスクログ作成開始]', { taskId: task.taskId, cell: `${task.column}${task.row}` });
+
+      // Chrome StorageからDropbox設定を取得
+      if (typeof chrome === 'undefined' || !chrome.storage) {
+        this.logger.log('[StreamProcessorV2] ⚠️ Chrome環境ではないため個別タスクログスキップ');
+        return { success: false, error: 'Chrome環境でない' };
+      }
+
+      // LogFileManagerを活用してログを作成
+      if (globalThis.logManager) {
+        // タスクログを追加
+        globalThis.logManager.logTaskStart(task);
+        globalThis.logManager.logTaskComplete(result);
+
+        // 個別ログファイルを保存
+        try {
+          const logFilePath = await globalThis.logManager.saveToFile();
+          this.logger.log('✅ [個別タスクログ] Dropboxアップロード完了', { filePath: logFilePath });
+
+          // Dropbox URL を生成
+          const fileName = logFilePath.split('/').pop();
+          const dropboxUrl = `https://www.dropbox.com/home/log-report/${task.aiType.toLowerCase()}/complete/${fileName}`;
+
+          return {
+            success: true,
+            filePath: logFilePath,
+            fileName: fileName,
+            url: dropboxUrl,
+            uploadTime: new Date()
+          };
+        } catch (saveError) {
+          this.logger.error('❌ [個別タスクログ保存失敗]', saveError);
+          return { success: false, error: saveError.message };
+        }
+      } else {
+        this.logger.warn('[StreamProcessorV2] ⚠️ LogManager未初期化のため個別ログスキップ');
+        return { success: false, error: 'LogManager未初期化' };
+      }
+    } catch (error) {
+      this.logger.error('❌ [個別タスクログ処理失敗]', error);
+      return { success: false, error: error.message };
     }
   }
 
