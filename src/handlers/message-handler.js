@@ -1037,10 +1037,11 @@ export function setupMessageHandler() {
             // Step 23-2: StreamingServiceManagerからStreamProcessorを取得
             try {
               const manager = getStreamingServiceManager();
-              const streamProcessor = manager?.serviceRegistry?.get("StreamProcessor");
+              // serviceRegistryは削除されたため、services Mapを直接参照
+              const streamProcessor = manager?.services?.get("StreamProcessor");
               spreadsheetLogger = streamProcessor?.spreadsheetLogger;
             } catch (error) {
-              console.log('[Step 23-3] StreamingServiceManagerから取得失敗');
+              console.log('[Step 23-3] StreamingServiceManagerから取得失敗', error.message);
             }
 
             // Step 23-4: グローバルSpreadsheetLoggerを使用（フォールバック）

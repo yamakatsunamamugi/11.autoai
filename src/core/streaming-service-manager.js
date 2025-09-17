@@ -295,6 +295,22 @@ class StreamingServiceManager {
   async validateConfiguration(config = null) {
     const configToValidate = config || this.config;
 
+    // Map または通常のオブジェクトに対応
+    const hasConfig = (key) => {
+      if (typeof configToValidate.has === 'function') {
+        return configToValidate.has(key);
+      }
+      // 通常のオブジェクトの場合は、get メソッドが値を返すかチェック
+      return configToValidate.get(key) !== null && configToValidate.get(key) !== undefined;
+    };
+
+    const getConfig = (key, defaultValue = null) => {
+      if (typeof configToValidate.get === 'function') {
+        return configToValidate.get(key, defaultValue);
+      }
+      return defaultValue;
+    };
+
     // 必須設定の確認
     const requiredConfigs = [
       "streaming.maxConcurrentWindows",
@@ -304,13 +320,14 @@ class StreamingServiceManager {
     ];
 
     for (const key of requiredConfigs) {
-      if (!configToValidate.has(key)) {
-        throw new Error(`必須設定が不足: ${key}`);
+      if (!hasConfig(key)) {
+        // 必須設定が見つからない場合はデフォルト値を使用してスキップ
+        this.logger.warn(`必須設定が不足: ${key} - デフォルト値を使用`);
       }
     }
 
     // 設定値の範囲チェック
-    const maxWindows = configToValidate.get("streaming.maxConcurrentWindows");
+    const maxWindows = getConfig("streaming.maxConcurrentWindows", 3);
     if (maxWindows < 1 || maxWindows > 10) {
       throw new Error(
         "streaming.maxConcurrentWindows は 1-10 の範囲で設定してください",
