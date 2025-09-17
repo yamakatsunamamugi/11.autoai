@@ -35,23 +35,12 @@ import { AITaskExecutor } from '../../core/ai-task-executor.js';
 import { WindowService } from '../../services/window-service.js';
 import { aiUrlManager } from '../../core/ai-url-manager.js';
 import SheetsClient from '../spreadsheet/sheets-client.js';
-import SpreadsheetLoggerClass from '../logging/spreadsheet-logger.js';
+// SpreadsheetLogger削除済み - SheetsClientに統合
 import { ConsoleLogger } from '../../utils/console-logger.js';
 // RetryManager機能はStep 10に統合済み
 // Removed dependency on 1-ai-common-base.js
 
-// SpreadsheetLoggerをキャッシュ
-let SpreadsheetLogger = null;
-
-/**
- * SpreadsheetLoggerの動的取得
- * Service Worker環境では動的インポートが制限されるため、
- * グローバル空間に事前に登録されたクラスを使用
- */
-async function getSpreadsheetLogger(SpreadsheetLoggerClass) {
-  // 引数として受け取ったクラスを返す（グローバル変数を使わない）
-  return SpreadsheetLoggerClass || null;
-}
+// SpreadsheetLogger削除済み - SheetsClientに統合
 
 // シングルトンインスタンスを保持
 let streamProcessorInstance = null;

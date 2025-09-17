@@ -9,7 +9,6 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { execSync } from 'child_process';
-import archiver from 'archiver';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -26,11 +25,6 @@ const BUILD_CONFIG = {
     'popup.html',
     'popup.js',
     'popup.css',
-    'log-viewer.html',
-    'log-viewer.js',
-    'log-viewer.css',
-    'monitoring-dashboard.html',
-    'monitoring-dashboard.js'
   ],
 
   // コピーするディレクトリ
@@ -229,29 +223,30 @@ function findFiles(dir, ext) {
 }
 
 /**
- * ZIPアーカイブを作成
+ * ZIPアーカイブを作成 (標準コマンドを使用)
  */
 async function createZipArchive() {
   const zipPath = path.join(DIST_DIR, 'extension.zip');
 
-  return new Promise((resolve, reject) => {
-    const output = fs.createWriteStream(zipPath);
-    const archive = archiver('zip', {
-      zlib: { level: 9 } // 最大圧縮
-    });
+  try {
+    // 既存のzipファイルを削除
+    if (fs.existsSync(zipPath)) {
+      fs.unlinkSync(zipPath);
+    }
 
-    output.on('close', () => {
-      const size = (archive.pointer() / 1024 / 1024).toFixed(2);
-      console.log(`✓ Created extension.zip (${size} MB)`);
-      resolve(zipPath);
-    });
+    // zipコマンドを実行
+    const buildDirName = path.basename(BUILD_DIR);
+    execSync(`cd ${DIST_DIR} && zip -r extension.zip ${buildDirName}/*`, { stdio: 'inherit' });
 
-    archive.on('error', reject);
+    // ファイルサイズを取得
+    const stats = fs.statSync(zipPath);
+    const size = (stats.size / 1024 / 1024).toFixed(2);
+    console.log(`✓ Created extension.zip (${size} MB)`);
 
-    archive.pipe(output);
-    archive.directory(BUILD_DIR, false);
-    archive.finalize();
-  });
+    return zipPath;
+  } catch (error) {
+    throw new Error(`Failed to create ZIP archive: ${error.message}`);
+  }
 }
 
 /**

@@ -12,7 +12,8 @@
     "identity",
     "system.display",
     "scripting",
-    "windows"
+    "windows",
+    "downloads"
   ],
   "host_permissions": [
     "https://sheets.googleapis.com/*",

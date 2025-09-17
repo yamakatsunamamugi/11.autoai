@@ -516,8 +516,8 @@ export function setupMessageHandler() {
                 const sheetsClient = new SheetsClient();
                 const processor = StreamProcessorV2.getInstance();
                 await processor.setDependencies({
-                  sheetsClient: sheetsClient,
-                  SpreadsheetLogger: SpreadsheetLogger
+                  sheetsClient: sheetsClient
+                  // SpreadsheetLogger削除済み - SheetsClientに統合
                 });
               } catch (e) {
                 // Service Worker環境では動的インポート失敗
@@ -590,8 +590,8 @@ export function setupMessageHandler() {
                 const sheetsClient = new SheetsClient();
                 const processor = StreamProcessorV2.getInstance();
                 await processor.setDependencies({
-                  sheetsClient: sheetsClient,
-                  SpreadsheetLogger: SpreadsheetLogger
+                  sheetsClient: sheetsClient
+                  // SpreadsheetLogger削除済み - SheetsClientに統合
                 });
               } catch (e) {
                 // Service Worker環境では動的インポート失敗
@@ -802,7 +802,7 @@ export function setupMessageHandler() {
               const sheetsClient = new SheetsClient();
               await processor.setDependencies({
                 sheetsClient: sheetsClient,
-                SpreadsheetLogger: SpreadsheetLogger
+                // SpreadsheetLogger削除済み - SheetsClientに統合
               });
             } catch (e) {
               // Service Worker環境：依存性設定をスキップ

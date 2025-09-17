@@ -19,6 +19,16 @@ export class LogFileManager {
     this.reportDirectory = reportDirectories[this.aiType] || '3.Claudereport';
     this.maxLogFiles = 10; // 保持する最大ログファイル数
     this.logs = []; // 実行中のログを蓄積
+
+    // ハイブリッド保存用の設定
+    this.intermediateInterval = 100; // 100件ごとに中間保存
+    this.autoSaveTimer = null; // 5分タイマー
+    this.errorCount = 0; // エラーカウント
+    this.intermediateCount = 0; // 中間保存カウント
+    this.sessionStartTime = new Date().toISOString();
+
+    // 5分ごとの自動保存タイマーを開始
+    this.startAutoSaveTimer();
   }
 
   /**
@@ -29,12 +39,141 @@ export class LogFileManager {
       timestamp: new Date().toISOString(),
       ...entry
     });
+
+    // 100件ごとに中間保存
+    if (this.logs.length % this.intermediateInterval === 0) {
+      this.saveIntermediate();
+    }
   }
 
   /**
-   * 現在のログをファイルに保存
+   * 5分ごとの自動保存タイマーを開始
+   */
+  startAutoSaveTimer() {
+    // 既存のタイマーをクリア
+    if (this.autoSaveTimer) {
+      clearInterval(this.autoSaveTimer);
+    }
+
+    // 5分ごとに中間保存
+    this.autoSaveTimer = setInterval(() => {
+      if (this.logs.length > 0) {
+        console.log(`[自動保存] 5分経過 - 中間保存を実行`);
+        this.saveIntermediate();
+      }
+    }, 5 * 60 * 1000); // 5分
+  }
+
+  /**
+   * タイマーを停止
+   */
+  stopAutoSaveTimer() {
+    if (this.autoSaveTimer) {
+      clearInterval(this.autoSaveTimer);
+      this.autoSaveTimer = null;
+    }
+  }
+
+  /**
+   * エラーを即座に保存
+   */
+  async saveErrorImmediately(error, context = {}) {
+    try {
+      const timestamp = new Date().toISOString()
+        .replace(/[:.]/g, '-')
+        .replace('T', '_')
+        .slice(0, -5);
+
+      const errorData = {
+        timestamp: new Date().toISOString(),
+        type: 'error',
+        error: {
+          message: error.message,
+          stack: error.stack,
+          name: error.name
+        },
+        context,
+        sessionStart: this.sessionStartTime
+      };
+
+      const fileName = `11autoai-logs/${this.aiType}/errors/error-${timestamp}.json`;
+      await this.downloadFile(fileName, JSON.stringify(errorData, null, 2));
+
+      this.errorCount++;
+      console.log(`❌ [エラー保存] ${fileName}`);
+    } catch (saveError) {
+      console.error('[エラー保存失敗]', saveError);
+    }
+  }
+
+  /**
+   * 中間保存（100件ごと/5分ごと）
+   */
+  async saveIntermediate() {
+    if (this.logs.length === 0) return;
+
+    try {
+      const timestamp = new Date().toISOString()
+        .replace(/[:.]/g, '-')
+        .replace('T', '_')
+        .slice(0, -5);
+
+      const intermediateData = {
+        sessionStart: this.sessionStartTime,
+        savedAt: new Date().toISOString(),
+        logCount: this.logs.length,
+        logs: [...this.logs] // コピーを保存
+      };
+
+      const fileName = `11autoai-logs/${this.aiType}/intermediate/partial-${timestamp}.json`;
+      await this.downloadFile(fileName, JSON.stringify(intermediateData, null, 2));
+
+      this.intermediateCount++;
+      console.log(`💾 [中間保存] ${fileName} (ログ数: ${this.logs.length})`);
+    } catch (saveError) {
+      console.error('[中間保存失敗]', saveError);
+    }
+  }
+
+  /**
+   * Chrome Downloads APIを使用してファイルをダウンロード
+   */
+  async downloadFile(fileName, content) {
+    // Chrome拡張機能のコンテキストで実行される場合
+    if (typeof chrome !== 'undefined' && chrome.runtime) {
+      return new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({
+          type: 'DOWNLOAD_LOG_FILE',
+          data: {
+            fileName,
+            content
+          }
+        }, response => {
+          if (response?.success) {
+            resolve(response.downloadId);
+          } else {
+            reject(new Error(response?.error || 'ダウンロードに失敗しました'));
+          }
+        });
+      });
+    } else {
+      // ブラウザ環境ではBlobダウンロード
+      const blob = new Blob([content], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName.split('/').pop();
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  /**
+   * 現在のログをファイルに保存（最終保存）
    */
   async saveToFile() {
+    // タイマーを停止
+    this.stopAutoSaveTimer();
     if (this.logs.length === 0) {
       console.log('[LogFileManager] 保存するログがありません');
       return;
@@ -48,26 +187,30 @@ export class LogFileManager {
         .slice(0, -5); // YYYY-MM-DD_HH-mm-ss形式
 
       const fileName = `${this.aiType}-log-${timestamp}.json`;
-      const filePath = `${this.logDirectory}/${this.reportDirectory}/${fileName}`;
+      const filePath = `11autoai-logs/${this.aiType}/complete/${fileName}`;
 
       // ログデータを整形
       const logData = {
-        sessionStart: this.logs[0]?.timestamp,
+        sessionStart: this.sessionStartTime,
         sessionEnd: new Date().toISOString(),
         totalLogs: this.logs.length,
+        errorCount: this.errorCount,
+        intermediatesSaved: this.intermediateCount,
         logs: this.logs
       };
 
-      // ファイルに保存（Chrome拡張機能のFile APIを使用）
-      await this.writeFile(filePath, JSON.stringify(logData, null, 2));
+      // ファイルにダウンロード
+      await this.downloadFile(filePath, JSON.stringify(logData, null, 2));
 
-      console.log(`✅ [LogFileManager] ログを保存しました: ${fileName}`);
-
-      // 古いログファイルをローテーション
-      await this.rotateOldLogs();
+      console.log(`✅ [LogFileManager] 最終ログを保存しました: ${fileName}`);
+      console.log(`  ・総ログ数: ${this.logs.length}`);
+      console.log(`  ・エラー数: ${this.errorCount}`);
+      console.log(`  ・中間保存数: ${this.intermediateCount}`);
 
       // ログをクリア
       this.logs = [];
+      this.errorCount = 0;
+      this.intermediateCount = 0;
 
       return filePath;
     } catch (error) {
