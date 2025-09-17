@@ -1866,9 +1866,10 @@ class SheetsClient {
    * @param {string} url - 現在のURL
    * @param {Date} sendTime - 送信時刻
    * @param {Date} writeTime - 記載時刻
-   * @returns {string} フォーマット済みログ
+   * @param {boolean} returnRichText - リッチテキスト形式で返すかどうか
+   * @returns {string|Object} フォーマット済みログ（文字列またはリッチテキストデータ）
    */
-  formatLogEntry(task, url, sendTime, writeTime) {
+  formatLogEntry(task, url, sendTime, writeTime, returnRichText = false) {
     const aiType = task.aiType || 'Unknown';
     const selectedModel = task.model || '通常';
     const displayedModel = task.displayedModel || '不明';
@@ -1903,7 +1904,7 @@ class SheetsClient {
     // AI名を日本語表記に
     const aiDisplayName = this.getAIDisplayName(aiType);
 
-    // 常にテキスト形式で返す
+    // プレーンテキストバージョン
     const logEntry = [
       `---------- ${aiDisplayName} ----------`,
       `モデル: ${model}`,
@@ -1913,6 +1914,42 @@ class SheetsClient {
       `記載時刻: ${writeTimeStr} (${elapsedSeconds}秒後)`
     ].join('\n');
 
+    // リッチテキスト形式で返す場合
+    if (returnRichText && url) {
+      const richTextData = [];
+
+      // ヘッダーとモデル・機能情報
+      const headerAndInfo = [
+        `---------- ${aiDisplayName} ----------`,
+        `モデル: ${model}`,
+        `機能: ${functionName}`,
+        `URL: `
+      ].join('\n');
+
+      richTextData.push({ text: headerAndInfo });
+
+      // URL部分をリンクとして追加
+      richTextData.push({
+        text: url,
+        url: url
+      });
+
+      // 残りの情報
+      const footerInfo = [
+        '',
+        `送信時刻: ${sendTimeStr}`,
+        `記載時刻: ${writeTimeStr} (${elapsedSeconds}秒後)`
+      ].join('\n');
+
+      richTextData.push({ text: footerInfo });
+
+      return {
+        plainText: logEntry,
+        richTextData: richTextData
+      };
+    }
+
+    // 通常のテキスト形式で返す
     return logEntry;
   }
 
@@ -1955,28 +1992,40 @@ class SheetsClient {
       const sendTime = options.sendTime || new Date();
       const writeTime = new Date();
 
-      // ログエントリーをフォーマット
-      const logContent = this.formatLogEntry(task, url, sendTime, writeTime);
+      // ログエントリーをリッチテキスト形式でフォーマット
+      const logResult = this.formatLogEntry(task, url, sendTime, writeTime, true);
 
       // 既存のログを取得（options.isFirstTaskがfalseの場合）
-      let finalLogContent = logContent;
+      let finalRichTextData = logResult.richTextData;
+      let existingLog = '';
       if (!options.isFirstTask) {
         try {
           const response = await this.getSheetData(spreadsheetId, logCell, gid);
-          const existingLog = response?.values?.[0]?.[0] || '';
+          existingLog = response?.values?.[0]?.[0] || '';
           if (existingLog && existingLog.trim() !== '') {
-            // 既存ログと新規ログを結合
-            finalLogContent = existingLog + '\n\n' + logContent;
+            // 既存ログがある場合は、先頭に追加してからリッチテキストを続ける
+            finalRichTextData = [
+              { text: existingLog + '\n\n' },
+              ...logResult.richTextData
+            ];
           }
         } catch (error) {
           console.warn(`⚠️ [SheetsClient] 既存ログの取得に失敗:`, error.message);
         }
       }
 
-      // スプレッドシートに書き込み
-      await this.updateCell(spreadsheetId, logCell, finalLogContent, gid, {
-        isLog: true
-      });
+      // リッチテキストでスプレッドシートに書き込み
+      if (logResult.richTextData && url) {
+        console.log('🔗 [SheetsClient] リッチテキスト形式でログ書き込み');
+        await this.updateCellWithRichText(spreadsheetId, logCell, finalRichTextData, gid);
+      } else {
+        // URLがない場合は通常のテキストで書き込み
+        const finalLogContent = options.isFirstTask ? logResult.plainText :
+          (existingLog ? existingLog + '\n\n' + logResult.plainText : logResult.plainText);
+        await this.updateCell(spreadsheetId, logCell, finalLogContent, gid, {
+          isLog: true
+        });
+      }
 
       console.log(`✅ [SheetsClient] ログ書き込み成功: ${logCell}`);
 
