@@ -4158,6 +4158,23 @@ export default class StreamProcessorV2 {
         } catch (saveError) {
           console.error('🔍 [DEBUG] saveToFile()エラー:', saveError);
           this.logger.error('❌ [個別タスクログ保存失敗]', saveError);
+
+          // Dropbox認証期限切れの場合は特別なメッセージを返す（処理は継続）
+          if (saveError.message && saveError.message.includes('認証が期限切れ')) {
+            console.warn('🔍 [DEBUG] Dropbox認証期限切れを検出、ローカル保存は成功');
+            this.logger.warn('⚠️ [個別タスクログ] Dropbox認証期限切れのためアップロードをスキップしました');
+
+            return {
+              success: true, // ローカル保存は成功したためtrueを返す
+              filePath: '11autoai-logs/local-save-only', // 仮のパス
+              fileName: 'ローカル保存のみ（Dropbox認証期限切れ）',
+              dropboxPath: null,
+              url: null,
+              warning: 'Dropbox認証が期限切れです。UI画面で再認証してください。',
+              uploadTime: new Date()
+            };
+          }
+
           return { success: false, error: saveError.message };
         }
       } else {

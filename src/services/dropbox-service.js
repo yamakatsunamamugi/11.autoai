@@ -195,6 +195,18 @@ export class DropboxService {
       }
     } catch (error) {
       console.error('🔍 [DEBUG-DropboxService] uploadFile エラー:', error);
+
+      // 401エラー（認証期限切れ）の場合の特別処理
+      if (error.message && error.message.includes('401')) {
+        console.warn('🔍 [DEBUG-DropboxService] 認証期限切れを検出、トークンをクリア');
+        console.warn('⚠️ [DropboxService] 認証トークンが期限切れです。UI画面で再認証を行ってください。');
+
+        // 期限切れトークンをクリア
+        await this.config.clearTokens();
+
+        throw new Error('Dropbox認証が期限切れです。UI画面でDropbox再認証を行ってから再試行してください。');
+      }
+
       console.error('[DropboxService] ファイルアップロードエラー:', error);
       throw error;
     }
@@ -247,6 +259,12 @@ export class DropboxService {
       if (!response.ok) {
         const error = await response.text();
         console.error('🔍 [DEBUG-DropboxService] Dropbox APIエラー:', error);
+
+        // 401エラーの場合は認証期限切れとして処理
+        if (response.status === 401) {
+          throw new Error(`401 ${error}`);
+        }
+
         throw new Error(`アップロードエラー: ${error}`);
       }
 

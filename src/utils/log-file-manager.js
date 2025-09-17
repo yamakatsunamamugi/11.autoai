@@ -213,7 +213,14 @@ export class LogFileManager {
                 console.log('🔍 [DEBUG-LogFileManager] Dropbox自動アップロード完了');
               } catch (uploadError) {
                 console.error('🔍 [DEBUG-LogFileManager] Dropbox自動アップロードエラー:', uploadError);
-                console.error(`❌ [Dropbox] ${fileName} の自動アップロードに失敗:`, uploadError);
+
+                // Dropbox認証期限切れの場合は警告を表示するがファイル保存は継続
+                if (uploadError.message && uploadError.message.includes('認証が期限切れ')) {
+                  console.warn(`⚠️ [Dropbox] 認証期限切れによりアップロードをスキップしました: ${fileName}`);
+                  console.warn('💡 [Dropbox] UI画面でDropbox再認証を行ってください');
+                } else {
+                  console.error(`❌ [Dropbox] ${fileName} の自動アップロードに失敗:`, uploadError);
+                }
               }
             } else {
               console.log('🔍 [DEBUG-LogFileManager] Dropbox自動アップロードスキップ:', {
@@ -250,7 +257,14 @@ export class LogFileManager {
           console.log('🔍 [DEBUG-LogFileManager] Dropbox自動アップロード完了（ブラウザ）');
         } catch (uploadError) {
           console.error('🔍 [DEBUG-LogFileManager] Dropbox自動アップロードエラー（ブラウザ）:', uploadError);
-          console.error(`❌ [Dropbox] ${fileName} の自動アップロードに失敗:`, uploadError);
+
+          // Dropbox認証期限切れの場合は警告を表示するがファイル保存は継続
+          if (uploadError.message && uploadError.message.includes('認証が期限切れ')) {
+            console.warn(`⚠️ [Dropbox] 認証期限切れによりアップロードをスキップしました: ${fileName}`);
+            console.warn('💡 [Dropbox] UI画面でDropbox再認証を行ってください');
+          } else {
+            console.error(`❌ [Dropbox] ${fileName} の自動アップロードに失敗:`, uploadError);
+          }
         }
       } else {
         console.log('🔍 [DEBUG-LogFileManager] Dropbox自動アップロードスキップ（ブラウザ）:', {
