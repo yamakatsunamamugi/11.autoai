@@ -268,6 +268,37 @@ export function setupMessageHandler() {
         })();
         return true;
 
+      case "DOWNLOAD_LOG_FILE":
+        console.log('[LogFile] ログファイルダウンロード要求');
+        (async () => {
+          try {
+            const { fileName, content } = request.data;
+
+            // Blob作成してダウンロード
+            const blob = new Blob([content], { type: 'application/json' });
+            const dataUrl = await new Promise((resolve) => {
+              const reader = new FileReader();
+              reader.onloadend = () => resolve(reader.result);
+              reader.readAsDataURL(blob);
+            });
+
+            // Chrome Downloads APIでダウンロード
+            const downloadId = await chrome.downloads.download({
+              url: dataUrl,
+              filename: fileName,
+              saveAs: false,
+              conflictAction: 'uniquify'
+            });
+
+            console.log(`[LogFile] ファイルダウンロード完了: ${fileName} (ID: ${downloadId})`);
+            sendResponse({ success: true, downloadId });
+          } catch (error) {
+            console.error('[LogFile] ファイルダウンロードエラー:', error);
+            sendResponse({ success: false, error: error.message });
+          }
+        })();
+        return true;
+
       case "STOP_AI_PROCESSING":
         console.log('[Step 5-3] AI処理停止要求');
         (async () => {
