@@ -161,11 +161,16 @@ export class AITaskExecutor {
       let v2CheckAttempts = 0;
       const maxV2CheckAttempts = 5; // 5秒間リトライ
 
-      while (!v2CheckSuccess && v2CheckAttempts < maxV2CheckAttempts) {
-        v2CheckAttempts++;
-        this.logger.log(`[Step 3: V2チェック] V2チェック試行 ${v2CheckAttempts}/${maxV2CheckAttempts}`);
+      // Claudeの場合はV2チェックをスキップ（メッセージ通信を使用）
+      if (taskData.aiType.toLowerCase() === 'claude') {
+        v2CheckSuccess = true;
+        this.logger.log(`[Step 3: V2チェック] ✅ Claudeはメッセージ通信を使用するためV2チェックをスキップ`);
+      } else {
+        while (!v2CheckSuccess && v2CheckAttempts < maxV2CheckAttempts) {
+          v2CheckAttempts++;
+          this.logger.log(`[Step 3: V2チェック] V2チェック試行 ${v2CheckAttempts}/${maxV2CheckAttempts}`);
 
-        try {
+          try {
           const [v2Check] = await chrome.scripting.executeScript({
             target: { tabId: tabId },
             func: (aiType, attempt) => {
@@ -214,7 +219,6 @@ export class AITaskExecutor {
 
               const v2Names = {
                 'chatgpt': 'ChatGPTAutomationV2',
-                'claude': 'ClaudeAutomationV2',
                 'gemini': 'GeminiAutomation'  // GeminiはV2でも同じ名前
               };
               const v2Name = v2Names[aiType.toLowerCase()];
@@ -264,10 +268,11 @@ export class AITaskExecutor {
               this.logger.warn(`[AITaskExecutor] 推奨対応: スクリプトの読み込み完了を確認してください`);
             }
           }
-        } catch (e) {
-          this.logger.error(`[AITaskExecutor] V2チェックエラー（試行${v2CheckAttempts}）:`, e);
-          if (v2CheckAttempts < maxV2CheckAttempts) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
+          } catch (e) {
+            this.logger.error(`[AITaskExecutor] V2チェックエラー（試行${v2CheckAttempts}）:`, e);
+            if (v2CheckAttempts < maxV2CheckAttempts) {
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            }
           }
         }
       }
@@ -304,49 +309,71 @@ export class AITaskExecutor {
       const maxWaitTime = 15000; // 15秒に増やす
       const checkInterval = 100; // 100msに変更
       let isReady = false;
-      
-      while (!isReady && (performance.now() - initStartTime) < maxWaitTime) {
-        try {
-          const [result] = await chrome.scripting.executeScript({
-            target: { tabId: tabId },
-            func: (aiType) => {
-              // V2版を優先的にチェック
-              const possibleNames = [
-                `${aiType}AutomationV2`,
-                `${aiType}Automation`,
-                aiType,
-                'ClaudeAutomationV2', 'ClaudeAutomation',
-                'ChatGPTAutomationV2', 'ChatGPTAutomation',
-                'GeminiAutomation'
-              ];
-              
-              // デバッグ: 利用可能なAutomationオブジェクトをログ出力
-              const availableAutomations = Object.keys(window).filter(key => 
-                key.includes('Automation')
-              );
-              console.log('[スクリプト初期化チェック] 利用可能なAutomation:', availableAutomations);
-              console.log('[スクリプト初期化チェック] 探索対象:', possibleNames);
-              
-              const found = possibleNames.find(name => window[name] !== undefined);
-              if (found) {
-                console.log('[スクリプト初期化チェック] 発見:', found);
-              }
-              
-              return possibleNames.some(name => window[name] !== undefined);
-            },
-            args: [taskData.aiType]
-          });
-          
-          if (result?.result) {
-            isReady = true;
-            const initTime = (performance.now() - initStartTime).toFixed(0);
-            this.logger.log(`[Step 3-3: スクリプト初期化完了] 🎯 [${taskData.aiType}] スクリプト初期化完了 (${initTime}ms)`);
-          } else {
+
+      // Claudeの場合はメッセージ通信で準備状態を確認
+      if (taskData.aiType.toLowerCase() === 'claude') {
+        while (!isReady && (performance.now() - initStartTime) < maxWaitTime) {
+          try {
+            const response = await chrome.tabs.sendMessage(tabId, {
+              type: 'CLAUDE_CHECK_READY'
+            });
+
+            if (response?.ready) {
+              isReady = true;
+              const initTime = (performance.now() - initStartTime).toFixed(0);
+              this.logger.log(`[Step 3-3: スクリプト初期化完了] 🎯 [Claude] スクリプト初期化完了（メッセージ通信） (${initTime}ms)`);
+            } else {
+              await new Promise(resolve => setTimeout(resolve, checkInterval));
+            }
+          } catch (e) {
+            // エラー時は少し待って続行
             await new Promise(resolve => setTimeout(resolve, checkInterval));
           }
-        } catch (e) {
-          // エラー時は少し待って続行
-          await new Promise(resolve => setTimeout(resolve, checkInterval));
+        }
+      } else {
+        // Claude以外は従来のグローバルオブジェクトチェック
+        while (!isReady && (performance.now() - initStartTime) < maxWaitTime) {
+          try {
+            const [result] = await chrome.scripting.executeScript({
+              target: { tabId: tabId },
+              func: (aiType) => {
+                // V2版を優先的にチェック
+                const possibleNames = [
+                  `${aiType}AutomationV2`,
+                  `${aiType}Automation`,
+                  aiType,
+                  'ChatGPTAutomationV2', 'ChatGPTAutomation',
+                  'GeminiAutomation'
+                ];
+
+                // デバッグ: 利用可能なAutomationオブジェクトをログ出力
+                const availableAutomations = Object.keys(window).filter(key =>
+                  key.includes('Automation')
+                );
+                console.log('[スクリプト初期化チェック] 利用可能なAutomation:', availableAutomations);
+                console.log('[スクリプト初期化チェック] 探索対象:', possibleNames);
+
+                const found = possibleNames.find(name => window[name] !== undefined);
+                if (found) {
+                  console.log('[スクリプト初期化チェック] 発見:', found);
+                }
+
+                return possibleNames.some(name => window[name] !== undefined);
+              },
+              args: [taskData.aiType]
+            });
+
+            if (result?.result) {
+              isReady = true;
+              const initTime = (performance.now() - initStartTime).toFixed(0);
+              this.logger.log(`[Step 3-3: スクリプト初期化完了] 🎯 [${taskData.aiType}] スクリプト初期化完了 (${initTime}ms)`);
+            } else {
+              await new Promise(resolve => setTimeout(resolve, checkInterval));
+            }
+          } catch (e) {
+            // エラー時は少し待って続行
+            await new Promise(resolve => setTimeout(resolve, checkInterval));
+          }
         }
       }
       
@@ -360,17 +387,39 @@ export class AITaskExecutor {
       // タスクを実行
       let result;
       try {
-        // まずシンプルな同期関数でテスト
+        // Claudeの場合はメッセージベースの通信を使用
+        if (taskData.aiType.toLowerCase() === 'claude') {
+          // Chrome tabs.sendMessageを使用してContent Scriptと通信
+          result = await chrome.tabs.sendMessage(tabId, {
+            type: 'CLAUDE_EXECUTE_TASK',
+            taskData: taskData
+          });
+
+          this.logger.log('[Step 5: タスク実行結果] 🎉 Claudeメッセージ通信結果:', result);
+
+          if (result && result.success) {
+            return {
+              success: true,
+              response: result.result?.response || '',
+              status: result.result?.status || 'success',
+              model: taskData.model,
+              function: taskData.function,
+              executionTime: Date.now() - startTime
+            };
+          } else {
+            throw new Error(result?.error || 'Claudeメッセージ通信エラー');
+          }
+        }
+
+        // Claude以外はV2グローバルオブジェクト方式を使用
         result = await chrome.scripting.executeScript({
           target: { tabId: tabId },
           func: (taskData) => {
           console.log('[ExecuteAITask] タスクデータ受信（同期版）:', taskData);
-          
+
           try {
             // 統合テストと同じAI自動化オブジェクト検索方式（V2版を優先）
             const automationMap = {
-              'Claude': ['ClaudeAutomationV2', 'ClaudeAutomation', 'Claude'],
-              'claude': ['ClaudeAutomationV2', 'ClaudeAutomation', 'Claude'],
               'ChatGPT': ['ChatGPTAutomationV2', 'ChatGPTAutomation', 'ChatGPT'],
               'chatgpt': ['ChatGPTAutomationV2', 'ChatGPTAutomation', 'ChatGPT'],
               'Gemini': ['GeminiAutomation', 'Gemini'],

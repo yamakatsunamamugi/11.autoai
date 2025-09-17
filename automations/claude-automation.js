@@ -581,53 +581,7 @@
         throw new Error(`${description} の要素が見つかりません`);
     };
 
-    // ステップ1-2: モデルリストの取得
-    const getModelList = () => {
-        console.log('\n🔍 モデルリスト取得開始');
-        const models = [];
-        const menuItems = document.querySelectorAll('[role="menuitem"]');
-
-        for (const item of menuItems) {
-            const text = item.textContent?.trim();
-            if (text) {
-                models.push({ element: item, text: text });
-                console.log(`  ✓ モデル発見: ${text}`);
-            }
-        }
-
-        console.log(`📋 発見したモデル数: ${models.length}`);
-        return models;
-    };
-
-    // ステップ1-3: モデルメニューを閉じる
-    const closeModelMenu = async () => {
-        console.log('\n🔚 モデルメニューを閉じる');
-
-        // ESCキーを送信
-        const escEvent = new KeyboardEvent('keydown', {
-            key: 'Escape',
-            code: 'Escape',
-            keyCode: 27,
-            which: 27,
-            bubbles: true,
-            cancelable: true
-        });
-        document.dispatchEvent(escEvent);
-
-        await wait(500);
-
-        // メニューが閉じたか確認
-        const menu = document.querySelector('[role="menu"][data-state="open"]');
-        if (!menu) {
-            console.log('  ✓ メニューが閉じました');
-            return true;
-        } else {
-            console.log('  ✗ メニューがまだ開いています');
-            return false;
-        }
-    };
-
-    // ステップ1-4: モデル情報取得関数
+    // ステップ1-2: モデル情報取得関数
     const getCurrentModelInfo = () => {
         console.log('\n📊 【ステップ1-2】現在のモデル情報を取得');
 
@@ -2001,24 +1955,41 @@
     }
 
     // ========================================
-    // グローバル公開
+    // Chrome Runtime Message Handler
     // ========================================
-    window.ClaudeAutomationV2 = {
-        executeTask,
-        runAutomation,
-        // フェーズ別メソッド（順次処理用）
-        inputTextOnly,
-        selectModelOnly,
-        selectFunctionOnly,
-        sendAndGetResponse
-    };
+    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+        if (request.type === 'CLAUDE_EXECUTE_TASK') {
+            console.log('📨 [ClaudeAutomation] タスク実行リクエスト受信:', request.taskData);
+
+            // 非同期処理のため、即座にtrueを返してチャネルを開いておく
+            executeTask(request.taskData).then(result => {
+                console.log('✅ [ClaudeAutomation] タスク実行完了:', result);
+                sendResponse({ success: true, result });
+            }).catch(error => {
+                console.error('❌ [ClaudeAutomation] タスク実行エラー:', error);
+                sendResponse({ success: false, error: error.message });
+            });
+
+            return true; // 非同期レスポンスのためチャネルを保持
+        }
+
+        if (request.type === 'CLAUDE_CHECK_READY') {
+            // スクリプトの準備状態を確認
+            sendResponse({
+                ready: true,
+                initTime: Date.now(),
+                methods: ['executeTask', 'runAutomation', 'inputTextOnly', 'selectModelOnly', 'selectFunctionOnly', 'sendAndGetResponse']
+            });
+            return false;
+        }
+    });
 
     // 初期化完了マーカーを設定（ai-task-executorが期待する名前を使用）
     window.CLAUDE_SCRIPT_LOADED = true;
     window.CLAUDE_SCRIPT_INIT_TIME = Date.now();
 
-    console.log('✅ Claude Automation V2 準備完了');
-    console.log('使用方法: ClaudeAutomationV2.executeTask({ model: "3.5 Sonnet", function: "Deep Research", prompt: "..." })');
+    console.log('✅ Claude Automation V2 準備完了（メッセージベース通信）');
+    console.log('使用方法: Chrome Runtime Message経由でタスクを実行');
 
     // ========================================
     // ウィンドウ終了時のログ保存処理
