@@ -445,6 +445,121 @@
           </div>
         </div>
 
+        <!-- AI別ログレポートファイル選択セクション -->
+        <div class="settings-category" style="border: 1px solid #dee2e6; border-radius: 8px; padding: 20px; margin-top: 20px;">
+          <h3 style="margin: 0 0 15px 0; color: #333; display: flex; align-items: center; gap: 8px;">
+            <span>📋</span>
+            AI別ログレポートファイル選択
+          </h3>
+
+          <!-- AIタブナビゲーション -->
+          <div class="ai-log-tabs" style="display: flex; margin-bottom: 20px; border-bottom: 1px solid #ddd;">
+            <button id="chatgptLogTab" class="ai-log-tab active" data-ai="chatgpt"
+                    style="padding: 10px 20px; border: none; background: #007bff; color: white; cursor: pointer; border-radius: 4px 4px 0 0; margin-right: 2px;">
+              🤖 ChatGPT
+            </button>
+            <button id="claudeLogTab" class="ai-log-tab" data-ai="claude"
+                    style="padding: 10px 20px; border: none; background: #6c757d; color: white; cursor: pointer; border-radius: 4px 4px 0 0; margin-right: 2px;">
+              🔮 Claude
+            </button>
+            <button id="geminiLogTab" class="ai-log-tab" data-ai="gemini"
+                    style="padding: 10px 20px; border: none; background: #6c757d; color: white; cursor: pointer; border-radius: 4px 4px 0 0;">
+              ✨ Gemini
+            </button>
+          </div>
+
+          <!-- AI別ファイル選択コンテンツ -->
+          <div id="aiLogFileSelectionContent">
+            <!-- フォルダナビゲーション -->
+            <div class="ai-folder-navigation" style="margin-bottom: 15px;">
+              <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 8px;">
+                <label style="font-weight: 600; color: #333;">現在のフォルダ:</label>
+                <input
+                  type="text"
+                  id="currentAiLogPath"
+                  value="/chatgpt-logs"
+                  style="flex: 1; padding: 6px; border: 1px solid #ddd; border-radius: 4px; background: #f8f9fa;"
+                  readonly
+                >
+                <button
+                  id="refreshAiLogFiles"
+                  class="btn btn-secondary"
+                  style="padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;"
+                >
+                  🔄 更新
+                </button>
+              </div>
+
+              <!-- パンくずリスト -->
+              <div id="aiLogBreadcrumb" style="font-size: 12px; color: #666; display: flex; align-items: center; gap: 5px;">
+                <span>📁 ChatGPTログ</span>
+              </div>
+            </div>
+
+            <!-- ファイル・フォルダ一覧 -->
+            <div class="ai-file-list-container" style="margin-bottom: 15px;">
+              <div id="aiLogFileListLoading" style="display: none; text-align: center; padding: 20px; color: #666;">
+                <span>📂 ログファイル一覧を読み込み中...</span>
+              </div>
+
+              <div id="aiLogFileListContainer" style="border: 1px solid #ddd; border-radius: 4px; max-height: 300px; overflow-y: auto; background: white;">
+                <div id="aiLogFileListEmpty" style="text-align: center; padding: 40px; color: #999;">
+                  <span>📭</span><br>
+                  ログファイルがありません<br>
+                  <small>「更新」ボタンでファイル一覧を取得してください</small>
+                </div>
+
+                <!-- ファイル一覧テーブル -->
+                <table id="aiLogFileListTable" style="display: none; width: 100%; border-collapse: collapse;">
+                  <thead>
+                    <tr style="background: #f8f9fa; border-bottom: 1px solid #ddd;">
+                      <th style="padding: 8px; text-align: left; font-size: 12px; color: #666;">種類</th>
+                      <th style="padding: 8px; text-align: left; font-size: 12px; color: #666;">名前</th>
+                      <th style="padding: 8px; text-align: left; font-size: 12px; color: #666;">サイズ</th>
+                      <th style="padding: 8px; text-align: left; font-size: 12px; color: #666;">更新日</th>
+                      <th style="padding: 8px; text-align: center; font-size: 12px; color: #666;">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody id="aiLogFileListBody">
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- 選択ファイル情報 -->
+            <div id="aiSelectedFileInfo" style="display: none; padding: 15px; background: #e8f5e8; border: 1px solid #d4edda; border-radius: 4px; margin-bottom: 15px;">
+              <h5 style="margin: 0 0 8px 0; color: #155724;">📄 選択されたログファイル</h5>
+              <div id="aiSelectedFileDetails" style="font-size: 14px; color: #155724;"></div>
+              <div style="margin-top: 10px;">
+                <button
+                  id="clearAiSelectedFile"
+                  class="btn"
+                  style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;"
+                >
+                  ❌ 選択解除
+                </button>
+                <button
+                  id="downloadAiSelectedFile"
+                  class="btn"
+                  style="padding: 8px 16px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; margin-left: 8px;"
+                >
+                  💾 ダウンロード
+                </button>
+              </div>
+            </div>
+
+            <!-- 各AI選択状況サマリー -->
+            <div id="aiSelectionSummary" style="background: #f8f9fa; padding: 15px; border-radius: 4px; border-left: 4px solid #007bff;">
+              <h5 style="margin: 0 0 10px 0; color: #333;">🎯 現在の選択状況</h5>
+              <div id="aiSelectionDetails" style="font-size: 14px; color: #666;">
+                <div id="chatgptSelection">🤖 ChatGPT: 未選択</div>
+                <div id="claudeSelection">🔮 Claude: 未選択</div>
+                <div id="geminiSelection">✨ Gemini: 未選択</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- 将来の設定項目用の枠組み -->
         <div class="settings-category" style="border: 1px solid #dee2e6; border-radius: 8px; padding: 20px; opacity: 0.6;">
           <h3 style="margin: 0 0 10px 0; color: #666; display: flex; align-items: center; gap: 8px;">

@@ -4578,6 +4578,147 @@ function initDropboxAuth() {
 let currentDropboxPath = ''; // ルートディレクトリから開始（デバッグ後に適切なパスに変更）
 let selectedDropboxFile = null;
 
+// ===== AI別ログレポートファイル選択機能 =====
+
+// AI別のファイル選択状態を管理
+let aiLogFileSelectors = {
+  chatgpt: {
+    currentPath: '/chatgpt-logs',
+    selectedFile: null,
+    displayName: 'ChatGPT',
+    emoji: '🤖'
+  },
+  claude: {
+    currentPath: '/claude-logs',
+    selectedFile: null,
+    displayName: 'Claude',
+    emoji: '🔮'
+  },
+  gemini: {
+    currentPath: '/gemini-logs',
+    selectedFile: null,
+    displayName: 'Gemini',
+    emoji: '✨'
+  }
+};
+
+// 現在アクティブなAIタブ
+let activeAiLogTab = 'chatgpt';
+
+// ログファイル拡張子のフィルタ
+const LOG_FILE_EXTENSIONS = ['.txt', '.log', '.json', '.csv', '.md'];
+
+// AI別ログファイル一覧の取得と表示
+async function loadAiLogFiles(aiType, folderPath = null) {
+  console.log(`[AI-${aiType}] ログファイル一覧取得開始`, { folderPath, currentPath: aiLogFileSelectors[aiType].currentPath });
+
+  const fileListLoading = document.getElementById('aiLogFileListLoading');
+  const fileListEmpty = document.getElementById('aiLogFileListEmpty');
+  const fileListTable = document.getElementById('aiLogFileListTable');
+  const fileListBody = document.getElementById('aiLogFileListBody');
+  const currentPathInput = document.getElementById('currentAiLogPath');
+  const breadcrumb = document.getElementById('aiLogBreadcrumb');
+
+  try {
+    // 表示状態を更新
+    if (fileListLoading) fileListLoading.style.display = 'block';
+    if (fileListEmpty) fileListEmpty.style.display = 'none';
+    if (fileListTable) fileListTable.style.display = 'none';
+
+    if (folderPath !== null) {
+      aiLogFileSelectors[aiType].currentPath = folderPath;
+      console.log(`[AI-${aiType}] パス更新:`, aiLogFileSelectors[aiType].currentPath);
+    }
+
+    if (currentPathInput) {
+      currentPathInput.value = aiLogFileSelectors[aiType].currentPath;
+    }
+
+    // パンくずリスト更新
+    updateAiLogBreadcrumb(aiType);
+
+    // Dropboxサービスを取得
+    console.log(`[AI-${aiType}] Dropboxサービス取得開始`);
+    const service = await loadDropboxService();
+    console.log(`[AI-${aiType}] Dropboxサービス取得完了`);
+
+    const isAuthenticated = await service.isAuthenticated();
+    if (!isAuthenticated) {
+      throw new Error('Dropbox認証が必要です。先に認証を完了してください。');
+    }
+
+    // ファイル一覧を取得
+    console.log(`[AI-${aiType}] ファイル一覧API呼び出し開始`, { path: aiLogFileSelectors[aiType].currentPath });
+    const files = await service.listFiles(aiLogFileSelectors[aiType].currentPath);
+    console.log(`[AI-${aiType}] ファイル一覧取得完了:`, files);
+
+    // ログファイルのみフィルタリング
+    const logFiles = files.filter(file => {
+      if (file.type === 'folder') return true;
+      return LOG_FILE_EXTENSIONS.some(ext => file.name.toLowerCase().endsWith(ext));
+    });
+
+    console.log(`[AI-${aiType}] ログファイルフィルタリング:`, {
+      totalFiles: files.length,
+      logFiles: logFiles.length,
+      filteredFiles: logFiles.map(f => f.name)
+    });
+
+    // 表示を更新
+    if (fileListLoading) fileListLoading.style.display = 'none';
+
+    if (logFiles.length === 0) {
+      if (fileListEmpty) fileListEmpty.style.display = 'block';
+      if (fileListTable) fileListTable.style.display = 'none';
+    } else {
+      if (fileListEmpty) fileListEmpty.style.display = 'none';
+      if (fileListTable) fileListTable.style.display = 'table';
+
+      // テーブルの内容をクリア
+      if (fileListBody) {
+        fileListBody.innerHTML = '';
+      }
+
+      // ファイルとフォルダを分けてソート
+      const folders = logFiles.filter(file => file.type === 'folder').sort((a, b) => a.name.localeCompare(b.name));
+      const filesOnly = logFiles.filter(file => file.type === 'file').sort((a, b) => a.name.localeCompare(b.name));
+
+      // 親フォルダへのリンク（ルートでない場合）
+      const currentPath = aiLogFileSelectors[aiType].currentPath;
+      if (currentPath !== '' && currentPath !== '/' && !currentPath.startsWith('/')) {
+        const parentRow = createAiLogFileRow(aiType, {
+          name: '.. (親フォルダ)',
+          type: 'folder',
+          isParent: true
+        });
+        if (fileListBody) fileListBody.appendChild(parentRow);
+      }
+
+      // フォルダを先に表示
+      folders.forEach(folder => {
+        const row = createAiLogFileRow(aiType, folder);
+        if (fileListBody) fileListBody.appendChild(row);
+      });
+
+      // ファイルを表示
+      filesOnly.forEach(file => {
+        const row = createAiLogFileRow(aiType, file);
+        if (fileListBody) fileListBody.appendChild(row);
+      });
+    }
+
+    showFeedback(`${aiLogFileSelectors[aiType].displayName}: ${logFiles.length}個のログファイルを取得しました`, 'success');
+
+  } catch (error) {
+    console.error(`AI-${aiType} ログファイル一覧取得エラー:`, error);
+    if (fileListLoading) fileListLoading.style.display = 'none';
+    if (fileListEmpty) fileListEmpty.style.display = 'block';
+    if (fileListTable) fileListTable.style.display = 'none';
+
+    showFeedback(`${aiLogFileSelectors[aiType].displayName}ログファイル取得エラー: ${error.message}`, 'error');
+  }
+}
+
 // Dropboxファイル一覧の取得と表示
 async function loadDropboxFiles(folderPath = null) {
   console.log('[Dropbox] ファイル一覧取得開始', { folderPath, currentDropboxPath });
@@ -4998,6 +5139,435 @@ function clearSelectedFile() {
   showFeedback('ファイル選択を解除しました', 'info');
 }
 
+// ===== AI別ログファイル関連関数群 =====
+
+// AIタブ切り替え機能
+function switchAiLogTab(aiType) {
+  console.log(`[AI-Tab] タブ切り替え: ${activeAiLogTab} → ${aiType}`);
+
+  // 前のタブを非アクティブに
+  const prevTab = document.querySelector(`#${activeAiLogTab}LogTab`);
+  if (prevTab) {
+    prevTab.style.background = '#6c757d';
+    prevTab.classList.remove('active');
+  }
+
+  // 新しいタブをアクティブに
+  const newTab = document.querySelector(`#${aiType}LogTab`);
+  if (newTab) {
+    newTab.style.background = '#007bff';
+    newTab.classList.add('active');
+  }
+
+  // アクティブなAIタブを更新
+  activeAiLogTab = aiType;
+
+  // UI要素を更新
+  updateAiLogUI(aiType);
+
+  // ファイル一覧を読み込み
+  loadAiLogFiles(aiType);
+
+  console.log(`[AI-Tab] タブ切り替え完了: ${aiType}`);
+}
+
+// AI別ログUI更新
+function updateAiLogUI(aiType) {
+  const selector = aiLogFileSelectors[aiType];
+  const currentPathInput = document.getElementById('currentAiLogPath');
+  const breadcrumb = document.getElementById('aiLogBreadcrumb');
+
+  if (currentPathInput) {
+    currentPathInput.value = selector.currentPath;
+  }
+
+  updateAiLogBreadcrumb(aiType);
+  updateAiSelectionSummary();
+}
+
+// AI別パンくずリスト更新
+function updateAiLogBreadcrumb(aiType) {
+  const breadcrumb = document.getElementById('aiLogBreadcrumb');
+  if (!breadcrumb) return;
+
+  const selector = aiLogFileSelectors[aiType];
+  const pathParts = selector.currentPath.split('/').filter(part => part);
+
+  let breadcrumbHTML = `<span style="cursor: pointer; color: #007bff;" onclick="navigateToAiLogFolder('${aiType}', '/')">${selector.emoji} ${selector.displayName}ログ</span>`;
+
+  let currentPath = '';
+  pathParts.forEach((part, index) => {
+    if (part === `${aiType}-logs`) return; // スキップ
+    currentPath += '/' + part;
+    const isLast = index === pathParts.length - 1;
+
+    if (isLast) {
+      breadcrumbHTML += ` / <span style="color: #666;">${part}</span>`;
+    } else {
+      breadcrumbHTML += ` / <span style="cursor: pointer; color: #007bff;" onclick="navigateToAiLogFolder('${aiType}', '${currentPath}')">${part}</span>`;
+    }
+  });
+
+  breadcrumb.innerHTML = breadcrumbHTML;
+}
+
+// AI別ログファイル行の作成
+function createAiLogFileRow(aiType, file) {
+  const row = document.createElement('tr');
+  row.style.cursor = 'pointer';
+  row.style.borderBottom = '1px solid #eee';
+
+  // ホバー効果
+  row.addEventListener('mouseenter', () => {
+    row.style.backgroundColor = '#f8f9fa';
+  });
+  row.addEventListener('mouseleave', () => {
+    if (!row.classList.contains('selected')) {
+      row.style.backgroundColor = '';
+    }
+  });
+
+  // アイコンと種類
+  const typeCell = document.createElement('td');
+  typeCell.style.padding = '8px';
+  typeCell.style.textAlign = 'center';
+  typeCell.style.width = '40px';
+
+  if (file.isParent) {
+    typeCell.innerHTML = '📁';
+  } else if (file.type === 'folder') {
+    typeCell.innerHTML = '📁';
+  } else {
+    // ログファイル拡張子に基づいてアイコンを設定
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (['log', 'txt'].includes(ext)) {
+      typeCell.innerHTML = '📄';
+    } else if (['json'].includes(ext)) {
+      typeCell.innerHTML = '📋';
+    } else if (['csv'].includes(ext)) {
+      typeCell.innerHTML = '📊';
+    } else if (['md'].includes(ext)) {
+      typeCell.innerHTML = '📝';
+    } else {
+      typeCell.innerHTML = '📄';
+    }
+  }
+
+  // ファイル名
+  const nameCell = document.createElement('td');
+  nameCell.style.padding = '8px';
+  nameCell.textContent = file.name;
+  nameCell.style.fontWeight = file.type === 'folder' ? 'bold' : 'normal';
+
+  // サイズ
+  const sizeCell = document.createElement('td');
+  sizeCell.style.padding = '8px';
+  sizeCell.style.fontSize = '12px';
+  sizeCell.style.color = '#666';
+  if (file.type === 'folder') {
+    sizeCell.textContent = '-';
+  } else {
+    sizeCell.textContent = formatFileSize(file.size || 0);
+  }
+
+  // 更新日
+  const dateCell = document.createElement('td');
+  dateCell.style.padding = '8px';
+  dateCell.style.fontSize = '12px';
+  dateCell.style.color = '#666';
+  if (file.modified) {
+    const date = new Date(file.modified);
+    dateCell.textContent = date.toLocaleDateString('ja-JP') + ' ' + date.toLocaleTimeString('ja-JP', {hour: '2-digit', minute: '2-digit'});
+  } else {
+    dateCell.textContent = '-';
+  }
+
+  // 操作ボタン
+  const actionCell = document.createElement('td');
+  actionCell.style.padding = '8px';
+  actionCell.style.textAlign = 'center';
+
+  if (file.type === 'folder' || file.isParent) {
+    const openBtn = document.createElement('button');
+    openBtn.textContent = '開く';
+    openBtn.style.padding = '4px 8px';
+    openBtn.style.fontSize = '12px';
+    openBtn.style.background = '#007bff';
+    openBtn.style.color = 'white';
+    openBtn.style.border = 'none';
+    openBtn.style.borderRadius = '3px';
+    openBtn.style.cursor = 'pointer';
+
+    openBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (file.isParent) {
+        // 親フォルダに移動
+        const parentPath = aiLogFileSelectors[aiType].currentPath.split('/').slice(0, -1).join('/') || `/${aiType}-logs`;
+        navigateToAiLogFolder(aiType, parentPath);
+      } else {
+        navigateToAiLogFolder(aiType, file.path);
+      }
+    });
+
+    actionCell.appendChild(openBtn);
+  } else {
+    const selectBtn = document.createElement('button');
+    selectBtn.textContent = '選択';
+    selectBtn.style.padding = '4px 8px';
+    selectBtn.style.fontSize = '12px';
+    selectBtn.style.background = '#28a745';
+    selectBtn.style.color = 'white';
+    selectBtn.style.border = 'none';
+    selectBtn.style.borderRadius = '3px';
+    selectBtn.style.cursor = 'pointer';
+
+    selectBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      selectAiLogFile(aiType, file, row);
+    });
+
+    actionCell.appendChild(selectBtn);
+  }
+
+  // クリックイベント（行全体）
+  row.addEventListener('click', () => {
+    if (file.type === 'folder' || file.isParent) {
+      if (file.isParent) {
+        const parentPath = aiLogFileSelectors[aiType].currentPath.split('/').slice(0, -1).join('/') || `/${aiType}-logs`;
+        navigateToAiLogFolder(aiType, parentPath);
+      } else {
+        navigateToAiLogFolder(aiType, file.path);
+      }
+    } else {
+      selectAiLogFile(aiType, file, row);
+    }
+  });
+
+  row.appendChild(typeCell);
+  row.appendChild(nameCell);
+  row.appendChild(sizeCell);
+  row.appendChild(dateCell);
+  row.appendChild(actionCell);
+
+  return row;
+}
+
+// AI別ログフォルダナビゲーション
+function navigateToAiLogFolder(aiType, folderPath) {
+  loadAiLogFiles(aiType, folderPath);
+}
+
+// AI別ログファイル選択
+function selectAiLogFile(aiType, file, row) {
+  // 既存の選択を解除
+  const previousSelected = document.querySelector('#aiLogFileListBody tr.selected');
+  if (previousSelected) {
+    previousSelected.classList.remove('selected');
+    previousSelected.style.backgroundColor = '';
+  }
+
+  // 新しい選択を設定
+  aiLogFileSelectors[aiType].selectedFile = file;
+  row.classList.add('selected');
+  row.style.backgroundColor = '#e3f2fd';
+
+  // 選択ファイル情報を表示
+  displayAiSelectedFileInfo(aiType, file);
+
+  // 選択状況を永続化
+  saveAiLogFileSelection(aiType, file);
+
+  // サマリーを更新
+  updateAiSelectionSummary();
+
+  showFeedback(`${aiLogFileSelectors[aiType].displayName}ログファイル "${file.name}" を選択しました`, 'success');
+}
+
+// AI別選択ファイル情報の表示
+function displayAiSelectedFileInfo(aiType, file) {
+  const selectedFileInfo = document.getElementById('aiSelectedFileInfo');
+  const selectedFileDetails = document.getElementById('aiSelectedFileDetails');
+
+  if (!selectedFileInfo || !selectedFileDetails) return;
+
+  const fileSize = formatFileSize(file.size || 0);
+  const modifiedDate = file.modified ? new Date(file.modified).toLocaleString('ja-JP') : '不明';
+  const selector = aiLogFileSelectors[aiType];
+
+  selectedFileDetails.innerHTML = `
+    <div style="margin-bottom: 8px;"><strong>${selector.emoji} AI:</strong> ${selector.displayName}</div>
+    <div style="margin-bottom: 8px;"><strong>📄 ファイル名:</strong> ${file.name}</div>
+    <div style="margin-bottom: 8px;"><strong>📍 パス:</strong> ${file.path}</div>
+    <div style="margin-bottom: 8px;"><strong>📊 サイズ:</strong> ${fileSize}</div>
+    <div><strong>📅 更新日:</strong> ${modifiedDate}</div>
+  `;
+
+  selectedFileInfo.style.display = 'block';
+}
+
+// AI別選択ファイルクリア
+function clearAiSelectedFile() {
+  const aiType = activeAiLogTab;
+  aiLogFileSelectors[aiType].selectedFile = null;
+
+  // テーブルの選択状態をクリア
+  const selectedRow = document.querySelector('#aiLogFileListBody tr.selected');
+  if (selectedRow) {
+    selectedRow.classList.remove('selected');
+    selectedRow.style.backgroundColor = '';
+  }
+
+  // 選択ファイル情報を非表示
+  const selectedFileInfo = document.getElementById('aiSelectedFileInfo');
+  if (selectedFileInfo) {
+    selectedFileInfo.style.display = 'none';
+  }
+
+  // 永続化ストレージからも削除
+  saveAiLogFileSelection(aiType, null);
+
+  // サマリーを更新
+  updateAiSelectionSummary();
+
+  showFeedback(`${aiLogFileSelectors[aiType].displayName}ログファイル選択を解除しました`, 'info');
+}
+
+// ===== AI別ログファイル永続化ストレージ機能 =====
+
+// AI別ログファイル選択を保存
+async function saveAiLogFileSelection(aiType, fileInfo) {
+  try {
+    const storageKey = `ai_log_file_selection_${aiType}`;
+    const data = {};
+    data[storageKey] = fileInfo;
+
+    await chrome.storage.local.set(data);
+    console.log(`[AI-Storage] ${aiType}ログファイル選択を保存:`, fileInfo);
+  } catch (error) {
+    console.error(`[AI-Storage] ${aiType}ログファイル選択保存エラー:`, error);
+  }
+}
+
+// AI別ログファイル選択を読み込み
+async function loadAiLogFileSelections() {
+  try {
+    const keys = ['ai_log_file_selection_chatgpt', 'ai_log_file_selection_claude', 'ai_log_file_selection_gemini'];
+    const result = await chrome.storage.local.get(keys);
+
+    // 各AIの選択状況を復元
+    Object.keys(aiLogFileSelectors).forEach(aiType => {
+      const storageKey = `ai_log_file_selection_${aiType}`;
+      const fileInfo = result[storageKey];
+
+      if (fileInfo) {
+        aiLogFileSelectors[aiType].selectedFile = fileInfo;
+        console.log(`[AI-Storage] ${aiType}ログファイル選択を復元:`, fileInfo);
+      }
+    });
+
+    // サマリーを更新
+    updateAiSelectionSummary();
+
+  } catch (error) {
+    console.error('[AI-Storage] ログファイル選択読み込みエラー:', error);
+  }
+}
+
+// DropboxConfigからAI別フォルダパスを読み込み
+async function loadAiLogFolderPaths() {
+  try {
+    // dropboxConfigがインポートされているかチェック
+    if (typeof dropboxConfig !== 'undefined') {
+      const aiPaths = await dropboxConfig.getAISpecificPaths();
+
+      // AI別フォルダパスを更新
+      if (aiPaths.chatgpt) {
+        aiLogFileSelectors.chatgpt.currentPath = aiPaths.chatgpt;
+      }
+      if (aiPaths.claude) {
+        aiLogFileSelectors.claude.currentPath = aiPaths.claude;
+      }
+      if (aiPaths.gemini) {
+        aiLogFileSelectors.gemini.currentPath = aiPaths.gemini;
+      }
+
+      console.log('[AI-Log] DropboxConfigからAI別フォルダパスを読み込み:', aiPaths);
+    } else {
+      console.log('[AI-Log] dropboxConfigが利用できません。デフォルトパスを使用します。');
+    }
+  } catch (error) {
+    console.error('[AI-Log] AI別フォルダパス読み込みエラー:', error);
+  }
+}
+
+// 選択されたファイルをダウンロード
+async function downloadAiSelectedFile() {
+  const aiType = activeAiLogTab;
+  const selectedFile = aiLogFileSelectors[aiType].selectedFile;
+
+  if (!selectedFile) {
+    showFeedback('ダウンロードするファイルが選択されていません', 'warning');
+    return;
+  }
+
+  try {
+    // Dropboxサービスを取得
+    const service = await loadDropboxService();
+    const isAuthenticated = await service.isAuthenticated();
+
+    if (!isAuthenticated) {
+      throw new Error('Dropbox認証が必要です');
+    }
+
+    showFeedback(`${selectedFile.name}をダウンロード中...`, 'loading');
+
+    // ファイルをダウンロード
+    const fileContent = await service.downloadFile(selectedFile.path);
+
+    // ブラウザでダウンロード
+    const blob = new Blob([fileContent], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = selectedFile.name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    showFeedback(`${selectedFile.name}をダウンロードしました`, 'success');
+
+  } catch (error) {
+    console.error('[AI-Download] ファイルダウンロードエラー:', error);
+    showFeedback(`ダウンロードエラー: ${error.message}`, 'error');
+  }
+}
+
+// AI選択状況サマリー更新
+function updateAiSelectionSummary() {
+  const chatgptEl = document.getElementById('chatgptSelection');
+  const claudeEl = document.getElementById('claudeSelection');
+  const geminiEl = document.getElementById('geminiSelection');
+
+  if (chatgptEl) {
+    const file = aiLogFileSelectors.chatgpt.selectedFile;
+    chatgptEl.textContent = `🤖 ChatGPT: ${file ? file.name : '未選択'}`;
+    chatgptEl.style.color = file ? '#28a745' : '#666';
+  }
+
+  if (claudeEl) {
+    const file = aiLogFileSelectors.claude.selectedFile;
+    claudeEl.textContent = `🔮 Claude: ${file ? file.name : '未選択'}`;
+    claudeEl.style.color = file ? '#28a745' : '#666';
+  }
+
+  if (geminiEl) {
+    const file = aiLogFileSelectors.gemini.selectedFile;
+    geminiEl.textContent = `✨ Gemini: ${file ? file.name : '未選択'}`;
+    geminiEl.style.color = file ? '#28a745' : '#666';
+  }
+}
+
 // 選択ファイルでAIタスク開始
 async function useSelectedFile() {
   if (!selectedDropboxFile) {
@@ -5335,6 +5905,61 @@ window.clearDropboxLogSettings = async function() {
   }
 }
 
+// AI別ログファイル選択のイベントリスナー設定
+function initAiLogFileSelection() {
+  console.log('[AI-Log] AI別ログファイル選択UI初期化開始');
+
+  // AIタブのイベントリスナー設定
+  const chatgptTab = document.getElementById('chatgptLogTab');
+  const claudeTab = document.getElementById('claudeLogTab');
+  const geminiTab = document.getElementById('geminiLogTab');
+
+  if (chatgptTab) {
+    chatgptTab.addEventListener('click', () => switchAiLogTab('chatgpt'));
+  }
+  if (claudeTab) {
+    claudeTab.addEventListener('click', () => switchAiLogTab('claude'));
+  }
+  if (geminiTab) {
+    geminiTab.addEventListener('click', () => switchAiLogTab('gemini'));
+  }
+
+  // 更新ボタンのイベントリスナー設定
+  const refreshButton = document.getElementById('refreshAiLogFiles');
+  if (refreshButton) {
+    refreshButton.addEventListener('click', () => {
+      console.log(`[AI-Log] 更新ボタンクリック: ${activeAiLogTab}`);
+      loadAiLogFiles(activeAiLogTab);
+    });
+  }
+
+  // 選択解除ボタンのイベントリスナー設定
+  const clearButton = document.getElementById('clearAiSelectedFile');
+  if (clearButton) {
+    clearButton.addEventListener('click', clearAiSelectedFile);
+  }
+
+  // ダウンロードボタンのイベントリスナー設定
+  const downloadButton = document.getElementById('downloadAiSelectedFile');
+  if (downloadButton) {
+    downloadButton.addEventListener('click', downloadAiSelectedFile);
+  }
+
+  // グローバル関数を公開（パンくずリストから使用）
+  window.navigateToAiLogFolder = navigateToAiLogFolder;
+
+  // DropboxConfigからAI別フォルダパスを読み込み
+  loadAiLogFolderPaths();
+
+  // 保存されたAI別ログファイル選択を読み込み
+  loadAiLogFileSelections();
+
+  // 初期表示（ChatGPTタブ）
+  updateAiLogUI('chatgpt');
+
+  console.log('[AI-Log] AI別ログファイル選択UI初期化完了');
+}
+
 // DOMContentLoadedイベントでDropbox設定を初期化
 document.addEventListener('DOMContentLoaded', () => {
   // 少し遅延させてDOM要素が確実に存在することを保証
@@ -5343,6 +5968,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initDropboxAuth();
     initDropboxFileUpload();
     initDropboxFileSelection();
+    initAiLogFileSelection(); // AI別ログファイル選択機能を初期化
   }, 100);
 });
 
