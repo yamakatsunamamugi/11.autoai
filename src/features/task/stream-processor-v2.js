@@ -1394,8 +1394,9 @@ export default class StreamProcessorV2 {
       console.log(`- exclusiveLoggerConfig.enabled: ${this.exclusiveLoggerConfig?.enabled}`);
 
       // Step 8-1: タスク実行開始ログ記録
-      if (this.spreadsheetLogger && this.spreadsheetLogger.logTaskExecution) {
-        await this.spreadsheetLogger.logTaskExecution(task);
+      // 注: spreadsheetLoggerはsheetsClientに統合されたため、代替処理は現在無効
+      if (this.sheetsClient && this.sheetsClient.logTaskExecution) {
+        await this.sheetsClient.logTaskExecution(task);
       }
 
       // Step 8-2: ウィンドウを作成
@@ -1408,15 +1409,16 @@ export default class StreamProcessorV2 {
       }
 
       // Step 8-3.1: 送信時刻を記録（ログ用）
-      if (this.spreadsheetLogger) {
+      // 注: spreadsheetLoggerはsheetsClientに統合されたためsheetsClientを使用
+      if (this.sheetsClient) {
         const taskId = `${task.column}${task.row}_${task.aiType || 'AI'}`;
-        // メソッドの存在をチェック
-        if (typeof this.spreadsheetLogger.recordSendTimestamp === 'function') {
-          this.spreadsheetLogger.recordSendTimestamp(taskId, task);
-          this.logger.log(`[Step 8-3.1] ⏰ 送信時刻記録: ${taskId}`);
-        } else if (typeof this.spreadsheetLogger.recordSendTime === 'function') {
+        // sheetsClientのメソッドの存在をチェック
+        if (typeof this.sheetsClient.recordSendTimestamp === 'function') {
+          this.sheetsClient.recordSendTimestamp(taskId, task);
+          this.logger.log(`[Step 8-3.1] ⏰ 送信時刻記録(統合版): ${taskId}`);
+        } else if (typeof this.sheetsClient.recordSendTime === 'function') {
           // フォールバック: 古いメソッドを使用
-          this.spreadsheetLogger.recordSendTime(taskId, {
+          this.sheetsClient.recordSendTime(taskId, {
             aiType: task.aiType || 'Claude',
             model: task.model || 'Claude Opus 4.1',
             function: task.function || '通常'
@@ -1544,9 +1546,10 @@ export default class StreamProcessorV2 {
       this.logger.error(`[StreamProcessorV2] タスク処理エラー (${task.column}${task.row}):`, error);
 
       // Step 8-6: エラー時もログ記録
-      if (this.spreadsheetLogger && this.spreadsheetLogger.logTaskCompletion) {
+      // 注: spreadsheetLoggerはsheetsClientに統合されたため、代替処理は現在無効
+      if (this.sheetsClient && this.sheetsClient.logTaskCompletion) {
         const taskId = `${task.column}${task.row}_${task.aiType || 'AI'}`;
-        await this.spreadsheetLogger.logTaskCompletion(taskId, null);
+        await this.sheetsClient.logTaskCompletion(taskId, null);
       }
 
       throw error;
@@ -3977,7 +3980,7 @@ export default class StreamProcessorV2 {
       console.log(`🔍 [DEBUG] 記録処理開始 - グループID: ${taskGroupInfo?.id}`);
       console.log(`- taskGroupInfo存在: ${!!taskGroupInfo}`);
       console.log(`- globalThis.logManager存在: ${!!globalThis.logManager}`);
-      console.log(`- this.spreadsheetLogger存在: ${!!this.spreadsheetLogger}`);
+      console.log(`- this.sheetsClient存在: ${!!this.sheetsClient} (旧spreadsheetLogger統合先)`);
 
       // Dropboxログレポートアップロード（最初に実行）
       const dropboxUploadResult = await this.uploadTaskReportToDropbox(taskGroupInfo, spreadsheetData);

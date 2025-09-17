@@ -1036,13 +1036,38 @@ export function setupMessageHandler() {
 
             // Step 23-2: StreamingServiceManagerからStreamProcessorを取得
             try {
-              const manager = getStreamingServiceManager();
+              // デフォルト設定でStreamingServiceManagerを初期化
+              const manager = getStreamingServiceManager({
+                'streaming.maxConcurrentWindows': 3,
+                'streaming.windowLayout': 'horizontal',
+                'ai.supportedTypes': ['Claude', 'ChatGPT', 'Gemini'],
+                'error.retry.maxAttempts': 3
+              });
 
               // managerの初期化状態を確認
               if (manager && manager.state && manager.state.isInitialized) {
                 const streamProcessor = manager.services?.get("StreamProcessor");
-                spreadsheetLogger = streamProcessor?.spreadsheetLogger;
-                console.log('[Step 23-3] StreamingServiceManager経由でSpreadsheetLogger取得:', !!spreadsheetLogger);
+                // spreadsheetLoggerはsheetsClientに統合されたためsheetsClientを取得
+                const sheetsClient = streamProcessor?.sheetsClient;
+
+                // sheetsClientが送信時刻記録機能を持つか確認
+                if (sheetsClient && (sheetsClient.recordSendTime || sheetsClient.recordSendTimestamp)) {
+                  // sheetsClientをspreadsheetLogger代替として使用
+                  spreadsheetLogger = {
+                    sendTimestamps: new Map(),
+                    recordSendTime: (taskId, sendTimeData) => {
+                      console.log('[Step 23-2-alt] SheetsClient経由で送信時刻記録:', { taskId, sendTimeData });
+                      if (sheetsClient.recordSendTime) {
+                        return sheetsClient.recordSendTime(taskId, sendTimeData);
+                      } else if (sheetsClient.recordSendTimestamp) {
+                        return sheetsClient.recordSendTimestamp(taskId, sendTimeData);
+                      }
+                    }
+                  };
+                }
+
+                console.log('[Step 23-3] StreamingServiceManager経由でSheetsClient取得:', !!sheetsClient);
+                console.log('[Step 23-3] SpreadsheetLogger代替物作成:', !!spreadsheetLogger);
               } else {
                 console.log('[Step 23-3] StreamingServiceManagerが未初期化 - グローバルへフォールバック');
               }
@@ -1057,7 +1082,16 @@ export function setupMessageHandler() {
               console.log('[Step 23-4] 環境検出:', isServiceWorker ? 'Service Worker' : 'Content Script/Popup');
 
               // 環境に応じたグローバルロケーションを確認
-              const possibleLocations = [
+              // spreadsheetLoggerがsheetsClientに統合されたため、sheetsClientも探索対象に追加
+              const possibleSheetsClients = [
+                globalThis.sheetsClient,
+                globalThis.logManager?.sheetsClient,
+                globalThis.StreamProcessorV2?.getInstance()?.sheetsClient,
+                // Service Worker環境ではwindowを除外
+                ...(isServiceWorker ? [] : [window?.sheetsClient])
+              ];
+
+              const possibleSpreadsheetLoggers = [
                 globalThis.spreadsheetLogger,
                 // Service Worker環境ではwindowを除外
                 ...(isServiceWorker ? [] : [window?.spreadsheetLogger]),
@@ -1065,13 +1099,33 @@ export function setupMessageHandler() {
                 globalThis.StreamProcessorV2?.getInstance()?.spreadsheetLogger
               ];
 
+              const possibleLocations = [...possibleSpreadsheetLoggers, ...possibleSheetsClients];
+
               console.log('[Step 23-4] 探索対象数:', possibleLocations.filter(Boolean).length);
 
               for (const location of possibleLocations) {
                 if (location) {
-                  spreadsheetLogger = location;
-                  console.log('[Step 23-4] グローバルからSpreadsheetLogger取得成功');
-                  break;
+                  // locationがsheetsClientの場合は代替オブジェクトを作成
+                  if (location.recordSendTime || location.recordSendTimestamp) {
+                    // sheetsClientが見つかった場合
+                    spreadsheetLogger = {
+                      sendTimestamps: new Map(),
+                      recordSendTime: (taskId, sendTimeData) => {
+                        console.log('[Step 23-4-alt] グローバルSheetsClient経由で送信時刻記録:', { taskId, sendTimeData });
+                        if (location.recordSendTime) {
+                          return location.recordSendTime(taskId, sendTimeData);
+                        } else if (location.recordSendTimestamp) {
+                          return location.recordSendTimestamp(taskId, sendTimeData);
+                        }
+                      }
+                    };
+                    console.log('[Step 23-4] グローバルからSheetsClient取得成功 (代替オブジェクト作成)');
+                  } else if (location.sendTimestamps && location.recordSendTime) {
+                    // 既存のspreadsheetLoggerの場合
+                    spreadsheetLogger = location;
+                    console.log('[Step 23-4] グローバルからSpreadsheetLogger取得成功');
+                  }
+                  if (spreadsheetLogger) break;
                 }
               }
             }
