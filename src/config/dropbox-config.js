@@ -20,7 +20,7 @@ export class DropboxConfig {
       contentUrl: 'https://content.dropboxapi.com/2',
 
       // アップロード設定
-      uploadPath: '/autoai-logs',  // デフォルトアップロード先
+      uploadPath: '/log-report',  // デフォルトアップロード先（新統一構造）
       maxRetries: 3,  // リトライ回数
       chunkSize: 8 * 1024 * 1024,  // 8MB チャンク
     };
@@ -205,7 +205,7 @@ export class DropboxConfig {
   async saveUploadSettings(settings) {
     const defaultSettings = {
       autoUpload: false,
-      uploadPath: '/autoai-logs',
+      uploadPath: '/log-report',
       compressionEnabled: true,
       retentionDays: 30,
       maxFilesPerAI: 5,           // AIタイプ別の最大保持ファイル数
@@ -231,7 +231,7 @@ export class DropboxConfig {
       const result = await chrome.storage.local.get(this.storageKeys.uploadSettings);
       return result[this.storageKeys.uploadSettings] || {
         autoUpload: false,
-        uploadPath: '/autoai-logs',
+        uploadPath: '/log-report',
         compressionEnabled: true,
         retentionDays: 30,
         maxFilesPerAI: 5,
@@ -242,7 +242,7 @@ export class DropboxConfig {
 
     return {
       autoUpload: false,
-      uploadPath: '/autoai-logs',
+      uploadPath: '/log-report',
       compressionEnabled: true,
       retentionDays: 30,
       maxFilesPerAI: 5,

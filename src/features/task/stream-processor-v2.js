@@ -4109,14 +4109,19 @@ export default class StreamProcessorV2 {
           const logFilePath = await globalThis.logManager.saveToFile();
           this.logger.log('✅ [個別タスクログ] Dropboxアップロード完了', { filePath: logFilePath });
 
-          // Dropbox URL を生成
+          // Dropboxパスを生成（log-report構造）
           const fileName = logFilePath.split('/').pop();
-          const dropboxUrl = `https://www.dropbox.com/home/log-report/${task.aiType.toLowerCase()}/complete/${fileName}`;
+          const aiType = task.aiType.toLowerCase();
+          const dropboxPath = `/log-report/${aiType}/complete/${fileName}`;
+
+          // Dropbox共有URL（ファイル参照用）
+          const dropboxUrl = `https://www.dropbox.com/home/log-report/${aiType}/complete?preview=${fileName}`;
 
           return {
             success: true,
             filePath: logFilePath,
             fileName: fileName,
+            dropboxPath: dropboxPath,
             url: dropboxUrl,
             uploadTime: new Date()
           };
@@ -4227,8 +4232,8 @@ export default class StreamProcessorV2 {
           { overwrite: false }
         );
 
-        // Dropbox Web URLを生成（新しい統一構造に対応）
-        const dropboxWebUrl = `https://www.dropbox.com/home/log-report/task-reports/${fileName}`;
+        // Dropbox Web URLを生成（統一形式: ?preview= 使用）
+        const dropboxWebUrl = `https://www.dropbox.com/home/log-report/task-reports?preview=${fileName}`;
 
         this.logger.log(`[StreamProcessorV2] ✅ Dropboxレポートアップロード完了: ${uploadPath}`);
         this.logger.log(`[StreamProcessorV2] 📁 保存場所: Dropboxアプリ${uploadPath} フォルダ`);

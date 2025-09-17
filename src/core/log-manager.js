@@ -297,6 +297,37 @@ export class LogManager {
       });
     }
   }
+
+  /**
+   * タスク開始を記録（プロキシメソッド）
+   */
+  logTaskStart(taskData) {
+    return this.fileManager.logTaskStart(taskData);
+  }
+
+  /**
+   * タスク完了を記録（プロキシメソッド）
+   */
+  logTaskComplete(result) {
+    return this.fileManager.logTaskComplete(result);
+  }
+
+  /**
+   * ログをファイルに保存（プロキシメソッド）
+   */
+  async saveToFile() {
+    return await this.fileManager.saveToFile();
+  }
+
+  /**
+   * ログエントリを追加（プロキシメソッド）- FileManagerへの転送
+   */
+  addLogToFile(message, options = {}) {
+    return this.fileManager.addLog({
+      message,
+      ...options
+    });
+  }
 }
 
 // Step 12: グローバルインスタンスの作成とエクスポート

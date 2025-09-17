@@ -295,20 +295,25 @@
         },
         '4_Canvas機能テキスト位置': {
             selectors: [
-                // Canvas固有セレクタを最優先
+                // 最優先: 実際のCanvasコンテンツ（code-blockクラス）
+                '.code-block__code',
+                'div.code-block__code',
+                '.code-block__code.h-fit.min-h-full.w-fit.min-w-full',
+                // Canvas固有セレクタ
                 '#markdown-artifact',
                 '[id="markdown-artifact"]',
                 '.font-claude-response#markdown-artifact',
-                // 実際のCanvas構造に合わせて追加
-                'div.grid-cols-1.grid.gap-2\\.5:has(p.whitespace-pre-wrap)',
-                'div.grid-cols-1.grid.gap-2\\.5',
-                'div[class*="grid-cols-1"][class*="gap-2.5"]',
-                // 既存のセレクタも維持（互換性のため）
                 '[tabindex="0"]#markdown-artifact',
                 'div.mx-auto.max-w-3xl#markdown-artifact',
-                // 汎用セレクタは最後（フォールバック用）
-                '.grid-cols-1.grid:not(.standard-markdown)',
-                '[class*="grid"][class*="gap"]:not([class*="standard-markdown"])'
+                // 実際のCanvas構造
+                'div.grid-cols-1.grid.gap-2\\.5:has(p.whitespace-pre-wrap)',
+                // 除外条件付きセレクタ（作業説明文を除外）
+                'div.grid-cols-1.grid.gap-2\\.5:not([class*="p-3"]):not([class*="pt-0"]):not([class*="pr-8"])',
+                'div[class*="grid-cols-1"][class*="gap-2.5"]:not([class*="p-3"]):not([class*="pt-0"])',
+                // 通常回答除外セレクタ
+                '.grid-cols-1.grid:not(.standard-markdown):not([class*="p-3"]):not([class*="pt-0"])',
+                // フォールバック（汎用セレクタ）
+                '[class*="grid"][class*="gap"]:not([class*="standard-markdown"]):not([class*="p-3"])'
             ],
             description: 'Canvas機能のテキスト表示エリア'
         },
@@ -408,20 +413,25 @@
         },
         '4_Canvas機能テキスト位置': {
             selectors: [
-                // Canvas固有セレクタを最優先
+                // 最優先: 実際のCanvasコンテンツ（code-blockクラス）
+                '.code-block__code',
+                'div.code-block__code',
+                '.code-block__code.h-fit.min-h-full.w-fit.min-w-full',
+                // Canvas固有セレクタ
                 '#markdown-artifact',
                 '[id="markdown-artifact"]',
                 '.font-claude-response#markdown-artifact',
-                // 実際のCanvas構造に合わせて追加
-                'div.grid-cols-1.grid.gap-2\\.5:has(p.whitespace-pre-wrap)',
-                'div.grid-cols-1.grid.gap-2\\.5',
-                'div[class*="grid-cols-1"][class*="gap-2.5"]',
-                // 既存のセレクタも維持（互換性のため）
                 '[tabindex="0"]#markdown-artifact',
                 'div.mx-auto.max-w-3xl#markdown-artifact',
-                // 汎用セレクタは最後（フォールバック用）
-                '.grid-cols-1.grid:not(.standard-markdown)',
-                '[class*="grid"][class*="gap"]:not([class*="standard-markdown"])'
+                // 実際のCanvas構造
+                'div.grid-cols-1.grid.gap-2\\.5:has(p.whitespace-pre-wrap)',
+                // 除外条件付きセレクタ（作業説明文を除外）
+                'div.grid-cols-1.grid.gap-2\\.5:not([class*="p-3"]):not([class*="pt-0"]):not([class*="pr-8"])',
+                'div[class*="grid-cols-1"][class*="gap-2.5"]:not([class*="p-3"]):not([class*="pt-0"])',
+                // 通常回答除外セレクタ
+                '.grid-cols-1.grid:not(.standard-markdown):not([class*="p-3"]):not([class*="pt-0"])',
+                // フォールバック（汎用セレクタ）
+                '[class*="grid"][class*="gap"]:not([class*="standard-markdown"]):not([class*="p-3"])'
             ],
             description: 'Canvas機能のテキスト表示エリア'
         },
@@ -864,55 +874,82 @@
         }
 
         // 方法3: 特定の子要素からテキスト取得（Canvasの場合）
-        if (element.id === 'markdown-artifact' || element.querySelector('#markdown-artifact') ||
-            element.querySelector('.grid-cols-1.grid.gap-2\\.5')) {
+        const isCanvasElement = element.classList.contains('code-block__code') ||
+                               element.id === 'markdown-artifact' ||
+                               element.querySelector('#markdown-artifact') ||
+                               element.querySelector('.code-block__code') ||
+                               element.querySelector('.grid-cols-1.grid.gap-2\\.5');
+
+        // 作業説明文を除外（間違った取得対象）
+        const isTaskExplanation = element.classList.contains('p-3') ||
+                                 element.classList.contains('pt-0') ||
+                                 element.classList.contains('pr-8') ||
+                                 (element.textContent && element.textContent.includes('The task is complete'));
+
+        if (isCanvasElement && !isTaskExplanation) {
             console.log('  📝 Canvas要素を検出、特別処理を実行');
+            console.log(`    - 要素判定: ${element.classList.contains('code-block__code') ? 'code-block__code' : 'その他Canvas要素'}`);
 
-            // すべての段落要素を取得（Canvasの主要コンテンツ）
-            const paragraphs = element.querySelectorAll('p');
-            console.log('  - 段落数:', paragraphs.length);
+            // code-block__code要素の場合は直接テキストを取得
+            if (element.classList.contains('code-block__code')) {
+                const codeText = element.innerText || element.textContent || '';
+                if (codeText.trim() && codeText.length > fullText.length) {
+                    fullText = codeText.trim();
+                    console.log('  - code-block__code テキスト長:', fullText.length);
+                }
+            } else {
+                // その他のCanvas要素の場合は従来の方法
+                const paragraphs = element.querySelectorAll('p');
+                console.log('  - 段落数:', paragraphs.length);
 
-            if (paragraphs.length > 0) {
-                let combinedText = '';
-                let totalChars = 0;
-                paragraphs.forEach((para, index) => {
-                    const paraText = para.innerText || para.textContent || '';
-                    if (paraText.trim()) {
-                        const charCount = paraText.length;
-                        totalChars += charCount;
-                        if (index < 5 || index >= paragraphs.length - 2) {
-                            // 最初の5段落と最後の2段落の詳細をログ
-                            console.log(`    - 段落${index + 1}: ${charCount}文字`);
+                if (paragraphs.length > 0) {
+                    let combinedText = '';
+                    let totalChars = 0;
+                    paragraphs.forEach((para, index) => {
+                        const paraText = para.innerText || para.textContent || '';
+                        if (paraText.trim()) {
+                            const charCount = paraText.length;
+                            totalChars += charCount;
+                            if (index < 5 || index >= paragraphs.length - 2) {
+                                // 最初の5段落と最後の2段落の詳細をログ
+                                console.log(`    - 段落${index + 1}: ${charCount}文字`);
+                            }
+                            combinedText += paraText.trim() + '\n\n';
                         }
-                        combinedText += paraText.trim() + '\n\n';
+                    });
+
+                    console.log(`  - 総文字数: ${totalChars}文字`);
+
+                    if (combinedText.trim().length > fullText.length) {
+                        fullText = combinedText.trim();
+                        console.log('  - 結合テキスト長:', fullText.length);
                     }
-                });
+                }
 
-                console.log(`  - 総文字数: ${totalChars}文字`);
+                // pre/codeブロックも探す（コード例が含まれる場合）
+                const codeBlocks = element.querySelectorAll('pre, code');
+                if (codeBlocks.length > 0) {
+                    console.log('  - コードブロック数:', codeBlocks.length);
+                    let codeText = '';
+                    codeBlocks.forEach((block, index) => {
+                        const blockText = block.innerText || block.textContent || '';
+                        if (blockText.trim() && !fullText.includes(blockText.trim())) {
+                            console.log(`    - コードブロック${index + 1}: ${blockText.length}文字`);
+                            codeText += blockText + '\n';
+                        }
+                    });
 
-                if (combinedText.trim().length > fullText.length) {
-                    fullText = combinedText.trim();
-                    console.log('  - 結合テキスト長:', fullText.length);
+                    if (codeText.trim()) {
+                        fullText += '\n\n' + codeText.trim();
+                    }
                 }
             }
-
-            // pre/codeブロックも探す（コード例が含まれる場合）
-            const codeBlocks = element.querySelectorAll('pre, code');
-            if (codeBlocks.length > 0) {
-                console.log('  - コードブロック数:', codeBlocks.length);
-                let codeText = '';
-                codeBlocks.forEach((block, index) => {
-                    const blockText = block.innerText || block.textContent || '';
-                    if (blockText.trim() && !fullText.includes(blockText.trim())) {
-                        console.log(`    - コードブロック${index + 1}: ${blockText.length}文字`);
-                        codeText += blockText + '\n';
-                    }
-                });
-
-                if (codeText.trim()) {
-                    fullText += '\n\n' + codeText.trim();
-                }
-            }
+        } else if (isTaskExplanation) {
+            console.log('  ⚠️ 作業説明文を検出、除外します');
+            console.log(`    - 除外理由: ${element.classList.contains('p-3') ? 'p-3クラス' :
+                                        element.classList.contains('pt-0') ? 'pt-0クラス' :
+                                        element.classList.contains('pr-8') ? 'pr-8クラス' :
+                                        'タスク完了テキスト'}`);
         }
 
         const length = fullText.length;
