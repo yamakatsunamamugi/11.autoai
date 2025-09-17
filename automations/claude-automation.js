@@ -602,6 +602,81 @@
         return null;
     };
 
+    // ステップ1-2-2: 機能確認関数
+    const confirmFeatureSelection = (expectedFeature = null) => {
+        console.log('\n🔍 【機能確認】選択された機能のボタンを確認');
+        console.log(`期待される機能: ${expectedFeature || '(指定なし)'}`);
+
+        const confirmationResults = {
+            slowThinking: false,
+            webSearch: false,
+            deepResearch: false,
+            detected: []
+        };
+
+        try {
+            // ゆっくり考えるボタンの確認
+            const slowThinkingButtons = document.querySelectorAll('button');
+            for (const button of slowThinkingButtons) {
+                const text = button.textContent?.trim() || '';
+                const hasClockIcon = button.querySelector('svg') || button.innerHTML.includes('clock');
+                if (text.includes('ゆっくり考える') || (hasClockIcon && text.includes('考える'))) {
+                    confirmationResults.slowThinking = true;
+                    confirmationResults.detected.push('ゆっくり考える');
+                    console.log('  ✅ ゆっくり考えるボタン発見');
+                    break;
+                }
+            }
+
+            // ウェブ検索ボタンの確認
+            const webSearchButtons = document.querySelectorAll('button');
+            for (const button of webSearchButtons) {
+                const text = button.textContent?.trim() || '';
+                const hasSearchIcon = button.querySelector('svg') || button.innerHTML.includes('search');
+                if (text.includes('ウェブ検索') || (hasSearchIcon && text.includes('検索'))) {
+                    confirmationResults.webSearch = true;
+                    confirmationResults.detected.push('ウェブ検索');
+                    console.log('  ✅ ウェブ検索ボタン発見');
+                    break;
+                }
+            }
+
+            // Deep Researchボタンの確認（aria-pressed属性をチェック）
+            const deepResearchButtons = document.querySelectorAll('button[type="button"][aria-pressed]');
+            for (const button of deepResearchButtons) {
+                const text = button.textContent?.trim() || '';
+                if (text.includes('Research') || text.includes('research') || button.getAttribute('aria-pressed') === 'true') {
+                    confirmationResults.deepResearch = true;
+                    confirmationResults.detected.push('DeepResearch');
+                    console.log('  ✅ DeepResearchボタン発見');
+                    break;
+                }
+            }
+
+            // 結果の表示
+            console.log(`\n📊 機能確認結果:`);
+            console.log(`  - ゆっくり考える: ${confirmationResults.slowThinking ? '✅' : '❌'}`);
+            console.log(`  - ウェブ検索: ${confirmationResults.webSearch ? '✅' : '❌'}`);
+            console.log(`  - DeepResearch: ${confirmationResults.deepResearch ? '✅' : '❌'}`);
+            console.log(`  - 検出された機能: [${confirmationResults.detected.join(', ')}]`);
+
+            // 期待される機能との照合
+            if (expectedFeature) {
+                const isExpectedFound = confirmationResults.detected.some(feature =>
+                    feature.includes(expectedFeature) || expectedFeature.includes(feature)
+                );
+                console.log(`  - 期待機能の確認: ${isExpectedFound ? '✅' : '❌'}`);
+                confirmationResults.expectedFound = isExpectedFound;
+            }
+
+            return confirmationResults;
+
+        } catch (error) {
+            console.log(`  ❌ 機能確認エラー: ${error.message}`);
+            return { ...confirmationResults, error: error.message };
+        }
+    };
+
     // ステップ1-5: React風イベント処理関数
     const setToggleState = (toggleButton, targetState) => {
         console.log(`\n🔄 トグル状態変更: ${targetState ? 'ON' : 'OFF'}`);
@@ -1324,6 +1399,18 @@
                                 break;
                             }
                         }
+
+                        // ========================================
+                        // ステップ4-2-2: Deep Research機能確認
+                        // ========================================
+                        console.log('\n【ステップ4-2-2】Deep Research機能の確認');
+                        const deepResearchConfirm = confirmFeatureSelection('Deep Research');
+
+                        if (deepResearchConfirm.deepResearch || deepResearchConfirm.webSearch) {
+                            console.log(`✅ Deep Research機能確認完了: [${deepResearchConfirm.detected.join(', ')}]`);
+                        } else {
+                            console.log('⚠️ Deep Research機能の確認ができませんでしたが処理を継続します');
+                        }
                     } else {
                         // その他の機能を選択
                         const toggles = document.querySelectorAll('button:has(input[role="switch"])');
@@ -1341,6 +1428,20 @@
                         featureMenuBtn.click();
                         await wait(1000);
                     }
+                }
+
+                // ========================================
+                // ステップ4-4: 機能選択確認（新機能）
+                // ========================================
+                console.log('\n【ステップ4-4】機能選択の確認');
+                const confirmationResult = confirmFeatureSelection(featureName);
+
+                if (confirmationResult.error) {
+                    console.log(`⚠️ 機能確認でエラーが発生しましたが処理を継続します: ${confirmationResult.error}`);
+                } else if (confirmationResult.detected.length === 0) {
+                    console.log('⚠️ 期待される機能ボタンが検出されませんでしたが処理を継続します');
+                } else {
+                    console.log(`✅ 機能選択確認完了: [${confirmationResult.detected.join(', ')}]`);
                 }
             }
 

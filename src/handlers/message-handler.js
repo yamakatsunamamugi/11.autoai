@@ -244,8 +244,8 @@ export function setupMessageHandler() {
               aiType: 'Claude',
               model: model,
               function: functionName,
-              column: taskData.cellInfo.charAt(0), // 例: "C3" -> "C"
-              row: taskData.cellInfo.slice(1) // 例: "C3" -> "3"
+              column: taskData.cellInfo.column || 'A', // オブジェクト形式のcolumnプロパティ
+              row: taskData.cellInfo.row || '1' // オブジェクト形式のrowプロパティ
             };
 
             await sheetsClient.writeLogToSpreadsheet(logTask, {
