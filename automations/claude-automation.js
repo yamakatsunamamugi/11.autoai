@@ -1163,7 +1163,7 @@
                                         'タスク完了テキスト'}`);
         }
 
-        const length = fullText.length;
+        let length = fullText.length;
         console.log('  ✅ 最終テキスト長:', length);
 
         if (length === 0) {
@@ -1181,7 +1181,7 @@
             console.log(`📝 プロンプト除外完了: ${originalLength}文字 → ${finalLength}文字 (${originalLength - finalLength}文字削減)`);
         }
 
-        // length変数を再利用（const宣言を削除）
+        // length変数を再利用
         length = finalLength;
 
         if (length <= 200) {
@@ -2172,7 +2172,6 @@
             console.log(`🔍 最終テキスト取得開始 - 現在のfinalText: ${finalText ? finalText.length + '文字' : 'なし'}`);
 
             // Canvas機能のテキストを優先的に最終取得
-            const deepResearchSelectors = getDeepResearchSelectors();
             const canvasResult = await findClaudeElement(deepResearchSelectors['4_Canvas機能テキスト位置'], 5, true);
 
             if (canvasResult) {
