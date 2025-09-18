@@ -9,6 +9,7 @@
  * Claude-ステップ4: 機能選択（条件付き）
  * Claude-ステップ5: メッセージ送信
  * Claude-ステップ6: 応答待機（通常/Deep Research）
+ * Claude-ステップ6-5: 「続ける」ボタンチェック（新規追加）
  * Claude-ステップ7: テキスト取得
  *
  * @version 3.0.0
@@ -2001,6 +2002,72 @@
             await wait(3000);
 
             // ========================================
+            // ステップ6-5: 「続ける」ボタンチェック
+            // ========================================
+            console.log('%c【Claude-ステップ6-5】「続ける」ボタンの存在確認', 'color: #607D8B; font-weight: bold;');
+            console.log('─'.repeat(40));
+
+            const deepResearchSelectors = getDeepResearchSelectors();
+            const continueButton = await findClaudeElement(deepResearchSelectors['4_3_Canvas続けるボタン'], 3, true);
+
+            if (continueButton) {
+                console.log('✓「続ける」ボタンを発見、クリック中...');
+                continueButton.click();
+                await wait(2000);
+
+                // 新しい応答サイクルの応答待機を実行
+                console.log('🔄 新しい応答サイクルの停止ボタン出現を待機中...');
+                let stopButtonFound = false;
+                let waitCount = 0;
+                const maxWait = 30; // 30秒まで待機
+
+                while (!stopButtonFound && waitCount < maxWait) {
+                    const stopResult = await findClaudeElement(deepResearchSelectors['3_回答停止ボタン'], 2, true);
+                    if (stopResult) {
+                        stopButtonFound = true;
+                        console.log(`✓ 回答停止ボタンが出現（${waitCount}秒後）`);
+                        break;
+                    }
+                    await wait(1000);
+                    waitCount++;
+                }
+
+                // 回答停止ボタンが消滅するまで待機
+                if (stopButtonFound) {
+                    console.log('🔄 継続応答完了まで待機中...');
+                    while (waitCount < 600) { // 最大10分待機
+                        const stopResult = await findClaudeElement(deepResearchSelectors['3_回答停止ボタン'], 2, true);
+                        if (!stopResult) {
+                            // 10秒間確認
+                            let stillGone = true;
+                            for (let confirmCount = 0; confirmCount < 10; confirmCount++) {
+                                await wait(1000);
+                                const reconfirmResult = await findClaudeElement(deepResearchSelectors['3_回答停止ボタン'], 2, true);
+                                if (reconfirmResult) {
+                                    stillGone = false;
+                                    console.log(`  停止ボタン再出現（${confirmCount + 1}秒後）`);
+                                    break;
+                                }
+                            }
+
+                            if (stillGone) {
+                                console.log('✓ 継続応答生成完了');
+                                break;
+                            }
+                        }
+                        await wait(1000);
+                        waitCount++;
+                    }
+                }
+
+                console.log('%c✅【Claude-ステップ6-5】「続ける」ボタン処理完了', 'color: #4CAF50; font-weight: bold;');
+                await wait(2000); // 追加待機
+            } else {
+                console.log('「続ける」ボタンは見つかりませんでした。次のステップに進みます。');
+                console.log('%c✅【Claude-ステップ6-5】「続ける」ボタンチェック完了', 'color: #4CAF50; font-weight: bold;');
+            }
+
+            // ========================================
             // ステップ7: テキスト取得
             // ========================================
             console.log('%c【Claude-ステップ7-1】テキスト取得処理開始', 'color: #3F51B5; font-weight: bold;');
@@ -2024,65 +2091,10 @@
                 }
             }
 
-            // Canvas以外の処理（既存のロジック）
+            // Canvas以外の処理（通常テキストのフォールバック）
             if (!finalText) {
-                // Canvas機能のテキストを確認
+                console.log('🔍 Canvas以外のテキストを確認中...');
                 const deepResearchSelectors = getDeepResearchSelectors();
-
-                // 「続ける」ボタンがあればクリック（Canvas内で続ける操作が必要な場合）
-                const continueButton = await findClaudeElement(deepResearchSelectors['4_3_Canvas続けるボタン'], 3, true);
-                if (continueButton) {
-                    console.log('✓ Canvas「続ける」ボタンを発見、クリック中...');
-                    continueButton.click();
-                    await wait(2000);
-
-                    // 回答停止ボタンが出現するまで待機
-                    console.log('🔄 回答停止ボタンの出現を待機中...');
-                    let stopButtonFound = false;
-                    let waitCount = 0;
-                    const maxWait = 30; // 30秒まで待機
-
-                    while (!stopButtonFound && waitCount < maxWait) {
-                        const stopResult = await findClaudeElement(deepResearchSelectors['3_回答停止ボタン'], 2, true);
-                        if (stopResult) {
-                            stopButtonFound = true;
-                            console.log(`✓ 回答停止ボタンが出現（${waitCount}秒後）`);
-                            break;
-                        }
-                        await wait(1000);
-                        waitCount++;
-                    }
-
-                    // 回答停止ボタンが消滅するまで待機
-                    if (stopButtonFound) {
-                        console.log('🔄 回答完了まで待機中...');
-                        while (waitCount < 600) { // 最大10分待機
-                            const stopResult = await findClaudeElement(deepResearchSelectors['3_回答停止ボタン'], 2, true);
-                            if (!stopResult) {
-                                // 10秒間確認
-                                let stillGone = true;
-                                for (let confirmCount = 0; confirmCount < 10; confirmCount++) {
-                                    await wait(1000);
-                                    const reconfirmResult = await findClaudeElement(deepResearchSelectors['3_回答停止ボタン'], 2, true);
-                                    if (reconfirmResult) {
-                                        stillGone = false;
-                                        console.log(`  停止ボタン再出現（${confirmCount + 1}秒後）`);
-                                        break;
-                                    }
-                                }
-
-                                if (stillGone) {
-                                    console.log('✓ Canvas回答生成完了');
-                                    break;
-                                }
-                            }
-                            await wait(1000);
-                            waitCount++;
-                        }
-                    }
-
-                    await wait(2000); // 追加待機
-                }
 
                 // 通常のテキストを確認（Canvasが見つからない場合のフォールバック）
                 const normalResult = await findClaudeElement(deepResearchSelectors['5_通常処理テキスト位置'], 3, true);
