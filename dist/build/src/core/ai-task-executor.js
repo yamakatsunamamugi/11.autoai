@@ -406,6 +406,7 @@ export class AITaskExecutor {
               status: result.result?.status || 'success',
               model: taskData.model,
               function: taskData.function,
+              url: result.result?.url || 'N/A',
               executionTime: Date.now() - startTime
             };
           } else {
