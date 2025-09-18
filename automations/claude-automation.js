@@ -2,14 +2,14 @@
  * @fileoverview Claude Automation V2 - ステップ実行版
  *
  * 【ステップ構成】
- * ステップ0: 初期化（設定・セレクタ読み込み）
- * ステップ1: ヘルパー関数定義
- * ステップ2: テキスト入力
- * ステップ3: モデル選択（条件付き）
- * ステップ4: 機能選択（条件付き）
- * ステップ5: メッセージ送信
- * ステップ6: 応答待機（通常/Deep Research）
- * ステップ7: テキスト取得
+ * Claude-ステップ0: 初期化（設定・セレクタ読み込み）
+ * Claude-ステップ1: ヘルパー関数定義
+ * Claude-ステップ2: テキスト入力
+ * Claude-ステップ3: モデル選択（条件付き）
+ * Claude-ステップ4: 機能選択（条件付き）
+ * Claude-ステップ5: メッセージ送信
+ * Claude-ステップ6: 応答待機（通常/Deep Research）
+ * Claude-ステップ7: テキスト取得
  *
  * @version 3.0.0
  * @updated 2024-12-16 ステップ番号体系統一、コード整理
@@ -246,10 +246,10 @@
     };
 
     // ========================================
-    // ステップ0: 初期化処理
+    // Claude-ステップ0: 初期化処理
     // ========================================
 
-    // ステップ0-1: 設定の取得（グローバル変数への直接アクセスを避ける）
+    // Claude-ステップ0-1: 設定の取得（グローバル変数への直接アクセスを避ける）
     const getConfig = () => {
         return {
             AI_WAIT_CONFIG: window.AI_WAIT_CONFIG || {
@@ -266,13 +266,13 @@
         };
     };
 
-    // ステップ0-2: 設定の適用
+    // Claude-ステップ0-2: 設定の適用
     const config = getConfig();
     const AI_WAIT_CONFIG = config.AI_WAIT_CONFIG;
     const UI_SELECTORS = config.UI_SELECTORS;
 
-    // ステップ0-3: UI_SELECTORSの確認
-    console.log('🔧 [Claude-ステップ0-3] UI_SELECTORS初期化確認:');
+    // Claude-ステップ0-3: UI_SELECTORSの確認
+    console.log('🔧 【Claude-ステップ0-3】UI_SELECTORS初期化確認:');
     console.log('  UI_SELECTORS存在:', !!UI_SELECTORS);
     if (UI_SELECTORS && UI_SELECTORS.Claude) {
         console.log('  UI_SELECTORS.Claude存在:', !!UI_SELECTORS.Claude);
@@ -280,14 +280,14 @@
         console.log('  UI_SELECTORS.Claude.SEND_BUTTON:', UI_SELECTORS.Claude.SEND_BUTTON);
         console.log('  UI_SELECTORS.Claude.STOP_BUTTON:', UI_SELECTORS.Claude.STOP_BUTTON);
     } else {
-        console.warn('⚠️ [Claude-ステップ0-3] UI_SELECTORSが未定義です！デフォルト値を使用します。');
+        console.warn('⚠️ 【Claude-ステップ0-3】UI_SELECTORSが未定義です！デフォルト値を使用します。');
     }
 
     // ========================================
-    // ステップ0-4: セレクタ定義
+    // Claude-ステップ0-4: セレクタ定義
     // ========================================
 
-    // ステップ0-4-1: Deep Research用セレクタ
+    // Claude-ステップ0-4-1: Deep Research用セレクタ
     const getDeepResearchSelectors = () => ({
         '3_回答停止ボタン': {
             selectors: UI_SELECTORS.Claude?.STOP_BUTTON || [],
@@ -353,7 +353,7 @@
         }
     });
 
-    // ステップ0-4-2: モデル選択用セレクタ
+    // Claude-ステップ0-4-2: モデル選択用セレクタ
     const modelSelectors = {
         menuButton: (UI_SELECTORS.Claude?.MODEL_BUTTON || []).map(selector => ({ selector, description: 'モデル選択ボタン' })),
         menuContainer: [
@@ -363,7 +363,7 @@
         modelDisplay: (UI_SELECTORS.Claude?.MODEL_INFO?.TEXT_ELEMENT || []).slice(0, 3).map(selector => ({ selector, description: 'モデル表示要素' }))
     };
 
-    // ステップ0-4-3: 機能選択用セレクタ
+    // Claude-ステップ0-4-3: 機能選択用セレクタ
     const featureSelectors = {
         menuButton: UI_SELECTORS.Claude?.FUNCTION_MENU_BUTTON || [],
         menuContainer: UI_SELECTORS.Claude?.FEATURE_MENU?.CONTAINER || [],
@@ -371,7 +371,7 @@
         researchButton: UI_SELECTORS.Claude?.FEATURE_BUTTONS?.RESEARCH || []
     };
 
-    // ステップ0-4-4: デフォルトセレクタ（フォールバック用）
+    // Claude-ステップ0-4-4: デフォルトセレクタ（フォールバック用）
     const DEFAULT_SELECTORS = {
         INPUT: [
             '.ProseMirror',
@@ -391,7 +391,7 @@
         ]
     };
 
-    // ステップ0-4-5: Claude動作用セレクタ
+    // Claude-ステップ0-4-5: Claude動作用セレクタ
     const claudeSelectors = {
         '1_テキスト入力欄': {
             selectors: (UI_SELECTORS.Claude?.INPUT && UI_SELECTORS.Claude.INPUT.length > 0)
@@ -467,21 +467,21 @@
         }
     };
 
-    // ステップ0-5: セレクタの最終状態をログ出力
-    console.log('📋 [Claude-ステップ0-5] claudeSelectors最終設定:');
+    // Claude-ステップ0-5: セレクタの最終状態をログ出力
+    console.log('📋 【Claude-ステップ0-5】claudeSelectors最終設定:');
     console.log('  入力欄セレクタ数:', claudeSelectors['1_テキスト入力欄'].selectors.length);
     console.log('  送信ボタンセレクタ数:', claudeSelectors['2_送信ボタン'].selectors.length);
     console.log('  停止ボタンセレクタ数:', claudeSelectors['3_回答停止ボタン'].selectors.length);
 
     if (claudeSelectors['1_テキスト入力欄'].selectors.length === 0) {
-        console.error('❌ [Claude-ステップ0-5] 致命的エラー: 入力欄セレクタが空です！');
+        console.error('❌ 【Claude-ステップ0-5】致命的エラー: 入力欄セレクタが空です！');
     }
 
     // ========================================
-    // ステップ1: ヘルパー関数定義
+    // Claude-ステップ1: ヘルパー関数定義
     // ========================================
 
-    // ステップ1-1: 基本ユーティリティ関数
+    // Claude-ステップ1-1: 基本ユーティリティ関数
     const wait = async (ms) => {
         return new Promise(resolve => setTimeout(resolve, ms));
     };
@@ -581,9 +581,9 @@
         throw new Error(`${description} の要素が見つかりません`);
     };
 
-    // ステップ1-2: モデル情報取得関数
+    // Claude-ステップ1-2: モデル情報取得関数
     const getCurrentModelInfo = () => {
-        console.log('\n📊 【ステップ1-2】現在のモデル情報を取得');
+        console.log('\n📊 【Claude-ステップ1-2】現在のモデル情報を取得');
 
         for (const selectorInfo of modelSelectors.modelDisplay) {
             try {
@@ -602,7 +602,7 @@
         return null;
     };
 
-    // ステップ1-2-2: 機能確認関数
+    // Claude-ステップ1-2-2: 機能確認関数
     const confirmFeatureSelection = (expectedFeature = null) => {
         console.log('\n🔍 【機能確認】選択された機能のボタンを確認');
         console.log(`期待される機能: ${expectedFeature || '(指定なし)'}`);
@@ -698,7 +698,7 @@
         }
     };
 
-    // ステップ1-5: React風イベント処理関数
+    // Claude-ステップ1-5: React風イベント処理関数
     const setToggleState = (toggleButton, targetState) => {
         console.log(`\n🔄 トグル状態変更: ${targetState ? 'ON' : 'OFF'}`);
 
@@ -721,7 +721,7 @@
         }
     };
 
-    // ステップ1-6: 強化版findClaudeElement
+    // Claude-ステップ1-6: 強化版findClaudeElement
     const findClaudeElement = async (selectorInfo, retryCount = 5, skipLog = false) => {
         const logPrefix = skipLog ? '' : '🔍 [findClaudeElement] ';
 
@@ -825,7 +825,7 @@
         return null;
     };
 
-    // ステップ1-7: テキスト入力関数
+    // Claude-ステップ1-7: テキスト入力関数
     const inputText = async (element, text) => {
         try {
             element.focus();
@@ -855,7 +855,7 @@
         }
     };
 
-    // ステップ1-8: ボタンクリック関数
+    // Claude-ステップ1-8: ボタンクリック関数
     const clickButton = async (button, description = '送信ボタン') => {
         console.log(`\n👆 ${description}をクリック`);
 
@@ -895,7 +895,7 @@
         }
     };
 
-    // ステップ1-9: テキストプレビュー取得関数（改善版）
+    // Claude-ステップ1-9: テキストプレビュー取得関数（改善版）
     const getTextPreview = (element) => {
         if (!element) return { full: '', preview: '', length: 0 };
 
@@ -1019,7 +1019,7 @@
         }
     };
 
-    // ステップ1-10: 要素の可視性チェック
+    // Claude-ステップ1-10: 要素の可視性チェック
     const isElementVisible = (element) => {
         if (!element) return false;
         const rect = element.getBoundingClientRect();
@@ -1031,7 +1031,7 @@
                style.opacity !== '0';
     };
 
-    // ステップ1-11: 機能要素の取得（特別処理対応）
+    // Claude-ステップ1-11: 機能要素の取得（特別処理対応）
     const getFeatureElement = (selectors, description = '') => {
         console.log(`🔍 機能要素取得開始: ${description}`);
         for (const selector of selectors) {
@@ -1064,7 +1064,7 @@
         return null;
     };
 
-    // ステップ1-12: すべての機能トグルをオフにする関数
+    // Claude-ステップ1-12: すべての機能トグルをオフにする関数
     const turnOffAllFeatureToggles = async () => {
         console.log('\n🔄 すべての機能トグルをオフに設定中...');
         let toggleCount = 0;
@@ -1122,7 +1122,7 @@
     };
 
     // ========================================
-    // ステップ1-12: Deep Research専用処理関数
+    // Claude-ステップ1-13: Deep Research専用処理関数
     // ========================================
 
     const handleDeepResearchWait = async () => {
@@ -1130,8 +1130,8 @@
         console.log('─'.repeat(40));
 
         try {
-            // ステップ1-1: 送信後、回答停止ボタンが出てくるまで待機
-            console.log('\n【ステップ1-1】送信後、回答停止ボタンが出てくるまで待機');
+            // Claude-ステップ6-1-1: 送信後、回答停止ボタンが出てくるまで待機
+            console.log('\n【Claude-ステップ6-1-1】送信後、回答停止ボタンが出てくるまで待機');
 
             let stopButtonFound = false;
             let waitCount = 0;
@@ -1156,9 +1156,9 @@
                 }
             }
 
-            // ステップ1-2: 回答停止ボタンが消滅するまで待機（初回）
+            // Claude-ステップ6-1-2: 回答停止ボタンが消滅するまで待機（初回）
             if (stopButtonFound) {
-                console.log('\n【ステップ1-2】回答停止ボタンが消滅するまで待機（初回）');
+                console.log('\n【Claude-ステップ6-1-2】回答停止ボタンが消滅するまで待機（初回）');
                 let stopButtonGone = false;
                 waitCount = 0;
                 const maxDisappearWait = AI_WAIT_CONFIG.STOP_BUTTON_DISAPPEAR_WAIT / 1000; // 統一設定: 5分
@@ -1183,8 +1183,8 @@
                 }
             }
 
-            // ステップ1-3: 一時待機（Deep Researchの追加処理のため）
-            console.log('\n【ステップ1-3】Deep Research追加処理の一時待機');
+            // Claude-ステップ6-1-3: 一時待機（Deep Researchの追加処理のため）
+            console.log('\n【Claude-ステップ6-1-3】Deep Research追加処理の一時待機');
             await wait(5000);
 
             // ログで状態を確認
@@ -1196,8 +1196,8 @@
                 }
             }
 
-            // ステップ1-4: 回答停止ボタンが出現するまで待機
-            console.log('\n【ステップ1-4】回答停止ボタンが出現するまで待機');
+            // Claude-ステップ6-1-4: 回答停止ボタンが出現するまで待機
+            console.log('\n【Claude-ステップ6-1-4】回答停止ボタンが出現するまで待機');
             stopButtonFound = false;
             waitCount = 0;
             const maxWaitCount = AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT / 1000; // 統一設定: 40分
@@ -1221,9 +1221,9 @@
                 }
             }
 
-            // ステップ1-5: 回答停止ボタンが10秒間消滅するまで待機
+            // Claude-ステップ6-1-5: 回答停止ボタンが10秒間消滅するまで待機
             if (stopButtonFound) {
-                console.log('\n【ステップ1-5】回答停止ボタンが10秒間消滅するまで待機');
+                console.log('\n【Claude-ステップ6-1-5】回答停止ボタンが10秒間消滅するまで待機');
                 let stopButtonGone = false;
                 let disappearWaitCount = 0;
                 const maxDisappearWait = AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT / 1000; // 統一設定: 40分
@@ -1274,7 +1274,7 @@
     };
 
     // ========================================
-    // メイン実行関数（ステップ2-7を含む）
+    // メイン実行関数（Claude-ステップ2-7を含む）
     // ========================================
 
     async function executeTask(taskData) {
@@ -1321,7 +1321,7 @@
             // ========================================
             // ステップ2: テキスト入力
             // ========================================
-            console.log('\n【Claude-ステップ2】テキスト入力');
+            console.log('\n【Claude-ステップ2-1】テキスト入力');
             console.log('─'.repeat(40));
             ClaudeLogManager.logStep('Step2-TextInput', 'テキスト入力開始');
 
@@ -1345,12 +1345,12 @@
             // ステップ3: モデル選択（条件付き）
             // ========================================
             if (modelName && modelName !== '' && modelName !== '設定なし') {
-                console.log('\n【Claude-ステップ3】モデル選択');
+                console.log('\n【Claude-ステップ3-1】モデル選択');
                 console.log('─'.repeat(40));
                 console.log(`目標モデル: ${modelName}`);
 
                 // モデルメニューボタンを探してクリック
-                console.log('\n【ステップ3-1】モデルメニューボタンを探す');
+                console.log('\n【Claude-ステップ3-1】モデルメニューボタンを探す');
                 const menuButton = await findElementByMultipleSelectors(modelSelectors.menuButton, 'モデル選択ボタン');
                 await triggerReactEvent(menuButton);
                 await wait(2000);
@@ -1374,7 +1374,7 @@
 
                 if (!foundInMain) {
                     // その他のモデルをチェック
-                    console.log('【ステップ3-2】その他のモデルメニューをチェック');
+                    console.log('【Claude-ステップ3-2】その他のモデルメニューをチェック');
                     const otherModelsItem = await findElementByMultipleSelectors(modelSelectors.otherModelsMenu, 'その他のモデルメニュー');
                     if (otherModelsItem) {
                         await triggerReactEvent(otherModelsItem, 'click');
@@ -1404,10 +1404,10 @@
             // ステップ4: 機能選択（条件付き）
             // ========================================
             if (featureName && featureName !== '' && featureName !== '設定なし') {
-                console.log('\n【Claude-ステップ4】機能選択');
+                console.log('\n【Claude-ステップ4-1】機能選択');
                 console.log('─'.repeat(40));
 
-                console.log('\n【ステップ4-1】機能を選択');
+                console.log('\n【Claude-ステップ4-1】機能を選択');
 
                 const featureMenuBtn = getFeatureElement(featureSelectors.menuButton, '機能メニューボタン');
                 if (featureMenuBtn) {
@@ -1415,7 +1415,7 @@
                     await wait(1500);
 
                     // 機能選択前にすべてのトグルをオフにする
-                    console.log('\n【ステップ4-1-1】全トグルをオフに設定');
+                    console.log('\n【Claude-ステップ4-1-1】全トグルをオフに設定');
                     await turnOffAllFeatureToggles();
                     await wait(500);
 
@@ -1428,7 +1428,7 @@
                         }
 
                         // メニューを閉じる（Deep Research用）
-                        console.log('\n【ステップ4-2】Deep Research用: メニューを閉じる');
+                        console.log('\n【Claude-ステップ4-2】Deep Research用: メニューを閉じる');
                         featureMenuBtn.click();
                         await wait(1000);
 
@@ -1447,9 +1447,9 @@
                         }
 
                         // ========================================
-                        // ステップ4-2-2: Deep Research機能確認
+                        // Claude-ステップ4-2-2: Deep Research機能確認
                         // ========================================
-                        console.log('\n【ステップ4-2-2】Deep Research機能の確認');
+                        console.log('\n【Claude-ステップ4-2-2】Deep Research機能の確認');
                         const deepResearchConfirm = confirmFeatureSelection('Deep Research');
 
                         if (deepResearchConfirm.deepResearch || deepResearchConfirm.webSearch) {
@@ -1470,16 +1470,16 @@
                         }
 
                         // メニューを閉じる
-                        console.log('\n【ステップ4-3】メニューを閉じる');
+                        console.log('\n【Claude-ステップ4-3】メニューを閉じる');
                         featureMenuBtn.click();
                         await wait(1000);
                     }
                 }
 
                 // ========================================
-                // ステップ4-4: 機能選択確認（新機能）
+                // Claude-ステップ4-4: 機能選択確認（新機能）
                 // ========================================
-                console.log('\n【ステップ4-4】機能選択の確認');
+                console.log('\n【Claude-ステップ4-4】機能選択の確認');
                 const confirmationResult = confirmFeatureSelection(featureName);
 
                 if (confirmationResult.error) {
@@ -1494,7 +1494,7 @@
             // ========================================
             // ステップ5: メッセージ送信
             // ========================================
-            console.log('\n【Claude-ステップ5】メッセージ送信');
+            console.log('\n【Claude-ステップ5-1】メッセージ送信');
             console.log('─'.repeat(40));
 
             const sendResult = await findClaudeElement(claudeSelectors['2_送信ボタン']);
@@ -1784,7 +1784,7 @@
             // ========================================
             // ステップ7: テキスト取得
             // ========================================
-            console.log('\n【Claude-ステップ7】テキスト取得処理');
+            console.log('\n【Claude-ステップ7-1】テキスト取得処理');
             console.log('─'.repeat(40));
 
             // Canvas処理後の最終テキスト取得（応答完了後に再取得）
