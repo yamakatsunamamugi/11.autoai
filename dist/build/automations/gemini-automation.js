@@ -1023,9 +1023,9 @@
             }));
             
             // ========================================
-            // ステップ5: テキスト取得（ui-selectorsを使用）
+            // ステップ7: テキスト取得（ui-selectorsを使用）
             // ========================================
-            await logStep('【Gemini-ステップ5】テキスト取得', async () => {
+            await logStep('【Gemini-ステップ7】テキスト取得', async () => {
                 let text = '';
                 
                 // 方法1: Canvas/拡張応答を実際のDOM要素で判定して優先的に取得
@@ -1043,11 +1043,11 @@
                 for (const selector of canvasSelectors) {
                     const canvasElement = findElement([selector]);
                     if (canvasElement) {
-                        log('🚫 【Gemini-ステップ5-1】プロンプト除外機能を適用してテキスト取得（Canvas応答）', 'info');
+                        log('🚫 【Gemini-ステップ7-1】プロンプト除外機能を適用してテキスト取得（Canvas応答）', 'info');
                         text = getStructuredCanvasContent(canvasElement);
                         if (text && text.length > 10) {
-                            log('✅ 【Gemini-ステップ5-2】プロンプト除外完了 - 純粋なAI応答を取得', 'success');
-                            log(`【Gemini-ステップ5-1】Canvas/拡張応答取得成功 (${selector}): ${text.length}文字`, 'success');
+                            log('✅ 【Gemini-ステップ7-2】プロンプト除外完了 - 純粋なAI応答を取得', 'success');
+                            log(`【Gemini-ステップ7-1】Canvas/拡張応答取得成功 (${selector}): ${text.length}文字`, 'success');
                             break;
                         }
                     }
@@ -1055,7 +1055,7 @@
                 
                 // 方法2: 通常の応答メッセージを取得
                 if (!text) {
-                    log('【Gemini-ステップ5-2】通常テキスト取得試行', 'info');
+                    log('【Gemini-ステップ7-2】通常テキスト取得試行', 'info');
                     
                     // 通常テキストのセレクタ
                     const normalSelectors = [
@@ -1071,12 +1071,12 @@
                         const responseElements = findElements([selector]);
                         if (responseElements.length > 0) {
                             const latestResponse = responseElements[responseElements.length - 1];
-                            log('🚫 【Gemini-ステップ5-3】プロンプト除外機能を適用してテキスト取得（通常応答）', 'info');
+                            log('🚫 【Gemini-ステップ7-3】プロンプト除外機能を適用してテキスト取得（通常応答）', 'info');
                             text = getCleanText(latestResponse);
 
                             if (text && text.length > 10) {
-                                log('✅ 【Gemini-ステップ5-4】プロンプト除外完了 - 純粋なAI応答を取得', 'success');
-                                log(`【Gemini-ステップ5-2】通常テキスト取得成功 (${selector}): ${text.length}文字`, 'success');
+                                log('✅ 【Gemini-ステップ7-4】プロンプト除外完了 - 純粋なAI応答を取得', 'success');
+                                log(`【Gemini-ステップ7-2】通常テキスト取得成功 (${selector}): ${text.length}文字`, 'success');
                                 break;
                             }
                         }
@@ -1086,7 +1086,7 @@
                 
                 // 方法3: フォールバック - より汎用的なセレクタで探す
                 if (!text) {
-                    log('【Gemini-ステップ5-3】フォールバックセレクタで取得試行', 'info');
+                    log('【Gemini-ステップ7-3】フォールバックセレクタで取得試行', 'info');
                     const fallbackSelectors = [
                         '.model-response-text',
                         'div[class*="model-response"]',
@@ -1099,11 +1099,11 @@
                         const elements = findElements([selector]);
                         if (elements.length > 0) {
                             const lastElement = elements[elements.length - 1];
-                            log('🚫 【Gemini-ステップ5-5】プロンプト除外機能を適用してテキスト取得（フォールバック）', 'info');
+                            log('🚫 【Gemini-ステップ7-5】プロンプト除外機能を適用してテキスト取得（フォールバック）', 'info');
                             text = getCleanText(lastElement);
                             if (text && text.length > 10) {
-                                log('✅ 【Gemini-ステップ5-6】プロンプト除外完了 - 純粋なAI応答を取得', 'success');
-                                log(`【Gemini-ステップ5-3】フォールバック取得成功 (${selector}): ${text.length}文字`, 'success');
+                                log('✅ 【Gemini-ステップ7-6】プロンプト除外完了 - 純粋なAI応答を取得', 'success');
+                                log(`【Gemini-ステップ7-3】フォールバック取得成功 (${selector}): ${text.length}文字`, 'success');
                                 break;
                             }
                         }
@@ -1114,8 +1114,8 @@
                     throw new Error("応答テキストが見つかりません。");
                 }
                 
-                log(`【Gemini-ステップ5-完了】最終的に取得: ${text.length}文字`, 'success');
-                log(`【Gemini-ステップ5-完了】最初の100文字: ${text.substring(0, 100)}...`, 'info');
+                log(`【Gemini-ステップ7-完了】最終的に取得: ${text.length}文字`, 'success');
+                log(`【Gemini-ステップ7-完了】最初の100文字: ${text.substring(0, 100)}...`, 'info');
                 
                 // 結果を返す
                 return text;

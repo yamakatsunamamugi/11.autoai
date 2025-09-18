@@ -1181,7 +1181,8 @@
             console.log(`📝 プロンプト除外完了: ${originalLength}文字 → ${finalLength}文字 (${originalLength - finalLength}文字削減)`);
         }
 
-        const length = finalLength;
+        // length変数を再利用（const宣言を削除）
+        length = finalLength;
 
         if (length <= 200) {
             return { full: fullText, preview: fullText, length };
