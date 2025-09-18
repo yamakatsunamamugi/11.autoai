@@ -409,7 +409,11 @@ export class AITaskExecutor {
               executionTime: Date.now() - startTime
             };
           } else {
-            throw new Error(result?.error || 'Claudeメッセージ通信エラー');
+            // エラーメッセージを安全に処理
+            const errorMessage = (result?.error && typeof result.error === 'string')
+              ? result.error
+              : 'Claudeメッセージ通信エラー';
+            throw new Error(errorMessage);
           }
         }
 

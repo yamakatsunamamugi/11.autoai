@@ -1889,7 +1889,11 @@
 
             const result = {
                 success: true,
-                response: finalText,
+                result: {  // ai-task-executor.jsが期待するネスト構造
+                    response: finalText,
+                    status: 'success'
+                },
+                response: finalText,  // 後方互換性のため
                 text: finalText,
                 model: modelName,
                 function: featureName,
@@ -1926,7 +1930,7 @@
             }
 
             // 統合フロー用にresultオブジェクトを拡張（ChatGPT/Geminiと同じ形式）
-            const sendTime = new Date();
+            sendTime = new Date(); // 既存のsendTime変数を更新
             result.displayedModel = displayedModel;
             result.displayedFunction = displayedFunction;
             result.sendTime = sendTime;
