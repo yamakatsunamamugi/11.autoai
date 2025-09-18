@@ -739,14 +739,36 @@ export class AITaskExecutor {
               this.logger.log(`[Step 5: タスク完了] ✅ [${taskData.aiType}] 実行完了`, execResult);
               
               if (execResult?.success) {
-                // タブのURLを取得
+                // タブのURLを取得（詳細エラーログ付き）
                 let tabUrl = 'N/A';
                 try {
+                  console.log(`[URL取得] タブID ${tabId} のURL取得を試行中...`);
                   const tab = await chrome.tabs.get(tabId);
-                  tabUrl = tab.url || 'N/A';
+
+                  console.log(`[URL取得] タブ情報:`, {
+                    id: tab.id,
+                    status: tab.status,
+                    url: tab.url,
+                    title: tab.title?.substring(0, 50) + '...'
+                  });
+
+                  if (tab.url && tab.url !== 'chrome://newtab/' && !tab.url.startsWith('chrome://')) {
+                    tabUrl = tab.url;
+                    console.log(`[URL取得] ✅ URL取得成功: ${tabUrl}`);
+                  } else {
+                    console.warn(`[URL取得] ⚠️ 無効なURL: ${tab.url}`);
+                    tabUrl = tab.url || 'N/A';
+                  }
                 } catch (e) {
-                  this.logger.debug(`タブURL取得失敗: ${e.message}`);
+                  console.error(`[URL取得] ❌ エラー詳細:`, {
+                    message: e.message,
+                    tabId: tabId,
+                    chromeLastError: chrome.runtime.lastError
+                  });
+                  this.logger.error(`タブURL取得失敗: ${e.message}`);
                 }
+
+                console.log(`[URL取得] 最終結果: ${tabUrl}`);
 
                 return {
                   success: true,

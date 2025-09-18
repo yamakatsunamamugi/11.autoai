@@ -1986,7 +1986,7 @@ class SheetsClient {
       `---------- ${aiDisplayName} ----------`,
       `モデル: ${model}`,
       `機能: ${functionName}`,
-      `URL: ${url || 'URLが取得できませんでした'}`,
+      `URL: ${url === 'N/A' ? 'URLを取得できませんでした' : url || 'URLが利用できません'}`,
       `送信時刻: ${sendTimeStr}`,
       `記載時刻: ${writeTimeStr} (${elapsedSeconds}秒後)`
     ];
@@ -2008,7 +2008,7 @@ class SheetsClient {
         ``,
         `---------- Dropbox ----------`,
         `ファイル: ${dropboxUploadResult.fileName || 'レポートファイル'}`,
-        `URL: ${dropboxUploadResult.url}`,
+        `URL: ${dropboxUploadResult.url || '⚠️ アップロード未完了（設定を確認してください）'}`,
         `アップロード時刻: ${dropboxTime}`
       );
     }
@@ -2029,11 +2029,17 @@ class SheetsClient {
 
       richTextData.push({ text: headerAndInfo });
 
-      // URL部分をリンクとして追加
-      richTextData.push({
-        text: url,
-        url: url
-      });
+      // URL部分をリンクとして追加（改善）
+      if (url && url !== 'N/A' && url !== 'URLが利用できません') {
+        richTextData.push({
+          text: url,
+          url: url
+        });
+      } else {
+        richTextData.push({
+          text: url === 'N/A' ? 'URLを取得できませんでした' : (url || 'URLが利用できません')
+        });
+      }
 
       // 残りの情報
       const footerInfo = [
@@ -2066,11 +2072,17 @@ class SheetsClient {
 
         richTextData.push({ text: dropboxHeaderAndInfo });
 
-        // Dropbox URL部分をリンクとして追加
-        richTextData.push({
-          text: dropboxUploadResult.url,
-          url: dropboxUploadResult.url
-        });
+        // Dropbox URL部分をリンクとして追加（改善）
+        if (dropboxUploadResult.url && dropboxUploadResult.url.trim()) {
+          richTextData.push({
+            text: dropboxUploadResult.url,
+            url: dropboxUploadResult.url
+          });
+        } else {
+          richTextData.push({
+            text: '⚠️ アップロード未完了（設定を確認してください）'
+          });
+        }
 
         const dropboxFooterInfo = [
           '',
@@ -2122,6 +2134,19 @@ class SheetsClient {
         hasDropboxResult: !!dropboxUploadResult,
         dropboxUrl: dropboxUploadResult?.url,
         dropboxSuccess: dropboxUploadResult?.success
+      });
+
+      // 🔍 [URL追跡] URLキャプチャの詳細ログ
+      console.log(`🔍 [URL追跡] URL情報詳細:`, {
+        aiUrl: url,
+        aiUrlType: typeof url,
+        aiUrlIsNA: url === 'N/A',
+        aiUrlLength: url?.length || 0,
+        dropboxUrl: dropboxUploadResult?.url,
+        dropboxUrlType: typeof dropboxUploadResult?.url,
+        dropboxUrlEmpty: !dropboxUploadResult?.url || dropboxUploadResult?.url === '',
+        dropboxUploaded: dropboxUploadResult?.success,
+        dropboxFileName: dropboxUploadResult?.fileName
       });
 
       // Dropboxアップロード結果の詳細ログ

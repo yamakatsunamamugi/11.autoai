@@ -1519,9 +1519,17 @@ export default class StreamProcessorV2 {
             displayedFunction: result?.displayedFunction || task.function || '不明'
           };
 
-          // デバッグ: resultオブジェクトの内容を確認
-          console.log(`[DEBUG] result object for URL extraction:`, result);
-          console.log(`[DEBUG] result?.url value:`, result?.url);
+          // 🔍 [URL追跡] AI実行結果からのURL取得状況
+          console.log(`🔍 [URL追跡] AI実行結果詳細:`, {
+            hasResult: !!result,
+            resultSuccess: result?.success,
+            resultUrl: result?.url,
+            resultUrlType: typeof result?.url,
+            resultUrlIsNA: result?.url === 'N/A',
+            resultKeys: result ? Object.keys(result) : [],
+            taskAiType: task.aiType,
+            taskId: taskId
+          });
 
           // 送信時刻と記載時刻を設定
           const sendTime = result?.sendTime || new Date(); // Claude automation側で設定した時刻
@@ -1541,6 +1549,16 @@ export default class StreamProcessorV2 {
           if (logResult.success) {
             const logColumn = logTask.logColumns && logTask.logColumns[0] ? logTask.logColumns[0] : 'B';
             this.logger.log(`[Step 8-3.7] 📝 詳細ログ書き込み成功（DropboxURL含む）: ${logColumn}${task.row} [${task.aiType}]`);
+
+            // 🔍 [URL追跡] 最終ログ書き込み結果の検証
+            console.log(`🔍 [URL追跡] ログ書き込み検証:`, {
+              cell: `${logColumn}${task.row}`,
+              aiType: task.aiType,
+              urlPassed: result?.url || 'N/A',
+              dropboxUrlPassed: dropboxUploadResult?.url || '空',
+              logSuccess: logResult.success,
+              logVerified: logResult.verified
+            });
           } else {
             this.logger.error(`[Step 8-3.7] ❌ 詳細ログ書き込み失敗:`, logResult.error);
           }
@@ -4237,8 +4255,18 @@ export default class StreamProcessorV2 {
             // Dropboxアップロードが失敗またはスキップされた場合
             const fileName = isResultObject ? saveResult.fileName : (typeof saveResult === 'string' ? saveResult.split('/').pop() : 'unknown');
 
+            // 詳細な失敗原因をログ出力
+            console.log(`[Dropbox URL] ❌ アップロード失敗詳細:`, {
+              dropboxUploaded: saveResult.dropboxUploaded,
+              dropboxUrl: saveResult.dropboxUrl,
+              fileName: fileName,
+              dropboxEnabled: globalThis.logManager?.fileManager?.dropboxEnabled,
+              dropboxAutoUpload: globalThis.logManager?.fileManager?.dropboxAutoUpload
+            });
+
             this.logger.warn('⚠️ [個別タスクログ] ローカル保存のみ（Dropboxアップロードなし）', {
-              fileName: fileName
+              fileName: fileName,
+              reason: saveResult.dropboxUrl ? 'アップロード失敗' : 'Dropbox無効'
             });
 
             return {
@@ -4246,7 +4274,7 @@ export default class StreamProcessorV2 {
               filePath: isResultObject ? saveResult.filePath : saveResult,
               fileName: fileName,
               dropboxPath: null,
-              url: null,
+              url: '', // null → 空文字列に変更（ログで「URL: 」と表示される）
               warning: 'Dropboxアップロードはスキップされました',
               uploadTime: new Date()
             };
