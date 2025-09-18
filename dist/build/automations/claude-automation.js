@@ -1394,18 +1394,31 @@
 
     async function executeTask(taskData) {
         console.log('%c🚀 Claude V2 タスク実行開始', 'color: #9C27B0; font-weight: bold; font-size: 16px');
-        console.log('受信したタスクデータ:', {
-            model: taskData.model,
-            function: taskData.function,
+        console.log('%c【Claude-ステップ0】タスク初期化開始', 'color: #2196F3; font-weight: bold;');
+        console.log('════════════════════════════════════════');
+
+        console.log('📋 受信したタスクデータ:', {
+            model: taskData.model || '未指定',
+            function: taskData.function || '通常',
             promptLength: taskData.prompt?.length || taskData.text?.length || 0,
             hasPrompt: !!(taskData.prompt || taskData.text),
-            cellInfo: taskData.cellInfo
+            cellInfo: taskData.cellInfo || '不明',
+            spreadsheetId: taskData.spreadsheetId || '未設定',
+            gid: taskData.gid || '未設定'
         });
 
         // 送信時刻をタスク開始時に記録（関数全体で使用可能）
         const taskStartTime = new Date();
         let sendTime = taskStartTime; // 実際の送信時刻で更新される
         console.log('🕰️ タスク開始時刻:', taskStartTime.toISOString());
+        console.log('🎯 実行プラン:');
+        console.log('  ├─ Claude-ステップ2: テキスト入力');
+        console.log('  ├─ Claude-ステップ3: モデル選択（条件付き）');
+        console.log('  ├─ Claude-ステップ4: 機能選択（条件付き）');
+        console.log('  ├─ Claude-ステップ5: メッセージ送信');
+        console.log('  ├─ Claude-ステップ6: 応答待機');
+        console.log('  └─ Claude-ステップ7: テキスト取得');
+        console.log('✅【Claude-ステップ0】タスク初期化完了\n');
 
         // ログ記録開始
         ClaudeLogManager.startTask(taskData);
@@ -1462,20 +1475,31 @@
 
             console.log('✅ テキスト入力完了');
             console.log(`📊 入力結果: ${inputResult.textContent.length}文字が入力欄に設定されました`);
+
+            // 入力成功の確認
+            const inputVerification = inputResult.textContent.length > 0;
+            console.log(`🔍 入力検証: ${inputVerification ? '✅ 成功' : '❌ 失敗'}`);
+            console.log(`📈 入力精度: ${Math.round((inputResult.textContent.length / prompt.length) * 100)}%`);
+
             ClaudeLogManager.logStep('Step2-TextInput', 'テキスト入力完了', {
                 promptLength: prompt.length,
                 inputElementTag: inputResult.tagName,
-                finalLength: inputResult.textContent.length
+                finalLength: inputResult.textContent.length,
+                inputAccuracy: Math.round((inputResult.textContent.length / prompt.length) * 100)
             });
+
+            console.log('%c✅【Claude-ステップ2-1】テキスト入力処理完了', 'color: #4CAF50; font-weight: bold;');
+            console.log('─'.repeat(50));
             await wait(1000);
 
             // ========================================
             // ステップ3: モデル選択（条件付き）
             // ========================================
             if (modelName && modelName !== '' && modelName !== '設定なし') {
-                console.log('\n【Claude-ステップ3-1】モデル選択');
+                console.log('%c【Claude-ステップ3-1】モデル選択開始', 'color: #FF9800; font-weight: bold;');
                 console.log('─'.repeat(40));
-                console.log(`目標モデル: ${modelName}`);
+                console.log(`🎯 目標モデル: ${modelName}`);
+                console.log(`📍 現在のページURL: ${window.location.href}`);
 
                 // モデルメニューボタンを探してクリック
                 console.log('\n【Claude-ステップ3-1】モデルメニューボタンを探す');
@@ -1523,19 +1547,27 @@
 
                 // モデル選択結果の確認
                 const newCurrentModel = getCurrentModelInfo();
-                console.log(`選択後のモデル: "${newCurrentModel}"`);
-                console.log(`期待されるモデル: "${targetModelName}"`);
-                console.log(`モデル一致: ${newCurrentModel === targetModelName ? '✅' : '❌'}`);
+                console.log(`🔍 選択後のモデル: "${newCurrentModel}"`);
+                console.log(`🎯 期待されるモデル: "${targetModelName}"`);
+                const modelMatched = newCurrentModel === targetModelName;
+                console.log(`📊 モデル一致: ${modelMatched ? '✅ 成功' : '❌ 不一致'}`);
+
+                console.log('%c✅【Claude-ステップ3-1】モデル選択処理完了', 'color: #4CAF50; font-weight: bold;');
+                console.log('─'.repeat(50));
+            } else {
+                console.log('%c⏭️【Claude-ステップ3】モデル選択をスキップ（設定なし）', 'color: #9E9E9E; font-style: italic;');
             }
 
             // ========================================
             // ステップ4: 機能選択（条件付き）
             // ========================================
             if (featureName && featureName !== '' && featureName !== '設定なし') {
-                console.log('\n【Claude-ステップ4-1】機能選択');
+                console.log('%c【Claude-ステップ4-1】機能選択開始', 'color: #9C27B0; font-weight: bold;');
                 console.log('─'.repeat(40));
+                console.log(`🎯 目標機能: ${featureName}`);
+                console.log(`🔍 Deep Research判定: ${isDeepResearch ? 'Yes' : 'No'}`);
 
-                console.log('\n【Claude-ステップ4-1】機能を選択');
+                console.log('\n🔧【Claude-ステップ4-1】機能メニューアクセス開始');
 
                 const featureMenuBtn = getFeatureElement(featureSelectors.menuButton, '機能メニューボタン');
                 if (featureMenuBtn) {
@@ -1615,16 +1647,23 @@
                 } else if (confirmationResult.detected.length === 0) {
                     console.log('⚠️ 期待される機能ボタンが検出されませんでしたが処理を継続します');
                 } else {
-                    console.log(`✅ 機能選択確認完了: [${confirmationResult.detected.join(', ')}]`);
+                    console.log(`🔍 検出された機能: [${confirmationResult.detected.join(', ')}]`);
+                    console.log(`✅ 機能選択確認完了`);
                 }
+
+                console.log('%c✅【Claude-ステップ4-1】機能選択処理完了', 'color: #4CAF50; font-weight: bold;');
+                console.log('─'.repeat(50));
+            } else {
+                console.log('%c⏭️【Claude-ステップ4】機能選択をスキップ（設定なし）', 'color: #9E9E9E; font-style: italic;');
             }
 
             // ========================================
             // ステップ5: メッセージ送信
             // ========================================
-            console.log('\n【Claude-ステップ5-1】メッセージ送信');
+            console.log('%c【Claude-ステップ5-1】メッセージ送信開始', 'color: #E91E63; font-weight: bold;');
             console.log('─'.repeat(40));
             console.log(`🎯 送信ボタンセレクタ: ${claudeSelectors['2_送信ボタン']}`);
+            console.log(`📝 送信内容長: ${prompt.length}文字`);
 
             console.log('🔍 送信ボタンを検索中...');
             const sendResult = await findClaudeElement(claudeSelectors['2_送信ボタン']);
@@ -1677,7 +1716,16 @@
             }
 
             console.log('✅ メッセージ送信完了');
-            ClaudeLogManager.logStep('Step5-Send', 'メッセージ送信完了');
+            console.log(`📤 実際の送信時刻: ${sendTime.toISOString()}`);
+            console.log(`⏱️ 送信処理時間: ${Date.now() - taskStartTime.getTime()}ms`);
+
+            ClaudeLogManager.logStep('Step5-Send', 'メッセージ送信完了', {
+                sendTime: sendTime.toISOString(),
+                processingTime: Date.now() - taskStartTime.getTime()
+            });
+
+            console.log('%c✅【Claude-ステップ5-1】メッセージ送信処理完了', 'color: #4CAF50; font-weight: bold;');
+            console.log('─'.repeat(50));
             await wait(2000);
 
             // Canvas内容を保存する変数（スコープを広く）
@@ -1686,15 +1734,23 @@
             // ========================================
             // ステップ6: 応答待機（Deep Research/通常）
             // ========================================
+            console.log('%c【Claude-ステップ6】応答待機開始', 'color: #607D8B; font-weight: bold;');
+            const waitStartTime = Date.now();
+
             if (isDeepResearch) {
-                console.log('\n【Claude-ステップ6-1】Deep Research専用待機処理');
+                console.log('🔬【Claude-ステップ6-1】Deep Research専用待機処理');
+                console.log('─'.repeat(40));
+                console.log('⏱️ 最大待機時間: 40分');
+                console.log('🎯 監視対象: Canvas機能、プレビューボタン、停止ボタン');
                 await handleDeepResearchWait();
             } else {
                 // ========================================
                 // ステップ6-2: 通常応答待機
                 // ========================================
-                console.log('\n【Claude-ステップ6-2】通常応答待機（停止ボタン監視）');
+                console.log('📝【Claude-ステップ6-2】通常応答待機（停止ボタン監視）');
                 console.log('─'.repeat(40));
+                console.log(`⏱️ 最大待機時間: ${Math.round(AI_WAIT_CONFIG.STOP_BUTTON_INITIAL_WAIT / 60000)}分`);
+                console.log('🎯 監視対象: 回答停止ボタン');
 
                 let stopButtonFound = false;
                 let waitCount = 0;
@@ -1917,14 +1973,21 @@
                 }
             }
 
+            const waitEndTime = Date.now();
+            const totalWaitTime = Math.round((waitEndTime - waitStartTime) / 1000);
+            console.log(`⏱️ 応答待機総時間: ${totalWaitTime}秒`);
+            console.log('%c✅【Claude-ステップ6】応答待機処理完了', 'color: #4CAF50; font-weight: bold;');
+            console.log('─'.repeat(50));
+
             // 応答完了後の追加待機
             await wait(3000);
 
             // ========================================
             // ステップ7: テキスト取得
             // ========================================
-            console.log('\n【Claude-ステップ7-1】テキスト取得処理');
+            console.log('%c【Claude-ステップ7-1】テキスト取得処理開始', 'color: #3F51B5; font-weight: bold;');
             console.log('─'.repeat(40));
+            console.log('🎯 取得対象: Canvas機能、通常応答テキスト');
 
             // Canvas処理後の最終テキスト取得（応答完了後に再取得）
             console.log(`🔍 最終テキスト取得開始 - 現在のfinalText: ${finalText ? finalText.length + '文字' : 'なし'}`);
@@ -2022,9 +2085,22 @@
                 finalText = 'テキスト取得失敗';
             }
 
+            console.log('%c✅【Claude-ステップ7-1】テキスト取得処理完了', 'color: #4CAF50; font-weight: bold;');
+            console.log(`📊 最終取得文字数: ${finalText.length}文字`);
+            console.log('─'.repeat(50));
+
             console.log('\n' + '='.repeat(60));
             console.log('%c✨ Claude V2 タスク完了', 'color: #4CAF50; font-weight: bold; font-size: 16px');
             console.log('='.repeat(60));
+
+            const totalExecutionTime = Date.now() - taskStartTime.getTime();
+            console.log('📈 タスク実行サマリー:');
+            console.log(`  ├─ 総実行時間: ${Math.round(totalExecutionTime / 1000)}秒`);
+            console.log(`  ├─ 入力文字数: ${prompt.length}文字`);
+            console.log(`  ├─ 出力文字数: ${finalText.length}文字`);
+            console.log(`  ├─ 使用モデル: ${modelName || '未指定'}`);
+            console.log(`  ├─ 使用機能: ${featureName || '通常'}`);
+            console.log(`  └─ 送信時刻: ${sendTime.toISOString()}`);
 
             const result = {
                 success: true,
