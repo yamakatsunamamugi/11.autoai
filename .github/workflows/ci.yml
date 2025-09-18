@@ -96,7 +96,7 @@ jobs:
         echo "✅ Extension package created: chrome-extension.zip"
 
     - name: Upload extension artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: chrome-extension-${{ github.sha }}
         path: chrome-extension.zip
