@@ -615,16 +615,26 @@
         };
 
         try {
-            // じっくり考える/ゆっくり考えるボタンの確認
+            // じっくり考える/ゆっくり考えるボタンの確認（トグル状態も確認）
             const slowThinkingButtons = document.querySelectorAll('button');
             for (const button of slowThinkingButtons) {
                 const text = button.textContent?.trim() || '';
                 const hasClockIcon = button.querySelector('svg') || button.innerHTML.includes('clock');
+
+                // じっくり考える機能の正確な検出
                 if (text.includes('じっくり考える') || text.includes('ゆっくり考える') || (hasClockIcon && text.includes('考える'))) {
-                    confirmationResults.slowThinking = true;
-                    const detectedType = text.includes('じっくり考える') ? 'じっくり考える' : 'ゆっくり考える';
-                    confirmationResults.detected.push(detectedType);
-                    console.log(`  ✅ ${detectedType}ボタン発見`);
+                    // トグルスイッチがある場合は状態も確認
+                    const toggleInput = button.querySelector('input[role="switch"]');
+                    const isActive = toggleInput ?
+                        (toggleInput.checked || toggleInput.getAttribute('aria-checked') === 'true') :
+                        button.getAttribute('aria-pressed') === 'true';
+
+                    if (isActive) {
+                        confirmationResults.slowThinking = true;
+                        const detectedType = text.includes('じっくり考える') ? 'じっくり考える' : 'ゆっくり考える';
+                        confirmationResults.detected.push(detectedType);
+                        console.log(`  ✅ ${detectedType}ボタン（活性化状態）発見`);
+                    }
                     break;
                 }
             }
@@ -642,14 +652,24 @@
                 }
             }
 
-            // Deep Researchボタンの確認（aria-pressed属性をチェック）
-            const deepResearchButtons = document.querySelectorAll('button[type="button"][aria-pressed]');
-            for (const button of deepResearchButtons) {
+            // Deep Research/リサーチボタンの確認（正確な判定）
+            const researchButtons = document.querySelectorAll('button[type="button"][aria-pressed]');
+            for (const button of researchButtons) {
                 const text = button.textContent?.trim() || '';
-                if (text.includes('Research') || text.includes('research') || button.getAttribute('aria-pressed') === 'true') {
+                const isPressed = button.getAttribute('aria-pressed') === 'true';
+
+                // "リサーチ" ボタンでaria-pressed="true"の場合のみDeepResearch
+                if (text.includes('リサーチ') && isPressed) {
                     confirmationResults.deepResearch = true;
                     confirmationResults.detected.push('DeepResearch');
-                    console.log('  ✅ DeepResearchボタン発見');
+                    console.log('  ✅ DeepResearch（リサーチボタン活性化）発見');
+                    break;
+                }
+                // "Research"文字列を含むボタンも確認（英語表示対応）
+                else if ((text.includes('Research') || text.includes('research')) && isPressed) {
+                    confirmationResults.deepResearch = true;
+                    confirmationResults.detected.push('DeepResearch');
+                    console.log('  ✅ DeepResearch（Researchボタン活性化）発見');
                     break;
                 }
             }
@@ -1045,26 +1065,51 @@
     };
 
     // ステップ1-12: すべての機能トグルをオフにする関数
-    const turnOffAllFeatureToggles = () => {
+    const turnOffAllFeatureToggles = async () => {
         console.log('\n🔄 すべての機能トグルをオフに設定中...');
         let toggleCount = 0;
 
-        // 機能メニュー内のすべてのトグルを探す
-        const toggles = document.querySelectorAll('button:has(input[role="switch"])');
+        // 機能メニュー内のすべてのトグルを探す（改良版セレクタ）
+        const allInputs = document.querySelectorAll('input[role="switch"]');
 
-        for (const toggle of toggles) {
+        for (const inputElement of allInputs) {
             try {
-                const inputElement = toggle.querySelector('input[role="switch"]');
-                if (inputElement) {
+                // input要素が属するボタンを遡って探す
+                const toggleButton = inputElement.closest('button');
+
+                if (toggleButton && inputElement) {
                     const isCurrentlyOn = inputElement.checked || inputElement.getAttribute('aria-checked') === 'true';
 
                     if (isCurrentlyOn) {
-                        const label = toggle.querySelector('p.font-base');
-                        const featureName = label ? label.textContent.trim() : 'Unknown';
+                        // 機能名の取得（複数パターンに対応）
+                        let featureName = 'Unknown';
+
+                        // パターン1: p.font-base (従来)
+                        const labelFontBase = toggleButton.querySelector('p.font-base');
+                        if (labelFontBase) {
+                            featureName = labelFontBase.textContent.trim();
+                        }
+                        // パターン2: 新しいHTML構造（text-text-300クラス）
+                        else {
+                            const labelTextClass = toggleButton.querySelector('p.font-base.text-text-300, p[class*="text-text-300"]');
+                            if (labelTextClass) {
+                                featureName = labelTextClass.textContent.trim();
+                            }
+                            // パターン3: 任意のpタグ内のテキスト
+                            else {
+                                const anyLabel = toggleButton.querySelector('p');
+                                if (anyLabel && anyLabel.textContent.trim()) {
+                                    featureName = anyLabel.textContent.trim();
+                                }
+                            }
+                        }
 
                         console.log(`  🔘 ${featureName}をオフに設定`);
-                        toggle.click();
+                        toggleButton.click();
                         toggleCount++;
+
+                        // クリック後の短い待機
+                        await new Promise(resolve => setTimeout(resolve, 200));
                     }
                 }
             } catch (error) {
@@ -1371,7 +1416,7 @@
 
                     // 機能選択前にすべてのトグルをオフにする
                     console.log('\n【ステップ4-1-1】全トグルをオフに設定');
-                    turnOffAllFeatureToggles();
+                    await turnOffAllFeatureToggles();
                     await wait(500);
 
                     if (isDeepResearch) {
@@ -1832,7 +1877,8 @@
                 }
             }
 
-            if (!finalText) {
+            // finalTextの確実な初期化
+            if (!finalText || finalText.trim() === '') {
                 console.warn('⚠️ テキストが取得できませんでした');
                 finalText = 'テキスト取得失敗';
             }
@@ -1855,8 +1901,8 @@
             // タスク完了をログに記録
             ClaudeLogManager.completeTask(result);
             ClaudeLogManager.logStep('Step7-Complete', 'タスク正常完了', {
-                responseLength: finalText.length,
-                responsePreview: finalText.substring(0, 100) + '...',
+                responseLength: finalText ? finalText.length : 0,
+                responsePreview: finalText ? (finalText.substring(0, 100) + '...') : 'テキスト取得失敗',
                 model: modelName,
                 function: featureName,
                 cellInfo: taskData.cellInfo
@@ -1879,41 +1925,18 @@
                 console.warn(`⚠️ [Claude-Direct] 表示情報取得エラー: ${infoError.message}`);
             }
 
-            // 直接スプレッドシートにログ書き込み（シンプル設計）
-            const writeTime = new Date();
-            try {
-                console.log('📝 [Claude-Direct] スプレッドシート直接書き込み開始', {
-                    sendTime: sendTime.toISOString(),
-                    writeTime: writeTime.toISOString(),
-                    taskId: taskData.cellInfo,
-                    spreadsheetId: taskData.spreadsheetId,  // spreadsheetId確認
-                    gid: taskData.gid,  // gid確認
-                    hasSpreadsheetId: !!taskData.spreadsheetId,
-                    hasGid: taskData.gid !== undefined,
-                    displayedModel: displayedModel,
-                    displayedFunction: displayedFunction
-                });
+            // 統合フロー用にresultオブジェクトを拡張（ChatGPT/Geminiと同じ形式）
+            const sendTime = new Date();
+            result.displayedModel = displayedModel;
+            result.displayedFunction = displayedFunction;
+            result.sendTime = sendTime;
 
-                await chrome.runtime.sendMessage({
-                    type: 'CLAUDE_DIRECT_LOG_WRITE',
-                    data: {
-                        taskData: taskData,
-                        response: finalText,
-                        sendTime: sendTime,
-                        writeTime: writeTime,
-                        model: modelName,
-                        function: featureName,
-                        displayedModel: displayedModel,
-                        displayedFunction: displayedFunction,
-                        url: window.location.href
-                    }
-                });
-
-                console.log('✅ [Claude-Direct] スプレッドシート書き込み完了');
-            } catch (logError) {
-                console.error('❌ [Claude-Direct] スプレッドシート書き込み失敗:', logError);
-                // ログ書き込み失敗してもタスクは成功とする
-            }
+            console.log('✅ [Claude-Unified] タスク完了 - 統合フローでDropbox→スプレッドシートの順序で処理します', {
+                sendTime: sendTime.toISOString(),
+                taskId: taskData.cellInfo,
+                displayedModel: displayedModel,
+                displayedFunction: displayedFunction
+            });
 
             return result;
 
@@ -2014,7 +2037,7 @@
 
             // 機能選択前にすべてのトグルをオフにする
             console.log('【Phase】全トグルをオフに設定');
-            turnOffAllFeatureToggles();
+            await turnOffAllFeatureToggles();
             await wait(500);
 
             // 指定の機能を有効にする
