@@ -482,10 +482,25 @@
     // ========================================
 
     // Claude-ステップ1-1: 基本ユーティリティ関数
+    /**
+     * 基本待機関数
+     * 【動作説明】指定されたミリ秒数だけ処理を停止し、タイミング制御を行う
+     * 【用途】要素の読み込み待機、アニメーション完了待機、API制限回避など
+     * 【引数】ms: 待機時間（ミリ秒）
+     * 【戻り値】Promise<void> - 指定時間経過後に解決される
+     */
     const wait = async (ms) => {
         return new Promise(resolve => setTimeout(resolve, ms));
     };
 
+    /**
+     * 要素出現待機関数
+     * 【動作説明】指定セレクタの要素が表示されるまで繰り返し検索し、可視性もチェックする
+     * 【用途】動的に生成される要素の待機、ページ読み込み完了の確認
+     * 【引数】selector: CSSセレクタ, maxRetries: 最大試行回数, retryDelay: 試行間隔（ms）
+     * 【戻り値】Promise<Element|null> - 発見された要素またはnull
+     * 【チェック項目】要素の存在、サイズ、display、visibility、opacity
+     */
     const waitForElement = async (selector, maxRetries = 10, retryDelay = 500) => {
         const log = (msg) => console.log(`⏳ [待機] ${msg}`);
 
@@ -582,6 +597,15 @@
     };
 
     // Claude-ステップ1-2: モデル情報取得関数
+    /**
+     * 現在選択モデル情報取得関数
+     * 【動作説明】Claude画面に表示されている現在のモデル名を複数セレクタで検索取得
+     * 【用途】実行時のモデル情報記録、ログ出力、結果データに含める
+     * 【引数】なし
+     * 【戻り値】string|null - 検出されたモデル名または null
+     * 【検索対象】モデル表示エリア、設定表示部分など複数箇所
+     * 【使用頻度】頻繁（タスク実行時の重要な情報取得）
+     */
     const getCurrentModelInfo = () => {
         console.log('\n📊 【Claude-ステップ1-2】現在のモデル情報を取得');
 
@@ -603,6 +627,15 @@
     };
 
     // Claude-ステップ1-2-2: 機能確認関数
+    /**
+     * 現在選択機能確認関数
+     * 【動作説明】画面上の機能ボタンの状態を詳細に確認し、どの機能が有効かを判定する
+     * 【用途】機能選択後の確認、Deep Research検出、意図しない機能の発見
+     * 【引数】expectedFeature: 期待される機能名（省略可能）
+     * 【戻り値】Object - 各機能の状態とerrorプロパティ
+     * 【検出機能】じっくり考える、ウェブ検索、Deep Research（複数パターン対応）
+     * 【使用頻度】機能選択処理で重要な確認処理
+     */
     const confirmFeatureSelection = (expectedFeature = null) => {
         console.log('\n🔍 【機能確認】選択された機能のボタンを確認');
         console.log(`期待される機能: ${expectedFeature || '(指定なし)'}`);
@@ -699,6 +732,15 @@
     };
 
     // Claude-ステップ1-5: React風イベント処理関数
+    /**
+     * 高精度トグルボタン制御関数
+     * 【動作説明】現在のトグル状態を確認し、目標状態と異なる場合のみクリックして変更する
+     * 【用途】機能選択時のトグルON/OFF、Deep Research設定、ウェブ検索設定
+     * 【引数】toggleButton: トグルボタンのDOM要素, targetState: 目標状態（true=ON, false=OFF）
+     * 【戻り値】boolean - 状態変更が行われたかどうか
+     * 【チェック項目】input[role="switch"]の存在確認、checked属性またはaria-checked属性
+     * 【使用頻度】3回（機能選択処理で重要）
+     */
     const setToggleState = (toggleButton, targetState) => {
         console.log(`\n🔄 トグル状態変更: ${targetState ? 'ON' : 'OFF'}`);
 
@@ -722,6 +764,15 @@
     };
 
     // Claude-ステップ1-6: 強化版findClaudeElement
+    /**
+     * Claude専用要素検索関数（最重要）
+     * 【動作説明】複数のセレクタパターンを順次試行し、要素の可視性を厳密にチェックする
+     * 【用途】Claude画面のボタン、入力欄、表示エリアなど全ての要素取得
+     * 【引数】selectorInfo: セレクタ情報オブジェクト, retryCount: 再試行回数, skipLog: ログ抑制フラグ
+     * 【戻り値】Promise<Element|null> - 発見された要素またはnull
+     * 【特徴】優先度順セレクタ試行、可視性検証、リアルタイムログ、リトライ機能
+     * 【使用頻度】25回（全ステップで最も重要な関数）
+     */
     const findClaudeElement = async (selectorInfo, retryCount = 5, skipLog = false) => {
         const logPrefix = skipLog ? '' : '🔍 [findClaudeElement] ';
 
@@ -826,6 +877,15 @@
     };
 
     // Claude-ステップ1-7: テキスト入力関数
+    /**
+     * React対応テキスト入力関数
+     * 【動作説明】Reactの仮想DOMに対応したテキスト入力を行い、適切なイベントを発火する
+     * 【用途】プロンプト入力、テスト用テキスト入力
+     * 【引数】element: 入力対象のDOM要素, text: 入力するテキスト
+     * 【戻り値】Promise<boolean> - 入力成功可否
+     * 【処理順序】フォーカス → textContent設定 → inputイベント → changeイベント発火
+     * 【使用頻度】2回（メイン処理とテスト処理）
+     */
     const inputText = async (element, text) => {
         try {
             element.focus();
@@ -856,6 +916,15 @@
     };
 
     // Claude-ステップ1-8: ボタンクリック関数
+    /**
+     * 高精度マウスクリック関数
+     * 【動作説明】実際のマウス操作を完全再現し、クリック座標も正確に計算する
+     * 【用途】送信ボタンクリック、メニューボタンクリック
+     * 【引数】button: クリック対象のDOM要素, description: ログ用説明文
+     * 【戻り値】Promise<boolean> - クリック成功可否
+     * 【処理順序】スクロール → 座標計算 → mouseenter → mouseover → mousedown → mouseup → click
+     * 【使用頻度】2回（メイン送信とテスト送信）
+     */
     const clickButton = async (button, description = '送信ボタン') => {
         console.log(`\n👆 ${description}をクリック`);
 
@@ -896,6 +965,15 @@
     };
 
     // Claude-ステップ1-9: テキストプレビュー取得関数（改善版）
+    /**
+     * 高度テキスト抽出関数（応答取得の核心）
+     * 【動作説明】複数手法でテキスト取得を試行し、Canvas特別処理も含む包括的テキスト抽出
+     * 【用途】Claude応答テキストの取得、Deep Research結果の取得
+     * 【引数】element: テキスト抽出対象のDOM要素
+     * 【戻り値】Object {full: 完全テキスト, preview: プレビュー, length: 文字数}
+     * 【取得手法】innerText → textContent → Canvas特別処理 → 子要素探索
+     * 【使用頻度】5回（応答取得の最重要関数）
+     */
     const getTextPreview = (element) => {
         if (!element) return { full: '', preview: '', length: 0 };
 
@@ -1020,6 +1098,15 @@
     };
 
     // Claude-ステップ1-10: 要素の可視性チェック
+    /**
+     * 要素可視性判定関数
+     * 【動作説明】DOM要素が実際に画面上で見える状態かを厳密にチェックする
+     * 【用途】getFeatureElement内での要素検証、表示確認
+     * 【引数】element: チェック対象のDOM要素
+     * 【戻り値】boolean - 要素が可視状態かどうか
+     * 【チェック項目】要素存在、width>0、height>0、display≠none、visibility≠hidden、opacity≠0
+     * 【使用頻度】1回（getFeatureElement内のみ）
+     */
     const isElementVisible = (element) => {
         if (!element) return false;
         const rect = element.getBoundingClientRect();
@@ -1032,6 +1119,15 @@
     };
 
     // Claude-ステップ1-11: 機能要素の取得（特別処理対応）
+    /**
+     * 機能ボタン特別検索関数
+     * 【動作説明】通常のセレクタ検索に加え、テキスト内容での検索も行う高度な要素取得
+     * 【用途】機能メニューボタン、ウェブ検索トグル、特殊機能ボタンの取得
+     * 【引数】selectors: セレクタ配列, description: ログ用説明文
+     * 【戻り値】Element|null - 発見された要素またはnull
+     * 【特別処理】「ウェブ検索」「じっくり考える」テキストでのボタン検索対応
+     * 【使用頻度】3回（機能選択処理で重要）
+     */
     const getFeatureElement = (selectors, description = '') => {
         console.log(`🔍 機能要素取得開始: ${description}`);
         for (const selector of selectors) {
@@ -1065,6 +1161,15 @@
     };
 
     // Claude-ステップ1-12: すべての機能トグルをオフにする関数
+    /**
+     * 一括機能リセット関数
+     * 【動作説明】画面上の全てのトグルスイッチを検索し、ONになっているものを自動的にOFFにする
+     * 【用途】機能選択前の初期化、意図しない機能の無効化
+     * 【引数】なし
+     * 【戻り値】Promise<number> - 変更したトグル数
+     * 【処理対象】input[role="switch"]要素、複数のHTML構造パターンに対応
+     * 【使用頻度】2回（機能選択前の重要な初期化処理）
+     */
     const turnOffAllFeatureToggles = async () => {
         console.log('\n🔄 すべての機能トグルをオフに設定中...');
         let toggleCount = 0;
@@ -1125,6 +1230,16 @@
     // Claude-ステップ1-13: Deep Research専用処理関数
     // ========================================
 
+    /**
+     * Deep Research専用複雑待機関数（最も複雑な処理）
+     * 【動作説明】Deep Research特有の多段階応答パターンに対応した高度な待機制御
+     * 【用途】Deep Research機能使用時の応答完了待機
+     * 【引数】なし
+     * 【戻り値】Promise<void> - 完了まで待機
+     * 【処理段階】送信後待機 → 初回完了待機 → 追加処理待機 → 再開待機 → 最終完了待機
+     * 【特殊対応】Canvas機能、プレビューボタン、続けるボタン、複数回の完了確認
+     * 【使用頻度】Deep Research使用時のみ（高度な専用処理）
+     */
     const handleDeepResearchWait = async () => {
         console.log('\n【Deep Research専用待機処理】');
         console.log('─'.repeat(40));
@@ -1323,22 +1438,35 @@
             // ========================================
             console.log('\n【Claude-ステップ2-1】テキスト入力');
             console.log('─'.repeat(40));
+            console.log(`📋 プロンプト長: ${prompt.length}文字`);
+            console.log(`🎯 対象セレクタ: ${claudeSelectors['1_テキスト入力欄']}`);
             ClaudeLogManager.logStep('Step2-TextInput', 'テキスト入力開始');
 
+            console.log('🔍 テキスト入力欄を検索中...');
             const inputResult = await findClaudeElement(claudeSelectors['1_テキスト入力欄']);
             if (!inputResult) {
                 console.error('❌ テキスト入力欄が見つかりません');
+                console.error(`🎯 検索セレクタ: ${claudeSelectors['1_テキスト入力欄']}`);
                 throw new Error('テキスト入力欄が見つかりません');
             }
 
-            console.log('📝 テキストを入力中...');
+            console.log(`✅ テキスト入力欄発見: ${inputResult.tagName}`);
+            console.log(`📝 ${prompt.length}文字のテキストを入力中...`);
+            console.log(`💬 プロンプト先頭: "${prompt.substring(0, 50)}${prompt.length > 50 ? '...' : ''}"`);
+
             const inputSuccess = await inputText(inputResult, prompt);
             if (!inputSuccess) {
+                console.error('❌ テキスト入力処理に失敗');
                 throw new Error('テキスト入力に失敗しました');
             }
 
             console.log('✅ テキスト入力完了');
-            ClaudeLogManager.logStep('Step2-TextInput', 'テキスト入力完了', { promptLength: prompt.length });
+            console.log(`📊 入力結果: ${inputResult.textContent.length}文字が入力欄に設定されました`);
+            ClaudeLogManager.logStep('Step2-TextInput', 'テキスト入力完了', {
+                promptLength: prompt.length,
+                inputElementTag: inputResult.tagName,
+                finalLength: inputResult.textContent.length
+            });
             await wait(1000);
 
             // ========================================
@@ -1496,18 +1624,29 @@
             // ========================================
             console.log('\n【Claude-ステップ5-1】メッセージ送信');
             console.log('─'.repeat(40));
+            console.log(`🎯 送信ボタンセレクタ: ${claudeSelectors['2_送信ボタン']}`);
 
+            console.log('🔍 送信ボタンを検索中...');
             const sendResult = await findClaudeElement(claudeSelectors['2_送信ボタン']);
             if (!sendResult) {
                 console.error('❌ 送信ボタンが見つかりません');
+                console.error(`🎯 検索セレクタ: ${claudeSelectors['2_送信ボタン']}`);
                 throw new Error('送信ボタンが見つかりません');
             }
+
+            console.log(`✅ 送信ボタン発見: ${sendResult.tagName}`);
+            const buttonRect = sendResult.getBoundingClientRect();
+            console.log(`📍 送信ボタン位置: x=${Math.round(buttonRect.left)}, y=${Math.round(buttonRect.top)}`);
+            console.log(`📏 送信ボタンサイズ: ${Math.round(buttonRect.width)}×${Math.round(buttonRect.height)}px`);
 
             console.log('📤 送信ボタンをクリック...');
             const clickSuccess = await clickButton(sendResult, '送信ボタン');
             if (!clickSuccess) {
+                console.error('❌ 送信ボタンのクリック処理に失敗');
                 throw new Error('送信ボタンのクリックに失敗しました');
             }
+
+            console.log('✅ 送信ボタンクリック完了');
 
             // 送信時刻を更新（実際の送信タイミング）
             sendTime = new Date(); // 変数を更新
