@@ -4285,18 +4285,24 @@ initAITabsSystem();
 async function loadDropboxSettings() {
   try {
     const result = await new Promise((resolve) => {
-      chrome.storage.local.get(['dropboxClientId'], resolve);
+      chrome.storage.local.get(['dropboxClientId', 'dropboxAutoAuth'], resolve);
     });
 
     const clientIdInput = document.getElementById('dropboxClientId');
     const statusIcon = document.getElementById('dropboxStatusIcon');
     const statusText = document.getElementById('dropboxStatusText');
+    const autoAuthToggle = document.getElementById('dropboxAutoAuthToggle');
 
     if (clientIdInput && result.dropboxClientId) {
       clientIdInput.value = result.dropboxClientId;
       updateDropboxStatus(true);
     } else {
       updateDropboxStatus(false);
+    }
+
+    // 自動認証設定の読み込み（デフォルトはtrue）
+    if (autoAuthToggle) {
+      autoAuthToggle.checked = result.dropboxAutoAuth !== false;
     }
   } catch (error) {
     console.error('Dropbox設定の読み込みエラー:', error);
@@ -4375,6 +4381,27 @@ function initDropboxSettings() {
     });
   }
 
+  // 自動認証設定のチェックボックス
+  const autoAuthToggle = document.getElementById('dropboxAutoAuthToggle');
+  if (autoAuthToggle) {
+    autoAuthToggle.addEventListener('change', async (e) => {
+      try {
+        const isEnabled = e.target.checked;
+        await chrome.storage.local.set({ dropboxAutoAuth: isEnabled });
+        console.log('[UI] Dropbox自動認証設定を更新:', isEnabled);
+        showFeedback(
+          isEnabled
+            ? 'Dropbox自動認証を有効にしました'
+            : 'Dropbox自動認証を無効にしました',
+          'success'
+        );
+      } catch (error) {
+        console.error('[UI] 自動認証設定保存エラー:', error);
+        showFeedback('設定の保存に失敗しました', 'error');
+      }
+    });
+  }
+
   // 初期設定を読み込み
   loadDropboxSettings();
 }
@@ -4442,6 +4469,72 @@ async function authenticateDropbox() {
     authButton.disabled = false;
     authButton.innerHTML = '<span>🔐</span> Dropbox認証を開始';
   }
+}
+
+// popup.jsからの自動認証結果をチェック
+async function checkAutoAuthResult() {
+  try {
+    const result = await chrome.storage.local.get([
+      'dropboxAutoAuthResult',
+      'dropboxAutoAuthTimestamp'
+    ]);
+
+    if (result.dropboxAutoAuthResult !== undefined) {
+      const timeDiff = Date.now() - (result.dropboxAutoAuthTimestamp || 0);
+
+      // 10秒以内の結果のみ有効とする
+      if (timeDiff < 10000) {
+        if (result.dropboxAutoAuthResult) {
+          console.log('[UI] ポップアップからの自動認証成功を確認');
+
+          // ローディング表示（短時間）
+          showFeedback('Dropbox自動認証を確認中...', 'info');
+
+          try {
+            await updateDropboxAuthStatus();
+            showFeedback('Dropbox自動認証が完了しました！', 'success');
+          } catch (updateError) {
+            console.error('[UI] 認証状態更新エラー:', updateError);
+            showFeedback('認証は完了していますが、状態更新に失敗しました', 'warning');
+          }
+        } else {
+          console.log('[UI] ポップアップからの自動認証失敗を確認');
+
+          // 自動認証設定の状態に応じてメッセージを調整
+          const settings = await chrome.storage.local.get(['dropboxAutoAuth']);
+          const autoAuthEnabled = settings.dropboxAutoAuth !== false;
+
+          if (autoAuthEnabled) {
+            showFeedback(
+              'Dropbox自動認証に失敗しました。設定を確認して手動で認証してください。',
+              'warning'
+            );
+          } else {
+            // 自動認証が無効の場合は通常の状態チェックを行う
+            console.log('[UI] 自動認証が無効のため通常チェックに切り替え');
+            return false;
+          }
+        }
+
+        // 結果を使用後にクリア
+        await chrome.storage.local.remove([
+          'dropboxAutoAuthResult',
+          'dropboxAutoAuthTimestamp'
+        ]);
+        return true; // 自動認証結果を処理した
+      } else {
+        // 古い結果はクリア
+        await chrome.storage.local.remove([
+          'dropboxAutoAuthResult',
+          'dropboxAutoAuthTimestamp'
+        ]);
+      }
+    }
+  } catch (error) {
+    console.error('[UI] 自動認証結果確認エラー:', error);
+    showFeedback('認証状態の確認でエラーが発生しました', 'error');
+  }
+  return false; // 自動認証結果なし
 }
 
 // 認証状態の確認
@@ -4568,8 +4661,14 @@ function initDropboxAuth() {
     logoutButton.addEventListener('click', logoutDropbox);
   }
 
-  // 初期状態の確認
-  setTimeout(checkDropboxAuth, 500);
+  // 初期状態の確認（自動認証結果を先にチェック）
+  setTimeout(async () => {
+    const autoAuthProcessed = await checkAutoAuthResult();
+    if (!autoAuthProcessed) {
+      // 自動認証結果がなかった場合のみ通常のチェックを実行
+      await checkDropboxAuth();
+    }
+  }, 500);
 }
 
 // ===== Dropboxファイル選択機能 =====

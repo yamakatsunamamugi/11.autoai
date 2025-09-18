@@ -1236,8 +1236,7 @@ export default class StreamProcessorV2 {
    *
    * 以下の値は「未回答」として扱います：
    * - 空文字、null、undefined
-   * - 'お待ちください...'、'現在操作中です'、'処理完了'などの特殊マーカー
-   * - '現在操作中です_'で始まる排他制御マーカー（タイムアウト判定あり）
+   * - 'お待ちください...'、'処理完了'などの特殊マーカー
    */
   checkIfHasAnswer(value) {
     if (!value || typeof value !== 'string') {
@@ -1254,7 +1253,6 @@ export default class StreamProcessorV2 {
     // 特定のマーカーは未回答とみなす
     const noAnswerMarkers = [
       'お待ちください...',
-      '現在操作中です',
       '処理完了',
       'TODO',
       'PENDING',
@@ -1271,12 +1269,6 @@ export default class StreamProcessorV2 {
       return false;
     }
 
-    // 排他制御マーカーのチェック
-    if (trimmed.startsWith('現在操作中です_')) {
-      // タイムアウト判定が必要な場合はここで実装
-      // 現在はシンプルに未回答扱い
-      return false;
-    }
 
     return true;
   }
@@ -3019,7 +3011,6 @@ export default class StreamProcessorV2 {
    * このメソッドは以下の値を「回答なし」として扱います：
    * - 空文字、null、undefined
    * - '処理完了'（処理済みマーカー）
-   * - '現在操作中です_'で始まる文字列（排他制御マーカー）
    * - エラーマーカー（'error', 'エラー', 'failed', '失敗', '×'）
    */
   hasAnswer(value) {
@@ -3035,12 +3026,6 @@ export default class StreamProcessorV2 {
       return false;
     }
 
-    // 排他制御マーカーは未回答として扱う
-    // 例："現在操作中です_2024-01-01_10-00-00_PC001"
-    if (trimmed.startsWith('現在操作中です_')) {
-      this.log(`排他制御マーカーを検出 → 未回答として扱う`, 'info', '9-2-3');
-      return false;
-    }
 
     // エラーマーカーは回答なしとして扱う（再処理が必要）
     const errorMarkers = ['error', 'エラー', 'failed', '失敗', '×'];

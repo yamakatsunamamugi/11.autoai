@@ -633,38 +633,38 @@
         
         try {
             // ========================================
-            // ステップ3: モデル選択（条件付き）
+            // ステップ2: モデル選択（条件付き）
             // ========================================
-            await logStep('【Gemini-ステップ3】モデル選択', async () => {
-                log(`【Gemini-ステップ3-1】選択するモデル: '${modelName}'`, 'info');
-                
+            await logStep('【Gemini-ステップ2】モデル選択', async () => {
+                log(`【Gemini-ステップ2-1】選択するモデル: '${modelName}'`, 'info');
+
                 // モデルを選択（常に実行、Autoでもデフォルトモデルを明示的に選択）
-                const useDefault = !modelName || modelName === 'default' || 
+                const useDefault = !modelName || modelName === 'default' ||
                                   (typeof modelName === 'string' && modelName.toLowerCase() === 'auto');
-                
+
                 if (useDefault) {
-                    log('【Gemini-ステップ1-2】デフォルトモデル（Gemini）を使用', 'info');
+                    log('【Gemini-ステップ2-2】デフォルトモデル（Gemini）を使用', 'info');
                 } else if (modelName) {
                     const menuButton = findElement([
                         '.gds-mode-switch-button.logo-pill-btn',
                         'button[class*="logo-pill-btn"]',
                         'button.gds-mode-switch-button'
                     ]);
-                    
+
                     if (menuButton) {
                         menuButton.click();
                         await wait(1500);
-                        
+
                         const modelOptions = findElements([
                             'button.bard-mode-list-button',
                             'button[role="menuitemradio"]'
                         ]);
-                        
+
                         const modelButtonToClick = modelOptions.find(btn => {
                             const text = getCleanText(btn);
                             return text.toLowerCase().includes(modelName.toLowerCase());
                         });
-                        
+
                         if (modelButtonToClick) {
                             modelButtonToClick.click();
                             await wait(2500);  // モデル選択後の待機時間を増やす
@@ -682,13 +682,13 @@
                                 const normalizedModelName = modelName.replace('2.5 ', '');
 
                                 if (displayText.includes(normalizedModelName)) {
-                                    log(`【Gemini-ステップ1-3】✅ モデル選択確認成功: 「${displayText}」が選択されています`, 'success');
+                                    log(`【Gemini-ステップ2-3】✅ モデル選択確認成功: 「${displayText}」が選択されています`, 'success');
                                 } else {
-                                    log(`【Gemini-ステップ1-3】⚠️ モデル表示が期待値と異なります。期待値: ${modelName}, 実際: ${displayText}`, 'warn');
+                                    log(`【Gemini-ステップ2-3】⚠️ モデル表示が期待値と異なります。期待値: ${modelName}, 実際: ${displayText}`, 'warn');
                                 }
                             }
                         } else {
-                            log(`【Gemini-ステップ1-3】モデル "${modelName}" が見つからないため、デフォルトを使用`, 'warn');
+                            log(`【Gemini-ステップ2-3】モデル "${modelName}" が見つからないため、デフォルトを使用`, 'warn');
                         }
                     }
                 }
@@ -697,54 +697,54 @@
             });
 
             // ========================================
-            // ステップ4: 機能選択（条件付き）
+            // ステップ3: 機能選択（条件付き）
             // ========================================
-            await logStep('【Gemini-ステップ4】機能選択', async () => {
-                log(`【Gemini-ステップ4-1】選択する機能: '${featureName || '設定なし'}'`, 'info');
+            await logStep('【Gemini-ステップ3】機能選択', async () => {
+                log(`【Gemini-ステップ3-1】選択する機能: '${featureName || '設定なし'}'`, 'info');
 
                 // 機能を選択（null/undefined/'none'/'通常'以外の場合）
                 if (featureName && featureName !== 'none' && featureName !== '通常') {
                     let featureButton = null;
-                    
+
                     // 1. まずメインの機能ボタンから探す（テストコードと同じロジック）
                     const allButtons = findElements(['toolbox-drawer-item > button']);
-                    log(`【Gemini-ステップ1-4】🔍 メインボタン数: ${allButtons.length}`, 'info');
-                    
+                    log(`【Gemini-ステップ3-2】🔍 メインボタン数: ${allButtons.length}`, 'info');
+
                     featureButton = Array.from(allButtons).find(btn => {
                         const labelElement = findElement(['.label'], btn);
                         if (labelElement) {
                             const text = getCleanText(labelElement);
-                            return text.toLowerCase() === featureName.toLowerCase() || 
+                            return text.toLowerCase() === featureName.toLowerCase() ||
                                    text.toLowerCase().includes(featureName.toLowerCase());
                         }
                         return false;
                     });
-                    
+
                     // 2. メインにない場合は「その他」メニューを開く
                     if (!featureButton) {
                         const moreButton = findElement(['button[aria-label="その他"]']);
                         if (moreButton) {
                             moreButton.click();
                             await wait(1500); // 待機時間を増やす
-                            
+
                             // サブメニュー内から機能を探す
                             const menuButtons = findElements(['.cdk-overlay-pane .toolbox-drawer-menu-item button']);
                             featureButton = Array.from(menuButtons).find(btn => {
                                 const labelElement = findElement(['.label'], btn);
                                 if (labelElement) {
                                     const text = getCleanText(labelElement);
-                                    return text.toLowerCase() === featureName.toLowerCase() || 
+                                    return text.toLowerCase() === featureName.toLowerCase() ||
                                            text.toLowerCase().includes(featureName.toLowerCase());
                                 }
                                 return false;
                             });
                         }
                     }
-                    
+
                     if (featureButton) {
                         featureButton.click();
                         await wait(2000); // 選択後の待機時間を増やす
-                        log(`【Gemini-ステップ1-5】✅ 機能「${featureName}」を選択しました`, 'success');
+                        log(`【Gemini-ステップ3-3】✅ 機能「${featureName}」を選択しました`, 'success');
 
                         // 機能選択確認（テストコードの検証ロジックを追加）
                         const selectedButton = findElement([
@@ -758,15 +758,15 @@
 
                             if (selectedText.toLowerCase() === featureName.toLowerCase() ||
                                 selectedText.toLowerCase().includes(featureName.toLowerCase())) {
-                                log(`【Gemini-ステップ1-5】✅ 機能選択確認成功: 「${selectedText}」が有効化されています`, 'success');
+                                log(`【Gemini-ステップ3-3】✅ 機能選択確認成功: 「${selectedText}」が有効化されています`, 'success');
                             } else {
-                                log(`【Gemini-ステップ1-5】⚠️ 機能選択確認: 期待された機能「${featureName}」と異なる機能「${selectedText}」が選択されています`, 'warn');
+                                log(`【Gemini-ステップ3-3】⚠️ 機能選択確認: 期待された機能「${featureName}」と異なる機能「${selectedText}」が選択されています`, 'warn');
                             }
                         } else {
-                            log(`【Gemini-ステップ1-5】⚠️ 機能の選択状態が確認できません`, 'warn');
+                            log(`【Gemini-ステップ3-3】⚠️ 機能の選択状態が確認できません`, 'warn');
                         }
                     } else {
-                        log(`【Gemini-ステップ1-5】機能 "${featureName}" が見つからないため、スキップ`, 'warn');
+                        log(`【Gemini-ステップ3-3】機能 "${featureName}" が見つからないため、スキップ`, 'warn');
                     }
                 }
 
@@ -778,9 +778,9 @@
             });
             
             // ========================================
-            // ステップ2: テキスト入力
+            // ステップ4: テキスト入力
             // ========================================
-            await logStep('【Gemini-ステップ2】テキスト入力', async () => {
+            await logStep('【Gemini-ステップ4】テキスト入力', async () => {
                 const editor = await getElementWithWait(['.ql-editor'], 'テキスト入力欄', 10000);
                 if (!editor) throw new Error("テキスト入力欄 (.ql-editor) が見つかりません。");
 
@@ -795,9 +795,9 @@
             });
             
             // ========================================
-            // ステップ3: メッセージ送信（再試行対応）
+            // ステップ5: メッセージ送信（再試行対応）
             // ========================================
-            await logStep('【Gemini-ステップ3】メッセージ送信（再試行対応）', async () => {
+            await logStep('【Gemini-ステップ5】メッセージ送信（再試行対応）', async () => {
                 // 送信ボタンを5回まで再試行
                 let sendSuccess = false;
                 let sendAttempts = 0;
@@ -805,7 +805,7 @@
                 
                 while (!sendSuccess && sendAttempts < maxSendAttempts) {
                     sendAttempts++;
-                    log(`【Gemini-ステップ3-${sendAttempts}】送信試行 ${sendAttempts}/${maxSendAttempts}`, 'step');
+                    log(`【Gemini-ステップ5-${sendAttempts}】送信試行 ${sendAttempts}/${maxSendAttempts}`, 'step');
                     
                     const sendButton = findElement([
                         'button.send-button.submit:not(.stop)',
@@ -816,13 +816,13 @@
                         if (sendAttempts === maxSendAttempts) {
                             throw new Error('送信ボタンが見つからないか、送信不可能な状態です');
                         }
-                        log(`【Gemini-ステップ3-${sendAttempts}】送信ボタンが見つかりません。2秒後に再試行...`, 'warning');
+                        log(`【Gemini-ステップ5-${sendAttempts}】送信ボタンが見つかりません。2秒後に再試行...`, 'warning');
                         await wait(2000);
                         continue;
                     }
                     
                     sendButton.click();
-                    log(`【Gemini-ステップ3-${sendAttempts}】送信ボタンをクリックしました（試行${sendAttempts}）`, 'success');
+                    log(`【Gemini-ステップ5-${sendAttempts}】送信ボタンをクリックしました（試行${sendAttempts}）`, 'success');
                     await sleep(1000);
                     
                     // 送信後に停止ボタンが表示されるか、5秒待機
@@ -835,7 +835,7 @@
                         ]);
                         if (stopButton) {
                             stopButtonAppeared = true;
-                            log(`【Gemini-ステップ3-${sendAttempts}】停止ボタンが表示されました - 送信成功`, 'success');
+                            log(`【Gemini-ステップ5-${sendAttempts}】停止ボタンが表示されました - 送信成功`, 'success');
                             break;
                         }
                         await sleep(1000);
@@ -845,7 +845,7 @@
                         sendSuccess = true;
                         break;
                     } else {
-                        log(`【Gemini-ステップ3-${sendAttempts}】送信反応が確認できません。再試行します...`, 'warning');
+                        log(`【Gemini-ステップ5-${sendAttempts}】送信反応が確認できません。再試行します...`, 'warning');
                         await wait(2000);
                     }
                 }
@@ -855,17 +855,17 @@
                 }
                 
                 // 送信時刻を記録（SpreadsheetLogger用）
-                log(`【Gemini-ステップ3-記録】🔍 送信時刻記録開始 - AIHandler: ${!!window.AIHandler}, recordSendTimestamp: ${!!window.AIHandler?.recordSendTimestamp}, currentAITaskInfo: ${!!window.currentAITaskInfo}`, 'info');
+                log(`【Gemini-ステップ5-記録】🔍 送信時刻記録開始 - AIHandler: ${!!window.AIHandler}, recordSendTimestamp: ${!!window.AIHandler?.recordSendTimestamp}, currentAITaskInfo: ${!!window.currentAITaskInfo}`, 'info');
                 if (window.AIHandler && window.AIHandler.recordSendTimestamp) {
                     try {
-                        log(`【Gemini-ステップ3-記録】📝 送信時刻記録実行開始 - タスクID: ${window.currentAITaskInfo?.taskId}`, 'info');
+                        log(`【Gemini-ステップ5-記録】📝 送信時刻記録実行開始 - タスクID: ${window.currentAITaskInfo?.taskId}`, 'info');
                         await window.AIHandler.recordSendTimestamp('Gemini');
-                        log(`【Gemini-ステップ3-記録】✅ 送信時刻記録成功`, 'success');
+                        log(`【Gemini-ステップ5-記録】✅ 送信時刻記録成功`, 'success');
                     } catch (error) {
-                        log(`【Gemini-ステップ3-記録】❌ 送信時刻記録エラー: ${error.message}`, 'error');
+                        log(`【Gemini-ステップ5-記録】❌ 送信時刻記録エラー: ${error.message}`, 'error');
                     }
                 } else {
-                    log(`【Gemini-ステップ3-記録】⚠️ AIHandler または recordSendTimestamp が利用できません`, 'warning');
+                    log(`【Gemini-ステップ5-記録】⚠️ AIHandler または recordSendTimestamp が利用できません`, 'warning');
                 }
                 
                 return "メッセージを送信しました。";
@@ -1023,9 +1023,9 @@
             }));
             
             // ========================================
-            // ステップ5: テキスト取得（ui-selectorsを使用）
+            // ステップ7: テキスト取得（ui-selectorsを使用）
             // ========================================
-            await logStep('【Gemini-ステップ5】テキスト取得', async () => {
+            await logStep('【Gemini-ステップ7】テキスト取得', async () => {
                 let text = '';
                 
                 // 方法1: Canvas/拡張応答を実際のDOM要素で判定して優先的に取得
@@ -1043,11 +1043,11 @@
                 for (const selector of canvasSelectors) {
                     const canvasElement = findElement([selector]);
                     if (canvasElement) {
-                        log('🚫 【Gemini-ステップ5-1】プロンプト除外機能を適用してテキスト取得（Canvas応答）', 'info');
+                        log('🚫 【Gemini-ステップ7-1】プロンプト除外機能を適用してテキスト取得（Canvas応答）', 'info');
                         text = getStructuredCanvasContent(canvasElement);
                         if (text && text.length > 10) {
-                            log('✅ 【Gemini-ステップ5-2】プロンプト除外完了 - 純粋なAI応答を取得', 'success');
-                            log(`【Gemini-ステップ5-1】Canvas/拡張応答取得成功 (${selector}): ${text.length}文字`, 'success');
+                            log('✅ 【Gemini-ステップ7-2】プロンプト除外完了 - 純粋なAI応答を取得', 'success');
+                            log(`【Gemini-ステップ7-1】Canvas/拡張応答取得成功 (${selector}): ${text.length}文字`, 'success');
                             break;
                         }
                     }
@@ -1055,7 +1055,7 @@
                 
                 // 方法2: 通常の応答メッセージを取得
                 if (!text) {
-                    log('【Gemini-ステップ5-2】通常テキスト取得試行', 'info');
+                    log('【Gemini-ステップ7-2】通常テキスト取得試行', 'info');
                     
                     // 通常テキストのセレクタ
                     const normalSelectors = [
@@ -1071,12 +1071,12 @@
                         const responseElements = findElements([selector]);
                         if (responseElements.length > 0) {
                             const latestResponse = responseElements[responseElements.length - 1];
-                            log('🚫 【Gemini-ステップ5-3】プロンプト除外機能を適用してテキスト取得（通常応答）', 'info');
+                            log('🚫 【Gemini-ステップ7-3】プロンプト除外機能を適用してテキスト取得（通常応答）', 'info');
                             text = getCleanText(latestResponse);
 
                             if (text && text.length > 10) {
-                                log('✅ 【Gemini-ステップ5-4】プロンプト除外完了 - 純粋なAI応答を取得', 'success');
-                                log(`【Gemini-ステップ5-2】通常テキスト取得成功 (${selector}): ${text.length}文字`, 'success');
+                                log('✅ 【Gemini-ステップ7-4】プロンプト除外完了 - 純粋なAI応答を取得', 'success');
+                                log(`【Gemini-ステップ7-2】通常テキスト取得成功 (${selector}): ${text.length}文字`, 'success');
                                 break;
                             }
                         }
@@ -1086,7 +1086,7 @@
                 
                 // 方法3: フォールバック - より汎用的なセレクタで探す
                 if (!text) {
-                    log('【Gemini-ステップ5-3】フォールバックセレクタで取得試行', 'info');
+                    log('【Gemini-ステップ7-3】フォールバックセレクタで取得試行', 'info');
                     const fallbackSelectors = [
                         '.model-response-text',
                         'div[class*="model-response"]',
@@ -1099,11 +1099,11 @@
                         const elements = findElements([selector]);
                         if (elements.length > 0) {
                             const lastElement = elements[elements.length - 1];
-                            log('🚫 【Gemini-ステップ5-5】プロンプト除外機能を適用してテキスト取得（フォールバック）', 'info');
+                            log('🚫 【Gemini-ステップ7-5】プロンプト除外機能を適用してテキスト取得（フォールバック）', 'info');
                             text = getCleanText(lastElement);
                             if (text && text.length > 10) {
-                                log('✅ 【Gemini-ステップ5-6】プロンプト除外完了 - 純粋なAI応答を取得', 'success');
-                                log(`【Gemini-ステップ5-3】フォールバック取得成功 (${selector}): ${text.length}文字`, 'success');
+                                log('✅ 【Gemini-ステップ7-6】プロンプト除外完了 - 純粋なAI応答を取得', 'success');
+                                log(`【Gemini-ステップ7-3】フォールバック取得成功 (${selector}): ${text.length}文字`, 'success');
                                 break;
                             }
                         }
@@ -1114,8 +1114,8 @@
                     throw new Error("応答テキストが見つかりません。");
                 }
                 
-                log(`【Gemini-ステップ5-完了】最終的に取得: ${text.length}文字`, 'success');
-                log(`【Gemini-ステップ5-完了】最初の100文字: ${text.substring(0, 100)}...`, 'info');
+                log(`【Gemini-ステップ7-完了】最終的に取得: ${text.length}文字`, 'success');
+                log(`【Gemini-ステップ7-完了】最初の100文字: ${text.substring(0, 100)}...`, 'info');
                 
                 // 結果を返す
                 return text;

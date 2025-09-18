@@ -11,7 +11,7 @@ export class RetryManager {
     this.pcId = 'RetryManager';
     this.maxGroupRetryCount = 10;
     this.groupRetryDelays = [30000, 60000, 300000, 600000, 1200000, 2400000, 3600000, 5400000, 7200000, 9000000];
-    this.waitingTextPatterns = ['お待ちください...', '現在操作中です'];
+    this.waitingTextPatterns = ['お待ちください...'];
     this.groupFailedTasks = new Map();
     this.groupEmptyTasks = new Map();
     this.groupResponseFailures = new Map();
@@ -47,7 +47,6 @@ export class RetryManager {
   isWaitingText(text) {
     if (!text) return false;
     if (text === '処理完了') return true;
-    if (text.startsWith('現在操作中です_')) return true;
     return this.waitingTextPatterns.some(pattern => text === pattern);
   }
 
