@@ -1065,26 +1065,51 @@
     };
 
     // ステップ1-12: すべての機能トグルをオフにする関数
-    const turnOffAllFeatureToggles = () => {
+    const turnOffAllFeatureToggles = async () => {
         console.log('\n🔄 すべての機能トグルをオフに設定中...');
         let toggleCount = 0;
 
-        // 機能メニュー内のすべてのトグルを探す
-        const toggles = document.querySelectorAll('button:has(input[role="switch"])');
+        // 機能メニュー内のすべてのトグルを探す（改良版セレクタ）
+        const allInputs = document.querySelectorAll('input[role="switch"]');
 
-        for (const toggle of toggles) {
+        for (const inputElement of allInputs) {
             try {
-                const inputElement = toggle.querySelector('input[role="switch"]');
-                if (inputElement) {
+                // input要素が属するボタンを遡って探す
+                const toggleButton = inputElement.closest('button');
+
+                if (toggleButton && inputElement) {
                     const isCurrentlyOn = inputElement.checked || inputElement.getAttribute('aria-checked') === 'true';
 
                     if (isCurrentlyOn) {
-                        const label = toggle.querySelector('p.font-base');
-                        const featureName = label ? label.textContent.trim() : 'Unknown';
+                        // 機能名の取得（複数パターンに対応）
+                        let featureName = 'Unknown';
+
+                        // パターン1: p.font-base (従来)
+                        const labelFontBase = toggleButton.querySelector('p.font-base');
+                        if (labelFontBase) {
+                            featureName = labelFontBase.textContent.trim();
+                        }
+                        // パターン2: 新しいHTML構造（text-text-300クラス）
+                        else {
+                            const labelTextClass = toggleButton.querySelector('p.font-base.text-text-300, p[class*="text-text-300"]');
+                            if (labelTextClass) {
+                                featureName = labelTextClass.textContent.trim();
+                            }
+                            // パターン3: 任意のpタグ内のテキスト
+                            else {
+                                const anyLabel = toggleButton.querySelector('p');
+                                if (anyLabel && anyLabel.textContent.trim()) {
+                                    featureName = anyLabel.textContent.trim();
+                                }
+                            }
+                        }
 
                         console.log(`  🔘 ${featureName}をオフに設定`);
-                        toggle.click();
+                        toggleButton.click();
                         toggleCount++;
+
+                        // クリック後の短い待機
+                        await new Promise(resolve => setTimeout(resolve, 200));
                     }
                 }
             } catch (error) {
@@ -1391,7 +1416,7 @@
 
                     // 機能選択前にすべてのトグルをオフにする
                     console.log('\n【ステップ4-1-1】全トグルをオフに設定');
-                    turnOffAllFeatureToggles();
+                    await turnOffAllFeatureToggles();
                     await wait(500);
 
                     if (isDeepResearch) {
@@ -1852,7 +1877,8 @@
                 }
             }
 
-            if (!finalText) {
+            // finalTextの確実な初期化
+            if (!finalText || finalText.trim() === '') {
                 console.warn('⚠️ テキストが取得できませんでした');
                 finalText = 'テキスト取得失敗';
             }
@@ -1875,8 +1901,8 @@
             // タスク完了をログに記録
             ClaudeLogManager.completeTask(result);
             ClaudeLogManager.logStep('Step7-Complete', 'タスク正常完了', {
-                responseLength: finalText.length,
-                responsePreview: finalText.substring(0, 100) + '...',
+                responseLength: finalText ? finalText.length : 0,
+                responsePreview: finalText ? (finalText.substring(0, 100) + '...') : 'テキスト取得失敗',
                 model: modelName,
                 function: featureName,
                 cellInfo: taskData.cellInfo
@@ -1901,6 +1927,7 @@
 
             // 統合フロー用にresultオブジェクトを拡張（ChatGPT/Geminiと同じ形式）
             const sendTime = new Date();
+            result.response = finalText;  // ai-task-executor.jsで必要なresponseプロパティを追加
             result.displayedModel = displayedModel;
             result.displayedFunction = displayedFunction;
             result.sendTime = sendTime;
@@ -2011,7 +2038,7 @@
 
             // 機能選択前にすべてのトグルをオフにする
             console.log('【Phase】全トグルをオフに設定');
-            turnOffAllFeatureToggles();
+            await turnOffAllFeatureToggles();
             await wait(500);
 
             // 指定の機能を有効にする
