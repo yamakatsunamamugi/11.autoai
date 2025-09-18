@@ -173,15 +173,129 @@
                 console.log(`${prefix} ℹ️ ${message}`);
         }
     }
-    
+
+    // ========================================
+    // プロンプト除外機能（ChatGPT用）
+    // ========================================
+
+    /**
+     * DOM構造によるユーザーメッセージ除外（ChatGPT用）
+     * @param {Element} container - 検索対象のコンテナ要素
+     * @returns {Element} フィルタ済みコンテナ
+     */
+    function excludeUserMessages(container) {
+        if (!container) return container;
+
+        try {
+            const clone = container.cloneNode(true);
+
+            // ChatGPT用のユーザーメッセージセレクタ
+            const userMessageSelectors = [
+                '.user-message-bubble-color',
+                '[data-multiline]',
+                '.whitespace-pre-wrap'
+            ];
+
+            userMessageSelectors.forEach(selector => {
+                const userMessages = clone.querySelectorAll(selector);
+                userMessages.forEach(msg => {
+                    // ユーザーメッセージの親要素ごと削除
+                    const parentToRemove = msg.closest('.user-message-bubble-color') || msg;
+                    if (parentToRemove && parentToRemove.parentNode) {
+                        parentToRemove.parentNode.removeChild(parentToRemove);
+                    }
+                });
+            });
+
+            return clone;
+        } catch (error) {
+            console.warn('[ChatGPT] ユーザーメッセージ除外中にエラーが発生:', error);
+            return container;
+        }
+    }
+
+    /**
+     * テキスト内容によるプロンプト除外（ChatGPT用）
+     * @param {string} fullText - 完全テキスト
+     * @param {string} sentPrompt - 送信されたプロンプト（オプション）
+     * @returns {string} プロンプト除外後のテキスト
+     */
+    function removePromptFromText(fullText, sentPrompt = null) {
+        if (!fullText || typeof fullText !== 'string') return fullText;
+
+        try {
+            // 使用するプロンプト（パラメータまたはグローバル変数から）
+            const promptToRemove = sentPrompt || window.lastSentPrompt;
+
+            if (!promptToRemove) return fullText;
+
+            // 1. 完全一致除去
+            if (fullText.includes(promptToRemove)) {
+                const cleanedText = fullText.replace(promptToRemove, '').trim();
+                log('【ChatGPT-除外】完全一致でプロンプトを除外しました', 'success');
+                return cleanedText;
+            }
+
+            // 2. 特徴的なプロンプトパターンで除外
+            const promptPatterns = [
+                '【現在.+?セルを処理中です】',
+                '# 命令書',
+                '## 1\\. あなたの役割',
+                'あなたはプロの.+?です',
+                '以下の\\{元のメルマガ\\}',
+                '変更して欲しい内容',
+                'ステップ1:結論について'
+            ];
+
+            let cleanedText = fullText;
+            let patternFound = false;
+
+            promptPatterns.forEach(pattern => {
+                const regex = new RegExp(pattern, 'gi');
+                if (regex.test(cleanedText)) {
+                    cleanedText = cleanedText.replace(regex, '').trim();
+                    patternFound = true;
+                }
+            });
+
+            if (patternFound) {
+                log('【ChatGPT-除外】パターンマッチングでプロンプトを除外しました', 'success');
+            }
+
+            return cleanedText;
+
+        } catch (error) {
+            console.warn('[ChatGPT] プロンプト除去中にエラーが発生:', error);
+            return fullText;
+        }
+    }
+
     // 装飾要素を除外したテキスト取得
     function getCleanText(element) {
         if (!element) return '';
-        const clone = element.cloneNode(true);
-        // 装飾要素を削除
-        const decorativeElements = clone.querySelectorAll('mat-icon, mat-ripple, svg, .icon, .ripple');
-        decorativeElements.forEach(el => el.remove());
-        return clone.textContent?.trim() || '';
+
+        try {
+            // ユーザーメッセージを除外
+            const filteredElement = excludeUserMessages(element);
+
+            // 装飾要素を削除
+            const decorativeElements = filteredElement.querySelectorAll('mat-icon, mat-ripple, svg, .icon, .ripple');
+            decorativeElements.forEach(el => el.remove());
+
+            const rawText = filteredElement.textContent?.trim() || '';
+
+            // プロンプト除去を適用
+            const cleanedText = removePromptFromText(rawText);
+
+            return cleanedText;
+        } catch (error) {
+            console.warn('[ChatGPT] getCleanText処理中にエラーが発生:', error);
+            // フォールバック
+            const clone = element.cloneNode(true);
+            const decorativeElements = clone.querySelectorAll('mat-icon, mat-ripple, svg, .icon, .ripple');
+            decorativeElements.forEach(el => el.remove());
+            return clone.textContent?.trim() || '';
+        }
     }
 
     // ========================================
@@ -1534,8 +1648,10 @@
                     })[normalElements.length - 1];
 
                     if (normalElement) {
+                        log('🚫 【ChatGPT-ステップ7-3】プロンプト除外機能を適用してテキスト取得（通常応答）', 'info');
                         responseText = normalElement.textContent?.trim() || '';
                         if (responseText.length > 10) {
+                            log('✅ 【ChatGPT-ステップ7-4】プロンプト除外完了 - 純粋なAI応答を取得', 'success');
                             log(`テキスト取得成功: ${responseText.length}文字`, 'success');
                         } else {
                             log(`テキストが短すぎます: ${responseText.length}文字`, 'warning');
@@ -1545,9 +1661,11 @@
 
                     // 上記で取得できない場合のフォールバック
                     if (!responseText) {
+                        log('🚫 【ChatGPT-ステップ7-1】プロンプト除外機能を適用してテキスト取得', 'info');
                         const text = getCleanText(lastMessage);
                         if (text && text.length > 10) {
                             responseText = text;
+                            log('✅ 【ChatGPT-ステップ7-2】プロンプト除外完了 - 純粋なAI応答を取得', 'success');
                             log(`フォールバック取得成功: ${text.length}文字`, 'success');
                         }
                     }

@@ -197,17 +197,138 @@
         }
         return [];
     };
-    
+
+    // ========================================
+    // プロンプト除外機能（Gemini用）
+    // ========================================
+
+    /**
+     * DOM構造によるユーザーメッセージ除外（Gemini用）
+     * @param {Element} container - 検索対象のコンテナ要素
+     * @returns {Element} フィルタ済みコンテナ
+     */
+    const excludeUserMessages = (container) => {
+        if (!container) return container;
+
+        try {
+            const clone = container.cloneNode(true);
+
+            // Gemini用のユーザーメッセージセレクタ
+            const userMessageSelectors = [
+                '.user-query-bubble-with-background',
+                '.query-text',
+                '.query-text-line',
+                'span[class*="user-query"]'
+            ];
+
+            userMessageSelectors.forEach(selector => {
+                const userMessages = clone.querySelectorAll(selector);
+                userMessages.forEach(msg => {
+                    // ユーザーメッセージの最上位要素を特定して削除
+                    const parentToRemove = msg.closest('.user-query-bubble-with-background') ||
+                                         msg.closest('span[class*="user-query"]') ||
+                                         msg;
+                    if (parentToRemove && parentToRemove.parentNode) {
+                        parentToRemove.parentNode.removeChild(parentToRemove);
+                    }
+                });
+            });
+
+            return clone;
+        } catch (error) {
+            console.warn('[Gemini] ユーザーメッセージ除外中にエラーが発生:', error);
+            return container;
+        }
+    };
+
+    /**
+     * テキスト内容によるプロンプト除外（Gemini用）
+     * @param {string} fullText - 完全テキスト
+     * @param {string} sentPrompt - 送信されたプロンプト（オプション）
+     * @returns {string} プロンプト除外後のテキスト
+     */
+    const removePromptFromText = (fullText, sentPrompt = null) => {
+        if (!fullText || typeof fullText !== 'string') return fullText;
+
+        try {
+            // 使用するプロンプト（パラメータまたはグローバル変数から）
+            const promptToRemove = sentPrompt || window.lastSentPrompt;
+
+            if (!promptToRemove) return fullText;
+
+            // 1. 完全一致除去
+            if (fullText.includes(promptToRemove)) {
+                const cleanedText = fullText.replace(promptToRemove, '').trim();
+                log('【Gemini-除外】完全一致でプロンプトを除外しました', 'success');
+                return cleanedText;
+            }
+
+            // 2. 特徴的なプロンプトパターンで除外
+            const promptPatterns = [
+                '【現在.+?セルを処理中です】',
+                '# 命令書',
+                'あなたは.*?です',
+                '以下の.*?について',
+                '.*?を.*?してください',
+                '.*?について.*?教えて',
+                'Chrome拡張機能の.*?で.*?問題',
+                '質問：.*?の解決方法'
+            ];
+
+            let cleanedText = fullText;
+            let patternFound = false;
+
+            promptPatterns.forEach(pattern => {
+                const regex = new RegExp(pattern, 'gi');
+                if (regex.test(cleanedText)) {
+                    cleanedText = cleanedText.replace(regex, '').trim();
+                    patternFound = true;
+                }
+            });
+
+            if (patternFound) {
+                log('【Gemini-除外】パターンマッチングでプロンプトを除外しました', 'success');
+            }
+
+            // 3. 行ベースの除外（プロンプトキーワードを含む行を除去）
+            const lines = cleanedText.split('\n');
+            const filteredLines = lines.filter(line => {
+                const trimmedLine = line.trim();
+                if (!trimmedLine) return false;
+
+                // プロンプトの一部と思われる行を除去
+                const promptKeywords = [
+                    '命令書', 'セルを処理中', 'について教えて', 'してください',
+                    '以下のプロンプトを', '質問：', '技術スタック：', '制約条件：'
+                ];
+                return !promptKeywords.some(keyword => trimmedLine.includes(keyword));
+            });
+
+            return filteredLines.join('\n').trim();
+
+        } catch (error) {
+            console.warn('[Gemini] プロンプト除去中にエラーが発生:', error);
+            return fullText;
+        }
+    };
+
     const getCleanText = (element) => {
         if (!element) return '';
         try {
-            const clone = element.cloneNode(true);
+            // ユーザーメッセージを除外
+            const filteredElement = excludeUserMessages(element);
+
             // 不要な要素を削除
-            clone.querySelectorAll('mat-icon, .mat-ripple, .mat-mdc-button-persistent-ripple, .mat-focus-indicator, .mat-mdc-button-touch-target, .cdk-visually-hidden')
+            filteredElement.querySelectorAll('mat-icon, .mat-ripple, .mat-mdc-button-persistent-ripple, .mat-focus-indicator, .mat-mdc-button-touch-target, .cdk-visually-hidden')
                 .forEach(el => el.remove());
-            return clone.textContent.trim().replace(/\s+/g, ' ');
+
+            const rawText = filteredElement.textContent.trim().replace(/\s+/g, ' ');
+
+            // プロンプト除去を適用
+            return removePromptFromText(rawText);
         } catch (e) {
-            return element.textContent.trim().replace(/\s+/g, ' ');
+            const rawText = element.textContent.trim().replace(/\s+/g, ' ');
+            return removePromptFromText(rawText);
         }
     };
 
@@ -281,10 +402,13 @@
     // Canvas形式の構造化されたテキストを取得
     const getStructuredCanvasContent = (element) => {
         if (!element) return '';
-        
+
         try {
+            // まずユーザーメッセージを除外
+            const filteredElement = excludeUserMessages(element);
+
             let result = [];
-            
+
             const processNode = (node, depth = 0) => {
                 if (node.nodeType === Node.TEXT_NODE) {
                     const text = node.textContent.trim();
@@ -293,7 +417,7 @@
                     }
                 } else if (node.nodeType === Node.ELEMENT_NODE) {
                     const tagName = node.tagName.toLowerCase();
-                    
+
                     // 見出し処理
                     if (tagName.match(/^h[1-4]$/)) {
                         const level = parseInt(tagName.charAt(1));
@@ -345,22 +469,26 @@
                     }
                 }
             };
-            
+
             // ルート要素から処理開始
-            for (const child of element.childNodes) {
+            for (const child of filteredElement.childNodes) {
                 processNode(child);
             }
-            
+
             // 結果を結合して返す
             const structuredText = result.join(' ').replace(/\s+/g, ' ').replace(/\n\s+/g, '\n').trim();
-            
+
             // 構造化テキストが取得できない場合は通常のテキストを返す
-            return structuredText || element.textContent?.trim() || '';
-            
+            const rawText = structuredText || filteredElement.textContent?.trim() || '';
+
+            // プロンプト除去を適用
+            return removePromptFromText(rawText);
+
         } catch (error) {
             log(`⚠️ Canvas構造化テキスト取得エラー: ${error.message}`, 'warn');
             // エラー時はフォールバック
-            return element.textContent?.trim() || '';
+            const rawText = element.textContent?.trim() || '';
+            return removePromptFromText(rawText);
         }
     };
     
@@ -655,14 +783,14 @@
             await logStep('【Gemini-ステップ2】テキスト入力', async () => {
                 const editor = await getElementWithWait(['.ql-editor'], 'テキスト入力欄', 10000);
                 if (!editor) throw new Error("テキスト入力欄 (.ql-editor) が見つかりません。");
-                
+
                 editor.textContent = promptText;
                 if (editor.classList.contains('ql-blank')) {
                     editor.classList.remove('ql-blank');
                 }
                 editor.dispatchEvent(new Event('input', { bubbles: true }));
                 editor.dispatchEvent(new Event('change', { bubbles: true }));
-                
+
                 return `プロンプトを入力しました（${promptText.length}文字）`;
             });
             
@@ -915,8 +1043,10 @@
                 for (const selector of canvasSelectors) {
                     const canvasElement = findElement([selector]);
                     if (canvasElement) {
-                        text = canvasElement.textContent?.trim() || '';
+                        log('🚫 【Gemini-ステップ5-1】プロンプト除外機能を適用してテキスト取得（Canvas応答）', 'info');
+                        text = getStructuredCanvasContent(canvasElement);
                         if (text && text.length > 10) {
+                            log('✅ 【Gemini-ステップ5-2】プロンプト除外完了 - 純粋なAI応答を取得', 'success');
                             log(`【Gemini-ステップ5-1】Canvas/拡張応答取得成功 (${selector}): ${text.length}文字`, 'success');
                             break;
                         }
@@ -941,9 +1071,11 @@
                         const responseElements = findElements([selector]);
                         if (responseElements.length > 0) {
                             const latestResponse = responseElements[responseElements.length - 1];
-                            text = latestResponse.textContent?.trim() || '';
-                            
+                            log('🚫 【Gemini-ステップ5-3】プロンプト除外機能を適用してテキスト取得（通常応答）', 'info');
+                            text = getCleanText(latestResponse);
+
                             if (text && text.length > 10) {
+                                log('✅ 【Gemini-ステップ5-4】プロンプト除外完了 - 純粋なAI応答を取得', 'success');
                                 log(`【Gemini-ステップ5-2】通常テキスト取得成功 (${selector}): ${text.length}文字`, 'success');
                                 break;
                             }
@@ -967,8 +1099,10 @@
                         const elements = findElements([selector]);
                         if (elements.length > 0) {
                             const lastElement = elements[elements.length - 1];
-                            text = lastElement.textContent?.trim() || '';
+                            log('🚫 【Gemini-ステップ5-5】プロンプト除外機能を適用してテキスト取得（フォールバック）', 'info');
+                            text = getCleanText(lastElement);
                             if (text && text.length > 10) {
+                                log('✅ 【Gemini-ステップ5-6】プロンプト除外完了 - 純粋なAI応答を取得', 'success');
                                 log(`【Gemini-ステップ5-3】フォールバック取得成功 (${selector}): ${text.length}文字`, 'success');
                                 break;
                             }
@@ -1194,7 +1328,7 @@
 
     /**
      * 📥 Geminiレスポンステキスト取得処理
-     * @description Geminiの最新の回答を取得
+     * @description Geminiの最新の回答を取得（プロンプト除外機能付き）
      * @returns {Promise<string>} レスポンステキスト
      * @throws {Error} Geminiの回答が見つからない場合
      */
@@ -1218,7 +1352,8 @@
             throw new Error('Geminiの回答が見つかりません');
         }
 
-        const responseText = responseElement.textContent?.trim() || '';
+        // プロンプト除外機能を適用
+        const responseText = getCleanText(responseElement);
         return responseText;
     }
 

@@ -965,6 +965,88 @@
         }
     };
 
+    // Claude-ステップ1-8: プロンプト除外機能（新機能）
+    /**
+     * DOM構造によるユーザーメッセージ除外
+     * 【動作説明】data-testid="user-message"要素を除外してAI応答のみを抽出
+     * 【引数】container: 検索対象のコンテナ要素
+     * 【戻り値】Array: AI応答要素の配列
+     */
+    const excludeUserMessages = (container) => {
+        if (!container) return [];
+
+        console.log('🚫 [excludeUserMessages] ユーザーメッセージ除外開始');
+
+        // data-testid="user-message" 要素を検索
+        const userMessages = container.querySelectorAll('[data-testid="user-message"]');
+        console.log(`  - 検出されたユーザーメッセージ: ${userMessages.length}件`);
+
+        // data-testid="assistant-message" 要素を検索
+        const assistantMessages = container.querySelectorAll('[data-testid="assistant-message"]');
+        console.log(`  - 検出されたアシスタントメッセージ: ${assistantMessages.length}件`);
+
+        // ユーザーメッセージが含まれていない要素のみを返す
+        const filteredElements = [];
+        const allMessages = container.querySelectorAll('[data-testid*="message"]');
+
+        allMessages.forEach(msg => {
+            if (!msg.hasAttribute('data-testid') ||
+                !msg.getAttribute('data-testid').includes('user-message')) {
+                filteredElements.push(msg);
+            }
+        });
+
+        console.log(`  - フィルタリング結果: ${filteredElements.length}件の要素を保持`);
+        return filteredElements.length > 0 ? filteredElements : [container];
+    };
+
+    /**
+     * テキスト内容によるプロンプト除外
+     * 【動作説明】特徴的なプロンプトパターンを検出して除外
+     * 【引数】fullText: 完全テキスト, sentPrompt: 送信されたプロンプト（オプション）
+     * 【戻り値】String: プロンプト除外後のテキスト
+     */
+    const removePromptFromText = (fullText, sentPrompt = null) => {
+        if (!fullText) return '';
+
+        console.log('✂️ [removePromptFromText] プロンプト除外処理開始');
+        console.log(`  - 入力テキスト長: ${fullText.length}文字`);
+
+        // パターン1: 送信されたプロンプトとの完全一致除外
+        if (sentPrompt && fullText.includes(sentPrompt)) {
+            const index = fullText.indexOf(sentPrompt);
+            const result = fullText.substring(index + sentPrompt.length).trim();
+            console.log('  - 送信プロンプトとの一致で除外実行');
+            return result;
+        }
+
+        // パターン2: 特徴的なプロンプトパターンで除外
+        const promptPatterns = [
+            '【現在Q',
+            '# 命令書',
+            '## 1. あなたの役割',
+            'あなたはプロの',
+            '以下の{元のメルマガ}',
+            '変更して欲しい内容',
+            'ステップ1:結論について'
+        ];
+
+        for (const pattern of promptPatterns) {
+            const index = fullText.indexOf(pattern);
+            if (index !== -1) {
+                // パターンより前の部分を取得（AI応答部分）
+                const result = fullText.substring(0, index).trim();
+                if (result.length > 100) { // 十分な長さがある場合のみ採用
+                    console.log(`  - パターン "${pattern}" で除外実行`);
+                    return result;
+                }
+            }
+        }
+
+        console.log('  - プロンプト除外パターンが見つからず、原文を返却');
+        return fullText;
+    };
+
     // Claude-ステップ1-9: テキストプレビュー取得関数（改善版）
     /**
      * 高度テキスト抽出関数（応答取得の核心）
@@ -972,7 +1054,7 @@
      * 【用途】Claude応答テキストの取得、Deep Research結果の取得
      * 【引数】element: テキスト抽出対象のDOM要素
      * 【戻り値】Object {full: 完全テキスト, preview: プレビュー, length: 文字数}
-     * 【取得手法】innerText → textContent → Canvas特別処理 → 子要素探索
+     * 【取得手法】innerText → textContent → Canvas特別処理 → 子要素探索 → プロンプト除外
      * 【使用頻度】5回（応答取得の最重要関数）
      */
     const getTextPreview = (element) => {
@@ -1089,6 +1171,17 @@
             console.log('  - element.innerHTML長:', element.innerHTML ? element.innerHTML.length : 0);
             console.log('  - element.outerHTML冒頭:', element.outerHTML ? element.outerHTML.substring(0, 200) : '(なし)');
         }
+
+        // プロンプト除外処理を適用
+        const originalLength = fullText.length;
+        fullText = removePromptFromText(fullText, window.lastSentPrompt);
+        const finalLength = fullText.length;
+
+        if (originalLength !== finalLength) {
+            console.log(`📝 プロンプト除外完了: ${originalLength}文字 → ${finalLength}文字 (${originalLength - finalLength}文字削減)`);
+        }
+
+        const length = finalLength;
 
         if (length <= 200) {
             return { full: fullText, preview: fullText, length };
@@ -2083,10 +2176,12 @@
 
             if (canvasResult) {
                 console.log('🎨 Canvas機能の最終テキストを取得中...');
+                console.log('🚫 【Claude-ステップ7-1】プロンプト除外機能を適用してテキスト取得');
                 const textInfo = getTextPreview(canvasResult);
                 if (textInfo && textInfo.full && textInfo.full.length > 100) {
                     finalText = textInfo.full;
                     console.log(`📄 Canvas 最終テキスト取得完了 (${textInfo.length}文字)`);
+                    console.log('✅ 【Claude-ステップ7-2】プロンプト除外完了 - 純粋なAI応答を取得');
                     console.log('プレビュー:\n', textInfo.preview.substring(0, 200) + '...');
                 }
             }
@@ -2100,10 +2195,12 @@
                 const normalResult = await findClaudeElement(deepResearchSelectors['5_通常処理テキスト位置'], 3, true);
                 if (normalResult) {
                     console.log('✓ 通常処理のテキストを検出');
+                    console.log('🚫 【Claude-ステップ7-3】プロンプト除外機能を適用してテキスト取得（通常応答）');
                     const textInfo = getTextPreview(normalResult);
                     if (textInfo && textInfo.full) {
                         finalText = textInfo.full;
                         console.log(`📄 通常 テキスト取得完了 (${textInfo.length}文字)`);
+                        console.log('✅ 【Claude-ステップ7-4】プロンプト除外完了 - 純粋なAI応答を取得');
                         console.log('プレビュー:\n', textInfo.preview.substring(0, 200) + '...');
                     }
                 }
