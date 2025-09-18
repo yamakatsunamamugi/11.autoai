@@ -38,6 +38,7 @@ import SheetsClient from '../spreadsheet/sheets-client.js';
 // SpreadsheetLogger削除済み - SheetsClientに統合
 import { ConsoleLogger } from '../../utils/console-logger.js';
 import { dropboxService } from '../../services/dropbox-service.js';
+import { RetryManager } from '../../utils/retry-manager.js';
 // RetryManager機能はStep 10に統合済み
 // Removed dependency on 1-ai-common-base.js
 
@@ -462,6 +463,10 @@ export default class StreamProcessorV2 {
       // 処理可能なグループがなければ終了
       if (groupIndex >= promptGroups.length) {
         this.logger.log(`[StreamProcessorV2] ✅ すべてのグループ処理完了（合計${groupIndex}グループ）`);
+
+        // 失敗タスクのサマリーレポートを生成
+        this.generateFailureReport();
+
         break;
       }
 
@@ -584,77 +589,116 @@ export default class StreamProcessorV2 {
       const is3TypeAI = promptGroup.aiType &&
         (promptGroup.aiType.includes('3種類') || promptGroup.aiType.includes('３種類'));
 
-      // グループ内でタスクがなくなるまでループ処理
+      // 改善版: グループ開始時に全タスクを一度だけ取得してキューベース処理
       let groupTaskCount = 0;
-      let groupBatchCount = 0;
-      const MAX_BATCH_PER_GROUP = 100; // 無限ループ防止
+      const BATCH_SIZE = 3; // バッチサイズを定数として定義
 
-      while (groupBatchCount < MAX_BATCH_PER_GROUP) {
-        // 動的タスク生成
-        const promptCols = promptGroup.promptColumns;
-        const answerCols = promptGroup.answerColumns.map(col => col.index);
-
-        // タスクグループのログ列情報をpromptGroupに追加
-        if (taskGroupInfo && taskGroupInfo.columnRange) {
-          promptGroup.logColumn = taskGroupInfo.columnRange.logColumn;
-          this.logger.log(`[DEBUG] グループ${groupIndex + 1}のログ列設定: ${promptGroup.logColumn || 'なし'}`);
-        } else {
-          // taskGroupInfoがない場合はデフォルト値を使用
-          this.logger.log(`[DEBUG] グループ${groupIndex + 1}のtaskGroupInfo未設定、デフォルト値使用`);
-          // promptGroupのanswerColumnsから最初の列の1つ前をログ列として使用
-          if (promptGroup.answerColumns && promptGroup.answerColumns.length > 0) {
-            const firstAnswerCol = promptGroup.answerColumns[0].index;
-            const logColIndex = this.columnToIndex(firstAnswerCol) - 1;
-            promptGroup.logColumn = this.indexToColumn(logColIndex);
-            this.logger.log(`[DEBUG] デフォルトログ列を設定: ${promptGroup.logColumn} (回答列${firstAnswerCol}の1つ前)`);
-          }
+      // タスクグループのログ列情報をpromptGroupに追加
+      if (taskGroupInfo && taskGroupInfo.columnRange) {
+        promptGroup.logColumn = taskGroupInfo.columnRange.logColumn;
+        this.logger.log(`[DEBUG] グループ${groupIndex + 1}のログ列設定: ${promptGroup.logColumn || 'なし'}`);
+      } else {
+        // taskGroupInfoがない場合はデフォルト値を使用
+        this.logger.log(`[DEBUG] グループ${groupIndex + 1}のtaskGroupInfo未設定、デフォルト値使用`);
+        // promptGroupのanswerColumnsから最初の列の1つ前をログ列として使用
+        if (promptGroup.answerColumns && promptGroup.answerColumns.length > 0) {
+          const firstAnswerCol = promptGroup.answerColumns[0].index;
+          const logColIndex = this.columnToIndex(firstAnswerCol) - 1;
+          promptGroup.logColumn = this.indexToColumn(logColIndex);
+          this.logger.log(`[DEBUG] デフォルトログ列を設定: ${promptGroup.logColumn} (回答列${firstAnswerCol}の1つ前)`);
         }
+      }
 
-        const tasks = await this.scanGroupTasks(spreadsheetData, promptCols, answerCols, promptGroup);
+      // グループ開始時に全タスクを一度に取得（効率化）
+      const promptCols = promptGroup.promptColumns;
+      const answerCols = promptGroup.answerColumns.map(col => col.index);
+      const allGroupTasks = await this.scanGroupTasks(spreadsheetData, promptCols, answerCols, promptGroup);
 
-        if (!tasks || tasks.length === 0) {
-          if (groupBatchCount === 0) {
-            this.logger.log(`[StreamProcessorV2] グループ${groupIndex + 1}にタスクなし（すべて回答済み）`);
-          } else {
-            this.logger.log(`[StreamProcessorV2] グループ${groupIndex + 1}の全タスク完了（計${groupTaskCount}タスク処理）`);
-          }
-          break; // このグループの処理完了
-        }
+      if (!allGroupTasks || allGroupTasks.length === 0) {
+        this.logger.log(`[StreamProcessorV2] グループ${groupIndex + 1}にタスクなし（すべて回答済み）`);
+      } else {
+        this.logger.log(`[StreamProcessorV2] ✅ グループ${groupIndex + 1}: ${allGroupTasks.length}個のタスクを一度に取得`);
+        groupTaskCount = allGroupTasks.length;
 
-        groupBatchCount++;
-        this.logger.log(`[StreamProcessorV2] ✅ グループ${groupIndex + 1}のバッチ${groupBatchCount}: ${tasks.length}個のタスク生成`);
-        groupTaskCount += tasks.length;
+        // タスクキューを作成（元の配列を変更しないよう複製）
+        const taskQueue = [...allGroupTasks];
+        let batchCount = 0;
+        let groupCompleted = false;
+        let totalRescans = 0;
+        const MAX_RESCANS = 10; // 無限ループ防止
 
-        if (is3TypeAI) {
-          // 3種類AI: 列ごとにグループ化して特別処理
-          if (groupBatchCount === 1) {
-            this.logger.log(`[StreamProcessorV2] 🎯 3種類AIモードで処理`);
-          }
-          const columnGroups = this.organizeTasksByColumn(tasks);
-          await this.process3TypeAIGroup(columnGroups, isTestMode);
-          totalProcessed += tasks.length;
-        } else {
-          // 通常AI: 各列を順次処理（列内は3行バッチ並列）
-          if (groupBatchCount === 1) {
-            this.logger.log(`[StreamProcessorV2] 🎯 通常モードで処理（列ごと順次処理）`);
-          }
-          const columnGroups = this.organizeTasksByColumn(tasks);
+        // グループが完全に終了するまで継続（再チェック機能付き）
+        while (!groupCompleted && totalRescans < MAX_RESCANS) {
+          // Phase 1: 現在のキュー内の全タスクを処理
+          while (taskQueue.length > 0) {
+            batchCount++;
 
-          for (const [column, columnTasks] of columnGroups) {
-            try {
-              await this.processColumn(column, columnTasks, isTestMode);
-              totalProcessed += columnTasks.length;
-            } catch (error) {
-              this.logger.error(`[StreamProcessorV2] ${column}列処理エラー:`, error);
-              totalFailed += columnTasks.length;
+            // バッチサイズ分のタスクを取得
+            const batchTasks = taskQueue.splice(0, BATCH_SIZE);
+            this.logger.log(`[StreamProcessorV2] 🔄 グループ${groupIndex + 1}のバッチ${batchCount}: ${batchTasks.length}個のタスク処理開始（残り${taskQueue.length}個）`);
+
+            if (is3TypeAI) {
+              // 3種類AI: 列ごとにグループ化して特別処理
+              if (batchCount === 1) {
+                this.logger.log(`[StreamProcessorV2] 🎯 3種類AIモードで処理`);
+              }
+              const columnGroups = this.organizeTasksByColumn(batchTasks);
+              await this.process3TypeAIGroup(columnGroups, isTestMode);
+              totalProcessed += batchTasks.length;
+            } else {
+              // 通常AI: 各列を順次処理（列内は3行バッチ並列）
+              if (batchCount === 1) {
+                this.logger.log(`[StreamProcessorV2] 🎯 通常モードで処理（列ごと順次処理）`);
+              }
+              const columnGroups = this.organizeTasksByColumn(batchTasks);
+
+              for (const [column, columnTasks] of columnGroups) {
+                try {
+                  await this.processColumn(column, columnTasks, isTestMode);
+                  totalProcessed += columnTasks.length;
+                } catch (error) {
+                  this.logger.error(`[StreamProcessorV2] ${column}列処理エラー:`, error);
+                  totalFailed += columnTasks.length;
+                }
+              }
+            }
+
+            // バッチ処理後のスプレッドシート更新（最後のバッチでない場合のみ）
+            if (taskQueue.length > 0 && this.sheetsClient) {
+              await this.reloadSpreadsheetData(spreadsheetData);
             }
           }
+
+          // Phase 2: タスクグループの再チェック（新しいタスクがないか確認）
+          totalRescans++;
+          this.logger.log(`[StreamProcessorV2] 🔍 グループ${groupIndex + 1}の再チェック${totalRescans}回目を実行`);
+
+          // スプレッドシートを再読み込みして最新状態を取得
+          if (this.sheetsClient) {
+            await this.reloadSpreadsheetData(spreadsheetData);
+          }
+
+          // タスクグループを再スキャンして新しいタスクを発見
+          const newTasks = await this.scanGroupTasks(spreadsheetData, promptCols, answerCols, promptGroup);
+
+          if (newTasks && newTasks.length > 0) {
+            // 新しいタスクを発見 → キューに追加して継続
+            taskQueue.push(...newTasks);
+            groupTaskCount += newTasks.length;
+            this.logger.log(`[StreamProcessorV2] 🎆 グループ${groupIndex + 1}で新しいタスク${newTasks.length}個を発見（継続処理）`);
+          } else {
+            // タスクなし → グループ完了
+            groupCompleted = true;
+            this.logger.log(`[StreamProcessorV2] ✅ グループ${groupIndex + 1}の全作業完了（再チェック${totalRescans}回実行済み）`);
+          }
         }
 
-        // スプレッドシートを再読み込み（処理済みタスクを反映）
-        if (this.sheetsClient) {
-          await this.reloadSpreadsheetData(spreadsheetData);
+        // 無限ループ防止のチェック
+        if (totalRescans >= MAX_RESCANS) {
+          this.logger.warn(`[StreamProcessorV2] ⚠️ グループ${groupIndex + 1}は最大再チェック回数に達したため強制終了`);
         }
+
+        this.logger.log(`[StreamProcessorV2] ✅ グループ${groupIndex + 1}の全タスク完了（計${groupTaskCount}タスク、${batchCount}バッチ、${totalRescans}回再チェック）`);
       }
 
       // このグループを処理済みとしてマーク
@@ -678,16 +722,18 @@ export default class StreamProcessorV2 {
       // ===== Step 5-1: グループ完了時のログ・回答記録とDropboxアップロード =====
       // 注意: この処理は重複しており、パフォーマンスを低下させるため無効化
       // AIタスク実行時に既にログ・回答は記録されている
-      // Dropboxアップロードのみ独立して実行
-      if (taskGroupInfo) {
+      // Dropboxアップロードは実際にAI作業が実行された場合のみ実行
+      if (taskGroupInfo && groupTaskCount > 0) {
         try {
           // 🔍 デバッグ: グループ処理完了を確認
-          this.logger.log(`[StreamProcessorV2] 📊 グループ${groupIndex + 1}処理完了 - Dropboxアップロードを開始`);
+          this.logger.log(`[StreamProcessorV2] 📊 グループ${groupIndex + 1}処理完了 - AI作業${groupTaskCount}件実行済み、Dropboxアップロードを開始`);
           await this.uploadTaskReportToDropbox(taskGroupInfo, spreadsheetData);
           this.logger.log(`[StreamProcessorV2] 📝 グループ${groupIndex + 1}のDropboxアップロード完了`);
         } catch (recordError) {
           this.logger.error(`[StreamProcessorV2] ❌ グループ${groupIndex + 1}のDropboxアップロードエラー:`, recordError);
         }
+      } else if (taskGroupInfo && groupTaskCount === 0) {
+        this.logger.log(`[StreamProcessorV2] ⏭️ グループ${groupIndex + 1}はAI作業なしのためDropboxアップロードをスキップ`);
       }
 
       // ===== Step 6: グループ完了後のリトライ処理 =====
@@ -1303,14 +1349,16 @@ export default class StreamProcessorV2 {
   // ========================================
 
   /**
-   * 列単位でタスクを処理
+   * 列単位でタスクを処理（継続処理機能付き）
    *
    * 特定の列のタスクを3行ずつバッチで並列処理します。
+   * 一部のバッチが失敗しても処理は継続されます。
    *
    * 処理の流れ:
    * 1. タスクを3つずつのバッチに分割
    * 2. 各バッチを並列で実行
-   * 3. 全バッチ完了まで待機
+   * 3. エラーが発生しても次のバッチを継続
+   * 4. 全バッチ完了後に統計情報を出力
    *
    * @param {string} column - 処理する列
    * @param {Array} tasks - タスクリスト
@@ -1326,54 +1374,141 @@ export default class StreamProcessorV2 {
       batches.push(tasks.slice(i, i + batchSize));
     }
 
+    // 列全体の統計情報
+    let totalSuccessCount = 0;
+    let totalFailedCount = 0;
+    const allFailedCells = [];
+
     // 各バッチを順次処理
     for (let i = 0; i < batches.length; i++) {
       const batch = batches[i];
       this.logger.log(`[StreamProcessorV2] バッチ${i + 1}/${batches.length}を処理中 (${batch.length}タスク)`);
 
       try {
-        await this.processBatch(batch, isTestMode);
+        const batchResult = await this.processBatch(batch, isTestMode);
+
+        // バッチの結果を統計に追加
+        if (batchResult) {
+          totalSuccessCount += batchResult.successCount;
+          totalFailedCount += batchResult.failedCount;
+          allFailedCells.push(...batchResult.failedCells);
+        }
+
       } catch (error) {
         this.logger.error(`[StreamProcessorV2] バッチ${i + 1}処理エラー:`, error);
+        // バッチ全体が失敗した場合も、次のバッチに進む
+        totalFailedCount += batch.length;
+        batch.forEach(task => {
+          const cellRef = `${task.column}${task.row}`;
+          allFailedCells.push(cellRef);
+          this.failedTasks.add(cellRef);
+        });
       }
     }
 
-    this.logger.log(`[StreamProcessorV2] ✅ ${column}列の処理完了`);
+    // 列の処理結果サマリー
+    const totalTasks = tasks.length;
+    const successRate = totalTasks > 0 ? ((totalSuccessCount / totalTasks) * 100).toFixed(1) : 0;
+
+    this.logger.log(`[StreamProcessorV2] ✅ ${column}列の処理完了: 成功${totalSuccessCount}/${totalTasks}タスク (${successRate}%)`);
+
+    if (allFailedCells.length > 0) {
+      this.logger.warn(`[StreamProcessorV2] ⚠️ ${column}列失敗セル: ${allFailedCells.join(', ')}`);
+    }
+
+    // 成功率が低い場合は警告
+    if (parseFloat(successRate) < 50) {
+      this.logger.warn(`[StreamProcessorV2] ⚠️ ${column}列の成功率が低すぎます（${successRate}%）。システム状態を確認してください。`);
+    }
+
+    return {
+      column,
+      totalTasks,
+      successCount: totalSuccessCount,
+      failedCount: totalFailedCount,
+      successRate: parseFloat(successRate),
+      failedCells: allFailedCells
+    };
   }
 
   /**
-   * バッチ単位でタスクを並列処理
+   * バッチ単位でタスクを並列処理（エラー回復機能付き）
    *
    * 最大3つのタスクを同時に実行します。
    * 各タスクは別ウィンドウで処理されます。
+   * 一部のタスクが失敗しても他のタスクは継続され、
+   * 処理全体が停止することはありません。
    *
    * @param {Array} batch - タスクバッチ（最大3タスク）
    * @param {boolean} isTestMode - テストモード
    */
   async processBatch(batch, isTestMode) {
+    this.logger.log(`[StreamProcessorV2] 📦 バッチ処理開始: ${batch.length}タスク`);
+
     const promises = batch.map((task, index) =>
       this.processTask(task, isTestMode, index)
     );
 
     const results = await Promise.allSettled(promises);
 
-    // 結果をログ
+    // 統計情報を集計
+    let successCount = 0;
+    let failedCount = 0;
+    let retryCount = 0;
+    const failedCells = [];
+
+    // 結果をログと統計情報を記録
     results.forEach((result, index) => {
       const task = batch[index];
+      const cellRef = `${task.column}${task.row}`;
+
       if (result.status === 'fulfilled') {
-        this.logger.log(`[StreamProcessorV2] ✅ タスク完了: ${task.column}${task.row}`);
+        const taskResult = result.value;
+        if (taskResult && taskResult.success !== false) {
+          successCount++;
+          this.logger.log(`[StreamProcessorV2] ✅ タスク完了: ${cellRef}`);
+        } else {
+          failedCount++;
+          failedCells.push(cellRef);
+          this.logger.error(`[StreamProcessorV2] ❌ タスク失敗: ${cellRef}`, taskResult?.error || '不明なエラー');
+          this.failedTasks.add(cellRef);
+        }
       } else {
-        this.logger.error(`[StreamProcessorV2] ❌ タスク失敗: ${task.column}${task.row}`, result.reason);
-        this.failedTasks.add(`${task.column}${task.row}`);
+        failedCount++;
+        failedCells.push(cellRef);
+        this.logger.error(`[StreamProcessorV2] ❌ タスク例外: ${cellRef}`, result.reason);
+        this.failedTasks.add(cellRef);
       }
     });
+
+    // バッチ処理結果のサマリーをログ出力
+    this.logger.log(`[StreamProcessorV2] 📊 バッチ処理完了: 成功${successCount}件, 失敗${failedCount}件`);
+
+    if (failedCells.length > 0) {
+      this.logger.warn(`[StreamProcessorV2] ⚠️ 失敗したセル: ${failedCells.join(', ')}`);
+
+      // 失敗したタスクが一定数を超えた場合の警告
+      if (failedCount >= batch.length * 0.5) {
+        this.logger.warn(`[StreamProcessorV2] ⚠️ バッチの半数以上が失敗しました。システム状態を確認してください。`);
+      }
+    }
+
+    // 成功したタスクが1つでもあれば、バッチ処理は継続
+    return {
+      success: successCount > 0,
+      successCount,
+      failedCount,
+      failedCells,
+      totalTasks: batch.length
+    };
   }
 
   /**
-   * 個別タスクの処理
+   * 個別タスクの処理（リトライ機能付き）
    *
    * 単一のタスクを実行します。
    * ウィンドウ作成、AI実行、結果取得までの全プロセスを管理します。
+   * エラー時は自動的にリトライを行います。
    *
    * @param {Object} task - 処理するタスク
    * @param {boolean} isTestMode - テストモード
@@ -1381,6 +1516,68 @@ export default class StreamProcessorV2 {
    * @returns {Promise<Object>} 処理結果
    */
   async processTask(task, isTestMode, position = 0) {
+    const cellRef = `${task.column}${task.row}`;
+
+    // RetryManagerを使ってリトライ機能付きで実行
+    const retryManager = this.getRetryManager();
+    const result = await retryManager.executeWithExponentialBackoff({
+      action: () => this._processTaskCore(task, isTestMode, position),
+      isSuccess: (result) => {
+        // より堅牢な成功判定
+        return result &&
+               typeof result === 'object' &&
+               result.success === true &&
+               !result.error;
+      },
+      maxRetries: 2, // 最大2回リトライ（合計3回実行）
+      initialDelay: 3000, // 3秒
+      maxDelay: 15000,    // 15秒
+      actionName: `Task-${cellRef}`,
+      context: {
+        cell: cellRef,
+        column: task.column,
+        row: task.row,
+        position: position,
+        testMode: isTestMode
+      }
+    });
+
+    if (result.success) {
+      return result.data;
+    } else {
+      // 最大リトライ回数に達した場合でもログを記録
+      this.logger.error(`[StreamProcessorV2] ❌ タスク失敗（リトライ上限到達）: ${cellRef}`, result.error);
+      this.failedTasks.add(cellRef);
+
+      // 失敗してもPromise.allSettledが正常に動作するようにエラーをthrowしない
+      return {
+        success: false,
+        error: `タスク失敗（${result.retryCount + 1}回試行）: ${result.error?.message || '不明なエラー'}`,
+        cell: cellRef
+      };
+    }
+  }
+
+  /**
+   * RetryManagerのインスタンスを取得
+   * @returns {RetryManager} RetryManagerインスタンス
+   */
+  getRetryManager() {
+    if (!this._retryManager) {
+      // RetryManagerを初期化
+      this._retryManager = new RetryManager(this.logger);
+    }
+    return this._retryManager;
+  }
+
+  /**
+   * 個別タスクの実際の処理（コア部分）
+   * @param {Object} task - 処理するタスク
+   * @param {boolean} isTestMode - テストモード
+   * @param {number} position - ウィンドウ位置（0, 1, 2）
+   * @returns {Promise<Object>} 処理結果
+   */
+  async _processTaskCore(task, isTestMode, position = 0) {
     try {
       // 🔍 [DEBUG] タスク実行前の排他制御状態確認
       console.log(`🔍 [DEBUG] タスク実行前 - ${task.column}${task.row}:`);
@@ -1395,8 +1592,8 @@ export default class StreamProcessorV2 {
         await this.sheetsClient.logTaskExecution(task);
       }
 
-      // Step 8-2: ウィンドウを作成
-      const windowInfo = await this.createWindowForTask(task, position);
+      // Step 8-2: 初期ウィンドウを作成
+      const initialWindowInfo = await this.createWindowForTask(task, position);
 
       // Step 8-3: SPREADSHEET_CONFIG初期化確認後にタスクを実行
       if (!globalThis.SPREADSHEET_CONFIG) {
@@ -1429,19 +1626,60 @@ export default class StreamProcessorV2 {
         }
       }
 
-      const result = await this.aiTaskExecutor.executeAITask(windowInfo.tabId, task);
+      // Step 8-3.2: ウィンドウリトライ機能付きでタスク実行
+      const retryManager = this.getRetryManager();
+      const cellRef = `${task.column}${task.row}`;
+
+      const result = await retryManager.executeWithWindowRetry({
+        action: (tabId, taskData) => this.aiTaskExecutor.executeAITask(tabId, taskData),
+        createWindow: (taskData) => this.createWindowForTask(taskData, position),
+        closeWindow: async (tabId) => {
+          try {
+            // TabIDからWindowIDを取得してクローズ
+            const tab = await chrome.tabs.get(tabId);
+            if (tab && tab.windowId) {
+              await chrome.windows.remove(tab.windowId);
+              this.logger.log(`[StreamProcessor] ウィンドウクローズ完了 (TabID: ${tabId}, WindowID: ${tab.windowId})`);
+            }
+          } catch (error) {
+            this.logger.warn(`[StreamProcessor] ウィンドウクローズエラー: ${error.message}`);
+          }
+        },
+        taskData: task,
+        isSuccess: (result) => {
+          return result &&
+                 typeof result === 'object' &&
+                 result.success === true &&
+                 !result.error;
+        },
+        maxRetries: 3,
+        initialDelay: 5000,  // 5秒
+        maxDelay: 30000,     // 30秒
+        actionName: `Task-${cellRef}`,
+        context: {
+          cell: cellRef,
+          aiType: task.aiType,
+          initialTabId: initialWindowInfo.tabId,
+          position: position
+        }
+      });
+
+      // 結果からデータを取得
+      const taskResult = result.success ? result.data : {
+        success: false,
+        error: result.error?.message || '不明なエラー'
+      };
 
 
       // Step 8-3.5: 回答をスプレッドシートに書き込み
-      if (result?.success && result?.response && this.sheetsClient) {
-        const cellRef = `${task.column}${task.row}`;
+      if (taskResult?.success && taskResult?.response && this.sheetsClient) {
         try {
           await this.sheetsClient.writeAnswer(
             this.spreadsheetData.spreadsheetId,
             cellRef,
-            result.response
+            taskResult.response
           );
-          this.logger.log(`[Step 8-3.5] ✅ 回答書き込み成功: ${cellRef} (${result.response.length}文字)`);
+          this.logger.log(`[Step 8-3.5] ✅ 回答書き込み成功: ${cellRef} (${taskResult.response.length}文字)`);
         } catch (writeError) {
           this.logger.error(`[Step 8-3.5] ❌ 回答書き込みエラー: ${cellRef}`, {
             error: writeError.message,
@@ -1452,18 +1690,19 @@ export default class StreamProcessorV2 {
         }
       } else {
         this.logger.warn(`[Step 8-3.5] ⚠️ 回答書き込みスキップ`, {
-          success: result?.success,
-          hasResponse: !!result?.response,
+          success: taskResult?.success,
+          hasResponse: !!taskResult?.response,
           hasSheetsClient: !!this.sheetsClient,
-          cell: `${task.column}${task.row}`
+          cell: cellRef,
+          retryCount: result.retryCount
         });
       }
 
       // Step 8-3.6: 個別タスクログをDropboxにアップロード
       let dropboxUploadResult = null;
-      if (result?.success) {
+      if (taskResult?.success) {
         try {
-          this.logger.log(`[Step 8-3.6] 🔄 個別タスクログDropboxアップロード開始: ${task.column}${task.row}`);
+          this.logger.log(`[Step 8-3.6] 🔄 個別タスクログDropboxアップロード開始: ${cellRef}`);
           // spreadsheetDataのサイズを確認
           const spreadsheetDataSize = this.spreadsheetData ? JSON.stringify(this.spreadsheetData).length : 0;
           console.log('🔥 [CRITICAL] spreadsheetDataサイズ:', {
@@ -1481,7 +1720,7 @@ export default class StreamProcessorV2 {
             sheetName: this.spreadsheetData?.sheetName
           };
 
-          dropboxUploadResult = await this.uploadTaskLogToDropbox(task, result, minimalSpreadsheetData);
+          dropboxUploadResult = await this.uploadTaskLogToDropbox(task, taskResult, minimalSpreadsheetData);
           if (dropboxUploadResult?.success) {
             this.logger.log(`[Step 8-3.6] ✅ 個別タスクログDropboxアップロード完了: ${dropboxUploadResult.url}`);
           } else {
@@ -1546,10 +1785,11 @@ export default class StreamProcessorV2 {
             console.log(`🔍 [URL追跡] ログ書き込み検証:`, {
               cell: `${logColumn}${task.row}`,
               aiType: task.aiType,
-              urlPassed: result?.url || 'N/A',
+              urlPassed: taskResult?.url || 'N/A',
               dropboxUrlPassed: dropboxUploadResult?.url || '空',
               logSuccess: logResult.success,
-              logVerified: logResult.verified
+              logVerified: logResult.verified,
+              retryCount: result.retryCount
             });
           } else {
             this.logger.error(`[Step 8-3.7] ❌ 詳細ログ書き込み失敗:`, logResult.error);
@@ -1564,10 +1804,21 @@ export default class StreamProcessorV2 {
       // Step 8-4: タスク完了ログ記録
       // 注: logTaskCompletionはspreadsheetLoggerの機能なので、必要に応じて後で移行
 
-      // Step 8-5: ウィンドウをクローズ
-      await this.windowService.closeWindow(windowInfo.windowId);
+      // Step 8-5: 最終ウィンドウをクローズ
+      // 注意: ウィンドウリトライが発生した場合は既にクローズ処理されているため、finalTabIdを使用
+      if (result.finalTabId) {
+        try {
+          const tab = await chrome.tabs.get(result.finalTabId);
+          if (tab && tab.windowId) {
+            await chrome.windows.remove(tab.windowId);
+            this.logger.log(`[StreamProcessor] 最終ウィンドウクローズ完了 (TabID: ${result.finalTabId}, WindowID: ${tab.windowId})`);
+          }
+        } catch (closeError) {
+          this.logger.warn(`[StreamProcessor] 最終ウィンドウクローズエラー: ${closeError.message}`);
+        }
+      }
 
-      return result;
+      return taskResult;
 
     } catch (error) {
       this.logger.error(`[StreamProcessorV2] タスク処理エラー (${task.column}${task.row}):`, error);
@@ -1733,6 +1984,62 @@ export default class StreamProcessorV2 {
     } catch (error) {
       this.logger.error(`[StreamProcessorV2] リトライ処理エラー:`, error);
       return { shouldStopProcessing: true };
+    }
+  }
+
+  // ========================================
+  // Step 10: エラー処理・レポート機能
+  // ========================================
+
+  /**
+   * 失敗したタスクのサマリーレポートを生成
+   * 処理完了後に失敗したタスクの詳細情報を出力します
+   */
+  generateFailureReport() {
+    if (this.failedTasks.size === 0) {
+      this.logger.log(`[StreamProcessorV2] 🎉 全タスクが正常に完了しました！`);
+      return;
+    }
+
+    this.logger.warn(`[StreamProcessorV2] 📋 失敗タスクレポート`);
+    this.logger.warn(`失敗タスク数: ${this.failedTasks.size}件`);
+    this.logger.warn(`失敗セル一覧: ${Array.from(this.failedTasks).join(', ')}`);
+
+    // 失敗の多い列を特定
+    const failuresByColumn = {};
+    Array.from(this.failedTasks).forEach(cellRef => {
+      const column = cellRef.replace(/\d+$/, ''); // 数字を除去して列名のみ取得
+      failuresByColumn[column] = (failuresByColumn[column] || 0) + 1;
+    });
+
+    const sortedColumns = Object.entries(failuresByColumn)
+      .sort(([,a], [,b]) => b - a)
+      .slice(0, 3); // 上位3列
+
+    if (sortedColumns.length > 0) {
+      this.logger.warn(`失敗の多い列 (TOP3):`);
+      sortedColumns.forEach(([column, count]) => {
+        this.logger.warn(`  ${column}列: ${count}件`);
+      });
+    }
+
+    // 対処法の提案
+    this.logger.warn(`対処法の提案:`);
+    this.logger.warn(`1. 失敗したタスクは自動的にリトライされました`);
+    this.logger.warn(`2. Claude AIのタイムアウトが原因の場合、再実行を検討してください`);
+    this.logger.warn(`3. 失敗率が高い場合は、ネットワーク環境やAIサービスの状態を確認してください`);
+  }
+
+  /**
+   * 失敗したタスクをリセット
+   * 新しい処理セッション開始時に使用
+   */
+  resetFailedTasks() {
+    const previousCount = this.failedTasks.size;
+    this.failedTasks.clear();
+
+    if (previousCount > 0) {
+      this.logger.log(`[StreamProcessorV2] 🔄 失敗タスクリストをリセット (前回: ${previousCount}件)`);
     }
   }
 
