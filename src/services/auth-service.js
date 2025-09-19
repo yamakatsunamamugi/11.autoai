@@ -115,6 +115,3 @@ export function getAuthService() {
 
 // グローバルスコープに追加（後方互換性）
 self.AuthService = AuthService;
-
-// グローバル変数の使用をやめ、Service Registry経由でのアクセスを推奨
-console.log('[AuthService] Service Registry経由でのアクセスを推奨します');

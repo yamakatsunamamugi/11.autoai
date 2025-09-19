@@ -1073,7 +1073,17 @@
         menuContainer: [
             { selector: UI_SELECTORS.Claude?.MENU?.CONTAINER || '[role="menu"][data-state="open"]', description: 'メニューコンテナ' }
         ],
-        otherModelsMenu: (UI_SELECTORS.Claude?.MENU?.OTHER_MODELS || []).map(selector => ({ selector, description: 'その他のモデルメニュー' })),
+        // その他のモデルメニュー用セレクタ - デフォルト値を設定
+        otherModelsMenu: (UI_SELECTORS.Claude?.MENU?.OTHER_MODELS && UI_SELECTORS.Claude.MENU.OTHER_MODELS.length > 0)
+            ? UI_SELECTORS.Claude.MENU.OTHER_MODELS.map(selector => ({ selector, description: 'その他のモデルメニュー' }))
+            : [
+                // デフォルトセレクタ - 最新Claude UIに対応
+                { selector: 'div[role="menuitem"][aria-haspopup="menu"][data-state="closed"]', description: '最新Claude UIセレクタ（data-state付き）' },
+                { selector: 'div[role="menuitem"][aria-haspopup="menu"]:has(*:contains("他のモデル"))', description: '他のモデル日本語（子要素検索）' },
+                { selector: 'div[role="menuitem"][aria-haspopup="menu"]:has(*:contains("Other models"))', description: '他のモデル英語（子要素検索）' },
+                { selector: 'div[role="menuitem"][aria-haspopup="menu"]', description: '汎用他のモデル' },
+                { selector: '[role="menuitem"][aria-haspopup="menu"]', description: '最も汎用的なセレクタ' }
+            ],
         modelDisplay: (UI_SELECTORS.Claude?.MODEL_INFO?.TEXT_ELEMENT || []).slice(0, 3).map(selector => ({ selector, description: 'モデル表示要素' }))
     };
 
@@ -1342,7 +1352,8 @@
             });
 
             try {
-                const element = await waitForElement(selector.selector, 3, 200);
+                // より長い待機時間を設定（5回×500ms = 2.5秒）
+                const element = await waitForElement(selector.selector, 5, 500);
                 if (element) {
                     console.log(`  ✅ 成功: ${selector.description}`);
                     return element;
@@ -1354,6 +1365,7 @@
 
         // 全セレクタで失敗した場合は、selectorInfoオブジェクトを作成してfindClaudeElementを使用
         console.log(`⚠️ [DEBUG] 全セレクタで失敗、findClaudeElementにフォールバック`);
+        console.log(`📊 [DEBUG-FALLBACK] 元のselectors:`, JSON.stringify(selectors, null, 2));
 
         const mappedSelectors = selectors.map(s => {
             if (typeof s === 'string') {
@@ -1364,12 +1376,14 @@
                 return s.selector;
             }
             console.log(`  ⚠️ [DEBUG] 不明な型のセレクタ:`, s);
-            return s;
+            return null; // undefinedではなくnullを返す
         });
+
+        console.log(`📊 [DEBUG-FALLBACK] マップ後のselectors:`, mappedSelectors);
 
         const selectorInfo = {
             description: description,
-            selectors: mappedSelectors.filter(selector => selector) // undefinedを除外
+            selectors: mappedSelectors.filter(selector => selector !== null && selector !== undefined) // null/undefinedを除外
         };
 
         console.log(`📊 [DEBUG] selectorInfo構築完了:`, {
@@ -1732,8 +1746,33 @@
         }
 
         if (!skipLog) {
+            // より詳細なエラー情報を出力
             console.warn(`${logPrefix}✗ 要素未発見: ${selectorInfo.description}`);
+            console.log(`${logPrefix}  使用セレクタ:`, selectorInfo.selectors);
             console.log(`${logPrefix}  試行結果:`, results);
+
+            // DOM内の実際のmenuitem要素を調査
+            const actualMenuItems = document.querySelectorAll('[role="menuitem"]');
+            console.log(`${logPrefix}  📊 DOM内のmenuitem要素数: ${actualMenuItems.length}`);
+
+            // aria-haspopup属性を持つ要素を詳細に調査
+            const menuItemsWithPopup = Array.from(actualMenuItems).filter(el => el.hasAttribute('aria-haspopup'));
+            console.log(`${logPrefix}  📊 aria-haspopup属性を持つmenuitem: ${menuItemsWithPopup.length}`);
+
+            menuItemsWithPopup.forEach((el, idx) => {
+                const text = (el.textContent || '').trim().substring(0, 50);
+                const dataState = el.getAttribute('data-state');
+                const ariaExpanded = el.getAttribute('aria-expanded');
+                const id = el.getAttribute('id');
+                console.log(`${logPrefix}    [${idx}] text="${text}", data-state="${dataState}", aria-expanded="${ariaExpanded}", id="${id}"`);
+            });
+
+            // 問題解決のためのヘルプ情報
+            console.log(`${logPrefix}  💡 ヘルプ: この問題を解決するには以下を確認してください:`);
+            console.log(`${logPrefix}     1. Claudeのモデル選択メニューが開いているか`);
+            console.log(`${logPrefix}     2. セレクタが最新のUIに対応しているか`);
+            console.log(`${logPrefix}     3. タイミングの問題（メニューが完全に開く前に検索している）`);
+            console.log(`${logPrefix}     4. 現在のURLが正しいか: ${window.location.href}`);
 
             // セレクタミスをログに記録
             ClaudeLogManager.logError('Selector-NotFound', new Error(`要素未発見: ${selectorInfo.description}`), {
@@ -2624,24 +2663,9 @@
                         }
                     });
 
-                    // 空配列チェックとフォールバック処理
-                    let selectorsToUse = modelSelectors.otherModelsMenu;
-                    if (!selectorsToUse || selectorsToUse.length === 0) {
-                        console.log('⚠️ [DEBUG] OTHER_MODELSセレクタが空または未定義、フォールバックセレクタを使用');
-                        selectorsToUse = [
-                            // 最新のClaudeインターフェース用セレクタ
-                            { selector: 'div[role="menuitem"][aria-haspopup="menu"][data-state="closed"]', description: '最新Claude UIセレクタ' },
-                            { selector: 'div[role="menuitem"][aria-haspopup="menu"]:has(div:contains("他のモデル"))', description: '他のモデル日本語' },
-                            { selector: 'div[role="menuitem"][aria-haspopup="menu"]:has(div:contains("Other models"))', description: '他のモデル英語' },
-                            // 汎用セレクタ
-                            { selector: 'div[role="menuitem"][aria-haspopup="menu"]', description: 'div要素の他のモデル' },
-                            { selector: '[role="menuitem"][aria-haspopup="menu"]', description: '汎用他のモデル' },
-                            // テキストベースのフォールバック
-                            { selector: 'div[role="menuitem"]:has(div:contains("他のモデル"))', description: 'テキストベース日本語' },
-                            { selector: 'div[role="menuitem"]:has(div:contains("Other models"))', description: 'テキストベース英語' }
-                        ];
-                    }
-                    const otherModelsItem = await findElementByMultipleSelectors(selectorsToUse, 'その他のモデルメニュー');
+                    // modelSelectors.otherModelsMenuは既にデフォルト値を持っているので、直接使用
+                    console.log('📊 [DEBUG] その他のモデルメニューセレクタ数:', modelSelectors.otherModelsMenu.length);
+                    const otherModelsItem = await findElementByMultipleSelectors(modelSelectors.otherModelsMenu, 'その他のモデルメニュー');
                     if (otherModelsItem) {
                         console.log('✅ [DEBUG] その他のモデルメニューアイテム発見');
                         await triggerReactEvent(otherModelsItem, 'click');

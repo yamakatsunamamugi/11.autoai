@@ -3081,17 +3081,6 @@ class SheetsClient {
   }
 
   /**
-   * スプレッドシートデータを再読み込み
-   * StreamProcessorV2から呼び出される際の互換性メソッド
-   * @returns {Promise<void>}
-   */
-  async reloadData() {
-    this.logger.log('[Step reloadData: 互換性維持] reloadData呼び出し - 現在は何もしません（互換性のため）');
-    // 現在は特に何もしない
-    // 将来的に必要に応じてキャッシュのクリアや再初期化を実装
-  }
-
-  /**
    * 送信時刻を記録する
    * @param {string} taskId - タスクID
    * @param {Object} sendTimeData - 送信時刻データ

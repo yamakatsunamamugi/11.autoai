@@ -1397,12 +1397,9 @@ export const sheetsClient = googleServices.sheetsReader;
 export const docsClient = googleServices.docsGenerator;
 export const spreadsheetLogger = googleServices.spreadsheetLogger;
 
-// グローバル変数の使用を避け、Service Registry経由でアクセスを推奨
-// 必要最小限のグローバル設定のみ保持
+// 必要最小限のグローバル設定のみ保持（レガシー互換性のため）
 if (typeof globalThis !== 'undefined') {
-  console.log('[GoogleServices] グローバル変数の設定をスキップ - Service Registry使用を推奨');
-
-  // parseSpreadsheetUrl関数のみ保持（レガシー互換性のため）
+  // parseSpreadsheetUrl関数のみ保持
   globalThis.parseSpreadsheetUrl = (url) => {
     if (!url || typeof url !== 'string') {
       return { spreadsheetId: null, gid: null };

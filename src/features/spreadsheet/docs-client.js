@@ -213,6 +213,4 @@ class DocsClient {
   }
 }
 
-// グローバル変数の使用を避け、Service Registry経由でのアクセスを推奨
-console.log('[DocsClient] Service Registry経由でのアクセスを推奨します');
 export { DocsClient }; export default DocsClient;

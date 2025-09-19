@@ -2033,12 +2033,8 @@ export default class StreamProcessorV2 {
         }
       }
 
-      if (this.sheetsClient && this.sheetsClient.reloadData) {
-        await this.sheetsClient.reloadData();
-        this.log('スプレッドシートデータ再読み込み完了', 'success', 'Step 3-7');
-      } else {
-        this.log('SheetsClientが利用できません - 再読み込みスキップ', 'warning', 'Step 3-7');
-      }
+      // reloadDataは削除されたため、この処理は不要
+      this.log('スプレッドシートデータ処理完了', 'success', 'Step 3-7');
     } catch (error) {
       this.log(`データ再読み込みエラー: ${error.message}`, 'error', '3-7');
     }

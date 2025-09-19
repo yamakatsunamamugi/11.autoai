@@ -159,20 +159,10 @@ export class DropboxService {
    * @returns {Promise<Object>}
    */
   async uploadFile(filePath, content, options = {}) {
-    console.log('🔍 [DEBUG-DropboxService] uploadFile開始:', {
-      filePath,
-      contentLength: content.length,
-      options,
-      isInitialized: this.isInitialized
-    });
-
     try {
-      console.log('🔍 [DEBUG-DropboxService] アクセストークン取得');
       const accessToken = await this.config.getAccessToken();
-      console.log('🔍 [DEBUG-DropboxService] アクセストークン存在:', !!accessToken);
 
       if (!accessToken) {
-        console.error('🔍 [DEBUG-DropboxService] アクセストークンなし');
         throw new Error('認証が必要です。先にDropbox認証を完了してください。');
       }
 
@@ -180,25 +170,14 @@ export class DropboxService {
       const fileSize = new Blob([content]).size;
       const isLargeFile = fileSize > 150 * 1024 * 1024;
 
-      console.log('🔍 [DEBUG-DropboxService] ファイルサイズ情報:', {
-        fileSize,
-        isLargeFile,
-        fileSizeMB: Math.round(fileSize / 1024 / 1024 * 100) / 100
-      });
-
       if (isLargeFile) {
-        console.log('🔍 [DEBUG-DropboxService] 大きいファイル処理開始');
         return await this.uploadLargeFile(filePath, content, accessToken, options);
       } else {
-        console.log('🔍 [DEBUG-DropboxService] 小さいファイル処理開始');
         return await this.uploadSmallFile(filePath, content, accessToken, options);
       }
     } catch (error) {
-      console.error('🔍 [DEBUG-DropboxService] uploadFile エラー:', error);
-
       // 401エラー（認証期限切れ）の場合の特別処理
       if (error.message && error.message.includes('401')) {
-        console.warn('🔍 [DEBUG-DropboxService] 認証期限切れを検出、トークンをクリア');
         console.warn('⚠️ [DropboxService] 認証トークンが期限切れです。UI画面で再認証を行ってください。');
 
         // 期限切れトークンをクリア
@@ -221,19 +200,9 @@ export class DropboxService {
    * @returns {Promise<Object>}
    */
   async uploadSmallFile(filePath, content, accessToken, options = {}) {
-    console.log('🔍 [DEBUG-DropboxService] uploadSmallFile開始:', { filePath });
-
     try {
-      console.log('🔍 [DEBUG-DropboxService] アップロード設定取得');
       const uploadSettings = await this.config.getUploadSettings();
       const fullPath = `${uploadSettings.uploadPath}${filePath}`;
-
-      console.log('🔍 [DEBUG-DropboxService] アップロード設定:', {
-        uploadSettings,
-        fullPath
-      });
-
-      console.log('🔍 [DEBUG-DropboxService] Dropbox API呼び出し開始');
       const response = await fetch('https://content.dropboxapi.com/2/files/upload', {
         method: 'POST',
         headers: {
@@ -250,25 +219,8 @@ export class DropboxService {
         body: content
       });
 
-      console.log('🔍 [DEBUG-DropboxService] Dropbox APIレスポンス:', {
-        status: response.status,
-        statusText: response.statusText,
-        ok: response.ok,
-        headers: {
-          contentType: response.headers.get('content-type'),
-          dropboxApiResult: response.headers.get('dropbox-api-result')
-        }
-      });
-
       if (!response.ok) {
         const error = await response.text();
-        console.error('🔍 [DEBUG-DropboxService] Dropbox APIエラー詳細:', {
-          error,
-          status: response.status,
-          statusText: response.statusText,
-          fullPath: fullPath,
-          contentLength: content.length
-        });
 
         // 401エラーの場合は認証期限切れとして処理
         if (response.status === 401) {
@@ -280,25 +232,7 @@ export class DropboxService {
 
       const result = await response.json();
 
-      // レスポンスデータの詳細ログ
-      console.log('🔍 [DEBUG-DropboxService] APIレスポンスボディ:', {
-        path_lower: result.path_lower,
-        path_display: result.path_display,
-        id: result.id,
-        size: result.size,
-        client_modified: result.client_modified,
-        server_modified: result.server_modified,
-        rev: result.rev,
-        content_hash: result.content_hash ? result.content_hash.substring(0, 10) + '...' : 'N/A'
-      });
-
-      console.log('🔍 [DEBUG-DropboxService] アップロード成功詳細:', {
-        actualPath: result.path_display,
-        expectedPath: fullPath,
-        pathMatch: result.path_display === fullPath
-      });
-
-      const uploadResult = {
+      return {
         success: true,
         filePath: result.path_display,
         size: result.size,
@@ -306,12 +240,7 @@ export class DropboxService {
         id: result.id,
         rev: result.rev
       };
-
-      console.log('🎯 [DEBUG-DropboxService] 最終アップロード結果:', uploadResult);
-
-      return uploadResult;
     } catch (error) {
-      console.error('🔍 [DEBUG-DropboxService] uploadSmallFile エラー:', error);
       throw error;
     }
   }
