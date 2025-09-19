@@ -988,14 +988,17 @@
         },
         '4_Canvas機能テキスト位置': {
             selectors: [
-                // 【重要】セレクタの優先順位について
+                // 【最優先】最終Canvas結果のみを正確に取得
+                '.grid-cols-1.grid[class*="!gap-3.5"]',
+
+                // 【重要】従来のセレクタの優先順位について
                 // 1. 最優先: 親要素（div.grid-cols-1.grid）を取得 - 全体のテキスト構造を含む
                 //    - <p>タグのテキストと<code>タグ内のテキストを両方取得可能
                 // 2. 中優先: Canvas固有のID/クラスセレクタ
                 // 3. 低優先: .code-block__codeクラス（<code>タグのみ）- 部分的な取得になる
                 // この順序により、HTMLの全体構造を正しく取得できる
 
-                // 最優先: Canvas全体構造を取得（思考プロセスを除外）
+                // フォールバック: Canvas全体構造を取得（思考プロセスを除外）
                 'div.grid-cols-1.grid.gap-2\\.5:has(p.whitespace-pre-wrap)',
                 'div.grid-cols-1.grid:not(:has(.ease-out.rounded-lg))',
                 // 除外条件付きセレクタ（作業説明文と思考プロセスを除外）
@@ -1013,7 +1016,7 @@
                 '.code-block__code',
                 'div.code-block__code',
                 '.code-block__code.h-fit.min-h-full.w-fit.min-w-full',
-                // フォールバック（汎用セレクタ）
+                // 最後のフォールバック（汎用セレクタ）
                 '[class*="grid"][class*="gap"]:not([class*="standard-markdown"]):not([class*="p-3"])'
             ],
             description: 'Canvas機能のテキスト表示エリア'
@@ -1121,14 +1124,17 @@
         },
         '4_Canvas機能テキスト位置': {
             selectors: [
-                // 【重要】セレクタの優先順位について
+                // 【最優先】最終Canvas結果のみを正確に取得
+                '.grid-cols-1.grid[class*="!gap-3.5"]',
+
+                // 【重要】従来のセレクタの優先順位について
                 // 1. 最優先: 親要素（div.grid-cols-1.grid）を取得 - 全体のテキスト構造を含む
                 //    - <p>タグのテキストと<code>タグ内のテキストを両方取得可能
                 // 2. 中優先: Canvas固有のID/クラスセレクタ
                 // 3. 低優先: .code-block__codeクラス（<code>タグのみ）- 部分的な取得になる
                 // この順序により、HTMLの全体構造を正しく取得できる
 
-                // 最優先: Canvas全体構造を取得（思考プロセスを除外）
+                // フォールバック: Canvas全体構造を取得（思考プロセスを除外）
                 'div.grid-cols-1.grid.gap-2\\.5:has(p.whitespace-pre-wrap)',
                 'div.grid-cols-1.grid:not(:has(.ease-out.rounded-lg))',
                 // 除外条件付きセレクタ（作業説明文と思考プロセスを除外）
@@ -1146,7 +1152,7 @@
                 '.code-block__code',
                 'div.code-block__code',
                 '.code-block__code.h-fit.min-h-full.w-fit.min-w-full',
-                // フォールバック（汎用セレクタ）
+                // 最後のフォールバック（汎用セレクタ）
                 '[class*="grid"][class*="gap"]:not([class*="standard-markdown"]):not([class*="p-3"])'
             ],
             description: 'Canvas機能のテキスト表示エリア'
