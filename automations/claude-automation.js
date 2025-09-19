@@ -2618,8 +2618,14 @@
                     if (!selectorsToUse || selectorsToUse.length === 0) {
                         console.log('⚠️ [DEBUG] OTHER_MODELSセレクタが空または未定義、フォールバックセレクタを使用');
                         selectorsToUse = [
+                            // 最新のClaudeインターフェース用セレクタ
+                            { selector: 'div[role="menuitem"][aria-haspopup="menu"][data-state="closed"]', description: '最新Claude UIセレクタ' },
+                            { selector: 'div[role="menuitem"][aria-haspopup="menu"]:has(div:contains("他のモデル"))', description: '他のモデル日本語' },
+                            { selector: 'div[role="menuitem"][aria-haspopup="menu"]:has(div:contains("Other models"))', description: '他のモデル英語' },
+                            // 汎用セレクタ
                             { selector: 'div[role="menuitem"][aria-haspopup="menu"]', description: 'div要素の他のモデル' },
                             { selector: '[role="menuitem"][aria-haspopup="menu"]', description: '汎用他のモデル' },
+                            // テキストベースのフォールバック
                             { selector: 'div[role="menuitem"]:has(div:contains("他のモデル"))', description: 'テキストベース日本語' },
                             { selector: 'div[role="menuitem"]:has(div:contains("Other models"))', description: 'テキストベース英語' }
                         ];
