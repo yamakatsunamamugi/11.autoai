@@ -891,6 +891,15 @@ async function executeStep2TaskGroups() {
       // dataStartRowを設定（step1で取得した情報を使用）
       group.dataStartRow = window.globalState.specialRows?.dataStartRow || 9;
 
+      // step5が期待するcolumns形式を設定
+      if (!group.columns) {
+        group.columns = {
+          prompts: group.promptColumns || [],
+          answer: group.answerColumn || (group.answerColumns && group.answerColumns.length > 0 ? group.answerColumns[0].column : null),
+          log: group.logColumn || null
+        };
+      }
+
       // 必要に応じて他の情報も補完
       if (!group.spreadsheetId) {
         group.spreadsheetId = window.globalState.spreadsheetId;
@@ -904,6 +913,21 @@ async function executeStep2TaskGroups() {
     });
 
     console.log(`[step2-taskgroup.js] ✅ globalState.taskGroups設定完了: ${window.globalState.taskGroups.length}個のグループ`);
+
+    // step5向けデバッグ: 各グループの構造を詳細に出力
+    console.log('[DEBUG] step5向けタスクグループ構造確認:');
+    window.globalState.taskGroups.forEach((group) => {
+      console.log(`[DEBUG] グループ${group.groupNumber}:`, {
+        groupNumber: group.groupNumber,
+        type: group.type,
+        columns: group.columns,
+        promptColumns: group.promptColumns,
+        answerColumn: group.answerColumn,
+        answerColumns: group.answerColumns,
+        logColumn: group.logColumn,
+        dataStartRow: group.dataStartRow
+      });
+    });
 
     // 統合ログ出力（要求に応じて）
     console.log('');
