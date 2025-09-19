@@ -487,6 +487,15 @@ function setWakeLock(wakeLock) {
   window.globalState.wakeLock = wakeLock;
 }
 
+// ブラウザ環境用のグローバルエクスポート
+if (typeof window !== 'undefined') {
+  window.executeStep6 = executeStep6;
+  window.checkNextGroup = checkNextGroup;
+  window.processNextGroup = processNextGroup;
+  window.performShutdown = performShutdown;
+  window.calculateStatistics = calculateStatistics;
+}
+
 // エクスポート
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {

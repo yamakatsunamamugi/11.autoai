@@ -82,7 +82,9 @@
       "Bash(do echo \"=== Checking: $file ===\")",
       "Bash(gh workflow list:*)",
       "Bash(do [ -f \"$file\" ])",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(git ls-tree:*)",
+      "Bash(git rev-list:*)"
     ],
     "defaultMode": "acceptEdits",
     "additionalDirectories": [

@@ -1692,33 +1692,27 @@ startBtn.addEventListener("click", async () => {
   // 複数のURL入力欄から値を取得
   const urlInputs = document.querySelectorAll('.spreadsheet-url-input');
   const urls = [];
-
+  
   urlInputs.forEach((input) => {
     const url = input.value.trim();
     if (url) {
       urls.push(url);
     }
   });
-
+  
   // バリデーション：URLが入力されているか確認
   if (urls.length === 0) {
     updateStatus("少なくとも1つのURLを入力してください", "error");
     return;
   }
-
-  // === 元の処理システムを実行 ===
-  // STEP処理は専用ボタン（STEP処理のみ実行）を使用してください
-  updateStatus("元の処理システムを開始します...", "loading");
   
 
   // ボタンの状態を更新
   startBtn.disabled = true;
   stopBtn.disabled = false;
-
-  // === 既存の処理を無効化（stepファイルのみ使用） ===
-  // await processMultipleUrls(urls);
-
-  updateStatus("ステップ処理のみで完了しました。", "success");
+  
+  // 複数URLを並列処理
+  await processMultipleUrls(urls);
 });
 
 // 複数URLを並列処理する関数
@@ -1862,131 +1856,6 @@ async function processMultipleUrls(urls) {
     showFeedback("ストリーミング処理でエラーが発生しました", "error");
   }
 }
-
-// ===== イベントリスナー: STEP処理のみ実行 =====
-const stepOnlyBtn = document.getElementById("stepOnlyBtn");
-stepOnlyBtn.addEventListener("click", async () => {
-  console.log('🎯 [STEP-ONLY] STEP処理のみ実行開始');
-
-  // 複数のURL入力欄から値を取得
-  const urlInputs = document.querySelectorAll('.spreadsheet-url-input');
-  const urls = [];
-
-  urlInputs.forEach((input) => {
-    const url = input.value.trim();
-    if (url) {
-      urls.push(url);
-    }
-  });
-
-  // バリデーション：URLが入力されているか確認
-  if (urls.length === 0) {
-    updateStatus("少なくとも1つのURLを入力してください", "error");
-    return;
-  }
-
-  // ボタンの状態を更新
-  stepOnlyBtn.disabled = true;
-  stepOnlyBtn.textContent = "STEP処理中...";
-
-  try {
-    updateStatus("STEP処理のみを開始します...", "loading");
-
-    // URLを設定（最初のURLを使用）
-    const targetUrl = urls[0];
-    console.log('[STEP-ONLY] 処理対象URL:', targetUrl);
-
-    // URLからスプレッドシートIDを抽出してglobalStateに設定
-    const urlMatch = targetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
-    const gidMatch = targetUrl.match(/gid=([0-9]+)/);
-
-    if (!window.globalState) {
-      window.globalState = {};
-    }
-
-    if (urlMatch) {
-      window.globalState.spreadsheetId = urlMatch[1];
-      console.log('[STEP-ONLY] スプレッドシートID設定:', window.globalState.spreadsheetId);
-    }
-
-    if (gidMatch) {
-      window.globalState.gid = gidMatch[1];
-      console.log('[STEP-ONLY] GID設定:', window.globalState.gid);
-    }
-
-    // Chrome Extension環境での認証を利用
-    try {
-      const googleServices = globalThis.googleServices;
-      if (googleServices && googleServices.getAuthToken) {
-        const authToken = await googleServices.getAuthToken();
-        if (authToken) {
-          window.globalState.authToken = authToken;
-          window.globalState.authenticated = true;
-          console.log('[STEP-ONLY] 既存認証トークンを使用 (長さ:', authToken.length, ')');
-        }
-      }
-    } catch (authError) {
-      console.log('[STEP-ONLY] 認証取得エラー:', authError);
-    }
-
-    // Step 1: 初期設定（認証チェックをスキップして実行）
-    if (typeof executeStep1 === 'function') {
-      updateStatus("Step 1: 初期設定を実行中...", "loading");
-      // 認証エラーを無視してstep1の他の部分を実行するため、エラーハンドリングを追加
-      try {
-        await executeStep1();
-        updateStatus("Step 1: 初期設定完了", "success");
-      } catch (step1Error) {
-        console.warn('Step 1エラー（継続）:', step1Error);
-        updateStatus("Step 1: 部分完了（認証エラーをスキップ）", "warning");
-      }
-    }
-
-    // Step 2: タスクグループ作成
-    if (typeof executeStep2TaskGroups === 'function') {
-      updateStatus("Step 2: タスクグループ作成を実行中...", "loading");
-      await executeStep2TaskGroups();
-      updateStatus("Step 2: タスクグループ作成完了", "success");
-    }
-
-    // Step 3: タスクリスト生成準備完了
-    updateStatus("Step 3: タスクリスト生成準備完了", "success");
-
-    // Step 4: タスク実行
-    if (typeof executeStep4 === 'function') {
-      updateStatus("Step 4: タスク実行を開始中...", "loading");
-      const taskList = window.globalState?.taskGroups?.[0]?.tasks || [];
-      await executeStep4(taskList);
-      updateStatus("Step 4: タスク実行完了", "success");
-    }
-
-    // Step 5: ループ処理
-    if (typeof executeStep5 === 'function') {
-      updateStatus("Step 5: ループ処理を実行中...", "loading");
-      const currentTaskGroup = window.globalState?.taskGroups?.[0] || {};
-      await executeStep5(currentTaskGroup);
-      updateStatus("Step 5: ループ処理完了", "success");
-    }
-
-    // Step 6: 次グループ処理
-    if (typeof executeStep6 === 'function') {
-      updateStatus("Step 6: 次グループ処理を実行中...", "loading");
-      const taskGroups = window.globalState?.taskGroups || [];
-      await executeStep6(taskGroups, 0);
-      updateStatus("Step 6: 次グループ処理完了", "success");
-    }
-
-    updateStatus("✅ STEP処理のみ完了！", "success");
-
-  } catch (error) {
-    console.error('STEP-ONLY processing error:', error);
-    updateStatus(`STEP処理エラー: ${error.message}`, "error");
-  } finally {
-    // ボタンの状態を元に戻す
-    stepOnlyBtn.disabled = false;
-    stepOnlyBtn.innerHTML = '<span class="btn-icon">⚡</span>STEP処理のみ実行';
-  }
-});
 
 // ===== イベントリスナー: ストリーミング処理停止 =====
 stopBtn.addEventListener("click", async () => {
@@ -3919,8 +3788,6 @@ document.querySelectorAll('.selector-tab').forEach(tab => {
   });
 });
 
-// STEP専用モードのため自動初期化を無効化
-/*
 // 初期表示（ChatGPTタブと統合表）
 document.addEventListener('DOMContentLoaded', () => {
   // 統合表を初期化
@@ -3931,7 +3798,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (initialTab && initialTab.classList.contains('active')) {
     fetchAndDisplaySelectorInfo('chatgpt');
   }
-
+  
   // Chrome Storageからセレクタデータを読み込んで全タブに反映
   chrome.storage.local.get(['ai_selector_data'], (result) => {
     if (result.ai_selector_data) {
@@ -3949,7 +3816,7 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
   });
-
+  
   // セレクタデータ保存時のイベントリスナー
   window.addEventListener('ai-selector-data-saved', (event) => {
     console.log('🔄 セレクタデータが保存されました。UIを更新します...', event.detail);
@@ -3962,7 +3829,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 });
-*/
 
 // AI status display button removed
 
@@ -6734,8 +6600,6 @@ function closeAiLogFileDialog() {
   if (selectButton) selectButton.disabled = true;
 }
 
-// STEP専用モードのため自動初期化を無効化
-/*
 // DOMContentLoadedイベントでDropbox設定を初期化
 document.addEventListener('DOMContentLoaded', () => {
   console.log('[UI-Controller] DOMContentLoaded イベント発火');
@@ -6810,7 +6674,6 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log('[UI-Controller] 初期化完了');
   }, 100);
 });
-*/
 
 // ===== グローバル関数公開 =====
 // 他のモジュールから使用できるように関数をwindowオブジェクトに公開

@@ -44,8 +44,14 @@
 
             <div class="url-actions" style="margin-bottom: 15px;">
               <button id="startBtn" class="btn btn-primary btn-large">
-                <span class="btn-icon">▶</span>
-                処理を開始（本番実行）
+                <span class="btn-icon">🚀</span>
+                元の処理システム実行
+              </button>
+
+              <!-- 新しいSTEP専用ボタン -->
+              <button id="stepOnlyBtn" class="btn btn-success btn-large" style="margin-left: 10px; background: #28a745;">
+                <span class="btn-icon">⚡</span>
+                STEP処理のみ実行
               </button>
             </div>
             
@@ -481,6 +487,14 @@
   <!-- 削除済み: config.js, url-parser.js, reader.js（StreamProcessor V2に統合） -->
   <!-- auth-service.jsはservice-registryを通じてアクセス -->
   <!-- UIコントローラー -->
+  <!-- Step processing files -->
+  <script src="../../step/step1-setup.js"></script>
+  <script src="../../step/step2-taskgroup.js"></script>
+  <script src="../../step/step3-tasklist.js"></script>
+  <script src="../../step/step4-execute.js"></script>
+  <script src="../../step/step5-loop.js"></script>
+  <script src="../../step/step6-nextgroup.js"></script>
+
   <script type="module" src="ui-controller.js"></script>
 </body>
 </html>

@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Task Automation System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            width: 100%;
+            max-width: 1200px;
+            padding: 40px;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 32px;
+            text-align: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .control-panel {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .input-group label {
+            font-weight: 600;
+            color: #555;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .input-group input {
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        .input-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 30px;
+            justify-content: center;
+        }
+
+        button {
+            padding: 12px 30px;
+            font-size: 16px;
+            font-weight: 600;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-primary:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+
+        .btn-danger {
+            background: #ff6b6b;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #ff5252;
+        }
+
+        .status-panel {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+        }
+
+        .status-item {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        .status-item h4 {
+            color: #666;
+            font-size: 12px;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+        }
+
+        .status-item .value {
+            color: #333;
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        .progress-container {
+            margin-bottom: 30px;
+        }
+
+        .progress-bar {
+            height: 30px;
+            background: #f0f0f0;
+            border-radius: 15px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.5s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+        }
+
+        .step-indicators {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 20px;
+        }
+
+        .step {
+            flex: 1;
+            text-align: center;
+            position: relative;
+        }
+
+        .step::before {
+            content: '';
+            position: absolute;
+            top: 15px;
+            left: 50%;
+            width: 100%;
+            height: 2px;
+            background: #e0e0e0;
+            z-index: 0;
+        }
+
+        .step:last-child::before {
+            display: none;
+        }
+
+        .step-circle {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background: #e0e0e0;
+            margin: 0 auto 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: #999;
+            position: relative;
+            z-index: 1;
+        }
+
+        .step.active .step-circle {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .step.completed .step-circle {
+            background: #4caf50;
+            color: white;
+        }
+
+        .step-label {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .log-panel {
+            background: #2d2d2d;
+            color: #f0f0f0;
+            border-radius: 12px;
+            padding: 20px;
+            height: 400px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .log-entry {
+            margin-bottom: 5px;
+            padding: 5px;
+            border-left: 3px solid transparent;
+        }
+
+        .log-entry.info {
+            border-left-color: #2196f3;
+            color: #64b5f6;
+        }
+
+        .log-entry.success {
+            border-left-color: #4caf50;
+            color: #81c784;
+        }
+
+        .log-entry.warning {
+            border-left-color: #ff9800;
+            color: #ffb74d;
+        }
+
+        .log-entry.error {
+            border-left-color: #f44336;
+            color: #e57373;
+        }
+
+        .timestamp {
+            color: #999;
+            margin-right: 10px;
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.4);
+        }
+
+        .modal-content {
+            background-color: white;
+            margin: 15% auto;
+            padding: 30px;
+            border-radius: 15px;
+            width: 80%;
+            max-width: 500px;
+            text-align: center;
+        }
+
+        .modal h2 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+
+        .modal p {
+            color: #666;
+            margin-bottom: 25px;
+        }
+
+        @media (max-width: 768px) {
+            .control-panel {
+                grid-template-columns: 1fr;
+            }
+
+            .button-group {
+                flex-direction: column;
+            }
+
+            button {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 AI Task Automation System</h1>
+
+        <div class="control-panel">
+            <div class="input-group">
+                <label for="spreadsheet-url">スプレッドシートURL</label>
+                <input type="text" id="spreadsheet-url" placeholder="https://docs.google.com/spreadsheets/d/..." />
+            </div>
+            <div class="input-group">
+                <label for="batch-size">バッチサイズ</label>
+                <input type="number" id="batch-size" value="3" min="1" max="10" />
+            </div>
+        </div>
+
+        <div class="button-group">
+            <button id="start-btn" class="btn-primary">
+                処理を開始
+            </button>
+            <button id="pause-btn" class="btn-secondary" disabled>
+                一時停止
+            </button>
+            <button id="stop-btn" class="btn-danger" disabled>
+                停止
+            </button>
+        </div>
+
+        <div class="status-panel">
+            <div class="status-grid">
+                <div class="status-item">
+                    <h4>現在のステップ</h4>
+                    <div class="value" id="current-step">-</div>
+                </div>
+                <div class="status-item">
+                    <h4>グループ</h4>
+                    <div class="value" id="current-group">0/0</div>
+                </div>
+                <div class="status-item">
+                    <h4>タスク</h4>
+                    <div class="value" id="task-count">0/0</div>
+                </div>
+                <div class="status-item">
+                    <h4>成功率</h4>
+                    <div class="value" id="success-rate">0%</div>
+                </div>
+                <div class="status-item">
+                    <h4>経過時間</h4>
+                    <div class="value" id="elapsed-time">00:00</div>
+                </div>
+                <div class="status-item">
+                    <h4>ステータス</h4>
+                    <div class="value" id="status">待機中</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="progress-container">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progress-fill" style="width: 0%">
+                    0%
+                </div>
+            </div>
+            <div class="step-indicators">
+                <div class="step" id="step1">
+                    <div class="step-circle">1</div>
+                    <div class="step-label">初期設定</div>
+                </div>
+                <div class="step" id="step2">
+                    <div class="step-circle">2</div>
+                    <div class="step-label">グループ作成</div>
+                </div>
+                <div class="step" id="step3">
+                    <div class="step-circle">3</div>
+                    <div class="step-label">タスクリスト</div>
+                </div>
+                <div class="step" id="step4">
+                    <div class="step-circle">4</div>
+                    <div class="step-label">実行</div>
+                </div>
+                <div class="step" id="step5">
+                    <div class="step-circle">5</div>
+                    <div class="step-label">繰り返し</div>
+                </div>
+                <div class="step" id="step6">
+                    <div class="step-circle">6</div>
+                    <div class="step-label">次グループ</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="log-panel" id="log-panel">
+            <div class="log-entry info">
+                <span class="timestamp">[00:00:00]</span>
+                システム準備完了。処理開始ボタンをクリックしてください。
+            </div>
+        </div>
+    </div>
+
+    <div id="completion-modal" class="modal">
+        <div class="modal-content">
+            <h2>✅ 処理完了</h2>
+            <p id="completion-message">すべてのタスクが正常に完了しました。</p>
+            <button class="btn-primary" onclick="closeModal()">閉じる</button>
+        </div>
+    </div>
+
+    <!-- Step Scripts - 順番が重要 -->
+    <script src="step1-setup.js"></script>
+    <script src="step2-taskgroup.js"></script>
+    <script src="step3-tasklist.js"></script>
+    <script src="step4-execute.js"></script>
+    <script src="step5-loop.js"></script>
+    <script src="step6-nextgroup.js"></script>
+    <script src="main.js"></script>
+
+    <script>
+        // UI Controller
+        class UIController {
+            constructor() {
+                this.isRunning = false;
+                this.isPaused = false;
+                this.startTime = null;
+                this.elapsedTimer = null;
+                this.currentStep = 0;
+                this.totalSteps = 6;
+                this.taskGroups = [];
+                this.currentGroupIndex = 0;
+                this.stats = {
+                    totalTasks: 0,
+                    completedTasks: 0,
+                    successTasks: 0,
+                    failedTasks: 0
+                };
+
+                this.initializeEventListeners();
+                this.initializeSystemCallbacks();
+            }
+
+            initializeEventListeners() {
+                document.getElementById('start-btn').addEventListener('click', () => this.startProcess());
+                document.getElementById('pause-btn').addEventListener('click', () => this.pauseProcess());
+                document.getElementById('stop-btn').addEventListener('click', () => this.stopProcess());
+            }
+
+            initializeSystemCallbacks() {
+                // グローバルコールバック関数を設定
+                window.onStepComplete = (stepNumber, data) => {
+                    this.handleStepComplete(stepNumber, data);
+                };
+
+                window.onTaskComplete = (taskData) => {
+                    this.handleTaskComplete(taskData);
+                };
+
+                window.onError = (error) => {
+                    this.handleError(error);
+                };
+
+                window.onLog = (message, type = 'info') => {
+                    this.addLog(message, type);
+                };
+            }
+
+            async startProcess() {
+                const spreadsheetUrl = document.getElementById('spreadsheet-url').value;
+                const batchSize = parseInt(document.getElementById('batch-size').value);
+
+                if (!spreadsheetUrl) {
+                    alert('スプレッドシートURLを入力してください');
+                    return;
+                }
+
+                this.isRunning = true;
+                this.startTime = Date.now();
+                this.resetUI();
+                this.updateButtonStates();
+                this.startElapsedTimer();
+
+                this.addLog('処理を開始します...', 'info');
+                this.updateStatus('処理中');
+
+                // URLを設定
+                history.pushState({}, '', spreadsheetUrl);
+
+                try {
+                    // ステップ1: 初期設定
+                    await this.executeStep(1);
+
+                    // ステップ2: タスクグループ作成
+                    await this.executeStep(2);
+
+                    // ステップ3-6: グループごとの処理ループ
+                    await this.processAllGroups();
+
+                    this.completeProcess();
+
+                } catch (error) {
+                    this.handleError(error);
+                }
+            }
+
+            async executeStep(stepNumber) {
+                this.currentStep = stepNumber;
+                this.updateStepIndicator(stepNumber);
+                this.addLog(`ステップ${stepNumber}を実行中...`, 'info');
+
+                try {
+                    let result;
+                    switch(stepNumber) {
+                        case 1:
+                            if (typeof executeStep1 === 'function') {
+                                result = await executeStep1();
+                            } else {
+                                console.error('executeStep1 function not found');
+                            }
+                            break;
+                        case 2:
+                            // Step2ファイルの関数を呼び出し
+                            if (typeof executeStep2TaskGroups === 'function') {
+                                result = await executeStep2TaskGroups();
+                                this.taskGroups = window.globalState?.taskGroups || [];
+                                this.updateGroupCount();
+                            } else {
+                                console.error('executeStep2TaskGroups function not found');
+                            }
+                            break;
+                        case 3:
+                            if (typeof executeStep3 === 'function') {
+                                result = await executeStep3();
+                            } else {
+                                console.error('executeStep3 function not found');
+                            }
+                            break;
+                        case 4:
+                            if (typeof executeStep4 === 'function') {
+                                result = await executeStep4();
+                            } else {
+                                console.error('executeStep4 function not found');
+                            }
+                            break;
+                        case 5:
+                            if (typeof executeStep5 === 'function') {
+                                result = await executeStep5();
+                            } else {
+                                console.error('executeStep5 function not found');
+                            }
+                            break;
+                        case 6:
+                            if (typeof executeStep6 === 'function') {
+                                result = await executeStep6();
+                            } else {
+                                console.error('executeStep6 function not found');
+                            }
+                            break;
+                    }
+
+                    this.markStepComplete(stepNumber);
+                    this.addLog(`ステップ${stepNumber}完了`, 'success');
+                    return result;
+
+                } catch (error) {
+                    this.addLog(`ステップ${stepNumber}でエラー: ${error.message}`, 'error');
+                    throw error;
+                }
+            }
+
+            async processAllGroups() {
+                for (let i = 0; i < this.taskGroups.length; i++) {
+                    if (!this.isRunning) break;
+
+                    this.currentGroupIndex = i;
+                    this.updateGroupCount();
+
+                    this.addLog(`グループ${i + 1}/${this.taskGroups.length}を処理中`, 'info');
+
+                    let isGroupComplete = false;
+                    while (!isGroupComplete && this.isRunning) {
+                        // ステップ3: タスクリスト生成
+                        await this.executeStep(3);
+
+                        // ステップ4: タスク実行
+                        await this.executeStep(4);
+
+                        // ステップ5: 完了確認と繰り返し
+                        isGroupComplete = await this.executeStep(5);
+                    }
+
+                    // ステップ6: 次グループへ
+                    if (i < this.taskGroups.length - 1) {
+                        await this.executeStep(6);
+                    }
+                }
+            }
+
+            pauseProcess() {
+                this.isPaused = !this.isPaused;
+                this.updateButtonStates();
+
+                if (this.isPaused) {
+                    this.addLog('処理を一時停止しました', 'warning');
+                    this.updateStatus('一時停止中');
+                } else {
+                    this.addLog('処理を再開しました', 'info');
+                    this.updateStatus('処理中');
+                }
+            }
+
+            stopProcess() {
+                if (confirm('処理を停止しますか？')) {
+                    this.isRunning = false;
+                    this.isPaused = false;
+                    this.stopElapsedTimer();
+                    this.updateButtonStates();
+                    this.addLog('処理を停止しました', 'warning');
+                    this.updateStatus('停止');
+                }
+            }
+
+            completeProcess() {
+                this.isRunning = false;
+                this.stopElapsedTimer();
+                this.updateButtonStates();
+                this.updateStatus('完了');
+                this.addLog('すべての処理が完了しました！', 'success');
+                this.showCompletionModal();
+            }
+
+            handleError(error) {
+                this.isRunning = false;
+                this.stopElapsedTimer();
+                this.updateButtonStates();
+                this.updateStatus('エラー');
+                this.addLog(`エラーが発生しました: ${error.message}`, 'error');
+            }
+
+            handleStepComplete(stepNumber, data) {
+                this.markStepComplete(stepNumber);
+                this.updateProgress();
+            }
+
+            handleTaskComplete(taskData) {
+                this.stats.completedTasks++;
+                if (taskData.success) {
+                    this.stats.successTasks++;
+                } else {
+                    this.stats.failedTasks++;
+                }
+                this.updateTaskCount();
+                this.updateSuccessRate();
+            }
+
+            updateStepIndicator(stepNumber) {
+                // すべてのステップをリセット
+                for (let i = 1; i <= this.totalSteps; i++) {
+                    const step = document.getElementById(`step${i}`);
+                    if (step) {
+                        step.classList.remove('active');
+                    }
+                }
+
+                // 現在のステップをアクティブに
+                const currentStepElement = document.getElementById(`step${stepNumber}`);
+                if (currentStepElement) {
+                    currentStepElement.classList.add('active');
+                }
+
+                document.getElementById('current-step').textContent = `Step ${stepNumber}`;
+            }
+
+            markStepComplete(stepNumber) {
+                const step = document.getElementById(`step${stepNumber}`);
+                if (step) {
+                    step.classList.remove('active');
+                    step.classList.add('completed');
+                }
+            }
+
+            updateProgress() {
+                const progress = (this.currentStep / this.totalSteps) * 100;
+                const progressFill = document.getElementById('progress-fill');
+                progressFill.style.width = `${progress}%`;
+                progressFill.textContent = `${Math.round(progress)}%`;
+            }
+
+            updateGroupCount() {
+                document.getElementById('current-group').textContent =
+                    `${this.currentGroupIndex + 1}/${this.taskGroups.length || 0}`;
+            }
+
+            updateTaskCount() {
+                document.getElementById('task-count').textContent =
+                    `${this.stats.completedTasks}/${this.stats.totalTasks}`;
+            }
+
+            updateSuccessRate() {
+                const rate = this.stats.completedTasks > 0
+                    ? Math.round((this.stats.successTasks / this.stats.completedTasks) * 100)
+                    : 0;
+                document.getElementById('success-rate').textContent = `${rate}%`;
+            }
+
+            updateStatus(status) {
+                const statusElement = document.getElementById('status');
+                statusElement.textContent = status;
+
+                // ステータスに応じて色を変更
+                statusElement.style.color = {
+                    '待機中': '#999',
+                    '処理中': '#4caf50',
+                    '一時停止中': '#ff9800',
+                    '停止': '#f44336',
+                    'エラー': '#f44336',
+                    '完了': '#2196f3'
+                }[status] || '#333';
+            }
+
+            updateButtonStates() {
+                const startBtn = document.getElementById('start-btn');
+                const pauseBtn = document.getElementById('pause-btn');
+                const stopBtn = document.getElementById('stop-btn');
+
+                if (this.isRunning) {
+                    startBtn.disabled = true;
+                    pauseBtn.disabled = false;
+                    stopBtn.disabled = false;
+                    pauseBtn.textContent = this.isPaused ? '再開' : '一時停止';
+                } else {
+                    startBtn.disabled = false;
+                    pauseBtn.disabled = true;
+                    stopBtn.disabled = true;
+                    pauseBtn.textContent = '一時停止';
+                }
+            }
+
+            startElapsedTimer() {
+                this.elapsedTimer = setInterval(() => {
+                    const elapsed = Date.now() - this.startTime;
+                    const minutes = Math.floor(elapsed / 60000);
+                    const seconds = Math.floor((elapsed % 60000) / 1000);
+                    document.getElementById('elapsed-time').textContent =
+                        `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+                }, 1000);
+            }
+
+            stopElapsedTimer() {
+                if (this.elapsedTimer) {
+                    clearInterval(this.elapsedTimer);
+                    this.elapsedTimer = null;
+                }
+            }
+
+            addLog(message, type = 'info') {
+                const logPanel = document.getElementById('log-panel');
+                const entry = document.createElement('div');
+                entry.className = `log-entry ${type}`;
+
+                const timestamp = new Date().toLocaleTimeString('ja-JP');
+                entry.innerHTML = `
+                    <span class="timestamp">[${timestamp}]</span>
+                    ${message}
+                `;
+
+                logPanel.appendChild(entry);
+                logPanel.scrollTop = logPanel.scrollHeight;
+            }
+
+            resetUI() {
+                // ステップインジケータをリセット
+                for (let i = 1; i <= this.totalSteps; i++) {
+                    const step = document.getElementById(`step${i}`);
+                    if (step) {
+                        step.classList.remove('active', 'completed');
+                    }
+                }
+
+                // 統計をリセット
+                this.stats = {
+                    totalTasks: 0,
+                    completedTasks: 0,
+                    successTasks: 0,
+                    failedTasks: 0
+                };
+
+                // 表示をリセット
+                document.getElementById('current-step').textContent = '-';
+                document.getElementById('current-group').textContent = '0/0';
+                document.getElementById('task-count').textContent = '0/0';
+                document.getElementById('success-rate').textContent = '0%';
+                document.getElementById('elapsed-time').textContent = '00:00';
+                document.getElementById('progress-fill').style.width = '0%';
+                document.getElementById('progress-fill').textContent = '0%';
+            }
+
+            showCompletionModal() {
+                const modal = document.getElementById('completion-modal');
+                const message = document.getElementById('completion-message');
+
+                const successRate = this.stats.completedTasks > 0
+                    ? Math.round((this.stats.successTasks / this.stats.completedTasks) * 100)
+                    : 0;
+
+                message.innerHTML = `
+                    処理が完了しました。<br><br>
+                    総タスク数: ${this.stats.totalTasks}<br>
+                    完了タスク: ${this.stats.completedTasks}<br>
+                    成功率: ${successRate}%<br>
+                    処理時間: ${document.getElementById('elapsed-time').textContent}
+                `;
+
+                modal.style.display = 'block';
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('completion-modal').style.display = 'none';
+        }
+
+        // UIコントローラーの初期化
+        const uiController = new UIController();
+
+        // ページ読み込み完了時の処理
+        window.addEventListener('DOMContentLoaded', () => {
+            console.log('AI Task Automation System UI loaded');
+            uiController.addLog('システム準備完了', 'success');
+        });
+    </script>
+</body>
+</html>

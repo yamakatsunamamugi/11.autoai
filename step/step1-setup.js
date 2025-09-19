@@ -63,26 +63,88 @@ async function checkInternetConnection() {
     throw new Error('インターネット接続なし（navigator.onLine=false）');
   }
 
-  // Google APIへのテスト接続
-  const apiTestUrl = 'https://sheets.googleapis.com/v4/spreadsheets';
-  console.log(`[step1-setup.js] [Step 1-1-1] Google Sheets API接続テスト開始: ${apiTestUrl}`);
+  // Chrome Extension環境では既存の認証システムを利用
+  console.log(`[step1-setup.js] [Step 1-1-1] Chrome Extension認証確認開始`);
 
   try {
+    // グローバルに利用可能な認証トークンを確認
+    let authToken = null;
+
+    // Method 1: chrome.storage から認証情報を取得
+    if (typeof chrome !== 'undefined' && chrome.storage) {
+      console.log(`[step1-setup.js] [Step 1-1-1] chrome.storage から認証情報を確認中...`);
+      try {
+        const result = await chrome.storage.local.get(['authToken', 'googleServices']);
+        if (result.authToken) {
+          authToken = result.authToken;
+          console.log(`[step1-setup.js] [Step 1-1-1] ✅ chrome.storage から認証トークンを取得`);
+        }
+      } catch (storageError) {
+        console.log(`[step1-setup.js] [Step 1-1-1] chrome.storage アクセスエラー:`, storageError);
+      }
+    }
+
+    // Method 2: globalThis から認証情報を確認
+    if (!authToken && globalThis.googleServices) {
+      console.log(`[step1-setup.js] [Step 1-1-1] globalThis.googleServices から認証情報を確認中...`);
+      authToken = globalThis.googleServices.getAuthToken?.();
+      if (authToken) {
+        console.log(`[step1-setup.js] [Step 1-1-1] ✅ globalThis から認証トークンを取得`);
+      }
+    }
+
+    // Method 3: chrome.runtime.sendMessage で認証情報を取得
+    if (!authToken && typeof chrome !== 'undefined' && chrome.runtime) {
+      console.log(`[step1-setup.js] [Step 1-1-1] background script から認証情報を確認中...`);
+      try {
+        const response = await chrome.runtime.sendMessage({action: 'getAuthToken'});
+        if (response && response.token) {
+          authToken = response.token;
+          console.log(`[step1-setup.js] [Step 1-1-1] ✅ background script から認証トークンを取得`);
+        }
+      } catch (runtimeError) {
+        console.log(`[step1-setup.js] [Step 1-1-1] chrome.runtime メッセージエラー:`, runtimeError);
+      }
+    }
+
     const startTime = Date.now();
-    const testResponse = await fetch(apiTestUrl, {
-      method: 'HEAD'
-    });
+    let testResponse;
+
+    if (authToken) {
+      // 認証トークンありでテスト
+      const apiTestUrl = 'https://sheets.googleapis.com/v4/spreadsheets?q=test';
+      testResponse = await fetch(apiTestUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+    } else {
+      // 認証トークンなしでテスト（401エラーが期待される）
+      const apiTestUrl = 'https://sheets.googleapis.com/v4/spreadsheets';
+      testResponse = await fetch(apiTestUrl, {
+        method: 'HEAD'
+      });
+    }
+
     const responseTime = Date.now() - startTime;
 
     console.log(`[step1-setup.js] [Step 1-1-1] APIレスポンス詳細:`);
     console.log(`  - ステータス: ${testResponse.status} ${testResponse.statusText}`);
     console.log(`  - レスポンス時間: ${responseTime}ms`);
     console.log(`  - Headers: ${testResponse.headers.get('content-type') || 'N/A'}`);
+    console.log(`  - 認証トークン使用: ${authToken ? 'あり (長さ: ' + authToken.length + ')' : 'なし'}`);
 
-    if (testResponse.ok || testResponse.status === 401) {
-      // 401は認証エラーだが、接続自体は成功
-      console.log(`[step1-setup.js] [Step 1-1-2] ✅ Google Sheets APIへの接続確認成功（ステータス: ${testResponse.status}）`);
+    if (testResponse.ok || testResponse.status === 401 || testResponse.status === 404) {
+      // 401は認証エラー、404はAPIエンドポイントエラーだが、いずれも接続自体は成功
+      const statusDescription = testResponse.status === 404 ? 'APIエンドポイント（問題なし）' :
+                               testResponse.status === 401 ? '認証エラー（問題なし）' : '正常';
+      console.log(`[step1-setup.js] [Step 1-1-2] ✅ Google Sheets APIへの接続確認成功（ステータス: ${testResponse.status} - ${statusDescription}）`);
       window.globalState.internetConnected = true;
+      window.globalState.authenticated = authToken ? true : false;
+      window.globalState.authToken = authToken;
+      console.log(`[step1-setup.js] [Step 1-1-2] 🔐 認証状態: ${window.globalState.authenticated ? '認証済み' : '未認証'}`);
       return true;
     } else {
       console.error(`[step1-setup.js] [Step 1-1-2] ⚠️ 予期しないAPIレスポンス: ${testResponse.status}`);
@@ -310,26 +372,40 @@ async function findSpecialRows() {
   console.log('[step1-setup.js] [Step 1-4] 特殊行の検索開始');
   console.log('========');
 
-  // URLからspreadsheetIdとgidを取得
-  const url = window.location.href;
-  console.log(`[step1-setup.js] [Step 1-4] 現在のURL: ${url}`);
+  // globalStateまたはURLからspreadsheetIdとgidを取得
+  let spreadsheetId = null;
+  let gid = '0';
 
-  const spreadsheetIdMatch = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
-  const gidMatch = url.match(/#gid=([0-9]+)/);
+  // 方法1: globalStateから取得（STEP専用ボタンで設定済み）
+  if (window.globalState && window.globalState.spreadsheetId) {
+    spreadsheetId = window.globalState.spreadsheetId;
+    gid = window.globalState.gid || '0';
+    console.log(`[step1-setup.js] [Step 1-4] ✅ globalStateから取得:`);
+    console.log(`  - スプレッドシートID: ${spreadsheetId}`);
+    console.log(`  - GID: ${gid}`);
+  } else {
+    // 方法2: URLから解析（元の方法）
+    const url = window.location.href;
+    console.log(`[step1-setup.js] [Step 1-4] 現在のURL: ${url}`);
 
-  console.log('[step1-setup.js] [Step 1-4] URL解析結果:');
-  console.log(`  - スプレッドシートIDマッチ: ${spreadsheetIdMatch ? '成功' : '失敗'}`);
-  console.log(`  - GIDマッチ: ${gidMatch ? '成功' : '失敗'}`);
+    const spreadsheetIdMatch = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+    const gidMatch = url.match(/#gid=([0-9]+)/);
 
-  if (!spreadsheetIdMatch) {
-    console.error('[step1-setup.js] [Step 1-4] ❌ スプレッドシートIDが見つかりません');
-    console.error(`  - URL形式が正しくない可能性があります`);
-    console.error(`  - 期待される形式: https://docs.google.com/spreadsheets/d/[ID]/edit`);
-    throw new Error('スプレッドシートIDが見つかりません');
+    console.log('[step1-setup.js] [Step 1-4] URL解析結果:');
+    console.log(`  - スプレッドシートIDマッチ: ${spreadsheetIdMatch ? '成功' : '失敗'}`);
+    console.log(`  - GIDマッチ: ${gidMatch ? '成功' : '失敗'}`);
+
+    if (!spreadsheetIdMatch) {
+      console.error('[step1-setup.js] [Step 1-4] ❌ スプレッドシートIDが見つかりません');
+      console.error(`  - URL形式が正しくない可能性があります`);
+      console.error(`  - 期待される形式: https://docs.google.com/spreadsheets/d/[ID]/edit`);
+      console.error(`  - Chrome Extension環境ではUIコントローラーでglobalStateに設定してください`);
+      throw new Error('スプレッドシートIDが見つかりません');
+    }
+
+    spreadsheetId = spreadsheetIdMatch[1];
+    gid = gidMatch ? gidMatch[1] : '0';
   }
-
-  const spreadsheetId = spreadsheetIdMatch[1];
-  const gid = gidMatch ? gidMatch[1] : '0';
 
   window.globalState.spreadsheetId = spreadsheetId;
   window.globalState.gid = gid;
@@ -457,6 +533,29 @@ async function executeStep1() {
   console.log('[step1-setup.js] ステップ1: 初期設定 開始');
   console.log('＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝');
 
+  // Global State初期化確認・デバッグ
+  console.log(`[step1-setup.js] [Debug] Global State確認:`);
+  console.log(`  - window.globalState存在: ${!!window.globalState}`);
+  console.log(`  - chrome API利用可能: ${!!chrome}`);
+  console.log(`  - globalThis.googleServices: ${!!globalThis.googleServices}`);
+
+  if (!window.globalState) {
+    console.log(`[step1-setup.js] [Debug] Global State初期化実行`);
+    window.globalState = {
+      internetConnected: false,
+      authenticated: false,
+      authToken: null,
+      spreadsheetId: null,
+      gid: null,
+      specialRows: {},
+      taskGroups: [],
+      currentTaskGroup: null,
+      completedTasks: 0,
+      totalTasks: 0
+    };
+  }
+  console.log(`[step1-setup.js] [Debug] Global State初期化完了:`, window.globalState);
+
   try {
     // 1-1: インターネット接続確認
     await checkInternetConnection();
@@ -474,9 +573,31 @@ async function executeStep1() {
     console.log('[step1-setup.js] ✅ ステップ1: 初期設定 完了');
     console.log('＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝');
 
-    // 結果をlocalStorageにも保存
-    localStorage.setItem('step1Result', JSON.stringify(window.globalState));
+    // ステップ2で使用する形式でglobalStateを補完
+    if (!window.globalState.apiHeaders && window.globalState.authToken) {
+      window.globalState.apiHeaders = {
+        'Authorization': `Bearer ${window.globalState.authToken}`,
+        'Content-Type': 'application/json'
+      };
+    }
 
+    if (!window.globalState.sheetsApiBase) {
+      window.globalState.sheetsApiBase = 'https://sheets.googleapis.com/v4/spreadsheets';
+    }
+
+    // step1完了フラグを設定
+    window.globalState.step1Completed = true;
+
+    // 結果をlocalStorageにも保存（互換性のため）
+    const step1Result = {
+      spreadsheetId: window.globalState.spreadsheetId,
+      specialRows: window.globalState.specialRows,
+      apiHeaders: window.globalState.apiHeaders,
+      sheetsApiBase: window.globalState.sheetsApiBase
+    };
+    localStorage.setItem('step1Result', JSON.stringify(step1Result));
+
+    console.log('[step1-setup.js] ✅ globalState準備完了:', window.globalState);
     return window.globalState;
 
   } catch (error) {
@@ -505,7 +626,9 @@ if (typeof window !== 'undefined') {
   window.findSpecialRows = findSpecialRows;
 }
 
-// 自動実行（直接読み込まれた場合）
+// 自動実行を無効化（STEP専用ボタンから手動で実行するため）
+// 元の自動実行コード:
+/*
 if (typeof window !== 'undefined' && !window.step1Executed) {
   window.step1Executed = true;
 
@@ -516,3 +639,6 @@ if (typeof window !== 'undefined' && !window.step1Executed) {
     executeStep1();
   }
 }
+*/
+
+console.log('[step1-setup.js] ✅ Step1関数定義完了（自動実行無効）');

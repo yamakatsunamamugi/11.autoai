@@ -285,10 +285,6 @@ function getRowControl(data) {
     console.log(`  - ${c.type}: ${c.row}行目`);
   });
   return controls;
-  } catch (error) {
-    console.error(`[TaskList] [Step3-Control] ❌ 行制御取得エラー:`, error);
-    throw error;
-  }
 }
 
 /**

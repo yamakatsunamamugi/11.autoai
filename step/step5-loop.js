@@ -437,6 +437,13 @@ async function executeTasks(tasks, taskGroup) {
   console.log('[Helper] タスク実行:', tasks.length + '件');
 }
 
+// ブラウザ環境用のグローバルエクスポート
+if (typeof window !== 'undefined') {
+  window.executeStep5 = executeStep5;
+  window.checkCompletionStatus = checkCompletionStatus;
+  window.processIncompleteTasks = processIncompleteTasks;
+}
+
 // エクスポート
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
