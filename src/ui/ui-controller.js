@@ -7265,8 +7265,9 @@ class SimpleConsoleLogViewer {
    */
   showConsolidatedLogs() {
     const sortedLogs = this.logs.slice().sort((a, b) => a.timestamp - b.timestamp);
+    const summary = this.generateLogSummary(sortedLogs);
 
-    const logWindow = window.open('', '_blank', 'width=1400,height=900,scrollbars=yes,resizable=yes');
+    const logWindow = window.open('', '_blank', 'width=1600,height=1000,scrollbars=yes,resizable=yes');
 
     if (!logWindow) {
       alert('ポップアップがブロックされました。ポップアップを許可してから再試行してください。');
@@ -7277,7 +7278,7 @@ class SimpleConsoleLogViewer {
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AutoAI - コンソールログ統合表示</title>
+    <title>AutoAI - ログまとめ表示</title>
     <meta charset="UTF-8">
     <style>
         body {
@@ -7294,6 +7295,52 @@ class SimpleConsoleLogViewer {
             top: 0;
             border-bottom: 2px solid #444;
             z-index: 100;
+        }
+        .summary-section {
+            background: #2a2a2a;
+            margin: 15px;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #444;
+        }
+        .summary-title {
+            color: #4fc3f7;
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .step-summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .step-card {
+            background: #333;
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 4px solid #4fc3f7;
+        }
+        .step-card.error { border-left-color: #ff6b6b; }
+        .step-card.success { border-left-color: #4caf50; }
+        .step-card.warning { border-left-color: #feca57; }
+        .step-header {
+            font-weight: bold;
+            font-size: 14px;
+            margin-bottom: 8px;
+            color: #4fc3f7;
+        }
+        .step-status {
+            font-size: 12px;
+            margin-bottom: 8px;
+        }
+        .step-details {
+            font-size: 11px;
+            color: #ccc;
+            line-height: 1.4;
         }
         .stats {
             background: #3a3a3a;
@@ -7313,6 +7360,7 @@ class SimpleConsoleLogViewer {
         .stat-error { color: #ff6b6b; }
         .stat-warning { color: #feca57; }
         .stat-info { color: #48dbfb; }
+        .stat-success { color: #4caf50; }
         .search-controls {
             display: flex;
             gap: 10px;
@@ -7338,9 +7386,19 @@ class SimpleConsoleLogViewer {
         }
         .filter-btn.active { background: #0084ff; }
         .filter-btn:hover { background: #5a5a5a; }
+        .toggle-btn {
+            padding: 8px 15px;
+            background: #4caf50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .toggle-btn:hover { background: #45a049; }
         .log-container {
             padding: 0 15px 15px;
-            max-height: calc(100vh - 200px);
+            max-height: calc(100vh - 400px);
             overflow-y: auto;
         }
         .log-entry {
@@ -7391,26 +7449,49 @@ class SimpleConsoleLogViewer {
             font-style: italic;
             padding: 40px;
         }
+        .issues-section {
+            background: #2a1f1f;
+            border: 1px solid #ff6b6b;
+            margin-top: 15px;
+        }
+        .issues-title {
+            color: #ff6b6b;
+        }
+        .issue-item {
+            background: #3a2a2a;
+            margin: 8px 0;
+            padding: 10px;
+            border-radius: 4px;
+            border-left: 3px solid #ff6b6b;
+        }
     </style>
 </head>
 <body>
     <div class="header">
-        <h2>🔍 AutoAI - コンソールログ統合表示</h2>
+        <h2>📊 AutoAI - ログまとめ表示</h2>
         <div class="stats">
             <div class="stat-item">総ログ数: ${sortedLogs.length}</div>
-            <div class="stat-item stat-error">エラー: ${sortedLogs.filter(l => l.level === 'error').length}</div>
-            <div class="stat-item stat-warning">警告: ${sortedLogs.filter(l => l.level === 'warn').length}</div>
-            <div class="stat-item stat-info">情報: ${sortedLogs.filter(l => l.level === 'info').length}</div>
+            <div class="stat-item stat-error">エラー: ${summary.errorCount}</div>
+            <div class="stat-item stat-warning">警告: ${summary.warningCount}</div>
+            <div class="stat-item stat-success">成功: ${summary.successCount}</div>
+            <div class="stat-item stat-info">情報: ${summary.infoCount}</div>
             <div class="stat-item">生成時刻: ${new Date().toLocaleString('ja-JP')}</div>
         </div>
         <div class="search-controls">
-            <input type="text" class="search-box" placeholder="ログを検索... (例: error, step1, WindowService)" onkeyup="filterLogs(this.value)">
+            <input type="text" class="search-box" placeholder="ログを検索..." onkeyup="filterLogs(this.value)">
             <button class="filter-btn active" onclick="setFilter('all')">すべて</button>
             <button class="filter-btn" onclick="setFilter('error')">エラー</button>
             <button class="filter-btn" onclick="setFilter('warn')">警告</button>
             <button class="filter-btn" onclick="setFilter('step')">Step</button>
+            <button class="toggle-btn" onclick="toggleSummary()">サマリー表示切替</button>
         </div>
     </div>
+
+    <div id="summarySection" class="summary-section">
+        <div class="summary-title">📋 実行サマリー</div>
+        ${this.generateSummaryHTML(summary)}
+    </div>
+
     <div class="log-container" id="logContainer">
         ${sortedLogs.length === 0 ?
           '<div class="no-logs">まだログが収集されていません。ページを操作してログを生成してください。</div>' :
@@ -7478,6 +7559,15 @@ class SimpleConsoleLogViewer {
             }
         }
 
+        function toggleSummary() {
+            const summarySection = document.getElementById('summarySection');
+            if (summarySection.style.display === 'none') {
+                summarySection.style.display = 'block';
+            } else {
+                summarySection.style.display = 'none';
+            }
+        }
+
         // 自動スクロール（最新ログへ）
         window.onload = () => {
             const container = document.querySelector('.log-container');
@@ -7489,6 +7579,195 @@ class SimpleConsoleLogViewer {
 
     logWindow.document.write(logHtml);
     logWindow.document.close();
+  }
+
+  /**
+   * ログサマリーを生成
+   */
+  generateLogSummary(logs) {
+    const summary = {
+      totalLogs: logs.length,
+      errorCount: 0,
+      warningCount: 0,
+      infoCount: 0,
+      successCount: 0,
+      stepSummary: {},
+      issues: [],
+      taskGroups: null,
+      timeRange: null
+    };
+
+    if (logs.length === 0) return summary;
+
+    // 時間範囲を計算
+    const firstLog = logs[0];
+    const lastLog = logs[logs.length - 1];
+    summary.timeRange = {
+      start: new Date(firstLog.timestamp).toLocaleString('ja-JP'),
+      end: new Date(lastLog.timestamp).toLocaleString('ja-JP'),
+      duration: Math.round((lastLog.timestamp - firstLog.timestamp) / 1000) + '秒'
+    };
+
+    logs.forEach(log => {
+      // レベル別集計
+      switch (log.level) {
+        case 'error':
+          summary.errorCount++;
+          summary.issues.push({
+            type: 'error',
+            message: log.message,
+            source: log.source,
+            timestamp: log.timestamp
+          });
+          break;
+        case 'warn':
+          summary.warningCount++;
+          break;
+        case 'info':
+          summary.infoCount++;
+          if (log.message.includes('✅') || log.message.includes('完了')) {
+            summary.successCount++;
+          }
+          break;
+      }
+
+      // ステップ別集計
+      if (log.step) {
+        if (!summary.stepSummary[log.step]) {
+          summary.stepSummary[log.step] = {
+            stepNumber: log.step,
+            stepName: this.getStepName(log.step),
+            status: 'running',
+            startTime: log.timestamp,
+            endTime: log.timestamp,
+            logs: 0,
+            errors: 0,
+            successes: 0,
+            keyEvents: []
+          };
+        }
+
+        const stepInfo = summary.stepSummary[log.step];
+        stepInfo.logs++;
+        stepInfo.endTime = log.timestamp;
+
+        if (log.level === 'error') {
+          stepInfo.errors++;
+          stepInfo.status = 'error';
+        } else if (log.message.includes('✅') && log.message.includes('完了')) {
+          stepInfo.successes++;
+          stepInfo.status = 'success';
+          stepInfo.keyEvents.push('✅ ' + log.message.replace(/.*✅\s*/, ''));
+        } else if (log.message.includes('開始')) {
+          stepInfo.keyEvents.push('🚀 ' + log.message.replace(/.*開始\s*/, ''));
+        }
+      }
+
+      // タスクグループ情報を抽出
+      if (log.message.includes('タスクグループ') && log.message.includes('検出')) {
+        const match = log.message.match(/(\d+)個のタスクグループ/);
+        if (match) {
+          summary.taskGroups = {
+            total: parseInt(match[1]),
+            detected: true
+          };
+        }
+      }
+    });
+
+    return summary;
+  }
+
+  /**
+   * ステップ名を取得
+   */
+  getStepName(stepNumber) {
+    const stepNames = {
+      1: 'ステップ1: 初期設定',
+      2: 'ステップ2: タスクグループ作成',
+      3: 'ステップ3: タスクリスト作成',
+      4: 'ステップ4: 実行',
+      5: 'ステップ5: タスクグループ内繰り返し処理',
+      6: 'ステップ6: 次グループへ移行'
+    };
+    return stepNames[stepNumber] || `ステップ${stepNumber}`;
+  }
+
+  /**
+   * サマリーHTMLを生成
+   */
+  generateSummaryHTML(summary) {
+    let html = '';
+
+    // 実行概要
+    if (summary.timeRange) {
+      html += `
+        <div class="step-card">
+          <div class="step-header">⏱️ 実行概要</div>
+          <div class="step-details">
+            開始時間: ${summary.timeRange.start}<br>
+            終了時間: ${summary.timeRange.end}<br>
+            実行時間: ${summary.timeRange.duration}
+          </div>
+        </div>
+      `;
+    }
+
+    // タスクグループ情報
+    if (summary.taskGroups) {
+      html += `
+        <div class="step-card success">
+          <div class="step-header">📋 タスクグループ</div>
+          <div class="step-details">
+            検出されたグループ数: ${summary.taskGroups.total}個
+          </div>
+        </div>
+      `;
+    }
+
+    // ステップ別サマリー
+    html += '<div class="step-summary">';
+    Object.values(summary.stepSummary).forEach(step => {
+      const statusClass = step.status === 'error' ? 'error' :
+                         step.status === 'success' ? 'success' : 'warning';
+      const duration = Math.round((step.endTime - step.startTime) / 1000);
+
+      html += `
+        <div class="step-card ${statusClass}">
+          <div class="step-header">${step.stepName}</div>
+          <div class="step-status">
+            状態: ${step.status === 'success' ? '✅ 完了' :
+                   step.status === 'error' ? '❌ エラー' : '🔄 処理中'}
+            | 実行時間: ${duration}秒
+          </div>
+          <div class="step-details">
+            ログ数: ${step.logs} | エラー: ${step.errors} | 成功: ${step.successes}
+            ${step.keyEvents.length > 0 ? '<br>' + step.keyEvents.slice(-3).join('<br>') : ''}
+          </div>
+        </div>
+      `;
+    });
+    html += '</div>';
+
+    // エラー・問題セクション
+    if (summary.issues.length > 0) {
+      html += `
+        <div class="issues-section summary-section">
+          <div class="summary-title issues-title">⚠️ 発見された問題 (${summary.issues.length}件)</div>
+      `;
+
+      summary.issues.slice(-5).forEach(issue => {
+        html += `
+          <div class="issue-item">
+            <strong>[${issue.source}]</strong> ${issue.message.substring(0, 200)}${issue.message.length > 200 ? '...' : ''}
+          </div>
+        `;
+      });
+
+      html += '</div>';
+    }
+
+    return html;
   }
 
   /**
