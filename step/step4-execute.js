@@ -1161,64 +1161,68 @@
         /**
          * AIウィンドウを作成
          */
-        static async createAIWindow(url, options = {}) {
-            const startTime = performance.now();
-            console.log('[WindowService] AIウィンドウ作成開始:', url);
+        static createAIWindow(url, options = {}) {
+            return new Promise(async (resolve, reject) => {
+                try {
+                    const startTime = performance.now();
+                    console.log('[WindowService] AIウィンドウ作成開始:', url);
 
-            const windowOptions = {
-                ...this.DEFAULT_WINDOW_OPTIONS,
-                ...options,
-                url: url,
-                focused: true
-            };
+                    const windowOptions = {
+                        ...this.DEFAULT_WINDOW_OPTIONS,
+                        ...options,
+                        url: url,
+                        focused: true
+                    };
 
-            try {
-                const window = await chrome.windows.create(windowOptions);
+                    const window = await chrome.windows.create(windowOptions);
 
-                this.registerWindow(window.id, {
-                    url: url,
-                    type: 'ai',
-                    createdAt: Date.now(),
-                    ...options
-                });
+                    this.registerWindow(window.id, {
+                        url: url,
+                        type: 'ai',
+                        createdAt: Date.now(),
+                        ...options
+                    });
 
-                const totalTime = (performance.now() - startTime).toFixed(0);
-                console.log(`[WindowService] AIウィンドウ作成完了 (${totalTime}ms):`, window.id);
-                return window;
-            } catch (error) {
-                const totalTime = (performance.now() - startTime).toFixed(0);
-                console.error(`[WindowService] AIウィンドウ作成エラー (${totalTime}ms):`, error);
-                throw error;
-            }
+                    const totalTime = (performance.now() - startTime).toFixed(0);
+                    console.log(`[WindowService] AIウィンドウ作成完了 (${totalTime}ms):`, window.id);
+                    resolve(window);
+                } catch (error) {
+                    const totalTime = (performance.now() - (startTime || 0)).toFixed(0);
+                    console.error(`[WindowService] AIウィンドウ作成エラー (${totalTime}ms):`, error);
+                    reject(error);
+                }
+            });
         }
 
         /**
          * スクリーン情報を取得
          */
-        static async getScreenInfo() {
-            try {
-                const displays = await chrome.system.display.getInfo();
-                const primaryDisplay = displays.find(d => d.isPrimary) || displays[0];
+        static getScreenInfo() {
+            return new Promise(async (resolve, reject) => {
+                try {
+                    const displays = await chrome.system.display.getInfo();
+                    const primaryDisplay = displays.find(d => d.isPrimary) || displays[0];
 
-                const screenInfo = {
-                    width: primaryDisplay.workArea.width,
-                    height: primaryDisplay.workArea.height,
-                    left: primaryDisplay.workArea.left,
-                    top: primaryDisplay.workArea.top,
-                    displays: displays
-                };
+                    const screenInfo = {
+                        width: primaryDisplay.workArea.width,
+                        height: primaryDisplay.workArea.height,
+                        left: primaryDisplay.workArea.left,
+                        top: primaryDisplay.workArea.top,
+                        displays: displays
+                    };
 
-                return screenInfo;
-            } catch (error) {
-                console.error('[WindowService] スクリーン情報取得エラー:', error);
-                return {
-                    width: 1440,
-                    height: 900,
-                    left: 0,
-                    top: 0,
-                    displays: []
-                };
-            }
+                    resolve(screenInfo);
+                } catch (error) {
+                    console.error('[WindowService] スクリーン情報取得エラー:', error);
+                    resolve({
+                        width: 1440,
+                        height: 900,
+                        left: 0,
+                        top: 0,
+                        displays: []
+                    });
+                }
+            });
         }
 
         /**
@@ -1313,7 +1317,9 @@
         /**
          * ウィンドウを削除
          */
-        static async closeWindow(windowId, onClosed = null, reason = '不明', source = '不明') {
+        static closeWindow(windowId, onClosed = null, reason = '不明', source = '不明') {
+            return new Promise(async (resolve, reject) => {
+                try {
             const startTime = Date.now();
             const windowInfo = this.activeWindows.get(windowId);
 

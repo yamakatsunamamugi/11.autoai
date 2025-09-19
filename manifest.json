@@ -44,6 +44,8 @@
     "default_icon": "icon.png"
   },
   // STEP専用モードのため、自動初期化するbackground service workerを無効化
+  // 注意: この設定により chrome.runtime.sendMessage でエラーが発生しますが、
+  // 各コードでエラーハンドリングが実装されているため、機能に影響はありません
   /*
   "background": {
     "service_worker": "background.js",
