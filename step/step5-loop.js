@@ -422,7 +422,7 @@ async function readSpreadsheet(range) {
 
   try {
     // グローバル状態から認証情報とスプレッドシートIDを取得
-    if (!window.globalState || !window.globalState.auth || !window.globalState.auth.accessToken) {
+    if (!window.globalState || !window.globalState.authToken) {
       throw new Error('認証情報が見つかりません');
     }
 
@@ -431,16 +431,18 @@ async function readSpreadsheet(range) {
     }
 
     const spreadsheetId = window.globalState.spreadsheetId;
-    const accessToken = window.globalState.auth.accessToken;
+    const accessToken = window.globalState.authToken;
 
-    // Google Sheets API呼び出し
+    // Google Sheets API呼び出し（既存のapiHeadersを活用）
     const apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}`;
+    const headers = window.globalState.apiHeaders || {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json'
+    };
+
     const response = await fetch(apiUrl, {
       method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
-      }
+      headers: headers
     });
 
     if (!response.ok) {
