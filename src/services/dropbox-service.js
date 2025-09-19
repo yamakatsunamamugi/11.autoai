@@ -485,6 +485,17 @@ export class DropboxService {
    */
   async listFiles(folderPath = '') {
     try {
+      // デバッグログ追加: 引数の詳細を記録
+      console.log('[DropboxService] listFiles呼び出し:', {
+        folderPath: folderPath,
+        folderPathType: typeof folderPath,
+        folderPathLength: folderPath?.length,
+        isEmptyString: folderPath === '',
+        isNull: folderPath === null,
+        isUndefined: folderPath === undefined,
+        呼び出し元: new Error().stack?.split('\n')[2]?.trim()
+      });
+
       const accessToken = await this.config.getAccessToken();
       if (!accessToken) {
         throw new Error('認証が必要です');
@@ -498,7 +509,11 @@ export class DropboxService {
         apiPath = '/' + folderPath;  // パスの先頭にスラッシュを追加
       }
 
-      console.log('[DropboxService] API呼び出しパス:', apiPath);
+      console.log('[DropboxService] API呼び出しパス決定:', {
+        元のfolderPath: folderPath,
+        変換後apiPath: apiPath,
+        apiPathLength: apiPath.length
+      });
 
       const response = await fetch('https://api.dropboxapi.com/2/files/list_folder', {
         method: 'POST',
@@ -517,6 +532,13 @@ export class DropboxService {
 
       if (!response.ok) {
         const error = await response.json();
+        console.error('[DropboxService] APIエラー詳細:', {
+          status: response.status,
+          error_summary: error.error_summary,
+          error: error,
+          requestPath: apiPath,
+          originalFolderPath: folderPath
+        });
         throw new Error(`ファイル一覧取得エラー: ${error.error_summary}`);
       }
 

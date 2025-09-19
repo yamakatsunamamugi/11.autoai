@@ -10,7 +10,7 @@ import { dropboxService } from '../services/dropbox-service.js';
 export class LogFileManager {
   constructor(aiType = 'claude') {
     this.logDirectory = 'log';
-    this.aiType = aiType.toLowerCase();
+    this.aiType = aiType ? aiType.toLowerCase() : '';
 
     // AI種別ごとのディレクトリ設定
     const reportDirectories = {
@@ -493,6 +493,32 @@ export class LogFileManager {
       }
 
       const targetAiType = aiType || this.aiType;
+
+      // デバッグログ追加
+      console.error('[LogFileManager] getDropboxLogs詳細デバッグ:', {
+        引数aiType: aiType,
+        引数aiTypeType: typeof aiType,
+        thisAiType: this.aiType,
+        thisAiTypeType: typeof this.aiType,
+        targetAiType: targetAiType,
+        targetAiTypeType: typeof targetAiType,
+        targetAiTypeLength: targetAiType?.length,
+        コンストラクタ名: this.constructor.name,
+        呼び出し元: new Error().stack?.split('\n').slice(2, 5).join('\n')
+      });
+
+      // targetAiTypeが空の場合はエラーとして記録
+      if (!targetAiType) {
+        console.error('[LogFileManager] 致命的エラー: AIタイプが未設定', {
+          aiType: aiType,
+          thisAiType: this.aiType,
+          全プロパティ: Object.keys(this),
+          logDirectory: this.logDirectory,
+          reportDirectory: this.reportDirectory
+        });
+        throw new Error(`AIタイプが未設定です (引数: ${aiType}, this.aiType: ${this.aiType})`);
+      }
+
       const settings = await dropboxService.config.getUploadSettings();
       const rootPath = settings.uploadPath || '/log-report';
       const categories = ['complete', 'intermediate', 'errors'];
@@ -500,6 +526,13 @@ export class LogFileManager {
 
       for (const category of categories) {
         const categoryPath = `${rootPath}/${targetAiType}/${category}`;
+        console.log('[LogFileManager] カテゴリパス生成詳細:', {
+          rootPath: rootPath,
+          targetAiType: targetAiType,
+          category: category,
+          結果パス: categoryPath,
+          パス検証: categoryPath.includes('//') ? '⚠️ 二重スラッシュ検出' : '✓ 正常'
+        });
 
         try {
           const files = await dropboxService.listFiles(categoryPath);
@@ -539,6 +572,24 @@ export class LogFileManager {
         return [];
       }
 
+      // デバッグログ追加
+      console.error('[LogFileManager] getAllDropboxLogsByAIType詳細デバッグ:', {
+        引数targetAiType: targetAiType,
+        引数Type: typeof targetAiType,
+        引数Length: targetAiType?.length,
+        thisAiType: this.aiType,
+        呼び出し元: new Error().stack?.split('\n').slice(2, 5).join('\n')
+      });
+
+      // targetAiTypeが空の場合はエラーとして記録
+      if (!targetAiType) {
+        console.error('[LogFileManager] 致命的エラー: getAllDropboxLogsByAITypeでAIタイプが未設定', {
+          targetAiType: targetAiType,
+          thisAiType: this.aiType
+        });
+        throw new Error(`AIタイプが未設定です (targetAiType: ${targetAiType})`);
+      }
+
       console.log(`[LogFileManager] ${targetAiType}のファイル検索を開始`);
 
       const allFiles = [];
@@ -550,6 +601,7 @@ export class LogFileManager {
 
       for (const category of categories) {
         const categoryPath = `${rootPath}/${targetAiType}/${category}`;
+        console.log('[LogFileManager] カテゴリパス生成:', categoryPath);
 
         try {
           const files = await dropboxService.listFiles(categoryPath);
@@ -1116,4 +1168,4 @@ export class LogFileManager {
 }
 
 // グローバルインスタンスを作成
-export const logFileManager = new LogFileManager();
+export const logFileManager = new LogFileManager('claude');

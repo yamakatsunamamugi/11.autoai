@@ -41,7 +41,8 @@ export class LogManager {
     };
 
     // Step 1-4: ファイルマネージャーの初期化
-    this.fileManager = new LogFileManager();
+    // デフォルトで'claude'を指定
+    this.fileManager = new LogFileManager('claude');
 
     // LogManager初期化完了
   }

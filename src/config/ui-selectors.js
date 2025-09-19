@@ -285,6 +285,13 @@ export const UI_SELECTORS = {
             CONTAINER: '[role="menu"][data-state="open"], [role="menu"]',
             ITEM: '[role="option"], [role="menuitem"]',
             MODEL_ITEM: 'button[role="option"]:has(span)',  // モデル選択用
+            OTHER_MODELS: [
+                'div[role="menuitem"][aria-haspopup="menu"]',  // 実際のHTML構造に合わせる
+                '[role="menuitem"][aria-haspopup="menu"]',     // 汎用セレクタ
+                'div[role="menuitem"]:has(div:contains("他のモデル"))',  // テキストベース
+                'div[role="menuitem"]:has(div:contains("Other models"))', // 英語版
+                '[aria-haspopup="menu"]:has(svg)'  // SVGアイコンを持つ要素
+            ]
         },
         
         // メニューアイテム（拡張）

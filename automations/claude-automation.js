@@ -1243,7 +1243,12 @@
         const retryManager = new ClaudeRetryManager();
         const result = await retryManager.executeWithRetry({
             action: async () => {
-                const element = await findClaudeElement(selector);
+                // findClaudeElementに適切なオブジェクト形式で渡す
+                const selectorInfo = {
+                    selectors: [selector],
+                    description: `セレクタ: ${selector}`
+                };
+                const element = await findClaudeElement(selectorInfo);
                 if (element) return { success: true, element };
                 return { success: false, error: '要素が見つかりません' };
             },
@@ -1306,9 +1311,24 @@
     const findElementByMultipleSelectors = async (selectors, description) => {
         console.log(`\n🔍 [${description}] 要素検索開始`);
 
+        // デバッグ: selectorsの詳細情報を出力
+        console.log(`📊 [DEBUG] selectors情報:`, {
+            type: typeof selectors,
+            isArray: Array.isArray(selectors),
+            length: selectors?.length,
+            firstElement: selectors?.[0],
+            allSelectors: JSON.stringify(selectors, null, 2)
+        });
+
         for (let i = 0; i < selectors.length; i++) {
             const selector = selectors[i];
             console.log(`  試行 ${i + 1}/${selectors.length}: ${selector.description}`);
+            console.log(`  📝 [DEBUG] セレクタ詳細:`, {
+                type: typeof selector,
+                selector: selector?.selector,
+                description: selector?.description,
+                rawValue: selector
+            });
 
             try {
                 const element = await waitForElement(selector.selector, 3, 200);
@@ -1322,17 +1342,30 @@
         }
 
         // 全セレクタで失敗した場合は、selectorInfoオブジェクトを作成してfindClaudeElementを使用
+        console.log(`⚠️ [DEBUG] 全セレクタで失敗、findClaudeElementにフォールバック`);
+
+        const mappedSelectors = selectors.map(s => {
+            if (typeof s === 'string') {
+                console.log(`  📝 [DEBUG] 文字列セレクタをマップ: ${s}`);
+                return s;
+            } else if (s && typeof s === 'object' && s.selector) {
+                console.log(`  📝 [DEBUG] オブジェクトセレクタをマップ: ${s.selector}`);
+                return s.selector;
+            }
+            console.log(`  ⚠️ [DEBUG] 不明な型のセレクタ:`, s);
+            return s;
+        });
+
         const selectorInfo = {
             description: description,
-            selectors: selectors.map(s => {
-                if (typeof s === 'string') {
-                    return s;
-                } else if (s && typeof s === 'object' && s.selector) {
-                    return s.selector;
-                }
-                return s;
-            }).filter(selector => selector) // undefinedを除外
+            selectors: mappedSelectors.filter(selector => selector) // undefinedを除外
         };
+
+        console.log(`📊 [DEBUG] selectorInfo構築完了:`, {
+            description: selectorInfo.description,
+            selectorsCount: selectorInfo.selectors?.length,
+            selectors: selectorInfo.selectors
+        });
 
         const retryManager = new ClaudeRetryManager();
         const result = await retryManager.executeWithRetry({
@@ -1532,17 +1565,51 @@
     const findClaudeElement = async (selectorInfo, retryCount = 5, skipLog = false) => {
         const logPrefix = skipLog ? '' : '🔍 [findClaudeElement] ';
 
+        // デバッグ: 受け取った引数の詳細を出力
+        if (!skipLog) {
+            console.log(`${logPrefix}📊 [DEBUG] 受け取った引数:`, {
+                type: typeof selectorInfo,
+                isArray: Array.isArray(selectorInfo),
+                isString: typeof selectorInfo === 'string',
+                value: selectorInfo,
+                retryCount: retryCount
+            });
+        }
+
         // nullチェックとエラーハンドリングを追加
         if (!selectorInfo) {
             const errorMsg = 'selectorInfoが未定義です';
             console.error(`${logPrefix}❌ ${errorMsg}`);
+            console.error(`${logPrefix}📊 [DEBUG] エラー時のselectorInfo:`, selectorInfo);
             ClaudeLogManager.logStep('Selector-Error', errorMsg, { selectorInfo });
             throw new Error(errorMsg);
+        }
+
+        // 文字列が直接渡された場合の互換性対応
+        if (typeof selectorInfo === 'string') {
+            console.warn(`${logPrefix}⚠️ 文字列が直接渡されました、オブジェクト形式に変換します: ${selectorInfo}`);
+            selectorInfo = {
+                selectors: [selectorInfo],
+                description: `セレクタ: ${selectorInfo}`
+            };
+            console.log(`${logPrefix}📊 [DEBUG] 変換後のselectorInfo:`, selectorInfo);
+        }
+
+        // 配列が直接渡された場合の互換性対応
+        if (Array.isArray(selectorInfo)) {
+            console.warn(`${logPrefix}⚠️ 配列が直接渡されました、オブジェクト形式に変換します`);
+            console.log(`${logPrefix}📊 [DEBUG] 配列の内容:`, selectorInfo);
+            selectorInfo = {
+                selectors: selectorInfo,
+                description: `セレクタ配列: ${selectorInfo.length}個`
+            };
+            console.log(`${logPrefix}📊 [DEBUG] 変換後のselectorInfo:`, selectorInfo);
         }
 
         if (!selectorInfo.selectors || !Array.isArray(selectorInfo.selectors)) {
             const errorMsg = `selectorInfo.selectorsが配列ではありません: ${typeof selectorInfo.selectors}`;
             console.error(`${logPrefix}❌ ${errorMsg}`);
+            console.error(`${logPrefix}📊 [DEBUG] 問題のselectorInfo:`, selectorInfo);
             ClaudeLogManager.logStep('Selector-Error', errorMsg, {
                 selectorInfo: selectorInfo,
                 selectorsType: typeof selectorInfo.selectors,
@@ -2526,21 +2593,57 @@
                 if (!foundInMain) {
                     // その他のモデルをチェック
                     console.log('【Claude-ステップ3-3】その他のモデルメニューをチェック');
-                    const otherModelsItem = await findElementByMultipleSelectors(modelSelectors.otherModelsMenu, 'その他のモデルメニュー');
+
+                    // デバッグ: modelSelectors.otherModelsMenuの詳細を出力
+                    console.log('📊 [DEBUG] modelSelectors.otherModelsMenu:');
+                    console.log('  - 型:', typeof modelSelectors.otherModelsMenu);
+                    console.log('  - 配列:', Array.isArray(modelSelectors.otherModelsMenu));
+                    console.log('  - 長さ:', modelSelectors.otherModelsMenu?.length);
+                    console.log('  - 内容:', JSON.stringify(modelSelectors.otherModelsMenu, null, 2));
+
+                    // デバッグ: 現在のDOM状態を確認
+                    console.log('📊 [DEBUG] 現在のDOM状態:');
+                    const allMenuItems = document.querySelectorAll('[role="menuitem"]');
+                    console.log('  - 全menuitem数:', allMenuItems.length);
+                    allMenuItems.forEach((item, index) => {
+                        const hasPopup = item.getAttribute('aria-haspopup');
+                        const text = item.textContent?.trim();
+                        if (hasPopup || text?.includes('他のモデル') || text?.includes('Other')) {
+                            console.log(`  - [${index}] text: "${text?.substring(0, 50)}", aria-haspopup: "${hasPopup}"`);
+                        }
+                    });
+
+                    // 空配列チェックとフォールバック処理
+                    let selectorsToUse = modelSelectors.otherModelsMenu;
+                    if (!selectorsToUse || selectorsToUse.length === 0) {
+                        console.log('⚠️ [DEBUG] OTHER_MODELSセレクタが空または未定義、フォールバックセレクタを使用');
+                        selectorsToUse = [
+                            { selector: 'div[role="menuitem"][aria-haspopup="menu"]', description: 'div要素の他のモデル' },
+                            { selector: '[role="menuitem"][aria-haspopup="menu"]', description: '汎用他のモデル' },
+                            { selector: 'div[role="menuitem"]:has(div:contains("他のモデル"))', description: 'テキストベース日本語' },
+                            { selector: 'div[role="menuitem"]:has(div:contains("Other models"))', description: 'テキストベース英語' }
+                        ];
+                    }
+                    const otherModelsItem = await findElementByMultipleSelectors(selectorsToUse, 'その他のモデルメニュー');
                     if (otherModelsItem) {
+                        console.log('✅ [DEBUG] その他のモデルメニューアイテム発見');
                         await triggerReactEvent(otherModelsItem, 'click');
                         await wait(1500);
 
                         // サブメニュー内でモデルを探す
                         const subMenuItems = document.querySelectorAll('[role="menuitem"]');
+                        console.log(`📊 [DEBUG] サブメニュー内のアイテム数: ${subMenuItems.length}`);
                         for (const item of subMenuItems) {
                             const itemText = item.textContent;
                             if (itemText && itemText.includes(targetModelName)) {
+                                console.log(`✅ [DEBUG] ターゲットモデル発見: ${itemText}`);
                                 await triggerReactEvent(item, 'click');
                                 await wait(1500);
                                 break;
                             }
                         }
+                    } else {
+                        console.log('❌ [DEBUG] その他のモデルメニューアイテムが見つかりません');
                     }
                 }
 

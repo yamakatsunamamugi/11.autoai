@@ -188,6 +188,19 @@
       }
     }
   },
+  "execution": {
+    "defaultMode": "parallel",
+    "availableModes": ["parallel", "grouped_sequential"],
+    "waitTimeouts": {
+      "deepResearch": 2400000,
+      "normal": 300000
+    },
+    "parallelProcessing": {
+      "enabled": true,
+      "duplicatePreventionMarker": "並行処理中です",
+      "skipExistingMarkers": true
+    }
+  },
   "features": {
     "parallelStreaming": {
       "enabled": true,
