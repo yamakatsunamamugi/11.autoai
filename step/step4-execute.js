@@ -1150,44 +1150,42 @@
         /**
          * AIウィンドウを作成
          */
-        static createAIWindow(url, options = {}) {
-            return new Promise((resolve, reject) => {
-                try {
-                    const startTime = performance.now();
-                    console.log('[WindowService] AIウィンドウ作成開始:', url);
+        static async createAIWindow(url, options = {}) {
+            try {
+                const startTime = performance.now();
+                console.log('[WindowService] AIウィンドウ作成開始:', url);
 
-                    const windowOptions = {
-                        ...this.DEFAULT_WINDOW_OPTIONS,
-                        ...options,
-                        url: url,
-                        focused: true
-                    };
+                const windowOptions = {
+                    ...this.DEFAULT_WINDOW_OPTIONS,
+                    ...options,
+                    url: url,
+                    focused: true
+                };
 
-                    const window = await chrome.windows.create(windowOptions);
+                const chromeWindow = await chrome.windows.create(windowOptions);
 
-                    this.registerWindow(window.id, {
-                        url: url,
-                        type: 'ai',
-                        createdAt: Date.now(),
-                        ...options
-                    });
+                this.registerWindow(chromeWindow.id, {
+                    url: url,
+                    type: 'ai',
+                    createdAt: Date.now(),
+                    ...options
+                });
 
-                    const totalTime = (performance.now() - startTime).toFixed(0);
-                    console.log(`[WindowService] AIウィンドウ作成完了 (${totalTime}ms):`, window.id);
-                    resolve(window);
-                } catch (error) {
-                    const totalTime = (performance.now() - (startTime || 0)).toFixed(0);
-                    console.error(`[WindowService] AIウィンドウ作成エラー (${totalTime}ms):`, error);
-                    reject(error);
-                }
-            });
+                const totalTime = (performance.now() - startTime).toFixed(0);
+                console.log(`[WindowService] AIウィンドウ作成完了 (${totalTime}ms):`, chromeWindow.id);
+                return chromeWindow;
+            } catch (error) {
+                const totalTime = (performance.now() - (startTime || 0)).toFixed(0);
+                console.error(`[WindowService] AIウィンドウ作成エラー (${totalTime}ms):`, error);
+                throw error;
+            }
         }
 
         /**
          * スクリーン情報を取得
          */
-        static getScreenInfo() {
-            return new Promise((resolve, reject) => {
+        static async getScreenInfo() {
+            return new Promise(async (resolve, reject) => {
                 try {
                     const displays = await chrome.system.display.getInfo();
                     const primaryDisplay = displays.find(d => d.isPrimary) || displays[0];
@@ -1306,47 +1304,50 @@
         /**
          * ウィンドウを削除
          */
-        static closeWindow(windowId, onClosed = null, reason = '不明', source = '不明') {
-            return new Promise((resolve, reject) => {
-                try {
-            const startTime = Date.now();
-            const windowInfo = this.activeWindows.get(windowId);
-
-            console.log(`🚪 [WindowService] ウィンドウ閉鎖開始:`, {
-                windowId,
-                reason,
-                source,
-                windowType: windowInfo?.aiType || '不明',
-                position: this.positionToWindow.get(windowId),
-                timestamp: new Date().toISOString()
-            });
-
+        static async closeWindow(windowId, onClosed = null, reason = '不明', source = '不明') {
             try {
-                await chrome.windows.get(windowId);
-                await chrome.windows.remove(windowId);
+                const startTime = Date.now();
+                const windowInfo = this.activeWindows.get(windowId);
 
-                const elapsed = Date.now() - startTime;
-                console.log(`✅ [WindowService] ウィンドウ削除完了: ${windowId} (${elapsed}ms)`);
-            } catch (error) {
-                const elapsed = Date.now() - startTime;
-                console.warn(`⚠️ [WindowService] ウィンドウ削除エラー: ${windowId} (${elapsed}ms)`, error.message);
-            } finally {
-                // ポジション情報をクリア
-                const position = this.positionToWindow.get(windowId);
-                if (position !== undefined) {
-                    this.windowPositions.delete(position);
-                    this.positionToWindow.delete(windowId);
-                }
+                console.log(`🚪 [WindowService] ウィンドウ閉鎖開始:`, {
+                    windowId,
+                    reason,
+                    source,
+                    windowType: windowInfo?.aiType || '不明',
+                    position: this.positionToWindow.get(windowId),
+                    timestamp: new Date().toISOString()
+                });
 
-                this.activeWindows.delete(windowId);
+                try {
+                    await chrome.windows.get(windowId);
+                    await chrome.windows.remove(windowId);
 
-                if (onClosed && typeof onClosed === 'function') {
-                    try {
-                        await onClosed(windowId);
-                    } catch (callbackError) {
-                        console.error('[WindowService] ウィンドウ閉じ後コールバックエラー:', callbackError);
+                    const elapsed = Date.now() - startTime;
+                    console.log(`✅ [WindowService] ウィンドウ削除完了: ${windowId} (${elapsed}ms)`);
+                } catch (error) {
+                    const elapsed = Date.now() - startTime;
+                    console.warn(`⚠️ [WindowService] ウィンドウ削除エラー: ${windowId} (${elapsed}ms)`, error.message);
+                } finally {
+                    // ポジション情報をクリア
+                    const position = this.positionToWindow.get(windowId);
+                    if (position !== undefined) {
+                        this.windowPositions.delete(position);
+                        this.positionToWindow.delete(windowId);
+                    }
+
+                    this.activeWindows.delete(windowId);
+
+                    if (onClosed && typeof onClosed === 'function') {
+                        try {
+                            await onClosed(windowId);
+                        } catch (callbackError) {
+                            console.error('[WindowService] ウィンドウ閉じ後コールバックエラー:', callbackError);
+                        }
                     }
                 }
+            } catch (error) {
+                console.error('[WindowService] closeWindow エラー:', error);
+                throw error;
             }
         }
 

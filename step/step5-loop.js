@@ -538,21 +538,77 @@ async function createTaskList(taskGroup) {
       spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${window.globalState.spreadsheetId}/edit#gid=${window.globalState.gid}`
     };
 
-    console.log('[Helper] Step3に渡すパラメータ:', {
+    // 制御情報の取得と適用
+    console.log('[Helper] 🎛️ 行制御・列制御情報を取得中...');
+
+    let rowControls = [];
+    let columnControls = [];
+
+    try {
+      // 行制御情報の取得
+      rowControls = window.Step3TaskList.getRowControl(spreadsheetData);
+      console.log('[Helper] 📋 行制御情報取得完了:', {
+        制御数: rowControls.length,
+        詳細: rowControls.map(c => `${c.type}制御: ${c.row}行目`)
+      });
+
+      // 列制御情報の取得（列制御行から取得）
+      const columnControlRow = window.globalState.setupResult?.columnControlRow || 4;
+      columnControls = window.Step3TaskList.getColumnControl(spreadsheetData, columnControlRow);
+      console.log('[Helper] 📋 列制御情報取得完了:', {
+        制御数: columnControls.length,
+        制御行: columnControlRow,
+        詳細: columnControls.map(c => `${c.type}制御: ${c.column}列`)
+      });
+
+    } catch (error) {
+      console.error('[Helper] ❌ 制御情報取得エラー:', error);
+      // エラーが発生しても処理を継続
+    }
+
+    // 列制御チェック（タスクグループレベルでのフィルタリング）
+    if (columnControls.length > 0) {
+      console.log('[Helper] 🔍 列制御チェック実行中...');
+
+      if (!window.Step3TaskList.shouldProcessColumn(taskGroup, columnControls)) {
+        console.log(`[Helper] ⛔ タスクグループ${taskGroup.groupNumber}: 列制御により除外`, {
+          グループ列: taskGroup?.columns?.prompts,
+          列制御: columnControls
+        });
+        return [];  // このタスクグループは処理しない
+      } else {
+        console.log(`[Helper] ✅ タスクグループ${taskGroup.groupNumber}: 列制御を通過`);
+      }
+    } else {
+      console.log('[Helper] 📋 列制御なし - 全てのタスクグループを処理');
+    }
+
+    // 拡張オプションに制御情報を追加
+    const extendedOptions = {
+      ...options,
+      rowControls: rowControls,
+      columnControls: columnControls,
+      applyRowControl: true,
+      applyColumnControl: true
+    };
+
+    console.log('[Helper] 📤 Step3に渡すパラメータ:', {
       'taskGroup.columns': taskGroup?.columns,
       'spreadsheetData.length': spreadsheetData.length,
       'specialRows': specialRows,
       'dataStartRow': dataStartRow,
-      'options': options
+      '行制御数': rowControls.length,
+      '列制御数': columnControls.length,
+      'options': Object.keys(extendedOptions)
     });
 
-    // タスクリスト生成を実行
+    // タスクリスト生成を実行（制御情報付き）
     const tasks = window.Step3TaskList.generateTaskList(
       taskGroup,
       spreadsheetData,  // 修正：実際の2次元配列データを渡す
       specialRows,
       dataStartRow,
-      options
+      extendedOptions  // 制御情報を含む拡張オプション
     );
 
     console.log(`[Helper] タスクリスト作成完了: ${tasks.length}件のタスク`);
