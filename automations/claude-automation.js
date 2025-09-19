@@ -3231,7 +3231,7 @@
                 return retryResult.result;
             }
 
-            const result = {
+            const finalResult = {
                 success: false,
                 error: error.message,
                 text: 'エラーが発生しました: ' + error.message,
@@ -3253,9 +3253,9 @@
                 userAgent: navigator.userAgent,
                 url: window.location.href
             });
-            ClaudeLogManager.completeTask(result);
+            ClaudeLogManager.completeTask(finalResult);
 
-            return result;
+            return finalResult;
         }
     }
 
