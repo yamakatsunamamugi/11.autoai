@@ -2014,32 +2014,23 @@
     };
 
     /**
-     * コンテンツ検証の強化
-     * 【動作説明】AI応答として有効なコンテンツかを検証
+     * コンテンツ検証（簡略版）
+     * 【動作説明】セレクタベースでの除外がメインのため、基本的なチェックのみ
      * 【引数】element: 検証対象の要素
      * 【戻り値】boolean: 有効なコンテンツかどうか
      */
     const validateResponseContent = (element) => {
         if (!element) return false;
 
-        console.log('✅ [validateResponseContent] コンテンツ検証');
+        console.log('✅ [validateResponseContent] コンテンツ検証（簡略版）');
         const text = element.textContent?.trim() || '';
 
-        // 除外パターン（正規表現）
-        const excludePatterns = [
-            /^【現在[A-Z]+\d+セルを処理中です】/,  // セル処理マーカー
-            /^ユーザーのプロンプト$/,
-            /^思考プロセス$/,
-            /^User$/,
-            /^Assistant$/,
-        ];
-
-        // 除外パターンチェック
-        for (const pattern of excludePatterns) {
-            if (pattern.test(text)) {
-                console.log(`  ⚠️ 除外パターンにマッチ: ${pattern}`);
-                return false;
-            }
+        // セレクタベースでの除外がメインのため、テキストパターンチェックは簡略化
+        // 明らかに空のUIラベルのみを除外
+        const uiLabels = ['User', 'Assistant', 'ユーザーのプロンプト', '思考プロセス'];
+        if (uiLabels.includes(text.trim())) {
+            console.log(`  ⚠️ UIラベルを検出: ${text.trim()}`);
+            return false;
         }
 
         // 最小文字数チェック
@@ -2048,20 +2039,12 @@
             return false;
         }
 
-        // プロンプトインジケータチェック
-        const promptIndicators = [
-            '# 命令書',
-            '## 1. あなたの役割',
-            '変更して欲しい内容',
-            '以下の{',
-            'ステップ1:',
-        ];
-
-        for (const indicator of promptIndicators) {
-            if (text.includes(indicator)) {
-                console.log(`  ⚠️ プロンプトインジケータを検出: ${indicator}`);
-                return false;
-            }
+        // セレクタベースでの除外がメインのため、プロンプトテキストチェックは簡略化
+        // data-testid="user-message"で除外されるため、ここでは基本的なチェックのみ
+        // 特に長いプロンプトが残っている場合のみチェック
+        if (text.length > 2000 && (text.includes('# 命令書') || text.includes('【現在'))) {
+            console.log(`  ⚠️ 長いプロンプトテキストが残存: ${text.length}文字`);
+            return false;
         }
 
         console.log(`  ✓ 有効なコンテンツ: ${text.length}文字`);
@@ -2160,87 +2143,26 @@
     };
 
     /**
-     * テキスト内容によるプロンプト除外
-     * 【動作説明】特徴的なプロンプトパターンを検出して除外
-     * 【引数】fullText: 完全テキスト, sentPrompt: 送信されたプロンプト（オプション）
-     * 【戻り値】String: プロンプト除外後のテキスト
+     * テキスト内容によるプロンプト除外（簡略版）
+     * 【動作説明】セレクタベースの除外がメインのため、テキストパターンマッチングは簡略化
+     * 【引数】fullText: 完全テキスト
+     * 【戻り値】String: テキスト（セレクタベースで除外されているためそのまま返却）
      */
     const removePromptFromText = (fullText, sentPrompt = null) => {
         if (!fullText) return '';
 
-        console.log('✂️ [removePromptFromText] プロンプト除外処理開始');
+        console.log('✂️ [removePromptFromText] セレクタベースで除外済みのため、テキストをそのまま返却');
         console.log(`  - 入力テキスト長: ${fullText.length}文字`);
 
-        // パターン1: 送信されたプロンプトとの完全一致除外
-        if (sentPrompt && fullText.includes(sentPrompt)) {
-            const index = fullText.indexOf(sentPrompt);
-            const result = fullText.substring(index + sentPrompt.length).trim();
-            console.log('  - 送信プロンプトとの一致で除外実行');
-            return result;
-        }
-
-        // パターン2: 特徴的なプロンプトパターンで除外（汎用的なセル位置対応）
-        const promptPatterns = [
-            '【現在',  // すべてのセル位置に対応（U31, Q10など）
-            '# 命令書',
-            '## 1. あなたの役割',
-            'あなたはプロの',
-            '以下の{元のメルマガ}',
-            '変更して欲しい内容',
-            'ステップ1:結論について'
-        ];
-
-        // パターン3: 思考プロセス部分の除外（折りたたみ可能な分析部分）
-        const thinkingPatterns = [
-            '<details>',
-            '<summary>',
-            '思考プロセス',
-            '分析過程',
-            '推論の過程',
-            '考察',
-            '検討事項'
-        ];
-
-        // 思考プロセス部分を除外
+        // セレクタベースでのPROMPT除外がメインのため、テキストパターンマッチングは簡略化
+        // HTML構造の<details>タグのみ除外（思考プロセスの折りたたみブロック）
         let processedText = fullText;
-        for (const pattern of thinkingPatterns) {
-            if (processedText.includes(pattern)) {
-                console.log(`  - 思考プロセスパターン "${pattern}" を検出`);
-                // <details>...</details>構造の除外
-                if (pattern === '<details>') {
-                    processedText = processedText.replace(/<details>[\s\S]*?<\/details>/gi, '');
-                    console.log('  - <details>ブロックを除外');
-                }
-                // その他のパターンは段落単位で除外
-                else {
-                    const lines = processedText.split('\n');
-                    const filteredLines = lines.filter(line => !line.includes(pattern));
-                    processedText = filteredLines.join('\n');
-                    console.log(`  - "${pattern}"を含む行を除外`);
-                }
-            }
+        if (processedText.includes('<details>')) {
+            console.log('  - <details>ブロックを除外');
+            processedText = processedText.replace(/<details>[\s\S]*?<\/details>/gi, '');
         }
 
-        // 思考プロセス除外後のテキストを使用
-        if (processedText.length !== fullText.length) {
-            console.log(`  - 思考プロセス除外: ${fullText.length}文字 → ${processedText.length}文字`);
-            fullText = processedText.trim();
-        }
-
-        for (const pattern of promptPatterns) {
-            const index = fullText.indexOf(pattern);
-            if (index !== -1) {
-                // パターンより前の部分を取得（AI応答部分）
-                const result = fullText.substring(0, index).trim();
-                if (result.length > 100) { // 十分な長さがある場合のみ採用
-                    console.log(`  - パターン "${pattern}" で除外実行`);
-                    return result;
-                }
-            }
-        }
-
-        console.log('  - プロンプト除外パターンが見つからず、原文を返却');
-        return fullText;
+        return processedText.trim();
     };
 
     // Claude-ステップ1-9: テキストプレビュー取得関数（改善版）
@@ -2427,13 +2349,13 @@
             console.log('  - element.outerHTML冒頭:', element.outerHTML ? element.outerHTML.substring(0, 200) : '(なし)');
         }
 
-        // プロンプト除外処理を適用
+        // セレクタベースでの除外がメインのため、テキスト処理は最小限に
         const originalLength = fullText.length;
-        fullText = removePromptFromText(fullText, window.lastSentPrompt);
+        fullText = removePromptFromText(fullText);  // HTMLの<details>タグのみ除外
         const finalLength = fullText.length;
 
         if (originalLength !== finalLength) {
-            console.log(`📝 プロンプト除外完了: ${originalLength}文字 → ${finalLength}文字 (${originalLength - finalLength}文字削減)`);
+            console.log(`📝 HTMLタグクリーニング: ${originalLength}文字 → ${finalLength}文字`);
         }
 
         // length変数を再利用

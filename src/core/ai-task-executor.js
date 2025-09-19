@@ -117,19 +117,41 @@ export class AITaskExecutor {
         taskData.aiType = 'ChatGPT';
       }
       
-      const aiTypeLower = taskData.aiType.toLowerCase();
-      
-      // AI固有のスクリプトマップ
-      const scriptFileMap = {
-        'claude': scriptMap['claude'],
-        'chatgpt': scriptMap['chatgpt'],
-        'gemini': scriptMap['gemini'],
-        'genspark': 'automations/genspark-automation.js'
-      };
+      let aiScript;
 
-      // AI固有のスクリプトを追加
-      const aiScript = scriptFileMap[aiTypeLower] ||
-                       `automations/${aiTypeLower}-automation.js`;
+      // 3種類AI対応: 列に基づいてAIタイプを判定
+      if (taskData.aiType === '3種類（ChatGPT・Gemini・Claude）') {
+        // 列に基づいてAIタイプを判定
+        const columnToAI = {
+          'F': 'chatgpt',
+          'G': 'claude',
+          'H': 'gemini'
+        };
+        const actualAI = columnToAI[cellPosition.charAt(0)] || 'chatgpt';
+        aiScript = scriptMap[actualAI];
+
+        this.logger.log(`[Step 2-0: 3種類AI判定] 📝 列${cellPosition.charAt(0)} → ${actualAI}`, {
+          originalAIType: taskData.aiType,
+          detectedColumn: cellPosition.charAt(0),
+          selectedAI: actualAI,
+          scriptFile: aiScript
+        });
+      } else {
+        // 通常のAI処理
+        const aiTypeLower = taskData.aiType.toLowerCase();
+
+        // AI固有のスクリプトマップ
+        const scriptFileMap = {
+          'claude': scriptMap['claude'],
+          'chatgpt': scriptMap['chatgpt'],
+          'gemini': scriptMap['gemini'],
+          'genspark': 'automations/genspark-automation.js'
+        };
+
+        // AI固有のスクリプトを追加
+        aiScript = scriptFileMap[aiTypeLower] ||
+                   `automations/${aiTypeLower}-automation.js`;
+      }
 
       // 共通スクリプトを順番に注入（現在はAI固有のスクリプトのみ）
       let scriptsToInject = [aiScript];
