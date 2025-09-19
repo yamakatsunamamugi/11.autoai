@@ -99,15 +99,16 @@ function parseSpreadsheetUrl(url) {
  * @returns {Array} タスクリスト
  */
 function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow, options = {}) {
-  const tasks = [];
-  const {
-    menuRow,
-    aiRow,
-    modelRow,
-    functionRow
-  } = specialRows;
+  try {
+    const tasks = [];
+    const {
+      menuRow,
+      aiRow,
+      modelRow,
+      functionRow
+    } = specialRows;
 
-  console.log(`[TaskList] [Step3-1] タスクグループ${taskGroup.groupNumber}のデータ取得開始`);
+    console.log(`[TaskList] [Step3-1] タスクグループ${taskGroup.groupNumber}のデータ取得開始`);
 
   // 3-1: スプレッドシートデータの取得
   const promptColumns = taskGroup.columns.prompts || [];
@@ -138,6 +139,16 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
 
   for (let row = dataStartRow; row <= lastPromptRow; row++) {
     const rowData = spreadsheetData[row - 1]; // 0ベースインデックス
+
+    // 🔍 デバッグログ：行データの詳細情報
+    console.log(`[TaskList] [Debug] 行データ詳細:`, {
+      行番号: row,
+      rowData存在: !!rowData,
+      rowData長さ: rowData?.length,
+      rowDataタイプ: typeof rowData,
+      rowData内容: rowData ? `最初の5列: ${JSON.stringify(rowData.slice(0, 5))}` : 'undefined'
+    });
+
     if (!rowData) continue;
 
     // 🆕 行制御チェック（最初にチェックして不要な処理を避ける）
@@ -155,9 +166,24 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
     let prompts = [];
     for (const col of promptColumns) {
       const colIndex = columnToIndex(col);
-      const prompt = rowData[colIndex];
-      if (prompt) {
-        prompts.push(prompt);
+
+      // 🔍 デバッグログ：プロンプト列アクセス
+      console.log(`[TaskList] [Debug] プロンプト列アクセス:`, {
+        列: col,
+        colIndex: colIndex,
+        rowData長さ: rowData?.length,
+        アクセス可能: rowData && colIndex < rowData.length,
+        値: rowData?.[colIndex]
+      });
+
+      // 安全なアクセスに修正
+      if (rowData && colIndex < rowData.length) {
+        const prompt = rowData[colIndex];
+        if (prompt) {
+          prompts.push(prompt);
+        }
+      } else {
+        console.warn(`[TaskList] [Warning] 列${col}(index:${colIndex})にアクセスできません`);
       }
     }
 
@@ -167,7 +193,18 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
     let hasAnswer = false;
     for (const col of answerColumns) {
       const colIndex = columnToIndex(col);
-      if (rowData[colIndex]) {
+
+      // 🔍 デバッグログ：回答列アクセス
+      console.log(`[TaskList] [Debug] 回答列アクセス:`, {
+        列: col,
+        colIndex: colIndex,
+        rowData長さ: rowData?.length,
+        アクセス可能: rowData && colIndex < rowData.length,
+        値存在: rowData && colIndex < rowData.length ? !!rowData[colIndex] : false
+      });
+
+      // 安全なアクセスに修正
+      if (rowData && colIndex < rowData.length && rowData[colIndex]) {
         hasAnswer = true;
         break;
       }
@@ -275,6 +312,20 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
   });
 
   return batch;
+  } catch (error) {
+    console.error('[TaskList] [Error] generateTaskList内でエラー発生:', {
+      エラー: error.message,
+      スタック: error.stack,
+      taskGroup: {
+        番号: taskGroup?.groupNumber,
+        列: taskGroup?.columns,
+        タイプ: taskGroup?.groupType
+      },
+      spreadsheetData長さ: spreadsheetData?.length,
+      dataStartRow: dataStartRow
+    });
+    throw error;
+  }
 }
 
 /**

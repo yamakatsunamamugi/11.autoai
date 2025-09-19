@@ -497,6 +497,19 @@ async function readFullSpreadsheet() {
     console.log(`[Helper] スプレッドシート全体データ取得完了: ${data.values.length}行`);
     console.log('[Helper] データサンプル（最初の3行）:', data.values.slice(0, 3));
 
+    // 🔍 デバッグログ：データの形状
+    console.log('[Helper] [Debug] 取得したデータの形状:', {
+      全体行数: data.values?.length,
+      各行の列数: data.values?.slice(0, 10).map((row, i) => ({
+        行番号: i + 1,
+        列数: row.length
+      })),
+      最長行: Math.max(...(data.values?.map(row => row.length) || [0])),
+      最短行: Math.min(...(data.values?.map(row => row.length) || [0])),
+      36行目の列数: data.values?.[35]?.length,
+      36行目の内容プレビュー: data.values?.[35]?.slice(0, 5)
+    });
+
     return data.values;
 
   } catch (error) {
