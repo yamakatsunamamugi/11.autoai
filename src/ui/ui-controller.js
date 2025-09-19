@@ -4058,7 +4058,9 @@ class EnhancedLogViewer {
       });
 
       // 既存のログを取得
-      this.port.postMessage({ type: 'get-logs' });
+      if (this.port) {
+        this.port.postMessage({ type: 'get-logs' });
+      }
     } catch (error) {
       console.error('[LogViewer] Background connection error:', error);
       this.addLog({
@@ -4529,39 +4531,56 @@ class LogViewer {
   }
 
   connectToBackground() {
-    // background.jsのLogManagerに接続
-    this.port = chrome.runtime.connect({ name: 'log-viewer' });
+    try {
+      // background.jsのLogManagerに接続
+      this.port = chrome.runtime.connect({ name: 'log-viewer' });
 
-    // メッセージリスナー
-    this.port.onMessage.addListener((msg) => {
-      if (msg.type === 'log') {
-        this.addLog(msg.data);
-      } else if (msg.type === 'logs-batch') {
-        this.logs = msg.data || [];
-        this.renderLogs();
-      } else if (msg.type === 'clear') {
-        if (!msg.category || msg.category === this.currentCategory || this.currentCategory === 'all') {
-          this.logs = this.logs.filter(log => {
-            if (!msg.category) return false;
-            if (msg.category === 'error') return log.level !== 'error';
-            if (msg.category === 'system') return log.category !== 'system';
-            return log.ai !== msg.category;
-          });
+      // エラーハンドリング
+      this.port.onDisconnect.addListener(() => {
+        if (chrome.runtime.lastError) {
+          console.log('[LogViewer] Background接続エラー（正常）:', chrome.runtime.lastError.message);
+        }
+        this.port = null;
+        // ローカルモードで動作
+        console.log('[LogViewer] ローカルモードで動作中');
+      });
+
+      // メッセージリスナー
+      this.port.onMessage.addListener((msg) => {
+        if (msg.type === 'log') {
+          this.addLog(msg.data);
+        } else if (msg.type === 'logs-batch') {
+          this.logs = msg.data || [];
           this.renderLogs();
+        } else if (msg.type === 'clear') {
+          if (!msg.category || msg.category === this.currentCategory || this.currentCategory === 'all') {
+            this.logs = this.logs.filter(log => {
+              if (!msg.category) return false;
+              if (msg.category === 'error') return log.level !== 'error';
+              if (msg.category === 'system') return log.category !== 'system';
+              return log.ai !== msg.category;
+            });
+            this.renderLogs();
+          }
+        } else if (msg.type === 'selector-data') {
+          // セレクタデータを受信してUIに表示
+          if (typeof displaySelectorInfo === 'function') {
+            displaySelectorInfo(msg.data);
+          }
+          if (typeof logSelectorInfo === 'function') {
+            logSelectorInfo(msg.data);
+          }
         }
-      } else if (msg.type === 'selector-data') {
-        // セレクタデータを受信してUIに表示
-        if (typeof displaySelectorInfo === 'function') {
-          displaySelectorInfo(msg.data);
-        }
-        if (typeof logSelectorInfo === 'function') {
-          logSelectorInfo(msg.data);
-        }
-      }
-    });
+      });
 
-    // 既存のログを取得
-    this.port.postMessage({ type: 'get-logs' });
+      // 既存のログを取得
+      if (this.port) {
+        this.port.postMessage({ type: 'get-logs' });
+      }
+    } catch (error) {
+      console.log('[LogViewer] 接続初期化エラー（正常）:', error.message);
+      this.port = null;
+    }
   }
 
   attachEventListeners() {
@@ -4579,7 +4598,13 @@ class LogViewer {
     if (this.clearBtn) {
       this.clearBtn.addEventListener('click', () => {
         const category = this.currentCategory === 'all' ? null : this.currentCategory;
-        this.port.postMessage({ type: 'clear', category });
+        if (this.port) {
+          this.port.postMessage({ type: 'clear', category });
+        } else {
+          // ローカルモードでのクリア
+          this.logs = [];
+          this.renderLogs();
+        }
       });
     }
 
