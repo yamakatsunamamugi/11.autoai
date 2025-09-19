@@ -110,74 +110,31 @@ export class LogFileManager {
   }
 
   /**
-   * エラーを即座に保存
+   * エラーを即座に保存（無効化）
    */
   async saveErrorImmediately(error, context = {}) {
-    try {
-      const timestamp = new Date().toISOString()
-        .replace(/[:.]/g, '-')
-        .replace('T', '_')
-        .slice(0, -1); // ミリ秒まで含む
-
-      const errorData = {
-        timestamp: new Date().toISOString(),
-        type: 'error',
-        error: {
-          message: error.message,
-          stack: error.stack,
-          name: error.name
-        },
+    // エラーファイルの作成を無効化
+    // 必要に応じてコンソールログのみ出力
+    if (error && error.message) {
+      console.error('[LogFileManager] エラー発生:', {
+        message: error.message,
         context,
-        sessionStart: this.sessionStartTime
-      };
-
-      const fileName = `11autoai-logs/${this.aiType}/errors/error-${timestamp}.json`;
-      await this.downloadFile(fileName, JSON.stringify(errorData, null, 2));
-
-      this.errorCount++;
-      console.log(`❌ [エラー保存] ${fileName}`);
-    } catch (saveError) {
-      console.error('❌ [エラー保存失敗]', {
-        originalError: error.message,
-        saveError: saveError.message,
-        fileName,
         aiType: this.aiType
       });
     }
+    return; // ファイル作成をスキップ
   }
 
   /**
-   * 中間保存（100件ごと/5分ごと）
+   * 中間保存（100件ごと/5分ごと）- 無効化
    */
   async saveIntermediate() {
-    if (this.logs.length === 0) return;
-
-    try {
-      const timestamp = new Date().toISOString()
-        .replace(/[:.]/g, '-')
-        .replace('T', '_')
-        .slice(0, -1); // ミリ秒まで含む
-
-      const intermediateData = {
-        sessionStart: this.sessionStartTime,
-        savedAt: new Date().toISOString(),
-        logCount: this.logs.length,
-        logs: [...this.logs] // コピーを保存
-      };
-
-      const fileName = `11autoai-logs/${this.aiType}/intermediate/partial-${timestamp}.json`;
-      await this.downloadFile(fileName, JSON.stringify(intermediateData, null, 2));
-
-      this.intermediateCount++;
-      console.log(`💾 [中間保存] ${fileName} (ログ数: ${this.logs.length})`);
-    } catch (saveError) {
-      console.error('❌ [中間保存失敗]', {
-        saveError: saveError.message,
-        fileName,
-        logCount: this.logs.length,
-        aiType: this.aiType
-      });
+    // 中間保存ファイルの作成を無効化
+    // ログ数のみコンソールに出力
+    if (this.logs.length > 0) {
+      console.log(`[LogFileManager] 中間保存スキップ (ログ数: ${this.logs.length})`);
     }
+    return; // ファイル作成をスキップ
   }
 
   /**

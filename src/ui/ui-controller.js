@@ -4285,13 +4285,14 @@ initAITabsSystem();
 async function loadDropboxSettings() {
   try {
     const result = await new Promise((resolve) => {
-      chrome.storage.local.get(['dropboxClientId', 'dropboxAutoAuth'], resolve);
+      chrome.storage.local.get(['dropboxClientId', 'dropboxAutoAuth', 'dropbox_upload_settings'], resolve);
     });
 
     const clientIdInput = document.getElementById('dropboxClientId');
     const statusIcon = document.getElementById('dropboxStatusIcon');
     const statusText = document.getElementById('dropboxStatusText');
     const autoAuthToggle = document.getElementById('dropboxAutoAuthToggle');
+    const autoUploadToggle = document.getElementById('dropboxAutoUploadToggle');
 
     if (clientIdInput && result.dropboxClientId) {
       clientIdInput.value = result.dropboxClientId;
@@ -4303,6 +4304,12 @@ async function loadDropboxSettings() {
     // 自動認証設定の読み込み（デフォルトはtrue）
     if (autoAuthToggle) {
       autoAuthToggle.checked = result.dropboxAutoAuth !== false;
+    }
+
+    // 自動アップロード設定の読み込み（デフォルトはfalse）
+    if (autoUploadToggle) {
+      const uploadSettings = result.dropbox_upload_settings || {};
+      autoUploadToggle.checked = uploadSettings.autoUpload === true;
     }
   } catch (error) {
     console.error('Dropbox設定の読み込みエラー:', error);
@@ -4398,6 +4405,41 @@ function initDropboxSettings() {
       } catch (error) {
         console.error('[UI] 自動認証設定保存エラー:', error);
         showFeedback('設定の保存に失敗しました', 'error');
+      }
+    });
+  }
+
+  // 自動アップロード設定のチェックボックス
+  const autoUploadToggle = document.getElementById('dropboxAutoUploadToggle');
+  if (autoUploadToggle) {
+    autoUploadToggle.addEventListener('change', async (e) => {
+      try {
+        const isEnabled = e.target.checked;
+
+        // 現在の設定を取得
+        const result = await new Promise((resolve) => {
+          chrome.storage.local.get(['dropbox_upload_settings'], resolve);
+        });
+
+        // 設定を更新
+        const uploadSettings = result.dropbox_upload_settings || {};
+        uploadSettings.autoUpload = isEnabled;
+
+        // 保存
+        await chrome.storage.local.set({ dropbox_upload_settings: uploadSettings });
+
+        console.log('[UI] Dropbox自動アップロード設定を更新:', isEnabled);
+        showFeedback(
+          isEnabled
+            ? 'Dropbox自動アップロードを有効にしました'
+            : 'Dropbox自動アップロードを無効にしました',
+          'success'
+        );
+      } catch (error) {
+        console.error('[UI] 自動アップロード設定保存エラー:', error);
+        showFeedback('設定の保存に失敗しました', 'error');
+        // エラー時はチェックボックスを元に戻す
+        e.target.checked = !e.target.checked;
       }
     });
   }
