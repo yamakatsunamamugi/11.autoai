@@ -142,20 +142,11 @@ export class LogFileManager {
    * 自動アップロードが有効な場合はDropboxにもアップロード
    */
   async downloadFile(fileName, content) {
-    console.log('🔍 [DEBUG-LogFileManager] downloadFile開始:', {
-      fileName,
-      contentLength: content.length,
-      dropboxEnabled: this.dropboxEnabled,
-      dropboxAutoUpload: this.dropboxAutoUpload,
-      chromeRuntime: typeof chrome !== 'undefined' && !!chrome.runtime,
-      isServiceWorker: typeof document === 'undefined'
-    });
 
     try {
       // Service Worker環境とContent Script環境を判定
       if (typeof document === 'undefined') {
         // Service Worker環境: Chrome Downloads APIを使用
-        console.log('🔍 [DEBUG-LogFileManager] Service Worker環境検出 - Chrome Downloads APIを使用');
 
         const blob = new Blob([content], { type: 'application/json' });
 
@@ -181,7 +172,6 @@ export class LogFileManager {
         }
       } else {
         // Content Script環境: 既存の方法を使用
-        console.log('🔍 [DEBUG-LogFileManager] Content Script環境検出 - 既存の方法を使用');
 
         const blob = new Blob([content], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -224,11 +214,9 @@ export class LogFileManager {
 
       if (this.dropboxEnabled && this.dropboxAutoUpload) {
         console.log('✅ [診断] Dropbox自動アップロード条件クリア - アップロード開始');
-        console.log('🔍 [DEBUG-LogFileManager] Dropbox自動アップロード開始');
         try {
           dropboxResult = await this.uploadToDropbox(fileName, content);
           console.log(`✅ [Dropbox] ${fileName} を自動アップロードしました`);
-          console.log('🔍 [DEBUG-LogFileManager] Dropbox URL:', dropboxResult.dropboxUrl);
           console.log('🔍 [診断] アップロード結果詳細:', {
             success: !!dropboxResult,
             hasUrl: !!dropboxResult?.dropboxUrl,
@@ -237,7 +225,6 @@ export class LogFileManager {
           });
         } catch (uploadError) {
           console.error('❌ [診断エラー] Dropbox自動アップロード失敗');
-          console.error('🔍 [DEBUG-LogFileManager] Dropbox自動アップロードエラー:', uploadError);
 
           // Dropbox認証期限切れの場合は警告を表示するがファイル保存は継続
           if (uploadError.message && uploadError.message.includes('認証が期限切れ')) {
@@ -249,11 +236,6 @@ export class LogFileManager {
         }
       } else {
         console.log('⚠️ [診断] Dropbox自動アップロードスキップ - 条件不一致');
-        console.log('🔍 [DEBUG-LogFileManager] Dropbox自動アップロードスキップ:', {
-          dropboxEnabled: this.dropboxEnabled,
-          dropboxAutoUpload: this.dropboxAutoUpload,
-          理由: !this.dropboxEnabled ? 'Dropbox認証なし' : 'AutoUpload無効'
-        });
       }
 
       // Dropboxアップロード結果を含めて返す
@@ -759,7 +741,6 @@ export class LogFileManager {
     // タイマーを停止
     this.stopAutoSaveTimer();
     if (this.logs.length === 0) {
-      console.log('🔍 [DEBUG-LogFileManager] 保存するログがありません');
       console.log('[LogFileManager] 保存するログがありません');
       return;
     }
@@ -774,11 +755,6 @@ export class LogFileManager {
       const fileName = `${this.aiType}-log-${timestamp}.json`;
       const filePath = `11autoai-logs/${this.aiType}/complete/${fileName}`;
 
-      console.log('🔍 [DEBUG-LogFileManager] ファイル情報:', {
-        fileName,
-        filePath,
-        timestamp
-      });
 
       // ログデータを整形
       const logData = {
@@ -792,16 +768,9 @@ export class LogFileManager {
         logs: this.logs
       };
 
-      console.log('🔍 [DEBUG-LogFileManager] ログデータ作成完了:', {
-        totalLogs: logData.totalLogs,
-        errorCount: logData.errorCount,
-        dropboxEnabled: logData.dropboxEnabled
-      });
 
       // ファイルにダウンロード（Dropbox自動アップロードも含む）
-      console.log('🔍 [DEBUG-LogFileManager] downloadFile()呼び出し開始');
       const downloadResult = await this.downloadFile(filePath, JSON.stringify(logData, null, 2));
-      console.log('🔍 [DEBUG-LogFileManager] downloadFile()完了:', downloadResult);
 
       console.log(`✅ [LogFileManager] 最終ログを保存しました: ${fileName}`);
       console.log(`  ・総ログ数: ${this.logs.length}`);
@@ -814,7 +783,6 @@ export class LogFileManager {
 
       // Dropbox古いファイルの削除（週1回程度）
       if (this.dropboxEnabled && Math.random() < 0.1) { // 10%の確率
-        console.log('🔍 [DEBUG-LogFileManager] Dropbox古いファイル削除処理開始');
         this.performDropboxCleanup().catch(error => {
           console.warn('[LogFileManager] Dropbox削除でエラー:', error);
         });

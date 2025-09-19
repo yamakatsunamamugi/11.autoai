@@ -379,21 +379,11 @@ export function setupMessageHandler() {
           try {
             const { fileName, content } = request.data;
 
-            console.log('🔍 [DEBUG-MessageHandler] Step 1: パラメータ確認完了');
-
             // Blob作成してダウンロード
-            console.log('🔍 [DEBUG-MessageHandler] Step 2: Blob作成開始');
             const blob = new Blob([content], { type: 'application/json' });
-            console.log('🔍 [DEBUG-MessageHandler] Step 3: Blob作成完了:', {
-              blobSize: blob.size,
-              blobType: blob.type
-            });
-
-            console.log('🔍 [DEBUG-MessageHandler] Step 4: DataURL変換開始');
             const dataUrl = await new Promise((resolve, reject) => {
               const reader = new FileReader();
               reader.onloadend = () => {
-                console.log('🔍 [DEBUG-MessageHandler] Step 5: DataURL変換完了');
                 resolve(reader.result);
               };
               reader.onerror = (error) => {
@@ -401,12 +391,6 @@ export function setupMessageHandler() {
                 reject(error);
               };
               reader.readAsDataURL(blob);
-            });
-
-            console.log('🔍 [DEBUG-MessageHandler] Step 6: Chrome Downloads API呼び出し開始:', {
-              fileName,
-              dataUrlLength: dataUrl.length,
-              chromeDownloads: !!chrome.downloads
             });
 
             // Chrome Downloads APIでダウンロード
@@ -417,14 +401,7 @@ export function setupMessageHandler() {
               conflictAction: 'uniquify'
             });
 
-            console.log('🔍 [DEBUG-MessageHandler] Step 7: Chrome Downloads API成功:', {
-              downloadId,
-              fileName
-            });
-
-            console.log('🔍 [DEBUG-MessageHandler] Step 8: sendResponse呼び出し開始');
             sendResponse({ success: true, downloadId });
-            console.log('🔍 [DEBUG-MessageHandler] Step 9: sendResponse呼び出し完了');
           } catch (error) {
             console.error('🔍 [DEBUG-MessageHandler] DOWNLOAD_LOG_FILEエラー:', {
               message: error.message,
@@ -433,7 +410,6 @@ export function setupMessageHandler() {
             });
             try {
               sendResponse({ success: false, error: error.message });
-              console.log('🔍 [DEBUG-MessageHandler] エラーレスポンス送信完了');
             } catch (responseError) {
               console.error('🔍 [DEBUG-MessageHandler] sendResponseエラー:', responseError);
             }

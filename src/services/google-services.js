@@ -1397,22 +1397,19 @@ export const sheetsClient = googleServices.sheetsReader;
 export const docsClient = googleServices.docsGenerator;
 export const spreadsheetLogger = googleServices.spreadsheetLogger;
 
-// 必要最小限のグローバル設定のみ保持（レガシー互換性のため）
-if (typeof globalThis !== 'undefined') {
-  // parseSpreadsheetUrl関数のみ保持
-  globalThis.parseSpreadsheetUrl = (url) => {
-    if (!url || typeof url !== 'string') {
-      return { spreadsheetId: null, gid: null };
-    }
+// parseSpreadsheetUrl関数のエクスポート
+export const parseSpreadsheetUrl = (url) => {
+  if (!url || typeof url !== 'string') {
+    return { spreadsheetId: null, gid: null };
+  }
 
-    const spreadsheetMatch = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
-    const spreadsheetId = spreadsheetMatch ? spreadsheetMatch[1] : null;
+  const spreadsheetMatch = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  const spreadsheetId = spreadsheetMatch ? spreadsheetMatch[1] : null;
 
-    const gidMatch = url.match(/[#&]gid=([0-9]+)/);
-    const gid = gidMatch ? gidMatch[1] : null;
+  const gidMatch = url.match(/[#&]gid=([0-9]+)/);
+  const gid = gidMatch ? gidMatch[1] : null;
 
-    return { spreadsheetId, gid };
-  };
-}
+  return { spreadsheetId, gid };
+};
 
 console.log('📊 Google Services loaded - Step 2: Google統合サービス準備完了');
