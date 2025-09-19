@@ -296,25 +296,24 @@
         },
         '4_Canvas機能テキスト位置': {
             selectors: [
-                // 最優先: 実際のCanvasコンテンツ（code-blockクラス）
-                '.code-block__code',
-                'div.code-block__code',
-                '.code-block__code.h-fit.min-h-full.w-fit.min-w-full',
-                // Canvas固有セレクタ
-                '#markdown-artifact',
-                '[id="markdown-artifact"]',
-                '.font-claude-response#markdown-artifact',
-                '[tabindex="0"]#markdown-artifact',
-                'div.mx-auto.max-w-3xl#markdown-artifact',
-                // 実際のCanvas構造（思考プロセスを除外）
+                // 最優先: Canvas全体構造を取得（思考プロセスを除外）
                 'div.grid-cols-1.grid.gap-2\\.5:has(p.whitespace-pre-wrap)',
-                // 思考プロセス付き要素を除外
                 'div.grid-cols-1.grid:not(:has(.ease-out.rounded-lg))',
                 // 除外条件付きセレクタ（作業説明文と思考プロセスを除外）
                 'div.grid-cols-1.grid.gap-2\\.5:not([class*="p-3"]):not([class*="pt-0"]):not([class*="pr-8"])',
                 'div[class*="grid-cols-1"][class*="gap-2.5"]:not([class*="p-3"]):not([class*="pt-0"])',
                 // 通常回答除外セレクタ
                 '.grid-cols-1.grid:not(.standard-markdown):not([class*="p-3"]):not([class*="pt-0"])',
+                // Canvas固有セレクタ
+                '#markdown-artifact',
+                '[id="markdown-artifact"]',
+                '.font-claude-response#markdown-artifact',
+                '[tabindex="0"]#markdown-artifact',
+                'div.mx-auto.max-w-3xl#markdown-artifact',
+                // コードブロックのみ（フォールバック）
+                '.code-block__code',
+                'div.code-block__code',
+                '.code-block__code.h-fit.min-h-full.w-fit.min-w-full',
                 // フォールバック（汎用セレクタ）
                 '[class*="grid"][class*="gap"]:not([class*="standard-markdown"]):not([class*="p-3"])'
             ],
@@ -415,25 +414,24 @@
         },
         '4_Canvas機能テキスト位置': {
             selectors: [
-                // 最優先: 実際のCanvasコンテンツ（code-blockクラス）
-                '.code-block__code',
-                'div.code-block__code',
-                '.code-block__code.h-fit.min-h-full.w-fit.min-w-full',
-                // Canvas固有セレクタ
-                '#markdown-artifact',
-                '[id="markdown-artifact"]',
-                '.font-claude-response#markdown-artifact',
-                '[tabindex="0"]#markdown-artifact',
-                'div.mx-auto.max-w-3xl#markdown-artifact',
-                // 実際のCanvas構造（思考プロセスを除外）
+                // 最優先: Canvas全体構造を取得（思考プロセスを除外）
                 'div.grid-cols-1.grid.gap-2\\.5:has(p.whitespace-pre-wrap)',
-                // 思考プロセス付き要素を除外
                 'div.grid-cols-1.grid:not(:has(.ease-out.rounded-lg))',
                 // 除外条件付きセレクタ（作業説明文と思考プロセスを除外）
                 'div.grid-cols-1.grid.gap-2\\.5:not([class*="p-3"]):not([class*="pt-0"]):not([class*="pr-8"])',
                 'div[class*="grid-cols-1"][class*="gap-2.5"]:not([class*="p-3"]):not([class*="pt-0"])',
                 // 通常回答除外セレクタ
                 '.grid-cols-1.grid:not(.standard-markdown):not([class*="p-3"]):not([class*="pt-0"])',
+                // Canvas固有セレクタ
+                '#markdown-artifact',
+                '[id="markdown-artifact"]',
+                '.font-claude-response#markdown-artifact',
+                '[tabindex="0"]#markdown-artifact',
+                'div.mx-auto.max-w-3xl#markdown-artifact',
+                // コードブロックのみ（フォールバック）
+                '.code-block__code',
+                'div.code-block__code',
+                '.code-block__code.h-fit.min-h-full.w-fit.min-w-full',
                 // フォールバック（汎用セレクタ）
                 '[class*="grid"][class*="gap"]:not([class*="standard-markdown"]):not([class*="p-3"])'
             ],
