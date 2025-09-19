@@ -57,6 +57,14 @@ import { getAuthService } from './src/services/auth-service.js';
 import { default as WindowService } from './src/services/window-service.js';
 import SheetsClient from './src/features/spreadsheet/sheets-client.js';
 import DocsClient from './src/features/spreadsheet/docs-client.js';
+
+// WindowService監視機能を初期化
+try {
+  WindowService.initializeWindowMonitoring();
+  console.log('✅ [Background] WindowService監視機能を初期化しました');
+} catch (error) {
+  console.error('❌ [Background] WindowService監視機能の初期化エラー:', error);
+}
 import { getStreamingServiceManager } from './src/core/streaming-service-manager.js';
 import { AITaskExecutor } from './src/core/ai-task-executor.js';
 import { AITaskHandler } from './src/handlers/ai-task-handler.js';

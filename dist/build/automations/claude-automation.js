@@ -306,10 +306,12 @@
                 '.font-claude-response#markdown-artifact',
                 '[tabindex="0"]#markdown-artifact',
                 'div.mx-auto.max-w-3xl#markdown-artifact',
-                // 実際のCanvas構造
-                'div.grid-cols-1.grid.gap-2\\.5:has(p.whitespace-pre-wrap)',
-                // 除外条件付きセレクタ（作業説明文を除外）
-                'div.grid-cols-1.grid.gap-2\\.5:not([class*="p-3"]):not([class*="pt-0"]):not([class*="pr-8"])',
+                // 実際のCanvas構造（思考プロセスを除外）
+                'div.grid-cols-1.grid.gap-2\\.5:has(p.whitespace-pre-wrap):not(:has(button:contains("思考プロセス")))',
+                // 思考プロセス付き要素を除外
+                'div.grid-cols-1.grid:not(:has(.ease-out.rounded-lg))',
+                // 除外条件付きセレクタ（作業説明文と思考プロセスを除外）
+                'div.grid-cols-1.grid.gap-2\\.5:not([class*="p-3"]):not([class*="pt-0"]):not([class*="pr-8"]):not(:has(button:contains("思考プロセス")))',
                 'div[class*="grid-cols-1"][class*="gap-2.5"]:not([class*="p-3"]):not([class*="pt-0"])',
                 // 通常回答除外セレクタ
                 '.grid-cols-1.grid:not(.standard-markdown):not([class*="p-3"]):not([class*="pt-0"])',
@@ -424,10 +426,12 @@
                 '.font-claude-response#markdown-artifact',
                 '[tabindex="0"]#markdown-artifact',
                 'div.mx-auto.max-w-3xl#markdown-artifact',
-                // 実際のCanvas構造
-                'div.grid-cols-1.grid.gap-2\\.5:has(p.whitespace-pre-wrap)',
-                // 除外条件付きセレクタ（作業説明文を除外）
-                'div.grid-cols-1.grid.gap-2\\.5:not([class*="p-3"]):not([class*="pt-0"]):not([class*="pr-8"])',
+                // 実際のCanvas構造（思考プロセスを除外）
+                'div.grid-cols-1.grid.gap-2\\.5:has(p.whitespace-pre-wrap):not(:has(button:contains("思考プロセス")))',
+                // 思考プロセス付き要素を除外
+                'div.grid-cols-1.grid:not(:has(.ease-out.rounded-lg))',
+                // 除外条件付きセレクタ（作業説明文と思考プロセスを除外）
+                'div.grid-cols-1.grid.gap-2\\.5:not([class*="p-3"]):not([class*="pt-0"]):not([class*="pr-8"]):not(:has(button:contains("思考プロセス")))',
                 'div[class*="grid-cols-1"][class*="gap-2.5"]:not([class*="p-3"]):not([class*="pt-0"])',
                 // 通常回答除外セレクタ
                 '.grid-cols-1.grid:not(.standard-markdown):not([class*="p-3"]):not([class*="pt-0"])',
@@ -1031,6 +1035,43 @@
             'ステップ1:結論について'
         ];
 
+        // パターン3: 思考プロセス部分の除外（折りたたみ可能な分析部分）
+        const thinkingPatterns = [
+            '<details>',
+            '<summary>',
+            '思考プロセス',
+            '分析過程',
+            '推論の過程',
+            '考察',
+            '検討事項'
+        ];
+
+        // 思考プロセス部分を除外
+        let processedText = fullText;
+        for (const pattern of thinkingPatterns) {
+            if (processedText.includes(pattern)) {
+                console.log(`  - 思考プロセスパターン "${pattern}" を検出`);
+                // <details>...</details>構造の除外
+                if (pattern === '<details>') {
+                    processedText = processedText.replace(/<details>[\s\S]*?<\/details>/gi, '');
+                    console.log('  - <details>ブロックを除外');
+                }
+                // その他のパターンは段落単位で除外
+                else {
+                    const lines = processedText.split('\n');
+                    const filteredLines = lines.filter(line => !line.includes(pattern));
+                    processedText = filteredLines.join('\n');
+                    console.log(`  - "${pattern}"を含む行を除外`);
+                }
+            }
+        }
+
+        // 思考プロセス除外後のテキストを使用
+        if (processedText.length !== fullText.length) {
+            console.log(`  - 思考プロセス除外: ${fullText.length}文字 → ${processedText.length}文字`);
+            fullText = processedText.trim();
+        }
+
         for (const pattern of promptPatterns) {
             const index = fullText.indexOf(pattern);
             if (index !== -1) {
@@ -1097,7 +1138,12 @@
                                  element.classList.contains('pr-8') ||
                                  (element.textContent && element.textContent.includes('The task is complete'));
 
-        if (isCanvasElement && !isTaskExplanation) {
+        // 思考プロセス要素を除外
+        const isThinkingProcess = element.querySelector('button:contains("思考プロセス")') ||
+                                 element.querySelector('.ease-out.rounded-lg') ||
+                                 (element.textContent && element.textContent.includes('思考プロセス'));
+
+        if (isCanvasElement && !isTaskExplanation && !isThinkingProcess) {
             console.log('  📝 Canvas要素を検出、特別処理を実行');
             console.log(`    - 要素判定: ${element.classList.contains('code-block__code') ? 'code-block__code' : 'その他Canvas要素'}`);
 
@@ -1161,6 +1207,18 @@
                                         element.classList.contains('pt-0') ? 'pt-0クラス' :
                                         element.classList.contains('pr-8') ? 'pr-8クラス' :
                                         'タスク完了テキスト'}`);
+        } else if (isThinkingProcess) {
+            console.log('  ⚠️ 思考プロセス要素を検出、除外します');
+            console.log('    - 除外理由: 思考プロセスボタンまたは関連要素を検出');
+            // 思考プロセス以外の要素を探して取得
+            const canvasContent = element.querySelector('div.grid-cols-1.grid:not(:has(button:contains("思考プロセス")))');
+            if (canvasContent) {
+                const contentText = canvasContent.innerText || canvasContent.textContent || '';
+                if (contentText.trim()) {
+                    fullText = contentText.trim();
+                    console.log('  - 思考プロセス除外後のテキスト長:', fullText.length);
+                }
+            }
         }
 
         let length = fullText.length;
@@ -1380,6 +1438,9 @@
                     if (!stopResult) {
                         stopButtonGone = true;
                         console.log(`✓ 停止ボタンが消滅しました（${waitCount}秒後）`);
+                        // 停止ボタン消滅後の3秒待機
+                        console.log('⏳ 停止ボタン消滅後の3秒待機中...');
+                        await wait(3000);
                         break;
                     }
 
@@ -1462,6 +1523,9 @@
                         if (stillGone) {
                             stopButtonGone = true;
                             console.log(`✓ Deep Research完了（総時間: ${Math.floor(disappearWaitCount/60)}分）`);
+                            // 停止ボタン消滅後の3秒待機
+                            console.log('⏳ 停止ボタン消滅後の3秒待機中...');
+                            await wait(3000);
                             break;
                         }
                     }
@@ -1920,138 +1984,7 @@
                             }
                         }
 
-                        // Canvasプレビューボタンをチェック（Canvas未処理の場合のみ）
-                        if (!isCanvasMode) {
-                            const previewButton = await findClaudeElement(deepResearchSelectors['4_4_Canvasプレビューボタン'], 2, true);
-                            if (previewButton) {
-                                console.log(`\n✓ Canvas プレビューボタンを検出！（${waitCount}秒後）`);
-                                console.log('📱 Canvas処理モードに切り替えます');
-                                isCanvasMode = true;
-
-                                // Canvas プレビューボタンのクリックとリトライ処理
-                                console.log('🔄 Canvas プレビューボタンをクリック中...');
-                                let canvasLoaded = false;
-                                const maxRetries = 5; // 最大5回リトライ
-                                const retryDelays = [2000, 3000, 5000, 8000, 10000]; // 段階的に待機時間を延長
-
-                                for (let retryCount = 0; retryCount < maxRetries && !canvasLoaded; retryCount++) {
-                                    if (retryCount > 0) {
-                                        console.log(`🔄 リトライ ${retryCount}/${maxRetries}: Canvas プレビューボタンを再クリック...`);
-                                        // ボタンを再取得（DOM更新の可能性があるため）
-                                        const retryButton = await findClaudeElement(deepResearchSelectors['4_4_Canvasプレビューボタン'], 2, true);
-                                        if (retryButton) {
-                                            retryButton.click();
-                                        } else {
-                                            console.log('⚠ プレビューボタンが見つかりません');
-                                            break;
-                                        }
-                                    } else {
-                                        previewButton.click();
-                                    }
-
-                                    // 各リトライの待機時間
-                                    const waitTime = retryDelays[retryCount] || 10000;
-                                    console.log(`⏳ Canvas表示を${waitTime/1000}秒間待機中...`);
-
-                                    let loadWaitCount = 0;
-                                    const maxLoadWait = waitTime / 1000;
-
-                                    while (!canvasLoaded && loadWaitCount < maxLoadWait) {
-                                        const canvasContent = await findClaudeElement(deepResearchSelectors['4_Canvas機能テキスト位置'], 2, true);
-
-                                        if (canvasContent) {
-                                            // 方法1: ID による判定（最も確実）
-                                            const hasMarkdownArtifactId = canvasContent.id === 'markdown-artifact' ||
-                                                                         canvasContent.querySelector && canvasContent.querySelector('#markdown-artifact');
-
-                                            // 方法2: Canvas固有のクラスによる判定
-                                            const hasFontClaudeResponse = canvasContent.classList &&
-                                                                         canvasContent.classList.contains('font-claude-response');
-
-                                            // 方法3: 通常回答の除外（通常回答特有のクラスを持たない）
-                                            const isNotNormalResponse = canvasContent.classList &&
-                                                                       !canvasContent.classList.contains('standard-markdown') &&
-                                                                       !canvasContent.classList.contains('pt-0') &&
-                                                                       !canvasContent.classList.contains('pr-8');
-
-                                            // 方法4: Canvas固有のtabindex属性
-                                            const hasTabIndex = canvasContent.getAttribute &&
-                                                              canvasContent.getAttribute('tabindex') === '0' &&
-                                                              canvasContent.id === 'markdown-artifact';
-
-                                            // いずれかの条件を満たせばCanvas内容と判定
-                                            if (hasMarkdownArtifactId || hasFontClaudeResponse || hasTabIndex) {
-                                                canvasLoaded = true;
-                                                const textLength = canvasContent.textContent ? canvasContent.textContent.trim().length : 0;
-                                                console.log(`✅ Canvas内容が表示されました（リトライ${retryCount}、${loadWaitCount}秒後）`);
-                                                console.log(`   - 判定理由: ${hasMarkdownArtifactId ? 'ID=markdown-artifact' :
-                                                                           hasFontClaudeResponse ? 'font-claude-responseクラス' :
-                                                                           hasTabIndex ? 'tabindex属性' : '条件一致'}`);
-                                                console.log(`   - 要素ID: ${canvasContent.id || '(なし)'}`);
-                                                console.log(`   - クラス: ${canvasContent.className ? canvasContent.className.substring(0, 80) : '(なし)'}`);
-                                                console.log(`   - テキスト長: ${textLength}文字`);
-
-                                                // Canvas内容を取得して保存（改善版）
-                                                if (textLength > 0) {
-                                                    // テキストが完全に読み込まれるまで待機
-                                                    console.log('⏳ テキスト完全読み込み待機中...');
-                                                    let previousLength = textLength;
-                                                    let stableCount = 0;
-                                                    const maxStableWait = 5; // 5秒間長さが変わらなければ完了
-
-                                                    for (let i = 0; i < maxStableWait; i++) {
-                                                        await wait(1000);
-                                                        const currentContent = await findClaudeElement(deepResearchSelectors['4_Canvas機能テキスト位置'], 1, true);
-                                                        if (currentContent) {
-                                                            const currentLength = currentContent.textContent ? currentContent.textContent.trim().length : 0;
-                                                            console.log(`    - ${i + 1}秒後: ${currentLength}文字`);
-
-                                                            if (currentLength === previousLength) {
-                                                                stableCount++;
-                                                                if (stableCount >= 2) {
-                                                                    console.log('  ✅ テキスト長が安定しました');
-                                                                    canvasContent = currentContent; // 最新の要素に更新
-                                                                    break;
-                                                                }
-                                                            } else {
-                                                                stableCount = 0;
-                                                                previousLength = currentLength;
-                                                            }
-                                                        }
-                                                    }
-
-                                                    // Canvas検出確認のみ（最終テキストは停止ボタン消滅後に取得）
-                                                    const textInfo = getTextPreview(canvasContent);
-                                                    if (textInfo && textInfo.full) {
-                                                        console.log(`📝 Canvas内容を検出しました（${textInfo.length}文字） - 最終取得は停止ボタン消滅後`);
-                                                    } else {
-                                                        // フォールバック: 直接取得で確認
-                                                        const tempText = canvasContent.innerText || canvasContent.textContent || '';
-                                                        console.log(`📝 Canvas内容を検出しました（${tempText.trim().length}文字） - 最終取得は停止ボタン消滅後`);
-                                                    }
-                                                }
-                                                break;
-                                            }
-                                        }
-                                        await wait(1000);
-                                        loadWaitCount++;
-                                    }
-
-                                    if (canvasLoaded) {
-                                        break;
-                                    } else if (retryCount < maxRetries - 1) {
-                                        console.log(`⚠ Canvas表示待機タイムアウト。再試行します...`);
-                                        await wait(1000); // リトライ前の小休止
-                                    }
-                                }
-
-                                if (!canvasLoaded) {
-                                    console.log('❌ Canvas内容の表示に失敗しました（すべてのリトライを使い切りました）');
-                                }
-                                await wait(1000);
-                                // Canvas処理後も停止ボタンの消滅を待機するため、breakせずに続行
-                            }
-                        }
+                        // Canvas処理は停止ボタン消滅後に実行
 
                         // 停止ボタンの状態をチェック
                         const stopResult = await findClaudeElement(claudeSelectors['3_回答停止ボタン'], 2, true);
@@ -2072,6 +2005,23 @@
                             if (stillGone) {
                                 stopButtonGone = true;
                                 console.log(`✓ 応答生成完了（${waitCount}秒後）`);
+
+                                // ウィンドウ状態確認
+                                try {
+                                    const currentWindow = await chrome.windows.getCurrent();
+                                    console.log('🔍 [Claude] ウィンドウ状態確認:', {
+                                        windowId: currentWindow.id,
+                                        state: currentWindow.state,
+                                        focused: currentWindow.focused,
+                                        timestamp: new Date().toISOString()
+                                    });
+                                } catch (windowError) {
+                                    console.error('⚠️ [Claude] ウィンドウ状態確認エラー:', windowError);
+                                }
+
+                                // 停止ボタン消滅後の3秒待機
+                                console.log('⏳ 停止ボタン消滅後の3秒待機中...');
+                                await wait(3000);
                                 break;
                             }
                         }
@@ -2092,22 +2042,131 @@
             console.log('%c✅【Claude-ステップ6-4】応答待機処理完了', 'color: #4CAF50; font-weight: bold;');
             console.log('─'.repeat(50));
 
-            // 応答完了後の追加待機
+            // 応答完了後の追加待機とウィンドウ状態確認
             await wait(3000);
+
+            // ウィンドウ存在確認
+            try {
+                const currentWindow = await chrome.windows.getCurrent();
+                console.log('✅ [Claude] 応答待機完了後のウィンドウ状態:', {
+                    windowId: currentWindow.id,
+                    state: currentWindow.state,
+                    focused: currentWindow.focused,
+                    tabs: currentWindow.tabs ? currentWindow.tabs.length : 'N/A',
+                    timestamp: new Date().toISOString()
+                });
+            } catch (windowError) {
+                console.error('🚨 [Claude] 応答待機完了後のウィンドウエラー:', {
+                    error: windowError.message,
+                    timestamp: new Date().toISOString(),
+                    possibleCause: 'ウィンドウが予期せず閉鎖された可能性'
+                });
+
+                // ウィンドウが閉鎖された場合の処理を考慮
+                if (windowError.message.includes('No current window')) {
+                    throw new Error('Claude処理中にウィンドウが閉鎖されました');
+                }
+            }
+
+            // ========================================
+            // ステップ6-4-1: Canvasプレビューボタンチェック
+            // ========================================
+            console.log('%c【Claude-ステップ6-4-1】Canvasプレビューボタンの存在確認', 'color: #9C27B0; font-weight: bold;');
+            console.log('─'.repeat(40));
+
+            const deepResearchSelectors = getDeepResearchSelectors();
+            const previewButton = await findClaudeElement(deepResearchSelectors['4_4_Canvasプレビューボタン'], 3, true);
+
+            if (previewButton) {
+                console.log('✓ Canvasプレビューボタンを発見、クリック中...');
+
+                // クリック前のウィンドウ状態確認
+                try {
+                    const currentWindow = await chrome.windows.getCurrent();
+                    console.log('🔍 [Claude] プレビューボタンクリック前のウィンドウ状態:', {
+                        windowId: currentWindow.id,
+                        state: currentWindow.state,
+                        timestamp: new Date().toISOString()
+                    });
+                } catch (windowError) {
+                    console.error('⚠️ [Claude] プレビューボタンクリック前のウィンドウエラー:', windowError);
+                }
+
+                previewButton.click();
+
+                // Canvas表示を3秒間待機
+                console.log('⏳ Canvas表示を3秒間待機中...');
+                await wait(3000);
+
+                // クリック後のウィンドウ状態確認
+                try {
+                    const currentWindow = await chrome.windows.getCurrent();
+                    console.log('🔍 [Claude] プレビューボタンクリック後のウィンドウ状態:', {
+                        windowId: currentWindow.id,
+                        state: currentWindow.state,
+                        timestamp: new Date().toISOString()
+                    });
+                } catch (windowError) {
+                    console.error('🚨 [Claude] プレビューボタンクリック後のウィンドウエラー:', {
+                        error: windowError.message,
+                        timestamp: new Date().toISOString(),
+                        action: 'Canvasプレビューボタンクリック後'
+                    });
+                }
+
+                // Canvas内容の確認
+                const canvasContent = await findClaudeElement(deepResearchSelectors['4_Canvas機能テキスト位置'], 2, true);
+                if (canvasContent) {
+                    console.log('✅ Canvas内容が表示されました');
+                    console.log(`   - 要素ID: ${canvasContent.id || '(なし)'}`);
+                    console.log(`   - テキスト長: ${canvasContent.textContent ? canvasContent.textContent.trim().length : 0}文字`);
+                } else {
+                    console.log('⚠️ Canvas内容が検出されませんでした');
+                }
+            } else {
+                console.log('ℹ️ Canvasプレビューボタンは検出されませんでした（通常の回答のみ）');
+            }
 
             // ========================================
             // ステップ6-5: 「続ける」ボタンチェック
             // ========================================
             console.log('%c【Claude-ステップ6-5】「続ける」ボタンの存在確認', 'color: #607D8B; font-weight: bold;');
             console.log('─'.repeat(40));
-
-            const deepResearchSelectors = getDeepResearchSelectors();
             const continueButton = await findClaudeElement(deepResearchSelectors['4_3_Canvas続けるボタン'], 3, true);
 
             if (continueButton) {
                 console.log('✓「続ける」ボタンを発見、クリック中...');
+
+                // 「続ける」ボタンクリック前のウィンドウ状態確認
+                try {
+                    const currentWindow = await chrome.windows.getCurrent();
+                    console.log('🔍 [Claude] 「続ける」ボタンクリック前のウィンドウ状態:', {
+                        windowId: currentWindow.id,
+                        state: currentWindow.state,
+                        timestamp: new Date().toISOString()
+                    });
+                } catch (windowError) {
+                    console.error('⚠️ [Claude] 「続ける」ボタンクリック前のウィンドウエラー:', windowError);
+                }
+
                 continueButton.click();
                 await wait(2000);
+
+                // 「続ける」ボタンクリック後のウィンドウ状態確認
+                try {
+                    const currentWindow = await chrome.windows.getCurrent();
+                    console.log('🔍 [Claude] 「続ける」ボタンクリック後のウィンドウ状態:', {
+                        windowId: currentWindow.id,
+                        state: currentWindow.state,
+                        timestamp: new Date().toISOString()
+                    });
+                } catch (windowError) {
+                    console.error('🚨 [Claude] 「続ける」ボタンクリック後のウィンドウエラー:', {
+                        error: windowError.message,
+                        timestamp: new Date().toISOString(),
+                        action: '「続ける」ボタンクリック後'
+                    });
+                }
 
                 // 新しい応答サイクルの応答待機を実行
                 console.log('🔄 新しい応答サイクルの停止ボタン出現を待機中...');
@@ -2116,6 +2175,24 @@
                 const maxWait = 30; // 30秒まで待機
 
                 while (!stopButtonFound && waitCount < maxWait) {
+                    // このループ中でもウィンドウ状態を監視
+                    if (waitCount % 5 === 0 && waitCount > 0) {
+                        try {
+                            const currentWindow = await chrome.windows.getCurrent();
+                            console.log(`🔍 [Claude] 「続ける」処理中のウィンドウ状態 (${waitCount}秒):`, {
+                                windowId: currentWindow.id,
+                                state: currentWindow.state,
+                                focused: currentWindow.focused
+                            });
+                        } catch (windowError) {
+                            console.error('🚨 [Claude] 「続ける」処理中のウィンドウエラー:', {
+                                error: windowError.message,
+                                waitTime: waitCount,
+                                timestamp: new Date().toISOString()
+                            });
+                        }
+                    }
+
                     const stopResult = await findClaudeElement(deepResearchSelectors['3_回答停止ボタン'], 2, true);
                     if (stopResult) {
                         stopButtonFound = true;
@@ -2146,6 +2223,9 @@
 
                             if (stillGone) {
                                 console.log('✓ 継続応答生成完了');
+                                // 停止ボタン消滅後の3秒待機
+                                console.log('⏳ 停止ボタン消滅後の3秒待機中...');
+                                await wait(3000);
                                 break;
                             }
                         }
@@ -2168,11 +2248,41 @@
             console.log('─'.repeat(40));
             console.log('🎯 取得対象: Canvas機能、通常応答テキスト');
 
+            // テキスト取得前のウィンドウ状態確認
+            try {
+                const currentWindow = await chrome.windows.getCurrent();
+                console.log('🔍 [Claude] テキスト取得前のウィンドウ状態:', {
+                    windowId: currentWindow.id,
+                    state: currentWindow.state,
+                    focused: currentWindow.focused,
+                    timestamp: new Date().toISOString()
+                });
+            } catch (windowError) {
+                console.error('🚨 [Claude] テキスト取得前のウィンドウエラー:', {
+                    error: windowError.message,
+                    timestamp: new Date().toISOString(),
+                    phase: 'テキスト取得前'
+                });
+
+                // ウィンドウが閉鎖された場合の処理
+                if (windowError.message.includes('No current window')) {
+                    throw new Error('Claudeテキスト取得中にウィンドウが閉鎖されました');
+                }
+            }
+
             // Canvas処理後の最終テキスト取得（応答完了後に再取得）
             console.log(`🔍 最終テキスト取得開始 - 現在のfinalText: ${finalText ? finalText.length + '文字' : 'なし'}`);
 
             // Canvas機能のテキストを優先的に最終取得
-            const canvasResult = await findClaudeElement(deepResearchSelectors['4_Canvas機能テキスト位置'], 5, true);
+            let canvasResult = null;
+            try {
+                canvasResult = await findClaudeElement(deepResearchSelectors['4_Canvas機能テキスト位置'], 5, true);
+            } catch (canvasError) {
+                console.error('⚠️ [Claude] Canvasテキスト取得エラー:', {
+                    error: canvasError.message,
+                    timestamp: new Date().toISOString()
+                });
+            }
 
             if (canvasResult) {
                 console.log('🎨 Canvas機能の最終テキストを取得中...');

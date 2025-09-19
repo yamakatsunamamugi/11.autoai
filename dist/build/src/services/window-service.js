@@ -18,15 +18,166 @@ export class WindowService {
   static getRetryManager() {
     return this.retryManager;
   }
-  
+
   // アクティブなウィンドウを管理するMap
   static activeWindows = new Map();
-  
+
   // ウィンドウポジション管理 (0-3の位置を管理)
   static windowPositions = new Map();
-  
+
   // ポジションごとのウィンドウID管理
   static positionToWindow = new Map();
+
+  // 予期しないウィンドウ閉鎖を監視するフラグ
+  static isMonitoringEnabled = false;
+
+  /**
+   * chrome.windows.onRemovedイベントリスナーを初期化
+   * 予期しないウィンドウ閉鎖を検出してログを出力
+   */
+  static initializeWindowMonitoring() {
+    if (this.isMonitoringEnabled) {
+      return; // 既に初期化済み
+    }
+
+    if (typeof chrome !== 'undefined' && chrome.windows && chrome.windows.onRemoved) {
+      chrome.windows.onRemoved.addListener((windowId) => {
+        this.handleUnexpectedWindowClosure(windowId);
+      });
+
+      this.isMonitoringEnabled = true;
+      console.log('🔍 [WindowService] ウィンドウ閉鎖監視を開始しました');
+    } else {
+      console.warn('⚠️ [WindowService] chrome.windows.onRemoved が利用できません');
+    }
+  }
+
+  /**
+   * 予期しないウィンドウ閉鎖をハンドリング
+   * @param {number} windowId - 閉鎖されたウィンドウID
+   */
+  static handleUnexpectedWindowClosure(windowId) {
+    const windowInfo = this.activeWindows.get(windowId);
+
+    if (windowInfo) {
+      // 管理下のウィンドウが予期せず閉鎖された
+      console.error(`🚨 [WindowService] 予期しないウィンドウ閉鎖を検出:`, {
+        windowId,
+        aiType: windowInfo.aiType || '不明',
+        position: this.positionToWindow.get(windowId),
+        timestamp: new Date().toISOString(),
+        reason: 'ユーザー操作、ブラウザクラッシュ、またはシステム異常',
+        windowInfo
+      });
+
+      // クリーンアップ処理
+      this.cleanupClosedWindow(windowId);
+
+      // スプレッドシートにエラーログを記録（可能であれば）
+      this.logWindowClosureToSpreadsheet(windowId, windowInfo);
+
+      // 自動復旧を試行（設定により有効化）
+      if (windowInfo.enableAutoRecovery !== false) {
+        setTimeout(async () => {
+          try {
+            await this.attemptWindowRecovery(windowId, windowInfo, windowInfo.currentTaskId);
+          } catch (recoveryError) {
+            console.error('🔄 [WindowService] 自動復旧処理エラー:', recoveryError);
+          }
+        }, 2000); // 2秒後に復旧を試行
+      }
+    }
+  }
+
+  /**
+   * 閉鎖されたウィンドウのクリーンアップ
+   * @param {number} windowId - 閉鎖されたウィンドウID
+   */
+  static cleanupClosedWindow(windowId) {
+    // ポジション情報をクリア
+    const position = this.positionToWindow.get(windowId);
+    if (position !== undefined) {
+      this.windowPositions.delete(position);
+      this.positionToWindow.delete(windowId);
+      console.log(`🧹 [WindowService] ポジション${position}をクリーンアップしました`);
+    }
+
+    // アクティブウィンドウから削除
+    this.activeWindows.delete(windowId);
+  }
+
+  /**
+   * ウィンドウ閉鎖をスプレッドシートにログ記録
+   * @param {number} windowId - 閉鎖されたウィンドウID
+   * @param {Object} windowInfo - ウィンドウ情報
+   */
+  static async logWindowClosureToSpreadsheet(windowId, windowInfo) {
+    try {
+      // グローバルのlogManagerが存在する場合のみログ記録
+      if (typeof globalThis !== 'undefined' && globalThis.logManager) {
+        await globalThis.logManager.logError(`ウィンドウ異常終了検出: ${windowInfo.aiType || '不明'} (ID: ${windowId})`);
+      }
+    } catch (error) {
+      console.error('📝 [WindowService] スプレッドシートログ記録エラー:', error);
+    }
+  }
+
+  /**
+   * ウィンドウ異常終了時の自動復旧処理
+   * @param {number} windowId - 閉鎖されたウィンドウID
+   * @param {Object} windowInfo - ウィンドウ情報
+   * @param {string} taskId - 実行中だったタスクID（オプション）
+   */
+  static async attemptWindowRecovery(windowId, windowInfo, taskId = null) {
+    console.log(`🔄 [WindowService] ウィンドウ復旧処理開始:`, {
+      windowId,
+      aiType: windowInfo.aiType,
+      taskId,
+      timestamp: new Date().toISOString()
+    });
+
+    try {
+      // 1. 元のウィンドウのポジション情報を保存
+      const originalPosition = this.positionToWindow.get(windowId);
+
+      // 2. 同じAIタイプで新しいウィンドウを作成
+      if (windowInfo.aiType && this.AI_URLS[windowInfo.aiType]) {
+        const newWindowInfo = await this.openAIWindow(windowInfo.aiType, originalPosition);
+
+        console.log(`✅ [WindowService] ウィンドウ復旧成功:`, {
+          originalWindowId: windowId,
+          newWindowId: newWindowInfo.windowId,
+          aiType: windowInfo.aiType,
+          position: originalPosition
+        });
+
+        // 3. 実行中のタスクがあった場合の処理通知
+        if (taskId && typeof globalThis !== 'undefined' && globalThis.logManager) {
+          await globalThis.logManager.logError(
+            `ウィンドウ復旧完了: ${windowInfo.aiType} - タスク${taskId}は再実行が必要`
+          );
+        }
+
+        return newWindowInfo;
+      }
+    } catch (recoveryError) {
+      console.error(`❌ [WindowService] ウィンドウ復旧失敗:`, {
+        windowId,
+        aiType: windowInfo.aiType,
+        error: recoveryError.message,
+        timestamp: new Date().toISOString()
+      });
+
+      // 復旧失敗をスプレッドシートに記録
+      if (typeof globalThis !== 'undefined' && globalThis.logManager) {
+        await globalThis.logManager.logError(
+          `ウィンドウ復旧失敗: ${windowInfo.aiType} (元ID: ${windowId}) - ${recoveryError.message}`
+        );
+      }
+    }
+
+    return null;
+  }
   
   // AI種別とURLのマッピング
   static AI_URLS = {
@@ -421,9 +572,11 @@ export class WindowService {
    * ウィンドウを削除
    * @param {number} windowId - ウィンドウID
    * @param {Function} onClosed - ウィンドウ閉じ後のコールバック関数
+   * @param {string} reason - 閉鎖理由（デバッグ用）
+   * @param {string} source - 呼び出し元（デバッグ用）
    * @returns {Promise<void>}
    */
-  static async closeWindow(windowId, onClosed = null) {
+  static async closeWindow(windowId, onClosed = null, reason = '不明', source = '不明') {
     // 必ずポジションを解放（エラーが発生しても実行）
     const releasePosition = () => {
       // ポジション情報をクリア
@@ -438,17 +591,51 @@ export class WindowService {
       this.activeWindows.delete(windowId);
     };
     
+    const startTime = Date.now();
+    const windowInfo = this.activeWindows.get(windowId);
+
+    // 詳細ログ：ウィンドウ閉鎖開始
+    console.log(`🚪 [WindowService] ウィンドウ閉鎖開始:`, {
+      windowId,
+      reason,
+      source,
+      windowType: windowInfo?.aiType || '不明',
+      position: this.positionToWindow.get(windowId),
+      timestamp: new Date().toISOString()
+    });
+
     try {
       // ウィンドウの存在確認
       await chrome.windows.get(windowId);
       await chrome.windows.remove(windowId);
-      console.log('[WindowService] ウィンドウ削除:', windowId);
+
+      const elapsed = Date.now() - startTime;
+      console.log(`✅ [WindowService] ウィンドウ削除完了: ${windowId} (${elapsed}ms)`, {
+        reason,
+        source,
+        elapsed
+      });
     } catch (error) {
+      const elapsed = Date.now() - startTime;
+
       // ウィンドウが既に閉じられている場合は正常な動作
       if (error.message.includes('No window with id') || error.message.includes('not found')) {
-        console.warn('[WindowService] ウィンドウは既に閉じられています:', windowId);
+        console.warn(`⚠️ [WindowService] ウィンドウは既に閉じられています:`, {
+          windowId,
+          reason,
+          source,
+          elapsed,
+          message: 'ウィンドウが予期せず閉鎖済み（ユーザー操作またはクラッシュの可能性）'
+        });
       } else {
-        console.error('[WindowService] ウィンドウ削除エラー:', error);
+        console.error(`❌ [WindowService] ウィンドウ削除エラー:`, {
+          windowId,
+          reason,
+          source,
+          elapsed,
+          error: error.message,
+          stack: error.stack
+        });
       }
     } finally {
       // エラーが発生してもポジションは必ず解放
@@ -467,19 +654,27 @@ export class WindowService {
   
   /**
    * すべてのウィンドウを閉じる
+   * @param {string} reason - 閉鎖理由
    * @returns {Promise<void>}
    */
-  static async closeAllWindows() {
-    console.log('[WindowService] すべてのウィンドウを閉じる:', this.activeWindows.size);
-    
+  static async closeAllWindows(reason = '一括閉鎖') {
+    console.log(`🚪 [WindowService] すべてのウィンドウを閉じる:`, {
+      count: this.activeWindows.size,
+      reason,
+      timestamp: new Date().toISOString()
+    });
+
     const closePromises = [];
     for (const [windowId] of this.activeWindows) {
-      closePromises.push(this.closeWindow(windowId));
+      closePromises.push(this.closeWindow(windowId, null, reason, 'closeAllWindows'));
     }
     
     await Promise.allSettled(closePromises);
     this.activeWindows.clear();
-    console.log('[WindowService] すべてのウィンドウを閉じました');
+    console.log(`✅ [WindowService] すべてのウィンドウを閉じました:`, {
+      reason,
+      timestamp: new Date().toISOString()
+    });
   }
   
   /**
@@ -604,7 +799,7 @@ export class WindowService {
       console.warn(`[WindowService] ポジション${position}は既に使用中: Window${existingWindowId}`);
       
       // 既存ウィンドウを閉じて完全に削除されるまで待機
-      await this.closeWindow(existingWindowId);
+      await this.closeWindow(existingWindowId, null, '既存ウィンドウの置き換え', 'WindowService.openAIWindow');
       
       // 削除完了を確認するための追加待機（競合回避）
       await new Promise(resolve => setTimeout(resolve, 500));

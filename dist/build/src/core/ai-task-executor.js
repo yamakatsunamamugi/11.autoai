@@ -411,9 +411,17 @@ export class AITaskExecutor {
             };
           } else {
             // エラーメッセージを安全に処理
-            const errorMessage = (result?.error && typeof result.error === 'string')
-              ? result.error
-              : 'Claudeメッセージ通信エラー';
+            let errorMessage = 'Claudeメッセージ通信エラー';
+
+            // result.errorの型を確認して安全に処理
+            if (result && result.error) {
+              if (typeof result.error === 'string') {
+                errorMessage = result.error;
+              } else if (typeof result.error === 'object' && result.error.message) {
+                errorMessage = result.error.message;
+              }
+            }
+
             throw new Error(errorMessage);
           }
         }

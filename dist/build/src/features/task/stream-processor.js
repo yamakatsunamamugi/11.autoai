@@ -517,7 +517,7 @@ class StreamProcessor {
     for (const windowId of windows.values()) {
       try {
         // WindowServiceを使用してウィンドウを閉じる（エラーハンドリングも統一）
-        await WindowService.closeWindow(windowId);
+        await WindowService.closeWindow(windowId, null, 'タスク完了後のウィンドウ閉鎖', 'StreamProcessor.processNormalTasks');
       } catch (error) {
         this.logger.warn(`[StreamProcessor] ウィンドウクローズエラー`, error);
       }
@@ -561,7 +561,7 @@ class StreamProcessor {
     for (const windowId of windows.values()) {
       try {
         // WindowServiceを使用してウィンドウを閉じる（エラーハンドリングも統一）
-        await WindowService.closeWindow(windowId);
+        await WindowService.closeWindow(windowId, null, 'タスク完了後のウィンドウ閉鎖', 'StreamProcessor.processNormalTasks');
       } catch (error) {
         this.logger.warn(`[StreamProcessor] ウィンドウクローズエラー`, error);
       }
@@ -858,7 +858,7 @@ class StreamProcessor {
     for (const windowId of openedWindows) {
       try {
         // WindowServiceを使用してウィンドウを閉じる（ポジション解放も含めて一元管理）
-        await WindowService.closeWindow(windowId);
+        await WindowService.closeWindow(windowId, null, 'コラム処理完了後のウィンドウ閉鎖', 'StreamProcessor.closeColumnWindow');
         this.activeWindows.delete(windowId);
         // StreamProcessor側のwindowPositions管理は削除（WindowServiceに一元化）
         // WindowService.closeWindow()内でポジション解放が行われる
@@ -2075,7 +2075,7 @@ ${formattedGemini}`;
 
     try {
       // WindowServiceを使用してウィンドウを閉じる（エラーハンドリングも統一）
-      await WindowService.closeWindow(windowId);
+      await WindowService.closeWindow(windowId, null, 'コラム処理完了後のウィンドウ閉鎖', 'StreamProcessor.closeColumnWindow');
       // this.logger.log(`[StreamProcessor] ✅ ウィンドウクローズ完了 (windowId: ${windowId})`);
     } catch (error) {
       this.logger.warn(`[StreamProcessor] ❌ ウィンドウクローズエラー (windowId: ${windowId})`, error);
@@ -2751,7 +2751,7 @@ ${formattedGemini}`;
       };
       
       // WindowServiceを使用してウィンドウを閉じる（コールバック付き）
-      await WindowService.closeWindow(windowId, onWindowClosed);
+      await WindowService.closeWindow(windowId, onWindowClosed, 'タスク完了後のウィンドウ閉鎖', 'StreamProcessor.closeWindowAfterTask');
       // this.logger.log(`[StreamProcessor] ✅ タスク完了後、Window${windowId}を閉じました`);
     } catch (error) {
       this.logger.debug(`[StreamProcessor] Window${windowId}クローズエラー（無視）: ${error.message}`);
@@ -2772,7 +2772,7 @@ ${formattedGemini}`;
     for (const [taskId, windowId] of batchInfo.windows) {
       closePromises.push(
         // WindowServiceを使用してウィンドウを閉じる（Promise形式で統一）
-        WindowService.closeWindow(windowId)
+        WindowService.closeWindow(windowId, null, 'バッチ完了後のウィンドウ閉鎖', 'StreamProcessor.closeBatchWindows')
           .then(() => {
             // this.logger.log(`[StreamProcessor] ✅ Window${windowId}を閉じた`);
             // 管理情報をクリア
@@ -3671,7 +3671,7 @@ ${formattedGemini}`;
       async (windowInfo) => {
         try {
           // WindowServiceを使用してウィンドウを閉じる（統一されたエラーハンドリング）
-          await WindowService.closeWindow(windowInfo.windowId);
+          await WindowService.closeWindow(windowInfo.windowId, null, '全ウィンドウ一括閉鎖', 'StreamProcessor.closeAllWindows');
         } catch (error) {
           this.logger.error(
             `[StreamProcessor] ウィンドウクローズエラー: ${windowInfo.column}`,
