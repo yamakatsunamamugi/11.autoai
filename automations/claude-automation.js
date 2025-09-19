@@ -182,7 +182,8 @@
                     logs: this.logs
                 };
 
-                // バックグラウンドスクリプトにメッセージを送信
+                // 通常ログレポート生成も無効化
+                /* // バックグラウンドスクリプトにメッセージを送信
                 if (typeof chrome !== 'undefined' && chrome.runtime) {
                     chrome.runtime.sendMessage({
                         type: 'DOWNLOAD_LOG_FILE',
@@ -191,7 +192,7 @@
                             content: JSON.stringify(logData, null, 2)
                         }
                     });
-                }
+                } */
 
                 console.log(`✅ [LogFileManager] 最終ログを保存しました: ${fileName}`);
 

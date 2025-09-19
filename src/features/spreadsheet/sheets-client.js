@@ -3111,9 +3111,6 @@ class SheetsClient {
 
 // グローバルスコープに追加
 self.SheetsClient = SheetsClient;
-
-// グローバル変数の使用を避け、Service Registry経由でのアクセスを推奨
-// parseSpreadsheetUrlのみレガシー互換性のため保持
 if (typeof globalThis !== "undefined") {
   globalThis.parseSpreadsheetUrl = SheetsClient.parseSpreadsheetUrl;
   globalThis.parseMultipleUrls = SheetsClient.parseMultipleUrls;

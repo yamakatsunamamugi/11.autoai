@@ -2033,7 +2033,6 @@ export default class StreamProcessorV2 {
         }
       }
 
-      // reloadDataは削除されたため、この処理は不要
       this.log('スプレッドシートデータ処理完了', 'success', 'Step 3-7');
     } catch (error) {
       this.log(`データ再読み込みエラー: ${error.message}`, 'error', '3-7');
@@ -4383,14 +4382,11 @@ export default class StreamProcessorV2 {
 
       // Dropboxサービスを使用（静的インポート済み）
       try {
-        console.log('🔍 [DEBUG-TaskReport] uploadTaskReportToDropbox 認証チェック開始');
 
         // 認証確認
         const isAuthenticated = await dropboxService.isAuthenticated();
-        console.log('🔍 [DEBUG-TaskReport] 認証チェック結果:', isAuthenticated);
 
         if (!isAuthenticated) {
-          console.warn('🔍 [DEBUG-TaskReport] 認証失敗、しかし処理継続（グレースフルデグラデーション）');
           this.logger.warn('[StreamProcessorV2] Dropbox認証期限切れ - レポートアップロードをスキップしますが処理は継続');
 
           // 個別ログと同様、認証エラーでも成功として返す（処理継続）
@@ -4403,7 +4399,6 @@ export default class StreamProcessorV2 {
           };
         }
 
-        console.log('🔍 [DEBUG-TaskReport] 認証OK、アップロード開始');
 
         // 重複ファイル処理の設定をログに記録
         this.logger.log(`🔄 [重複処理設定] 上書きモード: 無効`);
@@ -4415,7 +4410,6 @@ export default class StreamProcessorV2 {
           { overwrite: false }
         );
 
-        console.log('🔍 [DEBUG-TaskReport] アップロード完了');
 
         // Dropbox Web URLを生成（統一形式: ?preview= 使用）
         const dropboxWebUrl = `https://www.dropbox.com/home/log-report/task-reports?preview=${fileName}`;
@@ -4448,11 +4442,9 @@ export default class StreamProcessorV2 {
         };
 
       } catch (error) {
-        console.error('🔍 [DEBUG-TaskReport] アップロードエラー:', error);
 
         // Dropbox認証期限切れの場合はグレースフル処理
         if (error.message && error.message.includes('認証が期限切れ')) {
-          console.warn('🔍 [DEBUG-TaskReport] 認証期限切れエラーを検出、処理継続');
           this.logger.warn('[StreamProcessorV2] Dropbox認証期限切れによりレポートアップロードをスキップ - 処理は継続');
 
           return {

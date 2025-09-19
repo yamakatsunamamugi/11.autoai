@@ -2896,42 +2896,32 @@ function showChangeNotification(aiName, changes) {
 
 // AI検出システムの実行（テストコントローラーを使用）
 async function runAIDetectionSystem(updateStatus, injectAutomationScripts) {
-  console.log('🔍 [DEBUG] runAIDetectionSystem関数開始 - テストコントローラーを使用');
   updateStatus('テストコントローラーを読み込み中...', 'loading');
 
   try {
     // Step 1: 動的インポート実行前
-    console.log('🔴 [DEBUG] Step 1: 動的インポート開始 - ./controllers/index.js');
     const controllerManager = await import('./controllers/index.js');
-    console.log('🟢 [DEBUG] Step 1 完了: コントローラーマネージャー読み込み成功:', controllerManager);
 
     // Step 2: loadController関数確認
     const { loadController } = controllerManager;
     if (!loadController) {
       throw new Error('loadController関数が見つかりません');
     }
-    console.log('🟢 [DEBUG] Step 2 完了: loadController関数取得成功');
 
     // Step 3: aiDetectionコントローラーロード
-    console.log('🔴 [DEBUG] Step 3: aiDetectionコントローラーロード開始');
     const testModule = await loadController('aiDetection');
-    console.log('🟢 [DEBUG] Step 3 完了: aiDetectionコントローラーロード成功:', testModule);
 
     // Step 4: runAIDetectionSystem関数確認
     if (!testModule.runAIDetectionSystem) {
       throw new Error('runAIDetectionSystem関数がテストモジュールに見つかりません');
     }
-    console.log('🟢 [DEBUG] Step 4 完了: runAIDetectionSystem関数確認成功');
 
     // Step 5: AI検出システム実行
-    console.log('🔴 [DEBUG] Step 5: テストモジュールのrunAIDetectionSystem実行開始');
     updateStatus('AI検出システムを実行中...', 'loading');
     await testModule.runAIDetectionSystem();
-    console.log('🟢 [DEBUG] Step 5 完了: AI検出システム実行成功');
 
   } catch (error) {
-    console.error('❌ [DEBUG] テストコントローラーエラー:', error);
-    console.error('❌ [DEBUG] エラーメッセージ:', error.message);
+    console.error('❌ テストコントローラーエラー:', error);
     console.error('❌ [DEBUG] エラースタック:', error.stack);
     updateStatus(`テストコントローラーエラー: ${error.message}`, 'error');
     throw error;
@@ -3246,15 +3236,10 @@ function loadAndDisplayIntegratedTable() {
 
 // ===== イベントリスナー: AI変更検出システム =====
 aiDetectionSystemBtn.addEventListener("click", async () => {
-  console.log('🔴 [DEBUG] AI検出システムボタンがクリックされました');
-  console.log('🔴 [DEBUG] runAIDetectionSystem関数を呼び出します');
-
   try {
     await runAIDetectionSystem(updateStatus, injectAutomationScripts);
-    console.log('🟢 [DEBUG] AI検出システム正常完了');
   } catch (error) {
-    console.error('❌ [DEBUG] AI検出制御エラー:', error);
-    console.error('❌ [DEBUG] エラー詳細:', error.stack);
+    console.error('❌ AI検出制御エラー:', error);
     updateStatus('AI検出制御エラー', 'error');
   }
 });
@@ -5468,14 +5453,10 @@ async function checkDropboxConfigurationStatus() {
 
 // 🎯 [UI機能] Dropbox設定状態をリアルタイム表示
 function displayDropboxStatus() {
-  console.log('🔍 [DEBUG] displayDropboxStatus関数が呼び出されました');
-
   try {
     checkDropboxConfigurationStatus().then(status => {
-      console.log('🔍 [DEBUG] checkDropboxConfigurationStatus結果:', status);
-
       if (status.error) {
-        console.error('❌ [DEBUG] 診断エラー:', status.error);
+        console.error('❌ 診断エラー:', status.error);
         showFeedback(`Dropbox設定診断エラー: ${status.error}`, 'error');
         return;
       }
@@ -5501,14 +5482,13 @@ function displayDropboxStatus() {
           : '⚠️ Dropbox設定に問題があります（コンソールを確認）';
         statusType = status.allConfigured ? 'success' : 'warning';
       }
-      console.log('🔍 [DEBUG] フィードバック表示:', { statusMessage, statusType });
       showFeedback(statusMessage, statusType);
     }).catch(error => {
-      console.error('❌ [DEBUG] checkDropboxConfigurationStatus実行エラー:', error);
+      console.error('❌ checkDropboxConfigurationStatus実行エラー:', error);
       showFeedback(`診断実行エラー: ${error.message}`, 'error');
     });
   } catch (error) {
-    console.error('❌ [DEBUG] displayDropboxStatus実行エラー:', error);
+    console.error('❌ displayDropboxStatus実行エラー:', error);
     showFeedback(`診断機能エラー: ${error.message}`, 'error');
   }
 }
