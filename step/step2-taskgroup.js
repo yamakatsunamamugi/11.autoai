@@ -32,21 +32,34 @@ function extractSpreadsheetInfo() {
   console.log('[step2-taskgroup.js] [Step 2-0] スプレッドシート情報の取得');
   console.log('========');
 
-  // 2-0-1. URLからIDを抽出
-  const url = window.location.href;
-  console.log(`[step2-taskgroup.js] [Step 2-0-1] 現在のURL: ${url}`);
+  // 2-0-1. globalStateまたはURLからIDを取得
+  let spreadsheetId = null;
+  let gid = '0';
 
-  const spreadsheetIdMatch = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
-  const gidMatch = url.match(/#gid=([0-9]+)/);
+  // 方法1: globalStateから取得（STEP専用ボタンで設定済み）
+  if (window.globalState && window.globalState.spreadsheetId) {
+    spreadsheetId = window.globalState.spreadsheetId;
+    gid = window.globalState.gid || '0';
+    console.log(`[step2-taskgroup.js] [Step 2-0-1] ✅ globalStateから取得:`);
+    console.log(`  - スプレッドシートID: ${spreadsheetId}`);
+    console.log(`  - GID: ${gid}`);
+  } else {
+    // 方法2: URLから解析（元の方法）
+    const url = window.location.href;
+    console.log(`[step2-taskgroup.js] [Step 2-0-1] 現在のURL: ${url}`);
 
-  console.log('[step2-taskgroup.js] [Step 2-0-1] URLパターンマッチング結果:');
-  console.log(`  - スプレッドシートIDマッチ: ${spreadsheetIdMatch ? '成功' : '失敗'}`);
-  console.log(`  - GIDマッチ: ${gidMatch ? '成功' : '失敗'}`);
+    const spreadsheetIdMatch = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+    const gidMatch = url.match(/#gid=([0-9]+)/);
 
-  const spreadsheetId = spreadsheetIdMatch ? spreadsheetIdMatch[1] : null;
-  const gid = gidMatch ? gidMatch[1] : '0';
+    console.log('[step2-taskgroup.js] [Step 2-0-1] URLパターンマッチング結果:');
+    console.log(`  - スプレッドシートIDマッチ: ${spreadsheetIdMatch ? '成功' : '失敗'}`);
+    console.log(`  - GIDマッチ: ${gidMatch ? '成功' : '失敗'}`);
 
-  // 2-0-2. 取得した情報の保存
+    spreadsheetId = spreadsheetIdMatch ? spreadsheetIdMatch[1] : null;
+    gid = gidMatch ? gidMatch[1] : '0';
+  }
+
+  // 2-0-2. 取得した情報の保存・更新
   console.log('[step2-taskgroup.js] [Step 2-0-2] 抽出情報を保存');
   window.globalState.spreadsheetId = spreadsheetId;
   window.globalState.gid = gid;
@@ -58,6 +71,7 @@ function extractSpreadsheetInfo() {
   if (!spreadsheetId) {
     console.error('[step2-taskgroup.js] [Step 2-0-2] ⚠️ スプレッドシートIDが取得できませんでした');
     console.error('  - 原因: URLが正しいGoogleスプレッドシートではない可能性');
+    console.error('  - Chrome Extension環境ではUIコントローラーでglobalStateに設定してください');
   }
 
   return { spreadsheetId, gid };
@@ -71,9 +85,29 @@ async function identifyTaskGroups() {
   console.log('[step2-taskgroup.js] [Step 2-1] タスクグループの識別開始');
   console.log('========');
 
-  const setupResult = window.setupResult || JSON.parse(localStorage.getItem('step1Result'));
+  // globalStateまたは従来の方法でステップ1の結果を取得
+  let setupResult = null;
+
+  if (window.globalState && window.globalState.spreadsheetId) {
+    // STEP専用ボタン用：globalStateから構築
+    setupResult = {
+      spreadsheetId: window.globalState.spreadsheetId,
+      specialRows: window.globalState.specialRows || {},
+      apiHeaders: {
+        'Authorization': `Bearer ${window.globalState.authToken}`,
+        'Content-Type': 'application/json'
+      },
+      sheetsApiBase: 'https://sheets.googleapis.com/v4/spreadsheets'
+    };
+    console.log('[step2-taskgroup.js] [Step 2-1] ✅ globalStateからsetupResultを構築');
+  } else {
+    // 従来の方法
+    setupResult = window.setupResult || JSON.parse(localStorage.getItem('step1Result') || 'null');
+  }
+
   if (!setupResult) {
     console.error('[step2-taskgroup.js] [Step 2-1] ❌ ステップ1の結果が取得できません');
+    console.error('  - window.globalState: ', window.globalState);
     console.error('  - window.setupResult: ', window.setupResult);
     console.error('  - localStorage.step1Result: ', localStorage.getItem('step1Result') ? 'あり' : 'なし');
     throw new Error('ステップ1の結果が見つかりません');
@@ -335,6 +369,8 @@ async function identifyTaskGroups() {
       }
     });
 
+    // 内部で作成したtaskGroupsを保存（統計情報用）
+    window.globalState.allTaskGroups = taskGroups;
     window.globalState.taskGroups = taskGroups;
     console.log(`[step2-taskgroup.js] [Step 2-1] ✅ 合計${taskGroups.length}個のタスクグループを検出`);
     return taskGroups;
@@ -674,6 +710,14 @@ async function logTaskGroups() {
     console.error('行データ取得エラー:', error);
   }
 
+  // globalStateの必要なプロパティを初期化
+  if (!window.globalState.taskTypeMap) {
+    window.globalState.taskTypeMap = {};
+  }
+  if (!window.globalState.workColumnMap) {
+    window.globalState.workColumnMap = {};
+  }
+
   // 2-5-1. タスクタイプの決定と2-5-3. ログ出力
   taskGroups.forEach(group => {
     let taskType = group.type;
@@ -801,7 +845,7 @@ function letterToColumn(letter) {
 // ========================================
 // メイン実行関数
 // ========================================
-async function executeStep2() {
+async function executeStep2TaskGroups() {
   console.log('＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝');
   console.log('[step2-taskgroup.js] ステップ2: タスクグループ作成 開始');
   console.log('＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝');
@@ -832,6 +876,71 @@ async function executeStep2() {
     console.log('[step2-taskgroup.js] ✅ ステップ2: タスクグループ作成 完了');
     console.log('＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝');
 
+    // taskGroupsをstep5が使える形式でglobalStateに保存
+    if (!window.globalState.taskGroups) {
+      window.globalState.taskGroups = [];
+    }
+
+    // 処理対象のtaskGroupsのみをglobalStateに保存
+    // taskGroupsは内部で作成されているため、globalStateから一時的に取得
+    const allTaskGroups = window.globalState.allTaskGroups || [];
+    window.globalState.taskGroups = allTaskGroups.filter(group => !group.skip);
+
+    // 各taskGroupにstep5が必要とする追加情報を設定
+    window.globalState.taskGroups.forEach(group => {
+      // dataStartRowを設定（step1で取得した情報を使用）
+      group.dataStartRow = window.globalState.specialRows?.dataStartRow || 9;
+
+      // 必要に応じて他の情報も補完
+      if (!group.spreadsheetId) {
+        group.spreadsheetId = window.globalState.spreadsheetId;
+      }
+      if (!group.apiHeaders) {
+        group.apiHeaders = window.globalState.apiHeaders;
+      }
+      if (!group.sheetsApiBase) {
+        group.sheetsApiBase = window.globalState.sheetsApiBase;
+      }
+    });
+
+    console.log(`[step2-taskgroup.js] ✅ globalState.taskGroups設定完了: ${window.globalState.taskGroups.length}個のグループ`);
+
+    // 統合ログ出力（要求に応じて）
+    console.log('');
+    console.log('========================================');
+    console.log('🗂️ タスクグループ統合ログ');
+    console.log('========================================');
+    console.log('📋 検出されたすべてのタスクグループ詳細:');
+    console.log(JSON.stringify({
+      summary: {
+        totalGroups: window.globalState.allTaskGroups?.length || 0,
+        activeGroups: window.globalState.taskGroups.length,
+        skippedGroups: (window.globalState.allTaskGroups?.filter(g => g.skip) || []).length,
+        spreadsheetId: window.globalState.spreadsheetId,
+        gid: window.globalState.gid,
+        timestamp: new Date().toISOString()
+      },
+      groups: window.globalState.taskGroups.map(group => ({
+        groupNumber: group.groupNumber,
+        type: group.type,
+        aiType: group.aiType,
+        columns: group.columns,
+        range: `${group.startCol}〜${group.endCol}列`,
+        dataStartRow: group.dataStartRow,
+        skip: group.skip || false
+      })),
+      allTaskGroups: taskGroups.map(group => ({
+        groupNumber: group.groupNumber,
+        type: group.type,
+        aiType: group.aiType,
+        range: `${group.startCol}〜${group.endCol}列`,
+        skip: group.skip || false,
+        skipReason: group.skipReason || null
+      }))
+    }, null, 2));
+    console.log('========================================');
+    console.log('');
+
     return window.globalState;
 
   } catch (error) {
@@ -845,12 +954,12 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     executeStep2TaskGroups,
     extractSpreadsheetInfo,
-    createTaskGroups,
+    identifyTaskGroups,
     applyColumnControls,
-    skipTaskGroups,
-    renumberTaskGroups,
-    recordTaskGroupInfo,
-    createDefinitions
+    applySkipConditions,
+    reorganizeTaskGroups,
+    logTaskGroups,
+    saveDefinitions
   };
 }
 
@@ -858,22 +967,24 @@ if (typeof module !== 'undefined' && module.exports) {
 if (typeof window !== 'undefined') {
   window.executeStep2TaskGroups = executeStep2TaskGroups;
   window.extractSpreadsheetInfo = extractSpreadsheetInfo;
-  window.createTaskGroups = createTaskGroups;
+  window.identifyTaskGroups = identifyTaskGroups;
   window.applyColumnControls = applyColumnControls;
-  window.skipTaskGroups = skipTaskGroups;
-  window.renumberTaskGroups = renumberTaskGroups;
-  window.recordTaskGroupInfo = recordTaskGroupInfo;
-  window.createDefinitions = createDefinitions;
+  window.applySkipConditions = applySkipConditions;
+  window.reorganizeTaskGroups = reorganizeTaskGroups;
+  window.logTaskGroups = logTaskGroups;
+  window.saveDefinitions = saveDefinitions;
 }
 
-// 自動実行（直接読み込まれた場合）
+// 自動実行を無効化（STEP専用ボタンから手動で実行するため）
+// 元の自動実行コード:
+/*
 if (typeof window !== 'undefined' && !window.step2Executed) {
   window.step2Executed = true;
 
   // ステップ1の完了を待つ
   const waitForStep1 = () => {
     if (window.setupResult || localStorage.getItem('step1Result')) {
-      executeStep2();
+      executeStep2TaskGroups();
     } else {
       console.log('ステップ1の完了待機中...');
       setTimeout(waitForStep1, 1000);
@@ -887,3 +998,6 @@ if (typeof window !== 'undefined' && !window.step2Executed) {
     waitForStep1();
   }
 }
+*/
+
+console.log('[step2-taskgroup.js] ✅ Step2関数定義完了（自動実行無効）');
