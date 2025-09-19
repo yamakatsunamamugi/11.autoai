@@ -3,7 +3,6 @@
   "name": "AutoAI Minimal",
   "version": "1.0.0",
   "description": "最小限の機能から始めるAutoAI",
-  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqlcVAIPsdqvZvFmnzK/+28XyWJrU4rxB0oMDvfGfiEGh2C6JEs9ueKY/tw0RckAhhrtMonTdfgDMdiOrKL3qIh/Z8oxD3jBfdhWmN5I6nPX882GpD5/AQTVUHY8a9qrqMLZsMtrIrYSM0KOhWCCDuph9ARrpXVso4pgGCg+bbXIMsnh8z4fO8AK88j98K1ymW5V/5Uc8GkCojzg4XreaGdPblOJvQ5U5sYQgTwegyMNbZmb3p/0f2qviMSqQ1CvUWtV8HlveHXzWTWjp2RyIwjVqLafvKxr/BnYL3YsFPEPPJ6E/bCkoDHSjqXZATHQ1ydvkhNcKFfzb9fxuH6kAnwIDAQAB",
   "permissions": [
     "power",
     "tabs",
@@ -84,7 +83,9 @@
         "automations/2-4-genspark-automation.js",
         "automations/2-5-report-automation.js"
       ],
-      "matches": ["<all_urls>"]
+      "matches": [
+        "<all_urls>"
+      ]
     }
   ]
 }

@@ -3968,30 +3968,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // テスト実行関数（別ウィンドウ版）
 
-// ===== 拡張ログビューアー機能 =====
-class EnhancedLogViewer {
+// ===== ログビューアー機能 =====
+class LogViewer {
   constructor() {
     this.logs = [];
     this.currentCategory = 'all';
     this.port = null;
-    this.stepLogsCollector = null;
-    this.searchTerm = '';
-    this.errorPatterns = [
-      /error/i,
-      /エラー/,
-      /failed/i,
-      /失敗/,
-      /exception/i,
-      /uncaught/i,
-      /syntax.*error/i,
-      /構文エラー/,
-      /could not establish connection/i,
-      /接続.*確立.*できませ/
-    ];
     this.initElements();
     this.connectToBackground();
     this.attachEventListeners();
-    this.startStepLogsCollection();
   }
   
   initElements() {
@@ -3999,76 +3984,42 @@ class EnhancedLogViewer {
     this.tabs = document.querySelectorAll('.log-tab');
     this.clearBtn = document.getElementById('btn-clear-logs');
     this.copyBtn = document.getElementById('btn-copy-logs');
-    this.searchInput = document.getElementById('log-search-input');
-    this.exportBtn = document.getElementById('btn-export-logs');
-    this.toggleErrorBtn = document.getElementById('btn-toggle-errors');
-    this.logStats = document.getElementById('log-stats');
-
-    // 要素が存在しない場合は作成
-    this.createMissingElements();
   }
   
   connectToBackground() {
-    try {
-      // background.jsのLogManagerに接続
-      this.port = chrome.runtime.connect({ name: 'log-viewer' });
-
-      // 接続エラーハンドリング
-      this.port.onDisconnect.addListener(() => {
-        console.warn('[LogViewer] 背景スクリプトとの接続が切断されました。再接続を試行します。');
-        this.addLog({
-          timestamp: Date.now(),
-          level: 'warn',
-          message: 'Background script connection lost. Attempting to reconnect...',
-          source: 'LogViewer',
-          category: 'system'
-        });
-        // 3秒後に再接続を試行
-        setTimeout(() => this.connectToBackground(), 3000);
-      });
-
-      // メッセージリスナー
-      this.port.onMessage.addListener((msg) => {
-        if (msg.type === 'log') {
-          this.addLog(msg.data);
-        } else if (msg.type === 'logs-batch') {
-          this.logs = msg.data || [];
+    // background.jsのLogManagerに接続
+    this.port = chrome.runtime.connect({ name: 'log-viewer' });
+    
+    // メッセージリスナー
+    this.port.onMessage.addListener((msg) => {
+      if (msg.type === 'log') {
+        this.addLog(msg.data);
+      } else if (msg.type === 'logs-batch') {
+        this.logs = msg.data || [];
+        this.renderLogs();
+      } else if (msg.type === 'clear') {
+        if (!msg.category || msg.category === this.currentCategory || this.currentCategory === 'all') {
+          this.logs = this.logs.filter(log => {
+            if (!msg.category) return false;
+            if (msg.category === 'error') return log.level !== 'error';
+            if (msg.category === 'system') return log.category !== 'system';
+            return log.ai !== msg.category;
+          });
           this.renderLogs();
-          this.updateStats();
-        } else if (msg.type === 'clear') {
-          if (!msg.category || msg.category === this.currentCategory || this.currentCategory === 'all') {
-            this.logs = this.logs.filter(log => {
-              if (!msg.category) return false;
-              if (msg.category === 'error') return log.level !== 'error';
-              if (msg.category === 'system') return log.category !== 'system';
-              return log.ai !== msg.category;
-            });
-            this.renderLogs();
-            this.updateStats();
-          }
-        } else if (msg.type === 'selector-data') {
-          // セレクタデータを受信してUIに表示
-          if (typeof displaySelectorInfo === 'function') {
-            displaySelectorInfo(msg.data);
-          }
-          if (typeof logSelectorInfo === 'function') {
-            logSelectorInfo(msg.data);
-          }
         }
-      });
-
-      // 既存のログを取得
-      this.port.postMessage({ type: 'get-logs' });
-    } catch (error) {
-      console.error('[LogViewer] Background connection error:', error);
-      this.addLog({
-        timestamp: Date.now(),
-        level: 'error',
-        message: `Background connection failed: ${error.message}`,
-        source: 'LogViewer',
-        category: 'system'
-      });
-    }
+      } else if (msg.type === 'selector-data') {
+        // セレクタデータを受信してUIに表示
+        if (typeof displaySelectorInfo === 'function') {
+          displaySelectorInfo(msg.data);
+        }
+        if (typeof logSelectorInfo === 'function') {
+          logSelectorInfo(msg.data);
+        }
+      }
+    });
+    
+    // 既存のログを取得
+    this.port.postMessage({ type: 'get-logs' });
   }
   
   attachEventListeners() {
@@ -4079,114 +4030,33 @@ class EnhancedLogViewer {
         tab.classList.add('active');
         this.currentCategory = tab.dataset.category;
         this.renderLogs();
-        this.updateStats();
       });
     });
-
+    
     // クリアボタン
     if (this.clearBtn) {
       this.clearBtn.addEventListener('click', () => {
         const category = this.currentCategory === 'all' ? null : this.currentCategory;
-        if (this.port) {
-          this.port.postMessage({ type: 'clear', category });
-        }
+        this.port.postMessage({ type: 'clear', category });
       });
     }
-
+    
     // コピーボタン
     if (this.copyBtn) {
       this.copyBtn.addEventListener('click', () => {
         this.copyLogs();
       });
     }
-
-    // 検索機能
-    if (this.searchInput) {
-      this.searchInput.addEventListener('input', (e) => {
-        this.searchTerm = e.target.value.toLowerCase();
-        this.renderLogs();
-      });
-    }
-
-    // エクスポート機能
-    if (this.exportBtn) {
-      this.exportBtn.addEventListener('click', () => {
-        this.exportLogs();
-      });
-    }
-
-    // エラーハイライト切り替え
-    if (this.toggleErrorBtn) {
-      this.toggleErrorBtn.addEventListener('click', () => {
-        this.toggleErrorHighlight();
-      });
-    }
   }
   
-  createMissingElements() {
-    // 検索ボックスが存在しない場合は作成
-    if (!this.searchInput) {
-      const searchContainer = document.createElement('div');
-      searchContainer.className = 'log-search-container';
-      searchContainer.innerHTML = `
-        <input type="text" id="log-search-input" placeholder="ログを検索..." class="log-search-input">
-        <button id="btn-export-logs" class="btn btn-secondary">エクスポート</button>
-        <button id="btn-toggle-errors" class="btn btn-warning">エラー強調</button>
-      `;
-
-      // ログコンテナの前に挿入
-      if (this.container && this.container.parentNode) {
-        this.container.parentNode.insertBefore(searchContainer, this.container);
-        this.searchInput = document.getElementById('log-search-input');
-        this.exportBtn = document.getElementById('btn-export-logs');
-        this.toggleErrorBtn = document.getElementById('btn-toggle-errors');
-      }
-    }
-
-    // 統計表示エリアが存在しない場合は作成
-    if (!this.logStats) {
-      const statsContainer = document.createElement('div');
-      statsContainer.id = 'log-stats';
-      statsContainer.className = 'log-stats';
-      if (this.container && this.container.parentNode) {
-        this.container.parentNode.appendChild(statsContainer);
-        this.logStats = statsContainer;
-      }
-    }
-  }
-
   addLog(logEntry) {
-    // ログエントリーの正規化
-    const normalizedEntry = {
-      timestamp: logEntry.timestamp || Date.now(),
-      level: logEntry.level || 'info',
-      message: logEntry.message || '',
-      source: logEntry.source || 'Unknown',
-      category: logEntry.category || 'system',
-      ai: logEntry.ai || null,
-      ...logEntry
-    };
-
-    // エラーパターンの自動検出
-    if (this.isErrorLog(normalizedEntry.message)) {
-      normalizedEntry.level = 'error';
-      normalizedEntry.isAutoDetectedError = true;
+    this.logs.push(logEntry);
+    if (this.shouldShowLog(logEntry)) {
+      this.appendLogEntry(logEntry);
     }
-
-    this.logs.push(normalizedEntry);
-    if (this.shouldShowLog(normalizedEntry)) {
-      this.appendLogEntry(normalizedEntry);
-    }
-    this.updateStats();
   }
   
   shouldShowLog(log) {
-    // 検索フィルタリング
-    if (this.searchTerm && !this.matchesSearch(log)) {
-      return false;
-    }
-
-    // カテゴリーフィルタリング
     if (this.currentCategory === 'all') return true;
     if (this.currentCategory === 'error') return log.level === 'error';
     if (this.currentCategory === 'system') return log.category === 'system';
@@ -4194,120 +4064,7 @@ class EnhancedLogViewer {
     if (this.currentCategory === 'chatgpt') return log.ai === 'ChatGPT' || log.ai === 'chatgpt';
     if (this.currentCategory === 'claude') return log.ai === 'Claude' || log.ai === 'claude';
     if (this.currentCategory === 'gemini') return log.ai === 'Gemini' || log.ai === 'gemini';
-    if (this.currentCategory === 'step') return log.source && log.source.includes('step');
     return false;
-  }
-
-  matchesSearch(log) {
-    const searchableText = [
-      log.message,
-      log.source,
-      log.category,
-      log.ai
-    ].filter(Boolean).join(' ').toLowerCase();
-
-    return searchableText.includes(this.searchTerm);
-  }
-
-  isErrorLog(message) {
-    if (!message) return false;
-    return this.errorPatterns.some(pattern => pattern.test(message));
-  }
-
-  updateStats() {
-    if (!this.logStats) return;
-
-    const total = this.logs.length;
-    const errors = this.logs.filter(log => log.level === 'error').length;
-    const warnings = this.logs.filter(log => log.level === 'warn').length;
-    const filtered = this.logs.filter(log => this.shouldShowLog(log)).length;
-
-    this.logStats.innerHTML = `
-      <span class="stat-item">総ログ数: ${total}</span>
-      <span class="stat-item stat-error">エラー: ${errors}</span>
-      <span class="stat-item stat-warning">警告: ${warnings}</span>
-      <span class="stat-item">表示中: ${filtered}</span>
-    `;
-  }
-
-  exportLogs() {
-    const filteredLogs = this.logs.filter(log => this.shouldShowLog(log));
-    const exportData = {
-      timestamp: new Date().toISOString(),
-      category: this.currentCategory,
-      searchTerm: this.searchTerm,
-      totalLogs: this.logs.length,
-      exportedLogs: filteredLogs.length,
-      logs: filteredLogs.map(log => ({
-        timestamp: new Date(log.timestamp).toISOString(),
-        level: log.level,
-        message: log.message,
-        source: log.source,
-        category: log.category,
-        ai: log.ai
-      }))
-    };
-
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `autoai-logs-${this.currentCategory}-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }
-
-  toggleErrorHighlight() {
-    this.errorHighlightEnabled = !this.errorHighlightEnabled;
-    this.toggleErrorBtn.textContent = this.errorHighlightEnabled ? 'エラー強調 OFF' : 'エラー強調 ON';
-    this.renderLogs();
-  }
-
-  startStepLogsCollection() {
-    // Step ファイルからのログを収集するための機能
-    // console.log の出力を監視
-    const originalConsoleLog = console.log;
-    const originalConsoleError = console.error;
-    const originalConsoleWarn = console.warn;
-
-    console.log = (...args) => {
-      originalConsoleLog.apply(console, args);
-      this.captureConsoleLog('info', args);
-    };
-
-    console.error = (...args) => {
-      originalConsoleError.apply(console, args);
-      this.captureConsoleLog('error', args);
-    };
-
-    console.warn = (...args) => {
-      originalConsoleWarn.apply(console, args);
-      this.captureConsoleLog('warn', args);
-    };
-  }
-
-  captureConsoleLog(level, args) {
-    const message = args.join(' ');
-
-    // Step ファイルからのログかどうかを判定
-    const isStepLog = message.includes('[step') || message.includes('ステップ');
-
-    if (isStepLog) {
-      this.addLog({
-        timestamp: Date.now(),
-        level: level,
-        message: message,
-        source: this.extractStepSource(message),
-        category: 'step'
-      });
-    }
-  }
-
-  extractStepSource(message) {
-    const stepMatch = message.match(/\[([^[\]]+\.js)\]/);
-    return stepMatch ? stepMatch[1] : 'step-unknown';
   }
   
   renderLogs() {
