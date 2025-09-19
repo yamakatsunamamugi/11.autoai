@@ -38,6 +38,7 @@ import SheetsClient from '../spreadsheet/sheets-client.js';
 // SpreadsheetLogger削除済み - SheetsClientに統合
 import { ConsoleLogger } from '../../utils/console-logger.js';
 import { dropboxService } from '../../services/dropbox-service.js';
+import { PowerConfig } from '../../config/power-config.js';
 // RetryManager機能はStep 10に統合済み
 // Removed dependency on 1-ai-common-base.js
 
@@ -284,11 +285,11 @@ export default class StreamProcessorV2 {
     // Step 2-1: スリープ防止開始
     // ========================================
     this.log('スリープ防止を開始', 'info', '2-1');
+    let sleepProtectionEnabled = false;
     try {
-      if (globalThis.powerManager) {
-        await globalThis.powerManager.startProtection('stream-processor-dynamic');
-        this.log('PowerManager保護開始', 'success', '2-1');
-      }
+      await PowerConfig.preventSleep('Stream Processing Dynamic Tasks');
+      sleepProtectionEnabled = true;
+      this.log('スリープ防止機能有効化', 'success', '2-1');
     } catch (error) {
       this.log(`スリープ防止開始エラー: ${error.message}`, 'error', '2-1');
     }
@@ -370,15 +371,17 @@ export default class StreamProcessorV2 {
     } catch (error) {
       this.log(`グループ処理エラー: ${error.message}`, 'error', '2-5');
       totalFailed++;
+    } finally {
+      // ========================================
+      // Step 2-6: クリーンアップ・結果返却
+      // ========================================
+      this.log('クリーンアップと結果返却', 'info', '2-6');
+
+      // スリープ防止を確実に解除
+      if (sleepProtectionEnabled) {
+        await this.cleanupAndStopProtection('処理完了');
+      }
     }
-
-    // ========================================
-    // Step 2-6: クリーンアップ・結果返却
-    // ========================================
-    this.log('クリーンアップと結果返却', 'info', '2-6');
-
-    // ログバッファフラッシュ機能は削除
-    await this.cleanupAndStopProtection('処理完了');
 
     const totalTime = this.formatTime(Date.now() - startTime);
     const result = {
@@ -1911,10 +1914,8 @@ export default class StreamProcessorV2 {
    */
   async cleanupAndStopProtection(reason) {
     try {
-      if (globalThis.powerManager) {
-        await globalThis.powerManager.stopProtection('stream-processor-dynamic');
-        this.logger.log(`[StreamProcessorV2] 🔓 ${reason}: スリープ防止を解除`);
-      }
+      await PowerConfig.allowSleep();
+      this.logger.log(`[StreamProcessorV2] 🔓 ${reason}: スリープ防止を解除`);
     } catch (error) {
       this.logger.error('[StreamProcessorV2] スリープ防止解除エラー:', error);
     }

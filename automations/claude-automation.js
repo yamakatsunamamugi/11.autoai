@@ -150,11 +150,21 @@
         },
 
         async saveToFile() {
+            // Claudeレポート生成を無効化
             if (this.logs.length === 0) {
                 console.log('[LogFileManager] 保存するログがありません');
                 return;
             }
 
+            // ファイル保存処理を無効化 - コンソールログのみ出力
+            console.log('[LogFileManager] レポート生成は無効化されています');
+            console.log(`[LogFileManager] ログ件数: ${this.logs.length}`);
+
+            // ログをクリア
+            this.logs = [];
+            return null;
+
+            /* 以下、元のファイル保存処理（無効化）
             try {
                 const timestamp = new Date().toISOString()
                     .replace(/[:.]/g, '-')
@@ -191,6 +201,7 @@
                 console.error('[LogFileManager] ログ保存エラー:', error);
                 throw error;
             }
+            */
         },
 
         clearCurrentLogs() {

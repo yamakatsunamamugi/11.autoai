@@ -245,9 +245,10 @@ export class LogManager {
   }
 
   /**
-   * Step 11: Claudeログをファイルに保存
+   * Step 11: Claudeログをファイルに保存（無効化）
    */
   async saveClaudeLogs() {
+    // Claudeレポート生成を無効化
     try {
       // Step 11-1: Claudeのログのみフィルタ
       const claudeLogs = this.getLogs({ ai: 'claude' });
@@ -257,6 +258,16 @@ export class LogManager {
         return null;
       }
 
+      // ファイル保存処理を無効化 - コンソールログのみ出力
+      console.log('[Step 11] Claudeレポート生成は無効化されています');
+      console.log(`[Step 11] ログ件数: ${claudeLogs.length}`);
+
+      // メモリからログをクリア（オプション）
+      // this.logs = this.logs.filter(log => log.ai !== 'claude');
+
+      return null;
+
+      /* 以下、元のファイル保存処理（無効化）
       // Step 11-3: FileManagerにログを転送
       claudeLogs.forEach(log => {
         this.fileManager.addLog({
@@ -276,6 +287,7 @@ export class LogManager {
       // this.logs = this.logs.filter(log => log.ai !== 'claude');
 
       return filePath;
+      */
     } catch (error) {
       console.error('[Step 11-Error] Claudeログ保存エラー:', error);
       throw error;
