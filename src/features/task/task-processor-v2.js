@@ -26,7 +26,7 @@
  */
 
 import ExecutorFactory from './executors/executor-factory.js';
-import StreamProcessor from './stream-processor.js';
+import StreamProcessorV2 from './stream-processor-v2.js';
 import logger from '../../utils/logger.js';
 
 /**
@@ -36,7 +36,7 @@ import logger from '../../utils/logger.js';
 class TaskProcessorV2 {
   constructor(dependencies = {}) {
     this.logger = dependencies.logger || logger;
-    this.fallbackProcessor = new StreamProcessor(dependencies);
+    this.fallbackProcessor = new StreamProcessorV2(dependencies);
     this.isEnabled = true; // 新システムの有効/無効フラグ
     
     this.logger.info('TaskProcessorV2', '統合タスクプロセッサV2 初期化完了', {

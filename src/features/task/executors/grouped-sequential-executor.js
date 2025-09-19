@@ -17,7 +17,7 @@
 
 import ColumnTaskManager from '../column-task-manager.js';
 import logger from '../../../utils/logger.js';
-import StreamProcessor from '../stream-processor.js';
+import StreamProcessorV2 from '../stream-processor-v2.js';
 import { TaskList } from '../models.js';
 
 /**
@@ -40,7 +40,7 @@ class GroupedSequentialExecutor {
     this.currentTaskRows = [];          // 現在のタスクの行データ
     
     // 従来システムとの統合
-    this.streamProcessor = new StreamProcessor();
+    this.streamProcessor = new StreamProcessorV2();
     this.currentSpreadsheetData = null; // 現在のスプレッドシートデータを保持
     
     this.logger.info('GroupedSequentialExecutor', '列ごと順次実行システム初期化完了（従来システム統合版）');
