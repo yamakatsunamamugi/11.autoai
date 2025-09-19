@@ -7204,24 +7204,52 @@ class SimpleConsoleLogViewer {
     // 自身のログは除外
     if (message.includes('[ConsoleLogViewer]')) return;
 
-    // ソース情報を推定
+    // ソース情報とカテゴリを推定
     let source = 'Console';
+    let category = 'general';
+    let step = null;
+    let phase = null;
+
     if (message.includes('[step')) {
       const stepMatch = message.match(/\[([^[\]]+\.js)\]/);
       source = stepMatch ? stepMatch[1] : 'step-unknown';
+      category = 'step';
+
+      // ステップ番号を抽出
+      const stepNumMatch = source.match(/step(\d+)/);
+      step = stepNumMatch ? parseInt(stepNumMatch[1]) : null;
+
+      // フェーズを判定
+      if (message.includes('開始')) phase = 'start';
+      else if (message.includes('完了')) phase = 'complete';
+      else if (message.includes('エラー')) phase = 'error';
+      else if (message.includes('✅')) phase = 'success';
+      else if (message.includes('❌')) phase = 'error';
     } else if (message.includes('[UI]')) {
       source = 'UI';
+      category = 'ui';
     } else if (message.includes('[Background]')) {
       source = 'Background';
+      category = 'background';
     } else if (message.includes('[WindowService]')) {
       source = 'WindowService';
+      category = 'service';
+    } else if (message.includes('[STEP-ONLY]')) {
+      source = 'STEP-ONLY';
+      category = 'step-control';
+    } else if (message.includes('[セレクタテスト]')) {
+      source = 'セレクタテスト';
+      category = 'selector';
     }
 
     const logEntry = {
       timestamp: Date.now(),
       level: level,
       message: message,
-      source: source
+      source: source,
+      category: category,
+      step: step,
+      phase: phase
     };
 
     this.logs.push(logEntry);
