@@ -127,7 +127,8 @@
                     sessionStart: this.sessionStartTime
                 };
 
-                const fileName = `11autoai-logs/claude/errors/error-${timestamp}.json`;
+                // エラーレポート生成を無効化
+                /* const fileName = `11autoai-logs/claude/errors/error-${timestamp}.json`;
 
                 // バックグラウンドスクリプトにメッセージを送信
                 if (typeof chrome !== 'undefined' && chrome.runtime) {
@@ -139,7 +140,7 @@
                         }
                     });
                 }
-                console.log(`❌ [エラー保存] ${fileName}`);
+                console.log(`❌ [エラー保存] ${fileName}`); */
             } catch (saveError) {
                 console.error('[エラー保存失敗]', saveError);
             }
