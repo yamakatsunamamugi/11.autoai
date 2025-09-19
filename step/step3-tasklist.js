@@ -140,6 +140,17 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
     const rowData = spreadsheetData[row - 1]; // 0ベースインデックス
     if (!rowData) continue;
 
+    // 🆕 行制御チェック（最初にチェックして不要な処理を避ける）
+    if (options.applyRowControl && options.rowControls && options.rowControls.length > 0) {
+      if (!shouldProcessRow(row, options.rowControls)) {
+        console.log(`[TaskList] [Step3-2] ${row}行目: 行制御によりスキップ`, {
+          行: row,
+          制御: options.rowControls.map(c => `${c.type}:${c.row}行目`)
+        });
+        continue;
+      }
+    }
+
     // プロンプトの取得と結合
     let prompts = [];
     for (const col of promptColumns) {
@@ -233,6 +244,23 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
   }
 
   console.log(`[TaskList] [Step3-2] 有効タスク数: ${validTasks.length}件`);
+
+  // 行制御・列制御の統計ログ
+  if (options.applyRowControl && options.rowControls && options.rowControls.length > 0) {
+    console.log('📊 [TaskList] [Step3-統計] 行制御が適用されました:', {
+      制御種類: options.rowControls.map(c => `${c.type}制御(${c.row}行目)`),
+      対象範囲: `${dataStartRow}〜${lastPromptRow}行`,
+      生成タスク数: validTasks.length
+    });
+  }
+
+  if (options.applyColumnControl && options.columnControls && options.columnControls.length > 0) {
+    console.log('📊 [TaskList] [Step3-統計] 列制御が適用されました:', {
+      制御種類: options.columnControls.map(c => `${c.type}制御(${c.column}列)`),
+      タスクグループ列: taskGroup.columns.prompts,
+      生成タスク数: validTasks.length
+    });
+  }
 
   // 3-3: 3タスクずつのバッチ作成
   const batchSize = options.batchSize || 3;
