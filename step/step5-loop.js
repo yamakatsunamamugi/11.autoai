@@ -85,9 +85,12 @@ async function checkCompletionStatus(taskGroup) {
     let promptCount = 0;
     let promptDetails = [];
     if (promptValues && promptValues.values) {
+      console.log(`[step5-loop.js] [Step 5-1-1] プロンプトデータ取得成功: ${promptValues.values.length}行`);
       for (let rowIndex = 0; rowIndex < promptValues.values.length; rowIndex++) {
         const row = promptValues.values[rowIndex];
-        for (let colIndex = 0; colIndex < row.length; colIndex++) {
+        if (!row) continue;
+
+        for (let colIndex = 0; colIndex < row.length && colIndex < taskGroup.columns.prompts.length; colIndex++) {
           const cell = row[colIndex];
           if (cell && cell.trim()) {
             promptCount++;
@@ -100,14 +103,20 @@ async function checkCompletionStatus(taskGroup) {
         }
       }
     } else {
-      console.warn('[step5-loop.js] [Step 5-1-1] 警告: プロンプトデータが空です', {
+      console.error('[step5-loop.js] [Step 5-1-1] ❌ プロンプトデータが取得できませんでした', {
         promptValues: promptValues,
-        範囲: promptRange
+        範囲: promptRange,
+        タスクグループ: {
+          番号: taskGroup.groupNumber,
+          prompts列: taskGroup.columns.prompts
+        }
       });
     }
     console.log(`[step5-loop.js] [Step 5-1-1] プロンプト数: ${promptCount}件`, {
       詳細: promptDetails.slice(0, 3), // 最初の3件のみ表示
-      全件数: promptDetails.length
+      全件数: promptDetails.length,
+      検索範囲: promptRange,
+      prompts列設定: taskGroup.columns.prompts
     });
 
     // ========================================
@@ -459,8 +468,45 @@ async function readSpreadsheet(range) {
   }
 }
 
+/**
+ * スプレッドシート全体のデータを取得（Step3が期待する2次元配列形式）
+ * @returns {Promise<Array>} スプレッドシートの2次元配列データ
+ */
+async function readFullSpreadsheet() {
+  console.log('[Helper] スプレッドシート全体データ取得開始');
+
+  try {
+    if (!window.globalState || !window.globalState.spreadsheetId) {
+      throw new Error('スプレッドシートIDが見つかりません');
+    }
+
+    // 全体範囲を取得（A1:ZZ1000の範囲で十分なデータを取得）
+    const fullRange = 'A1:ZZ1000';
+    const data = await readSpreadsheet(fullRange);
+
+    if (!data || !data.values) {
+      console.warn('[Helper] スプレッドシートデータが空です');
+      return [];
+    }
+
+    console.log(`[Helper] スプレッドシート全体データ取得完了: ${data.values.length}行`);
+    console.log('[Helper] データサンプル（最初の3行）:', data.values.slice(0, 3));
+
+    return data.values;
+
+  } catch (error) {
+    console.error('[Helper] スプレッドシート全体データ取得エラー:', error);
+    throw error;
+  }
+}
+
 async function createTaskList(taskGroup) {
-  console.log('[Helper] タスクリスト作成開始:', taskGroup);
+  console.log('[Helper] タスクリスト作成開始:', {
+    グループ番号: taskGroup?.groupNumber,
+    タスクタイプ: taskGroup?.taskType,
+    パターン: taskGroup?.pattern,
+    列情報: taskGroup?.columns
+  });
 
   try {
     // step3-tasklist.jsのgenerateTaskList関数を利用
@@ -468,11 +514,14 @@ async function createTaskList(taskGroup) {
       throw new Error('Step3TaskList.generateTaskListが利用できません');
     }
 
-    // globalStateから必要なデータを取得
-    const spreadsheetData = {
-      id: window.globalState.spreadsheetId,
-      gid: window.globalState.gid
-    };
+    // 重要：Step3が期待する実際のスプレッドシートデータ（2次元配列）を取得
+    console.log('[Helper] スプレッドシート全体データを取得中...');
+    const spreadsheetData = await readFullSpreadsheet();
+
+    if (!spreadsheetData || spreadsheetData.length === 0) {
+      console.warn('[Helper] スプレッドシートデータが空のため、タスク生成をスキップ');
+      return [];
+    }
 
     const specialRows = {
       menuRow: window.globalState.setupResult?.menuRow || 3,
@@ -485,29 +534,55 @@ async function createTaskList(taskGroup) {
 
     const options = {
       batchSize: 3,
-      skipCompleted: true
+      forceReprocess: false,
+      spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${window.globalState.spreadsheetId}/edit#gid=${window.globalState.gid}`
     };
+
+    console.log('[Helper] Step3に渡すパラメータ:', {
+      'taskGroup.columns': taskGroup?.columns,
+      'spreadsheetData.length': spreadsheetData.length,
+      'specialRows': specialRows,
+      'dataStartRow': dataStartRow,
+      'options': options
+    });
 
     // タスクリスト生成を実行
     const tasks = window.Step3TaskList.generateTaskList(
       taskGroup,
-      spreadsheetData,
+      spreadsheetData,  // 修正：実際の2次元配列データを渡す
       specialRows,
       dataStartRow,
       options
     );
 
     console.log(`[Helper] タスクリスト作成完了: ${tasks.length}件のタスク`);
+    if (tasks.length > 0) {
+      console.log('[Helper] 生成されたタスクサンプル:', tasks.slice(0, 2));
+    } else {
+      console.warn('[Helper] ⚠️ 0件のタスクが生成されました。以下を確認してください:');
+      console.warn('  - taskGroup.columns.prompts:', taskGroup?.columns?.prompts);
+      console.warn('  - プロンプトデータの存在確認が必要');
+    }
+
     return tasks;
 
   } catch (error) {
-    console.error('[Helper] タスクリスト作成エラー:', error);
+    console.error('[Helper] タスクリスト作成エラー:', {
+      エラーメッセージ: error.message,
+      スタック: error.stack,
+      taskGroup: taskGroup,
+      'window.Step3TaskList': !!window.Step3TaskList
+    });
     throw error;
   }
 }
 
 async function executeTasks(tasks, taskGroup) {
-  console.log(`[Helper] タスク実行開始: ${tasks.length}件`, taskGroup);
+  console.log(`[Helper] タスク実行開始: ${tasks.length}件`, {
+    グループ番号: taskGroup?.groupNumber,
+    タスクタイプ: taskGroup?.taskType,
+    パターン: taskGroup?.pattern
+  });
 
   try {
     // step4-execute.jsのexecuteStep4関数を利用
@@ -515,30 +590,83 @@ async function executeTasks(tasks, taskGroup) {
       throw new Error('executeStep4関数が利用できません');
     }
 
-    // タスクリストを適切な形式に変換
-    const formattedTasks = tasks.map(task => ({
-      id: task.id || `task-${task.row}-${taskGroup.groupNumber}`,
-      row: task.row,
-      aiType: taskGroup.aiType || 'Claude',
-      prompt: task.prompt || task.text,
-      spreadsheetData: {
-        id: window.globalState.spreadsheetId,
-        gid: window.globalState.gid
-      },
-      columns: taskGroup.columns,
-      taskGroup: taskGroup
-    }));
+    if (!tasks || tasks.length === 0) {
+      console.warn('[Helper] 実行するタスクがありません');
+      return [];
+    }
 
-    console.log(`[Helper] フォーマット済みタスク:`, formattedTasks.length + '件');
+    // タスクリストを適切な形式に変換（Step4が期待する形式に統一）
+    const formattedTasks = tasks.map((task, index) => {
+      // Step3で生成されたタスクの情報を使用
+      const aiType = task.ai || taskGroup?.aiType || 'Claude';
+
+      const formattedTask = {
+        id: task.taskId || task.id || `task-${task.row}-${taskGroup.groupNumber}-${index}`,
+        row: task.row,
+        aiType: aiType,
+        prompt: task.prompt || task.text || '',
+        spreadsheetData: {
+          id: window.globalState.spreadsheetId,
+          gid: window.globalState.gid,
+          spreadsheetId: task.spreadsheetId || window.globalState.spreadsheetId,  // Step3からの情報
+          answerCell: task.answerCell,  // Step3で計算された回答セル
+          logCell: task.logCell        // Step3で計算されたログセル
+        },
+        columns: taskGroup.columns,
+        taskGroup: taskGroup,
+        // Step3からの詳細情報を保持
+        model: task.model || '',
+        function: task.function || '',
+        groupNumber: task.groupNumber,
+        groupType: task.groupType
+      };
+
+      console.log(`[Helper] タスク${index + 1}フォーマット完了:`, {
+        taskId: formattedTask.id,
+        row: formattedTask.row,
+        aiType: formattedTask.aiType,
+        プロンプト長: formattedTask.prompt.length,
+        answerCell: formattedTask.spreadsheetData.answerCell,
+        logCell: formattedTask.spreadsheetData.logCell
+      });
+
+      return formattedTask;
+    });
+
+    console.log(`[Helper] フォーマット済みタスク: ${formattedTasks.length}件`);
+    console.log('[Helper] 最初のタスク詳細:', formattedTasks[0]);
+
+    // Step4バリデーション
+    for (const task of formattedTasks) {
+      if (!task.aiType) {
+        throw new Error(`タスク${task.id}: aiTypeが未定義`);
+      }
+      if (!task.prompt) {
+        throw new Error(`タスク${task.id}: promptが未定義`);
+      }
+      if (!task.spreadsheetData.answerCell) {
+        console.warn(`タスク${task.id}: answerCellが未定義`);
+      }
+    }
 
     // Step4を実行
+    console.log('[Helper] Step4実行中...');
     const results = await window.executeStep4(formattedTasks);
 
-    console.log(`[Helper] タスク実行完了: ${results.length}件の結果`);
-    return results;
+    console.log(`[Helper] タスク実行完了: ${results?.length || 0}件の結果`);
+    return results || [];
 
   } catch (error) {
-    console.error('[Helper] タスク実行エラー:', error);
+    console.error('[Helper] タスク実行エラー:', {
+      エラーメッセージ: error.message,
+      スタック: error.stack,
+      タスク数: tasks?.length,
+      グループ情報: {
+        番号: taskGroup?.groupNumber,
+        タイプ: taskGroup?.taskType
+      },
+      'window.executeStep4存在': !!window.executeStep4
+    });
     throw error;
   }
 }
@@ -548,6 +676,7 @@ if (typeof window !== 'undefined') {
   window.executeStep5 = executeStep5;
   window.checkCompletionStatus = checkCompletionStatus;
   window.processIncompleteTasks = processIncompleteTasks;
+  window.readFullSpreadsheet = readFullSpreadsheet;  // 新しい関数も追加
 }
 
 // エクスポート
@@ -556,6 +685,7 @@ if (typeof module !== 'undefined' && module.exports) {
     executeStep5,
     checkCompletionStatus,
     processIncompleteTasks,
+    readFullSpreadsheet,
     globalState: window.globalState
   };
 }
