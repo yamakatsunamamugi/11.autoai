@@ -1151,7 +1151,7 @@
          * AIウィンドウを作成
          */
         static createAIWindow(url, options = {}) {
-            return new Promise(async (resolve, reject) => {
+            return new Promise((resolve, reject) => {
                 try {
                     const startTime = performance.now();
                     console.log('[WindowService] AIウィンドウ作成開始:', url);
@@ -1187,7 +1187,7 @@
          * スクリーン情報を取得
          */
         static getScreenInfo() {
-            return new Promise(async (resolve, reject) => {
+            return new Promise((resolve, reject) => {
                 try {
                     const displays = await chrome.system.display.getInfo();
                     const primaryDisplay = displays.find(d => d.isPrimary) || displays[0];
@@ -1307,7 +1307,7 @@
          * ウィンドウを削除
          */
         static closeWindow(windowId, onClosed = null, reason = '不明', source = '不明') {
-            return new Promise(async (resolve, reject) => {
+            return new Promise((resolve, reject) => {
                 try {
             const startTime = Date.now();
             const windowInfo = this.activeWindows.get(windowId);
