@@ -284,12 +284,13 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
  */
 function getRowControl(data) {
   const controls = [];
+  console.log('[TaskList] [Step3-行制御] B列から行制御を検索中...');
 
   for (let row = 0; row < data.length; row++) {
     const rowData = data[row];
-    if (!rowData || !rowData[0]) continue;
+    if (!rowData || !rowData[1]) continue;
 
-    const cellValue = String(rowData[0]).trim();
+    const cellValue = String(rowData[1] || '').trim();
     if (cellValue.includes('この行から処理')) {
       controls.push({
         type: 'start',
