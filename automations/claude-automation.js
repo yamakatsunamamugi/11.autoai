@@ -2020,18 +2020,9 @@
                                 stopButtonGone = true;
                                 console.log(`✓ 応答生成完了（${waitCount}秒後）`);
 
-                                // ウィンドウ状態確認
-                                try {
-                                    const currentWindow = await chrome.windows.getCurrent();
-                                    console.log('🔍 [Claude] ウィンドウ状態確認:', {
-                                        windowId: currentWindow.id,
-                                        state: currentWindow.state,
-                                        focused: currentWindow.focused,
-                                        timestamp: new Date().toISOString()
-                                    });
-                                } catch (windowError) {
-                                    console.error('⚠️ [Claude] ウィンドウ状態確認エラー:', windowError);
-                                }
+                                // ウィンドウ状態確認（Content Scriptでは利用不可）
+                                // chrome.windows APIはContent Script環境では利用できないためコメントアウト
+                                // console.log('🔍 [Claude] ウィンドウ状態確認はスキップ（Content Script制限）');
 
                                 // 停止ボタン消滅後の3秒待機
                                 console.log('⏳ 停止ボタン消滅後の3秒待機中...');
@@ -2059,28 +2050,9 @@
             // 応答完了後の追加待機とウィンドウ状態確認
             await wait(3000);
 
-            // ウィンドウ存在確認
-            try {
-                const currentWindow = await chrome.windows.getCurrent();
-                console.log('✅ [Claude] 応答待機完了後のウィンドウ状態:', {
-                    windowId: currentWindow.id,
-                    state: currentWindow.state,
-                    focused: currentWindow.focused,
-                    tabs: currentWindow.tabs ? currentWindow.tabs.length : 'N/A',
-                    timestamp: new Date().toISOString()
-                });
-            } catch (windowError) {
-                console.error('🚨 [Claude] 応答待機完了後のウィンドウエラー:', {
-                    error: windowError.message,
-                    timestamp: new Date().toISOString(),
-                    possibleCause: 'ウィンドウが予期せず閉鎖された可能性'
-                });
-
-                // ウィンドウが閉鎖された場合の処理を考慮
-                if (windowError.message.includes('No current window')) {
-                    throw new Error('Claude処理中にウィンドウが閉鎖されました');
-                }
-            }
+            // ウィンドウ存在確認（Content Scriptでは利用不可）
+            // chrome.windows APIはContent Script環境では利用できないためコメントアウト
+            // console.log('🔍 [Claude] ウィンドウ状態確認はスキップ（Content Script制限）');
 
             // ========================================
             // ステップ6-4-1: Canvasプレビューボタンチェック
@@ -2094,17 +2066,8 @@
             if (previewButton) {
                 console.log('✓ Canvasプレビューボタンを発見、クリック中...');
 
-                // クリック前のウィンドウ状態確認
-                try {
-                    const currentWindow = await chrome.windows.getCurrent();
-                    console.log('🔍 [Claude] プレビューボタンクリック前のウィンドウ状態:', {
-                        windowId: currentWindow.id,
-                        state: currentWindow.state,
-                        timestamp: new Date().toISOString()
-                    });
-                } catch (windowError) {
-                    console.error('⚠️ [Claude] プレビューボタンクリック前のウィンドウエラー:', windowError);
-                }
+                // クリック前のウィンドウ状態確認（Content Scriptでは利用不可）
+                // chrome.windows APIはContent Script環境では利用できないためコメントアウト
 
                 previewButton.click();
 
@@ -2112,21 +2075,8 @@
                 console.log('⏳ Canvas表示を3秒間待機中...');
                 await wait(3000);
 
-                // クリック後のウィンドウ状態確認
-                try {
-                    const currentWindow = await chrome.windows.getCurrent();
-                    console.log('🔍 [Claude] プレビューボタンクリック後のウィンドウ状態:', {
-                        windowId: currentWindow.id,
-                        state: currentWindow.state,
-                        timestamp: new Date().toISOString()
-                    });
-                } catch (windowError) {
-                    console.error('🚨 [Claude] プレビューボタンクリック後のウィンドウエラー:', {
-                        error: windowError.message,
-                        timestamp: new Date().toISOString(),
-                        action: 'Canvasプレビューボタンクリック後'
-                    });
-                }
+                // クリック後のウィンドウ状態確認（Content Scriptでは利用不可）
+                // chrome.windows APIはContent Script環境では利用できないためコメントアウト
 
                 // Canvas内容の確認
                 const canvasContent = await findClaudeElement(deepResearchSelectors['4_Canvas機能テキスト位置'], 2, true);
@@ -2262,27 +2212,8 @@
             console.log('─'.repeat(40));
             console.log('🎯 取得対象: Canvas機能、通常応答テキスト');
 
-            // テキスト取得前のウィンドウ状態確認
-            try {
-                const currentWindow = await chrome.windows.getCurrent();
-                console.log('🔍 [Claude] テキスト取得前のウィンドウ状態:', {
-                    windowId: currentWindow.id,
-                    state: currentWindow.state,
-                    focused: currentWindow.focused,
-                    timestamp: new Date().toISOString()
-                });
-            } catch (windowError) {
-                console.error('🚨 [Claude] テキスト取得前のウィンドウエラー:', {
-                    error: windowError.message,
-                    timestamp: new Date().toISOString(),
-                    phase: 'テキスト取得前'
-                });
-
-                // ウィンドウが閉鎖された場合の処理
-                if (windowError.message.includes('No current window')) {
-                    throw new Error('Claudeテキスト取得中にウィンドウが閉鎖されました');
-                }
-            }
+            // テキスト取得前のウィンドウ状態確認（Content Scriptでは利用不可）
+            // chrome.windows APIはContent Script環境では利用できないためコメントアウト
 
             // Canvas処理後の最終テキスト取得（応答完了後に再取得）
             console.log(`🔍 最終テキスト取得開始 - 現在のfinalText: ${finalText ? finalText.length + '文字' : 'なし'}`);
