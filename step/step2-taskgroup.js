@@ -911,6 +911,12 @@ async function executeStep2TaskGroups() {
     console.log('🗂️ タスクグループ統合ログ');
     console.log('========================================');
     console.log('📋 検出されたすべてのタスクグループ詳細:');
+
+    // デバッグ情報を追加
+    console.log('[DEBUG] globalState.allTaskGroups:', window.globalState.allTaskGroups);
+    console.log('[DEBUG] globalState.taskGroups:', window.globalState.taskGroups);
+    console.log('[DEBUG] allTaskGroups length:', (window.globalState.allTaskGroups || []).length);
+    console.log('[DEBUG] taskGroups length:', (window.globalState.taskGroups || []).length);
     console.log(JSON.stringify({
       summary: {
         totalGroups: window.globalState.allTaskGroups?.length || 0,
@@ -929,7 +935,7 @@ async function executeStep2TaskGroups() {
         dataStartRow: group.dataStartRow,
         skip: group.skip || false
       })),
-      allTaskGroups: taskGroups.map(group => ({
+      allTaskGroups: (window.globalState.allTaskGroups || []).map(group => ({
         groupNumber: group.groupNumber,
         type: group.type,
         aiType: group.aiType,
