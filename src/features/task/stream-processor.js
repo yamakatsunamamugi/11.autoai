@@ -4289,30 +4289,26 @@ ${formattedGemini}`;
    * @param {string} column - 列名
    */
   async waitForColumnCompletion(column) {
-    const maxWaitTime = 300000; // 5分
     const checkInterval = 1000; // 1秒ごとにチェック
-    const startTime = Date.now();
-    
-    while (Date.now() - startTime < maxWaitTime) {
+
+    while (true) {
       // 全バッチが完了しているかチェック
       let allBatchesComplete = true;
-      
+
       for (const [batchId, batchInfo] of this.normalBatchTracker) {
         if (batchInfo.column === column) {
           allBatchesComplete = false;
           break;
         }
       }
-      
+
       if (allBatchesComplete) {
         // this.logger.log(`[StreamProcessor] ${column}列の全バッチが完了しました`);
         return;
       }
-      
+
       await new Promise(resolve => setTimeout(resolve, checkInterval));
     }
-    
-    this.logger.warn(`[StreamProcessor] ${column}列の完了待機がタイムアウトしました`);
   }
   
   /**
