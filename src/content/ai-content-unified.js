@@ -11,30 +11,186 @@
 // UI_SELECTORSの読み込み状態を管理
 let UI_SELECTORS_LOADED = false;
 let UI_SELECTORS_PROMISE = null;
-let retryManager = null; // RetryManagerインスタンス
+// Claude Automation スタイルのリトライ機能（新規ウィンドウ使用、10回リトライ対応）
+async function executeWithRetry(taskConfig, options = {}) {
+  const {
+    onRetry = null,
+    onError = null,
+    onSuccess = null,
+    maxRetries = 10,  // Claude Automationに合わせて10回
+    customDelays = [   // Claude Automationの段階的遅延時間
+      5000,    // 5秒
+      10000,   // 10秒
+      60000,   // 1分
+      300000,  // 5分
+      600000,  // 10分
+      900000,  // 15分
+      1800000, // 30分
+      3600000, // 1時間
+      7200000, // 2時間
+      7200000  // 2時間
+    ]
+  } = options;
 
-// RetryManagerの初期化（同期的）
-function initializeRetryManager() {
-  if (retryManager) return retryManager;
-  
-  // RetryManagerは既にmanifest.jsonのcontent_scriptsで読み込み済み
-  if (typeof window.RetryManager === 'function') {
-    retryManager = new window.RetryManager({
-      maxRetries: 3,
-      retryDelay: 5000,
-      debugMode: true
-    });
-    
-    // executeTask関数を上書き
-    retryManager.executeTask = async (taskConfig) => {
-      return await executeTaskInternal(taskConfig);
-    };
-    
-    return retryManager;
-  } else {
-    console.error('❌ [11.autoai] RetryManagerクラスが見つかりません');
-    return null;
+  const { taskId, prompt, aiType, enableDeepResearch, specialMode, timeout } = taskConfig;
+  let retryCount = 0;
+
+  while (retryCount <= maxRetries) {
+    try {
+      const attemptNumber = retryCount + 1;
+      console.log(`[11.autoai] 実行試行 ${attemptNumber}/${maxRetries + 1}`);
+
+      // 実際のタスク実行
+      const result = await executeTaskInternal(taskConfig);
+
+      if (result.success) {
+        console.log(`[11.autoai] タスク成功: ${taskId}`);
+        if (onSuccess) await onSuccess(result);
+        return {
+          ...result,
+          retryCount,
+          taskId
+        };
+      }
+
+      // エラー判定とリトライ判断
+      if (result.error === 'TIMEOUT_NO_RESPONSE' ||
+          result.error === 'SPREADSHEET_WRITE_FAILED' ||
+          result.error === 'WRITE_VERIFICATION_FAILED' ||
+          result.needsRetry ||
+          (result.writeResult && !result.writeResult.verified)) {
+
+        let errorType = result.error || 'UNKNOWN_ERROR';
+        let errorMessage = result.errorMessage || 'エラーが発生しました';
+
+        console.log(`[11.autoai] エラー検出: ${errorType} - ${errorMessage}`);
+
+        if (retryCount < maxRetries) {
+          retryCount++;
+
+          // リトライコールバック実行
+          if (onRetry) {
+            await onRetry({
+              retryCount,
+              maxRetries,
+              error: errorType,
+              errorMessage,
+              taskId,
+              isWriteVerificationFailure: errorType === 'WRITE_VERIFICATION_FAILED'
+            });
+          }
+
+          // Claude Automationスタイル: 新規ウィンドウでリトライ
+          console.log(`[11.autoai] 新規ウィンドウでリトライします... (${retryCount}/${maxRetries})`);
+          const retryResult = await requestNewWindowRetry({
+            taskId,
+            prompt,
+            aiType: aiType || AI_TYPE,
+            enableDeepResearch,
+            specialMode,
+            error: errorType,
+            errorMessage,
+            retryReason: `${errorType}_RETRY_${retryCount}`,
+            closeCurrentWindow: true
+          });
+
+          if (retryResult && retryResult.success) {
+            console.log(`[11.autoai] ✅ 新規ウィンドウでのリトライ成功`);
+            return retryResult;
+          }
+
+          // Claude Automationスタイル: 段階的遅延時間で待機
+          const delayIndex = Math.min(retryCount - 1, customDelays.length - 1);
+          const delay = customDelays[delayIndex];
+          const delayMinutes = Math.round(delay / 60000 * 10) / 10;
+          console.log(`[11.autoai] ⏳ ${delayMinutes}分後に次のリトライを実行します...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+      }
+
+      // リトライ不要なエラーまたはリトライ回数超過
+      console.log(`[11.autoai] タスク失敗: ${result.errorMessage}`);
+      if (onError) await onError(result);
+      return {
+        ...result,
+        retryCount,
+        taskId,
+        finalError: true
+      };
+
+    } catch (error) {
+      console.log(`[11.autoai] 予期しないエラー: ${error.message}`);
+
+      if (retryCount < maxRetries) {
+        retryCount++;
+        // 予期しないエラーでも新規ウィンドウリトライを試行
+        const retryResult = await requestNewWindowRetry({
+          taskId,
+          prompt,
+          aiType: aiType || AI_TYPE,
+          enableDeepResearch,
+          specialMode,
+          error: 'UNEXPECTED_ERROR',
+          errorMessage: error.message,
+          retryReason: `UNEXPECTED_ERROR_RETRY_${retryCount}`,
+          closeCurrentWindow: true
+        });
+
+        if (retryResult && retryResult.success) {
+          return retryResult;
+        }
+
+        // 予期しないエラーでも段階的遅延を適用
+        const delayIndex = Math.min(retryCount - 1, customDelays.length - 1);
+        const delay = customDelays[delayIndex];
+        const delayMinutes = Math.round(delay / 60000 * 10) / 10;
+        console.log(`[11.autoai] ⏳ 予期しないエラー後 ${delayMinutes}分待機...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+
+      if (onError) await onError({ error: error.message });
+      return {
+        success: false,
+        error: 'UNEXPECTED_ERROR',
+        errorMessage: error.message,
+        retryCount,
+        taskId,
+        finalError: true
+      };
+    }
   }
+
+  // すべてのリトライが失敗
+  return {
+    success: false,
+    error: 'MAX_RETRIES_EXCEEDED',
+    errorMessage: `最大リトライ回数（${maxRetries}回）を超過しました`,
+    retryCount,
+    taskId,
+    finalError: true
+  };
+}
+
+// 新規ウィンドウでのリトライを要求（Claude Automationスタイル）
+async function requestNewWindowRetry(config) {
+  console.log('[11.autoai] 新規ウィンドウでリトライを要求', config);
+
+  return new Promise((resolve) => {
+    chrome.runtime.sendMessage({
+      type: 'RETRY_WITH_NEW_WINDOW',
+      ...config
+    }, (response) => {
+      if (response && response.success) {
+        console.log('[11.autoai] 新規ウィンドウでのリトライ成功');
+        resolve(response);
+      } else {
+        console.log('[11.autoai] 新規ウィンドウでのリトライ失敗');
+        resolve(null);
+      }
+    });
+  });
 }
 
 // 内部タスク実行関数
@@ -1772,9 +1928,9 @@ async function handleGetResponse(request, sendResponse) {
       useRetry: useRetry
     });
 
-    // リトライマネージャーを使用する場合
-    if (useRetry && retryManager) {
-      const result = await retryManager.executeWithRetry({
+    // リトライ機能を使用する場合
+    if (useRetry) {
+      const result = await executeWithRetry({
         taskId,
         prompt: request.prompt || '',
         aiType: AI_TYPE,
@@ -2694,11 +2850,7 @@ async function initializeWithDefaults() {
 if (AI_TYPE) {
   console.log(`🚀 [11.autoai] ${AI_TYPE} サイトでContent Script初期化開始`);
 
-  // RetryManagerの初期化
-  const manager = initializeRetryManager();
-  if (manager) {
-    console.log('[11.autoai] RetryManager初期化完了');
-  }
+  // リトライ機能は各コードに直接実装済み
   
   // UI Selectors読み込みから開始
   loadUISelectors();

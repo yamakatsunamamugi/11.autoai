@@ -48,7 +48,7 @@ async function loadAutomationModules() {
  * 主要機能:
  * ============================================================================
  * 1. 4分割ウィンドウでのAI検出: ChatGPT、Claude、Geminiを同時表示
- * 2. 本番コード統合: WindowService、AITaskExecutor、RetryManagerを使用
+ * 2. 本番コード統合: WindowService、AITaskExecutorを使用（リトライ機能は各サービスで直接実装）
  * 3. 並列検出処理: 3つのAIを同時に検出して効率化
  * 4. データ永続化: chrome.storageへの結果保存
  * 5. 自動クリーンアップ: 検出完了後のウィンドウ自動クローズ

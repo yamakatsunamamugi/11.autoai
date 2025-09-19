@@ -110,8 +110,360 @@
         }
     };
 
-    // RetryManagerは使用しない（独自実装を使用）
-    const retryManager = null;
+    // ========================================
+    // Gemini-ステップ0-3: 統一GeminiRetryManager クラス定義
+    // エラー分類とリトライ戦略を統合した統一システム
+    // ========================================
+
+    class GeminiRetryManager {
+        constructor() {
+            // 3段階エスカレーション設定
+            this.escalationLevels = {
+                LIGHTWEIGHT: {
+                    range: [1, 5],
+                    delays: [1000, 2000, 5000, 10000, 15000], // 1秒→2秒→5秒→10秒→15秒
+                    method: 'SAME_WINDOW',
+                    description: '軽量リトライ - 同一ウィンドウ内での再試行'
+                },
+                MODERATE: {
+                    range: [6, 8],
+                    delays: [30000, 60000, 120000], // 30秒→1分→2分
+                    method: 'PAGE_REFRESH',
+                    description: '中程度リトライ - ページリフレッシュ'
+                },
+                HEAVY_RESET: {
+                    range: [9, 20],
+                    delays: [300000, 900000, 1800000, 3600000, 7200000], // 5分→15分→30分→1時間→2時間
+                    method: 'NEW_WINDOW',
+                    description: '重いリトライ - 新規ウィンドウ作成'
+                }
+            };
+
+            // Gemini特有のエラー分類
+            this.errorStrategies = {
+                AUTH_ERROR: { immediate_escalation: 'HEAVY_RESET', maxRetries: 5 },
+                API_LIMIT_ERROR: { immediate_escalation: 'HEAVY_RESET', maxRetries: 10 },
+                SESSION_EXPIRED_ERROR: { immediate_escalation: 'HEAVY_RESET', maxRetries: 5 },
+                GOOGLE_AUTH_ERROR: { immediate_escalation: 'HEAVY_RESET', maxRetries: 5 },
+                NETWORK_ERROR: { maxRetries: 8, escalation: 'MODERATE' },
+                DOM_ERROR: { maxRetries: 5, escalation: 'LIGHTWEIGHT' },
+                UI_TIMING_ERROR: { maxRetries: 10, escalation: 'LIGHTWEIGHT' },
+                GENERAL_ERROR: { maxRetries: 8, escalation: 'MODERATE' }
+            };
+
+            // エラー履歴管理（段階的エスカレーション用）
+            this.errorHistory = [];
+            this.consecutiveErrorCount = 0;
+            this.lastErrorType = null;
+            this.maxHistorySize = 50;
+
+            // 実行時統計
+            this.metrics = {
+                totalAttempts: 0,
+                successfulAttempts: 0,
+                errorCounts: {},
+                escalationCounts: { LIGHTWEIGHT: 0, MODERATE: 0, HEAVY_RESET: 0 },
+                averageRetryCount: 0
+            };
+
+            // リソース管理
+            this.activeTimeouts = new Set();
+            this.abortController = null;
+        }
+
+        // Gemini特有のエラー分類器
+        classifyError(error, context = {}) {
+            const errorMessage = error?.message || error?.toString() || '';
+            const errorName = error?.name || '';
+
+            // Gemini特有エラーの検出
+            if (errorMessage.includes('Google Auth') ||
+                errorMessage.includes('Authentication failed') ||
+                errorMessage.includes('認証に失敗') ||
+                errorMessage.includes('ログインして') ||
+                errorMessage.includes('Please sign in')) {
+                return 'GOOGLE_AUTH_ERROR';
+            }
+
+            if (errorMessage.includes('API limit') ||
+                errorMessage.includes('quota exceeded') ||
+                errorMessage.includes('制限を超えました') ||
+                errorMessage.includes('Rate limit')) {
+                return 'API_LIMIT_ERROR';
+            }
+
+            if (errorMessage.includes('session expired') ||
+                errorMessage.includes('セッションが期限切れ') ||
+                errorMessage.includes('Session invalid') ||
+                errorMessage.includes('セッション無効')) {
+                return 'SESSION_EXPIRED_ERROR';
+            }
+
+            if (errorMessage.includes('authentication') ||
+                errorMessage.includes('認証') ||
+                errorMessage.includes('Auth error')) {
+                return 'AUTH_ERROR';
+            }
+
+            // 共通エラー分類
+            if (errorMessage.includes('timeout') ||
+                errorMessage.includes('network') ||
+                errorMessage.includes('fetch') ||
+                errorName.includes('NetworkError')) {
+                return 'NETWORK_ERROR';
+            }
+
+            if (errorMessage.includes('要素が見つかりません') ||
+                errorMessage.includes('element not found') ||
+                errorMessage.includes('selector') ||
+                errorMessage.includes('querySelector')) {
+                return 'DOM_ERROR';
+            }
+
+            if (errorMessage.includes('click') ||
+                errorMessage.includes('input') ||
+                errorMessage.includes('button') ||
+                errorMessage.includes('まで待機')) {
+                return 'UI_TIMING_ERROR';
+            }
+
+            return 'GENERAL_ERROR';
+        }
+
+        // エスカレーションレベルの判定
+        determineEscalationLevel(retryCount, errorType) {
+            const strategy = this.errorStrategies[errorType] || this.errorStrategies.GENERAL_ERROR;
+
+            // 即座エスカレーション条件
+            if (strategy.immediate_escalation) {
+                return strategy.immediate_escalation;
+            }
+
+            // 連続同一エラー5回以上で即座にHEAVY_RESET
+            if (this.consecutiveErrorCount >= 5) {
+                return 'HEAVY_RESET';
+            }
+
+            // 通常のエスカレーション判定
+            for (const [level, config] of Object.entries(this.escalationLevels)) {
+                if (retryCount >= config.range[0] && retryCount <= config.range[1]) {
+                    return level;
+                }
+            }
+
+            return 'HEAVY_RESET'; // デフォルト
+        }
+
+        // 段階的エスカレーションリトライの実行
+        async executeWithEscalation(config) {
+            const {
+                action,
+                isSuccess = (result) => result && result.success !== false,
+                actionName = 'Gemini処理',
+                context = {},
+                taskData = {}
+            } = config;
+
+            let retryCount = 0;
+            let lastResult = null;
+            let lastError = null;
+
+            while (retryCount < 20) { // 最大20回
+                try {
+                    retryCount++;
+                    this.metrics.totalAttempts++;
+
+                    console.log(`🔄 [Gemini-Retry] ${actionName} 試行 ${retryCount}/20`);
+
+                    // アクション実行
+                    lastResult = await action();
+
+                    if (isSuccess(lastResult)) {
+                        this.metrics.successfulAttempts++;
+                        this.consecutiveErrorCount = 0; // エラーカウントリセット
+                        console.log(`✅ [Gemini-Retry] ${actionName} 成功（${retryCount}回目）`);
+                        return {
+                            success: true,
+                            result: lastResult,
+                            retryCount,
+                            escalationLevel: this.determineEscalationLevel(retryCount, 'SUCCESS')
+                        };
+                    }
+
+                } catch (error) {
+                    lastError = error;
+                    const errorType = this.classifyError(error, context);
+
+                    // エラー履歴管理
+                    this.addErrorToHistory(errorType, error.message);
+
+                    console.error(`❌ [Gemini-Retry] ${actionName} エラー (${retryCount}回目):`, {
+                        errorType,
+                        message: error.message,
+                        consecutiveErrors: this.consecutiveErrorCount
+                    });
+
+                    // 最大リトライ回数チェック
+                    const strategy = this.errorStrategies[errorType] || this.errorStrategies.GENERAL_ERROR;
+                    if (retryCount >= (strategy.maxRetries || 20)) {
+                        break;
+                    }
+
+                    // エスカレーションレベル判定
+                    const escalationLevel = this.determineEscalationLevel(retryCount, errorType);
+                    this.metrics.escalationCounts[escalationLevel]++;
+
+                    // エスカレーション実行
+                    const escalationResult = await this.executeEscalation(escalationLevel, {
+                        retryCount,
+                        errorType,
+                        taskData,
+                        context
+                    });
+
+                    if (escalationResult && escalationResult.success) {
+                        return escalationResult;
+                    }
+
+                    // 待機戦略実行
+                    await this.waitWithEscalationStrategy(escalationLevel, retryCount, errorType);
+                }
+            }
+
+            // 全リトライ失敗
+            console.error(`❌ [Gemini-Retry] ${actionName} 全リトライ失敗`);
+            return {
+                success: false,
+                result: lastResult,
+                error: lastError,
+                retryCount,
+                errorType: lastError ? this.classifyError(lastError, context) : 'UNKNOWN'
+            };
+        }
+
+        // エスカレーション実行
+        async executeEscalation(level, context) {
+            const { retryCount, errorType, taskData } = context;
+
+            console.log(`🔄 [Gemini-Escalation] ${level} 実行開始 (${retryCount}回目)`);
+
+            switch (level) {
+                case 'LIGHTWEIGHT':
+                    // 同一ウィンドウ内での再試行（何もしない、次の試行へ）
+                    return null;
+
+                case 'MODERATE':
+                    // ページリフレッシュ
+                    console.log(`🔄 [Gemini-Escalation] ページリフレッシュ実行`);
+                    location.reload();
+                    return { success: false, needsWait: true }; // リロード後は待機が必要
+
+                case 'HEAVY_RESET':
+                    // 新規ウィンドウ作成
+                    console.log(`🔄 [Gemini-Escalation] 新規ウィンドウ作成`);
+                    return await this.performNewWindowRetry(taskData, {
+                        errorType,
+                        retryCount,
+                        retryReason: `${level}_ESCALATION_${retryCount}`
+                    });
+
+                default:
+                    return null;
+            }
+        }
+
+        // 新規ウィンドウでのリトライ
+        async performNewWindowRetry(taskData, context = {}) {
+            return new Promise((resolve) => {
+                chrome.runtime.sendMessage({
+                    type: 'RETRY_WITH_NEW_WINDOW',
+                    taskId: taskData.taskId || `retry_${Date.now()}`,
+                    prompt: taskData.prompt,
+                    aiType: 'Gemini',
+                    enableDeepResearch: taskData.enableDeepResearch || false,
+                    specialMode: taskData.specialMode || null,
+                    error: context.errorType || 'ESCALATION_ERROR',
+                    errorMessage: context.errorMessage || 'エスカレーションによるリトライ',
+                    retryReason: context.retryReason || 'gemini_escalation_retry',
+                    closeCurrentWindow: true
+                }, (response) => {
+                    if (response && response.success) {
+                        resolve(response);
+                    } else {
+                        resolve({ success: false });
+                    }
+                });
+            });
+        }
+
+        // エスカレーション戦略に基づく待機
+        async waitWithEscalationStrategy(level, retryCount, errorType) {
+            const levelConfig = this.escalationLevels[level];
+            if (!levelConfig) return;
+
+            const delayIndex = Math.min(retryCount - levelConfig.range[0], levelConfig.delays.length - 1);
+            const delay = levelConfig.delays[delayIndex];
+
+            if (delay > 0) {
+                const delayMinutes = Math.round(delay / 60000 * 10) / 10;
+                console.log(`⏳ [Gemini-Wait] ${level} - ${delayMinutes}分後にリトライします...`);
+                await this.delay(delay);
+            }
+        }
+
+        // エラー履歴管理
+        addErrorToHistory(errorType, errorMessage) {
+            const timestamp = new Date().toISOString();
+            this.errorHistory.push({ errorType, errorMessage, timestamp });
+
+            // 連続同一エラーのカウント
+            if (this.lastErrorType === errorType) {
+                this.consecutiveErrorCount++;
+            } else {
+                this.consecutiveErrorCount = 1;
+                this.lastErrorType = errorType;
+            }
+
+            // 履歴サイズ制限
+            if (this.errorHistory.length > this.maxHistorySize) {
+                this.errorHistory.shift();
+            }
+
+            // 統計更新
+            this.metrics.errorCounts[errorType] = (this.metrics.errorCounts[errorType] || 0) + 1;
+        }
+
+        // 待機処理
+        async delay(ms) {
+            return new Promise(resolve => {
+                const timeoutId = setTimeout(resolve, ms);
+                this.activeTimeouts.add(timeoutId);
+                setTimeout(() => this.activeTimeouts.delete(timeoutId), ms);
+            });
+        }
+
+        // 統計情報取得
+        getMetrics() {
+            return {
+                ...this.metrics,
+                successRate: this.metrics.totalAttempts > 0
+                    ? (this.metrics.successfulAttempts / this.metrics.totalAttempts) * 100
+                    : 0,
+                consecutiveErrorCount: this.consecutiveErrorCount,
+                lastErrorType: this.lastErrorType,
+                errorHistorySize: this.errorHistory.length
+            };
+        }
+
+        // リソースクリーンアップ
+        cleanup() {
+            this.activeTimeouts.forEach(timeoutId => clearTimeout(timeoutId));
+            this.activeTimeouts.clear();
+            if (this.abortController) {
+                this.abortController.abort();
+            }
+        }
+    }
 
     // 統一された待機時間設定を取得（Claude/ChatGPTと同じ方式）
     const AI_WAIT_CONFIG = window.AI_WAIT_CONFIG || {

@@ -189,21 +189,7 @@ export class IPowerManager {
   }
 }
 
-/**
- * @interface IRetryManager
- * リトライ管理サービスのインターフェース
- */
-export class IRetryManager {
-  /**
-   * リトライ付きで実行
-   * @param {Function} fn - 実行する関数
-   * @param {Object} options - リトライオプション
-   * @returns {Promise<*>} 実行結果
-   */
-  async executeWithRetry(fn, options = {}) {
-    throw new Error('実装が必要です');
-  }
-}
+// IRetryManager: 削除済み（各サービスで直接実装）
 
 /**
  * @interface ITaskProcessor
@@ -253,7 +239,6 @@ export default {
   ITaskExecutor,
   IExclusiveControlManager,
   IPowerManager,
-  IRetryManager,
   ITaskProcessor,
   implementsInterface
 };

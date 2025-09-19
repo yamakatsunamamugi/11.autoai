@@ -1673,7 +1673,7 @@ export default class StreamProcessorV2 {
       // 待機テキストがクリアされるまで待機
       // TODO: waitForClearanceメソッドが実装されていないため一時的にコメントアウト
 
-      // 失敗タスクを収集（RetryManagerのデータ構造から直接取得）
+      // 失敗タスクを収集（内蔵リトライ機能のデータ構造から直接取得）
       const failedTasks = this.retryManager.groupFailedTasks.get(groupId) || new Map();
       const emptyTasks = this.retryManager.groupEmptyTasks.get(groupId) || new Map();
       const responseFailed = this.retryManager.groupResponseFailures.get(groupId) || new Map();

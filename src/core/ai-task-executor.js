@@ -15,15 +15,49 @@
  */
 
 // タイムアウト設定は削除済み - デフォルト値を使用
-import { RetryManager } from '../utils/retry-manager.js';
 import { ConsoleLogger } from '../utils/console-logger.js';
+
+// インライン シンプルリトライ機能
+async function executeSimpleRetry({ action, isSuccess, maxRetries = 20, interval = 500, actionName = '', context = {} }) {
+  let retryCount = 0;
+  let lastResult = null;
+  let lastError = null;
+
+  while (retryCount < maxRetries) {
+    try {
+      if (retryCount === 1 || retryCount === maxRetries - 1) {
+        console.log(`[AITaskExecutor] ${actionName} 再試行 ${retryCount}/${maxRetries}`, context);
+      }
+      lastResult = await action();
+      if (isSuccess(lastResult)) {
+        if (retryCount > 0) {
+          console.log(`[AITaskExecutor] ✅ ${actionName} 成功（${retryCount}回目の試行）`, context);
+        }
+        return { success: true, result: lastResult, retryCount };
+      }
+    } catch (error) {
+      lastError = error;
+      console.error(`[AITaskExecutor] ${actionName} エラー`, {
+        ...context,
+        attempt: retryCount + 1,
+        error: error.message
+      });
+    }
+    retryCount++;
+    if (retryCount >= maxRetries) {
+      return { success: false, result: lastResult, error: lastError, retryCount };
+    }
+    if (interval > 0) {
+      await new Promise(resolve => setTimeout(resolve, interval));
+    }
+  }
+  return { success: false, result: lastResult, error: lastError, retryCount };
+}
 
 export class AITaskExecutor {
   constructor(logger = console) {
     // ConsoleLoggerインスタンスを作成（互換性を保持）
     this.logger = logger instanceof ConsoleLogger ? logger : new ConsoleLogger('ai-task-executor', logger);
-    // RetryManagerを初期化
-    this.retryManager = new RetryManager(this.logger);
   }
 
   /**
@@ -279,8 +313,8 @@ export class AITaskExecutor {
         }
       }
 
-      // タブの状態を確認（RetryManagerを使用）
-      const tabReadyResult = await this.retryManager.executeSimpleRetry({
+      // タブの状態を確認（シンプルリトライを使用）
+      const tabReadyResult = await executeSimpleRetry({
         action: async () => {
           const tab = await chrome.tabs.get(tabId);
           this.logger.log(`[AITaskExecutor] タブ状態確認: status=${tab.status}, url=${tab.url}`);
@@ -391,13 +425,79 @@ export class AITaskExecutor {
       try {
         // Claudeの場合はメッセージベースの通信を使用
         if (taskData.aiType.toLowerCase() === 'claude') {
-          // Chrome tabs.sendMessageを使用してContent Scriptと通信
-          result = await chrome.tabs.sendMessage(tabId, {
-            type: 'CLAUDE_EXECUTE_TASK',
-            taskData: taskData
+          this.logger.log('[🔍 Claude通信DEBUG] メッセージ送信前の状態確認:', {
+            tabId: tabId,
+            タスクID: taskData.taskId,
+            メッセージタイプ: 'CLAUDE_EXECUTE_TASK',
+            プロンプト長: taskData.prompt?.length || 0,
+            タスクデータキー: Object.keys(taskData).join(', '),
+            現在時刻: new Date().toISOString()
           });
 
-          this.logger.log('[Step 5: タスク実行結果] 🎉 Claudeメッセージ通信結果:', result);
+          // タブの状態確認
+          let tabInfo;
+          try {
+            tabInfo = await chrome.tabs.get(tabId);
+            this.logger.log('[🔍 Claude通信DEBUG] タブ状態確認:', {
+              タブID: tabId,
+              URL: tabInfo.url,
+              ステータス: tabInfo.status,
+              タイトル: tabInfo.title,
+              アクティブ: tabInfo.active
+            });
+          } catch (tabError) {
+            this.logger.error('[❌ Claude通信DEBUG] タブ取得エラー:', {
+              tabId: tabId,
+              エラー: tabError.message
+            });
+          }
+
+          // メッセージ送信の詳細ログ
+          const messagePayload = {
+            type: 'CLAUDE_EXECUTE_TASK',
+            taskData: taskData
+          };
+
+          this.logger.log('[📤 Claude通信DEBUG] メッセージ送信実行:', {
+            ペイロード構造: {
+              type: messagePayload.type,
+              taskDataKeys: Object.keys(messagePayload.taskData),
+              taskId: messagePayload.taskData.taskId,
+              aiType: messagePayload.taskData.aiType
+            },
+            送信時刻: new Date().toISOString()
+          });
+
+          // Chrome tabs.sendMessageを使用してContent Scriptと通信
+          const sendStartTime = Date.now();
+          try {
+            result = await chrome.tabs.sendMessage(tabId, messagePayload);
+            const sendDuration = Date.now() - sendStartTime;
+
+            this.logger.log('[✅ Claude通信DEBUG] メッセージ送信成功:', {
+              送信時間: `${sendDuration}ms`,
+              レスポンス受信: !!result,
+              レスポンス構造: result ? Object.keys(result) : 'なし'
+            });
+          } catch (sendError) {
+            const sendDuration = Date.now() - sendStartTime;
+            this.logger.error('[❌ Claude通信DEBUG] メッセージ送信失敗:', {
+              送信時間: `${sendDuration}ms`,
+              エラー名: sendError.name,
+              エラーメッセージ: sendError.message,
+              エラースタック: sendError.stack?.substring(0, 300)
+            });
+            throw sendError;
+          }
+
+          this.logger.log('[Step 5: タスク実行結果] 🎉 Claudeメッセージ通信結果:', {
+            成功: !!result,
+            結果の型: typeof result,
+            結果の構造: result ? Object.keys(result) : 'なし',
+            success値: result?.success,
+            エラー: result?.error,
+            生の結果: result
+          });
 
           if (result && result.success) {
             return {

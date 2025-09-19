@@ -11,7 +11,7 @@ export class ErrorHandler {
     this.logger = options.logger || console;
     
     this.config = {
-      // リトライ設定（RetryManagerに移行済み、互換性のために保持）
+      // リトライ設定（各サービスで直接実装済み）
       retry: {
         maxAttempts: 3,
         initialDelay: 1000,
@@ -122,7 +122,7 @@ export class ErrorHandler {
   }
 
   /**
-   * リトライ付きでタスクを実行（RetryManagerを使用）
+   * リトライ付きでタスクを実行（各サービスで直接実装）
    * @param {Function} task - 実行するタスク
    * @param {Object} options - オプション
    * @returns {Promise<*>} タスクの結果
@@ -130,7 +130,7 @@ export class ErrorHandler {
   async executeWithRetry(task, options = {}) {
     const retryConfig = { ...this.config.retry, ...options };
     
-    // RetryManagerのexecuteWithExponentialBackoffを使用
+    // 各サービスで直接実装されたリトライ機能を使用
     const result = await this.retryManager.executeWithExponentialBackoff({
       action: task,
       isSuccess: (result) => result !== undefined && result !== null,
@@ -368,13 +368,13 @@ export class ErrorHandler {
 
   /**
    * 遅延時間計算（エクスポネンシャルバックオフ）
-   * @deprecated RetryManagerに移行済み。互換性のために残存
+   * @deprecated 各サービスで直接実装済み。互換性のために残存
    * @param {number} attempt - 試行回数
    * @param {Object} config - リトライ設定
    * @returns {number} 遅延時間（ms）
    */
   calculateDelay(attempt, config) {
-    // RetryManagerのdelayメソッドを使用
+    // Promise.resolveによる待機
     return this.retryManager.delay ? 
       Math.min(
         config.initialDelay * Math.pow(config.backoffMultiplier, attempt - 1),
@@ -385,12 +385,12 @@ export class ErrorHandler {
 
   /**
    * 遅延実行
-   * @deprecated RetryManagerに移行済み。互換性のために残存
+   * @deprecated 各サービスで直接実装済み。互換性のために残存
    * @param {number} ms - 遅延時間（ms）
    * @returns {Promise<void>}
    */
   delay(ms) {
-    // RetryManagerのdelayメソッドを使用
+    // Promise.resolveによる待機
     return this.retryManager.delay(ms);
   }
 

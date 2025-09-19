@@ -7,17 +7,44 @@
  * @class WindowService
  */
 
-// RetryManagerのインポート
-import { RetryManager } from '../utils/retry-manager.js';
+// インライン シンプルリトライ機能
+async function executeSimpleRetry({ action, isSuccess, maxRetries = 20, interval = 500, actionName = '', context = {} }) {
+  let retryCount = 0;
+  let lastResult = null;
+  let lastError = null;
+
+  while (retryCount < maxRetries) {
+    try {
+      if (retryCount === 1 || retryCount === maxRetries - 1) {
+        console.log(`[WindowService] ${actionName} 再試行 ${retryCount}/${maxRetries}`, context);
+      }
+      lastResult = await action();
+      if (isSuccess(lastResult)) {
+        if (retryCount > 0) {
+          console.log(`[WindowService] ✅ ${actionName} 成功（${retryCount}回目の試行）`, context);
+        }
+        return { success: true, result: lastResult, retryCount };
+      }
+    } catch (error) {
+      lastError = error;
+      console.error(`[WindowService] ${actionName} エラー`, {
+        ...context,
+        attempt: retryCount + 1,
+        error: error.message
+      });
+    }
+    retryCount++;
+    if (retryCount >= maxRetries) {
+      return { success: false, result: lastResult, error: lastError, retryCount };
+    }
+    if (interval > 0) {
+      await new Promise(resolve => setTimeout(resolve, interval));
+    }
+  }
+  return { success: false, result: lastResult, error: lastError, retryCount };
+}
 
 export class WindowService {
-
-  // RetryManagerの初期化
-  static retryManager = new RetryManager();
-
-  static getRetryManager() {
-    return this.retryManager;
-  }
 
   // アクティブなウィンドウを管理するMap
   static activeWindows = new Map();
@@ -881,9 +908,8 @@ export class WindowService {
       if (window.tabs && window.tabs.length > 0) {
         const tabId = window.tabs[0].id;
 
-        // RetryManagerを使用
-        const retryManager = this.getRetryManager();
-        await retryManager.executeSimpleRetry({
+        // シンプルリトライを使用
+        await executeSimpleRetry({
           action: async () => {
             const tab = await chrome.tabs.get(tabId);
             if (tab.status === 'complete') {

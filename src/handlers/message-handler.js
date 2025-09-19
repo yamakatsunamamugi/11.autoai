@@ -1401,21 +1401,49 @@ export function setupMessageHandler() {
         console.log(`[Step 27-1] 🔄 新規ウィンドウでリトライ:`, {
           taskId: request.taskId,
           aiType: request.aiType,
-          error: request.error
+          error: request.error,
+          retryReason: request.retryReason,
+          retryCount: request.retryCount,
+          closeCurrentWindow: request.closeCurrentWindow
         });
+
+        // Canvas無限更新の場合は特別なログを出力
+        if (request.error === 'CANVAS_VERSION_UPDATE') {
+          console.log(`[Step 27-Canvas] 🎨 Canvas無限更新検出によるリトライ:`, {
+            retryCount: request.retryCount,
+            maxRetries: 10,
+            detectedVersion: request.errorMessage,
+            closeCurrentWindow: request.closeCurrentWindow
+          });
+        }
 
         (async () => {
           try {
-            // Step 27-2: AIタイプに応じたURLを決定
+            // Step 27-2: AIタイプに応じたURLを決定（全AI対応）
             const aiUrls = {
               'ChatGPT': 'https://chatgpt.com',
               'Claude': 'https://claude.ai',
-              'Gemini': 'https://gemini.google.com'
+              'Gemini': 'https://gemini.google.com',
+              'Genspark': 'https://genspark.ai'
             };
 
             const url = aiUrls[request.aiType] || aiUrls['Claude'];
 
+            console.log(`[Step 27-2] 🎯 ${request.aiType} 用の新規ウィンドウリトライ: ${url}`);
+
+            // Step 27-2.5: 現在のウィンドウを閉じる（Canvas無限更新対応）
+            if (request.closeCurrentWindow && sender.tab?.windowId) {
+              console.log(`[Step 27-2.5] 🗑️ 現在のウィンドウ${sender.tab.windowId}を閉鎖します`);
+              try {
+                await chrome.windows.remove(sender.tab.windowId);
+                console.log(`✅ ウィンドウ${sender.tab.windowId}を正常に閉鎖しました`);
+              } catch (closeError) {
+                console.warn(`⚠️ ウィンドウ${sender.tab.windowId}の閉鎖に失敗:`, closeError);
+              }
+            }
+
             // Step 27-3: 新規ウィンドウを作成
+            console.log(`[Step 27-3] 🆕 新規ウィンドウを作成: ${url}`);
             const window = await chrome.windows.create({
               url: url,
               type: "normal",
@@ -1427,9 +1455,17 @@ export function setupMessageHandler() {
             const newTabId = tabs[0]?.id;
 
             if (newTabId) {
+              console.log(`[Step 27-4] ✅ 新規タブ${newTabId}を作成しました`);
+
+              // Canvas無限更新リトライの場合は待機時間を調整
+              const waitTime = request.error === 'CANVAS_VERSION_UPDATE' ? 5000 : 3000;
+              console.log(`[Step 27-4] ⏳ ${waitTime}ms待機後にタスクを再実行します`);
+
               // Step 27-4: 新規タブでページ読み込み完了を待つ
               setTimeout(async () => {
                 try {
+                  console.log(`[Step 27-5] 🔄 新規タブでリトライタスクを実行`);
+
                   // Step 27-5: 新規タブでタスクを再実行
                   const response = await chrome.tabs.sendMessage(newTabId, {
                     action: "EXECUTE_RETRY_TASK",
@@ -1438,7 +1474,9 @@ export function setupMessageHandler() {
                     enableDeepResearch: request.enableDeepResearch,
                     specialMode: request.specialMode,
                     isRetry: true,
-                    originalError: request.error
+                    originalError: request.error,
+                    retryCount: request.retryCount,
+                    retryReason: request.retryReason
                   });
 
                   // Step 27-6: 元のタブに結果を通知
@@ -1463,7 +1501,7 @@ export function setupMessageHandler() {
                     error: error.message
                   });
                 }
-              }, 5000); // ページ読み込みを待つ
+              }, waitTime); // Canvas無限更新の場合は5秒、通常は3秒待機
             } else {
               throw new Error("新規タブIDが取得できません");
             }
