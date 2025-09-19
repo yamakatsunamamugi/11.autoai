@@ -1960,21 +1960,93 @@ stepOnlyBtn.addEventListener("click", async () => {
       updateStatus("Step 4: タスク実行完了", "success");
     }
 
-    // Step 5: ループ処理
-    if (typeof executeStep5 === 'function') {
-      updateStatus("Step 5: ループ処理を実行中...", "loading");
-      const currentTaskGroup = window.globalState?.taskGroups?.[0] || {};
-      await executeStep5(currentTaskGroup);
-      updateStatus("Step 5: ループ処理完了", "success");
+    // Step 5-6: グループごとのループ処理
+    console.log('=====================================');
+    console.log('[UI-Controller] Step 5-6 ループ処理開始');
+    console.log('=====================================');
+
+    const taskGroups = window.globalState?.taskGroups || [];
+    console.log(`[UI-Controller] 処理対象グループ数: ${taskGroups.length}`, {
+      グループ一覧: taskGroups.map((g, i) => ({
+        インデックス: i,
+        番号: g.groupNumber,
+        タイプ: g.type || g.taskType,
+        列: g.columns
+      }))
+    });
+
+    let currentGroupIndex = 0;
+    let loopCount = 0;
+    const maxLoops = 20; // 無限ループ防止
+
+    // 各グループを順番に処理
+    while (currentGroupIndex < taskGroups.length && loopCount < maxLoops) {
+      loopCount++;
+      console.log(`\n[UI-Controller] ===== ループ ${loopCount} 開始 =====`);
+      console.log(`[UI-Controller] 現在のグループインデックス: ${currentGroupIndex}/${taskGroups.length}`);
+
+      const currentTaskGroup = taskGroups[currentGroupIndex];
+      console.log('[UI-Controller] 処理するグループ詳細:', {
+        インデックス: currentGroupIndex,
+        グループ番号: currentTaskGroup?.groupNumber,
+        タイプ: currentTaskGroup?.type || currentTaskGroup?.taskType,
+        列情報: currentTaskGroup?.columns,
+        開始行: currentTaskGroup?.dataStartRow
+      });
+
+      // Step 5: 現在のグループを処理
+      if (typeof executeStep5 === 'function') {
+        updateStatus(`Step 5: グループ${currentGroupIndex + 1}/${taskGroups.length}を処理中...`, "loading");
+        console.log(`[UI-Controller] executeStep5呼び出し (グループ${currentGroupIndex + 1})`);
+
+        await executeStep5(currentTaskGroup);
+
+        console.log(`[UI-Controller] executeStep5完了 (グループ${currentGroupIndex + 1})`);
+        updateStatus(`Step 5: グループ${currentGroupIndex + 1}処理完了`, "success");
+      }
+
+      // Step 6: 次グループへの移行判定
+      if (typeof executeStep6 === 'function') {
+        updateStatus(`Step 6: 次グループへの移行を確認中...`, "loading");
+        console.log(`[UI-Controller] executeStep6呼び出し (現在インデックス: ${currentGroupIndex})`);
+
+        const result = await executeStep6(taskGroups, currentGroupIndex);
+
+        console.log('[UI-Controller] executeStep6結果:', {
+          hasNext: result?.hasNext,
+          nextIndex: result?.nextIndex,
+          message: result?.message
+        });
+
+        if (!result?.hasNext) {
+          console.log('[UI-Controller] 次のグループなし - ループ終了');
+          updateStatus("Step 6: 全グループ処理完了", "success");
+          break;
+        }
+
+        currentGroupIndex++;
+        console.log(`[UI-Controller] 次のグループへ移行 (新インデックス: ${currentGroupIndex})`);
+        updateStatus(`Step 6: グループ${currentGroupIndex + 1}へ移行`, "success");
+      } else {
+        console.warn('[UI-Controller] executeStep6が定義されていません - ループ終了');
+        break;
+      }
+
+      console.log(`[UI-Controller] ===== ループ ${loopCount} 終了 =====\n`);
     }
 
-    // Step 6: 次グループ処理
-    if (typeof executeStep6 === 'function') {
-      updateStatus("Step 6: 次グループ処理を実行中...", "loading");
-      const taskGroups = window.globalState?.taskGroups || [];
-      await executeStep6(taskGroups, 0);
-      updateStatus("Step 6: 次グループ処理完了", "success");
+    if (loopCount >= maxLoops) {
+      console.error(`[UI-Controller] 最大ループ数(${maxLoops})に到達 - 強制終了`);
+      updateStatus(`警告: 最大ループ数に到達`, "warning");
     }
+
+    console.log('=====================================');
+    console.log(`[UI-Controller] Step 5-6 ループ処理完了`, {
+      処理グループ数: currentGroupIndex,
+      総グループ数: taskGroups.length,
+      ループ回数: loopCount
+    });
+    console.log('=====================================');
 
     updateStatus("✅ STEP処理のみ完了！", "success");
 

@@ -373,10 +373,13 @@ async function executeStep5(taskGroup) {
   console.log('========================================');
   console.log('[step5-loop.js] [Step 5] タスクグループ内の繰り返し処理開始');
   console.log('========================================');
-  console.log('[step5-loop.js] [Step 5] 入力パラメータ:', {
-    グループ番号: taskGroup?.groupNumber || 'undefined',
-    タスクタイプ: taskGroup?.taskType || 'undefined',
-    パターン: taskGroup?.pattern || 'undefined'
+  console.log('[step5-loop.js] 🔍 入力グループ詳細情報:', {
+    グループ番号: taskGroup?.groupNumber,
+    タイプ: taskGroup?.type || taskGroup?.taskType,
+    パターン: taskGroup?.pattern,
+    列情報: taskGroup?.columns,
+    開始行: taskGroup?.dataStartRow,
+    入力オブジェクトのキー: Object.keys(taskGroup || {})
   });
 
   try {
@@ -397,9 +400,11 @@ async function executeStep5(taskGroup) {
     // 最終的な完了確認
     const finalComplete = await checkCompletionStatus(taskGroup);
 
-    console.log('[step5-loop.js] [Step 5] 処理完了:', {
+    console.log('[step5-loop.js] 🎯 [Step 5] グループ処理完了:', {
+      グループ番号: taskGroup?.groupNumber,
       完了状態: finalComplete,
-      処理統計: window.globalState.stats
+      処理統計: window.globalState.stats,
+      現在のglobalState_currentGroupIndex: window.globalState?.currentGroupIndex
     });
 
     return finalComplete;
