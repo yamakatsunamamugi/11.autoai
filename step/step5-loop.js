@@ -538,57 +538,57 @@ async function createTaskList(taskGroup) {
       spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${window.globalState.spreadsheetId}/edit#gid=${window.globalState.gid}`
     };
 
-    // 制御情報の取得と適用
-    console.log('[createTaskList] [Step 3-Control] 行制御・列制御情報を取得中...');
+    // Step 3-前処理: 制御情報の取得と適用
+    console.log('[createTaskList] [Step 3-前処理] 行制御・列制御情報を取得中...');
 
     let rowControls = [];
     let columnControls = [];
 
     try {
-      // 行制御情報の取得
+      // Step 3-2-2: 行制御をチェック
       rowControls = window.Step3TaskList.getRowControl(spreadsheetData);
-      console.log('[createTaskList] [Step 3-Control] 行制御情報取得完了:', {
+      console.log('[createTaskList] [Step 3-2-2] 行制御情報取得完了:', {
         制御数: rowControls.length,
         詳細: rowControls.map(c => `${c.type}制御: ${c.row}行目`)
       });
 
-      // 列制御情報の取得（列制御行から取得）
+      // Step 3-前処理: 列制御の再チェック（タスクグループ作成後の追加フィルタ）
       const columnControlRow = window.globalState.setupResult?.columnControlRow || 4;
       columnControls = window.Step3TaskList.getColumnControl(spreadsheetData, columnControlRow);
-      console.log('[createTaskList] [Step 3-Control] 列制御情報取得完了:', {
+      console.log('[createTaskList] [Step 3-前処理] 列制御情報取得完了:', {
         制御数: columnControls.length,
         制御行: columnControlRow,
         詳細: columnControls.map(c => `${c.type}制御: ${c.column}列`)
       });
 
     } catch (error) {
-      console.error('[createTaskList] [Step 3-Control] 制御情報取得エラー:', {
+      console.error('[createTaskList] [Step 3-前処理] 制御情報取得エラー:', {
         エラーメッセージ: error.message,
         スタック: error.stack
       });
       // エラーが発生しても処理を継続
     }
 
-    // 列制御チェック（タスクグループレベルでのフィルタリング）
+    // Step 3-前処理: 列制御チェック（タスクグループレベルでの追加フィルタリング）
     if (columnControls.length > 0) {
-      console.log('[createTaskList] [Step 3-Control] 列制御チェック実行中...');
+      console.log('[createTaskList] [Step 3-前処理] 列制御チェック実行中...');
 
       if (!window.Step3TaskList.shouldProcessColumn(taskGroup, columnControls)) {
-        console.log('[createTaskList] [Step 3-Control] タスクグループ除外:', {
+        console.log('[createTaskList] [Step 3-前処理] タスクグループ除外:', {
           グループ番号: taskGroup.groupNumber,
-          理由: '列制御により除外',
+          理由: '列制御により除外（この列から処理/この列の処理後に停止/この列のみ処理）',
           グループ列: taskGroup?.columns?.prompts,
           列制御: columnControls.map(c => `${c.type}:${c.column}`)
         });
         return [];  // このタスクグループは処理しない
       } else {
-        console.log('[createTaskList] [Step 3-Control] タスクグループ通過:', {
+        console.log('[createTaskList] [Step 3-前処理] タスクグループ通過:', {
           グループ番号: taskGroup.groupNumber,
           理由: '列制御を通過'
         });
       }
     } else {
-      console.log('[createTaskList] [Step 3-Control] 列制御なし - 全てのタスクグループを処理');
+      console.log('[createTaskList] [Step 3-前処理] 列制御なし - 全てのタスクグループを処理');
     }
 
     // 拡張オプションに制御情報を追加
