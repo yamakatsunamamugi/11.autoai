@@ -4361,7 +4361,19 @@ class EnhancedLogViewer {
     }
 
     const entry = document.createElement('div');
-    entry.className = `log-entry log-${log.level || 'info'}`;
+    let className = `log-entry log-${log.level || 'info'}`;
+
+    // エラーハイライトが有効で、エラーログの場合
+    if (this.errorHighlightEnabled && log.level === 'error') {
+      className += ' log-error-highlighted';
+    }
+
+    // 自動検出されたエラーの場合
+    if (log.isAutoDetectedError) {
+      className += ' log-auto-detected-error';
+    }
+
+    entry.className = className;
 
     // タイムスタンプ
     const timestamp = new Date(log.timestamp).toLocaleTimeString('ja-JP');
@@ -4379,16 +4391,47 @@ class EnhancedLogViewer {
 
     entry.appendChild(timestampSpan);
 
-    // メッセージ（URLをリンク化）
+    // レベルインジケーター
+    const levelSpan = document.createElement('span');
+    levelSpan.className = `log-level log-level-${log.level}`;
+    levelSpan.textContent = this.getLevelIcon(log.level);
+    entry.appendChild(levelSpan);
+
+    // メッセージ（URLをリンク化とエラーパターンハイライト）
     const messageSpan = document.createElement('span');
-    const linkedMessage = this.linkifyUrls(` ${log.message}`);
-    messageSpan.innerHTML = linkedMessage;
+    let messageContent = this.linkifyUrls(` ${log.message}`);
+
+    // エラーキーワードをハイライト
+    if (this.errorHighlightEnabled && this.isErrorLog(log.message)) {
+      messageContent = this.highlightErrorKeywords(messageContent);
+    }
+
+    messageSpan.innerHTML = messageContent;
     entry.appendChild(messageSpan);
 
     this.container.appendChild(entry);
 
     // 最新のログまでスクロール
     this.container.scrollTop = this.container.scrollHeight;
+  }
+
+  getLevelIcon(level) {
+    switch (level) {
+      case 'error': return '❌';
+      case 'warn': return '⚠️';
+      case 'info': return 'ℹ️';
+      case 'debug': return '🔍';
+      default: return '📄';
+    }
+  }
+
+  highlightErrorKeywords(text) {
+    let highlighted = text;
+    this.errorPatterns.forEach(pattern => {
+      const regex = new RegExp(`(${pattern.source})`, 'gi');
+      highlighted = highlighted.replace(regex, '<span class="error-keyword">$1</span>');
+    });
+    return highlighted;
   }
   
   copyLogs() {
