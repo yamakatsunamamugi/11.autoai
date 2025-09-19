@@ -1057,11 +1057,6 @@
     });
 
     // Claude-ステップ0-4-2: モデル選択用セレクタ
-    console.log('🔧 セレクタ情報確認:');
-    console.log('  UI_SELECTORS.Claude?.MENU?.OTHER_MODELS:', UI_SELECTORS.Claude?.MENU?.OTHER_MODELS);
-    console.log('  型:', typeof UI_SELECTORS.Claude?.MENU?.OTHER_MODELS);
-    console.log('  配列か:', Array.isArray(UI_SELECTORS.Claude?.MENU?.OTHER_MODELS));
-
     const modelSelectors = {
         menuButton: (UI_SELECTORS.Claude?.MODEL_BUTTON || []).map(selector => ({ selector, description: 'モデル選択ボタン' })),
         menuContainer: [
@@ -1070,9 +1065,6 @@
         otherModelsMenu: (UI_SELECTORS.Claude?.MENU?.OTHER_MODELS || []).map(selector => ({ selector, description: 'その他のモデルメニュー' })),
         modelDisplay: (UI_SELECTORS.Claude?.MODEL_INFO?.TEXT_ELEMENT || []).slice(0, 3).map(selector => ({ selector, description: 'モデル表示要素' }))
     };
-
-    console.log('🔧 modelSelectors.otherModelsMenu:', modelSelectors.otherModelsMenu);
-    console.log('  長さ:', modelSelectors.otherModelsMenu.length);
 
     // Claude-ステップ0-4-3: 機能選択用セレクタ
     const featureSelectors = {
@@ -1332,7 +1324,14 @@
         // 全セレクタで失敗した場合は、selectorInfoオブジェクトを作成してfindClaudeElementを使用
         const selectorInfo = {
             description: description,
-            selectors: selectors.map(s => s.selector || s)
+            selectors: selectors.map(s => {
+                if (typeof s === 'string') {
+                    return s;
+                } else if (s && typeof s === 'object' && s.selector) {
+                    return s.selector;
+                }
+                return s;
+            }).filter(selector => selector) // undefinedを除外
         };
 
         const retryManager = new ClaudeRetryManager();
