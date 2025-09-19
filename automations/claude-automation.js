@@ -1054,6 +1054,11 @@
     });
 
     // Claude-ステップ0-4-2: モデル選択用セレクタ
+    console.log('🔧 セレクタ情報確認:');
+    console.log('  UI_SELECTORS.Claude?.MENU?.OTHER_MODELS:', UI_SELECTORS.Claude?.MENU?.OTHER_MODELS);
+    console.log('  型:', typeof UI_SELECTORS.Claude?.MENU?.OTHER_MODELS);
+    console.log('  配列か:', Array.isArray(UI_SELECTORS.Claude?.MENU?.OTHER_MODELS));
+
     const modelSelectors = {
         menuButton: (UI_SELECTORS.Claude?.MODEL_BUTTON || []).map(selector => ({ selector, description: 'モデル選択ボタン' })),
         menuContainer: [
@@ -1062,6 +1067,9 @@
         otherModelsMenu: (UI_SELECTORS.Claude?.MENU?.OTHER_MODELS || []).map(selector => ({ selector, description: 'その他のモデルメニュー' })),
         modelDisplay: (UI_SELECTORS.Claude?.MODEL_INFO?.TEXT_ELEMENT || []).slice(0, 3).map(selector => ({ selector, description: 'モデル表示要素' }))
     };
+
+    console.log('🔧 modelSelectors.otherModelsMenu:', modelSelectors.otherModelsMenu);
+    console.log('  長さ:', modelSelectors.otherModelsMenu.length);
 
     // Claude-ステップ0-4-3: 機能選択用セレクタ
     const featureSelectors = {
@@ -1315,16 +1323,22 @@
             }
         }
 
+        // 全セレクタで失敗した場合は、selectorInfoオブジェクトを作成してfindClaudeElementを使用
+        const selectorInfo = {
+            description: description,
+            selectors: selectors.map(s => s.selector || s)
+        };
+
         const retryManager = new ClaudeRetryManager();
         const result = await retryManager.executeWithRetry({
             action: async () => {
-                const element = await findClaudeElement(selector);
+                const element = await findClaudeElement(selectorInfo);
                 if (element) return { success: true, element };
                 return { success: false, error: `${description}の要素が見つかりません` };
             },
             maxRetries: 3,
             actionName: `${description}検索`,
-            context: { selector, description }
+            context: { selectorInfo, description }
         });
 
         if (!result.success) {
@@ -1513,12 +1527,38 @@
     const findClaudeElement = async (selectorInfo, retryCount = 5, skipLog = false) => {
         const logPrefix = skipLog ? '' : '🔍 [findClaudeElement] ';
 
+        // nullチェックとエラーハンドリングを追加
+        if (!selectorInfo) {
+            const errorMsg = 'selectorInfoが未定義です';
+            console.error(`${logPrefix}❌ ${errorMsg}`);
+            ClaudeLogManager.logStep('Selector-Error', errorMsg, { selectorInfo });
+            throw new Error(errorMsg);
+        }
+
+        if (!selectorInfo.selectors || !Array.isArray(selectorInfo.selectors)) {
+            const errorMsg = `selectorInfo.selectorsが配列ではありません: ${typeof selectorInfo.selectors}`;
+            console.error(`${logPrefix}❌ ${errorMsg}`);
+            ClaudeLogManager.logStep('Selector-Error', errorMsg, {
+                selectorInfo: selectorInfo,
+                selectorsType: typeof selectorInfo.selectors,
+                selectorsValue: selectorInfo.selectors
+            });
+            throw new Error(errorMsg);
+        }
+
+        if (selectorInfo.selectors.length === 0) {
+            const errorMsg = 'セレクタ配列が空です';
+            console.error(`${logPrefix}❌ ${errorMsg}`);
+            ClaudeLogManager.logStep('Selector-Error', errorMsg, { selectorInfo });
+            throw new Error(errorMsg);
+        }
+
         if (!skipLog) {
-            console.log(`${logPrefix}要素検索開始: ${selectorInfo.description}`);
+            console.log(`${logPrefix}要素検索開始: ${selectorInfo.description || '説明なし'}`);
             console.log(`${logPrefix}使用セレクタ数: ${selectorInfo.selectors.length}`);
 
             // セレクタ詳細をログに記録
-            ClaudeLogManager.logStep('Selector-Search', `セレクタ検索開始: ${selectorInfo.description}`, {
+            ClaudeLogManager.logStep('Selector-Search', `セレクタ検索開始: ${selectorInfo.description || '説明なし'}`, {
                 selectorCount: selectorInfo.selectors.length,
                 selectors: selectorInfo.selectors.slice(0, 5) // 最初の5つを記録
             });

@@ -1131,7 +1131,7 @@
      * @returns {Promise<string>} レスポンステキスト
      * @throws {Error} アシスタントの回答が見つからない場合
      */
-    async function getResponseTextChatGPT() {
+    window.getResponseTextChatGPT = async function getResponseTextChatGPT() {
         const responseElements = document.querySelectorAll('[data-message-author-role="assistant"]');
         if (responseElements.length === 0) {
             throw new Error('アシスタントの回答が見つかりません');
@@ -1141,7 +1141,7 @@
         const responseText = getCleanText(latestResponse);
 
         return responseText;
-    }
+    };
 
     /*
     ┌─────────────────────────────────────────────────────┐
@@ -2210,17 +2210,6 @@ window.ChatGPTLogManager = ChatGPTLogManager;
 // 【エクスポート】検出システム用関数一覧
 // ========================================
 export {
-    // 🔧 メニュー操作
-    openModelMenu,           // モデルメニューを開く
-    openFunctionMenu,        // 機能メニューを開く
-
-    // ✏️ 基本操作
-    inputTextChatGPT,        // テキスト入力
-    sendMessageChatGPT,      // メッセージ送信
-    waitForResponseChatGPT,  // レスポンス待機
-    getResponseTextChatGPT,  // レスポンス取得
-
-    // 🎯 選択操作
-    selectModelChatGPT,      // モデル選択
-    selectFunctionChatGPT    // 機能選択
+    // ChatGPT自動化関数はwindowオブジェクトに定義
+    // エクスポートする関数なし（内部実装のみ）
 };

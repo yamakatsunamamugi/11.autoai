@@ -1574,11 +1574,11 @@
      * @description 本番executeTask内の行252のコードをそのまま関数化（オーバーレイクリック）
      * @returns {Promise<void>}
      */
-    async function closeGeminiMenu() {
+    window.closeGeminiMenu = async function closeGeminiMenu() {
         const overlay = document.querySelector('.cdk-overlay-backdrop.cdk-overlay-backdrop-showing');
         if (overlay) overlay.click();
         await wait(500);
-    }
+    };
 
     /*
     ┌─────────────────────────────────────────────────────┐
@@ -1974,17 +1974,6 @@ window.GeminiLogManager = GeminiLogManager;
 // 【エクスポート】検出システム用関数一覧
 // ========================================
 export {
-    // 🔧 メニュー操作
-    openGeminiModelMenu,     // モデルメニューを開く
-    closeGeminiMenu,         // メニューを閉じる
-
-    // ✏️ 基本操作
-    inputTextGemini,         // テキスト入力
-    sendMessageGemini,       // メッセージ送信
-    waitForResponseGemini,   // レスポンス待機
-    getResponseTextGemini,   // レスポンス取得
-
-    // 🎯 選択操作
-    selectModelGemini,       // モデル選択
-    selectFunctionGemini     // 機能選択（プロンプト制御）
+    // Gemini自動化関数はwindowオブジェクトに定義
+    // エクスポートする関数なし（内部実装のみ）
 };
