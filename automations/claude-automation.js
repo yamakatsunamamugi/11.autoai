@@ -1875,39 +1875,288 @@
         }
     };
 
-    // Claude-ステップ1-8: プロンプト除外機能（新機能）
+    // Claude-ステップ1-8: 新しいAI応答取得ロジック
     /**
-     * DOM構造によるユーザーメッセージ除外
-     * 【動作説明】data-testid="user-message"要素を除外してAI応答のみを抽出
-     * 【引数】container: 検索対象のコンテナ要素
-     * 【戻り値】Array: AI応答要素の配列
+     * 階層的セレクタ定義
+     * 【動作説明】AI応答を確実に取得するための階層的セレクタ戦略
+     * 【戻り値】Object: セレクタ定義オブジェクト
      */
-    const excludeUserMessages = (container) => {
-        if (!container) return [];
+    const getAIResponseSelectors = () => {
+        return {
+            // レベル1: メッセージコンテナから最後の回答を特定
+            message_containers: [
+                '[data-testid="assistant-message"]:last-of-type',
+                '.conversation-thread > :last-child [class*="standard-markdown"]',
+                '.conversation-thread > :last-child .grid-cols-1.grid',
+            ],
 
-        console.log('🚫 [excludeUserMessages] ユーザーメッセージ除外開始');
-
-        // data-testid="user-message" 要素を検索
-        const userMessages = container.querySelectorAll('[data-testid="user-message"]');
-        console.log(`  - 検出されたユーザーメッセージ: ${userMessages.length}件`);
-
-        // data-testid="assistant-message" 要素を検索
-        const assistantMessages = container.querySelectorAll('[data-testid="assistant-message"]');
-        console.log(`  - 検出されたアシスタントメッセージ: ${assistantMessages.length}件`);
-
-        // ユーザーメッセージが含まれていない要素のみを返す
-        const filteredElements = [];
-        const allMessages = container.querySelectorAll('[data-testid*="message"]');
-
-        allMessages.forEach(msg => {
-            if (!msg.hasAttribute('data-testid') ||
-                !msg.getAttribute('data-testid').includes('user-message')) {
-                filteredElements.push(msg);
+            // レベル2: 回答タイプ別セレクタ
+            response_types: {
+                canvas: [
+                    '#markdown-artifact .grid-cols-1.grid.gap-2\\.5',
+                    '.artifact-content .grid-cols-1.grid',
+                    '[data-artifact-type] .grid-cols-1.grid',
+                    '#markdown-artifact',
+                    '.code-block__code',
+                ],
+                standard: [
+                    ':not([id*="artifact"]) .standard-markdown',
+                    '.assistant-message-content .standard-markdown',
+                    '.standard-markdown',
+                    'div.standard-markdown',
+                ],
+                code_block: [
+                    '.code-block__code:last-of-type',
+                    'pre code:last-of-type',
+                ]
             }
-        });
+        };
+    };
 
-        console.log(`  - フィルタリング結果: ${filteredElements.length}件の要素を保持`);
-        return filteredElements.length > 0 ? filteredElements : [container];
+    /**
+     * ユーザー/アシスタント境界検出
+     * 【動作説明】最後のユーザーメッセージ後のAI応答を確実に取得
+     * 【戻り値】Element or null: AI応答要素
+     */
+    const getCleanAIResponse = async () => {
+        console.log('🔍 [getCleanAIResponse] ユーザー/アシスタント境界検出');
+
+        // 最後のユーザーメッセージを探す
+        const userMessages = document.querySelectorAll('[data-testid="user-message"]');
+        const lastUserMessage = userMessages[userMessages.length - 1];
+
+        if (lastUserMessage) {
+            console.log('  ✓ 最後のユーザーメッセージを発見');
+
+            // 最後のユーザーメッセージの後の要素を取得
+            let nextElement = lastUserMessage.nextElementSibling;
+
+            while (nextElement) {
+                // アシスタントメッセージを探す
+                if (nextElement.matches('[data-testid="assistant-message"]') ||
+                    nextElement.querySelector('[data-testid="assistant-message"]')) {
+
+                    console.log('  ✓ アシスタントメッセージを検出');
+
+                    // Canvas要素を優先的に探す
+                    const canvasContent = nextElement.querySelector(
+                        '#markdown-artifact, .grid-cols-1.grid.gap-2\\.5, .code-block__code'
+                    );
+
+                    if (canvasContent) {
+                        console.log('  ✓ Canvas要素を発見');
+                        return canvasContent;
+                    }
+
+                    // 通常のマークダウン
+                    const standardContent = nextElement.querySelector('.standard-markdown');
+                    if (standardContent) {
+                        console.log('  ✓ 標準マークダウン要素を発見');
+                        return standardContent;
+                    }
+                }
+                nextElement = nextElement.nextElementSibling;
+            }
+        } else {
+            console.log('  ⚠️ ユーザーメッセージが見つかりません');
+        }
+
+        return null;
+    };
+
+    /**
+     * 思考プロセス除外の強化
+     * 【動作説明】思考プロセス要素を確実に除外
+     * 【引数】element: チェック対象の要素
+     * 【戻り値】Element or null: クリーンな要素
+     */
+    const excludeThinkingProcess = (element) => {
+        if (!element) return null;
+
+        console.log('🧹 [excludeThinkingProcess] 思考プロセス除外チェック');
+
+        // 思考プロセスインジケータ
+        const thinkingIndicators = [
+            '.ease-out.rounded-lg',
+            '[class*="thinking-process"]',
+        ];
+
+        // 親要素に思考プロセスが含まれていないか確認
+        for (const indicator of thinkingIndicators) {
+            try {
+                if (element.closest(indicator)) {
+                    console.log(`  ⚠️ 思考プロセス要素を検出: ${indicator}`);
+                    return null;
+                }
+            } catch (e) {
+                // セレクタエラーをスキップ
+            }
+        }
+
+        // 要素のクラスをチェック
+        const classNames = element.className || '';
+        if (classNames.includes('thinking') || classNames.includes('thought')) {
+            console.log('  ⚠️ 思考プロセスクラスを検出');
+            return null;
+        }
+
+        // ボタンテキストのチェック
+        const buttons = element.querySelectorAll('button');
+        for (const btn of buttons) {
+            if (btn.textContent && btn.textContent.includes('思考プロセス')) {
+                console.log('  ⚠️ 思考プロセスボタンを検出');
+                return null;
+            }
+        }
+
+        console.log('  ✓ 思考プロセスではありません');
+        return element;
+    };
+
+    /**
+     * コンテンツ検証の強化
+     * 【動作説明】AI応答として有効なコンテンツかを検証
+     * 【引数】element: 検証対象の要素
+     * 【戻り値】boolean: 有効なコンテンツかどうか
+     */
+    const validateResponseContent = (element) => {
+        if (!element) return false;
+
+        console.log('✅ [validateResponseContent] コンテンツ検証');
+        const text = element.textContent?.trim() || '';
+
+        // 除外パターン（正規表現）
+        const excludePatterns = [
+            /^【現在[A-Z]+\d+セルを処理中です】/,  // セル処理マーカー
+            /^ユーザーのプロンプト$/,
+            /^思考プロセス$/,
+            /^User$/,
+            /^Assistant$/,
+        ];
+
+        // 除外パターンチェック
+        for (const pattern of excludePatterns) {
+            if (pattern.test(text)) {
+                console.log(`  ⚠️ 除外パターンにマッチ: ${pattern}`);
+                return false;
+            }
+        }
+
+        // 最小文字数チェック
+        if (text.length < 10) {
+            console.log(`  ⚠️ テキストが短すぎます: ${text.length}文字`);
+            return false;
+        }
+
+        // プロンプトインジケータチェック
+        const promptIndicators = [
+            '# 命令書',
+            '## 1. あなたの役割',
+            '変更して欲しい内容',
+            '以下の{',
+            'ステップ1:',
+        ];
+
+        for (const indicator of promptIndicators) {
+            if (text.includes(indicator)) {
+                console.log(`  ⚠️ プロンプトインジケータを検出: ${indicator}`);
+                return false;
+            }
+        }
+
+        console.log(`  ✓ 有効なコンテンツ: ${text.length}文字`);
+        return true;
+    };
+
+    /**
+     * セレクタによる要素検索
+     * 【動作説明】セレクタリストから要素を検索
+     * 【引数】selectors: セレクタ配列
+     * 【戻り値】Element or null: 見つかった要素
+     */
+    const findElementBySelectors = (selectors) => {
+        for (const selector of selectors) {
+            try {
+                const element = document.querySelector(selector);
+                if (element) {
+                    console.log(`  ✓ セレクタでマッチ: ${selector}`);
+                    return element;
+                }
+            } catch (e) {
+                // セレクタエラーをスキップ
+            }
+        }
+        return null;
+    };
+
+    /**
+     * 統合AI応答取得メソッド
+     * 【動作説明】複数の手法を組み合わせて確実にAI応答を取得
+     * 【戻り値】Object: {element, text, method}
+     */
+    const getReliableAIResponse = async () => {
+        console.log('🚀 [getReliableAIResponse] AI応答取得開始');
+
+        // Method 1: ユーザー/アシスタント境界検出
+        let response = await getCleanAIResponse();
+
+        if (response) {
+            response = excludeThinkingProcess(response);
+            if (response && validateResponseContent(response)) {
+                return {
+                    element: response,
+                    text: response.textContent?.trim() || '',
+                    method: 'User/Assistant Boundary'
+                };
+            }
+        }
+
+        // Method 2: 階層的セレクタ
+        console.log('  階層的セレクタ戦略を試行');
+        const selectors = getAIResponseSelectors();
+
+        // Canvas要素を優先
+        let element = findElementBySelectors(selectors.response_types.canvas);
+
+        if (!element) {
+            element = findElementBySelectors(selectors.response_types.standard);
+        }
+
+        if (!element) {
+            element = findElementBySelectors(selectors.response_types.code_block);
+        }
+
+        if (element) {
+            element = excludeThinkingProcess(element);
+            if (element && validateResponseContent(element)) {
+                return {
+                    element: element,
+                    text: element.textContent?.trim() || '',
+                    method: 'Hierarchical Selectors'
+                };
+            }
+        }
+
+        // Method 3: フォールバック - 最後のgrid要素
+        console.log('  フォールバック検索');
+        const grids = document.querySelectorAll('.grid-cols-1.grid');
+        if (grids.length > 0) {
+            const lastGrid = grids[grids.length - 1];
+            const validated = excludeThinkingProcess(lastGrid);
+            if (validated && validateResponseContent(validated)) {
+                return {
+                    element: validated,
+                    text: validated.textContent?.trim() || '',
+                    method: 'Fallback - Last Grid'
+                };
+            }
+        }
+
+        return {
+            element: null,
+            text: '',
+            method: 'Not Found'
+        };
     };
 
     /**
@@ -1930,9 +2179,9 @@
             return result;
         }
 
-        // パターン2: 特徴的なプロンプトパターンで除外
+        // パターン2: 特徴的なプロンプトパターンで除外（汎用的なセル位置対応）
         const promptPatterns = [
-            '【現在Q',
+            '【現在',  // すべてのセル位置に対応（U31, Q10など）
             '# 命令書',
             '## 1. あなたの役割',
             'あなたはプロの',
@@ -1997,21 +2246,57 @@
     // Claude-ステップ1-9: テキストプレビュー取得関数（改善版）
     /**
      * 高度テキスト抽出関数（応答取得の核心）
-     * 【動作説明】複数手法でテキスト取得を試行し、Canvas特別処理も含む包括的テキスト抽出
-     * 【用途】Claude応答テキストの取得、Deep Research結果の取得
-     * 【引数】element: テキスト抽出対象のDOM要素
+     * 【動作説明】新しいAI応答取得ロジックを使用して確実にテキストを取得
+     * 【引数】element: テキスト抽出対象のDOM要素（オプション）
      * 【戻り値】Object {full: 完全テキスト, preview: プレビュー, length: 文字数}
-     * 【取得手法】innerText → textContent → Canvas特別処理 → 子要素探索 → プロンプト除外
-     * 【使用頻度】5回（応答取得の最重要関数）
      */
-    const getTextPreview = (element) => {
-        if (!element) return { full: '', preview: '', length: 0 };
-
+    const getTextPreview = async (element) => {
         console.log('📊 [getTextPreview] テキスト取得開始');
+
+        // 要素が指定されていない場合は、新しいAI応答取得ロジックを使用
+        if (!element) {
+            console.log('  新しいAI応答取得ロジックを使用');
+            const response = await getReliableAIResponse();
+
+            if (response.element) {
+                console.log(`  取得メソッド: ${response.method}`);
+                console.log(`  テキスト長: ${response.text.length}文字`);
+
+                const length = response.text.length;
+                if (length <= 200) {
+                    return { full: response.text, preview: response.text, length };
+                } else {
+                    const preview = response.text.substring(0, 100) + '\n...[中略]...\n' + response.text.substring(length - 100);
+                    return { full: response.text, preview, length };
+                }
+            } else {
+                console.log('  AI応答が見つかりませんでした');
+                return { full: '', preview: '', length: 0 };
+            }
+        }
+
+        // 既存のロジック（要素が指定されている場合）
         console.log('  - 要素タグ:', element.tagName);
         console.log('  - 要素ID:', element.id || '(なし)');
         console.log('  - 要素クラス:', element.className ? element.className.substring(0, 100) : '(なし)');
         console.log('  - 子要素数:', element.children.length);
+
+        // まず、思考プロセスとコンテンツ検証をチェック
+        const cleanedElement = excludeThinkingProcess(element);
+        if (!cleanedElement || !validateResponseContent(cleanedElement)) {
+            console.log('  要素が無効なコンテンツと判定されました');
+            // フォールバック：新しいロジックで再試行
+            const response = await getReliableAIResponse();
+            if (response.element) {
+                const length = response.text.length;
+                if (length <= 200) {
+                    return { full: response.text, preview: response.text, length };
+                } else {
+                    const preview = response.text.substring(0, 100) + '\n...[中略]...\n' + response.text.substring(length - 100);
+                    return { full: response.text, preview, length };
+                }
+            }
+        }
 
         // 複数の方法でテキスト取得を試みる
         let fullText = '';
