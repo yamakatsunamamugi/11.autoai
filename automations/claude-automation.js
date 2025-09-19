@@ -296,6 +296,13 @@
         },
         '4_Canvas機能テキスト位置': {
             selectors: [
+                // 【重要】セレクタの優先順位について
+                // 1. 最優先: 親要素（div.grid-cols-1.grid）を取得 - 全体のテキスト構造を含む
+                //    - <p>タグのテキストと<code>タグ内のテキストを両方取得可能
+                // 2. 中優先: Canvas固有のID/クラスセレクタ
+                // 3. 低優先: .code-block__codeクラス（<code>タグのみ）- 部分的な取得になる
+                // この順序により、HTMLの全体構造を正しく取得できる
+
                 // 最優先: Canvas全体構造を取得（思考プロセスを除外）
                 'div.grid-cols-1.grid.gap-2\\.5:has(p.whitespace-pre-wrap)',
                 'div.grid-cols-1.grid:not(:has(.ease-out.rounded-lg))',
@@ -310,7 +317,7 @@
                 '.font-claude-response#markdown-artifact',
                 '[tabindex="0"]#markdown-artifact',
                 'div.mx-auto.max-w-3xl#markdown-artifact',
-                // コードブロックのみ（フォールバック）
+                // コードブロックのみ（フォールバック）- 部分的な取得になるため優先度を下げた
                 '.code-block__code',
                 'div.code-block__code',
                 '.code-block__code.h-fit.min-h-full.w-fit.min-w-full',
@@ -414,6 +421,13 @@
         },
         '4_Canvas機能テキスト位置': {
             selectors: [
+                // 【重要】セレクタの優先順位について
+                // 1. 最優先: 親要素（div.grid-cols-1.grid）を取得 - 全体のテキスト構造を含む
+                //    - <p>タグのテキストと<code>タグ内のテキストを両方取得可能
+                // 2. 中優先: Canvas固有のID/クラスセレクタ
+                // 3. 低優先: .code-block__codeクラス（<code>タグのみ）- 部分的な取得になる
+                // この順序により、HTMLの全体構造を正しく取得できる
+
                 // 最優先: Canvas全体構造を取得（思考プロセスを除外）
                 'div.grid-cols-1.grid.gap-2\\.5:has(p.whitespace-pre-wrap)',
                 'div.grid-cols-1.grid:not(:has(.ease-out.rounded-lg))',
@@ -428,7 +442,7 @@
                 '.font-claude-response#markdown-artifact',
                 '[tabindex="0"]#markdown-artifact',
                 'div.mx-auto.max-w-3xl#markdown-artifact',
-                // コードブロックのみ（フォールバック）
+                // コードブロックのみ（フォールバック）- 部分的な取得になるため優先度を下げた
                 '.code-block__code',
                 'div.code-block__code',
                 '.code-block__code.h-fit.min-h-full.w-fit.min-w-full',
