@@ -418,23 +418,127 @@ async function sleep(ms) {
 }
 
 async function readSpreadsheet(range) {
-  // 実際の実装ではGoogle Sheets APIを呼び出す
-  // ここではダミー実装
   console.log(`[Helper] スプレッドシート読み込み: ${range}`);
-  return { values: [] };
+
+  try {
+    // グローバル状態から認証情報とスプレッドシートIDを取得
+    if (!window.globalState || !window.globalState.auth || !window.globalState.auth.accessToken) {
+      throw new Error('認証情報が見つかりません');
+    }
+
+    if (!window.globalState.spreadsheetId) {
+      throw new Error('スプレッドシートIDが見つかりません');
+    }
+
+    const spreadsheetId = window.globalState.spreadsheetId;
+    const accessToken = window.globalState.auth.accessToken;
+
+    // Google Sheets API呼び出し
+    const apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}`;
+    const response = await fetch(apiUrl, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`API応答エラー: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    console.log(`[Helper] 読み込み成功: ${data.values ? data.values.length : 0}行取得`);
+
+    return data;
+  } catch (error) {
+    console.error('[Helper] スプレッドシート読み込みエラー:', error);
+    throw error;
+  }
 }
 
 async function createTaskList(taskGroup) {
-  // Step 3の機能をここに実装
-  // 実際にはstep3-tasklist.jsから呼び出す
-  console.log('[Helper] タスクリスト作成');
-  return [];
+  console.log('[Helper] タスクリスト作成開始:', taskGroup);
+
+  try {
+    // step3-tasklist.jsのgenerateTaskList関数を利用
+    if (!window.Step3TaskList || !window.Step3TaskList.generateTaskList) {
+      throw new Error('Step3TaskList.generateTaskListが利用できません');
+    }
+
+    // globalStateから必要なデータを取得
+    const spreadsheetData = {
+      id: window.globalState.spreadsheetId,
+      gid: window.globalState.gid
+    };
+
+    const specialRows = {
+      menuRow: window.globalState.setupResult?.menuRow || 3,
+      aiRow: window.globalState.setupResult?.aiRow || 5,
+      modelRow: window.globalState.setupResult?.modelRow || 6,
+      functionRow: window.globalState.setupResult?.functionRow || 7
+    };
+
+    const dataStartRow = window.globalState.setupResult?.dataStartRow || 9;
+
+    const options = {
+      batchSize: 3,
+      skipCompleted: true
+    };
+
+    // タスクリスト生成を実行
+    const tasks = window.Step3TaskList.generateTaskList(
+      taskGroup,
+      spreadsheetData,
+      specialRows,
+      dataStartRow,
+      options
+    );
+
+    console.log(`[Helper] タスクリスト作成完了: ${tasks.length}件のタスク`);
+    return tasks;
+
+  } catch (error) {
+    console.error('[Helper] タスクリスト作成エラー:', error);
+    throw error;
+  }
 }
 
 async function executeTasks(tasks, taskGroup) {
-  // Step 4の機能をここに実装
-  // 実際にはstep4-execute.jsから呼び出す
-  console.log('[Helper] タスク実行:', tasks.length + '件');
+  console.log(`[Helper] タスク実行開始: ${tasks.length}件`, taskGroup);
+
+  try {
+    // step4-execute.jsのexecuteStep4関数を利用
+    if (!window.executeStep4) {
+      throw new Error('executeStep4関数が利用できません');
+    }
+
+    // タスクリストを適切な形式に変換
+    const formattedTasks = tasks.map(task => ({
+      id: task.id || `task-${task.row}-${taskGroup.groupNumber}`,
+      row: task.row,
+      aiType: taskGroup.aiType || 'Claude',
+      prompt: task.prompt || task.text,
+      spreadsheetData: {
+        id: window.globalState.spreadsheetId,
+        gid: window.globalState.gid
+      },
+      columns: taskGroup.columns,
+      taskGroup: taskGroup
+    }));
+
+    console.log(`[Helper] フォーマット済みタスク:`, formattedTasks.length + '件');
+
+    // Step4を実行
+    const results = await window.executeStep4(formattedTasks);
+
+    console.log(`[Helper] タスク実行完了: ${results.length}件の結果`);
+    return results;
+
+  } catch (error) {
+    console.error('[Helper] タスク実行エラー:', error);
+    throw error;
+  }
 }
 
 // ブラウザ環境用のグローバルエクスポート

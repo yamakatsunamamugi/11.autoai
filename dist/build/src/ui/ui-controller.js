@@ -3968,15 +3968,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // テスト実行関数（別ウィンドウ版）
 
-// ===== ログビューアー機能 =====
-class LogViewer {
+// ===== 拡張ログビューアー機能 =====
+class EnhancedLogViewer {
   constructor() {
     this.logs = [];
     this.currentCategory = 'all';
     this.port = null;
+    this.stepLogsCollector = null;
+    this.searchTerm = '';
+    this.errorPatterns = [
+      /error/i,
+      /エラー/,
+      /failed/i,
+      /失敗/,
+      /exception/i,
+      /uncaught/i,
+      /syntax.*error/i,
+      /構文エラー/,
+      /could not establish connection/i,
+      /接続.*確立.*できませ/
+    ];
     this.initElements();
     this.connectToBackground();
     this.attachEventListeners();
+    this.startStepLogsCollection();
   }
   
   initElements() {
@@ -3984,42 +3999,76 @@ class LogViewer {
     this.tabs = document.querySelectorAll('.log-tab');
     this.clearBtn = document.getElementById('btn-clear-logs');
     this.copyBtn = document.getElementById('btn-copy-logs');
+    this.searchInput = document.getElementById('log-search-input');
+    this.exportBtn = document.getElementById('btn-export-logs');
+    this.toggleErrorBtn = document.getElementById('btn-toggle-errors');
+    this.logStats = document.getElementById('log-stats');
+
+    // 要素が存在しない場合は作成
+    this.createMissingElements();
   }
   
   connectToBackground() {
-    // background.jsのLogManagerに接続
-    this.port = chrome.runtime.connect({ name: 'log-viewer' });
-    
-    // メッセージリスナー
-    this.port.onMessage.addListener((msg) => {
-      if (msg.type === 'log') {
-        this.addLog(msg.data);
-      } else if (msg.type === 'logs-batch') {
-        this.logs = msg.data || [];
-        this.renderLogs();
-      } else if (msg.type === 'clear') {
-        if (!msg.category || msg.category === this.currentCategory || this.currentCategory === 'all') {
-          this.logs = this.logs.filter(log => {
-            if (!msg.category) return false;
-            if (msg.category === 'error') return log.level !== 'error';
-            if (msg.category === 'system') return log.category !== 'system';
-            return log.ai !== msg.category;
-          });
+    try {
+      // background.jsのLogManagerに接続
+      this.port = chrome.runtime.connect({ name: 'log-viewer' });
+
+      // 接続エラーハンドリング
+      this.port.onDisconnect.addListener(() => {
+        console.warn('[LogViewer] 背景スクリプトとの接続が切断されました。再接続を試行します。');
+        this.addLog({
+          timestamp: Date.now(),
+          level: 'warn',
+          message: 'Background script connection lost. Attempting to reconnect...',
+          source: 'LogViewer',
+          category: 'system'
+        });
+        // 3秒後に再接続を試行
+        setTimeout(() => this.connectToBackground(), 3000);
+      });
+
+      // メッセージリスナー
+      this.port.onMessage.addListener((msg) => {
+        if (msg.type === 'log') {
+          this.addLog(msg.data);
+        } else if (msg.type === 'logs-batch') {
+          this.logs = msg.data || [];
           this.renderLogs();
+          this.updateStats();
+        } else if (msg.type === 'clear') {
+          if (!msg.category || msg.category === this.currentCategory || this.currentCategory === 'all') {
+            this.logs = this.logs.filter(log => {
+              if (!msg.category) return false;
+              if (msg.category === 'error') return log.level !== 'error';
+              if (msg.category === 'system') return log.category !== 'system';
+              return log.ai !== msg.category;
+            });
+            this.renderLogs();
+            this.updateStats();
+          }
+        } else if (msg.type === 'selector-data') {
+          // セレクタデータを受信してUIに表示
+          if (typeof displaySelectorInfo === 'function') {
+            displaySelectorInfo(msg.data);
+          }
+          if (typeof logSelectorInfo === 'function') {
+            logSelectorInfo(msg.data);
+          }
         }
-      } else if (msg.type === 'selector-data') {
-        // セレクタデータを受信してUIに表示
-        if (typeof displaySelectorInfo === 'function') {
-          displaySelectorInfo(msg.data);
-        }
-        if (typeof logSelectorInfo === 'function') {
-          logSelectorInfo(msg.data);
-        }
-      }
-    });
-    
-    // 既存のログを取得
-    this.port.postMessage({ type: 'get-logs' });
+      });
+
+      // 既存のログを取得
+      this.port.postMessage({ type: 'get-logs' });
+    } catch (error) {
+      console.error('[LogViewer] Background connection error:', error);
+      this.addLog({
+        timestamp: Date.now(),
+        level: 'error',
+        message: `Background connection failed: ${error.message}`,
+        source: 'LogViewer',
+        category: 'system'
+      });
+    }
   }
   
   attachEventListeners() {
@@ -4030,33 +4079,114 @@ class LogViewer {
         tab.classList.add('active');
         this.currentCategory = tab.dataset.category;
         this.renderLogs();
+        this.updateStats();
       });
     });
-    
+
     // クリアボタン
     if (this.clearBtn) {
       this.clearBtn.addEventListener('click', () => {
         const category = this.currentCategory === 'all' ? null : this.currentCategory;
-        this.port.postMessage({ type: 'clear', category });
+        if (this.port) {
+          this.port.postMessage({ type: 'clear', category });
+        }
       });
     }
-    
+
     // コピーボタン
     if (this.copyBtn) {
       this.copyBtn.addEventListener('click', () => {
         this.copyLogs();
       });
     }
-  }
-  
-  addLog(logEntry) {
-    this.logs.push(logEntry);
-    if (this.shouldShowLog(logEntry)) {
-      this.appendLogEntry(logEntry);
+
+    // 検索機能
+    if (this.searchInput) {
+      this.searchInput.addEventListener('input', (e) => {
+        this.searchTerm = e.target.value.toLowerCase();
+        this.renderLogs();
+      });
+    }
+
+    // エクスポート機能
+    if (this.exportBtn) {
+      this.exportBtn.addEventListener('click', () => {
+        this.exportLogs();
+      });
+    }
+
+    // エラーハイライト切り替え
+    if (this.toggleErrorBtn) {
+      this.toggleErrorBtn.addEventListener('click', () => {
+        this.toggleErrorHighlight();
+      });
     }
   }
   
+  createMissingElements() {
+    // 検索ボックスが存在しない場合は作成
+    if (!this.searchInput) {
+      const searchContainer = document.createElement('div');
+      searchContainer.className = 'log-search-container';
+      searchContainer.innerHTML = `
+        <input type="text" id="log-search-input" placeholder="ログを検索..." class="log-search-input">
+        <button id="btn-export-logs" class="btn btn-secondary">エクスポート</button>
+        <button id="btn-toggle-errors" class="btn btn-warning">エラー強調</button>
+      `;
+
+      // ログコンテナの前に挿入
+      if (this.container && this.container.parentNode) {
+        this.container.parentNode.insertBefore(searchContainer, this.container);
+        this.searchInput = document.getElementById('log-search-input');
+        this.exportBtn = document.getElementById('btn-export-logs');
+        this.toggleErrorBtn = document.getElementById('btn-toggle-errors');
+      }
+    }
+
+    // 統計表示エリアが存在しない場合は作成
+    if (!this.logStats) {
+      const statsContainer = document.createElement('div');
+      statsContainer.id = 'log-stats';
+      statsContainer.className = 'log-stats';
+      if (this.container && this.container.parentNode) {
+        this.container.parentNode.appendChild(statsContainer);
+        this.logStats = statsContainer;
+      }
+    }
+  }
+
+  addLog(logEntry) {
+    // ログエントリーの正規化
+    const normalizedEntry = {
+      timestamp: logEntry.timestamp || Date.now(),
+      level: logEntry.level || 'info',
+      message: logEntry.message || '',
+      source: logEntry.source || 'Unknown',
+      category: logEntry.category || 'system',
+      ai: logEntry.ai || null,
+      ...logEntry
+    };
+
+    // エラーパターンの自動検出
+    if (this.isErrorLog(normalizedEntry.message)) {
+      normalizedEntry.level = 'error';
+      normalizedEntry.isAutoDetectedError = true;
+    }
+
+    this.logs.push(normalizedEntry);
+    if (this.shouldShowLog(normalizedEntry)) {
+      this.appendLogEntry(normalizedEntry);
+    }
+    this.updateStats();
+  }
+  
   shouldShowLog(log) {
+    // 検索フィルタリング
+    if (this.searchTerm && !this.matchesSearch(log)) {
+      return false;
+    }
+
+    // カテゴリーフィルタリング
     if (this.currentCategory === 'all') return true;
     if (this.currentCategory === 'error') return log.level === 'error';
     if (this.currentCategory === 'system') return log.category === 'system';
@@ -4064,7 +4194,120 @@ class LogViewer {
     if (this.currentCategory === 'chatgpt') return log.ai === 'ChatGPT' || log.ai === 'chatgpt';
     if (this.currentCategory === 'claude') return log.ai === 'Claude' || log.ai === 'claude';
     if (this.currentCategory === 'gemini') return log.ai === 'Gemini' || log.ai === 'gemini';
+    if (this.currentCategory === 'step') return log.source && log.source.includes('step');
     return false;
+  }
+
+  matchesSearch(log) {
+    const searchableText = [
+      log.message,
+      log.source,
+      log.category,
+      log.ai
+    ].filter(Boolean).join(' ').toLowerCase();
+
+    return searchableText.includes(this.searchTerm);
+  }
+
+  isErrorLog(message) {
+    if (!message) return false;
+    return this.errorPatterns.some(pattern => pattern.test(message));
+  }
+
+  updateStats() {
+    if (!this.logStats) return;
+
+    const total = this.logs.length;
+    const errors = this.logs.filter(log => log.level === 'error').length;
+    const warnings = this.logs.filter(log => log.level === 'warn').length;
+    const filtered = this.logs.filter(log => this.shouldShowLog(log)).length;
+
+    this.logStats.innerHTML = `
+      <span class="stat-item">総ログ数: ${total}</span>
+      <span class="stat-item stat-error">エラー: ${errors}</span>
+      <span class="stat-item stat-warning">警告: ${warnings}</span>
+      <span class="stat-item">表示中: ${filtered}</span>
+    `;
+  }
+
+  exportLogs() {
+    const filteredLogs = this.logs.filter(log => this.shouldShowLog(log));
+    const exportData = {
+      timestamp: new Date().toISOString(),
+      category: this.currentCategory,
+      searchTerm: this.searchTerm,
+      totalLogs: this.logs.length,
+      exportedLogs: filteredLogs.length,
+      logs: filteredLogs.map(log => ({
+        timestamp: new Date(log.timestamp).toISOString(),
+        level: log.level,
+        message: log.message,
+        source: log.source,
+        category: log.category,
+        ai: log.ai
+      }))
+    };
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `autoai-logs-${this.currentCategory}-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  toggleErrorHighlight() {
+    this.errorHighlightEnabled = !this.errorHighlightEnabled;
+    this.toggleErrorBtn.textContent = this.errorHighlightEnabled ? 'エラー強調 OFF' : 'エラー強調 ON';
+    this.renderLogs();
+  }
+
+  startStepLogsCollection() {
+    // Step ファイルからのログを収集するための機能
+    // console.log の出力を監視
+    const originalConsoleLog = console.log;
+    const originalConsoleError = console.error;
+    const originalConsoleWarn = console.warn;
+
+    console.log = (...args) => {
+      originalConsoleLog.apply(console, args);
+      this.captureConsoleLog('info', args);
+    };
+
+    console.error = (...args) => {
+      originalConsoleError.apply(console, args);
+      this.captureConsoleLog('error', args);
+    };
+
+    console.warn = (...args) => {
+      originalConsoleWarn.apply(console, args);
+      this.captureConsoleLog('warn', args);
+    };
+  }
+
+  captureConsoleLog(level, args) {
+    const message = args.join(' ');
+
+    // Step ファイルからのログかどうかを判定
+    const isStepLog = message.includes('[step') || message.includes('ステップ');
+
+    if (isStepLog) {
+      this.addLog({
+        timestamp: Date.now(),
+        level: level,
+        message: message,
+        source: this.extractStepSource(message),
+        category: 'step'
+      });
+    }
+  }
+
+  extractStepSource(message) {
+    const stepMatch = message.match(/\[([^[\]]+\.js)\]/);
+    return stepMatch ? stepMatch[1] : 'step-unknown';
   }
   
   renderLogs() {
@@ -4118,7 +4361,19 @@ class LogViewer {
     }
 
     const entry = document.createElement('div');
-    entry.className = `log-entry log-${log.level || 'info'}`;
+    let className = `log-entry log-${log.level || 'info'}`;
+
+    // エラーハイライトが有効で、エラーログの場合
+    if (this.errorHighlightEnabled && log.level === 'error') {
+      className += ' log-error-highlighted';
+    }
+
+    // 自動検出されたエラーの場合
+    if (log.isAutoDetectedError) {
+      className += ' log-auto-detected-error';
+    }
+
+    entry.className = className;
 
     // タイムスタンプ
     const timestamp = new Date(log.timestamp).toLocaleTimeString('ja-JP');
@@ -4136,16 +4391,47 @@ class LogViewer {
 
     entry.appendChild(timestampSpan);
 
-    // メッセージ（URLをリンク化）
+    // レベルインジケーター
+    const levelSpan = document.createElement('span');
+    levelSpan.className = `log-level log-level-${log.level}`;
+    levelSpan.textContent = this.getLevelIcon(log.level);
+    entry.appendChild(levelSpan);
+
+    // メッセージ（URLをリンク化とエラーパターンハイライト）
     const messageSpan = document.createElement('span');
-    const linkedMessage = this.linkifyUrls(` ${log.message}`);
-    messageSpan.innerHTML = linkedMessage;
+    let messageContent = this.linkifyUrls(` ${log.message}`);
+
+    // エラーキーワードをハイライト
+    if (this.errorHighlightEnabled && this.isErrorLog(log.message)) {
+      messageContent = this.highlightErrorKeywords(messageContent);
+    }
+
+    messageSpan.innerHTML = messageContent;
     entry.appendChild(messageSpan);
 
     this.container.appendChild(entry);
 
     // 最新のログまでスクロール
     this.container.scrollTop = this.container.scrollHeight;
+  }
+
+  getLevelIcon(level) {
+    switch (level) {
+      case 'error': return '❌';
+      case 'warn': return '⚠️';
+      case 'info': return 'ℹ️';
+      case 'debug': return '🔍';
+      default: return '📄';
+    }
+  }
+
+  highlightErrorKeywords(text) {
+    let highlighted = text;
+    this.errorPatterns.forEach(pattern => {
+      const regex = new RegExp(`(${pattern.source})`, 'gi');
+      highlighted = highlighted.replace(regex, '<span class="error-keyword">$1</span>');
+    });
+    return highlighted;
   }
   
   copyLogs() {
@@ -6812,6 +7098,436 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 */
 
+// ===== コンソールログ統合表示機能 =====
+
+/**
+ * 簡単なコンソールログ統合表示機能
+ */
+class SimpleConsoleLogViewer {
+  constructor() {
+    this.logs = [];
+    this.isCapturing = false;
+    this.originalConsole = {};
+    this.maxLogs = 1000; // 最大ログ数
+    this.addControlButton();
+    this.startCapturing(); // 自動開始
+  }
+
+  /**
+   * ログ統合表示ボタンを追加
+   */
+  addControlButton() {
+    // 少し遅延してからボタンを追加（DOM読み込み待ち）
+    setTimeout(() => {
+      const buttonContainer = document.querySelector('.control-buttons') ||
+                            document.querySelector('.button-container') ||
+                            document.querySelector('.settings-section') ||
+                            document.body;
+
+      if (buttonContainer && !document.getElementById('consoleLogViewerBtn')) {
+        const logViewerBtn = document.createElement('button');
+        logViewerBtn.id = 'consoleLogViewerBtn';
+        logViewerBtn.className = 'btn btn-secondary';
+        logViewerBtn.textContent = '📄 ログ統合表示';
+        logViewerBtn.style.marginLeft = '10px';
+        logViewerBtn.style.backgroundColor = '#17a2b8';
+        logViewerBtn.style.color = 'white';
+        logViewerBtn.style.border = 'none';
+        logViewerBtn.style.padding = '8px 16px';
+        logViewerBtn.style.borderRadius = '4px';
+        logViewerBtn.style.cursor = 'pointer';
+
+        logViewerBtn.addEventListener('click', () => {
+          this.showConsolidatedLogs();
+        });
+
+        buttonContainer.appendChild(logViewerBtn);
+        console.log('✅ コンソールログ統合表示ボタンを追加しました');
+      }
+    }, 1000);
+  }
+
+  /**
+   * コンソールログキャプチャを開始
+   */
+  startCapturing() {
+    if (this.isCapturing) return;
+
+    // 元のconsoleメソッドを保存
+    this.originalConsole = {
+      log: console.log,
+      error: console.error,
+      warn: console.warn,
+      info: console.info
+    };
+
+    // console.logをオーバーライド
+    console.log = (...args) => {
+      this.originalConsole.log.apply(console, args);
+      this.captureLog('info', args);
+    };
+
+    console.error = (...args) => {
+      this.originalConsole.error.apply(console, args);
+      this.captureLog('error', args);
+    };
+
+    console.warn = (...args) => {
+      this.originalConsole.warn.apply(console, args);
+      this.captureLog('warn', args);
+    };
+
+    console.info = (...args) => {
+      this.originalConsole.info.apply(console, args);
+      this.captureLog('info', args);
+    };
+
+    this.isCapturing = true;
+    console.log('[ConsoleLogViewer] ログキャプチャを開始しました');
+  }
+
+  /**
+   * ログをキャプチャ
+   */
+  captureLog(level, args) {
+    const message = args.map(arg => {
+      if (typeof arg === 'object') {
+        try {
+          return JSON.stringify(arg, null, 2);
+        } catch (e) {
+          return String(arg);
+        }
+      }
+      return String(arg);
+    }).join(' ');
+
+    // 自身のログは除外
+    if (message.includes('[ConsoleLogViewer]')) return;
+
+    // ソース情報を推定
+    let source = 'Console';
+    if (message.includes('[step')) {
+      const stepMatch = message.match(/\[([^[\]]+\.js)\]/);
+      source = stepMatch ? stepMatch[1] : 'step-unknown';
+    } else if (message.includes('[UI]')) {
+      source = 'UI';
+    } else if (message.includes('[Background]')) {
+      source = 'Background';
+    } else if (message.includes('[WindowService]')) {
+      source = 'WindowService';
+    }
+
+    const logEntry = {
+      timestamp: Date.now(),
+      level: level,
+      message: message,
+      source: source
+    };
+
+    this.logs.push(logEntry);
+
+    // ログ数制限
+    if (this.logs.length > this.maxLogs) {
+      this.logs = this.logs.slice(-this.maxLogs);
+    }
+  }
+
+  /**
+   * 統合ログを新しいウィンドウで表示
+   */
+  showConsolidatedLogs() {
+    const sortedLogs = this.logs.slice().sort((a, b) => a.timestamp - b.timestamp);
+
+    const logWindow = window.open('', '_blank', 'width=1400,height=900,scrollbars=yes,resizable=yes');
+
+    if (!logWindow) {
+      alert('ポップアップがブロックされました。ポップアップを許可してから再試行してください。');
+      return;
+    }
+
+    const logHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AutoAI - コンソールログ統合表示</title>
+    <meta charset="UTF-8">
+    <style>
+        body {
+            font-family: 'Consolas', 'Monaco', monospace;
+            margin: 0;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            font-size: 13px;
+        }
+        .header {
+            background: #2d2d2d;
+            padding: 15px;
+            position: sticky;
+            top: 0;
+            border-bottom: 2px solid #444;
+            z-index: 100;
+        }
+        .stats {
+            background: #3a3a3a;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        .stat-item {
+            background: #4a4a4a;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .stat-error { color: #ff6b6b; }
+        .stat-warning { color: #feca57; }
+        .stat-info { color: #48dbfb; }
+        .search-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .search-box {
+            flex: 1;
+            padding: 10px;
+            background: #2d2d2d;
+            border: 1px solid #555;
+            color: #e0e0e0;
+            border-radius: 4px;
+            font-family: inherit;
+        }
+        .filter-btn {
+            padding: 8px 15px;
+            background: #4a4a4a;
+            border: 1px solid #666;
+            color: #e0e0e0;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .filter-btn.active { background: #0084ff; }
+        .filter-btn:hover { background: #5a5a5a; }
+        .log-container {
+            padding: 0 15px 15px;
+            max-height: calc(100vh - 200px);
+            overflow-y: auto;
+        }
+        .log-entry {
+            margin: 3px 0;
+            padding: 8px 12px;
+            border-left: 3px solid #555;
+            background: #252525;
+            border-radius: 3px;
+            word-wrap: break-word;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+        .log-error { border-left-color: #ff6b6b; background: #2d1f1f; }
+        .log-warn { border-left-color: #feca57; background: #2d2a1f; }
+        .log-info { border-left-color: #48dbfb; background: #1f2a2d; }
+        .log-timestamp {
+            color: #888;
+            margin-right: 12px;
+            font-size: 11px;
+            min-width: 80px;
+            display: inline-block;
+        }
+        .log-source {
+            color: #48dbfb;
+            margin-right: 12px;
+            font-weight: bold;
+            min-width: 120px;
+            display: inline-block;
+        }
+        .log-level {
+            margin-right: 8px;
+            font-size: 14px;
+        }
+        .log-message {
+            color: #e0e0e0;
+            white-space: pre-wrap;
+        }
+        .error-keyword {
+            background: #ff6b6b;
+            color: #fff;
+            padding: 2px 4px;
+            border-radius: 2px;
+            font-weight: bold;
+        }
+        .no-logs {
+            text-align: center;
+            color: #888;
+            font-style: italic;
+            padding: 40px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h2>🔍 AutoAI - コンソールログ統合表示</h2>
+        <div class="stats">
+            <div class="stat-item">総ログ数: ${sortedLogs.length}</div>
+            <div class="stat-item stat-error">エラー: ${sortedLogs.filter(l => l.level === 'error').length}</div>
+            <div class="stat-item stat-warning">警告: ${sortedLogs.filter(l => l.level === 'warn').length}</div>
+            <div class="stat-item stat-info">情報: ${sortedLogs.filter(l => l.level === 'info').length}</div>
+            <div class="stat-item">生成時刻: ${new Date().toLocaleString('ja-JP')}</div>
+        </div>
+        <div class="search-controls">
+            <input type="text" class="search-box" placeholder="ログを検索... (例: error, step1, WindowService)" onkeyup="filterLogs(this.value)">
+            <button class="filter-btn active" onclick="setFilter('all')">すべて</button>
+            <button class="filter-btn" onclick="setFilter('error')">エラー</button>
+            <button class="filter-btn" onclick="setFilter('warn')">警告</button>
+            <button class="filter-btn" onclick="setFilter('step')">Step</button>
+        </div>
+    </div>
+    <div class="log-container" id="logContainer">
+        ${sortedLogs.length === 0 ?
+          '<div class="no-logs">まだログが収集されていません。ページを操作してログを生成してください。</div>' :
+          sortedLogs.map(log => this.formatLogEntry(log)).join('')
+        }
+    </div>
+
+    <script>
+        let currentFilter = 'all';
+        let currentSearch = '';
+
+        function setFilter(filter) {
+            currentFilter = filter;
+            document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            applyFilters();
+        }
+
+        function filterLogs(searchTerm) {
+            currentSearch = searchTerm.toLowerCase();
+            applyFilters();
+        }
+
+        function applyFilters() {
+            const entries = document.querySelectorAll('.log-entry');
+            let visibleCount = 0;
+
+            entries.forEach(entry => {
+                const level = entry.dataset.level;
+                const content = entry.dataset.content;
+                const source = entry.dataset.source;
+
+                let show = true;
+
+                // フィルタチェック
+                if (currentFilter !== 'all') {
+                    if (currentFilter === 'step') {
+                        show = source && source.includes('step');
+                    } else {
+                        show = level === currentFilter;
+                    }
+                }
+
+                // 検索チェック
+                if (show && currentSearch) {
+                    show = content.includes(currentSearch);
+                }
+
+                entry.style.display = show ? 'block' : 'none';
+                if (show) visibleCount++;
+            });
+
+            // 結果が0件の場合
+            const container = document.getElementById('logContainer');
+            const noResults = container.querySelector('.no-results');
+            if (visibleCount === 0 && entries.length > 0) {
+                if (!noResults) {
+                    const noResultsDiv = document.createElement('div');
+                    noResultsDiv.className = 'no-results no-logs';
+                    noResultsDiv.textContent = 'フィルタ条件に一致するログがありません';
+                    container.appendChild(noResultsDiv);
+                }
+            } else if (noResults) {
+                noResults.remove();
+            }
+        }
+
+        // 自動スクロール（最新ログへ）
+        window.onload = () => {
+            const container = document.querySelector('.log-container');
+            container.scrollTop = container.scrollHeight;
+        };
+    </script>
+</body>
+</html>`;
+
+    logWindow.document.write(logHtml);
+    logWindow.document.close();
+  }
+
+  /**
+   * ログエントリをHTMLとしてフォーマット
+   */
+  formatLogEntry(log) {
+    const timestamp = new Date(log.timestamp).toLocaleTimeString('ja-JP');
+    const levelIcon = this.getLevelIcon(log.level);
+    const message = this.escapeHtml(log.message);
+    const highlightedMessage = this.highlightErrorKeywords(message);
+
+    return `
+      <div class="log-entry log-${log.level}"
+           data-level="${log.level}"
+           data-source="${log.source}"
+           data-content="${this.escapeHtml(JSON.stringify(log).toLowerCase())}">
+        <span class="log-timestamp">${timestamp}</span>
+        <span class="log-source">[${log.source}]</span>
+        <span class="log-level">${levelIcon}</span>
+        <span class="log-message">${highlightedMessage}</span>
+      </div>
+    `;
+  }
+
+  /**
+   * レベルアイコンを取得
+   */
+  getLevelIcon(level) {
+    switch (level) {
+      case 'error': return '❌';
+      case 'warn': return '⚠️';
+      case 'info': return 'ℹ️';
+      default: return '📄';
+    }
+  }
+
+  /**
+   * HTMLエスケープ
+   */
+  escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  /**
+   * エラーキーワードをハイライト
+   */
+  highlightErrorKeywords(text) {
+    const errorPatterns = [
+      'error', 'エラー', 'failed', '失敗', 'exception', 'uncaught',
+      'syntax.*error', '構文エラー', 'could not establish connection'
+    ];
+
+    let highlighted = text;
+    errorPatterns.forEach(pattern => {
+      const regex = new RegExp(`(${pattern})`, 'gi');
+      highlighted = highlighted.replace(regex, '<span class="error-keyword">$1</span>');
+    });
+    return highlighted;
+  }
+}
+
+// インスタンスを作成
+const simpleConsoleLogViewer = new SimpleConsoleLogViewer();
+
 // ===== グローバル関数公開 =====
 // 他のモジュールから使用できるように関数をwindowオブジェクトに公開
 window.injectAutomationScripts = injectAutomationScripts;
+window.showConsoleLogs = () => simpleConsoleLogViewer.showConsolidatedLogs();
