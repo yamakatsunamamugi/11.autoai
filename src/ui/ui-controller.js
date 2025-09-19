@@ -1996,10 +1996,10 @@ stepOnlyBtn.addEventListener("click", async () => {
 
       // Step 5: 現在のグループを処理
       console.log('[UI-Controller] executeStep5チェック:', {
-        型: typeof executeStep5,
-        関数かどうか: typeof executeStep5 === 'function',
-        window.executeStep5存在: !!window.executeStep5,
-        window.executeStep5型: typeof window.executeStep5
+        type: typeof executeStep5,
+        isFunction: typeof executeStep5 === 'function',
+        windowExecuteStep5Exists: !!window.executeStep5,
+        windowExecuteStep5Type: typeof window.executeStep5
       });
 
       if (typeof executeStep5 === 'function') {
