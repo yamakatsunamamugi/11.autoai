@@ -307,11 +307,11 @@
                 '[tabindex="0"]#markdown-artifact',
                 'div.mx-auto.max-w-3xl#markdown-artifact',
                 // 実際のCanvas構造（思考プロセスを除外）
-                'div.grid-cols-1.grid.gap-2\\.5:has(p.whitespace-pre-wrap):not(:has(button:contains("思考プロセス")))',
+                'div.grid-cols-1.grid.gap-2\\.5:has(p.whitespace-pre-wrap)',
                 // 思考プロセス付き要素を除外
                 'div.grid-cols-1.grid:not(:has(.ease-out.rounded-lg))',
                 // 除外条件付きセレクタ（作業説明文と思考プロセスを除外）
-                'div.grid-cols-1.grid.gap-2\\.5:not([class*="p-3"]):not([class*="pt-0"]):not([class*="pr-8"]):not(:has(button:contains("思考プロセス")))',
+                'div.grid-cols-1.grid.gap-2\\.5:not([class*="p-3"]):not([class*="pt-0"]):not([class*="pr-8"])',
                 'div[class*="grid-cols-1"][class*="gap-2.5"]:not([class*="p-3"]):not([class*="pt-0"])',
                 // 通常回答除外セレクタ
                 '.grid-cols-1.grid:not(.standard-markdown):not([class*="p-3"]):not([class*="pt-0"])',
@@ -323,9 +323,8 @@
         '4_3_Canvas続けるボタン': {
             selectors: [
                 'button[aria-label="続ける"]',
-                'button:contains("続ける")',
-                'button[type="button"]:has-text("続ける")',
-                'button.inline-flex:contains("続ける")'
+                'button[type="button"]',
+                'button.inline-flex'
             ],
             description: 'Canvas機能の続けるボタン'
         },
@@ -336,7 +335,7 @@
                 'div[role="button"][tabindex="0"]:has(div.artifact-block-cell)',
                 'div.artifact-block-cell',
                 '.flex.text-left.font-ui.rounded-lg[role="button"]',
-                'div[role="button"]:contains("ドキュメント")'
+                'div[role="button"]'
             ],
             description: 'Canvas機能のプレビューボタン'
         },
@@ -427,11 +426,11 @@
                 '[tabindex="0"]#markdown-artifact',
                 'div.mx-auto.max-w-3xl#markdown-artifact',
                 // 実際のCanvas構造（思考プロセスを除外）
-                'div.grid-cols-1.grid.gap-2\\.5:has(p.whitespace-pre-wrap):not(:has(button:contains("思考プロセス")))',
+                'div.grid-cols-1.grid.gap-2\\.5:has(p.whitespace-pre-wrap)',
                 // 思考プロセス付き要素を除外
                 'div.grid-cols-1.grid:not(:has(.ease-out.rounded-lg))',
                 // 除外条件付きセレクタ（作業説明文と思考プロセスを除外）
-                'div.grid-cols-1.grid.gap-2\\.5:not([class*="p-3"]):not([class*="pt-0"]):not([class*="pr-8"]):not(:has(button:contains("思考プロセス")))',
+                'div.grid-cols-1.grid.gap-2\\.5:not([class*="p-3"]):not([class*="pt-0"]):not([class*="pr-8"])',
                 'div[class*="grid-cols-1"][class*="gap-2.5"]:not([class*="p-3"]):not([class*="pt-0"])',
                 // 通常回答除外セレクタ
                 '.grid-cols-1.grid:not(.standard-markdown):not([class*="p-3"]):not([class*="pt-0"])',
@@ -443,9 +442,8 @@
         '4_3_Canvas続けるボタン': {
             selectors: [
                 'button[aria-label="続ける"]',
-                'button:contains("続ける")',
-                'button[type="button"]:has-text("続ける")',
-                'button.inline-flex:contains("続ける")'
+                'button[type="button"]',
+                'button.inline-flex'
             ],
             description: 'Canvas機能の続けるボタン'
         },
@@ -456,7 +454,7 @@
                 'div[role="button"][tabindex="0"]:has(div.artifact-block-cell)',
                 'div.artifact-block-cell',
                 '.flex.text-left.font-ui.rounded-lg[role="button"]',
-                'div[role="button"]:contains("ドキュメント")'
+                'div[role="button"]'
             ],
             description: 'Canvas機能のプレビューボタン'
         },
@@ -815,11 +813,21 @@
                                             style.opacity !== '0';
 
                             if (isVisible) {
+                                // 特別なケース: 「続ける」ボタンの場合はテキストを確認
+                                if (selectorInfo.description && selectorInfo.description.includes('続けるボタン')) {
+                                    const buttonText = element.textContent || element.innerText || '';
+                                    if (!buttonText.includes('続ける')) {
+                                        continue; // テキストが「続ける」でない場合はスキップ
+                                    }
+                                }
                                 if (!skipLog) {
                                     console.log(`${logPrefix}✅ 要素発見: セレクタ[${i}]`);
                                     console.log(`${logPrefix}  セレクタ: ${selector}`);
                                     console.log(`${logPrefix}  要素タイプ: ${element.tagName}`);
                                     console.log(`${logPrefix}  位置: (${Math.round(rect.left)}, ${Math.round(rect.top)})`);
+                                    if (element.textContent) {
+                                        console.log(`${logPrefix}  テキスト: ${element.textContent.substring(0, 30)}`);
+                                    }
 
                                     // セレクタヒットをログに記録
                                     ClaudeLogManager.logStep('Selector-Hit', `セレクタがヒット: ${selectorInfo.description}`, {
@@ -1139,7 +1147,10 @@
                                  (element.textContent && element.textContent.includes('The task is complete'));
 
         // 思考プロセス要素を除外
-        const isThinkingProcess = element.querySelector('button:contains("思考プロセス")') ||
+        const thinkingButtons = Array.from(element.querySelectorAll('button')).filter(btn =>
+            btn.textContent && btn.textContent.includes('思考プロセス')
+        );
+        const isThinkingProcess = thinkingButtons.length > 0 ||
                                  element.querySelector('.ease-out.rounded-lg') ||
                                  (element.textContent && element.textContent.includes('思考プロセス'));
 
@@ -1211,7 +1222,10 @@
             console.log('  ⚠️ 思考プロセス要素を検出、除外します');
             console.log('    - 除外理由: 思考プロセスボタンまたは関連要素を検出');
             // 思考プロセス以外の要素を探して取得
-            const canvasContent = element.querySelector('div.grid-cols-1.grid:not(:has(button:contains("思考プロセス")))');
+            const canvasContent = Array.from(element.querySelectorAll('div.grid-cols-1.grid')).find(div => {
+                const buttons = Array.from(div.querySelectorAll('button'));
+                return !buttons.some(btn => btn.textContent && btn.textContent.includes('思考プロセス'));
+            });
             if (canvasContent) {
                 const contentText = canvasContent.innerText || canvasContent.textContent || '';
                 if (contentText.trim()) {
@@ -2412,7 +2426,7 @@
                 errorMessage: error.message,
                 errorStack: error.stack,
                 errorName: error.name,
-                currentStep: ClaudeLogManager.logs[ClaudeLogManager.logs.length - 1]?.step || 'unknown',
+                currentStep: (ClaudeLogManager.logs && ClaudeLogManager.logs.length > 0) ? ClaudeLogManager.logs[ClaudeLogManager.logs.length - 1]?.step : 'unknown',
                 timestamp: new Date().toISOString(),
                 userAgent: navigator.userAgent,
                 url: window.location.href
