@@ -282,12 +282,13 @@ async function checkCompletionStatus(taskGroup) {
         "[step5-loop.js] [Step 5-1-2] 3種類AIパターンの回答を確認",
       );
 
+      // 【統一修正】全てオブジェクト形式になったのでチェックを調整
       if (
         !taskGroup.columns.answer ||
         typeof taskGroup.columns.answer !== "object"
       ) {
         throw new Error(
-          "[step5-loop.js] [Step 5-1-2] エラー: 3種類AIパターンだがanswer列の構造が不正",
+          "[step5-loop.js] [Step 5-1-2] エラー: answer列がオブジェクト形式ではありません（統一修正後のエラー）",
         );
       }
 
@@ -344,10 +345,17 @@ async function checkCompletionStatus(taskGroup) {
       LoopLogger.info(
         `[step5-loop.js] [Step 5-1-2] 3種類AI調整後 - 期待回答数: ${promptCount}`,
       );
-    } else if (typeof taskGroup.columns.answer === "string") {
-      // 通常パターンの場合
+    } else {
+      // 【統一修正】通常パターンもオブジェクト形式に統一
       LoopLogger.info("[step5-loop.js] [Step 5-1-2] 通常パターンの回答を確認");
-      answerRange = `${taskGroup.columns.answer}${taskGroup.dataStartRow}:${taskGroup.columns.answer}1000`;
+
+      // primaryフィールドまたは最初のAI列を使用
+      const answerColumn =
+        taskGroup.columns.answer.primary ||
+        taskGroup.columns.answer.chatgpt ||
+        Object.values(taskGroup.columns.answer)[0];
+
+      answerRange = `${answerColumn}${taskGroup.dataStartRow}:${answerColumn}1000`;
       LoopLogger.info(`[step5-loop.js] [Step 5-1-2] 取得範囲: ${answerRange}`);
 
       const answerValues = await readSpreadsheet(answerRange);

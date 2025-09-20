@@ -194,10 +194,12 @@ async function processNextGroup(nextGroup) {
     );
 
     const startCol = nextGroup.columns?.prompts?.[0] || "undefined";
+    // 【統一修正】全てオブジェクト形式に統一
     const endCol =
-      typeof nextGroup.columns?.answer === "string"
-        ? nextGroup.columns.answer
-        : nextGroup.columns?.answer?.gemini || "undefined";
+      nextGroup.columns?.answer?.gemini ||
+      nextGroup.columns?.answer?.primary ||
+      Object.values(nextGroup.columns?.answer || {})[0] ||
+      "undefined";
 
     console.log(
       `[step6-nextgroup.js] [Step 6-2-1] グループ ${(window.globalState?.currentGroupIndex || 0) + 1} 処理開始:`,

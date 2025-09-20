@@ -1023,7 +1023,7 @@ async function executeStep2TaskGroups() {
       // dataStartRowを設定（step1で取得した情報を使用）
       group.dataStartRow = window.globalState.specialRows?.dataStartRow || 9;
 
-      // 3種類AIの回答列構造を保持
+      // 【統一修正】全てオブジェクト形式に統一
       let answerColumnStructure;
       if (group.groupType === "3種類AI" || group.type === "3種類AI") {
         // 3種類AIの場合はオブジェクト構造を維持
@@ -1033,13 +1033,19 @@ async function executeStep2TaskGroups() {
           gemini: group.geminiColumn || group.columns?.answer?.gemini || "E",
         };
       } else {
-        // 通常処理の場合は文字列
-        answerColumnStructure =
+        // 【統一修正】通常処理もオブジェクト形式に統一
+        const primaryColumn =
           group.answerColumn ||
           group.columns?.answer ||
           (group.answerColumns && group.answerColumns.length > 0
             ? group.answerColumns[0].column
-            : null);
+            : "C");
+        answerColumnStructure = {
+          primary: primaryColumn,
+          chatgpt: primaryColumn,
+          claude: primaryColumn,
+          gemini: primaryColumn,
+        };
       }
 
       // 統一columns形式を設定（データ損失防止）

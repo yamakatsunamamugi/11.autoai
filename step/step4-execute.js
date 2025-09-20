@@ -394,41 +394,67 @@ class TaskGroupTypeDetector {
       },
     );
 
-    // 位置の順序：右上(1) → 左上(0) → 左下(2) → 右上(1)...
+    // 位置の順序：右上(1) → 左上(0) → 左下(2)
     const positionSequence = [1, 0, 2]; // 右上、左上、左下
 
-    // AI種別の順序：ChatGPT → Claude → Gemini → ChatGPT...
-    const aiSequence = ["chatgpt", "claude", "gemini"];
+    // タスクリストから実際に使用されるAI種別を抽出（順序を保持）
+    const usedAITypes = [];
+    const seenAITypes = new Set();
 
-    const windowLayout = [];
-    const usedPositions = new Set();
+    taskList.forEach((task) => {
+      // スプレッドシートで指定されたAI種別を取得
+      let aiType = task.aiType || task.ai;
 
-    taskList.forEach((task, taskIndex) => {
-      // タスクの順番から位置とAIを決定
-      const positionIndex = taskIndex % positionSequence.length;
-      const aiIndex = taskIndex % aiSequence.length;
+      // AI種別の正規化
+      if (aiType === "single" || !aiType) {
+        aiType = "claude";
+      }
 
-      const position = positionSequence[positionIndex];
-      const aiType = aiSequence[aiIndex];
-
-      // 同じ位置が既に使用されていない場合のみ追加
-      if (!usedPositions.has(position)) {
-        windowLayout.push({
-          aiType: aiType,
-          position: position,
-          taskIndex: taskIndex,
-          taskId: task.id || task.taskId,
+      // 3種類AIの場合は展開
+      if (aiType === "3種類（ChatGPT・Gemini・Claude）") {
+        ["chatgpt", "claude", "gemini"].forEach((ai) => {
+          if (!seenAITypes.has(ai)) {
+            usedAITypes.push(ai);
+            seenAITypes.add(ai);
+          }
         });
-        usedPositions.add(position);
+      } else {
+        const normalizedAI = aiType.toLowerCase();
+        if (!seenAITypes.has(normalizedAI)) {
+          usedAITypes.push(normalizedAI);
+          seenAITypes.add(normalizedAI);
+        }
       }
     });
 
+    // 必要なAI種別のみにウィンドウ位置を割り当て
+    const windowLayout = usedAITypes.slice(0, 3).map((aiType, index) => ({
+      aiType: aiType,
+      position: positionSequence[index],
+      taskIndex: index,
+      requiredForTasks: taskList
+        .filter((task) => {
+          const taskAI = (task.aiType || task.ai || "claude").toLowerCase();
+          return (
+            taskAI === aiType ||
+            (taskAI === "single" && aiType === "claude") ||
+            (taskAI === "3種類（chatgpt・gemini・claude）" &&
+              ["chatgpt", "claude", "gemini"].includes(aiType))
+          );
+        })
+        .map((t) => t.id || t.taskId),
+    }));
+
     ExecuteLogger.info("🖼️ [GroupTypeDetector] 配置結果:", {
       totalTasks: taskList.length,
+      uniqueAIs: usedAITypes.length,
       windowCount: windowLayout.length,
       layout: windowLayout
         .map((w) => `${w.aiType}(位置${w.position})`)
         .join(" → "),
+      taskMapping: windowLayout
+        .map((w) => `${w.aiType}: ${w.requiredForTasks.length}タスク`)
+        .join(", "),
     });
 
     return windowLayout;
@@ -1015,36 +1041,41 @@ class SpreadsheetDataManager {
     const enrichedTask = { ...task };
 
     try {
-      // 特殊タスク（レポート化、Genspark）の場合は作業セルのみ処理
-      if (task.groupType === "report" || task.groupType === "genspark") {
+      // 【統一修正】セル位置情報の統一処理
+      // Step3で設定されたanswerCell, logCell, workCellを優先使用
+      if (task.answerCell) {
+        enrichedTask.answerCellRef = task.answerCell;
+      }
+      if (task.logCell) {
+        enrichedTask.logCellRef = task.logCell;
+      }
+      if (task.workCell) {
         enrichedTask.workCellRef = task.workCell;
+      }
+
+      // 特殊タスク（レポート化、Genspark）の場合
+      if (task.groupType === "report" || task.groupType === "genspark") {
+        // workCellが設定されていない場合はデフォルト値を使用
+        if (!enrichedTask.workCellRef) {
+          enrichedTask.workCellRef = `${task.column || "A"}${task.row || 1}`;
+        }
         ExecuteLogger.info(
-          `📊 [Step 4-2-4] 特殊タスク - 作業セル: ${task.workCell}`,
+          `📊 [Step 4-2-4] 特殊タスク - 作業セル: ${enrichedTask.workCellRef}`,
         );
         return enrichedTask;
       }
 
-      // セル位置情報の確認（通常タスク用）
-      let cellRef = task.workCell || task.cellRef;
+      // 通常タスクの場合のcellRef決定（後方互換性のため）
+      let cellRef = task.answerCell || task.workCell || task.cellRef;
 
       // セル参照がない場合はタスクデータから構築
       if (!cellRef && task.column && task.row) {
         cellRef = `${task.column}${task.row}`;
       }
 
-      // 既存タスクからanswerColumnとrowを使用して構築を試行
-      if (!cellRef && task.answerColumn && task.row) {
-        cellRef = `${task.answerColumn}${task.row}`;
-      }
-
-      // まだ取得できない場合はspreadsheetDataから推測
-      if (
-        !cellRef &&
-        task.spreadsheetData &&
-        task.spreadsheetData.workRowNumber
-      ) {
-        const answerCol = task.spreadsheetData.answerColumn || "C";
-        cellRef = `${answerCol}${task.spreadsheetData.workRowNumber}`;
+      // 【統一修正】Step3で設定された情報を活用
+      if (!cellRef && task.cellInfo) {
+        cellRef = `${task.cellInfo.column}${task.cellInfo.row || task.row}`;
       }
 
       if (!cellRef || cellRef.includes("undefined")) {
@@ -1053,7 +1084,8 @@ class SpreadsheetDataManager {
           task,
         );
         // 最低限の作業セル情報を設定
-        enrichedTask.workCellRef = task.workCell || "C1";
+        enrichedTask.workCellRef =
+          task.workCell || `${task.column || "C"}${task.row || 1}`;
         return enrichedTask;
       }
 
@@ -2541,19 +2573,9 @@ async function executeStep4(taskList) {
           task.originalAiType === "3種類（ChatGPT・Gemini・Claude）";
 
         try {
-          // タスクの順番に基づいてAI種別を動的に設定
-          const taskIndex = batch.indexOf(task) + batchIndex * batch.length;
-          const aiSequence = ["chatgpt", "claude", "gemini"];
-          const dynamicAiType = aiSequence[taskIndex % aiSequence.length];
-
-          // 元のAI種別を保存し、動的AI種別を設定
-          if (!task.originalAiType) {
-            task.originalAiType = task.aiType;
-          }
-          task.aiType = dynamicAiType;
-
+          // スプレッドシートで指定されたAI種別をそのまま使用
           ExecuteLogger.info(
-            `📝 [step4-execute.js] タスク実行: ${taskId} (順番AI: ${task.aiType}, 元AI: ${task.originalAiType}) ${isThreeTypeTask ? "[3種類AI]" : "[順番処理]"}`,
+            `📝 [step4-execute.js] タスク実行: ${taskId} (AI: ${task.aiType}) ${isThreeTypeTask ? "[3種類AI]" : "[通常]"}`,
           );
 
           // 特別処理かチェック

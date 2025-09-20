@@ -75,38 +75,43 @@ function columnToIndex(column) {
  */
 function getAnswerCellUnified(taskGroup, aiType, row) {
   try {
-    if (taskGroup.groupType === "3種類AI") {
-      if (
-        typeof taskGroup.columns.answer === "object" &&
-        taskGroup.columns.answer !== null
-      ) {
-        const answerColumn = taskGroup.columns.answer[aiType.toLowerCase()];
-        if (answerColumn) {
-          return getCellA1Notation(row, columnToIndex(answerColumn) + 1);
-        } else {
-          console.warn(
-            `[step3-tasklist.js] ${aiType}用の回答列が未定義`,
-            taskGroup.columns.answer,
-          );
-          const defaultColumns = { chatgpt: "C", claude: "D", gemini: "E" };
-          const defaultCol = defaultColumns[aiType.toLowerCase()] || "C";
-          return getCellA1Notation(row, columnToIndex(defaultCol) + 1);
-        }
+    // 【統一修正】全てオブジェクト形式で処理
+    if (
+      typeof taskGroup.columns.answer === "object" &&
+      taskGroup.columns.answer !== null
+    ) {
+      // AIタイプに応じた列を取得
+      let answerColumn;
+      const normalizedAI = aiType.toLowerCase();
+
+      if (taskGroup.groupType === "3種類AI") {
+        // 3種類AIの場合は各AI専用列を使用
+        answerColumn = taskGroup.columns.answer[normalizedAI];
       } else {
-        console.error(
-          "[step3-tasklist.js] 3種類AIモードだがanswer列がオブジェクトではない",
+        // 通常処理の場合はprimaryまたはAI名で指定された列を使用
+        answerColumn =
+          taskGroup.columns.answer.primary ||
+          taskGroup.columns.answer[normalizedAI] ||
+          taskGroup.columns.answer.chatgpt; // fallback
+      }
+
+      if (answerColumn) {
+        return getCellA1Notation(row, columnToIndex(answerColumn) + 1);
+      } else {
+        console.warn(
+          `[step3-tasklist.js] ${aiType}用の回答列が未定義`,
+          taskGroup.columns.answer,
         );
-        return getCellA1Notation(
-          row,
-          columnToIndex(taskGroup.columns.answer || "C") + 1,
-        );
+        const defaultColumns = { chatgpt: "C", claude: "D", gemini: "E" };
+        const defaultCol = defaultColumns[normalizedAI] || "C";
+        return getCellA1Notation(row, columnToIndex(defaultCol) + 1);
       }
     } else {
-      // 通常処理
-      return getCellA1Notation(
-        row,
-        columnToIndex(taskGroup.columns.answer || "C") + 1,
+      console.error(
+        "[step3-tasklist.js] answer列がオブジェクト形式ではない（統一修正後は全てオブジェクトである必要があります）",
+        taskGroup.columns.answer,
       );
+      return getCellA1Notation(row, 3); // デフォルトでC列
     }
   } catch (error) {
     console.error("[step3-tasklist.js] getAnswerCellUnified エラー:", error);
@@ -191,10 +196,9 @@ function generateTaskList(
     );
 
     const promptColumns = taskGroup.columns.prompts || [];
+    // 【統一修正】全てオブジェクト形式なのでObject.valuesを直接使用
     const answerColumns = taskGroup.columns.answer
-      ? typeof taskGroup.columns.answer === "object"
-        ? Object.values(taskGroup.columns.answer)
-        : [taskGroup.columns.answer]
+      ? Object.values(taskGroup.columns.answer)
       : [];
 
     // デバッグ情報をコンソールに出力
