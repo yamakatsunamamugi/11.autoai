@@ -1911,10 +1911,31 @@ async function executeStep4(taskList) {
                     return await window.ChatGPTAutomationV2.executeTask(task);
 
                 case 'claude':
-                    console.log(`[DEBUG] Claude実行前チェック: window.ClaudeAutomation=${typeof window.ClaudeAutomation}, executeTask=${window.ClaudeAutomation && typeof window.ClaudeAutomation.executeTask}`);
+                    console.log(`[DEBUG] Claude実行前チェック:`, {
+                        windowClaudeAutomation: typeof window.ClaudeAutomation,
+                        executeTask: window.ClaudeAutomation && typeof window.ClaudeAutomation.executeTask,
+                        isReady: window.ClaudeAutomation?.isReady,
+                        version: window.ClaudeAutomation?.version,
+                        loadedAt: window.ClaudeAutomation?.loadedAt
+                    });
+
+                    // スクリプトのロード状態を確認
+                    const scriptElement = document.querySelector('script[src*="4-2-claude-automation.js"]');
+                    if (scriptElement) {
+                        console.log(`[DEBUG] スクリプトタグ発見:`, {
+                            src: scriptElement.src,
+                            readyState: scriptElement.readyState,
+                            async: scriptElement.async,
+                            defer: scriptElement.defer
+                        });
+                    } else {
+                        console.warn(`[DEBUG] スクリプトタグが見つかりません`);
+                    }
+
                     if (!window.ClaudeAutomation) {
                         console.error(`[DEBUG] ClaudeAutomationが未定義`);
                         console.error(`[DEBUG] 現在のwindowオブジェクトのClaud関連キー:`, Object.keys(window).filter(key => key.toLowerCase().includes('claude')));
+                        console.error(`[DEBUG] コンソールのエラーを確認してください`);
                         throw new Error('Claude Automation が利用できません');
                     }
                     return await window.ClaudeAutomation.executeTask(task);

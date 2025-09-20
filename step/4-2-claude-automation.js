@@ -171,45 +171,44 @@
             this.logs = [];
             return null;
 
-            /* 以下、元のファイル保存処理（無効化）
-            try {
-                const timestamp = new Date().toISOString()
-                    .replace(/[:.]/g, '-')
-                    .replace('T', '_')
-                    .slice(0, -5);
-
-                const fileName = `claude-log-${timestamp}.json`;
-                const filePath = `11autoai-logs/claude/complete/${fileName}`;
-
-                const logData = {
-                    sessionStart: this.sessionStartTime,
-                    sessionEnd: new Date().toISOString(),
-                    totalLogs: this.logs.length,
-                    logs: this.logs
-                };
-
-                // 通常ログレポート生成も無効化
-                /* // バックグラウンドスクリプトにメッセージを送信
-                if (typeof chrome !== 'undefined' && chrome.runtime) {
-                    chrome.runtime.sendMessage({
-                        type: 'DOWNLOAD_LOG_FILE',
-                        data: {
-                            fileName: filePath,
-                            content: JSON.stringify(logData, null, 2)
-                        }
-                    });
-                } */
-
-                console.log(`✅ [LogFileManager] 最終ログを保存しました: ${fileName}`);
-
-                // ログをクリア
-                this.logs = [];
-                return filePath;
+            // 以下、元のファイル保存処理（無効化）
+            // try {
+            //     const timestamp = new Date().toISOString()
+            //         .replace(/[:.]/g, '-')
+            //         .replace('T', '_')
+            //         .slice(0, -5);
+            //
+            //     const fileName = `claude-log-${timestamp}.json`;
+            //     const filePath = `11autoai-logs/claude/complete/${fileName}`;
+            //
+            //     const logData = {
+            //         sessionStart: this.sessionStartTime,
+            //         sessionEnd: new Date().toISOString(),
+            //         totalLogs: this.logs.length,
+            //         logs: this.logs
+            //     };
+            //
+            //     // 通常ログレポート生成も無効化
+            //     // バックグラウンドスクリプトにメッセージを送信
+            //     if (typeof chrome !== 'undefined' && chrome.runtime) {
+            //         chrome.runtime.sendMessage({
+            //             type: 'DOWNLOAD_LOG_FILE',
+            //             data: {
+            //                 fileName: filePath,
+            //                 content: JSON.stringify(logData, null, 2)
+            //             }
+            //         });
+            //     }
+            //
+            //     console.log(`✅ [LogFileManager] 最終ログを保存しました: ${fileName}`);
+            //
+            //     // ログをクリア
+            //     this.logs = [];
+            //     return filePath;
             // } catch (error) {
             //     console.error('[LogFileManager] ログ保存エラー:', error);
             //     throw error;
             // }
-            */
         },
 
         clearCurrentLogs() {
@@ -4104,7 +4103,9 @@
     console.log('🔧 [DEBUG] ClaudeAutomation定義前の状態:', {
         windowClaudeAutomation: typeof window.ClaudeAutomation,
         executeTask: typeof executeTask,
-        runAutomation: typeof runAutomation
+        runAutomation: typeof runAutomation,
+        スクリプトエラー: 'なし',
+        正常ロード: true
     });
 
     window.ClaudeAutomation = {
@@ -4112,8 +4113,16 @@
         runAutomation: runAutomation,
         version: 'V2',
         initTime: initCompleteTime,
-        isReady: true
+        isReady: true,
+        loadedAt: new Date().toISOString()
     };
+
+    // デバッグ: 登録確認
+    console.log('✅ [DEBUG] window.ClaudeAutomation登録完了:', {
+        定義済み: !!window.ClaudeAutomation,
+        executeTask存在: typeof window.ClaudeAutomation?.executeTask === 'function',
+        runAutomation存在: typeof window.ClaudeAutomation?.runAutomation === 'function'
+    });
 
     console.log('🌍 [Claude] window.ClaudeAutomation オブジェクト公開完了:', {
         executeTask: typeof window.ClaudeAutomation.executeTask,
