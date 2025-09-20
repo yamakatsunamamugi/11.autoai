@@ -29,7 +29,7 @@ if (!window.globalState) {
 // ========================================
 function extractSpreadsheetInfo() {
   console.log("========");
-  console.log("[step2-taskgroup.js] [Step 2-0] スプレッドシート情報の取得");
+  console.log("[step2-taskgroup.js→Step2-0] スプレッドシート情報の取得");
   console.log("========");
 
   // 2-0-1. globalStateまたはURLからIDを取得
@@ -90,7 +90,7 @@ function extractSpreadsheetInfo() {
 // ========================================
 async function identifyTaskGroups() {
   console.log("========");
-  console.log("[step2-taskgroup.js] [Step 2-1] タスクグループの識別開始");
+  console.log("[step2-taskgroup.js→Step2-1] タスクグループの識別開始");
   console.log("========");
 
   // globalStateまたは従来の方法でステップ1の結果を取得
@@ -398,7 +398,7 @@ async function identifyTaskGroups() {
 // ========================================
 async function applyColumnControls() {
   console.log("========");
-  console.log("[step2-taskgroup.js] [Step 2-2] 列制御の適用");
+  console.log("[step2-taskgroup.js→Step2-2] 列制御の適用");
   console.log("========");
 
   const setupResult =
@@ -555,7 +555,7 @@ async function applyColumnControls() {
 // ========================================
 async function applySkipConditions() {
   console.log("========");
-  console.log("[step2-taskgroup.js] [Step 2-3] スキップ判定の適用");
+  console.log("[step2-taskgroup.js→Step2-3] スキップ判定の適用");
   console.log("========");
 
   const setupResult =
@@ -707,7 +707,7 @@ async function applySkipConditions() {
 // ========================================
 function reorganizeTaskGroups() {
   console.log("========");
-  console.log("[step2-taskgroup.js] [Step 2-4] タスクグループの順番整理");
+  console.log("[step2-taskgroup.js→Step2-4] タスクグループの順番整理");
   console.log("========");
 
   const taskGroups = window.globalState.taskGroups;
