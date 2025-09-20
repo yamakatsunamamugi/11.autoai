@@ -390,7 +390,197 @@
                 STOP_BUTTON_INITIAL_WAIT: 30000,
                 STOP_BUTTON_DISAPPEAR_WAIT: 300000
             },
-            UI_SELECTORS: window.UI_SELECTORS || {}
+            UI_SELECTORS: window.UI_SELECTORS || {
+                Claude: {
+                    // テキスト入力欄
+                    INPUT: [
+                        '.ProseMirror[contenteditable="true"]',
+                        'div[contenteditable="true"][role="textbox"]',
+                        '[aria-label*="プロンプト"]',
+                        'div[contenteditable="true"]',
+                        'textarea[placeholder*="メッセージ"]'
+                    ],
+
+                    // 送信ボタン
+                    SEND_BUTTON: [
+                        'button[aria-label="メッセージを送信"]',
+                        '[aria-label="メッセージを送信"]',
+                        'button[type="submit"]',
+                        '.send-button',
+                        'button[aria-label*="送信"]',
+                        'button:has(svg)',
+                        'button[data-testid*="send"]'
+                    ],
+
+                    // 停止ボタン
+                    STOP_BUTTON: [
+                        'button[aria-label="応答を停止"]',
+                        '[aria-label="応答を停止"]',
+                        '[aria-label="Stop generating"]',
+                        '[data-testid="stop-button"]',
+                        'button[aria-label*="stop"]',
+                        'button[aria-label*="Stop"]'
+                    ],
+
+                    // モデル選択
+                    MODEL_BUTTON: [
+                        '[data-testid="model-selector-dropdown"]',
+                        'button[data-value*="claude"]',
+                        'button.cursor-pointer:has(span.font-medium)',
+                        'button[aria-label*="モデル"]',
+                        'button[aria-label*="Model"]',
+                        '[aria-label="モデルを選択"]',
+                        'button[aria-haspopup="menu"]',
+                        '[data-testid="model-selector"]'
+                    ],
+
+                    // 機能メニュー
+                    FUNCTION_MENU_BUTTON: [
+                        '[data-testid="input-menu-tools"]',
+                        '#input-tools-menu-trigger',
+                        '[aria-label="ツールメニューを開く"]',
+                        '[data-testid="input-menu-trigger"]',
+                        'button[aria-label*="機能"]'
+                    ],
+
+                    // 機能ボタン（別名）
+                    FUNCTION_BUTTON: [
+                        '[data-testid="input-menu-tools"]',
+                        '#input-tools-menu-trigger',
+                        '[aria-label="ツールメニューを開く"]',
+                        '[data-testid="input-menu-trigger"]',
+                        'button[aria-label*="機能"]'
+                    ],
+
+                    // メッセージ
+                    MESSAGE: [
+                        '.grid-cols-1.grid',
+                        'div[class*="grid-cols-1"][class*="grid"]',
+                        '.font-claude-message',
+                        '[data-is-streaming="false"]',
+                        'div[class*="font-claude-message"]',
+                        '.group.relative.-tracking-\\[0\\.015em\\]'
+                    ],
+
+                    // 思考プロセス除外用
+                    THINKING_PROCESS: {
+                        TEXT_PATTERNS: [
+                            '思考プロセス',
+                            'Analyzed',
+                            'Pondered',
+                            'Thought',
+                            'Considered',
+                            'Evaluated',
+                            'Reviewed'
+                        ],
+                        ELEMENTS: [
+                            'button:has(.tabular-nums)',
+                            'svg path[d*="M10.3857 2.50977"]',
+                            '.tabular-nums'
+                        ],
+                        PARENT_CLASSES: [
+                            'rounded-lg',
+                            'border-0.5',
+                            'transition-all',
+                            'my-3'
+                        ]
+                    },
+
+                    // DeepResearchボタン
+                    DEEP_RESEARCH_BUTTON: [
+                        'button:has-text("リサーチ")',
+                        'button[aria-pressed]',
+                        'button:contains("リサーチ")'
+                    ],
+
+                    // Deep Research関連
+                    DEEP_RESEARCH: {
+                        CANVAS_PREVIEW: [
+                            'button[aria-label="内容をプレビュー"]',
+                            'button[aria-label*="プレビュー"]',
+                            'button[aria-label*="preview"]',
+                            'button[aria-label="View content"]'
+                        ]
+                    },
+
+                    // プレビューボタン
+                    PREVIEW_BUTTON: [
+                        'button[aria-label="内容をプレビュー"]'
+                    ],
+
+                    // 応答/レスポンス
+                    RESPONSE: [
+                        '.grid-cols-1.grid',
+                        'div[class*="grid-cols-1"][class*="grid"]',
+                        '.font-claude-message',
+                        '[data-is-streaming="false"]',
+                        'div[class*="font-claude-message"]',
+                        '.group.relative.-tracking-\\[0\\.015em\\]'
+                    ],
+
+                    // メニュー関連
+                    MENU: {
+                        CONTAINER: '[role="menu"][data-state="open"], [role="menu"]',
+                        ITEM: '[role="option"], [role="menuitem"]',
+                        MODEL_ITEM: 'button[role="option"]:has(span)',
+                        OTHER_MODELS: [
+                            'div[role="menuitem"][aria-haspopup="menu"]',
+                            '[role="menuitem"][aria-haspopup="menu"]',
+                            'div[role="menuitem"]:has(div:contains("他のモデル"))',
+                            'div[role="menuitem"]:has(div:contains("Other models"))',
+                            '[aria-haspopup="menu"]:has(svg)'
+                        ]
+                    },
+
+                    // メニューアイテム（拡張）
+                    MENU_ITEM: [
+                        '[role="option"]',
+                        '[role="menuitem"]',
+                        '[role="menuitemradio"]'
+                    ],
+
+                    // Canvas関連
+                    CANVAS: {
+                        CONTAINER: [
+                            '.grid-cols-1.grid:has(h1)',
+                            '.grid-cols-1.grid',
+                            '[class*="grid-cols-1"][class*="grid"]',
+                            'div:has(> h1.text-2xl)',
+                            '.overflow-y-auto:has(h1)'
+                        ],
+                        PREVIEW_TEXT: [
+                            '.absolute.inset-0'
+                        ],
+                        PREVIEW_BUTTON: [
+                            'button[aria-label="内容をプレビュー"]',
+                            'button[aria-label*="プレビュー"]',
+                            'button[aria-label*="preview"]',
+                            'button[aria-label="View content"]'
+                        ],
+                        TITLE: 'h1.text-2xl',
+                        SECTION: 'h2.text-xl',
+                        PARAGRAPH: 'p.whitespace-normal, p[class*="whitespace"]'
+                    },
+
+                    // モデル情報取得
+                    MODEL_INFO: {
+                        BUTTON: [
+                            'button[data-testid="model-selector-dropdown"]',
+                            'button[aria-haspopup="menu"]',
+                            'button.cursor-pointer:has(span.font-medium)',
+                            'button[aria-label*="モデル"]',
+                            'button[aria-label*="Model"]'
+                        ],
+                        TEXT_ELEMENT: [
+                            'button[data-testid="model-selector-dropdown"] .whitespace-nowrap.tracking-tight.select-none',
+                            'button[data-testid="model-selector-dropdown"] span',
+                            'button[data-testid="model-selector-dropdown"] div',
+                            'button[aria-haspopup="menu"] .whitespace-nowrap',
+                            'button[aria-haspopup="menu"] span.font-medium'
+                        ]
+                    }
+                }
+            }
         };
     };
 
