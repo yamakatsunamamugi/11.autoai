@@ -273,6 +273,17 @@ class ThreeAIController {
   async executeSingleAI(task, aiType) {
     ExecuteLogger.info(`[step4-execute.js] Step 4-0-3-5: ${aiType}実行準備`);
 
+    // DEBUG: タブ通信の条件をチェック
+    ExecuteLogger.info(`[step4-execute.js] 🖼️ DEBUG: タブ通信条件チェック`, {
+      taskTabId: task.tabId,
+      taskWindowId: task.windowId,
+      chromeAvailable: typeof chrome !== "undefined",
+      chromeTabsAvailable:
+        typeof chrome !== "undefined" ? !!chrome.tabs : false,
+      taskKeys: Object.keys(task),
+      aiType: aiType,
+    });
+
     // Step 4-0-3-5-1: タブ通信 vs ローカル実行の判定
     if (task.tabId && typeof chrome !== "undefined" && chrome.tabs) {
       // Step 4-0-3-5-2: タブ通信でタスクを実行
@@ -281,10 +292,29 @@ class ThreeAIController {
       );
 
       try {
-        const response = await chrome.tabs.sendMessage(task.tabId, {
+        const messageData = {
           type: "CLAUDE_EXECUTE_TASK",
           task: task,
           aiType: aiType,
+        };
+
+        ExecuteLogger.info(`🖼️ [chrome.tabs.sendMessage] DEBUG: 送信開始`, {
+          tabId: task.tabId,
+          messageType: messageData.type,
+          aiType: aiType,
+          taskId: task.taskId,
+          hasTask: !!task,
+          chromeTabsExists: !!chrome.tabs,
+        });
+
+        const response = await chrome.tabs.sendMessage(task.tabId, messageData);
+
+        ExecuteLogger.info(`🖼️ [chrome.tabs.sendMessage] DEBUG: 応答受信`, {
+          tabId: task.tabId,
+          aiType: aiType,
+          responseReceived: !!response,
+          responseType: typeof response,
+          chromeLastError: chrome.runtime.lastError?.message || "なし",
         });
 
         if (chrome.runtime.lastError) {
@@ -699,13 +729,33 @@ class WindowController {
         );
 
         if (windowInfo && windowInfo.id) {
-          this.openedWindows.set(layout.aiType, {
+          const windowData = {
             windowId: windowInfo.id,
             tabId: windowInfo.tabs?.[0]?.id,
             url: url,
             position: layout.position,
             aiType: layout.aiType,
-          });
+          };
+
+          ExecuteLogger.info(
+            `🖼️ [WindowController] DEBUG: openedWindows.set実行`,
+            {
+              aiType: layout.aiType,
+              windowData: windowData,
+              beforeSize: this.openedWindows.size,
+            },
+          );
+
+          this.openedWindows.set(layout.aiType, windowData);
+
+          ExecuteLogger.info(
+            `🖼️ [WindowController] DEBUG: openedWindows.set完了`,
+            {
+              aiType: layout.aiType,
+              afterSize: this.openedWindows.size,
+              allOpenedWindows: Array.from(this.openedWindows.entries()),
+            },
+          );
 
           results.push({
             aiType: layout.aiType,

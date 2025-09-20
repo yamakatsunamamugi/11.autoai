@@ -805,6 +805,26 @@ async function generateTaskList(
             window.windowController?.openedWindows
           ) {
             windowInfo = window.windowController.openedWindows.get(aiType);
+            console.log(
+              `[step4-tasklist] 🖼️ DEBUG: WindowInfo取得 (aiType: ${aiType})`,
+              {
+                windowControllerExists: !!window.windowController,
+                openedWindowsExists: !!window.windowController?.openedWindows,
+                openedWindowsSize: window.windowController?.openedWindows?.size,
+                allOpenedWindows: window.windowController?.openedWindows
+                  ? Array.from(window.windowController.openedWindows.entries())
+                  : null,
+                targetAiType: aiType,
+                foundWindowInfo: windowInfo,
+              },
+            );
+          } else {
+            console.log(`[step4-tasklist] 🖼️ DEBUG: WindowController利用不可`, {
+              windowExists: typeof window !== "undefined",
+              windowControllerExists: !!window?.windowController,
+              openedWindowsExists: !!window?.windowController?.openedWindows,
+              aiType: aiType,
+            });
           }
 
           // Step4との互換性のため、aiTypeフィールドも追加
@@ -858,6 +878,18 @@ async function generateTaskList(
             aiType: task.ai,
             promptLength: task.prompt?.length || 0,
           });
+
+          console.log(
+            `[step4-tasklist] 🖼️ DEBUG: タスク作成完了 (行${row}, aiType: ${aiType})`,
+            {
+              taskId: task.taskId,
+              tabId: task.tabId,
+              windowId: task.windowId,
+              aiType: task.aiType,
+              hasTabId: !!task.tabId,
+              hasWindowId: !!task.windowId,
+            },
+          );
 
           validTasks.push(task);
         }

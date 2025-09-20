@@ -5155,6 +5155,22 @@
     const messageReceiveTime = Date.now();
     const requestId = Math.random().toString(36).substring(2, 8);
 
+    // 🖼️ DEBUG: 詳細なメッセージ受信ログ
+    ClaudeLogger.info(
+      `🖼️ [Content Script] DEBUG: メッセージ受信詳細 [ID:${requestId}]`,
+      {
+        currentURL: window.location.href,
+        currentDomain: window.location.hostname,
+        messageType: request.type,
+        isClaudeExecuteTask: request.type === "CLAUDE_EXECUTE_TASK",
+        senderTabId: sender.tab?.id,
+        hasTask: !!request.task,
+        taskTabId: request.task?.tabId,
+        aiType: request.aiType,
+        receiveTime: new Date(messageReceiveTime).toISOString(),
+      },
+    );
+
     ClaudeLogger.info(
       `📬 [ClaudeAutomation] メッセージ受信 [ID:${requestId}]:`,
       {
