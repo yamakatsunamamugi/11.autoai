@@ -258,7 +258,7 @@ window.WindowService = {
       }
 
       console.log(
-        `[step0-ui-controller.js→Step0-1] 位置${position}の座標:`,
+        `[step0-ui-controller.js→Step0-1] 🖼️ DEBUG: 位置${position}の座標 (aiType: ${options.aiType || "unknown"}):`,
         windowPosition,
       );
 
@@ -278,7 +278,7 @@ window.WindowService = {
       const window = await chrome.windows.create(windowOptions);
 
       console.log(
-        `[step0-ui-controller.js→Step0-1] ✅ 位置${position}にウィンドウ作成完了 (ID: ${window.id})`,
+        `[step0-ui-controller.js→Step0-1] ✅ 位置${position}にウィンドウ作成完了 (aiType: ${options.aiType || "unknown"}, ID: ${window.id}, TabID: ${window.tabs?.[0]?.id})`,
       );
 
       return {

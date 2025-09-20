@@ -422,11 +422,16 @@ class TaskGroupTypeDetector {
       "🖼️ [GroupTypeDetector] タスク順序ベースのウィンドウ配置計算:",
       {
         taskCount: taskList.length,
+        taskDetails: taskList.map((t) => ({
+          aiType: t.aiType,
+          ai: t.ai,
+          id: t.id,
+        })),
       },
     );
 
-    // 位置の順序：右上(1) → 左上(0) → 左下(2)
-    const positionSequence = [1, 0, 2]; // 右上、左上、左下
+    // 位置の順序：左上(0) → 右上(1) → 左下(2)
+    const positionSequence = [0, 1, 2]; // 左上、右上、左下
 
     // タスクリストから実際に使用されるAI種別を抽出（順序を保持）
     const usedAITypes = [];
@@ -481,22 +486,45 @@ class TaskGroupTypeDetector {
     });
 
     // 必要なAI種別のみにウィンドウ位置を割り当て
-    const windowLayout = usedAITypes.slice(0, 3).map((aiType, index) => ({
-      aiType: aiType,
-      position: positionSequence[index],
-      taskIndex: index,
-      requiredForTasks: taskList
-        .filter((task) => {
-          const taskAI = (task.aiType || task.ai || "claude").toLowerCase();
-          return (
-            taskAI === aiType ||
-            (taskAI === "single" && aiType === "claude") ||
-            (taskAI === "3種類（chatgpt・gemini・claude）" &&
-              ["chatgpt", "claude", "gemini"].includes(aiType))
-          );
-        })
-        .map((t) => t.id || t.taskId),
-    }));
+    ExecuteLogger.info(
+      "[GroupTypeDetector] 🖼️ DEBUG: ウィンドウ位置割り当て開始",
+      {
+        usedAITypes,
+        positionSequence,
+        slicedAITypes: usedAITypes.slice(0, 3),
+      },
+    );
+
+    const windowLayout = usedAITypes.slice(0, 3).map((aiType, index) => {
+      const position = positionSequence[index];
+      const matchedTasks = taskList.filter((task) => {
+        const taskAI = (task.aiType || task.ai || "claude").toLowerCase();
+        const matches =
+          taskAI === aiType ||
+          (taskAI === "single" && aiType === "claude") ||
+          (taskAI === "3種類（chatgpt・gemini・claude）" &&
+            ["chatgpt", "claude", "gemini"].includes(aiType));
+        return matches;
+      });
+
+      ExecuteLogger.info(
+        `[GroupTypeDetector] 🖼️ DEBUG: ${aiType} → 位置${position}`,
+        {
+          index,
+          aiType,
+          position,
+          matchedTasksCount: matchedTasks.length,
+          matchedTaskIDs: matchedTasks.map((t) => t.id || t.taskId),
+        },
+      );
+
+      return {
+        aiType: aiType,
+        position: position,
+        taskIndex: index,
+        requiredForTasks: matchedTasks.map((t) => t.id || t.taskId),
+      };
+    });
 
     ExecuteLogger.info("🖼️ [GroupTypeDetector] 配置結果:", {
       totalTasks: taskList.length,
