@@ -924,33 +924,22 @@ async function executeStep2TaskGroups() {
       }
     });
 
-    // 統合ログ出力 - globalState.taskGroups設定完了と構造確認
-    console.log('[step2-taskgroup.js] ✅ globalState.taskGroups設定完了と構造確認:');
-    window.globalState.taskGroups.forEach((group) => {
-      const groupTypeInfo = group.groupType || '通常処理';
-      const promptInfo = group.columns?.prompts ? group.columns.prompts.join(',') : 'なし';
-      const answerInfo = group.columns?.answer || 'なし';
-      const logInfo = group.columns?.log || 'なし';
-
-      console.log(`step2-taskgroup.js:962   グループ${group.groupNumber}: ${groupTypeInfo} | ログ:${logInfo} | プロンプト:${promptInfo} | 回答:${answerInfo} | データ開始行:${group.dataStartRow}`);
-    });
-
-    // 統合ログ出力 - タスクグループ最終結果
+    // 統合ログ出力 - タスクグループ最終結果のみ
     const totalGroups = window.globalState.allTaskGroups?.length || 0;
     const activeGroups = window.globalState.taskGroups.length;
     const skippedGroups = (window.globalState.allTaskGroups?.filter(g => g.skip) || []).length;
 
-    console.log(`[step2-taskgroup.js] 🗂️ タスクグループ最終結果: 全${totalGroups}個 | 有効${activeGroups}個 | スキップ${skippedGroups}個`);
-
-    // 有効なグループの詳細を1行ずつ
+    console.log('========');
+    console.log('[step2-taskgroup.js] 📋 検出されたタスクグループサマリー:');
     window.globalState.taskGroups.forEach(group => {
-      const aiInfo = group.aiType || 'Unknown';
+      const aiInfo = group.aiType || group.ai || '未設定';
       const promptInfo = group.columns?.prompts ? group.columns.prompts.join(',') : 'なし';
       const answerInfo = group.columns?.answer || 'なし';
-      const rangeInfo = `${group.startCol}〜${group.endCol}列`;
-
-      console.log(`step2-taskgroup.js:982   有効グループ${group.groupNumber}: ${aiInfo} | 範囲:${rangeInfo} | プロンプト:${promptInfo} | 回答:${answerInfo}`);
+      console.log(`  グループ${group.groupNumber}: ${group.groupType || group.type} | 範囲: ${group.startColumn}〜${group.endColumn}列 | AI: ${aiInfo} | プロンプト: ${promptInfo} | 回答: ${answerInfo}`);
     });
+
+    console.log(`[step2-taskgroup.js] 🗂️ タスクグループ最終結果: 全${totalGroups}個 | 有効${activeGroups}個 | スキップ${skippedGroups}個`);
+    console.log('========');
 
     return window.globalState;
 
