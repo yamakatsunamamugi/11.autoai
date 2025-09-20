@@ -472,42 +472,38 @@ class SpreadsheetDataManager {
     async getSpreadsheetConfig() {
         console.log('📊 [SpreadsheetDataManager] Step 4-2-2: スプレッドシート設定取得開始');
 
-        // 🔧 [DEBUG] SPREADSHEET_CONFIG状態をログ出力
-        console.log('🔍 [DEBUG] SPREADSHEET_CONFIG状態チェック:', {
-            globalThisExists: typeof globalThis.SPREADSHEET_CONFIG !== 'undefined',
+        // 🔧 [DEBUG] 統一化：window.globalState状態をログ出力
+        console.log('🔍 [DEBUG] window.globalState状態チェック:', {
             windowGlobalStateExists: typeof window.globalState !== 'undefined',
+            spreadsheetId: window.globalState?.spreadsheetId,
             windowGlobalStateData: window.globalState
         });
 
-        // グローバル設定の確認と初期化
-        if (!globalThis.SPREADSHEET_CONFIG) {
-            console.log('⚠️ [DEBUG] SPREADSHEET_CONFIG未初期化 - window.globalStateから初期化を試行');
+        // 🔧 [UNIFIED] window.globalStateを直接使用（統一化）
+        console.log('🔍 [DEBUG] window.globalState状態チェック:', {
+            exists: typeof window.globalState !== 'undefined',
+            spreadsheetId: window.globalState?.spreadsheetId,
+            gid: window.globalState?.gid
+        });
 
-            // window.globalStateからSPREADSHEET_CONFIGを初期化
-            if (window.globalState && window.globalState.spreadsheetId) {
-                console.log('🔄 [DEBUG] window.globalStateからSPREADSHEET_CONFIGを初期化中...');
-
-                globalThis.SPREADSHEET_CONFIG = {
-                    spreadsheetId: window.globalState.spreadsheetId,
-                    gid: window.globalState.gid || '0',
-                    sheetName: `シート${window.globalState.gid || '0'}`,
-                    apiHeaders: window.globalState.apiHeaders || {},
-                    sheetsApiBase: window.globalState.sheetsApiBase || 'https://sheets.googleapis.com/v4/spreadsheets',
-                    specialRows: window.globalState.specialRows || {},
-                    authToken: window.globalState.authToken || null
-                };
-
-                console.log('✅ [DEBUG] SPREADSHEET_CONFIG初期化完了:', globalThis.SPREADSHEET_CONFIG);
-            } else {
-                console.error('❌ [DEBUG] window.globalState または spreadsheetId が存在しません');
-                console.error('   - window.globalState:', window.globalState);
-                throw new Error('SPREADSHEET_CONFIGが設定されておらず、window.globalStateからも初期化できませんでした');
-            }
-        } else {
-            console.log('✅ [DEBUG] SPREADSHEET_CONFIG既存:', globalThis.SPREADSHEET_CONFIG);
+        if (!window.globalState || !window.globalState.spreadsheetId) {
+            console.error('❌ [DEBUG] window.globalState または spreadsheetId が存在しません');
+            console.error('   - window.globalState:', window.globalState);
+            throw new Error('window.globalStateが設定されていません。step1-setup.jsを先に実行してください。');
         }
 
-        this.spreadsheetData = globalThis.SPREADSHEET_CONFIG;
+        // window.globalStateから直接データを構築（統一化）
+        this.spreadsheetData = {
+            spreadsheetId: window.globalState.spreadsheetId,
+            gid: window.globalState.gid || '0',
+            sheetName: `シート${window.globalState.gid || '0'}`,
+            apiHeaders: window.globalState.apiHeaders || {},
+            sheetsApiBase: window.globalState.sheetsApiBase || 'https://sheets.googleapis.com/v4/spreadsheets',
+            specialRows: window.globalState.specialRows || {},
+            authToken: window.globalState.authToken || null
+        };
+
+        console.log('✅ [DEBUG] 統一化データ構築完了:', this.spreadsheetData);
         console.log('✅ [SpreadsheetDataManager] Step 4-2-2: スプレッドシート設定取得完了', {
             spreadsheetId: this.spreadsheetData.spreadsheetId,
             sheetName: this.spreadsheetData.sheetName
@@ -879,11 +875,21 @@ URL: ${logData.url}
                 throw new Error('ログデータが生成できませんでした');
             }
 
-            // スプレッドシート設定取得
-            const spreadsheetData = globalThis.SPREADSHEET_CONFIG;
-            if (!spreadsheetData) {
-                throw new Error('SPREADSHEET_CONFIGが設定されていません');
+            // 🔧 [UNIFIED] window.globalStateを直接使用（統一化）
+            console.log('🔍 [DEBUG] ログ記載時のwindow.globalState状態:', {
+                exists: typeof window.globalState !== 'undefined',
+                spreadsheetId: window.globalState?.spreadsheetId
+            });
+
+            if (!window.globalState || !window.globalState.spreadsheetId) {
+                console.error('❌ [DEBUG] ログ記載時のwindow.globalState未設定エラー');
+                throw new Error('window.globalStateが設定されていません');
             }
+
+            const spreadsheetData = {
+                spreadsheetId: window.globalState.spreadsheetId,
+                sheetName: `シート${window.globalState.gid || '0'}`
+            };
 
             // スプレッドシートに書き込み
             await this.sheetsClient.writeToRange(
@@ -920,11 +926,21 @@ URL: ${logData.url}
                 await this.initializeLogManager();
             }
 
-            // スプレッドシート設定取得
-            const spreadsheetData = globalThis.SPREADSHEET_CONFIG;
-            if (!spreadsheetData) {
-                throw new Error('SPREADSHEET_CONFIGが設定されていません');
+            // 🔧 [UNIFIED] window.globalStateを直接使用（統一化）
+            console.log('🔍 [DEBUG] 回答記載時のwindow.globalState状態:', {
+                exists: typeof window.globalState !== 'undefined',
+                spreadsheetId: window.globalState?.spreadsheetId
+            });
+
+            if (!window.globalState || !window.globalState.spreadsheetId) {
+                console.error('❌ [DEBUG] 回答記載時のwindow.globalState未設定エラー');
+                throw new Error('window.globalStateが設定されていません');
             }
+
+            const spreadsheetData = {
+                spreadsheetId: window.globalState.spreadsheetId,
+                sheetName: `シート${window.globalState.gid || '0'}`
+            };
 
             // 回答をスプレッドシートに書き込み
             await this.sheetsClient.writeToRange(
@@ -1384,7 +1400,11 @@ class SpecialTaskProcessor {
             }
 
             // スプレッドシートデータの取得
-            const spreadsheetData = task.spreadsheetData || globalThis.SPREADSHEET_CONFIG;
+            // 🔧 [UNIFIED] window.globalStateを直接使用（統一化）
+            const spreadsheetData = task.spreadsheetData || {
+                spreadsheetId: window.globalState?.spreadsheetId,
+                sheetName: `シート${window.globalState?.gid || '0'}`
+            };
             if (!spreadsheetData) {
                 throw new Error('スプレッドシートデータが設定されていません');
             }
@@ -1483,11 +1503,21 @@ class SpecialTaskProcessor {
                 throw new Error('SheetsClientが利用できません');
             }
 
-            // スプレッドシート設定取得
-            const spreadsheetData = globalThis.SPREADSHEET_CONFIG;
-            if (!spreadsheetData) {
-                throw new Error('SPREADSHEET_CONFIGが設定されていません');
+            // 🔧 [UNIFIED] window.globalStateを直接使用（統一化）
+            console.log('🔍 [DEBUG] 作業セル記載時のwindow.globalState状態:', {
+                exists: typeof window.globalState !== 'undefined',
+                spreadsheetId: window.globalState?.spreadsheetId
+            });
+
+            if (!window.globalState || !window.globalState.spreadsheetId) {
+                console.error('❌ [DEBUG] 作業セル記載時のwindow.globalState未設定エラー');
+                throw new Error('window.globalStateが設定されていません');
             }
+
+            const spreadsheetData = {
+                spreadsheetId: window.globalState.spreadsheetId,
+                sheetName: `シート${window.globalState.gid || '0'}`
+            };
 
             // 作業データをフォーマット
             const formattedData = this.formatWorkData(workData, workType);

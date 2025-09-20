@@ -322,6 +322,14 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
           ...parseSpreadsheetUrl(options.spreadsheetUrl || '')
         };
 
+        // 🔍 [DEBUG] タスク生成後のanswerCell確認
+        console.log(`🔍 [DEBUG] タスク生成完了 - Row ${row}:`, {
+          taskId: task.taskId,
+          answerCell: task.answerCell,
+          logCell: task.logCell,
+          aiType: task.ai,
+          promptLength: task.prompt?.length || 0
+        });
 
         validTasks.push(task);
       }
@@ -341,6 +349,15 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
         workCell: taskGroup.columns.work ? getCellA1Notation(row, columnToIndex(taskGroup.columns.work) + 1) : null,
         ...parseSpreadsheetUrl(options.spreadsheetUrl || '')
       };
+
+      // 🔍 [DEBUG] 特殊タスク生成後確認
+      console.log(`🔍 [DEBUG] 特殊タスク生成完了 - Row ${row}:`, {
+        taskId: task.taskId,
+        workCell: task.workCell,
+        logCell: task.logCell,
+        aiType: task.ai,
+        promptLength: task.prompt?.length || 0
+      });
 
       validTasks.push(task);
     }
