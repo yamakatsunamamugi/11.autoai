@@ -346,27 +346,20 @@ class TaskGroupTypeDetector {
    */
   getWindowLayoutFromTasks(taskList) {
     const layout = [];
-    const addedAiTypes = new Set();
 
-    // タスクの順序でAIタイプを収集（重複排除）
-    taskList.forEach((task) => {
+    // タスク数に応じてウィンドウを生成（最大3つまで）
+    for (let i = 0; i < Math.min(taskList.length, 3); i++) {
+      const task = taskList[i];
       const aiType = task.aiType || task.ai || "";
       const normalizedType = aiType.toLowerCase();
 
-      // 3種類AIの展開処理（step4-execute.jsで行われる）
-      if (!addedAiTypes.has(normalizedType) && normalizedType) {
+      if (normalizedType) {
         layout.push({
           aiType: normalizedType,
-          position: layout.length, // 0=左上, 1=右上, 2=左下
+          position: i, // 0=左上, 1=右上, 2=左下
         });
-        addedAiTypes.add(normalizedType);
       }
-
-      // 最大3ウィンドウまで
-      if (layout.length >= 3) {
-        return;
-      }
-    });
+    }
 
     return layout;
   }

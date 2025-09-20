@@ -1980,15 +1980,10 @@ class WindowController {
 
     try {
       // Content scriptにチェック要求を送信（エラーハンドリング強化版）
-      const response = await new Promise((resolve, reject) => {
-        // タブの存在確認
-        chrome.tabs.get(tabId, (tab) => {
-          if (chrome.runtime.lastError) {
-            reject(
-              new Error(`タブ取得エラー: ${chrome.runtime.lastError.message}`),
-            );
-            return;
-          }
+      const response = await new Promise(async (resolve, reject) => {
+        try {
+          // タブの存在確認（Manifest V3対応）
+          const tab = await chrome.tabs.get(tabId);
 
           if (!tab || tab.status !== "complete") {
             reject(
@@ -2018,7 +2013,9 @@ class WindowController {
               }
             },
           );
-        });
+        } catch (error) {
+          reject(new Error(`タブ取得エラー: ${error.message}`));
+        }
       });
 
       // 追加のエラーチェックは不要（Promiseで処理済み）
@@ -2998,21 +2995,10 @@ async function executeStep4(taskList) {
       },
     );
 
-    return new Promise((resolve, reject) => {
-      // タブ情報確認と有効性チェック
-      chrome.tabs.get(tabId, (tab) => {
-        if (chrome.runtime.lastError) {
-          ExecuteLogger.error(
-            `❌ [Tab Check] タブ取得エラー:`,
-            chrome.runtime.lastError,
-          );
-          reject(
-            new Error(
-              `タブID ${tabId} が無効です: ${chrome.runtime.lastError.message}`,
-            ),
-          );
-          return;
-        }
+    return new Promise(async (resolve, reject) => {
+      try {
+        // タブ情報確認と有効性チェック（Manifest V3対応）
+        const tab = await chrome.tabs.get(tabId);
 
         // タブの有効性チェック
         if (!tab || tab.status !== "complete") {
@@ -3055,7 +3041,11 @@ async function executeStep4(taskList) {
 
         // タブが有効な場合のみメッセージ送信を続行
         sendMessageToValidTab();
-      });
+      } catch (error) {
+        ExecuteLogger.error(`❌ [Tab Check] タブ取得エラー:`, error);
+        reject(new Error(`タブID ${tabId} が無効です: ${error.message}`));
+        return;
+      }
 
       function sendMessageToValidTab() {
         // メッセージ送信
