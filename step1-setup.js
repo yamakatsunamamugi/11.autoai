@@ -118,7 +118,7 @@ async function checkInternetConnection() {
     }
 
     // 1-1-2: Google APIへの接続確認（簡易チェック）
-    const testUrl = "https://sheets.googleapis.com/v4/spreadsheets/test";
+    const testUrl = "https://sheets.googleapis.com/v4";
     try {
       const testResponse = await fetch(testUrl, { method: "HEAD" });
       const status = testResponse.status;
