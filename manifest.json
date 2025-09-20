@@ -72,6 +72,7 @@
         "src/config/ui-selectors-loader.js",
         "src/ui/ui.html",
         "src/ui/ui-controller.js",
+        "src/ui/ui-debug-loader.js",
         "src/services/auth-service.js",
         "src/services/dropbox-service.js",
         "src/config/dropbox-config.js",
