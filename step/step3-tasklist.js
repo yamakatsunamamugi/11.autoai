@@ -170,6 +170,7 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
   // 3-2: タスク生成の除外処理
   const validTasks = [];
   const skippedRows = []; // スキップした行を記録
+  const debugLogs = []; // デバッグログを収集
 
   for (let row = dataStartRow; row <= lastPromptRow; row++) {
     const rowData = spreadsheetData[row - 1]; // 0ベースインデックス
@@ -329,8 +330,9 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
           ...parseSpreadsheetUrl(options.spreadsheetUrl || '')
         };
 
-        // 🔍 [DEBUG] タスク生成後のanswerCell確認
-        console.log(`🔍 [DEBUG] タスク生成完了 - Row ${row}:`, {
+        // デバッグログを収集（後でまとめて表示）
+        debugLogs.push({
+          row: row,
           taskId: task.taskId,
           answerCell: task.answerCell,
           logCell: task.logCell,
@@ -357,8 +359,9 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
         ...parseSpreadsheetUrl(options.spreadsheetUrl || '')
       };
 
-      // 🔍 [DEBUG] 特殊タスク生成後確認
-      console.log(`🔍 [DEBUG] 特殊タスク生成完了 - Row ${row}:`, {
+      // デバッグログを収集（後でまとめて表示）
+      debugLogs.push({
+        row: row,
         taskId: task.taskId,
         workCell: task.workCell,
         logCell: task.logCell,
@@ -370,6 +373,24 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
     }
   }
 
+
+  // デバッグログをまとめて出力
+  if (debugLogs.length > 0) {
+    console.log('🔍 [DEBUG] タスク生成完了サマリー:', {
+      グループ: taskGroup.groupNumber,
+      総タスク数: debugLogs.length,
+      開始行: debugLogs[0].row,
+      終了行: debugLogs[debugLogs.length - 1].row,
+      タスクタイプ: taskGroup.groupType,
+      詳細: debugLogs.length > 10 ? '最初の10件のみ表示' : '全件表示',
+      タスク: debugLogs.slice(0, 10).map(log => ({
+        行: log.row,
+        セル: log.answerCell || log.workCell || log.logCell,
+        AI: log.aiType,
+        プロンプト長: log.promptLength
+      }))
+    });
+  }
 
   // サマリーログ出力
   const skippedCount = logBuffer.filter(log => log.includes('既に回答あり')).length;
