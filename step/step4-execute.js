@@ -2461,6 +2461,52 @@ async function executeStep4(taskList) {
       throw new Error("ウィンドウを開くことができませんでした");
     }
 
+    // Step 4-6-3-1: ポップアップを右下に移動（step外と同じ動作）
+    ExecuteLogger.info("🚀 [Step 4-6-3-1] ポップアップを右下に移動開始");
+    try {
+      // message-handler.jsのmovePopupToBottomRight()と同じ処理を実行
+      const storage = await chrome.storage.local.get("extensionWindowId");
+      if (storage.extensionWindowId) {
+        try {
+          const extensionWindow = await chrome.windows.get(
+            storage.extensionWindowId,
+          );
+
+          // スクリーン情報を取得
+          const displays = await chrome.system.display.getInfo();
+          const primaryDisplay =
+            displays.find((d) => d.isPrimary) || displays[0];
+
+          // 4分割の右下に配置
+          const screenWidth = primaryDisplay.workArea.width;
+          const screenHeight = primaryDisplay.workArea.height;
+          const screenLeft = primaryDisplay.workArea.left;
+          const screenTop = primaryDisplay.workArea.top;
+
+          const popupWidth = Math.floor(screenWidth / 2);
+          const popupHeight = Math.floor(screenHeight / 2);
+          const left = screenLeft + Math.floor(screenWidth / 2);
+          const top = screenTop + Math.floor(screenHeight / 2);
+
+          await chrome.windows.update(extensionWindow.id, {
+            left: left,
+            top: top,
+            width: popupWidth,
+            height: popupHeight,
+            focused: false,
+          });
+
+          ExecuteLogger.info("✅ [Step 4-6-3-1] ポップアップ移動完了");
+        } catch (e) {
+          ExecuteLogger.warn(
+            "⚠️ [Step 4-6-3-1] ポップアップウィンドウが見つかりません",
+          );
+        }
+      }
+    } catch (error) {
+      ExecuteLogger.warn("⚠️ [Step 4-6-3-1] ポップアップ移動エラー:", error);
+    }
+
     // Step 4-6-4: ウィンドウチェック
     ExecuteLogger.info("🔍 [Step 4-6-4] ウィンドウチェック開始");
 

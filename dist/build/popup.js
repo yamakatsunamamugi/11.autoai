@@ -93,9 +93,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       top: primaryDisplay.workArea.top,
     };
 
-    // 設定を取得して配置を決定（デフォルトでクワッドレイアウト使用）
+    // 設定を取得して配置を決定（デフォルトで全画面使用）
     const settings = await chrome.storage.local.get(["popupPosition"]);
-    const useQuadLayout = settings.popupPosition !== "fullscreen"; // fullscreenでない限りクワッドレイアウト
+    const useQuadLayout = settings.popupPosition === "quadLayout"; // quadLayoutの場合のみクワッドレイアウト
 
     let createdWindow;
 
