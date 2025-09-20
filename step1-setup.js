@@ -1318,4 +1318,97 @@ if (typeof window !== "undefined") {
   window.executeAllSteps = executeAllSteps;
 }
 
+// ========================================
+// トークンリフレッシュ機能
+// ========================================
+
+/**
+ * トークンを更新する関数
+ */
+async function refreshAuthToken() {
+  console.log("[step1-setup.js] 🔄 トークンリフレッシュ開始...");
+
+  try {
+    // 既存のトークンを削除
+    if (window.globalState && window.globalState.authToken) {
+      console.log("[step1-setup.js] 既存トークンをクリア");
+      chrome.identity.removeCachedAuthToken({
+        token: window.globalState.authToken,
+      });
+    }
+
+    // 新しいトークンを取得
+    const newToken = await new Promise((resolve, reject) => {
+      chrome.identity.getAuthToken({ interactive: false }, (authToken) => {
+        if (chrome.runtime.lastError) {
+          reject(chrome.runtime.lastError);
+        } else {
+          resolve(authToken);
+        }
+      });
+    });
+
+    if (newToken) {
+      // globalStateを更新
+      if (!window.globalState) {
+        window.globalState = {};
+      }
+      window.globalState.authToken = newToken;
+
+      console.log("[step1-setup.js] ✅ トークンリフレッシュ成功");
+      console.log(`  - 新トークン長: ${newToken.length}文字`);
+      console.log(`  - 更新時刻: ${new Date().toISOString()}`);
+
+      return newToken;
+    } else {
+      throw new Error("新しいトークンの取得に失敗");
+    }
+  } catch (error) {
+    console.error("[step1-setup.js] ❌ トークンリフレッシュ失敗:", error);
+    throw error;
+  }
+}
+
+/**
+ * 401エラー時の自動リトライ機能付きfetch
+ */
+async function fetchWithTokenRefresh(url, options = {}) {
+  try {
+    // 最初の試行
+    let response = await fetch(url, options);
+
+    // 401エラーの場合、トークンをリフレッシュして再試行
+    if (response.status === 401) {
+      console.log("[step1-setup.js] 401エラー検出 - トークンリフレッシュ実行");
+
+      const newToken = await refreshAuthToken();
+
+      // ヘッダーを更新
+      const newOptions = {
+        ...options,
+        headers: {
+          ...options.headers,
+          Authorization: `Bearer ${newToken}`,
+        },
+      };
+
+      // 再試行
+      response = await fetch(url, newOptions);
+      console.log(`[step1-setup.js] 再試行結果: ${response.status}`);
+    }
+
+    return response;
+  } catch (error) {
+    console.error("[step1-setup.js] fetchWithTokenRefresh エラー:", error);
+    throw error;
+  }
+}
+
+// グローバルエクスポート
+if (typeof window !== "undefined") {
+  window.refreshAuthToken = refreshAuthToken;
+  window.fetchWithTokenRefresh = fetchWithTokenRefresh;
+}
+
 console.log("[step1-setup.js] ✅ Step1関数定義完了（全体制御機能付き）");
+console.log("[step1-setup.js] ✅ トークンリフレッシュ機能追加完了");

@@ -423,7 +423,7 @@ async function applyColumnControls() {
 
   try {
     const startTime = Date.now();
-    const response = await fetch(
+    const response = await window.fetchWithTokenRefresh(
       `${sheetsApiBase}/${spreadsheetId}/values/${controlRange}`,
       { headers: apiHeaders },
     );
