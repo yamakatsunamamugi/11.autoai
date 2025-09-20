@@ -528,8 +528,12 @@ async function readFullSpreadsheet() {
       return [];
     }
 
-    console.log(`[Helper] スプレッドシート全体データ取得完了: ${data.values.length}行`);
-    console.log('[Helper] データサンプル（最初の3行）:', data.values.slice(0, 3));
+    // ログバッファに集約
+    const logData = {
+      '取得行数': data.values.length,
+      'データサンプル（最初の3行）': data.values.slice(0, 3)
+    };
+    console.log(`[Helper] スプレッドシート全体データ取得完了:`, logData);
 
     // 🔍 デバッグログ：データの形状
     try {
@@ -545,17 +549,23 @@ async function readFullSpreadsheet() {
         '36行目の内容プレビュー': data.values?.[35]?.slice(0, 5)
       };
 
-      console.log('🔍 [DEBUG] データ形状の詳細:', debugInfo);
+      // デバッグ情報を一つのログにまとめる
+      const debugLog = {
+        'データ形状': debugInfo,
+        'プロパティ詳細': {}
+      };
 
       // オブジェクトの各プロパティをチェック
       for (const [key, value] of Object.entries(debugInfo)) {
-        console.log(`🔍 [DEBUG] プロパティ "${key}":`, {
+        debugLog['プロパティ詳細'][key] = {
           type: typeof value,
           isNull: value === null,
           isUndefined: value === undefined,
           valuePreview: JSON.stringify(value).substring(0, 100)
-        });
+        };
       }
+
+      console.log('🔍 [DEBUG] データ形状詳細（統合）:', debugLog);
     } catch (debugError) {
       console.error('❌ [DEBUG] デバッグ情報の出力エラー:', {
         message: debugError.message,
@@ -579,6 +589,16 @@ async function createTaskList(taskGroup) {
     パターン: taskGroup?.pattern,
     列情報: taskGroup?.columns
   });
+
+  // ログバッファを初期化
+  const logBuffer = [];
+  const addLog = (message, data) => {
+    if (data) {
+      logBuffer.push(`${message}: ${JSON.stringify(data)}`);
+    } else {
+      logBuffer.push(message);
+    }
+  };
 
   try {
     // step3-tasklist.jsのgenerateTaskList関数を利用
@@ -672,7 +692,7 @@ async function createTaskList(taskGroup) {
       applyColumnControl: true
     };
 
-    console.log('[Helper] [Step 5-3] Step3に渡すパラメータ:', {
+    addLog('[Helper] [Step 5-3] Step3に渡すパラメータ', {
       'taskGroup.columns': taskGroup?.columns,
       'spreadsheetData.length': spreadsheetData.length,
       'specialRows': specialRows,
@@ -681,6 +701,20 @@ async function createTaskList(taskGroup) {
       '列制御数': columnControls.length,
       'options': Object.keys(extendedOptions)
     });
+
+    // ログバッファを一つのログとして出力
+    console.log(`[Step5-Loop] [統合ログ]\n${logBuffer.join('\n')}`);
+
+    // generateTaskList内でaddLogが使われているため、グローバルに定義
+    if (typeof window.addLog === 'undefined') {
+      window.addLog = (message, data) => {
+        if (data) {
+          console.log(`[Step3-TaskList] ${message}:`, data);
+        } else {
+          console.log(`[Step3-TaskList] ${message}`);
+        }
+      };
+    }
 
     // タスクリスト生成を実行（制御情報付き）
     const tasks = window.Step3TaskList.generateTaskList(

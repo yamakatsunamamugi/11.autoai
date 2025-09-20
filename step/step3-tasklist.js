@@ -40,6 +40,15 @@ function indexToColumn(index) {
  * @returns {number} カラムインデックス（0ベース）
  */
 function columnToIndex(column) {
+  // 安全性チェックを追加
+  if (!column) {
+    console.error('[TaskList] [Error] columnToIndex: column is undefined or null');
+    return -1;
+  }
+  if (typeof column !== 'string') {
+    console.error('[TaskList] [Error] columnToIndex: column is not a string:', column);
+    return -1;
+  }
   let index = 0;
   for (let i = 0; i < column.length; i++) {
     index = index * 26 + column.charCodeAt(i) - 64;
@@ -108,9 +117,28 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
       functionRow
     } = specialRows;
 
-    console.log(`[TaskList] [Step3-1] タスクグループ${taskGroup.groupNumber}のデータ取得開始`);
+    // ログバッファを初期化
+    const logBuffer = [];
+    const addLog = (message, data) => {
+      if (data) {
+        logBuffer.push(`${message}: ${JSON.stringify(data)}`);
+      } else {
+        logBuffer.push(message);
+      }
+    };
+
+    addLog(`[TaskList] [Step3-1] タスクグループ${taskGroup.groupNumber}のデータ取得開始`);
 
   // 3-1: スプレッドシートデータの取得
+  addLog('[CRITICAL-DEBUG] taskGroup.columns構造', {
+    columns: taskGroup.columns,
+    prompts: taskGroup.columns?.prompts,
+    promptsType: typeof taskGroup.columns?.prompts,
+    promptsIsArray: Array.isArray(taskGroup.columns?.prompts),
+    answer: taskGroup.columns?.answer,
+    answerType: typeof taskGroup.columns?.answer
+  });
+
   const promptColumns = taskGroup.columns.prompts || [];
   const answerColumns = taskGroup.columns.answer ?
     (typeof taskGroup.columns.answer === 'object' ?
@@ -118,11 +146,31 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
       [taskGroup.columns.answer]) :
     [];
 
+  addLog('[CRITICAL-DEBUG] 列配列の確認', {
+    promptColumns: promptColumns,
+    promptColumnsLength: promptColumns.length,
+    answerColumns: answerColumns,
+    answerColumnsLength: answerColumns.length
+  });
+
   // プロンプトがある最終行を検索
   let lastPromptRow = dataStartRow;
+  addLog('[CRITICAL-DEBUG] 最終行検索開始', {
+    dataStartRow: dataStartRow,
+    spreadsheetDataLength: spreadsheetData?.length,
+    promptColumns: promptColumns
+  });
+
   for (let row = dataStartRow; row < spreadsheetData.length; row++) {
     let hasPrompt = false;
     for (const col of promptColumns) {
+      // デバッグログは削除（過剰なログ出力を防ぐ）
+      // addLog(`[CRITICAL-DEBUG] columnToIndex呼び出し前 (最終行検索 row=${row})`, {
+      //   col: col,
+      //   colType: typeof col,
+      //   colValue: col
+      // });
+
       const colIndex = columnToIndex(col);
       if (spreadsheetData[row] && spreadsheetData[row][colIndex]) {
         hasPrompt = true;
@@ -132,32 +180,29 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
     }
   }
 
-  console.log(`[TaskList] [Step3-1] 対象範囲: ${dataStartRow}行 〜 ${lastPromptRow}行`);
+  // 最終行検索のサマリーログを出力
+  addLog(`[TaskList] 最終行検索完了`, {
+    検索行数: spreadsheetData.length - dataStartRow,
+    対象列: promptColumns.join(', '),
+    最終行: lastPromptRow,
+    範囲: `${dataStartRow}行〜${lastPromptRow}行`
+  });
+
+  addLog(`[TaskList] [Step3-1] 対象範囲: ${dataStartRow}行 〜 ${lastPromptRow}行`);
 
   // 3-2: タスク生成の除外処理
   const validTasks = [];
+  const skippedRows = []; // スキップした行を記録
 
   for (let row = dataStartRow; row <= lastPromptRow; row++) {
     const rowData = spreadsheetData[row - 1]; // 0ベースインデックス
-
-    // 🔍 デバッグログ：行データの詳細情報
-    console.log(`[TaskList] [Debug] 行データ詳細:`, {
-      行番号: row,
-      rowData存在: !!rowData,
-      rowData長さ: rowData?.length,
-      rowDataタイプ: typeof rowData,
-      rowData内容: rowData ? `最初の5列: ${JSON.stringify(rowData.slice(0, 5))}` : 'undefined'
-    });
 
     if (!rowData) continue;
 
     // 🆕 行制御チェック（最初にチェックして不要な処理を避ける）
     if (options.applyRowControl && options.rowControls && options.rowControls.length > 0) {
       if (!shouldProcessRow(row, options.rowControls)) {
-        console.log(`[TaskList] [Step3-2] ${row}行目: 行制御によりスキップ`, {
-          行: row,
-          制御: options.rowControls.map(c => `${c.type}:${c.row}行目`)
-        });
+        skippedRows.push(row); // スキップした行を記録
         continue;
       }
     }
@@ -166,54 +211,30 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
     let prompts = [];
     for (const col of promptColumns) {
       const colIndex = columnToIndex(col);
-
-      // 🔍 デバッグログ：プロンプト列アクセス
-      console.log(`[TaskList] [Debug] プロンプト列アクセス:`, {
-        列: col,
-        colIndex: colIndex,
-        rowData長さ: rowData?.length,
-        アクセス可能: rowData && colIndex < rowData.length,
-        値: rowData?.[colIndex]
-      });
-
-      // 安全なアクセスに修正
       if (rowData && colIndex < rowData.length) {
         const prompt = rowData[colIndex];
         if (prompt) {
           prompts.push(prompt);
         }
-      } else {
-        console.warn(`[TaskList] [Warning] 列${col}(index:${colIndex})にアクセスできません`);
       }
     }
 
     if (prompts.length === 0) continue; // プロンプトがない行はスキップ
 
-    // 回答済みチェック
+    // 回答済みチェック（簡潔版）
     let hasAnswer = false;
     for (const col of answerColumns) {
       const colIndex = columnToIndex(col);
-
-      // 🔍 デバッグログ：回答列アクセス
-      console.log(`[TaskList] [Debug] 回答列アクセス:`, {
-        列: col,
-        colIndex: colIndex,
-        rowData長さ: rowData?.length,
-        アクセス可能: rowData && colIndex < rowData.length,
-        値存在: rowData && colIndex < rowData.length ? !!rowData[colIndex] : false
-      });
-
-      // 安全なアクセスに修正
-      if (rowData && colIndex < rowData.length && rowData[colIndex]) {
+      if (rowData && colIndex < rowData.length && rowData[colIndex]?.trim()) {
         hasAnswer = true;
+        addLog(`[TaskList] ${row}行目: 既に回答あり (${col}列)`);
         break;
       }
     }
 
-    // 3-2-1-1: 回答済みチェック
+    // 回答済みチェック
     if (hasAnswer && !options.forceReprocess) {
-      console.log(`[TaskList] [Step3-2] ${row}行目: 回答済みのためスキップ`);
-      continue;
+      continue; // ログは既に出力済み
     }
 
     // 3-2-1-2: 追加の除外条件（拡張可能）
@@ -221,7 +242,7 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
       let shouldSkip = false;
       for (const condition of options.customSkipConditions) {
         if (condition(rowData, row)) {
-          console.log(`[TaskList] [Step3-2] ${row}行目: カスタム条件によりスキップ`);
+          addLog(`[TaskList] [Step3-2] ${row}行目: カスタム条件によりスキップ`);
           shouldSkip = true;
           break;
         }
@@ -232,11 +253,78 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
     // タスクグループタイプに応じて処理を分岐
     if (taskGroup.groupType === "通常処理" || taskGroup.groupType === "3種類AI") {
       // AIごとにタスクを生成
-      const aiTypes = taskGroup.groupType === "3種類AI" ?
-        ['ChatGPT', 'Claude', 'Gemini'] :
-        [spreadsheetData[aiRow - 1][columnToIndex(promptColumns[0])] || 'ChatGPT'];
+      let aiRowData = null;
+      if (spreadsheetData && aiRow > 0 && aiRow <= spreadsheetData.length) {
+        aiRowData = spreadsheetData[aiRow - 1];
+      }
 
-      for (const aiType of aiTypes) {
+      let aiTypes;
+      if (taskGroup.groupType === "3種類AI") {
+        aiTypes = ['ChatGPT', 'Claude', 'Gemini'];
+      } else {
+        // promptColumns[0]が存在するか確認
+        if (promptColumns && promptColumns.length > 0 && promptColumns[0]) {
+          const colIndex = columnToIndex(promptColumns[0]);
+          if (colIndex >= 0) {
+            aiTypes = [aiRowData?.[colIndex] || 'ChatGPT'];
+          } else {
+            console.warn('[TaskList] [Warning] 無効な列インデックス, デフォルトでChatGPTを使用');
+            aiTypes = ['ChatGPT'];
+          }
+        } else {
+          console.warn('[TaskList] [Warning] promptColumnsが未定義または空, デフォルトでChatGPTを使用');
+          aiTypes = ['ChatGPT'];
+        }
+      }
+
+
+      for (let aiType of aiTypes) {
+        // AIタイプの正規化（singleをClaudeに変換）
+        if (aiType === 'single' || !aiType) {
+          console.log(`[TaskList] AIタイプ '${aiType}' を 'Claude' に変換`);
+          aiType = 'Claude';
+        }
+
+
+        // answerCellの安全な取得
+        let answerCell;
+        try {
+          if (taskGroup.groupType === "3種類AI") {
+            if (typeof taskGroup.columns.answer === 'object' && taskGroup.columns.answer !== null) {
+              const answerColumn = taskGroup.columns.answer[aiType.toLowerCase()];
+              if (answerColumn) {
+                answerCell = getCellA1Notation(row, columnToIndex(answerColumn) + 1);
+              } else {
+                console.warn(`[TaskList] [Warning] 3種類AI - ${aiType}用の回答列が未定義`, taskGroup.columns.answer);
+                // デフォルト値を設定
+                const defaultColumns = { chatgpt: 'C', claude: 'D', gemini: 'E' };
+                const defaultCol = defaultColumns[aiType.toLowerCase()] || 'C';
+                answerCell = getCellA1Notation(row, columnToIndex(defaultCol) + 1);
+              }
+            } else {
+              console.error('[TaskList] [Error] 3種類AIモードだがanswer列がオブジェクトではない:', {
+                answer列の型: typeof taskGroup.columns.answer,
+                answer列の値: taskGroup.columns.answer
+              });
+              // 単一の列として処理
+              answerCell = getCellA1Notation(row, columnToIndex(taskGroup.columns.answer || 'C') + 1);
+            }
+          } else {
+            // 通常処理
+            answerCell = getCellA1Notation(row, columnToIndex(taskGroup.columns.answer) + 1);
+            addLog(`[TaskList] [Debug] 通常処理 - 回答列: ${taskGroup.columns.answer} → ${answerCell}`);
+          }
+        } catch (error) {
+          console.error('[TaskList] [Error] answerCell生成エラー:', {
+            エラー: error.message,
+            taskGroup: taskGroup,
+            aiType: aiType,
+            行: row
+          });
+          // エラー時のフォールバック
+          answerCell = getCellA1Notation(row, 3); // デフォルトでC列
+        }
+
         const task = {
           taskId: `task_${taskGroup.groupNumber}_${row}_${Date.now()}`,
           groupNumber: taskGroup.groupNumber,
@@ -245,17 +333,25 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
           column: promptColumns[0],
           prompt: prompts.join('\n\n'),
           ai: aiType,
-          model: spreadsheetData[modelRow - 1] ?
+          model: spreadsheetData[modelRow - 1] && promptColumns[0] ?
             spreadsheetData[modelRow - 1][columnToIndex(promptColumns[0])] : '',
-          function: spreadsheetData[functionRow - 1] ?
+          function: spreadsheetData[functionRow - 1] && promptColumns[0] ?
             spreadsheetData[functionRow - 1][columnToIndex(promptColumns[0])] : '',
           logCell: getCellA1Notation(row, columnToIndex(taskGroup.columns.log) + 1),
-          promptCells: promptColumns.map(col => getCellA1Notation(row, columnToIndex(col) + 1)),
-          answerCell: taskGroup.groupType === "3種類AI" ?
-            getCellA1Notation(row, columnToIndex(taskGroup.columns.answer[aiType.toLowerCase()]) + 1) :
-            getCellA1Notation(row, columnToIndex(taskGroup.columns.answer) + 1),
+          promptCells: promptColumns.map(col => {
+            const idx = columnToIndex(col);
+            return idx >= 0 ? getCellA1Notation(row, idx + 1) : null;
+          }).filter(Boolean),
+          answerCell: answerCell,
           ...parseSpreadsheetUrl(options.spreadsheetUrl || '')
         };
+
+        addLog(`[TaskList] [Debug] タスク生成完了:`, {
+          taskId: task.taskId,
+          行: task.row,
+          AI: task.ai,
+          answerCell: task.answerCell
+        });
 
         validTasks.push(task);
       }
@@ -271,8 +367,8 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
         ai: taskGroup.groupType,
         model: '',
         function: '',
-        logCell: getCellA1Notation(row, columnToIndex(taskGroup.columns.log) + 1),
-        workCell: getCellA1Notation(row, columnToIndex(taskGroup.columns.work) + 1),
+        logCell: taskGroup.columns.log ? getCellA1Notation(row, columnToIndex(taskGroup.columns.log) + 1) : null,
+        workCell: taskGroup.columns.work ? getCellA1Notation(row, columnToIndex(taskGroup.columns.work) + 1) : null,
         ...parseSpreadsheetUrl(options.spreadsheetUrl || '')
       };
 
@@ -280,7 +376,38 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
     }
   }
 
+  addLog(`[TaskList] [Step3-2] 有効タスク数: ${validTasks.length}件`);
+
+  // エラーの原因特定のための最終ログ出力
+  if (logBuffer.length > 0) {
+    console.log('\n========== タスクリスト生成ログ (グループ' + taskGroup.groupNumber + ') ==========');
+    logBuffer.forEach(log => console.log(log));
+    console.log('========== ログ終了 ==========\n');
+  }
+
   console.log(`[TaskList] [Step3-2] 有効タスク数: ${validTasks.length}件`);
+
+  // デバッグ: 生成されたタスクの詳細
+  if (validTasks.length > 0) {
+    console.log('[TaskList] [Debug] 生成タスク詳細 (最初の3件):',
+      validTasks.slice(0, 3).map(t => ({
+        taskId: t.taskId,
+        行: t.row,
+        AI: t.ai,
+        プロンプト長: t.prompt.length,
+        answerCell: t.answerCell
+      }))
+    );
+  } else {
+    console.warn('[TaskList] [Warning] タスクが生成されませんでした。以下を確認してください:', {
+      dataStartRow: dataStartRow,
+      lastPromptRow: lastPromptRow,
+      処理対象行数: lastPromptRow - dataStartRow + 1,
+      行制御数: options.rowControls?.length || 0,
+      列制御数: options.columnControls?.length || 0,
+      taskGroup: taskGroup
+    });
+  }
 
   // 行制御・列制御の統計ログ
   if (options.applyRowControl && options.rowControls && options.rowControls.length > 0) {
