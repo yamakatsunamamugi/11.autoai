@@ -1,7 +1,6 @@
 // ui-debug-loader.js
 // CSP対応: インラインスクリプトを外部化
 
-
 // スクリプト読み込み順序のトラッキング
 window.scriptLoadTracker = {
   loadOrder: [],
@@ -44,7 +43,6 @@ window.scriptLoadStatus = {
 
 // エラーハンドラーを設定（詳細なログ追加）
 window.addEventListener("error", function (event) {
-
   // ファイル別のエラー処理
   const errorFiles = [
     "step3-tasklist.js",
@@ -53,7 +51,6 @@ window.addEventListener("error", function (event) {
   ];
   errorFiles.forEach((file) => {
     if (event.filename && event.filename.includes(file)) {
-
       // エラー位置の前後のコードを表示できるようにする
       if (event.error && event.error.stack) {
       }
@@ -62,12 +59,11 @@ window.addEventListener("error", function (event) {
 });
 
 // Promise rejection ハンドラー追加
-window.addEventListener("unhandledrejection", function (event) {
-});
+window.addEventListener("unhandledrejection", function (event) {});
 
 // すべてのスクリプトの読み込み完了を確認
 window.addEventListener("load", function () {
-  //
+  console.log("📊 [DEBUG] ページ読み込み完了時の状態:", {
     timestamp: new Date().toISOString(),
     loadedScripts: window.scriptLoadStatus,
     globalFunctions: {
@@ -89,7 +85,7 @@ window.addEventListener("load", function () {
 
   // 詳細なグローバル状態のログ
   if (window.globalState) {
-    //
+    console.log("🔧 [DEBUG] グローバル状態の詳細:", {
       spreadsheetId: window.globalState.spreadsheetId,
       gid: window.globalState.gid,
       currentGroupIndex: window.globalState.currentGroupIndex,
@@ -107,7 +103,6 @@ function monitorScriptLoad(scriptName) {
 
 // 各モジュールの読み込みを監視（DOMContentLoaded後）
 document.addEventListener("DOMContentLoaded", function () {
-
   // モジュールスクリプトの読み込み監視
   const moduleScripts = document.querySelectorAll('script[type="module"]');
   moduleScripts.forEach((script) => {
