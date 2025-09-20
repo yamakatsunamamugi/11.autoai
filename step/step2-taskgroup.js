@@ -993,9 +993,15 @@ async function executeStep2TaskGroups() {
           );
           errors.push("prompts列が未定義または空");
         }
-        if (!group.columns.answer) {
-          console.error("[step2-taskgroup.js] [Step 2-6-1-4] answer列が未定義");
-          errors.push("answer列が未定義");
+        if (
+          !group.columns.answer ||
+          (typeof group.columns.answer === "object" &&
+            Object.keys(group.columns.answer).length === 0)
+        ) {
+          console.error(
+            "[step2-taskgroup.js] [Step 2-6-1-4] answer列が未定義または空",
+          );
+          errors.push("answer列が未定義または空");
         }
       }
 

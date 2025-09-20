@@ -187,7 +187,7 @@ function generateTaskList(
     };
 
     console.log(
-      `[step3-tasklist.js] [Step 3-1-0] タスクグループ${taskGroup.groupNumber}の処理開始`,
+      `[step3-tasklist.js→Step3-1-0] タスクグループ${taskGroup.groupNumber}の処理開始`,
     );
 
     const promptColumns = taskGroup.columns.prompts || [];
@@ -198,7 +198,7 @@ function generateTaskList(
       : [];
 
     // デバッグ情報をコンソールに出力
-    console.log("[step3-tasklist.js] [Step 3-1-1] 列設定:", {
+    console.log("[step3-tasklist.js→Step3-1-1] 列設定:", {
       promptColumns: promptColumns,
       answerColumns: answerColumns,
     });
@@ -227,7 +227,7 @@ function generateTaskList(
 
     // 最終行検索完了
     console.log(
-      `[step3-tasklist.js] [Step 3-1-2] 対象範囲: ${dataStartRow}行〜${lastPromptRow}行 (プロンプト列: ${promptColumns.join(", ")})`,
+      `[step3-tasklist.js→Step3-1-2] 対象範囲: ${dataStartRow}行〜${lastPromptRow}行 (プロンプト列: ${promptColumns.join(", ")})`,
     );
 
     // 3-2: タスク生成の除外処理
@@ -599,7 +599,7 @@ function generateTaskList(
  */
 function getRowControl(data) {
   const controls = [];
-  console.log("[step3-tasklist.js] [Step 3-4-1] B列から行制御を検索中...");
+  console.log("[step3-tasklist.js→Step3-4-1] B列から行制御を検索中...");
 
   for (let row = 0; row < data.length; row++) {
     const rowData = data[row];
@@ -641,7 +641,7 @@ function getRowControl(data) {
  */
 function getColumnControl(data, controlRow) {
   console.log(
-    `[step3-tasklist.js] [Step 3-5-1] 列制御情報の取得開始 (制御行: ${controlRow})`,
+    `[step3-tasklist.js→Step3-5-1] 列制御情報の取得開始 (制御行: ${controlRow})`,
   );
   const controls = [];
 

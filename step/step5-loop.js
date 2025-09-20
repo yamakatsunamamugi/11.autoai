@@ -151,7 +151,7 @@ function validateTaskGroupForStep5(taskGroup) {
 }
 
 async function checkCompletionStatus(taskGroup) {
-  LoopLogger.info("[step5-loop.js] [Step 5-1] 完了状況の確認開始", {
+  LoopLogger.info("[step5-loop.js→Step5-1] 完了状況の確認開始", {
     groupNumber: taskGroup.groupNumber || "undefined",
     taskType: taskGroup.taskType || "undefined",
     pattern: taskGroup.pattern || "undefined",
@@ -172,7 +172,7 @@ async function checkCompletionStatus(taskGroup) {
     // ========================================
     // Step 5-1-1: プロンプト列の確認
     // ========================================
-    LoopLogger.info("[step5-loop.js] [Step 5-1-1] プロンプト列を確認中...");
+    LoopLogger.info("[step5-loop.js→Step5-1-1] プロンプト列を確認中...");
 
     // 必須データの検証
     if (!taskGroup.columns || !taskGroup.columns.prompts) {
@@ -271,7 +271,7 @@ async function checkCompletionStatus(taskGroup) {
     // ========================================
     // Step 5-1-2: 回答列の確認
     // ========================================
-    LoopLogger.info("[step5-loop.js] [Step 5-1-2] 回答列を確認中...");
+    LoopLogger.info("[step5-loop.js→Step5-1-2] 回答列を確認中...");
 
     let answerRange;
     let answerCount = 0;
@@ -371,7 +371,7 @@ async function checkCompletionStatus(taskGroup) {
     // ========================================
     // Step 5-1-3: 完了判定
     // ========================================
-    LoopLogger.info("[step5-loop.js] [Step 5-1-3] 完了判定を実行");
+    LoopLogger.info("[step5-loop.js→Step5-1-3] 完了判定を実行");
 
     const isComplete = promptCount === answerCount;
 
@@ -418,7 +418,7 @@ async function checkCompletionStatus(taskGroup) {
  * @returns {Promise<void>}
  */
 async function processIncompleteTasks(taskGroup) {
-  LoopLogger.info("[Step 5-2] 未完了タスクの処理開始", {
+  LoopLogger.info("[step5-loop.js→Step5-2] 未完了タスクの処理開始", {
     グループ番号: taskGroup.groupNumber,
     タスクタイプ: taskGroup.taskType,
     現在の統計: window.globalState.stats,
