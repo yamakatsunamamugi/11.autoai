@@ -17,11 +17,30 @@
  */
 
 // ========================================
-// スプレッドシートユーティリティ（統一実装・自己完結型）
+// Google Services統合（自動列追加機能対応）
 // ========================================
 
+// Google Servicesをインポート（自動列追加機能を利用）
+import { GoogleServices } from "../src/services/google-services.js";
+
+// Google Servicesインスタンス（グローバル）
+let googleServices = null;
+
 /**
- * カラムインデックスをA1記法に変換（統一実装）
+ * Google Servicesの初期化
+ * @returns {Promise<GoogleServices>} 初期化されたGoogle Servicesインスタンス
+ */
+async function initializeGoogleServices() {
+  if (!googleServices) {
+    googleServices = new GoogleServices();
+    await googleServices.initialize();
+    console.log("[step3-tasklist.js] Google Services初期化完了");
+  }
+  return googleServices;
+}
+
+/**
+ * カラムインデックスをA1記法に変換（Google Services準拠）
  * @param {number} index - カラムインデックス（0ベース）
  * @returns {string} A1記法のカラム名
  */
@@ -34,16 +53,19 @@ function indexToColumn(index) {
     return "A";
   }
 
+  // Google Services準拠の正確な実装
   let column = "";
-  while (index >= 0) {
-    column = String.fromCharCode((index % 26) + 65) + column;
-    index = Math.floor(index / 26) - 1;
+  let num = index + 1;
+  while (num > 0) {
+    num--;
+    column = String.fromCharCode((num % 26) + 65) + column;
+    num = Math.floor(num / 26);
   }
   return column;
 }
 
 /**
- * A1記法をカラムインデックスに変換（統一実装）
+ * A1記法をカラムインデックスに変換（Google Services準拠）
  * @param {string} column - A1記法のカラム名
  * @returns {number} カラムインデックス（0ベース）
  */
@@ -53,6 +75,7 @@ function columnToIndex(column) {
     return 0;
   }
 
+  // Google Services準拠の正確な実装
   let index = 0;
   const upperColumn = column.toUpperCase();
   for (let i = 0; i < upperColumn.length; i++) {
@@ -162,7 +185,7 @@ function parseSpreadsheetUrl(url) {
 // ========================================
 
 /**
- * タスクグループからタスクリストを生成
+ * タスクグループからタスクリストを生成（Google Services統合版）
  * @param {Object} taskGroup - タスクグループ情報
  * @param {Array} spreadsheetData - スプレッドシートの全データ
  * @param {Object} specialRows - 特殊行の情報（メニュー行、AI行、モデル行など）
@@ -170,7 +193,7 @@ function parseSpreadsheetUrl(url) {
  * @param {Object} options - オプション設定
  * @returns {Array} タスクリスト
  */
-function generateTaskList(
+async function generateTaskList(
   taskGroup,
   spreadsheetData,
   specialRows,
@@ -178,6 +201,45 @@ function generateTaskList(
   options = {},
 ) {
   try {
+    // Google Servicesの初期化
+    const services = await initializeGoogleServices();
+
+    // 必要に応じて自動列追加を実行
+    if (options.enableAutoColumnSetup && options.spreadsheetId) {
+      console.log("[step3-tasklist.js] 自動列追加セットアップを実行中...");
+      const setupResult = await services.runAutoSetup(
+        options.spreadsheetId,
+        options.gid,
+      );
+
+      if (setupResult.hasAdditions) {
+        console.log(
+          `[step3-tasklist.js] ✅ 自動列追加完了: ${setupResult.addedColumns?.length || 0}列追加`,
+        );
+
+        // 列追加後はスプレッドシートデータを再読み込み
+        if (setupResult.addedColumns && setupResult.addedColumns.length > 0) {
+          console.log(
+            "[step3-tasklist.js] 📋 スプレッドシートデータを再読み込み中...",
+          );
+          const refreshedData = await services.loadData(
+            options.spreadsheetId,
+            options.gid,
+          );
+          if (refreshedData && refreshedData.data) {
+            // spreadsheetDataを更新（参照渡しで更新）
+            spreadsheetData.splice(
+              0,
+              spreadsheetData.length,
+              ...refreshedData.data,
+            );
+            console.log(
+              `[step3-tasklist.js] ✅ データ再読み込み完了: ${spreadsheetData.length}行`,
+            );
+          }
+        }
+      }
+    }
     const tasks = [];
     const { menuRow, aiRow, modelRow, functionRow } = specialRows;
 
@@ -769,6 +831,7 @@ if (typeof module !== "undefined" && module.exports) {
     getCellA1Notation,
     getRangeA1Notation,
     parseSpreadsheetUrl,
+    initializeGoogleServices,
   };
 }
 
@@ -785,5 +848,6 @@ if (typeof window !== "undefined") {
     getCellA1Notation,
     getRangeA1Notation,
     parseSpreadsheetUrl,
+    initializeGoogleServices,
   };
 }
