@@ -871,7 +871,7 @@ class SimpleSheetsClient {
       const token = await this.getAuthToken();
       const url = `${this.baseUrl}/${spreadsheetId}?fields=sheets(properties)`;
 
-      const response = await fetch(url, {
+      const response = await window.fetchWithTokenRefresh(url, {
         method: "GET",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -933,7 +933,7 @@ class SimpleSheetsClient {
 
       const url = `${this.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(fullRange)}?valueRenderOption=FORMATTED_VALUE`;
 
-      const response = await fetch(url, {
+      const response = await window.fetchWithTokenRefresh(url, {
         method: "GET",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -988,7 +988,7 @@ class SimpleSheetsClient {
 
       const url = `${this.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(fullRange)}?valueInputOption=USER_ENTERED`;
 
-      const response = await fetch(url, {
+      const response = await window.fetchWithTokenRefresh(url, {
         method: "PUT",
         headers: {
           Authorization: `Bearer ${token}`,

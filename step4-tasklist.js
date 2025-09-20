@@ -405,7 +405,7 @@ async function insertColumnAndSetHeader(
     const batchUpdateUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`;
     const token = window.globalState?.authToken || "";
 
-    const response = await fetch(batchUpdateUrl, {
+    const response = await window.fetchWithTokenRefresh(batchUpdateUrl, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -457,7 +457,7 @@ async function deleteColumn(spreadsheetId, sheetId, columnIndex) {
     const batchUpdateUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`;
     const token = window.globalState?.authToken || "";
 
-    const response = await fetch(batchUpdateUrl, {
+    const response = await window.fetchWithTokenRefresh(batchUpdateUrl, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -595,7 +595,7 @@ async function generateTaskList(
           const apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${options.spreadsheetId}/values/${range}`;
 
           try {
-            const response = await fetch(apiUrl, {
+            const response = await window.fetchWithTokenRefresh(apiUrl, {
               headers: {
                 Authorization: `Bearer ${token}`,
               },
