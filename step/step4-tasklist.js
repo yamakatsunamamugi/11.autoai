@@ -47,40 +47,438 @@ if (typeof columnToIndex === "undefined") {
 }
 
 // ========================================
-// Google Services統合（自動列追加機能対応）
+// 自動列追加機能（spreadsheet-auto-setup.jsから移植）
 // ========================================
 
-// Google Servicesをインポート（自動列追加機能を利用）
-// import { GoogleServices } from "../src/services/google-services.js";
+/**
+ * 自動列追加の実行
+ * @param {string} spreadsheetId - スプレッドシートID
+ * @param {string} gid - シートID
+ * @param {Array} spreadsheetData - スプレッドシートデータ
+ * @param {Object} specialRows - 特殊行情報
+ * @returns {Object} 実行結果
+ */
+async function executeAutoColumnSetup(
+  spreadsheetId,
+  gid,
+  spreadsheetData,
+  specialRows,
+) {
+  const { menuRow, aiRow } = specialRows;
+  const menuRowIndex = menuRow - 1;
+  const aiRowIndex = aiRow - 1;
+  const sheetId = parseInt(gid || "0");
+  const addedColumns = [];
 
-// Google Servicesインスタンス（グローバル）
-let googleServices = null;
+  if (!spreadsheetData[menuRowIndex] || !spreadsheetData[aiRowIndex]) {
+    console.log("[step3-tasklist] メニュー行またはAI行が見つかりません");
+    return { hasAdditions: false, addedColumns: [] };
+  }
+
+  try {
+    // プロンプト列グループを検索
+    const promptGroups = findPromptGroups(
+      spreadsheetData[menuRowIndex],
+      spreadsheetData[aiRowIndex],
+    );
+
+    if (promptGroups.length === 0) {
+      console.log("[step3-tasklist] プロンプト列が見つかりません");
+      return { hasAdditions: false, addedColumns: [] };
+    }
+
+    // 右から左に処理（インデックスずれ防止）
+    const sortedGroups = [...promptGroups].sort(
+      (a, b) => b.firstIndex - a.firstIndex,
+    );
+
+    for (const group of sortedGroups) {
+      const is3TypeAI = group.aiType.includes(
+        "3種類（ChatGPT・Gemini・Claude）",
+      );
+
+      if (is3TypeAI) {
+        // 3種類AI用の特別処理
+        const result = await setup3TypeAIColumns(
+          spreadsheetId,
+          sheetId,
+          group,
+          spreadsheetData,
+          menuRowIndex,
+        );
+        addedColumns.push(...(result.addedColumns || []));
+      } else {
+        // 通常AI用の処理
+        const result = await setupBasicColumns(
+          spreadsheetId,
+          sheetId,
+          group,
+          spreadsheetData,
+          menuRowIndex,
+        );
+        addedColumns.push(...(result.addedColumns || []));
+      }
+    }
+
+    return {
+      hasAdditions: addedColumns.length > 0,
+      addedColumns: addedColumns,
+    };
+  } catch (error) {
+    console.error("[step3-tasklist] 自動列追加エラー:", error);
+    return { hasAdditions: false, addedColumns: [], error: error.message };
+  }
+}
 
 /**
- * Google Servicesの初期化
- * @returns {Promise<GoogleServices>} 初期化されたGoogle Servicesインスタンス
+ * プロンプト列グループを検索
+ * @param {Array} menuRow - メニュー行
+ * @param {Array} aiRow - AI行
+ * @returns {Array} プロンプトグループ配列
  */
-async function initializeGoogleServices() {
-  if (!googleServices) {
-    try {
-      // GoogleServicesクラスをグローバルから取得
-      const GoogleServices = window.GoogleServices || globalThis.GoogleServices;
+function findPromptGroups(menuRow, aiRow) {
+  const promptGroups = [];
+  const maxLength = Math.max(menuRow.length, aiRow.length);
 
-      if (GoogleServices) {
-        googleServices = new GoogleServices();
-        await googleServices.initialize();
-      } else {
-        return null;
+  for (let colIndex = 0; colIndex < maxLength; colIndex++) {
+    const cellValue = menuRow[colIndex];
+    if (cellValue) {
+      const trimmedValue = cellValue.toString().trim();
+
+      // メインのプロンプト列を見つけた場合
+      if (trimmedValue === "プロンプト") {
+        let lastPromptIndex = colIndex;
+
+        // 連続するプロンプト2〜5を探す
+        for (let i = 2; i <= 5; i++) {
+          const nextIndex = lastPromptIndex + 1;
+          if (nextIndex < maxLength) {
+            const nextValue = menuRow[nextIndex];
+            if (nextValue && nextValue.toString().trim() === `プロンプト${i}`) {
+              lastPromptIndex = nextIndex;
+            } else {
+              break;
+            }
+          }
+        }
+
+        promptGroups.push({
+          firstIndex: colIndex,
+          lastIndex: lastPromptIndex,
+          column: indexToColumn(colIndex),
+          aiType: (aiRow[colIndex] || "").toString(),
+        });
+
+        // 次の検索はグループの最後の次から
+        colIndex = lastPromptIndex;
       }
-    } catch (initError) {
-      console.error(
-        "❌ [step3-tasklist.js] GoogleServices初期化エラー:",
-        initError,
-      );
-      return null;
     }
   }
-  return googleServices;
+
+  return promptGroups;
+}
+
+/**
+ * 通常AI用の列追加
+ * @param {string} spreadsheetId - スプレッドシートID
+ * @param {number} sheetId - シートID
+ * @param {Object} promptGroup - プロンプトグループ情報
+ * @param {Array} spreadsheetData - スプレッドシートデータ
+ * @param {number} menuRowIndex - メニュー行インデックス
+ * @returns {Object} 追加結果
+ */
+async function setupBasicColumns(
+  spreadsheetId,
+  sheetId,
+  promptGroup,
+  spreadsheetData,
+  menuRowIndex,
+) {
+  const menuRow = spreadsheetData[menuRowIndex];
+  const addedColumns = [];
+  const actualIndex = promptGroup.firstIndex;
+
+  // 左にログ列がなければ追加
+  const leftIndex = actualIndex - 1;
+  const leftValue =
+    leftIndex >= 0 ? (menuRow[leftIndex] || "").toString().trim() : "";
+
+  if (leftValue !== "ログ") {
+    const success = await insertColumnAndSetHeader(
+      spreadsheetId,
+      sheetId,
+      actualIndex,
+      "ログ",
+      menuRowIndex,
+    );
+    if (success) {
+      addedColumns.push({
+        type: "basic",
+        column: indexToColumn(actualIndex),
+        header: "ログ",
+      });
+    }
+  }
+
+  // 回答列の配置位置を決定（複数プロンプトの場合は最後のプロンプトの後）
+  const answerPosition = promptGroup.lastIndex + 1;
+  const answerValue =
+    answerPosition < menuRow.length
+      ? (menuRow[answerPosition] || "").toString().trim()
+      : "";
+
+  if (answerPosition >= menuRow.length || answerValue !== "回答") {
+    const success = await insertColumnAndSetHeader(
+      spreadsheetId,
+      sheetId,
+      answerPosition,
+      "回答",
+      menuRowIndex,
+    );
+    if (success) {
+      addedColumns.push({
+        type: "basic",
+        column: indexToColumn(answerPosition),
+        header: "回答",
+      });
+    }
+  }
+
+  return { addedColumns };
+}
+
+/**
+ * 3種類AI用の特別な列追加
+ * @param {string} spreadsheetId - スプレッドシートID
+ * @param {number} sheetId - シートID
+ * @param {Object} promptGroup - プロンプトグループ情報
+ * @param {Array} spreadsheetData - スプレッドシートデータ
+ * @param {number} menuRowIndex - メニュー行インデックス
+ * @returns {Object} 追加結果
+ */
+async function setup3TypeAIColumns(
+  spreadsheetId,
+  sheetId,
+  promptGroup,
+  spreadsheetData,
+  menuRowIndex,
+) {
+  const menuRow = spreadsheetData[menuRowIndex];
+  const addedColumns = [];
+  let promptIndex = promptGroup.firstIndex;
+  let lastPromptIndex = promptGroup.lastIndex;
+
+  // 1. 左にログ列がなければ追加
+  const leftIndex = promptIndex - 1;
+  const leftValue =
+    leftIndex >= 0 ? (menuRow[leftIndex] || "").toString().trim() : "";
+
+  if (leftValue !== "ログ") {
+    const success = await insertColumnAndSetHeader(
+      spreadsheetId,
+      sheetId,
+      promptIndex,
+      "ログ",
+      menuRowIndex,
+    );
+    if (success) {
+      addedColumns.push({
+        type: "3type",
+        column: indexToColumn(promptIndex),
+        header: "ログ",
+      });
+      // インデックスを調整
+      promptIndex++;
+      lastPromptIndex++;
+    }
+  }
+
+  // 2. 既存の3つの回答列が正しく存在するかチェック
+  const answerHeaders = ["ChatGPT回答", "Claude回答", "Gemini回答"];
+  let hasAllCorrectHeaders = true;
+
+  for (let i = 0; i < answerHeaders.length; i++) {
+    const checkIndex = lastPromptIndex + 1 + i;
+    const currentValue =
+      checkIndex < menuRow.length
+        ? (menuRow[checkIndex] || "").toString().trim()
+        : "";
+
+    if (currentValue !== answerHeaders[i]) {
+      hasAllCorrectHeaders = false;
+      break;
+    }
+  }
+
+  // 既に正しい3つの回答列が存在する場合は何もしない
+  if (hasAllCorrectHeaders) {
+    return { addedColumns };
+  }
+
+  // 3. 既存の「回答」列を削除（あれば）
+  const rightIndex = lastPromptIndex + 1;
+  const rightValue =
+    rightIndex < menuRow.length
+      ? (menuRow[rightIndex] || "").toString().trim()
+      : "";
+
+  if (rightValue === "回答") {
+    await deleteColumn(spreadsheetId, sheetId, rightIndex);
+  }
+
+  // 4. 3つの回答列を追加
+  for (let i = 0; i < answerHeaders.length; i++) {
+    const insertPosition = lastPromptIndex + 1 + i;
+    const success = await insertColumnAndSetHeader(
+      spreadsheetId,
+      sheetId,
+      insertPosition,
+      answerHeaders[i],
+      menuRowIndex,
+    );
+    if (success) {
+      addedColumns.push({
+        type: "3type",
+        column: indexToColumn(insertPosition),
+        header: answerHeaders[i],
+      });
+    }
+  }
+
+  return { addedColumns };
+}
+
+/**
+ * 列を挿入してヘッダーを設定
+ * @param {string} spreadsheetId - スプレッドシートID
+ * @param {number} sheetId - シートID
+ * @param {number} columnIndex - 挿入位置
+ * @param {string} headerText - ヘッダーテキスト
+ * @param {number} headerRow - ヘッダー行インデックス
+ * @returns {boolean} 成功フラグ
+ */
+async function insertColumnAndSetHeader(
+  spreadsheetId,
+  sheetId,
+  columnIndex,
+  headerText,
+  headerRow,
+) {
+  try {
+    // バッチ更新リクエストを準備
+    const requests = [
+      {
+        insertDimension: {
+          range: {
+            sheetId: sheetId,
+            dimension: "COLUMNS",
+            startIndex: columnIndex,
+            endIndex: columnIndex + 1,
+          },
+          inheritFromBefore: false,
+        },
+      },
+      {
+        updateCells: {
+          range: {
+            sheetId: sheetId,
+            startRowIndex: headerRow,
+            endRowIndex: headerRow + 1,
+            startColumnIndex: columnIndex,
+            endColumnIndex: columnIndex + 1,
+          },
+          rows: [
+            {
+              values: [
+                {
+                  userEnteredValue: { stringValue: headerText },
+                },
+              ],
+            },
+          ],
+          fields: "userEnteredValue",
+        },
+      },
+    ];
+
+    // バッチ更新を実行
+    const batchUpdateUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`;
+    const token = window.globalState?.authToken || "";
+
+    const response = await fetch(batchUpdateUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ requests }),
+    });
+
+    if (response.ok) {
+      console.log(
+        `[step3-tasklist] 列追加成功: ${indexToColumn(columnIndex)}列 (${headerText})`,
+      );
+      return true;
+    } else {
+      console.error(
+        `[step3-tasklist] 列追加失敗: ${headerText}`,
+        await response.text(),
+      );
+      return false;
+    }
+  } catch (error) {
+    console.error(`[step3-tasklist] 列追加エラー: ${headerText}`, error);
+    return false;
+  }
+}
+
+/**
+ * 列を削除
+ * @param {string} spreadsheetId - スプレッドシートID
+ * @param {number} sheetId - シートID
+ * @param {number} columnIndex - 削除する列のインデックス
+ * @returns {boolean} 成功フラグ
+ */
+async function deleteColumn(spreadsheetId, sheetId, columnIndex) {
+  try {
+    const requests = [
+      {
+        deleteDimension: {
+          range: {
+            sheetId: sheetId,
+            dimension: "COLUMNS",
+            startIndex: columnIndex,
+            endIndex: columnIndex + 1,
+          },
+        },
+      },
+    ];
+
+    const batchUpdateUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`;
+    const token = window.globalState?.authToken || "";
+
+    const response = await fetch(batchUpdateUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ requests }),
+    });
+
+    if (response.ok) {
+      console.log(
+        `[step3-tasklist] 列削除成功: ${indexToColumn(columnIndex)}列`,
+      );
+      return true;
+    } else {
+      console.error("[step3-tasklist] 列削除失敗", await response.text());
+      return false;
+    }
+  } catch (error) {
+    console.error("[step3-tasklist] 列削除エラー", error);
+    return false;
+  }
 }
 
 // 【簡素化】A1記法変換は基本不要（文字列結合を使用）
@@ -175,30 +573,50 @@ async function generateTaskList(
       throw new Error("taskGroup.columnsが未定義です");
     }
 
-    // Google Servicesの初期化
-    const services = await initializeGoogleServices();
-
     // 必要に応じて自動列追加を実行
     if (options.enableAutoColumnSetup && options.spreadsheetId) {
-      const setupResult = await services.runAutoSetup(
+      console.log("[step3-tasklist] 自動列追加を実行中...");
+      const setupResult = await executeAutoColumnSetup(
         options.spreadsheetId,
         options.gid,
+        spreadsheetData,
+        specialRows,
       );
 
       if (setupResult.hasAdditions) {
+        console.log(
+          `[step3-tasklist] ${setupResult.addedColumns.length}列を追加しました`,
+        );
         // 列追加後はスプレッドシートデータを再読み込み
         if (setupResult.addedColumns && setupResult.addedColumns.length > 0) {
-          const refreshedData = await services.loadData(
-            options.spreadsheetId,
-            options.gid,
-          );
-          if (refreshedData && refreshedData.data) {
-            // spreadsheetDataを更新（参照渡しで更新）
-            spreadsheetData.splice(
-              0,
-              spreadsheetData.length,
-              ...refreshedData.data,
-            );
+          // Google Sheets APIから最新データを取得
+          const token = window.globalState?.authToken || "";
+          const range = "A1:ZZ1000"; // 十分な範囲を指定
+          const apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${options.spreadsheetId}/values/${range}`;
+
+          try {
+            const response = await fetch(apiUrl, {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            });
+
+            if (response.ok) {
+              const data = await response.json();
+              if (data.values) {
+                // spreadsheetDataを更新（参照渡しで更新）
+                spreadsheetData.splice(
+                  0,
+                  spreadsheetData.length,
+                  ...data.values,
+                );
+                console.log(
+                  "[step3-tasklist] スプレッドシートデータを再読み込みしました",
+                );
+              }
+            }
+          } catch (error) {
+            console.error("[step3-tasklist] データ再読み込みエラー:", error);
           }
         }
       }

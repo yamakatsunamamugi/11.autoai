@@ -1,10 +1,10 @@
 // ui-controller.js - AutoAI Minimal コントロールパネル
 //
-import { toggleMutationObserverMonitoring } from './controllers/test-ai-selector-mutation-observer.js';
+import { toggleMutationObserverMonitoring } from "./controllers/test-ai-selector-mutation-observer.js";
 
 // Sleep function (inline implementation to avoid module import issues)
 function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 //
 // このファイルは、Chrome拡張機能のメインUIを管理します。
@@ -38,15 +38,14 @@ function sleep(ms) {
 async function bringWindowToFront() {
   try {
     const currentWindow = await chrome.windows.getCurrent();
-    
+
     await chrome.windows.update(currentWindow.id, {
       focused: true,
       drawAttention: true,
-      state: 'normal'
+      state: "normal",
     });
-    
   } catch (error) {
-    console.error('[bringWindowToFront] ウィンドウ最前面表示エラー:', error);
+    console.error("[bringWindowToFront] ウィンドウ最前面表示エラー:", error);
   }
 }
 
@@ -56,7 +55,7 @@ let activeNotifications = new Map();
 // リトライ通知を表示
 function showRetryNotification(data) {
   const { taskId, retryCount, maxRetries, error, errorMessage } = data;
-  
+
   // 既存の通知を削除
   if (activeNotifications.has(taskId)) {
     const oldNotification = activeNotifications.get(taskId);
@@ -64,10 +63,10 @@ function showRetryNotification(data) {
       oldNotification.element.remove();
     }
   }
-  
+
   // 通知要素を作成
-  const notification = document.createElement('div');
-  notification.className = 'retry-notification';
+  const notification = document.createElement("div");
+  notification.className = "retry-notification";
   notification.id = `retry-${taskId}`;
   notification.style.cssText = `
     position: fixed;
@@ -83,7 +82,7 @@ function showRetryNotification(data) {
     animation: slideIn 0.3s ease-out;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   `;
-  
+
   notification.innerHTML = `
     <div style="display: flex; align-items: center; gap: 10px;">
       <div style="font-size: 24px;">🔄</div>
@@ -92,7 +91,7 @@ function showRetryNotification(data) {
           リトライ中 (${retryCount}/${maxRetries})
         </div>
         <div style="font-size: 12px; opacity: 0.9;">
-          ${errorMessage || 'タイムアウトエラーを検出しました'}
+          ${errorMessage || "タイムアウトエラーを検出しました"}
         </div>
         <div style="font-size: 11px; opacity: 0.8; margin-top: 3px;">
           タスクID: ${taskId.substring(0, 8)}...
@@ -122,16 +121,16 @@ function showRetryNotification(data) {
                   animation: progress 5s linear forwards;"></div>
     </div>
   `;
-  
+
   document.body.appendChild(notification);
-  
+
   // 通知を記録
   activeNotifications.set(taskId, {
     element: notification,
     timestamp: Date.now(),
-    data: data
+    data: data,
   });
-  
+
   // 5秒後に自動的に削除
   setTimeout(() => {
     dismissRetryNotification(taskId);
@@ -143,7 +142,7 @@ function dismissRetryNotification(taskId) {
   if (activeNotifications.has(taskId)) {
     const notification = activeNotifications.get(taskId);
     if (notification.element) {
-      notification.element.style.animation = 'slideOut 0.3s ease-in';
+      notification.element.style.animation = "slideOut 0.3s ease-in";
       setTimeout(() => {
         notification.element.remove();
       }, 300);
@@ -155,17 +154,17 @@ function dismissRetryNotification(taskId) {
 // スプレッドシート書き込み失敗通知を表示
 function showSpreadsheetWriteFailureNotification(data) {
   const { taskId, retryCount, maxRetries, logCell, writeResult } = data;
-  
+
   // 既存の通知を削除
   const notificationId = `spreadsheet-fail-${taskId}`;
   const existingNotification = document.getElementById(notificationId);
   if (existingNotification) {
     existingNotification.remove();
   }
-  
+
   // 通知要素を作成
-  const notification = document.createElement('div');
-  notification.className = 'spreadsheet-failure-notification';
+  const notification = document.createElement("div");
+  notification.className = "spreadsheet-failure-notification";
   notification.id = notificationId;
   notification.style.cssText = `
     position: fixed;
@@ -181,7 +180,7 @@ function showSpreadsheetWriteFailureNotification(data) {
     animation: slideIn 0.3s ease-out;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   `;
-  
+
   notification.innerHTML = `
     <div style="display: flex; align-items: center; gap: 10px;">
       <div style="font-size: 24px;">⚠️</div>
@@ -190,7 +189,7 @@ function showSpreadsheetWriteFailureNotification(data) {
           スプレッドシート書き込み失敗
         </div>
         <div style="font-size: 12px; opacity: 0.9; margin-bottom: 3px;">
-          セル ${logCell || 'Unknown'} への書き込みが確認できませんでした
+          セル ${logCell || "Unknown"} への書き込みが確認できませんでした
         </div>
         <div style="font-size: 11px; opacity: 0.8;">
           リトライ ${retryCount}/${maxRetries} 実行中...
@@ -225,16 +224,16 @@ function showSpreadsheetWriteFailureNotification(data) {
       </ul>
     </div>
   `;
-  
+
   document.body.appendChild(notification);
-  
+
   // 通知を記録
   activeNotifications.set(notificationId, {
     element: notification,
     timestamp: Date.now(),
-    data: data
+    data: data,
   });
-  
+
   // 10秒後に自動的に削除（スプレッドシートエラーは重要なので長めに表示）
   setTimeout(() => {
     dismissSpreadsheetFailureNotification(taskId);
@@ -247,7 +246,7 @@ function dismissSpreadsheetFailureNotification(taskId) {
   if (activeNotifications.has(notificationId)) {
     const notification = activeNotifications.get(notificationId);
     if (notification.element) {
-      notification.element.style.animation = 'slideOut 0.3s ease-in';
+      notification.element.style.animation = "slideOut 0.3s ease-in";
       setTimeout(() => {
         notification.element.remove();
       }, 300);
@@ -259,8 +258,8 @@ function dismissSpreadsheetFailureNotification(taskId) {
 // 成功通知を表示
 function showSuccessNotification(message, duration = 3000) {
   const notificationId = `success-${Date.now()}`;
-  
-  const notification = document.createElement('div');
+
+  const notification = document.createElement("div");
   notification.id = notificationId;
   notification.style.cssText = `
     position: fixed;
@@ -276,7 +275,7 @@ function showSuccessNotification(message, duration = 3000) {
     animation: slideIn 0.3s ease-out;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   `;
-  
+
   notification.innerHTML = `
     <div style="display: flex; align-items: center; gap: 10px;">
       <div style="font-size: 24px;">✅</div>
@@ -285,11 +284,11 @@ function showSuccessNotification(message, duration = 3000) {
       </div>
     </div>
   `;
-  
+
   document.body.appendChild(notification);
-  
+
   setTimeout(() => {
-    notification.style.animation = 'slideOut 0.3s ease-in';
+    notification.style.animation = "slideOut 0.3s ease-in";
     setTimeout(() => {
       notification.remove();
     }, 300);
@@ -298,21 +297,24 @@ function showSuccessNotification(message, duration = 3000) {
 
 // メッセージリスナー
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'showRetryNotification') {
+  if (request.action === "showRetryNotification") {
     showRetryNotification(request.data);
     sendResponse({ success: true });
-  } else if (request.action === 'showSpreadsheetWriteFailure') {
+  } else if (request.action === "showSpreadsheetWriteFailure") {
     showSpreadsheetWriteFailureNotification(request.data);
     sendResponse({ success: true });
-  } else if (request.action === 'showSuccessNotification') {
-    showSuccessNotification(request.message || 'スプレッドシート書き込み成功', request.duration);
+  } else if (request.action === "showSuccessNotification") {
+    showSuccessNotification(
+      request.message || "スプレッドシート書き込み成功",
+      request.duration,
+    );
     sendResponse({ success: true });
   }
   return true;
 });
 
 // CSSアニメーションを追加
-const style = document.createElement('style');
+const style = document.createElement("style");
 style.textContent = `
   @keyframes slideIn {
     from {
@@ -345,21 +347,23 @@ document.head.appendChild(style);
 
 // グローバルに通知機能を公開
 window.showRetryNotification = showRetryNotification;
-window.showSpreadsheetWriteFailureNotification = showSpreadsheetWriteFailureNotification;
+window.showSpreadsheetWriteFailureNotification =
+  showSpreadsheetWriteFailureNotification;
 window.showSuccessNotification = showSuccessNotification;
 window.dismissRetryNotification = dismissRetryNotification;
-window.dismissSpreadsheetFailureNotification = dismissSpreadsheetFailureNotification;
+window.dismissSpreadsheetFailureNotification =
+  dismissSpreadsheetFailureNotification;
 
 // ===== AIステータス管理 =====
 function updateAIStatus() {
   // ストレージから設定を取得
-  chrome.storage.local.get(['ai_config_persistence'], (result) => {
+  chrome.storage.local.get(["ai_config_persistence"], (result) => {
     const config = result.ai_config_persistence || {};
 
     // 各AIのテーブル形式でステータスを更新
-    updateAIModelsTable('chatgpt', config.chatgpt);
-    updateAIModelsTable('claude', config.claude);
-    updateAIModelsTable('gemini', config.gemini);
+    updateAIModelsTable("chatgpt", config.chatgpt);
+    updateAIModelsTable("claude", config.claude);
+    updateAIModelsTable("gemini", config.gemini);
   });
 }
 
@@ -370,7 +374,8 @@ function updateAIModelsTable(aiType, aiConfig) {
   const modelsListEl = document.getElementById(`${aiType}-models-list`);
   const functionsListEl = document.getElementById(`${aiType}-functions-list`);
 
-  if (!modelCountEl || !functionCountEl || !modelsListEl || !functionsListEl) return;
+  if (!modelCountEl || !functionCountEl || !modelsListEl || !functionsListEl)
+    return;
 
   if (aiConfig && (aiConfig.models || aiConfig.functions)) {
     // モデル数とリストを更新
@@ -378,11 +383,15 @@ function updateAIModelsTable(aiType, aiConfig) {
     modelCountEl.textContent = modelCount.toString();
 
     if (aiConfig.models && aiConfig.models.length > 0) {
-      modelsListEl.innerHTML = aiConfig.models.map(model =>
-        `<tr><td style="padding: 8px; border-bottom: 1px solid #e0e0e0; font-size: 0.9em;">${model}</td></tr>`
-      ).join('');
+      modelsListEl.innerHTML = aiConfig.models
+        .map(
+          (model) =>
+            `<tr><td style="padding: 8px; border-bottom: 1px solid #e0e0e0; font-size: 0.9em;">${model}</td></tr>`,
+        )
+        .join("");
     } else {
-      modelsListEl.innerHTML = '<tr><td style="padding: 8px; text-align: center; color: #999;">モデルデータなし</td></tr>';
+      modelsListEl.innerHTML =
+        '<tr><td style="padding: 8px; text-align: center; color: #999;">モデルデータなし</td></tr>';
     }
 
     // 機能数とリストを更新
@@ -390,37 +399,43 @@ function updateAIModelsTable(aiType, aiConfig) {
     functionCountEl.textContent = functionCount.toString();
 
     if (aiConfig.functions && aiConfig.functions.length > 0) {
-      functionsListEl.innerHTML = aiConfig.functions.map(func =>
-        `<tr><td style="padding: 8px; border-bottom: 1px solid #e0e0e0; font-size: 0.9em;">${func}</td></tr>`
-      ).join('');
+      functionsListEl.innerHTML = aiConfig.functions
+        .map(
+          (func) =>
+            `<tr><td style="padding: 8px; border-bottom: 1px solid #e0e0e0; font-size: 0.9em;">${func}</td></tr>`,
+        )
+        .join("");
     } else {
-      functionsListEl.innerHTML = '<tr><td style="padding: 8px; text-align: center; color: #999;">機能データなし</td></tr>';
+      functionsListEl.innerHTML =
+        '<tr><td style="padding: 8px; text-align: center; color: #999;">機能データなし</td></tr>';
     }
   } else {
     // データなしの場合
-    modelCountEl.textContent = '0';
-    functionCountEl.textContent = '0';
-    modelsListEl.innerHTML = '<tr><td style="padding: 8px; text-align: center; color: #999;">データを取得するには上記のボタンを実行してください</td></tr>';
-    functionsListEl.innerHTML = '<tr><td style="padding: 8px; text-align: center; color: #999;">データを取得するには上記のボタンを実行してください</td></tr>';
+    modelCountEl.textContent = "0";
+    functionCountEl.textContent = "0";
+    modelsListEl.innerHTML =
+      '<tr><td style="padding: 8px; text-align: center; color: #999;">データを取得するには上記のボタンを実行してください</td></tr>';
+    functionsListEl.innerHTML =
+      '<tr><td style="padding: 8px; text-align: center; color: #999;">データを取得するには上記のボタンを実行してください</td></tr>';
   }
 }
 
 // 統合表示ボタンを追加する関数
 function addIntegratedViewButton() {
   // 既存のボタンがあれば削除
-  const existingBtn = document.getElementById('integrated-view-btn');
+  const existingBtn = document.getElementById("integrated-view-btn");
   if (existingBtn) {
     existingBtn.remove();
   }
-  
+
   // AIステータスセクションを取得
-  const aiStatusSection = document.querySelector('.ai-status-section');
+  const aiStatusSection = document.querySelector(".ai-status-section");
   if (!aiStatusSection) return;
-  
+
   // 統合表示ボタンを作成
-  const integratedBtn = document.createElement('button');
-  integratedBtn.id = 'integrated-view-btn';
-  integratedBtn.textContent = '📊 モデル・機能一覧';
+  const integratedBtn = document.createElement("button");
+  integratedBtn.id = "integrated-view-btn";
+  integratedBtn.textContent = "📊 モデル・機能一覧";
   integratedBtn.style.cssText = `
     margin: 10px auto;
     padding: 10px 20px;
@@ -435,40 +450,40 @@ function addIntegratedViewButton() {
     display: block;
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
   `;
-  
+
   integratedBtn.onmouseover = () => {
-    integratedBtn.style.transform = 'translateY(-2px)';
-    integratedBtn.style.boxShadow = '0 4px 15px rgba(0, 0, 0, 0.2)';
+    integratedBtn.style.transform = "translateY(-2px)";
+    integratedBtn.style.boxShadow = "0 4px 15px rgba(0, 0, 0, 0.2)";
   };
-  
+
   integratedBtn.onmouseout = () => {
-    integratedBtn.style.transform = 'translateY(0)';
-    integratedBtn.style.boxShadow = '0 2px 10px rgba(0, 0, 0, 0.1)';
+    integratedBtn.style.transform = "translateY(0)";
+    integratedBtn.style.boxShadow = "0 2px 10px rgba(0, 0, 0, 0.1)";
   };
-  
+
   integratedBtn.onclick = () => {
-    showDetailModal('integrated', 'all', []);
+    showDetailModal("integrated", "all", []);
   };
-  
+
   aiStatusSection.appendChild(integratedBtn);
 }
 
 // データクリーンアップボタンを追加する関数
 function addDataCleanupButton() {
   // 既存のボタンがあれば削除
-  const existingBtn = document.getElementById('data-cleanup-btn');
+  const existingBtn = document.getElementById("data-cleanup-btn");
   if (existingBtn) {
     existingBtn.remove();
   }
-  
+
   // AIステータスセクションを取得
-  const aiStatusSection = document.querySelector('.ai-status-section');
+  const aiStatusSection = document.querySelector(".ai-status-section");
   if (!aiStatusSection) return;
-  
+
   // データクリーンアップボタンを作成
-  const cleanupBtn = document.createElement('button');
-  cleanupBtn.id = 'data-cleanup-btn';
-  cleanupBtn.textContent = '🧹 データクリーンアップ';
+  const cleanupBtn = document.createElement("button");
+  cleanupBtn.id = "data-cleanup-btn";
+  cleanupBtn.textContent = "🧹 データクリーンアップ";
   cleanupBtn.style.cssText = `
     margin: 5px auto;
     padding: 8px 16px;
@@ -483,29 +498,31 @@ function addDataCleanupButton() {
     display: block;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   `;
-  
+
   cleanupBtn.onmouseover = () => {
-    cleanupBtn.style.transform = 'translateY(-1px)';
-    cleanupBtn.style.boxShadow = '0 3px 12px rgba(0, 0, 0, 0.2)';
+    cleanupBtn.style.transform = "translateY(-1px)";
+    cleanupBtn.style.boxShadow = "0 3px 12px rgba(0, 0, 0, 0.2)";
   };
-  
+
   cleanupBtn.onmouseout = () => {
-    cleanupBtn.style.transform = 'translateY(0)';
-    cleanupBtn.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
+    cleanupBtn.style.transform = "translateY(0)";
+    cleanupBtn.style.boxShadow = "0 2px 8px rgba(0, 0, 0, 0.1)";
   };
-  
+
   cleanupBtn.onclick = async () => {
-    if (confirm('古いデータ形式をクリアして新しい形式で再取得しますか？')) {
+    if (confirm("古いデータ形式をクリアして新しい形式で再取得しますか？")) {
       // Chrome Storage をクリア
-      chrome.storage.local.remove(['ai_config_persistence'], () => {
-        alert('データクリーンアップ完了。「AI変更検出システム」を再実行してください。');
-        
+      chrome.storage.local.remove(["ai_config_persistence"], () => {
+        alert(
+          "データクリーンアップ完了。「AI変更検出システム」を再実行してください。",
+        );
+
         // AIステータスを更新
         updateAIStatus();
       });
     }
   };
-  
+
   aiStatusSection.appendChild(cleanupBtn);
 }
 
@@ -513,33 +530,35 @@ function updateAIStatusCard(aiType, aiConfig) {
   const statusEl = document.getElementById(`${aiType}-status`);
   const modelEl = document.getElementById(`${aiType}-model-info`);
   const functionEl = document.getElementById(`${aiType}-function-info`);
-  
+
   if (!statusEl || !modelEl || !functionEl) return;
-  
+
   if (aiConfig && (aiConfig.models || aiConfig.functions)) {
     // 接続済み表示
-    statusEl.textContent = '接続済み';
-    statusEl.className = 'ai-status-badge connected';
-    
+    statusEl.textContent = "接続済み";
+    statusEl.className = "ai-status-badge connected";
+
     // モデル数を表示
     const modelCount = aiConfig.models ? aiConfig.models.length : 0;
     modelEl.textContent = modelCount.toString();
-    modelEl.title = 'クリックしてモデル一覧を表示';
-    
+    modelEl.title = "クリックしてモデル一覧を表示";
+
     // 機能数を表示
     const functionCount = aiConfig.functions ? aiConfig.functions.length : 0;
     functionEl.textContent = functionCount.toString();
-    functionEl.title = 'クリックして機能一覧を表示';
-    
+    functionEl.title = "クリックして機能一覧を表示";
+
     // クリックイベントを設定（既存のイベントを削除してから追加）
-    modelEl.onclick = () => showDetailModal(aiType, 'models', aiConfig.models || []);
-    functionEl.onclick = () => showDetailModal(aiType, 'functions', aiConfig.functions || []);
+    modelEl.onclick = () =>
+      showDetailModal(aiType, "models", aiConfig.models || []);
+    functionEl.onclick = () =>
+      showDetailModal(aiType, "functions", aiConfig.functions || []);
   } else {
     // 未接続表示
-    statusEl.textContent = '未接続';
-    statusEl.className = 'ai-status-badge';
-    modelEl.textContent = '0';
-    functionEl.textContent = '0';
+    statusEl.textContent = "未接続";
+    statusEl.className = "ai-status-badge";
+    modelEl.textContent = "0";
+    functionEl.textContent = "0";
     modelEl.onclick = null;
     functionEl.onclick = null;
   }
@@ -548,20 +567,20 @@ function updateAIStatusCard(aiType, aiConfig) {
 // 詳細モーダルを表示する関数（統合表示対応）
 function showDetailModal(aiType, dataType, items) {
   // 統合表示の場合
-  if (aiType === 'integrated' && dataType === 'all') {
+  if (aiType === "integrated" && dataType === "all") {
     showIntegratedModal();
     return;
   }
-  
+
   // 既存のモーダルがあれば削除
-  const existingModal = document.getElementById('ai-detail-modal');
+  const existingModal = document.getElementById("ai-detail-modal");
   if (existingModal) {
     existingModal.remove();
   }
-  
+
   // モーダルを作成
-  const modal = document.createElement('div');
-  modal.id = 'ai-detail-modal';
+  const modal = document.createElement("div");
+  modal.id = "ai-detail-modal";
   modal.style.cssText = `
     position: fixed;
     top: 0;
@@ -574,8 +593,8 @@ function showDetailModal(aiType, dataType, items) {
     justify-content: center;
     z-index: 10000;
   `;
-  
-  const modalContent = document.createElement('div');
+
+  const modalContent = document.createElement("div");
   modalContent.style.cssText = `
     background: white;
     border-radius: 12px;
@@ -585,9 +604,9 @@ function showDetailModal(aiType, dataType, items) {
     overflow-y: auto;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
   `;
-  
+
   // ヘッダー
-  const header = document.createElement('div');
+  const header = document.createElement("div");
   header.style.cssText = `
     display: flex;
     justify-content: space-between;
@@ -596,18 +615,18 @@ function showDetailModal(aiType, dataType, items) {
     padding-bottom: 10px;
     border-bottom: 2px solid #e9ecef;
   `;
-  
-  const title = document.createElement('h3');
+
+  const title = document.createElement("h3");
   const aiNames = {
-    chatgpt: 'ChatGPT',
-    claude: 'Claude',
-    gemini: 'Gemini'
+    chatgpt: "ChatGPT",
+    claude: "Claude",
+    gemini: "Gemini",
   };
-  title.textContent = `${aiNames[aiType]} ${dataType === 'models' ? 'モデル' : '機能'}一覧`;
-  title.style.cssText = 'margin: 0; color: #2c3e50;';
-  
-  const closeBtn = document.createElement('button');
-  closeBtn.textContent = '✕';
+  title.textContent = `${aiNames[aiType]} ${dataType === "models" ? "モデル" : "機能"}一覧`;
+  title.style.cssText = "margin: 0; color: #2c3e50;";
+
+  const closeBtn = document.createElement("button");
+  closeBtn.textContent = "✕";
   closeBtn.style.cssText = `
     background: none;
     border: none;
@@ -619,22 +638,23 @@ function showDetailModal(aiType, dataType, items) {
     height: 30px;
   `;
   closeBtn.onclick = () => modal.remove();
-  
+
   header.appendChild(title);
   header.appendChild(closeBtn);
-  
+
   // アイテムリスト
-  const list = document.createElement('div');
-  list.style.cssText = 'display: flex; flex-direction: column; gap: 8px;';
-  
+  const list = document.createElement("div");
+  list.style.cssText = "display: flex; flex-direction: column; gap: 8px;";
+
   if (items.length === 0) {
-    const emptyMsg = document.createElement('div');
-    emptyMsg.textContent = 'データがありません';
-    emptyMsg.style.cssText = 'color: #6c757d; text-align: center; padding: 20px;';
+    const emptyMsg = document.createElement("div");
+    emptyMsg.textContent = "データがありません";
+    emptyMsg.style.cssText =
+      "color: #6c757d; text-align: center; padding: 20px;";
     list.appendChild(emptyMsg);
   } else {
-    items.forEach(item => {
-      const itemDiv = document.createElement('div');
+    items.forEach((item) => {
+      const itemDiv = document.createElement("div");
       itemDiv.style.cssText = `
         padding: 12px;
         background: #f8f9fa;
@@ -644,27 +664,28 @@ function showDetailModal(aiType, dataType, items) {
         justify-content: space-between;
         align-items: center;
       `;
-      
-      const itemName = document.createElement('span');
+
+      const itemName = document.createElement("span");
       // itemが文字列の場合はそのまま表示
       // オブジェクトの場合はnameプロパティを優先、なければJSON文字列化を避けて'Unknown'を表示
-      let displayText = '';
-      if (typeof item === 'string') {
+      let displayText = "";
+      if (typeof item === "string") {
         displayText = item;
-      } else if (typeof item === 'object' && item !== null) {
-        displayText = item.name || item.label || item.text || item.value || 'Unknown';
+      } else if (typeof item === "object" && item !== null) {
+        displayText =
+          item.name || item.label || item.text || item.value || "Unknown";
       } else {
         displayText = String(item);
       }
       itemName.textContent = displayText;
-      itemName.style.cssText = 'font-size: 14px; color: #495057;';
-      
+      itemName.style.cssText = "font-size: 14px; color: #495057;";
+
       itemDiv.appendChild(itemName);
-      
+
       // アクティブな項目にバッジを追加
-      if (typeof item === 'object' && (item.selected || item.active)) {
-        const badge = document.createElement('span');
-        badge.textContent = '選択中';
+      if (typeof item === "object" && (item.selected || item.active)) {
+        const badge = document.createElement("span");
+        badge.textContent = "選択中";
         badge.style.cssText = `
           background: #28a745;
           color: white;
@@ -675,66 +696,72 @@ function showDetailModal(aiType, dataType, items) {
         `;
         itemDiv.appendChild(badge);
       }
-      
+
       list.appendChild(itemDiv);
     });
   }
-  
+
   modalContent.appendChild(header);
   modalContent.appendChild(list);
   modal.appendChild(modalContent);
-  
+
   // モーダル外クリックで閉じる
   modal.onclick = (e) => {
     if (e.target === modal) {
       modal.remove();
     }
   };
-  
+
   document.body.appendChild(modal);
 }
 
 // 統合モーダルを表示する関数
 function showIntegratedModal() {
   // 既存のモーダルがあれば削除
-  const existingModal = document.getElementById('ai-detail-modal');
+  const existingModal = document.getElementById("ai-detail-modal");
   if (existingModal) {
     existingModal.remove();
   }
-  
+
   // ストレージからデータを取得
-  chrome.storage.local.get(['ai_config_persistence'], async (result) => {
+  chrome.storage.local.get(["ai_config_persistence"], async (result) => {
     const config = result.ai_config_persistence || {};
-    
+
     // データクリーンアップを実行（グローバルAIPersistenceが利用可能な場合）
-    if (window.AIPersistence && typeof window.AIPersistence.cleanupExistingData === 'function') {
+    if (
+      window.AIPersistence &&
+      typeof window.AIPersistence.cleanupExistingData === "function"
+    ) {
       try {
         const hasChanges = await window.AIPersistence.cleanupExistingData();
         if (hasChanges) {
           // クリーンアップ後、更新されたデータを再取得
           setTimeout(() => {
-            chrome.storage.local.get(['ai_config_persistence'], (updatedResult) => {
-              const updatedConfig = updatedResult.ai_config_persistence || {};
-              renderIntegratedTable(updatedConfig);
-            });
+            chrome.storage.local.get(
+              ["ai_config_persistence"],
+              (updatedResult) => {
+                const updatedConfig = updatedResult.ai_config_persistence || {};
+                renderIntegratedTable(updatedConfig);
+              },
+            );
           }, 1000);
           return; // 早期リターンして重複処理を避ける
         }
       } catch (error) {
-        console.error('[UI] データクリーンアップエラー:', error);
+        console.error("[UI] データクリーンアップエラー:", error);
       }
     }
-    
+
     renderIntegratedTable(config);
   });
 }
 
 // テーブル描画を分離した関数
 function renderIntegratedTable(config) {
-    // モーダルを作成
-    const modal = document.createElement('div');
-    modal.id = 'ai-detail-modal';
-    modal.style.cssText = `
+  // モーダルを作成
+  const modal = document.createElement("div");
+  modal.id = "ai-detail-modal";
+  modal.style.cssText = `
       position: fixed;
       top: 0;
       left: 0;
@@ -746,9 +773,9 @@ function renderIntegratedTable(config) {
       justify-content: center;
       z-index: 10000;
     `;
-    
-    const modalContent = document.createElement('div');
-    modalContent.style.cssText = `
+
+  const modalContent = document.createElement("div");
+  modalContent.style.cssText = `
       background: white;
       border-radius: 12px;
       padding: 20px;
@@ -757,31 +784,31 @@ function renderIntegratedTable(config) {
       overflow-y: auto;
       box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
     `;
-    
-    // ヘッダー
-    const header = document.createElement('div');
-    header.style.cssText = `
+
+  // ヘッダー
+  const header = document.createElement("div");
+  header.style.cssText = `
       margin-bottom: 20px;
       padding-bottom: 10px;
       border-bottom: 2px solid #e9ecef;
     `;
-    
-    // タイトル行（タイトルと閉じるボタン）
-    const titleRow = document.createElement('div');
-    titleRow.style.cssText = `
+
+  // タイトル行（タイトルと閉じるボタン）
+  const titleRow = document.createElement("div");
+  titleRow.style.cssText = `
       display: flex;
       justify-content: space-between;
       align-items: center;
       margin-bottom: 10px;
     `;
-    
-    const title = document.createElement('h3');
-    title.textContent = '🤖 AI統合モデル・機能一覧';
-    title.style.cssText = 'margin: 0; color: #2c3e50;';
-    
-    const closeBtn = document.createElement('button');
-    closeBtn.textContent = '✕';
-    closeBtn.style.cssText = `
+
+  const title = document.createElement("h3");
+  title.textContent = "🤖 AI統合モデル・機能一覧";
+  title.style.cssText = "margin: 0; color: #2c3e50;";
+
+  const closeBtn = document.createElement("button");
+  closeBtn.textContent = "✕";
+  closeBtn.style.cssText = `
       background: none;
       border: none;
       font-size: 24px;
@@ -791,15 +818,16 @@ function renderIntegratedTable(config) {
       width: 30px;
       height: 30px;
     `;
-    closeBtn.onclick = () => modal.remove();
-    
-    titleRow.appendChild(title);
-    titleRow.appendChild(closeBtn);
-    
-    // スプレッドシート貼り付け指示テキストを追加
-    const instructionText = document.createElement('p');
-    instructionText.innerHTML = '📋 <strong>スプレッドシートの「AIモデル変更関数」に下の表を貼り付け</strong>';
-    instructionText.style.cssText = `
+  closeBtn.onclick = () => modal.remove();
+
+  titleRow.appendChild(title);
+  titleRow.appendChild(closeBtn);
+
+  // スプレッドシート貼り付け指示テキストを追加
+  const instructionText = document.createElement("p");
+  instructionText.innerHTML =
+    "📋 <strong>スプレッドシートの「AIモデル変更関数」に下の表を貼り付け</strong>";
+  instructionText.style.cssText = `
       margin: 0;
       padding: 8px 12px;
       background-color: #e8f5e8;
@@ -809,22 +837,22 @@ function renderIntegratedTable(config) {
       font-size: 14px;
       font-weight: normal;
     `;
-    
-    header.appendChild(titleRow);
-    header.appendChild(instructionText);
-    
-    // テーブル作成
-    const table = document.createElement('table');
-    table.style.cssText = `
+
+  header.appendChild(titleRow);
+  header.appendChild(instructionText);
+
+  // テーブル作成
+  const table = document.createElement("table");
+  table.style.cssText = `
       width: 100%;
       border-collapse: collapse;
       font-size: 14px;
     `;
-    
-    // テーブルヘッダー
-    const thead = document.createElement('thead');
-    const headerRow = document.createElement('tr');
-    headerRow.innerHTML = `
+
+  // テーブルヘッダー
+  const thead = document.createElement("thead");
+  const headerRow = document.createElement("tr");
+  headerRow.innerHTML = `
       <th style="border: 1px solid #dee2e6; padding: 12px; background: #f8f9fa; text-align: center; font-weight: 600; min-width: 150px;">🤖 ChatGPTモデル</th>
       <th style="border: 1px solid #dee2e6; padding: 12px; background: #f8f9fa; text-align: center; font-weight: 600; min-width: 150px;">🧠 Claudeモデル</th>
       <th style="border: 1px solid #dee2e6; padding: 12px; background: #f8f9fa; text-align: center; font-weight: 600; min-width: 150px;">💎 Geminiモデル</th>
@@ -832,114 +860,139 @@ function renderIntegratedTable(config) {
       <th style="border: 1px solid #dee2e6; padding: 12px; background: #f8f9fa; text-align: center; font-weight: 600; min-width: 150px;">🔧 Claude機能</th>
       <th style="border: 1px solid #dee2e6; padding: 12px; background: #f8f9fa; text-align: center; font-weight: 600; min-width: 150px;">🛠️ Gemini機能</th>
     `;
-    thead.appendChild(headerRow);
-    table.appendChild(thead);
-    
-    // 各列のデータを準備
-    const columns = [
-      { key: 'chatgpt', dataKey: 'models', name: 'ChatGPTモデル' },
-      { key: 'claude', dataKey: 'models', name: 'Claudeモデル' },
-      { key: 'gemini', dataKey: 'models', name: 'Geminiモデル' },
-      { key: 'chatgpt', dataKey: 'functions', name: 'ChatGPT機能' },
-      { key: 'claude', dataKey: 'functions', name: 'Claude機能' },
-      { key: 'gemini', dataKey: 'functions', name: 'Gemini機能' }
-    ];
-    
-    // 各列のデータを取得
-    const columnData = columns.map(col => {
-      const aiConfig = config[col.key];
-      const items = aiConfig && aiConfig[col.dataKey] ? aiConfig[col.dataKey] : [];
-      
-      
-      return items.map((item, index) => {
-        let itemName = '';
-        let isSelected = false;
-        
-        // 新しいシンプルなフォーマット（文字列配列）の処理
-        if (typeof item === 'string') {
-          itemName = item;
+  thead.appendChild(headerRow);
+  table.appendChild(thead);
+
+  // 各列のデータを準備
+  const columns = [
+    { key: "chatgpt", dataKey: "models", name: "ChatGPTモデル" },
+    { key: "claude", dataKey: "models", name: "Claudeモデル" },
+    { key: "gemini", dataKey: "models", name: "Geminiモデル" },
+    { key: "chatgpt", dataKey: "functions", name: "ChatGPT機能" },
+    { key: "claude", dataKey: "functions", name: "Claude機能" },
+    { key: "gemini", dataKey: "functions", name: "Gemini機能" },
+  ];
+
+  // 各列のデータを取得
+  const columnData = columns.map((col) => {
+    const aiConfig = config[col.key];
+    const items =
+      aiConfig && aiConfig[col.dataKey] ? aiConfig[col.dataKey] : [];
+
+    return items.map((item, index) => {
+      let itemName = "";
+      let isSelected = false;
+
+      // 新しいシンプルなフォーマット（文字列配列）の処理
+      if (typeof item === "string") {
+        itemName = item;
+        isSelected = false;
+      } else {
+        if (typeof item === "object" && item !== null) {
+          // オブジェクトの場合、一般的なプロパティをチェック
+          itemName =
+            item.name ||
+            item.text ||
+            item.label ||
+            item.value ||
+            item.title ||
+            "Unknown";
+          isSelected = item.selected || item.active || false;
+        } else {
+          itemName = String(item);
           isSelected = false;
-        } else {
-          
-          if (typeof item === 'object' && item !== null) {
-            // オブジェクトの場合、一般的なプロパティをチェック
-            itemName = item.name || item.text || item.label || item.value || item.title || 'Unknown';
-            isSelected = item.selected || item.active || false;
-          } else {
-            itemName = String(item);
-            isSelected = false;
+        }
+      }
+
+      // Claudeのモデル名から説明文を除去（全モデルに適用）
+      if (
+        col.key === "claude" &&
+        col.dataKey === "models" &&
+        itemName &&
+        typeof itemName === "string"
+      ) {
+        const originalName = itemName;
+
+        // 説明文の開始パターンを探す
+        const descriptionPatterns = [
+          "情報を",
+          "高性能",
+          "スマート",
+          "最適な",
+          "高速な",
+          "軽量な",
+          "大規模",
+          "小規模",
+          "複雑な",
+          "日常利用",
+          "課題に対応",
+          "効率的",
+          "に対応できる",
+          "なモデル",
+        ];
+
+        for (const pattern of descriptionPatterns) {
+          const patternIndex = itemName.indexOf(pattern);
+          if (patternIndex > 0) {
+            itemName = itemName.substring(0, patternIndex).trim();
+            break;
           }
         }
-        
-        // Claudeのモデル名から説明文を除去（全モデルに適用）
-        if (col.key === 'claude' && col.dataKey === 'models' && itemName && typeof itemName === 'string') {
-          const originalName = itemName;
-          
-          // 説明文の開始パターンを探す
-          const descriptionPatterns = [
-            '情報を', '高性能', 'スマート', '最適な', '高速な', '軽量な', '大規模', '小規模',
-            '複雑な', '日常利用', '課題に対応', '効率的', 'に対応できる', 'なモデル'
-          ];
-          
-          for (const pattern of descriptionPatterns) {
-            const patternIndex = itemName.indexOf(pattern);
-            if (patternIndex > 0) {
-              itemName = itemName.substring(0, patternIndex).trim();
-              break;
-            }
-          }
-        }
-        
-        return { name: itemName, selected: isSelected };
-      });
+      }
+
+      return { name: itemName, selected: isSelected };
     });
-    
-    // 最大行数を計算
-    const maxRows = Math.max(...columnData.map(col => col.length), 1);
-    
-    // テーブルボディ
-    const tbody = document.createElement('tbody');
-    
-    // 各行を作成
-    for (let rowIndex = 0; rowIndex < maxRows; rowIndex++) {
-      const row = document.createElement('tr');
-      
-      // 各列のセルを作成
-      for (let colIndex = 0; colIndex < 6; colIndex++) {
-        const cell = document.createElement('td');
-        cell.style.cssText = 'border: 1px solid #dee2e6; padding: 8px; vertical-align: top; font-size: 13px;';
-        
-        const item = columnData[colIndex][rowIndex];
-        if (item) {
-          // データがある場合
-          const statusBadge = item.selected ? 
-            '<span style="background: #d4edda; color: #155724; padding: 1px 6px; border-radius: 8px; font-size: 11px; margin-left: 5px;">選択中</span>' : '';
-          cell.innerHTML = `<div style="color: #495057;">${item.name}${statusBadge}</div>`;
-        } else {
-          // データがない場合（空セル）
-          cell.innerHTML = '<div style="color: #dee2e6; text-align: center;">-</div>';
-        }
-        
-        row.appendChild(cell);
+  });
+
+  // 最大行数を計算
+  const maxRows = Math.max(...columnData.map((col) => col.length), 1);
+
+  // テーブルボディ
+  const tbody = document.createElement("tbody");
+
+  // 各行を作成
+  for (let rowIndex = 0; rowIndex < maxRows; rowIndex++) {
+    const row = document.createElement("tr");
+
+    // 各列のセルを作成
+    for (let colIndex = 0; colIndex < 6; colIndex++) {
+      const cell = document.createElement("td");
+      cell.style.cssText =
+        "border: 1px solid #dee2e6; padding: 8px; vertical-align: top; font-size: 13px;";
+
+      const item = columnData[colIndex][rowIndex];
+      if (item) {
+        // データがある場合
+        const statusBadge = item.selected
+          ? '<span style="background: #d4edda; color: #155724; padding: 1px 6px; border-radius: 8px; font-size: 11px; margin-left: 5px;">選択中</span>'
+          : "";
+        cell.innerHTML = `<div style="color: #495057;">${item.name}${statusBadge}</div>`;
+      } else {
+        // データがない場合（空セル）
+        cell.innerHTML =
+          '<div style="color: #dee2e6; text-align: center;">-</div>';
       }
-      
-      tbody.appendChild(row);
+
+      row.appendChild(cell);
     }
-    
-    table.appendChild(tbody);
-    
-    modalContent.appendChild(header);
-    modalContent.appendChild(table);
-    modal.appendChild(modalContent);
-    
-    // モーダル外クリックで閉じる
-    modal.onclick = (e) => {
-      if (e.target === modal) {
-        modal.remove();
-      }
-    };
-    
-    document.body.appendChild(modal);
+
+    tbody.appendChild(row);
+  }
+
+  table.appendChild(tbody);
+
+  modalContent.appendChild(header);
+  modalContent.appendChild(table);
+  modal.appendChild(modalContent);
+
+  // モーダル外クリックで閉じる
+  modal.onclick = (e) => {
+    if (e.target === modal) {
+      modal.remove();
+    }
+  };
+
+  document.body.appendChild(modal);
 }
 
 // ===== DOM要素の取得 =====
@@ -962,7 +1015,9 @@ const deleteAnswersBtn = document.getElementById("deleteAnswersBtn");
 //   "startIntegratedTestBtn",
 // );
 const aiDetectionSystemBtn = document.getElementById("aiDetectionSystemBtn");
-const aiSelectorMutationSystemBtn = document.getElementById("aiSelectorMutationSystemBtn");
+const aiSelectorMutationSystemBtn = document.getElementById(
+  "aiSelectorMutationSystemBtn",
+);
 const statusDiv = document.getElementById("status");
 const loadFeedback = document.getElementById("loadFeedback");
 
@@ -981,7 +1036,7 @@ const undoColumnsBtn = document.getElementById("undoColumnsBtn");
 function updateStatus(text, type = "waiting") {
   // nullチェックを追加
   if (!statusDiv) {
-    console.warn('[updateStatus] statusDiv が見つかりません:', text);
+    console.warn("[updateStatus] statusDiv が見つかりません:", text);
     return;
   }
 
@@ -990,7 +1045,10 @@ function updateStatus(text, type = "waiting") {
 
   // 子要素のnullチェックも追加
   if (!statusText || !statusIcon) {
-    console.warn('[updateStatus] ステータス要素が見つかりません:', { statusText: !!statusText, statusIcon: !!statusIcon });
+    console.warn("[updateStatus] ステータス要素が見つかりません:", {
+      statusText: !!statusText,
+      statusIcon: !!statusIcon,
+    });
     return;
   }
 
@@ -1016,11 +1074,11 @@ function updateStatus(text, type = "waiting") {
 function showFeedback(message, type = "success") {
   // loadFeedback要素の存在確認
   if (!loadFeedback) {
-    console.error('[showFeedback] loadFeedback要素が見つかりません');
+    console.error("[showFeedback] loadFeedback要素が見つかりません");
     // フォールバックとしてalertを使用
-    if (type === 'success') {
+    if (type === "success") {
       alert(`✅ ${message}`);
-    } else if (type === 'error') {
+    } else if (type === "error") {
       alert(`❌ ${message}`);
     }
     return;
@@ -1039,11 +1097,11 @@ function showFeedback(message, type = "success") {
   }, 10);
 
   // successメッセージは10秒間表示、errorは7秒、loadingはずっと表示
-  if (type === 'success') {
+  if (type === "success") {
     setTimeout(() => {
       loadFeedback.classList.remove("show");
     }, 10000); // 10秒
-  } else if (type === 'error') {
+  } else if (type === "error") {
     setTimeout(() => {
       loadFeedback.classList.remove("show");
     }, 7000); // 7秒
@@ -1126,22 +1184,22 @@ function saveUrls() {
 }
 
 // ===== 複数URL管理機能 =====
-let urlInputCounter = 1;  // URL入力欄のカウンター
-let savedUrlToInput = null;  // どの入力欄に保存済みURLを設定するか
+let urlInputCounter = 1; // URL入力欄のカウンター
+let savedUrlToInput = null; // どの入力欄に保存済みURLを設定するか
 
 // デフォルトURL
 const DEFAULT_URL = {
   url: "https://docs.google.com/spreadsheets/d/1C5aOSyyCBXf7HwF-BGGu-cz5jdRwNBaoW4G4ivIRrRg/edit?gid=1633283608#gid=1633283608",
-  name: "デフォルトスプレッドシート"
+  name: "デフォルトスプレッドシート",
 };
 
 // URL入力欄を追加
 function addUrlInput() {
-  const newRow = document.createElement('div');
-  newRow.className = 'url-input-row';
+  const newRow = document.createElement("div");
+  newRow.className = "url-input-row";
   newRow.dataset.index = urlInputCounter;
-  newRow.style.cssText = 'display: flex; gap: 5px; margin-bottom: 10px;';
-  
+  newRow.style.cssText = "display: flex; gap: 5px; margin-bottom: 10px;";
+
   newRow.innerHTML = `
     <input type="text" class="spreadsheet-url-input" 
            placeholder="URLを入力してください" 
@@ -1159,10 +1217,10 @@ function addUrlInput() {
       <span>📂</span>
     </button>
   `;
-  
+
   urlInputsContainer.appendChild(newRow);
   urlInputCounter++;
-  
+
   // イベントリスナーを追加
   attachUrlRowEventListeners(newRow);
 }
@@ -1176,11 +1234,11 @@ function removeUrlInput(row) {
 
 // 保存済みURLリストを読み込み
 function loadSavedUrls() {
-  chrome.storage.local.get(['savedSpreadsheets'], (result) => {
+  chrome.storage.local.get(["savedSpreadsheets"], (result) => {
     let savedUrls = result.savedSpreadsheets || [];
-    
+
     // デフォルトURLが存在しない場合は追加
-    if (!savedUrls.some(item => item.url === DEFAULT_URL.url)) {
+    if (!savedUrls.some((item) => item.url === DEFAULT_URL.url)) {
       savedUrls.unshift(DEFAULT_URL);
       chrome.storage.local.set({ savedSpreadsheets: savedUrls });
     }
@@ -1190,59 +1248,59 @@ function loadSavedUrls() {
 // イベントリスナーを各URL行に追加
 function attachUrlRowEventListeners(row) {
   // +ボタン（最初の行のみ）
-  const addBtn = row.querySelector('.add-url-btn');
+  const addBtn = row.querySelector(".add-url-btn");
   if (addBtn) {
-    addBtn.addEventListener('click', () => addUrlInput());
+    addBtn.addEventListener("click", () => addUrlInput());
   }
-  
+
   // -ボタン（削除）
-  const removeBtn = row.querySelector('.remove-url-btn');
+  const removeBtn = row.querySelector(".remove-url-btn");
   if (removeBtn) {
-    removeBtn.addEventListener('click', () => removeUrlInput(row));
+    removeBtn.addEventListener("click", () => removeUrlInput(row));
   }
-  
+
   // 保存ボタン
-  const saveBtn = row.querySelector('.save-url-btn');
+  const saveBtn = row.querySelector(".save-url-btn");
   if (saveBtn) {
-    saveBtn.addEventListener('click', () => {
-      const input = row.querySelector('.spreadsheet-url-input');
+    saveBtn.addEventListener("click", () => {
+      const input = row.querySelector(".spreadsheet-url-input");
       const url = input.value.trim();
       if (!url) {
-        showFeedback('URLを入力してください', 'error');
+        showFeedback("URLを入力してください", "error");
         return;
       }
       showSaveUrlDialog(url, input);
     });
   }
-  
+
   // スプレッドシートを開くボタン
-  const viewBtn = row.querySelector('.view-spreadsheet-btn');
+  const viewBtn = row.querySelector(".view-spreadsheet-btn");
   if (viewBtn) {
-    viewBtn.addEventListener('click', () => {
-      const input = row.querySelector('.spreadsheet-url-input');
+    viewBtn.addEventListener("click", () => {
+      const input = row.querySelector(".spreadsheet-url-input");
       const url = input.value.trim();
       if (!url) {
-        showFeedback('URLを入力してください', 'error');
+        showFeedback("URLを入力してください", "error");
         return;
       }
-      
+
       // URLの形式をチェック
-      if (!url.includes('spreadsheets.google.com')) {
-        showFeedback('Google スプレッドシートのURLを入力してください', 'error');
+      if (!url.includes("spreadsheets.google.com")) {
+        showFeedback("Google スプレッドシートのURLを入力してください", "error");
         return;
       }
-      
+
       // 新しいタブでスプレッドシートを開く
       chrome.tabs.create({ url: url });
-      showFeedback('スプレッドシートを開きました', 'success');
+      showFeedback("スプレッドシートを開きました", "success");
     });
   }
-  
+
   // 開くボタン
-  const openBtn = row.querySelector('.open-url-btn');
+  const openBtn = row.querySelector(".open-url-btn");
   if (openBtn) {
-    openBtn.addEventListener('click', () => {
-      const input = row.querySelector('.spreadsheet-url-input');
+    openBtn.addEventListener("click", () => {
+      const input = row.querySelector(".spreadsheet-url-input");
       showOpenUrlDialog(input);
     });
   }
@@ -1250,49 +1308,50 @@ function attachUrlRowEventListeners(row) {
 
 // URL保存ダイアログを表示
 function showSaveUrlDialog(url, inputElement) {
-  saveUrlDialog.style.display = 'block';
-  saveUrlTitle.value = '';
+  saveUrlDialog.style.display = "block";
+  saveUrlTitle.value = "";
   saveUrlTitle.focus();
-  
+
   // 保存ボタンのイベント
   confirmSaveUrlBtn.onclick = () => {
     const title = saveUrlTitle.value.trim();
     if (!title) {
-      showFeedback('タイトルを入力してください', 'error');
+      showFeedback("タイトルを入力してください", "error");
       return;
     }
-    
-    chrome.storage.local.get(['savedSpreadsheets'], (result) => {
+
+    chrome.storage.local.get(["savedSpreadsheets"], (result) => {
       let savedUrls = result.savedSpreadsheets || [];
       savedUrls.push({ url: url, name: title });
       chrome.storage.local.set({ savedSpreadsheets: savedUrls }, () => {
-        showFeedback('URLを保存しました', 'success');
-        saveUrlDialog.style.display = 'none';
+        showFeedback("URLを保存しました", "success");
+        saveUrlDialog.style.display = "none";
       });
     });
   };
-  
+
   // キャンセルボタン
   cancelSaveUrlBtn.onclick = () => {
-    saveUrlDialog.style.display = 'none';
+    saveUrlDialog.style.display = "none";
   };
 }
 
 // 保存済みURL選択ダイアログを表示
 function showOpenUrlDialog(inputElement) {
-  chrome.storage.local.get(['savedSpreadsheets'], (result) => {
+  chrome.storage.local.get(["savedSpreadsheets"], (result) => {
     const savedUrls = result.savedSpreadsheets || [];
-    
+
     if (savedUrls.length === 0) {
-      showFeedback('保存済みURLがありません', 'info');
+      showFeedback("保存済みURLがありません", "info");
       return;
     }
-    
+
     // リストを作成
-    savedUrlsList.innerHTML = '';
+    savedUrlsList.innerHTML = "";
     savedUrls.forEach((item, index) => {
-      const div = document.createElement('div');
-      div.style.cssText = 'padding: 10px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 5px; cursor: pointer;';
+      const div = document.createElement("div");
+      div.style.cssText =
+        "padding: 10px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 5px; cursor: pointer;";
       div.innerHTML = `
         <input type="radio" name="savedUrl" value="${index}" id="url-${index}" style="margin-right: 10px;">
         <label for="url-${index}" style="cursor: pointer;">
@@ -1302,26 +1361,26 @@ function showOpenUrlDialog(inputElement) {
       `;
       savedUrlsList.appendChild(div);
     });
-    
-    openUrlDialog.style.display = 'block';
-    
+
+    openUrlDialog.style.display = "block";
+
     // 開くボタン
     confirmOpenUrlBtn.onclick = () => {
       const selected = document.querySelector('input[name="savedUrl"]:checked');
       if (!selected) {
-        showFeedback('URLを選択してください', 'error');
+        showFeedback("URLを選択してください", "error");
         return;
       }
-      
+
       const selectedUrl = savedUrls[selected.value];
       inputElement.value = selectedUrl.url;
-      openUrlDialog.style.display = 'none';
-      showFeedback(`「${selectedUrl.name}」を読み込みました`, 'success');
+      openUrlDialog.style.display = "none";
+      showFeedback(`「${selectedUrl.name}」を読み込みました`, "success");
     };
-    
+
     // キャンセルボタン
     cancelOpenUrlBtn.onclick = () => {
-      openUrlDialog.style.display = 'none';
+      openUrlDialog.style.display = "none";
     };
   });
 }
@@ -1491,16 +1550,18 @@ async function loadSpreadsheetUrl(url) {
     });
 
     if (response && response.success) {
-      const message = "スプレッドシートを読み込み、タスクリストを作成しました。";
+      const message =
+        "スプレッドシートを読み込み、タスクリストを作成しました。";
       updateStatus(message, "success");
       showFeedback(message, "success");
-      
+
       // 列状況を表示
       if (response.removedColumns) {
         showColumnStatus(response.removedColumns);
       }
     } else {
-      const errorMessage = "読み込みエラー: " + (response?.error || "不明なエラー");
+      const errorMessage =
+        "読み込みエラー: " + (response?.error || "不明なエラー");
       updateStatus(errorMessage, "error");
       showFeedback(errorMessage, "error");
     }
@@ -1600,7 +1661,6 @@ if (typeof editNameInput !== 'undefined' && editNameInput) {
 }
 */
 
-
 // ===== イベントリスナー: スプレッドシート読み込み（startBtnに統合済み） =====
 // loadSheetsBtnの処理はstartBtnに統合されました
 /*
@@ -1679,7 +1739,7 @@ if (loadSheetsBtn) {
  * 【本番実行】
  * スプレッドシートから生成されたタスクリストを実際に処理します。
  * バックグラウンドスクリプト経由でStreamProcessorが並列実行されます。
- * 
+ *
  * 実行フロー:
  * 1. スプレッドシートURL確認
  * 2. TaskQueueからタスクリスト取得
@@ -1688,9 +1748,8 @@ if (loadSheetsBtn) {
  * 5. 結果をスプレッドシートに書き込み
  */
 startBtn.addEventListener("click", async () => {
-
   // 複数のURL入力欄から値を取得
-  const urlInputs = document.querySelectorAll('.spreadsheet-url-input');
+  const urlInputs = document.querySelectorAll(".spreadsheet-url-input");
   const urls = [];
 
   urlInputs.forEach((input) => {
@@ -1709,7 +1768,6 @@ startBtn.addEventListener("click", async () => {
   // === 元の処理システムを実行 ===
   // STEP処理は専用ボタン（STEP処理のみ実行）を使用してください
   updateStatus("元の処理システムを開始します...", "loading");
-  
 
   // ボタンの状態を更新
   startBtn.disabled = true;
@@ -1729,19 +1787,19 @@ async function processMultipleUrls(urls) {
     stopBtn.disabled = true;
     return;
   }
-  
+
   const currentUrl = urls[0]; // 最初のURLのみ処理（複数URL同時処理は未実装）
   updateStatus(`処理中: ${currentUrl.substring(0, 50)}...`, "loading");
 
   // まずスプレッドシートが読み込まれているか確認
-  const storageResult = await chrome.storage.local.get(['savedTasks']);
+  const storageResult = await chrome.storage.local.get(["savedTasks"]);
   let savedTasks = storageResult.savedTasks;
   let loadResponse = null; // スコープ外でも参照できるように定義
-  
+
   if (!savedTasks || !savedTasks.tasks || savedTasks.tasks.length === 0) {
     // スプレッドシートが読み込まれていない場合、自動的に読み込む
     updateStatus("スプレッドシートを自動読み込み中...", "loading");
-    
+
     try {
       // loadSheetsBtnのクリック処理と同じロジックを実行
       loadResponse = await chrome.runtime.sendMessage({
@@ -1750,7 +1808,10 @@ async function processMultipleUrls(urls) {
       });
 
       if (!loadResponse || !loadResponse.success) {
-        throw new Error("スプレッドシート読み込みエラー: " + (loadResponse?.error || "不明なエラー"));
+        throw new Error(
+          "スプレッドシート読み込みエラー: " +
+            (loadResponse?.error || "不明なエラー"),
+        );
       }
 
       // タスクグループが作成されていることを確認
@@ -1759,8 +1820,10 @@ async function processMultipleUrls(urls) {
       }
 
       console.log("loadResponse内容:", loadResponse);
-      console.log(`✅ ${loadResponse.taskGroups.length}個のタスクグループが準備完了`);
-      
+      console.log(
+        `✅ ${loadResponse.taskGroups.length}個のタスクグループが準備完了`,
+      );
+
       // 動的タスク生成モードではタスクリストは不要
       console.log("✅ 動的タスク生成モード - 実行時にタスクを判定します");
       savedTasks = null; // タスクは実行時に動的生成
@@ -1789,30 +1852,37 @@ async function processMultipleUrls(urls) {
 
     // 最新のタスクを取得（前のステップで自動読み込みした場合も含む）
     if (!savedTasks) {
-      const storageData = await chrome.storage.local.get(['savedTasks']);
+      const storageData = await chrome.storage.local.get(["savedTasks"]);
       savedTasks = storageData.savedTasks;
     }
-    
+
     // 動的モードではタスクは実行時に生成されるため、ここでの再読み込みをスキップ
     // すでに上記の自動読み込みでスプレッドシートデータは取得済み
 
-    
     // AI列数の正しい計算（savedTasksから取得）
-    const aiColumnsCount = savedTasks?.aiColumns ? 
-      (Array.isArray(savedTasks.aiColumns) ? 
-        savedTasks.aiColumns.length : 
-        Object.keys(savedTasks.aiColumns).length
-      ) : 0;
+    const aiColumnsCount = savedTasks?.aiColumns
+      ? Array.isArray(savedTasks.aiColumns)
+        ? savedTasks.aiColumns.length
+        : Object.keys(savedTasks.aiColumns).length
+      : 0;
     console.log("[UI] AI列数:", aiColumnsCount);
 
     // 動的タスク生成モードではsavedTasksは不要
     // タスクグループが存在すれば実行可能
-    if (!loadResponse || !loadResponse.taskGroups || loadResponse.taskGroups.length === 0) {
+    if (
+      !loadResponse ||
+      !loadResponse.taskGroups ||
+      loadResponse.taskGroups.length === 0
+    ) {
       console.error("[UI] タスクグループが見つかりません", loadResponse);
-      throw new Error("タスクグループが作成されていません。スプレッドシートを再読み込みしてください。");
+      throw new Error(
+        "タスクグループが作成されていません。スプレッドシートを再読み込みしてください。",
+      );
     }
-    
-    console.log(`[UI] ✅ ${loadResponse.taskGroups.length}個のタスクグループで動的実行準備完了`);
+
+    console.log(
+      `[UI] ✅ ${loadResponse.taskGroups.length}個のタスクグループで動的実行準備完了`,
+    );
 
     // タスクが生成されたら、ストリーミング処理を開始
     // 統合AIテストと同じstreamProcessTaskListを使用（統一化）
@@ -1825,7 +1895,9 @@ async function processMultipleUrls(urls) {
         gid: gid, // シートIDも追加
         testMode: false, // 本番実行
       }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Message timeout')), 10000))
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Message timeout")), 10000),
+      ),
     ]);
 
     if (response && response.success) {
@@ -1846,16 +1918,22 @@ async function processMultipleUrls(urls) {
     }
   } catch (error) {
     console.error("ストリーミング処理開始エラー:", error);
-    
+
     // メッセージングエラーの場合は詳細ログを出力
-    if (error.message.includes('message channel closed') || error.message.includes('Message timeout')) {
+    if (
+      error.message.includes("message channel closed") ||
+      error.message.includes("Message timeout")
+    ) {
       updateStatus("処理開始中（通信エラーを検出）", "warning");
-      showFeedback("通信エラーが発生しましたが、処理は継続している可能性があります", "warning");
-      
+      showFeedback(
+        "通信エラーが発生しましたが、処理は継続している可能性があります",
+        "warning",
+      );
+
       // ボタンはリセットしない（処理が継続している可能性があるため）
       return;
     }
-    
+
     updateStatus("ストリーミング開始エラー", "error");
     startBtn.disabled = false;
     stopBtn.disabled = true;
@@ -1866,10 +1944,10 @@ async function processMultipleUrls(urls) {
 // ===== イベントリスナー: STEP処理のみ実行 =====
 const stepOnlyBtn = document.getElementById("stepOnlyBtn");
 stepOnlyBtn.addEventListener("click", async () => {
-  console.log('🎯 [STEP-ONLY] STEP処理のみ実行開始');
+  console.log("🎯 [STEP-ONLY] STEP処理のみ実行開始");
 
   // 複数のURL入力欄から値を取得
-  const urlInputs = document.querySelectorAll('.spreadsheet-url-input');
+  const urlInputs = document.querySelectorAll(".spreadsheet-url-input");
   const urls = [];
 
   urlInputs.forEach((input) => {
@@ -1894,7 +1972,7 @@ stepOnlyBtn.addEventListener("click", async () => {
 
     // URLを設定（最初のURLを使用）
     const targetUrl = urls[0];
-    console.log('[STEP-ONLY] 処理対象URL:', targetUrl);
+    console.log("[STEP-ONLY] 処理対象URL:", targetUrl);
 
     // URLからスプレッドシートIDを抽出してglobalStateに設定
     const urlMatch = targetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
@@ -1906,12 +1984,15 @@ stepOnlyBtn.addEventListener("click", async () => {
 
     if (urlMatch) {
       window.globalState.spreadsheetId = urlMatch[1];
-      console.log('[STEP-ONLY] スプレッドシートID設定:', window.globalState.spreadsheetId);
+      console.log(
+        "[STEP-ONLY] スプレッドシートID設定:",
+        window.globalState.spreadsheetId,
+      );
     }
 
     if (gidMatch) {
       window.globalState.gid = gidMatch[1];
-      console.log('[STEP-ONLY] GID設定:', window.globalState.gid);
+      console.log("[STEP-ONLY] GID設定:", window.globalState.gid);
     }
 
     // Chrome Extension環境での認証を利用
@@ -1922,28 +2003,32 @@ stepOnlyBtn.addEventListener("click", async () => {
         if (authToken) {
           window.globalState.authToken = authToken;
           window.globalState.authenticated = true;
-          console.log('[STEP-ONLY] 既存認証トークンを使用 (長さ:', authToken.length, ')');
+          console.log(
+            "[STEP-ONLY] 既存認証トークンを使用 (長さ:",
+            authToken.length,
+            ")",
+          );
         }
       }
     } catch (authError) {
-      console.log('[STEP-ONLY] 認証取得エラー:', authError);
+      console.log("[STEP-ONLY] 認証取得エラー:", authError);
     }
 
     // Step 1: 初期設定（認証チェックをスキップして実行）
-    if (typeof executeStep1 === 'function') {
+    if (typeof executeStep1 === "function") {
       updateStatus("Step 1: 初期設定を実行中...", "loading");
       // 認証エラーを無視してstep1の他の部分を実行するため、エラーハンドリングを追加
       try {
         await executeStep1();
         updateStatus("Step 1: 初期設定完了", "success");
       } catch (step1Error) {
-        console.warn('Step 1エラー（継続）:', step1Error);
+        console.warn("Step 1エラー（継続）:", step1Error);
         updateStatus("Step 1: 部分完了（認証エラーをスキップ）", "warning");
       }
     }
 
     // Step 2: タスクグループ作成
-    if (typeof executeStep2TaskGroups === 'function') {
+    if (typeof executeStep2TaskGroups === "function") {
       updateStatus("Step 2: タスクグループ作成を実行中...", "loading");
       await executeStep2TaskGroups();
       updateStatus("Step 2: タスクグループ作成完了", "success");
@@ -1953,127 +2038,60 @@ stepOnlyBtn.addEventListener("click", async () => {
     updateStatus("Step 3: タスクリスト生成準備完了", "success");
 
     // Step 4: タスク実行
-    if (typeof executeStep4 === 'function') {
+    if (typeof executeStep4 === "function") {
       updateStatus("Step 4: タスク実行を開始中...", "loading");
       const taskList = window.globalState?.taskGroups?.[0]?.tasks || [];
       await executeStep4(taskList);
       updateStatus("Step 4: タスク実行完了", "success");
     }
 
-    // Step 5-6: グループごとのループ処理
-    console.log('=====================================');
-    console.log('[UI-Controller] Step 5-6 ループ処理開始');
-    console.log('=====================================');
+    // Step 5: 全グループの処理（Step 5が全体制御を担当）
+    console.log("=====================================");
+    console.log("[UI-Controller] Step 5 全グループ処理開始");
+    console.log("=====================================");
 
-    const taskGroups = window.globalState?.taskGroups || [];
-    console.log(`[UI-Controller] 処理対象グループ数: ${taskGroups.length}`, {
-      グループ一覧: taskGroups.map((g, i) => ({
-        インデックス: i,
-        番号: g.groupNumber,
-        タイプ: g.type || g.taskType,
-        列: g.columns
-      }))
-    });
+    // Step 5 が全グループのループを内部で処理
+    if (typeof executeStep5 === "function") {
+      updateStatus("Step 5-6: 全グループ処理中...", "loading");
+      console.log("[UI-Controller] executeStep5（全グループ処理）を呼び出し");
 
-    let currentGroupIndex = 0;
-    let loopCount = 0;
-    const maxLoops = 20; // 無限ループ防止
+      const result = await executeStep5(); // 引数なしで全グループを処理
 
-    // 各グループを順番に処理
-    while (currentGroupIndex < taskGroups.length && loopCount < maxLoops) {
-      loopCount++;
-      console.log(`\n[UI-Controller] ===== ループ ${loopCount} 開始 =====`);
-      console.log(`[UI-Controller] 現在のグループインデックス: ${currentGroupIndex}/${taskGroups.length}`);
+      console.log("[UI-Controller] executeStep5完了:", result);
+      updateStatus("Step 5-6: 全グループ処理完了", "success");
+    } else if (typeof window.executeStep5 === "function") {
+      updateStatus("Step 5-6: 全グループ処理中...", "loading");
+      console.log(
+        "[UI-Controller] window.executeStep5（全グループ処理）を呼び出し",
+      );
 
-      const currentTaskGroup = taskGroups[currentGroupIndex];
-      console.log('[UI-Controller] 処理するグループ詳細:', {
-        インデックス: currentGroupIndex,
-        グループ番号: currentTaskGroup?.groupNumber,
-        タイプ: currentTaskGroup?.type || currentTaskGroup?.taskType,
-        列情報: currentTaskGroup?.columns,
-        開始行: currentTaskGroup?.dataStartRow
-      });
+      const result = await window.executeStep5(); // 引数なしで全グループを処理
 
-      // Step 5: 現在のグループを処理
-      console.log('[UI-Controller] executeStep5チェック:', {
-        type: typeof executeStep5,
-        isFunction: typeof executeStep5 === 'function',
-        windowExecuteStep5Exists: !!window.executeStep5,
-        windowExecuteStep5Type: typeof window.executeStep5
-      });
-
-      if (typeof executeStep5 === 'function') {
-        updateStatus(`Step 5: グループ${currentGroupIndex + 1}/${taskGroups.length}を処理中...`, "loading");
-        console.log(`[UI-Controller] executeStep5呼び出し (グループ${currentGroupIndex + 1})`);
-
-        await executeStep5(currentTaskGroup);
-
-        console.log(`[UI-Controller] executeStep5完了 (グループ${currentGroupIndex + 1})`);
-        updateStatus(`Step 5: グループ${currentGroupIndex + 1}処理完了`, "success");
-      } else {
-        console.warn('[UI-Controller] executeStep5が関数として定義されていません');
-        console.log('[UI-Controller] window.executeStep5を直接呼び出します');
-
-        if (typeof window.executeStep5 === 'function') {
-          updateStatus(`Step 5: グループ${currentGroupIndex + 1}/${taskGroups.length}を処理中...`, "loading");
-          console.log(`[UI-Controller] window.executeStep5呼び出し (グループ${currentGroupIndex + 1})`);
-
-          await window.executeStep5(currentTaskGroup);
-
-          console.log(`[UI-Controller] window.executeStep5完了 (グループ${currentGroupIndex + 1})`);
-          updateStatus(`Step 5: グループ${currentGroupIndex + 1}処理完了`, "success");
-        } else {
-          console.error('[UI-Controller] executeStep5もwindow.executeStep5も利用できません');
-        }
-      }
-
-      // Step 6: 次グループへの移行判定
-      if (typeof executeStep6 === 'function') {
-        updateStatus(`Step 6: 次グループへの移行を確認中...`, "loading");
-        console.log(`[UI-Controller] executeStep6呼び出し (現在インデックス: ${currentGroupIndex})`);
-
-        const result = await executeStep6(taskGroups, currentGroupIndex);
-
-        console.log('[UI-Controller] executeStep6結果:', {
-          hasNext: result?.hasNext,
-          nextIndex: result?.nextIndex,
-          message: result?.message
-        });
-
-        if (!result?.hasNext) {
-          console.log('[UI-Controller] 次のグループなし - ループ終了');
-          updateStatus("Step 6: 全グループ処理完了", "success");
-          break;
-        }
-
-        currentGroupIndex++;
-        console.log(`[UI-Controller] 次のグループへ移行 (新インデックス: ${currentGroupIndex})`);
-        updateStatus(`Step 6: グループ${currentGroupIndex + 1}へ移行`, "success");
-      } else {
-        console.warn('[UI-Controller] executeStep6が定義されていません - ループ終了');
-        break;
-      }
-
-      console.log(`[UI-Controller] ===== ループ ${loopCount} 終了 =====\n`);
+      console.log("[UI-Controller] window.executeStep5完了:", result);
+      updateStatus("Step 5-6: 全グループ処理完了", "success");
+    } else {
+      console.error("[UI-Controller] executeStep5が利用できません");
+      updateStatus("Step 5: エラー - 関数が定義されていません", "error");
     }
 
     if (loopCount >= maxLoops) {
-      console.error(`[UI-Controller] 最大ループ数(${maxLoops})に到達 - 強制終了`);
+      console.error(
+        `[UI-Controller] 最大ループ数(${maxLoops})に到達 - 強制終了`,
+      );
       updateStatus(`警告: 最大ループ数に到達`, "warning");
     }
 
-    console.log('=====================================');
+    console.log("=====================================");
     console.log(`[UI-Controller] Step 5-6 ループ処理完了`, {
       処理グループ数: currentGroupIndex,
       総グループ数: taskGroups.length,
-      ループ回数: loopCount
+      ループ回数: loopCount,
     });
-    console.log('=====================================');
+    console.log("=====================================");
 
     updateStatus("✅ STEP処理のみ完了！", "success");
-
   } catch (error) {
-    console.error('STEP-ONLY processing error:', error);
+    console.error("STEP-ONLY processing error:", error);
     updateStatus(`STEP処理エラー: ${error.message}`, "error");
   } finally {
     // ボタンの状態を元に戻す
@@ -2118,38 +2136,42 @@ stopBtn.addEventListener("click", async () => {
 // ===== イベントリスナー: ログクリア =====
 /**
  * 【ログクリアボタンの動作】
- * 
+ *
  * 概要：
  * スプレッドシートのログ列とA列のデータをクリアする機能
- * 
+ *
  * 削除対象：
  * 1. メニュー行の「ログ」列（完全一致）の作業行データ
  * 2. A列の2行目以降（A2:A1000）の全データ
- * 
+ *
  * 処理フロー：
  * 1. UIからスプレッドシートURLを取得
  * 2. background.jsの clearLog アクションを呼び出し
  * 3. sheets-client.jsでログ列をクリア
  * 4. background.jsでA列を追加クリア
- * 
+ *
  * 依存関係：
  * - background.js: clearLog ハンドラー
  * - sheets-client.js: clearSheetLogs メソッド
  * - sheets-client.js: batchUpdate メソッド（A列クリア用）
- * 
+ *
  * 前提条件：
  * - スプレッドシートURLが設定されていること
  * - メニュー行に「ログ」列が存在すること
  */
 clearLogBtn.addEventListener("click", async () => {
   // 確認ダイアログを表示
-  if (!confirm("スプレッドシートのログ列(メニューのログ列)とA列の1行目以降のデータをクリアしますか？")) {
+  if (
+    !confirm(
+      "スプレッドシートのログ列(メニューのログ列)とA列の1行目以降のデータをクリアしますか？",
+    )
+  ) {
     return;
   }
 
   // 複数URL入力欄から最初のURLを取得
-  const urlInputs = document.querySelectorAll('.spreadsheet-url-input');
-  const spreadsheetUrl = urlInputs.length > 0 ? urlInputs[0].value.trim() : '';
+  const urlInputs = document.querySelectorAll(".spreadsheet-url-input");
+  const spreadsheetUrl = urlInputs.length > 0 ? urlInputs[0].value.trim() : "";
 
   if (!spreadsheetUrl) {
     updateStatus("スプレッドシートURLが設定されていません", "error");
@@ -2176,8 +2198,11 @@ clearLogBtn.addEventListener("click", async () => {
 
     if (response && response.success) {
       const clearedCount = response.clearedCount || 0;
-      updateStatus(`ログ列とA列をクリアしました (${clearedCount}個のセル)`, "success");
-      
+      updateStatus(
+        `ログ列とA列をクリアしました (${clearedCount}個のセル)`,
+        "success",
+      );
+
       // 2秒後に通常状態に戻す
       setTimeout(() => updateStatus("待機中", "waiting"), 2000);
     } else {
@@ -2196,34 +2221,34 @@ clearLogBtn.addEventListener("click", async () => {
 // ===== イベントリスナー: 回答削除 =====
 /**
  * 【回答削除ボタンの動作】
- * 
+ *
  * 概要：
  * スプレッドシートの全AI回答列とA列のデータを削除する機能
- * 
+ *
  * 削除対象：
  * 1. 各AI回答列（Claude、ChatGPT、Gemini等）の作業行データ
  * 2. A列の2行目以降（A2:A1000）の全データ（作業行マーカー）
- * 
+ *
  * 削除対象外：
  * - プロンプト列
  * - ログ列
  * - メニュー行、制御行、AI行、モデル行、機能行
- * 
+ *
  * 処理フロー：
  * 1. UIからスプレッドシートURLを取得
  * 2. background.jsの deleteAnswers アクションを呼び出し
  * 3. sheets-client.jsでAI回答列を検出し削除
  * 4. A列も同時にクリア
- * 
+ *
  * 依存関係：
  * - background.js: deleteAnswers ハンドラー
  * - sheets-client.js: deleteAnswers メソッド
  * - sheets-client.js: columnMapping（AI列の特定）
- * 
+ *
  * 前提条件：
  * - スプレッドシートURLが設定されていること
  * - メニュー行にAI名の列が存在すること
- * 
+ *
  * ログクリアとの違い：
  * - ログクリア: ログ列＋A列をクリア
  * - 回答削除: AI回答列＋A列をクリア
@@ -2236,8 +2261,8 @@ deleteAnswersBtn.addEventListener("click", async () => {
   }
 
   // 複数URL入力欄から最初のURLを取得
-  const urlInputs = document.querySelectorAll('.spreadsheet-url-input');
-  const spreadsheetUrl = urlInputs.length > 0 ? urlInputs[0].value.trim() : '';
+  const urlInputs = document.querySelectorAll(".spreadsheet-url-input");
+  const spreadsheetUrl = urlInputs.length > 0 ? urlInputs[0].value.trim() : "";
 
   if (!spreadsheetUrl) {
     updateStatus("スプレッドシートURLが設定されていません", "error");
@@ -2291,31 +2316,30 @@ deleteAnswersBtn.addEventListener("click", async () => {
  * 【テスト実行】
  * AI Orchestratorを開いてテスト環境を提供します。
  * 手動テスト、3連続テスト、プロンプト管理などのテスト機能が使えます。
- * 
+ *
  * 主な用途:
  * - AI動作の手動確認
  * - 3連続テストでの性能測定
  * - プロンプトの登録・管理
  * - タスクリストのデバッグ（タスクリストがある場合は渡される）
- * 
+ *
  * 注意: これは本番実行ではなく、テスト・デバッグ用の機能です。
  */
 async function runIntegratedAITest() {
   try {
-    
     // TaskQueueから現在のタスクリストを取得（デバッグ用）
     const { default: TaskQueue } = await import("../features/task/queue.js");
     const taskQueue = new TaskQueue();
     const taskList = await taskQueue.loadTaskList();
-    
+
     if (taskList) {
       // タスクリストをJSON化してChrome Storageに保存
       const taskData = taskList.toJSON();
       await chrome.storage.local.set({
-        'task_queue_for_test': taskData
+        task_queue_for_test: taskData,
       });
     }
-    
+
     // AI Orchestratorページを開く（タスクリストモードで）
     const orchestratorUrl = chrome.runtime.getURL(
       "src/ai-execution/ai-orchestrator.html?mode=tasklist",
@@ -2344,7 +2368,7 @@ async function runIntegratedAITest() {
 
     if (orchestratorWindow) {
       updateStatus("AI Orchestratorを開きました", "success");
-      
+
       if (taskList) {
       }
     } else {
@@ -2363,206 +2387,248 @@ async function runIntegratedAITest() {
 async function injectAutomationScripts(tabId, aiName) {
   try {
     console.log(`${aiName}への自動化スクリプト注入開始`);
-    
+
     // Claudeの場合はリサーチ機能を使用
-    if (aiName === 'Claude') {
+    if (aiName === "Claude") {
       console.log(`🎯 ${aiName}リサーチ処理を開始します`);
       console.log(`🔬 ${aiName}リサーチ機能を注入・実行します`);
-      
+
       // Claudeのリサーチ検出器ファイル
-      const researchFile = 'ai-platforms/claude/claude-research-detector.js';
-      
+      const researchFile = "ai-platforms/claude/claude-research-detector.js";
+
       // リサーチ検出器を注入
       console.log(`⚡ スクリプトファイル: ${researchFile}`);
       try {
         await chrome.scripting.executeScript({
           target: { tabId: tabId },
-          files: [researchFile]
+          files: [researchFile],
         });
         console.log(`✅ ${aiName}リサーチ検出器を注入しました`);
       } catch (injectionError) {
         console.error(`❌ ${aiName}スクリプト注入エラー:`, injectionError);
         return;
       }
-      
+
       // 少し待ってから実行
       console.log(`⏳ スクリプト初期化を待機中...`);
       await sleep(3000);
-      
+
       // リサーチを実行
-      const detectorName = 'ClaudeResearchDetector';
+      const detectorName = "ClaudeResearchDetector";
       console.log(`🚀 ${detectorName}を実行します`);
-      
+
       const [result] = await chrome.scripting.executeScript({
         target: { tabId: tabId },
         func: async (aiName, detectorName) => {
           console.log(`🔬 ${aiName}リサーチ実行開始`);
-          
+
           const detector = window[detectorName];
           if (!detector) {
             console.error(`${detectorName}が見つかりません`);
             return { success: false, error: `${detectorName}が見つかりません` };
           }
-          
+
           try {
             // リサーチを実行
             const researchResult = await detector.executeResearch();
-            
+
             if (researchResult.success) {
               console.log(`✅ ${aiName}リサーチ完了`);
-              console.log('検出されたモデル数:', researchResult.data.models.length);
+              console.log(
+                "検出されたモデル数:",
+                researchResult.data.models.length,
+              );
               // Claudeの場合
-              if (aiName === 'Claude') {
-                console.log('検出された機能数:', researchResult.data.features.length);
-                console.log('DeepResearch利用可能:', researchResult.data.deepResearch.available);
-                
+              if (aiName === "Claude") {
+                console.log(
+                  "検出された機能数:",
+                  researchResult.data.features.length,
+                );
+                console.log(
+                  "DeepResearch利用可能:",
+                  researchResult.data.deepResearch.available,
+                );
+
                 // 機能リストを作成
-              const functionsList = researchResult.data.features.map(f => ({
-                name: f.name,
-                type: f.type,
-                enabled: f.enabled,
-                connected: f.connected
-              }));
-              
-              // DeepResearchが利用可能な場合は機能リストに追加
-              if (researchResult.data.deepResearch && researchResult.data.deepResearch.available) {
-                functionsList.push({
-                  name: 'DeepResearch',
-                  type: 'research',
-                  enabled: researchResult.data.deepResearch.activated || false,
-                  connected: true,
-                  special: true  // 特別な機能としてマーク
-                });
-                console.log('✅ DeepResearch機能を追加しました');
-              }
-              
-                // 結果を返す（外側で保存処理）
-                return {
-                success: true,
-                models: researchResult.data.models,
-                functions: functionsList,  // DeepResearchを含む機能リスト
-                deepResearch: researchResult.data.deepResearch,
-                comparison: researchResult.comparison,
-                // 保存用データを含める（オブジェクト配列形式）
-                saveData: {
-                  models: researchResult.data.models.map(m => ({ 
-                    name: m.name.replace(/複雑な課題に対応できる.*|日常利用に最適な.*/g, '').trim() 
-                  })), // 説明文を除去してオブジェクト配列として保存
-                  functions: functionsList.map(f => ({ name: f.name })), // オブジェクト配列として保存
-                  deepResearch: researchResult.data.deepResearch,
-                  additionalModels: researchResult.data.additionalModels,
-                  timestamp: new Date().toISOString()
-                }
-                };
-              // Geminiの場合
-              } else if (aiName === 'Gemini') {
-                console.log('検出されたメイン機能数:', researchResult.data.features.main.length);
-                console.log('検出された追加機能数:', researchResult.data.features.additional.length);
-                console.log('Deep Think利用可能:', researchResult.data.deepThink.available);
-                console.log('Deep Research利用可能:', researchResult.data.deepResearch.available);
-                
-                // Geminiの機能をフラット化（UIが期待する形式に変換）
-                const functionsList = [];
-                
-                // メイン機能を追加
-                researchResult.data.features.main.forEach(f => {
+                const functionsList = researchResult.data.features.map((f) => ({
+                  name: f.name,
+                  type: f.type,
+                  enabled: f.enabled,
+                  connected: f.connected,
+                }));
+
+                // DeepResearchが利用可能な場合は機能リストに追加
+                if (
+                  researchResult.data.deepResearch &&
+                  researchResult.data.deepResearch.available
+                ) {
                   functionsList.push({
-                    name: f.name,
-                    type: f.type || 'main',
-                    enabled: f.enabled,
-                    connected: true,  // Geminiの機能はデフォルトで接続済み
-                    icon: f.icon
-                  });
-                });
-                
-                // 追加機能を追加
-                researchResult.data.features.additional.forEach(f => {
-                  functionsList.push({
-                    name: f.name,
-                    type: f.type || 'additional',
-                    enabled: f.enabled,
-                    connected: true,  // Geminiの機能はデフォルトで接続済み
-                    icon: f.icon,
-                    sublabel: f.sublabel
-                  });
-                });
-                
-                // Deep Thinkが利用可能な場合は機能リストに追加
-                if (researchResult.data.deepThink && researchResult.data.deepThink.available) {
-                  functionsList.push({
-                    name: 'Deep Think',
-                    type: 'special',
-                    enabled: researchResult.data.deepThink.activated || false,
+                    name: "DeepResearch",
+                    type: "research",
+                    enabled:
+                      researchResult.data.deepResearch.activated || false,
                     connected: true,
-                    special: true
+                    special: true, // 特別な機能としてマーク
                   });
-                  console.log('✅ Deep Think機能を追加しました');
+                  console.log("✅ DeepResearch機能を追加しました");
                 }
-                
-                // Deep Researchが利用可能な場合は機能リストに追加
-                if (researchResult.data.deepResearch && researchResult.data.deepResearch.available) {
-                  functionsList.push({
-                    name: 'Deep Research',
-                    type: 'special',
-                    enabled: researchResult.data.deepResearch.activated || false,
-                    connected: true,
-                    special: true
-                  });
-                  console.log('✅ Deep Research機能を追加しました');
-                }
-                
-                console.log('✅ Gemini機能フラット化完了:', functionsList.length, '個の機能');
-                
+
                 // 結果を返す（外側で保存処理）
                 return {
                   success: true,
                   models: researchResult.data.models,
-                  functions: functionsList,  // フラット化された機能リスト
+                  functions: functionsList, // DeepResearchを含む機能リスト
+                  deepResearch: researchResult.data.deepResearch,
+                  comparison: researchResult.comparison,
+                  // 保存用データを含める（オブジェクト配列形式）
+                  saveData: {
+                    models: researchResult.data.models.map((m) => ({
+                      name: m.name
+                        .replace(
+                          /複雑な課題に対応できる.*|日常利用に最適な.*/g,
+                          "",
+                        )
+                        .trim(),
+                    })), // 説明文を除去してオブジェクト配列として保存
+                    functions: functionsList.map((f) => ({ name: f.name })), // オブジェクト配列として保存
+                    deepResearch: researchResult.data.deepResearch,
+                    additionalModels: researchResult.data.additionalModels,
+                    timestamp: new Date().toISOString(),
+                  },
+                };
+                // Geminiの場合
+              } else if (aiName === "Gemini") {
+                console.log(
+                  "検出されたメイン機能数:",
+                  researchResult.data.features.main.length,
+                );
+                console.log(
+                  "検出された追加機能数:",
+                  researchResult.data.features.additional.length,
+                );
+                console.log(
+                  "Deep Think利用可能:",
+                  researchResult.data.deepThink.available,
+                );
+                console.log(
+                  "Deep Research利用可能:",
+                  researchResult.data.deepResearch.available,
+                );
+
+                // Geminiの機能をフラット化（UIが期待する形式に変換）
+                const functionsList = [];
+
+                // メイン機能を追加
+                researchResult.data.features.main.forEach((f) => {
+                  functionsList.push({
+                    name: f.name,
+                    type: f.type || "main",
+                    enabled: f.enabled,
+                    connected: true, // Geminiの機能はデフォルトで接続済み
+                    icon: f.icon,
+                  });
+                });
+
+                // 追加機能を追加
+                researchResult.data.features.additional.forEach((f) => {
+                  functionsList.push({
+                    name: f.name,
+                    type: f.type || "additional",
+                    enabled: f.enabled,
+                    connected: true, // Geminiの機能はデフォルトで接続済み
+                    icon: f.icon,
+                    sublabel: f.sublabel,
+                  });
+                });
+
+                // Deep Thinkが利用可能な場合は機能リストに追加
+                if (
+                  researchResult.data.deepThink &&
+                  researchResult.data.deepThink.available
+                ) {
+                  functionsList.push({
+                    name: "Deep Think",
+                    type: "special",
+                    enabled: researchResult.data.deepThink.activated || false,
+                    connected: true,
+                    special: true,
+                  });
+                  console.log("✅ Deep Think機能を追加しました");
+                }
+
+                // Deep Researchが利用可能な場合は機能リストに追加
+                if (
+                  researchResult.data.deepResearch &&
+                  researchResult.data.deepResearch.available
+                ) {
+                  functionsList.push({
+                    name: "Deep Research",
+                    type: "special",
+                    enabled:
+                      researchResult.data.deepResearch.activated || false,
+                    connected: true,
+                    special: true,
+                  });
+                  console.log("✅ Deep Research機能を追加しました");
+                }
+
+                console.log(
+                  "✅ Gemini機能フラット化完了:",
+                  functionsList.length,
+                  "個の機能",
+                );
+
+                // 結果を返す（外側で保存処理）
+                return {
+                  success: true,
+                  models: researchResult.data.models,
+                  functions: functionsList, // フラット化された機能リスト
                   deepThink: researchResult.data.deepThink,
                   deepResearch: researchResult.data.deepResearch,
                   comparison: researchResult.comparison,
                   // 保存用データを含める（オブジェクト配列形式）
                   saveData: {
-                    models: researchResult.data.models.map(m => ({ 
-                      name: m.description || m.name || m.title || m  // descriptionを優先
+                    models: researchResult.data.models.map((m) => ({
+                      name: m.description || m.name || m.title || m, // descriptionを優先
                     })),
-                    functions: functionsList.map(f => ({ name: f.name })), // オブジェクト配列として保存
+                    functions: functionsList.map((f) => ({ name: f.name })), // オブジェクト配列として保存
                     deepThink: researchResult.data.deepThink,
                     deepResearch: researchResult.data.deepResearch,
-                    timestamp: new Date().toISOString()
-                  }
+                    timestamp: new Date().toISOString(),
+                  },
                 };
               }
-              
+
               return {
                 success: true,
                 models: researchResult.data.models,
                 functions: functionsList,
                 deepThink: researchResult.data.deepThink,
                 deepResearch: researchResult.data.deepResearch,
-                comparison: researchResult.comparison
+                comparison: researchResult.comparison,
               };
             } else {
               return { success: false, error: researchResult.error };
             }
-            
           } catch (error) {
-            console.error('リサーチ実行エラー:', error);
+            console.error("リサーチ実行エラー:", error);
             return { success: false, error: error.message };
           }
         },
-        args: [aiName, detectorName]
+        args: [aiName, detectorName],
       });
-      
+
       console.log(`🔍 ${aiName}のスクリプト実行結果:`);
-      console.log('  レスポンス:', result);
-      
+      console.log("  レスポンス:", result);
+
       if (result && result.result) {
         const scriptResult = result.result;
         if (scriptResult.success) {
           console.log(`✅ ${aiName}リサーチが正常に完了しました`);
-          console.log(`📊 検出結果: モデル${scriptResult.models.length}個, 機能${scriptResult.functions ? scriptResult.functions.length : 0}個`);
-          
+          console.log(
+            `📊 検出結果: モデル${scriptResult.models.length}個, 機能${scriptResult.functions ? scriptResult.functions.length : 0}個`,
+          );
+
           // モデルの詳細表示
           if (scriptResult.models && scriptResult.models.length > 0) {
             console.log(`📦 ${aiName}モデル一覧:`);
@@ -2570,88 +2636,116 @@ async function injectAutomationScripts(tabId, aiName) {
               // モデル名から説明を分離（重複問題対応）
               let modelName = model.name;
               if (model.description && modelName.includes(model.description)) {
-                modelName = modelName.replace(model.description, '').trim();
+                modelName = modelName.replace(model.description, "").trim();
               }
-              console.log(`  ${i+1}. ${modelName}${model.selected ? ' ✅(選択中)' : ''}`);
+              console.log(
+                `  ${i + 1}. ${modelName}${model.selected ? " ✅(選択中)" : ""}`,
+              );
               if (model.description) {
                 console.log(`     説明: ${model.description}`);
               }
             });
           }
-          
+
           // 機能の詳細表示
           if (scriptResult.functions && scriptResult.functions.length > 0) {
             console.log(`🔧 ${aiName}機能一覧:`);
             scriptResult.functions.forEach((func, i) => {
-              const status = func.enabled ? '✅(有効)' : '❌(無効)';
-              console.log(`  ${i+1}. ${func.name} ${status} [${func.type}]`);
+              const status = func.enabled ? "✅(有効)" : "❌(無効)";
+              console.log(`  ${i + 1}. ${func.name} ${status} [${func.type}]`);
             });
           }
-          
+
           // 選択されたモデルと有効な機能を簡潔に表示
-          const selectedModel = scriptResult.models.find(m => m.selected);
-          const enabledFunctions = scriptResult.functions ? scriptResult.functions.filter(f => f.enabled) : [];
-          
+          const selectedModel = scriptResult.models.find((m) => m.selected);
+          const enabledFunctions = scriptResult.functions
+            ? scriptResult.functions.filter((f) => f.enabled)
+            : [];
+
           console.log(`✨ ${aiName}設定サマリー:`);
           if (selectedModel) {
             let modelName = selectedModel.name;
-            if (selectedModel.description && modelName.includes(selectedModel.description)) {
-              modelName = modelName.replace(selectedModel.description, '').trim();
+            if (
+              selectedModel.description &&
+              modelName.includes(selectedModel.description)
+            ) {
+              modelName = modelName
+                .replace(selectedModel.description, "")
+                .trim();
             }
             console.log(`  📱 選択モデル: ${modelName}`);
           }
           if (enabledFunctions.length > 0) {
-            console.log(`  🔧 有効機能: ${enabledFunctions.map(f => f.name).join(', ')}`);
+            console.log(
+              `  🔧 有効機能: ${enabledFunctions.map((f) => f.name).join(", ")}`,
+            );
           }
-          if (scriptResult.deepResearch && scriptResult.deepResearch.available) {
-            console.log(`  🚀 DeepResearch: ${scriptResult.deepResearch.activated ? '有効' : '利用可能'}`);
+          if (
+            scriptResult.deepResearch &&
+            scriptResult.deepResearch.available
+          ) {
+            console.log(
+              `  🚀 DeepResearch: ${scriptResult.deepResearch.activated ? "有効" : "利用可能"}`,
+            );
           }
-          
+
           // 変更がある場合は表示
           if (scriptResult.comparison && scriptResult.comparison.hasChanges) {
-            console.log(`  🔄 変更検出: ${scriptResult.comparison.changes.length}件`);
+            console.log(
+              `  🔄 変更検出: ${scriptResult.comparison.changes.length}件`,
+            );
             scriptResult.comparison.changes.forEach((change, i) => {
-              console.log(`    ${i+1}. ${change}`);
+              console.log(`    ${i + 1}. ${change}`);
             });
             showChangeNotification(aiName, scriptResult.comparison.changes);
           }
-          
+
           // ステータスメッセージを作成
           let statusMessage = `${aiName}: ${scriptResult.models.length}モデル`;
-          
+
           if (scriptResult.functions) {
             statusMessage += `, ${scriptResult.functions.length}機能を検出`;
           }
-          
+
           // 特殊モードの表示
-          if (aiName === 'Claude' && scriptResult.deepResearch && scriptResult.deepResearch.available) {
-            statusMessage += ' (DeepResearch対応)';
-          } else if (aiName === 'Gemini') {
+          if (
+            aiName === "Claude" &&
+            scriptResult.deepResearch &&
+            scriptResult.deepResearch.available
+          ) {
+            statusMessage += " (DeepResearch対応)";
+          } else if (aiName === "Gemini") {
             const specialModes = [];
             if (scriptResult.deepThink && scriptResult.deepThink.available) {
-              specialModes.push('Deep Think');
+              specialModes.push("Deep Think");
             }
-            if (scriptResult.deepResearch && scriptResult.deepResearch.available) {
-              specialModes.push('Deep Research');
+            if (
+              scriptResult.deepResearch &&
+              scriptResult.deepResearch.available
+            ) {
+              specialModes.push("Deep Research");
             }
             if (specialModes.length > 0) {
-              statusMessage += ` (${specialModes.join(', ')}対応)`;
+              statusMessage += ` (${specialModes.join(", ")}対応)`;
             }
-          } else if (aiName === 'ChatGPT') {
+          } else if (aiName === "ChatGPT") {
             const specialModes = [];
-            if (scriptResult.deepResearch && scriptResult.deepResearch.available) {
-              specialModes.push('Deep Research');
+            if (
+              scriptResult.deepResearch &&
+              scriptResult.deepResearch.available
+            ) {
+              specialModes.push("Deep Research");
             }
             if (scriptResult.agentMode && scriptResult.agentMode.available) {
-              specialModes.push('エージェント');
+              specialModes.push("エージェント");
             }
             if (specialModes.length > 0) {
-              statusMessage += ` (${specialModes.join(', ')}対応)`;
+              statusMessage += ` (${specialModes.join(", ")}対応)`;
             }
           }
-          
+
           updateStatus(statusMessage, "success");
-          
+
           // saveDataを返す
           return scriptResult.saveData;
         } else {
@@ -2661,205 +2755,248 @@ async function injectAutomationScripts(tabId, aiName) {
         }
       } else {
         console.error(`❌ ${aiName}スクリプト実行失敗`);
-        console.error('詳細なエラー情報:', JSON.stringify(result, null, 2));
+        console.error("詳細なエラー情報:", JSON.stringify(result, null, 2));
         updateStatus(`${aiName}スクリプト実行失敗`, "error");
         return null;
       }
-      
+
       // saveDataを返す
     }
-    
+
     // Geminiの場合もリサーチ機能を使用
-    if (aiName === 'Gemini') {
+    if (aiName === "Gemini") {
       console.log(`🎯 ${aiName}リサーチ処理を開始します`);
       console.log(`🔬 ${aiName}リサーチ機能を注入・実行します`);
-      
+
       // Geminiのリサーチ検出器ファイル
-      const researchFile = 'ai-platforms/gemini/gemini-research-detector.js';
-      
+      const researchFile = "ai-platforms/gemini/gemini-research-detector.js";
+
       // リサーチ検出器を注入
       console.log(`⚡ スクリプトファイル: ${researchFile}`);
       try {
         await chrome.scripting.executeScript({
           target: { tabId: tabId },
-          files: [researchFile]
+          files: [researchFile],
         });
         console.log(`✅ ${aiName}リサーチ検出器を注入しました`);
       } catch (injectionError) {
         console.error(`❌ ${aiName}スクリプト注入エラー:`, injectionError);
         return;
       }
-      
+
       // 少し待ってから実行
       console.log(`⏳ スクリプト初期化を待機中...`);
       await sleep(3000);
-      
+
       // リサーチを実行
-      const detectorName = 'GeminiResearchDetector';
+      const detectorName = "GeminiResearchDetector";
       console.log(`🚀 ${detectorName}を実行します`);
-      
+
       const [result] = await chrome.scripting.executeScript({
         target: { tabId: tabId },
         func: async (aiName, detectorName) => {
           console.log(`🔬 ${aiName}リサーチ実行開始`);
-          
+
           const detector = window[detectorName];
           if (!detector) {
             console.error(`${detectorName}が見つかりません`);
             return { success: false, error: `${detectorName}が見つかりません` };
           }
-          
+
           try {
             // リサーチを実行
             const researchResult = await detector.executeResearch();
-            
+
             if (researchResult.success) {
               console.log(`✅ ${aiName}リサーチ完了`);
-              console.log('検出されたモデル数:', researchResult.data.models.length);
-              console.log('検出されたメイン機能数:', researchResult.data.features.main.length);
-              console.log('検出された追加機能数:', researchResult.data.features.additional.length);
-              console.log('Deep Think利用可能:', researchResult.data.deepThink.available);
-              console.log('Deep Research利用可能:', researchResult.data.deepResearch.available);
-              
+              console.log(
+                "検出されたモデル数:",
+                researchResult.data.models.length,
+              );
+              console.log(
+                "検出されたメイン機能数:",
+                researchResult.data.features.main.length,
+              );
+              console.log(
+                "検出された追加機能数:",
+                researchResult.data.features.additional.length,
+              );
+              console.log(
+                "Deep Think利用可能:",
+                researchResult.data.deepThink.available,
+              );
+              console.log(
+                "Deep Research利用可能:",
+                researchResult.data.deepResearch.available,
+              );
+
               // Geminiの機能をフラット化（UIが期待する形式に変換）
               const functionsList = [];
-              
+
               // メイン機能を追加
-              researchResult.data.features.main.forEach(f => {
+              researchResult.data.features.main.forEach((f) => {
                 functionsList.push({
                   name: f.name,
-                  type: f.type || 'main',
+                  type: f.type || "main",
                   enabled: f.enabled,
-                  connected: true,  // Geminiの機能はデフォルトで接続済み
-                  icon: f.icon
-                });
-              });
-              
-              // 追加機能を追加
-              researchResult.data.features.additional.forEach(f => {
-                functionsList.push({
-                  name: f.name,
-                  type: f.type || 'additional',
-                  enabled: f.enabled,
-                  connected: true,  // Geminiの機能はデフォルトで接続済み
+                  connected: true, // Geminiの機能はデフォルトで接続済み
                   icon: f.icon,
-                  sublabel: f.sublabel
                 });
               });
-              
-              // Deep Thinkが利用可能な場合は機能リストに追加
-              if (researchResult.data.deepThink && researchResult.data.deepThink.available) {
+
+              // 追加機能を追加
+              researchResult.data.features.additional.forEach((f) => {
                 functionsList.push({
-                  name: 'Deep Think',
-                  type: 'special',
+                  name: f.name,
+                  type: f.type || "additional",
+                  enabled: f.enabled,
+                  connected: true, // Geminiの機能はデフォルトで接続済み
+                  icon: f.icon,
+                  sublabel: f.sublabel,
+                });
+              });
+
+              // Deep Thinkが利用可能な場合は機能リストに追加
+              if (
+                researchResult.data.deepThink &&
+                researchResult.data.deepThink.available
+              ) {
+                functionsList.push({
+                  name: "Deep Think",
+                  type: "special",
                   enabled: researchResult.data.deepThink.activated || false,
                   connected: true,
-                  special: true
+                  special: true,
                 });
-                console.log('✅ Deep Think機能を追加しました');
+                console.log("✅ Deep Think機能を追加しました");
               }
-              
+
               // Deep Researchが利用可能な場合は機能リストに追加
-              if (researchResult.data.deepResearch && researchResult.data.deepResearch.available) {
+              if (
+                researchResult.data.deepResearch &&
+                researchResult.data.deepResearch.available
+              ) {
                 functionsList.push({
-                  name: 'Deep Research',
-                  type: 'special',
+                  name: "Deep Research",
+                  type: "special",
                   enabled: researchResult.data.deepResearch.activated || false,
                   connected: true,
-                  special: true
+                  special: true,
                 });
-                console.log('✅ Deep Research機能を追加しました');
+                console.log("✅ Deep Research機能を追加しました");
               }
-              
-              console.log('✅ Gemini機能フラット化完了:', functionsList.length, '個の機能');
-              
+
+              console.log(
+                "✅ Gemini機能フラット化完了:",
+                functionsList.length,
+                "個の機能",
+              );
+
               // 結果を返す（外側で保存処理）
               return {
                 success: true,
                 models: researchResult.data.models,
-                functions: functionsList,  // フラット化された機能リスト
+                functions: functionsList, // フラット化された機能リスト
                 deepThink: researchResult.data.deepThink,
                 deepResearch: researchResult.data.deepResearch,
                 comparison: researchResult.comparison,
                 // 保存用データを含める（オブジェクト配列形式）
                 saveData: {
-                  models: researchResult.data.models.map(m => ({ 
-                    name: m.description || m.name || m.title || m  // descriptionを優先
+                  models: researchResult.data.models.map((m) => ({
+                    name: m.description || m.name || m.title || m, // descriptionを優先
                   })),
-                  functions: functionsList.map(f => ({ name: f.name })), // オブジェクト配列として保存
+                  functions: functionsList.map((f) => ({ name: f.name })), // オブジェクト配列として保存
                   deepThink: researchResult.data.deepThink,
                   deepResearch: researchResult.data.deepResearch,
-                  timestamp: new Date().toISOString()
-                }
+                  timestamp: new Date().toISOString(),
+                },
               };
             } else {
               return { success: false, error: researchResult.error };
             }
-            
           } catch (error) {
-            console.error('リサーチ実行エラー:', error);
+            console.error("リサーチ実行エラー:", error);
             return { success: false, error: error.message };
           }
         },
-        args: [aiName, detectorName]
+        args: [aiName, detectorName],
       });
-      
+
       console.log(`🔍 ${aiName}のスクリプト実行結果:`);
-      console.log('  レスポンス:', result);
-      
+      console.log("  レスポンス:", result);
+
       if (result && result.result) {
         const scriptResult = result.result;
         if (scriptResult.success) {
           console.log(`✅ ${aiName}検出が正常に完了しました`);
-          console.log(`📊 検出結果: モデル${scriptResult.models.length}個, 機能${scriptResult.functions.length}個`);
-          
+          console.log(
+            `📊 検出結果: モデル${scriptResult.models.length}個, 機能${scriptResult.functions.length}個`,
+          );
+
           // モデルの詳細表示
           if (scriptResult.models && scriptResult.models.length > 0) {
             console.log(`📦 ${aiName}モデル一覧:`);
             scriptResult.models.forEach((model, i) => {
               const modelName = model.title || model.name;
-              console.log(`  ${i+1}. ${modelName}${model.selected ? ' ✅(選択中)' : ''}`);
+              console.log(
+                `  ${i + 1}. ${modelName}${model.selected ? " ✅(選択中)" : ""}`,
+              );
               if (model.description) {
                 console.log(`     説明: ${model.description}`);
               }
             });
           }
-          
+
           // 機能の詳細表示
           if (scriptResult.functions && scriptResult.functions.length > 0) {
             console.log(`🔧 ${aiName}機能一覧:`);
             scriptResult.functions.forEach((func, i) => {
-              const status = func.enabled ? '✅(有効)' : '❌(無効)';
-              console.log(`  ${i+1}. ${func.name} ${status} [${func.type}]`);
+              const status = func.enabled ? "✅(有効)" : "❌(無効)";
+              console.log(`  ${i + 1}. ${func.name} ${status} [${func.type}]`);
             });
           }
-          
+
           // 選択されたモデルと有効な機能を簡潔に表示
-          const selectedModel = scriptResult.models.find(m => m.selected);
-          const enabledFunctions = scriptResult.functions.filter(f => f.enabled);
-          
+          const selectedModel = scriptResult.models.find((m) => m.selected);
+          const enabledFunctions = scriptResult.functions.filter(
+            (f) => f.enabled,
+          );
+
           console.log(`✨ ${aiName}設定サマリー:`);
           if (selectedModel) {
-            console.log(`  📱 選択モデル: ${selectedModel.title || selectedModel.name}`);
+            console.log(
+              `  📱 選択モデル: ${selectedModel.title || selectedModel.name}`,
+            );
           }
           if (enabledFunctions.length > 0) {
-            console.log(`  🔧 有効機能: ${enabledFunctions.map(f => f.name).join(', ')}`);
+            console.log(
+              `  🔧 有効機能: ${enabledFunctions.map((f) => f.name).join(", ")}`,
+            );
           }
           if (scriptResult.deepThink && scriptResult.deepThink.available) {
-            console.log(`  🚀 Deep Think: ${scriptResult.deepThink.activated ? '✅有効' : '⚪利用可能(未有効)'}`);
+            console.log(
+              `  🚀 Deep Think: ${scriptResult.deepThink.activated ? "✅有効" : "⚪利用可能(未有効)"}`,
+            );
           }
-          if (scriptResult.deepResearch && scriptResult.deepResearch.available) {
-            console.log(`  🚀 Deep Research: ${scriptResult.deepResearch.activated ? '✅有効' : '⚪利用可能(未有効)'}`);
+          if (
+            scriptResult.deepResearch &&
+            scriptResult.deepResearch.available
+          ) {
+            console.log(
+              `  🚀 Deep Research: ${scriptResult.deepResearch.activated ? "✅有効" : "⚪利用可能(未有効)"}`,
+            );
           }
-          
+
           // 変更がある場合は表示
           if (scriptResult.comparison && scriptResult.comparison.hasChanges) {
-            console.log(`  🔄 変更検出: ${scriptResult.comparison.changes.length}件`);
+            console.log(
+              `  🔄 変更検出: ${scriptResult.comparison.changes.length}件`,
+            );
             scriptResult.comparison.changes.forEach((change, i) => {
-              console.log(`    ${i+1}. ${change}`);
+              console.log(`    ${i + 1}. ${change}`);
             });
           }
-          
+
           // saveDataを返す
           return scriptResult.saveData;
         } else {
@@ -2868,186 +3005,226 @@ async function injectAutomationScripts(tabId, aiName) {
         }
       } else {
         console.error(`❌ ${aiName}スクリプト実行失敗`);
-        console.error('詳細なエラー情報:', JSON.stringify(result, null, 2));
+        console.error("詳細なエラー情報:", JSON.stringify(result, null, 2));
         updateStatus(`${aiName}スクリプト実行失敗`, "error");
         return null;
       }
-      
+
       // saveDataを返す
     }
-    
+
     // ChatGPT用の新しいリサーチ機能
-    if (aiName === 'ChatGPT') {
+    if (aiName === "ChatGPT") {
       console.log(`🎯 ${aiName}リサーチ処理を開始します`);
       console.log(`🔬 ${aiName}リサーチ機能を注入・実行します`);
-      
+
       // ChatGPTのリサーチ検出器ファイル
-      const researchFile = 'ai-platforms/chatgpt/chatgpt-research-detector.js';
-      
+      const researchFile = "ai-platforms/chatgpt/chatgpt-research-detector.js";
+
       // リサーチ検出器を注入
       console.log(`⚡ スクリプトファイル: ${researchFile}`);
       try {
         await chrome.scripting.executeScript({
           target: { tabId: tabId },
-          files: [researchFile]
+          files: [researchFile],
         });
         console.log(`✅ ${aiName}リサーチ検出器を注入しました`);
       } catch (injectionError) {
         console.error(`❌ ${aiName}スクリプト注入エラー:`, injectionError);
         return;
       }
-      
+
       // 少し待ってから実行
       console.log(`⏳ スクリプト初期化を待機中...`);
       await sleep(3000);
-      
+
       // リサーチを実行
-      const detectorName = 'ChatGPTResearchDetector';
+      const detectorName = "ChatGPTResearchDetector";
       console.log(`🚀 ${detectorName}を実行します`);
-      
+
       const [result] = await chrome.scripting.executeScript({
         target: { tabId: tabId },
         func: async (aiName, detectorName) => {
           console.log(`🔬 ${aiName}リサーチ実行開始`);
-          
+
           const detector = window[detectorName];
           if (!detector) {
             console.error(`${detectorName}が見つかりません`);
             return { success: false, error: `${detectorName}が見つかりません` };
           }
-          
+
           try {
             // リサーチを実行
             const researchResult = await detector.executeResearch();
-            
+
             if (researchResult.success) {
               console.log(`✅ ${aiName}リサーチ完了`);
-              console.log('検出されたモデル数:', researchResult.data.models.length);
-              console.log('検出された機能数:', researchResult.data.features.length);
-              console.log('Deep Research利用可能:', researchResult.data.deepResearch.available);
-              console.log('エージェントモード利用可能:', researchResult.data.agentMode.available);
-              
+              console.log(
+                "検出されたモデル数:",
+                researchResult.data.models.length,
+              );
+              console.log(
+                "検出された機能数:",
+                researchResult.data.features.length,
+              );
+              console.log(
+                "Deep Research利用可能:",
+                researchResult.data.deepResearch.available,
+              );
+              console.log(
+                "エージェントモード利用可能:",
+                researchResult.data.agentMode.available,
+              );
+
               // ChatGPTの機能をUIが期待する形式に変換
-              const functionsList = researchResult.data.features.map(f => ({
-                name: f.name || f,  // オブジェクトの場合はf.name、文字列の場合はfをそのまま使用
-                type: f.type || 'function',
+              const functionsList = researchResult.data.features.map((f) => ({
+                name: f.name || f, // オブジェクトの場合はf.name、文字列の場合はfをそのまま使用
+                type: f.type || "function",
                 enabled: f.enabled !== undefined ? f.enabled : true,
-                connected: f.connected !== undefined ? f.connected : true
+                connected: f.connected !== undefined ? f.connected : true,
               }));
-              
+
               // Deep Researchが利用可能な場合は機能リストに追加
-              if (researchResult.data.deepResearch && researchResult.data.deepResearch.available) {
+              if (
+                researchResult.data.deepResearch &&
+                researchResult.data.deepResearch.available
+              ) {
                 functionsList.push({
-                  name: 'Deep Research',
-                  type: 'special',
+                  name: "Deep Research",
+                  type: "special",
                   enabled: researchResult.data.deepResearch.activated || false,
                   connected: true,
-                  special: true
+                  special: true,
                 });
-                console.log('✅ Deep Research機能を追加しました');
+                console.log("✅ Deep Research機能を追加しました");
               }
-              
+
               // エージェントモードが利用可能な場合は機能リストに追加
-              if (researchResult.data.agentMode && researchResult.data.agentMode.available) {
+              if (
+                researchResult.data.agentMode &&
+                researchResult.data.agentMode.available
+              ) {
                 functionsList.push({
-                  name: 'エージェントモード',
-                  type: 'special',
+                  name: "エージェントモード",
+                  type: "special",
                   enabled: researchResult.data.agentMode.activated || false,
                   connected: true,
-                  special: true
+                  special: true,
                 });
-                console.log('✅ エージェントモード機能を追加しました');
+                console.log("✅ エージェントモード機能を追加しました");
               }
-              
-              console.log('✅ ChatGPT機能フラット化完了:', functionsList.length, '個の機能');
-              
+
+              console.log(
+                "✅ ChatGPT機能フラット化完了:",
+                functionsList.length,
+                "個の機能",
+              );
+
               // 結果を返す（外側で保存処理）
               return {
                 success: true,
                 models: researchResult.data.models,
-                functions: functionsList,  // フラット化された機能リスト
+                functions: functionsList, // フラット化された機能リスト
                 deepResearch: researchResult.data.deepResearch,
                 agentMode: researchResult.data.agentMode,
                 comparison: researchResult.comparison,
                 // 保存用データを含める（オブジェクト配列形式）
                 saveData: {
-                  models: researchResult.data.models.map(m => ({ 
-                    name: typeof m === 'string' ? m : m.name || m 
+                  models: researchResult.data.models.map((m) => ({
+                    name: typeof m === "string" ? m : m.name || m,
                   })), // すでにオブジェクトの場合はnameプロパティを使用
-                  functions: functionsList.map(f => ({ name: f.name })), // オブジェクト配列として保存
+                  functions: functionsList.map((f) => ({ name: f.name })), // オブジェクト配列として保存
                   deepResearch: researchResult.data.deepResearch,
                   agentMode: researchResult.data.agentMode,
-                  timestamp: new Date().toISOString()
-                }
+                  timestamp: new Date().toISOString(),
+                },
               };
             } else {
               return { success: false, error: researchResult.error };
             }
-            
           } catch (error) {
-            console.error('リサーチ実行エラー:', error);
+            console.error("リサーチ実行エラー:", error);
             return { success: false, error: error.message };
           }
         },
-        args: [aiName, detectorName]
+        args: [aiName, detectorName],
       });
-      
+
       console.log(`🔍 ${aiName}のスクリプト実行結果:`);
-      console.log('  レスポンス:', result);
-      
+      console.log("  レスポンス:", result);
+
       if (result && result.result) {
         const scriptResult = result.result;
         if (scriptResult.success) {
           console.log(`✅ ${aiName}検出が正常に完了しました`);
-          console.log(`📊 検出結果: モデル${scriptResult.models.length}個, 機能${scriptResult.functions.length}個`);
-          
+          console.log(
+            `📊 検出結果: モデル${scriptResult.models.length}個, 機能${scriptResult.functions.length}個`,
+          );
+
           // モデルの詳細表示
           if (scriptResult.models && scriptResult.models.length > 0) {
             console.log(`📦 ${aiName}モデル一覧:`);
             scriptResult.models.forEach((model, i) => {
               const modelName = model.title || model.name;
-              console.log(`  ${i+1}. ${modelName}${model.selected ? ' ✅(選択中)' : ''}`);
+              console.log(
+                `  ${i + 1}. ${modelName}${model.selected ? " ✅(選択中)" : ""}`,
+              );
               if (model.description) {
                 console.log(`     説明: ${model.description}`);
               }
             });
           }
-          
+
           // 機能の詳細表示
           if (scriptResult.functions && scriptResult.functions.length > 0) {
             console.log(`🔧 ${aiName}機能一覧:`);
             scriptResult.functions.forEach((func, i) => {
-              const status = func.enabled ? '✅(有効)' : '❌(無効)';
-              console.log(`  ${i+1}. ${func.name} ${status} [${func.type}]`);
+              const status = func.enabled ? "✅(有効)" : "❌(無効)";
+              console.log(`  ${i + 1}. ${func.name} ${status} [${func.type}]`);
             });
           }
-          
+
           // 選択されたモデルと有効な機能を簡潔に表示
-          const selectedModel = scriptResult.models.find(m => m.selected);
-          const enabledFunctions = scriptResult.functions.filter(f => f.enabled);
-          
+          const selectedModel = scriptResult.models.find((m) => m.selected);
+          const enabledFunctions = scriptResult.functions.filter(
+            (f) => f.enabled,
+          );
+
           console.log(`✨ ${aiName}設定サマリー:`);
           if (selectedModel) {
-            console.log(`  📱 選択モデル: ${selectedModel.title || selectedModel.name}`);
+            console.log(
+              `  📱 選択モデル: ${selectedModel.title || selectedModel.name}`,
+            );
           }
           if (enabledFunctions.length > 0) {
-            console.log(`  🔧 有効機能: ${enabledFunctions.map(f => f.name).join(', ')}`);
+            console.log(
+              `  🔧 有効機能: ${enabledFunctions.map((f) => f.name).join(", ")}`,
+            );
           }
           if (scriptResult.deepThink && scriptResult.deepThink.available) {
-            console.log(`  🚀 Deep Think: ${scriptResult.deepThink.activated ? '✅有効' : '⚪利用可能(未有効)'}`);
+            console.log(
+              `  🚀 Deep Think: ${scriptResult.deepThink.activated ? "✅有効" : "⚪利用可能(未有効)"}`,
+            );
           }
-          if (scriptResult.deepResearch && scriptResult.deepResearch.available) {
-            console.log(`  🚀 Deep Research: ${scriptResult.deepResearch.activated ? '✅有効' : '⚪利用可能(未有効)'}`);
+          if (
+            scriptResult.deepResearch &&
+            scriptResult.deepResearch.available
+          ) {
+            console.log(
+              `  🚀 Deep Research: ${scriptResult.deepResearch.activated ? "✅有効" : "⚪利用可能(未有効)"}`,
+            );
           }
-          
+
           // 変更がある場合は表示
           if (scriptResult.comparison && scriptResult.comparison.hasChanges) {
-            console.log(`  🔄 変更検出: ${scriptResult.comparison.changes.length}件`);
+            console.log(
+              `  🔄 変更検出: ${scriptResult.comparison.changes.length}件`,
+            );
             scriptResult.comparison.changes.forEach((change, i) => {
-              console.log(`    ${i+1}. ${change}`);
+              console.log(`    ${i + 1}. ${change}`);
             });
           }
-          
+
           // saveDataを返す
           return scriptResult.saveData;
         } else {
@@ -3056,14 +3233,14 @@ async function injectAutomationScripts(tabId, aiName) {
         }
       } else {
         console.error(`❌ ${aiName}スクリプト実行失敗`);
-        console.error('詳細なエラー情報:', JSON.stringify(result, null, 2));
+        console.error("詳細なエラー情報:", JSON.stringify(result, null, 2));
         updateStatus(`${aiName}スクリプト実行失敗`, "error");
         return null;
       }
-      
+
       // saveDataを返す
     }
-    
+
     // 全てのAIが新しいリサーチ検出器システムに移行済み
     console.error(`⚠️ ${aiName}は新しいリサーチ検出器システムに移行されました`);
     return;
@@ -3075,7 +3252,7 @@ async function injectAutomationScripts(tabId, aiName) {
 // AI検出ウィンドウを閉じる関数
 async function closeAIDetectionWindows() {
   console.log(`🚪 ${aiDetectionWindows.length}個のAI検出ウィンドウを閉じます`);
-  
+
   const closePromises = aiDetectionWindows.map(async (windowInfo) => {
     try {
       await new Promise((resolve) => {
@@ -3088,18 +3265,18 @@ async function closeAIDetectionWindows() {
       console.error(`❌ ${windowInfo.aiType}ウィンドウの閉鎖エラー:`, error);
     }
   });
-  
+
   await Promise.allSettled(closePromises);
   aiDetectionWindows = []; // リストをクリア
-  console.log('✅ すべてのAI検出ウィンドウを閉じました');
+  console.log("✅ すべてのAI検出ウィンドウを閉じました");
 }
 
 // 変更通知を表示する関数
 function showChangeNotification(aiName, changes) {
   if (!changes || changes.length === 0) return;
-  
+
   let message = `以下のモデルと機能が変更された可能性があります。修正してください。\n\n修正内容：\n`;
-  
+
   changes.forEach((change, index) => {
     message += `${index + 1}. ${change.type}: ${change.item}\n`;
     if (change.details) {
@@ -3108,9 +3285,9 @@ function showChangeNotification(aiName, changes) {
     if (change.old && change.new) {
       message += `   変更: ${change.old} → ${change.new}\n`;
     }
-    message += '\n';
+    message += "\n";
   });
-  
+
   // ポップアップで通知
   setTimeout(() => {
     alert(message);
@@ -3121,34 +3298,35 @@ function showChangeNotification(aiName, changes) {
 
 // AI検出システムの実行（テストコントローラーを使用）
 async function runAIDetectionSystem(updateStatus, injectAutomationScripts) {
-  updateStatus('テストコントローラーを読み込み中...', 'loading');
+  updateStatus("テストコントローラーを読み込み中...", "loading");
 
   try {
     // Step 1: 動的インポート実行前
-    const controllerManager = await import('./controllers/index.js');
+    const controllerManager = await import("./controllers/index.js");
 
     // Step 2: loadController関数確認
     const { loadController } = controllerManager;
     if (!loadController) {
-      throw new Error('loadController関数が見つかりません');
+      throw new Error("loadController関数が見つかりません");
     }
 
     // Step 3: aiDetectionコントローラーロード
-    const testModule = await loadController('aiDetection');
+    const testModule = await loadController("aiDetection");
 
     // Step 4: runAIDetectionSystem関数確認
     if (!testModule.runAIDetectionSystem) {
-      throw new Error('runAIDetectionSystem関数がテストモジュールに見つかりません');
+      throw new Error(
+        "runAIDetectionSystem関数がテストモジュールに見つかりません",
+      );
     }
 
     // Step 5: AI検出システム実行
-    updateStatus('AI検出システムを実行中...', 'loading');
+    updateStatus("AI検出システムを実行中...", "loading");
     await testModule.runAIDetectionSystem();
-
   } catch (error) {
-    console.error('❌ テストコントローラーエラー:', error);
-    console.error('❌ [DEBUG] エラースタック:', error.stack);
-    updateStatus(`テストコントローラーエラー: ${error.message}`, 'error');
+    console.error("❌ テストコントローラーエラー:", error);
+    console.error("❌ [DEBUG] エラースタック:", error.stack);
+    updateStatus(`テストコントローラーエラー: ${error.message}`, "error");
     throw error;
   }
 }
@@ -3158,7 +3336,7 @@ export function detectAIModelsAndFeaturesProduction(aiType) {
   // スクリプト注入実行時に初期化される結果オブジェクト
   const results = {
     models: [],
-    functions: []
+    functions: [],
   };
 
   // 本番のコードで使用されているセレクタを定義
@@ -3167,64 +3345,64 @@ export function detectAIModelsAndFeaturesProduction(aiType) {
       modelButton: [
         '[data-testid="model-switcher-dropdown-button"]',
         'button[aria-label*="モデル セレクター"]',
-        'button[aria-label*="モデル"][aria-haspopup="menu"]'
+        'button[aria-label*="モデル"][aria-haspopup="menu"]',
       ],
       modelMenu: [
         '[role="menu"][data-radix-menu-content]',
         '[role="menu"][data-state="open"]',
-        'div.z-50.max-w-xs.rounded-2xl.popover[role="menu"]'
+        'div.z-50.max-w-xs.rounded-2xl.popover[role="menu"]',
       ],
       menuButton: [
         '[data-testid="composer-plus-btn"]',
-        'button[aria-haspopup="menu"]'
+        'button[aria-haspopup="menu"]',
       ],
       features: {
-        canvas: ['canvas', 'Canvas'],
-        codeInterpreter: ['Code Interpreter', 'コード インタープリター'],
-        browsing: ['Web Search', 'ウェブ検索'],
-        dalle: ['DALL·E', 'DALL-E', '画像生成'],
-        memory: ['Memory', 'メモリー'],
-        deepResearch: ['Deep Research', '深い研究']
-      }
+        canvas: ["canvas", "Canvas"],
+        codeInterpreter: ["Code Interpreter", "コード インタープリター"],
+        browsing: ["Web Search", "ウェブ検索"],
+        dalle: ["DALL·E", "DALL-E", "画像生成"],
+        memory: ["Memory", "メモリー"],
+        deepResearch: ["Deep Research", "深い研究"],
+      },
     },
     claude: {
       modelButton: [
         'button[data-testid*="model-selector"]',
         'button[aria-label*="モデル"]',
-        'div.font-medium button'
+        "div.font-medium button",
       ],
       modelMenu: [
         '[role="menu"][data-state="open"]',
-        'div[data-radix-menu-content]'
+        "div[data-radix-menu-content]",
       ],
       features: {
-        projects: ['Projects', 'プロジェクト'],
-        artifacts: ['Artifacts', 'アーティファクト'],
-        vision: ['Vision', '画像認識'],
-        codeAnalysis: ['Code Analysis', 'コード解析'],
-        deepResearch: ['Deep Research', '深い研究']
-      }
+        projects: ["Projects", "プロジェクト"],
+        artifacts: ["Artifacts", "アーティファクト"],
+        vision: ["Vision", "画像認識"],
+        codeAnalysis: ["Code Analysis", "コード解析"],
+        deepResearch: ["Deep Research", "深い研究"],
+      },
     },
     gemini: {
       modelButton: [
-        '.gds-mode-switch-button.logo-pill-btn',
+        ".gds-mode-switch-button.logo-pill-btn",
         'button[class*="logo-pill-btn"]',
-        'button.gds-mode-switch-button'
+        "button.gds-mode-switch-button",
       ],
       modelMenu: [
-        '.cdk-overlay-pane .menu-inner-container',
-        '.cdk-overlay-pane mat-action-list[data-test-id="mobile-nested-mode-menu"]'
+        ".cdk-overlay-pane .menu-inner-container",
+        '.cdk-overlay-pane mat-action-list[data-test-id="mobile-nested-mode-menu"]',
       ],
       features: {
-        imageGeneration: ['Image Generation', '画像生成'],
-        codeExecution: ['Code Execution', 'コード実行'],
-        googleSearch: ['Google Search', 'Google検索'],
-        youtube: ['YouTube'],
-        maps: ['Google Maps', 'Maps'],
-        deepThink: ['Deep Think', '深思考'],
-        deepResearch: ['Deep Research', '深い研究']
-      }
-    }
+        imageGeneration: ["Image Generation", "画像生成"],
+        codeExecution: ["Code Execution", "コード実行"],
+        googleSearch: ["Google Search", "Google検索"],
+        youtube: ["YouTube"],
+        maps: ["Google Maps", "Maps"],
+        deepThink: ["Deep Think", "深思考"],
+        deepResearch: ["Deep Research", "深い研究"],
+      },
+    },
   };
 
   // ユーティリティ関数
@@ -3241,11 +3419,13 @@ export function detectAIModelsAndFeaturesProduction(aiType) {
   }
 
   function getCleanText(element) {
-    if (!element) return '';
+    if (!element) return "";
     const clone = element.cloneNode(true);
-    const decorativeElements = clone.querySelectorAll('mat-icon, mat-ripple, svg, .icon, .ripple');
-    decorativeElements.forEach(el => el.remove());
-    return clone.textContent?.trim() || '';
+    const decorativeElements = clone.querySelectorAll(
+      "mat-icon, mat-ripple, svg, .icon, .ripple",
+    );
+    decorativeElements.forEach((el) => el.remove());
+    return clone.textContent?.trim() || "";
   }
 
   console.log(`🔍 ${aiType} 検出開始 - 本番コード使用`);
@@ -3269,15 +3449,23 @@ export function detectAIModelsAndFeaturesProduction(aiType) {
 
       // モデルメニューを開いて全モデルを取得
       try {
-        if (aiType === 'chatgpt') {
+        if (aiType === "chatgpt") {
           // ChatGPT用Reactイベントトリガー
-          const events = ['mousedown', 'mouseup', 'click', 'pointerdown', 'pointerup'];
-          events.forEach(eventType => {
-            modelButton.dispatchEvent(new PointerEvent(eventType, {
-              bubbles: true,
-              cancelable: true,
-              pointerId: 1
-            }));
+          const events = [
+            "mousedown",
+            "mouseup",
+            "click",
+            "pointerdown",
+            "pointerup",
+          ];
+          events.forEach((eventType) => {
+            modelButton.dispatchEvent(
+              new PointerEvent(eventType, {
+                bubbles: true,
+                cancelable: true,
+                pointerId: 1,
+              }),
+            );
           });
         } else {
           modelButton.click();
@@ -3292,14 +3480,20 @@ export function detectAIModelsAndFeaturesProduction(aiType) {
         }
 
         if (menu) {
-          const menuItems = menu.querySelectorAll('[role="menuitem"], button, .menu-item');
+          const menuItems = menu.querySelectorAll(
+            '[role="menuitem"], button, .menu-item',
+          );
           console.log(`📝 ${aiType} メニュー項目: ${menuItems.length}個`);
 
-          menuItems.forEach(item => {
+          menuItems.forEach((item) => {
             const text = getCleanText(item);
             if (text && !results.models.includes(text)) {
               // モデル名らしいテキストのみ追加
-              if (text.match(/(GPT|Claude|Gemini|o1|Sonnet|Haiku|Opus|Flash|Pro|Ultra)/i)) {
+              if (
+                text.match(
+                  /(GPT|Claude|Gemini|o1|Sonnet|Haiku|Opus|Flash|Pro|Ultra)/i,
+                )
+              ) {
                 results.models.push(text);
                 console.log(`✅ モデル登録: ${text}`);
               }
@@ -3307,10 +3501,12 @@ export function detectAIModelsAndFeaturesProduction(aiType) {
           });
 
           // メニューを閉じる
-          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+          document.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "Escape" }),
+          );
         }
       } catch (e) {
-        console.debug('メニュー操作エラー:', e);
+        console.debug("メニュー操作エラー:", e);
       }
     }
 
@@ -3318,14 +3514,16 @@ export function detectAIModelsAndFeaturesProduction(aiType) {
     console.log(`🔍 ${aiType} 機能を検索...`);
     const features = aiSelectors.features;
     if (features) {
-      Object.keys(features).forEach(featureKey => {
+      Object.keys(features).forEach((featureKey) => {
         const featureNames = features[featureKey];
         for (const featureName of featureNames) {
           // ページ内で機能名を検索
-          const found = Array.from(document.querySelectorAll('*')).some(el => {
-            const text = el.textContent;
-            return text && text.includes(featureName);
-          });
+          const found = Array.from(document.querySelectorAll("*")).some(
+            (el) => {
+              const text = el.textContent;
+              return text && text.includes(featureName);
+            },
+          );
 
           if (found && !results.functions.includes(featureName)) {
             results.functions.push(featureName);
@@ -3336,14 +3534,13 @@ export function detectAIModelsAndFeaturesProduction(aiType) {
     }
 
     console.log(`✅ ${aiType} 検出完了:`, results);
-
   } catch (error) {
     console.error(`❌ ${aiType} 検出エラー:`, error);
   }
 
   // メッセージリスナーを設定
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.type === 'GET_AI_DETECTION_RESULTS') {
+    if (request.type === "GET_AI_DETECTION_RESULTS") {
       sendResponse(results);
     }
   });
@@ -3353,43 +3550,67 @@ export function detectAIModelsAndFeaturesProduction(aiType) {
 
 // 6列統合表を更新する関数
 function updateIntegratedTable(config) {
-  console.log('📊 AI統合モデル・機能一覧を表示します:', config);
+  console.log("📊 AI統合モデル・機能一覧を表示します:", config);
 
-  const tbody = document.getElementById('ai-integrated-tbody');
+  const tbody = document.getElementById("ai-integrated-tbody");
   if (!tbody) return;
 
   // 各列のデータを準備
   const columns = [
-    { key: 'chatgpt', dataKey: 'models', name: 'ChatGPTモデル' },
-    { key: 'claude', dataKey: 'models', name: 'Claudeモデル' },
-    { key: 'gemini', dataKey: 'models', name: 'Geminiモデル' },
-    { key: 'chatgpt', dataKey: 'functions', name: 'ChatGPT機能' },
-    { key: 'claude', dataKey: 'functions', name: 'Claude機能' },
-    { key: 'gemini', dataKey: 'functions', name: 'Gemini機能' }
+    { key: "chatgpt", dataKey: "models", name: "ChatGPTモデル" },
+    { key: "claude", dataKey: "models", name: "Claudeモデル" },
+    { key: "gemini", dataKey: "models", name: "Geminiモデル" },
+    { key: "chatgpt", dataKey: "functions", name: "ChatGPT機能" },
+    { key: "claude", dataKey: "functions", name: "Claude機能" },
+    { key: "gemini", dataKey: "functions", name: "Gemini機能" },
   ];
 
   // 各列のデータを取得
-  const columnData = columns.map(col => {
+  const columnData = columns.map((col) => {
     const aiConfig = config[col.key];
-    const items = aiConfig && aiConfig[col.dataKey] ? aiConfig[col.dataKey] : [];
+    const items =
+      aiConfig && aiConfig[col.dataKey] ? aiConfig[col.dataKey] : [];
 
-    return items.map(item => {
-      let itemName = '';
+    return items.map((item) => {
+      let itemName = "";
 
       // 文字列またはオブジェクトの処理
-      if (typeof item === 'string') {
+      if (typeof item === "string") {
         itemName = item;
-      } else if (typeof item === 'object' && item !== null) {
-        itemName = item.name || item.text || item.label || item.value || item.title || 'Unknown';
+      } else if (typeof item === "object" && item !== null) {
+        itemName =
+          item.name ||
+          item.text ||
+          item.label ||
+          item.value ||
+          item.title ||
+          "Unknown";
       } else {
         itemName = String(item);
       }
 
       // Claudeのモデル名から説明文を除去
-      if (col.key === 'claude' && col.dataKey === 'models' && itemName && typeof itemName === 'string') {
+      if (
+        col.key === "claude" &&
+        col.dataKey === "models" &&
+        itemName &&
+        typeof itemName === "string"
+      ) {
         const descriptionPatterns = [
-          '情報を', '高性能', 'スマート', '最適な', '高速な', '軽量な', '大規模', '小規模',
-          '複雑な', '日常利用', '課題に対応', '効率的', 'に対応できる', 'なモデル'
+          "情報を",
+          "高性能",
+          "スマート",
+          "最適な",
+          "高速な",
+          "軽量な",
+          "大規模",
+          "小規模",
+          "複雑な",
+          "日常利用",
+          "課題に対応",
+          "効率的",
+          "に対応できる",
+          "なモデル",
         ];
 
         for (const pattern of descriptionPatterns) {
@@ -3406,19 +3627,20 @@ function updateIntegratedTable(config) {
   });
 
   // 最大行数を計算
-  const maxRows = Math.max(...columnData.map(col => col.length), 1);
+  const maxRows = Math.max(...columnData.map((col) => col.length), 1);
 
   // テーブルボディをクリア
-  tbody.innerHTML = '';
+  tbody.innerHTML = "";
 
   // 各行を作成
   for (let rowIndex = 0; rowIndex < maxRows; rowIndex++) {
-    const row = document.createElement('tr');
+    const row = document.createElement("tr");
 
     // 各列のセルを作成
     for (let colIndex = 0; colIndex < 6; colIndex++) {
-      const cell = document.createElement('td');
-      cell.style.cssText = 'border: 1px solid #dee2e6; padding: 8px; vertical-align: top; font-size: 13px;';
+      const cell = document.createElement("td");
+      cell.style.cssText =
+        "border: 1px solid #dee2e6; padding: 8px; vertical-align: top; font-size: 13px;";
 
       const item = columnData[colIndex][rowIndex];
       if (item) {
@@ -3426,7 +3648,8 @@ function updateIntegratedTable(config) {
         cell.innerHTML = `<div style="color: #495057;">${item}</div>`;
       } else {
         // データがない場合（空セル）
-        cell.innerHTML = '<div style="color: #dee2e6; text-align: center;">-</div>';
+        cell.innerHTML =
+          '<div style="color: #dee2e6; text-align: center;">-</div>';
       }
 
       row.appendChild(cell);
@@ -3436,7 +3659,10 @@ function updateIntegratedTable(config) {
   }
 
   // データがない場合の表示
-  if (maxRows === 0 || (maxRows === 1 && columnData.every(col => col.length === 0))) {
+  if (
+    maxRows === 0 ||
+    (maxRows === 1 && columnData.every((col) => col.length === 0))
+  ) {
     tbody.innerHTML = `
       <tr>
         <td colspan="6" style="border: 1px solid #dee2e6; padding: 20px; text-align: center; color: #999;">
@@ -3449,11 +3675,11 @@ function updateIntegratedTable(config) {
 
 // ストレージからデータを読み込んで表を更新
 function loadAndDisplayIntegratedTable() {
-  chrome.storage.local.get(['ai_config_persistence'], (result) => {
+  chrome.storage.local.get(["ai_config_persistence"], (result) => {
     const config = result.ai_config_persistence || {
       chatgpt: { models: [], functions: [] },
       claude: { models: [], functions: [] },
-      gemini: { models: [], functions: [] }
+      gemini: { models: [], functions: [] },
     };
     updateIntegratedTable(config);
   });
@@ -3464,29 +3690,30 @@ aiDetectionSystemBtn.addEventListener("click", async () => {
   try {
     await runAIDetectionSystem(updateStatus, injectAutomationScripts);
   } catch (error) {
-    console.error('❌ AI検出制御エラー:', error);
-    updateStatus('AI検出制御エラー', 'error');
+    console.error("❌ AI検出制御エラー:", error);
+    updateStatus("AI検出制御エラー", "error");
   }
 });
-
 
 // ===== イベントリスナー: AIセレクタ変更検出システム =====
 // test-ai-selector-mutation-observer.jsから復元したtoggleMutationObserverMonitoringを使用
 
 aiSelectorMutationSystemBtn.addEventListener("click", async () => {
-  console.log('🔍 AIセレクタ変更検出システム開始', 'step');
+  console.log("🔍 AIセレクタ変更検出システム開始", "step");
 
   try {
     // 復元した元の実装を使用
-    await toggleMutationObserverMonitoring(aiSelectorMutationSystemBtn, updateStatus);
+    await toggleMutationObserverMonitoring(
+      aiSelectorMutationSystemBtn,
+      updateStatus,
+    );
   } catch (error) {
-    console.error('❌ AIセレクタ変更検出システムエラー:', error);
-    updateStatus(`AIセレクタ変更検出システムエラー: ${error.message}`, 'error');
-    aiSelectorMutationSystemBtn.textContent = '👁️ AIセレクタ変更検出システム';
-    aiSelectorMutationSystemBtn.style.backgroundColor = '';
+    console.error("❌ AIセレクタ変更検出システムエラー:", error);
+    updateStatus(`AIセレクタ変更検出システムエラー: ${error.message}`, "error");
+    aiSelectorMutationSystemBtn.textContent = "👁️ AIセレクタ変更検出システム";
+    aiSelectorMutationSystemBtn.style.backgroundColor = "";
   }
 });
-
 
 // 古い検証関数は削除済み（ai-selector-validation.jsに移行）
 // async function validateAllSelectorsForAI(windowInfo) { ... } - 削除済み
@@ -3495,8 +3722,8 @@ aiSelectorMutationSystemBtn.addEventListener("click", async () => {
 
 // ストレージの変更を監視（AI変更検出システムが実行されたときに更新）
 chrome.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName === 'local' && changes.ai_config_persistence) {
-    console.log('📊 AI設定が更新されました。統合表を更新します。');
+  if (areaName === "local" && changes.ai_config_persistence) {
+    console.log("📊 AI設定が更新されました。統合表を更新します。");
     const newConfig = changes.ai_config_persistence.newValue || {};
     updateIntegratedTable(newConfig);
   }
@@ -3506,13 +3733,13 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 async function startMutationObserverOnTab(tabId) {
   try {
     console.log(`🚀 TabID ${tabId} にMutationObserver開始メッセージ送信`);
-    
+
     // WindowServiceを使用してタブにメッセージを送信（タブ操作を統一）
     const response = await WindowService.sendMessageToTab(tabId, {
-      type: 'START_MUTATION_OBSERVER',
-      timestamp: Date.now()
+      type: "START_MUTATION_OBSERVER",
+      timestamp: Date.now(),
     });
-    
+
     if (response && response.success) {
       console.log(`✅ TabID ${tabId} でMutationObserver開始成功`);
       return true;
@@ -3531,10 +3758,10 @@ async function getMutationObserverResultFromTab(tabId) {
   try {
     // WindowServiceを使用してタブにメッセージを送信（タブ操作を統一）
     const response = await WindowService.sendMessageToTab(tabId, {
-      type: 'GET_MUTATION_OBSERVER_RESULT',
-      timestamp: Date.now()
+      type: "GET_MUTATION_OBSERVER_RESULT",
+      timestamp: Date.now(),
     });
-    
+
     if (response && response.success && response.report) {
       return response.report;
     }
@@ -3549,13 +3776,13 @@ async function getMutationObserverResultFromTab(tabId) {
 async function stopMutationObserverOnTab(tabId) {
   try {
     console.log(`🛑 TabID ${tabId} にMutationObserver停止メッセージ送信`);
-    
+
     // WindowServiceを使用してタブにメッセージを送信（タブ操作を統一）
     const response = await WindowService.sendMessageToTab(tabId, {
-      type: 'STOP_MUTATION_OBSERVER',
-      timestamp: Date.now()
+      type: "STOP_MUTATION_OBSERVER",
+      timestamp: Date.now(),
     });
-    
+
     if (response && response.success) {
       console.log(`✅ TabID ${tabId} でMutationObserver停止成功`);
       return true;
@@ -3605,32 +3832,32 @@ function showMutationObserverResults(report) {
       </div>
     </div>
   `;
-  
+
   // 結果表示エリアに追加
-  const resultContainer = document.createElement('div');
+  const resultContainer = document.createElement("div");
   resultContainer.innerHTML = resultHtml;
-  resultContainer.style.position = 'fixed';
-  resultContainer.style.top = '20px';
-  resultContainer.style.right = '20px';
-  resultContainer.style.zIndex = '9999';
-  resultContainer.style.maxHeight = '80vh';
-  resultContainer.style.overflowY = 'auto';
-  
+  resultContainer.style.position = "fixed";
+  resultContainer.style.top = "20px";
+  resultContainer.style.right = "20px";
+  resultContainer.style.zIndex = "9999";
+  resultContainer.style.maxHeight = "80vh";
+  resultContainer.style.overflowY = "auto";
+
   document.body.appendChild(resultContainer);
 }
 
 // 4分割ウィンドウレイアウトを作成（MutationObserver用）
 async function create4PaneLayoutForMutationObserver() {
   console.log("🖼️ MutationObserver用4分割ウィンドウレイアウト作成開始");
-  
+
   // test-runner-chrome.jsのcreateAIWindow関数を使用
   if (!window.TestRunner || !window.TestRunner.createAIWindow) {
     // test-runner-chrome.jsを動的読み込み
-    const script = document.createElement('script');
+    const script = document.createElement("script");
     // 削除済み: script.src = chrome.runtime.getURL('automations/test-runner-chrome.js');
-    console.warn('⚠️ test-runner-chrome.jsは削除されました');
+    console.warn("⚠️ test-runner-chrome.jsは削除されました");
     return; // スクリプトが存在しないため処理を中止
-    
+
     await new Promise((resolve, reject) => {
       script.onload = () => {
         console.log("✅ test-runner-chrome.js読み込み完了");
@@ -3642,51 +3869,57 @@ async function create4PaneLayoutForMutationObserver() {
       };
       document.head.appendChild(script);
     });
-    
+
     // スクリプト初期化を少し待つ
     await sleep(500);
   }
-  
+
   if (!window.TestRunner || !window.TestRunner.createAIWindow) {
     throw new Error("TestRunner.createAIWindowが利用できません");
   }
-  
+
   // AIサイト定義（test-runner-chrome.jsと同じ4分割配置）
   const aiSites = [
-    { name: 'ChatGPT', position: 0 },  // 左上
-    { name: 'Claude', position: 1 },   // 右上  
-    { name: 'Gemini', position: 2 }    // 左下
+    { name: "ChatGPT", position: 0 }, // 左上
+    { name: "Claude", position: 1 }, // 右上
+    { name: "Gemini", position: 2 }, // 左下
   ];
-  
+
   const createdTabs = [];
-  
+
   for (const site of aiSites) {
     try {
-      console.log(`🌐 ${site.name}ウィンドウを作成中... (位置: ${site.position})`);
-      
+      console.log(
+        `🌐 ${site.name}ウィンドウを作成中... (位置: ${site.position})`,
+      );
+
       // TestRunner.createAIWindowを使用してウィンドウを作成
-      const tab = await window.TestRunner.createAIWindow(site.name.toLowerCase(), site.position);
-      
+      const tab = await window.TestRunner.createAIWindow(
+        site.name.toLowerCase(),
+        site.position,
+      );
+
       if (tab && tab.id) {
         createdTabs.push({
           id: tab.id,
           name: site.name,
-          position: site.position
+          position: site.position,
         });
         console.log(`✅ ${site.name}ウィンドウ作成成功 (TabID: ${tab.id})`);
       } else {
         console.error(`❌ ${site.name}ウィンドウ作成失敗`);
       }
-      
+
       // 各ウィンドウ作成間で少し待機
       await sleep(1000);
-      
     } catch (error) {
       console.error(`❌ ${site.name}ウィンドウ作成エラー:`, error);
     }
   }
-  
-  console.log(`🎯 4分割レイアウト作成完了: ${createdTabs.length}個のウィンドウ`);
+
+  console.log(
+    `🎯 4分割レイアウト作成完了: ${createdTabs.length}個のウィンドウ`,
+  );
   return createdTabs;
 }
 
@@ -3694,10 +3927,15 @@ async function create4PaneLayoutForMutationObserver() {
 async function checkAndOpenAISites() {
   try {
     console.log("🌐 AIサイト統合チェック開始...");
-    updateStatus("AIサイト（ChatGPT、Claude、Gemini）をチェック中...", "loading");
+    updateStatus(
+      "AIサイト（ChatGPT、Claude、Gemini）をチェック中...",
+      "loading",
+    );
 
     // WindowServiceの動的インポート
-    const { default: WindowService } = await import('../services/window-service.js');
+    const { default: WindowService } = await import(
+      "../services/window-service.js"
+    );
 
     // WindowService統合機能を使用
     const result = await WindowService.openAllAISites();
@@ -3719,7 +3957,6 @@ async function checkAndOpenAISites() {
       updateStatus("❌ AIサイトオープンでエラーが発生しました", "error");
       return { opened: false, tabs: [] };
     }
-
   } catch (error) {
     console.error("❌ AIサイトチェック例外:", error);
     updateStatus("❌ AIサイトチェックでエラーが発生しました", "error");
@@ -3754,71 +3991,80 @@ async function fetchAndDisplaySelectorInfo(aiType) {
     `;
 
     // まずChrome Storageからセレクタデータを確認
-    const result = await chrome.storage.local.get(['ai_selector_data']);
-    
+    const result = await chrome.storage.local.get(["ai_selector_data"]);
+
     // aiTypeは'chatgpt', 'claude', 'gemini'の小文字で渡される
     const storedData = result.ai_selector_data?.[aiType];
-    
+
     // セレクタデータを取得（selectorDataプロパティの中にある場合とない場合の両方に対応）
     const storedSelectors = storedData?.selectorData || storedData;
-    
+
     // ストレージにデータがある場合は優先的に表示
-    if (storedSelectors && (storedSelectors.input || storedSelectors.send || storedSelectors.response || storedSelectors.stop)) {
-      
+    if (
+      storedSelectors &&
+      (storedSelectors.input ||
+        storedSelectors.send ||
+        storedSelectors.response ||
+        storedSelectors.stop)
+    ) {
       const aiNameMap = {
-        'chatgpt': 'ChatGPT',
-        'claude': 'Claude', 
-        'gemini': 'Gemini'
+        chatgpt: "ChatGPT",
+        claude: "Claude",
+        gemini: "Gemini",
       };
       const properAIName = aiNameMap[aiType.toLowerCase()] || aiType;
-      
+
       let html = `<h3>${properAIName} セレクタ情報</h3><div class="selector-types">`;
-      
+
       // 保存されたセレクタを表示
       const selectorTypes = [
-        { key: 'input', label: '📝 INPUT (入力欄)' },
-        { key: 'send', label: '📤 SEND_BUTTON (送信ボタン)' },
-        { key: 'response', label: '📄 RESPONSE (応答)' },
-        { key: 'stop', label: '⏸️ STOP_BUTTON (停止ボタン)' },
-        { key: 'deepresearch', label: '🔬 DEEP_RESEARCH' }
+        { key: "input", label: "📝 INPUT (入力欄)" },
+        { key: "send", label: "📤 SEND_BUTTON (送信ボタン)" },
+        { key: "response", label: "📄 RESPONSE (応答)" },
+        { key: "stop", label: "⏸️ STOP_BUTTON (停止ボタン)" },
+        { key: "deepresearch", label: "🔬 DEEP_RESEARCH" },
       ];
-      
-      console.log(`🔍 ${aiType} 表示対象セレクタタイプ:`, selectorTypes.map(t => t.key));
-      
+
+      console.log(
+        `🔍 ${aiType} 表示対象セレクタタイプ:`,
+        selectorTypes.map((t) => t.key),
+      );
+
       for (const type of selectorTypes) {
         const value = storedSelectors[type.key];
         console.log(`🔍 ${aiType} ${type.key}の値:`, value);
-        
+
         html += `
           <div class="selector-type">
             <h4>${type.label}</h4>
             <div class="selector-list">
         `;
-        
+
         if (value) {
           // valueがオブジェクトの場合と文字列の場合を処理
-          let selectorText = '';
-          let priorityInfo = '';
-          
-          if (typeof value === 'object' && value !== null) {
+          let selectorText = "";
+          let priorityInfo = "";
+
+          if (typeof value === "object" && value !== null) {
             // オブジェクトの場合（新しい形式）
-            selectorText = value.fullSelector || value.selector || JSON.stringify(value);
+            selectorText =
+              value.fullSelector || value.selector || JSON.stringify(value);
             if (value.priority) {
               priorityInfo = `<span style="color: #666; font-size: 11px; margin-left: 8px;">優先度: ${value.priority}</span>`;
             }
             if (value.tagName) {
               priorityInfo += `<span style="color: #666; font-size: 11px; margin-left: 8px;">タグ: &lt;${value.tagName}&gt;</span>`;
             }
-            if (typeof value.visible === 'boolean') {
-              const visibilityIcon = value.visible ? '👁️' : '🙈';
-              const visibilityText = value.visible ? '可視' : '非表示';
-              priorityInfo += `<span style="color: ${value.visible ? '#28a745' : '#dc3545'}; font-size: 11px; margin-left: 8px;">${visibilityIcon} ${visibilityText}</span>`;
+            if (typeof value.visible === "boolean") {
+              const visibilityIcon = value.visible ? "👁️" : "🙈";
+              const visibilityText = value.visible ? "可視" : "非表示";
+              priorityInfo += `<span style="color: ${value.visible ? "#28a745" : "#dc3545"}; font-size: 11px; margin-left: 8px;">${visibilityIcon} ${visibilityText}</span>`;
             }
           } else {
             // 文字列の場合（旧形式）
             selectorText = value;
           }
-          
+
           html += `
             <div style="margin: 5px 0;">
               <code style="background: #f0f0f0; padding: 4px 8px; border-radius: 4px; font-family: 'Courier New', monospace; font-size: 12px; display: inline-block; max-width: 100%; overflow-x: auto;">
@@ -3830,25 +4076,27 @@ async function fetchAndDisplaySelectorInfo(aiType) {
         } else {
           html += `<div style="color: #999; font-size: 14px;">未検出</div>`;
         }
-        
+
         html += `
             </div>
           </div>
         `;
       }
-      
+
       html += `</div>`;
-      
+
       // 最終更新時刻を表示
       if (storedSelectors.lastUpdated) {
-        const updateTime = new Date(storedSelectors.lastUpdated).toLocaleString('ja-JP');
+        const updateTime = new Date(storedSelectors.lastUpdated).toLocaleString(
+          "ja-JP",
+        );
         html += `
           <div style="margin-top: 20px; padding: 10px; background: #f8f9fa; border-radius: 8px; font-size: 12px; color: #666;">
             最終更新: ${updateTime}
           </div>
         `;
       }
-      
+
       targetPanel.innerHTML = html;
       return;
     }
@@ -3866,22 +4114,34 @@ async function fetchAndDisplaySelectorInfo(aiType) {
 
     // セレクタカテゴリの定義
     const selectorCategories = [
-      { key: 'INPUT', label: '📝 INPUT (入力欄)', icon: '📝' },
-      { key: 'SEND_BUTTON', label: '📤 SEND_BUTTON (送信ボタン)', icon: '📤' },
-      { key: 'STOP_BUTTON', label: '⏸️ STOP_BUTTON (停止ボタン)', icon: '⏸️' },
-      { key: 'RESPONSE', label: '📄 RESPONSE (応答)', icon: '📄' },
-      { key: 'MODEL_BUTTON', label: '🎯 MODEL_BUTTON (モデル選択)', icon: '🎯' },
-      { key: 'MENU_ITEM', label: '📋 MENU_ITEM (メニュー項目)', icon: '📋' },
-      { key: 'DEEP_RESEARCH', label: '🔬 DEEP_RESEARCH (DeepResearch)', icon: '🔬' },
-      { key: 'CANVAS', label: '🎨 CANVAS (アーティファクト)', icon: '🎨' },
-      { key: 'THINKING_PROCESS', label: '🤔 THINKING_PROCESS (思考プロセス)', icon: '🤔' }
+      { key: "INPUT", label: "📝 INPUT (入力欄)", icon: "📝" },
+      { key: "SEND_BUTTON", label: "📤 SEND_BUTTON (送信ボタン)", icon: "📤" },
+      { key: "STOP_BUTTON", label: "⏸️ STOP_BUTTON (停止ボタン)", icon: "⏸️" },
+      { key: "RESPONSE", label: "📄 RESPONSE (応答)", icon: "📄" },
+      {
+        key: "MODEL_BUTTON",
+        label: "🎯 MODEL_BUTTON (モデル選択)",
+        icon: "🎯",
+      },
+      { key: "MENU_ITEM", label: "📋 MENU_ITEM (メニュー項目)", icon: "📋" },
+      {
+        key: "DEEP_RESEARCH",
+        label: "🔬 DEEP_RESEARCH (DeepResearch)",
+        icon: "🔬",
+      },
+      { key: "CANVAS", label: "🎨 CANVAS (アーティファクト)", icon: "🎨" },
+      {
+        key: "THINKING_PROCESS",
+        label: "🤔 THINKING_PROCESS (思考プロセス)",
+        icon: "🤔",
+      },
     ];
 
     // 正しいAI名に変換（ChatGPT, Claude, Gemini）
     const aiNameMap = {
-      'chatgpt': 'ChatGPT',
-      'claude': 'Claude', 
-      'gemini': 'Gemini'
+      chatgpt: "ChatGPT",
+      claude: "Claude",
+      gemini: "Gemini",
     };
     const properAIName = aiNameMap[aiType.toLowerCase()] || aiType;
 
@@ -3892,18 +4152,21 @@ async function fetchAndDisplaySelectorInfo(aiType) {
 
     for (const category of selectorCategories) {
       try {
-        const selectors = await window.AIHandler.getSelectors(properAIName, category.key);
-        
+        const selectors = await window.AIHandler.getSelectors(
+          properAIName,
+          category.key,
+        );
+
         if (selectors && selectors.length > 0) {
           hasSelectors = true;
           totalSelectors += selectors.length;
-          
+
           html += `
             <div class="selector-type">
               <h4>${category.label}</h4>
               <div class="selector-list">
           `;
-          
+
           // 各セレクタを表示（最大5個まで表示、それ以上は省略）
           const displayCount = Math.min(selectors.length, 5);
           for (let i = 0; i < displayCount; i++) {
@@ -3917,7 +4180,7 @@ async function fetchAndDisplaySelectorInfo(aiType) {
               </div>
             `;
           }
-          
+
           if (selectors.length > 5) {
             html += `
               <div style="color: #666; font-size: 12px; margin-top: 5px;">
@@ -3925,7 +4188,7 @@ async function fetchAndDisplaySelectorInfo(aiType) {
               </div>
             `;
           }
-          
+
           html += `
               </div>
             </div>
@@ -3958,7 +4221,8 @@ async function fetchAndDisplaySelectorInfo(aiType) {
 
     // 統計情報を追加
     if (hasSelectors) {
-      html = `
+      html =
+        `
         <h3>${properAIName} セレクタ情報</h3>
         <div style="background: #f8f9fa; padding: 10px; border-radius: 8px; margin-bottom: 20px;">
           <div style="color: #333; font-size: 14px;">
@@ -3977,10 +4241,11 @@ async function fetchAndDisplaySelectorInfo(aiType) {
     }
 
     targetPanel.innerHTML = html;
-    console.log(`✅ ${properAIName}のセレクタ情報を表示しました (${totalSelectors}個のセレクタ)`);
-
+    console.log(
+      `✅ ${properAIName}のセレクタ情報を表示しました (${totalSelectors}個のセレクタ)`,
+    );
   } catch (error) {
-    console.error('セレクタ情報取得エラー:', error);
+    console.error("セレクタ情報取得エラー:", error);
     targetPanel.innerHTML = `
       <div style="color: #e74c3c; padding: 20px;">
         ❌ エラーが発生しました: ${error.message}
@@ -3990,24 +4255,26 @@ async function fetchAndDisplaySelectorInfo(aiType) {
 }
 
 // ===== イベントリスナー: セレクタタブ切り替え =====
-document.querySelectorAll('.selector-tab').forEach(tab => {
-  tab.addEventListener('click', async (e) => {
+document.querySelectorAll(".selector-tab").forEach((tab) => {
+  tab.addEventListener("click", async (e) => {
     // アクティブタブの切り替え
-    document.querySelectorAll('.selector-tab').forEach(t => t.classList.remove('active'));
-    e.target.classList.add('active');
-    
+    document
+      .querySelectorAll(".selector-tab")
+      .forEach((t) => t.classList.remove("active"));
+    e.target.classList.add("active");
+
     // パネルの表示切り替え
     const aiType = e.target.dataset.ai;
-    document.querySelectorAll('.selector-ai-panel').forEach(panel => {
-      panel.style.display = 'none';
+    document.querySelectorAll(".selector-ai-panel").forEach((panel) => {
+      panel.style.display = "none";
     });
     const targetPanel = document.getElementById(`${aiType}-selectors`);
     if (targetPanel) {
-      targetPanel.style.display = 'block';
+      targetPanel.style.display = "block";
     }
-    
+
     console.log(`セレクタタブ切り替え: ${aiType}`);
-    
+
     // セレクタ情報を動的に取得・表示
     await fetchAndDisplaySelectorInfo(aiType);
   });
@@ -4066,10 +4333,10 @@ document.addEventListener('DOMContentLoaded', () => {
 class EnhancedLogViewer {
   constructor() {
     this.logs = [];
-    this.currentCategory = 'all';
+    this.currentCategory = "all";
     this.port = null;
     this.stepLogsCollector = null;
-    this.searchTerm = '';
+    this.searchTerm = "";
     this.errorPatterns = [
       /error/i,
       /エラー/,
@@ -4080,42 +4347,45 @@ class EnhancedLogViewer {
       /syntax.*error/i,
       /構文エラー/,
       /could not establish connection/i,
-      /接続.*確立.*できませ/
+      /接続.*確立.*できませ/,
     ];
     this.initElements();
     this.connectToBackground();
     this.attachEventListeners();
     this.startStepLogsCollection();
   }
-  
+
   initElements() {
-    this.container = document.getElementById('log-container');
-    this.tabs = document.querySelectorAll('.log-tab');
-    this.clearBtn = document.getElementById('btn-clear-logs');
-    this.copyBtn = document.getElementById('btn-copy-logs');
-    this.searchInput = document.getElementById('log-search-input');
-    this.exportBtn = document.getElementById('btn-export-logs');
-    this.toggleErrorBtn = document.getElementById('btn-toggle-errors');
-    this.logStats = document.getElementById('log-stats');
+    this.container = document.getElementById("log-container");
+    this.tabs = document.querySelectorAll(".log-tab");
+    this.clearBtn = document.getElementById("btn-clear-logs");
+    this.copyBtn = document.getElementById("btn-copy-logs");
+    this.searchInput = document.getElementById("log-search-input");
+    this.exportBtn = document.getElementById("btn-export-logs");
+    this.toggleErrorBtn = document.getElementById("btn-toggle-errors");
+    this.logStats = document.getElementById("log-stats");
 
     // 要素が存在しない場合は作成
     this.createMissingElements();
   }
-  
+
   connectToBackground() {
     try {
       // background.jsのLogManagerに接続
-      this.port = chrome.runtime.connect({ name: 'log-viewer' });
+      this.port = chrome.runtime.connect({ name: "log-viewer" });
 
       // 接続エラーハンドリング
       this.port.onDisconnect.addListener(() => {
-        console.warn('[LogViewer] 背景スクリプトとの接続が切断されました。再接続を試行します。');
+        console.warn(
+          "[LogViewer] 背景スクリプトとの接続が切断されました。再接続を試行します。",
+        );
         this.addLog({
           timestamp: Date.now(),
-          level: 'warn',
-          message: 'Background script connection lost. Attempting to reconnect...',
-          source: 'LogViewer',
-          category: 'system'
+          level: "warn",
+          message:
+            "Background script connection lost. Attempting to reconnect...",
+          source: "LogViewer",
+          category: "system",
         });
         // 3秒後に再接続を試行
         setTimeout(() => this.connectToBackground(), 3000);
@@ -4123,29 +4393,33 @@ class EnhancedLogViewer {
 
       // メッセージリスナー
       this.port.onMessage.addListener((msg) => {
-        if (msg.type === 'log') {
+        if (msg.type === "log") {
           this.addLog(msg.data);
-        } else if (msg.type === 'logs-batch') {
+        } else if (msg.type === "logs-batch") {
           this.logs = msg.data || [];
           this.renderLogs();
           this.updateStats();
-        } else if (msg.type === 'clear') {
-          if (!msg.category || msg.category === this.currentCategory || this.currentCategory === 'all') {
-            this.logs = this.logs.filter(log => {
+        } else if (msg.type === "clear") {
+          if (
+            !msg.category ||
+            msg.category === this.currentCategory ||
+            this.currentCategory === "all"
+          ) {
+            this.logs = this.logs.filter((log) => {
               if (!msg.category) return false;
-              if (msg.category === 'error') return log.level !== 'error';
-              if (msg.category === 'system') return log.category !== 'system';
+              if (msg.category === "error") return log.level !== "error";
+              if (msg.category === "system") return log.category !== "system";
               return log.ai !== msg.category;
             });
             this.renderLogs();
             this.updateStats();
           }
-        } else if (msg.type === 'selector-data') {
+        } else if (msg.type === "selector-data") {
           // セレクタデータを受信してUIに表示
-          if (typeof displaySelectorInfo === 'function') {
+          if (typeof displaySelectorInfo === "function") {
             displaySelectorInfo(msg.data);
           }
-          if (typeof logSelectorInfo === 'function') {
+          if (typeof logSelectorInfo === "function") {
             logSelectorInfo(msg.data);
           }
         }
@@ -4153,26 +4427,26 @@ class EnhancedLogViewer {
 
       // 既存のログを取得
       if (this.port) {
-        this.port.postMessage({ type: 'get-logs' });
+        this.port.postMessage({ type: "get-logs" });
       }
     } catch (error) {
-      console.error('[LogViewer] Background connection error:', error);
+      console.error("[LogViewer] Background connection error:", error);
       this.addLog({
         timestamp: Date.now(),
-        level: 'error',
+        level: "error",
         message: `Background connection failed: ${error.message}`,
-        source: 'LogViewer',
-        category: 'system'
+        source: "LogViewer",
+        category: "system",
       });
     }
   }
-  
+
   attachEventListeners() {
     // タブ切り替え
-    this.tabs.forEach(tab => {
-      tab.addEventListener('click', () => {
-        this.tabs.forEach(t => t.classList.remove('active'));
-        tab.classList.add('active');
+    this.tabs.forEach((tab) => {
+      tab.addEventListener("click", () => {
+        this.tabs.forEach((t) => t.classList.remove("active"));
+        tab.classList.add("active");
         this.currentCategory = tab.dataset.category;
         this.renderLogs();
         this.updateStats();
@@ -4181,24 +4455,25 @@ class EnhancedLogViewer {
 
     // クリアボタン
     if (this.clearBtn) {
-      this.clearBtn.addEventListener('click', () => {
-        const category = this.currentCategory === 'all' ? null : this.currentCategory;
+      this.clearBtn.addEventListener("click", () => {
+        const category =
+          this.currentCategory === "all" ? null : this.currentCategory;
         if (this.port) {
-          this.port.postMessage({ type: 'clear', category });
+          this.port.postMessage({ type: "clear", category });
         }
       });
     }
 
     // コピーボタン
     if (this.copyBtn) {
-      this.copyBtn.addEventListener('click', () => {
+      this.copyBtn.addEventListener("click", () => {
         this.copyLogs();
       });
     }
 
     // 検索機能
     if (this.searchInput) {
-      this.searchInput.addEventListener('input', (e) => {
+      this.searchInput.addEventListener("input", (e) => {
         this.searchTerm = e.target.value.toLowerCase();
         this.renderLogs();
       });
@@ -4206,24 +4481,24 @@ class EnhancedLogViewer {
 
     // エクスポート機能
     if (this.exportBtn) {
-      this.exportBtn.addEventListener('click', () => {
+      this.exportBtn.addEventListener("click", () => {
         this.exportLogs();
       });
     }
 
     // エラーハイライト切り替え
     if (this.toggleErrorBtn) {
-      this.toggleErrorBtn.addEventListener('click', () => {
+      this.toggleErrorBtn.addEventListener("click", () => {
         this.toggleErrorHighlight();
       });
     }
   }
-  
+
   createMissingElements() {
     // 検索ボックスが存在しない場合は作成
     if (!this.searchInput) {
-      const searchContainer = document.createElement('div');
-      searchContainer.className = 'log-search-container';
+      const searchContainer = document.createElement("div");
+      searchContainer.className = "log-search-container";
       searchContainer.innerHTML = `
         <input type="text" id="log-search-input" placeholder="ログを検索..." class="log-search-input">
         <button id="btn-export-logs" class="btn btn-secondary">エクスポート</button>
@@ -4233,17 +4508,17 @@ class EnhancedLogViewer {
       // ログコンテナの前に挿入
       if (this.container && this.container.parentNode) {
         this.container.parentNode.insertBefore(searchContainer, this.container);
-        this.searchInput = document.getElementById('log-search-input');
-        this.exportBtn = document.getElementById('btn-export-logs');
-        this.toggleErrorBtn = document.getElementById('btn-toggle-errors');
+        this.searchInput = document.getElementById("log-search-input");
+        this.exportBtn = document.getElementById("btn-export-logs");
+        this.toggleErrorBtn = document.getElementById("btn-toggle-errors");
       }
     }
 
     // 統計表示エリアが存在しない場合は作成
     if (!this.logStats) {
-      const statsContainer = document.createElement('div');
-      statsContainer.id = 'log-stats';
-      statsContainer.className = 'log-stats';
+      const statsContainer = document.createElement("div");
+      statsContainer.id = "log-stats";
+      statsContainer.className = "log-stats";
       if (this.container && this.container.parentNode) {
         this.container.parentNode.appendChild(statsContainer);
         this.logStats = statsContainer;
@@ -4255,17 +4530,17 @@ class EnhancedLogViewer {
     // ログエントリーの正規化
     const normalizedEntry = {
       timestamp: logEntry.timestamp || Date.now(),
-      level: logEntry.level || 'info',
-      message: logEntry.message || '',
-      source: logEntry.source || 'Unknown',
-      category: logEntry.category || 'system',
+      level: logEntry.level || "info",
+      message: logEntry.message || "",
+      source: logEntry.source || "Unknown",
+      category: logEntry.category || "system",
       ai: logEntry.ai || null,
-      ...logEntry
+      ...logEntry,
     };
 
     // エラーパターンの自動検出
     if (this.isErrorLog(normalizedEntry.message)) {
-      normalizedEntry.level = 'error';
+      normalizedEntry.level = "error";
       normalizedEntry.isAutoDetectedError = true;
     }
 
@@ -4275,7 +4550,7 @@ class EnhancedLogViewer {
     }
     this.updateStats();
   }
-  
+
   shouldShowLog(log) {
     // 検索フィルタリング
     if (this.searchTerm && !this.matchesSearch(log)) {
@@ -4283,40 +4558,43 @@ class EnhancedLogViewer {
     }
 
     // カテゴリーフィルタリング
-    if (this.currentCategory === 'all') return true;
-    if (this.currentCategory === 'error') return log.level === 'error';
-    if (this.currentCategory === 'system') return log.category === 'system';
-    if (this.currentCategory === 'selector') return log.category === 'selector' || log.type === 'selector-update';
-    if (this.currentCategory === 'chatgpt') return log.ai === 'ChatGPT' || log.ai === 'chatgpt';
-    if (this.currentCategory === 'claude') return log.ai === 'Claude' || log.ai === 'claude';
-    if (this.currentCategory === 'gemini') return log.ai === 'Gemini' || log.ai === 'gemini';
-    if (this.currentCategory === 'step') return log.source && log.source.includes('step');
+    if (this.currentCategory === "all") return true;
+    if (this.currentCategory === "error") return log.level === "error";
+    if (this.currentCategory === "system") return log.category === "system";
+    if (this.currentCategory === "selector")
+      return log.category === "selector" || log.type === "selector-update";
+    if (this.currentCategory === "chatgpt")
+      return log.ai === "ChatGPT" || log.ai === "chatgpt";
+    if (this.currentCategory === "claude")
+      return log.ai === "Claude" || log.ai === "claude";
+    if (this.currentCategory === "gemini")
+      return log.ai === "Gemini" || log.ai === "gemini";
+    if (this.currentCategory === "step")
+      return log.source && log.source.includes("step");
     return false;
   }
 
   matchesSearch(log) {
-    const searchableText = [
-      log.message,
-      log.source,
-      log.category,
-      log.ai
-    ].filter(Boolean).join(' ').toLowerCase();
+    const searchableText = [log.message, log.source, log.category, log.ai]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
 
     return searchableText.includes(this.searchTerm);
   }
 
   isErrorLog(message) {
     if (!message) return false;
-    return this.errorPatterns.some(pattern => pattern.test(message));
+    return this.errorPatterns.some((pattern) => pattern.test(message));
   }
 
   updateStats() {
     if (!this.logStats) return;
 
     const total = this.logs.length;
-    const errors = this.logs.filter(log => log.level === 'error').length;
-    const warnings = this.logs.filter(log => log.level === 'warn').length;
-    const filtered = this.logs.filter(log => this.shouldShowLog(log)).length;
+    const errors = this.logs.filter((log) => log.level === "error").length;
+    const warnings = this.logs.filter((log) => log.level === "warn").length;
+    const filtered = this.logs.filter((log) => this.shouldShowLog(log)).length;
 
     this.logStats.innerHTML = `
       <span class="stat-item">総ログ数: ${total}</span>
@@ -4327,28 +4605,30 @@ class EnhancedLogViewer {
   }
 
   exportLogs() {
-    const filteredLogs = this.logs.filter(log => this.shouldShowLog(log));
+    const filteredLogs = this.logs.filter((log) => this.shouldShowLog(log));
     const exportData = {
       timestamp: new Date().toISOString(),
       category: this.currentCategory,
       searchTerm: this.searchTerm,
       totalLogs: this.logs.length,
       exportedLogs: filteredLogs.length,
-      logs: filteredLogs.map(log => ({
+      logs: filteredLogs.map((log) => ({
         timestamp: new Date(log.timestamp).toISOString(),
         level: log.level,
         message: log.message,
         source: log.source,
         category: log.category,
-        ai: log.ai
-      }))
+        ai: log.ai,
+      })),
     };
 
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+      type: "application/json",
+    });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
-    a.download = `autoai-logs-${this.currentCategory}-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`;
+    a.download = `autoai-logs-${this.currentCategory}-${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -4357,7 +4637,9 @@ class EnhancedLogViewer {
 
   toggleErrorHighlight() {
     this.errorHighlightEnabled = !this.errorHighlightEnabled;
-    this.toggleErrorBtn.textContent = this.errorHighlightEnabled ? 'エラー強調 OFF' : 'エラー強調 ON';
+    this.toggleErrorBtn.textContent = this.errorHighlightEnabled
+      ? "エラー強調 OFF"
+      : "エラー強調 ON";
     this.renderLogs();
   }
 
@@ -4370,25 +4652,25 @@ class EnhancedLogViewer {
 
     console.log = (...args) => {
       originalConsoleLog.apply(console, args);
-      this.captureConsoleLog('info', args);
+      this.captureConsoleLog("info", args);
     };
 
     console.error = (...args) => {
       originalConsoleError.apply(console, args);
-      this.captureConsoleLog('error', args);
+      this.captureConsoleLog("error", args);
     };
 
     console.warn = (...args) => {
       originalConsoleWarn.apply(console, args);
-      this.captureConsoleLog('warn', args);
+      this.captureConsoleLog("warn", args);
     };
   }
 
   captureConsoleLog(level, args) {
-    const message = args.join(' ');
+    const message = args.join(" ");
 
     // Step ファイルからのログかどうかを判定
-    const isStepLog = message.includes('[step') || message.includes('ステップ');
+    const isStepLog = message.includes("[step") || message.includes("ステップ");
 
     if (isStepLog) {
       this.addLog({
@@ -4396,33 +4678,34 @@ class EnhancedLogViewer {
         level: level,
         message: message,
         source: this.extractStepSource(message),
-        category: 'step'
+        category: "step",
       });
     }
   }
 
   extractStepSource(message) {
     const stepMatch = message.match(/\[([^[\]]+\.js)\]/);
-    return stepMatch ? stepMatch[1] : 'step-unknown';
+    return stepMatch ? stepMatch[1] : "step-unknown";
   }
-  
+
   renderLogs() {
     if (!this.container) return;
-    
-    const filteredLogs = this.logs.filter(log => this.shouldShowLog(log));
-    
+
+    const filteredLogs = this.logs.filter((log) => this.shouldShowLog(log));
+
     if (filteredLogs.length === 0) {
-      this.container.innerHTML = '<div class="log-empty">ログがまだありません</div>';
+      this.container.innerHTML =
+        '<div class="log-empty">ログがまだありません</div>';
       return;
     }
-    
-    this.container.innerHTML = '';
-    filteredLogs.forEach(log => this.appendLogEntry(log));
-    
+
+    this.container.innerHTML = "";
+    filteredLogs.forEach((log) => this.appendLogEntry(log));
+
     // 最新のログまでスクロール
     this.container.scrollTop = this.container.scrollHeight;
   }
-  
+
   /**
    * URLを検出してリンクに変換する
    * @param {string} text - 変換するテキスト
@@ -4431,7 +4714,7 @@ class EnhancedLogViewer {
   linkifyUrls(text) {
     // HTMLエスケープ処理
     const escapeHtml = (str) => {
-      const div = document.createElement('div');
+      const div = document.createElement("div");
       div.textContent = str;
       return div.innerHTML;
     };
@@ -4452,35 +4735,35 @@ class EnhancedLogViewer {
     if (!this.container) return;
 
     // 空メッセージチェックを削除
-    if (this.container.querySelector('.log-empty')) {
-      this.container.innerHTML = '';
+    if (this.container.querySelector(".log-empty")) {
+      this.container.innerHTML = "";
     }
 
-    const entry = document.createElement('div');
-    let className = `log-entry log-${log.level || 'info'}`;
+    const entry = document.createElement("div");
+    let className = `log-entry log-${log.level || "info"}`;
 
     // エラーハイライトが有効で、エラーログの場合
-    if (this.errorHighlightEnabled && log.level === 'error') {
-      className += ' log-error-highlighted';
+    if (this.errorHighlightEnabled && log.level === "error") {
+      className += " log-error-highlighted";
     }
 
     // 自動検出されたエラーの場合
     if (log.isAutoDetectedError) {
-      className += ' log-auto-detected-error';
+      className += " log-auto-detected-error";
     }
 
     entry.className = className;
 
     // タイムスタンプ
-    const timestamp = new Date(log.timestamp).toLocaleTimeString('ja-JP');
-    const timestampSpan = document.createElement('span');
-    timestampSpan.className = 'log-timestamp';
+    const timestamp = new Date(log.timestamp).toLocaleTimeString("ja-JP");
+    const timestampSpan = document.createElement("span");
+    timestampSpan.className = "log-timestamp";
     timestampSpan.textContent = timestamp;
 
     // ソース/AI名
     if (log.ai || log.source) {
-      const sourceSpan = document.createElement('span');
-      sourceSpan.className = 'log-source';
+      const sourceSpan = document.createElement("span");
+      sourceSpan.className = "log-source";
       sourceSpan.textContent = `[${log.ai || log.source}]`;
       entry.appendChild(sourceSpan);
     }
@@ -4488,13 +4771,13 @@ class EnhancedLogViewer {
     entry.appendChild(timestampSpan);
 
     // レベルインジケーター
-    const levelSpan = document.createElement('span');
+    const levelSpan = document.createElement("span");
     levelSpan.className = `log-level log-level-${log.level}`;
     levelSpan.textContent = this.getLevelIcon(log.level);
     entry.appendChild(levelSpan);
 
     // メッセージ（URLをリンク化とエラーパターンハイライト）
-    const messageSpan = document.createElement('span');
+    const messageSpan = document.createElement("span");
     let messageContent = this.linkifyUrls(` ${log.message}`);
 
     // エラーキーワードをハイライト
@@ -4513,52 +4796,65 @@ class EnhancedLogViewer {
 
   getLevelIcon(level) {
     switch (level) {
-      case 'error': return '❌';
-      case 'warn': return '⚠️';
-      case 'info': return 'ℹ️';
-      case 'debug': return '🔍';
-      default: return '📄';
+      case "error":
+        return "❌";
+      case "warn":
+        return "⚠️";
+      case "info":
+        return "ℹ️";
+      case "debug":
+        return "🔍";
+      default:
+        return "📄";
     }
   }
 
   highlightErrorKeywords(text) {
     let highlighted = text;
-    this.errorPatterns.forEach(pattern => {
-      const regex = new RegExp(`(${pattern.source})`, 'gi');
-      highlighted = highlighted.replace(regex, '<span class="error-keyword">$1</span>');
+    this.errorPatterns.forEach((pattern) => {
+      const regex = new RegExp(`(${pattern.source})`, "gi");
+      highlighted = highlighted.replace(
+        regex,
+        '<span class="error-keyword">$1</span>',
+      );
     });
     return highlighted;
   }
-  
+
   copyLogs() {
-    const filteredLogs = this.logs.filter(log => this.shouldShowLog(log));
-    
+    const filteredLogs = this.logs.filter((log) => this.shouldShowLog(log));
+
     if (filteredLogs.length === 0) {
-      showFeedback('コピーするログがありません', 'warning');
+      showFeedback("コピーするログがありません", "warning");
       return;
     }
-    
-    const text = filteredLogs.map(log => {
-      const timestamp = new Date(log.timestamp).toLocaleString('ja-JP');
-      const source = log.ai || log.source || '';
-      return `[${timestamp}] ${source ? `[${source}] ` : ''}${log.message}`;
-    }).join('\n');
-    
-    navigator.clipboard.writeText(text).then(() => {
-      showFeedback('ログをコピーしました', 'success');
-      
-      // ボタンのフィードバック
-      const originalText = this.copyBtn.textContent;
-      this.copyBtn.textContent = '✓ コピー済み';
-      setTimeout(() => {
-        this.copyBtn.textContent = originalText;
-      }, 2000);
-    }).catch(err => {
-      showFeedback('コピーに失敗しました', 'error');
-      console.error('Failed to copy logs:', err);
-    });
+
+    const text = filteredLogs
+      .map((log) => {
+        const timestamp = new Date(log.timestamp).toLocaleString("ja-JP");
+        const source = log.ai || log.source || "";
+        return `[${timestamp}] ${source ? `[${source}] ` : ""}${log.message}`;
+      })
+      .join("\n");
+
+    navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        showFeedback("ログをコピーしました", "success");
+
+        // ボタンのフィードバック
+        const originalText = this.copyBtn.textContent;
+        this.copyBtn.textContent = "✓ コピー済み";
+        setTimeout(() => {
+          this.copyBtn.textContent = originalText;
+        }, 2000);
+      })
+      .catch((err) => {
+        showFeedback("コピーに失敗しました", "error");
+        console.error("Failed to copy logs:", err);
+      });
   }
-  
+
   /**
    * セレクタ情報をログに追加する専用メソッド
    * @param {Object} logEntry - セレクタログエントリ
@@ -4567,42 +4863,44 @@ class EnhancedLogViewer {
     // セレクタログ専用のフォーマット
     const selectorLogEntry = {
       timestamp: logEntry.timestamp || Date.now(),
-      level: 'info',
-      category: 'selector',
-      ai: 'Selector System',
-      source: 'MutationObserver',
+      level: "info",
+      category: "selector",
+      ai: "Selector System",
+      source: "MutationObserver",
       message: this.formatSelectorMessage(logEntry.data),
-      type: 'selector-update',
-      data: logEntry.data
+      type: "selector-update",
+      data: logEntry.data,
     };
-    
+
     this.addLog(selectorLogEntry);
   }
-  
+
   /**
    * セレクタデータを人間が読める形式にフォーマット
    * @param {Object} selectorData - セレクタデータ
    * @returns {string} フォーマット済みメッセージ
    */
   formatSelectorMessage(selectorData) {
-    if (!selectorData) return 'セレクタ情報を更新しました';
-    
+    if (!selectorData) return "セレクタ情報を更新しました";
+
     const aiTypes = Object.keys(selectorData);
-    if (aiTypes.length === 0) return 'セレクタ情報を更新しました';
-    
-    const summaries = aiTypes.map(aiType => {
+    if (aiTypes.length === 0) return "セレクタ情報を更新しました";
+
+    const summaries = aiTypes.map((aiType) => {
       const data = selectorData[aiType];
       if (!data) return `${aiType.toUpperCase()}: データなし`;
-      
+
       const selectorCount = data.totalSelectors || 0;
       const inputCount = data.inputElements || 0;
       const buttonCount = data.buttonElements || 0;
-      const deepResearch = data.deepResearch?.available ? ' (DeepResearch対応)' : '';
-      
+      const deepResearch = data.deepResearch?.available
+        ? " (DeepResearch対応)"
+        : "";
+
       return `${aiType.toUpperCase()}: ${selectorCount}個のセレクタ (入力:${inputCount}, ボタン:${buttonCount})${deepResearch}`;
     });
-    
-    return `セレクタ情報を更新: ${summaries.join(', ')}`;
+
+    return `セレクタ情報を更新: ${summaries.join(", ")}`;
   }
 }
 
@@ -4610,7 +4908,7 @@ class EnhancedLogViewer {
 class LogViewer {
   constructor() {
     this.logs = [];
-    this.currentCategory = 'all';
+    this.currentCategory = "all";
     this.port = null;
     this.initElements();
     this.connectToBackground();
@@ -4618,50 +4916,57 @@ class LogViewer {
   }
 
   initElements() {
-    this.container = document.getElementById('log-container');
-    this.tabs = document.querySelectorAll('.log-tab');
-    this.clearBtn = document.getElementById('btn-clear-logs');
-    this.copyBtn = document.getElementById('btn-copy-logs');
+    this.container = document.getElementById("log-container");
+    this.tabs = document.querySelectorAll(".log-tab");
+    this.clearBtn = document.getElementById("btn-clear-logs");
+    this.copyBtn = document.getElementById("btn-copy-logs");
   }
 
   connectToBackground() {
     try {
       // background.jsのLogManagerに接続
-      this.port = chrome.runtime.connect({ name: 'log-viewer' });
+      this.port = chrome.runtime.connect({ name: "log-viewer" });
 
       // エラーハンドリング
       this.port.onDisconnect.addListener(() => {
         if (chrome.runtime.lastError) {
-          console.log('[LogViewer] Background接続エラー（正常）:', chrome.runtime.lastError.message);
+          console.log(
+            "[LogViewer] Background接続エラー（正常）:",
+            chrome.runtime.lastError.message,
+          );
         }
         this.port = null;
         // ローカルモードで動作
-        console.log('[LogViewer] ローカルモードで動作中');
+        console.log("[LogViewer] ローカルモードで動作中");
       });
 
       // メッセージリスナー
       this.port.onMessage.addListener((msg) => {
-        if (msg.type === 'log') {
+        if (msg.type === "log") {
           this.addLog(msg.data);
-        } else if (msg.type === 'logs-batch') {
+        } else if (msg.type === "logs-batch") {
           this.logs = msg.data || [];
           this.renderLogs();
-        } else if (msg.type === 'clear') {
-          if (!msg.category || msg.category === this.currentCategory || this.currentCategory === 'all') {
-            this.logs = this.logs.filter(log => {
+        } else if (msg.type === "clear") {
+          if (
+            !msg.category ||
+            msg.category === this.currentCategory ||
+            this.currentCategory === "all"
+          ) {
+            this.logs = this.logs.filter((log) => {
               if (!msg.category) return false;
-              if (msg.category === 'error') return log.level !== 'error';
-              if (msg.category === 'system') return log.category !== 'system';
+              if (msg.category === "error") return log.level !== "error";
+              if (msg.category === "system") return log.category !== "system";
               return log.ai !== msg.category;
             });
             this.renderLogs();
           }
-        } else if (msg.type === 'selector-data') {
+        } else if (msg.type === "selector-data") {
           // セレクタデータを受信してUIに表示
-          if (typeof displaySelectorInfo === 'function') {
+          if (typeof displaySelectorInfo === "function") {
             displaySelectorInfo(msg.data);
           }
-          if (typeof logSelectorInfo === 'function') {
+          if (typeof logSelectorInfo === "function") {
             logSelectorInfo(msg.data);
           }
         }
@@ -4669,20 +4974,20 @@ class LogViewer {
 
       // 既存のログを取得
       if (this.port) {
-        this.port.postMessage({ type: 'get-logs' });
+        this.port.postMessage({ type: "get-logs" });
       }
     } catch (error) {
-      console.log('[LogViewer] 接続初期化エラー（正常）:', error.message);
+      console.log("[LogViewer] 接続初期化エラー（正常）:", error.message);
       this.port = null;
     }
   }
 
   attachEventListeners() {
     // タブ切り替え
-    this.tabs.forEach(tab => {
-      tab.addEventListener('click', () => {
-        this.tabs.forEach(t => t.classList.remove('active'));
-        tab.classList.add('active');
+    this.tabs.forEach((tab) => {
+      tab.addEventListener("click", () => {
+        this.tabs.forEach((t) => t.classList.remove("active"));
+        tab.classList.add("active");
         this.currentCategory = tab.dataset.category;
         this.renderLogs();
       });
@@ -4690,10 +4995,11 @@ class LogViewer {
 
     // クリアボタン
     if (this.clearBtn) {
-      this.clearBtn.addEventListener('click', () => {
-        const category = this.currentCategory === 'all' ? null : this.currentCategory;
+      this.clearBtn.addEventListener("click", () => {
+        const category =
+          this.currentCategory === "all" ? null : this.currentCategory;
         if (this.port) {
-          this.port.postMessage({ type: 'clear', category });
+          this.port.postMessage({ type: "clear", category });
         } else {
           // ローカルモードでのクリア
           this.logs = [];
@@ -4704,7 +5010,7 @@ class LogViewer {
 
     // コピーボタン
     if (this.copyBtn) {
-      this.copyBtn.addEventListener('click', () => {
+      this.copyBtn.addEventListener("click", () => {
         this.copyLogs();
       });
     }
@@ -4718,28 +5024,33 @@ class LogViewer {
   }
 
   shouldShowLog(log) {
-    if (this.currentCategory === 'all') return true;
-    if (this.currentCategory === 'error') return log.level === 'error';
-    if (this.currentCategory === 'system') return log.category === 'system';
-    if (this.currentCategory === 'selector') return log.category === 'selector' || log.type === 'selector-update';
-    if (this.currentCategory === 'chatgpt') return log.ai === 'ChatGPT' || log.ai === 'chatgpt';
-    if (this.currentCategory === 'claude') return log.ai === 'Claude' || log.ai === 'claude';
-    if (this.currentCategory === 'gemini') return log.ai === 'Gemini' || log.ai === 'gemini';
+    if (this.currentCategory === "all") return true;
+    if (this.currentCategory === "error") return log.level === "error";
+    if (this.currentCategory === "system") return log.category === "system";
+    if (this.currentCategory === "selector")
+      return log.category === "selector" || log.type === "selector-update";
+    if (this.currentCategory === "chatgpt")
+      return log.ai === "ChatGPT" || log.ai === "chatgpt";
+    if (this.currentCategory === "claude")
+      return log.ai === "Claude" || log.ai === "claude";
+    if (this.currentCategory === "gemini")
+      return log.ai === "Gemini" || log.ai === "gemini";
     return false;
   }
 
   renderLogs() {
     if (!this.container) return;
 
-    const filteredLogs = this.logs.filter(log => this.shouldShowLog(log));
+    const filteredLogs = this.logs.filter((log) => this.shouldShowLog(log));
 
     if (filteredLogs.length === 0) {
-      this.container.innerHTML = '<div class="log-empty">ログがまだありません</div>';
+      this.container.innerHTML =
+        '<div class="log-empty">ログがまだありません</div>';
       return;
     }
 
-    this.container.innerHTML = '';
-    filteredLogs.forEach(log => this.appendLogEntry(log));
+    this.container.innerHTML = "";
+    filteredLogs.forEach((log) => this.appendLogEntry(log));
 
     // 最新のログまでスクロール
     this.container.scrollTop = this.container.scrollHeight;
@@ -4753,7 +5064,7 @@ class LogViewer {
   linkifyUrls(text) {
     // HTMLエスケープ処理
     const escapeHtml = (str) => {
-      const div = document.createElement('div');
+      const div = document.createElement("div");
       div.textContent = str;
       return div.innerHTML;
     };
@@ -4774,23 +5085,23 @@ class LogViewer {
     if (!this.container) return;
 
     // 空メッセージチェックを削除
-    if (this.container.querySelector('.log-empty')) {
-      this.container.innerHTML = '';
+    if (this.container.querySelector(".log-empty")) {
+      this.container.innerHTML = "";
     }
 
-    const entry = document.createElement('div');
-    entry.className = `log-entry log-${log.level || 'info'}`;
+    const entry = document.createElement("div");
+    entry.className = `log-entry log-${log.level || "info"}`;
 
     // タイムスタンプ
-    const timestamp = new Date(log.timestamp).toLocaleTimeString('ja-JP');
-    const timestampSpan = document.createElement('span');
-    timestampSpan.className = 'log-timestamp';
+    const timestamp = new Date(log.timestamp).toLocaleTimeString("ja-JP");
+    const timestampSpan = document.createElement("span");
+    timestampSpan.className = "log-timestamp";
     timestampSpan.textContent = timestamp;
 
     // ソース/AI名
     if (log.ai || log.source) {
-      const sourceSpan = document.createElement('span');
-      sourceSpan.className = 'log-source';
+      const sourceSpan = document.createElement("span");
+      sourceSpan.className = "log-source";
       sourceSpan.textContent = `[${log.ai || log.source}]`;
       entry.appendChild(sourceSpan);
     }
@@ -4798,7 +5109,7 @@ class LogViewer {
     entry.appendChild(timestampSpan);
 
     // メッセージ（URLをリンク化）
-    const messageSpan = document.createElement('span');
+    const messageSpan = document.createElement("span");
     const linkedMessage = this.linkifyUrls(` ${log.message}`);
     messageSpan.innerHTML = linkedMessage;
     entry.appendChild(messageSpan);
@@ -4810,32 +5121,37 @@ class LogViewer {
   }
 
   copyLogs() {
-    const filteredLogs = this.logs.filter(log => this.shouldShowLog(log));
+    const filteredLogs = this.logs.filter((log) => this.shouldShowLog(log));
 
     if (filteredLogs.length === 0) {
-      showFeedback('コピーするログがありません', 'warning');
+      showFeedback("コピーするログがありません", "warning");
       return;
     }
 
-    const text = filteredLogs.map(log => {
-      const timestamp = new Date(log.timestamp).toLocaleString('ja-JP');
-      const source = log.ai || log.source || '';
-      return `[${timestamp}] ${source ? `[${source}] ` : ''}${log.message}`;
-    }).join('\n');
+    const text = filteredLogs
+      .map((log) => {
+        const timestamp = new Date(log.timestamp).toLocaleString("ja-JP");
+        const source = log.ai || log.source || "";
+        return `[${timestamp}] ${source ? `[${source}] ` : ""}${log.message}`;
+      })
+      .join("\n");
 
-    navigator.clipboard.writeText(text).then(() => {
-      showFeedback('ログをコピーしました', 'success');
+    navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        showFeedback("ログをコピーしました", "success");
 
-      // ボタンのフィードバック
-      const originalText = this.copyBtn.textContent;
-      this.copyBtn.textContent = '✓ コピー済み';
-      setTimeout(() => {
-        this.copyBtn.textContent = originalText;
-      }, 2000);
-    }).catch(err => {
-      showFeedback('コピーに失敗しました', 'error');
-      console.error('Failed to copy logs:', err);
-    });
+        // ボタンのフィードバック
+        const originalText = this.copyBtn.textContent;
+        this.copyBtn.textContent = "✓ コピー済み";
+        setTimeout(() => {
+          this.copyBtn.textContent = originalText;
+        }, 2000);
+      })
+      .catch((err) => {
+        showFeedback("コピーに失敗しました", "error");
+        console.error("Failed to copy logs:", err);
+      });
   }
 
   /**
@@ -4846,13 +5162,13 @@ class LogViewer {
     // セレクタログ専用のフォーマット
     const selectorLogEntry = {
       timestamp: logEntry.timestamp || Date.now(),
-      level: 'info',
-      category: 'selector',
-      ai: 'Selector System',
-      source: 'MutationObserver',
+      level: "info",
+      category: "selector",
+      ai: "Selector System",
+      source: "MutationObserver",
       message: this.formatSelectorMessage(logEntry.data),
-      type: 'selector-update',
-      data: logEntry.data
+      type: "selector-update",
+      data: logEntry.data,
     };
 
     this.addLog(selectorLogEntry);
@@ -4864,24 +5180,26 @@ class LogViewer {
    * @returns {string} フォーマット済みメッセージ
    */
   formatSelectorMessage(selectorData) {
-    if (!selectorData) return 'セレクタ情報を更新しました';
+    if (!selectorData) return "セレクタ情報を更新しました";
 
     const aiTypes = Object.keys(selectorData);
-    if (aiTypes.length === 0) return 'セレクタ情報を更新しました';
+    if (aiTypes.length === 0) return "セレクタ情報を更新しました";
 
-    const summaries = aiTypes.map(aiType => {
+    const summaries = aiTypes.map((aiType) => {
       const data = selectorData[aiType];
       if (!data) return `${aiType.toUpperCase()}: データなし`;
 
       const selectorCount = data.totalSelectors || 0;
       const inputCount = data.inputElements || 0;
       const buttonCount = data.buttonElements || 0;
-      const deepResearch = data.deepResearch?.available ? ' (DeepResearch対応)' : '';
+      const deepResearch = data.deepResearch?.available
+        ? " (DeepResearch対応)"
+        : "";
 
       return `${aiType.toUpperCase()}: ${selectorCount}個のセレクタ (入力:${inputCount}, ボタン:${buttonCount})${deepResearch}`;
     });
 
-    return `セレクタ情報を更新: ${summaries.join(', ')}`;
+    return `セレクタ情報を更新: ${summaries.join(", ")}`;
   }
 }
 
@@ -4896,7 +5214,7 @@ updateAIStatus();
 loadSavedUrls();
 
 // 最初の入力欄にイベントリスナーを設定
-const firstUrlRow = document.querySelector('.url-input-row');
+const firstUrlRow = document.querySelector(".url-input-row");
 if (firstUrlRow) {
   attachUrlRowEventListeners(firstUrlRow);
 }
@@ -4905,7 +5223,7 @@ if (firstUrlRow) {
 logViewer = new LogViewer();
 
 // UI初期化完了を通知（LogManagerは後でポート経由でログを受信）
-console.log('[UI] ログビューアー準備完了');
+console.log("[UI] ログビューアー準備完了");
 
 // ===== セレクタ情報表示機能 =====
 
@@ -4915,19 +5233,20 @@ console.log('[UI] ログビューアー準備完了');
  */
 function displaySelectorInfo(selectorData) {
   if (!selectorData) return;
-  
-  const aiTypes = ['chatgpt', 'claude', 'gemini'];
-  
-  aiTypes.forEach(aiType => {
+
+  const aiTypes = ["chatgpt", "claude", "gemini"];
+
+  aiTypes.forEach((aiType) => {
     const tabContent = document.getElementById(`selector-${aiType}`);
     if (!tabContent) return;
-    
+
     const data = selectorData[aiType];
     if (!data) {
-      tabContent.innerHTML = '<div class="selector-empty">このAIのセレクタ情報がありません</div>';
+      tabContent.innerHTML =
+        '<div class="selector-empty">このAIのセレクタ情報がありません</div>';
       return;
     }
-    
+
     let html = `
       <div class="selector-summary">
         <h4>🎯 ${aiType.toUpperCase()} セレクタ情報</h4>
@@ -4939,39 +5258,39 @@ function displaySelectorInfo(selectorData) {
       </div>
       <div class="selector-details">
     `;
-    
+
     // 主要なセレクタ情報を表示
     if (data.selectors && data.selectors.length > 0) {
-      html += '<h5>📋 検出されたセレクタ</h5>';
-      data.selectors.slice(0, 10).forEach(selector => {
+      html += "<h5>📋 検出されたセレクタ</h5>";
+      data.selectors.slice(0, 10).forEach((selector) => {
         html += `
           <div class="selector-item">
-            <div class="selector-type">${selector.type || 'unknown'}</div>
-            <div class="selector-value">${escapeHtml(selector.selector || '')}</div>
-            <div class="selector-element">${escapeHtml(selector.element || '')}</div>
+            <div class="selector-type">${selector.type || "unknown"}</div>
+            <div class="selector-value">${escapeHtml(selector.selector || "")}</div>
+            <div class="selector-element">${escapeHtml(selector.element || "")}</div>
           </div>
         `;
       });
-      
+
       if (data.selectors.length > 10) {
         html += `<div class="selector-more">他 ${data.selectors.length - 10} 個のセレクタ...</div>`;
       }
     }
-    
+
     // DeepResearch情報
     if (data.deepResearch) {
       html += `
         <h5>🔍 DeepResearch対応</h5>
         <div class="deepresearch-info">
-          <span class="deepresearch-status ${data.deepResearch.available ? 'available' : 'unavailable'}">
-            ${data.deepResearch.available ? '✅ 利用可能' : '❌ 利用不可'}
+          <span class="deepresearch-status ${data.deepResearch.available ? "available" : "unavailable"}">
+            ${data.deepResearch.available ? "✅ 利用可能" : "❌ 利用不可"}
           </span>
-          ${data.deepResearch.selector ? `<div class="deepresearch-selector">セレクタ: ${escapeHtml(data.deepResearch.selector)}</div>` : ''}
+          ${data.deepResearch.selector ? `<div class="deepresearch-selector">セレクタ: ${escapeHtml(data.deepResearch.selector)}</div>` : ""}
         </div>
       `;
     }
-    
-    html += '</div>';
+
+    html += "</div>";
     tabContent.innerHTML = html;
   });
 }
@@ -4982,19 +5301,19 @@ function displaySelectorInfo(selectorData) {
  */
 function logSelectorInfo(selectorData) {
   if (!selectorData) return;
-  
+
   const logEntry = {
     timestamp: new Date().toLocaleTimeString(),
-    type: 'selector-update',
-    data: selectorData
+    type: "selector-update",
+    data: selectorData,
   };
-  
+
   // ログビューアーにセレクタ情報を追加
-  if (logViewer && typeof logViewer.addSelectorLog === 'function') {
+  if (logViewer && typeof logViewer.addSelectorLog === "function") {
     logViewer.addSelectorLog(logEntry);
   }
-  
-  console.log('🎯 セレクタ情報ログ:', logEntry);
+
+  console.log("🎯 セレクタ情報ログ:", logEntry);
 }
 
 /**
@@ -5003,55 +5322,54 @@ function logSelectorInfo(selectorData) {
  * @returns {string} エスケープされたテキスト
  */
 function escapeHtml(text) {
-  if (typeof text !== 'string') return '';
-  const div = document.createElement('div');
+  if (typeof text !== "string") return "";
+  const div = document.createElement("div");
   div.textContent = text;
   return div.innerHTML;
 }
 
-
 // ===== AIタブ切り替え機能 =====
 function initAITabsSystem() {
-  const aiTabs = document.querySelectorAll('.ai-tab');
-  const aiPanels = document.querySelectorAll('.ai-panel');
+  const aiTabs = document.querySelectorAll(".ai-tab");
+  const aiPanels = document.querySelectorAll(".ai-panel");
 
   if (aiTabs.length === 0 || aiPanels.length === 0) return;
 
-  aiTabs.forEach(tab => {
-    tab.addEventListener('click', () => {
+  aiTabs.forEach((tab) => {
+    tab.addEventListener("click", () => {
       const aiType = tab.dataset.ai;
 
       // すべてのタブを非アクティブ化
-      aiTabs.forEach(t => {
-        t.classList.remove('active');
-        t.style.borderBottom = '2px solid transparent';
-        t.style.color = '#666';
+      aiTabs.forEach((t) => {
+        t.classList.remove("active");
+        t.style.borderBottom = "2px solid transparent";
+        t.style.color = "#666";
       });
 
       // すべてのパネルを非表示
-      aiPanels.forEach(p => p.style.display = 'none');
+      aiPanels.forEach((p) => (p.style.display = "none"));
 
       // クリックされたタブをアクティブ化
-      tab.classList.add('active');
+      tab.classList.add("active");
       const colors = {
-        chatgpt: '#10a37f',
-        claude: '#d97757',
-        gemini: '#4285f4'
+        chatgpt: "#10a37f",
+        claude: "#d97757",
+        gemini: "#4285f4",
       };
       tab.style.borderBottom = `2px solid ${colors[aiType]}`;
       tab.style.color = colors[aiType];
-      tab.style.fontWeight = '600';
+      tab.style.fontWeight = "600";
 
       // 対応するパネルを表示
       const panel = document.getElementById(`${aiType}-panel`);
-      if (panel) panel.style.display = 'block';
+      if (panel) panel.style.display = "block";
     });
   });
 }
 
 // ストレージの変更を監視（AI変更検出システムが実行されたときに更新）
 chrome.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName === 'local' && changes.ai_config_persistence) {
+  if (areaName === "local" && changes.ai_config_persistence) {
     updateAIStatus();
   }
 });
@@ -5065,14 +5383,17 @@ initAITabsSystem();
 async function loadDropboxSettings() {
   try {
     const result = await new Promise((resolve) => {
-      chrome.storage.local.get(['dropboxClientId', 'dropboxAutoAuth', 'dropbox_upload_settings'], resolve);
+      chrome.storage.local.get(
+        ["dropboxClientId", "dropboxAutoAuth", "dropbox_upload_settings"],
+        resolve,
+      );
     });
 
-    const clientIdInput = document.getElementById('dropboxClientId');
-    const statusIcon = document.getElementById('dropboxStatusIcon');
-    const statusText = document.getElementById('dropboxStatusText');
-    const autoAuthToggle = document.getElementById('dropboxAutoAuthToggle');
-    const autoUploadToggle = document.getElementById('dropboxAutoUploadToggle');
+    const clientIdInput = document.getElementById("dropboxClientId");
+    const statusIcon = document.getElementById("dropboxStatusIcon");
+    const statusText = document.getElementById("dropboxStatusText");
+    const autoAuthToggle = document.getElementById("dropboxAutoAuthToggle");
+    const autoUploadToggle = document.getElementById("dropboxAutoUploadToggle");
 
     if (clientIdInput && result.dropboxClientId) {
       clientIdInput.value = result.dropboxClientId;
@@ -5092,24 +5413,24 @@ async function loadDropboxSettings() {
       autoUploadToggle.checked = uploadSettings.autoUpload === true;
     }
   } catch (error) {
-    console.error('Dropbox設定の読み込みエラー:', error);
+    console.error("Dropbox設定の読み込みエラー:", error);
     updateDropboxStatus(false);
   }
 }
 
 // Dropbox設定の保存
 async function saveDropboxSettings() {
-  const clientIdInput = document.getElementById('dropboxClientId');
+  const clientIdInput = document.getElementById("dropboxClientId");
   const clientId = clientIdInput?.value?.trim();
 
   if (!clientId) {
-    showFeedback('Client IDを入力してください', 'warning');
+    showFeedback("Client IDを入力してください", "warning");
     return;
   }
 
   // 簡単な形式チェック（Dropbox App keyは通常英数字とピリオドを含む）
   if (!/^[a-zA-Z0-9._-]+$/.test(clientId)) {
-    showFeedback('Client IDの形式が正しくありません', 'error');
+    showFeedback("Client IDの形式が正しくありません", "error");
     return;
   }
 
@@ -5124,81 +5445,81 @@ async function saveDropboxSettings() {
       });
     });
 
-    showFeedback('Dropbox設定を保存しました', 'success');
+    showFeedback("Dropbox設定を保存しました", "success");
     updateDropboxStatus(true);
   } catch (error) {
-    console.error('Dropbox設定の保存エラー:', error);
-    showFeedback('設定の保存に失敗しました', 'error');
+    console.error("Dropbox設定の保存エラー:", error);
+    showFeedback("設定の保存に失敗しました", "error");
   }
 }
 
 // Dropboxステータス表示の更新
 function updateDropboxStatus(isConfigured) {
-  const statusIcon = document.getElementById('dropboxStatusIcon');
-  const statusText = document.getElementById('dropboxStatusText');
+  const statusIcon = document.getElementById("dropboxStatusIcon");
+  const statusText = document.getElementById("dropboxStatusText");
 
   if (statusIcon && statusText) {
     if (isConfigured) {
-      statusIcon.textContent = '✅';
-      statusText.textContent = 'Client IDが設定されています';
-      statusText.style.color = '#28a745';
+      statusIcon.textContent = "✅";
+      statusText.textContent = "Client IDが設定されています";
+      statusText.style.color = "#28a745";
     } else {
-      statusIcon.textContent = 'ℹ️';
-      statusText.textContent = 'Client IDが設定されていません';
-      statusText.style.color = '#666';
+      statusIcon.textContent = "ℹ️";
+      statusText.textContent = "Client IDが設定されていません";
+      statusText.style.color = "#666";
     }
   }
 }
 
 // Dropbox設定のイベントリスナー初期化
 function initDropboxSettings() {
-  const saveButton = document.getElementById('saveDropboxSettings');
-  const clientIdInput = document.getElementById('dropboxClientId');
+  const saveButton = document.getElementById("saveDropboxSettings");
+  const clientIdInput = document.getElementById("dropboxClientId");
 
   if (saveButton) {
-    saveButton.addEventListener('click', saveDropboxSettings);
+    saveButton.addEventListener("click", saveDropboxSettings);
   }
 
   // Enterキーでも保存
   if (clientIdInput) {
-    clientIdInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
+    clientIdInput.addEventListener("keypress", (e) => {
+      if (e.key === "Enter") {
         saveDropboxSettings();
       }
     });
   }
 
   // 自動認証設定のチェックボックス
-  const autoAuthToggle = document.getElementById('dropboxAutoAuthToggle');
+  const autoAuthToggle = document.getElementById("dropboxAutoAuthToggle");
   if (autoAuthToggle) {
-    autoAuthToggle.addEventListener('change', async (e) => {
+    autoAuthToggle.addEventListener("change", async (e) => {
       try {
         const isEnabled = e.target.checked;
         await chrome.storage.local.set({ dropboxAutoAuth: isEnabled });
-        console.log('[UI] Dropbox自動認証設定を更新:', isEnabled);
+        console.log("[UI] Dropbox自動認証設定を更新:", isEnabled);
         showFeedback(
           isEnabled
-            ? 'Dropbox自動認証を有効にしました'
-            : 'Dropbox自動認証を無効にしました',
-          'success'
+            ? "Dropbox自動認証を有効にしました"
+            : "Dropbox自動認証を無効にしました",
+          "success",
         );
       } catch (error) {
-        console.error('[UI] 自動認証設定保存エラー:', error);
-        showFeedback('設定の保存に失敗しました', 'error');
+        console.error("[UI] 自動認証設定保存エラー:", error);
+        showFeedback("設定の保存に失敗しました", "error");
       }
     });
   }
 
   // 自動アップロード設定のチェックボックス
-  const autoUploadToggle = document.getElementById('dropboxAutoUploadToggle');
+  const autoUploadToggle = document.getElementById("dropboxAutoUploadToggle");
   if (autoUploadToggle) {
-    autoUploadToggle.addEventListener('change', async (e) => {
+    autoUploadToggle.addEventListener("change", async (e) => {
       try {
         const isEnabled = e.target.checked;
 
         // 現在の設定を取得
         const result = await new Promise((resolve) => {
-          chrome.storage.local.get(['dropbox_upload_settings'], resolve);
+          chrome.storage.local.get(["dropbox_upload_settings"], resolve);
         });
 
         // 設定を更新
@@ -5206,18 +5527,20 @@ function initDropboxSettings() {
         uploadSettings.autoUpload = isEnabled;
 
         // 保存
-        await chrome.storage.local.set({ dropbox_upload_settings: uploadSettings });
+        await chrome.storage.local.set({
+          dropbox_upload_settings: uploadSettings,
+        });
 
-        console.log('[UI] Dropbox自動アップロード設定を更新:', isEnabled);
+        console.log("[UI] Dropbox自動アップロード設定を更新:", isEnabled);
         showFeedback(
           isEnabled
-            ? 'Dropbox自動アップロードを有効にしました'
-            : 'Dropbox自動アップロードを無効にしました',
-          'success'
+            ? "Dropbox自動アップロードを有効にしました"
+            : "Dropbox自動アップロードを無効にしました",
+          "success",
         );
       } catch (error) {
-        console.error('[UI] 自動アップロード設定保存エラー:', error);
-        showFeedback('設定の保存に失敗しました', 'error');
+        console.error("[UI] 自動アップロード設定保存エラー:", error);
+        showFeedback("設定の保存に失敗しました", "error");
         // エラー時はチェックボックスを元に戻す
         e.target.checked = !e.target.checked;
       }
@@ -5237,12 +5560,12 @@ let dropboxService = null;
 async function loadDropboxService() {
   if (!dropboxService) {
     try {
-      const module = await import('../services/dropbox-service.js');
+      const module = await import("../services/dropbox-service.js");
       dropboxService = module.dropboxService;
       await dropboxService.initialize();
     } catch (error) {
-      console.error('DropboxService読み込みエラー:', error);
-      showFeedback('Dropboxサービスの読み込みに失敗しました', 'error');
+      console.error("DropboxService読み込みエラー:", error);
+      showFeedback("Dropboxサービスの読み込みに失敗しました", "error");
       throw error;
     }
   }
@@ -5251,45 +5574,47 @@ async function loadDropboxService() {
 
 // Dropbox認証の実行
 async function authenticateDropbox() {
-  const authButton = document.getElementById('authenticateDropbox');
+  const authButton = document.getElementById("authenticateDropbox");
 
   try {
     // ボタンを無効化
     authButton.disabled = true;
-    authButton.textContent = '認証中...';
+    authButton.textContent = "認証中...";
 
     // Dropboxサービスをロード
     const service = await loadDropboxService();
 
     // Client IDが設定されているか確認
-    const clientIdInput = document.getElementById('dropboxClientId');
+    const clientIdInput = document.getElementById("dropboxClientId");
     const clientId = clientIdInput?.value?.trim();
 
     if (!clientId) {
-      throw new Error('Client IDが入力されていません。先にClient IDを設定してください。');
+      throw new Error(
+        "Client IDが入力されていません。先にClient IDを設定してください。",
+      );
     }
 
     // Client IDをDropbox Configに設定（念のため再設定）
     await service.config.setClientId(clientId);
 
-    showFeedback('Dropbox認証を開始します...', 'loading');
+    showFeedback("Dropbox認証を開始します...", "loading");
 
     // 認証実行
     const result = await service.authenticate();
 
     if (result.success) {
-      showFeedback('Dropbox認証が完了しました！', 'success');
+      showFeedback("Dropbox認証が完了しました！", "success");
       await updateDropboxAuthStatus();
     } else {
-      throw new Error(result.error || '認証に失敗しました');
+      throw new Error(result.error || "認証に失敗しました");
     }
   } catch (error) {
-    console.error('Dropbox認証エラー:', error);
-    showFeedback(`認証エラー: ${error.message}`, 'error');
+    console.error("Dropbox認証エラー:", error);
+    showFeedback(`認証エラー: ${error.message}`, "error");
   } finally {
     // ボタンを復活
     authButton.disabled = false;
-    authButton.innerHTML = '<span>🔐</span> Dropbox認証を開始';
+    authButton.innerHTML = "<span>🔐</span> Dropbox認証を開始";
   }
 }
 
@@ -5297,8 +5622,8 @@ async function authenticateDropbox() {
 async function checkAutoAuthResult() {
   try {
     const result = await chrome.storage.local.get([
-      'dropboxAutoAuthResult',
-      'dropboxAutoAuthTimestamp'
+      "dropboxAutoAuthResult",
+      "dropboxAutoAuthTimestamp",
     ]);
 
     if (result.dropboxAutoAuthResult !== undefined) {
@@ -5307,54 +5632,57 @@ async function checkAutoAuthResult() {
       // 10秒以内の結果のみ有効とする
       if (timeDiff < 10000) {
         if (result.dropboxAutoAuthResult) {
-          console.log('[UI] ポップアップからの自動認証成功を確認');
+          console.log("[UI] ポップアップからの自動認証成功を確認");
 
           // ローディング表示（短時間）
-          showFeedback('Dropbox自動認証を確認中...', 'info');
+          showFeedback("Dropbox自動認証を確認中...", "info");
 
           try {
             await updateDropboxAuthStatus();
-            showFeedback('Dropbox自動認証が完了しました！', 'success');
+            showFeedback("Dropbox自動認証が完了しました！", "success");
           } catch (updateError) {
-            console.error('[UI] 認証状態更新エラー:', updateError);
-            showFeedback('認証は完了していますが、状態更新に失敗しました', 'warning');
+            console.error("[UI] 認証状態更新エラー:", updateError);
+            showFeedback(
+              "認証は完了していますが、状態更新に失敗しました",
+              "warning",
+            );
           }
         } else {
-          console.log('[UI] ポップアップからの自動認証失敗を確認');
+          console.log("[UI] ポップアップからの自動認証失敗を確認");
 
           // 自動認証設定の状態に応じてメッセージを調整
-          const settings = await chrome.storage.local.get(['dropboxAutoAuth']);
+          const settings = await chrome.storage.local.get(["dropboxAutoAuth"]);
           const autoAuthEnabled = settings.dropboxAutoAuth !== false;
 
           if (autoAuthEnabled) {
             showFeedback(
-              'Dropbox自動認証に失敗しました。設定を確認して手動で認証してください。',
-              'warning'
+              "Dropbox自動認証に失敗しました。設定を確認して手動で認証してください。",
+              "warning",
             );
           } else {
             // 自動認証が無効の場合は通常の状態チェックを行う
-            console.log('[UI] 自動認証が無効のため通常チェックに切り替え');
+            console.log("[UI] 自動認証が無効のため通常チェックに切り替え");
             return false;
           }
         }
 
         // 結果を使用後にクリア
         await chrome.storage.local.remove([
-          'dropboxAutoAuthResult',
-          'dropboxAutoAuthTimestamp'
+          "dropboxAutoAuthResult",
+          "dropboxAutoAuthTimestamp",
         ]);
         return true; // 自動認証結果を処理した
       } else {
         // 古い結果はクリア
         await chrome.storage.local.remove([
-          'dropboxAutoAuthResult',
-          'dropboxAutoAuthTimestamp'
+          "dropboxAutoAuthResult",
+          "dropboxAutoAuthTimestamp",
         ]);
       }
     }
   } catch (error) {
-    console.error('[UI] 自動認証結果確認エラー:', error);
-    showFeedback('認証状態の確認でエラーが発生しました', 'error');
+    console.error("[UI] 自動認証結果確認エラー:", error);
+    showFeedback("認証状態の確認でエラーが発生しました", "error");
   }
   return false; // 自動認証結果なし
 }
@@ -5368,15 +5696,15 @@ async function checkDropboxAuth() {
     // 認証状態を確認
 
     if (isAuthenticated) {
-      showFeedback('Dropbox認証済みです', 'success');
+      showFeedback("Dropbox認証済みです", "success");
       await updateDropboxAuthStatus();
     } else {
-      showFeedback('Dropbox認証が必要です', 'warning');
+      showFeedback("Dropbox認証が必要です", "warning");
       updateDropboxAuthUI(false);
     }
   } catch (error) {
-    console.error('認証状態確認エラー:', error);
-    showFeedback(`認証状態確認エラー: ${error.message}`, 'error');
+    console.error("認証状態確認エラー:", error);
+    showFeedback(`認証状態確認エラー: ${error.message}`, "error");
   }
 }
 
@@ -5387,15 +5715,15 @@ async function logoutDropbox() {
     const success = await service.logout();
 
     if (success) {
-      showFeedback('Dropboxからログアウトしました', 'success');
+      showFeedback("Dropboxからログアウトしました", "success");
       updateDropboxAuthUI(false);
       updateDropboxStatus(false);
     } else {
-      throw new Error('ログアウトに失敗しました');
+      throw new Error("ログアウトに失敗しました");
     }
   } catch (error) {
-    console.error('ログアウトエラー:', error);
-    showFeedback(`ログアウトエラー: ${error.message}`, 'error');
+    console.error("ログアウトエラー:", error);
+    showFeedback(`ログアウトエラー: ${error.message}`, "error");
   }
 }
 
@@ -5411,76 +5739,85 @@ async function updateDropboxAuthStatus() {
         const userInfo = await service.getUserInfo();
         updateDropboxAuthUI(true, userInfo);
       } catch (userInfoError) {
-        console.error('ユーザー情報取得エラー:', userInfoError);
+        console.error("ユーザー情報取得エラー:", userInfoError);
 
         // 認証はされているが、ユーザー情報取得に失敗した場合
-        if (userInfoError.message.includes('認証トークンが無効') || userInfoError.message.includes('missing_scope')) {
+        if (
+          userInfoError.message.includes("認証トークンが無効") ||
+          userInfoError.message.includes("missing_scope")
+        ) {
           // トークンが無効またはスコープ不足の場合は再認証が必要
-          showFeedback('スコープ権限が不足しています。ログアウト後に再認証してください。', 'warning');
+          showFeedback(
+            "スコープ権限が不足しています。ログアウト後に再認証してください。",
+            "warning",
+          );
           updateDropboxAuthUI(false);
           // 自動的にログアウト
           await logoutDropbox();
         } else {
           // その他のエラーの場合は、基本的な認証情報を表示
           updateDropboxAuthUI(true, {
-            name: 'ユーザー情報取得に失敗',
-            email: 'API形式エラーまたはスコープ不足'
+            name: "ユーザー情報取得に失敗",
+            email: "API形式エラーまたはスコープ不足",
           });
-          showFeedback('ユーザー情報の取得に失敗しましたが、認証は完了しています', 'warning');
+          showFeedback(
+            "ユーザー情報の取得に失敗しましたが、認証は完了しています",
+            "warning",
+          );
         }
       }
     } else {
       updateDropboxAuthUI(false);
     }
   } catch (error) {
-    console.error('認証状態更新エラー:', error);
+    console.error("認証状態更新エラー:", error);
     updateDropboxAuthUI(false);
   }
 }
 
 // 認証UI表示の更新
 function updateDropboxAuthUI(isAuthenticated, userInfo = null) {
-  const authDetails = document.getElementById('dropboxAuthDetails');
-  const logoutButton = document.getElementById('logoutDropbox');
-  const authButton = document.getElementById('authenticateDropbox');
-  const userNameSpan = document.getElementById('dropboxUserName');
-  const userEmailSpan = document.getElementById('dropboxUserEmail');
+  const authDetails = document.getElementById("dropboxAuthDetails");
+  const logoutButton = document.getElementById("logoutDropbox");
+  const authButton = document.getElementById("authenticateDropbox");
+  const userNameSpan = document.getElementById("dropboxUserName");
+  const userEmailSpan = document.getElementById("dropboxUserEmail");
 
   if (isAuthenticated && userInfo) {
     // 認証済み表示
-    authDetails.style.display = 'block';
-    logoutButton.style.display = 'inline-block';
-    authButton.style.display = 'none';
+    authDetails.style.display = "block";
+    logoutButton.style.display = "inline-block";
+    authButton.style.display = "none";
 
-    if (userNameSpan) userNameSpan.textContent = userInfo.name || '-';
-    if (userEmailSpan) userEmailSpan.textContent = userInfo.email || '-';
+    if (userNameSpan) userNameSpan.textContent = userInfo.name || "-";
+    if (userEmailSpan) userEmailSpan.textContent = userInfo.email || "-";
   } else {
     // 未認証表示
-    authDetails.style.display = 'none';
-    logoutButton.style.display = 'none';
-    authButton.style.display = 'flex';
+    authDetails.style.display = "none";
+    logoutButton.style.display = "none";
+    authButton.style.display = "flex";
 
-    if (userNameSpan) userNameSpan.textContent = '-';
-    if (userEmailSpan) userEmailSpan.textContent = '-';
+    if (userNameSpan) userNameSpan.textContent = "-";
+    if (userEmailSpan) userEmailSpan.textContent = "-";
   }
 }
 
 // Dropbox認証のイベントリスナー初期化
 function initDropboxAuth() {
-  const authButton = document.getElementById('authenticateDropbox');
-  const checkButton = document.getElementById('checkDropboxAuth');
-  const logoutButton = document.getElementById('logoutDropbox');
+  const authButton = document.getElementById("authenticateDropbox");
+  const checkButton = document.getElementById("checkDropboxAuth");
+  const logoutButton = document.getElementById("logoutDropbox");
 
   if (authButton) {
-    authButton.addEventListener('click', authenticateDropbox);
+    authButton.addEventListener("click", authenticateDropbox);
   }
 
   if (checkButton) {
-    checkButton.addEventListener('click', checkDropboxAuth);
+    checkButton.addEventListener("click", checkDropboxAuth);
   }
 
   if (logoutButton) {
-    logoutButton.addEventListener('click', logoutDropbox);
+    logoutButton.addEventListener("click", logoutDropbox);
   }
 
   // 初期状態の確認（自動認証結果を先にチェック）
@@ -5496,7 +5833,7 @@ function initDropboxAuth() {
 // ===== Dropboxファイル選択機能 =====
 
 // 現在のフォルダパスと選択されたファイル情報
-let currentDropboxPath = ''; // ルートディレクトリから開始（デバッグ後に適切なパスに変更）
+let currentDropboxPath = ""; // ルートディレクトリから開始（デバッグ後に適切なパスに変更）
 let selectedDropboxFile = null;
 
 // ===== AI別ログレポートファイル選択機能 =====
@@ -5504,51 +5841,57 @@ let selectedDropboxFile = null;
 // AI別のファイル選択状態を管理
 let aiLogFileSelectors = {
   chatgpt: {
-    currentPath: '',  // ルートから開始
+    currentPath: "", // ルートから開始
     selectedFile: null,
-    displayName: 'ChatGPT',
-    emoji: '🤖'
+    displayName: "ChatGPT",
+    emoji: "🤖",
   },
   claude: {
-    currentPath: '',  // ルートから開始
+    currentPath: "", // ルートから開始
     selectedFile: null,
-    displayName: 'Claude',
-    emoji: '🔮'
+    displayName: "Claude",
+    emoji: "🔮",
   },
   gemini: {
-    currentPath: '',  // ルートから開始
+    currentPath: "", // ルートから開始
     selectedFile: null,
-    displayName: 'Gemini',
-    emoji: '✨'
-  }
+    displayName: "Gemini",
+    emoji: "✨",
+  },
 };
 
 // 現在アクティブなAIタブ
-let activeAiLogTab = 'chatgpt';
+let activeAiLogTab = "chatgpt";
 
 // ログファイル拡張子のフィルタ
-const LOG_FILE_EXTENSIONS = ['.txt', '.log', '.json', '.csv', '.md'];
+const LOG_FILE_EXTENSIONS = [".txt", ".log", ".json", ".csv", ".md"];
 
 // AI別ログファイル一覧の取得と表示
 async function loadAiLogFiles(aiType, folderPath = null) {
-  console.log(`[AI-${aiType}] ログファイル一覧取得開始`, { folderPath, currentPath: aiLogFileSelectors[aiType].currentPath });
+  console.log(`[AI-${aiType}] ログファイル一覧取得開始`, {
+    folderPath,
+    currentPath: aiLogFileSelectors[aiType].currentPath,
+  });
 
-  const fileListLoading = document.getElementById('aiLogFileListLoading');
-  const fileListEmpty = document.getElementById('aiLogFileListEmpty');
-  const fileListTable = document.getElementById('aiLogFileListTable');
-  const fileListBody = document.getElementById('aiLogFileListBody');
-  const currentPathInput = document.getElementById('currentAiLogPath');
-  const breadcrumb = document.getElementById('aiLogBreadcrumb');
+  const fileListLoading = document.getElementById("aiLogFileListLoading");
+  const fileListEmpty = document.getElementById("aiLogFileListEmpty");
+  const fileListTable = document.getElementById("aiLogFileListTable");
+  const fileListBody = document.getElementById("aiLogFileListBody");
+  const currentPathInput = document.getElementById("currentAiLogPath");
+  const breadcrumb = document.getElementById("aiLogBreadcrumb");
 
   try {
     // 表示状態を更新
-    if (fileListLoading) fileListLoading.style.display = 'block';
-    if (fileListEmpty) fileListEmpty.style.display = 'none';
-    if (fileListTable) fileListTable.style.display = 'none';
+    if (fileListLoading) fileListLoading.style.display = "block";
+    if (fileListEmpty) fileListEmpty.style.display = "none";
+    if (fileListTable) fileListTable.style.display = "none";
 
     if (folderPath !== null) {
       aiLogFileSelectors[aiType].currentPath = folderPath;
-      console.log(`[AI-${aiType}] パス更新:`, aiLogFileSelectors[aiType].currentPath);
+      console.log(
+        `[AI-${aiType}] パス更新:`,
+        aiLogFileSelectors[aiType].currentPath,
+      );
     }
 
     if (currentPathInput) {
@@ -5565,78 +5908,97 @@ async function loadAiLogFiles(aiType, folderPath = null) {
 
     const isAuthenticated = await service.isAuthenticated();
     if (!isAuthenticated) {
-      throw new Error('Dropbox認証が必要です。先に認証を完了してください。');
+      throw new Error("Dropbox認証が必要です。先に認証を完了してください。");
     }
 
     // ファイル一覧を取得
-    console.log(`[AI-${aiType}] ファイル一覧API呼び出し開始`, { path: aiLogFileSelectors[aiType].currentPath });
-    const files = await service.listFiles(aiLogFileSelectors[aiType].currentPath);
+    console.log(`[AI-${aiType}] ファイル一覧API呼び出し開始`, {
+      path: aiLogFileSelectors[aiType].currentPath,
+    });
+    const files = await service.listFiles(
+      aiLogFileSelectors[aiType].currentPath,
+    );
     console.log(`[AI-${aiType}] ファイル一覧取得完了:`, files);
 
     // ログファイルのみフィルタリング
-    const logFiles = files.filter(file => {
-      if (file.type === 'folder') return true;
-      return LOG_FILE_EXTENSIONS.some(ext => file.name.toLowerCase().endsWith(ext));
+    const logFiles = files.filter((file) => {
+      if (file.type === "folder") return true;
+      return LOG_FILE_EXTENSIONS.some((ext) =>
+        file.name.toLowerCase().endsWith(ext),
+      );
     });
 
     console.log(`[AI-${aiType}] ログファイルフィルタリング:`, {
       totalFiles: files.length,
       logFiles: logFiles.length,
-      filteredFiles: logFiles.map(f => f.name)
+      filteredFiles: logFiles.map((f) => f.name),
     });
 
     // 表示を更新
-    if (fileListLoading) fileListLoading.style.display = 'none';
+    if (fileListLoading) fileListLoading.style.display = "none";
 
     if (logFiles.length === 0) {
-      if (fileListEmpty) fileListEmpty.style.display = 'block';
-      if (fileListTable) fileListTable.style.display = 'none';
+      if (fileListEmpty) fileListEmpty.style.display = "block";
+      if (fileListTable) fileListTable.style.display = "none";
     } else {
-      if (fileListEmpty) fileListEmpty.style.display = 'none';
-      if (fileListTable) fileListTable.style.display = 'table';
+      if (fileListEmpty) fileListEmpty.style.display = "none";
+      if (fileListTable) fileListTable.style.display = "table";
 
       // テーブルの内容をクリア
       if (fileListBody) {
-        fileListBody.innerHTML = '';
+        fileListBody.innerHTML = "";
       }
 
       // ファイルとフォルダを分けてソート
-      const folders = logFiles.filter(file => file.type === 'folder').sort((a, b) => a.name.localeCompare(b.name));
-      const filesOnly = logFiles.filter(file => file.type === 'file').sort((a, b) => a.name.localeCompare(b.name));
+      const folders = logFiles
+        .filter((file) => file.type === "folder")
+        .sort((a, b) => a.name.localeCompare(b.name));
+      const filesOnly = logFiles
+        .filter((file) => file.type === "file")
+        .sort((a, b) => a.name.localeCompare(b.name));
 
       // 親フォルダへのリンク（ルートでない場合）
       const currentPath = aiLogFileSelectors[aiType].currentPath;
-      if (currentPath !== '' && currentPath !== '/' && !currentPath.startsWith('/')) {
+      if (
+        currentPath !== "" &&
+        currentPath !== "/" &&
+        !currentPath.startsWith("/")
+      ) {
         const parentRow = createAiLogFileRow(aiType, {
-          name: '.. (親フォルダ)',
-          type: 'folder',
-          isParent: true
+          name: ".. (親フォルダ)",
+          type: "folder",
+          isParent: true,
         });
         if (fileListBody) fileListBody.appendChild(parentRow);
       }
 
       // フォルダを先に表示
-      folders.forEach(folder => {
+      folders.forEach((folder) => {
         const row = createAiLogFileRow(aiType, folder);
         if (fileListBody) fileListBody.appendChild(row);
       });
 
       // ファイルを表示
-      filesOnly.forEach(file => {
+      filesOnly.forEach((file) => {
         const row = createAiLogFileRow(aiType, file);
         if (fileListBody) fileListBody.appendChild(row);
       });
     }
 
-    showFeedback(`${aiLogFileSelectors[aiType].displayName}: ${logFiles.length}個のログファイルを取得しました`, 'success');
-
+    showFeedback(
+      `${aiLogFileSelectors[aiType].displayName}: ${logFiles.length}個のログファイルを取得しました`,
+      "success",
+    );
   } catch (error) {
     console.error(`AI-${aiType} ログファイル一覧取得エラー:`, error);
-    if (fileListLoading) fileListLoading.style.display = 'none';
-    if (fileListEmpty) fileListEmpty.style.display = 'block';
-    if (fileListTable) fileListTable.style.display = 'none';
+    if (fileListLoading) fileListLoading.style.display = "none";
+    if (fileListEmpty) fileListEmpty.style.display = "block";
+    if (fileListTable) fileListTable.style.display = "none";
 
-    showFeedback(`${aiLogFileSelectors[aiType].displayName}ログファイル取得エラー: ${error.message}`, 'error');
+    showFeedback(
+      `${aiLogFileSelectors[aiType].displayName}ログファイル取得エラー: ${error.message}`,
+      "error",
+    );
   }
 }
 
@@ -5644,33 +6006,36 @@ async function loadAiLogFiles(aiType, folderPath = null) {
 
 // Dropboxファイル一覧の取得と表示（既存の関数を復元）
 async function loadDropboxFiles(folderPath = null) {
-  console.log('[Dropbox] ファイル一覧取得開始', { folderPath, currentDropboxPath });
+  console.log("[Dropbox] ファイル一覧取得開始", {
+    folderPath,
+    currentDropboxPath,
+  });
 
-  const fileListLoading = document.getElementById('fileListLoading');
-  const fileListEmpty = document.getElementById('fileListEmpty');
-  const fileListTable = document.getElementById('fileListTable');
-  const fileListBody = document.getElementById('fileListBody');
-  const currentPathInput = document.getElementById('currentDropboxPath');
-  const breadcrumb = document.getElementById('folderBreadcrumb');
+  const fileListLoading = document.getElementById("fileListLoading");
+  const fileListEmpty = document.getElementById("fileListEmpty");
+  const fileListTable = document.getElementById("fileListTable");
+  const fileListBody = document.getElementById("fileListBody");
+  const currentPathInput = document.getElementById("currentDropboxPath");
+  const breadcrumb = document.getElementById("folderBreadcrumb");
 
-  console.log('[Dropbox] DOM要素確認:', {
+  console.log("[Dropbox] DOM要素確認:", {
     fileListLoading: !!fileListLoading,
     fileListEmpty: !!fileListEmpty,
     fileListTable: !!fileListTable,
     fileListBody: !!fileListBody,
     currentPathInput: !!currentPathInput,
-    breadcrumb: !!breadcrumb
+    breadcrumb: !!breadcrumb,
   });
 
   try {
     // 表示状態を更新
-    if (fileListLoading) fileListLoading.style.display = 'block';
-    if (fileListEmpty) fileListEmpty.style.display = 'none';
-    if (fileListTable) fileListTable.style.display = 'none';
+    if (fileListLoading) fileListLoading.style.display = "block";
+    if (fileListEmpty) fileListEmpty.style.display = "none";
+    if (fileListTable) fileListTable.style.display = "none";
 
     if (folderPath !== null) {
       currentDropboxPath = folderPath;
-      console.log('[Dropbox] パス更新:', currentDropboxPath);
+      console.log("[Dropbox] パス更新:", currentDropboxPath);
     }
 
     if (currentPathInput) {
@@ -5681,121 +6046,139 @@ async function loadDropboxFiles(folderPath = null) {
     updateBreadcrumb();
 
     // Dropboxサービスを取得
-    console.log('[Dropbox] Dropboxサービス取得開始');
+    console.log("[Dropbox] Dropboxサービス取得開始");
     const service = await loadDropboxService();
-    console.log('[Dropbox] Dropboxサービス取得完了');
+    console.log("[Dropbox] Dropboxサービス取得完了");
 
-    console.log('[Dropbox] 認証状態確認開始');
+    console.log("[Dropbox] 認証状態確認開始");
     const isAuthenticated = await service.isAuthenticated();
-    console.log('[Dropbox] 認証状態:', isAuthenticated);
+    console.log("[Dropbox] 認証状態:", isAuthenticated);
 
     if (!isAuthenticated) {
-      throw new Error('Dropbox認証が必要です。先に認証を完了してください。');
+      throw new Error("Dropbox認証が必要です。先に認証を完了してください。");
     }
 
     // ファイル一覧を取得
-    console.log('[Dropbox] ファイル一覧API呼び出し開始', { path: currentDropboxPath });
+    console.log("[Dropbox] ファイル一覧API呼び出し開始", {
+      path: currentDropboxPath,
+    });
     const files = await service.listFiles(currentDropboxPath);
-    console.log('[Dropbox] ファイル一覧取得完了:', files);
+    console.log("[Dropbox] ファイル一覧取得完了:", files);
 
     // 表示を更新
-    console.log('[Dropbox] 表示更新開始', { filesCount: files.length });
-    if (fileListLoading) fileListLoading.style.display = 'none';
+    console.log("[Dropbox] 表示更新開始", { filesCount: files.length });
+    if (fileListLoading) fileListLoading.style.display = "none";
 
     if (files.length === 0) {
-      console.log('[Dropbox] ファイルが0個のため空表示');
-      if (fileListEmpty) fileListEmpty.style.display = 'block';
-      if (fileListTable) fileListTable.style.display = 'none';
+      console.log("[Dropbox] ファイルが0個のため空表示");
+      if (fileListEmpty) fileListEmpty.style.display = "block";
+      if (fileListTable) fileListTable.style.display = "none";
     } else {
-      console.log('[Dropbox] ファイル一覧表示開始');
-      if (fileListEmpty) fileListEmpty.style.display = 'none';
-      if (fileListTable) fileListTable.style.display = 'table';
+      console.log("[Dropbox] ファイル一覧表示開始");
+      if (fileListEmpty) fileListEmpty.style.display = "none";
+      if (fileListTable) fileListTable.style.display = "table";
 
       // テーブルの内容をクリア
       if (fileListBody) {
-        fileListBody.innerHTML = '';
-        console.log('[Dropbox] テーブル内容クリア完了');
+        fileListBody.innerHTML = "";
+        console.log("[Dropbox] テーブル内容クリア完了");
       }
 
       // ファイルとフォルダを分けてソート
-      const folders = files.filter(file => file.type === 'folder').sort((a, b) => a.name.localeCompare(b.name));
-      const filesOnly = files.filter(file => file.type === 'file').sort((a, b) => a.name.localeCompare(b.name));
+      const folders = files
+        .filter((file) => file.type === "folder")
+        .sort((a, b) => a.name.localeCompare(b.name));
+      const filesOnly = files
+        .filter((file) => file.type === "file")
+        .sort((a, b) => a.name.localeCompare(b.name));
 
-      console.log('[Dropbox] ファイル分類:', {
+      console.log("[Dropbox] ファイル分類:", {
         foldersCount: folders.length,
-        filesCount: filesOnly.length
+        filesCount: filesOnly.length,
       });
 
       // 親フォルダへのリンク（ルートでない場合）
-      if (currentDropboxPath !== '' && currentDropboxPath !== '/') {
-        console.log('[Dropbox] 親フォルダリンク追加');
+      if (currentDropboxPath !== "" && currentDropboxPath !== "/") {
+        console.log("[Dropbox] 親フォルダリンク追加");
         const parentRow = createFileRow({
-          name: '.. (親フォルダ)',
-          type: 'folder',
-          isParent: true
+          name: ".. (親フォルダ)",
+          type: "folder",
+          isParent: true,
         });
         if (fileListBody) fileListBody.appendChild(parentRow);
       }
 
       // フォルダを先に表示
       folders.forEach((folder, index) => {
-        console.log(`[Dropbox] フォルダ表示 ${index + 1}/${folders.length}:`, folder.name);
+        console.log(
+          `[Dropbox] フォルダ表示 ${index + 1}/${folders.length}:`,
+          folder.name,
+        );
         const row = createFileRow(folder);
         if (fileListBody) fileListBody.appendChild(row);
       });
 
       // ファイルを表示
       filesOnly.forEach((file, index) => {
-        console.log(`[Dropbox] ファイル表示 ${index + 1}/${filesOnly.length}:`, file.name);
+        console.log(
+          `[Dropbox] ファイル表示 ${index + 1}/${filesOnly.length}:`,
+          file.name,
+        );
         const row = createFileRow(file);
         if (fileListBody) fileListBody.appendChild(row);
       });
 
-      console.log('[Dropbox] ファイル一覧表示完了');
+      console.log("[Dropbox] ファイル一覧表示完了");
     }
 
-    showFeedback(`${files.length}個のアイテムを取得しました`, 'success');
-    console.log('[Dropbox] ファイル一覧取得処理完了');
-
+    showFeedback(`${files.length}個のアイテムを取得しました`, "success");
+    console.log("[Dropbox] ファイル一覧取得処理完了");
   } catch (error) {
-    console.error('Dropboxファイル一覧取得エラー:', error);
-    if (fileListLoading) fileListLoading.style.display = 'none';
-    if (fileListEmpty) fileListEmpty.style.display = 'block';
-    if (fileListTable) fileListTable.style.display = 'none';
+    console.error("Dropboxファイル一覧取得エラー:", error);
+    if (fileListLoading) fileListLoading.style.display = "none";
+    if (fileListEmpty) fileListEmpty.style.display = "block";
+    if (fileListTable) fileListTable.style.display = "none";
 
     // パスが存在しない場合はルートに戻る
-    if (error.message.includes('path/not_found') || error.message.includes('not_found')) {
-      currentDropboxPath = '';
+    if (
+      error.message.includes("path/not_found") ||
+      error.message.includes("not_found")
+    ) {
+      currentDropboxPath = "";
       if (currentPathInput) {
         currentPathInput.value = currentDropboxPath;
       }
       updateBreadcrumb();
-      showFeedback('フォルダが見つからないため、ルートディレクトリに移動しました', 'warning');
+      showFeedback(
+        "フォルダが見つからないため、ルートディレクトリに移動しました",
+        "warning",
+      );
 
       // ルートディレクトリで再試行
       setTimeout(() => {
-        loadDropboxFiles('');
+        loadDropboxFiles("");
       }, 1000);
     } else {
-      showFeedback(`ファイル一覧取得エラー: ${error.message}`, 'error');
+      showFeedback(`ファイル一覧取得エラー: ${error.message}`, "error");
     }
   }
 }
 
 // パンくずリスト更新
 function updateBreadcrumb() {
-  const breadcrumb = document.getElementById('folderBreadcrumb');
+  const breadcrumb = document.getElementById("folderBreadcrumb");
   if (!breadcrumb) return;
 
-  const pathParts = currentDropboxPath.split('/').filter(part => part);
+  const pathParts = currentDropboxPath.split("/").filter((part) => part);
 
   // ルートのパンくず
-  let breadcrumbHTML = '<span style="cursor: pointer; color: #007bff;" onclick="navigateToFolder(\'\')">/</span>';
+  let breadcrumbHTML =
+    '<span style="cursor: pointer; color: #007bff;" onclick="navigateToFolder(\'\')">/</span>';
 
   // 各フォルダのパンくず
-  let currentPath = '';
+  let currentPath = "";
   pathParts.forEach((part, index) => {
-    currentPath += '/' + part;
+    currentPath += "/" + part;
     const isLast = index === pathParts.length - 1;
 
     if (isLast) {
@@ -5810,84 +6193,84 @@ function updateBreadcrumb() {
 
 // ファイル行の作成
 function createFileRow(file) {
-  const row = document.createElement('tr');
-  row.style.cursor = 'pointer';
-  row.style.borderBottom = '1px solid #eee';
+  const row = document.createElement("tr");
+  row.style.cursor = "pointer";
+  row.style.borderBottom = "1px solid #eee";
 
   // ホバー効果
-  row.addEventListener('mouseenter', () => {
-    row.style.backgroundColor = '#f8f9fa';
+  row.addEventListener("mouseenter", () => {
+    row.style.backgroundColor = "#f8f9fa";
   });
-  row.addEventListener('mouseleave', () => {
-    if (!row.classList.contains('selected')) {
-      row.style.backgroundColor = '';
+  row.addEventListener("mouseleave", () => {
+    if (!row.classList.contains("selected")) {
+      row.style.backgroundColor = "";
     }
   });
 
   // アイコンと種類
-  const typeCell = document.createElement('td');
-  typeCell.style.padding = '8px';
-  typeCell.style.textAlign = 'center';
-  typeCell.style.width = '40px';
+  const typeCell = document.createElement("td");
+  typeCell.style.padding = "8px";
+  typeCell.style.textAlign = "center";
+  typeCell.style.width = "40px";
 
   if (file.isParent) {
-    typeCell.innerHTML = '📁';
-  } else if (file.type === 'folder') {
-    typeCell.innerHTML = '📁';
+    typeCell.innerHTML = "📁";
+  } else if (file.type === "folder") {
+    typeCell.innerHTML = "📁";
   } else {
     // ファイル拡張子に基づいてアイコンを設定
-    const ext = file.name.split('.').pop().toLowerCase();
-    if (['jpg', 'jpeg', 'png', 'gif', 'bmp'].includes(ext)) {
-      typeCell.innerHTML = '🖼️';
-    } else if (['txt', 'log', 'md'].includes(ext)) {
-      typeCell.innerHTML = '📄';
-    } else if (['xlsx', 'xls', 'csv'].includes(ext)) {
-      typeCell.innerHTML = '📊';
-    } else if (['docx', 'doc'].includes(ext)) {
-      typeCell.innerHTML = '📝';
-    } else if (['pdf'].includes(ext)) {
-      typeCell.innerHTML = '📕';
+    const ext = file.name.split(".").pop().toLowerCase();
+    if (["jpg", "jpeg", "png", "gif", "bmp"].includes(ext)) {
+      typeCell.innerHTML = "🖼️";
+    } else if (["txt", "log", "md"].includes(ext)) {
+      typeCell.innerHTML = "📄";
+    } else if (["xlsx", "xls", "csv"].includes(ext)) {
+      typeCell.innerHTML = "📊";
+    } else if (["docx", "doc"].includes(ext)) {
+      typeCell.innerHTML = "📝";
+    } else if (["pdf"].includes(ext)) {
+      typeCell.innerHTML = "📕";
     } else {
-      typeCell.innerHTML = '📄';
+      typeCell.innerHTML = "📄";
     }
   }
 
   // ファイル名
-  const nameCell = document.createElement('td');
-  nameCell.style.padding = '8px';
+  const nameCell = document.createElement("td");
+  nameCell.style.padding = "8px";
   nameCell.textContent = file.name;
-  nameCell.style.fontWeight = file.type === 'folder' ? 'bold' : 'normal';
+  nameCell.style.fontWeight = file.type === "folder" ? "bold" : "normal";
 
   // サイズ
-  const sizeCell = document.createElement('td');
-  sizeCell.style.padding = '8px';
-  sizeCell.style.textAlign = 'right';
-  sizeCell.style.width = '100px';
-  if (file.type === 'folder' || file.isParent) {
-    sizeCell.textContent = '-';
+  const sizeCell = document.createElement("td");
+  sizeCell.style.padding = "8px";
+  sizeCell.style.textAlign = "right";
+  sizeCell.style.width = "100px";
+  if (file.type === "folder" || file.isParent) {
+    sizeCell.textContent = "-";
   } else {
     sizeCell.textContent = formatFileSize(file.size || 0);
   }
 
   // 更新日時
-  const dateCell = document.createElement('td');
-  dateCell.style.padding = '8px';
-  dateCell.style.width = '180px';
+  const dateCell = document.createElement("td");
+  dateCell.style.padding = "8px";
+  dateCell.style.width = "180px";
   if (file.isParent) {
-    dateCell.textContent = '-';
+    dateCell.textContent = "-";
   } else if (file.modified) {
-    dateCell.textContent = new Date(file.modified).toLocaleString('ja-JP');
+    dateCell.textContent = new Date(file.modified).toLocaleString("ja-JP");
   } else {
-    dateCell.textContent = '-';
+    dateCell.textContent = "-";
   }
 
   // クリックイベント
-  row.addEventListener('click', () => {
+  row.addEventListener("click", () => {
     if (file.isParent) {
       // 親フォルダに移動
-      const parentPath = currentDropboxPath.split('/').slice(0, -1).join('/');
-      navigateToFolder(parentPath || '');
-    } else if (file.type === 'folder') {
+      const parentPath = currentDropboxPath.split("/").slice(0, -1).join("/");
+      navigateToFolder(parentPath || "");
+    } else if (file.type === "folder") {
       // フォルダに移動
       navigateToFolder(file.path);
     } else {
@@ -5912,32 +6295,34 @@ function navigateToFolder(folderPath) {
 // ファイル選択機能
 function selectFile(file, row) {
   // 既存の選択を解除
-  const previousSelected = document.querySelector('#fileListBody tr.selected');
+  const previousSelected = document.querySelector("#fileListBody tr.selected");
   if (previousSelected) {
-    previousSelected.classList.remove('selected');
-    previousSelected.style.backgroundColor = '';
+    previousSelected.classList.remove("selected");
+    previousSelected.style.backgroundColor = "";
   }
 
   // 新しい選択を設定
   selectedDropboxFile = file;
-  row.classList.add('selected');
-  row.style.backgroundColor = '#e3f2fd';
+  row.classList.add("selected");
+  row.style.backgroundColor = "#e3f2fd";
 
   // 選択ファイル情報を表示
   displaySelectedFileInfo(file);
 
-  showFeedback(`ファイル "${file.name}" を選択しました`, 'success');
+  showFeedback(`ファイル "${file.name}" を選択しました`, "success");
 }
 
 // 選択ファイル情報の表示
 function displaySelectedFileInfo(file) {
-  const selectedFileInfo = document.getElementById('selectedFileInfo');
-  const selectedFileDetails = document.getElementById('selectedFileDetails');
+  const selectedFileInfo = document.getElementById("selectedFileInfo");
+  const selectedFileDetails = document.getElementById("selectedFileDetails");
 
   if (!selectedFileInfo || !selectedFileDetails) return;
 
   const fileSize = formatFileSize(file.size || 0);
-  const modifiedDate = file.modified ? new Date(file.modified).toLocaleString('ja-JP') : '不明';
+  const modifiedDate = file.modified
+    ? new Date(file.modified).toLocaleString("ja-JP")
+    : "不明";
 
   selectedFileDetails.innerHTML = `
     <div style="margin-bottom: 8px;"><strong>📄 ファイル名:</strong> ${file.name}</div>
@@ -5946,7 +6331,7 @@ function displaySelectedFileInfo(file) {
     <div><strong>📅 更新日:</strong> ${modifiedDate}</div>
   `;
 
-  selectedFileInfo.style.display = 'block';
+  selectedFileInfo.style.display = "block";
 }
 
 // 選択をクリア
@@ -5954,19 +6339,19 @@ function clearSelectedFile() {
   selectedDropboxFile = null;
 
   // テーブルの選択状態をクリア
-  const selectedRow = document.querySelector('#fileListBody tr.selected');
+  const selectedRow = document.querySelector("#fileListBody tr.selected");
   if (selectedRow) {
-    selectedRow.classList.remove('selected');
-    selectedRow.style.backgroundColor = '';
+    selectedRow.classList.remove("selected");
+    selectedRow.style.backgroundColor = "";
   }
 
   // 選択ファイル情報を非表示
-  const selectedFileInfo = document.getElementById('selectedFileInfo');
+  const selectedFileInfo = document.getElementById("selectedFileInfo");
   if (selectedFileInfo) {
-    selectedFileInfo.style.display = 'none';
+    selectedFileInfo.style.display = "none";
   }
 
-  showFeedback('選択を解除しました', 'info');
+  showFeedback("選択を解除しました", "info");
 }
 
 // windowオブジェクトに関数を公開（HTMLから呼び出し可能にする）
@@ -5986,48 +6371,58 @@ async function selectAiLogFileSimple(aiType) {
     const isAuthenticated = await service.isAuthenticated();
 
     if (!isAuthenticated) {
-      throw new Error('Dropbox認証が必要です。先に認証を完了してください。');
+      throw new Error("Dropbox認証が必要です。先に認証を完了してください。");
     }
 
     // フォルダ選択ダイアログを表示
     await showAiLogFolderDialog(aiType);
-
   } catch (error) {
     console.error(`[AI-Simple] ${aiType}フォルダ選択エラー:`, error);
-    showFeedback(`${aiLogFileSelectors[aiType].displayName}フォルダ選択エラー: ${error.message}`, 'error');
+    showFeedback(
+      `${aiLogFileSelectors[aiType].displayName}フォルダ選択エラー: ${error.message}`,
+      "error",
+    );
   }
 }
 
 // AI別フォルダ更新（簡素版）- 選択されたフォルダをシステムで使用
 async function updateAiLogFileSimple(aiType) {
-  console.log('========================================');
+  console.log("========================================");
   console.log(`🎯 [UI操作] ${aiType}フォルダ設定開始`);
-  console.log('========================================');
+  console.log("========================================");
 
   const selectedFolder = aiLogFileSelectors[aiType].selectedFile;
   if (!selectedFolder) {
     console.error(`❌ [エラー] ${aiType}のフォルダが未選択`);
-    showFeedback(`${aiLogFileSelectors[aiType].displayName}のフォルダが選択されていません。先に選択ボタンを押してください。`, 'warning');
+    showFeedback(
+      `${aiLogFileSelectors[aiType].displayName}のフォルダが選択されていません。先に選択ボタンを押してください。`,
+      "warning",
+    );
     return;
   }
 
-  console.log('📂 [選択フォルダ情報]:', {
+  console.log("📂 [選択フォルダ情報]:", {
     AIタイプ: aiType,
     フォルダ名: selectedFolder.name,
     パス: selectedFolder.path || selectedFolder.path_display,
-    タイプ: selectedFolder.type
+    タイプ: selectedFolder.type,
   });
 
   try {
-    showFeedback(`${aiLogFileSelectors[aiType].displayName}フォルダを設定中...`, 'loading');
+    showFeedback(
+      `${aiLogFileSelectors[aiType].displayName}フォルダを設定中...`,
+      "loading",
+    );
 
     // フォルダ情報を設定
-    const folderPath = selectedFolder.path || selectedFolder.path_display || '';
-    const folderName = selectedFolder.name || (folderPath === '' ? 'ルートフォルダ' : folderPath.split('/').pop());
+    const folderPath = selectedFolder.path || selectedFolder.path_display || "";
+    const folderName =
+      selectedFolder.name ||
+      (folderPath === "" ? "ルートフォルダ" : folderPath.split("/").pop());
 
-    console.log('📋 [ステップ1: フォルダ情報解析]', {
+    console.log("📋 [ステップ1: フォルダ情報解析]", {
       解析後のパス: folderPath,
-      解析後の名前: folderName
+      解析後の名前: folderName,
     });
 
     // 選択状態を更新
@@ -6046,102 +6441,126 @@ async function updateAiLogFileSimple(aiType) {
     const storageData = {
       path: folderPath,
       name: folderName,
-      type: 'folder'
+      type: "folder",
     };
 
-    console.log('📋 [ステップ2: Chrome Storage保存]', {
+    console.log("📋 [ステップ2: Chrome Storage保存]", {
       キー: storageKey,
-      保存データ: storageData
+      保存データ: storageData,
     });
 
     await chrome.storage.local.set({
-      [storageKey]: storageData
+      [storageKey]: storageData,
     });
 
-    console.log('✅ [Chrome Storage保存完了]');
+    console.log("✅ [Chrome Storage保存完了]");
 
-    showFeedback(`${aiLogFileSelectors[aiType].displayName}: ${folderName} をログ保存フォルダとして設定しました`, 'success');
+    showFeedback(
+      `${aiLogFileSelectors[aiType].displayName}: ${folderName} をログ保存フォルダとして設定しました`,
+      "success",
+    );
 
-    console.log('========================================');
+    console.log("========================================");
     console.log(`✅ [設定完了] ${aiType}のログ保存先設定`);
     console.log(`📂 保存先フォルダ: ${folderPath}`);
     console.log(`📝 フォルダ名: ${folderName}`);
-    console.log('========================================');
-
+    console.log("========================================");
   } catch (error) {
     console.error(`[AI-Simple] ${aiType}ファイル設定エラー:`, error);
-    showFeedback(`${aiLogFileSelectors[aiType].displayName}ファイル設定エラー: ${error.message}`, 'error');
+    showFeedback(
+      `${aiLogFileSelectors[aiType].displayName}ファイル設定エラー: ${error.message}`,
+      "error",
+    );
   }
 }
 
 // 🔍 [診断機能] Dropbox設定状態を詳細チェック・表示
 async function checkDropboxConfigurationStatus() {
-  console.log('========================================');
-  console.log('🔍 [UI診断] Dropbox設定状態詳細チェック開始');
-  console.log('========================================');
+  console.log("========================================");
+  console.log("🔍 [UI診断] Dropbox設定状態詳細チェック開始");
+  console.log("========================================");
 
   try {
     // Chrome Storage から各AIのフォルダ設定を取得
-    const aiTypes = ['chatgpt', 'claude', 'gemini'];
-    const storageKeys = aiTypes.map(type => `ai_log_folder_${type}`);
+    const aiTypes = ["chatgpt", "claude", "gemini"];
+    const storageKeys = aiTypes.map((type) => `ai_log_folder_${type}`);
 
     // 🔍 Chrome Storage全体をデバッグ確認
-    console.log('🔍 [診断] Chrome Storage確認中...');
+    console.log("🔍 [診断] Chrome Storage確認中...");
     const allStorage = await chrome.storage.local.get(null);
-    console.log('📦 [Chrome Storage全体]:', allStorage);
+    console.log("📦 [Chrome Storage全体]:", allStorage);
 
     // 実際のキー名パターンを確認
-    const actualAiKeys = Object.keys(allStorage).filter(key =>
-      key.includes('chatgpt') || key.includes('claude') || key.includes('gemini')
+    const actualAiKeys = Object.keys(allStorage).filter(
+      (key) =>
+        key.includes("chatgpt") ||
+        key.includes("claude") ||
+        key.includes("gemini"),
     );
-    console.log('🔍 [実際のAI関連キー]:', actualAiKeys);
+    console.log("🔍 [実際のAI関連キー]:", actualAiKeys);
 
     const storageResult = await chrome.storage.local.get(storageKeys);
-    console.log('📦 [AI設定専用取得]:', storageResult);
+    console.log("📦 [AI設定専用取得]:", storageResult);
 
     // 実際のキー名で再取得を試行
-    const alternativeKeys = ['chatgpt_log_file', 'claude_log_file', 'gemini_log_file'];
+    const alternativeKeys = [
+      "chatgpt_log_file",
+      "claude_log_file",
+      "gemini_log_file",
+    ];
     const alternativeResult = await chrome.storage.local.get(alternativeKeys);
-    console.log('📦 [代替キー取得]:', alternativeResult);
+    console.log("📦 [代替キー取得]:", alternativeResult);
 
     // 🔍 Service WorkerからLogManager状態を取得を試行
     let serviceWorkerLogManagerStatus = null;
     try {
       if (chrome.runtime && chrome.runtime.sendMessage) {
-        console.log('🔍 [診断] Service WorkerのLogManager状態を確認中...');
+        console.log("🔍 [診断] Service WorkerのLogManager状態を確認中...");
         const response = await new Promise((resolve, reject) => {
-          const timeout = setTimeout(() => reject(new Error('タイムアウト')), 1000);
-          chrome.runtime.sendMessage({
-            type: 'CHECK_LOG_MANAGER_STATUS'
-          }, (response) => {
-            clearTimeout(timeout);
-            if (chrome.runtime.lastError) {
-              reject(new Error(chrome.runtime.lastError.message));
-            } else {
-              resolve(response);
-            }
-          });
+          const timeout = setTimeout(
+            () => reject(new Error("タイムアウト")),
+            1000,
+          );
+          chrome.runtime.sendMessage(
+            {
+              type: "CHECK_LOG_MANAGER_STATUS",
+            },
+            (response) => {
+              clearTimeout(timeout);
+              if (chrome.runtime.lastError) {
+                reject(new Error(chrome.runtime.lastError.message));
+              } else {
+                resolve(response);
+              }
+            },
+          );
         });
         serviceWorkerLogManagerStatus = response;
-        console.log('✅ [診断] Service WorkerからLogManager状態取得成功:', serviceWorkerLogManagerStatus);
+        console.log(
+          "✅ [診断] Service WorkerからLogManager状態取得成功:",
+          serviceWorkerLogManagerStatus,
+        );
       }
     } catch (error) {
-      console.log('ℹ️ [診断] Service WorkerからLogManager状態取得失敗（正常）:', error.message);
+      console.log(
+        "ℹ️ [診断] Service WorkerからLogManager状態取得失敗（正常）:",
+        error.message,
+      );
     }
 
-    console.log('📊 [Dropbox設定診断結果]');
-    console.log('=================================');
+    console.log("📊 [Dropbox設定診断結果]");
+    console.log("=================================");
 
     // 各AIタイプの設定状況をチェック（複数のキー名パターンを確認）
     const finalConfigs = {};
     for (const aiType of aiTypes) {
       // 複数のキー名パターンを試行（実際のキー名を最優先）
       const possibleKeys = [
-        `ai_log_file_selection_${aiType}`,  // 実際のキー名
+        `ai_log_file_selection_${aiType}`, // 実際のキー名
         `ai_log_folder_${aiType}`,
         `${aiType}_log_file`,
         `${aiType}LogFile`,
-        `ai_log_${aiType}`
+        `ai_log_${aiType}`,
       ];
 
       let folderConfig = null;
@@ -6157,10 +6576,13 @@ async function checkDropboxConfigurationStatus() {
 
       console.log(`🎯 [${aiType.toUpperCase()}]`, {
         フォルダ設定あり: !!folderConfig,
-        使用キー: usedKey || 'なし',
-        パス: folderConfig?.path || folderConfig?.path_display || 'デフォルトパス使用',
-        フォルダ名: folderConfig?.name || 'N/A',
-        設定内容: folderConfig
+        使用キー: usedKey || "なし",
+        パス:
+          folderConfig?.path ||
+          folderConfig?.path_display ||
+          "デフォルトパス使用",
+        フォルダ名: folderConfig?.name || "N/A",
+        設定内容: folderConfig,
       });
 
       finalConfigs[aiType] = folderConfig;
@@ -6173,60 +6595,73 @@ async function checkDropboxConfigurationStatus() {
       dropboxEnabled: null,
       dropboxAutoUpload: null,
       uiContext: true,
-      message: 'UIコンテキストのため、LogManagerは直接アクセス不可'
+      message: "UIコンテキストのため、LogManagerは直接アクセス不可",
     };
 
     // UIコンテキストではglobalThis.logManagerは通常存在しない
     try {
-      if (typeof globalThis !== 'undefined' && globalThis.logManager) {
+      if (typeof globalThis !== "undefined" && globalThis.logManager) {
         logManagerStatus = {
           exists: !!globalThis.logManager,
           fileManagerExists: !!globalThis.logManager?.fileManager,
           dropboxEnabled: globalThis.logManager?.fileManager?.dropboxEnabled,
-          dropboxAutoUpload: globalThis.logManager?.fileManager?.dropboxAutoUpload,
+          dropboxAutoUpload:
+            globalThis.logManager?.fileManager?.dropboxAutoUpload,
           uiContext: false,
-          message: 'LogManagerアクセス成功'
+          message: "LogManagerアクセス成功",
         };
       } else {
-        console.log('ℹ️ [診断情報] UIコンテキストではLogManagerが直接利用できません');
-        console.log('ℹ️ 実際のDropbox設定は、AI実行時（Service Worker/Content Script）で確認されます');
+        console.log(
+          "ℹ️ [診断情報] UIコンテキストではLogManagerが直接利用できません",
+        );
+        console.log(
+          "ℹ️ 実際のDropbox設定は、AI実行時（Service Worker/Content Script）で確認されます",
+        );
       }
     } catch (error) {
-      console.log('ℹ️ [診断情報] LogManagerアクセスエラー（正常）:', error.message);
+      console.log(
+        "ℹ️ [診断情報] LogManagerアクセスエラー（正常）:",
+        error.message,
+      );
     }
 
-    console.log('📊 [LogManager状態診断]:', logManagerStatus);
+    console.log("📊 [LogManager状態診断]:", logManagerStatus);
 
     // UIコンテキストでの警告とエラー表示
     if (!logManagerStatus.exists && !logManagerStatus.uiContext) {
-      console.error('❌ [診断エラー] globalThis.logManagerが存在しません');
+      console.error("❌ [診断エラー] globalThis.logManagerが存在しません");
     } else if (logManagerStatus.uiContext) {
-      console.log('ℹ️ [診断情報] LogManagerの詳細診断はAI実行時に表示されます');
+      console.log("ℹ️ [診断情報] LogManagerの詳細診断はAI実行時に表示されます");
     } else if (!logManagerStatus.fileManagerExists) {
-      console.error('❌ [診断エラー] LogManager.fileManagerが存在しません');
+      console.error("❌ [診断エラー] LogManager.fileManagerが存在しません");
     } else {
       if (!logManagerStatus.dropboxEnabled) {
-        console.warn('⚠️ [診断警告] dropboxEnabledがfalse - Dropbox認証が必要');
+        console.warn("⚠️ [診断警告] dropboxEnabledがfalse - Dropbox認証が必要");
       }
       if (!logManagerStatus.dropboxAutoUpload) {
-        console.warn('⚠️ [診断警告] dropboxAutoUploadがfalse - 自動アップロードが無効');
+        console.warn(
+          "⚠️ [診断警告] dropboxAutoUploadがfalse - 自動アップロードが無効",
+        );
       }
-      if (logManagerStatus.dropboxEnabled && logManagerStatus.dropboxAutoUpload) {
-        console.log('✅ [診断正常] Dropboxアップロード設定はすべて有効');
+      if (
+        logManagerStatus.dropboxEnabled &&
+        logManagerStatus.dropboxAutoUpload
+      ) {
+        console.log("✅ [診断正常] Dropboxアップロード設定はすべて有効");
       }
     }
 
-    console.log('========================================');
-    console.log('🔍 [UI診断] Dropbox設定状態チェック完了');
-    console.log('========================================');
+    console.log("========================================");
+    console.log("🔍 [UI診断] Dropbox設定状態チェック完了");
+    console.log("========================================");
 
     // AI設定の確認（実際に見つかった設定を使用）
-    const aiConfigsOk = Object.values(finalConfigs).every(config => !!config);
+    const aiConfigsOk = Object.values(finalConfigs).every((config) => !!config);
 
     // LogManager設定の確認（UIコンテキストでは部分的にのみ確認可能）
     const logManagerOk = logManagerStatus.uiContext
-      ? true  // UIコンテキストではLogManagerチェックをスキップ
-      : (logManagerStatus.dropboxEnabled && logManagerStatus.dropboxAutoUpload);
+      ? true // UIコンテキストではLogManagerチェックをスキップ
+      : logManagerStatus.dropboxEnabled && logManagerStatus.dropboxAutoUpload;
 
     return {
       aiConfigs: finalConfigs,
@@ -6236,12 +6671,11 @@ async function checkDropboxConfigurationStatus() {
       storageDebug: {
         originalResult: storageResult,
         alternativeResult: alternativeResult,
-        actualAiKeys: actualAiKeys
-      }
+        actualAiKeys: actualAiKeys,
+      },
     };
-
   } catch (error) {
-    console.error('❌ [UI診断エラー] Dropbox設定チェック失敗:', error);
+    console.error("❌ [UI診断エラー] Dropbox設定チェック失敗:", error);
     return { error: error.message };
   }
 }
@@ -6249,42 +6683,49 @@ async function checkDropboxConfigurationStatus() {
 // 🎯 [UI機能] Dropbox設定状態をリアルタイム表示
 function displayDropboxStatus() {
   try {
-    checkDropboxConfigurationStatus().then(status => {
-      if (status.error) {
-        console.error('❌ 診断エラー:', status.error);
-        showFeedback(`Dropbox設定診断エラー: ${status.error}`, 'error');
-        return;
-      }
-
-      let statusMessage, statusType;
-
-      if (status.uiLimitedCheck) {
-        // UIコンテキストでの限定チェック
-        const aiConfigsOk = Object.values(status.aiConfigs).every(config => !!config);
-        const configCount = Object.values(status.aiConfigs).filter(config => !!config).length;
-
-        if (aiConfigsOk) {
-          statusMessage = '✅ AI別フォルダ設定は正常です（詳細はAI実行時にチェック）';
-          statusType = 'success';
-        } else {
-          statusMessage = `⚠️ AI別フォルダ設定: ${configCount}/3 設定済み（コンソールを確認）`;
-          statusType = 'warning';
+    checkDropboxConfigurationStatus()
+      .then((status) => {
+        if (status.error) {
+          console.error("❌ 診断エラー:", status.error);
+          showFeedback(`Dropbox設定診断エラー: ${status.error}`, "error");
+          return;
         }
-      } else {
-        // 完全チェック
-        statusMessage = status.allConfigured
-          ? '✅ Dropbox設定はすべて正常です'
-          : '⚠️ Dropbox設定に問題があります（コンソールを確認）';
-        statusType = status.allConfigured ? 'success' : 'warning';
-      }
-      showFeedback(statusMessage, statusType);
-    }).catch(error => {
-      console.error('❌ checkDropboxConfigurationStatus実行エラー:', error);
-      showFeedback(`診断実行エラー: ${error.message}`, 'error');
-    });
+
+        let statusMessage, statusType;
+
+        if (status.uiLimitedCheck) {
+          // UIコンテキストでの限定チェック
+          const aiConfigsOk = Object.values(status.aiConfigs).every(
+            (config) => !!config,
+          );
+          const configCount = Object.values(status.aiConfigs).filter(
+            (config) => !!config,
+          ).length;
+
+          if (aiConfigsOk) {
+            statusMessage =
+              "✅ AI別フォルダ設定は正常です（詳細はAI実行時にチェック）";
+            statusType = "success";
+          } else {
+            statusMessage = `⚠️ AI別フォルダ設定: ${configCount}/3 設定済み（コンソールを確認）`;
+            statusType = "warning";
+          }
+        } else {
+          // 完全チェック
+          statusMessage = status.allConfigured
+            ? "✅ Dropbox設定はすべて正常です"
+            : "⚠️ Dropbox設定に問題があります（コンソールを確認）";
+          statusType = status.allConfigured ? "success" : "warning";
+        }
+        showFeedback(statusMessage, statusType);
+      })
+      .catch((error) => {
+        console.error("❌ checkDropboxConfigurationStatus実行エラー:", error);
+        showFeedback(`診断実行エラー: ${error.message}`, "error");
+      });
   } catch (error) {
-    console.error('❌ displayDropboxStatus実行エラー:', error);
-    showFeedback(`診断機能エラー: ${error.message}`, 'error');
+    console.error("❌ displayDropboxStatus実行エラー:", error);
+    showFeedback(`診断機能エラー: ${error.message}`, "error");
   }
 }
 
@@ -6297,15 +6738,15 @@ function updateAiFileStatusDisplay(aiType, fileName, fileInfo = null) {
     let displayText = fileName;
     if (fileInfo && fileInfo.modified) {
       const date = new Date(fileInfo.modified);
-      displayText += ` (${date.toLocaleDateString('ja-JP')})`;
+      displayText += ` (${date.toLocaleDateString("ja-JP")})`;
     }
     statusElement.textContent = displayText;
-    statusElement.style.color = '#28a745';
-    statusElement.style.fontWeight = '600';
+    statusElement.style.color = "#28a745";
+    statusElement.style.fontWeight = "600";
   } else {
-    statusElement.textContent = '未選択';
-    statusElement.style.color = '#666';
-    statusElement.style.fontWeight = 'normal';
+    statusElement.textContent = "未選択";
+    statusElement.style.color = "#666";
+    statusElement.style.fontWeight = "normal";
   }
 }
 
@@ -6318,15 +6759,15 @@ function switchAiLogTab(aiType) {
   // 前のタブを非アクティブに
   const prevTab = document.querySelector(`#${activeAiLogTab}LogTab`);
   if (prevTab) {
-    prevTab.style.background = '#6c757d';
-    prevTab.classList.remove('active');
+    prevTab.style.background = "#6c757d";
+    prevTab.classList.remove("active");
   }
 
   // 新しいタブをアクティブに
   const newTab = document.querySelector(`#${aiType}LogTab`);
   if (newTab) {
-    newTab.style.background = '#007bff';
-    newTab.classList.add('active');
+    newTab.style.background = "#007bff";
+    newTab.classList.add("active");
   }
 
   // アクティブなAIタブを更新
@@ -6344,8 +6785,8 @@ function switchAiLogTab(aiType) {
 // AI別ログUI更新
 function updateAiLogUI(aiType) {
   const selector = aiLogFileSelectors[aiType];
-  const currentPathInput = document.getElementById('currentAiLogPath');
-  const breadcrumb = document.getElementById('aiLogBreadcrumb');
+  const currentPathInput = document.getElementById("currentAiLogPath");
+  const breadcrumb = document.getElementById("aiLogBreadcrumb");
 
   if (currentPathInput) {
     currentPathInput.value = selector.currentPath;
@@ -6357,18 +6798,18 @@ function updateAiLogUI(aiType) {
 
 // AI別パンくずリスト更新
 function updateAiLogBreadcrumb(aiType) {
-  const breadcrumb = document.getElementById('aiLogBreadcrumb');
+  const breadcrumb = document.getElementById("aiLogBreadcrumb");
   if (!breadcrumb) return;
 
   const selector = aiLogFileSelectors[aiType];
-  const pathParts = selector.currentPath.split('/').filter(part => part);
+  const pathParts = selector.currentPath.split("/").filter((part) => part);
 
   let breadcrumbHTML = `<span style="cursor: pointer; color: #007bff;" onclick="navigateToAiLogFolder('${aiType}', '/')">${selector.emoji} ${selector.displayName}ログ</span>`;
 
-  let currentPath = '';
+  let currentPath = "";
   pathParts.forEach((part, index) => {
     if (part === `${aiType}-logs`) return; // スキップ
-    currentPath += '/' + part;
+    currentPath += "/" + part;
     const isLast = index === pathParts.length - 1;
 
     if (isLast) {
@@ -6383,96 +6824,103 @@ function updateAiLogBreadcrumb(aiType) {
 
 // AI別ログファイル行の作成
 function createAiLogFileRow(aiType, file) {
-  const row = document.createElement('tr');
-  row.style.cursor = 'pointer';
-  row.style.borderBottom = '1px solid #eee';
+  const row = document.createElement("tr");
+  row.style.cursor = "pointer";
+  row.style.borderBottom = "1px solid #eee";
 
   // ホバー効果
-  row.addEventListener('mouseenter', () => {
-    row.style.backgroundColor = '#f8f9fa';
+  row.addEventListener("mouseenter", () => {
+    row.style.backgroundColor = "#f8f9fa";
   });
-  row.addEventListener('mouseleave', () => {
-    if (!row.classList.contains('selected')) {
-      row.style.backgroundColor = '';
+  row.addEventListener("mouseleave", () => {
+    if (!row.classList.contains("selected")) {
+      row.style.backgroundColor = "";
     }
   });
 
   // アイコンと種類
-  const typeCell = document.createElement('td');
-  typeCell.style.padding = '8px';
-  typeCell.style.textAlign = 'center';
-  typeCell.style.width = '40px';
+  const typeCell = document.createElement("td");
+  typeCell.style.padding = "8px";
+  typeCell.style.textAlign = "center";
+  typeCell.style.width = "40px";
 
   if (file.isParent) {
-    typeCell.innerHTML = '📁';
-  } else if (file.type === 'folder') {
-    typeCell.innerHTML = '📁';
+    typeCell.innerHTML = "📁";
+  } else if (file.type === "folder") {
+    typeCell.innerHTML = "📁";
   } else {
     // ログファイル拡張子に基づいてアイコンを設定
-    const ext = file.name.split('.').pop().toLowerCase();
-    if (['log', 'txt'].includes(ext)) {
-      typeCell.innerHTML = '📄';
-    } else if (['json'].includes(ext)) {
-      typeCell.innerHTML = '📋';
-    } else if (['csv'].includes(ext)) {
-      typeCell.innerHTML = '📊';
-    } else if (['md'].includes(ext)) {
-      typeCell.innerHTML = '📝';
+    const ext = file.name.split(".").pop().toLowerCase();
+    if (["log", "txt"].includes(ext)) {
+      typeCell.innerHTML = "📄";
+    } else if (["json"].includes(ext)) {
+      typeCell.innerHTML = "📋";
+    } else if (["csv"].includes(ext)) {
+      typeCell.innerHTML = "📊";
+    } else if (["md"].includes(ext)) {
+      typeCell.innerHTML = "📝";
     } else {
-      typeCell.innerHTML = '📄';
+      typeCell.innerHTML = "📄";
     }
   }
 
   // ファイル名
-  const nameCell = document.createElement('td');
-  nameCell.style.padding = '8px';
+  const nameCell = document.createElement("td");
+  nameCell.style.padding = "8px";
   nameCell.textContent = file.name;
-  nameCell.style.fontWeight = file.type === 'folder' ? 'bold' : 'normal';
+  nameCell.style.fontWeight = file.type === "folder" ? "bold" : "normal";
 
   // サイズ
-  const sizeCell = document.createElement('td');
-  sizeCell.style.padding = '8px';
-  sizeCell.style.fontSize = '12px';
-  sizeCell.style.color = '#666';
-  if (file.type === 'folder') {
-    sizeCell.textContent = '-';
+  const sizeCell = document.createElement("td");
+  sizeCell.style.padding = "8px";
+  sizeCell.style.fontSize = "12px";
+  sizeCell.style.color = "#666";
+  if (file.type === "folder") {
+    sizeCell.textContent = "-";
   } else {
     sizeCell.textContent = formatFileSize(file.size || 0);
   }
 
   // 更新日
-  const dateCell = document.createElement('td');
-  dateCell.style.padding = '8px';
-  dateCell.style.fontSize = '12px';
-  dateCell.style.color = '#666';
+  const dateCell = document.createElement("td");
+  dateCell.style.padding = "8px";
+  dateCell.style.fontSize = "12px";
+  dateCell.style.color = "#666";
   if (file.modified) {
     const date = new Date(file.modified);
-    dateCell.textContent = date.toLocaleDateString('ja-JP') + ' ' + date.toLocaleTimeString('ja-JP', {hour: '2-digit', minute: '2-digit'});
+    dateCell.textContent =
+      date.toLocaleDateString("ja-JP") +
+      " " +
+      date.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
   } else {
-    dateCell.textContent = '-';
+    dateCell.textContent = "-";
   }
 
   // 操作ボタン
-  const actionCell = document.createElement('td');
-  actionCell.style.padding = '8px';
-  actionCell.style.textAlign = 'center';
+  const actionCell = document.createElement("td");
+  actionCell.style.padding = "8px";
+  actionCell.style.textAlign = "center";
 
-  if (file.type === 'folder' || file.isParent) {
-    const openBtn = document.createElement('button');
-    openBtn.textContent = '開く';
-    openBtn.style.padding = '4px 8px';
-    openBtn.style.fontSize = '12px';
-    openBtn.style.background = '#007bff';
-    openBtn.style.color = 'white';
-    openBtn.style.border = 'none';
-    openBtn.style.borderRadius = '3px';
-    openBtn.style.cursor = 'pointer';
+  if (file.type === "folder" || file.isParent) {
+    const openBtn = document.createElement("button");
+    openBtn.textContent = "開く";
+    openBtn.style.padding = "4px 8px";
+    openBtn.style.fontSize = "12px";
+    openBtn.style.background = "#007bff";
+    openBtn.style.color = "white";
+    openBtn.style.border = "none";
+    openBtn.style.borderRadius = "3px";
+    openBtn.style.cursor = "pointer";
 
-    openBtn.addEventListener('click', (e) => {
+    openBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       if (file.isParent) {
         // 親フォルダに移動
-        const parentPath = aiLogFileSelectors[aiType].currentPath.split('/').slice(0, -1).join('/') || `/${aiType}-logs`;
+        const parentPath =
+          aiLogFileSelectors[aiType].currentPath
+            .split("/")
+            .slice(0, -1)
+            .join("/") || `/${aiType}-logs`;
         navigateToAiLogFolder(aiType, parentPath);
       } else {
         navigateToAiLogFolder(aiType, file.path);
@@ -6481,17 +6929,17 @@ function createAiLogFileRow(aiType, file) {
 
     actionCell.appendChild(openBtn);
   } else {
-    const selectBtn = document.createElement('button');
-    selectBtn.textContent = '選択';
-    selectBtn.style.padding = '4px 8px';
-    selectBtn.style.fontSize = '12px';
-    selectBtn.style.background = '#28a745';
-    selectBtn.style.color = 'white';
-    selectBtn.style.border = 'none';
-    selectBtn.style.borderRadius = '3px';
-    selectBtn.style.cursor = 'pointer';
+    const selectBtn = document.createElement("button");
+    selectBtn.textContent = "選択";
+    selectBtn.style.padding = "4px 8px";
+    selectBtn.style.fontSize = "12px";
+    selectBtn.style.background = "#28a745";
+    selectBtn.style.color = "white";
+    selectBtn.style.border = "none";
+    selectBtn.style.borderRadius = "3px";
+    selectBtn.style.cursor = "pointer";
 
-    selectBtn.addEventListener('click', (e) => {
+    selectBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       selectAiLogFile(aiType, file, row);
     });
@@ -6500,10 +6948,14 @@ function createAiLogFileRow(aiType, file) {
   }
 
   // クリックイベント（行全体）
-  row.addEventListener('click', () => {
-    if (file.type === 'folder' || file.isParent) {
+  row.addEventListener("click", () => {
+    if (file.type === "folder" || file.isParent) {
       if (file.isParent) {
-        const parentPath = aiLogFileSelectors[aiType].currentPath.split('/').slice(0, -1).join('/') || `/${aiType}-logs`;
+        const parentPath =
+          aiLogFileSelectors[aiType].currentPath
+            .split("/")
+            .slice(0, -1)
+            .join("/") || `/${aiType}-logs`;
         navigateToAiLogFolder(aiType, parentPath);
       } else {
         navigateToAiLogFolder(aiType, file.path);
@@ -6530,16 +6982,18 @@ function navigateToAiLogFolder(aiType, folderPath) {
 // AI別ログファイル選択
 function selectAiLogFile(aiType, file, row) {
   // 既存の選択を解除
-  const previousSelected = document.querySelector('#aiLogFileListBody tr.selected');
+  const previousSelected = document.querySelector(
+    "#aiLogFileListBody tr.selected",
+  );
   if (previousSelected) {
-    previousSelected.classList.remove('selected');
-    previousSelected.style.backgroundColor = '';
+    previousSelected.classList.remove("selected");
+    previousSelected.style.backgroundColor = "";
   }
 
   // 新しい選択を設定
   aiLogFileSelectors[aiType].selectedFile = file;
-  row.classList.add('selected');
-  row.style.backgroundColor = '#e3f2fd';
+  row.classList.add("selected");
+  row.style.backgroundColor = "#e3f2fd";
 
   // 選択ファイル情報を表示
   displayAiSelectedFileInfo(aiType, file);
@@ -6550,18 +7004,23 @@ function selectAiLogFile(aiType, file, row) {
   // サマリーを更新
   updateAiSelectionSummary();
 
-  showFeedback(`${aiLogFileSelectors[aiType].displayName}ログファイル "${file.name}" を選択しました`, 'success');
+  showFeedback(
+    `${aiLogFileSelectors[aiType].displayName}ログファイル "${file.name}" を選択しました`,
+    "success",
+  );
 }
 
 // AI別選択ファイル情報の表示
 function displayAiSelectedFileInfo(aiType, file) {
-  const selectedFileInfo = document.getElementById('aiSelectedFileInfo');
-  const selectedFileDetails = document.getElementById('aiSelectedFileDetails');
+  const selectedFileInfo = document.getElementById("aiSelectedFileInfo");
+  const selectedFileDetails = document.getElementById("aiSelectedFileDetails");
 
   if (!selectedFileInfo || !selectedFileDetails) return;
 
   const fileSize = formatFileSize(file.size || 0);
-  const modifiedDate = file.modified ? new Date(file.modified).toLocaleString('ja-JP') : '不明';
+  const modifiedDate = file.modified
+    ? new Date(file.modified).toLocaleString("ja-JP")
+    : "不明";
   const selector = aiLogFileSelectors[aiType];
 
   selectedFileDetails.innerHTML = `
@@ -6572,7 +7031,7 @@ function displayAiSelectedFileInfo(aiType, file) {
     <div><strong>📅 更新日:</strong> ${modifiedDate}</div>
   `;
 
-  selectedFileInfo.style.display = 'block';
+  selectedFileInfo.style.display = "block";
 }
 
 // AI別選択ファイルクリア
@@ -6581,16 +7040,16 @@ function clearAiSelectedFile() {
   aiLogFileSelectors[aiType].selectedFile = null;
 
   // テーブルの選択状態をクリア
-  const selectedRow = document.querySelector('#aiLogFileListBody tr.selected');
+  const selectedRow = document.querySelector("#aiLogFileListBody tr.selected");
   if (selectedRow) {
-    selectedRow.classList.remove('selected');
-    selectedRow.style.backgroundColor = '';
+    selectedRow.classList.remove("selected");
+    selectedRow.style.backgroundColor = "";
   }
 
   // 選択ファイル情報を非表示
-  const selectedFileInfo = document.getElementById('aiSelectedFileInfo');
+  const selectedFileInfo = document.getElementById("aiSelectedFileInfo");
   if (selectedFileInfo) {
-    selectedFileInfo.style.display = 'none';
+    selectedFileInfo.style.display = "none";
   }
 
   // 永続化ストレージからも削除
@@ -6599,7 +7058,10 @@ function clearAiSelectedFile() {
   // サマリーを更新
   updateAiSelectionSummary();
 
-  showFeedback(`${aiLogFileSelectors[aiType].displayName}ログファイル選択を解除しました`, 'info');
+  showFeedback(
+    `${aiLogFileSelectors[aiType].displayName}ログファイル選択を解除しました`,
+    "info",
+  );
 }
 
 // ===== AI別ログファイル永続化ストレージ機能 =====
@@ -6621,11 +7083,15 @@ async function saveAiLogFileSelection(aiType, fileInfo) {
 // AI別ログファイル選択を読み込み
 async function loadAiLogFileSelections() {
   try {
-    const keys = ['ai_log_file_selection_chatgpt', 'ai_log_file_selection_claude', 'ai_log_file_selection_gemini'];
+    const keys = [
+      "ai_log_file_selection_chatgpt",
+      "ai_log_file_selection_claude",
+      "ai_log_file_selection_gemini",
+    ];
     const result = await chrome.storage.local.get(keys);
 
     // 各AIの選択状況を復元
-    Object.keys(aiLogFileSelectors).forEach(aiType => {
+    Object.keys(aiLogFileSelectors).forEach((aiType) => {
       const storageKey = `ai_log_file_selection_${aiType}`;
       const fileInfo = result[storageKey];
 
@@ -6637,9 +7103,8 @@ async function loadAiLogFileSelections() {
 
     // サマリーを更新
     updateAiSelectionSummary();
-
   } catch (error) {
-    console.error('[AI-Storage] ログファイル選択読み込みエラー:', error);
+    console.error("[AI-Storage] ログファイル選択読み込みエラー:", error);
   }
 }
 
@@ -6647,7 +7112,7 @@ async function loadAiLogFileSelections() {
 async function loadAiLogFolderPaths() {
   try {
     // dropboxConfigがインポートされているかチェック
-    if (typeof dropboxConfig !== 'undefined') {
+    if (typeof dropboxConfig !== "undefined") {
       const aiPaths = await dropboxConfig.getAISpecificPaths();
 
       // AI別フォルダパスを更新
@@ -6661,12 +7126,17 @@ async function loadAiLogFolderPaths() {
         aiLogFileSelectors.gemini.currentPath = aiPaths.gemini;
       }
 
-      console.log('[AI-Log] DropboxConfigからAI別フォルダパスを読み込み:', aiPaths);
+      console.log(
+        "[AI-Log] DropboxConfigからAI別フォルダパスを読み込み:",
+        aiPaths,
+      );
     } else {
-      console.log('[AI-Log] dropboxConfigが利用できません。デフォルトパスを使用します。');
+      console.log(
+        "[AI-Log] dropboxConfigが利用できません。デフォルトパスを使用します。",
+      );
     }
   } catch (error) {
-    console.error('[AI-Log] AI別フォルダパス読み込みエラー:', error);
+    console.error("[AI-Log] AI別フォルダパス読み込みエラー:", error);
   }
 }
 
@@ -6676,7 +7146,7 @@ async function downloadAiSelectedFile() {
   const selectedFile = aiLogFileSelectors[aiType].selectedFile;
 
   if (!selectedFile) {
-    showFeedback('ダウンロードするファイルが選択されていません', 'warning');
+    showFeedback("ダウンロードするファイルが選択されていません", "warning");
     return;
   }
 
@@ -6686,18 +7156,18 @@ async function downloadAiSelectedFile() {
     const isAuthenticated = await service.isAuthenticated();
 
     if (!isAuthenticated) {
-      throw new Error('Dropbox認証が必要です');
+      throw new Error("Dropbox認証が必要です");
     }
 
-    showFeedback(`${selectedFile.name}をダウンロード中...`, 'loading');
+    showFeedback(`${selectedFile.name}をダウンロード中...`, "loading");
 
     // ファイルをダウンロード
     const fileContent = await service.downloadFile(selectedFile.path);
 
     // ブラウザでダウンロード
-    const blob = new Blob([fileContent], { type: 'text/plain' });
+    const blob = new Blob([fileContent], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
     a.download = selectedFile.name;
     document.body.appendChild(a);
@@ -6705,63 +7175,65 @@ async function downloadAiSelectedFile() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    showFeedback(`${selectedFile.name}をダウンロードしました`, 'success');
-
+    showFeedback(`${selectedFile.name}をダウンロードしました`, "success");
   } catch (error) {
-    console.error('[AI-Download] ファイルダウンロードエラー:', error);
-    showFeedback(`ダウンロードエラー: ${error.message}`, 'error');
+    console.error("[AI-Download] ファイルダウンロードエラー:", error);
+    showFeedback(`ダウンロードエラー: ${error.message}`, "error");
   }
 }
 
 // AI選択状況サマリー更新
 function updateAiSelectionSummary() {
-  const chatgptEl = document.getElementById('chatgptSelection');
-  const claudeEl = document.getElementById('claudeSelection');
-  const geminiEl = document.getElementById('geminiSelection');
+  const chatgptEl = document.getElementById("chatgptSelection");
+  const claudeEl = document.getElementById("claudeSelection");
+  const geminiEl = document.getElementById("geminiSelection");
 
   if (chatgptEl) {
     const file = aiLogFileSelectors.chatgpt.selectedFile;
-    chatgptEl.textContent = `🤖 ChatGPT: ${file ? file.name : '未選択'}`;
-    chatgptEl.style.color = file ? '#28a745' : '#666';
+    chatgptEl.textContent = `🤖 ChatGPT: ${file ? file.name : "未選択"}`;
+    chatgptEl.style.color = file ? "#28a745" : "#666";
   }
 
   if (claudeEl) {
     const file = aiLogFileSelectors.claude.selectedFile;
-    claudeEl.textContent = `🔮 Claude: ${file ? file.name : '未選択'}`;
-    claudeEl.style.color = file ? '#28a745' : '#666';
+    claudeEl.textContent = `🔮 Claude: ${file ? file.name : "未選択"}`;
+    claudeEl.style.color = file ? "#28a745" : "#666";
   }
 
   if (geminiEl) {
     const file = aiLogFileSelectors.gemini.selectedFile;
-    geminiEl.textContent = `✨ Gemini: ${file ? file.name : '未選択'}`;
-    geminiEl.style.color = file ? '#28a745' : '#666';
+    geminiEl.textContent = `✨ Gemini: ${file ? file.name : "未選択"}`;
+    geminiEl.style.color = file ? "#28a745" : "#666";
   }
 }
 
 // 選択ファイルでAIタスク開始
 async function useSelectedFile() {
   if (!selectedDropboxFile) {
-    showFeedback('ファイルが選択されていません', 'warning');
+    showFeedback("ファイルが選択されていません", "warning");
     return;
   }
 
-  const fileProcessStatus = document.getElementById('fileProcessStatus');
-  const fileProcessIcon = document.getElementById('fileProcessIcon');
-  const fileProcessText = document.getElementById('fileProcessText');
+  const fileProcessStatus = document.getElementById("fileProcessStatus");
+  const fileProcessIcon = document.getElementById("fileProcessIcon");
+  const fileProcessText = document.getElementById("fileProcessText");
 
   try {
     // 処理状況を表示
     if (fileProcessStatus) {
-      fileProcessIcon.textContent = '⏳';
+      fileProcessIcon.textContent = "⏳";
       fileProcessText.textContent = `"${selectedDropboxFile.name}" を処理中...`;
-      fileProcessStatus.style.display = 'block';
+      fileProcessStatus.style.display = "block";
     }
 
-    showFeedback('選択されたファイルでAI作業を開始します...', 'loading');
+    showFeedback("選択されたファイルでAI作業を開始します...", "loading");
 
     // 1. ファイル形式の確認
-    const fileExtension = selectedDropboxFile.name.split('.').pop().toLowerCase();
-    const supportedFormats = ['csv', 'xlsx', 'xls', 'txt', 'json'];
+    const fileExtension = selectedDropboxFile.name
+      .split(".")
+      .pop()
+      .toLowerCase();
+    const supportedFormats = ["csv", "xlsx", "xls", "txt", "json"];
 
     if (!supportedFormats.includes(fileExtension)) {
       throw new Error(`サポートされていないファイル形式です: ${fileExtension}`);
@@ -6774,7 +7246,7 @@ async function useSelectedFile() {
       size: selectedDropboxFile.size,
       modified: selectedDropboxFile.modified,
       type: fileExtension,
-      source: 'dropbox'
+      source: "dropbox",
     };
 
     // 3. 既存のAI処理システムとの統合
@@ -6782,53 +7254,60 @@ async function useSelectedFile() {
 
     // 成功時の処理
     if (fileProcessStatus) {
-      fileProcessIcon.textContent = '✅';
+      fileProcessIcon.textContent = "✅";
       fileProcessText.textContent = `"${selectedDropboxFile.name}" の処理が完了しました`;
     }
 
-    showFeedback(`ファイル "${selectedDropboxFile.name}" の処理が完了しました`, 'success');
-
+    showFeedback(
+      `ファイル "${selectedDropboxFile.name}" の処理が完了しました`,
+      "success",
+    );
   } catch (error) {
-    console.error('ファイル処理エラー:', error);
+    console.error("ファイル処理エラー:", error);
 
     // エラー時の処理
     if (fileProcessStatus) {
-      fileProcessIcon.textContent = '❌';
+      fileProcessIcon.textContent = "❌";
       fileProcessText.textContent = `処理エラー: ${error.message}`;
     }
 
-    showFeedback(`ファイル処理エラー: ${error.message}`, 'error');
+    showFeedback(`ファイル処理エラー: ${error.message}`, "error");
   }
 }
 
 // Dropboxファイルを既存システムで処理
 async function processSelectedDropboxFile(fileInfo) {
-  console.log('Processing Dropbox file:', fileInfo);
+  console.log("Processing Dropbox file:", fileInfo);
 
   // 既存のスプレッドシート処理システムとの統合
   // 将来的にはここで実際のデータ処理を行う
 
   // 1. ファイル情報をローカルストレージに保存（既存システムで参照）
-  if (typeof chrome !== 'undefined' && chrome.storage) {
+  if (typeof chrome !== "undefined" && chrome.storage) {
     await chrome.storage.local.set({
       selectedDropboxFile: fileInfo,
-      fileProcessingMode: 'dropbox'
+      fileProcessingMode: "dropbox",
     });
   }
 
   // 2. 既存のAIタスク処理に通知
   // グローバルイベントを発火して他のモジュールに通知
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('dropboxFileSelected', {
-      detail: fileInfo
-    }));
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(
+      new CustomEvent("dropboxFileSelected", {
+        detail: fileInfo,
+      }),
+    );
   }
 
   // 3. UI更新：選択されたファイルでの作業開始を示す
-  showFeedback(`Dropboxファイル "${fileInfo.name}" が処理対象として設定されました`, 'success');
+  showFeedback(
+    `Dropboxファイル "${fileInfo.name}" が処理対象として設定されました`,
+    "success",
+  );
 
   // 仮の処理時間（実際の処理に置き換え）
-  await new Promise(resolve => setTimeout(resolve, 1000));
+  await new Promise((resolve) => setTimeout(resolve, 1000));
 }
 
 // 選択されたDropboxのファイルを使用するファイルとして設定
@@ -6836,26 +7315,26 @@ async function saveToSelectedDropboxLocation() {
   try {
     // 選択されたアイテムを確認
     if (!selectedDropboxFile && !currentDropboxPath) {
-      showFeedback('フォルダを選択してください', 'warning');
+      showFeedback("フォルダを選択してください", "warning");
       return;
     }
 
     // フォルダパスを取得
-    let targetPath = '';
+    let targetPath = "";
 
     if (selectedDropboxFile) {
       // 明示的に選択されたアイテムがある場合
-      if (selectedDropboxFile.type === 'folder') {
+      if (selectedDropboxFile.type === "folder") {
         targetPath = selectedDropboxFile.path;
       } else {
         // ファイルが選択されている場合は、その親フォルダを使用
-        const pathParts = selectedDropboxFile.path.split('/');
+        const pathParts = selectedDropboxFile.path.split("/");
         pathParts.pop(); // ファイル名を除去
-        targetPath = pathParts.join('/') || '/';
+        targetPath = pathParts.join("/") || "/";
       }
     } else {
       // 現在のパスをフォルダとして使用
-      targetPath = currentDropboxPath || '/';
+      targetPath = currentDropboxPath || "/";
     }
 
     // ログレポート保存先を設定として保存
@@ -6866,39 +7345,42 @@ async function saveToSelectedDropboxLocation() {
         path: targetPath,
         enabled: true,
         timestamp: new Date().toISOString(),
-        folderName: targetPath.split('/').pop() || 'root'
-      }
+        folderName: targetPath.split("/").pop() || "root",
+      },
     });
 
     // 成功メッセージを表示
-    const folderName = targetPath === '/' ? 'ルートフォルダ' : targetPath.split('/').pop();
-    showFeedback(`✅ ログレポート保存先ファイルを "${folderName}" に設定しました`, 'success');
+    const folderName =
+      targetPath === "/" ? "ルートフォルダ" : targetPath.split("/").pop();
+    showFeedback(
+      `✅ ログレポート保存先ファイルを "${folderName}" に設定しました`,
+      "success",
+    );
 
     // 設定表示を更新
     updateDropboxSettingsDisplay(targetPath);
 
     // 保存ボタンのテキストを一時的に変更
-    const saveButton = document.getElementById('saveToDropbox');
+    const saveButton = document.getElementById("saveToDropbox");
     if (saveButton) {
       const originalText = saveButton.textContent;
-      saveButton.textContent = '✅ ファイル設定済み';
-      saveButton.style.background = '#28a745';
+      saveButton.textContent = "✅ ファイル設定済み";
+      saveButton.style.background = "#28a745";
       setTimeout(() => {
         saveButton.textContent = originalText;
-        saveButton.style.background = '#28a745';
+        saveButton.style.background = "#28a745";
       }, 3000);
     }
-
   } catch (error) {
-    showFeedback(`設定エラー: ${error.message}`, 'error');
+    showFeedback(`設定エラー: ${error.message}`, "error");
   }
 }
 
 // Dropbox設定表示を更新
 function updateDropboxSettingsDisplay(path) {
-  const settingsDisplay = document.getElementById('dropboxLogSettings');
+  const settingsDisplay = document.getElementById("dropboxLogSettings");
   if (settingsDisplay) {
-    settingsDisplay.style.display = 'block';
+    settingsDisplay.style.display = "block";
     settingsDisplay.innerHTML = `
       <div style="padding: 12px; background: #d4edda; border-radius: 6px; margin-top: 10px; border-left: 4px solid #28a745; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
         <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
@@ -6908,7 +7390,7 @@ function updateDropboxSettingsDisplay(path) {
         <div style="background: white; padding: 8px; border-radius: 4px; margin-bottom: 8px;">
           <div style="font-size: 12px; color: #666; margin-bottom: 4px;">使用するファイルの保存先:</div>
           <div style="font-family: monospace; color: #0066cc; font-size: 13px; word-break: break-all;">
-            📁 ${path === '/' ? '/（ルートフォルダ）' : path}
+            📁 ${path === "/" ? "/（ルートフォルダ）" : path}
           </div>
         </div>
         <div style="font-size: 12px; color: #666; margin-bottom: 8px;">
@@ -6932,11 +7414,11 @@ function updateDropboxSettingsDisplay(path) {
 
 // ファイルサイズフォーマット
 function formatFileSize(bytes) {
-  if (bytes === 0) return '0 B';
+  if (bytes === 0) return "0 B";
   const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const sizes = ["B", "KB", "MB", "GB", "TB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
 }
 
 // ===== レガシー関数（無効化済み） =====
@@ -6944,95 +7426,96 @@ function formatFileSize(bytes) {
 
 // ファイルクリア（レガシー）
 function clearSelectedFiles() {
-  console.log('レガシー機能: 新しいclearSelectedFile()を使用してください');
+  console.log("レガシー機能: 新しいclearSelectedFile()を使用してください");
 }
 
 // パスプリセット選択（レガシー）
 function handlePathPresetChange() {
-  console.log('レガシー機能: 無効化済み');
+  console.log("レガシー機能: 無効化済み");
 }
 
 // Dropboxへのファイルアップロード（レガシー）
 async function uploadFilesToDropbox() {
-  console.log('レガシー機能: 新しいファイル選択機能を使用してください');
-  showFeedback('この機能は新しいファイル選択機能に移行済みです', 'info');
+  console.log("レガシー機能: 新しいファイル選択機能を使用してください");
+  showFeedback("この機能は新しいファイル選択機能に移行済みです", "info");
 }
 
 // Dropboxファイルアップロードのイベントリスナー初期化（レガシー機能）
 function initDropboxFileUpload() {
   // 新しいファイル選択機能に移行済み
   // 古いアップロード機能は無効化
-  console.log('Dropboxファイル選択機能に移行済み');
+  console.log("Dropboxファイル選択機能に移行済み");
 }
 
 // Dropboxファイル選択UIの初期化
 function initDropboxFileSelection() {
-  console.log('[Dropbox] ファイル選択UI初期化開始');
+  console.log("[Dropbox] ファイル選択UI初期化開始");
 
-  const refreshButton = document.getElementById('refreshDropboxFiles');
-  const saveButton = document.getElementById('saveToDropbox');
-  const useFileButton = document.getElementById('useSelectedFile');
-  const clearFileButton = document.getElementById('clearSelectedFile');
+  const refreshButton = document.getElementById("refreshDropboxFiles");
+  const saveButton = document.getElementById("saveToDropbox");
+  const useFileButton = document.getElementById("useSelectedFile");
+  const clearFileButton = document.getElementById("clearSelectedFile");
 
-  console.log('[Dropbox] UI要素確認:', {
+  console.log("[Dropbox] UI要素確認:", {
     refreshButton: !!refreshButton,
     saveButton: !!saveButton,
     useFileButton: !!useFileButton,
-    clearFileButton: !!clearFileButton
+    clearFileButton: !!clearFileButton,
   });
 
   if (refreshButton) {
-    refreshButton.addEventListener('click', () => {
-      console.log('[Dropbox] 選択ボタンがクリックされました');
+    refreshButton.addEventListener("click", () => {
+      console.log("[Dropbox] 選択ボタンがクリックされました");
       loadDropboxFiles();
     });
-    console.log('[Dropbox] 選択ボタンのイベントリスナー設定完了');
+    console.log("[Dropbox] 選択ボタンのイベントリスナー設定完了");
   } else {
-    console.error('[Dropbox] 選択ボタンが見つかりません');
+    console.error("[Dropbox] 選択ボタンが見つかりません");
   }
 
   if (saveButton) {
-    saveButton.addEventListener('click', saveToSelectedDropboxLocation);
-    console.log('[Dropbox] 保存ボタンのイベントリスナー設定完了');
+    saveButton.addEventListener("click", saveToSelectedDropboxLocation);
+    console.log("[Dropbox] 保存ボタンのイベントリスナー設定完了");
   } else {
-    console.warn('[Dropbox] 保存ボタンが見つかりません');
+    console.warn("[Dropbox] 保存ボタンが見つかりません");
   }
 
   // アカウント再認証ボタンを追加（アカウント切り替え用）
   const refreshButtonParent = refreshButton?.parentElement;
   if (refreshButtonParent) {
-    const reAuthButton = document.createElement('button');
-    reAuthButton.textContent = '🔄 別のアカウントで再認証';
-    reAuthButton.style.cssText = 'margin-left: 8px; padding: 6px 12px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;';
-    reAuthButton.addEventListener('click', async () => {
-      console.log('[Dropbox] 再認証開始');
+    const reAuthButton = document.createElement("button");
+    reAuthButton.textContent = "🔄 別のアカウントで再認証";
+    reAuthButton.style.cssText =
+      "margin-left: 8px; padding: 6px 12px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;";
+    reAuthButton.addEventListener("click", async () => {
+      console.log("[Dropbox] 再認証開始");
       try {
         const service = await loadDropboxService();
         // 既存のトークンをクリア
         await service.logout();
-        showFeedback('ログアウトしました。再度認証してください。', 'warning');
+        showFeedback("ログアウトしました。再度認証してください。", "warning");
         // 認証状態を更新
         await updateDropboxAuthStatus();
       } catch (error) {
-        console.error('[Dropbox] ログアウトエラー:', error);
-        showFeedback(`ログアウトエラー: ${error.message}`, 'error');
+        console.error("[Dropbox] ログアウトエラー:", error);
+        showFeedback(`ログアウトエラー: ${error.message}`, "error");
       }
     });
     refreshButtonParent.appendChild(reAuthButton);
   }
 
   if (useFileButton) {
-    useFileButton.addEventListener('click', useSelectedFile);
-    console.log('[Dropbox] 作業開始ボタンのイベントリスナー設定完了');
+    useFileButton.addEventListener("click", useSelectedFile);
+    console.log("[Dropbox] 作業開始ボタンのイベントリスナー設定完了");
   } else {
-    console.warn('[Dropbox] 作業開始ボタンが見つかりません');
+    console.warn("[Dropbox] 作業開始ボタンが見つかりません");
   }
 
   if (clearFileButton) {
-    clearFileButton.addEventListener('click', clearSelectedFile);
-    console.log('[Dropbox] 選択解除ボタンのイベントリスナー設定完了');
+    clearFileButton.addEventListener("click", clearSelectedFile);
+    console.log("[Dropbox] 選択解除ボタンのイベントリスナー設定完了");
   } else {
-    console.warn('[Dropbox] 選択解除ボタンが見つかりません');
+    console.warn("[Dropbox] 選択解除ボタンが見つかりません");
   }
 
   // navigateToFolder関数をグローバルに公開（パンくずリストから使用）
@@ -7041,86 +7524,102 @@ function initDropboxFileSelection() {
   // 保存されたログ設定を読み込んで表示
   loadAndDisplayDropboxLogSettings();
 
-  console.log('[Dropbox] ファイル選択UI初期化完了');
+  console.log("[Dropbox] ファイル選択UI初期化完了");
 }
 
 // Dropboxログ設定を読み込んで表示
 async function loadAndDisplayDropboxLogSettings() {
   try {
-    const settings = await chrome.storage.local.get(['dropboxLogEnabled', 'dropboxLogPath', 'dropboxLogSettings']);
+    const settings = await chrome.storage.local.get([
+      "dropboxLogEnabled",
+      "dropboxLogPath",
+      "dropboxLogSettings",
+    ]);
 
     if (settings.dropboxLogEnabled && settings.dropboxLogPath) {
       updateDropboxSettingsDisplay(settings.dropboxLogPath);
     }
   } catch (error) {
-    console.log('[Dropbox] ログ設定読み込みエラー:', error);
+    console.log("[Dropbox] ログ設定読み込みエラー:", error);
   }
 }
 
 // Dropboxログ設定をクリア
-window.clearDropboxLogSettings = async function() {
+window.clearDropboxLogSettings = async function () {
   try {
-    await chrome.storage.local.remove(['dropboxLogEnabled', 'dropboxLogPath', 'dropboxLogSettings']);
+    await chrome.storage.local.remove([
+      "dropboxLogEnabled",
+      "dropboxLogPath",
+      "dropboxLogSettings",
+    ]);
 
-    const settingsDisplay = document.getElementById('dropboxLogSettings');
+    const settingsDisplay = document.getElementById("dropboxLogSettings");
     if (settingsDisplay) {
-      settingsDisplay.style.display = 'none';
-      settingsDisplay.innerHTML = '';
+      settingsDisplay.style.display = "none";
+      settingsDisplay.innerHTML = "";
     }
 
-    showFeedback('ログレポート保存先設定をクリアしました', 'success');
+    showFeedback("ログレポート保存先設定をクリアしました", "success");
   } catch (error) {
-    console.error('[Dropbox] 設定クリアエラー:', error);
-    showFeedback('設定クリアエラー', 'error');
+    console.error("[Dropbox] 設定クリアエラー:", error);
+    showFeedback("設定クリアエラー", "error");
   }
-}
+};
 
 // 簡素化されたAI別ログファイル選択のイベントリスナー設定
 function initAiLogFileSelectionSimple() {
-  console.log('[AI-Simple] 簡素化AI別ログファイル選択UI初期化開始');
+  console.log("[AI-Simple] 簡素化AI別ログファイル選択UI初期化開始");
 
   // ChatGPTボタンのイベントリスナー設定
-  const selectChatGPTBtn = document.getElementById('selectChatGPTBtn');
-  const updateChatGPTBtn = document.getElementById('updateChatGPTBtn');
+  const selectChatGPTBtn = document.getElementById("selectChatGPTBtn");
+  const updateChatGPTBtn = document.getElementById("updateChatGPTBtn");
 
-  console.log('[AI-Simple] ChatGPTボタン存在確認:', {
+  console.log("[AI-Simple] ChatGPTボタン存在確認:", {
     selectBtn: !!selectChatGPTBtn,
-    updateBtn: !!updateChatGPTBtn
+    updateBtn: !!updateChatGPTBtn,
   });
 
   if (selectChatGPTBtn) {
-    selectChatGPTBtn.addEventListener('click', () => {
-      console.log('[AI-Simple] ChatGPT選択ボタンクリック');
-      selectAiLogFileSimple('chatgpt');
+    selectChatGPTBtn.addEventListener("click", () => {
+      console.log("[AI-Simple] ChatGPT選択ボタンクリック");
+      selectAiLogFileSimple("chatgpt");
     });
   }
   if (updateChatGPTBtn) {
-    updateChatGPTBtn.addEventListener('click', () => {
-      console.log('[AI-Simple] ChatGPT更新ボタンクリック');
-      updateAiLogFileSimple('chatgpt');
+    updateChatGPTBtn.addEventListener("click", () => {
+      console.log("[AI-Simple] ChatGPT更新ボタンクリック");
+      updateAiLogFileSimple("chatgpt");
     });
   }
 
   // Claudeボタンのイベントリスナー設定
-  const selectClaudeBtn = document.getElementById('selectClaudeBtn');
-  const updateClaudeBtn = document.getElementById('updateClaudeBtn');
+  const selectClaudeBtn = document.getElementById("selectClaudeBtn");
+  const updateClaudeBtn = document.getElementById("updateClaudeBtn");
 
   if (selectClaudeBtn) {
-    selectClaudeBtn.addEventListener('click', () => selectAiLogFileSimple('claude'));
+    selectClaudeBtn.addEventListener("click", () =>
+      selectAiLogFileSimple("claude"),
+    );
   }
   if (updateClaudeBtn) {
-    updateClaudeBtn.addEventListener('click', () => updateAiLogFileSimple('claude'));
+    updateClaudeBtn.addEventListener("click", () =>
+      updateAiLogFileSimple("claude"),
+    );
   }
 
   // Geminiボタンのイベントリスナー設定
-  const selectGeminiBtn = document.getElementById('selectGeminiBtn');
-  const updateGeminiBtn = document.getElementById('updateGeminiBtn');
+  const selectGeminiBtn = document.getElementById("selectGeminiBtn");
+  const updateGeminiBtn = document.getElementById("updateGeminiBtn");
 
   if (selectGeminiBtn) {
-    selectGeminiBtn.addEventListener('click', () => selectAiLogFileSimple('gemini'));
+    selectGeminiBtn.addEventListener("click", () =>
+      selectAiLogFileSimple("gemini"),
+    );
   }
   if (updateGeminiBtn) {
-    updateGeminiBtn.addEventListener('click', () => updateAiLogFileSimple('gemini'));
+    updateGeminiBtn.addEventListener("click", () =>
+      updateAiLogFileSimple("gemini"),
+    );
   }
 
   // DropboxConfigからAI別フォルダパスを読み込み
@@ -7129,29 +7628,35 @@ function initAiLogFileSelectionSimple() {
   // 保存されたAI別ログファイル選択を読み込み
   loadAiLogFileSelectionsSimple();
 
-  console.log('[AI-Simple] 簡素化AI別ログファイル選択UI初期化完了');
+  console.log("[AI-Simple] 簡素化AI別ログファイル選択UI初期化完了");
 }
 
 // 簡素化されたAI別ログファイル選択状態の読み込み
 async function loadAiLogFileSelectionsSimple() {
   try {
-    const keys = ['ai_log_file_selection_chatgpt', 'ai_log_file_selection_claude', 'ai_log_file_selection_gemini'];
+    const keys = [
+      "ai_log_file_selection_chatgpt",
+      "ai_log_file_selection_claude",
+      "ai_log_file_selection_gemini",
+    ];
     const result = await chrome.storage.local.get(keys);
 
     // 各AIの選択状況を復元してUI表示を更新
-    Object.keys(aiLogFileSelectors).forEach(aiType => {
+    Object.keys(aiLogFileSelectors).forEach((aiType) => {
       const storageKey = `ai_log_file_selection_${aiType}`;
       const fileInfo = result[storageKey];
 
       if (fileInfo) {
         aiLogFileSelectors[aiType].selectedFile = fileInfo;
         updateAiFileStatusDisplay(aiType, fileInfo.name, fileInfo);
-        console.log(`[AI-Simple] ${aiType}ログファイル選択を復元:`, fileInfo.name);
+        console.log(
+          `[AI-Simple] ${aiType}ログファイル選択を復元:`,
+          fileInfo.name,
+        );
       }
     });
-
   } catch (error) {
-    console.error('[AI-Simple] ログファイル選択読み込みエラー:', error);
+    console.error("[AI-Simple] ログファイル選択読み込みエラー:", error);
   }
 }
 
@@ -7159,7 +7664,7 @@ async function loadAiLogFileSelectionsSimple() {
 
 // ファイルダイアログの状態管理
 let currentAiType = null;
-let currentBrowsePath = '';
+let currentBrowsePath = "";
 let selectedFile = null;
 
 // AI別ログフォルダダイアログを表示
@@ -7170,28 +7675,38 @@ async function showAiLogFolderDialog(aiType) {
   selectedFile = null;
 
   // ダイアログタイトルを設定
-  const dialogTitle = document.getElementById('aiLogFileDialogText');
-  const dialogIcon = document.getElementById('aiLogFileDialogIcon');
+  const dialogTitle = document.getElementById("aiLogFileDialogText");
+  const dialogIcon = document.getElementById("aiLogFileDialogIcon");
 
   if (dialogTitle && dialogIcon) {
     dialogTitle.textContent = `${aiLogFileSelectors[aiType].displayName}ログ保存フォルダを選択`;
 
     // AIタイプに応じてアイコンを設定
-    switch(aiType) {
-      case 'chatgpt': dialogIcon.textContent = '🤖'; break;
-      case 'claude': dialogIcon.textContent = '🔮'; break;
-      case 'gemini': dialogIcon.textContent = '✨'; break;
-      default: dialogIcon.textContent = '📁';
+    switch (aiType) {
+      case "chatgpt":
+        dialogIcon.textContent = "🤖";
+        break;
+      case "claude":
+        dialogIcon.textContent = "🔮";
+        break;
+      case "gemini":
+        dialogIcon.textContent = "✨";
+        break;
+      default:
+        dialogIcon.textContent = "📁";
     }
   }
 
   // 初期パスを設定（設定済みパスがあればそれを使用、なければルート）
   // Dropbox APIはルートを空文字列として扱うため、明示的に空文字列を設定
-  if (aiLogFileSelectors[aiType].currentPath && aiLogFileSelectors[aiType].currentPath !== '...') {
+  if (
+    aiLogFileSelectors[aiType].currentPath &&
+    aiLogFileSelectors[aiType].currentPath !== "..."
+  ) {
     currentBrowsePath = aiLogFileSelectors[aiType].currentPath;
     console.log(`[AI-Dialog] 保存されたパスを使用: "${currentBrowsePath}"`);
   } else {
-    currentBrowsePath = ''; // ルートディレクトリ
+    currentBrowsePath = ""; // ルートディレクトリ
     console.log(`[AI-Dialog] ルートディレクトリを使用: "${currentBrowsePath}"`);
   }
 
@@ -7199,9 +7714,9 @@ async function showAiLogFolderDialog(aiType) {
   await loadAiLogFilesForDialog(currentBrowsePath);
 
   // ダイアログを表示
-  const dialog = document.getElementById('aiLogFileDialog');
+  const dialog = document.getElementById("aiLogFileDialog");
   if (dialog) {
-    dialog.style.display = 'block';
+    dialog.style.display = "block";
   }
 
   // イベントリスナーを設定
@@ -7210,18 +7725,19 @@ async function showAiLogFolderDialog(aiType) {
 
 // ファイル一覧を読み込み（ダイアログ用）
 async function loadAiLogFilesForDialog(path) {
-  const fileList = document.getElementById('aiLogFileList');
-  const currentPathElement = document.getElementById('aiLogCurrentPath');
+  const fileList = document.getElementById("aiLogFileList");
+  const currentPathElement = document.getElementById("aiLogCurrentPath");
 
   if (!fileList || !currentPathElement) return;
 
   console.log(`[AI-Dialog] loadAiLogFilesForDialog呼び出し - パス: "${path}"`);
 
   // 読み込み中表示
-  fileList.innerHTML = '<div style="padding: 20px; text-align: center; color: #999;">読み込み中...</div>';
+  fileList.innerHTML =
+    '<div style="padding: 20px; text-align: center; color: #999;">読み込み中...</div>';
 
   // パス表示を調整（空文字列の場合はルートを表示）
-  currentPathElement.textContent = path === '' ? '/' : path;
+  currentPathElement.textContent = path === "" ? "/" : path;
 
   try {
     const service = await loadDropboxService();
@@ -7230,10 +7746,10 @@ async function loadAiLogFilesForDialog(path) {
     const files = await service.listFiles(path);
 
     // ファイル一覧をHTML生成
-    let html = '';
+    let html = "";
 
     // 親フォルダへのリンク（ルート以外）
-    if (path !== '') {
+    if (path !== "") {
       html += `
         <div class="ai-log-file-item" data-type="parent" style="padding: 10px; border-bottom: 1px solid #eee; cursor: pointer; display: flex; align-items: center; gap: 8px;">
           <span style="font-size: 16px;">📁</span>
@@ -7243,10 +7759,13 @@ async function loadAiLogFilesForDialog(path) {
     }
 
     // フォルダ一覧
-    const folders = files.filter(f => f.type === 'folder').sort((a, b) => a.name.localeCompare(b.name));
-    folders.forEach(folder => {
+    const folders = files
+      .filter((f) => f.type === "folder")
+      .sort((a, b) => a.name.localeCompare(b.name));
+    folders.forEach((folder) => {
       // フォルダのパスを確実に取得（path_displayまたはpath_lowerを使用）
-      const folderPath = folder.path_display || folder.path_lower || `/${folder.name}`;
+      const folderPath =
+        folder.path_display || folder.path_lower || `/${folder.name}`;
       html += `
         <div class="ai-log-file-item" data-type="folder" data-path="${folderPath}" style="padding: 10px; border-bottom: 1px solid #eee; cursor: pointer; display: flex; align-items: center; gap: 8px;">
           <span style="font-size: 16px;">📁</span>
@@ -7257,8 +7776,10 @@ async function loadAiLogFilesForDialog(path) {
 
     // フォルダ選択なので、ファイルは表示しない
     // 現在のフォルダを選択できるボタンを常に追加
-    const folderName = path === '' ? 'ルートフォルダを選択' : 'このフォルダを選択';
-    const folderDescription = path === '' ? 'Dropboxのルートディレクトリ' : `現在のパス: ${path}`;
+    const folderName =
+      path === "" ? "ルートフォルダを選択" : "このフォルダを選択";
+    const folderDescription =
+      path === "" ? "Dropboxのルートディレクトリ" : `現在のパス: ${path}`;
 
     html += `
       <div class="ai-log-file-item" data-type="select-current" style="padding: 12px; border: 2px solid #007bff; border-radius: 6px; margin: 10px; cursor: pointer; display: flex; align-items: center; gap: 8px; background: #e7f3ff;">
@@ -7271,48 +7792,46 @@ async function loadAiLogFilesForDialog(path) {
     `;
 
     if (folders.length === 0) {
-      html += '<div style="padding: 20px; text-align: center; color: #999;">サブフォルダがありません</div>';
+      html +=
+        '<div style="padding: 20px; text-align: center; color: #999;">サブフォルダがありません</div>';
     }
 
     fileList.innerHTML = html;
 
     // ファイルアイテムのクリックイベントを設定
     setupFileItemEvents();
-
   } catch (error) {
-    console.error('[AI-Dialog] ファイル読み込みエラー:', error);
+    console.error("[AI-Dialog] ファイル読み込みエラー:", error);
     fileList.innerHTML = `<div style="padding: 20px; text-align: center; color: #dc3545;">エラー: ${error.message}</div>`;
   }
 }
 
 // ファイルアイテムのイベント設定
 function setupFileItemEvents() {
-  const items = document.querySelectorAll('.ai-log-file-item');
+  const items = document.querySelectorAll(".ai-log-file-item");
 
-  items.forEach(item => {
-    item.addEventListener('click', async () => {
-      const type = item.getAttribute('data-type');
-      const path = item.getAttribute('data-path');
+  items.forEach((item) => {
+    item.addEventListener("click", async () => {
+      const type = item.getAttribute("data-type");
+      const path = item.getAttribute("data-path");
 
-      if (type === 'parent') {
+      if (type === "parent") {
         // 親フォルダに移動
-        const parentPath = currentBrowsePath.split('/').slice(0, -1).join('/');
+        const parentPath = currentBrowsePath.split("/").slice(0, -1).join("/");
         currentBrowsePath = parentPath;
         await loadAiLogFilesForDialog(currentBrowsePath);
-
-      } else if (type === 'folder') {
+      } else if (type === "folder") {
         // フォルダに移動
         currentBrowsePath = path;
         await loadAiLogFilesForDialog(currentBrowsePath);
-
-      } else if (type === 'select-current') {
+      } else if (type === "select-current") {
         // 現在のフォルダを選択
         selectFolderInDialog(currentBrowsePath);
 
         // 他の選択を解除
-        items.forEach(i => i.style.background = '');
+        items.forEach((i) => (i.style.background = ""));
         // 現在の選択をハイライト
-        item.style.background = '#c3e6fc';
+        item.style.background = "#c3e6fc";
       }
     });
   });
@@ -7321,28 +7840,28 @@ function setupFileItemEvents() {
 // ダイアログでフォルダを選択
 function selectFolderInDialog(folderPath) {
   selectedFile = {
-    type: 'folder',
+    type: "folder",
     path: folderPath,
-    name: folderPath === '' ? 'ルートフォルダ' : folderPath.split('/').pop()
+    name: folderPath === "" ? "ルートフォルダ" : folderPath.split("/").pop(),
   };
 
-  const selectedInfo = document.getElementById('aiLogSelectedInfo');
-  const selectedFileName = document.getElementById('aiLogSelectedFileName');
-  const selectedFileInfo = document.getElementById('aiLogSelectedFileInfo');
-  const selectButton = document.getElementById('aiLogFileDialogSelect');
+  const selectedInfo = document.getElementById("aiLogSelectedInfo");
+  const selectedFileName = document.getElementById("aiLogSelectedFileName");
+  const selectedFileInfo = document.getElementById("aiLogSelectedFileInfo");
+  const selectButton = document.getElementById("aiLogFileDialogSelect");
 
   if (selectedInfo && selectedFileName && selectedFileInfo && selectButton) {
-    selectedInfo.style.display = 'block';
+    selectedInfo.style.display = "block";
     selectedFileName.textContent = selectedFile.name;
-    selectedFileInfo.textContent = `パス: ${folderPath === '' ? '/' : folderPath}`;
+    selectedFileInfo.textContent = `パス: ${folderPath === "" ? "/" : folderPath}`;
     selectButton.disabled = false;
   }
 }
 
 // ダイアログのイベントリスナー設定
 function setupAiLogDialogEvents() {
-  const selectButton = document.getElementById('aiLogFileDialogSelect');
-  const cancelButton = document.getElementById('aiLogFileDialogCancel');
+  const selectButton = document.getElementById("aiLogFileDialogSelect");
+  const cancelButton = document.getElementById("aiLogFileDialogCancel");
 
   // 選択ボタン
   if (selectButton) {
@@ -7350,16 +7869,19 @@ function setupAiLogDialogEvents() {
       if (selectedFile && currentAiType) {
         // 選択されたフォルダを保存
         aiLogFileSelectors[currentAiType].selectedFile = selectedFile;
-        aiLogFileSelectors[currentAiType].currentPath = selectedFile.path || '';
+        aiLogFileSelectors[currentAiType].currentPath = selectedFile.path || "";
 
         // UI表示を更新
-        const displayName = selectedFile.name || 'ルートフォルダ';
+        const displayName = selectedFile.name || "ルートフォルダ";
         updateAiFileStatusDisplay(currentAiType, displayName, selectedFile);
 
         // 選択状況を永続化
         saveAiLogFileSelection(currentAiType, selectedFile);
 
-        showFeedback(`${aiLogFileSelectors[currentAiType].displayName}: ${displayName} を選択しました`, 'success');
+        showFeedback(
+          `${aiLogFileSelectors[currentAiType].displayName}: ${displayName} を選択しました`,
+          "success",
+        );
 
         // ダイアログを閉じる
         closeAiLogFileDialog();
@@ -7377,21 +7899,21 @@ function setupAiLogDialogEvents() {
 
 // ダイアログを閉じる
 function closeAiLogFileDialog() {
-  const dialog = document.getElementById('aiLogFileDialog');
+  const dialog = document.getElementById("aiLogFileDialog");
   if (dialog) {
-    dialog.style.display = 'none';
+    dialog.style.display = "none";
   }
 
   // 状態をリセット
   currentAiType = null;
-  currentBrowsePath = '';
+  currentBrowsePath = "";
   selectedFile = null;
 
   // 選択情報を非表示
-  const selectedInfo = document.getElementById('aiLogSelectedInfo');
-  const selectButton = document.getElementById('aiLogFileDialogSelect');
+  const selectedInfo = document.getElementById("aiLogSelectedInfo");
+  const selectButton = document.getElementById("aiLogFileDialogSelect");
 
-  if (selectedInfo) selectedInfo.style.display = 'none';
+  if (selectedInfo) selectedInfo.style.display = "none";
   if (selectButton) selectButton.disabled = true;
 }
 

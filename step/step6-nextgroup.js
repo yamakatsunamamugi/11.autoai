@@ -63,11 +63,18 @@ function checkNextGroup() {
   const processedGroups = window.globalState?.processedGroups || [];
   const currentIndex = window.globalState?.currentGroupIndex || 0;
 
+  console.log("🔄 [step6-nextgroup.js] ====== Step 6 開始 ======");
   console.log("[step6-nextgroup.js→Step6-1] 次グループの確認", {
     現在の状態: {
       グループ数: taskGroups.length,
       現在インデックス: currentIndex,
       処理済み数: processedGroups.length,
+      各グループの状態: taskGroups.map((g, i) => ({
+        index: i,
+        番号: g.groupNumber,
+        タイプ: g.taskType || g.type,
+        処理済み: i < currentIndex ? "✅" : i === currentIndex ? "⚡" : "⏳",
+      })),
     },
   });
 
@@ -215,11 +222,38 @@ async function processNextGroup(nextGroup) {
       },
     );
 
-    // ステップ3から再開
+    // Step 3-5を直接実行（stepファイル内で完結）
     console.log(
-      "[step6-nextgroup.js] [Step 6-2-1] ステップ3から再開（タスクリスト作成）",
+      "[step6-nextgroup.js] [Step 6-2-1] Step 3-5を直接実行（stepファイル内で完結）",
     );
-    await sleep(1000);
+
+    // Step 3: タスクリスト作成
+    if (window.executeStep3 || window.createTaskList) {
+      console.log("📝 [step6-nextgroup.js] Step 3を呼び出し中...");
+      const createTaskFunc = window.executeStep3 || window.createTaskList;
+      const tasks = await createTaskFunc(nextGroup);
+
+      if (tasks && tasks.length > 0) {
+        // Step 4: タスク実行
+        if (window.executeStep4 || window.executeTasks) {
+          console.log(
+            `⚡ [step6-nextgroup.js] Step 4を呼び出し中（${tasks.length}タスク）...`,
+          );
+          const executeFunc = window.executeStep4 || window.executeTasks;
+          await executeFunc(tasks, nextGroup);
+        }
+      } else {
+        console.log("📭 [step6-nextgroup.js] 処理可能なタスクなし");
+      }
+    }
+
+    // Step 5: 単一グループの処理を実行
+    if (window.executeStep5SingleGroup) {
+      console.log(
+        "🔄 [step6-nextgroup.js] Step 5（単一グループ）を呼び出し中...",
+      );
+      await window.executeStep5SingleGroup(nextGroup);
+    }
 
     // 処理済みグループに追加（安全な配列操作）
     if (window.globalState) {
@@ -230,10 +264,11 @@ async function processNextGroup(nextGroup) {
         index: window.globalState.currentGroupIndex || 0,
         group: nextGroup,
         timestamp: new Date().toISOString(),
+        success: true,
       });
     }
 
-    console.log("[step6-nextgroup.js] [Step 6-2-1] 次グループ処理設定完了");
+    console.log("[step6-nextgroup.js] [Step 6-2-1] 次グループ処理完了");
   } catch (error) {
     console.error("[step6-nextgroup.js] [Step 6-2-1] 次グループ処理エラー:", {
       エラーメッセージ: error.message,

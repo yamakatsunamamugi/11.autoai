@@ -466,6 +466,10 @@ async function processIncompleteTasks(taskGroup) {
         理由: "すべてのタスクが完了済みまたは処理対象外",
         グループ番号: taskGroup.groupNumber,
       });
+      console.log(
+        "🎯 [step5-loop.js] このグループは完了済み - 正常終了として扱います",
+      );
+      isComplete = true; // タスクがない = このグループは完了
       break;
     }
     LoopLogger.info(
@@ -558,16 +562,85 @@ async function processIncompleteTasks(taskGroup) {
 }
 
 /**
- * メイン処理（ステップ5）
+ * 全グループを処理するメイン関数
+ * Step 3が全体のループ制御を担当
+ * @returns {Promise<Object>} 処理結果
+ */
+async function executeStep3AllGroups() {
+  console.log("========================================");
+  console.log("🚀 [step3-loop.js] 全グループ処理開始");
+  console.log("========================================");
+
+  const taskGroups = window.globalState?.taskGroups || [];
+  console.log(`📊 処理対象: ${taskGroups.length}グループ`);
+
+  let completedGroups = 0;
+
+  // 各グループを順番に処理
+  for (let i = 0; i < taskGroups.length; i++) {
+    window.globalState.currentGroupIndex = i;
+    const taskGroup = taskGroups[i];
+
+    console.log(
+      `\n====== グループ ${i + 1}/${taskGroups.length} 処理開始 ======`,
+    );
+    console.log(`📋 グループ詳細:`, {
+      番号: taskGroup.groupNumber,
+      タイプ: taskGroup.taskType || taskGroup.type,
+      列範囲: `${taskGroup.columns?.prompts?.[0]} 〜 ${taskGroup.columns?.answer?.primary || taskGroup.columns?.answer?.claude}`,
+    });
+
+    // 現在のグループを処理
+    const isComplete = await executeStep3SingleGroup(taskGroup);
+
+    if (isComplete) {
+      completedGroups++;
+      console.log(`✅ グループ ${i + 1} 完了`);
+    }
+
+    // Step 6: 次グループへの移行判定
+    if (window.executeStep6) {
+      console.log(`🔄 [step3-loop.js] Step 6 を呼び出し中...`);
+      const step6Result = await window.executeStep6(taskGroups, i);
+
+      if (!step6Result.hasNext) {
+        console.log(`🏁 [step3-loop.js] 全グループ処理完了`);
+        break;
+      }
+    }
+  }
+
+  console.log(`\n========================================`);
+  console.log(
+    `📊 処理結果: ${completedGroups}/${taskGroups.length} グループ完了`,
+  );
+  console.log(`========================================\n`);
+
+  return {
+    success: true,
+    completedGroups,
+    totalGroups: taskGroups.length,
+  };
+}
+
+/**
+ * 単一グループの処理
  * @param {Object} taskGroup - タスクグループ情報
  * @returns {Promise<boolean>} 完了の場合true
  */
-async function executeStep5(taskGroup) {
+async function executeStep3SingleGroup(taskGroup) {
   LoopLogger.info("========================================");
   LoopLogger.info(
-    "[step5-loop.js] [Step 5] タスクグループ内の繰り返し処理開始",
+    "[step3-loop.js] [Step 3] タスクグループ内の繰り返し処理開始",
   );
   LoopLogger.info("========================================");
+  console.log("📋 [step5-loop.js] 処理開始グループ:", {
+    グループ番号: taskGroup?.groupNumber,
+    タイプ: taskGroup?.type || taskGroup?.taskType,
+    パターン: taskGroup?.pattern,
+    列範囲: `${taskGroup?.columns?.prompts?.[0] || "?"} 〜 ${taskGroup?.columns?.answer?.primary || taskGroup?.columns?.answer?.claude || "?"}`,
+    開始行: taskGroup?.dataStartRow,
+  });
   LoopLogger.info("[step5-loop.js] 🔍 入力グループ詳細情報:", {
     グループ番号: taskGroup?.groupNumber,
     タイプ: taskGroup?.type || taskGroup?.taskType,
@@ -582,17 +655,21 @@ async function executeStep5(taskGroup) {
     window.globalState.currentGroup = taskGroup;
 
     // 5-1: 完了状況確認
+    console.log("🔍 [step5-loop.js] Step 5-1: 完了状況を確認中...");
     const isComplete = await checkCompletionStatus(taskGroup);
 
     if (isComplete) {
+      console.log("✅ [step5-loop.js] グループ完了済み - Step 5終了");
       LoopLogger.info("[step5-loop.js] [Step 5] タスクグループは既に完了");
       return true;
     }
 
     // 5-2: 未完了時の処理
+    console.log("⚡ [step5-loop.js] Step 5-2: 未完了タスクを処理中...");
     await processIncompleteTasks(taskGroup);
 
     // 最終的な完了確認
+    console.log("🔍 [step5-loop.js] 最終完了確認中...");
     const finalComplete = await checkCompletionStatus(taskGroup);
 
     LoopLogger.info("[step5-loop.js] 🎯 [Step 5] グループ処理完了:", {
@@ -1157,7 +1234,8 @@ async function executeTasks(tasks, taskGroup) {
 // ブラウザ環境用のグローバルエクスポート
 LoopLogger.info("🔍 [DEBUG] グローバルエクスポート前の状態:", {
   windowType: typeof window,
-  executeStep5Defined: typeof executeStep5,
+  executeStep3AllGroupsDefined: typeof executeStep3AllGroups,
+  executeStep3SingleGroupDefined: typeof executeStep3SingleGroup,
   checkCompletionStatusDefined: typeof checkCompletionStatus,
   processIncompleteTasksDefined: typeof processIncompleteTasks,
   readFullSpreadsheetDefined: typeof readFullSpreadsheet,
@@ -1165,13 +1243,23 @@ LoopLogger.info("🔍 [DEBUG] グローバルエクスポート前の状態:", {
 
 if (typeof window !== "undefined") {
   try {
-    window.executeStep5 = executeStep5;
+    // Step 3 として関数をエクスポート
+    window.executeStep3 = executeStep3AllGroups; // メインエントリーポイント
+    window.executeStep3AllGroups = executeStep3AllGroups; // 明示的な名前でもエクスポート
+    window.executeStep3SingleGroup = executeStep3SingleGroup; // 単一グループ処理
+
+    // 互換性のため旧名称でもエクスポート
+    window.executeStep5 = executeStep3AllGroups;
+    window.executeStep5SingleGroup = executeStep3SingleGroup;
+
     window.checkCompletionStatus = checkCompletionStatus;
     window.processIncompleteTasks = processIncompleteTasks;
-    window.readFullSpreadsheet = readFullSpreadsheet; // 新しい関数も追加
+    window.readFullSpreadsheet = readFullSpreadsheet;
 
     LoopLogger.info("✅ [DEBUG] グローバルエクスポート成功:", {
-      "window.executeStep5": typeof window.executeStep5,
+      "window.executeStep3": typeof window.executeStep3,
+      "window.executeStep3AllGroups": typeof window.executeStep3AllGroups,
+      "window.executeStep3SingleGroup": typeof window.executeStep3SingleGroup,
       "window.checkCompletionStatus": typeof window.checkCompletionStatus,
       "window.processIncompleteTasks": typeof window.processIncompleteTasks,
       "window.readFullSpreadsheet": typeof window.readFullSpreadsheet,
