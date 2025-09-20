@@ -11,17 +11,11 @@ async function checkInternetConnection() {
   console.log("========");
 
   try {
-    console.log(
-      `[step1-setup.js→Step1-1-1] navigator.onLine: ${navigator.onLine}`,
-    );
-    console.log(
-      `[step1-setup.js→Step1-1-1] ユーザーエージェント: ${navigator.userAgent}`,
-    );
+    // navigator.onLine: チェック済み
+    // ユーザーエージェント: チェック済み
 
     // 現在のURLから環境を判定
-    console.log(
-      `[step1-setup.js→Step1-1-1] 現在のURL: ${window.location.href}`,
-    );
+    // 現在のURL: チェック済み
     const isExtension = window.location.protocol === "chrome-extension:";
     const isDrive = window.location.hostname === "docs.google.com";
 
@@ -33,9 +27,7 @@ async function checkInternetConnection() {
       let authToken = null;
 
       // 方法1: chrome.storage から確認
-      console.log(
-        "[step1-setup.js] [Step 1-1-1] chrome.storage から認証情報を確認中...",
-      );
+      // chrome.storage から認証情報を確認中
       try {
         if (chrome?.storage?.local) {
           const result = await new Promise((resolve) => {
@@ -43,9 +35,7 @@ async function checkInternetConnection() {
           });
           if (result.authToken) {
             authToken = result.authToken;
-            console.log(
-              "[step1-setup.js] [Step 1-1-1] ✅ chrome.storage: トークン取得成功",
-            );
+            // chrome.storage: トークン取得成功
           }
         }
       } catch (error) {
@@ -183,12 +173,12 @@ async function preventSleep() {
       // 1-2-1: Wake Lock API（標準的なアプローチ）
       try {
         const startTime = Date.now();
-        console.log("[step1-setup.js] [Step 1-2-1] Wake Lock取得を試行中...");
+        // Wake Lock取得を試行中
         wakeLock = await navigator.wakeLock.request("screen");
         const elapsedTime = Date.now() - startTime;
 
         console.log("[step1-setup.js] [Step 1-2-1] ✅ Wake Lock取得成功");
-        console.log(`  - 取得時間: ${elapsedTime}ms`);
+        // 取得時間記録
         console.log(`  - Wake Lock状態: アクティブ`);
 
         const now = new Date();
@@ -279,7 +269,7 @@ async function initializeAPI() {
   console.log("========");
 
   console.log("[step1-setup.js] [Step 1-3-1] Google OAuth2認証を開始");
-  console.log("  - 認証モード: interactive (ユーザー操作許可)");
+  // 認証モード: interactive
 
   // トークン取得（リトライ機能付き）
   let token = null;
@@ -320,7 +310,7 @@ async function initializeAPI() {
 
         // トークンの詳細情報を表示
         console.log(`  - トークン長: ${token.length}文字`);
-        console.log(`  - 取得時刻: ${new Date().toISOString()}`);
+        // 取得時刻記録
         console.log(
           `  - 有効期限: ${new Date(Date.now() + 50 * 60 * 1000).toISOString()}`,
         );
@@ -343,7 +333,7 @@ async function initializeAPI() {
         console.log(
           "  - APIベースURL: https://sheets.googleapis.com/v4/spreadsheets",
         );
-        console.log("  - ヘッダー: Authorization, Content-Type設定済み");
+        // ヘッダー設定済み
         console.log("[step1-setup.js] [Step 1-3] ✅ API初期化完了");
         return { success: true, token: token };
       }
@@ -676,8 +666,9 @@ async function findSpecialRows() {
     }
 
     // 1-4-1: 全データ一括取得（初期設定用キャッシュ作成）
-    console.log("[step1-setup.js] [Step 1-4-1] 全データ一括取得開始");
-    console.log("  - 取得範囲: A1:CZ100 (初期設定用)");
+    console.log(
+      "[step1-setup.js] [Step 1-4-1] 全データ一括取得開始 (A1:CZ100)",
+    );
     console.log(
       `  - APIエンドポイント: ${window.globalState.sheetsApiBase}/${spreadsheetId}/values/A1:CZ100`,
     );
@@ -757,7 +748,7 @@ async function findSpecialRows() {
     );
 
     // 1-4-3: 検索結果の検証
-    console.log("[step1-setup.js] [Step 1-4-3] 検索結果の検証");
+    // 検索結果の検証
     const foundRows = [];
     const missingRows = [];
 
@@ -1095,7 +1086,7 @@ async function insertColumn(spreadsheetId, sheetId, columnIndex) {
 
     const result = await response.json();
     console.log("[step1-setup.js] [Step 1-5-6] ✅ 列挿入成功");
-    console.log("  - レスポンス:", result);
+    // レスポンス取得
 
     return true;
   } catch (error) {
@@ -1136,7 +1127,7 @@ async function executeStep1(spreadsheetUrl) {
   console.log("＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝");
 
   try {
-    console.log("[step1-setup.js] [Debug] Global State確認:");
+    // Global State確認
     console.log(`  - window.globalState存在: ${!!window.globalState}`);
     console.log(`  - chrome API利用可能: ${typeof chrome !== "undefined"}`);
     console.log(
@@ -1212,9 +1203,7 @@ async function executeStep1(spreadsheetUrl) {
     });
 
     console.log("[step1-setup.js] globalState最終状態:");
-    console.log("  - 認証済み:", window.globalState.authenticated);
-    console.log("  - スプレッドシートID:", window.globalState.spreadsheetId);
-    console.log("  - 特殊行情報:", window.globalState.specialRows);
+    // globalState情報: 認証済み, スプレッドシートID, 特殊行情報
 
     console.log(`[step1-setup.js] ✅ globalState準備完了:`, window.globalState);
 

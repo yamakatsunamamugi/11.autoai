@@ -46,12 +46,12 @@ function extractSpreadsheetInfo() {
   } else {
     // 方法2: URLから解析（元の方法）
     const url = window.location.href;
-    console.log(`[step2-taskgroup.js] [Step 2-0-1] 現在のURL: ${url}`);
+    // 現在のURL確認
 
     const spreadsheetIdMatch = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
     const gidMatch = url.match(/#gid=([0-9]+)/);
 
-    console.log("[step2-taskgroup.js] [Step 2-0-1] URLパターンマッチング結果:");
+    // URLパターンマッチング
     console.log(
       `  - スプレッドシートIDマッチ: ${spreadsheetIdMatch ? "成功" : "失敗"}`,
     );
@@ -62,7 +62,7 @@ function extractSpreadsheetInfo() {
   }
 
   // 2-0-2. 取得した情報の保存・更新
-  console.log("[step2-taskgroup.js] [Step 2-0-2] 抽出情報を保存");
+  // 抽出情報を保存
   window.globalState.spreadsheetId = spreadsheetId;
   window.globalState.gid = gid;
 
@@ -156,14 +156,10 @@ async function identifyTaskGroups() {
     const menuValues = window.globalState.initialSheetData[menuRow - 1] || [];
     const aiValues = window.globalState.initialSheetData[aiRow - 1] || [];
 
-    console.log(`[step2-taskgroup.js] [Step 2-1-1] 取得データ概要:`);
-    console.log(`  - メニュー行列数: ${menuValues.length}`);
-    console.log(`  - AI行列数: ${aiValues.length}`);
-    console.log(`  - メニュー行先頭5列: ${menuValues.slice(0, 5).join(", ")}`);
-    console.log(`  - AI行先頭5列: ${aiValues.slice(0, 5).join(", ")}`);
+    // 取得データ概要: メニュー行${menuValues.length}列, AI行${aiValues.length}列
 
     // 2-1-2. 列の走査とパターン認識（stream-processor-v2.jsのロジックを採用）
-    console.log("[step2-taskgroup.js] [Step 2-1-2] 列の走査とパターン認識開始");
+    // 列の走査とパターン認識開始
     const taskGroups = [];
     let groupCounter = 1;
     let currentGroup = null;
@@ -393,7 +389,7 @@ async function applyColumnControls() {
     return;
   }
 
-  console.log(`[step2-taskgroup.js] [Step 2-2] 列制御行: ${controlRow}行目`);
+  // 列制御行: ${controlRow}行目
 
   // 2-2-1. 列制御行の全列を読み込み（キャッシュから）
   console.log(
@@ -419,7 +415,7 @@ async function applyColumnControls() {
     console.log(`  - 有効な制御: ${controlValues.filter((v) => v).length}個`);
 
     // 2-2-2. 列制御テキストの検出と処理
-    console.log("[step2-taskgroup.js] [Step 2-2-2] 列制御テキストの検出開始");
+    // 列制御テキストの検出
     const controls = {
       startFrom: null,
       stopAfter: null,
@@ -468,7 +464,7 @@ async function applyColumnControls() {
     );
 
     // 2-2-3. 複数の列制御がある場合の処理
-    console.log("[step2-taskgroup.js] [Step 2-2-3] 列制御の適用開始");
+    // 列制御の適用
     const taskGroups = window.globalState.taskGroups;
     let skipCount = 0;
 
@@ -549,24 +545,7 @@ async function applySkipConditions() {
     "Content-Type": "application/json",
   };
 
-  // デバッグ情報を出力
-  console.log(`[step2-taskgroup.js] デバッグ情報:`);
-  console.log(`  - spreadsheetId: ${spreadsheetId}`);
-  console.log(`  - dataStartRow: ${dataStartRow}`);
-  console.log(
-    `  - taskGroups数: ${taskGroups ? taskGroups.length : "undefined"}`,
-  );
-  console.log(`  - authToken存在: ${!!currentToken}`);
-  console.log(
-    `  - fetchWithTokenRefresh存在: ${!!window.fetchWithTokenRefresh}`,
-  );
-
-  if (currentToken) {
-    console.log(`  - authToken長: ${currentToken.length}文字`);
-    console.log(`  - authToken先頭: ${currentToken.substring(0, 20)}...`);
-  }
-
-  console.log(`  - 作成したapiHeaders:`, apiHeaders);
+  // デバッグ情報: spreadsheetId, dataStartRow, taskGroups数, 認証情報
 
   let checkedGroups = 0;
   let skippedByData = 0;
