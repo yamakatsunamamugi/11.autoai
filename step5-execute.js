@@ -273,7 +273,50 @@ class ThreeAIController {
   async executeSingleAI(task, aiType) {
     ExecuteLogger.info(`[step4-execute.js] Step 4-0-3-5: ${aiType}実行準備`);
 
-    // Step 4-0-3-5-1: 対応するAutomationオブジェクトを取得
+    // Step 4-0-3-5-1: タブ通信 vs ローカル実行の判定
+    if (task.tabId && typeof chrome !== "undefined" && chrome.tabs) {
+      // Step 4-0-3-5-2: タブ通信でタスクを実行
+      ExecuteLogger.info(
+        `[step4-execute.js] Step 4-0-3-5-2: ${aiType}をタブ通信で実行 (tabId: ${task.tabId})`,
+      );
+
+      try {
+        const response = await chrome.tabs.sendMessage(task.tabId, {
+          type: "CLAUDE_EXECUTE_TASK",
+          task: task,
+          aiType: aiType,
+        });
+
+        if (chrome.runtime.lastError) {
+          throw new Error(
+            `タブ通信エラー: ${chrome.runtime.lastError.message}`,
+          );
+        }
+
+        if (!response || !response.success) {
+          throw new Error(
+            `タスク実行失敗: ${response?.error || "不明なエラー"}`,
+          );
+        }
+
+        ExecuteLogger.info(
+          `[step4-execute.js] Step 4-0-3-5-2: ${aiType}タブ通信実行完了`,
+        );
+        return response;
+      } catch (error) {
+        ExecuteLogger.error(
+          `[step4-execute.js] Step 4-0-3-5-2: ${aiType}タブ通信失敗 - フォールバックを試行`,
+          error,
+        );
+        // フォールバックとしてローカル実行を試行
+      }
+    }
+
+    // Step 4-0-3-5-3: フォールバック: ローカルAutomationオブジェクトで実行
+    ExecuteLogger.info(
+      `[step4-execute.js] Step 4-0-3-5-3: ${aiType}をローカル実行で処理`,
+    );
+
     const automations = {
       chatgpt: window.ChatGPTAutomationV2 || window.ChatGPTAutomation,
       claude: window.ClaudeAutomation,
@@ -283,15 +326,11 @@ class ThreeAIController {
     const automation = automations[aiType];
     if (!automation?.executeTask) {
       ExecuteLogger.error(
-        `[step4-execute.js] Step 4-0-3-5-2: ${aiType}のAutomationオブジェクトが利用できません`,
+        `[step4-execute.js] Step 4-0-3-5-3: ${aiType}のAutomationオブジェクトが利用できません`,
       );
       throw new Error(`${aiType}のAutomationオブジェクトが利用できません`);
     }
 
-    // Step 4-0-3-5-3: AI実行（tabID情報を含めて実行）
-    ExecuteLogger.info(
-      `[step4-execute.js] Step 4-0-3-5-3: ${aiType}実行中... (tabId: ${task.tabId})`,
-    );
     return await automation.executeTask(task);
   }
 }
