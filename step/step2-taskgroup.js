@@ -532,19 +532,29 @@ async function applySkipConditions() {
   const { dataStartRow } = specialRows;
   const taskGroups = window.globalState.taskGroups;
 
-  // 2-3-1. プロンプト列と回答列の全データ取得
-  console.log('[step2-taskgroup.js] [Step 2-3-1] 各グループのプロンプト/回答データを取得');
   let checkedGroups = 0;
   let skippedByData = 0;
+  const groupResults = [];
 
   for (const group of taskGroups) {
+    const result = {
+      groupNumber: group.groupNumber,
+      type: group.type,
+      status: 'unknown',
+      processedCount: 0,
+      unprocessedCount: 0,
+      skipReason: null,
+      error: null
+    };
+
     if (group.skip) {
-      console.log(`  - グループ${group.groupNumber}: 既にスキップ設定済み`);
+      result.status = 'already-skipped';
+      result.skipReason = '列制御によりスキップ設定済み';
+      groupResults.push(result);
       continue;
     }
 
     checkedGroups++;
-    console.log(`[step2-taskgroup.js] [Step 2-3-1] グループ${group.groupNumber}のデータチェック`);
 
     try {
       // データ範囲を決定（データ開始行から100行）
@@ -578,59 +588,75 @@ async function applySkipConditions() {
         const answerData = await answerResponse.json();
         const answerValues = answerData.values || [];
 
-        console.log(`  - プロンプトデータ: ${promptValues.length}行`);
-        console.log(`  - 回答データ: ${answerValues.length}行`);
-
-        // 2-3-2. スキップ条件の適用
-        console.log('[step2-taskgroup.js] [Step 2-3-2] スキップ条件を適用中...');
+        // スキップ条件の適用
         let hasUnprocessedTask = false;
         let processedCount = 0;
-        let skippedCount = 0;
+        let unprocessedCount = 0;
 
         for (let i = 0; i < promptValues.length; i++) {
           const promptText = promptValues[i] && promptValues[i][0];
           const answerText = answerValues[i] && answerValues[i][0];
-          const rowNum = dataStartRow + i;
 
           // プロンプトがあって回答がない場合は処理対象
           if (promptText && !answerText) {
             hasUnprocessedTask = true;
-            processedCount++;
-            if (processedCount <= 3) { // 最初の3件をログ
-              console.log(`    - 行${rowNum}: 未処理（プロンプトあり/回答なし）`);
-            }
+            unprocessedCount++;
           } else if (promptText && answerText) {
-            skippedCount++;
-            if (skippedCount <= 3) { // 最初の3件をログ
-              console.log(`    - 行${rowNum}: 処理済み（プロンプトあり/回答あり）`);
-            }
+            processedCount++;
           }
         }
 
-        // 2-3-3. 有効なタスクグループの判定
-        console.log('[step2-taskgroup.js] [Step 2-3-3] 判定結果:');
+        result.processedCount = processedCount;
+        result.unprocessedCount = unprocessedCount;
+
+        // 有効なタスクグループの判定
         if (!hasUnprocessedTask) {
           group.skip = true;
           skippedByData++;
-          console.log(`  - グループ${group.groupNumber}: 未処理タスクなし → スキップ`);
-          console.log(`    (処理済み: ${skippedCount}行, 未処理: ${processedCount}行)`);
+          result.status = 'skipped';
+          result.skipReason = '未処理タスクなし';
         } else {
-          console.log(`  - グループ${group.groupNumber}: 処理対象`);
-          console.log(`    (処理済み: ${skippedCount}行, 未処理: ${processedCount}行)`);
+          result.status = 'active';
         }
+      } else {
+        result.status = 'special';
+        result.skipReason = '特殊グループ（レポート/Genspark）';
       }
 
     } catch (error) {
-      console.error(`[step2-taskgroup.js] [Step 2-3] グループ${group.groupNumber}のスキップ判定エラー:`);
-      console.error(`  - エラー: ${error.message}`);
-      console.error('  - 注: エラー発生時は安全のため処理対象として扱います');
-      // エラーの場合はスキップしない
+      result.status = 'error';
+      result.error = error.message;
+      // エラーの場合はスキップしない（安全のため処理対象として扱う）
     }
+
+    groupResults.push(result);
   }
 
-  console.log('[step2-taskgroup.js] [Step 2-3] スキップ判定完了:');
-  console.log(`  - チェックしたグループ: ${checkedGroups}`);
-  console.log(`  - データによるスキップ: ${skippedByData}`);
+  // 統合ログ出力
+  console.log('[step2-taskgroup.js] [Step 2-3] 📊 スキップ判定結果サマリー:');
+  console.log('┌─────────────────────────────────────────────────────────────┐');
+  console.log('│ グループ │ タイプ     │ 状態       │ 処理済み │ 未処理 │ 備考        │');
+  console.log('├─────────────────────────────────────────────────────────────┤');
+
+  groupResults.forEach(result => {
+    const group = `グループ${result.groupNumber}`.padEnd(8);
+    const type = (result.type || '').substring(0, 8).padEnd(8);
+    const status = {
+      'active': '✅ 処理対象',
+      'skipped': '⏭️ スキップ',
+      'already-skipped': '🔒 除外済み',
+      'special': '🔹 特殊',
+      'error': '❌ エラー'
+    }[result.status].padEnd(10);
+    const processed = String(result.processedCount).padStart(6);
+    const unprocessed = String(result.unprocessedCount).padStart(6);
+    const note = (result.skipReason || result.error || '').substring(0, 12);
+
+    console.log(`│ ${group} │ ${type} │ ${status} │ ${processed} │ ${unprocessed} │ ${note} │`);
+  });
+
+  console.log('└─────────────────────────────────────────────────────────────┘');
+  console.log(`[step2-taskgroup.js] [Step 2-3] ✅ 判定完了: チェック${checkedGroups}個, データによるスキップ${skippedByData}個`);
 }
 
 // ========================================
