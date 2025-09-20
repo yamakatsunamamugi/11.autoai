@@ -438,11 +438,32 @@ class SpreadsheetDataManager {
 
         // SheetsClientがグローバルに存在するかチェック
         if (typeof SheetsClient === 'undefined') {
-            throw new Error('SheetsClientが利用できません');
+            // 動的インポートを試行
+            try {
+                const module = await import('../src/features/spreadsheet/sheets-client.js');
+
+                // グローバルに設定
+                if (module.default) {
+                    window.SheetsClient = module.default;
+                } else if (module.SheetsClient) {
+                    window.SheetsClient = module.SheetsClient;
+                } else {
+                    throw new Error('SheetsClientがモジュールにエクスポートされていません');
+                }
+
+            } catch (importError) {
+                throw new Error(`SheetsClientが利用できません: ${importError.message}`);
+            }
         }
 
-        this.sheetsClient = new SheetsClient();
-        console.log('✅ [SpreadsheetDataManager] Step 4-2-1: SheetsClient初期化完了');
+        // SheetsClientのインスタンス化
+        try {
+            const SheetsClientClass = window.SheetsClient || SheetsClient;
+            this.sheetsClient = new SheetsClientClass();
+            console.log('✅ [SpreadsheetDataManager] Step 4-2-1: SheetsClient初期化完了');
+        } catch (instantiationError) {
+            throw new Error(`SheetsClientインスタンス化失敗: ${instantiationError.message}`);
+        }
     }
 
     /**
@@ -451,9 +472,39 @@ class SpreadsheetDataManager {
     async getSpreadsheetConfig() {
         console.log('📊 [SpreadsheetDataManager] Step 4-2-2: スプレッドシート設定取得開始');
 
-        // グローバル設定の確認
+        // 🔧 [DEBUG] SPREADSHEET_CONFIG状態をログ出力
+        console.log('🔍 [DEBUG] SPREADSHEET_CONFIG状態チェック:', {
+            globalThisExists: typeof globalThis.SPREADSHEET_CONFIG !== 'undefined',
+            windowGlobalStateExists: typeof window.globalState !== 'undefined',
+            windowGlobalStateData: window.globalState
+        });
+
+        // グローバル設定の確認と初期化
         if (!globalThis.SPREADSHEET_CONFIG) {
-            throw new Error('SPREADSHEET_CONFIGが設定されていません');
+            console.log('⚠️ [DEBUG] SPREADSHEET_CONFIG未初期化 - window.globalStateから初期化を試行');
+
+            // window.globalStateからSPREADSHEET_CONFIGを初期化
+            if (window.globalState && window.globalState.spreadsheetId) {
+                console.log('🔄 [DEBUG] window.globalStateからSPREADSHEET_CONFIGを初期化中...');
+
+                globalThis.SPREADSHEET_CONFIG = {
+                    spreadsheetId: window.globalState.spreadsheetId,
+                    gid: window.globalState.gid || '0',
+                    sheetName: `シート${window.globalState.gid || '0'}`,
+                    apiHeaders: window.globalState.apiHeaders || {},
+                    sheetsApiBase: window.globalState.sheetsApiBase || 'https://sheets.googleapis.com/v4/spreadsheets',
+                    specialRows: window.globalState.specialRows || {},
+                    authToken: window.globalState.authToken || null
+                };
+
+                console.log('✅ [DEBUG] SPREADSHEET_CONFIG初期化完了:', globalThis.SPREADSHEET_CONFIG);
+            } else {
+                console.error('❌ [DEBUG] window.globalState または spreadsheetId が存在しません');
+                console.error('   - window.globalState:', window.globalState);
+                throw new Error('SPREADSHEET_CONFIGが設定されておらず、window.globalStateからも初期化できませんでした');
+            }
+        } else {
+            console.log('✅ [DEBUG] SPREADSHEET_CONFIG既存:', globalThis.SPREADSHEET_CONFIG);
         }
 
         this.spreadsheetData = globalThis.SPREADSHEET_CONFIG;
