@@ -74,7 +74,7 @@ window.WindowService = {
     try {
       if (forcePrimary) {
         console.log(
-          "[WindowService] プライマリディスプレイに強制配置でウィンドウ作成...",
+          "[step0-ui-controller.js→Step0-1] プライマリディスプレイに強制配置でウィンドウ作成...",
         );
 
         // プライマリディスプレイ情報を取得
@@ -102,28 +102,37 @@ window.WindowService = {
           height: position.height,
         };
 
-        console.log("[WindowService] プライマリディスプレイ位置:", position);
+        console.log(
+          "[step0-ui-controller.js→Step0-1] プライマリディスプレイ位置:",
+          position,
+        );
 
         const window = await chrome.windows.create(windowOptions);
 
         // 作成後の位置確認
         const actualWindow = await chrome.windows.get(window.id);
-        console.log("[WindowService] 作成されたウィンドウ位置:", {
-          expected: position,
-          actual: {
-            left: actualWindow.left,
-            top: actualWindow.top,
-            width: actualWindow.width,
-            height: actualWindow.height,
+        console.log(
+          "[step0-ui-controller.js→Step0-1] 作成されたウィンドウ位置:",
+          {
+            expected: position,
+            actual: {
+              left: actualWindow.left,
+              top: actualWindow.top,
+              width: actualWindow.width,
+              height: actualWindow.height,
+            },
           },
-        });
+        );
 
         return window;
       } else {
         return await chrome.windows.create(options);
       }
     } catch (error) {
-      console.error("WindowService.createWindow エラー:", error);
+      console.error(
+        "[step0-ui-controller.js→Step0-1] WindowService.createWindow エラー:",
+        error,
+      );
       throw error;
     }
   },
@@ -132,7 +141,10 @@ window.WindowService = {
     try {
       return await chrome.windows.update(windowId, updateInfo);
     } catch (error) {
-      console.error("WindowService.updateWindow エラー:", error);
+      console.error(
+        "[step0-ui-controller.js→Step0-1] WindowService.updateWindow エラー:",
+        error,
+      );
       throw error;
     }
   },
@@ -141,7 +153,10 @@ window.WindowService = {
     try {
       return await chrome.windows.remove(windowId);
     } catch (error) {
-      console.error("WindowService.closeWindow エラー:", error);
+      console.error(
+        "[step0-ui-controller.js→Step0-1] WindowService.closeWindow エラー:",
+        error,
+      );
       throw error;
     }
   },
@@ -173,7 +188,10 @@ window.WindowService = {
    */
   async createWindowWithPosition(url, position, options = {}) {
     try {
-      console.log(`[WindowService] 位置${position}にウィンドウを作成:`, url);
+      console.log(
+        `[step0-ui-controller.js→Step0-1] 位置${position}にウィンドウを作成:`,
+        url,
+      );
 
       // プライマリディスプレイ情報を取得
       const primaryDisplay = await getPrimaryDisplayInfo();
@@ -239,7 +257,10 @@ window.WindowService = {
         };
       }
 
-      console.log(`[WindowService] 位置${position}の座標:`, windowPosition);
+      console.log(
+        `[step0-ui-controller.js→Step0-1] 位置${position}の座標:`,
+        windowPosition,
+      );
 
       // ウィンドウ作成（aiTypeを分離してChrome APIに渡す）
       const { aiType, ...chromeWindowOptions } = options;
@@ -257,7 +278,7 @@ window.WindowService = {
       const window = await chrome.windows.create(windowOptions);
 
       console.log(
-        `[WindowService] ✅ 位置${position}にウィンドウ作成完了 (ID: ${window.id})`,
+        `[step0-ui-controller.js→Step0-1] ✅ 位置${position}にウィンドウ作成完了 (ID: ${window.id})`,
       );
 
       return {
@@ -269,7 +290,10 @@ window.WindowService = {
         url: url,
       };
     } catch (error) {
-      console.error("[WindowService] createWindowWithPosition エラー:", error);
+      console.error(
+        "[step0-ui-controller.js→Step0-1] createWindowWithPosition エラー:",
+        error,
+      );
       throw error;
     }
   },
