@@ -1454,12 +1454,19 @@ async function executeStep4(taskList) {
 
     for (const task of taskList) {
         try {
-            console.log(`📝 タスク実行開始: ${task.id} (AI: ${task.aiType})`);
+            // AI種別の正規化（singleをClaudeに変換）
+            let normalizedAiType = task.aiType;
+            if (task.aiType === 'single' || !task.aiType) {
+                console.log(`[Step4] AIタイプ '${task.aiType}' を 'Claude' に変換`);
+                normalizedAiType = 'Claude';
+            }
+
+            console.log(`📝 タスク実行開始: ${task.id} (AI: ${normalizedAiType})`);
 
             let result;
 
             // AI種別に応じて適切な自動化関数を呼び出し
-            switch (task.aiType.toLowerCase()) {
+            switch (normalizedAiType.toLowerCase()) {
                 case 'chatgpt':
                     if (window.ChatGPTAutomationV2) {
                         result = await window.ChatGPTAutomationV2.executeTask(task);
@@ -1501,13 +1508,13 @@ async function executeStep4(taskList) {
                     break;
 
                 default:
-                    throw new Error(`未対応のAI種別: ${task.aiType}`);
+                    throw new Error(`未対応のAI種別: ${normalizedAiType}`);
             }
 
             console.log(`✅ タスク完了: ${task.id}`, result);
             results.push({
                 taskId: task.id,
-                aiType: task.aiType,
+                aiType: normalizedAiType,
                 success: result.success,
                 result: result
             });
@@ -1516,7 +1523,7 @@ async function executeStep4(taskList) {
             console.error(`❌ タスク失敗: ${task.id}`, error);
             results.push({
                 taskId: task.id,
-                aiType: task.aiType,
+                aiType: normalizedAiType || task.aiType,
                 success: false,
                 error: error.message
             });

@@ -585,9 +585,9 @@ async function readFullSpreadsheet() {
 async function createTaskList(taskGroup) {
   console.log('[Helper] タスクリスト作成開始:', {
     グループ番号: taskGroup?.groupNumber,
-    タスクタイプ: taskGroup?.taskType,
-    パターン: taskGroup?.pattern,
-    列情報: taskGroup?.columns
+    グループタイプ: taskGroup?.groupType,
+    列情報: taskGroup?.columns,
+    dataStartRow: taskGroup?.dataStartRow
   });
 
   // ログバッファを初期化
@@ -622,7 +622,8 @@ async function createTaskList(taskGroup) {
       functionRow: window.globalState.setupResult?.functionRow || 7
     };
 
-    const dataStartRow = window.globalState.setupResult?.dataStartRow || 9;
+    // taskGroupから直接dataStartRowを取得（統一構造）
+    const dataStartRow = taskGroup?.dataStartRow || window.globalState.setupResult?.dataStartRow || 9;
 
     const options = {
       batchSize: 3,
