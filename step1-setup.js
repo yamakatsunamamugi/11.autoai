@@ -580,6 +580,146 @@ function getAllSelectors() {
 }
 
 // ========================================
+// トークンリフレッシュ機能（他の関数から利用されるため先に定義）
+// ========================================
+
+/**
+ * トークンを更新する関数
+ */
+async function refreshAuthToken() {
+  console.log("[step1-setup.js] 🔄 トークンリフレッシュ開始...");
+
+  try {
+    // 既存のトークンを削除
+    if (window.globalState && window.globalState.authToken) {
+      console.log("[step1-setup.js] 既存トークンをクリア");
+      chrome.identity.removeCachedAuthToken({
+        token: window.globalState.authToken,
+      });
+    }
+
+    // 新しいトークンを取得
+    const newToken = await new Promise((resolve, reject) => {
+      chrome.identity.getAuthToken({ interactive: false }, (authToken) => {
+        if (chrome.runtime.lastError) {
+          reject(chrome.runtime.lastError);
+        } else {
+          resolve(authToken);
+        }
+      });
+    });
+
+    if (newToken) {
+      // globalStateを更新
+      if (!window.globalState) {
+        window.globalState = {};
+      }
+      window.globalState.authToken = newToken;
+
+      console.log("[step1-setup.js] ✅ トークンリフレッシュ成功");
+      console.log(`  - 新トークン長: ${newToken.length}文字`);
+      console.log(`  - 更新時刻: ${new Date().toISOString()}`);
+
+      return newToken;
+    } else {
+      throw new Error("新しいトークンの取得に失敗");
+    }
+  } catch (error) {
+    console.error("[step1-setup.js] ❌ トークンリフレッシュ失敗:", error);
+    throw error;
+  }
+}
+
+/**
+ * 401エラー時の自動リトライ機能付きfetch（レート制限対応強化版）
+ */
+async function fetchWithTokenRefresh(url, options = {}, maxRetries = 3) {
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      // Only log on retries or errors
+      if (attempt > 1) {
+        console.log(
+          `[step1-setup.js] API呼び出し再試行 ${attempt}/${maxRetries}: ${url}`,
+        );
+      }
+
+      // 最初の試行
+      let response = await fetch(url, options);
+
+      // 429 (Too Many Requests) エラーの場合
+      if (response.status === 429) {
+        const waitTime = Math.min(2000 * Math.pow(2, attempt - 1), 10000); // 最大10秒
+        console.log(
+          `[step1-setup.js] 429エラー検出 - ${waitTime}ms待機後に再試行`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, waitTime));
+        continue;
+      }
+
+      // 401エラーの場合、トークンをリフレッシュして再試行
+      if (response.status === 401) {
+        console.log(
+          "[step1-setup.js] 401エラー検出 - トークンリフレッシュ実行",
+        );
+
+        const newToken = await refreshAuthToken();
+
+        // ヘッダーを更新
+        const newOptions = {
+          ...options,
+          headers: {
+            ...options.headers,
+            Authorization: `Bearer ${newToken}`,
+          },
+        };
+
+        // 少し待ってから再試行
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        response = await fetch(url, newOptions);
+        console.log(`[step1-setup.js] 再試行結果: ${response.status}`);
+
+        // 再試行後も429の場合は待機
+        if (response.status === 429) {
+          const waitTime = Math.min(2000 * Math.pow(2, attempt - 1), 10000);
+          console.log(
+            `[step1-setup.js] 再試行後も429エラー - ${waitTime}ms待機`,
+          );
+          await new Promise((resolve) => setTimeout(resolve, waitTime));
+          continue;
+        }
+      }
+
+      // 成功またはその他のエラーの場合は結果を返す
+      if (response.status < 500 || response.status === 429) {
+        return response;
+      }
+
+      // 5xxエラーの場合は再試行
+      console.log(`[step1-setup.js] ${response.status}エラー - 再試行します`);
+      lastError = new Error(`HTTP ${response.status}: ${response.statusText}`);
+    } catch (error) {
+      console.error(
+        `[step1-setup.js] fetchWithTokenRefresh エラー (試行${attempt}):`,
+        error,
+      );
+      lastError = error;
+
+      // ネットワークエラーの場合は少し待って再試行
+      if (attempt < maxRetries) {
+        const waitTime = 1000 * attempt;
+        console.log(`[step1-setup.js] ${waitTime}ms待機後に再試行`);
+        await new Promise((resolve) => setTimeout(resolve, waitTime));
+      }
+    }
+  }
+
+  console.error(`[step1-setup.js] 最大試行回数に達しました: ${maxRetries}`);
+  throw lastError || new Error("最大試行回数に達しました");
+}
+
+// ========================================
 // 1-4: スプレッドシートから特殊行を検索
 // ========================================
 async function findSpecialRows() {
@@ -625,30 +765,21 @@ async function findSpecialRows() {
       console.log(`  - GID: ${gid}`);
     }
 
-    // スプレッドシートURLが取得できない場合、入力を促す
+    // スプレッドシートURLが取得できない場合、詳細なエラーメッセージを表示
     if (!spreadsheetId) {
-      const spreadsheetUrl = prompt(
-        "スプレッドシートのURLを入力してください：",
+      console.error("[step1-setup.js] [Step 1-4] スプレッドシートID未設定:");
+      console.error(
+        "  - globalState.spreadsheetId:",
+        window.globalState?.spreadsheetId,
       );
-      if (!spreadsheetUrl) {
-        throw new Error("スプレッドシートURLが提供されていません");
-      }
+      console.error(
+        "  - globalState.spreadsheetUrl:",
+        window.globalState?.spreadsheetUrl,
+      );
 
-      // URLからスプレッドシートIDとGIDを抽出
-      const idMatch = spreadsheetUrl.match(/\/d\/([a-zA-Z0-9-_]+)/);
-      const gidMatch = spreadsheetUrl.match(/[#&]gid=([0-9]+)/);
-
-      if (!idMatch) {
-        throw new Error("無効なスプレッドシートURL");
-      }
-
-      spreadsheetId = idMatch[1];
-      gid = gidMatch ? gidMatch[1] : "0";
-
-      // globalStateに保存
-      window.globalState.spreadsheetUrl = spreadsheetUrl;
-      window.globalState.spreadsheetId = spreadsheetId;
-      window.globalState.gid = gid;
+      throw new Error(
+        "スプレッドシートURLまたはIDが設定されていません。step0-ui-controller.jsでURLを入力してください。",
+      );
     }
 
     // シート名の推測（GIDから）
@@ -688,7 +819,31 @@ async function findSpecialRows() {
 
     if (!response.ok) {
       const error = await response.text();
-      throw new Error(`API エラー: ${response.status} - ${error}`);
+      console.error("[step1-setup.js] [Step 1-4-1] API呼び出し失敗:");
+      console.error(
+        "  - URL:",
+        `${window.globalState.sheetsApiBase}/${spreadsheetId}/values/A1:CZ100`,
+      );
+      console.error("  - HTTPステータス:", response.status);
+      console.error("  - エラー内容:", error);
+      console.error(
+        "  - レスポンスヘッダー:",
+        Object.fromEntries(response.headers.entries()),
+      );
+
+      if (response.status === 403) {
+        throw new Error(
+          `Google Sheets APIアクセス権限エラー: スプレッドシートへのアクセス権限がないか、APIキーが無効です (${response.status})`,
+        );
+      } else if (response.status === 404) {
+        throw new Error(
+          `スプレッドシートが見つかりません: スプレッドシートID "${spreadsheetId}" が存在しないか、共有設定を確認してください (${response.status})`,
+        );
+      } else {
+        throw new Error(
+          `Google Sheets API エラー: ${response.status} - ${error}`,
+        );
+      }
     }
 
     const data = await response.json();
@@ -1285,145 +1440,7 @@ if (typeof window !== "undefined") {
   window.executeAllSteps = executeAllSteps;
 }
 
-// ========================================
-// トークンリフレッシュ機能
-// ========================================
-
-/**
- * トークンを更新する関数
- */
-async function refreshAuthToken() {
-  console.log("[step1-setup.js] 🔄 トークンリフレッシュ開始...");
-
-  try {
-    // 既存のトークンを削除
-    if (window.globalState && window.globalState.authToken) {
-      console.log("[step1-setup.js] 既存トークンをクリア");
-      chrome.identity.removeCachedAuthToken({
-        token: window.globalState.authToken,
-      });
-    }
-
-    // 新しいトークンを取得
-    const newToken = await new Promise((resolve, reject) => {
-      chrome.identity.getAuthToken({ interactive: false }, (authToken) => {
-        if (chrome.runtime.lastError) {
-          reject(chrome.runtime.lastError);
-        } else {
-          resolve(authToken);
-        }
-      });
-    });
-
-    if (newToken) {
-      // globalStateを更新
-      if (!window.globalState) {
-        window.globalState = {};
-      }
-      window.globalState.authToken = newToken;
-
-      console.log("[step1-setup.js] ✅ トークンリフレッシュ成功");
-      console.log(`  - 新トークン長: ${newToken.length}文字`);
-      console.log(`  - 更新時刻: ${new Date().toISOString()}`);
-
-      return newToken;
-    } else {
-      throw new Error("新しいトークンの取得に失敗");
-    }
-  } catch (error) {
-    console.error("[step1-setup.js] ❌ トークンリフレッシュ失敗:", error);
-    throw error;
-  }
-}
-
-/**
- * 401エラー時の自動リトライ機能付きfetch（レート制限対応強化版）
- */
-async function fetchWithTokenRefresh(url, options = {}, maxRetries = 3) {
-  let lastError = null;
-
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      // Only log on retries or errors
-      if (attempt > 1) {
-        console.log(
-          `[step1-setup.js] API呼び出し再試行 ${attempt}/${maxRetries}: ${url}`,
-        );
-      }
-
-      // 最初の試行
-      let response = await fetch(url, options);
-
-      // 429 (Too Many Requests) エラーの場合
-      if (response.status === 429) {
-        const waitTime = Math.min(2000 * Math.pow(2, attempt - 1), 10000); // 最大10秒
-        console.log(
-          `[step1-setup.js] 429エラー検出 - ${waitTime}ms待機後に再試行`,
-        );
-        await new Promise((resolve) => setTimeout(resolve, waitTime));
-        continue;
-      }
-
-      // 401エラーの場合、トークンをリフレッシュして再試行
-      if (response.status === 401) {
-        console.log(
-          "[step1-setup.js] 401エラー検出 - トークンリフレッシュ実行",
-        );
-
-        const newToken = await refreshAuthToken();
-
-        // ヘッダーを更新
-        const newOptions = {
-          ...options,
-          headers: {
-            ...options.headers,
-            Authorization: `Bearer ${newToken}`,
-          },
-        };
-
-        // 少し待ってから再試行
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        response = await fetch(url, newOptions);
-        console.log(`[step1-setup.js] 再試行結果: ${response.status}`);
-
-        // 再試行後も429の場合は待機
-        if (response.status === 429) {
-          const waitTime = Math.min(2000 * Math.pow(2, attempt - 1), 10000);
-          console.log(
-            `[step1-setup.js] 再試行後も429エラー - ${waitTime}ms待機`,
-          );
-          await new Promise((resolve) => setTimeout(resolve, waitTime));
-          continue;
-        }
-      }
-
-      // 成功またはその他のエラーの場合は結果を返す
-      if (response.status < 500 || response.status === 429) {
-        return response;
-      }
-
-      // 5xxエラーの場合は再試行
-      console.log(`[step1-setup.js] ${response.status}エラー - 再試行します`);
-      lastError = new Error(`HTTP ${response.status}: ${response.statusText}`);
-    } catch (error) {
-      console.error(
-        `[step1-setup.js] fetchWithTokenRefresh エラー (試行${attempt}):`,
-        error,
-      );
-      lastError = error;
-
-      // ネットワークエラーの場合は少し待って再試行
-      if (attempt < maxRetries) {
-        const waitTime = 1000 * attempt;
-        console.log(`[step1-setup.js] ${waitTime}ms待機後に再試行`);
-        await new Promise((resolve) => setTimeout(resolve, waitTime));
-      }
-    }
-  }
-
-  console.error(`[step1-setup.js] 最大試行回数に達しました: ${maxRetries}`);
-  throw lastError || new Error("最大試行回数に達しました");
-}
+// Note: トークンリフレッシュ機能は前方で定義済み
 
 // グローバルエクスポート
 if (typeof window !== "undefined") {

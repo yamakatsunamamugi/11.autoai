@@ -737,15 +737,17 @@ class WindowLifecycleManager {
    * ウィンドウを登録
    */
   registerWindow(aiType, windowInfo) {
-    this.activeWindows.set(aiType, {
+    const normalizedAiType = aiType ? aiType.toLowerCase().trim() : "claude";
+    this.activeWindows.set(normalizedAiType, {
       ...windowInfo,
       status: "ready",
       taskCount: 0,
       lastActivity: Date.now(),
+      originalAiType: aiType, // 元のaiTypeも保持
     });
 
-    if (!this.taskQueues.has(aiType)) {
-      this.taskQueues.set(aiType, []);
+    if (!this.taskQueues.has(normalizedAiType)) {
+      this.taskQueues.set(normalizedAiType, []);
     }
 
     ExecuteLogger.info(`📌 ウィンドウ登録: ${aiType}`);
@@ -848,9 +850,13 @@ class WindowLifecycleManager {
    * ウィンドウをクローズ
    */
   async closeWindow(aiType) {
-    const windowInfo = this.activeWindows.get(aiType);
+    // step4-tasklist.jsと同じ正規化関数を使用
+    const normalizedAiType = aiType ? aiType.toLowerCase().trim() : "claude";
+    const windowInfo = this.activeWindows.get(normalizedAiType);
     if (!windowInfo) {
-      ExecuteLogger.warn(`⚠️ ウィンドウ情報が見つかりません: ${aiType}`);
+      ExecuteLogger.warn(
+        `⚠️ ウィンドウ情報が見つかりません: ${aiType} (正規化: ${normalizedAiType})`,
+      );
       return;
     }
 

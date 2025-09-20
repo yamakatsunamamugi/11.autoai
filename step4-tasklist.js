@@ -1510,7 +1510,8 @@ class WindowController {
     const checkResults = [];
 
     for (const aiType of aiTypes) {
-      const windowInfo = this.openedWindows.get(aiType);
+      const normalizedAiType = normalizeAiType(aiType);
+      const windowInfo = this.openedWindows.get(normalizedAiType);
       if (!windowInfo) {
         ExecuteLogger.warn(
           `⚠️ [Step 4-1-3] ${aiType}のウィンドウが見つかりません`,
