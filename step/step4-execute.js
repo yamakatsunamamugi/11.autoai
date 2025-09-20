@@ -24,19 +24,19 @@ const ExecuteLogger = {
     },
 
     error(msg, data) {
-        if (this.shouldLog('ERROR')) ExecuteLogger.error(`❌ ${msg}`, data || '');
+        if (this.shouldLog('ERROR')) console.error(`❌ ${msg}`, data || '');
     },
 
     warn(msg, data) {
-        if (this.shouldLog('WARN')) ExecuteLogger.warn(`⚠️ ${msg}`, data || '');
+        if (this.shouldLog('WARN')) console.warn(`⚠️ ${msg}`, data || '');
     },
 
     info(msg, data) {
-        if (this.shouldLog('INFO')) ExecuteLogger.info(`✅ ${msg}`, data || '');
+        if (this.shouldLog('INFO')) console.info(`✅ ${msg}`, data || '');
     },
 
     debug(msg, data) {
-        if (this.shouldLog('DEBUG')) ExecuteLogger.info(`🔍 ${msg}`, data || '');
+        if (this.shouldLog('DEBUG')) console.info(`🔍 ${msg}`, data || '');
     }
 };
 

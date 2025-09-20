@@ -32,7 +32,7 @@
 
         setLevel(level) {
             this.logLevel = level;
-            ClaudeLogger.info(`📊 ログレベルを${level}に設定しました`);
+            console.info(`📊 ログレベルを${level}に設定しました`);
         },
 
         shouldLog(level) {
