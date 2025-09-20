@@ -288,8 +288,10 @@ class ThreeAIController {
       throw new Error(`${aiType}のAutomationオブジェクトが利用できません`);
     }
 
-    // Step 4-0-3-5-3: AI実行
-    ExecuteLogger.info(`[step4-execute.js] Step 4-0-3-5-3: ${aiType}実行中...`);
+    // Step 4-0-3-5-3: AI実行（tabID情報を含めて実行）
+    ExecuteLogger.info(
+      `[step4-execute.js] Step 4-0-3-5-3: ${aiType}実行中... (tabId: ${task.tabId})`,
+    );
     return await automation.executeTask(task);
   }
 }
@@ -2952,7 +2954,10 @@ async function executeStep4(taskList) {
     // 注: 3種類AI判定は Step 4-6-0 で既に展開済みのため、ここでは不要
 
     // Step 4-6-8-1: タスク開始ログ記録
-    const windowInfo = window.windowController.openedWindows.get(task.aiType);
+    const windowInfo =
+      task.tabId && task.windowId
+        ? { tabId: task.tabId, windowId: task.windowId }
+        : window.windowController.openedWindows.get(task.aiType);
     if (window.detailedLogManager) {
       window.detailedLogManager.recordTaskStart(task, windowInfo);
     }

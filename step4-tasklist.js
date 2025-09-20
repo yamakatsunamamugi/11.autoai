@@ -798,6 +798,15 @@ async function generateTaskList(
           // 【シンプル化】文字列結合でセル位置計算
           const answerCell = getAnswerCell(taskGroup, aiType, row);
 
+          // WindowControllerからtabID/windowIDを取得
+          let windowInfo = null;
+          if (
+            typeof window !== "undefined" &&
+            window.windowController?.openedWindows
+          ) {
+            windowInfo = window.windowController.openedWindows.get(aiType);
+          }
+
           // Step4との互換性のため、aiTypeフィールドも追加
           const task = {
             taskId: `task_${taskGroup.groupNumber}_${row}_${Date.now()}`,
@@ -825,6 +834,8 @@ async function generateTaskList(
             logCell: `${taskGroup.columns.log}${row}`,
             promptCells: promptColumns.map((col) => `${col}${row}`),
             answerCell: answerCell,
+            tabId: windowInfo?.tabId, // 🆕 タブID追加
+            windowId: windowInfo?.windowId, // 🆕 ウィンドウID追加
             cellInfo: {
               // Step4互換: cellInfo構造追加
               row: row,
@@ -852,6 +863,17 @@ async function generateTaskList(
         }
       } else {
         // 特殊タスク（レポート化、Genspark等）
+        // WindowControllerからtabID/windowIDを取得
+        let windowInfo = null;
+        if (
+          typeof window !== "undefined" &&
+          window.windowController?.openedWindows
+        ) {
+          windowInfo = window.windowController.openedWindows.get(
+            taskGroup.groupType,
+          );
+        }
+
         const task = {
           taskId: `task_${taskGroup.groupNumber}_${row}_${Date.now()}`,
           id: `task_${taskGroup.groupNumber}_${row}_${Date.now()}`, // Step4互換
@@ -870,6 +892,8 @@ async function generateTaskList(
           workCell: taskGroup.columns.work
             ? `${taskGroup.columns.work}${row}`
             : null,
+          tabId: windowInfo?.tabId, // 🆕 タブID追加
+          windowId: windowInfo?.windowId, // 🆕 ウィンドウID追加
           cellInfo: {
             // Step4互換: cellInfo構造追加
             row: row,
