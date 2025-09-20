@@ -355,18 +355,16 @@ async function identifyTaskGroups() {
     // 全列処理完了
     console.log(`[step2-taskgroup.js] [Step 2-1-2] 列走査完了: ${processedColumns}列を処理`);
 
-    // タスクグループごとにサマリー出力
-    console.log('[step2-taskgroup.js] [Step 2-1] 検出されたタスクグループサマリー:');
+    // 統合ログ形式でサマリー出力
+    console.log('[step2-taskgroup.js] [Step 2-1] 📋 検出されたタスクグループサマリー:');
     taskGroups.forEach(group => {
-      console.log(`  グループ${group.groupNumber}: ${group.type}`);
-      console.log(`    - 範囲: ${group.startColumn}〜${group.endColumn}列`);
-      console.log(`    - AI: ${group.aiType || group.ai || '未設定'}`);
-      if (group.promptColumns && group.promptColumns.length > 0) {
-        console.log(`    - プロンプト列: ${group.promptColumns.join(', ')}`);
-      }
-      if (group.answerColumns && group.answerColumns.length > 0) {
-        console.log(`    - 回答列: ${group.answerColumns.map(a => a.column).join(', ')}`);
-      }
+      const aiInfo = group.aiType || group.ai || '未設定';
+      const promptInfo = group.promptColumns && group.promptColumns.length > 0 ?
+        ` | プロンプト列: ${group.promptColumns.join(', ')}` : '';
+      const answerInfo = group.answerColumns && group.answerColumns.length > 0 ?
+        ` | 回答列: ${group.answerColumns.map(a => a.column).join(', ')}` : '';
+
+      console.log(`step2-taskgroup.js:361   グループ${group.groupNumber}: ${group.type} | 範囲: ${group.startColumn}〜${group.endColumn}列 | AI: ${aiInfo}${promptInfo}${answerInfo}`);
     });
 
     // 内部で作成したtaskGroupsを保存（統計情報用）
@@ -959,64 +957,33 @@ async function executeStep2TaskGroups() {
       }
     });
 
-    console.log(`[step2-taskgroup.js] ✅ globalState.taskGroups設定完了: ${window.globalState.taskGroups.length}個のグループ`);
-
-    // step5向けデバッグ: 各グループの構造を詳細に出力
-    console.log('[DEBUG] step5向けタスクグループ構造確認:');
+    // 統合ログ出力 - globalState.taskGroups設定完了と構造確認
+    console.log('[step2-taskgroup.js] ✅ globalState.taskGroups設定完了と構造確認:');
     window.globalState.taskGroups.forEach((group) => {
-      console.log(`[DEBUG] グループ${group.groupNumber}:`, {
-        groupNumber: group.groupNumber,
-        type: group.type,
-        columns: group.columns,
-        promptColumns: group.promptColumns,
-        answerColumn: group.answerColumn,
-        answerColumns: group.answerColumns,
-        logColumn: group.logColumn,
-        dataStartRow: group.dataStartRow
-      });
+      const groupTypeInfo = group.groupType || '通常処理';
+      const promptInfo = group.columns?.prompts ? group.columns.prompts.join(',') : 'なし';
+      const answerInfo = group.columns?.answer || 'なし';
+      const logInfo = group.columns?.log || 'なし';
+
+      console.log(`step2-taskgroup.js:962   グループ${group.groupNumber}: ${groupTypeInfo} | ログ:${logInfo} | プロンプト:${promptInfo} | 回答:${answerInfo} | データ開始行:${group.dataStartRow}`);
     });
 
-    // 統合ログ出力（要求に応じて）
-    console.log('');
-    console.log('========================================');
-    console.log('🗂️ タスクグループ統合ログ');
-    console.log('========================================');
-    console.log('📋 検出されたすべてのタスクグループ詳細:');
+    // 統合ログ出力 - タスクグループ最終結果
+    const totalGroups = window.globalState.allTaskGroups?.length || 0;
+    const activeGroups = window.globalState.taskGroups.length;
+    const skippedGroups = (window.globalState.allTaskGroups?.filter(g => g.skip) || []).length;
 
-    // デバッグ情報を追加
-    console.log('[DEBUG] globalState.allTaskGroups:', window.globalState.allTaskGroups);
-    console.log('[DEBUG] globalState.taskGroups:', window.globalState.taskGroups);
-    console.log('[DEBUG] allTaskGroups length:', (window.globalState.allTaskGroups || []).length);
-    console.log('[DEBUG] taskGroups length:', (window.globalState.taskGroups || []).length);
-    console.log(JSON.stringify({
-      summary: {
-        totalGroups: window.globalState.allTaskGroups?.length || 0,
-        activeGroups: window.globalState.taskGroups.length,
-        skippedGroups: (window.globalState.allTaskGroups?.filter(g => g.skip) || []).length,
-        spreadsheetId: window.globalState.spreadsheetId,
-        gid: window.globalState.gid,
-        timestamp: new Date().toISOString()
-      },
-      groups: window.globalState.taskGroups.map(group => ({
-        groupNumber: group.groupNumber,
-        type: group.type,
-        aiType: group.aiType,
-        columns: group.columns,
-        range: `${group.startCol}〜${group.endCol}列`,
-        dataStartRow: group.dataStartRow,
-        skip: group.skip || false
-      })),
-      allTaskGroups: (window.globalState.allTaskGroups || []).map(group => ({
-        groupNumber: group.groupNumber,
-        type: group.type,
-        aiType: group.aiType,
-        range: `${group.startCol}〜${group.endCol}列`,
-        skip: group.skip || false,
-        skipReason: group.skipReason || null
-      }))
-    }, null, 2));
-    console.log('========================================');
-    console.log('');
+    console.log(`[step2-taskgroup.js] 🗂️ タスクグループ最終結果: 全${totalGroups}個 | 有効${activeGroups}個 | スキップ${skippedGroups}個`);
+
+    // 有効なグループの詳細を1行ずつ
+    window.globalState.taskGroups.forEach(group => {
+      const aiInfo = group.aiType || 'Unknown';
+      const promptInfo = group.columns?.prompts ? group.columns.prompts.join(',') : 'なし';
+      const answerInfo = group.columns?.answer || 'なし';
+      const rangeInfo = `${group.startCol}〜${group.endCol}列`;
+
+      console.log(`step2-taskgroup.js:982   有効グループ${group.groupNumber}: ${aiInfo} | 範囲:${rangeInfo} | プロンプト:${promptInfo} | 回答:${answerInfo}`);
+    });
 
     return window.globalState;
 

@@ -472,6 +472,7 @@ async function findSpecialRows() {
     };
 
     // 各行を検索
+    const foundKeywords = [];
     values.forEach((row, index) => {
       const cellValue = row[0] || '';
       const rowNumber = index + 1; // 1-based index
@@ -479,15 +480,15 @@ async function findSpecialRows() {
       for (const [keyword, varName] of Object.entries(searchKeywords)) {
         if (cellValue === keyword && !specialRows[varName]) {
           specialRows[varName] = rowNumber;
-          console.log(`[step1-setup.js] [Step 1-4-2] ✅ "${keyword}" 発見: ${rowNumber}行目 (A${rowNumber})`);
+          foundKeywords.push(`${keyword}:${rowNumber}行目`);
         }
       }
-
-      // デバッグ用：最初の20行の内容を詳細に記録
-      if (index < 20 && cellValue) {
-        console.log(`  A${rowNumber}: "${cellValue}"`);
-      }
     });
+
+    // 統合ログ出力 - 特殊行検索結果
+    if (foundKeywords.length > 0) {
+      console.log(`[step1-setup.js] [Step 1-4-2] ✅ 特殊行検索結果: ${foundKeywords.join(' | ')}`);
+    }
 
     // 1-4-3. 検索結果の検証
     console.log('[step1-setup.js] [Step 1-4-3] 検索結果の検証');
