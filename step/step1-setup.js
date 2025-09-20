@@ -702,10 +702,15 @@ async function setupColumnStructure() {
         const checkIndex =
           promptCol.index - (requiredColumns.beforePrompt.length - i);
 
+        console.log(`  [Debug] 前の列チェック: ${requiredCol}`);
+        console.log(`    - チェック位置: index=${checkIndex}`);
+        console.log(`    - 現在の値: "${headerRow[checkIndex] || "(空)"}"`);
+        console.log(`    - 期待値: "${requiredCol}"`);
+
         if (
           checkIndex < 0 ||
           !headerRow[checkIndex] ||
-          !headerRow[checkIndex].includes(requiredCol)
+          headerRow[checkIndex].trim() !== requiredCol
         ) {
           columnsToAdd.push({
             position: promptCol.index,
@@ -715,6 +720,8 @@ async function setupColumnStructure() {
           console.log(
             `  - "${requiredCol}"列の追加が必要（${promptCol.column}列の前）`,
           );
+        } else {
+          console.log(`    - ✓ "${requiredCol}"列は既に存在`);
         }
       }
 
@@ -723,10 +730,15 @@ async function setupColumnStructure() {
         const requiredCol = requiredColumns.afterPrompt[i];
         const checkIndex = promptCol.index + i + 1;
 
+        console.log(`  [Debug] 後の列チェック: ${requiredCol}`);
+        console.log(`    - チェック位置: index=${checkIndex}`);
+        console.log(`    - 現在の値: "${headerRow[checkIndex] || "(空)"}"`);
+        console.log(`    - 期待値: "${requiredCol}"`);
+
         if (
           checkIndex >= headerRow.length ||
           !headerRow[checkIndex] ||
-          !headerRow[checkIndex].includes(requiredCol)
+          headerRow[checkIndex].trim() !== requiredCol
         ) {
           columnsToAdd.push({
             position: promptCol.index + i + 1,
@@ -736,6 +748,8 @@ async function setupColumnStructure() {
           console.log(
             `  - "${requiredCol}"列の追加が必要（${promptCol.column}列の後）`,
           );
+        } else {
+          console.log(`    - ✓ "${requiredCol}"列は既に存在`);
         }
       }
     }

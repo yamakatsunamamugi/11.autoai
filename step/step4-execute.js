@@ -23,28 +23,18 @@ const ExecuteLogger = {
     return this.logLevels[level] <= this.logLevels[this.logLevel];
   },
 
-  error(msg, data) {
-    if (this.shouldLog("ERROR")) console.error(`❌ ${msg}`, data || "");
-  },
+  error(msg, data) {},
 
-  warn(msg, data) {
-    if (this.shouldLog("WARN")) console.warn(`⚠️ ${msg}`, data || "");
-  },
+  warn(msg, data) {},
 
-  info(msg, data) {
-    if (this.shouldLog("INFO")) console.info(`✅ ${msg}`, data || "");
-  },
+  info(msg, data) {},
 
-  debug(msg, data) {
-    if (this.shouldLog("DEBUG")) console.info(`🔍 ${msg}`, data || "");
-  },
+  debug(msg, data) {},
 };
 
 // デフォルトログレベル設定
 const isDebugMode = localStorage.getItem("executeLogLevel") === "DEBUG";
 ExecuteLogger.logLevel = isDebugMode ? "DEBUG" : "INFO";
-
-ExecuteLogger.info("[step4-execute.js→Step4] AI自動化制御ファイル初期化");
 
 // ========================================
 // AI専用ファイル読み込み管理
@@ -896,21 +886,12 @@ class SimpleSheetsClient {
     // キャッシュチェック
     const cacheKey = `${spreadsheetId}_${gid}`;
     if (this.sheetNameCache.has(cacheKey)) {
-      console.log(
-        "[SimpleSheetsClient] シート名をキャッシュから取得:",
-        this.sheetNameCache.get(cacheKey),
-      );
       return this.sheetNameCache.get(cacheKey);
     }
 
     try {
       const token = await this.getAuthToken();
       const url = `${this.baseUrl}/${spreadsheetId}?fields=sheets(properties)`;
-
-      console.log("[SimpleSheetsClient] シートメタデータを取得:", {
-        spreadsheetId,
-        gid,
-      });
 
       const response = await fetch(url, {
         method: "GET",
@@ -922,7 +903,6 @@ class SimpleSheetsClient {
 
       if (!response.ok) {
         const error = await response.json();
-        console.error("[SimpleSheetsClient] メタデータ取得エラー:", error);
         return null;
       }
 
@@ -934,21 +914,13 @@ class SimpleSheetsClient {
 
       if (sheet) {
         const sheetName = sheet.properties.title;
-        console.log("[SimpleSheetsClient] シート名を発見:", {
-          gid: gid,
-          sheetName: sheetName,
-        });
         // キャッシュに保存
         this.sheetNameCache.set(cacheKey, sheetName);
         return sheetName;
       } else {
-        console.warn(
-          `[SimpleSheetsClient] GID ${gid} に対応するシートが見つかりません`,
-        );
         return null;
       }
     } catch (error) {
-      console.error("[SimpleSheetsClient] getSheetNameFromGidエラー:", error);
       return null;
     }
   }
@@ -981,14 +953,6 @@ class SimpleSheetsClient {
         fullRange = `${sheetName}!${range}`;
       }
 
-      console.log("[SimpleSheetsClient] APIリクエスト:", {
-        spreadsheetId,
-        sheetName,
-        range,
-        fullRange,
-        encodedRange: encodeURIComponent(fullRange),
-      });
-
       const url = `${this.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(fullRange)}?valueRenderOption=FORMATTED_VALUE`;
 
       const response = await fetch(url, {
@@ -1001,26 +965,15 @@ class SimpleSheetsClient {
 
       if (!response.ok) {
         const error = await response.json();
-        console.error("[SimpleSheetsClient] APIエラー:", {
-          status: response.status,
-          error: error.error,
-          fullRange,
-          url,
-        });
         throw new Error(
           `Failed to get cell range ${range}: ${error.error.message}`,
         );
       }
 
       const data = await response.json();
-      console.log("[SimpleSheetsClient] APIレスポンス成功:", {
-        range: fullRange,
-        values: data.values?.length || 0,
-      });
 
       return data;
     } catch (error) {
-      console.error("[SimpleSheetsClient] getCellValuesエラー:", error);
       throw error;
     }
   }
@@ -1075,7 +1028,6 @@ class SimpleSheetsClient {
 
       return await response.json();
     } catch (error) {
-      console.error("[SimpleSheetsClient] updateCellsエラー:", error);
       throw error;
     }
   }
@@ -2214,14 +2166,22 @@ class SpecialTaskProcessor {
    */
   identifySpecialTask(task) {
     ExecuteLogger.info(
-      `🔧 [SpecialTaskProcessor] Step 4-5-2: 特別処理タスク判定 - ${task.aiType}`,
+      `🔧 [SpecialTaskProcessor] Step 4-5-2: 特別処理タスク判定`,
+      {
+        taskId: task.id,
+        aiType: task.aiType,
+        promptPreview: task.prompt?.substring(0, 50) + "...",
+      },
     );
 
     const aiType = task.aiType?.toLowerCase();
 
-    // レポート処理の判定
-    if (aiType === "report" || task.prompt?.includes("レポート")) {
-      ExecuteLogger.info(`✅ [Step 4-5-2] レポート処理タスクを検出`);
+    // レポート処理の判定（aiTypeのみで判定、プロンプト内容は使用しない）
+    if (aiType === "report") {
+      ExecuteLogger.info(`✅ [Step 4-5-2] レポート処理タスクを検出`, {
+        reason: "aiTypeが'report'",
+        taskId: task.id,
+      });
       return {
         isSpecial: true,
         type: "report",
@@ -2229,8 +2189,8 @@ class SpecialTaskProcessor {
       };
     }
 
-    // Genspark処理の判定
-    if (aiType === "genspark" || task.prompt?.includes("genspark")) {
+    // Genspark処理の判定（aiTypeのみで判定）
+    if (aiType === "genspark") {
       let subType = "standard";
 
       // サブタイプの判定

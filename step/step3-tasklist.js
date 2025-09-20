@@ -211,8 +211,10 @@ async function generateTaskList(
     const addLog = (message, data) => {
       if (data) {
         logBuffer.push(`${message}: ${JSON.stringify(data)}`);
+        console.log(`[step3-tasklist] ${message}:`, data);
       } else {
         logBuffer.push(message);
+        console.log(`[step3-tasklist] ${message}`);
       }
     };
 
@@ -286,7 +288,10 @@ async function generateTaskList(
         const colIndex = columnToIndex(col);
         if (rowData && colIndex < rowData.length && rowData[colIndex]?.trim()) {
           hasAnswer = true;
-          addLog(`[TaskList] ${row}行目: 既に回答あり (${col}列)`);
+          addLog(`[TaskList] ${row}行目: 既に回答あり (${col}列)`, {
+            column: col,
+            value: rowData[colIndex].substring(0, 50) + "...",
+          });
           break;
         }
       }
