@@ -741,27 +741,6 @@ class WindowController {
   }
 
   /**
-   * Step 4-1-2-A: 単一ウィンドウを開く
-   * @param {string} aiType - AI種別
-   * @param {number} position - ウィンドウポジション
-   */
-  async openWindow(aiType, position) {
-    ExecuteLogger.info(
-      `🪟 [WindowController] openWindow: ${aiType}, position: ${position}`,
-    );
-
-    const layoutInfo = [
-      {
-        aiType: aiType,
-        position: position,
-      },
-    ];
-
-    const results = await this.openWindows(layoutInfo);
-    return results[0] || { success: false, error: "ウィンドウ作成失敗" };
-  }
-
-  /**
    * AI種別に応じたURLを取得
    */
   getAIUrl(aiType) {
@@ -2528,10 +2507,13 @@ async function executeStep4(taskList) {
         }
 
         // 新しいウィンドウを開く
-        const windowResult = await window.windowController.openWindow(
-          aiType,
-          position,
-        );
+        const windowResults = await window.windowController.openWindows([
+          {
+            aiType: aiType,
+            position: position,
+          },
+        ]);
+        const windowResult = windowResults[0];
         if (windowResult && windowResult.success) {
           batchWindows.set(aiType, windowResult);
         } else {
