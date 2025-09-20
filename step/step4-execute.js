@@ -2024,133 +2024,153 @@ async function executeStep4(taskList) {
             }
         }
 
-        // Step 4-6-6: 各タスクの実行（3種類AI並列実行対応）
+        // Step 4-6-6: 各タスクの実行（統一バッチ処理: 3タスクずつ）
         ExecuteLogger.info('⚡ [step4-execute.js] Step 4-6-6: タスク実行ループ開始');
 
-        // Step 4-6-6-0: タスクをグループ化（3種類AI用）
-        const taskGroups = new Map();
-        for (const task of enrichedTaskList) {
-            const groupKey = task.taskGroup || task.id || task.taskId || `${task.column}${task.row}`;
-            if (!taskGroups.has(groupKey)) {
-                taskGroups.set(groupKey, []);
-            }
-            taskGroups.get(groupKey).push(task);
+        // Step 4-6-6-0: 3タスクずつのバッチに分割
+        ExecuteLogger.info(`[step4-execute.js] Step 4-6-6-0: タスクをバッチ処理用に準備 - 合計${enrichedTaskList.length}タスク`);
+
+        const batchSize = 3;
+        const batches = [];
+
+        // 3タスクずつのバッチを作成
+        for (let i = 0; i < enrichedTaskList.length; i += batchSize) {
+            const batch = enrichedTaskList.slice(i, Math.min(i + batchSize, enrichedTaskList.length));
+            batches.push(batch);
         }
 
-        ExecuteLogger.info(`[step4-execute.js] Step 4-6-6-0: タスクグループ化完了 - ${taskGroups.size}グループ`);
+        ExecuteLogger.info(`[step4-execute.js] Step 4-6-6-1: ${batches.length}個のバッチ作成完了（各バッチ最大3タスク）`);
 
-        // グループごとに処理
-        let taskIndex = 0;
-        for (const [groupKey, groupTasks] of taskGroups) {
-            ExecuteLogger.info(`[step4-execute.js] Step 4-6-6-${taskIndex + 1}: グループ処理開始 - ${groupKey}`);
+        // バッチごとに処理
+        for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+            const batch = batches[batchIndex];
+            ExecuteLogger.info(`📦 [step4-execute.js] Step 4-6-6-${batchIndex + 2}: バッチ${batchIndex + 1}/${batches.length} 処理開始 - ${batch.length}タスク`);
 
-            // 3種類AIグループかチェック
-            const isThreeTypeGroup = groupTasks.length === 3 &&
-                                     groupTasks.every(t => t.originalAiType === '3種類（ChatGPT・Gemini・Claude）');
+            // Step 4-6-6-A: バッチ用のウィンドウを開く
+            const batchWindows = new Map(); // aiType -> windowInfo
+            const windowPositions = ['左上', '右上', '左下'];
 
-            if (isThreeTypeGroup) {
-                // Step 4-6-6-A: 3種類AI並列実行
-                ExecuteLogger.info(`🚀 [step4-execute.js] Step 4-6-6-${taskIndex + 1}-A: 3種類AI並列実行`);
+            for (let i = 0; i < batch.length; i++) {
+                const task = batch[i];
+                const aiType = task.aiType;
+                const position = i; // 0=左上, 1=右上, 2=左下
 
-                const parallelPromises = groupTasks.map(async (task) => {
-                    const taskId = task.id || task.taskId || `${task.column}${task.row}`;
-                    try {
-                        ExecuteLogger.info(`📝 [step4-execute.js] 並列実行: ${taskId} (AI: ${task.aiType})`);
+                ExecuteLogger.info(`🪟 [step4-execute.js] Step 4-6-6-${batchIndex + 2}-A-${i + 1}: ${aiType}ウィンドウを${windowPositions[position]}に開く`);
 
-                        const specialInfo = window.specialTaskProcessor.identifySpecialTask(task);
-                        let result = null;
+                // 既存のウィンドウがあれば閉じる
+                if (window.windowController.openedWindows.has(aiType)) {
+                    await window.windowLifecycleManager.closeWindow(aiType);
+                    await new Promise(resolve => setTimeout(resolve, 500)); // ウィンドウクローズ待機
+                }
 
-                        if (specialInfo.isSpecial) {
-                            const windowInfo = window.windowController.openedWindows.get(task.aiType);
-                            result = await window.specialTaskProcessor.executeSpecialTask(task, specialInfo, windowInfo);
-                        } else {
-                            result = await executeNormalAITask(task);
-                        }
-
-                        await processTaskResult(task, result, taskId);
-                        return {
-                            taskId: taskId,
-                            aiType: task.aiType,
-                            success: result.success,
-                            result: result,
-                            specialProcessing: specialInfo.isSpecial
-                        };
-                    } catch (error) {
-                        ExecuteLogger.error(`❌ 並列タスク失敗: ${taskId}`, error);
-                        await window.windowLifecycleManager.handleTaskCompletion(task, { success: false, error: error.message });
-                        return {
-                            taskId: taskId,
-                            aiType: task.aiType,
-                            success: false,
-                            error: error.message,
-                            specialProcessing: false
-                        };
-                    }
-                });
-
-                // 3つ同時実行して結果を収集
-                const parallelResults = await Promise.allSettled(parallelPromises);
-                parallelResults.forEach((pr) => {
-                    if (pr.status === 'fulfilled') {
-                        results.push(pr.value);
-                    }
-                });
-
-                ExecuteLogger.info(`✅ [step4-execute.js] Step 4-6-6-${taskIndex + 1}-A: 3種類AI並列実行完了`);
-
-            } else {
-                // Step 4-6-6-B: 通常の逐次実行
-                for (const task of groupTasks) {
-                    const taskId = task.id || task.taskId || `${task.column}${task.row}`;
-
-                    try {
-                        ExecuteLogger.info(`📝 [step4-execute.js] Step 4-6-6-${taskIndex + 1}-B: タスク実行: ${taskId} (AI: ${task.aiType})`);
-
-                        const specialInfo = window.specialTaskProcessor.identifySpecialTask(task);
-                        let result = null;
-
-                        if (specialInfo.isSpecial) {
-                            ExecuteLogger.info(`🔧 特別処理実行: ${specialInfo.type}`);
-                            const windowInfo = window.windowController.openedWindows.get(task.aiType);
-                            result = await window.specialTaskProcessor.executeSpecialTask(task, specialInfo, windowInfo);
-                        } else {
-                            ExecuteLogger.info(`🤖 通常AI処理実行: ${task.aiType}`);
-                            result = await executeNormalAITask(task);
-                        }
-
-                        await processTaskResult(task, result, taskId);
-
-                        results.push({
-                            taskId: taskId,
-                            aiType: task.aiType,
-                            success: result.success,
-                            result: result,
-                            specialProcessing: specialInfo.isSpecial
-                        });
-
-                        ExecuteLogger.info(`✅ タスク完了: ${taskId}`);
-
-                    } catch (error) {
-                        ExecuteLogger.error(`❌ タスク失敗: ${taskId}`, error);
-
-                        results.push({
-                            taskId: taskId,
-                            aiType: task.aiType,
-                            success: false,
-                            error: error.message,
-                            specialProcessing: false
-                        });
-
-                        await window.windowLifecycleManager.handleTaskCompletion(task, { success: false, error: error.message });
-                    }
+                // 新しいウィンドウを開く
+                const windowResult = await window.windowController.openWindow(aiType, position);
+                if (windowResult && windowResult.success) {
+                    batchWindows.set(aiType, windowResult);
+                } else {
+                    ExecuteLogger.error(`❌ ウィンドウオープン失敗: ${aiType}`);
                 }
             }
 
-            // グループ間の待機時間
-            if (taskIndex < taskGroups.size - 1) {
+            // Step 4-6-6-B: ウィンドウチェック
+            ExecuteLogger.info(`🔍 [step4-execute.js] Step 4-6-6-${batchIndex + 2}-B: ウィンドウチェック`);
+            const checkResults = await window.windowController.checkWindows(Array.from(batchWindows.keys()));
+            ExecuteLogger.info(`✅ チェック結果:`, checkResults);
+
+            // Step 4-6-6-C: バッチ内のタスクを並列実行
+            ExecuteLogger.info(`⚡ [step4-execute.js] Step 4-6-6-${batchIndex + 2}-C: ${batch.length}タスクを並列実行`);
+
+            const batchPromises = batch.map(async (task, index) => {
+                const taskId = task.id || task.taskId || `${task.column}${task.row}`;
+                const isThreeTypeTask = task.originalAiType === '3種類（ChatGPT・Gemini・Claude）';
+
+                try {
+                    ExecuteLogger.info(`📝 [step4-execute.js] タスク実行: ${taskId} (AI: ${task.aiType}) ${isThreeTypeTask ? '[3種類AI]' : '[通常]'}`);
+
+                    // 特別処理かチェック
+                    const specialInfo = window.specialTaskProcessor.identifySpecialTask(task);
+                    let result = null;
+
+                    if (specialInfo.isSpecial) {
+                        ExecuteLogger.info(`🔧 特別処理実行: ${specialInfo.type}`);
+                        const windowInfo = batchWindows.get(task.aiType);
+                        result = await window.specialTaskProcessor.executeSpecialTask(task, specialInfo, windowInfo);
+                    } else {
+                        ExecuteLogger.info(`🤖 AI処理実行: ${task.aiType}`);
+                        result = await executeNormalAITask(task);
+                    }
+
+                    // 結果処理
+                    await processTaskResult(task, result, taskId);
+
+                    return {
+                        taskId: taskId,
+                        aiType: task.aiType,
+                        success: result.success,
+                        result: result,
+                        specialProcessing: specialInfo.isSpecial,
+                        isThreeType: isThreeTypeTask
+                    };
+                } catch (error) {
+                    ExecuteLogger.error(`❌ タスク失敗: ${taskId}`, error);
+                    await window.windowLifecycleManager.handleTaskCompletion(task, { success: false, error: error.message });
+
+                    return {
+                        taskId: taskId,
+                        aiType: task.aiType,
+                        success: false,
+                        error: error.message,
+                        specialProcessing: false,
+                        isThreeType: isThreeTypeTask
+                    };
+                }
+            });
+
+            // 全タスクの完了を待機
+            const batchResults = await Promise.allSettled(batchPromises);
+
+            // 結果を収集
+            let successCount = 0;
+            let failCount = 0;
+
+            batchResults.forEach((pr) => {
+                if (pr.status === 'fulfilled') {
+                    results.push(pr.value);
+                    if (pr.value.success) {
+                        successCount++;
+                    } else {
+                        failCount++;
+                    }
+                } else {
+                    failCount++;
+                }
+            });
+
+            ExecuteLogger.info(`✅ [step4-execute.js] Step 4-6-6-${batchIndex + 2}-D: バッチ${batchIndex + 1}完了 - 成功: ${successCount}, 失敗: ${failCount}`);
+
+            // Step 4-6-6-E: バッチのウィンドウをクローズ
+            ExecuteLogger.info(`🪟 [step4-execute.js] Step 4-6-6-${batchIndex + 2}-E: ウィンドウクローズ`);
+
+            for (const [aiType, windowInfo] of batchWindows) {
+                try {
+                    await window.windowLifecycleManager.closeWindow(aiType);
+                    ExecuteLogger.info(`✅ ${aiType}ウィンドウクローズ完了`);
+                } catch (error) {
+                    ExecuteLogger.error(`⚠️ ${aiType}ウィンドウクローズエラー:`, error);
+                }
+            }
+
+            // 失敗がある場合は処理を停止
+            if (failCount > 0) {
+                ExecuteLogger.error(`🛑 [step4-execute.js] バッチ${batchIndex + 1}で${failCount}個のタスクが失敗したため、処理を停止します`);
+                break;
+            }
+
+            // バッチ間の待機時間
+            if (batchIndex < batches.length - 1) {
+                ExecuteLogger.info(`⏳ 次のバッチまで1秒待機`);
                 await new Promise(resolve => setTimeout(resolve, 1000));
             }
-            taskIndex++;
         }
 
         ExecuteLogger.info('🏁 [Step 4-6-6] 全タスク実行完了');
