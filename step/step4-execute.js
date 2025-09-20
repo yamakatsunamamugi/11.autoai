@@ -12,7 +12,39 @@
  * @date 2025-09-20
  */
 
-console.log('🚀 Step 4 Execute - AI自動化制御ファイル初期化');
+// =======================================
+// 簡易ログシステム（ClaudeLoggerと互換）
+// =======================================
+const ExecuteLogger = {
+    logLevel: 'INFO',
+    logLevels: { ERROR: 0, WARN: 1, INFO: 2, DEBUG: 3 },
+
+    shouldLog(level) {
+        return this.logLevels[level] <= this.logLevels[this.logLevel];
+    },
+
+    error(msg, data) {
+        if (this.shouldLog('ERROR')) ExecuteLogger.error(`❌ ${msg}`, data || '');
+    },
+
+    warn(msg, data) {
+        if (this.shouldLog('WARN')) ExecuteLogger.warn(`⚠️ ${msg}`, data || '');
+    },
+
+    info(msg, data) {
+        if (this.shouldLog('INFO')) ExecuteLogger.info(`✅ ${msg}`, data || '');
+    },
+
+    debug(msg, data) {
+        if (this.shouldLog('DEBUG')) ExecuteLogger.info(`🔍 ${msg}`, data || '');
+    }
+};
+
+// デフォルトログレベル設定
+const isDebugMode = localStorage.getItem('executeLogLevel') === 'DEBUG';
+ExecuteLogger.logLevel = isDebugMode ? 'DEBUG' : 'INFO';
+
+ExecuteLogger.info('Step 4 Execute - AI自動化制御ファイル初期化');
 
 // ========================================
 // AI専用ファイル読み込み管理
@@ -41,17 +73,17 @@ class AIAutomationLoader {
         }
 
         if (this.loadedFiles.has(normalizedType)) {
-            console.log(`[AILoader] ${aiType} は既に読み込み済み`);
+            ExecuteLogger.info(`[AILoader] ${aiType} は既に読み込み済み`);
             return;
         }
 
         try {
-            console.log(`[AILoader] ${aiType} 自動化ファイル読み込み開始`);
-            console.log(`[AILoader] [DEBUG] 元のfilePath: ${filePath}`);
-            console.log(`[AILoader] [DEBUG] 現在のページURL: ${window.location.href}`);
-            console.log(`[AILoader] [DEBUG] chrome.runtime.getURL使用: ${typeof chrome !== 'undefined' && chrome.runtime}`);
-            console.log(`[AILoader] [DEBUG] 最終的なスクリプトURL: ${filePath}`);
-            console.log(`[AILoader] [DEBUG] 読み込み前のwindow.ClaudeAutomation: ${typeof window.ClaudeAutomation}`);
+            ExecuteLogger.info(`[AILoader] ${aiType} 自動化ファイル読み込み開始`);
+            ExecuteLogger.debug(`[AILoader] [DEBUG] 元のfilePath: ${filePath}`);
+            ExecuteLogger.debug(`[AILoader] [DEBUG] 現在のページURL: ${window.location.href}`);
+            ExecuteLogger.debug(`[AILoader] [DEBUG] chrome.runtime.getURL使用: ${typeof chrome !== 'undefined' && chrome.runtime}`);
+            ExecuteLogger.debug(`[AILoader] [DEBUG] 最終的なスクリプトURL: ${filePath}`);
+            ExecuteLogger.debug(`[AILoader] [DEBUG] 読み込み前のwindow.ClaudeAutomation: ${typeof window.ClaudeAutomation}`);
 
             // スクリプトタグで動的読み込み
             const script = document.createElement('script');
@@ -60,25 +92,25 @@ class AIAutomationLoader {
 
             await new Promise((resolve, reject) => {
                 script.onload = () => {
-                    console.log(`[AILoader] ✅ ${aiType} 読み込み完了`);
-                    console.log(`[AILoader] [DEBUG] 読み込み後のwindow.ClaudeAutomation: ${typeof window.ClaudeAutomation}`);
+                    ExecuteLogger.info(`[AILoader] ✅ ${aiType} 読み込み完了`);
+                    ExecuteLogger.debug(`[AILoader] [DEBUG] 読み込み後のwindow.ClaudeAutomation: ${typeof window.ClaudeAutomation}`);
                     if (normalizedType === 'claude') {
-                        console.log(`[AILoader] [DEBUG] ClaudeAutomation.executeTask存在: ${window.ClaudeAutomation && typeof window.ClaudeAutomation.executeTask === 'function'}`);
+                        ExecuteLogger.debug(`[AILoader] [DEBUG] ClaudeAutomation.executeTask存在: ${window.ClaudeAutomation && typeof window.ClaudeAutomation.executeTask === 'function'}`);
                     }
                     this.loadedFiles.add(normalizedType);
                     resolve();
                 };
                 script.onerror = (error) => {
-                    console.error(`[AILoader] ❌ ${aiType} 読み込み失敗: ${filePath}`);
-                    console.error(`[AILoader] [DEBUG] エラー詳細:`, error);
-                    console.error(`[AILoader] [DEBUG] script.src: ${script.src}`);
+                    ExecuteLogger.error(`[AILoader] ❌ ${aiType} 読み込み失敗: ${filePath}`);
+                    ExecuteLogger.error(`[AILoader] [DEBUG] エラー詳細:`, error);
+                    ExecuteLogger.error(`[AILoader] [DEBUG] script.src: ${script.src}`);
                     reject(new Error(`${aiType} 自動化ファイルの読み込みに失敗しました`));
                 };
                 document.head.appendChild(script);
             });
 
         } catch (error) {
-            console.error(`[AILoader] ${aiType} 読み込みエラー:`, error);
+            ExecuteLogger.error(`[AILoader] ${aiType} 読み込みエラー:`, error);
             throw error;
         }
     }
@@ -88,14 +120,14 @@ class AIAutomationLoader {
      */
     isAIAvailable(aiType) {
         const normalizedType = aiType.toLowerCase();
-        console.log(`[AILoader] [DEBUG] AI利用可能チェック: ${normalizedType}`);
+        ExecuteLogger.debug(`[AILoader] [DEBUG] AI利用可能チェック: ${normalizedType}`);
 
         switch (normalizedType) {
             case 'chatgpt':
                 return window.ChatGPTAutomationV2 && typeof window.ChatGPTAutomationV2.executeTask === 'function';
             case 'claude':
                 const isAvailable = window.ClaudeAutomation && typeof window.ClaudeAutomation.executeTask === 'function';
-                console.log(`[AILoader] [DEBUG] ClaudeAutomation利用可能: ${isAvailable}, 存在: ${!!window.ClaudeAutomation}, executeTask: ${window.ClaudeAutomation && typeof window.ClaudeAutomation.executeTask}`);
+                ExecuteLogger.debug(`[AILoader] [DEBUG] ClaudeAutomation利用可能: ${isAvailable}, 存在: ${!!window.ClaudeAutomation}, executeTask: ${window.ClaudeAutomation && typeof window.ClaudeAutomation.executeTask}`);
                 return isAvailable;
             case 'gemini':
                 return window.GeminiAutomation && typeof window.GeminiAutomation.executeTask === 'function';
@@ -126,10 +158,10 @@ class TaskGroupTypeDetector {
      * @returns {Object} - {type: 'normal' | 'threeTypes', aiTypes: Array}
      */
     detectGroupType(taskList) {
-        console.log('🔍 [GroupTypeDetector] タスクリスト分析開始', taskList);
+        ExecuteLogger.info('🔍 [GroupTypeDetector] タスクリスト分析開始', taskList);
 
         if (!taskList || taskList.length === 0) {
-            console.log('🔍 [GroupTypeDetector] 空のタスクリスト - デフォルト: normal');
+            ExecuteLogger.info('🔍 [GroupTypeDetector] 空のタスクリスト - デフォルト: normal');
             return { type: 'normal', aiTypes: [] };
         }
 
@@ -143,19 +175,19 @@ class TaskGroupTypeDetector {
             return aiType.toLowerCase();
         }))];
 
-        console.log('🔍 [GroupTypeDetector] 検出されたAI種別:', aiTypes);
+        ExecuteLogger.info('🔍 [GroupTypeDetector] 検出されたAI種別:', aiTypes);
 
         // 3種類AI判定: ChatGPT、Claude、Geminiが全て含まれているか
         const hasAllThreeTypes = this.threeTypeAIs.every(aiType => aiTypes.includes(aiType));
 
         if (hasAllThreeTypes && aiTypes.length === 3) {
-            console.log('🎯 [GroupTypeDetector] グループタイプ: 3種類AI');
+            ExecuteLogger.info('🎯 [GroupTypeDetector] グループタイプ: 3種類AI');
             return {
                 type: 'threeTypes',
                 aiTypes: ['chatgpt', 'claude', 'gemini'] // 固定順序
             };
         } else {
-            console.log('🎯 [GroupTypeDetector] グループタイプ: 通常処理');
+            ExecuteLogger.info('🎯 [GroupTypeDetector] グループタイプ: 通常処理');
             return {
                 type: 'normal',
                 aiTypes: aiTypes.slice(0, 3) // 最大3つまで
@@ -170,7 +202,7 @@ class TaskGroupTypeDetector {
      * @returns {Array} - [{aiType, position}] 形式の配置情報
      */
     getWindowLayout(groupType, aiTypes) {
-        console.log('🖼️ [GroupTypeDetector] ウィンドウ配置計算:', { groupType, aiTypes });
+        ExecuteLogger.info('🖼️ [GroupTypeDetector] ウィンドウ配置計算:', { groupType, aiTypes });
 
         if (groupType === 'threeTypes') {
             // 3種類AI: 固定配置（左上→右上→左下）
@@ -205,10 +237,10 @@ class WindowController {
      * Step 4-1-1: WindowServiceの初期化
      */
     async initializeWindowService() {
-        console.log('🪟 [WindowController] Step 4-1-1: WindowService初期化開始');
+        ExecuteLogger.info('🪟 [WindowController] Step 4-1-1: WindowService初期化開始');
 
         // 🔍 [DEBUG] WindowService存在確認
-        console.log('🔍 [DEBUG] WindowService存在確認:', {
+        ExecuteLogger.info('🔍 [DEBUG] WindowService存在確認:', {
             typeofWindowService: typeof WindowService,
             windowWindowService: typeof window.WindowService,
             globalWindowService: typeof globalThis.WindowService
@@ -216,7 +248,7 @@ class WindowController {
 
         // WindowServiceがグローバルに存在するかチェック
         if (typeof WindowService === 'undefined') {
-            console.log('⚠️ [DEBUG] WindowServiceが未定義 - 動的インポートを試行');
+            ExecuteLogger.debug('⚠️ [DEBUG] WindowServiceが未定義 - 動的インポートを試行');
 
             try {
                 // 動的インポートを試行
@@ -225,25 +257,25 @@ class WindowController {
                 if (module.WindowService) {
                     window.WindowService = module.WindowService;
                     this.windowService = module.WindowService;
-                    console.log('✅ [DEBUG] WindowService動的インポート成功');
+                    ExecuteLogger.debug('✅ [DEBUG] WindowService動的インポート成功');
                 } else if (module.default) {
                     // デフォルトエクスポートの場合
                     window.WindowService = module.default;
                     this.windowService = module.default;
-                    console.log('✅ [DEBUG] WindowService動的インポート成功（デフォルトエクスポート）');
+                    ExecuteLogger.debug('✅ [DEBUG] WindowService動的インポート成功（デフォルトエクスポート）');
                 } else {
                     throw new Error('WindowServiceがモジュールにエクスポートされていません');
                 }
             } catch (importError) {
-                console.error('❌ [DEBUG] WindowService動的インポート失敗:', importError);
+                ExecuteLogger.error('❌ [DEBUG] WindowService動的インポート失敗:', importError);
                 throw new Error(`WindowServiceが利用できません: ${importError.message}`);
             }
         } else {
             this.windowService = WindowService;
-            console.log('✅ [DEBUG] WindowService既存利用');
+            ExecuteLogger.debug('✅ [DEBUG] WindowService既存利用');
         }
 
-        console.log('✅ [WindowController] Step 4-1-1: WindowService初期化完了');
+        ExecuteLogger.info('✅ [WindowController] Step 4-1-1: WindowService初期化完了');
     }
 
     /**
@@ -251,7 +283,7 @@ class WindowController {
      * @param {Array} windowLayout - [{aiType, position}] 形式の配置情報
      */
     async openWindows(windowLayout) {
-        console.log('🪟 [WindowController] Step 4-1-2: 4分割ウィンドウ開始', windowLayout);
+        ExecuteLogger.info('🪟 [WindowController] Step 4-1-2: 4分割ウィンドウ開始', windowLayout);
 
         // WindowService初期化確認
         if (!this.windowService) {
@@ -262,7 +294,7 @@ class WindowController {
 
         for (const layout of windowLayout) {
             try {
-                console.log(`🪟 [Step 4-1-2-${layout.position}] ${layout.aiType}ウィンドウを${layout.position}番目に開く`);
+                ExecuteLogger.info(`🪟 [Step 4-1-2-${layout.position}] ${layout.aiType}ウィンドウを${layout.position}番目に開く`);
 
                 // AI種別に応じたURLを取得
                 const url = this.getAIUrl(layout.aiType);
@@ -293,13 +325,13 @@ class WindowController {
                         position: layout.position
                     });
 
-                    console.log(`✅ [Step 4-1-2-${layout.position}] ${layout.aiType}ウィンドウ作成成功`);
+                    ExecuteLogger.info(`✅ [Step 4-1-2-${layout.position}] ${layout.aiType}ウィンドウ作成成功`);
                 } else {
                     throw new Error(`ウィンドウ作成に失敗: ${layout.aiType}`);
                 }
 
             } catch (error) {
-                console.error(`❌ [Step 4-1-2-${layout.position}] ${layout.aiType}ウィンドウ作成失敗:`, error);
+                ExecuteLogger.error(`❌ [Step 4-1-2-${layout.position}] ${layout.aiType}ウィンドウ作成失敗:`, error);
                 results.push({
                     aiType: layout.aiType,
                     success: false,
@@ -312,7 +344,7 @@ class WindowController {
             await new Promise(resolve => setTimeout(resolve, 1000));
         }
 
-        console.log('🏁 [WindowController] Step 4-1-2: 4分割ウィンドウ開く完了', results);
+        ExecuteLogger.info('🏁 [WindowController] Step 4-1-2: 4分割ウィンドウ開く完了', results);
         return results;
     }
 
@@ -321,14 +353,14 @@ class WindowController {
      * @param {Array} aiTypes - チェック対象のAI種別リスト
      */
     async checkWindows(aiTypes) {
-        console.log('🔍 [WindowController] Step 4-1-3: ウィンドウチェック開始', aiTypes);
+        ExecuteLogger.info('🔍 [WindowController] Step 4-1-3: ウィンドウチェック開始', aiTypes);
 
         const checkResults = [];
 
         for (const aiType of aiTypes) {
             const windowInfo = this.openedWindows.get(aiType);
             if (!windowInfo) {
-                console.warn(`⚠️ [Step 4-1-3] ${aiType}のウィンドウが見つかりません`);
+                ExecuteLogger.warn(`⚠️ [Step 4-1-3] ${aiType}のウィンドウが見つかりません`);
                 checkResults.push({
                     aiType: aiType,
                     success: false,
@@ -338,7 +370,7 @@ class WindowController {
             }
 
             try {
-                console.log(`🔍 [Step 4-1-3] ${aiType}ウィンドウをチェック中...`);
+                ExecuteLogger.info(`🔍 [Step 4-1-3] ${aiType}ウィンドウをチェック中...`);
 
                 // タブをアクティブにしてからチェック
                 if (windowInfo.tabId) {
@@ -356,10 +388,10 @@ class WindowController {
                     error: checkResult.error
                 });
 
-                console.log(`✅ [Step 4-1-3] ${aiType}ウィンドウチェック完了:`, checkResult);
+                ExecuteLogger.info(`✅ [Step 4-1-3] ${aiType}ウィンドウチェック完了:`, checkResult);
 
             } catch (error) {
-                console.error(`❌ [Step 4-1-3] ${aiType}ウィンドウチェック失敗:`, error);
+                ExecuteLogger.error(`❌ [Step 4-1-3] ${aiType}ウィンドウチェック失敗:`, error);
                 checkResults.push({
                     aiType: aiType,
                     success: false,
@@ -368,7 +400,7 @@ class WindowController {
             }
         }
 
-        console.log('🏁 [WindowController] Step 4-1-3: ウィンドウチェック完了', checkResults);
+        ExecuteLogger.info('🏁 [WindowController] Step 4-1-3: ウィンドウチェック完了', checkResults);
         return checkResults;
     }
 
@@ -440,7 +472,7 @@ class WindowController {
      * Step 4-1-4: ウィンドウを閉じる
      */
     async closeWindows(aiTypes = null) {
-        console.log('🔒 [WindowController] Step 4-1-4: ウィンドウクローズ開始', aiTypes);
+        ExecuteLogger.info('🔒 [WindowController] Step 4-1-4: ウィンドウクローズ開始', aiTypes);
 
         const targetAiTypes = aiTypes || Array.from(this.openedWindows.keys());
 
@@ -450,14 +482,14 @@ class WindowController {
                 try {
                     await chrome.windows.remove(windowInfo.windowId);
                     this.openedWindows.delete(aiType);
-                    console.log(`✅ [Step 4-1-4] ${aiType}ウィンドウクローズ完了`);
+                    ExecuteLogger.info(`✅ [Step 4-1-4] ${aiType}ウィンドウクローズ完了`);
                 } catch (error) {
-                    console.error(`❌ [Step 4-1-4] ${aiType}ウィンドウクローズ失敗:`, error);
+                    ExecuteLogger.error(`❌ [Step 4-1-4] ${aiType}ウィンドウクローズ失敗:`, error);
                 }
             }
         }
 
-        console.log('🏁 [WindowController] Step 4-1-4: ウィンドウクローズ完了');
+        ExecuteLogger.info('🏁 [WindowController] Step 4-1-4: ウィンドウクローズ完了');
     }
 }
 
@@ -477,7 +509,7 @@ class SpreadsheetDataManager {
      * Step 4-2-1: SheetsClientの初期化
      */
     async initializeSheetsClient() {
-        console.log('📊 [SpreadsheetDataManager] Step 4-2-1: SheetsClient初期化開始');
+        ExecuteLogger.info('📊 [SpreadsheetDataManager] Step 4-2-1: SheetsClient初期化開始');
 
         // SheetsClientがグローバルに存在するかチェック
         if (typeof SheetsClient === 'undefined') {
@@ -503,7 +535,7 @@ class SpreadsheetDataManager {
         try {
             const SheetsClientClass = window.SheetsClient || SheetsClient;
             this.sheetsClient = new SheetsClientClass();
-            console.log('✅ [SpreadsheetDataManager] Step 4-2-1: SheetsClient初期化完了');
+            ExecuteLogger.info('✅ [SpreadsheetDataManager] Step 4-2-1: SheetsClient初期化完了');
         } catch (instantiationError) {
             throw new Error(`SheetsClientインスタンス化失敗: ${instantiationError.message}`);
         }
@@ -513,25 +545,25 @@ class SpreadsheetDataManager {
      * Step 4-2-2: スプレッドシート設定データの取得
      */
     async getSpreadsheetConfig() {
-        console.log('📊 [SpreadsheetDataManager] Step 4-2-2: スプレッドシート設定取得開始');
+        ExecuteLogger.info('📊 [SpreadsheetDataManager] Step 4-2-2: スプレッドシート設定取得開始');
 
         // 🔧 [DEBUG] 統一化：window.globalState状態をログ出力
-        console.log('🔍 [DEBUG] window.globalState状態チェック:', {
+        ExecuteLogger.info('🔍 [DEBUG] window.globalState状態チェック:', {
             windowGlobalStateExists: typeof window.globalState !== 'undefined',
             spreadsheetId: window.globalState?.spreadsheetId,
             windowGlobalStateData: window.globalState
         });
 
         // 🔧 [UNIFIED] window.globalStateを直接使用（統一化）
-        console.log('🔍 [DEBUG] window.globalState状態チェック:', {
+        ExecuteLogger.info('🔍 [DEBUG] window.globalState状態チェック:', {
             exists: typeof window.globalState !== 'undefined',
             spreadsheetId: window.globalState?.spreadsheetId,
             gid: window.globalState?.gid
         });
 
         if (!window.globalState || !window.globalState.spreadsheetId) {
-            console.error('❌ [DEBUG] window.globalState または spreadsheetId が存在しません');
-            console.error('   - window.globalState:', window.globalState);
+            ExecuteLogger.error('❌ [DEBUG] window.globalState または spreadsheetId が存在しません');
+            ExecuteLogger.error('   - window.globalState:', window.globalState);
             throw new Error('window.globalStateが設定されていません。step1-setup.jsを先に実行してください。');
         }
 
@@ -546,8 +578,8 @@ class SpreadsheetDataManager {
             authToken: window.globalState.authToken || null
         };
 
-        console.log('✅ [DEBUG] 統一化データ構築完了:', this.spreadsheetData);
-        console.log('✅ [SpreadsheetDataManager] Step 4-2-2: スプレッドシート設定取得完了', {
+        ExecuteLogger.debug('✅ [DEBUG] 統一化データ構築完了:', this.spreadsheetData);
+        ExecuteLogger.info('✅ [SpreadsheetDataManager] Step 4-2-2: スプレッドシート設定取得完了', {
             spreadsheetId: this.spreadsheetData.spreadsheetId,
             sheetName: this.spreadsheetData.sheetName
         });
@@ -561,7 +593,7 @@ class SpreadsheetDataManager {
      * @returns {Array} - 拡張されたタスクリスト（AI・モデル・機能・プロンプト含む）
      */
     async enrichTaskList(taskList) {
-        console.log('📊 [SpreadsheetDataManager] Step 4-2-3: タスクリスト動的データ取得開始', taskList);
+        ExecuteLogger.info('📊 [SpreadsheetDataManager] Step 4-2-3: タスクリスト動的データ取得開始', taskList);
 
         // SheetsClient初期化確認
         if (!this.sheetsClient) {
@@ -577,22 +609,22 @@ class SpreadsheetDataManager {
 
         for (const task of taskList) {
             try {
-                console.log(`📊 [Step 4-2-3] タスク ${task.id || task.taskId} の動的データ取得中...`);
+                ExecuteLogger.info(`📊 [Step 4-2-3] タスク ${task.id || task.taskId} の動的データ取得中...`);
 
                 // タスクのセル位置情報から動的データを取得
                 const enrichedTask = await this.getTaskDynamicData(task);
 
                 enrichedTaskList.push(enrichedTask);
-                console.log(`✅ [Step 4-2-3] タスク ${task.id || task.taskId} の動的データ取得完了`);
+                ExecuteLogger.info(`✅ [Step 4-2-3] タスク ${task.id || task.taskId} の動的データ取得完了`);
 
             } catch (error) {
-                console.error(`❌ [Step 4-2-3] タスク ${task.id || task.taskId} の動的データ取得失敗:`, error);
+                ExecuteLogger.error(`❌ [Step 4-2-3] タスク ${task.id || task.taskId} の動的データ取得失敗:`, error);
                 // エラーの場合は元のタスクデータを使用
                 enrichedTaskList.push(task);
             }
         }
 
-        console.log('🏁 [SpreadsheetDataManager] Step 4-2-3: タスクリスト動的データ取得完了', enrichedTaskList);
+        ExecuteLogger.info('🏁 [SpreadsheetDataManager] Step 4-2-3: タスクリスト動的データ取得完了', enrichedTaskList);
         return enrichedTaskList;
     }
 
@@ -608,18 +640,18 @@ class SpreadsheetDataManager {
             // 特殊タスク（レポート化、Genspark）の場合は作業セルのみ処理
             if (task.groupType === 'report' || task.groupType === 'genspark') {
                 enrichedTask.workCellRef = task.workCell;
-                console.log(`📊 [Step 4-2-4] 特殊タスク - 作業セル: ${task.workCell}`);
+                ExecuteLogger.info(`📊 [Step 4-2-4] 特殊タスク - 作業セル: ${task.workCell}`);
                 return enrichedTask;
             }
 
             // セル位置情報の確認（通常タスク用）
             const cellRef = task.workCell || task.cellRef || `${task.column}${task.row}`;
             if (!cellRef || cellRef.includes('undefined')) {
-                console.warn(`⚠️ [Step 4-2-4] タスクにセル位置情報がありません:`, task);
+                ExecuteLogger.warn(`⚠️ [Step 4-2-4] タスクにセル位置情報がありません:`, task);
                 return enrichedTask;
             }
 
-            console.log(`📊 [Step 4-2-4] セル ${cellRef} から動的データ取得中...`);
+            ExecuteLogger.info(`📊 [Step 4-2-4] セル ${cellRef} から動的データ取得中...`);
 
             // Step 4-2-4-1: プロンプトデータの取得
             const promptData = await this.getPromptData(cellRef);
@@ -649,7 +681,7 @@ class SpreadsheetDataManager {
                 enrichedTask.workCellType = workCellData.type;
             }
 
-            console.log(`✅ [Step 4-2-4] セル ${cellRef} の動的データ取得完了:`, {
+            ExecuteLogger.info(`✅ [Step 4-2-4] セル ${cellRef} の動的データ取得完了:`, {
                 prompt: !!enrichedTask.prompt,
                 model: enrichedTask.model,
                 function: enrichedTask.function,
@@ -657,7 +689,7 @@ class SpreadsheetDataManager {
             });
 
         } catch (error) {
-            console.error(`❌ [Step 4-2-4] セル動的データ取得エラー:`, error);
+            ExecuteLogger.error(`❌ [Step 4-2-4] セル動的データ取得エラー:`, error);
         }
 
         return enrichedTask;
@@ -669,7 +701,7 @@ class SpreadsheetDataManager {
     async getPromptData(cellRef) {
         try {
             // 🔧 [FIX] 正しいメソッド名に修正: readRange → getCellValues
-            console.log('🔍 [DEBUG] getPromptData実行:', {
+            ExecuteLogger.info('🔍 [DEBUG] getPromptData実行:', {
                 spreadsheetId: this.spreadsheetData.spreadsheetId,
                 sheetName: this.spreadsheetData.sheetName,
                 cellRef: cellRef,
@@ -709,7 +741,7 @@ class SpreadsheetDataManager {
                 };
             }
         } catch (error) {
-            console.error('プロンプトデータ取得エラー:', error);
+            ExecuteLogger.error('プロンプトデータ取得エラー:', error);
         }
         return null;
     }
@@ -726,7 +758,7 @@ class SpreadsheetDataManager {
                 display: 'Claude Opus 4.1'
             };
         } catch (error) {
-            console.error('モデルデータ取得エラー:', error);
+            ExecuteLogger.error('モデルデータ取得エラー:', error);
         }
         return null;
     }
@@ -742,7 +774,7 @@ class SpreadsheetDataManager {
                 display: '通常'
             };
         } catch (error) {
-            console.error('機能データ取得エラー:', error);
+            ExecuteLogger.error('機能データ取得エラー:', error);
         }
         return null;
     }
@@ -759,7 +791,7 @@ class SpreadsheetDataManager {
                 type: 'normal'
             };
         } catch (error) {
-            console.error('作業セルデータ取得エラー:', error);
+            ExecuteLogger.error('作業セルデータ取得エラー:', error);
         }
         return null;
     }
@@ -781,7 +813,7 @@ class DetailedLogManager {
      * Step 4-3-1: ログマネージャーの初期化
      */
     async initializeLogManager() {
-        console.log('📝 [DetailedLogManager] Step 4-3-1: ログマネージャー初期化開始');
+        ExecuteLogger.info('📝 [DetailedLogManager] Step 4-3-1: ログマネージャー初期化開始');
 
         // SheetsClientの参照取得
         if (window.spreadsheetDataManager && window.spreadsheetDataManager.sheetsClient) {
@@ -792,7 +824,7 @@ class DetailedLogManager {
             throw new Error('SheetsClientが利用できません');
         }
 
-        console.log('✅ [DetailedLogManager] Step 4-3-1: ログマネージャー初期化完了');
+        ExecuteLogger.info('✅ [DetailedLogManager] Step 4-3-1: ログマネージャー初期化完了');
     }
 
     /**
@@ -804,7 +836,7 @@ class DetailedLogManager {
         const taskId = task.id || task.taskId || `${task.column}${task.row}`;
         const startTime = new Date();
 
-        console.log(`📝 [DetailedLogManager] Step 4-3-2: タスク開始ログ記録 - ${taskId}`);
+        ExecuteLogger.info(`📝 [DetailedLogManager] Step 4-3-2: タスク開始ログ記録 - ${taskId}`);
 
         const logData = {
             taskId: taskId,
@@ -827,7 +859,7 @@ class DetailedLogManager {
         };
 
         this.taskLogs.set(taskId, logData);
-        console.log(`✅ [Step 4-3-2] タスク開始ログ記録完了 - ${taskId}`);
+        ExecuteLogger.info(`✅ [Step 4-3-2] タスク開始ログ記録完了 - ${taskId}`);
     }
 
     /**
@@ -836,7 +868,7 @@ class DetailedLogManager {
      * @param {string} url - 作業URL
      */
     recordSendTime(taskId, url = null) {
-        console.log(`📝 [DetailedLogManager] Step 4-3-3: 送信時刻記録 - ${taskId}`);
+        ExecuteLogger.info(`📝 [DetailedLogManager] Step 4-3-3: 送信時刻記録 - ${taskId}`);
 
         const logData = this.taskLogs.get(taskId);
         if (logData) {
@@ -844,9 +876,9 @@ class DetailedLogManager {
             if (url) {
                 logData.url = url;
             }
-            console.log(`✅ [Step 4-3-3] 送信時刻記録完了 - ${taskId}: ${logData.sendTime.toLocaleString('ja-JP')}`);
+            ExecuteLogger.info(`✅ [Step 4-3-3] 送信時刻記録完了 - ${taskId}: ${logData.sendTime.toLocaleString('ja-JP')}`);
         } else {
-            console.warn(`⚠️ [Step 4-3-3] タスクログが見つかりません - ${taskId}`);
+            ExecuteLogger.warn(`⚠️ [Step 4-3-3] タスクログが見つかりません - ${taskId}`);
         }
     }
 
@@ -856,7 +888,7 @@ class DetailedLogManager {
      * @param {Object} result - AI実行結果
      */
     recordTaskComplete(taskId, result) {
-        console.log(`📝 [DetailedLogManager] Step 4-3-4: 完了時刻記録 - ${taskId}`);
+        ExecuteLogger.info(`📝 [DetailedLogManager] Step 4-3-4: 完了時刻記録 - ${taskId}`);
 
         const logData = this.taskLogs.get(taskId);
         if (logData) {
@@ -864,9 +896,9 @@ class DetailedLogManager {
             logData.response = result?.response || result?.result || null;
             logData.error = result?.error || null;
 
-            console.log(`✅ [Step 4-3-4] 完了時刻記録完了 - ${taskId}: ${logData.completeTime.toLocaleString('ja-JP')}`);
+            ExecuteLogger.info(`✅ [Step 4-3-4] 完了時刻記録完了 - ${taskId}: ${logData.completeTime.toLocaleString('ja-JP')}`);
         } else {
-            console.warn(`⚠️ [Step 4-3-4] タスクログが見つかりません - ${taskId}`);
+            ExecuteLogger.warn(`⚠️ [Step 4-3-4] タスクログが見つかりません - ${taskId}`);
         }
     }
 
@@ -876,11 +908,11 @@ class DetailedLogManager {
      * @returns {string} - フォーマットされたログテキスト
      */
     generateDetailedLog(taskId) {
-        console.log(`📝 [DetailedLogManager] Step 4-3-5: 詳細ログ生成 - ${taskId}`);
+        ExecuteLogger.info(`📝 [DetailedLogManager] Step 4-3-5: 詳細ログ生成 - ${taskId}`);
 
         const logData = this.taskLogs.get(taskId);
         if (!logData) {
-            console.warn(`⚠️ [Step 4-3-5] タスクログが見つかりません - ${taskId}`);
+            ExecuteLogger.warn(`⚠️ [Step 4-3-5] タスクログが見つかりません - ${taskId}`);
             return '';
         }
 
@@ -910,7 +942,7 @@ URL: ${logData.url}
 送信時刻: ${logData.sendTime ? logData.sendTime.toLocaleString('ja-JP') : '未記録'}
 記載時刻: ${logData.completeTime ? logData.completeTime.toLocaleString('ja-JP') : '未記録'}${timeDiff}`;
 
-        console.log(`✅ [Step 4-3-5] 詳細ログ生成完了 - ${taskId}`);
+        ExecuteLogger.info(`✅ [Step 4-3-5] 詳細ログ生成完了 - ${taskId}`);
         return logText;
     }
 
@@ -920,7 +952,7 @@ URL: ${logData.url}
      * @param {string} logCellRef - ログ記載先セル位置
      */
     async writeLogToSpreadsheet(taskId, logCellRef) {
-        console.log(`📝 [DetailedLogManager] Step 4-3-6: ログスプレッドシート記載 - ${taskId} -> ${logCellRef}`);
+        ExecuteLogger.info(`📝 [DetailedLogManager] Step 4-3-6: ログスプレッドシート記載 - ${taskId} -> ${logCellRef}`);
 
         try {
             // ログマネージャー初期化確認
@@ -935,13 +967,13 @@ URL: ${logData.url}
             }
 
             // 🔧 [UNIFIED] window.globalStateを直接使用（統一化）
-            console.log('🔍 [DEBUG] ログ記載時のwindow.globalState状態:', {
+            ExecuteLogger.info('🔍 [DEBUG] ログ記載時のwindow.globalState状態:', {
                 exists: typeof window.globalState !== 'undefined',
                 spreadsheetId: window.globalState?.spreadsheetId
             });
 
             if (!window.globalState || !window.globalState.spreadsheetId) {
-                console.error('❌ [DEBUG] ログ記載時のwindow.globalState未設定エラー');
+                ExecuteLogger.error('❌ [DEBUG] ログ記載時のwindow.globalState未設定エラー');
                 throw new Error('window.globalStateが設定されていません');
             }
 
@@ -951,7 +983,7 @@ URL: ${logData.url}
             };
 
             // 🔧 [FIX] 正しいメソッド名に修正: writeToRange → updateCell
-            console.log('🔍 [DEBUG] ログ書き込み実行:', {
+            ExecuteLogger.info('🔍 [DEBUG] ログ書き込み実行:', {
                 spreadsheetId: spreadsheetData.spreadsheetId,
                 range: `${spreadsheetData.sheetName}!${logCellRef}`,
                 logTextLength: logText.length
@@ -964,10 +996,10 @@ URL: ${logData.url}
                 logText
             );
 
-            console.log(`✅ [Step 4-3-6] ログスプレッドシート記載完了 - ${taskId} -> ${logCellRef}`);
+            ExecuteLogger.info(`✅ [Step 4-3-6] ログスプレッドシート記載完了 - ${taskId} -> ${logCellRef}`);
 
         } catch (error) {
-            console.error(`❌ [Step 4-3-6] ログスプレッドシート記載失敗 - ${taskId}:`, error);
+            ExecuteLogger.error(`❌ [Step 4-3-6] ログスプレッドシート記載失敗 - ${taskId}:`, error);
             throw error;
         }
     }
@@ -978,12 +1010,12 @@ URL: ${logData.url}
      * @param {string} answerCellRef - 回答記載先セル位置
      */
     async writeAnswerToSpreadsheet(taskId, answerCellRef) {
-        console.log(`📝 [DetailedLogManager] Step 4-3-7: 回答スプレッドシート記載 - ${taskId} -> ${answerCellRef}`);
+        ExecuteLogger.info(`📝 [DetailedLogManager] Step 4-3-7: 回答スプレッドシート記載 - ${taskId} -> ${answerCellRef}`);
 
         try {
             const logData = this.taskLogs.get(taskId);
             if (!logData || !logData.response) {
-                console.warn(`⚠️ [Step 4-3-7] 回答データが見つかりません - ${taskId}`);
+                ExecuteLogger.warn(`⚠️ [Step 4-3-7] 回答データが見つかりません - ${taskId}`);
                 return;
             }
 
@@ -993,13 +1025,13 @@ URL: ${logData.url}
             }
 
             // 🔧 [UNIFIED] window.globalStateを直接使用（統一化）
-            console.log('🔍 [DEBUG] 回答記載時のwindow.globalState状態:', {
+            ExecuteLogger.info('🔍 [DEBUG] 回答記載時のwindow.globalState状態:', {
                 exists: typeof window.globalState !== 'undefined',
                 spreadsheetId: window.globalState?.spreadsheetId
             });
 
             if (!window.globalState || !window.globalState.spreadsheetId) {
-                console.error('❌ [DEBUG] 回答記載時のwindow.globalState未設定エラー');
+                ExecuteLogger.error('❌ [DEBUG] 回答記載時のwindow.globalState未設定エラー');
                 throw new Error('window.globalStateが設定されていません');
             }
 
@@ -1009,7 +1041,7 @@ URL: ${logData.url}
             };
 
             // 🔧 [FIX] 正しいメソッド名に修正: writeToRange → updateCell
-            console.log('🔍 [DEBUG] 回答書き込み実行:', {
+            ExecuteLogger.info('🔍 [DEBUG] 回答書き込み実行:', {
                 spreadsheetId: spreadsheetData.spreadsheetId,
                 range: `${spreadsheetData.sheetName}!${answerCellRef}`,
                 responseLength: logData.response.length
@@ -1022,10 +1054,10 @@ URL: ${logData.url}
                 logData.response
             );
 
-            console.log(`✅ [Step 4-3-7] 回答スプレッドシート記載完了 - ${taskId} -> ${answerCellRef}`);
+            ExecuteLogger.info(`✅ [Step 4-3-7] 回答スプレッドシート記載完了 - ${taskId} -> ${answerCellRef}`);
 
         } catch (error) {
-            console.error(`❌ [Step 4-3-7] 回答スプレッドシート記載失敗 - ${taskId}:`, error);
+            ExecuteLogger.error(`❌ [Step 4-3-7] 回答スプレッドシート記載失敗 - ${taskId}:`, error);
             throw error;
         }
     }
@@ -1068,17 +1100,17 @@ class WindowLifecycleManager {
      * Step 4-4-1: ライフサイクル管理の初期化
      */
     async initializeLifecycleManager() {
-        console.log('🔄 [WindowLifecycleManager] Step 4-4-1: ライフサイクル管理初期化開始');
+        ExecuteLogger.info('🔄 [WindowLifecycleManager] Step 4-4-1: ライフサイクル管理初期化開始');
 
         // 既存ウィンドウの確認
         try {
             const windows = await chrome.windows.getAll();
-            console.log(`📊 [Step 4-4-1] 既存ウィンドウ: ${windows.length}個`);
+            ExecuteLogger.info(`📊 [Step 4-4-1] 既存ウィンドウ: ${windows.length}個`);
         } catch (error) {
-            console.warn(`⚠️ [Step 4-4-1] ウィンドウ確認エラー:`, error);
+            ExecuteLogger.warn(`⚠️ [Step 4-4-1] ウィンドウ確認エラー:`, error);
         }
 
-        console.log('✅ [WindowLifecycleManager] Step 4-4-1: ライフサイクル管理初期化完了');
+        ExecuteLogger.info('✅ [WindowLifecycleManager] Step 4-4-1: ライフサイクル管理初期化完了');
     }
 
     /**
@@ -1087,7 +1119,7 @@ class WindowLifecycleManager {
      * @param {Object} windowInfo - ウィンドウ情報
      */
     registerWindow(aiType, windowInfo) {
-        console.log(`🔄 [WindowLifecycleManager] Step 4-4-2: ウィンドウ登録 - ${aiType}`);
+        ExecuteLogger.info(`🔄 [WindowLifecycleManager] Step 4-4-2: ウィンドウ登録 - ${aiType}`);
 
         const windowData = {
             aiType: aiType,
@@ -1099,7 +1131,7 @@ class WindowLifecycleManager {
         };
 
         this.activeWindows.add(JSON.stringify(windowData));
-        console.log(`✅ [Step 4-4-2] ウィンドウ登録完了 - ${aiType}: ${windowInfo.windowId}`);
+        ExecuteLogger.info(`✅ [Step 4-4-2] ウィンドウ登録完了 - ${aiType}: ${windowInfo.windowId}`);
 
         return windowData;
     }
@@ -1111,30 +1143,30 @@ class WindowLifecycleManager {
      * @param {string} operationName - 操作名
      */
     async executeWithRetry(executeFunction, task, operationName = 'AI実行') {
-        console.log(`🔄 [WindowLifecycleManager] Step 4-4-3: Retry処理開始 - ${operationName}`);
+        ExecuteLogger.info(`🔄 [WindowLifecycleManager] Step 4-4-3: Retry処理開始 - ${operationName}`);
 
         let lastError = null;
         let attempt = 0;
 
         while (attempt < this.retryConfig.maxRetries) {
             try {
-                console.log(`🔄 [Step 4-4-3] ${operationName} 試行 ${attempt + 1}/${this.retryConfig.maxRetries}`);
+                ExecuteLogger.info(`🔄 [Step 4-4-3] ${operationName} 試行 ${attempt + 1}/${this.retryConfig.maxRetries}`);
 
                 // タイムアウト付きで実行
                 const result = await this.executeWithTimeout(executeFunction, this.retryConfig.timeoutMs);
 
-                console.log(`✅ [Step 4-4-3] ${operationName} 成功 (試行 ${attempt + 1})`);
+                ExecuteLogger.info(`✅ [Step 4-4-3] ${operationName} 成功 (試行 ${attempt + 1})`);
                 return result;
 
             } catch (error) {
                 lastError = error;
                 attempt++;
 
-                console.error(`❌ [Step 4-4-3] ${operationName} 失敗 (試行 ${attempt}):`, error.message);
+                ExecuteLogger.error(`❌ [Step 4-4-3] ${operationName} 失敗 (試行 ${attempt}):`, error.message);
 
                 // 最後の試行でない場合は待機
                 if (attempt < this.retryConfig.maxRetries) {
-                    console.log(`⏳ [Step 4-4-3] ${this.retryConfig.retryDelay}ms待機後に再試行...`);
+                    ExecuteLogger.info(`⏳ [Step 4-4-3] ${this.retryConfig.retryDelay}ms待機後に再試行...`);
                     await new Promise(resolve => setTimeout(resolve, this.retryConfig.retryDelay));
 
                     // ウィンドウ状態の確認とリフレッシュ
@@ -1143,7 +1175,7 @@ class WindowLifecycleManager {
             }
         }
 
-        console.error(`❌ [Step 4-4-3] ${operationName} 最終失敗 (${this.retryConfig.maxRetries}回試行)`, lastError);
+        ExecuteLogger.error(`❌ [Step 4-4-3] ${operationName} 最終失敗 (${this.retryConfig.maxRetries}回試行)`, lastError);
         throw new Error(`${operationName} failed after ${this.retryConfig.maxRetries} attempts: ${lastError?.message}`);
     }
 
@@ -1163,22 +1195,22 @@ class WindowLifecycleManager {
      * @param {Object} task - タスクデータ
      */
     async refreshWindowIfNeeded(task) {
-        console.log(`🔄 [WindowLifecycleManager] Step 4-4-5: ウィンドウ状態確認 - ${task.aiType}`);
+        ExecuteLogger.info(`🔄 [WindowLifecycleManager] Step 4-4-5: ウィンドウ状態確認 - ${task.aiType}`);
 
         try {
             // WindowControllerからウィンドウ情報を取得
             const windowInfo = window.windowController?.openedWindows?.get(task.aiType);
             if (!windowInfo) {
-                console.warn(`⚠️ [Step 4-4-5] ウィンドウ情報が見つかりません - ${task.aiType}`);
+                ExecuteLogger.warn(`⚠️ [Step 4-4-5] ウィンドウ情報が見つかりません - ${task.aiType}`);
                 return;
             }
 
             // ウィンドウの存在確認
             try {
                 await chrome.windows.get(windowInfo.windowId);
-                console.log(`✅ [Step 4-4-5] ウィンドウ存在確認OK - ${task.aiType}`);
+                ExecuteLogger.info(`✅ [Step 4-4-5] ウィンドウ存在確認OK - ${task.aiType}`);
             } catch (error) {
-                console.warn(`⚠️ [Step 4-4-5] ウィンドウが存在しません - ${task.aiType}:`, error);
+                ExecuteLogger.warn(`⚠️ [Step 4-4-5] ウィンドウが存在しません - ${task.aiType}:`, error);
 
                 // ウィンドウが存在しない場合は再作成
                 await this.recreateWindow(task);
@@ -1188,14 +1220,14 @@ class WindowLifecycleManager {
             if (windowInfo.tabId) {
                 try {
                     await chrome.tabs.update(windowInfo.tabId, { active: true });
-                    console.log(`✅ [Step 4-4-5] タブアクティブ化完了 - ${task.aiType}`);
+                    ExecuteLogger.info(`✅ [Step 4-4-5] タブアクティブ化完了 - ${task.aiType}`);
                 } catch (error) {
-                    console.warn(`⚠️ [Step 4-4-5] タブアクティブ化失敗 - ${task.aiType}:`, error);
+                    ExecuteLogger.warn(`⚠️ [Step 4-4-5] タブアクティブ化失敗 - ${task.aiType}:`, error);
                 }
             }
 
         } catch (error) {
-            console.error(`❌ [Step 4-4-5] ウィンドウ状態確認エラー - ${task.aiType}:`, error);
+            ExecuteLogger.error(`❌ [Step 4-4-5] ウィンドウ状態確認エラー - ${task.aiType}:`, error);
         }
     }
 
@@ -1204,7 +1236,7 @@ class WindowLifecycleManager {
      * @param {Object} task - タスクデータ
      */
     async recreateWindow(task) {
-        console.log(`🔄 [WindowLifecycleManager] Step 4-4-6: ウィンドウ再作成 - ${task.aiType}`);
+        ExecuteLogger.info(`🔄 [WindowLifecycleManager] Step 4-4-6: ウィンドウ再作成 - ${task.aiType}`);
 
         try {
             // WindowControllerを使用してウィンドウを再作成
@@ -1216,7 +1248,7 @@ class WindowLifecycleManager {
 
                 const results = await window.windowController.openWindows(layout);
                 if (results[0]?.success) {
-                    console.log(`✅ [Step 4-4-6] ウィンドウ再作成成功 - ${task.aiType}`);
+                    ExecuteLogger.info(`✅ [Step 4-4-6] ウィンドウ再作成成功 - ${task.aiType}`);
                 } else {
                     throw new Error(`ウィンドウ再作成に失敗: ${results[0]?.error}`);
                 }
@@ -1225,7 +1257,7 @@ class WindowLifecycleManager {
             }
 
         } catch (error) {
-            console.error(`❌ [Step 4-4-6] ウィンドウ再作成失敗 - ${task.aiType}:`, error);
+            ExecuteLogger.error(`❌ [Step 4-4-6] ウィンドウ再作成失敗 - ${task.aiType}:`, error);
             throw error;
         }
     }
@@ -1236,7 +1268,7 @@ class WindowLifecycleManager {
      * @param {Object} result - 実行結果
      */
     async handleTaskCompletion(task, result) {
-        console.log(`🔄 [WindowLifecycleManager] Step 4-4-7: タスク完了処理 - ${task.aiType}`);
+        ExecuteLogger.info(`🔄 [WindowLifecycleManager] Step 4-4-7: タスク完了処理 - ${task.aiType}`);
 
         try {
             const taskId = task.id || task.taskId || `${task.column}${task.row}`;
@@ -1251,16 +1283,16 @@ class WindowLifecycleManager {
             if (shouldCloseWindow) {
                 await this.closeTaskWindow(task);
             } else {
-                console.log(`📌 [Step 4-4-7] ウィンドウを保持 - ${task.aiType}`);
+                ExecuteLogger.info(`📌 [Step 4-4-7] ウィンドウを保持 - ${task.aiType}`);
             }
 
             // ウィンドウ追跡から削除
             this.unregisterWindow(task.aiType);
 
-            console.log(`✅ [Step 4-4-7] タスク完了処理完了 - ${task.aiType}`);
+            ExecuteLogger.info(`✅ [Step 4-4-7] タスク完了処理完了 - ${task.aiType}`);
 
         } catch (error) {
-            console.error(`❌ [Step 4-4-7] タスク完了処理エラー - ${task.aiType}:`, error);
+            ExecuteLogger.error(`❌ [Step 4-4-7] タスク完了処理エラー - ${task.aiType}:`, error);
         }
     }
 
@@ -1288,17 +1320,17 @@ class WindowLifecycleManager {
      * @param {Object} task - タスクデータ
      */
     async closeTaskWindow(task) {
-        console.log(`🔄 [WindowLifecycleManager] Step 4-4-8: ウィンドウクローズ - ${task.aiType}`);
+        ExecuteLogger.info(`🔄 [WindowLifecycleManager] Step 4-4-8: ウィンドウクローズ - ${task.aiType}`);
 
         try {
             if (window.windowController) {
                 await window.windowController.closeWindows([task.aiType]);
-                console.log(`✅ [Step 4-4-8] ウィンドウクローズ完了 - ${task.aiType}`);
+                ExecuteLogger.info(`✅ [Step 4-4-8] ウィンドウクローズ完了 - ${task.aiType}`);
             } else {
-                console.warn(`⚠️ [Step 4-4-8] WindowControllerが利用できません`);
+                ExecuteLogger.warn(`⚠️ [Step 4-4-8] WindowControllerが利用できません`);
             }
         } catch (error) {
-            console.error(`❌ [Step 4-4-8] ウィンドウクローズエラー - ${task.aiType}:`, error);
+            ExecuteLogger.error(`❌ [Step 4-4-8] ウィンドウクローズエラー - ${task.aiType}:`, error);
         }
     }
 
@@ -1312,11 +1344,11 @@ class WindowLifecycleManager {
                 const windowData = JSON.parse(windowDataStr);
                 if (windowData.aiType === aiType) {
                     this.activeWindows.delete(windowDataStr);
-                    console.log(`🗑️ [WindowLifecycleManager] ウィンドウ追跡削除 - ${aiType}`);
+                    ExecuteLogger.info(`🗑️ [WindowLifecycleManager] ウィンドウ追跡削除 - ${aiType}`);
                     break;
                 }
             } catch (error) {
-                console.warn('ウィンドウデータの解析エラー:', error);
+                ExecuteLogger.warn('ウィンドウデータの解析エラー:', error);
             }
         }
     }
@@ -1325,14 +1357,14 @@ class WindowLifecycleManager {
      * 全ウィンドウのクリーンアップ
      */
     async cleanupAllWindows() {
-        console.log('🧹 [WindowLifecycleManager] 全ウィンドウクリーンアップ開始');
+        ExecuteLogger.info('🧹 [WindowLifecycleManager] 全ウィンドウクリーンアップ開始');
 
         if (window.windowController) {
             await window.windowController.closeWindows();
         }
 
         this.activeWindows.clear();
-        console.log('✅ [WindowLifecycleManager] 全ウィンドウクリーンアップ完了');
+        ExecuteLogger.info('✅ [WindowLifecycleManager] 全ウィンドウクリーンアップ完了');
     }
 
     /**
@@ -1365,7 +1397,7 @@ class SpecialTaskProcessor {
      * Step 4-5-1: 特別処理プロセッサーの初期化
      */
     async initializeProcessor() {
-        console.log('🔧 [SpecialTaskProcessor] Step 4-5-1: 特別処理プロセッサー初期化開始');
+        ExecuteLogger.info('🔧 [SpecialTaskProcessor] Step 4-5-1: 特別処理プロセッサー初期化開始');
 
         // 必要なAutomationの確認
         const automationStatus = {
@@ -1373,8 +1405,8 @@ class SpecialTaskProcessor {
             genspark: typeof window.GensparkAutomationV2 !== 'undefined'
         };
 
-        console.log('📊 [Step 4-5-1] Automation利用可能状況:', automationStatus);
-        console.log('✅ [SpecialTaskProcessor] Step 4-5-1: 特別処理プロセッサー初期化完了');
+        ExecuteLogger.info('📊 [Step 4-5-1] Automation利用可能状況:', automationStatus);
+        ExecuteLogger.info('✅ [SpecialTaskProcessor] Step 4-5-1: 特別処理プロセッサー初期化完了');
     }
 
     /**
@@ -1383,13 +1415,13 @@ class SpecialTaskProcessor {
      * @returns {Object} - {isSpecial: boolean, type: string, subType: string}
      */
     identifySpecialTask(task) {
-        console.log(`🔧 [SpecialTaskProcessor] Step 4-5-2: 特別処理タスク判定 - ${task.aiType}`);
+        ExecuteLogger.info(`🔧 [SpecialTaskProcessor] Step 4-5-2: 特別処理タスク判定 - ${task.aiType}`);
 
         const aiType = task.aiType?.toLowerCase();
 
         // レポート処理の判定
         if (aiType === 'report' || task.prompt?.includes('レポート')) {
-            console.log(`✅ [Step 4-5-2] レポート処理タスクを検出`);
+            ExecuteLogger.info(`✅ [Step 4-5-2] レポート処理タスクを検出`);
             return {
                 isSpecial: true,
                 type: 'report',
@@ -1408,7 +1440,7 @@ class SpecialTaskProcessor {
                 subType = 'factcheck';
             }
 
-            console.log(`✅ [Step 4-5-2] Genspark処理タスクを検出 (${subType})`);
+            ExecuteLogger.info(`✅ [Step 4-5-2] Genspark処理タスクを検出 (${subType})`);
             return {
                 isSpecial: true,
                 type: 'genspark',
@@ -1416,7 +1448,7 @@ class SpecialTaskProcessor {
             };
         }
 
-        console.log(`📝 [Step 4-5-2] 通常タスクと判定`);
+        ExecuteLogger.info(`📝 [Step 4-5-2] 通常タスクと判定`);
         return {
             isSpecial: false,
             type: 'normal',
@@ -1431,7 +1463,7 @@ class SpecialTaskProcessor {
      * @param {Object} windowInfo - ウィンドウ情報
      */
     async executeSpecialTask(task, specialInfo, windowInfo) {
-        console.log(`🔧 [SpecialTaskProcessor] Step 4-5-3: 特別処理実行 - ${specialInfo.type}`);
+        ExecuteLogger.info(`🔧 [SpecialTaskProcessor] Step 4-5-3: 特別処理実行 - ${specialInfo.type}`);
 
         try {
             let result = null;
@@ -1449,11 +1481,11 @@ class SpecialTaskProcessor {
                     throw new Error(`未対応の特別処理タイプ: ${specialInfo.type}`);
             }
 
-            console.log(`✅ [Step 4-5-3] 特別処理実行完了 - ${specialInfo.type}`);
+            ExecuteLogger.info(`✅ [Step 4-5-3] 特別処理実行完了 - ${specialInfo.type}`);
             return result;
 
         } catch (error) {
-            console.error(`❌ [Step 4-5-3] 特別処理実行失敗 - ${specialInfo.type}:`, error);
+            ExecuteLogger.error(`❌ [Step 4-5-3] 特別処理実行失敗 - ${specialInfo.type}:`, error);
             throw error;
         }
     }
@@ -1464,7 +1496,7 @@ class SpecialTaskProcessor {
      * @param {Object} windowInfo - ウィンドウ情報
      */
     async executeReportTask(task, windowInfo) {
-        console.log(`🔧 [SpecialTaskProcessor] Step 4-5-4: レポート処理実行開始`);
+        ExecuteLogger.info(`🔧 [SpecialTaskProcessor] Step 4-5-4: レポート処理実行開始`);
 
         try {
             // ReportAutomation の確認
@@ -1490,11 +1522,11 @@ class SpecialTaskProcessor {
                 await this.writeToWorkCell(task, result.reportData, 'report');
             }
 
-            console.log(`✅ [Step 4-5-4] レポート処理実行完了`);
+            ExecuteLogger.info(`✅ [Step 4-5-4] レポート処理実行完了`);
             return result;
 
         } catch (error) {
-            console.error(`❌ [Step 4-5-4] レポート処理実行失敗:`, error);
+            ExecuteLogger.error(`❌ [Step 4-5-4] レポート処理実行失敗:`, error);
             throw error;
         }
     }
@@ -1506,7 +1538,7 @@ class SpecialTaskProcessor {
      * @param {Object} windowInfo - ウィンドウ情報
      */
     async executeGensparkTask(task, subType, windowInfo) {
-        console.log(`🔧 [SpecialTaskProcessor] Step 4-5-5: Genspark処理実行開始 (${subType})`);
+        ExecuteLogger.info(`🔧 [SpecialTaskProcessor] Step 4-5-5: Genspark処理実行開始 (${subType})`);
 
         try {
             // GensparkAutomationV2 の確認
@@ -1540,11 +1572,11 @@ class SpecialTaskProcessor {
                 await this.writeToWorkCell(task, result.generatedContent, `genspark_${subType}`);
             }
 
-            console.log(`✅ [Step 4-5-5] Genspark処理実行完了 (${subType})`);
+            ExecuteLogger.info(`✅ [Step 4-5-5] Genspark処理実行完了 (${subType})`);
             return result;
 
         } catch (error) {
-            console.error(`❌ [Step 4-5-5] Genspark処理実行失敗:`, error);
+            ExecuteLogger.error(`❌ [Step 4-5-5] Genspark処理実行失敗:`, error);
             throw error;
         }
     }
@@ -1556,13 +1588,13 @@ class SpecialTaskProcessor {
      * @param {string} workType - 作業タイプ
      */
     async writeToWorkCell(task, workData, workType) {
-        console.log(`🔧 [SpecialTaskProcessor] Step 4-5-6: 作業セル記載開始 - ${workType}`);
+        ExecuteLogger.info(`🔧 [SpecialTaskProcessor] Step 4-5-6: 作業セル記載開始 - ${workType}`);
 
         try {
             // 作業セル位置の決定
             const workCellRef = this.determineWorkCellRef(task, workType);
             if (!workCellRef) {
-                console.warn(`⚠️ [Step 4-5-6] 作業セル位置が決定できません`);
+                ExecuteLogger.warn(`⚠️ [Step 4-5-6] 作業セル位置が決定できません`);
                 return;
             }
 
@@ -1577,13 +1609,13 @@ class SpecialTaskProcessor {
             }
 
             // 🔧 [UNIFIED] window.globalStateを直接使用（統一化）
-            console.log('🔍 [DEBUG] 作業セル記載時のwindow.globalState状態:', {
+            ExecuteLogger.info('🔍 [DEBUG] 作業セル記載時のwindow.globalState状態:', {
                 exists: typeof window.globalState !== 'undefined',
                 spreadsheetId: window.globalState?.spreadsheetId
             });
 
             if (!window.globalState || !window.globalState.spreadsheetId) {
-                console.error('❌ [DEBUG] 作業セル記載時のwindow.globalState未設定エラー');
+                ExecuteLogger.error('❌ [DEBUG] 作業セル記載時のwindow.globalState未設定エラー');
                 throw new Error('window.globalStateが設定されていません');
             }
 
@@ -1596,7 +1628,7 @@ class SpecialTaskProcessor {
             const formattedData = this.formatWorkData(workData, workType);
 
             // 🔧 [FIX] 正しいメソッド名に修正: writeToRange → updateCell
-            console.log('🔍 [DEBUG] 作業セル書き込み実行:', {
+            ExecuteLogger.info('🔍 [DEBUG] 作業セル書き込み実行:', {
                 spreadsheetId: spreadsheetData.spreadsheetId,
                 range: `${spreadsheetData.sheetName}!${workCellRef}`,
                 dataLength: formattedData.length
@@ -1609,10 +1641,10 @@ class SpecialTaskProcessor {
                 formattedData
             );
 
-            console.log(`✅ [Step 4-5-6] 作業セル記載完了 - ${workCellRef}`);
+            ExecuteLogger.info(`✅ [Step 4-5-6] 作業セル記載完了 - ${workCellRef}`);
 
         } catch (error) {
-            console.error(`❌ [Step 4-5-6] 作業セル記載失敗:`, error);
+            ExecuteLogger.error(`❌ [Step 4-5-6] 作業セル記載失敗:`, error);
             throw error;
         }
     }
@@ -1706,11 +1738,11 @@ window.specialTaskProcessor = new SpecialTaskProcessor();
 // Step 4-6: メイン実行関数（統合版）
 // ========================================
 async function executeStep4(taskList) {
-    console.log('🔍 [DEBUG] executeStep4関数定義開始');
-    console.log('🚀 Step 4-6 Execute 統合実行開始', taskList);
+    ExecuteLogger.debug('🔍 [DEBUG] executeStep4関数定義開始');
+    ExecuteLogger.info('🚀 Step 4-6 Execute 統合実行開始', taskList);
 
     // 内部関数の存在確認（実行時チェック）
-    console.log('🔍 [DEBUG] 内部関数の定義状態確認:', {
+    ExecuteLogger.info('🔍 [DEBUG] 内部関数の定義状態確認:', {
         executeNormalAITask: typeof executeNormalAITask,
         processTaskResult: typeof processTaskResult,
         shouldPerformWindowCleanup: typeof shouldPerformWindowCleanup,
@@ -1723,42 +1755,42 @@ async function executeStep4(taskList) {
 
     try {
         // Step 4-6-1: 初期化とグループタイプ判定
-        console.log('📋 [Step 4-6-1] 初期化とグループタイプ判定開始');
+        ExecuteLogger.info('📋 [Step 4-6-1] 初期化とグループタイプ判定開始');
 
         // グループタイプの判定
         const groupTypeInfo = window.taskGroupTypeDetector.detectGroupType(taskList);
-        console.log('🎯 [Step 4-6-1] グループタイプ判定結果:', groupTypeInfo);
+        ExecuteLogger.info('🎯 [Step 4-6-1] グループタイプ判定結果:', groupTypeInfo);
 
         // ウィンドウ配置情報の取得
         windowLayoutInfo = window.taskGroupTypeDetector.getWindowLayout(groupTypeInfo.type, groupTypeInfo.aiTypes);
-        console.log('🖼️ [Step 4-6-1] ウィンドウ配置情報:', windowLayoutInfo);
+        ExecuteLogger.info('🖼️ [Step 4-6-1] ウィンドウ配置情報:', windowLayoutInfo);
 
         // Step 4-6-2: スプレッドシートデータの動的取得
-        console.log('📊 [Step 4-6-2] スプレッドシートデータ動的取得開始');
+        ExecuteLogger.info('📊 [Step 4-6-2] スプレッドシートデータ動的取得開始');
 
         enrichedTaskList = await window.spreadsheetDataManager.enrichTaskList(taskList);
-        console.log('✅ [Step 4-6-2] タスクリスト拡張完了:', enrichedTaskList.length, '個のタスク');
+        ExecuteLogger.info('✅ [Step 4-6-2] タスクリスト拡張完了:', enrichedTaskList.length, '個のタスク');
 
         // Step 4-6-3: ウィンドウ開く
-        console.log('🪟 [Step 4-6-3] ウィンドウ開く処理開始');
+        ExecuteLogger.info('🪟 [Step 4-6-3] ウィンドウ開く処理開始');
 
         const windowResults = await window.windowController.openWindows(windowLayoutInfo);
         const successfulWindows = windowResults.filter(w => w.success);
-        console.log(`✅ [Step 4-6-3] ウィンドウ開く完了: ${successfulWindows.length}/${windowResults.length}個成功`);
+        ExecuteLogger.info(`✅ [Step 4-6-3] ウィンドウ開く完了: ${successfulWindows.length}/${windowResults.length}個成功`);
 
         if (successfulWindows.length === 0) {
             throw new Error('ウィンドウを開くことができませんでした');
         }
 
         // Step 4-6-4: ウィンドウチェック
-        console.log('🔍 [Step 4-6-4] ウィンドウチェック開始');
+        ExecuteLogger.info('🔍 [Step 4-6-4] ウィンドウチェック開始');
 
         const aiTypes = successfulWindows.map(w => w.aiType);
         const checkResults = await window.windowController.checkWindows(aiTypes);
-        console.log('✅ [Step 4-6-4] ウィンドウチェック完了:', checkResults);
+        ExecuteLogger.info('✅ [Step 4-6-4] ウィンドウチェック完了:', checkResults);
 
         // Step 4-6-5: ライフサイクル管理初期化
-        console.log('🔄 [Step 4-6-5] ライフサイクル管理初期化');
+        ExecuteLogger.info('🔄 [Step 4-6-5] ライフサイクル管理初期化');
 
         await window.windowLifecycleManager.initializeLifecycleManager();
 
@@ -1771,14 +1803,14 @@ async function executeStep4(taskList) {
         }
 
         // Step 4-6-6: 各タスクの実行
-        console.log('⚡ [Step 4-6-6] タスク実行ループ開始');
+        ExecuteLogger.info('⚡ [Step 4-6-6] タスク実行ループ開始');
 
         for (let i = 0; i < enrichedTaskList.length; i++) {
             const task = enrichedTaskList[i];
             const taskId = task.id || task.taskId || `${task.column}${task.row}`;
 
             try {
-                console.log(`📝 [Step 4-6-6-${i + 1}] タスク実行開始: ${taskId} (AI: ${task.aiType})`);
+                ExecuteLogger.info(`📝 [Step 4-6-6-${i + 1}] タスク実行開始: ${taskId} (AI: ${task.aiType})`);
 
                 // Step 4-6-6-1: 特別処理タスクの判定
                 const specialInfo = window.specialTaskProcessor.identifySpecialTask(task);
@@ -1787,18 +1819,18 @@ async function executeStep4(taskList) {
 
                 if (specialInfo.isSpecial) {
                     // 特別処理の実行
-                    console.log(`🔧 [Step 4-6-6-${i + 1}] 特別処理実行: ${specialInfo.type}`);
+                    ExecuteLogger.info(`🔧 [Step 4-6-6-${i + 1}] 特別処理実行: ${specialInfo.type}`);
                     const windowInfo = window.windowController.openedWindows.get(task.aiType);
                     result = await window.specialTaskProcessor.executeSpecialTask(task, specialInfo, windowInfo);
                 } else {
                     // 通常のAI処理の実行
-                    console.log(`🤖 [Step 4-6-6-${i + 1}] 通常AI処理実行: ${task.aiType}`);
-                    console.log(`🔧 [DEBUG] executeNormalAITask呼び出し前 - 関数存在確認:`, typeof executeNormalAITask);
+                    ExecuteLogger.info(`🤖 [Step 4-6-6-${i + 1}] 通常AI処理実行: ${task.aiType}`);
+                    ExecuteLogger.debug(`🔧 [DEBUG] executeNormalAITask呼び出し前 - 関数存在確認:`, typeof executeNormalAITask);
                     result = await executeNormalAITask(task);
                 }
 
                 // Step 4-6-6-2: 結果処理とログ記録
-                console.log(`🔧 [DEBUG] processTaskResult呼び出し前 - 関数存在確認:`, typeof processTaskResult);
+                ExecuteLogger.debug(`🔧 [DEBUG] processTaskResult呼び出し前 - 関数存在確認:`, typeof processTaskResult);
                 await processTaskResult(task, result, taskId);
 
                 results.push({
@@ -1809,10 +1841,10 @@ async function executeStep4(taskList) {
                     specialProcessing: specialInfo.isSpecial
                 });
 
-                console.log(`✅ [Step 4-6-6-${i + 1}] タスク完了: ${taskId}`);
+                ExecuteLogger.info(`✅ [Step 4-6-6-${i + 1}] タスク完了: ${taskId}`);
 
             } catch (error) {
-                console.error(`❌ [Step 4-6-6-${i + 1}] タスク失敗: ${taskId}`, error);
+                ExecuteLogger.error(`❌ [Step 4-6-6-${i + 1}] タスク失敗: ${taskId}`, error);
 
                 results.push({
                     taskId: taskId,
@@ -1832,10 +1864,10 @@ async function executeStep4(taskList) {
             }
         }
 
-        console.log('🏁 [Step 4-6-6] 全タスク実行完了');
+        ExecuteLogger.info('🏁 [Step 4-6-6] 全タスク実行完了');
 
     } catch (error) {
-        console.error('❌ [Step 4-6] メイン実行エラー:', error);
+        ExecuteLogger.error('❌ [Step 4-6] メイン実行エラー:', error);
         results.push({
             taskId: 'SYSTEM_ERROR',
             aiType: 'SYSTEM',
@@ -1844,21 +1876,21 @@ async function executeStep4(taskList) {
         });
     } finally {
         // Step 4-6-7: クリーンアップ処理
-        console.log('🧹 [Step 4-6-7] クリーンアップ処理開始');
+        ExecuteLogger.info('🧹 [Step 4-6-7] クリーンアップ処理開始');
 
         try {
             // 全ウィンドウのクリーンアップ（設定により制御可能）
-            console.log(`🔧 [DEBUG] shouldPerformWindowCleanup呼び出し前 - 関数存在確認:`, typeof shouldPerformWindowCleanup);
+            ExecuteLogger.debug(`🔧 [DEBUG] shouldPerformWindowCleanup呼び出し前 - 関数存在確認:`, typeof shouldPerformWindowCleanup);
             const shouldCleanupWindows = shouldPerformWindowCleanup(results);
             if (shouldCleanupWindows) {
                 await window.windowLifecycleManager.cleanupAllWindows();
             }
         } catch (cleanupError) {
-            console.error('⚠️ [Step 4-6-7] クリーンアップエラー:', cleanupError);
+            ExecuteLogger.error('⚠️ [Step 4-6-7] クリーンアップエラー:', cleanupError);
         }
     }
 
-    console.log('🏁 Step 4-6 Execute 統合実行完了', {
+    ExecuteLogger.info('🏁 Step 4-6 Execute 統合実行完了', {
         totalTasks: enrichedTaskList?.length || 0,
         successfulTasks: results.filter(r => r.success).length,
         failedTasks: results.filter(r => !r.success).length,
@@ -1873,7 +1905,7 @@ async function executeStep4(taskList) {
      * Step 4-6-8: 通常AI処理の実行
      */
     async function executeNormalAITask(task) {
-        console.log(`🤖 [Step 4-6-8] 通常AI処理実行開始: ${task.aiType}`);
+        ExecuteLogger.info(`🤖 [Step 4-6-8] 通常AI処理実行開始: ${task.aiType}`);
 
         const taskId = task.id || task.taskId || `${task.column}${task.row}`;
 
@@ -1886,14 +1918,14 @@ async function executeStep4(taskList) {
         // AI種別の正規化
         let normalizedAiType = task.aiType;
         if (task.aiType === 'single' || !task.aiType) {
-            console.log(`[Step 4-6-8] AIタイプ '${task.aiType}' を 'Claude' に変換`);
+            ExecuteLogger.info(`[Step 4-6-8] AIタイプ '${task.aiType}' を 'Claude' に変換`);
             normalizedAiType = 'Claude';
         }
 
         // AI自動化ファイルの読み込み確認
         const aiType = normalizedAiType.toLowerCase();
         if (!window.aiAutomationLoader.isAIAvailable(aiType)) {
-            console.log(`[Step 4-6-8] ${normalizedAiType} 自動化ファイルを読み込み中...`);
+            ExecuteLogger.info(`[Step 4-6-8] ${normalizedAiType} 自動化ファイルを読み込み中...`);
             await window.aiAutomationLoader.loadAIFile(aiType);
             await new Promise(resolve => setTimeout(resolve, 1000));
         }
@@ -1911,7 +1943,7 @@ async function executeStep4(taskList) {
                     return await window.ChatGPTAutomationV2.executeTask(task);
 
                 case 'claude':
-                    console.log(`[DEBUG] Claude実行前チェック:`, {
+                    ExecuteLogger.info(`[DEBUG] Claude実行前チェック:`, {
                         windowClaudeAutomation: typeof window.ClaudeAutomation,
                         executeTask: window.ClaudeAutomation && typeof window.ClaudeAutomation.executeTask,
                         isReady: window.ClaudeAutomation?.isReady,
@@ -1922,20 +1954,20 @@ async function executeStep4(taskList) {
                     // スクリプトのロード状態を確認
                     const scriptElement = document.querySelector('script[src*="4-2-claude-automation.js"]');
                     if (scriptElement) {
-                        console.log(`[DEBUG] スクリプトタグ発見:`, {
+                        ExecuteLogger.info(`[DEBUG] スクリプトタグ発見:`, {
                             src: scriptElement.src,
                             readyState: scriptElement.readyState,
                             async: scriptElement.async,
                             defer: scriptElement.defer
                         });
                     } else {
-                        console.warn(`[DEBUG] スクリプトタグが見つかりません`);
+                        ExecuteLogger.warn(`[DEBUG] スクリプトタグが見つかりません`);
                     }
 
                     if (!window.ClaudeAutomation) {
-                        console.error(`[DEBUG] ClaudeAutomationが未定義`);
-                        console.error(`[DEBUG] 現在のwindowオブジェクトのClaud関連キー:`, Object.keys(window).filter(key => key.toLowerCase().includes('claude')));
-                        console.error(`[DEBUG] コンソールのエラーを確認してください`);
+                        ExecuteLogger.error(`[DEBUG] ClaudeAutomationが未定義`);
+                        ExecuteLogger.error(`[DEBUG] 現在のwindowオブジェクトのClaud関連キー:`, Object.keys(window).filter(key => key.toLowerCase().includes('claude')));
+                        ExecuteLogger.error(`[DEBUG] コンソールのエラーを確認してください`);
                         throw new Error('Claude Automation が利用できません');
                     }
                     return await window.ClaudeAutomation.executeTask(task);
@@ -1963,7 +1995,7 @@ async function executeStep4(taskList) {
             `${normalizedAiType} AI実行`
         );
 
-        console.log(`✅ [Step 4-6-8] 通常AI処理実行完了: ${task.aiType}`);
+        ExecuteLogger.info(`✅ [Step 4-6-8] 通常AI処理実行完了: ${task.aiType}`);
         return result;
     }
 
@@ -1971,7 +2003,7 @@ async function executeStep4(taskList) {
      * Step 4-6-9: タスク結果の処理
      */
     async function processTaskResult(task, result, taskId) {
-        console.log(`📋 [Step 4-6-9] タスク結果処理開始: ${taskId}`);
+        ExecuteLogger.info(`📋 [Step 4-6-9] タスク結果処理開始: ${taskId}`);
 
         try {
             // 完了時刻とログ記録
@@ -1988,7 +2020,7 @@ async function executeStep4(taskList) {
             }
 
             // ログをスプレッドシートに記載
-            console.log(`🔧 [DEBUG] calculateLogCellRef呼び出し前 - 関数存在確認:`, typeof calculateLogCellRef);
+            ExecuteLogger.debug(`🔧 [DEBUG] calculateLogCellRef呼び出し前 - 関数存在確認:`, typeof calculateLogCellRef);
             const logCellRef = task.logCellRef || calculateLogCellRef(task);
             if (logCellRef && window.detailedLogManager) {
                 await window.detailedLogManager.writeLogToSpreadsheet(taskId, logCellRef);
@@ -1997,10 +2029,10 @@ async function executeStep4(taskList) {
             // ライフサイクル完了処理
             await window.windowLifecycleManager.handleTaskCompletion(task, result);
 
-            console.log(`✅ [Step 4-6-9] タスク結果処理完了: ${taskId}`);
+            ExecuteLogger.info(`✅ [Step 4-6-9] タスク結果処理完了: ${taskId}`);
 
         } catch (error) {
-            console.error(`❌ [Step 4-6-9] タスク結果処理エラー: ${taskId}`, error);
+            ExecuteLogger.error(`❌ [Step 4-6-9] タスク結果処理エラー: ${taskId}`, error);
         }
     }
 
@@ -2033,41 +2065,41 @@ async function executeStep4(taskList) {
         return errorRate < 0.5; // エラー率50%未満の場合はクリーンアップ
     }
 
-    console.log('✅ [DEBUG] executeStep4関数定義完了');
+    ExecuteLogger.debug('✅ [DEBUG] executeStep4関数定義完了');
     return results;
 }
 
 // ステップ4実行関数をグローバルに公開
-console.log('🔍 [DEBUG] window.executeStep4エクスポート実行');
-console.log('🔍 [DEBUG] エクスポート前のexecuteStep4関数状態:', {
+ExecuteLogger.debug('🔍 [DEBUG] window.executeStep4エクスポート実行');
+ExecuteLogger.info('🔍 [DEBUG] エクスポート前のexecuteStep4関数状態:', {
     executeStep4Type: typeof executeStep4,
     executeStep4Exists: typeof executeStep4 === 'function',
     executeStep4Name: executeStep4?.name
 });
 window.executeStep4 = executeStep4;
-console.log('✅ [DEBUG] window.executeStep4エクスポート完了:', {
+ExecuteLogger.info('✅ [DEBUG] window.executeStep4エクスポート完了:', {
     windowExecuteStep4Type: typeof window.executeStep4,
     windowExecuteStep4Exists: typeof window.executeStep4 === 'function',
     windowExecuteStep4Name: window.executeStep4?.name,
     globalAccess: typeof globalThis?.executeStep4 === 'function'
 });
 
-console.log('🔍 [DEBUG] step4-execute.js 読み込み開始');
+ExecuteLogger.debug('🔍 [DEBUG] step4-execute.js 読み込み開始');
 
-console.log('✅ [DEBUG] クラス定義完了:', 'AIAutomationLoader');
-console.log('✅ [DEBUG] クラス定義完了:', 'TaskGroupTypeDetector');
-console.log('✅ [DEBUG] クラス定義完了:', 'WindowController');
-console.log('✅ [DEBUG] クラス定義完了:', 'SpreadsheetDataManager');
-console.log('✅ [DEBUG] クラス定義完了:', 'DetailedLogManager');
-console.log('✅ [DEBUG] クラス定義完了:', 'WindowLifecycleManager');
-console.log('✅ [DEBUG] クラス定義完了:', 'SpecialTaskProcessor');
+ExecuteLogger.debug('✅ [DEBUG] クラス定義完了:', 'AIAutomationLoader');
+ExecuteLogger.debug('✅ [DEBUG] クラス定義完了:', 'TaskGroupTypeDetector');
+ExecuteLogger.debug('✅ [DEBUG] クラス定義完了:', 'WindowController');
+ExecuteLogger.debug('✅ [DEBUG] クラス定義完了:', 'SpreadsheetDataManager');
+ExecuteLogger.debug('✅ [DEBUG] クラス定義完了:', 'DetailedLogManager');
+ExecuteLogger.debug('✅ [DEBUG] クラス定義完了:', 'WindowLifecycleManager');
+ExecuteLogger.debug('✅ [DEBUG] クラス定義完了:', 'SpecialTaskProcessor');
 
-console.log('✅ Step 4-6 Execute - AI自動化制御ファイル準備完了（統合版）');
-console.log('🎯 利用可能機能:');
-console.log('  - グループタイプ自動判定（通常処理/3種類AI）');
-console.log('  - 4分割ウィンドウ自動配置');
-console.log('  - スプレッドシートデータ動的取得');
-console.log('  - 詳細ログ自動記載');
-console.log('  - ウィンドウライフサイクル管理');
-console.log('  - 特別処理（レポート/Genspark）');
-console.log('📖 使用方法: executeStep4([{id: "task1", aiType: "ChatGPT", prompt: "Hello", column: "B", row: "3"}])');
+ExecuteLogger.info('✅ Step 4-6 Execute - AI自動化制御ファイル準備完了（統合版）');
+ExecuteLogger.info('🎯 利用可能機能:');
+ExecuteLogger.info('  - グループタイプ自動判定（通常処理/3種類AI）');
+ExecuteLogger.info('  - 4分割ウィンドウ自動配置');
+ExecuteLogger.info('  - スプレッドシートデータ動的取得');
+ExecuteLogger.info('  - 詳細ログ自動記載');
+ExecuteLogger.info('  - ウィンドウライフサイクル管理');
+ExecuteLogger.info('  - 特別処理（レポート/Genspark）');
+ExecuteLogger.info('📖 使用方法: executeStep4([{id: "task1", aiType: "ChatGPT", prompt: "Hello", column: "B", row: "3"}])');
