@@ -622,6 +622,7 @@ async function generateTaskList(
       }
     }
     const tasks = [];
+    let tasksCreated = 0; // タスク作成数を追跡
     const { menuRow, aiRow, modelRow, functionRow } = specialRows;
 
     // ログバッファを初期化
@@ -799,12 +800,34 @@ async function generateTaskList(
           const answerCell = getAnswerCell(taskGroup, aiType, row);
 
           // WindowControllerからtabID/windowIDを取得
+          // aiTypeを正規化（大文字小文字の不一致を防ぐ）
+          const normalizedAiType = aiType?.toLowerCase()?.trim() || "claude";
           let windowInfo = null;
           if (
             typeof window !== "undefined" &&
             window.windowController?.openedWindows
           ) {
-            windowInfo = window.windowController.openedWindows.get(aiType);
+            const windowData =
+              window.windowController.openedWindows.get(normalizedAiType);
+            if (Array.isArray(windowData) && windowData.length > 0) {
+              // タスクのインデックスに基づいてウィンドウを循環選択
+              const taskIndex = tasksCreated; // 現在までに作成されたタスク数を使用
+              windowInfo = windowData[taskIndex % windowData.length];
+            } else if (windowData && typeof windowData === "object") {
+              // 単一オブジェクト形式の場合
+              windowInfo = windowData;
+            }
+
+            // windowInfoの構造を正規化してtabId/windowIdを確実に設定
+            if (windowInfo) {
+              windowInfo = {
+                tabId: windowInfo.tabId || windowInfo.id,
+                windowId: windowInfo.windowId || windowInfo.id,
+                url: windowInfo.url,
+                position: windowInfo.position,
+                aiType: normalizedAiType,
+              };
+            }
             console.log(
               `[step4-tasklist] 🖼️ DEBUG: WindowInfo取得 (aiType: ${aiType})`,
               {
@@ -814,7 +837,8 @@ async function generateTaskList(
                 allOpenedWindows: window.windowController?.openedWindows
                   ? Array.from(window.windowController.openedWindows.entries())
                   : null,
-                targetAiType: aiType,
+                originalAiType: aiType,
+                normalizedAiType: normalizedAiType,
                 foundWindowInfo: windowInfo,
               },
             );
@@ -823,7 +847,20 @@ async function generateTaskList(
               windowExists: typeof window !== "undefined",
               windowControllerExists: !!window?.windowController,
               openedWindowsExists: !!window?.windowController?.openedWindows,
-              aiType: aiType,
+              originalAiType: aiType,
+              normalizedAiType: aiType.toLowerCase(),
+            });
+          }
+
+          // windowInfoが取得できない場合の詳細ログ
+          if (!windowInfo) {
+            console.warn(`[step4-tasklist] ⚠️ WARNING: WindowInfo取得失敗`, {
+              originalAiType: aiType,
+              normalizedAiType: normalizedAiType,
+              availableWindows: window.windowController?.openedWindows
+                ? Array.from(window.windowController.openedWindows.keys())
+                : null,
+              suggestion: "aiType正規化が正しく動作しているか確認してください",
             });
           }
 
@@ -835,7 +872,7 @@ async function generateTaskList(
             groupType: taskGroup.groupType,
             row: row,
             column: promptColumns[0],
-            prompt: prompts.join("\n\n"),
+            prompt: `現在${promptColumns.map((col) => `${col}${row}`).join(",")}の作業中です。\n\n${prompts.join("\n\n")}`,
             ai: aiType, // 🔧 [FIX] 変換後のaiTypeを使用
             aiType:
               taskGroup.groupType === "3種類AI"
@@ -892,6 +929,7 @@ async function generateTaskList(
           );
 
           validTasks.push(task);
+          tasksCreated++; // タスク作成数をインクリメント
         }
       } else {
         // 特殊タスク（レポート化、Genspark等）
@@ -901,9 +939,29 @@ async function generateTaskList(
           typeof window !== "undefined" &&
           window.windowController?.openedWindows
         ) {
-          windowInfo = window.windowController.openedWindows.get(
-            taskGroup.groupType,
-          );
+          // groupTypeを正規化（大文字小文字の不一致を防ぐ）
+          const normalizedGroupType =
+            taskGroup.groupType?.toLowerCase()?.trim() || "report";
+          const windowData =
+            window.windowController.openedWindows.get(normalizedGroupType);
+          if (Array.isArray(windowData) && windowData.length > 0) {
+            // タスクのインデックスに基づいてウィンドウを循環選択
+            windowInfo = windowData[tasksCreated % windowData.length];
+          } else if (windowData && typeof windowData === "object") {
+            // 単一オブジェクト形式の場合
+            windowInfo = windowData;
+          }
+
+          // windowInfoの構造を正規化してtabId/windowIdを確実に設定
+          if (windowInfo) {
+            windowInfo = {
+              tabId: windowInfo.tabId || windowInfo.id,
+              windowId: windowInfo.windowId || windowInfo.id,
+              url: windowInfo.url,
+              position: windowInfo.position,
+              aiType: normalizedGroupType,
+            };
+          }
         }
 
         const task = {
@@ -913,7 +971,7 @@ async function generateTaskList(
           groupType: taskGroup.groupType,
           row: row,
           // 特殊タスクは作業セルのみ使用するため、columnプロパティは不要
-          prompt: prompts.join("\n\n"),
+          prompt: `現在${taskGroup.columns.work ? `${taskGroup.columns.work}${row}` : `行${row}`}の作業中です。\n\n${prompts.join("\n\n")}`,
           ai: taskGroup.groupType,
           aiType: taskGroup.groupType, // Step4互換 - lowercase変換削除
           model: "",
@@ -948,6 +1006,7 @@ async function generateTaskList(
         });
 
         validTasks.push(task);
+        tasksCreated++; // タスク作成数をインクリメント
       }
     }
 
@@ -1256,6 +1315,28 @@ class WindowController {
   }
 
   /**
+   * AI種別を正規化する
+   * @param {string} aiType - 正規化対象のAI種別
+   * @returns {string} 正規化されたAI種別
+   */
+  normalizeAiType(aiType) {
+    if (!aiType || typeof aiType !== "string") {
+      return "claude";
+    }
+    const normalized = aiType.toLowerCase().trim();
+    const mappings = {
+      chatgpt: "chatgpt",
+      claude: "claude",
+      gemini: "gemini",
+      genspark: "genspark",
+      report: "report",
+      single: "claude",
+      "3種類（chatgpt・gemini・claude）": "3ai",
+    };
+    return mappings[normalized] || normalized;
+  }
+
+  /**
    * Step 4-1-1: WindowServiceの初期化
    */
   async initializeWindowService() {
@@ -1422,7 +1503,29 @@ class WindowController {
             },
           );
 
-          this.openedWindows.set(layout.aiType, windowData);
+          // 一意キーを生成して複数のウィンドウを管理
+          const uniqueKey = `${this.normalizeAiType(layout.aiType)}_${layout.position}_${Date.now()}`;
+
+          // 既存の配列を取得または新規作成
+          const normalizedAiType = this.normalizeAiType(layout.aiType);
+          if (!this.openedWindows.has(normalizedAiType)) {
+            this.openedWindows.set(normalizedAiType, []);
+          }
+
+          // ウィンドウデータを配列に追加
+          const windowArray = this.openedWindows.get(normalizedAiType);
+          windowData.uniqueKey = uniqueKey;
+          windowArray.push(windowData);
+
+          ExecuteLogger.info(
+            `🖼️ [WindowController] DEBUG: ウィンドウ配列に追加`,
+            {
+              aiType: layout.aiType,
+              uniqueKey: uniqueKey,
+              position: layout.position,
+              windowArrayLength: windowArray.length,
+            },
+          );
 
           ExecuteLogger.info(
             `🖼️ [WindowController] DEBUG: openedWindows.set完了`,
@@ -1510,7 +1613,7 @@ class WindowController {
     const checkResults = [];
 
     for (const aiType of aiTypes) {
-      const normalizedAiType = normalizeAiType(aiType);
+      const normalizedAiType = this.normalizeAiType(aiType);
       const windowInfo = this.openedWindows.get(normalizedAiType);
       if (!windowInfo) {
         ExecuteLogger.warn(
@@ -2004,37 +2107,42 @@ async function executeStep4(taskList) {
         `📦 [step4-execute.js] Step 4-6-6-${batchIndex + 2}: バッチ${batchIndex + 1}/${batches.length} 処理開始 - ${batch.length}タスク`,
       );
 
-      // Step 4-6-6-A: バッチ用のウィンドウを開く
+      // Step 4-6-6-A: 既存ウィンドウの再利用 (重複開閉を避ける)
       const batchWindows = new Map(); // aiType -> windowInfo
-      const windowPositions = ["左上", "右上", "左下"];
 
-      for (let i = 0; i < batch.length; i++) {
-        const task = batch[i];
+      ExecuteLogger.info(
+        `🔄 [step4-execute.js] Step 4-6-6-${batchIndex + 2}-A: 既存ウィンドウの再利用チェック`,
+      );
+
+      for (const task of batch) {
         const aiType = task.aiType;
-        const position = i; // 0=左上, 1=右上, 2=左下
 
-        ExecuteLogger.info(
-          `🪟 [step4-execute.js] Step 4-6-6-${batchIndex + 2}-A-${i + 1}: ${aiType}ウィンドウを${windowPositions[position]}に開く`,
-        );
-
-        // 既存のウィンドウがあれば閉じる
+        // 既存ウィンドウがあるかチェック
         if (window.windowController.openedWindows.has(aiType)) {
-          await window.windowLifecycleManager.closeWindow(aiType);
-          await new Promise((resolve) => setTimeout(resolve, 500)); // ウィンドウクローズ待機
-        }
-
-        // 新しいウィンドウを開く
-        const windowResults = await window.windowController.openWindows([
-          {
-            aiType: aiType,
-            position: position,
-          },
-        ]);
-        const windowResult = windowResults[0];
-        if (windowResult && windowResult.success) {
-          batchWindows.set(aiType, windowResult);
+          const existingWindow =
+            window.windowController.openedWindows.get(aiType);
+          batchWindows.set(aiType, existingWindow);
+          ExecuteLogger.info(
+            `♻️ [step4-execute.js] ${aiType}ウィンドウを再利用`,
+          );
         } else {
-          ExecuteLogger.error(`❌ ウィンドウオープン失敗: ${aiType}`);
+          // 新しいウィンドウが必要な場合のみ開く
+          ExecuteLogger.info(
+            `🪟 [step4-execute.js] ${aiType}ウィンドウが存在しないため新規作成`,
+          );
+
+          const windowResults = await window.windowController.openWindows([
+            {
+              aiType: aiType,
+              position: 0, // 基本位置に開く
+            },
+          ]);
+          const windowResult = windowResults[0];
+          if (windowResult && windowResult.success) {
+            batchWindows.set(aiType, windowResult);
+          } else {
+            ExecuteLogger.error(`❌ ウィンドウオープン失敗: ${aiType}`);
+          }
         }
       }
 
@@ -2048,11 +2156,100 @@ async function executeStep4(taskList) {
       ExecuteLogger.info(`✅ チェック結果:`, checkResults);
 
       // Step 4-6-6-C: バッチ内のタスクを並列実行
+      // タブID重複チェックと有効性確認
+      const validBatchTasks = batch.filter((task, index) => {
+        // タブID/ウィンドウIDのフォールバック処理
+        if (!task.tabId || !task.windowId) {
+          // フォールバック1: batchWindowsから取得
+          const batchWindowInfo = batchWindows.get(task.aiType);
+          if (
+            batchWindowInfo &&
+            (batchWindowInfo.tabId || batchWindowInfo.windowId)
+          ) {
+            task.tabId = batchWindowInfo.tabId || task.tabId;
+            task.windowId = batchWindowInfo.windowId || task.windowId;
+            ExecuteLogger.info(
+              `🔄 [step4-execute.js] タスク${task.id || task.taskId}：batchWindowsからtabId/windowIdを復元`,
+              {
+                tabId: task.tabId,
+                windowId: task.windowId,
+                aiType: task.aiType,
+              },
+            );
+          } else {
+            // フォールバック2: windowControllerから直接取得
+            const normalizedAiType = task.aiType?.toLowerCase()?.trim();
+            const controllerWindowInfo =
+              window.windowController?.openedWindows?.get(normalizedAiType);
+            if (controllerWindowInfo) {
+              task.tabId =
+                controllerWindowInfo.tabId ||
+                controllerWindowInfo.id ||
+                task.tabId;
+              task.windowId =
+                controllerWindowInfo.windowId ||
+                controllerWindowInfo.id ||
+                task.windowId;
+              ExecuteLogger.info(
+                `🔄 [step4-execute.js] タスク${task.id || task.taskId}：windowControllerからtabId/windowIdを復元`,
+                {
+                  tabId: task.tabId,
+                  windowId: task.windowId,
+                  aiType: task.aiType,
+                },
+              );
+            }
+          }
+
+          // 最終チェック：まだ不正な場合は警告して除外
+          if (!task.tabId || !task.windowId) {
+            ExecuteLogger.warn(
+              `⚠️ [step4-execute.js] タスク${task.id || task.taskId}：フォールバック後もタブIDまたはウィンドウIDが不正`,
+              {
+                tabId: task.tabId,
+                windowId: task.windowId,
+                aiType: task.aiType || task.ai,
+                groupType: task.groupType,
+                row: task.row,
+                debugInfo: "batchWindowsとwindowController両方からの復元に失敗",
+              },
+            );
+            return false;
+          }
+        }
+
+        // 同一バッチ内でのタブID重複チェック
+        const duplicateIndex = batch.findIndex(
+          (otherTask, otherIndex) =>
+            otherIndex < index && otherTask.tabId === task.tabId,
+        );
+
+        if (duplicateIndex !== -1) {
+          ExecuteLogger.warn(
+            `⚠️ [step4-execute.js] タスク${task.id || task.taskId}：タブID重複検出 (tabId: ${task.tabId})`,
+            {
+              duplicateWith:
+                batch[duplicateIndex].id || batch[duplicateIndex].taskId,
+            },
+          );
+          return false;
+        }
+
+        return true;
+      });
+
       ExecuteLogger.info(
-        `⚡ [step4-execute.js] Step 4-6-6-${batchIndex + 2}-C: ${batch.length}タスクを並列実行`,
+        `⚡ [step4-execute.js] Step 4-6-6-${batchIndex + 2}-C: ${validBatchTasks.length}/${batch.length}の有効タスクを並列実行`,
       );
 
-      const batchPromises = batch.map(async (task, index) => {
+      if (validBatchTasks.length === 0) {
+        ExecuteLogger.error(
+          `❌ [step4-execute.js] バッチ${batchIndex + 1}：実行可能なタスクがありません`,
+        );
+        continue; // 次のバッチへ
+      }
+
+      const batchPromises = validBatchTasks.map(async (task, index) => {
         const taskId = task.id || task.taskId || `${task.column}${task.row}`;
         const isThreeTypeTask =
           task.originalAiType === "3種類（ChatGPT・Gemini・Claude）";
@@ -2206,6 +2403,133 @@ async function executeStep4(taskList) {
   // ========================================
 
   /**
+   * Content Scriptとの通信でタスクを実行
+   */
+  async function executeContentScriptTask(tabId, automationName, task) {
+    ExecuteLogger.info(
+      `📡 [Content Script] ${automationName} 実行開始 (Tab: ${tabId})`,
+      {
+        taskId: task.id,
+        aiType: task.aiType,
+        tabId: tabId,
+        prompt: task.prompt ? `${task.prompt.substring(0, 50)}...` : null,
+        model: task.model,
+        function: task.function,
+      },
+    );
+
+    return new Promise((resolve, reject) => {
+      // タブ情報確認と有効性チェック
+      chrome.tabs.get(tabId, (tab) => {
+        if (chrome.runtime.lastError) {
+          ExecuteLogger.error(
+            `❌ [Tab Check] タブ取得エラー:`,
+            chrome.runtime.lastError,
+          );
+          reject(
+            new Error(
+              `タブID ${tabId} が無効です: ${chrome.runtime.lastError.message}`,
+            ),
+          );
+          return;
+        }
+
+        // タブの有効性チェック
+        if (!tab || tab.status !== "complete") {
+          ExecuteLogger.error(`❌ [Tab Check] タブが無効または未完了:`, {
+            tabId: tab?.id,
+            status: tab?.status,
+            url: tab?.url,
+          });
+          reject(
+            new Error(
+              `タブID ${tabId} が無効または未完了です (status: ${tab?.status})`,
+            ),
+          );
+          return;
+        }
+
+        // URL有効性チェック
+        if (
+          !tab.url ||
+          (!tab.url.includes("claude.ai") &&
+            !tab.url.includes("chatgpt.com") &&
+            !tab.url.includes("gemini.google.com"))
+        ) {
+          ExecuteLogger.error(`❌ [Tab Check] 不正なURL:`, {
+            tabId: tab.id,
+            url: tab.url,
+            expectedDomains: ["claude.ai", "chatgpt.com", "gemini.google.com"],
+          });
+          reject(new Error(`タブID ${tabId} のURLが不正です: ${tab.url}`));
+          return;
+        }
+
+        ExecuteLogger.info(`🔍 [Tab Check] 送信先タブ情報:`, {
+          tabId: tab.id,
+          url: tab.url,
+          title: tab.title,
+          status: tab.status,
+          active: tab.active,
+        });
+
+        // タブが有効な場合のみメッセージ送信を続行
+        sendMessageToValidTab();
+      });
+
+      function sendMessageToValidTab() {
+        // メッセージ送信
+        chrome.tabs.sendMessage(
+          tabId,
+          {
+            action: "executeTask",
+            automationName: automationName,
+            task: task,
+          },
+          (response) => {
+            if (chrome.runtime.lastError) {
+              ExecuteLogger.error(
+                `❌ [Content Script] 通信エラー:`,
+                chrome.runtime.lastError,
+              );
+              reject(
+                new Error(
+                  `Content Script通信エラー: ${chrome.runtime.lastError.message}`,
+                ),
+              );
+              return;
+            }
+
+            if (!response) {
+              ExecuteLogger.error(`❌ [Content Script] 応答なし`);
+              reject(new Error("Content Scriptからの応答がありません"));
+              return;
+            }
+
+            if (response.success) {
+              ExecuteLogger.info(
+                `✅ [Content Script] ${automationName} 実行完了`,
+              );
+              resolve(response);
+            } else {
+              ExecuteLogger.error(
+                `❌ [Content Script] 実行失敗:`,
+                response.error,
+              );
+              reject(new Error(response.error || "不明なエラー"));
+            }
+          },
+        );
+
+        // タイムアウト設定（5分）
+        setTimeout(() => {
+          reject(new Error(`Content Script実行タイムアウト (Tab: ${tabId})`));
+        }, 300000);
+      }
+    });
+  }
+
+  /**
    * Step 4-6-8: 通常AI処理の実行
    */
   async function executeNormalAITask(task) {
@@ -2218,22 +2542,44 @@ async function executeStep4(taskList) {
 
     // 注: 3種類AI判定は Step 4-6-0 で既に展開済みのため、ここでは不要
 
-    // Step 4-6-8-1: タスク開始ログ記録
-    const windowInfo =
-      task.tabId && task.windowId
-        ? { tabId: task.tabId, windowId: task.windowId }
-        : window.windowController.openedWindows.get(task.aiType);
-    if (window.detailedLogManager) {
-      window.detailedLogManager.recordTaskStart(task, windowInfo);
-    }
-
-    // Step 4-6-8-2: AI種別の正規化
+    // Step 4-6-8-1: AI種別の正規化
     let normalizedAiType = task.aiType;
     if (task.aiType === "single" || !task.aiType) {
       ExecuteLogger.info(
         `[step4-execute.js] Step 4-6-8-2: AIタイプ '${task.aiType}' を 'Claude' に変換`,
       );
       normalizedAiType = "Claude";
+    }
+
+    // Step 4-6-8-2: 正しいタブIDを取得
+    const normalizedKey =
+      window.windowController.normalizeAiType(normalizedAiType);
+    const windowInfo =
+      task.tabId && task.windowId
+        ? { tabId: task.tabId, windowId: task.windowId }
+        : window.windowController.openedWindows.get(normalizedKey);
+
+    const targetTabId = windowInfo?.tabId;
+
+    ExecuteLogger.info(`🔍 [Step 4-6-8] タブID確認: ${normalizedAiType}`, {
+      normalizedKey: normalizedKey,
+      windowInfo: !!windowInfo,
+      tabId: targetTabId,
+      windowId: windowInfo?.windowId,
+      url: windowInfo?.url,
+      openedWindowsSize: window.windowController.openedWindows.size,
+      allWindows: Array.from(window.windowController.openedWindows.entries()),
+    });
+
+    if (!targetTabId) {
+      throw new Error(
+        `${normalizedAiType} のタブが見つかりません (Key: ${normalizedKey})`,
+      );
+    }
+
+    // Step 4-6-8-3: タスク開始ログ記録
+    if (window.detailedLogManager) {
+      window.detailedLogManager.recordTaskStart(task, windowInfo);
     }
 
     // Step 4-6-8-3: AI自動化ファイルの読み込み確認
@@ -2258,59 +2604,32 @@ async function executeStep4(taskList) {
     const executeFunction = async () => {
       switch (aiType) {
         case "chatgpt":
-          ExecuteLogger.info(`[step4-execute.js] Step 4-6-8-5-1: ChatGPT実行`);
-          if (!window.ChatGPTAutomationV2)
-            throw new Error("ChatGPT Automation が利用できません");
-          return await window.ChatGPTAutomationV2.executeTask(task);
+          return await executeContentScriptTask(
+            targetTabId,
+            "ChatGPTAutomationV2",
+            task,
+          );
 
         case "claude":
-          ExecuteLogger.info(`[DEBUG] Claude実行前チェック:`, {
-            windowClaudeAutomation: typeof window.ClaudeAutomation,
-            executeTask:
-              window.ClaudeAutomation &&
-              typeof window.ClaudeAutomation.executeTask,
-            isReady: window.ClaudeAutomation?.isReady,
-            version: window.ClaudeAutomation?.version,
-            loadedAt: window.ClaudeAutomation?.loadedAt,
-          });
-
-          // スクリプトのロード状態を確認
-          const scriptElement = document.querySelector(
-            'script[src*="4-2-claude-automation.js"]',
+          return await executeContentScriptTask(
+            targetTabId,
+            "ClaudeAutomation",
+            task,
           );
-          if (scriptElement) {
-            ExecuteLogger.info(`[DEBUG] スクリプトタグ発見:`, {
-              src: scriptElement.src,
-              readyState: scriptElement.readyState,
-              async: scriptElement.async,
-              defer: scriptElement.defer,
-            });
-          } else {
-            ExecuteLogger.warn(`[DEBUG] スクリプトタグが見つかりません`);
-          }
-
-          if (!window.ClaudeAutomation) {
-            ExecuteLogger.error(`[DEBUG] ClaudeAutomationが未定義`);
-            ExecuteLogger.error(
-              `[DEBUG] 現在のwindowオブジェクトのClaud関連キー:`,
-              Object.keys(window).filter((key) =>
-                key.toLowerCase().includes("claude"),
-              ),
-            );
-            ExecuteLogger.error(`[DEBUG] コンソールのエラーを確認してください`);
-            throw new Error("Claude Automation が利用できません");
-          }
-          return await window.ClaudeAutomation.executeTask(task);
 
         case "gemini":
-          if (!window.GeminiAutomation)
-            throw new Error("Gemini Automation が利用できません");
-          return await window.GeminiAutomation.executeTask(task);
+          return await executeContentScriptTask(
+            targetTabId,
+            "GeminiAutomation",
+            task,
+          );
 
         case "genspark":
-          if (!window.GensparkAutomationV2)
-            throw new Error("Genspark Automation が利用できません");
-          return await window.GensparkAutomationV2.executeTask(task);
+          return await executeContentScriptTask(
+            targetTabId,
+            "GensparkAutomationV2",
+            task,
+          );
 
         case "report":
           if (!window.ReportAutomation)
@@ -2321,7 +2640,7 @@ async function executeStep4(taskList) {
           );
 
         default:
-          throw new Error(`未対応のAI種別: ${normalizedAiType}`);
+          throw new Error(`未対応のAI種別: ${aiType}`);
       }
     };
 
