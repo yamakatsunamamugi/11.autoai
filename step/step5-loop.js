@@ -493,13 +493,17 @@ async function readSpreadsheet(range, retryCount = 0) {
     });
 
     if (!response.ok) {
-      // 429エラー（レート制限）の場合、リトライ処理
-      if (response.status === 429 && retryCount < 3) {
+      // 429エラー（レート制限）の場合、リトライ処理（最大5回）
+      if (response.status === 429 && retryCount < 5) {
         const retryAfter = response.headers.get('Retry-After');
-        const waitTime = retryAfter ? parseInt(retryAfter) * 1000 : Math.min(5000 * Math.pow(2, retryCount), 60000);
+
+        // バックオフ戦略: 5秒→10秒→20秒→30秒→60秒
+        const backoffTimes = [5000, 10000, 20000, 30000, 60000];
+        const waitTime = retryAfter ? parseInt(retryAfter) * 1000 : backoffTimes[Math.min(retryCount, backoffTimes.length - 1)];
 
         console.warn(`[Helper] APIレート制限エラー (429) 検出。${waitTime}ms後にリトライ...`, {
           リトライ回数: retryCount + 1,
+          最大リトライ: 5,
           待機時間: `${waitTime / 1000}秒`,
           範囲: range
         });
