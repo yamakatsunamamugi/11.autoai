@@ -547,7 +547,7 @@ export class WindowService {
   }
   
   // ===== AI URL管理 =====
-  
+
   /**
    * AI種別からURLを取得
    * @param {string} aiType - AI種別
@@ -556,6 +556,56 @@ export class WindowService {
   static getAIUrl(aiType) {
     const normalizedType = aiType.toLowerCase();
     return this.AI_URLS[normalizedType] || this.AI_URLS.chatgpt;
+  }
+
+  /**
+   * AIウィンドウを開く
+   * @param {string} aiType - AI種別（chatgpt, claude, gemini, genspark）
+   * @param {number} position - ポジション（0-3の数値、省略可）
+   * @param {Object} options - 追加オプション
+   * @returns {Promise<Object>} ウィンドウ情報
+   */
+  static async openAIWindow(aiType, position = null, options = {}) {
+    console.log(`[WindowService] AIウィンドウを開く: ${aiType}, ポジション: ${position}`);
+
+    // AI種別からURLを取得
+    const url = this.getAIUrl(aiType);
+    if (!url) {
+      throw new Error(`未サポートのAI種別: ${aiType}`);
+    }
+
+    // ポジションが指定されている場合は位置指定で作成
+    if (position !== null && position !== undefined) {
+      const window = await this.createWindowWithPosition(url, position, {
+        ...options,
+        aiType: aiType,
+        type: 'popup'
+      });
+
+      return {
+        windowId: window.id,
+        tabId: window.tabs && window.tabs.length > 0 ? window.tabs[0].id : null,
+        aiType: aiType,
+        position: position,
+        url: url,
+        window: window
+      };
+    } else {
+      // ポジション指定なしの場合は通常のAIウィンドウ作成
+      const window = await this.createAIWindow(url, {
+        ...options,
+        aiType: aiType
+      });
+
+      return {
+        windowId: window.id,
+        tabId: window.tabs && window.tabs.length > 0 ? window.tabs[0].id : null,
+        aiType: aiType,
+        position: null,
+        url: url,
+        window: window
+      };
+    }
   }
   
   /**
