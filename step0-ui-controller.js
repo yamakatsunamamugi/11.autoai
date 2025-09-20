@@ -144,7 +144,6 @@ const confirmOpenUrlBtn = document.getElementById("confirmOpenUrlBtn");
 const cancelOpenUrlBtn = document.getElementById("cancelOpenUrlBtn");
 
 // メインボタン
-const startBtn = document.getElementById("startBtn");
 const stepOnlyBtn = document.getElementById("stepOnlyBtn");
 
 // ========================================
@@ -375,48 +374,6 @@ function showOpenUrlDialog(targetInput) {
 // ========================================
 // Section 6: メイン処理ボタンのイベントリスナー
 // ========================================
-
-// 元の処理システム実行ボタン
-if (startBtn) {
-  startBtn.addEventListener("click", async () => {
-    // 複数のURL入力欄から値を取得
-    const urlInputs = document.querySelectorAll(".spreadsheet-url-input");
-    const urls = [];
-
-    urlInputs.forEach((input) => {
-      const url = input.value.trim();
-      if (url) {
-        urls.push(url);
-      }
-    });
-
-    if (urls.length === 0) {
-      showFeedback("スプレッドシートURLを入力してください", "error");
-      return;
-    }
-
-    showFeedback("処理を開始します...", "info");
-
-    try {
-      // Step 1から順番に実行
-      for (const url of urls) {
-        console.log(`🚀 [step0-ui-controller] URL処理開始: ${url}`);
-
-        // Step1を実行
-        if (typeof window.executeStep1 === "function") {
-          await window.executeStep1(url);
-        } else {
-          console.error("executeStep1関数が見つかりません");
-        }
-      }
-
-      showFeedback("処理が完了しました", "success");
-    } catch (error) {
-      console.error("処理エラー:", error);
-      showFeedback(`処理エラー: ${error.message}`, "error");
-    }
-  });
-}
 
 // STEP処理のみ実行ボタン
 if (stepOnlyBtn) {
