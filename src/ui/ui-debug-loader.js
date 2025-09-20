@@ -1,11 +1,6 @@
 // ui-debug-loader.js
 // CSP対応: インラインスクリプトを外部化
 
-console.log("🔍 [DEBUG] スクリプト読み込み開始", {
-  timestamp: new Date().toISOString(),
-  documentEncoding: document.characterSet,
-  documentReadyState: document.readyState,
-});
 
 // スクリプト読み込み順序のトラッキング
 window.scriptLoadTracker = {
@@ -26,21 +21,11 @@ window.scriptLoadTracker = {
   addScript: function (scriptName) {
     this.loadOrder.push(scriptName);
     this.timestamps[scriptName] = new Date().toISOString();
-    console.log(`🔍 [DEBUG] スクリプト読み込み記録: ${scriptName}`, {
-      順序: this.loadOrder.length,
-      時刻: this.timestamps[scriptName],
-      読み込み順序: this.loadOrder,
-    });
   },
   checkDependencies: function (scriptName) {
     const deps = this.dependencies[scriptName] || [];
     const missingDeps = deps.filter((dep) => !this.loadOrder.includes(dep));
     if (missingDeps.length > 0) {
-      console.warn(`⚠️ [DEBUG] ${scriptName}の依存関係不足:`, {
-        必要: deps,
-        不足: missingDeps,
-        現在の読み込み順: this.loadOrder,
-      });
     }
     return missingDeps.length === 0;
   },
@@ -59,15 +44,6 @@ window.scriptLoadStatus = {
 
 // エラーハンドラーを設定（詳細なログ追加）
 window.addEventListener("error", function (event) {
-  console.error("❌ [DEBUG] グローバルエラー検出:", {
-    message: event.message,
-    filename: event.filename,
-    lineno: event.lineno,
-    colno: event.colno,
-    error: event.error,
-    stack: event.error?.stack,
-    timestamp: new Date().toISOString(),
-  });
 
   // ファイル別のエラー処理
   const errorFiles = [
@@ -77,21 +53,9 @@ window.addEventListener("error", function (event) {
   ];
   errorFiles.forEach((file) => {
     if (event.filename && event.filename.includes(file)) {
-      console.error(`❌ [DEBUG] ${file}固有のエラー:`, {
-        file: file,
-        line: event.lineno,
-        column: event.colno,
-        message: event.message,
-        errorObject: event.error,
-        errorType: event.error?.constructor?.name,
-      });
 
       // エラー位置の前後のコードを表示できるようにする
       if (event.error && event.error.stack) {
-        console.error(
-          `❌ [DEBUG] ${file} スタックトレース:`,
-          event.error.stack,
-        );
       }
     }
   });
@@ -99,17 +63,11 @@ window.addEventListener("error", function (event) {
 
 // Promise rejection ハンドラー追加
 window.addEventListener("unhandledrejection", function (event) {
-  console.error("❌ [DEBUG] 未処理のPromiseエラー:", {
-    reason: event.reason,
-    promise: event.promise,
-    timestamp: new Date().toISOString(),
-    stack: event.reason?.stack,
-  });
 });
 
 // すべてのスクリプトの読み込み完了を確認
 window.addEventListener("load", function () {
-  console.log("✅ [DEBUG] 全スクリプト読み込み完了チェック", {
+  //
     timestamp: new Date().toISOString(),
     loadedScripts: window.scriptLoadStatus,
     globalFunctions: {
@@ -131,7 +89,7 @@ window.addEventListener("load", function () {
 
   // 詳細なグローバル状態のログ
   if (window.globalState) {
-    console.log("📊 [DEBUG] globalState詳細:", {
+    //
       spreadsheetId: window.globalState.spreadsheetId,
       gid: window.globalState.gid,
       currentGroupIndex: window.globalState.currentGroupIndex,
@@ -145,18 +103,10 @@ window.addEventListener("load", function () {
 // スクリプト読み込み監視関数
 function monitorScriptLoad(scriptName) {
   window.scriptLoadStatus[scriptName] = true;
-  console.log(`📦 [DEBUG] ${scriptName} 読み込み完了`, {
-    timestamp: new Date().toISOString(),
-    現在の読み込み状況: window.scriptLoadStatus,
-  });
 }
 
 // 各モジュールの読み込みを監視（DOMContentLoaded後）
 document.addEventListener("DOMContentLoaded", function () {
-  console.log("📄 [DEBUG] DOMContentLoaded イベント発火", {
-    timestamp: new Date().toISOString(),
-    readyState: document.readyState,
-  });
 
   // モジュールスクリプトの読み込み監視
   const moduleScripts = document.querySelectorAll('script[type="module"]');
@@ -164,7 +114,6 @@ document.addEventListener("DOMContentLoaded", function () {
     const src = script.src;
     if (src) {
       const fileName = src.split("/").pop();
-      console.log(`🔄 [DEBUG] モジュール監視開始: ${fileName}`);
 
       // load イベント
       script.addEventListener("load", () => {

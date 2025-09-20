@@ -26,30 +26,16 @@ const LoopLogger = {
     return this.logLevels[level] <= this.logLevels[this.logLevel];
   },
 
-  error(msg, data) {
-    if (this.shouldLog("ERROR")) console.error(`❌ ${msg}`, data || "");
-  },
+  error(msg, data) {},
 
-  warn(msg, data) {
-    if (this.shouldLog("WARN")) console.warn(`⚠️ ${msg}`, data || "");
-  },
+  warn(msg, data) {},
 
-  info(msg, data) {
-    if (this.shouldLog("INFO")) console.log(`✅ ${msg}`, data || "");
-  },
+  info(msg, data) {},
 
-  debug(msg, data) {
-    if (this.shouldLog("DEBUG")) console.log(`🔍 ${msg}`, data || "");
-  },
+  debug(msg, data) {},
 
   // ループ処理専用の集約ログ
-  logLoop(iteration, maxIterations, tasksRemaining) {
-    if (iteration === 1 || iteration % 5 === 0 || iteration === maxIterations) {
-      this.info(
-        `[ループ ${iteration}/${maxIterations}] 残タスク: ${tasksRemaining}件`,
-      );
-    }
-  },
+  logLoop(iteration, maxIterations, tasksRemaining) {},
 };
 
 // デフォルトログレベル設定
@@ -121,7 +107,6 @@ if (!window.globalState) {
  */
 // データ検証関数（自己完結型）
 function validateTaskGroupForStep5(taskGroup) {
-  console.log("[step5-loop.js] [Step 5-0-5] タスクグループ検証開始");
   const errors = [];
 
   if (!taskGroup) {
@@ -814,26 +799,9 @@ async function createTaskList(taskGroup) {
 
   try {
     // Step3TaskList利用可能性の詳細チェック
-    console.log("🔍 [Step5-Helper] Step3TaskList利用可能性チェック:", {
-      windowExists: typeof window !== "undefined",
-      step3TaskListExists: !!window.Step3TaskList,
-      step3TaskListType: typeof window.Step3TaskList,
-      generateTaskListExists: !!window.Step3TaskList?.generateTaskList,
-      generateTaskListType: typeof window.Step3TaskList?.generateTaskList,
-      step3TaskListKeys: window.Step3TaskList
-        ? Object.keys(window.Step3TaskList)
-        : [],
-      step3TaskListError: window.Step3TaskList?.error || "なし",
-    });
 
     // step3-tasklist.jsのgenerateTaskList関数を利用
     if (!window.Step3TaskList || !window.Step3TaskList.generateTaskList) {
-      console.error("❌ [Step5-Helper] Step3TaskListチェック詳細:", {
-        step3TaskListExists: !!window.Step3TaskList,
-        generateTaskListExists: !!window.Step3TaskList?.generateTaskList,
-        allWindowKeys: Object.keys(window).filter((k) => k.includes("Step3")),
-        windowStep3TaskListValue: window.Step3TaskList,
-      });
       throw new Error("Step3TaskList.generateTaskListが利用できません");
     }
 
