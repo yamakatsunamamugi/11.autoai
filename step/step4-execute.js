@@ -866,6 +866,222 @@ class WindowController {
 window.windowController = new WindowController();
 
 // ========================================
+// SimpleSheetsClient: stepフォルダ内で完結するSheets APIクライアント
+// ========================================
+class SimpleSheetsClient {
+  constructor() {
+    this.baseUrl = "https://sheets.googleapis.com/v4/spreadsheets";
+    this.sheetNameCache = new Map(); // GID -> シート名のキャッシュ
+  }
+
+  /**
+   * 認証トークンの取得
+   */
+  async getAuthToken() {
+    if (window.globalState?.authToken) {
+      return window.globalState.authToken;
+    }
+    throw new Error("認証トークンが利用できません");
+  }
+
+  /**
+   * GIDから実際のシート名を取得
+   * @param {string} spreadsheetId - スプレッドシートID
+   * @param {string} gid - シートのGID
+   * @returns {Promise<string|null>} 実際のシート名
+   */
+  async getSheetNameFromGid(spreadsheetId, gid) {
+    if (!gid) return null;
+
+    // キャッシュチェック
+    const cacheKey = `${spreadsheetId}_${gid}`;
+    if (this.sheetNameCache.has(cacheKey)) {
+      console.log(
+        "[SimpleSheetsClient] シート名をキャッシュから取得:",
+        this.sheetNameCache.get(cacheKey),
+      );
+      return this.sheetNameCache.get(cacheKey);
+    }
+
+    try {
+      const token = await this.getAuthToken();
+      const url = `${this.baseUrl}/${spreadsheetId}?fields=sheets(properties)`;
+
+      console.log("[SimpleSheetsClient] シートメタデータを取得:", {
+        spreadsheetId,
+        gid,
+      });
+
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        console.error("[SimpleSheetsClient] メタデータ取得エラー:", error);
+        return null;
+      }
+
+      const metadata = await response.json();
+      const targetGidNumber = parseInt(gid);
+      const sheet = metadata.sheets?.find(
+        (s) => s.properties.sheetId === targetGidNumber,
+      );
+
+      if (sheet) {
+        const sheetName = sheet.properties.title;
+        console.log("[SimpleSheetsClient] シート名を発見:", {
+          gid: gid,
+          sheetName: sheetName,
+        });
+        // キャッシュに保存
+        this.sheetNameCache.set(cacheKey, sheetName);
+        return sheetName;
+      } else {
+        console.warn(
+          `[SimpleSheetsClient] GID ${gid} に対応するシートが見つかりません`,
+        );
+        return null;
+      }
+    } catch (error) {
+      console.error("[SimpleSheetsClient] getSheetNameFromGidエラー:", error);
+      return null;
+    }
+  }
+
+  /**
+   * セルの値を取得
+   * @param {string} spreadsheetId - スプレッドシートID
+   * @param {string} sheetName - シート名
+   * @param {string} range - セル範囲（例: "A1" または "A1:B10"）
+   * @returns {Promise<Object>} APIレスポンス
+   */
+  async getCellValues(spreadsheetId, sheetName, range) {
+    try {
+      const token = await this.getAuthToken();
+
+      // シート名の処理
+      let fullRange;
+
+      // シート名がない場合
+      if (!sheetName) {
+        fullRange = range;
+      }
+      // スペースや特殊文字を含む場合
+      else if (sheetName.match(/[\s\-]/)) {
+        fullRange = `'${sheetName}'!${range}`;
+      }
+      // その他（日本語を含む場合も）
+      else {
+        // Google Sheets APIは日本語シート名をシングルクォートなしで受け付ける
+        fullRange = `${sheetName}!${range}`;
+      }
+
+      console.log("[SimpleSheetsClient] APIリクエスト:", {
+        spreadsheetId,
+        sheetName,
+        range,
+        fullRange,
+        encodedRange: encodeURIComponent(fullRange),
+      });
+
+      const url = `${this.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(fullRange)}?valueRenderOption=FORMATTED_VALUE`;
+
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        console.error("[SimpleSheetsClient] APIエラー:", {
+          status: response.status,
+          error: error.error,
+          fullRange,
+          url,
+        });
+        throw new Error(
+          `Failed to get cell range ${range}: ${error.error.message}`,
+        );
+      }
+
+      const data = await response.json();
+      console.log("[SimpleSheetsClient] APIレスポンス成功:", {
+        range: fullRange,
+        values: data.values?.length || 0,
+      });
+
+      return data;
+    } catch (error) {
+      console.error("[SimpleSheetsClient] getCellValuesエラー:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * セルに値を書き込み
+   * @param {string} spreadsheetId - スプレッドシートID
+   * @param {string} sheetName - シート名
+   * @param {string} range - セル範囲
+   * @param {Array<Array>} values - 書き込む値
+   * @returns {Promise<Object>} APIレスポンス
+   */
+  async updateCells(spreadsheetId, sheetName, range, values) {
+    try {
+      const token = await this.getAuthToken();
+
+      // シート名の処理（getCellValuesと同様）
+      let fullRange;
+      if (
+        sheetName &&
+        sheetName.match(/[^\x00-\x7F]/) &&
+        window.globalState?.gid
+      ) {
+        fullRange = range;
+      } else if (sheetName) {
+        if (sheetName.match(/[\s\-]/)) {
+          fullRange = `'${sheetName}'!${range}`;
+        } else {
+          fullRange = `${sheetName}!${range}`;
+        }
+      } else {
+        fullRange = range;
+      }
+
+      const url = `${this.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(fullRange)}?valueInputOption=USER_ENTERED`;
+
+      const response = await fetch(url, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ values }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(
+          `Failed to update cell range ${range}: ${error.error.message}`,
+        );
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error("[SimpleSheetsClient] updateCellsエラー:", error);
+      throw error;
+    }
+  }
+}
+
+// ========================================
 // Step 4-2: スプレッドシートデータ動的取得クラス
 // ========================================
 class SpreadsheetDataManager {
@@ -882,39 +1098,15 @@ class SpreadsheetDataManager {
       "📊 [SpreadsheetDataManager] Step 4-2-1: SheetsClient初期化開始",
     );
 
-    // SheetsClientがグローバルに存在するかチェック
-    if (typeof SheetsClient === "undefined") {
-      // 動的インポートを試行
-      try {
-        const module = await import(
-          "../src/features/spreadsheet/sheets-client.js"
-        );
-
-        // グローバルに設定
-        if (module.default) {
-          window.SheetsClient = module.default;
-        } else if (module.SheetsClient) {
-          window.SheetsClient = module.SheetsClient;
-        } else {
-          throw new Error(
-            "SheetsClientがモジュールにエクスポートされていません",
-          );
-        }
-      } catch (importError) {
-        throw new Error(`SheetsClientが利用できません: ${importError.message}`);
-      }
-    }
-
-    // SheetsClientのインスタンス化
+    // SimpleSheetsClientを直接使用（動的インポート不要）
     try {
-      const SheetsClientClass = window.SheetsClient || SheetsClient;
-      this.sheetsClient = new SheetsClientClass();
+      this.sheetsClient = new SimpleSheetsClient();
       ExecuteLogger.info(
-        "✅ [SpreadsheetDataManager] Step 4-2-1: SheetsClient初期化完了",
+        "✅ [SpreadsheetDataManager] Step 4-2-1: SimpleSheetsClient初期化完了",
       );
     } catch (instantiationError) {
       throw new Error(
-        `SheetsClientインスタンス化失敗: ${instantiationError.message}`,
+        `SimpleSheetsClientインスタンス化失敗: ${instantiationError.message}`,
       );
     }
   }
@@ -952,10 +1144,44 @@ class SpreadsheetDataManager {
     }
 
     // window.globalStateから直接データを構築（統一化）
+    const spreadsheetId = window.globalState.spreadsheetId;
+    const gid = window.globalState.gid || "0";
+
+    // GIDから実際のシート名を取得
+    let actualSheetName = `シート${gid}`; // デフォルト値
+
+    try {
+      const sheetNameFromGid = await this.sheetsClient.getSheetNameFromGid(
+        spreadsheetId,
+        gid,
+      );
+      if (sheetNameFromGid) {
+        actualSheetName = sheetNameFromGid;
+        ExecuteLogger.info(
+          "✅ [SpreadsheetDataManager] 実際のシート名を取得:",
+          {
+            gid: gid,
+            sheetName: actualSheetName,
+          },
+        );
+      } else {
+        ExecuteLogger.warn(
+          "⚠️ [SpreadsheetDataManager] シート名を取得できませんでした。デフォルト値を使用:",
+          actualSheetName,
+        );
+      }
+    } catch (error) {
+      ExecuteLogger.error(
+        "❌ [SpreadsheetDataManager] シート名取得エラー:",
+        error,
+      );
+      // エラーの場合はデフォルト値を使用
+    }
+
     this.spreadsheetData = {
-      spreadsheetId: window.globalState.spreadsheetId,
-      gid: window.globalState.gid || "0",
-      sheetName: `シート${window.globalState.gid || "0"}`,
+      spreadsheetId: spreadsheetId,
+      gid: gid,
+      sheetName: actualSheetName,
       apiHeaders: window.globalState.apiHeaders || {},
       sheetsApiBase:
         window.globalState.sheetsApiBase ||
@@ -1124,6 +1350,7 @@ class SpreadsheetDataManager {
       });
 
       // セルからプロンプトテキストを取得
+      // SimpleSheetsClientが日本語シート名をハンドルするので、そのまま渡す
       const response = await this.sheetsClient.getCellValues(
         this.spreadsheetData.spreadsheetId,
         this.spreadsheetData.sheetName,
@@ -2449,15 +2676,23 @@ async function executeStep4(taskList) {
     // Step 4-6-3: ウィンドウ開く
     ExecuteLogger.info("🪟 [Step 4-6-3] ウィンドウ開く処理開始");
 
-    const windowResults =
-      await window.windowController.openWindows(windowLayoutInfo);
-    const successfulWindows = windowResults.filter((w) => w.success);
-    ExecuteLogger.info(
-      `✅ [Step 4-6-3] ウィンドウ開く完了: ${successfulWindows.length}/${windowResults.length}個成功`,
-    );
+    // タスクが0個の場合はウィンドウを開かずにスキップ
+    let successfulWindows = [];
+    if (processTaskList.length === 0) {
+      ExecuteLogger.info(
+        `⚠️ [Step 4-6-3] タスクが0個のため、ウィンドウ開く処理をスキップ`,
+      );
+    } else {
+      const windowResults =
+        await window.windowController.openWindows(windowLayoutInfo);
+      successfulWindows = windowResults.filter((w) => w.success);
+      ExecuteLogger.info(
+        `✅ [Step 4-6-3] ウィンドウ開く完了: ${successfulWindows.length}/${windowResults.length}個成功`,
+      );
 
-    if (successfulWindows.length === 0) {
-      throw new Error("ウィンドウを開くことができませんでした");
+      if (successfulWindows.length === 0 && processTaskList.length > 0) {
+        throw new Error("ウィンドウを開くことができませんでした");
+      }
     }
 
     // Step 4-6-3-1: ポップアップを右下に移動（step外と同じ動作）

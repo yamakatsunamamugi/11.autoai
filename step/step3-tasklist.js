@@ -18,10 +18,6 @@
 
 // columnToIndex関数の定義確認・フォールバック作成
 if (typeof columnToIndex === "undefined") {
-  console.warn(
-    "⚠️ [step3-tasklist.js] columnToIndex関数が未定義です。フォールバック関数を作成します。",
-  );
-
   // シンプルなフォールバック関数を定義
   window.columnToIndex = function (column) {
     if (typeof column !== "string" || column.length === 0) {
@@ -48,8 +44,6 @@ if (typeof columnToIndex === "undefined") {
   // グローバルスコープに関数を設定
   globalThis.columnToIndex = window.columnToIndex;
   globalThis.indexToColumn = window.indexToColumn;
-
-  console.log("✅ [step3-tasklist.js] フォールバック関数を作成しました");
 }
 
 // ========================================
@@ -75,20 +69,7 @@ async function initializeGoogleServices() {
       if (GoogleServices) {
         googleServices = new GoogleServices();
         await googleServices.initialize();
-        console.log("✅ [step3-tasklist.js] Google Services初期化完了");
       } else {
-        console.warn(
-          "⚠️ [step3-tasklist.js] GoogleServicesクラスが利用できません - グローバル確認:",
-          {
-            windowKeys:
-              typeof window !== "undefined"
-                ? Object.keys(window).filter((k) => k.includes("Google"))
-                : [],
-            globalThisKeys: Object.keys(globalThis).filter((k) =>
-              k.includes("Google"),
-            ),
-          },
-        );
         return null;
       }
     } catch (initError) {
@@ -199,22 +180,14 @@ async function generateTaskList(
 
     // 必要に応じて自動列追加を実行
     if (options.enableAutoColumnSetup && options.spreadsheetId) {
-      console.log("[step3-tasklist.js] 自動列追加セットアップを実行中...");
       const setupResult = await services.runAutoSetup(
         options.spreadsheetId,
         options.gid,
       );
 
       if (setupResult.hasAdditions) {
-        console.log(
-          `[step3-tasklist.js] ✅ 自動列追加完了: ${setupResult.addedColumns?.length || 0}列追加`,
-        );
-
         // 列追加後はスプレッドシートデータを再読み込み
         if (setupResult.addedColumns && setupResult.addedColumns.length > 0) {
-          console.log(
-            "[step3-tasklist.js] 📋 スプレッドシートデータを再読み込み中...",
-          );
           const refreshedData = await services.loadData(
             options.spreadsheetId,
             options.gid,
@@ -225,9 +198,6 @@ async function generateTaskList(
               0,
               spreadsheetData.length,
               ...refreshedData.data,
-            );
-            console.log(
-              `[step3-tasklist.js] ✅ データ再読み込み完了: ${spreadsheetData.length}行`,
             );
           }
         }
@@ -246,21 +216,11 @@ async function generateTaskList(
       }
     };
 
-    console.log(
-      `[step3-tasklist.js→Step3-1-0] タスクグループ${taskGroup.groupNumber}の処理開始`,
-    );
-
     const promptColumns = taskGroup.columns.prompts || [];
     // 【統一修正】全てオブジェクト形式なのでObject.valuesを直接使用
     const answerColumns = taskGroup.columns.answer
       ? Object.values(taskGroup.columns.answer)
       : [];
-
-    // デバッグ情報をコンソールに出力
-    console.log("[step3-tasklist.js→Step3-1-1] 列設定:", {
-      promptColumns: promptColumns,
-      answerColumns: answerColumns,
-    });
 
     // プロンプトがある最終行を検索
     let lastPromptRow = dataStartRow;
@@ -283,11 +243,6 @@ async function generateTaskList(
         }
       }
     }
-
-    // 最終行検索完了
-    console.log(
-      `[step3-tasklist.js→Step3-1-2] 対象範囲: ${dataStartRow}行〜${lastPromptRow}行 (プロンプト列: ${promptColumns.join(", ")})`,
-    );
 
     // 3-2: タスク生成の除外処理
     const validTasks = [];
@@ -366,15 +321,6 @@ async function generateTaskList(
         if (spreadsheetData && aiRow > 0 && aiRow <= spreadsheetData.length) {
           aiRowData = spreadsheetData[aiRow - 1];
         } else {
-          console.warn(
-            `[step3-tasklist.js] [Step 3-2-0] ⚠️ [WARNING] aiRowData取得失敗:`,
-            {
-              spreadsheetDataExists: !!spreadsheetData,
-              spreadsheetDataLength: spreadsheetData?.length,
-              aiRow: aiRow,
-              aiRowValid: aiRow > 0 && aiRow <= (spreadsheetData?.length || 0),
-            },
-          );
         }
 
         let aiTypes;
@@ -391,15 +337,9 @@ async function generateTaskList(
               const aiValue = rawAiValue || "ChatGPT";
               aiTypes = [aiValue];
             } else {
-              console.warn(
-                "[step3-tasklist.js] [Step 3-2-1] [Warning] 無効な列インデックス, デフォルトでChatGPTを使用",
-              );
               aiTypes = ["ChatGPT"];
             }
           } else {
-            console.warn(
-              "[step3-tasklist.js] [Step 3-2-2] [Warning] promptColumnsが未定義または空, デフォルトでChatGPTを使用",
-            );
             aiTypes = ["ChatGPT"];
           }
         }
@@ -409,9 +349,6 @@ async function generateTaskList(
 
           // AIタイプの正規化（singleをClaudeに変換）
           if (aiType === "single" || !aiType) {
-            console.log(
-              `[step3-tasklist.js] [Step 3-2-3] AIタイプ '${aiType}' を 'Claude' に変換`,
-            );
             aiType = "Claude";
           }
 
@@ -515,84 +452,9 @@ async function generateTaskList(
       }
     }
 
-    // サマリーログ出力
-    const skippedCount = logBuffer.filter((log) =>
-      log.includes("既に回答あり"),
-    ).length;
-    if (skippedCount > 0) {
-      console.log(
-        `[step3-tasklist.js] [Step 3-2-9] グループ${taskGroup.groupNumber}: ${skippedCount}行スキップ（既に回答あり）`,
-      );
-    }
-
-    console.log(
-      `[step3-tasklist.js] [Step 3-2-10] 有効タスク数: ${validTasks.length}件`,
-    );
-
-    if (validTasks.length === 0) {
-      console.warn(
-        "[step3-tasklist.js] [Step 3-2-12] [Warning] タスクが生成されませんでした。以下を確認してください:",
-        {
-          dataStartRow: dataStartRow,
-          lastPromptRow: lastPromptRow,
-          処理対象行数: lastPromptRow - dataStartRow + 1,
-          行制御数: options.rowControls?.length || 0,
-          列制御数: options.columnControls?.length || 0,
-          taskGroup: taskGroup,
-        },
-      );
-    }
-
-    // 行制御・列制御の統計ログ
-    if (
-      options.applyRowControl &&
-      options.rowControls &&
-      options.rowControls.length > 0
-    ) {
-      console.log(
-        "[step3-tasklist.js] [Step 3-3-1] 📊 行制御が適用されました:",
-        {
-          制御種類: options.rowControls.map(
-            (c) => `${c.type}制御(${c.row}行目)`,
-          ),
-          対象範囲: `${dataStartRow}〜${lastPromptRow}行`,
-          生成タスク数: validTasks.length,
-        },
-      );
-    }
-
-    if (
-      options.applyColumnControl &&
-      options.columnControls &&
-      options.columnControls.length > 0
-    ) {
-      console.log(
-        "[step3-tasklist.js] [Step 3-3-2] 📊 列制御が適用されました:",
-        {
-          制御種類: options.columnControls.map(
-            (c) => `${c.type}制御(${c.column}列)`,
-          ),
-          タスクグループ列: taskGroup.columns.prompts,
-          生成タスク数: validTasks.length,
-        },
-      );
-    }
-
     // 3-3: 3タスクずつのバッチ作成
     const batchSize = options.batchSize || 3;
     const batch = validTasks.slice(0, batchSize);
-
-    console.log(
-      `[step3-tasklist.js] [Step 3-3-3] バッチ作成完了: ${batch.length}タスク`,
-    );
-
-    // タスクリストのログ出力
-    console.log("[step3-tasklist.js] [Step 3-3-4] 📋 タスクリスト生成完了");
-    batch.forEach((task, index) => {
-      console.log(
-        `[step3-tasklist.js] [Step 3-3-5] - タスク${index + 1}: ${task.row}行目, ${task.ai}, ${task.model || "モデル未指定"}`,
-      );
-    });
 
     return batch;
   } catch (error) {
@@ -621,7 +483,6 @@ async function generateTaskList(
  */
 function getRowControl(data) {
   const controls = [];
-  console.log("[step3-tasklist.js→Step3-4-1] B列から行制御を検索中...");
 
   for (let row = 0; row < data.length; row++) {
     const rowData = data[row];
@@ -646,12 +507,6 @@ function getRowControl(data) {
     }
   }
 
-  console.log(
-    `[step3-tasklist.js] [Step 3-4-2] 行制御: ${controls.length}個の制御を検出`,
-  );
-  controls.forEach((c) => {
-    console.log(`[step3-tasklist.js] [Step 3-4-3]   - ${c.type}: ${c.row}行目`);
-  });
   return controls;
 }
 
@@ -662,14 +517,10 @@ function getRowControl(data) {
  * @returns {Array} 列制御情報
  */
 function getColumnControl(data, controlRow) {
-  console.log(
-    `[step3-tasklist.js→Step3-5-1] 列制御情報の取得開始 (制御行: ${controlRow})`,
-  );
   const controls = [];
 
   try {
     if (!controlRow || !data[controlRow - 1]) {
-      console.log(`[step3-tasklist.js] [Step 3-5-2] 列制御行なし`);
       return controls;
     }
 
@@ -695,14 +546,6 @@ function getColumnControl(data, controlRow) {
       }
     }
 
-    console.log(
-      `[step3-tasklist.js] [Step 3-5-3] 列制御: ${controls.length}個の制御を検出`,
-    );
-    controls.forEach((c) => {
-      console.log(
-        `[step3-tasklist.js] [Step 3-5-4]   - ${c.type}: ${c.column}列`,
-      );
-    });
     return controls;
   } catch (error) {
     console.error(
@@ -803,7 +646,6 @@ if (typeof window !== "undefined") {
       parseSpreadsheetUrl,
       initializeGoogleServices,
     };
-    console.log("✅ [step3-tasklist.js] window.Step3TaskList初期化完了");
 
     // スクリプト読み込み完了をトラッキング
     if (window.scriptLoadTracker) {
