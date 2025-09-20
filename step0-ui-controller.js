@@ -75,9 +75,64 @@ console.log("🔧 [step0-ui-controller] WindowService読み込み開始...");
 
 // WindowServiceの簡易実装（外部依存を避けるため）
 window.WindowService = {
-  async createWindow(options) {
+  /**
+   * プライマリディスプレイに強制配置してウィンドウを作成
+   * @param {Object} options - ウィンドウオプション
+   * @param {boolean} forcePrimary - プライマリディスプレイに強制配置するか
+   * @returns {Promise<Object>} 作成されたウィンドウオブジェクト
+   */
+  async createWindow(options, forcePrimary = false) {
     try {
-      return await chrome.windows.create(options);
+      if (forcePrimary) {
+        console.log(
+          "[WindowService] プライマリディスプレイに強制配置でウィンドウ作成...",
+        );
+
+        // プライマリディスプレイ情報を取得
+        const primaryDisplay = await getPrimaryDisplayInfo();
+
+        // ウィンドウサイズ
+        const width = options.width || 800;
+        const height = options.height || 600;
+
+        // プライマリディスプレイの中央位置を計算
+        const workArea = primaryDisplay.workArea;
+        const position = {
+          left: workArea.left + Math.floor((workArea.width - width) / 2),
+          top: workArea.top + Math.floor((workArea.height - height) / 2),
+          width: width,
+          height: height,
+        };
+
+        // プライマリディスプレイ位置を強制指定
+        const windowOptions = {
+          ...options,
+          left: position.left,
+          top: position.top,
+          width: position.width,
+          height: position.height,
+        };
+
+        console.log("[WindowService] プライマリディスプレイ位置:", position);
+
+        const window = await chrome.windows.create(windowOptions);
+
+        // 作成後の位置確認
+        const actualWindow = await chrome.windows.get(window.id);
+        console.log("[WindowService] 作成されたウィンドウ位置:", {
+          expected: position,
+          actual: {
+            left: actualWindow.left,
+            top: actualWindow.top,
+            width: actualWindow.width,
+            height: actualWindow.height,
+          },
+        });
+
+        return window;
+      } else {
+        return await chrome.windows.create(options);
+      }
     } catch (error) {
       console.error("WindowService.createWindow エラー:", error);
       throw error;
@@ -101,6 +156,133 @@ window.WindowService = {
       throw error;
     }
   },
+
+  /**
+   * 既存ウィンドウをプライマリディスプレイに移動
+   * @param {number} windowId - 移動するウィンドウID
+   * @param {Object} options - 移動オプション
+   * @returns {Promise<boolean>} 移動成功可否
+   */
+  async moveWindowToPrimaryDisplay(windowId, options = {}) {
+    return await moveWindowToPrimaryDisplay(windowId, options);
+  },
+
+  /**
+   * プライマリディスプレイ情報を取得
+   * @returns {Promise<Object>} プライマリディスプレイ情報
+   */
+  async getPrimaryDisplayInfo() {
+    return await getPrimaryDisplayInfo();
+  },
+
+  /**
+   * 指定された位置にウィンドウを作成（step5との互換性のため）
+   * @param {string} url - 開くURL
+   * @param {number} position - ウィンドウ位置（0-3）
+   * @param {Object} options - 追加オプション
+   * @returns {Promise<Object>} 作成されたウィンドウ情報
+   */
+  async createWindowWithPosition(url, position, options = {}) {
+    try {
+      console.log(`[WindowService] 位置${position}にウィンドウを作成:`, url);
+
+      // プライマリディスプレイ情報を取得
+      const primaryDisplay = await getPrimaryDisplayInfo();
+
+      // ウィンドウサイズ
+      const width = options.width || 800;
+      const height = options.height || 600;
+
+      let windowPosition;
+
+      if (
+        position === 0 ||
+        position === 1 ||
+        position === 2 ||
+        position === 3
+      ) {
+        // 4分割レイアウト位置計算
+        const halfWidth = Math.floor(primaryDisplay.workArea.width / 2);
+        const halfHeight = Math.floor(primaryDisplay.workArea.height / 2);
+
+        switch (position) {
+          case 0: // 左上
+            windowPosition = {
+              left: primaryDisplay.workArea.left,
+              top: primaryDisplay.workArea.top,
+              width: halfWidth,
+              height: halfHeight,
+            };
+            break;
+          case 1: // 右上
+            windowPosition = {
+              left: primaryDisplay.workArea.left + halfWidth,
+              top: primaryDisplay.workArea.top,
+              width: halfWidth,
+              height: halfHeight,
+            };
+            break;
+          case 2: // 左下
+            windowPosition = {
+              left: primaryDisplay.workArea.left,
+              top: primaryDisplay.workArea.top + halfHeight,
+              width: halfWidth,
+              height: halfHeight,
+            };
+            break;
+          case 3: // 右下
+            windowPosition = {
+              left: primaryDisplay.workArea.left + halfWidth,
+              top: primaryDisplay.workArea.top + halfHeight,
+              width: halfWidth,
+              height: halfHeight,
+            };
+            break;
+        }
+      } else {
+        // 中央配置
+        const workArea = primaryDisplay.workArea;
+        windowPosition = {
+          left: workArea.left + Math.floor((workArea.width - width) / 2),
+          top: workArea.top + Math.floor((workArea.height - height) / 2),
+          width: width,
+          height: height,
+        };
+      }
+
+      console.log(`[WindowService] 位置${position}の座標:`, windowPosition);
+
+      // ウィンドウ作成
+      const windowOptions = {
+        ...options,
+        url: url,
+        left: windowPosition.left,
+        top: windowPosition.top,
+        width: windowPosition.width,
+        height: windowPosition.height,
+        type: options.type || "popup",
+        focused: true,
+      };
+
+      const window = await chrome.windows.create(windowOptions);
+
+      console.log(
+        `[WindowService] ✅ 位置${position}にウィンドウ作成完了 (ID: ${window.id})`,
+      );
+
+      return {
+        id: window.id,
+        windowId: window.id,
+        tabs: window.tabs,
+        position: position,
+        aiType: options.aiType || "unknown",
+        url: url,
+      };
+    } catch (error) {
+      console.error("[WindowService] createWindowWithPosition エラー:", error);
+      throw error;
+    }
+  },
 };
 
 console.log("✅ [step0-ui-controller] WindowService設定完了");
@@ -114,15 +296,127 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// ウィンドウを最前面に表示する共通関数
-async function bringWindowToFront() {
+/**
+ * プライマリディスプレイ情報を取得する共通関数
+ * @returns {Promise<Object>} プライマリディスプレイ情報
+ */
+async function getPrimaryDisplayInfo() {
   try {
-    const currentWindow = await chrome.windows.getCurrent();
-    await chrome.windows.update(currentWindow.id, {
+    const displays = await chrome.system.display.getInfo();
+    const primaryDisplay = displays.find((d) => d.isPrimary) || displays[0];
+
+    console.log("[UI-Controller] ディスプレイ情報:", {
+      total: displays.length,
+      primary: {
+        id: primaryDisplay.id,
+        isPrimary: primaryDisplay.isPrimary,
+        bounds: primaryDisplay.bounds,
+        workArea: primaryDisplay.workArea,
+      },
+    });
+
+    return primaryDisplay;
+  } catch (error) {
+    console.error("[UI-Controller] ディスプレイ情報取得エラー:", error);
+    // フォールバック値
+    return {
+      workArea: { left: 0, top: 0, width: 1440, height: 900 },
+      bounds: { left: 0, top: 0, width: 1440, height: 900 },
+      isPrimary: true,
+    };
+  }
+}
+
+/**
+ * ウィンドウをプライマリディスプレイに移動させる関数
+ * @param {number} windowId - 移動するウィンドウID（省略時は現在のウィンドウ）
+ * @param {Object} options - 移動オプション
+ * @returns {Promise<boolean>} 移動成功可否
+ */
+async function moveWindowToPrimaryDisplay(windowId = null, options = {}) {
+  try {
+    console.log(
+      "[UI-Controller] ウィンドウをプライマリディスプレイに移動開始...",
+    );
+
+    // ウィンドウIDが指定されていない場合は現在のウィンドウを取得
+    const targetWindow = windowId
+      ? await chrome.windows.get(windowId)
+      : await chrome.windows.getCurrent();
+
+    console.log("[UI-Controller] 移動対象ウィンドウ:", {
+      id: targetWindow.id,
+      current: {
+        left: targetWindow.left,
+        top: targetWindow.top,
+        width: targetWindow.width,
+        height: targetWindow.height,
+      },
+    });
+
+    // プライマリディスプレイ情報を取得
+    const primaryDisplay = await getPrimaryDisplayInfo();
+
+    // ウィンドウサイズを維持するか、新しいサイズを指定
+    const windowWidth = options.width || targetWindow.width;
+    const windowHeight = options.height || targetWindow.height;
+
+    // プライマリディスプレイの中央位置を計算
+    const workArea = primaryDisplay.workArea;
+    const newPosition = {
+      left: workArea.left + Math.floor((workArea.width - windowWidth) / 2),
+      top: workArea.top + Math.floor((workArea.height - windowHeight) / 2),
+      width: windowWidth,
+      height: windowHeight,
+    };
+
+    console.log("[UI-Controller] 新しい位置:", newPosition);
+
+    // ウィンドウをプライマリディスプレイに移動
+    await chrome.windows.update(targetWindow.id, {
+      left: newPosition.left,
+      top: newPosition.top,
+      width: newPosition.width,
+      height: newPosition.height,
       focused: true,
       drawAttention: true,
       state: "normal",
     });
+
+    console.log(
+      "[UI-Controller] ✅ ウィンドウをプライマリディスプレイに移動完了",
+    );
+    return true;
+  } catch (error) {
+    console.error("[UI-Controller] ウィンドウ移動エラー:", error);
+    return false;
+  }
+}
+
+// ウィンドウを最前面に表示する共通関数（プライマリディスプレイ移動機能付き）
+async function bringWindowToFront(moveToPrimary = false) {
+  try {
+    if (moveToPrimary) {
+      // プライマリディスプレイに移動しながら最前面表示
+      const success = await moveWindowToPrimaryDisplay();
+      if (!success) {
+        // 移動に失敗した場合は通常の最前面表示
+        const currentWindow = await chrome.windows.getCurrent();
+        await chrome.windows.update(currentWindow.id, {
+          focused: true,
+          drawAttention: true,
+          state: "normal",
+        });
+      }
+    } else {
+      // 従来の最前面表示のみ
+      const currentWindow = await chrome.windows.getCurrent();
+      await chrome.windows.update(currentWindow.id, {
+        focused: true,
+        drawAttention: true,
+        state: "normal",
+      });
+    }
   } catch (error) {
     console.error("[bringWindowToFront] ウィンドウ最前面表示エラー:", error);
   }

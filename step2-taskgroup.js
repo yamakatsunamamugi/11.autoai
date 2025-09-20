@@ -1138,6 +1138,7 @@ if (typeof module !== "undefined" && module.exports) {
 // グローバル関数として公開（ブラウザ環境用）
 if (typeof window !== "undefined") {
   window.executeStep2TaskGroups = executeStep2TaskGroups;
+  window.executeStep2 = executeStep2TaskGroups; // step0-ui-controller.jsとの互換性のため
   window.extractSpreadsheetInfo = extractSpreadsheetInfo;
   window.identifyTaskGroups = identifyTaskGroups;
   window.applyColumnControls = applyColumnControls;
