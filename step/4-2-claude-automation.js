@@ -113,7 +113,9 @@
         },
 
         async saveErrorImmediately(error, context = {}) {
-            try {
+            // エラーログ保存機能は無効化されています
+            // console.log('[DEBUG] saveErrorImmediately呼び出し:', error.message);
+            /* try {
                 const timestamp = new Date().toISOString()
                     .replace(/[:.]/g, '-')
                     .replace('T', '_')
@@ -132,7 +134,7 @@
                 };
 
                 // エラーレポート生成を無効化
-                /* const fileName = `11autoai-logs/claude/errors/error-${timestamp}.json`;
+                const fileName = `11autoai-logs/claude/errors/error-${timestamp}.json`;
 
                 // バックグラウンドスクリプトにメッセージを送信
                 if (typeof chrome !== 'undefined' && chrome.runtime) {
@@ -144,8 +146,8 @@
                         }
                     });
                 }
-                console.log(`❌ [エラー保存] ${fileName}`); */
-            /* } catch (saveError) {
+                console.log(`❌ [エラー保存] ${fileName}`);
+            } catch (saveError) {
                 console.error('[エラー保存失敗]', saveError);
             } */
         },
