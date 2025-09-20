@@ -16,18 +16,40 @@
  * - バッチ作成エラー
  */
 
-console.log("🔍 [step3-tasklist.js] ファイル読み込み開始");
+// columnToIndex関数の定義確認・フォールバック作成
+if (typeof columnToIndex === "undefined") {
+  console.warn(
+    "⚠️ [step3-tasklist.js] columnToIndex関数が未定義です。フォールバック関数を作成します。",
+  );
 
-// ファイル読み込み時の環境チェック
-try {
-  console.log("🔍 [step3-tasklist.js] 環境チェック:", {
-    windowExists: typeof window !== "undefined",
-    moduleExists: typeof module !== "undefined",
-    windowStep3Exists: typeof window !== "undefined" && !!window.Step3TaskList,
-    currentURL: typeof window !== "undefined" ? window.location?.href : "N/A",
-  });
-} catch (envError) {
-  console.error("❌ [step3-tasklist.js] 環境チェックエラー:", envError);
+  // シンプルなフォールバック関数を定義
+  window.columnToIndex = function (column) {
+    if (typeof column !== "string" || column.length === 0) {
+      return -1;
+    }
+    let index = 0;
+    for (let i = 0; i < column.length; i++) {
+      index = index * 26 + (column.charCodeAt(i) - "A".charCodeAt(0) + 1);
+    }
+    return index - 1;
+  };
+
+  window.indexToColumn = function (index) {
+    let column = "";
+    let num = index;
+    while (num >= 0) {
+      column = String.fromCharCode(65 + (num % 26)) + column;
+      num = Math.floor(num / 26) - 1;
+      if (num < 0) break;
+    }
+    return column;
+  };
+
+  // グローバルスコープに関数を設定
+  globalThis.columnToIndex = window.columnToIndex;
+  globalThis.indexToColumn = window.indexToColumn;
+
+  console.log("✅ [step3-tasklist.js] フォールバック関数を作成しました");
 }
 
 // ========================================
@@ -45,21 +67,10 @@ let googleServices = null;
  * @returns {Promise<GoogleServices>} 初期化されたGoogle Servicesインスタンス
  */
 async function initializeGoogleServices() {
-  console.log("🔍 [step3-tasklist.js] GoogleServices初期化開始:", {
-    googleServicesExists: !!googleServices,
-    windowGoogleServices: !!window.GoogleServices,
-    globalThisGoogleServices: !!globalThis.GoogleServices,
-  });
-
   if (!googleServices) {
     try {
       // GoogleServicesクラスをグローバルから取得
       const GoogleServices = window.GoogleServices || globalThis.GoogleServices;
-      console.log("🔍 [step3-tasklist.js] GoogleServicesクラス取得:", {
-        found: !!GoogleServices,
-        type: typeof GoogleServices,
-        constructor: GoogleServices?.name,
-      });
 
       if (GoogleServices) {
         googleServices = new GoogleServices();
@@ -174,16 +185,6 @@ async function generateTaskList(
   dataStartRow,
   options = {},
 ) {
-  console.log("🔍 [step3-tasklist.js] generateTaskList呼び出し開始:", {
-    taskGroupExists: !!taskGroup,
-    taskGroupType: taskGroup?.type,
-    taskGroupColumns: taskGroup?.columns,
-    spreadsheetDataExists: !!spreadsheetData,
-    spreadsheetDataType: typeof spreadsheetData,
-    dataStartRow,
-    optionsKeys: Object.keys(options || {}),
-  });
-
   try {
     // 引数検証
     if (!taskGroup) {
@@ -192,10 +193,6 @@ async function generateTaskList(
     if (!taskGroup.columns) {
       throw new Error("taskGroup.columnsが未定義です");
     }
-
-    console.log(
-      "🔍 [step3-tasklist.js] 引数検証通過 - GoogleServices初期化開始",
-    );
 
     // Google Servicesの初期化
     const services = await initializeGoogleServices();
@@ -368,6 +365,16 @@ async function generateTaskList(
         let aiRowData = null;
         if (spreadsheetData && aiRow > 0 && aiRow <= spreadsheetData.length) {
           aiRowData = spreadsheetData[aiRow - 1];
+        } else {
+          console.warn(
+            `[step3-tasklist.js] [Step 3-2-0] ⚠️ [WARNING] aiRowData取得失敗:`,
+            {
+              spreadsheetDataExists: !!spreadsheetData,
+              spreadsheetDataLength: spreadsheetData?.length,
+              aiRow: aiRow,
+              aiRowValid: aiRow > 0 && aiRow <= (spreadsheetData?.length || 0),
+            },
+          );
         }
 
         let aiTypes;
@@ -378,8 +385,11 @@ async function generateTaskList(
           // promptColumns[0]が存在するか確認
           if (promptColumns && promptColumns.length > 0 && promptColumns[0]) {
             const colIndex = columnToIndex(promptColumns[0]);
+
             if (colIndex >= 0) {
-              aiTypes = [aiRowData?.[colIndex] || "ChatGPT"];
+              const rawAiValue = aiRowData?.[colIndex];
+              const aiValue = rawAiValue || "ChatGPT";
+              aiTypes = [aiValue];
             } else {
               console.warn(
                 "[step3-tasklist.js] [Step 3-2-1] [Warning] 無効な列インデックス, デフォルトでChatGPTを使用",
@@ -395,6 +405,8 @@ async function generateTaskList(
         }
 
         for (let aiType of aiTypes) {
+          const originalAiType = aiType;
+
           // AIタイプの正規化（singleをClaudeに変換）
           if (aiType === "single" || !aiType) {
             console.log(
@@ -402,17 +414,6 @@ async function generateTaskList(
             );
             aiType = "Claude";
           }
-
-          // answerCellの統一計算（自己完結型）
-          console.log(
-            `[step3-tasklist.js] [Step 3-2-4] 🔍 [DEBUG] answerCell計算開始 - Row ${row}, AI: ${aiType}:`,
-            {
-              taskGroupType: taskGroup.groupType,
-              columnsAnswer: taskGroup.columns.answer,
-              columnsAnswerType: typeof taskGroup.columns.answer,
-              fullColumns: taskGroup.columns,
-            },
-          );
 
           // 【シンプル化】文字列結合でセル位置計算
           const answerCell = getAnswerCell(taskGroup, aiType, row);
@@ -426,7 +427,7 @@ async function generateTaskList(
             row: row,
             column: promptColumns[0],
             prompt: prompts.join("\n\n"),
-            ai: aiType,
+            ai: aiType, // 🔧 [FIX] 変換後のaiTypeを使用
             aiType:
               taskGroup.groupType === "3種類AI"
                 ? "3種類（ChatGPT・Gemini・Claude）"
@@ -514,27 +515,6 @@ async function generateTaskList(
       }
     }
 
-    // デバッグログをまとめて出力
-    if (debugLogs.length > 0) {
-      console.log(
-        "[step3-tasklist.js] [Step 3-2-8] 🔍 [DEBUG] タスク生成完了サマリー:",
-        {
-          グループ: taskGroup.groupNumber,
-          総タスク数: debugLogs.length,
-          開始行: debugLogs[0].row,
-          終了行: debugLogs[debugLogs.length - 1].row,
-          タスクタイプ: taskGroup.groupType,
-          詳細: debugLogs.length > 10 ? "最初の10件のみ表示" : "全件表示",
-          タスク: debugLogs.slice(0, 10).map((log) => ({
-            行: log.row,
-            セル: log.answerCell || log.workCell || log.logCell,
-            AI: log.aiType,
-            プロンプト長: log.promptLength,
-          })),
-        },
-      );
-    }
-
     // サマリーログ出力
     const skippedCount = logBuffer.filter((log) =>
       log.includes("既に回答あり"),
@@ -549,19 +529,7 @@ async function generateTaskList(
       `[step3-tasklist.js] [Step 3-2-10] 有効タスク数: ${validTasks.length}件`,
     );
 
-    // デバッグ: 生成されたタスクの詳細
-    if (validTasks.length > 0) {
-      console.log(
-        "[step3-tasklist.js] [Step 3-2-11] [Debug] 生成タスク詳細 (最初の3件):",
-        validTasks.slice(0, 3).map((t) => ({
-          taskId: t.taskId,
-          行: t.row,
-          AI: t.ai,
-          プロンプト長: t.prompt.length,
-          answerCell: t.answerCell,
-        })),
-      );
-    } else {
+    if (validTasks.length === 0) {
       console.warn(
         "[step3-tasklist.js] [Step 3-2-12] [Warning] タスクが生成されませんでした。以下を確認してください:",
         {
@@ -860,5 +828,3 @@ if (typeof window !== "undefined") {
     }
   }
 }
-
-console.log("✅ [step3-tasklist.js] ファイル読み込み完了");

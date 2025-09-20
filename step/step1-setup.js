@@ -159,18 +159,6 @@ async function checkInternetConnection() {
 
     const responseTime = Date.now() - startTime;
 
-    console.log(`[step1-setup.js] [Step 1-1-1] APIレスポンス詳細:`);
-    console.log(
-      `  - ステータス: ${testResponse.status} ${testResponse.statusText}`,
-    );
-    console.log(`  - レスポンス時間: ${responseTime}ms`);
-    console.log(
-      `  - Headers: ${testResponse.headers.get("content-type") || "N/A"}`,
-    );
-    console.log(
-      `  - 認証トークン使用: ${authToken ? "あり (長さ: " + authToken.length + ")" : "なし"}`,
-    );
-
     if (testResponse.ok || testResponse.status === 401) {
       // 200 OK: APIディスカバリー成功または認証済み
       // 401 Unauthorized: APIは動作しているが認証が必要

@@ -1041,51 +1041,24 @@ class SpreadsheetDataManager {
     const enrichedTask = { ...task };
 
     try {
-      // 【統一修正】セル位置情報の統一処理
-      // Step3で設定されたanswerCell, logCell, workCellを優先使用
-      if (task.answerCell) {
-        enrichedTask.answerCellRef = task.answerCell;
-      }
-      if (task.logCell) {
-        enrichedTask.logCellRef = task.logCell;
-      }
-      if (task.workCell) {
-        enrichedTask.workCellRef = task.workCell;
-      }
+      // 【シンプル化】Step3の値をそのまま代入
+      enrichedTask.answerCell = task.answerCell;
+      enrichedTask.logCell = task.logCell;
+      enrichedTask.workCell = task.workCell;
 
       // 特殊タスク（レポート化、Genspark）の場合
       if (task.groupType === "report" || task.groupType === "genspark") {
-        // workCellが設定されていない場合はデフォルト値を使用
-        if (!enrichedTask.workCellRef) {
-          enrichedTask.workCellRef = `${task.column || "A"}${task.row || 1}`;
-        }
         ExecuteLogger.info(
-          `📊 [Step 4-2-4] 特殊タスク - 作業セル: ${enrichedTask.workCellRef}`,
+          `📊 [Step 4-2-4] 特殊タスク - 作業セル: ${enrichedTask.workCell}`,
         );
         return enrichedTask;
       }
 
-      // 通常タスクの場合のcellRef決定（後方互換性のため）
-      let cellRef = task.answerCell || task.workCell || task.cellRef;
+      // 【fallback削除】Step3で設定された値をそのまま使用
+      const cellRef = task.answerCell;
 
-      // セル参照がない場合はタスクデータから構築
-      if (!cellRef && task.column && task.row) {
-        cellRef = `${task.column}${task.row}`;
-      }
-
-      // 【統一修正】Step3で設定された情報を活用
-      if (!cellRef && task.cellInfo) {
-        cellRef = `${task.cellInfo.column}${task.cellInfo.row || task.row}`;
-      }
-
-      if (!cellRef || cellRef.includes("undefined")) {
-        ExecuteLogger.warn(
-          `⚠️ [Step 4-2-4] タスクにセル位置情報がありません:`,
-          task,
-        );
-        // 最低限の作業セル情報を設定
-        enrichedTask.workCellRef =
-          task.workCell || `${task.column || "C"}${task.row || 1}`;
+      if (!cellRef) {
+        ExecuteLogger.warn(`⚠️ [Step 4-2-4] answerCellが未設定: ${task.id}`);
         return enrichedTask;
       }
 
@@ -1890,6 +1863,32 @@ class WindowLifecycleManager {
         `❌ [Step 4-4-8] ウィンドウクローズエラー - ${task.aiType}:`,
         error,
       );
+    }
+  }
+
+  /**
+   * Step 4-4-9: aiType文字列を受け取る個別ウィンドウクローズ
+   * @param {string} aiType - AI種別
+   */
+  async closeWindow(aiType) {
+    ExecuteLogger.info(
+      `🔄 [WindowLifecycleManager] Step 4-4-9: ウィンドウクローズ(aiType指定) - ${aiType}`,
+    );
+
+    try {
+      // TaskオブジェクトのMockを作成してcloseTaskWindowを呼び出し
+      const mockTask = { aiType: aiType };
+      await this.closeTaskWindow(mockTask);
+
+      ExecuteLogger.info(
+        `✅ [Step 4-4-9] ウィンドウクローズ完了(aiType指定) - ${aiType}`,
+      );
+    } catch (error) {
+      ExecuteLogger.error(
+        `❌ [Step 4-4-9] ウィンドウクローズエラー(aiType指定) - ${aiType}:`,
+        error,
+      );
+      throw error;
     }
   }
 

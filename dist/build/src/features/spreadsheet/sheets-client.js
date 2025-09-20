@@ -1,19 +1,19 @@
 // sheets-client.js - Google Sheets APIクライアント
-import { getAuthService } from '../../services/auth-service.js';
-import { ConsoleLogger } from '../../utils/console-logger.js';
+import { getAuthService } from "../../services/auth-service.js";
+import { ConsoleLogger } from "../../utils/console-logger.js";
 
 class SheetsClient {
   constructor() {
     this.baseUrl = "https://sheets.googleapis.com/v4/spreadsheets";
-    this.logger = new ConsoleLogger('sheets-client');
-    
+    this.logger = new ConsoleLogger("sheets-client");
+
     // Google Sheets API制限
     this.limits = {
-      maxCellCharacters: 50000,      // 単一セルの最大文字数
-      maxApiRequestSize: 10485760,   // API リクエストの最大サイズ（10MB）
-      maxBatchUpdates: 100           // バッチ更新の最大件数
+      maxCellCharacters: 50000, // 単一セルの最大文字数
+      maxApiRequestSize: 10485760, // API リクエストの最大サイズ（10MB）
+      maxBatchUpdates: 100, // バッチ更新の最大件数
     };
-    
+
     // クォータ管理と監視
     this.quotaManager = {
       lastRequestTime: 0,
@@ -23,9 +23,9 @@ class SheetsClient {
       backoffMultiplier: 1,
       minInterval: 100, // 最小リクエスト間隔 (0.1秒に短縮)
       maxInterval: 5000, // 最大リクエスト間隔 (5秒に短縮)
-      windowDuration: 60000 // ウィンドウ期間 (1分)
+      windowDuration: 60000, // ウィンドウ期間 (1分)
     };
-    
+
     // エラー監視と統計
     this.errorMonitor = {
       totalErrors: 0,
@@ -36,7 +36,7 @@ class SheetsClient {
       errorHistory: [], // 最新100件のエラー履歴
       maxHistorySize: 100,
       recoveryAttempts: 0,
-      successfulRecoveries: 0
+      successfulRecoveries: 0,
     };
 
     // AuthServiceのキャッシュ（遅延初期化用）
@@ -59,12 +59,14 @@ class SheetsClient {
     const timestamp = info.timestamp || new Date();
     this.sendTimeRecords.set(taskId, {
       time: timestamp,
-      aiType: info.aiType || 'Unknown',
-      model: info.model || '不明',
-      function: info.function || '通常'
+      aiType: info.aiType || "Unknown",
+      model: info.model || "不明",
+      function: info.function || "通常",
     });
 
-    this.logger.log(`📝 [SheetsClient] 送信時刻記録: taskId=${taskId}, time=${timestamp.toLocaleString('ja-JP')}, aiType=${info.aiType}`);
+    this.logger.log(
+      `📝 [SheetsClient] 送信時刻記録: taskId=${taskId}, time=${timestamp.toLocaleString("ja-JP")}, aiType=${info.aiType}`,
+    );
   }
 
   /**
@@ -116,7 +118,7 @@ class SheetsClient {
    * @returns {Promise} Promise that resolves after the delay
    */
   sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**
@@ -127,13 +129,18 @@ class SheetsClient {
     if (!this._authService) {
       try {
         this._authService = getAuthService();
-        this.logger.log('[SheetsClient] AuthServiceを取得しました');
+        this.logger.log("[SheetsClient] AuthServiceを取得しました");
       } catch (error) {
-        this.logger.warn('[SheetsClient] AuthServiceの取得に失敗:', error.message);
+        this.logger.warn(
+          "[SheetsClient] AuthServiceの取得に失敗:",
+          error.message,
+        );
         // フォールバック: グローバル変数を試行
         if (globalThis.authService) {
           this._authService = globalThis.authService;
-          this.logger.warn('[SheetsClient] フォールバック: グローバル変数からAuthServiceを取得');
+          this.logger.warn(
+            "[SheetsClient] フォールバック: グローバル変数からAuthServiceを取得",
+          );
         }
       }
     }
@@ -145,35 +152,43 @@ class SheetsClient {
    * @param {Error} error - エラーオブジェクト
    * @param {string} context - エラー発生コンテキスト
    */
-  recordError(error, context = 'unknown') {
+  recordError(error, context = "unknown") {
     const now = Date.now();
     this.errorMonitor.totalErrors++;
     this.errorMonitor.lastErrorTime = now;
-    
+
     // エラータイプ別の統計
     if (this.isQuotaError(error)) {
       this.errorMonitor.quotaErrors++;
-    } else if (error.name === 'TimeoutError' || error.message.includes('timeout')) {
+    } else if (
+      error.name === "TimeoutError" ||
+      error.message.includes("timeout")
+    ) {
       this.errorMonitor.timeoutErrors++;
     } else {
       this.errorMonitor.otherErrors++;
     }
-    
+
     // エラー履歴に追加
     const errorRecord = {
       timestamp: now,
       context: context,
-      type: this.isQuotaError(error) ? 'quota' : 
-            error.name === 'TimeoutError' ? 'timeout' : 'other',
+      type: this.isQuotaError(error)
+        ? "quota"
+        : error.name === "TimeoutError"
+          ? "timeout"
+          : "other",
       message: error.message,
       name: error.name,
-      httpStatus: error.status || null
+      httpStatus: error.status || null,
     };
-    
+
     this.errorMonitor.errorHistory.push(errorRecord);
-    
+
     // 履歴サイズを制限
-    if (this.errorMonitor.errorHistory.length > this.errorMonitor.maxHistorySize) {
+    if (
+      this.errorMonitor.errorHistory.length > this.errorMonitor.maxHistorySize
+    ) {
       this.errorMonitor.errorHistory.shift();
     }
   }
@@ -184,9 +199,9 @@ class SheetsClient {
    */
   getErrorStats() {
     const recentErrors = this.errorMonitor.errorHistory.filter(
-      error => Date.now() - error.timestamp < 60 * 60 * 1000 // 1時間以内
+      (error) => Date.now() - error.timestamp < 60 * 60 * 1000, // 1時間以内
     );
-    
+
     return {
       total: this.errorMonitor.totalErrors,
       quota: this.errorMonitor.quotaErrors,
@@ -196,14 +211,20 @@ class SheetsClient {
       recentErrorCount: recentErrors.length,
       recoveryAttempts: this.errorMonitor.recoveryAttempts,
       successfulRecoveries: this.errorMonitor.successfulRecoveries,
-      recoveryRate: this.errorMonitor.recoveryAttempts > 0 ? 
-        (this.errorMonitor.successfulRecoveries / this.errorMonitor.recoveryAttempts * 100).toFixed(2) + '%' : 
-        'N/A',
+      recoveryRate:
+        this.errorMonitor.recoveryAttempts > 0
+          ? (
+              (this.errorMonitor.successfulRecoveries /
+                this.errorMonitor.recoveryAttempts) *
+              100
+            ).toFixed(2) + "%"
+          : "N/A",
       quotaManagerStatus: {
         backoffMultiplier: this.quotaManager.backoffMultiplier,
         requestCount: this.quotaManager.requestCount,
-        currentInterval: this.quotaManager.minInterval * this.quotaManager.backoffMultiplier
-      }
+        currentInterval:
+          this.quotaManager.minInterval * this.quotaManager.backoffMultiplier,
+      },
     };
   }
 
@@ -215,44 +236,46 @@ class SheetsClient {
     const now = Date.now();
     const recentErrorWindow = 5 * 60 * 1000; // 5分
     const recentErrors = this.errorMonitor.errorHistory.filter(
-      error => now - error.timestamp < recentErrorWindow
+      (error) => now - error.timestamp < recentErrorWindow,
     );
-    
+
     const status = {
       healthy: true,
-      level: 'good', // good, warning, critical
+      level: "good", // good, warning, critical
       issues: [],
-      recommendations: []
+      recommendations: [],
     };
-    
+
     // 最近のエラー頻度チェック
     if (recentErrors.length > 10) {
       status.healthy = false;
-      status.level = 'critical';
+      status.level = "critical";
       status.issues.push(`直近5分で${recentErrors.length}件のエラーが発生`);
-      status.recommendations.push('一時的な処理停止を推奨');
+      status.recommendations.push("一時的な処理停止を推奨");
     } else if (recentErrors.length > 5) {
-      status.level = 'warning';
+      status.level = "warning";
       status.issues.push(`直近5分で${recentErrors.length}件のエラーが発生`);
-      status.recommendations.push('処理頻度の調整を推奨');
+      status.recommendations.push("処理頻度の調整を推奨");
     }
-    
+
     // クォータエラーの頻度チェック
-    const recentQuotaErrors = recentErrors.filter(e => e.type === 'quota');
+    const recentQuotaErrors = recentErrors.filter((e) => e.type === "quota");
     if (recentQuotaErrors.length > 3) {
       status.healthy = false;
-      status.level = 'critical';
+      status.level = "critical";
       status.issues.push(`クォータエラーが頻発: ${recentQuotaErrors.length}件`);
-      status.recommendations.push('API使用量の大幅削減が必要');
+      status.recommendations.push("API使用量の大幅削減が必要");
     }
-    
+
     // バックオフ状態チェック
     if (this.quotaManager.backoffMultiplier > 5) {
-      status.level = status.level === 'critical' ? 'critical' : 'warning';
-      status.issues.push(`高いバックオフ倍率: ${this.quotaManager.backoffMultiplier}x`);
-      status.recommendations.push('システム負荷軽減のため処理間隔の延長');
+      status.level = status.level === "critical" ? "critical" : "warning";
+      status.issues.push(
+        `高いバックオフ倍率: ${this.quotaManager.backoffMultiplier}x`,
+      );
+      status.recommendations.push("システム負荷軽減のため処理間隔の延長");
     }
-    
+
     return status;
   }
 
@@ -262,10 +285,12 @@ class SheetsClient {
    * @returns {boolean} クォータエラーかどうか
    */
   isQuotaError(error) {
-    const errorMessage = error?.error?.message || error?.message || '';
-    return errorMessage.includes('Quota exceeded') || 
-           errorMessage.includes('quota') ||
-           errorMessage.includes('rateLimitExceeded');
+    const errorMessage = error?.error?.message || error?.message || "";
+    return (
+      errorMessage.includes("Quota exceeded") ||
+      errorMessage.includes("quota") ||
+      errorMessage.includes("rateLimitExceeded")
+    );
   }
 
   /**
@@ -276,42 +301,51 @@ class SheetsClient {
   async waitForQuota() {
     const now = Date.now();
     const timeSinceLastRequest = now - this.quotaManager.lastRequestTime;
-    
+
     // ウィンドウをリセット（1分経過した場合）
-    if (now - this.quotaManager.windowStart >= this.quotaManager.windowDuration) {
+    if (
+      now - this.quotaManager.windowStart >=
+      this.quotaManager.windowDuration
+    ) {
       this.quotaManager.requestCount = 0;
       this.quotaManager.windowStart = now;
-      
+
       // エラーがしばらく発生していない場合のみバックオフを減少
       const timeSinceLastError = now - this.errorMonitor.lastErrorTime;
-      if (timeSinceLastError > 60000) { // 1分以上エラーなし
-        this.quotaManager.backoffMultiplier = Math.max(1, this.quotaManager.backoffMultiplier * 0.9);
+      if (timeSinceLastError > 60000) {
+        // 1分以上エラーなし
+        this.quotaManager.backoffMultiplier = Math.max(
+          1,
+          this.quotaManager.backoffMultiplier * 0.9,
+        );
       }
     }
-    
+
     // クォータエラーが最近発生し、かつ深刻な場合のみ待機
-    const shouldWait = this.quotaManager.backoffMultiplier > 2 && this.quotaManager.quotaErrors > 2;
-    
+    const shouldWait =
+      this.quotaManager.backoffMultiplier > 2 &&
+      this.quotaManager.quotaErrors > 2;
+
     if (shouldWait) {
       // 必要な待機時間を計算
       const requiredInterval = Math.min(
         this.quotaManager.minInterval * this.quotaManager.backoffMultiplier,
-        this.quotaManager.maxInterval
+        this.quotaManager.maxInterval,
       );
-      
+
       if (timeSinceLastRequest < requiredInterval) {
         const waitTime = requiredInterval - timeSinceLastRequest;
-        this.detailedLog('info', `クォータ制限対応で待機中: ${waitTime}ms`, {
+        this.detailedLog("info", `クォータ制限対応で待機中: ${waitTime}ms`, {
           requestCount: this.quotaManager.requestCount,
           backoffMultiplier: this.quotaManager.backoffMultiplier,
           quotaErrors: this.quotaManager.quotaErrors,
-          reason: 'quota_error_detected'
+          reason: "quota_error_detected",
         });
         // Step 3: AI共通基盤のsleep関数を使用
         await this.sleep(waitTime);
       }
     }
-    
+
     this.quotaManager.lastRequestTime = Date.now();
     this.quotaManager.requestCount++;
   }
@@ -324,13 +358,14 @@ class SheetsClient {
     this.quotaManager.quotaErrors++;
     this.quotaManager.backoffMultiplier = Math.min(
       this.quotaManager.backoffMultiplier * 2,
-      10 // 最大10倍まで
+      10, // 最大10倍まで
     );
-    
-    this.detailedLog('warn', `クォータエラーを検出: バックオフ倍率を調整`, {
+
+    this.detailedLog("warn", `クォータエラーを検出: バックオフ倍率を調整`, {
       quotaErrors: this.quotaManager.quotaErrors,
       newBackoffMultiplier: this.quotaManager.backoffMultiplier,
-      nextMinInterval: this.quotaManager.minInterval * this.quotaManager.backoffMultiplier
+      nextMinInterval:
+        this.quotaManager.minInterval * this.quotaManager.backoffMultiplier,
     });
   }
 
@@ -340,10 +375,10 @@ class SheetsClient {
    * @param {string} requestType - リクエストタイプ（ログ用）
    * @returns {Promise} リクエスト結果
    */
-  async executeWithQuotaManagement(requestFunc, requestType = 'unknown') {
+  async executeWithQuotaManagement(requestFunc, requestType = "unknown") {
     let lastError;
     const maxRetries = 3;
-    
+
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         // 初回または成功が続いている場合は待機しない
@@ -353,86 +388,96 @@ class SheetsClient {
           // リトライ時またはエラー後は待機
           await this.waitForQuota();
         }
-        
+
         const result = await requestFunc();
-        
+
         // 成功時の処理
         if (attempt > 1) {
           this.errorMonitor.successfulRecoveries++;
-          this.detailedLog('info', `リトライ成功: ${requestType}`, {
+          this.detailedLog("info", `リトライ成功: ${requestType}`, {
             attempt,
             recoveryAttempts: this.errorMonitor.recoveryAttempts,
-            successfulRecoveries: this.errorMonitor.successfulRecoveries
+            successfulRecoveries: this.errorMonitor.successfulRecoveries,
           });
         }
-        
+
         // 成功が続いた場合、バックオフを徐々にリセット
         if (this.quotaManager.backoffMultiplier > 1) {
-          this.quotaManager.backoffMultiplier = Math.max(1, this.quotaManager.backoffMultiplier * 0.8);
+          this.quotaManager.backoffMultiplier = Math.max(
+            1,
+            this.quotaManager.backoffMultiplier * 0.8,
+          );
           if (this.quotaManager.backoffMultiplier === 1) {
             this.quotaManager.quotaErrors = 0; // エラーカウンタもリセット
-            this.detailedLog('info', 'クォータ制限が解除されました');
+            this.detailedLog("info", "クォータ制限が解除されました");
           }
         }
-        
+
         return result;
       } catch (error) {
         lastError = error;
-        
+
         // エラーを記録
         this.recordError(error, requestType);
-        
+
         if (this.isQuotaError(error)) {
           this.handleQuotaError(error);
           this.errorMonitor.recoveryAttempts++;
-          
+
           if (attempt < maxRetries) {
             // Retry-Afterヘッダーをチェック
             let retryDelay;
-            const retryAfter = error.response?.headers?.['retry-after'];
-            
+            const retryAfter = error.response?.headers?.["retry-after"];
+
             if (retryAfter) {
               // Retry-Afterヘッダーがある場合はそれに従う
               retryDelay = parseInt(retryAfter) * 1000; // 秒をミリ秒に変換
-              this.detailedLog('info', `Retry-Afterヘッダーを検出: ${retryAfter}秒後に再試行`);
+              this.detailedLog(
+                "info",
+                `Retry-Afterヘッダーを検出: ${retryAfter}秒後に再試行`,
+              );
             } else {
               // エクスポネンシャル・バックオフ
               retryDelay = Math.min(
                 5000 * Math.pow(2, attempt - 1),
-                60000 // 最大1分
+                60000, // 最大1分
               );
             }
-            
-            this.detailedLog('warn', `クォータエラー - リトライ ${attempt}/${maxRetries}`, {
-              requestType,
-              attempt,
-              retryDelay,
-              hasRetryAfter: !!retryAfter,
-              error: error,
-              errorStats: this.getErrorStats()
-            });
-            
+
+            this.detailedLog(
+              "warn",
+              `クォータエラー - リトライ ${attempt}/${maxRetries}`,
+              {
+                requestType,
+                attempt,
+                retryDelay,
+                hasRetryAfter: !!retryAfter,
+                error: error,
+                errorStats: this.getErrorStats(),
+              },
+            );
+
             // Step 3: AI共通基盤のsleep関数を使用
             await this.sleep(retryDelay);
             continue;
           }
         }
-        
+
         // 致命的な状況のチェック
         const healthStatus = this.getHealthStatus();
         if (!healthStatus.healthy) {
-          this.detailedLog('error', `システム健康状態が悪化`, {
+          this.detailedLog("error", `システム健康状態が悪化`, {
             requestType,
             healthStatus,
-            errorStats: this.getErrorStats()
+            errorStats: this.getErrorStats(),
           });
         }
-        
+
         // クォータエラー以外、または最大リトライ回数に達した場合はそのまま投げる
         throw error;
       }
     }
-    
+
     throw lastError;
   }
 
@@ -444,8 +489,10 @@ class SheetsClient {
    */
   validateDataSize(value, range) {
     const valueStr = String(value);
-    const byteSize = new TextEncoder().encode(JSON.stringify({values: [[value]]})).length;
-    
+    const byteSize = new TextEncoder().encode(
+      JSON.stringify({ values: [[value]] }),
+    ).length;
+
     const result = {
       isValid: true,
       warnings: [],
@@ -453,14 +500,16 @@ class SheetsClient {
       stats: {
         characterCount: valueStr.length,
         byteSize: byteSize,
-        range: range
-      }
+        range: range,
+      },
     };
 
     // 文字数チェック
     if (valueStr.length > this.limits.maxCellCharacters) {
       result.isValid = false;
-      result.errors.push(`文字数制限超過: ${valueStr.length}文字 (制限: ${this.limits.maxCellCharacters}文字)`);
+      result.errors.push(
+        `文字数制限超過: ${valueStr.length}文字 (制限: ${this.limits.maxCellCharacters}文字)`,
+      );
     } else if (valueStr.length > this.limits.maxCellCharacters * 0.9) {
       result.warnings.push(`文字数が制限の90%を超過: ${valueStr.length}文字`);
     }
@@ -468,7 +517,9 @@ class SheetsClient {
     // APIリクエストサイズチェック
     if (byteSize > this.limits.maxApiRequestSize) {
       result.isValid = false;
-      result.errors.push(`リクエストサイズ制限超過: ${byteSize}バイト (制限: ${this.limits.maxApiRequestSize}バイト)`);
+      result.errors.push(
+        `リクエストサイズ制限超過: ${byteSize}バイト (制限: ${this.limits.maxApiRequestSize}バイト)`,
+      );
     }
 
     return result;
@@ -493,7 +544,7 @@ class SheetsClient {
    */
   safeSerialize(data) {
     try {
-      if (!data || typeof data !== 'object') {
+      if (!data || typeof data !== "object") {
         return data;
       }
 
@@ -505,9 +556,11 @@ class SheetsClient {
             name: value.name,
             message: value.message,
             stack: value.stack,
-            ...(value.response ? { response: this.safeSerialize(value.response) } : {})
+            ...(value.response
+              ? { response: this.safeSerialize(value.response) }
+              : {}),
           };
-        } else if (value && typeof value === 'object') {
+        } else if (value && typeof value === "object") {
           try {
             // 循環参照を避けてJSONシリアライズ可能かチェック
             JSON.stringify(value);
@@ -540,31 +593,35 @@ class SheetsClient {
       // 少し待機してからデータを取得（API遅延を考慮）
       // Step 3: AI共通基盤のsleep関数を使用
       await this.sleep(1000);
-      
+
       // 実際のセル内容を取得
       const actualData = await this.getSheetData(spreadsheetId, range, gid);
-      const actualValue = actualData?.[0]?.[0] || '';
+      const actualValue = actualData?.[0]?.[0] || "";
       const originalStr = String(originalValue);
-      
+
       const result = {
         isMatch: false,
         truncated: false,
         stats: {
           original: {
             length: originalStr.length,
-            preview: originalStr.substring(0, 100) + (originalStr.length > 100 ? '...' : '')
+            preview:
+              originalStr.substring(0, 100) +
+              (originalStr.length > 100 ? "..." : ""),
           },
           actual: {
             length: actualValue.length,
-            preview: actualValue.substring(0, 100) + (actualValue.length > 100 ? '...' : '')
+            preview:
+              actualValue.substring(0, 100) +
+              (actualValue.length > 100 ? "..." : ""),
           },
-          range: range
-        }
+          range: range,
+        },
       };
 
       // 完全一致チェック
       result.isMatch = actualValue === originalStr;
-      
+
       // 切り詰めチェック（実際のデータが短い場合）
       if (!result.isMatch && actualValue.length < originalStr.length) {
         result.truncated = true;
@@ -573,22 +630,22 @@ class SheetsClient {
       }
 
       this.detailedLog(
-        result.isMatch ? 'info' : 'warn',
-        `書き込み検証: ${result.isMatch ? '完全一致' : result.truncated ? '切り詰め検出' : '不一致'}`,
-        result.stats
+        result.isMatch ? "info" : "warn",
+        `書き込み検証: ${result.isMatch ? "完全一致" : result.truncated ? "切り詰め検出" : "不一致"}`,
+        result.stats,
       );
 
       return result;
     } catch (error) {
-      this.detailedLog('error', `書き込み検証エラー: ${error.message}`, { 
-        range, 
+      this.detailedLog("error", `書き込み検証エラー: ${error.message}`, {
+        range,
         error: error,
-        errorType: 'verification_error'
+        errorType: "verification_error",
       });
       return {
         isMatch: false,
         error: error.message,
-        stats: { range }
+        stats: { range },
       };
     }
   }
@@ -606,30 +663,34 @@ class SheetsClient {
 
     const chunks = [];
     let currentPos = 0;
-    
+
     while (currentPos < text.length) {
       let chunkEnd = Math.min(currentPos + maxChunkSize, text.length);
-      
+
       // 改行やスペースで自然に分割する（可能な場合）
       if (chunkEnd < text.length) {
-        const nearbyNewline = text.lastIndexOf('\n', chunkEnd);
-        const nearbySpace = text.lastIndexOf(' ', chunkEnd);
+        const nearbyNewline = text.lastIndexOf("\n", chunkEnd);
+        const nearbySpace = text.lastIndexOf(" ", chunkEnd);
         const bestSplit = Math.max(nearbyNewline, nearbySpace);
-        
+
         if (bestSplit > currentPos + maxChunkSize * 0.8) {
           chunkEnd = bestSplit + 1; // 改行/スペースの次の文字から始める
         }
       }
-      
+
       chunks.push(text.substring(currentPos, chunkEnd));
       currentPos = chunkEnd;
     }
 
-    this.detailedLog('info', `大容量データを${chunks.length}個のチャンクに分割`, {
-      originalLength: text.length,
-      chunkCount: chunks.length,
-      chunkSizes: chunks.map(chunk => chunk.length)
-    });
+    this.detailedLog(
+      "info",
+      `大容量データを${chunks.length}個のチャンクに分割`,
+      {
+        originalLength: text.length,
+        chunkCount: chunks.length,
+        chunkSizes: chunks.map((chunk) => chunk.length),
+      },
+    );
 
     return chunks;
   }
@@ -644,7 +705,7 @@ class SheetsClient {
    */
   async updateCellWithSplitting(spreadsheetId, baseRange, text, gid = null) {
     const chunks = this.splitLargeText(text);
-    
+
     if (chunks.length === 1) {
       // 分割不要な場合は通常の書き込み
       return await this.updateCell(spreadsheetId, baseRange, text, gid);
@@ -663,33 +724,42 @@ class SheetsClient {
     // 各チャンクを連続する行に書き込み
     for (let i = 0; i < chunks.length; i++) {
       const targetRange = `${columnLetter}${rowNumber + i}`;
-      const chunkResult = await this.updateCell(spreadsheetId, targetRange, chunks[i], gid);
+      const chunkResult = await this.updateCell(
+        spreadsheetId,
+        targetRange,
+        chunks[i],
+        gid,
+      );
       results.push({
         range: targetRange,
         chunkIndex: i,
         chunkSize: chunks[i].length,
-        result: chunkResult
+        result: chunkResult,
       });
 
       // API レート制限を避けるため待機（クォータ管理により自動調整）
       if (i < chunks.length - 1) {
         // Step 3: AI共通基盤のsleep関数を使用
-      await this.sleep(1000); // 200ms → 1000ms に変更
+        await this.sleep(1000); // 200ms → 1000ms に変更
       }
     }
 
-    this.detailedLog('info', `分割書き込み完了: ${baseRange}から${chunks.length}セル`, {
-      baseRange,
-      totalChunks: chunks.length,
-      results: results.map(r => ({ range: r.range, size: r.chunkSize }))
-    });
+    this.detailedLog(
+      "info",
+      `分割書き込み完了: ${baseRange}から${chunks.length}セル`,
+      {
+        baseRange,
+        totalChunks: chunks.length,
+        results: results.map((r) => ({ range: r.range, size: r.chunkSize })),
+      },
+    );
 
     return {
       success: true,
       splitMode: true,
       baseRange,
       chunks: results,
-      totalChunks: chunks.length
+      totalChunks: chunks.length,
     };
   }
 
@@ -698,16 +768,16 @@ class SheetsClient {
    */
   getColumnName(index) {
     if (index < 0) return null;
-    
-    let columnName = '';
+
+    let columnName = "";
     let num = index;
-    
+
     while (num >= 0) {
       columnName = String.fromCharCode(65 + (num % 26)) + columnName;
       num = Math.floor(num / 26) - 1;
       if (num < 0) break;
     }
-    
+
     return columnName;
   }
 
@@ -720,7 +790,7 @@ class SheetsClient {
     return await this.executeWithQuotaManagement(async () => {
       const authService = await this.getAuthService();
       if (!authService) {
-        throw new Error('AuthServiceが利用できません');
+        throw new Error("AuthServiceが利用できません");
       }
       const token = await authService.getAuthToken();
       const url = `${this.baseUrl}/${spreadsheetId}?fields=properties,sheets(properties)`;
@@ -734,11 +804,13 @@ class SheetsClient {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(`Sheets API error: ${error.error?.message || 'Unknown error'}`);
+        throw new Error(
+          `Sheets API error: ${error.error?.message || "Unknown error"}`,
+        );
       }
 
       return await response.json();
-    }, 'getSpreadsheetMetadata');
+    }, "getSpreadsheetMetadata");
   }
 
   /**
@@ -768,7 +840,7 @@ class SheetsClient {
   async loadSheet(spreadsheetId, gid) {
     return await this.executeWithQuotaManagement(async () => {
       // キャッシュ機能削除 - 常に最新データを取得
-      
+
       // GIDからシート名を取得
       const sheetName = await this.getSheetNameFromGid(spreadsheetId, gid);
       if (!sheetName) {
@@ -778,49 +850,54 @@ class SheetsClient {
       // Google Sheets API でデータを取得
       const authService = await this.getAuthService();
       if (!authService) {
-        throw new Error('AuthServiceが利用できません');
+        throw new Error("AuthServiceが利用できません");
       }
       const accessToken = await authService.getAuthToken();
       const range = `'${sheetName}'!A1:CZ1000`;
       const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueRenderOption=FORMATTED_VALUE`;
-      
-      this.logger.log('SheetsClient', `スプレッドシート読み込み開始: ${sheetName}`);
-      
+
+      this.logger.log(
+        "SheetsClient",
+        `スプレッドシート読み込み開始: ${sheetName}`,
+      );
+
       const response = await fetch(url, {
         headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
+          Authorization: `Bearer ${accessToken}`,
+        },
       });
 
       if (!response.ok) {
         const error = await response.text();
-        this.detailedLog('error', 'API エラー', {
+        this.detailedLog("error", "API エラー", {
           error: error,
-          errorType: 'load_sheet_error',
+          errorType: "load_sheet_error",
           httpStatus: response.status,
-          sheetName: sheetName
+          sheetName: sheetName,
         });
         throw new Error(`スプレッドシートの読み込みに失敗: ${error}`);
       }
 
       const result = await response.json();
-      
+
       // values が空の場合は空配列を設定
       const data = result.values || [];
-      
+
       // 無効な行（undefinedやnullを含む行）をフィルタ
-      const filteredData = data.filter(row => {
+      const filteredData = data.filter((row) => {
         if (!Array.isArray(row)) return false;
         // 少なくとも1つの有効な値があるかチェック
-        return row.some(cell => cell !== undefined && cell !== null && cell !== '');
+        return row.some(
+          (cell) => cell !== undefined && cell !== null && cell !== "",
+        );
       });
 
       const parsedData = this.parseSheetData(filteredData);
-      
+
       // キャッシュ機能削除 - 保存しない
 
       return parsedData;
-    }, 'loadSheet');
+    }, "loadSheet");
   }
 
   /**
@@ -830,8 +907,8 @@ class SheetsClient {
   parseSheetData(data) {
     // データ配列の実際のサイズを確認とパディング処理
     if (data.length > 0) {
-      const maxColumns = Math.max(...data.map(row => row ? row.length : 0));
-      
+      const maxColumns = Math.max(...data.map((row) => (row ? row.length : 0)));
+
       // メニュー行の列数を基準にパディング処理
       let targetColumns = maxColumns;
       for (let row of data) {
@@ -840,7 +917,7 @@ class SheetsClient {
           break;
         }
       }
-      
+
       // 全ての行をメニュー行の列数に合わせてパディング
       for (let i = 0; i < data.length; i++) {
         if (!data[i]) {
@@ -850,8 +927,11 @@ class SheetsClient {
           data[i].push("");
         }
       }
-      
-      this.logger.log("SheetsClient", `データ処理完了: ${data.length}行 x ${targetColumns}列`);
+
+      this.logger.log(
+        "SheetsClient",
+        `データ処理完了: ${data.length}行 x ${targetColumns}列`,
+      );
     }
 
     // データ構造を解析
@@ -864,18 +944,20 @@ class SheetsClient {
       columnMapping: {},
       workRows: [],
       rawData: data,
-      values: data,  // valuesも含める（互換性のため）
-      aiColumns: {}     // aiColumnsも初期化
+      values: data, // valuesも含める（互換性のため）
+      aiColumns: {}, // aiColumnsも初期化
     };
-    
+
     // SPREADSHEET_CONFIGを使用（グローバル変数またはインポート）
-    const config = typeof SPREADSHEET_CONFIG !== "undefined"
-        ? SPREADSHEET_CONFIG
-        : null;
-        
+    const config =
+      typeof SPREADSHEET_CONFIG !== "undefined" ? SPREADSHEET_CONFIG : null;
+
     if (!config) {
       // configがない場合は最小限の構造だけ返す
-      this.logger.warn("SheetsClient", "SPREADSHEET_CONFIG が見つかりません。基本構造のみ返します。");
+      this.logger.warn(
+        "SheetsClient",
+        "SPREADSHEET_CONFIG が見つかりません。基本構造のみ返します。",
+      );
       return result;
     }
 
@@ -894,7 +976,7 @@ class SheetsClient {
         for (let j = 0; j < row.length; j++) {
           const cellValue = row[j];
           const columnLetter = this.getColumnName(j);
-          
+
           // プロンプト列の検出とAI列としての登録（メインのプロンプト列のみ）
           if (cellValue && cellValue === "プロンプト") {
             // AI行の値を確認（AI行が存在する場合）
@@ -905,14 +987,14 @@ class SheetsClient {
                 aiType = "3type";
               }
             }
-            
+
             // aiColumnsに登録
             result.aiColumns[columnLetter] = {
               index: j,
               letter: columnLetter,
               header: cellValue,
               type: aiType,
-              promptDescription: ""
+              promptDescription: "",
             };
           }
         }
@@ -941,7 +1023,7 @@ class SheetsClient {
         result.workRows.push({
           index: i,
           number: i + 1,
-          data: row
+          data: row,
         });
       }
     }
@@ -953,43 +1035,49 @@ class SheetsClient {
         `作業行検出: ${result.workRows.length}行を検出`,
       );
     }
-    
+
     // AI列の最終処理（メニュー行とAI行の両方が揃った後）
     if (result.menuRow && result.menuRow.data) {
       const menuRowData = result.menuRow.data;
       const aiRowData = result.aiRow ? result.aiRow.data : [];
-      
+
       for (let j = 0; j < menuRowData.length; j++) {
         const cellValue = menuRowData[j];
         const columnLetter = this.getColumnName(j);
-        
+
         // プロンプト列の検出（メインのプロンプト列のみ）
         if (cellValue && cellValue === "プロンプト") {
           let aiType = "single"; // デフォルト
-          
+
           // AI行の値を確認
           if (aiRowData && aiRowData[j] && aiRowData[j].includes("3種類")) {
             aiType = "3type";
           }
           // メニュー行の次の列をチェック（3種類AIレイアウト）
           else if (
-            (menuRowData[j + 1] && menuRowData[j + 1].includes("ChatGPT") &&
-             menuRowData[j + 2] && menuRowData[j + 2].includes("Claude") &&
-             menuRowData[j + 3] && menuRowData[j + 3].includes("Gemini")) ||
-            (menuRowData[j + 1] && menuRowData[j + 1].includes("回答") &&
-             menuRowData[j + 2] && menuRowData[j + 2].includes("回答") &&
-             menuRowData[j + 3] && menuRowData[j + 3].includes("回答"))
+            (menuRowData[j + 1] &&
+              menuRowData[j + 1].includes("ChatGPT") &&
+              menuRowData[j + 2] &&
+              menuRowData[j + 2].includes("Claude") &&
+              menuRowData[j + 3] &&
+              menuRowData[j + 3].includes("Gemini")) ||
+            (menuRowData[j + 1] &&
+              menuRowData[j + 1].includes("回答") &&
+              menuRowData[j + 2] &&
+              menuRowData[j + 2].includes("回答") &&
+              menuRowData[j + 3] &&
+              menuRowData[j + 3].includes("回答"))
           ) {
             aiType = "3type";
           }
-          
+
           // aiColumnsに登録（上書き）
           result.aiColumns[columnLetter] = {
             index: j,
             letter: columnLetter,
             header: cellValue,
             type: aiType,
-            promptDescription: ""
+            promptDescription: "",
           };
         }
       }
@@ -1000,8 +1088,11 @@ class SheetsClient {
     if (aiColumnCount > 0) {
       const aiColumnSummary = Object.entries(result.aiColumns)
         .map(([letter, info]) => `${letter}列(${info.type})`)
-        .join(', ');
-      this.logger.log("SheetsClient", `AI列検出完了: ${aiColumnCount}列 - ${aiColumnSummary}`);
+        .join(", ");
+      this.logger.log(
+        "SheetsClient",
+        `AI列検出完了: ${aiColumnCount}列 - ${aiColumnSummary}`,
+      );
     }
 
     this.logger.log("SheetsClient", "読み込み完了", result);
@@ -1019,61 +1110,75 @@ class SheetsClient {
     if (!ranges || ranges.length === 0) {
       return {};
     }
-    
+
     return await this.executeWithQuotaManagement(async () => {
       // シート名を取得
       let sheetName = null;
       if (gid) {
         sheetName = await this.getSheetNameFromGid(spreadsheetId, gid);
       }
-      
+
       // 範囲にシート名を追加
-      const fullRanges = ranges.map(range => {
+      const fullRanges = ranges.map((range) => {
         if (sheetName && !range.includes("!")) {
-          return `'${sheetName}'!${range}`;
+          // シート名にシングルクォートが含まれる場合はエスケープ
+          const escapedSheetName = sheetName.replace(/'/g, "''");
+          // 日本語、スペース、特殊文字が含まれる場合、または数字で始まる場合はクォートで囲む
+          // ASCIIの英数字とアンダースコアのみの場合はクォート不要
+          const needsQuotes = !/^[A-Za-z_][A-Za-z0-9_]*$/.test(sheetName);
+          return needsQuotes
+            ? `'${escapedSheetName}'!${range}`
+            : `${escapedSheetName}!${range}`;
         }
         return range;
       });
 
       const authService = await this.getAuthService();
       if (!authService) {
-        throw new Error('AuthServiceが利用できません');
+        throw new Error("AuthServiceが利用できません");
       }
       const token = await authService.getAuthToken();
-      const rangesParam = fullRanges.map(r => `ranges=${encodeURIComponent(r)}`).join('&');
+      const rangesParam = fullRanges
+        .map((r) => `ranges=${encodeURIComponent(r)}`)
+        .join("&");
       const url = `${this.baseUrl}/${spreadsheetId}/values:batchGet?${rangesParam}&valueRenderOption=FORMATTED_VALUE`;
-      
+
       const response = await fetch(url, {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
       });
-      
+
       if (!response.ok) {
         const error = await response.json();
-        this.detailedLog('error', `バッチ取得APIエラー`, {
+        this.detailedLog("error", `バッチ取得APIエラー`, {
           error: error,
-          errorType: 'batch_get_error',
-          httpStatus: response.status
+          errorType: "batch_get_error",
+          httpStatus: response.status,
         });
-        throw new Error(`Sheets API error: ${error.error?.message || 'Unknown error'}`);
+        throw new Error(
+          `Sheets API error: ${error.error?.message || "Unknown error"}`,
+        );
       }
-      
+
       const data = await response.json();
       const result = {};
-      
+
       // レスポンスを元の範囲にマッピング
       if (data.valueRanges) {
         data.valueRanges.forEach((valueRange, index) => {
           const originalRange = ranges[index];
           // 行全体のデータを返す（最初のセルだけでなく）
-          result[originalRange] = valueRange.values && valueRange.values[0] ? valueRange.values[0] : [];
+          result[originalRange] =
+            valueRange.values && valueRange.values[0]
+              ? valueRange.values[0]
+              : [];
         });
       }
-      
+
       return result;
-    }, 'batchGetSheetData');
+    }, "batchGetSheetData");
   }
 
   /**
@@ -1085,7 +1190,6 @@ class SheetsClient {
    */
   async getSheetData(spreadsheetId, range, gid = null) {
     return await this.executeWithQuotaManagement(async () => {
-      
       // gidが指定されている場合、シート名を取得して範囲を更新
       if (gid) {
         const sheetName = await this.getSheetNameFromGid(spreadsheetId, gid);
@@ -1104,12 +1208,12 @@ class SheetsClient {
 
       const authService = await this.getAuthService();
       if (!authService) {
-        throw new Error('AuthServiceが利用できません');
+        throw new Error("AuthServiceが利用できません");
       }
       const token = await authService.getAuthToken();
       // valueRenderOptionを追加して、空セルも含めて全データを取得
       const url = `${this.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(range)}?valueRenderOption=FORMATTED_VALUE`;
-      
+
       const response = await fetch(url, {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -1119,21 +1223,23 @@ class SheetsClient {
 
       if (!response.ok) {
         const error = await response.json();
-        this.detailedLog('error', `APIエラー`, {
+        this.detailedLog("error", `APIエラー`, {
           error: error,
-          errorType: 'get_sheet_data_error',
+          errorType: "get_sheet_data_error",
           httpStatus: response.status,
-          range: range
+          range: range,
         });
-        throw new Error(`Sheets API error: ${error.error?.message || 'Unknown error'}`);
+        throw new Error(
+          `Sheets API error: ${error.error?.message || "Unknown error"}`,
+        );
       }
 
       const data = await response.json();
-      
+
       const result = data.values || [];
 
       return result;
-    }, 'getSheetData');
+    }, "getSheetData");
   }
 
   /**
@@ -1144,33 +1250,34 @@ class SheetsClient {
    */
   async loadAutoAIData(spreadsheetId, gid = null) {
     // キャッシュ機能を削除 - 常に最新データを取得
-    
+
     this.logger.log("SheetsClient", `スプレッドシート読み込み開始`);
 
     // シート名を取得（gidが指定されている場合）
     let sheetName = null;
-    
+
     if (gid) {
       sheetName = await this.getSheetNameFromGid(spreadsheetId, gid);
     }
-    
+
     // シート名が取得できなかった場合、デフォルトでSheet1を使用
     if (!sheetName) {
-      sheetName = "Sheet1";  // デフォルトのシート名
+      sheetName = "Sheet1"; // デフォルトのシート名
     }
-    
+
     // ===== STEP 1: A列のみを読み込んで行構造を把握 =====
     const columnAData = await this.getSheetData(spreadsheetId, "A:A", gid);
-    
+
     // 設定を取得
-    const config = typeof SPREADSHEET_CONFIG !== "undefined"
-        ? SPREADSHEET_CONFIG
-        : null;
-        
+    const config =
+      typeof SPREADSHEET_CONFIG !== "undefined" ? SPREADSHEET_CONFIG : null;
+
     if (!config) {
-      throw new Error("SPREADSHEET_CONFIG が見つかりません。config.js を読み込んでください。");
+      throw new Error(
+        "SPREADSHEET_CONFIG が見つかりません。config.js を読み込んでください。",
+      );
     }
-    
+
     // ===== STEP 2: A列から必要な行番号を特定 =====
     let menuRowIndex = -1;
     let controlRowIndex = -1;
@@ -1179,15 +1286,15 @@ class SheetsClient {
     let taskRowIndex = -1;
     const workRows = [];
     const controlRows = []; // 列制御の可能性がある行（1-10行目）
-    
+
     for (let i = 0; i < columnAData.length; i++) {
       const firstCell = columnAData[i] ? columnAData[i][0] : "";
-      
+
       // 制御行候補（1-10行目）を記録
       if (i < 10) {
         controlRows.push(i);
       }
-      
+
       // メニュー行
       if (firstCell === config.rowIdentifiers.menuRow.keyword) {
         menuRowIndex = i;
@@ -1211,46 +1318,53 @@ class SheetsClient {
       // 作業行（数字で始まる行）
       else if (/^\d+$/.test(firstCell)) {
         const lastControlRowIndex = Math.max(
-          menuRowIndex, controlRowIndex, aiRowIndex, modelRowIndex, taskRowIndex
+          menuRowIndex,
+          controlRowIndex,
+          aiRowIndex,
+          modelRowIndex,
+          taskRowIndex,
         );
         if (i > lastControlRowIndex) {
           workRows.push({
             index: i,
             number: i + 1,
-            aValue: firstCell
+            aValue: firstCell,
           });
         }
       }
     }
-    
+
     // 解析結果のサマリーログ
     const detectedRows = [
-      menuRowIndex >= 0 ? 'メニュー' : null,
-      controlRowIndex >= 0 ? '制御' : null,
-      aiRowIndex >= 0 ? 'AI' : null,
-      modelRowIndex >= 0 ? 'モデル' : null,
-      taskRowIndex >= 0 ? '機能' : null
+      menuRowIndex >= 0 ? "メニュー" : null,
+      controlRowIndex >= 0 ? "制御" : null,
+      aiRowIndex >= 0 ? "AI" : null,
+      modelRowIndex >= 0 ? "モデル" : null,
+      taskRowIndex >= 0 ? "機能" : null,
     ].filter(Boolean);
-    this.logger.log("SheetsClient", `行構造解析完了: ${detectedRows.join('・')}行検出, 作業行${workRows.length}行`);
-    
+    this.logger.log(
+      "SheetsClient",
+      `行構造解析完了: ${detectedRows.join("・")}行検出, 作業行${workRows.length}行`,
+    );
+
     // ===== STEP 3: 必要な行だけを読み込み =====
     const rowsToFetch = [];
     const rowLabels = {};
-    
+
     // メニュー行は必須
     if (menuRowIndex >= 0) {
       rowsToFetch.push(menuRowIndex + 1); // 1ベースの行番号
-      rowLabels[menuRowIndex + 1] = 'menu';
+      rowLabels[menuRowIndex + 1] = "menu";
     } else {
       throw new Error("メニュー行が見つかりません");
     }
-    
+
     // 制御行（明示的な「制御」行）
     if (controlRowIndex >= 0) {
       rowsToFetch.push(controlRowIndex + 1);
-      rowLabels[controlRowIndex + 1] = 'control';
+      rowLabels[controlRowIndex + 1] = "control";
     }
-    
+
     // 列制御の可能性がある行（1-10行目）も読み込む
     for (const rowIndex of controlRows) {
       const rowNum = rowIndex + 1;
@@ -1259,22 +1373,29 @@ class SheetsClient {
         rowLabels[rowNum] = `control_candidate_${rowNum}`;
       }
     }
-    
+
     // AI行（タスクグループ作成時に必要）
     if (aiRowIndex >= 0) {
       rowsToFetch.push(aiRowIndex + 1);
-      rowLabels[aiRowIndex + 1] = 'ai';
+      rowLabels[aiRowIndex + 1] = "ai";
     }
-    
+
     // モデル行と機能行は実行時に動的取得するため、ここでは読み込まない
     // ただし、位置情報は保持
 
     // 作業行も読み込むために、全データを一括取得する方法に変更
     // A1からCZ列の最後の行まですべて取得
     const lastRowNum = Math.max(columnAData.length, 600); // 最低600行まで読み込み
-    const fullRangeData = await this.getSheetData(spreadsheetId, `A1:CZ${lastRowNum}`, gid);
+    const fullRangeData = await this.getSheetData(
+      spreadsheetId,
+      `A1:CZ${lastRowNum}`,
+      gid,
+    );
 
-    this.logger.log("SheetsClient", `全データ読み込み: ${fullRangeData.length}行 x ${fullRangeData[0]?.length || 0}列`);
+    this.logger.log(
+      "SheetsClient",
+      `全データ読み込み: ${fullRangeData.length}行 x ${fullRangeData[0]?.length || 0}列`,
+    );
 
     // バッチデータの代わりに全データから必要な行を抽出
     const batchData = {};
@@ -1283,18 +1404,24 @@ class SheetsClient {
         batchData[`A${rowNum}:CZ${rowNum}`] = fullRangeData[rowNum - 1];
       }
     }
-    
-    
+
     // ===== STEP 4: データ構造を構築 =====
     // メニュー行のデータを取得（新しい範囲形式に対応）
-    const menuRowData = batchData[`A${menuRowIndex + 1}:CZ${menuRowIndex + 1}`] || [];
+    const menuRowData =
+      batchData[`A${menuRowIndex + 1}:CZ${menuRowIndex + 1}`] || [];
     const maxColumns = menuRowData.length;
     this.logger.log("SheetsClient", `メニュー行の列数: ${maxColumns}列`);
-    
+
     // 他の必要な行データを取得（新しい範囲形式に対応）
-    const aiRowData = aiRowIndex >= 0 ? (batchData[`A${aiRowIndex + 1}:CZ${aiRowIndex + 1}`] || []) : [];
-    const controlRowData = controlRowIndex >= 0 ? (batchData[`A${controlRowIndex + 1}:CZ${controlRowIndex + 1}`] || []) : [];
-    
+    const aiRowData =
+      aiRowIndex >= 0
+        ? batchData[`A${aiRowIndex + 1}:CZ${aiRowIndex + 1}`] || []
+        : [];
+    const controlRowData =
+      controlRowIndex >= 0
+        ? batchData[`A${controlRowIndex + 1}:CZ${controlRowIndex + 1}`] || []
+        : [];
+
     // 列制御候補行を収集
     const controlCandidateRows = [];
     for (const rowIndex of controlRows) {
@@ -1303,11 +1430,11 @@ class SheetsClient {
       if (rowData.length > 0) {
         controlCandidateRows.push({
           index: rowIndex,
-          data: rowData
+          data: rowData,
         });
       }
     }
-    
+
     // 全ての行データをメニュー行の列数に合わせてパディング
     const paddedRows = {};
     for (const [range, rowData] of Object.entries(batchData)) {
@@ -1317,10 +1444,10 @@ class SheetsClient {
       }
       paddedRows[range] = paddedRow;
     }
-    
+
     // rawDataを作成 - 全データをそのまま使用
     // fullRangeDataには全行のデータが含まれている
-    const rawData = fullRangeData.map(row => {
+    const rawData = fullRangeData.map((row) => {
       // 各行をmaxColumnsまでパディング
       const paddedRow = [...(row || [])];
       while (paddedRow.length < maxColumns) {
@@ -1340,23 +1467,23 @@ class SheetsClient {
       columnMapping: {},
       workRows: [],
       rawData: rawData,
-      values: rawData,  // valuesも含める（互換性のため）
-      aiColumns: {},     // aiColumnsも初期化
-      sheetName: sheetName  // シート名を追加
+      values: rawData, // valuesも含める（互換性のため）
+      aiColumns: {}, // aiColumnsも初期化
+      sheetName: sheetName, // シート名を追加
     };
-    
 
     // メニュー行を設定
     if (menuRowIndex >= 0) {
       result.menuRow = {
         index: menuRowIndex,
-        data: paddedRows[`${menuRowIndex + 1}:${menuRowIndex + 1}`] || menuRowData
+        data:
+          paddedRows[`${menuRowIndex + 1}:${menuRowIndex + 1}`] || menuRowData,
       };
       // 列マッピングを作成
       for (let j = 0; j < menuRowData.length; j++) {
         const cellValue = menuRowData[j];
         const columnLetter = this.getColumnName(j);
-        
+
         // プロンプト列の検出とAI列としての登録（メインのプロンプト列のみ）
         if (cellValue && cellValue === "プロンプト") {
           // AI行の値を確認（AI行が存在する場合）
@@ -1367,21 +1494,19 @@ class SheetsClient {
               aiType = "3type";
             }
           }
-          
+
           // aiColumnsに登録
           result.aiColumns[columnLetter] = {
             index: j,
             letter: columnLetter,
             header: cellValue,
             type: aiType,
-            promptDescription: ""
+            promptDescription: "",
           };
         }
-        
+
         // columnTypesのマッピング
-        for (const [key, columnConfig] of Object.entries(
-          config.columnTypes,
-        )) {
+        for (const [key, columnConfig] of Object.entries(config.columnTypes)) {
           if (cellValue === columnConfig.keyword) {
             result.columnMapping[j] = {
               type: columnConfig.type,
@@ -1398,7 +1523,9 @@ class SheetsClient {
     if (controlRowIndex >= 0) {
       result.controlRow = {
         index: controlRowIndex,
-        data: paddedRows[`${controlRowIndex + 1}:${controlRowIndex + 1}`] || controlRowData
+        data:
+          paddedRows[`${controlRowIndex + 1}:${controlRowIndex + 1}`] ||
+          controlRowData,
       };
     }
 
@@ -1406,7 +1533,7 @@ class SheetsClient {
     if (aiRowIndex >= 0) {
       result.aiRow = {
         index: aiRowIndex,
-        data: paddedRows[`${aiRowIndex + 1}:${aiRowIndex + 1}`] || aiRowData
+        data: paddedRows[`${aiRowIndex + 1}:${aiRowIndex + 1}`] || aiRowData,
       };
     }
 
@@ -1414,7 +1541,7 @@ class SheetsClient {
     if (modelRowIndex >= 0) {
       result.modelRow = {
         index: modelRowIndex,
-        data: null // 実行時に動的取得
+        data: null, // 実行時に動的取得
       };
       this.logger.log("SheetsClient", `モデル行位置: 行${modelRowIndex + 1}`);
     }
@@ -1423,7 +1550,7 @@ class SheetsClient {
     if (taskRowIndex >= 0) {
       result.taskRow = {
         index: taskRowIndex,
-        data: null // 実行時に動的取得
+        data: null, // 実行時に動的取得
       };
       this.logger.log("SheetsClient", `機能行位置: 行${taskRowIndex + 1}`);
     }
@@ -1435,7 +1562,7 @@ class SheetsClient {
         number: workRowInfo.number,
         data: rawData[workRowInfo.index] || [], // ダミーデータ
         control: null, // B列の制御情報は実行時に取得
-        prompts: {} // プロンプトも実行時に取得
+        prompts: {}, // プロンプトも実行時に取得
       };
       result.workRows.push(workRow);
     }
@@ -1447,7 +1574,7 @@ class SheetsClient {
         `作業行検出: ${result.workRows.length}行を検出`,
       );
     }
-    
+
     // AI列の最終処理は既に完了済み（メニュー行処理時に実施）
 
     this.logger.log("SheetsClient", "読み込み完了（効率化版）", {
@@ -1455,14 +1582,13 @@ class SheetsClient {
       workRowsCount: result.workRows.length,
       columnTypes: Object.keys(result.columnMapping).length,
       aiColumnsCount: Object.keys(result.aiColumns).length,
-      sheetName: result.sheetName
+      sheetName: result.sheetName,
     });
 
     // キャッシュ機能削除 - 保存しない
 
     return result;
   }
-  
 
   /**
    * 単一セルの値を取得
@@ -1477,12 +1603,12 @@ class SheetsClient {
       const result = await this.executeWithQuotaManagement(async () => {
         const authService = await this.getAuthService();
         if (!authService) {
-          throw new Error('AuthServiceが利用できません');
+          throw new Error("AuthServiceが利用できません");
         }
         const token = await authService.getAuthToken();
         const range = `'${sheetName}'!${cell}`;
         const url = `${this.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(range)}?valueRenderOption=FORMATTED_VALUE`;
-        
+
         const response = await fetch(url, {
           method: "GET",
           headers: {
@@ -1492,7 +1618,9 @@ class SheetsClient {
 
         if (!response.ok) {
           const error = await response.json();
-          const errorObj = new Error(`Failed to get cell ${cell}: ${error.error.message}`);
+          const errorObj = new Error(
+            `Failed to get cell ${cell}: ${error.error.message}`,
+          );
           errorObj.error = error.error;
           errorObj.response = response;
           throw errorObj;
@@ -1502,10 +1630,12 @@ class SheetsClient {
       }, `getCellValue_${cell}`);
 
       // values配列の最初の行の最初の値を返す
-      return result.values && result.values[0] && result.values[0][0] ? result.values[0][0] : '';
+      return result.values && result.values[0] && result.values[0][0]
+        ? result.values[0][0]
+        : "";
     } catch (error) {
-      this.logger.error('SheetsClient', `セル取得エラー ${cell}:`, error);
-      return '';
+      this.logger.error("SheetsClient", `セル取得エラー ${cell}:`, error);
+      return "";
     }
   }
 
@@ -1522,15 +1652,17 @@ class SheetsClient {
       const data = await this.executeWithQuotaManagement(async () => {
         const authService = await this.getAuthService();
         if (!authService) {
-          throw new Error('AuthServiceが利用できません');
+          throw new Error("AuthServiceが利用できません");
         }
         const token = await authService.getAuthToken();
-        
+
         // 各セルに対してrangeを作成
-        const ranges = cells.map(cell => `'${sheetName}'!${cell}`);
-        const rangesParam = ranges.map(range => encodeURIComponent(range)).join('&ranges=');
+        const ranges = cells.map((cell) => `'${sheetName}'!${cell}`);
+        const rangesParam = ranges
+          .map((range) => encodeURIComponent(range))
+          .join("&ranges=");
         const url = `${this.baseUrl}/${spreadsheetId}/values:batchGet?ranges=${rangesParam}&valueRenderOption=FORMATTED_VALUE`;
-        
+
         const response = await fetch(url, {
           method: "GET",
           headers: {
@@ -1540,7 +1672,9 @@ class SheetsClient {
 
         if (!response.ok) {
           const error = await response.json();
-          const errorObj = new Error(`Failed to get cells: ${error.error.message}`);
+          const errorObj = new Error(
+            `Failed to get cells: ${error.error.message}`,
+          );
           errorObj.error = error.error;
           errorObj.response = response;
           throw errorObj;
@@ -1550,18 +1684,20 @@ class SheetsClient {
       }, `getBatchCellValues_${cells.length}cells`);
 
       const result = {};
-      
+
       // 各範囲の値を対応するセル名にマッピング
       data.valueRanges.forEach((valueRange, index) => {
         const cell = cells[index];
-        const value = valueRange.values && valueRange.values[0] && valueRange.values[0][0] 
-                      ? valueRange.values[0][0] : '';
+        const value =
+          valueRange.values && valueRange.values[0] && valueRange.values[0][0]
+            ? valueRange.values[0][0]
+            : "";
         result[cell] = value;
       });
-      
+
       return result;
     } catch (error) {
-      this.logger.error('SheetsClient', `バッチセル取得エラー:`, error);
+      this.logger.error("SheetsClient", `バッチセル取得エラー:`, error);
       return {};
     }
   }
@@ -1579,12 +1715,12 @@ class SheetsClient {
       const result = await this.executeWithQuotaManagement(async () => {
         const authService = await this.getAuthService();
         if (!authService) {
-          throw new Error('AuthServiceが利用できません');
+          throw new Error("AuthServiceが利用できません");
         }
         const token = await authService.getAuthToken();
         const fullRange = `'${sheetName}'!${range}`;
         const url = `${this.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(fullRange)}?valueRenderOption=FORMATTED_VALUE`;
-        
+
         const response = await fetch(url, {
           method: "GET",
           headers: {
@@ -1594,7 +1730,9 @@ class SheetsClient {
 
         if (!response.ok) {
           const error = await response.json();
-          const errorObj = new Error(`Failed to get cell range ${range}: ${error.error.message}`);
+          const errorObj = new Error(
+            `Failed to get cell range ${range}: ${error.error.message}`,
+          );
           errorObj.error = error.error;
           errorObj.response = response;
           throw errorObj;
@@ -1605,12 +1743,12 @@ class SheetsClient {
 
       // 縦方向の範囲の場合、各行の最初の値を配列として返す
       if (result.values) {
-        return result.values.map(row => row[0] || '');
+        return result.values.map((row) => row[0] || "");
       }
-      
+
       return [];
     } catch (error) {
-      this.logger.error('SheetsClient', `セル範囲取得エラー ${range}:`, error);
+      this.logger.error("SheetsClient", `セル範囲取得エラー ${range}:`, error);
       return [];
     }
   }
@@ -1625,7 +1763,7 @@ class SheetsClient {
     return await this.executeWithQuotaManagement(async () => {
       const authService = await this.getAuthService();
       if (!authService) {
-        throw new Error('AuthServiceが利用できません');
+        throw new Error("AuthServiceが利用できません");
       }
       const token = await authService.getAuthToken();
       const url = `${this.baseUrl}/${spreadsheetId}/values:batchUpdate`;
@@ -1668,21 +1806,23 @@ class SheetsClient {
    * @returns {Promise<Object>} 更新結果
    */
   async updateCell(spreadsheetId, range, value, gid = null, options = {}) {
-    const {
-      enableValidation = true,
-      enableSplitting = true
-    } = options;
+    const { enableValidation = true, enableSplitting = true } = options;
 
     const startTime = Date.now();
 
     // ログ記録: スプレッドシート書き込み開始（文字数付き）
-    const valueLength = typeof value === 'string' ? value.length :
-      (value != null ? JSON.stringify(value).length : 0);
+    const valueLength =
+      typeof value === "string"
+        ? value.length
+        : value != null
+          ? JSON.stringify(value).length
+          : 0;
     console.log(`📝 [SheetsClient] セル更新開始: ${range}`, {
-      spreadsheetId: spreadsheetId.substring(0, 10) + '...',
+      spreadsheetId: spreadsheetId.substring(0, 10) + "...",
       range: range,
       valueLength: valueLength,
-      valuePreview: typeof value === 'string' ? value.substring(0, 100) + '...' : value
+      valuePreview:
+        typeof value === "string" ? value.substring(0, 100) + "..." : value,
     });
 
     return await this.executeWithQuotaManagement(async () => {
@@ -1691,17 +1831,34 @@ class SheetsClient {
         const validation = this.validateDataSize(value, range);
 
         if (validation.warnings.length > 0) {
-          this.detailedLog('warn', `データサイズ警告: ${range}`, validation);
+          this.detailedLog("warn", `データサイズ警告: ${range}`, validation);
         }
 
         // 2. 文字数制限チェック
         if (!validation.isValid) {
-          if (enableSplitting && validation.errors.some(e => e.includes('文字数制限超過'))) {
-            this.detailedLog('info', `大容量データを分割書き込みに切り替え: ${range}`);
-            return await this.updateCellWithSplitting(spreadsheetId, range, value, gid);
+          if (
+            enableSplitting &&
+            validation.errors.some((e) => e.includes("文字数制限超過"))
+          ) {
+            this.detailedLog(
+              "info",
+              `大容量データを分割書き込みに切り替え: ${range}`,
+            );
+            return await this.updateCellWithSplitting(
+              spreadsheetId,
+              range,
+              value,
+              gid,
+            );
           } else {
-            this.detailedLog('error', `書き込み前検証失敗: ${range}`, validation);
-            throw new Error(`データ検証エラー: ${validation.errors.join(', ')}`);
+            this.detailedLog(
+              "error",
+              `書き込み前検証失敗: ${range}`,
+              validation,
+            );
+            throw new Error(
+              `データ検証エラー: ${validation.errors.join(", ")}`,
+            );
           }
         }
 
@@ -1713,11 +1870,11 @@ class SheetsClient {
             processedRange = `'${sheetName}'!${range}`;
           }
         }
-        
+
         // 4. API実行
         const authService = await this.getAuthService();
         if (!authService) {
-          throw new Error('AuthServiceが利用できません');
+          throw new Error("AuthServiceが利用できません");
         }
         const token = await authService.getAuthToken();
         const url = `${this.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(processedRange)}?valueInputOption=USER_ENTERED`;
@@ -1726,8 +1883,11 @@ class SheetsClient {
           values: [[value]],
         };
 
-
-        this.detailedLog('info', `書き込み実行開始: ${processedRange}`, validation.stats);
+        this.detailedLog(
+          "info",
+          `書き込み実行開始: ${processedRange}`,
+          validation.stats,
+        );
 
         const response = await fetch(url, {
           method: "PUT",
@@ -1740,44 +1900,70 @@ class SheetsClient {
 
         if (!response.ok) {
           const error = await response.json();
-          this.detailedLog('error', `API書き込みエラー: ${processedRange}`, {
+          this.detailedLog("error", `API書き込みエラー: ${processedRange}`, {
             status: response.status,
             error: error,
             range: processedRange,
-            ...validation.stats
+            ...validation.stats,
           });
-          throw new Error(`Sheets API error: ${error.error?.message || 'Unknown error'}`);
+          throw new Error(
+            `Sheets API error: ${error.error?.message || "Unknown error"}`,
+          );
         }
 
         const result = await response.json();
-        
+
         // 5. 書き込み結果の確認
         const duration = Date.now() - startTime;
         if (result && result.updatedCells) {
-          this.detailedLog('info', `書き込み成功: ${processedRange}`, {
+          this.detailedLog("info", `書き込み成功: ${processedRange}`, {
             updatedCells: result.updatedCells,
             duration: `${duration}ms`,
-            ...validation.stats
+            ...validation.stats,
           });
         } else {
-          this.detailedLog('warn', `書き込み結果が不明: ${processedRange}`, { result, duration });
+          this.detailedLog("warn", `書き込み結果が不明: ${processedRange}`, {
+            result,
+            duration,
+          });
         }
 
         // 6. 書き込み後の検証（有効な場合）
         if (enableValidation && result && result.updatedCells) {
           try {
-            const verificationResult = await this.verifyWrittenData(spreadsheetId, processedRange, value, gid);
-            
+            const verificationResult = await this.verifyWrittenData(
+              spreadsheetId,
+              processedRange,
+              value,
+              gid,
+            );
+
             if (!verificationResult.isMatch) {
               if (verificationResult.truncated) {
-                this.detailedLog('error', `データ切り詰めを検出: ${processedRange}`, verificationResult.stats);
+                this.detailedLog(
+                  "error",
+                  `データ切り詰めを検出: ${processedRange}`,
+                  verificationResult.stats,
+                );
                 // 切り詰めが検出された場合、分割書き込みを試行
                 if (enableSplitting) {
-                  this.detailedLog('info', `切り詰め対応として分割書き込みを実行: ${processedRange}`);
-                  return await this.updateCellWithSplitting(spreadsheetId, range, value, gid);
+                  this.detailedLog(
+                    "info",
+                    `切り詰め対応として分割書き込みを実行: ${processedRange}`,
+                  );
+                  return await this.updateCellWithSplitting(
+                    spreadsheetId,
+                    range,
+                    value,
+                    gid,
+                  );
                 }
               } else {
-                this.detailedLog('warn', `書き込み内容の不一致を検出: ${processedRange}`, verificationResult.stats);
+                this.detailedLog(
+                  "warn",
+                  `書き込み内容の不一致を検出: ${processedRange}`,
+                  verificationResult.stats,
+                );
               }
             }
 
@@ -1786,43 +1972,48 @@ class SheetsClient {
               range: processedRange,
               valueLength: valueLength,
               duration: `${duration}ms`,
-              verification: verificationResult.isMatch ? 'OK' : 'MISMATCH'
+              verification: verificationResult.isMatch ? "OK" : "MISMATCH",
             });
 
             return {
               ...result,
               validation: validation,
               verification: verificationResult,
-              duration: duration
+              duration: duration,
             };
           } catch (verifyError) {
-            this.detailedLog('warn', `書き込み検証中にエラー: ${verifyError.message}`);
+            this.detailedLog(
+              "warn",
+              `書き込み検証中にエラー: ${verifyError.message}`,
+            );
             // 検証エラーでも書き込み自体が成功していれば続行
           }
         }
 
         const totalDuration = Date.now() - startTime;
-        console.log(`✅ [SheetsClient] セル更新完了: ${processedRange || range}`, {
-          range: processedRange || range,
-          valueLength: valueLength,
-          duration: `${totalDuration}ms`
-        });
+        console.log(
+          `✅ [SheetsClient] セル更新完了: ${processedRange || range}`,
+          {
+            range: processedRange || range,
+            valueLength: valueLength,
+            duration: `${totalDuration}ms`,
+          },
+        );
 
         return {
           ...result,
           validation: validation,
-          duration: totalDuration
+          duration: totalDuration,
         };
-
       } catch (error) {
         const duration = Date.now() - startTime;
-        this.detailedLog('error', `書き込み処理エラー: ${range}`, {
+        this.detailedLog("error", `書き込み処理エラー: ${range}`, {
           error: error,
-          duration: `${duration}ms`
+          duration: `${duration}ms`,
         });
         throw error;
       }
-    }, 'updateCell');
+    }, "updateCell");
   }
 
   /**
@@ -1837,71 +2028,78 @@ class SheetsClient {
   async updateCellWithRichText(spreadsheetId, range, richTextData, gid = null) {
     const authService = await this.getAuthService();
     if (!authService) {
-      throw new Error('AuthServiceが利用できません');
+      throw new Error("AuthServiceが利用できません");
     }
     const token = await authService.getAuthToken();
-    
+
     // 範囲をA1記法からインデックスに変換
     const cellMatch = range.match(/^([A-Z]+)(\d+)$/);
     if (!cellMatch) {
       throw new Error(`Invalid range format: ${range}`);
     }
-    
+
     const columnLetters = cellMatch[1];
     const rowNumber = parseInt(cellMatch[2]);
-    
+
     // 列文字をインデックスに変換（A=0, B=1, ..., Z=25, AA=26, AB=27, AC=28, ...）
     let columnIndex = 0;
     for (let i = 0; i < columnLetters.length; i++) {
       columnIndex = columnIndex * 26 + (columnLetters.charCodeAt(i) - 65 + 1);
     }
     columnIndex--; // 0ベースに調整
-    
+
     // 全体のテキストを構築
-    let fullText = '';
+    let fullText = "";
     const textFormatRuns = [];
-    
-    richTextData.forEach(item => {
+
+    richTextData.forEach((item) => {
       const startIndex = fullText.length;
-      fullText += item.text || '';
-      
+      fullText += item.text || "";
+
       // URLがある場合はリンクとして追加
       if (item.url) {
         textFormatRuns.push({
           startIndex: startIndex,
           format: {
-            link: { uri: item.url }
-          }
+            link: { uri: item.url },
+          },
         });
         // リンクの終了位置を指定
         textFormatRuns.push({
-          startIndex: fullText.length
+          startIndex: fullText.length,
         });
       }
     });
-    
+
     // batchUpdate用のリクエスト
-    const requests = [{
-      updateCells: {
-        rows: [{
-          values: [{
-            userEnteredValue: { 
-              stringValue: fullText 
+    const requests = [
+      {
+        updateCells: {
+          rows: [
+            {
+              values: [
+                {
+                  userEnteredValue: {
+                    stringValue: fullText,
+                  },
+                  textFormatRuns:
+                    textFormatRuns.length > 0 ? textFormatRuns : undefined,
+                },
+              ],
             },
-            textFormatRuns: textFormatRuns.length > 0 ? textFormatRuns : undefined
-          }]
-        }],
-        range: {
-          sheetId: gid ? parseInt(gid) : 0,
-          startRowIndex: rowNumber - 1,  // 0-indexed
-          endRowIndex: rowNumber,
-          startColumnIndex: columnIndex,
-          endColumnIndex: columnIndex + 1
+          ],
+          range: {
+            sheetId: gid ? parseInt(gid) : 0,
+            startRowIndex: rowNumber - 1, // 0-indexed
+            endRowIndex: rowNumber,
+            startColumnIndex: columnIndex,
+            endColumnIndex: columnIndex + 1,
+          },
+          fields: "userEnteredValue,textFormatRuns",
         },
-        fields: "userEnteredValue,textFormatRuns"
-      }
-    }];
-    
+      },
+    ];
+
     const batchUpdateUrl = `${this.baseUrl}/${spreadsheetId}:batchUpdate`;
 
     const response = await fetch(batchUpdateUrl, {
@@ -1912,19 +2110,19 @@ class SheetsClient {
       },
       body: JSON.stringify({ requests }),
     });
-    
+
     if (!response.ok) {
       const error = await response.json();
       console.error(`❌ [SheetsClient] updateCellWithRichText失敗:`, error);
       throw new Error(`Sheets API batchUpdate error: ${error.error.message}`);
     }
-    
+
     const result = await response.json();
     console.log(`✅ [SheetsClient] updateCellWithRichText成功:`, {
       range,
-      updatedCells: result.replies?.[0]?.updateCells?.updatedCells
+      updatedCells: result.replies?.[0]?.updateCells?.updatedCells,
     });
-    
+
     return result;
   }
 
@@ -1937,22 +2135,29 @@ class SheetsClient {
    * @param {boolean} returnRichText - リッチテキスト形式で返すかどうか
    * @returns {string|Object} フォーマット済みログ（文字列またはリッチテキストデータ）
    */
-  formatLogEntry(task, url, sendTime, writeTime, returnRichText = false, dropboxUploadResult = null) {
-    console.log('🎨 [SheetsClient] formatLogEntry開始:', {
+  formatLogEntry(
+    task,
+    url,
+    sendTime,
+    writeTime,
+    returnRichText = false,
+    dropboxUploadResult = null,
+  ) {
+    console.log("🎨 [SheetsClient] formatLogEntry開始:", {
       hasTask: !!task,
       hasUrl: !!url,
       returnRichText,
       hasDropboxResult: !!dropboxUploadResult,
       dropboxSuccess: dropboxUploadResult?.success,
-      dropboxUrl: dropboxUploadResult?.url
+      dropboxUrl: dropboxUploadResult?.url,
     });
 
-    const aiType = task.aiType || 'Unknown';
-    const selectedModel = task.model || '通常';
-    const displayedModel = task.displayedModel || '不明';
+    const aiType = task.aiType || "Unknown";
+    const selectedModel = task.model || "通常";
+    const displayedModel = task.displayedModel || "不明";
     const model = `選択: ${selectedModel} / 表示: ${displayedModel}`;
-    const selectedFunction = task.function || task.specialOperation || '通常';
-    const displayedFunction = task.displayedFunction || '不明';
+    const selectedFunction = task.function || task.specialOperation || "通常";
+    const displayedFunction = task.displayedFunction || "不明";
     const functionName = `選択: ${selectedFunction} / 表示: ${displayedFunction}`;
 
     // 経過時間を計算（秒単位）
@@ -1960,22 +2165,22 @@ class SheetsClient {
     const elapsedSeconds = Math.round(elapsedMs / 1000);
 
     // 日本語フォーマット
-    const sendTimeStr = sendTime.toLocaleString('ja-JP', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
+    const sendTimeStr = sendTime.toLocaleString("ja-JP", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
     });
 
-    const writeTimeStr = writeTime.toLocaleString('ja-JP', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
+    const writeTimeStr = writeTime.toLocaleString("ja-JP", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
     });
 
     // AI名を日本語表記に
@@ -1986,34 +2191,34 @@ class SheetsClient {
       `---------- ${aiDisplayName} ----------`,
       `モデル: ${model}`,
       `機能: ${functionName}`,
-      `URL: ${url === 'N/A' ? 'URLを取得できませんでした' : url || 'URLが利用できません'}`,
+      `URL: ${url === "N/A" ? "URLを取得できませんでした" : url || "URLが利用できません"}`,
       `送信時刻: ${sendTimeStr}`,
-      `記載時刻: ${writeTimeStr} (${elapsedSeconds}秒後)`
+      `記載時刻: ${writeTimeStr} (${elapsedSeconds}秒後)`,
     ];
 
     // Dropbox情報を追加
     if (dropboxUploadResult && dropboxUploadResult.success) {
       const dropboxTime = dropboxUploadResult.uploadTime
-        ? dropboxUploadResult.uploadTime.toLocaleString('ja-JP', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit'
+        ? dropboxUploadResult.uploadTime.toLocaleString("ja-JP", {
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
           })
         : writeTimeStr;
 
       logEntryParts.push(
         ``,
         `---------- Dropbox ----------`,
-        `ファイル: ${dropboxUploadResult.fileName || 'レポートファイル'}`,
-        `URL: ${dropboxUploadResult.url || '⚠️ アップロード未完了（設定を確認してください）'}`,
-        `アップロード時刻: ${dropboxTime}`
+        `ファイル: ${dropboxUploadResult.fileName || "レポートファイル"}`,
+        `URL: ${dropboxUploadResult.url || "⚠️ アップロード未完了（設定を確認してください）"}`,
+        `アップロード時刻: ${dropboxTime}`,
       );
     }
 
-    const logEntry = logEntryParts.join('\n');
+    const logEntry = logEntryParts.join("\n");
 
     // リッチテキスト形式で返す場合
     if (returnRichText && url) {
@@ -2024,51 +2229,54 @@ class SheetsClient {
         `---------- ${aiDisplayName} ----------`,
         `モデル: ${model}`,
         `機能: ${functionName}`,
-        `URL: `
-      ].join('\n');
+        `URL: `,
+      ].join("\n");
 
       richTextData.push({ text: headerAndInfo });
 
       // URL部分をリンクとして追加（改善）
-      if (url && url !== 'N/A' && url !== 'URLが利用できません') {
+      if (url && url !== "N/A" && url !== "URLが利用できません") {
         richTextData.push({
           text: url,
-          url: url
+          url: url,
         });
       } else {
         richTextData.push({
-          text: url === 'N/A' ? 'URLを取得できませんでした' : (url || 'URLが利用できません')
+          text:
+            url === "N/A"
+              ? "URLを取得できませんでした"
+              : url || "URLが利用できません",
         });
       }
 
       // 残りの情報
       const footerInfo = [
-        '',
+        "",
         `送信時刻: ${sendTimeStr}`,
-        `記載時刻: ${writeTimeStr} (${elapsedSeconds}秒後)`
-      ].join('\n');
+        `記載時刻: ${writeTimeStr} (${elapsedSeconds}秒後)`,
+      ].join("\n");
 
       richTextData.push({ text: footerInfo });
 
       // Dropbox情報を追加（リッチテキスト版）
       if (dropboxUploadResult && dropboxUploadResult.success) {
         const dropboxTime = dropboxUploadResult.uploadTime
-          ? dropboxUploadResult.uploadTime.toLocaleString('ja-JP', {
-              year: 'numeric',
-              month: '2-digit',
-              day: '2-digit',
-              hour: '2-digit',
-              minute: '2-digit',
-              second: '2-digit'
+          ? dropboxUploadResult.uploadTime.toLocaleString("ja-JP", {
+              year: "numeric",
+              month: "2-digit",
+              day: "2-digit",
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
             })
           : writeTimeStr;
 
         const dropboxHeaderAndInfo = [
-          '',
+          "",
           `---------- Dropbox ----------`,
-          `ファイル: ${dropboxUploadResult.fileName || 'レポートファイル'}`,
-          `URL: `
-        ].join('\n');
+          `ファイル: ${dropboxUploadResult.fileName || "レポートファイル"}`,
+          `URL: `,
+        ].join("\n");
 
         richTextData.push({ text: dropboxHeaderAndInfo });
 
@@ -2076,25 +2284,24 @@ class SheetsClient {
         if (dropboxUploadResult.url && dropboxUploadResult.url.trim()) {
           richTextData.push({
             text: dropboxUploadResult.url,
-            url: dropboxUploadResult.url
+            url: dropboxUploadResult.url,
           });
         } else {
           richTextData.push({
-            text: '⚠️ アップロード未完了（設定を確認してください）'
+            text: "⚠️ アップロード未完了（設定を確認してください）",
           });
         }
 
-        const dropboxFooterInfo = [
-          '',
-          `アップロード時刻: ${dropboxTime}`
-        ].join('\n');
+        const dropboxFooterInfo = ["", `アップロード時刻: ${dropboxTime}`].join(
+          "\n",
+        );
 
         richTextData.push({ text: dropboxFooterInfo });
       }
 
       return {
         plainText: logEntry,
-        richTextData: richTextData
+        richTextData: richTextData,
       };
     }
 
@@ -2109,10 +2316,10 @@ class SheetsClient {
    */
   getAIDisplayName(aiType) {
     const aiNameMap = {
-      'Claude': 'Claude',
-      'ChatGPT': 'ChatGPT',
-      'Gemini': 'Gemini',
-      'Copilot': 'Copilot'
+      Claude: "Claude",
+      ChatGPT: "ChatGPT",
+      Gemini: "Gemini",
+      Copilot: "Copilot",
     };
     return aiNameMap[aiType] || aiType;
   }
@@ -2133,37 +2340,38 @@ class SheetsClient {
         logColumns: task.logColumns,
         hasDropboxResult: !!dropboxUploadResult,
         dropboxUrl: dropboxUploadResult?.url,
-        dropboxSuccess: dropboxUploadResult?.success
+        dropboxSuccess: dropboxUploadResult?.success,
       });
 
       // 🔍 [URL追跡] URLキャプチャの詳細ログ
       console.log(`🔍 [URL追跡] URL情報詳細:`, {
         aiUrl: url,
         aiUrlType: typeof url,
-        aiUrlIsNA: url === 'N/A',
+        aiUrlIsNA: url === "N/A",
         aiUrlLength: url?.length || 0,
         dropboxUrl: dropboxUploadResult?.url,
         dropboxUrlType: typeof dropboxUploadResult?.url,
-        dropboxUrlEmpty: !dropboxUploadResult?.url || dropboxUploadResult?.url === '',
+        dropboxUrlEmpty:
+          !dropboxUploadResult?.url || dropboxUploadResult?.url === "",
         dropboxUploaded: dropboxUploadResult?.success,
-        dropboxFileName: dropboxUploadResult?.fileName
+        dropboxFileName: dropboxUploadResult?.fileName,
       });
 
       // Dropboxアップロード結果の詳細ログ
       if (dropboxUploadResult) {
-        console.log('📦 [SheetsClient] Dropboxアップロード結果詳細:', {
+        console.log("📦 [SheetsClient] Dropboxアップロード結果詳細:", {
           success: dropboxUploadResult.success,
           url: dropboxUploadResult.url,
           fileName: dropboxUploadResult.fileName,
           filePath: dropboxUploadResult.filePath,
           dropboxPath: dropboxUploadResult.dropboxPath,
           uploadTime: dropboxUploadResult.uploadTime,
-          warning: dropboxUploadResult.warning
+          warning: dropboxUploadResult.warning,
         });
       }
 
       // ログ列を取得（デフォルトはB列）
-      const logColumn = task.logColumns?.[0] || 'B';
+      const logColumn = task.logColumns?.[0] || "B";
       const logCell = `${logColumn}${task.row}`;
 
       // 送信時刻と記載時刻を設定（シンプル設計）
@@ -2175,58 +2383,83 @@ class SheetsClient {
         aiType: task.aiType,
         sendTime: sendTime.toISOString(),
         writeTime: writeTime.toISOString(),
-        usingOptions: !!options.sendTime
+        usingOptions: !!options.sendTime,
       });
 
       // ログエントリーをリッチテキスト形式でフォーマット
-      const logResult = this.formatLogEntry(task, url, sendTime, writeTime, true, dropboxUploadResult);
+      const logResult = this.formatLogEntry(
+        task,
+        url,
+        sendTime,
+        writeTime,
+        true,
+        dropboxUploadResult,
+      );
 
       // formatLogEntryの戻り値の型をチェック（文字列 または {plainText, richTextData}）
-      const isRichTextResult = typeof logResult === 'object' && logResult !== null && 'plainText' in logResult;
-      const plainTextContent = isRichTextResult ? logResult.plainText : logResult;
+      const isRichTextResult =
+        typeof logResult === "object" &&
+        logResult !== null &&
+        "plainText" in logResult;
+      const plainTextContent = isRichTextResult
+        ? logResult.plainText
+        : logResult;
       const richTextData = isRichTextResult ? logResult.richTextData : null;
 
       // リッチテキストデータの詳細ログ
       if (richTextData) {
-        console.log('🔗 [SheetsClient] リッチテキストデータ詳細:', {
+        console.log("🔗 [SheetsClient] リッチテキストデータ詳細:", {
           itemCount: richTextData.length,
-          items: richTextData.map(item => ({
+          items: richTextData.map((item) => ({
             hasUrl: !!item.url,
-            textPreview: item.text?.substring(0, 50) + (item.text?.length > 50 ? '...' : ''),
-            url: item.url
-          }))
+            textPreview:
+              item.text?.substring(0, 50) +
+              (item.text?.length > 50 ? "..." : ""),
+            url: item.url,
+          })),
         });
       }
 
       // 既存のログを取得（options.isFirstTaskがfalseの場合）
       let finalRichTextData = richTextData;
-      let existingLog = '';
+      let existingLog = "";
       if (!options.isFirstTask) {
         try {
           const response = await this.getSheetData(spreadsheetId, logCell, gid);
-          existingLog = response?.values?.[0]?.[0] || '';
-          if (existingLog && existingLog.trim() !== '' && richTextData) {
+          existingLog = response?.values?.[0]?.[0] || "";
+          if (existingLog && existingLog.trim() !== "" && richTextData) {
             // 既存ログがある場合は、先頭に追加してからリッチテキストを続ける
             finalRichTextData = [
-              { text: existingLog + '\n\n' },
-              ...richTextData
+              { text: existingLog + "\n\n" },
+              ...richTextData,
             ];
           }
         } catch (error) {
-          console.warn(`⚠️ [SheetsClient] 既存ログの取得に失敗:`, error.message);
+          console.warn(
+            `⚠️ [SheetsClient] 既存ログの取得に失敗:`,
+            error.message,
+          );
         }
       }
 
       // リッチテキストでスプレッドシートに書き込み
       if (richTextData && url) {
-        console.log('🔗 [SheetsClient] リッチテキスト形式でログ書き込み');
-        await this.updateCellWithRichText(spreadsheetId, logCell, finalRichTextData, gid);
+        console.log("🔗 [SheetsClient] リッチテキスト形式でログ書き込み");
+        await this.updateCellWithRichText(
+          spreadsheetId,
+          logCell,
+          finalRichTextData,
+          gid,
+        );
       } else {
         // URLがない場合は通常のテキストで書き込み
-        const finalLogContent = options.isFirstTask ? plainTextContent :
-          (existingLog ? existingLog + '\n\n' + plainTextContent : plainTextContent);
+        const finalLogContent = options.isFirstTask
+          ? plainTextContent
+          : existingLog
+            ? existingLog + "\n\n" + plainTextContent
+            : plainTextContent;
         await this.updateCell(spreadsheetId, logCell, finalLogContent, gid, {
-          isLog: true
+          isLog: true,
         });
       }
 
@@ -2235,15 +2468,14 @@ class SheetsClient {
       return {
         success: true,
         logCell,
-        verified: true
+        verified: true,
       };
-
     } catch (error) {
       console.error(`❌ [SheetsClient] writeLogToSpreadsheet失敗:`, error);
       return {
         success: false,
         error: error.message,
-        verified: false
+        verified: false,
       };
     }
   }
@@ -2263,19 +2495,19 @@ class SheetsClient {
         spreadsheetId,
         range,
         contentLength: logContent?.length,
-        gid
+        gid,
       });
 
       // リッチテキストデータの処理（リンク付きログの場合）
       if (options.richTextData && Array.isArray(options.richTextData)) {
-        const hasLinks = options.richTextData.some(item => item.url);
+        const hasLinks = options.richTextData.some((item) => item.url);
         if (hasLinks) {
-          console.log('🔗 [SheetsClient] リッチテキスト形式でログ書き込み');
+          console.log("🔗 [SheetsClient] リッチテキスト形式でログ書き込み");
           return await this.updateCellWithRichText(
             spreadsheetId,
             range,
             options.richTextData,
-            gid
+            gid,
           );
         }
       }
@@ -2283,9 +2515,8 @@ class SheetsClient {
       // 通常のテキストログとして書き込み
       return await this.updateCell(spreadsheetId, range, logContent, gid, {
         ...options,
-        isLog: true
+        isLog: true,
       });
-
     } catch (error) {
       console.error(`❌ [SheetsClient] writeLog失敗:`, error);
       throw error;
@@ -2307,15 +2538,14 @@ class SheetsClient {
         spreadsheetId,
         range,
         answerLength: answer?.length,
-        gid
+        gid,
       });
 
       // 回答の書き込み（長いテキストの場合は自動分割）
       return await this.updateCell(spreadsheetId, range, answer, gid, {
         ...options,
-        isAnswer: true
+        isAnswer: true,
       });
-
     } catch (error) {
       console.error(`❌ [SheetsClient] writeAnswer失敗:`, error);
       throw error;
@@ -2329,8 +2559,8 @@ class SheetsClient {
    * @param {string} aiType - AI種別（重複チェック用）
    * @returns {string} マージ済みログ
    */
-  mergeWithExistingLog(existingLog, newLog, aiType = '') {
-    if (!existingLog || existingLog.trim() === '') {
+  mergeWithExistingLog(existingLog, newLog, aiType = "") {
+    if (!existingLog || existingLog.trim() === "") {
       return newLog;
     }
 
@@ -2338,12 +2568,17 @@ class SheetsClient {
     const aiDisplayName = this.getAIDisplayName(aiType);
 
     // 既存ログに同じAIのログが既に存在するかチェック
-    const duplicateCheck = existingLog.includes(`---------- ${aiDisplayName} ----------`);
+    const duplicateCheck = existingLog.includes(
+      `---------- ${aiDisplayName} ----------`,
+    );
 
     if (duplicateCheck) {
       // 同じAIのログ部分を新しいログで置換
-      const escapedName = aiDisplayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const logPattern = new RegExp(`---------- ${escapedName} ----------[\\s\\S]*?(?=\\n\\n---------- |$)`, 'g');
+      const escapedName = aiDisplayName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const logPattern = new RegExp(
+        `---------- ${escapedName} ----------[\\s\\S]*?(?=\\n\\n---------- |$)`,
+        "g",
+      );
       const updatedLog = existingLog.replace(logPattern, newLog);
 
       // 置換に失敗した場合は末尾に追加
@@ -2370,7 +2605,7 @@ class SheetsClient {
         return {
           isValid: true,
           validLogColumns: [logColumn],
-          warning: 'スプレッドシートデータなしで続行'
+          warning: "スプレッドシートデータなしで続行",
         };
       }
 
@@ -2379,7 +2614,7 @@ class SheetsClient {
         return {
           isValid: true,
           validLogColumns: [logColumn],
-          warning: 'menuRowなしで続行'
+          warning: "menuRowなしで続行",
         };
       }
 
@@ -2389,7 +2624,11 @@ class SheetsClient {
 
       for (let i = 0; i < menuRowData.length; i++) {
         const cellValue = menuRowData[i];
-        if (cellValue && typeof cellValue === 'string' && cellValue.trim() === 'ログ') {
+        if (
+          cellValue &&
+          typeof cellValue === "string" &&
+          cellValue.trim() === "ログ"
+        ) {
           const columnLetter = this.indexToColumn(i);
           validLogColumns.push(columnLetter);
         }
@@ -2399,8 +2638,8 @@ class SheetsClient {
       if (validLogColumns.length === 0) {
         return {
           isValid: true,
-          validLogColumns: ['B'],
-          warning: 'ログ列が見つからないため、デフォルトB列を使用'
+          validLogColumns: ["B"],
+          warning: "ログ列が見つからないため、デフォルトB列を使用",
         };
       }
 
@@ -2411,21 +2650,20 @@ class SheetsClient {
         return {
           isValid: false,
           validLogColumns: validLogColumns,
-          error: `指定されたログ列 ${logColumn} は有効なログ列ではありません`
+          error: `指定されたログ列 ${logColumn} は有効なログ列ではありません`,
         };
       }
 
       return {
         isValid: true,
-        validLogColumns: validLogColumns
+        validLogColumns: validLogColumns,
       };
-
     } catch (error) {
       // エラーが発生した場合は安全のため続行を許可
       return {
         isValid: true,
         validLogColumns: [logColumn],
-        warning: `検証エラー: ${error.message}`
+        warning: `検証エラー: ${error.message}`,
       };
     }
   }
@@ -2436,7 +2674,7 @@ class SheetsClient {
    * @returns {string} 列名
    */
   indexToColumn(index) {
-    let column = '';
+    let column = "";
     while (index >= 0) {
       column = String.fromCharCode((index % 26) + 65) + column;
       index = Math.floor(index / 26) - 1;
@@ -2451,38 +2689,40 @@ class SheetsClient {
    */
   combineGroupLogs(logs) {
     // オブジェクト形式と文字列形式の両方に対応
-    const normalizedLogs = logs.map(log => {
-      if (typeof log === 'object' && log.content) {
-        return {
-          aiType: log.aiType,
-          content: log.content,
-          url: log.url
-        };
-      } else if (typeof log === 'string') {
-        // 文字列からAIタイプを推測
-        let aiType = 'unknown';
-        if (log.includes('---------- ChatGPT ----------')) {
-          aiType = 'chatgpt';
-        } else if (log.includes('---------- Claude ----------')) {
-          aiType = 'claude';
-        } else if (log.includes('---------- Gemini ----------')) {
-          aiType = 'gemini';
+    const normalizedLogs = logs
+      .map((log) => {
+        if (typeof log === "object" && log.content) {
+          return {
+            aiType: log.aiType,
+            content: log.content,
+            url: log.url,
+          };
+        } else if (typeof log === "string") {
+          // 文字列からAIタイプを推測
+          let aiType = "unknown";
+          if (log.includes("---------- ChatGPT ----------")) {
+            aiType = "chatgpt";
+          } else if (log.includes("---------- Claude ----------")) {
+            aiType = "claude";
+          } else if (log.includes("---------- Gemini ----------")) {
+            aiType = "gemini";
+          }
+          return {
+            aiType: aiType,
+            content: log,
+            url: null,
+          };
         }
-        return {
-          aiType: aiType,
-          content: log,
-          url: null
-        };
-      }
-      return null;
-    }).filter(log => log !== null);
+        return null;
+      })
+      .filter((log) => log !== null);
 
     // AIタイプの順番を定義（ChatGPT → Claude → Gemini）
     const aiOrder = {
-      'chatgpt': 1,
-      'claude': 2,
-      'gemini': 3,
-      'unknown': 4
+      chatgpt: 1,
+      claude: 2,
+      gemini: 3,
+      unknown: 4,
     };
 
     // 順番でソート
@@ -2493,10 +2733,10 @@ class SheetsClient {
     });
 
     // contentのみを取り出して結合
-    const sortedContents = normalizedLogs.map(log => log.content);
+    const sortedContents = normalizedLogs.map((log) => log.content);
 
     // テキスト形式で結合
-    return sortedContents.join('\n\n====================\n\n');
+    return sortedContents.join("\n\n====================\n\n");
   }
 
   /**
@@ -2506,15 +2746,15 @@ class SheetsClient {
    */
   parseLogToRichText(logText) {
     const richTextData = [];
-    const lines = logText.split('\n');
+    const lines = logText.split("\n");
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
 
       // URL行を検出（"URL: "で始まる行）
-      if (line.startsWith('URL: ')) {
+      if (line.startsWith("URL: ")) {
         // "URL: "部分を追加
-        richTextData.push({ text: 'URL: ' });
+        richTextData.push({ text: "URL: " });
 
         // URL部分を抽出
         const urlPart = line.substring(5);
@@ -2524,7 +2764,7 @@ class SheetsClient {
           // URLをリンクとして追加
           richTextData.push({
             text: urlMatch[1],
-            url: urlMatch[1]
+            url: urlMatch[1],
           });
 
           // URL以降の残りのテキストがあれば追加
@@ -2543,7 +2783,7 @@ class SheetsClient {
 
       // 改行を追加（最後の行以外）
       if (i < lines.length - 1) {
-        richTextData.push({ text: '\n' });
+        richTextData.push({ text: "\n" });
       }
     }
 
@@ -2557,22 +2797,22 @@ class SheetsClient {
    * @returns {string} フォーマット済みログ
    */
   formatSimpleLogEntry(task, url) {
-    const aiType = task.aiType || 'Unknown';
-    const selectedModel = task.model || '不明';
-    const displayedModel = task.displayedModel || '不明';
+    const aiType = task.aiType || "Unknown";
+    const selectedModel = task.model || "不明";
+    const displayedModel = task.displayedModel || "不明";
     const model = `選択: ${selectedModel} / 表示: ${displayedModel}`;
-    const selectedFunction = task.function || task.specialOperation || '通常';
-    const displayedFunction = task.displayedFunction || '不明';
+    const selectedFunction = task.function || task.specialOperation || "通常";
+    const displayedFunction = task.displayedFunction || "不明";
     const functionName = `選択: ${selectedFunction} / 表示: ${displayedFunction}`;
     const currentTime = new Date();
 
-    const timeStr = currentTime.toLocaleString('ja-JP', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
+    const timeStr = currentTime.toLocaleString("ja-JP", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
     });
 
     const aiDisplayName = this.getAIDisplayName(aiType);
@@ -2581,9 +2821,9 @@ class SheetsClient {
       `---------- ${aiDisplayName} ----------`,
       `モデル: ${model}`,
       `機能: ${functionName}`,
-      `URL: ${url || 'URLが取得できませんでした'}`,
-      `記載時刻: ${timeStr}`
-    ].join('\n');
+      `URL: ${url || "URLが取得できませんでした"}`,
+      `記載時刻: ${timeStr}`,
+    ].join("\n");
 
     return logEntry;
   }
@@ -2621,58 +2861,69 @@ class SheetsClient {
    */
   async clearSheetLogs(spreadsheetId, gid = null) {
     this.logger.log("SheetsClient", `ログクリア開始: ${spreadsheetId}`);
-    
+
     try {
       // スプレッドシートのデータを読み込み
       const sheetData = await this.loadAutoAIData(spreadsheetId, gid);
-      
+
       // メニュー行から「ログ」列を探す（完全一致）
       let logColumnIndex = -1;
       if (sheetData.menuRow && sheetData.menuRow.data) {
         for (let j = 0; j < sheetData.menuRow.data.length; j++) {
-          if (sheetData.menuRow.data[j] === "ログ") {  // 完全一致
+          if (sheetData.menuRow.data[j] === "ログ") {
+            // 完全一致
             logColumnIndex = j;
-            this.logger.log("SheetsClient", `ログ列を検出: ${this.getColumnName(j)}列`);
+            this.logger.log(
+              "SheetsClient",
+              `ログ列を検出: ${this.getColumnName(j)}列`,
+            );
             break;
           }
         }
       }
-      
+
       if (logColumnIndex === -1) {
-        this.logger.warn("SheetsClient", "メニュー行に'ログ'列が見つかりません");
+        this.logger.warn(
+          "SheetsClient",
+          "メニュー行に'ログ'列が見つかりません",
+        );
         return { success: false, error: "ログ列が見つかりません" };
       }
-      
+
       const updates = [];
       let clearedCount = 0;
-      
+
       // 作業行のログ列をクリア
       for (const workRow of sheetData.workRows) {
         const rowIndex = workRow.index;
         const columnName = this.getColumnName(logColumnIndex);
         let range;
-        
+
         if (gid) {
           const sheetName = await this.getSheetNameFromGid(spreadsheetId, gid);
-          range = sheetName ? `'${sheetName}'!${columnName}${rowIndex + 1}` : `${columnName}${rowIndex + 1}`;
+          range = sheetName
+            ? `'${sheetName}'!${columnName}${rowIndex + 1}`
+            : `${columnName}${rowIndex + 1}`;
         } else {
           range = `${columnName}${rowIndex + 1}`;
         }
-        
+
         updates.push({
           range: range,
-          values: [[""]]
+          values: [[""]],
         });
         clearedCount++;
       }
-      
+
       if (updates.length > 0) {
         await this.batchUpdate(spreadsheetId, updates);
       }
-      
-      this.logger.log("SheetsClient", `ログクリア完了: ${clearedCount}個のセル`);
+
+      this.logger.log(
+        "SheetsClient",
+        `ログクリア完了: ${clearedCount}個のセル`,
+      );
       return { success: true, clearedCount };
-      
     } catch (error) {
       this.logger.error("SheetsClient", `ログクリアエラー: ${error.message}`);
       throw error;
@@ -2681,105 +2932,123 @@ class SheetsClient {
 
   /**
    * AI回答を削除
-   * 
+   *
    * 【概要】
    * スプレッドシートのAI回答列（Claude、ChatGPT、Gemini等）とA列のデータを削除する機能。
    * メニュー行から各AI名の列を検出し、その列の作業行データをクリアする。
-   * 
+   *
    * 【依存関係】
    * - loadAutoAIData: スプレッドシートの構造を読み込む
    * - batchUpdate: 複数セルを一括更新
    * - columnMapping: メニュー行の列タイプ判定情報
-   * 
+   *
    * 【前提条件】
    * - メニュー行にAI名（Claude、ChatGPT、Gemini等）の列が存在
    * - A列は作業行のチェック用（1が入っている行が処理対象）
    * - 作業行はメニュー行の「プロンプト」列にデータがある行
-   * 
+   *
    * 【動作フロー】
    * 1. スプレッドシート全体のデータを読み込み
    * 2. columnMappingから type="answer" の列を特定
    * 3. 各AI回答列の作業行データをクリア
    * 4. A列（A2:A1000）の全データもクリア
-   * 
+   *
    * 【削除対象】
    * - 各AI列（Claude、ChatGPT、Gemini等）の回答データ
    * - A列の作業行マーカー（1の値）
-   * 
+   *
    * 【削除対象外】
    * - メニュー行、制御行、AI行、モデル行、機能行
    * - プロンプト列
    * - ログ列
-   * 
+   *
    * @param {string} spreadsheetId - スプレッドシートID
    * @param {string} gid - シートのgid（オプション）
    * @returns {Promise<Object>} 削除結果
    */
   async deleteAnswers(spreadsheetId, gid = null) {
     this.logger.log("SheetsClient", `AI回答削除開始: ${spreadsheetId}`);
-    
+
     try {
       // スプレッドシートのデータを読み込み
       const sheetData = await this.loadAutoAIData(spreadsheetId, gid);
-      
+
       // AI回答列を特定して削除
       const updates = [];
       let deletedCount = 0;
-      
+
       // 削除対象の列を特定
       // 対象: 「回答」「ChatGPT回答」「Claude回答」「Gemini回答」の4つの列
       const answerColumns = [];
-      
+
       // メニュー行から削除対象の列を検索
       if (sheetData.menuRow && sheetData.menuRow.data) {
         // 削除対象の列名を定義（完全一致で検索）
-        const targetColumns = ["回答", "ChatGPT回答", "Claude回答", "Gemini回答"];
-        
+        const targetColumns = [
+          "回答",
+          "ChatGPT回答",
+          "Claude回答",
+          "Gemini回答",
+        ];
+
         for (let j = 0; j < sheetData.menuRow.data.length; j++) {
           const cellValue = sheetData.menuRow.data[j];
-          
+
           // 削除対象の列名と完全一致するかチェック
           if (targetColumns.includes(cellValue)) {
             answerColumns.push(j);
-            this.logger.log("SheetsClient", `削除対象列検出: ${this.getColumnName(j)}列 (${cellValue})`);
+            this.logger.log(
+              "SheetsClient",
+              `削除対象列検出: ${this.getColumnName(j)}列 (${cellValue})`,
+            );
           }
         }
-        
+
         if (answerColumns.length === 0) {
-          this.logger.warn("SheetsClient", "削除対象の列（回答、ChatGPT回答、Claude回答、Gemini回答）が見つかりません");
+          this.logger.warn(
+            "SheetsClient",
+            "削除対象の列（回答、ChatGPT回答、Claude回答、Gemini回答）が見つかりません",
+          );
         }
       }
-      
+
       // 作業行のAI回答列をクリア
       for (const workRow of sheetData.workRows) {
         const rowIndex = workRow.index;
-        
+
         for (const colIndex of answerColumns) {
           const columnLetter = this.getColumnName(colIndex);
           let range;
-          
+
           if (gid) {
-            const sheetName = await this.getSheetNameFromGid(spreadsheetId, gid);
-            range = sheetName ? `'${sheetName}'!${columnLetter}${rowIndex + 1}` : `${columnLetter}${rowIndex + 1}`;
+            const sheetName = await this.getSheetNameFromGid(
+              spreadsheetId,
+              gid,
+            );
+            range = sheetName
+              ? `'${sheetName}'!${columnLetter}${rowIndex + 1}`
+              : `${columnLetter}${rowIndex + 1}`;
           } else {
             range = `${columnLetter}${rowIndex + 1}`;
           }
-          
+
           updates.push({
             range: range,
-            values: [[""]]
+            values: [[""]],
           });
           deletedCount++;
         }
       }
-      
+
       if (updates.length > 0) {
         await this.batchUpdate(spreadsheetId, updates);
       }
-      
-      this.logger.log("SheetsClient", `AI回答削除完了: ${deletedCount}個のセル`);
+
+      this.logger.log(
+        "SheetsClient",
+        `AI回答削除完了: ${deletedCount}個のセル`,
+      );
       return { success: true, deletedCount };
-      
     } catch (error) {
       this.logger.error("SheetsClient", `AI回答削除エラー: ${error.message}`);
       throw error;
@@ -2816,7 +3085,9 @@ class SheetsClient {
       const idMatch = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
       if (idMatch) {
         result.spreadsheetId = idMatch[1];
-        console.log(`ステップ9-1-3: スプレッドシートID抽出成功: ${result.spreadsheetId}`);
+        console.log(
+          `ステップ9-1-3: スプレッドシートID抽出成功: ${result.spreadsheetId}`,
+        );
       }
 
       // ステップ9-1-4: gidを抽出（#gid=数値 または ?gid=数値）
@@ -2855,12 +3126,16 @@ class SheetsClient {
     const validResults = results.filter((item) => {
       const isValid = item.spreadsheetId;
       if (!isValid) {
-        console.warn(`ステップ9-2-2: 無効なURL（スプレッドシートIDなし）: ${item.url}`);
+        console.warn(
+          `ステップ9-2-2: 無効なURL（スプレッドシートIDなし）: ${item.url}`,
+        );
       }
       return isValid;
     });
 
-    console.log(`ステップ9-2: 一括解析完了: ${validResults.length}/${urls.length}個が有効`);
+    console.log(
+      `ステップ9-2: 一括解析完了: ${validResults.length}/${urls.length}個が有効`,
+    );
     return validResults;
   }
 
@@ -2884,12 +3159,16 @@ class SheetsClient {
   findRow(spreadsheetData, rowKeyword) {
     // ステップ10-1-1: データ存在確認
     if (!spreadsheetData || !spreadsheetData.values) {
-      console.warn(`ステップ10-1-1: スプレッドシートデータまたはvaluesが存在しません`);
+      console.warn(
+        `ステップ10-1-1: スプレッドシートデータまたはvaluesが存在しません`,
+      );
       return null;
     }
 
     // ステップ10-1-2: 指定キーワードで行を検索
-    const foundRow = spreadsheetData.values.find(row => row[0] === rowKeyword);
+    const foundRow = spreadsheetData.values.find(
+      (row) => row[0] === rowKeyword,
+    );
 
     if (foundRow) {
       console.log(`ステップ10-1-2: ${rowKeyword}行を発見しました`);
@@ -2909,66 +3188,73 @@ class SheetsClient {
   getAIModelFunction(spreadsheetData, task) {
     try {
       // ステップ10-2-1: 必要な行データを取得
-      console.log("ステップ10-2-1: 必要な行データ（AI、モデル、機能）の取得開始");
-      const aiRow = this.findRow(spreadsheetData, 'AI');
-      const modelRow = this.findRow(spreadsheetData, 'モデル');
-      const functionRow = this.findRow(spreadsheetData, '機能');
+      console.log(
+        "ステップ10-2-1: 必要な行データ（AI、モデル、機能）の取得開始",
+      );
+      const aiRow = this.findRow(spreadsheetData, "AI");
+      const modelRow = this.findRow(spreadsheetData, "モデル");
+      const functionRow = this.findRow(spreadsheetData, "機能");
 
       // ステップ10-2-2: 必須行の存在確認
       if (!modelRow || !functionRow) {
-        console.error('ステップ10-2-2: モデル行または機能行が見つかりません');
-        return { ai: '', model: '', function: '' };
+        console.error("ステップ10-2-2: モデル行または機能行が見つかりません");
+        return { ai: "", model: "", function: "" };
       }
 
       // ステップ10-2-3: プロンプト列のインデックス確認
-      const promptIndex = task.promptColumns && task.promptColumns.length > 0 ? task.promptColumns[0] : null;
+      const promptIndex =
+        task.promptColumns && task.promptColumns.length > 0
+          ? task.promptColumns[0]
+          : null;
 
       if (!promptIndex) {
-        console.error('ステップ10-2-3: プロンプト列が見つかりません');
-        return { ai: '', model: '', function: '' };
+        console.error("ステップ10-2-3: プロンプト列が見つかりません");
+        return { ai: "", model: "", function: "" };
       }
 
       // ステップ10-2-4: 処理モード判定（通常 vs 3種類AI）
-      const promptFunctionValue = functionRow[promptIndex] || '';
-      console.log(`ステップ10-2-4: 処理モード判定 - プロンプト列機能値: "${promptFunctionValue}"`);
+      const promptFunctionValue = functionRow[promptIndex] || "";
+      console.log(
+        `ステップ10-2-4: 処理モード判定 - プロンプト列機能値: "${promptFunctionValue}"`,
+      );
 
-      let ai = '';
-      let model = '';
-      let func = '';
+      let ai = "";
+      let model = "";
+      let func = "";
 
-      if (promptFunctionValue === '通常') {
+      if (promptFunctionValue === "通常") {
         // ステップ10-2-5: 通常処理モード - プロンプト列から取得
-        console.log('ステップ10-2-5: 通常処理モード開始');
-        ai = aiRow ? (aiRow[promptIndex] || '') : '';
-        model = modelRow[promptIndex] || '';
-        func = functionRow[promptIndex] || '通常';
+        console.log("ステップ10-2-5: 通常処理モード開始");
+        ai = aiRow ? aiRow[promptIndex] || "" : "";
+        model = modelRow[promptIndex] || "";
+        func = functionRow[promptIndex] || "通常";
 
         console.log(`ステップ10-2-5: 通常処理データ取得完了`, {
           column: this.indexToColumn(promptIndex),
           ai,
           model,
-          function: func
+          function: func,
         });
       } else {
         // ステップ10-2-6: 3種類AIモード - 回答列から取得
-        console.log('ステップ10-2-6: 3種類AIモード開始');
+        console.log("ステップ10-2-6: 3種類AIモード開始");
         const answerColumnIndex = this.columnToIndex(task.column);
-        ai = aiRow ? (aiRow[answerColumnIndex] || '') : '';
-        model = modelRow[answerColumnIndex] || '';
-        func = functionRow[answerColumnIndex] || '';
+        ai = aiRow ? aiRow[answerColumnIndex] || "" : "";
+        model = modelRow[answerColumnIndex] || "";
+        func = functionRow[answerColumnIndex] || "";
 
         console.log(`ステップ10-2-6: 3種類AIデータ取得完了`, {
           column: task.column,
           ai,
           model,
-          function: func
+          function: func,
         });
       }
 
       return { ai, model, function: func };
     } catch (error) {
-      console.error('ステップ10-2: データ取得処理エラー:', error);
-      return { ai: '', model: '', function: '' };
+      console.error("ステップ10-2: データ取得処理エラー:", error);
+      return { ai: "", model: "", function: "" };
     }
   }
 
@@ -2979,7 +3265,7 @@ class SheetsClient {
    */
   columnToIndex(column) {
     // ステップ10-3-1: 既に数値の場合はそのまま返す
-    if (typeof column === 'number') {
+    if (typeof column === "number") {
       console.log(`ステップ10-3-1: 数値入力のためそのまま返却: ${column}`);
       return column;
     }
@@ -2991,7 +3277,7 @@ class SheetsClient {
 
     // ステップ10-3-3: 各文字を26進数として計算
     for (let i = 0; i < columnStr.length; i++) {
-      index = index * 26 + (columnStr.charCodeAt(i) - 'A'.charCodeAt(0) + 1);
+      index = index * 26 + (columnStr.charCodeAt(i) - "A".charCodeAt(0) + 1);
     }
 
     // ステップ10-3-4: 0ベースに変換して結果を返す
@@ -3007,20 +3293,22 @@ class SheetsClient {
    */
   indexToColumn(index) {
     // ステップ10-4-1: 既に文字列の場合はそのまま返す
-    if (typeof index === 'string') {
+    if (typeof index === "string") {
       console.log(`ステップ10-4-1: 文字列入力のためそのまま返却: "${index}"`);
       return index;
     }
 
     // ステップ10-4-2: 変換処理の初期化
-    let column = '';
+    let column = "";
     let num = index + 1; // 1ベースに変換
-    console.log(`ステップ10-4-2: インデックス変換開始: ${index} → 1ベース: ${num}`);
+    console.log(
+      `ステップ10-4-2: インデックス変換開始: ${index} → 1ベース: ${num}`,
+    );
 
     // ステップ10-4-3: 26進数として各桁を計算
     while (num > 0) {
       num--; // 0ベースに調整
-      column = String.fromCharCode('A'.charCodeAt(0) + (num % 26)) + column;
+      column = String.fromCharCode("A".charCodeAt(0) + (num % 26)) + column;
       num = Math.floor(num / 26);
     }
 
@@ -3038,22 +3326,24 @@ class SheetsClient {
     const validation = {
       valid: true,
       missing: [],
-      available: {}
+      available: {},
     };
 
     console.log("ステップ10-5-1: スプレッドシートデータ構造検証開始");
 
     // ステップ10-5-2: 基本データ構造の確認
     if (!spreadsheetData || !spreadsheetData.values) {
-      console.error('ステップ10-5-2: スプレッドシートデータまたはvaluesプロパティが存在しません');
+      console.error(
+        "ステップ10-5-2: スプレッドシートデータまたはvaluesプロパティが存在しません",
+      );
       validation.valid = false;
-      validation.missing.push('spreadsheetData.values');
+      validation.missing.push("spreadsheetData.values");
       return validation;
     }
 
     // ステップ10-5-3: 必要な行の存在確認
     console.log("ステップ10-5-3: 必要な行（AI、モデル、機能）の存在確認開始");
-    const requiredRows = ['AI', 'モデル', '機能'];
+    const requiredRows = ["AI", "モデル", "機能"];
 
     requiredRows.forEach((rowKeyword, index) => {
       console.log(`ステップ10-5-3-${index + 1}: ${rowKeyword}行の存在確認`);
@@ -3061,20 +3351,24 @@ class SheetsClient {
 
       if (row) {
         validation.available[rowKeyword] = true;
-        console.log(`ステップ10-5-3-${index + 1}: ${rowKeyword}行を確認しました`);
+        console.log(
+          `ステップ10-5-3-${index + 1}: ${rowKeyword}行を確認しました`,
+        );
       } else {
         validation.valid = false;
         validation.missing.push(`${rowKeyword}行`);
-        console.error(`ステップ10-5-3-${index + 1}: ${rowKeyword}行が見つかりません`);
+        console.error(
+          `ステップ10-5-3-${index + 1}: ${rowKeyword}行が見つかりません`,
+        );
       }
     });
 
     // ステップ10-5-4: 検証結果の集計とログ出力
-    const status = validation.valid ? '成功' : '失敗';
+    const status = validation.valid ? "成功" : "失敗";
     console.log(`ステップ10-5-4: データ構造検証${status}`, {
       有効: validation.valid,
       不足項目数: validation.missing.length,
-      利用可能項目: Object.keys(validation.available).length
+      利用可能項目: Object.keys(validation.available).length,
     });
 
     return validation;
@@ -3092,11 +3386,13 @@ class SheetsClient {
     const sendTime = new Date();
     this.sendTimeRecords.set(taskId, {
       sendTime: sendTime,
-      aiType: sendTimeData.aiType || 'Claude',
-      model: sendTimeData.model || 'Claude',
-      function: sendTimeData.function || '通常'
+      aiType: sendTimeData.aiType || "Claude",
+      model: sendTimeData.model || "Claude",
+      function: sendTimeData.function || "通常",
     });
-    this.logger.log(`[recordSendTime] 送信時刻記録: ${taskId} at ${sendTime.toISOString()}`);
+    this.logger.log(
+      `[recordSendTime] 送信時刻記録: ${taskId} at ${sendTime.toISOString()}`,
+    );
   }
 
   /**
@@ -3115,4 +3411,5 @@ if (typeof globalThis !== "undefined") {
   globalThis.parseSpreadsheetUrl = SheetsClient.parseSpreadsheetUrl;
   globalThis.parseMultipleUrls = SheetsClient.parseMultipleUrls;
 }
-export { SheetsClient }; export default SheetsClient;
+export { SheetsClient };
+export default SheetsClient;

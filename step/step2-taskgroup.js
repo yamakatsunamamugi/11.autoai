@@ -219,7 +219,7 @@ async function identifyTaskGroups() {
           logColumn: columnLetter,
           promptColumns: [],
           answerColumns: [],
-          groupType: "single",
+          groupType: "通常処理",
           aiType: aiValue || "Claude",
           dependencies: groupCounter > 1 ? [`group_${groupCounter - 1}`] : [],
           sequenceOrder: groupCounter,
@@ -312,7 +312,7 @@ async function identifyTaskGroups() {
             logColumn: null,
             promptColumns: [columnLetter],
             answerColumns: [],
-            groupType: "single",
+            groupType: "通常処理",
             aiType: aiValue || "Claude",
             ai: aiValue,
             dependencies: groupCounter > 1 ? [`group_${groupCounter - 1}`] : [],
@@ -332,7 +332,7 @@ async function identifyTaskGroups() {
           currentGroup.type = "3種類AI";
           currentGroup.aiType = aiValue;
         } else if (aiValue) {
-          currentGroup.groupType = "single";
+          currentGroup.groupType = "通常処理";
           currentGroup.aiType = aiValue;
         }
       }
@@ -1023,37 +1023,33 @@ async function executeStep2TaskGroups() {
       // dataStartRowを設定（step1で取得した情報を使用）
       group.dataStartRow = window.globalState.specialRows?.dataStartRow || 9;
 
-      // 【統一修正】全てオブジェクト形式に統一
-      let answerColumnStructure;
+      // 【シンプル化】列情報のみを設定（セル位置計算は実行時に行う）
+      let answerColumns;
       if (group.groupType === "3種類AI" || group.type === "3種類AI") {
-        // 3種類AIの場合はオブジェクト構造を維持
-        answerColumnStructure = {
-          chatgpt: group.chatgptColumn || group.columns?.answer?.chatgpt || "C",
-          claude: group.claudeColumn || group.columns?.answer?.claude || "D",
-          gemini: group.geminiColumn || group.columns?.answer?.gemini || "E",
+        // 3種類AIの場合
+        answerColumns = {
+          chatgpt: group.chatgptColumn || "C",
+          claude: group.claudeColumn || "D",
+          gemini: group.geminiColumn || "E",
         };
       } else {
-        // 【統一修正】通常処理もオブジェクト形式に統一
+        // 通常処理の場合
         const primaryColumn =
           group.answerColumn ||
-          group.columns?.answer ||
           (group.answerColumns && group.answerColumns.length > 0
             ? group.answerColumns[0].column
             : "C");
-        answerColumnStructure = {
+        answerColumns = {
           primary: primaryColumn,
-          chatgpt: primaryColumn,
-          claude: primaryColumn,
-          gemini: primaryColumn,
         };
       }
 
-      // 統一columns形式を設定（データ損失防止）
+      // シンプルなcolumns構造（列名のみ）
       group.columns = {
-        log: group.columns?.log || group.logColumn || null,
-        prompts: group.columns?.prompts || group.promptColumns || [],
-        answer: answerColumnStructure,
-        work: group.columns?.work || group.workColumn || null,
+        log: group.logColumn || "A",
+        prompts: group.promptColumns || ["B"],
+        answer: answerColumns,
+        work: group.workColumn || null,
       };
 
       // groupTypeが未設定の場合、typeから設定

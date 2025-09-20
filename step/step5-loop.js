@@ -349,12 +349,8 @@ async function checkCompletionStatus(taskGroup) {
       // 【統一修正】通常パターンもオブジェクト形式に統一
       LoopLogger.info("[step5-loop.js] [Step 5-1-2] 通常パターンの回答を確認");
 
-      // primaryフィールドまたは最初のAI列を使用
-      const answerColumn =
-        taskGroup.columns.answer.primary ||
-        taskGroup.columns.answer.chatgpt ||
-        Object.values(taskGroup.columns.answer)[0];
-
+      // 【シンプル化】primary列を使用して範囲を生成
+      const answerColumn = taskGroup.columns.answer.primary || "C";
       answerRange = `${answerColumn}${taskGroup.dataStartRow}:${answerColumn}1000`;
       LoopLogger.info(`[step5-loop.js] [Step 5-1-2] 取得範囲: ${answerRange}`);
 
@@ -817,8 +813,27 @@ async function createTaskList(taskGroup) {
   };
 
   try {
+    // Step3TaskList利用可能性の詳細チェック
+    console.log("🔍 [Step5-Helper] Step3TaskList利用可能性チェック:", {
+      windowExists: typeof window !== "undefined",
+      step3TaskListExists: !!window.Step3TaskList,
+      step3TaskListType: typeof window.Step3TaskList,
+      generateTaskListExists: !!window.Step3TaskList?.generateTaskList,
+      generateTaskListType: typeof window.Step3TaskList?.generateTaskList,
+      step3TaskListKeys: window.Step3TaskList
+        ? Object.keys(window.Step3TaskList)
+        : [],
+      step3TaskListError: window.Step3TaskList?.error || "なし",
+    });
+
     // step3-tasklist.jsのgenerateTaskList関数を利用
     if (!window.Step3TaskList || !window.Step3TaskList.generateTaskList) {
+      console.error("❌ [Step5-Helper] Step3TaskListチェック詳細:", {
+        step3TaskListExists: !!window.Step3TaskList,
+        generateTaskListExists: !!window.Step3TaskList?.generateTaskList,
+        allWindowKeys: Object.keys(window).filter((k) => k.includes("Step3")),
+        windowStep3TaskListValue: window.Step3TaskList,
+      });
       throw new Error("Step3TaskList.generateTaskListが利用できません");
     }
 
@@ -951,7 +966,7 @@ async function createTaskList(taskGroup) {
     }
 
     // タスクリスト生成を実行（制御情報付き）
-    const tasks = window.Step3TaskList.generateTaskList(
+    const tasks = await window.Step3TaskList.generateTaskList(
       taskGroup,
       spreadsheetData, // 修正：実際の2次元配列データを渡す
       specialRows,
@@ -1011,8 +1026,44 @@ async function executeTasks(tasks, taskGroup) {
 
     // タスクリストを適切な形式に変換（Step4が期待する形式に統一）
     const formattedTasks = tasks.map((task, index) => {
+      // 🔍 [DEBUG] Step3からのタスクデータ詳細ログ
+      LoopLogger.info(
+        `[Helper] 🔍 [DEBUG] Step3からのタスクデータ詳細 - タスク${index + 1}:`,
+        {
+          step3TaskAi: task.ai,
+          step3TaskAiType: task.aiType,
+          step3AnswerCell: task.answerCell,
+          step3AnswerCellDefined: task.answerCell !== undefined,
+          step3LogCell: task.logCell,
+          step3Row: task.row,
+          taskGroupAiType: taskGroup?.aiType,
+          fullStep3Task: {
+            ai: task.ai,
+            aiType: task.aiType,
+            answerCell: task.answerCell,
+            row: task.row,
+          },
+        },
+      );
+
       // Step3で生成されたタスクの情報を使用
       const aiType = task.ai || taskGroup?.aiType || "Claude";
+
+      // 🔍 [DEBUG] aiType決定プロセスのログ
+      LoopLogger.info(
+        `[Helper] 🔍 [DEBUG] aiType決定プロセス - タスク${index + 1}:`,
+        {
+          taskAi: task.ai,
+          taskGroupAiType: taskGroup?.aiType,
+          fallbackAiType: "Claude",
+          finalAiType: aiType,
+          aiTypeSource: task.ai
+            ? "task.ai"
+            : taskGroup?.aiType
+              ? "taskGroup.aiType"
+              : "fallback",
+        },
+      );
 
       const formattedTask = {
         id:
@@ -1022,6 +1073,7 @@ async function executeTasks(tasks, taskGroup) {
         row: task.row,
         aiType: aiType,
         prompt: task.prompt || task.text || "",
+        answerCell: task.answerCell, // 🔧 [FIX] 直接task.answerCellを設定
         spreadsheetData: {
           id: window.globalState.spreadsheetId,
           gid: window.globalState.gid,
@@ -1038,12 +1090,27 @@ async function executeTasks(tasks, taskGroup) {
         groupType: task.groupType,
       };
 
+      // 🔍 [DEBUG] 最終フォーマットタスクの確認
+      LoopLogger.info(
+        `[Helper] 🔍 [DEBUG] 最終フォーマットタスク - タスク${index + 1}:`,
+        {
+          formattedTaskId: formattedTask.id,
+          formattedAiType: formattedTask.aiType,
+          formattedAnswerCell: formattedTask.answerCell,
+          formattedAnswerCellDefined: formattedTask.answerCell !== undefined,
+          spreadsheetDataAnswerCell: formattedTask.spreadsheetData.answerCell,
+          step4Will_Use_answerCell: formattedTask.answerCell,
+          step4Will_Use_spreadsheetData_answerCell:
+            formattedTask.spreadsheetData.answerCell,
+        },
+      );
+
       LoopLogger.info(`[Helper] タスク${index + 1}フォーマット完了:`, {
         taskId: formattedTask.id,
         row: formattedTask.row,
         aiType: formattedTask.aiType,
         プロンプト長: formattedTask.prompt.length,
-        answerCell: formattedTask.spreadsheetData.answerCell,
+        answerCell: formattedTask.answerCell, // 🔧 [FIX] 直接参照するように変更
         logCell: formattedTask.spreadsheetData.logCell,
       });
 
