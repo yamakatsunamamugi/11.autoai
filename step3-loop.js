@@ -1235,6 +1235,17 @@ async function executeTasks(tasks, taskGroup) {
       callStack: new Error().stack.split("\n").slice(0, 5),
       windowExecuteStep4:
         window.executeStep4?.toString?.().substring(0, 100) + "...",
+      windowController: {
+        exists: !!window.windowController,
+        hasOpenWindows:
+          typeof window.windowController?.openWindows === "function",
+        constructorName: window.windowController?.constructor?.name,
+        methods: window.windowController
+          ? Object.getOwnPropertyNames(
+              Object.getPrototypeOf(window.windowController),
+            ).slice(0, 5)
+          : [],
+      },
     });
 
     try {

@@ -427,50 +427,10 @@ window.WindowService = {
 console.log("✅ [step0-ui-controller] WindowService設定完了");
 
 // ========================================
-// WindowController クラス (step5-execute.js から移動)
+// WindowController の初期化はstep4-tasklist.jsで行う
 // ========================================
-class WindowController {
-  constructor() {
-    this.openedWindows = new Map(); // aiType -> windowInfo
-    this.windowService = null; // WindowServiceへの参照
-    console.log("✅ [WindowController] インスタンス作成完了");
-  }
-
-  /**
-   * WindowServiceの初期化
-   */
-  async initializeWindowService() {
-    console.log("🪟 [WindowController] WindowService初期化開始");
-
-    // window.WindowServiceが存在すれば使用
-    if (window.WindowService) {
-      this.windowService = window.WindowService;
-      console.log("✅ [WindowController] WindowService初期化完了");
-    } else {
-      console.error("❌ [WindowController] WindowService が見つかりません");
-    }
-  }
-
-  /**
-   * ウィンドウ情報を登録
-   */
-  registerWindow(aiType, windowData) {
-    console.log(`[WindowController] ウィンドウ登録: ${aiType}`, windowData);
-    this.openedWindows.set(aiType, windowData);
-  }
-
-  /**
-   * ウィンドウ情報を取得
-   */
-  getWindow(aiType) {
-    return this.openedWindows.get(aiType);
-  }
-}
-
-// グローバルインスタンス作成（早期初期化）
-window.windowController = new WindowController();
-window.windowController.initializeWindowService();
-console.log("✅ [step0-ui-controller] WindowController 初期化完了");
+// step4-tasklist.jsでWindowControllerクラスが定義されるまで待機
+console.log("⏳ [step0-ui-controller] WindowController初期化をstep4に委譲");
 
 // ========================================
 // Section 3: メインUI制御機能 (旧 ui-controller.js)
