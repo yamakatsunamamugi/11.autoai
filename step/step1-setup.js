@@ -87,7 +87,15 @@ async function checkInternetConnection() {
         try {
           const response = await new Promise((resolve) => {
             chrome.runtime.sendMessage({ type: "getAuthToken" }, (response) => {
-              resolve(response || {});
+              if (chrome.runtime.lastError) {
+                console.warn(
+                  "[step1-setup.js] background script通信エラー:",
+                  chrome.runtime.lastError.message,
+                );
+                resolve({}); // エラー時は空オブジェクトを返す
+              } else {
+                resolve(response || {});
+              }
             });
           });
           if (response.token) {

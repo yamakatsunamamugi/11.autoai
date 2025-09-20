@@ -787,6 +787,15 @@ class WindowController {
         aiType: aiType,
       });
 
+      // Chrome runtime.lastErrorのチェック
+      if (chrome.runtime.lastError) {
+        console.warn(
+          `[step5-execute.js] タブ通信エラー (tabId: ${tabId}):`,
+          chrome.runtime.lastError.message,
+        );
+        return checks; // デフォルト値で復帰
+      }
+
       if (response && response.success) {
         checks.textInput = response.checks.textInput || false;
         checks.modelDisplay = response.checks.modelDisplay || false;

@@ -21,26 +21,26 @@
   // セクション1: 基本設定
   // ========================================
   const CONFIG = {
-    AI_TYPE: 'Report',
-    VERSION: '2.0.0',
+    AI_TYPE: "Report",
+    VERSION: "2.0.0",
 
     // タイムアウト設定
-    DEFAULT_TIMEOUT: 30000,    // 30秒
-    RETRY_ATTEMPTS: 3,          // リトライ回数
-    RETRY_DELAY: 1000,          // リトライ間隔
+    DEFAULT_TIMEOUT: 30000, // 30秒
+    RETRY_ATTEMPTS: 3, // リトライ回数
+    RETRY_DELAY: 1000, // リトライ間隔
 
     // バッチ処理設定
-    BATCH_SIZE: 10,             // バッチサイズ
-    BATCH_DELAY: 500,           // バッチ間の遅延
+    BATCH_SIZE: 10, // バッチサイズ
+    BATCH_DELAY: 500, // バッチ間の遅延
 
     // レポート設定
     REPORT_CONFIG: {
-      titleTemplate: 'レポート - {row}行目',
+      titleTemplate: "レポート - {row}行目",
       includePrompt: true,
       includeAnswer: true,
       includeMetadata: true,
-      formatType: 'structured'
-    }
+      formatType: "structured",
+    },
   };
 
   // ========================================
@@ -55,8 +55,10 @@
    */
   async function loadUISelectors() {
     try {
-      log('【Step 4-4-0-1】📄 UIセレクタファイル読み込み中...', 'INFO');
-      const response = await fetch(chrome.runtime.getURL('ui-selectors-data.json'));
+      log("【Step 4-4-0-1】📄 UIセレクタファイル読み込み中...", "INFO");
+      const response = await fetch(
+        chrome.runtime.getURL("ui-selectors-data.json"),
+      );
       const data = await response.json();
 
       // Google Docs用セレクタを定義（一般的なセレクタ）
@@ -65,27 +67,30 @@
           NEW_DOC_BUTTON: [
             'div[aria-label="新しいドキュメントを作成"]',
             '[data-tooltip="新しいドキュメントを作成"]',
-            'div.docs-homescreen-templates-templateview-preview',
-            '.docs-homescreen-templates-templateview-preview'
+            "div.docs-homescreen-templates-templateview-preview",
+            ".docs-homescreen-templates-templateview-preview",
           ],
           TITLE_INPUT: [
-            '.docs-title-input',
-            'input.docs-title-input',
+            ".docs-title-input",
+            "input.docs-title-input",
             '[aria-label="ドキュメント名"]',
-            '.docs-title-widget input'
+            ".docs-title-widget input",
           ],
           DOCUMENT_BODY: [
-            '.kix-appview-editor',
-            '.docs-texteventtarget-iframe',
-            '.kix-wordhtmlgenerator-word-node'
-          ]
+            ".kix-appview-editor",
+            ".docs-texteventtarget-iframe",
+            ".kix-wordhtmlgenerator-word-node",
+          ],
         },
-        COMMON: data.selectors.COMMON || {}
+        COMMON: data.selectors.COMMON || {},
       };
 
-      log('【Step 4-4-0-1】✅ UIセレクタファイル読み込み完了', 'SUCCESS');
+      log("【Step 4-4-0-1】✅ UIセレクタファイル読み込み完了", "SUCCESS");
     } catch (error) {
-      log(`【Step 4-4-0-1】❌ UIセレクタ読み込み失敗: ${error.message}`, 'ERROR');
+      log(
+        `【Step 4-4-0-1】❌ UIセレクタ読み込み失敗: ${error.message}`,
+        "ERROR",
+      );
       throw error;
     }
   }
@@ -106,7 +111,7 @@
       await wait(retryInterval);
     }
 
-    throw new Error(`要素が見つかりません: ${selectors.join(', ')}`);
+    throw new Error(`要素が見つかりません: ${selectors.join(", ")}`);
   }
 
   /**
@@ -122,13 +127,13 @@
       await wait(100);
     }
 
-    throw new Error('要素が表示されませんでした');
+    throw new Error("要素が表示されませんでした");
   }
 
   /**
    * Step 4-4-0: 詳細ログ出力（エラーコンテキスト付き）
    */
-  function log(message, level = 'INFO', context = {}) {
+  function log(message, level = "INFO", context = {}) {
     const timestamp = new Date().toLocaleTimeString();
     const prefix = `[Step 4-4:${timestamp}]`;
 
@@ -138,11 +143,11 @@
       timestamp: new Date().toISOString(),
       context,
       url: window.location.href,
-      userAgent: navigator.userAgent
+      userAgent: navigator.userAgent,
     };
 
     switch (level) {
-      case 'ERROR':
+      case "ERROR":
         console.error(`${prefix} ❌ ${message}`, logData);
         // エラーの場合はコンテキスト情報も追加で出力
         if (context.error) {
@@ -151,14 +156,14 @@
             errorMessage: context.error.message,
             errorStack: context.error.stack,
             retryCount: context.retryCount || 0,
-            escalationLevel: context.escalationLevel || 'NONE'
+            escalationLevel: context.escalationLevel || "NONE",
           });
         }
         break;
-      case 'SUCCESS':
+      case "SUCCESS":
         console.log(`${prefix} ✅ ${message}`, logData);
         break;
-      case 'WARNING':
+      case "WARNING":
         console.warn(`${prefix} ⚠️ ${message}`, logData);
         break;
       default:
@@ -170,7 +175,7 @@
    * 待機処理
    */
   function wait(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**
@@ -179,28 +184,32 @@
   class GoogleDocsManager {
     constructor() {
       this.initialized = false;
-      this.baseUrl = 'https://docs.google.com';
+      this.baseUrl = "https://docs.google.com";
     }
 
     async initialize() {
       if (this.initialized) return;
 
       try {
-        log('【Step 4-4-0-2】📄 Google Docsマネージャー初期化中...', 'INFO');
+        log("【Step 4-4-0-2】📄 Google Docsマネージャー初期化中...", "INFO");
 
         // UIセレクタの読み込み
         await loadUISelectors();
-        log('【Step 4-4-0-2】✅ UIセレクタ準備完了', 'SUCCESS');
+        log("【Step 4-4-0-2】✅ UIセレクタ準備完了", "SUCCESS");
 
         this.initialized = true;
-        log('【Step 4-4-0-2】✅ Google Docsマネージャー初期化完了', 'SUCCESS');
+        log("【Step 4-4-0-2】✅ Google Docsマネージャー初期化完了", "SUCCESS");
       } catch (error) {
-        log(`【Step 4-4-0-2】❌ Google Docsマネージャー初期化失敗: ${error.message}`, 'ERROR', {
-          error,
-          step: 'GoogleDocsManager_Initialize',
-          retryCount: 0,
-          escalationLevel: 'IMMEDIATE_FAILURE'
-        });
+        log(
+          `【Step 4-4-0-2】❌ Google Docsマネージャー初期化失敗: ${error.message}`,
+          "ERROR",
+          {
+            error,
+            step: "GoogleDocsManager_Initialize",
+            retryCount: 0,
+            escalationLevel: "IMMEDIATE_FAILURE",
+          },
+        );
         throw error;
       }
     }
@@ -209,64 +218,86 @@
       await this.initialize();
 
       try {
-        log(`【Step 4-4-3-1】📝 ドキュメント作成開始: "${title}"`, 'INFO');
+        log(`【Step 4-4-3-1】📝 ドキュメント作成開始: "${title}"`, "INFO");
 
         // Google Docsページを新しいタブで開く
-        log(`【Step 4-4-3-2】🌐 Google Docsページを開いています...`, 'INFO');
-        const newTab = window.open(`${this.baseUrl}/document/create`, '_blank');
+        log(`【Step 4-4-3-2】🌐 Google Docsページを開いています...`, "INFO");
+        const newTab = window.open(`${this.baseUrl}/document/create`, "_blank");
 
         if (!newTab) {
-          throw new Error('新しいタブを開けませんでした');
+          throw new Error("新しいタブを開けませんでした");
         }
 
-        log(`【Step 4-4-3-2】✅ Google Docsページを開きました`, 'SUCCESS');
+        log(`【Step 4-4-3-2】✅ Google Docsページを開きました`, "SUCCESS");
 
         // 実際の実装では、新しいタブでのドキュメント作成を監視
-        const docUrl = await this._waitForDocumentCreation(newTab, title, content);
+        const docUrl = await this._waitForDocumentCreation(
+          newTab,
+          title,
+          content,
+        );
 
-        log(`【Step 4-4-3-3】✅ ドキュメント作成完了: ${docUrl}`, 'SUCCESS');
+        log(`【Step 4-4-3-3】✅ ドキュメント作成完了: ${docUrl}`, "SUCCESS");
         return {
           success: true,
           url: docUrl,
-          title: title
+          title: title,
         };
       } catch (error) {
-        log(`【Step 4-4-3-1】❌ ドキュメント作成失敗: ${error.message}`, 'ERROR', {
-          error,
-          step: 'Document_Creation',
-          title,
-          contentLength: content?.length || 0,
-          retryCount: 0,
-          escalationLevel: 'MODERATE'
-        });
+        log(
+          `【Step 4-4-3-1】❌ ドキュメント作成失敗: ${error.message}`,
+          "ERROR",
+          {
+            error,
+            step: "Document_Creation",
+            title,
+            contentLength: content?.length || 0,
+            retryCount: 0,
+            escalationLevel: "MODERATE",
+          },
+        );
         throw error;
       }
     }
 
     async _waitForDocumentCreation(tab, title, content) {
       try {
-        log(`【Step 4-4-3-3】⏳ ドキュメント作成完了を待機中...`, 'INFO');
+        log(`【Step 4-4-3-3】⏳ ドキュメント作成完了を待機中...`, "INFO");
 
         // 実際の実装では、Content Scriptを通じてドキュメント操作を行う
         // ここでは簡略化した実装
         await wait(2000); // ページロード待機
 
         // ドキュメントURLを生成（実際はページから取得）
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
         const docUrl = `https://docs.google.com/document/d/${timestamp}/edit`;
 
         // Content Scriptにメッセージを送信してドキュメントを編集
         if (chrome.tabs) {
-          chrome.tabs.sendMessage(tab.id, {
-            action: 'createReport',
-            title: title,
-            content: content
-          });
+          chrome.tabs.sendMessage(
+            tab.id,
+            {
+              action: "createReport",
+              title: title,
+              content: content,
+            },
+            (response) => {
+              if (chrome.runtime.lastError) {
+                console.warn(
+                  "[4-4-report-automation.js] レポート作成通信エラー:",
+                  chrome.runtime.lastError.message,
+                );
+              }
+            },
+          );
         }
 
         return docUrl;
       } catch (error) {
-        log(`【Step 4-4-3-3】❌ ドキュメント作成待機失敗: ${error.message}`, 'ERROR');
+        log(
+          `【Step 4-4-3-3】❌ ドキュメント作成待機失敗: ${error.message}`,
+          "ERROR",
+        );
         throw error;
       }
     }
@@ -276,19 +307,21 @@
      */
     async setDocumentTitle(title) {
       try {
-        log(`【Step 4-4-4-1】📝 タイトル設定中: "${title}"`, 'INFO');
+        log(`【Step 4-4-4-1】📝 タイトル設定中: "${title}"`, "INFO");
 
-        const titleInput = await findElement(UI_SELECTORS.GOOGLE_DOCS.TITLE_INPUT);
+        const titleInput = await findElement(
+          UI_SELECTORS.GOOGLE_DOCS.TITLE_INPUT,
+        );
         await waitForVisible(titleInput);
 
         titleInput.value = title;
-        titleInput.dispatchEvent(new Event('input', { bubbles: true }));
-        titleInput.dispatchEvent(new Event('change', { bubbles: true }));
+        titleInput.dispatchEvent(new Event("input", { bubbles: true }));
+        titleInput.dispatchEvent(new Event("change", { bubbles: true }));
 
-        log(`【Step 4-4-4-1】✅ タイトル設定完了`, 'SUCCESS');
+        log(`【Step 4-4-4-1】✅ タイトル設定完了`, "SUCCESS");
         return true;
       } catch (error) {
-        log(`【Step 4-4-4-1】❌ タイトル設定失敗: ${error.message}`, 'ERROR');
+        log(`【Step 4-4-4-1】❌ タイトル設定失敗: ${error.message}`, "ERROR");
         throw error;
       }
     }
@@ -298,19 +331,21 @@
      */
     async setDocumentContent(content) {
       try {
-        log(`【Step 4-4-4-2】📝 コンテンツ設定中...`, 'INFO');
+        log(`【Step 4-4-4-2】📝 コンテンツ設定中...`, "INFO");
 
-        const docBody = await findElement(UI_SELECTORS.GOOGLE_DOCS.DOCUMENT_BODY);
+        const docBody = await findElement(
+          UI_SELECTORS.GOOGLE_DOCS.DOCUMENT_BODY,
+        );
         await waitForVisible(docBody);
 
         // コンテンツを設定（実際の実装は更に複雑）
         docBody.innerHTML = content;
-        docBody.dispatchEvent(new Event('input', { bubbles: true }));
+        docBody.dispatchEvent(new Event("input", { bubbles: true }));
 
-        log(`【Step 4-4-4-2】✅ コンテンツ設定完了`, 'SUCCESS');
+        log(`【Step 4-4-4-2】✅ コンテンツ設定完了`, "SUCCESS");
         return true;
       } catch (error) {
-        log(`【Step 4-4-4-2】❌ コンテンツ設定失敗: ${error.message}`, 'ERROR');
+        log(`【Step 4-4-4-2】❌ コンテンツ設定失敗: ${error.message}`, "ERROR");
         throw error;
       }
     }
@@ -333,17 +368,17 @@
       if (this.initialized) return;
 
       try {
-        log('【Step 4-4-0-0-1】🔧 レポートハンドラー初期化開始...', 'INFO');
+        log("【Step 4-4-0-0-1】🔧 レポートハンドラー初期化開始...", "INFO");
 
-        log('【Step 4-4-0-0-2】📄 Google Docsマネージャー作成中...', 'INFO');
+        log("【Step 4-4-0-0-2】📄 Google Docsマネージャー作成中...", "INFO");
         this.googleDocsManager = new GoogleDocsManager();
         await this.googleDocsManager.initialize();
-        log('【Step 4-4-0-0-2】✅ Google Docsマネージャー作成完了', 'SUCCESS');
+        log("【Step 4-4-0-0-2】✅ Google Docsマネージャー作成完了", "SUCCESS");
 
         this.initialized = true;
-        log('【レポート初期化完了】✅ レポートハンドラー初期化完了', 'SUCCESS');
+        log("【レポート初期化完了】✅ レポートハンドラー初期化完了", "SUCCESS");
       } catch (error) {
-        log(`【レポート初期化失敗】❌ 初期化エラー: ${error.message}`, 'ERROR');
+        log(`【レポート初期化失敗】❌ 初期化エラー: ${error.message}`, "ERROR");
         throw error;
       }
     }
@@ -360,61 +395,81 @@
         rowNumber,
         promptText,
         answerText,
-        reportColumn
+        reportColumn,
       } = params;
 
       try {
-        log(`【Step 4-4-1-1】📝 レポート生成開始: ${rowNumber}行目`, 'INFO');
-        log(`【Step 4-4-1-1】📊 対象スプレッドシート: ${spreadsheetId}`, 'INFO');
-        log(`【Step 4-4-1-1】📍 対象シートGID: ${sheetGid}`, 'INFO');
+        log(`【Step 4-4-1-1】📝 レポート生成開始: ${rowNumber}行目`, "INFO");
+        log(
+          `【Step 4-4-1-1】📊 対象スプレッドシート: ${spreadsheetId}`,
+          "INFO",
+        );
+        log(`【Step 4-4-1-1】📍 対象シートGID: ${sheetGid}`, "INFO");
 
-        log(`【Step 4-4-1-2】📝 レポートコンテンツ作成中...`, 'INFO');
+        log(`【Step 4-4-1-2】📝 レポートコンテンツ作成中...`, "INFO");
         const reportContent = this._generateReportContent({
           rowNumber,
           promptText,
           answerText,
           spreadsheetId,
-          sheetGid
+          sheetGid,
         });
-        log(`【Step 4-4-1-2】✅ レポートコンテンツ作成完了`, 'SUCCESS');
+        log(`【Step 4-4-1-2】✅ レポートコンテンツ作成完了`, "SUCCESS");
 
-        log(`【Step 4-4-1-3】📄 Google Docsドキュメント作成中...`, 'INFO');
-        const title = this.config.REPORT_CONFIG.titleTemplate.replace('{row}', rowNumber);
-        const docResult = await this.googleDocsManager.createDocument(title, reportContent);
-        log(`【Step 4-4-1-3】✅ Google Docsドキュメント作成完了`, 'SUCCESS');
+        log(`【Step 4-4-1-3】📄 Google Docsドキュメント作成中...`, "INFO");
+        const title = this.config.REPORT_CONFIG.titleTemplate.replace(
+          "{row}",
+          rowNumber,
+        );
+        const docResult = await this.googleDocsManager.createDocument(
+          title,
+          reportContent,
+        );
+        log(`【Step 4-4-1-3】✅ Google Docsドキュメント作成完了`, "SUCCESS");
 
         if (docResult.success) {
-          log(`【Step 4-4-1-4】📎 レポートURL取得成功: ${docResult.url}`, 'SUCCESS');
+          log(
+            `【Step 4-4-1-4】📎 レポートURL取得成功: ${docResult.url}`,
+            "SUCCESS",
+          );
 
           // スプレッドシートにURLを記録（オプション）
           if (reportColumn) {
-            log(`【Step 4-4-1-5】📊 スプレッドシートにURL記録中...`, 'INFO');
-            await this._updateSpreadsheetCell(spreadsheetId, sheetGid, rowNumber, reportColumn, docResult.url);
-            log(`【Step 4-4-1-5】✅ スプレッドシート更新完了`, 'SUCCESS');
+            log(`【Step 4-4-1-5】📊 スプレッドシートにURL記録中...`, "INFO");
+            await this._updateSpreadsheetCell(
+              spreadsheetId,
+              sheetGid,
+              rowNumber,
+              reportColumn,
+              docResult.url,
+            );
+            log(`【Step 4-4-1-5】✅ スプレッドシート更新完了`, "SUCCESS");
           }
 
-          log(`【結果】📎 生成されたレポートURL: ${docResult.url}`, 'SUCCESS');
+          log(`【結果】📎 生成されたレポートURL: ${docResult.url}`, "SUCCESS");
           return {
             success: true,
             url: docResult.url,
             title: docResult.title,
-            rowNumber: rowNumber
+            rowNumber: rowNumber,
           };
         } else {
-          log(`【Step 4-4-1-3】❌ Google Docsドキュメント作成失敗`, 'ERROR');
+          log(`【Step 4-4-1-3】❌ Google Docsドキュメント作成失敗`, "ERROR");
           return {
             success: false,
-            error: 'ドキュメント作成に失敗しました',
-            rowNumber: rowNumber
+            error: "ドキュメント作成に失敗しました",
+            rowNumber: rowNumber,
           };
         }
-
       } catch (error) {
-        log(`【レポート処理失敗】❌ レポート生成エラー: ${error.message}`, 'ERROR');
+        log(
+          `【レポート処理失敗】❌ レポート生成エラー: ${error.message}`,
+          "ERROR",
+        );
         return {
           success: false,
           error: error.message,
-          rowNumber: rowNumber
+          rowNumber: rowNumber,
         };
       }
     }
@@ -423,7 +478,8 @@
      * レポートコンテンツ生成
      */
     _generateReportContent(params) {
-      const { rowNumber, promptText, answerText, spreadsheetId, sheetGid } = params;
+      const { rowNumber, promptText, answerText, spreadsheetId, sheetGid } =
+        params;
       const config = this.config.REPORT_CONFIG;
 
       let content = `<h1>レポート - ${rowNumber}行目</h1>\n\n`;
@@ -433,20 +489,20 @@
         content += `<p><strong>スプレッドシートID:</strong> ${spreadsheetId}</p>\n`;
         content += `<p><strong>シートGID:</strong> ${sheetGid}</p>\n`;
         content += `<p><strong>行番号:</strong> ${rowNumber}</p>\n`;
-        content += `<p><strong>生成日時:</strong> ${new Date().toLocaleString('ja-JP')}</p>\n\n`;
+        content += `<p><strong>生成日時:</strong> ${new Date().toLocaleString("ja-JP")}</p>\n\n`;
       }
 
       if (config.includePrompt && promptText) {
         content += `<h2>❓ プロンプト</h2>\n`;
         content += `<div style="background-color: #f5f5f5; padding: 10px; border-left: 3px solid #007acc;">\n`;
-        content += `<p>${promptText.replace(/\n/g, '<br>')}</p>\n`;
+        content += `<p>${promptText.replace(/\n/g, "<br>")}</p>\n`;
         content += `</div>\n\n`;
       }
 
       if (config.includeAnswer && answerText) {
         content += `<h2>💡 回答</h2>\n`;
         content += `<div style="background-color: #f0f8f0; padding: 10px; border-left: 3px solid #28a745;">\n`;
-        content += `<p>${answerText.replace(/\n/g, '<br>')}</p>\n`;
+        content += `<p>${answerText.replace(/\n/g, "<br>")}</p>\n`;
         content += `</div>\n\n`;
       }
 
@@ -463,14 +519,14 @@
       try {
         // 実際の実装では、Google Sheets APIまたはDOM操作を使用
         // ここでは簡略化した実装
-        log(`セル更新: ${row}行${column}列 = ${value}`, 'INFO');
+        log(`セル更新: ${row}行${column}列 = ${value}`, "INFO");
 
         // Google Sheets APIを呼び出すか、
         // 現在のページがスプレッドシートの場合はDOM操作で更新
 
         return true;
       } catch (error) {
-        log(`セル更新失敗: ${error.message}`, 'ERROR');
+        log(`セル更新失敗: ${error.message}`, "ERROR");
         throw error;
       }
     }
@@ -482,22 +538,40 @@
       await this.initialize();
 
       try {
-        log(`【Step 4-4-2-1】📋 バッチ処理開始: ${tasks.length}件のタスク`, 'INFO');
-        log(`【Step 4-4-2-1】⚙️ 並列処理: ${options.parallel ? 'ON' : 'OFF'} / 最大同時実行: ${options.maxConcurrent || 3}`, 'INFO');
+        log(
+          `【Step 4-4-2-1】📋 バッチ処理開始: ${tasks.length}件のタスク`,
+          "INFO",
+        );
+        log(
+          `【Step 4-4-2-1】⚙️ 並列処理: ${options.parallel ? "ON" : "OFF"} / 最大同時実行: ${options.maxConcurrent || 3}`,
+          "INFO",
+        );
 
         const results = [];
         const stats = { success: 0, failed: 0, total: tasks.length };
 
         if (options.parallel) {
-          log(`【Step 4-4-2-2】🔄 並列バッチ実行中...`, 'INFO');
-          results.push(...await this._executeParallelBatch(tasks, spreadsheetData, options));
+          log(`【Step 4-4-2-2】🔄 並列バッチ実行中...`, "INFO");
+          results.push(
+            ...(await this._executeParallelBatch(
+              tasks,
+              spreadsheetData,
+              options,
+            )),
+          );
         } else {
-          log(`【Step 4-4-2-2】🔄 順次バッチ実行中...`, 'INFO');
-          results.push(...await this._executeSequentialBatch(tasks, spreadsheetData, options));
+          log(`【Step 4-4-2-2】🔄 順次バッチ実行中...`, "INFO");
+          results.push(
+            ...(await this._executeSequentialBatch(
+              tasks,
+              spreadsheetData,
+              options,
+            )),
+          );
         }
 
         // 結果集計
-        results.forEach(result => {
+        results.forEach((result) => {
           if (result.success) {
             stats.success++;
           } else {
@@ -507,23 +581,25 @@
 
         const successCount = stats.success;
         const failedCount = stats.failed;
-        log(`【Step 4-4-2-3】📊 バッチ処理完了: 成功${successCount}件 / 失敗${failedCount}件`,
-            failedCount > 0 ? 'WARNING' : 'SUCCESS');
+        log(
+          `【Step 4-4-2-3】📊 バッチ処理完了: 成功${successCount}件 / 失敗${failedCount}件`,
+          failedCount > 0 ? "WARNING" : "SUCCESS",
+        );
 
         if (successCount > 0) {
-          log(`【結果】✅ 正常処理: ${successCount}件`, 'SUCCESS');
+          log(`【結果】✅ 正常処理: ${successCount}件`, "SUCCESS");
         }
         if (failedCount > 0) {
-          log(`【結果】❌ エラー件数: ${failedCount}件`, 'ERROR');
+          log(`【結果】❌ エラー件数: ${failedCount}件`, "ERROR");
         }
 
         return {
           success: failedCount === 0,
           results: results,
-          stats: stats
+          stats: stats,
         };
       } catch (error) {
-        log(`【バッチ処理失敗】❌ バッチ処理エラー: ${error.message}`, 'ERROR');
+        log(`【バッチ処理失敗】❌ バッチ処理エラー: ${error.message}`, "ERROR");
         throw error;
       }
     }
@@ -535,18 +611,24 @@
       const maxConcurrent = options.maxConcurrent || 3;
       const results = [];
 
-      log(`【Step 4-4-2-2-1】🚀 並列実行開始: 同時実行数 ${maxConcurrent}`, 'INFO');
+      log(
+        `【Step 4-4-2-2-1】🚀 並列実行開始: 同時実行数 ${maxConcurrent}`,
+        "INFO",
+      );
 
       for (let i = 0; i < tasks.length; i += maxConcurrent) {
         const batch = tasks.slice(i, i + maxConcurrent);
-        log(`【Step 4-4-2-2-2】🔄 バッチ ${Math.floor(i / maxConcurrent) + 1}: ${batch.length}件のタスク実行`, 'INFO');
+        log(
+          `【Step 4-4-2-2-2】🔄 バッチ ${Math.floor(i / maxConcurrent) + 1}: ${batch.length}件のタスク実行`,
+          "INFO",
+        );
 
-        const batchPromises = batch.map(task =>
-          this.executeTask(task, spreadsheetData).catch(error => ({
+        const batchPromises = batch.map((task) =>
+          this.executeTask(task, spreadsheetData).catch((error) => ({
             success: false,
             error: error.message,
-            taskId: task.id
-          }))
+            taskId: task.id,
+          })),
         );
 
         const batchResults = await Promise.all(batchPromises);
@@ -559,7 +641,7 @@
         }
       }
 
-      log(`【Step 4-4-2-2-3】✅ 並列実行完了`, 'SUCCESS');
+      log(`【Step 4-4-2-2-3】✅ 並列実行完了`, "SUCCESS");
       return results;
     }
 
@@ -569,11 +651,14 @@
     async _executeSequentialBatch(tasks, spreadsheetData, options) {
       const results = [];
 
-      log(`【Step 4-4-2-2-1】🔄 順次実行開始`, 'INFO');
+      log(`【Step 4-4-2-2-1】🔄 順次実行開始`, "INFO");
 
       for (let i = 0; i < tasks.length; i++) {
         const task = tasks[i];
-        log(`【Step 4-4-2-2-2】📝 タスク ${i + 1}/${tasks.length}: ${task.id} 実行中`, 'INFO');
+        log(
+          `【Step 4-4-2-2-2】📝 タスク ${i + 1}/${tasks.length}: ${task.id} 実行中`,
+          "INFO",
+        );
 
         try {
           const result = await this.executeTask(task, spreadsheetData);
@@ -582,7 +667,7 @@
           results.push({
             success: false,
             error: error.message,
-            taskId: task.id
+            taskId: task.id,
           });
         }
 
@@ -593,7 +678,7 @@
         }
       }
 
-      log(`【Step 4-4-2-2-3】✅ 順次実行完了`, 'SUCCESS');
+      log(`【Step 4-4-2-2-3】✅ 順次実行完了`, "SUCCESS");
       return results;
     }
 
@@ -604,69 +689,91 @@
       await this.initialize();
 
       try {
-        log(`【Step 4-4-3-1】📝 タスク実行: ${task.id} (${task.row}行目)`, 'INFO');
-        log(`【Step 4-4-3-1】📊 タスクタイプ: ${task.type || 'report'}`, 'INFO');
+        log(
+          `【Step 4-4-3-1】📝 タスク実行: ${task.id} (${task.row}行目)`,
+          "INFO",
+        );
+        log(
+          `【Step 4-4-3-1】📊 タスクタイプ: ${task.type || "report"}`,
+          "INFO",
+        );
 
         // タスクデータの検証
-        log(`【Step 4-4-3-2】🔍 タスクデータ検証中...`, 'INFO');
+        log(`【Step 4-4-3-2】🔍 タスクデータ検証中...`, "INFO");
         if (!task.row || !task.promptColumn || !task.answerColumn) {
-          throw new Error('必要なタスクデータが不足しています');
+          throw new Error("必要なタスクデータが不足しています");
         }
-        log(`【Step 4-4-3-2】✅ タスクデータ検証完了`, 'SUCCESS');
+        log(`【Step 4-4-3-2】✅ タスクデータ検証完了`, "SUCCESS");
 
         // スプレッドシートからデータ取得
-        log(`【Step 4-4-3-3】📊 スプレッドシートデータ取得中...`, 'INFO');
-        const promptText = this._getCellValue(spreadsheetData, task.row, task.promptColumn);
-        const answerText = this._getCellValue(spreadsheetData, task.row, task.answerColumn);
+        log(`【Step 4-4-3-3】📊 スプレッドシートデータ取得中...`, "INFO");
+        const promptText = this._getCellValue(
+          spreadsheetData,
+          task.row,
+          task.promptColumn,
+        );
+        const answerText = this._getCellValue(
+          spreadsheetData,
+          task.row,
+          task.answerColumn,
+        );
 
         if (!promptText) {
           throw new Error(`${task.row}行目のプロンプトが空です`);
         }
 
-        log(`【Step 4-4-3-3】✅ データ取得完了: プロンプト${promptText.length}文字, 回答${answerText?.length || 0}文字`, 'SUCCESS');
+        log(
+          `【Step 4-4-3-3】✅ データ取得完了: プロンプト${promptText.length}文字, 回答${answerText?.length || 0}文字`,
+          "SUCCESS",
+        );
 
         // レポート生成パラメータ作成
-        log(`【Step 4-4-3-4】🛠️ レポートパラメータ作成中...`, 'INFO');
+        log(`【Step 4-4-3-4】🛠️ レポートパラメータ作成中...`, "INFO");
         const reportParams = {
           spreadsheetId: spreadsheetData.id || task.spreadsheetId,
           sheetGid: spreadsheetData.gid || task.sheetGid,
           rowNumber: task.row,
           promptText: promptText,
           answerText: answerText,
-          reportColumn: task.reportColumn
+          reportColumn: task.reportColumn,
         };
-        log(`【Step 4-4-3-4】✅ レポートパラメータ作成完了`, 'SUCCESS');
+        log(`【Step 4-4-3-4】✅ レポートパラメータ作成完了`, "SUCCESS");
 
         // レポート生成実行
-        log(`【Step 4-4-3-5】📝 レポート生成実行中...`, 'INFO');
+        log(`【Step 4-4-3-5】📝 レポート生成実行中...`, "INFO");
         const result = await this.generateReport(reportParams);
 
         if (result.success) {
-          log(`【Step 4-4-3-6】✅ タスク完了: ${task.id} - ${result.url}`, 'SUCCESS');
+          log(
+            `【Step 4-4-3-6】✅ タスク完了: ${task.id} - ${result.url}`,
+            "SUCCESS",
+          );
           return {
             success: true,
             taskId: task.id,
             url: result.url,
             title: result.title,
-            row: task.row
+            row: task.row,
           };
         } else {
-          log(`【Step 4-4-3-6】❌ タスク失敗: ${task.id} - ${result.error}`, 'ERROR');
+          log(
+            `【Step 4-4-3-6】❌ タスク失敗: ${task.id} - ${result.error}`,
+            "ERROR",
+          );
           return {
             success: false,
             taskId: task.id,
             error: result.error,
-            row: task.row
+            row: task.row,
           };
         }
-
       } catch (error) {
-        log(`【Step 4-4-3-1】❌ タスク実行エラー: ${error.message}`, 'ERROR');
+        log(`【Step 4-4-3-1】❌ タスク実行エラー: ${error.message}`, "ERROR");
         return {
           success: false,
           taskId: task.id,
           error: error.message,
-          row: task.row
+          row: task.row,
         };
       }
     }
@@ -677,19 +784,27 @@
     _getCellValue(spreadsheetData, row, column) {
       try {
         // スプレッドシートデータから指定された行と列の値を取得
-        if (spreadsheetData.rows && spreadsheetData.rows[row] && spreadsheetData.rows[row][column]) {
+        if (
+          spreadsheetData.rows &&
+          spreadsheetData.rows[row] &&
+          spreadsheetData.rows[row][column]
+        ) {
           return spreadsheetData.rows[row][column];
         }
 
         // データが配列形式の場合
-        if (Array.isArray(spreadsheetData) && spreadsheetData[row] && spreadsheetData[row][column]) {
+        if (
+          Array.isArray(spreadsheetData) &&
+          spreadsheetData[row] &&
+          spreadsheetData[row][column]
+        ) {
           return spreadsheetData[row][column];
         }
 
-        return '';
+        return "";
       } catch (error) {
-        log(`セル値取得エラー: ${error.message}`, 'ERROR');
-        return '';
+        log(`セル値取得エラー: ${error.message}`, "ERROR");
+        return "";
       }
     }
 
@@ -703,14 +818,14 @@
           `https://docs.googleapis.com/v1/documents/${documentId}`,
           {
             headers: {
-              'Authorization': `Bearer ${await this.getAccessToken()}`
-            }
-          }
+              Authorization: `Bearer ${await this.getAccessToken()}`,
+            },
+          },
         );
 
         return response.ok;
       } catch (error) {
-        log(`レポート検証エラー: ${error.message}`, 'ERROR');
+        log(`レポート検証エラー: ${error.message}`, "ERROR");
         return false;
       }
     }
@@ -720,7 +835,7 @@
      */
     async getAccessToken() {
       // 実際の実装では適切な認証処理が必要
-      return 'dummy-token';
+      return "dummy-token";
     }
   }
 
@@ -786,7 +901,7 @@
       if (this._handler) {
         this._handler.config = { ...CONFIG };
       }
-      log('設定更新完了', 'SUCCESS');
+      log("設定更新完了", "SUCCESS");
     },
 
     /**
@@ -794,8 +909,8 @@
      */
     reset() {
       this._handler = null;
-      log('レポート自動化リセット完了', 'SUCCESS');
-    }
+      log("レポート自動化リセット完了", "SUCCESS");
+    },
   };
 
   // ========================================
@@ -804,11 +919,16 @@
 
   // 共通基盤が読み込まれていることを確認
   if (window.AICommonBase) {
-    log('共通基盤検出: AICommonBase', 'SUCCESS');
+    log("共通基盤検出: AICommonBase", "SUCCESS");
 
     // 共通基盤の機能を利用可能に
-    const { MenuHandler, ResponseHandler, DOMObserver } = window.AICommonBase.handlers;
-    ReportAutomationAPI._commonHandlers = { MenuHandler, ResponseHandler, DOMObserver };
+    const { MenuHandler, ResponseHandler, DOMObserver } =
+      window.AICommonBase.handlers;
+    ReportAutomationAPI._commonHandlers = {
+      MenuHandler,
+      ResponseHandler,
+      DOMObserver,
+    };
   }
 
   // グローバル公開
@@ -816,7 +936,6 @@
   window.ReportAutomationV2 = ReportAutomationAPI;
 
   // 初期化完了ログ
-  log('レポート自動化 v2.0.0 準備完了', 'SUCCESS');
-  log('使用方法: ReportAutomation.generateReport({...})', 'INFO');
-
+  log("レポート自動化 v2.0.0 準備完了", "SUCCESS");
+  log("使用方法: ReportAutomation.generateReport({...})", "INFO");
 })();

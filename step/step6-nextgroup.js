@@ -222,53 +222,19 @@ async function processNextGroup(nextGroup) {
       },
     );
 
-    // Step 3-5を直接実行（stepファイル内で完結）
-    console.log(
-      "[step6-nextgroup.js] [Step 6-2-1] Step 3-5を直接実行（stepファイル内で完結）",
-    );
+    // 次のグループに移行するだけで、ここでstepを実行しない
+    console.log("[step6-nextgroup.js] [Step 6-2-1] 次のグループに移行設定完了");
 
-    // Step 3: タスクリスト作成
-    if (window.executeStep3 || window.createTaskList) {
-      console.log("📝 [step6-nextgroup.js] Step 3を呼び出し中...");
-      const createTaskFunc = window.executeStep3 || window.createTaskList;
-      const tasks = await createTaskFunc(nextGroup);
-
-      if (tasks && tasks.length > 0) {
-        // Step 4: タスク実行
-        if (window.executeStep4 || window.executeTasks) {
-          console.log(
-            `⚡ [step6-nextgroup.js] Step 4を呼び出し中（${tasks.length}タスク）...`,
-          );
-          const executeFunc = window.executeStep4 || window.executeTasks;
-          await executeFunc(tasks, nextGroup);
-        }
-      } else {
-        console.log("📭 [step6-nextgroup.js] 処理可能なタスクなし");
-      }
-    }
-
-    // Step 5: 単一グループの処理を実行
-    if (window.executeStep5SingleGroup) {
+    // globalStateを更新して次のグループを設定
+    if (typeof window !== "undefined" && window.globalState) {
+      window.globalState.currentGroupIndex = nextIndex;
+      window.globalState.currentGroup = nextGroup;
       console.log(
-        "🔄 [step6-nextgroup.js] Step 5（単一グループ）を呼び出し中...",
+        `[step6-nextgroup.js] グループ${nextGroup.number}に移行設定完了`,
       );
-      await window.executeStep5SingleGroup(nextGroup);
     }
 
-    // 処理済みグループに追加（安全な配列操作）
-    if (window.globalState) {
-      if (!Array.isArray(window.globalState.processedGroups)) {
-        window.globalState.processedGroups = [];
-      }
-      window.globalState.processedGroups.push({
-        index: window.globalState.currentGroupIndex || 0,
-        group: nextGroup,
-        timestamp: new Date().toISOString(),
-        success: true,
-      });
-    }
-
-    console.log("[step6-nextgroup.js] [Step 6-2-1] 次グループ処理完了");
+    console.log("[step6-nextgroup.js] [Step 6-2-1] 次グループ移行完了");
   } catch (error) {
     console.error("[step6-nextgroup.js] [Step 6-2-1] 次グループ処理エラー:", {
       エラーメッセージ: error.message,

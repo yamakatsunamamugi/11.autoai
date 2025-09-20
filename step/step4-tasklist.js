@@ -1040,6 +1040,48 @@ function shouldProcessColumn(group, columnControls) {
   return true;
 }
 
+/**
+ * Google Servicesの初期化
+ * @returns {Promise<boolean>} 初期化成功フラグ
+ */
+async function initializeGoogleServices() {
+  try {
+    // Google Servicesが既にグローバルに存在するかチェック
+    if (typeof window !== "undefined" && window.googleServices) {
+      await window.googleServices.initialize();
+      console.log("[step3-tasklist] Google Services初期化完了");
+      return true;
+    }
+
+    // フォールバック: 基本的な認証チェック
+    if (typeof chrome !== "undefined" && chrome.identity) {
+      return new Promise((resolve) => {
+        chrome.identity.getAuthToken({ interactive: false }, (token) => {
+          if (chrome.runtime.lastError) {
+            console.warn(
+              "[step3-tasklist] 認証トークン取得失敗:",
+              chrome.runtime.lastError,
+            );
+            resolve(false);
+          } else {
+            console.log(
+              "[step3-tasklist] 認証トークン確認完了:",
+              token ? "✓" : "✗",
+            );
+            resolve(true);
+          }
+        });
+      });
+    }
+
+    console.warn("[step3-tasklist] Google Services初期化環境が不明");
+    return false;
+  } catch (error) {
+    console.error("[step3-tasklist] Google Services初期化エラー:", error);
+    return false;
+  }
+}
+
 // モジュールエクスポート
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
@@ -1058,6 +1100,13 @@ if (typeof module !== "undefined" && module.exports) {
 // グローバル公開（Chrome拡張機能用）
 if (typeof window !== "undefined") {
   try {
+    // 関数の定義確認
+    if (typeof initializeGoogleServices === "undefined") {
+      console.error(
+        "[step3-tasklist] initializeGoogleServices関数が定義されていません",
+      );
+    }
+
     window.Step3TaskList = {
       generateTaskList,
       getRowControl,
@@ -1067,7 +1116,12 @@ if (typeof window !== "undefined") {
       indexToColumn,
       columnToIndex,
       parseSpreadsheetUrl,
-      initializeGoogleServices,
+      initializeGoogleServices:
+        typeof initializeGoogleServices !== "undefined"
+          ? initializeGoogleServices
+          : function () {
+              return Promise.resolve(false);
+            },
     };
 
     // スクリプト読み込み完了をトラッキング

@@ -39,24 +39,24 @@
   // 設定定数
   // ========================================
   const CONFIG = {
-    AI_TYPE: 'Genspark',
-    VERSION: '2.0.0',
-    DEFAULT_TIMEOUT: 3600000,  // デフォルトタイムアウト: 60分
-    WAIT_INTERVAL: 1000,       // 待機間隔: 1秒
-    CLICK_DELAY: 500,          // クリック後の待機: 0.5秒
-    INPUT_DELAY: 300,          // 入力後の待機: 0.3秒
-    
+    AI_TYPE: "Genspark",
+    VERSION: "2.0.0",
+    DEFAULT_TIMEOUT: 3600000, // デフォルトタイムアウト: 60分
+    WAIT_INTERVAL: 1000, // 待機間隔: 1秒
+    CLICK_DELAY: 500, // クリック後の待機: 0.5秒
+    INPUT_DELAY: 300, // 入力後の待機: 0.3秒
+
     // Genspark固有設定
     FUNCTIONS: {
-      SLIDES: 'slides',
-      FACTCHECK: 'factcheck'
+      SLIDES: "slides",
+      FACTCHECK: "factcheck",
     },
-    
+
     // URL検出パターン
     URL_PATTERNS: {
       SLIDES: /genspark\.ai.*slides/i,
-      FACTCHECK: /genspark\.ai.*factcheck/i
-    }
+      FACTCHECK: /genspark\.ai.*factcheck/i,
+    },
   };
 
   // ========================================
@@ -71,33 +71,36 @@
         LIGHTWEIGHT: {
           range: [1, 5],
           delays: [1000, 2000, 5000, 10000, 15000], // 1秒→2秒→5秒→10秒→15秒
-          method: 'SAME_WINDOW',
-          description: '軽量リトライ - 同一ウィンドウ内での再試行'
+          method: "SAME_WINDOW",
+          description: "軽量リトライ - 同一ウィンドウ内での再試行",
         },
         MODERATE: {
           range: [6, 8],
           delays: [30000, 60000, 120000], // 30秒→1分→2分
-          method: 'PAGE_REFRESH',
-          description: '中程度リトライ - ページリフレッシュ'
+          method: "PAGE_REFRESH",
+          description: "中程度リトライ - ページリフレッシュ",
         },
         HEAVY_RESET: {
           range: [9, 20],
           delays: [300000, 900000, 1800000, 3600000, 7200000], // 5分→15分→30分→1時間→2時間
-          method: 'NEW_WINDOW',
-          description: '重いリトライ - 新規ウィンドウ作成'
-        }
+          method: "NEW_WINDOW",
+          description: "重いリトライ - 新規ウィンドウ作成",
+        },
       };
 
       // Genspark特有のエラー分類
       this.errorStrategies = {
-        SEARCH_ERROR: { immediate_escalation: 'HEAVY_RESET', maxRetries: 10 },
-        NO_RESULTS_ERROR: { immediate_escalation: 'HEAVY_RESET', maxRetries: 8 },
-        PLATFORM_ERROR: { immediate_escalation: 'HEAVY_RESET', maxRetries: 5 },
-        AUTH_ERROR: { immediate_escalation: 'HEAVY_RESET', maxRetries: 5 },
-        NETWORK_ERROR: { maxRetries: 8, escalation: 'MODERATE' },
-        DOM_ERROR: { maxRetries: 5, escalation: 'LIGHTWEIGHT' },
-        UI_TIMING_ERROR: { maxRetries: 10, escalation: 'LIGHTWEIGHT' },
-        GENERAL_ERROR: { maxRetries: 8, escalation: 'MODERATE' }
+        SEARCH_ERROR: { immediate_escalation: "HEAVY_RESET", maxRetries: 10 },
+        NO_RESULTS_ERROR: {
+          immediate_escalation: "HEAVY_RESET",
+          maxRetries: 8,
+        },
+        PLATFORM_ERROR: { immediate_escalation: "HEAVY_RESET", maxRetries: 5 },
+        AUTH_ERROR: { immediate_escalation: "HEAVY_RESET", maxRetries: 5 },
+        NETWORK_ERROR: { maxRetries: 8, escalation: "MODERATE" },
+        DOM_ERROR: { maxRetries: 5, escalation: "LIGHTWEIGHT" },
+        UI_TIMING_ERROR: { maxRetries: 10, escalation: "LIGHTWEIGHT" },
+        GENERAL_ERROR: { maxRetries: 8, escalation: "MODERATE" },
       };
 
       // エラー履歴管理（段階的エスカレーション用）
@@ -112,7 +115,7 @@
         successfulAttempts: 0,
         errorCounts: {},
         escalationCounts: { LIGHTWEIGHT: 0, MODERATE: 0, HEAVY_RESET: 0 },
-        averageRetryCount: 0
+        averageRetryCount: 0,
       };
 
       // リソース管理
@@ -122,66 +125,81 @@
 
     // Genspark特有のエラー分類器
     classifyError(error, context = {}) {
-      const errorMessage = error?.message || error?.toString() || '';
-      const errorName = error?.name || '';
+      const errorMessage = error?.message || error?.toString() || "";
+      const errorName = error?.name || "";
 
       // Genspark特有エラーの検出
-      if (errorMessage.includes('Search failed') ||
-          errorMessage.includes('検索に失敗') ||
-          errorMessage.includes('検索できませんでした') ||
-          errorMessage.includes('Search error')) {
-        return 'SEARCH_ERROR';
+      if (
+        errorMessage.includes("Search failed") ||
+        errorMessage.includes("検索に失敗") ||
+        errorMessage.includes("検索できませんでした") ||
+        errorMessage.includes("Search error")
+      ) {
+        return "SEARCH_ERROR";
       }
 
-      if (errorMessage.includes('No results') ||
-          errorMessage.includes('結果なし') ||
-          errorMessage.includes('結果が見つかりません') ||
-          errorMessage.includes('Empty results')) {
-        return 'NO_RESULTS_ERROR';
+      if (
+        errorMessage.includes("No results") ||
+        errorMessage.includes("結果なし") ||
+        errorMessage.includes("結果が見つかりません") ||
+        errorMessage.includes("Empty results")
+      ) {
+        return "NO_RESULTS_ERROR";
       }
 
-      if (errorMessage.includes('Platform error') ||
-          errorMessage.includes('プラットフォームエラー') ||
-          errorMessage.includes('Genspark error') ||
-          errorMessage.includes('Service unavailable')) {
-        return 'PLATFORM_ERROR';
+      if (
+        errorMessage.includes("Platform error") ||
+        errorMessage.includes("プラットフォームエラー") ||
+        errorMessage.includes("Genspark error") ||
+        errorMessage.includes("Service unavailable")
+      ) {
+        return "PLATFORM_ERROR";
       }
 
-      if (errorMessage.includes('authentication') ||
-          errorMessage.includes('認証') ||
-          errorMessage.includes('Auth error') ||
-          errorMessage.includes('ログインが必要')) {
-        return 'AUTH_ERROR';
+      if (
+        errorMessage.includes("authentication") ||
+        errorMessage.includes("認証") ||
+        errorMessage.includes("Auth error") ||
+        errorMessage.includes("ログインが必要")
+      ) {
+        return "AUTH_ERROR";
       }
 
       // 共通エラー分類
-      if (errorMessage.includes('timeout') ||
-          errorMessage.includes('network') ||
-          errorMessage.includes('fetch') ||
-          errorName.includes('NetworkError')) {
-        return 'NETWORK_ERROR';
+      if (
+        errorMessage.includes("timeout") ||
+        errorMessage.includes("network") ||
+        errorMessage.includes("fetch") ||
+        errorName.includes("NetworkError")
+      ) {
+        return "NETWORK_ERROR";
       }
 
-      if (errorMessage.includes('要素が見つかりません') ||
-          errorMessage.includes('element not found') ||
-          errorMessage.includes('selector') ||
-          errorMessage.includes('querySelector')) {
-        return 'DOM_ERROR';
+      if (
+        errorMessage.includes("要素が見つかりません") ||
+        errorMessage.includes("element not found") ||
+        errorMessage.includes("selector") ||
+        errorMessage.includes("querySelector")
+      ) {
+        return "DOM_ERROR";
       }
 
-      if (errorMessage.includes('click') ||
-          errorMessage.includes('input') ||
-          errorMessage.includes('button') ||
-          errorMessage.includes('まで待機')) {
-        return 'UI_TIMING_ERROR';
+      if (
+        errorMessage.includes("click") ||
+        errorMessage.includes("input") ||
+        errorMessage.includes("button") ||
+        errorMessage.includes("まで待機")
+      ) {
+        return "UI_TIMING_ERROR";
       }
 
-      return 'GENERAL_ERROR';
+      return "GENERAL_ERROR";
     }
 
     // エスカレーションレベルの判定
     determineEscalationLevel(retryCount, errorType) {
-      const strategy = this.errorStrategies[errorType] || this.errorStrategies.GENERAL_ERROR;
+      const strategy =
+        this.errorStrategies[errorType] || this.errorStrategies.GENERAL_ERROR;
 
       // 即座エスカレーション条件
       if (strategy.immediate_escalation) {
@@ -190,7 +208,7 @@
 
       // 連続同一エラー5回以上で即座にHEAVY_RESET
       if (this.consecutiveErrorCount >= 5) {
-        return 'HEAVY_RESET';
+        return "HEAVY_RESET";
       }
 
       // 通常のエスカレーション判定
@@ -200,7 +218,7 @@
         }
       }
 
-      return 'HEAVY_RESET'; // デフォルト
+      return "HEAVY_RESET"; // デフォルト
     }
 
     // 段階的エスカレーションリトライの実行
@@ -208,21 +226,24 @@
       const {
         action,
         isSuccess = (result) => result && result.success !== false,
-        actionName = 'Genspark処理',
+        actionName = "Genspark処理",
         context = {},
-        taskData = {}
+        taskData = {},
       } = config;
 
       let retryCount = 0;
       let lastResult = null;
       let lastError = null;
 
-      while (retryCount < 20) { // 最大20回
+      while (retryCount < 20) {
+        // 最大20回
         try {
           retryCount++;
           this.metrics.totalAttempts++;
 
-          console.log(`🔄 [Genspark-Retry] ${actionName} 試行 ${retryCount}/20`);
+          console.log(
+            `🔄 [Genspark-Retry] ${actionName} 試行 ${retryCount}/20`,
+          );
 
           // アクション実行
           lastResult = await action();
@@ -230,15 +251,19 @@
           if (isSuccess(lastResult)) {
             this.metrics.successfulAttempts++;
             this.consecutiveErrorCount = 0; // エラーカウントリセット
-            console.log(`✅ [Genspark-Retry] ${actionName} 成功（${retryCount}回目）`);
+            console.log(
+              `✅ [Genspark-Retry] ${actionName} 成功（${retryCount}回目）`,
+            );
             return {
               success: true,
               result: lastResult,
               retryCount,
-              escalationLevel: this.determineEscalationLevel(retryCount, 'SUCCESS')
+              escalationLevel: this.determineEscalationLevel(
+                retryCount,
+                "SUCCESS",
+              ),
             };
           }
-
         } catch (error) {
           lastError = error;
           const errorType = this.classifyError(error, context);
@@ -246,36 +271,51 @@
           // エラー履歴管理
           this.addErrorToHistory(errorType, error.message);
 
-          console.error(`❌ [Genspark-Retry] ${actionName} エラー (${retryCount}回目):`, {
-            errorType,
-            message: error.message,
-            consecutiveErrors: this.consecutiveErrorCount
-          });
+          console.error(
+            `❌ [Genspark-Retry] ${actionName} エラー (${retryCount}回目):`,
+            {
+              errorType,
+              message: error.message,
+              consecutiveErrors: this.consecutiveErrorCount,
+            },
+          );
 
           // 最大リトライ回数チェック
-          const strategy = this.errorStrategies[errorType] || this.errorStrategies.GENERAL_ERROR;
+          const strategy =
+            this.errorStrategies[errorType] ||
+            this.errorStrategies.GENERAL_ERROR;
           if (retryCount >= (strategy.maxRetries || 20)) {
             break;
           }
 
           // エスカレーションレベル判定
-          const escalationLevel = this.determineEscalationLevel(retryCount, errorType);
+          const escalationLevel = this.determineEscalationLevel(
+            retryCount,
+            errorType,
+          );
           this.metrics.escalationCounts[escalationLevel]++;
 
           // エスカレーション実行
-          const escalationResult = await this.executeEscalation(escalationLevel, {
-            retryCount,
-            errorType,
-            taskData,
-            context
-          });
+          const escalationResult = await this.executeEscalation(
+            escalationLevel,
+            {
+              retryCount,
+              errorType,
+              taskData,
+              context,
+            },
+          );
 
           if (escalationResult && escalationResult.success) {
             return escalationResult;
           }
 
           // 待機戦略実行
-          await this.waitWithEscalationStrategy(escalationLevel, retryCount, errorType);
+          await this.waitWithEscalationStrategy(
+            escalationLevel,
+            retryCount,
+            errorType,
+          );
         }
       }
 
@@ -286,7 +326,9 @@
         result: lastResult,
         error: lastError,
         retryCount,
-        errorType: lastError ? this.classifyError(lastError, context) : 'UNKNOWN'
+        errorType: lastError
+          ? this.classifyError(lastError, context)
+          : "UNKNOWN",
       };
     }
 
@@ -294,26 +336,28 @@
     async executeEscalation(level, context) {
       const { retryCount, errorType, taskData } = context;
 
-      console.log(`🔄 [Genspark-Escalation] ${level} 実行開始 (${retryCount}回目)`);
+      console.log(
+        `🔄 [Genspark-Escalation] ${level} 実行開始 (${retryCount}回目)`,
+      );
 
       switch (level) {
-        case 'LIGHTWEIGHT':
+        case "LIGHTWEIGHT":
           // 同一ウィンドウ内での再試行（何もしない、次の試行へ）
           return null;
 
-        case 'MODERATE':
+        case "MODERATE":
           // ページリフレッシュ
           console.log(`🔄 [Genspark-Escalation] ページリフレッシュ実行`);
           location.reload();
           return { success: false, needsWait: true }; // リロード後は待機が必要
 
-        case 'HEAVY_RESET':
+        case "HEAVY_RESET":
           // 新規ウィンドウ作成
           console.log(`🔄 [Genspark-Escalation] 新規ウィンドウ作成`);
           return await this.performNewWindowRetry(taskData, {
             errorType,
             retryCount,
-            retryReason: `${level}_ESCALATION_${retryCount}`
+            retryReason: `${level}_ESCALATION_${retryCount}`,
           });
 
         default:
@@ -324,24 +368,39 @@
     // 新規ウィンドウでのリトライ
     async performNewWindowRetry(taskData, context = {}) {
       return new Promise((resolve) => {
-        chrome.runtime.sendMessage({
-          type: 'RETRY_WITH_NEW_WINDOW',
-          taskId: taskData.taskId || `retry_${Date.now()}`,
-          prompt: taskData.prompt,
-          aiType: 'Genspark',
-          enableDeepResearch: taskData.enableDeepResearch || false,
-          specialMode: taskData.specialMode || null,
-          error: context.errorType || 'ESCALATION_ERROR',
-          errorMessage: context.errorMessage || 'エスカレーションによるリトライ',
-          retryReason: context.retryReason || 'genspark_escalation_retry',
-          closeCurrentWindow: true
-        }, (response) => {
-          if (response && response.success) {
-            resolve(response);
-          } else {
-            resolve({ success: false });
-          }
-        });
+        chrome.runtime.sendMessage(
+          {
+            type: "RETRY_WITH_NEW_WINDOW",
+            taskId: taskData.taskId || `retry_${Date.now()}`,
+            prompt: taskData.prompt,
+            aiType: "Genspark",
+            enableDeepResearch: taskData.enableDeepResearch || false,
+            specialMode: taskData.specialMode || null,
+            error: context.errorType || "ESCALATION_ERROR",
+            errorMessage:
+              context.errorMessage || "エスカレーションによるリトライ",
+            retryReason: context.retryReason || "genspark_escalation_retry",
+            closeCurrentWindow: true,
+          },
+          (response) => {
+            if (chrome.runtime.lastError) {
+              console.warn(
+                "[4-5-genspark] Runtime error in performNewWindowRetry:",
+                chrome.runtime.lastError.message,
+              );
+              resolve({
+                success: false,
+                error: chrome.runtime.lastError.message,
+              });
+              return;
+            }
+            if (response && response.success) {
+              resolve(response);
+            } else {
+              resolve({ success: false });
+            }
+          },
+        );
       });
     }
 
@@ -350,12 +409,17 @@
       const levelConfig = this.escalationLevels[level];
       if (!levelConfig) return;
 
-      const delayIndex = Math.min(retryCount - levelConfig.range[0], levelConfig.delays.length - 1);
+      const delayIndex = Math.min(
+        retryCount - levelConfig.range[0],
+        levelConfig.delays.length - 1,
+      );
       const delay = levelConfig.delays[delayIndex];
 
       if (delay > 0) {
-        const delayMinutes = Math.round(delay / 60000 * 10) / 10;
-        console.log(`⏳ [Genspark-Wait] ${level} - ${delayMinutes}分後にリトライします...`);
+        const delayMinutes = Math.round((delay / 60000) * 10) / 10;
+        console.log(
+          `⏳ [Genspark-Wait] ${level} - ${delayMinutes}分後にリトライします...`,
+        );
         await this.delay(delay);
       }
     }
@@ -379,12 +443,13 @@
       }
 
       // 統計更新
-      this.metrics.errorCounts[errorType] = (this.metrics.errorCounts[errorType] || 0) + 1;
+      this.metrics.errorCounts[errorType] =
+        (this.metrics.errorCounts[errorType] || 0) + 1;
     }
 
     // 待機処理
     async delay(ms) {
-      return new Promise(resolve => {
+      return new Promise((resolve) => {
         const timeoutId = setTimeout(resolve, ms);
         this.activeTimeouts.add(timeoutId);
         setTimeout(() => this.activeTimeouts.delete(timeoutId), ms);
@@ -395,18 +460,20 @@
     getMetrics() {
       return {
         ...this.metrics,
-        successRate: this.metrics.totalAttempts > 0
-          ? (this.metrics.successfulAttempts / this.metrics.totalAttempts) * 100
-          : 0,
+        successRate:
+          this.metrics.totalAttempts > 0
+            ? (this.metrics.successfulAttempts / this.metrics.totalAttempts) *
+              100
+            : 0,
         consecutiveErrorCount: this.consecutiveErrorCount,
         lastErrorType: this.lastErrorType,
-        errorHistorySize: this.errorHistory.length
+        errorHistorySize: this.errorHistory.length,
       };
     }
 
     // リソースクリーンアップ
     cleanup() {
-      this.activeTimeouts.forEach(timeoutId => clearTimeout(timeoutId));
+      this.activeTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
       this.activeTimeouts.clear();
       if (this.abortController) {
         this.abortController.abort();
@@ -430,22 +497,29 @@
   async function loadUISelectors() {
     if (selectorsLoaded) return UI_SELECTORS;
 
-    log('【Step 4-5-0-0-1】📋 UI Selectors読み込み開始...', 'INFO');
+    log("【Step 4-5-0-0-1】📋 UI Selectors読み込み開始...", "INFO");
 
-    const response = await fetch(chrome.runtime.getURL('ui-selectors-data.json'));
+    const response = await fetch(
+      chrome.runtime.getURL("ui-selectors-data.json"),
+    );
     const data = await response.json();
 
     // ui-selectors-data.jsonからGensparkセレクタを取得
     if (!data.selectors || !data.selectors.Genspark) {
-      throw new Error('ui-selectors-data.jsonにGensparkセレクタが定義されていません');
+      throw new Error(
+        "ui-selectors-data.jsonにGensparkセレクタが定義されていません",
+      );
     }
 
     UI_SELECTORS = data.selectors.Genspark;
     window.UI_SELECTORS = data.selectors; // 他のAIとの互換性のため全体も保存
     selectorsLoaded = true;
 
-    log('【Step 4-5-0-0-1】✅ UI Selectors読み込み完了', 'SUCCESS');
-    log(`【Step 4-5-0-0-1】📋 読み込まれたセレクタ: INPUT=${UI_SELECTORS.INPUT?.length || 0}個, SEND_BUTTON=${UI_SELECTORS.SEND_BUTTON?.length || 0}個`, 'INFO');
+    log("【Step 4-5-0-0-1】✅ UI Selectors読み込み完了", "SUCCESS");
+    log(
+      `【Step 4-5-0-0-1】📋 読み込まれたセレクタ: INPUT=${UI_SELECTORS.INPUT?.length || 0}個, SEND_BUTTON=${UI_SELECTORS.SEND_BUTTON?.length || 0}個`,
+      "INFO",
+    );
 
     return UI_SELECTORS;
   }
@@ -506,7 +580,7 @@
   // ========================================
   // ユーティリティ関数
   // ========================================
-  function log(message, level = 'INFO', context = {}) {
+  function log(message, level = "INFO", context = {}) {
     const timestamp = new Date().toLocaleTimeString();
     const prefix = `[Step 4-5:${timestamp}]`;
 
@@ -516,11 +590,11 @@
       timestamp: new Date().toISOString(),
       context,
       url: window.location.href,
-      userAgent: navigator.userAgent
+      userAgent: navigator.userAgent,
     };
 
     switch (level) {
-      case 'ERROR':
+      case "ERROR":
         console.error(`${prefix} ❌ ${message}`, logData);
         if (context.error) {
           console.error(`${prefix} 📋 エラー詳細:`, {
@@ -528,14 +602,14 @@
             errorMessage: context.error.message,
             errorStack: context.error.stack,
             retryCount: context.retryCount || 0,
-            escalationLevel: context.escalationLevel || 'NONE'
+            escalationLevel: context.escalationLevel || "NONE",
           });
         }
         break;
-      case 'SUCCESS':
+      case "SUCCESS":
         console.log(`${prefix} ✅ ${message}`, logData);
         break;
-      case 'WARNING':
+      case "WARNING":
         console.warn(`${prefix} ⚠️ ${message}`, logData);
         break;
       default:
@@ -544,12 +618,12 @@
   }
 
   function wait(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   async function waitForGlobal(globalName, maxWait = 10000) {
     const startTime = Date.now();
-    while (!window[globalName] && (Date.now() - startTime) < maxWait) {
+    while (!window[globalName] && Date.now() - startTime < maxWait) {
       await wait(100);
     }
     if (!window[globalName]) {
@@ -568,7 +642,8 @@
     const priorityUrls = [];
 
     // 最適化されたURL正規表現（より厳密で高速）
-    const urlRegex = /https?:\/\/(?:www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&=]*)/g;
+    const urlRegex =
+      /https?:\/\/(?:www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&=]*)/g;
     const matches = responseText.match(urlRegex) || [];
 
     if (matches.length === 0) return [];
@@ -578,7 +653,11 @@
 
     for (const url of uniqueUrls) {
       // Genspark固有のURL（生成されたスライドなど）を優先的に配置
-      if (url.includes('genspark.ai') || url.includes('slides') || url.includes('presentation')) {
+      if (
+        url.includes("genspark.ai") ||
+        url.includes("slides") ||
+        url.includes("presentation")
+      ) {
         priorityUrls.push(url);
       } else {
         urls.push(url);
@@ -596,7 +675,7 @@
     // バージョン情報
     version: CONFIG.VERSION,
     aiType: CONFIG.AI_TYPE,
-    
+
     /**
      * テキストを送信し、応答を取得
      * @param {string} text - 送信するテキスト
@@ -608,30 +687,36 @@
         sendStartTime = Date.now();
         currentFunction = detectFunction();
 
-        log(`【Step 4-5-1-1】🚀 ${currentFunction}機能でメッセージ送信開始`, 'INFO');
-        log(`【Step 4-5-1-1】📝 送信テキスト: "${text.substring(0, 50)}..."`, 'INFO');
+        log(
+          `【Step 4-5-1-1】🚀 ${currentFunction}機能でメッセージ送信開始`,
+          "INFO",
+        );
+        log(
+          `【Step 4-5-1-1】📝 送信テキスト: "${text.substring(0, 50)}..."`,
+          "INFO",
+        );
 
         // UI Selectors初期化
-        log(`【Step 4-5-1-2】📋 UI Selectors初期化中...`, 'INFO');
+        log(`【Step 4-5-1-2】📋 UI Selectors初期化中...`, "INFO");
         await loadUISelectors();
-        log(`【Step 4-5-1-2】✅ UI Selectors初期化完了`, 'SUCCESS');
+        log(`【Step 4-5-1-2】✅ UI Selectors初期化完了`, "SUCCESS");
 
         // 入力欄を探す
-        log(`【Step 4-5-2-1】🔍 入力欄を検索中...`, 'INFO');
+        log(`【Step 4-5-2-1】🔍 入力欄を検索中...`, "INFO");
         const inputElement = await findElement(UI_SELECTORS.INPUT);
         if (!inputElement) {
-          throw new Error('入力欄が見つかりません');
+          throw new Error("入力欄が見つかりません");
         }
-        log(`【Step 4-5-2-1】✅ 入力欄を発見`, 'SUCCESS');
+        log(`【Step 4-5-2-1】✅ 入力欄を発見`, "SUCCESS");
 
         // テキスト入力
-        log(`【Step 4-5-2-2】✏️ テキスト入力中...`, 'INFO');
+        log(`【Step 4-5-2-2】✏️ テキスト入力中...`, "INFO");
         inputElement.focus();
         await wait(CONFIG.INPUT_DELAY);
 
         // 既存の内容をクリア
-        inputElement.value = '';
-        inputElement.textContent = '';
+        inputElement.value = "";
+        inputElement.textContent = "";
 
         // テキスト入力（機能別にプロンプトを調整）
         const finalText = this.optimizePrompt(text);
@@ -639,34 +724,45 @@
         inputElement.textContent = finalText;
 
         // 入力イベントトリガー
-        inputElement.dispatchEvent(new Event('input', { bubbles: true }));
-        inputElement.dispatchEvent(new Event('change', { bubbles: true }));
+        inputElement.dispatchEvent(new Event("input", { bubbles: true }));
+        inputElement.dispatchEvent(new Event("change", { bubbles: true }));
 
-        log(`【Step 4-5-2-2】✅ テキスト入力完了（${finalText.length}文字）`, 'SUCCESS');
+        log(
+          `【Step 4-5-2-2】✅ テキスト入力完了（${finalText.length}文字）`,
+          "SUCCESS",
+        );
 
         // 送信ボタンを探す
-        log(`【Step 4-5-2-3】🔍 送信ボタンを検索中...`, 'INFO');
+        log(`【Step 4-5-2-3】🔍 送信ボタンを検索中...`, "INFO");
         const sendButton = await findElement(UI_SELECTORS.SEND_BUTTON);
         if (!sendButton) {
-          throw new Error('送信ボタンが見つかりません');
+          throw new Error("送信ボタンが見つかりません");
         }
-        log(`【Step 4-5-2-3】✅ 送信ボタンを発見`, 'SUCCESS');
+        log(`【Step 4-5-2-3】✅ 送信ボタンを発見`, "SUCCESS");
 
         // 送信実行
-        log(`【Step 4-5-2-4】📤 メッセージ送信実行中...`, 'INFO');
+        log(`【Step 4-5-2-4】📤 メッセージ送信実行中...`, "INFO");
         sendButton.click();
         await wait(CONFIG.CLICK_DELAY);
-        log(`【Step 4-5-2-4】✅ メッセージ送信完了`, 'SUCCESS');
+        log(`【Step 4-5-2-4】✅ メッセージ送信完了`, "SUCCESS");
 
         // 応答待機
-        log(`【Step 4-5-3-1】⏱️ 応答待機開始（最大${(options.timeout || CONFIG.DEFAULT_TIMEOUT) / 60000}分）...`, 'INFO');
-        const response = await this.waitForResponse(options.timeout || CONFIG.DEFAULT_TIMEOUT);
-        log(`【Step 4-5-3-1】✅ 応答受信完了`, 'SUCCESS');
+        log(
+          `【Step 4-5-3-1】⏱️ 応答待機開始（最大${(options.timeout || CONFIG.DEFAULT_TIMEOUT) / 60000}分）...`,
+          "INFO",
+        );
+        const response = await this.waitForResponse(
+          options.timeout || CONFIG.DEFAULT_TIMEOUT,
+        );
+        log(`【Step 4-5-3-1】✅ 応答受信完了`, "SUCCESS");
 
         // レスポンスURL抽出
-        log(`【Step 4-5-3-2】🔍 URL抽出処理中...`, 'INFO');
+        log(`【Step 4-5-3-2】🔍 URL抽出処理中...`, "INFO");
         const extractedUrls = extractResponseUrls(response.text);
-        log(`【Step 4-5-3-2】📋 抽出されたURL: ${extractedUrls.length}件`, extractedUrls.length > 0 ? 'SUCCESS' : 'INFO');
+        log(
+          `【Step 4-5-3-2】📋 抽出されたURL: ${extractedUrls.length}件`,
+          extractedUrls.length > 0 ? "SUCCESS" : "INFO",
+        );
 
         const result = {
           success: true,
@@ -674,23 +770,31 @@
           function: currentFunction,
           extractedUrls,
           timestamp: new Date().toISOString(),
-          processingTime: Date.now() - sendStartTime
+          processingTime: Date.now() - sendStartTime,
         };
 
-        log(`【Genspark処理完了】✅ ${currentFunction}機能での全処理完了 (${result.processingTime}ms)`, 'SUCCESS');
+        log(
+          `【Genspark処理完了】✅ ${currentFunction}機能での全処理完了 (${result.processingTime}ms)`,
+          "SUCCESS",
+        );
         if (extractedUrls.length > 0) {
-          log(`【結果】📎 主要URL: ${extractedUrls.slice(0, 3).join(', ')}${extractedUrls.length > 3 ? `...他${extractedUrls.length - 3}件` : ''}`, 'SUCCESS');
+          log(
+            `【結果】📎 主要URL: ${extractedUrls.slice(0, 3).join(", ")}${extractedUrls.length > 3 ? `...他${extractedUrls.length - 3}件` : ""}`,
+            "SUCCESS",
+          );
         }
 
         return result;
-
       } catch (error) {
-        log(`【Genspark処理失敗】❌ メッセージ送信エラー: ${error.message}`, 'ERROR');
+        log(
+          `【Genspark処理失敗】❌ メッセージ送信エラー: ${error.message}`,
+          "ERROR",
+        );
         return {
           success: false,
           error: error.message,
           function: currentFunction,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         };
       }
     },
@@ -702,56 +806,68 @@
      */
     async waitForResponse(timeout = CONFIG.DEFAULT_TIMEOUT) {
       try {
-        log(`【Step 4-5-4-1】⏱️ 応答待機処理開始（タイムアウト: ${timeout / 60000}分）`, 'INFO');
+        log(
+          `【Step 4-5-4-1】⏱️ 応答待機処理開始（タイムアウト: ${timeout / 60000}分）`,
+          "INFO",
+        );
 
         // 停止ボタンが表示されるまで待機
-        log(`【Step 4-5-4-2】🔍 停止ボタンの出現を監視中...`, 'INFO');
+        log(`【Step 4-5-4-2】🔍 停止ボタンの出現を監視中...`, "INFO");
         const stopButton = await findElement(UI_SELECTORS.STOP_BUTTON, 10000);
 
         if (stopButton) {
-          log(`【Step 4-5-4-2】✅ 停止ボタンを確認（応答生成開始）`, 'SUCCESS');
+          log(`【Step 4-5-4-2】✅ 停止ボタンを確認（応答生成開始）`, "SUCCESS");
 
           // 停止ボタンが消えるまで待機（応答完了まで）
-          log(`【Step 4-5-4-3】⏳ 応答生成完了まで待機中...`, 'INFO');
-          await this._waitUntilElementDisappears(UI_SELECTORS.STOP_BUTTON, timeout);
-          log(`【Step 4-5-4-3】✅ 応答生成完了を確認`, 'SUCCESS');
+          log(`【Step 4-5-4-3】⏳ 応答生成完了まで待機中...`, "INFO");
+          await this._waitUntilElementDisappears(
+            UI_SELECTORS.STOP_BUTTON,
+            timeout,
+          );
+          log(`【Step 4-5-4-3】✅ 応答生成完了を確認`, "SUCCESS");
         } else {
-          log(`【Step 4-5-4-2】⚠️ 停止ボタンが確認できません（即座完了の可能性）`, 'WARNING');
+          log(
+            `【Step 4-5-4-2】⚠️ 停止ボタンが確認できません（即座完了の可能性）`,
+            "WARNING",
+          );
         }
 
         // 最終的な応答テキストを取得
-        log(`【Step 4-5-4-4】📝 応答テキストを取得中...`, 'INFO');
+        log(`【Step 4-5-4-4】📝 応答テキストを取得中...`, "INFO");
         await wait(1000); // レンダリング安定化待ち
 
         const responseElements = findElements(UI_SELECTORS.RESPONSE);
-        let responseText = '';
+        let responseText = "";
 
         if (responseElements.length > 0) {
           // 最後の応答を取得
           const lastResponse = responseElements[responseElements.length - 1];
-          responseText = lastResponse.textContent || lastResponse.innerText || '';
+          responseText =
+            lastResponse.textContent || lastResponse.innerText || "";
         }
 
         if (responseText.length === 0) {
-          throw new Error('応答テキストを取得できませんでした');
+          throw new Error("応答テキストを取得できませんでした");
         }
 
-        log(`【Step 4-5-4-4】✅ 応答テキスト取得完了（${responseText.length}文字）`, 'SUCCESS');
+        log(
+          `【Step 4-5-4-4】✅ 応答テキスト取得完了（${responseText.length}文字）`,
+          "SUCCESS",
+        );
 
         return {
           success: true,
           text: responseText,
           function: currentFunction,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         };
-
       } catch (error) {
-        log(`【Step 4-5-4-失敗】❌ 応答待機エラー: ${error.message}`, 'ERROR');
+        log(`【Step 4-5-4-失敗】❌ 応答待機エラー: ${error.message}`, "ERROR");
         return {
           success: false,
           error: error.message,
           function: currentFunction,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         };
       }
     },
@@ -771,14 +887,14 @@
      */
     optimizePrompt(basePrompt) {
       const func = this.getCurrentFunction();
-      
+
       switch (func) {
         case CONFIG.FUNCTIONS.SLIDES:
           return `【スライド生成】${basePrompt}\n\n※視覚的で分かりやすいスライド形式での出力をお願いします。`;
-          
+
         case CONFIG.FUNCTIONS.FACTCHECK:
           return `【ファクトチェック】${basePrompt}\n\n※信頼できる情報源を基に事実確認を行ってください。`;
-          
+
         default:
           return basePrompt;
       }
@@ -804,7 +920,7 @@
         currentFunction: this.getCurrentFunction(),
         currentUrl: window.location.href,
         selectorsLoaded: selectorsLoaded,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       };
     },
 
@@ -823,9 +939,13 @@
         const element = await findElement(selectors, 500);
 
         // 10秒ごとに進行状況をログ出力
-        if (checkCount % 20 === 0) {  // 500ms * 20 = 10秒
+        if (checkCount % 20 === 0) {
+          // 500ms * 20 = 10秒
           const elapsed = Math.round((Date.now() - startTime) / 1000);
-          log(`【Step 4-5-4-3】⏱️ 応答生成監視中: ${elapsed}秒経過 - 停止ボタン: ${element ? '表示中' : '非表示'}`, 'INFO');
+          log(
+            `【Step 4-5-4-3】⏱️ 応答生成監視中: ${elapsed}秒経過 - 停止ボタン: ${element ? "表示中" : "非表示"}`,
+            "INFO",
+          );
         }
 
         if (!element) {
@@ -836,8 +956,10 @@
         await wait(CONFIG.WAIT_INTERVAL);
       }
 
-      throw new Error(`タイムアウト: ${timeout / 1000}秒経過しても応答が完了しませんでした`);
-    }
+      throw new Error(
+        `タイムアウト: ${timeout / 1000}秒経過しても応答が完了しませんでした`,
+      );
+    },
   };
 
   // ========================================
@@ -849,8 +971,10 @@
   window.GensparkAutomation = automationAPI;
 
   // 初期化ログ
-  log(`GensparkV2自動化システム初期化完了 - 独立版 (Version: ${CONFIG.VERSION})`, 'SUCCESS');
-  log(`現在の機能: ${detectFunction()}`, 'INFO');
-  log(`現在のURL: ${window.location.href}`, 'INFO');
-
+  log(
+    `GensparkV2自動化システム初期化完了 - 独立版 (Version: ${CONFIG.VERSION})`,
+    "SUCCESS",
+  );
+  log(`現在の機能: ${detectFunction()}`, "INFO");
+  log(`現在のURL: ${window.location.href}`, "INFO");
 })();
