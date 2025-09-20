@@ -382,31 +382,74 @@ class TaskGroupTypeDetector {
   }
 
   /**
-   * グループタイプに応じたウィンドウ配置を取得
-   * @param {string} groupType - 'normal' | 'threeTypes'
-   * @param {Array} aiTypes - AI種別リスト
-   * @returns {Array} - [{aiType, position}] 形式の配置情報
+   * タスクの順番に応じたウィンドウ配置を取得
+   * @param {Array} taskList - タスクリスト
+   * @returns {Array} - [{aiType, position, taskIndex}] 形式の配置情報
    */
-  getWindowLayout(groupType, aiTypes) {
-    ExecuteLogger.info("🖼️ [GroupTypeDetector] ウィンドウ配置計算:", {
-      groupType,
-      aiTypes,
+  getWindowLayoutFromTasks(taskList) {
+    ExecuteLogger.info(
+      "🖼️ [GroupTypeDetector] タスク順序ベースのウィンドウ配置計算:",
+      {
+        taskCount: taskList.length,
+      },
+    );
+
+    // 位置の順序：右上(1) → 左上(0) → 左下(2) → 右上(1)...
+    const positionSequence = [1, 0, 2]; // 右上、左上、左下
+
+    // AI種別の順序：ChatGPT → Claude → Gemini → ChatGPT...
+    const aiSequence = ["chatgpt", "claude", "gemini"];
+
+    const windowLayout = [];
+    const usedPositions = new Set();
+
+    taskList.forEach((task, taskIndex) => {
+      // タスクの順番から位置とAIを決定
+      const positionIndex = taskIndex % positionSequence.length;
+      const aiIndex = taskIndex % aiSequence.length;
+
+      const position = positionSequence[positionIndex];
+      const aiType = aiSequence[aiIndex];
+
+      // 同じ位置が既に使用されていない場合のみ追加
+      if (!usedPositions.has(position)) {
+        windowLayout.push({
+          aiType: aiType,
+          position: position,
+          taskIndex: taskIndex,
+          taskId: task.id || task.taskId,
+        });
+        usedPositions.add(position);
+      }
     });
 
-    if (groupType === "threeTypes") {
-      // 3種類AI: 固定配置（左上→右上→左下）
-      return [
-        { aiType: "chatgpt", position: 0 }, // 左上
-        { aiType: "claude", position: 1 }, // 右上
-        { aiType: "gemini", position: 2 }, // 左下
-      ];
-    } else {
-      // 通常処理: タスクリストの順序で配置（左上→右上→左下）
-      return aiTypes.slice(0, 3).map((aiType, index) => ({
-        aiType: aiType,
-        position: index, // 0=左上, 1=右上, 2=左下
-      }));
-    }
+    ExecuteLogger.info("🖼️ [GroupTypeDetector] 配置結果:", {
+      totalTasks: taskList.length,
+      windowCount: windowLayout.length,
+      layout: windowLayout
+        .map((w) => `${w.aiType}(位置${w.position})`)
+        .join(" → "),
+    });
+
+    return windowLayout;
+  }
+
+  /**
+   * 旧式のグループタイプ配置（後方互換用）
+   * @deprecated getWindowLayoutFromTasks()を使用してください
+   */
+  getWindowLayout(groupType, aiTypes) {
+    ExecuteLogger.warn(
+      "⚠️ [GroupTypeDetector] 非推奨のgetWindowLayout()が呼び出されました",
+    );
+
+    // 旧式の場合はタスク順序ベースに変換
+    const dummyTasks = aiTypes.slice(0, 3).map((aiType, index) => ({
+      id: `dummy_${index}`,
+      aiType: aiType,
+    }));
+
+    return this.getWindowLayoutFromTasks(dummyTasks);
   }
 }
 
@@ -2373,12 +2416,13 @@ async function executeStep4(taskList) {
       groupTypeInfo,
     );
 
-    // ウィンドウ配置情報の取得
-    windowLayoutInfo = window.taskGroupTypeDetector.getWindowLayout(
-      groupTypeInfo.type,
-      groupTypeInfo.aiTypes,
+    // ウィンドウ配置情報の取得（タスク順序ベース）
+    windowLayoutInfo =
+      window.taskGroupTypeDetector.getWindowLayoutFromTasks(processTaskList);
+    ExecuteLogger.info(
+      "🖼️ [Step 4-6-1] ウィンドウ配置情報（タスク順序ベース）:",
+      windowLayoutInfo,
     );
-    ExecuteLogger.info("🖼️ [Step 4-6-1] ウィンドウ配置情報:", windowLayoutInfo);
 
     // Step 4-6-2: スプレッドシートデータの動的取得
     ExecuteLogger.info("📊 [Step 4-6-2] スプレッドシートデータ動的取得開始");
@@ -2515,8 +2559,19 @@ async function executeStep4(taskList) {
           task.originalAiType === "3種類（ChatGPT・Gemini・Claude）";
 
         try {
+          // タスクの順番に基づいてAI種別を動的に設定
+          const taskIndex = batch.indexOf(task) + batchIndex * batch.length;
+          const aiSequence = ["chatgpt", "claude", "gemini"];
+          const dynamicAiType = aiSequence[taskIndex % aiSequence.length];
+
+          // 元のAI種別を保存し、動的AI種別を設定
+          if (!task.originalAiType) {
+            task.originalAiType = task.aiType;
+          }
+          task.aiType = dynamicAiType;
+
           ExecuteLogger.info(
-            `📝 [step4-execute.js] タスク実行: ${taskId} (AI: ${task.aiType}) ${isThreeTypeTask ? "[3種類AI]" : "[通常]"}`,
+            `📝 [step4-execute.js] タスク実行: ${taskId} (順番AI: ${task.aiType}, 元AI: ${task.originalAiType}) ${isThreeTypeTask ? "[3種類AI]" : "[順番処理]"}`,
           );
 
           // 特別処理かチェック

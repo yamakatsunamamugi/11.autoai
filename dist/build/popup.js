@@ -85,16 +85,35 @@ document.addEventListener("DOMContentLoaded", async () => {
       top: primaryDisplay.workArea.top,
     };
 
-    // 初期は全画面で表示
-    // WindowServiceを使用してウィンドウを作成（全画面）
-    const createdWindow = await WindowService.createWindow({
-      url: chrome.runtime.getURL("src/ui/ui.html"),
-      type: "popup",
-      width: screenInfo.width,
-      height: screenInfo.height,
-      left: screenInfo.left,
-      top: screenInfo.top,
-    });
+    // 設定を取得して配置を決定
+    const settings = await chrome.storage.local.get(['popupPosition']);
+    const useQuadLayout = settings.popupPosition === 'quadLayout';
+
+    let createdWindow;
+
+    if (useQuadLayout) {
+      // 4分割レイアウト: 右下（位置3）に配置
+      console.log('[Popup] 4分割レイアウトでポップアップを右下に配置');
+      createdWindow = await WindowService.createWindowWithPosition(
+        chrome.runtime.getURL("src/ui/ui.html"),
+        3, // 位置3 = 右下
+        {
+          type: "popup",
+          focused: true
+        }
+      );
+    } else {
+      // デフォルト: 全画面で表示
+      console.log('[Popup] 全画面でポップアップを表示');
+      createdWindow = await WindowService.createWindow({
+        url: chrome.runtime.getURL("src/ui/ui.html"),
+        type: "popup",
+        width: screenInfo.width,
+        height: screenInfo.height,
+        left: screenInfo.left,
+        top: screenInfo.top,
+      });
+    }
 
     if (createdWindow && createdWindow.id) {
       // ウィンドウIDを保存（処理開始時に移動するため）
@@ -121,14 +140,33 @@ document.addEventListener("DOMContentLoaded", async () => {
   } catch (error) {
     console.error("Failed to create extension window:", error);
 
-    // フォールバック: デフォルトサイズで開く
-    // WindowServiceを使用してウィンドウを作成（focused: trueがデフォルトで設定される）
-    const fallbackWindow = await WindowService.createWindow({
-      url: chrome.runtime.getURL("src/ui/ui.html"),
-      type: "popup",
-      width: 1200,
-      height: 800,
-    });
+    // フォールバック処理
+    const settings = await chrome.storage.local.get(['popupPosition']);
+    const useQuadLayout = settings.popupPosition === 'quadLayout';
+
+    let fallbackWindow;
+
+    if (useQuadLayout) {
+      // 4分割レイアウト: 右下（位置3）に配置
+      console.log('[Popup] フォールバック: 4分割レイアウトでポップアップを右下に配置');
+      fallbackWindow = await WindowService.createWindowWithPosition(
+        chrome.runtime.getURL("src/ui/ui.html"),
+        3, // 位置3 = 右下
+        {
+          type: "popup",
+          focused: true
+        }
+      );
+    } else {
+      // デフォルト: 固定サイズで開く
+      console.log('[Popup] フォールバック: デフォルトサイズでポップアップを表示');
+      fallbackWindow = await WindowService.createWindow({
+        url: chrome.runtime.getURL("src/ui/ui.html"),
+        type: "popup",
+        width: 1200,
+        height: 800,
+      });
+    }
 
     if (fallbackWindow && fallbackWindow.id) {
       chrome.storage.local.set({ extensionWindowId: fallbackWindow.id });

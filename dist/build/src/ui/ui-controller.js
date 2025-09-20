@@ -1960,21 +1960,115 @@ stepOnlyBtn.addEventListener("click", async () => {
       updateStatus("Step 4: タスク実行完了", "success");
     }
 
-    // Step 5: ループ処理
-    if (typeof executeStep5 === 'function') {
-      updateStatus("Step 5: ループ処理を実行中...", "loading");
-      const currentTaskGroup = window.globalState?.taskGroups?.[0] || {};
-      await executeStep5(currentTaskGroup);
-      updateStatus("Step 5: ループ処理完了", "success");
+    // Step 5-6: グループごとのループ処理
+    console.log('=====================================');
+    console.log('[UI-Controller] Step 5-6 ループ処理開始');
+    console.log('=====================================');
+
+    const taskGroups = window.globalState?.taskGroups || [];
+    console.log(`[UI-Controller] 処理対象グループ数: ${taskGroups.length}`, {
+      グループ一覧: taskGroups.map((g, i) => ({
+        インデックス: i,
+        番号: g.groupNumber,
+        タイプ: g.type || g.taskType,
+        列: g.columns
+      }))
+    });
+
+    let currentGroupIndex = 0;
+    let loopCount = 0;
+    const maxLoops = 20; // 無限ループ防止
+
+    // 各グループを順番に処理
+    while (currentGroupIndex < taskGroups.length && loopCount < maxLoops) {
+      loopCount++;
+      console.log(`\n[UI-Controller] ===== ループ ${loopCount} 開始 =====`);
+      console.log(`[UI-Controller] 現在のグループインデックス: ${currentGroupIndex}/${taskGroups.length}`);
+
+      const currentTaskGroup = taskGroups[currentGroupIndex];
+      console.log('[UI-Controller] 処理するグループ詳細:', {
+        インデックス: currentGroupIndex,
+        グループ番号: currentTaskGroup?.groupNumber,
+        タイプ: currentTaskGroup?.type || currentTaskGroup?.taskType,
+        列情報: currentTaskGroup?.columns,
+        開始行: currentTaskGroup?.dataStartRow
+      });
+
+      // Step 5: 現在のグループを処理
+      console.log('[UI-Controller] executeStep5チェック:', {
+        type: typeof executeStep5,
+        isFunction: typeof executeStep5 === 'function',
+        windowExecuteStep5Exists: !!window.executeStep5,
+        windowExecuteStep5Type: typeof window.executeStep5
+      });
+
+      if (typeof executeStep5 === 'function') {
+        updateStatus(`Step 5: グループ${currentGroupIndex + 1}/${taskGroups.length}を処理中...`, "loading");
+        console.log(`[UI-Controller] executeStep5呼び出し (グループ${currentGroupIndex + 1})`);
+
+        await executeStep5(currentTaskGroup);
+
+        console.log(`[UI-Controller] executeStep5完了 (グループ${currentGroupIndex + 1})`);
+        updateStatus(`Step 5: グループ${currentGroupIndex + 1}処理完了`, "success");
+      } else {
+        console.warn('[UI-Controller] executeStep5が関数として定義されていません');
+        console.log('[UI-Controller] window.executeStep5を直接呼び出します');
+
+        if (typeof window.executeStep5 === 'function') {
+          updateStatus(`Step 5: グループ${currentGroupIndex + 1}/${taskGroups.length}を処理中...`, "loading");
+          console.log(`[UI-Controller] window.executeStep5呼び出し (グループ${currentGroupIndex + 1})`);
+
+          await window.executeStep5(currentTaskGroup);
+
+          console.log(`[UI-Controller] window.executeStep5完了 (グループ${currentGroupIndex + 1})`);
+          updateStatus(`Step 5: グループ${currentGroupIndex + 1}処理完了`, "success");
+        } else {
+          console.error('[UI-Controller] executeStep5もwindow.executeStep5も利用できません');
+        }
+      }
+
+      // Step 6: 次グループへの移行判定
+      if (typeof executeStep6 === 'function') {
+        updateStatus(`Step 6: 次グループへの移行を確認中...`, "loading");
+        console.log(`[UI-Controller] executeStep6呼び出し (現在インデックス: ${currentGroupIndex})`);
+
+        const result = await executeStep6(taskGroups, currentGroupIndex);
+
+        console.log('[UI-Controller] executeStep6結果:', {
+          hasNext: result?.hasNext,
+          nextIndex: result?.nextIndex,
+          message: result?.message
+        });
+
+        if (!result?.hasNext) {
+          console.log('[UI-Controller] 次のグループなし - ループ終了');
+          updateStatus("Step 6: 全グループ処理完了", "success");
+          break;
+        }
+
+        currentGroupIndex++;
+        console.log(`[UI-Controller] 次のグループへ移行 (新インデックス: ${currentGroupIndex})`);
+        updateStatus(`Step 6: グループ${currentGroupIndex + 1}へ移行`, "success");
+      } else {
+        console.warn('[UI-Controller] executeStep6が定義されていません - ループ終了');
+        break;
+      }
+
+      console.log(`[UI-Controller] ===== ループ ${loopCount} 終了 =====\n`);
     }
 
-    // Step 6: 次グループ処理
-    if (typeof executeStep6 === 'function') {
-      updateStatus("Step 6: 次グループ処理を実行中...", "loading");
-      const taskGroups = window.globalState?.taskGroups || [];
-      await executeStep6(taskGroups, 0);
-      updateStatus("Step 6: 次グループ処理完了", "success");
+    if (loopCount >= maxLoops) {
+      console.error(`[UI-Controller] 最大ループ数(${maxLoops})に到達 - 強制終了`);
+      updateStatus(`警告: 最大ループ数に到達`, "warning");
     }
+
+    console.log('=====================================');
+    console.log(`[UI-Controller] Step 5-6 ループ処理完了`, {
+      処理グループ数: currentGroupIndex,
+      総グループ数: taskGroups.length,
+      ループ回数: loopCount
+    });
+    console.log('=====================================');
 
     updateStatus("✅ STEP処理のみ完了！", "success");
 
@@ -4058,7 +4152,9 @@ class EnhancedLogViewer {
       });
 
       // 既存のログを取得
-      this.port.postMessage({ type: 'get-logs' });
+      if (this.port) {
+        this.port.postMessage({ type: 'get-logs' });
+      }
     } catch (error) {
       console.error('[LogViewer] Background connection error:', error);
       this.addLog({
@@ -4506,6 +4602,285 @@ class EnhancedLogViewer {
       return `${aiType.toUpperCase()}: ${selectorCount}個のセレクタ (入力:${inputCount}, ボタン:${buttonCount})${deepResearch}`;
     });
     
+    return `セレクタ情報を更新: ${summaries.join(', ')}`;
+  }
+}
+
+// ===== LogViewerクラス定義 =====
+class LogViewer {
+  constructor() {
+    this.logs = [];
+    this.currentCategory = 'all';
+    this.port = null;
+    this.initElements();
+    this.connectToBackground();
+    this.attachEventListeners();
+  }
+
+  initElements() {
+    this.container = document.getElementById('log-container');
+    this.tabs = document.querySelectorAll('.log-tab');
+    this.clearBtn = document.getElementById('btn-clear-logs');
+    this.copyBtn = document.getElementById('btn-copy-logs');
+  }
+
+  connectToBackground() {
+    try {
+      // background.jsのLogManagerに接続
+      this.port = chrome.runtime.connect({ name: 'log-viewer' });
+
+      // エラーハンドリング
+      this.port.onDisconnect.addListener(() => {
+        if (chrome.runtime.lastError) {
+          console.log('[LogViewer] Background接続エラー（正常）:', chrome.runtime.lastError.message);
+        }
+        this.port = null;
+        // ローカルモードで動作
+        console.log('[LogViewer] ローカルモードで動作中');
+      });
+
+      // メッセージリスナー
+      this.port.onMessage.addListener((msg) => {
+        if (msg.type === 'log') {
+          this.addLog(msg.data);
+        } else if (msg.type === 'logs-batch') {
+          this.logs = msg.data || [];
+          this.renderLogs();
+        } else if (msg.type === 'clear') {
+          if (!msg.category || msg.category === this.currentCategory || this.currentCategory === 'all') {
+            this.logs = this.logs.filter(log => {
+              if (!msg.category) return false;
+              if (msg.category === 'error') return log.level !== 'error';
+              if (msg.category === 'system') return log.category !== 'system';
+              return log.ai !== msg.category;
+            });
+            this.renderLogs();
+          }
+        } else if (msg.type === 'selector-data') {
+          // セレクタデータを受信してUIに表示
+          if (typeof displaySelectorInfo === 'function') {
+            displaySelectorInfo(msg.data);
+          }
+          if (typeof logSelectorInfo === 'function') {
+            logSelectorInfo(msg.data);
+          }
+        }
+      });
+
+      // 既存のログを取得
+      if (this.port) {
+        this.port.postMessage({ type: 'get-logs' });
+      }
+    } catch (error) {
+      console.log('[LogViewer] 接続初期化エラー（正常）:', error.message);
+      this.port = null;
+    }
+  }
+
+  attachEventListeners() {
+    // タブ切り替え
+    this.tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        this.tabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        this.currentCategory = tab.dataset.category;
+        this.renderLogs();
+      });
+    });
+
+    // クリアボタン
+    if (this.clearBtn) {
+      this.clearBtn.addEventListener('click', () => {
+        const category = this.currentCategory === 'all' ? null : this.currentCategory;
+        if (this.port) {
+          this.port.postMessage({ type: 'clear', category });
+        } else {
+          // ローカルモードでのクリア
+          this.logs = [];
+          this.renderLogs();
+        }
+      });
+    }
+
+    // コピーボタン
+    if (this.copyBtn) {
+      this.copyBtn.addEventListener('click', () => {
+        this.copyLogs();
+      });
+    }
+  }
+
+  addLog(logEntry) {
+    this.logs.push(logEntry);
+    if (this.shouldShowLog(logEntry)) {
+      this.appendLogEntry(logEntry);
+    }
+  }
+
+  shouldShowLog(log) {
+    if (this.currentCategory === 'all') return true;
+    if (this.currentCategory === 'error') return log.level === 'error';
+    if (this.currentCategory === 'system') return log.category === 'system';
+    if (this.currentCategory === 'selector') return log.category === 'selector' || log.type === 'selector-update';
+    if (this.currentCategory === 'chatgpt') return log.ai === 'ChatGPT' || log.ai === 'chatgpt';
+    if (this.currentCategory === 'claude') return log.ai === 'Claude' || log.ai === 'claude';
+    if (this.currentCategory === 'gemini') return log.ai === 'Gemini' || log.ai === 'gemini';
+    return false;
+  }
+
+  renderLogs() {
+    if (!this.container) return;
+
+    const filteredLogs = this.logs.filter(log => this.shouldShowLog(log));
+
+    if (filteredLogs.length === 0) {
+      this.container.innerHTML = '<div class="log-empty">ログがまだありません</div>';
+      return;
+    }
+
+    this.container.innerHTML = '';
+    filteredLogs.forEach(log => this.appendLogEntry(log));
+
+    // 最新のログまでスクロール
+    this.container.scrollTop = this.container.scrollHeight;
+  }
+
+  /**
+   * URLを検出してリンクに変換する
+   * @param {string} text - 変換するテキスト
+   * @returns {string} リンク化されたHTML
+   */
+  linkifyUrls(text) {
+    // HTMLエスケープ処理
+    const escapeHtml = (str) => {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    };
+
+    // エスケープ後のテキストを取得
+    const escapedText = escapeHtml(text);
+
+    // URL正規表現パターン
+    const urlPattern = /(https?:\/\/[^\s<>"{}|\\^\[\]`]+)/gi;
+
+    // URLをリンクタグに変換
+    return escapedText.replace(urlPattern, (url) => {
+      return `<a href="${url}" target="_blank" style="color: #0066cc; text-decoration: underline;">${url}</a>`;
+    });
+  }
+
+  appendLogEntry(log) {
+    if (!this.container) return;
+
+    // 空メッセージチェックを削除
+    if (this.container.querySelector('.log-empty')) {
+      this.container.innerHTML = '';
+    }
+
+    const entry = document.createElement('div');
+    entry.className = `log-entry log-${log.level || 'info'}`;
+
+    // タイムスタンプ
+    const timestamp = new Date(log.timestamp).toLocaleTimeString('ja-JP');
+    const timestampSpan = document.createElement('span');
+    timestampSpan.className = 'log-timestamp';
+    timestampSpan.textContent = timestamp;
+
+    // ソース/AI名
+    if (log.ai || log.source) {
+      const sourceSpan = document.createElement('span');
+      sourceSpan.className = 'log-source';
+      sourceSpan.textContent = `[${log.ai || log.source}]`;
+      entry.appendChild(sourceSpan);
+    }
+
+    entry.appendChild(timestampSpan);
+
+    // メッセージ（URLをリンク化）
+    const messageSpan = document.createElement('span');
+    const linkedMessage = this.linkifyUrls(` ${log.message}`);
+    messageSpan.innerHTML = linkedMessage;
+    entry.appendChild(messageSpan);
+
+    this.container.appendChild(entry);
+
+    // 最新のログまでスクロール
+    this.container.scrollTop = this.container.scrollHeight;
+  }
+
+  copyLogs() {
+    const filteredLogs = this.logs.filter(log => this.shouldShowLog(log));
+
+    if (filteredLogs.length === 0) {
+      showFeedback('コピーするログがありません', 'warning');
+      return;
+    }
+
+    const text = filteredLogs.map(log => {
+      const timestamp = new Date(log.timestamp).toLocaleString('ja-JP');
+      const source = log.ai || log.source || '';
+      return `[${timestamp}] ${source ? `[${source}] ` : ''}${log.message}`;
+    }).join('\n');
+
+    navigator.clipboard.writeText(text).then(() => {
+      showFeedback('ログをコピーしました', 'success');
+
+      // ボタンのフィードバック
+      const originalText = this.copyBtn.textContent;
+      this.copyBtn.textContent = '✓ コピー済み';
+      setTimeout(() => {
+        this.copyBtn.textContent = originalText;
+      }, 2000);
+    }).catch(err => {
+      showFeedback('コピーに失敗しました', 'error');
+      console.error('Failed to copy logs:', err);
+    });
+  }
+
+  /**
+   * セレクタ情報をログに追加する専用メソッド
+   * @param {Object} logEntry - セレクタログエントリ
+   */
+  addSelectorLog(logEntry) {
+    // セレクタログ専用のフォーマット
+    const selectorLogEntry = {
+      timestamp: logEntry.timestamp || Date.now(),
+      level: 'info',
+      category: 'selector',
+      ai: 'Selector System',
+      source: 'MutationObserver',
+      message: this.formatSelectorMessage(logEntry.data),
+      type: 'selector-update',
+      data: logEntry.data
+    };
+
+    this.addLog(selectorLogEntry);
+  }
+
+  /**
+   * セレクタデータを人間が読める形式にフォーマット
+   * @param {Object} selectorData - セレクタデータ
+   * @returns {string} フォーマット済みメッセージ
+   */
+  formatSelectorMessage(selectorData) {
+    if (!selectorData) return 'セレクタ情報を更新しました';
+
+    const aiTypes = Object.keys(selectorData);
+    if (aiTypes.length === 0) return 'セレクタ情報を更新しました';
+
+    const summaries = aiTypes.map(aiType => {
+      const data = selectorData[aiType];
+      if (!data) return `${aiType.toUpperCase()}: データなし`;
+
+      const selectorCount = data.totalSelectors || 0;
+      const inputCount = data.inputElements || 0;
+      const buttonCount = data.buttonElements || 0;
+      const deepResearch = data.deepResearch?.available ? ' (DeepResearch対応)' : '';
+
+      return `${aiType.toUpperCase()}: ${selectorCount}個のセレクタ (入力:${inputCount}, ボタン:${buttonCount})${deepResearch}`;
+    });
+
     return `セレクタ情報を更新: ${summaries.join(', ')}`;
   }
 }
@@ -7098,436 +7473,5 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 */
 
-// ===== コンソールログ統合表示機能 =====
-
-/**
- * 簡単なコンソールログ統合表示機能
- */
-class SimpleConsoleLogViewer {
-  constructor() {
-    this.logs = [];
-    this.isCapturing = false;
-    this.originalConsole = {};
-    this.maxLogs = 1000; // 最大ログ数
-    this.addControlButton();
-    this.startCapturing(); // 自動開始
-  }
-
-  /**
-   * ログ統合表示ボタンを追加
-   */
-  addControlButton() {
-    // 少し遅延してからボタンを追加（DOM読み込み待ち）
-    setTimeout(() => {
-      const buttonContainer = document.querySelector('.control-buttons') ||
-                            document.querySelector('.button-container') ||
-                            document.querySelector('.settings-section') ||
-                            document.body;
-
-      if (buttonContainer && !document.getElementById('consoleLogViewerBtn')) {
-        const logViewerBtn = document.createElement('button');
-        logViewerBtn.id = 'consoleLogViewerBtn';
-        logViewerBtn.className = 'btn btn-secondary';
-        logViewerBtn.textContent = '📄 ログ統合表示';
-        logViewerBtn.style.marginLeft = '10px';
-        logViewerBtn.style.backgroundColor = '#17a2b8';
-        logViewerBtn.style.color = 'white';
-        logViewerBtn.style.border = 'none';
-        logViewerBtn.style.padding = '8px 16px';
-        logViewerBtn.style.borderRadius = '4px';
-        logViewerBtn.style.cursor = 'pointer';
-
-        logViewerBtn.addEventListener('click', () => {
-          this.showConsolidatedLogs();
-        });
-
-        buttonContainer.appendChild(logViewerBtn);
-        console.log('✅ コンソールログ統合表示ボタンを追加しました');
-      }
-    }, 1000);
-  }
-
-  /**
-   * コンソールログキャプチャを開始
-   */
-  startCapturing() {
-    if (this.isCapturing) return;
-
-    // 元のconsoleメソッドを保存
-    this.originalConsole = {
-      log: console.log,
-      error: console.error,
-      warn: console.warn,
-      info: console.info
-    };
-
-    // console.logをオーバーライド
-    console.log = (...args) => {
-      this.originalConsole.log.apply(console, args);
-      this.captureLog('info', args);
-    };
-
-    console.error = (...args) => {
-      this.originalConsole.error.apply(console, args);
-      this.captureLog('error', args);
-    };
-
-    console.warn = (...args) => {
-      this.originalConsole.warn.apply(console, args);
-      this.captureLog('warn', args);
-    };
-
-    console.info = (...args) => {
-      this.originalConsole.info.apply(console, args);
-      this.captureLog('info', args);
-    };
-
-    this.isCapturing = true;
-    console.log('[ConsoleLogViewer] ログキャプチャを開始しました');
-  }
-
-  /**
-   * ログをキャプチャ
-   */
-  captureLog(level, args) {
-    const message = args.map(arg => {
-      if (typeof arg === 'object') {
-        try {
-          return JSON.stringify(arg, null, 2);
-        } catch (e) {
-          return String(arg);
-        }
-      }
-      return String(arg);
-    }).join(' ');
-
-    // 自身のログは除外
-    if (message.includes('[ConsoleLogViewer]')) return;
-
-    // ソース情報を推定
-    let source = 'Console';
-    if (message.includes('[step')) {
-      const stepMatch = message.match(/\[([^[\]]+\.js)\]/);
-      source = stepMatch ? stepMatch[1] : 'step-unknown';
-    } else if (message.includes('[UI]')) {
-      source = 'UI';
-    } else if (message.includes('[Background]')) {
-      source = 'Background';
-    } else if (message.includes('[WindowService]')) {
-      source = 'WindowService';
-    }
-
-    const logEntry = {
-      timestamp: Date.now(),
-      level: level,
-      message: message,
-      source: source
-    };
-
-    this.logs.push(logEntry);
-
-    // ログ数制限
-    if (this.logs.length > this.maxLogs) {
-      this.logs = this.logs.slice(-this.maxLogs);
-    }
-  }
-
-  /**
-   * 統合ログを新しいウィンドウで表示
-   */
-  showConsolidatedLogs() {
-    const sortedLogs = this.logs.slice().sort((a, b) => a.timestamp - b.timestamp);
-
-    const logWindow = window.open('', '_blank', 'width=1400,height=900,scrollbars=yes,resizable=yes');
-
-    if (!logWindow) {
-      alert('ポップアップがブロックされました。ポップアップを許可してから再試行してください。');
-      return;
-    }
-
-    const logHtml = `
-<!DOCTYPE html>
-<html>
-<head>
-    <title>AutoAI - コンソールログ統合表示</title>
-    <meta charset="UTF-8">
-    <style>
-        body {
-            font-family: 'Consolas', 'Monaco', monospace;
-            margin: 0;
-            background: #1a1a1a;
-            color: #e0e0e0;
-            font-size: 13px;
-        }
-        .header {
-            background: #2d2d2d;
-            padding: 15px;
-            position: sticky;
-            top: 0;
-            border-bottom: 2px solid #444;
-            z-index: 100;
-        }
-        .stats {
-            background: #3a3a3a;
-            padding: 12px;
-            border-radius: 6px;
-            margin-bottom: 15px;
-            display: flex;
-            gap: 20px;
-            flex-wrap: wrap;
-        }
-        .stat-item {
-            background: #4a4a4a;
-            padding: 6px 12px;
-            border-radius: 4px;
-            font-weight: bold;
-        }
-        .stat-error { color: #ff6b6b; }
-        .stat-warning { color: #feca57; }
-        .stat-info { color: #48dbfb; }
-        .search-controls {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 15px;
-        }
-        .search-box {
-            flex: 1;
-            padding: 10px;
-            background: #2d2d2d;
-            border: 1px solid #555;
-            color: #e0e0e0;
-            border-radius: 4px;
-            font-family: inherit;
-        }
-        .filter-btn {
-            padding: 8px 15px;
-            background: #4a4a4a;
-            border: 1px solid #666;
-            color: #e0e0e0;
-            border-radius: 4px;
-            cursor: pointer;
-            font-family: inherit;
-        }
-        .filter-btn.active { background: #0084ff; }
-        .filter-btn:hover { background: #5a5a5a; }
-        .log-container {
-            padding: 0 15px 15px;
-            max-height: calc(100vh - 200px);
-            overflow-y: auto;
-        }
-        .log-entry {
-            margin: 3px 0;
-            padding: 8px 12px;
-            border-left: 3px solid #555;
-            background: #252525;
-            border-radius: 3px;
-            word-wrap: break-word;
-            font-size: 12px;
-            line-height: 1.4;
-        }
-        .log-error { border-left-color: #ff6b6b; background: #2d1f1f; }
-        .log-warn { border-left-color: #feca57; background: #2d2a1f; }
-        .log-info { border-left-color: #48dbfb; background: #1f2a2d; }
-        .log-timestamp {
-            color: #888;
-            margin-right: 12px;
-            font-size: 11px;
-            min-width: 80px;
-            display: inline-block;
-        }
-        .log-source {
-            color: #48dbfb;
-            margin-right: 12px;
-            font-weight: bold;
-            min-width: 120px;
-            display: inline-block;
-        }
-        .log-level {
-            margin-right: 8px;
-            font-size: 14px;
-        }
-        .log-message {
-            color: #e0e0e0;
-            white-space: pre-wrap;
-        }
-        .error-keyword {
-            background: #ff6b6b;
-            color: #fff;
-            padding: 2px 4px;
-            border-radius: 2px;
-            font-weight: bold;
-        }
-        .no-logs {
-            text-align: center;
-            color: #888;
-            font-style: italic;
-            padding: 40px;
-        }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h2>🔍 AutoAI - コンソールログ統合表示</h2>
-        <div class="stats">
-            <div class="stat-item">総ログ数: ${sortedLogs.length}</div>
-            <div class="stat-item stat-error">エラー: ${sortedLogs.filter(l => l.level === 'error').length}</div>
-            <div class="stat-item stat-warning">警告: ${sortedLogs.filter(l => l.level === 'warn').length}</div>
-            <div class="stat-item stat-info">情報: ${sortedLogs.filter(l => l.level === 'info').length}</div>
-            <div class="stat-item">生成時刻: ${new Date().toLocaleString('ja-JP')}</div>
-        </div>
-        <div class="search-controls">
-            <input type="text" class="search-box" placeholder="ログを検索... (例: error, step1, WindowService)" onkeyup="filterLogs(this.value)">
-            <button class="filter-btn active" onclick="setFilter('all')">すべて</button>
-            <button class="filter-btn" onclick="setFilter('error')">エラー</button>
-            <button class="filter-btn" onclick="setFilter('warn')">警告</button>
-            <button class="filter-btn" onclick="setFilter('step')">Step</button>
-        </div>
-    </div>
-    <div class="log-container" id="logContainer">
-        ${sortedLogs.length === 0 ?
-          '<div class="no-logs">まだログが収集されていません。ページを操作してログを生成してください。</div>' :
-          sortedLogs.map(log => this.formatLogEntry(log)).join('')
-        }
-    </div>
-
-    <script>
-        let currentFilter = 'all';
-        let currentSearch = '';
-
-        function setFilter(filter) {
-            currentFilter = filter;
-            document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
-            event.target.classList.add('active');
-            applyFilters();
-        }
-
-        function filterLogs(searchTerm) {
-            currentSearch = searchTerm.toLowerCase();
-            applyFilters();
-        }
-
-        function applyFilters() {
-            const entries = document.querySelectorAll('.log-entry');
-            let visibleCount = 0;
-
-            entries.forEach(entry => {
-                const level = entry.dataset.level;
-                const content = entry.dataset.content;
-                const source = entry.dataset.source;
-
-                let show = true;
-
-                // フィルタチェック
-                if (currentFilter !== 'all') {
-                    if (currentFilter === 'step') {
-                        show = source && source.includes('step');
-                    } else {
-                        show = level === currentFilter;
-                    }
-                }
-
-                // 検索チェック
-                if (show && currentSearch) {
-                    show = content.includes(currentSearch);
-                }
-
-                entry.style.display = show ? 'block' : 'none';
-                if (show) visibleCount++;
-            });
-
-            // 結果が0件の場合
-            const container = document.getElementById('logContainer');
-            const noResults = container.querySelector('.no-results');
-            if (visibleCount === 0 && entries.length > 0) {
-                if (!noResults) {
-                    const noResultsDiv = document.createElement('div');
-                    noResultsDiv.className = 'no-results no-logs';
-                    noResultsDiv.textContent = 'フィルタ条件に一致するログがありません';
-                    container.appendChild(noResultsDiv);
-                }
-            } else if (noResults) {
-                noResults.remove();
-            }
-        }
-
-        // 自動スクロール（最新ログへ）
-        window.onload = () => {
-            const container = document.querySelector('.log-container');
-            container.scrollTop = container.scrollHeight;
-        };
-    </script>
-</body>
-</html>`;
-
-    logWindow.document.write(logHtml);
-    logWindow.document.close();
-  }
-
-  /**
-   * ログエントリをHTMLとしてフォーマット
-   */
-  formatLogEntry(log) {
-    const timestamp = new Date(log.timestamp).toLocaleTimeString('ja-JP');
-    const levelIcon = this.getLevelIcon(log.level);
-    const message = this.escapeHtml(log.message);
-    const highlightedMessage = this.highlightErrorKeywords(message);
-
-    return `
-      <div class="log-entry log-${log.level}"
-           data-level="${log.level}"
-           data-source="${log.source}"
-           data-content="${this.escapeHtml(JSON.stringify(log).toLowerCase())}">
-        <span class="log-timestamp">${timestamp}</span>
-        <span class="log-source">[${log.source}]</span>
-        <span class="log-level">${levelIcon}</span>
-        <span class="log-message">${highlightedMessage}</span>
-      </div>
-    `;
-  }
-
-  /**
-   * レベルアイコンを取得
-   */
-  getLevelIcon(level) {
-    switch (level) {
-      case 'error': return '❌';
-      case 'warn': return '⚠️';
-      case 'info': return 'ℹ️';
-      default: return '📄';
-    }
-  }
-
-  /**
-   * HTMLエスケープ
-   */
-  escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-  }
-
-  /**
-   * エラーキーワードをハイライト
-   */
-  highlightErrorKeywords(text) {
-    const errorPatterns = [
-      'error', 'エラー', 'failed', '失敗', 'exception', 'uncaught',
-      'syntax.*error', '構文エラー', 'could not establish connection'
-    ];
-
-    let highlighted = text;
-    errorPatterns.forEach(pattern => {
-      const regex = new RegExp(`(${pattern})`, 'gi');
-      highlighted = highlighted.replace(regex, '<span class="error-keyword">$1</span>');
-    });
-    return highlighted;
-  }
-}
-
-// インスタンスを作成
-const simpleConsoleLogViewer = new SimpleConsoleLogViewer();
-
-// ===== グローバル関数公開 =====
-// 他のモジュールから使用できるように関数をwindowオブジェクトに公開
-window.injectAutomationScripts = injectAutomationScripts;
-window.showConsoleLogs = () => simpleConsoleLogViewer.showConsolidatedLogs();
+// ===== 削除済み: コンソールログ統合表示機能 =====
+// ログ統合表示機能は削除されました
