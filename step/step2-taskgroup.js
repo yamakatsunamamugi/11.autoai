@@ -19,8 +19,8 @@ if (!window.globalState) {
       completedGroups: 0,
       totalTasks: 0,
       successTasks: 0,
-      failedTasks: 0
-    }
+      failedTasks: 0,
+    },
   };
 }
 
@@ -28,18 +28,18 @@ if (!window.globalState) {
 // 2-0. スプレッドシート情報の取得
 // ========================================
 function extractSpreadsheetInfo() {
-  console.log('========');
-  console.log('[step2-taskgroup.js] [Step 2-0] スプレッドシート情報の取得');
-  console.log('========');
+  console.log("========");
+  console.log("[step2-taskgroup.js] [Step 2-0] スプレッドシート情報の取得");
+  console.log("========");
 
   // 2-0-1. globalStateまたはURLからIDを取得
   let spreadsheetId = null;
-  let gid = '0';
+  let gid = "0";
 
   // 方法1: globalStateから取得（STEP専用ボタンで設定済み）
   if (window.globalState && window.globalState.spreadsheetId) {
     spreadsheetId = window.globalState.spreadsheetId;
-    gid = window.globalState.gid || '0';
+    gid = window.globalState.gid || "0";
     console.log(`[step2-taskgroup.js] [Step 2-0-1] ✅ globalStateから取得:`);
     console.log(`  - スプレッドシートID: ${spreadsheetId}`);
     console.log(`  - GID: ${gid}`);
@@ -51,27 +51,35 @@ function extractSpreadsheetInfo() {
     const spreadsheetIdMatch = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
     const gidMatch = url.match(/#gid=([0-9]+)/);
 
-    console.log('[step2-taskgroup.js] [Step 2-0-1] URLパターンマッチング結果:');
-    console.log(`  - スプレッドシートIDマッチ: ${spreadsheetIdMatch ? '成功' : '失敗'}`);
-    console.log(`  - GIDマッチ: ${gidMatch ? '成功' : '失敗'}`);
+    console.log("[step2-taskgroup.js] [Step 2-0-1] URLパターンマッチング結果:");
+    console.log(
+      `  - スプレッドシートIDマッチ: ${spreadsheetIdMatch ? "成功" : "失敗"}`,
+    );
+    console.log(`  - GIDマッチ: ${gidMatch ? "成功" : "失敗"}`);
 
     spreadsheetId = spreadsheetIdMatch ? spreadsheetIdMatch[1] : null;
-    gid = gidMatch ? gidMatch[1] : '0';
+    gid = gidMatch ? gidMatch[1] : "0";
   }
 
   // 2-0-2. 取得した情報の保存・更新
-  console.log('[step2-taskgroup.js] [Step 2-0-2] 抽出情報を保存');
+  console.log("[step2-taskgroup.js] [Step 2-0-2] 抽出情報を保存");
   window.globalState.spreadsheetId = spreadsheetId;
   window.globalState.gid = gid;
 
   console.log(`  - スプレッドシートID: ${spreadsheetId}`);
   console.log(`  - GID: ${gid}`);
-  console.log(`  - シート名: ${gid === '0' ? 'デフォルトシート' : `シート${gid}`}`);
+  console.log(
+    `  - シート名: ${gid === "0" ? "デフォルトシート" : `シート${gid}`}`,
+  );
 
   if (!spreadsheetId) {
-    console.error('[step2-taskgroup.js] [Step 2-0-2] ⚠️ スプレッドシートIDが取得できませんでした');
-    console.error('  - 原因: URLが正しいGoogleスプレッドシートではない可能性');
-    console.error('  - Chrome Extension環境ではUIコントローラーでglobalStateに設定してください');
+    console.error(
+      "[step2-taskgroup.js] [Step 2-0-2] ⚠️ スプレッドシートIDが取得できませんでした",
+    );
+    console.error("  - 原因: URLが正しいGoogleスプレッドシートではない可能性");
+    console.error(
+      "  - Chrome Extension環境ではUIコントローラーでglobalStateに設定してください",
+    );
   }
 
   return { spreadsheetId, gid };
@@ -81,9 +89,9 @@ function extractSpreadsheetInfo() {
 // 2-1. タスクグループの識別と作成
 // ========================================
 async function identifyTaskGroups() {
-  console.log('========');
-  console.log('[step2-taskgroup.js] [Step 2-1] タスクグループの識別開始');
-  console.log('========');
+  console.log("========");
+  console.log("[step2-taskgroup.js] [Step 2-1] タスクグループの識別開始");
+  console.log("========");
 
   // globalStateまたは従来の方法でステップ1の結果を取得
   let setupResult = null;
@@ -94,30 +102,41 @@ async function identifyTaskGroups() {
       spreadsheetId: window.globalState.spreadsheetId,
       specialRows: window.globalState.specialRows || {},
       apiHeaders: {
-        'Authorization': `Bearer ${window.globalState.authToken}`,
-        'Content-Type': 'application/json'
+        Authorization: `Bearer ${window.globalState.authToken}`,
+        "Content-Type": "application/json",
       },
-      sheetsApiBase: 'https://sheets.googleapis.com/v4/spreadsheets'
+      sheetsApiBase: "https://sheets.googleapis.com/v4/spreadsheets",
     };
-    console.log('[step2-taskgroup.js] [Step 2-1] ✅ globalStateからsetupResultを構築');
+    console.log(
+      "[step2-taskgroup.js] [Step 2-1] ✅ globalStateからsetupResultを構築",
+    );
   } else {
     // 従来の方法
-    setupResult = window.setupResult || JSON.parse(localStorage.getItem('step1Result') || 'null');
+    setupResult =
+      window.setupResult ||
+      JSON.parse(localStorage.getItem("step1Result") || "null");
   }
 
   if (!setupResult) {
-    console.error('[step2-taskgroup.js] [Step 2-1] ❌ ステップ1の結果が取得できません');
-    console.error('  - window.globalState: ', window.globalState);
-    console.error('  - window.setupResult: ', window.setupResult);
-    console.error('  - localStorage.step1Result: ', localStorage.getItem('step1Result') ? 'あり' : 'なし');
-    throw new Error('ステップ1の結果が見つかりません');
+    console.error(
+      "[step2-taskgroup.js] [Step 2-1] ❌ ステップ1の結果が取得できません",
+    );
+    console.error("  - window.globalState: ", window.globalState);
+    console.error("  - window.setupResult: ", window.setupResult);
+    console.error(
+      "  - localStorage.step1Result: ",
+      localStorage.getItem("step1Result") ? "あり" : "なし",
+    );
+    throw new Error("ステップ1の結果が見つかりません");
   }
 
   const { spreadsheetId, specialRows, apiHeaders, sheetsApiBase } = setupResult;
   const { menuRow, aiRow } = specialRows;
 
   // 2-1-1. メニュー行とAI行の読み込み
-  console.log('[step2-taskgroup.js] [Step 2-1-1] メニュー行とAI行の読み込み開始');
+  console.log(
+    "[step2-taskgroup.js] [Step 2-1-1] メニュー行とAI行の読み込み開始",
+  );
   console.log(`  - メニュー行: ${menuRow}行目`);
   console.log(`  - AI行: ${aiRow}行目`);
 
@@ -126,11 +145,13 @@ async function identifyTaskGroups() {
 
   try {
     // メニュー行取得
-    console.log(`[step2-taskgroup.js] [Step 2-1-1] メニュー行取得: ${menuRange}`);
+    console.log(
+      `[step2-taskgroup.js] [Step 2-1-1] メニュー行取得: ${menuRange}`,
+    );
     const menuStartTime = Date.now();
     const menuResponse = await fetch(
       `${sheetsApiBase}/${spreadsheetId}/values/${menuRange}`,
-      { headers: apiHeaders }
+      { headers: apiHeaders },
     );
     const menuFetchTime = Date.now() - menuStartTime;
 
@@ -145,7 +166,7 @@ async function identifyTaskGroups() {
     const aiStartTime = Date.now();
     const aiResponse = await fetch(
       `${sheetsApiBase}/${spreadsheetId}/values/${aiRange}`,
-      { headers: apiHeaders }
+      { headers: apiHeaders },
     );
     const aiFetchTime = Date.now() - aiStartTime;
 
@@ -158,11 +179,11 @@ async function identifyTaskGroups() {
     console.log(`[step2-taskgroup.js] [Step 2-1-1] 取得データ概要:`);
     console.log(`  - メニュー行列数: ${menuValues.length}`);
     console.log(`  - AI行列数: ${aiValues.length}`);
-    console.log(`  - メニュー行先頭5列: ${menuValues.slice(0, 5).join(', ')}`);
-    console.log(`  - AI行先頭5列: ${aiValues.slice(0, 5).join(', ')}`);
+    console.log(`  - メニュー行先頭5列: ${menuValues.slice(0, 5).join(", ")}`);
+    console.log(`  - AI行先頭5列: ${aiValues.slice(0, 5).join(", ")}`);
 
     // 2-1-2. 列の走査とパターン認識（stream-processor-v2.jsのロジックを採用）
-    console.log('[step2-taskgroup.js] [Step 2-1-2] 列の走査とパターン認識開始');
+    console.log("[step2-taskgroup.js] [Step 2-1-2] 列の走査とパターン認識開始");
     const taskGroups = [];
     let groupCounter = 1;
     let currentGroup = null;
@@ -171,13 +192,17 @@ async function identifyTaskGroups() {
     menuValues.forEach((header, index) => {
       processedColumns++;
       const columnLetter = columnToLetter(index);
-      const trimmedHeader = header ? header.trim() : '';
-      const aiValue = aiValues[index] || '';
+      const trimmedHeader = header ? header.trim() : "";
+      const aiValue = aiValues[index] || "";
 
       // ログ列の検出（stream-processor-v2.jsより）
-      if (trimmedHeader === 'ログ' || trimmedHeader.includes('ログ')) {
+      if (trimmedHeader === "ログ" || trimmedHeader.includes("ログ")) {
         // 前のグループが完成していれば保存
-        if (currentGroup && currentGroup.answerColumns && currentGroup.answerColumns.length > 0) {
+        if (
+          currentGroup &&
+          currentGroup.answerColumns &&
+          currentGroup.answerColumns.length > 0
+        ) {
           taskGroups.push(currentGroup);
           groupCounter++;
           currentGroup = null;
@@ -188,42 +213,48 @@ async function identifyTaskGroups() {
           id: `group_${groupCounter}`,
           name: `タスクグループ${groupCounter}`,
           groupNumber: groupCounter,
-          type: '通常処理',
+          type: "通常処理",
           startColumn: columnLetter,
           endColumn: columnLetter,
           logColumn: columnLetter,
           promptColumns: [],
           answerColumns: [],
-          groupType: 'single',
-          aiType: aiValue || 'Claude',
+          groupType: "single",
+          aiType: aiValue || "Claude",
           dependencies: groupCounter > 1 ? [`group_${groupCounter - 1}`] : [],
           sequenceOrder: groupCounter,
           startCol: index,
-          endCol: index
+          endCol: index,
         };
       }
 
       // 2-1-3. 特殊グループの検出（レポート化、Genspark）
-      if (trimmedHeader === 'レポート化' ||
-          trimmedHeader.includes('Genspark（スライド）') ||
-          trimmedHeader.includes('Genspark（ファクトチェック）')) {
-
+      if (
+        trimmedHeader === "レポート化" ||
+        trimmedHeader.includes("Genspark（スライド）") ||
+        trimmedHeader.includes("Genspark（ファクトチェック）")
+      ) {
         // 前のグループがあれば完了させる
-        if (currentGroup && (currentGroup.answerColumns.length > 0 ||
-            ['report', 'genspark_slide', 'genspark_factcheck'].includes(currentGroup.groupType))) {
+        if (
+          currentGroup &&
+          (currentGroup.answerColumns.length > 0 ||
+            ["report", "genspark_slide", "genspark_factcheck"].includes(
+              currentGroup.groupType,
+            ))
+        ) {
           taskGroups.push(currentGroup);
           groupCounter++;
         }
 
         // 特殊グループタイプの判定
-        let groupType = 'report';
-        let aiType = 'Report';
-        if (trimmedHeader.includes('Genspark（スライド）')) {
-          groupType = 'genspark_slide';
-          aiType = 'Genspark-Slides';
-        } else if (trimmedHeader.includes('Genspark（ファクトチェック）')) {
-          groupType = 'genspark_factcheck';
-          aiType = 'Genspark-FactCheck';
+        let groupType = "report";
+        let aiType = "Report";
+        if (trimmedHeader.includes("Genspark（スライド）")) {
+          groupType = "genspark_slide";
+          aiType = "Genspark-Slides";
+        } else if (trimmedHeader.includes("Genspark（ファクトチェック）")) {
+          groupType = "genspark_factcheck";
+          aiType = "Genspark-FactCheck";
         }
 
         // 特殊グループを作成
@@ -231,8 +262,11 @@ async function identifyTaskGroups() {
           id: `group_${groupCounter}`,
           name: `タスクグループ${groupCounter}`,
           groupNumber: groupCounter,
-          type: trimmedHeader.includes('レポート') ? 'レポート化' :
-                trimmedHeader.includes('スライド') ? 'Gensparkスライド' : 'Gensparkファクトチェック',
+          type: trimmedHeader.includes("レポート")
+            ? "レポート化"
+            : trimmedHeader.includes("スライド")
+              ? "Gensparkスライド"
+              : "Gensparkファクトチェック",
           startColumn: columnLetter,
           endColumn: columnLetter,
           column: columnLetter,
@@ -245,7 +279,7 @@ async function identifyTaskGroups() {
           sequenceOrder: groupCounter,
           isSpecialGroup: true,
           startCol: index,
-          endCol: index
+          endCol: index,
         };
 
         taskGroups.push(specialGroup);
@@ -254,10 +288,13 @@ async function identifyTaskGroups() {
       }
 
       // プロンプト列の検出
-      if (trimmedHeader.includes('プロンプト')) {
+      if (trimmedHeader.includes("プロンプト")) {
         // 前のグループが完成していれば新しいグループを開始
-        if (currentGroup && currentGroup.promptColumns.length > 0 &&
-            currentGroup.answerColumns.length > 0) {
+        if (
+          currentGroup &&
+          currentGroup.promptColumns.length > 0 &&
+          currentGroup.answerColumns.length > 0
+        ) {
           taskGroups.push(currentGroup);
           groupCounter++;
           currentGroup = null;
@@ -269,19 +306,19 @@ async function identifyTaskGroups() {
             id: `group_${groupCounter}`,
             name: `タスクグループ${groupCounter}`,
             groupNumber: groupCounter,
-            type: '通常処理',
+            type: "通常処理",
             startColumn: columnLetter,
             endColumn: columnLetter,
             logColumn: null,
             promptColumns: [columnLetter],
             answerColumns: [],
-            groupType: 'single',
-            aiType: aiValue || 'Claude',
+            groupType: "single",
+            aiType: aiValue || "Claude",
             ai: aiValue,
             dependencies: groupCounter > 1 ? [`group_${groupCounter - 1}`] : [],
             sequenceOrder: groupCounter,
             startCol: index,
-            endCol: index
+            endCol: index,
           };
         } else {
           // 既存のグループにプロンプト列を追加
@@ -290,30 +327,36 @@ async function identifyTaskGroups() {
         }
 
         // AI行の値からグループタイプを判定
-        if (aiValue.includes('3種類')) {
-          currentGroup.groupType = '3type';
-          currentGroup.type = '3種類AI';
+        if (aiValue.includes("3種類")) {
+          currentGroup.groupType = "3type";
+          currentGroup.type = "3種類AI";
           currentGroup.aiType = aiValue;
         } else if (aiValue) {
-          currentGroup.groupType = 'single';
+          currentGroup.groupType = "single";
           currentGroup.aiType = aiValue;
         }
       }
 
       // 回答列の検出
-      if (currentGroup && (trimmedHeader.includes('回答') || trimmedHeader.includes('答'))) {
+      if (
+        currentGroup &&
+        (trimmedHeader.includes("回答") || trimmedHeader.includes("答"))
+      ) {
         // AIタイプを判定（stream-processor-v2.jsのdetectAITypeFromHeaderロジック）
-        let detectedAiType = 'Claude';
-        if (currentGroup.groupType === '3type' || currentGroup.type === '3種類AI') {
+        let detectedAiType = "Claude";
+        if (
+          currentGroup.groupType === "3type" ||
+          currentGroup.type === "3種類AI"
+        ) {
           const headerLower = trimmedHeader.toLowerCase();
-          if (headerLower.includes('chatgpt') || headerLower.includes('gpt')) {
-            detectedAiType = 'ChatGPT';
+          if (headerLower.includes("chatgpt") || headerLower.includes("gpt")) {
+            detectedAiType = "ChatGPT";
             currentGroup.chatgptColumn = columnLetter;
-          } else if (headerLower.includes('claude')) {
-            detectedAiType = 'Claude';
+          } else if (headerLower.includes("claude")) {
+            detectedAiType = "Claude";
             currentGroup.claudeColumn = columnLetter;
-          } else if (headerLower.includes('gemini')) {
-            detectedAiType = 'Gemini';
+          } else if (headerLower.includes("gemini")) {
+            detectedAiType = "Gemini";
             currentGroup.geminiColumn = columnLetter;
           }
         } else {
@@ -323,7 +366,7 @@ async function identifyTaskGroups() {
         currentGroup.answerColumns.push({
           column: columnLetter,
           index: index,
-          aiType: detectedAiType
+          aiType: detectedAiType,
         });
         currentGroup.endColumn = columnLetter;
         currentGroup.endCol = index;
@@ -339,9 +382,10 @@ async function identifyTaskGroups() {
     window.globalState.allTaskGroups = taskGroups;
     window.globalState.taskGroups = taskGroups;
     return taskGroups;
-
   } catch (error) {
-    console.error('[step2-taskgroup.js] [Step 2-1] ❌ タスクグループ識別エラー詳細:');
+    console.error(
+      "[step2-taskgroup.js] [Step 2-1] ❌ タスクグループ識別エラー詳細:",
+    );
     console.error(`  - エラー名: ${error.name}`);
     console.error(`  - メッセージ: ${error.message}`);
     console.error(`  - スタック: ${error.stack}`);
@@ -353,16 +397,19 @@ async function identifyTaskGroups() {
 // 2-2. 列制御の適用
 // ========================================
 async function applyColumnControls() {
-  console.log('========');
-  console.log('[step2-taskgroup.js] [Step 2-2] 列制御の適用');
-  console.log('========');
+  console.log("========");
+  console.log("[step2-taskgroup.js] [Step 2-2] 列制御の適用");
+  console.log("========");
 
-  const setupResult = window.setupResult || JSON.parse(localStorage.getItem('step1Result'));
+  const setupResult =
+    window.setupResult || JSON.parse(localStorage.getItem("step1Result"));
   const { spreadsheetId, specialRows, apiHeaders, sheetsApiBase } = setupResult;
   const { controlRow } = specialRows;
 
   if (!controlRow) {
-    console.log('[step2-taskgroup.js] [Step 2-2] 列制御行が定義されていません - 列制御処理をスキップ');
+    console.log(
+      "[step2-taskgroup.js] [Step 2-2] 列制御行が定義されていません - 列制御処理をスキップ",
+    );
     return;
   }
 
@@ -370,13 +417,15 @@ async function applyColumnControls() {
 
   // 2-2-1. 列制御行の全列を読み込み
   const controlRange = `${controlRow}:${controlRow}`;
-  console.log(`[step2-taskgroup.js] [Step 2-2-1] 列制御行データ取得: ${controlRange}`);
+  console.log(
+    `[step2-taskgroup.js] [Step 2-2-1] 列制御行データ取得: ${controlRange}`,
+  );
 
   try {
     const startTime = Date.now();
     const response = await fetch(
       `${sheetsApiBase}/${spreadsheetId}/values/${controlRange}`,
-      { headers: apiHeaders }
+      { headers: apiHeaders },
     );
     const fetchTime = Date.now() - startTime;
 
@@ -386,15 +435,17 @@ async function applyColumnControls() {
     const data = await response.json();
     const controlValues = data.values ? data.values[0] : [];
 
-    console.log(`[step2-taskgroup.js] [Step 2-2-1] 取得データ: ${controlValues.length}列`);
-    console.log(`  - 有効な制御: ${controlValues.filter(v => v).length}個`);
+    console.log(
+      `[step2-taskgroup.js] [Step 2-2-1] 取得データ: ${controlValues.length}列`,
+    );
+    console.log(`  - 有効な制御: ${controlValues.filter((v) => v).length}個`);
 
     // 2-2-2. 列制御テキストの検出と処理
-    console.log('[step2-taskgroup.js] [Step 2-2-2] 列制御テキストの検出開始');
+    console.log("[step2-taskgroup.js] [Step 2-2-2] 列制御テキストの検出開始");
     const controls = {
       startFrom: null,
       stopAfter: null,
-      onlyProcess: []
+      onlyProcess: [],
     };
 
     let controlCount = 0;
@@ -407,37 +458,47 @@ async function applyColumnControls() {
       console.log(`  [${column}] 制御テキスト: "${text}"`);
 
       // 2-2-2-1. 「この列から処理」の検出
-      if (text.includes('この列から処理')) {
+      if (text.includes("この列から処理")) {
         controls.startFrom = groupIndex;
         controlCount++;
-        console.log(`[step2-taskgroup.js] [Step 2-2-2-1] ✅ 「この列から処理」検出: ${column}列 (グループ${groupIndex})`);
+        console.log(
+          `[step2-taskgroup.js] [Step 2-2-2-1] ✅ 「この列から処理」検出: ${column}列 (グループ${groupIndex})`,
+        );
       }
 
       // 2-2-2-2. 「この列の処理後に停止」の検出
-      if (text.includes('この列の処理後に停止')) {
+      if (text.includes("この列の処理後に停止")) {
         controls.stopAfter = groupIndex;
         controlCount++;
-        console.log(`[step2-taskgroup.js] [Step 2-2-2-2] ✅ 「この列の処理後に停止」検出: ${column}列 (グループ${groupIndex})`);
+        console.log(
+          `[step2-taskgroup.js] [Step 2-2-2-2] ✅ 「この列の処理後に停止」検出: ${column}列 (グループ${groupIndex})`,
+        );
       }
 
       // 2-2-2-3. 「この列のみ処理」の検出
-      if (text.includes('この列のみ処理')) {
+      if (text.includes("この列のみ処理")) {
         controls.onlyProcess.push(groupIndex);
         controlCount++;
-        console.log(`[step2-taskgroup.js] [Step 2-2-2-3] ✅ 「この列のみ処理」検出: ${column}列 (グループ${groupIndex})`);
+        console.log(
+          `[step2-taskgroup.js] [Step 2-2-2-3] ✅ 「この列のみ処理」検出: ${column}列 (グループ${groupIndex})`,
+        );
       }
     });
 
-    console.log(`[step2-taskgroup.js] [Step 2-2-2] 列制御検出完了: ${controlCount}個の制御を検出`);
+    console.log(
+      `[step2-taskgroup.js] [Step 2-2-2] 列制御検出完了: ${controlCount}個の制御を検出`,
+    );
 
     // 2-2-3. 複数の列制御がある場合の処理
-    console.log('[step2-taskgroup.js] [Step 2-2-3] 列制御の適用開始');
+    console.log("[step2-taskgroup.js] [Step 2-2-3] 列制御の適用開始");
     const taskGroups = window.globalState.taskGroups;
     let skipCount = 0;
 
     if (controls.onlyProcess.length > 0) {
       // 「この列のみ処理」が優先
-      console.log(`[step2-taskgroup.js] [Step 2-2-3] 「この列のみ処理」モード: グループ${controls.onlyProcess.join(', ')}のみ処理`);
+      console.log(
+        `[step2-taskgroup.js] [Step 2-2-3] 「この列のみ処理」モード: グループ${controls.onlyProcess.join(", ")}のみ処理`,
+      );
 
       taskGroups.forEach((group, index) => {
         if (!controls.onlyProcess.includes(index + 1)) {
@@ -449,7 +510,9 @@ async function applyColumnControls() {
     } else {
       // 範囲制御の適用
       if (controls.startFrom) {
-        console.log(`[step2-taskgroup.js] [Step 2-2-3] 開始位置制御: グループ${controls.startFrom}から開始`);
+        console.log(
+          `[step2-taskgroup.js] [Step 2-2-3] 開始位置制御: グループ${controls.startFrom}から開始`,
+        );
         taskGroups.forEach((group) => {
           if (group.groupNumber < controls.startFrom) {
             group.skip = true;
@@ -460,7 +523,9 @@ async function applyColumnControls() {
       }
 
       if (controls.stopAfter) {
-        console.log(`[step2-taskgroup.js] [Step 2-2-3] 終了位置制御: グループ${controls.stopAfter}で停止`);
+        console.log(
+          `[step2-taskgroup.js] [Step 2-2-3] 終了位置制御: グループ${controls.stopAfter}で停止`,
+        );
         taskGroups.forEach((group) => {
           if (group.groupNumber > controls.stopAfter) {
             group.skip = true;
@@ -471,15 +536,16 @@ async function applyColumnControls() {
       }
     }
 
-    console.log(`[step2-taskgroup.js] [Step 2-2-3] 列制御適用完了: ${skipCount}個のグループをスキップ設定`);
+    console.log(
+      `[step2-taskgroup.js] [Step 2-2-3] 列制御適用完了: ${skipCount}個のグループをスキップ設定`,
+    );
 
     window.globalState.columnControls = controls;
-
   } catch (error) {
-    console.error('[step2-taskgroup.js] [Step 2-2] ❌ 列制御適用エラー詳細:');
+    console.error("[step2-taskgroup.js] [Step 2-2] ❌ 列制御適用エラー詳細:");
     console.error(`  - エラー名: ${error.name}`);
     console.error(`  - メッセージ: ${error.message}`);
-    console.error('  - 注: 列制御エラーでも処理は継続します');
+    console.error("  - 注: 列制御エラーでも処理は継続します");
     // エラーでも処理を続行
   }
 }
@@ -488,11 +554,12 @@ async function applyColumnControls() {
 // 2-3. タスクグループのスキップ判定
 // ========================================
 async function applySkipConditions() {
-  console.log('========');
-  console.log('[step2-taskgroup.js] [Step 2-3] スキップ判定の適用');
-  console.log('========');
+  console.log("========");
+  console.log("[step2-taskgroup.js] [Step 2-3] スキップ判定の適用");
+  console.log("========");
 
-  const setupResult = window.setupResult || JSON.parse(localStorage.getItem('step1Result'));
+  const setupResult =
+    window.setupResult || JSON.parse(localStorage.getItem("step1Result"));
   const { spreadsheetId, specialRows, apiHeaders, sheetsApiBase } = setupResult;
   const { dataStartRow } = specialRows;
   const taskGroups = window.globalState.taskGroups;
@@ -505,16 +572,16 @@ async function applySkipConditions() {
     const result = {
       groupNumber: group.groupNumber,
       type: group.type,
-      status: 'unknown',
+      status: "unknown",
       processedCount: 0,
       unprocessedCount: 0,
       skipReason: null,
-      error: null
+      error: null,
     };
 
     if (group.skip) {
-      result.status = 'already-skipped';
-      result.skipReason = '列制御によりスキップ設定済み';
+      result.status = "already-skipped";
+      result.skipReason = "列制御によりスキップ設定済み";
       groupResults.push(result);
       continue;
     }
@@ -525,21 +592,21 @@ async function applySkipConditions() {
       // データ範囲を決定（データ開始行から100行）
       const endRow = dataStartRow + 99;
 
-      if (group.type === '通常処理' || group.type === '3種類AI') {
+      if (group.type === "通常処理" || group.type === "3種類AI") {
         // プロンプト列の最初の列を取得
         const promptCol = group.promptColumns[0];
         const range = `${promptCol}${dataStartRow}:${promptCol}${endRow}`;
 
         const promptResponse = await fetch(
           `${sheetsApiBase}/${spreadsheetId}/values/${range}`,
-          { headers: apiHeaders }
+          { headers: apiHeaders },
         );
         const promptData = await promptResponse.json();
         const promptValues = promptData.values || [];
 
         // 回答列を取得
         let answerCol;
-        if (group.type === '通常処理') {
+        if (group.type === "通常処理") {
           answerCol = group.answerColumn;
         } else {
           answerCol = group.chatgptColumn; // 3種類AIの場合は最初の回答列で判定
@@ -548,7 +615,7 @@ async function applySkipConditions() {
         const answerRange = `${answerCol}${dataStartRow}:${answerCol}${endRow}`;
         const answerResponse = await fetch(
           `${sheetsApiBase}/${spreadsheetId}/values/${answerRange}`,
-          { headers: apiHeaders }
+          { headers: apiHeaders },
         );
         const answerData = await answerResponse.json();
         const answerValues = answerData.values || [];
@@ -578,18 +645,17 @@ async function applySkipConditions() {
         if (!hasUnprocessedTask) {
           group.skip = true;
           skippedByData++;
-          result.status = 'skipped';
-          result.skipReason = '未処理タスクなし';
+          result.status = "skipped";
+          result.skipReason = "未処理タスクなし";
         } else {
-          result.status = 'active';
+          result.status = "active";
         }
       } else {
-        result.status = 'special';
-        result.skipReason = '特殊グループ（レポート/Genspark）';
+        result.status = "special";
+        result.skipReason = "特殊グループ（レポート/Genspark）";
       }
-
     } catch (error) {
-      result.status = 'error';
+      result.status = "error";
       result.error = error.message;
       // エラーの場合はスキップしない（安全のため処理対象として扱う）
     }
@@ -598,46 +664,60 @@ async function applySkipConditions() {
   }
 
   // 統合ログ出力
-  console.log('[step2-taskgroup.js] [Step 2-3] 📊 スキップ判定結果サマリー:');
-  console.log('┌─────────────────────────────────────────────────────────────┐');
-  console.log('│ グループ │ タイプ     │ 状態       │ 処理済み │ 未処理 │ 備考        │');
-  console.log('├─────────────────────────────────────────────────────────────┤');
+  console.log("[step2-taskgroup.js] [Step 2-3] 📊 スキップ判定結果サマリー:");
+  console.log(
+    "┌─────────────────────────────────────────────────────────────┐",
+  );
+  console.log(
+    "│ グループ │ タイプ     │ 状態       │ 処理済み │ 未処理 │ 備考        │",
+  );
+  console.log(
+    "├─────────────────────────────────────────────────────────────┤",
+  );
 
-  groupResults.forEach(result => {
+  groupResults.forEach((result) => {
     const group = `グループ${result.groupNumber}`.padEnd(8);
-    const type = (result.type || '').substring(0, 8).padEnd(8);
+    const type = (result.type || "").substring(0, 8).padEnd(8);
     const status = {
-      'active': '✅ 処理対象',
-      'skipped': '⏭️ スキップ',
-      'already-skipped': '🔒 除外済み',
-      'special': '🔹 特殊',
-      'error': '❌ エラー'
+      active: "✅ 処理対象",
+      skipped: "⏭️ スキップ",
+      "already-skipped": "🔒 除外済み",
+      special: "🔹 特殊",
+      error: "❌ エラー",
     }[result.status].padEnd(10);
     const processed = String(result.processedCount).padStart(6);
     const unprocessed = String(result.unprocessedCount).padStart(6);
-    const note = (result.skipReason || result.error || '').substring(0, 12);
+    const note = (result.skipReason || result.error || "").substring(0, 12);
 
-    console.log(`│ ${group} │ ${type} │ ${status} │ ${processed} │ ${unprocessed} │ ${note} │`);
+    console.log(
+      `│ ${group} │ ${type} │ ${status} │ ${processed} │ ${unprocessed} │ ${note} │`,
+    );
   });
 
-  console.log('└─────────────────────────────────────────────────────────────┘');
-  console.log(`[step2-taskgroup.js] [Step 2-3] ✅ 判定完了: チェック${checkedGroups}個, データによるスキップ${skippedByData}個`);
+  console.log(
+    "└─────────────────────────────────────────────────────────────┘",
+  );
+  console.log(
+    `[step2-taskgroup.js] [Step 2-3] ✅ 判定完了: チェック${checkedGroups}個, データによるスキップ${skippedByData}個`,
+  );
 }
 
 // ========================================
 // 2-4. タスクグループの順番整理
 // ========================================
 function reorganizeTaskGroups() {
-  console.log('========');
-  console.log('[step2-taskgroup.js] [Step 2-4] タスクグループの順番整理');
-  console.log('========');
+  console.log("========");
+  console.log("[step2-taskgroup.js] [Step 2-4] タスクグループの順番整理");
+  console.log("========");
 
   const taskGroups = window.globalState.taskGroups;
 
   // 2-4-1. 有効なタスクグループの番号振り直し
-  console.log('[step2-taskgroup.js] [Step 2-4-1] 有効グループの番号振り直し開始');
-  const activeGroups = taskGroups.filter(group => !group.skip);
-  const skippedGroups = taskGroups.filter(group => group.skip);
+  console.log(
+    "[step2-taskgroup.js] [Step 2-4-1] 有効グループの番号振り直し開始",
+  );
+  const activeGroups = taskGroups.filter((group) => !group.skip);
+  const skippedGroups = taskGroups.filter((group) => group.skip);
 
   console.log(`  - 元のグループ数: ${taskGroups.length}`);
   console.log(`  - スキップグループ: ${skippedGroups.length}`);
@@ -649,15 +729,19 @@ function reorganizeTaskGroups() {
     group.groupNumber = index + 1;
     if (oldNumber !== group.groupNumber) {
       renumberCount++;
-      console.log(`  - グループ番号変更: ${oldNumber} → ${group.groupNumber} (${group.type})`);
+      console.log(
+        `  - グループ番号変更: ${oldNumber} → ${group.groupNumber} (${group.type})`,
+      );
     }
   });
 
   if (renumberCount === 0) {
-    console.log('  - 番号変更なし（連続したグループ）');
+    console.log("  - 番号変更なし（連続したグループ）");
   }
 
-  console.log(`[step2-taskgroup.js] [Step 2-4] ✅ 順番整理完了: ${activeGroups.length}個の有効グループ`);
+  console.log(
+    `[step2-taskgroup.js] [Step 2-4] ✅ 順番整理完了: ${activeGroups.length}個の有効グループ`,
+  );
   return activeGroups;
 }
 
@@ -665,14 +749,15 @@ function reorganizeTaskGroups() {
 // 2-5. タスクグループ情報の記録とログ出力
 // ========================================
 async function logTaskGroups() {
-  console.log('========');
-  console.log('2-5. タスクグループ情報のログ出力');
-  console.log('========');
+  console.log("========");
+  console.log("2-5. タスクグループ情報のログ出力");
+  console.log("========");
 
-  const setupResult = window.setupResult || JSON.parse(localStorage.getItem('step1Result'));
+  const setupResult =
+    window.setupResult || JSON.parse(localStorage.getItem("step1Result"));
   const { spreadsheetId, specialRows, apiHeaders, sheetsApiBase } = setupResult;
   const { modelRow, menuRow } = specialRows;
-  const taskGroups = window.globalState.taskGroups.filter(g => !g.skip);
+  const taskGroups = window.globalState.taskGroups.filter((g) => !g.skip);
 
   // モデル行とメニュー行を取得
   let modelValues = [];
@@ -683,7 +768,7 @@ async function logTaskGroups() {
       const modelRange = `${modelRow}:${modelRow}`;
       const modelResponse = await fetch(
         `${sheetsApiBase}/${spreadsheetId}/values/${modelRange}`,
-        { headers: apiHeaders }
+        { headers: apiHeaders },
       );
       const modelData = await modelResponse.json();
       modelValues = modelData.values ? modelData.values[0] : [];
@@ -692,13 +777,12 @@ async function logTaskGroups() {
     const menuRange = `${menuRow}:${menuRow}`;
     const menuResponse = await fetch(
       `${sheetsApiBase}/${spreadsheetId}/values/${menuRange}`,
-      { headers: apiHeaders }
+      { headers: apiHeaders },
     );
     const menuData = await menuResponse.json();
     menuValues = menuData.values ? menuData.values[0] : [];
-
   } catch (error) {
-    console.error('行データ取得エラー:', error);
+    console.error("行データ取得エラー:", error);
   }
 
   // globalStateの必要なプロパティを初期化
@@ -710,12 +794,12 @@ async function logTaskGroups() {
   }
 
   // 2-5-1. タスクタイプの決定と2-5-3. ログ出力
-  taskGroups.forEach(group => {
+  taskGroups.forEach((group) => {
     let taskType = group.type;
 
     // タスクタイプをより詳細に設定
-    if (group.type === '通常処理' || group.type === '3種類AI') {
-      const modelText = modelValues[group.startCol] || '';
+    if (group.type === "通常処理" || group.type === "3種類AI") {
+      const modelText = modelValues[group.startCol] || "";
       if (modelText) {
         taskType = modelText;
       }
@@ -725,54 +809,55 @@ async function logTaskGroups() {
     const structuredInfo = {
       groupNumber: group.groupNumber,
       taskType: taskType,
-      columns: {}
+      columns: {},
     };
 
-    if (group.type === '通常処理') {
+    if (group.type === "通常処理") {
       structuredInfo.columns = {
         log: group.logColumn,
         prompts: group.promptColumns,
-        answer: group.answerColumn
+        answer: group.answerColumn,
       };
-    } else if (group.type === '3種類AI') {
+    } else if (group.type === "3種類AI") {
       structuredInfo.columns = {
         log: group.logColumn,
         prompts: group.promptColumns,
         answer: {
           chatgpt: group.chatgptColumn,
           claude: group.claudeColumn,
-          gemini: group.geminiColumn
-        }
+          gemini: group.geminiColumn,
+        },
       };
     } else {
       structuredInfo.columns = {
-        column: group.column
+        column: group.column,
       };
     }
 
     // taskTypeMapとworkColumnMapを更新
     window.globalState.taskTypeMap[group.groupNumber] = taskType;
-    window.globalState.workColumnMap[group.groupNumber] = structuredInfo.columns;
+    window.globalState.workColumnMap[group.groupNumber] =
+      structuredInfo.columns;
 
     // ログ出力
-    console.log('＝＝＝＝＝＝＝＝');
+    console.log("＝＝＝＝＝＝＝＝");
     console.log(`タスクグループ${group.groupNumber}`);
     console.log(`タスク: ${taskType}`);
 
-    if (group.type === '通常処理') {
+    if (group.type === "通常処理") {
       console.log(`ログ: ${group.logColumn}`);
-      console.log(`プロンプト: ${group.promptColumns.join('~')}`);
+      console.log(`プロンプト: ${group.promptColumns.join("~")}`);
       console.log(`回答: ${group.answerColumn}`);
-    } else if (group.type === '3種類AI') {
+    } else if (group.type === "3種類AI") {
       console.log(`ログ: ${group.logColumn}`);
-      console.log(`プロンプト: ${group.promptColumns.join('~')}`);
+      console.log(`プロンプト: ${group.promptColumns.join("~")}`);
       console.log(`ChatGPT回答: ${group.chatgptColumn}`);
       console.log(`Claude回答: ${group.claudeColumn}`);
       console.log(`Gemini回答: ${group.geminiColumn}`);
     } else {
       console.log(`作業列: ${group.column}`);
     }
-    console.log('＝＝＝＝＝＝＝＝');
+    console.log("＝＝＝＝＝＝＝＝");
   });
 }
 
@@ -780,25 +865,25 @@ async function logTaskGroups() {
 // 2-6. 定義の作成と保存
 // ========================================
 function saveDefinitions() {
-  console.log('========');
-  console.log('2-6. 定義の作成と保存');
-  console.log('========');
+  console.log("========");
+  console.log("2-6. 定義の作成と保存");
+  console.log("========");
 
-  const activeGroups = window.globalState.taskGroups.filter(g => !g.skip);
+  const activeGroups = window.globalState.taskGroups.filter((g) => !g.skip);
 
   // 2-6-1. タスクグループ配列の作成（既に完了）
   console.log(`タスクグループ配列: ${activeGroups.length}個`);
 
   // 2-6-2. タスクタイプマップの作成（2-5で完了）
-  console.log('タスクタイプマップ:', window.globalState.taskTypeMap);
+  console.log("タスクタイプマップ:", window.globalState.taskTypeMap);
 
   // 2-6-3. 作業列マップの作成（2-5で完了）
-  console.log('作業列マップ:', window.globalState.workColumnMap);
+  console.log("作業列マップ:", window.globalState.workColumnMap);
 
   // localStorageに保存
-  localStorage.setItem('step2Result', JSON.stringify(window.globalState));
+  localStorage.setItem("step2Result", JSON.stringify(window.globalState));
 
-  console.log('✅ 定義の保存完了');
+  console.log("✅ 定義の保存完了");
   return window.globalState;
 }
 
@@ -806,7 +891,7 @@ function saveDefinitions() {
 // ユーティリティ関数
 // ========================================
 function columnToLetter(index) {
-  let letter = '';
+  let letter = "";
   while (index >= 0) {
     letter = String.fromCharCode((index % 26) + 65) + letter;
     index = Math.floor(index / 26) - 1;
@@ -837,9 +922,9 @@ function letterToColumn(letter) {
 // メイン実行関数
 // ========================================
 async function executeStep2TaskGroups() {
-  console.log('＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝');
-  console.log('[step2-taskgroup.js] ステップ2: タスクグループ作成 開始');
-  console.log('＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝');
+  console.log("＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝");
+  console.log("[step2-taskgroup.js] ステップ2: タスクグループ作成 開始");
+  console.log("＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝");
 
   try {
     // 2-0: スプレッドシート情報取得
@@ -863,9 +948,9 @@ async function executeStep2TaskGroups() {
     // 2-6: 定義保存
     saveDefinitions();
 
-    console.log('＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝');
-    console.log('[step2-taskgroup.js] ✅ ステップ2: タスクグループ作成 完了');
-    console.log('＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝');
+    console.log("＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝");
+    console.log("[step2-taskgroup.js] ✅ ステップ2: タスクグループ作成 完了");
+    console.log("＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝");
 
     // taskGroupsをstep5が使える形式でglobalStateに保存
     if (!window.globalState.taskGroups) {
@@ -875,42 +960,102 @@ async function executeStep2TaskGroups() {
     // 処理対象のtaskGroupsのみをglobalStateに保存
     // taskGroupsは内部で作成されているため、globalStateから一時的に取得
     const allTaskGroups = window.globalState.allTaskGroups || [];
-    window.globalState.taskGroups = allTaskGroups.filter(group => !group.skip);
+    window.globalState.taskGroups = allTaskGroups.filter(
+      (group) => !group.skip,
+    );
 
-    // 統一データ構造の実装
-    window.globalState.taskGroups.forEach(group => {
+    // データ検証関数（自己完結型）
+    function validateTaskGroup(group) {
+      console.log(
+        "[step2-taskgroup.js] [Step 2-6-1] タスクグループデータ検証開始",
+      );
+      const errors = [];
+
+      if (!group) {
+        console.error("[step2-taskgroup.js] [Step 2-6-1-1] グループが未定義");
+        errors.push("グループが未定義");
+        return errors;
+      }
+
+      if (!group.columns) {
+        console.error(
+          "[step2-taskgroup.js] [Step 2-6-1-2] columns構造が未定義",
+        );
+        errors.push("columns構造が未定義");
+      } else {
+        if (
+          !group.columns.prompts ||
+          !Array.isArray(group.columns.prompts) ||
+          group.columns.prompts.length === 0
+        ) {
+          console.error(
+            "[step2-taskgroup.js] [Step 2-6-1-3] prompts列が未定義または空",
+          );
+          errors.push("prompts列が未定義または空");
+        }
+        if (!group.columns.answer) {
+          console.error("[step2-taskgroup.js] [Step 2-6-1-4] answer列が未定義");
+          errors.push("answer列が未定義");
+        }
+      }
+
+      if (!group.groupType && !group.type) {
+        console.error(
+          "[step2-taskgroup.js] [Step 2-6-1-5] groupTypeまたはtypeが未定義",
+        );
+        errors.push("groupTypeまたはtypeが未定義");
+      }
+
+      console.log(
+        `[step2-taskgroup.js] [Step 2-6-1-6] 検証完了: ${errors.length}個のエラー`,
+      );
+      return errors;
+    }
+
+    // 統一データ構造の実装（修正版・検証付き）
+    window.globalState.taskGroups.forEach((group) => {
       // dataStartRowを設定（step1で取得した情報を使用）
       group.dataStartRow = window.globalState.specialRows?.dataStartRow || 9;
 
-      // 統一columns形式を設定（重複を排除）
-      if (!group.columns) {
-        group.columns = {
-          log: group.logColumn || null,
-          prompts: group.promptColumns || [],
-          answer: group.answerColumn || (group.answerColumns && group.answerColumns.length > 0 ? group.answerColumns[0].column : null),
-          work: group.workColumn || null
+      // 3種類AIの回答列構造を保持
+      let answerColumnStructure;
+      if (group.groupType === "3種類AI" || group.type === "3種類AI") {
+        // 3種類AIの場合はオブジェクト構造を維持
+        answerColumnStructure = {
+          chatgpt: group.chatgptColumn || group.columns?.answer?.chatgpt || "C",
+          claude: group.claudeColumn || group.columns?.answer?.claude || "D",
+          gemini: group.geminiColumn || group.columns?.answer?.gemini || "E",
         };
       } else {
-        // 既存のcolumnsがある場合も正規化
-        group.columns = {
-          log: group.columns.log || group.logColumn || null,
-          prompts: group.columns.prompts || group.promptColumns || [],
-          answer: group.columns.answer || group.answerColumn || null,
-          work: group.columns.work || group.workColumn || null
-        };
+        // 通常処理の場合は文字列
+        answerColumnStructure =
+          group.answerColumn ||
+          group.columns?.answer ||
+          (group.answerColumns && group.answerColumns.length > 0
+            ? group.answerColumns[0].column
+            : null);
       }
+
+      // 統一columns形式を設定（データ損失防止）
+      group.columns = {
+        log: group.columns?.log || group.logColumn || null,
+        prompts: group.columns?.prompts || group.promptColumns || [],
+        answer: answerColumnStructure,
+        work: group.columns?.work || group.workColumn || null,
+      };
 
       // groupTypeが未設定の場合、typeから設定
       if (!group.groupType) {
         group.groupType = group.type || "通常処理";
       }
 
-      // 重複フィールドを削除（後方互換性のため段階的に削除）
-      delete group.logColumn;
-      delete group.promptColumns;
-      delete group.answerColumn;
-      delete group.workColumn;
-      delete group.type; // groupTypeに統一
+      // 旧フィールドは保持（後方互換性確保）
+      // delete文をコメントアウトして安全性を確保
+      // delete group.logColumn;
+      // delete group.promptColumns;
+      // delete group.answerColumn;
+      // delete group.workColumn;
+      // delete group.type;
 
       // 必要に応じて他の情報も補完
       if (!group.spreadsheetId) {
@@ -922,35 +1067,54 @@ async function executeStep2TaskGroups() {
       if (!group.sheetsApiBase) {
         group.sheetsApiBase = window.globalState.sheetsApiBase;
       }
+
+      // データ検証実行
+      const validationErrors = validateTaskGroup(group);
+      if (validationErrors.length > 0) {
+        console.warn(
+          `[step2-taskgroup.js] グループ${group.groupNumber}の検証エラー:`,
+          validationErrors,
+        );
+        // エラーがあってもスキップ設定で処理を継続
+        group.hasValidationErrors = true;
+        group.validationErrors = validationErrors;
+      }
     });
 
     // 統合ログ出力 - タスクグループ最終結果のみ
     const totalGroups = window.globalState.allTaskGroups?.length || 0;
     const activeGroups = window.globalState.taskGroups.length;
-    const skippedGroups = (window.globalState.allTaskGroups?.filter(g => g.skip) || []).length;
+    const skippedGroups = (
+      window.globalState.allTaskGroups?.filter((g) => g.skip) || []
+    ).length;
 
-    console.log('========');
-    console.log('[step2-taskgroup.js] 📋 検出されたタスクグループサマリー:');
-    window.globalState.taskGroups.forEach(group => {
-      const aiInfo = group.aiType || group.ai || '未設定';
-      const promptInfo = group.columns?.prompts ? group.columns.prompts.join(',') : 'なし';
-      const answerInfo = group.columns?.answer || 'なし';
-      console.log(`  グループ${group.groupNumber}: ${group.groupType || group.type} | 範囲: ${group.startColumn}〜${group.endColumn}列 | AI: ${aiInfo} | プロンプト: ${promptInfo} | 回答: ${answerInfo}`);
+    console.log("========");
+    console.log("[step2-taskgroup.js] 📋 検出されたタスクグループサマリー:");
+    window.globalState.taskGroups.forEach((group) => {
+      const aiInfo = group.aiType || group.ai || "未設定";
+      const promptInfo = group.columns?.prompts
+        ? group.columns.prompts.join(",")
+        : "なし";
+      const answerInfo = group.columns?.answer || "なし";
+      console.log(
+        `  グループ${group.groupNumber}: ${group.groupType || group.type} | 範囲: ${group.startColumn}〜${group.endColumn}列 | AI: ${aiInfo} | プロンプト: ${promptInfo} | 回答: ${answerInfo}`,
+      );
     });
 
-    console.log(`[step2-taskgroup.js] 🗂️ タスクグループ最終結果: 全${totalGroups}個 | 有効${activeGroups}個 | スキップ${skippedGroups}個`);
-    console.log('========');
+    console.log(
+      `[step2-taskgroup.js] 🗂️ タスクグループ最終結果: 全${totalGroups}個 | 有効${activeGroups}個 | スキップ${skippedGroups}個`,
+    );
+    console.log("========");
 
     return window.globalState;
-
   } catch (error) {
-    console.error('[step2-taskgroup.js] ❌ ステップ2 エラー:', error);
+    console.error("[step2-taskgroup.js] ❌ ステップ2 エラー:", error);
     throw error;
   }
 }
 
 // エクスポート（モジュールとして使用する場合）
-if (typeof module !== 'undefined' && module.exports) {
+if (typeof module !== "undefined" && module.exports) {
   module.exports = {
     executeStep2TaskGroups,
     extractSpreadsheetInfo,
@@ -959,12 +1123,12 @@ if (typeof module !== 'undefined' && module.exports) {
     applySkipConditions,
     reorganizeTaskGroups,
     logTaskGroups,
-    saveDefinitions
+    saveDefinitions,
   };
 }
 
 // グローバル関数として公開（ブラウザ環境用）
-if (typeof window !== 'undefined') {
+if (typeof window !== "undefined") {
   window.executeStep2TaskGroups = executeStep2TaskGroups;
   window.extractSpreadsheetInfo = extractSpreadsheetInfo;
   window.identifyTaskGroups = identifyTaskGroups;
@@ -1000,4 +1164,4 @@ if (typeof window !== 'undefined' && !window.step2Executed) {
 }
 */
 
-console.log('[step2-taskgroup.js] ✅ Step2関数定義完了（自動実行無効）');
+console.log("[step2-taskgroup.js] ✅ Step2関数定義完了（自動実行無効）");
