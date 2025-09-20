@@ -42,11 +42,11 @@ function indexToColumn(index) {
 function columnToIndex(column) {
   // 安全性チェックを追加
   if (!column) {
-    console.error('[TaskList] [Error] columnToIndex: column is undefined or null');
+    console.error('[step3-tasklist.js] [Error] columnToIndex: column is undefined or null');
     return -1;
   }
   if (typeof column !== 'string') {
-    console.error('[TaskList] [Error] columnToIndex: column is not a string:', column);
+    console.error('[step3-tasklist.js] [Error] columnToIndex: column is not a string:', column);
     return -1;
   }
   let index = 0;
@@ -127,7 +127,7 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
       }
     };
 
-    console.log(`[TaskList] タスクグループ${taskGroup.groupNumber}の処理開始`);
+    console.log(`[step3-tasklist.js] [Step 3-1] タスクグループ${taskGroup.groupNumber}の処理開始`);
 
   const promptColumns = taskGroup.columns.prompts || [];
   const answerColumns = taskGroup.columns.answer ?
@@ -137,7 +137,7 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
     [];
 
   // デバッグ情報をコンソールに出力
-  console.log('[TaskList] 列設定:', {
+  console.log('[step3-tasklist.js] [Step 3-1-1] 列設定:', {
     promptColumns: promptColumns,
     answerColumns: answerColumns
   });
@@ -165,7 +165,7 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
   }
 
   // 最終行検索完了
-  console.log(`[TaskList] 対象範囲: ${dataStartRow}行〜${lastPromptRow}行 (プロンプト列: ${promptColumns.join(', ')})`);
+  console.log(`[step3-tasklist.js] [Step 3-1-2] 対象範囲: ${dataStartRow}行〜${lastPromptRow}行 (プロンプト列: ${promptColumns.join(', ')})`);
 
   // 3-2: タスク生成の除外処理
   const validTasks = [];
@@ -247,11 +247,11 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
           if (colIndex >= 0) {
             aiTypes = [aiRowData?.[colIndex] || 'ChatGPT'];
           } else {
-            console.warn('[TaskList] [Warning] 無効な列インデックス, デフォルトでChatGPTを使用');
+            console.warn('[step3-tasklist.js] [Step 3-2-1] [Warning] 無効な列インデックス, デフォルトでChatGPTを使用');
             aiTypes = ['ChatGPT'];
           }
         } else {
-          console.warn('[TaskList] [Warning] promptColumnsが未定義または空, デフォルトでChatGPTを使用');
+          console.warn('[step3-tasklist.js] [Step 3-2-2] [Warning] promptColumnsが未定義または空, デフォルトでChatGPTを使用');
           aiTypes = ['ChatGPT'];
         }
       }
@@ -260,13 +260,13 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
       for (let aiType of aiTypes) {
         // AIタイプの正規化（singleをClaudeに変換）
         if (aiType === 'single' || !aiType) {
-          console.log(`[TaskList] AIタイプ '${aiType}' を 'Claude' に変換`);
+          console.log(`[step3-tasklist.js] [Step 3-2-3] AIタイプ '${aiType}' を 'Claude' に変換`);
           aiType = 'Claude';
         }
 
 
         // answerCellの安全な取得
-        console.log(`🔍 [DEBUG] answerCell計算開始 - Row ${row}, AI: ${aiType}:`, {
+        console.log(`[step3-tasklist.js] [Step 3-2-4] 🔍 [DEBUG] answerCell計算開始 - Row ${row}, AI: ${aiType}:`, {
           taskGroupType: taskGroup.groupType,
           columnsAnswer: taskGroup.columns.answer,
           columnsAnswerType: typeof taskGroup.columns.answer,
@@ -281,14 +281,14 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
               if (answerColumn) {
                 answerCell = getCellA1Notation(row, columnToIndex(answerColumn) + 1);
               } else {
-                console.warn(`[TaskList] [Warning] 3種類AI - ${aiType}用の回答列が未定義`, taskGroup.columns.answer);
+                console.warn(`[step3-tasklist.js] [Step 3-2-5] [Warning] 3種類AI - ${aiType}用の回答列が未定義`, taskGroup.columns.answer);
                 // デフォルト値を設定
                 const defaultColumns = { chatgpt: 'C', claude: 'D', gemini: 'E' };
                 const defaultCol = defaultColumns[aiType.toLowerCase()] || 'C';
                 answerCell = getCellA1Notation(row, columnToIndex(defaultCol) + 1);
               }
             } else {
-              console.error('[TaskList] [Error] 3種類AIモードだがanswer列がオブジェクトではない:', {
+              console.error('[step3-tasklist.js] [Step 3-2-6] [Error] 3種類AIモードだがanswer列がオブジェクトではない:', {
                 answer列の型: typeof taskGroup.columns.answer,
                 answer列の値: taskGroup.columns.answer
               });
@@ -300,7 +300,7 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
             answerCell = getCellA1Notation(row, columnToIndex(taskGroup.columns.answer) + 1);
           }
         } catch (error) {
-          console.error('[TaskList] [Error] answerCell生成エラー:', {
+          console.error('[step3-tasklist.js] [Step 3-2-7] [Error] answerCell生成エラー:', {
             エラー: error.message,
             taskGroup: taskGroup,
             aiType: aiType,
@@ -392,7 +392,7 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
 
   // デバッグログをまとめて出力
   if (debugLogs.length > 0) {
-    console.log('🔍 [DEBUG] タスク生成完了サマリー:', {
+    console.log('[step3-tasklist.js] [Step 3-2-8] 🔍 [DEBUG] タスク生成完了サマリー:', {
       グループ: taskGroup.groupNumber,
       総タスク数: debugLogs.length,
       開始行: debugLogs[0].row,
@@ -411,14 +411,14 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
   // サマリーログ出力
   const skippedCount = logBuffer.filter(log => log.includes('既に回答あり')).length;
   if (skippedCount > 0) {
-    console.log(`[TaskList] グループ${taskGroup.groupNumber}: ${skippedCount}行スキップ（既に回答あり）`);
+    console.log(`[step3-tasklist.js] [Step 3-2-9] グループ${taskGroup.groupNumber}: ${skippedCount}行スキップ（既に回答あり）`);
   }
 
-  console.log(`[TaskList] [Step3-2] 有効タスク数: ${validTasks.length}件`);
+  console.log(`[step3-tasklist.js] [Step 3-2-10] 有効タスク数: ${validTasks.length}件`);
 
   // デバッグ: 生成されたタスクの詳細
   if (validTasks.length > 0) {
-    console.log('[TaskList] [Debug] 生成タスク詳細 (最初の3件):',
+    console.log('[step3-tasklist.js] [Step 3-2-11] [Debug] 生成タスク詳細 (最初の3件):',
       validTasks.slice(0, 3).map(t => ({
         taskId: t.taskId,
         行: t.row,
@@ -428,7 +428,7 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
       }))
     );
   } else {
-    console.warn('[TaskList] [Warning] タスクが生成されませんでした。以下を確認してください:', {
+    console.warn('[step3-tasklist.js] [Step 3-2-12] [Warning] タスクが生成されませんでした。以下を確認してください:', {
       dataStartRow: dataStartRow,
       lastPromptRow: lastPromptRow,
       処理対象行数: lastPromptRow - dataStartRow + 1,
@@ -440,7 +440,7 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
 
   // 行制御・列制御の統計ログ
   if (options.applyRowControl && options.rowControls && options.rowControls.length > 0) {
-    console.log('📊 [TaskList] [Step3-統計] 行制御が適用されました:', {
+    console.log('[step3-tasklist.js] [Step 3-3-1] 📊 行制御が適用されました:', {
       制御種類: options.rowControls.map(c => `${c.type}制御(${c.row}行目)`),
       対象範囲: `${dataStartRow}〜${lastPromptRow}行`,
       生成タスク数: validTasks.length
@@ -448,7 +448,7 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
   }
 
   if (options.applyColumnControl && options.columnControls && options.columnControls.length > 0) {
-    console.log('📊 [TaskList] [Step3-統計] 列制御が適用されました:', {
+    console.log('[step3-tasklist.js] [Step 3-3-2] 📊 列制御が適用されました:', {
       制御種類: options.columnControls.map(c => `${c.type}制御(${c.column}列)`),
       タスクグループ列: taskGroup.columns.prompts,
       生成タスク数: validTasks.length
@@ -459,17 +459,17 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
   const batchSize = options.batchSize || 3;
   const batch = validTasks.slice(0, batchSize);
 
-  console.log(`[TaskList] [Step3-3] バッチ作成完了: ${batch.length}タスク`);
+  console.log(`[step3-tasklist.js] [Step 3-3-3] バッチ作成完了: ${batch.length}タスク`);
 
   // タスクリストのログ出力
-  console.log('📋 タスクリスト生成完了');
+  console.log('[step3-tasklist.js] [Step 3-3-4] 📋 タスクリスト生成完了');
   batch.forEach((task, index) => {
-    console.log(`- タスク${index + 1}: ${task.row}行目, ${task.ai}, ${task.model || 'モデル未指定'}`);
+    console.log(`[step3-tasklist.js] [Step 3-3-5] - タスク${index + 1}: ${task.row}行目, ${task.ai}, ${task.model || 'モデル未指定'}`);
   });
 
   return batch;
   } catch (error) {
-    console.error('[TaskList] [Error] generateTaskList内でエラー発生:', {
+    console.error('[step3-tasklist.js] [Step 3-Error] generateTaskList内でエラー発生:', {
       エラー: error.message,
       スタック: error.stack,
       taskGroup: {
@@ -491,7 +491,7 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
  */
 function getRowControl(data) {
   const controls = [];
-  console.log('[TaskList] [Step3-行制御] B列から行制御を検索中...');
+  console.log('[step3-tasklist.js] [Step 3-4-1] B列から行制御を検索中...');
 
   for (let row = 0; row < data.length; row++) {
     const rowData = data[row];
@@ -516,9 +516,9 @@ function getRowControl(data) {
     }
   }
 
-  console.log(`[TaskList] [Step3-Control] 行制御: ${controls.length}個の制御を検出`);
+  console.log(`[step3-tasklist.js] [Step 3-4-2] 行制御: ${controls.length}個の制御を検出`);
   controls.forEach(c => {
-    console.log(`  - ${c.type}: ${c.row}行目`);
+    console.log(`[step3-tasklist.js] [Step 3-4-3]   - ${c.type}: ${c.row}行目`);
   });
   return controls;
 }
@@ -530,12 +530,12 @@ function getRowControl(data) {
  * @returns {Array} 列制御情報
  */
 function getColumnControl(data, controlRow) {
-  console.log(`[TaskList] [Step3-Control] 列制御情報の取得開始 (制御行: ${controlRow})`);
+  console.log(`[step3-tasklist.js] [Step 3-5-1] 列制御情報の取得開始 (制御行: ${controlRow})`);
   const controls = [];
 
   try {
     if (!controlRow || !data[controlRow - 1]) {
-      console.log(`[TaskList] [Step3-Control] 列制御行なし`);
+      console.log(`[step3-tasklist.js] [Step 3-5-2] 列制御行なし`);
       return controls;
     }
 
@@ -561,13 +561,13 @@ function getColumnControl(data, controlRow) {
     }
   }
 
-  console.log(`[TaskList] [Step3-Control] 列制御: ${controls.length}個の制御を検出`);
+  console.log(`[step3-tasklist.js] [Step 3-5-3] 列制御: ${controls.length}個の制御を検出`);
   controls.forEach(c => {
-    console.log(`  - ${c.type}: ${c.column}列`);
+    console.log(`[step3-tasklist.js] [Step 3-5-4]   - ${c.type}: ${c.column}列`);
   });
   return controls;
   } catch (error) {
-    console.error(`[TaskList] [Step3-Control] ❌ 列制御取得エラー:`, error);
+    console.error(`[step3-tasklist.js] [Step 3-5-Error] ❌ 列制御取得エラー:`, error);
     throw error;
   }
 }
