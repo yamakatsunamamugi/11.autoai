@@ -144,37 +144,17 @@ async function identifyTaskGroups() {
   const aiRange = `${aiRow}:${aiRow}`; // AI行全体
 
   try {
-    // メニュー行取得
+    // キャッシュの確認
+    if (!window.globalState.initialSheetData) {
+      throw new Error("初期データキャッシュが見つかりません");
+    }
+
+    // キャッシュからメニュー行・AI行取得
     console.log(
-      `[step2-taskgroup.js] [Step 2-1-1] メニュー行取得: ${menuRange}`,
+      "[step2-taskgroup.js] [Step 2-1-1] ✅ キャッシュからデータ取得",
     );
-    const menuStartTime = Date.now();
-    const menuResponse = await window.fetchWithTokenRefresh(
-      `${sheetsApiBase}/${spreadsheetId}/values/${menuRange}`,
-      { headers: apiHeaders },
-    );
-    const menuFetchTime = Date.now() - menuStartTime;
-
-    console.log(`  - ステータス: ${menuResponse.status}`);
-    console.log(`  - 応答時間: ${menuFetchTime}ms`);
-
-    const menuData = await menuResponse.json();
-    const menuValues = menuData.values ? menuData.values[0] : [];
-
-    // AI行取得
-    console.log(`[step2-taskgroup.js] [Step 2-1-1] AI行取得: ${aiRange}`);
-    const aiStartTime = Date.now();
-    const aiResponse = await window.fetchWithTokenRefresh(
-      `${sheetsApiBase}/${spreadsheetId}/values/${aiRange}`,
-      { headers: apiHeaders },
-    );
-    const aiFetchTime = Date.now() - aiStartTime;
-
-    console.log(`  - ステータス: ${aiResponse.status}`);
-    console.log(`  - 応答時間: ${aiFetchTime}ms`);
-
-    const aiData = await aiResponse.json();
-    const aiValues = aiData.values ? aiData.values[0] : [];
+    const menuValues = window.globalState.initialSheetData[menuRow - 1] || [];
+    const aiValues = window.globalState.initialSheetData[aiRow - 1] || [];
 
     console.log(`[step2-taskgroup.js] [Step 2-1-1] 取得データ概要:`);
     console.log(`  - メニュー行列数: ${menuValues.length}`);
@@ -415,25 +395,23 @@ async function applyColumnControls() {
 
   console.log(`[step2-taskgroup.js] [Step 2-2] 列制御行: ${controlRow}行目`);
 
-  // 2-2-1. 列制御行の全列を読み込み
-  const controlRange = `${controlRow}:${controlRow}`;
+  // 2-2-1. 列制御行の全列を読み込み（キャッシュから）
   console.log(
-    `[step2-taskgroup.js] [Step 2-2-1] 列制御行データ取得: ${controlRange}`,
+    `[step2-taskgroup.js] [Step 2-2-1] 列制御行データ取得: ${controlRow}行目`,
   );
 
   try {
-    const startTime = Date.now();
-    const response = await window.fetchWithTokenRefresh(
-      `${sheetsApiBase}/${spreadsheetId}/values/${controlRange}`,
-      { headers: apiHeaders },
+    // キャッシュの確認
+    if (!window.globalState.initialSheetData) {
+      throw new Error("初期データキャッシュが見つかりません");
+    }
+
+    // キャッシュから列制御行取得
+    console.log(
+      "[step2-taskgroup.js] [Step 2-2-1] ✅ キャッシュから列制御行取得",
     );
-    const fetchTime = Date.now() - startTime;
-
-    console.log(`  - ステータス: ${response.status}`);
-    console.log(`  - 応答時間: ${fetchTime}ms`);
-
-    const data = await response.json();
-    const controlValues = data.values ? data.values[0] : [];
+    const controlValues =
+      window.globalState.initialSheetData[controlRow - 1] || [];
 
     console.log(
       `[step2-taskgroup.js] [Step 2-2-1] 取得データ: ${controlValues.length}列`,
@@ -806,30 +784,30 @@ async function logTaskGroups() {
   const { modelRow, menuRow } = specialRows;
   const taskGroups = window.globalState.taskGroups.filter((g) => !g.skip);
 
-  // モデル行とメニュー行を取得
+  // モデル行とメニュー行を取得（キャッシュから）
   let modelValues = [];
   let menuValues = [];
 
   try {
-    if (modelRow) {
-      const modelRange = `${modelRow}:${modelRow}`;
-      const modelResponse = await window.fetchWithTokenRefresh(
-        `${sheetsApiBase}/${spreadsheetId}/values/${modelRange}`,
-        { headers: apiHeaders },
-      );
-      const modelData = await modelResponse.json();
-      modelValues = modelData.values ? modelData.values[0] : [];
+    // キャッシュの確認
+    if (!window.globalState.initialSheetData) {
+      throw new Error("初期データキャッシュが見つかりません");
     }
 
-    const menuRange = `${menuRow}:${menuRow}`;
-    const menuResponse = await window.fetchWithTokenRefresh(
-      `${sheetsApiBase}/${spreadsheetId}/values/${menuRange}`,
-      { headers: apiHeaders },
+    console.log(
+      "[step2-taskgroup.js] [Step 2-5] ✅ キャッシュからモデル行・メニュー行取得",
     );
-    const menuData = await menuResponse.json();
-    menuValues = menuData.values ? menuData.values[0] : [];
+
+    if (modelRow) {
+      modelValues = window.globalState.initialSheetData[modelRow - 1] || [];
+    }
+
+    menuValues = window.globalState.initialSheetData[menuRow - 1] || [];
+
+    console.log(`  - モデル行: ${modelValues.length}列`);
+    console.log(`  - メニュー行: ${menuValues.length}列`);
   } catch (error) {
-    console.error("行データ取得エラー:", error);
+    console.error("キャッシュからの行データ取得エラー:", error);
   }
 
   // globalStateの必要なプロパティを初期化

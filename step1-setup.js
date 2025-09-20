@@ -675,15 +675,16 @@ async function findSpecialRows() {
       throw new Error("認証トークンが見つかりません");
     }
 
-    console.log("[step1-setup.js] [Step 1-4-1] A列データ取得開始");
-    console.log("  - 取得範囲: A1:A100");
+    // 1-4-1: 全データ一括取得（初期設定用キャッシュ作成）
+    console.log("[step1-setup.js] [Step 1-4-1] 全データ一括取得開始");
+    console.log("  - 取得範囲: A1:CZ100 (初期設定用)");
     console.log(
-      `  - APIエンドポイント: ${window.globalState.sheetsApiBase}/${spreadsheetId}/values/A1:A100`,
+      `  - APIエンドポイント: ${window.globalState.sheetsApiBase}/${spreadsheetId}/values/A1:CZ100`,
     );
 
     const startTime = Date.now();
-    const response = await fetch(
-      `${window.globalState.sheetsApiBase}/${spreadsheetId}/values/A1:A100`,
+    const response = await window.fetchWithTokenRefresh(
+      `${window.globalState.sheetsApiBase}/${spreadsheetId}/values/A1:CZ100`,
       {
         headers: window.globalState.apiHeaders,
       },
@@ -700,7 +701,16 @@ async function findSpecialRows() {
     }
 
     const data = await response.json();
-    const columnA = data.values || [];
+    const allSheetData = data.values || [];
+
+    // 初期設定用データをキャッシュ
+    window.globalState.initialSheetData = allSheetData;
+    console.log(
+      `[step1-setup.js] [Step 1-4-1] ✅ 初期データキャッシュ完了: ${allSheetData.length}行`,
+    );
+
+    // A列データを抽出
+    const columnA = allSheetData.map((row) => [row[0] || ""]);
 
     // 1-4-2: 特殊行の検索
 
@@ -809,24 +819,19 @@ async function setupColumnStructure() {
     // 1-5-1. プロンプト列の検出
     console.log("[step1-setup.js] [Step 1-5-1] プロンプト列を検出中...");
 
-    // メニュー行の全列を取得
-    const range = `${menuRowNumber}:${menuRowNumber}`;
-    const apiUrl = `${window.globalState.sheetsApiBase}/${spreadsheetId}/values/${range}`;
-
-    const response = await fetch(apiUrl, {
-      headers: window.globalState.apiHeaders,
-    });
-
-    if (!response.ok) {
+    // キャッシュからメニュー行データを取得
+    if (!window.globalState.initialSheetData) {
       console.error(
-        "[step1-setup.js] [Step 1-5-1] メニュー行取得エラー:",
-        response.status,
+        "[step1-setup.js] [Step 1-5-1] 初期データキャッシュが見つかりません",
       );
       return false;
     }
 
-    const data = await response.json();
-    const headerRow = data.values?.[0] || [];
+    const headerRow =
+      window.globalState.initialSheetData[menuRowNumber - 1] || [];
+    console.log(
+      `[step1-setup.js] [Step 1-5-1] ✅ キャッシュからメニュー行取得: ${headerRow.length}列`,
+    );
 
     // プロンプト列を検索
     const promptColumns = [];
@@ -860,18 +865,10 @@ async function setupColumnStructure() {
 
     // AI行を取得して3種類AIかチェック
     const aiRowNumber = window.globalState.specialRows?.aiRow || 5;
-    const aiRange = `${aiRowNumber}:${aiRowNumber}`;
-    const aiApiUrl = `${window.globalState.sheetsApiBase}/${spreadsheetId}/values/${aiRange}`;
-
-    const aiResponse = await fetch(aiApiUrl, {
-      headers: window.globalState.apiHeaders,
-    });
-
-    let aiRow = [];
-    if (aiResponse.ok) {
-      const aiData = await aiResponse.json();
-      aiRow = aiData.values?.[0] || [];
-    }
+    const aiRow = window.globalState.initialSheetData[aiRowNumber - 1] || [];
+    console.log(
+      `[step1-setup.js] [Step 1-5-2] ✅ キャッシュからAI行取得: ${aiRow.length}列`,
+    );
 
     const columnsToAdd = [];
 
