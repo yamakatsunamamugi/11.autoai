@@ -51,22 +51,28 @@ class GoogleAuthManager {
     const now = Date.now();
 
     // Step 2-1-2-1: キャッシュの有効性チェック
-    if (this._tokenCache && this._tokenTimestamp &&
-        (now - this._tokenTimestamp) < this._tokenExpiry) {
+    if (
+      this._tokenCache &&
+      this._tokenTimestamp &&
+      now - this._tokenTimestamp < this._tokenExpiry
+    ) {
       if (!suppressLogs) {
-        this.logger.log('[Step 2-1-2-1] キャッシュからトークン取得');
+        this.logger.log("[Step 2-1-2-1] キャッシュからトークン取得");
       }
       return this._tokenCache;
     }
 
     // Step 2-1-2-2: 新規トークンの取得
     return new Promise((resolve, reject) => {
-      this.logger.log('[Auth] 新規認証トークンを取得中...');
+      this.logger.log("[Auth] 新規認証トークンを取得中...");
 
       chrome.identity.getAuthToken({ interactive: true }, (token) => {
         if (chrome.runtime.lastError) {
           // Step 2-1-2-3: エラー処理
-          this.logger.error('[Auth] 認証トークン取得失敗:', chrome.runtime.lastError);
+          this.logger.error(
+            "[Auth] 認証トークン取得失敗:",
+            chrome.runtime.lastError,
+          );
           this._isAuthenticated = false;
           reject(chrome.runtime.lastError);
         } else {
@@ -75,7 +81,7 @@ class GoogleAuthManager {
           this._tokenTimestamp = now;
           this._isAuthenticated = true;
 
-          this.logger.log('[Auth] 認証トークン取得成功');
+          this.logger.log("[Auth] 認証トークン取得成功");
           resolve(token);
         }
       });
@@ -94,21 +100,21 @@ class GoogleAuthManager {
         // Step 2-1-3-2: 未認証状態
         return {
           isAuthenticated: false,
-          message: "認証されていません"
+          message: "認証されていません",
         };
       }
 
       // Step 2-1-3-3: 認証済み状態
       return {
         isAuthenticated: true,
-        token: token
+        token: token,
       };
     } catch (error) {
       // Step 2-1-3-4: エラー状態
-      this.logger.error('[Step 2-1-3-4] 認証状態確認エラー:', error);
+      this.logger.error("[Step 2-1-3-4] 認証状態確認エラー:", error);
       return {
         isAuthenticated: false,
-        error: error.message
+        error: error.message,
       };
     }
   }
@@ -125,7 +131,7 @@ class GoogleAuthManager {
     // Step 2-1-4-2: Chrome認証トークンの削除
     return new Promise((resolve) => {
       chrome.identity.removeCachedAuthToken({}, () => {
-        this.logger.log('[Step 2-1-4-2] 認証クリア完了');
+        this.logger.log("[Step 2-1-4-2] 認証クリア完了");
         resolve();
       });
     });
@@ -147,7 +153,7 @@ class SheetsReader {
     this.logger = console;
 
     // Step 2-2-1-1: API設定
-    this.baseUrl = 'https://sheets.googleapis.com/v4/spreadsheets';
+    this.baseUrl = "https://sheets.googleapis.com/v4/spreadsheets";
     this.batchGetUrl = (id) => `${this.baseUrl}/${id}:batchGet`;
 
     // Step 2-2-1-2: キャッシュ設定
@@ -172,7 +178,12 @@ class SheetsReader {
    * @param {string} sheetName - シート名（オプション）
    * @param {boolean} suppressLogs - バッチ操作時のログ抑制（オプション）
    */
-  async getSheetData(spreadsheetId, range, sheetName = null, suppressLogs = false) {
+  async getSheetData(
+    spreadsheetId,
+    range,
+    sheetName = null,
+    suppressLogs = false,
+  ) {
     let retryCount = 0;
 
     while (retryCount <= this.maxRetryAttempts) {
@@ -180,9 +191,9 @@ class SheetsReader {
         // Step 2-2-2-1: キャッシュチェック
         const cacheKey = `${spreadsheetId}_${range}`;
         const cached = this.cache.get(cacheKey);
-        if (cached && (Date.now() - cached.timestamp) < this.cacheTimeout) {
+        if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
           if (!suppressLogs) {
-            this.logger.log('[Sheets] キャッシュからデータ取得');
+            this.logger.log("[Sheets] キャッシュからデータ取得");
           }
           return cached.data;
         }
@@ -198,7 +209,9 @@ class SheetsReader {
 
         // Step 2-2-2-5: APIリクエスト実行
         if (!suppressLogs) {
-          this.logger.log(`[Sheets] API呼び出し: ${range} (試行${retryCount + 1}/${this.maxRetryAttempts + 1})`);
+          this.logger.log(
+            `[Sheets] API呼び出し: ${range} (試行${retryCount + 1}/${this.maxRetryAttempts + 1})`,
+          );
         }
 
         // クォータ追跡のためリクエストカウンター更新
@@ -206,9 +219,9 @@ class SheetsReader {
 
         const response = await fetch(url, {
           headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
         });
 
         // Step 2-2-2-6: レスポンス処理
@@ -217,13 +230,16 @@ class SheetsReader {
           const errorMessage = errorData.error?.message || response.statusText;
 
           // クォータ制限エラーの検出
-          if (errorMessage.includes('Quota exceeded') ||
-              errorMessage.includes('Rate Limit Exceeded') ||
-              response.status === 429) {
-
+          if (
+            errorMessage.includes("Quota exceeded") ||
+            errorMessage.includes("Rate Limit Exceeded") ||
+            response.status === 429
+          ) {
             const waitTime = this.calculateQuotaRetryDelay(retryCount);
             if (!suppressLogs) {
-              this.logger.warn(`[Sheets] クォータ制限エラー: ${errorMessage}, ${waitTime / 1000}秒待機中...`);
+              this.logger.warn(
+                `[Sheets] クォータ制限エラー: ${errorMessage}, ${waitTime / 1000}秒待機中...`,
+              );
             }
 
             await this.sleep(waitTime);
@@ -239,26 +255,34 @@ class SheetsReader {
         // Step 2-2-2-7: キャッシュ保存
         this.cache.set(cacheKey, {
           data: data,
-          timestamp: Date.now()
+          timestamp: Date.now(),
         });
 
         if (!suppressLogs) {
-          this.logger.log(`[Sheets] データ取得完了: ${data.values?.length || 0}行`);
+          this.logger.log(
+            `[Sheets] データ取得完了: ${data.values?.length || 0}行`,
+          );
         }
         return data;
-
       } catch (error) {
         if (retryCount >= this.maxRetryAttempts) {
-          this.logger.error(`[Sheets] データ取得エラー（最大リトライ回数到達）:`, error);
+          this.logger.error(
+            `[Sheets] データ取得エラー（最大リトライ回数到達）:`,
+            error,
+          );
           throw error;
         }
 
         // クォータエラー以外でもリトライを試行
-        if (error.message.includes('Quota exceeded') ||
-            error.message.includes('Rate Limit Exceeded')) {
+        if (
+          error.message.includes("Quota exceeded") ||
+          error.message.includes("Rate Limit Exceeded")
+        ) {
           const waitTime = this.calculateQuotaRetryDelay(retryCount);
           if (!suppressLogs) {
-            this.logger.warn(`[Sheets] リトライ中（${retryCount + 1}/${this.maxRetryAttempts}）: ${waitTime / 1000}秒待機`);
+            this.logger.warn(
+              `[Sheets] リトライ中（${retryCount + 1}/${this.maxRetryAttempts}）: ${waitTime / 1000}秒待機`,
+            );
           }
           await this.sleep(waitTime);
           retryCount++;
@@ -266,7 +290,7 @@ class SheetsReader {
         }
 
         // その他のエラーは即座に投げる
-        this.logger.error('[Sheets] データ取得エラー:', error);
+        this.logger.error("[Sheets] データ取得エラー:", error);
         throw error;
       }
     }
@@ -281,7 +305,7 @@ class SheetsReader {
     const sheetName = await this.getSheetName(spreadsheetId, gid);
 
     // Step 2-2-3-2: 範囲を指定してデータ取得
-    const range = sheetName ? `'${sheetName}'!A1:ZZ1000` : 'A1:ZZ1000';
+    const range = sheetName ? `'${sheetName}'!A1:ZZ1000` : "A1:ZZ1000";
     const data = await this.getSheetData(spreadsheetId, range);
 
     // Step 2-2-3-3: データ構造の解析
@@ -294,7 +318,7 @@ class SheetsReader {
       aiRow: null,
       modelRow: null,
       taskRow: null,
-      controlCandidateRows: []
+      controlCandidateRows: [],
     };
 
     if (result.values.length > 0) {
@@ -320,13 +344,18 @@ class SheetsReader {
       // Step 2-2-3-5: 制御候補行の検出（5-10行目）
       for (let i = 4; i < Math.min(10, result.values.length); i++) {
         const row = result.values[i];
-        if (row && row.some(cell => cell && cell.toString().includes('この列'))) {
+        if (
+          row &&
+          row.some((cell) => cell && cell.toString().includes("この列"))
+        ) {
           result.controlCandidateRows.push({ index: i, data: row });
         }
       }
     }
 
-    this.logger.log(`[Step 2-2-3] AutoAIデータ読み込み完了: ${result.values.length}行`);
+    this.logger.log(
+      `[Step 2-2-3] AutoAIデータ読み込み完了: ${result.values.length}行`,
+    );
     return result;
   }
 
@@ -349,19 +378,21 @@ class SheetsReader {
 
       const response = await fetch(url, {
         headers: {
-          'Authorization': `Bearer ${token}`
-        }
+          Authorization: `Bearer ${token}`,
+        },
       });
 
       if (!response.ok) {
-        throw new Error('Failed to get sheet metadata');
+        throw new Error("Failed to get sheet metadata");
       }
 
       const data = await response.json();
 
       // Step 2-2-4-4: GIDからシート名を検索
       if (gid && data.sheets) {
-        const sheet = data.sheets.find(s => s.properties.sheetId === parseInt(gid));
+        const sheet = data.sheets.find(
+          (s) => s.properties.sheetId === parseInt(gid),
+        );
         if (sheet) {
           return sheet.properties.title;
         }
@@ -369,9 +400,8 @@ class SheetsReader {
 
       // Step 2-2-4-5: デフォルトシート名
       return data.sheets?.[0]?.properties?.title || null;
-
     } catch (error) {
-      this.logger.warn('[Step 2-2-4] シート名取得エラー:', error);
+      this.logger.warn("[Step 2-2-4] シート名取得エラー:", error);
       return null;
     }
   }
@@ -440,7 +470,7 @@ class SheetsReader {
    * Step 2-2-8: sleep ユーティリティ関数
    */
   async sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**
@@ -449,14 +479,20 @@ class SheetsReader {
   getQuotaStatus() {
     const now = Date.now();
     const timeSinceLastRequest = now - this.lastRequestTime;
-    const requestsRemaining = Math.max(0, this.maxRequestsPerSecond - this.requestCount);
+    const requestsRemaining = Math.max(
+      0,
+      this.maxRequestsPerSecond - this.requestCount,
+    );
 
     return {
       requestCount: this.requestCount,
       requestsRemaining: requestsRemaining,
       timeSinceLastRequest: timeSinceLastRequest,
-      windowTimeRemaining: Math.max(0, this.requestWindowMs - timeSinceLastRequest),
-      isWindowActive: timeSinceLastRequest < this.requestWindowMs
+      windowTimeRemaining: Math.max(
+        0,
+        this.requestWindowMs - timeSinceLastRequest,
+      ),
+      isWindowActive: timeSinceLastRequest < this.requestWindowMs,
     };
   }
 }
@@ -476,7 +512,7 @@ class SheetsWriter {
     this.logger = console;
 
     // Step 2-3-1-1: API設定
-    this.baseUrl = 'https://sheets.googleapis.com/v4/spreadsheets';
+    this.baseUrl = "https://sheets.googleapis.com/v4/spreadsheets";
 
     // Step 2-3-1-2: バッチ処理設定
     this.batchQueue = [];
@@ -499,32 +535,35 @@ class SheetsWriter {
 
       // Step 2-3-2-3: リクエストボディの準備
       const body = {
-        values: [[value]]
+        values: [[value]],
       };
 
       // Step 2-3-2-4: APIリクエスト実行
       this.logger.log(`[Step 2-3-2-4] 書き込み実行: ${range} = "${value}"`);
       const response = await fetch(url, {
-        method: 'PUT',
+        method: "PUT",
         headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
         },
-        body: JSON.stringify(body)
+        body: JSON.stringify(body),
       });
 
       // Step 2-3-2-5: レスポンス処理
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(`Write Error: ${error.error?.message || response.statusText}`);
+        throw new Error(
+          `Write Error: ${error.error?.message || response.statusText}`,
+        );
       }
 
       const result = await response.json();
-      this.logger.log(`[Step 2-3-2-5] 書き込み成功: ${result.updatedCells}セル更新`);
+      this.logger.log(
+        `[Step 2-3-2-5] 書き込み成功: ${result.updatedCells}セル更新`,
+      );
       return result;
-
     } catch (error) {
-      this.logger.error('[Step 2-3-2] 書き込みエラー:', error);
+      this.logger.error("[Step 2-3-2] 書き込みエラー:", error);
       throw error;
     }
   }
@@ -538,7 +577,7 @@ class SheetsWriter {
       const token = await this.authManager.getAuthToken();
 
       // Step 2-3-3-2: バッチ更新リクエストの構築
-      const requests = updates.map(update => {
+      const requests = updates.map((update) => {
         // Step 2-3-3-2-1: セル範囲をA1表記からGridRangeに変換
         const gridRange = this.convertA1ToGridRange(update.range);
 
@@ -546,13 +585,17 @@ class SheetsWriter {
         return {
           updateCells: {
             range: gridRange,
-            rows: [{
-              values: [{
-                userEnteredValue: { stringValue: update.value }
-              }]
-            }],
-            fields: 'userEnteredValue'
-          }
+            rows: [
+              {
+                values: [
+                  {
+                    userEnteredValue: { stringValue: update.value },
+                  },
+                ],
+              },
+            ],
+            fields: "userEnteredValue",
+          },
         };
       });
 
@@ -561,26 +604,29 @@ class SheetsWriter {
       this.logger.log(`[Step 2-3-3-3] バッチ更新実行: ${updates.length}件`);
 
       const response = await fetch(url, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
         },
-        body: JSON.stringify({ requests })
+        body: JSON.stringify({ requests }),
       });
 
       // Step 2-3-3-4: レスポンス処理
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(`Batch Update Error: ${error.error?.message || response.statusText}`);
+        throw new Error(
+          `Batch Update Error: ${error.error?.message || response.statusText}`,
+        );
       }
 
       const result = await response.json();
-      this.logger.log(`[Step 2-3-3-4] バッチ更新成功: ${result.replies?.length}件処理`);
+      this.logger.log(
+        `[Step 2-3-3-4] バッチ更新成功: ${result.replies?.length}件処理`,
+      );
       return result;
-
     } catch (error) {
-      this.logger.error('[Step 2-3-3] バッチ更新エラー:', error);
+      this.logger.error("[Step 2-3-3] バッチ更新エラー:", error);
       throw error;
     }
   }
@@ -599,24 +645,25 @@ class SheetsWriter {
       // Step 2-3-4-3: クリアリクエスト実行
       this.logger.log(`[Step 2-3-4-3] 範囲クリア実行: ${range}`);
       const response = await fetch(url, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Authorization': `Bearer ${token}`
-        }
+          Authorization: `Bearer ${token}`,
+        },
       });
 
       // Step 2-3-4-4: レスポンス処理
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(`Clear Error: ${error.error?.message || response.statusText}`);
+        throw new Error(
+          `Clear Error: ${error.error?.message || response.statusText}`,
+        );
       }
 
       const result = await response.json();
       this.logger.log(`[Step 2-3-4-4] クリア成功: ${range}`);
       return result;
-
     } catch (error) {
-      this.logger.error('[Step 2-3-4] クリアエラー:', error);
+      this.logger.error("[Step 2-3-4] クリアエラー:", error);
       throw error;
     }
   }
@@ -635,7 +682,8 @@ class SheetsWriter {
     const colLetters = match[1];
     let colIndex = 0;
     for (let i = 0; i < colLetters.length; i++) {
-      colIndex = colIndex * 26 + (colLetters.charCodeAt(i) - 'A'.charCodeAt(0) + 1);
+      colIndex =
+        colIndex * 26 + (colLetters.charCodeAt(i) - "A".charCodeAt(0) + 1);
     }
     colIndex--; // 0-indexed
 
@@ -647,7 +695,7 @@ class SheetsWriter {
       startRowIndex: rowIndex,
       endRowIndex: rowIndex + 1,
       startColumnIndex: colIndex,
-      endColumnIndex: colIndex + 1
+      endColumnIndex: colIndex + 1,
     };
   }
 }
@@ -707,17 +755,17 @@ class SpreadsheetLogger {
     const logEntry = {
       timestamp: new Date().toISOString(),
       taskId: taskData.taskId,
-      cellPosition: taskData.cellPosition || 'unknown',
+      cellPosition: taskData.cellPosition || "unknown",
       aiType: taskData.aiType,
       model: taskData.model,
       function: taskData.function,
-      status: 'executing'
+      status: "executing",
     };
 
     // Step 2-4-3-2: 送信時刻の記録
     this.sendTimestamps.set(taskData.taskId, {
       time: new Date(),
-      ...logEntry
+      ...logEntry,
     });
 
     // Step 2-4-3-3: ログメッセージの生成
@@ -727,7 +775,7 @@ class SpreadsheetLogger {
     this.logBuffer.push({
       row: this.currentRow++,
       column: this.logColumn,
-      value: logMessage
+      value: logMessage,
     });
 
     this.logger.log(`[Step 2-4-3-4] ログバッファに追加: ${logMessage}`);
@@ -743,18 +791,18 @@ class SpreadsheetLogger {
 
     // Step 2-4-4-2: 実行時間の計算
     const sendInfo = this.sendTimestamps.get(taskId);
-    let executionTime = 'unknown';
+    let executionTime = "unknown";
     if (sendInfo) {
-      executionTime = ((receiveTime - sendInfo.time) / 1000).toFixed(1) + '秒';
+      executionTime = ((receiveTime - sendInfo.time) / 1000).toFixed(1) + "秒";
     }
 
     // Step 2-4-4-3: 完了ログエントリの作成
     const logEntry = {
       timestamp: receiveTime.toISOString(),
       taskId: taskId,
-      status: response ? 'completed' : 'failed',
+      status: response ? "completed" : "failed",
       executionTime: executionTime,
-      responseLength: response?.length || 0
+      responseLength: response?.length || 0,
     };
 
     // Step 2-4-4-4: ログメッセージの生成と記録
@@ -763,7 +811,7 @@ class SpreadsheetLogger {
     this.logBuffer.push({
       row: this.currentRow++,
       column: this.logColumn,
-      value: logMessage
+      value: logMessage,
     });
 
     this.logger.log(`[Step 2-4-4-4] 完了ログ記録: ${logMessage}`);
@@ -782,9 +830,9 @@ class SpreadsheetLogger {
     this.logBuffer = [];
 
     // Step 2-4-5-2: バッチ更新の準備
-    const updates = logsToWrite.map(log => ({
+    const updates = logsToWrite.map((log) => ({
       range: `${log.column}${log.row}`,
-      value: log.value
+      value: log.value,
     }));
 
     try {
@@ -794,7 +842,7 @@ class SpreadsheetLogger {
     } catch (error) {
       // Step 2-4-5-4: エラー時はバッファに戻す
       this.logBuffer.unshift(...logsToWrite);
-      this.logger.error('[Step 2-4-5-4] ログフラッシュエラー:', error);
+      this.logger.error("[Step 2-4-5-4] ログフラッシュエラー:", error);
     }
   }
 
@@ -836,8 +884,8 @@ class SpreadsheetAutoSetup {
 
     // Step 2-5-1-1: 列追加設定
     this.requiredColumns = {
-      beforePrompt: ['ログ', 'メニュー'],
-      afterPrompt: ['回答']
+      beforePrompt: ["ログ", "メニュー"],
+      afterPrompt: ["回答"],
     };
 
     // 統合ログで出力するため個別ログは削除
@@ -849,18 +897,23 @@ class SpreadsheetAutoSetup {
   async executeAutoSetup(spreadsheetId, gid) {
     try {
       // Step 2-5-2-1: 現在のシート構造を取得
-      this.logger.log('[Step 2-5-2-1] シート構造を解析中...');
-      const sheetData = await this.sheetsReader.loadAutoAIData(spreadsheetId, gid);
+      this.logger.log("[Step 2-5-2-1] シート構造を解析中...");
+      const sheetData = await this.sheetsReader.loadAutoAIData(
+        spreadsheetId,
+        gid,
+      );
 
       // Step 2-5-2-2: プロンプト列の検出
       const promptColumns = this.detectPromptColumns(sheetData);
-      this.logger.log(`[Step 2-5-2-2] プロンプト列検出: ${promptColumns.join(', ')}`);
+      this.logger.log(
+        `[Step 2-5-2-2] プロンプト列検出: ${promptColumns.join(", ")}`,
+      );
 
       if (promptColumns.length === 0) {
         return {
           success: false,
-          message: 'プロンプト列が見つかりません',
-          hasAdditions: false
+          message: "プロンプト列が見つかりません",
+          hasAdditions: false,
         };
       }
 
@@ -873,7 +926,7 @@ class SpreadsheetAutoSetup {
           spreadsheetId,
           promptCol,
           this.requiredColumns.beforePrompt,
-          sheetData
+          sheetData,
         );
         addedColumns.push(...beforeColumns);
 
@@ -882,27 +935,28 @@ class SpreadsheetAutoSetup {
           spreadsheetId,
           promptCol,
           this.requiredColumns.afterPrompt,
-          sheetData
+          sheetData,
         );
         addedColumns.push(...afterColumns);
       }
 
       // Step 2-5-2-4: セットアップ結果の返却
-      this.logger.log(`[Step 2-5-2-4] セットアップ完了: ${addedColumns.length}列追加`);
+      this.logger.log(
+        `[Step 2-5-2-4] セットアップ完了: ${addedColumns.length}列追加`,
+      );
 
       return {
         success: true,
         message: `${addedColumns.length}列を追加しました`,
         addedColumns: addedColumns,
-        hasAdditions: addedColumns.length > 0
+        hasAdditions: addedColumns.length > 0,
       };
-
     } catch (error) {
-      this.logger.error('[Step 2-5-2] セットアップエラー:', error);
+      this.logger.error("[Step 2-5-2] セットアップエラー:", error);
       return {
         success: false,
         error: error.message,
-        hasAdditions: false
+        hasAdditions: false,
       };
     }
   }
@@ -919,7 +973,7 @@ class SpreadsheetAutoSetup {
 
     // Step 2-5-3-1: メニュー行から「プロンプト」を含む列を検索
     sheetData.menuRow.data.forEach((cell, index) => {
-      if (cell && cell.toString().includes('プロンプト')) {
+      if (cell && cell.toString().includes("プロンプト")) {
         const columnLetter = this.indexToColumn(index);
         promptColumns.push(columnLetter);
       }
@@ -941,7 +995,9 @@ class SpreadsheetAutoSetup {
       const columnName = columnsToAdd[i];
 
       // Step 2-5-4-2: 既存列のチェック
-      const beforeColumn = this.indexToColumn(targetIndex - (columnsToAdd.length - i));
+      const beforeColumn = this.indexToColumn(
+        targetIndex - (columnsToAdd.length - i),
+      );
       if (this.columnExists(beforeColumn, columnName, sheetData)) {
         continue;
       }
@@ -953,16 +1009,18 @@ class SpreadsheetAutoSetup {
       await this.sheetsWriter.writeValue(
         spreadsheetId,
         `${beforeColumn}1`,
-        columnName
+        columnName,
       );
 
       addedColumns.push({
         column: beforeColumn,
         name: columnName,
-        position: 'before'
+        position: "before",
       });
 
-      this.logger.log(`[Step 2-5-4-4] 列追加: ${beforeColumn}列 (${columnName})`);
+      this.logger.log(
+        `[Step 2-5-4-4] 列追加: ${beforeColumn}列 (${columnName})`,
+      );
     }
 
     return addedColumns;
@@ -993,16 +1051,18 @@ class SpreadsheetAutoSetup {
       await this.sheetsWriter.writeValue(
         spreadsheetId,
         `${afterColumn}1`,
-        columnName
+        columnName,
       );
 
       addedColumns.push({
         column: afterColumn,
         name: columnName,
-        position: 'after'
+        position: "after",
       });
 
-      this.logger.log(`[Step 2-5-5-4] 列追加: ${afterColumn}列 (${columnName})`);
+      this.logger.log(
+        `[Step 2-5-5-4] 列追加: ${afterColumn}列 (${columnName})`,
+      );
     }
 
     return addedColumns;
@@ -1019,12 +1079,12 @@ class SpreadsheetAutoSetup {
     const request = {
       insertDimension: {
         range: {
-          dimension: 'COLUMNS',
+          dimension: "COLUMNS",
           startIndex: columnIndex,
-          endIndex: columnIndex + 1
+          endIndex: columnIndex + 1,
         },
-        inheritFromBefore: false
-      }
+        inheritFromBefore: false,
+      },
     };
 
     // Step 2-5-6-3: バッチ更新で列挿入
@@ -1038,7 +1098,7 @@ class SpreadsheetAutoSetup {
 
   // 列番号から列文字への変換（0 → A, 1 → B, ...）
   indexToColumn(index) {
-    let column = '';
+    let column = "";
     let num = index;
 
     while (num >= 0) {
@@ -1054,7 +1114,7 @@ class SpreadsheetAutoSetup {
   columnToIndex(column) {
     let index = 0;
     for (let i = 0; i < column.length; i++) {
-      index = index * 26 + (column.charCodeAt(i) - 'A'.charCodeAt(0) + 1);
+      index = index * 26 + (column.charCodeAt(i) - "A".charCodeAt(0) + 1);
     }
     return index - 1;
   }
@@ -1084,13 +1144,13 @@ class DocsReportGenerator {
     this.logger = console;
 
     // Step 2-6-1-1: Docs API設定
-    this.docsApiUrl = 'https://docs.googleapis.com/v1/documents';
-    this.driveApiUrl = 'https://www.googleapis.com/drive/v3/files';
+    this.docsApiUrl = "https://docs.googleapis.com/v1/documents";
+    this.driveApiUrl = "https://www.googleapis.com/drive/v3/files";
 
     // Step 2-6-1-2: テンプレート設定
     this.reportTemplate = {
-      title: 'AI実行レポート',
-      sections: []
+      title: "AI実行レポート",
+      sections: [],
     };
 
     // 統合ログで出力するため個別ログは削除
@@ -1105,21 +1165,21 @@ class DocsReportGenerator {
       const token = await this.authManager.getAuthToken();
 
       // Step 2-6-2-2: 新規ドキュメントの作成
-      this.logger.log('[Step 2-6-2-2] 新規Docsドキュメント作成中...');
+      this.logger.log("[Step 2-6-2-2] 新規Docsドキュメント作成中...");
 
       const createResponse = await fetch(this.docsApiUrl, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          title: title || this.reportTemplate.title
-        })
+          title: title || this.reportTemplate.title,
+        }),
       });
 
       if (!createResponse.ok) {
-        throw new Error('Failed to create document');
+        throw new Error("Failed to create document");
       }
 
       const doc = await createResponse.json();
@@ -1136,14 +1196,13 @@ class DocsReportGenerator {
       return {
         success: true,
         documentId: documentId,
-        url: documentUrl
+        url: documentUrl,
       };
-
     } catch (error) {
-      this.logger.error('[Step 2-6-2] レポート作成エラー:', error);
+      this.logger.error("[Step 2-6-2] レポート作成エラー:", error);
       return {
         success: false,
-        error: error.message
+        error: error.message,
       };
     }
   }
@@ -1163,21 +1222,21 @@ class DocsReportGenerator {
       requests.push({
         insertText: {
           location: { index: 1 },
-          text: content.title + '\n\n'
-        }
+          text: content.title + "\n\n",
+        },
       });
     }
 
     // セクションの挿入
     if (content.sections && Array.isArray(content.sections)) {
-      content.sections.forEach(section => {
+      content.sections.forEach((section) => {
         // Step 2-6-3-3: セクションヘッダー
         if (section.header) {
           requests.push({
             insertText: {
               location: { index: 1 },
-              text: `\n${section.header}\n`
-            }
+              text: `\n${section.header}\n`,
+            },
           });
         }
 
@@ -1186,8 +1245,8 @@ class DocsReportGenerator {
           requests.push({
             insertText: {
               location: { index: 1 },
-              text: `${section.body}\n`
-            }
+              text: `${section.body}\n`,
+            },
           });
         }
       });
@@ -1198,19 +1257,21 @@ class DocsReportGenerator {
       const updateUrl = `${this.docsApiUrl}/${documentId}:batchUpdate`;
 
       const updateResponse = await fetch(updateUrl, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
         },
-        body: JSON.stringify({ requests: requests.reverse() })
+        body: JSON.stringify({ requests: requests.reverse() }),
       });
 
       if (!updateResponse.ok) {
-        throw new Error('Failed to update document');
+        throw new Error("Failed to update document");
       }
 
-      this.logger.log(`[Step 2-6-3-5] コンテンツ挿入完了: ${requests.length}リクエスト`);
+      this.logger.log(
+        `[Step 2-6-3-5] コンテンツ挿入完了: ${requests.length}リクエスト`,
+      );
     }
   }
 
@@ -1220,24 +1281,28 @@ class DocsReportGenerator {
   async generateFromSpreadsheet(spreadsheetData) {
     // Step 2-6-4-1: レポートコンテンツの構築
     const content = {
-      title: `スプレッドシート処理レポート - ${new Date().toLocaleDateString('ja-JP')}`,
-      sections: []
+      title: `スプレッドシート処理レポート - ${new Date().toLocaleDateString("ja-JP")}`,
+      sections: [],
     };
 
     // Step 2-6-4-2: サマリーセクション
     content.sections.push({
-      header: '概要',
-      body: `処理行数: ${spreadsheetData.values?.length || 0}\n` +
-            `処理時刻: ${new Date().toLocaleString('ja-JP')}`
+      header: "概要",
+      body:
+        `処理行数: ${spreadsheetData.values?.length || 0}\n` +
+        `処理時刻: ${new Date().toLocaleString("ja-JP")}`,
     });
 
     // Step 2-6-4-3: 詳細セクション
     if (spreadsheetData.taskGroups && spreadsheetData.taskGroups.length > 0) {
       content.sections.push({
-        header: 'タスクグループ',
-        body: spreadsheetData.taskGroups.map((group, i) =>
-          `グループ${i + 1}: ${group.name} (${group.columnRange.promptColumns.join(', ')})`
-        ).join('\n')
+        header: "タスクグループ",
+        body: spreadsheetData.taskGroups
+          .map(
+            (group, i) =>
+              `グループ${i + 1}: ${group.name} (${group.columnRange.promptColumns.join(", ")})`,
+          )
+          .join("\n"),
       });
     }
 
@@ -1258,24 +1323,27 @@ export class GoogleServices {
   constructor() {
     // Step 2-7-1: 統合サービスの初期化
     this.logger = console;
-    this.logger.log('[GoogleServices] 7つのサービス初期化中...');
+    this.logger.log("[GoogleServices] 7つのサービス初期化中...");
 
     // Step 2-7-1-1: 各サービスのインスタンス化
     this.authManager = new GoogleAuthManager();
     this.sheetsReader = new SheetsReader(this.authManager);
     this.sheetsWriter = new SheetsWriter(this.authManager);
     this.spreadsheetLogger = new SpreadsheetLogger(this.sheetsWriter);
-    this.autoSetup = new SpreadsheetAutoSetup(this.sheetsReader, this.sheetsWriter);
+    this.autoSetup = new SpreadsheetAutoSetup(
+      this.sheetsReader,
+      this.sheetsWriter,
+    );
     this.docsGenerator = new DocsReportGenerator(this.authManager);
 
     // Step 2-7-1-2: 共通設定
     this.config = {
       spreadsheetId: null,
       gid: null,
-      sheetName: null
+      sheetName: null,
     };
 
-    this.logger.log('[GoogleServices] 7つのサービス初期化完了');
+    this.logger.log("[GoogleServices] 7つのサービス初期化完了");
   }
 
   /**
@@ -1288,16 +1356,15 @@ export class GoogleServices {
 
       if (!authStatus.isAuthenticated) {
         // Step 2-7-2-2: 認証の実行
-        this.logger.log('[Step 2-7-2-2] 認証が必要です');
+        this.logger.log("[Step 2-7-2-2] 認証が必要です");
         await this.authManager.getAuthToken();
       }
 
       // Step 2-7-2-3: 初期化完了
-      this.logger.log('[Step 2-7-2-3] GoogleServices初期化完了');
+      this.logger.log("[Step 2-7-2-3] GoogleServices初期化完了");
       return true;
-
     } catch (error) {
-      this.logger.error('[Step 2-7-2] 初期化エラー:', error);
+      this.logger.error("[Step 2-7-2] 初期化エラー:", error);
       throw error;
     }
   }
@@ -1311,7 +1378,7 @@ export class GoogleServices {
     this.config.gid = gid;
 
     // Step 2-7-3-2: ロガーの設定
-    this.spreadsheetLogger.configure(spreadsheetId, 'A'); // デフォルトはA列
+    this.spreadsheetLogger.configure(spreadsheetId, "A"); // デフォルトはA列
 
     this.logger.log(`[Step 2-7-3] スプレッドシート設定: ${spreadsheetId}`);
   }
@@ -1320,14 +1387,21 @@ export class GoogleServices {
    * Step 2-7-4: 統合API - データ読み込み
    */
   async loadData(spreadsheetId, gid) {
-    return await this.sheetsReader.loadAutoAIData(spreadsheetId || this.config.spreadsheetId, gid || this.config.gid);
+    return await this.sheetsReader.loadAutoAIData(
+      spreadsheetId || this.config.spreadsheetId,
+      gid || this.config.gid,
+    );
   }
 
   /**
    * Step 2-7-5: 統合API - データ書き込み
    */
   async writeData(range, value) {
-    return await this.sheetsWriter.writeValue(this.config.spreadsheetId, range, value);
+    return await this.sheetsWriter.writeValue(
+      this.config.spreadsheetId,
+      range,
+      value,
+    );
   }
 
   /**
@@ -1343,7 +1417,7 @@ export class GoogleServices {
   async runAutoSetup(spreadsheetId, gid) {
     return await this.autoSetup.executeAutoSetup(
       spreadsheetId || this.config.spreadsheetId,
-      gid || this.config.gid
+      gid || this.config.gid,
     );
   }
 
@@ -1367,7 +1441,7 @@ export class GoogleServices {
     // Step 2-7-9-3: キャッシュのクリア
     this.sheetsReader.cache.clear();
 
-    this.logger.log('[Step 2-7-9] GoogleServicesクリーンアップ完了');
+    this.logger.log("[Step 2-7-9] GoogleServicesクリーンアップ完了");
   }
 
   /**
@@ -1379,7 +1453,7 @@ export class GoogleServices {
       spreadsheetId: this.config.spreadsheetId,
       gid: this.config.gid,
       logBufferSize: this.spreadsheetLogger.logBuffer.length,
-      cacheSize: this.sheetsReader.cache.size
+      cacheSize: this.sheetsReader.cache.size,
     };
   }
 }
@@ -1399,7 +1473,7 @@ export const spreadsheetLogger = googleServices.spreadsheetLogger;
 
 // parseSpreadsheetUrl関数のエクスポート
 export const parseSpreadsheetUrl = (url) => {
-  if (!url || typeof url !== 'string') {
+  if (!url || typeof url !== "string") {
     return { spreadsheetId: null, gid: null };
   }
 
@@ -1412,4 +1486,15 @@ export const parseSpreadsheetUrl = (url) => {
   return { spreadsheetId, gid };
 };
 
-console.log('📊 Google Services loaded - Step 2: Google統合サービス準備完了');
+// Step 2-8-3: ブラウザ環境での依存関係チェック用のグローバルエクスポート
+if (typeof window !== "undefined") {
+  window.GoogleServices = GoogleServices;
+  window.googleServices = googleServices;
+
+  // スクリプト読み込みトラッカーに登録
+  if (window.scriptLoadTracker) {
+    window.scriptLoadTracker.addScript("google-services.js");
+  }
+}
+
+console.log("📊 Google Services loaded - Step 2: Google統合サービス準備完了");
