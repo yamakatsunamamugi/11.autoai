@@ -432,9 +432,18 @@ class TaskGroupTypeDetector {
     const usedAITypes = [];
     const seenAITypes = new Set();
 
-    taskList.forEach((task) => {
+    ExecuteLogger.debug(
+      "[GroupTypeDetector] タスクAI種別分析開始:",
+      taskList.map((t) => ({ aiType: t.aiType, ai: t.ai })),
+    );
+
+    taskList.forEach((task, index) => {
       // スプレッドシートで指定されたAI種別を取得
       let aiType = task.aiType || task.ai;
+
+      ExecuteLogger.debug(
+        `[GroupTypeDetector] タスク${index}: 元のaiType="${aiType}"`,
+      );
 
       // AI種別の正規化
       if (aiType === "single" || !aiType) {
@@ -447,6 +456,7 @@ class TaskGroupTypeDetector {
           if (!seenAITypes.has(ai)) {
             usedAITypes.push(ai);
             seenAITypes.add(ai);
+            ExecuteLogger.debug(`[GroupTypeDetector] 3種類AI展開: ${ai} 追加`);
           }
         });
       } else {
@@ -454,8 +464,20 @@ class TaskGroupTypeDetector {
         if (!seenAITypes.has(normalizedAI)) {
           usedAITypes.push(normalizedAI);
           seenAITypes.add(normalizedAI);
+          ExecuteLogger.debug(
+            `[GroupTypeDetector] 通常AI: ${normalizedAI} 追加`,
+          );
+        } else {
+          ExecuteLogger.debug(
+            `[GroupTypeDetector] 重複AI: ${normalizedAI} スキップ`,
+          );
         }
       }
+    });
+
+    ExecuteLogger.info("[GroupTypeDetector] AI種別抽出結果:", {
+      usedAITypes,
+      seenAITypes: Array.from(seenAITypes),
     });
 
     // 必要なAI種別のみにウィンドウ位置を割り当て
@@ -487,6 +509,8 @@ class TaskGroupTypeDetector {
         .map((w) => `${w.aiType}: ${w.requiredForTasks.length}タスク`)
         .join(", "),
     });
+
+    ExecuteLogger.debug("🖼️ [GroupTypeDetector] 詳細レイアウト:", windowLayout);
 
     return windowLayout;
   }
