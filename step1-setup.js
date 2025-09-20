@@ -607,6 +607,29 @@ async function findSpecialRows() {
       spreadsheetId = window.globalState.spreadsheetId;
       gid = window.globalState.gid;
 
+      // spreadsheetUrlが設定されている場合はそこからIDとGIDを抽出
+      if (!spreadsheetId && window.globalState.spreadsheetUrl) {
+        const spreadsheetUrl = window.globalState.spreadsheetUrl;
+        console.log(
+          `[step1-setup.js] [Step 1-4] globalStateからURL取得: ${spreadsheetUrl}`,
+        );
+
+        // URLからスプレッドシートIDとGIDを抽出
+        const idMatch = spreadsheetUrl.match(/\/d\/([a-zA-Z0-9-_]+)/);
+        const gidMatch = spreadsheetUrl.match(/[#&]gid=([0-9]+)/);
+
+        if (!idMatch) {
+          throw new Error("無効なスプレッドシートURL");
+        }
+
+        spreadsheetId = idMatch[1];
+        gid = gidMatch ? gidMatch[1] : "0"; // デフォルトGID
+
+        // globalStateに保存
+        window.globalState.spreadsheetId = spreadsheetId;
+        window.globalState.gid = gid;
+      }
+
       console.log("[step1-setup.js] [Step 1-4] ✅ globalStateから取得:");
       console.log(`  - スプレッドシートID: ${spreadsheetId}`);
       console.log(`  - GID: ${gid}`);
@@ -1129,7 +1152,7 @@ function columnToIndex(column) {
 // ========================================
 // メイン実行関数
 // ========================================
-async function executeStep1() {
+async function executeStep1(spreadsheetUrl) {
   console.log("＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝");
   console.log("[step1-setup.js] ステップ1: 初期設定 開始");
   console.log("＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝");
@@ -1141,9 +1164,22 @@ async function executeStep1() {
     console.log(
       `  - globalThis.googleServices: ${!!globalThis.googleServices}`,
     );
+    console.log(`  - 受け取ったスプレッドシートURL: ${spreadsheetUrl}`);
 
     // グローバルステートの初期化
     window.globalState = window.globalState || {};
+
+    // スプレッドシートURLをglobalStateに設定
+    if (spreadsheetUrl) {
+      window.globalState.spreadsheetUrl = spreadsheetUrl;
+      console.log(
+        `[step1-setup.js] ✅ スプレッドシートURLをglobalStateに設定: ${spreadsheetUrl}`,
+      );
+    } else {
+      console.warn(
+        "[step1-setup.js] ⚠️ スプレッドシートURLが提供されていません",
+      );
+    }
 
     // 1-1: インターネット接続確認
     const connectionResult = await checkInternetConnection();
