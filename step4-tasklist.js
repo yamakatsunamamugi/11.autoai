@@ -626,7 +626,27 @@ async function generateTaskList(
 
     // ログバッファを初期化
     const logBuffer = [];
+    let answerLogCount = 0;
+    const MAX_ANSWER_LOGS = 3; // 詳細表示する最大数
+
     const addLog = (message, data) => {
+      // 「既に回答あり」ログの重複抑制
+      if (message.includes("既に回答あり")) {
+        answerLogCount++;
+        if (answerLogCount <= MAX_ANSWER_LOGS) {
+          // 最初の数個だけ詳細出力
+          if (data) {
+            logBuffer.push(`${message}: ${JSON.stringify(data)}`);
+            console.log(`[step3-tasklist] ${message}:`, data);
+          } else {
+            logBuffer.push(message);
+            console.log(`[step3-tasklist] ${message}`);
+          }
+        }
+        return;
+      }
+
+      // 通常のログ処理
       if (data) {
         logBuffer.push(`${message}: ${JSON.stringify(data)}`);
         console.log(`[step3-tasklist] ${message}:`, data);
@@ -878,6 +898,17 @@ async function generateTaskList(
     // 3-3: 3タスクずつのバッチ作成
     const batchSize = options.batchSize || 3;
     const batch = validTasks.slice(0, batchSize);
+
+    // 「既に回答あり」ログのサマリー出力
+    if (answerLogCount > MAX_ANSWER_LOGS) {
+      console.log(
+        `[step3-tasklist] [TaskList] 既に回答済みの行: 合計 ${answerLogCount} 行 (詳細表示: ${MAX_ANSWER_LOGS} 行、省略: ${answerLogCount - MAX_ANSWER_LOGS} 行)`,
+      );
+    } else if (answerLogCount > 0) {
+      console.log(
+        `[step3-tasklist] [TaskList] 既に回答済みの行: 合計 ${answerLogCount} 行`,
+      );
+    }
 
     return batch;
   } catch (error) {

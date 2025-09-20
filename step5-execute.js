@@ -43,11 +43,11 @@ class AIAutomationLoader {
   constructor() {
     this.loadedFiles = new Set();
     this.aiFileMap = {
-      chatgpt: chrome.runtime.getURL("step/4-1-chatgpt-automation.js"),
-      claude: chrome.runtime.getURL("step/4-2-claude-automation.js"),
-      gemini: chrome.runtime.getURL("step/4-3-gemini-automation.js"),
-      report: chrome.runtime.getURL("step/4-4-report-automation.js"),
-      genspark: chrome.runtime.getURL("step/4-5-genspark-automation.js"),
+      chatgpt: chrome.runtime.getURL("4-1-chatgpt-automation.js"),
+      claude: chrome.runtime.getURL("4-2-claude-automation.js"),
+      gemini: chrome.runtime.getURL("4-3-gemini-automation.js"),
+      report: chrome.runtime.getURL("4-4-report-automation.js"),
+      genspark: chrome.runtime.getURL("4-5-genspark-automation.js"),
     };
   }
 
