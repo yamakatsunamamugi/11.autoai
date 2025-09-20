@@ -536,10 +536,17 @@ async function setupColumnStructure() {
   console.log('========');
 
   try {
+    // 1-5-0. シートIDの取得
+    const spreadsheetId = window.globalState.spreadsheetId;
+    const gid = window.globalState.gid || '0';
+    const sheetId = parseInt(gid);
+    console.log(`[step1-setup.js] [Step 1-5-0] シート情報:`);
+    console.log(`  - スプレッドシートID: ${spreadsheetId}`);
+    console.log(`  - シートID (GID): ${sheetId}`);
+
     // 1-5-1. プロンプト列の検出
     console.log('[step1-setup.js] [Step 1-5-1] プロンプト列を検出中...');
 
-    const spreadsheetId = window.globalState.spreadsheetId;
     const range = 'A1:Z1'; // 最初の行（ヘッダー行）を取得
     const apiUrl = `${window.globalState.sheetsApiBase}/${spreadsheetId}/values/${range}`;
 
@@ -637,7 +644,7 @@ async function setupColumnStructure() {
     for (const col of columnsToAdd) {
       console.log(`[step1-setup.js] [Step 1-5-3] ${indexToColumn(col.position)}位置に"${col.name}"列を追加中...`);
 
-      const success = await insertColumn(spreadsheetId, col.position);
+      const success = await insertColumn(spreadsheetId, sheetId, col.position);
       if (!success) {
         console.error(`[step1-setup.js] [Step 1-5-3] ❌ 列追加失敗: ${col.name}`);
         continue;
@@ -701,7 +708,7 @@ function columnToIndex(column) {
 }
 
 // 1-5-6. Google Sheets APIで列を挿入
-async function insertColumn(spreadsheetId, columnIndex) {
+async function insertColumn(spreadsheetId, sheetId, columnIndex) {
   console.log(`[step1-setup.js] [Step 1-5-6] 列挿入API呼び出し: インデックス${columnIndex}`);
 
   try {
@@ -710,6 +717,7 @@ async function insertColumn(spreadsheetId, columnIndex) {
       requests: [{
         insertDimension: {
           range: {
+            sheetId: sheetId,  // シートIDを指定
             dimension: 'COLUMNS',
             startIndex: columnIndex,
             endIndex: columnIndex + 1
