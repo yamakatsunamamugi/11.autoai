@@ -2074,19 +2074,8 @@ stepOnlyBtn.addEventListener("click", async () => {
       updateStatus("Step 5: エラー - 関数が定義されていません", "error");
     }
 
-    if (loopCount >= maxLoops) {
-      console.error(
-        `[UI-Controller] 最大ループ数(${maxLoops})に到達 - 強制終了`,
-      );
-      updateStatus(`警告: 最大ループ数に到達`, "warning");
-    }
-
     console.log("=====================================");
-    console.log(`[UI-Controller] Step 5-6 ループ処理完了`, {
-      処理グループ数: currentGroupIndex,
-      総グループ数: taskGroups.length,
-      ループ回数: loopCount,
-    });
+    console.log("[UI-Controller] Step 5-6 処理完了");
     console.log("=====================================");
 
     updateStatus("✅ STEP処理のみ完了！", "success");
