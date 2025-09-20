@@ -291,26 +291,92 @@
                 console.warn('UI_SELECTORS読み込み失敗:', error.message);
             }
 
-            // セレクタ定義
+            // セレクタ定義（Claude現在のUI構造に対応）
             const SELECTORS = {
-                textInput: UI_SELECTORS.Claude?.INPUT || ['div[contenteditable="true"]'],
-                sendButton: UI_SELECTORS.Claude?.SEND_BUTTON || ['button[aria-label="Send Message"]'],
-                stopButton: UI_SELECTORS.Claude?.STOP_BUTTON || ['button[aria-label="Stop"]'],
-                response: UI_SELECTORS.Claude?.RESPONSE || ['div[data-is-streaming="false"]']
+                textInput: UI_SELECTORS.Claude?.INPUT || [
+                    'div[contenteditable="true"]',
+                    'textarea[placeholder*="Talk"]',
+                    'textarea[placeholder*="Message"]',
+                    'div[data-testid="chat-input"]',
+                    'div[role="textbox"]',
+                    'textarea'
+                ],
+                sendButton: UI_SELECTORS.Claude?.SEND_BUTTON || [
+                    'button[aria-label="Send Message"]',
+                    'button[data-testid="send-button"]',
+                    'button[type="submit"]',
+                    'button:has(svg)',
+                    'button:contains("Send")'
+                ],
+                stopButton: UI_SELECTORS.Claude?.STOP_BUTTON || [
+                    'button[aria-label="Stop"]',
+                    'button[data-testid="stop-button"]'
+                ],
+                response: UI_SELECTORS.Claude?.RESPONSE || [
+                    'div[data-is-streaming="false"]',
+                    'div[data-testid="message"]',
+                    'div.font-claude-message',
+                    '.message-content'
+                ]
             };
 
-            // テキスト入力
-            const inputElement = document.querySelector(SELECTORS.textInput[0]);
+            // テキスト入力（複数セレクタを試行）
+            let inputElement = null;
+            for (const selector of SELECTORS.textInput) {
+                inputElement = document.querySelector(selector);
+                if (inputElement) {
+                    console.log(`[Claude] 入力欄発見: ${selector}`);
+                    break;
+                }
+            }
+
             if (!inputElement) {
+                console.error('[Claude] 入力欄が見つかりません。試行したセレクタ:', SELECTORS.textInput);
+                console.error('[Claude] 現在のページのテキスト入力要素:',
+                    Array.from(document.querySelectorAll('input, textarea, div[contenteditable]')).map(el => ({
+                        tag: el.tagName,
+                        type: el.type,
+                        placeholder: el.placeholder,
+                        contenteditable: el.contentEditable,
+                        id: el.id,
+                        class: el.className
+                    }))
+                );
                 throw new Error('入力欄が見つかりません');
             }
 
-            inputElement.textContent = taskData.prompt || taskData.text || '';
-            inputElement.dispatchEvent(new Event('input', { bubbles: true }));
+            // テキスト設定（textarea用とcontenteditable用の両方に対応）
+            const text = taskData.prompt || taskData.text || '';
+            if (inputElement.tagName.toLowerCase() === 'textarea' || inputElement.tagName.toLowerCase() === 'input') {
+                inputElement.value = text;
+                inputElement.dispatchEvent(new Event('input', { bubbles: true }));
+            } else {
+                inputElement.textContent = text;
+                inputElement.dispatchEvent(new Event('input', { bubbles: true }));
+            }
 
-            // 送信ボタンクリック
-            const sendButton = document.querySelector(SELECTORS.sendButton[0]);
+            // 送信ボタン検索（複数セレクタを試行）
+            let sendButton = null;
+            for (const selector of SELECTORS.sendButton) {
+                sendButton = document.querySelector(selector);
+                if (sendButton) {
+                    console.log(`[Claude] 送信ボタン発見: ${selector}`);
+                    break;
+                }
+            }
+
             if (!sendButton) {
+                console.error('[Claude] 送信ボタンが見つかりません。試行したセレクタ:', SELECTORS.sendButton);
+                console.error('[Claude] 現在のページのボタン要素:',
+                    Array.from(document.querySelectorAll('button')).map(el => ({
+                        text: el.textContent?.trim(),
+                        ariaLabel: el.ariaLabel,
+                        type: el.type,
+                        id: el.id,
+                        class: el.className,
+                        disabled: el.disabled
+                    }))
+                );
                 throw new Error('送信ボタンが見つかりません');
             }
 
