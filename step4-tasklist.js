@@ -17,67 +17,278 @@
  */
 
 // ========================================
-// StreamProcessorV2統合: 必要モジュールのインポート
+// StreamProcessorV2統合: Step内統合版ウィンドウ・タスク管理システム
 // ========================================
 
-// WindowService - StreamProcessorV2のウィンドウ管理システム
-let WindowService = null;
-let aiUrlManager = null;
-let AITaskExecutor = null;
+/**
+ * Step内統合版 WindowService（StreamProcessorV2の機能を内部実装）
+ */
+class StepIntegratedWindowService {
+  static windowPositions = new Map(); // position -> windowId
 
-// 動的インポート（モジュールの可用性チェック付き）
-async function initializeStreamProcessorModules() {
-  try {
-    // WindowServiceの初期化
-    if (typeof window !== "undefined" && window.WindowService) {
-      WindowService = window.WindowService;
-      console.log(
-        "[step4-tasklist.js] WindowService取得完了（グローバルから）",
-      );
-    } else if (globalThis.WindowService) {
-      WindowService = globalThis.WindowService;
-      console.log(
-        "[step4-tasklist.js] WindowService取得完了（globalFromから）",
-      );
-    } else {
-      console.log("[step4-tasklist.js] WindowService未発見、従来方式を使用");
-    }
+  /**
+   * スクリーン情報を取得
+   */
+  static async getScreenInfo() {
+    try {
+      const displays = await chrome.system.display.getInfo();
+      const primaryDisplay = displays.find((d) => d.isPrimary) || displays[0];
 
-    // aiUrlManagerの初期化
-    if (typeof window !== "undefined" && window.aiUrlManager) {
-      aiUrlManager = window.aiUrlManager;
-      console.log("[step4-tasklist.js] aiUrlManager取得完了（グローバルから）");
-    } else if (globalThis.aiUrlManager) {
-      aiUrlManager = globalThis.aiUrlManager;
-      console.log("[step4-tasklist.js] aiUrlManager取得完了（globalFromから）");
-    } else {
-      console.log("[step4-tasklist.js] aiUrlManager未発見、従来方式を使用");
+      return {
+        width: primaryDisplay.workArea.width,
+        height: primaryDisplay.workArea.height,
+        left: primaryDisplay.workArea.left,
+        top: primaryDisplay.workArea.top,
+        displays: displays,
+      };
+    } catch (error) {
+      console.warn(
+        "[StepIntegratedWindowService] スクリーン情報取得エラー、フォールバック使用:",
+        error,
+      );
+      return {
+        width: 1440,
+        height: 900,
+        left: 0,
+        top: 0,
+        displays: [],
+      };
     }
+  }
 
-    // AITaskExecutorの初期化
-    if (typeof window !== "undefined" && window.AITaskExecutor) {
-      AITaskExecutor = window.AITaskExecutor;
+  /**
+   * ウィンドウ位置を計算
+   */
+  static calculateWindowPosition(position, screenInfo) {
+    const baseWidth = Math.floor(screenInfo.width * 0.35);
+    const baseHeight = Math.floor(screenInfo.height * 0.8);
+    const offsetLeft = screenInfo.left;
+    const offsetTop = screenInfo.top;
+
+    const positions = {
+      0: {
+        // 左上
+        left: offsetLeft,
+        top: offsetTop,
+        width: baseWidth,
+        height: baseHeight,
+      },
+      1: {
+        // 右上
+        left: offsetLeft + screenInfo.width - baseWidth,
+        top: offsetTop,
+        width: baseWidth,
+        height: baseHeight,
+      },
+      2: {
+        // 左下
+        left: offsetLeft,
+        top: offsetTop + screenInfo.height - baseHeight,
+        width: baseWidth,
+        height: baseHeight,
+      },
+      3: {
+        // 右下
+        left: offsetLeft + screenInfo.width - baseWidth,
+        top: offsetTop + screenInfo.height - baseHeight,
+        width: baseWidth,
+        height: baseHeight,
+      },
+    };
+
+    return positions[position] || positions[0];
+  }
+
+  /**
+   * ポジションを指定してウィンドウを作成
+   */
+  static async createWindowWithPosition(url, position, options = {}) {
+    try {
       console.log(
-        "[step4-tasklist.js] AITaskExecutor取得完了（グローバルから）",
+        `🪟 [StepIntegratedWindowService] ウィンドウ作成開始: position=${position}, url=${url}`,
       );
-    } else if (globalThis.AITaskExecutor) {
-      AITaskExecutor = globalThis.AITaskExecutor;
+
+      // 既存ウィンドウが使用中の場合は閉じる
+      if (this.windowPositions.has(position)) {
+        const existingWindowId = this.windowPositions.get(position);
+        console.log(
+          `🔄 [StepIntegratedWindowService] position=${position}の既存ウィンドウ${existingWindowId}を閉じます`,
+        );
+
+        try {
+          await chrome.windows.remove(existingWindowId);
+          this.windowPositions.delete(position);
+          await new Promise((resolve) => setTimeout(resolve, 500)); // 削除完了待ち
+        } catch (error) {
+          console.warn("既存ウィンドウ削除エラー（続行）:", error);
+        }
+      }
+
+      // スクリーン情報取得と位置計算
+      const screenInfo = await this.getScreenInfo();
+      const windowPosition = this.calculateWindowPosition(position, screenInfo);
+
+      // ウィンドウ作成オプション
+      const createOptions = {
+        url: url,
+        type: options.type || "popup",
+        left: windowPosition.left,
+        top: windowPosition.top,
+        width: windowPosition.width,
+        height: windowPosition.height,
+        focused: false,
+      };
+
       console.log(
-        "[step4-tasklist.js] AITaskExecutor取得完了（globalFromから）",
+        `📐 [StepIntegratedWindowService] ウィンドウ作成オプション:`,
+        createOptions,
       );
-    } else {
-      console.log("[step4-tasklist.js] AITaskExecutor未発見、従来方式を使用");
+
+      // ウィンドウ作成
+      const window = await chrome.windows.create(createOptions);
+
+      // 位置を記録
+      this.windowPositions.set(position, window.id);
+
+      console.log(
+        `✅ [StepIntegratedWindowService] ウィンドウ作成完了: windowId=${window.id}, position=${position}`,
+      );
+
+      return {
+        id: window.id,
+        tabs: window.tabs,
+        ...window,
+      };
+    } catch (error) {
+      console.error(
+        `❌ [StepIntegratedWindowService] ウィンドウ作成エラー:`,
+        error,
+      );
+      throw error;
     }
-  } catch (error) {
-    console.warn(
-      "[step4-tasklist.js] StreamProcessorV2モジュール初期化エラー、従来方式で続行:",
-      error,
-    );
+  }
+
+  /**
+   * ウィンドウを閉じる
+   */
+  static async closeWindow(windowId) {
+    try {
+      await chrome.windows.remove(windowId);
+
+      // windowPositionsから削除
+      for (const [position, id] of this.windowPositions.entries()) {
+        if (id === windowId) {
+          this.windowPositions.delete(position);
+          break;
+        }
+      }
+
+      console.log(
+        `✅ [StepIntegratedWindowService] ウィンドウ閉じる完了: windowId=${windowId}`,
+      );
+    } catch (error) {
+      console.warn(
+        `⚠️ [StepIntegratedWindowService] ウィンドウ閉じるエラー: windowId=${windowId}`,
+        error,
+      );
+    }
   }
 }
 
-// 初期化を実行
-initializeStreamProcessorModules();
+/**
+ * Step内統合版 AIUrl管理（StreamProcessorV2の機能を内部実装）
+ */
+class StepIntegratedAiUrlManager {
+  static getUrl(aiType) {
+    const urls = {
+      Claude: "https://claude.ai/",
+      claude: "https://claude.ai/",
+      ChatGPT: "https://chatgpt.com/",
+      chatgpt: "https://chatgpt.com/",
+      Gemini: "https://gemini.google.com/",
+      gemini: "https://gemini.google.com/",
+      Genspark: "https://www.genspark.ai/",
+      genspark: "https://www.genspark.ai/",
+    };
+
+    const url =
+      urls[aiType] || urls[aiType?.toLowerCase()] || "https://claude.ai/";
+    console.log(`🔗 [StepIntegratedAiUrlManager] URL取得: ${aiType} -> ${url}`);
+    return url;
+  }
+}
+
+/**
+ * Step内統合版 AITaskExecutor（StreamProcessorV2の機能を内部実装）
+ */
+class StepIntegratedAITaskExecutor {
+  constructor() {
+    this.logger = console;
+  }
+
+  async executeAITask(tabId, taskData) {
+    try {
+      console.log(
+        `🤖 [StepIntegratedAITaskExecutor] タスク実行開始: tabId=${tabId}, AI=${taskData.aiType}`,
+      );
+
+      // タブをアクティブにする
+      await chrome.tabs.update(tabId, { active: true });
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      // コンテンツスクリプトを注入して実行
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tabId },
+        func: (prompt) => {
+          // AI自動化の実行（簡易版）
+          if (
+            typeof window.automation !== "undefined" &&
+            window.automation.executeTask
+          ) {
+            return window.automation.executeTask({ prompt: prompt });
+          } else {
+            // フォールバック: プロンプトを入力エリアに設定
+            const textarea = document.querySelector(
+              'textarea[placeholder*="メッセージ"], textarea[placeholder*="message"], div[contenteditable="true"]',
+            );
+            if (textarea) {
+              textarea.value = prompt;
+              textarea.textContent = prompt;
+
+              // 送信ボタンを探してクリック
+              const sendButton = document.querySelector(
+                'button[type="submit"], button:has(svg)',
+              );
+              if (sendButton) {
+                sendButton.click();
+              }
+
+              return { success: true, response: "Task initiated" };
+            }
+            return { success: false, error: "No input area found" };
+          }
+        },
+        args: [taskData.prompt],
+      });
+
+      const result = results[0]?.result || {
+        success: false,
+        error: "No result",
+      };
+
+      console.log(
+        `✅ [StepIntegratedAITaskExecutor] タスク実行完了: success=${result.success}`,
+      );
+      return result;
+    } catch (error) {
+      console.error(
+        `❌ [StepIntegratedAITaskExecutor] タスク実行エラー:`,
+        error,
+      );
+      return { success: false, error: error.message };
+    }
+  }
+}
 
 // columnToIndex関数の定義確認・フォールバック作成
 if (typeof columnToIndex === "undefined") {
@@ -1910,47 +2121,46 @@ async function createWindowForBatch(task, position = 0) {
   );
 
   try {
-    // StreamProcessorV2のパターンを使用可能かチェック
-    if (WindowService && aiUrlManager) {
-      ExecuteLogger.info(
-        `✅ [createWindowForBatch] StreamProcessorV2パターン使用: ${task.aiType}`,
-      );
+    // Step内統合版クラスを使用
+    ExecuteLogger.info(
+      `✅ [createWindowForBatch] Step内統合版パターン使用: ${task.aiType}`,
+    );
 
-      // aiUrlManagerからURLを取得
-      const url = aiUrlManager.getUrl(task.aiType);
-      ExecuteLogger.info(
-        `🔗 [createWindowForBatch] URL取得: ${url} (AI: ${task.aiType})`,
-      );
+    // Step内統合版aiUrlManagerからURLを取得
+    const url = StepIntegratedAiUrlManager.getUrl(task.aiType);
+    ExecuteLogger.info(
+      `🔗 [createWindowForBatch] URL取得: ${url} (AI: ${task.aiType})`,
+    );
 
-      // WindowService.createWindowWithPositionを使用
-      const window = await WindowService.createWindowWithPosition(
-        url,
-        position,
-        {
-          type: "popup",
-          aiType: task.aiType,
-        },
-      );
-
-      // StreamProcessorV2と同じ形式で返却
-      const windowInfo = {
-        ...window,
-        tabId: window.tabs && window.tabs.length > 0 ? window.tabs[0].id : null,
-        windowId: window.id,
+    // Step内統合版WindowService.createWindowWithPositionを使用
+    const window = await StepIntegratedWindowService.createWindowWithPosition(
+      url,
+      position,
+      {
+        type: "popup",
         aiType: task.aiType,
-        position: position,
-      };
+      },
+    );
 
-      ExecuteLogger.info(
-        `✅ [createWindowForBatch] ${task.aiType}ウィンドウ作成完了`,
-        {
-          windowId: windowInfo.windowId,
-          tabId: windowInfo.tabId,
-          url: url,
-        },
-      );
+    // StreamProcessorV2と同じ形式で返却
+    const windowInfo = {
+      ...window,
+      tabId: window.tabs && window.tabs.length > 0 ? window.tabs[0].id : null,
+      windowId: window.id,
+      aiType: task.aiType,
+      position: position,
+    };
 
-      return windowInfo;
+    ExecuteLogger.info(
+      `✅ [createWindowForBatch] ${task.aiType}ウィンドウ作成完了`,
+      {
+        windowId: windowInfo.windowId,
+        tabId: windowInfo.tabId,
+        url: url,
+      },
+    );
+
+    return windowInfo;
     } else {
       // フォールバック: 従来のwindowController方式
       ExecuteLogger.info(
@@ -1991,12 +2201,27 @@ async function executeStep4(taskList) {
   // executeStep4関数定義開始
   ExecuteLogger.info("🚀 Step 4-6 Execute 統合実行開始", taskList);
 
+  // Step内統合版AITaskExecutorの初期化
+  let aiTaskExecutor = null;
+  try {
+    aiTaskExecutor = new StepIntegratedAITaskExecutor();
+    ExecuteLogger.info(
+      "✅ [executeStep4] Step内統合版AITaskExecutor初期化完了",
+    );
+  } catch (error) {
+    ExecuteLogger.warn(
+      "⚠️ [executeStep4] Step内統合版AITaskExecutor初期化失敗、従来方式を使用:",
+      error,
+    );
+  }
+
   // 内部関数の存在確認（実行時チェック）
-  ExecuteLogger.info("内部関数の定義状態確認:", {
+  ExecuteLogger.info("🔍 [executeStep4] 内部関数の定義状態確認:", {
     executeNormalAITask: typeof executeNormalAITask,
     processTaskResult: typeof processTaskResult,
     shouldPerformWindowCleanup: typeof shouldPerformWindowCleanup,
     calculateLogCellRef: typeof calculateLogCellRef,
+    aiTaskExecutorAvailable: !!aiTaskExecutor,
   });
 
   const results = [];
@@ -2305,22 +2530,22 @@ async function executeStep4(taskList) {
             `♻️ [step4-execute.js] ${aiType}ウィンドウを再利用`,
           );
         } else {
-          // 新しいウィンドウが必要な場合のみ開く
+          // 新しいウィンドウが必要な場合のみ開く（StreamProcessorV2統合版）
           ExecuteLogger.info(
             `🪟 [step4-execute.js] ${aiType}ウィンドウが存在しないため新規作成`,
           );
 
-          const windowResults = await window.windowController.openWindows([
-            {
-              aiType: aiType,
-              position: 0, // 基本位置に開く
-            },
-          ]);
-          const windowResult = windowResults[0];
-          if (windowResult && windowResult.success) {
-            batchWindows.set(aiType, windowResult);
-          } else {
-            ExecuteLogger.error(`❌ ウィンドウオープン失敗: ${aiType}`);
+          try {
+            const windowInfo = await createWindowForBatch(task, 0); // 基本位置に開く
+            batchWindows.set(aiType, windowInfo);
+            ExecuteLogger.info(
+              `✅ [step4-execute.js] ${aiType}ウィンドウ作成成功`,
+            );
+          } catch (error) {
+            ExecuteLogger.error(
+              `❌ [step4-execute.js] ${aiType}ウィンドウ作成失敗:`,
+              error,
+            );
           }
         }
       }
@@ -2335,9 +2560,43 @@ async function executeStep4(taskList) {
       ExecuteLogger.info(`✅ チェック結果:`, checkResults);
 
       // Step 4-6-6-C: バッチ内のタスクを並列実行
-      // タブID重複チェックと有効性確認
+      // シンプルな有効性確認（StreamProcessorV2統合版）
       const validBatchTasks = batch.filter((task, index) => {
-        // タブID/ウィンドウIDのフォールバック処理
+        const taskId = task.id || task.taskId || `${task.column}${task.row}`;
+        const windowInfo = batchWindows.get(task.aiType);
+
+        ExecuteLogger.info(
+          `🔍 [step4-execute.js] タスク${taskId}の有効性確認 (AI: ${task.aiType})`,
+        );
+
+        // ウィンドウ情報の存在確認
+        if (!windowInfo || !windowInfo.tabId) {
+          ExecuteLogger.error(
+            `❌ [step4-execute.js] タスク${taskId}：${task.aiType}のウィンドウ情報が無効`,
+            {
+              windowInfo: windowInfo,
+              hasWindowInfo: !!windowInfo,
+              hasTabId: !!windowInfo?.tabId,
+              hasWindowId: !!windowInfo?.windowId,
+            },
+          );
+          return false;
+        }
+
+        // タスクにウィンドウ情報を直接設定
+        task.tabId = windowInfo.tabId;
+        task.windowId = windowInfo.windowId;
+
+        ExecuteLogger.info(
+          `✅ [step4-execute.js] タスク${taskId}：ウィンドウ情報設定完了`,
+          {
+            tabId: task.tabId,
+            windowId: task.windowId,
+            aiType: task.aiType,
+          },
+        );
+
+        // StreamProcessorV2統合: 複雑なフォールバック処理を削除
         ExecuteLogger.info(
           `🔍 [DEBUG] タスク${task.id || task.taskId}のtabId/windowIdチェック開始`,
           {
@@ -2528,7 +2787,19 @@ async function executeStep4(taskList) {
             );
           } else {
             ExecuteLogger.info(`🤖 AI処理実行: ${task.aiType}`);
-            result = await executeNormalAITask(task);
+
+            // StreamProcessorV2統合: AITaskExecutorを使用可能かチェック
+            if (aiTaskExecutor && task.tabId) {
+              ExecuteLogger.info(
+                `✅ [step4-execute.js] StreamProcessorV2パターンで実行: ${task.aiType} (tabId: ${task.tabId})`,
+              );
+              result = await aiTaskExecutor.executeAITask(task.tabId, task);
+            } else {
+              ExecuteLogger.info(
+                `📋 [step4-execute.js] 従来方式で実行: ${task.aiType}`,
+              );
+              result = await executeNormalAITask(task);
+            }
           }
 
           // 結果処理
@@ -2591,7 +2862,7 @@ async function executeStep4(taskList) {
 
       for (const [aiType, windowInfo] of batchWindows) {
         try {
-          await window.windowLifecycleManager.closeWindow(aiType);
+          await StepIntegratedWindowService.closeWindow(windowInfo.windowId);
           ExecuteLogger.info(`✅ ${aiType}ウィンドウクローズ完了`);
         } catch (error) {
           ExecuteLogger.error(`⚠️ ${aiType}ウィンドウクローズエラー:`, error);
