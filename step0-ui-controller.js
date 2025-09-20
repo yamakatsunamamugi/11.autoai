@@ -917,6 +917,25 @@ if (stepOnlyBtn) {
 
             console.log(`✅ ${step.name}完了`);
           } else {
+            // デバッグ: Step4が見つからない理由を詳細に調査
+            console.log("🔍 [DEBUG] Step関数チェック詳細:", {
+              stepName: step.name,
+              functionExists: !!step.func,
+              functionType: typeof step.func,
+              allStepFunctions: {
+                step1: typeof window.executeStep1,
+                step2: typeof window.executeStep2,
+                step3: typeof window.executeStep3AllGroups,
+                step4: typeof window.executeStep4,
+                step5: typeof window.executeStep5,
+                step6: typeof window.executeStep6,
+              },
+              windowKeys: Object.keys(window)
+                .filter(
+                  (key) => key.includes("Step") || key.includes("execute"),
+                )
+                .slice(0, 10),
+            });
             console.warn(`⚠️ ${step.name}関数が見つかりません`);
           }
         }

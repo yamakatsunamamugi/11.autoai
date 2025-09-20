@@ -1052,8 +1052,17 @@ async function executeTasks(tasks, taskGroup) {
     パターン: taskGroup?.pattern,
   });
 
+  // 🔍 デバッグ: 関数開始直後のログ
+  console.log("🚀 [DEBUG] executeTasks関数に入りました", {
+    tasksLength: tasks?.length,
+    taskGroupNumber: taskGroup?.groupNumber,
+    executeStep4Exists: !!window.executeStep4,
+    executeStep4Type: typeof window.executeStep4,
+  });
+
   try {
     // step4-execute.jsのexecuteStep4関数を利用
+    console.log("🔍 [DEBUG] executeStep4チェック開始");
     LoopLogger.info("🔍 [DEBUG] executeStep4呼び出し前チェック:", {
       exists: typeof window.executeStep4,
       isFunction: typeof window.executeStep4 === "function",
@@ -1061,8 +1070,11 @@ async function executeTasks(tasks, taskGroup) {
     });
 
     if (!window.executeStep4) {
+      console.error("❌ [DEBUG] executeStep4が見つかりません！");
       throw new Error("executeStep4関数が利用できません");
     }
+
+    console.log("✅ [DEBUG] executeStep4が見つかりました");
 
     if (!tasks || tasks.length === 0) {
       LoopLogger.warn("[Helper] 実行するタスクがありません");
@@ -1205,10 +1217,42 @@ async function executeTasks(tasks, taskGroup) {
 
     // Step4を実行
     LoopLogger.info("[Helper] Step4実行中...");
-    const results = await window.executeStep4(formattedTasks);
 
-    LoopLogger.info(`[Helper] タスク実行完了: ${results?.length || 0}件の結果`);
-    return results || [];
+    // 🔍 [DEBUG] executeStep4呼び出し直前の詳細ログ
+    console.log("🔍 [DEBUG] executeStep4を呼び出す直前:", {
+      formattedTasksLength: formattedTasks.length,
+      firstTaskId: formattedTasks[0]?.id,
+      executeStep4Type: typeof window.executeStep4,
+      executeStep4Exists: !!window.executeStep4,
+    });
+
+    // 🎯 [DEBUG] 最終チェック - より詳細な情報
+    console.log("🎯 [DEBUG] executeStep4呼び出し直前の最終チェック:", {
+      functionExists: !!window.executeStep4,
+      functionType: typeof window.executeStep4,
+      taskListLength: formattedTasks?.length,
+      firstTask: formattedTasks?.[0],
+      callStack: new Error().stack.split("\n").slice(0, 5),
+      windowExecuteStep4:
+        window.executeStep4?.toString?.().substring(0, 100) + "...",
+    });
+
+    try {
+      console.log("🚀 [DEBUG] executeStep4を呼び出しています...");
+      const results = await window.executeStep4(formattedTasks);
+      console.log("✅ [DEBUG] executeStep4が正常に完了しました:", {
+        resultsLength: results?.length,
+        resultsType: typeof results,
+      });
+      return results || [];
+    } catch (step4Error) {
+      console.error("❌ [DEBUG] executeStep4でエラーが発生:", {
+        errorMessage: step4Error.message,
+        errorStack: step4Error.stack,
+        errorName: step4Error.name,
+      });
+      throw step4Error;
+    }
   } catch (error) {
     LoopLogger.error("⚠️ [DEBUG] エラー詳細:", {
       message: error.message,

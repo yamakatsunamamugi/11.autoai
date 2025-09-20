@@ -674,7 +674,7 @@ async function findSpecialRows() {
     );
 
     const startTime = Date.now();
-    const response = await window.fetchWithTokenRefresh(
+    const response = await fetchWithTokenRefresh(
       `${window.globalState.sheetsApiBase}/${spreadsheetId}/values/A1:CZ100`,
       {
         headers: window.globalState.apiHeaders,
