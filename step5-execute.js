@@ -531,54 +531,23 @@ class WindowController {
     }
 
     // WindowServiceがグローバルに存在するかチェック
-    if (
-      typeof WindowService === "undefined" &&
-      typeof window.WindowService === "undefined"
-    ) {
-      ExecuteLogger.debug(
-        "⚠️ [DEBUG] WindowServiceが未定義 - 動的インポートを試行",
-      );
-
-      try {
-        // 動的インポートを試行
-        const module = await import("../src/services/window-service.js");
-
-        if (module.WindowService) {
-          window.WindowService = module.WindowService;
-          this.windowService = module.WindowService;
-          ExecuteLogger.debug("✅ [DEBUG] WindowService動的インポート成功");
-        } else if (module.default) {
-          // デフォルトエクスポートの場合
-          window.WindowService = module.default;
-          this.windowService = module.default;
-          ExecuteLogger.debug(
-            "✅ [DEBUG] WindowService動的インポート成功（デフォルトエクスポート）",
-          );
-        } else {
-          throw new Error(
-            "WindowServiceがモジュールにエクスポートされていません",
-          );
-        }
-      } catch (importError) {
-        ExecuteLogger.error(
-          "❌ [DEBUG] WindowService動的インポート失敗:",
-          importError,
-        );
-        throw new Error(
-          `WindowServiceが利用できません: ${importError.message}`,
-        );
-      }
+    if (window.WindowService) {
+      // 既存のwindow.WindowServiceを使用
+      this.windowService = window.WindowService;
+    } else if (typeof WindowService !== "undefined") {
+      // グローバルのWindowServiceを使用
+      this.windowService = WindowService;
     } else {
-      // window.WindowServiceを優先的に使用
-      this.windowService = window.WindowService || WindowService;
-      ExecuteLogger.debug("✅ [DEBUG] WindowService既存利用", {
-        source: window.WindowService
-          ? "window.WindowService"
-          : "グローバルWindowService",
-        type: typeof this.windowService,
-        name: this.windowService?.name,
-      });
+      // 内部のWindowControllerを使用（step5-execute.js内で完結）
+      ExecuteLogger.debug("✅ [DEBUG] 内部WindowController機能を使用");
+      this.windowService = null; // WindowControllerクラスを直接使用
     }
+
+    ExecuteLogger.debug("✅ [DEBUG] WindowService設定完了", {
+      hasWindowService: !!this.windowService,
+      serviceType: typeof this.windowService,
+      useInternalController: !this.windowService,
+    });
 
     ExecuteLogger.info(
       "✅ [WindowController] Step 4-1-1: WindowService初期化完了",

@@ -360,6 +360,236 @@ async function initializeAPI() {
 }
 
 // ========================================
+// 1-3-X: UI セレクタ管理機能（一元管理）
+// ========================================
+
+/**
+ * 全AIのUIセレクタを一元管理
+ */
+function initializeUISelectors() {
+  console.log("========");
+  console.log("[step1-setup.js→Step1-3-X] UIセレクタ一元管理初期化開始");
+  console.log("========");
+
+  // 全AIのセレクタ定義を一箇所で管理
+  const ALL_UI_SELECTORS = {
+    ChatGPT: {
+      INPUT: [
+        ".ProseMirror",
+        "#prompt-textarea",
+        '[contenteditable="true"][translate="no"]',
+        'div[data-virtualkeyboard="true"]',
+        "div.ProseMirror.text-token-text-primary",
+        ".ql-editor",
+        '[contenteditable="true"]',
+        'div[contenteditable="true"]',
+        'textarea[data-testid="conversation-textarea"]',
+        'textarea[placeholder*="メッセージ"]',
+        "textarea",
+      ],
+      SEND_BUTTON: [
+        '[data-testid="send-button"]',
+        "#composer-submit-button",
+        'button[aria-label="プロンプトを送信する"]',
+        "button.composer-submit-btn.composer-submit-button-color",
+        'button:has(svg[width="20"][height="20"])',
+        '[aria-label="Send prompt"]',
+        '[aria-label*="送信"]',
+        'button[data-testid="composer-send-button"]',
+        'button[class*="send"]',
+        'button[type="submit"]',
+      ],
+      STOP_BUTTON: [
+        '[data-testid="stop-button"]',
+        '#composer-submit-button[aria-label="ストリーミングの停止"]',
+        "button.composer-submit-btn.composer-secondary-button-color",
+        'button:has(svg path[d*="M4.5 5.75"])',
+        '[aria-label="ストリーミングの停止"]',
+        '#composer-submit-button[aria-label*="停止"]',
+        '[aria-label="Stop generating"]',
+        '[aria-label="Stop"]',
+        'button[aria-label*="Stop"]',
+        'button[aria-label*="stop"]',
+        '[data-testid="composer-moderation-stop-button"]',
+      ],
+      MODEL_BUTTON: [
+        '[data-testid="model-switcher-dropdown-button"]',
+        'button[aria-label*="モデル セレクター"]',
+        'button[aria-label*="モデル"][aria-haspopup="menu"]',
+        "#radix-\\:r2m\\:",
+        'button.group.flex.cursor-pointer[aria-haspopup="menu"]',
+        'button[aria-label*="モデル"]',
+        'button[aria-label*="Model"]',
+        '[aria-label="Model selector"]',
+        'button[aria-haspopup="menu"]',
+        '[data-testid="model-selector"]',
+      ],
+      MESSAGE: [
+        '[data-message-author-role="assistant"]',
+        ".message-content",
+        ".assistant-message",
+      ],
+    },
+
+    Gemini: {
+      INPUT: [
+        '.ql-editor.new-input-ui[contenteditable="true"]',
+        '.ql-editor[contenteditable="true"]',
+        "div.ql-editor.textarea",
+        '[contenteditable="true"][role="textbox"]',
+        "rich-textarea .ql-editor",
+      ],
+      SEND_BUTTON: [
+        'button[aria-label="送信"]',
+        'button[mattooltip="送信"]',
+        ".send-button-container button",
+        "button.send-button:not(.stop)",
+        '[aria-label="プロンプトを送信"]',
+        'button:has(mat-icon[data-mat-icon-name="send"])',
+        'button[aria-label*="Send"]',
+        '[data-testid="send-button"]',
+        'button[type="submit"]',
+      ],
+      STOP_BUTTON: [
+        "div.blue-circle.stop-icon",
+        'div.stop-icon mat-icon[data-mat-icon-name="stop"]',
+        ".blue-circle.stop-icon",
+        'button[aria-label="回答を停止"]',
+        "button.send-button.stop",
+        "button.stop",
+        ".stop-icon",
+        'mat-icon[data-mat-icon-name="stop"]',
+        '[aria-label="Stop response"]',
+        'button[aria-label*="停止"]',
+        'button[aria-label*="stop"]',
+        ".stop-button",
+      ],
+      MODEL_BUTTON: [
+        ".gds-mode-switch-button",
+        "button.logo-pill-btn",
+        "button[mat-flat-button]:has(.logo-pill-label-container)",
+        'button[aria-haspopup="menu"][aria-expanded="false"]',
+        "button:has(.mode-title)",
+        'button[aria-label*="モデル"]',
+        'button[mattooltip*="モデル"]',
+        "button.model-selector-button",
+        "button:has(.model-name)",
+        ".model-selector",
+      ],
+      MESSAGE: [
+        ".conversation-turn.model-turn",
+        ".model-response-text",
+        "message-content",
+      ],
+    },
+
+    Genspark: {
+      INPUT: [
+        'textarea[placeholder*="質問"]',
+        'textarea[placeholder*="スライド"]',
+        'textarea[placeholder*="factcheck"]',
+        "textarea",
+        'input[type="text"]',
+        '[contenteditable="true"]',
+      ],
+      SEND_BUTTON: [
+        ".enter-icon-wrapper",
+        'button[type="submit"]',
+        "button:has(svg.enter-icon)",
+        '[aria-label*="送信"]',
+        '[aria-label*="submit"]',
+      ],
+      STOP_BUTTON: [
+        '.enter-icon-wrapper[class*="bg-[#232425]"]',
+        ".enter-icon-wrapper:has(.stop-icon)",
+        "button:has(svg.stop-icon)",
+        '[aria-label*="停止"]',
+        '[aria-label*="stop"]',
+      ],
+      MESSAGE: [
+        ".response-content",
+        ".message-content",
+        '[data-testid="response"]',
+        '[class*="response"]',
+        '[class*="message"]',
+        'div[role="article"]',
+        ".markdown-content",
+      ],
+    },
+
+    Report: {
+      GOOGLE_DOCS: {
+        NEW_DOC_BUTTON: [
+          'div[aria-label="新しいドキュメントを作成"]',
+          '[data-tooltip="新しいドキュメントを作成"]',
+          "div.docs-homescreen-templates-templateview-preview",
+          ".docs-homescreen-templates-templateview-preview",
+        ],
+        TITLE_INPUT: [
+          ".docs-title-input",
+          '[data-docs-flag-name="docs_title_input"]',
+          ".docs-title-widget input",
+        ],
+        CONTENT_AREA: [
+          ".kix-page",
+          ".kix-page-content-wrap",
+          ".docs-texteventtarget-iframe",
+        ],
+      },
+    },
+  };
+
+  // グローバルに設定
+  window.UI_SELECTORS = ALL_UI_SELECTORS;
+  window.globalState = window.globalState || {};
+  window.globalState.uiSelectorsInitialized = true;
+
+  console.log("[step1-setup.js] [Step 1-3-X] ✅ UIセレクタ一元管理初期化完了");
+  console.log(`  - 対応AI: ${Object.keys(ALL_UI_SELECTORS).join(", ")}`);
+  console.log(
+    `  - 総セレクタ数: ${JSON.stringify(ALL_UI_SELECTORS).length}文字`,
+  );
+
+  return ALL_UI_SELECTORS;
+}
+
+/**
+ * 特定AIのセレクタを取得
+ * @param {string} aiType - AI種別 (ChatGPT, Gemini, Genspark, Report)
+ * @returns {Object} 指定AIのセレクタ
+ */
+function getSelectors(aiType) {
+  if (!window.UI_SELECTORS) {
+    console.warn(
+      `[step1-setup.js] UIセレクタが未初期化です。初期化を実行します。`,
+    );
+    initializeUISelectors();
+  }
+
+  if (!window.UI_SELECTORS[aiType]) {
+    console.error(`[step1-setup.js] 未対応のAI種別: ${aiType}`);
+    return {};
+  }
+
+  return window.UI_SELECTORS[aiType];
+}
+
+/**
+ * 全セレクタを取得
+ * @returns {Object} 全AIのセレクタ
+ */
+function getAllSelectors() {
+  if (!window.UI_SELECTORS) {
+    console.warn(
+      `[step1-setup.js] UIセレクタが未初期化です。初期化を実行します。`,
+    );
+    initializeUISelectors();
+  }
+
+  return window.UI_SELECTORS;
+}
+
+// ========================================
 // 1-4: スプレッドシートから特殊行を検索
 // ========================================
 async function findSpecialRows() {

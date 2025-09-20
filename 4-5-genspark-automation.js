@@ -489,39 +489,30 @@
   let menuHandler = null;
 
   // ========================================
-  // UI Selectors読み込みと基本関数定義
+  // UI Selectors読み込み（step1-setup.js統一管理版）
   // ========================================
-  let UI_SELECTORS = {};
-  let selectorsLoaded = false;
 
   async function loadUISelectors() {
-    if (selectorsLoaded) return UI_SELECTORS;
-
     log("【Step 4-5-0-0-1】📋 UI Selectors読み込み開始...", "INFO");
 
-    const response = await fetch(
-      chrome.runtime.getURL("ui-selectors-data.json"),
-    );
-    const data = await response.json();
+    // step1-setup.jsからのUI_SELECTORS読み込み待機
+    let retryCount = 0;
+    const maxRetries = 50;
 
-    // ui-selectors-data.jsonからGensparkセレクタを取得
-    if (!data.selectors || !data.selectors.Genspark) {
-      throw new Error(
-        "ui-selectors-data.jsonにGensparkセレクタが定義されていません",
-      );
+    while (!window.UI_SELECTORS && retryCount < maxRetries) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      retryCount++;
     }
 
-    UI_SELECTORS = data.selectors.Genspark;
-    window.UI_SELECTORS = data.selectors; // 他のAIとの互換性のため全体も保存
-    selectorsLoaded = true;
+    if (!window.UI_SELECTORS || !window.UI_SELECTORS.Genspark) {
+      throw new Error("UI_SELECTORS not available from step1-setup.js");
+    }
 
-    log("【Step 4-5-0-0-1】✅ UI Selectors読み込み完了", "SUCCESS");
     log(
-      `【Step 4-5-0-0-1】📋 読み込まれたセレクタ: INPUT=${UI_SELECTORS.INPUT?.length || 0}個, SEND_BUTTON=${UI_SELECTORS.SEND_BUTTON?.length || 0}個`,
-      "INFO",
+      "【Step 4-5-0-0-1】✅ UI Selectors loaded from step1-setup.js",
+      "SUCCESS",
     );
-
-    return UI_SELECTORS;
+    return window.UI_SELECTORS.Genspark;
   }
 
   // 基本的なDOM操作関数
@@ -698,7 +689,7 @@
 
         // UI Selectors初期化
         log(`【Step 4-5-1-2】📋 UI Selectors初期化中...`, "INFO");
-        await loadUISelectors();
+        const UI_SELECTORS = await loadUISelectors();
         log(`【Step 4-5-1-2】✅ UI Selectors初期化完了`, "SUCCESS");
 
         // 入力欄を探す

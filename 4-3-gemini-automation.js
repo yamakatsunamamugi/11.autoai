@@ -25,26 +25,142 @@
   window.GEMINI_SCRIPT_INIT_TIME = Date.now();
 
   // ========================================
-  // ログ管理システムの初期化（ハイブリッド保存対応）
+  // ログ管理システムの初期化（内部実装 - 実際に動作）
   // ========================================
-  import("../src/utils/log-file-manager.js")
-    .then((module) => {
-      window.geminiLogFileManager = new module.LogFileManager("gemini");
-    })
-    .catch((err) => {
-      console.error("[Gemini] LogFileManager読み込みエラー:", err);
-      // フォールバック用のダミーオブジェクト
-      window.geminiLogFileManager = {
-        logStep: () => {},
-        logError: () => {},
-        logSuccess: () => {},
-        logTaskStart: () => {},
-        logTaskComplete: () => {},
-        saveToFile: () => {},
-        saveErrorImmediately: () => {},
-        saveIntermediate: () => {},
+  window.geminiLogFileManager = {
+    logs: [], // メモリ内ログ保存
+    maxLogs: 1000, // 最大ログ数
+
+    // 共通ログ処理
+    _addLog: function (level, message, data = null, error = null) {
+      const timestamp = new Date().toISOString();
+      const logEntry = {
+        timestamp,
+        level,
+        message,
+        data,
+        error: error
+          ? {
+              message: error.message,
+              stack: error.stack,
+              name: error.name,
+            }
+          : null,
       };
-    });
+
+      // メモリ内ログに追加
+      this.logs.push(logEntry);
+
+      // 最大ログ数を超えた場合は古いログを削除
+      if (this.logs.length > this.maxLogs) {
+        this.logs.shift();
+      }
+
+      // localStorageに重要なログを保存
+      if (level === "ERROR" || level === "SUCCESS") {
+        this._saveToStorage(logEntry);
+      }
+
+      return logEntry;
+    },
+
+    // localStorageへの保存
+    _saveToStorage: function (logEntry) {
+      try {
+        const storageKey = `gemini_logs_${new Date().toISOString().split("T")[0]}`;
+        const existingLogs = JSON.parse(
+          localStorage.getItem(storageKey) || "[]",
+        );
+        existingLogs.push(logEntry);
+
+        // 最大100エントリまで保存
+        if (existingLogs.length > 100) {
+          existingLogs.shift();
+        }
+
+        localStorage.setItem(storageKey, JSON.stringify(existingLogs));
+      } catch (e) {
+        console.warn("[Gemini-Log] localStorage保存エラー:", e);
+      }
+    },
+
+    logStep: function (message, data) {
+      const log = this._addLog("INFO", message, data);
+      console.log(`🔄 [Gemini-Step] ${message}`, data || "");
+      return log;
+    },
+
+    logError: function (message, error) {
+      const log = this._addLog("ERROR", message, null, error);
+      console.error(`❌ [Gemini-Error] ${message}`, error);
+      return log;
+    },
+
+    logSuccess: function (message, data) {
+      const log = this._addLog("SUCCESS", message, data);
+      console.log(`✅ [Gemini-Success] ${message}`, data || "");
+      return log;
+    },
+
+    logTaskStart: function (taskInfo) {
+      const log = this._addLog("TASK_START", "タスク開始", taskInfo);
+      console.log(`🚀 [Gemini-Task] タスク開始:`, taskInfo);
+      return log;
+    },
+
+    logTaskComplete: function (taskInfo, result) {
+      const log = this._addLog("TASK_COMPLETE", "タスク完了", {
+        taskInfo,
+        result,
+      });
+      console.log(`🏁 [Gemini-Task] タスク完了:`, { taskInfo, result });
+      return log;
+    },
+
+    saveToFile: function () {
+      // ブラウザでファイルダウンロード
+      try {
+        const logsJson = JSON.stringify(this.logs, null, 2);
+        const blob = new Blob([logsJson], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `gemini_logs_${new Date().toISOString().split("T")[0]}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        console.log(`💾 [Gemini-Log] ログファイルをダウンロード`);
+      } catch (e) {
+        console.error(`❌ [Gemini-Log] ファイル保存エラー:`, e);
+      }
+    },
+
+    saveErrorImmediately: function (error) {
+      const log = this._addLog("CRITICAL_ERROR", "緊急エラー", null, error);
+      console.error(`🚨 [Gemini-Critical] 緊急エラー:`, error);
+      this._saveToStorage(log);
+      return log;
+    },
+
+    saveIntermediate: function (data) {
+      const log = this._addLog("INTERMEDIATE", "中間データ", data);
+      console.log(`📊 [Gemini-Intermediate] 中間データ:`, data);
+      return log;
+    },
+
+    // ログ取得メソッド
+    getLogs: function (level = null) {
+      if (level) {
+        return this.logs.filter((log) => log.level === level);
+      }
+      return [...this.logs];
+    },
+
+    // ログクリア
+    clearLogs: function () {
+      this.logs = [];
+      console.log(`🗑️ [Gemini-Log] ログをクリア`);
+    },
+  };
 
   const GeminiLogManager = {
     // LogFileManagerのプロキシとして動作
@@ -585,35 +701,31 @@
   };
 
   // ========================================
-  // ステップ0: UI_SELECTORSをJSONから読み込み（Claude/ChatGPT方式）
+  // ステップ0: UIセレクタ（step1-setup.js統一管理版）
+  // step1-setup.jsのwindow.UI_SELECTORSを参照
   // ========================================
-  let UI_SELECTORS = window.UI_SELECTORS || {};
-  let selectorsLoaded = false;
 
   const loadSelectors = async () => {
-    if (selectorsLoaded) return UI_SELECTORS;
+    console.log("loadSelectors starts - waiting for step1 UI_SELECTORS");
 
-    try {
-      const response = await fetch(
-        chrome.runtime.getURL("ui-selectors-data.json"),
-      );
-      const data = await response.json();
-      UI_SELECTORS = data.selectors;
-      window.UI_SELECTORS = UI_SELECTORS;
-      selectorsLoaded = true;
-      log("【Step 4-3-0-1】✅ UI Selectors loaded from JSON", "success");
-      return UI_SELECTORS;
-    } catch (error) {
-      log(
-        "【Step 4-3-0-2】❌ Failed to load ui-selectors-data.json: " +
-          error.message,
-        "error",
-      );
-      // フォールバックとしてwindow.UI_SELECTORSを使用
-      UI_SELECTORS = window.UI_SELECTORS || {};
-      selectorsLoaded = true;
-      return UI_SELECTORS;
+    // step1-setup.jsからのUI_SELECTORS読み込み待機
+    let retryCount = 0;
+    const maxRetries = 50;
+
+    while (!window.UI_SELECTORS && retryCount < maxRetries) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      retryCount++;
     }
+
+    if (!window.UI_SELECTORS) {
+      throw new Error("UI_SELECTORS not available from step1-setup.js");
+    }
+
+    log(
+      "【Step 4-3-0-1】✅ UI Selectors loaded from step1-setup.js",
+      "success",
+    );
+    return window.UI_SELECTORS;
   };
 
   // セレクタを読み込み
@@ -621,13 +733,13 @@
 
   // Gemini用セレクタを取得
   const SELECTORS = {
-    textInput: UI_SELECTORS.Gemini?.INPUT || [],
-    sendButton: UI_SELECTORS.Gemini?.SEND_BUTTON || [],
-    stopButton: UI_SELECTORS.Gemini?.STOP_BUTTON || [],
-    modelMenu: UI_SELECTORS.Gemini?.MODEL_MENU || [],
-    functionMenu: UI_SELECTORS.Gemini?.FUNCTION_MENU || [],
-    response: UI_SELECTORS.Gemini?.RESPONSE || [],
-    canvas: UI_SELECTORS.Gemini?.CANVAS || [],
+    textInput: window.UI_SELECTORS.Gemini?.INPUT || [],
+    sendButton: window.UI_SELECTORS.Gemini?.SEND_BUTTON || [],
+    stopButton: window.UI_SELECTORS.Gemini?.STOP_BUTTON || [],
+    modelMenu: window.UI_SELECTORS.Gemini?.MODEL_MENU || [],
+    functionMenu: window.UI_SELECTORS.Gemini?.FUNCTION_MENU || [],
+    response: window.UI_SELECTORS.Gemini?.RESPONSE || [],
+    canvas: window.UI_SELECTORS.Gemini?.CANVAS || [],
   };
 
   // ========================================

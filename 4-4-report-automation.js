@@ -47,45 +47,34 @@
   // セクション2: UI セレクタとユーティリティ関数
   // ========================================
 
-  // UI セレクタ
-  let UI_SELECTORS = {};
-
   /**
-   * UI セレクタの読み込み
+   * UI セレクタの読み込み（step1-setup.js統一管理版）
    */
   async function loadUISelectors() {
     try {
-      log("【Step 4-4-0-1】📄 UIセレクタファイル読み込み中...", "INFO");
-      const response = await fetch(
-        chrome.runtime.getURL("ui-selectors-data.json"),
+      log(
+        "【Step 4-4-0-1】📄 UIセレクタ読み込み中（step1-setup.js統一管理版）...",
+        "INFO",
       );
-      const data = await response.json();
 
-      // Google Docs用セレクタを定義（一般的なセレクタ）
-      UI_SELECTORS = {
-        GOOGLE_DOCS: {
-          NEW_DOC_BUTTON: [
-            'div[aria-label="新しいドキュメントを作成"]',
-            '[data-tooltip="新しいドキュメントを作成"]',
-            "div.docs-homescreen-templates-templateview-preview",
-            ".docs-homescreen-templates-templateview-preview",
-          ],
-          TITLE_INPUT: [
-            ".docs-title-input",
-            "input.docs-title-input",
-            '[aria-label="ドキュメント名"]',
-            ".docs-title-widget input",
-          ],
-          DOCUMENT_BODY: [
-            ".kix-appview-editor",
-            ".docs-texteventtarget-iframe",
-            ".kix-wordhtmlgenerator-word-node",
-          ],
-        },
-        COMMON: data.selectors.COMMON || {},
-      };
+      // step1-setup.jsからのUI_SELECTORS読み込み待機
+      let retryCount = 0;
+      const maxRetries = 50;
 
-      log("【Step 4-4-0-1】✅ UIセレクタファイル読み込み完了", "SUCCESS");
+      while (!window.UI_SELECTORS && retryCount < maxRetries) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        retryCount++;
+      }
+
+      if (!window.UI_SELECTORS || !window.UI_SELECTORS.Report) {
+        throw new Error("UI_SELECTORS not available from step1-setup.js");
+      }
+
+      log(
+        "【Step 4-4-0-1】✅ UI Selectors loaded from step1-setup.js",
+        "SUCCESS",
+      );
+      return window.UI_SELECTORS.Report;
     } catch (error) {
       log(
         `【Step 4-4-0-1】❌ UIセレクタ読み込み失敗: ${error.message}`,
@@ -310,7 +299,7 @@
         log(`【Step 4-4-4-1】📝 タイトル設定中: "${title}"`, "INFO");
 
         const titleInput = await findElement(
-          UI_SELECTORS.GOOGLE_DOCS.TITLE_INPUT,
+          window.UI_SELECTORS.Report.GOOGLE_DOCS.TITLE_INPUT,
         );
         await waitForVisible(titleInput);
 
@@ -334,7 +323,7 @@
         log(`【Step 4-4-4-2】📝 コンテンツ設定中...`, "INFO");
 
         const docBody = await findElement(
-          UI_SELECTORS.GOOGLE_DOCS.DOCUMENT_BODY,
+          window.UI_SELECTORS.Report.GOOGLE_DOCS.DOCUMENT_BODY,
         );
         await waitForVisible(docBody);
 

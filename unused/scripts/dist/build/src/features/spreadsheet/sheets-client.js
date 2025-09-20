@@ -1718,7 +1718,30 @@ class SheetsClient {
           throw new Error("AuthServiceが利用できません");
         }
         const token = await authService.getAuthToken();
-        const fullRange = `'${sheetName}'!${range}`;
+
+        // シート名のエンコーディング処理を改善
+        // 日本語を含むシート名でも正しくエンコードされるように修正
+        let fullRange;
+        if (sheetName.match(/[^\x00-\x7F]/)) {
+          // 非ASCII文字（日本語など）を含む場合
+          fullRange = `${sheetName}!${range}`;
+        } else if (sheetName.match(/[\s\-]/)) {
+          // スペースやハイフンを含む場合はシングルクォートで囲む
+          fullRange = `'${sheetName}'!${range}`;
+        } else {
+          // 通常の英数字のみの場合
+          fullRange = `${sheetName}!${range}`;
+        }
+
+        // デバッグログ追加
+        console.log("[sheets-client.js] getCellValues デバッグ:", {
+          sheetName,
+          range,
+          fullRange,
+          isNonAscii: sheetName.match(/[^\x00-\x7F]/),
+          encodedFullRange: encodeURIComponent(fullRange),
+        });
+
         const url = `${this.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(fullRange)}?valueRenderOption=FORMATTED_VALUE`;
 
         const response = await fetch(url, {
