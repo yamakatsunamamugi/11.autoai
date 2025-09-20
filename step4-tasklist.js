@@ -16,6 +16,69 @@
  * - バッチ作成エラー
  */
 
+// ========================================
+// StreamProcessorV2統合: 必要モジュールのインポート
+// ========================================
+
+// WindowService - StreamProcessorV2のウィンドウ管理システム
+let WindowService = null;
+let aiUrlManager = null;
+let AITaskExecutor = null;
+
+// 動的インポート（モジュールの可用性チェック付き）
+async function initializeStreamProcessorModules() {
+  try {
+    // WindowServiceの初期化
+    if (typeof window !== "undefined" && window.WindowService) {
+      WindowService = window.WindowService;
+      console.log(
+        "[step4-tasklist.js] WindowService取得完了（グローバルから）",
+      );
+    } else if (globalThis.WindowService) {
+      WindowService = globalThis.WindowService;
+      console.log(
+        "[step4-tasklist.js] WindowService取得完了（globalFromから）",
+      );
+    } else {
+      console.log("[step4-tasklist.js] WindowService未発見、従来方式を使用");
+    }
+
+    // aiUrlManagerの初期化
+    if (typeof window !== "undefined" && window.aiUrlManager) {
+      aiUrlManager = window.aiUrlManager;
+      console.log("[step4-tasklist.js] aiUrlManager取得完了（グローバルから）");
+    } else if (globalThis.aiUrlManager) {
+      aiUrlManager = globalThis.aiUrlManager;
+      console.log("[step4-tasklist.js] aiUrlManager取得完了（globalFromから）");
+    } else {
+      console.log("[step4-tasklist.js] aiUrlManager未発見、従来方式を使用");
+    }
+
+    // AITaskExecutorの初期化
+    if (typeof window !== "undefined" && window.AITaskExecutor) {
+      AITaskExecutor = window.AITaskExecutor;
+      console.log(
+        "[step4-tasklist.js] AITaskExecutor取得完了（グローバルから）",
+      );
+    } else if (globalThis.AITaskExecutor) {
+      AITaskExecutor = globalThis.AITaskExecutor;
+      console.log(
+        "[step4-tasklist.js] AITaskExecutor取得完了（globalFromから）",
+      );
+    } else {
+      console.log("[step4-tasklist.js] AITaskExecutor未発見、従来方式を使用");
+    }
+  } catch (error) {
+    console.warn(
+      "[step4-tasklist.js] StreamProcessorV2モジュール初期化エラー、従来方式で続行:",
+      error,
+    );
+  }
+}
+
+// 初期化を実行
+initializeStreamProcessorModules();
+
 // columnToIndex関数の定義確認・フォールバック作成
 if (typeof columnToIndex === "undefined") {
   // シンプルなフォールバック関数を定義
@@ -843,13 +906,7 @@ async function generateTaskList(
               },
             );
           } else {
-            console.log(`[step4-tasklist] 🖼️ DEBUG: WindowController利用不可`, {
-              windowExists: typeof window !== "undefined",
-              windowControllerExists: !!window?.windowController,
-              openedWindowsExists: !!window?.windowController?.openedWindows,
-              originalAiType: aiType,
-              normalizedAiType: aiType.toLowerCase(),
-            });
+            // WindowController利用不可
           }
 
           // windowInfoが取得できない場合の詳細ログ
@@ -1419,7 +1476,7 @@ class WindowController {
       windowLayout,
     );
 
-    ExecuteLogger.info("🖼️ [WindowController] DEBUG: openWindows開始詳細", {
+    ExecuteLogger.info("[WindowController] openWindows開始", {
       windowLayoutLength: windowLayout.length,
       layouts: windowLayout.map((l) => ({
         aiType: l.aiType,
@@ -1471,7 +1528,7 @@ class WindowController {
           },
         );
 
-        ExecuteLogger.info(`🖼️ [WindowController] DEBUG: ウィンドウ作成結果`, {
+        ExecuteLogger.info(`[WindowController] ウィンドウ作成結果`, {
           aiType: layout.aiType,
           position: layout.position,
           windowInfoReceived: !!windowInfo,
@@ -1494,14 +1551,11 @@ class WindowController {
             aiType: layout.aiType,
           };
 
-          ExecuteLogger.info(
-            `🖼️ [WindowController] DEBUG: openedWindows.set実行`,
-            {
-              aiType: layout.aiType,
-              windowData: windowData,
-              beforeSize: this.openedWindows.size,
-            },
-          );
+          ExecuteLogger.info(`[WindowController] openedWindows.set実行`, {
+            aiType: layout.aiType,
+            windowData: windowData,
+            beforeSize: this.openedWindows.size,
+          });
 
           // 一意キーを生成して複数のウィンドウを管理
           const uniqueKey = `${this.normalizeAiType(layout.aiType)}_${layout.position}_${Date.now()}`;
@@ -1517,24 +1571,18 @@ class WindowController {
           windowData.uniqueKey = uniqueKey;
           windowArray.push(windowData);
 
-          ExecuteLogger.info(
-            `🖼️ [WindowController] DEBUG: ウィンドウ配列に追加`,
-            {
-              aiType: layout.aiType,
-              uniqueKey: uniqueKey,
-              position: layout.position,
-              windowArrayLength: windowArray.length,
-            },
-          );
+          ExecuteLogger.info(`[WindowController] ウィンドウ配列に追加`, {
+            aiType: layout.aiType,
+            uniqueKey: uniqueKey,
+            position: layout.position,
+            windowArrayLength: windowArray.length,
+          });
 
-          ExecuteLogger.info(
-            `🖼️ [WindowController] DEBUG: openedWindows.set完了`,
-            {
-              aiType: layout.aiType,
-              afterSize: this.openedWindows.size,
-              allOpenedWindows: Array.from(this.openedWindows.entries()),
-            },
-          );
+          ExecuteLogger.info(`[WindowController] openedWindows.set完了`, {
+            aiType: layout.aiType,
+            afterSize: this.openedWindows.size,
+            allOpenedWindows: Array.from(this.openedWindows.entries()),
+          });
 
           results.push({
             aiType: layout.aiType,
@@ -1584,7 +1632,7 @@ class WindowController {
       results,
     );
 
-    ExecuteLogger.info("🖼️ [WindowController] DEBUG: openWindows完了詳細", {
+    ExecuteLogger.info("[WindowController] openWindows完了", {
       resultsLength: results.length,
       successfulResults: results.filter((r) => r.success).length,
       failedResults: results.filter((r) => !r.success).length,
@@ -1847,15 +1895,104 @@ class SimpleSheetsClient {
 } // SimpleSheetsClient クラスの終了
 
 // ========================================
+// StreamProcessorV2統合: createWindowForBatch関数
+// ========================================
+
+/**
+ * バッチ用のウィンドウを作成（StreamProcessorV2パターン）
+ * @param {Object} task - タスクオブジェクト
+ * @param {number} position - ウィンドウ位置（0=左上, 1=右上, 2=左下, 3=右下）
+ * @returns {Promise<Object>} ウィンドウ情報
+ */
+async function createWindowForBatch(task, position = 0) {
+  ExecuteLogger.info(
+    `🪟 [createWindowForBatch] ${task.aiType}ウィンドウ作成開始 (position: ${position})`,
+  );
+
+  try {
+    // StreamProcessorV2のパターンを使用可能かチェック
+    if (WindowService && aiUrlManager) {
+      ExecuteLogger.info(
+        `✅ [createWindowForBatch] StreamProcessorV2パターン使用: ${task.aiType}`,
+      );
+
+      // aiUrlManagerからURLを取得
+      const url = aiUrlManager.getUrl(task.aiType);
+      ExecuteLogger.info(
+        `🔗 [createWindowForBatch] URL取得: ${url} (AI: ${task.aiType})`,
+      );
+
+      // WindowService.createWindowWithPositionを使用
+      const window = await WindowService.createWindowWithPosition(
+        url,
+        position,
+        {
+          type: "popup",
+          aiType: task.aiType,
+        },
+      );
+
+      // StreamProcessorV2と同じ形式で返却
+      const windowInfo = {
+        ...window,
+        tabId: window.tabs && window.tabs.length > 0 ? window.tabs[0].id : null,
+        windowId: window.id,
+        aiType: task.aiType,
+        position: position,
+      };
+
+      ExecuteLogger.info(
+        `✅ [createWindowForBatch] ${task.aiType}ウィンドウ作成完了`,
+        {
+          windowId: windowInfo.windowId,
+          tabId: windowInfo.tabId,
+          url: url,
+        },
+      );
+
+      return windowInfo;
+    } else {
+      // フォールバック: 従来のwindowController方式
+      ExecuteLogger.info(
+        `⚠️ [createWindowForBatch] StreamProcessorV2未利用、従来方式使用: ${task.aiType}`,
+      );
+
+      const windowResults = await window.windowController.openWindows([
+        {
+          aiType: task.aiType,
+          position: position,
+        },
+      ]);
+
+      const windowResult = windowResults[0];
+      if (windowResult && windowResult.success) {
+        ExecuteLogger.info(
+          `✅ [createWindowForBatch] ${task.aiType}ウィンドウ作成完了（従来方式）`,
+        );
+        return windowResult;
+      } else {
+        throw new Error(`ウィンドウ作成失敗: ${task.aiType}`);
+      }
+    }
+  } catch (error) {
+    ExecuteLogger.error(
+      `❌ [createWindowForBatch] ${task.aiType}ウィンドウ作成エラー:`,
+      error,
+    );
+    throw error;
+  }
+}
+
+// ========================================
 // executeStep4 Function - Moved from step5-execute.js
 // ========================================
 
 async function executeStep4(taskList) {
-  ExecuteLogger.debug("🔍 [DEBUG] executeStep4関数定義開始");
+  // executeStep4関数定義開始
   ExecuteLogger.info("🚀 Step 4-6 Execute 統合実行開始", taskList);
 
   // 内部関数の存在確認（実行時チェック）
-  ExecuteLogger.info("🔍 [DEBUG] 内部関数の定義状態確認:", {
+  ExecuteLogger.info("内部関数の定義状態確認:", {
     executeNormalAITask: typeof executeNormalAITask,
     processTaskResult: typeof processTaskResult,
     shouldPerformWindowCleanup: typeof shouldPerformWindowCleanup,
@@ -2848,13 +2985,13 @@ async function executeStep4(taskList) {
     return errorRate < 0.5; // エラー率50%未満の場合はクリーンアップ
   }
 
-  ExecuteLogger.debug("✅ [DEBUG] executeStep4関数定義完了");
+  // executeStep4関数定義完了
   return results;
 }
 
 // ステップ4実行関数をグローバルに公開
-ExecuteLogger.debug("🔍 [DEBUG] window.executeStep4エクスポート実行");
-ExecuteLogger.info("🔍 [DEBUG] エクスポート前のexecuteStep4関数状態:", {
+// window.executeStep4エクスポート実行
+ExecuteLogger.info("エクスポート前のexecuteStep4関数状態:", {
   executeStep4Type: typeof executeStep4,
   executeStep4Exists: typeof executeStep4 === "function",
   executeStep4Name: executeStep4?.name,

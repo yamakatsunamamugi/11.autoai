@@ -258,7 +258,7 @@ window.WindowService = {
       }
 
       console.log(
-        `[step0-ui-controller.js→Step0-1] 🖼️ DEBUG: 位置${position}の座標 (aiType: ${options.aiType || "unknown"}):`,
+        `[step0-ui-controller.js→Step0-1] 位置${position}の座標 (aiType: ${options.aiType || "unknown"}):`,
         windowPosition,
       );
 
@@ -290,20 +290,7 @@ window.WindowService = {
         url: url,
       };
 
-      console.log(
-        `[step0-ui-controller.js→Step0-1] 🖼️ DEBUG: createWindowWithPosition戻り値`,
-        {
-          position: position,
-          aiType: options.aiType || "unknown",
-          returnDataKeys: Object.keys(returnData),
-          hasId: !!returnData.id,
-          hasWindowId: !!returnData.windowId,
-          hasTabs: !!returnData.tabs,
-          tabsLength: returnData.tabs?.length || 0,
-          firstTabId: returnData.tabs?.[0]?.id,
-          returnData: returnData,
-        },
-      );
+      // createWindowWithPosition戻り値
 
       // 🆕 WindowController.openedWindowsにウィンドウ情報を登録
       if (
@@ -311,33 +298,38 @@ window.WindowService = {
         options.aiType &&
         window.windowController?.openedWindows
       ) {
+        // aiTypeを正規化（step4-tasklist.jsとの一貫性確保）
+        const normalizedAiType =
+          options.aiType?.toLowerCase()?.trim() || "claude";
+
         const windowData = {
           windowId: returnData.id,
           tabId: returnData.tabs?.[0]?.id,
           url: url,
           position: position,
-          aiType: options.aiType,
+          aiType: normalizedAiType, // 正規化済みaiTypeを使用
         };
 
         console.log(
-          `[step0-ui-controller.js→Step0-1] 🖼️ DEBUG: WindowController.openedWindows.set実行`,
+          `[step0-ui-controller.js→Step0-1] WindowController.openedWindows.set実行`,
           {
-            aiType: options.aiType,
+            originalAiType: options.aiType,
+            normalizedAiType: normalizedAiType,
             windowData: windowData,
             beforeSize: window.windowController.openedWindows.size,
           },
         );
 
-        window.windowController.openedWindows.set(options.aiType, windowData);
+        window.windowController.openedWindows.set(normalizedAiType, windowData);
 
         console.log(
-          `[step0-ui-controller.js→Step0-1] 🖼️ DEBUG: WindowController.openedWindows.set完了`,
+          `[step0-ui-controller.js→Step0-1] WindowController.openedWindows.set完了`,
           {
-            aiType: options.aiType,
+            originalAiType: options.aiType,
+            normalizedAiType: normalizedAiType,
             afterSize: window.windowController.openedWindows.size,
-            registeredData: window.windowController.openedWindows.get(
-              options.aiType,
-            ),
+            registeredData:
+              window.windowController.openedWindows.get(normalizedAiType),
           },
         );
 

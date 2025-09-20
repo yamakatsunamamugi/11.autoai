@@ -107,31 +107,6 @@ async function checkInternetConnection() {
       );
     }
 
-    // 1-1-2: Google APIへの接続確認（簡易チェック）
-    const testUrl = "https://sheets.googleapis.com/v4";
-    try {
-      const testResponse = await fetch(testUrl, { method: "HEAD" });
-      const status = testResponse.status;
-      const statusText =
-        status === 403
-          ? "正常（認証必要）"
-          : status === 404
-            ? "正常（リソース不明）"
-            : `ステータス: ${status}`;
-
-      console.log(
-        `[step1-setup.js] [Step 1-1-2] ✅ Google Sheets APIへの接続確認成功（ステータス: ${status} - ${statusText}）`,
-      );
-    } catch (apiError) {
-      console.warn(
-        `[step1-setup.js] [Step 1-1-2] ⚠️ Google Sheets APIへの接続確認失敗:`,
-        apiError.message,
-      );
-      console.log(
-        "[step1-setup.js] [Step 1-1-2] 　→ 処理は継続します（認証時に再試行）",
-      );
-    }
-
     console.log(`[step1-setup.js] [Step 1-1-2] 🔐 認証状態: 未認証`);
 
     return { connected: true, authenticated: false };
@@ -634,10 +609,14 @@ async function refreshAuthToken() {
  * 401エラー時の自動リトライ機能付きfetch（レート制限対応強化版）
  */
 async function fetchWithTokenRefresh(url, options = {}, maxRetries = 3) {
+  // fetchWithTokenRefresh 開始
+
   let lastError = null;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
+      // 試行 ${attempt}/${maxRetries} 開始
+
       // Only log on retries or errors
       if (attempt > 1) {
         console.log(
@@ -646,7 +625,11 @@ async function fetchWithTokenRefresh(url, options = {}, maxRetries = 3) {
       }
 
       // 最初の試行
+      // fetch() 実行直前
+
       let response = await fetch(url, options);
+
+      // fetch() 実行完了
 
       // 429 (Too Many Requests) エラーの場合
       if (response.status === 429) {
@@ -723,14 +706,24 @@ async function fetchWithTokenRefresh(url, options = {}, maxRetries = 3) {
 // 1-4: スプレッドシートから特殊行を検索
 // ========================================
 async function findSpecialRows() {
-  console.log("========");
-  console.log("[step1-setup.js→Step1-4] 特殊行の検索開始");
-  console.log("========");
+  console.log("========================================");
+  console.log("[step1-setup.js→Step1-4] 🚀 特殊行の検索開始");
+  console.log("========================================");
+
+  console.log("[DEBUG] findSpecialRows 関数呼び出し情報:");
+  console.log("  - 呼び出し時刻:", new Date().toISOString());
+  console.log("  - window.globalState存在:", !!window.globalState);
+  console.log(
+    "  - 現在のglobalState:",
+    JSON.stringify(window.globalState || {}, null, 2),
+  );
 
   try {
     // 1-4-0: スプレッドシートURL取得（グローバルStateから）
     let spreadsheetId = null;
     let gid = null;
+
+    console.log("[DEBUG] スプレッドシート情報取得開始");
 
     // globalStateからURLまたはIDを取得
     if (window.globalState) {
@@ -797,19 +790,58 @@ async function findSpecialRows() {
     }
 
     // 1-4-1: 全データ一括取得（初期設定用キャッシュ作成）
+    console.log("========================================");
+    console.log("[step1-setup.js] [Step 1-4-1] 🔍 API呼び出し詳細デバッグ開始");
+    console.log("========================================");
+
+    // 認証情報の詳細確認
+    console.log("[DEBUG] 認証情報確認:");
+    console.log("  - authToken存在:", !!window.globalState?.authToken);
+    console.log("  - authToken長:", window.globalState?.authToken?.length || 0);
+    console.log(
+      "  - authToken先頭10文字:",
+      window.globalState?.authToken?.substring(0, 10) || "なし",
+    );
+    console.log(
+      "  - apiHeaders:",
+      JSON.stringify(window.globalState?.apiHeaders, null, 2),
+    );
+
+    // スプレッドシート情報の詳細確認
+    console.log("[DEBUG] スプレッドシート情報:");
+    console.log("  - spreadsheetId:", spreadsheetId);
+    console.log("  - gid:", gid);
+    console.log("  - sheetsApiBase:", window.globalState?.sheetsApiBase);
+    console.log("  - 元のspreadsheetUrl:", window.globalState?.spreadsheetUrl);
+
+    // 構築されるURL確認
+    const targetUrl = `${window.globalState.sheetsApiBase}/${spreadsheetId}/values/A1:CZ100`;
+    console.log("[DEBUG] 構築されたAPI URL:");
+    console.log("  - 完全URL:", targetUrl);
+    console.log(
+      "  - URLパターン検証:",
+      /^https:\/\/sheets\.googleapis\.com\/v4\/spreadsheets\/[a-zA-Z0-9-_]+\/values\/A1:CZ100$/.test(
+        targetUrl,
+      ),
+    );
+
     console.log(
       "[step1-setup.js] [Step 1-4-1] 全データ一括取得開始 (A1:CZ100)",
     );
-    console.log(
-      `  - APIエンドポイント: ${window.globalState.sheetsApiBase}/${spreadsheetId}/values/A1:CZ100`,
-    );
 
     const startTime = Date.now();
-    const response = await fetchWithTokenRefresh(
-      `${window.globalState.sheetsApiBase}/${spreadsheetId}/values/A1:CZ100`,
-      {
-        headers: window.globalState.apiHeaders,
-      },
+    console.log(
+      "[DEBUG] fetchWithTokenRefresh 呼び出し直前:",
+      new Date().toISOString(),
+    );
+
+    const response = await fetchWithTokenRefresh(targetUrl, {
+      headers: window.globalState.apiHeaders,
+    });
+
+    console.log(
+      "[DEBUG] fetchWithTokenRefresh 呼び出し完了:",
+      new Date().toISOString(),
     );
     const responseTime = Date.now() - startTime;
 
@@ -1277,12 +1309,27 @@ function columnToIndex(column) {
 // メイン実行関数
 // ========================================
 async function executeStep1(spreadsheetUrl) {
-  console.log("＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝");
+  // 関数呼び出し追跡のためのユニークID
+  const callId = `CALL-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  console.log("＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝");
+  console.log(`🆔 [CALL TRACKER] executeStep1 呼び出し開始 - ID: ${callId}`);
+  console.log("＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝");
   console.log("[step1-setup.js] ステップ1: 初期設定 開始");
-  console.log("＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝");
+
+  // 呼び出し元のスタックトレースを取得
+  const stack = new Error().stack;
+  console.log("📞 [CALL TRACKER] 呼び出し情報:");
+  console.log("  - 時刻:", new Date().toISOString());
+  console.log("  - 呼び出しID:", callId);
+  console.log("  - 引数 spreadsheetUrl:", spreadsheetUrl);
+  console.log("  - スタックトレース:");
+  console.log(
+    stack?.split("\n").slice(1, 5).join("\n") || "取得できませんでした",
+  );
 
   try {
     // Global State確認
+    console.log(`[${callId}] Global State確認:`);
     console.log(`  - window.globalState存在: ${!!window.globalState}`);
     console.log(`  - chrome API利用可能: ${typeof chrome !== "undefined"}`);
     console.log(
