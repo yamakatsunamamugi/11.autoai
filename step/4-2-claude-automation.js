@@ -4094,4 +4094,20 @@
     // グローバルにログマネージャーを公開（デバッグ用）
     window.ClaudeLogManager = ClaudeLogManager;
 
+    // Claude Automation オブジェクトをグローバルに公開
+    window.ClaudeAutomation = {
+        executeTask: executeTask,
+        runAutomation: runAutomation,
+        version: 'V2',
+        initTime: initCompleteTime,
+        isReady: true
+    };
+
+    console.log('🌍 [Claude] window.ClaudeAutomation オブジェクト公開完了:', {
+        executeTask: typeof window.ClaudeAutomation.executeTask,
+        runAutomation: typeof window.ClaudeAutomation.runAutomation,
+        version: window.ClaudeAutomation.version,
+        isReady: window.ClaudeAutomation.isReady
+    });
+
 })();

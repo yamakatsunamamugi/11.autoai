@@ -83,7 +83,14 @@
         "automations/claude-automation.js",
         "automations/gemini-automation.js",
         "automations/2-4-genspark-automation.js",
-        "automations/2-5-report-automation.js"
+        "automations/2-5-report-automation.js",
+        "step/4-1-chatgpt-automation.js",
+        "step/4-2-claude-automation.js",
+        "step/4-3-gemini-automation.js",
+        "step/4-4-report-automation.js",
+        "step/4-5-genspark-automation.js",
+        "step/step4-execute.js",
+        "step/step5-loop.js"
       ],
       "matches": ["<all_urls>"]
     }

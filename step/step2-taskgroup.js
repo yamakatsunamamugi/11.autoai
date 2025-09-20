@@ -174,18 +174,10 @@ async function identifyTaskGroups() {
       const trimmedHeader = header ? header.trim() : '';
       const aiValue = aiValues[index] || '';
 
-      // デバッグ用：各列の内容を詳細に記録（最初の20列）
-      if (index < 20 && (trimmedHeader || aiValue)) {
-        console.log(`  [${columnLetter}] メニュー:"${trimmedHeader}" / AI:"${aiValue}"`);
-      }
-
       // ログ列の検出（stream-processor-v2.jsより）
       if (trimmedHeader === 'ログ' || trimmedHeader.includes('ログ')) {
-        console.log(`[step2-taskgroup.js] [Step 2-1-2] ログ列検出: ${columnLetter}列`);
-
         // 前のグループが完成していれば保存
         if (currentGroup && currentGroup.answerColumns && currentGroup.answerColumns.length > 0) {
-          console.log(`  - 前のグループ${currentGroup.groupNumber}を保存`);
           taskGroups.push(currentGroup);
           groupCounter++;
           currentGroup = null;
@@ -215,8 +207,6 @@ async function identifyTaskGroups() {
       if (trimmedHeader === 'レポート化' ||
           trimmedHeader.includes('Genspark（スライド）') ||
           trimmedHeader.includes('Genspark（ファクトチェック）')) {
-
-        console.log(`[step2-taskgroup.js] [Step 2-1-3] 特殊グループ検出: ${trimmedHeader} (${columnLetter}列)`);
 
         // 前のグループがあれば完了させる
         if (currentGroup && (currentGroup.answerColumns.length > 0 ||
@@ -259,14 +249,12 @@ async function identifyTaskGroups() {
         };
 
         taskGroups.push(specialGroup);
-        console.log(`  - ✅ タスクグループ${groupCounter}: ${specialGroup.type}パターンを登録`);
         groupCounter++;
         currentGroup = null;
       }
 
       // プロンプト列の検出
       if (trimmedHeader.includes('プロンプト')) {
-        console.log(`[step2-taskgroup.js] [Step 2-1-2] プロンプト列検出: ${columnLetter}列 ("${trimmedHeader}")`);
         // 前のグループが完成していれば新しいグループを開始
         if (currentGroup && currentGroup.promptColumns.length > 0 &&
             currentGroup.answerColumns.length > 0) {
@@ -303,12 +291,10 @@ async function identifyTaskGroups() {
 
         // AI行の値からグループタイプを判定
         if (aiValue.includes('3種類')) {
-          console.log(`  - 3種類AIパターンとして設定 (AI値: "${aiValue}")`);
           currentGroup.groupType = '3type';
           currentGroup.type = '3種類AI';
           currentGroup.aiType = aiValue;
         } else if (aiValue) {
-          console.log(`  - 通常処理パターンとして設定 (AI: "${aiValue}")`);
           currentGroup.groupType = 'single';
           currentGroup.aiType = aiValue;
         }
@@ -316,8 +302,6 @@ async function identifyTaskGroups() {
 
       // 回答列の検出
       if (currentGroup && (trimmedHeader.includes('回答') || trimmedHeader.includes('答'))) {
-        console.log(`[step2-taskgroup.js] [Step 2-1-2] 回答列検出: ${columnLetter}列 ("${trimmedHeader}")`);
-
         // AIタイプを判定（stream-processor-v2.jsのdetectAITypeFromHeaderロジック）
         let detectedAiType = 'Claude';
         if (currentGroup.groupType === '3type' || currentGroup.type === '3種類AI') {
@@ -349,28 +333,11 @@ async function identifyTaskGroups() {
     // 最後のグループを追加
     if (currentGroup && currentGroup.answerColumns.length > 0) {
       taskGroups.push(currentGroup);
-      console.log(`✅ タスクグループ${currentGroup.groupNumber}: ${currentGroup.type}パターン`);
     }
-
-    // 全列処理完了
-    console.log(`[step2-taskgroup.js] [Step 2-1-2] 列走査完了: ${processedColumns}列を処理`);
-
-    // 統合ログ形式でサマリー出力
-    console.log('[step2-taskgroup.js] [Step 2-1] 📋 検出されたタスクグループサマリー:');
-    taskGroups.forEach(group => {
-      const aiInfo = group.aiType || group.ai || '未設定';
-      const promptInfo = group.promptColumns && group.promptColumns.length > 0 ?
-        ` | プロンプト列: ${group.promptColumns.join(', ')}` : '';
-      const answerInfo = group.answerColumns && group.answerColumns.length > 0 ?
-        ` | 回答列: ${group.answerColumns.map(a => a.column).join(', ')}` : '';
-
-      console.log(`step2-taskgroup.js:361   グループ${group.groupNumber}: ${group.type} | 範囲: ${group.startColumn}〜${group.endColumn}列 | AI: ${aiInfo}${promptInfo}${answerInfo}`);
-    });
 
     // 内部で作成したtaskGroupsを保存（統計情報用）
     window.globalState.allTaskGroups = taskGroups;
     window.globalState.taskGroups = taskGroups;
-    console.log(`[step2-taskgroup.js] [Step 2-1] ✅ 合計${taskGroups.length}個のタスクグループを検出`);
     return taskGroups;
 
   } catch (error) {

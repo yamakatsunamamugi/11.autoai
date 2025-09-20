@@ -757,6 +757,12 @@ async function executeTasks(tasks, taskGroup) {
 
   try {
     // step4-execute.jsのexecuteStep4関数を利用
+    console.log('🔍 [DEBUG] executeStep4呼び出し前チェック:', {
+      exists: typeof window.executeStep4,
+      isFunction: typeof window.executeStep4 === 'function',
+      windowObject: !!window.executeStep4
+    });
+
     if (!window.executeStep4) {
       throw new Error('executeStep4関数が利用できません');
     }
@@ -828,6 +834,13 @@ async function executeTasks(tasks, taskGroup) {
     return results || [];
 
   } catch (error) {
+    console.error('⚠️ [DEBUG] エラー詳細:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+      cause: error.cause
+    });
+
     console.error('[Helper] タスク実行エラー:', {
       エラーメッセージ: error.message,
       スタック: error.stack,
