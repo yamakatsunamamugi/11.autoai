@@ -643,9 +643,7 @@ async function applySkipConditions() {
         const promptRange = `${promptCol}${dataStartRow}:${promptCol}${endRow}`;
         const promptUrl = `${sheetsApiBase}/${spreadsheetId}/values/${promptRange}`;
 
-        console.log(`[step2-taskgroup.js] プロンプト列取得準備:`);
-        console.log(`  - 範囲: ${promptRange}`);
-        console.log(`  - URL: ${promptUrl}`);
+        // プロンプト列取得
 
         const promptResponse = await window.fetchWithTokenRefresh(promptUrl, {
           headers: apiHeaders,
@@ -653,17 +651,13 @@ async function applySkipConditions() {
         const promptData = await promptResponse.json();
         const promptValues = promptData.values || [];
 
-        console.log(
-          `[step2-taskgroup.js] プロンプト列取得結果: ${promptValues.length}行`,
-        );
+        // プロンプト取得完了: ${promptValues.length}行
 
         // 回答列の取得
         const answerRange = `${answerCol}${dataStartRow}:${answerCol}${endRow}`;
         const answerUrl = `${sheetsApiBase}/${spreadsheetId}/values/${answerRange}`;
 
-        console.log(`[step2-taskgroup.js] 回答列取得準備:`);
-        console.log(`  - 範囲: ${answerRange}`);
-        console.log(`  - URL: ${answerUrl}`);
+        // 回答列取得
 
         const answerResponse = await window.fetchWithTokenRefresh(answerUrl, {
           headers: apiHeaders,
@@ -671,9 +665,7 @@ async function applySkipConditions() {
         const answerData = await answerResponse.json();
         const answerValues = answerData.values || [];
 
-        console.log(
-          `[step2-taskgroup.js] 回答列取得結果: ${answerValues.length}行`,
-        );
+        // 回答取得完了: ${answerValues.length}行
 
         // スキップ条件の適用
         let hasUnprocessedTask = false;
@@ -977,9 +969,7 @@ function letterToColumn(letter) {
 // メイン実行関数
 // ========================================
 async function executeStep2TaskGroups() {
-  console.log("＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝");
   console.log("[step2-taskgroup.js] ステップ2: タスクグループ作成 開始");
-  console.log("＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝");
 
   try {
     // 2-0: スプレッドシート情報取得
@@ -1003,9 +993,7 @@ async function executeStep2TaskGroups() {
     // 2-6: 定義保存
     saveDefinitions();
 
-    console.log("＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝");
     console.log("[step2-taskgroup.js] ✅ ステップ2: タスクグループ作成 完了");
-    console.log("＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝");
 
     // taskGroupsをstep5が使える形式でglobalStateに保存
     if (!window.globalState.taskGroups) {

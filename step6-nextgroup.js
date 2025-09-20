@@ -227,7 +227,7 @@ async function processNextGroup(nextGroup) {
 
     // globalStateを更新して次のグループを設定
     if (typeof window !== "undefined" && window.globalState) {
-      window.globalState.currentGroupIndex = nextIndex;
+      // nextIndexは既に上で更新済みなので、currentGroupIndexを使用
       window.globalState.currentGroup = nextGroup;
       console.log(
         `[step6-nextgroup.js] グループ${nextGroup.number}に移行設定完了`,

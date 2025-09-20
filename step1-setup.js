@@ -79,7 +79,7 @@ async function checkInternetConnection() {
         }
       }
 
-      // 方法3: chrome.runtime message経由（background scriptから取得）
+      /* 方法3: chrome.runtime message経由（background scriptから取得）
       if (!authToken) {
         console.log(
           "[step1-setup.js] [Step 1-1-1] background script から認証情報を確認中...",
@@ -110,7 +110,7 @@ async function checkInternetConnection() {
             error.message,
           );
         }
-      }
+      } */
     } else if (isDrive) {
       console.log(
         "[step1-setup.js→Step1-1-1] Google Driveサンドボックス環境で実行中",
@@ -702,14 +702,7 @@ async function findSpecialRows() {
     const data = await response.json();
     const columnA = data.values || [];
 
-    // 先頭5行のデータをログ表示（デバッグ用）
-    const preview = columnA.slice(0, 5).map((row) => row[0] || "(空)");
-    console.log("[step1-setup.js] [Step 1-4-1] 取得データ概要:");
-    console.log(`  - 取得行数: ${columnA.length}行`);
-    console.log(`  - 最初の5行: ${preview.join(", ")}`);
-
     // 1-4-2: 特殊行の検索
-    console.log("[step1-setup.js] [Step 1-4-2] 特殊行キーワード検索開始");
 
     const specialRows = {
       menuRow: null,
@@ -925,10 +918,6 @@ async function setupColumnStructure() {
 
       // プロンプト列の直前に「ログ」があるかチェック
       const logIndex = group.firstIndex - 1;
-      console.log(`  [Debug] ログ列チェック:`);
-      console.log(`    - チェック位置: index=${logIndex}`);
-      console.log(`    - 現在の値: "${headerRow[logIndex] || "(空)"}"`);
-      console.log(`    - 期待値: "ログ"`);
 
       if (
         logIndex < 0 ||
@@ -941,8 +930,6 @@ async function setupColumnStructure() {
           type: "before",
         });
         console.log(`  - "ログ"列の追加が必要（${group.column}列の前）`);
-      } else {
-        console.log(`    - ✓ "ログ"列は既に存在`);
       }
 
       if (is3TypeAI) {
@@ -978,10 +965,6 @@ async function setupColumnStructure() {
       } else {
         // 通常AI: 最後のプロンプトの直後に「回答」があるかチェック
         const answerIndex = group.lastIndex + 1;
-        console.log(`  [Debug] 回答列チェック:`);
-        console.log(`    - チェック位置: index=${answerIndex}`);
-        console.log(`    - 現在の値: "${headerRow[answerIndex] || "(空)"}"`);
-        console.log(`    - 期待値: "回答"`);
 
         if (
           answerIndex >= headerRow.length ||
@@ -994,8 +977,6 @@ async function setupColumnStructure() {
             type: "after",
           });
           console.log(`  - "回答"列の追加が必要（最後のプロンプトの後）`);
-        } else {
-          console.log(`    - ✓ "回答"列は既に存在`);
         }
       }
     }
@@ -1377,9 +1358,12 @@ async function fetchWithTokenRefresh(url, options = {}, maxRetries = 3) {
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      console.log(
-        `[step1-setup.js] API呼び出し試行 ${attempt}/${maxRetries}: ${url}`,
-      );
+      // Only log on retries or errors
+      if (attempt > 1) {
+        console.log(
+          `[step1-setup.js] API呼び出し再試行 ${attempt}/${maxRetries}: ${url}`,
+        );
+      }
 
       // 最初の試行
       let response = await fetch(url, options);

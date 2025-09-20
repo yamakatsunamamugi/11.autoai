@@ -53,18 +53,7 @@ window.addEventListener("unhandledrejection", function (event) {
 
 // ページ読み込み完了を確認
 window.addEventListener("load", function () {
-  console.log("📊 [DEBUG] ページ読み込み完了時の状態:", {
-    timestamp: new Date().toISOString(),
-    loadedScripts: window.scriptLoadStatus,
-    stepFunctions: {
-      executeStep1: typeof window.executeStep1,
-      executeStep2: typeof window.executeStep2,
-      executeStep3: typeof window.executeStep3,
-      executeStep4: typeof window.executeStep4,
-      executeStep5: typeof window.executeStep5,
-      executeStep6: typeof window.executeStep6,
-    },
-  });
+  console.log("📊 ページ読み込み完了");
 });
 
 // ========================================
