@@ -305,6 +305,114 @@ window.WindowService = {
         },
       );
 
+      // 🆕 WindowController.openedWindowsにウィンドウ情報を登録
+      if (
+        returnData?.id &&
+        options.aiType &&
+        window.windowController?.openedWindows
+      ) {
+        const windowData = {
+          windowId: returnData.id,
+          tabId: returnData.tabs?.[0]?.id,
+          url: url,
+          position: position,
+          aiType: options.aiType,
+        };
+
+        console.log(
+          `[step0-ui-controller.js→Step0-1] 🖼️ DEBUG: WindowController.openedWindows.set実行`,
+          {
+            aiType: options.aiType,
+            windowData: windowData,
+            beforeSize: window.windowController.openedWindows.size,
+          },
+        );
+
+        window.windowController.openedWindows.set(options.aiType, windowData);
+
+        console.log(
+          `[step0-ui-controller.js→Step0-1] 🖼️ DEBUG: WindowController.openedWindows.set完了`,
+          {
+            aiType: options.aiType,
+            afterSize: window.windowController.openedWindows.size,
+            registeredData: window.windowController.openedWindows.get(
+              options.aiType,
+            ),
+          },
+        );
+
+        // 🆕 Content Script を AI タブに注入
+        if (returnData.tabs?.[0]?.id) {
+          const tabId = returnData.tabs[0].id;
+          let scriptFile = null;
+
+          // AI種別に応じたスクリプトファイルを選択
+          if (url.includes("claude.ai")) {
+            scriptFile = "4-2-claude-automation.js";
+          } else if (
+            url.includes("chatgpt.com") ||
+            url.includes("chat.openai.com")
+          ) {
+            scriptFile = "4-1-chatgpt-automation.js";
+          } else if (url.includes("gemini.google.com")) {
+            scriptFile = "4-3-gemini-automation.js";
+          } else if (
+            url.includes("genspark.com") ||
+            url.includes("genspark.ai")
+          ) {
+            scriptFile = "4-5-genspark-automation.js";
+          }
+
+          if (scriptFile) {
+            console.log(
+              `[step0-ui-controller.js→Step0-1] 📜 Content Script注入開始 (tabId: ${tabId}, script: ${scriptFile})`,
+            );
+
+            try {
+              // chrome.tabs.executeScript を使用してスクリプトを注入
+              await new Promise((resolve, reject) => {
+                chrome.tabs.executeScript(
+                  tabId,
+                  {
+                    file: scriptFile,
+                    runAt: "document_end",
+                  },
+                  (result) => {
+                    if (chrome.runtime.lastError) {
+                      console.error(
+                        `[step0-ui-controller.js→Step0-1] ❌ Script注入エラー:`,
+                        chrome.runtime.lastError,
+                      );
+                      reject(chrome.runtime.lastError);
+                    } else {
+                      console.log(
+                        `[step0-ui-controller.js→Step0-1] ✅ Script注入成功 (tabId: ${tabId}, script: ${scriptFile})`,
+                      );
+                      resolve(result);
+                    }
+                  },
+                );
+              });
+            } catch (error) {
+              console.error(
+                `[step0-ui-controller.js→Step0-1] ⚠️ Script注入失敗:`,
+                error,
+              );
+            }
+          }
+        }
+      } else {
+        console.log(
+          `[step0-ui-controller.js→Step0-1] ⚠️ DEBUG: WindowController登録スキップ`,
+          {
+            hasReturnDataId: !!returnData?.id,
+            hasAiType: !!options.aiType,
+            hasWindowController: !!window.windowController,
+            hasOpenedWindows: !!window.windowController?.openedWindows,
+          },
+        );
+      }
+
       return returnData;
     } catch (error) {
       console.error(
@@ -317,6 +425,52 @@ window.WindowService = {
 };
 
 console.log("✅ [step0-ui-controller] WindowService設定完了");
+
+// ========================================
+// WindowController クラス (step5-execute.js から移動)
+// ========================================
+class WindowController {
+  constructor() {
+    this.openedWindows = new Map(); // aiType -> windowInfo
+    this.windowService = null; // WindowServiceへの参照
+    console.log("✅ [WindowController] インスタンス作成完了");
+  }
+
+  /**
+   * WindowServiceの初期化
+   */
+  async initializeWindowService() {
+    console.log("🪟 [WindowController] WindowService初期化開始");
+
+    // window.WindowServiceが存在すれば使用
+    if (window.WindowService) {
+      this.windowService = window.WindowService;
+      console.log("✅ [WindowController] WindowService初期化完了");
+    } else {
+      console.error("❌ [WindowController] WindowService が見つかりません");
+    }
+  }
+
+  /**
+   * ウィンドウ情報を登録
+   */
+  registerWindow(aiType, windowData) {
+    console.log(`[WindowController] ウィンドウ登録: ${aiType}`, windowData);
+    this.openedWindows.set(aiType, windowData);
+  }
+
+  /**
+   * ウィンドウ情報を取得
+   */
+  getWindow(aiType) {
+    return this.openedWindows.get(aiType);
+  }
+}
+
+// グローバルインスタンス作成（早期初期化）
+window.windowController = new WindowController();
+window.windowController.initializeWindowService();
+console.log("✅ [step0-ui-controller] WindowController 初期化完了");
 
 // ========================================
 // Section 3: メインUI制御機能 (旧 ui-controller.js)

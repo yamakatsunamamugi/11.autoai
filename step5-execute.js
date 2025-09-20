@@ -1026,7 +1026,8 @@ class WindowController {
 }
 
 // グローバルインスタンス作成
-window.windowController = new WindowController();
+// WindowController は step0-ui-controller.js で初期化済み
+// window.windowController = new WindowController();
 
 // ========================================
 // SimpleSheetsClient: stepフォルダ内で完結するSheets APIクライアント

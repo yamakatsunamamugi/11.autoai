@@ -986,21 +986,20 @@ async function executeStep2TaskGroups() {
     );
 
     // データ検証関数（自己完結型）
-    function validateTaskGroup(group) {
-      console.log(
-        "[step2-taskgroup.js] [Step 2-6-1] タスクグループデータ検証開始",
-      );
+    function validateTaskGroup(group, groupIndex = null) {
       const errors = [];
 
       if (!group) {
-        console.error("[step2-taskgroup.js] [Step 2-6-1-1] グループが未定義");
+        console.error(
+          `[step2-taskgroup.js] [Step 2-6-1-1] グループ${groupIndex ? groupIndex : ""}が未定義`,
+        );
         errors.push("グループが未定義");
         return errors;
       }
 
       if (!group.columns) {
         console.error(
-          "[step2-taskgroup.js] [Step 2-6-1-2] columns構造が未定義",
+          `[step2-taskgroup.js] [Step 2-6-1-2] グループ${groupIndex ? groupIndex : ""}のcolumns構造が未定義`,
         );
         errors.push("columns構造が未定義");
       } else {
@@ -1010,7 +1009,7 @@ async function executeStep2TaskGroups() {
           group.columns.prompts.length === 0
         ) {
           console.error(
-            "[step2-taskgroup.js] [Step 2-6-1-3] prompts列が未定義または空",
+            `[step2-taskgroup.js] [Step 2-6-1-3] グループ${groupIndex ? groupIndex : ""}のprompts列が未定義または空`,
           );
           errors.push("prompts列が未定義または空");
         }
@@ -1020,7 +1019,7 @@ async function executeStep2TaskGroups() {
             Object.keys(group.columns.answer).length === 0)
         ) {
           console.error(
-            "[step2-taskgroup.js] [Step 2-6-1-4] answer列が未定義または空",
+            `[step2-taskgroup.js] [Step 2-6-1-4] グループ${groupIndex ? groupIndex : ""}のanswer列が未定義または空`,
           );
           errors.push("answer列が未定義または空");
         }
@@ -1028,19 +1027,21 @@ async function executeStep2TaskGroups() {
 
       if (!group.groupType && !group.type) {
         console.error(
-          "[step2-taskgroup.js] [Step 2-6-1-5] groupTypeまたはtypeが未定義",
+          `[step2-taskgroup.js] [Step 2-6-1-5] グループ${groupIndex ? groupIndex : ""}のgroupTypeまたはtypeが未定義`,
         );
         errors.push("groupTypeまたはtypeが未定義");
       }
 
-      console.log(
-        `[step2-taskgroup.js] [Step 2-6-1-6] 検証完了: ${errors.length}個のエラー`,
-      );
       return errors;
     }
 
     // 統一データ構造の実装（修正版・検証付き）
-    window.globalState.taskGroups.forEach((group) => {
+    console.log(
+      `[step2-taskgroup.js] [Step 2-6-1] タスクグループデータ検証開始 (${window.globalState.taskGroups.length}個のグループ)`,
+    );
+
+    let totalValidationErrors = 0;
+    window.globalState.taskGroups.forEach((group, index) => {
       // dataStartRowを設定（step1で取得した情報を使用）
       group.dataStartRow = window.globalState.specialRows?.dataStartRow || 9;
 
@@ -1098,7 +1099,7 @@ async function executeStep2TaskGroups() {
       }
 
       // データ検証実行
-      const validationErrors = validateTaskGroup(group);
+      const validationErrors = validateTaskGroup(group, group.groupNumber);
       if (validationErrors.length > 0) {
         console.warn(
           `[step2-taskgroup.js] グループ${group.groupNumber}の検証エラー:`,
@@ -1107,8 +1108,14 @@ async function executeStep2TaskGroups() {
         // エラーがあってもスキップ設定で処理を継続
         group.hasValidationErrors = true;
         group.validationErrors = validationErrors;
+        totalValidationErrors += validationErrors.length;
       }
     });
+
+    // 検証結果サマリー
+    console.log(
+      `[step2-taskgroup.js] [Step 2-6-1-6] 検証完了: ${totalValidationErrors}個のエラー (${window.globalState.taskGroups.length}個のグループを検証)`,
+    );
 
     // 統合ログ出力 - タスクグループ最終結果のみ
     const totalGroups = window.globalState.allTaskGroups?.length || 0;
