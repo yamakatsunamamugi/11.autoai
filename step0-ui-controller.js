@@ -241,9 +241,10 @@ window.WindowService = {
 
       console.log(`[WindowService] 位置${position}の座標:`, windowPosition);
 
-      // ウィンドウ作成
+      // ウィンドウ作成（aiTypeを分離してChrome APIに渡す）
+      const { aiType, ...chromeWindowOptions } = options;
       const windowOptions = {
-        ...options,
+        ...chromeWindowOptions,
         url: url,
         left: windowPosition.left,
         top: windowPosition.top,
@@ -264,7 +265,7 @@ window.WindowService = {
         windowId: window.id,
         tabs: window.tabs,
         position: position,
-        aiType: options.aiType || "unknown",
+        aiType: aiType || "unknown",
         url: url,
       };
     } catch (error) {
