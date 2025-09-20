@@ -528,6 +528,231 @@ async function findSpecialRows() {
 }
 
 // ========================================
+// 1-5. 列構造の自動セットアップ
+// ========================================
+async function setupColumnStructure() {
+  console.log('========');
+  console.log('[step1-setup.js] [Step 1-5] 列構造の自動セットアップ開始');
+  console.log('========');
+
+  try {
+    // 1-5-1. プロンプト列の検出
+    console.log('[step1-setup.js] [Step 1-5-1] プロンプト列を検出中...');
+
+    const spreadsheetId = window.globalState.spreadsheetId;
+    const range = 'A1:Z1'; // 最初の行（ヘッダー行）を取得
+    const apiUrl = `${window.globalState.sheetsApiBase}/${spreadsheetId}/values/${range}`;
+
+    const response = await fetch(apiUrl, {
+      headers: window.globalState.apiHeaders
+    });
+
+    if (!response.ok) {
+      console.error('[step1-setup.js] [Step 1-5-1] ヘッダー行取得エラー:', response.status);
+      return false;
+    }
+
+    const data = await response.json();
+    const headerRow = data.values?.[0] || [];
+
+    // プロンプト列を検索
+    const promptColumns = [];
+    headerRow.forEach((cell, index) => {
+      if (cell && cell.toString().includes('プロンプト')) {
+        const columnLetter = indexToColumn(index);
+        promptColumns.push({
+          column: columnLetter,
+          index: index,
+          value: cell
+        });
+      }
+    });
+
+    console.log(`[step1-setup.js] [Step 1-5-1] プロンプト列検出結果: ${promptColumns.length}列`);
+    promptColumns.forEach(col => {
+      console.log(`  - ${col.column}列: "${col.value}"`);
+    });
+
+    if (promptColumns.length === 0) {
+      console.log('[step1-setup.js] [Step 1-5-1] プロンプト列が見つかりません。列追加をスキップします。');
+      return true;
+    }
+
+    // 1-5-2. 必要な列の確認と追加
+    console.log('[step1-setup.js] [Step 1-5-2] 必要な列の確認開始...');
+
+    const requiredColumns = {
+      beforePrompt: ['ログ', 'メニュー'],
+      afterPrompt: ['回答']
+    };
+
+    const columnsToAdd = [];
+
+    for (const promptCol of promptColumns) {
+      // プロンプト列の前に必要な列をチェック
+      console.log(`[step1-setup.js] [Step 1-5-2] ${promptCol.column}列の前後を確認中...`);
+
+      // 前の列をチェック（ログ、メニュー）
+      for (let i = 0; i < requiredColumns.beforePrompt.length; i++) {
+        const requiredCol = requiredColumns.beforePrompt[i];
+        const checkIndex = promptCol.index - (requiredColumns.beforePrompt.length - i);
+
+        if (checkIndex < 0 || !headerRow[checkIndex] || !headerRow[checkIndex].includes(requiredCol)) {
+          columnsToAdd.push({
+            position: promptCol.index,
+            name: requiredCol,
+            type: 'before'
+          });
+          console.log(`  - "${requiredCol}"列の追加が必要（${promptCol.column}列の前）`);
+        }
+      }
+
+      // 後の列をチェック（回答）
+      for (let i = 0; i < requiredColumns.afterPrompt.length; i++) {
+        const requiredCol = requiredColumns.afterPrompt[i];
+        const checkIndex = promptCol.index + i + 1;
+
+        if (checkIndex >= headerRow.length || !headerRow[checkIndex] || !headerRow[checkIndex].includes(requiredCol)) {
+          columnsToAdd.push({
+            position: promptCol.index + i + 1,
+            name: requiredCol,
+            type: 'after'
+          });
+          console.log(`  - "${requiredCol}"列の追加が必要（${promptCol.column}列の後）`);
+        }
+      }
+    }
+
+    if (columnsToAdd.length === 0) {
+      console.log('[step1-setup.js] [Step 1-5-2] ✅ 必要な列は既に存在します');
+      return true;
+    }
+
+    // 1-5-3. 列追加の実行
+    console.log(`[step1-setup.js] [Step 1-5-3] ${columnsToAdd.length}列を追加中...`);
+
+    // 列追加は位置の大きい順（右から）実行する必要がある
+    columnsToAdd.sort((a, b) => b.position - a.position);
+
+    for (const col of columnsToAdd) {
+      console.log(`[step1-setup.js] [Step 1-5-3] ${indexToColumn(col.position)}位置に"${col.name}"列を追加中...`);
+
+      const success = await insertColumn(spreadsheetId, col.position);
+      if (!success) {
+        console.error(`[step1-setup.js] [Step 1-5-3] ❌ 列追加失敗: ${col.name}`);
+        continue;
+      }
+
+      // 1-5-4. 列ヘッダーの設定
+      console.log(`[step1-setup.js] [Step 1-5-4] ヘッダー設定中: ${indexToColumn(col.position)}1 = "${col.name}"`);
+
+      const headerRange = `${indexToColumn(col.position)}1`;
+      const headerUrl = `${window.globalState.sheetsApiBase}/${spreadsheetId}/values/${headerRange}?valueInputOption=USER_ENTERED`;
+
+      const headerResponse = await fetch(headerUrl, {
+        method: 'PUT',
+        headers: window.globalState.apiHeaders,
+        body: JSON.stringify({
+          values: [[col.name]]
+        })
+      });
+
+      if (headerResponse.ok) {
+        console.log(`[step1-setup.js] [Step 1-5-4] ✅ ヘッダー設定成功: ${col.name}`);
+      } else {
+        console.error(`[step1-setup.js] [Step 1-5-4] ⚠️ ヘッダー設定失敗: ${col.name}`);
+      }
+    }
+
+    console.log('[step1-setup.js] [Step 1-5] ✅ 列構造の自動セットアップ完了');
+    return true;
+
+  } catch (error) {
+    console.error('[step1-setup.js] [Step 1-5] ❌ 列構造セットアップエラー:', error);
+    console.error('  - エラー詳細:', error.message);
+    console.error('  - スタック:', error.stack);
+    // エラーが発生しても処理を継続
+    return true;
+  }
+}
+
+// 1-5-5. 列操作ユーティリティ関数
+// 列番号から列文字への変換（0 → A, 1 → B, ...）
+function indexToColumn(index) {
+  let column = '';
+  let num = index;
+
+  while (num >= 0) {
+    column = String.fromCharCode(65 + (num % 26)) + column;
+    num = Math.floor(num / 26) - 1;
+    if (num < 0) break;
+  }
+
+  return column;
+}
+
+// 列文字から列番号への変換（A → 0, B → 1, ...）
+function columnToIndex(column) {
+  let index = 0;
+  for (let i = 0; i < column.length; i++) {
+    index = index * 26 + (column.charCodeAt(i) - 'A'.charCodeAt(0) + 1);
+  }
+  return index - 1;
+}
+
+// 1-5-6. Google Sheets APIで列を挿入
+async function insertColumn(spreadsheetId, columnIndex) {
+  console.log(`[step1-setup.js] [Step 1-5-6] 列挿入API呼び出し: インデックス${columnIndex}`);
+
+  try {
+    // バッチ更新リクエストの作成
+    const request = {
+      requests: [{
+        insertDimension: {
+          range: {
+            dimension: 'COLUMNS',
+            startIndex: columnIndex,
+            endIndex: columnIndex + 1
+          },
+          inheritFromBefore: false
+        }
+      }]
+    };
+
+    // batchUpdate APIを呼び出し
+    const batchUpdateUrl = `${window.globalState.sheetsApiBase}/${spreadsheetId}:batchUpdate`;
+
+    console.log(`[step1-setup.js] [Step 1-5-6] batchUpdate実行中...`);
+    console.log(`  - URL: ${batchUpdateUrl}`);
+    console.log(`  - 挿入位置: ${columnIndex} (${indexToColumn(columnIndex)}列)`);
+
+    const response = await fetch(batchUpdateUrl, {
+      method: 'POST',
+      headers: window.globalState.apiHeaders,
+      body: JSON.stringify(request)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error(`[step1-setup.js] [Step 1-5-6] ❌ 列挿入エラー:`, errorData);
+      console.error(`  - ステータス: ${response.status}`);
+      console.error(`  - エラー: ${errorData.error?.message || response.statusText}`);
+      return false;
+    }
+
+    const result = await response.json();
+    console.log(`[step1-setup.js] [Step 1-5-6] ✅ 列挿入成功`);
+    console.log(`  - レスポンス:`, result.replies?.[0] || 'OK');
+
+    return true;
+
+  } catch (error) {
+    console.error(`[step1-setup.js] [Step 1-5-6] ❌ 列挿入例外エラー:`, error);
+    return false;
+  }
+}
+
+// ========================================
 // メイン実行関数
 // ========================================
 async function executeStep1() {
@@ -570,6 +795,9 @@ async function executeStep1() {
 
     // 1-4: 特殊行検索
     await findSpecialRows();
+
+    // 1-5: 列構造の自動セットアップ
+    await setupColumnStructure();
 
     console.log('＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝');
     console.log('[step1-setup.js] ✅ ステップ1: 初期設定 完了');
@@ -615,7 +843,11 @@ if (typeof module !== 'undefined' && module.exports) {
     checkInternetConnection,
     preventSleep,
     initializeAPI,
-    findSpecialRows
+    findSpecialRows,
+    setupColumnStructure,
+    indexToColumn,
+    columnToIndex,
+    insertColumn
   };
 }
 
@@ -626,6 +858,10 @@ if (typeof window !== 'undefined') {
   window.preventSleep = preventSleep;
   window.initializeAPI = initializeAPI;
   window.findSpecialRows = findSpecialRows;
+  window.setupColumnStructure = setupColumnStructure;
+  window.indexToColumn = indexToColumn;
+  window.columnToIndex = columnToIndex;
+  window.insertColumn = insertColumn;
 }
 
 // 自動実行を無効化（STEP専用ボタンから手動で実行するため）
