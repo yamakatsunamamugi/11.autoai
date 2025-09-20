@@ -51,6 +51,7 @@ class AIAutomationLoader {
             console.log(`[AILoader] [DEBUG] 現在のページURL: ${window.location.href}`);
             console.log(`[AILoader] [DEBUG] chrome.runtime.getURL使用: ${typeof chrome !== 'undefined' && chrome.runtime}`);
             console.log(`[AILoader] [DEBUG] 最終的なスクリプトURL: ${filePath}`);
+            console.log(`[AILoader] [DEBUG] 読み込み前のwindow.ClaudeAutomation: ${typeof window.ClaudeAutomation}`);
 
             // スクリプトタグで動的読み込み
             const script = document.createElement('script');
@@ -60,11 +61,17 @@ class AIAutomationLoader {
             await new Promise((resolve, reject) => {
                 script.onload = () => {
                     console.log(`[AILoader] ✅ ${aiType} 読み込み完了`);
+                    console.log(`[AILoader] [DEBUG] 読み込み後のwindow.ClaudeAutomation: ${typeof window.ClaudeAutomation}`);
+                    if (normalizedType === 'claude') {
+                        console.log(`[AILoader] [DEBUG] ClaudeAutomation.executeTask存在: ${window.ClaudeAutomation && typeof window.ClaudeAutomation.executeTask === 'function'}`);
+                    }
                     this.loadedFiles.add(normalizedType);
                     resolve();
                 };
-                script.onerror = () => {
+                script.onerror = (error) => {
                     console.error(`[AILoader] ❌ ${aiType} 読み込み失敗: ${filePath}`);
+                    console.error(`[AILoader] [DEBUG] エラー詳細:`, error);
+                    console.error(`[AILoader] [DEBUG] script.src: ${script.src}`);
                     reject(new Error(`${aiType} 自動化ファイルの読み込みに失敗しました`));
                 };
                 document.head.appendChild(script);
@@ -81,12 +88,15 @@ class AIAutomationLoader {
      */
     isAIAvailable(aiType) {
         const normalizedType = aiType.toLowerCase();
+        console.log(`[AILoader] [DEBUG] AI利用可能チェック: ${normalizedType}`);
 
         switch (normalizedType) {
             case 'chatgpt':
                 return window.ChatGPTAutomationV2 && typeof window.ChatGPTAutomationV2.executeTask === 'function';
             case 'claude':
-                return window.ClaudeAutomation && typeof window.ClaudeAutomation.executeTask === 'function';
+                const isAvailable = window.ClaudeAutomation && typeof window.ClaudeAutomation.executeTask === 'function';
+                console.log(`[AILoader] [DEBUG] ClaudeAutomation利用可能: ${isAvailable}, 存在: ${!!window.ClaudeAutomation}, executeTask: ${window.ClaudeAutomation && typeof window.ClaudeAutomation.executeTask}`);
+                return isAvailable;
             case 'gemini':
                 return window.GeminiAutomation && typeof window.GeminiAutomation.executeTask === 'function';
             case 'report':
@@ -1901,7 +1911,12 @@ async function executeStep4(taskList) {
                     return await window.ChatGPTAutomationV2.executeTask(task);
 
                 case 'claude':
-                    if (!window.ClaudeAutomation) throw new Error('Claude Automation が利用できません');
+                    console.log(`[DEBUG] Claude実行前チェック: window.ClaudeAutomation=${typeof window.ClaudeAutomation}, executeTask=${window.ClaudeAutomation && typeof window.ClaudeAutomation.executeTask}`);
+                    if (!window.ClaudeAutomation) {
+                        console.error(`[DEBUG] ClaudeAutomationが未定義`);
+                        console.error(`[DEBUG] 現在のwindowオブジェクトのClaud関連キー:`, Object.keys(window).filter(key => key.toLowerCase().includes('claude')));
+                        throw new Error('Claude Automation が利用できません');
+                    }
                     return await window.ClaudeAutomation.executeTask(task);
 
                 case 'gemini':

@@ -22,6 +22,10 @@
     const loadTimeISO = new Date().toISOString();
 
     console.log(`🚀 Claude Automation V2 - スクリプトロード開始: ${new Date().toLocaleString('ja-JP')}`);
+    console.log(`🔍 [DEBUG] スクリプト実行環境:`, {
+        url: window.location.href,
+        既存のClaudeAutomation: typeof window.ClaudeAutomation
+    });
 
     // 初期化順序検証ログ
     console.log('🔍 [Claude初期化DEBUG] スクリプト初期化状態確認:', {
@@ -141,9 +145,9 @@
                     });
                 }
                 console.log(`❌ [エラー保存] ${fileName}`); */
-            } catch (saveError) {
+            /* } catch (saveError) {
                 console.error('[エラー保存失敗]', saveError);
-            }
+            } */
         },
 
         async saveIntermediate() {
@@ -199,10 +203,10 @@
                 // ログをクリア
                 this.logs = [];
                 return filePath;
-            } catch (error) {
-                console.error('[LogFileManager] ログ保存エラー:', error);
-                throw error;
-            }
+            // } catch (error) {
+            //     console.error('[LogFileManager] ログ保存エラー:', error);
+            //     throw error;
+            // }
             */
         },
 
@@ -4095,6 +4099,12 @@
     window.ClaudeLogManager = ClaudeLogManager;
 
     // Claude Automation オブジェクトをグローバルに公開
+    console.log('🔧 [DEBUG] ClaudeAutomation定義前の状態:', {
+        windowClaudeAutomation: typeof window.ClaudeAutomation,
+        executeTask: typeof executeTask,
+        runAutomation: typeof runAutomation
+    });
+
     window.ClaudeAutomation = {
         executeTask: executeTask,
         runAutomation: runAutomation,
