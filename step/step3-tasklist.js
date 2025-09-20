@@ -127,17 +127,7 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
       }
     };
 
-    addLog(`[TaskList] [Step3-1] タスクグループ${taskGroup.groupNumber}のデータ取得開始`);
-
-  // 3-1: スプレッドシートデータの取得
-  addLog('[CRITICAL-DEBUG] taskGroup.columns構造', {
-    columns: taskGroup.columns,
-    prompts: taskGroup.columns?.prompts,
-    promptsType: typeof taskGroup.columns?.prompts,
-    promptsIsArray: Array.isArray(taskGroup.columns?.prompts),
-    answer: taskGroup.columns?.answer,
-    answerType: typeof taskGroup.columns?.answer
-  });
+    console.log(`[TaskList] タスクグループ${taskGroup.groupNumber}の処理開始`);
 
   const promptColumns = taskGroup.columns.prompts || [];
   const answerColumns = taskGroup.columns.answer ?
@@ -146,20 +136,14 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
       [taskGroup.columns.answer]) :
     [];
 
-  addLog('[CRITICAL-DEBUG] 列配列の確認', {
+  // デバッグ情報をコンソールに出力
+  console.log('[TaskList] 列設定:', {
     promptColumns: promptColumns,
-    promptColumnsLength: promptColumns.length,
-    answerColumns: answerColumns,
-    answerColumnsLength: answerColumns.length
+    answerColumns: answerColumns
   });
 
   // プロンプトがある最終行を検索
   let lastPromptRow = dataStartRow;
-  addLog('[CRITICAL-DEBUG] 最終行検索開始', {
-    dataStartRow: dataStartRow,
-    spreadsheetDataLength: spreadsheetData?.length,
-    promptColumns: promptColumns
-  });
 
   for (let row = dataStartRow; row < spreadsheetData.length; row++) {
     let hasPrompt = false;
@@ -180,15 +164,8 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
     }
   }
 
-  // 最終行検索のサマリーログを出力
-  addLog(`[TaskList] 最終行検索完了`, {
-    検索行数: spreadsheetData.length - dataStartRow,
-    対象列: promptColumns.join(', '),
-    最終行: lastPromptRow,
-    範囲: `${dataStartRow}行〜${lastPromptRow}行`
-  });
-
-  addLog(`[TaskList] [Step3-1] 対象範囲: ${dataStartRow}行 〜 ${lastPromptRow}行`);
+  // 最終行検索完了
+  console.log(`[TaskList] 対象範囲: ${dataStartRow}行〜${lastPromptRow}行 (プロンプト列: ${promptColumns.join(', ')})`);
 
   // 3-2: タスク生成の除外処理
   const validTasks = [];
@@ -312,7 +289,6 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
           } else {
             // 通常処理
             answerCell = getCellA1Notation(row, columnToIndex(taskGroup.columns.answer) + 1);
-            addLog(`[TaskList] [Debug] 通常処理 - 回答列: ${taskGroup.columns.answer} → ${answerCell}`);
           }
         } catch (error) {
           console.error('[TaskList] [Error] answerCell生成エラー:', {
@@ -346,12 +322,6 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
           ...parseSpreadsheetUrl(options.spreadsheetUrl || '')
         };
 
-        addLog(`[TaskList] [Debug] タスク生成完了:`, {
-          taskId: task.taskId,
-          行: task.row,
-          AI: task.ai,
-          answerCell: task.answerCell
-        });
 
         validTasks.push(task);
       }
@@ -376,13 +346,11 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
     }
   }
 
-  addLog(`[TaskList] [Step3-2] 有効タスク数: ${validTasks.length}件`);
 
-  // エラーの原因特定のための最終ログ出力
-  if (logBuffer.length > 0) {
-    console.log('\n========== タスクリスト生成ログ (グループ' + taskGroup.groupNumber + ') ==========');
-    logBuffer.forEach(log => console.log(log));
-    console.log('========== ログ終了 ==========\n');
+  // サマリーログ出力
+  const skippedCount = logBuffer.filter(log => log.includes('既に回答あり')).length;
+  if (skippedCount > 0) {
+    console.log(`[TaskList] グループ${taskGroup.groupNumber}: ${skippedCount}行スキップ（既に回答あり）`);
   }
 
   console.log(`[TaskList] [Step3-2] 有効タスク数: ${validTasks.length}件`);

@@ -886,19 +886,40 @@ async function executeStep2TaskGroups() {
     const allTaskGroups = window.globalState.allTaskGroups || [];
     window.globalState.taskGroups = allTaskGroups.filter(group => !group.skip);
 
-    // 各taskGroupにstep5が必要とする追加情報を設定
+    // 統一データ構造の実装
     window.globalState.taskGroups.forEach(group => {
       // dataStartRowを設定（step1で取得した情報を使用）
       group.dataStartRow = window.globalState.specialRows?.dataStartRow || 9;
 
-      // step5が期待するcolumns形式を設定
+      // 統一columns形式を設定（重複を排除）
       if (!group.columns) {
         group.columns = {
+          log: group.logColumn || null,
           prompts: group.promptColumns || [],
           answer: group.answerColumn || (group.answerColumns && group.answerColumns.length > 0 ? group.answerColumns[0].column : null),
-          log: group.logColumn || null
+          work: group.workColumn || null
+        };
+      } else {
+        // 既存のcolumnsがある場合も正規化
+        group.columns = {
+          log: group.columns.log || group.logColumn || null,
+          prompts: group.columns.prompts || group.promptColumns || [],
+          answer: group.columns.answer || group.answerColumn || null,
+          work: group.columns.work || group.workColumn || null
         };
       }
+
+      // groupTypeが未設定の場合、typeから設定
+      if (!group.groupType) {
+        group.groupType = group.type || "通常処理";
+      }
+
+      // 重複フィールドを削除（後方互換性のため段階的に削除）
+      delete group.logColumn;
+      delete group.promptColumns;
+      delete group.answerColumn;
+      delete group.workColumn;
+      delete group.type; // groupTypeに統一
 
       // 必要に応じて他の情報も補完
       if (!group.spreadsheetId) {
