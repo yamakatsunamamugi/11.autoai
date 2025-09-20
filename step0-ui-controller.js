@@ -887,6 +887,15 @@ if (stepOnlyBtn) {
                   (key) => key.includes("Step") || key.includes("execute"),
                 )
                 .slice(0, 10),
+              // Step4特別チェック
+              step4Details: {
+                windowExecuteStep4: typeof window.executeStep4,
+                windowExecuteStep4Name: window.executeStep4?.name,
+                step4TasklistLoaded: !!window.Step3TaskList,
+                scriptLoadTracker:
+                  window.scriptLoadTracker?.getLoadedScripts?.() || "未定義",
+                step4FileError: window.step4FileError || "なし",
+              },
             });
             console.warn(`⚠️ ${step.name}関数が見つかりません`);
           }

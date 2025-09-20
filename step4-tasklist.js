@@ -1,13 +1,33 @@
 /**
- * @fileoverview ステップ3: タスクリスト生成
+ * @fileoverview ステップ4: タスクリスト実行統合機能
  *
  * このファイルは、スプレッドシートからタスクを読み取り、
- * 実行可能なタスクリストを生成する機能を提供します。
+ * 実行可能なタスクリストを生成し、AI処理を実行する機能を提供します。
  *
  * 【ステップ構成】
- * Step 3-1: スプレッドシートデータ取得（作業開始行～プロンプトがある最終行）
- * Step 3-2: タスク除外処理（回答済みスキップ、拡張可能な構造）
- * Step 3-3: 3タスクずつのバッチ作成、詳細情報構築
+ * Step 4-1: ウィンドウ管理とサービス初期化
+ * Step 4-2: タスクデータの動的取得と展開
+ * Step 4-3: AI処理の並列実行とエラーハンドリング
+
+// ファイル読み込み開始ログ
+console.log("🚀 [step4-tasklist.js] ファイル読み込み開始", {
+  timestamp: new Date().toISOString(),
+  windowAvailable: typeof window !== 'undefined',
+  chromeAvailable: typeof chrome !== 'undefined'
+});
+
+// グローバルエラーハンドリング
+if (typeof window !== 'undefined') {
+  window.step4FileError = null;
+
+  // 未処理エラーの捕捉
+  window.addEventListener('error', function(event) {
+    if (event.filename && event.filename.includes('step4-tasklist.js')) {
+      console.error('❌ [step4-tasklist.js] 未処理エラー:', event.error);
+      window.step4FileError = event.error?.message || '未知のエラー';
+    }
+  });
+}
  *
  * 【エラーログ追加箇所】
  * - データ取得エラー
@@ -1959,20 +1979,49 @@ class WindowController {
     };
 
     try {
-      // Content scriptにチェック要求を送信
-      const response = await chrome.tabs.sendMessage(tabId, {
-        action: "CHECK_UI_ELEMENTS",
-        aiType: aiType,
+      // Content scriptにチェック要求を送信（エラーハンドリング強化版）
+      const response = await new Promise((resolve, reject) => {
+        // タブの存在確認
+        chrome.tabs.get(tabId, (tab) => {
+          if (chrome.runtime.lastError) {
+            reject(
+              new Error(`タブ取得エラー: ${chrome.runtime.lastError.message}`),
+            );
+            return;
+          }
+
+          if (!tab || tab.status !== "complete") {
+            reject(
+              new Error(
+                `タブが無効または読み込み未完了: status=${tab?.status}`,
+              ),
+            );
+            return;
+          }
+
+          // メッセージ送信
+          chrome.tabs.sendMessage(
+            tabId,
+            {
+              action: "CHECK_UI_ELEMENTS",
+              aiType: aiType,
+            },
+            (response) => {
+              if (chrome.runtime.lastError) {
+                reject(
+                  new Error(
+                    `Content Script通信エラー: ${chrome.runtime.lastError.message}`,
+                  ),
+                );
+              } else {
+                resolve(response);
+              }
+            },
+          );
+        });
       });
 
-      // Chrome runtime.lastErrorのチェック
-      if (chrome.runtime.lastError) {
-        console.warn(
-          `[step5-execute.js] タブ通信エラー (tabId: ${tabId}):`,
-          chrome.runtime.lastError.message,
-        );
-        return checks; // デフォルト値で復帰
-      }
+      // 追加のエラーチェックは不要（Promiseで処理済み）
 
       if (response && response.success) {
         checks.textInput = response.checks.textInput || false;
@@ -2499,9 +2548,13 @@ async function executeStep4(taskList) {
             id: windowToUse?.id,
           });
 
-          batchWindows.set(aiType, windowToUse);
+          // タスクごとに個別のキーでウィンドウを管理（タブID重複回避）
+          const taskId = task.id || task.taskId || `task_${Date.now()}`;
+          const taskWindowKey = `${aiType}_${taskId}`;
+          batchWindows.set(taskWindowKey, windowToUse);
           ExecuteLogger.info(
-            `♻️ [step4-execute.js] ${aiType}ウィンドウを再利用`,
+            `♻️ [step4-execute.js] ${aiType}ウィンドウを再利用 (TaskKey: ${taskWindowKey})`,
+            { tabId: windowToUse?.tabId, windowId: windowToUse?.windowId },
           );
         } else {
           // 新しいウィンドウが必要な場合のみ開く（StreamProcessorV2統合版）
@@ -2510,10 +2563,21 @@ async function executeStep4(taskList) {
           );
 
           try {
-            const windowInfo = await createWindowForBatch(task, 0); // 基本位置に開く
-            batchWindows.set(aiType, windowInfo);
+            // タスクごとに異なるpositionでウィンドウを作成（並列処理対応）
+            const taskIndex = Array.from(batch).indexOf(task);
+            const position = taskIndex % 4; // 0,1,2,3で分散
+            const taskId = task.id || task.taskId || `task_${Date.now()}`;
+            const taskWindowKey = `${aiType}_${taskId}`;
+
+            const windowInfo = await createWindowForBatch(task, position);
+            batchWindows.set(taskWindowKey, windowInfo);
             ExecuteLogger.info(
-              `✅ [step4-execute.js] ${aiType}ウィンドウ作成成功`,
+              `✅ [step4-execute.js] ${aiType}ウィンドウ作成成功 (Position: ${position}, TaskKey: ${taskWindowKey})`,
+              {
+                tabId: windowInfo.tabId,
+                windowId: windowInfo.windowId,
+                position: position,
+              },
             );
           } catch (error) {
             ExecuteLogger.error(
@@ -2537,10 +2601,22 @@ async function executeStep4(taskList) {
       // シンプルな有効性確認（StreamProcessorV2統合版）
       const validBatchTasks = batch.filter((task, index) => {
         const taskId = task.id || task.taskId || `${task.column}${task.row}`;
-        const windowInfo = batchWindows.get(task.aiType);
+
+        // タスク固有のウィンドウキーでウィンドウ情報を取得
+        const taskWindowKey = `${task.aiType}_${taskId}`;
+        let windowInfo = batchWindows.get(taskWindowKey);
+
+        // フォールバック: 従来のキーでも確認
+        if (!windowInfo) {
+          windowInfo = batchWindows.get(task.aiType);
+        }
 
         ExecuteLogger.info(
-          `🔍 [step4-execute.js] タスク${taskId}の有効性確認 (AI: ${task.aiType})`,
+          `🔍 [step4-execute.js] タスク${taskId}の有効性確認 (AI: ${task.aiType}, WindowKey: ${taskWindowKey})`,
+          {
+            hasTaskWindowKey: batchWindows.has(taskWindowKey),
+            hasAiTypeKey: batchWindows.has(task.aiType),
+          },
         );
 
         // ウィンドウ情報の存在確認
@@ -2704,21 +2780,27 @@ async function executeStep4(taskList) {
           }
         }
 
-        // 同一バッチ内でのタブID重複チェック
+        // Position-based並列処理のためのタブID重複チェック（改善版）
         const duplicateIndex = batch.findIndex(
           (otherTask, otherIndex) =>
             otherIndex < index && otherTask.tabId === task.tabId,
         );
 
         if (duplicateIndex !== -1) {
-          ExecuteLogger.warn(
-            `⚠️ [step4-execute.js] タスク${task.id || task.taskId}：タブID重複検出 (tabId: ${task.tabId})`,
+          ExecuteLogger.info(
+            `🔄 [step4-execute.js] タスク${task.id || task.taskId}：同一タブでの並列処理を検出 (tabId: ${task.tabId})`,
             {
-              duplicateWith:
+              parallelWith:
                 batch[duplicateIndex].id || batch[duplicateIndex].taskId,
+              note: "Position-based windowsで並列処理を実行します",
+              taskIndex: index,
+              duplicateIndex: duplicateIndex,
             },
           );
-          return false;
+          // Position-basedでは異なるウィンドウなので処理を継続
+          ExecuteLogger.info(
+            `✅ [step4-execute.js] タスク${task.id || task.taskId}：並列処理を許可（異なるposition想定）`,
+          );
         }
 
         return true;
@@ -3235,19 +3317,41 @@ async function executeStep4(taskList) {
 }
 
 // ステップ4実行関数をグローバルに公開
-// window.executeStep4エクスポート実行
-ExecuteLogger.info("エクスポート前のexecuteStep4関数状態:", {
-  executeStep4Type: typeof executeStep4,
-  executeStep4Exists: typeof executeStep4 === "function",
-  executeStep4Name: executeStep4?.name,
-});
-window.executeStep4 = executeStep4;
-ExecuteLogger.info("✅ [DEBUG] window.executeStep4エクスポート完了:", {
-  windowExecuteStep4Type: typeof window.executeStep4,
-  windowExecuteStep4Exists: typeof window.executeStep4 === "function",
-  windowExecuteStep4Name: window.executeStep4?.name,
-  globalAccess: typeof globalThis?.executeStep4 === "function",
-});
+try {
+  ExecuteLogger.info("🔧 [DEBUG] executeStep4関数グローバル公開開始:", {
+    executeStep4Type: typeof executeStep4,
+    executeStep4Exists: typeof executeStep4 === "function",
+    executeStep4Name: executeStep4?.name,
+    windowAvailable: typeof window !== "undefined",
+  });
+
+  if (typeof window !== "undefined" && typeof executeStep4 === "function") {
+    window.executeStep4 = executeStep4;
+
+    // 即座に検証
+    ExecuteLogger.info(
+      "✅ [DEBUG] window.executeStep4エクスポート完了・検証:",
+      {
+        windowExecuteStep4Type: typeof window.executeStep4,
+        windowExecuteStep4Exists: typeof window.executeStep4 === "function",
+        windowExecuteStep4Name: window.executeStep4?.name,
+        canCallFunction: !!(
+          window.executeStep4 && typeof window.executeStep4 === "function"
+        ),
+        globalAccess: typeof globalThis?.executeStep4 === "function",
+      },
+    );
+  } else {
+    throw new Error(
+      `関数公開失敗: executeStep4=${typeof executeStep4}, window=${typeof window}`,
+    );
+  }
+} catch (error) {
+  console.error("❌ [step4-tasklist.js] executeStep4関数公開エラー:", error);
+  if (typeof window !== "undefined") {
+    window.step4FileError = error.message;
+  }
+}
 
 ExecuteLogger.debug("🔍 [DEBUG] step4-execute.js 読み込み開始");
 
@@ -3294,8 +3398,26 @@ if (typeof window !== "undefined") {
 // ========================================
 // ファイル読み込み完了通知
 // ========================================
-console.log("✅ [step4-tasklist.js] ファイル読み込み完了", {
-  executeStep4Defined: typeof executeStep4,
-  windowExecuteStep4: typeof window.executeStep4,
-  timestamp: new Date().toISOString(),
-});
+try {
+  console.log("✅ [step4-tasklist.js] ファイル読み込み完了", {
+    executeStep4Defined: typeof executeStep4,
+    windowExecuteStep4: typeof window.executeStep4,
+    timestamp: new Date().toISOString(),
+    windowObject: !!window,
+    chromeApis: {
+      windows: !!chrome?.windows,
+      tabs: !!chrome?.tabs,
+      scripting: !!chrome?.scripting,
+    },
+  });
+
+  // グローバルエラーフラグをリセット
+  if (typeof window !== "undefined") {
+    window.step4FileError = null;
+  }
+} catch (error) {
+  console.error("❌ [step4-tasklist.js] ファイル読み込み完了時エラー:", error);
+  if (typeof window !== "undefined") {
+    window.step4FileError = error.message;
+  }
+}
