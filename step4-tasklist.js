@@ -2117,11 +2117,53 @@ async function executeStep4(taskList) {
       for (const task of batch) {
         const aiType = task.aiType;
 
-        // 既存ウィンドウがあるかチェック
-        if (window.windowController.openedWindows.has(aiType)) {
+        // 🔍 DEBUG: 既存ウィンドウ確認の詳細ログ
+        ExecuteLogger.info(`🔍 [DEBUG] ${aiType}ウィンドウの存在確認開始`, {
+          aiType: aiType,
+          normalizedAiType: window.windowController.normalizeAiType(aiType),
+          openedWindowsSize: window.windowController.openedWindows.size,
+          openedWindowsKeys: Array.from(
+            window.windowController.openedWindows.keys(),
+          ),
+          hasAiType: window.windowController.openedWindows.has(aiType),
+          hasNormalizedAiType: window.windowController.openedWindows.has(
+            window.windowController.normalizeAiType(aiType),
+          ),
+        });
+
+        const normalizedAiType =
+          window.windowController.normalizeAiType(aiType);
+
+        // 既存ウィンドウがあるかチェック（正規化されたキーで確認）
+        if (window.windowController.openedWindows.has(normalizedAiType)) {
           const existingWindow =
-            window.windowController.openedWindows.get(aiType);
-          batchWindows.set(aiType, existingWindow);
+            window.windowController.openedWindows.get(normalizedAiType);
+
+          ExecuteLogger.info(`🔍 [DEBUG] 既存ウィンドウ発見 - 構造確認`, {
+            aiType: aiType,
+            normalizedAiType: normalizedAiType,
+            existingWindowType: typeof existingWindow,
+            isArray: Array.isArray(existingWindow),
+            windowData: existingWindow,
+            keys: existingWindow ? Object.keys(existingWindow) : null,
+          });
+
+          // 配列の場合は最初の要素を取得
+          const windowToUse = Array.isArray(existingWindow)
+            ? existingWindow[0]
+            : existingWindow;
+
+          ExecuteLogger.info(`🔍 [DEBUG] 使用予定のウィンドウ詳細`, {
+            windowToUse: windowToUse,
+            hasTabId: !!windowToUse?.tabId,
+            hasWindowId: !!windowToUse?.windowId,
+            hasId: !!windowToUse?.id,
+            tabId: windowToUse?.tabId,
+            windowId: windowToUse?.windowId,
+            id: windowToUse?.id,
+          });
+
+          batchWindows.set(aiType, windowToUse);
           ExecuteLogger.info(
             `♻️ [step4-execute.js] ${aiType}ウィンドウを再利用`,
           );
@@ -2159,15 +2201,51 @@ async function executeStep4(taskList) {
       // タブID重複チェックと有効性確認
       const validBatchTasks = batch.filter((task, index) => {
         // タブID/ウィンドウIDのフォールバック処理
+        ExecuteLogger.info(
+          `🔍 [DEBUG] タスク${task.id || task.taskId}のtabId/windowIdチェック開始`,
+          {
+            taskId: task.id || task.taskId,
+            currentTabId: task.tabId,
+            currentWindowId: task.windowId,
+            hasTabId: !!task.tabId,
+            hasWindowId: !!task.windowId,
+            aiType: task.aiType,
+          },
+        );
+
         if (!task.tabId || !task.windowId) {
           // フォールバック1: batchWindowsから取得
           const batchWindowInfo = batchWindows.get(task.aiType);
+
+          ExecuteLogger.info(
+            `🔍 [DEBUG] フォールバック1: batchWindowsから取得試行`,
+            {
+              taskId: task.id || task.taskId,
+              aiType: task.aiType,
+              batchWindowInfo: batchWindowInfo,
+              batchWindowInfoType: typeof batchWindowInfo,
+              batchWindowInfoKeys: batchWindowInfo
+                ? Object.keys(batchWindowInfo)
+                : null,
+              hasTabId: !!batchWindowInfo?.tabId,
+              hasWindowId: !!batchWindowInfo?.windowId,
+              hasId: !!batchWindowInfo?.id,
+              tabIdValue: batchWindowInfo?.tabId,
+              windowIdValue: batchWindowInfo?.windowId,
+              idValue: batchWindowInfo?.id,
+            },
+          );
+
           if (
             batchWindowInfo &&
-            (batchWindowInfo.tabId || batchWindowInfo.windowId)
+            (batchWindowInfo.tabId ||
+              batchWindowInfo.windowId ||
+              batchWindowInfo.id)
           ) {
-            task.tabId = batchWindowInfo.tabId || task.tabId;
-            task.windowId = batchWindowInfo.windowId || task.windowId;
+            task.tabId =
+              batchWindowInfo.tabId || batchWindowInfo.id || task.tabId;
+            task.windowId =
+              batchWindowInfo.windowId || batchWindowInfo.id || task.windowId;
             ExecuteLogger.info(
               `🔄 [step4-execute.js] タスク${task.id || task.taskId}：batchWindowsからtabId/windowIdを復元`,
               {
@@ -2181,15 +2259,53 @@ async function executeStep4(taskList) {
             const normalizedAiType = task.aiType?.toLowerCase()?.trim();
             const controllerWindowInfo =
               window.windowController?.openedWindows?.get(normalizedAiType);
+
+            ExecuteLogger.info(
+              `🔍 [DEBUG] フォールバック2: windowControllerから取得試行`,
+              {
+                taskId: task.id || task.taskId,
+                aiType: task.aiType,
+                normalizedAiType: normalizedAiType,
+                controllerWindowInfo: controllerWindowInfo,
+                controllerWindowInfoType: typeof controllerWindowInfo,
+                isArray: Array.isArray(controllerWindowInfo),
+                controllerWindowInfoKeys: controllerWindowInfo
+                  ? Object.keys(controllerWindowInfo)
+                  : null,
+                hasTabId: !!controllerWindowInfo?.tabId,
+                hasWindowId: !!controllerWindowInfo?.windowId,
+                hasId: !!controllerWindowInfo?.id,
+                tabIdValue: controllerWindowInfo?.tabId,
+                windowIdValue: controllerWindowInfo?.windowId,
+                idValue: controllerWindowInfo?.id,
+                arrayFirstElement: Array.isArray(controllerWindowInfo)
+                  ? controllerWindowInfo[0]
+                  : null,
+              },
+            );
+
             if (controllerWindowInfo) {
-              task.tabId =
-                controllerWindowInfo.tabId ||
-                controllerWindowInfo.id ||
-                task.tabId;
+              // 配列の場合は最初の要素を使用
+              const windowToUse = Array.isArray(controllerWindowInfo)
+                ? controllerWindowInfo[0]
+                : controllerWindowInfo;
+
+              ExecuteLogger.info(
+                `🔍 [DEBUG] フォールバック2: 使用するwindowInfo詳細`,
+                {
+                  windowToUse: windowToUse,
+                  hasTabId: !!windowToUse?.tabId,
+                  hasWindowId: !!windowToUse?.windowId,
+                  hasId: !!windowToUse?.id,
+                  tabIdValue: windowToUse?.tabId,
+                  windowIdValue: windowToUse?.windowId,
+                  idValue: windowToUse?.id,
+                },
+              );
+
+              task.tabId = windowToUse?.tabId || windowToUse?.id || task.tabId;
               task.windowId =
-                controllerWindowInfo.windowId ||
-                controllerWindowInfo.id ||
-                task.windowId;
+                windowToUse?.windowId || windowToUse?.id || task.windowId;
               ExecuteLogger.info(
                 `🔄 [step4-execute.js] タスク${task.id || task.taskId}：windowControllerからtabId/windowIdを復元`,
                 {
