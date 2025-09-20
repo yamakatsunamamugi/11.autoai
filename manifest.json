@@ -48,23 +48,6 @@
     "48": "icon.png",
     "128": "icon.png"
   },
-  "content_scripts": [
-    {
-      "matches": [
-        "https://chatgpt.com/*",
-        "https://chat.openai.com/*",
-        "https://claude.ai/*",
-        "https://gemini.google.com/*",
-        "https://genspark.com/*",
-        "https://www.genspark.ai/*"
-      ],
-      "js": [
-        "src/content/content-script-consolidated.js"
-      ],
-      "run_at": "document_idle",
-      "all_frames": false
-    }
-  ],
   "web_accessible_resources": [
     {
       "resources": [
