@@ -197,12 +197,42 @@ class WindowController {
     async initializeWindowService() {
         console.log('🪟 [WindowController] Step 4-1-1: WindowService初期化開始');
 
+        // 🔍 [DEBUG] WindowService存在確認
+        console.log('🔍 [DEBUG] WindowService存在確認:', {
+            typeofWindowService: typeof WindowService,
+            windowWindowService: typeof window.WindowService,
+            globalWindowService: typeof globalThis.WindowService
+        });
+
         // WindowServiceがグローバルに存在するかチェック
         if (typeof WindowService === 'undefined') {
-            throw new Error('WindowServiceが利用できません');
+            console.log('⚠️ [DEBUG] WindowServiceが未定義 - 動的インポートを試行');
+
+            try {
+                // 動的インポートを試行
+                const module = await import('../src/services/window-service.js');
+
+                if (module.WindowService) {
+                    window.WindowService = module.WindowService;
+                    this.windowService = module.WindowService;
+                    console.log('✅ [DEBUG] WindowService動的インポート成功');
+                } else if (module.default) {
+                    // デフォルトエクスポートの場合
+                    window.WindowService = module.default;
+                    this.windowService = module.default;
+                    console.log('✅ [DEBUG] WindowService動的インポート成功（デフォルトエクスポート）');
+                } else {
+                    throw new Error('WindowServiceがモジュールにエクスポートされていません');
+                }
+            } catch (importError) {
+                console.error('❌ [DEBUG] WindowService動的インポート失敗:', importError);
+                throw new Error(`WindowServiceが利用できません: ${importError.message}`);
+            }
+        } else {
+            this.windowService = WindowService;
+            console.log('✅ [DEBUG] WindowService既存利用');
         }
 
-        this.windowService = WindowService;
         console.log('✅ [WindowController] Step 4-1-1: WindowService初期化完了');
     }
 
@@ -227,12 +257,15 @@ class WindowController {
                 // AI種別に応じたURLを取得
                 const url = this.getAIUrl(layout.aiType);
 
-                // WindowServiceを使用してウィンドウ作成
-                const windowInfo = await this.windowService.createWindow({
-                    url: url,
-                    type: 'popup',
-                    position: layout.position // 0=左上, 1=右上, 2=左下
-                });
+                // WindowServiceを使用してウィンドウ作成（正しいメソッドを使用）
+                const windowInfo = await this.windowService.createWindowWithPosition(
+                    url,
+                    layout.position, // 0=左上, 1=右上, 2=左下
+                    {
+                        type: 'popup',
+                        aiType: layout.aiType
+                    }
+                );
 
                 if (windowInfo && windowInfo.id) {
                     this.openedWindows.set(layout.aiType, {
@@ -562,9 +595,16 @@ class SpreadsheetDataManager {
         const enrichedTask = { ...task };
 
         try {
-            // セル位置情報の確認
-            const cellRef = task.cellRef || `${task.column}${task.row}`;
-            if (!cellRef) {
+            // 特殊タスク（レポート化、Genspark）の場合は作業セルのみ処理
+            if (task.groupType === 'report' || task.groupType === 'genspark') {
+                enrichedTask.workCellRef = task.workCell;
+                console.log(`📊 [Step 4-2-4] 特殊タスク - 作業セル: ${task.workCell}`);
+                return enrichedTask;
+            }
+
+            // セル位置情報の確認（通常タスク用）
+            const cellRef = task.workCell || task.cellRef || `${task.column}${task.row}`;
+            if (!cellRef || cellRef.includes('undefined')) {
                 console.warn(`⚠️ [Step 4-2-4] タスクにセル位置情報がありません:`, task);
                 return enrichedTask;
             }
@@ -618,10 +658,19 @@ class SpreadsheetDataManager {
      */
     async getPromptData(cellRef) {
         try {
+            // 🔧 [FIX] 正しいメソッド名に修正: readRange → getCellValues
+            console.log('🔍 [DEBUG] getPromptData実行:', {
+                spreadsheetId: this.spreadsheetData.spreadsheetId,
+                sheetName: this.spreadsheetData.sheetName,
+                cellRef: cellRef,
+                fullRange: `${this.spreadsheetData.sheetName}!${cellRef}`
+            });
+
             // セルからプロンプトテキストを取得
-            const response = await this.sheetsClient.readRange(
+            const response = await this.sheetsClient.getCellValues(
                 this.spreadsheetData.spreadsheetId,
-                `${this.spreadsheetData.sheetName}!${cellRef}`
+                this.spreadsheetData.sheetName,
+                cellRef
             );
 
             if (response?.values?.[0]?.[0]) {
@@ -891,8 +940,15 @@ URL: ${logData.url}
                 sheetName: `シート${window.globalState.gid || '0'}`
             };
 
+            // 🔧 [FIX] 正しいメソッド名に修正: writeToRange → updateCell
+            console.log('🔍 [DEBUG] ログ書き込み実行:', {
+                spreadsheetId: spreadsheetData.spreadsheetId,
+                range: `${spreadsheetData.sheetName}!${logCellRef}`,
+                logTextLength: logText.length
+            });
+
             // スプレッドシートに書き込み
-            await this.sheetsClient.writeToRange(
+            await this.sheetsClient.updateCell(
                 spreadsheetData.spreadsheetId,
                 `${spreadsheetData.sheetName}!${logCellRef}`,
                 logText
@@ -942,8 +998,15 @@ URL: ${logData.url}
                 sheetName: `シート${window.globalState.gid || '0'}`
             };
 
+            // 🔧 [FIX] 正しいメソッド名に修正: writeToRange → updateCell
+            console.log('🔍 [DEBUG] 回答書き込み実行:', {
+                spreadsheetId: spreadsheetData.spreadsheetId,
+                range: `${spreadsheetData.sheetName}!${answerCellRef}`,
+                responseLength: logData.response.length
+            });
+
             // 回答をスプレッドシートに書き込み
-            await this.sheetsClient.writeToRange(
+            await this.sheetsClient.updateCell(
                 spreadsheetData.spreadsheetId,
                 `${spreadsheetData.sheetName}!${answerCellRef}`,
                 logData.response
@@ -1522,8 +1585,15 @@ class SpecialTaskProcessor {
             // 作業データをフォーマット
             const formattedData = this.formatWorkData(workData, workType);
 
+            // 🔧 [FIX] 正しいメソッド名に修正: writeToRange → updateCell
+            console.log('🔍 [DEBUG] 作業セル書き込み実行:', {
+                spreadsheetId: spreadsheetData.spreadsheetId,
+                range: `${spreadsheetData.sheetName}!${workCellRef}`,
+                dataLength: formattedData.length
+            });
+
             // スプレッドシートに書き込み
-            await sheetsClient.writeToRange(
+            await sheetsClient.updateCell(
                 spreadsheetData.spreadsheetId,
                 `${spreadsheetData.sheetName}!${workCellRef}`,
                 formattedData
