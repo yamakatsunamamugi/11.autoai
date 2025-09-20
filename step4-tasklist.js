@@ -2161,34 +2161,8 @@ async function createWindowForBatch(task, position = 0) {
     );
 
     return windowInfo;
-    } else {
-      // フォールバック: 従来のwindowController方式
-      ExecuteLogger.info(
-        `⚠️ [createWindowForBatch] StreamProcessorV2未利用、従来方式使用: ${task.aiType}`,
-      );
-
-      const windowResults = await window.windowController.openWindows([
-        {
-          aiType: task.aiType,
-          position: position,
-        },
-      ]);
-
-      const windowResult = windowResults[0];
-      if (windowResult && windowResult.success) {
-        ExecuteLogger.info(
-          `✅ [createWindowForBatch] ${task.aiType}ウィンドウ作成完了（従来方式）`,
-        );
-        return windowResult;
-      } else {
-        throw new Error(`ウィンドウ作成失敗: ${task.aiType}`);
-      }
-    }
   } catch (error) {
-    ExecuteLogger.error(
-      `❌ [createWindowForBatch] ${task.aiType}ウィンドウ作成エラー:`,
-      error,
-    );
+    ExecuteLogger.error(`❌ [createWindowForBatch] エラー:`, error);
     throw error;
   }
 }

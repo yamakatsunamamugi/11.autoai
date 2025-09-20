@@ -5185,7 +5185,71 @@
       },
     );
 
-    // Claude専用のメッセージのみ処理
+    // 新しい executeTask アクション（step4-tasklist.js からの呼び出し）
+    if (
+      request.action === "executeTask" &&
+      request.automationName === "ClaudeAutomation"
+    ) {
+      ClaudeLogger.info(
+        `🎯 [ClaudeAutomation] executeTask処理開始 [ID:${requestId}]:`,
+        {
+          タスクID: request.task?.id,
+          aiType: request.task?.aiType,
+          プロンプト長: request.task?.prompt?.length || 0,
+          モデル: request.task?.model,
+          機能: request.task?.function,
+          処理開始時刻: new Date().toISOString(),
+        },
+      );
+
+      (async () => {
+        try {
+          if (!window.ClaudeAutomation) {
+            const error = "ClaudeAutomation が利用できません";
+            ClaudeLogger.error(`❌ [ClaudeAutomation] ${error}`);
+            sendResponse({ success: false, error: error });
+            return;
+          }
+
+          ClaudeLogger.info(`🚀 [ClaudeAutomation] タスク実行開始`);
+
+          // 🔍 実行環境の詳細確認
+          ClaudeLogger.info(`🌍 [Environment Check] 実行環境詳細:`, {
+            currentURL: window.location.href,
+            domain: window.location.hostname,
+            protocol: window.location.protocol,
+            pathname: window.location.pathname,
+            isClaudeSite: window.location.hostname.includes("claude.ai"),
+            pageTitle: document.title,
+            domainCheck:
+              window.location.hostname === "claude.ai" ||
+              window.location.hostname.endsWith(".claude.ai"),
+            userAgent: navigator.userAgent.substring(0, 100),
+          });
+
+          const result = await window.ClaudeAutomation.executeTask(
+            request.task,
+          );
+
+          ClaudeLogger.info(`✅ [ClaudeAutomation] タスク実行完了:`, {
+            success: result.success,
+            text: result.text ? `${result.text.substring(0, 100)}...` : null,
+          });
+
+          sendResponse({ success: true, ...result });
+        } catch (error) {
+          ClaudeLogger.error(`❌ [ClaudeAutomation] タスク実行エラー:`, error);
+          sendResponse({
+            success: false,
+            error: error.message || String(error),
+          });
+        }
+      })();
+
+      return true; // 非同期レスポンスを示す
+    }
+
+    // 既存の CLAUDE_EXECUTE_TASK タイプも維持
     if (request.type === "CLAUDE_EXECUTE_TASK") {
       ClaudeLogger.info(
         `🎯 [ClaudeAutomation] CLAUDE_EXECUTE_TASK処理開始 [ID:${requestId}]:`,
