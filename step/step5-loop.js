@@ -360,8 +360,13 @@ async function processIncompleteTasks(taskGroup) {
       // エラーでも処理を継続
     }
 
-    // 処理後の待機
-    await sleep(2000);
+    // 処理後の待機（APIレート制限対策: iteration回数に応じて待機時間を増やす）
+    const waitTime = Math.min(2000 + (iteration * 1000), 10000); // 2秒〜10秒で段階的に増加
+    console.log(`[step5-loop.js] [Step 5-2-2] APIレート制限対策: ${waitTime}ms待機中...`, {
+      繰り返し回数: iteration,
+      待機時間: `${waitTime / 1000}秒`
+    });
+    await sleep(waitTime);
 
     // 完了確認（Step 5-1を再実行）
     console.log('[step5-loop.js] [Step 5-2-3] 完了確認のためStep 5-1を再実行');
@@ -459,7 +464,7 @@ async function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function readSpreadsheet(range) {
+async function readSpreadsheet(range, retryCount = 0) {
   console.log(`[Helper] スプレッドシート読み込み: ${range}`);
 
   try {
@@ -488,6 +493,21 @@ async function readSpreadsheet(range) {
     });
 
     if (!response.ok) {
+      // 429エラー（レート制限）の場合、リトライ処理
+      if (response.status === 429 && retryCount < 3) {
+        const retryAfter = response.headers.get('Retry-After');
+        const waitTime = retryAfter ? parseInt(retryAfter) * 1000 : Math.min(5000 * Math.pow(2, retryCount), 60000);
+
+        console.warn(`[Helper] APIレート制限エラー (429) 検出。${waitTime}ms後にリトライ...`, {
+          リトライ回数: retryCount + 1,
+          待機時間: `${waitTime / 1000}秒`,
+          範囲: range
+        });
+
+        await sleep(waitTime);
+        return readSpreadsheet(range, retryCount + 1);
+      }
+
       throw new Error(`API応答エラー: ${response.status} ${response.statusText}`);
     }
 
@@ -821,8 +841,30 @@ async function executeTasks(tasks, taskGroup) {
       if (!task.prompt) {
         throw new Error(`タスク${task.id}: promptが未定義`);
       }
+      // 特殊タスク（report, genspark, single）の場合はanswerCellが不要なので警告を出さない
+      const isSpecialTask = task.groupType === 'report' ||
+                           task.groupType === 'genspark' ||
+                           task.ai === 'single' ||
+                           task.aiType === 'single' ||
+                           task.ai === 'Report' ||
+                           task.ai === 'Genspark';
+
+      // デバッグログ：タスクの詳細情報を出力
       if (!task.spreadsheetData.answerCell) {
-        console.warn(`タスク${task.id}: answerCellが未定義`);
+        console.log(`[DEBUG] タスク${task.id} answerCell検証:`, {
+          answerCell: task.spreadsheetData.answerCell,
+          workCell: task.spreadsheetData.workCell,
+          groupType: task.groupType,
+          ai: task.ai,
+          aiType: task.aiType,
+          isSpecialTask: isSpecialTask
+        });
+
+        if (!isSpecialTask) {
+          console.warn(`タスク${task.id}: answerCellが未定義（通常タスク）`);
+        } else {
+          console.log(`タスク${task.id}: answerCell不要（特殊タスク）`);
+        }
       }
     }
 

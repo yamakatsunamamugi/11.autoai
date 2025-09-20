@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>answerCell警告テスト</title>
+</head>
+<body>
+    <h1>answerCell警告テスト</h1>
+    <div id="results"></div>
+
+    <script>
+        // テスト用のタスクデータ
+        const testTasks = [
+            {
+                id: 'task_1',
+                prompt: 'テストプロンプト1',
+                groupType: '通常処理',
+                ai: 'Claude',
+                aiType: 'Claude',
+                spreadsheetData: {
+                    answerCell: 'C2',
+                    logCell: 'A2'
+                }
+            },
+            {
+                id: 'task_2_special',
+                prompt: 'レポート化タスク',
+                groupType: 'report',
+                ai: 'Report',
+                spreadsheetData: {
+                    workCell: 'B3',
+                    logCell: 'A3'
+                    // answerCellは意図的に未定義
+                }
+            },
+            {
+                id: 'task_3_single',
+                prompt: 'シングルタスク',
+                ai: 'single',
+                aiType: 'single',
+                spreadsheetData: {
+                    workCell: 'C4',
+                    logCell: 'A4'
+                    // answerCellは意図的に未定義
+                }
+            },
+            {
+                id: 'task_4_genspark',
+                prompt: 'Gensparkタスク',
+                groupType: 'genspark_slide',
+                ai: 'Genspark-Slides',
+                spreadsheetData: {
+                    workCell: 'D5',
+                    logCell: 'A5'
+                    // answerCellは意図的に未定義
+                }
+            },
+            {
+                id: 'task_5_normal_missing',
+                prompt: '通常タスク（answerCell欠落）',
+                groupType: '通常処理',
+                ai: 'ChatGPT',
+                spreadsheetData: {
+                    logCell: 'A6'
+                    // answerCellが誤って未定義
+                }
+            }
+        ];
+
+        // テスト実行
+        function testAnswerCellValidation() {
+            const results = [];
+
+            for (const task of testTasks) {
+                // 特殊タスクの判定ロジック
+                const isSpecialTask = task.groupType === 'report' ||
+                                     task.groupType === 'genspark' ||
+                                     task.groupType === 'genspark_slide' ||
+                                     task.groupType === 'genspark_factcheck' ||
+                                     task.ai === 'single' ||
+                                     task.aiType === 'single' ||
+                                     task.ai === 'Report' ||
+                                     task.ai === 'Genspark' ||
+                                     task.ai === 'Genspark-Slides' ||
+                                     task.ai === 'Genspark-FactCheck';
+
+                let result = {
+                    taskId: task.id,
+                    hasAnswerCell: !!task.spreadsheetData.answerCell,
+                    hasWorkCell: !!task.spreadsheetData.workCell,
+                    isSpecialTask: isSpecialTask,
+                    shouldWarn: false,
+                    message: ''
+                };
+
+                if (!task.spreadsheetData.answerCell) {
+                    if (!isSpecialTask) {
+                        result.shouldWarn = true;
+                        result.message = `⚠️ 警告: タスク${task.id}: answerCellが未定義（通常タスク）`;
+                    } else {
+                        result.message = `✅ 正常: タスク${task.id}: answerCell不要（特殊タスク）`;
+                    }
+                } else {
+                    result.message = `✅ 正常: タスク${task.id}: answerCell定義済み`;
+                }
+
+                results.push(result);
+            }
+
+            return results;
+        }
+
+        // テスト結果を表示
+        const testResults = testAnswerCellValidation();
+        const resultsDiv = document.getElementById('results');
+
+        let html = '<h2>テスト結果</h2><table border="1"><tr><th>タスクID</th><th>answerCell</th><th>workCell</th><th>特殊タスク</th><th>警告</th><th>メッセージ</th></tr>';
+
+        for (const result of testResults) {
+            const rowClass = result.shouldWarn ? 'style="background-color: #ffcccc;"' : '';
+            html += `<tr ${rowClass}>
+                <td>${result.taskId}</td>
+                <td>${result.hasAnswerCell ? '○' : '×'}</td>
+                <td>${result.hasWorkCell ? '○' : '×'}</td>
+                <td>${result.isSpecialTask ? '○' : '×'}</td>
+                <td>${result.shouldWarn ? '⚠️' : '✅'}</td>
+                <td>${result.message}</td>
+            </tr>`;
+        }
+
+        html += '</table>';
+
+        // サマリー
+        const warningCount = testResults.filter(r => r.shouldWarn).length;
+        const successCount = testResults.filter(r => !r.shouldWarn).length;
+
+        html += `<h3>サマリー</h3>
+            <p>テスト総数: ${testResults.length}</p>
+            <p>正常: ${successCount}</p>
+            <p>警告: ${warningCount}</p>`;
+
+        resultsDiv.innerHTML = html;
+
+        // コンソールにも出力
+        console.log('=== answerCell警告テスト結果 ===');
+        testResults.forEach(result => {
+            console.log(result.message);
+        });
+    </script>
+</body>
+</html>

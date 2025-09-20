@@ -264,6 +264,13 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
 
 
         // answerCellの安全な取得
+        console.log(`🔍 [DEBUG] answerCell計算開始 - Row ${row}, AI: ${aiType}:`, {
+          taskGroupType: taskGroup.groupType,
+          columnsAnswer: taskGroup.columns.answer,
+          columnsAnswerType: typeof taskGroup.columns.answer,
+          fullColumns: taskGroup.columns
+        });
+
         let answerCell;
         try {
           if (taskGroup.groupType === "3種類AI") {
@@ -340,7 +347,7 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
         groupNumber: taskGroup.groupNumber,
         groupType: taskGroup.groupType,
         row: row,
-        column: taskGroup.columns.work,
+        // 特殊タスクは作業セルのみ使用するため、columnプロパティは不要
         prompt: prompts.join('\n\n'),
         ai: taskGroup.groupType,
         model: '',
