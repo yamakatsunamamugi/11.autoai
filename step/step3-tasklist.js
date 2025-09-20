@@ -238,7 +238,8 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
 
       let aiTypes;
       if (taskGroup.groupType === "3種類AI") {
-        aiTypes = ['ChatGPT', 'Claude', 'Gemini'];
+        // 3種類AIの場合は特殊なaiTypeを設定
+        aiTypes = ['3種類（ChatGPT・Gemini・Claude）'];
       } else {
         // promptColumns[0]が存在するか確認
         if (promptColumns && promptColumns.length > 0 && promptColumns[0]) {
@@ -309,14 +310,17 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
           answerCell = getCellA1Notation(row, 3); // デフォルトでC列
         }
 
+        // Step4との互換性のため、aiTypeフィールドも追加
         const task = {
           taskId: `task_${taskGroup.groupNumber}_${row}_${Date.now()}`,
+          id: `task_${taskGroup.groupNumber}_${row}_${Date.now()}`, // Step4互換
           groupNumber: taskGroup.groupNumber,
           groupType: taskGroup.groupType,
           row: row,
           column: promptColumns[0],
           prompt: prompts.join('\n\n'),
           ai: aiType,
+          aiType: taskGroup.groupType === "3種類AI" ? '3種類（ChatGPT・Gemini・Claude）' : aiType.toLowerCase(), // Step4互換
           model: spreadsheetData[modelRow - 1] && promptColumns[0] ?
             spreadsheetData[modelRow - 1][columnToIndex(promptColumns[0])] : '',
           function: spreadsheetData[functionRow - 1] && promptColumns[0] ?
@@ -327,6 +331,11 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
             return idx >= 0 ? getCellA1Notation(row, idx + 1) : null;
           }).filter(Boolean),
           answerCell: answerCell,
+          cellInfo: { // Step4互換: cellInfo構造追加
+            row: row,
+            column: answerCell ? answerCell.match(/^([A-Z]+)/)?.[1] : promptColumns[0],
+            columnIndex: answerCell ? columnToIndex(answerCell.match(/^([A-Z]+)/)?.[1]) : columnToIndex(promptColumns[0])
+          },
           ...parseSpreadsheetUrl(options.spreadsheetUrl || '')
         };
 
@@ -346,16 +355,23 @@ function generateTaskList(taskGroup, spreadsheetData, specialRows, dataStartRow,
       // 特殊タスク（レポート化、Genspark等）
       const task = {
         taskId: `task_${taskGroup.groupNumber}_${row}_${Date.now()}`,
+        id: `task_${taskGroup.groupNumber}_${row}_${Date.now()}`, // Step4互換
         groupNumber: taskGroup.groupNumber,
         groupType: taskGroup.groupType,
         row: row,
         // 特殊タスクは作業セルのみ使用するため、columnプロパティは不要
         prompt: prompts.join('\n\n'),
         ai: taskGroup.groupType,
+        aiType: taskGroup.groupType.toLowerCase(), // Step4互換
         model: '',
         function: '',
         logCell: taskGroup.columns.log ? getCellA1Notation(row, columnToIndex(taskGroup.columns.log) + 1) : null,
         workCell: taskGroup.columns.work ? getCellA1Notation(row, columnToIndex(taskGroup.columns.work) + 1) : null,
+        cellInfo: { // Step4互換: cellInfo構造追加
+          row: row,
+          column: taskGroup.columns.work || 'A',
+          columnIndex: taskGroup.columns.work ? columnToIndex(taskGroup.columns.work) : 0
+        },
         ...parseSpreadsheetUrl(options.spreadsheetUrl || '')
       };
 
