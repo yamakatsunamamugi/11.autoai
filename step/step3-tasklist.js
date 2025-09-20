@@ -16,12 +16,26 @@
  * - バッチ作成エラー
  */
 
+console.log("🔍 [step3-tasklist.js] ファイル読み込み開始");
+
+// ファイル読み込み時の環境チェック
+try {
+  console.log("🔍 [step3-tasklist.js] 環境チェック:", {
+    windowExists: typeof window !== "undefined",
+    moduleExists: typeof module !== "undefined",
+    windowStep3Exists: typeof window !== "undefined" && !!window.Step3TaskList,
+    currentURL: typeof window !== "undefined" ? window.location?.href : "N/A",
+  });
+} catch (envError) {
+  console.error("❌ [step3-tasklist.js] 環境チェックエラー:", envError);
+}
+
 // ========================================
 // Google Services統合（自動列追加機能対応）
 // ========================================
 
 // Google Servicesをインポート（自動列追加機能を利用）
-import { GoogleServices } from "../src/services/google-services.js";
+// import { GoogleServices } from "../src/services/google-services.js";
 
 // Google Servicesインスタンス（グローバル）
 let googleServices = null;
@@ -31,139 +45,99 @@ let googleServices = null;
  * @returns {Promise<GoogleServices>} 初期化されたGoogle Servicesインスタンス
  */
 async function initializeGoogleServices() {
+  console.log("🔍 [step3-tasklist.js] GoogleServices初期化開始:", {
+    googleServicesExists: !!googleServices,
+    windowGoogleServices: !!window.GoogleServices,
+    globalThisGoogleServices: !!globalThis.GoogleServices,
+  });
+
   if (!googleServices) {
-    googleServices = new GoogleServices();
-    await googleServices.initialize();
-    console.log("[step3-tasklist.js] Google Services初期化完了");
+    try {
+      // GoogleServicesクラスをグローバルから取得
+      const GoogleServices = window.GoogleServices || globalThis.GoogleServices;
+      console.log("🔍 [step3-tasklist.js] GoogleServicesクラス取得:", {
+        found: !!GoogleServices,
+        type: typeof GoogleServices,
+        constructor: GoogleServices?.name,
+      });
+
+      if (GoogleServices) {
+        googleServices = new GoogleServices();
+        await googleServices.initialize();
+        console.log("✅ [step3-tasklist.js] Google Services初期化完了");
+      } else {
+        console.warn(
+          "⚠️ [step3-tasklist.js] GoogleServicesクラスが利用できません - グローバル確認:",
+          {
+            windowKeys:
+              typeof window !== "undefined"
+                ? Object.keys(window).filter((k) => k.includes("Google"))
+                : [],
+            globalThisKeys: Object.keys(globalThis).filter((k) =>
+              k.includes("Google"),
+            ),
+          },
+        );
+        return null;
+      }
+    } catch (initError) {
+      console.error(
+        "❌ [step3-tasklist.js] GoogleServices初期化エラー:",
+        initError,
+      );
+      return null;
+    }
   }
   return googleServices;
 }
 
+// 【簡素化】A1記法変換は基本不要（文字列結合を使用）
+// 必要最小限のユーティリティのみ保持
 /**
- * カラムインデックスをA1記法に変換（Google Services準拠）
- * @param {number} index - カラムインデックス（0ベース）
- * @returns {string} A1記法のカラム名
- */
-function indexToColumn(index) {
-  if (typeof index !== "number" || index < 0) {
-    console.error(
-      "[step3-tasklist.js] indexToColumn: 無効なインデックス",
-      index,
-    );
-    return "A";
-  }
-
-  // Google Services準拠の正確な実装
-  let column = "";
-  let num = index + 1;
-  while (num > 0) {
-    num--;
-    column = String.fromCharCode((num % 26) + 65) + column;
-    num = Math.floor(num / 26);
-  }
-  return column;
-}
-
-/**
- * A1記法をカラムインデックスに変換（Google Services準拠）
- * @param {string} column - A1記法のカラム名
- * @returns {number} カラムインデックス（0ベース）
- */
-function columnToIndex(column) {
-  if (!column || typeof column !== "string") {
-    console.error("[step3-tasklist.js] columnToIndex: 無効な列名", column);
-    return 0;
-  }
-
-  // Google Services準拠の正確な実装
-  let index = 0;
-  const upperColumn = column.toUpperCase();
-  for (let i = 0; i < upperColumn.length; i++) {
-    const charCode = upperColumn.charCodeAt(i);
-    if (charCode < 65 || charCode > 90) {
-      console.error("[step3-tasklist.js] columnToIndex: 無効な文字", column);
-      return 0;
-    }
-    index = index * 26 + (charCode - 64);
-  }
-  return index - 1;
-}
-
-/**
- * タスクグループの回答セル位置を計算（統一実装）
+ * 【簡素化】回答セル位置の取得（シンプル版）
  * @param {Object} taskGroup - タスクグループ
  * @param {string} aiType - AIタイプ
  * @param {number} row - 行番号
- * @returns {string} A1記法のセル位置
+ * @returns {string} セル参照（例: "C9"）
  */
-function getAnswerCellUnified(taskGroup, aiType, row) {
+function getAnswerCell(taskGroup, aiType, row) {
   try {
-    // 【統一修正】全てオブジェクト形式で処理
-    if (
-      typeof taskGroup.columns.answer === "object" &&
-      taskGroup.columns.answer !== null
-    ) {
-      // AIタイプに応じた列を取得
-      let answerColumn;
-      const normalizedAI = aiType.toLowerCase();
+    const normalizedAI = aiType.toLowerCase();
+    let column;
 
-      if (taskGroup.groupType === "3種類AI") {
-        // 3種類AIの場合は各AI専用列を使用
-        answerColumn = taskGroup.columns.answer[normalizedAI];
-      } else {
-        // 通常処理の場合はprimaryまたはAI名で指定された列を使用
-        answerColumn =
-          taskGroup.columns.answer.primary ||
-          taskGroup.columns.answer[normalizedAI] ||
-          taskGroup.columns.answer.chatgpt; // fallback
-      }
-
-      if (answerColumn) {
-        return getCellA1Notation(row, columnToIndex(answerColumn) + 1);
-      } else {
-        console.warn(
-          `[step3-tasklist.js] ${aiType}用の回答列が未定義`,
-          taskGroup.columns.answer,
-        );
-        const defaultColumns = { chatgpt: "C", claude: "D", gemini: "E" };
-        const defaultCol = defaultColumns[normalizedAI] || "C";
-        return getCellA1Notation(row, columnToIndex(defaultCol) + 1);
-      }
+    if (taskGroup.groupType === "3種類AI") {
+      column = taskGroup.columns.answer[normalizedAI] || "C";
     } else {
-      console.error(
-        "[step3-tasklist.js] answer列がオブジェクト形式ではない（統一修正後は全てオブジェクトである必要があります）",
-        taskGroup.columns.answer,
-      );
-      return getCellA1Notation(row, 3); // デフォルトでC列
+      column = taskGroup.columns.answer.primary || "C";
     }
+
+    return getSimpleCell(column, row);
   } catch (error) {
-    console.error("[step3-tasklist.js] getAnswerCellUnified エラー:", error);
-    return getCellA1Notation(row, 3); // デフォルトでC列
+    console.error("[step3-tasklist.js] getAnswerCell エラー:", error);
+    return getSimpleCell("C", row); // デフォルト
   }
 }
 
 /**
- * セル位置をA1記法に変換
- * @param {number} row - 行番号（1ベース）
- * @param {number} col - カラム番号（1ベース）
- * @returns {string} A1記法のセル参照
+ * 【簡素化】シンプルなセル参照生成
+ * @param {string} column - 列名（A, B, C...）
+ * @param {number} row - 行番号
+ * @returns {string} セル参照（例: "A1", "B5"）
  */
-function getCellA1Notation(row, col) {
-  return `${indexToColumn(col - 1)}${row}`;
+function getSimpleCell(column, row) {
+  return `${column}${row}`;
 }
 
 /**
- * 範囲をA1記法に変換
- * @param {number} startRow - 開始行（1ベース）
- * @param {number} startCol - 開始列（1ベース）
- * @param {number} endRow - 終了行（1ベース）
- * @param {number} endCol - 終了列（1ベース）
- * @returns {string} A1記法の範囲
+ * 【簡素化】シンプルな範囲生成
+ * @param {string} startColumn - 開始列名
+ * @param {number} startRow - 開始行
+ * @param {string} endColumn - 終了列名
+ * @param {number} endRow - 終了行
+ * @returns {string} 範囲（例: "A1:C10"）
  */
-function getRangeA1Notation(startRow, startCol, endRow, endCol) {
-  const startCell = getCellA1Notation(startRow, startCol);
-  const endCell = getCellA1Notation(endRow, endCol);
-  return `${startCell}:${endCell}`;
+function getSimpleRange(startColumn, startRow, endColumn, endRow) {
+  return `${startColumn}${startRow}:${endColumn}${endRow}`;
 }
 
 /**
@@ -200,7 +174,29 @@ async function generateTaskList(
   dataStartRow,
   options = {},
 ) {
+  console.log("🔍 [step3-tasklist.js] generateTaskList呼び出し開始:", {
+    taskGroupExists: !!taskGroup,
+    taskGroupType: taskGroup?.type,
+    taskGroupColumns: taskGroup?.columns,
+    spreadsheetDataExists: !!spreadsheetData,
+    spreadsheetDataType: typeof spreadsheetData,
+    dataStartRow,
+    optionsKeys: Object.keys(options || {}),
+  });
+
   try {
+    // 引数検証
+    if (!taskGroup) {
+      throw new Error("taskGroupが未定義です");
+    }
+    if (!taskGroup.columns) {
+      throw new Error("taskGroup.columnsが未定義です");
+    }
+
+    console.log(
+      "🔍 [step3-tasklist.js] 引数検証通過 - GoogleServices初期化開始",
+    );
+
     // Google Servicesの初期化
     const services = await initializeGoogleServices();
 
@@ -418,8 +414,8 @@ async function generateTaskList(
             },
           );
 
-          // 統一セル計算関数を直接使用（外部依存なし）
-          const answerCell = getAnswerCellUnified(taskGroup, aiType, row);
+          // 【シンプル化】文字列結合でセル位置計算
+          const answerCell = getAnswerCell(taskGroup, aiType, row);
 
           // Step4との互換性のため、aiTypeフィールドも追加
           const task = {
@@ -445,16 +441,8 @@ async function generateTaskList(
                     columnToIndex(promptColumns[0])
                   ]
                 : "",
-            logCell: getCellA1Notation(
-              row,
-              columnToIndex(taskGroup.columns.log) + 1,
-            ),
-            promptCells: promptColumns
-              .map((col) => {
-                const idx = columnToIndex(col);
-                return idx >= 0 ? getCellA1Notation(row, idx + 1) : null;
-              })
-              .filter(Boolean),
+            logCell: `${taskGroup.columns.log}${row}`,
+            promptCells: promptColumns.map((col) => `${col}${row}`),
             answerCell: answerCell,
             cellInfo: {
               // Step4互換: cellInfo構造追加
@@ -496,10 +484,10 @@ async function generateTaskList(
           model: "",
           function: "",
           logCell: taskGroup.columns.log
-            ? getCellA1Notation(row, columnToIndex(taskGroup.columns.log) + 1)
+            ? `${taskGroup.columns.log}${row}`
             : null,
           workCell: taskGroup.columns.work
-            ? getCellA1Notation(row, columnToIndex(taskGroup.columns.work) + 1)
+            ? `${taskGroup.columns.work}${row}`
             : null,
           cellInfo: {
             // Step4互換: cellInfo構造追加
@@ -828,8 +816,6 @@ if (typeof module !== "undefined" && module.exports) {
     shouldProcessColumn,
     indexToColumn,
     columnToIndex,
-    getCellA1Notation,
-    getRangeA1Notation,
     parseSpreadsheetUrl,
     initializeGoogleServices,
   };
@@ -837,17 +823,42 @@ if (typeof module !== "undefined" && module.exports) {
 
 // グローバル公開（Chrome拡張機能用）
 if (typeof window !== "undefined") {
-  window.Step3TaskList = {
-    generateTaskList,
-    getRowControl,
-    getColumnControl,
-    shouldProcessRow,
-    shouldProcessColumn,
-    indexToColumn,
-    columnToIndex,
-    getCellA1Notation,
-    getRangeA1Notation,
-    parseSpreadsheetUrl,
-    initializeGoogleServices,
-  };
+  try {
+    window.Step3TaskList = {
+      generateTaskList,
+      getRowControl,
+      getColumnControl,
+      shouldProcessRow,
+      shouldProcessColumn,
+      indexToColumn,
+      columnToIndex,
+      parseSpreadsheetUrl,
+      initializeGoogleServices,
+    };
+    console.log("✅ [step3-tasklist.js] window.Step3TaskList初期化完了");
+
+    // スクリプト読み込み完了をトラッキング
+    if (window.scriptLoadTracker) {
+      window.scriptLoadTracker.addScript("step3-tasklist.js");
+      window.scriptLoadTracker.checkDependencies("step3-tasklist.js");
+    }
+  } catch (error) {
+    console.error(
+      "❌ [step3-tasklist.js] window.Step3TaskList初期化エラー:",
+      error,
+    );
+    window.Step3TaskList = {
+      generateTaskList: function () {
+        throw new Error("Step3TaskList初期化エラーのため利用できません");
+      },
+      error: error.message,
+    };
+
+    // エラー時もスクリプト読み込みをトラッキング
+    if (window.scriptLoadTracker) {
+      window.scriptLoadTracker.addScript("step3-tasklist.js (ERROR)");
+    }
+  }
 }
+
+console.log("✅ [step3-tasklist.js] ファイル読み込み完了");
