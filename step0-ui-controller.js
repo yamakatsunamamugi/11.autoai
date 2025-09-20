@@ -319,7 +319,7 @@ async function getPrimaryDisplayInfo() {
     const displays = await chrome.system.display.getInfo();
     const primaryDisplay = displays.find((d) => d.isPrimary) || displays[0];
 
-    console.log("[UI-Controller] ディスプレイ情報:", {
+    console.log("[step0-ui-controller.js→Step0-2] ディスプレイ情報:", {
       total: displays.length,
       primary: {
         id: primaryDisplay.id,
@@ -331,7 +331,10 @@ async function getPrimaryDisplayInfo() {
 
     return primaryDisplay;
   } catch (error) {
-    console.error("[UI-Controller] ディスプレイ情報取得エラー:", error);
+    console.error(
+      "[step0-ui-controller.js→Step0-2] ディスプレイ情報取得エラー:",
+      error,
+    );
     // フォールバック値
     return {
       workArea: { left: 0, top: 0, width: 1440, height: 900 },
@@ -350,7 +353,7 @@ async function getPrimaryDisplayInfo() {
 async function moveWindowToPrimaryDisplay(windowId = null, options = {}) {
   try {
     console.log(
-      "[UI-Controller] ウィンドウをプライマリディスプレイに移動開始...",
+      "[step0-ui-controller.js→Step0-3] ウィンドウをプライマリディスプレイに移動開始...",
     );
 
     // ウィンドウIDが指定されていない場合は現在のウィンドウを取得
@@ -358,7 +361,7 @@ async function moveWindowToPrimaryDisplay(windowId = null, options = {}) {
       ? await chrome.windows.get(windowId)
       : await chrome.windows.getCurrent();
 
-    console.log("[UI-Controller] 移動対象ウィンドウ:", {
+    console.log("[step0-ui-controller.js→Step0-3] 移動対象ウィンドウ:", {
       id: targetWindow.id,
       current: {
         left: targetWindow.left,
@@ -384,7 +387,7 @@ async function moveWindowToPrimaryDisplay(windowId = null, options = {}) {
       height: windowHeight,
     };
 
-    console.log("[UI-Controller] 新しい位置:", newPosition);
+    console.log("[step0-ui-controller.js→Step0-3] 新しい位置:", newPosition);
 
     // ウィンドウをプライマリディスプレイに移動
     await chrome.windows.update(targetWindow.id, {
@@ -398,11 +401,14 @@ async function moveWindowToPrimaryDisplay(windowId = null, options = {}) {
     });
 
     console.log(
-      "[UI-Controller] ✅ ウィンドウをプライマリディスプレイに移動完了",
+      "[step0-ui-controller.js→Step0-3] ✅ ウィンドウをプライマリディスプレイに移動完了",
     );
     return true;
   } catch (error) {
-    console.error("[UI-Controller] ウィンドウ移動エラー:", error);
+    console.error(
+      "[step0-ui-controller.js→Step0-3] ウィンドウ移動エラー:",
+      error,
+    );
     return false;
   }
 }
@@ -432,7 +438,10 @@ async function bringWindowToFront(moveToPrimary = false) {
       });
     }
   } catch (error) {
-    console.error("[bringWindowToFront] ウィンドウ最前面表示エラー:", error);
+    console.error(
+      "[step0-ui-controller.js→Step0-4] ウィンドウ最前面表示エラー:",
+      error,
+    );
   }
 }
 
