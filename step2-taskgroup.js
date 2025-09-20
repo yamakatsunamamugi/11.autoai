@@ -149,7 +149,7 @@ async function identifyTaskGroups() {
       `[step2-taskgroup.js] [Step 2-1-1] メニュー行取得: ${menuRange}`,
     );
     const menuStartTime = Date.now();
-    const menuResponse = await fetch(
+    const menuResponse = await window.fetchWithTokenRefresh(
       `${sheetsApiBase}/${spreadsheetId}/values/${menuRange}`,
       { headers: apiHeaders },
     );
@@ -164,7 +164,7 @@ async function identifyTaskGroups() {
     // AI行取得
     console.log(`[step2-taskgroup.js] [Step 2-1-1] AI行取得: ${aiRange}`);
     const aiStartTime = Date.now();
-    const aiResponse = await fetch(
+    const aiResponse = await window.fetchWithTokenRefresh(
       `${sheetsApiBase}/${spreadsheetId}/values/${aiRange}`,
       { headers: apiHeaders },
     );
@@ -597,7 +597,7 @@ async function applySkipConditions() {
         const promptCol = group.promptColumns[0];
         const range = `${promptCol}${dataStartRow}:${promptCol}${endRow}`;
 
-        const promptResponse = await fetch(
+        const promptResponse = await window.fetchWithTokenRefresh(
           `${sheetsApiBase}/${spreadsheetId}/values/${range}`,
           { headers: apiHeaders },
         );
@@ -613,7 +613,7 @@ async function applySkipConditions() {
         }
 
         const answerRange = `${answerCol}${dataStartRow}:${answerCol}${endRow}`;
-        const answerResponse = await fetch(
+        const answerResponse = await window.fetchWithTokenRefresh(
           `${sheetsApiBase}/${spreadsheetId}/values/${answerRange}`,
           { headers: apiHeaders },
         );
@@ -766,7 +766,7 @@ async function logTaskGroups() {
   try {
     if (modelRow) {
       const modelRange = `${modelRow}:${modelRow}`;
-      const modelResponse = await fetch(
+      const modelResponse = await window.fetchWithTokenRefresh(
         `${sheetsApiBase}/${spreadsheetId}/values/${modelRange}`,
         { headers: apiHeaders },
       );
@@ -775,7 +775,7 @@ async function logTaskGroups() {
     }
 
     const menuRange = `${menuRow}:${menuRow}`;
-    const menuResponse = await fetch(
+    const menuResponse = await window.fetchWithTokenRefresh(
       `${sheetsApiBase}/${spreadsheetId}/values/${menuRange}`,
       { headers: apiHeaders },
     );
