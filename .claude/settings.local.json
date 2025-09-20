@@ -85,7 +85,10 @@
       "Bash(npm run:*)",
       "Bash(git ls-tree:*)",
       "Bash(git rev-list:*)",
-      "Bash(xxd:*)"
+      "Bash(xxd:*)",
+      "Bash(do if [[ ! \"$file\" =~ test-)",
+      "Bash(step3-tasklist)",
+      "Bash(then echo \"=== $file ===\" grep -n \"console\\.\\|\\.info(\\|\\.error(\\|\\.warn(\\|\\.debug(\" \"$file\")"
     ],
     "defaultMode": "acceptEdits",
     "additionalDirectories": [

@@ -698,6 +698,27 @@ class WindowController {
   }
 
   /**
+   * Step 4-1-2-A: 単一ウィンドウを開く
+   * @param {string} aiType - AI種別
+   * @param {number} position - ウィンドウポジション
+   */
+  async openWindow(aiType, position) {
+    ExecuteLogger.info(
+      `🪟 [WindowController] openWindow: ${aiType}, position: ${position}`,
+    );
+
+    const layoutInfo = [
+      {
+        aiType: aiType,
+        position: position,
+      },
+    ];
+
+    const results = await this.openWindows(layoutInfo);
+    return results[0] || { success: false, error: "ウィンドウ作成失敗" };
+  }
+
+  /**
    * AI種別に応じたURLを取得
    */
   getAIUrl(aiType) {
@@ -982,13 +1003,35 @@ class SpreadsheetDataManager {
       }
 
       // セル位置情報の確認（通常タスク用）
-      const cellRef =
-        task.workCell || task.cellRef || `${task.column}${task.row}`;
+      let cellRef = task.workCell || task.cellRef;
+
+      // セル参照がない場合はタスクデータから構築
+      if (!cellRef && task.column && task.row) {
+        cellRef = `${task.column}${task.row}`;
+      }
+
+      // 既存タスクからanswerColumnとrowを使用して構築を試行
+      if (!cellRef && task.answerColumn && task.row) {
+        cellRef = `${task.answerColumn}${task.row}`;
+      }
+
+      // まだ取得できない場合はspreadsheetDataから推測
+      if (
+        !cellRef &&
+        task.spreadsheetData &&
+        task.spreadsheetData.workRowNumber
+      ) {
+        const answerCol = task.spreadsheetData.answerColumn || "C";
+        cellRef = `${answerCol}${task.spreadsheetData.workRowNumber}`;
+      }
+
       if (!cellRef || cellRef.includes("undefined")) {
         ExecuteLogger.warn(
           `⚠️ [Step 4-2-4] タスクにセル位置情報がありません:`,
           task,
         );
+        // 最低限の作業セル情報を設定
+        enrichedTask.workCellRef = task.workCell || "C1";
         return enrichedTask;
       }
 
