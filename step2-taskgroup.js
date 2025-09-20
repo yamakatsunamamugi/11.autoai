@@ -560,9 +560,35 @@ async function applySkipConditions() {
 
   const setupResult =
     window.setupResult || JSON.parse(localStorage.getItem("step1Result"));
-  const { spreadsheetId, specialRows, apiHeaders, sheetsApiBase } = setupResult;
+  const { spreadsheetId, specialRows, sheetsApiBase } = setupResult;
   const { dataStartRow } = specialRows;
   const taskGroups = window.globalState.taskGroups;
+
+  // 現在のトークンで最新のAPIヘッダーを作成
+  const currentToken = window.globalState.authToken;
+  const apiHeaders = {
+    Authorization: `Bearer ${currentToken}`,
+    "Content-Type": "application/json",
+  };
+
+  // デバッグ情報を出力
+  console.log(`[step2-taskgroup.js] デバッグ情報:`);
+  console.log(`  - spreadsheetId: ${spreadsheetId}`);
+  console.log(`  - dataStartRow: ${dataStartRow}`);
+  console.log(
+    `  - taskGroups数: ${taskGroups ? taskGroups.length : "undefined"}`,
+  );
+  console.log(`  - authToken存在: ${!!currentToken}`);
+  console.log(
+    `  - fetchWithTokenRefresh存在: ${!!window.fetchWithTokenRefresh}`,
+  );
+
+  if (currentToken) {
+    console.log(`  - authToken長: ${currentToken.length}文字`);
+    console.log(`  - authToken先頭: ${currentToken.substring(0, 20)}...`);
+  }
+
+  console.log(`  - 作成したapiHeaders:`, apiHeaders);
 
   let checkedGroups = 0;
   let skippedByData = 0;
@@ -588,6 +614,15 @@ async function applySkipConditions() {
 
     checkedGroups++;
 
+    console.log(`[step2-taskgroup.js] グループ${group.groupNumber}処理開始:`);
+    console.log(`  - タイプ: ${group.type}`);
+    console.log(
+      `  - プロンプト列: ${group.promptColumns ? group.promptColumns.join(",") : "なし"}`,
+    );
+    console.log(
+      `  - 回答列: ${group.answerColumn || group.chatgptColumn || "なし"}`,
+    );
+
     try {
       // データ範囲を決定（データ開始行から100行）
       const endRow = dataStartRow + 99;
@@ -595,14 +630,6 @@ async function applySkipConditions() {
       if (group.type === "通常処理" || group.type === "3種類AI") {
         // プロンプト列の最初の列を取得
         const promptCol = group.promptColumns[0];
-        const range = `${promptCol}${dataStartRow}:${promptCol}${endRow}`;
-
-        const promptResponse = await window.fetchWithTokenRefresh(
-          `${sheetsApiBase}/${spreadsheetId}/values/${range}`,
-          { headers: apiHeaders },
-        );
-        const promptData = await promptResponse.json();
-        const promptValues = promptData.values || [];
 
         // 回答列を取得
         let answerCol;
@@ -612,13 +639,41 @@ async function applySkipConditions() {
           answerCol = group.chatgptColumn; // 3種類AIの場合は最初の回答列で判定
         }
 
-        const answerRange = `${answerCol}${dataStartRow}:${answerCol}${endRow}`;
-        const answerResponse = await window.fetchWithTokenRefresh(
-          `${sheetsApiBase}/${spreadsheetId}/values/${answerRange}`,
-          { headers: apiHeaders },
+        // プロンプト列の取得
+        const promptRange = `${promptCol}${dataStartRow}:${promptCol}${endRow}`;
+        const promptUrl = `${sheetsApiBase}/${spreadsheetId}/values/${promptRange}`;
+
+        console.log(`[step2-taskgroup.js] プロンプト列取得準備:`);
+        console.log(`  - 範囲: ${promptRange}`);
+        console.log(`  - URL: ${promptUrl}`);
+
+        const promptResponse = await window.fetchWithTokenRefresh(promptUrl, {
+          headers: apiHeaders,
+        });
+        const promptData = await promptResponse.json();
+        const promptValues = promptData.values || [];
+
+        console.log(
+          `[step2-taskgroup.js] プロンプト列取得結果: ${promptValues.length}行`,
         );
+
+        // 回答列の取得
+        const answerRange = `${answerCol}${dataStartRow}:${answerCol}${endRow}`;
+        const answerUrl = `${sheetsApiBase}/${spreadsheetId}/values/${answerRange}`;
+
+        console.log(`[step2-taskgroup.js] 回答列取得準備:`);
+        console.log(`  - 範囲: ${answerRange}`);
+        console.log(`  - URL: ${answerUrl}`);
+
+        const answerResponse = await window.fetchWithTokenRefresh(answerUrl, {
+          headers: apiHeaders,
+        });
         const answerData = await answerResponse.json();
         const answerValues = answerData.values || [];
+
+        console.log(
+          `[step2-taskgroup.js] 回答列取得結果: ${answerValues.length}行`,
+        );
 
         // スキップ条件の適用
         let hasUnprocessedTask = false;

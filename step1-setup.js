@@ -1370,38 +1370,89 @@ async function refreshAuthToken() {
 }
 
 /**
- * 401エラー時の自動リトライ機能付きfetch
+ * 401エラー時の自動リトライ機能付きfetch（レート制限対応強化版）
  */
-async function fetchWithTokenRefresh(url, options = {}) {
-  try {
-    // 最初の試行
-    let response = await fetch(url, options);
+async function fetchWithTokenRefresh(url, options = {}, maxRetries = 3) {
+  let lastError = null;
 
-    // 401エラーの場合、トークンをリフレッシュして再試行
-    if (response.status === 401) {
-      console.log("[step1-setup.js] 401エラー検出 - トークンリフレッシュ実行");
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(
+        `[step1-setup.js] API呼び出し試行 ${attempt}/${maxRetries}: ${url}`,
+      );
 
-      const newToken = await refreshAuthToken();
+      // 最初の試行
+      let response = await fetch(url, options);
 
-      // ヘッダーを更新
-      const newOptions = {
-        ...options,
-        headers: {
-          ...options.headers,
-          Authorization: `Bearer ${newToken}`,
-        },
-      };
+      // 429 (Too Many Requests) エラーの場合
+      if (response.status === 429) {
+        const waitTime = Math.min(2000 * Math.pow(2, attempt - 1), 10000); // 最大10秒
+        console.log(
+          `[step1-setup.js] 429エラー検出 - ${waitTime}ms待機後に再試行`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, waitTime));
+        continue;
+      }
 
-      // 再試行
-      response = await fetch(url, newOptions);
-      console.log(`[step1-setup.js] 再試行結果: ${response.status}`);
+      // 401エラーの場合、トークンをリフレッシュして再試行
+      if (response.status === 401) {
+        console.log(
+          "[step1-setup.js] 401エラー検出 - トークンリフレッシュ実行",
+        );
+
+        const newToken = await refreshAuthToken();
+
+        // ヘッダーを更新
+        const newOptions = {
+          ...options,
+          headers: {
+            ...options.headers,
+            Authorization: `Bearer ${newToken}`,
+          },
+        };
+
+        // 少し待ってから再試行
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        response = await fetch(url, newOptions);
+        console.log(`[step1-setup.js] 再試行結果: ${response.status}`);
+
+        // 再試行後も429の場合は待機
+        if (response.status === 429) {
+          const waitTime = Math.min(2000 * Math.pow(2, attempt - 1), 10000);
+          console.log(
+            `[step1-setup.js] 再試行後も429エラー - ${waitTime}ms待機`,
+          );
+          await new Promise((resolve) => setTimeout(resolve, waitTime));
+          continue;
+        }
+      }
+
+      // 成功またはその他のエラーの場合は結果を返す
+      if (response.status < 500 || response.status === 429) {
+        return response;
+      }
+
+      // 5xxエラーの場合は再試行
+      console.log(`[step1-setup.js] ${response.status}エラー - 再試行します`);
+      lastError = new Error(`HTTP ${response.status}: ${response.statusText}`);
+    } catch (error) {
+      console.error(
+        `[step1-setup.js] fetchWithTokenRefresh エラー (試行${attempt}):`,
+        error,
+      );
+      lastError = error;
+
+      // ネットワークエラーの場合は少し待って再試行
+      if (attempt < maxRetries) {
+        const waitTime = 1000 * attempt;
+        console.log(`[step1-setup.js] ${waitTime}ms待機後に再試行`);
+        await new Promise((resolve) => setTimeout(resolve, waitTime));
+      }
     }
-
-    return response;
-  } catch (error) {
-    console.error("[step1-setup.js] fetchWithTokenRefresh エラー:", error);
-    throw error;
   }
+
+  console.error(`[step1-setup.js] 最大試行回数に達しました: ${maxRetries}`);
+  throw lastError || new Error("最大試行回数に達しました");
 }
 
 // グローバルエクスポート
