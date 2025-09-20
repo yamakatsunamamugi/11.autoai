@@ -281,7 +281,7 @@ window.WindowService = {
         `[step0-ui-controller.js→Step0-1] ✅ 位置${position}にウィンドウ作成完了 (aiType: ${options.aiType || "unknown"}, ID: ${window.id}, TabID: ${window.tabs?.[0]?.id})`,
       );
 
-      return {
+      const returnData = {
         id: window.id,
         windowId: window.id,
         tabs: window.tabs,
@@ -289,6 +289,23 @@ window.WindowService = {
         aiType: aiType || "unknown",
         url: url,
       };
+
+      console.log(
+        `[step0-ui-controller.js→Step0-1] 🖼️ DEBUG: createWindowWithPosition戻り値`,
+        {
+          position: position,
+          aiType: options.aiType || "unknown",
+          returnDataKeys: Object.keys(returnData),
+          hasId: !!returnData.id,
+          hasWindowId: !!returnData.windowId,
+          hasTabs: !!returnData.tabs,
+          tabsLength: returnData.tabs?.length || 0,
+          firstTabId: returnData.tabs?.[0]?.id,
+          returnData: returnData,
+        },
+      );
+
+      return returnData;
     } catch (error) {
       console.error(
         "[step0-ui-controller.js→Step0-1] createWindowWithPosition エラー:",

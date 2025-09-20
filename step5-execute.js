@@ -687,6 +687,17 @@ class WindowController {
       windowLayout,
     );
 
+    ExecuteLogger.info("🖼️ [WindowController] DEBUG: openWindows開始詳細", {
+      windowLayoutLength: windowLayout.length,
+      layouts: windowLayout.map((l) => ({
+        aiType: l.aiType,
+        position: l.position,
+      })),
+      currentOpenedWindowsSize: this.openedWindows.size,
+      currentOpenedWindowsEntries: Array.from(this.openedWindows.entries()),
+      windowServiceExists: !!this.windowService,
+    });
+
     // WindowService初期化確認
     if (!this.windowService) {
       await this.initializeWindowService();
@@ -728,6 +739,20 @@ class WindowController {
           },
         );
 
+        ExecuteLogger.info(`🖼️ [WindowController] DEBUG: ウィンドウ作成結果`, {
+          aiType: layout.aiType,
+          position: layout.position,
+          windowInfoReceived: !!windowInfo,
+          windowInfoType: typeof windowInfo,
+          windowInfoKeys: windowInfo ? Object.keys(windowInfo) : null,
+          windowId: windowInfo?.id,
+          windowTabs: windowInfo?.tabs,
+          tabCount: windowInfo?.tabs?.length || 0,
+          firstTabId: windowInfo?.tabs?.[0]?.id,
+          conditionWindowInfo: !!windowInfo,
+          conditionWindowId: !!(windowInfo && windowInfo.id),
+        });
+
         if (windowInfo && windowInfo.id) {
           const windowData = {
             windowId: windowInfo.id,
@@ -768,6 +793,19 @@ class WindowController {
             `✅ [Step 4-1-2-${layout.position}] ${layout.aiType}ウィンドウ作成成功`,
           );
         } else {
+          ExecuteLogger.error(
+            `🖼️ [WindowController] ERROR: ウィンドウ作成条件未満`,
+            {
+              aiType: layout.aiType,
+              position: layout.position,
+              windowInfoExists: !!windowInfo,
+              windowIdExists: !!(windowInfo && windowInfo.id),
+              windowInfo: windowInfo,
+              reason: !windowInfo
+                ? "windowInfoがnull/undefined"
+                : "windowInfo.idが存在しない",
+            },
+          );
           throw new Error(`ウィンドウ作成に失敗: ${layout.aiType}`);
         }
       } catch (error) {
@@ -791,6 +829,20 @@ class WindowController {
       "🏁 [WindowController] Step 4-1-2: 4分割ウィンドウ開く完了",
       results,
     );
+
+    ExecuteLogger.info("🖼️ [WindowController] DEBUG: openWindows完了詳細", {
+      resultsLength: results.length,
+      successfulResults: results.filter((r) => r.success).length,
+      failedResults: results.filter((r) => !r.success).length,
+      finalOpenedWindowsSize: this.openedWindows.size,
+      finalOpenedWindowsEntries: Array.from(this.openedWindows.entries()),
+      resultsSummary: results.map((r) => ({
+        aiType: r.aiType,
+        success: r.success,
+        position: r.position,
+      })),
+    });
+
     return results;
   }
 
