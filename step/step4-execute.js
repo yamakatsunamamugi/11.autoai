@@ -145,6 +145,121 @@ class AIAutomationLoader {
 window.aiAutomationLoader = new AIAutomationLoader();
 
 // ========================================
+// Step 4-0-3: 【3種類AI機能】制御クラス
+// AI行に「3種類（ChatGPT・Gemini・Claude）」と記載された場合の処理
+// - B列のプロンプトを3つのAIに同時送信
+// - F列→ChatGPT、G列→Claude、H列→Geminiに結果格納
+// ========================================
+class ThreeAIController {
+    constructor() {
+        // Step 4-0-3-1: 列とAIの対応表初期化（src/core/ai-task-executor.jsから移植）
+        this.columnToAI = {
+            'F': 'chatgpt',
+            'G': 'claude',
+            'H': 'gemini'
+        };
+    }
+
+    /**
+     * Step 4-0-3-2: 3種類AIタスクかどうかを判定
+     * @param {Object} taskData - タスクデータ
+     * @returns {boolean}
+     */
+    isThreeTypeAI(taskData) {
+        const result = taskData.aiType === '3種類（ChatGPT・Gemini・Claude）';
+        if (result) {
+            ExecuteLogger.info('[step4-execute.js] Step 4-0-3-2: 3種類AI判定 → true');
+        }
+        return result;
+    }
+
+    /**
+     * Step 4-0-3-3: セル位置から対応するAIタイプを取得
+     * @param {string} cellPosition - セル位置（例: "F10"）
+     * @returns {string} AIタイプ
+     */
+    getAITypeByColumn(cellPosition) {
+        ExecuteLogger.info('[step4-execute.js] Step 4-0-3-3: 列判定開始');
+        const column = cellPosition.charAt(0);
+        const aiType = this.columnToAI[column] || 'chatgpt';
+        ExecuteLogger.info(`[step4-execute.js] Step 4-0-3-3: 列${column} → ${aiType}`);
+        return aiType;
+    }
+
+    /**
+     * Step 4-0-3-4: 3種類AI並列実行
+     * @param {Object} baseTaskData - 基本タスクデータ
+     * @returns {Promise<Array>} 実行結果の配列
+     */
+    async executeThreeTypeAI(baseTaskData) {
+        ExecuteLogger.info('🚀 [step4-execute.js] Step 4-0-3-4: 3種類AI並列実行開始', {
+            prompt: baseTaskData.prompt?.substring(0, 50) + '...',
+            model: baseTaskData.model,
+            function: baseTaskData.function
+        });
+
+        const promises = [];
+
+        // Step 4-0-3-4-1: 各列のタスクを生成して並列実行
+        ExecuteLogger.info('[step4-execute.js] Step 4-0-3-4-1: タスク生成');
+        for (const [column, aiType] of Object.entries(this.columnToAI)) {
+            const task = {
+                ...baseTaskData,
+                aiType: aiType,
+                cellInfo: {
+                    ...baseTaskData.cellInfo,
+                    column: column
+                }
+            };
+            ExecuteLogger.info(`[step4-execute.js] Step 4-0-3-4-2: ${column}列用タスク生成 → ${aiType}`);
+            promises.push(this.executeSingleAI(task, aiType));
+        }
+
+        // Step 4-0-3-4-3: 並列実行と結果待機
+        ExecuteLogger.info('[step4-execute.js] Step 4-0-3-4-3: 3つのAI並列実行中...');
+        const results = await Promise.allSettled(promises);
+
+        // Step 4-0-3-4-4: 実行結果集計
+        ExecuteLogger.info('✅ [step4-execute.js] Step 4-0-3-4-4: 並列実行完了', {
+            成功: results.filter(r => r.status === 'fulfilled').length,
+            失敗: results.filter(r => r.status === 'rejected').length
+        });
+
+        return results;
+    }
+
+    /**
+     * Step 4-0-3-5: 単一AIの実行
+     * @param {Object} task - タスクデータ
+     * @param {string} aiType - AIタイプ
+     * @returns {Promise<Object>} 実行結果
+     */
+    async executeSingleAI(task, aiType) {
+        ExecuteLogger.info(`[step4-execute.js] Step 4-0-3-5: ${aiType}実行準備`);
+
+        // Step 4-0-3-5-1: 対応するAutomationオブジェクトを取得
+        const automations = {
+            'chatgpt': window.ChatGPTAutomationV2 || window.ChatGPTAutomation,
+            'claude': window.ClaudeAutomation,
+            'gemini': window.GeminiAutomation
+        };
+
+        const automation = automations[aiType];
+        if (!automation?.executeTask) {
+            ExecuteLogger.error(`[step4-execute.js] Step 4-0-3-5-2: ${aiType}のAutomationオブジェクトが利用できません`);
+            throw new Error(`${aiType}のAutomationオブジェクトが利用できません`);
+        }
+
+        // Step 4-0-3-5-3: AI実行
+        ExecuteLogger.info(`[step4-execute.js] Step 4-0-3-5-3: ${aiType}実行中...`);
+        return await automation.executeTask(task);
+    }
+}
+
+// グローバルインスタンス作成
+window.threeAIController = new ThreeAIController();
+
+// ========================================
 // グループタイプ判定クラス
 // ========================================
 class TaskGroupTypeDetector {
@@ -163,6 +278,19 @@ class TaskGroupTypeDetector {
         if (!taskList || taskList.length === 0) {
             ExecuteLogger.info('🔍 [GroupTypeDetector] 空のタスクリスト - デフォルト: normal');
             return { type: 'normal', aiTypes: [] };
+        }
+
+        // 【3種類AI判定】追加: aiTypeが「3種類（ChatGPT・Gemini・Claude）」の場合
+        const hasThreeTypeAI = taskList.some(task =>
+            task.aiType === '3種類（ChatGPT・Gemini・Claude）'
+        );
+
+        if (hasThreeTypeAI) {
+            ExecuteLogger.info('🎯 [GroupTypeDetector] グループタイプ: 3種類AI（aiType検出）');
+            return {
+                type: 'threeTypes',
+                aiTypes: ['chatgpt', 'claude', 'gemini'] // 固定順序
+            };
         }
 
         // タスクリストからAI種別を抽出
@@ -239,15 +367,42 @@ class WindowController {
     async initializeWindowService() {
         ExecuteLogger.info('🪟 [WindowController] Step 4-1-1: WindowService初期化開始');
 
-        // 🔍 [DEBUG] WindowService存在確認
-        ExecuteLogger.info('🔍 [DEBUG] WindowService存在確認:', {
-            typeofWindowService: typeof WindowService,
-            windowWindowService: typeof window.WindowService,
-            globalWindowService: typeof globalThis.WindowService
-        });
+        // WindowServiceの読み込みを少し待つ（ui.htmlの非同期読み込みを考慮）
+        let retryCount = 0;
+        const maxRetries = 10;
+
+        while (retryCount < maxRetries) {
+            // 🔍 [DEBUG] WindowService存在確認（詳細版）
+            ExecuteLogger.info(`🔍 [DEBUG] WindowService詳細チェック (試行 ${retryCount + 1}/${maxRetries}):`, {
+                typeofWindowService: typeof WindowService,
+                windowWindowService: typeof window.WindowService,
+                globalWindowService: typeof globalThis.WindowService,
+                windowKeys: Object.keys(window).filter(k => k.includes('Window')),
+                windowServiceConstructor: window.WindowService?.constructor?.name,
+                windowServicePrototype: window.WindowService?.prototype
+            });
+
+            // window.WindowServiceが存在すれば使用
+            if (window.WindowService) {
+                this.windowService = window.WindowService;
+                ExecuteLogger.info('✅ [DEBUG] window.WindowService発見・使用', {
+                    type: typeof this.windowService,
+                    name: this.windowService?.name,
+                    methods: Object.getOwnPropertyNames(this.windowService.prototype || {})
+                });
+                ExecuteLogger.info('✅ [WindowController] Step 4-1-1: WindowService初期化完了');
+                return;
+            }
+
+            // 短い待機
+            if (retryCount < maxRetries - 1) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            retryCount++;
+        }
 
         // WindowServiceがグローバルに存在するかチェック
-        if (typeof WindowService === 'undefined') {
+        if (typeof WindowService === 'undefined' && typeof window.WindowService === 'undefined') {
             ExecuteLogger.debug('⚠️ [DEBUG] WindowServiceが未定義 - 動的インポートを試行');
 
             try {
@@ -271,8 +426,13 @@ class WindowController {
                 throw new Error(`WindowServiceが利用できません: ${importError.message}`);
             }
         } else {
-            this.windowService = WindowService;
-            ExecuteLogger.debug('✅ [DEBUG] WindowService既存利用');
+            // window.WindowServiceを優先的に使用
+            this.windowService = window.WindowService || WindowService;
+            ExecuteLogger.debug('✅ [DEBUG] WindowService既存利用', {
+                source: window.WindowService ? 'window.WindowService' : 'グローバルWindowService',
+                type: typeof this.windowService,
+                name: this.windowService?.name
+            });
         }
 
         ExecuteLogger.info('✅ [WindowController] Step 4-1-1: WindowService初期化完了');
@@ -298,6 +458,17 @@ class WindowController {
 
                 // AI種別に応じたURLを取得
                 const url = this.getAIUrl(layout.aiType);
+
+                // 🔍 [DEBUG] WindowService呼び出し前の詳細チェック
+                ExecuteLogger.info(`🔍 [DEBUG] ウィンドウ作成前チェック:`, {
+                    windowServiceExists: !!this.windowService,
+                    methodExists: !!this.windowService?.createWindowWithPosition,
+                    windowServiceType: typeof this.windowService,
+                    windowServiceName: this.windowService?.constructor?.name,
+                    availableMethods: this.windowService ? Object.getOwnPropertyNames(this.windowService.constructor.prototype) : [],
+                    url: url,
+                    position: layout.position
+                });
 
                 // WindowServiceを使用してウィンドウ作成（正しいメソッドを使用）
                 const windowInfo = await this.windowService.createWindowWithPosition(
@@ -1754,11 +1925,61 @@ async function executeStep4(taskList) {
     let enrichedTaskList = null;
 
     try {
-        // Step 4-6-1: 初期化とグループタイプ判定
-        ExecuteLogger.info('📋 [Step 4-6-1] 初期化とグループタイプ判定開始');
+        // Step 4-6-0: 【3種類AIタスクの展開処理】
+        ExecuteLogger.info('📋 [step4-execute.js] Step 4-6-0: 3種類AIタスクの展開処理開始');
 
-        // グループタイプの判定
-        const groupTypeInfo = window.taskGroupTypeDetector.detectGroupType(taskList);
+        const expandedTaskList = [];
+        for (const task of taskList) {
+            if (task.aiType === '3種類（ChatGPT・Gemini・Claude）') {
+                ExecuteLogger.info(`[step4-execute.js] Step 4-6-0-1: 3種類AIタスク検出！プロンプト: ${task.prompt?.substring(0, 30)}...`);
+
+                // 1つのタスクを3つに展開（元のai-task-executor.jsの動作を再現）
+                const baseRow = task.row || task.cellInfo?.row;
+                const expandedTasks = [
+                    {
+                        ...task,
+                        aiType: 'chatgpt',
+                        column: 'F',
+                        cellInfo: { ...task.cellInfo, column: 'F', row: baseRow },
+                        originalAiType: '3種類（ChatGPT・Gemini・Claude）',
+                        taskGroup: task.id || task.taskId // グループ化用
+                    },
+                    {
+                        ...task,
+                        aiType: 'claude',
+                        column: 'G',
+                        cellInfo: { ...task.cellInfo, column: 'G', row: baseRow },
+                        originalAiType: '3種類（ChatGPT・Gemini・Claude）',
+                        taskGroup: task.id || task.taskId // グループ化用
+                    },
+                    {
+                        ...task,
+                        aiType: 'gemini',
+                        column: 'H',
+                        cellInfo: { ...task.cellInfo, column: 'H', row: baseRow },
+                        originalAiType: '3種類（ChatGPT・Gemini・Claude）',
+                        taskGroup: task.id || task.taskId // グループ化用
+                    }
+                ];
+
+                ExecuteLogger.info(`[step4-execute.js] Step 4-6-0-2: 1つのタスクを3つに展開完了`);
+                expandedTaskList.push(...expandedTasks);
+            } else {
+                // 通常のタスクはそのまま追加
+                expandedTaskList.push(task);
+            }
+        }
+
+        ExecuteLogger.info(`[step4-execute.js] Step 4-6-0-3: タスク展開完了 - 元: ${taskList.length}個 → 展開後: ${expandedTaskList.length}個`);
+
+        // 展開後のタスクリストを使用
+        const processTaskList = expandedTaskList;
+
+        // Step 4-6-1: 初期化とグループタイプ判定
+        ExecuteLogger.info('📋 [step4-execute.js] Step 4-6-1: 初期化とグループタイプ判定開始');
+
+        // グループタイプの判定（展開後のタスクリストで判定）
+        const groupTypeInfo = window.taskGroupTypeDetector.detectGroupType(processTaskList);
         ExecuteLogger.info('🎯 [Step 4-6-1] グループタイプ判定結果:', groupTypeInfo);
 
         // ウィンドウ配置情報の取得
@@ -1768,7 +1989,8 @@ async function executeStep4(taskList) {
         // Step 4-6-2: スプレッドシートデータの動的取得
         ExecuteLogger.info('📊 [Step 4-6-2] スプレッドシートデータ動的取得開始');
 
-        enrichedTaskList = await window.spreadsheetDataManager.enrichTaskList(taskList);
+        // 展開後のタスクリストを使用
+        enrichedTaskList = await window.spreadsheetDataManager.enrichTaskList(processTaskList);
         ExecuteLogger.info('✅ [Step 4-6-2] タスクリスト拡張完了:', enrichedTaskList.length, '個のタスク');
 
         // Step 4-6-3: ウィンドウ開く
@@ -1802,66 +2024,133 @@ async function executeStep4(taskList) {
             }
         }
 
-        // Step 4-6-6: 各タスクの実行
-        ExecuteLogger.info('⚡ [Step 4-6-6] タスク実行ループ開始');
+        // Step 4-6-6: 各タスクの実行（3種類AI並列実行対応）
+        ExecuteLogger.info('⚡ [step4-execute.js] Step 4-6-6: タスク実行ループ開始');
 
-        for (let i = 0; i < enrichedTaskList.length; i++) {
-            const task = enrichedTaskList[i];
-            const taskId = task.id || task.taskId || `${task.column}${task.row}`;
+        // Step 4-6-6-0: タスクをグループ化（3種類AI用）
+        const taskGroups = new Map();
+        for (const task of enrichedTaskList) {
+            const groupKey = task.taskGroup || task.id || task.taskId || `${task.column}${task.row}`;
+            if (!taskGroups.has(groupKey)) {
+                taskGroups.set(groupKey, []);
+            }
+            taskGroups.get(groupKey).push(task);
+        }
 
-            try {
-                ExecuteLogger.info(`📝 [Step 4-6-6-${i + 1}] タスク実行開始: ${taskId} (AI: ${task.aiType})`);
+        ExecuteLogger.info(`[step4-execute.js] Step 4-6-6-0: タスクグループ化完了 - ${taskGroups.size}グループ`);
 
-                // Step 4-6-6-1: 特別処理タスクの判定
-                const specialInfo = window.specialTaskProcessor.identifySpecialTask(task);
+        // グループごとに処理
+        let taskIndex = 0;
+        for (const [groupKey, groupTasks] of taskGroups) {
+            ExecuteLogger.info(`[step4-execute.js] Step 4-6-6-${taskIndex + 1}: グループ処理開始 - ${groupKey}`);
 
-                let result = null;
+            // 3種類AIグループかチェック
+            const isThreeTypeGroup = groupTasks.length === 3 &&
+                                     groupTasks.every(t => t.originalAiType === '3種類（ChatGPT・Gemini・Claude）');
 
-                if (specialInfo.isSpecial) {
-                    // 特別処理の実行
-                    ExecuteLogger.info(`🔧 [Step 4-6-6-${i + 1}] 特別処理実行: ${specialInfo.type}`);
-                    const windowInfo = window.windowController.openedWindows.get(task.aiType);
-                    result = await window.specialTaskProcessor.executeSpecialTask(task, specialInfo, windowInfo);
-                } else {
-                    // 通常のAI処理の実行
-                    ExecuteLogger.info(`🤖 [Step 4-6-6-${i + 1}] 通常AI処理実行: ${task.aiType}`);
-                    ExecuteLogger.debug(`🔧 [DEBUG] executeNormalAITask呼び出し前 - 関数存在確認:`, typeof executeNormalAITask);
-                    result = await executeNormalAITask(task);
+            if (isThreeTypeGroup) {
+                // Step 4-6-6-A: 3種類AI並列実行
+                ExecuteLogger.info(`🚀 [step4-execute.js] Step 4-6-6-${taskIndex + 1}-A: 3種類AI並列実行`);
+
+                const parallelPromises = groupTasks.map(async (task) => {
+                    const taskId = task.id || task.taskId || `${task.column}${task.row}`;
+                    try {
+                        ExecuteLogger.info(`📝 [step4-execute.js] 並列実行: ${taskId} (AI: ${task.aiType})`);
+
+                        const specialInfo = window.specialTaskProcessor.identifySpecialTask(task);
+                        let result = null;
+
+                        if (specialInfo.isSpecial) {
+                            const windowInfo = window.windowController.openedWindows.get(task.aiType);
+                            result = await window.specialTaskProcessor.executeSpecialTask(task, specialInfo, windowInfo);
+                        } else {
+                            result = await executeNormalAITask(task);
+                        }
+
+                        await processTaskResult(task, result, taskId);
+                        return {
+                            taskId: taskId,
+                            aiType: task.aiType,
+                            success: result.success,
+                            result: result,
+                            specialProcessing: specialInfo.isSpecial
+                        };
+                    } catch (error) {
+                        ExecuteLogger.error(`❌ 並列タスク失敗: ${taskId}`, error);
+                        await window.windowLifecycleManager.handleTaskCompletion(task, { success: false, error: error.message });
+                        return {
+                            taskId: taskId,
+                            aiType: task.aiType,
+                            success: false,
+                            error: error.message,
+                            specialProcessing: false
+                        };
+                    }
+                });
+
+                // 3つ同時実行して結果を収集
+                const parallelResults = await Promise.allSettled(parallelPromises);
+                parallelResults.forEach((pr) => {
+                    if (pr.status === 'fulfilled') {
+                        results.push(pr.value);
+                    }
+                });
+
+                ExecuteLogger.info(`✅ [step4-execute.js] Step 4-6-6-${taskIndex + 1}-A: 3種類AI並列実行完了`);
+
+            } else {
+                // Step 4-6-6-B: 通常の逐次実行
+                for (const task of groupTasks) {
+                    const taskId = task.id || task.taskId || `${task.column}${task.row}`;
+
+                    try {
+                        ExecuteLogger.info(`📝 [step4-execute.js] Step 4-6-6-${taskIndex + 1}-B: タスク実行: ${taskId} (AI: ${task.aiType})`);
+
+                        const specialInfo = window.specialTaskProcessor.identifySpecialTask(task);
+                        let result = null;
+
+                        if (specialInfo.isSpecial) {
+                            ExecuteLogger.info(`🔧 特別処理実行: ${specialInfo.type}`);
+                            const windowInfo = window.windowController.openedWindows.get(task.aiType);
+                            result = await window.specialTaskProcessor.executeSpecialTask(task, specialInfo, windowInfo);
+                        } else {
+                            ExecuteLogger.info(`🤖 通常AI処理実行: ${task.aiType}`);
+                            result = await executeNormalAITask(task);
+                        }
+
+                        await processTaskResult(task, result, taskId);
+
+                        results.push({
+                            taskId: taskId,
+                            aiType: task.aiType,
+                            success: result.success,
+                            result: result,
+                            specialProcessing: specialInfo.isSpecial
+                        });
+
+                        ExecuteLogger.info(`✅ タスク完了: ${taskId}`);
+
+                    } catch (error) {
+                        ExecuteLogger.error(`❌ タスク失敗: ${taskId}`, error);
+
+                        results.push({
+                            taskId: taskId,
+                            aiType: task.aiType,
+                            success: false,
+                            error: error.message,
+                            specialProcessing: false
+                        });
+
+                        await window.windowLifecycleManager.handleTaskCompletion(task, { success: false, error: error.message });
+                    }
                 }
-
-                // Step 4-6-6-2: 結果処理とログ記録
-                ExecuteLogger.debug(`🔧 [DEBUG] processTaskResult呼び出し前 - 関数存在確認:`, typeof processTaskResult);
-                await processTaskResult(task, result, taskId);
-
-                results.push({
-                    taskId: taskId,
-                    aiType: task.aiType,
-                    success: result.success,
-                    result: result,
-                    specialProcessing: specialInfo.isSpecial
-                });
-
-                ExecuteLogger.info(`✅ [Step 4-6-6-${i + 1}] タスク完了: ${taskId}`);
-
-            } catch (error) {
-                ExecuteLogger.error(`❌ [Step 4-6-6-${i + 1}] タスク失敗: ${taskId}`, error);
-
-                results.push({
-                    taskId: taskId,
-                    aiType: task.aiType,
-                    success: false,
-                    error: error.message,
-                    specialProcessing: false
-                });
-
-                // エラー時もライフサイクル処理を実行
-                await window.windowLifecycleManager.handleTaskCompletion(task, { success: false, error: error.message });
             }
 
-            // タスク間の待機時間
-            if (i < enrichedTaskList.length - 1) {
+            // グループ間の待機時間
+            if (taskIndex < taskGroups.size - 1) {
                 await new Promise(resolve => setTimeout(resolve, 1000));
             }
+            taskIndex++;
         }
 
         ExecuteLogger.info('🏁 [Step 4-6-6] 全タスク実行完了');
@@ -1905,40 +2194,45 @@ async function executeStep4(taskList) {
      * Step 4-6-8: 通常AI処理の実行
      */
     async function executeNormalAITask(task) {
-        ExecuteLogger.info(`🤖 [Step 4-6-8] 通常AI処理実行開始: ${task.aiType}`);
+        ExecuteLogger.info(`🤖 [step4-execute.js] Step 4-6-8: 通常AI処理実行開始: ${task.aiType}`);
 
         const taskId = task.id || task.taskId || `${task.column}${task.row}`;
+        const cellPosition = `${task.column || task.cellInfo?.column}${task.row || task.cellInfo?.row}`;
 
-        // タスク開始ログ記録
+        // 注: 3種類AI判定は Step 4-6-0 で既に展開済みのため、ここでは不要
+
+        // Step 4-6-8-1: タスク開始ログ記録
         const windowInfo = window.windowController.openedWindows.get(task.aiType);
         if (window.detailedLogManager) {
             window.detailedLogManager.recordTaskStart(task, windowInfo);
         }
 
-        // AI種別の正規化
+        // Step 4-6-8-2: AI種別の正規化
         let normalizedAiType = task.aiType;
         if (task.aiType === 'single' || !task.aiType) {
-            ExecuteLogger.info(`[Step 4-6-8] AIタイプ '${task.aiType}' を 'Claude' に変換`);
+            ExecuteLogger.info(`[step4-execute.js] Step 4-6-8-2: AIタイプ '${task.aiType}' を 'Claude' に変換`);
             normalizedAiType = 'Claude';
         }
 
-        // AI自動化ファイルの読み込み確認
+        // Step 4-6-8-3: AI自動化ファイルの読み込み確認
         const aiType = normalizedAiType.toLowerCase();
         if (!window.aiAutomationLoader.isAIAvailable(aiType)) {
-            ExecuteLogger.info(`[Step 4-6-8] ${normalizedAiType} 自動化ファイルを読み込み中...`);
+            ExecuteLogger.info(`[step4-execute.js] Step 4-6-8-3: ${normalizedAiType} 自動化ファイルを読み込み中...`);
             await window.aiAutomationLoader.loadAIFile(aiType);
             await new Promise(resolve => setTimeout(resolve, 1000));
         }
 
-        // 送信時刻記録
+        // Step 4-6-8-4: 送信時刻記録
         if (window.detailedLogManager) {
             window.detailedLogManager.recordSendTime(taskId, windowInfo?.url);
         }
 
-        // Retry機能付きでAI実行
+        // Step 4-6-8-5: Retry機能付きでAI実行
+        ExecuteLogger.info(`[step4-execute.js] Step 4-6-8-5: ${normalizedAiType}実行準備`);
         const executeFunction = async () => {
             switch (aiType) {
                 case 'chatgpt':
+                    ExecuteLogger.info(`[step4-execute.js] Step 4-6-8-5-1: ChatGPT実行`);
                     if (!window.ChatGPTAutomationV2) throw new Error('ChatGPT Automation が利用できません');
                     return await window.ChatGPTAutomationV2.executeTask(task);
 
