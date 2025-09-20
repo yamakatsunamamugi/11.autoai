@@ -14,8 +14,36 @@
  *   - 5-2-3: 繰り返し
  */
 
+// ==================== デバッグ: ファイル読み込み開始 ====================
+console.log('🔍 [DEBUG] step5-loop.js 読み込み開始', {
+  timestamp: new Date().toISOString(),
+  location: window.location.href,
+  readyState: document.readyState,
+  encoding: document.characterSet,
+  scriptType: document.currentScript?.type || 'unknown'
+});
+
+// ファイルの文字エンコーディングチェック
+try {
+  const testString = 'テスト文字列：日本語、英語、記号!@#$%';
+  console.log('🔍 [DEBUG] 文字エンコーディングテスト:', {
+    original: testString,
+    length: testString.length,
+    charCodes: Array.from(testString).map(c => c.charCodeAt(0))
+  });
+} catch (e) {
+  console.error('❌ [DEBUG] 文字エンコーディングエラー:', e);
+}
+
 // グローバル状態を使用（他のステップと共有）
+console.log('🔍 [DEBUG] グローバル状態チェック', {
+  globalStateExists: !!window.globalState,
+  windowType: typeof window,
+  documentType: typeof document
+});
+
 if (!window.globalState) {
+  console.log('🔍 [DEBUG] グローバル状態を初期化');
   window.globalState = {
     spreadsheetId: null,
     gid: null,
@@ -478,6 +506,12 @@ async function readSpreadsheet(range) {
  * @returns {Promise<Array>} スプレッドシートの2次元配列データ
  */
 async function readFullSpreadsheet() {
+  console.log('🔍 [DEBUG] readFullSpreadsheet関数実行開始', {
+    callerStack: new Error().stack,
+    functionType: typeof readFullSpreadsheet,
+    asyncFunction: readFullSpreadsheet.constructor.name
+  });
+
   console.log('[Helper] スプレッドシート全体データ取得開始');
 
   try {
@@ -498,17 +532,37 @@ async function readFullSpreadsheet() {
     console.log('[Helper] データサンプル（最初の3行）:', data.values.slice(0, 3));
 
     // 🔍 デバッグログ：データの形状
-    console.log('[Helper] [Debug] 取得したデータの形状:', {
-      全体行数: data.values?.length,
-      各行の列数: data.values?.slice(0, 10).map((row, i) => ({
-        行番号: i + 1,
-        列数: row.length
-      })),
-      最長行: Math.max(...(data.values?.map(row => row.length) || [0])),
-      最短行: Math.min(...(data.values?.map(row => row.length) || [0])),
-      36行目の列数: data.values?.[35]?.length,
-      36行目の内容プレビュー: data.values?.[35]?.slice(0, 5)
-    });
+    try {
+      const debugInfo = {
+        '全体行数': data.values?.length,
+        '各行の列数': data.values?.slice(0, 10).map((row, i) => ({
+          '行番号': i + 1,
+          '列数': row.length
+        })),
+        '最長行': Math.max(...(data.values?.map(row => row.length) || [0])),
+        '最短行': Math.min(...(data.values?.map(row => row.length) || [0])),
+        '36行目の列数': data.values?.[35]?.length,
+        '36行目の内容プレビュー': data.values?.[35]?.slice(0, 5)
+      };
+
+      console.log('🔍 [DEBUG] データ形状の詳細:', debugInfo);
+
+      // オブジェクトの各プロパティをチェック
+      for (const [key, value] of Object.entries(debugInfo)) {
+        console.log(`🔍 [DEBUG] プロパティ "${key}":`, {
+          type: typeof value,
+          isNull: value === null,
+          isUndefined: value === undefined,
+          valuePreview: JSON.stringify(value).substring(0, 100)
+        });
+      }
+    } catch (debugError) {
+      console.error('❌ [DEBUG] デバッグ情報の出力エラー:', {
+        message: debugError.message,
+        stack: debugError.stack,
+        lineNumber: debugError.lineNumber
+      });
+    }
 
     return data.values;
 
@@ -754,20 +808,60 @@ async function executeTasks(tasks, taskGroup) {
 }
 
 // ブラウザ環境用のグローバルエクスポート
+console.log('🔍 [DEBUG] グローバルエクスポート前の状態:', {
+  windowType: typeof window,
+  executeStep5Defined: typeof executeStep5,
+  checkCompletionStatusDefined: typeof checkCompletionStatus,
+  processIncompleteTasksDefined: typeof processIncompleteTasks,
+  readFullSpreadsheetDefined: typeof readFullSpreadsheet
+});
+
 if (typeof window !== 'undefined') {
-  window.executeStep5 = executeStep5;
-  window.checkCompletionStatus = checkCompletionStatus;
-  window.processIncompleteTasks = processIncompleteTasks;
-  window.readFullSpreadsheet = readFullSpreadsheet;  // 新しい関数も追加
+  try {
+    window.executeStep5 = executeStep5;
+    window.checkCompletionStatus = checkCompletionStatus;
+    window.processIncompleteTasks = processIncompleteTasks;
+    window.readFullSpreadsheet = readFullSpreadsheet;  // 新しい関数も追加
+
+    console.log('✅ [DEBUG] グローバルエクスポート成功:', {
+      'window.executeStep5': typeof window.executeStep5,
+      'window.checkCompletionStatus': typeof window.checkCompletionStatus,
+      'window.processIncompleteTasks': typeof window.processIncompleteTasks,
+      'window.readFullSpreadsheet': typeof window.readFullSpreadsheet
+    });
+  } catch (exportError) {
+    console.error('❌ [DEBUG] グローバルエクスポートエラー:', exportError);
+  }
 }
 
 // エクスポート
+console.log('🔍 [DEBUG] モジュールエクスポートチェック:', {
+  moduleType: typeof module,
+  exportsAvailable: typeof module !== 'undefined' ? !!module.exports : false
+});
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = {
-    executeStep5,
-    checkCompletionStatus,
-    processIncompleteTasks,
-    readFullSpreadsheet,
-    globalState: window.globalState
-  };
+  try {
+    module.exports = {
+      executeStep5,
+      checkCompletionStatus,
+      processIncompleteTasks,
+      readFullSpreadsheet,
+      globalState: window.globalState
+    };
+    console.log('✅ [DEBUG] モジュールエクスポート成功');
+  } catch (moduleExportError) {
+    console.error('❌ [DEBUG] モジュールエクスポートエラー:', moduleExportError);
+  }
 }
+
+// ファイル読み込み完了ログ
+console.log('✅ [DEBUG] step5-loop.js 読み込み完了', {
+  timestamp: new Date().toISOString(),
+  functionsExported: [
+    'executeStep5',
+    'checkCompletionStatus',
+    'processIncompleteTasks',
+    'readFullSpreadsheet'
+  ]
+});

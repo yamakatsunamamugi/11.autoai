@@ -84,7 +84,8 @@
       "Bash(do [ -f \"$file\" ])",
       "Bash(npm run:*)",
       "Bash(git ls-tree:*)",
-      "Bash(git rev-list:*)"
+      "Bash(git rev-list:*)",
+      "Bash(xxd:*)"
     ],
     "defaultMode": "acceptEdits",
     "additionalDirectories": [

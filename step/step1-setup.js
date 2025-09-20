@@ -122,9 +122,10 @@ async function checkInternetConnection() {
       });
     } else {
       // 認証トークンなしでテスト（401エラーが期待される）
-      const apiTestUrl = 'https://sheets.googleapis.com/v4/spreadsheets';
+      // 存在するエンドポイントを使用（404を回避）
+      const apiTestUrl = 'https://www.googleapis.com/discovery/v1/apis/sheets/v4/rest';
       testResponse = await fetch(apiTestUrl, {
-        method: 'HEAD'
+        method: 'GET'
       });
     }
 
@@ -136,10 +137,10 @@ async function checkInternetConnection() {
     console.log(`  - Headers: ${testResponse.headers.get('content-type') || 'N/A'}`);
     console.log(`  - 認証トークン使用: ${authToken ? 'あり (長さ: ' + authToken.length + ')' : 'なし'}`);
 
-    if (testResponse.ok || testResponse.status === 401 || testResponse.status === 404) {
-      // 401は認証エラー、404はAPIエンドポイントエラーだが、いずれも接続自体は成功
-      const statusDescription = testResponse.status === 404 ? 'APIエンドポイント（問題なし）' :
-                               testResponse.status === 401 ? '認証エラー（問題なし）' : '正常';
+    if (testResponse.ok || testResponse.status === 401) {
+      // 200 OK: APIディスカバリー成功または認証済み
+      // 401 Unauthorized: APIは動作しているが認証が必要
+      const statusDescription = testResponse.status === 401 ? '認証エラー（問題なし）' : '正常';
       console.log(`[step1-setup.js] [Step 1-1-2] ✅ Google Sheets APIへの接続確認成功（ステータス: ${testResponse.status} - ${statusDescription}）`);
       window.globalState.internetConnected = true;
       window.globalState.authenticated = authToken ? true : false;
