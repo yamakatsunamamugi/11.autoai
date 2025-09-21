@@ -966,11 +966,8 @@ async function setupColumnStructure() {
     });
 
     console.log(
-      `[step1-setup.js] [Step 1-5-1] プロンプト列検出結果: ${promptColumns.length}列`,
+      `[step1-setup.js] [Step 1-5-1] ✅ プロンプト列検出結果: ${promptColumns.length}列`,
     );
-    promptColumns.forEach((col) => {
-      console.log(`  - ${col.column}列: "${col.value}"`);
-    });
 
     if (promptColumns.length === 0) {
       console.log(
@@ -1024,8 +1021,6 @@ async function setupColumnStructure() {
     );
 
     for (const group of sortedGroups) {
-      console.log(`[step1-setup.js] [Step 1-5-2] ${group.column}列の処理中...`);
-
       const is3TypeAI = group.aiType.includes(
         "3種類（ChatGPT・Gemini・Claude）",
       );

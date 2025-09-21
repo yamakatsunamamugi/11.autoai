@@ -563,15 +563,6 @@ async function applySkipConditions() {
 
     checkedGroups++;
 
-    console.log(`[step2-taskgroup.js] グループ${group.groupNumber}処理開始:`);
-    console.log(`  - タイプ: ${group.type}`);
-    console.log(
-      `  - プロンプト列: ${group.promptColumns ? group.promptColumns.join(",") : "なし"}`,
-    );
-    console.log(
-      `  - 回答列: ${group.answerColumn || group.chatgptColumn || "なし"}`,
-    );
-
     try {
       // データ範囲を決定（データ開始行から100行）
       const endRow = dataStartRow + 99;
@@ -1126,18 +1117,6 @@ async function executeStep2TaskGroups() {
     ).length;
 
     console.log("========");
-    console.log("[step2-taskgroup.js] 📋 検出されたタスクグループサマリー:");
-    window.globalState.taskGroups.forEach((group) => {
-      const aiInfo = group.aiType || group.ai || "未設定";
-      const promptInfo = group.columns?.prompts
-        ? group.columns.prompts.join(",")
-        : "なし";
-      const answerInfo = group.columns?.answer || "なし";
-      console.log(
-        `  グループ${group.groupNumber}: ${group.groupType || group.type} | 範囲: ${group.startColumn}〜${group.endColumn}列 | AI: ${aiInfo} | プロンプト: ${promptInfo} | 回答: ${answerInfo}`,
-      );
-    });
-
     console.log(
       `[step2-taskgroup.js] 🗂️ タスクグループ最終結果: 全${totalGroups}個 | 有効${activeGroups}個 | スキップ${skippedGroups}個`,
     );
