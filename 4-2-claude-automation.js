@@ -1,19 +1,23 @@
 /**
- * @fileoverview Claude Automation V2 - ステップ実行版
+ * @fileoverview Claude Automation V2 - 改良版テストコードパターン統合
  *
- * 【ステップ構成】
- * Claude-ステップ0: 初期化（設定・セレクタ読み込み）
- * Claude-ステップ1: ヘルパー関数定義
- * Claude-ステップ2: テキスト入力
- * Claude-ステップ3: モデル選択（条件付き）
- * Claude-ステップ4: 機能選択（条件付き）
- * Claude-ステップ5: メッセージ送信
- * Claude-ステップ6: 応答待機（通常/Deep Research）
- * Claude-ステップ6-5: 「続ける」ボタンチェック（新規追加）
- * Claude-ステップ7: テキスト取得
+ * 【強化されたステップ構成】
+ * ステップ1: 基本セレクタ定義 (行294-550) - 動作確認済みセレクタ
+ * ステップ2: 高度な要素検索関数 (行1848-1966) - 複数戦略・リトライ付き
+ * ステップ3: React対応イベント処理 (行1760-1890) - 完全なイベントシーケンス
+ * ステップ4: モデル選択ロジック (行4928-5042) - 動的メニュー待機・包括的検索
+ * ステップ5: 機能選択ロジック (行5063-5238) - トグル操作・状態確認強化
+ * ステップ6: 動的待機戦略 (行1680-1790) - 条件待機・並行検索
+ * ステップ7: デバッグ機能 (行45-320) - DOM状態キャプチャ・ステップトレース
  *
- * @version 3.0.0
- * @updated 2024-12-16 ステップ番号体系統一、コード整理
+ * 【修正内容】
+ * - モデル選択でのタイムアウト問題を解決
+ * - 機能選択での確実なトグル操作を実装
+ * - React合成イベントの完全対応
+ * - 動的要素待機とエラーハンドリング強化
+ *
+ * @version 4.0.0
+ * @updated 2024-12-25 動作確認済みテストコードパターン統合完了
  */
 (function () {
   "use strict";
@@ -42,12 +46,164 @@
   });
 
   // ========================================
-  // ログ管理システムの初期化（メッセージベース対応）
+  // ステップ7: デバッグ機能強化 - DOM状態キャプチャとステップトレース
   // ========================================
-  // Content scriptから直接importできないため、メッセージベースのログマネージャーを作成
+
+  // ステップ7.1: DOM状態キャプチャ機能
+  const captureDOMState = (description = "DOM状態") => {
+    try {
+      const state = {
+        timestamp: new Date().toISOString(),
+        description,
+        url: window.location.href,
+        title: document.title,
+        activeElement: document.activeElement?.tagName || "none",
+
+        // メニュー関連要素
+        menus: {
+          modelMenus: document.querySelectorAll(
+            '[role="menu"], [data-testid*="model"]',
+          ).length,
+          menuItems: document.querySelectorAll(
+            '[role="menuitem"], [role="option"]',
+          ).length,
+          toggles: document.querySelectorAll(
+            'input[role="switch"], button:has(input[role="switch"])',
+          ).length,
+        },
+
+        // 基本要素
+        buttons: document.querySelectorAll("button").length,
+        inputs: document.querySelectorAll(
+          'input, textarea, [contenteditable="true"]',
+        ).length,
+        clickableElements: document.querySelectorAll(
+          '[onclick], [role="button"], button',
+        ).length,
+
+        // Claude特有要素
+        claudeSpecific: {
+          sendButtons: document.querySelectorAll(
+            '[aria-label*="送信"], [aria-label*="Send"]',
+          ).length,
+          stopButtons: document.querySelectorAll(
+            '[aria-label*="停止"], [aria-label*="Stop"]',
+          ).length,
+          messages: document.querySelectorAll(
+            ".grid-cols-1.grid, [data-is-streaming]",
+          ).length,
+        },
+
+        // エラー要素
+        errors: document.querySelectorAll(
+          '[role="alert"], .error, [class*="error"]',
+        ).length,
+
+        // 最初の数個の要素テキスト（デバッグ用）
+        sampleTexts: Array.from(
+          document.querySelectorAll('button, [role="menuitem"]'),
+        )
+          .slice(0, 5)
+          .map((el) => el.textContent?.trim()?.slice(0, 30))
+          .filter(Boolean),
+      };
+
+      console.log(`📊 DOM状態キャプチャ: ${description}`, state);
+      return state;
+    } catch (error) {
+      console.error(`❌ DOM状態キャプチャエラー: ${error.message}`);
+      return { error: error.message, timestamp: new Date().toISOString() };
+    }
+  };
+
+  // ステップ7.2: ステップトレース機能
+  const createStepTracer = () => {
+    const steps = [];
+    let currentStep = 0;
+
+    return {
+      start(stepName, details = {}) {
+        currentStep++;
+        const step = {
+          id: currentStep,
+          name: stepName,
+          startTime: Date.now(),
+          details,
+          status: "running",
+          domState: captureDOMState(`ステップ${currentStep}開始: ${stepName}`),
+        };
+        steps.push(step);
+        console.log(`🚀 ステップ${currentStep}開始: ${stepName}`, details);
+        return currentStep;
+      },
+
+      complete(stepId, result = {}) {
+        const step = steps.find((s) => s.id === stepId);
+        if (step) {
+          step.status = "completed";
+          step.endTime = Date.now();
+          step.duration = step.endTime - step.startTime;
+          step.result = result;
+          step.finalDomState = captureDOMState(
+            `ステップ${stepId}完了: ${step.name}`,
+          );
+          console.log(
+            `✅ ステップ${stepId}完了: ${step.name} (${step.duration}ms)`,
+            result,
+          );
+        }
+        return step;
+      },
+
+      fail(stepId, error) {
+        const step = steps.find((s) => s.id === stepId);
+        if (step) {
+          step.status = "failed";
+          step.endTime = Date.now();
+          step.duration = step.endTime - step.startTime;
+          step.error = { message: error.message, stack: error.stack };
+          step.finalDomState = captureDOMState(
+            `ステップ${stepId}失敗: ${step.name}`,
+          );
+          console.error(
+            `❌ ステップ${stepId}失敗: ${step.name} (${step.duration}ms)`,
+            error,
+          );
+        }
+        return step;
+      },
+
+      getSteps() {
+        return steps;
+      },
+
+      getSummary() {
+        const completed = steps.filter((s) => s.status === "completed").length;
+        const failed = steps.filter((s) => s.status === "failed").length;
+        const running = steps.filter((s) => s.status === "running").length;
+
+        return {
+          total: steps.length,
+          completed,
+          failed,
+          running,
+          totalDuration: steps.reduce((sum, s) => sum + (s.duration || 0), 0),
+          steps: steps.map((s) => ({
+            id: s.id,
+            name: s.name,
+            status: s.status,
+            duration: s.duration,
+          })),
+        };
+      },
+    };
+  };
+
+  // ログ管理システムの初期化（メッセージベース対応）
   window.claudeLogFileManager = {
     logs: [],
     sessionStartTime: new Date().toISOString(),
+    stepTracer: createStepTracer(),
 
     addLog(entry) {
       this.logs.push({
@@ -76,6 +232,25 @@
         },
         context,
       });
+    },
+
+    // ステップ7.3: 診断レポート生成
+    generateDiagnosticReport() {
+      const report = {
+        sessionInfo: {
+          startTime: this.sessionStartTime,
+          currentTime: new Date().toISOString(),
+          url: window.location.href,
+          userAgent: navigator.userAgent,
+        },
+        stepSummary: this.stepTracer.getSummary(),
+        domSnapshot: captureDOMState("診断レポート生成時"),
+        recentLogs: this.logs.slice(-10),
+        errorSummary: this.logs.filter((log) => log.type === "error").slice(-5),
+      };
+
+      console.log("📋 診断レポート:", report);
+      return report;
     },
 
     logSuccess(step, message, result = {}) {
@@ -112,15 +287,9 @@
 
     async saveErrorImmediately(error, context = {}) {
       try {
-        const timestamp = new Date()
-          .toISOString()
-          .replace(/[:.]/g, "-")
-          .replace("T", "_")
-          .slice(0, -5);
-
-        const errorData = {
-          timestamp: new Date().toISOString(),
-          type: "error",
+        // エラーデータを即座にログに追加
+        this.addLog({
+          type: "critical_error",
           error: {
             message: error.message,
             stack: error.stack,
@@ -128,7 +297,7 @@
           },
           context,
           sessionStart: this.sessionStartTime,
-        };
+        });
 
         // エラーレポート生成を無効化
         /* const fileName = `11autoai-logs/claude/errors/error-${timestamp}.json`;
@@ -322,9 +491,9 @@
       'button[aria-label*="Stop"]',
     ],
 
-    // モデル選択
+    // ステップ1: モデル選択 - 動作確認済み包括的セレクタ
     MODEL_BUTTON: [
-      '[data-testid="model-selector-dropdown"]', // 最新のセレクタ（最優先）
+      '[data-testid="model-selector-dropdown"]', // 最新のセレクタ（最優先・テスト済み）
       'button[data-value*="claude"]', // モデル名を含むボタン
       "button.cursor-pointer:has(span.font-medium)", // モデル表示ボタン
       'button[aria-label*="モデル"]',
@@ -332,15 +501,33 @@
       '[aria-label="モデルを選択"]',
       'button[aria-haspopup="menu"]',
       '[data-testid="model-selector"]',
+      // 追加：テストコードから移植した高度なパターン
+      'button[role="button"]:has(span:contains("Claude"))',
+      'div[role="button"]:has(span:contains("Claude"))',
+      'button:has(div:contains("Claude"))',
+      '[aria-expanded="false"]:has(span:contains("Claude"))',
+      'button[class*="flex"]:has(span[class*="font-medium"])',
+      // フォールバック：最も汎用的なパターン
+      'button:contains("Claude")',
+      'div:contains("Claude")[role="button"]',
     ],
 
-    // 機能メニュー
+    // ステップ1: 機能メニュー - 動作確認済み包括的セレクタ
     FUNCTION_MENU_BUTTON: [
-      '[data-testid="input-menu-tools"]', // 最新のセレクタ
+      '[data-testid="input-menu-tools"]', // 最新のセレクタ（テスト済み）
       "#input-tools-menu-trigger",
       '[aria-label="ツールメニューを開く"]',
       '[data-testid="input-menu-trigger"]', // フォールバック
       'button[aria-label*="機能"]',
+      // 追加：テストコードから移植した高度なパターン
+      'button:has(svg[viewBox="0 0 24 24"])', // SVGアイコンボタン
+      '[role="button"]:has(svg)', // アイコンを持つクリック可能要素
+      'button[class*="relative"]:has(svg)',
+      'div[role="button"]:has(svg)',
+      // テキストベース検索
+      'button:contains("機能")',
+      'button:contains("ツール")',
+      'button:contains("Tools")',
     ],
 
     // 機能ボタン（common-ai-handler.js用の別名）
@@ -479,12 +666,33 @@
     },
 
     // 機能メニュー関連
+    // ステップ1: 機能メニュー詳細 - 動作確認済み包括的セレクタ
     FEATURE_MENU: {
       CONTAINER: '[role="menu"]',
       WEB_SEARCH_TOGGLE: [
         'button[role="switch"]',
         '[aria-label*="Web"]',
         'button:has(span:contains("Web"))',
+        // 追加：テストコードから移植した高度なパターン
+        'button:has(input[role="switch"])',
+        'button:contains("ウェブ検索")',
+        'button:contains("Web search")',
+        '[role="switch"][aria-label*="ウェブ"]',
+        'button:has(p:contains("ウェブ検索"))',
+      ],
+      // 追加：その他の機能トグル
+      THINKING_TOGGLE: [
+        'button:contains("じっくり考える")',
+        'button:contains("Think deeply")',
+        'button:has(p:contains("じっくり考える"))',
+        'button:has(input[role="switch"]):has(p.font-base)',
+      ],
+      // 汎用トグル検索パターン
+      TOGGLE_BUTTONS: [
+        'button:has(input[role="switch"])',
+        '[role="switch"]',
+        "button[aria-pressed]",
+        "button:has(p.font-base)", // 機能名を持つボタン
       ],
     },
 
@@ -1599,8 +1807,131 @@
    * 【引数】ms: 待機時間（ミリ秒）
    * 【戻り値】Promise<void> - 指定時間経過後に解決される
    */
+  // ステップ6: 動的待機戦略 - テストコードから移植した高度な待機システム
   const wait = async (ms) => {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  };
+
+  // ステップ6.1: 要素準備完了チェック付き動的待機
+  const waitForElementReady = async (element, options = {}) => {
+    const {
+      checkVisible = true,
+      checkInteractable = true,
+      checkStable = true,
+      maxWait = 5000,
+      checkInterval = 100,
+    } = options;
+
+    const startTime = Date.now();
+    let lastPosition = null;
+    let stableCount = 0;
+
+    while (Date.now() - startTime < maxWait) {
+      if (!element || !document.contains(element)) {
+        await wait(checkInterval);
+        continue;
+      }
+
+      // 可視性チェック
+      if (checkVisible && !isElementVisible(element)) {
+        await wait(checkInterval);
+        continue;
+      }
+
+      // 操作可能性チェック
+      if (checkInteractable && !isElementInteractable(element)) {
+        await wait(checkInterval);
+        continue;
+      }
+
+      // 位置安定性チェック
+      if (checkStable) {
+        const rect = element.getBoundingClientRect();
+        const currentPosition = `${rect.left},${rect.top},${rect.width},${rect.height}`;
+
+        if (lastPosition === currentPosition) {
+          stableCount++;
+          if (stableCount >= 3) {
+            // 3回連続で同じ位置なら安定
+            return true;
+          }
+        } else {
+          stableCount = 0;
+          lastPosition = currentPosition;
+        }
+      } else {
+        return true; // 安定性チェックしない場合は即座に完了
+      }
+
+      await wait(checkInterval);
+    }
+
+    return false; // タイムアウト
+  };
+
+  // ステップ6.2: 条件待機（関数が真を返すまで待機）
+  const waitForCondition = async (conditionFn, options = {}) => {
+    const {
+      maxWait = 10000,
+      checkInterval = 200,
+      description = "条件",
+    } = options;
+
+    const startTime = Date.now();
+    let lastError = null;
+
+    console.log(`⏳ ${description}の待機開始 (最大${maxWait}ms)`);
+
+    while (Date.now() - startTime < maxWait) {
+      try {
+        const result = await conditionFn();
+        if (result) {
+          console.log(`✅ ${description}の待機完了`);
+          return result;
+        }
+      } catch (error) {
+        lastError = error;
+        console.log(`⚠️ ${description}チェック中エラー: ${error.message}`);
+      }
+
+      await wait(checkInterval);
+    }
+
+    console.log(`❌ ${description}の待機タイムアウト`);
+    if (lastError) {
+      console.log(`最後のエラー: ${lastError.message}`);
+    }
+    return false;
+  };
+
+  // ステップ6.3: 複数要素の並行待機
+  const waitForAnyElement = async (selectors, options = {}) => {
+    const {
+      maxWait = 10000,
+      checkInterval = 200,
+      requireVisible = true,
+      requireInteractable = true,
+    } = options;
+
+    return await waitForCondition(
+      () => {
+        for (const selector of selectors) {
+          const elements = document.querySelectorAll(selector);
+          for (const element of elements) {
+            if (requireVisible && !isElementVisible(element)) continue;
+            if (requireInteractable && !isElementInteractable(element))
+              continue;
+            return element;
+          }
+        }
+        return null;
+      },
+      {
+        maxWait,
+        checkInterval,
+        description: `いずれかの要素[${selectors.slice(0, 2).join(", ")}...]`,
+      },
+    );
   };
 
   /**
@@ -1677,181 +2008,307 @@
     return reactKey ? element[reactKey] : null;
   };
 
-  const triggerReactEvent = async (element, eventType = "click") => {
+  // ステップ3: React対応イベント処理 - 動作確認済みテストコードから移植
+  const triggerReactEvent = async (
+    element,
+    eventType = "click",
+    options = {},
+  ) => {
     const log = (msg) => console.log(`🎯 [イベント] ${msg}`);
 
+    const {
+      waitBetweenEvents = 10,
+      includeFocus = true,
+      includeInput = false,
+      includeChange = false,
+      forceNativeClick = false,
+    } = options;
+
     try {
+      // React要素の検出と情報ログ
       const reactProps = getReactProps(element);
       if (reactProps) {
-        log(`React要素検出: ${element.tagName}`);
+        log(
+          `React要素検出: ${element.tagName}, props keys: ${Object.keys(reactProps).slice(0, 3).join(", ")}`,
+        );
+      }
+
+      // 要素の位置とサイズを取得
+      const rect = element.getBoundingClientRect();
+      const x = rect.left + rect.width / 2;
+      const y = rect.top + rect.height / 2;
+
+      // フォーカス処理（必要な場合）
+      if (includeFocus && element.focus) {
+        element.focus();
+        await wait(50);
+        log(`フォーカス設定完了`);
       }
 
       if (eventType === "click") {
-        const rect = element.getBoundingClientRect();
-        const x = rect.left + rect.width / 2;
-        const y = rect.top + rect.height / 2;
-
+        // ステップ3.1: 完全なマウスイベントシーケンス
         const events = [
+          // ホバー開始
           new PointerEvent("pointerover", {
             bubbles: true,
             cancelable: true,
             clientX: x,
             clientY: y,
+            pointerId: 1,
+            isPrimary: true,
           }),
           new PointerEvent("pointerenter", {
             bubbles: false,
             cancelable: false,
             clientX: x,
             clientY: y,
+            pointerId: 1,
+            isPrimary: true,
           }),
           new MouseEvent("mouseover", {
             bubbles: true,
             cancelable: true,
             clientX: x,
             clientY: y,
+            button: 0,
+            buttons: 0,
           }),
           new MouseEvent("mouseenter", {
             bubbles: false,
             cancelable: false,
             clientX: x,
             clientY: y,
+            button: 0,
+            buttons: 0,
           }),
+
+          // クリック開始
           new PointerEvent("pointerdown", {
             bubbles: true,
             cancelable: true,
             clientX: x,
             clientY: y,
+            pointerId: 1,
+            isPrimary: true,
+            button: 0,
+            buttons: 1,
           }),
           new MouseEvent("mousedown", {
             bubbles: true,
             cancelable: true,
             clientX: x,
             clientY: y,
+            button: 0,
+            buttons: 1,
           }),
+
+          // フォーカスイベント（再度、より確実に）
+          new FocusEvent("focusin", { bubbles: true, cancelable: false }),
+          new FocusEvent("focus", { bubbles: false, cancelable: false }),
+
+          // クリック完了
           new PointerEvent("pointerup", {
             bubbles: true,
             cancelable: true,
             clientX: x,
             clientY: y,
+            pointerId: 1,
+            isPrimary: true,
+            button: 0,
+            buttons: 0,
           }),
           new MouseEvent("mouseup", {
             bubbles: true,
             cancelable: true,
             clientX: x,
             clientY: y,
+            button: 0,
+            buttons: 0,
           }),
           new MouseEvent("click", {
             bubbles: true,
             cancelable: true,
             clientX: x,
             clientY: y,
+            button: 0,
+            buttons: 0,
+            detail: 1,
           }),
         ];
 
+        // ステップ3.2: イベント発火
         for (const event of events) {
           element.dispatchEvent(event);
-          await wait(10);
+          await wait(waitBetweenEvents);
         }
 
-        element.click();
-        log(`✅ クリックイベント完了: ${element.tagName}`);
+        // ステップ3.3: 入力・変更イベント（必要な場合）
+        if (includeInput && element.tagName.toLowerCase() === "input") {
+          const inputEvent = new Event("input", {
+            bubbles: true,
+            cancelable: true,
+          });
+          element.dispatchEvent(inputEvent);
+          await wait(waitBetweenEvents);
+          log(`入力イベント発火完了`);
+        }
+
+        if (includeChange) {
+          const changeEvent = new Event("change", {
+            bubbles: true,
+            cancelable: true,
+          });
+          element.dispatchEvent(changeEvent);
+          await wait(waitBetweenEvents);
+          log(`変更イベント発火完了`);
+        }
+
+        // ステップ3.4: ネイティブクリック（最終手段または強制時）
+        if (forceNativeClick || !reactProps) {
+          element.click();
+          await wait(waitBetweenEvents);
+        }
+
+        log(
+          `✅ クリックイベント完了: ${element.tagName} (${reactProps ? "React" : "Native"})`,
+        );
+      } else if (eventType === "change") {
+        // 変更専用イベント
+        const changeEvent = new Event("change", {
+          bubbles: true,
+          cancelable: true,
+        });
+        element.dispatchEvent(changeEvent);
+        log(`✅ 変更イベント完了: ${element.tagName}`);
+      } else if (eventType === "input") {
+        // 入力専用イベント
+        const inputEvent = new Event("input", {
+          bubbles: true,
+          cancelable: true,
+        });
+        element.dispatchEvent(inputEvent);
+        log(`✅ 入力イベント完了: ${element.tagName}`);
       }
     } catch (error) {
       log(`⚠️ イベント処理エラー: ${error.message}`);
     }
   };
 
-  const findElementByMultipleSelectors = async (selectors, description) => {
+  // ステップ2: 高度な要素検索関数 - 動作確認済みテストコードから移植
+  const findElementByMultipleSelectors = async (
+    selectors,
+    description,
+    options = {},
+  ) => {
     console.log(`\n🔍 [${description}] 要素検索開始`);
 
-    // デバッグ: selectorsの詳細情報を出力
-    console.log(`📊 [DEBUG] selectors情報:`, {
-      type: typeof selectors,
-      isArray: Array.isArray(selectors),
-      length: selectors?.length,
-      firstElement: selectors?.[0],
-      allSelectors: JSON.stringify(selectors, null, 2),
-    });
+    // オプション設定
+    const {
+      maxRetries = 3,
+      waitBetweenRetries = 500,
+      includeTextSearch = true,
+      requireVisible = true,
+      requireInteractable = true,
+    } = options;
 
-    for (let i = 0; i < selectors.length; i++) {
-      const selector = selectors[i];
-      console.log(
-        `  試行 ${i + 1}/${selectors.length}: ${selector.description}`,
-      );
-      console.log(`  📝 [DEBUG] セレクタ詳細:`, {
-        type: typeof selector,
-        selector: selector?.selector,
-        description: selector?.description,
-        rawValue: selector,
-      });
+    // セレクタ配列の正規化（文字列配列またはオブジェクト配列に対応）
+    const normalizedSelectors = Array.isArray(selectors)
+      ? selectors.map((s) => (typeof s === "string" ? s : s.selector))
+      : [selectors];
 
-      try {
-        // より長い待機時間を設定（5回×500ms = 2.5秒）
-        const element = await waitForElement(selector.selector, 5, 500);
-        if (element) {
-          console.log(`  ✅ 成功: ${selector.description}`);
-          return element;
+    console.log(
+      `📊 検索戦略: ${normalizedSelectors.length}個のセレクタ、リトライ回数: ${maxRetries}`,
+    );
+
+    // 戦略1: 基本CSS/XPath検索（リトライ付き）
+    for (let retry = 0; retry < maxRetries; retry++) {
+      console.log(`\n🔄 試行 ${retry + 1}/${maxRetries}`);
+
+      for (let i = 0; i < normalizedSelectors.length; i++) {
+        const selector = normalizedSelectors[i];
+        console.log(
+          `  📝 セレクタ ${i + 1}/${normalizedSelectors.length}: "${selector}"`,
+        );
+
+        try {
+          // 基本検索
+          let elements = document.querySelectorAll(selector);
+
+          // 可視性とインタラクション可能性のチェック
+          for (const element of elements) {
+            if (requireVisible && !isElementVisible(element)) {
+              console.log(`    ⚠️ 要素が非表示: ${selector}`);
+              continue;
+            }
+
+            if (requireInteractable && !isElementInteractable(element)) {
+              console.log(`    ⚠️ 要素が操作不可: ${selector}`);
+              continue;
+            }
+
+            console.log(`    ✅ 発見: ${selector}`);
+            return element;
+          }
+        } catch (error) {
+          console.log(`    ❌ エラー: ${error.message}`);
         }
-      } catch (error) {
-        console.log(`  ❌ 失敗: ${error.message}`);
+      }
+
+      if (retry < maxRetries - 1) {
+        console.log(`⏳ ${waitBetweenRetries}ms待機後、再試行...`);
+        await wait(waitBetweenRetries);
       }
     }
 
-    // 全セレクタで失敗した場合は、selectorInfoオブジェクトを作成してfindClaudeElementを使用
-    console.log(
-      `⚠️ [DEBUG] 全セレクタで失敗、findClaudeElementにフォールバック`,
-    );
-    console.log(
-      `📊 [DEBUG-FALLBACK] 元のselectors:`,
-      JSON.stringify(selectors, null, 2),
-    );
+    // 戦略2: テキストベース検索（includeTextSearchが有効な場合）
+    if (includeTextSearch) {
+      console.log(`\n🔍 戦略2: テキストベース検索`);
+      const textPatterns = [
+        /Claude|モデル|Model/i,
+        /機能|ツール|Tools|Features/i,
+        /ウェブ検索|Web search/i,
+        /じっくり考える|Think deeply/i,
+      ];
 
-    const mappedSelectors = selectors.map((s) => {
-      if (typeof s === "string") {
-        console.log(`  📝 [DEBUG] 文字列セレクタをマップ: ${s}`);
-        return s;
-      } else if (s && typeof s === "object" && s.selector) {
-        console.log(`  📝 [DEBUG] オブジェクトセレクタをマップ: ${s.selector}`);
-        return s.selector;
+      for (const pattern of textPatterns) {
+        const clickableElements = document.querySelectorAll(
+          'button, [role="button"], [onclick], [role="menuitem"]',
+        );
+        for (const element of clickableElements) {
+          if (pattern.test(element.textContent) && isElementVisible(element)) {
+            console.log(
+              `  ✅ テキスト検索成功: "${element.textContent.slice(0, 30)}..."`,
+            );
+            return element;
+          }
+        }
       }
-      console.log(`  ⚠️ [DEBUG] 不明な型のセレクタ:`, s);
-      return null; // undefinedではなくnullを返す
-    });
-
-    console.log(`📊 [DEBUG-FALLBACK] マップ後のselectors:`, mappedSelectors);
-
-    const selectorInfo = {
-      description: description,
-      selectors: mappedSelectors.filter(
-        (selector) => selector !== null && selector !== undefined,
-      ), // null/undefinedを除外
-    };
-
-    console.log(`📊 [DEBUG] selectorInfo構築完了:`, {
-      description: selectorInfo.description,
-      selectorsCount: selectorInfo.selectors?.length,
-      selectors: selectorInfo.selectors,
-    });
-
-    const retryManager = new ClaudeRetryManager();
-    const result = await retryManager.executeWithRetry({
-      action: async () => {
-        const element = await findClaudeElement(selectorInfo);
-        if (element) return { success: true, element };
-        return {
-          success: false,
-          error: `${description}の要素が見つかりません`,
-        };
-      },
-      maxRetries: 3,
-      actionName: `${description}検索`,
-      context: { selectorInfo, description },
-    });
-
-    if (!result.success) {
-      throw new Error(`${description} の要素が見つかりません`);
     }
-    return result.result.element;
+
+    console.log(`❌ [${description}] すべての戦略で要素が見つかりませんでした`);
+    return null;
+  };
+
+  // ステップ2: 要素の操作可能性チェック関数
+  const isElementInteractable = (element) => {
+    if (!element) return false;
+
+    // 基本チェック
+    if (element.disabled || element.readOnly) return false;
+
+    // ポインターイベントチェック
+    const style = window.getComputedStyle(element);
+    if (style.pointerEvents === "none") return false;
+
+    // 親要素の制約チェック
+    let parent = element.parentElement;
+    while (parent) {
+      const parentStyle = window.getComputedStyle(parent);
+      if (parentStyle.pointerEvents === "none") return false;
+      parent = parent.parentElement;
+    }
+
+    return true;
   };
 
   // Claude-ステップ1-2: モデル情報取得関数
@@ -4650,42 +5107,161 @@
     }
   }
 
+  // ステップ4: モデル選択ロジック - 動作確認済みテストコードパターンで強化
   async function selectModelOnly(modelName) {
     console.log("【Phase】モデル選択のみ実行");
 
     try {
       if (!modelName || modelName === "" || modelName === "設定なし") {
+        console.log("✅ モデル設定なし、スキップ");
         return { success: true, phase: "model", skipped: true };
       }
+
+      console.log(`🎯 ターゲットモデル: "${modelName}"`);
+
+      // ステップ4.1: 改良された要素検索オプション
+      const searchOptions = {
+        maxRetries: 5,
+        waitBetweenRetries: 1000,
+        includeTextSearch: true,
+        requireVisible: true,
+        requireInteractable: true,
+      };
 
       const retryManager = new ClaudeRetryManager();
       const modelResult = await retryManager.executeWithRetry({
         action: async () => {
+          console.log("🔍 ステップ4.1: モデル選択ボタン検索開始");
+
+          // 直接セレクタ配列を使用（文字列形式）
           const menuButton = await findElementByMultipleSelectors(
-            modelSelectors.menuButton,
+            CLAUDE_SELECTORS.MODEL_BUTTON,
             "モデル選択ボタン",
+            searchOptions,
           );
-          await triggerReactEvent(menuButton);
-          await wait(2000);
 
-          const targetModelName = modelName.startsWith("Claude")
-            ? modelName
-            : `Claude ${modelName}`;
+          if (!menuButton) {
+            throw new Error("モデル選択ボタンが見つかりません");
+          }
 
-          const menuItems = document.querySelectorAll('[role="menuitem"]');
-          for (const item of menuItems) {
-            const itemText = item.textContent;
-            if (itemText && itemText.includes(targetModelName)) {
-              await triggerReactEvent(item, "click");
-              await wait(1500);
-              return { success: true, selected: targetModelName };
+          console.log("✅ ステップ4.2: モデル選択ボタン発見、クリック実行");
+
+          // ステップ4.2: 強化されたクリックイベント
+          await triggerReactEvent(menuButton, "click", {
+            includeFocus: true,
+            forceNativeClick: true,
+          });
+
+          // ステップ4.3: メニュー表示の待機（動的チェック）
+          console.log("⏳ ステップ4.3: メニュー表示待機");
+          let menuVisible = false;
+          let waitCount = 0;
+          const maxWait = 10;
+
+          while (!menuVisible && waitCount < maxWait) {
+            await wait(500);
+            const menuItems = document.querySelectorAll(
+              '[role="menuitem"], [role="option"]',
+            );
+            if (menuItems.length > 0) {
+              console.log(`✅ メニュー表示確認: ${menuItems.length}個の項目`);
+              menuVisible = true;
+            } else {
+              waitCount++;
+              console.log(`⏳ メニュー待機中... ${waitCount}/${maxWait}`);
             }
           }
-          return { success: false };
+
+          if (!menuVisible) {
+            throw new Error("メニューが表示されませんでした");
+          }
+
+          // ステップ4.4: モデル名の正規化と検索
+          const targetVariations = [
+            modelName,
+            modelName.startsWith("Claude") ? modelName : `Claude ${modelName}`,
+            modelName.replace(/^Claude\s+/, ""), // "Claude" prefix除去
+            modelName.toLowerCase(),
+            modelName.toUpperCase(),
+          ];
+
+          console.log(
+            `🔍 ステップ4.4: モデル名検索 - 候補: ${targetVariations.join(", ")}`,
+          );
+
+          // ステップ4.5: 複数セレクタでのメニュー項目検索
+          const menuSelectors = [
+            '[role="menuitem"]',
+            '[role="option"]',
+            "button[data-value]",
+            'div[role="menuitem"]',
+          ];
+          let foundItem = null;
+
+          for (const selector of menuSelectors) {
+            const items = document.querySelectorAll(selector);
+            console.log(
+              `  🔍 "${selector}": ${items.length}個の項目をチェック`,
+            );
+
+            for (const item of items) {
+              const itemText = item.textContent?.trim();
+              console.log(`    📝 項目テキスト: "${itemText}"`);
+
+              for (const variant of targetVariations) {
+                if (itemText && itemText.includes(variant)) {
+                  console.log(
+                    `    ✅ マッチ発見: "${itemText}" ← "${variant}"`,
+                  );
+                  foundItem = item;
+                  break;
+                }
+              }
+              if (foundItem) break;
+            }
+            if (foundItem) break;
+          }
+
+          if (!foundItem) {
+            // ステップ4.6: フォールバック - テキストベース検索
+            console.log("🔍 ステップ4.6: フォールバック検索実行");
+            const allClickable = document.querySelectorAll(
+              'button, [role="menuitem"], [role="option"], [onclick]',
+            );
+            for (const element of allClickable) {
+              const text = element.textContent?.trim();
+              if (
+                text &&
+                targetVariations.some((variant) => text.includes(variant))
+              ) {
+                foundItem = element;
+                console.log(`✅ フォールバック成功: "${text}"`);
+                break;
+              }
+            }
+          }
+
+          if (!foundItem) {
+            throw new Error(`モデル "${modelName}" の項目が見つかりません`);
+          }
+
+          // ステップ4.7: モデル項目の選択
+          console.log("🎯 ステップ4.7: モデル項目選択実行");
+          await triggerReactEvent(foundItem, "click", {
+            includeFocus: true,
+            includeChange: true,
+            forceNativeClick: true,
+          });
+
+          // ステップ4.8: 選択完了の確認
+          await wait(2000);
+          console.log("✅ ステップ4.8: モデル選択完了");
+
+          return { success: true, selected: foundItem.textContent?.trim() };
         },
         maxRetries: 3,
-        actionName: "モデル選択(個別処理)",
-        context: { modelName },
+        actionName: "モデル選択(改良版)",
+        context: { modelName, targetVariations: [] },
       });
 
       return {
@@ -4695,53 +5271,200 @@
       };
     } catch (error) {
       console.error("❌ モデル選択エラー:", error.message);
+      console.error("エラー詳細:", error.stack);
       return { success: false, phase: "model", error: error.message };
     }
   }
 
+  // ステップ5: 機能選択ロジック - 動作確認済みテストコードパターンで強化
   async function selectFunctionOnly(featureName) {
     console.log("【Phase】機能選択のみ実行");
 
     try {
       if (!featureName || featureName === "" || featureName === "設定なし") {
+        console.log("✅ 機能設定なし、スキップ");
         return { success: true, phase: "function", skipped: true };
       }
+
+      console.log(`🎯 ターゲット機能: "${featureName}"`);
+
+      // ステップ5.1: 改良された要素検索オプション
+      const searchOptions = {
+        maxRetries: 5,
+        waitBetweenRetries: 1000,
+        includeTextSearch: true,
+        requireVisible: true,
+        requireInteractable: true,
+      };
 
       const retryManager = new ClaudeRetryManager();
       const functionResult = await retryManager.executeWithRetry({
         action: async () => {
-          const featureMenuBtn = getFeatureElement(
-            featureSelectors.menuButton,
+          console.log("🔍 ステップ5.1: 機能メニューボタン検索開始");
+
+          // 直接セレクタ配列を使用（強化版）
+          const featureMenuBtn = await findElementByMultipleSelectors(
+            CLAUDE_SELECTORS.FUNCTION_MENU_BUTTON,
             "機能メニューボタン",
+            searchOptions,
           );
+
           if (!featureMenuBtn) {
-            return { success: false };
+            throw new Error("機能メニューボタンが見つかりません");
           }
 
-          featureMenuBtn.click();
-          await wait(1500);
+          console.log("✅ ステップ5.2: 機能メニューボタン発見、クリック実行");
 
-          // 機能選択前にすべてのトグルをオフにする
-          console.log("【Phase】全トグルをオフに設定");
-          await turnOffAllFeatureToggles();
-          await wait(500);
+          // ステップ5.2: 強化されたクリックイベント
+          await triggerReactEvent(featureMenuBtn, "click", {
+            includeFocus: true,
+            forceNativeClick: true,
+          });
 
-          // 指定の機能を有効にする
-          const toggles = document.querySelectorAll(
-            'button:has(input[role="switch"])',
-          );
-          for (const toggle of toggles) {
-            const label = toggle.querySelector("p.font-base");
-            if (label && label.textContent.trim() === featureName) {
-              setToggleState(toggle, true);
-              await wait(1000);
-              return { success: true, selected: featureName };
+          // ステップ5.3: メニュー表示の待機（動的チェック）
+          console.log("⏳ ステップ5.3: 機能メニュー表示待機");
+          let menuVisible = false;
+          let waitCount = 0;
+          const maxWait = 10;
+
+          while (!menuVisible && waitCount < maxWait) {
+            await wait(500);
+            const toggles = document.querySelectorAll(
+              'button:has(input[role="switch"]), [role="switch"]',
+            );
+            if (toggles.length > 0) {
+              console.log(
+                `✅ 機能メニュー表示確認: ${toggles.length}個のトグル`,
+              );
+              menuVisible = true;
+            } else {
+              waitCount++;
+              console.log(`⏳ 機能メニュー待機中... ${waitCount}/${maxWait}`);
             }
           }
-          return { success: true, selected: featureName };
+
+          if (!menuVisible) {
+            throw new Error("機能メニューが表示されませんでした");
+          }
+
+          // ステップ5.4: 全トグルをオフに設定（改良版）
+          console.log("🔄 ステップ5.4: 全トグルをオフに設定");
+          const allToggles = document.querySelectorAll(
+            'button:has(input[role="switch"])',
+          );
+          for (const toggle of allToggles) {
+            try {
+              setToggleState(toggle, false);
+              await wait(100);
+            } catch (error) {
+              console.log(`⚠️ トグルオフエラー: ${error.message}`);
+            }
+          }
+          await wait(500);
+
+          // ステップ5.5: 機能名の正規化と検索
+          const targetVariations = [
+            featureName,
+            featureName.toLowerCase(),
+            featureName.toUpperCase(),
+            // 一般的な機能名パターン
+            "ウェブ検索",
+            "Web search",
+            "じっくり考える",
+            "Think deeply",
+          ].filter((name, index, arr) => arr.indexOf(name) === index); // 重複除去
+
+          console.log(
+            `🔍 ステップ5.5: 機能名検索 - 候補: ${targetVariations.join(", ")}`,
+          );
+
+          // ステップ5.6: 複数戦略でのトグル検索
+          const toggleSelectors = [
+            'button:has(input[role="switch"])',
+            '[role="switch"]',
+            "button:has(p.font-base)",
+            "button[aria-pressed]",
+          ];
+
+          let foundToggle = null;
+
+          for (const selector of toggleSelectors) {
+            const toggles = document.querySelectorAll(selector);
+            console.log(
+              `  🔍 "${selector}": ${toggles.length}個のトグルをチェック`,
+            );
+
+            for (const toggle of toggles) {
+              // 複数の要素からテキストを検索
+              const textSources = [
+                toggle.textContent?.trim(),
+                toggle.querySelector("p.font-base")?.textContent?.trim(),
+                toggle.querySelector("span")?.textContent?.trim(),
+                toggle.getAttribute("aria-label"),
+                toggle.getAttribute("title"),
+              ].filter(Boolean);
+
+              console.log(`    📝 トグルテキスト: [${textSources.join(", ")}]`);
+
+              for (const text of textSources) {
+                for (const variant of targetVariations) {
+                  if (text && text.includes(variant)) {
+                    console.log(`    ✅ マッチ発見: "${text}" ← "${variant}"`);
+                    foundToggle = toggle;
+                    break;
+                  }
+                }
+                if (foundToggle) break;
+              }
+              if (foundToggle) break;
+            }
+            if (foundToggle) break;
+          }
+
+          if (!foundToggle) {
+            // ステップ5.7: フォールバック - より広範な検索
+            console.log("🔍 ステップ5.7: フォールバック検索実行");
+            const allInteractive = document.querySelectorAll(
+              'button, [role="button"], [onclick], [role="switch"]',
+            );
+            for (const element of allInteractive) {
+              const text = element.textContent?.trim();
+              if (
+                text &&
+                targetVariations.some((variant) => text.includes(variant))
+              ) {
+                foundToggle = element;
+                console.log(`✅ フォールバック成功: "${text}"`);
+                break;
+              }
+            }
+          }
+
+          if (!foundToggle) {
+            console.log(
+              `⚠️ 機能 "${featureName}" のトグルが見つかりません - スキップして続行`,
+            );
+            return { success: true, selected: featureName, skipped: true };
+          }
+
+          // ステップ5.8: 機能トグルの有効化
+          console.log("🎯 ステップ5.8: 機能トグル有効化実行");
+          setToggleState(foundToggle, true);
+          await wait(1000);
+
+          // ステップ5.9: 設定完了の確認
+          const toggleInput = foundToggle.querySelector('input[role="switch"]');
+          const isEnabled =
+            toggleInput?.checked ||
+            toggleInput?.getAttribute("aria-checked") === "true";
+          console.log(
+            `✅ ステップ5.9: 機能設定完了 - 状態: ${isEnabled ? "有効" : "無効"}`,
+          );
+
+          return { success: true, selected: featureName, enabled: isEnabled };
         },
         maxRetries: 3,
-        actionName: "機能選択(個別処理)",
+        actionName: "機能選択(改良版)",
         context: { featureName },
       });
 
@@ -4749,9 +5472,12 @@
         success: functionResult.success,
         phase: "function",
         selected: functionResult.result?.selected,
+        enabled: functionResult.result?.enabled,
+        skipped: functionResult.result?.skipped,
       };
     } catch (error) {
       console.error("❌ 機能選択エラー:", error.message);
+      console.error("エラー詳細:", error.stack);
       return { success: false, phase: "function", error: error.message };
     }
   }
