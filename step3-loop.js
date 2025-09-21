@@ -42,46 +42,21 @@ const LoopLogger = {
 const isDebugMode = localStorage.getItem("loopLogLevel") === "DEBUG";
 LoopLogger.logLevel = isDebugMode ? "DEBUG" : "INFO";
 
-LoopLogger.debug("step5-loop.js 読み込み開始", {
-  timestamp: new Date().toISOString(),
-  location: window.location.href,
-  readyState: document.readyState,
-  encoding: document.characterSet,
-  scriptType: document.currentScript?.type || "unknown",
-});
+// step3-loop.js 読み込み開始
 
 // ファイルの文字エンコーディングチェック
 try {
   const testString = "テスト文字列：日本語、英語、記号!@#$%";
-  LoopLogger.info(
-    "[step5-loop.js] [Step 5-0-1] 🔍 [DEBUG] 文字エンコーディングテスト:",
-    {
-      original: testString,
-      length: testString.length,
-      charCodes: Array.from(testString).map((c) => c.charCodeAt(0)),
-    },
-  );
+  // 文字エンコーディングテスト
 } catch (e) {
-  LoopLogger.error(
-    "[step5-loop.js] [Step 5-0-2] ❌ [DEBUG] 文字エンコーディングエラー:",
-    e,
-  );
+  // 文字エンコーディングエラー
 }
 
 // グローバル状態を使用（他のステップと共有）
-LoopLogger.info(
-  "[step5-loop.js] [Step 5-0-3] 🔍 [DEBUG] グローバル状態チェック",
-  {
-    globalStateExists: !!window.globalState,
-    windowType: typeof window,
-    documentType: typeof document,
-  },
-);
+// グローバル状態チェック
 
 if (!window.globalState) {
-  LoopLogger.debug(
-    "[step5-loop.js] [Step 5-0-4] 🔍 [DEBUG] グローバル状態を初期化",
-  );
+  // グローバル状態を初期化
   window.globalState = {
     spreadsheetId: null,
     gid: null,

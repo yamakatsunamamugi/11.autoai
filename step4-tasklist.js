@@ -1754,9 +1754,12 @@ class WindowController {
       await this.initializeWindowService();
     }
 
-    const results = [];
+    // 既存のウィンドウデータをクリア（古いデータの蓄積を防ぐ）
+    this.openedWindows.clear();
+    ExecuteLogger.info("[WindowController] 既存ウィンドウデータをクリア");
 
-    for (const layout of windowLayout) {
+    // Promise.allを使用して全ウィンドウを同時に開く
+    const windowPromises = windowLayout.map(async (layout) => {
       try {
         ExecuteLogger.info(
           `🪟 [Step 4-1-2-${layout.position}] ${layout.aiType}ウィンドウを${layout.position}番目に開く`,
@@ -1846,22 +1849,16 @@ class WindowController {
             allOpenedWindows: Array.from(this.openedWindows.entries()),
           });
 
-          results.push({
-            aiType: layout.aiType,
-            success: true,
-            windowId: windowInfo.id,
-            position: layout.position,
-          });
-
           ExecuteLogger.info(
             `✅ [Step 4-1-2-${layout.position}] ${layout.aiType}ウィンドウ作成成功`,
           );
 
-          // 各ウィンドウ作成後に待機時間を設けてタブの準備を確実にする
-          ExecuteLogger.info(
-            `⏳ ${layout.aiType}ウィンドウの準備待機中... (2秒)`,
-          );
-          await new Promise((resolve) => setTimeout(resolve, 2000));
+          return {
+            aiType: layout.aiType,
+            success: true,
+            windowId: windowInfo.id,
+            position: layout.position,
+          };
         } else {
           ExecuteLogger.error(
             `🖼️ [WindowController] ERROR: ウィンドウ作成条件未満`,
@@ -1876,23 +1873,34 @@ class WindowController {
                 : "windowInfo.idが存在しない",
             },
           );
-          throw new Error(`ウィンドウ作成に失敗: ${layout.aiType}`);
+          return {
+            aiType: layout.aiType,
+            success: false,
+            error: "ウィンドウ作成失敗: windowInfoが不正",
+            position: layout.position,
+          };
         }
       } catch (error) {
         ExecuteLogger.error(
           `❌ [Step 4-1-2-${layout.position}] ${layout.aiType}ウィンドウ作成失敗:`,
           error,
         );
-        results.push({
+        return {
           aiType: layout.aiType,
           success: false,
           error: error.message,
           position: layout.position,
-        });
+        };
       }
+    });
 
-      // ウィンドウ間の待機時間
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+    // 全ウィンドウの作成を並列実行
+    const results = await Promise.all(windowPromises);
+
+    // 全ウィンドウ作成後に一度だけ待機（タブの準備を確実にする）
+    if (results.some((r) => r.success)) {
+      ExecuteLogger.info("⏳ 全ウィンドウのタブ準備待機中... (3秒)");
+      await new Promise((resolve) => setTimeout(resolve, 3000));
     }
 
     ExecuteLogger.info(
@@ -2395,9 +2403,7 @@ async function executeStep4(taskList) {
         throw new Error("ウィンドウを開くことができませんでした");
       }
 
-      // ウィンドウとタブが完全に準備されるまで待機
-      ExecuteLogger.info("⏳ ウィンドウとタブの準備待機中... (3秒)");
-      await new Promise((resolve) => setTimeout(resolve, 3000));
+      // 全ウィンドウが並列で開かれており、既に待機済みのため追加の待機は不要
       ExecuteLogger.info("✅ ウィンドウとタブの準備完了");
     }
 
@@ -2941,6 +2947,34 @@ async function executeStep4(taskList) {
         try {
           await StepIntegratedWindowService.closeWindow(windowInfo.windowId);
           ExecuteLogger.info(`✅ ${aiType}ウィンドウクローズ完了`);
+
+          // WindowControllerの配列からも削除（タブID再利用問題の修正）
+          const normalizedAiType = window.windowController?.normalizeAiType?.(
+            aiType.replace(/_task.*/, ""),
+          );
+          if (
+            normalizedAiType &&
+            window.windowController?.openedWindows?.has(normalizedAiType)
+          ) {
+            const windowArray =
+              window.windowController.openedWindows.get(normalizedAiType);
+            if (Array.isArray(windowArray)) {
+              const filteredArray = windowArray.filter(
+                (w) => w.windowId !== windowInfo.windowId,
+              );
+              if (filteredArray.length > 0) {
+                window.windowController.openedWindows.set(
+                  normalizedAiType,
+                  filteredArray,
+                );
+              } else {
+                window.windowController.openedWindows.delete(normalizedAiType);
+              }
+              ExecuteLogger.info(
+                `📋 WindowController配列を更新: ${normalizedAiType} (残り: ${filteredArray.length}個)`,
+              );
+            }
+          }
         } catch (error) {
           ExecuteLogger.error(`⚠️ ${aiType}ウィンドウクローズエラー:`, error);
         }
