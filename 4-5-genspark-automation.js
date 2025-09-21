@@ -9,17 +9,29 @@ if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
   chrome.storage.local.get('logLevel', (result) => {
     if (result.logLevel) {
       CURRENT_LOG_LEVEL = parseInt(result.logLevel);
+      console.log(`📋 ログレベル設定: ${['', 'ERROR', 'WARN', 'INFO', 'DEBUG'][CURRENT_LOG_LEVEL]} (${CURRENT_LOG_LEVEL})`);
+    } else {
+      console.log('📋 ログレベル: デフォルト (INFO)');
     }
   });
 }
 
-// ログユーティリティ
+// ログユーティリティ（CURRENT_LOG_LEVELを動的に参照）
 const log = {
-  error: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.ERROR && console.error(...args),
-  warn: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.WARN && console.warn(...args),
-  info: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.INFO && console.log(...args),
-  debug: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.DEBUG && console.log(...args)
+  error: (...args) => {
+    if (CURRENT_LOG_LEVEL >= LOG_LEVEL.ERROR) console.error(...args);
+  },
+  warn: (...args) => {
+    if (CURRENT_LOG_LEVEL >= LOG_LEVEL.WARN) console.warn(...args);
+  },
+  info: (...args) => {
+    if (CURRENT_LOG_LEVEL >= LOG_LEVEL.INFO) console.log(...args);
+  },
+  debug: (...args) => {
+    if (CURRENT_LOG_LEVEL >= LOG_LEVEL.DEBUG) console.log(...args);
+  }
 };
+
 
 
 /**
