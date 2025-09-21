@@ -17,9 +17,9 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
         chrome.tabs.sendMessage(tabId, { type: "ping" }, (response) => {
           if (chrome.runtime.lastError) {
             // log.debug(
-              "⚠️ Content Script not responding, injecting manually...",
-              chrome.runtime.lastError.message,
-            );
+            //   "⚠️ Content Script not responding, injecting manually...",
+            //   chrome.runtime.lastError.message
+            // );
 
             // 手動でContent Script注入
             chrome.scripting.executeScript(
@@ -50,9 +50,9 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 // Extension間メッセージの中継
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // log.debug("📨 Message received in background:", {
-    type: request.type,
-    from: sender.tab ? `Tab ${sender.tab.id}` : "Extension",
-  });
+  //   type: request.type,
+  //   from: sender.tab ? `Tab ${sender.tab.id}` : "Extension",
+  // });
 
   // Content Script初期化確認
   if (request.type === "content_script_ready") {
