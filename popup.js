@@ -10,14 +10,14 @@ async function getPrimaryDisplayInfo() {
     const primaryDisplay = displays.find((d) => d.isPrimary) || displays[0];
 
     // log.debug("[Popup] ディスプレイ情報:", {
-      total: displays.length,
-      primary: {
-        id: primaryDisplay.id,
-        isPrimary: primaryDisplay.isPrimary,
-        bounds: primaryDisplay.bounds,
-        workArea: primaryDisplay.workArea,
-      },
-    });
+    //   total: displays.length,
+    //   primary: {
+    //     id: primaryDisplay.id,
+    //     isPrimary: primaryDisplay.isPrimary,
+    //     bounds: primaryDisplay.bounds,
+    //     workArea: primaryDisplay.workArea,
+    //   },
+    // });
 
     return primaryDisplay;
   } catch (error) {
