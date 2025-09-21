@@ -1096,22 +1096,19 @@ async function generateTaskList(
         }
       }
 
-      // 回答済みチェック（デバッグログ追加）
+      // 回答済みチェック（統合ログ）
       if (hasAnswer && !options.forceReprocess) {
         console.log(
           `[DEBUG] 行${row}をスキップ: hasAnswer=${hasAnswer}, forceReprocess=${options.forceReprocess}`,
         );
         continue; // ログは既に出力済み
       }
-      if (hasAnswer) {
-        console.log(
-          `[DEBUG] 行${row}を強制処理: hasAnswer=${hasAnswer}, forceReprocess=${options.forceReprocess}`,
-        );
-      } else {
-        console.log(
-          `[DEBUG] 行${row}を通常処理: hasAnswer=${hasAnswer}, forceReprocess=${options.forceReprocess}`,
-        );
-      }
+
+      // 処理対象行のログ（統合）
+      const processingType = hasAnswer ? "強制処理" : "通常処理";
+      console.log(
+        `[DEBUG] 行${row}を${processingType}: hasAnswer=${hasAnswer}, forceReprocess=${options.forceReprocess}`,
+      );
 
       // 3-2-1-2: 追加の除外条件（拡張可能）
       if (options.customSkipConditions) {
@@ -2092,10 +2089,10 @@ class WindowController {
       ]);
       console.log(`[DEBUG-performWindowCheck] sendMessage完了:`, response);
 
-      if (response && response.success) {
-        checks.textInput = response.checks.textInput || false;
-        checks.modelDisplay = response.checks.modelDisplay || false;
-        checks.functionDisplay = response.checks.functionDisplay || false;
+      if (response) {
+        checks.textInput = response.textInput || false;
+        checks.modelDisplay = response.modelDisplay || false;
+        checks.functionDisplay = response.functionDisplay || false;
       }
 
       const allChecksPass = Object.values(checks).every((check) => check);
