@@ -109,10 +109,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     if (createdWindow && createdWindow.id) {
       // log.debug(
-        "[Popup] UIウィンドウをプライマリディスプレイに作成しました (ID:",
-        createdWindow.id,
-        ")",
-      );
+      //   "[Popup] UIウィンドウをプライマリディスプレイに作成しました (ID:",
+      //   createdWindow.id,
+      //   ")"
+      // );
 
       // 作成されたウィンドウの実際の位置を確認
       const actualWindow = await chrome.windows.get(createdWindow.id);
@@ -159,10 +159,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       if (fallbackWindow && fallbackWindow.id) {
         // log.debug(
-          "[Popup] フォールバックでUIウィンドウをプライマリディスプレイに作成しました (ID:",
-          fallbackWindow.id,
-          ")",
-        );
+        //   "[Popup] フォールバックでUIウィンドウをプライマリディスプレイに作成しました (ID:",
+        //   fallbackWindow.id,
+        //   ")"
+        // );
         chrome.storage.local.set({ extensionWindowId: fallbackWindow.id });
       }
     } catch (fallbackError) {
@@ -180,10 +180,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         if (lastResortWindow && lastResortWindow.id) {
           // log.debug(
-            "[Popup] 最終フォールバックでUIウィンドウを作成しました (ID:",
-            lastResortWindow.id,
-            ")",
-          );
+          //   "[Popup] 最終フォールバックでUIウィンドウを作成しました (ID:",
+          //   lastResortWindow.id,
+          //   ")"
+          // );
           chrome.storage.local.set({ extensionWindowId: lastResortWindow.id });
         }
       } catch (finalError) {
