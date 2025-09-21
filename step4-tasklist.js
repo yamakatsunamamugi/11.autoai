@@ -238,145 +238,6 @@ class StepIntegratedAiUrlManager {
   }
 }
 
-/**
- * Step内統合版 AITaskExecutor（StreamProcessorV2の機能を内部実装）
- */
-class StepIntegratedAITaskExecutor {
-  constructor() {
-    this.logger = console;
-  }
-
-  async executeAITask(tabId, taskData) {
-    try {
-      console.log(
-        `🤖 [StepIntegratedAITaskExecutor] タスク実行開始: tabId=${tabId}, AI=${taskData.aiType}`,
-      );
-
-      // タブの存在確認とリトライ（最大10回、タイムアウト付き）
-      let tab;
-      let retryCount = 0;
-      const maxRetries = 10;
-
-      while (retryCount < maxRetries) {
-        try {
-          tab = await chrome.tabs.get(tabId);
-          if (tab && tab.status === "complete") {
-            console.log(`✅ Tab ${tabId} is ready`);
-            break;
-          }
-          console.log(
-            `⏳ Tab ${tabId} status: ${tab?.status}, waiting... (${retryCount + 1}/${maxRetries})`,
-          );
-          retryCount++; // 重要：tryブロック内でもカウント
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-        } catch (err) {
-          retryCount++;
-          console.warn(
-            `⚠️ Tab ${tabId} not found (attempt ${retryCount}/${maxRetries}): ${err.message}`,
-          );
-          if (retryCount >= maxRetries) {
-            throw new Error(
-              `Tab ${tabId} not found after ${maxRetries} attempts`,
-            );
-          }
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-        }
-      }
-
-      // タイムアウト後も未完了の場合は警告して続行
-      if (retryCount >= maxRetries && (!tab || tab.status !== "complete")) {
-        console.warn(
-          `⚠️ Tab ${tabId} not ready after ${maxRetries} attempts, proceeding anyway...`,
-        );
-      }
-
-      // タブをアクティブにする（エラーハンドリング付き）
-      try {
-        await chrome.tabs.update(tabId, { active: true });
-      } catch (updateErr) {
-        console.warn(`⚠️ Tab update warning: ${updateErr.message}`);
-        // エラーが発生しても処理を続行
-      }
-
-      // 処理間隔を延長してタブの準備を確実にする
-      console.log(
-        `[DEBUG-StepIntegratedAITaskExecutor] 2秒待機開始: tabId=${tabId}`,
-      );
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-      console.log(
-        `[DEBUG-StepIntegratedAITaskExecutor] 2秒待機完了: tabId=${tabId}`,
-      );
-
-      // コンテンツスクリプトを注入して実行
-      console.log(
-        `[DEBUG-StepIntegratedAITaskExecutor] executeScript開始: tabId=${tabId}`,
-      );
-      const results = await chrome.scripting.executeScript({
-        target: { tabId: tabId },
-        func: (prompt) => {
-          console.log(
-            `[DEBUG-Script] 実行開始: prompt="${prompt.substring(0, 50)}..."`,
-          );
-          // AI自動化の実行（簡易版）
-          if (
-            typeof window.automation !== "undefined" &&
-            window.automation.executeTask
-          ) {
-            console.log(`[DEBUG-Script] automation.executeTask使用`);
-            return window.automation.executeTask({ prompt: prompt });
-          } else {
-            console.log(`[DEBUG-Script] フォールバック処理`);
-            // フォールバック: プロンプトを入力エリアに設定
-            const textarea = document.querySelector(
-              'textarea[placeholder*="メッセージ"], textarea[placeholder*="message"], div[contenteditable="true"]',
-            );
-            if (textarea) {
-              console.log(`[DEBUG-Script] テキストエリア発見`);
-              textarea.value = prompt;
-              textarea.textContent = prompt;
-
-              // 送信ボタンを探してクリック
-              const sendButton = document.querySelector(
-                'button[type="submit"], button:has(svg)',
-              );
-              if (sendButton) {
-                console.log(`[DEBUG-Script] 送信ボタンクリック`);
-                sendButton.click();
-              }
-
-              return { success: true, response: "Task initiated" };
-            }
-            console.log(`[DEBUG-Script] 入力エリア未発見`);
-            return { success: false, error: "No input area found" };
-          }
-        },
-        args: [taskData.prompt],
-      });
-      console.log(
-        `[DEBUG-StepIntegratedAITaskExecutor] executeScript完了: tabId=${tabId}`,
-        results,
-      );
-
-      const result = results[0]?.result || {
-        success: false,
-        error: "No result",
-      };
-
-      console.log(
-        `✅ [StepIntegratedAITaskExecutor] タスク実行完了: success=${result.success}`,
-        result,
-      );
-      return result;
-    } catch (error) {
-      console.error(
-        `❌ [StepIntegratedAITaskExecutor] タスク実行エラー: tabId=${tabId}`,
-        error,
-      );
-      return { success: false, error: error.message };
-    }
-  }
-}
-
 // columnToIndex関数の定義確認・フォールバック作成
 if (typeof columnToIndex === "undefined") {
   // シンプルなフォールバック関数を定義
@@ -2295,27 +2156,12 @@ async function executeStep4(taskList) {
   // executeStep4関数定義開始
   ExecuteLogger.info("🚀 Step 4-6 Execute 統合実行開始", taskList);
 
-  // Step内統合版AITaskExecutorの初期化
-  let aiTaskExecutor = null;
-  try {
-    aiTaskExecutor = new StepIntegratedAITaskExecutor();
-    ExecuteLogger.info(
-      "✅ [executeStep4] Step内統合版AITaskExecutor初期化完了",
-    );
-  } catch (error) {
-    ExecuteLogger.warn(
-      "⚠️ [executeStep4] Step内統合版AITaskExecutor初期化失敗、従来方式を使用:",
-      error,
-    );
-  }
-
   // 内部関数の存在確認（実行時チェック）
   ExecuteLogger.info("🔍 [executeStep4] 内部関数の定義状態確認:", {
     executeNormalAITask: typeof executeNormalAITask,
     processTaskResult: typeof processTaskResult,
     shouldPerformWindowCleanup: typeof shouldPerformWindowCleanup,
     calculateLogCellRef: typeof calculateLogCellRef,
-    aiTaskExecutorAvailable: !!aiTaskExecutor,
   });
 
   const results = [];
@@ -2938,18 +2784,11 @@ async function executeStep4(taskList) {
           } else {
             ExecuteLogger.info(`🤖 AI処理実行: ${task.aiType}`);
 
-            // StreamProcessorV2統合: AITaskExecutorを使用可能かチェック
-            if (aiTaskExecutor && task.tabId) {
-              ExecuteLogger.info(
-                `✅ [step4-execute.js] StreamProcessorV2パターンで実行: ${task.aiType} (tabId: ${task.tabId})`,
-              );
-              result = await aiTaskExecutor.executeAITask(task.tabId, task);
-            } else {
-              ExecuteLogger.info(
-                `📋 [step4-execute.js] 従来方式で実行: ${task.aiType}`,
-              );
-              result = await executeNormalAITask(task);
-            }
+            // 正常なメッセージパッシングシステムを使用
+            ExecuteLogger.info(
+              `📋 [step4-execute.js] 正常なメッセージパッシング方式で実行: ${task.aiType}`,
+            );
+            result = await executeNormalAITask(task);
           }
 
           // 結果処理
