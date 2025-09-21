@@ -5042,38 +5042,42 @@
       log.error("❌ executeTask関数が未定義");
     }
 
-  if (typeof findClaudeElement !== "undefined") {
-    window.findClaudeElement = findClaudeElement;
-    log.info("✅ findClaudeElement関数を公開");
-  } else {
-    log.error("❌ findClaudeElement関数が未定義");
-  }
+    if (typeof findClaudeElement !== "undefined") {
+      window.findClaudeElement = findClaudeElement;
+      log.info("✅ findClaudeElement関数を公開");
+    } else {
+      log.error("❌ findClaudeElement関数が未定義");
+    }
 
-  if (typeof inputText !== "undefined") {
-    window.inputText = inputText;
-    log.info("✅ inputText関数を公開");
-  } else {
-    log.error("❌ inputText関数が未定義");
-  }
+    if (typeof inputText !== "undefined") {
+      window.inputText = inputText;
+      log.info("✅ inputText関数を公開");
+    } else {
+      log.error("❌ inputText関数が未定義");
+    }
 
-  if (typeof runAutomation !== "undefined") {
-    window.runAutomation = runAutomation;
-    log.info("✅ runAutomation関数を公開");
-  } else {
-    log.error("❌ runAutomation関数が未定義");
-  }
-  log.info("✅ [Claude] グローバル関数公開完了:", {
-    executeTask: typeof window.executeTask,
-    findClaudeElement: typeof window.findClaudeElement,
-    inputText: typeof window.inputText,
-    runAutomation: typeof window.runAutomation,
-  });
+    if (typeof runAutomation !== "undefined") {
+      window.runAutomation = runAutomation;
+      log.info("✅ runAutomation関数を公開");
+    } else {
+      log.error("❌ runAutomation関数が未定義");
+    }
+  } // shouldInitialize の閉じ括弧
 
-  // スクリプト初期化完了を確認
-  log.info("=".repeat(60));
-  log.info("🎉 [Claude Automation] スクリプト初期化完全完了");
-  log.info("📍 URL:", window.location.href);
-  log.info("⏰ 初期化時刻:", new Date().toISOString());
-  log.info("📊 初期化時間:", Date.now() - scriptLoadTime, "ms");
-  log.info("=".repeat(60));
+  // スクリプト初期化完了を確認 (claude.aiでのみログ出力)
+  if (shouldInitialize) {
+    log.info("✅ [Claude] グローバル関数公開完了:", {
+      executeTask: typeof window.executeTask,
+      findClaudeElement: typeof window.findClaudeElement,
+      inputText: typeof window.inputText,
+      runAutomation: typeof window.runAutomation,
+    });
+
+    log.info("=".repeat(60));
+    log.info("🎉 [Claude Automation] スクリプト初期化完全完了");
+    log.info("📍 URL:", window.location.href);
+    log.info("⏰ 初期化時刻:", new Date().toISOString());
+    log.info("📊 初期化時間:", Date.now() - scriptLoadTime, "ms");
+    log.info("=".repeat(60));
+  }
 })(); // 即時実行関数の終了
