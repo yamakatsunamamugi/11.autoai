@@ -72,10 +72,13 @@
     MENU: {
       CONTAINER: '[role="menu"][data-state="open"]',
       OTHER_MODELS: [
+        // 最新のClaudeUIに対応した新しいセレクタ
+        'div[role="menuitem"]', // まず基本的なメニューアイテムを取得
+        'div[role="menuitem"][aria-haspopup="menu"]', // ポップアップ付きアイテム
+        '[role="menuitem"]:has(span)', // spanを含むメニューアイテム
         'div[role="menuitem"][aria-haspopup="menu"][data-state="closed"]',
         'div[role="menuitem"][aria-haspopup="menu"]:has(*:contains("他のモデル"))',
         'div[role="menuitem"][aria-haspopup="menu"]:has(*:contains("Other models"))',
-        'div[role="menuitem"][aria-haspopup="menu"]',
       ],
     },
     MODEL_INFO: {
@@ -3229,10 +3232,42 @@
         // モデルメニューボタンを探してクリック
         console.log("🔍 モデルメニューボタンを検索中...");
         log.debug("\n【Claude-ステップ3-2】モデルメニューボタンを探す");
-        const menuButton = await findElementByMultipleSelectors(
+        let menuButton = await findElementByMultipleSelectors(
           modelSelectors.menuButton,
           "モデル選択ボタン",
         );
+
+        // 失敗した場合は、包括的検索を実行（テストコードパターン）
+        if (!menuButton) {
+          log.debug("🔍 [ENHANCED-SEARCH] モデルボタン包括的検索を実行");
+
+          // data-testid属性を持つボタンを最優先で検索
+          menuButton = document.querySelector(
+            '[data-testid="model-selector-dropdown"]',
+          );
+
+          if (!menuButton) {
+            // aria-haspopup="menu"を持つボタンを検索
+            const menuButtons = document.querySelectorAll(
+              'button[aria-haspopup="menu"]',
+            );
+            log.debug(
+              `📊 [ENHANCED-SEARCH] メニューボタン候補数: ${menuButtons.length}`,
+            );
+
+            for (let btn of menuButtons) {
+              const text = btn.textContent?.toLowerCase();
+              if (text && (text.includes("claude") || text.includes("model"))) {
+                log.debug(
+                  `🎯 [ENHANCED-SEARCH] モデルボタン発見: "${btn.textContent}"`,
+                );
+                menuButton = btn;
+                break;
+              }
+            }
+          }
+        }
+
         console.log(
           `  - メニューボタン: ${menuButton ? "発見" : "見つからない"}`,
         );
@@ -3301,10 +3336,39 @@
             "📊 [DEBUG] その他のモデルメニューセレクタ数:",
             modelSelectors.otherModelsMenu.length,
           );
-          const otherModelsItem = await findElementByMultipleSelectors(
+
+          // まず元のセレクタを試行
+          let otherModelsItem = await findElementByMultipleSelectors(
             modelSelectors.otherModelsMenu,
             "その他のモデルメニュー",
           );
+
+          // 失敗した場合は、より包括的な検索を実行（テストコードパターンに基づく）
+          if (!otherModelsItem) {
+            log.debug("🔍 [ENHANCED-SEARCH] 包括的メニュー検索を実行");
+
+            // すべてのメニューアイテムを取得して内容を確認
+            const allMenuItems = document.querySelectorAll('[role="menuitem"]');
+            log.debug(
+              `📊 [ENHANCED-SEARCH] 見つかったメニューアイテム数: ${allMenuItems.length}`,
+            );
+
+            for (let item of allMenuItems) {
+              const text = item.textContent?.trim();
+              const hasSubMenu = item.getAttribute("aria-haspopup") === "menu";
+              log.debug(`  - アイテム: "${text}", サブメニュー: ${hasSubMenu}`);
+
+              // サブメニューがあるアイテムを探す
+              if (hasSubMenu) {
+                log.debug(
+                  `🎯 [ENHANCED-SEARCH] サブメニュー付きアイテム発見: "${text}"`,
+                );
+                otherModelsItem = item;
+                break;
+              }
+            }
+          }
+
           if (otherModelsItem) {
             // Model menu item found
             await triggerReactEvent(otherModelsItem, "click");
