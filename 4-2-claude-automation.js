@@ -1,45 +1,72 @@
 /**
- * @fileoverview Claude Automation V2 - ステップ実行版
- *
- * 【ステップ構成】
- * Claude-ステップ0: 初期化（設定・セレクタ読み込み）
- * Claude-ステップ1: ヘルパー関数定義
- * Claude-ステップ2: テキスト入力
- * Claude-ステップ3: モデル選択（条件付き）
- * Claude-ステップ4: 機能選択（条件付き）
- * Claude-ステップ5: メッセージ送信
- * Claude-ステップ6: 応答待機（通常/Deep Research）
- * Claude-ステップ6-5: 「続ける」ボタンチェック（新規追加）
- * Claude-ステップ7: テキスト取得
- *
- * @version 3.0.0
- * @updated 2024-12-16 ステップ番号体系統一、コード整理
+ * @fileoverview Claude Automation V2 - AI対話自動化
+ * @version 3.0.1
+ * @updated 2024-12-16
  */
 (function () {
   "use strict";
 
+  // 🚀 ファイル読み込み確認ログ
+  console.log("🚀 [INITIAL] 4-2-claude-automation.js 読み込み開始");
+  console.log("📍 [INITIAL] URL:", window.location.href);
+  console.log("📍 [INITIAL] 読み込み時刻:", new Date().toISOString());
+
+  // 🚨 グローバルエラーハンドラー追加
+  window.addEventListener("error", (e) => {
+    console.error("🚨 [GLOBAL-ERROR] 予期しないエラー:", {
+      message: e.message,
+      filename: e.filename,
+      lineno: e.lineno,
+      colno: e.colno,
+      error: e.error,
+      stack: e.error?.stack,
+    });
+  });
+
+  window.addEventListener("unhandledrejection", (e) => {
+    console.error("🚨 [UNHANDLED-PROMISE] 未処理のPromise拒否:", {
+      reason: e.reason,
+      promise: e.promise,
+    });
+  });
+
   const scriptLoadTime = Date.now();
   const loadTimeISO = new Date().toISOString();
 
+  // 🔍 STEP 1: Content Script注入確認
+  console.log("=".repeat(60));
+  console.log("🔍 [STEP 1] Content Script注入確認開始");
+  console.log("=".repeat(60));
   console.log(
     `🚀 Claude Automation V2 - スクリプトロード開始: ${new Date().toLocaleString("ja-JP")}`,
   );
 
-  // 初期化順序検証ログ
-  console.log("🔍 [Claude初期化DEBUG] スクリプト初期化状態確認:", {
-    スクリプトロード時刻: loadTimeISO,
-    タイムスタンプ: scriptLoadTime,
+  // 実行環境の詳細確認
+  console.log("🔍 [STEP 1-1] 実行環境詳細確認:", {
     URL: window.location.href,
-    タイトル: document.title,
+    ドメイン: window.location.hostname,
+    プロトコル: window.location.protocol,
+    パス: window.location.pathname,
+    ページタイトル: document.title,
     readyState: document.readyState,
-    既存マーカー: {
-      CLAUDE_SCRIPT_LOADED: window.CLAUDE_SCRIPT_LOADED || false,
-      CLAUDE_SCRIPT_INIT_TIME: window.CLAUDE_SCRIPT_INIT_TIME || null,
-    },
-    chromeオブジェクト: typeof chrome !== "undefined",
-    runtime: typeof chrome?.runtime !== "undefined",
-    tabs: typeof chrome?.tabs !== "undefined",
+    manifestInjection: "manifest.json content_scripts経由",
+    実行時刻: new Date().toISOString(),
+    userAgent: navigator.userAgent.substring(0, 100),
   });
+
+  // Chrome Extension Context確認
+  console.log("🔍 [STEP 1-2] Chrome Extension Context確認:", {
+    chromeオブジェクト: typeof chrome,
+    runtimeAPI: typeof chrome?.runtime,
+    tabsAPI: typeof chrome?.tabs,
+    extensionID: chrome?.runtime?.id,
+    manifestVersion: chrome?.runtime?.getManifest
+      ? chrome.runtime.getManifest().manifest_version
+      : "取得不可",
+  });
+
+  // 初期化確認
+  console.log("🔍 [STEP 1-3] 初期化開始 -", new Date().toLocaleString("ja-JP"));
 
   // ========================================
   // ログ管理システムの初期化（メッセージベース対応）
@@ -130,82 +157,21 @@
           sessionStart: this.sessionStartTime,
         };
 
-        // エラーレポート生成を無効化
-        /* const fileName = `11autoai-logs/claude/errors/error-${timestamp}.json`;
-
-                // バックグラウンドスクリプトにメッセージを送信
-                if (typeof chrome !== 'undefined' && chrome.runtime) {
-                    chrome.runtime.sendMessage({
-                        type: 'DOWNLOAD_LOG_FILE',
-                        data: {
-                            fileName,
-                            content: JSON.stringify(errorData, null, 2)
-                        }
-                    });
-                }
-                console.log(`❌ [エラー保存] ${fileName}`); */
+        // エラーログをコンソールに出力
+        console.error(`❌ [エラー] ${error.message}`);
       } catch (saveError) {
         console.error("[エラー保存失敗]", saveError);
       }
     },
 
-    async saveIntermediate() {
-      // 実装は省略（必要に応じて追加）
-    },
-
     async saveToFile() {
-      // Claudeレポート生成を無効化
       if (this.logs.length === 0) {
-        console.log("[LogFileManager] 保存するログがありません");
         return;
       }
 
-      // ファイル保存処理を無効化 - コンソールログのみ出力
-      console.log("[LogFileManager] レポート生成は無効化されています");
-      console.log(`[LogFileManager] ログ件数: ${this.logs.length}`);
-
-      // ログをクリア
+      console.log(`📝 [LogFileManager] ログ件数: ${this.logs.length}`);
       this.logs = [];
       return null;
-
-      /* 以下、元のファイル保存処理（無効化）
-            try {
-                const timestamp = new Date().toISOString()
-                    .replace(/[:.]/g, '-')
-                    .replace('T', '_')
-                    .slice(0, -5);
-
-                const fileName = `claude-log-${timestamp}.json`;
-                const filePath = `11autoai-logs/claude/complete/${fileName}`;
-
-                const logData = {
-                    sessionStart: this.sessionStartTime,
-                    sessionEnd: new Date().toISOString(),
-                    totalLogs: this.logs.length,
-                    logs: this.logs
-                };
-
-                // 通常ログレポート生成も無効化
-                /* // バックグラウンドスクリプトにメッセージを送信
-                if (typeof chrome !== 'undefined' && chrome.runtime) {
-                    chrome.runtime.sendMessage({
-                        type: 'DOWNLOAD_LOG_FILE',
-                        data: {
-                            fileName: filePath,
-                            content: JSON.stringify(logData, null, 2)
-                        }
-                    });
-                } */
-
-      console.log(`✅ [LogFileManager] 最終ログを保存しました: ${fileName}`);
-
-      // ログをクリア
-      this.logs = [];
-      return filePath;
-      /* } catch (error) {
-                console.error('[LogFileManager] ログ保存エラー:', error);
-                throw error;
-            } */
     },
 
     clearCurrentLogs() {
@@ -237,15 +203,10 @@
       console.log(`📝 [ログ] ${step}: ${message}`);
     },
 
-    // エラーログを記録（即座にファイル保存）
+    // エラーログを記録
     async logError(step, error, context = {}) {
       this.logFileManager.logError(step, error, context);
       console.error(`❌ [エラーログ] ${step}:`, error);
-      // エラーは即座に保存
-      await this.logFileManager.saveErrorImmediately(error, {
-        step,
-        ...context,
-      });
     },
 
     // 成功ログを記録
@@ -266,17 +227,9 @@
       console.log(`🏁 [タスク完了]`, result);
     },
 
-    // ログをファイルに保存（最終保存）
+    // ログをファイルに保存
     async saveToFile() {
-      try {
-        const filePath = await this.logFileManager.saveToFile();
-        console.log(
-          `✅ [ClaudeLogManager] 最終ログを保存しました: ${filePath}`,
-        );
-        return filePath;
-      } catch (error) {
-        console.error("[ClaudeLogManager] ログ保存エラー:", error);
-      }
+      return await this.logFileManager.saveToFile();
     },
 
     // ログをクリア
@@ -291,8 +244,76 @@
   // Claude-ステップ0: 初期化処理
   // ========================================
 
-  // Claude-ステップ0-1: 設定の取得（グローバル変数への直接アクセスを避ける）
+  // Claude-ステップ0-1: 設定の取得（ハードコーディング版）
   const getConfig = () => {
+    // Claude専用のUIセレクタをハードコーディング
+    const HARDCODED_UI_SELECTORS = {
+      Claude: {
+        INPUT: [
+          ".ProseMirror",
+          'div.ProseMirror[contenteditable="true"]',
+          '[data-placeholder*="Message Claude"]',
+          'div[contenteditable="true"][role="textbox"]',
+        ],
+        SEND_BUTTON: [
+          'button[aria-label="Send Message"]',
+          'button[type="submit"][aria-label*="Send"]',
+          'button svg path[d*="M320 448"]',
+        ],
+        STOP_BUTTON: [
+          'button[aria-label="応答を停止"]',
+          '[aria-label="応答を停止"]',
+          'button svg path[d*="M128,20A108"]',
+        ],
+        MODEL_BUTTON: [
+          'button[aria-label*="モデル"]',
+          'button[aria-haspopup="menu"]:has(span:contains("Claude"))',
+          'button:has(svg[class*="model"])',
+        ],
+        MENU: {
+          CONTAINER: '[role="menu"][data-state="open"]',
+          OTHER_MODELS: [
+            'div[role="menuitem"][aria-haspopup="menu"][data-state="closed"]',
+            'div[role="menuitem"][aria-haspopup="menu"]:has(*:contains("他のモデル"))',
+            'div[role="menuitem"][aria-haspopup="menu"]:has(*:contains("Other models"))',
+            'div[role="menuitem"][aria-haspopup="menu"]',
+          ],
+        },
+        MODEL_INFO: {
+          TEXT_ELEMENT: [
+            'button span:contains("Claude")',
+            'button span[class*="text"]',
+            'button div:contains("Claude")',
+          ],
+        },
+        FEATURE_MENU: {
+          CONTAINER: '[role="menu"]',
+          WEB_SEARCH_TOGGLE: [
+            'button[role="switch"]',
+            '[aria-label*="Web"]',
+            'button:has(span:contains("Web"))',
+          ],
+        },
+        FEATURE_BUTTONS: {
+          RESEARCH: [
+            'button:contains("Deep Research")',
+            'button[aria-label*="Research"]',
+          ],
+        },
+        DEEP_RESEARCH: {
+          CANVAS_PREVIEW: [
+            'div[aria-label="内容をプレビュー"][role="button"]',
+            '[aria-label="内容をプレビュー"]',
+            'div[role="button"][tabindex="0"]:has(div.artifact-block-cell)',
+          ],
+        },
+        FUNCTION_MENU_BUTTON: [
+          'button[aria-label*="機能"]',
+          'button:has(svg[class*="feature"])',
+        ],
+      },
+    };
+
     return {
       AI_WAIT_CONFIG: window.AI_WAIT_CONFIG || {
         INITIAL_WAIT: 30000,
@@ -304,7 +325,8 @@
         STOP_BUTTON_INITIAL_WAIT: 30000,
         STOP_BUTTON_DISAPPEAR_WAIT: 300000,
       },
-      UI_SELECTORS: window.UI_SELECTORS || {},
+      // window.UI_SELECTORSが存在してもハードコードされた値を優先使用
+      UI_SELECTORS: HARDCODED_UI_SELECTORS,
     };
   };
 
@@ -318,19 +340,23 @@
   console.log("  UI_SELECTORS存在:", !!UI_SELECTORS);
   if (UI_SELECTORS && UI_SELECTORS.Claude) {
     console.log("  UI_SELECTORS.Claude存在:", !!UI_SELECTORS.Claude);
-    console.log("  UI_SELECTORS.Claude.INPUT:", UI_SELECTORS.Claude.INPUT);
     console.log(
-      "  UI_SELECTORS.Claude.SEND_BUTTON:",
-      UI_SELECTORS.Claude.SEND_BUTTON,
+      "  UI_SELECTORS.Claude.INPUT数:",
+      UI_SELECTORS.Claude.INPUT.length,
     );
     console.log(
-      "  UI_SELECTORS.Claude.STOP_BUTTON:",
-      UI_SELECTORS.Claude.STOP_BUTTON,
+      "  UI_SELECTORS.Claude.SEND_BUTTON数:",
+      UI_SELECTORS.Claude.SEND_BUTTON.length,
+    );
+    console.log(
+      "  UI_SELECTORS.Claude.STOP_BUTTON数:",
+      UI_SELECTORS.Claude.STOP_BUTTON.length,
+    );
+    console.log(
+      "✅ 【Claude-ステップ0-2】ハードコードされたUI_SELECTORSを使用中",
     );
   } else {
-    console.warn(
-      "⚠️ 【Claude-ステップ0-2】UI_SELECTORSが未定義です！デフォルト値を使用します。",
-    );
+    console.error("❌ 【Claude-ステップ0-2】UI_SELECTORS初期化エラー！");
   }
 
   // ========================================
@@ -340,165 +366,22 @@
 
   class ClaudeRetryManager {
     constructor() {
-      // デフォルト設定
-      this.defaultMaxRetries = 3;
-      this.defaultRetryDelay = 2000;
-      this.globalTimeout = 600000; // 10分
-
-      // Canvas無限更新専用設定
-      this.canvasMaxRetries = 10;
-      this.canvasRetryDelays = [
-        5000, // 5秒
-        10000, // 10秒
-        60000, // 1分
-        300000, // 5分
-        600000, // 10分
-        900000, // 15分
-        1800000, // 30分
-        3600000, // 1時間
-        7200000, // 2時間
-      ];
-
-      // エラー種別別の設定
-      this.errorStrategies = {
-        NETWORK_ERROR: {
-          maxRetries: 5,
-          baseDelay: 2000,
-          backoffMultiplier: 1.5,
-        },
-        DOM_ERROR: { maxRetries: 3, baseDelay: 1000, backoffMultiplier: 1.2 },
-        UI_TIMING_ERROR: {
-          maxRetries: 10,
-          baseDelay: 500,
-          backoffMultiplier: 1.1,
-        },
-        CANVAS_VERSION_UPDATE: {
-          maxRetries: 10,
-          customDelays: this.canvasRetryDelays,
-        },
-        USER_INPUT_ERROR: { maxRetries: 1, baseDelay: 0, backoffMultiplier: 1 },
-        GENERAL_ERROR: {
-          maxRetries: 3,
-          baseDelay: 2000,
-          backoffMultiplier: 1.5,
-        },
-      };
-
-      // 実行時統計
-      this.metrics = {
-        totalAttempts: 0,
-        successfulAttempts: 0,
-        errorCounts: {},
-        averageRetryCount: 0,
-      };
-
-      // エラー履歴管理（段階的エスカレーション用）
-      this.errorHistory = [];
-      this.taskContext = null;
-      this.lastResults = [];
-      this.maxHistorySize = 50; // 履歴の最大サイズ
-
-      // リソース管理
+      this.maxRetries = 3;
+      this.retryDelay = 2000;
+      this.timeout = 600000; // 10分
       this.activeTimeouts = new Set();
-      this.abortController = null;
+
+      // メトリクス初期化
+      this.resetMetrics();
     }
 
-    // 統一されたエラー分類器
+    // シンプルなエラー分類
     classifyError(error, context = {}) {
       const errorMessage = error?.message || error?.toString() || "";
-      const errorName = error?.name || "";
-
-      // Canvas無限更新エラー
-      if (
-        context.isCanvasVersionUpdate ||
-        errorMessage.includes("Canvas無限更新") ||
-        context.errorType === "CANVAS_VERSION_UPDATE"
-      ) {
-        return "CANVAS_VERSION_UPDATE";
+      if (errorMessage.includes("timeout")) {
+        return "TIMEOUT_ERROR";
       }
-
-      // ネットワークエラー
-      if (
-        errorMessage.includes("timeout") ||
-        errorMessage.includes("network") ||
-        errorMessage.includes("fetch") ||
-        errorName.includes("NetworkError")
-      ) {
-        return "NETWORK_ERROR";
-      }
-
-      // DOM要素エラー
-      if (
-        errorMessage.includes("要素が見つかりません") ||
-        errorMessage.includes("element not found") ||
-        errorMessage.includes("selector") ||
-        errorMessage.includes("querySelector")
-      ) {
-        return "DOM_ERROR";
-      }
-
-      // UIタイミングエラー
-      if (
-        errorMessage.includes("click") ||
-        errorMessage.includes("input") ||
-        errorMessage.includes("button") ||
-        errorMessage.includes("まで待機")
-      ) {
-        return "UI_TIMING_ERROR";
-      }
-
-      // ユーザー入力エラー
-      if (
-        errorMessage.includes("設定なし") ||
-        errorMessage.includes("Invalid") ||
-        context.isUserInputError
-      ) {
-        return "USER_INPUT_ERROR";
-      }
-
-      // デフォルト（汎用エラー）
       return "GENERAL_ERROR";
-    }
-
-    // エラー履歴記録
-    recordError(error, retryCount, result = null, context = {}) {
-      const errorRecord = {
-        timestamp: Date.now(),
-        errorType: this.classifyError(error, context),
-        retryCount,
-        message: error?.message || error?.toString() || "Unknown error",
-        result: result,
-        context: context,
-      };
-
-      this.errorHistory.push(errorRecord);
-
-      // 履歴サイズ制限
-      if (this.errorHistory.length > this.maxHistorySize) {
-        this.errorHistory.shift();
-      }
-
-      return errorRecord;
-    }
-
-    // 結果履歴記録
-    recordResult(result, retryCount, context = {}) {
-      const resultRecord = {
-        timestamp: Date.now(),
-        retryCount,
-        success: result && result.success !== false,
-        result: result,
-        context: context,
-      };
-
-      this.lastResults.push(resultRecord);
-
-      // 結果履歴サイズ制限
-      if (this.lastResults.length > 10) {
-        this.lastResults.shift();
-      }
-
-      return resultRecord;
     }
 
     // Canvas無限更新検出
@@ -656,7 +539,12 @@
             errorType = errorClassifier(error, context);
 
             // エラー履歴記録
-            this.recordError(error, retryCount, lastResult, context);
+            console.error(`🔍 [Error Record] エラー記録:`, {
+              error: error.message,
+              retryCount,
+              lastResult,
+              context,
+            });
 
             // エラー統計更新
             this.metrics.errorCounts[errorType] =
@@ -727,9 +615,13 @@
               retryError.message,
             );
             // リトライエラーも記録
-            this.recordError(retryError, retryCount, null, {
-              ...context,
-              retryLevel,
+            console.error(`🔍 [Retry Error Record] リトライエラー記録:`, {
+              error: retryError.message,
+              retryCount,
+              context: {
+                ...context,
+                retryLevel,
+              },
             });
           }
         }
@@ -1439,7 +1331,14 @@
       }
     }
 
+    console.log("🔧 [MANAGER] ClaudeRetryManager作成前 - 最初のインスタンス");
     const retryManager = new ClaudeRetryManager();
+    console.log("✅ [MANAGER] ClaudeRetryManager作成完了:", {
+      maxRetries: retryManager.maxRetries,
+      retryDelay: retryManager.retryDelay,
+      timeout: retryManager.timeout,
+      hasMetrics: !!retryManager.metrics,
+    });
     const result = await retryManager.executeWithRetry({
       action: async () => {
         // findClaudeElementに適切なオブジェクト形式で渡す
@@ -4679,172 +4578,330 @@
     runtimeオブジェクト: typeof chrome?.runtime !== "undefined",
   });
 
-  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    const messageReceiveTime = Date.now();
-    const requestId = Math.random().toString(36).substring(2, 8);
+  // 🔍 STEP 2: メッセージリスナー登録
+  console.log("=".repeat(60));
+  console.log("🔍 [STEP 2] メッセージリスナー登録開始");
+  console.log("=".repeat(60));
 
-    console.log(`📬 [ClaudeAutomation] メッセージ受信 [ID:${requestId}]:`, {
-      メッセージタイプ: request.type || request.action,
-      メッセージ全体: request,
-      送信者: {
-        タブID: sender.tab?.id,
-        URL: sender.tab?.url,
-        タイトル: sender.tab?.title,
-      },
-      受信時刻: new Date().toISOString(),
-      // 追加デバッグ情報
-      デバッグ情報: {
-        requestKeys: Object.keys(request),
-        hasType: "type" in request,
-        hasAction: "action" in request,
-        typeValue: request.type,
-        actionValue: request.action,
-        automationName: request.automationName,
-        hasTask: "task" in request,
-        hasTaskData: "taskData" in request,
-      },
-    });
+  // メッセージリスナー登録の試行
+  try {
+    console.log("📩 [LISTENER] chrome.runtime.onMessage.addListener 登録前");
+    console.log("📩 [LISTENER] chrome.runtime 存在確認:", !!chrome?.runtime);
+    console.log(
+      "📩 [LISTENER] addListener 存在確認:",
+      !!chrome?.runtime?.onMessage?.addListener,
+    );
 
-    // メッセージタイプの互換性チェック
-    const isClaudeExecuteTask =
-      request.type === "CLAUDE_EXECUTE_TASK" ||
-      (request.action === "executeTask" &&
-        request.automationName === "ClaudeAutomation");
+    console.log("🔍 [STEP 2-2] chrome.runtime.onMessage.addListener 実行中...");
+    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+      const messageReceiveTime = Date.now();
+      const requestId = Math.random().toString(36).substring(2, 8);
 
-    const isCheckReady =
-      request.type === "CLAUDE_CHECK_READY" || request.action === "ping";
+      // 📨 メッセージ受信詳細ログ
+      console.log("📨 [RECEIVED] メッセージ受信:", {
+        requestId,
+        messageType: request?.type || request?.action,
+        messageKeys: Object.keys(request || {}),
+        senderTab: sender?.tab?.id,
+        timestamp: new Date().toISOString(),
+      });
 
-    console.log(`🔍 [ClaudeAutomation] メッセージタイプ判定:`, {
-      isClaudeExecuteTask,
-      isCheckReady,
-      判定根拠: {
-        type: request.type,
-        action: request.action,
-        automationName: request.automationName,
-      },
-    });
+      // 🔍 STEP 3: メッセージ受信確認
+      console.log("=".repeat(60));
+      console.log("🔍 [STEP 3] メッセージ受信確認 - ID:" + requestId);
+      console.log("=".repeat(60));
 
-    // Claude専用のメッセージのみ処理
-    if (isClaudeExecuteTask) {
-      // タスクデータの取得（taskDataまたはtask）
-      const taskToExecute = request.taskData || request.task;
+      // 🔍 実行環境の確認（重要）
+      const currentURL = window.location.href;
+      const isClaudePage = currentURL.includes("claude.ai");
+      const isExtensionPage = currentURL.startsWith("chrome-extension://");
+
+      console.log(`📬 [ClaudeAutomation] メッセージ受信 [ID:${requestId}]:`, {
+        実行環境: {
+          現在のURL: currentURL,
+          "Claude.aiページ": isClaudePage,
+          拡張機能ページ: isExtensionPage,
+          ドメイン: window.location.hostname,
+          プロトコル: window.location.protocol,
+        },
+        メッセージタイプ: request.type || request.action,
+        メッセージ全体: request,
+        送信者: {
+          タブID: sender.tab?.id,
+          URL: sender.tab?.url,
+          タイトル: sender.tab?.title,
+        },
+        受信時刻: new Date().toISOString(),
+        // 追加デバッグ情報
+        デバッグ情報: {
+          requestKeys: Object.keys(request),
+          hasType: "type" in request,
+          hasAction: "action" in request,
+          typeValue: request.type,
+          actionValue: request.action,
+          automationName: request.automationName,
+          hasTask: "task" in request,
+          hasTaskData: "taskData" in request,
+        },
+      });
+
+      // 🚫 拡張機能ページでの実行を即座にブロック
+      if (isExtensionPage) {
+        console.error(
+          `❌ [ClaudeAutomation] 拡張機能ページで実行されています!`,
+          {
+            requestId,
+            currentURL,
+            メッセージタイプ: request.type || request.action,
+            エラー: "Content Scriptは拡張機能UIでは動作しません",
+            スタックトレース: new Error().stack,
+          },
+        );
+        sendResponse({
+          success: false,
+          error: "Content Scriptが拡張機能UIページで実行されています",
+          context: currentURL,
+        });
+        return true;
+      }
+
+      // Claude.aiページでない場合の警告
+      if (!isClaudePage) {
+        console.error(
+          `❌ [ClaudeAutomation] Claude.ai以外のページで実行されています`,
+          {
+            現在のURL: currentURL,
+            期待URL: "https://claude.ai/*",
+            メッセージタイプ: request.type || request.action,
+          },
+        );
+        // ただし、拡張機能のUI (chrome-extension://) からの場合は処理を続行
+        if (!currentURL.startsWith("chrome-extension://")) {
+          console.error(
+            `❌ [ClaudeAutomation] エラー: 無効なページでの実行を拒否`,
+          );
+          sendResponse({
+            success: false,
+            error: `Invalid execution context: ${currentURL}`,
+          });
+          return false;
+        }
+      }
+
+      // メッセージタイプの互換性チェック
+      const isClaudeExecuteTask =
+        request.type === "CLAUDE_EXECUTE_TASK" ||
+        (request.action === "executeTask" &&
+          request.automationName === "ClaudeAutomation");
+
+      const isCheckReady =
+        request.type === "CLAUDE_CHECK_READY" || request.action === "ping";
+
+      console.log(`🔍 [ClaudeAutomation] メッセージタイプ判定:`, {
+        isClaudeExecuteTask,
+        isCheckReady,
+        判定根拠: {
+          type: request.type,
+          action: request.action,
+          automationName: request.automationName,
+        },
+      });
+
+      // Claude専用のメッセージのみ処理
+      if (isClaudeExecuteTask) {
+        // タスクデータの取得（taskDataまたはtask、両方に対応）
+        const taskToExecute = request.taskData || request.task || request;
+
+        console.log(
+          `🔍 [ClaudeAutomation] タスクデータ取得 [ID:${requestId}]:`,
+          {
+            taskDataあり: !!request.taskData,
+            taskあり: !!request.task,
+            直接データ: !request.taskData && !request.task,
+            取得したデータ: taskToExecute ? "取得成功" : "取得失敗",
+          },
+        );
+
+        console.log(
+          `🎯 [ClaudeAutomation] タスク実行処理開始 [ID:${requestId}]:`,
+          {
+            タスクID: taskToExecute?.taskId || taskToExecute?.id,
+            タスクデータ構造: taskToExecute
+              ? Object.keys(taskToExecute)
+              : "なし",
+            プロンプト長: taskToExecute?.prompt?.length || 0,
+            モデル: taskToExecute?.model,
+            機能: taskToExecute?.function,
+            処理開始時刻: new Date().toISOString(),
+            実際のタスクデータ: taskToExecute,
+          },
+        );
+
+        // sendResponseコールバックの状態追跡
+        let responseCallbackCalled = false;
+        const wrappedSendResponse = (response) => {
+          if (responseCallbackCalled) {
+            console.warn(
+              `⚠️ [ClaudeAutomation] 重複レスポンス試行 [ID:${requestId}]:`,
+              response,
+            );
+            return;
+          }
+          responseCallbackCalled = true;
+          const responseTime = Date.now() - messageReceiveTime;
+          console.log(
+            `📤 [ClaudeAutomation] レスポンス送信 [ID:${requestId}]:`,
+            {
+              処理時間: `${responseTime}ms`,
+              成功: response.success,
+              レスポンス構造: Object.keys(response),
+              エラー: response.error,
+              送信時刻: new Date().toISOString(),
+            },
+          );
+          sendResponse(response);
+        };
+
+        console.log(
+          `🚀 [ClaudeAutomation] executeTask実行開始 [ID:${requestId}]`,
+          {
+            実行環境URL: window.location.href,
+            タスクID: taskToExecute?.taskId || taskToExecute?.id,
+            実行時刻: new Date().toISOString(),
+          },
+        );
+
+        // タスクデータの検証
+        if (!taskToExecute || (!taskToExecute.prompt && !taskToExecute.text)) {
+          console.error(
+            `❌ [ClaudeAutomation] エラー: タスクデータが不正です [ID:${requestId}]`,
+            {
+              受信データ: request,
+              taskToExecute: taskToExecute,
+            },
+          );
+          wrappedSendResponse({
+            success: false,
+            error: "Invalid task data: missing prompt or text",
+          });
+          return true;
+        }
+
+        // 非同期処理のため、即座にtrueを返してチャネルを開いておく
+        executeTask(taskToExecute)
+          .then((result) => {
+            const executionTime = Date.now() - messageReceiveTime;
+            console.log(
+              `✅ [ClaudeAutomation] executeTask成功 [ID:${requestId}]:`,
+              {
+                結果構造: result ? Object.keys(result) : "なし",
+                成功: result?.success,
+                レスポンス長: result?.response?.length || 0,
+                実行時間: `${executionTime}ms`,
+                実行環境: currentURL,
+                結果詳細: result,
+              },
+            );
+            wrappedSendResponse({ success: true, result });
+          })
+          .catch((error) => {
+            const executionTime = Date.now() - messageReceiveTime;
+            console.error(
+              `❌ [ClaudeAutomation] executeTask失敗 [ID:${requestId}]:`,
+              {
+                エラー名: error.name,
+                エラーメッセージ: error.message,
+                エラースタック: error.stack?.substring(0, 500),
+                実行時間: `${executionTime}ms`,
+                実行環境: currentURL,
+                エラー全体: error,
+              },
+            );
+            wrappedSendResponse({ success: false, error: error.message });
+          });
+
+        console.log(
+          `🔄 [ClaudeAutomation] 非同期チャネル保持 [ID:${requestId}] - trueを返します`,
+        );
+        return true; // 非同期レスポンスのためチャネルを保持
+      } else if (isCheckReady) {
+        // 実行環境情報を含めて応答
+        console.log(
+          `🏓 [ClaudeAutomation] ping/準備確認処理 [ID:${requestId}]`,
+          {
+            実行環境: currentURL,
+            isClaude: isClaudePage,
+          },
+        );
+
+        const readyResponse = {
+          ready: true,
+          automationName: "ClaudeAutomation",
+          version: "3.0.0",
+          url: currentURL,
+          initialized: window.CLAUDE_SCRIPT_LOADED,
+          initTime: Date.now(),
+          methods: [
+            "executeTask",
+            "runAutomation",
+            "inputTextOnly",
+            "selectModelOnly",
+            "selectFunctionOnly",
+            "sendAndGetResponse",
+          ],
+          environment: {
+            url: window.location.href,
+            isClaudePage: isClaudePage,
+            hostname: window.location.hostname,
+          },
+        };
+        console.log(
+          `✅ [ClaudeAutomation] ping応答 [ID:${requestId}]:`,
+          readyResponse,
+        );
+        sendResponse(readyResponse);
+        return true; // pingはtrueを返す
+      }
 
       console.log(
-        `🎯 [ClaudeAutomation] タスク実行処理開始 [ID:${requestId}]:`,
+        `🚀 [ClaudeAutomation] 非対応メッセージ [ID:${requestId}] - content-script-consolidated.jsに委譲:`,
         {
-          タスクID: taskToExecute?.taskId || taskToExecute?.id,
-          タスクデータ構造: taskToExecute ? Object.keys(taskToExecute) : "なし",
-          プロンプト長: taskToExecute?.prompt?.length || 0,
-          モデル: taskToExecute?.model,
-          機能: taskToExecute?.function,
-          処理開始時刻: new Date().toISOString(),
-          実際のタスクデータ: taskToExecute,
+          メッセージタイプ: request.type,
+          処理結果: "falseを返して他に委譲",
         },
       );
-
-      // sendResponseコールバックの状態追跡
-      let responseCallbackCalled = false;
-      const wrappedSendResponse = (response) => {
-        if (responseCallbackCalled) {
-          console.warn(
-            `⚠️ [ClaudeAutomation] 重複レスポンス試行 [ID:${requestId}]:`,
-            response,
-          );
-          return;
-        }
-        responseCallbackCalled = true;
-        const responseTime = Date.now() - messageReceiveTime;
-        console.log(`📤 [ClaudeAutomation] レスポンス送信 [ID:${requestId}]:`, {
-          処理時間: `${responseTime}ms`,
-          成功: response.success,
-          レスポンス構造: Object.keys(response),
-          エラー: response.error,
-          送信時刻: new Date().toISOString(),
-        });
-        sendResponse(response);
-      };
-
-      console.log(
-        `🚀 [ClaudeAutomation] executeTask実行開始 [ID:${requestId}]`,
-      );
-
-      // 非同期処理のため、即座にtrueを返してチャネルを開いておく
-      executeTask(taskToExecute)
-        .then((result) => {
-          console.log(
-            `✅ [ClaudeAutomation] executeTask成功 [ID:${requestId}]:`,
-            {
-              結果構造: result ? Object.keys(result) : "なし",
-              成功: result?.success,
-              レスポンス長: result?.response?.length || 0,
-              結果詳細: result,
-            },
-          );
-          wrappedSendResponse({ success: true, result });
-        })
-        .catch((error) => {
-          console.error(
-            `❌ [ClaudeAutomation] executeTask失敗 [ID:${requestId}]:`,
-            {
-              エラー名: error.name,
-              エラーメッセージ: error.message,
-              エラースタック: error.stack?.substring(0, 500),
-              エラー全体: error,
-            },
-          );
-          wrappedSendResponse({ success: false, error: error.message });
-        });
-
-      console.log(
-        `🔄 [ClaudeAutomation] 非同期チャネル保持 [ID:${requestId}] - trueを返します`,
-      );
-      return true; // 非同期レスポンスのためチャネルを保持
-    } else if (isCheckReady) {
-      console.log(`🔍 [ClaudeAutomation] 準備確認/ping処理 [ID:${requestId}]`);
-      // スクリプトの準備状態を確認
-      const readyResponse = {
-        ready: true,
-        initTime: Date.now(),
-        methods: [
-          "executeTask",
-          "runAutomation",
-          "inputTextOnly",
-          "selectModelOnly",
-          "selectFunctionOnly",
-          "sendAndGetResponse",
-        ],
-      };
-      console.log(
-        `✅ [ClaudeAutomation] READYレスポンス [ID:${requestId}]:`,
-        readyResponse,
-      );
-      sendResponse(readyResponse);
+      // Claude専用のメッセージでない場合は何もしない
+      // （content-script-consolidated.jsに処理を委譲）
       return false;
-    }
+    });
 
-    console.log(
-      `🚀 [ClaudeAutomation] 非対応メッセージ [ID:${requestId}] - content-script-consolidated.jsに委譲:`,
-      {
-        メッセージタイプ: request.type,
-        処理結果: "falseを返して他に委譲",
-      },
-    );
-    // Claude専用のメッセージでない場合は何もしない
-    // （content-script-consolidated.jsに処理を委譲）
-    return false;
-  });
+    console.log("✅ [ClaudeAutomation] メッセージリスナー登録完了:", {
+      登録完了時刻: new Date().toISOString(),
+      処理対象: [
+        "CLAUDE_EXECUTE_TASK",
+        "CLAUDE_CHECK_READY",
+        "executeTask (action)",
+        "ping (action)",
+      ],
+      リスナー状態: "アクティブ",
+      互換性モード: "有効（typeとactionの両方をサポート）",
+    });
 
-  console.log("✅ [ClaudeAutomation] メッセージリスナー登録完了:", {
-    登録完了時刻: new Date().toISOString(),
-    処理対象: [
-      "CLAUDE_EXECUTE_TASK",
-      "CLAUDE_CHECK_READY",
-      "executeTask (action)",
-      "ping (action)",
-    ],
-    リスナー状態: "アクティブ",
-    互換性モード: "有効（typeとactionの両方をサポート）",
-  });
+    console.log("🔍 [STEP 2-3] メッセージリスナー登録成功");
+    console.log("✅ [LISTENER] リスナー登録完了");
+  } catch (listenerError) {
+    console.error("❌ [STEP 2-ERROR] メッセージリスナー登録失敗:", {
+      error: listenerError.message,
+      stack: listenerError.stack,
+      chromeContext: typeof chrome,
+      runtimeAPI: typeof chrome?.runtime,
+    });
+  }
+
+  // 🔍 STEP 4: 初期化完了確認
+  console.log("=".repeat(60));
+  console.log("🔍 [STEP 4] 初期化完了確認");
+  console.log("=".repeat(60));
 
   // 初期化完了マーカーを設定（ai-task-executorが期待する名前を使用）
   const initCompleteTime = Date.now();
@@ -4853,7 +4910,7 @@
 
   const initDuration = initCompleteTime - scriptLoadTime;
 
-  console.log("✅ [Claude初期化DEBUG] スクリプト初期化完了:", {
+  console.log("✅ [STEP 4-SUCCESS] Content Script初期化完了:", {
     初期化完了時刻: new Date(initCompleteTime).toISOString(),
     初期化時間: `${initDuration}ms`,
     マーカー状態: {

@@ -156,6 +156,15 @@ class AIAutomationLoader {
   async loadAIFile(aiType) {
     const aiTypeNormalized = aiType.toLowerCase();
 
+    // Claudeの場合はmanifest.jsonで自動注入されるため、何もしない
+    if (aiTypeNormalized === "claude") {
+      ExecuteLogger.info(
+        `✅ claude 自動化ファイルはmanifest.jsonで自動注入済み - 手動ロードスキップ`,
+      );
+      this.loadedAIFiles.add(aiTypeNormalized); // ロード済みとしてマーク
+      return true;
+    }
+
     // 既にロード済みか確認
     if (this.loadedAIFiles.has(aiTypeNormalized)) {
       ExecuteLogger.info(
@@ -237,7 +246,14 @@ class AIAutomationLoader {
    * @param {string} aiType - AI種別
    */
   isAIAvailable(aiType) {
-    return this.loadedAIFiles.has(aiType.toLowerCase());
+    const aiTypeNormalized = aiType.toLowerCase();
+
+    // Claudeの場合はmanifest.jsonで自動注入されるため、常に利用可能
+    if (aiTypeNormalized === "claude") {
+      return true;
+    }
+
+    return this.loadedAIFiles.has(aiTypeNormalized);
   }
 }
 

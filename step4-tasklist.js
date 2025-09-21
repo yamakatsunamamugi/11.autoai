@@ -3575,15 +3575,16 @@ async function executeStep4(taskList) {
         `🪟 [step4-execute.js] Step 4-6-6-${batchIndex + 2}-E: ウィンドウクローズ`,
       );
 
-      for (const [aiType, windowInfo] of batchWindows) {
+      for (const [taskIndex, windowInfo] of batchWindows) {
         try {
           await StepIntegratedWindowService.closeWindow(windowInfo.windowId);
-          ExecuteLogger.info(`✅ ${aiType}ウィンドウクローズ完了`);
+          ExecuteLogger.info(`✅ タスク${taskIndex}ウィンドウクローズ完了`);
 
           // WindowControllerの配列からも削除（タブID再利用問題の修正）
-          const normalizedAiType = window.windowController?.normalizeAiType?.(
-            aiType.replace(/_task.*/, ""),
-          );
+          // taskIndexは数値なので、windowInfoからaiTypeを取得
+          const aiType = windowInfo.aiType || "claude";
+          const normalizedAiType =
+            window.windowController?.normalizeAiType?.(aiType);
           if (
             normalizedAiType &&
             window.windowController?.openedWindows?.has(normalizedAiType)
@@ -3608,7 +3609,10 @@ async function executeStep4(taskList) {
             }
           }
         } catch (error) {
-          ExecuteLogger.error(`⚠️ ${aiType}ウィンドウクローズエラー:`, error);
+          ExecuteLogger.error(
+            `⚠️ タスク${taskIndex}ウィンドウクローズエラー:`,
+            error,
+          );
         }
       }
 
@@ -3742,10 +3746,13 @@ async function executeStep4(taskList) {
             timestamp: new Date().toISOString(),
           });
 
+          // 互換性のため複数の形式をサポート
           const messagePayload = {
             action: "executeTask",
+            type: "CLAUDE_EXECUTE_TASK", // unusedコードと互換
             automationName: automationName,
             task: task,
+            taskData: task, // 両方の形式に対応
           };
 
           ExecuteLogger.info(`📡 [DEBUG-sendMessage] メッセージ詳細:`, {
@@ -3753,92 +3760,243 @@ async function executeStep4(taskList) {
             payloadKeys: Object.keys(messagePayload),
             taskKeys: Object.keys(task),
             taskPromptLength: task.prompt?.length || 0,
+            タスクID: task.id,
+            aiType: task.aiType,
+            送信先TabID: tabId,
           });
 
-          // Content Scriptを手動注入（元のコードと同じ方式）
-          ExecuteLogger.info(
-            `📝 [Content Script注入] ${automationName} スクリプト注入開始 (TabID: ${tabId})`,
-          );
-
-          try {
-            // タブ情報を確認
-            const tab = await chrome.tabs.get(tabId);
-            ExecuteLogger.info(`🔍 [Content Script注入] タブ情報確認:`, {
-              tabId: tabId,
-              url: tab.url,
-              title: tab.title,
-              status: tab.status,
-            });
-
-            // Claude.aiドメインでない場合は注入を停止
-            if (!tab.url.includes("claude.ai")) {
-              throw new Error(
-                `Claude.ai以外のタブに注入しようとしました: ${tab.url}`,
-              );
-            }
-
-            const injectionResults = await chrome.scripting.executeScript({
-              target: { tabId: tabId },
-              files: ["4-2-claude-automation.js"],
-            });
-
-            ExecuteLogger.info(`📋 [Content Script注入] 注入結果:`, {
-              tabId: tabId,
-              resultsCount: injectionResults.length,
-              results: injectionResults.map((r) => ({
-                frameId: r.frameId,
-                error: r.error,
-              })),
-            });
-
-            // 初期化待機（元のコードと同じ3秒）
-            await new Promise((resolve) => setTimeout(resolve, 3000));
-
-            // 注入確認のためのテストメッセージ送信
-            try {
-              const testResponse = await chrome.tabs.sendMessage(tabId, {
-                action: "ping",
-              });
-              ExecuteLogger.info(
-                `✅ [Content Script注入] 注入確認完了:`,
-                testResponse,
-              );
-            } catch (testError) {
-              ExecuteLogger.warn(
-                `⚠️ [Content Script注入] 注入確認失敗、継続:`,
-                testError.message,
-              );
-            }
-
+          // ClaudeとClaude以外で処理を分岐
+          if (automationName === "ClaudeAutomation") {
+            // Claudeの場合: Content Script注入を行わず、直接メッセージを送信
             ExecuteLogger.info(
-              `✅ [Content Script注入] ${automationName} スクリプト注入完了、初期化待機完了`,
+              `📝 [Claude Direct] manifest定義のContent Scriptに直接送信 (TabID: ${tabId})`,
             );
-          } catch (injectionError) {
-            ExecuteLogger.error(`❌ [Content Script注入] 注入失敗:`, {
-              tabId: tabId,
-              error: injectionError.message,
-              stack: injectionError.stack,
-            });
-            reject(
-              new Error(`Content Script注入失敗: ${injectionError.message}`),
+
+            // 🔍 STEP A: タブ情報確認（デバッグ用）
+            try {
+              const tab = await chrome.tabs.get(tabId);
+              ExecuteLogger.info(`🔍 [STEP A] Claude タブ情報確認:`, {
+                tabId: tabId,
+                url: tab.url,
+                title: tab.title,
+                status: tab.status,
+                isClaude: tab.url.includes("claude.ai"),
+              });
+
+              if (!tab.url.includes("claude.ai")) {
+                throw new Error(
+                  `Claude.ai以外のタブに送信しようとしました: ${tab.url}`,
+                );
+              }
+            } catch (tabError) {
+              ExecuteLogger.error(`❌ [STEP A-ERROR] タブ確認失敗:`, {
+                tabId: tabId,
+                error: tabError.message,
+              });
+              reject(new Error(`タブ確認失敗: ${tabError.message}`));
+              return;
+            }
+
+            // 🔍 STEP B: Content Script存在確認
+            try {
+              ExecuteLogger.info(`🔍 [STEP B] Content Script存在確認開始...`);
+
+              // Content Scriptのグローバル変数をチェック
+              const scriptCheckResponse = await chrome.scripting.executeScript({
+                target: { tabId: tabId },
+                func: () => {
+                  return {
+                    CLAUDE_SCRIPT_LOADED: window.CLAUDE_SCRIPT_LOADED || false,
+                    CLAUDE_SCRIPT_INIT_TIME:
+                      window.CLAUDE_SCRIPT_INIT_TIME || null,
+                    hasMessageListener: !!chrome?.runtime?.onMessage,
+                    currentURL: window.location.href,
+                    timestamp: new Date().toISOString(),
+                    windowKeys: Object.keys(window).filter((k) =>
+                      k.includes("CLAUDE"),
+                    ),
+                  };
+                },
+              });
+
+              const scriptStatus = scriptCheckResponse[0].result;
+              ExecuteLogger.info(`🔍 [STEP B] Content Script状態確認結果:`, {
+                tabId: tabId,
+                scriptLoaded: scriptStatus.CLAUDE_SCRIPT_LOADED,
+                initTime: scriptStatus.CLAUDE_SCRIPT_INIT_TIME,
+                hasMessageListener: scriptStatus.hasMessageListener,
+                url: scriptStatus.currentURL,
+                checkTime: scriptStatus.timestamp,
+                claudeKeys: scriptStatus.windowKeys,
+              });
+
+              if (!scriptStatus.CLAUDE_SCRIPT_LOADED) {
+                ExecuteLogger.error(
+                  `❌ [STEP B-ERROR] Content Scriptが未初期化:`,
+                  {
+                    tabId: tabId,
+                    reason: "window.CLAUDE_SCRIPT_LOADED = false",
+                    manifestPath: "4-2-claude-automation.js",
+                    checkResult: scriptStatus,
+                  },
+                );
+                // この場合もメッセージ送信を試行するが、警告を出力
+                ExecuteLogger.warn(
+                  `⚠️ [STEP B-WARN] Content Script未初期化でもメッセージ送信を試行します`,
+                );
+              } else {
+                ExecuteLogger.info(
+                  `✅ [STEP B-SUCCESS] Content Script正常初期化確認`,
+                );
+              }
+            } catch (scriptCheckError) {
+              ExecuteLogger.error(`❌ [STEP B-ERROR] Content Script確認失敗:`, {
+                tabId: tabId,
+                error: scriptCheckError.message,
+                reason: "chrome.scripting.executeScript実行失敗",
+                stack: scriptCheckError.stack,
+              });
+              // エラーでもメッセージ送信を試行する
+              ExecuteLogger.warn(
+                `⚠️ [STEP B-WARN] Content Script確認失敗でもメッセージ送信を試行します`,
+              );
+            }
+          } else {
+            // Claude以外のAI: 従来通りContent Script注入チェック
+            ExecuteLogger.info(
+              `📝 [Content Script注入] ${automationName} 初期化チェック開始 (TabID: ${tabId})`,
             );
-            return;
+
+            try {
+              // まず既存のContent Scriptの存在を確認
+              let isScriptReady = false;
+              let retryCount = 0;
+              const maxRetries = 3;
+
+              while (!isScriptReady && retryCount < maxRetries) {
+                try {
+                  const checkResponse = await Promise.race([
+                    chrome.tabs.sendMessage(tabId, { action: "ping" }),
+                    new Promise((_, reject) =>
+                      setTimeout(() => reject(new Error("Ping timeout")), 1000),
+                    ),
+                  ]);
+                  if (checkResponse && checkResponse.ready) {
+                    isScriptReady = true;
+                    ExecuteLogger.info(
+                      `♻️ [Content Script注入] 既存のスクリプトが応答 - 注入をスキップ`,
+                      {
+                        ...checkResponse,
+                        試行回数: retryCount + 1,
+                      },
+                    );
+                  }
+                } catch (pingError) {
+                  retryCount++;
+                  ExecuteLogger.info(
+                    `📝 [Content Script注入] ping応答なし (試行 ${retryCount}/${maxRetries})`,
+                  );
+                  if (retryCount < maxRetries) {
+                    await new Promise((resolve) => setTimeout(resolve, 500));
+                  }
+                }
+              }
+
+              // スクリプトが準備できていない場合のみ注入（Claude以外のみ）
+              if (!isScriptReady) {
+                ExecuteLogger.info(
+                  `🔧 [Content Script注入] 新規スクリプト注入開始`,
+                );
+
+                // automationNameからファイル名を決定
+                let scriptFile;
+                switch (automationName) {
+                  case "ChatGPTAutomationV2":
+                    scriptFile = "3-2-gpt-automation.js";
+                    break;
+                  case "GeminiAutomation":
+                    scriptFile = "5-2-gemini-automation.js";
+                    break;
+                  case "GensparkAutomationV2":
+                    scriptFile = "6-2-genspark-automation.js";
+                    break;
+                  default:
+                    throw new Error(`未知のautomationName: ${automationName}`);
+                }
+
+                const injectionResults = await chrome.scripting.executeScript({
+                  target: { tabId: tabId },
+                  files: [scriptFile],
+                });
+
+                ExecuteLogger.info(`📋 [Content Script注入] 注入結果:`, {
+                  tabId: tabId,
+                  scriptFile: scriptFile,
+                  resultsCount: injectionResults.length,
+                });
+
+                // 初期化待機
+                await new Promise((resolve) => setTimeout(resolve, 2000));
+              }
+
+              ExecuteLogger.info(
+                `✅ [Content Script注入] ${automationName} スクリプト準備完了`,
+              );
+            } catch (injectionError) {
+              ExecuteLogger.error(`❌ [Content Script注入] 準備失敗:`, {
+                tabId: tabId,
+                error: injectionError.message,
+                stack: injectionError.stack,
+              });
+              reject(
+                new Error(`Content Script準備失敗: ${injectionError.message}`),
+              );
+              return;
+            }
           }
 
           const sendStartTime = Date.now();
 
-          // タイムアウト設定を15秒に延長
+          // 🔍 STEP C: メッセージ送信実行
+          ExecuteLogger.info(`🔍 [STEP C] メッセージ送信開始:`, {
+            tabId: tabId,
+            messageType: messagePayload.type || messagePayload.action,
+            messageSize: JSON.stringify(messagePayload).length,
+            timestamp: new Date().toISOString(),
+          });
+
+          // タイムアウト設定を20秒に延長（unusedコードと同じ）
           const timeoutPromise = new Promise((_, reject) => {
             setTimeout(
-              () => reject(new Error("sendMessage timeout after 15 seconds")),
-              15000,
+              () => reject(new Error("sendMessage timeout after 20 seconds")),
+              20000,
             );
           });
 
-          const response = await Promise.race([
-            chrome.tabs.sendMessage(tabId, messagePayload),
-            timeoutPromise,
-          ]);
+          let response;
+          try {
+            ExecuteLogger.info(
+              `🔍 [STEP C-1] chrome.tabs.sendMessage実行中...`,
+            );
+            response = await Promise.race([
+              chrome.tabs.sendMessage(tabId, messagePayload),
+              timeoutPromise,
+            ]);
+            ExecuteLogger.info(`🔍 [STEP C-2] メッセージ送信成功:`, {
+              tabId: tabId,
+              responseReceived: !!response,
+              responseType: typeof response,
+              responseSuccess: response?.success,
+            });
+          } catch (timeoutError) {
+            ExecuteLogger.error(`❌ [STEP C-ERROR] メッセージ送信失敗:`, {
+              error: timeoutError.message,
+              tabId: tabId,
+              taskId: task.id,
+              errorType: "timeout_or_communication_failure",
+            });
+            throw timeoutError;
+          }
 
           const sendDuration = Date.now() - sendStartTime;
 
@@ -3885,10 +4043,8 @@ async function executeStep4(taskList) {
           reject(new Error(`Content Script通信エラー: ${error.message}`));
         }
 
-        // タイムアウト設定（5分）
-        setTimeout(() => {
-          reject(new Error(`Content Script実行タイムアウト (Tab: ${tabId})`));
-        }, 300000);
+        // 注意: メイン処理のタイムアウトは上記のPromise.raceで管理済み
+        // 追加のタイムアウトは設定しない（重複タイムアウトを防ぐ）
       }
     });
   }
@@ -3965,14 +4121,21 @@ async function executeStep4(taskList) {
       window.detailedLogManager.recordTaskStart(task, windowInfo);
     }
 
-    // Step 4-6-8-3: AI自動化ファイルの読み込み確認
+    // Step 4-6-8-3: AI自動化ファイルの読み込み確認（Claude以外）
     const aiType = normalizedAiType.toLowerCase();
-    if (!window.aiAutomationLoader.isAIAvailable(aiType)) {
+    if (
+      aiType !== "claude" &&
+      !window.aiAutomationLoader.isAIAvailable(aiType)
+    ) {
       ExecuteLogger.info(
         `[step4-execute.js] Step 4-6-8-3: ${normalizedAiType} 自動化ファイルを読み込み中...`,
       );
       await window.aiAutomationLoader.loadAIFile(aiType);
       await new Promise((resolve) => setTimeout(resolve, 1000));
+    } else if (aiType === "claude") {
+      ExecuteLogger.info(
+        `[step4-execute.js] Step 4-6-8-3: Claude自動化ファイルはmanifest.jsonで自動注入済み`,
+      );
     }
 
     // Step 4-6-8-4: 送信時刻記録
