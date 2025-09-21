@@ -5070,6 +5070,12 @@
     }
   });
 
+  // グローバル関数の公開（メッセージパッシング用）
+  window.executeTask = executeTask;
+  window.runAutomation = runAutomation;
+  window.findClaudeElement = findClaudeElement;
+  window.inputText = inputText;
+
   // グローバルにログマネージャーを公開（デバッグ用）
   window.ClaudeLogManager = ClaudeLogManager;
 })();
