@@ -1,3 +1,13 @@
+// ログレベル制御
+const LOG_LEVEL = { ERROR: 1, WARN: 2, INFO: 3, DEBUG: 4 };
+const CURRENT_LOG_LEVEL = LOG_LEVEL.INFO;
+const log = {
+  error: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.ERROR && log.error(...args),
+  warn: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.WARN && log.warn(...args),
+  info: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.INFO && log.debug(...args),
+  debug: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.DEBUG && log.debug(...args)
+};
+
 /**
  * @fileoverview Step5 Execute - ステップ5実行処理
  *
@@ -11,10 +21,10 @@
 // ロガー設定
 // ========================================
 const ExecuteLogger = {
-  info: (...args) => console.log(`[step5-execute.js]`, ...args),
+  info: (...args) => log.debug(`[step5-execute.js]`, ...args),
   debug: (...args) => {}, // DEBUG logs disabled
-  warn: (...args) => console.warn(`[step5-execute.js]`, ...args),
-  error: (...args) => console.error(`[step5-execute.js]`, ...args),
+  warn: (...args) => log.warn(`[step5-execute.js]`, ...args),
+  error: (...args) => log.error(`[step5-execute.js]`, ...args),
 };
 
 // ========================================
@@ -156,15 +166,6 @@ class AIAutomationLoader {
   async loadAIFile(aiType) {
     const aiTypeNormalized = aiType.toLowerCase();
 
-    // Claudeの場合はmanifest.jsonで自動注入されるため、何もしない
-    if (aiTypeNormalized === "claude") {
-      ExecuteLogger.info(
-        `✅ claude 自動化ファイルはmanifest.jsonで自動注入済み - 手動ロードスキップ`,
-      );
-      this.loadedAIFiles.add(aiTypeNormalized); // ロード済みとしてマーク
-      return true;
-    }
-
     // 既にロード済みか確認
     if (this.loadedAIFiles.has(aiTypeNormalized)) {
       ExecuteLogger.info(
@@ -247,11 +248,6 @@ class AIAutomationLoader {
    */
   isAIAvailable(aiType) {
     const aiTypeNormalized = aiType.toLowerCase();
-
-    // Claudeの場合はmanifest.jsonで自動注入されるため、常に利用可能
-    if (aiTypeNormalized === "claude") {
-      return true;
-    }
 
     return this.loadedAIFiles.has(aiTypeNormalized);
   }
@@ -1212,7 +1208,7 @@ ExecuteLogger.info(
 // ========================================
 // スクリプト読み込み完了通知
 // ========================================
-console.log("✅ [step5-execute.js] ロード完了");
+log.debug("✅ [step5-execute.js] ロード完了");
 
 // スクリプトトラッカーに登録
 if (window.scriptLoadTracker) {

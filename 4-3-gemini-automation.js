@@ -1,3 +1,13 @@
+// ログレベル制御
+const LOG_LEVEL = { ERROR: 1, WARN: 2, INFO: 3, DEBUG: 4 };
+const CURRENT_LOG_LEVEL = LOG_LEVEL.INFO;
+const log = {
+  error: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.ERROR && log.error(...args),
+  warn: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.WARN && log.warn(...args),
+  info: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.INFO && log.debug(...args),
+  debug: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.DEBUG && log.debug(...args)
+};
+
 /**
  * @fileoverview Gemini Automation V3 - 統合版
  *
@@ -18,7 +28,7 @@
 (async function () {
   "use strict";
 
-  console.log(`🚀 Gemini Automation V3 初期化`);
+  log.debug(`🚀 Gemini Automation V3 初期化`);
 
   // 初期化マーカー設定
   window.GEMINI_SCRIPT_LOADED = true;
@@ -80,31 +90,31 @@
 
         localStorage.setItem(storageKey, JSON.stringify(existingLogs));
       } catch (e) {
-        console.warn("[Gemini-Log] localStorage保存エラー:", e);
+        log.warn("[Gemini-Log] localStorage保存エラー:", e);
       }
     },
 
     logStep: function (message, data) {
       const log = this._addLog("INFO", message, data);
-      console.log(`🔄 [Gemini-Step] ${message}`, data || "");
+      log.debug(`🔄 [Gemini-Step] ${message}`, data || "");
       return log;
     },
 
     logError: function (message, error) {
       const log = this._addLog("ERROR", message, null, error);
-      console.error(`❌ [Gemini-Error] ${message}`, error);
+      log.error(`❌ [Gemini-Error] ${message}`, error);
       return log;
     },
 
     logSuccess: function (message, data) {
       const log = this._addLog("SUCCESS", message, data);
-      console.log(`✅ [Gemini-Success] ${message}`, data || "");
+      log.debug(`✅ [Gemini-Success] ${message}`, data || "");
       return log;
     },
 
     logTaskStart: function (taskInfo) {
       const log = this._addLog("TASK_START", "タスク開始", taskInfo);
-      console.log(`🚀 [Gemini-Task] タスク開始:`, taskInfo);
+      log.debug(`🚀 [Gemini-Task] タスク開始:`, taskInfo);
       return log;
     },
 
@@ -113,7 +123,7 @@
         taskInfo,
         result,
       });
-      console.log(`🏁 [Gemini-Task] タスク完了:`, { taskInfo, result });
+      log.debug(`🏁 [Gemini-Task] タスク完了:`, { taskInfo, result });
       return log;
     },
 
@@ -128,22 +138,22 @@
         a.download = `gemini_logs_${new Date().toISOString().split("T")[0]}.json`;
         a.click();
         URL.revokeObjectURL(url);
-        console.log(`💾 [Gemini-Log] ログファイルをダウンロード`);
+        log.debug(`💾 [Gemini-Log] ログファイルをダウンロード`);
       } catch (e) {
-        console.error(`❌ [Gemini-Log] ファイル保存エラー:`, e);
+        log.error(`❌ [Gemini-Log] ファイル保存エラー:`, e);
       }
     },
 
     saveErrorImmediately: function (error) {
       const log = this._addLog("CRITICAL_ERROR", "緊急エラー", null, error);
-      console.error(`🚨 [Gemini-Critical] 緊急エラー:`, error);
+      log.error(`🚨 [Gemini-Critical] 緊急エラー:`, error);
       this._saveToStorage(log);
       return log;
     },
 
     saveIntermediate: function (data) {
       const log = this._addLog("INTERMEDIATE", "中間データ", data);
-      console.log(`📊 [Gemini-Intermediate] 中間データ:`, data);
+      log.debug(`📊 [Gemini-Intermediate] 中間データ:`, data);
       return log;
     },
 
@@ -158,7 +168,7 @@
     // ログクリア
     clearLogs: function () {
       this.logs = [];
-      console.log(`🗑️ [Gemini-Log] ログをクリア`);
+      log.debug(`🗑️ [Gemini-Log] ログをクリア`);
     },
   };
 
@@ -182,13 +192,13 @@
     // ステップログを記録
     logStep(step, message, data = {}) {
       this.logFileManager.logStep(step, message, data);
-      console.log(`📝 [ログ] ${step}: ${message}`);
+      log.debug(`📝 [ログ] ${step}: ${message}`);
     },
 
     // エラーログを記録（即座にファイル保存）
     async logError(step, error, context = {}) {
       this.logFileManager.logError(step, error, context);
-      console.error(`❌ [エラーログ] ${step}:`, error);
+      log.error(`❌ [エラーログ] ${step}:`, error);
       // エラーは即座に保存
       await this.logFileManager.saveErrorImmediately(error, {
         step,
@@ -199,31 +209,31 @@
     // 成功ログを記録
     logSuccess(step, message, result = {}) {
       this.logFileManager.logSuccess(step, message, result);
-      console.log(`✅ [成功ログ] ${step}: ${message}`);
+      log.debug(`✅ [成功ログ] ${step}: ${message}`);
     },
 
     // タスク開始を記録
     startTask(taskData) {
       this.logFileManager.logTaskStart(taskData);
-      console.log(`🚀 [タスク開始]`, taskData);
+      log.debug(`🚀 [タスク開始]`, taskData);
     },
 
     // タスク完了を記録
     completeTask(result) {
       this.logFileManager.logTaskComplete(result);
-      console.log(`🏁 [タスク完了]`, result);
+      log.debug(`🏁 [タスク完了]`, result);
     },
 
     // ログをファイルに保存（最終保存）
     async saveToFile() {
       try {
         const filePath = await this.logFileManager.saveToFile();
-        console.log(
+        log.debug(
           `✅ [GeminiLogManager] 最終ログを保存しました: ${filePath}`,
         );
         return filePath;
       } catch (error) {
-        console.error("[GeminiLogManager] ログ保存エラー:", error);
+        log.error("[GeminiLogManager] ログ保存エラー:", error);
       }
     },
 
@@ -310,7 +320,7 @@
       const errorMessage = error?.message || error?.toString() || "";
       const errorName = error?.name || "";
 
-      console.log(`🔍 [Step 4-3-0-3] エラー分類開始:`, {
+      log.debug(`🔍 [Step 4-3-0-3] エラー分類開始:`, {
         errorMessage,
         errorName,
         context,
@@ -330,7 +340,7 @@
         errorMessage.includes("Please sign in")
       ) {
         errorType = "GOOGLE_AUTH_ERROR";
-        console.log(`🔐 [Step 4-3-0-3] Google認証エラー検出:`, {
+        log.debug(`🔐 [Step 4-3-0-3] Google認証エラー検出:`, {
           errorType,
           errorMessage,
           immediateEscalation: "HEAVY_RESET",
@@ -346,7 +356,7 @@
         errorMessage.includes("Rate limit")
       ) {
         errorType = "API_LIMIT_ERROR";
-        console.log(`⚠️ [Step 4-3-0-3] API制限エラー検出:`, {
+        log.debug(`⚠️ [Step 4-3-0-3] API制限エラー検出:`, {
           errorType,
           errorMessage,
           immediateEscalation: "HEAVY_RESET",
@@ -449,7 +459,7 @@
           retryCount++;
           this.metrics.totalAttempts++;
 
-          console.log(
+          log.debug(
             `🔄 [Step 4-3-Retry] ${actionName} 試行 ${retryCount}/20`,
           );
 
@@ -459,7 +469,7 @@
           if (isSuccess(lastResult)) {
             this.metrics.successfulAttempts++;
             this.consecutiveErrorCount = 0; // エラーカウントリセット
-            console.log(
+            log.debug(
               `✅ [Step 4-3-Retry] ${actionName} 成功（${retryCount}回目）`,
             );
             return {
@@ -479,7 +489,7 @@
           // エラー履歴管理
           this.addErrorToHistory(errorType, error.message);
 
-          console.error(
+          log.error(
             `❌ [Step 4-3-Retry] ${actionName} エラー (${retryCount}回目):`,
             {
               errorType,
@@ -528,7 +538,7 @@
       }
 
       // 全リトライ失敗
-      console.error(`❌ [Step 4-3-Retry] ${actionName} 全リトライ失敗`);
+      log.error(`❌ [Step 4-3-Retry] ${actionName} 全リトライ失敗`);
       return {
         success: false,
         result: lastResult,
@@ -544,7 +554,7 @@
     async executeEscalation(level, context) {
       const { retryCount, errorType, taskData } = context;
 
-      console.log(
+      log.debug(
         `🔄 [Step 4-3-Escalation] ${level} 実行開始 (${retryCount}回目)`,
       );
 
@@ -555,13 +565,13 @@
 
         case "MODERATE":
           // ページリフレッシュ
-          console.log(`🔄 [Step 4-3-Escalation] ページリフレッシュ実行`);
+          log.debug(`🔄 [Step 4-3-Escalation] ページリフレッシュ実行`);
           location.reload();
           return { success: false, needsWait: true }; // リロード後は待機が必要
 
         case "HEAVY_RESET":
           // 新規ウィンドウ作成
-          console.log(`🔄 [Step 4-3-Escalation] 新規ウィンドウ作成`);
+          log.debug(`🔄 [Step 4-3-Escalation] 新規ウィンドウ作成`);
           return await this.performNewWindowRetry(taskData, {
             errorType,
             retryCount,
@@ -592,7 +602,7 @@
           },
           (response) => {
             if (chrome.runtime.lastError) {
-              console.warn(
+              log.warn(
                 "[4-3-gemini-automation.js] リトライ通信エラー:",
                 chrome.runtime.lastError.message,
               );
@@ -623,7 +633,7 @@
 
       if (delay > 0) {
         const delayMinutes = Math.round((delay / 60000) * 10) / 10;
-        console.log(
+        log.debug(
           `⏳ [Step 4-3-Wait] ${level} - ${delayMinutes}分後にリトライします...`,
         );
         await this.delay(delay);
@@ -706,7 +716,7 @@
   // ========================================
 
   const loadSelectors = async () => {
-    console.log("loadSelectors starts - waiting for step1 UI_SELECTORS");
+    log.debug("loadSelectors starts - waiting for step1 UI_SELECTORS");
 
     // step1-setup.jsからのUI_SELECTORS読み込み待機
     let retryCount = 0;
@@ -753,7 +763,7 @@
       error: "color: #F44336; font-weight: bold;",
       step: "color: #9C27B0; font-weight: bold; font-size: 1.1em; border-bottom: 1px solid #9C27B0;",
     };
-    console.log(
+    log.debug(
       `%c[${new Date().toLocaleTimeString("ja-JP")}] ${message}`,
       styles[type] || "",
     );
@@ -816,7 +826,7 @@
 
       return clone;
     } catch (error) {
-      console.warn("[Gemini] ユーザーメッセージ除外中にエラーが発生:", error);
+      log.warn("[Gemini] ユーザーメッセージ除外中にエラーが発生:", error);
       return container;
     }
   };
@@ -895,7 +905,7 @@
 
       return filteredLines.join("\n").trim();
     } catch (error) {
-      console.warn("[Gemini] プロンプト除去中にエラーが発生:", error);
+      log.warn("[Gemini] プロンプト除去中にエラーが発生:", error);
       return fullText;
     }
   };
@@ -1591,13 +1601,13 @@
         () =>
           new Promise(async (resolve, reject) => {
             // Deep Researchモードの判定（executeCoreで定義済みの変数を使用）
-            console.log(`🔍 [機能判定] Gemini機能チェック:`, {
+            log.debug(`🔍 [機能判定] Gemini機能チェック:`, {
               featureName: featureName,
               isDeepResearchMode: isDeepResearchMode,
               isCanvasMode: isCanvasMode,
             });
 
-            console.log(
+            log.debug(
               `🎯 [機能判定] Gemini特別モード判定結果: ${isDeepResearchMode ? "Deep Research" : isCanvasMode ? "Canvas" : "通常"} (機能: "${featureName}")`,
             );
 
@@ -1973,7 +1983,7 @@
    */
   async function openGeminiModelMenu(menuButton) {
     if (!menuButton) {
-      console.error("[Gemini-openModelMenu] モデルボタンが見つかりません");
+      log.error("[Gemini-openModelMenu] モデルボタンが見つかりません");
       return false;
     }
 
@@ -1986,16 +1996,16 @@
         '[role="menuitem"], [role="option"], mat-option',
       );
       if (menuItems.length > 0) {
-        console.log("[Gemini-openModelMenu] ✅ モデルメニュー開放成功");
+        log.debug("[Gemini-openModelMenu] ✅ モデルメニュー開放成功");
         return true;
       } else {
-        console.warn(
+        log.warn(
           "[Gemini-openModelMenu] ⚠️ メニュー開放したがDOM確認できず",
         );
         return false;
       }
     } catch (error) {
-      console.error("[Gemini-openModelMenu] ❌ エラー:", error);
+      log.error("[Gemini-openModelMenu] ❌ エラー:", error);
       return false;
     }
   }
@@ -2007,7 +2017,7 @@
    * @returns {Promise<boolean>} 常にfalse（機能メニューなし）
    */
   async function openGeminiFunctionMenu(functionButton) {
-    console.log("[Gemini-openFunctionMenu] Geminiでは機能メニューをスキップ");
+    log.debug("[Gemini-openFunctionMenu] Geminiでは機能メニューをスキップ");
     return false; // 機能メニューなし
   }
 
@@ -2206,7 +2216,7 @@
   async function selectFunctionGemini(functionName) {
     // Geminiでは明示的な機能メニューが少ないため、
     // プロンプト内で機能を指定する方式が主流
-    console.log(`Gemini機能選択: ${functionName} (プロンプト内で制御推奨)`);
+    log.debug(`Gemini機能選択: ${functionName} (プロンプト内で制御推奨)`);
     return true;
   }
 
@@ -2214,7 +2224,7 @@
   // メインエントリポイント: executeTask
   // ================================================================
   async function executeTask(taskData) {
-    console.log("🚀 Gemini タスク実行開始", taskData);
+    log.debug("🚀 Gemini タスク実行開始", taskData);
 
     // ログ記録開始
     GeminiLogManager.startTask(taskData);
@@ -2255,7 +2265,7 @@
       const mappedFeatureName = featureMapping[featureName] || featureName;
       featureName = mappedFeatureName;
 
-      console.log(
+      log.debug(
         `🔄 [機能名マッピング] Gemini: "${taskData.function}" → "${featureName}"`,
       );
 
@@ -2311,7 +2321,7 @@
         promptText,
       );
 
-      console.log("✅ Gemini タスク実行完了", result);
+      log.debug("✅ Gemini タスク実行完了", result);
 
       // タスク完了をログに記録
       GeminiLogManager.completeTask(result);
@@ -2325,7 +2335,7 @@
 
       return result;
     } catch (error) {
-      console.error("❌ Gemini タスク実行エラー:", error);
+      log.error("❌ Gemini タスク実行エラー:", error);
 
       const result = {
         success: false,
@@ -2374,17 +2384,17 @@
     },
   };
 
-  console.log("✅ Gemini Automation 準備完了");
-  console.log(
+  log.debug("✅ Gemini Automation 準備完了");
+  log.debug(
     '使用方法: GeminiAutomation.executeTask({ model: "Pro", function: "Canvas", prompt: "..." })',
   );
 
   // デバッグ: グローバル公開の確認
   if (typeof window.GeminiAutomation !== "undefined") {
-    console.log("✅ window.GeminiAutomation が正常に公開されました");
-    console.log("利用可能なメソッド:", Object.keys(window.GeminiAutomation));
+    log.debug("✅ window.GeminiAutomation が正常に公開されました");
+    log.debug("利用可能なメソッド:", Object.keys(window.GeminiAutomation));
   } else {
-    console.error("❌ window.GeminiAutomation の公開に失敗しました");
+    log.error("❌ window.GeminiAutomation の公開に失敗しました");
   }
 })();
 
@@ -2418,11 +2428,11 @@ async function chatWithGemini() {
 
         // 5. 結果取得
         const response = await getResponseTextGemini();
-        console.log('Gemini回答:', response);
+        log.debug('Gemini回答:', response);
 
         return response;
     } catch (error) {
-        console.error('Gemini操作エラー:', error);
+        log.error('Gemini操作エラー:', error);
         throw error;
     }
 }
@@ -2433,15 +2443,15 @@ async function chatWithGemini() {
 // ウィンドウ終了時のログ保存処理
 // ========================================
 window.addEventListener("beforeunload", async (event) => {
-  console.log("🔄 [GeminiAutomation] ウィンドウ終了検知 - ログ保存開始");
+  log.debug("🔄 [GeminiAutomation] ウィンドウ終了検知 - ログ保存開始");
 
   try {
     const fileName = await GeminiLogManager.saveToFile();
     if (fileName) {
-      console.log(`✅ [GeminiAutomation] ログ保存完了: ${fileName}`);
+      log.debug(`✅ [GeminiAutomation] ログ保存完了: ${fileName}`);
     }
   } catch (error) {
-    console.error("[GeminiAutomation] ログ保存エラー:", error);
+    log.error("[GeminiAutomation] ログ保存エラー:", error);
   }
 });
 

@@ -1,3 +1,13 @@
+// ログレベル制御
+const LOG_LEVEL = { ERROR: 1, WARN: 2, INFO: 3, DEBUG: 4 };
+const CURRENT_LOG_LEVEL = LOG_LEVEL.INFO;
+const log = {
+  error: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.ERROR && log.error(...args),
+  warn: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.WARN && log.warn(...args),
+  info: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.INFO && log.debug(...args),
+  debug: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.DEBUG && log.debug(...args)
+};
+
 /**
  * @fileoverview ステップ5: タスクグループ内の繰り返し処理
  *
@@ -227,7 +237,7 @@ async function checkCompletionStatus(taskGroup) {
         prompts列設定: taskGroup.columns.prompts,
       },
     );
-    console.log(
+    log.debug(
       `[DEBUG-checkCompletionStatus] グループ${taskGroup.groupNumber}: プロンプト検索完了 - promptCount=${promptCount}, 範囲=${promptRange}`,
     );
 
@@ -329,7 +339,7 @@ async function checkCompletionStatus(taskGroup) {
     }
 
     LoopLogger.info(`[step5-loop.js] [Step 5-1-2] 回答数: ${answerCount}件`);
-    console.log(
+    log.debug(
       `[DEBUG-checkCompletionStatus] グループ${taskGroup.groupNumber}: 回答検索完了 - answerCount=${answerCount}, 範囲=${answerRange}`,
     );
 
@@ -343,7 +353,7 @@ async function checkCompletionStatus(taskGroup) {
     // ========================================
     LoopLogger.info("[step5-loop.js→Step5-1-3] 完了判定を実行");
 
-    console.log(
+    log.debug(
       `[DEBUG-checkCompletionStatus] グループ${taskGroup.groupNumber}: promptCount=${promptCount}, answerCount=${answerCount}`,
     );
     const isComplete = promptCount === answerCount;
@@ -450,7 +460,7 @@ async function processIncompleteTasks(taskGroup) {
         理由: "すべてのタスクが完了済みまたは処理対象外",
         グループ番号: taskGroup.groupNumber,
       });
-      console.log(
+      log.debug(
         "🎯 [step5-loop.js] このグループは完了済み - 正常終了として扱います",
       );
       isComplete = true; // タスクがない = このグループは完了
@@ -551,12 +561,12 @@ async function processIncompleteTasks(taskGroup) {
  * @returns {Promise<Object>} 処理結果
  */
 async function executeStep3AllGroups() {
-  console.log("========================================");
-  console.log("🚀 [step3-loop.js] 全グループ処理開始");
-  console.log("========================================");
+  log.debug("========================================");
+  log.debug("🚀 [step3-loop.js] 全グループ処理開始");
+  log.debug("========================================");
 
   const taskGroups = window.globalState?.taskGroups || [];
-  console.log(`📊 処理対象: ${taskGroups.length}グループ`);
+  log.debug(`📊 処理対象: ${taskGroups.length}グループ`);
 
   let completedGroups = 0;
 
@@ -565,10 +575,10 @@ async function executeStep3AllGroups() {
     window.globalState.currentGroupIndex = i;
     const taskGroup = taskGroups[i];
 
-    console.log(
+    log.debug(
       `\n====== グループ ${i + 1}/${taskGroups.length} 処理開始 ======`,
     );
-    console.log(`📋 グループ詳細:`, {
+    log.debug(`📋 グループ詳細:`, {
       番号: taskGroup.groupNumber,
       タイプ: taskGroup.taskType || taskGroup.type,
       列範囲: `${taskGroup.columns?.prompts?.[0]} 〜 ${taskGroup.columns?.answer?.primary || taskGroup.columns?.answer?.claude}`,
@@ -579,26 +589,26 @@ async function executeStep3AllGroups() {
 
     if (isComplete) {
       completedGroups++;
-      console.log(`✅ グループ ${i + 1} 完了`);
+      log.debug(`✅ グループ ${i + 1} 完了`);
     }
 
     // Step 6: 次グループへの移行判定
     if (window.executeStep6) {
-      console.log(`🔄 [step3-loop.js] Step 6 を呼び出し中...`);
+      log.debug(`🔄 [step3-loop.js] Step 6 を呼び出し中...`);
       const step6Result = await window.executeStep6(taskGroups, i);
 
       if (!step6Result.hasNext) {
-        console.log(`🏁 [step3-loop.js] 全グループ処理完了`);
+        log.debug(`🏁 [step3-loop.js] 全グループ処理完了`);
         break;
       }
     }
   }
 
-  console.log(`\n========================================`);
-  console.log(
+  log.debug(`\n========================================`);
+  log.debug(
     `📊 処理結果: ${completedGroups}/${taskGroups.length} グループ完了`,
   );
-  console.log(`========================================\n`);
+  log.debug(`========================================\n`);
 
   return {
     success: true,
@@ -618,7 +628,7 @@ async function executeStep3SingleGroup(taskGroup) {
     "[step3-loop.js] [Step 3] タスクグループ内の繰り返し処理開始",
   );
   LoopLogger.info("========================================");
-  console.log("📋 [step5-loop.js] 処理開始グループ:", {
+  log.debug("📋 [step5-loop.js] 処理開始グループ:", {
     グループ番号: taskGroup?.groupNumber,
     タイプ: taskGroup?.type || taskGroup?.taskType,
     パターン: taskGroup?.pattern,
@@ -632,21 +642,21 @@ async function executeStep3SingleGroup(taskGroup) {
     window.globalState.currentGroup = taskGroup;
 
     // 5-1: 完了状況確認
-    console.log("🔍 [step5-loop.js] Step 5-1: 完了状況を確認中...");
+    log.debug("🔍 [step5-loop.js] Step 5-1: 完了状況を確認中...");
     const isComplete = await checkCompletionStatus(taskGroup);
 
     if (isComplete) {
-      console.log("✅ [step5-loop.js] グループ完了済み - Step 5終了");
+      log.debug("✅ [step5-loop.js] グループ完了済み - Step 5終了");
       LoopLogger.info("[step5-loop.js] [Step 5] タスクグループは既に完了");
       return true;
     }
 
     // 5-2: 未完了時の処理
-    console.log("⚡ [step5-loop.js] Step 5-2: 未完了タスクを処理中...");
+    log.debug("⚡ [step5-loop.js] Step 5-2: 未完了タスクを処理中...");
     await processIncompleteTasks(taskGroup);
 
     // 最終的な完了確認
-    console.log("🔍 [step5-loop.js] 最終完了確認中...");
+    log.debug("🔍 [step5-loop.js] 最終完了確認中...");
     const finalComplete = await checkCompletionStatus(taskGroup);
 
     LoopLogger.info("[step5-loop.js] 🎯 [Step 5] グループ処理完了");
@@ -1017,7 +1027,7 @@ async function executeTasks(tasks, taskGroup) {
     // DEBUG: executeStep4呼び出し前チェック
 
     if (!window.executeStep4) {
-      console.error("executeStep4が見つかりません！");
+      log.error("executeStep4が見つかりません！");
       throw new Error("executeStep4関数が利用できません");
     }
 
@@ -1125,7 +1135,7 @@ async function executeTasks(tasks, taskGroup) {
       // DEBUG: executeStep4完了
       return results || [];
     } catch (step4Error) {
-      console.error("executeStep4でエラーが発生:", step4Error.message);
+      log.error("executeStep4でエラーが発生:", step4Error.message);
       throw step4Error;
     }
   } catch (error) {

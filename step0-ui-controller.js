@@ -1,5 +1,15 @@
+// ログレベル制御
+const LOG_LEVEL = { ERROR: 1, WARN: 2, INFO: 3, DEBUG: 4 };
+const CURRENT_LOG_LEVEL = LOG_LEVEL.INFO;
+const log = {
+  error: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.ERROR && log.error(...args),
+  warn: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.WARN && log.warn(...args),
+  info: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.INFO && log.debug(...args),
+  debug: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.DEBUG && log.debug(...args)
+};
+
 // 🔥 STEP 0: バージョン確認
-console.log("🔥 [STEP 0] step0-ui-controller.js バージョン1です");
+log.debug("🔥 [STEP 0] step0-ui-controller.js バージョン1です");
 
 /**
  * @fileoverview step0-ui-controller.js - AutoAI UI Controller
@@ -39,7 +49,7 @@ window.scriptLoadTracker = {
     const deps = this.dependencies[scriptName] || [];
     const missingDeps = deps.filter((dep) => !this.loadOrder.includes(dep));
     if (missingDeps.length > 0) {
-      console.warn(`[DEBUG] ${scriptName}の依存関係不足:`, missingDeps);
+      log.warn(`[DEBUG] ${scriptName}の依存関係不足:`, missingDeps);
     }
     return missingDeps.length === 0;
   },
@@ -47,23 +57,23 @@ window.scriptLoadTracker = {
 
 // エラーハンドラーを設定
 window.addEventListener("error", function (event) {
-  console.error(`[ERROR] ${event.filename}:${event.lineno} - ${event.message}`);
+  log.error(`[ERROR] ${event.filename}:${event.lineno} - ${event.message}`);
 });
 
 window.addEventListener("unhandledrejection", function (event) {
-  console.error(`[UNHANDLED REJECTION] ${event.reason}`);
+  log.error(`[UNHANDLED REJECTION] ${event.reason}`);
 });
 
 // ページ読み込み完了を確認
 window.addEventListener("load", function () {
-  console.log("📊 ページ読み込み完了");
+  log.debug("📊 ページ読み込み完了");
 });
 
 // ========================================
 // Section 2: ウィンドウサービス機能 (旧 ui-window-loader.js)
 // ========================================
 
-console.log("🔧 [step0-ui-controller] WindowService読み込み開始...");
+log.debug("🔧 [step0-ui-controller] WindowService読み込み開始...");
 
 // WindowServiceの簡易実装（外部依存を避けるため）
 window.WindowService = {
@@ -76,7 +86,7 @@ window.WindowService = {
   async createWindow(options, forcePrimary = false) {
     try {
       if (forcePrimary) {
-        console.log(
+        log.debug(
           "[step0-ui-controller.js→Step0-1] プライマリディスプレイに強制配置でウィンドウ作成...",
         );
 
@@ -105,7 +115,7 @@ window.WindowService = {
           height: position.height,
         };
 
-        console.log(
+        log.debug(
           "[step0-ui-controller.js→Step0-1] プライマリディスプレイ位置:",
           position,
         );
@@ -114,7 +124,7 @@ window.WindowService = {
 
         // 作成後の位置確認
         const actualWindow = await chrome.windows.get(window.id);
-        console.log(
+        log.debug(
           "[step0-ui-controller.js→Step0-1] 作成されたウィンドウ位置:",
           {
             expected: position,
@@ -132,7 +142,7 @@ window.WindowService = {
         return await chrome.windows.create(options);
       }
     } catch (error) {
-      console.error(
+      log.error(
         "[step0-ui-controller.js→Step0-1] WindowService.createWindow エラー:",
         error,
       );
@@ -144,7 +154,7 @@ window.WindowService = {
     try {
       return await chrome.windows.update(windowId, updateInfo);
     } catch (error) {
-      console.error(
+      log.error(
         "[step0-ui-controller.js→Step0-1] WindowService.updateWindow エラー:",
         error,
       );
@@ -156,7 +166,7 @@ window.WindowService = {
     try {
       return await chrome.windows.remove(windowId);
     } catch (error) {
-      console.error(
+      log.error(
         "[step0-ui-controller.js→Step0-1] WindowService.closeWindow エラー:",
         error,
       );
@@ -191,7 +201,7 @@ window.WindowService = {
    */
   async createWindowWithPosition(url, position, options = {}) {
     try {
-      console.log(
+      log.debug(
         `[step0-ui-controller.js→Step0-1] 位置${position}にウィンドウを作成:`,
         url,
       );
@@ -277,7 +287,7 @@ window.WindowService = {
 
       const window = await chrome.windows.create(windowOptions);
 
-      console.log(
+      log.debug(
         `[step0-ui-controller.js→Step0-1] ✅ 位置${position}にウィンドウ作成完了 (aiType: ${options.aiType || "unknown"}, ID: ${window.id}, TabID: ${window.tabs?.[0]?.id})`,
       );
 
@@ -310,7 +320,7 @@ window.WindowService = {
           aiType: normalizedAiType, // 正規化済みaiTypeを使用
         };
 
-        console.log(
+        log.debug(
           `[step0-ui-controller.js→Step0-1] ウィンドウ作成完了（step4で管理）`,
           {
             originalAiType: options.aiType,
@@ -346,7 +356,7 @@ window.WindowService = {
           }
 
           if (scriptFile) {
-            console.log(
+            log.debug(
               `[step0-ui-controller.js→Step0-1] 📜 Content Script注入開始 (tabId: ${tabId}, script: ${scriptFile})`,
             );
 
@@ -361,13 +371,13 @@ window.WindowService = {
                   },
                   (result) => {
                     if (chrome.runtime.lastError) {
-                      console.error(
+                      log.error(
                         `[step0-ui-controller.js→Step0-1] ❌ Script注入エラー:`,
                         chrome.runtime.lastError,
                       );
                       reject(chrome.runtime.lastError);
                     } else {
-                      console.log(
+                      log.debug(
                         `[step0-ui-controller.js→Step0-1] ✅ Script注入成功 (tabId: ${tabId}, script: ${scriptFile})`,
                       );
                       resolve(result);
@@ -376,7 +386,7 @@ window.WindowService = {
                 );
               });
             } catch (error) {
-              console.error(
+              log.error(
                 `[step0-ui-controller.js→Step0-1] ⚠️ Script注入失敗:`,
                 error,
               );
@@ -389,7 +399,7 @@ window.WindowService = {
 
       return returnData;
     } catch (error) {
-      console.error(
+      log.error(
         "[step0-ui-controller.js→Step0-1] createWindowWithPosition エラー:",
         error,
       );
@@ -398,13 +408,13 @@ window.WindowService = {
   },
 };
 
-console.log("✅ [step0-ui-controller] WindowService設定完了");
+log.debug("✅ [step0-ui-controller] WindowService設定完了");
 
 // ========================================
 // WindowController の初期化はstep4-tasklist.jsで行う
 // ========================================
 // step4-tasklist.jsでWindowControllerクラスが定義されるまで待機
-console.log("⏳ [step0-ui-controller] WindowController初期化をstep4に委譲");
+log.debug("⏳ [step0-ui-controller] WindowController初期化をstep4に委譲");
 
 // ========================================
 // Section 3: メインUI制御機能 (旧 ui-controller.js)
@@ -424,14 +434,14 @@ async function getPrimaryDisplayInfo() {
     const displays = await chrome.system.display.getInfo();
     const primaryDisplay = displays.find((d) => d.isPrimary) || displays[0];
 
-    console.log("📺 Display detected:", {
+    log.debug("📺 Display detected:", {
       total: displays.length,
       primaryId: primaryDisplay.id,
     });
 
     return primaryDisplay;
   } catch (error) {
-    console.error(
+    log.error(
       "[step0-ui-controller.js→Step0-2] ディスプレイ情報取得エラー:",
       error,
     );
@@ -452,7 +462,7 @@ async function getPrimaryDisplayInfo() {
  */
 async function moveWindowToPrimaryDisplay(windowId = null, options = {}) {
   try {
-    console.log(
+    log.debug(
       "[step0-ui-controller.js→Step0-3] ウィンドウをプライマリディスプレイに移動開始...",
     );
 
@@ -461,7 +471,7 @@ async function moveWindowToPrimaryDisplay(windowId = null, options = {}) {
       ? await chrome.windows.get(windowId)
       : await chrome.windows.getCurrent();
 
-    console.log("[step0-ui-controller.js→Step0-3] 移動対象ウィンドウ:", {
+    log.debug("[step0-ui-controller.js→Step0-3] 移動対象ウィンドウ:", {
       id: targetWindow.id,
       current: {
         left: targetWindow.left,
@@ -487,7 +497,7 @@ async function moveWindowToPrimaryDisplay(windowId = null, options = {}) {
       height: windowHeight,
     };
 
-    console.log("[step0-ui-controller.js→Step0-3] 新しい位置:", newPosition);
+    log.debug("[step0-ui-controller.js→Step0-3] 新しい位置:", newPosition);
 
     // ウィンドウをプライマリディスプレイに移動
     await chrome.windows.update(targetWindow.id, {
@@ -500,12 +510,12 @@ async function moveWindowToPrimaryDisplay(windowId = null, options = {}) {
       state: "normal",
     });
 
-    console.log(
+    log.debug(
       "[step0-ui-controller.js→Step0-3] ✅ ウィンドウをプライマリディスプレイに移動完了",
     );
     return true;
   } catch (error) {
-    console.error(
+    log.error(
       "[step0-ui-controller.js→Step0-3] ウィンドウ移動エラー:",
       error,
     );
@@ -538,7 +548,7 @@ async function bringWindowToFront(moveToPrimary = false) {
       });
     }
   } catch (error) {
-    console.error(
+    log.error(
       "[step0-ui-controller.js→Step0-4] ウィンドウ最前面表示エラー:",
       error,
     );
@@ -578,7 +588,7 @@ function loadSavedUrls() {
       savedUrls = JSON.parse(saved);
     }
   } catch (error) {
-    console.error("保存されたURL読み込みエラー:", error);
+    log.error("保存されたURL読み込みエラー:", error);
     savedUrls = {};
   }
 }
@@ -588,7 +598,7 @@ function savUrlsToStorage() {
   try {
     localStorage.setItem("autoai_saved_urls", JSON.stringify(savedUrls));
   } catch (error) {
-    console.error("URL保存エラー:", error);
+    log.error("URL保存エラー:", error);
   }
 }
 
@@ -946,7 +956,7 @@ function showOpenUrlDialog(targetInput) {
 // STEP処理のみ実行ボタン
 if (stepOnlyBtn) {
   stepOnlyBtn.addEventListener("click", async () => {
-    console.log("🎯 [STEP-ONLY] 実行開始");
+    log.debug("🎯 [STEP-ONLY] 実行開始");
 
     // ボタンにアニメーションを追加
     stepOnlyBtn.classList.add("processing");
@@ -979,7 +989,7 @@ if (stepOnlyBtn) {
       // 各URLに対してStep処理を実行
       for (let urlIndex = 0; urlIndex < urls.length; urlIndex++) {
         const url = urls[urlIndex];
-        console.log(
+        log.debug(
           `📋 [STEP-ONLY] URL ${urlIndex + 1}/${urls.length} 処理開始: ${url}`,
         );
 
@@ -995,7 +1005,7 @@ if (stepOnlyBtn) {
 
         for (const step of steps) {
           if (typeof step.func === "function") {
-            console.log(`🔄 ${step.name}実行中...`);
+            log.debug(`🔄 ${step.name}実行中...`);
 
             // Step1にはURLを渡す、他のStepは引数なし
             if (step.needsUrl) {
@@ -1004,10 +1014,10 @@ if (stepOnlyBtn) {
               await step.func();
             }
 
-            console.log(`✅ ${step.name}完了`);
+            log.debug(`✅ ${step.name}完了`);
           } else {
             // デバッグ: Step4が見つからない理由を詳細に調査
-            console.log("🔍 [DEBUG] Step関数チェック詳細:", {
+            log.debug("🔍 [DEBUG] Step関数チェック詳細:", {
               stepName: step.name,
               functionExists: !!step.func,
               functionType: typeof step.func,
@@ -1034,16 +1044,16 @@ if (stepOnlyBtn) {
                 step4FileError: window.step4FileError || "なし",
               },
             });
-            console.warn(`⚠️ ${step.name}関数が見つかりません`);
+            log.warn(`⚠️ ${step.name}関数が見つかりません`);
           }
         }
 
-        console.log(`✅ URL ${urlIndex + 1}/${urls.length} 処理完了`);
+        log.debug(`✅ URL ${urlIndex + 1}/${urls.length} 処理完了`);
       }
 
       showFeedback("全てのSTEP処理が完了しました", "success");
     } catch (error) {
-      console.error("STEP処理エラー:", error);
+      log.error("STEP処理エラー:", error);
       showFeedback(`STEP処理エラー: ${error.message}`, "error");
     } finally {
       // アニメーションを削除してボタンを元に戻す
@@ -1060,7 +1070,7 @@ if (stepOnlyBtn) {
 
 // ページ読み込み時の初期化
 document.addEventListener("DOMContentLoaded", () => {
-  console.log("📋 [step0-ui-controller] 初期化開始");
+  log.debug("📋 [step0-ui-controller] 初期化開始");
 
   // 保存されたURLを読み込み
   loadSavedUrls();
@@ -1071,10 +1081,10 @@ document.addEventListener("DOMContentLoaded", () => {
     attachRowEventListeners(firstRow);
   }
 
-  console.log("✅ [step0-ui-controller] 初期化完了");
+  log.debug("✅ [step0-ui-controller] 初期化完了");
 });
 
 // スクリプト読み込み完了をトラッキング
 window.scriptLoadTracker.addScript("step0-ui-controller.js");
 
-console.log("🎉 [step0-ui-controller] 全機能読み込み完了");
+log.debug("🎉 [step0-ui-controller] 全機能読み込み完了");

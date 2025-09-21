@@ -9,7 +9,7 @@ async function getPrimaryDisplayInfo() {
     const displays = await chrome.system.display.getInfo();
     const primaryDisplay = displays.find((d) => d.isPrimary) || displays[0];
 
-    console.log("[Popup] ディスプレイ情報:", {
+    // log.debug("[Popup] ディスプレイ情報:", {
       total: displays.length,
       primary: {
         id: primaryDisplay.id,
@@ -48,7 +48,7 @@ function calculatePrimaryDisplayPosition(primaryDisplay, width, height) {
     height: height,
   };
 
-  console.log("[Popup] ウィンドウ位置計算:", {
+  // log.debug("[Popup] ウィンドウ位置計算:", {
     workArea: workArea,
     calculated: position,
   });
@@ -59,7 +59,7 @@ function calculatePrimaryDisplayPosition(primaryDisplay, width, height) {
 // ポップアップがクリックされたらUIウィンドウを開く
 document.addEventListener("DOMContentLoaded", async () => {
   try {
-    console.log(
+    // log.debug(
       "[Popup] UIウィンドウをプライマリディスプレイに開いています...",
     );
 
@@ -108,7 +108,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
 
     if (createdWindow && createdWindow.id) {
-      console.log(
+      // log.debug(
         "[Popup] UIウィンドウをプライマリディスプレイに作成しました (ID:",
         createdWindow.id,
         ")",
@@ -116,7 +116,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       // 作成されたウィンドウの実際の位置を確認
       const actualWindow = await chrome.windows.get(createdWindow.id);
-      console.log("[Popup] 実際のウィンドウ位置:", {
+      // log.debug("[Popup] 実際のウィンドウ位置:", {
         expected: position,
         actual: {
           left: actualWindow.left,
@@ -137,7 +137,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // フォールバック: プライマリディスプレイのデフォルトサイズで開く
     try {
-      console.log("[Popup] フォールバック処理開始...");
+      // log.debug("[Popup] フォールバック処理開始...");
 
       // プライマリディスプレイ情報を再取得
       const fallbackDisplay = await getPrimaryDisplayInfo();
@@ -158,7 +158,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       });
 
       if (fallbackWindow && fallbackWindow.id) {
-        console.log(
+        // log.debug(
           "[Popup] フォールバックでUIウィンドウをプライマリディスプレイに作成しました (ID:",
           fallbackWindow.id,
           ")",
@@ -179,7 +179,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         });
 
         if (lastResortWindow && lastResortWindow.id) {
-          console.log(
+          // log.debug(
             "[Popup] 最終フォールバックでUIウィンドウを作成しました (ID:",
             lastResortWindow.id,
             ")",

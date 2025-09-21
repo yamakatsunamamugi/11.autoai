@@ -9,12 +9,27 @@
  * Step 4-2: タスクデータの動的取得と展開
  * Step 4-3: AI処理の並列実行とエラーハンドリング
 
-// ファイル読み込み開始ログ
-console.log("🚀 [step4-tasklist.js] ファイル読み込み開始", {
-  timestamp: new Date().toISOString(),
-  windowAvailable: typeof window !== 'undefined',
-  chromeAvailable: typeof chrome !== 'undefined'
-});
+// ログレベル制御（必要最小限のログのみ出力）
+const LOG_LEVEL = {
+  ERROR: 1,
+  WARN: 2,
+  INFO: 3,
+  DEBUG: 4
+};
+
+// 現在のログレベル（INFO以上のみ出力）
+const CURRENT_LOG_LEVEL = LOG_LEVEL.INFO;
+
+// ログユーティリティ
+const log = {
+  error: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.ERROR && log.error(...args),
+  warn: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.WARN && log.warn(...args),
+  info: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.INFO && log.debug(...args),
+  debug: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.DEBUG && log.debug(...args)
+};
+
+// 初期化ログ（簡略化）
+log.info("✅ [step4-tasklist.js] 初期化完了");
 
 // グローバルエラーハンドリング
 if (typeof window !== 'undefined') {
@@ -23,7 +38,7 @@ if (typeof window !== 'undefined') {
   // 未処理エラーの捕捉
   window.addEventListener('error', function(event) {
     if (event.filename && event.filename.includes('step4-tasklist.js')) {
-      console.error('❌ [step4-tasklist.js] 未処理エラー:', event.error);
+      log.error('❌ [step4-tasklist.js] エラー:', event.error);
       window.step4FileError = event.error?.message || '未知のエラー';
     }
   });
@@ -71,29 +86,19 @@ async function executeSimpleRetry({
 
   while (retryCount < maxRetries) {
     try {
-      if (retryCount === 1 || retryCount === maxRetries - 1) {
-        console.log(
-          `[StableRetry] ${actionName} 再試行 ${retryCount}/${maxRetries}`,
-          context,
-        );
+      if (retryCount === maxRetries - 1) {
+        log.debug(`[Retry] ${actionName} 最終試行 ${retryCount}/${maxRetries}`);
       }
       lastResult = await action();
       if (isSuccess(lastResult)) {
-        if (retryCount > 0) {
-          console.log(
-            `[StableRetry] ✅ ${actionName} 成功（${retryCount}回目の試行）`,
-            context,
-          );
-        }
+        // 成功時は詳細ログ不要
         return { success: true, result: lastResult, retryCount };
       }
     } catch (error) {
       lastError = error;
-      console.error(`[StableRetry] ${actionName} エラー`, {
-        ...context,
-        attempt: retryCount + 1,
-        error: error.message,
-      });
+      if (retryCount === maxRetries - 1) {
+        log.error(`[Retry] ${actionName} 失敗: ${error.message}`);
+      }
     }
     retryCount++;
     if (retryCount >= maxRetries) {
@@ -134,9 +139,7 @@ class UnifiedWindowManager {
       lastCheck: Date.now(),
       checkResult: null,
     });
-    console.log(
-      `[UnifiedWindowManager] ウィンドウ追加: ${windowId} (${aiType})`,
-    );
+    log.debug(`[WindowManager] ウィンドウ追加: ${windowId} (${aiType})`);
   }
 
   /**
@@ -171,7 +174,7 @@ class UnifiedWindowManager {
           }
         } catch (error) {
           // タブが存在しない場合はマップから削除
-          console.log(`[UnifiedWindowManager] 無効なタブを削除: ${info.tabId}`);
+          log.debug(`[WindowManager] 無効タブ削除: ${info.tabId}`);
           this.windows.delete(windowId);
         }
       }
@@ -184,20 +187,16 @@ class UnifiedWindowManager {
    */
   async findFirstWorkingWindow(aiType) {
     const candidates = await this.findWindowsByAiType(aiType);
-    console.log(
-      `[UnifiedWindowManager] ${aiType}の候補ウィンドウ: ${candidates.length}個`,
-    );
+    log.debug(`[WindowManager] ${aiType}候補: ${candidates.length}個`);
 
     for (const window of candidates) {
       const isWorking = await this.quickCheck(window.tabId);
       if (isWorking) {
-        console.log(
-          `✅ [FirstWin] ${aiType}の動作ウィンドウ発見: ${window.tabId}`,
-        );
+        log.debug(`[FirstWin] ${aiType}動作確認`);
         return window;
       }
     }
-    console.log(`❌ [FirstWin] ${aiType}の動作ウィンドウなし`);
+    log.debug(`[FirstWin] ${aiType}動作ウィンドウなし`);
     return null;
   }
 
@@ -238,12 +237,12 @@ class SafeMessenger {
    * 排他制御付きメッセージ送信
    */
   static async sendSafeMessage(tabId, message, timeout = 8000) {
-    console.log(
+    log.debug(
       `[SafeMessenger] 送信開始: tabId=${tabId}, action=${message.action}`,
     );
 
     // 🔍 [DEBUG] SafeMessenger詳細ログ
-    console.log("🔍 [DEBUG-SAFE-MESSENGER] 送信開始詳細:", {
+    log.debug("🔍 [DEBUG-SAFE-MESSENGER] 送信開始詳細:", {
       tabId: tabId,
       messageAction: message.action,
       messageKeys: Object.keys(message),
@@ -256,19 +255,19 @@ class SafeMessenger {
 
     // 既に同じタブに送信中の場合は待機
     if (this.sendMessageQueue.has(tabId)) {
-      console.log(`[SafeMessenger] タブ${tabId}は送信中、待機...`);
-      console.log("🔍 [DEBUG-SAFE-MESSENGER] キュー待機詳細:", {
+      log.debug(`[SafeMessenger] タブ${tabId}は送信中、待機...`);
+      log.debug("🔍 [DEBUG-SAFE-MESSENGER] キュー待機詳細:", {
         waitingForTab: tabId,
         currentQueueSize: this.sendMessageQueue.size,
         queuedTabs: Array.from(this.sendMessageQueue.keys()),
       });
       try {
         await this.sendMessageQueue.get(tabId);
-        console.log("🔍 [DEBUG-SAFE-MESSENGER] キュー待機完了:", {
+        log.debug("🔍 [DEBUG-SAFE-MESSENGER] キュー待機完了:", {
           tabId: tabId,
         });
       } catch (error) {
-        console.log("🔍 [DEBUG-SAFE-MESSENGER] キュー待機エラー:", {
+        log.debug("🔍 [DEBUG-SAFE-MESSENGER] キュー待機エラー:", {
           tabId: tabId,
           error: error.message,
         });
@@ -277,7 +276,7 @@ class SafeMessenger {
     }
 
     // 新しいリクエストを開始
-    console.log("🔍 [DEBUG-SAFE-MESSENGER] 新規リクエスト開始:", {
+    log.debug("🔍 [DEBUG-SAFE-MESSENGER] 新規リクエスト開始:", {
       tabId: tabId,
     });
     const promise = this._doSendMessage(tabId, message, timeout);
@@ -285,11 +284,11 @@ class SafeMessenger {
 
     try {
       const result = await promise;
-      console.log(
+      log.debug(
         `[SafeMessenger] 送信完了: tabId=${tabId}, success=${result.success}`,
       );
       // 🔍 [DEBUG] SafeMessenger結果詳細ログ
-      console.log("🔍 [DEBUG-SAFE-MESSENGER] 送信完了詳細:", {
+      log.debug("🔍 [DEBUG-SAFE-MESSENGER] 送信完了詳細:", {
         tabId: tabId,
         success: result.success,
         resultKeys: result ? Object.keys(result) : null,
@@ -301,7 +300,7 @@ class SafeMessenger {
     } finally {
       // 完了後はキューから削除
       this.sendMessageQueue.delete(tabId);
-      console.log("🔍 [DEBUG-SAFE-MESSENGER] キューから削除:", {
+      log.debug("🔍 [DEBUG-SAFE-MESSENGER] キューから削除:", {
         tabId: tabId,
         remainingQueueSize: this.sendMessageQueue.size,
       });
@@ -313,7 +312,7 @@ class SafeMessenger {
    */
   static async _doSendMessage(tabId, message, timeout) {
     // 🔍 [DEBUG] 実際の送信処理開始ログ
-    console.log("🔍 [DEBUG-SAFE-MESSENGER] _doSendMessage開始:", {
+    log.debug("🔍 [DEBUG-SAFE-MESSENGER] _doSendMessage開始:", {
       tabId: tabId,
       messageAction: message.action,
       timeout: timeout,
@@ -323,7 +322,7 @@ class SafeMessenger {
 
     try {
       // 🔍 [DEBUG] chrome.tabs.sendMessage実行前ログ
-      console.log("🔍 [DEBUG-SAFE-MESSENGER] chrome.tabs.sendMessage実行前:", {
+      log.debug("🔍 [DEBUG-SAFE-MESSENGER] chrome.tabs.sendMessage実行前:", {
         tabId: tabId,
         message: message,
         aboutToCall: "chrome.tabs.sendMessage",
@@ -340,7 +339,7 @@ class SafeMessenger {
       ]);
 
       // 🔍 [DEBUG] レスポンス受信ログ
-      console.log("🔍 [DEBUG-SAFE-MESSENGER] レスポンス受信:", {
+      log.debug("🔍 [DEBUG-SAFE-MESSENGER] レスポンス受信:", {
         tabId: tabId,
         responseReceived: !!response,
         responseType: typeof response,
@@ -357,9 +356,9 @@ class SafeMessenger {
         timestamp: Date.now(),
       };
     } catch (error) {
-      console.log(`[SafeMessenger] エラー: ${error.message}`);
+      log.debug(`[SafeMessenger] エラー: ${error.message}`);
       // 🔍 [DEBUG] エラー詳細ログ
-      console.log("🔍 [DEBUG-SAFE-MESSENGER] エラー詳細:", {
+      log.debug("🔍 [DEBUG-SAFE-MESSENGER] エラー詳細:", {
         tabId: tabId,
         errorMessage: error.message,
         errorName: error.name,
@@ -452,7 +451,7 @@ class StableWindowManager {
       });
 
       this.isMonitoringEnabled = true;
-      console.log("🔍 [StableWindowManager] ウィンドウ閉鎖監視を開始しました");
+      log.debug("🔍 [StableWindowManager] ウィンドウ閉鎖監視を開始しました");
     }
   }
 
@@ -463,15 +462,12 @@ class StableWindowManager {
     const windowInfo = this.activeWindows.get(windowId);
 
     if (windowInfo) {
-      console.error(
-        `🚨 [StableWindowManager] 予期しないウィンドウ閉鎖を検出:`,
-        {
-          windowId,
-          aiType: windowInfo.aiType || "不明",
-          position: this.positionToWindow.get(windowId),
-          timestamp: new Date().toISOString(),
-        },
-      );
+      log.error(`🚨 [StableWindowManager] 予期しないウィンドウ閉鎖を検出:`, {
+        windowId,
+        aiType: windowInfo.aiType || "不明",
+        position: this.positionToWindow.get(windowId),
+        timestamp: new Date().toISOString(),
+      });
 
       // クリーンアップ処理
       this.cleanupClosedWindow(windowId);
@@ -522,7 +518,7 @@ class StableWindowManager {
             await chrome.windows.remove(existingWindowId);
             this.cleanupClosedWindow(existingWindowId);
           } catch (error) {
-            console.warn(
+            log.warn(
               `[StableWindowManager] 既存ウィンドウ削除エラー:`,
               error.message,
             );
@@ -579,7 +575,7 @@ class StepIntegratedWindowService {
         displays: displays,
       };
     } catch (error) {
-      console.warn(
+      log.warn(
         "[StepIntegratedWindowService] スクリーン情報取得エラー、フォールバック使用:",
         error,
       );
@@ -641,14 +637,14 @@ class StepIntegratedWindowService {
    */
   static async createWindowWithPosition(url, position, options = {}) {
     try {
-      console.log(
+      log.debug(
         `🪟 [StepIntegratedWindowService] ウィンドウ作成開始: position=${position}, url=${url}`,
       );
 
       // 既存ウィンドウが使用中の場合は閉じる
       if (this.windowPositions.has(position)) {
         const existingWindowId = this.windowPositions.get(position);
-        console.log(
+        log.debug(
           `🔄 [StepIntegratedWindowService] position=${position}の既存ウィンドウ${existingWindowId}を閉じます`,
         );
 
@@ -657,7 +653,7 @@ class StepIntegratedWindowService {
           this.windowPositions.delete(position);
           await new Promise((resolve) => setTimeout(resolve, 500)); // 削除完了待ち
         } catch (error) {
-          console.warn("既存ウィンドウ削除エラー（続行）:", error);
+          log.warn("既存ウィンドウ削除エラー（続行）:", error);
         }
       }
 
@@ -676,7 +672,7 @@ class StepIntegratedWindowService {
         focused: false,
       };
 
-      console.log(
+      log.debug(
         `📐 [StepIntegratedWindowService] ウィンドウ作成オプション:`,
         createOptions,
       );
@@ -687,7 +683,7 @@ class StepIntegratedWindowService {
       // 位置を記録
       this.windowPositions.set(position, window.id);
 
-      console.log(
+      log.debug(
         `✅ [StepIntegratedWindowService] ウィンドウ作成完了: windowId=${window.id}, position=${position}`,
       );
 
@@ -697,7 +693,7 @@ class StepIntegratedWindowService {
         ...window,
       };
     } catch (error) {
-      console.error(
+      log.error(
         `❌ [StepIntegratedWindowService] ウィンドウ作成エラー:`,
         error,
       );
@@ -720,11 +716,11 @@ class StepIntegratedWindowService {
         }
       }
 
-      console.log(
+      log.debug(
         `✅ [StepIntegratedWindowService] ウィンドウ閉じる完了: windowId=${windowId}`,
       );
     } catch (error) {
-      console.warn(
+      log.warn(
         `⚠️ [StepIntegratedWindowService] ウィンドウ閉じるエラー: windowId=${windowId}`,
         error,
       );
@@ -750,7 +746,7 @@ class StepIntegratedAiUrlManager {
 
     const url =
       urls[aiType] || urls[aiType?.toLowerCase()] || "https://claude.ai/";
-    console.log(`🔗 [StepIntegratedAiUrlManager] URL取得: ${aiType} -> ${url}`);
+    log.debug(`🔗 [StepIntegratedAiUrlManager] URL取得: ${aiType} -> ${url}`);
     return url;
   }
 }
@@ -810,7 +806,7 @@ async function executeAutoColumnSetup(
   const addedColumns = [];
 
   if (!spreadsheetData[menuRowIndex] || !spreadsheetData[aiRowIndex]) {
-    console.log("[step3-tasklist] メニュー行またはAI行が見つかりません");
+    log.debug("[step3-tasklist] メニュー行またはAI行が見つかりません");
     return { hasAdditions: false, addedColumns: [] };
   }
 
@@ -822,7 +818,7 @@ async function executeAutoColumnSetup(
     );
 
     if (promptGroups.length === 0) {
-      console.log("[step3-tasklist] プロンプト列が見つかりません");
+      log.debug("[step3-tasklist] プロンプト列が見つかりません");
       return { hasAdditions: false, addedColumns: [] };
     }
 
@@ -864,7 +860,7 @@ async function executeAutoColumnSetup(
       addedColumns: addedColumns,
     };
   } catch (error) {
-    console.error("[step3-tasklist] 自動列追加エラー:", error);
+    log.error("[step3-tasklist] 自動列追加エラー:", error);
     return { hasAdditions: false, addedColumns: [], error: error.message };
   }
 }
@@ -1154,19 +1150,19 @@ async function insertColumnAndSetHeader(
     });
 
     if (response.ok) {
-      console.log(
+      log.debug(
         `[step3-tasklist] 列追加成功: ${indexToColumn(columnIndex)}列 (${headerText})`,
       );
       return true;
     } else {
-      console.error(
+      log.error(
         `[step3-tasklist] 列追加失敗: ${headerText}`,
         await response.text(),
       );
       return false;
     }
   } catch (error) {
-    console.error(`[step3-tasklist] 列追加エラー: ${headerText}`, error);
+    log.error(`[step3-tasklist] 列追加エラー: ${headerText}`, error);
     return false;
   }
 }
@@ -1206,16 +1202,14 @@ async function deleteColumn(spreadsheetId, sheetId, columnIndex) {
     });
 
     if (response.ok) {
-      console.log(
-        `[step3-tasklist] 列削除成功: ${indexToColumn(columnIndex)}列`,
-      );
+      log.debug(`[step3-tasklist] 列削除成功: ${indexToColumn(columnIndex)}列`);
       return true;
     } else {
-      console.error("[step3-tasklist] 列削除失敗", await response.text());
+      log.error("[step3-tasklist] 列削除失敗", await response.text());
       return false;
     }
   } catch (error) {
-    console.error("[step3-tasklist] 列削除エラー", error);
+    log.error("[step3-tasklist] 列削除エラー", error);
     return false;
   }
 }
@@ -1242,7 +1236,7 @@ function getAnswerCell(taskGroup, aiType, row) {
 
     return getSimpleCell(column, row);
   } catch (error) {
-    console.error("[step3-tasklist.js] getAnswerCell エラー:", error);
+    log.error("[step3-tasklist.js] getAnswerCell エラー:", error);
     return getSimpleCell("C", row); // デフォルト
   }
 }
@@ -1314,7 +1308,7 @@ async function generateTaskList(
 
     // 必要に応じて自動列追加を実行
     if (options.enableAutoColumnSetup && options.spreadsheetId) {
-      console.log("[step3-tasklist] 自動列追加を実行中...");
+      log.debug("[step3-tasklist] 自動列追加を実行中...");
       const setupResult = await executeAutoColumnSetup(
         options.spreadsheetId,
         options.gid,
@@ -1323,7 +1317,7 @@ async function generateTaskList(
       );
 
       if (setupResult.hasAdditions) {
-        console.log(
+        log.debug(
           `[step3-tasklist] ${setupResult.addedColumns.length}列を追加しました`,
         );
         // 列追加後はスプレッドシートデータを再読み込み
@@ -1349,13 +1343,13 @@ async function generateTaskList(
                   spreadsheetData.length,
                   ...data.values,
                 );
-                console.log(
+                log.debug(
                   "[step3-tasklist] スプレッドシートデータを再読み込みしました",
                 );
               }
             }
           } catch (error) {
-            console.error("[step3-tasklist] データ再読み込みエラー:", error);
+            log.error("[step3-tasklist] データ再読み込みエラー:", error);
           }
         }
       }
@@ -1377,10 +1371,10 @@ async function generateTaskList(
           // 最初の数個だけ詳細出力
           if (data) {
             logBuffer.push(`${message}: ${JSON.stringify(data)}`);
-            console.log(`[step3-tasklist] ${message}:`, data);
+            log.debug(`[step3-tasklist] ${message}:`, data);
           } else {
             logBuffer.push(message);
-            console.log(`[step3-tasklist] ${message}`);
+            log.debug(`[step3-tasklist] ${message}`);
           }
         }
         return;
@@ -1389,10 +1383,10 @@ async function generateTaskList(
       // 通常のログ処理
       if (data) {
         logBuffer.push(`${message}: ${JSON.stringify(data)}`);
-        console.log(`[step3-tasklist] ${message}:`, data);
+        log.debug(`[step3-tasklist] ${message}:`, data);
       } else {
         logBuffer.push(message);
-        console.log(`[step3-tasklist] ${message}`);
+        log.debug(`[step3-tasklist] ${message}`);
       }
     };
 
@@ -1715,7 +1709,7 @@ async function generateTaskList(
           promptLength: task.prompt?.length || 0,
         });
 
-        console.log(
+        log.debug(
           `[DEBUG] タスク追加: 行${row}, AI=${aiType}, hasAnswer状態不明`,
         );
         validTasks.push(task);
@@ -1727,7 +1721,7 @@ async function generateTaskList(
     const totalRows = lastPromptRow - dataStartRow + 1;
     const processedRows = validTasks.length;
     const skippedCount = skippedRows.length;
-    console.log(
+    log.debug(
       `[TaskList] 処理結果サマリー: 全${totalRows}行中、処理対象${processedRows}行、スキップ${skippedCount}行`,
     );
 
@@ -1739,7 +1733,7 @@ async function generateTaskList(
 
     return batch;
   } catch (error) {
-    console.error(
+    log.error(
       "[step3-tasklist.js] [Step 3-Error] generateTaskList内でエラー発生:",
       {
         エラー: error.message,
@@ -1829,7 +1823,7 @@ function getColumnControl(data, controlRow) {
 
     return controls;
   } catch (error) {
-    console.error(
+    log.error(
       `[step3-tasklist.js] [Step 3-5-Error] ❌ 列制御取得エラー:`,
       error,
     );
@@ -1907,7 +1901,7 @@ async function initializeGoogleServices() {
     // Google Servicesが既にグローバルに存在するかチェック
     if (typeof window !== "undefined" && window.googleServices) {
       await window.googleServices.initialize();
-      console.log("[step3-tasklist] Google Services初期化完了");
+      log.debug("[step3-tasklist] Google Services初期化完了");
       return true;
     }
 
@@ -1916,13 +1910,13 @@ async function initializeGoogleServices() {
       return new Promise((resolve) => {
         chrome.identity.getAuthToken({ interactive: false }, (token) => {
           if (chrome.runtime.lastError) {
-            console.warn(
+            log.warn(
               "[step3-tasklist] 認証トークン取得失敗:",
               chrome.runtime.lastError,
             );
             resolve(false);
           } else {
-            console.log(
+            log.debug(
               "[step3-tasklist] 認証トークン確認完了:",
               token ? "✓" : "✗",
             );
@@ -1932,10 +1926,10 @@ async function initializeGoogleServices() {
       });
     }
 
-    console.warn("[step3-tasklist] Google Services初期化環境が不明");
+    log.warn("[step3-tasklist] Google Services初期化環境が不明");
     return false;
   } catch (error) {
-    console.error("[step3-tasklist] Google Services初期化エラー:", error);
+    log.error("[step3-tasklist] Google Services初期化エラー:", error);
     return false;
   }
 }
@@ -1960,7 +1954,7 @@ if (typeof window !== "undefined") {
   try {
     // 関数の定義確認
     if (typeof initializeGoogleServices === "undefined") {
-      console.error(
+      log.error(
         "[step3-tasklist] initializeGoogleServices関数が定義されていません",
       );
     }
@@ -1988,7 +1982,7 @@ if (typeof window !== "undefined") {
       window.scriptLoadTracker.checkDependencies("step3-tasklist.js");
     }
   } catch (error) {
-    console.error(
+    log.error(
       "❌ [step3-tasklist.js] window.Step3TaskList初期化エラー:",
       error,
     );
@@ -2010,10 +2004,10 @@ if (typeof window !== "undefined") {
 // ExecuteLogger configuration
 // ========================================
 const ExecuteLogger = {
-  info: (...args) => console.log(`[step4-tasklist.js]`, ...args),
-  debug: (...args) => console.log(`[step4-tasklist.js] [DEBUG]`, ...args),
-  warn: (...args) => console.warn(`[step4-tasklist.js]`, ...args),
-  error: (...args) => console.error(`[step4-tasklist.js]`, ...args),
+  info: (...args) => log.debug(`[step4-tasklist.js]`, ...args),
+  debug: (...args) => log.debug(`[step4-tasklist.js] [DEBUG]`, ...args),
+  warn: (...args) => log.warn(`[step4-tasklist.js]`, ...args),
+  error: (...args) => log.error(`[step4-tasklist.js]`, ...args),
 };
 
 // ========================================
@@ -2469,7 +2463,7 @@ class WindowController {
         }
       } catch (error) {
         // 詳細なエラー情報を取得
-        console.error("🔴 [DEBUG-TAB-ERROR] 詳細エラー情報:", {
+        log.error("🔴 [DEBUG-TAB-ERROR] 詳細エラー情報:", {
           errorMessage: error?.message || "メッセージなし",
           errorStack: error?.stack || "スタックなし",
           errorName: error?.name || "名前なし",
@@ -2480,7 +2474,7 @@ class WindowController {
         });
 
         // タブID自体の検証
-        console.log("🔍 [DEBUG-TAB-ID] タブID検証:", {
+        log.debug("🔍 [DEBUG-TAB-ID] タブID検証:", {
           tabId: tabId,
           tabIdType: typeof tabId,
           isValidNumber: Number.isInteger(tabId),
@@ -2488,7 +2482,7 @@ class WindowController {
         });
 
         // Chrome API の状態確認
-        console.log("🔧 [DEBUG-CHROME-API] Chrome API状態:", {
+        log.debug("🔧 [DEBUG-CHROME-API] Chrome API状態:", {
           chromeExists: typeof chrome !== "undefined",
           tabsApiExists: typeof chrome?.tabs !== "undefined",
           getMethodExists: typeof chrome?.tabs?.get === "function",
@@ -2499,7 +2493,7 @@ class WindowController {
         // 代替手法での情報取得
         try {
           const allTabs = await chrome.tabs.query({});
-          console.log("📋 [DEBUG-ALL-TABS] 全タブ情報:", {
+          log.debug("📋 [DEBUG-ALL-TABS] 全タブ情報:", {
             totalTabs: allTabs.length,
             targetTabExists: allTabs.some((t) => t.id === tabId),
             tabIds: allTabs.map((t) => ({
@@ -2508,11 +2502,7 @@ class WindowController {
             })),
           });
         } catch (queryError) {
-          console.error(
-            "❌ [DEBUG-QUERY-ERROR]:",
-            queryError.message,
-            queryError,
-          );
+          log.error("❌ [DEBUG-QUERY-ERROR]:", queryError.message, queryError);
         }
 
         ExecuteLogger.error(`❌ [Tab Ready Check] Error on attempt ${i + 1}:`, {
@@ -2537,7 +2527,7 @@ class WindowController {
    * ファーストウィン戦略による高速ウィンドウチェック
    */
   async checkWindowsOptimized(aiType) {
-    console.log(`[FastCheck] ${aiType}の高速チェック開始`);
+    log.debug(`[FastCheck] ${aiType}の高速チェック開始`);
 
     // Step 1: UnifiedWindowManagerで最初に動作するウィンドウを見つける
     const workingWindow =
@@ -2546,7 +2536,7 @@ class WindowController {
       );
 
     if (workingWindow) {
-      console.log(
+      log.debug(
         `✅ [FastCheck] ${aiType}の動作ウィンドウ発見: ${workingWindow.tabId}`,
       );
 
@@ -2567,9 +2557,7 @@ class WindowController {
     }
 
     // Step 2: 見つからない場合のみ従来の全チェック
-    console.log(
-      `🔍 [FastCheck] ${aiType}のフォールバック: 全ウィンドウチェック`,
-    );
+    log.debug(`🔍 [FastCheck] ${aiType}のフォールバック: 全ウィンドウチェック`);
     return await this.performFullWindowCheck(aiType);
   }
 
@@ -2577,7 +2565,7 @@ class WindowController {
    * 従来の全ウィンドウチェック（フォールバック用）
    */
   async performFullWindowCheck(aiType) {
-    console.log(`[FullCheck] ${aiType}の全ウィンドウチェック開始`);
+    log.debug(`[FullCheck] ${aiType}の全ウィンドウチェック開始`);
 
     // 従来のロジックを保持
     const baseAiType = aiType.replace(/_task.*/, "");
@@ -2606,7 +2594,7 @@ class WindowController {
           windowInfo.tabId,
         );
         if (checkResult.success) {
-          console.log(
+          log.debug(
             `✅ [FullCheck] ${aiType}成功ウィンドウ: ${windowInfo.tabId}`,
           );
           return {
@@ -2617,7 +2605,7 @@ class WindowController {
           };
         }
       } catch (error) {
-        console.log(`❌ [FullCheck] ${key}チェックエラー:`, error.message);
+        log.debug(`❌ [FullCheck] ${key}チェックエラー:`, error.message);
       }
     }
 
@@ -2632,7 +2620,7 @@ class WindowController {
    * 個別ウィンドウのチェック処理（安定化リトライ版）
    */
   async performWindowCheck(aiType, tabId) {
-    console.log(
+    log.debug(
       `[DEBUG-performWindowCheck] 開始: aiType=${aiType}, tabId=${tabId}`,
     );
 
@@ -2645,25 +2633,25 @@ class WindowController {
         };
 
         // タブの準備完了を待機
-        console.log(
+        log.debug(
           `[DEBUG-performWindowCheck] タブ準備完了待機開始: tabId=${tabId}`,
         );
         const tab = await this.waitForTabReady(tabId, 10, 1000);
-        console.log(`[DEBUG-performWindowCheck] タブ準備完了:`, {
+        log.debug(`[DEBUG-performWindowCheck] タブ準備完了:`, {
           tabId,
           url: tab?.url,
           status: tab?.status,
         });
 
         // SafeMessengerを使用してContent scriptにチェック要求を送信
-        console.log(
+        log.debug(
           `[DEBUG-performWindowCheck] SafeMessenger送信開始: tabId=${tabId}, aiType=${aiType}`,
         );
         const result = await SafeMessenger.sendSafeMessage(tabId, {
           action: "CHECK_UI_ELEMENTS",
           aiType: aiType,
         });
-        console.log(`[DEBUG-performWindowCheck] SafeMessenger完了:`, result);
+        log.debug(`[DEBUG-performWindowCheck] SafeMessenger完了:`, result);
 
         let response = null;
         if (result.success) {
@@ -2677,7 +2665,7 @@ class WindowController {
         }
 
         const allChecksPass = Object.values(checks).every((check) => check);
-        console.log(
+        log.debug(
           `[DEBUG-performWindowCheck] チェック結果: allChecksPass=${allChecksPass}`,
           checks,
         );
@@ -4313,7 +4301,7 @@ try {
     );
   }
 } catch (error) {
-  console.error("❌ [step4-tasklist.js] executeStep4関数公開エラー:", error);
+  log.error("❌ [step4-tasklist.js] executeStep4関数公開エラー:", error);
   if (typeof window !== "undefined") {
     window.step4FileError = error.message;
   }
@@ -4365,7 +4353,7 @@ if (typeof window !== "undefined") {
 // ファイル読み込み完了通知
 // ========================================
 try {
-  console.log("✅ [step4-tasklist.js] ファイル読み込み完了", {
+  log.debug("✅ [step4-tasklist.js] ファイル読み込み完了", {
     executeStep4Defined: typeof executeStep4,
     windowExecuteStep4: typeof window.executeStep4,
     timestamp: new Date().toISOString(),
@@ -4382,7 +4370,7 @@ try {
     window.step4FileError = null;
   }
 } catch (error) {
-  console.error("❌ [step4-tasklist.js] ファイル読み込み完了時エラー:", error);
+  log.error("❌ [step4-tasklist.js] ファイル読み込み完了時エラー:", error);
   if (typeof window !== "undefined") {
     window.step4FileError = error.message;
   }

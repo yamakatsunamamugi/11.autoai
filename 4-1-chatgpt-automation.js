@@ -1,3 +1,13 @@
+// ログレベル制御
+const LOG_LEVEL = { ERROR: 1, WARN: 2, INFO: 3, DEBUG: 4 };
+const CURRENT_LOG_LEVEL = LOG_LEVEL.INFO;
+const log = {
+  error: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.ERROR && log.error(...args),
+  warn: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.WARN && log.warn(...args),
+  info: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.INFO && log.debug(...args),
+  debug: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.DEBUG && log.debug(...args)
+};
+
 /**
  * @fileoverview ChatGPT Automation V2 - 統合版
  *
@@ -27,10 +37,10 @@
   window.CHATGPT_SCRIPT_LOADED = true;
   window.CHATGPT_SCRIPT_INIT_TIME = Date.now();
 
-  console.log(
+  log.debug(
     `ChatGPT Automation V2 - 初期化時刻: ${new Date().toLocaleString("ja-JP")}`,
   );
-  console.log(`[DEBUG] ChatGPT Script Loaded - Marker Set`);
+  log.debug(`[DEBUG] ChatGPT Script Loaded - Marker Set`);
 
   // ========================================
   // Step 4-1-0-3: 統一ChatGPTRetryManager クラス定義
@@ -100,7 +110,7 @@
       const errorMessage = error?.message || error?.toString() || "";
       const errorName = error?.name || "";
 
-      console.log(`🔍 [Step 4-1-0-3] エラー分類開始:`, {
+      log.debug(`🔍 [Step 4-1-0-3] エラー分類開始:`, {
         errorMessage,
         errorName,
         context,
@@ -118,7 +128,7 @@
         errorMessage.includes("Too many requests")
       ) {
         errorType = "RATE_LIMIT_ERROR";
-        console.log(`⚠️ [Step 4-1-0-3] レート制限エラー検出:`, {
+        log.debug(`⚠️ [Step 4-1-0-3] レート制限エラー検出:`, {
           errorType,
           errorMessage,
           immediateEscalation: "HEAVY_RESET",
@@ -135,7 +145,7 @@
         errorMessage.includes("Please log in")
       ) {
         errorType = "LOGIN_ERROR";
-        console.log(`🔐 [Step 4-1-0-3] ログインエラー検出:`, {
+        log.debug(`🔐 [Step 4-1-0-3] ログインエラー検出:`, {
           errorType,
           errorMessage,
           immediateEscalation: "HEAVY_RESET",
@@ -150,7 +160,7 @@
         errorMessage.includes("Session expired")
       ) {
         errorType = "SESSION_ERROR";
-        console.log(`📋 [Step 4-1-0-3] セッションエラー検出:`, {
+        log.debug(`📋 [Step 4-1-0-3] セッションエラー検出:`, {
           errorType,
           errorMessage,
           immediateEscalation: "HEAVY_RESET",
@@ -167,7 +177,7 @@
         errorName.includes("NetworkError")
       ) {
         errorType = "NETWORK_ERROR";
-        console.log(`🌐 [Step 4-1-0-3] ネットワークエラー検出:`, {
+        log.debug(`🌐 [Step 4-1-0-3] ネットワークエラー検出:`, {
           errorType,
           errorMessage,
           escalation: "MODERATE",
@@ -184,7 +194,7 @@
         errorMessage.includes("querySelector")
       ) {
         errorType = "DOM_ERROR";
-        console.log(`🔍 [Step 4-1-0-3] DOM要素エラー検出:`, {
+        log.debug(`🔍 [Step 4-1-0-3] DOM要素エラー検出:`, {
           errorType,
           errorMessage,
           escalation: "LIGHTWEIGHT",
@@ -202,7 +212,7 @@
         errorMessage.includes("まで待機")
       ) {
         errorType = "UI_TIMING_ERROR";
-        console.log(`⏱️ [Step 4-1-0-3] UIタイミングエラー検出:`, {
+        log.debug(`⏱️ [Step 4-1-0-3] UIタイミングエラー検出:`, {
           errorType,
           errorMessage,
           escalation: "LIGHTWEIGHT",
@@ -214,7 +224,7 @@
 
       // デフォルト分類
       errorType = "GENERAL_ERROR";
-      console.log(`❓ [Step 4-1-0-3] 一般エラーとして分類:`, {
+      log.debug(`❓ [Step 4-1-0-3] 一般エラーとして分類:`, {
         errorType,
         errorMessage,
         escalation: "MODERATE",
@@ -227,7 +237,7 @@
 
     // Step 4-1-0-3: エスカレーションレベルの判定（詳細ログ付き）
     determineEscalationLevel(retryCount, errorType) {
-      console.log(`📈 [Step 4-1-0-3] エスカレーション判定開始:`, {
+      log.debug(`📈 [Step 4-1-0-3] エスカレーション判定開始:`, {
         retryCount,
         errorType,
         consecutiveErrorCount: this.consecutiveErrorCount,
@@ -239,7 +249,7 @@
 
       // 即座エスカレーション条件
       if (strategy.immediate_escalation) {
-        console.log(`🚨 [Step 4-1-0-3] 即座エスカレーション適用:`, {
+        log.debug(`🚨 [Step 4-1-0-3] 即座エスカレーション適用:`, {
           errorType,
           escalationLevel: strategy.immediate_escalation,
           reason: "重大エラーのため即座に最高レベルエスカレーション",
@@ -249,7 +259,7 @@
 
       // 連続同一エラー5回以上で即座にHEAVY_RESET
       if (this.consecutiveErrorCount >= 5) {
-        console.log(`🔄 [Step 4-1-0-3] 連続エラーによる強制エスカレーション:`, {
+        log.debug(`🔄 [Step 4-1-0-3] 連続エラーによる強制エスカレーション:`, {
           consecutiveErrorCount: this.consecutiveErrorCount,
           errorType,
           escalationLevel: "HEAVY_RESET",
@@ -261,7 +271,7 @@
       // 通常のエスカレーション判定
       for (const [level, config] of Object.entries(this.escalationLevels)) {
         if (retryCount >= config.range[0] && retryCount <= config.range[1]) {
-          console.log(`📊 [Step 4-1-0-3] 通常エスカレーション適用:`, {
+          log.debug(`📊 [Step 4-1-0-3] 通常エスカレーション適用:`, {
             retryCount,
             escalationLevel: level,
             range: config.range,
@@ -272,7 +282,7 @@
         }
       }
 
-      console.log(`🔄 [Step 4-1-0-3] デフォルトエスカレーション適用:`, {
+      log.debug(`🔄 [Step 4-1-0-3] デフォルトエスカレーション適用:`, {
         retryCount,
         escalationLevel: "HEAVY_RESET",
         reason: "すべての範囲を超えたためデフォルトHEAVY_RESETを適用",
@@ -295,7 +305,7 @@
       let lastError = null;
       const startTime = Date.now();
 
-      console.log(`🚀 [Step 4-1-0-3] エスカレーションリトライ開始:`, {
+      log.debug(`🚀 [Step 4-1-0-3] エスカレーションリトライ開始:`, {
         actionName,
         maxRetries: 20,
         context,
@@ -309,7 +319,7 @@
           this.metrics.totalAttempts++;
           const attemptStartTime = Date.now();
 
-          console.log(
+          log.debug(
             `🔄 [Step 4-1-0-3] ${actionName} 試行 ${retryCount}/20:`,
             {
               attemptNumber: retryCount,
@@ -328,7 +338,7 @@
             this.consecutiveErrorCount = 0; // エラーカウントリセット
             const totalTime = Date.now() - startTime;
 
-            console.log(
+            log.debug(
               `✅ [Step 4-1-0-3] ${actionName} 成功（${retryCount}回目）:`,
               {
                 attemptNumber: retryCount,
@@ -362,7 +372,7 @@
           // エラー履歴管理
           this.addErrorToHistory(errorType, error.message);
 
-          console.error(
+          log.error(
             `❌ [Step 4-1-0-3] ${actionName} エラー (${retryCount}回目):`,
             {
               errorType,
@@ -381,7 +391,7 @@
             this.errorStrategies[errorType] ||
             this.errorStrategies.GENERAL_ERROR;
           if (retryCount >= (strategy.maxRetries || 20)) {
-            console.log(`🛑 [Step 4-1-0-3] 最大リトライ回数到達:`, {
+            log.debug(`🛑 [Step 4-1-0-3] 最大リトライ回数到達:`, {
               retryCount,
               maxRetries: strategy.maxRetries || 20,
               errorType,
@@ -397,7 +407,7 @@
           );
           this.metrics.escalationCounts[escalationLevel]++;
 
-          console.log(`🚀 [Step 4-1-0-3] エスカレーション実行:`, {
+          log.debug(`🚀 [Step 4-1-0-3] エスカレーション実行:`, {
             retryCount,
             errorType,
             escalationLevel,
@@ -416,7 +426,7 @@
           );
 
           if (escalationResult && escalationResult.success) {
-            console.log(
+            log.debug(
               `✅ [Step 4-1-0-3] エスカレーション成功:`,
               escalationResult,
             );
@@ -424,7 +434,7 @@
           }
 
           // 待機戦略実行
-          console.log(`⏳ [Step 4-1-0-3] 待機戦略実行中...`);
+          log.debug(`⏳ [Step 4-1-0-3] 待機戦略実行中...`);
           await this.waitWithEscalationStrategy(
             escalationLevel,
             retryCount,
@@ -439,7 +449,7 @@
         ? this.classifyError(lastError, context)
         : "UNKNOWN";
 
-      console.error(`❌ [Step 4-1-0-3] ${actionName} 全リトライ失敗:`, {
+      log.error(`❌ [Step 4-1-0-3] ${actionName} 全リトライ失敗:`, {
         totalAttempts: retryCount,
         totalTime,
         finalError: lastError?.message,
@@ -464,7 +474,7 @@
     async executeEscalation(level, context) {
       const { retryCount, errorType, taskData } = context;
 
-      console.log(
+      log.debug(
         `🔄 [ChatGPT-Escalation] ${level} 実行開始 (${retryCount}回目)`,
       );
 
@@ -475,13 +485,13 @@
 
         case "MODERATE":
           // ページリフレッシュ
-          console.log(`🔄 [ChatGPT-Escalation] ページリフレッシュ実行`);
+          log.debug(`🔄 [ChatGPT-Escalation] ページリフレッシュ実行`);
           location.reload();
           return { success: false, needsWait: true }; // リロード後は待機が必要
 
         case "HEAVY_RESET":
           // 新規ウィンドウ作成
-          console.log(`🔄 [ChatGPT-Escalation] 新規ウィンドウ作成`);
+          log.debug(`🔄 [ChatGPT-Escalation] 新規ウィンドウ作成`);
           return await this.performNewWindowRetry(taskData, {
             errorType,
             retryCount,
@@ -512,7 +522,7 @@
           },
           (response) => {
             if (chrome.runtime.lastError) {
-              console.warn(
+              log.warn(
                 "[4-1-chatgpt-automation.js] リトライ通信エラー:",
                 chrome.runtime.lastError.message,
               );
@@ -543,7 +553,7 @@
 
       if (delay > 0) {
         const delayMinutes = Math.round((delay / 60000) * 10) / 10;
-        console.log(
+        log.debug(
           `⏳ [ChatGPT-Wait] ${level} - ${delayMinutes}分後にリトライします...`,
         );
         await this.delay(delay);
@@ -626,7 +636,7 @@
   // ========================================
 
   const loadSelectors = async () => {
-    console.log("loadSelectors starts - waiting for step1 UI_SELECTORS");
+    log.debug("loadSelectors starts - waiting for step1 UI_SELECTORS");
 
     // step1-setup.jsからのUI_SELECTORS読み込み待機
     let retryCount = 0;
@@ -737,19 +747,19 @@
 
     switch (type) {
       case "error":
-        console.error(`${prefix} ❌ ${message}`);
+        log.error(`${prefix} ❌ ${message}`);
         break;
       case "success":
-        console.log(`${prefix} ✅ ${message}`);
+        log.debug(`${prefix} ✅ ${message}`);
         break;
       case "warning":
-        console.warn(`${prefix} ⚠️ ${message}`);
+        log.warn(`${prefix} ⚠️ ${message}`);
         break;
       case "step":
-        console.log(`${prefix} 📍 ${message}`);
+        log.debug(`${prefix} 📍 ${message}`);
         break;
       default:
-        console.log(`${prefix} ℹ️ ${message}`);
+        log.debug(`${prefix} ℹ️ ${message}`);
     }
   }
 
@@ -789,7 +799,7 @@
 
       return clone;
     } catch (error) {
-      console.warn("[ChatGPT] ユーザーメッセージ除外中にエラーが発生:", error);
+      log.warn("[ChatGPT] ユーザーメッセージ除外中にエラーが発生:", error);
       return container;
     }
   }
@@ -847,7 +857,7 @@
 
       return cleanedText;
     } catch (error) {
-      console.warn("[ChatGPT] プロンプト除去中にエラーが発生:", error);
+      log.warn("[ChatGPT] プロンプト除去中にエラーが発生:", error);
       return fullText;
     }
   }
@@ -873,7 +883,7 @@
 
       return cleanedText;
     } catch (error) {
-      console.warn("[ChatGPT] getCleanText処理中にエラーが発生:", error);
+      log.warn("[ChatGPT] getCleanText処理中にエラーが発生:", error);
       // フォールバック
       const clone = element.cloneNode(true);
       const decorativeElements = clone.querySelectorAll(
@@ -940,31 +950,31 @@
 
         localStorage.setItem(storageKey, JSON.stringify(existingLogs));
       } catch (e) {
-        console.warn("[ChatGPT-Log] localStorage保存エラー:", e);
+        log.warn("[ChatGPT-Log] localStorage保存エラー:", e);
       }
     },
 
     logStep: function (message, data) {
       const log = this._addLog("INFO", message, data);
-      console.log(`🔄 [ChatGPT-Step] ${message}`, data || "");
+      log.debug(`🔄 [ChatGPT-Step] ${message}`, data || "");
       return log;
     },
 
     logError: function (message, error) {
       const log = this._addLog("ERROR", message, null, error);
-      console.error(`❌ [ChatGPT-Error] ${message}`, error);
+      log.error(`❌ [ChatGPT-Error] ${message}`, error);
       return log;
     },
 
     logSuccess: function (message, data) {
       const log = this._addLog("SUCCESS", message, data);
-      console.log(`✅ [ChatGPT-Success] ${message}`, data || "");
+      log.debug(`✅ [ChatGPT-Success] ${message}`, data || "");
       return log;
     },
 
     logTaskStart: function (taskInfo) {
       const log = this._addLog("TASK_START", "タスク開始", taskInfo);
-      console.log(`🚀 [ChatGPT-Task] タスク開始:`, taskInfo);
+      log.debug(`🚀 [ChatGPT-Task] タスク開始:`, taskInfo);
       return log;
     },
 
@@ -973,7 +983,7 @@
         taskInfo,
         result,
       });
-      console.log(`🏁 [ChatGPT-Task] タスク完了:`, { taskInfo, result });
+      log.debug(`🏁 [ChatGPT-Task] タスク完了:`, { taskInfo, result });
       return log;
     },
 
@@ -988,22 +998,22 @@
         a.download = `chatgpt_logs_${new Date().toISOString().split("T")[0]}.json`;
         a.click();
         URL.revokeObjectURL(url);
-        console.log(`💾 [ChatGPT-Log] ログファイルをダウンロード`);
+        log.debug(`💾 [ChatGPT-Log] ログファイルをダウンロード`);
       } catch (e) {
-        console.error(`❌ [ChatGPT-Log] ファイル保存エラー:`, e);
+        log.error(`❌ [ChatGPT-Log] ファイル保存エラー:`, e);
       }
     },
 
     saveErrorImmediately: function (error) {
       const log = this._addLog("CRITICAL_ERROR", "緊急エラー", null, error);
-      console.error(`🚨 [ChatGPT-Critical] 緊急エラー:`, error);
+      log.error(`🚨 [ChatGPT-Critical] 緊急エラー:`, error);
       this._saveToStorage(log);
       return log;
     },
 
     saveIntermediate: function (data) {
       const log = this._addLog("INTERMEDIATE", "中間データ", data);
-      console.log(`📊 [ChatGPT-Intermediate] 中間データ:`, data);
+      log.debug(`📊 [ChatGPT-Intermediate] 中間データ:`, data);
       return log;
     },
 
@@ -1018,7 +1028,7 @@
     // ログクリア
     clearLogs: function () {
       this.logs = [];
-      console.log(`🗑️ [ChatGPT-Log] ログをクリア`);
+      log.debug(`🗑️ [ChatGPT-Log] ログをクリア`);
     },
   };
 
@@ -1395,7 +1405,7 @@
    */
   async function openModelMenu(modelButton) {
     if (!modelButton) {
-      console.error("[ChatGPT-openModelMenu] モデルボタンが見つかりません");
+      log.error("[ChatGPT-openModelMenu] モデルボタンが見つかりません");
       return false;
     }
 
@@ -1416,16 +1426,16 @@
         1,
       );
       if (menuContainer) {
-        console.log("[ChatGPT-openModelMenu] ✅ モデルメニュー開放成功");
+        log.debug("[ChatGPT-openModelMenu] ✅ モデルメニュー開放成功");
         return true;
       } else {
-        console.warn(
+        log.warn(
           "[ChatGPT-openModelMenu] ⚠️ メニュー開放したがDOM確認できず",
         );
         return false;
       }
     } catch (error) {
-      console.error("[ChatGPT-openModelMenu] ❌ エラー:", error);
+      log.error("[ChatGPT-openModelMenu] ❌ エラー:", error);
       return false;
     }
   }
@@ -1438,7 +1448,7 @@
    */
   async function openFunctionMenu(funcMenuBtn) {
     if (!funcMenuBtn) {
-      console.error(
+      log.error(
         "[ChatGPT-openFunctionMenu] 機能メニューボタンが見つかりません",
       );
       return false;
@@ -1461,16 +1471,16 @@
         1,
       );
       if (menuContainer) {
-        console.log("[ChatGPT-openFunctionMenu] ✅ 機能メニュー開放成功");
+        log.debug("[ChatGPT-openFunctionMenu] ✅ 機能メニュー開放成功");
         return true;
       } else {
-        console.warn(
+        log.warn(
           "[ChatGPT-openFunctionMenu] ⚠️ メニュー開放したがDOM確認できず",
         );
         return false;
       }
     } catch (error) {
-      console.error("[ChatGPT-openFunctionMenu] ❌ エラー:", error);
+      log.error("[ChatGPT-openFunctionMenu] ❌ エラー:", error);
       return false;
     }
   }
@@ -1653,11 +1663,11 @@
     // タスク開始をログに記録
     ChatGPTLogManager.startTask(taskData);
 
-    console.log(
+    log.debug(
       "%c🚀 ChatGPT V2 タスク実行開始",
       "color: #00BCD4; font-weight: bold; font-size: 16px",
     );
-    console.log("受信したタスクデータ:", {
+    log.debug("受信したタスクデータ:", {
       model: taskData.model,
       function: taskData.function,
       promptLength: taskData.prompt?.length || taskData.text?.length || 0,
@@ -1750,7 +1760,7 @@
       ) {
         const cellPosition = `${taskData.cellInfo.column}${taskData.cellInfo.row}`;
         prompt = `【現在${cellPosition}セルを処理中です】\n\n${prompt}`;
-        console.log(`📍 セル位置情報を追加: ${cellPosition}`);
+        log.debug(`📍 セル位置情報を追加: ${cellPosition}`);
       }
 
       const modelName = taskData.model || "";
@@ -2743,7 +2753,7 @@
           log(`⚠️ モデル/機能情報取得エラー: ${error.message}`, "warn");
         }
 
-        console.log("✅ ChatGPT V2 タスク実行完了");
+        log.debug("✅ ChatGPT V2 タスク実行完了");
 
         const result = {
           success: true,
@@ -2771,7 +2781,7 @@
         throw new Error("応答テキストを取得できませんでした");
       }
     } catch (error) {
-      console.error("❌ ChatGPT V2 タスク実行エラー:", error);
+      log.error("❌ ChatGPT V2 タスク実行エラー:", error);
 
       const result = {
         success: false,
@@ -2813,25 +2823,25 @@
   // ========================================
   // グローバル公開
   // ========================================
-  console.log("[DEBUG] グローバル公開セクションに到達");
-  console.log("[DEBUG] executeTask関数の存在:", typeof executeTask);
-  console.log("[DEBUG] runAutomation関数の存在:", typeof runAutomation);
+  log.debug("[DEBUG] グローバル公開セクションに到達");
+  log.debug("[DEBUG] executeTask関数の存在:", typeof executeTask);
+  log.debug("[DEBUG] runAutomation関数の存在:", typeof runAutomation);
 
   const automationAPI = {
     executeTask,
     runAutomation,
   };
 
-  console.log("[DEBUG] automationAPI作成成功");
+  log.debug("[DEBUG] automationAPI作成成功");
 
-  console.log("[DEBUG] automationAPI作成完了、windowに設定開始");
+  log.debug("[DEBUG] automationAPI作成完了、windowに設定開始");
 
   // v2名と標準名の両方をサポート（下位互換性保持）
   window.ChatGPTAutomationV2 = automationAPI;
   window.ChatGPTAutomation = automationAPI;
 
-  console.log("[DEBUG] window.ChatGPTAutomationV2設定完了");
-  console.log(
+  log.debug("[DEBUG] window.ChatGPTAutomationV2設定完了");
+  log.debug(
     "[DEBUG] typeof window.ChatGPTAutomationV2:",
     typeof window.ChatGPTAutomationV2,
   );
@@ -2840,11 +2850,11 @@
   window.CHATGPT_SCRIPT_LOADED = true;
   window.CHATGPT_SCRIPT_INIT_TIME = Date.now();
 
-  console.log("✅ ChatGPT Automation V2 準備完了");
-  console.log(
+  log.debug("✅ ChatGPT Automation V2 準備完了");
+  log.debug(
     '使用方法: ChatGPTAutomation.executeTask({ model: "GPT-4o", function: "Deep Research", prompt: "..." })',
   );
-  console.log(
+  log.debug(
     "✅ 下位互換性: ChatGPTAutomation と ChatGPTAutomationV2 の両方で利用可能",
   );
 })();
@@ -2879,11 +2889,11 @@ async function chatWithChatGPT() {
 
         // 5. 結果取得
         const response = await getResponseTextChatGPT();
-        console.log('ChatGPT回答:', response);
+        log.debug('ChatGPT回答:', response);
 
         return response;
     } catch (error) {
-        console.error('ChatGPT操作エラー:', error);
+        log.error('ChatGPT操作エラー:', error);
         throw error;
     }
 }
@@ -2894,15 +2904,15 @@ async function chatWithChatGPT() {
 // ウィンドウ終了時のログ保存処理
 // ========================================
 window.addEventListener("beforeunload", async (event) => {
-  console.log("🔄 [ChatGPTAutomation] ウィンドウ終了検知 - ログ保存開始");
+  log.debug("🔄 [ChatGPTAutomation] ウィンドウ終了検知 - ログ保存開始");
 
   try {
     const fileName = await ChatGPTLogManager.saveToFile();
     if (fileName) {
-      console.log(`✅ [ChatGPTAutomation] ログ保存完了: ${fileName}`);
+      log.debug(`✅ [ChatGPTAutomation] ログ保存完了: ${fileName}`);
     }
   } catch (error) {
-    console.error("[ChatGPTAutomation] ログ保存エラー:", error);
+    log.error("[ChatGPTAutomation] ログ保存エラー:", error);
   }
 });
 

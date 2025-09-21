@@ -1,3 +1,13 @@
+// ログレベル制御
+const LOG_LEVEL = { ERROR: 1, WARN: 2, INFO: 3, DEBUG: 4 };
+const CURRENT_LOG_LEVEL = LOG_LEVEL.INFO;
+const log = {
+  error: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.ERROR && log.error(...args),
+  warn: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.WARN && log.warn(...args),
+  info: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.INFO && log.debug(...args),
+  debug: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.DEBUG && log.debug(...args)
+};
+
 // ========================================
 // Step1: 初期設定・環境準備
 // ========================================
@@ -6,9 +16,9 @@
 // 1-1: インターネット接続確認
 // ========================================
 async function checkInternetConnection() {
-  console.log("========");
-  console.log("[step1-setup.js→Step1-1] インターネット接続確認開始");
-  console.log("========");
+  log.debug("========");
+  log.debug("[step1-setup.js→Step1-1] インターネット接続確認開始");
+  log.debug("========");
 
   try {
     // navigator.onLine: チェック済み
@@ -21,7 +31,7 @@ async function checkInternetConnection() {
 
     // 1-1-1: Chrome Extensionの認証確認
     if (isExtension) {
-      console.log("[step1-setup.js→Step1-1-1] Chrome Extension認証確認開始");
+      log.debug("[step1-setup.js→Step1-1-1] Chrome Extension認証確認開始");
 
       // 認証トークン確認
       let authToken = null;
@@ -39,7 +49,7 @@ async function checkInternetConnection() {
           }
         }
       } catch (error) {
-        console.log(
+        log.debug(
           "[step1-setup.js] [Step 1-1-1] chrome.storage 確認スキップ:",
           error.message,
         );
@@ -47,7 +57,7 @@ async function checkInternetConnection() {
 
       // 方法2: globalThis.googleServices から確認
       if (!authToken) {
-        console.log(
+        log.debug(
           "[step1-setup.js] [Step 1-1-1] globalThis.googleServices から認証情報を確認中...",
         );
         if (globalThis.googleServices) {
@@ -56,12 +66,12 @@ async function checkInternetConnection() {
               await globalThis.googleServices.checkAuthStatus();
             if (authStatus.isAuthenticated) {
               authToken = authStatus.token;
-              console.log(
+              log.debug(
                 "[step1-setup.js] [Step 1-1-1] ✅ googleServices: 認証済み",
               );
             }
           } catch (error) {
-            console.log(
+            log.debug(
               "[step1-setup.js] [Step 1-1-1] googleServices 認証確認エラー:",
               error.message,
             );
@@ -71,14 +81,14 @@ async function checkInternetConnection() {
 
       /* 方法3: chrome.runtime message経由（background scriptから取得）
       if (!authToken) {
-        console.log(
+        log.debug(
           "[step1-setup.js] [Step 1-1-1] background script から認証情報を確認中...",
         );
         try {
           const response = await new Promise((resolve) => {
             chrome.runtime.sendMessage({ type: "getAuthToken" }, (response) => {
               if (chrome.runtime.lastError) {
-                console.warn(
+                log.warn(
                   "[step1-setup.js] background script通信エラー:",
                   chrome.runtime.lastError.message,
                 );
@@ -90,28 +100,28 @@ async function checkInternetConnection() {
           });
           if (response.token) {
             authToken = response.token;
-            console.log(
+            log.debug(
               "[step1-setup.js] [Step 1-1-1] ✅ background script: トークン取得成功",
             );
           }
         } catch (error) {
-          console.log(
+          log.debug(
             "[step1-setup.js] [Step 1-1-1] chrome.runtime メッセージエラー:",
             error.message,
           );
         }
       } */
     } else if (isDrive) {
-      console.log(
+      log.debug(
         "[step1-setup.js→Step1-1-1] Google Driveサンドボックス環境で実行中",
       );
     }
 
-    console.log(`[step1-setup.js] [Step 1-1-2] 🔐 認証状態: 未認証`);
+    log.debug(`[step1-setup.js] [Step 1-1-2] 🔐 認証状態: 未認証`);
 
     return { connected: true, authenticated: false };
   } catch (error) {
-    console.error(
+    log.error(
       "[step1-setup.js→Step1-1] ❌ インターネット接続確認エラー:",
       error,
     );
@@ -123,22 +133,22 @@ async function checkInternetConnection() {
 // 1-2: スリープ防止設定
 // ========================================
 async function preventSleep() {
-  console.log("========");
-  console.log("[step1-setup.js→Step1-2] スリープ防止設定開始");
-  console.log("========");
+  log.debug("========");
+  log.debug("[step1-setup.js→Step1-2] スリープ防止設定開始");
+  log.debug("========");
 
   try {
-    console.log(
+    log.debug(
       `[step1-setup.js] [Step 1-2-1] Wake Lock APIサポート: ${"wakeLock" in navigator}`,
     );
 
     // ブラウザ情報の取得
-    console.log(
+    log.debug(
       `[step1-setup.js] [Step 1-2-1] ブラウザ: ${navigator.userAgent.match(/(Chrome|Safari|Firefox|Edge)\/[\d.]+/)?.[0] || "不明"}`,
     );
 
     // タブの可視性状態
-    console.log(
+    log.debug(
       `[step1-setup.js] [Step 1-2-1] 現在のタブ状態: ${document.visibilityState}`,
     );
 
@@ -152,12 +162,12 @@ async function preventSleep() {
         wakeLock = await navigator.wakeLock.request("screen");
         const elapsedTime = Date.now() - startTime;
 
-        console.log("[step1-setup.js] [Step 1-2-1] ✅ Wake Lock取得成功");
+        log.debug("[step1-setup.js] [Step 1-2-1] ✅ Wake Lock取得成功");
         // 取得時間記録
-        console.log(`  - Wake Lock状態: アクティブ`);
+        log.debug(`  - Wake Lock状態: アクティブ`);
 
         const now = new Date();
-        console.log(
+        log.debug(
           `  - 取得時刻: ${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}:${now.getSeconds().toString().padStart(2, "0")}`,
         );
 
@@ -166,11 +176,11 @@ async function preventSleep() {
           if (wakeLock !== null && document.visibilityState === "visible") {
             try {
               wakeLock = await navigator.wakeLock.request("screen");
-              console.log(
+              log.debug(
                 "[step1-setup.js] [Step 1-2-1] Wake Lock再取得成功（タブ復帰）",
               );
             } catch (err) {
-              console.error(
+              log.error(
                 `[step1-setup.js] [Step 1-2-1] Wake Lock再取得失敗: ${err.name}, ${err.message}`,
               );
             }
@@ -180,7 +190,7 @@ async function preventSleep() {
         // グローバルに保存
         window.wakeLock = wakeLock;
       } catch (err) {
-        console.error(
+        log.error(
           `[step1-setup.js] [Step 1-2-1] Wake Lock取得失敗: ${err.name}, ${err.message}`,
         );
       }
@@ -188,17 +198,17 @@ async function preventSleep() {
 
     // 1-2-2: NoSleepライブラリ（フォールバック1）
     if (!wakeLock && typeof NoSleep !== "undefined") {
-      console.log(
+      log.debug(
         "[step1-setup.js] [Step 1-2-2] NoSleepライブラリ使用を試行中...",
       );
       const noSleep = new NoSleep();
       noSleep.enable();
-      console.log("[step1-setup.js] [Step 1-2-2] ✅ NoSleepライブラリ有効化");
+      log.debug("[step1-setup.js] [Step 1-2-2] ✅ NoSleepライブラリ有効化");
       window.noSleep = noSleep;
     }
 
     // 1-2-3: 定期的な活動によるスリープ防止（フォールバック2）
-    console.log(
+    log.debug(
       "[step1-setup.js] [Step 1-2-3] 定期的な活動によるスリープ防止を設定中...",
     );
 
@@ -217,11 +227,11 @@ async function preventSleep() {
     // グローバルに保存（必要に応じて停止可能）
     window.keepAliveInterval = keepAliveInterval;
 
-    console.log("[step1-setup.js] [Step 1-2-3] ✅ スリープ防止設定完了");
-    console.log(
+    log.debug("[step1-setup.js] [Step 1-2-3] ✅ スリープ防止設定完了");
+    log.debug(
       `  - 使用方法: ${wakeLock ? "Wake Lock API" : window.noSleep ? "NoSleepライブラリ" : "定期的な活動"}`,
     );
-    console.log(
+    log.debug(
       `  - 状態: ${wakeLock ? "アクティブ" : window.noSleep ? "有効" : "実行中"}`,
     );
 
@@ -230,7 +240,7 @@ async function preventSleep() {
       method: wakeLock ? "wakeLock" : window.noSleep ? "noSleep" : "keepAlive",
     };
   } catch (error) {
-    console.error("[step1-setup.js→Step1-2] ❌ スリープ防止設定エラー:", error);
+    log.error("[step1-setup.js→Step1-2] ❌ スリープ防止設定エラー:", error);
     return { success: false, error: error.message };
   }
 }
@@ -239,11 +249,11 @@ async function preventSleep() {
 // 1-3: API関連の初期化
 // ========================================
 async function initializeAPI() {
-  console.log("========");
-  console.log("[step1-setup.js→Step1-3] API関連の初期化開始");
-  console.log("========");
+  log.debug("========");
+  log.debug("[step1-setup.js→Step1-3] API関連の初期化開始");
+  log.debug("========");
 
-  console.log("[step1-setup.js] [Step 1-3-1] Google OAuth2認証を開始");
+  log.debug("[step1-setup.js] [Step 1-3-1] Google OAuth2認証を開始");
   // 認証モード: interactive
 
   // トークン取得（リトライ機能付き）
@@ -252,7 +262,7 @@ async function initializeAPI() {
   const maxRetries = 3;
 
   while (!token && retryCount < maxRetries) {
-    console.log(
+    log.debug(
       `[step1-setup.js] [Step 1-3-1] 認証試行 ${retryCount + 1}/${maxRetries}`,
     );
     const startTime = Date.now();
@@ -261,7 +271,7 @@ async function initializeAPI() {
       token = await new Promise((resolve, reject) => {
         chrome.identity.getAuthToken({ interactive: true }, (authToken) => {
           if (chrome.runtime.lastError) {
-            console.error(
+            log.error(
               `[step1-setup.js] [Step 1-3-1] 認証エラー (試行 ${retryCount + 1}):`,
               chrome.runtime.lastError,
             );
@@ -279,17 +289,17 @@ async function initializeAPI() {
 
       if (token) {
         const elapsedTime = Date.now() - startTime;
-        console.log(
+        log.debug(
           "[step1-setup.js] [Step 1-3-2] ✅ アクセストークン取得成功",
         );
 
         // トークンの詳細情報を表示
-        console.log(`  - トークン長: ${token.length}文字`);
+        log.debug(`  - トークン長: ${token.length}文字`);
         // 取得時刻記録
-        console.log(
+        log.debug(
           `  - 有効期限: ${new Date(Date.now() + 50 * 60 * 1000).toISOString()}`,
         );
-        console.log(`  - 認証時間: ${elapsedTime}ms`);
+        log.debug(`  - 認証時間: ${elapsedTime}ms`);
 
         // グローバルStateにトークンを保存
         window.globalState = window.globalState || {};
@@ -304,21 +314,21 @@ async function initializeAPI() {
         window.globalState.sheetsApiBase =
           "https://sheets.googleapis.com/v4/spreadsheets";
 
-        console.log("[step1-setup.js] [Step 1-3-3] Sheets API設定完了");
-        console.log(
+        log.debug("[step1-setup.js] [Step 1-3-3] Sheets API設定完了");
+        log.debug(
           "  - APIベースURL: https://sheets.googleapis.com/v4/spreadsheets",
         );
         // ヘッダー設定済み
-        console.log("[step1-setup.js] [Step 1-3] ✅ API初期化完了");
+        log.debug("[step1-setup.js] [Step 1-3] ✅ API初期化完了");
         return { success: true, token: token };
       }
     } catch (error) {
-      console.error("[step1-setup.js] [Step 1-3-1] ❌ 認証失敗:", error);
-      console.error("  - エラーの詳細:", error.message || error);
+      log.error("[step1-setup.js] [Step 1-3-1] ❌ 認証失敗:", error);
+      log.error("  - エラーの詳細:", error.message || error);
     }
   }
 
-  console.error(
+  log.error(
     "[step1-setup.js] [Step 1-3] ❌ API初期化失敗: 認証を完了できませんでした",
   );
   return { success: false, error: "認証失敗" };
@@ -332,9 +342,9 @@ async function initializeAPI() {
  * 全AIのUIセレクタを一元管理
  */
 function initializeUISelectors() {
-  console.log("========");
-  console.log("[step1-setup.js→Step1-3-X] UIセレクタ一元管理初期化開始");
-  console.log("========");
+  log.debug("========");
+  log.debug("[step1-setup.js→Step1-3-X] UIセレクタ一元管理初期化開始");
+  log.debug("========");
 
   // 全AIのセレクタ定義を一箇所で管理
   const ALL_UI_SELECTORS = {
@@ -509,9 +519,9 @@ function initializeUISelectors() {
   window.globalState = window.globalState || {};
   window.globalState.uiSelectorsInitialized = true;
 
-  console.log("[step1-setup.js] [Step 1-3-X] ✅ UIセレクタ一元管理初期化完了");
-  console.log(`  - 対応AI: ${Object.keys(ALL_UI_SELECTORS).join(", ")}`);
-  console.log(
+  log.debug("[step1-setup.js] [Step 1-3-X] ✅ UIセレクタ一元管理初期化完了");
+  log.debug(`  - 対応AI: ${Object.keys(ALL_UI_SELECTORS).join(", ")}`);
+  log.debug(
     `  - 総セレクタ数: ${JSON.stringify(ALL_UI_SELECTORS).length}文字`,
   );
 
@@ -525,14 +535,14 @@ function initializeUISelectors() {
  */
 function getSelectors(aiType) {
   if (!window.UI_SELECTORS) {
-    console.warn(
+    log.warn(
       `[step1-setup.js] UIセレクタが未初期化です。初期化を実行します。`,
     );
     initializeUISelectors();
   }
 
   if (!window.UI_SELECTORS[aiType]) {
-    console.error(`[step1-setup.js] 未対応のAI種別: ${aiType}`);
+    log.error(`[step1-setup.js] 未対応のAI種別: ${aiType}`);
     return {};
   }
 
@@ -545,7 +555,7 @@ function getSelectors(aiType) {
  */
 function getAllSelectors() {
   if (!window.UI_SELECTORS) {
-    console.warn(
+    log.warn(
       `[step1-setup.js] UIセレクタが未初期化です。初期化を実行します。`,
     );
     initializeUISelectors();
@@ -562,12 +572,12 @@ function getAllSelectors() {
  * トークンを更新する関数
  */
 async function refreshAuthToken() {
-  console.log("[step1-setup.js] 🔄 トークンリフレッシュ開始...");
+  log.debug("[step1-setup.js] 🔄 トークンリフレッシュ開始...");
 
   try {
     // 既存のトークンを削除
     if (window.globalState && window.globalState.authToken) {
-      console.log("[step1-setup.js] 既存トークンをクリア");
+      log.debug("[step1-setup.js] 既存トークンをクリア");
       chrome.identity.removeCachedAuthToken({
         token: window.globalState.authToken,
       });
@@ -591,16 +601,16 @@ async function refreshAuthToken() {
       }
       window.globalState.authToken = newToken;
 
-      console.log("[step1-setup.js] ✅ トークンリフレッシュ成功");
-      console.log(`  - 新トークン長: ${newToken.length}文字`);
-      console.log(`  - 更新時刻: ${new Date().toISOString()}`);
+      log.debug("[step1-setup.js] ✅ トークンリフレッシュ成功");
+      log.debug(`  - 新トークン長: ${newToken.length}文字`);
+      log.debug(`  - 更新時刻: ${new Date().toISOString()}`);
 
       return newToken;
     } else {
       throw new Error("新しいトークンの取得に失敗");
     }
   } catch (error) {
-    console.error("[step1-setup.js] ❌ トークンリフレッシュ失敗:", error);
+    log.error("[step1-setup.js] ❌ トークンリフレッシュ失敗:", error);
     throw error;
   }
 }
@@ -619,7 +629,7 @@ async function fetchWithTokenRefresh(url, options = {}, maxRetries = 3) {
 
       // Only log on retries or errors
       if (attempt > 1) {
-        console.log(
+        log.debug(
           `[step1-setup.js] API呼び出し再試行 ${attempt}/${maxRetries}: ${url}`,
         );
       }
@@ -634,7 +644,7 @@ async function fetchWithTokenRefresh(url, options = {}, maxRetries = 3) {
       // 429 (Too Many Requests) エラーの場合
       if (response.status === 429) {
         const waitTime = Math.min(2000 * Math.pow(2, attempt - 1), 10000); // 最大10秒
-        console.log(
+        log.debug(
           `[step1-setup.js] 429エラー検出 - ${waitTime}ms待機後に再試行`,
         );
         await new Promise((resolve) => setTimeout(resolve, waitTime));
@@ -643,7 +653,7 @@ async function fetchWithTokenRefresh(url, options = {}, maxRetries = 3) {
 
       // 401エラーの場合、トークンをリフレッシュして再試行
       if (response.status === 401) {
-        console.log(
+        log.debug(
           "[step1-setup.js] 401エラー検出 - トークンリフレッシュ実行",
         );
 
@@ -661,12 +671,12 @@ async function fetchWithTokenRefresh(url, options = {}, maxRetries = 3) {
         // 少し待ってから再試行
         await new Promise((resolve) => setTimeout(resolve, 1000));
         response = await fetch(url, newOptions);
-        console.log(`[step1-setup.js] 再試行結果: ${response.status}`);
+        log.debug(`[step1-setup.js] 再試行結果: ${response.status}`);
 
         // 再試行後も429の場合は待機
         if (response.status === 429) {
           const waitTime = Math.min(2000 * Math.pow(2, attempt - 1), 10000);
-          console.log(
+          log.debug(
             `[step1-setup.js] 再試行後も429エラー - ${waitTime}ms待機`,
           );
           await new Promise((resolve) => setTimeout(resolve, waitTime));
@@ -680,10 +690,10 @@ async function fetchWithTokenRefresh(url, options = {}, maxRetries = 3) {
       }
 
       // 5xxエラーの場合は再試行
-      console.log(`[step1-setup.js] ${response.status}エラー - 再試行します`);
+      log.debug(`[step1-setup.js] ${response.status}エラー - 再試行します`);
       lastError = new Error(`HTTP ${response.status}: ${response.statusText}`);
     } catch (error) {
-      console.error(
+      log.error(
         `[step1-setup.js] fetchWithTokenRefresh エラー (試行${attempt}):`,
         error,
       );
@@ -692,13 +702,13 @@ async function fetchWithTokenRefresh(url, options = {}, maxRetries = 3) {
       // ネットワークエラーの場合は少し待って再試行
       if (attempt < maxRetries) {
         const waitTime = 1000 * attempt;
-        console.log(`[step1-setup.js] ${waitTime}ms待機後に再試行`);
+        log.debug(`[step1-setup.js] ${waitTime}ms待機後に再試行`);
         await new Promise((resolve) => setTimeout(resolve, waitTime));
       }
     }
   }
 
-  console.error(`[step1-setup.js] 最大試行回数に達しました: ${maxRetries}`);
+  log.error(`[step1-setup.js] 最大試行回数に達しました: ${maxRetries}`);
   throw lastError || new Error("最大試行回数に達しました");
 }
 
@@ -706,9 +716,9 @@ async function fetchWithTokenRefresh(url, options = {}, maxRetries = 3) {
 // 1-4: スプレッドシートから特殊行を検索
 // ========================================
 async function findSpecialRows() {
-  console.log("========================================");
-  console.log("[step1-setup.js→Step1-4] 🚀 特殊行の検索開始");
-  console.log("========================================");
+  log.debug("========================================");
+  log.debug("[step1-setup.js→Step1-4] 🚀 特殊行の検索開始");
+  log.debug("========================================");
 
   // DEBUG情報削除
 
@@ -727,7 +737,7 @@ async function findSpecialRows() {
       // spreadsheetUrlが設定されている場合はそこからIDとGIDを抽出
       if (!spreadsheetId && window.globalState.spreadsheetUrl) {
         const spreadsheetUrl = window.globalState.spreadsheetUrl;
-        console.log(
+        log.debug(
           `[step1-setup.js] [Step 1-4] globalStateからURL取得: ${spreadsheetUrl}`,
         );
 
@@ -747,19 +757,19 @@ async function findSpecialRows() {
         window.globalState.gid = gid;
       }
 
-      console.log("[step1-setup.js] [Step 1-4] ✅ globalStateから取得:");
-      console.log(`  - スプレッドシートID: ${spreadsheetId}`);
-      console.log(`  - GID: ${gid}`);
+      log.debug("[step1-setup.js] [Step 1-4] ✅ globalStateから取得:");
+      log.debug(`  - スプレッドシートID: ${spreadsheetId}`);
+      log.debug(`  - GID: ${gid}`);
     }
 
     // スプレッドシートURLが取得できない場合、詳細なエラーメッセージを表示
     if (!spreadsheetId) {
-      console.error("[step1-setup.js] [Step 1-4] スプレッドシートID未設定:");
-      console.error(
+      log.error("[step1-setup.js] [Step 1-4] スプレッドシートID未設定:");
+      log.error(
         "  - globalState.spreadsheetId:",
         window.globalState?.spreadsheetId,
       );
-      console.error(
+      log.error(
         "  - globalState.spreadsheetUrl:",
         window.globalState?.spreadsheetUrl,
       );
@@ -772,7 +782,7 @@ async function findSpecialRows() {
     // シート名の推測（GIDから）
     const sheetName = gid === "0" ? "シート1" : `シート${gid}`;
 
-    console.log(
+    log.debug(
       `[step1-setup.js] [Step 1-4] 抽出完了: ID=${spreadsheetId}, GID=${gid}, シート=${sheetName}`,
     );
 
@@ -784,7 +794,7 @@ async function findSpecialRows() {
 
     // 1-4-1: 全データ一括取得（初期設定用キャッシュ作成）
     const targetUrl = `${window.globalState.sheetsApiBase}/${spreadsheetId}/values/A1:CZ100`;
-    console.log("[step1-setup.js] [Step 1-4-1] 全データ取得開始 (A1:CZ100)");
+    log.debug("[step1-setup.js] [Step 1-4-1] 全データ取得開始 (A1:CZ100)");
 
     const startTime = Date.now();
     // API呼び出し開始
@@ -796,13 +806,13 @@ async function findSpecialRows() {
     // API呼び出し完了
     const responseTime = Date.now() - startTime;
 
-    console.log(
+    log.debug(
       `[step1-setup.js] API応答: ${response.status} (${responseTime}ms)`,
     );
 
     if (!response.ok) {
       const error = await response.text();
-      console.error(
+      log.error(
         `[step1-setup.js] APIエラー: ${response.status} - ${error}`,
       );
 
@@ -826,7 +836,7 @@ async function findSpecialRows() {
 
     // 初期設定用データをキャッシュ
     window.globalState.initialSheetData = allSheetData;
-    console.log(`[step1-setup.js] ✅ データ取得完了: ${allSheetData.length}行`);
+    log.debug(`[step1-setup.js] ✅ データ取得完了: ${allSheetData.length}行`);
 
     // A列データを抽出
     const columnA = allSheetData.map((row) => [row[0] || ""]);
@@ -859,7 +869,7 @@ async function findSpecialRows() {
       for (const [keyword, varName] of Object.entries(searchKeywords)) {
         if (cellValue.includes(keyword) && !specialRows[varName]) {
           specialRows[varName] = index + 1; // 1ベースの行番号
-          console.log(
+          log.debug(
             `[step1-setup.js] [Step 1-4-2] ✅ ${keyword}行 検出: ${index + 1}行目`,
           );
         }
@@ -871,7 +881,7 @@ async function findSpecialRows() {
       throw new Error("必須の特殊行（メニュー行、AI行）が見つかりません");
     }
 
-    console.log(
+    log.debug(
       `[step1-setup.js] [Step 1-4-2] ✅ 特殊行検索結果: メニュー:${specialRows.menuRow}行目 | 列制御:${specialRows.controlRow}行目 | AI:${specialRows.aiRow}行目 | モデル:${specialRows.modelRow}行目 | 機能:${specialRows.functionRow}行目 | 1:${specialRows.dataStartRow}行目`,
     );
 
@@ -888,26 +898,26 @@ async function findSpecialRows() {
       }
     });
 
-    console.log(`[step1-setup.js] [Step 1-4-3] 検出結果サマリー:`);
-    console.log(`  - 発見: ${foundRows.join(", ")}`);
+    log.debug(`[step1-setup.js] [Step 1-4-3] 検出結果サマリー:`);
+    log.debug(`  - 発見: ${foundRows.join(", ")}`);
 
     if (missingRows.length > 0) {
-      console.warn(
+      log.warn(
         `[step1-setup.js] [Step 1-4-3] ⚠️ 未検出の特殊行: ${missingRows.join(", ")}`,
       );
-      console.warn("  - 注: 一部の行は任意のため、処理は継続します");
+      log.warn("  - 注: 一部の行は任意のため、処理は継続します");
     }
 
     window.globalState.specialRows = specialRows;
-    console.log("[step1-setup.js] [Step 1-4] ✅ 特殊行検索完了");
-    console.log("最終結果:", specialRows);
+    log.debug("[step1-setup.js] [Step 1-4] ✅ 特殊行検索完了");
+    log.debug("最終結果:", specialRows);
 
     return specialRows;
   } catch (error) {
-    console.error("[step1-setup.js] [Step 1-4-1] ❌ A列取得エラー詳細:");
-    console.error(`  - エラー名: ${error.name}`);
-    console.error(`  - メッセージ: ${error.message}`);
-    console.error(`  - スタック: ${error.stack}`);
+    log.error("[step1-setup.js] [Step 1-4-1] ❌ A列取得エラー詳細:");
+    log.error(`  - エラー名: ${error.name}`);
+    log.error(`  - メッセージ: ${error.message}`);
+    log.error(`  - スタック: ${error.stack}`);
     throw error;
   }
 }
@@ -916,31 +926,31 @@ async function findSpecialRows() {
 // 1-5. 列構造の自動セットアップ
 // ========================================
 async function setupColumnStructure() {
-  console.log("========");
-  console.log("[step1-setup.js→Step1-5] 列構造の自動セットアップ開始");
-  console.log("========");
+  log.debug("========");
+  log.debug("[step1-setup.js→Step1-5] 列構造の自動セットアップ開始");
+  log.debug("========");
 
   try {
     // 1-5-0. シートIDの取得
     const spreadsheetId = window.globalState.spreadsheetId;
     const gid = window.globalState.gid || "0";
     const sheetId = parseInt(gid);
-    console.log(`[step1-setup.js] [Step 1-5-0] シート情報:`);
-    console.log(`  - スプレッドシートID: ${spreadsheetId}`);
-    console.log(`  - シートID (GID): ${sheetId}`);
+    log.debug(`[step1-setup.js] [Step 1-5-0] シート情報:`);
+    log.debug(`  - スプレッドシートID: ${spreadsheetId}`);
+    log.debug(`  - シートID (GID): ${sheetId}`);
 
     // メニュー行番号を取得
     const menuRowNumber = window.globalState.specialRows?.menuRow || 3;
-    console.log(
+    log.debug(
       `[step1-setup.js] [Step 1-5-0] メニュー行: ${menuRowNumber}行目`,
     );
 
     // 1-5-1. プロンプト列の検出
-    console.log("[step1-setup.js] [Step 1-5-1] プロンプト列を検出中...");
+    log.debug("[step1-setup.js] [Step 1-5-1] プロンプト列を検出中...");
 
     // メニュー行データを取得
     if (!window.globalState.initialSheetData) {
-      console.error(
+      log.error(
         "[step1-setup.js] [Step 1-5-1] 初期データキャッシュが見つかりません",
       );
       return false;
@@ -948,7 +958,7 @@ async function setupColumnStructure() {
 
     const headerRow =
       window.globalState.initialSheetData[menuRowNumber - 1] || [];
-    console.log(
+    log.debug(
       `[step1-setup.js] [Step 1-5-1] ✅ メニュー行取得: ${headerRow.length}列`,
     );
 
@@ -965,24 +975,24 @@ async function setupColumnStructure() {
       }
     });
 
-    console.log(
+    log.debug(
       `[step1-setup.js] [Step 1-5-1] ✅ プロンプト列検出結果: ${promptColumns.length}列`,
     );
 
     if (promptColumns.length === 0) {
-      console.log(
+      log.debug(
         "[step1-setup.js] [Step 1-5-1] プロンプト列が見つかりません。列追加をスキップします。",
       );
       return true;
     }
 
     // 1-5-2. 必要な列の確認と追加
-    console.log("[step1-setup.js] [Step 1-5-2] 必要な列の確認開始...");
+    log.debug("[step1-setup.js] [Step 1-5-2] 必要な列の確認開始...");
 
     // AI行を取得して3種類AIかチェック
     const aiRowNumber = window.globalState.specialRows?.aiRow || 5;
     const aiRow = window.globalState.initialSheetData[aiRowNumber - 1] || [];
-    console.log(`[step1-setup.js] [Step 1-5-2] ✅ AI行取得: ${aiRow.length}列`);
+    log.debug(`[step1-setup.js] [Step 1-5-2] ✅ AI行取得: ${aiRow.length}列`);
 
     const columnsToAdd = [];
 
@@ -1038,7 +1048,7 @@ async function setupColumnStructure() {
           name: "ログ",
           type: "before",
         });
-        console.log(`  - "ログ"列の追加が必要（${group.column}列の前）`);
+        log.debug(`  - "ログ"列の追加が必要（${group.column}列の前）`);
       }
 
       if (is3TypeAI) {
@@ -1049,7 +1059,7 @@ async function setupColumnStructure() {
           headerRow[answerIndex] === "回答"
         ) {
           // 削除はbatchUpdateで行うため、ここでは記録のみ
-          console.log(
+          log.debug(
             `  - "回答"列の削除が必要（${indexToColumn(answerIndex)}列）`,
           );
         }
@@ -1068,7 +1078,7 @@ async function setupColumnStructure() {
               type: "after",
               is3Type: true,
             });
-            console.log(`  - "${answerHeaders[i]}"列の追加が必要`);
+            log.debug(`  - "${answerHeaders[i]}"列の追加が必要`);
           }
         }
       } else {
@@ -1085,18 +1095,18 @@ async function setupColumnStructure() {
             name: "回答",
             type: "after",
           });
-          console.log(`  - "回答"列の追加が必要（最後のプロンプトの後）`);
+          log.debug(`  - "回答"列の追加が必要（最後のプロンプトの後）`);
         }
       }
     }
 
     if (columnsToAdd.length === 0) {
-      console.log("[step1-setup.js] [Step 1-5-2] ✅ 必要な列は既に存在します");
+      log.debug("[step1-setup.js] [Step 1-5-2] ✅ 必要な列は既に存在します");
       return true;
     }
 
     // 1-5-3. 列追加の実行
-    console.log(
+    log.debug(
       `[step1-setup.js] [Step 1-5-3] ${columnsToAdd.length}列を追加中...`,
     );
 
@@ -1104,13 +1114,13 @@ async function setupColumnStructure() {
     columnsToAdd.sort((a, b) => b.position - a.position);
 
     for (const col of columnsToAdd) {
-      console.log(
+      log.debug(
         `[step1-setup.js] [Step 1-5-3] ${indexToColumn(col.position)}位置に"${col.name}"列を追加中...`,
       );
 
       const success = await insertColumn(spreadsheetId, sheetId, col.position);
       if (!success) {
-        console.error(
+        log.error(
           `[step1-setup.js] [Step 1-5-3] ❌ 列追加失敗: ${col.name}`,
         );
         continue;
@@ -1118,7 +1128,7 @@ async function setupColumnStructure() {
 
       // 1-5-4. 列ヘッダーの設定（メニュー行に設定）
       const menuRowNumber = window.globalState.specialRows?.menuRow || 3;
-      console.log(
+      log.debug(
         `[step1-setup.js] [Step 1-5-4] ヘッダー設定中: ${indexToColumn(col.position)}${menuRowNumber} = "${col.name}"`,
       );
 
@@ -1134,25 +1144,25 @@ async function setupColumnStructure() {
       });
 
       if (headerResponse.ok) {
-        console.log(
+        log.debug(
           `[step1-setup.js] [Step 1-5-4] ✅ ヘッダー設定成功: ${col.name}`,
         );
       } else {
-        console.error(
+        log.error(
           `[step1-setup.js] [Step 1-5-4] ⚠️ ヘッダー設定失敗: ${col.name}`,
         );
       }
     }
 
-    console.log("[step1-setup.js] [Step 1-5] ✅ 列構造の自動セットアップ完了");
+    log.debug("[step1-setup.js] [Step 1-5] ✅ 列構造の自動セットアップ完了");
     return true;
   } catch (error) {
-    console.error(
+    log.error(
       "[step1-setup.js] [Step 1-5] ❌ 列構造セットアップエラー:",
       error,
     );
-    console.error("  - エラー詳細:", error.message);
-    console.error("  - スタック:", error.stack);
+    log.error("  - エラー詳細:", error.message);
+    log.error("  - スタック:", error.stack);
     return false;
   }
 }
@@ -1161,7 +1171,7 @@ async function setupColumnStructure() {
 // 1-6. Google Sheets APIのバッチ更新で列を挿入
 // ========================================
 async function insertColumn(spreadsheetId, sheetId, columnIndex) {
-  console.log(
+  log.debug(
     `[step1-setup.js] [Step 1-5-6] 列挿入API呼び出し: インデックス${columnIndex}`,
   );
 
@@ -1184,9 +1194,9 @@ async function insertColumn(spreadsheetId, sheetId, columnIndex) {
   };
 
   try {
-    console.log("[step1-setup.js] [Step 1-5-6] batchUpdate実行中...");
-    console.log(`  - URL: ${batchUpdateUrl}`);
-    console.log(
+    log.debug("[step1-setup.js] [Step 1-5-6] batchUpdate実行中...");
+    log.debug(`  - URL: ${batchUpdateUrl}`);
+    log.debug(
       `  - 挿入位置: ${columnIndex} (${indexToColumn(columnIndex)}列)`,
     );
 
@@ -1198,7 +1208,7 @@ async function insertColumn(spreadsheetId, sheetId, columnIndex) {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(
+      log.error(
         `[step1-setup.js] [Step 1-5-6] ❌ 列挿入エラー:`,
         errorText,
       );
@@ -1206,12 +1216,12 @@ async function insertColumn(spreadsheetId, sheetId, columnIndex) {
     }
 
     const result = await response.json();
-    console.log("[step1-setup.js] [Step 1-5-6] ✅ 列挿入成功");
+    log.debug("[step1-setup.js] [Step 1-5-6] ✅ 列挿入成功");
     // レスポンス取得
 
     return true;
   } catch (error) {
-    console.error(`[step1-setup.js] [Step 1-5-6] ❌ 列挿入例外:`, error);
+    log.error(`[step1-setup.js] [Step 1-5-6] ❌ 列挿入例外:`, error);
     return false;
   }
 }
@@ -1245,10 +1255,10 @@ function columnToIndex(column) {
 async function executeStep1(spreadsheetUrl) {
   // 関数呼び出し追跡のためのユニークID
   const callId = `CALL-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  console.log("＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝");
-  console.log(`🆔 [CALL TRACKER] executeStep1 呼び出し開始 - ID: ${callId}`);
-  console.log("＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝");
-  console.log("[step1-setup.js] ステップ1: 初期設定 開始");
+  log.debug("＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝");
+  log.debug(`🆔 [CALL TRACKER] executeStep1 呼び出し開始 - ID: ${callId}`);
+  log.debug("＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝");
+  log.debug("[step1-setup.js] ステップ1: 初期設定 開始");
 
   // 呼び出し情報記録済み
 
@@ -1261,11 +1271,11 @@ async function executeStep1(spreadsheetUrl) {
     // スプレッドシートURLをglobalStateに設定
     if (spreadsheetUrl) {
       window.globalState.spreadsheetUrl = spreadsheetUrl;
-      console.log(
+      log.debug(
         `[step1-setup.js] ✅ スプレッドシートURLをglobalStateに設定: ${spreadsheetUrl}`,
       );
     } else {
-      console.warn(
+      log.warn(
         "[step1-setup.js] ⚠️ スプレッドシートURLが提供されていません",
       );
     }
@@ -1297,14 +1307,14 @@ async function executeStep1(spreadsheetUrl) {
     // 1-5: 列構造の自動セットアップ
     const columnResult = await setupColumnStructure();
     if (!columnResult) {
-      console.warn(
+      log.warn(
         "[step1-setup.js] [Step 1-5] ⚠️ 列構造セットアップに一部失敗しましたが、処理を継続します",
       );
     }
 
-    console.log("＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝");
-    console.log("[step1-setup.js] ✅ ステップ1: 初期設定 完了");
-    console.log("＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝");
+    log.debug("＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝");
+    log.debug("[step1-setup.js] ✅ ステップ1: 初期設定 完了");
+    log.debug("＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝");
 
     const resultSummary = {
       インターネット接続: connectionResult.connected ? "✅" : "❌",
@@ -1314,24 +1324,24 @@ async function executeStep1(spreadsheetUrl) {
       列構造設定: columnResult ? "✅" : "⚠️",
     };
 
-    console.log("[step1-setup.js] 初期設定サマリー:");
+    log.debug("[step1-setup.js] 初期設定サマリー:");
     Object.entries(resultSummary).forEach(([key, value]) => {
-      console.log(`  - ${key}: ${value}`);
+      log.debug(`  - ${key}: ${value}`);
     });
 
-    console.log("[step1-setup.js] globalState最終状態:");
+    log.debug("[step1-setup.js] globalState最終状態:");
     // globalState情報: 認証済み, スプレッドシートID, 特殊行情報
 
-    console.log(`[step1-setup.js] ✅ globalState準備完了:`, window.globalState);
+    log.debug(`[step1-setup.js] ✅ globalState準備完了:`, window.globalState);
 
     return {
       success: true,
       globalState: window.globalState,
     };
   } catch (error) {
-    console.error("[step1-setup.js] ❌ ステップ1 エラー:", error);
-    console.error("  - エラー詳細:", error.message);
-    console.error("  - スタック:", error.stack);
+    log.error("[step1-setup.js] ❌ ステップ1 エラー:", error);
+    log.error("  - エラー詳細:", error.message);
+    log.error("  - スタック:", error.stack);
     return {
       success: false,
       error: error.message,
@@ -1358,41 +1368,41 @@ if (typeof window !== "undefined") {
 // 全ステップを制御するメインエントリーポイント
 // ========================================
 async function executeAllSteps() {
-  console.log("========================================");
-  console.log("🚀 [step1-setup.js] 全ステップ実行開始");
-  console.log("========================================");
+  log.debug("========================================");
+  log.debug("🚀 [step1-setup.js] 全ステップ実行開始");
+  log.debug("========================================");
 
   try {
     // Step 1: 初期設定
-    console.log("\n📋 Step 1: 初期設定を実行中...");
+    log.debug("\n📋 Step 1: 初期設定を実行中...");
     const step1Result = await executeStep1();
 
     if (!step1Result || !step1Result.success) {
-      console.error("❌ Step 1 失敗");
+      log.error("❌ Step 1 失敗");
       return { success: false, step: 1 };
     }
 
     // Step 2: タスクグループ作成
     if (window.executeStep2) {
-      console.log("\n📋 Step 2: タスクグループ作成中...");
+      log.debug("\n📋 Step 2: タスクグループ作成中...");
       await window.executeStep2();
     }
 
     // Step 3: メインループ（全グループ処理）
     // 旧 executeStep5 を executeStep3 として呼び出し
     if (window.executeStep3 || window.executeStep5) {
-      console.log("\n📋 Step 3: 全グループ処理開始...");
+      log.debug("\n📋 Step 3: 全グループ処理開始...");
       const executeFunc = window.executeStep3 || window.executeStep5;
       await executeFunc();
     }
 
-    console.log("\n========================================");
-    console.log("✅ [step1-setup.js] 全ステップ完了");
-    console.log("========================================");
+    log.debug("\n========================================");
+    log.debug("✅ [step1-setup.js] 全ステップ完了");
+    log.debug("========================================");
 
     return { success: true };
   } catch (error) {
-    console.error("❌ [step1-setup.js] エラー発生:", error);
+    log.error("❌ [step1-setup.js] エラー発生:", error);
     return { success: false, error: error.message };
   }
 }
@@ -1410,5 +1420,5 @@ if (typeof window !== "undefined") {
   window.fetchWithTokenRefresh = fetchWithTokenRefresh;
 }
 
-console.log("[step1-setup.js] ✅ Step1関数定義完了（全体制御機能付き）");
-console.log("[step1-setup.js] ✅ トークンリフレッシュ機能追加完了");
+log.debug("[step1-setup.js] ✅ Step1関数定義完了（全体制御機能付き）");
+log.debug("[step1-setup.js] ✅ トークンリフレッシュ機能追加完了");

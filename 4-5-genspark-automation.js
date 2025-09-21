@@ -1,3 +1,13 @@
+// ログレベル制御
+const LOG_LEVEL = { ERROR: 1, WARN: 2, INFO: 3, DEBUG: 4 };
+const CURRENT_LOG_LEVEL = LOG_LEVEL.INFO;
+const log = {
+  error: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.ERROR && log.error(...args),
+  warn: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.WARN && log.warn(...args),
+  info: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.INFO && log.debug(...args),
+  debug: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.DEBUG && log.debug(...args)
+};
+
 /**
  * @fileoverview Genspark自動化V2 - 統一アーキテクチャ実装
  * Version: 2.1.0
@@ -241,7 +251,7 @@
           retryCount++;
           this.metrics.totalAttempts++;
 
-          console.log(
+          log.debug(
             `🔄 [Genspark-Retry] ${actionName} 試行 ${retryCount}/20`,
           );
 
@@ -251,7 +261,7 @@
           if (isSuccess(lastResult)) {
             this.metrics.successfulAttempts++;
             this.consecutiveErrorCount = 0; // エラーカウントリセット
-            console.log(
+            log.debug(
               `✅ [Genspark-Retry] ${actionName} 成功（${retryCount}回目）`,
             );
             return {
@@ -271,7 +281,7 @@
           // エラー履歴管理
           this.addErrorToHistory(errorType, error.message);
 
-          console.error(
+          log.error(
             `❌ [Genspark-Retry] ${actionName} エラー (${retryCount}回目):`,
             {
               errorType,
@@ -320,7 +330,7 @@
       }
 
       // 全リトライ失敗
-      console.error(`❌ [Genspark-Retry] ${actionName} 全リトライ失敗`);
+      log.error(`❌ [Genspark-Retry] ${actionName} 全リトライ失敗`);
       return {
         success: false,
         result: lastResult,
@@ -336,7 +346,7 @@
     async executeEscalation(level, context) {
       const { retryCount, errorType, taskData } = context;
 
-      console.log(
+      log.debug(
         `🔄 [Genspark-Escalation] ${level} 実行開始 (${retryCount}回目)`,
       );
 
@@ -347,13 +357,13 @@
 
         case "MODERATE":
           // ページリフレッシュ
-          console.log(`🔄 [Genspark-Escalation] ページリフレッシュ実行`);
+          log.debug(`🔄 [Genspark-Escalation] ページリフレッシュ実行`);
           location.reload();
           return { success: false, needsWait: true }; // リロード後は待機が必要
 
         case "HEAVY_RESET":
           // 新規ウィンドウ作成
-          console.log(`🔄 [Genspark-Escalation] 新規ウィンドウ作成`);
+          log.debug(`🔄 [Genspark-Escalation] 新規ウィンドウ作成`);
           return await this.performNewWindowRetry(taskData, {
             errorType,
             retryCount,
@@ -384,7 +394,7 @@
           },
           (response) => {
             if (chrome.runtime.lastError) {
-              console.warn(
+              log.warn(
                 "[4-5-genspark] Runtime error in performNewWindowRetry:",
                 chrome.runtime.lastError.message,
               );
@@ -417,7 +427,7 @@
 
       if (delay > 0) {
         const delayMinutes = Math.round((delay / 60000) * 10) / 10;
-        console.log(
+        log.debug(
           `⏳ [Genspark-Wait] ${level} - ${delayMinutes}分後にリトライします...`,
         );
         await this.delay(delay);
@@ -586,9 +596,9 @@
 
     switch (level) {
       case "ERROR":
-        console.error(`${prefix} ❌ ${message}`, logData);
+        log.error(`${prefix} ❌ ${message}`, logData);
         if (context.error) {
-          console.error(`${prefix} 📋 エラー詳細:`, {
+          log.error(`${prefix} 📋 エラー詳細:`, {
             errorName: context.error.name,
             errorMessage: context.error.message,
             errorStack: context.error.stack,
@@ -598,13 +608,13 @@
         }
         break;
       case "SUCCESS":
-        console.log(`${prefix} ✅ ${message}`, logData);
+        log.debug(`${prefix} ✅ ${message}`, logData);
         break;
       case "WARNING":
-        console.warn(`${prefix} ⚠️ ${message}`, logData);
+        log.warn(`${prefix} ⚠️ ${message}`, logData);
         break;
       default:
-        console.log(`${prefix} ℹ️ ${message}`, logData);
+        log.debug(`${prefix} ℹ️ ${message}`, logData);
     }
   }
 

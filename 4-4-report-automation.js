@@ -1,3 +1,13 @@
+// ログレベル制御
+const LOG_LEVEL = { ERROR: 1, WARN: 2, INFO: 3, DEBUG: 4 };
+const CURRENT_LOG_LEVEL = LOG_LEVEL.INFO;
+const log = {
+  error: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.ERROR && log.error(...args),
+  warn: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.WARN && log.warn(...args),
+  info: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.INFO && log.debug(...args),
+  debug: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.DEBUG && log.debug(...args)
+};
+
 /**
  * @fileoverview レポート自動化 - 統一アーキテクチャ実装
  * Version: 2.1.0
@@ -137,10 +147,10 @@
 
     switch (level) {
       case "ERROR":
-        console.error(`${prefix} ❌ ${message}`, logData);
+        log.error(`${prefix} ❌ ${message}`, logData);
         // エラーの場合はコンテキスト情報も追加で出力
         if (context.error) {
-          console.error(`${prefix} 📋 エラー詳細:`, {
+          log.error(`${prefix} 📋 エラー詳細:`, {
             errorName: context.error.name,
             errorMessage: context.error.message,
             errorStack: context.error.stack,
@@ -150,13 +160,13 @@
         }
         break;
       case "SUCCESS":
-        console.log(`${prefix} ✅ ${message}`, logData);
+        log.debug(`${prefix} ✅ ${message}`, logData);
         break;
       case "WARNING":
-        console.warn(`${prefix} ⚠️ ${message}`, logData);
+        log.warn(`${prefix} ⚠️ ${message}`, logData);
         break;
       default:
-        console.log(`${prefix} ℹ️ ${message}`, logData);
+        log.debug(`${prefix} ℹ️ ${message}`, logData);
     }
   }
 
@@ -272,7 +282,7 @@
             },
             (response) => {
               if (chrome.runtime.lastError) {
-                console.warn(
+                log.warn(
                   "[4-4-report-automation.js] レポート作成通信エラー:",
                   chrome.runtime.lastError.message,
                 );

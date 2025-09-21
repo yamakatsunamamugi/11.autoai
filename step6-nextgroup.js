@@ -1,3 +1,13 @@
+// ログレベル制御
+const LOG_LEVEL = { ERROR: 1, WARN: 2, INFO: 3, DEBUG: 4 };
+const CURRENT_LOG_LEVEL = LOG_LEVEL.INFO;
+const log = {
+  error: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.ERROR && log.error(...args),
+  warn: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.WARN && log.warn(...args),
+  info: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.INFO && log.debug(...args),
+  debug: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.DEBUG && log.debug(...args)
+};
+
 /**
  * @fileoverview ステップ6: 次のタスクグループへの移行と終了処理
  *
@@ -63,8 +73,8 @@ function checkNextGroup() {
   const processedGroups = window.globalState?.processedGroups || [];
   const currentIndex = window.globalState?.currentGroupIndex || 0;
 
-  console.log("🔄 [step6-nextgroup.js] ====== Step 6 開始 ======");
-  console.log("[step6-nextgroup.js→Step6-1] 次グループの確認", {
+  log.debug("🔄 [step6-nextgroup.js] ====== Step 6 開始 ======");
+  log.debug("[step6-nextgroup.js→Step6-1] 次グループの確認", {
     現在の状態: {
       グループ数: taskGroups.length,
       現在インデックス: currentIndex,
@@ -81,11 +91,11 @@ function checkNextGroup() {
   // ========================================
   // Step 6-1-1: 現在のグループ番号を取得
   // ========================================
-  console.log("[step6-nextgroup.js→Step6-1-1] 現在のグループ番号を取得");
+  log.debug("[step6-nextgroup.js→Step6-1-1] 現在のグループ番号を取得");
 
   // データ検証（防御的プログラミング）
   if (!Array.isArray(taskGroups)) {
-    console.error(
+    log.error(
       "[step6-nextgroup.js] [Step 6-1-1] エラー: taskGroupsが不正",
       {
         taskGroups: taskGroups,
@@ -96,7 +106,7 @@ function checkNextGroup() {
   }
 
   const totalGroups = taskGroups.length;
-  console.log(
+  log.debug(
     `[step6-nextgroup.js] [Step 6-1-1] 現在のグループ番号: ${currentIndex + 1}/${totalGroups}`,
     {
       インデックス: currentIndex,
@@ -108,14 +118,14 @@ function checkNextGroup() {
   // ========================================
   // Step 6-1-2: 次のグループの存在確認
   // ========================================
-  console.log("[step6-nextgroup.js→Step6-1-2] 次のグループの存在確認");
+  log.debug("[step6-nextgroup.js→Step6-1-2] 次のグループの存在確認");
 
   // タスクグループ配列を確認
   if (currentIndex + 1 < totalGroups) {
     const nextGroup = taskGroups[currentIndex + 1];
 
     if (!nextGroup) {
-      console.error(
+      log.error(
         "[step6-nextgroup.js] [Step 6-1-2] エラー: 次グループのデータが不正",
         {
           期待インデックス: currentIndex + 1,
@@ -125,7 +135,7 @@ function checkNextGroup() {
       return null;
     }
 
-    console.log("[step6-nextgroup.js] [Step 6-1-2] 次のグループが存在:", {
+    log.debug("[step6-nextgroup.js] [Step 6-1-2] 次のグループが存在:", {
       番号: currentIndex + 2,
       タイプ: nextGroup.taskType || nextGroup.type || "undefined",
       パターン: nextGroup.pattern || "undefined",
@@ -138,7 +148,7 @@ function checkNextGroup() {
     return nextGroup;
   }
 
-  console.log(
+  log.debug(
     "[step6-nextgroup.js] [Step 6-1-2] 次のグループなし（全グループ処理完了）",
     {
       処理済みグループ数: processedGroups.length,
@@ -158,7 +168,7 @@ function checkNextGroup() {
  * @returns {Promise<void>}
  */
 async function processNextGroup(nextGroup) {
-  console.log("[step6-nextgroup.js→Step6-2] 次グループの処理", {
+  log.debug("[step6-nextgroup.js→Step6-2] 次グループの処理", {
     グループ詳細: {
       番号: (window.globalState?.currentGroupIndex || 0) + 2,
       タイプ: nextGroup?.taskType || nextGroup?.type || "undefined",
@@ -177,7 +187,7 @@ async function processNextGroup(nextGroup) {
     // ========================================
     // Step 6-2-1: グループが存在する場合
     // ========================================
-    console.log(
+    log.debug(
       "[step6-nextgroup.js→Step6-2-1] 次のグループが存在する場合の処理",
     );
 
@@ -191,7 +201,7 @@ async function processNextGroup(nextGroup) {
       }
     }
 
-    console.log(
+    log.debug(
       `[step6-nextgroup.js] [Step 6-2-1] グループ番号をインクリメント: ${prevIndex + 1} → ${(window.globalState?.currentGroupIndex || 0) + 1}`,
       {
         前のインデックス: prevIndex,
@@ -208,7 +218,7 @@ async function processNextGroup(nextGroup) {
       Object.values(nextGroup.columns?.answer || {})[0] ||
       "undefined";
 
-    console.log(
+    log.debug(
       `[step6-nextgroup.js] [Step 6-2-1] グループ ${(window.globalState?.currentGroupIndex || 0) + 1} 処理開始:`,
       {
         タイプ: nextGroup.taskType || nextGroup.type,
@@ -223,20 +233,20 @@ async function processNextGroup(nextGroup) {
     );
 
     // 次のグループに移行するだけで、ここでstepを実行しない
-    console.log("[step6-nextgroup.js] [Step 6-2-1] 次のグループに移行設定完了");
+    log.debug("[step6-nextgroup.js] [Step 6-2-1] 次のグループに移行設定完了");
 
     // globalStateを更新して次のグループを設定
     if (typeof window !== "undefined" && window.globalState) {
       // nextIndexは既に上で更新済みなので、currentGroupIndexを使用
       window.globalState.currentGroup = nextGroup;
-      console.log(
+      log.debug(
         `[step6-nextgroup.js] グループ${nextGroup.number}に移行設定完了`,
       );
     }
 
-    console.log("[step6-nextgroup.js] [Step 6-2-1] 次グループ移行完了");
+    log.debug("[step6-nextgroup.js] [Step 6-2-1] 次グループ移行完了");
   } catch (error) {
-    console.error("[step6-nextgroup.js] [Step 6-2-1] 次グループ処理エラー:", {
+    log.error("[step6-nextgroup.js] [Step 6-2-1] 次グループ処理エラー:", {
       エラーメッセージ: error.message,
       スタック: error.stack,
       グループ情報: {
@@ -258,24 +268,24 @@ async function releaseSleepPrevention() {
   const wakeLock = window.globalState?.wakeLock;
   const startTime = window.globalState?.startTime;
 
-  console.log("[step6-nextgroup.js] [Step 6-3-1] スリープ防止の解除", {
+  log.debug("[step6-nextgroup.js] [Step 6-3-1] スリープ防止の解除", {
     wakeLock状態: wakeLock ? "有効" : "無効",
     処理時間: startTime ? `${Date.now() - startTime}ms` : "不明",
   });
 
   try {
     if (wakeLock) {
-      console.log("[step6-nextgroup.js] [Step 6-3-1] Wake Lockをリリース中...");
+      log.debug("[step6-nextgroup.js] [Step 6-3-1] Wake Lockをリリース中...");
       await wakeLock.release();
       if (window.globalState) {
         window.globalState.wakeLock = null;
       }
-      console.log("[step6-nextgroup.js] [Step 6-3-1] Wake Lockリリース完了");
+      log.debug("[step6-nextgroup.js] [Step 6-3-1] Wake Lockリリース完了");
     }
 
-    console.log("[step6-nextgroup.js] [Step 6-3-1] スリープ防止解除完了");
+    log.debug("[step6-nextgroup.js] [Step 6-3-1] スリープ防止解除完了");
   } catch (error) {
-    console.warn("[step6-nextgroup.js] [Step 6-3-1] スリープ防止解除エラー:", {
+    log.warn("[step6-nextgroup.js] [Step 6-3-1] スリープ防止解除エラー:", {
       エラー: error.message,
       wakeLock状態: wakeLock ? "解除失敗" : "既に解除済み",
     });
@@ -291,7 +301,7 @@ function calculateStatistics() {
   const taskGroups = window.globalState?.taskGroups || [];
   const startTime = window.globalState?.startTime || new Date();
 
-  console.log("[step6-nextgroup.js] [Step 6-3-2] 処理統計の集計", {
+  log.debug("[step6-nextgroup.js] [Step 6-3-2] 処理統計の集計", {
     開始時刻: startTime ? new Date(startTime).toISOString() : "不明",
     現在の統計: stats,
   });
@@ -303,7 +313,7 @@ function calculateStatistics() {
   const minutes = Math.floor(duration / 60000);
   const seconds = Math.floor((duration % 60000) / 1000);
 
-  console.log("[step6-nextgroup.js] [Step 6-3-2] 統計集計中...");
+  log.debug("[step6-nextgroup.js] [Step 6-3-2] 統計集計中...");
 
   // 安全な統計値取得
   const totalTasks = stats.totalTasks || 0;
@@ -312,14 +322,14 @@ function calculateStatistics() {
   const completedGroups = stats.completedGroups || 0;
   const retryCount = stats.retryCount || 0;
 
-  console.log(`[step6-nextgroup.js] [Step 6-3-2] 総タスク数: ${totalTasks}件`);
-  console.log(
+  log.debug(`[step6-nextgroup.js] [Step 6-3-2] 総タスク数: ${totalTasks}件`);
+  log.debug(
     `[step6-nextgroup.js] [Step 6-3-2] 成功タスク数: ${successTasks}件`,
   );
-  console.log(
+  log.debug(
     `[step6-nextgroup.js] [Step 6-3-2] 失敗タスク数: ${failedTasks}件`,
   );
-  console.log(
+  log.debug(
     `[step6-nextgroup.js] [Step 6-3-2] 処理時間: ${minutes}分${seconds}秒`,
   );
 
@@ -339,11 +349,11 @@ function calculateStatistics() {
         : "0%",
   };
 
-  console.log("[step6-nextgroup.js] [Step 6-3-2] 統計集計完了:", statistics);
+  log.debug("[step6-nextgroup.js] [Step 6-3-2] 統計集計完了:", statistics);
 
   // エラー率の計算
   if (failedTasks > 0) {
-    console.warn("[step6-nextgroup.js] [Step 6-3-2] 警告: 失敗タスクあり", {
+    log.warn("[step6-nextgroup.js] [Step 6-3-2] 警告: 失敗タスクあり", {
       失敗率:
         totalTasks > 0
           ? Math.round((failedTasks / totalTasks) * 100) + "%"
@@ -360,7 +370,7 @@ function calculateStatistics() {
  * @param {Object} statistics - 統計情報
  */
 function showCompletionMessage(statistics) {
-  console.log("[step6-nextgroup.js] [Step 6-3-3] 完了メッセージの表示", {
+  log.debug("[step6-nextgroup.js] [Step 6-3-3] 完了メッセージの表示", {
     成功率: statistics?.成功率 || "0%",
     処理時間: statistics?.処理時間 || "不明",
     総タスク数: statistics?.総タスク数 || 0,
@@ -387,15 +397,15 @@ function showCompletionMessage(statistics) {
 ================================
 `;
 
-  console.log(message);
+  log.debug(message);
 
   // 処理詳細ログ（安全な配列アクセス）
   const processedGroups = window.globalState?.processedGroups || [];
   if (processedGroups.length > 0) {
-    console.log("\n📋 処理済みグループ詳細:");
+    log.debug("\n📋 処理済みグループ詳細:");
     processedGroups.forEach((item, index) => {
       if (item && item.group) {
-        console.log(
+        log.debug(
           `   ${index + 1}. ${item.group.taskType || item.group.type || "不明"} - ${item.timestamp || "不明"}`,
           {
             グループ番号: item.index || "不明",
@@ -406,14 +416,14 @@ function showCompletionMessage(statistics) {
       }
     });
   } else {
-    console.warn(
+    log.warn(
       "[step6-nextgroup.js] [Step 6-3-3] 警告: 処理済みグループがありません",
     );
   }
 
   // エラーがある場合の追加メッセージ
   if ((statistics?.失敗タスク数 || 0) > 0) {
-    console.warn("\n⚠️ 一部のタスクが失敗しました。ログを確認してください。");
+    log.warn("\n⚠️ 一部のタスクが失敗しました。ログを確認してください。");
   }
 
   return message;
@@ -428,7 +438,7 @@ async function performShutdown() {
   const taskGroups = window.globalState?.taskGroups || [];
   const startTime = window.globalState?.startTime;
 
-  console.log("[step6-nextgroup.js] [Step 6-3] 終了処理", {
+  log.debug("[step6-nextgroup.js] [Step 6-3] 終了処理", {
     処理グループ数: processedGroups.length,
     総グループ数: taskGroups.length,
     開始時刻: startTime ? new Date(startTime).toISOString() : "不明",
@@ -451,8 +461,8 @@ async function performShutdown() {
     const message = showCompletionMessage(statistics);
 
     // クリーンアップ処理
-    console.log("[step6-nextgroup.js] [Step 6-3] クリーンアップ処理");
-    console.log("[step6-nextgroup.js] [Step 6-3] 終了処理完了");
+    log.debug("[step6-nextgroup.js] [Step 6-3] クリーンアップ処理");
+    log.debug("[step6-nextgroup.js] [Step 6-3] 終了処理完了");
 
     return {
       success: true,
@@ -460,7 +470,7 @@ async function performShutdown() {
       message,
     };
   } catch (error) {
-    console.error("[step6-nextgroup.js] [Step 6-3] 終了処理エラー:", {
+    log.error("[step6-nextgroup.js] [Step 6-3] 終了処理エラー:", {
       エラーメッセージ: error.message,
       スタック: error.stack,
       最終統計: window.globalState?.stats || {},
@@ -477,10 +487,10 @@ async function performShutdown() {
  * @returns {Promise<Object>} 処理結果
  */
 async function executeStep6(taskGroups = [], currentIndex = 0) {
-  console.log("========================================");
-  console.log("[Step 6] 次のタスクグループへ移行");
-  console.log("========================================");
-  console.log("[Step 6] 入力パラメータ:", {
+  log.debug("========================================");
+  log.debug("[Step 6] 次のタスクグループへ移行");
+  log.debug("========================================");
+  log.debug("[Step 6] 入力パラメータ:", {
     タスクグループ数: Array.isArray(taskGroups) ? taskGroups.length : 0,
     現在のインデックス: currentIndex || 0,
     グループ詳細:
@@ -501,7 +511,7 @@ async function executeStep6(taskGroups = [], currentIndex = 0) {
 
     if (nextGroup) {
       // Step 6-2-1: グループが存在する場合
-      console.log(
+      log.debug(
         "[step6-nextgroup.js] [Step 6-2-1] 次グループが存在 → 処理継続",
       );
       await processNextGroup(nextGroup);
@@ -513,7 +523,7 @@ async function executeStep6(taskGroups = [], currentIndex = 0) {
       };
     } else {
       // Step 6-2-2: すべて完了した場合
-      console.log(
+      log.debug(
         "[step6-nextgroup.js] [Step 6-2-2] すべて完了した場合 → 終了処理へ進む",
       );
 
@@ -526,7 +536,7 @@ async function executeStep6(taskGroups = [], currentIndex = 0) {
       };
     }
   } catch (error) {
-    console.error("[step6-nextgroup.js] [Step 6] エラー発生:", {
+    log.error("[step6-nextgroup.js] [Step 6] エラー発生:", {
       エラーメッセージ: error.message,
       スタック: error.stack,
       現在の状態: {
@@ -543,11 +553,11 @@ async function executeStep6(taskGroups = [], currentIndex = 0) {
     });
 
     // エラー時も終了処理を実行
-    console.log("[Step 6] エラーリカバリー: 終了処理を実行");
+    log.debug("[Step 6] エラーリカバリー: 終了処理を実行");
     try {
       await performShutdown();
     } catch (shutdownError) {
-      console.error("[Step 6] エラーリカバリー失敗:", shutdownError);
+      log.error("[Step 6] エラーリカバリー失敗:", shutdownError);
     }
 
     throw error;
@@ -607,6 +617,6 @@ if (typeof window !== "undefined") {
   window.setWakeLock = setWakeLock;
 }
 
-console.log(
+log.debug(
   "[step6-nextgroup.js] ✅ Step6関数定義完了（復元版 + 防御的プログラミング適用）",
 );
