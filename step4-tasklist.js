@@ -15,7 +15,7 @@ const LOG_LEVEL = {
   ERROR: 1,
   WARN: 2,
   INFO: 3,
-  DEBUG: 4
+  DEBUG: 4,
 };
 
 // 現在のログレベル（INFO以上のみ出力）
@@ -23,34 +23,31 @@ const CURRENT_LOG_LEVEL = LOG_LEVEL.INFO;
 
 // ログユーティリティ
 const log = {
-  error: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.ERROR && console.error(...args),
-  warn: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.WARN && console.warn(...args),
-  info: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.INFO && console.log(...args),
-  debug: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.DEBUG && console.log(...args)
+  error: (...args) =>
+    CURRENT_LOG_LEVEL >= LOG_LEVEL.ERROR && console.error(...args),
+  warn: (...args) =>
+    CURRENT_LOG_LEVEL >= LOG_LEVEL.WARN && console.warn(...args),
+  info: (...args) =>
+    CURRENT_LOG_LEVEL >= LOG_LEVEL.INFO && console.log(...args),
+  debug: (...args) =>
+    CURRENT_LOG_LEVEL >= LOG_LEVEL.DEBUG && console.log(...args),
 };
 
 // 初期化ログ（簡略化）
 log.info("✅ [step4-tasklist.js] 初期化完了");
 
 // グローバルエラーハンドリング
-if (typeof window !== 'undefined') {
+if (typeof window !== "undefined") {
   window.step4FileError = null;
 
   // 未処理エラーの捕捉
-  window.addEventListener('error', function(event) {
-    if (event.filename && event.filename.includes('step4-tasklist.js')) {
-      log.error('❌ [step4-tasklist.js] エラー:', event.error);
-      window.step4FileError = event.error?.message || '未知のエラー';
+  window.addEventListener("error", function (event) {
+    if (event.filename && event.filename.includes("step4-tasklist.js")) {
+      log.error("❌ [step4-tasklist.js] エラー:", event.error);
+      window.step4FileError = event.error?.message || "未知のエラー";
     }
   });
 }
- *
- * 【エラーログ追加箇所】
- * - データ取得エラー
- * - カラム変換エラー
- * - タスク生成エラー
- * - バッチ作成エラー
- */
 
 // ========================================
 // StreamProcessorV2統合: Step内統合版ウィンドウ・タスク管理システム
