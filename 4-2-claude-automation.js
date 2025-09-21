@@ -2,18 +2,18 @@
  * @fileoverview Claude Automation V2 - ステップ実行版
  *
  * 【ステップ構成】
- * Step 4-2-0: 初期化（設定・セレクタ読み込み）
- * Step 4-2-1: ヘルパー関数定義
- * Step 4-2-2: テキスト入力
- * Step 4-2-3: モデル選択（条件付き）
- * Step 4-2-4: 機能選択（条件付き）
- * Step 4-2-5: メッセージ送信
- * Step 4-2-6: 応答待機（通常/Deep Research）
- * Step 4-2-6-5: 「続ける」ボタンチェック（新規追加）
- * Step 4-2-7: テキスト取得
+ * Claude-ステップ0: 初期化（設定・セレクタ読み込み）
+ * Claude-ステップ1: ヘルパー関数定義
+ * Claude-ステップ2: テキスト入力
+ * Claude-ステップ3: モデル選択（条件付き）
+ * Claude-ステップ4: 機能選択（条件付き）
+ * Claude-ステップ5: メッセージ送信
+ * Claude-ステップ6: 応答待機（通常/Deep Research）
+ * Claude-ステップ6-5: 「続ける」ボタンチェック（新規追加）
+ * Claude-ステップ7: テキスト取得
  *
- * @version 3.1.0
- * @updated 2024-12-20 Step 4-2-X番号体系導入、詳細エラーログ強化
+ * @version 3.0.0
+ * @updated 2024-12-16 ステップ番号体系統一、コード整理
  */
 (function () {
   "use strict";
@@ -21,557 +21,12 @@
   const scriptLoadTime = Date.now();
   const loadTimeISO = new Date().toISOString();
 
-  // ========================================
-  // Claude.aiドメイン確認 - 拡張機能UIコンテキストでの実行を防止
-  // ========================================
-  const currentUrl = window.location.href;
-  const currentDomain = window.location.hostname;
-
-  // 拡張機能のUIコンテキストやClaude.ai以外のドメインでの実行を停止
-  if (
-    currentUrl.startsWith("chrome-extension://") ||
-    currentUrl.startsWith("moz-extension://") ||
-    !currentDomain.includes("claude.ai")
-  ) {
-    console.log(
-      `🚫 [Claude Automation] 不正なコンテキストでの実行を検出、処理を停止:`,
-      {
-        currentUrl: currentUrl,
-        currentDomain: currentDomain,
-        isExtensionContext:
-          currentUrl.startsWith("chrome-extension://") ||
-          currentUrl.startsWith("moz-extension://"),
-        isClaudeAI: currentDomain.includes("claude.ai"),
-      },
-    );
-    return; // スクリプト全体の実行を停止
-  }
-
-  console.log(`✅ [Claude Automation] 正しいコンテキストで実行開始:`, {
-    currentUrl: currentUrl,
-    currentDomain: currentDomain,
-    isClaudeAI: currentDomain.includes("claude.ai"),
-  });
-
-  // ========================================
-  // 成功済みClaudeタスク実行ロジック（unused/automations/claude-automation.jsから移植）
-  // ========================================
-
-  /**
-   * 安定したタスク実行関数 - 成功実績あり
-   * @param {Object} taskData タスクデータ
-   */
-  async function executeStableTask(taskData) {
-    ClaudeLogger.info("🚀 [StableTask] 成功実績ロジックでタスク実行開始", {
-      model: taskData.model || "未指定",
-      function: taskData.function || "通常",
-      promptLength: taskData.prompt?.length || taskData.text?.length || 0,
-      hasPrompt: !!(taskData.prompt || taskData.text),
-    });
-
-    ClaudeLogger.info(
-      "✅✅✅ [CRITICAL] executeStableTask が呼び出されました！！！",
-      {
-        timestamp: new Date().toISOString(),
-        taskDataKeys: Object.keys(taskData || {}),
-        prompt: taskData?.prompt
-          ? `${taskData.prompt.substring(0, 50)}...`
-          : "なし",
-        callStack: new Error().stack.split("\n").slice(0, 5).join(" -> "),
-      },
-    );
-
-    // 🔍 [DEBUG] executeStableTask詳細ログ
-    ClaudeLogger.info("🔍 [DEBUG-STABLE-TASK] executeStableTask開始詳細:", {
-      taskDataReceived: !!taskData,
-      taskDataType: typeof taskData,
-      taskDataKeys: taskData ? Object.keys(taskData) : null,
-      prompt: taskData?.prompt
-        ? `${taskData.prompt.substring(0, 100)}...`
-        : "❌ プロンプトなし",
-      text: taskData?.text
-        ? `${taskData.text.substring(0, 100)}...`
-        : "textなし",
-      model: taskData?.model,
-      function: taskData?.function,
-      hasAnyText: !!(taskData?.prompt || taskData?.text),
-      currentUrl: window.location.href,
-      pageTitle: document.title,
-      timestamp: new Date().toISOString(),
-    });
-
-    const taskStartTime = Date.now();
-    let sendTime = Date.now();
-
-    try {
-      // Step 1: テキスト入力（安定版）
-      ClaudeLogger.info("📝 [StableTask] Step 1: テキスト入力開始");
-      const prompt = taskData.prompt || taskData.text || "";
-
-      // 🔍 [DEBUG] プロンプト詳細ログ
-      ClaudeLogger.info("🔍 [DEBUG-STABLE-TASK] プロンプト検証:", {
-        promptFromTaskDataPrompt: taskData?.prompt
-          ? `${taskData.prompt.substring(0, 50)}...`
-          : null,
-        promptFromTaskDataText: taskData?.text
-          ? `${taskData.text.substring(0, 50)}...`
-          : null,
-        finalPrompt: prompt ? `${prompt.substring(0, 50)}...` : null,
-        promptLength: prompt.length,
-        hasPrompt: !!prompt,
-      });
-
-      if (!prompt) {
-        ClaudeLogger.error("🔍 [DEBUG-STABLE-TASK] プロンプトエラー詳細:", {
-          taskData: taskData,
-          taskDataPrompt: taskData?.prompt,
-          taskDataText: taskData?.text,
-          finalPrompt: prompt,
-        });
-        throw new Error("プロンプトが指定されていません");
-      }
-
-      // 入力欄の確実な検索（成功実績セレクタ使用）
-      const textInputSelectors = [
-        'div[contenteditable="true"]',
-        'textarea[placeholder*="Claude"]',
-        "div.ProseMirror",
-        '[data-testid="chat-input"]',
-      ];
-
-      // 🔍 [DEBUG] UI要素検索開始ログ
-      ClaudeLogger.info(
-        "🔍 [DEBUG-STABLE-TASK] UI要素検索開始（waitForElement使用）:",
-        {
-          selectorsToTry: textInputSelectors,
-          currentUrl: window.location.href,
-          pageReadyState: document.readyState,
-          bodyExists: !!document.body,
-          totalElementsInPage: document.querySelectorAll("*").length,
-        },
-      );
-
-      let inputElement = null;
-      for (let i = 0; i < textInputSelectors.length; i++) {
-        const selector = textInputSelectors[i];
-        try {
-          ClaudeLogger.info(
-            `🔍 [DEBUG-STABLE-TASK] セレクタ試行 ${i + 1}/${textInputSelectors.length}: ${selector}`,
-          );
-
-          // waitForElementを使って要素の出現を待つ（最大5秒待機）
-          const element = await waitForElement(selector, 10, 500);
-
-          if (element) {
-            inputElement = element;
-
-            ClaudeLogger.info(
-              `🔍 [DEBUG-STABLE-TASK] セレクタ結果（waitForElement経由）:`,
-              {
-                selector: selector,
-                elementFound: !!inputElement,
-                elementType: inputElement?.tagName,
-                elementId: inputElement?.id,
-                elementClass: inputElement?.className,
-                isVisible: inputElement.offsetParent !== null,
-                isContentEditable: inputElement?.contentEditable,
-                elementPosition: inputElement.getBoundingClientRect(),
-              },
-            );
-
-            ClaudeLogger.info(
-              `✅ [StableTask] 入力欄発見（waitForElement成功）: ${selector}`,
-              {
-                element: {
-                  tagName: inputElement.tagName,
-                  id: inputElement.id,
-                  className: inputElement.className,
-                  contentEditable: inputElement.contentEditable,
-                  placeholder:
-                    inputElement.placeholder ||
-                    inputElement.getAttribute("placeholder"),
-                },
-                waitTime: `${(i + 1) * 500}ms以内`,
-              },
-            );
-            break;
-          }
-        } catch (error) {
-          ClaudeLogger.warn(
-            `⚠️ [StableTask] セレクタエラー（waitForElement）: ${selector}`,
-            error.message,
-          );
-        }
-      }
-
-      if (!inputElement) {
-        // 🔍 [DEBUG] 入力欄検索失敗の詳細ログ
-        ClaudeLogger.error("🔍 [DEBUG-STABLE-TASK] 入力欄検索失敗詳細:", {
-          triedSelectors: textInputSelectors,
-          pageUrl: window.location.href,
-          pageTitle: document.title,
-          pageReadyState: document.readyState,
-          allDivs: document.querySelectorAll("div").length,
-          allTextareas: document.querySelectorAll("textarea").length,
-          allInputs: document.querySelectorAll("input").length,
-          contentEditableDivs: document.querySelectorAll("div[contenteditable]")
-            .length,
-          anyClaudeElements: document.querySelectorAll(
-            '[class*="claude" i], [id*="claude" i]',
-          ).length,
-          bodyHtml: document.body
-            ? document.body.innerHTML.substring(0, 500)
-            : "body not found",
-        });
-        throw new Error("テキスト入力欄が見つかりません");
-      }
-
-      // 🔍 [DEBUG] テキスト入力開始ログ
-      ClaudeLogger.info("🔍 [DEBUG-STABLE-TASK] テキスト入力開始:", {
-        elementFound: !!inputElement,
-        elementTag: inputElement.tagName,
-        elementVisible: inputElement.offsetParent !== null,
-        promptLength: prompt.length,
-        promptPreview: prompt.substring(0, 100) + "...",
-      });
-
-      // 安全なテキスト入力
-      inputElement.focus();
-      await new Promise((resolve) => setTimeout(resolve, 500));
-
-      // 既存テキストをクリア
-      inputElement.innerHTML = "";
-      inputElement.textContent = "";
-
-      // 新しいテキストを設定
-      inputElement.innerHTML = prompt;
-      inputElement.textContent = prompt;
-
-      // 入力イベントを発火
-      inputElement.dispatchEvent(new Event("input", { bubbles: true }));
-      inputElement.dispatchEvent(new Event("change", { bubbles: true }));
-
-      // 🔍 [DEBUG] テキスト入力完了ログ
-      ClaudeLogger.info("🔍 [DEBUG-STABLE-TASK] テキスト入力完了:", {
-        finalContent: inputElement.textContent?.substring(0, 100) + "...",
-        contentLength: inputElement.textContent?.length,
-        htmlContent: inputElement.innerHTML?.substring(0, 100) + "...",
-      });
-
-      ClaudeLogger.info("✅ [StableTask] テキスト入力完了");
-
-      // Step 2: メッセージ送信
-      ClaudeLogger.info("📤 [StableTask] Step 2: メッセージ送信開始");
-      sendTime = Date.now();
-
-      const sendButtonSelectors = [
-        'button[aria-label="チャットメッセージを送信"]',
-        'button[data-testid="send-button"]',
-        'button[type="submit"]',
-        'button[aria-label*="送信"]',
-        'button[aria-label*="Send"]',
-      ];
-
-      // 送信ボタンをwaitForElementで待機
-      ClaudeLogger.info(
-        "🔍 [StableTask] 送信ボタン検索開始（waitForElement使用）",
-      );
-      let sendButton = null;
-
-      // 各セレクタをwaitForElementで試行
-      for (const selector of sendButtonSelectors) {
-        try {
-          ClaudeLogger.info(`🔍 [StableTask] 送信ボタン待機中: ${selector}`);
-          // waitForElementを使って要素の出現を待つ（最大5秒待機）
-          const element = await waitForElement(selector, 10, 500);
-
-          if (element && !element.disabled) {
-            sendButton = element;
-            ClaudeLogger.info(`✅ [StableTask] 送信ボタン発見: ${selector}`, {
-              buttonEnabled: !element.disabled,
-              buttonVisible: element.offsetParent !== null,
-              buttonText: element.textContent,
-            });
-            break;
-          }
-        } catch (error) {
-          ClaudeLogger.warn(
-            `⚠️ [StableTask] ボタンセレクタエラー: ${selector}`,
-            error.message,
-          );
-        }
-      }
-
-      // それでも見つからない場合は、ClaudeRetryManagerでリトライ（後半の成功実装と同様）
-      if (!sendButton) {
-        ClaudeLogger.error(
-          "❌ 送信ボタンが見つかりません - リトライ機構で再試行",
-        );
-
-        // リトライマネージャーがあるか確認
-        if (typeof ClaudeRetryManager !== "undefined") {
-          const retryManager = new ClaudeRetryManager();
-          const retryResult = await retryManager.executeWithRetry({
-            action: async () => {
-              for (const selector of sendButtonSelectors) {
-                const button = await waitForElement(selector, 3, 300);
-                if (button && !button.disabled) {
-                  return { success: true, element: button };
-                }
-              }
-              return { success: false };
-            },
-            maxRetries: 5,
-            actionName: "送信ボタン検索",
-            context: { taskId: taskData?.taskId },
-          });
-
-          if (retryResult.success) {
-            sendButton = retryResult.result.element;
-            ClaudeLogger.info("✅ [StableTask] リトライで送信ボタン発見");
-          }
-        }
-
-        // 最終的に見つからない場合
-        if (!sendButton) {
-          ClaudeLogger.error(
-            "🔍 [StableTask] 送信ボタン検索失敗 - ページ状態:",
-            {
-              pageUrl: window.location.href,
-              pageReadyState: document.readyState,
-              allButtons: document.querySelectorAll("button").length,
-              submitButtons: document.querySelectorAll('button[type="submit"]')
-                .length,
-              disabledButtons:
-                document.querySelectorAll("button[disabled]").length,
-            },
-          );
-          throw new Error(
-            "送信ボタンが見つかりません（waitForElement + リトライ後）",
-          );
-        }
-      }
-
-      sendButton.click();
-      ClaudeLogger.info("📤 [StableTask] メッセージ送信完了");
-
-      // Step 3: 応答待機（安定版）
-      ClaudeLogger.info("⏳ [StableTask] Step 3: 応答待機開始");
-      await waitForStableResponse();
-
-      // Step 4: テキスト取得
-      ClaudeLogger.info("📖 [StableTask] Step 4: テキスト取得開始");
-      const responseText = await extractStableResponse();
-
-      const result = {
-        success: true,
-        text: responseText,
-        response: responseText,
-        sendTime: new Date(sendTime).toISOString(),
-        completedTime: new Date().toISOString(),
-        processingTime: Date.now() - taskStartTime,
-      };
-
-      ClaudeLogger.info("✅ [StableTask] タスク実行完了", {
-        success: result.success,
-        textLength: result.text?.length || 0,
-        processingTime: `${result.processingTime}ms`,
-      });
-
-      return result;
-    } catch (error) {
-      ClaudeLogger.error("❌ [StableTask] タスク実行エラー", {
-        error: error.message,
-        stack: error.stack,
-        processingTime: Date.now() - taskStartTime,
-      });
-
-      return {
-        success: false,
-        error: error.message,
-        processingTime: Date.now() - taskStartTime,
-      };
-    }
-  }
-
-  /**
-   * 応答待機関数（安定版）
-   */
-  async function waitForStableResponse() {
-    const maxWaitTime = 60000; // 60秒
-    const checkInterval = 1000; // 1秒間隔
-    const startTime = Date.now();
-
-    while (Date.now() - startTime < maxWaitTime) {
-      // 停止ボタンの存在チェック（処理中の判定）
-      const stopButton =
-        document.querySelector('button[aria-label="回答を停止"]') ||
-        document.querySelector('button[aria-label*="停止"]') ||
-        document.querySelector('button[aria-label*="Stop"]') ||
-        document.querySelector('[data-testid="stop-button"]');
-
-      if (!stopButton) {
-        // 停止ボタンがない = 応答完了
-        ClaudeLogger.info("✅ [StableTask] 応答完了を検知");
-        return;
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, checkInterval));
-    }
-
-    ClaudeLogger.warn("⚠️ [StableTask] 応答待機タイムアウト");
-  }
-
-  /**
-   * 応答テキスト抽出関数（安定版）
-   */
-  async function extractStableResponse() {
-    const responseSelectors = [
-      ".standard-markdown",
-      '[class*="markdown"]',
-      '[class*="response"]',
-      ".grid-cols-1.grid",
-    ];
-
-    for (const selector of responseSelectors) {
-      try {
-        const elements = document.querySelectorAll(selector);
-        if (elements.length > 0) {
-          const lastElement = elements[elements.length - 1];
-          const text = lastElement.textContent || lastElement.innerText || "";
-          if (text.trim().length > 10) {
-            ClaudeLogger.info(
-              `✅ [StableTask] レスポンステキスト取得: ${selector} (${text.length}文字)`,
-            );
-            return text.trim();
-          }
-        }
-      } catch (error) {
-        ClaudeLogger.warn(
-          `⚠️ [StableTask] レスポンス取得エラー: ${selector}`,
-          error.message,
-        );
-      }
-    }
-
-    ClaudeLogger.warn("⚠️ [StableTask] レスポンステキストが見つかりません");
-    return "";
-  }
-
-  // =======================================
-  // ClaudeLogger - 集中ログ管理システム
-  // =======================================
-  const ClaudeLogger = {
-    logLevel: "INFO", // ERROR, WARN, INFO, DEBUG
-    logLevels: { ERROR: 0, WARN: 1, INFO: 2, DEBUG: 3 },
-    rateLimitMap: new Map(),
-    retryCounters: new Map(),
-
-    setLevel(level) {
-      this.logLevel = level;
-      console.info(`📊 ログレベルを${level}に設定しました`);
-    },
-
-    shouldLog(level) {
-      return this.logLevels[level] <= this.logLevels[this.logLevel];
-    },
-
-    formatMessage(level, message, data = null) {
-      const emoji = { ERROR: "❌", WARN: "⚠️", INFO: "✅", DEBUG: "🔍" }[level];
-      const timestamp = new Date().toLocaleTimeString("ja-JP");
-      return { emoji, timestamp, message, data };
-    },
-
-    error(message, data = null) {
-      if (this.shouldLog("ERROR")) {
-        const formatted = this.formatMessage("ERROR", message, data);
-        console.error(
-          `${formatted.emoji} [${formatted.timestamp}] ${message}`,
-          data || "",
-        );
-      }
-    },
-
-    warn(message, data = null) {
-      if (this.shouldLog("WARN")) {
-        const formatted = this.formatMessage("WARN", message, data);
-        console.warn(
-          `${formatted.emoji} [${formatted.timestamp}] ${message}`,
-          data || "",
-        );
-      }
-    },
-
-    info(message, data = null) {
-      if (this.shouldLog("INFO")) {
-        const formatted = this.formatMessage("INFO", message, data);
-        console.info(
-          `${formatted.emoji} [${formatted.timestamp}] ${message}`,
-          data || "",
-        );
-      }
-    },
-
-    debug(message, data = null) {
-      if (this.shouldLog("DEBUG")) {
-        const formatted = this.formatMessage("DEBUG", message, data);
-        console.info(
-          `${formatted.emoji} [${formatted.timestamp}] ${message}`,
-          data || "",
-        );
-      }
-    },
-
-    // リトライ処理の集約ログ
-    logRetry(operation, attempt, maxAttempts, error = null) {
-      const key = operation;
-      if (attempt === 1) {
-        this.retryCounters.set(key, { start: Date.now(), attempts: [] });
-      }
-
-      const counter = this.retryCounters.get(key);
-      counter.attempts.push({ attempt, error: error?.message });
-
-      if (attempt === maxAttempts) {
-        const duration = Date.now() - counter.start;
-        this.error(
-          `${operation} 失敗 (${maxAttempts}回リトライ, ${duration}ms)`,
-          counter.attempts,
-        );
-        this.retryCounters.delete(key);
-      } else if (this.shouldLog("DEBUG")) {
-        this.debug(`${operation} リトライ ${attempt}/${maxAttempts}`);
-      }
-    },
-
-    // レート制限付きログ（同じメッセージの繰り返しを抑制）
-    logRateLimited(key, message, data = null, intervalMs = 5000) {
-      const now = Date.now();
-      const lastLogged = this.rateLimitMap.get(key);
-
-      if (!lastLogged || now - lastLogged > intervalMs) {
-        this.info(message, data);
-        this.rateLimitMap.set(key, now);
-      }
-    },
-  };
-
-  // グローバルに公開
-  window.ClaudeLogger = ClaudeLogger;
-
-  // デフォルトログレベル設定（本番環境では INFO、開発環境では DEBUG）
-  const isDebugMode =
-    window.location.href.includes("localhost") ||
-    localStorage.getItem("claudeLogLevel") === "DEBUG";
-  ClaudeLogger.setLevel(isDebugMode ? "DEBUG" : "INFO");
-
-  ClaudeLogger.info("Claude Automation V2 初期化開始", {
-    url: window.location.href,
-    既存のClaudeAutomation: typeof window.ClaudeAutomation,
-  });
+  console.log(
+    `🚀 Claude Automation V2 - スクリプトロード開始: ${new Date().toLocaleString("ja-JP")}`,
+  );
 
   // 初期化順序検証ログ
-  ClaudeLogger.info("🔍 [Claude初期化DEBUG] スクリプト初期化状態確認:", {
+  console.log("🔍 [Claude初期化DEBUG] スクリプト初期化状態確認:", {
     スクリプトロード時刻: loadTimeISO,
     タイムスタンプ: scriptLoadTime,
     URL: window.location.href,
@@ -656,28 +111,27 @@
     },
 
     async saveErrorImmediately(error, context = {}) {
-      // エラーログ保存機能は無効化されています
-      // ClaudeLogger.debug('[DEBUG] saveErrorImmediately呼び出し:', error.message);
-      /* try {
-                const timestamp = new Date().toISOString()
-                    .replace(/[:.]/g, '-')
-                    .replace('T', '_')
-                    .slice(0, -5);
+      try {
+        const timestamp = new Date()
+          .toISOString()
+          .replace(/[:.]/g, "-")
+          .replace("T", "_")
+          .slice(0, -5);
 
-                const errorData = {
-                    timestamp: new Date().toISOString(),
-                    type: 'error',
-                    error: {
-                        message: error.message,
-                        stack: error.stack,
-                        name: error.name
-                    },
-                    context,
-                    sessionStart: this.sessionStartTime
-                };
+        const errorData = {
+          timestamp: new Date().toISOString(),
+          type: "error",
+          error: {
+            message: error.message,
+            stack: error.stack,
+            name: error.name,
+          },
+          context,
+          sessionStart: this.sessionStartTime,
+        };
 
-                // エラーレポート生成を無効化
-                const fileName = `11autoai-logs/claude/errors/error-${timestamp}.json`;
+        // エラーレポート生成を無効化
+        /* const fileName = `11autoai-logs/claude/errors/error-${timestamp}.json`;
 
                 // バックグラウンドスクリプトにメッセージを送信
                 if (typeof chrome !== 'undefined' && chrome.runtime) {
@@ -687,16 +141,12 @@
                             fileName,
                             content: JSON.stringify(errorData, null, 2)
                         }
-                    }, (response) => {
-                        if (chrome.runtime.lastError) {
-                            console.warn('[4-2-claude-automation.js] ログファイル送信エラー:', chrome.runtime.lastError.message);
-                        }
                     });
                 }
-                ClaudeLogger.info(`❌ [エラー保存] ${fileName}`);
-            } catch (saveError) {
-                ClaudeLogger.error('[エラー保存失敗]', saveError);
-            } */
+                console.log(`❌ [エラー保存] ${fileName}`); */
+      } catch (saveError) {
+        console.error("[エラー保存失敗]", saveError);
+      }
     },
 
     async saveIntermediate() {
@@ -706,61 +156,61 @@
     async saveToFile() {
       // Claudeレポート生成を無効化
       if (this.logs.length === 0) {
-        ClaudeLogger.info("[LogFileManager] 保存するログがありません");
+        console.log("[LogFileManager] 保存するログがありません");
         return;
       }
 
       // ファイル保存処理を無効化 - コンソールログのみ出力
-      ClaudeLogger.info("[LogFileManager] レポート生成は無効化されています");
-      ClaudeLogger.info(`[LogFileManager] ログ件数: ${this.logs.length}`);
+      console.log("[LogFileManager] レポート生成は無効化されています");
+      console.log(`[LogFileManager] ログ件数: ${this.logs.length}`);
 
       // ログをクリア
       this.logs = [];
       return null;
 
-      // 以下、元のファイル保存処理（無効化）
-      // try {
-      //     const timestamp = new Date().toISOString()
-      //         .replace(/[:.]/g, '-')
-      //         .replace('T', '_')
-      //         .slice(0, -5);
-      //
-      //     const fileName = `claude-log-${timestamp}.json`;
-      //     const filePath = `11autoai-logs/claude/complete/${fileName}`;
-      //
-      //     const logData = {
-      //         sessionStart: this.sessionStartTime,
-      //         sessionEnd: new Date().toISOString(),
-      //         totalLogs: this.logs.length,
-      //         logs: this.logs
-      //     };
-      //
-      //     // 通常ログレポート生成も無効化
-      //     // バックグラウンドスクリプトにメッセージを送信
-      //     if (typeof chrome !== 'undefined' && chrome.runtime) {
-      //         chrome.runtime.sendMessage({
-      //             type: 'DOWNLOAD_LOG_FILE',
-      //             data: {
-      //                 fileName: filePath,
-      //                 content: JSON.stringify(logData, null, 2)
-      //             }
-      //         });
-      //     }
-      //
-      //     ClaudeLogger.info(`✅ [LogFileManager] 最終ログを保存しました: ${fileName}`);
-      //
-      //     // ログをクリア
-      //     this.logs = [];
-      //     return filePath;
-      // } catch (error) {
-      //     ClaudeLogger.error('[LogFileManager] ログ保存エラー:', error);
-      //     throw error;
-      // }
+      /* 以下、元のファイル保存処理（無効化）
+            try {
+                const timestamp = new Date().toISOString()
+                    .replace(/[:.]/g, '-')
+                    .replace('T', '_')
+                    .slice(0, -5);
+
+                const fileName = `claude-log-${timestamp}.json`;
+                const filePath = `11autoai-logs/claude/complete/${fileName}`;
+
+                const logData = {
+                    sessionStart: this.sessionStartTime,
+                    sessionEnd: new Date().toISOString(),
+                    totalLogs: this.logs.length,
+                    logs: this.logs
+                };
+
+                // 通常ログレポート生成も無効化
+                /* // バックグラウンドスクリプトにメッセージを送信
+                if (typeof chrome !== 'undefined' && chrome.runtime) {
+                    chrome.runtime.sendMessage({
+                        type: 'DOWNLOAD_LOG_FILE',
+                        data: {
+                            fileName: filePath,
+                            content: JSON.stringify(logData, null, 2)
+                        }
+                    });
+                } */
+
+      console.log(`✅ [LogFileManager] 最終ログを保存しました: ${fileName}`);
+
+      // ログをクリア
+      this.logs = [];
+      return filePath;
+      /* } catch (error) {
+                console.error('[LogFileManager] ログ保存エラー:', error);
+                throw error;
+            } */
     },
 
     clearCurrentLogs() {
       this.logs = [];
-      ClaudeLogger.info("[LogFileManager] 現在のログをクリアしました");
+      console.log("[LogFileManager] 現在のログをクリアしました");
     },
   };
 
@@ -784,13 +234,13 @@
     // ステップログを記録
     logStep(step, message, data = {}) {
       this.logFileManager.logStep(step, message, data);
-      ClaudeLogger.info(`📝 [ログ] ${step}: ${message}`);
+      console.log(`📝 [ログ] ${step}: ${message}`);
     },
 
     // エラーログを記録（即座にファイル保存）
     async logError(step, error, context = {}) {
       this.logFileManager.logError(step, error, context);
-      ClaudeLogger.error(`❌ [エラーログ] ${step}:`, error);
+      console.error(`❌ [エラーログ] ${step}:`, error);
       // エラーは即座に保存
       await this.logFileManager.saveErrorImmediately(error, {
         step,
@@ -801,31 +251,31 @@
     // 成功ログを記録
     logSuccess(step, message, result = {}) {
       this.logFileManager.logSuccess(step, message, result);
-      ClaudeLogger.info(`✅ [成功ログ] ${step}: ${message}`);
+      console.log(`✅ [成功ログ] ${step}: ${message}`);
     },
 
     // タスク開始を記録
     startTask(taskData) {
       this.logFileManager.logTaskStart(taskData);
-      ClaudeLogger.info(`🚀 [タスク開始]`, taskData);
+      console.log(`🚀 [タスク開始]`, taskData);
     },
 
     // タスク完了を記録
     completeTask(result) {
       this.logFileManager.logTaskComplete(result);
-      ClaudeLogger.info(`🏁 [タスク完了]`, result);
+      console.log(`🏁 [タスク完了]`, result);
     },
 
     // ログをファイルに保存（最終保存）
     async saveToFile() {
       try {
         const filePath = await this.logFileManager.saveToFile();
-        ClaudeLogger.info(
+        console.log(
           `✅ [ClaudeLogManager] 最終ログを保存しました: ${filePath}`,
         );
         return filePath;
       } catch (error) {
-        ClaudeLogger.error("[ClaudeLogManager] ログ保存エラー:", error);
+        console.error("[ClaudeLogManager] ログ保存エラー:", error);
       }
     },
 
@@ -838,10 +288,10 @@
   };
 
   // ========================================
-  // Step 4-2-0: 初期化処理
+  // Claude-ステップ0: 初期化処理
   // ========================================
 
-  // Step 4-2-0-1: 設定の取得（グローバル変数への直接アクセスを避ける）
+  // Claude-ステップ0-1: 設定の取得（グローバル変数への直接アクセスを避ける）
   const getConfig = () => {
     return {
       AI_WAIT_CONFIG: window.AI_WAIT_CONFIG || {
@@ -854,226 +304,37 @@
         STOP_BUTTON_INITIAL_WAIT: 30000,
         STOP_BUTTON_DISAPPEAR_WAIT: 300000,
       },
-      UI_SELECTORS: window.UI_SELECTORS || {
-        Claude: {
-          // テキスト入力欄
-          INPUT: [
-            '.ProseMirror[contenteditable="true"]',
-            'div[contenteditable="true"][role="textbox"]',
-            '[aria-label*="プロンプト"]',
-            'div[contenteditable="true"]',
-            'textarea[placeholder*="メッセージ"]',
-          ],
-
-          // 送信ボタン
-          SEND_BUTTON: [
-            'button[aria-label="メッセージを送信"]',
-            '[aria-label="メッセージを送信"]',
-            'button[type="submit"]',
-            ".send-button",
-            'button[aria-label*="送信"]',
-            "button svg", // descendant selector instead of :has()
-            'button[data-testid*="send"]',
-          ],
-
-          // 停止ボタン
-          STOP_BUTTON: [
-            'button[aria-label="応答を停止"]',
-            '[aria-label="応答を停止"]',
-            '[aria-label="Stop generating"]',
-            '[data-testid="stop-button"]',
-            'button[aria-label*="stop"]',
-            'button[aria-label*="Stop"]',
-          ],
-
-          // モデル選択
-          MODEL_BUTTON: [
-            '[data-testid="model-selector-dropdown"]',
-            'button[data-value*="claude"]',
-            "button.cursor-pointer span.font-medium", // descendant selector instead of :has()
-            'button[aria-label*="モデル"]',
-            'button[aria-label*="Model"]',
-            '[aria-label="モデルを選択"]',
-            'button[aria-haspopup="menu"]',
-            '[data-testid="model-selector"]',
-          ],
-
-          // 機能メニュー
-          FUNCTION_MENU_BUTTON: [
-            '[data-testid="input-menu-tools"]',
-            "#input-tools-menu-trigger",
-            '[aria-label="ツールメニューを開く"]',
-            '[data-testid="input-menu-trigger"]',
-            'button[aria-label*="機能"]',
-          ],
-
-          // 機能ボタン（別名）
-          FUNCTION_BUTTON: [
-            '[data-testid="input-menu-tools"]',
-            "#input-tools-menu-trigger",
-            '[aria-label="ツールメニューを開く"]',
-            '[data-testid="input-menu-trigger"]',
-            'button[aria-label*="機能"]',
-          ],
-
-          // メッセージ
-          MESSAGE: [
-            ".grid-cols-1.grid",
-            'div[class*="grid-cols-1"][class*="grid"]',
-            ".font-claude-message",
-            '[data-is-streaming="false"]',
-            'div[class*="font-claude-message"]',
-            ".group.relative.-tracking-\\[0\\.015em\\]",
-          ],
-
-          // 思考プロセス除外用
-          THINKING_PROCESS: {
-            TEXT_PATTERNS: [
-              "思考プロセス",
-              "Analyzed",
-              "Pondered",
-              "Thought",
-              "Considered",
-              "Evaluated",
-              "Reviewed",
-            ],
-            ELEMENTS: [
-              "button .tabular-nums", // descendant selector instead of :has()
-              'svg path[d*="M10.3857 2.50977"]',
-              ".tabular-nums",
-            ],
-            PARENT_CLASSES: [
-              "rounded-lg",
-              "border-0.5",
-              "transition-all",
-              "my-3",
-            ],
-          },
-
-          // DeepResearchボタン
-          DEEP_RESEARCH_BUTTON: [
-            'button:has-text("リサーチ")',
-            "button[aria-pressed]",
-            'button[aria-label*="リサーチ"]', // aria-label instead of :contains()
-          ],
-
-          // Deep Research関連
-          DEEP_RESEARCH: {
-            CANVAS_PREVIEW: [
-              'button[aria-label="内容をプレビュー"]',
-              'button[aria-label*="プレビュー"]',
-              'button[aria-label*="preview"]',
-              'button[aria-label="View content"]',
-            ],
-          },
-
-          // プレビューボタン
-          PREVIEW_BUTTON: ['button[aria-label="内容をプレビュー"]'],
-
-          // 応答/レスポンス
-          RESPONSE: [
-            ".grid-cols-1.grid",
-            'div[class*="grid-cols-1"][class*="grid"]',
-            ".font-claude-message",
-            '[data-is-streaming="false"]',
-            'div[class*="font-claude-message"]',
-            ".group.relative.-tracking-\\[0\\.015em\\]",
-          ],
-
-          // メニュー関連
-          MENU: {
-            CONTAINER: '[role="menu"][data-state="open"], [role="menu"]',
-            ITEM: '[role="option"], [role="menuitem"]',
-            MODEL_ITEM: 'button[role="option"] span', // descendant selector instead of :has()
-            OTHER_MODELS: [
-              'div[role="menuitem"][aria-haspopup="menu"]',
-              '[role="menuitem"][aria-haspopup="menu"]',
-              'div[role="menuitem"][aria-label*="他のモデル"]', // aria-label instead of :has(:contains())
-              'div[role="menuitem"][aria-label*="Other models"]', // aria-label instead of :has(:contains())
-              '[aria-haspopup="menu"] svg', // descendant selector instead of :has()
-            ],
-          },
-
-          // メニューアイテム（拡張）
-          MENU_ITEM: [
-            '[role="option"]',
-            '[role="menuitem"]',
-            '[role="menuitemradio"]',
-          ],
-
-          // Canvas関連
-          CANVAS: {
-            CONTAINER: [
-              ".grid-cols-1.grid h1", // descendant selector instead of :has()
-              ".grid-cols-1.grid",
-              '[class*="grid-cols-1"][class*="grid"]',
-              "div > h1.text-2xl", // direct child selector instead of :has()
-              ".overflow-y-auto h1", // descendant selector instead of :has()
-            ],
-            PREVIEW_TEXT: [".absolute.inset-0"],
-            PREVIEW_BUTTON: [
-              'button[aria-label="内容をプレビュー"]',
-              'button[aria-label*="プレビュー"]',
-              'button[aria-label*="preview"]',
-              'button[aria-label="View content"]',
-            ],
-            TITLE: "h1.text-2xl",
-            SECTION: "h2.text-xl",
-            PARAGRAPH: 'p.whitespace-normal, p[class*="whitespace"]',
-          },
-
-          // モデル情報取得
-          MODEL_INFO: {
-            BUTTON: [
-              'button[data-testid="model-selector-dropdown"]',
-              'button[aria-haspopup="menu"]',
-              "button.cursor-pointer span.font-medium", // descendant selector instead of :has()
-              'button[aria-label*="モデル"]',
-              'button[aria-label*="Model"]',
-            ],
-            TEXT_ELEMENT: [
-              'button[data-testid="model-selector-dropdown"] .whitespace-nowrap.tracking-tight.select-none',
-              'button[data-testid="model-selector-dropdown"] span',
-              'button[data-testid="model-selector-dropdown"] div',
-              'button[aria-haspopup="menu"] .whitespace-nowrap',
-              'button[aria-haspopup="menu"] span.font-medium',
-            ],
-          },
-        },
-      },
+      UI_SELECTORS: window.UI_SELECTORS || {},
     };
   };
 
-  // Step 4-2-0-2: 設定の適用
+  // Claude-ステップ0-2: 設定の適用
   const config = getConfig();
   const AI_WAIT_CONFIG = config.AI_WAIT_CONFIG;
   const UI_SELECTORS = config.UI_SELECTORS;
 
-  // Step 4-2-0-3: UI_SELECTORSの確認
-  ClaudeLogger.info("🔧 【Step 4-2-0-1】UI_SELECTORS初期化確認:");
-  ClaudeLogger.info("  UI_SELECTORS存在:", !!UI_SELECTORS);
+  // Claude-ステップ0-3: UI_SELECTORSの確認
+  console.log("🔧 【Claude-ステップ0-1】UI_SELECTORS初期化確認:");
+  console.log("  UI_SELECTORS存在:", !!UI_SELECTORS);
   if (UI_SELECTORS && UI_SELECTORS.Claude) {
-    ClaudeLogger.info("  UI_SELECTORS.Claude存在:", !!UI_SELECTORS.Claude);
-    ClaudeLogger.info(
-      "  UI_SELECTORS.Claude.INPUT:",
-      UI_SELECTORS.Claude.INPUT,
-    );
-    ClaudeLogger.info(
+    console.log("  UI_SELECTORS.Claude存在:", !!UI_SELECTORS.Claude);
+    console.log("  UI_SELECTORS.Claude.INPUT:", UI_SELECTORS.Claude.INPUT);
+    console.log(
       "  UI_SELECTORS.Claude.SEND_BUTTON:",
       UI_SELECTORS.Claude.SEND_BUTTON,
     );
-    ClaudeLogger.info(
+    console.log(
       "  UI_SELECTORS.Claude.STOP_BUTTON:",
       UI_SELECTORS.Claude.STOP_BUTTON,
     );
   } else {
-    ClaudeLogger.warn(
-      "⚠️ 【Step 4-2-0-2】UI_SELECTORSが未定義です！デフォルト値を使用します。",
+    console.warn(
+      "⚠️ 【Claude-ステップ0-2】UI_SELECTORSが未定義です！デフォルト値を使用します。",
     );
   }
 
   // ========================================
-  // Step 4-2-0-3: 統一ClaudeRetryManager クラス定義
+  // Claude-ステップ0-3: 統一ClaudeRetryManager クラス定義
   // エラー分類とリトライ戦略を統合した統一システム
   // ========================================
 
@@ -1142,21 +403,10 @@
       this.abortController = null;
     }
 
-    // Step 4-2-0-3: 統一されたエラー分類器（詳細ログ付き）
+    // 統一されたエラー分類器
     classifyError(error, context = {}) {
       const errorMessage = error?.message || error?.toString() || "";
       const errorName = error?.name || "";
-
-      ClaudeLogger.info(`🔍 [Step 4-2-0-3] エラー分類開始:`, {
-        errorMessage,
-        errorName,
-        context,
-        timestamp: new Date().toISOString(),
-        url: window.location.href,
-        userAgent: navigator.userAgent,
-      });
-
-      let errorType = "GENERAL_ERROR";
 
       // Canvas無限更新エラー
       if (
@@ -1164,14 +414,7 @@
         errorMessage.includes("Canvas無限更新") ||
         context.errorType === "CANVAS_VERSION_UPDATE"
       ) {
-        errorType = "CANVAS_VERSION_UPDATE";
-        ClaudeLogger.info(`🎨 [Step 4-2-0-3] Canvas更新エラー検出:`, {
-          errorType,
-          errorMessage,
-          maxRetries: this.errorStrategies[errorType]?.maxRetries,
-          reason: "Canvas V2無限更新による特別処理が必要",
-        });
-        return errorType;
+        return "CANVAS_VERSION_UPDATE";
       }
 
       // ネットワークエラー
@@ -1181,15 +424,7 @@
         errorMessage.includes("fetch") ||
         errorName.includes("NetworkError")
       ) {
-        errorType = "NETWORK_ERROR";
-        ClaudeLogger.info(`🌐 [Step 4-2-0-3] ネットワークエラー検出:`, {
-          errorType,
-          errorMessage,
-          maxRetries: this.errorStrategies[errorType]?.maxRetries,
-          baseDelay: this.errorStrategies[errorType]?.baseDelay,
-          reason: "ネットワーク接続問題により段階的リトライ適用",
-        });
-        return errorType;
+        return "NETWORK_ERROR";
       }
 
       // DOM要素エラー
@@ -1199,16 +434,7 @@
         errorMessage.includes("selector") ||
         errorMessage.includes("querySelector")
       ) {
-        errorType = "DOM_ERROR";
-        ClaudeLogger.info(`🔍 [Step 4-2-0-3] DOM要素エラー検出:`, {
-          errorType,
-          errorMessage,
-          maxRetries: this.errorStrategies[errorType]?.maxRetries,
-          baseDelay: this.errorStrategies[errorType]?.baseDelay,
-          reason: "DOM要素の検出失敗により軽量リトライ適用",
-          context: context,
-        });
-        return errorType;
+        return "DOM_ERROR";
       }
 
       // UIタイミングエラー
@@ -1218,15 +444,7 @@
         errorMessage.includes("button") ||
         errorMessage.includes("まで待機")
       ) {
-        errorType = "UI_TIMING_ERROR";
-        ClaudeLogger.info(`⏱️ [Step 4-2-0-3] UIタイミングエラー検出:`, {
-          errorType,
-          errorMessage,
-          maxRetries: this.errorStrategies[errorType]?.maxRetries,
-          baseDelay: this.errorStrategies[errorType]?.baseDelay,
-          reason: "UI操作タイミング問題により高頻度リトライ適用",
-        });
-        return errorType;
+        return "UI_TIMING_ERROR";
       }
 
       // ユーザー入力エラー
@@ -1235,27 +453,11 @@
         errorMessage.includes("Invalid") ||
         context.isUserInputError
       ) {
-        errorType = "USER_INPUT_ERROR";
-        ClaudeLogger.info(`👤 [Step 4-2-0-3] ユーザー入力エラー検出:`, {
-          errorType,
-          errorMessage,
-          maxRetries: this.errorStrategies[errorType]?.maxRetries,
-          reason: "ユーザー入力に問題があるためリトライ無効",
-        });
-        return errorType;
+        return "USER_INPUT_ERROR";
       }
 
       // デフォルト（汎用エラー）
-      errorType = "GENERAL_ERROR";
-      ClaudeLogger.info(`❓ [Step 4-2-0-3] 一般エラーとして分類:`, {
-        errorType,
-        errorMessage,
-        maxRetries: this.errorStrategies[errorType]?.maxRetries,
-        baseDelay: this.errorStrategies[errorType]?.baseDelay,
-        reason: "特定パターンに該当しないため一般エラーとして分類",
-      });
-
-      return errorType;
+      return "GENERAL_ERROR";
     }
 
     // エラー履歴記録
@@ -1310,13 +512,13 @@
             versionElement.textContent || versionElement.innerText || "";
           const hasHighVersion = /v([2-9]|\d{2,})/.test(versionText);
           if (hasHighVersion) {
-            ClaudeLogger.info(`🎨 Canvas無限更新検出: ${versionText}`);
+            console.log(`🎨 Canvas無限更新検出: ${versionText}`);
             return true;
           }
         }
         return false;
       } catch (error) {
-        ClaudeLogger.warn("Canvas版本チェックエラー:", error.message);
+        console.warn("Canvas版本チェックエラー:", error.message);
         return false;
       }
     }
@@ -1333,7 +535,7 @@
       );
 
       if (isConsecutive) {
-        ClaudeLogger.info(
+        console.log(
           `🔍 連続同一エラー検出: ${firstErrorType} (${threshold}回)`,
         );
       }
@@ -1345,25 +547,25 @@
     determineRetryLevel(retryCount, context = {}) {
       // Canvas無限更新は即座に最終手段
       if (this.isCanvasInfiniteUpdate() || context.isCanvasVersionUpdate) {
-        ClaudeLogger.info("📋 リトライレベル: HEAVY_RESET (Canvas無限更新)");
+        console.log("📋 リトライレベル: HEAVY_RESET (Canvas無限更新)");
         return "HEAVY_RESET";
       }
 
       // 連続同一エラーが5回以上 = 構造的問題
       if (this.detectConsecutiveErrors(5)) {
-        ClaudeLogger.info("📋 リトライレベル: HEAVY_RESET (構造的問題)");
+        console.log("📋 リトライレベル: HEAVY_RESET (構造的問題)");
         return "HEAVY_RESET";
       }
 
       // リトライ回数による段階判定
       if (retryCount <= 5) {
-        ClaudeLogger.info(`📋 リトライレベル: LIGHTWEIGHT (${retryCount}/5)`);
+        console.log(`📋 リトライレベル: LIGHTWEIGHT (${retryCount}/5)`);
         return "LIGHTWEIGHT";
       } else if (retryCount <= 8) {
-        ClaudeLogger.info(`📋 リトライレベル: MODERATE (${retryCount}/8)`);
+        console.log(`📋 リトライレベル: MODERATE (${retryCount}/8)`);
         return "MODERATE";
       } else {
-        ClaudeLogger.info(`📋 リトライレベル: HEAVY_RESET (${retryCount}/10)`);
+        console.log(`📋 リトライレベル: HEAVY_RESET (${retryCount}/10)`);
         return "HEAVY_RESET";
       }
     }
@@ -1415,7 +617,7 @@
             this.metrics.totalAttempts++;
 
             if (retryCount > 0) {
-              ClaudeLogger.info(
+              console.log(
                 `🔄 【${actionName}】リトライ ${retryCount}/${maxRetries} (エラー種別: ${errorType})`,
               );
             }
@@ -1430,7 +632,7 @@
             if (successValidator(lastResult)) {
               this.metrics.successfulAttempts++;
               if (retryCount > 0) {
-                ClaudeLogger.info(
+                console.log(
                   `✅ 【${actionName}】${retryCount}回目のリトライで成功`,
                 );
               }
@@ -1460,7 +662,7 @@
             this.metrics.errorCounts[errorType] =
               (this.metrics.errorCounts[errorType] || 0) + 1;
 
-            ClaudeLogger.error(
+            console.error(
               `❌ 【${actionName}】エラー発生 (種別: ${errorType}):`,
               error.message,
             );
@@ -1487,7 +689,7 @@
 
           // リトライレベルに応じた実行戦略
           try {
-            ClaudeLogger.info(
+            console.log(
               `🔄 【${actionName}】段階的エスカレーション: ${retryLevel}`,
             );
 
@@ -1502,7 +704,7 @@
               );
 
               if (heavyRetryResult && heavyRetryResult.success) {
-                ClaudeLogger.info(
+                console.log(
                   `✅ 【${actionName}】新規ウィンドウリトライで復旧成功`,
                 );
                 this.metrics.successfulAttempts++;
@@ -1520,7 +722,7 @@
               await this.waitWithStrategy(errorType, retryCount, context);
             }
           } catch (retryError) {
-            ClaudeLogger.error(
+            console.error(
               `❌ 【${actionName}】${retryLevel}リトライでエラー:`,
               retryError.message,
             );
@@ -1533,9 +735,7 @@
         }
 
         // 全リトライ失敗
-        ClaudeLogger.error(
-          `❌ 【${actionName}】${maxRetries}回のリトライ後も失敗`,
-        );
+        console.error(`❌ 【${actionName}】${maxRetries}回のリトライ後も失敗`);
         return {
           success: false,
           error: lastError?.message || "Unknown error",
@@ -1552,7 +752,7 @@
 
     // Canvas無限更新専用処理（後方互換性）
     async executeCanvasRetry(taskData) {
-      ClaudeLogger.info(
+      console.log(
         `🔄 Canvas無限更新リトライ処理開始 - 最大${this.canvasMaxRetries}回まで実行`,
       );
 
@@ -1588,16 +788,7 @@
             closeCurrentWindow: true,
           },
           (response) => {
-            if (chrome.runtime.lastError) {
-              console.warn(
-                "[4-2-claude-automation.js] Canvas リトライ通信エラー:",
-                chrome.runtime.lastError.message,
-              );
-              resolve({
-                success: false,
-                error: chrome.runtime.lastError.message,
-              });
-            } else if (response && response.success) {
+            if (response && response.success) {
               resolve(response);
             } else {
               resolve({ success: false });
@@ -1609,14 +800,14 @@
 
     // レベル1: 軽量リトライ（同一ウィンドウ内での再試行）
     async performLightweightRetry(action, retryCount, context = {}) {
-      ClaudeLogger.info(`🔧 軽量リトライ実行 (${retryCount}回目)`);
+      console.log(`🔧 軽量リトライ実行 (${retryCount}回目)`);
 
       // 軽量リトライの待機時間（1秒 → 2秒 → 5秒 → 10秒 → 15秒）
       const lightDelays = [1000, 2000, 5000, 10000, 15000];
       const delayIndex = Math.min(retryCount - 1, lightDelays.length - 1);
       const delay = lightDelays[delayIndex];
 
-      ClaudeLogger.info(`⏳ ${delay / 1000}秒後に軽量リトライします...`);
+      console.log(`⏳ ${delay / 1000}秒後に軽量リトライします...`);
       await this.wait(delay);
 
       // DOM要素の再検索やUI操作の再実行
@@ -1625,7 +816,7 @@
 
     // レベル2: 中程度リトライ（ページリフレッシュ）
     async performModerateRetry(action, retryCount, context = {}) {
-      ClaudeLogger.info(
+      console.log(
         `🔄 中程度リトライ実行 (${retryCount}回目) - ページリフレッシュ`,
       );
 
@@ -1634,14 +825,14 @@
       const delayIndex = Math.min(retryCount - 6, moderateDelays.length - 1);
       const delay = moderateDelays[delayIndex];
 
-      ClaudeLogger.info(
+      console.log(
         `⏳ ${delay / 1000}秒後にページリフレッシュリトライします...`,
       );
       await this.wait(delay);
 
       try {
         // ページリフレッシュ実行
-        ClaudeLogger.info("🔄 ページリフレッシュを実行...");
+        console.log("🔄 ページリフレッシュを実行...");
         location.reload();
 
         // リフレッシュ後の待機
@@ -1650,14 +841,14 @@
         // アクション再実行
         return await action();
       } catch (error) {
-        ClaudeLogger.error("ページリフレッシュエラー:", error.message);
+        console.error("ページリフレッシュエラー:", error.message);
         return { success: false, error: error.message };
       }
     }
 
     // レベル3: 重いリトライ（新規ウィンドウ作成）
     async performHeavyRetry(taskData, retryCount, context = {}) {
-      ClaudeLogger.info(
+      console.log(
         `🚨 重いリトライ実行 (${retryCount}回目) - 新規ウィンドウ作成`,
       );
 
@@ -1672,9 +863,7 @@
       const delayIndex = Math.min(retryCount - 9, heavyDelays.length - 1);
       const delay = heavyDelays[delayIndex];
 
-      ClaudeLogger.info(
-        `⏳ ${delay / 60000}分後に新規ウィンドウリトライします...`,
-      );
+      console.log(`⏳ ${delay / 60000}分後に新規ウィンドウリトライします...`);
       await this.waitWithCountdown(delay);
 
       // 新規ウィンドウ作成（performCanvasRetryを汎用化）
@@ -1702,21 +891,11 @@
             closeCurrentWindow: true,
           },
           (response) => {
-            if (chrome.runtime.lastError) {
-              console.warn(
-                "[4-2-claude-automation.js] 新規ウィンドウリトライ通信エラー:",
-                chrome.runtime.lastError.message,
-              );
-              ClaudeLogger.info("❌ 新規ウィンドウリトライ通信失敗");
-              resolve({
-                success: false,
-                error: chrome.runtime.lastError.message,
-              });
-            } else if (response && response.success) {
-              ClaudeLogger.info("✅ 新規ウィンドウリトライ成功");
+            if (response && response.success) {
+              console.log("✅ 新規ウィンドウリトライ成功");
               resolve(response);
             } else {
-              ClaudeLogger.info("❌ 新規ウィンドウリトライ失敗");
+              console.log("❌ 新規ウィンドウリトライ失敗");
               resolve({ success: false });
             }
           },
@@ -1749,7 +928,7 @@
             return await this.performHeavyRetry(taskData, retryCount, context);
           } else {
             // taskDataがない場合は軽量リトライにフォールバック
-            ClaudeLogger.warn(
+            console.warn(
               "⚠️ 新規ウィンドウリトライにはtaskDataが必要です。軽量リトライにフォールバック。",
             );
             return await this.performLightweightRetry(
@@ -1795,16 +974,14 @@
           Math.pow(strategy.backoffMultiplier, retryCount - 1);
       }
 
-      ClaudeLogger.info(
-        `⏳ ${delay / 1000}秒後にリトライします... (${errorType})`,
-      );
+      console.log(`⏳ ${delay / 1000}秒後にリトライします... (${errorType})`);
       await this.wait(delay);
     }
 
     // カウントダウン付き待機
     async waitWithCountdown(totalDelay) {
       const delayMinutes = Math.round((totalDelay / 60000) * 10) / 10;
-      ClaudeLogger.info(`⏳ ${delayMinutes}分後にリトライします...`);
+      console.log(`⏳ ${delayMinutes}分後にリトライします...`);
 
       if (totalDelay >= 60000) {
         const intervals = Math.min(10, totalDelay / 10000);
@@ -1813,7 +990,7 @@
         for (let i = 0; i < intervals; i++) {
           const remaining = totalDelay - intervalTime * i;
           const remainingMinutes = Math.round((remaining / 60000) * 10) / 10;
-          ClaudeLogger.info(`⏱️ 残り ${remainingMinutes}分...`);
+          console.log(`⏱️ 残り ${remainingMinutes}分...`);
           await this.wait(intervalTime);
         }
       } else {
@@ -1930,10 +1107,10 @@
   }
 
   // ========================================
-  // Step 4-2-0-4: セレクタ定義
+  // Claude-ステップ0-4: セレクタ定義
   // ========================================
 
-  // Step 4-2-0-4-1: Deep Research用セレクタ
+  // Claude-ステップ0-4-1: Deep Research用セレクタ
   const getDeepResearchSelectors = () => ({
     "3_回答停止ボタン": {
       selectors: UI_SELECTORS.Claude?.STOP_BUTTON || [],
@@ -2012,7 +1189,7 @@
     },
   });
 
-  // Step 4-2-0-4-2: モデル選択用セレクタ
+  // Claude-ステップ0-4-2: モデル選択用セレクタ
   const modelSelectors = {
     menuButton: (UI_SELECTORS.Claude?.MODEL_BUTTON || []).map((selector) => ({
       selector,
@@ -2065,7 +1242,7 @@
       .map((selector) => ({ selector, description: "モデル表示要素" })),
   };
 
-  // Step 4-2-0-4-3: 機能選択用セレクタ
+  // Claude-ステップ0-4-3: 機能選択用セレクタ
   const featureSelectors = {
     menuButton: UI_SELECTORS.Claude?.FUNCTION_MENU_BUTTON || [],
     menuContainer: UI_SELECTORS.Claude?.FEATURE_MENU?.CONTAINER || [],
@@ -2073,7 +1250,7 @@
     researchButton: UI_SELECTORS.Claude?.FEATURE_BUTTONS?.RESEARCH || [],
   };
 
-  // Step 4-2-0-4-4: デフォルトセレクタ（フォールバック用）
+  // Claude-ステップ0-4-4: デフォルトセレクタ（フォールバック用）
   const DEFAULT_SELECTORS = {
     INPUT: [
       ".ProseMirror",
@@ -2093,7 +1270,7 @@
     ],
   };
 
-  // Step 4-2-0-4-5: Claude動作用セレクタ
+  // Claude-ステップ0-4-5: Claude動作用セレクタ
   const claudeSelectors = {
     "1_テキスト入力欄": {
       selectors:
@@ -2184,32 +1361,32 @@
     },
   };
 
-  // Step 4-2-0-5: セレクタの最終状態をログ出力
-  ClaudeLogger.info("📋 【Step 4-2-0-3】claudeSelectors最終設定:");
-  ClaudeLogger.info(
+  // Claude-ステップ0-5: セレクタの最終状態をログ出力
+  console.log("📋 【Claude-ステップ0-3】claudeSelectors最終設定:");
+  console.log(
     "  入力欄セレクタ数:",
     claudeSelectors["1_テキスト入力欄"].selectors.length,
   );
-  ClaudeLogger.info(
+  console.log(
     "  送信ボタンセレクタ数:",
     claudeSelectors["2_送信ボタン"].selectors.length,
   );
-  ClaudeLogger.info(
+  console.log(
     "  停止ボタンセレクタ数:",
     claudeSelectors["3_回答停止ボタン"].selectors.length,
   );
 
   if (claudeSelectors["1_テキスト入力欄"].selectors.length === 0) {
-    ClaudeLogger.error(
-      "❌ 【Step 4-2-0-4】致命的エラー: 入力欄セレクタが空です！",
+    console.error(
+      "❌ 【Claude-ステップ0-4】致命的エラー: 入力欄セレクタが空です！",
     );
   }
 
   // ========================================
-  // Step 4-2-1: ヘルパー関数定義
+  // Claude-ステップ1: ヘルパー関数定義
   // ========================================
 
-  // Step 4-2-1-1: 基本ユーティリティ関数
+  // Claude-ステップ1-1: 基本ユーティリティ関数
   /**
    * 基本待機関数
    * 【動作説明】指定されたミリ秒数だけ処理を停止し、タイミング制御を行う
@@ -2234,7 +1411,7 @@
     maxRetries = 10,
     retryDelay = 500,
   ) => {
-    const log = (msg) => ClaudeLogger.info(`⏳ [待機] ${msg}`);
+    const log = (msg) => console.log(`⏳ [待機] ${msg}`);
 
     for (let i = 0; i < maxRetries; i++) {
       try {
@@ -2296,7 +1473,7 @@
   };
 
   const triggerReactEvent = async (element, eventType = "click") => {
-    const log = (msg) => ClaudeLogger.info(`🎯 [イベント] ${msg}`);
+    const log = (msg) => console.log(`🎯 [イベント] ${msg}`);
 
     try {
       const reactProps = getReactProps(element);
@@ -2380,10 +1557,10 @@
   };
 
   const findElementByMultipleSelectors = async (selectors, description) => {
-    ClaudeLogger.info(`\n🔍 [${description}] 要素検索開始`);
+    console.log(`\n🔍 [${description}] 要素検索開始`);
 
     // デバッグ: selectorsの詳細情報を出力
-    ClaudeLogger.info(`📊 [DEBUG] selectors情報:`, {
+    console.log(`📊 [DEBUG] selectors情報:`, {
       type: typeof selectors,
       isArray: Array.isArray(selectors),
       length: selectors?.length,
@@ -2393,10 +1570,10 @@
 
     for (let i = 0; i < selectors.length; i++) {
       const selector = selectors[i];
-      ClaudeLogger.info(
+      console.log(
         `  試行 ${i + 1}/${selectors.length}: ${selector.description}`,
       );
-      ClaudeLogger.info(`  📝 [DEBUG] セレクタ詳細:`, {
+      console.log(`  📝 [DEBUG] セレクタ詳細:`, {
         type: typeof selector,
         selector: selector?.selector,
         description: selector?.description,
@@ -2407,41 +1584,36 @@
         // より長い待機時間を設定（5回×500ms = 2.5秒）
         const element = await waitForElement(selector.selector, 5, 500);
         if (element) {
-          ClaudeLogger.info(`  ✅ 成功: ${selector.description}`);
+          console.log(`  ✅ 成功: ${selector.description}`);
           return element;
         }
       } catch (error) {
-        ClaudeLogger.info(`  ❌ 失敗: ${error.message}`);
+        console.log(`  ❌ 失敗: ${error.message}`);
       }
     }
 
     // 全セレクタで失敗した場合は、selectorInfoオブジェクトを作成してfindClaudeElementを使用
-    ClaudeLogger.debug(
+    console.log(
       `⚠️ [DEBUG] 全セレクタで失敗、findClaudeElementにフォールバック`,
     );
-    ClaudeLogger.info(
+    console.log(
       `📊 [DEBUG-FALLBACK] 元のselectors:`,
       JSON.stringify(selectors, null, 2),
     );
 
     const mappedSelectors = selectors.map((s) => {
       if (typeof s === "string") {
-        ClaudeLogger.debug(`  📝 [DEBUG] 文字列セレクタをマップ: ${s}`);
+        console.log(`  📝 [DEBUG] 文字列セレクタをマップ: ${s}`);
         return s;
       } else if (s && typeof s === "object" && s.selector) {
-        ClaudeLogger.debug(
-          `  📝 [DEBUG] オブジェクトセレクタをマップ: ${s.selector}`,
-        );
+        console.log(`  📝 [DEBUG] オブジェクトセレクタをマップ: ${s.selector}`);
         return s.selector;
       }
-      ClaudeLogger.debug(`  ⚠️ [DEBUG] 不明な型のセレクタ:`, s);
+      console.log(`  ⚠️ [DEBUG] 不明な型のセレクタ:`, s);
       return null; // undefinedではなくnullを返す
     });
 
-    ClaudeLogger.info(
-      `📊 [DEBUG-FALLBACK] マップ後のselectors:`,
-      mappedSelectors,
-    );
+    console.log(`📊 [DEBUG-FALLBACK] マップ後のselectors:`, mappedSelectors);
 
     const selectorInfo = {
       description: description,
@@ -2450,7 +1622,7 @@
       ), // null/undefinedを除外
     };
 
-    ClaudeLogger.info(`📊 [DEBUG] selectorInfo構築完了:`, {
+    console.log(`📊 [DEBUG] selectorInfo構築完了:`, {
       description: selectorInfo.description,
       selectorsCount: selectorInfo.selectors?.length,
       selectors: selectorInfo.selectors,
@@ -2477,7 +1649,7 @@
     return result.result.element;
   };
 
-  // Step 4-2-1-2: モデル情報取得関数
+  // Claude-ステップ1-2: モデル情報取得関数
   /**
    * 現在選択モデル情報取得関数
    * 【動作説明】Claude画面に表示されている現在のモデル名を複数セレクタで検索取得
@@ -2488,26 +1660,26 @@
    * 【使用頻度】頻繁（タスク実行時の重要な情報取得）
    */
   const getCurrentModelInfo = () => {
-    ClaudeLogger.info("\n📊 【Step 4-2-1-1】現在のモデル情報を取得");
+    console.log("\n📊 【Claude-ステップ1-1】現在のモデル情報を取得");
 
     for (const selectorInfo of modelSelectors.modelDisplay) {
       try {
         const element = document.querySelector(selectorInfo.selector);
         if (element) {
           const text = element.textContent.trim();
-          ClaudeLogger.info(`  ✅ モデル情報発見: "${text}"`);
+          console.log(`  ✅ モデル情報発見: "${text}"`);
           return text;
         }
       } catch (error) {
-        ClaudeLogger.info(`  ❌ 取得失敗: ${error.message}`);
+        console.log(`  ❌ 取得失敗: ${error.message}`);
       }
     }
 
-    ClaudeLogger.info("  ⚠️ モデル情報が見つかりません");
+    console.log("  ⚠️ モデル情報が見つかりません");
     return null;
   };
 
-  // Step 4-2-1-2-2: 機能確認関数
+  // Claude-ステップ1-2-2: 機能確認関数
   /**
    * 現在選択機能確認関数
    * 【動作説明】画面上の機能ボタンの状態を詳細に確認し、どの機能が有効かを判定する
@@ -2518,8 +1690,8 @@
    * 【使用頻度】機能選択処理で重要な確認処理
    */
   const confirmFeatureSelection = (expectedFeature = null) => {
-    ClaudeLogger.info("\n🔍 【機能確認】選択された機能のボタンを確認");
-    ClaudeLogger.info(`期待される機能: ${expectedFeature || "(指定なし)"}`);
+    console.log("\n🔍 【機能確認】選択された機能のボタンを確認");
+    console.log(`期待される機能: ${expectedFeature || "(指定なし)"}`);
 
     const confirmationResults = {
       slowThinking: false,
@@ -2555,7 +1727,7 @@
               ? "じっくり考える"
               : "ゆっくり考える";
             confirmationResults.detected.push(detectedType);
-            ClaudeLogger.info(`  ✅ ${detectedType}ボタン（活性化状態）発見`);
+            console.log(`  ✅ ${detectedType}ボタン（活性化状態）発見`);
           }
           break;
         }
@@ -2573,7 +1745,7 @@
         ) {
           confirmationResults.webSearch = true;
           confirmationResults.detected.push("ウェブ検索");
-          ClaudeLogger.info("  ✅ ウェブ検索ボタン発見");
+          console.log("  ✅ ウェブ検索ボタン発見");
           break;
         }
       }
@@ -2590,7 +1762,7 @@
         if (text.includes("リサーチ") && isPressed) {
           confirmationResults.deepResearch = true;
           confirmationResults.detected.push("DeepResearch");
-          ClaudeLogger.info("  ✅ DeepResearch（リサーチボタン活性化）発見");
+          console.log("  ✅ DeepResearch（リサーチボタン活性化）発見");
           break;
         }
         // "Research"文字列を含むボタンも確認（英語表示対応）
@@ -2600,23 +1772,23 @@
         ) {
           confirmationResults.deepResearch = true;
           confirmationResults.detected.push("DeepResearch");
-          ClaudeLogger.info("  ✅ DeepResearch（Researchボタン活性化）発見");
+          console.log("  ✅ DeepResearch（Researchボタン活性化）発見");
           break;
         }
       }
 
       // 結果の表示
-      ClaudeLogger.info(`\n📊 機能確認結果:`);
-      ClaudeLogger.info(
+      console.log(`\n📊 機能確認結果:`);
+      console.log(
         `  - じっくり/ゆっくり考える: ${confirmationResults.slowThinking ? "✅" : "❌"}`,
       );
-      ClaudeLogger.info(
+      console.log(
         `  - ウェブ検索: ${confirmationResults.webSearch ? "✅" : "❌"}`,
       );
-      ClaudeLogger.info(
+      console.log(
         `  - DeepResearch: ${confirmationResults.deepResearch ? "✅" : "❌"}`,
       );
-      ClaudeLogger.info(
+      console.log(
         `  - 検出された機能: [${confirmationResults.detected.join(", ")}]`,
       );
 
@@ -2627,20 +1799,18 @@
             feature.includes(expectedFeature) ||
             expectedFeature.includes(feature),
         );
-        ClaudeLogger.info(
-          `  - 期待機能の確認: ${isExpectedFound ? "✅" : "❌"}`,
-        );
+        console.log(`  - 期待機能の確認: ${isExpectedFound ? "✅" : "❌"}`);
         confirmationResults.expectedFound = isExpectedFound;
       }
 
       return confirmationResults;
     } catch (error) {
-      ClaudeLogger.info(`  ❌ 機能確認エラー: ${error.message}`);
+      console.log(`  ❌ 機能確認エラー: ${error.message}`);
       return { ...confirmationResults, error: error.message };
     }
   };
 
-  // Step 4-2-1-5: React風イベント処理関数
+  // Claude-ステップ1-5: React風イベント処理関数
   /**
    * 高精度トグルボタン制御関数
    * 【動作説明】現在のトグル状態を確認し、目標状態と異なる場合のみクリックして変更する
@@ -2651,30 +1821,30 @@
    * 【使用頻度】3回（機能選択処理で重要）
    */
   const setToggleState = (toggleButton, targetState) => {
-    ClaudeLogger.info(`\n🔄 トグル状態変更: ${targetState ? "ON" : "OFF"}`);
+    console.log(`\n🔄 トグル状態変更: ${targetState ? "ON" : "OFF"}`);
 
     const inputElement = toggleButton.querySelector('input[role="switch"]');
     if (!inputElement) {
-      ClaudeLogger.info("  ⚠️ トグル入力要素が見つかりません");
+      console.log("  ⚠️ トグル入力要素が見つかりません");
       return false;
     }
 
     const currentState =
       inputElement.checked ||
       inputElement.getAttribute("aria-checked") === "true";
-    ClaudeLogger.info(`  現在の状態: ${currentState ? "ON" : "OFF"}`);
+    console.log(`  現在の状態: ${currentState ? "ON" : "OFF"}`);
 
     if (currentState !== targetState) {
       toggleButton.click();
-      ClaudeLogger.info(`  ✅ トグル状態を変更しました`);
+      console.log(`  ✅ トグル状態を変更しました`);
       return true;
     } else {
-      ClaudeLogger.info(`  ℹ️ 既に目標の状態です`);
+      console.log(`  ℹ️ 既に目標の状態です`);
       return false;
     }
   };
 
-  // Step 4-2-1-6: 強化版findClaudeElement
+  // Claude-ステップ1-6: 強化版findClaudeElement
   /**
    * Claude専用要素検索関数（最重要）
    * 【動作説明】複数のセレクタパターンを順次試行し、要素の可視性を厳密にチェックする
@@ -2693,7 +1863,7 @@
 
     // デバッグ: 受け取った引数の詳細を出力
     if (!skipLog) {
-      ClaudeLogger.info(`${logPrefix}📊 [DEBUG] 受け取った引数:`, {
+      console.log(`${logPrefix}📊 [DEBUG] 受け取った引数:`, {
         type: typeof selectorInfo,
         isArray: Array.isArray(selectorInfo),
         isString: typeof selectorInfo === "string",
@@ -2705,8 +1875,8 @@
     // nullチェックとエラーハンドリングを追加
     if (!selectorInfo) {
       const errorMsg = "selectorInfoが未定義です";
-      ClaudeLogger.error(`${logPrefix}❌ ${errorMsg}`);
-      ClaudeLogger.error(
+      console.error(`${logPrefix}❌ ${errorMsg}`);
+      console.error(
         `${logPrefix}📊 [DEBUG] エラー時のselectorInfo:`,
         selectorInfo,
       );
@@ -2716,42 +1886,33 @@
 
     // 文字列が直接渡された場合の互換性対応
     if (typeof selectorInfo === "string") {
-      ClaudeLogger.warn(
+      console.warn(
         `${logPrefix}⚠️ 文字列が直接渡されました、オブジェクト形式に変換します: ${selectorInfo}`,
       );
       selectorInfo = {
         selectors: [selectorInfo],
         description: `セレクタ: ${selectorInfo}`,
       };
-      ClaudeLogger.debug(
-        `${logPrefix}📊 [DEBUG] 変換後のselectorInfo:`,
-        selectorInfo,
-      );
+      console.log(`${logPrefix}📊 [DEBUG] 変換後のselectorInfo:`, selectorInfo);
     }
 
     // 配列が直接渡された場合の互換性対応
     if (Array.isArray(selectorInfo)) {
-      ClaudeLogger.warn(
+      console.warn(
         `${logPrefix}⚠️ 配列が直接渡されました、オブジェクト形式に変換します`,
       );
-      ClaudeLogger.debug(`${logPrefix}📊 [DEBUG] 配列の内容:`, selectorInfo);
+      console.log(`${logPrefix}📊 [DEBUG] 配列の内容:`, selectorInfo);
       selectorInfo = {
         selectors: selectorInfo,
         description: `セレクタ配列: ${selectorInfo.length}個`,
       };
-      ClaudeLogger.debug(
-        `${logPrefix}📊 [DEBUG] 変換後のselectorInfo:`,
-        selectorInfo,
-      );
+      console.log(`${logPrefix}📊 [DEBUG] 変換後のselectorInfo:`, selectorInfo);
     }
 
     if (!selectorInfo.selectors || !Array.isArray(selectorInfo.selectors)) {
       const errorMsg = `selectorInfo.selectorsが配列ではありません: ${typeof selectorInfo.selectors}`;
-      ClaudeLogger.error(`${logPrefix}❌ ${errorMsg}`);
-      ClaudeLogger.error(
-        `${logPrefix}📊 [DEBUG] 問題のselectorInfo:`,
-        selectorInfo,
-      );
+      console.error(`${logPrefix}❌ ${errorMsg}`);
+      console.error(`${logPrefix}📊 [DEBUG] 問題のselectorInfo:`, selectorInfo);
       ClaudeLogManager.logStep("Selector-Error", errorMsg, {
         selectorInfo: selectorInfo,
         selectorsType: typeof selectorInfo.selectors,
@@ -2762,16 +1923,16 @@
 
     if (selectorInfo.selectors.length === 0) {
       const errorMsg = "セレクタ配列が空です";
-      ClaudeLogger.error(`${logPrefix}❌ ${errorMsg}`);
+      console.error(`${logPrefix}❌ ${errorMsg}`);
       ClaudeLogManager.logStep("Selector-Error", errorMsg, { selectorInfo });
       throw new Error(errorMsg);
     }
 
     if (!skipLog) {
-      ClaudeLogger.info(
+      console.log(
         `${logPrefix}要素検索開始: ${selectorInfo.description || "説明なし"}`,
       );
-      ClaudeLogger.info(
+      console.log(
         `${logPrefix}使用セレクタ数: ${selectorInfo.selectors.length}`,
       );
 
@@ -2790,7 +1951,7 @@
 
     for (let retry = 0; retry < retryCount; retry++) {
       if (!skipLog && retry > 0) {
-        ClaudeLogger.info(`${logPrefix}リトライ ${retry + 1}/${retryCount}`);
+        console.log(`${logPrefix}リトライ ${retry + 1}/${retryCount}`);
       }
 
       for (let i = 0; i < selectorInfo.selectors.length; i++) {
@@ -2823,16 +1984,14 @@
                   }
                 }
                 if (!skipLog) {
-                  ClaudeLogger.info(`${logPrefix}✅ 要素発見: セレクタ[${i}]`);
-                  ClaudeLogger.info(`${logPrefix}  セレクタ: ${selector}`);
-                  ClaudeLogger.info(
-                    `${logPrefix}  要素タイプ: ${element.tagName}`,
-                  );
-                  ClaudeLogger.info(
+                  console.log(`${logPrefix}✅ 要素発見: セレクタ[${i}]`);
+                  console.log(`${logPrefix}  セレクタ: ${selector}`);
+                  console.log(`${logPrefix}  要素タイプ: ${element.tagName}`);
+                  console.log(
                     `${logPrefix}  位置: (${Math.round(rect.left)}, ${Math.round(rect.top)})`,
                   );
                   if (element.textContent) {
-                    ClaudeLogger.info(
+                    console.log(
                       `${logPrefix}  テキスト: ${element.textContent.substring(0, 30)}`,
                     );
                   }
@@ -2886,7 +2045,7 @@
       if (retry < retryCount - 1) {
         const waitTime = 2000 + retry * 1000;
         if (!skipLog) {
-          ClaudeLogger.info(
+          console.log(
             `${logPrefix}🔄 要素検索リトライ中... (${retry + 1}/${retryCount}) 次回まで${waitTime}ms待機`,
           );
         }
@@ -2896,15 +2055,13 @@
 
     if (!skipLog) {
       // より詳細なエラー情報を出力
-      ClaudeLogger.warn(
-        `${logPrefix}✗ 要素未発見: ${selectorInfo.description}`,
-      );
-      ClaudeLogger.info(`${logPrefix}  使用セレクタ:`, selectorInfo.selectors);
-      ClaudeLogger.info(`${logPrefix}  試行結果:`, results);
+      console.warn(`${logPrefix}✗ 要素未発見: ${selectorInfo.description}`);
+      console.log(`${logPrefix}  使用セレクタ:`, selectorInfo.selectors);
+      console.log(`${logPrefix}  試行結果:`, results);
 
       // DOM内の実際のmenuitem要素を調査
       const actualMenuItems = document.querySelectorAll('[role="menuitem"]');
-      ClaudeLogger.info(
+      console.log(
         `${logPrefix}  📊 DOM内のmenuitem要素数: ${actualMenuItems.length}`,
       );
 
@@ -2912,7 +2069,7 @@
       const menuItemsWithPopup = Array.from(actualMenuItems).filter((el) =>
         el.hasAttribute("aria-haspopup"),
       );
-      ClaudeLogger.info(
+      console.log(
         `${logPrefix}  📊 aria-haspopup属性を持つmenuitem: ${menuItemsWithPopup.length}`,
       );
 
@@ -2921,25 +2078,23 @@
         const dataState = el.getAttribute("data-state");
         const ariaExpanded = el.getAttribute("aria-expanded");
         const id = el.getAttribute("id");
-        ClaudeLogger.info(
+        console.log(
           `${logPrefix}    [${idx}] text="${text}", data-state="${dataState}", aria-expanded="${ariaExpanded}", id="${id}"`,
         );
       });
 
       // 問題解決のためのヘルプ情報
-      ClaudeLogger.info(
+      console.log(
         `${logPrefix}  💡 ヘルプ: この問題を解決するには以下を確認してください:`,
       );
-      ClaudeLogger.info(
+      console.log(
         `${logPrefix}     1. Claudeのモデル選択メニューが開いているか`,
       );
-      ClaudeLogger.info(
-        `${logPrefix}     2. セレクタが最新のUIに対応しているか`,
-      );
-      ClaudeLogger.info(
+      console.log(`${logPrefix}     2. セレクタが最新のUIに対応しているか`);
+      console.log(
         `${logPrefix}     3. タイミングの問題（メニューが完全に開く前に検索している）`,
       );
-      ClaudeLogger.info(
+      console.log(
         `${logPrefix}     4. 現在のURLが正しいか: ${window.location.href}`,
       );
 
@@ -2958,7 +2113,7 @@
     return null;
   };
 
-  // Step 4-2-1-7: テキスト入力関数
+  // Claude-ステップ1-7: テキスト入力関数
   /**
    * React対応テキスト入力関数
    * 【動作説明】Reactの仮想DOMに対応したテキスト入力を行い、適切なイベントを発火する
@@ -2989,15 +2144,15 @@
 
       await wait(100);
 
-      ClaudeLogger.info("✓ テキスト入力成功");
+      console.log("✓ テキスト入力成功");
       return true;
     } catch (e) {
-      ClaudeLogger.error("✗ テキスト入力エラー:", e);
+      console.error("✗ テキスト入力エラー:", e);
       return false;
     }
   };
 
-  // Step 4-2-1-8: ボタンクリック関数
+  // Claude-ステップ1-8: ボタンクリック関数
   /**
    * 高精度マウスクリック関数
    * 【動作説明】実際のマウス操作を完全再現し、クリック座標も正確に計算する
@@ -3008,14 +2163,14 @@
    * 【使用頻度】2回（メイン送信とテスト送信）
    */
   const clickButton = async (button, description = "送信ボタン") => {
-    ClaudeLogger.info(`\n👆 ${description}をクリック`);
+    console.log(`\n👆 ${description}をクリック`);
 
     try {
       button.scrollIntoView({ behavior: "smooth", block: "center" });
       await wait(100);
 
       const rect = button.getBoundingClientRect();
-      ClaudeLogger.info(
+      console.log(
         `📍 ボタン位置: (${Math.round(rect.left)}, ${Math.round(rect.top)})`,
       );
 
@@ -3065,15 +2220,15 @@
 
       button.click();
 
-      ClaudeLogger.info("✓ ボタンクリック完了");
+      console.log("✓ ボタンクリック完了");
       return true;
     } catch (e) {
-      ClaudeLogger.error("✗ ボタンクリックエラー:", e);
+      console.error("✗ ボタンクリックエラー:", e);
       return false;
     }
   };
 
-  // Step 4-2-1-8: 新しいAI応答取得ロジック
+  // Claude-ステップ1-8: 新しいAI応答取得ロジック
   /**
    * 階層的セレクタ定義
    * 【動作説明】AI応答を確実に取得するための階層的セレクタ戦略
@@ -3114,7 +2269,7 @@
    * 【戻り値】Element or null: AI応答要素
    */
   const getCleanAIResponse = async () => {
-    ClaudeLogger.info("🔍 [getCleanAIResponse] ユーザー/アシスタント境界検出");
+    console.log("🔍 [getCleanAIResponse] ユーザー/アシスタント境界検出");
 
     // 最後のユーザーメッセージを探す
     const userMessages = document.querySelectorAll(
@@ -3123,7 +2278,7 @@
     const lastUserMessage = userMessages[userMessages.length - 1];
 
     if (lastUserMessage) {
-      ClaudeLogger.info("  ✓ 最後のユーザーメッセージを発見");
+      console.log("  ✓ 最後のユーザーメッセージを発見");
 
       // 最後のユーザーメッセージの後の要素を取得
       let nextElement = lastUserMessage.nextElementSibling;
@@ -3134,7 +2289,7 @@
           nextElement.matches('[data-testid="assistant-message"]') ||
           nextElement.querySelector('[data-testid="assistant-message"]')
         ) {
-          ClaudeLogger.info("  ✓ アシスタントメッセージを検出");
+          console.log("  ✓ アシスタントメッセージを検出");
 
           // Canvas要素を優先的に探す
           const canvasContent = nextElement.querySelector(
@@ -3142,7 +2297,7 @@
           );
 
           if (canvasContent) {
-            ClaudeLogger.info("  ✓ Canvas要素を発見");
+            console.log("  ✓ Canvas要素を発見");
             return canvasContent;
           }
 
@@ -3150,14 +2305,14 @@
           const standardContent =
             nextElement.querySelector(".standard-markdown");
           if (standardContent) {
-            ClaudeLogger.info("  ✓ 標準マークダウン要素を発見");
+            console.log("  ✓ 標準マークダウン要素を発見");
             return standardContent;
           }
         }
         nextElement = nextElement.nextElementSibling;
       }
     } else {
-      ClaudeLogger.info("  ⚠️ ユーザーメッセージが見つかりません");
+      console.log("  ⚠️ ユーザーメッセージが見つかりません");
     }
 
     return null;
@@ -3172,7 +2327,7 @@
   const excludeThinkingProcess = (element) => {
     if (!element) return null;
 
-    ClaudeLogger.info("🧹 [excludeThinkingProcess] 思考プロセス除外チェック");
+    console.log("🧹 [excludeThinkingProcess] 思考プロセス除外チェック");
 
     // 思考プロセスインジケータ
     const thinkingIndicators = [
@@ -3184,7 +2339,7 @@
     for (const indicator of thinkingIndicators) {
       try {
         if (element.closest(indicator)) {
-          ClaudeLogger.info(`  ⚠️ 思考プロセス要素を検出: ${indicator}`);
+          console.log(`  ⚠️ 思考プロセス要素を検出: ${indicator}`);
           return null;
         }
       } catch (e) {
@@ -3195,7 +2350,7 @@
     // 要素のクラスをチェック
     const classNames = element.className || "";
     if (classNames.includes("thinking") || classNames.includes("thought")) {
-      ClaudeLogger.info("  ⚠️ 思考プロセスクラスを検出");
+      console.log("  ⚠️ 思考プロセスクラスを検出");
       return null;
     }
 
@@ -3203,12 +2358,12 @@
     const buttons = element.querySelectorAll("button");
     for (const btn of buttons) {
       if (btn.textContent && btn.textContent.includes("思考プロセス")) {
-        ClaudeLogger.info("  ⚠️ 思考プロセスボタンを検出");
+        console.log("  ⚠️ 思考プロセスボタンを検出");
         return null;
       }
     }
 
-    ClaudeLogger.info("  ✓ 思考プロセスではありません");
+    console.log("  ✓ 思考プロセスではありません");
     return element;
   };
 
@@ -3221,7 +2376,7 @@
   const validateResponseContent = (element) => {
     if (!element) return false;
 
-    ClaudeLogger.info("✅ [validateResponseContent] コンテンツ検証（簡略版）");
+    console.log("✅ [validateResponseContent] コンテンツ検証（簡略版）");
     const text = element.textContent?.trim() || "";
 
     // セレクタベースでの除外がメインのため、テキストパターンチェックは簡略化
@@ -3233,13 +2388,13 @@
       "思考プロセス",
     ];
     if (uiLabels.includes(text.trim())) {
-      ClaudeLogger.info(`  ⚠️ UIラベルを検出: ${text.trim()}`);
+      console.log(`  ⚠️ UIラベルを検出: ${text.trim()}`);
       return false;
     }
 
     // 最小文字数チェック
     if (text.length < 10) {
-      ClaudeLogger.info(`  ⚠️ テキストが短すぎます: ${text.length}文字`);
+      console.log(`  ⚠️ テキストが短すぎます: ${text.length}文字`);
       return false;
     }
 
@@ -3250,13 +2405,11 @@
       text.length > 2000 &&
       (text.includes("# 命令書") || text.includes("【現在"))
     ) {
-      ClaudeLogger.info(
-        `  ⚠️ 長いプロンプトテキストが残存: ${text.length}文字`,
-      );
+      console.log(`  ⚠️ 長いプロンプトテキストが残存: ${text.length}文字`);
       return false;
     }
 
-    ClaudeLogger.info(`  ✓ 有効なコンテンツ: ${text.length}文字`);
+    console.log(`  ✓ 有効なコンテンツ: ${text.length}文字`);
     return true;
   };
 
@@ -3271,7 +2424,7 @@
       try {
         const element = document.querySelector(selector);
         if (element) {
-          ClaudeLogger.info(`  ✓ セレクタでマッチ: ${selector}`);
+          console.log(`  ✓ セレクタでマッチ: ${selector}`);
           return element;
         }
       } catch (e) {
@@ -3287,7 +2440,7 @@
    * 【戻り値】Object: {element, text, method}
    */
   const getReliableAIResponse = async () => {
-    ClaudeLogger.info("🚀 [getReliableAIResponse] AI応答取得開始");
+    console.log("🚀 [getReliableAIResponse] AI応答取得開始");
 
     // Method 1: ユーザー/アシスタント境界検出
     let response = await getCleanAIResponse();
@@ -3304,7 +2457,7 @@
     }
 
     // Method 2: 階層的セレクタ
-    ClaudeLogger.info("  階層的セレクタ戦略を試行");
+    console.log("  階層的セレクタ戦略を試行");
     const selectors = getAIResponseSelectors();
 
     // Canvas要素を優先
@@ -3330,7 +2483,7 @@
     }
 
     // Method 3: フォールバック - 最後のgrid要素
-    ClaudeLogger.info("  フォールバック検索");
+    console.log("  フォールバック検索");
     const grids = document.querySelectorAll(".grid-cols-1.grid");
     if (grids.length > 0) {
       const lastGrid = grids[grids.length - 1];
@@ -3360,16 +2513,16 @@
   const removePromptFromText = (fullText, sentPrompt = null) => {
     if (!fullText) return "";
 
-    ClaudeLogger.info(
+    console.log(
       "✂️ [removePromptFromText] セレクタベースで除外済みのため、テキストをそのまま返却",
     );
-    ClaudeLogger.info(`  - 入力テキスト長: ${fullText.length}文字`);
+    console.log(`  - 入力テキスト長: ${fullText.length}文字`);
 
     // セレクタベースでのPROMPT除外がメインのため、テキストパターンマッチングは簡略化
     // HTML構造の<details>タグのみ除外（思考プロセスの折りたたみブロック）
     let processedText = fullText;
     if (processedText.includes("<details>")) {
-      ClaudeLogger.info("  - <details>ブロックを除外");
+      console.log("  - <details>ブロックを除外");
       processedText = processedText.replace(
         /<details>[\s\S]*?<\/details>/gi,
         "",
@@ -3379,7 +2532,7 @@
     return processedText.trim();
   };
 
-  // Step 4-2-1-9: テキストプレビュー取得関数（改善版）
+  // Claude-ステップ1-9: テキストプレビュー取得関数（改善版）
   /**
    * 高度テキスト抽出関数（応答取得の核心）
    * 【動作説明】新しいAI応答取得ロジックを使用して確実にテキストを取得
@@ -3387,16 +2540,16 @@
    * 【戻り値】Object {full: 完全テキスト, preview: プレビュー, length: 文字数}
    */
   const getTextPreview = async (element) => {
-    ClaudeLogger.info("📊 [getTextPreview] テキスト取得開始");
+    console.log("📊 [getTextPreview] テキスト取得開始");
 
     // 要素が指定されていない場合は、新しいAI応答取得ロジックを使用
     if (!element) {
-      ClaudeLogger.info("  新しいAI応答取得ロジックを使用");
+      console.log("  新しいAI応答取得ロジックを使用");
       const response = await getReliableAIResponse();
 
       if (response.element) {
-        ClaudeLogger.info(`  取得メソッド: ${response.method}`);
-        ClaudeLogger.info(`  テキスト長: ${response.text.length}文字`);
+        console.log(`  取得メソッド: ${response.method}`);
+        console.log(`  テキスト長: ${response.text.length}文字`);
 
         const length = response.text.length;
         if (length <= 200) {
@@ -3409,24 +2562,24 @@
           return { full: response.text, preview, length };
         }
       } else {
-        ClaudeLogger.info("  AI応答が見つかりませんでした");
+        console.log("  AI応答が見つかりませんでした");
         return { full: "", preview: "", length: 0 };
       }
     }
 
     // 既存のロジック（要素が指定されている場合）
-    ClaudeLogger.info("  - 要素タグ:", element.tagName);
-    ClaudeLogger.info("  - 要素ID:", element.id || "(なし)");
-    ClaudeLogger.info(
+    console.log("  - 要素タグ:", element.tagName);
+    console.log("  - 要素ID:", element.id || "(なし)");
+    console.log(
       "  - 要素クラス:",
       element.className ? element.className.substring(0, 100) : "(なし)",
     );
-    ClaudeLogger.info("  - 子要素数:", element.children.length);
+    console.log("  - 子要素数:", element.children.length);
 
     // まず、思考プロセスとコンテンツ検証をチェック
     const cleanedElement = excludeThinkingProcess(element);
     if (!cleanedElement || !validateResponseContent(cleanedElement)) {
-      ClaudeLogger.info("  要素が無効なコンテンツと判定されました");
+      console.log("  要素が無効なコンテンツと判定されました");
       // フォールバック：新しいロジックで再試行
       const response = await getReliableAIResponse();
       if (response.element) {
@@ -3449,13 +2602,13 @@
     // 方法1: innerText（表示されているテキスト）
     if (element.innerText) {
       fullText = element.innerText.trim();
-      ClaudeLogger.info("  - innerText長:", fullText.length);
+      console.log("  - innerText長:", fullText.length);
     }
 
     // 方法2: textContent（全テキスト）
     if (!fullText || fullText.length < 100) {
       const textContent = element.textContent.trim();
-      ClaudeLogger.info("  - textContent長:", textContent.length);
+      console.log("  - textContent長:", textContent.length);
       if (textContent.length > fullText.length) {
         fullText = textContent;
       }
@@ -3489,8 +2642,8 @@
       (element.textContent && element.textContent.includes("思考プロセス"));
 
     if (isCanvasElement && !isTaskExplanation && !isThinkingProcess) {
-      ClaudeLogger.info("  📝 Canvas要素を検出、特別処理を実行");
-      ClaudeLogger.info(
+      console.log("  📝 Canvas要素を検出、特別処理を実行");
+      console.log(
         `    - 要素判定: ${element.classList.contains("code-block__code") ? "code-block__code" : "その他Canvas要素"}`,
       );
 
@@ -3499,15 +2652,12 @@
         const codeText = element.innerText || element.textContent || "";
         if (codeText.trim() && codeText.length > fullText.length) {
           fullText = codeText.trim();
-          ClaudeLogger.info(
-            "  - code-block__code テキスト長:",
-            fullText.length,
-          );
+          console.log("  - code-block__code テキスト長:", fullText.length);
         }
       } else {
         // その他のCanvas要素の場合は従来の方法
         const paragraphs = element.querySelectorAll("p");
-        ClaudeLogger.info("  - 段落数:", paragraphs.length);
+        console.log("  - 段落数:", paragraphs.length);
 
         if (paragraphs.length > 0) {
           let combinedText = "";
@@ -3519,29 +2669,29 @@
               totalChars += charCount;
               if (index < 5 || index >= paragraphs.length - 2) {
                 // 最初の5段落と最後の2段落の詳細をログ
-                ClaudeLogger.info(`    - 段落${index + 1}: ${charCount}文字`);
+                console.log(`    - 段落${index + 1}: ${charCount}文字`);
               }
               combinedText += paraText.trim() + "\n\n";
             }
           });
 
-          ClaudeLogger.info(`  - 総文字数: ${totalChars}文字`);
+          console.log(`  - 総文字数: ${totalChars}文字`);
 
           if (combinedText.trim().length > fullText.length) {
             fullText = combinedText.trim();
-            ClaudeLogger.info("  - 結合テキスト長:", fullText.length);
+            console.log("  - 結合テキスト長:", fullText.length);
           }
         }
 
         // pre/codeブロックも探す（コード例が含まれる場合）
         const codeBlocks = element.querySelectorAll("pre, code");
         if (codeBlocks.length > 0) {
-          ClaudeLogger.info("  - コードブロック数:", codeBlocks.length);
+          console.log("  - コードブロック数:", codeBlocks.length);
           let codeText = "";
           codeBlocks.forEach((block, index) => {
             const blockText = block.innerText || block.textContent || "";
             if (blockText.trim() && !fullText.includes(blockText.trim())) {
-              ClaudeLogger.info(
+              console.log(
                 `    - コードブロック${index + 1}: ${blockText.length}文字`,
               );
               codeText += blockText + "\n";
@@ -3554,8 +2704,8 @@
         }
       }
     } else if (isTaskExplanation) {
-      ClaudeLogger.info("  ⚠️ 作業説明文を検出、除外します");
-      ClaudeLogger.info(
+      console.log("  ⚠️ 作業説明文を検出、除外します");
+      console.log(
         `    - 除外理由: ${
           element.classList.contains("p-3")
             ? "p-3クラス"
@@ -3567,10 +2717,8 @@
         }`,
       );
     } else if (isThinkingProcess) {
-      ClaudeLogger.info("  ⚠️ 思考プロセス要素を検出、除外します");
-      ClaudeLogger.info(
-        "    - 除外理由: 思考プロセスボタンまたは関連要素を検出",
-      );
+      console.log("  ⚠️ 思考プロセス要素を検出、除外します");
+      console.log("    - 除外理由: 思考プロセスボタンまたは関連要素を検出");
       // 思考プロセス以外の要素を探して取得
       const canvasContent = Array.from(
         element.querySelectorAll("div.grid-cols-1.grid"),
@@ -3585,24 +2733,21 @@
           canvasContent.innerText || canvasContent.textContent || "";
         if (contentText.trim()) {
           fullText = contentText.trim();
-          ClaudeLogger.info(
-            "  - 思考プロセス除外後のテキスト長:",
-            fullText.length,
-          );
+          console.log("  - 思考プロセス除外後のテキスト長:", fullText.length);
         }
       }
     }
 
     let length = fullText.length;
-    ClaudeLogger.info("  ✅ 最終テキスト長:", length);
+    console.log("  ✅ 最終テキスト長:", length);
 
     if (length === 0) {
-      ClaudeLogger.warn("  ⚠️ テキストが空です！");
-      ClaudeLogger.info(
+      console.warn("  ⚠️ テキストが空です！");
+      console.log(
         "  - element.innerHTML長:",
         element.innerHTML ? element.innerHTML.length : 0,
       );
-      ClaudeLogger.info(
+      console.log(
         "  - element.outerHTML冒頭:",
         element.outerHTML ? element.outerHTML.substring(0, 200) : "(なし)",
       );
@@ -3614,7 +2759,7 @@
     const finalLength = fullText.length;
 
     if (originalLength !== finalLength) {
-      ClaudeLogger.info(
+      console.log(
         `📝 HTMLタグクリーニング: ${originalLength}文字 → ${finalLength}文字`,
       );
     }
@@ -3633,7 +2778,7 @@
     }
   };
 
-  // Step 4-2-1-10: 要素の可視性チェック
+  // Claude-ステップ1-10: 要素の可視性チェック
   /**
    * 要素可視性判定関数
    * 【動作説明】DOM要素が実際に画面上で見える状態かを厳密にチェックする
@@ -3656,7 +2801,7 @@
     );
   };
 
-  // Step 4-2-1-11: 機能要素の取得（特別処理対応）
+  // Claude-ステップ1-11: 機能要素の取得（特別処理対応）
   /**
    * 機能ボタン特別検索関数
    * 【動作説明】通常のセレクタ検索に加え、テキスト内容での検索も行う高度な要素取得
@@ -3667,7 +2812,7 @@
    * 【使用頻度】3回（機能選択処理で重要）
    */
   const getFeatureElement = (selectors, description = "") => {
-    ClaudeLogger.info(`🔍 機能要素取得開始: ${description}`);
+    console.log(`🔍 機能要素取得開始: ${description}`);
     for (const selector of selectors) {
       try {
         // 特別処理：テキスト検索
@@ -3685,7 +2830,7 @@
             ) {
               const hasSwitch = el.querySelector('input[role="switch"]');
               if (hasSwitch) {
-                ClaudeLogger.info(`✅ ${description}発見（テキスト検索）`);
+                console.log(`✅ ${description}発見（テキスト検索）`);
                 return el;
               }
             }
@@ -3693,7 +2838,7 @@
         } else {
           const element = document.querySelector(selector);
           if (element && isElementVisible(element)) {
-            ClaudeLogger.info(`✅ ${description}発見: ${selector}`);
+            console.log(`✅ ${description}発見: ${selector}`);
             return element;
           }
         }
@@ -3701,11 +2846,11 @@
         continue;
       }
     }
-    ClaudeLogger.info(`⚠️ ${description}が見つかりません`);
+    console.log(`⚠️ ${description}が見つかりません`);
     return null;
   };
 
-  // Step 4-2-1-12: すべての機能トグルをオフにする関数
+  // Claude-ステップ1-12: すべての機能トグルをオフにする関数
   /**
    * 一括機能リセット関数
    * 【動作説明】画面上の全てのトグルスイッチを検索し、ONになっているものを自動的にOFFにする
@@ -3716,7 +2861,7 @@
    * 【使用頻度】2回（機能選択前の重要な初期化処理）
    */
   const turnOffAllFeatureToggles = async () => {
-    ClaudeLogger.info("\n🔄 すべての機能トグルをオフに設定中...");
+    console.log("\n🔄 すべての機能トグルをオフに設定中...");
     let toggleCount = 0;
 
     // 機能メニュー内のすべてのトグルを探す（改良版セレクタ）
@@ -3758,7 +2903,7 @@
               }
             }
 
-            ClaudeLogger.info(`  🔘 ${featureName}をオフに設定`);
+            console.log(`  🔘 ${featureName}をオフに設定`);
             toggleButton.click();
             toggleCount++;
 
@@ -3767,16 +2912,16 @@
           }
         }
       } catch (error) {
-        ClaudeLogger.warn("  ⚠️ トグル処理エラー:", error.message);
+        console.warn("  ⚠️ トグル処理エラー:", error.message);
       }
     }
 
-    ClaudeLogger.info(`✅ ${toggleCount}個のトグルをオフにしました`);
+    console.log(`✅ ${toggleCount}個のトグルをオフにしました`);
     return toggleCount;
   };
 
   // ========================================
-  // Step 4-2-1-13: Deep Research専用処理関数
+  // Claude-ステップ1-13: Deep Research専用処理関数
   // ========================================
 
   /**
@@ -3790,13 +2935,13 @@
    * 【使用頻度】Deep Research使用時のみ（高度な専用処理）
    */
   const handleDeepResearchWait = async () => {
-    ClaudeLogger.info("\n【Deep Research専用待機処理】");
-    ClaudeLogger.info("─".repeat(40));
+    console.log("\n【Deep Research専用待機処理】");
+    console.log("─".repeat(40));
 
     try {
-      // Step 4-2-6-1-1: 送信後、回答停止ボタンが出てくるまで待機
-      ClaudeLogger.info(
-        "\n【Step 4-2-6-1】送信後、回答停止ボタンが出てくるまで待機",
+      // Claude-ステップ6-1-1: 送信後、回答停止ボタンが出てくるまで待機
+      console.log(
+        "\n【Claude-ステップ6-1】送信後、回答停止ボタンが出てくるまで待機",
       );
 
       let stopButtonFound = false;
@@ -3813,7 +2958,7 @@
 
         if (stopResult) {
           stopButtonFound = true;
-          ClaudeLogger.info(`✓ 停止ボタンが出現しました（${waitCount}秒後）`);
+          console.log(`✓ 停止ボタンが出現しました（${waitCount}秒後）`);
           break;
         }
 
@@ -3822,14 +2967,14 @@
 
         // 5秒ごとにログ出力
         if (waitCount % 5 === 0) {
-          ClaudeLogger.info(`  待機中... ${waitCount}秒経過`);
+          console.log(`  待機中... ${waitCount}秒経過`);
         }
       }
 
-      // Step 4-2-6-1-2: 回答停止ボタンが消滅するまで待機（初回）
+      // Claude-ステップ6-1-2: 回答停止ボタンが消滅するまで待機（初回）
       if (stopButtonFound) {
-        ClaudeLogger.info(
-          "\n【Step 4-2-6-2】回答停止ボタンが消滅するまで待機（初回）",
+        console.log(
+          "\n【Claude-ステップ6-2】回答停止ボタンが消滅するまで待機（初回）",
         );
         let stopButtonGone = false;
         waitCount = 0;
@@ -3846,9 +2991,9 @@
 
           if (!stopResult) {
             stopButtonGone = true;
-            ClaudeLogger.info(`✓ 停止ボタンが消滅しました（${waitCount}秒後）`);
+            console.log(`✓ 停止ボタンが消滅しました（${waitCount}秒後）`);
             // 停止ボタン消滅後の3秒待機
-            ClaudeLogger.info("⏳ 停止ボタン消滅後の3秒待機中...");
+            console.log("⏳ 停止ボタン消滅後の3秒待機中...");
             await wait(3000);
             break;
           }
@@ -3858,15 +3003,15 @@
 
           // 10秒ごとにログ出力
           if (waitCount % 10 === 0) {
-            ClaudeLogger.info(
+            console.log(
               `  初回回答生成中... ${Math.floor(waitCount / 60)}分${waitCount % 60}秒経過`,
             );
           }
         }
       }
 
-      // Step 4-2-6-1-3: 一時待機（Deep Researchの追加処理のため）
-      ClaudeLogger.info("\n【Step 4-2-6-3】Deep Research追加処理の一時待機");
+      // Claude-ステップ6-1-3: 一時待機（Deep Researchの追加処理のため）
+      console.log("\n【Claude-ステップ6-3】Deep Research追加処理の一時待機");
       await wait(5000);
 
       // ログで状態を確認
@@ -3874,12 +3019,12 @@
       for (const btn of currentButtons) {
         const text = btn.textContent?.trim() || "";
         if (text.includes("停止") || text.includes("Stop")) {
-          ClaudeLogger.info("  停止ボタン検出:", text);
+          console.log("  停止ボタン検出:", text);
         }
       }
 
-      // Step 4-2-6-1-4: 回答停止ボタンが出現するまで待機
-      ClaudeLogger.info("\n【Step 4-2-6-4】回答停止ボタンが出現するまで待機");
+      // Claude-ステップ6-1-4: 回答停止ボタンが出現するまで待機
+      console.log("\n【Claude-ステップ6-4】回答停止ボタンが出現するまで待機");
       stopButtonFound = false;
       waitCount = 0;
       const maxWaitCount = AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT / 1000; // 統一設定: 40分
@@ -3894,7 +3039,7 @@
 
         if (stopResult) {
           stopButtonFound = true;
-          ClaudeLogger.info(
+          console.log(
             `✓ 停止ボタンが出現しました（開始から${Math.floor(waitCount / 60)}分${waitCount % 60}秒後）`,
           );
           break;
@@ -3905,16 +3050,16 @@
 
         // 1分ごとにログ出力
         if (waitCount % 60 === 0) {
-          ClaudeLogger.info(
+          console.log(
             `  Deep Research処理中... ${Math.floor(waitCount / 60)}分経過`,
           );
         }
       }
 
-      // Step 4-2-6-1-5: 回答停止ボタンが10秒間消滅するまで待機
+      // Claude-ステップ6-1-5: 回答停止ボタンが10秒間消滅するまで待機
       if (stopButtonFound) {
-        ClaudeLogger.info(
-          "\n【Step 4-2-6-5】回答停止ボタンが10秒間消滅するまで待機",
+        console.log(
+          "\n【Claude-ステップ6-5】回答停止ボタンが10秒間消滅するまで待機",
         );
         let stopButtonGone = false;
         let disappearWaitCount = 0;
@@ -3950,11 +3095,11 @@
 
             if (stillGone) {
               stopButtonGone = true;
-              ClaudeLogger.info(
+              console.log(
                 `✓ Deep Research完了（総時間: ${Math.floor(disappearWaitCount / 60)}分）`,
               );
               // 停止ボタン消滅後の3秒待機
-              ClaudeLogger.info("⏳ 停止ボタン消滅後の3秒待機中...");
+              console.log("⏳ 停止ボタン消滅後の3秒待機中...");
               await wait(3000);
               break;
             }
@@ -3965,7 +3110,7 @@
 
           // 1分ごとにログ出力
           if (Date.now() - lastLogTime >= 60000) {
-            ClaudeLogger.info(
+            console.log(
               `  Deep Research生成中... ${Math.floor(disappearWaitCount / 60)}分経過`,
             );
             lastLogTime = Date.now();
@@ -3973,27 +3118,27 @@
         }
       }
     } catch (error) {
-      ClaudeLogger.error("❌ Deep Research待機処理エラー:", error.message);
+      console.error("❌ Deep Research待機処理エラー:", error.message);
       throw error;
     }
   };
 
   // ========================================
-  // メイン実行関数（Step 4-2-2-7を含む）
+  // メイン実行関数（Claude-ステップ2-7を含む）
   // ========================================
 
   async function executeTask(taskData) {
-    ClaudeLogger.info(
+    console.log(
       "%c🚀 Claude V2 タスク実行開始",
       "color: #9C27B0; font-weight: bold; font-size: 16px",
     );
-    ClaudeLogger.info(
-      "%c【Step 4-2-0-1】タスク初期化開始",
+    console.log(
+      "%c【Claude-ステップ0-1】タスク初期化開始",
       "color: #2196F3; font-weight: bold;",
     );
-    ClaudeLogger.info("════════════════════════════════════════");
+    console.log("════════════════════════════════════════");
 
-    ClaudeLogger.info("📋 受信したタスクデータ:", {
+    console.log("📋 受信したタスクデータ:", {
       model: taskData.model || "未指定",
       function: taskData.function || "通常",
       promptLength: taskData.prompt?.length || taskData.text?.length || 0,
@@ -4006,33 +3151,33 @@
     // 送信時刻をタスク開始時に記録（関数全体で使用可能）
     const taskStartTime = new Date();
     let sendTime = taskStartTime; // 実際の送信時刻で更新される
-    ClaudeLogger.info("🕰️ タスク開始時刻:", taskStartTime.toISOString());
-    ClaudeLogger.info("🎯 実行プラン:");
-    ClaudeLogger.info("  1. テキスト入力");
-    ClaudeLogger.info("    1.1. 入力欄検索");
-    ClaudeLogger.info("    1.2. テキスト挿入");
-    ClaudeLogger.info("    1.3. 入力検証");
-    ClaudeLogger.info("  2. モデル選択（条件付き）");
-    ClaudeLogger.info("    2.1. メニュー検索・クリック");
-    ClaudeLogger.info("    2.2. 目標モデル検索");
-    ClaudeLogger.info("    2.3. モデル選択確認");
-    ClaudeLogger.info("  3. 機能選択（条件付き）");
-    ClaudeLogger.info("    3.1. 機能メニューアクセス");
-    ClaudeLogger.info("    3.2. 全トグルオフ");
-    ClaudeLogger.info("    3.3. 目標機能設定");
-    ClaudeLogger.info("    3.4. 機能選択確認");
-    ClaudeLogger.info("  4. メッセージ送信");
-    ClaudeLogger.info("    4.1. 送信ボタン検索");
-    ClaudeLogger.info("    4.2. ボタンクリック実行");
-    ClaudeLogger.info("    4.3. 送信時刻記録");
-    ClaudeLogger.info("  5. 応答待機");
-    ClaudeLogger.info("    5.1. 停止ボタン監視");
-    ClaudeLogger.info("    5.2. 応答完了判定");
-    ClaudeLogger.info("  6. テキスト取得");
-    ClaudeLogger.info("    6.1. Canvas/通常判定");
-    ClaudeLogger.info("    6.2. テキスト抽出");
-    ClaudeLogger.info("    6.3. 結果検証");
-    ClaudeLogger.info("✅【Step 4-2-0-2】タスク初期化完了\n");
+    console.log("🕰️ タスク開始時刻:", taskStartTime.toISOString());
+    console.log("🎯 実行プラン:");
+    console.log("  1. テキスト入力");
+    console.log("    1.1. 入力欄検索");
+    console.log("    1.2. テキスト挿入");
+    console.log("    1.3. 入力検証");
+    console.log("  2. モデル選択（条件付き）");
+    console.log("    2.1. メニュー検索・クリック");
+    console.log("    2.2. 目標モデル検索");
+    console.log("    2.3. モデル選択確認");
+    console.log("  3. 機能選択（条件付き）");
+    console.log("    3.1. 機能メニューアクセス");
+    console.log("    3.2. 全トグルオフ");
+    console.log("    3.3. 目標機能設定");
+    console.log("    3.4. 機能選択確認");
+    console.log("  4. メッセージ送信");
+    console.log("    4.1. 送信ボタン検索");
+    console.log("    4.2. ボタンクリック実行");
+    console.log("    4.3. 送信時刻記録");
+    console.log("  5. 応答待機");
+    console.log("    5.1. 停止ボタン監視");
+    console.log("    5.2. 応答完了判定");
+    console.log("  6. テキスト取得");
+    console.log("    6.1. Canvas/通常判定");
+    console.log("    6.2. テキスト抽出");
+    console.log("    6.3. 結果検証");
+    console.log("✅【Claude-ステップ0-2】タスク初期化完了\n");
 
     // ログ記録開始
     ClaudeLogManager.startTask(taskData);
@@ -4049,7 +3194,7 @@
       ) {
         const cellPosition = `${taskData.cellInfo.column}${taskData.cellInfo.row}`;
         prompt = `【現在${cellPosition}セルを処理中です】\n\n${prompt}`;
-        ClaudeLogger.info(`📍 セル位置情報を追加: ${cellPosition}`);
+        console.log(`📍 セル位置情報を追加: ${cellPosition}`);
       }
 
       const modelName = taskData.model || "";
@@ -4058,32 +3203,30 @@
       // Deep Research判定
       const isDeepResearch = featureName === "Deep Research";
 
-      ClaudeLogger.info("実行パラメータ:");
-      ClaudeLogger.info("  - モデル名:", modelName || "(デフォルト)");
-      ClaudeLogger.info("  - 機能名:", featureName || "(なし)");
-      ClaudeLogger.info("  - Deep Research:", isDeepResearch ? "有効" : "無効");
-      ClaudeLogger.info("  - プロンプト長:", prompt.length, "文字");
+      console.log("実行パラメータ:");
+      console.log("  - モデル名:", modelName || "(デフォルト)");
+      console.log("  - 機能名:", featureName || "(なし)");
+      console.log("  - Deep Research:", isDeepResearch ? "有効" : "無効");
+      console.log("  - プロンプト長:", prompt.length, "文字");
 
       // ========================================
       // ステップ2: テキスト入力
       // ========================================
-      ClaudeLogger.info("\n【Step 4-2-2-1】テキスト入力");
-      ClaudeLogger.info("─".repeat(40));
-      ClaudeLogger.info(`📋 プロンプト長: ${prompt.length}文字`);
-      ClaudeLogger.info(
-        `🎯 対象セレクタ: ${claudeSelectors["1_テキスト入力欄"]}`,
-      );
+      console.log("\n【Claude-ステップ2-1】テキスト入力");
+      console.log("─".repeat(40));
+      console.log(`📋 プロンプト長: ${prompt.length}文字`);
+      console.log(`🎯 対象セレクタ: ${claudeSelectors["1_テキスト入力欄"]}`);
       ClaudeLogManager.logStep("Step2-TextInput", "テキスト入力開始");
 
-      ClaudeLogger.info("🔍 テキスト入力欄を検索中...");
+      console.log("🔍 テキスト入力欄を検索中...");
       const inputResult = await findClaudeElement(
         claudeSelectors["1_テキスト入力欄"],
       );
       if (!inputResult) {
-        ClaudeLogger.error(
+        console.error(
           "❌ テキスト入力欄が見つかりません - リトライ機能で再試行",
         );
-        ClaudeLogger.error(
+        console.error(
           `🎯 検索セレクタ: ${claudeSelectors["1_テキスト入力欄"]}`,
         );
 
@@ -4108,15 +3251,15 @@
         inputResult = retryResult.result.element;
       }
 
-      ClaudeLogger.info(`✅ テキスト入力欄発見: ${inputResult.tagName}`);
-      ClaudeLogger.info(`📝 ${prompt.length}文字のテキストを入力中...`);
-      ClaudeLogger.info(
+      console.log(`✅ テキスト入力欄発見: ${inputResult.tagName}`);
+      console.log(`📝 ${prompt.length}文字のテキストを入力中...`);
+      console.log(
         `💬 プロンプト先頭: "${prompt.substring(0, 50)}${prompt.length > 50 ? "..." : ""}"`,
       );
 
       const inputSuccess = await inputText(inputResult, prompt);
       if (!inputSuccess) {
-        ClaudeLogger.error("❌ テキスト入力処理に失敗 - リトライ機能で再試行");
+        console.error("❌ テキスト入力処理に失敗 - リトライ機能で再試行");
 
         const retryManager = new ClaudeRetryManager();
         const retryResult = await retryManager.executeWithRetry({
@@ -4138,17 +3281,15 @@
         }
       }
 
-      ClaudeLogger.info("✅ テキスト入力完了");
-      ClaudeLogger.info(
+      console.log("✅ テキスト入力完了");
+      console.log(
         `📊 入力結果: ${inputResult.textContent.length}文字が入力欄に設定されました`,
       );
 
       // 入力成功の確認
       const inputVerification = inputResult.textContent.length > 0;
-      ClaudeLogger.info(
-        `🔍 入力検証: ${inputVerification ? "✅ 成功" : "❌ 失敗"}`,
-      );
-      ClaudeLogger.info(
+      console.log(`🔍 入力検証: ${inputVerification ? "✅ 成功" : "❌ 失敗"}`);
+      console.log(
         `📈 入力精度: ${Math.round((inputResult.textContent.length / prompt.length) * 100)}%`,
       );
 
@@ -4161,27 +3302,27 @@
         ),
       });
 
-      ClaudeLogger.info(
-        "%c✅【Step 4-2-2-2】テキスト入力処理完了",
+      console.log(
+        "%c✅【Claude-ステップ2-2】テキスト入力処理完了",
         "color: #4CAF50; font-weight: bold;",
       );
-      ClaudeLogger.info("─".repeat(50));
+      console.log("─".repeat(50));
       await wait(1000);
 
       // ========================================
       // ステップ3: モデル選択（条件付き）
       // ========================================
       if (modelName && modelName !== "" && modelName !== "設定なし") {
-        ClaudeLogger.info(
-          "%c【Step 4-2-3-1】モデル選択開始",
+        console.log(
+          "%c【Claude-ステップ3-1】モデル選択開始",
           "color: #FF9800; font-weight: bold;",
         );
-        ClaudeLogger.info("─".repeat(40));
-        ClaudeLogger.info(`🎯 目標モデル: ${modelName}`);
-        ClaudeLogger.info(`📍 現在のページURL: ${window.location.href}`);
+        console.log("─".repeat(40));
+        console.log(`🎯 目標モデル: ${modelName}`);
+        console.log(`📍 現在のページURL: ${window.location.href}`);
 
         // モデルメニューボタンを探してクリック
-        ClaudeLogger.info("\n【Step 4-2-3-2】モデルメニューボタンを探す");
+        console.log("\n【Claude-ステップ3-2】モデルメニューボタンを探す");
         const menuButton = await findElementByMultipleSelectors(
           modelSelectors.menuButton,
           "モデル選択ボタン",
@@ -4212,28 +3353,25 @@
 
         if (!foundInMain) {
           // その他のモデルをチェック
-          ClaudeLogger.info("【Step 4-2-3-3】その他のモデルメニューをチェック");
+          console.log("【Claude-ステップ3-3】その他のモデルメニューをチェック");
 
           // デバッグ: modelSelectors.otherModelsMenuの詳細を出力
-          ClaudeLogger.debug("📊 [DEBUG] modelSelectors.otherModelsMenu:");
-          ClaudeLogger.info("  - 型:", typeof modelSelectors.otherModelsMenu);
-          ClaudeLogger.info(
+          console.log("📊 [DEBUG] modelSelectors.otherModelsMenu:");
+          console.log("  - 型:", typeof modelSelectors.otherModelsMenu);
+          console.log(
             "  - 配列:",
             Array.isArray(modelSelectors.otherModelsMenu),
           );
-          ClaudeLogger.info(
-            "  - 長さ:",
-            modelSelectors.otherModelsMenu?.length,
-          );
-          ClaudeLogger.info(
+          console.log("  - 長さ:", modelSelectors.otherModelsMenu?.length);
+          console.log(
             "  - 内容:",
             JSON.stringify(modelSelectors.otherModelsMenu, null, 2),
           );
 
           // デバッグ: 現在のDOM状態を確認
-          ClaudeLogger.debug("📊 [DEBUG] 現在のDOM状態:");
+          console.log("📊 [DEBUG] 現在のDOM状態:");
           const allMenuItems = document.querySelectorAll('[role="menuitem"]');
-          ClaudeLogger.info("  - 全menuitem数:", allMenuItems.length);
+          console.log("  - 全menuitem数:", allMenuItems.length);
           allMenuItems.forEach((item, index) => {
             const hasPopup = item.getAttribute("aria-haspopup");
             const text = item.textContent?.trim();
@@ -4242,14 +3380,14 @@
               text?.includes("他のモデル") ||
               text?.includes("Other")
             ) {
-              ClaudeLogger.info(
+              console.log(
                 `  - [${index}] text: "${text?.substring(0, 50)}", aria-haspopup: "${hasPopup}"`,
               );
             }
           });
 
           // modelSelectors.otherModelsMenuは既にデフォルト値を持っているので、直接使用
-          ClaudeLogger.debug(
+          console.log(
             "📊 [DEBUG] その他のモデルメニューセレクタ数:",
             modelSelectors.otherModelsMenu.length,
           );
@@ -4258,28 +3396,26 @@
             "その他のモデルメニュー",
           );
           if (otherModelsItem) {
-            ClaudeLogger.debug("✅ [DEBUG] その他のモデルメニューアイテム発見");
+            console.log("✅ [DEBUG] その他のモデルメニューアイテム発見");
             await triggerReactEvent(otherModelsItem, "click");
             await wait(1500);
 
             // サブメニュー内でモデルを探す
             const subMenuItems = document.querySelectorAll('[role="menuitem"]');
-            ClaudeLogger.debug(
+            console.log(
               `📊 [DEBUG] サブメニュー内のアイテム数: ${subMenuItems.length}`,
             );
             for (const item of subMenuItems) {
               const itemText = item.textContent;
               if (itemText && itemText.includes(targetModelName)) {
-                ClaudeLogger.debug(
-                  `✅ [DEBUG] ターゲットモデル発見: ${itemText}`,
-                );
+                console.log(`✅ [DEBUG] ターゲットモデル発見: ${itemText}`);
                 await triggerReactEvent(item, "click");
                 await wait(1500);
                 break;
               }
             }
           } else {
-            ClaudeLogger.debug(
+            console.log(
               "❌ [DEBUG] その他のモデルメニューアイテムが見つかりません",
             );
           }
@@ -4287,21 +3423,19 @@
 
         // モデル選択結果の確認
         const newCurrentModel = getCurrentModelInfo();
-        ClaudeLogger.info(`🔍 選択後のモデル: "${newCurrentModel}"`);
-        ClaudeLogger.info(`🎯 期待されるモデル: "${targetModelName}"`);
+        console.log(`🔍 選択後のモデル: "${newCurrentModel}"`);
+        console.log(`🎯 期待されるモデル: "${targetModelName}"`);
         const modelMatched = newCurrentModel === targetModelName;
-        ClaudeLogger.info(
-          `📊 モデル一致: ${modelMatched ? "✅ 成功" : "❌ 不一致"}`,
-        );
+        console.log(`📊 モデル一致: ${modelMatched ? "✅ 成功" : "❌ 不一致"}`);
 
-        ClaudeLogger.info(
-          "%c✅【Step 4-2-3-4】モデル選択処理完了",
+        console.log(
+          "%c✅【Claude-ステップ3-4】モデル選択処理完了",
           "color: #4CAF50; font-weight: bold;",
         );
-        ClaudeLogger.info("─".repeat(50));
+        console.log("─".repeat(50));
       } else {
-        ClaudeLogger.info(
-          "%c⏭️【Step 4-2-3-1】モデル選択をスキップ（設定なし）",
+        console.log(
+          "%c⏭️【Claude-ステップ3-1】モデル選択をスキップ（設定なし）",
           "color: #9E9E9E; font-style: italic;",
         );
       }
@@ -4310,17 +3444,15 @@
       // ステップ4: 機能選択（条件付き）
       // ========================================
       if (featureName && featureName !== "" && featureName !== "設定なし") {
-        ClaudeLogger.info(
-          "%c【Step 4-2-4-1】機能選択開始",
+        console.log(
+          "%c【Claude-ステップ4-1】機能選択開始",
           "color: #9C27B0; font-weight: bold;",
         );
-        ClaudeLogger.info("─".repeat(40));
-        ClaudeLogger.info(`🎯 目標機能: ${featureName}`);
-        ClaudeLogger.info(
-          `🔍 Deep Research判定: ${isDeepResearch ? "Yes" : "No"}`,
-        );
+        console.log("─".repeat(40));
+        console.log(`🎯 目標機能: ${featureName}`);
+        console.log(`🔍 Deep Research判定: ${isDeepResearch ? "Yes" : "No"}`);
 
-        ClaudeLogger.info("\n🔧【Step 4-2-4-2】機能メニューアクセス開始");
+        console.log("\n🔧【Claude-ステップ4-2】機能メニューアクセス開始");
 
         const featureMenuBtn = getFeatureElement(
           featureSelectors.menuButton,
@@ -4331,7 +3463,7 @@
           await wait(1500);
 
           // 機能選択前にすべてのトグルをオフにする
-          ClaudeLogger.info("\n【Step 4-2-4-3】全トグルをオフに設定");
+          console.log("\n【Claude-ステップ4-3】全トグルをオフに設定");
           await turnOffAllFeatureToggles();
           await wait(500);
 
@@ -4347,8 +3479,8 @@
             }
 
             // メニューを閉じる（Deep Research用）
-            ClaudeLogger.info(
-              "\n【Step 4-2-4-4】Deep Research用: メニューを閉じる",
+            console.log(
+              "\n【Claude-ステップ4-4】Deep Research用: メニューを閉じる",
             );
             featureMenuBtn.click();
             await wait(1000);
@@ -4370,9 +3502,9 @@
             }
 
             // ========================================
-            // Step 4-2-4-2-2: Deep Research機能確認
+            // Claude-ステップ4-2-2: Deep Research機能確認
             // ========================================
-            ClaudeLogger.info("\n【Step 4-2-4-5】Deep Research機能の確認");
+            console.log("\n【Claude-ステップ4-5】Deep Research機能の確認");
             const deepResearchConfirm =
               confirmFeatureSelection("Deep Research");
 
@@ -4380,11 +3512,11 @@
               deepResearchConfirm.deepResearch ||
               deepResearchConfirm.webSearch
             ) {
-              ClaudeLogger.info(
+              console.log(
                 `✅ Deep Research機能確認完了: [${deepResearchConfirm.detected.join(", ")}]`,
               );
             } else {
-              ClaudeLogger.info(
+              console.log(
                 "⚠️ Deep Research機能の確認ができませんでしたが処理を継続します",
               );
             }
@@ -4403,41 +3535,41 @@
             }
 
             // メニューを閉じる
-            ClaudeLogger.info("\n【Step 4-2-4-6】メニューを閉じる");
+            console.log("\n【Claude-ステップ4-6】メニューを閉じる");
             featureMenuBtn.click();
             await wait(1000);
           }
         }
 
         // ========================================
-        // Step 4-2-4-4: 機能選択確認（新機能）
+        // Claude-ステップ4-4: 機能選択確認（新機能）
         // ========================================
-        ClaudeLogger.info("\n【Step 4-2-4-7】機能選択の確認");
+        console.log("\n【Claude-ステップ4-7】機能選択の確認");
         const confirmationResult = confirmFeatureSelection(featureName);
 
         if (confirmationResult.error) {
-          ClaudeLogger.info(
+          console.log(
             `⚠️ 機能確認でエラーが発生しましたが処理を継続します: ${confirmationResult.error}`,
           );
         } else if (confirmationResult.detected.length === 0) {
-          ClaudeLogger.info(
+          console.log(
             "⚠️ 期待される機能ボタンが検出されませんでしたが処理を継続します",
           );
         } else {
-          ClaudeLogger.info(
+          console.log(
             `🔍 検出された機能: [${confirmationResult.detected.join(", ")}]`,
           );
-          ClaudeLogger.info(`✅ 機能選択確認完了`);
+          console.log(`✅ 機能選択確認完了`);
         }
 
-        ClaudeLogger.info(
-          "%c✅【Step 4-2-4-8】機能選択処理完了",
+        console.log(
+          "%c✅【Claude-ステップ4-8】機能選択処理完了",
           "color: #4CAF50; font-weight: bold;",
         );
-        ClaudeLogger.info("─".repeat(50));
+        console.log("─".repeat(50));
       } else {
-        ClaudeLogger.info(
-          "%c⏭️【Step 4-2-4-1】機能選択をスキップ（設定なし）",
+        console.log(
+          "%c⏭️【Claude-ステップ4-1】機能選択をスキップ（設定なし）",
           "color: #9E9E9E; font-style: italic;",
         );
       }
@@ -4445,27 +3577,21 @@
       // ========================================
       // ステップ5: メッセージ送信
       // ========================================
-      ClaudeLogger.info(
-        "%c【Step 4-2-5-1】メッセージ送信開始",
+      console.log(
+        "%c【Claude-ステップ5-1】メッセージ送信開始",
         "color: #E91E63; font-weight: bold;",
       );
-      ClaudeLogger.info("─".repeat(40));
-      ClaudeLogger.info(
-        `🎯 送信ボタンセレクタ: ${claudeSelectors["2_送信ボタン"]}`,
-      );
-      ClaudeLogger.info(`📝 送信内容長: ${prompt.length}文字`);
+      console.log("─".repeat(40));
+      console.log(`🎯 送信ボタンセレクタ: ${claudeSelectors["2_送信ボタン"]}`);
+      console.log(`📝 送信内容長: ${prompt.length}文字`);
 
-      ClaudeLogger.info("🔍 送信ボタンを検索中...");
+      console.log("🔍 送信ボタンを検索中...");
       const sendResult = await findClaudeElement(
         claudeSelectors["2_送信ボタン"],
       );
       if (!sendResult) {
-        ClaudeLogger.error(
-          "❌ 送信ボタンが見つかりません - リトライ機能で再試行",
-        );
-        ClaudeLogger.error(
-          `🎯 検索セレクタ: ${claudeSelectors["2_送信ボタン"]}`,
-        );
+        console.error("❌ 送信ボタンが見つかりません - リトライ機能で再試行");
+        console.error(`🎯 検索セレクタ: ${claudeSelectors["2_送信ボタン"]}`);
 
         const retryManager = new ClaudeRetryManager();
         const retryResult = await retryManager.executeWithRetry({
@@ -4488,19 +3614,19 @@
         sendResult = retryResult.result.element;
       }
 
-      ClaudeLogger.info(`✅ 送信ボタン発見: ${sendResult.tagName}`);
+      console.log(`✅ 送信ボタン発見: ${sendResult.tagName}`);
       const buttonRect = sendResult.getBoundingClientRect();
-      ClaudeLogger.info(
+      console.log(
         `📍 送信ボタン位置: x=${Math.round(buttonRect.left)}, y=${Math.round(buttonRect.top)}`,
       );
-      ClaudeLogger.info(
+      console.log(
         `📏 送信ボタンサイズ: ${Math.round(buttonRect.width)}×${Math.round(buttonRect.height)}px`,
       );
 
-      ClaudeLogger.info("📤 送信ボタンをクリック...");
+      console.log("📤 送信ボタンをクリック...");
       const clickSuccess = await clickButton(sendResult, "送信ボタン");
       if (!clickSuccess) {
-        ClaudeLogger.error(
+        console.error(
           "❌ 送信ボタンのクリック処理に失敗 - リトライ機能で再試行",
         );
 
@@ -4520,11 +3646,11 @@
         }
       }
 
-      ClaudeLogger.info("✅ 送信ボタンクリック完了");
+      console.log("✅ 送信ボタンクリック完了");
 
       // 送信時刻を更新（実際の送信タイミング）
       sendTime = new Date(); // 変数を更新
-      ClaudeLogger.info("🔍 送信時刻記録開始 - ", sendTime.toISOString());
+      console.log("🔍 送信時刻記録開始 - ", sendTime.toISOString());
 
       // taskDataからtaskIdを取得、なければ生成
       const taskId =
@@ -4534,7 +3660,7 @@
       try {
         // Chrome拡張機能のメッセージ送信で直接記録
         if (chrome.runtime && chrome.runtime.sendMessage) {
-          const result = await chrome.runtime.sendMessage({
+          await chrome.runtime.sendMessage({
             type: "recordSendTime",
             taskId: taskId,
             sendTime: sendTime.toISOString(),
@@ -4544,42 +3670,28 @@
               function: featureName || "通常",
             },
           });
-
-          if (chrome.runtime.lastError) {
-            console.warn(
-              "[4-2-claude-automation.js] 送信時刻記録通信エラー:",
-              chrome.runtime.lastError.message,
-            );
-          } else {
-            ClaudeLogger.info(
-              "✅ 送信時刻記録成功:",
-              taskId,
-              sendTime.toISOString(),
-            );
-          }
+          console.log("✅ 送信時刻記録成功:", taskId, sendTime.toISOString());
         } else {
-          ClaudeLogger.warn("⚠️ Chrome runtime APIが利用できません");
+          console.warn("⚠️ Chrome runtime APIが利用できません");
         }
       } catch (error) {
-        ClaudeLogger.info("❌ 送信時刻記録エラー:", error.message);
+        console.log("❌ 送信時刻記録エラー:", error.message);
       }
 
-      ClaudeLogger.info("✅ メッセージ送信完了");
-      ClaudeLogger.info(`📤 実際の送信時刻: ${sendTime.toISOString()}`);
-      ClaudeLogger.info(
-        `⏱️ 送信処理時間: ${Date.now() - taskStartTime.getTime()}ms`,
-      );
+      console.log("✅ メッセージ送信完了");
+      console.log(`📤 実際の送信時刻: ${sendTime.toISOString()}`);
+      console.log(`⏱️ 送信処理時間: ${Date.now() - taskStartTime.getTime()}ms`);
 
       ClaudeLogManager.logStep("Step5-Send", "メッセージ送信完了", {
         sendTime: sendTime.toISOString(),
         processingTime: Date.now() - taskStartTime.getTime(),
       });
 
-      ClaudeLogger.info(
-        "%c✅【Step 4-2-5-2】メッセージ送信処理完了",
+      console.log(
+        "%c✅【Claude-ステップ5-2】メッセージ送信処理完了",
         "color: #4CAF50; font-weight: bold;",
       );
-      ClaudeLogger.info("─".repeat(50));
+      console.log("─".repeat(50));
       await wait(2000);
 
       // Canvas内容を保存する変数（スコープを広く）
@@ -4588,11 +3700,11 @@
       // ========================================
       // ステップ6-0: Canvas V2検出チェック（リトライ機能統合）
       // ========================================
-      ClaudeLogger.info(
-        "%c【Step 4-2-6-0】Canvas V2検出チェック",
+      console.log(
+        "%c【Claude-ステップ6-0】Canvas V2検出チェック",
         "color: #FF5722; font-weight: bold;",
       );
-      ClaudeLogger.info("─".repeat(40));
+      console.log("─".repeat(40));
 
       const retryManager = new ClaudeRetryManager();
       const versionElement = document.querySelector(
@@ -4602,7 +3714,7 @@
       if (versionElement) {
         const versionText =
           versionElement.textContent || versionElement.innerText || "";
-        ClaudeLogger.info(`🔍 検出されたバージョン表示: "${versionText}"`);
+        console.log(`🔍 検出されたバージョン表示: "${versionText}"`);
 
         // V2以上を検出した場合
         if (
@@ -4612,12 +3724,12 @@
           versionText.includes("v5") ||
           /v([2-9]|\d{2,})/.test(versionText)
         ) {
-          ClaudeLogger.info(
+          console.log(
             "🚨 Canvas無限更新を検出しました - 10回リトライシステム開始",
           );
-          ClaudeLogger.info(`   - 検出バージョン: ${versionText}`);
-          ClaudeLogger.info(`   - タスクID: ${taskData.taskId || "unknown"}`);
-          ClaudeLogger.info(
+          console.log(`   - 検出バージョン: ${versionText}`);
+          console.log(`   - タスクID: ${taskData.taskId || "unknown"}`);
+          console.log(
             `   - リトライ間隔: 5秒→10秒→1分→5分→10分→15分→30分→1時間→2時間`,
           );
 
@@ -4633,49 +3745,43 @@
           }
           // retryResultがnullの場合は通常処理を継続（初回実行）
         } else {
-          ClaudeLogger.info(
-            `✅ 正常なバージョン: ${versionText} - 通常処理を継続`,
-          );
+          console.log(`✅ 正常なバージョン: ${versionText} - 通常処理を継続`);
         }
       } else {
-        ClaudeLogger.info(
-          "ℹ️ バージョン表示要素が見つかりません（通常の応答）",
-        );
+        console.log("ℹ️ バージョン表示要素が見つかりません（通常の応答）");
       }
 
-      ClaudeLogger.info(
-        "%c✅【Step 4-2-6-0】Canvas V2検出チェック完了",
+      console.log(
+        "%c✅【Claude-ステップ6-0】Canvas V2検出チェック完了",
         "color: #4CAF50; font-weight: bold;",
       );
-      ClaudeLogger.info("─".repeat(50));
+      console.log("─".repeat(50));
 
       // ========================================
       // ステップ6: 応答待機（Deep Research/通常）
       // ========================================
-      ClaudeLogger.info(
-        "%c【Step 4-2-6-1】応答待機開始",
+      console.log(
+        "%c【Claude-ステップ6-1】応答待機開始",
         "color: #607D8B; font-weight: bold;",
       );
       const waitStartTime = Date.now();
 
       if (isDeepResearch) {
-        ClaudeLogger.info("🔬【Step 4-2-6-2】Deep Research専用待機処理");
-        ClaudeLogger.info("─".repeat(40));
-        ClaudeLogger.info("⏱️ 最大待機時間: 40分");
-        ClaudeLogger.info(
-          "🎯 監視対象: Canvas機能、プレビューボタン、停止ボタン",
-        );
+        console.log("🔬【Claude-ステップ6-2】Deep Research専用待機処理");
+        console.log("─".repeat(40));
+        console.log("⏱️ 最大待機時間: 40分");
+        console.log("🎯 監視対象: Canvas機能、プレビューボタン、停止ボタン");
         await handleDeepResearchWait();
       } else {
         // ========================================
         // ステップ6-2: 通常応答待機
         // ========================================
-        ClaudeLogger.info("📝【Step 4-2-6-3】通常応答待機（停止ボタン監視）");
-        ClaudeLogger.info("─".repeat(40));
-        ClaudeLogger.info(
+        console.log("📝【Claude-ステップ6-3】通常応答待機（停止ボタン監視）");
+        console.log("─".repeat(40));
+        console.log(
           `⏱️ 最大待機時間: ${Math.round(AI_WAIT_CONFIG.STOP_BUTTON_INITIAL_WAIT / 60000)}分`,
         );
-        ClaudeLogger.info("🎯 監視対象: 回答停止ボタン");
+        console.log("🎯 監視対象: 回答停止ボタン");
 
         let stopButtonFound = false;
         let waitCount = 0;
@@ -4690,7 +3796,7 @@
 
           if (stopResult) {
             stopButtonFound = true;
-            ClaudeLogger.info(`✓ 停止ボタンが出現（${waitCount}秒後）`);
+            console.log(`✓ 停止ボタンが出現（${waitCount}秒後）`);
             break;
           }
 
@@ -4698,12 +3804,12 @@
           waitCount++;
 
           if (waitCount % 5 === 0) {
-            ClaudeLogger.info(`  応答生成中... ${waitCount}秒経過`);
+            console.log(`  応答生成中... ${waitCount}秒経過`);
           }
         }
 
         if (stopButtonFound) {
-          ClaudeLogger.info("\n停止ボタンが消えるまで待機中...");
+          console.log("\n停止ボタンが消えるまで待機中...");
           const deepResearchSelectors = getDeepResearchSelectors();
           let stopButtonGone = false;
           let isCanvasMode = false;
@@ -4723,9 +3829,7 @@
                 const canvasTextLength = canvasElement.textContent
                   ? canvasElement.textContent.trim().length
                   : 0;
-                ClaudeLogger.info(
-                  `  📈 Canvasテキスト: ${canvasTextLength}文字`,
-                );
+                console.log(`  📈 Canvasテキスト: ${canvasTextLength}文字`);
                 ClaudeLogManager.logStep(
                   "Progress-Canvas",
                   `Canvas文字数: ${canvasTextLength}文字`,
@@ -4746,7 +3850,7 @@
                 const normalTextLength = normalElement.textContent
                   ? normalElement.textContent.trim().length
                   : 0;
-                ClaudeLogger.info(`  📈 通常テキスト: ${normalTextLength}文字`);
+                console.log(`  📈 通常テキスト: ${normalTextLength}文字`);
                 ClaudeLogManager.logStep(
                   "Progress-Normal",
                   `通常文字数: ${normalTextLength}文字`,
@@ -4779,23 +3883,21 @@
                 );
                 if (reconfirmResult) {
                   stillGone = false;
-                  ClaudeLogger.info(
-                    `  停止ボタン再出現（${confirmCount + 1}秒後）`,
-                  );
+                  console.log(`  停止ボタン再出現（${confirmCount + 1}秒後）`);
                   break;
                 }
               }
 
               if (stillGone) {
                 stopButtonGone = true;
-                ClaudeLogger.info(`✓ 応答生成完了（${waitCount}秒後）`);
+                console.log(`✓ 応答生成完了（${waitCount}秒後）`);
 
                 // ウィンドウ状態確認（Content Scriptでは利用不可）
                 // chrome.windows APIはContent Script環境では利用できないためコメントアウト
-                // ClaudeLogger.info('🔍 [Claude] ウィンドウ状態確認はスキップ（Content Script制限）');
+                // console.log('🔍 [Claude] ウィンドウ状態確認はスキップ（Content Script制限）');
 
                 // 停止ボタン消滅後の3秒待機
-                ClaudeLogger.info("⏳ 停止ボタン消滅後の3秒待機中...");
+                console.log("⏳ 停止ボタン消滅後の3秒待機中...");
                 await wait(3000);
                 break;
               }
@@ -4805,7 +3907,7 @@
             waitCount++;
 
             if (waitCount % 10 === 0) {
-              ClaudeLogger.info(
+              console.log(
                 `  生成中... ${Math.floor(waitCount / 60)}分${waitCount % 60}秒経過`,
               );
             }
@@ -4815,28 +3917,28 @@
 
       const waitEndTime = Date.now();
       const totalWaitTime = Math.round((waitEndTime - waitStartTime) / 1000);
-      ClaudeLogger.info(`⏱️ 応答待機総時間: ${totalWaitTime}秒`);
-      ClaudeLogger.info(
-        "%c✅【Step 4-2-6-4】応答待機処理完了",
+      console.log(`⏱️ 応答待機総時間: ${totalWaitTime}秒`);
+      console.log(
+        "%c✅【Claude-ステップ6-4】応答待機処理完了",
         "color: #4CAF50; font-weight: bold;",
       );
-      ClaudeLogger.info("─".repeat(50));
+      console.log("─".repeat(50));
 
       // 応答完了後の追加待機とウィンドウ状態確認
       await wait(3000);
 
       // ウィンドウ存在確認（Content Scriptでは利用不可）
       // chrome.windows APIはContent Script環境では利用できないためコメントアウト
-      // ClaudeLogger.info('🔍 [Claude] ウィンドウ状態確認はスキップ（Content Script制限）');
+      // console.log('🔍 [Claude] ウィンドウ状態確認はスキップ（Content Script制限）');
 
       // ========================================
       // ステップ6-4-1: Canvasプレビューボタンチェック
       // ========================================
-      ClaudeLogger.info(
-        "%c【Step 4-2-6-4-1】Canvasプレビューボタンの存在確認",
+      console.log(
+        "%c【Claude-ステップ6-4-1】Canvasプレビューボタンの存在確認",
         "color: #9C27B0; font-weight: bold;",
       );
-      ClaudeLogger.info("─".repeat(40));
+      console.log("─".repeat(40));
 
       const deepResearchSelectors = getDeepResearchSelectors();
       const previewButton = await findClaudeElement(
@@ -4846,7 +3948,7 @@
       );
 
       if (previewButton) {
-        ClaudeLogger.info("✓ Canvasプレビューボタンを発見、クリック中...");
+        console.log("✓ Canvasプレビューボタンを発見、クリック中...");
 
         // クリック前のウィンドウ状態確認（Content Scriptでは利用不可）
         // chrome.windows APIはContent Script環境では利用できないためコメントアウト
@@ -4854,7 +3956,7 @@
         previewButton.click();
 
         // Canvas表示を3秒間待機
-        ClaudeLogger.info("⏳ Canvas表示を3秒間待機中...");
+        console.log("⏳ Canvas表示を3秒間待機中...");
         await wait(3000);
 
         // クリック後のウィンドウ状態確認（Content Scriptでは利用不可）
@@ -4867,16 +3969,16 @@
           true,
         );
         if (canvasContent) {
-          ClaudeLogger.info("✅ Canvas内容が表示されました");
-          ClaudeLogger.info(`   - 要素ID: ${canvasContent.id || "(なし)"}`);
-          ClaudeLogger.info(
+          console.log("✅ Canvas内容が表示されました");
+          console.log(`   - 要素ID: ${canvasContent.id || "(なし)"}`);
+          console.log(
             `   - テキスト長: ${canvasContent.textContent ? canvasContent.textContent.trim().length : 0}文字`,
           );
         } else {
-          ClaudeLogger.info("⚠️ Canvas内容が検出されませんでした");
+          console.log("⚠️ Canvas内容が検出されませんでした");
         }
       } else {
-        ClaudeLogger.info(
+        console.log(
           "ℹ️ Canvasプレビューボタンは検出されませんでした（通常の回答のみ）",
         );
       }
@@ -4884,11 +3986,11 @@
       // ========================================
       // ステップ6-5: 「続ける」ボタンチェック
       // ========================================
-      ClaudeLogger.info(
-        "%c【Step 4-2-6-5】「続ける」ボタンの存在確認",
+      console.log(
+        "%c【Claude-ステップ6-5】「続ける」ボタンの存在確認",
         "color: #607D8B; font-weight: bold;",
       );
-      ClaudeLogger.info("─".repeat(40));
+      console.log("─".repeat(40));
       const continueButton = await findClaudeElement(
         deepResearchSelectors["4_3_Canvas続けるボタン"],
         3,
@@ -4896,12 +3998,12 @@
       );
 
       if (continueButton) {
-        ClaudeLogger.info("✓「続ける」ボタンを発見、クリック中...");
+        console.log("✓「続ける」ボタンを発見、クリック中...");
 
         // 「続ける」ボタンクリック前のウィンドウ状態確認
         try {
           const currentWindow = await chrome.windows.getCurrent();
-          ClaudeLogger.info(
+          console.log(
             "🔍 [Claude] 「続ける」ボタンクリック前のウィンドウ状態:",
             {
               windowId: currentWindow.id,
@@ -4910,7 +4012,7 @@
             },
           );
         } catch (windowError) {
-          ClaudeLogger.error(
+          console.error(
             "⚠️ [Claude] 「続ける」ボタンクリック前のウィンドウエラー:",
             windowError,
           );
@@ -4922,7 +4024,7 @@
         // 「続ける」ボタンクリック後のウィンドウ状態確認
         try {
           const currentWindow = await chrome.windows.getCurrent();
-          ClaudeLogger.info(
+          console.log(
             "🔍 [Claude] 「続ける」ボタンクリック後のウィンドウ状態:",
             {
               windowId: currentWindow.id,
@@ -4931,7 +4033,7 @@
             },
           );
         } catch (windowError) {
-          ClaudeLogger.error(
+          console.error(
             "🚨 [Claude] 「続ける」ボタンクリック後のウィンドウエラー:",
             {
               error: windowError.message,
@@ -4942,7 +4044,7 @@
         }
 
         // 新しい応答サイクルの応答待機を実行
-        ClaudeLogger.info("🔄 新しい応答サイクルの停止ボタン出現を待機中...");
+        console.log("🔄 新しい応答サイクルの停止ボタン出現を待機中...");
         let stopButtonFound = false;
         let waitCount = 0;
         const maxWait = 30; // 30秒まで待機
@@ -4952,7 +4054,7 @@
           if (waitCount % 5 === 0 && waitCount > 0) {
             try {
               const currentWindow = await chrome.windows.getCurrent();
-              ClaudeLogger.info(
+              console.log(
                 `🔍 [Claude] 「続ける」処理中のウィンドウ状態 (${waitCount}秒):`,
                 {
                   windowId: currentWindow.id,
@@ -4961,14 +4063,11 @@
                 },
               );
             } catch (windowError) {
-              ClaudeLogger.error(
-                "🚨 [Claude] 「続ける」処理中のウィンドウエラー:",
-                {
-                  error: windowError.message,
-                  waitTime: waitCount,
-                  timestamp: new Date().toISOString(),
-                },
-              );
+              console.error("🚨 [Claude] 「続ける」処理中のウィンドウエラー:", {
+                error: windowError.message,
+                waitTime: waitCount,
+                timestamp: new Date().toISOString(),
+              });
             }
           }
 
@@ -4979,7 +4078,7 @@
           );
           if (stopResult) {
             stopButtonFound = true;
-            ClaudeLogger.info(`✓ 回答停止ボタンが出現（${waitCount}秒後）`);
+            console.log(`✓ 回答停止ボタンが出現（${waitCount}秒後）`);
             break;
           }
           await wait(1000);
@@ -4988,7 +4087,7 @@
 
         // 回答停止ボタンが消滅するまで待機
         if (stopButtonFound) {
-          ClaudeLogger.info("🔄 継続応答完了まで待機中...");
+          console.log("🔄 継続応答完了まで待機中...");
           while (waitCount < 600) {
             // 最大10分待機
             const stopResult = await findClaudeElement(
@@ -5008,17 +4107,15 @@
                 );
                 if (reconfirmResult) {
                   stillGone = false;
-                  ClaudeLogger.info(
-                    `  停止ボタン再出現（${confirmCount + 1}秒後）`,
-                  );
+                  console.log(`  停止ボタン再出現（${confirmCount + 1}秒後）`);
                   break;
                 }
               }
 
               if (stillGone) {
-                ClaudeLogger.info("✓ 継続応答生成完了");
+                console.log("✓ 継続応答生成完了");
                 // 停止ボタン消滅後の3秒待機
-                ClaudeLogger.info("⏳ 停止ボタン消滅後の3秒待機中...");
+                console.log("⏳ 停止ボタン消滅後の3秒待機中...");
                 await wait(3000);
                 break;
               }
@@ -5028,17 +4125,17 @@
           }
         }
 
-        ClaudeLogger.info(
-          "%c✅【Step 4-2-6-5】「続ける」ボタン処理完了",
+        console.log(
+          "%c✅【Claude-ステップ6-5】「続ける」ボタン処理完了",
           "color: #4CAF50; font-weight: bold;",
         );
         await wait(2000); // 追加待機
       } else {
-        ClaudeLogger.info(
+        console.log(
           "「続ける」ボタンは見つかりませんでした。次のステップに進みます。",
         );
-        ClaudeLogger.info(
-          "%c✅【Step 4-2-6-5】「続ける」ボタンチェック完了",
+        console.log(
+          "%c✅【Claude-ステップ6-5】「続ける」ボタンチェック完了",
           "color: #4CAF50; font-weight: bold;",
         );
       }
@@ -5046,18 +4143,18 @@
       // ========================================
       // ステップ7: テキスト取得
       // ========================================
-      ClaudeLogger.info(
-        "%c【Step 4-2-7-1】テキスト取得処理開始",
+      console.log(
+        "%c【Claude-ステップ7-1】テキスト取得処理開始",
         "color: #3F51B5; font-weight: bold;",
       );
-      ClaudeLogger.info("─".repeat(40));
-      ClaudeLogger.info("🎯 取得対象: Canvas機能、通常応答テキスト");
+      console.log("─".repeat(40));
+      console.log("🎯 取得対象: Canvas機能、通常応答テキスト");
 
       // テキスト取得前のウィンドウ状態確認（Content Scriptでは利用不可）
       // chrome.windows APIはContent Script環境では利用できないためコメントアウト
 
       // Canvas処理後の最終テキスト取得（応答完了後に再取得）
-      ClaudeLogger.info(
+      console.log(
         `🔍 最終テキスト取得開始 - 現在のfinalText: ${finalText ? finalText.length + "文字" : "なし"}`,
       );
 
@@ -5070,27 +4167,27 @@
           true,
         );
       } catch (canvasError) {
-        ClaudeLogger.error("⚠️ [Claude] Canvasテキスト取得エラー:", {
+        console.error("⚠️ [Claude] Canvasテキスト取得エラー:", {
           error: canvasError.message,
           timestamp: new Date().toISOString(),
         });
       }
 
       if (canvasResult) {
-        ClaudeLogger.info("🎨 Canvas機能の最終テキストを取得中...");
-        ClaudeLogger.info(
-          "🚫 【Step 4-2-7-1】プロンプト除外機能を適用してテキスト取得",
+        console.log("🎨 Canvas機能の最終テキストを取得中...");
+        console.log(
+          "🚫 【Claude-ステップ7-1】プロンプト除外機能を適用してテキスト取得",
         );
         const textInfo = getTextPreview(canvasResult);
         if (textInfo && textInfo.full && textInfo.full.length > 100) {
           finalText = textInfo.full;
-          ClaudeLogger.info(
+          console.log(
             `📄 Canvas 最終テキスト取得完了 (${textInfo.length}文字)`,
           );
-          ClaudeLogger.info(
-            "✅ 【Step 4-2-7-2】プロンプト除外完了 - 純粋なAI応答を取得",
+          console.log(
+            "✅ 【Claude-ステップ7-2】プロンプト除外完了 - 純粋なAI応答を取得",
           );
-          ClaudeLogger.info(
+          console.log(
             "プレビュー:\n",
             textInfo.preview.substring(0, 200) + "...",
           );
@@ -5099,7 +4196,7 @@
 
       // Canvas以外の処理（通常テキストのフォールバック）
       if (!finalText) {
-        ClaudeLogger.info("🔍 Canvas以外のテキストを確認中...");
+        console.log("🔍 Canvas以外のテキストを確認中...");
         const deepResearchSelectors = getDeepResearchSelectors();
 
         // 通常のテキストを確認（Canvasが見つからない場合のフォールバック）
@@ -5109,20 +4206,18 @@
           true,
         );
         if (normalResult) {
-          ClaudeLogger.info("✓ 通常処理のテキストを検出");
-          ClaudeLogger.info(
-            "🚫 【Step 4-2-7-3】プロンプト除外機能を適用してテキスト取得（通常応答）",
+          console.log("✓ 通常処理のテキストを検出");
+          console.log(
+            "🚫 【Claude-ステップ7-3】プロンプト除外機能を適用してテキスト取得（通常応答）",
           );
           const textInfo = getTextPreview(normalResult);
           if (textInfo && textInfo.full) {
             finalText = textInfo.full;
-            ClaudeLogger.info(
-              `📄 通常 テキスト取得完了 (${textInfo.length}文字)`,
+            console.log(`📄 通常 テキスト取得完了 (${textInfo.length}文字)`);
+            console.log(
+              "✅ 【Claude-ステップ7-4】プロンプト除外完了 - 純粋なAI応答を取得",
             );
-            ClaudeLogger.info(
-              "✅ 【Step 4-2-7-4】プロンプト除外完了 - 純粋なAI応答を取得",
-            );
-            ClaudeLogger.info(
+            console.log(
               "プレビュー:\n",
               textInfo.preview.substring(0, 200) + "...",
             );
@@ -5132,34 +4227,34 @@
 
       // finalTextの確実な初期化
       if (!finalText || finalText.trim() === "") {
-        ClaudeLogger.warn("⚠️ テキストが取得できませんでした");
+        console.warn("⚠️ テキストが取得できませんでした");
         finalText = "テキスト取得失敗";
       }
 
-      ClaudeLogger.info(
-        "%c✅【Step 4-2-7-2】テキスト取得処理完了",
+      console.log(
+        "%c✅【Claude-ステップ7-2】テキスト取得処理完了",
         "color: #4CAF50; font-weight: bold;",
       );
-      ClaudeLogger.info(`📊 最終取得文字数: ${finalText.length}文字`);
-      ClaudeLogger.info("─".repeat(50));
+      console.log(`📊 最終取得文字数: ${finalText.length}文字`);
+      console.log("─".repeat(50));
 
-      ClaudeLogger.info("\n" + "=".repeat(60));
-      ClaudeLogger.info(
+      console.log("\n" + "=".repeat(60));
+      console.log(
         "%c✨ Claude V2 タスク完了",
         "color: #4CAF50; font-weight: bold; font-size: 16px",
       );
-      ClaudeLogger.info("=".repeat(60));
+      console.log("=".repeat(60));
 
       const totalExecutionTime = Date.now() - taskStartTime.getTime();
-      ClaudeLogger.info("📈 タスク実行サマリー:");
-      ClaudeLogger.info(
+      console.log("📈 タスク実行サマリー:");
+      console.log(
         `  ├─ 総実行時間: ${Math.round(totalExecutionTime / 1000)}秒`,
       );
-      ClaudeLogger.info(`  ├─ 入力文字数: ${prompt.length}文字`);
-      ClaudeLogger.info(`  ├─ 出力文字数: ${finalText.length}文字`);
-      ClaudeLogger.info(`  ├─ 使用モデル: ${modelName || "未指定"}`);
-      ClaudeLogger.info(`  ├─ 使用機能: ${featureName || "通常"}`);
-      ClaudeLogger.info(`  └─ 送信時刻: ${sendTime.toISOString()}`);
+      console.log(`  ├─ 入力文字数: ${prompt.length}文字`);
+      console.log(`  ├─ 出力文字数: ${finalText.length}文字`);
+      console.log(`  ├─ 使用モデル: ${modelName || "未指定"}`);
+      console.log(`  ├─ 使用機能: ${featureName || "通常"}`);
+      console.log(`  └─ 送信時刻: ${sendTime.toISOString()}`);
 
       const result = {
         success: true,
@@ -5196,18 +4291,14 @@
       try {
         // 実際のモデル情報を取得
         displayedModel = getCurrentModelInfo() || "";
-        ClaudeLogger.info(
-          `📊 [Claude-Direct] 実際のモデル: "${displayedModel}"`,
-        );
+        console.log(`📊 [Claude-Direct] 実際のモデル: "${displayedModel}"`);
 
         // 実際の機能情報を取得
         const functionConfirmation = confirmFeatureSelection(featureName);
         displayedFunction = functionConfirmation.detected.join(", ") || "";
-        ClaudeLogger.info(
-          `📊 [Claude-Direct] 実際の機能: "${displayedFunction}"`,
-        );
+        console.log(`📊 [Claude-Direct] 実際の機能: "${displayedFunction}"`);
       } catch (infoError) {
-        ClaudeLogger.warn(
+        console.warn(
           `⚠️ [Claude-Direct] 表示情報取得エラー: ${infoError.message}`,
         );
       }
@@ -5218,7 +4309,7 @@
       result.displayedFunction = displayedFunction;
       result.sendTime = sendTime; // 既存の送信時刻を使用
 
-      ClaudeLogger.info(
+      console.log(
         "✅ [Claude-Unified] タスク完了 - 統合フローでDropbox→スプレッドシートの順序で処理します",
         {
           sendTime: sendTime.toISOString(),
@@ -5233,7 +4324,7 @@
         const retryManager = new ClaudeRetryManager();
         const metrics = retryManager.getMetrics();
         if (metrics.totalAttempts > 0) {
-          ClaudeLogger.info("📊 [Claude-Metrics] リトライ統計:", metrics);
+          console.log("📊 [Claude-Metrics] リトライ統計:", metrics);
           ClaudeLogManager.logStep(
             "Task-Metrics",
             "リトライマネージャー統計",
@@ -5241,13 +4332,13 @@
           );
         }
       } catch (metricsError) {
-        ClaudeLogger.warn("⚠️ メトリクス取得エラー:", metricsError.message);
+        console.warn("⚠️ メトリクス取得エラー:", metricsError.message);
       }
 
       return result;
     } catch (error) {
-      ClaudeLogger.error("❌ [ClaudeV2] タスク実行エラー:", error.message);
-      ClaudeLogger.error("スタックトレース:", error.stack);
+      console.error("❌ [ClaudeV2] タスク実行エラー:", error.message);
+      console.error("スタックトレース:", error.stack);
 
       const result = {
         success: false,
@@ -5256,7 +4347,7 @@
       };
 
       // リトライマネージャーで最終リトライを実行
-      ClaudeLogger.info("🔄 内蔵リトライマネージャーでエラー復旧を試行中...");
+      console.log("🔄 内蔵リトライマネージャーでエラー復旧を試行中...");
       const retryManager = new ClaudeRetryManager();
 
       const retryResult = await retryManager.executeWithRetry({
@@ -5275,7 +4366,7 @@
       });
 
       if (retryResult.success) {
-        ClaudeLogger.info("✅ リトライマネージャーでタスク復旧成功");
+        console.log("✅ リトライマネージャーでタスク復旧成功");
 
         // 復旧成功のログ記録
         ClaudeLogManager.logStep(
@@ -5327,7 +4418,7 @@
   // ========================================
 
   async function inputTextOnly(text) {
-    ClaudeLogger.info("【Phase】テキスト入力のみ実行");
+    console.log("【Phase】テキスト入力のみ実行");
 
     try {
       const retryManager = new ClaudeRetryManager();
@@ -5349,13 +4440,13 @@
 
       return { success: inputResult.success, phase: "input" };
     } catch (error) {
-      ClaudeLogger.error("❌ テキスト入力エラー:", error.message);
+      console.error("❌ テキスト入力エラー:", error.message);
       return { success: false, phase: "input", error: error.message };
     }
   }
 
   async function selectModelOnly(modelName) {
-    ClaudeLogger.info("【Phase】モデル選択のみ実行");
+    console.log("【Phase】モデル選択のみ実行");
 
     try {
       if (!modelName || modelName === "" || modelName === "設定なし") {
@@ -5398,13 +4489,13 @@
         selected: modelResult.result?.selected,
       };
     } catch (error) {
-      ClaudeLogger.error("❌ モデル選択エラー:", error.message);
+      console.error("❌ モデル選択エラー:", error.message);
       return { success: false, phase: "model", error: error.message };
     }
   }
 
   async function selectFunctionOnly(featureName) {
-    ClaudeLogger.info("【Phase】機能選択のみ実行");
+    console.log("【Phase】機能選択のみ実行");
 
     try {
       if (!featureName || featureName === "" || featureName === "設定なし") {
@@ -5426,7 +4517,7 @@
           await wait(1500);
 
           // 機能選択前にすべてのトグルをオフにする
-          ClaudeLogger.info("【Phase】全トグルをオフに設定");
+          console.log("【Phase】全トグルをオフに設定");
           await turnOffAllFeatureToggles();
           await wait(500);
 
@@ -5455,13 +4546,13 @@
         selected: functionResult.result?.selected,
       };
     } catch (error) {
-      ClaudeLogger.error("❌ 機能選択エラー:", error.message);
+      console.error("❌ 機能選択エラー:", error.message);
       return { success: false, phase: "function", error: error.message };
     }
   }
 
   async function sendAndGetResponse(isDeepResearch = false) {
-    ClaudeLogger.info("【Phase】送信と応答取得実行");
+    console.log("【Phase】送信と応答取得実行");
 
     try {
       const retryManager = new ClaudeRetryManager();
@@ -5559,7 +4650,7 @@
         text: sendResponseResult.success ? sendResponseResult.result.text : "",
       };
     } catch (error) {
-      ClaudeLogger.error("❌ [ClaudeV2] 送信・応答取得エラー:", error.message);
+      console.error("❌ [ClaudeV2] 送信・応答取得エラー:", error.message);
       return { success: false, error: error.message };
     }
   }
@@ -5578,7 +4669,7 @@
   // ========================================
   // Chrome Runtime Message Handler (詳細ログ版)
   // ========================================
-  ClaudeLogger.info("📝 [ClaudeAutomation] メッセージリスナー登録開始:", {
+  console.log("📝 [ClaudeAutomation] メッセージリスナー登録開始:", {
     登録時刻: new Date().toISOString(),
     スクリプト初期化時刻: window.CLAUDE_SCRIPT_INIT_TIME
       ? new Date(window.CLAUDE_SCRIPT_INIT_TIME).toISOString()
@@ -5592,278 +4683,62 @@
     const messageReceiveTime = Date.now();
     const requestId = Math.random().toString(36).substring(2, 8);
 
-    // 🖼️ DEBUG: 詳細なメッセージ受信ログ
-    ClaudeLogger.info(
-      `🖼️ [Content Script] DEBUG: メッセージ受信詳細 [ID:${requestId}]`,
-      {
-        currentURL: window.location.href,
-        currentDomain: window.location.hostname,
-        messageType: request.type,
-        isClaudeExecuteTask: request.type === "CLAUDE_EXECUTE_TASK",
-        senderTabId: sender.tab?.id,
-        hasTask: !!request.task,
-        taskTabId: request.task?.tabId,
-        aiType: request.aiType,
-        receiveTime: new Date(messageReceiveTime).toISOString(),
+    console.log(`📬 [ClaudeAutomation] メッセージ受信 [ID:${requestId}]:`, {
+      メッセージタイプ: request.type || request.action,
+      メッセージ全体: request,
+      送信者: {
+        タブID: sender.tab?.id,
+        URL: sender.tab?.url,
+        タイトル: sender.tab?.title,
       },
-    );
-
-    ClaudeLogger.info(
-      `📬 [ClaudeAutomation] メッセージ受信 [ID:${requestId}]:`,
-      {
-        メッセージタイプ: request.type,
-        メッセージ全体: request,
-        送信者: {
-          タブID: sender.tab?.id,
-          URL: sender.tab?.url,
-          タイトル: sender.tab?.title,
-        },
-        受信時刻: new Date().toISOString(),
+      受信時刻: new Date().toISOString(),
+      // 追加デバッグ情報
+      デバッグ情報: {
+        requestKeys: Object.keys(request),
+        hasType: "type" in request,
+        hasAction: "action" in request,
+        typeValue: request.type,
+        actionValue: request.action,
+        automationName: request.automationName,
+        hasTask: "task" in request,
+        hasTaskData: "taskData" in request,
       },
-    );
+    });
 
-    // PING テストアクション（Content Script注入確認用）
-    if (request.action === "ping") {
-      ClaudeLogger.info(`🏓 [ClaudeAutomation] PING受信 [ID:${requestId}]:`, {
-        currentURL: window.location.href,
-        currentDomain: window.location.hostname,
-        isClaudeAI: window.location.hostname.includes("claude.ai"),
-        scriptInitialized: !!window.ClaudeAutomation,
-        requestReceiveTime: new Date().toISOString(),
-      });
+    // メッセージタイプの互換性チェック
+    const isClaudeExecuteTask =
+      request.type === "CLAUDE_EXECUTE_TASK" ||
+      (request.action === "executeTask" &&
+        request.automationName === "ClaudeAutomation");
 
-      sendResponse({
-        success: true,
-        message: "pong",
-        url: window.location.href,
-        domain: window.location.hostname,
-        isClaudeAI: window.location.hostname.includes("claude.ai"),
-        scriptInitialized: !!window.ClaudeAutomation,
-        timestamp: new Date().toISOString(),
-      });
-      return true; // 非同期レスポンス
-    }
+    const isCheckReady =
+      request.type === "CLAUDE_CHECK_READY" || request.action === "ping";
 
-    // CHECK_UI_ELEMENTS アクション（step4-tasklist.js からの呼び出し）
-    if (request.action === "CHECK_UI_ELEMENTS") {
-      ClaudeLogger.info(
-        `🔍 [ClaudeAutomation] CHECK_UI_ELEMENTS処理開始 [ID:${requestId}]:`,
+    console.log(`🔍 [ClaudeAutomation] メッセージタイプ判定:`, {
+      isClaudeExecuteTask,
+      isCheckReady,
+      判定根拠: {
+        type: request.type,
+        action: request.action,
+        automationName: request.automationName,
+      },
+    });
+
+    // Claude専用のメッセージのみ処理
+    if (isClaudeExecuteTask) {
+      // タスクデータの取得（taskDataまたはtask）
+      const taskToExecute = request.taskData || request.task;
+
+      console.log(
+        `🎯 [ClaudeAutomation] タスク実行処理開始 [ID:${requestId}]:`,
         {
-          aiType: request.aiType,
-          currentURL: window.location.href,
-          requestReceiveTime: new Date().toISOString(),
-        },
-      );
-
-      try {
-        // UI要素確認関数
-        const checkUIElement = (selectors) => {
-          if (!Array.isArray(selectors)) {
-            ClaudeLogger.warn(`⚠️ セレクタが配列ではありません:`, selectors);
-            return false;
-          }
-
-          for (const selector of selectors) {
-            try {
-              const element = document.querySelector(selector);
-              if (element) {
-                ClaudeLogger.debug(`✅ UI要素発見: ${selector}`);
-                return true;
-              }
-            } catch (error) {
-              ClaudeLogger.debug(
-                `❌ セレクタエラー: ${selector}`,
-                error.message,
-              );
-            }
-          }
-          return false;
-        };
-
-        // 各UI要素の検出
-        const textInput = checkUIElement(
-          claudeSelectors["1_テキスト入力欄"].selectors,
-        );
-        const modelDisplay = checkUIElement(
-          modelSelectors.modelDisplay.map((s) => s.selector),
-        );
-        const functionDisplay = checkUIElement(featureSelectors.menuButton);
-
-        const checkResult = {
-          textInput: textInput,
-          modelDisplay: modelDisplay,
-          functionDisplay: functionDisplay,
-        };
-
-        ClaudeLogger.info(
-          `✅ [ClaudeAutomation] CHECK_UI_ELEMENTS完了 [ID:${requestId}]:`,
-          {
-            結果: checkResult,
-            検出セレクタ数: {
-              textInput: claudeSelectors["1_テキスト入力欄"].selectors.length,
-              modelDisplay: modelSelectors.modelDisplay.length,
-              functionDisplay: featureSelectors.menuButton.length,
-            },
-          },
-        );
-
-        sendResponse(checkResult);
-        return true; // 非同期レスポンスのためチャネルを保持
-      } catch (error) {
-        ClaudeLogger.error(
-          `❌ [ClaudeAutomation] CHECK_UI_ELEMENTS処理エラー [ID:${requestId}]:`,
-          error.message,
-        );
-        sendResponse({
-          textInput: false,
-          modelDisplay: false,
-          functionDisplay: false,
-          error: error.message,
-        });
-        return true;
-      }
-    }
-
-    // 新しい executeTask アクション（step4-tasklist.js からの呼び出し）
-    if (
-      request.action === "executeTask" &&
-      request.automationName === "ClaudeAutomation"
-    ) {
-      ClaudeLogger.info(
-        `🎯 [DEBUG-ContentScript] executeTask受信開始 [ID:${requestId}]:`,
-        {
-          受信時刻: new Date().toISOString(),
-          送信者タブID: sender?.tab?.id,
-          送信者URL: sender?.tab?.url,
-          フレームID: sender?.frameId,
-          requestKeys: Object.keys(request),
-          requestAction: request.action,
-          automationName: request.automationName,
-          taskExists: !!request.task,
-          taskKeys: request.task ? Object.keys(request.task) : [],
-          taskId: request.task?.id,
-          aiType: request.task?.aiType,
-          プロンプト長: request.task?.prompt?.length || 0,
-          モデル: request.task?.model,
-          機能: request.task?.function,
-        },
-      );
-
-      ClaudeLogger.info(`🌍 [DEBUG-ContentScript] 実行環境詳細確認:`, {
-        currentURL: window.location.href,
-        hostname: window.location.hostname,
-        pathname: window.location.pathname,
-        documentTitle: document.title,
-        documentReadyState: document.readyState,
-        windowClaudeAutomation: typeof window.ClaudeAutomation,
-        windowClaudeAutomationReady: window.ClaudeAutomation?.isReady,
-      });
-
-      (async () => {
-        try {
-          const wrappedSendResponse = (response) => {
-            try {
-              ClaudeLogger.info(
-                `📤 [DEBUG-ContentScript] sendResponse呼び出し:`,
-                {
-                  responseType: typeof response,
-                  responseKeys: response ? Object.keys(response) : [],
-                  success: response?.success,
-                  error: response?.error,
-                },
-              );
-              sendResponse(response);
-            } catch (error) {
-              ClaudeLogger.error(
-                `❌ [DEBUG-ContentScript] sendResponse失敗:`,
-                error,
-              );
-            }
-          };
-
-          if (!window.ClaudeAutomation) {
-            const error = "ClaudeAutomation が利用できません";
-            ClaudeLogger.error(`❌ [ClaudeAutomation] ${error}`, {
-              windowType: typeof window,
-              windowKeys: Object.keys(window).filter((k) =>
-                k.includes("Claude"),
-              ),
-              scriptLoaded: !!window.CLAUDE_SCRIPT_LOADED,
-            });
-            wrappedSendResponse({ success: false, error: error });
-            return;
-          }
-
-          ClaudeLogger.info(`🚀 [ClaudeAutomation] タスク実行開始`);
-
-          ClaudeLogger.info(
-            "🔥🔥🔥 [CRITICAL-CHECK] window.ClaudeAutomation確認:",
-            {
-              exists: !!window.ClaudeAutomation,
-              executeStableTaskExists:
-                typeof window.ClaudeAutomation?.executeStableTask,
-              allMethods: window.ClaudeAutomation
-                ? Object.keys(window.ClaudeAutomation)
-                : [],
-              willCallExecuteStableTask: true,
-            },
-          );
-
-          // 🔍 実行環境の詳細確認
-          ClaudeLogger.info(`🌍 [Environment Check] 実行環境詳細:`, {
-            currentURL: window.location.href,
-            domain: window.location.hostname,
-            protocol: window.location.protocol,
-            pathname: window.location.pathname,
-            isClaudeSite: window.location.hostname.includes("claude.ai"),
-            pageTitle: document.title,
-            domainCheck:
-              window.location.hostname === "claude.ai" ||
-              window.location.hostname.endsWith(".claude.ai"),
-            userAgent: navigator.userAgent.substring(0, 100),
-          });
-
-          // 成功実績のある安定タスク実行関数を使用
-          const result = await executeStableTask(request.task);
-
-          ClaudeLogger.info(`✅ [ClaudeAutomation] タスク実行完了:`, {
-            success: result.success,
-            text: result.text ? `${result.text.substring(0, 100)}...` : null,
-            resultType: typeof result,
-            resultKeys: result ? Object.keys(result) : [],
-          });
-
-          wrappedSendResponse({ success: true, ...result });
-        } catch (error) {
-          ClaudeLogger.error(`❌ [ClaudeAutomation] タスク実行エラー:`, {
-            error: error.message,
-            stack: error.stack,
-            errorType: typeof error,
-            errorName: error.name,
-          });
-          wrappedSendResponse({
-            success: false,
-            error: error.message || String(error),
-          });
-        }
-      })();
-
-      return true; // 非同期レスポンスを示す
-    }
-
-    // 既存の CLAUDE_EXECUTE_TASK タイプも維持
-    if (request.type === "CLAUDE_EXECUTE_TASK") {
-      ClaudeLogger.info(
-        `🎯 [ClaudeAutomation] CLAUDE_EXECUTE_TASK処理開始 [ID:${requestId}]:`,
-        {
-          タスクID: request.taskData?.taskId,
-          タスクデータ構造: request.taskData
-            ? Object.keys(request.taskData)
-            : "なし",
-          プロンプト長: request.taskData?.prompt?.length || 0,
-          モデル: request.taskData?.model,
-          機能: request.taskData?.function,
+          タスクID: taskToExecute?.taskId || taskToExecute?.id,
+          タスクデータ構造: taskToExecute ? Object.keys(taskToExecute) : "なし",
+          プロンプト長: taskToExecute?.prompt?.length || 0,
+          モデル: taskToExecute?.model,
+          機能: taskToExecute?.function,
           処理開始時刻: new Date().toISOString(),
+          実際のタスクデータ: taskToExecute,
         },
       );
 
@@ -5871,7 +4746,7 @@
       let responseCallbackCalled = false;
       const wrappedSendResponse = (response) => {
         if (responseCallbackCalled) {
-          ClaudeLogger.warn(
+          console.warn(
             `⚠️ [ClaudeAutomation] 重複レスポンス試行 [ID:${requestId}]:`,
             response,
           );
@@ -5879,27 +4754,24 @@
         }
         responseCallbackCalled = true;
         const responseTime = Date.now() - messageReceiveTime;
-        ClaudeLogger.info(
-          `📤 [ClaudeAutomation] レスポンス送信 [ID:${requestId}]:`,
-          {
-            処理時間: `${responseTime}ms`,
-            成功: response.success,
-            レスポンス構造: Object.keys(response),
-            エラー: response.error,
-            送信時刻: new Date().toISOString(),
-          },
-        );
+        console.log(`📤 [ClaudeAutomation] レスポンス送信 [ID:${requestId}]:`, {
+          処理時間: `${responseTime}ms`,
+          成功: response.success,
+          レスポンス構造: Object.keys(response),
+          エラー: response.error,
+          送信時刻: new Date().toISOString(),
+        });
         sendResponse(response);
       };
 
-      ClaudeLogger.info(
+      console.log(
         `🚀 [ClaudeAutomation] executeTask実行開始 [ID:${requestId}]`,
       );
 
       // 非同期処理のため、即座にtrueを返してチャネルを開いておく
-      executeTask(request.taskData)
+      executeTask(taskToExecute)
         .then((result) => {
-          ClaudeLogger.info(
+          console.log(
             `✅ [ClaudeAutomation] executeTask成功 [ID:${requestId}]:`,
             {
               結果構造: result ? Object.keys(result) : "なし",
@@ -5911,7 +4783,7 @@
           wrappedSendResponse({ success: true, result });
         })
         .catch((error) => {
-          ClaudeLogger.error(
+          console.error(
             `❌ [ClaudeAutomation] executeTask失敗 [ID:${requestId}]:`,
             {
               エラー名: error.name,
@@ -5923,14 +4795,12 @@
           wrappedSendResponse({ success: false, error: error.message });
         });
 
-      ClaudeLogger.info(
+      console.log(
         `🔄 [ClaudeAutomation] 非同期チャネル保持 [ID:${requestId}] - trueを返します`,
       );
       return true; // 非同期レスポンスのためチャネルを保持
-    } else if (request.type === "CLAUDE_CHECK_READY") {
-      ClaudeLogger.info(
-        `🔍 [ClaudeAutomation] CLAUDE_CHECK_READY処理 [ID:${requestId}]`,
-      );
+    } else if (isCheckReady) {
+      console.log(`🔍 [ClaudeAutomation] 準備確認/ping処理 [ID:${requestId}]`);
       // スクリプトの準備状態を確認
       const readyResponse = {
         ready: true,
@@ -5944,7 +4814,7 @@
           "sendAndGetResponse",
         ],
       };
-      ClaudeLogger.info(
+      console.log(
         `✅ [ClaudeAutomation] READYレスポンス [ID:${requestId}]:`,
         readyResponse,
       );
@@ -5952,7 +4822,7 @@
       return false;
     }
 
-    ClaudeLogger.info(
+    console.log(
       `🚀 [ClaudeAutomation] 非対応メッセージ [ID:${requestId}] - content-script-consolidated.jsに委譲:`,
       {
         メッセージタイプ: request.type,
@@ -5964,14 +4834,16 @@
     return false;
   });
 
-  ClaudeLogger.info("✅ [ClaudeAutomation] メッセージリスナー登録完了:", {
+  console.log("✅ [ClaudeAutomation] メッセージリスナー登録完了:", {
     登録完了時刻: new Date().toISOString(),
     処理対象: [
       "CLAUDE_EXECUTE_TASK",
       "CLAUDE_CHECK_READY",
-      "CHECK_UI_ELEMENTS",
+      "executeTask (action)",
+      "ping (action)",
     ],
     リスナー状態: "アクティブ",
+    互換性モード: "有効（typeとactionの両方をサポート）",
   });
 
   // 初期化完了マーカーを設定（ai-task-executorが期待する名前を使用）
@@ -5981,7 +4853,7 @@
 
   const initDuration = initCompleteTime - scriptLoadTime;
 
-  ClaudeLogger.info("✅ [Claude初期化DEBUG] スクリプト初期化完了:", {
+  console.log("✅ [Claude初期化DEBUG] スクリプト初期化完了:", {
     初期化完了時刻: new Date(initCompleteTime).toISOString(),
     初期化時間: `${initDuration}ms`,
     マーカー状態: {
@@ -5996,8 +4868,8 @@
     メッセージリスナー: "登録済み",
   });
 
-  ClaudeLogger.info("✅ Claude Automation V2 準備完了（メッセージベース通信）");
-  ClaudeLogger.info("使用方法: Chrome Runtime Message経由でタスクを実行");
+  console.log("✅ Claude Automation V2 準備完了（メッセージベース通信）");
+  console.log("使用方法: Chrome Runtime Message経由でタスクを実行");
 
   // 初期化完了を知らせるカスタムイベントを発行
   window.dispatchEvent(
@@ -6010,70 +4882,25 @@
     }),
   );
 
-  ClaudeLogger.info(
-    "📡 [Claude初期化DEBUG] claudeAutomationReadyイベント発行完了",
-  );
+  console.log("📡 [Claude初期化DEBUG] claudeAutomationReadyイベント発行完了");
 
   // ========================================
   // ウィンドウ終了時のログ保存処理
   // ========================================
   window.addEventListener("beforeunload", async (event) => {
-    ClaudeLogger.info(
-      "🔄 [ClaudeAutomation] ウィンドウ終了検知 - ログ保存開始",
-    );
+    console.log("🔄 [ClaudeAutomation] ウィンドウ終了検知 - ログ保存開始");
 
     try {
       // ログをファイルに保存
       const fileName = await ClaudeLogManager.saveToFile();
       if (fileName) {
-        ClaudeLogger.info(`✅ [ClaudeAutomation] ログ保存完了: ${fileName}`);
+        console.log(`✅ [ClaudeAutomation] ログ保存完了: ${fileName}`);
       }
     } catch (error) {
-      ClaudeLogger.error("[ClaudeAutomation] ログ保存エラー:", error);
+      console.error("[ClaudeAutomation] ログ保存エラー:", error);
     }
   });
 
   // グローバルにログマネージャーを公開（デバッグ用）
   window.ClaudeLogManager = ClaudeLogManager;
-
-  // Claude Automation オブジェクトをグローバルに公開
-  ClaudeLogger.info("🔧 [DEBUG] ClaudeAutomation定義前の状態:", {
-    windowClaudeAutomation: typeof window.ClaudeAutomation,
-    executeTask: typeof executeTask,
-    runAutomation: typeof runAutomation,
-    スクリプトエラー: "なし",
-    正常ロード: true,
-  });
-
-  window.ClaudeAutomation = {
-    executeTask: executeTask,
-    runAutomation: runAutomation,
-    executeStableTask: executeStableTask, // 成功済み関数を追加
-    version: "V2",
-    initTime: initCompleteTime,
-    isReady: true,
-    loadedAt: new Date().toISOString(),
-  };
-
-  // グローバル初期化フラグを設定
-  window.CLAUDE_SCRIPT_LOADED = true;
-  window.CLAUDE_SCRIPT_INIT_TIME = Date.now();
-
-  // デバッグ: 登録確認
-  ClaudeLogger.info("✅ [DEBUG] window.ClaudeAutomation登録完了:", {
-    定義済み: !!window.ClaudeAutomation,
-    executeTask存在: typeof window.ClaudeAutomation?.executeTask === "function",
-    runAutomation存在:
-      typeof window.ClaudeAutomation?.runAutomation === "function",
-  });
-
-  ClaudeLogger.info(
-    "🌍 [Claude] window.ClaudeAutomation オブジェクト公開完了:",
-    {
-      executeTask: typeof window.ClaudeAutomation.executeTask,
-      runAutomation: typeof window.ClaudeAutomation.runAutomation,
-      version: window.ClaudeAutomation.version,
-      isReady: window.ClaudeAutomation.isReady,
-    },
-  );
 })();
