@@ -128,10 +128,17 @@
   const scriptLoadTime = Date.now();
   const loadTimeISO = new Date().toISOString();
 
+  // 🔍 [CONTENT-INIT] Content Script初期化確認ログ
+  console.log("🔍 [CONTENT-INIT] Content Script読み込み開始");
+  console.log("🔍 [CONTENT-INIT] URL:", currentURL);
+  console.log("🔍 [CONTENT-INIT] isValidClaudeURL:", isValidClaudeURL);
+  console.log("🔍 [CONTENT-INIT] isExtensionPage:", isExtensionPage);
+
   // 実行環境の判定
   let shouldInitialize = false;
 
   if (isExtensionPage) {
+    console.log("🔍 [CONTENT-INIT] 拡張機能ページ判定 - スキップ実行");
     log.info(
       "📌 [Claude Automation] 拡張機能ページで実行されています。スキップします。",
     );
@@ -139,6 +146,7 @@
     window.CLAUDE_SCRIPT_LOADED = false;
     window.CLAUDE_SCRIPT_INIT_TIME = Date.now();
   } else if (!isValidClaudeURL) {
+    console.log("🔍 [CONTENT-INIT] 無効なURL判定 - スキップ実行");
     log.warn(
       "⚠️ [Claude Automation] claude.ai 以外のサイトで実行されています。",
     );
@@ -147,6 +155,7 @@
     window.CLAUDE_SCRIPT_INIT_TIME = Date.now();
   } else {
     // claude.ai での実行
+    console.log("🔍 [CONTENT-INIT] 有効なclaude.ai URL判定 - 初期化実行");
     shouldInitialize = true;
     log.info("✅ Claude Automation V2 初期化");
     log.info("📍 有効なClaude URL:", currentURL);
@@ -5053,6 +5062,8 @@
   // グローバル関数として公開（ai-task-executorから呼び出し可能にする）
   // claude.aiでのみ公開
   if (shouldInitialize) {
+    console.log("🔍 [FUNC-EXPORT] 関数公開処理開始");
+
     // 🔍 [DIAGNOSTIC] 初期化診断ログ開始
     log.info("🔍 [DIAGNOSTIC] Claude Automation 初期化診断開始");
     log.info(`🔍 [DIAGNOSTIC] 実行環境: ${window.location.href}`);
@@ -5073,10 +5084,16 @@
     log.info(`  - inputText: ${typeof inputText}`);
 
     // Content Scriptのisolated環境でwindowに設定
+    console.log("🔍 [FUNC-EXPORT] executeTask定義確認:", typeof executeTask);
     if (typeof executeTask !== "undefined") {
       window.executeTask = executeTask;
+      console.log(
+        "🔍 [FUNC-EXPORT] executeTask公開完了:",
+        typeof window.executeTask,
+      );
       log.info("✅ executeTask関数を公開");
     } else {
+      console.log("❌ [FUNC-EXPORT] executeTask未定義");
       log.error("❌ executeTask関数が未定義");
     }
 

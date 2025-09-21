@@ -3980,15 +3980,48 @@ async function executeStep4(taskList) {
                   target: { tabId: tabId },
                   func: async (taskData) => {
                     try {
+                      // 🔍 [SCRIPT-EXEC] 詳細ログ追加
+                      console.log("🔍 [SCRIPT-EXEC] claude.aiタブ内実行開始");
+                      console.log(
+                        "🔍 [SCRIPT-EXEC] 現在のURL:",
+                        window.location.href,
+                      );
+                      console.log("🔍 [SCRIPT-EXEC] taskData:", taskData);
+                      console.log(
+                        "🔍 [SCRIPT-EXEC] window.executeTask存在確認:",
+                        typeof window.executeTask,
+                      );
+                      console.log(
+                        "🔍 [SCRIPT-EXEC] windowオブジェクト上の関数一覧:",
+                        Object.getOwnPropertyNames(window).filter(
+                          (name) =>
+                            typeof window[name] === "function" &&
+                            name.includes("execute"),
+                        ),
+                      );
+
                       // Content Script内のexecuteTask関数を直接呼び出し
                       if (typeof window.executeTask !== "function") {
+                        console.log(
+                          "❌ [SCRIPT-EXEC] executeTask未定義 - 利用可能な関数:",
+                          Object.getOwnPropertyNames(window)
+                            .filter(
+                              (name) => typeof window[name] === "function",
+                            )
+                            .slice(0, 10),
+                        );
                         throw new Error(
                           "executeTask function is not available",
                         );
                       }
 
+                      console.log("🔍 [SCRIPT-EXEC] executeTask呼び出し開始");
                       console.log("📤 Executing task with data:", taskData);
                       const result = await window.executeTask(taskData);
+                      console.log(
+                        "🔍 [SCRIPT-EXEC] executeTask実行結果:",
+                        result,
+                      );
 
                       if (result) {
                         return {
