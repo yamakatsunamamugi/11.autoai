@@ -1132,15 +1132,21 @@ async function generateTaskList(
             typeof window !== "undefined" &&
             window.windowController?.openedWindows
           ) {
-            const windowData =
-              window.windowController.openedWindows.get(normalizedAiType);
-            if (Array.isArray(windowData) && windowData.length > 0) {
+            // 新しい保存形式に対応: ${normalizedAiType}_${position} から該当するウィンドウを収集
+            const allWindows = [];
+            for (const [
+              key,
+              value,
+            ] of window.windowController.openedWindows.entries()) {
+              if (key.startsWith(normalizedAiType + "_")) {
+                allWindows.push(value);
+              }
+            }
+
+            if (allWindows.length > 0) {
               // タスクのインデックスに基づいてウィンドウを循環選択
               const taskIndex = tasksCreated; // 現在までに作成されたタスク数を使用
-              windowInfo = windowData[taskIndex % windowData.length];
-            } else if (windowData && typeof windowData === "object") {
-              // 単一オブジェクト形式の場合
-              windowInfo = windowData;
+              windowInfo = allWindows[taskIndex % allWindows.length];
             }
 
             // windowInfoの構造を正規化してtabId/windowIdを確実に設定
@@ -1153,34 +1159,14 @@ async function generateTaskList(
                 aiType: normalizedAiType,
               };
             }
-            console.log(
-              `[step4-tasklist] 🖼️ DEBUG: WindowInfo取得 (aiType: ${aiType})`,
-              {
-                windowControllerExists: !!window.windowController,
-                openedWindowsExists: !!window.windowController?.openedWindows,
-                openedWindowsSize: window.windowController?.openedWindows?.size,
-                allOpenedWindows: window.windowController?.openedWindows
-                  ? Array.from(window.windowController.openedWindows.entries())
-                  : null,
-                originalAiType: aiType,
-                normalizedAiType: normalizedAiType,
-                foundWindowInfo: windowInfo,
-              },
-            );
+            // DEBUG: WindowInfo取得
           } else {
             // WindowController利用不可
           }
 
           // windowInfoが取得できない場合の詳細ログ
           if (!windowInfo) {
-            console.warn(`[step4-tasklist] ⚠️ WARNING: WindowInfo取得失敗`, {
-              originalAiType: aiType,
-              normalizedAiType: normalizedAiType,
-              availableWindows: window.windowController?.openedWindows
-                ? Array.from(window.windowController.openedWindows.keys())
-                : null,
-              suggestion: "aiType正規化が正しく動作しているか確認してください",
-            });
+            // WARNING: WindowInfo取得失敗
           }
 
           // Step4との互換性のため、aiTypeフィールドも追加
@@ -1235,17 +1221,7 @@ async function generateTaskList(
             promptLength: task.prompt?.length || 0,
           });
 
-          console.log(
-            `[step4-tasklist] 🖼️ DEBUG: タスク作成完了 (行${row}, aiType: ${aiType})`,
-            {
-              taskId: task.taskId,
-              tabId: task.tabId,
-              windowId: task.windowId,
-              aiType: task.aiType,
-              hasTabId: !!task.tabId,
-              hasWindowId: !!task.windowId,
-            },
-          );
+          // DEBUG: タスク作成完了
 
           validTasks.push(task);
           tasksCreated++; // タスク作成数をインクリメント
@@ -1820,23 +1796,22 @@ class WindowController {
 
           // 一意キーを生成して複数のウィンドウを管理
           const uniqueKey = `${this.normalizeAiType(layout.aiType)}_${layout.position}_${Date.now()}`;
-
-          // 既存の配列を取得または新規作成
           const normalizedAiType = this.normalizeAiType(layout.aiType);
-          if (!this.openedWindows.has(normalizedAiType)) {
-            this.openedWindows.set(normalizedAiType, []);
-          }
-
-          // ウィンドウデータを配列に追加
-          const windowArray = this.openedWindows.get(normalizedAiType);
           windowData.uniqueKey = uniqueKey;
-          windowArray.push(windowData);
 
-          ExecuteLogger.info(`[WindowController] ウィンドウ配列に追加`, {
+          // 並列実行でも安全にウィンドウデータを保存
+          // 単一のウィンドウとして保存（後で配列として取得される）
+          const storageKey = `${normalizedAiType}_${layout.position}`;
+          this.openedWindows.set(storageKey, windowData);
+
+          ExecuteLogger.info(`[WindowController] ウィンドウ保存完了`, {
             aiType: layout.aiType,
+            storageKey: storageKey,
             uniqueKey: uniqueKey,
             position: layout.position,
-            windowArrayLength: windowArray.length,
+            windowId: windowData.windowId,
+            tabId: windowData.tabId,
+            currentMapSize: this.openedWindows.size,
           });
 
           ExecuteLogger.info(`[WindowController] openedWindows.set完了`, {
@@ -1933,8 +1908,19 @@ class WindowController {
     const checkResults = [];
 
     for (const aiType of aiTypes) {
-      const normalizedAiType = this.normalizeAiType(aiType);
-      const windowInfo = this.openedWindows.get(normalizedAiType);
+      // タスクキーから基本のAIタイプを抽出（例: Claude_task_2_16_xxx → claude）
+      const baseAiType = aiType.replace(/_task.*/, "");
+      const normalizedAiType = this.normalizeAiType(baseAiType);
+
+      // 新しい保存形式に対応: 該当するウィンドウを探す
+      let windowInfo = null;
+      for (const [key, value] of this.openedWindows.entries()) {
+        if (key.startsWith(normalizedAiType + "_")) {
+          windowInfo = value;
+          break; // 最初に見つかったウィンドウを使用
+        }
+      }
+
       if (!windowInfo) {
         ExecuteLogger.warn(
           `⚠️ [Step 4-1-3] ${aiType}のウィンドウが見つかりません`,

@@ -616,14 +616,7 @@ async function executeStep3SingleGroup(taskGroup) {
     列範囲: `${taskGroup?.columns?.prompts?.[0] || "?"} 〜 ${taskGroup?.columns?.answer?.primary || taskGroup?.columns?.answer?.claude || "?"}`,
     開始行: taskGroup?.dataStartRow,
   });
-  LoopLogger.info("[step5-loop.js] 🔍 入力グループ詳細情報:", {
-    グループ番号: taskGroup?.groupNumber,
-    タイプ: taskGroup?.type || taskGroup?.taskType,
-    パターン: taskGroup?.pattern,
-    列情報: taskGroup?.columns,
-    開始行: taskGroup?.dataStartRow,
-    入力オブジェクトのキー: Object.keys(taskGroup || {}),
-  });
+  // DEBUG: 入力グループ詳細情報
 
   try {
     // グループ情報を状態に保存
@@ -647,13 +640,7 @@ async function executeStep3SingleGroup(taskGroup) {
     console.log("🔍 [step5-loop.js] 最終完了確認中...");
     const finalComplete = await checkCompletionStatus(taskGroup);
 
-    LoopLogger.info("[step5-loop.js] 🎯 [Step 5] グループ処理完了:", {
-      グループ番号: taskGroup?.groupNumber,
-      完了状態: finalComplete,
-      処理統計: window.globalState.stats,
-      現在のglobalState_currentGroupIndex:
-        window.globalState?.currentGroupIndex,
-    });
+    LoopLogger.info("[step5-loop.js] 🎯 [Step 5] グループ処理完了");
 
     return finalComplete;
   } catch (error) {
@@ -753,14 +740,7 @@ async function readSpreadsheet(range, retryCount = 0) {
  * @returns {Promise<Array>} スプレッドシートの2次元配列データ
  */
 async function readFullSpreadsheet() {
-  LoopLogger.info(
-    "[step5-loop.js] [Step 5-2-1] 🔍 [DEBUG] readFullSpreadsheet関数実行開始",
-    {
-      callerStack: new Error().stack,
-      functionType: typeof readFullSpreadsheet,
-      asyncFunction: readFullSpreadsheet.constructor.name,
-    },
-  );
+  // DEBUG: readFullSpreadsheet関数実行開始
 
   LoopLogger.info("[Helper] スプレッドシート全体データ取得開始");
 
@@ -961,18 +941,10 @@ async function createTaskList(taskGroup) {
       applyColumnControl: true,
     };
 
-    addLog("[Helper] [Step 5-3] Step3に渡すパラメータ", {
-      "taskGroup.columns": taskGroup?.columns,
-      "spreadsheetData.length": spreadsheetData.length,
-      specialRows: specialRows,
-      dataStartRow: dataStartRow,
-      行制御数: rowControls.length,
-      列制御数: columnControls.length,
-      options: Object.keys(extendedOptions),
-    });
+    // DEBUG: Step3に渡すパラメータ
 
     // ログバッファを一つのログとして出力
-    LoopLogger.info(`[Step5-Loop] [統合ログ]\n${logBuffer.join("\n")}`);
+    // LoopLogger.info(`[Step5-Loop] [統合ログ]\n${logBuffer.join("\n")}`);
 
     // generateTaskList内でaddLogが使われているため、グローバルに定義
     if (typeof window.addLog === "undefined") {
@@ -1049,44 +1021,12 @@ async function executeTasks(tasks, taskGroup) {
 
     // タスクリストを適切な形式に変換（Step4が期待する形式に統一）
     const formattedTasks = tasks.map((task, index) => {
-      // 🔍 [DEBUG] Step3からのタスクデータ詳細ログ
-      LoopLogger.info(
-        `[Helper] 🔍 [DEBUG] Step3からのタスクデータ詳細 - タスク${index + 1}:`,
-        {
-          step3TaskAi: task.ai,
-          step3TaskAiType: task.aiType,
-          step3AnswerCell: task.answerCell,
-          step3AnswerCellDefined: task.answerCell !== undefined,
-          step3LogCell: task.logCell,
-          step3Row: task.row,
-          taskGroupAiType: taskGroup?.aiType,
-          fullStep3Task: {
-            ai: task.ai,
-            aiType: task.aiType,
-            answerCell: task.answerCell,
-            row: task.row,
-          },
-        },
-      );
+      // DEBUG: Step3からのタスクデータ詳細
 
       // Step3で生成されたタスクの情報を使用
       const aiType = task.ai || taskGroup?.aiType || "Claude";
 
-      // 🔍 [DEBUG] aiType決定プロセスのログ
-      LoopLogger.info(
-        `[Helper] 🔍 [DEBUG] aiType決定プロセス - タスク${index + 1}:`,
-        {
-          taskAi: task.ai,
-          taskGroupAiType: taskGroup?.aiType,
-          fallbackAiType: "Claude",
-          finalAiType: aiType,
-          aiTypeSource: task.ai
-            ? "task.ai"
-            : taskGroup?.aiType
-              ? "taskGroup.aiType"
-              : "fallback",
-        },
-      );
+      // DEBUG: aiType決定プロセス
 
       const formattedTask = {
         id:
@@ -1113,20 +1053,7 @@ async function executeTasks(tasks, taskGroup) {
         groupType: task.groupType,
       };
 
-      // 🔍 [DEBUG] 最終フォーマットタスクの確認
-      LoopLogger.info(
-        `[Helper] 🔍 [DEBUG] 最終フォーマットタスク - タスク${index + 1}:`,
-        {
-          formattedTaskId: formattedTask.id,
-          formattedAiType: formattedTask.aiType,
-          formattedAnswerCell: formattedTask.answerCell,
-          formattedAnswerCellDefined: formattedTask.answerCell !== undefined,
-          spreadsheetDataAnswerCell: formattedTask.spreadsheetData.answerCell,
-          step4Will_Use_answerCell: formattedTask.answerCell,
-          step4Will_Use_spreadsheetData_answerCell:
-            formattedTask.spreadsheetData.answerCell,
-        },
-      );
+      // DEBUG: 最終フォーマットタスクの確認
 
       LoopLogger.info(`[Helper] タスク${index + 1}フォーマット完了:`, {
         taskId: formattedTask.id,
@@ -1177,7 +1104,7 @@ async function executeTasks(tasks, taskGroup) {
     // Step4を実行
     LoopLogger.info("[Helper] Step4実行中...");
 
-    // 🔍 [DEBUG] executeStep4呼び出し直前の詳細ログ
+    // DEBUG: executeStep4呼び出し直前の詳細ログ
     // DEBUG: executeStep4を呼び出す直前
 
     // 🎯 [DEBUG] 最終チェック - より詳細な情報
