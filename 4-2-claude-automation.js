@@ -5185,6 +5185,86 @@
       },
     );
 
+    // CHECK_UI_ELEMENTS アクション（step4-tasklist.js からの呼び出し）
+    if (request.action === "CHECK_UI_ELEMENTS") {
+      ClaudeLogger.info(
+        `🔍 [ClaudeAutomation] CHECK_UI_ELEMENTS処理開始 [ID:${requestId}]:`,
+        {
+          aiType: request.aiType,
+          currentURL: window.location.href,
+          requestReceiveTime: new Date().toISOString(),
+        },
+      );
+
+      try {
+        // UI要素確認関数
+        const checkUIElement = (selectors) => {
+          if (!Array.isArray(selectors)) {
+            ClaudeLogger.warn(`⚠️ セレクタが配列ではありません:`, selectors);
+            return false;
+          }
+
+          for (const selector of selectors) {
+            try {
+              const element = document.querySelector(selector);
+              if (element) {
+                ClaudeLogger.debug(`✅ UI要素発見: ${selector}`);
+                return true;
+              }
+            } catch (error) {
+              ClaudeLogger.debug(
+                `❌ セレクタエラー: ${selector}`,
+                error.message,
+              );
+            }
+          }
+          return false;
+        };
+
+        // 各UI要素の検出
+        const textInput = checkUIElement(
+          claudeSelectors["1_テキスト入力欄"].selectors,
+        );
+        const modelDisplay = checkUIElement(
+          modelSelectors.modelDisplay.map((s) => s.selector),
+        );
+        const functionDisplay = checkUIElement(featureSelectors.menuButton);
+
+        const checkResult = {
+          textInput: textInput,
+          modelDisplay: modelDisplay,
+          functionDisplay: functionDisplay,
+        };
+
+        ClaudeLogger.info(
+          `✅ [ClaudeAutomation] CHECK_UI_ELEMENTS完了 [ID:${requestId}]:`,
+          {
+            結果: checkResult,
+            検出セレクタ数: {
+              textInput: claudeSelectors["1_テキスト入力欄"].selectors.length,
+              modelDisplay: modelSelectors.modelDisplay.length,
+              functionDisplay: featureSelectors.menuButton.length,
+            },
+          },
+        );
+
+        sendResponse(checkResult);
+        return true; // 非同期レスポンスのためチャネルを保持
+      } catch (error) {
+        ClaudeLogger.error(
+          `❌ [ClaudeAutomation] CHECK_UI_ELEMENTS処理エラー [ID:${requestId}]:`,
+          error.message,
+        );
+        sendResponse({
+          textInput: false,
+          modelDisplay: false,
+          functionDisplay: false,
+          error: error.message,
+        });
+        return true;
+      }
+    }
+
     // 新しい executeTask アクション（step4-tasklist.js からの呼び出し）
     if (
       request.action === "executeTask" &&
