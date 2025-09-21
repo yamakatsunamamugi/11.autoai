@@ -299,16 +299,24 @@ class StepIntegratedAITaskExecutor {
       }
 
       // 処理間隔を延長してタブの準備を確実にする
-      console.log(`[DEBUG-StepIntegratedAITaskExecutor] 2秒待機開始: tabId=${tabId}`);
+      console.log(
+        `[DEBUG-StepIntegratedAITaskExecutor] 2秒待機開始: tabId=${tabId}`,
+      );
       await new Promise((resolve) => setTimeout(resolve, 2000));
-      console.log(`[DEBUG-StepIntegratedAITaskExecutor] 2秒待機完了: tabId=${tabId}`);
+      console.log(
+        `[DEBUG-StepIntegratedAITaskExecutor] 2秒待機完了: tabId=${tabId}`,
+      );
 
       // コンテンツスクリプトを注入して実行
-      console.log(`[DEBUG-StepIntegratedAITaskExecutor] executeScript開始: tabId=${tabId}`);
+      console.log(
+        `[DEBUG-StepIntegratedAITaskExecutor] executeScript開始: tabId=${tabId}`,
+      );
       const results = await chrome.scripting.executeScript({
         target: { tabId: tabId },
         func: (prompt) => {
-          console.log(`[DEBUG-Script] 実行開始: prompt="${prompt.substring(0, 50)}..."`);
+          console.log(
+            `[DEBUG-Script] 実行開始: prompt="${prompt.substring(0, 50)}..."`,
+          );
           // AI自動化の実行（簡易版）
           if (
             typeof window.automation !== "undefined" &&
@@ -344,7 +352,10 @@ class StepIntegratedAITaskExecutor {
         },
         args: [taskData.prompt],
       });
-      console.log(`[DEBUG-StepIntegratedAITaskExecutor] executeScript完了: tabId=${tabId}`, results);
+      console.log(
+        `[DEBUG-StepIntegratedAITaskExecutor] executeScript完了: tabId=${tabId}`,
+        results,
+      );
 
       const result = results[0]?.result || {
         success: false,
@@ -352,7 +363,8 @@ class StepIntegratedAITaskExecutor {
       };
 
       console.log(
-        `✅ [StepIntegratedAITaskExecutor] タスク実行完了: success=${result.success}`, result,
+        `✅ [StepIntegratedAITaskExecutor] タスク実行完了: success=${result.success}`,
+        result,
       );
       return result;
     } catch (error) {
@@ -2087,7 +2099,10 @@ class WindowController {
       }
 
       const allChecksPass = Object.values(checks).every((check) => check);
-      console.log(`[DEBUG-performWindowCheck] チェック結果: allChecksPass=${allChecksPass}`, checks);
+      console.log(
+        `[DEBUG-performWindowCheck] チェック結果: allChecksPass=${allChecksPass}`,
+        checks,
+      );
 
       return {
         success: allChecksPass,
@@ -2102,7 +2117,6 @@ class WindowController {
         error: error.message,
       };
     }
-  }
   }
 
   /**

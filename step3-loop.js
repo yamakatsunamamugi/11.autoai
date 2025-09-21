@@ -227,6 +227,9 @@ async function checkCompletionStatus(taskGroup) {
         prompts列設定: taskGroup.columns.prompts,
       },
     );
+    console.log(
+      `[DEBUG-checkCompletionStatus] グループ${taskGroup.groupNumber}: プロンプト検索完了 - promptCount=${promptCount}, 範囲=${promptRange}`,
+    );
 
     // ========================================
     // Step 5-1-2: 回答列の確認
@@ -326,6 +329,9 @@ async function checkCompletionStatus(taskGroup) {
     }
 
     LoopLogger.info(`[step5-loop.js] [Step 5-1-2] 回答数: ${answerCount}件`);
+    console.log(
+      `[DEBUG-checkCompletionStatus] グループ${taskGroup.groupNumber}: 回答検索完了 - answerCount=${answerCount}, 範囲=${answerRange}`,
+    );
 
     // 統計情報更新
     window.globalState.stats.totalPrompts = promptCount;
@@ -337,6 +343,9 @@ async function checkCompletionStatus(taskGroup) {
     // ========================================
     LoopLogger.info("[step5-loop.js→Step5-1-3] 完了判定を実行");
 
+    console.log(
+      `[DEBUG-checkCompletionStatus] グループ${taskGroup.groupNumber}: promptCount=${promptCount}, answerCount=${answerCount}`,
+    );
     const isComplete = promptCount === answerCount;
 
     LoopLogger.info("[step5-loop.js] [Step 5-1-3] 完了状況:", {
