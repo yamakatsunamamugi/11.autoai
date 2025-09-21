@@ -153,6 +153,33 @@
         </div>
       </section>
 
+      <!-- ログレベル設定セクション -->
+      <section class="step-section">
+        <div class="step-header">
+          <span class="step-number">⚙️</span>
+          <h2>ログレベル設定</h2>
+        </div>
+        <div class="step-content">
+          <p class="test-description">コンソール出力の詳細度を調整できます</p>
+          <div style="display: flex; align-items: center; gap: 15px;">
+            <label for="logLevelSelect" style="font-weight: 600;">ログレベル:</label>
+            <select id="logLevelSelect" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; min-width: 150px;">
+              <option value="1">ERROR - エラーのみ</option>
+              <option value="2">WARN - 警告とエラー</option>
+              <option value="3" selected>INFO - 重要情報（推奨）</option>
+              <option value="4">DEBUG - 全ての詳細</option>
+            </select>
+            <button id="saveLogLevelBtn" class="btn btn-primary" style="padding: 8px 16px;">
+              <span>💾 保存</span>
+            </button>
+            <span id="logLevelStatus" style="color: #28a745; font-size: 14px; display: none;">✅ 保存しました</span>
+          </div>
+          <div style="margin-top: 10px; font-size: 12px; color: #666;">
+            ※ 変更後はページをリロードしてください
+          </div>
+        </div>
+      </section>
+
       <!-- AI検出機能セクション -->
       <section class="step-section">
         <div class="step-header">
@@ -314,6 +341,40 @@
       </section>
     </main>
   </div>
+
+  <!-- ログレベル管理スクリプト -->
+  <script>
+    // ログレベル設定の初期化とイベントハンドリング
+    document.addEventListener('DOMContentLoaded', async () => {
+      const logLevelSelect = document.getElementById('logLevelSelect');
+      const saveLogLevelBtn = document.getElementById('saveLogLevelBtn');
+      const logLevelStatus = document.getElementById('logLevelStatus');
+
+      // 保存済みのログレベルを取得
+      if (chrome && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.get('logLevel', (result) => {
+          if (result.logLevel) {
+            logLevelSelect.value = result.logLevel;
+          }
+        });
+      }
+
+      // 保存ボタンのクリックイベント
+      saveLogLevelBtn?.addEventListener('click', () => {
+        const selectedLevel = parseInt(logLevelSelect.value);
+
+        if (chrome && chrome.storage && chrome.storage.local) {
+          chrome.storage.local.set({ logLevel: selectedLevel }, () => {
+            // 成功メッセージを表示
+            logLevelStatus.style.display = 'inline';
+            setTimeout(() => {
+              logLevelStatus.style.display = 'none';
+            }, 2000);
+          });
+        }
+      });
+    });
+  </script>
 
   <!-- 統合されたUIコントローラー -->
   <script type="module" src="step0-ui-controller.js"></script>

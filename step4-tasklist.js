@@ -1,12 +1,26 @@
-/**
- * @fileoverview ステップ4: タスクリスト実行統合機能
- *
- * このファイルは、スプレッドシートからタスクを読み取り、
- * 実行可能なタスクリストを生成し、AI処理を実行する機能を提供します。
- *
- * 【ステップ構成】
- * Step 4-1: ウィンドウ管理とサービス初期化
- * Step 4-2: タスクデータの動的取得と展開
+// ログレベル定義
+const LOG_LEVEL = { ERROR: 1, WARN: 2, INFO: 3, DEBUG: 4 };
+
+// Chrome Storageからログレベルを取得（非同期）
+let CURRENT_LOG_LEVEL = LOG_LEVEL.INFO; // デフォルト値
+
+// Chrome拡張環境でのみStorageから設定を読み込む
+if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+  chrome.storage.local.get('logLevel', (result) => {
+    if (result.logLevel) {
+      CURRENT_LOG_LEVEL = parseInt(result.logLevel);
+    }
+  });
+}
+
+// ログユーティリティ
+const log = {
+  error: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.ERROR && console.error(...args),
+  warn: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.WARN && console.warn(...args),
+  info: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.INFO && console.log(...args),
+  debug: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.DEBUG && console.log(...args)
+};
+
  * Step 4-3: AI処理の並列実行とエラーハンドリング
  */
 
