@@ -3914,6 +3914,9 @@ async function executeStep4(taskList) {
                   case "ChatGPTAutomationV2":
                     scriptFile = "3-2-gpt-automation.js";
                     break;
+                  case "ClaudeAutomation":
+                    scriptFile = "4-2-claude-automation.js";
+                    break;
                   case "GeminiAutomation":
                     scriptFile = "5-2-gemini-automation.js";
                     break;
@@ -4121,20 +4124,17 @@ async function executeStep4(taskList) {
       window.detailedLogManager.recordTaskStart(task, windowInfo);
     }
 
-    // Step 4-6-8-3: AI自動化ファイルの読み込み確認（Claude以外）
+    // Step 4-6-8-3: AI自動化ファイルの読み込み確認（全AI対応）
     const aiType = normalizedAiType.toLowerCase();
-    if (
-      aiType !== "claude" &&
-      !window.aiAutomationLoader.isAIAvailable(aiType)
-    ) {
+    if (!window.aiAutomationLoader.isAIAvailable(aiType)) {
       ExecuteLogger.info(
         `[step4-execute.js] Step 4-6-8-3: ${normalizedAiType} 自動化ファイルを読み込み中...`,
       );
       await window.aiAutomationLoader.loadAIFile(aiType);
       await new Promise((resolve) => setTimeout(resolve, 1000));
-    } else if (aiType === "claude") {
+    } else {
       ExecuteLogger.info(
-        `[step4-execute.js] Step 4-6-8-3: Claude自動化ファイルはmanifest.jsonで自動注入済み`,
+        `[step4-execute.js] Step 4-6-8-3: ${normalizedAiType} 自動化ファイルは読み込み済み`,
       );
     }
 

@@ -1,3 +1,6 @@
+// 🔥 STEP 0: バージョン確認
+console.log("🔥 [STEP 0] step0-ui-controller.js バージョン1です");
+
 /**
  * @fileoverview step0-ui-controller.js - AutoAI UI Controller
  *

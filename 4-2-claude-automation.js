@@ -1,15 +1,10 @@
-/**
- * @fileoverview Claude Automation V2 - AI対話自動化
- * @version 3.0.1
- * @updated 2024-12-16
- */
-(function () {
-  "use strict";
+// 🔥 STEP 0: バージョン確認
+console.log("🔥 [STEP 0] 4-2-claude-automation.js バージョン1です");
+console.log("🔥 [TEST] 最小限テスト開始");
+console.log("🔥 [TEST] ファイル読み込み確認");
 
-  // 🚀 ファイル読み込み確認ログ
-  console.log("🚀 [INITIAL] 4-2-claude-automation.js 読み込み開始");
-  console.log("📍 [INITIAL] URL:", window.location.href);
-  console.log("📍 [INITIAL] 読み込み時刻:", new Date().toISOString());
+/*
+🔍 [DEBUG] すべてをコメントアウト - ファイル読み込み確認のため
 
   // 🚨 グローバルエラーハンドラー追加
   window.addEventListener("error", (e) => {
@@ -518,6 +513,9 @@
                 console.log(
                   `✅ 【${actionName}】${retryCount}回目のリトライで成功`,
                 );
+
+/*
+🔍 [DEBUG] 500行目以降を一時的にコメントアウト - エラー箇所特定のため
               }
               return {
                 success: true,
@@ -997,6 +995,8 @@
       this.taskContext = null;
     }
   }
+
+  /* === DEBUG: 1000行目以降をコメントアウト（エラー箇所特定のため）===
 
   // ========================================
   // Claude-ステップ0-4: セレクタ定義
@@ -4961,3 +4961,24 @@
   // グローバルにログマネージャーを公開（デバッグ用）
   window.ClaudeLogManager = ClaudeLogManager;
 })();
+
+=== DEBUG: コメントアウト終了 === */
+
+console.log("🧪 [DEBUG] 1000行目以降をコメントアウト - 初期化ログテスト");
+
+// 最小限のメッセージリスナー
+if (chrome && chrome.runtime && chrome.runtime.onMessage) {
+  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    console.log("🧪 [TEST-LISTENER] メッセージ受信:", request?.type || request?.action);
+    sendResponse({ success: false, error: "Test mode - 1000行目以降コメントアウト" });
+    return true;
+  });
+  console.log("🧪 [TEST-LISTENER] メッセージリスナー登録完了");
+}
+
+// 初期化完了マーカー
+window.CLAUDE_SCRIPT_LOADED = true;
+window.CLAUDE_SCRIPT_INIT_TIME = Date.now();
+console.log("🧪 [DEBUG] 初期化マーカー設定完了");
+
+*/ // 500行目以降のコメントアウト終了
