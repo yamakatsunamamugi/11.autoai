@@ -21,14 +21,18 @@ if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
 
 // ログユーティリティ
 const log = {
-  error: (...args) =>
-    CURRENT_LOG_LEVEL >= LOG_LEVEL.ERROR && console.error(...args),
-  warn: (...args) =>
-    CURRENT_LOG_LEVEL >= LOG_LEVEL.WARN && console.warn(...args),
-  info: (...args) =>
-    CURRENT_LOG_LEVEL >= LOG_LEVEL.INFO && console.log(...args),
-  debug: (...args) =>
-    CURRENT_LOG_LEVEL >= LOG_LEVEL.DEBUG && console.log(...args),
+  error: (...args) => {
+    if (CURRENT_LOG_LEVEL >= LOG_LEVEL.ERROR) console.error(...args);
+  },
+  warn: (...args) => {
+    if (CURRENT_LOG_LEVEL >= LOG_LEVEL.WARN) console.warn(...args);
+  },
+  info: (...args) => {
+    if (CURRENT_LOG_LEVEL >= LOG_LEVEL.INFO) console.log(...args);
+  },
+  debug: (...args) => {
+    if (CURRENT_LOG_LEVEL >= LOG_LEVEL.DEBUG) console.log(...args);
+  },
 };
 
 // エクスポート
