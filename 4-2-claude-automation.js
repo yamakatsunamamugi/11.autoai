@@ -21,6 +21,338 @@
   const scriptLoadTime = Date.now();
   const loadTimeISO = new Date().toISOString();
 
+  // ========================================
+  // 成功済みClaudeタスク実行ロジック（unused/automations/claude-automation.jsから移植）
+  // ========================================
+
+  /**
+   * 安定したタスク実行関数 - 成功実績あり
+   * @param {Object} taskData タスクデータ
+   */
+  async function executeStableTask(taskData) {
+    ClaudeLogger.info("🚀 [StableTask] 成功実績ロジックでタスク実行開始", {
+      model: taskData.model || "未指定",
+      function: taskData.function || "通常",
+      promptLength: taskData.prompt?.length || taskData.text?.length || 0,
+      hasPrompt: !!(taskData.prompt || taskData.text),
+    });
+
+    ClaudeLogger.info(
+      "✅✅✅ [CRITICAL] executeStableTask が呼び出されました！！！",
+      {
+        timestamp: new Date().toISOString(),
+        taskDataKeys: Object.keys(taskData || {}),
+        prompt: taskData?.prompt
+          ? `${taskData.prompt.substring(0, 50)}...`
+          : "なし",
+        callStack: new Error().stack.split("\n").slice(0, 5).join(" -> "),
+      },
+    );
+
+    // 🔍 [DEBUG] executeStableTask詳細ログ
+    ClaudeLogger.info("🔍 [DEBUG-STABLE-TASK] executeStableTask開始詳細:", {
+      taskDataReceived: !!taskData,
+      taskDataType: typeof taskData,
+      taskDataKeys: taskData ? Object.keys(taskData) : null,
+      prompt: taskData?.prompt
+        ? `${taskData.prompt.substring(0, 100)}...`
+        : "❌ プロンプトなし",
+      text: taskData?.text
+        ? `${taskData.text.substring(0, 100)}...`
+        : "textなし",
+      model: taskData?.model,
+      function: taskData?.function,
+      hasAnyText: !!(taskData?.prompt || taskData?.text),
+      currentUrl: window.location.href,
+      pageTitle: document.title,
+      timestamp: new Date().toISOString(),
+    });
+
+    const taskStartTime = Date.now();
+    let sendTime = Date.now();
+
+    try {
+      // Step 1: テキスト入力（安定版）
+      ClaudeLogger.info("📝 [StableTask] Step 1: テキスト入力開始");
+      const prompt = taskData.prompt || taskData.text || "";
+
+      // 🔍 [DEBUG] プロンプト詳細ログ
+      ClaudeLogger.info("🔍 [DEBUG-STABLE-TASK] プロンプト検証:", {
+        promptFromTaskDataPrompt: taskData?.prompt
+          ? `${taskData.prompt.substring(0, 50)}...`
+          : null,
+        promptFromTaskDataText: taskData?.text
+          ? `${taskData.text.substring(0, 50)}...`
+          : null,
+        finalPrompt: prompt ? `${prompt.substring(0, 50)}...` : null,
+        promptLength: prompt.length,
+        hasPrompt: !!prompt,
+      });
+
+      if (!prompt) {
+        ClaudeLogger.error("🔍 [DEBUG-STABLE-TASK] プロンプトエラー詳細:", {
+          taskData: taskData,
+          taskDataPrompt: taskData?.prompt,
+          taskDataText: taskData?.text,
+          finalPrompt: prompt,
+        });
+        throw new Error("プロンプトが指定されていません");
+      }
+
+      // 入力欄の確実な検索（成功実績セレクタ使用）
+      const textInputSelectors = [
+        'div[contenteditable="true"]',
+        'textarea[placeholder*="Claude"]',
+        "div.ProseMirror",
+        '[data-testid="chat-input"]',
+      ];
+
+      // 🔍 [DEBUG] UI要素検索開始ログ
+      ClaudeLogger.info("🔍 [DEBUG-STABLE-TASK] UI要素検索開始:", {
+        selectorsToTry: textInputSelectors,
+        currentUrl: window.location.href,
+        pageReadyState: document.readyState,
+        bodyExists: !!document.body,
+        totalElementsInPage: document.querySelectorAll("*").length,
+      });
+
+      let inputElement = null;
+      for (let i = 0; i < textInputSelectors.length; i++) {
+        const selector = textInputSelectors[i];
+        try {
+          ClaudeLogger.info(
+            `🔍 [DEBUG-STABLE-TASK] セレクタ試行 ${i + 1}/${textInputSelectors.length}: ${selector}`,
+          );
+          inputElement = document.querySelector(selector);
+
+          ClaudeLogger.info(`🔍 [DEBUG-STABLE-TASK] セレクタ結果:`, {
+            selector: selector,
+            elementFound: !!inputElement,
+            elementType: inputElement?.tagName,
+            elementId: inputElement?.id,
+            elementClass: inputElement?.className,
+            isVisible: inputElement
+              ? inputElement.offsetParent !== null
+              : false,
+            isContentEditable: inputElement?.contentEditable,
+          });
+
+          if (inputElement) {
+            ClaudeLogger.info(`✅ [StableTask] 入力欄発見: ${selector}`, {
+              element: {
+                tagName: inputElement.tagName,
+                id: inputElement.id,
+                className: inputElement.className,
+                contentEditable: inputElement.contentEditable,
+                placeholder:
+                  inputElement.placeholder ||
+                  inputElement.getAttribute("placeholder"),
+              },
+            });
+            break;
+          }
+        } catch (error) {
+          ClaudeLogger.warn(
+            `⚠️ [StableTask] セレクタエラー: ${selector}`,
+            error.message,
+          );
+        }
+      }
+
+      if (!inputElement) {
+        // 🔍 [DEBUG] 入力欄検索失敗の詳細ログ
+        ClaudeLogger.error("🔍 [DEBUG-STABLE-TASK] 入力欄検索失敗詳細:", {
+          triedSelectors: textInputSelectors,
+          pageUrl: window.location.href,
+          pageTitle: document.title,
+          pageReadyState: document.readyState,
+          allDivs: document.querySelectorAll("div").length,
+          allTextareas: document.querySelectorAll("textarea").length,
+          allInputs: document.querySelectorAll("input").length,
+          contentEditableDivs: document.querySelectorAll("div[contenteditable]")
+            .length,
+          anyClaudeElements: document.querySelectorAll(
+            '[class*="claude" i], [id*="claude" i]',
+          ).length,
+          bodyHtml: document.body
+            ? document.body.innerHTML.substring(0, 500)
+            : "body not found",
+        });
+        throw new Error("テキスト入力欄が見つかりません");
+      }
+
+      // 🔍 [DEBUG] テキスト入力開始ログ
+      ClaudeLogger.info("🔍 [DEBUG-STABLE-TASK] テキスト入力開始:", {
+        elementFound: !!inputElement,
+        elementTag: inputElement.tagName,
+        elementVisible: inputElement.offsetParent !== null,
+        promptLength: prompt.length,
+        promptPreview: prompt.substring(0, 100) + "...",
+      });
+
+      // 安全なテキスト入力
+      inputElement.focus();
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      // 既存テキストをクリア
+      inputElement.innerHTML = "";
+      inputElement.textContent = "";
+
+      // 新しいテキストを設定
+      inputElement.innerHTML = prompt;
+      inputElement.textContent = prompt;
+
+      // 入力イベントを発火
+      inputElement.dispatchEvent(new Event("input", { bubbles: true }));
+      inputElement.dispatchEvent(new Event("change", { bubbles: true }));
+
+      // 🔍 [DEBUG] テキスト入力完了ログ
+      ClaudeLogger.info("🔍 [DEBUG-STABLE-TASK] テキスト入力完了:", {
+        finalContent: inputElement.textContent?.substring(0, 100) + "...",
+        contentLength: inputElement.textContent?.length,
+        htmlContent: inputElement.innerHTML?.substring(0, 100) + "...",
+      });
+
+      ClaudeLogger.info("✅ [StableTask] テキスト入力完了");
+
+      // Step 2: メッセージ送信
+      ClaudeLogger.info("📤 [StableTask] Step 2: メッセージ送信開始");
+      sendTime = Date.now();
+
+      const sendButtonSelectors = [
+        'button[aria-label="チャットメッセージを送信"]',
+        'button[data-testid="send-button"]',
+        'button[type="submit"]',
+        'button[aria-label*="送信"]',
+        'button[aria-label*="Send"]',
+      ];
+
+      let sendButton = null;
+      for (const selector of sendButtonSelectors) {
+        try {
+          sendButton = document.querySelector(selector);
+          if (sendButton && !sendButton.disabled) {
+            ClaudeLogger.info(`✅ [StableTask] 送信ボタン発見: ${selector}`);
+            break;
+          }
+        } catch (error) {
+          ClaudeLogger.warn(
+            `⚠️ [StableTask] ボタンセレクタエラー: ${selector}`,
+            error.message,
+          );
+        }
+      }
+
+      if (!sendButton) {
+        throw new Error("送信ボタンが見つかりません");
+      }
+
+      sendButton.click();
+      ClaudeLogger.info("📤 [StableTask] メッセージ送信完了");
+
+      // Step 3: 応答待機（安定版）
+      ClaudeLogger.info("⏳ [StableTask] Step 3: 応答待機開始");
+      await waitForStableResponse();
+
+      // Step 4: テキスト取得
+      ClaudeLogger.info("📖 [StableTask] Step 4: テキスト取得開始");
+      const responseText = await extractStableResponse();
+
+      const result = {
+        success: true,
+        text: responseText,
+        response: responseText,
+        sendTime: new Date(sendTime).toISOString(),
+        completedTime: new Date().toISOString(),
+        processingTime: Date.now() - taskStartTime,
+      };
+
+      ClaudeLogger.info("✅ [StableTask] タスク実行完了", {
+        success: result.success,
+        textLength: result.text?.length || 0,
+        processingTime: `${result.processingTime}ms`,
+      });
+
+      return result;
+    } catch (error) {
+      ClaudeLogger.error("❌ [StableTask] タスク実行エラー", {
+        error: error.message,
+        stack: error.stack,
+        processingTime: Date.now() - taskStartTime,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        processingTime: Date.now() - taskStartTime,
+      };
+    }
+  }
+
+  /**
+   * 応答待機関数（安定版）
+   */
+  async function waitForStableResponse() {
+    const maxWaitTime = 60000; // 60秒
+    const checkInterval = 1000; // 1秒間隔
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < maxWaitTime) {
+      // 停止ボタンの存在チェック（処理中の判定）
+      const stopButton =
+        document.querySelector('button[aria-label="回答を停止"]') ||
+        document.querySelector('button[aria-label*="停止"]') ||
+        document.querySelector('button[aria-label*="Stop"]') ||
+        document.querySelector('[data-testid="stop-button"]');
+
+      if (!stopButton) {
+        // 停止ボタンがない = 応答完了
+        ClaudeLogger.info("✅ [StableTask] 応答完了を検知");
+        return;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, checkInterval));
+    }
+
+    ClaudeLogger.warn("⚠️ [StableTask] 応答待機タイムアウト");
+  }
+
+  /**
+   * 応答テキスト抽出関数（安定版）
+   */
+  async function extractStableResponse() {
+    const responseSelectors = [
+      ".standard-markdown",
+      '[class*="markdown"]',
+      '[class*="response"]',
+      ".grid-cols-1.grid",
+    ];
+
+    for (const selector of responseSelectors) {
+      try {
+        const elements = document.querySelectorAll(selector);
+        if (elements.length > 0) {
+          const lastElement = elements[elements.length - 1];
+          const text = lastElement.textContent || lastElement.innerText || "";
+          if (text.trim().length > 10) {
+            ClaudeLogger.info(
+              `✅ [StableTask] レスポンステキスト取得: ${selector} (${text.length}文字)`,
+            );
+            return text.trim();
+          }
+        }
+      } catch (error) {
+        ClaudeLogger.warn(
+          `⚠️ [StableTask] レスポンス取得エラー: ${selector}`,
+          error.message,
+        );
+      }
+    }
+
+    ClaudeLogger.warn("⚠️ [StableTask] レスポンステキストが見つかりません");
+    return "";
+  }
+
   // =======================================
   // ClaudeLogger - 集中ログ管理システム
   // =======================================
@@ -435,7 +767,7 @@
             'button[type="submit"]',
             ".send-button",
             'button[aria-label*="送信"]',
-            "button:has(svg)",
+            "button svg", // descendant selector instead of :has()
             'button[data-testid*="send"]',
           ],
 
@@ -453,7 +785,7 @@
           MODEL_BUTTON: [
             '[data-testid="model-selector-dropdown"]',
             'button[data-value*="claude"]',
-            "button.cursor-pointer:has(span.font-medium)",
+            "button.cursor-pointer span.font-medium", // descendant selector instead of :has()
             'button[aria-label*="モデル"]',
             'button[aria-label*="Model"]',
             '[aria-label="モデルを選択"]',
@@ -501,7 +833,7 @@
               "Reviewed",
             ],
             ELEMENTS: [
-              "button:has(.tabular-nums)",
+              "button .tabular-nums", // descendant selector instead of :has()
               'svg path[d*="M10.3857 2.50977"]',
               ".tabular-nums",
             ],
@@ -517,7 +849,7 @@
           DEEP_RESEARCH_BUTTON: [
             'button:has-text("リサーチ")',
             "button[aria-pressed]",
-            'button:contains("リサーチ")',
+            'button[aria-label*="リサーチ"]', // aria-label instead of :contains()
           ],
 
           // Deep Research関連
@@ -547,13 +879,13 @@
           MENU: {
             CONTAINER: '[role="menu"][data-state="open"], [role="menu"]',
             ITEM: '[role="option"], [role="menuitem"]',
-            MODEL_ITEM: 'button[role="option"]:has(span)',
+            MODEL_ITEM: 'button[role="option"] span', // descendant selector instead of :has()
             OTHER_MODELS: [
               'div[role="menuitem"][aria-haspopup="menu"]',
               '[role="menuitem"][aria-haspopup="menu"]',
-              'div[role="menuitem"]:has(div:contains("他のモデル"))',
-              'div[role="menuitem"]:has(div:contains("Other models"))',
-              '[aria-haspopup="menu"]:has(svg)',
+              'div[role="menuitem"][aria-label*="他のモデル"]', // aria-label instead of :has(:contains())
+              'div[role="menuitem"][aria-label*="Other models"]', // aria-label instead of :has(:contains())
+              '[aria-haspopup="menu"] svg', // descendant selector instead of :has()
             ],
           },
 
@@ -567,11 +899,11 @@
           // Canvas関連
           CANVAS: {
             CONTAINER: [
-              ".grid-cols-1.grid:has(h1)",
+              ".grid-cols-1.grid h1", // descendant selector instead of :has()
               ".grid-cols-1.grid",
               '[class*="grid-cols-1"][class*="grid"]',
-              "div:has(> h1.text-2xl)",
-              ".overflow-y-auto:has(h1)",
+              "div > h1.text-2xl", // direct child selector instead of :has()
+              ".overflow-y-auto h1", // descendant selector instead of :has()
             ],
             PREVIEW_TEXT: [".absolute.inset-0"],
             PREVIEW_BUTTON: [
@@ -590,7 +922,7 @@
             BUTTON: [
               'button[data-testid="model-selector-dropdown"]',
               'button[aria-haspopup="menu"]',
-              "button.cursor-pointer:has(span.font-medium)",
+              "button.cursor-pointer span.font-medium", // descendant selector instead of :has()
               'button[aria-label*="モデル"]',
               'button[aria-label*="Model"]',
             ],
@@ -5337,6 +5669,19 @@
 
           ClaudeLogger.info(`🚀 [ClaudeAutomation] タスク実行開始`);
 
+          ClaudeLogger.info(
+            "🔥🔥🔥 [CRITICAL-CHECK] window.ClaudeAutomation確認:",
+            {
+              exists: !!window.ClaudeAutomation,
+              executeStableTaskExists:
+                typeof window.ClaudeAutomation?.executeStableTask,
+              allMethods: window.ClaudeAutomation
+                ? Object.keys(window.ClaudeAutomation)
+                : [],
+              willCallExecuteStableTask: true,
+            },
+          );
+
           // 🔍 実行環境の詳細確認
           ClaudeLogger.info(`🌍 [Environment Check] 実行環境詳細:`, {
             currentURL: window.location.href,
@@ -5351,9 +5696,8 @@
             userAgent: navigator.userAgent.substring(0, 100),
           });
 
-          const result = await window.ClaudeAutomation.executeTask(
-            request.task,
-          );
+          // 成功実績のある安定タスク実行関数を使用
+          const result = await executeStableTask(request.task);
 
           ClaudeLogger.info(`✅ [ClaudeAutomation] タスク実行完了:`, {
             success: result.success,
@@ -5577,11 +5921,16 @@
   window.ClaudeAutomation = {
     executeTask: executeTask,
     runAutomation: runAutomation,
+    executeStableTask: executeStableTask, // 成功済み関数を追加
     version: "V2",
     initTime: initCompleteTime,
     isReady: true,
     loadedAt: new Date().toISOString(),
   };
+
+  // グローバル初期化フラグを設定
+  window.CLAUDE_SCRIPT_LOADED = true;
+  window.CLAUDE_SCRIPT_INIT_TIME = Date.now();
 
   // デバッグ: 登録確認
   ClaudeLogger.info("✅ [DEBUG] window.ClaudeAutomation登録完了:", {

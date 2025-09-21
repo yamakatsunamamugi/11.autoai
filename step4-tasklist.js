@@ -43,6 +43,74 @@ if (typeof window !== 'undefined') {
 /**
  * Step内統合版 WindowService（StreamProcessorV2の機能を内部実装）
  */
+// ========================================
+// 成功済みリトライロジック（unused/window-service.jsから移植）
+// ========================================
+
+/**
+ * シンプルリトライ機能 - 成功実績あり
+ * @param {Object} options リトライ設定
+ * @param {Function} options.action 実行する関数
+ * @param {Function} options.isSuccess 成功判定関数
+ * @param {number} options.maxRetries 最大リトライ回数
+ * @param {number} options.interval リトライ間隔(ms)
+ * @param {string} options.actionName アクション名（ログ用）
+ * @param {Object} options.context コンテキスト情報
+ */
+async function executeSimpleRetry({
+  action,
+  isSuccess,
+  maxRetries = 20,
+  interval = 500,
+  actionName = "",
+  context = {},
+}) {
+  let retryCount = 0;
+  let lastResult = null;
+  let lastError = null;
+
+  while (retryCount < maxRetries) {
+    try {
+      if (retryCount === 1 || retryCount === maxRetries - 1) {
+        console.log(
+          `[StableRetry] ${actionName} 再試行 ${retryCount}/${maxRetries}`,
+          context,
+        );
+      }
+      lastResult = await action();
+      if (isSuccess(lastResult)) {
+        if (retryCount > 0) {
+          console.log(
+            `[StableRetry] ✅ ${actionName} 成功（${retryCount}回目の試行）`,
+            context,
+          );
+        }
+        return { success: true, result: lastResult, retryCount };
+      }
+    } catch (error) {
+      lastError = error;
+      console.error(`[StableRetry] ${actionName} エラー`, {
+        ...context,
+        attempt: retryCount + 1,
+        error: error.message,
+      });
+    }
+    retryCount++;
+    if (retryCount >= maxRetries) {
+      return {
+        success: false,
+        result: lastResult,
+        error: lastError,
+        retryCount,
+      };
+    }
+    if (interval > 0) {
+      await new Promise((resolve) => setTimeout(resolve, interval));
+    }
+  }
+  return { success: false, result: lastResult, error: lastError, retryCount };
+}
+
 /**
  * 統一ウィンドウ管理クラス - 複数Mapを1つに集約
  */
@@ -174,17 +242,44 @@ class SafeMessenger {
       `[SafeMessenger] 送信開始: tabId=${tabId}, action=${message.action}`,
     );
 
+    // 🔍 [DEBUG] SafeMessenger詳細ログ
+    console.log("🔍 [DEBUG-SAFE-MESSENGER] 送信開始詳細:", {
+      tabId: tabId,
+      messageAction: message.action,
+      messageKeys: Object.keys(message),
+      timeout: timeout,
+      currentQueueSize: this.sendMessageQueue.size,
+      isTabInQueue: this.sendMessageQueue.has(tabId),
+      allQueuedTabs: Array.from(this.sendMessageQueue.keys()),
+      timestamp: new Date().toISOString(),
+    });
+
     // 既に同じタブに送信中の場合は待機
     if (this.sendMessageQueue.has(tabId)) {
       console.log(`[SafeMessenger] タブ${tabId}は送信中、待機...`);
+      console.log("🔍 [DEBUG-SAFE-MESSENGER] キュー待機詳細:", {
+        waitingForTab: tabId,
+        currentQueueSize: this.sendMessageQueue.size,
+        queuedTabs: Array.from(this.sendMessageQueue.keys()),
+      });
       try {
         await this.sendMessageQueue.get(tabId);
+        console.log("🔍 [DEBUG-SAFE-MESSENGER] キュー待機完了:", {
+          tabId: tabId,
+        });
       } catch (error) {
+        console.log("🔍 [DEBUG-SAFE-MESSENGER] キュー待機エラー:", {
+          tabId: tabId,
+          error: error.message,
+        });
         // 前のリクエストのエラーは無視
       }
     }
 
     // 新しいリクエストを開始
+    console.log("🔍 [DEBUG-SAFE-MESSENGER] 新規リクエスト開始:", {
+      tabId: tabId,
+    });
     const promise = this._doSendMessage(tabId, message, timeout);
     this.sendMessageQueue.set(tabId, promise);
 
@@ -193,10 +288,23 @@ class SafeMessenger {
       console.log(
         `[SafeMessenger] 送信完了: tabId=${tabId}, success=${result.success}`,
       );
+      // 🔍 [DEBUG] SafeMessenger結果詳細ログ
+      console.log("🔍 [DEBUG-SAFE-MESSENGER] 送信完了詳細:", {
+        tabId: tabId,
+        success: result.success,
+        resultKeys: result ? Object.keys(result) : null,
+        hasData: !!result.data,
+        hasError: !!result.error,
+        timestamp: result.timestamp,
+      });
       return result;
     } finally {
       // 完了後はキューから削除
       this.sendMessageQueue.delete(tabId);
+      console.log("🔍 [DEBUG-SAFE-MESSENGER] キューから削除:", {
+        tabId: tabId,
+        remainingQueueSize: this.sendMessageQueue.size,
+      });
     }
   }
 
@@ -204,7 +312,23 @@ class SafeMessenger {
    * 実際のメッセージ送信処理
    */
   static async _doSendMessage(tabId, message, timeout) {
+    // 🔍 [DEBUG] 実際の送信処理開始ログ
+    console.log("🔍 [DEBUG-SAFE-MESSENGER] _doSendMessage開始:", {
+      tabId: tabId,
+      messageAction: message.action,
+      timeout: timeout,
+      chromeTabsExists: !!chrome?.tabs,
+      sendMessageExists: !!chrome?.tabs?.sendMessage,
+    });
+
     try {
+      // 🔍 [DEBUG] chrome.tabs.sendMessage実行前ログ
+      console.log("🔍 [DEBUG-SAFE-MESSENGER] chrome.tabs.sendMessage実行前:", {
+        tabId: tabId,
+        message: message,
+        aboutToCall: "chrome.tabs.sendMessage",
+      });
+
       const response = await Promise.race([
         chrome.tabs.sendMessage(tabId, message),
         new Promise((_, reject) =>
@@ -215,6 +339,17 @@ class SafeMessenger {
         ),
       ]);
 
+      // 🔍 [DEBUG] レスポンス受信ログ
+      console.log("🔍 [DEBUG-SAFE-MESSENGER] レスポンス受信:", {
+        tabId: tabId,
+        responseReceived: !!response,
+        responseType: typeof response,
+        responseKeys: response ? Object.keys(response) : null,
+        responseSuccess: response?.success,
+        hasResponseData: !!response?.data,
+        responseAction: response?.action,
+      });
+
       return {
         success: true,
         data: response,
@@ -223,6 +358,17 @@ class SafeMessenger {
       };
     } catch (error) {
       console.log(`[SafeMessenger] エラー: ${error.message}`);
+      // 🔍 [DEBUG] エラー詳細ログ
+      console.log("🔍 [DEBUG-SAFE-MESSENGER] エラー詳細:", {
+        tabId: tabId,
+        errorMessage: error.message,
+        errorName: error.name,
+        errorStack: error.stack?.substring(0, 200),
+        isTimeout: error.message.includes("timeout"),
+        isTabError: error.message.includes("tab"),
+        isConnectionError: error.message.includes("connection"),
+      });
+
       return {
         success: false,
         error: error.message,
@@ -268,9 +414,154 @@ class SafeMessenger {
   }
 }
 
+// ========================================
+// 成功済みウィンドウ管理ロジック（unused/window-service.jsから移植）
+// ========================================
+
+/**
+ * 安定したウィンドウ管理クラス - 成功実績あり
+ */
+class StableWindowManager {
+  // アクティブなウィンドウを管理するMap
+  static activeWindows = new Map();
+
+  // ウィンドウポジション管理 (0-3の位置を管理)
+  static windowPositions = new Map();
+
+  // ポジションごとのウィンドウID管理
+  static positionToWindow = new Map();
+
+  // 予期しないウィンドウ閉鎖を監視するフラグ
+  static isMonitoringEnabled = false;
+
+  /**
+   * chrome.windows.onRemovedイベントリスナーを初期化
+   */
+  static initializeWindowMonitoring() {
+    if (this.isMonitoringEnabled) {
+      return; // 既に初期化済み
+    }
+
+    if (
+      typeof chrome !== "undefined" &&
+      chrome.windows &&
+      chrome.windows.onRemoved
+    ) {
+      chrome.windows.onRemoved.addListener((windowId) => {
+        this.handleUnexpectedWindowClosure(windowId);
+      });
+
+      this.isMonitoringEnabled = true;
+      console.log("🔍 [StableWindowManager] ウィンドウ閉鎖監視を開始しました");
+    }
+  }
+
+  /**
+   * 予期しないウィンドウ閉鎖をハンドリング
+   */
+  static handleUnexpectedWindowClosure(windowId) {
+    const windowInfo = this.activeWindows.get(windowId);
+
+    if (windowInfo) {
+      console.error(
+        `🚨 [StableWindowManager] 予期しないウィンドウ閉鎖を検出:`,
+        {
+          windowId,
+          aiType: windowInfo.aiType || "不明",
+          position: this.positionToWindow.get(windowId),
+          timestamp: new Date().toISOString(),
+        },
+      );
+
+      // クリーンアップ処理
+      this.cleanupClosedWindow(windowId);
+    }
+  }
+
+  /**
+   * 閉鎖されたウィンドウのクリーンアップ
+   */
+  static cleanupClosedWindow(windowId) {
+    // activeWindowsから削除
+    this.activeWindows.delete(windowId);
+
+    // positionToWindowから該当エントリを削除
+    for (const [position, wId] of this.positionToWindow.entries()) {
+      if (wId === windowId) {
+        this.positionToWindow.delete(position);
+        break;
+      }
+    }
+
+    // windowPositionsから該当エントリを削除
+    for (const [position, wId] of this.windowPositions.entries()) {
+      if (wId === windowId) {
+        this.windowPositions.delete(position);
+        break;
+      }
+    }
+  }
+
+  /**
+   * 安定したウィンドウ作成（リトライ機能付き）
+   */
+  static async createStableWindow(url, position, options = {}) {
+    const windowOptions = {
+      url: url,
+      type: "popup",
+      focused: true,
+      ...options,
+    };
+
+    return await executeSimpleRetry({
+      action: async () => {
+        // 既存ウィンドウが存在する場合は削除
+        if (this.windowPositions.has(position)) {
+          const existingWindowId = this.windowPositions.get(position);
+          try {
+            await chrome.windows.remove(existingWindowId);
+            this.cleanupClosedWindow(existingWindowId);
+          } catch (error) {
+            console.warn(
+              `[StableWindowManager] 既存ウィンドウ削除エラー:`,
+              error.message,
+            );
+          }
+        }
+
+        // 新しいウィンドウを作成
+        const window = await chrome.windows.create(windowOptions);
+
+        // ウィンドウ情報を登録
+        const windowInfo = {
+          url: url,
+          aiType: options.aiType || "unknown",
+          position: position,
+          createdAt: Date.now(),
+          tabId:
+            window.tabs && window.tabs.length > 0 ? window.tabs[0].id : null,
+        };
+
+        this.activeWindows.set(window.id, windowInfo);
+        this.windowPositions.set(position, window.id);
+        this.positionToWindow.set(position, window.id);
+
+        return window;
+      },
+      isSuccess: (result) =>
+        result && result.id && result.tabs && result.tabs.length > 0,
+      maxRetries: 10,
+      interval: 1000,
+      actionName: `ウィンドウ作成 (${url})`,
+      context: { url, position, options },
+    });
+  }
+}
+
 class StepIntegratedWindowService {
   static windowPositions = new Map(); // position -> windowId
   static unifiedManager = new UnifiedWindowManager(); // 統一管理インスタンス
+  static stableManager = StableWindowManager; // 安定管理インスタンス
 
   /**
    * スクリーン情報を取得
@@ -2283,70 +2574,71 @@ class WindowController {
   }
 
   /**
-   * 個別ウィンドウのチェック処理
+   * 個別ウィンドウのチェック処理（安定化リトライ版）
    */
   async performWindowCheck(aiType, tabId) {
     console.log(
       `[DEBUG-performWindowCheck] 開始: aiType=${aiType}, tabId=${tabId}`,
     );
-    const checks = {
-      textInput: false,
-      modelDisplay: false,
-      functionDisplay: false,
-    };
 
-    try {
-      // タブの準備完了を待機（新しいリトライロジック）
-      console.log(
-        `[DEBUG-performWindowCheck] タブ準備完了待機開始: tabId=${tabId}`,
-      );
-      const tab = await this.waitForTabReady(tabId, 10, 1000);
-      console.log(`[DEBUG-performWindowCheck] タブ準備完了:`, {
-        tabId,
-        url: tab?.url,
-        status: tab?.status,
-      });
+    return await executeSimpleRetry({
+      action: async () => {
+        const checks = {
+          textInput: false,
+          modelDisplay: false,
+          functionDisplay: false,
+        };
 
-      // SafeMessengerを使用してContent scriptにチェック要求を送信
-      console.log(
-        `[DEBUG-performWindowCheck] SafeMessenger送信開始: tabId=${tabId}, aiType=${aiType}`,
-      );
-      const result = await SafeMessenger.sendSafeMessage(tabId, {
-        action: "CHECK_UI_ELEMENTS",
-        aiType: aiType,
-      });
-      console.log(`[DEBUG-performWindowCheck] SafeMessenger完了:`, result);
+        // タブの準備完了を待機
+        console.log(
+          `[DEBUG-performWindowCheck] タブ準備完了待機開始: tabId=${tabId}`,
+        );
+        const tab = await this.waitForTabReady(tabId, 10, 1000);
+        console.log(`[DEBUG-performWindowCheck] タブ準備完了:`, {
+          tabId,
+          url: tab?.url,
+          status: tab?.status,
+        });
 
-      let response = null;
-      if (result.success) {
-        response = result.data;
-      }
+        // SafeMessengerを使用してContent scriptにチェック要求を送信
+        console.log(
+          `[DEBUG-performWindowCheck] SafeMessenger送信開始: tabId=${tabId}, aiType=${aiType}`,
+        );
+        const result = await SafeMessenger.sendSafeMessage(tabId, {
+          action: "CHECK_UI_ELEMENTS",
+          aiType: aiType,
+        });
+        console.log(`[DEBUG-performWindowCheck] SafeMessenger完了:`, result);
 
-      if (response) {
-        checks.textInput = response.textInput || false;
-        checks.modelDisplay = response.modelDisplay || false;
-        checks.functionDisplay = response.functionDisplay || false;
-      }
+        let response = null;
+        if (result.success) {
+          response = result.data;
+        }
 
-      const allChecksPass = Object.values(checks).every((check) => check);
-      console.log(
-        `[DEBUG-performWindowCheck] チェック結果: allChecksPass=${allChecksPass}`,
-        checks,
-      );
+        if (response) {
+          checks.textInput = response.textInput || false;
+          checks.modelDisplay = response.modelDisplay || false;
+          checks.functionDisplay = response.functionDisplay || false;
+        }
 
-      return {
-        success: allChecksPass,
-        checks: checks,
-        error: allChecksPass ? null : "UI要素の一部が見つかりません",
-      };
-    } catch (error) {
-      console.log(`[DEBUG-performWindowCheck] エラー発生:`, error.message);
-      return {
-        success: false,
-        checks: checks,
-        error: error.message,
-      };
-    }
+        const allChecksPass = Object.values(checks).every((check) => check);
+        console.log(
+          `[DEBUG-performWindowCheck] チェック結果: allChecksPass=${allChecksPass}`,
+          checks,
+        );
+
+        return {
+          success: allChecksPass,
+          checks: checks,
+          error: allChecksPass ? null : "UI要素の一部が見つかりません",
+        };
+      },
+      isSuccess: (result) => result && result.success,
+      maxRetries: 5,
+      interval: 1000,
+      actionName: `ウィンドウチェック (${aiType}, tabId=${tabId})`,
+      context: { aiType, tabId },
+    });
   }
 
   /**
@@ -2527,6 +2819,70 @@ async function createWindowForBatch(task, position = 0) {
 async function executeStep4(taskList) {
   // executeStep4関数定義開始
   ExecuteLogger.info("🚀 Step 4-6 Execute 統合実行開始", taskList);
+
+  // 🔍 [DEBUG] タスクリスト詳細検証ログ
+  ExecuteLogger.info(
+    "🔍 [DEBUG-TASK-VALIDATION] executeStep4受信タスクリスト詳細検証:",
+    {
+      taskListReceived: !!taskList,
+      taskListType: typeof taskList,
+      taskListLength: Array.isArray(taskList) ? taskList.length : "not array",
+      isArray: Array.isArray(taskList),
+      taskListContent: Array.isArray(taskList)
+        ? taskList.map((task, index) => ({
+            index: index,
+            taskId:
+              task?.id ||
+              task?.taskId ||
+              `${task?.column}${task?.row}` ||
+              "ID不明",
+            hasPrompt: !!task?.prompt,
+            promptLength: task?.prompt?.length || 0,
+            promptPreview: task?.prompt
+              ? `${task.prompt.substring(0, 50)}...`
+              : "❌ プロンプトなし",
+            aiType: task?.aiType || "❌ AIタイプなし",
+            column: task?.column || "❌ カラムなし",
+            row: task?.row || "❌ 行なし",
+            hasTabId: !!task?.tabId,
+            hasWindowId: !!task?.windowId,
+            taskKeys: task ? Object.keys(task) : null,
+            isValidTask: !!(
+              task?.prompt &&
+              task?.aiType &&
+              task?.column &&
+              task?.row
+            ),
+          }))
+        : "taskListが配列ではありません",
+      validTaskCount: Array.isArray(taskList)
+        ? taskList.filter(
+            (task) =>
+              !!(task?.prompt && task?.aiType && task?.column && task?.row),
+          ).length
+        : 0,
+      invalidTasks: Array.isArray(taskList)
+        ? taskList
+            .filter(
+              (task) =>
+                !(task?.prompt && task?.aiType && task?.column && task?.row),
+            )
+            .map((task) => ({
+              taskId:
+                task?.id ||
+                task?.taskId ||
+                `${task?.column}${task?.row}` ||
+                "ID不明",
+              missingFields: [
+                !task?.prompt ? "prompt" : null,
+                !task?.aiType ? "aiType" : null,
+                !task?.column ? "column" : null,
+                !task?.row ? "row" : null,
+              ].filter(Boolean),
+            }))
+        : [],
+    },
+  );
 
   // 内部関数の存在確認（実行時チェック）
   ExecuteLogger.info("🔍 [executeStep4] 内部関数の定義状態確認:", {
@@ -3115,9 +3471,50 @@ async function executeStep4(taskList) {
         `⚡ [step4-execute.js] Step 4-6-6-${batchIndex + 2}-C: ${validBatchTasks.length}/${batch.length}の有効タスクを並列実行`,
       );
 
+      // 🔍 [DEBUG] バッチタスク詳細情報ログ追加
+      ExecuteLogger.info("🔍 [DEBUG-BATCH-EXECUTION] バッチタスク詳細:", {
+        batchIndex: batchIndex + 1,
+        totalBatches: batches.length,
+        validTaskCount: validBatchTasks.length,
+        originalTaskCount: batch.length,
+        validTasks: validBatchTasks.map((task) => ({
+          taskId: task.id || task.taskId || `${task.column}${task.row}`,
+          aiType: task.aiType,
+          prompt: task.prompt
+            ? `${task.prompt.substring(0, 80)}...`
+            : "❌ プロンプトなし",
+          column: task.column,
+          row: task.row,
+          tabId: task.tabId,
+          windowId: task.windowId,
+          hasRequiredData: !!(task.prompt && task.tabId && task.windowId),
+        })),
+      });
+
       if (validBatchTasks.length === 0) {
         ExecuteLogger.error(
           `❌ [step4-execute.js] バッチ${batchIndex + 1}：実行可能なタスクがありません`,
+        );
+        ExecuteLogger.error(
+          "🔍 [DEBUG-BATCH-EXECUTION] 元のバッチタスク検証失敗詳細:",
+          {
+            originalBatchLength: batch.length,
+            failedTasks: batch.map((task) => ({
+              taskId: task.id || task.taskId || `${task.column}${task.row}`,
+              aiType: task.aiType,
+              hasPrompt: !!task.prompt,
+              hasTabId: !!task.tabId,
+              hasWindowId: !!task.windowId,
+              hasRequiredFields: !!(task.column && task.row),
+              failureReason: !task.prompt
+                ? "プロンプトなし"
+                : !task.tabId
+                  ? "tabIdなし"
+                  : !task.windowId
+                    ? "windowIdなし"
+                    : "不明",
+            })),
+          },
         );
         continue; // 次のバッチへ
       }
@@ -3128,10 +3525,19 @@ async function executeStep4(taskList) {
           task.originalAiType === "3種類（ChatGPT・Gemini・Claude）";
 
         // 各タスク実行を段階的に開始（Chrome APIの過負荷を避ける）
+        // Content Scriptの初期化完了を待つため、遅延を増やす
         if (index > 0) {
-          const delay = index * 500; // 0.5秒ずつずらす
-          ExecuteLogger.info(`⏱️ Task ${index + 1} 開始待機: ${delay}ms`);
+          const delay = index * 3000; // 3秒ずつずらす（Content Script初期化待ち）
+          ExecuteLogger.info(
+            `⏱️ Task ${index + 1} 開始待機: ${delay}ms（Content Script初期化待ち）`,
+          );
           await new Promise((resolve) => setTimeout(resolve, delay));
+        } else {
+          // 最初のタスクも3秒待機（ウィンドウ開いてすぐは初期化未完了の可能性）
+          ExecuteLogger.info(
+            `⏱️ 初回タスク開始前に3秒待機（Content Script初期化待ち）`,
+          );
+          await new Promise((resolve) => setTimeout(resolve, 3000));
         }
 
         try {
@@ -3140,10 +3546,34 @@ async function executeStep4(taskList) {
             `📝 [step4-execute.js] タスク実行: ${taskId} (AI: ${task.aiType}) ${isThreeTypeTask ? "[3種類AI]" : "[通常]"}`,
           );
 
+          // 🔍 [DEBUG] タスク実行前の詳細ログ
+          ExecuteLogger.info("🔍 [DEBUG-TASK-START] タスク実行開始詳細:", {
+            taskId: taskId,
+            aiType: task.aiType,
+            prompt: task.prompt
+              ? `${task.prompt.substring(0, 100)}...`
+              : "❌ プロンプトなし",
+            tabId: task.tabId,
+            windowId: task.windowId,
+            hasPrompt: !!task.prompt,
+            hasTabId: !!task.tabId,
+            hasWindowId: !!task.windowId,
+            column: task.column,
+            row: task.row,
+            isThreeTypeTask: isThreeTypeTask,
+          });
+
           // 特別処理かチェック
           const specialInfo =
             window.specialTaskProcessor.identifySpecialTask(task);
           let result = null;
+
+          ExecuteLogger.info("🔍 [DEBUG-TASK-TYPE] タスクタイプ判定:", {
+            taskId: taskId,
+            isSpecial: specialInfo.isSpecial,
+            specialType: specialInfo.type,
+            willUseSpecialProcessor: specialInfo.isSpecial,
+          });
 
           if (specialInfo.isSpecial) {
             ExecuteLogger.info(`🔧 特別処理実行: ${specialInfo.type}`);
@@ -3160,7 +3590,41 @@ async function executeStep4(taskList) {
             ExecuteLogger.info(
               `📋 [step4-execute.js] 正常なメッセージパッシング方式で実行: ${task.aiType}`,
             );
+
+            // 🔍 [DEBUG] executeNormalAITask実行前ログ
+            ExecuteLogger.info(
+              "🔍 [DEBUG-EXECUTE-AI] executeNormalAITask実行前:",
+              {
+                taskId: taskId,
+                aiType: task.aiType,
+                tabId: task.tabId,
+                windowId: task.windowId,
+                functionExists: typeof executeNormalAITask === "function",
+                taskObject: {
+                  hasId: !!task.id,
+                  hasTaskId: !!task.taskId,
+                  hasPrompt: !!task.prompt,
+                  hasTabId: !!task.tabId,
+                  hasWindowId: !!task.windowId,
+                  hasColumn: !!task.column,
+                  hasRow: !!task.row,
+                },
+              },
+            );
+
             result = await executeNormalAITask(task);
+
+            // 🔍 [DEBUG] executeNormalAITask実行後ログ
+            ExecuteLogger.info(
+              "🔍 [DEBUG-EXECUTE-AI] executeNormalAITask実行後:",
+              {
+                taskId: taskId,
+                resultReceived: !!result,
+                resultType: typeof result,
+                resultSuccess: result?.success,
+                resultKeys: result ? Object.keys(result) : null,
+              },
+            );
           }
 
           // 結果処理
