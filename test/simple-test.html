@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Claude Automation Test</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #0f0;
+        }
+        button {
+            background: #333;
+            color: #0f0;
+            border: 1px solid #0f0;
+            padding: 10px 20px;
+            margin: 10px;
+            cursor: pointer;
+            font-family: monospace;
+        }
+        button:hover {
+            background: #444;
+        }
+        #output {
+            background: #000;
+            border: 1px solid #0f0;
+            padding: 10px;
+            margin-top: 20px;
+            min-height: 200px;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔧 Claude Automation Test</h1>
+
+    <button id="testBtn">Run Test</button>
+    <button id="sendBtn">Send Test Message</button>
+
+    <div id="output">Ready...</div>
+
+    <script src="simple-test.js"></script>
+</body>
+</html>

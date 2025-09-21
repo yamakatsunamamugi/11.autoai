@@ -3969,18 +3969,76 @@ async function executeStep4(taskList) {
 
           let response;
           try {
-            ExecuteLogger.info(
-              `🔍 [STEP C-1] chrome.tabs.sendMessage実行中...`,
-            );
-            response = await Promise.race([
-              chrome.tabs.sendMessage(tabId, messagePayload),
-              timeoutPromise,
-            ]);
+            // Claudeの場合はchrome.scripting.executeScriptを使用
+            if (automationName === "ClaudeAutomation") {
+              ExecuteLogger.info(
+                `🔍 [STEP C-1] chrome.scripting.executeScript実行中...`,
+              );
+
+              const results = await Promise.race([
+                chrome.scripting.executeScript({
+                  target: { tabId: tabId },
+                  func: async (taskData) => {
+                    try {
+                      // Content Script内のexecuteTask関数を直接呼び出し
+                      if (typeof window.executeTask !== "function") {
+                        throw new Error(
+                          "executeTask function is not available",
+                        );
+                      }
+
+                      console.log("📤 Executing task with data:", taskData);
+                      const result = await window.executeTask(taskData);
+
+                      if (result) {
+                        return {
+                          success: true,
+                          message: "Task executed successfully",
+                          result: result,
+                          timestamp: Date.now(),
+                        };
+                      } else {
+                        return {
+                          success: false,
+                          message: "Task execution failed",
+                          timestamp: Date.now(),
+                        };
+                      }
+                    } catch (error) {
+                      console.error("❌ executeTask error:", error);
+                      return {
+                        success: false,
+                        error: error.message,
+                        timestamp: Date.now(),
+                      };
+                    }
+                  },
+                  args: [messagePayload.task || messagePayload.taskData],
+                }),
+                timeoutPromise,
+              ]);
+
+              response =
+                results && results[0]
+                  ? results[0].result
+                  : { success: false, error: "No response" };
+            } else {
+              // 他のAIは従来通りchrome.tabs.sendMessage
+              ExecuteLogger.info(
+                `🔍 [STEP C-1] chrome.tabs.sendMessage実行中...`,
+              );
+              response = await Promise.race([
+                chrome.tabs.sendMessage(tabId, messagePayload),
+                timeoutPromise,
+              ]);
+            }
+
             ExecuteLogger.info(`🔍 [STEP C-2] メッセージ送信成功:`, {
               tabId: tabId,
               responseReceived: !!response,
               responseType: typeof response,
               responseSuccess: response?.success,
+              automationName: automationName,
             });
           } catch (timeoutError) {
             ExecuteLogger.error(`❌ [STEP C-ERROR] メッセージ送信失敗:`, {

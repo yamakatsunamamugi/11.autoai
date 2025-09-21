@@ -73,17 +73,19 @@
   // 関数定義（常に定義するが、実行は制御）
   // ========================================
 
-  // 🚨 グローバルエラーハンドラー追加
-  window.addEventListener("error", (e) => {
-    log.error("🚨 [GLOBAL-ERROR]", e.message);
-  });
+  // 🚨 グローバルエラーハンドラー追加（claude.aiでのみ）
+  if (shouldInitialize) {
+    window.addEventListener("error", (e) => {
+      log.error("🚨 [GLOBAL-ERROR]", e.message);
+    });
 
-  window.addEventListener("unhandledrejection", (e) => {
-    log.error("🚨 [UNHANDLED-PROMISE]", e.reason);
-  });
+    window.addEventListener("unhandledrejection", (e) => {
+      log.error("🚨 [UNHANDLED-PROMISE]", e.reason);
+    });
 
-  // Content Script注入確認
-  log.debug(`Claude Automation V2 loaded`);
+    // Content Script注入確認
+    log.debug(`Claude Automation V2 loaded`);
+  }
 
   // ========================================
   // ログ管理システムの初期化（メッセージベース対応）
@@ -5038,6 +5040,7 @@
   // グローバル関数として公開（ai-task-executorから呼び出し可能にする）
   // claude.aiでのみ公開
   if (shouldInitialize) {
+    // Content Scriptのisolated環境でwindowに設定
     if (typeof executeTask !== "undefined") {
       window.executeTask = executeTask;
       log.info("✅ executeTask関数を公開");
@@ -5065,6 +5068,75 @@
     } else {
       log.error("❌ runAutomation関数が未定義");
     }
+
+    // CSPを回避するため、chrome.scripting APIを使用
+    log.info("📝 chrome.scripting.executeScriptを使用して関数を注入");
+
+    // 拡張機能のバックグラウンドに関数注入を依頼
+    if (chrome.runtime && chrome.runtime.sendMessage) {
+      chrome.runtime.sendMessage(
+        {
+          action: "injectClaudeFunctions",
+          tabId: "current",
+        },
+        (response) => {
+          if (chrome.runtime.lastError) {
+            log.error("❌ 関数注入エラー:", chrome.runtime.lastError);
+          } else if (response && response.success) {
+            log.info("✅ ページコンテキストへの関数注入完了");
+          }
+        },
+      );
+    }
+
+    // ページからのメッセージを受け取って実際の関数を実行
+    window.addEventListener("message", async (event) => {
+      if (event.source !== window) return;
+
+      if (event.data && event.data.type === "CLAUDE_AUTOMATION_EXECUTE") {
+        const { messageId, method, args } = event.data;
+
+        try {
+          let result;
+          switch (method) {
+            case "executeTask":
+              result = await executeTask(...args);
+              break;
+            case "inputText":
+              result = await inputText(...args);
+              break;
+            case "runAutomation":
+              result = await runAutomation(...args);
+              break;
+            default:
+              throw new Error(`Unknown method: ${method}`);
+          }
+
+          // 結果をページに送信
+          window.postMessage(
+            {
+              type: "CLAUDE_AUTOMATION_RESULT",
+              messageId: messageId,
+              success: true,
+              result: result,
+            },
+            "*",
+          );
+        } catch (error) {
+          window.postMessage(
+            {
+              type: "CLAUDE_AUTOMATION_RESULT",
+              messageId: messageId,
+              success: false,
+              error: error.message,
+            },
+            "*",
+          );
+        }
+      }
+    });
+
+    log.info("✅ ページコンテキストへの関数注入完了");
   } // shouldInitialize の閉じ括弧
 
   // スクリプト初期化完了を確認 (claude.aiでのみログ出力)
