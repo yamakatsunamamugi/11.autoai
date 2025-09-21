@@ -41,6 +41,89 @@
     },
   };
 
+  // ========================================
+  // Claude UI セレクタ定義（ファイル冒頭で一元管理）
+  // ========================================
+  const CLAUDE_SELECTORS = {
+    INPUT: [
+      ".ProseMirror",
+      'div.ProseMirror[contenteditable="true"]',
+      '[data-placeholder*="Message Claude"]',
+      'div[contenteditable="true"][role="textbox"]',
+    ],
+    SEND_BUTTON: [
+      'button[aria-label="Send Message"]',
+      'button[type="submit"][aria-label*="Send"]',
+      'button svg path[d*="M320 448"]',
+    ],
+    STOP_BUTTON: [
+      'button[aria-label="応答を停止"]',
+      '[aria-label="応答を停止"]',
+      'button svg path[d*="M128,20A108"]',
+    ],
+    MODEL_BUTTON: [
+      '[data-testid="model-selector-dropdown"]', // 最新のセレクタ（最優先）
+      'button[data-value*="claude"]', // モデル名を含むボタン
+      "button.cursor-pointer:has(span.font-medium)", // モデル表示ボタン
+      'button[aria-label*="モデル"]',
+      'button[aria-haspopup="menu"]:has(span:contains("Claude"))',
+      'button:has(svg[class*="model"])',
+    ],
+    MENU: {
+      CONTAINER: '[role="menu"][data-state="open"]',
+      OTHER_MODELS: [
+        'div[role="menuitem"][aria-haspopup="menu"][data-state="closed"]',
+        'div[role="menuitem"][aria-haspopup="menu"]:has(*:contains("他のモデル"))',
+        'div[role="menuitem"][aria-haspopup="menu"]:has(*:contains("Other models"))',
+        'div[role="menuitem"][aria-haspopup="menu"]',
+      ],
+    },
+    MODEL_INFO: {
+      TEXT_ELEMENT: [
+        'button span:contains("Claude")',
+        'button span[class*="text"]',
+        'button div:contains("Claude")',
+      ],
+    },
+    FEATURE_MENU: {
+      CONTAINER: '[role="menu"]',
+      WEB_SEARCH_TOGGLE: [
+        'button[role="switch"]',
+        '[aria-label*="Web"]',
+        'button:has(span:contains("Web"))',
+      ],
+    },
+    FEATURE_BUTTONS: {
+      RESEARCH: [
+        'button:contains("Deep Research")',
+        'button[aria-label*="Research"]',
+      ],
+    },
+    DEEP_RESEARCH: {
+      CANVAS_PREVIEW: [
+        'div[aria-label="内容をプレビュー"][role="button"]',
+        '[aria-label="内容をプレビュー"]',
+        'div[role="button"][tabindex="0"]:has(div.artifact-block-cell)',
+      ],
+    },
+    FUNCTION_MENU_BUTTON: [
+      'button[aria-label*="機能"]',
+      'button:has(svg[class*="feature"])',
+    ],
+  };
+
+  // AI待機設定
+  const AI_WAIT_CONFIG = window.AI_WAIT_CONFIG || {
+    INITIAL_WAIT: 30000,
+    MAX_WAIT: 1200000, // 20分に延長（元: 5分）
+    CHECK_INTERVAL: 2000,
+    DEEP_RESEARCH_WAIT: 2400000,
+    SHORT_WAIT: 1000,
+    MEDIUM_WAIT: 2000,
+    STOP_BUTTON_INITIAL_WAIT: 30000,
+    STOP_BUTTON_DISAPPEAR_WAIT: 300000,
+  };
+
   // スクリプトの読み込み時間を記録
   const scriptLoadTime = Date.now();
   const loadTimeISO = new Date().toISOString();
@@ -264,95 +347,10 @@
   // ========================================
 
   // Claude-ステップ0-1: 設定の取得（ハードコーディング版）
-  const getConfig = () => {
-    // Claude専用のUIセレクタをハードコーディング
-    const HARDCODED_UI_SELECTORS = {
-      Claude: {
-        INPUT: [
-          ".ProseMirror",
-          'div.ProseMirror[contenteditable="true"]',
-          '[data-placeholder*="Message Claude"]',
-          'div[contenteditable="true"][role="textbox"]',
-        ],
-        SEND_BUTTON: [
-          'button[aria-label="Send Message"]',
-          'button[type="submit"][aria-label*="Send"]',
-          'button svg path[d*="M320 448"]',
-        ],
-        STOP_BUTTON: [
-          'button[aria-label="応答を停止"]',
-          '[aria-label="応答を停止"]',
-          'button svg path[d*="M128,20A108"]',
-        ],
-        MODEL_BUTTON: [
-          'button[aria-label*="モデル"]',
-          'button[aria-haspopup="menu"]:has(span:contains("Claude"))',
-          'button:has(svg[class*="model"])',
-        ],
-        MENU: {
-          CONTAINER: '[role="menu"][data-state="open"]',
-          OTHER_MODELS: [
-            'div[role="menuitem"][aria-haspopup="menu"][data-state="closed"]',
-            'div[role="menuitem"][aria-haspopup="menu"]:has(*:contains("他のモデル"))',
-            'div[role="menuitem"][aria-haspopup="menu"]:has(*:contains("Other models"))',
-            'div[role="menuitem"][aria-haspopup="menu"]',
-          ],
-        },
-        MODEL_INFO: {
-          TEXT_ELEMENT: [
-            'button span:contains("Claude")',
-            'button span[class*="text"]',
-            'button div:contains("Claude")',
-          ],
-        },
-        FEATURE_MENU: {
-          CONTAINER: '[role="menu"]',
-          WEB_SEARCH_TOGGLE: [
-            'button[role="switch"]',
-            '[aria-label*="Web"]',
-            'button:has(span:contains("Web"))',
-          ],
-        },
-        FEATURE_BUTTONS: {
-          RESEARCH: [
-            'button:contains("Deep Research")',
-            'button[aria-label*="Research"]',
-          ],
-        },
-        DEEP_RESEARCH: {
-          CANVAS_PREVIEW: [
-            'div[aria-label="内容をプレビュー"][role="button"]',
-            '[aria-label="内容をプレビュー"]',
-            'div[role="button"][tabindex="0"]:has(div.artifact-block-cell)',
-          ],
-        },
-        FUNCTION_MENU_BUTTON: [
-          'button[aria-label*="機能"]',
-          'button:has(svg[class*="feature"])',
-        ],
-      },
-    };
-
-    return {
-      AI_WAIT_CONFIG: window.AI_WAIT_CONFIG || {
-        INITIAL_WAIT: 30000,
-        MAX_WAIT: 1200000, // 20分に延長（元: 5分）
-        CHECK_INTERVAL: 2000,
-        DEEP_RESEARCH_WAIT: 2400000,
-        SHORT_WAIT: 1000,
-        MEDIUM_WAIT: 2000,
-        STOP_BUTTON_INITIAL_WAIT: 30000,
-        STOP_BUTTON_DISAPPEAR_WAIT: 300000,
-      },
-      // window.UI_SELECTORSが存在してもハードコードされた値を優先使用
-      UI_SELECTORS: HARDCODED_UI_SELECTORS,
-    };
+  // UIセレクタの設定（トップレベルのCLAUDE_SELECTORSを使用）
+  const UI_SELECTORS = {
+    Claude: CLAUDE_SELECTORS,
   };
-
-  // Claude-ステップ0-2: 設定の適用
-  const config = getConfig();
-  const AI_WAIT_CONFIG = config.AI_WAIT_CONFIG;
-  const UI_SELECTORS = config.UI_SELECTORS;
 
   // Claude-ステップ0-3: UI_SELECTORSの確認
   if (UI_SELECTORS && UI_SELECTORS.Claude) {
