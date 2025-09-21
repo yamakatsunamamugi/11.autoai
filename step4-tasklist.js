@@ -1660,13 +1660,7 @@ class WindowController {
       // window.WindowServiceが存在すれば使用
       if (window.WindowService) {
         this.windowService = window.WindowService;
-        ExecuteLogger.info("✅ [DEBUG] window.WindowService発見・使用", {
-          type: typeof this.windowService,
-          name: this.windowService?.name,
-          methods: Object.getOwnPropertyNames(
-            this.windowService.prototype || {},
-          ),
-        });
+        // DEBUG: window.WindowService発見・使用
         ExecuteLogger.info(
           "✅ [WindowController] Step 4-1-1: WindowService初期化完了",
         );

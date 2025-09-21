@@ -257,10 +257,7 @@ window.WindowService = {
         };
       }
 
-      console.log(
-        `[step0-ui-controller.js→Step0-1] 位置${position}の座標 (aiType: ${options.aiType || "unknown"}):`,
-        windowPosition,
-      );
+      // DEBUG: ウィンドウ座標の詳細表示
 
       // ウィンドウ作成（aiTypeを分離してChrome APIに渡す）
       const { aiType, ...chromeWindowOptions } = options;
@@ -384,15 +381,7 @@ window.WindowService = {
           }
         }
       } else {
-        console.log(
-          `[step0-ui-controller.js→Step0-1] ⚠️ DEBUG: WindowController登録スキップ`,
-          {
-            hasReturnDataId: !!returnData?.id,
-            hasAiType: !!options.aiType,
-            hasWindowController: !!window.windowController,
-            hasOpenedWindows: !!window.windowController?.openedWindows,
-          },
-        );
+        // DEBUG: WindowController登録スキップ
       }
 
       return returnData;

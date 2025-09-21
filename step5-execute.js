@@ -12,7 +12,7 @@
 // ========================================
 const ExecuteLogger = {
   info: (...args) => console.log(`[step5-execute.js]`, ...args),
-  debug: (...args) => console.log(`[step5-execute.js] [DEBUG]`, ...args),
+  debug: (...args) => {}, // DEBUG logs disabled
   warn: (...args) => console.warn(`[step5-execute.js]`, ...args),
   error: (...args) => console.error(`[step5-execute.js]`, ...args),
 };
@@ -1180,13 +1180,7 @@ window.executeStep5 = executeStep5;
 // ========================================
 // クラスのデバッグログ
 // ========================================
-ExecuteLogger.debug("✅ [DEBUG] クラス定義完了:", "SimpleSheetsClient");
-ExecuteLogger.debug("✅ [DEBUG] クラス定義完了:", "AIAutomationLoader");
-ExecuteLogger.debug("✅ [DEBUG] クラス定義完了:", "TaskGroupTypeDetector");
-ExecuteLogger.debug("✅ [DEBUG] クラス定義完了:", "SpreadsheetDataManager");
-ExecuteLogger.debug("✅ [DEBUG] クラス定義完了:", "DetailedLogManager");
-ExecuteLogger.debug("✅ [DEBUG] クラス定義完了:", "WindowLifecycleManager");
-ExecuteLogger.debug("✅ [DEBUG] クラス定義完了:", "SpecialTaskProcessor");
+// DEBUG: クラス定義完了
 
 ExecuteLogger.info("✅ Step 5 Execute - 補助クラスとexecuteStep5関数準備完了");
 ExecuteLogger.info("🎯 利用可能機能:");
