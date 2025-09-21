@@ -2,10 +2,14 @@
 const LOG_LEVEL = { ERROR: 1, WARN: 2, INFO: 3, DEBUG: 4 };
 const CURRENT_LOG_LEVEL = LOG_LEVEL.INFO;
 const log = {
-  error: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.ERROR && log.error(...args),
-  warn: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.WARN && log.warn(...args),
-  info: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.INFO && log.debug(...args),
-  debug: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.DEBUG && log.debug(...args)
+  error: (...args) =>
+    CURRENT_LOG_LEVEL >= LOG_LEVEL.ERROR && console.error(...args),
+  warn: (...args) =>
+    CURRENT_LOG_LEVEL >= LOG_LEVEL.WARN && console.warn(...args),
+  info: (...args) =>
+    CURRENT_LOG_LEVEL >= LOG_LEVEL.INFO && console.log(...args),
+  debug: (...args) =>
+    CURRENT_LOG_LEVEL >= LOG_LEVEL.DEBUG && console.log(...args),
 };
 
 // 🔥 STEP 0: バージョン確認
@@ -515,10 +519,7 @@ async function moveWindowToPrimaryDisplay(windowId = null, options = {}) {
     );
     return true;
   } catch (error) {
-    log.error(
-      "[step0-ui-controller.js→Step0-3] ウィンドウ移動エラー:",
-      error,
-    );
+    log.error("[step0-ui-controller.js→Step0-3] ウィンドウ移動エラー:", error);
     return false;
   }
 }
