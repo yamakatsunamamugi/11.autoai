@@ -22,6 +22,38 @@
   const loadTimeISO = new Date().toISOString();
 
   // ========================================
+  // Claude.aiドメイン確認 - 拡張機能UIコンテキストでの実行を防止
+  // ========================================
+  const currentUrl = window.location.href;
+  const currentDomain = window.location.hostname;
+
+  // 拡張機能のUIコンテキストやClaude.ai以外のドメインでの実行を停止
+  if (
+    currentUrl.startsWith("chrome-extension://") ||
+    currentUrl.startsWith("moz-extension://") ||
+    !currentDomain.includes("claude.ai")
+  ) {
+    console.log(
+      `🚫 [Claude Automation] 不正なコンテキストでの実行を検出、処理を停止:`,
+      {
+        currentUrl: currentUrl,
+        currentDomain: currentDomain,
+        isExtensionContext:
+          currentUrl.startsWith("chrome-extension://") ||
+          currentUrl.startsWith("moz-extension://"),
+        isClaudeAI: currentDomain.includes("claude.ai"),
+      },
+    );
+    return; // スクリプト全体の実行を停止
+  }
+
+  console.log(`✅ [Claude Automation] 正しいコンテキストで実行開始:`, {
+    currentUrl: currentUrl,
+    currentDomain: currentDomain,
+    isClaudeAI: currentDomain.includes("claude.ai"),
+  });
+
+  // ========================================
   // 成功済みClaudeタスク実行ロジック（unused/automations/claude-automation.jsから移植）
   // ========================================
 
@@ -5589,6 +5621,28 @@
         受信時刻: new Date().toISOString(),
       },
     );
+
+    // PING テストアクション（Content Script注入確認用）
+    if (request.action === "ping") {
+      ClaudeLogger.info(`🏓 [ClaudeAutomation] PING受信 [ID:${requestId}]:`, {
+        currentURL: window.location.href,
+        currentDomain: window.location.hostname,
+        isClaudeAI: window.location.hostname.includes("claude.ai"),
+        scriptInitialized: !!window.ClaudeAutomation,
+        requestReceiveTime: new Date().toISOString(),
+      });
+
+      sendResponse({
+        success: true,
+        message: "pong",
+        url: window.location.href,
+        domain: window.location.hostname,
+        isClaudeAI: window.location.hostname.includes("claude.ai"),
+        scriptInitialized: !!window.ClaudeAutomation,
+        timestamp: new Date().toISOString(),
+      });
+      return true; // 非同期レスポンス
+    }
 
     // CHECK_UI_ELEMENTS アクション（step4-tasklist.js からの呼び出し）
     if (request.action === "CHECK_UI_ELEMENTS") {

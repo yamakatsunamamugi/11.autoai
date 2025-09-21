@@ -3757,26 +3757,68 @@ async function executeStep4(taskList) {
 
           // Content Scriptを手動注入（元のコードと同じ方式）
           ExecuteLogger.info(
-            `📝 [Content Script注入] ${automationName} スクリプト注入開始`,
+            `📝 [Content Script注入] ${automationName} スクリプト注入開始 (TabID: ${tabId})`,
           );
 
           try {
-            await chrome.scripting.executeScript({
+            // タブ情報を確認
+            const tab = await chrome.tabs.get(tabId);
+            ExecuteLogger.info(`🔍 [Content Script注入] タブ情報確認:`, {
+              tabId: tabId,
+              url: tab.url,
+              title: tab.title,
+              status: tab.status,
+            });
+
+            // Claude.aiドメインでない場合は注入を停止
+            if (!tab.url.includes("claude.ai")) {
+              throw new Error(
+                `Claude.ai以外のタブに注入しようとしました: ${tab.url}`,
+              );
+            }
+
+            const injectionResults = await chrome.scripting.executeScript({
               target: { tabId: tabId },
               files: ["4-2-claude-automation.js"],
+            });
+
+            ExecuteLogger.info(`📋 [Content Script注入] 注入結果:`, {
+              tabId: tabId,
+              resultsCount: injectionResults.length,
+              results: injectionResults.map((r) => ({
+                frameId: r.frameId,
+                error: r.error,
+              })),
             });
 
             // 初期化待機（元のコードと同じ3秒）
             await new Promise((resolve) => setTimeout(resolve, 3000));
 
+            // 注入確認のためのテストメッセージ送信
+            try {
+              const testResponse = await chrome.tabs.sendMessage(tabId, {
+                action: "ping",
+              });
+              ExecuteLogger.info(
+                `✅ [Content Script注入] 注入確認完了:`,
+                testResponse,
+              );
+            } catch (testError) {
+              ExecuteLogger.warn(
+                `⚠️ [Content Script注入] 注入確認失敗、継続:`,
+                testError.message,
+              );
+            }
+
             ExecuteLogger.info(
               `✅ [Content Script注入] ${automationName} スクリプト注入完了、初期化待機完了`,
             );
           } catch (injectionError) {
-            ExecuteLogger.error(
-              `❌ [Content Script注入] 注入失敗:`,
-              injectionError,
-            );
+            ExecuteLogger.error(`❌ [Content Script注入] 注入失敗:`, {
+              tabId: tabId,
+              error: injectionError.message,
+              stack: injectionError.stack,
+            });
             reject(
               new Error(`Content Script注入失敗: ${injectionError.message}`),
             );
