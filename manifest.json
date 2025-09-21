@@ -39,20 +39,6 @@
       "https://www.googleapis.com/auth/userinfo.email"
     ]
   },
-  "content_scripts": [
-    {
-      "matches": [
-        "https://claude.ai/*",
-        "https://chatgpt.com/*",
-        "https://chat.openai.com/*",
-        "https://gemini.google.com/*",
-        "https://genspark.com/*",
-        "https://www.genspark.ai/*"
-      ],
-      "js": ["4-2-claude-automation.js"],
-      "run_at": "document_end"
-    }
-  ],
   "action": {
     "default_popup": "popup.html",
     "default_icon": "icon.png"

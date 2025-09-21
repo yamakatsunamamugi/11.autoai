@@ -2316,6 +2316,13 @@ class WindowController {
       aiTypes,
     );
 
+    // デバッグ：重複チェック
+    if (aiTypes.length !== [...new Set(aiTypes)].length) {
+      ExecuteLogger.warn(
+        `⚠️ [WindowController] 重複したAIタイプが検出されました。重複削除前: ${aiTypes.length}個, 削除後: ${[...new Set(aiTypes)].length}個`,
+      );
+    }
+
     const checkResults = [];
 
     for (const aiType of aiTypes) {
@@ -2461,9 +2468,57 @@ class WindowController {
           await new Promise((resolve) => setTimeout(resolve, delayMs));
         }
       } catch (error) {
+        // 詳細なエラー情報を取得
+        console.error("🔴 [DEBUG-TAB-ERROR] 詳細エラー情報:", {
+          errorMessage: error?.message || "メッセージなし",
+          errorStack: error?.stack || "スタックなし",
+          errorName: error?.name || "名前なし",
+          errorType: typeof error,
+          errorKeys: error ? Object.keys(error) : [],
+          fullError: JSON.stringify(error, null, 2),
+          chromeLastError: chrome.runtime.lastError?.message || "なし",
+        });
+
+        // タブID自体の検証
+        console.log("🔍 [DEBUG-TAB-ID] タブID検証:", {
+          tabId: tabId,
+          tabIdType: typeof tabId,
+          isValidNumber: Number.isInteger(tabId),
+          tabIdValue: tabId,
+        });
+
+        // Chrome API の状態確認
+        console.log("🔧 [DEBUG-CHROME-API] Chrome API状態:", {
+          chromeExists: typeof chrome !== "undefined",
+          tabsApiExists: typeof chrome?.tabs !== "undefined",
+          getMethodExists: typeof chrome?.tabs?.get === "function",
+          manifestVersion: chrome?.runtime?.getManifest?.()?.manifest_version,
+          permissions: chrome?.runtime?.getManifest?.()?.permissions,
+        });
+
+        // 代替手法での情報取得
+        try {
+          const allTabs = await chrome.tabs.query({});
+          console.log("📋 [DEBUG-ALL-TABS] 全タブ情報:", {
+            totalTabs: allTabs.length,
+            targetTabExists: allTabs.some((t) => t.id === tabId),
+            tabIds: allTabs.map((t) => ({
+              id: t.id,
+              url: t.url?.substring(0, 50),
+            })),
+          });
+        } catch (queryError) {
+          console.error(
+            "❌ [DEBUG-QUERY-ERROR]:",
+            queryError.message,
+            queryError,
+          );
+        }
+
         ExecuteLogger.error(`❌ [Tab Ready Check] Error on attempt ${i + 1}:`, {
           tabId: tabId,
-          error: error.message,
+          error: error.message || String(error),
+          errorString: String(error),
           willRetry: i < maxRetries - 1,
         });
 
@@ -3035,17 +3090,11 @@ async function executeStep4(taskList) {
       // 全ウィンドウが並列で開かれており、既に待機済みのため追加の待機は不要
       ExecuteLogger.info("✅ ウィンドウとタブの準備完了");
 
-      // Step 4-6-3-0.5: ウィンドウチェック（ウィンドウを開いた直後）
-      ExecuteLogger.info("🔍 [Step 4-6-3-0.5] ウィンドウチェック開始");
-      const aiTypesForCheck = successfulWindows.map((w) => w.aiType);
-      if (aiTypesForCheck.length > 0) {
-        const immediateCheckResults =
-          await window.windowController.checkWindows(aiTypesForCheck);
-        ExecuteLogger.info(
-          "✅ [Step 4-6-3-0.5] ウィンドウチェック完了:",
-          immediateCheckResults,
-        );
-      }
+      // Step 4-6-3-0.5: ウィンドウチェックをスキップ（unused/stream-processor-v2.js準拠）
+      // 元のコードではウィンドウチェックを行わず、直接タスク実行に進むため削除
+      ExecuteLogger.info(
+        "📝 [Step 4-6-3-0.5] ウィンドウチェックをスキップ（unused準拠）",
+      );
     }
 
     // Step 4-6-3-1: ポップアップを右下に移動（step外と同じ動作）
@@ -3094,12 +3143,11 @@ async function executeStep4(taskList) {
       ExecuteLogger.warn("⚠️ [Step 4-6-3-1] ポップアップ移動エラー:", error);
     }
 
-    // Step 4-6-4: ウィンドウチェック
-    ExecuteLogger.info("🔍 [Step 4-6-4] ウィンドウチェック開始");
-
-    const aiTypes = successfulWindows.map((w) => w.aiType);
-    const checkResults = await window.windowController.checkWindows(aiTypes);
-    ExecuteLogger.info("✅ [Step 4-6-4] ウィンドウチェック完了:", checkResults);
+    // Step 4-6-4: ウィンドウチェックをスキップ（unused/stream-processor-v2.js準拠）
+    // 元のコードではウィンドウチェックを行わず、直接タスク実行に進むため削除
+    ExecuteLogger.info(
+      "📝 [Step 4-6-4] ウィンドウチェックをスキップ（unused準拠）",
+    );
 
     // Step 4-6-5: ライフサイクル管理初期化
     ExecuteLogger.info("🔄 [Step 4-6-5] ライフサイクル管理初期化");
@@ -3152,89 +3200,72 @@ async function executeStep4(taskList) {
         `📦 [step4-execute.js] Step 4-6-6-${batchIndex + 2}: バッチ${batchIndex + 1}/${batches.length} 処理開始 - ${batch.length}タスク`,
       );
 
-      // Step 4-6-6-A: 既存ウィンドウの再利用 (重複開閉を避ける)
-      const batchWindows = new Map(); // aiType -> windowInfo
+      // Step 4-6-6-A: ウィンドウ割り当て (unused/stream-processor-v2.js準拠)
+      // 各タスクに異なるウィンドウを割り当てる
+      const batchWindows = new Map(); // taskIndex -> windowInfo
 
       ExecuteLogger.info(
-        `🔄 [step4-execute.js] Step 4-6-6-${batchIndex + 2}-A: 既存ウィンドウの再利用チェック`,
+        `🔄 [step4-execute.js] Step 4-6-6-${batchIndex + 2}-A: バッチタスクにウィンドウを割り当て（unused準拠）`,
       );
 
-      for (const task of batch) {
+      // 各タスクにpositionベースでウィンドウを割り当て
+      for (let taskIndex = 0; taskIndex < batch.length; taskIndex++) {
+        const task = batch[taskIndex];
         const aiType = task.aiType;
+        const position = taskIndex % 3; // 0,1,2で3つのウィンドウを循環利用
 
-        // 🔍 DEBUG: 既存ウィンドウ確認の詳細ログ
-        ExecuteLogger.info(`🔍 [DEBUG] ${aiType}ウィンドウの存在確認開始`, {
-          aiType: aiType,
-          normalizedAiType: window.windowController.normalizeAiType(aiType),
-          openedWindowsSize: window.windowController.openedWindows.size,
-          openedWindowsKeys: Array.from(
-            window.windowController.openedWindows.keys(),
-          ),
-          hasAiType: window.windowController.openedWindows.has(aiType),
-          hasNormalizedAiType: window.windowController.openedWindows.has(
-            window.windowController.normalizeAiType(aiType),
-          ),
-        });
+        ExecuteLogger.info(
+          `🔍 [step4-execute.js] Step 4-6-6-${batchIndex + 2}-A-1: タスク${taskIndex + 1}/${batch.length} - ${aiType}、Position: ${position}`,
+        );
 
         const normalizedAiType =
           window.windowController.normalizeAiType(aiType);
+        const windowKey = `${normalizedAiType}_${position}`;
 
-        // 既存ウィンドウがあるかチェック（正規化されたキーで確認）
-        if (window.windowController.openedWindows.has(normalizedAiType)) {
-          const existingWindow =
-            window.windowController.openedWindows.get(normalizedAiType);
+        // 既存ウィンドウを探す
+        let existingWindow = null;
+        if (window.windowController.openedWindows.has(windowKey)) {
+          existingWindow = window.windowController.openedWindows.get(windowKey);
+          ExecuteLogger.info(
+            `♻️ [step4-execute.js] Step 4-6-6-${batchIndex + 2}-A-2: 既存の${windowKey}ウィンドウを再利用`,
+          );
+        }
 
-          ExecuteLogger.info(`🔍 [DEBUG] 既存ウィンドウ発見 - 構造確認`, {
-            aiType: aiType,
-            normalizedAiType: normalizedAiType,
-            existingWindowType: typeof existingWindow,
-            isArray: Array.isArray(existingWindow),
-            windowData: existingWindow,
-            keys: existingWindow ? Object.keys(existingWindow) : null,
-          });
-
-          // タスクごとに異なるウィンドウを循環選択
-          const taskCount = Array.from(batch).indexOf(task);
+        if (existingWindow) {
+          // 既存ウィンドウを使用
           const windowToUse = Array.isArray(existingWindow)
-            ? existingWindow[taskCount % existingWindow.length]
+            ? existingWindow[0]
             : existingWindow;
 
-          ExecuteLogger.info(`🔍 [DEBUG] 使用予定のウィンドウ詳細`, {
-            windowToUse: windowToUse,
-            hasTabId: !!windowToUse?.tabId,
-            hasWindowId: !!windowToUse?.windowId,
-            hasId: !!windowToUse?.id,
-            tabId: windowToUse?.tabId,
-            windowId: windowToUse?.windowId,
-            id: windowToUse?.id,
-          });
-
-          // タスクごとに個別のキーでウィンドウを管理（タブID重複回避）
-          const taskId = task.id || task.taskId || `task_${Date.now()}`;
-          const taskWindowKey = `${aiType}_${taskId}`;
-          batchWindows.set(taskWindowKey, windowToUse);
+          batchWindows.set(taskIndex, windowToUse);
           ExecuteLogger.info(
-            `♻️ [step4-execute.js] ${aiType}ウィンドウを再利用 (TaskKey: ${taskWindowKey})`,
-            { tabId: windowToUse?.tabId, windowId: windowToUse?.windowId },
+            `✅ [step4-execute.js] Step 4-6-6-${batchIndex + 2}-A-3: タスク${taskIndex + 1}に既存ウィンドウ割り当て`,
+            {
+              taskIndex: taskIndex,
+              aiType: aiType,
+              tabId: windowToUse?.tabId,
+              windowId: windowToUse?.windowId,
+              position: position,
+            },
           );
         } else {
-          // 新しいウィンドウが必要な場合のみ開く（StreamProcessorV2統合版）
+          // 新しいウィンドウを作成
           ExecuteLogger.info(
-            `🪟 [step4-execute.js] ${aiType}ウィンドウが存在しないため新規作成`,
+            `🪟 [step4-execute.js] Step 4-6-6-${batchIndex + 2}-A-4: タスク${taskIndex + 1}用の新規ウィンドウ作成（Position: ${position}）`,
           );
 
           try {
-            // タスクごとに異なるpositionでウィンドウを作成（並列処理対応）
-            const taskIndex = Array.from(batch).indexOf(task);
-            const position = taskIndex % 4; // 0,1,2,3で分散
-            const taskId = task.id || task.taskId || `task_${Date.now()}`;
-            const taskWindowKey = `${aiType}_${taskId}`;
-
             const windowInfo = await createWindowForBatch(task, position);
-            batchWindows.set(taskWindowKey, windowInfo);
+            batchWindows.set(taskIndex, windowInfo);
+
+            // windowControllerに登録
+            window.windowController.openedWindows.set(windowKey, windowInfo);
+
             ExecuteLogger.info(
-              `✅ [step4-execute.js] ${aiType}ウィンドウ作成成功 (Position: ${position}, TaskKey: ${taskWindowKey})`,
+              `✅ [step4-execute.js] Step 4-6-6-${batchIndex + 2}-A-5: タスク${taskIndex + 1}用ウィンドウ作成成功`,
               {
+                taskIndex: taskIndex,
+                aiType: aiType,
                 tabId: windowInfo.tabId,
                 windowId: windowInfo.windowId,
                 position: position,
@@ -3242,48 +3273,46 @@ async function executeStep4(taskList) {
             );
           } catch (error) {
             ExecuteLogger.error(
-              `❌ [step4-execute.js] ${aiType}ウィンドウ作成失敗:`,
+              `❌ [step4-execute.js] タスク${taskIndex + 1}のウィンドウ作成失敗:`,
               error,
             );
           }
         }
       }
 
-      // Step 4-6-6-B: ウィンドウチェック
+      // Step 4-6-6-B: ウィンドウチェックをスキップ（unused/stream-processor-v2.js準拠）
+      // unused/stream-processor-v2.jsではウィンドウチェックを行っていないため、
+      // 同じ動作になるようチェック処理を削除
       ExecuteLogger.info(
-        `🔍 [step4-execute.js] Step 4-6-6-${batchIndex + 2}-B: ウィンドウチェック`,
+        `📝 [step4-execute.js] Step 4-6-6-${batchIndex + 2}-B: ウィンドウチェックをスキップ（unused/stream-processor-v2.js準拠）`,
       );
-      const checkResults = await window.windowController.checkWindows(
-        Array.from(batchWindows.keys()),
-      );
-      ExecuteLogger.info(`✅ チェック結果:`, checkResults);
 
-      // Step 4-6-6-C: バッチ内のタスクを並列実行
-      // シンプルな有効性確認（StreamProcessorV2統合版）
+      // Step 4-6-6-C: バッチ内のタスクを並列実行（unused/stream-processor-v2.js準拠）
+      // unused/stream-processor-v2.jsのproccssBatch()と同じ実装
+      ExecuteLogger.info(
+        `🚀 [step4-execute.js] Step 4-6-6-${batchIndex + 2}-C: タスク並列実行開始（unused方式）`,
+      );
+
       const validBatchTasks = batch.filter((task, index) => {
         const taskId = task.id || task.taskId || `${task.column}${task.row}`;
+        const taskIndex = batch.indexOf(task);
 
-        // タスク固有のウィンドウキーでウィンドウ情報を取得
-        const taskWindowKey = `${task.aiType}_${taskId}`;
-        let windowInfo = batchWindows.get(taskWindowKey);
-
-        // フォールバック: 従来のキーでも確認
-        if (!windowInfo) {
-          windowInfo = batchWindows.get(task.aiType);
-        }
+        // Step 4-6-6-C-1: タスクインデックスでウィンドウ情報を取得（unused/stream-processor-v2.js準拠）
+        const windowInfo = batchWindows.get(taskIndex);
 
         ExecuteLogger.info(
-          `🔍 [step4-execute.js] タスク${taskId}の有効性確認 (AI: ${task.aiType}, WindowKey: ${taskWindowKey})`,
+          `🔍 [step4-execute.js] Step 4-6-6-${batchIndex + 2}-C-1: タスク${taskId}の有効性確認（unused準拠）`,
           {
-            hasTaskWindowKey: batchWindows.has(taskWindowKey),
-            hasAiTypeKey: batchWindows.has(task.aiType),
+            aiType: task.aiType,
+            hasWindowInfo: !!windowInfo,
+            hasTabId: !!windowInfo?.tabId,
           },
         );
 
-        // ウィンドウ情報の存在確認
+        // Step 4-6-6-C-2: ウィンドウ情報の存在確認（unused/stream-processor-v2.js準拠）
         if (!windowInfo || !windowInfo.tabId) {
           ExecuteLogger.error(
-            `❌ [step4-execute.js] タスク${taskId}：${task.aiType}のウィンドウ情報が無効`,
+            `❌ [step4-execute.js] Step 4-6-6-${batchIndex + 2}-C-2: タスク${taskId}：${task.aiType}のウィンドウ情報が無効`,
             {
               windowInfo: windowInfo,
               hasWindowInfo: !!windowInfo,
@@ -3294,12 +3323,12 @@ async function executeStep4(taskList) {
           return false;
         }
 
-        // タスクにウィンドウ情報を直接設定
+        // Step 4-6-6-C-3: タスクにウィンドウ情報を設定（unused/stream-processor-v2.js準拠）
         task.tabId = windowInfo.tabId;
         task.windowId = windowInfo.windowId;
 
         ExecuteLogger.info(
-          `✅ [step4-execute.js] タスク${taskId}：ウィンドウ情報設定完了`,
+          `✅ [step4-execute.js] Step 4-6-6-${batchIndex + 2}-C-3: タスク${taskId}準備完了（unused準拠）`,
           {
             tabId: task.tabId,
             windowId: task.windowId,
@@ -3307,165 +3336,26 @@ async function executeStep4(taskList) {
           },
         );
 
-        // StreamProcessorV2統合: 複雑なフォールバック処理を削除
-        ExecuteLogger.info(
-          `🔍 [DEBUG] タスク${task.id || task.taskId}のtabId/windowIdチェック開始`,
-          {
-            taskId: task.id || task.taskId,
-            currentTabId: task.tabId,
-            currentWindowId: task.windowId,
-            hasTabId: !!task.tabId,
-            hasWindowId: !!task.windowId,
-            aiType: task.aiType,
-          },
-        );
-
+        // Step 4-6-6-C-4: 複雑なフォールバック処理を削除（unused/stream-processor-v2.js準拠）
+        // unused/stream-processor-v2.jsではシンプルなチェックのみ実施
         if (!task.tabId || !task.windowId) {
-          // フォールバック1: batchWindowsから取得
-          const batchWindowInfo = batchWindows.get(task.aiType);
-
-          ExecuteLogger.info(
-            `🔍 [DEBUG] フォールバック1: batchWindowsから取得試行`,
+          ExecuteLogger.warn(
+            `⚠️ [step4-execute.js] Step 4-6-6-${batchIndex + 2}-C-4: タスク${task.id || task.taskId}のtabId/windowIdが未設定`,
             {
               taskId: task.id || task.taskId,
+              tabId: task.tabId,
+              windowId: task.windowId,
               aiType: task.aiType,
-              batchWindowInfo: batchWindowInfo,
-              batchWindowInfoType: typeof batchWindowInfo,
-              batchWindowInfoKeys: batchWindowInfo
-                ? Object.keys(batchWindowInfo)
-                : null,
-              hasTabId: !!batchWindowInfo?.tabId,
-              hasWindowId: !!batchWindowInfo?.windowId,
-              hasId: !!batchWindowInfo?.id,
-              tabIdValue: batchWindowInfo?.tabId,
-              windowIdValue: batchWindowInfo?.windowId,
-              idValue: batchWindowInfo?.id,
             },
           );
-
-          if (
-            batchWindowInfo &&
-            (batchWindowInfo.tabId ||
-              batchWindowInfo.windowId ||
-              batchWindowInfo.id)
-          ) {
-            task.tabId =
-              batchWindowInfo.tabId || batchWindowInfo.id || task.tabId;
-            task.windowId =
-              batchWindowInfo.windowId || batchWindowInfo.id || task.windowId;
-            ExecuteLogger.info(
-              `🔄 [step4-execute.js] タスク${task.id || task.taskId}：batchWindowsからtabId/windowIdを復元`,
-              {
-                tabId: task.tabId,
-                windowId: task.windowId,
-                aiType: task.aiType,
-              },
-            );
-          } else {
-            // フォールバック2: windowControllerから直接取得
-            const normalizedAiType = task.aiType?.toLowerCase()?.trim();
-            const controllerWindowInfo =
-              window.windowController?.openedWindows?.get(normalizedAiType);
-
-            ExecuteLogger.info(
-              `🔍 [DEBUG] フォールバック2: windowControllerから取得試行`,
-              {
-                taskId: task.id || task.taskId,
-                aiType: task.aiType,
-                normalizedAiType: normalizedAiType,
-                controllerWindowInfo: controllerWindowInfo,
-                controllerWindowInfoType: typeof controllerWindowInfo,
-                isArray: Array.isArray(controllerWindowInfo),
-                controllerWindowInfoKeys: controllerWindowInfo
-                  ? Object.keys(controllerWindowInfo)
-                  : null,
-                hasTabId: !!controllerWindowInfo?.tabId,
-                hasWindowId: !!controllerWindowInfo?.windowId,
-                hasId: !!controllerWindowInfo?.id,
-                tabIdValue: controllerWindowInfo?.tabId,
-                windowIdValue: controllerWindowInfo?.windowId,
-                idValue: controllerWindowInfo?.id,
-                arrayFirstElement: Array.isArray(controllerWindowInfo)
-                  ? controllerWindowInfo[0]
-                  : null,
-              },
-            );
-
-            if (controllerWindowInfo) {
-              // 配列の場合は最初の要素を使用
-              const windowToUse = Array.isArray(controllerWindowInfo)
-                ? controllerWindowInfo[0]
-                : controllerWindowInfo;
-
-              ExecuteLogger.info(
-                `🔍 [DEBUG] フォールバック2: 使用するwindowInfo詳細`,
-                {
-                  windowToUse: windowToUse,
-                  hasTabId: !!windowToUse?.tabId,
-                  hasWindowId: !!windowToUse?.windowId,
-                  hasId: !!windowToUse?.id,
-                  tabIdValue: windowToUse?.tabId,
-                  windowIdValue: windowToUse?.windowId,
-                  idValue: windowToUse?.id,
-                },
-              );
-
-              task.tabId = windowToUse?.tabId || windowToUse?.id || task.tabId;
-              task.windowId =
-                windowToUse?.windowId || windowToUse?.id || task.windowId;
-              ExecuteLogger.info(
-                `🔄 [step4-execute.js] タスク${task.id || task.taskId}：windowControllerからtabId/windowIdを復元`,
-                {
-                  tabId: task.tabId,
-                  windowId: task.windowId,
-                  aiType: task.aiType,
-                },
-              );
-            }
-          }
-
-          // 最終チェック：まだ不正な場合は警告して除外
-          if (!task.tabId || !task.windowId) {
-            ExecuteLogger.warn(
-              `⚠️ [step4-execute.js] タスク${task.id || task.taskId}：フォールバック後もタブIDまたはウィンドウIDが不正`,
-              {
-                tabId: task.tabId,
-                windowId: task.windowId,
-                aiType: task.aiType || task.ai,
-                groupType: task.groupType,
-                row: task.row,
-                debugInfo: "batchWindowsとwindowController両方からの復元に失敗",
-              },
-            );
-            return false;
-          }
-        }
-
-        // Position-based並列処理のためのタブID重複チェック（改善版）
-        const duplicateIndex = batch.findIndex(
-          (otherTask, otherIndex) =>
-            otherIndex < index && otherTask.tabId === task.tabId,
-        );
-
-        if (duplicateIndex !== -1) {
-          ExecuteLogger.info(
-            `🔄 [step4-execute.js] タスク${task.id || task.taskId}：同一タブでの並列処理を検出 (tabId: ${task.tabId})`,
-            {
-              parallelWith:
-                batch[duplicateIndex].id || batch[duplicateIndex].taskId,
-              note: "Position-based windowsで並列処理を実行します",
-              taskIndex: index,
-              duplicateIndex: duplicateIndex,
-            },
-          );
-          // Position-basedでは異なるウィンドウなので処理を継続
-          ExecuteLogger.info(
-            `✅ [step4-execute.js] タスク${task.id || task.taskId}：並列処理を許可（異なるposition想定）`,
-          );
+          return false;
         }
 
         return true;
       });
+
+      // Step 4-6-6-C-5: unused/stream-processor-v2.jsのシンプルな実装に変更
+      // 以下の複雑なフォールバック処理は削除
 
       ExecuteLogger.info(
         `⚡ [step4-execute.js] Step 4-6-6-${batchIndex + 2}-C: ${validBatchTasks.length}/${batch.length}の有効タスクを並列実行`,
@@ -3533,11 +3423,11 @@ async function executeStep4(taskList) {
           );
           await new Promise((resolve) => setTimeout(resolve, delay));
         } else {
-          // 最初のタスクも3秒待機（ウィンドウ開いてすぐは初期化未完了の可能性）
+          // 最初のタスクも5秒待機（ウィンドウ開いてすぐは初期化未完了の可能性）
           ExecuteLogger.info(
-            `⏱️ 初回タスク開始前に3秒待機（Content Script初期化待ち）`,
+            `⏱️ 初回タスク開始前に5秒待機（Content Script初期化待ち）`,
           );
-          await new Promise((resolve) => setTimeout(resolve, 3000));
+          await new Promise((resolve) => setTimeout(resolve, 5000));
         }
 
         try {
@@ -3864,6 +3754,34 @@ async function executeStep4(taskList) {
             taskKeys: Object.keys(task),
             taskPromptLength: task.prompt?.length || 0,
           });
+
+          // Content Scriptを手動注入（元のコードと同じ方式）
+          ExecuteLogger.info(
+            `📝 [Content Script注入] ${automationName} スクリプト注入開始`,
+          );
+
+          try {
+            await chrome.scripting.executeScript({
+              target: { tabId: tabId },
+              files: ["4-2-claude-automation.js"],
+            });
+
+            // 初期化待機（元のコードと同じ3秒）
+            await new Promise((resolve) => setTimeout(resolve, 3000));
+
+            ExecuteLogger.info(
+              `✅ [Content Script注入] ${automationName} スクリプト注入完了、初期化待機完了`,
+            );
+          } catch (injectionError) {
+            ExecuteLogger.error(
+              `❌ [Content Script注入] 注入失敗:`,
+              injectionError,
+            );
+            reject(
+              new Error(`Content Script注入失敗: ${injectionError.message}`),
+            );
+            return;
+          }
 
           const sendStartTime = Date.now();
 

@@ -108,13 +108,16 @@
       ];
 
       // 🔍 [DEBUG] UI要素検索開始ログ
-      ClaudeLogger.info("🔍 [DEBUG-STABLE-TASK] UI要素検索開始:", {
-        selectorsToTry: textInputSelectors,
-        currentUrl: window.location.href,
-        pageReadyState: document.readyState,
-        bodyExists: !!document.body,
-        totalElementsInPage: document.querySelectorAll("*").length,
-      });
+      ClaudeLogger.info(
+        "🔍 [DEBUG-STABLE-TASK] UI要素検索開始（waitForElement使用）:",
+        {
+          selectorsToTry: textInputSelectors,
+          currentUrl: window.location.href,
+          pageReadyState: document.readyState,
+          bodyExists: !!document.body,
+          totalElementsInPage: document.querySelectorAll("*").length,
+        },
+      );
 
       let inputElement = null;
       for (let i = 0; i < textInputSelectors.length; i++) {
@@ -123,37 +126,47 @@
           ClaudeLogger.info(
             `🔍 [DEBUG-STABLE-TASK] セレクタ試行 ${i + 1}/${textInputSelectors.length}: ${selector}`,
           );
-          inputElement = document.querySelector(selector);
 
-          ClaudeLogger.info(`🔍 [DEBUG-STABLE-TASK] セレクタ結果:`, {
-            selector: selector,
-            elementFound: !!inputElement,
-            elementType: inputElement?.tagName,
-            elementId: inputElement?.id,
-            elementClass: inputElement?.className,
-            isVisible: inputElement
-              ? inputElement.offsetParent !== null
-              : false,
-            isContentEditable: inputElement?.contentEditable,
-          });
+          // waitForElementを使って要素の出現を待つ（最大5秒待機）
+          const element = await waitForElement(selector, 10, 500);
 
-          if (inputElement) {
-            ClaudeLogger.info(`✅ [StableTask] 入力欄発見: ${selector}`, {
-              element: {
-                tagName: inputElement.tagName,
-                id: inputElement.id,
-                className: inputElement.className,
-                contentEditable: inputElement.contentEditable,
-                placeholder:
-                  inputElement.placeholder ||
-                  inputElement.getAttribute("placeholder"),
+          if (element) {
+            inputElement = element;
+
+            ClaudeLogger.info(
+              `🔍 [DEBUG-STABLE-TASK] セレクタ結果（waitForElement経由）:`,
+              {
+                selector: selector,
+                elementFound: !!inputElement,
+                elementType: inputElement?.tagName,
+                elementId: inputElement?.id,
+                elementClass: inputElement?.className,
+                isVisible: inputElement.offsetParent !== null,
+                isContentEditable: inputElement?.contentEditable,
+                elementPosition: inputElement.getBoundingClientRect(),
               },
-            });
+            );
+
+            ClaudeLogger.info(
+              `✅ [StableTask] 入力欄発見（waitForElement成功）: ${selector}`,
+              {
+                element: {
+                  tagName: inputElement.tagName,
+                  id: inputElement.id,
+                  className: inputElement.className,
+                  contentEditable: inputElement.contentEditable,
+                  placeholder:
+                    inputElement.placeholder ||
+                    inputElement.getAttribute("placeholder"),
+                },
+                waitTime: `${(i + 1) * 500}ms以内`,
+              },
+            );
             break;
           }
         } catch (error) {
           ClaudeLogger.warn(
-            `⚠️ [StableTask] セレクタエラー: ${selector}`,
+            `⚠️ [StableTask] セレクタエラー（waitForElement）: ${selector}`,
             error.message,
           );
         }
@@ -227,12 +240,26 @@
         'button[aria-label*="Send"]',
       ];
 
+      // 送信ボタンをwaitForElementで待機
+      ClaudeLogger.info(
+        "🔍 [StableTask] 送信ボタン検索開始（waitForElement使用）",
+      );
       let sendButton = null;
+
+      // 各セレクタをwaitForElementで試行
       for (const selector of sendButtonSelectors) {
         try {
-          sendButton = document.querySelector(selector);
-          if (sendButton && !sendButton.disabled) {
-            ClaudeLogger.info(`✅ [StableTask] 送信ボタン発見: ${selector}`);
+          ClaudeLogger.info(`🔍 [StableTask] 送信ボタン待機中: ${selector}`);
+          // waitForElementを使って要素の出現を待つ（最大5秒待機）
+          const element = await waitForElement(selector, 10, 500);
+
+          if (element && !element.disabled) {
+            sendButton = element;
+            ClaudeLogger.info(`✅ [StableTask] 送信ボタン発見: ${selector}`, {
+              buttonEnabled: !element.disabled,
+              buttonVisible: element.offsetParent !== null,
+              buttonText: element.textContent,
+            });
             break;
           }
         } catch (error) {
@@ -243,8 +270,54 @@
         }
       }
 
+      // それでも見つからない場合は、ClaudeRetryManagerでリトライ（後半の成功実装と同様）
       if (!sendButton) {
-        throw new Error("送信ボタンが見つかりません");
+        ClaudeLogger.error(
+          "❌ 送信ボタンが見つかりません - リトライ機構で再試行",
+        );
+
+        // リトライマネージャーがあるか確認
+        if (typeof ClaudeRetryManager !== "undefined") {
+          const retryManager = new ClaudeRetryManager();
+          const retryResult = await retryManager.executeWithRetry({
+            action: async () => {
+              for (const selector of sendButtonSelectors) {
+                const button = await waitForElement(selector, 3, 300);
+                if (button && !button.disabled) {
+                  return { success: true, element: button };
+                }
+              }
+              return { success: false };
+            },
+            maxRetries: 5,
+            actionName: "送信ボタン検索",
+            context: { taskId: taskData?.taskId },
+          });
+
+          if (retryResult.success) {
+            sendButton = retryResult.result.element;
+            ClaudeLogger.info("✅ [StableTask] リトライで送信ボタン発見");
+          }
+        }
+
+        // 最終的に見つからない場合
+        if (!sendButton) {
+          ClaudeLogger.error(
+            "🔍 [StableTask] 送信ボタン検索失敗 - ページ状態:",
+            {
+              pageUrl: window.location.href,
+              pageReadyState: document.readyState,
+              allButtons: document.querySelectorAll("button").length,
+              submitButtons: document.querySelectorAll('button[type="submit"]')
+                .length,
+              disabledButtons:
+                document.querySelectorAll("button[disabled]").length,
+            },
+          );
+          throw new Error(
+            "送信ボタンが見つかりません（waitForElement + リトライ後）",
+          );
+        }
       }
 
       sendButton.click();
