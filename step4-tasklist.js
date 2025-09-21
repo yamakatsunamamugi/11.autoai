@@ -252,28 +252,42 @@ class StepIntegratedAITaskExecutor {
         `🤖 [StepIntegratedAITaskExecutor] タスク実行開始: tabId=${tabId}, AI=${taskData.aiType}`,
       );
 
-      // タブの存在確認とリトライ（最大3回）
+      // タブの存在確認とリトライ（最大10回、タイムアウト付き）
       let tab;
       let retryCount = 0;
-      while (retryCount < 3) {
+      const maxRetries = 10;
+
+      while (retryCount < maxRetries) {
         try {
           tab = await chrome.tabs.get(tabId);
           if (tab && tab.status === "complete") {
             console.log(`✅ Tab ${tabId} is ready`);
             break;
           }
-          console.log(`⏳ Tab ${tabId} status: ${tab?.status}, waiting...`);
+          console.log(
+            `⏳ Tab ${tabId} status: ${tab?.status}, waiting... (${retryCount + 1}/${maxRetries})`,
+          );
+          retryCount++; // 重要：tryブロック内でもカウント
           await new Promise((resolve) => setTimeout(resolve, 1000));
         } catch (err) {
           retryCount++;
           console.warn(
-            `⚠️ Tab ${tabId} not found (attempt ${retryCount}/3): ${err.message}`,
+            `⚠️ Tab ${tabId} not found (attempt ${retryCount}/${maxRetries}): ${err.message}`,
           );
-          if (retryCount >= 3) {
-            throw new Error(`Tab ${tabId} not found after 3 attempts`);
+          if (retryCount >= maxRetries) {
+            throw new Error(
+              `Tab ${tabId} not found after ${maxRetries} attempts`,
+            );
           }
           await new Promise((resolve) => setTimeout(resolve, 2000));
         }
+      }
+
+      // タイムアウト後も未完了の場合は警告して続行
+      if (retryCount >= maxRetries && (!tab || tab.status !== "complete")) {
+        console.warn(
+          `⚠️ Tab ${tabId} not ready after ${maxRetries} attempts, proceeding anyway...`,
+        );
       }
 
       // タブをアクティブにする（エラーハンドリング付き）
