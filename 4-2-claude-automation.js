@@ -5444,7 +5444,11 @@
 
   ClaudeLogger.info("✅ [ClaudeAutomation] メッセージリスナー登録完了:", {
     登録完了時刻: new Date().toISOString(),
-    処理対象: ["CLAUDE_EXECUTE_TASK", "CLAUDE_CHECK_READY"],
+    処理対象: [
+      "CLAUDE_EXECUTE_TASK",
+      "CLAUDE_CHECK_READY",
+      "CHECK_UI_ELEMENTS",
+    ],
     リスナー状態: "アクティブ",
   });
 
