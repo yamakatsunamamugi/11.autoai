@@ -45,36 +45,33 @@
   const scriptLoadTime = Date.now();
   const loadTimeISO = new Date().toISOString();
 
-  // 拡張機能ページの場合は早期終了
+  // 実行環境の判定
+  let shouldInitialize = false;
+
   if (isExtensionPage) {
     log.info(
       "📌 [Claude Automation] 拡張機能ページで実行されています。スキップします。",
     );
     log.info("  URL:", currentURL);
-    // 拡張機能ページでも最小限の初期化だけ行う（エラー防止のため）
     window.CLAUDE_SCRIPT_LOADED = false;
     window.CLAUDE_SCRIPT_INIT_TIME = Date.now();
-    // ここで処理を終了
-    return;
-  }
-
-  // claude.ai 以外のサイトの場合も早期終了
-  if (!isValidClaudeURL) {
+  } else if (!isValidClaudeURL) {
     log.warn(
       "⚠️ [Claude Automation] claude.ai 以外のサイトで実行されています。",
     );
     log.warn("  URL:", currentURL);
     window.CLAUDE_SCRIPT_LOADED = false;
     window.CLAUDE_SCRIPT_INIT_TIME = Date.now();
-    // ここで処理を終了
-    return;
+  } else {
+    // claude.ai での実行
+    shouldInitialize = true;
+    log.info("✅ Claude Automation V2 初期化");
+    log.info("📍 有効なClaude URL:", currentURL);
   }
 
   // ========================================
-  // ここから下は claude.ai でのみ実行される
+  // 関数定義（常に定義するが、実行は制御）
   // ========================================
-  log.info("✅ Claude Automation V2 初期化");
-  log.info("📍 有効なClaude URL:", currentURL);
 
   // 🚨 グローバルエラーハンドラー追加
   window.addEventListener("error", (e) => {
@@ -4948,8 +4945,13 @@
 
   log.debug("🔥 [STEP 0] 4-2-claude-automation.js バージョン1です");
 
-  // 最小限のメッセージリスナー
-  if (chrome && chrome.runtime && chrome.runtime.onMessage) {
+  // 最小限のメッセージリスナー (claude.aiでのみ登録)
+  if (
+    shouldInitialize &&
+    chrome &&
+    chrome.runtime &&
+    chrome.runtime.onMessage
+  ) {
     log.info("✅ [Claude] chrome.runtime.onMessage リスナー登録開始");
 
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -5019,20 +5021,47 @@
     });
 
     log.info("✅ [Claude] メッセージリスナー登録完了");
-  } else {
+  } else if (shouldInitialize) {
     log.error("❌ [Claude] chrome.runtime.onMessage が利用できません");
   }
 
-  // 初期化マーカー
-  window.CLAUDE_SCRIPT_LOADED = true;
+  // 初期化マーカー (claude.aiでのみtrueに設定)
+  window.CLAUDE_SCRIPT_LOADED = shouldInitialize;
   window.CLAUDE_SCRIPT_INIT_TIME = Date.now();
-  log.info("🧪 [DEBUG] 初期化マーカー設定完了");
+  if (shouldInitialize) {
+    log.info("🧪 [DEBUG] 初期化マーカー設定完了");
+  }
 
   // グローバル関数として公開（ai-task-executorから呼び出し可能にする）
-  window.executeTask = executeTask;
-  window.findClaudeElement = findClaudeElement;
-  window.inputText = inputText;
-  window.runAutomation = runAutomation;
+  // claude.aiでのみ公開
+  if (shouldInitialize) {
+    if (typeof executeTask !== "undefined") {
+      window.executeTask = executeTask;
+      log.info("✅ executeTask関数を公開");
+    } else {
+      log.error("❌ executeTask関数が未定義");
+    }
+
+  if (typeof findClaudeElement !== "undefined") {
+    window.findClaudeElement = findClaudeElement;
+    log.info("✅ findClaudeElement関数を公開");
+  } else {
+    log.error("❌ findClaudeElement関数が未定義");
+  }
+
+  if (typeof inputText !== "undefined") {
+    window.inputText = inputText;
+    log.info("✅ inputText関数を公開");
+  } else {
+    log.error("❌ inputText関数が未定義");
+  }
+
+  if (typeof runAutomation !== "undefined") {
+    window.runAutomation = runAutomation;
+    log.info("✅ runAutomation関数を公開");
+  } else {
+    log.error("❌ runAutomation関数が未定義");
+  }
   log.info("✅ [Claude] グローバル関数公開完了:", {
     executeTask: typeof window.executeTask,
     findClaudeElement: typeof window.findClaudeElement,
