@@ -2381,6 +2381,18 @@ async function executeStep4(taskList) {
 
       // 全ウィンドウが並列で開かれており、既に待機済みのため追加の待機は不要
       ExecuteLogger.info("✅ ウィンドウとタブの準備完了");
+
+      // Step 4-6-3-0.5: ウィンドウチェック（ウィンドウを開いた直後）
+      ExecuteLogger.info("🔍 [Step 4-6-3-0.5] ウィンドウチェック開始");
+      const aiTypesForCheck = successfulWindows.map((w) => w.aiType);
+      if (aiTypesForCheck.length > 0) {
+        const immediateCheckResults =
+          await window.windowController.checkWindows(aiTypesForCheck);
+        ExecuteLogger.info(
+          "✅ [Step 4-6-3-0.5] ウィンドウチェック完了:",
+          immediateCheckResults,
+        );
+      }
     }
 
     // Step 4-6-3-1: ポップアップを右下に移動（step外と同じ動作）
