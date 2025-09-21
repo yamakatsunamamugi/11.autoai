@@ -424,14 +424,9 @@ async function getPrimaryDisplayInfo() {
     const displays = await chrome.system.display.getInfo();
     const primaryDisplay = displays.find((d) => d.isPrimary) || displays[0];
 
-    console.log("[step0-ui-controller.js→Step0-2] ディスプレイ情報:", {
+    console.log("📺 Display detected:", {
       total: displays.length,
-      primary: {
-        id: primaryDisplay.id,
-        isPrimary: primaryDisplay.isPrimary,
-        bounds: primaryDisplay.bounds,
-        workArea: primaryDisplay.workArea,
-      },
+      primaryId: primaryDisplay.id,
     });
 
     return primaryDisplay;
