@@ -289,30 +289,234 @@
   };
 
   // ========================================
+  // Claude UI セレクタ定義（ファイル冒頭で一元管理）
+  // ========================================
+  const CLAUDE_SELECTORS = {
+    // テキスト入力欄
+    INPUT: [
+      '.ProseMirror[contenteditable="true"]',
+      'div[contenteditable="true"][role="textbox"]',
+      '[aria-label*="プロンプト"]',
+      'div[contenteditable="true"]',
+      'textarea[placeholder*="メッセージ"]',
+    ],
+
+    // 送信ボタン（test-claude-response-final.js 実証済み）
+    SEND_BUTTON: [
+      'button[aria-label="メッセージを送信"]', // 最優先：統合テストで実証済み
+      '[aria-label="メッセージを送信"]',
+      'button[type="submit"]',
+      ".send-button",
+      'button[aria-label*="送信"]',
+      "button:has(svg)",
+      'button[data-testid*="send"]',
+    ],
+
+    // 停止ボタン（test-claude-response-final.js 実証済み）
+    STOP_BUTTON: [
+      'button[aria-label="応答を停止"]', // 最優先：統合テストで実証済み
+      '[aria-label="応答を停止"]',
+      '[aria-label="Stop generating"]',
+      '[data-testid="stop-button"]',
+      'button[aria-label*="stop"]',
+      'button[aria-label*="Stop"]',
+    ],
+
+    // モデル選択
+    MODEL_BUTTON: [
+      '[data-testid="model-selector-dropdown"]', // 最新のセレクタ（最優先）
+      'button[data-value*="claude"]', // モデル名を含むボタン
+      "button.cursor-pointer:has(span.font-medium)", // モデル表示ボタン
+      'button[aria-label*="モデル"]',
+      'button[aria-label*="Model"]',
+      '[aria-label="モデルを選択"]',
+      'button[aria-haspopup="menu"]',
+      '[data-testid="model-selector"]',
+    ],
+
+    // 機能メニュー
+    FUNCTION_MENU_BUTTON: [
+      '[data-testid="input-menu-tools"]', // 最新のセレクタ
+      "#input-tools-menu-trigger",
+      '[aria-label="ツールメニューを開く"]',
+      '[data-testid="input-menu-trigger"]', // フォールバック
+      'button[aria-label*="機能"]',
+    ],
+
+    // 機能ボタン（common-ai-handler.js用の別名）
+    FUNCTION_BUTTON: [
+      '[data-testid="input-menu-tools"]', // 最新のセレクタ
+      "#input-tools-menu-trigger",
+      '[aria-label="ツールメニューを開く"]',
+      '[data-testid="input-menu-trigger"]', // フォールバック
+      'button[aria-label*="機能"]',
+    ],
+
+    // メッセージ（実際のDOM構造に基づく）
+    MESSAGE: [
+      ".grid-cols-1.grid", // 最優先：実際のClaude応答DOM構造
+      'div[class*="grid-cols-1"][class*="grid"]', // 属性版（より安全）
+      ".font-claude-message", // 旧版（フォールバック）
+      '[data-is-streaming="false"]',
+      'div[class*="font-claude-message"]',
+      ".group.relative.-tracking-\\[0\\.015em\\]",
+    ],
+
+    // 思考プロセス除外用セレクタ（test-claude-response-final.js より移植）
+    THINKING_PROCESS: {
+      // 思考プロセスを示すテキストパターン
+      TEXT_PATTERNS: [
+        "思考プロセス",
+        "Analyzed",
+        "Pondered",
+        "Thought",
+        "Considered",
+        "Evaluated",
+        "Reviewed",
+      ],
+
+      // 思考プロセス関連要素のセレクタ
+      ELEMENTS: [
+        "button:has(.tabular-nums)", // 時間表示を含むボタン
+        'svg path[d*="M10.3857 2.50977"]', // タイマーアイコン（時計SVG）
+        ".tabular-nums", // 時間表示クラス
+      ],
+
+      // 削除対象の親要素クラス
+      PARENT_CLASSES: ["rounded-lg", "border-0.5", "transition-all", "my-3"],
+    },
+
+    // DeepResearchボタン（Claude特有）
+    DEEP_RESEARCH_BUTTON: [
+      'button:has-text("リサーチ")',
+      "button[aria-pressed]",
+      'button:contains("リサーチ")',
+    ],
+
+    // プレビューボタン
+    PREVIEW_BUTTON: ['button[aria-label="内容をプレビュー"]'],
+
+    // 応答/レスポンス（実際のDOM構造に基づく）
+    RESPONSE: [
+      ".grid-cols-1.grid", // 最優先：実際のClaude応答DOM構造
+      'div[class*="grid-cols-1"][class*="grid"]', // 属性版（より安全）
+      ".font-claude-message", // 旧版（フォールバック）
+      '[data-is-streaming="false"]',
+      'div[class*="font-claude-message"]',
+      ".group.relative.-tracking-\\[0\\.015em\\]",
+    ],
+
+    // メニュー関連
+    MENU: {
+      CONTAINER: '[role="menu"][data-state="open"], [role="menu"]',
+      ITEM: '[role="option"], [role="menuitem"]',
+      MODEL_ITEM: 'button[role="option"]:has(span)', // モデル選択用
+      OTHER_MODELS: [
+        'div[role="menuitem"][aria-haspopup="menu"]', // 実際のHTML構造に合わせる
+        '[role="menuitem"][aria-haspopup="menu"]', // 汎用セレクタ
+        'div[role="menuitem"]:has(div:contains("他のモデル"))', // テキストベース
+        'div[role="menuitem"]:has(div:contains("Other models"))', // 英語版
+        '[aria-haspopup="menu"]:has(svg)', // SVGアイコンを持つ要素
+      ],
+    },
+
+    // メニューアイテム（拡張）
+    MENU_ITEM: [
+      '[role="option"]',
+      '[role="menuitem"]',
+      '[role="menuitemradio"]', // ラジオボタン機能（Deep Research、エージェントモード等）に必要
+    ],
+
+    // Canvas関連（Claude特有）- DeepResearch/Artifacts対応
+    CANVAS: {
+      CONTAINER: [
+        ".grid-cols-1.grid:has(h1)", // h1を含むgridコンテナ（優先）
+        ".grid-cols-1.grid", // gridコンテナ直接
+        '[class*="grid-cols-1"][class*="grid"]', // クラス部分一致
+        "div:has(> h1.text-2xl)", // 大きなタイトルを持つdiv
+        ".overflow-y-auto:has(h1)", // スクロール可能なArtifacts
+      ],
+      PREVIEW_TEXT: [
+        ".absolute.inset-0", // プレビューテキスト要素
+      ],
+      PREVIEW_BUTTON: [
+        'button[aria-label="内容をプレビュー"]', // 日本語版
+        'button[aria-label*="プレビュー"]', // 部分一致
+        'button[aria-label*="preview"]', // 英語版
+        'button[aria-label="View content"]', // 英語版代替
+      ],
+      // DeepResearch特有の要素
+      TITLE: "h1.text-2xl",
+      SECTION: "h2.text-xl",
+      PARAGRAPH: 'p.whitespace-normal, p[class*="whitespace"]',
+    },
+
+    // モデル情報取得
+    MODEL_INFO: {
+      BUTTON: [
+        'button[data-testid="model-selector-dropdown"]', // 最優先：現在確認済み
+        'button[aria-haspopup="menu"]', // メニューを開くボタン
+        "button.cursor-pointer:has(span.font-medium)", // モデル表示ボタン
+        'button[aria-label*="モデル"]',
+        'button[aria-label*="Model"]',
+      ],
+      TEXT_ELEMENT: [
+        'button[data-testid="model-selector-dropdown"] .whitespace-nowrap.tracking-tight.select-none', // 最優先：特定の要素
+        'button[data-testid="model-selector-dropdown"] span', // ボタン内のspan
+        'button[data-testid="model-selector-dropdown"] div', // ボタン内のdiv（フォールバック）
+        'button[aria-haspopup="menu"] .whitespace-nowrap', // フォールバック用
+        'button[aria-haspopup="menu"] span.font-medium', // フォント中太のspan
+      ],
+    },
+
+    // Deep Research関連
+    DEEP_RESEARCH: {
+      CANVAS_PREVIEW: [
+        'div[aria-label="内容をプレビュー"][role="button"]',
+        '[aria-label="内容をプレビュー"]',
+        'div[role="button"][tabindex="0"]:has(div.artifact-block-cell)',
+      ],
+    },
+
+    // 機能メニュー関連
+    FEATURE_MENU: {
+      CONTAINER: '[role="menu"]',
+      WEB_SEARCH_TOGGLE: [
+        'button[role="switch"]',
+        '[aria-label*="Web"]',
+        'button:has(span:contains("Web"))',
+      ],
+    },
+
+    // 機能ボタン関連
+    FEATURE_BUTTONS: {
+      RESEARCH: [
+        'button:contains("Deep Research")',
+        'button[aria-label*="Research"]',
+      ],
+    },
+  };
+
+  // ========================================
   // Claude-ステップ0: 初期化処理
   // ========================================
 
-  // Claude-ステップ0-1: 設定の取得（グローバル変数への直接アクセスを避ける）
-  const getConfig = () => {
-    return {
-      AI_WAIT_CONFIG: window.AI_WAIT_CONFIG || {
-        INITIAL_WAIT: 30000,
-        MAX_WAIT: 1200000, // 20分に延長（元: 5分）
-        CHECK_INTERVAL: 2000,
-        DEEP_RESEARCH_WAIT: 2400000,
-        SHORT_WAIT: 1000,
-        MEDIUM_WAIT: 2000,
-        STOP_BUTTON_INITIAL_WAIT: 30000,
-        STOP_BUTTON_DISAPPEAR_WAIT: 300000,
-      },
-      UI_SELECTORS: window.UI_SELECTORS || {},
-    };
+  // Claude-ステップ0-1: 設定の取得（内部セレクタを使用）
+  const AI_WAIT_CONFIG = window.AI_WAIT_CONFIG || {
+    INITIAL_WAIT: 30000,
+    MAX_WAIT: 1200000, // 20分に延長（元: 5分）
+    CHECK_INTERVAL: 2000,
+    DEEP_RESEARCH_WAIT: 2400000,
+    SHORT_WAIT: 1000,
+    MEDIUM_WAIT: 2000,
+    STOP_BUTTON_INITIAL_WAIT: 30000,
+    STOP_BUTTON_DISAPPEAR_WAIT: 300000,
   };
 
-  // Claude-ステップ0-2: 設定の適用
-  const config = getConfig();
-  const AI_WAIT_CONFIG = config.AI_WAIT_CONFIG;
-  const UI_SELECTORS = config.UI_SELECTORS;
+  // 内部セレクタを使用（外部依存なし）
+  const UI_SELECTORS = {
+    Claude: CLAUDE_SELECTORS,
+  };
 
   // Claude-ステップ0-3: UI_SELECTORSの確認
   console.log("🔧 【Claude-ステップ0-1】UI_SELECTORS初期化確認:");
