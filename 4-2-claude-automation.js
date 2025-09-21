@@ -5271,23 +5271,67 @@
       request.automationName === "ClaudeAutomation"
     ) {
       ClaudeLogger.info(
-        `🎯 [ClaudeAutomation] executeTask処理開始 [ID:${requestId}]:`,
+        `🎯 [DEBUG-ContentScript] executeTask受信開始 [ID:${requestId}]:`,
         {
-          タスクID: request.task?.id,
+          受信時刻: new Date().toISOString(),
+          送信者タブID: sender?.tab?.id,
+          送信者URL: sender?.tab?.url,
+          フレームID: sender?.frameId,
+          requestKeys: Object.keys(request),
+          requestAction: request.action,
+          automationName: request.automationName,
+          taskExists: !!request.task,
+          taskKeys: request.task ? Object.keys(request.task) : [],
+          taskId: request.task?.id,
           aiType: request.task?.aiType,
           プロンプト長: request.task?.prompt?.length || 0,
           モデル: request.task?.model,
           機能: request.task?.function,
-          処理開始時刻: new Date().toISOString(),
         },
       );
 
+      ClaudeLogger.info(`🌍 [DEBUG-ContentScript] 実行環境詳細確認:`, {
+        currentURL: window.location.href,
+        hostname: window.location.hostname,
+        pathname: window.location.pathname,
+        documentTitle: document.title,
+        documentReadyState: document.readyState,
+        windowClaudeAutomation: typeof window.ClaudeAutomation,
+        windowClaudeAutomationReady: window.ClaudeAutomation?.isReady,
+      });
+
       (async () => {
         try {
+          const wrappedSendResponse = (response) => {
+            try {
+              ClaudeLogger.info(
+                `📤 [DEBUG-ContentScript] sendResponse呼び出し:`,
+                {
+                  responseType: typeof response,
+                  responseKeys: response ? Object.keys(response) : [],
+                  success: response?.success,
+                  error: response?.error,
+                },
+              );
+              sendResponse(response);
+            } catch (error) {
+              ClaudeLogger.error(
+                `❌ [DEBUG-ContentScript] sendResponse失敗:`,
+                error,
+              );
+            }
+          };
+
           if (!window.ClaudeAutomation) {
             const error = "ClaudeAutomation が利用できません";
-            ClaudeLogger.error(`❌ [ClaudeAutomation] ${error}`);
-            sendResponse({ success: false, error: error });
+            ClaudeLogger.error(`❌ [ClaudeAutomation] ${error}`, {
+              windowType: typeof window,
+              windowKeys: Object.keys(window).filter((k) =>
+                k.includes("Claude"),
+              ),
+              scriptLoaded: !!window.CLAUDE_SCRIPT_LOADED,
+            });
+            wrappedSendResponse({ success: false, error: error });
             return;
           }
 
@@ -5314,12 +5358,19 @@
           ClaudeLogger.info(`✅ [ClaudeAutomation] タスク実行完了:`, {
             success: result.success,
             text: result.text ? `${result.text.substring(0, 100)}...` : null,
+            resultType: typeof result,
+            resultKeys: result ? Object.keys(result) : [],
           });
 
-          sendResponse({ success: true, ...result });
+          wrappedSendResponse({ success: true, ...result });
         } catch (error) {
-          ClaudeLogger.error(`❌ [ClaudeAutomation] タスク実行エラー:`, error);
-          sendResponse({
+          ClaudeLogger.error(`❌ [ClaudeAutomation] タスク実行エラー:`, {
+            error: error.message,
+            stack: error.stack,
+            errorType: typeof error,
+            errorName: error.name,
+          });
+          wrappedSendResponse({
             success: false,
             error: error.message || String(error),
           });

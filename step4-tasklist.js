@@ -959,17 +959,9 @@ async function generateTaskList(
 
       // 回答済みチェック（統合ログ）
       if (hasAnswer && !options.forceReprocess) {
-        console.log(
-          `[DEBUG] 行${row}をスキップ: hasAnswer=${hasAnswer}, forceReprocess=${options.forceReprocess}`,
-        );
+        skippedRows.push(row);
         continue; // ログは既に出力済み
       }
-
-      // 処理対象行のログ（統合）
-      const processingType = hasAnswer ? "強制処理" : "通常処理";
-      console.log(
-        `[DEBUG] 行${row}を${processingType}: hasAnswer=${hasAnswer}, forceReprocess=${options.forceReprocess}`,
-      );
 
       // 3-2-1-2: 追加の除外条件（拡張可能）
       if (options.customSkipConditions) {
@@ -1214,20 +1206,19 @@ async function generateTaskList(
       }
     }
 
+    // まとめログを出力
+    const totalRows = lastPromptRow - dataStartRow + 1;
+    const processedRows = validTasks.length;
+    const skippedCount = skippedRows.length;
+    console.log(
+      `[TaskList] 処理結果サマリー: 全${totalRows}行中、処理対象${processedRows}行、スキップ${skippedCount}行`,
+    );
+
     // 3-3: 3タスクずつのバッチ作成
     const batchSize = options.batchSize || 3;
     const batch = validTasks.slice(0, batchSize);
 
-    // 「既に回答あり」ログのサマリー出力
-    if (answerLogCount > MAX_ANSWER_LOGS) {
-      console.log(
-        `[step3-tasklist] [TaskList] 既に回答済みの行: 合計 ${answerLogCount} 行 (詳細表示: ${MAX_ANSWER_LOGS} 行、省略: ${answerLogCount - MAX_ANSWER_LOGS} 行)`,
-      );
-    } else if (answerLogCount > 0) {
-      console.log(
-        `[step3-tasklist] [TaskList] 既に回答済みの行: 合計 ${answerLogCount} 行`,
-      );
-    }
+    // 「既に回答あり」ログのサマリー出力（統合済み上記に含む）
 
     return batch;
   } catch (error) {
@@ -3014,14 +3005,67 @@ async function executeStep4(taskList) {
       async function sendMessageToValidTab() {
         // メッセージ送信（Manifest V3対応: Promise形式）
         try {
-          const response = await chrome.tabs.sendMessage(tabId, {
+          ExecuteLogger.info(`🚀 [DEBUG-sendMessage] 送信開始:`, {
+            tabId: tabId,
+            automationName: automationName,
+            taskId: task.id,
+            aiType: task.aiType,
+            messageAction: "executeTask",
+            timestamp: new Date().toISOString(),
+          });
+
+          const messagePayload = {
             action: "executeTask",
             automationName: automationName,
             task: task,
+          };
+
+          ExecuteLogger.info(`📡 [DEBUG-sendMessage] メッセージ詳細:`, {
+            payload: messagePayload,
+            payloadKeys: Object.keys(messagePayload),
+            taskKeys: Object.keys(task),
+            taskPromptLength: task.prompt?.length || 0,
           });
 
+          const sendStartTime = Date.now();
+
+          // タイムアウト設定を15秒に延長
+          const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(
+              () => reject(new Error("sendMessage timeout after 15 seconds")),
+              15000,
+            );
+          });
+
+          const response = await Promise.race([
+            chrome.tabs.sendMessage(tabId, messagePayload),
+            timeoutPromise,
+          ]);
+
+          const sendDuration = Date.now() - sendStartTime;
+
+          ExecuteLogger.info(
+            `📨 [DEBUG-sendMessage] 送信完了 (${sendDuration}ms):`,
+            {
+              tabId: tabId,
+              responseExists: !!response,
+              responseType: typeof response,
+              responseKeys: response ? Object.keys(response) : [],
+              responseSuccess: response?.success,
+              responseError: response?.error,
+              sendDuration: sendDuration,
+            },
+          );
+
           if (!response) {
-            ExecuteLogger.error(`❌ [Content Script] 応答なし`);
+            ExecuteLogger.error(
+              `❌ [Content Script] 応答なし - Chrome Runtime情報:`,
+              {
+                tabId: tabId,
+                lastError: chrome.runtime.lastError?.message,
+                sendDuration: sendDuration,
+              },
+            );
             reject(new Error("Content Scriptからの応答がありません"));
             return;
           }
@@ -3083,15 +3127,34 @@ async function executeStep4(taskList) {
 
     const targetTabId = windowInfo?.tabId;
 
-    ExecuteLogger.info(`🔍 [Step 4-6-8] タブID確認: ${normalizedAiType}`, {
+    ExecuteLogger.info(`🔍 [DEBUG-TabCheck] タブID確認: ${normalizedAiType}`, {
       normalizedKey: normalizedKey,
       windowInfo: !!windowInfo,
       tabId: targetTabId,
       windowId: windowInfo?.windowId,
       url: windowInfo?.url,
+      taskProvidedTabId: task.tabId,
+      taskProvidedWindowId: task.windowId,
+      tabIdMatch: task.tabId === targetTabId,
       openedWindowsSize: window.windowController.openedWindows.size,
-      allWindows: Array.from(window.windowController.openedWindows.entries()),
+      allWindows: Array.from(
+        window.windowController.openedWindows.entries(),
+      ).map(([key, info]) => ({
+        key,
+        tabId: info.tabId,
+        windowId: info.windowId,
+        url: info.url,
+      })),
     });
+
+    if (task.tabId && task.tabId !== targetTabId) {
+      ExecuteLogger.warn(`⚠️ [DEBUG-TabCheck] タブID不整合検出:`, {
+        taskProvidedTabId: task.tabId,
+        windowControllerTabId: targetTabId,
+        willUseTabId: targetTabId,
+        normalizedKey: normalizedKey,
+      });
+    }
 
     if (!targetTabId) {
       throw new Error(
