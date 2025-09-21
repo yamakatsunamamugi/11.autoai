@@ -745,7 +745,7 @@ function reorganizeTaskGroups() {
 // ========================================
 async function logTaskGroups() {
   console.log("========");
-  console.log("2-5. タスクグループ情報のログ出力");
+  console.log("2-5. タスクグループ情報の調査開始");
   console.log("========");
 
   const setupResult =
@@ -771,9 +771,6 @@ async function logTaskGroups() {
     }
 
     menuValues = window.globalState.initialSheetData[menuRow - 1] || [];
-
-    console.log(`  - モデル行: ${modelValues.length}列`);
-    console.log(`  - メニュー行: ${menuValues.length}列`);
   } catch (error) {
     console.error("行データ取得エラー:", error);
   }
@@ -785,6 +782,9 @@ async function logTaskGroups() {
   if (!window.globalState.workColumnMap) {
     window.globalState.workColumnMap = {};
   }
+
+  // 結果を格納する配列
+  const logOutputs = [];
 
   // 2-5-1. タスクタイプの決定と2-5-3. ログ出力
   taskGroups.forEach((group) => {
@@ -832,25 +832,36 @@ async function logTaskGroups() {
     window.globalState.workColumnMap[group.groupNumber] =
       structuredInfo.columns;
 
-    // ログ出力
-    console.log("＝＝＝＝＝＝＝＝");
-    console.log(`タスクグループ${group.groupNumber}`);
-    console.log(`タスク: ${taskType}`);
+    // ログ出力内容を配列に追加
+    let logOutput = [];
+    logOutput.push("＝＝＝＝＝＝＝＝");
+    logOutput.push(`タスクグループ${group.groupNumber}`);
+    logOutput.push(`タスク: ${taskType}`);
 
     if (group.type === "通常処理") {
-      console.log(`ログ: ${group.logColumn}`);
-      console.log(`プロンプト: ${group.promptColumns.join("~")}`);
-      console.log(`回答: ${group.answerColumn}`);
+      logOutput.push(`ログ: ${group.logColumn}`);
+      logOutput.push(`プロンプト: ${group.promptColumns.join("~")}`);
+      logOutput.push(`回答: ${group.answerColumn}`);
     } else if (group.type === "3種類AI") {
-      console.log(`ログ: ${group.logColumn}`);
-      console.log(`プロンプト: ${group.promptColumns.join("~")}`);
-      console.log(`ChatGPT回答: ${group.chatgptColumn}`);
-      console.log(`Claude回答: ${group.claudeColumn}`);
-      console.log(`Gemini回答: ${group.geminiColumn}`);
+      logOutput.push(`ログ: ${group.logColumn}`);
+      logOutput.push(`プロンプト: ${group.promptColumns.join("~")}`);
+      logOutput.push(`ChatGPT回答: ${group.chatgptColumn}`);
+      logOutput.push(`Claude回答: ${group.claudeColumn}`);
+      logOutput.push(`Gemini回答: ${group.geminiColumn}`);
     } else {
-      console.log(`作業列: ${group.column}`);
+      logOutput.push(`作業列: ${group.column}`);
     }
-    console.log("＝＝＝＝＝＝＝＝");
+    logOutput.push("＝＝＝＝＝＝＝＝");
+
+    logOutputs.push(logOutput);
+  });
+
+  // 最後にまとめて出力
+  console.log("========");
+  console.log("タスクグループ情報:");
+  console.log("========");
+  logOutputs.forEach((output) => {
+    output.forEach((line) => console.log(line));
   });
 }
 
