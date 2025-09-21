@@ -748,6 +748,87 @@ function showSaveUrlDialog(url, targetInput) {
   };
 }
 
+// URL編集ダイアログを表示
+function showEditUrlDialog(oldTitle, oldUrl, targetInput) {
+  // 編集用のダイアログを作成
+  const editDialog = document.createElement("div");
+  editDialog.id = "editUrlDialog";
+  editDialog.style.cssText = `
+    display: block;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1), 0 0 0 9999px rgba(0,0,0,0.5);
+    z-index: 10000;
+    min-width: 400px;
+  `;
+
+  editDialog.innerHTML = `
+    <h3 style="margin-top: 0;">URLを編集</h3>
+    <label style="display: block; margin-bottom: 5px; font-size: 14px;">タイトル:</label>
+    <input type="text" id="editUrlTitle" value="${oldTitle}" style="width: 100%; padding: 8px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 4px;">
+    <label style="display: block; margin-bottom: 5px; font-size: 14px;">URL:</label>
+    <input type="text" id="editUrlValue" value="${oldUrl}" style="width: 100%; padding: 8px; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 4px;">
+    <div style="display: flex; gap: 10px; justify-content: flex-end;">
+      <button id="confirmEditUrlBtn" class="btn btn-primary" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">保存</button>
+      <button id="cancelEditUrlBtn" class="btn btn-secondary" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">キャンセル</button>
+    </div>
+  `;
+
+  document.body.appendChild(editDialog);
+
+  const editTitleInput = document.getElementById("editUrlTitle");
+  const editUrlInput = document.getElementById("editUrlValue");
+  const confirmEditBtn = document.getElementById("confirmEditUrlBtn");
+  const cancelEditBtn = document.getElementById("cancelEditUrlBtn");
+
+  editTitleInput.focus();
+  editTitleInput.select();
+
+  // 保存ボタン
+  confirmEditBtn.onclick = () => {
+    const newTitle = editTitleInput.value.trim();
+    const newUrl = editUrlInput.value.trim();
+
+    if (!newTitle) {
+      showFeedback("タイトルを入力してください", "error");
+      return;
+    }
+
+    if (!newUrl) {
+      showFeedback("URLを入力してください", "error");
+      return;
+    }
+
+    // 古いエントリを削除
+    delete savedUrls[oldTitle];
+
+    // 新しいエントリを追加
+    savedUrls[newTitle] = newUrl;
+    savUrlsToStorage();
+
+    showFeedback(`"${newTitle}" として更新しました`, "success");
+    document.body.removeChild(editDialog);
+    showOpenUrlDialog(targetInput); // リストを再表示
+  };
+
+  // キャンセルボタン
+  cancelEditBtn.onclick = () => {
+    document.body.removeChild(editDialog);
+  };
+
+  // Escキーでキャンセル
+  editDialog.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      document.body.removeChild(editDialog);
+    }
+  });
+}
+
 // 保存済みURL選択ダイアログを表示
 function showOpenUrlDialog(targetInput) {
   loadSavedUrls();
@@ -758,31 +839,101 @@ function showOpenUrlDialog(targetInput) {
   if (Object.keys(savedUrls).length === 0) {
     savedUrlsList.innerHTML = "<p>保存済みURLがありません</p>";
   } else {
+    // 選択されたURLを保持する変数
+    let selectedUrl = null;
+    let selectedTitle = null;
+
     Object.entries(savedUrls).forEach(([title, url]) => {
       const item = document.createElement("div");
       item.style.cssText =
-        "padding: 8px; border: 1px solid #ddd; margin-bottom: 5px; border-radius: 4px; cursor: pointer;";
-      item.innerHTML = `
+        "padding: 8px; border: 1px solid #ddd; margin-bottom: 5px; border-radius: 4px; display: flex; align-items: center; gap: 10px;";
+
+      // ラジオボタン
+      const radioBtn = document.createElement("input");
+      radioBtn.type = "radio";
+      radioBtn.name = "savedUrlSelection";
+      radioBtn.value = url;
+      radioBtn.style.cssText = "margin-right: 5px;";
+
+      // メインコンテンツエリア
+      const contentArea = document.createElement("div");
+      contentArea.style.cssText = "flex: 1; cursor: pointer;";
+      contentArea.innerHTML = `
         <strong>${title}</strong><br>
         <small style="color: #666;">${url}</small>
       `;
 
-      item.addEventListener("click", () => {
-        targetInput.value = url;
-        openUrlDialog.style.display = "none";
-        showFeedback(`"${title}" を読み込みました`, "success");
+      // コンテンツクリックでラジオボタンを選択
+      contentArea.addEventListener("click", () => {
+        radioBtn.checked = true;
+        selectedUrl = url;
+        selectedTitle = title;
+        // 開くボタンを有効化
+        confirmOpenUrlBtn.disabled = false;
       });
 
+      // ラジオボタンの変更イベント
+      radioBtn.addEventListener("change", () => {
+        if (radioBtn.checked) {
+          selectedUrl = url;
+          selectedTitle = title;
+          confirmOpenUrlBtn.disabled = false;
+        }
+      });
+
+      // ボタンコンテナ
+      const buttonContainer = document.createElement("div");
+      buttonContainer.style.cssText = "display: flex; gap: 5px;";
+
+      // 編集ボタン
+      const editBtn = document.createElement("button");
+      editBtn.style.cssText =
+        "padding: 4px 8px; background: #28a745; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;";
+      editBtn.textContent = "編集";
+      editBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openUrlDialog.style.display = "none";
+        showEditUrlDialog(title, url, targetInput);
+      });
+
+      // 削除ボタン
+      const deleteBtn = document.createElement("button");
+      deleteBtn.style.cssText =
+        "padding: 4px 8px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;";
+      deleteBtn.textContent = "削除";
+      deleteBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (confirm(`"${title}" を削除してもよろしいですか？`)) {
+          delete savedUrls[title];
+          savUrlsToStorage();
+          showOpenUrlDialog(targetInput); // リストを再表示
+          showFeedback(`"${title}" を削除しました`, "success");
+        }
+      });
+
+      buttonContainer.appendChild(editBtn);
+      buttonContainer.appendChild(deleteBtn);
+
+      item.appendChild(radioBtn);
+      item.appendChild(contentArea);
+      item.appendChild(buttonContainer);
       savedUrlsList.appendChild(item);
     });
+
+    // 開くボタンのイベントを設定
+    confirmOpenUrlBtn.onclick = () => {
+      if (selectedUrl) {
+        targetInput.value = selectedUrl;
+        openUrlDialog.style.display = "none";
+        showFeedback(`"${selectedTitle}" を読み込みました`, "success");
+      }
+    };
+
+    // 最初は開くボタンを無効化
+    confirmOpenUrlBtn.disabled = true;
   }
 
   openUrlDialog.style.display = "block";
-
-  // 開くボタンのイベント
-  confirmOpenUrlBtn.onclick = () => {
-    openUrlDialog.style.display = "none";
-  };
 
   // キャンセルボタンのイベント
   cancelOpenUrlBtn.onclick = () => {
