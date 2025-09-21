@@ -1754,10 +1754,6 @@ class WindowController {
       await this.initializeWindowService();
     }
 
-    // 既存のウィンドウデータをクリア（古いデータの蓄積を防ぐ）
-    this.openedWindows.clear();
-    ExecuteLogger.info("[WindowController] 既存ウィンドウデータをクリア");
-
     // Promise.allを使用して全ウィンドウを同時に開く
     const windowPromises = windowLayout.map(async (layout) => {
       try {

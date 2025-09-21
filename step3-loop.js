@@ -815,7 +815,7 @@ async function readFullSpreadsheet() {
         };
       }
 
-      LoopLogger.debug("🔍 [DEBUG] データ形状詳細（統合）:", debugLog);
+      // LoopLogger.debug("🔍 [DEBUG] データ形状詳細（統合）:", debugLog);
     } catch (debugError) {
       LoopLogger.error("❌ [DEBUG] デバッグ情報の出力エラー:", {
         message: debugError.message,
@@ -1028,28 +1028,19 @@ async function executeTasks(tasks, taskGroup) {
   });
 
   // 🔍 デバッグ: 関数開始直後のログ
-  console.log("🚀 [DEBUG] executeTasks関数に入りました", {
-    tasksLength: tasks?.length,
-    taskGroupNumber: taskGroup?.groupNumber,
-    executeStep4Exists: !!window.executeStep4,
-    executeStep4Type: typeof window.executeStep4,
-  });
+  // DEBUG: executeTasks関数に入りました
 
   try {
     // step4-execute.jsのexecuteStep4関数を利用
-    console.log("🔍 [DEBUG] executeStep4チェック開始");
-    LoopLogger.info("🔍 [DEBUG] executeStep4呼び出し前チェック:", {
-      exists: typeof window.executeStep4,
-      isFunction: typeof window.executeStep4 === "function",
-      windowObject: !!window.executeStep4,
-    });
+    // DEBUG: executeStep4チェック開始
+    // DEBUG: executeStep4呼び出し前チェック
 
     if (!window.executeStep4) {
-      console.error("❌ [DEBUG] executeStep4が見つかりません！");
+      console.error("executeStep4が見つかりません！");
       throw new Error("executeStep4関数が利用できません");
     }
 
-    console.log("✅ [DEBUG] executeStep4が見つかりました");
+    // DEBUG: executeStep4が見つかりました
 
     if (!tasks || tasks.length === 0) {
       LoopLogger.warn("[Helper] 実行するタスクがありません");
@@ -1173,14 +1164,7 @@ async function executeTasks(tasks, taskGroup) {
 
       // デバッグログ：タスクの詳細情報を出力
       if (!task.spreadsheetData.answerCell) {
-        LoopLogger.info(`[DEBUG] タスク${task.id} answerCell検証:`, {
-          answerCell: task.spreadsheetData.answerCell,
-          workCell: task.spreadsheetData.workCell,
-          groupType: task.groupType,
-          ai: task.ai,
-          aiType: task.aiType,
-          isSpecialTask: isSpecialTask,
-        });
+        // DEBUG: answerCell検証
 
         if (!isSpecialTask) {
           LoopLogger.warn(`タスク${task.id}: answerCellが未定義（通常タスク）`);
@@ -1194,49 +1178,18 @@ async function executeTasks(tasks, taskGroup) {
     LoopLogger.info("[Helper] Step4実行中...");
 
     // 🔍 [DEBUG] executeStep4呼び出し直前の詳細ログ
-    console.log("🔍 [DEBUG] executeStep4を呼び出す直前:", {
-      formattedTasksLength: formattedTasks.length,
-      firstTaskId: formattedTasks[0]?.id,
-      executeStep4Type: typeof window.executeStep4,
-      executeStep4Exists: !!window.executeStep4,
-    });
+    // DEBUG: executeStep4を呼び出す直前
 
     // 🎯 [DEBUG] 最終チェック - より詳細な情報
-    console.log("🎯 [DEBUG] executeStep4呼び出し直前の最終チェック:", {
-      functionExists: !!window.executeStep4,
-      functionType: typeof window.executeStep4,
-      taskListLength: formattedTasks?.length,
-      firstTask: formattedTasks?.[0],
-      callStack: new Error().stack.split("\n").slice(0, 5),
-      windowExecuteStep4:
-        window.executeStep4?.toString?.().substring(0, 100) + "...",
-      windowController: {
-        exists: !!window.windowController,
-        hasOpenWindows:
-          typeof window.windowController?.openWindows === "function",
-        constructorName: window.windowController?.constructor?.name,
-        methods: window.windowController
-          ? Object.getOwnPropertyNames(
-              Object.getPrototypeOf(window.windowController),
-            ).slice(0, 5)
-          : [],
-      },
-    });
+    // DEBUG: executeStep4呼び出し直前の最終チェック
 
     try {
-      console.log("🚀 [DEBUG] executeStep4を呼び出しています...");
+      // DEBUG: executeStep4を呼び出し
       const results = await window.executeStep4(formattedTasks);
-      console.log("✅ [DEBUG] executeStep4が正常に完了しました:", {
-        resultsLength: results?.length,
-        resultsType: typeof results,
-      });
+      // DEBUG: executeStep4完了
       return results || [];
     } catch (step4Error) {
-      console.error("❌ [DEBUG] executeStep4でエラーが発生:", {
-        errorMessage: step4Error.message,
-        errorStack: step4Error.stack,
-        errorName: step4Error.name,
-      });
+      console.error("executeStep4でエラーが発生:", step4Error.message);
       throw step4Error;
     }
   } catch (error) {
@@ -1262,14 +1215,7 @@ async function executeTasks(tasks, taskGroup) {
 }
 
 // ブラウザ環境用のグローバルエクスポート
-LoopLogger.info("🔍 [DEBUG] グローバルエクスポート前の状態:", {
-  windowType: typeof window,
-  executeStep3AllGroupsDefined: typeof executeStep3AllGroups,
-  executeStep3SingleGroupDefined: typeof executeStep3SingleGroup,
-  checkCompletionStatusDefined: typeof checkCompletionStatus,
-  processIncompleteTasksDefined: typeof processIncompleteTasks,
-  readFullSpreadsheetDefined: typeof readFullSpreadsheet,
-});
+// DEBUG: グローバルエクスポート前の状態
 
 if (typeof window !== "undefined") {
   try {
@@ -1286,24 +1232,14 @@ if (typeof window !== "undefined") {
     window.processIncompleteTasks = processIncompleteTasks;
     window.readFullSpreadsheet = readFullSpreadsheet;
 
-    LoopLogger.info("✅ [DEBUG] グローバルエクスポート成功:", {
-      "window.executeStep3": typeof window.executeStep3,
-      "window.executeStep3AllGroups": typeof window.executeStep3AllGroups,
-      "window.executeStep3SingleGroup": typeof window.executeStep3SingleGroup,
-      "window.checkCompletionStatus": typeof window.checkCompletionStatus,
-      "window.processIncompleteTasks": typeof window.processIncompleteTasks,
-      "window.readFullSpreadsheet": typeof window.readFullSpreadsheet,
-    });
+    // DEBUG: グローバルエクスポート成功
   } catch (exportError) {
     LoopLogger.error("❌ [DEBUG] グローバルエクスポートエラー:", exportError);
   }
 }
 
 // エクスポート
-LoopLogger.info("🔍 [DEBUG] モジュールエクスポートチェック:", {
-  moduleType: typeof module,
-  exportsAvailable: typeof module !== "undefined" ? !!module.exports : false,
-});
+// DEBUG: モジュールエクスポートチェック
 
 if (typeof module !== "undefined" && module.exports) {
   try {
@@ -1314,7 +1250,7 @@ if (typeof module !== "undefined" && module.exports) {
       readFullSpreadsheet,
       globalState: window.globalState,
     };
-    LoopLogger.debug("✅ [DEBUG] モジュールエクスポート成功");
+    // DEBUG: モジュールエクスポート成功
   } catch (moduleExportError) {
     LoopLogger.error(
       "❌ [DEBUG] モジュールエクスポートエラー:",
@@ -1324,12 +1260,4 @@ if (typeof module !== "undefined" && module.exports) {
 }
 
 // ファイル読み込み完了ログ
-LoopLogger.info("✅ [DEBUG] step5-loop.js 読み込み完了", {
-  timestamp: new Date().toISOString(),
-  functionsExported: [
-    "executeStep5",
-    "checkCompletionStatus",
-    "processIncompleteTasks",
-    "readFullSpreadsheet",
-  ],
-});
+// DEBUG: step5-loop.js 読み込み完了
