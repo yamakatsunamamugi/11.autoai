@@ -1060,9 +1060,21 @@ async function generateTaskList(
         }
       }
 
-      // 回答済みチェック
+      // 回答済みチェック（デバッグログ追加）
       if (hasAnswer && !options.forceReprocess) {
+        console.log(
+          `[DEBUG] 行${row}をスキップ: hasAnswer=${hasAnswer}, forceReprocess=${options.forceReprocess}`,
+        );
         continue; // ログは既に出力済み
+      }
+      if (hasAnswer) {
+        console.log(
+          `[DEBUG] 行${row}を強制処理: hasAnswer=${hasAnswer}, forceReprocess=${options.forceReprocess}`,
+        );
+      } else {
+        console.log(
+          `[DEBUG] 行${row}を通常処理: hasAnswer=${hasAnswer}, forceReprocess=${options.forceReprocess}`,
+        );
       }
 
       // 3-2-1-2: 追加の除外条件（拡張可能）
@@ -1300,6 +1312,9 @@ async function generateTaskList(
           promptLength: task.prompt?.length || 0,
         });
 
+        console.log(
+          `[DEBUG] タスク追加: 行${row}, AI=${aiType}, hasAnswer状態不明`,
+        );
         validTasks.push(task);
         tasksCreated++; // タスク作成数をインクリメント
       }
