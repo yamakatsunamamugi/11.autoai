@@ -49,9 +49,9 @@ function calculatePrimaryDisplayPosition(primaryDisplay, width, height) {
   };
 
   // log.debug("[Popup] ウィンドウ位置計算:", {
-    workArea: workArea,
-    calculated: position,
-  });
+  //   workArea: workArea,
+  //   calculated: position,
+  // });
 
   return position;
 }
@@ -60,8 +60,8 @@ function calculatePrimaryDisplayPosition(primaryDisplay, width, height) {
 document.addEventListener("DOMContentLoaded", async () => {
   try {
     // log.debug(
-      "[Popup] UIウィンドウをプライマリディスプレイに開いています...",
-    );
+    //   "[Popup] UIウィンドウをプライマリディスプレイに開いています..."
+    // );
 
     // UIファイルを優先順位で試す（トップページを優先）
     const uiPaths = ["ui.html", "unused/src/ui/ui.html", "unused/ui.html"];
@@ -117,14 +117,14 @@ document.addEventListener("DOMContentLoaded", async () => {
       // 作成されたウィンドウの実際の位置を確認
       const actualWindow = await chrome.windows.get(createdWindow.id);
       // log.debug("[Popup] 実際のウィンドウ位置:", {
-        expected: position,
-        actual: {
-          left: actualWindow.left,
-          top: actualWindow.top,
-          width: actualWindow.width,
-          height: actualWindow.height,
-        },
-      });
+      //   expected: position,
+      //   actual: {
+      //     left: actualWindow.left,
+      //     top: actualWindow.top,
+      //     width: actualWindow.width,
+      //     height: actualWindow.height,
+      //   },
+      // });
 
       // ウィンドウIDを保存
       chrome.storage.local.set({ extensionWindowId: createdWindow.id });
