@@ -252,9 +252,40 @@ class StepIntegratedAITaskExecutor {
         `🤖 [StepIntegratedAITaskExecutor] タスク実行開始: tabId=${tabId}, AI=${taskData.aiType}`,
       );
 
-      // タブをアクティブにする
-      await chrome.tabs.update(tabId, { active: true });
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // タブの存在確認とリトライ（最大3回）
+      let tab;
+      let retryCount = 0;
+      while (retryCount < 3) {
+        try {
+          tab = await chrome.tabs.get(tabId);
+          if (tab && tab.status === "complete") {
+            console.log(`✅ Tab ${tabId} is ready`);
+            break;
+          }
+          console.log(`⏳ Tab ${tabId} status: ${tab?.status}, waiting...`);
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        } catch (err) {
+          retryCount++;
+          console.warn(
+            `⚠️ Tab ${tabId} not found (attempt ${retryCount}/3): ${err.message}`,
+          );
+          if (retryCount >= 3) {
+            throw new Error(`Tab ${tabId} not found after 3 attempts`);
+          }
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
+      }
+
+      // タブをアクティブにする（エラーハンドリング付き）
+      try {
+        await chrome.tabs.update(tabId, { active: true });
+      } catch (updateErr) {
+        console.warn(`⚠️ Tab update warning: ${updateErr.message}`);
+        // エラーが発生しても処理を続行
+      }
+
+      // 処理間隔を延長してタブの準備を確実にする
+      await new Promise((resolve) => setTimeout(resolve, 2000));
 
       // コンテンツスクリプトを注入して実行
       const results = await chrome.scripting.executeScript({
@@ -1825,6 +1856,12 @@ class WindowController {
           ExecuteLogger.info(
             `✅ [Step 4-1-2-${layout.position}] ${layout.aiType}ウィンドウ作成成功`,
           );
+
+          // 各ウィンドウ作成後に待機時間を設けてタブの準備を確実にする
+          ExecuteLogger.info(
+            `⏳ ${layout.aiType}ウィンドウの準備待機中... (2秒)`,
+          );
+          await new Promise((resolve) => setTimeout(resolve, 2000));
         } else {
           ExecuteLogger.error(
             `🖼️ [WindowController] ERROR: ウィンドウ作成条件未満`,
@@ -1979,46 +2016,20 @@ class WindowController {
     };
 
     try {
-      // Content scriptにチェック要求を送信（エラーハンドリング強化版）
-      const response = await new Promise(async (resolve, reject) => {
-        try {
-          // タブの存在確認（Manifest V3対応）
-          const tab = await chrome.tabs.get(tabId);
+      // タブの存在確認（Manifest V3対応）
+      const tab = await chrome.tabs.get(tabId);
 
-          if (!tab || tab.status !== "complete") {
-            reject(
-              new Error(
-                `タブが無効または読み込み未完了: status=${tab?.status}`,
-              ),
-            );
-            return;
-          }
+      if (!tab || tab.status !== "complete") {
+        throw new Error(
+          `タブが無効または読み込み未完了: status=${tab?.status}`,
+        );
+      }
 
-          // メッセージ送信
-          chrome.tabs.sendMessage(
-            tabId,
-            {
-              action: "CHECK_UI_ELEMENTS",
-              aiType: aiType,
-            },
-            (response) => {
-              if (chrome.runtime.lastError) {
-                reject(
-                  new Error(
-                    `Content Script通信エラー: ${chrome.runtime.lastError.message}`,
-                  ),
-                );
-              } else {
-                resolve(response);
-              }
-            },
-          );
-        } catch (error) {
-          reject(new Error(`タブ取得エラー: ${error.message}`));
-        }
+      // Content scriptにチェック要求を送信（Manifest V3対応）
+      const response = await chrome.tabs.sendMessage(tabId, {
+        action: "CHECK_UI_ELEMENTS",
+        aiType: aiType,
       });
-
-      // 追加のエラーチェックは不要（Promiseで処理済み）
 
       if (response && response.success) {
         checks.textInput = response.checks.textInput || false;
@@ -2383,6 +2394,11 @@ async function executeStep4(taskList) {
       if (successfulWindows.length === 0 && processTaskList.length > 0) {
         throw new Error("ウィンドウを開くことができませんでした");
       }
+
+      // ウィンドウとタブが完全に準備されるまで待機
+      ExecuteLogger.info("⏳ ウィンドウとタブの準備待機中... (3秒)");
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      ExecuteLogger.info("✅ ウィンドウとタブの準備完了");
     }
 
     // Step 4-6-3-1: ポップアップを右下に移動（step外と同じ動作）
@@ -2530,9 +2546,10 @@ async function executeStep4(taskList) {
             keys: existingWindow ? Object.keys(existingWindow) : null,
           });
 
-          // 配列の場合は最初の要素を取得
+          // タスクごとに異なるウィンドウを循環選択
+          const taskCount = Array.from(batch).indexOf(task);
           const windowToUse = Array.isArray(existingWindow)
-            ? existingWindow[0]
+            ? existingWindow[taskCount % existingWindow.length]
             : existingWindow;
 
           ExecuteLogger.info(`🔍 [DEBUG] 使用予定のウィンドウ詳細`, {
@@ -2819,6 +2836,13 @@ async function executeStep4(taskList) {
         const isThreeTypeTask =
           task.originalAiType === "3種類（ChatGPT・Gemini・Claude）";
 
+        // 各タスク実行を段階的に開始（Chrome APIの過負荷を避ける）
+        if (index > 0) {
+          const delay = index * 500; // 0.5秒ずつずらす
+          ExecuteLogger.info(`⏱️ Task ${index + 1} 開始待機: ${delay}ms`);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+
         try {
           // スプレッドシートで指定されたAI種別をそのまま使用
           ExecuteLogger.info(
@@ -3047,49 +3071,37 @@ async function executeStep4(taskList) {
         return;
       }
 
-      function sendMessageToValidTab() {
-        // メッセージ送信
-        chrome.tabs.sendMessage(
-          tabId,
-          {
+      async function sendMessageToValidTab() {
+        // メッセージ送信（Manifest V3対応: Promise形式）
+        try {
+          const response = await chrome.tabs.sendMessage(tabId, {
             action: "executeTask",
             automationName: automationName,
             task: task,
-          },
-          (response) => {
-            if (chrome.runtime.lastError) {
-              ExecuteLogger.error(
-                `❌ [Content Script] 通信エラー:`,
-                chrome.runtime.lastError,
-              );
-              reject(
-                new Error(
-                  `Content Script通信エラー: ${chrome.runtime.lastError.message}`,
-                ),
-              );
-              return;
-            }
+          });
 
-            if (!response) {
-              ExecuteLogger.error(`❌ [Content Script] 応答なし`);
-              reject(new Error("Content Scriptからの応答がありません"));
-              return;
-            }
+          if (!response) {
+            ExecuteLogger.error(`❌ [Content Script] 応答なし`);
+            reject(new Error("Content Scriptからの応答がありません"));
+            return;
+          }
 
-            if (response.success) {
-              ExecuteLogger.info(
-                `✅ [Content Script] ${automationName} 実行完了`,
-              );
-              resolve(response);
-            } else {
-              ExecuteLogger.error(
-                `❌ [Content Script] 実行失敗:`,
-                response.error,
-              );
-              reject(new Error(response.error || "不明なエラー"));
-            }
-          },
-        );
+          if (response.success) {
+            ExecuteLogger.info(
+              `✅ [Content Script] ${automationName} 実行完了`,
+            );
+            resolve(response);
+          } else {
+            ExecuteLogger.error(
+              `❌ [Content Script] 実行失敗:`,
+              response.error,
+            );
+            reject(new Error(response.error || "不明なエラー"));
+          }
+        } catch (error) {
+          ExecuteLogger.error(`❌ [Content Script] 通信エラー:`, error);
+          reject(new Error(`Content Script通信エラー: ${error.message}`));
+        }
 
         // タイムアウト設定（5分）
         setTimeout(() => {

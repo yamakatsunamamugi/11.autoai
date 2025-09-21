@@ -710,20 +710,14 @@ async function findSpecialRows() {
   console.log("[step1-setup.js→Step1-4] 🚀 特殊行の検索開始");
   console.log("========================================");
 
-  console.log("[DEBUG] findSpecialRows 関数呼び出し情報:");
-  console.log("  - 呼び出し時刻:", new Date().toISOString());
-  console.log("  - window.globalState存在:", !!window.globalState);
-  console.log(
-    "  - 現在のglobalState:",
-    JSON.stringify(window.globalState || {}, null, 2),
-  );
+  // DEBUG情報削除
 
   try {
     // 1-4-0: スプレッドシートURL取得（グローバルStateから）
     let spreadsheetId = null;
     let gid = null;
 
-    console.log("[DEBUG] スプレッドシート情報取得開始");
+    // スプレッドシート情報取得開始
 
     // globalStateからURLまたはIDを取得
     if (window.globalState) {
@@ -794,55 +788,26 @@ async function findSpecialRows() {
     console.log("[step1-setup.js] [Step 1-4-1] 🔍 API呼び出し詳細デバッグ開始");
     console.log("========================================");
 
-    // 認証情報の詳細確認
-    console.log("[DEBUG] 認証情報確認:");
-    console.log("  - authToken存在:", !!window.globalState?.authToken);
-    console.log("  - authToken長:", window.globalState?.authToken?.length || 0);
-    console.log(
-      "  - authToken先頭10文字:",
-      window.globalState?.authToken?.substring(0, 10) || "なし",
-    );
-    console.log(
-      "  - apiHeaders:",
-      JSON.stringify(window.globalState?.apiHeaders, null, 2),
-    );
+    // 認証情報確認済み
 
-    // スプレッドシート情報の詳細確認
-    console.log("[DEBUG] スプレッドシート情報:");
-    console.log("  - spreadsheetId:", spreadsheetId);
-    console.log("  - gid:", gid);
-    console.log("  - sheetsApiBase:", window.globalState?.sheetsApiBase);
-    console.log("  - 元のspreadsheetUrl:", window.globalState?.spreadsheetUrl);
+    // スプレッドシート情報設定済み
 
     // 構築されるURL確認
     const targetUrl = `${window.globalState.sheetsApiBase}/${spreadsheetId}/values/A1:CZ100`;
-    console.log("[DEBUG] 構築されたAPI URL:");
-    console.log("  - 完全URL:", targetUrl);
-    console.log(
-      "  - URLパターン検証:",
-      /^https:\/\/sheets\.googleapis\.com\/v4\/spreadsheets\/[a-zA-Z0-9-_]+\/values\/A1:CZ100$/.test(
-        targetUrl,
-      ),
-    );
+    // API URL構築完了
 
     console.log(
       "[step1-setup.js] [Step 1-4-1] 全データ一括取得開始 (A1:CZ100)",
     );
 
     const startTime = Date.now();
-    console.log(
-      "[DEBUG] fetchWithTokenRefresh 呼び出し直前:",
-      new Date().toISOString(),
-    );
+    // API呼び出し開始
 
     const response = await fetchWithTokenRefresh(targetUrl, {
       headers: window.globalState.apiHeaders,
     });
 
-    console.log(
-      "[DEBUG] fetchWithTokenRefresh 呼び出し完了:",
-      new Date().toISOString(),
-    );
+    // API呼び出し完了
     const responseTime = Date.now() - startTime;
 
     console.log("[step1-setup.js] [Step 1-4-1] API応答:");
@@ -997,7 +962,7 @@ async function setupColumnStructure() {
     // 1-5-1. プロンプト列の検出
     console.log("[step1-setup.js] [Step 1-5-1] プロンプト列を検出中...");
 
-    // キャッシュからメニュー行データを取得
+    // メニュー行データを取得
     if (!window.globalState.initialSheetData) {
       console.error(
         "[step1-setup.js] [Step 1-5-1] 初期データキャッシュが見つかりません",
@@ -1008,7 +973,7 @@ async function setupColumnStructure() {
     const headerRow =
       window.globalState.initialSheetData[menuRowNumber - 1] || [];
     console.log(
-      `[step1-setup.js] [Step 1-5-1] ✅ キャッシュからメニュー行取得: ${headerRow.length}列`,
+      `[step1-setup.js] [Step 1-5-1] ✅ メニュー行取得: ${headerRow.length}列`,
     );
 
     // プロンプト列を検索
@@ -1044,9 +1009,7 @@ async function setupColumnStructure() {
     // AI行を取得して3種類AIかチェック
     const aiRowNumber = window.globalState.specialRows?.aiRow || 5;
     const aiRow = window.globalState.initialSheetData[aiRowNumber - 1] || [];
-    console.log(
-      `[step1-setup.js] [Step 1-5-2] ✅ キャッシュからAI行取得: ${aiRow.length}列`,
-    );
+    console.log(`[step1-setup.js] [Step 1-5-2] ✅ AI行取得: ${aiRow.length}列`);
 
     const columnsToAdd = [];
 
@@ -1316,26 +1279,10 @@ async function executeStep1(spreadsheetUrl) {
   console.log("＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝");
   console.log("[step1-setup.js] ステップ1: 初期設定 開始");
 
-  // 呼び出し元のスタックトレースを取得
-  const stack = new Error().stack;
-  console.log("📞 [CALL TRACKER] 呼び出し情報:");
-  console.log("  - 時刻:", new Date().toISOString());
-  console.log("  - 呼び出しID:", callId);
-  console.log("  - 引数 spreadsheetUrl:", spreadsheetUrl);
-  console.log("  - スタックトレース:");
-  console.log(
-    stack?.split("\n").slice(1, 5).join("\n") || "取得できませんでした",
-  );
+  // 呼び出し情報記録済み
 
   try {
-    // Global State確認
-    console.log(`[${callId}] Global State確認:`);
-    console.log(`  - window.globalState存在: ${!!window.globalState}`);
-    console.log(`  - chrome API利用可能: ${typeof chrome !== "undefined"}`);
-    console.log(
-      `  - globalThis.googleServices: ${!!globalThis.googleServices}`,
-    );
-    console.log(`  - 受け取ったスプレッドシートURL: ${spreadsheetUrl}`);
+    // Global State確認済み
 
     // グローバルステートの初期化
     window.globalState = window.globalState || {};
@@ -1363,10 +1310,7 @@ async function executeStep1(spreadsheetUrl) {
     const sleepResult = await preventSleep();
     window.globalState.sleepPrevented = sleepResult.success;
 
-    console.log(
-      `[step1-setup.js] [Debug] Global State初期化完了:`,
-      window.globalState,
-    );
+    // Global State初期化完了
 
     // 1-3: API初期化（認証）
     const apiResult = await initializeAPI();

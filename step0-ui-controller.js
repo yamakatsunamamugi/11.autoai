@@ -311,27 +311,17 @@ window.WindowService = {
         };
 
         console.log(
-          `[step0-ui-controller.js→Step0-1] WindowController.openedWindows.set実行`,
+          `[step0-ui-controller.js→Step0-1] ウィンドウ作成完了（step4で管理）`,
           {
             originalAiType: options.aiType,
             normalizedAiType: normalizedAiType,
             windowData: windowData,
-            beforeSize: window.windowController.openedWindows.size,
+            note: "ウィンドウ情報はstep4-tasklist.jsで一元管理されます",
           },
         );
 
-        window.windowController.openedWindows.set(normalizedAiType, windowData);
-
-        console.log(
-          `[step0-ui-controller.js→Step0-1] WindowController.openedWindows.set完了`,
-          {
-            originalAiType: options.aiType,
-            normalizedAiType: normalizedAiType,
-            afterSize: window.windowController.openedWindows.size,
-            registeredData:
-              window.windowController.openedWindows.get(normalizedAiType),
-          },
-        );
+        // 重複管理を削除: step4-tasklist.jsで一元管理するため、ここでの保存は不要
+        // window.windowController.openedWindows.set(normalizedAiType, windowData);
 
         // 🆕 Content Script を AI タブに注入
         if (returnData.tabs?.[0]?.id) {
@@ -818,7 +808,13 @@ function showOpenUrlDialog(targetInput) {
 // STEP処理のみ実行ボタン
 if (stepOnlyBtn) {
   stepOnlyBtn.addEventListener("click", async () => {
-    console.log("🎯 [STEP-ONLY] STEP処理のみ実行開始");
+    console.log("🎯 [STEP-ONLY] 実行開始");
+
+    // ボタンにアニメーションを追加
+    stepOnlyBtn.classList.add("processing");
+    const originalText = stepOnlyBtn.textContent;
+    stepOnlyBtn.textContent = "処理中...";
+    stepOnlyBtn.disabled = true;
 
     // 複数のURL入力欄から値を取得
     const urlInputs = document.querySelectorAll(".spreadsheet-url-input");
@@ -833,6 +829,9 @@ if (stepOnlyBtn) {
 
     if (urls.length === 0) {
       showFeedback("スプレッドシートURLを入力してください", "error");
+      stepOnlyBtn.classList.remove("processing");
+      stepOnlyBtn.textContent = originalText;
+      stepOnlyBtn.disabled = false;
       return;
     }
 
@@ -908,6 +907,11 @@ if (stepOnlyBtn) {
     } catch (error) {
       console.error("STEP処理エラー:", error);
       showFeedback(`STEP処理エラー: ${error.message}`, "error");
+    } finally {
+      // アニメーションを削除してボタンを元に戻す
+      stepOnlyBtn.classList.remove("processing");
+      stepOnlyBtn.textContent = originalText;
+      stepOnlyBtn.disabled = false;
     }
   });
 }

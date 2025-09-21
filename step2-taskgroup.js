@@ -149,10 +149,7 @@ async function identifyTaskGroups() {
       throw new Error("初期データキャッシュが見つかりません");
     }
 
-    // キャッシュからメニュー行・AI行取得
-    console.log(
-      "[step2-taskgroup.js] [Step 2-1-1] ✅ キャッシュからデータ取得",
-    );
+    // メニュー行・AI行取得
     const menuValues = window.globalState.initialSheetData[menuRow - 1] || [];
     const aiValues = window.globalState.initialSheetData[aiRow - 1] || [];
 
@@ -402,17 +399,11 @@ async function applyColumnControls() {
       throw new Error("初期データキャッシュが見つかりません");
     }
 
-    // キャッシュから列制御行取得
-    console.log(
-      "[step2-taskgroup.js] [Step 2-2-1] ✅ キャッシュから列制御行取得",
-    );
+    // 列制御行取得
     const controlValues =
       window.globalState.initialSheetData[controlRow - 1] || [];
 
-    console.log(
-      `[step2-taskgroup.js] [Step 2-2-1] 取得データ: ${controlValues.length}列`,
-    );
-    console.log(`  - 有効な制御: ${controlValues.filter((v) => v).length}個`);
+    // 列制御データ取得済み
 
     // 2-2-2. 列制御テキストの検出と処理
     // 列制御テキストの検出
@@ -773,9 +764,7 @@ async function logTaskGroups() {
       throw new Error("初期データキャッシュが見つかりません");
     }
 
-    console.log(
-      "[step2-taskgroup.js] [Step 2-5] ✅ キャッシュからモデル行・メニュー行取得",
-    );
+    // モデル行・メニュー行取得
 
     if (modelRow) {
       modelValues = window.globalState.initialSheetData[modelRow - 1] || [];
@@ -786,7 +775,7 @@ async function logTaskGroups() {
     console.log(`  - モデル行: ${modelValues.length}列`);
     console.log(`  - メニュー行: ${menuValues.length}列`);
   } catch (error) {
-    console.error("キャッシュからの行データ取得エラー:", error);
+    console.error("行データ取得エラー:", error);
   }
 
   // globalStateの必要なプロパティを初期化
