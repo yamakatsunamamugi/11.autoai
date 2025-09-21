@@ -4966,26 +4966,29 @@
         request.action === "CLAUDE_EXECUTE_TASK"
       ) {
         log.info("✅ [Claude] executeTask メッセージを受信しました");
-        log.info("📋 タスクデータ:", request.data);
+        log.info("📋 タスクデータ:", request.data || request);
+
+        // データの取得（request.dataまたはrequest自体から）
+        const taskData = request.data || request;
 
         // 非同期でタスクを実行
         (async () => {
           try {
             log.info("🚀 [Claude] タスク実行開始");
-            const result = await executeTask(request.data);
+            const result = await executeTask(taskData);
             log.info("✅ [Claude] タスク実行完了:", result);
 
             // 結果を返送
             chrome.runtime.sendMessage({
               action: "TASK_COMPLETE",
-              taskId: request.data?.taskId,
+              taskId: taskData?.taskId,
               result: result,
             });
           } catch (error) {
             log.error("❌ [Claude] タスク実行エラー:", error);
             chrome.runtime.sendMessage({
               action: "TASK_ERROR",
-              taskId: request.data?.taskId,
+              taskId: taskData?.taskId,
               error: error.message,
             });
           }
