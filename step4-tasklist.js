@@ -43,8 +43,234 @@ if (typeof window !== 'undefined') {
 /**
  * Step内統合版 WindowService（StreamProcessorV2の機能を内部実装）
  */
+/**
+ * 統一ウィンドウ管理クラス - 複数Mapを1つに集約
+ */
+class UnifiedWindowManager {
+  constructor() {
+    // 1つのMapで全ての状態を管理
+    this.windows = new Map(); // windowId -> 全情報
+    this.sendMessageQueue = new Map(); // tabId -> Promise (排他制御)
+  }
+
+  /**
+   * ウィンドウ追加
+   */
+  addWindow(windowId, tabId, aiType, position) {
+    this.windows.set(windowId, {
+      windowId,
+      tabId,
+      aiType,
+      position,
+      status: "loading",
+      lastCheck: Date.now(),
+      checkResult: null,
+    });
+    console.log(
+      `[UnifiedWindowManager] ウィンドウ追加: ${windowId} (${aiType})`,
+    );
+  }
+
+  /**
+   * AI種別の正規化
+   */
+  normalizeAiType(aiType) {
+    if (!aiType) return "unknown";
+    const baseType = aiType.replace(/_task.*/, "").toLowerCase();
+    const typeMap = {
+      chatgpt: "chatgpt",
+      claude: "claude",
+      gemini: "gemini",
+      genspark: "genspark",
+    };
+    return typeMap[baseType] || baseType;
+  }
+
+  /**
+   * AI種別でウィンドウ検索（改善版）
+   */
+  async findWindowsByAiType(aiType) {
+    const normalizedType = this.normalizeAiType(aiType);
+    const results = [];
+
+    for (const [windowId, info] of this.windows.entries()) {
+      if (info.aiType.startsWith(normalizedType + "_")) {
+        // タブが実際に存在するかチェック
+        try {
+          const tab = await chrome.tabs.get(info.tabId);
+          if (tab && tab.status === "complete") {
+            results.push(info);
+          }
+        } catch (error) {
+          // タブが存在しない場合はマップから削除
+          console.log(`[UnifiedWindowManager] 無効なタブを削除: ${info.tabId}`);
+          this.windows.delete(windowId);
+        }
+      }
+    }
+    return results;
+  }
+
+  /**
+   * 最初に成功したウィンドウを返す（ファーストウィン戦略）
+   */
+  async findFirstWorkingWindow(aiType) {
+    const candidates = await this.findWindowsByAiType(aiType);
+    console.log(
+      `[UnifiedWindowManager] ${aiType}の候補ウィンドウ: ${candidates.length}個`,
+    );
+
+    for (const window of candidates) {
+      const isWorking = await this.quickCheck(window.tabId);
+      if (isWorking) {
+        console.log(
+          `✅ [FirstWin] ${aiType}の動作ウィンドウ発見: ${window.tabId}`,
+        );
+        return window;
+      }
+    }
+    console.log(`❌ [FirstWin] ${aiType}の動作ウィンドウなし`);
+    return null;
+  }
+
+  /**
+   * クイックチェック（簡単なタブ存在確認）
+   */
+  async quickCheck(tabId) {
+    try {
+      const tab = await chrome.tabs.get(tabId);
+      return tab && tab.status === "complete" && tab.url;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * ウィンドウ情報取得
+   */
+  getWindow(windowId) {
+    return this.windows.get(windowId);
+  }
+
+  /**
+   * 全ウィンドウ情報取得
+   */
+  getAllWindows() {
+    return Array.from(this.windows.values());
+  }
+}
+
+/**
+ * 安全なメッセージ送信クラス - sendMessage競合防止
+ */
+class SafeMessenger {
+  static sendMessageQueue = new Map(); // tabId -> Promise (排他制御)
+
+  /**
+   * 排他制御付きメッセージ送信
+   */
+  static async sendSafeMessage(tabId, message, timeout = 8000) {
+    console.log(
+      `[SafeMessenger] 送信開始: tabId=${tabId}, action=${message.action}`,
+    );
+
+    // 既に同じタブに送信中の場合は待機
+    if (this.sendMessageQueue.has(tabId)) {
+      console.log(`[SafeMessenger] タブ${tabId}は送信中、待機...`);
+      try {
+        await this.sendMessageQueue.get(tabId);
+      } catch (error) {
+        // 前のリクエストのエラーは無視
+      }
+    }
+
+    // 新しいリクエストを開始
+    const promise = this._doSendMessage(tabId, message, timeout);
+    this.sendMessageQueue.set(tabId, promise);
+
+    try {
+      const result = await promise;
+      console.log(
+        `[SafeMessenger] 送信完了: tabId=${tabId}, success=${result.success}`,
+      );
+      return result;
+    } finally {
+      // 完了後はキューから削除
+      this.sendMessageQueue.delete(tabId);
+    }
+  }
+
+  /**
+   * 実際のメッセージ送信処理
+   */
+  static async _doSendMessage(tabId, message, timeout) {
+    try {
+      const response = await Promise.race([
+        chrome.tabs.sendMessage(tabId, message),
+        new Promise((_, reject) =>
+          setTimeout(
+            () => reject(new Error(`sendMessage timeout after ${timeout}ms`)),
+            timeout,
+          ),
+        ),
+      ]);
+
+      return {
+        success: true,
+        data: response,
+        tabId: tabId,
+        timestamp: Date.now(),
+      };
+    } catch (error) {
+      console.log(`[SafeMessenger] エラー: ${error.message}`);
+      return {
+        success: false,
+        error: error.message,
+        tabId: tabId,
+        timestamp: Date.now(),
+      };
+    }
+  }
+
+  /**
+   * 簡単なUI要素チェック（ファーストウィン戦略用）
+   */
+  static async quickUICheck(tabId, aiType) {
+    const result = await this.sendSafeMessage(
+      tabId,
+      {
+        action: "CHECK_UI_ELEMENTS",
+        aiType: aiType,
+        quickCheck: true, // クイックチェックフラグ
+      },
+      5000,
+    ); // 短いタイムアウト
+
+    if (result.success && result.data) {
+      // 少なくとも1つのUI要素があれば成功とみなす
+      const hasAnyUI =
+        result.data.textInput ||
+        result.data.modelDisplay ||
+        result.data.functionDisplay;
+      return hasAnyUI;
+    }
+    return false;
+  }
+
+  /**
+   * キューの状態確認（デバッグ用）
+   */
+  static getQueueStatus() {
+    return {
+      activeRequests: this.sendMessageQueue.size,
+      tabIds: Array.from(this.sendMessageQueue.keys()),
+    };
+  }
+}
+
 class StepIntegratedWindowService {
   static windowPositions = new Map(); // position -> windowId
+  static unifiedManager = new UnifiedWindowManager(); // 統一管理インスタンス
 
   /**
    * スクリーン情報を取得
@@ -1806,16 +2032,15 @@ class WindowController {
       const baseAiType = aiType.replace(/_task.*/, "");
       const normalizedAiType = this.normalizeAiType(baseAiType);
 
-      // 新しい保存形式に対応: 該当するウィンドウを探す
-      let windowInfo = null;
+      // 新しい保存形式に対応: 該当するウィンドウを全て探す（並列処理対応）
+      const matchingWindows = [];
       for (const [key, value] of this.openedWindows.entries()) {
         if (key.startsWith(normalizedAiType + "_")) {
-          windowInfo = value;
-          break; // 最初に見つかったウィンドウを使用
+          matchingWindows.push({ key, value });
         }
       }
 
-      if (!windowInfo) {
+      if (matchingWindows.length === 0) {
         ExecuteLogger.warn(
           `⚠️ [Step 4-1-3] ${aiType}のウィンドウが見つかりません`,
         );
@@ -1827,45 +2052,65 @@ class WindowController {
         continue;
       }
 
-      try {
-        ExecuteLogger.info(
-          `🔍 [Step 4-1-3] ${aiType}ウィンドウをチェック中...`,
-        );
+      // 全ての該当ウィンドウをチェック（並列処理対応）
+      ExecuteLogger.info(
+        `🔍 [Step 4-1-3] ${aiType}ウィンドウを全てチェック中... (${matchingWindows.length}個)`,
+      );
 
-        // タブをアクティブにしてからチェック
-        if (windowInfo.tabId) {
-          await chrome.tabs.update(windowInfo.tabId, { active: true });
-          await new Promise((resolve) => setTimeout(resolve, 2000)); // 読み込み待機
+      let allChecksPass = true;
+      const allCheckResults = [];
+
+      for (const { key, value: windowInfo } of matchingWindows) {
+        try {
+          ExecuteLogger.info(`🔍 [Step 4-1-3] ${key}ウィンドウをチェック中...`);
+
+          // タブをアクティブにしてからチェック
+          if (windowInfo.tabId) {
+            await chrome.tabs.update(windowInfo.tabId, { active: true });
+            await new Promise((resolve) => setTimeout(resolve, 1000)); // 読み込み待機
+          }
+
+          // AI種別に応じたチェック処理
+          const checkResult = await this.performWindowCheck(
+            aiType,
+            windowInfo.tabId,
+          );
+
+          allCheckResults.push({
+            windowKey: key,
+            tabId: windowInfo.tabId,
+            success: checkResult.success,
+            checks: checkResult.checks,
+            error: checkResult.error,
+          });
+
+          if (!checkResult.success) {
+            allChecksPass = false;
+          }
+        } catch (error) {
+          ExecuteLogger.error(
+            `❌ [Step 4-1-3] ${key}ウィンドウチェックエラー:`,
+            error.message,
+          );
+          allCheckResults.push({
+            windowKey: key,
+            tabId: windowInfo.tabId,
+            success: false,
+            error: error.message,
+          });
+          allChecksPass = false;
         }
-
-        // AI種別に応じたチェック処理
-        const checkResult = await this.performWindowCheck(
-          aiType,
-          windowInfo.tabId,
-        );
-
-        checkResults.push({
-          aiType: aiType,
-          success: checkResult.success,
-          checks: checkResult.checks,
-          error: checkResult.error,
-        });
-
-        ExecuteLogger.info(
-          `✅ [Step 4-1-3] ${aiType}ウィンドウチェック完了:`,
-          checkResult,
-        );
-      } catch (error) {
-        ExecuteLogger.error(
-          `❌ [Step 4-1-3] ${aiType}ウィンドウチェック失敗:`,
-          error,
-        );
-        checkResults.push({
-          aiType: aiType,
-          success: false,
-          error: error.message,
-        });
       }
+
+      checkResults.push({
+        aiType: aiType,
+        success: allChecksPass,
+        windowCount: matchingWindows.length,
+        allWindowResults: allCheckResults,
+        error: allChecksPass
+          ? null
+          : "一部のウィンドウでUI要素が見つかりません",
+      });
     }
 
     ExecuteLogger.info(
@@ -1890,6 +2135,154 @@ class WindowController {
   }
 
   /**
+   * タブが準備完了になるまで待機する関数
+   */
+  async waitForTabReady(tabId, maxRetries = 10, delayMs = 2000) {
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        const tab = await chrome.tabs.get(tabId);
+
+        ExecuteLogger.info(
+          `🔄 [Tab Ready Check] Attempt ${i + 1}/${maxRetries}:`,
+          {
+            tabId: tabId,
+            status: tab?.status,
+            url: tab?.url,
+            readyCheck: tab?.status === "complete",
+          },
+        );
+
+        if (tab && tab.status === "complete") {
+          ExecuteLogger.info(`✅ [Tab Ready] Tab is ready:`, {
+            tabId: tabId,
+            finalStatus: tab.status,
+            attemptsUsed: i + 1,
+          });
+          // 追加の安定化待機（JavaScript読み込み完了確保）
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          return tab;
+        }
+
+        if (i < maxRetries - 1) {
+          ExecuteLogger.info(
+            `⏳ [Tab Ready] Waiting ${delayMs}ms before retry...`,
+          );
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+        }
+      } catch (error) {
+        ExecuteLogger.error(`❌ [Tab Ready Check] Error on attempt ${i + 1}:`, {
+          tabId: tabId,
+          error: error.message,
+          willRetry: i < maxRetries - 1,
+        });
+
+        if (i < maxRetries - 1) {
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+        }
+      }
+    }
+
+    throw new Error(
+      `Tab ${tabId} did not become ready after ${maxRetries} attempts`,
+    );
+  }
+
+  /**
+   * ファーストウィン戦略による高速ウィンドウチェック
+   */
+  async checkWindowsOptimized(aiType) {
+    console.log(`[FastCheck] ${aiType}の高速チェック開始`);
+
+    // Step 1: UnifiedWindowManagerで最初に動作するウィンドウを見つける
+    const workingWindow =
+      await StepIntegratedWindowService.unifiedManager.findFirstWorkingWindow(
+        aiType,
+      );
+
+    if (workingWindow) {
+      console.log(
+        `✅ [FastCheck] ${aiType}の動作ウィンドウ発見: ${workingWindow.tabId}`,
+      );
+
+      // UI要素の詳細チェック
+      const detailCheck = await this.performWindowCheck(
+        aiType,
+        workingWindow.tabId,
+      );
+      if (detailCheck.success) {
+        return {
+          success: true,
+          window: workingWindow,
+          checks: detailCheck.checks,
+          strategy: "first-win",
+          checkTime: Date.now(),
+        };
+      }
+    }
+
+    // Step 2: 見つからない場合のみ従来の全チェック
+    console.log(
+      `🔍 [FastCheck] ${aiType}のフォールバック: 全ウィンドウチェック`,
+    );
+    return await this.performFullWindowCheck(aiType);
+  }
+
+  /**
+   * 従来の全ウィンドウチェック（フォールバック用）
+   */
+  async performFullWindowCheck(aiType) {
+    console.log(`[FullCheck] ${aiType}の全ウィンドウチェック開始`);
+
+    // 従来のロジックを保持
+    const baseAiType = aiType.replace(/_task.*/, "");
+    const normalizedAiType = this.normalizeAiType(baseAiType);
+
+    const matchingWindows = [];
+    for (const [key, value] of this.openedWindows.entries()) {
+      if (key.startsWith(normalizedAiType + "_")) {
+        matchingWindows.push({ key, value });
+      }
+    }
+
+    if (matchingWindows.length === 0) {
+      return {
+        success: false,
+        error: `${aiType}のウィンドウが見つかりません`,
+        strategy: "full-check",
+      };
+    }
+
+    // 最初の成功ウィンドウで終了（改善版）
+    for (const { key, value: windowInfo } of matchingWindows) {
+      try {
+        const checkResult = await this.performWindowCheck(
+          aiType,
+          windowInfo.tabId,
+        );
+        if (checkResult.success) {
+          console.log(
+            `✅ [FullCheck] ${aiType}成功ウィンドウ: ${windowInfo.tabId}`,
+          );
+          return {
+            success: true,
+            window: { tabId: windowInfo.tabId, key },
+            checks: checkResult.checks,
+            strategy: "full-check-success",
+          };
+        }
+      } catch (error) {
+        console.log(`❌ [FullCheck] ${key}チェックエラー:`, error.message);
+      }
+    }
+
+    return {
+      success: false,
+      error: `${aiType}の動作ウィンドウが見つかりません`,
+      strategy: "full-check-failed",
+    };
+  }
+
+  /**
    * 個別ウィンドウのチェック処理
    */
   async performWindowCheck(aiType, tabId) {
@@ -1903,43 +2296,31 @@ class WindowController {
     };
 
     try {
-      // タブの存在確認（Manifest V3対応）
-      console.log(`[DEBUG-performWindowCheck] タブ取得開始: tabId=${tabId}`);
-      const tab = await chrome.tabs.get(tabId);
-      console.log(`[DEBUG-performWindowCheck] タブ取得完了:`, {
+      // タブの準備完了を待機（新しいリトライロジック）
+      console.log(
+        `[DEBUG-performWindowCheck] タブ準備完了待機開始: tabId=${tabId}`,
+      );
+      const tab = await this.waitForTabReady(tabId, 10, 1000);
+      console.log(`[DEBUG-performWindowCheck] タブ準備完了:`, {
         tabId,
         url: tab?.url,
         status: tab?.status,
       });
 
-      if (!tab || tab.status !== "complete") {
-        console.log(
-          `[DEBUG-performWindowCheck] タブ状態エラー: status=${tab?.status}`,
-        );
-        throw new Error(
-          `タブが無効または読み込み未完了: status=${tab?.status}`,
-        );
-      }
-
-      // Content scriptにチェック要求を送信（タイムアウト付き）
+      // SafeMessengerを使用してContent scriptにチェック要求を送信
       console.log(
-        `[DEBUG-performWindowCheck] sendMessage開始: tabId=${tabId}, aiType=${aiType}`,
+        `[DEBUG-performWindowCheck] SafeMessenger送信開始: tabId=${tabId}, aiType=${aiType}`,
       );
-      const response = await Promise.race([
-        chrome.tabs.sendMessage(tabId, {
-          action: "CHECK_UI_ELEMENTS",
-          aiType: aiType,
-        }),
-        new Promise((_, reject) =>
-          setTimeout(() => {
-            console.log(
-              `[DEBUG-performWindowCheck] sendMessage タイムアウト: tabId=${tabId}`,
-            );
-            reject(new Error("sendMessage timeout after 5 seconds"));
-          }, 5000),
-        ),
-      ]);
-      console.log(`[DEBUG-performWindowCheck] sendMessage完了:`, response);
+      const result = await SafeMessenger.sendSafeMessage(tabId, {
+        action: "CHECK_UI_ELEMENTS",
+        aiType: aiType,
+      });
+      console.log(`[DEBUG-performWindowCheck] SafeMessenger完了:`, result);
+
+      let response = null;
+      if (result.success) {
+        response = result.data;
+      }
 
       if (response) {
         checks.textInput = response.textInput || false;
@@ -2952,23 +3333,16 @@ async function executeStep4(taskList) {
 
     return new Promise(async (resolve, reject) => {
       try {
-        // タブ情報確認と有効性チェック（Manifest V3対応）
-        const tab = await chrome.tabs.get(tabId);
-
-        // タブの有効性チェック
-        if (!tab || tab.status !== "complete") {
-          ExecuteLogger.error(`❌ [Tab Check] タブが無効または未完了:`, {
-            tabId: tab?.id,
-            status: tab?.status,
-            url: tab?.url,
-          });
-          reject(
-            new Error(
-              `タブID ${tabId} が無効または未完了です (status: ${tab?.status})`,
-            ),
-          );
-          return;
-        }
+        // タブの準備完了を待機（新しいリトライロジック）
+        ExecuteLogger.info(
+          `🔄 [Execute Task] タブ準備完了待機開始: tabId=${tabId}`,
+        );
+        const tab = await windowController.waitForTabReady(tabId, 10, 1000);
+        ExecuteLogger.info(`✅ [Execute Task] タブ準備完了:`, {
+          tabId: tab.id,
+          status: tab.status,
+          url: tab.url,
+        });
 
         // URL有効性チェック
         if (
