@@ -3987,6 +3987,51 @@ async function executeStep4(taskList) {
                         window.location.href,
                       );
                       console.log("🔍 [SCRIPT-EXEC] taskData:", taskData);
+
+                      // 🔧 [ENHANCED-DIAGNOSTIC] Content Script状態詳細確認
+                      console.log(
+                        "🔧 [ENHANCED-DIAGNOSTIC] Content Script状態確認:",
+                      );
+                      console.log(
+                        "  - CLAUDE_SCRIPT_LOADED:",
+                        window.CLAUDE_SCRIPT_LOADED,
+                      );
+                      console.log(
+                        "  - CLAUDE_SCRIPT_INIT_TIME:",
+                        window.CLAUDE_SCRIPT_INIT_TIME,
+                      );
+                      console.log(
+                        "  - executeTask存在:",
+                        typeof window.executeTask,
+                      );
+                      console.log(
+                        "  - findClaudeElement存在:",
+                        typeof window.findClaudeElement,
+                      );
+                      console.log(
+                        "  - inputText存在:",
+                        typeof window.inputText,
+                      );
+                      console.log(
+                        "  - runAutomation存在:",
+                        typeof window.runAutomation,
+                      );
+
+                      // 🔧 [ENHANCED-DIAGNOSTIC] isValidClaudeURL and shouldExportFunctions check
+                      const currentURL = window.location.href;
+                      const isValidClaudeURL =
+                        /^https:\/\/claude\.ai\/.*/i.test(currentURL);
+                      const isExtensionPage = currentURL.includes(
+                        "chrome-extension://",
+                      );
+                      console.log("🔧 [ENHANCED-DIAGNOSTIC] URL状態確認:");
+                      console.log("  - isValidClaudeURL:", isValidClaudeURL);
+                      console.log("  - isExtensionPage:", isExtensionPage);
+                      console.log(
+                        "  - shouldInitialize計算結果:",
+                        !isExtensionPage && isValidClaudeURL,
+                      );
+
                       console.log(
                         "🔍 [SCRIPT-EXEC] window.executeTask存在確認:",
                         typeof window.executeTask,

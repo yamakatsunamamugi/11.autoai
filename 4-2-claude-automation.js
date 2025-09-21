@@ -136,6 +136,7 @@
 
   // 実行環境の判定
   let shouldInitialize = false;
+  let shouldExportFunctions = false; // 🔧 関数エクスポート制御フラグ追加
 
   if (isExtensionPage) {
     console.log("🔍 [CONTENT-INIT] 拡張機能ページ判定 - スキップ実行");
@@ -157,9 +158,28 @@
     // claude.ai での実行
     console.log("🔍 [CONTENT-INIT] 有効なclaude.ai URL判定 - 初期化実行");
     shouldInitialize = true;
+    shouldExportFunctions = true; // 🔧 claude.aiでは関数エクスポートも有効
     log.info("✅ Claude Automation V2 初期化");
     log.info("📍 有効なClaude URL:", currentURL);
   }
+
+  // 🔧 Option 1 Fix: claude.ai URLでは初期化がスキップされても関数エクスポートを実行
+  console.log("🔧 [OPTION1-DIAGNOSTIC] 修正前の状態:");
+  console.log("  - shouldInitialize:", shouldInitialize);
+  console.log("  - shouldExportFunctions:", shouldExportFunctions);
+  console.log("  - isValidClaudeURL:", isValidClaudeURL);
+  console.log("  - isExtensionPage:", isExtensionPage);
+
+  if (!shouldExportFunctions && isValidClaudeURL) {
+    console.log("🔧 [FIX] claude.ai URLで関数エクスポートのみ実行");
+    console.log("🔧 [FIX] shouldExportFunctions: false → true に変更");
+    shouldExportFunctions = true;
+  }
+
+  console.log("🔧 [OPTION1-DIAGNOSTIC] 修正後の最終状態:");
+  console.log("  - shouldInitialize:", shouldInitialize);
+  console.log("  - shouldExportFunctions:", shouldExportFunctions);
+  console.log("  - 関数エクスポートが実行される:", shouldExportFunctions);
 
   // ========================================
   // 関数定義（常に定義するが、実行は制御）
@@ -1381,12 +1401,12 @@
   };
 
   const triggerReactEvent = async (element, eventType = "click") => {
-    const log = (msg) => log.debug(`🎯 [イベント] ${msg}`);
+    const logEvent = (msg) => console.log(`🎯 [イベント] ${msg}`);
 
     try {
       const reactProps = getReactProps(element);
       if (reactProps) {
-        log(`React要素検出: ${element.tagName}`);
+        logEvent(`React要素検出: ${element.tagName}`);
       }
 
       if (eventType === "click") {
@@ -1457,10 +1477,10 @@
         }
 
         element.click();
-        log(`✅ クリックイベント完了: ${element.tagName}`);
+        logEvent(`✅ クリックイベント完了: ${element.tagName}`);
       }
     } catch (error) {
-      log(`⚠️ イベント処理エラー: ${error.message}`);
+      logEvent(`⚠️ イベント処理エラー: ${error.message}`);
     }
   };
 
@@ -3447,6 +3467,38 @@
         // Function selection check
         const confirmationResult = confirmFeatureSelection(featureName);
 
+        // 🔧 [FEATURE-VERIFICATION] 機能選択詳細検証
+        console.log("🔧 [FEATURE-VERIFICATION] 機能選択結果詳細:");
+        console.log("  - 期待される機能:", featureName);
+        console.log("  - confirmationResult:", confirmationResult);
+        console.log("  - エラー有無:", !!confirmationResult.error);
+        console.log(
+          "  - 検出された機能数:",
+          confirmationResult.detected?.length || 0,
+        );
+        console.log(
+          "  - 検出された機能一覧:",
+          confirmationResult.detected || [],
+        );
+
+        // DOM上の機能ボタン状態を直接確認
+        const featureButtons = document.querySelectorAll(
+          'button[role="switch"], input[role="switch"]',
+        );
+        console.log("🔧 [FEATURE-DOM-CHECK] DOM上の機能ボタン状態:");
+        console.log("  - 機能ボタン総数:", featureButtons.length);
+        featureButtons.forEach((btn, index) => {
+          const isOn =
+            btn.checked || btn.getAttribute("aria-checked") === "true";
+          const buttonText =
+            btn.closest("label")?.textContent?.trim() ||
+            btn.textContent?.trim() ||
+            `ボタン${index + 1}`;
+          console.log(
+            `    [${index + 1}] ${buttonText}: ${isOn ? "ON" : "OFF"}`,
+          );
+        });
+
         if (confirmationResult.error) {
           log.debug(
             `⚠️ 機能確認でエラーが発生しましたが処理を継続します: ${confirmationResult.error}`,
@@ -3569,9 +3621,52 @@
       );
       console.log(`  - クリック成功: ${clickSuccess ? "はい" : "いいえ"}`);
 
+      // 🔧 [UI-OPERATION-VERIFICATION] 送信ボタンクリック検証
+      console.log("🔧 [SEND-VERIFICATION] 送信ボタンクリック詳細検証:");
+      console.log("  - clickButton関数戻り値:", clickSuccess);
+      console.log(
+        "  - 送信ボタン要素タイプ:",
+        sendResult?.tagName || "undefined",
+      );
+      console.log(
+        "  - 送信ボタンdisabled状態:",
+        sendResult?.disabled || "undefined",
+      );
+      console.log(
+        "  - 送信ボタンvisibility:",
+        getComputedStyle(sendResult).visibility,
+      );
+      console.log(
+        "  - 送信ボタンdisplay:",
+        getComputedStyle(sendResult).display,
+      );
+
       // 送信時刻を更新（実際の送信タイミング）
       sendTime = new Date(); // 変数を更新
       console.log(`  - 送信時刻: ${sendTime.toISOString()}`);
+
+      // クリック後の状態確認
+      setTimeout(() => {
+        console.log("🔧 [SEND-VERIFICATION-AFTER] クリック後の状態確認:");
+        console.log("  - ページURL変更:", window.location.href);
+        console.log(
+          "  - テキスト入力欄の内容:",
+          document.querySelector('[contenteditable="true"]')?.textContent
+            ?.length || 0,
+        );
+
+        // 送信処理が開始されたかの間接的な確認
+        const loadingElements = document.querySelectorAll(
+          '[data-testid*="loading"], [aria-busy="true"], .loading',
+        );
+        console.log("  - ローディング要素数:", loadingElements.length);
+
+        // 送信ボタンの状態変化確認
+        console.log(
+          "  - 送信ボタン現在の状態:",
+          sendResult?.disabled ? "無効" : "有効",
+        );
+      }, 1000);
       log.debug("🔍 送信時刻記録開始 - ", sendTime.toISOString());
 
       // taskDataからtaskIdを取得、なければ生成
@@ -5061,13 +5156,29 @@
 
   // グローバル関数として公開（ai-task-executorから呼び出し可能にする）
   // claude.aiでのみ公開
-  if (shouldInitialize) {
+  console.log("🔧 [FUNC-EXPORT-DIAGNOSTIC] 関数エクスポート判定:");
+  console.log("  - shouldExportFunctions:", shouldExportFunctions);
+  console.log("  - 現在のURL:", currentURL);
+  console.log("  - isValidClaudeURL:", isValidClaudeURL);
+  console.log("  - isExtensionPage:", isExtensionPage);
+  console.log(
+    "  - エクスポート実行判定:",
+    shouldExportFunctions ? "✅ 実行する" : "❌ スキップ",
+  );
+
+  if (shouldExportFunctions) {
     console.log("🔍 [FUNC-EXPORT] 関数公開処理開始");
+    console.log("🔧 [FUNC-EXPORT-START] エクスポート開始時点での関数定義状況:");
+    console.log("  - executeTask:", typeof executeTask);
+    console.log("  - findClaudeElement:", typeof findClaudeElement);
+    console.log("  - inputText:", typeof inputText);
+    console.log("  - runAutomation:", typeof runAutomation);
 
     // 🔍 [DIAGNOSTIC] 初期化診断ログ開始
     log.info("🔍 [DIAGNOSTIC] Claude Automation 初期化診断開始");
     log.info(`🔍 [DIAGNOSTIC] 実行環境: ${window.location.href}`);
     log.info(`🔍 [DIAGNOSTIC] shouldInitialize: ${shouldInitialize}`);
+    log.info(`🔍 [DIAGNOSTIC] shouldExportFunctions: ${shouldExportFunctions}`);
 
     // log オブジェクトの状態確認
     log.info("🔍 [DIAGNOSTIC] log オブジェクト状態:");
@@ -5084,16 +5195,52 @@
     log.info(`  - inputText: ${typeof inputText}`);
 
     // Content Scriptのisolated環境でwindowに設定
-    console.log("🔍 [FUNC-EXPORT] executeTask定義確認:", typeof executeTask);
+    console.log("🔧 [FUNC-EXPORT-EXECUTION] executeTask関数エクスポート処理:");
+    console.log("  - executeTask定義確認:", typeof executeTask);
+    console.log("  - window.executeTask現在の状態:", typeof window.executeTask);
+    console.log(
+      "  - エクスポート前のwindowプロパティ数:",
+      Object.keys(window).length,
+    );
+
     if (typeof executeTask !== "undefined") {
       window.executeTask = executeTask;
+      console.log("🔧 [FUNC-EXPORT-SUCCESS] executeTask正常エクスポート:");
       console.log(
-        "🔍 [FUNC-EXPORT] executeTask公開完了:",
+        "  - エクスポート後のwindow.executeTask:",
         typeof window.executeTask,
       );
+      console.log(
+        "  - window.executeTask === executeTask:",
+        window.executeTask === executeTask,
+      );
+      console.log(
+        "  - 関数実行可能性テスト:",
+        typeof window.executeTask === "function",
+      );
       log.info("✅ executeTask関数を公開");
+
+      // 🔧 [ENHANCED-TEST] 関数の実際の呼び出し可能性をテスト
+      try {
+        console.log(
+          "🔧 [FUNC-EXPORT-TEST] executeTask関数テスト呼び出し準備完了",
+        );
+      } catch (testError) {
+        console.log(
+          "❌ [FUNC-EXPORT-TEST] executeTask関数テスト失敗:",
+          testError.message,
+        );
+      }
     } else {
-      console.log("❌ [FUNC-EXPORT] executeTask未定義");
+      console.log("❌ [FUNC-EXPORT-ERROR] executeTask未定義:");
+      console.log("  - executeTask定義状況:", typeof executeTask);
+      console.log(
+        "  - 利用可能なグローバル関数:",
+        Object.getOwnPropertyNames(window).filter(
+          (name) =>
+            typeof window[name] === "function" && name.includes("execute"),
+        ),
+      );
       log.error("❌ executeTask関数が未定義");
     }
 
@@ -5186,10 +5333,10 @@
     });
 
     log.info("✅ ページコンテキストへの関数注入完了");
-  } // shouldInitialize の閉じ括弧
+  } // shouldExportFunctions の閉じ括弧
 
   // スクリプト初期化完了を確認 (claude.aiでのみログ出力)
-  if (shouldInitialize) {
+  if (shouldExportFunctions) {
     log.info("✅ [Claude] グローバル関数公開完了:", {
       executeTask: typeof window.executeTask,
       findClaudeElement: typeof window.findClaudeElement,
@@ -5198,10 +5345,10 @@
     });
 
     log.info("=".repeat(60));
-    log.info("🎉 [Claude Automation] スクリプト初期化完全完了");
+    log.info("🎉 [Claude Automation] 関数エクスポート完了");
     log.info("📍 URL:", window.location.href);
-    log.info("⏰ 初期化時刻:", new Date().toISOString());
-    log.info("📊 初期化時間:", Date.now() - scriptLoadTime, "ms");
+    log.info("⏰ 完了時刻:", new Date().toISOString());
+    log.info("📊 処理時間:", Date.now() - scriptLoadTime, "ms");
     log.info("=".repeat(60));
   }
 })(); // 即時実行関数の終了
