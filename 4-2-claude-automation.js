@@ -41,6 +41,10 @@
     },
   };
 
+  // スクリプトの読み込み時間を記録
+  const scriptLoadTime = Date.now();
+  const loadTimeISO = new Date().toISOString();
+
   // 拡張機能ページの場合は早期終了
   if (isExtensionPage) {
     log.info(
@@ -80,9 +84,6 @@
   window.addEventListener("unhandledrejection", (e) => {
     log.error("🚨 [UNHANDLED-PROMISE]", e.reason);
   });
-
-  const scriptLoadTime = Date.now();
-  const loadTimeISO = new Date().toISOString();
 
   // Content Script注入確認
   log.debug(`Claude Automation V2 loaded`);
