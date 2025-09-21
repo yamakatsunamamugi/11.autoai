@@ -299,24 +299,31 @@ class StepIntegratedAITaskExecutor {
       }
 
       // 処理間隔を延長してタブの準備を確実にする
+      console.log(`[DEBUG-StepIntegratedAITaskExecutor] 2秒待機開始: tabId=${tabId}`);
       await new Promise((resolve) => setTimeout(resolve, 2000));
+      console.log(`[DEBUG-StepIntegratedAITaskExecutor] 2秒待機完了: tabId=${tabId}`);
 
       // コンテンツスクリプトを注入して実行
+      console.log(`[DEBUG-StepIntegratedAITaskExecutor] executeScript開始: tabId=${tabId}`);
       const results = await chrome.scripting.executeScript({
         target: { tabId: tabId },
         func: (prompt) => {
+          console.log(`[DEBUG-Script] 実行開始: prompt="${prompt.substring(0, 50)}..."`);
           // AI自動化の実行（簡易版）
           if (
             typeof window.automation !== "undefined" &&
             window.automation.executeTask
           ) {
+            console.log(`[DEBUG-Script] automation.executeTask使用`);
             return window.automation.executeTask({ prompt: prompt });
           } else {
+            console.log(`[DEBUG-Script] フォールバック処理`);
             // フォールバック: プロンプトを入力エリアに設定
             const textarea = document.querySelector(
               'textarea[placeholder*="メッセージ"], textarea[placeholder*="message"], div[contenteditable="true"]',
             );
             if (textarea) {
+              console.log(`[DEBUG-Script] テキストエリア発見`);
               textarea.value = prompt;
               textarea.textContent = prompt;
 
@@ -325,16 +332,19 @@ class StepIntegratedAITaskExecutor {
                 'button[type="submit"], button:has(svg)',
               );
               if (sendButton) {
+                console.log(`[DEBUG-Script] 送信ボタンクリック`);
                 sendButton.click();
               }
 
               return { success: true, response: "Task initiated" };
             }
+            console.log(`[DEBUG-Script] 入力エリア未発見`);
             return { success: false, error: "No input area found" };
           }
         },
         args: [taskData.prompt],
       });
+      console.log(`[DEBUG-StepIntegratedAITaskExecutor] executeScript完了: tabId=${tabId}`, results);
 
       const result = results[0]?.result || {
         success: false,
@@ -342,12 +352,12 @@ class StepIntegratedAITaskExecutor {
       };
 
       console.log(
-        `✅ [StepIntegratedAITaskExecutor] タスク実行完了: success=${result.success}`,
+        `✅ [StepIntegratedAITaskExecutor] タスク実行完了: success=${result.success}`, result,
       );
       return result;
     } catch (error) {
       console.error(
-        `❌ [StepIntegratedAITaskExecutor] タスク実行エラー:`,
+        `❌ [StepIntegratedAITaskExecutor] タスク実行エラー: tabId=${tabId}`,
         error,
       );
       return { success: false, error: error.message };
@@ -2022,6 +2032,9 @@ class WindowController {
    * 個別ウィンドウのチェック処理
    */
   async performWindowCheck(aiType, tabId) {
+    console.log(
+      `[DEBUG-performWindowCheck] 開始: aiType=${aiType}, tabId=${tabId}`,
+    );
     const checks = {
       textInput: false,
       modelDisplay: false,
@@ -2030,19 +2043,42 @@ class WindowController {
 
     try {
       // タブの存在確認（Manifest V3対応）
+      console.log(`[DEBUG-performWindowCheck] タブ取得開始: tabId=${tabId}`);
       const tab = await chrome.tabs.get(tabId);
+      console.log(`[DEBUG-performWindowCheck] タブ取得完了:`, {
+        tabId,
+        url: tab?.url,
+        status: tab?.status,
+      });
 
       if (!tab || tab.status !== "complete") {
+        console.log(
+          `[DEBUG-performWindowCheck] タブ状態エラー: status=${tab?.status}`,
+        );
         throw new Error(
           `タブが無効または読み込み未完了: status=${tab?.status}`,
         );
       }
 
-      // Content scriptにチェック要求を送信（Manifest V3対応）
-      const response = await chrome.tabs.sendMessage(tabId, {
-        action: "CHECK_UI_ELEMENTS",
-        aiType: aiType,
-      });
+      // Content scriptにチェック要求を送信（タイムアウト付き）
+      console.log(
+        `[DEBUG-performWindowCheck] sendMessage開始: tabId=${tabId}, aiType=${aiType}`,
+      );
+      const response = await Promise.race([
+        chrome.tabs.sendMessage(tabId, {
+          action: "CHECK_UI_ELEMENTS",
+          aiType: aiType,
+        }),
+        new Promise((_, reject) =>
+          setTimeout(() => {
+            console.log(
+              `[DEBUG-performWindowCheck] sendMessage タイムアウト: tabId=${tabId}`,
+            );
+            reject(new Error("sendMessage timeout after 5 seconds"));
+          }, 5000),
+        ),
+      ]);
+      console.log(`[DEBUG-performWindowCheck] sendMessage完了:`, response);
 
       if (response && response.success) {
         checks.textInput = response.checks.textInput || false;
@@ -2051,6 +2087,7 @@ class WindowController {
       }
 
       const allChecksPass = Object.values(checks).every((check) => check);
+      console.log(`[DEBUG-performWindowCheck] チェック結果: allChecksPass=${allChecksPass}`, checks);
 
       return {
         success: allChecksPass,
@@ -2058,12 +2095,14 @@ class WindowController {
         error: allChecksPass ? null : "UI要素の一部が見つかりません",
       };
     } catch (error) {
+      console.log(`[DEBUG-performWindowCheck] エラー発生:`, error.message);
       return {
         success: false,
         checks: checks,
         error: error.message,
       };
     }
+  }
   }
 
   /**
