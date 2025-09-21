@@ -551,6 +551,7 @@ async function applySkipConditions() {
       unprocessedCount: 0,
       skipReason: null,
       error: null,
+      cellRange: null,
     };
 
     if (group.skip) {
@@ -586,6 +587,16 @@ async function applySkipConditions() {
         } else {
           answerCol = group.chatgptColumn; // 3種類AIの場合は最初の回答列で判定
         }
+
+        // セル範囲を計算（ログ列〜回答列）
+        const logCol = group.logColumn || "A";
+        let finalAnswerCol = answerCol;
+        if (group.type === "3種類AI") {
+          // 3種類AIの場合、最終の回答列を取得
+          finalAnswerCol =
+            group.geminiColumn || group.claudeColumn || group.chatgptColumn;
+        }
+        result.cellRange = `${logCol}${dataStartRow}:${finalAnswerCol}${endRow}`;
 
         // プロンプト列の取得
         const promptRange = `${promptCol}${dataStartRow}:${promptCol}${endRow}`;
@@ -648,6 +659,10 @@ async function applySkipConditions() {
       } else {
         result.status = "special";
         result.skipReason = "特殊グループ（レポート/Genspark）";
+
+        // レポート化/Gensparkの場合、作業セル列のみ表示
+        const workCol = group.column || group.promptColumns[0];
+        result.cellRange = `${workCol}${dataStartRow}:${workCol}${endRow}`;
       }
     } catch (error) {
       result.status = "error";
@@ -661,13 +676,13 @@ async function applySkipConditions() {
   // 統合ログ出力
   console.log("[step2-taskgroup.js] [Step 2-3] 📊 スキップ判定結果サマリー:");
   console.log(
-    "┌─────────────────────────────────────────────────────────────┐",
+    "┌─────────────────────────────────────────────────────────────────────────────────────┐",
   );
   console.log(
-    "│ グループ │ タイプ     │ 状態       │ 処理済み │ 未処理 │ 備考        │",
+    "│ グループ │ タイプ     │ 状態       │ セル範囲      │ 処理済み │ 未処理 │ 備考        │",
   );
   console.log(
-    "├─────────────────────────────────────────────────────────────┤",
+    "├─────────────────────────────────────────────────────────────────────────────────────┤",
   );
 
   groupResults.forEach((result) => {
@@ -680,17 +695,18 @@ async function applySkipConditions() {
       special: "🔹 特殊",
       error: "❌ エラー",
     }[result.status].padEnd(10);
+    const cellRange = (result.cellRange || "").substring(0, 12).padEnd(12);
     const processed = String(result.processedCount).padStart(6);
     const unprocessed = String(result.unprocessedCount).padStart(6);
     const note = (result.skipReason || result.error || "").substring(0, 12);
 
     console.log(
-      `│ ${group} │ ${type} │ ${status} │ ${processed} │ ${unprocessed} │ ${note} │`,
+      `│ ${group} │ ${type} │ ${status} │ ${cellRange} │ ${processed} │ ${unprocessed} │ ${note} │`,
     );
   });
 
   console.log(
-    "└─────────────────────────────────────────────────────────────┘",
+    "└─────────────────────────────────────────────────────────────────────────────────────┘",
   );
   console.log(
     `[step2-taskgroup.js] [Step 2-3] ✅ 判定完了: チェック${checkedGroups}個, データによるスキップ${skippedByData}個`,
