@@ -371,6 +371,20 @@
       this.timeout = 600000; // 10分
       this.activeTimeouts = new Set();
 
+      // エラー戦略マップを定義
+      this.errorStrategies = {
+        TIMEOUT_ERROR: {
+          baseDelay: 3000,
+          maxDelay: 15000,
+          backoffMultiplier: 1.5,
+        },
+        GENERAL_ERROR: {
+          baseDelay: 2000,
+          maxDelay: 10000,
+          backoffMultiplier: 2.0,
+        },
+      };
+
       // メトリクス初期化
       this.resetMetrics();
     }
@@ -4243,8 +4257,9 @@
 
       const retryResult = await retryManager.executeWithRetry({
         action: async () => {
-          // タスクを再実行
-          return await executeClaude(taskData);
+          // タスクを再実行 (executeClaude → executeTask に修正)
+          log.info("🔍 [DIAGNOSTIC] リトライでexecuteTask呼び出し");
+          return await executeTask(taskData);
         },
         maxRetries: 2,
         actionName: "Claude全体タスク最終リトライ",
@@ -5038,6 +5053,25 @@
   // グローバル関数として公開（ai-task-executorから呼び出し可能にする）
   // claude.aiでのみ公開
   if (shouldInitialize) {
+    // 🔍 [DIAGNOSTIC] 初期化診断ログ開始
+    log.info("🔍 [DIAGNOSTIC] Claude Automation 初期化診断開始");
+    log.info(`🔍 [DIAGNOSTIC] 実行環境: ${window.location.href}`);
+    log.info(`🔍 [DIAGNOSTIC] shouldInitialize: ${shouldInitialize}`);
+
+    // log オブジェクトの状態確認
+    log.info("🔍 [DIAGNOSTIC] log オブジェクト状態:");
+    log.info(`  - log.error: ${typeof log.error}`);
+    log.info(`  - log.warn: ${typeof log.warn}`);
+    log.info(`  - log.info: ${typeof log.info}`);
+    log.info(`  - log.debug: ${typeof log.debug}`);
+
+    // 主要関数の定義状況確認
+    log.info("🔍 [DIAGNOSTIC] 主要関数定義状況:");
+    log.info(`  - executeTask: ${typeof executeTask}`);
+    log.info(`  - executeClaude: ${typeof executeClaude}`);
+    log.info(`  - findClaudeElement: ${typeof findClaudeElement}`);
+    log.info(`  - inputText: ${typeof inputText}`);
+
     // Content Scriptのisolated環境でwindowに設定
     if (typeof executeTask !== "undefined") {
       window.executeTask = executeTask;
