@@ -673,8 +673,14 @@ async function applySkipConditions() {
     groupResults.push(result);
   }
 
-  // 統合ログ出力
-  console.log("[step2-taskgroup.js] [Step 2-3] 📊 スキップ判定結果サマリー:");
+  // 結果サマリー
+  const activeGroups = groupResults.filter((r) => r.status === "active").length;
+  const skippedGroups = groupResults.filter(
+    (r) => r.status === "skipped",
+  ).length;
+  console.log(
+    `[step2-taskgroup.js] 📊 グループ判定結果: 全${groupResults.length}個 | 処理対象${activeGroups}個 | スキップ${skippedGroups}個`,
+  );
   console.log(
     "┌─────────────────────────────────────────────────────────────────────────────────────┐",
   );

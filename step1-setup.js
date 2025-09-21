@@ -772,10 +772,9 @@ async function findSpecialRows() {
     // シート名の推測（GIDから）
     const sheetName = gid === "0" ? "シート1" : `シート${gid}`;
 
-    console.log("[step1-setup.js] [Step 1-4] 抽出された情報:");
-    console.log(`  - スプレッドシートID: ${spreadsheetId}`);
-    console.log(`  - GID: ${gid}`);
-    console.log(`  - シート名: ${sheetName}`);
+    console.log(
+      `[step1-setup.js] [Step 1-4] 抽出完了: ID=${spreadsheetId}, GID=${gid}, シート=${sheetName}`,
+    );
 
     // 1-4-1: A列データ取得
     const token = window.globalState.authToken;
@@ -784,21 +783,8 @@ async function findSpecialRows() {
     }
 
     // 1-4-1: 全データ一括取得（初期設定用キャッシュ作成）
-    console.log("========================================");
-    console.log("[step1-setup.js] [Step 1-4-1] 🔍 API呼び出し詳細デバッグ開始");
-    console.log("========================================");
-
-    // 認証情報確認済み
-
-    // スプレッドシート情報設定済み
-
-    // 構築されるURL確認
     const targetUrl = `${window.globalState.sheetsApiBase}/${spreadsheetId}/values/A1:CZ100`;
-    // API URL構築完了
-
-    console.log(
-      "[step1-setup.js] [Step 1-4-1] 全データ一括取得開始 (A1:CZ100)",
-    );
+    console.log("[step1-setup.js] [Step 1-4-1] 全データ取得開始 (A1:CZ100)");
 
     const startTime = Date.now();
     // API呼び出し開始
@@ -810,22 +796,14 @@ async function findSpecialRows() {
     // API呼び出し完了
     const responseTime = Date.now() - startTime;
 
-    console.log("[step1-setup.js] [Step 1-4-1] API応答:");
-    console.log(`  - ステータス: ${response.status} `);
-    console.log(`  - 応答時間: ${responseTime}ms`);
+    console.log(
+      `[step1-setup.js] API応答: ${response.status} (${responseTime}ms)`,
+    );
 
     if (!response.ok) {
       const error = await response.text();
-      console.error("[step1-setup.js] [Step 1-4-1] API呼び出し失敗:");
       console.error(
-        "  - URL:",
-        `${window.globalState.sheetsApiBase}/${spreadsheetId}/values/A1:CZ100`,
-      );
-      console.error("  - HTTPステータス:", response.status);
-      console.error("  - エラー内容:", error);
-      console.error(
-        "  - レスポンスヘッダー:",
-        Object.fromEntries(response.headers.entries()),
+        `[step1-setup.js] APIエラー: ${response.status} - ${error}`,
       );
 
       if (response.status === 403) {
@@ -848,9 +826,7 @@ async function findSpecialRows() {
 
     // 初期設定用データをキャッシュ
     window.globalState.initialSheetData = allSheetData;
-    console.log(
-      `[step1-setup.js] [Step 1-4-1] ✅ 初期データキャッシュ完了: ${allSheetData.length}行`,
-    );
+    console.log(`[step1-setup.js] ✅ データ取得完了: ${allSheetData.length}行`);
 
     // A列データを抽出
     const columnA = allSheetData.map((row) => [row[0] || ""]);
