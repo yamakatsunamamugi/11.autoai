@@ -5,35 +5,13 @@ const LOG_LEVEL = { ERROR: 1, WARN: 2, INFO: 3, DEBUG: 4 };
 let CURRENT_LOG_LEVEL = LOG_LEVEL.INFO; // デフォルト値
 
 // Chrome拡張環境でのみStorageから設定を読み込む
-if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-  chrome.storage.local.get('logLevel', (result) => {
+if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+  chrome.storage.local.get("logLevel", (result) => {
     if (result.logLevel) {
       CURRENT_LOG_LEVEL = parseInt(result.logLevel);
     }
   });
 }
-
-// ログユーティリティ
-const log = {
-  error: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.ERROR && console.error(...args),
-  warn: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.WARN && console.warn(...args),
-  info: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.INFO && console.log(...args),
-  debug: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.DEBUG && console.log(...args)
-};
-
- * Step 4-3: AI処理の並列実行とエラーハンドリング
- */
-
-// ログレベル制御（必要最小限のログのみ出力）
-const LOG_LEVEL = {
-  ERROR: 1,
-  WARN: 2,
-  INFO: 3,
-  DEBUG: 4,
-};
-
-// 現在のログレベル（INFO以上のみ出力）
-const CURRENT_LOG_LEVEL = LOG_LEVEL.INFO;
 
 // ログユーティリティ
 const log = {
@@ -46,6 +24,11 @@ const log = {
   debug: (...args) =>
     CURRENT_LOG_LEVEL >= LOG_LEVEL.DEBUG && console.log(...args),
 };
+
+/**
+ * Step 4-3: AI処理の並列実行とエラーハンドリング
+ */
+
 
 // 初期化ログ（簡略化）
 log.info("✅ [step4-tasklist.js] 初期化完了");

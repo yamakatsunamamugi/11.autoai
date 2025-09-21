@@ -5,8 +5,8 @@ const LOG_LEVEL = { ERROR: 1, WARN: 2, INFO: 3, DEBUG: 4 };
 let CURRENT_LOG_LEVEL = LOG_LEVEL.INFO; // デフォルト値
 
 // Chrome拡張環境でのみStorageから設定を読み込む
-if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-  chrome.storage.local.get('logLevel', (result) => {
+if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+  chrome.storage.local.get("logLevel", (result) => {
     if (result.logLevel) {
       CURRENT_LOG_LEVEL = parseInt(result.logLevel);
     }
@@ -15,12 +15,11 @@ if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
 
 // ログユーティリティ
 const log = {
-  error: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.ERROR && console.error(...args),
-  warn: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.WARN && console.warn(...args),
-  info: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.INFO && console.log(...args),
-  debug: (...args) => CURRENT_LOG_LEVEL >= LOG_LEVEL.DEBUG && console.log(...args)
-};
-
+  error: (...args) =>
+    CURRENT_LOG_LEVEL >= LOG_LEVEL.ERROR && console.error(...args),
+  warn: (...args) =>
+    CURRENT_LOG_LEVEL >= LOG_LEVEL.WARN && console.warn(...args),
+  info: (...args) =>
     CURRENT_LOG_LEVEL >= LOG_LEVEL.INFO && console.log(...args),
   debug: (...args) =>
     CURRENT_LOG_LEVEL >= LOG_LEVEL.DEBUG && console.log(...args),
