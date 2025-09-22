@@ -42,35 +42,43 @@
   };
 
   // ========================================
-  // Claude UI セレクタ定義（ファイル冒頭で一元管理）
+  // 🎯 Claude UI セレクタ定義 - 完全統合版
+  // 最終更新: 2024-12-22
   // ========================================
   const CLAUDE_SELECTORS = {
+    // ========== 基本入力・送信系 ==========
     INPUT: [
       ".ProseMirror",
       'div.ProseMirror[contenteditable="true"]',
       '[data-placeholder*="Message Claude"]',
       'div[contenteditable="true"][role="textbox"]',
     ],
+
     SEND_BUTTON: [
       'button[aria-label="Send Message"]',
       'button[type="submit"][aria-label*="Send"]',
       'button svg path[d*="M320 448"]',
     ],
+
     STOP_BUTTON: [
       'button[aria-label="応答を停止"]',
       '[aria-label="応答を停止"]',
       'button svg path[d*="M128,20A108"]',
     ],
-    MODEL_BUTTON: [
-      '[data-testid="model-selector-dropdown"]', // 最新のセレクタ（最優先）
-      'button[data-value*="claude"]', // モデル名を含むボタン
-      "button.cursor-pointer:has(span.font-medium)", // モデル表示ボタン
-      'button[aria-label*="モデル"]',
-      'button[aria-haspopup="menu"]:has(span:contains("Claude"))',
-      'button:has(svg[class*="model"])',
-    ],
-    MENU: {
-      CONTAINER: '[role="menu"][data-state="open"]',
+
+    // ========== モデル選択系 ==========
+    MODEL: {
+      BUTTON: [
+        '[data-testid="model-selector-dropdown"]', // 最新のセレクタ（最優先）
+        'button[data-value*="claude"]', // モデル名を含むボタン
+        "button.cursor-pointer:has(span.font-medium)", // モデル表示ボタン
+        'button[aria-label*="モデル"]',
+        'button[aria-haspopup="menu"]:has(span:contains("Claude"))',
+        'button:has(svg[class*="model"])',
+      ],
+
+      MENU_CONTAINER: '[role="menu"][data-state="open"]',
+
       OTHER_MODELS: [
         // 最新のClaudeUIに対応した新しいセレクタ
         'div[role="menuitem"]', // まず基本的なメニューアイテムを取得
@@ -79,40 +87,132 @@
         'div[role="menuitem"][aria-haspopup="menu"][data-state="closed"]',
         'div[role="menuitem"][aria-haspopup="menu"]:has(*:contains("他のモデル"))',
         'div[role="menuitem"][aria-haspopup="menu"]:has(*:contains("Other models"))',
+        // フォールバックセレクタ
+        'div[role="menuitem"][aria-haspopup="menu"]:has(*:contains("other"))',
+        'div[role="menuitem"][aria-haspopup="menu"]:has(*:contains("その他"))',
+        '[role="menuitem"][aria-haspopup="menu"]', // 最も汎用的
       ],
-    },
-    MODEL_INFO: {
-      TEXT_ELEMENT: [
+
+      DISPLAY_TEXT: [
         'button span:contains("Claude")',
         'button span[class*="text"]',
         'button div:contains("Claude")',
       ],
     },
-    FEATURE_MENU: {
-      CONTAINER: '[role="menu"]',
+
+    // ========== 機能選択系 ==========
+    FEATURE: {
+      MENU_BUTTON: [
+        'button[aria-label*="機能"]',
+        'button:has(svg[class*="feature"])',
+      ],
+
+      MENU_CONTAINER: '[role="menu"]',
+
       WEB_SEARCH_TOGGLE: [
         'button[role="switch"]',
         '[aria-label*="Web"]',
         'button:has(span:contains("Web"))',
       ],
-    },
-    FEATURE_BUTTONS: {
-      RESEARCH: [
+
+      RESEARCH_BUTTON: [
         'button:contains("Deep Research")',
         'button[aria-label*="Research"]',
       ],
     },
+
+    // ========== Deep Research & Canvas系 ==========
     DEEP_RESEARCH: {
       CANVAS_PREVIEW: [
         'div[aria-label="内容をプレビュー"][role="button"]',
         '[aria-label="内容をプレビュー"]',
         'div[role="button"][tabindex="0"]:has(div.artifact-block-cell)',
       ],
+
+      CANVAS_CONTENT: [
+        '.grid-cols-1.grid[class*="!gap-3.5"]',
+        // Canvas固有セレクタ（優先度順）
+        "div.grid-cols-1.grid.gap-2\\.5:has(p.whitespace-pre-wrap)",
+        "div.grid-cols-1.grid:not(:has(.ease-out.rounded-lg))",
+        // 除外条件付きセレクタ（作業説明文と思考プロセスを除外）
+        'div.grid-cols-1.grid.gap-2\\.5:not([class*="p-3"]):not([class*="pt-0"]):not([class*="pr-8"])',
+        'div[class*="grid-cols-1"][class*="gap-2.5"]:not([class*="p-3"]):not([class*="pt-0"])',
+        // 通常回答除外セレクタ
+        '.grid-cols-1.grid:not(.standard-markdown):not([class*="p-3"]):not([class*="pt-0"])',
+        // Canvas固有IDセレクタ
+        "#markdown-artifact",
+        '[id="markdown-artifact"]',
+        '[data-testid="artifact-content"]',
+        '[data-testid="canvas-content"]',
+        // Canvas内コンテンツ
+        "div.artifact-block-cell",
+        "div.artifact-content",
+        "div.code-block__code",
+        ".code-block__code.h-fit.min-h-full.w-fit.min-w-full",
+        // 最後のフォールバック（汎用セレクタ）
+        '[class*="grid"][class*="gap"]:not([class*="standard-markdown"]):not([class*="p-3"])',
+      ],
     },
-    FUNCTION_MENU_BUTTON: [
-      'button[aria-label*="機能"]',
-      'button:has(svg[class*="feature"])',
-    ],
+
+    // ========== AI応答取得系 ==========
+    AI_RESPONSE: {
+      // レベル1: 汎用的な応答コンテナ
+      GENERAL_CONTAINERS: [
+        '[data-testid="assistant-message"]',
+        'div[class*="markdown"][role="presentation"]',
+        'div[class*="assistant"][class*="message"]',
+      ],
+
+      // レベル2: 回答タイプ別
+      CANVAS: [
+        '.grid-cols-1.grid[class*="!gap-3.5"]',
+        "#markdown-artifact",
+        '[data-testid="artifact-content"]',
+        '[data-testid="canvas-content"]',
+      ],
+
+      DEEP_RESEARCH: [
+        '[data-research-result="true"]',
+        'div[class*="research"][class*="result"]',
+        '[class*="deep-research"][class*="output"]',
+      ],
+
+      STANDARD: [
+        ".markdown.prose",
+        "div.markdown-content",
+        'div[class*="prose"][class*="markdown"]',
+      ],
+
+      CODE_BLOCK: ["pre code", ".code-block__code", 'div[class*="code-block"]'],
+
+      // レベル3: 除外セレクタ
+      EXCLUDE: [
+        '[data-testid="user-message"]',
+        ".user-message-content",
+        'div[class*="user"][class*="message"]',
+        "button",
+        '[role="button"]',
+        "svg",
+        '[class*="toolbar"]',
+        '[class*="header"]',
+        '[class*="footer"]',
+      ],
+    },
+
+    // ========== フォールバック用デフォルト ==========
+    DEFAULT: {
+      INPUT: [".ProseMirror", 'div[contenteditable="true"]', "textarea"],
+      SEND_BUTTON: [
+        'button[type="submit"]',
+        'button[aria-label*="Send"]',
+        "button:has(svg)",
+      ],
+      STOP_BUTTON: [
+        'button[aria-label*="Stop"]',
+        'button[aria-label*="停止"]',
+        'button:has(svg[class*="stop"])',
+      ],
+    },
   };
 
   // AI待機設定
@@ -378,17 +478,10 @@
   // Claude-ステップ0: 初期化処理
   // ========================================
 
-  // Claude-ステップ0-1: 設定の取得（ハードコーディング版）
-  // UIセレクタの設定（トップレベルのCLAUDE_SELECTORSを使用）
-  const UI_SELECTORS = {
-    Claude: CLAUDE_SELECTORS,
-  };
-
-  // Claude-ステップ0-3: UI_SELECTORSの確認
-  if (UI_SELECTORS && UI_SELECTORS.Claude) {
-    // UI_SELECTORS loaded successfully
-  } else {
-    log.error("❌ UI_SELECTORS initialization error!");
+  // Claude-ステップ0-1: セレクタの設定確認
+  // 統合されたCLAUDE_SELECTORSを使用
+  if (!CLAUDE_SELECTORS) {
+    log.error("❌ CLAUDE_SELECTORS initialization error!");
   }
 
   // ========================================
@@ -1045,42 +1138,11 @@
   // Claude-ステップ0-4-1: Deep Research用セレクタ
   const getDeepResearchSelectors = () => ({
     "3_回答停止ボタン": {
-      selectors: UI_SELECTORS.Claude?.STOP_BUTTON || [],
+      selectors: CLAUDE_SELECTORS.STOP_BUTTON || [],
       description: "回答停止ボタン",
     },
     "4_Canvas機能テキスト位置": {
-      selectors: [
-        // 【最優先】最終Canvas結果のみを正確に取得
-        '.grid-cols-1.grid[class*="!gap-3.5"]',
-
-        // 【重要】従来のセレクタの優先順位について
-        // 1. 最優先: 親要素（div.grid-cols-1.grid）を取得 - 全体のテキスト構造を含む
-        //    - <p>タグのテキストと<code>タグ内のテキストを両方取得可能
-        // 2. 中優先: Canvas固有のID/クラスセレクタ
-        // 3. 低優先: .code-block__codeクラス（<code>タグのみ）- 部分的な取得になる
-        // この順序により、HTMLの全体構造を正しく取得できる
-
-        // フォールバック: Canvas全体構造を取得（思考プロセスを除外）
-        "div.grid-cols-1.grid.gap-2\\.5:has(p.whitespace-pre-wrap)",
-        "div.grid-cols-1.grid:not(:has(.ease-out.rounded-lg))",
-        // 除外条件付きセレクタ（作業説明文と思考プロセスを除外）
-        'div.grid-cols-1.grid.gap-2\\.5:not([class*="p-3"]):not([class*="pt-0"]):not([class*="pr-8"])',
-        'div[class*="grid-cols-1"][class*="gap-2.5"]:not([class*="p-3"]):not([class*="pt-0"])',
-        // 通常回答除外セレクタ
-        '.grid-cols-1.grid:not(.standard-markdown):not([class*="p-3"]):not([class*="pt-0"])',
-        // Canvas固有セレクタ
-        "#markdown-artifact",
-        '[id="markdown-artifact"]',
-        ".font-claude-response#markdown-artifact",
-        '[tabindex="0"]#markdown-artifact',
-        "div.mx-auto.max-w-3xl#markdown-artifact",
-        // コードブロックのみ（フォールバック）- 部分的な取得になるため優先度を下げた
-        ".code-block__code",
-        "div.code-block__code",
-        ".code-block__code.h-fit.min-h-full.w-fit.min-w-full",
-        // 最後のフォールバック（汎用セレクタ）
-        '[class*="grid"][class*="gap"]:not([class*="standard-markdown"]):not([class*="p-3"])',
-      ],
+      selectors: CLAUDE_SELECTORS.DEEP_RESEARCH.CANVAS_CONTENT,
       description: "Canvas機能のテキスト表示エリア",
     },
     "4_3_Canvas続けるボタン": {
@@ -1103,10 +1165,7 @@
       description: "Canvas機能のプレビューボタン",
     },
     "4_2_Canvas開くボタン": {
-      selectors:
-        UI_SELECTORS.Claude?.DEEP_RESEARCH?.CANVAS_PREVIEW ||
-        UI_SELECTORS.Claude?.PREVIEW_BUTTON ||
-        [],
+      selectors: CLAUDE_SELECTORS.DEEP_RESEARCH.CANVAS_PREVIEW || [],
       description: "Canvas機能を開くボタン",
     },
     "5_通常処理テキスト位置": {
@@ -1123,143 +1182,61 @@
 
   // Claude-ステップ0-4-2: モデル選択用セレクタ
   const modelSelectors = {
-    menuButton: (UI_SELECTORS.Claude?.MODEL_BUTTON || []).map((selector) => ({
+    menuButton: (CLAUDE_SELECTORS.MODEL.BUTTON || []).map((selector) => ({
       selector,
       description: "モデル選択ボタン",
     })),
     menuContainer: [
       {
-        selector:
-          UI_SELECTORS.Claude?.MENU?.CONTAINER ||
-          '[role="menu"][data-state="open"]',
+        selector: CLAUDE_SELECTORS.MODEL.MENU_CONTAINER,
         description: "メニューコンテナ",
       },
     ],
-    // その他のモデルメニュー用セレクタ - デフォルト値を設定
-    otherModelsMenu:
-      UI_SELECTORS.Claude?.MENU?.OTHER_MODELS &&
-      UI_SELECTORS.Claude.MENU.OTHER_MODELS.length > 0
-        ? UI_SELECTORS.Claude.MENU.OTHER_MODELS.map((selector) => ({
-            selector,
-            description: "その他のモデルメニュー",
-          }))
-        : [
-            // デフォルトセレクタ - 最新Claude UIに対応
-            {
-              selector:
-                'div[role="menuitem"][aria-haspopup="menu"][data-state="closed"]',
-              description: "最新Claude UIセレクタ（data-state付き）",
-            },
-            {
-              selector:
-                'div[role="menuitem"][aria-haspopup="menu"]:has(*:contains("他のモデル"))',
-              description: "他のモデル日本語（子要素検索）",
-            },
-            {
-              selector:
-                'div[role="menuitem"][aria-haspopup="menu"]:has(*:contains("Other models"))',
-              description: "他のモデル英語（子要素検索）",
-            },
-            {
-              selector: 'div[role="menuitem"][aria-haspopup="menu"]',
-              description: "汎用他のモデル",
-            },
-            {
-              selector: '[role="menuitem"][aria-haspopup="menu"]',
-              description: "最も汎用的なセレクタ",
-            },
-          ],
-    modelDisplay: (UI_SELECTORS.Claude?.MODEL_INFO?.TEXT_ELEMENT || [])
+    otherModelsMenu: CLAUDE_SELECTORS.MODEL.OTHER_MODELS.map((selector) => ({
+      selector,
+      description: "その他のモデルメニュー",
+    })),
+    modelDisplay: (CLAUDE_SELECTORS.MODEL.DISPLAY_TEXT || [])
       .slice(0, 3)
       .map((selector) => ({ selector, description: "モデル表示要素" })),
   };
 
   // Claude-ステップ0-4-3: 機能選択用セレクタ
   const featureSelectors = {
-    menuButton: UI_SELECTORS.Claude?.FUNCTION_MENU_BUTTON || [],
-    menuContainer: UI_SELECTORS.Claude?.FEATURE_MENU?.CONTAINER || [],
-    webSearchToggle: UI_SELECTORS.Claude?.FEATURE_MENU?.WEB_SEARCH_TOGGLE || [],
-    researchButton: UI_SELECTORS.Claude?.FEATURE_BUTTONS?.RESEARCH || [],
+    menuButton: CLAUDE_SELECTORS.FEATURE.MENU_BUTTON || [],
+    menuContainer: CLAUDE_SELECTORS.FEATURE.MENU_CONTAINER,
+    webSearchToggle: CLAUDE_SELECTORS.FEATURE.WEB_SEARCH_TOGGLE || [],
+    researchButton: CLAUDE_SELECTORS.FEATURE.RESEARCH_BUTTON || [],
   };
 
-  // Claude-ステップ0-4-4: デフォルトセレクタ（フォールバック用）
-  const DEFAULT_SELECTORS = {
-    INPUT: [
-      ".ProseMirror",
-      'div.ProseMirror[contenteditable="true"]',
-      '[data-placeholder*="Message Claude"]',
-      'div[contenteditable="true"][role="textbox"]',
-    ],
-    SEND_BUTTON: [
-      'button[aria-label="Send Message"]',
-      'button[type="submit"][aria-label*="Send"]',
-      'button svg path[d*="M320 448"]',
-    ],
-    STOP_BUTTON: [
-      'button[aria-label="応答を停止"]',
-      '[aria-label="応答を停止"]',
-      'button svg path[d*="M128,20A108"]',
-    ],
-  };
+  // Claude-ステップ0-4-4: デフォルトセレクタ（CLAUDE_SELECTORS.DEFAULTを参照）
+  const DEFAULT_SELECTORS = CLAUDE_SELECTORS.DEFAULT;
 
   // Claude-ステップ0-4-5: Claude動作用セレクタ
   const claudeSelectors = {
     "1_テキスト入力欄": {
       selectors:
-        UI_SELECTORS.Claude?.INPUT && UI_SELECTORS.Claude.INPUT.length > 0
-          ? UI_SELECTORS.Claude.INPUT
+        CLAUDE_SELECTORS.INPUT.length > 0
+          ? CLAUDE_SELECTORS.INPUT
           : DEFAULT_SELECTORS.INPUT,
       description: "テキスト入力欄（ProseMirrorエディタ）",
     },
     "2_送信ボタン": {
       selectors:
-        UI_SELECTORS.Claude?.SEND_BUTTON &&
-        UI_SELECTORS.Claude.SEND_BUTTON.length > 0
-          ? UI_SELECTORS.Claude.SEND_BUTTON
+        CLAUDE_SELECTORS.SEND_BUTTON.length > 0
+          ? CLAUDE_SELECTORS.SEND_BUTTON
           : DEFAULT_SELECTORS.SEND_BUTTON,
       description: "送信ボタン",
     },
     "3_回答停止ボタン": {
       selectors:
-        UI_SELECTORS.Claude?.STOP_BUTTON &&
-        UI_SELECTORS.Claude.STOP_BUTTON.length > 0
-          ? UI_SELECTORS.Claude.STOP_BUTTON
+        CLAUDE_SELECTORS.STOP_BUTTON.length > 0
+          ? CLAUDE_SELECTORS.STOP_BUTTON
           : DEFAULT_SELECTORS.STOP_BUTTON,
       description: "回答停止ボタン",
     },
     "4_Canvas機能テキスト位置": {
-      selectors: [
-        // 【最優先】最終Canvas結果のみを正確に取得
-        '.grid-cols-1.grid[class*="!gap-3.5"]',
-
-        // 【重要】従来のセレクタの優先順位について
-        // 1. 最優先: 親要素（div.grid-cols-1.grid）を取得 - 全体のテキスト構造を含む
-        //    - <p>タグのテキストと<code>タグ内のテキストを両方取得可能
-        // 2. 中優先: Canvas固有のID/クラスセレクタ
-        // 3. 低優先: .code-block__codeクラス（<code>タグのみ）- 部分的な取得になる
-        // この順序により、HTMLの全体構造を正しく取得できる
-
-        // フォールバック: Canvas全体構造を取得（思考プロセスを除外）
-        "div.grid-cols-1.grid.gap-2\\.5:has(p.whitespace-pre-wrap)",
-        "div.grid-cols-1.grid:not(:has(.ease-out.rounded-lg))",
-        // 除外条件付きセレクタ（作業説明文と思考プロセスを除外）
-        'div.grid-cols-1.grid.gap-2\\.5:not([class*="p-3"]):not([class*="pt-0"]):not([class*="pr-8"])',
-        'div[class*="grid-cols-1"][class*="gap-2.5"]:not([class*="p-3"]):not([class*="pt-0"])',
-        // 通常回答除外セレクタ
-        '.grid-cols-1.grid:not(.standard-markdown):not([class*="p-3"]):not([class*="pt-0"])',
-        // Canvas固有セレクタ
-        "#markdown-artifact",
-        '[id="markdown-artifact"]',
-        ".font-claude-response#markdown-artifact",
-        '[tabindex="0"]#markdown-artifact',
-        "div.mx-auto.max-w-3xl#markdown-artifact",
-        // コードブロックのみ（フォールバック）- 部分的な取得になるため優先度を下げた
-        ".code-block__code",
-        "div.code-block__code",
-        ".code-block__code.h-fit.min-h-full.w-fit.min-w-full",
-        // 最後のフォールバック（汎用セレクタ）
-        '[class*="grid"][class*="gap"]:not([class*="standard-markdown"]):not([class*="p-3"])',
-      ],
+      selectors: CLAUDE_SELECTORS.DEEP_RESEARCH.CANVAS_CONTENT,
       description: "Canvas機能のテキスト表示エリア",
     },
     "4_3_Canvas続けるボタン": {
@@ -2144,28 +2121,13 @@
   const getAIResponseSelectors = () => {
     return {
       // レベル1: メッセージコンテナから最後の回答を特定
-      message_containers: [
-        '[data-testid="assistant-message"]:last-of-type',
-        '.conversation-thread > :last-child [class*="standard-markdown"]',
-        ".conversation-thread > :last-child .grid-cols-1.grid",
-      ],
+      message_containers: CLAUDE_SELECTORS.AI_RESPONSE.GENERAL_CONTAINERS,
 
       // レベル2: 回答タイプ別セレクタ
       response_types: {
-        canvas: [
-          "#markdown-artifact .grid-cols-1.grid.gap-2\\.5",
-          ".artifact-content .grid-cols-1.grid",
-          "[data-artifact-type] .grid-cols-1.grid",
-          "#markdown-artifact",
-          ".code-block__code",
-        ],
-        standard: [
-          ':not([id*="artifact"]) .standard-markdown',
-          ".assistant-message-content .standard-markdown",
-          ".standard-markdown",
-          "div.standard-markdown",
-        ],
-        code_block: [".code-block__code:last-of-type", "pre code:last-of-type"],
+        canvas: CLAUDE_SELECTORS.AI_RESPONSE.CANVAS,
+        standard: CLAUDE_SELECTORS.AI_RESPONSE.STANDARD,
+        code_block: CLAUDE_SELECTORS.AI_RESPONSE.CODE_BLOCK,
       },
     };
   };
@@ -5081,7 +5043,7 @@
     利用可能機能: {
       executeTask: typeof executeTask !== "undefined",
       runAutomation: typeof runAutomation !== "undefined",
-      UI_SELECTORS: typeof UI_SELECTORS !== "undefined",
+      CLAUDE_SELECTORS: typeof CLAUDE_SELECTORS !== "undefined",
     },
     メッセージリスナー: "登録済み",
   });
