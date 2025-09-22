@@ -4831,20 +4831,57 @@ async function executeStep4(taskList) {
 
             response = await chrome.tabs.sendMessage(tabId, messagePayload);
 
-            ExecuteLogger.info(`🔍 [STEP C-2] メッセージ送信成功:`, {
+            ExecuteLogger.info(`🔍 [STEP C-2] メッセージ送信完了:`, {
               tabId: tabId,
               responseReceived: !!response,
               responseType: typeof response,
               responseSuccess: response?.success,
+              responseContent: response
+                ? {
+                    hasSuccess: "success" in response,
+                    hasResult: "result" in response,
+                    hasError: "error" in response,
+                    hasWarning: "warning" in response,
+                    keys: Object.keys(response),
+                  }
+                : null,
               automationName: automationName,
             });
+
+            // ClaudeAutomationの場合の特別なログ
+            if (automationName === "ClaudeAutomation") {
+              ExecuteLogger.warn(`🔍 [ClaudeAutomation] 応答詳細:`, {
+                tabId: tabId,
+                taskId: task.id,
+                responseExists: !!response,
+                responseType: typeof response,
+                responseValue: response,
+                willProceed: !!response,
+              });
+            }
           } catch (timeoutError) {
-            ExecuteLogger.error(`❌ [STEP C-ERROR] メッセージ送信失敗:`, {
+            ExecuteLogger.error(`❌ [STEP C-ERROR] メッセージ送信エラー:`, {
               error: timeoutError.message,
+              errorStack: timeoutError.stack,
               tabId: tabId,
               taskId: task.id,
-              errorType: "timeout_or_communication_failure",
+              automationName: automationName,
+              errorType: "sendMessage_failure",
+              lastError: chrome.runtime.lastError,
             });
+
+            // ClaudeAutomationの場合は特別な処理
+            if (automationName === "ClaudeAutomation") {
+              ExecuteLogger.error(
+                `❌ [ClaudeAutomation] sendMessageエラー - Content Scriptが応答していません`,
+                {
+                  tabId: tabId,
+                  taskId: task.id,
+                  error: timeoutError.message,
+                },
+              );
+            }
+
             throw timeoutError;
           }
 
@@ -4872,9 +4909,31 @@ async function executeStep4(taskList) {
                 lastError: chrome.runtime.lastError?.message,
                 sendDuration: sendDuration,
                 responseType: typeof response,
+                automationName: automationName,
+                taskId: task.id,
               },
             );
-            // 応答がない場合でも成功とみなす（Content Script側で非同期処理中の可能性）
+
+            // ClaudeAutomationの場合、応答がない場合はエラーとして扱う
+            // （Claude自動化は応答待機処理を含むため、即座に応答が返るべき）
+            if (automationName === "ClaudeAutomation") {
+              ExecuteLogger.error(
+                `❌ [ClaudeAutomation] 応答なし - Content Scriptが正しく動作していない可能性`,
+                {
+                  tabId: tabId,
+                  taskId: task.id,
+                  prompt: task.prompt
+                    ? task.prompt.substring(0, 50) + "..."
+                    : null,
+                },
+              );
+              reject(
+                new Error("ClaudeAutomation: No response from Content Script"),
+              );
+              return;
+            }
+
+            // 他のAIの場合は警告のみ（互換性のため）
             resolve({
               success: true,
               warning:
@@ -5055,8 +5114,28 @@ async function executeStep4(taskList) {
 
       // 回答をスプレッドシートに記載
       if (result.success && result.response) {
+        // デバッグログ追加：answerCellRef の値を確認
+        ExecuteLogger.info(`📝 [DEBUG-answerCell] answerCellRef決定処理:`, {
+          taskId: taskId,
+          answerCellRef: task.answerCellRef,
+          cellRef: task.cellRef,
+          column: task.column,
+          row: task.row,
+          answerCell: task.answerCell,
+          columnPlusRow: task.column
+            ? `${task.column}${task.row}`
+            : "undefined",
+        });
+
         const answerCellRef =
-          task.answerCellRef || task.cellRef || `${task.column}${task.row}`;
+          task.answerCellRef || task.cellRef || task.answerCell;
+
+        ExecuteLogger.info(`📝 [DEBUG-answerCell] 最終的なanswerCellRef:`, {
+          taskId: taskId,
+          answerCellRef: answerCellRef,
+          isValid: !!answerCellRef && !answerCellRef.includes("undefined"),
+        });
+
         if (window.detailedLogManager) {
           await window.detailedLogManager.writeAnswerToSpreadsheet(
             taskId,

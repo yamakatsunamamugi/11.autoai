@@ -517,30 +517,76 @@
 
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       const requestId = Math.random().toString(36).substring(2, 8);
-      console.log(
+      console.warn(
         `📬 [Claude-直接実行方式] メッセージ受信 [ID:${requestId}]:`,
         {
           type: request?.type || request?.action,
           keys: Object.keys(request || {}),
+          hasTask: !!request?.task,
+          hasTaskData: !!request?.taskData,
+          automationName: request?.automationName,
+          taskId: request?.task?.id || request?.taskData?.id,
           timestamp: new Date().toISOString(),
         },
       );
 
       // executeTaskタスクの処理
-      if (request.action === "executeTask" || request.type === "executeTask") {
-        console.log(
+      if (
+        request.action === "executeTask" ||
+        request.type === "executeTask" ||
+        request.type === "CLAUDE_EXECUTE_TASK"
+      ) {
+        console.warn(
           `🔧 [Claude-直接実行方式] executeTask実行開始 [ID:${requestId}]`,
+          {
+            requestId: requestId,
+            action: request.action,
+            type: request.type,
+            automationName: request.automationName,
+            hasTask: !!request.task,
+            hasTaskData: !!request.taskData,
+            taskId: request?.task?.id || request?.taskData?.id,
+          },
         );
 
         (async () => {
           try {
             // executeTask関数が定義されているか確認
             if (typeof executeTask === "function") {
-              console.log(
+              console.warn(
                 `✅ [Claude-直接実行方式] executeTask関数が利用可能 [ID:${requestId}]`,
               );
-              const result = await executeTask(request.task || request);
-              sendResponse({ success: true, result });
+              const taskToExecute = request.task || request.taskData || request;
+              console.warn(
+                `🚀 [Claude-直接実行方式] executeTask呼び出し前 [ID:${requestId}]:`,
+                {
+                  taskId: taskToExecute?.id,
+                  taskKeys: Object.keys(taskToExecute || {}),
+                },
+              );
+
+              try {
+                const result = await executeTask(taskToExecute);
+                console.warn(
+                  `✅ [Claude-直接実行方式] executeTask完了 [ID:${requestId}]:`,
+                  {
+                    success: result?.success,
+                    hasResult: !!result,
+                    resultKeys: result ? Object.keys(result) : [],
+                  },
+                );
+                sendResponse({ success: true, result });
+              } catch (taskError) {
+                console.error(
+                  `❌ [Claude-直接実行方式] executeTaskエラー [ID:${requestId}]:`,
+                  taskError,
+                );
+                sendResponse({
+                  success: false,
+                  error: taskError.message || "executeTask failed",
+                  stack: taskError.stack,
+                });
+              }
             } else {
               console.warn(
                 `⏳ [Claude-直接実行方式] executeTask未定義、1秒後に再試行 [ID:${requestId}]`,
@@ -572,7 +618,9 @@
             sendResponse({ success: false, error: error.message });
           }
         })();
-
+        console.warn(
+          `🔄 [Claude-直接実行方式] 非同期処理のためreturn true [ID:${requestId}]`,
+        );
         return true; // 非同期レスポンスのために必要
       }
 
@@ -4216,17 +4264,70 @@
       try {
         // Chrome拡張機能のメッセージ送信で直接記録
         if (chrome.runtime && chrome.runtime.sendMessage) {
-          await chrome.runtime.sendMessage({
-            type: "recordSendTime",
+          log.debug("📡 [DEBUG] chrome.runtime.sendMessage呼び出し開始", {
             taskId: taskId,
             sendTime: sendTime.toISOString(),
-            taskInfo: {
-              aiType: "Claude",
-              model: modelName || "不明",
-              function: featureName || "通常",
-            },
+            timestamp: new Date().toISOString(),
           });
-          log.debug("✅ 送信時刻記録成功:", taskId, sendTime.toISOString());
+
+          // タイムアウト付きでsendMessageを実行
+          const sendMessageWithTimeout = new Promise((resolve) => {
+            const timeout = setTimeout(() => {
+              log.warn("⏱️ [TIMEOUT] sendMessageがタイムアウト（3秒経過）");
+              resolve({
+                error: "timeout",
+                message: "sendMessage timeout after 3000ms",
+              });
+            }, 3000); // 3秒でタイムアウト
+
+            try {
+              chrome.runtime.sendMessage(
+                {
+                  type: "recordSendTime",
+                  taskId: taskId,
+                  sendTime: sendTime.toISOString(),
+                  taskInfo: {
+                    aiType: "Claude",
+                    model: modelName || "不明",
+                    function: featureName || "通常",
+                  },
+                },
+                (response) => {
+                  clearTimeout(timeout);
+
+                  // chrome.runtime.lastErrorをチェック
+                  if (chrome.runtime.lastError) {
+                    log.warn(
+                      "⚠️ [chrome.runtime.lastError]:",
+                      chrome.runtime.lastError.message,
+                    );
+                    resolve({
+                      error: "runtime_error",
+                      message: chrome.runtime.lastError.message,
+                    });
+                  } else {
+                    log.debug("📨 [DEBUG] sendMessage応答受信:", response);
+                    resolve(response || { success: true });
+                  }
+                },
+              );
+            } catch (syncError) {
+              clearTimeout(timeout);
+              log.error("❌ [SYNC-ERROR] sendMessage同期エラー:", syncError);
+              resolve({ error: "sync_error", message: syncError.message });
+            }
+          });
+
+          const response = await sendMessageWithTimeout;
+
+          if (response.error) {
+            log.warn(
+              `⚠️ 送信時刻記録失敗 [${response.error}]:`,
+              response.message,
+            );
+          } else {
+            log.debug("✅ 送信時刻記録成功:", taskId, sendTime.toISOString());
+          }
         } else {
           log.warn("⚠️ Chrome runtime APIが利用できません");
         }
