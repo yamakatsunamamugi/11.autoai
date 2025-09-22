@@ -9,6 +9,15 @@
   }
   window.__CLAUDE_AUTOMATION_LOADED__ = true;
 
+  // 初期化マーカー設定（ChatGPT/Geminiと同様）
+  window.CLAUDE_SCRIPT_LOADED = true;
+  window.CLAUDE_SCRIPT_INIT_TIME = Date.now();
+
+  log.debug(
+    `🚀 Claude Automation - 初期化時刻: ${new Date().toLocaleString("ja-JP")}`,
+  );
+  log.debug(`[DEBUG] Claude Script Loaded - Marker Set`);
+
   // 🔍 [段階5] Content Script実行コンテキストの詳細確認
   const currentURL = window.location.href;
   const isValidClaudeURL = currentURL.includes("claude.ai");
@@ -89,6 +98,446 @@
       if (CURRENT_LOG_LEVEL >= LOG_LEVEL.DEBUG) console.log(...args);
     },
   };
+
+  // ========================================
+  // 統一ClaudeRetryManager クラス定義
+  // ChatGPT/Geminiと同様のエラー分類とリトライ戦略を統合
+  // ========================================
+
+  class ClaudeRetryManager {
+    constructor() {
+      // 3段階エスカレーション設定
+      this.escalationLevels = {
+        LIGHTWEIGHT: {
+          range: [1, 5],
+          delays: [1000, 2000, 5000, 10000, 15000], // 1秒→2秒→5秒→10秒→15秒
+          method: "SAME_WINDOW",
+          description: "軽量リトライ - 同一ウィンドウ内での再試行",
+        },
+        MODERATE: {
+          range: [6, 8],
+          delays: [30000, 60000, 120000], // 30秒→1分→2分
+          method: "PAGE_REFRESH",
+          description: "中程度リトライ - ページリフレッシュ",
+        },
+        HEAVY_RESET: {
+          range: [9, 20],
+          delays: [300000, 900000, 1800000, 3600000, 7200000], // 5分→15分→30分→1時間→2時間
+          method: "NEW_WINDOW",
+          description: "重いリトライ - 新規ウィンドウ作成",
+        },
+      };
+
+      // Claude特有のエラー分類
+      this.errorStrategies = {
+        RATE_LIMIT_ERROR: {
+          immediate_escalation: "HEAVY_RESET",
+          maxRetries: 10,
+        },
+        LOGIN_ERROR: { immediate_escalation: "HEAVY_RESET", maxRetries: 5 },
+        SESSION_ERROR: { immediate_escalation: "HEAVY_RESET", maxRetries: 5 },
+        NETWORK_ERROR: { maxRetries: 8, escalation: "MODERATE" },
+        DOM_ERROR: { maxRetries: 5, escalation: "LIGHTWEIGHT" },
+        UI_TIMING_ERROR: { maxRetries: 10, escalation: "LIGHTWEIGHT" },
+        CANVAS_ERROR: { maxRetries: 8, escalation: "MODERATE" },
+        DEEP_RESEARCH_ERROR: { maxRetries: 12, escalation: "MODERATE" },
+        GENERAL_ERROR: { maxRetries: 8, escalation: "MODERATE" },
+      };
+
+      // エラー履歴管理（段階的エスカレーション用）
+      this.errorHistory = [];
+      this.consecutiveErrorCount = 0;
+      this.lastErrorType = null;
+      this.maxHistorySize = 50;
+
+      // 実行時統計
+      this.metrics = {
+        totalAttempts: 0,
+        successfulAttempts: 0,
+        errorCounts: {},
+        escalationCounts: { LIGHTWEIGHT: 0, MODERATE: 0, HEAVY_RESET: 0 },
+        averageRetryCount: 0,
+      };
+
+      // リソース管理
+      this.activeTimeouts = new Set();
+      this.abortController = null;
+    }
+
+    // Claude特有のエラー分類器（詳細ログ付き）
+    classifyError(error, context = {}) {
+      const errorMessage = error?.message || error?.toString() || "";
+      const errorName = error?.name || "";
+
+      log.debug(`🔍 [Claude RetryManager] エラー分類開始:`, {
+        errorMessage,
+        errorName,
+        context,
+        timestamp: new Date().toISOString(),
+        url: window.location.href,
+      });
+
+      // Claude特有エラーの検出
+      let errorType = "GENERAL_ERROR";
+
+      if (
+        errorMessage.includes("rate limit") ||
+        errorMessage.includes("Rate limited") ||
+        errorMessage.includes("Too many requests")
+      ) {
+        errorType = "RATE_LIMIT_ERROR";
+        log.debug(`⚠️ [Claude RetryManager] レート制限エラー検出:`, {
+          errorType,
+          errorMessage,
+          immediateEscalation: "HEAVY_RESET",
+        });
+        return errorType;
+      }
+
+      if (
+        errorMessage.includes("ログイン") ||
+        errorMessage.includes("login") ||
+        errorMessage.includes("authentication") ||
+        errorMessage.includes("Please log in")
+      ) {
+        errorType = "LOGIN_ERROR";
+        log.debug(`🔐 [Claude RetryManager] ログインエラー検出:`, {
+          errorType,
+          errorMessage,
+          immediateEscalation: "HEAVY_RESET",
+        });
+        return errorType;
+      }
+
+      if (
+        errorMessage.includes("session") ||
+        errorMessage.includes("セッション") ||
+        errorMessage.includes("Session expired")
+      ) {
+        errorType = "SESSION_ERROR";
+        log.debug(`📋 [Claude RetryManager] セッションエラー検出:`, {
+          errorType,
+          errorMessage,
+          immediateEscalation: "HEAVY_RESET",
+        });
+        return errorType;
+      }
+
+      if (
+        errorMessage.includes("Canvas") ||
+        errorMessage.includes("canvas") ||
+        context.feature === "Canvas"
+      ) {
+        errorType = "CANVAS_ERROR";
+        log.debug(`🎨 [Claude RetryManager] Canvasエラー検出:`, {
+          errorType,
+          errorMessage,
+          escalation: "MODERATE",
+        });
+        return errorType;
+      }
+
+      if (
+        errorMessage.includes("Deep Research") ||
+        errorMessage.includes("deep research") ||
+        context.feature === "Deep Research"
+      ) {
+        errorType = "DEEP_RESEARCH_ERROR";
+        log.debug(`🔬 [Claude RetryManager] Deep Researchエラー検出:`, {
+          errorType,
+          errorMessage,
+          escalation: "MODERATE",
+        });
+        return errorType;
+      }
+
+      // 共通エラー分類
+      if (
+        errorMessage.includes("timeout") ||
+        errorMessage.includes("network") ||
+        errorMessage.includes("fetch") ||
+        errorName.includes("NetworkError")
+      ) {
+        errorType = "NETWORK_ERROR";
+        log.debug(`🌐 [Claude RetryManager] ネットワークエラー検出:`, {
+          errorType,
+          errorMessage,
+          escalation: "MODERATE",
+        });
+        return errorType;
+      }
+
+      if (
+        errorMessage.includes("要素が見つかりません") ||
+        errorMessage.includes("element not found") ||
+        errorMessage.includes("selector") ||
+        errorMessage.includes("querySelector")
+      ) {
+        errorType = "DOM_ERROR";
+        log.debug(`🔍 [Claude RetryManager] DOM要素エラー検出:`, {
+          errorType,
+          errorMessage,
+          escalation: "LIGHTWEIGHT",
+        });
+        return errorType;
+      }
+
+      if (
+        errorMessage.includes("timing") ||
+        errorMessage.includes("タイミング") ||
+        errorMessage.includes("wait")
+      ) {
+        errorType = "UI_TIMING_ERROR";
+        log.debug(`⏱️ [Claude RetryManager] UIタイミングエラー検出:`, {
+          errorType,
+          errorMessage,
+          escalation: "LIGHTWEIGHT",
+        });
+        return errorType;
+      }
+
+      log.debug(`❓ [Claude RetryManager] 一般エラーとして分類:`, {
+        errorType,
+        errorMessage,
+        escalation: "MODERATE",
+      });
+
+      return errorType;
+    }
+
+    // エラー履歴に追加
+    addErrorToHistory(errorType, errorMessage) {
+      const timestamp = new Date().toISOString();
+      this.errorHistory.push({ errorType, errorMessage, timestamp });
+
+      if (this.errorHistory.length > this.maxHistorySize) {
+        this.errorHistory.shift();
+      }
+
+      // 統計更新
+      this.metrics.errorCounts[errorType] =
+        (this.metrics.errorCounts[errorType] || 0) + 1;
+
+      if (this.lastErrorType === errorType) {
+        this.consecutiveErrorCount++;
+      } else {
+        this.consecutiveErrorCount = 1;
+        this.lastErrorType = errorType;
+      }
+    }
+
+    // 統合リトライ実行関数
+    async executeWithRetry(actionFunction, actionName, context = {}) {
+      const startTime = Date.now();
+      let retryCount = 0;
+      let lastError = null;
+      let lastResult = null;
+
+      log.debug(
+        `🔄 [Claude RetryManager] ${actionName} 開始 (最大20回リトライ)`,
+      );
+
+      for (retryCount = 1; retryCount <= 20; retryCount++) {
+        try {
+          this.metrics.totalAttempts++;
+
+          log.debug(
+            `🔄 [Claude RetryManager] ${actionName} 試行 ${retryCount}/20`,
+          );
+
+          const result = await actionFunction();
+
+          this.metrics.successfulAttempts++;
+          const totalTime = Date.now() - startTime;
+
+          log.debug(`✅ [Claude RetryManager] ${actionName} 成功:`, {
+            retryCount,
+            totalTime,
+            result:
+              typeof result === "string"
+                ? result.substring(0, 100) + "..."
+                : result,
+          });
+
+          return {
+            success: true,
+            result,
+            retryCount,
+            totalTime,
+          };
+        } catch (error) {
+          lastError = error;
+          const errorType = this.classifyError(error, context);
+
+          // エラー履歴管理
+          this.addErrorToHistory(errorType, error.message);
+
+          const elapsedTime = Date.now() - startTime;
+
+          log.error(
+            `❌ [Claude RetryManager] ${actionName} エラー (試行 ${retryCount}/20):`,
+            {
+              errorType,
+              errorMessage: error.message,
+              retryCount,
+              elapsedTime,
+              consecutiveErrors: this.consecutiveErrorCount,
+            },
+          );
+
+          // 最終試行の場合は終了
+          if (retryCount >= 20) {
+            break;
+          }
+
+          // エスカレーションレベル決定
+          const escalationLevel = this.determineEscalationLevel(
+            retryCount,
+            errorType,
+          );
+          const delay = this.calculateDelay(retryCount, escalationLevel);
+
+          log.debug(
+            `⏳ [Claude RetryManager] ${delay}ms待機後リトライ (レベル: ${escalationLevel})`,
+          );
+
+          // エスカレーション実行
+          await this.executeEscalation(escalationLevel, delay);
+        }
+      }
+
+      // 全リトライ失敗
+      const totalTime = Date.now() - startTime;
+      const finalErrorType = lastError
+        ? this.classifyError(lastError, context)
+        : "UNKNOWN";
+
+      log.error(`❌ [Claude RetryManager] ${actionName} 全リトライ失敗:`, {
+        totalAttempts: retryCount,
+        totalTime,
+        finalErrorType,
+        lastErrorMessage: lastError?.message || "Unknown error",
+        errorHistory: this.errorHistory.slice(-5), // 最新5件のエラー
+      });
+
+      return {
+        success: false,
+        result: lastResult,
+        error: lastError,
+        retryCount,
+        errorType: finalErrorType,
+      };
+    }
+
+    // エスカレーションレベル決定
+    determineEscalationLevel(retryCount, errorType) {
+      // 即座にエスカレーションが必要なエラー
+      const strategy = this.errorStrategies[errorType];
+      if (strategy?.immediate_escalation) {
+        this.metrics.escalationCounts[strategy.immediate_escalation]++;
+        return strategy.immediate_escalation;
+      }
+
+      // 試行回数によるエスカレーション
+      if (retryCount <= 5) {
+        this.metrics.escalationCounts.LIGHTWEIGHT++;
+        return "LIGHTWEIGHT";
+      } else if (retryCount <= 8) {
+        this.metrics.escalationCounts.MODERATE++;
+        return "MODERATE";
+      } else {
+        this.metrics.escalationCounts.HEAVY_RESET++;
+        return "HEAVY_RESET";
+      }
+    }
+
+    // 待機時間計算
+    calculateDelay(retryCount, escalationLevel) {
+      const level = this.escalationLevels[escalationLevel];
+      const index = Math.min(
+        retryCount - level.range[0],
+        level.delays.length - 1,
+      );
+      return level.delays[Math.max(0, index)];
+    }
+
+    // エスカレーション実行
+    async executeEscalation(escalationLevel, delay) {
+      const level = this.escalationLevels[escalationLevel];
+
+      log.debug(
+        `🔧 [Claude RetryManager] エスカレーション実行: ${level.description}`,
+      );
+
+      // 待機実行
+      await new Promise((resolve) => {
+        const timeoutId = setTimeout(resolve, delay);
+        this.activeTimeouts.add(timeoutId);
+        setTimeout(() => this.activeTimeouts.delete(timeoutId), delay);
+      });
+
+      // エスカレーション処理
+      switch (escalationLevel) {
+        case "MODERATE":
+          log.debug(`🔄 [Claude RetryManager] ページリフレッシュ実行`);
+          try {
+            window.location.reload();
+          } catch (e) {
+            log.error(`❌ [Claude RetryManager] ページリフレッシュ失敗:`, e);
+          }
+          break;
+        case "HEAVY_RESET":
+          log.debug(
+            `🆕 [Claude RetryManager] 重いリセット: 新規ウィンドウが推奨されますが、現在のウィンドウで継続`,
+          );
+          try {
+            // sessionStorageクリア
+            sessionStorage.clear();
+            // ページリフレッシュ
+            window.location.reload();
+          } catch (e) {
+            log.error(`❌ [Claude RetryManager] 重いリセット失敗:`, e);
+          }
+          break;
+      }
+    }
+
+    // リソースクリーンアップ
+    cleanup() {
+      this.activeTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
+      this.activeTimeouts.clear();
+
+      if (this.abortController) {
+        this.abortController.abort();
+        this.abortController = null;
+      }
+    }
+
+    // 統計情報取得
+    getMetrics() {
+      const successRate =
+        this.metrics.totalAttempts > 0
+          ? (
+              (this.metrics.successfulAttempts / this.metrics.totalAttempts) *
+              100
+            ).toFixed(2)
+          : 0;
+
+      return {
+        ...this.metrics,
+        successRate: `${successRate}%`,
+        currentConsecutiveErrors: this.consecutiveErrorCount,
+        lastErrorType: this.lastErrorType,
+        recentErrors: this.errorHistory.slice(-10),
+      };
+    }
+  }
+
+  // ClaudeRetryManagerのインスタンス作成
+  const claudeRetryManager = new ClaudeRetryManager();
+
+  // windowオブジェクトに登録（デバッグ用）
+  window.claudeRetryManager = claudeRetryManager;
 
   // ========================================
   // 🔒 実行状態管理（重複実行防止）- 改良版

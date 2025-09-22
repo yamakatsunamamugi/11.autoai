@@ -60,6 +60,49 @@ const log = {
   window.GEMINI_SCRIPT_LOADED = true;
   window.GEMINI_SCRIPT_INIT_TIME = Date.now();
 
+  // 🔍 Content Script実行コンテキストの詳細確認（Claude式）
+  const currentURL = window.location.href;
+  const isValidGeminiURL = currentURL.includes("gemini.google.com");
+  const isExtensionPage = currentURL.startsWith("chrome-extension://");
+
+  // 🔍 Content Script実行環境の詳細ログ
+  console.warn(`🔍 [Gemini-Content Script] 実行コンテキスト詳細分析:`, {
+    executionContext: {
+      url: currentURL,
+      title: document.title,
+      domain: window.location.hostname,
+      protocol: window.location.protocol,
+      pathname: window.location.pathname,
+      search: window.location.search,
+      hash: window.location.hash,
+    },
+    validationResults: {
+      isValidGeminiURL: isValidGeminiURL,
+      isExtensionPage: isExtensionPage,
+      isChromeNewTab: currentURL === "chrome://newtab/",
+      isAboutBlank: currentURL === "about:blank",
+    },
+    documentState: {
+      readyState: document.readyState,
+      hasDocumentElement: !!document.documentElement,
+      hasBody: !!document.body,
+      bodyChildrenCount: document.body ? document.body.children.length : 0,
+    },
+    chromeExtensionInfo: {
+      hasChromeRuntime: typeof chrome !== "undefined" && !!chrome.runtime,
+      extensionId:
+        typeof chrome !== "undefined" && chrome.runtime
+          ? chrome.runtime.id
+          : null,
+      runtimeUrl:
+        typeof chrome !== "undefined" && chrome.runtime
+          ? chrome.runtime.getURL("")
+          : null,
+    },
+    timestamp: new Date().toISOString(),
+    userAgent: navigator.userAgent,
+  });
+
   // ========================================
   // ログ管理システムの初期化（内部実装 - 実際に動作）
   // ========================================
