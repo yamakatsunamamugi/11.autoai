@@ -3995,12 +3995,21 @@
           const deepResearchSelectors = getDeepResearchSelectors();
           let stopButtonGone = false;
           let isCanvasMode = false;
-          waitCount = 0;
-          const maxDisappearWait = AI_WAIT_CONFIG.MAX_WAIT / 1000;
+          let disappearWaitCount = 0;
+          let confirmCount = 0; // 連続で停止ボタンが見つからない回数
+          const maxDisappearWait = AI_WAIT_CONFIG.MAX_WAIT / 1000; // 最大5分（300秒）
 
-          while (!stopButtonGone && waitCount < maxDisappearWait) {
+          log.debug(
+            `📊 [STOP-BUTTON-MONITOR] 監視開始 - 最大待機時間: ${maxDisappearWait}秒`,
+          );
+
+          while (disappearWaitCount < maxDisappearWait) {
             // 待機中の文字数カウント（10秒ごと）
-            if (waitCount % 10 === 0 && waitCount > 0) {
+            if (disappearWaitCount % 10 === 0 && disappearWaitCount > 0) {
+              log.debug(
+                `  生成中... ${Math.floor(disappearWaitCount / 60)}分${disappearWaitCount % 60}秒経過`,
+              );
+
               // Canvasテキストをチェック
               const canvasElement = await findClaudeElement(
                 deepResearchSelectors["4_Canvas機能テキスト位置"],
@@ -4017,7 +4026,7 @@
                   `Canvas文字数: ${canvasTextLength}文字`,
                   {
                     charCount: canvasTextLength,
-                    time: waitCount,
+                    time: disappearWaitCount,
                   },
                 );
               }
@@ -4038,67 +4047,70 @@
                   `通常文字数: ${normalTextLength}文字`,
                   {
                     charCount: normalTextLength,
-                    time: waitCount,
+                    time: disappearWaitCount,
                   },
                 );
               }
             }
 
-            // Canvas処理は停止ボタン消滅後に実行
-
             // 停止ボタンの状態をチェック
             const stopResult = await findClaudeElement(
               claudeSelectors["3_回答停止ボタン"],
-              2,
+              3, // リトライ回数を増やす
               true,
             );
 
             if (!stopResult) {
-              // 10秒間確認
-              console.log("🔍 停止ボタン消失を確認中...");
-              let stillGone = true;
-              for (let confirmCount = 0; confirmCount < 10; confirmCount++) {
-                await wait(1000);
-                const reconfirmResult = await findClaudeElement(
-                  claudeSelectors["3_回答停止ボタン"],
-                  2,
-                  true,
-                );
-                if (reconfirmResult) {
-                  stillGone = false;
-                  console.log(
-                    `  - 停止ボタン再出現（${confirmCount + 1}秒後）`,
-                  );
-                  log.debug(`  停止ボタン再出現（${confirmCount + 1}秒後）`);
-                  break;
-                }
-              }
+              // 停止ボタンが見つからない
+              confirmCount++;
+              log.debug(
+                `🔍 [STOP-BUTTON-CHECK] 停止ボタン非検出 (confirmCount: ${confirmCount}/10, 経過時間: ${disappearWaitCount}秒)`,
+              );
 
-              if (stillGone) {
+              if (confirmCount >= 10) {
+                // 10秒連続で停止ボタンが見つからない場合のみ完了と判定
                 stopButtonGone = true;
                 console.log(
-                  "%c✅ 応答生成完了！",
+                  "%c✅ 応答生成完了！（停止ボタンが10秒間連続で非表示）",
                   "color: #4CAF50; font-weight: bold",
                 );
-                console.log(`  - 待機時間: ${waitCount}秒`);
-                log.debug(`✓ 応答生成完了（${waitCount}秒後）`);
-
-                // log.debug('🔍 [Claude] ウィンドウ状態確認はスキップ（Content Script制限）');
+                console.log(`  - 総待機時間: ${disappearWaitCount}秒`);
+                console.log(`  - 連続非検出時間: ${confirmCount}秒`);
+                log.debug(
+                  `✓ 応答生成完了（総時間: ${disappearWaitCount}秒, 連続非検出: ${confirmCount}秒）`,
+                );
 
                 // 停止ボタン消滅後の3秒待機
-                // Post-stop wait...
                 await wait(3000);
                 break;
+              }
+            } else {
+              // 停止ボタンが見つかった場合はカウントをリセット
+              if (confirmCount > 0) {
+                log.debug(
+                  `🔄 [STOP-BUTTON-CHECK] 停止ボタン再検出 - confirmCountリセット (前回値: ${confirmCount})`,
+                );
+                confirmCount = 0;
+              }
+
+              // 詳細なログ（5秒ごと）
+              if (disappearWaitCount % 5 === 0) {
+                log.debug(
+                  `⏳ [STOP-BUTTON-CHECK] 停止ボタン継続検出中 (経過時間: ${disappearWaitCount}秒)`,
+                );
               }
             }
 
             await wait(1000);
-            waitCount++;
+            disappearWaitCount++;
 
-            if (waitCount % 10 === 0) {
-              log.debug(
-                `  生成中... ${Math.floor(waitCount / 60)}分${waitCount % 60}秒経過`,
+            // タイムアウトチェック
+            if (disappearWaitCount >= maxDisappearWait) {
+              log.warn(
+                `⚠️ [STOP-BUTTON-MONITOR] タイムアウト - 最大待機時間${maxDisappearWait}秒に到達`,
               );
+              stopButtonGone = true;
+              break;
             }
           }
         }
@@ -4759,17 +4771,46 @@
               waitCount++;
             }
 
-            // 停止ボタンが消えるまで待機
+            // 停止ボタンが消えるまで待機（改善版）
             if (stopButtonFound) {
-              while (waitCount < maxWait) {
+              log.debug("[SIMPLIFIED-WAIT] 停止ボタン消失待機開始");
+              let disappearWaitCount = 0;
+              let confirmCount = 0;
+              const maxDisappearWait = maxWait;
+
+              while (disappearWaitCount < maxDisappearWait) {
                 const stopResult = await findClaudeElement(
                   claudeSelectors["3_回答停止ボタン"],
-                  2,
+                  3, // リトライ回数を増やす
                   true,
                 );
-                if (!stopResult) break;
+
+                if (!stopResult) {
+                  // 停止ボタンが見つからない
+                  confirmCount++;
+                  log.debug(
+                    `[SIMPLIFIED-WAIT] 停止ボタン非検出 (confirmCount: ${confirmCount}/10)`,
+                  );
+
+                  if (confirmCount >= 10) {
+                    // 10秒連続で停止ボタンが見つからない場合のみ完了と判定
+                    log.debug(
+                      `[SIMPLIFIED-WAIT] 応答完了（連続非検出: ${confirmCount}秒）`,
+                    );
+                    break;
+                  }
+                } else {
+                  // 停止ボタンが見つかった場合はカウントをリセット
+                  if (confirmCount > 0) {
+                    log.debug(
+                      `[SIMPLIFIED-WAIT] 停止ボタン再検出 - カウントリセット`,
+                    );
+                    confirmCount = 0;
+                  }
+                }
+
                 await wait(1000);
-                waitCount++;
+                disappearWaitCount++;
               }
             }
           }
