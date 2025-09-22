@@ -1624,12 +1624,39 @@ async function generateTaskList(
       for (const col of answerColumns) {
         const colIndex = columnToIndex(col);
         if (rowData && colIndex < rowData.length && rowData[colIndex]?.trim()) {
-          hasAnswer = true;
-          addLog(`[TaskList] ${row}行目: 既に回答あり (${col}列)`, {
-            column: col,
-            value: rowData[colIndex].substring(0, 50) + "...",
-          });
-          break;
+          const cellValue = rowData[colIndex].trim();
+          // 「作業中」マーカーは回答とみなさない
+          if (!cellValue.startsWith("作業中")) {
+            hasAnswer = true;
+            ExecuteLogger.info(`[TaskList] スキップ: ${row}行目 (${col}列)`, {
+              理由: "既に回答あり",
+              セル値プレビュー: cellValue.substring(0, 50) + "...",
+              グループ: taskGroup.groupNumber,
+              グループタイプ: taskGroup.groupType,
+            });
+            addLog(`[TaskList] ${row}行目: 既に回答あり (${col}列)`, {
+              column: col,
+              value: cellValue.substring(0, 50) + "...",
+            });
+            break;
+          } else {
+            ExecuteLogger.info(
+              `[TaskList] タスク作成対象: ${row}行目 (${col}列)`,
+              {
+                理由: "作業中マーカーは回答とみなさない",
+                マーカー: cellValue.substring(0, 50) + "...",
+                グループ: taskGroup.groupNumber,
+                グループタイプ: taskGroup.groupType,
+              },
+            );
+            addLog(
+              `[TaskList] ${row}行目: 作業中マーカー検出 (${col}列) - タスク作成対象`,
+              {
+                column: col,
+                marker: cellValue.substring(0, 30) + "...",
+              },
+            );
+          }
         }
       }
 
@@ -3338,32 +3365,80 @@ class TaskStatusManager {
    */
   async getAvailableTasks(taskList, limit = 3) {
     const available = [];
+    const skippedTasks = []; // スキップしたタスクを記録
 
     for (const task of taskList) {
       if (available.length >= limit) break;
 
       const cellValue = await this.getCellValue(task);
+      const taskIdentifier = `${task.column}${task.row} (グループ${task.groupNumber})`;
 
       // 空またはタイムアウトしたタスクは利用可能
       if (!cellValue || cellValue === "") {
         available.push(task);
-        ExecuteLogger.debug(`✅ 利用可能: ${task.column}${task.row} (空)`);
+        ExecuteLogger.info(`✅ 利用可能: ${taskIdentifier} - 理由: セルが空`);
       } else if (cellValue.startsWith("作業中")) {
+        const markerMatch = cellValue.match(/作業中\n(.+)/);
+        const markerTime = markerMatch ? markerMatch[1] : "不明";
+
         if (this.isTaskTimedOut(cellValue, task)) {
-          ExecuteLogger.warn(
-            `⏰ タイムアウトタスク発見: ${task.column}${task.row}`,
-          );
           available.push(task);
+          const maxWaitTime = this.getMaxWaitTimeForTask(task);
+          ExecuteLogger.warn(`⏰ タイムアウトタスク: ${taskIdentifier}`, {
+            マーカー時刻: markerTime,
+            タイムアウト時間: `${maxWaitTime / 60000}分`,
+            理由: "作業中マーカーがタイムアウト",
+          });
         } else {
-          ExecuteLogger.debug(`⏳ 作業中: ${task.column}${task.row}`);
+          // タイムアウトしていない場合の詳細情報
+          try {
+            const now = new Date();
+            const markerDate = new Date(markerTime);
+            const elapsedMinutes = Math.round((now - markerDate) / 60000);
+            const maxWaitMinutes = this.getMaxWaitTimeForTask(task) / 60000;
+
+            skippedTasks.push({
+              task: taskIdentifier,
+              reason: "作業中（タイムアウト前）",
+              markerTime: markerTime,
+              elapsed: `${elapsedMinutes}分経過`,
+              maxWait: `${maxWaitMinutes}分`,
+              remaining: `残り${maxWaitMinutes - elapsedMinutes}分`,
+            });
+
+            ExecuteLogger.info(`⏳ スキップ（作業中）: ${taskIdentifier}`, {
+              マーカー時刻: markerTime,
+              経過時間: `${elapsedMinutes}分`,
+              タイムアウトまで: `残り${maxWaitMinutes - elapsedMinutes}分`,
+              理由: "他のプロセスが作業中",
+            });
+          } catch (e) {
+            ExecuteLogger.error(`❌ 時刻解析エラー: ${taskIdentifier}`, e);
+          }
         }
       } else {
-        // すでに結果が書かれている場合はスキップ
-        ExecuteLogger.debug(`✓ 完了済み: ${task.column}${task.row}`);
+        // すでに結果が書かれている場合
+        const preview = cellValue.substring(0, 50);
+        skippedTasks.push({
+          task: taskIdentifier,
+          reason: "完了済み",
+          value: preview + (cellValue.length > 50 ? "..." : ""),
+        });
+
+        ExecuteLogger.info(`✓ スキップ（完了済み）: ${taskIdentifier}`, {
+          セル値: preview + "...",
+          理由: "既に回答が記入済み",
+        });
       }
     }
 
-    ExecuteLogger.info(`📊 利用可能タスク: ${available.length}個`);
+    // サマリーログ
+    ExecuteLogger.info(`📊 タスク取得結果:`, {
+      利用可能: `${available.length}個`,
+      スキップ: `${skippedTasks.length}個`,
+      スキップ詳細: skippedTasks,
+    });
+
     return available;
   }
 
@@ -3394,34 +3469,52 @@ class TaskStatusManager {
    * @returns {boolean} タイムアウトしているかどうか
    */
   isTaskTimedOut(markerText, task) {
-    const match = markerText.match(/作業中\n(.+)/);
-    if (!match) return false;
-
     try {
-      const startTime = new Date(match[1]);
-      const elapsed = Date.now() - startTime.getTime();
+      const match = markerText.match(/作業中\n(.+)/);
+      if (!match) {
+        ExecuteLogger.warn("⚠️ 作業中マーカーの形式が不正", {
+          markerText: markerText,
+          task: `${task.column}${task.row}`,
+        });
+        return false;
+      }
+
+      const timeString = match[1];
+      const startTime = new Date(timeString);
+      const now = new Date();
+      const elapsed = now - startTime.getTime();
 
       // タスクに応じた最大待機時間を取得
       const maxWaitTime = this.getMaxWaitTimeForTask(task);
       const isTimeout = elapsed > maxWaitTime;
 
+      const elapsedMinutes = Math.floor(elapsed / 60000);
+      const maxMinutes = Math.floor(maxWaitTime / 60000);
+
+      ExecuteLogger.debug("タイムアウト判定", {
+        タスク: `${task.column}${task.row} (グループ${task.groupNumber})`,
+        マーカー時刻: timeString,
+        現在時刻: now.toISOString(),
+        経過時間: `${elapsedMinutes}分`,
+        最大待機時間: `${maxMinutes}分`,
+        タイムアウト: isTimeout ? "はい" : "いいえ",
+        タスク機能: task.function || "(なし)",
+      });
+
       if (isTimeout) {
-        const elapsedMinutes = Math.floor(elapsed / 60000);
-        const maxMinutes = Math.floor(maxWaitTime / 60000);
-        ExecuteLogger.debug(
-          `⏰ タイムアウト検出: ${elapsedMinutes}分経過 (最大${maxMinutes}分)`,
-          {
-            taskId: task.id || task.taskId,
-            functionName: task.function || "(なし)",
-            elapsedMinutes: elapsedMinutes,
-            maxMinutes: maxMinutes,
-          },
+        ExecuteLogger.info(
+          `⏰ タイムアウト検出: ${task.column}${task.row} - ` +
+            `経過時間: ${elapsedMinutes}分 > 最大待機時間: ${maxMinutes}分`,
         );
       }
 
       return isTimeout;
     } catch (e) {
-      ExecuteLogger.error("❌ 日時解析エラー:", e);
+      ExecuteLogger.error("❌ タイムアウト判定エラー:", {
+        エラー: e.message,
+        マーカーテキスト: markerText,
+        タスク: `${task.column}${task.row}`,
+      });
       return true; // 日時解析失敗時はタイムアウト扱い
     }
   }
