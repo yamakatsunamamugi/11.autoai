@@ -3959,101 +3959,93 @@ async function executeStep4(taskList) {
             timestamp: new Date().toISOString(),
           });
 
-          // AI動作検出によるスマートタイムアウト制御
-          // 30秒以内にAI応答がない場合のみエラーとし、AI応答後は内部制御に委任
-          const executeWithAIDetection = () => {
-            return new Promise((resolve, reject) => {
-              let timeoutId = null;
-              let aiResponseDetected = false;
-              let messageListener = null;
+          // unusedと同じ設計: 外部タイムアウトは初期通信確認のみ（1分）
+          // AI自動化内部の応答待機（Deep Research: 40分、通常: 1分）に完全委任
+          const timeout = 60000; // 1分 - 初期通信確認のみ
 
-              // 30秒間のAI応答待機タイムアウト（真の通信エラー検出用）
-              timeoutId = setTimeout(() => {
-                if (!aiResponseDetected) {
-                  cleanup();
-                  reject(new Error("30秒以内にAI応答なし - 真の通信エラー"));
-                }
-              }, 30000);
+          ExecuteLogger.info(`🕒 外部タイムアウト設定（unusedと同じ設計）:`, {
+            aiType: task.aiType,
+            function: task.function,
+            purpose: "初期通信確認のみ",
+            timeoutMs: timeout,
+            timeoutMinutes: 1,
+            note: "AI稼働後は内部応答待機に完全委任",
+          });
 
-              // AI応答検出リスナー
-              messageListener = (message) => {
-                if (message.type === "AI_RESPONSE_DETECTED") {
-                  aiResponseDetected = true;
-                  if (timeoutId) {
-                    clearTimeout(timeoutId);
-                    timeoutId = null;
-                    ExecuteLogger.info(
-                      "✅ AI応答検出 - 外部タイムアウト停止、AI内部制御に委任",
-                    );
-                  }
-                }
-              };
-
-              // クリーンアップ関数
-              const cleanup = () => {
-                if (timeoutId) {
-                  clearTimeout(timeoutId);
-                  timeoutId = null;
-                }
-                if (messageListener) {
-                  chrome.runtime.onMessage.removeListener(messageListener);
-                  messageListener = null;
-                }
-              };
-
-              // リスナー登録
-              chrome.runtime.onMessage.addListener(messageListener);
-
-              // Chrome API実行
-              chrome.scripting
-                .executeScript({
-                  target: { tabId: tabId },
-                  func: async (messagePayload) => {
-                    try {
-                      // AI動作開始を親プロセスに通知
-                      if (typeof chrome !== "undefined" && chrome.runtime) {
-                        chrome.runtime.sendMessage({
-                          type: "AI_RESPONSE_DETECTED",
-                          taskId:
-                            messagePayload.task?.id ||
-                            messagePayload.taskData?.id,
-                          timestamp: Date.now(),
-                        });
-                      }
-
-                      // 元のexecuteTask実行（AI内部タイムアウトで制御）
-                      const result = await window.executeTask(messagePayload);
-                      return result;
-                    } catch (error) {
-                      return {
-                        success: false,
-                        error: error.message,
-                        stack: error.stack,
-                      };
-                    }
-                  },
-                  args: [messagePayload],
-                })
-                .then((results) => {
-                  cleanup();
-                  resolve(results);
-                })
-                .catch((error) => {
-                  cleanup();
-                  reject(error);
-                });
-            });
-          };
+          const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(
+              () =>
+                reject(
+                  new Error(
+                    "Initial communication timeout after 60 seconds - AI automation failed to start",
+                  ),
+                ),
+              timeout,
+            );
+          });
 
           let response;
           try {
-            // Claudeの場合はAI動作検出機能付きexecuteScriptを使用
+            // Claudeの場合はchrome.scripting.executeScriptを使用
             if (automationName === "ClaudeAutomation") {
               ExecuteLogger.info(
-                `🔍 [STEP C-1] AI動作検出機能付きexecuteScript実行中...`,
+                `🔍 [STEP C-1] chrome.scripting.executeScript実行中...`,
               );
 
-              const results = await executeWithAIDetection();
+              const results = await Promise.race([
+                chrome.scripting.executeScript({
+                  target: { tabId: tabId },
+                  func: async (taskData) => {
+                    try {
+                      if (typeof window.executeTask !== "function") {
+                        console.error(
+                          "❌ [SCRIPT-EXEC] executeTask未定義 - 利用可能な関数:",
+                          Object.getOwnPropertyNames(window)
+                            .filter(
+                              (name) => typeof window[name] === "function",
+                            )
+                            .slice(0, 10),
+                        );
+                        throw new Error(
+                          "executeTask function is not available",
+                        );
+                      }
+
+                      console.log("🔍 [SCRIPT-EXEC] executeTask呼び出し開始");
+                      console.log("📤 Executing task with data:", taskData);
+                      const result = await window.executeTask(taskData);
+                      console.log(
+                        "🔍 [SCRIPT-EXEC] executeTask実行結果:",
+                        result,
+                      );
+
+                      if (result) {
+                        return {
+                          success: true,
+                          message: "Task executed successfully",
+                          result: result,
+                          timestamp: Date.now(),
+                        };
+                      } else {
+                        return {
+                          success: false,
+                          message: "Task execution failed",
+                          timestamp: Date.now(),
+                        };
+                      }
+                    } catch (error) {
+                      console.error("❌ executeTask error:", error);
+                      return {
+                        success: false,
+                        error: error.message,
+                        timestamp: Date.now(),
+                      };
+                    }
+                  },
+                  args: [messagePayload.task || messagePayload.taskData],
+                }),
+                timeoutPromise,
+              ]);
 
               response =
                 results && results[0]
