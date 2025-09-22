@@ -1604,13 +1604,58 @@
   const getCurrentModelInfo = () => {
     log.debug("\n📊 【Claude-ステップ1-1】現在のモデル情報を取得");
 
+    // 新しいセレクタ: ユーザーが提供したモデル表示要素
+    const newModelSelectors = [
+      ".font-claude-response .whitespace-nowrap.tracking-tight.select-none", // 最も具体的
+      ".font-claude-response div.select-none", // 少し汎用的
+      "div.font-claude-response", // 親要素全体
+      ".claude-logo-model-selector", // SVGロゴの隣接要素を探す
+    ];
+
+    // 新しいセレクタを優先的に試す
+    for (const selector of newModelSelectors) {
+      try {
+        if (selector === ".claude-logo-model-selector") {
+          // SVGロゴの場合は隣接要素を探す
+          const svg = document.querySelector(selector);
+          if (svg) {
+            const parent = svg.closest(".font-claude-response");
+            if (parent) {
+              const modelText = parent.querySelector(
+                ".whitespace-nowrap.tracking-tight.select-none",
+              );
+              if (modelText) {
+                const text = modelText.textContent.trim();
+                log.debug(`  ✅ モデル名取得成功（新セレクタ）: "${text}"`);
+                return text;
+              }
+            }
+          }
+        } else {
+          const element = document.querySelector(selector);
+          if (element) {
+            const text = element.textContent.trim();
+            if (text && text.length > 0) {
+              log.debug(`  ✅ モデル名取得成功（新セレクタ）: "${text}"`);
+              return text;
+            }
+          }
+        }
+      } catch (error) {
+        log.debug(`  ⚠️ 新セレクタ試行失敗: ${selector} - ${error.message}`);
+      }
+    }
+
+    // 既存のセレクタにフォールバック
     for (const selectorInfo of modelSelectors.modelDisplay) {
       try {
         const element = document.querySelector(selectorInfo.selector);
         if (element) {
           const text = element.textContent.trim();
-          // Model found: "${text}"
-          return text;
+          if (text && text.length > 0) {
+            log.debug(`  ✅ モデル名取得成功（既存セレクタ）: "${text}"`);
+            return text;
+          }
         }
       } catch (error) {
         log.debug(`  ❌ 取得失敗: ${error.message}`);
@@ -3336,24 +3381,59 @@
           ? modelName
           : `Claude ${modelName}`;
 
-        // サブメニューチェック
-        const mainMenuItems = document.querySelectorAll(
-          '[role="menuitem"]:not([aria-haspopup="menu"])',
-        );
+        // まずメインメニューでターゲットモデルを探す
+        const mainMenuItems = document.querySelectorAll('[role="menuitem"]');
         let foundInMain = false;
 
+        log.debug(`🔍 メインメニューでモデルを検索: "${targetModelName}"`);
+        log.debug(`📊 メニューアイテム数: ${mainMenuItems.length}`);
+
         for (const item of mainMenuItems) {
-          const itemText = item.textContent;
-          if (itemText && itemText.includes(targetModelName)) {
-            foundInMain = true;
-            await triggerReactEvent(item, "click");
-            await wait(1500);
-            break;
+          const itemText = item.textContent?.trim();
+          log.debug(`  - アイテム: "${itemText}"`);
+
+          // 完全一致または部分一致でチェック
+          if (itemText) {
+            // Claude 3.5 Sonnet, Claude 3 Opus, Claude 3 Haiku などのパターンに対応
+            const normalizedItemText = itemText.replace(/\s+/g, " ").trim();
+            const normalizedTarget = targetModelName
+              .replace(/\s+/g, " ")
+              .trim();
+
+            if (
+              normalizedItemText === normalizedTarget ||
+              normalizedItemText.includes(normalizedTarget) ||
+              normalizedTarget.includes(normalizedItemText)
+            ) {
+              log.debug(`✅ モデル発見: "${itemText}"`);
+              foundInMain = true;
+              await triggerReactEvent(item, "click");
+              await wait(1500);
+              break;
+            }
+
+            // 数字のバージョン表記の違いも考慮（例：3.5 vs 3-5）
+            const itemTextNormalized = itemText
+              .replace(/[-\s]/g, "")
+              .toLowerCase();
+            const targetNormalized = targetModelName
+              .replace(/[-\s]/g, "")
+              .toLowerCase();
+            if (
+              itemTextNormalized.includes(targetNormalized) ||
+              targetNormalized.includes(itemTextNormalized)
+            ) {
+              log.debug(`✅ モデル発見（正規化後）: "${itemText}"`);
+              foundInMain = true;
+              await triggerReactEvent(item, "click");
+              await wait(1500);
+              break;
+            }
           }
         }
 
         if (!foundInMain) {
-          // その他のモデルをチェック
+          // サブメニューが存在する場合のみチェック
           log.debug("【Claude-ステップ3-3】その他のモデルメニューをチェック");
 
           // デバッグ: modelSelectors.otherModelsMenuの詳細を出力
