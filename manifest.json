@@ -68,5 +68,13 @@
       ],
       "matches": ["<all_urls>"]
     }
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://claude.ai/*"],
+      "js": ["4-2-claude-automation.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
   ]
 }

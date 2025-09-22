@@ -3959,66 +3959,157 @@ async function executeStep4(taskList) {
             timestamp: new Date().toISOString(),
           });
 
-          // unusedと同じ設計: 外部タイムアウトは初期通信確認のみ（1分）
-          // AI自動化内部の応答待機（Deep Research: 40分、通常: 1分）に完全委任
-          const timeout = 60000; // 1分 - 初期通信確認のみ
-
-          ExecuteLogger.info(`🕒 外部タイムアウト設定（unusedと同じ設計）:`, {
-            aiType: task.aiType,
-            function: task.function,
-            purpose: "初期通信確認のみ",
-            timeoutMs: timeout,
-            timeoutMinutes: 1,
-            note: "AI稼働後は内部応答待機に完全委任",
+          // タイムアウト設定を20秒に延長（unusedコードと同じ）
+          const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(
+              () => reject(new Error("sendMessage timeout after 20 seconds")),
+              20000,
+            );
           });
 
           let response;
           try {
-            // unusedと同じ方式：Content Script手動注入 + メッセージ送信
-            ExecuteLogger.info(
-              `🔍 [STEP C-1] Content Script注入開始 (unused方式)...`,
-              {
-                tabId: tabId,
-                taskId: task.id,
-                automationName: automationName,
-                timestamp: new Date().toISOString(),
-              },
-            );
+            // Claudeの場合はchrome.scripting.executeScriptを使用
+            if (automationName === "ClaudeAutomation") {
+              ExecuteLogger.info(
+                `🔍 [STEP C-1] chrome.scripting.executeScript実行中...`,
+              );
 
-            // Step 1: Content Script手動注入（unusedと同じ）
-            const scriptFileMap = {
-              ClaudeAutomation: "4-2-claude-automation.js",
-              ChatGPTAutomation: "4-1-chatgpt-automation.js",
-              GeminiAutomation: "4-3-gemini-automation.js",
-              GensparkAutomation: "4-5-genspark-automation.js",
-            };
+              const results = await Promise.race([
+                chrome.scripting.executeScript({
+                  target: { tabId: tabId },
+                  func: async (taskData) => {
+                    try {
+                      // 🔍 [SCRIPT-EXEC] 詳細ログ追加
+                      console.log("🔍 [SCRIPT-EXEC] claude.aiタブ内実行開始");
+                      console.log(
+                        "🔍 [SCRIPT-EXEC] 現在のURL:",
+                        window.location.href,
+                      );
+                      console.log("🔍 [SCRIPT-EXEC] taskData:", taskData);
 
-            const scriptFile = scriptFileMap[automationName];
-            if (!scriptFile) {
-              throw new Error(`Unknown automation: ${automationName}`);
+                      // 🔧 [ENHANCED-DIAGNOSTIC] Content Script状態詳細確認
+                      console.log(
+                        "🔧 [ENHANCED-DIAGNOSTIC] Content Script状態確認:",
+                      );
+                      console.log(
+                        "  - CLAUDE_SCRIPT_LOADED:",
+                        window.CLAUDE_SCRIPT_LOADED,
+                      );
+                      console.log(
+                        "  - CLAUDE_SCRIPT_INIT_TIME:",
+                        window.CLAUDE_SCRIPT_INIT_TIME,
+                      );
+                      console.log(
+                        "  - executeTask存在:",
+                        typeof window.executeTask,
+                      );
+                      console.log(
+                        "  - findClaudeElement存在:",
+                        typeof window.findClaudeElement,
+                      );
+                      console.log(
+                        "  - inputText存在:",
+                        typeof window.inputText,
+                      );
+                      console.log(
+                        "  - runAutomation存在:",
+                        typeof window.runAutomation,
+                      );
+
+                      // 🔧 [ENHANCED-DIAGNOSTIC] isValidClaudeURL and shouldExportFunctions check
+                      const currentURL = window.location.href;
+                      const isValidClaudeURL =
+                        /^https:\/\/claude\.ai\/.*/i.test(currentURL);
+                      const isExtensionPage = currentURL.includes(
+                        "chrome-extension://",
+                      );
+                      console.log("🔧 [ENHANCED-DIAGNOSTIC] URL状態確認:");
+                      console.log("  - isValidClaudeURL:", isValidClaudeURL);
+                      console.log("  - isExtensionPage:", isExtensionPage);
+                      console.log(
+                        "  - shouldInitialize計算結果:",
+                        !isExtensionPage && isValidClaudeURL,
+                      );
+
+                      console.log(
+                        "🔍 [SCRIPT-EXEC] window.executeTask存在確認:",
+                        typeof window.executeTask,
+                      );
+                      console.log(
+                        "🔍 [SCRIPT-EXEC] windowオブジェクト上の関数一覧:",
+                        Object.getOwnPropertyNames(window).filter(
+                          (name) =>
+                            typeof window[name] === "function" &&
+                            name.includes("execute"),
+                        ),
+                      );
+
+                      // Content Script内のexecuteTask関数を直接呼び出し
+                      if (typeof window.executeTask !== "function") {
+                        console.log(
+                          "❌ [SCRIPT-EXEC] executeTask未定義 - 利用可能な関数:",
+                          Object.getOwnPropertyNames(window)
+                            .filter(
+                              (name) => typeof window[name] === "function",
+                            )
+                            .slice(0, 10),
+                        );
+                        throw new Error(
+                          "executeTask function is not available",
+                        );
+                      }
+
+                      console.log("🔍 [SCRIPT-EXEC] executeTask呼び出し開始");
+                      console.log("📤 Executing task with data:", taskData);
+                      const result = await window.executeTask(taskData);
+                      console.log(
+                        "🔍 [SCRIPT-EXEC] executeTask実行結果:",
+                        result,
+                      );
+
+                      if (result) {
+                        return {
+                          success: true,
+                          message: "Task executed successfully",
+                          result: result,
+                          timestamp: Date.now(),
+                        };
+                      } else {
+                        return {
+                          success: false,
+                          message: "Task execution failed",
+                          timestamp: Date.now(),
+                        };
+                      }
+                    } catch (error) {
+                      console.error("❌ executeTask error:", error);
+                      return {
+                        success: false,
+                        error: error.message,
+                        timestamp: Date.now(),
+                      };
+                    }
+                  },
+                  args: [messagePayload.task || messagePayload.taskData],
+                }),
+                timeoutPromise,
+              ]);
+
+              response =
+                results && results[0]
+                  ? results[0].result
+                  : { success: false, error: "No response" };
+            } else {
+              // 他のAIは従来通りchrome.tabs.sendMessage
+              ExecuteLogger.info(
+                `🔍 [STEP C-1] chrome.tabs.sendMessage実行中...`,
+              );
+              response = await Promise.race([
+                chrome.tabs.sendMessage(tabId, messagePayload),
+                timeoutPromise,
+              ]);
             }
-
-            // Content Script注入
-            await chrome.scripting.executeScript({
-              target: { tabId: tabId },
-              files: [scriptFile],
-            });
-
-            // 初期化完了待機（unusedと同じ3秒）
-            await new Promise((resolve) => setTimeout(resolve, 3000));
-
-            ExecuteLogger.info(
-              `🔍 [STEP C-2] Content Script注入完了、メッセージ送信開始`,
-              {
-                tabId: tabId,
-                taskId: task.id,
-                scriptFile: scriptFile,
-                timestamp: new Date().toISOString(),
-              },
-            );
-
-            // Step 2: メッセージ送信（unusedと同じシンプル方式）
-            response = await chrome.tabs.sendMessage(tabId, messagePayload);
 
             ExecuteLogger.info(`🔍 [STEP C-2] メッセージ送信成功:`, {
               tabId: tabId,
