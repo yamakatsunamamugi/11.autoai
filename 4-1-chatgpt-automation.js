@@ -68,6 +68,51 @@ const log = {
   );
   log.debug(`[DEBUG] ChatGPT Script Loaded - Marker Set`);
 
+  // 🔍 Content Script実行コンテキストの詳細確認（Claude式）
+  const currentURL = window.location.href;
+  const isValidChatGPTURL =
+    currentURL.includes("chatgpt.com") ||
+    currentURL.includes("chat.openai.com");
+  const isExtensionPage = currentURL.startsWith("chrome-extension://");
+
+  // 🔍 Content Script実行環境の詳細ログ
+  console.warn(`🔍 [ChatGPT-Content Script] 実行コンテキスト詳細分析:`, {
+    executionContext: {
+      url: currentURL,
+      title: document.title,
+      domain: window.location.hostname,
+      protocol: window.location.protocol,
+      pathname: window.location.pathname,
+      search: window.location.search,
+      hash: window.location.hash,
+    },
+    validationResults: {
+      isValidChatGPTURL: isValidChatGPTURL,
+      isExtensionPage: isExtensionPage,
+      isChromeNewTab: currentURL === "chrome://newtab/",
+      isAboutBlank: currentURL === "about:blank",
+    },
+    documentState: {
+      readyState: document.readyState,
+      hasDocumentElement: !!document.documentElement,
+      hasBody: !!document.body,
+      bodyChildrenCount: document.body ? document.body.children.length : 0,
+    },
+    chromeExtensionInfo: {
+      hasChromeRuntime: typeof chrome !== "undefined" && !!chrome.runtime,
+      extensionId:
+        typeof chrome !== "undefined" && chrome.runtime
+          ? chrome.runtime.id
+          : null,
+      runtimeUrl:
+        typeof chrome !== "undefined" && chrome.runtime
+          ? chrome.runtime.getURL("")
+          : null,
+    },
+    timestamp: new Date().toISOString(),
+    userAgent: navigator.userAgent,
+  });
+
   // ========================================
   // Step 4-1-0-3: 統一ChatGPTRetryManager クラス定義
   // エラー分類とリトライ戦略を統合した統一システム

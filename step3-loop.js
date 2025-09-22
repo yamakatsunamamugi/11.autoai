@@ -471,7 +471,8 @@ async function processIncompleteTasks(taskGroup) {
     );
     let tasks;
     try {
-      tasks = await createTaskList(taskGroup);
+      // 初回実行フラグを渡す（iteration === 1の時が初回）
+      tasks = await createTaskList(taskGroup, iteration === 1);
     } catch (error) {
       LoopLogger.error("[step5-loop.js] [Step 5-2-1] タスクリスト作成エラー:", {
         エラー: error.message,
@@ -856,12 +857,15 @@ async function readFullSpreadsheet() {
   }
 }
 
-async function createTaskList(taskGroup) {
+async function createTaskList(taskGroup, isFirstRun = false) {
   LoopLogger.info("[Helper] タスクリスト作成開始:", {
     グループ番号: taskGroup?.groupNumber,
     グループタイプ: taskGroup?.groupType,
     列情報: taskGroup?.columns,
     dataStartRow: taskGroup?.dataStartRow,
+    初回実行: isFirstRun
+      ? "はい（作業中マーカー削除あり）"
+      : "いいえ（通常処理）",
   });
 
   // ログバッファを初期化
@@ -984,6 +988,7 @@ async function createTaskList(taskGroup) {
       columnControls: columnControls,
       applyRowControl: true,
       applyColumnControl: true,
+      isFirstRun: isFirstRun, // 初回実行フラグを追加
     };
 
     // DEBUG: Step3に渡すパラメータ
