@@ -42,6 +42,42 @@
   };
 
   // ========================================
+  // 🔒 実行状態管理（重複実行防止）
+  // ========================================
+  let isExecuting = false;
+  let currentTaskId = null;
+  let taskStartTime = null;
+  let lastActivityTime = null;
+
+  // タスク実行状態を管理するヘルパー関数
+  const setExecutionState = (executing, taskId = null) => {
+    isExecuting = executing;
+    currentTaskId = taskId;
+    lastActivityTime = Date.now();
+    if (executing && taskId) {
+      taskStartTime = Date.now();
+      log.info(`🔒 [EXECUTION-STATE] タスク実行開始: ${taskId}`);
+    } else if (!executing) {
+      const duration = taskStartTime ? Date.now() - taskStartTime : 0;
+      log.info(
+        `🔓 [EXECUTION-STATE] タスク実行完了: ${currentTaskId} (${Math.round(duration / 1000)}秒)`,
+      );
+      taskStartTime = null;
+    }
+  };
+
+  // 実行状態を取得
+  const getExecutionStatus = () => {
+    return {
+      isExecuting,
+      currentTaskId,
+      taskStartTime,
+      lastActivityTime,
+      executionDuration: taskStartTime ? Date.now() - taskStartTime : 0,
+    };
+  };
+
+  // ========================================
   // 🎯 Claude UI セレクタ定義 - 完全統合版
   // 最終更新: 2024-12-22
   // ========================================
@@ -3133,6 +3169,42 @@
   // ========================================
 
   async function executeTask(taskData) {
+    // タスクIDを生成または取得
+    const taskId =
+      taskData.taskId ||
+      taskData.id ||
+      `task_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+
+    // 重複実行チェック
+    if (isExecuting) {
+      if (currentTaskId === taskId) {
+        log.warn(
+          `⚠️ [DUPLICATE-EXECUTION] タスクID ${taskId} は既に実行中です`,
+        );
+        return {
+          success: false,
+          error: "Task already executing",
+          inProgress: true,
+          taskId: taskId,
+          executionStatus: getExecutionStatus(),
+        };
+      }
+
+      log.warn(
+        `⚠️ [BUSY] 別のタスク（${currentTaskId}）が実行中です。新しいタスク（${taskId}）は拒否されました`,
+      );
+      return {
+        success: false,
+        error: "Another task is in progress",
+        busyWith: currentTaskId,
+        requestedTaskId: taskId,
+        executionStatus: getExecutionStatus(),
+      };
+    }
+
+    // 実行状態を設定
+    setExecutionState(true, taskId);
+
     console.log(
       "%c🚀 ========== Claude V2 タスク実行開始 ==========",
       "color: #9C27B0; font-weight: bold; font-size: 16px",
@@ -3144,7 +3216,7 @@
     console.log("════════════════════════════════════════");
     console.log(`🕐 実行開始時刻: ${new Date().toISOString()}`);
     console.log(`📍 実行URL: ${window.location.href}`);
-    console.log(`🆔 タスクID: ${taskData.taskId || taskData.id || "なし"}`);
+    console.log(`🆔 タスクID: ${taskId}`);
 
     log.debug("📋 受信したタスクデータ:", {
       model: taskData.model || "未指定",
@@ -4593,8 +4665,14 @@
         log.warn("⚠️ メトリクス取得エラー:", metricsError.message);
       }
 
+      // 実行状態を解除
+      setExecutionState(false);
+
       return result;
     } catch (error) {
+      // エラー時も実行状態を解除
+      setExecutionState(false);
+
       log.error("❌ [ClaudeV2] タスク実行エラー:", error.message);
       log.error("スタックトレース:", error.stack);
 
@@ -5497,6 +5575,7 @@
           let result;
           switch (method) {
             case "executeTask":
+              // 実行状態チェックはexecuteTask内で行われる
               result = await executeTask(...args);
               break;
             case "inputText":
@@ -5530,6 +5609,18 @@
             "*",
           );
         }
+      }
+
+      // ステータス取得リクエストの処理
+      if (event.data && event.data.type === "CLAUDE_AUTOMATION_STATUS") {
+        const status = getExecutionStatus();
+        window.postMessage(
+          {
+            type: "CLAUDE_AUTOMATION_STATUS_RESULT",
+            ...status,
+          },
+          "*",
+        );
       }
     });
 
