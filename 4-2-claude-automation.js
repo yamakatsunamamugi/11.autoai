@@ -4386,6 +4386,16 @@
           );
 
           while (disappearWaitCount < maxDisappearWait) {
+            // 待機状態の詳細ログ（毎秒）
+            console.log(`⏳ [WAIT-MONITOR] ${disappearWaitCount}秒経過:`, {
+              停止ボタン: "検索前",
+              confirmCount: confirmCount,
+              必要連続数: 10,
+              残り: 10 - confirmCount,
+              最大待機: maxDisappearWait,
+              タイムスタンプ: new Date().toISOString(),
+            });
+
             // 待機中の文字数カウント（10秒ごと）
             if (disappearWaitCount % 10 === 0 && disappearWaitCount > 0) {
               log.debug(
@@ -4436,21 +4446,56 @@
             }
 
             // 停止ボタンの状態をチェック
+            console.log(`🔍 [SELECTOR-SEARCH] 停止ボタン検索開始:`, {
+              セレクタ名: "3_回答停止ボタン",
+              リトライ回数: 3,
+              検索時刻: new Date().toISOString(),
+            });
+
             const stopResult = await findClaudeElement(
               claudeSelectors["3_回答停止ボタン"],
               3, // リトライ回数を増やす
               true,
             );
 
+            console.log(`🔍 [SELECTOR-RESULT] 停止ボタン検索結果:`, {
+              検出: stopResult ? "成功" : "失敗",
+              要素タイプ: stopResult?.tagName || "N/A",
+              経過時間: disappearWaitCount,
+            });
+
             if (!stopResult) {
               // 停止ボタンが見つからない
+              const previousCount = confirmCount;
               confirmCount++;
+
+              console.log(`🎯 [COMPLETION-CHECK] 完了判定:`, {
+                前のconfirmCount: previousCount,
+                現在のconfirmCount: confirmCount,
+                必要数: 10,
+                判定: confirmCount >= 10 ? "完了" : "継続",
+                理由:
+                  confirmCount >= 10
+                    ? "10秒連続非検出"
+                    : `あと${10 - confirmCount}秒必要`,
+                経過時間: disappearWaitCount,
+              });
+
               log.debug(
                 `🔍 [STOP-BUTTON-CHECK] 停止ボタン非検出 (confirmCount: ${confirmCount}/10, 経過時間: ${disappearWaitCount}秒)`,
               );
 
               if (confirmCount >= 10) {
                 // 10秒連続で停止ボタンが見つからない場合のみ完了と判定
+                console.log(`📊 [STATE-CHANGE] 待機状態変更:`, {
+                  前の状態: "応答待機中",
+                  新しい状態: "応答完了",
+                  理由: "10秒連続で停止ボタン非検出",
+                  総経過時間: disappearWaitCount,
+                  連続非検出時間: confirmCount,
+                  タイムスタンプ: new Date().toISOString(),
+                });
+
                 stopButtonGone = true;
                 console.log(
                   "%c✅ 応答生成完了！（停止ボタンが10秒間連続で非表示）",
@@ -4469,6 +4514,14 @@
             } else {
               // 停止ボタンが見つかった場合はカウントをリセット
               if (confirmCount > 0) {
+                console.log(`📊 [STATE-CHANGE] 待機状態変更:`, {
+                  前の状態: `非検出カウント中(${confirmCount})`,
+                  新しい状態: "カウントリセット",
+                  理由: "停止ボタン再検出",
+                  経過時間: disappearWaitCount,
+                  タイムスタンプ: new Date().toISOString(),
+                });
+
                 log.debug(
                   `🔄 [STOP-BUTTON-CHECK] 停止ボタン再検出 - confirmCountリセット (前回値: ${confirmCount})`,
                 );
@@ -4486,8 +4539,28 @@
             await wait(1000);
             disappearWaitCount++;
 
+            // 長時間待機の警告（30秒ごと）
+            if (disappearWaitCount % 30 === 0 && disappearWaitCount > 0) {
+              console.warn(`⚠️ [TIMEOUT-WARNING] 長時間待機中:`, {
+                経過時間: `${disappearWaitCount}秒`,
+                分換算: `${Math.floor(disappearWaitCount / 60)}分${disappearWaitCount % 60}秒`,
+                最大待機: `${maxDisappearWait}秒`,
+                残り時間: `${maxDisappearWait - disappearWaitCount}秒`,
+                confirmCount: confirmCount,
+                停止ボタン最終検出: stopResult ? "検出中" : "非検出",
+              });
+            }
+
             // タイムアウトチェック
             if (disappearWaitCount >= maxDisappearWait) {
+              console.log(`🚨 [TIMEOUT-REACHED] 最大待機時間到達:`, {
+                最大待機時間: maxDisappearWait,
+                実際の待機時間: disappearWaitCount,
+                最終confirmCount: confirmCount,
+                強制完了: true,
+                タイムスタンプ: new Date().toISOString(),
+              });
+
               log.warn(
                 `⚠️ [STOP-BUTTON-MONITOR] タイムアウト - 最大待機時間${maxDisappearWait}秒に到達`,
               );
