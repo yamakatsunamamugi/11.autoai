@@ -5228,64 +5228,8 @@ async function executeStep4(taskList) {
         return;
       }
 
-      // Content Script注入確認関数
-      async function verifyContentScriptInjection(tabId, automationName) {
-        const maxRetries = 5;
-        const retryDelay = 1000;
-
-        for (let attempt = 1; attempt <= maxRetries; attempt++) {
-          try {
-            ExecuteLogger.info(
-              `🔍 [Content Script確認] 試行 ${attempt}/${maxRetries}`,
-              {
-                tabId: tabId,
-                automationName: automationName,
-              },
-            );
-
-            // Ping メッセージを送信してContent Scriptの応答を確認
-            const pingMessage = {
-              action: "ping",
-              type: "PING_CHECK",
-              automationName: automationName,
-              timestamp: Date.now(),
-            };
-
-            const response = await chrome.tabs.sendMessage(tabId, pingMessage);
-
-            if (response && response.success) {
-              ExecuteLogger.info(`✅ [Content Script確認] 応答確認完了`, {
-                tabId: tabId,
-                automationName: automationName,
-                attempt: attempt,
-                response: response,
-              });
-              return true;
-            } else {
-              throw new Error(`無効な応答: ${JSON.stringify(response)}`);
-            }
-          } catch (error) {
-            ExecuteLogger.warn(
-              `⚠️ [Content Script確認] 試行 ${attempt} 失敗:`,
-              {
-                tabId: tabId,
-                automationName: automationName,
-                error: error.message,
-                willRetry: attempt < maxRetries,
-              },
-            );
-
-            if (attempt === maxRetries) {
-              throw new Error(
-                `Content Script注入確認に失敗しました (${maxRetries}回試行): ${error.message}`,
-              );
-            }
-
-            // リトライ前の待機
-            await new Promise((resolve) => setTimeout(resolve, retryDelay));
-          }
-        }
-      }
+      // 削除: 問題のあったverifyContentScriptInjection関数
+      // この関数がContent Script通信失敗の原因だった（ping応答機能がContent Script側に未実装）
 
       async function sendMessageToValidTab() {
         // メッセージ送信（Manifest V3対応: Promise形式）
@@ -5545,8 +5489,8 @@ async function executeStep4(taskList) {
                 },
               );
 
-              // Content Script注入確認（ping-pong方式）
-              await verifyContentScriptInjection(tabId, automationName);
+              // 初期化待機（manifest.json自動注入Content Scriptが初期化されるまで）
+              await new Promise((resolve) => setTimeout(resolve, 2000));
 
               ExecuteLogger.info(
                 `✅ [manifest.json自動注入] ${automationName} 準備完了`,
