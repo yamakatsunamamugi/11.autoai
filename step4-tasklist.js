@@ -4814,12 +4814,52 @@ async function executeStep4(taskList) {
           const sendStartTime = Date.now();
 
           // 🔍 STEP C: メッセージ送信実行
+          const messageSize = JSON.stringify(messagePayload).length;
           ExecuteLogger.info(`🔍 [STEP C] メッセージ送信開始:`, {
             tabId: tabId,
             messageType: messagePayload.type || messagePayload.action,
-            messageSize: JSON.stringify(messagePayload).length,
+            messageSize: messageSize,
+            messageSizeKB: Math.round(messageSize / 1024),
             timestamp: new Date().toISOString(),
           });
+
+          // メッセージサイズが大きすぎる場合の警告
+          if (messageSize > 100000) {
+            ExecuteLogger.warn(`⚠️ [STEP C] 大きなメッセージサイズ検出:`, {
+              tabId: tabId,
+              messageSize: messageSize,
+              messageSizeKB: Math.round(messageSize / 1024),
+              messageSizeMB: (messageSize / 1024 / 1024).toFixed(2),
+              taskId: task.id,
+              promptLength: task.prompt?.length || 0,
+              warning: "Chrome拡張のメッセージパッシングには制限があります",
+            });
+
+            // プロンプトが非常に長い場合、切り詰める
+            if (task.prompt && task.prompt.length > 50000) {
+              const originalLength = task.prompt.length;
+              // 最初の45000文字と最後の5000文字を保持
+              task.prompt =
+                task.prompt.substring(0, 45000) +
+                "\n\n[...中略...](" +
+                (originalLength - 50000) +
+                "文字省略)\n\n" +
+                task.prompt.substring(originalLength - 5000);
+
+              // メッセージペイロードを再構築
+              messagePayload.task = { ...task };
+
+              const newMessageSize = JSON.stringify(messagePayload).length;
+              ExecuteLogger.info(`✂️ [STEP C] プロンプトを切り詰めました:`, {
+                originalSize: messageSize,
+                newSize: newMessageSize,
+                originalSizeKB: Math.round(messageSize / 1024),
+                newSizeKB: Math.round(newMessageSize / 1024),
+                reduction:
+                  Math.round((1 - newMessageSize / messageSize) * 100) + "%",
+              });
+            }
+          }
 
           // unusedの実装と同じく、タイムアウトなしでシンプルに送信
           let response;
