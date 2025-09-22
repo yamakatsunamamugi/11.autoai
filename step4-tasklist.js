@@ -1,12 +1,14 @@
 // ログレベル定義
 const LOG_LEVEL = { ERROR: 1, WARN: 2, INFO: 3, DEBUG: 4 };
 
-// バッチ処理改善設定（安全性優先）
+// バッチ処理改善設定（個別完了処理を有効化）
 const BATCH_PROCESSING_CONFIG = {
-  ENABLE_ASYNC_BATCH: false, // 段階的実装のため最初は無効
-  ENABLE_INDIVIDUAL_COMPLETION: false, // 個別タスク完了時の即座処理
-  ENABLE_WINDOW_ASYNC_CLOSE: false, // 非同期ウィンドウクローズ
-  SAFE_MODE: true, // 既存機能の保護
+  ENABLE_ASYNC_BATCH: true, // 非同期バッチ処理を有効化
+  ENABLE_INDIVIDUAL_COMPLETION: true, // 個別タスク完了時の即座処理
+  ENABLE_IMMEDIATE_SPREADSHEET: true, // 即座スプレッドシート記載
+  ENABLE_IMMEDIATE_WINDOW_CLOSE: true, // 即座ウィンドウクローズ
+  ENABLE_DYNAMIC_NEXT_TASK: true, // 動的次タスク開始
+  SAFE_MODE: false, // 新機能有効化
 };
 
 // Chrome Storageからログレベルを取得（非同期）
@@ -48,6 +50,18 @@ const log = {
 
 // 初期化ログ（簡略化）
 log.info("✅ [step4-tasklist.js] 初期化完了");
+log.info("🔧 [バッチ処理設定]", {
+  ENABLE_ASYNC_BATCH: BATCH_PROCESSING_CONFIG.ENABLE_ASYNC_BATCH,
+  ENABLE_INDIVIDUAL_COMPLETION:
+    BATCH_PROCESSING_CONFIG.ENABLE_INDIVIDUAL_COMPLETION,
+  ENABLE_IMMEDIATE_SPREADSHEET:
+    BATCH_PROCESSING_CONFIG.ENABLE_IMMEDIATE_SPREADSHEET,
+  ENABLE_IMMEDIATE_WINDOW_CLOSE:
+    BATCH_PROCESSING_CONFIG.ENABLE_IMMEDIATE_WINDOW_CLOSE,
+  ENABLE_DYNAMIC_NEXT_TASK: BATCH_PROCESSING_CONFIG.ENABLE_DYNAMIC_NEXT_TASK,
+  SAFE_MODE: BATCH_PROCESSING_CONFIG.SAFE_MODE,
+  status: "個別完了処理対応モード",
+});
 
 /**
  * 安全な非同期バッチ処理（将来実装用）
@@ -59,46 +73,323 @@ async function executeAsyncBatchProcessing(batchPromises) {
     return await Promise.allSettled(batchPromises);
   }
 
-  const results = [];
-  const pending = new Map();
+  log.info("🚀 [非同期バッチ処理] 個別完了処理対応モードで実行開始");
 
-  // 各タスクに完了ハンドラーを追加
-  batchPromises.forEach((promise, index) => {
-    pending.set(index, promise);
+  const completedTasks = new Map();
+  const enhancedPromises = batchPromises.map((promise, index) => {
+    return promise
+      .then(async (result) => {
+        try {
+          log.info(`✅ [個別完了] タスク[${index}]完了:`, {
+            success: result.success,
+            taskId: result.taskId,
+            windowId: result.windowId,
+          });
 
-    promise
-      .then((result) => {
-        if (BATCH_PROCESSING_CONFIG.ENABLE_INDIVIDUAL_COMPLETION) {
-          // 個別タスク完了時の即座処理
-          handleIndividualTaskCompletion(result, index);
+          if (
+            result.success &&
+            BATCH_PROCESSING_CONFIG.ENABLE_INDIVIDUAL_COMPLETION
+          ) {
+            // 個別タスク完了時の即座処理
+            await handleIndividualTaskCompletion(result, index);
+          }
+
+          completedTasks.set(index, result);
+          return { status: "fulfilled", value: result };
+        } catch (error) {
+          log.error(`❌ [個別完了処理エラー] タスク[${index}]:`, error);
+          const errorResult = { status: "rejected", reason: error };
+          completedTasks.set(index, errorResult);
+          return errorResult;
         }
-        pending.delete(index);
       })
       .catch((error) => {
-        log.error(`非同期バッチ処理エラー[${index}]:`, error);
-        pending.delete(index);
+        log.error(`❌ [タスク実行エラー] タスク[${index}]:`, error);
+        const errorResult = { status: "rejected", reason: error };
+        completedTasks.set(index, errorResult);
+        return errorResult;
       });
   });
 
-  // 既存のPromise.allSettledと同じ結果形式を維持
-  return await Promise.allSettled(batchPromises);
+  // 全てのタスクの完了を待機
+  const results = await Promise.all(enhancedPromises);
+
+  log.info(`🏁 [非同期バッチ処理] 全タスク完了:`, {
+    total: results.length,
+    fulfilled: results.filter((r) => r.status === "fulfilled").length,
+    rejected: results.filter((r) => r.status === "rejected").length,
+  });
+
+  return results;
 }
 
 /**
  * 個別タスク完了時の処理（安全実装）
  */
-function handleIndividualTaskCompletion(result, taskIndex) {
+async function handleIndividualTaskCompletion(result, taskIndex) {
   try {
-    if (BATCH_PROCESSING_CONFIG.ENABLE_WINDOW_ASYNC_CLOSE && result.windowId) {
-      // 非同期でウィンドウをクローズ（fire-and-forget）
-      chrome.windows
-        .remove(result.windowId)
-        .catch((err) => log.warn(`ウィンドウクローズ警告[${taskIndex}]:`, err));
+    log.info(`🎯 [個別完了処理] タスク[${taskIndex}]開始:`, {
+      taskId: result.taskId,
+      success: result.success,
+      hasResponse: !!result.response,
+    });
+
+    // Phase 2: 即座スプレッドシート記載
+    if (
+      BATCH_PROCESSING_CONFIG.ENABLE_IMMEDIATE_SPREADSHEET &&
+      result.success
+    ) {
+      await immediateSpreadsheetUpdate(result, taskIndex);
     }
 
-    log.debug(`個別タスク完了[${taskIndex}]:`, result);
+    // Phase 3: 即座ウィンドウクローズ
+    if (
+      BATCH_PROCESSING_CONFIG.ENABLE_IMMEDIATE_WINDOW_CLOSE &&
+      result.windowId
+    ) {
+      await immediateWindowClose(result.windowId, taskIndex);
+    }
+
+    // Phase 4: 動的次タスク探索
+    if (BATCH_PROCESSING_CONFIG.ENABLE_DYNAMIC_NEXT_TASK) {
+      // 非同期で次タスクを探索開始（ブロックしない）
+      startNextTaskIfAvailable(taskIndex).catch((error) =>
+        log.warn(`次タスク探索エラー[${taskIndex}]:`, error),
+      );
+    }
+
+    log.info(`✅ [個別完了処理] タスク[${taskIndex}]完了`);
   } catch (error) {
-    log.error(`個別タスク完了処理エラー[${taskIndex}]:`, error);
+    log.error(`❌ [個別完了処理エラー] タスク[${taskIndex}]:`, error);
+  }
+}
+
+/**
+ * Phase 2: 即座スプレッドシート記載機能
+ */
+async function immediateSpreadsheetUpdate(result, taskIndex) {
+  try {
+    log.info(`📊 [即座スプレッドシート] タスク[${taskIndex}]記載開始:`, {
+      taskId: result.taskId,
+      column: result.column,
+      row: result.row,
+      hasResponse: !!result.response,
+    });
+
+    // スプレッドシート記載に必要な情報を確認
+    if (!result.column || !result.row || !result.response) {
+      log.warn(`⚠️ [即座スプレッドシート] 記載情報不足[${taskIndex}]:`, {
+        hasColumn: !!result.column,
+        hasRow: !!result.row,
+        hasResponse: !!result.response,
+      });
+      return;
+    }
+
+    // SimpleSheetsClientを使用してスプレッドシートを更新
+    if (
+      window.simpleSheetsClient &&
+      typeof window.simpleSheetsClient.updateCell === "function"
+    ) {
+      const updateResult = await window.simpleSheetsClient.updateCell(
+        result.column,
+        result.row,
+        result.response,
+      );
+
+      log.info(`✅ [即座スプレッドシート] 記載完了[${taskIndex}]:`, {
+        column: result.column,
+        row: result.row,
+        success: updateResult?.success || true,
+      });
+    } else {
+      log.error(
+        `❌ [即座スプレッドシート] SimpleSheetsClient利用不可[${taskIndex}]`,
+      );
+    }
+  } catch (error) {
+    log.error(`❌ [即座スプレッドシート] エラー[${taskIndex}]:`, error);
+  }
+}
+
+/**
+ * Phase 3: 即座ウィンドウクローズ機能
+ */
+async function immediateWindowClose(windowId, taskIndex) {
+  try {
+    log.info(`🪟 [即座ウィンドウクローズ] タスク[${taskIndex}]開始:`, {
+      windowId,
+    });
+
+    // fire-and-forget方式で即座にクローズ
+    chrome.windows
+      .remove(windowId)
+      .catch((err) => log.warn(`ウィンドウクローズ警告[${taskIndex}]:`, err));
+
+    // WindowControllerから削除
+    if (
+      window.windowController &&
+      typeof window.windowController.removeClosedWindow === "function"
+    ) {
+      window.windowController.removeClosedWindow(windowId);
+    }
+
+    log.info(`✅ [即座ウィンドウクローズ] 完了[${taskIndex}]:`, { windowId });
+  } catch (error) {
+    log.error(`❌ [即座ウィンドウクローズ] エラー[${taskIndex}]:`, error);
+  }
+}
+
+/**
+ * Phase 4: 動的次タスク探索システム
+ */
+async function startNextTaskIfAvailable(taskIndex) {
+  try {
+    log.info(`🔍 [次タスク探索] タスク[${taskIndex}]開始`);
+
+    // 利用可能なタスクを動的に検索
+    const nextTask = await findNextAvailableTask();
+
+    if (nextTask) {
+      log.info(`🚀 [次タスク探索] 発見[${taskIndex}]:`, {
+        nextTaskId: nextTask.id,
+        aiType: nextTask.aiType,
+      });
+
+      // 新しいウィンドウを開いて即座に開始
+      const windowInfo = await openAIWindowForTask(nextTask);
+      if (windowInfo) {
+        nextTask.tabId = windowInfo.tabId;
+        nextTask.windowId = windowInfo.windowId;
+
+        // 非同期で実行開始
+        executeTaskIndependently(nextTask);
+      }
+    } else {
+      log.debug(`📭 [次タスク探索] 利用可能タスクなし[${taskIndex}]`);
+    }
+  } catch (error) {
+    log.error(`❌ [次タスク探索] エラー[${taskIndex}]:`, error);
+  }
+}
+
+/**
+ * 利用可能な次タスクを検索
+ */
+async function findNextAvailableTask() {
+  try {
+    log.info("🔍 [次タスク検索] 開始");
+
+    // step3-loop.jsまたは同等のタスク管理システムからタスクを取得
+    if (typeof window.processIncompleteTasks === "function") {
+      // 既存のタスク処理システムを活用
+      log.debug("🔗 [次タスク検索] 既存システム活用");
+      return null; // 既存システムに委譲
+    }
+
+    // 緊急時の代替実装：現在のタスクリストから次の未処理タスクを探す
+    if (window.currentTaskList && Array.isArray(window.currentTaskList)) {
+      const availableTask = window.currentTaskList.find(
+        (task) => task && !task.completed && !task.processing && task.prompt,
+      );
+
+      if (availableTask) {
+        log.info("🎯 [次タスク検索] 発見:", {
+          taskId: availableTask.id,
+          aiType: availableTask.aiType,
+        });
+
+        // タスクを処理中としてマーク
+        availableTask.processing = true;
+        return availableTask;
+      }
+    }
+
+    log.debug("📭 [次タスク検索] 利用可能タスクなし");
+    return null;
+  } catch (error) {
+    log.error("❌ [次タスク検索] エラー:", error);
+    return null;
+  }
+}
+
+/**
+ * タスク用のAIウィンドウを開く
+ */
+async function openAIWindowForTask(task) {
+  try {
+    log.info("🪟 [AIウィンドウ開く] 開始:", {
+      taskId: task.id,
+      aiType: task.aiType,
+    });
+
+    // WindowControllerを使用してAIウィンドウを開く
+    if (
+      window.windowController &&
+      typeof window.windowController.openAIWindow === "function"
+    ) {
+      const windowInfo = await window.windowController.openAIWindow(
+        task.aiType,
+      );
+
+      if (windowInfo && windowInfo.tabId && windowInfo.windowId) {
+        log.info("✅ [AIウィンドウ開く] 成功:", {
+          aiType: task.aiType,
+          tabId: windowInfo.tabId,
+          windowId: windowInfo.windowId,
+        });
+
+        return {
+          tabId: windowInfo.tabId,
+          windowId: windowInfo.windowId,
+          url: windowInfo.url,
+        };
+      }
+    }
+
+    log.error("❌ [AIウィンドウ開く] WindowController利用不可");
+    return null;
+  } catch (error) {
+    log.error("❌ [AIウィンドウ開く] エラー:", error);
+    return null;
+  }
+}
+
+/**
+ * タスクを独立して実行
+ */
+async function executeTaskIndependently(task) {
+  try {
+    log.info("🚀 [独立タスク実行] 開始:", {
+      taskId: task.id,
+      aiType: task.aiType,
+      tabId: task.tabId,
+      windowId: task.windowId,
+    });
+
+    // 既存のexecuteNormalAITask関数を活用
+    if (typeof executeNormalAITask === "function") {
+      const result = await executeNormalAITask(task);
+
+      log.info("✅ [独立タスク実行] 完了:", {
+        taskId: task.id,
+        success: result?.success,
+      });
+
+      // 完了後の処理（スプレッドシート記載、ウィンドウクローズ）
+      if (result?.success) {
+        // 個別完了処理を再度実行
+        await handleIndividualTaskCompletion(result, "independent");
+      }
+
+      return result;
+    } else {
+      log.error("❌ [独立タスク実行] executeNormalAITask関数が利用不可");
+      return { success: false, error: "executeNormalAITask not available" };
+    }
+  } catch (error) {
+    log.error("❌ [独立タスク実行] エラー:", error);
+    return { success: false, error: error.message };
   }
 }
 
