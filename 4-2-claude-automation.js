@@ -5347,9 +5347,31 @@
           taskToExecute?.id ||
           `task_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
+        // メッセージ受信ログ
+        console.log(
+          `📨 [MESSAGE-RECEIVED] タスク ${taskId} のメッセージを受信`,
+          {
+            timestamp: new Date().toISOString(),
+            taskId: taskId,
+            messageType: message.type,
+            currentlyExecuting: window.CLAUDE_TASK_EXECUTING,
+            executionStatus: getExecutionStatus(),
+          },
+        );
+
         const currentStatus = getExecutionStatus();
         if (window.CLAUDE_TASK_EXECUTING || currentStatus.isExecuting) {
           if (currentStatus.currentTaskId === taskId) {
+            console.log(
+              `🔄 [DUPLICATE-DETECTED] 同じタスクIDのメッセージが重複受信`,
+              {
+                timestamp: new Date().toISOString(),
+                taskId: taskId,
+                currentTaskId: currentStatus.currentTaskId,
+                windowExecuting: window.CLAUDE_TASK_EXECUTING,
+                status: currentStatus,
+              },
+            );
             log.warn(
               `⚠️ [MESSAGE-LISTENER] タスク ${taskId} は既に実行中です（メッセージリスナーでブロック）`,
             );

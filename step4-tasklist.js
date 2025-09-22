@@ -3972,29 +3972,53 @@ async function executeStep4(taskList) {
             note: "AI稼働後は内部応答待機に完全委任",
           });
 
-          const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(
-              () =>
-                reject(
-                  new Error(
-                    "Initial communication timeout after 60 seconds - AI automation failed to start",
-                  ),
-                ),
-              timeout,
-            );
-          });
-
           let response;
           try {
-            // 全AI統一でchrome.tabs.sendMessageを使用（unusedと同じ方式）
+            // unusedと同じ方式：Content Script手動注入 + メッセージ送信
             ExecuteLogger.info(
-              `🔍 [STEP C-1] chrome.tabs.sendMessage実行中... (${automationName})`,
+              `🔍 [STEP C-1] Content Script注入開始 (unused方式)...`,
+              {
+                tabId: tabId,
+                taskId: task.id,
+                automationName: automationName,
+                timestamp: new Date().toISOString(),
+              },
             );
 
-            response = await Promise.race([
-              chrome.tabs.sendMessage(tabId, messagePayload),
-              timeoutPromise,
-            ]);
+            // Step 1: Content Script手動注入（unusedと同じ）
+            const scriptFileMap = {
+              ClaudeAutomation: "4-2-claude-automation.js",
+              ChatGPTAutomation: "4-1-chatgpt-automation.js",
+              GeminiAutomation: "4-3-gemini-automation.js",
+              GensparkAutomation: "4-5-genspark-automation.js",
+            };
+
+            const scriptFile = scriptFileMap[automationName];
+            if (!scriptFile) {
+              throw new Error(`Unknown automation: ${automationName}`);
+            }
+
+            // Content Script注入
+            await chrome.scripting.executeScript({
+              target: { tabId: tabId },
+              files: [scriptFile],
+            });
+
+            // 初期化完了待機（unusedと同じ3秒）
+            await new Promise((resolve) => setTimeout(resolve, 3000));
+
+            ExecuteLogger.info(
+              `🔍 [STEP C-2] Content Script注入完了、メッセージ送信開始`,
+              {
+                tabId: tabId,
+                taskId: task.id,
+                scriptFile: scriptFile,
+                timestamp: new Date().toISOString(),
+              },
+            );
+
+            // Step 2: メッセージ送信（unusedと同じシンプル方式）
+            response = await chrome.tabs.sendMessage(tabId, messagePayload);
 
             ExecuteLogger.info(`🔍 [STEP C-2] メッセージ送信成功:`, {
               tabId: tabId,
