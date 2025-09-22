@@ -5,13 +5,15 @@ const LOG_LEVEL = { ERROR: 1, WARN: 2, INFO: 3, DEBUG: 4 };
 let CURRENT_LOG_LEVEL = LOG_LEVEL.INFO; // デフォルト値
 
 // Chrome拡張環境でのみStorageから設定を読み込む
-if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-  chrome.storage.local.get('logLevel', (result) => {
+if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+  chrome.storage.local.get("logLevel", (result) => {
     if (result.logLevel) {
       CURRENT_LOG_LEVEL = parseInt(result.logLevel);
-      console.log(`📋 ログレベル設定: ${['', 'ERROR', 'WARN', 'INFO', 'DEBUG'][CURRENT_LOG_LEVEL]} (${CURRENT_LOG_LEVEL})`);
+      console.log(
+        `📋 ログレベル設定: ${["", "ERROR", "WARN", "INFO", "DEBUG"][CURRENT_LOG_LEVEL]} (${CURRENT_LOG_LEVEL})`,
+      );
     } else {
-      console.log('📋 ログレベル: デフォルト (INFO)');
+      console.log("📋 ログレベル: デフォルト (INFO)");
     }
   });
 }
@@ -29,10 +31,8 @@ const log = {
   },
   debug: (...args) => {
     if (CURRENT_LOG_LEVEL >= LOG_LEVEL.DEBUG) console.log(...args);
-  }
+  },
 };
-
-
 
 /**
  * @fileoverview ChatGPT Automation V2 - 統合版
@@ -345,16 +345,13 @@ const log = {
           this.metrics.totalAttempts++;
           const attemptStartTime = Date.now();
 
-          log.debug(
-            `🔄 [Step 4-1-0-3] ${actionName} 試行 ${retryCount}/20:`,
-            {
-              attemptNumber: retryCount,
-              totalAttempts: this.metrics.totalAttempts,
-              elapsedTime: attemptStartTime - startTime,
-              consecutiveErrors: this.consecutiveErrorCount,
-              lastErrorType: this.lastErrorType,
-            },
-          );
+          log.debug(`🔄 [Step 4-1-0-3] ${actionName} 試行 ${retryCount}/20:`, {
+            attemptNumber: retryCount,
+            totalAttempts: this.metrics.totalAttempts,
+            elapsedTime: attemptStartTime - startTime,
+            consecutiveErrors: this.consecutiveErrorCount,
+            lastErrorType: this.lastErrorType,
+          });
 
           // アクション実行
           lastResult = await action();
@@ -1455,9 +1452,7 @@ const log = {
         log.debug("[ChatGPT-openModelMenu] ✅ モデルメニュー開放成功");
         return true;
       } else {
-        log.warn(
-          "[ChatGPT-openModelMenu] ⚠️ メニュー開放したがDOM確認できず",
-        );
+        log.warn("[ChatGPT-openModelMenu] ⚠️ メニュー開放したがDOM確認できず");
         return false;
       }
     } catch (error) {
@@ -1567,7 +1562,7 @@ const log = {
    * @throws {Error} タイムアウト（2分）の場合
    */
   async function waitForResponseChatGPT() {
-    const maxWaitTime = 120000; // 2分
+    const maxWaitTime = 600000; // 10分（通常処理に合わせて調整）
     const checkInterval = 1000;
     let elapsedTime = 0;
 

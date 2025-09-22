@@ -5,13 +5,15 @@ const LOG_LEVEL = { ERROR: 1, WARN: 2, INFO: 3, DEBUG: 4 };
 let CURRENT_LOG_LEVEL = LOG_LEVEL.INFO; // デフォルト値
 
 // Chrome拡張環境でのみStorageから設定を読み込む
-if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-  chrome.storage.local.get('logLevel', (result) => {
+if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+  chrome.storage.local.get("logLevel", (result) => {
     if (result.logLevel) {
       CURRENT_LOG_LEVEL = parseInt(result.logLevel);
-      console.log(`📋 ログレベル設定: ${['', 'ERROR', 'WARN', 'INFO', 'DEBUG'][CURRENT_LOG_LEVEL]} (${CURRENT_LOG_LEVEL})`);
+      console.log(
+        `📋 ログレベル設定: ${["", "ERROR", "WARN", "INFO", "DEBUG"][CURRENT_LOG_LEVEL]} (${CURRENT_LOG_LEVEL})`,
+      );
     } else {
-      console.log('📋 ログレベル: デフォルト (INFO)');
+      console.log("📋 ログレベル: デフォルト (INFO)");
     }
   });
 }
@@ -29,10 +31,8 @@ const log = {
   },
   debug: (...args) => {
     if (CURRENT_LOG_LEVEL >= LOG_LEVEL.DEBUG) console.log(...args);
-  }
+  },
 };
-
-
 
 /**
  * @fileoverview Gemini Automation V3 - 統合版
@@ -254,9 +254,7 @@ const log = {
     async saveToFile() {
       try {
         const filePath = await this.logFileManager.saveToFile();
-        log.debug(
-          `✅ [GeminiLogManager] 最終ログを保存しました: ${filePath}`,
-        );
+        log.debug(`✅ [GeminiLogManager] 最終ログを保存しました: ${filePath}`);
         return filePath;
       } catch (error) {
         log.error("[GeminiLogManager] ログ保存エラー:", error);
@@ -485,9 +483,7 @@ const log = {
           retryCount++;
           this.metrics.totalAttempts++;
 
-          log.debug(
-            `🔄 [Step 4-3-Retry] ${actionName} 試行 ${retryCount}/20`,
-          );
+          log.debug(`🔄 [Step 4-3-Retry] ${actionName} 試行 ${retryCount}/20`);
 
           // アクション実行
           lastResult = await action();
@@ -2025,9 +2021,7 @@ const log = {
         log.debug("[Gemini-openModelMenu] ✅ モデルメニュー開放成功");
         return true;
       } else {
-        log.warn(
-          "[Gemini-openModelMenu] ⚠️ メニュー開放したがDOM確認できず",
-        );
+        log.warn("[Gemini-openModelMenu] ⚠️ メニュー開放したがDOM確認できず");
         return false;
       }
     } catch (error) {
@@ -2133,7 +2127,7 @@ const log = {
    * @throws {Error} タイムアウト（2分）の場合
    */
   async function waitForResponseGemini() {
-    const maxWaitTime = 120000; // 2分
+    const maxWaitTime = 600000; // 10分（通常処理に合わせて調整）
     const checkInterval = 1000;
     let elapsedTime = 0;
 

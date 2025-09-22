@@ -3959,156 +3959,112 @@ async function executeStep4(taskList) {
             timestamp: new Date().toISOString(),
           });
 
-          // タイムアウト設定を20秒に延長（unusedコードと同じ）
-          const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(
-              () => reject(new Error("sendMessage timeout after 20 seconds")),
-              20000,
-            );
-          });
+          // AI動作検出によるスマートタイムアウト制御
+          // 30秒以内にAI応答がない場合のみエラーとし、AI応答後は内部制御に委任
+          const executeWithAIDetection = () => {
+            return new Promise((resolve, reject) => {
+              let timeoutId = null;
+              let aiResponseDetected = false;
+              let messageListener = null;
 
-          let response;
-          try {
-            // Claudeの場合はchrome.scripting.executeScriptを使用
-            if (automationName === "ClaudeAutomation") {
-              ExecuteLogger.info(
-                `🔍 [STEP C-1] chrome.scripting.executeScript実行中...`,
-              );
+              // 30秒間のAI応答待機タイムアウト（真の通信エラー検出用）
+              timeoutId = setTimeout(() => {
+                if (!aiResponseDetected) {
+                  cleanup();
+                  reject(new Error("30秒以内にAI応答なし - 真の通信エラー"));
+                }
+              }, 30000);
 
-              const results = await Promise.race([
-                chrome.scripting.executeScript({
+              // AI応答検出リスナー
+              messageListener = (message) => {
+                if (message.type === "AI_RESPONSE_DETECTED") {
+                  aiResponseDetected = true;
+                  if (timeoutId) {
+                    clearTimeout(timeoutId);
+                    timeoutId = null;
+                    ExecuteLogger.info(
+                      "✅ AI応答検出 - 外部タイムアウト停止、AI内部制御に委任",
+                    );
+                  }
+                }
+              };
+
+              // クリーンアップ関数
+              const cleanup = () => {
+                if (timeoutId) {
+                  clearTimeout(timeoutId);
+                  timeoutId = null;
+                }
+                if (messageListener) {
+                  chrome.runtime.onMessage.removeListener(messageListener);
+                  messageListener = null;
+                }
+              };
+
+              // リスナー登録
+              chrome.runtime.onMessage.addListener(messageListener);
+
+              // Chrome API実行
+              chrome.scripting
+                .executeScript({
                   target: { tabId: tabId },
-                  func: async (taskData) => {
+                  func: async (messagePayload) => {
                     try {
-                      // 🔍 [SCRIPT-EXEC] 詳細ログ追加
-                      console.log("🔍 [SCRIPT-EXEC] claude.aiタブ内実行開始");
-                      console.log(
-                        "🔍 [SCRIPT-EXEC] 現在のURL:",
-                        window.location.href,
-                      );
-                      console.log("🔍 [SCRIPT-EXEC] taskData:", taskData);
-
-                      // 🔧 [ENHANCED-DIAGNOSTIC] Content Script状態詳細確認
-                      console.log(
-                        "🔧 [ENHANCED-DIAGNOSTIC] Content Script状態確認:",
-                      );
-                      console.log(
-                        "  - CLAUDE_SCRIPT_LOADED:",
-                        window.CLAUDE_SCRIPT_LOADED,
-                      );
-                      console.log(
-                        "  - CLAUDE_SCRIPT_INIT_TIME:",
-                        window.CLAUDE_SCRIPT_INIT_TIME,
-                      );
-                      console.log(
-                        "  - executeTask存在:",
-                        typeof window.executeTask,
-                      );
-                      console.log(
-                        "  - findClaudeElement存在:",
-                        typeof window.findClaudeElement,
-                      );
-                      console.log(
-                        "  - inputText存在:",
-                        typeof window.inputText,
-                      );
-                      console.log(
-                        "  - runAutomation存在:",
-                        typeof window.runAutomation,
-                      );
-
-                      // 🔧 [ENHANCED-DIAGNOSTIC] isValidClaudeURL and shouldExportFunctions check
-                      const currentURL = window.location.href;
-                      const isValidClaudeURL =
-                        /^https:\/\/claude\.ai\/.*/i.test(currentURL);
-                      const isExtensionPage = currentURL.includes(
-                        "chrome-extension://",
-                      );
-                      console.log("🔧 [ENHANCED-DIAGNOSTIC] URL状態確認:");
-                      console.log("  - isValidClaudeURL:", isValidClaudeURL);
-                      console.log("  - isExtensionPage:", isExtensionPage);
-                      console.log(
-                        "  - shouldInitialize計算結果:",
-                        !isExtensionPage && isValidClaudeURL,
-                      );
-
-                      console.log(
-                        "🔍 [SCRIPT-EXEC] window.executeTask存在確認:",
-                        typeof window.executeTask,
-                      );
-                      console.log(
-                        "🔍 [SCRIPT-EXEC] windowオブジェクト上の関数一覧:",
-                        Object.getOwnPropertyNames(window).filter(
-                          (name) =>
-                            typeof window[name] === "function" &&
-                            name.includes("execute"),
-                        ),
-                      );
-
-                      // Content Script内のexecuteTask関数を直接呼び出し
-                      if (typeof window.executeTask !== "function") {
-                        console.log(
-                          "❌ [SCRIPT-EXEC] executeTask未定義 - 利用可能な関数:",
-                          Object.getOwnPropertyNames(window)
-                            .filter(
-                              (name) => typeof window[name] === "function",
-                            )
-                            .slice(0, 10),
-                        );
-                        throw new Error(
-                          "executeTask function is not available",
-                        );
+                      // AI動作開始を親プロセスに通知
+                      if (typeof chrome !== "undefined" && chrome.runtime) {
+                        chrome.runtime.sendMessage({
+                          type: "AI_RESPONSE_DETECTED",
+                          taskId:
+                            messagePayload.task?.id ||
+                            messagePayload.taskData?.id,
+                          timestamp: Date.now(),
+                        });
                       }
 
-                      console.log("🔍 [SCRIPT-EXEC] executeTask呼び出し開始");
-                      console.log("📤 Executing task with data:", taskData);
-                      const result = await window.executeTask(taskData);
-                      console.log(
-                        "🔍 [SCRIPT-EXEC] executeTask実行結果:",
-                        result,
-                      );
-
-                      if (result) {
-                        return {
-                          success: true,
-                          message: "Task executed successfully",
-                          result: result,
-                          timestamp: Date.now(),
-                        };
-                      } else {
-                        return {
-                          success: false,
-                          message: "Task execution failed",
-                          timestamp: Date.now(),
-                        };
-                      }
+                      // 元のexecuteTask実行（AI内部タイムアウトで制御）
+                      const result = await window.executeTask(messagePayload);
+                      return result;
                     } catch (error) {
-                      console.error("❌ executeTask error:", error);
                       return {
                         success: false,
                         error: error.message,
-                        timestamp: Date.now(),
+                        stack: error.stack,
                       };
                     }
                   },
-                  args: [messagePayload.task || messagePayload.taskData],
-                }),
-                timeoutPromise,
-              ]);
+                  args: [messagePayload],
+                })
+                .then((results) => {
+                  cleanup();
+                  resolve(results);
+                })
+                .catch((error) => {
+                  cleanup();
+                  reject(error);
+                });
+            });
+          };
+
+          let response;
+          try {
+            // Claudeの場合はAI動作検出機能付きexecuteScriptを使用
+            if (automationName === "ClaudeAutomation") {
+              ExecuteLogger.info(
+                `🔍 [STEP C-1] AI動作検出機能付きexecuteScript実行中...`,
+              );
+
+              const results = await executeWithAIDetection();
 
               response =
                 results && results[0]
                   ? results[0].result
                   : { success: false, error: "No response" };
             } else {
-              // 他のAIは従来通りchrome.tabs.sendMessage
+              // 他のAIは従来通りchrome.tabs.sendMessage（タイムアウトなし）
               ExecuteLogger.info(
                 `🔍 [STEP C-1] chrome.tabs.sendMessage実行中...`,
               );
-              response = await Promise.race([
-                chrome.tabs.sendMessage(tabId, messagePayload),
-                timeoutPromise,
-              ]);
+              response = await chrome.tabs.sendMessage(tabId, messagePayload);
             }
 
             ExecuteLogger.info(`🔍 [STEP C-2] メッセージ送信成功:`, {
