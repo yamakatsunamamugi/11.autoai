@@ -48,21 +48,32 @@
   const CLAUDE_SELECTORS = {
     // ========== 基本入力・送信系 ==========
     INPUT: [
+      '[aria-label="クロードにプロンプトを入力してください"]', // 日本語版（最優先）
       ".ProseMirror",
       'div.ProseMirror[contenteditable="true"]',
       '[data-placeholder*="Message Claude"]',
       'div[contenteditable="true"][role="textbox"]',
+      '[role="textbox"][contenteditable="true"]',
+      'div[contenteditable="true"][translate="no"]',
+      'div[enterkeyhint="enter"][role="textbox"]',
     ],
 
     SEND_BUTTON: [
-      'button[aria-label="Send Message"]',
+      '[aria-label="メッセージを送信"]', // 日本語版（最優先）
+      'button[aria-label="メッセージを送信"]',
+      '[data-state="closed"] button[type="button"]',
+      "button.bg-accent-main-000",
+      'button[aria-label="Send Message"]', // 英語版フォールバック
       'button[type="submit"][aria-label*="Send"]',
+      'button svg path[d*="M208.49,120.49"]',
       'button svg path[d*="M320 448"]',
     ],
 
     STOP_BUTTON: [
+      '[aria-label="応答を停止"]', // 日本語版（最優先）
       'button[aria-label="応答を停止"]',
-      '[aria-label="応答を停止"]',
+      '[data-state="closed"][aria-label="応答を停止"]',
+      'button.border-border-200[aria-label="応答を停止"]',
       'button svg path[d*="M128,20A108"]',
     ],
 
@@ -103,20 +114,49 @@
     // ========== 機能選択系 ==========
     FEATURE: {
       MENU_BUTTON: [
-        'button[aria-label*="機能"]',
+        '[data-testid="input-menu-tools"]', // 最新のセレクタ（最優先）
+        '[aria-label="ツールメニューを開く"]', // 日本語版
+        "#input-tools-menu-trigger",
+        'button[aria-expanded][aria-haspopup="listbox"]',
+        'button svg path[d*="M40,88H73a32"]',
+        'button[aria-label*="機能"]', // フォールバック
         'button:has(svg[class*="feature"])',
       ],
 
-      MENU_CONTAINER: '[role="menu"]',
+      MENU_CONTAINER: [
+        '[aria-labelledby="input-tools-menu-trigger"]',
+        ".w-\\[20rem\\].absolute.max-w-\\[calc\\(100vw-16px\\)\\].block",
+        "div.z-dropdown.bg-bg-000.rounded-xl",
+        'div[style*="max-height"][style*="336"]',
+        ".absolute .flex-col .overscroll-auto",
+        '[role="menu"]', // フォールバック
+      ],
 
       WEB_SEARCH_TOGGLE: [
-        'button[role="switch"]',
+        'button:has(svg path[d*="M7.2705 3.0498"]):has(input[role="switch"])',
+        'button:has(p:contains("ウェブ検索")):has(input[role="switch"])',
+        'button.text-primary-500:has(input[role="switch"])',
+        'div:contains("ウェブ検索") button:has(.group\\/switch)',
+        'button .font-base:contains("ウェブ検索")',
+        'button[role="switch"]', // フォールバック
         '[aria-label*="Web"]',
-        'button:has(span:contains("Web"))',
+      ],
+
+      THINK_TOGGLE: [
+        'button:has(svg path[d*="M10.3857 2.50977"]):has(input[role="switch"])',
+        'button:has(p:contains("じっくり考える")):has(input[role="switch"])',
+        'button input[role="switch"][style*="width: 28px"]',
+        'div:contains("じっくり考える") button:has(.group\\/switch)',
+        'button .font-base:contains("じっくり考える")',
       ],
 
       RESEARCH_BUTTON: [
-        'button:contains("Deep Research")',
+        'button[aria-pressed]:has(svg path[d*="M8.5 2C12.0899"])',
+        'button:has(p:contains("リサーチ"))',
+        "button.text-accent-secondary-100:has(svg)",
+        'button[type="button"]:has(.min-w-0.pl-1.text-xs)',
+        ".flex.shrink button:has(svg)",
+        'button:contains("Deep Research")', // フォールバック
         'button[aria-label*="Research"]',
       ],
     },
