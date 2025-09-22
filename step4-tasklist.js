@@ -3260,9 +3260,12 @@ class TaskStatusManager {
    */
   async getCellValue(task) {
     try {
-      const range = `${task.column}${task.row}`;
+      // answerCellから範囲を取得、または列と行から構築
+      const range = task.answerCell || `${task.column}${task.row}`;
       const spreadsheetId =
-        task.spreadsheetId || window.globalState?.spreadsheetId;
+        task.spreadsheetId ||
+        task.spreadsheetData?.spreadsheetId ||
+        window.globalState?.spreadsheetId;
 
       if (!spreadsheetId) {
         ExecuteLogger.warn("⚠️ スプレッドシートIDが取得できません");
@@ -3294,9 +3297,12 @@ class TaskStatusManager {
   async markTaskInProgress(task) {
     try {
       const marker = `作業中\n${new Date().toISOString()}`;
-      const range = `${task.column}${task.row}`;
+      // answerCellから範囲を取得、または列と行から構築
+      const range = task.answerCell || `${task.column}${task.row}`;
       const spreadsheetId =
-        task.spreadsheetId || window.globalState?.spreadsheetId;
+        task.spreadsheetId ||
+        task.spreadsheetData?.spreadsheetId ||
+        window.globalState?.spreadsheetId;
 
       if (!spreadsheetId) {
         ExecuteLogger.error("❌ スプレッドシートIDが取得できません");
@@ -3420,9 +3426,12 @@ class TaskStatusManager {
    */
   async clearMarker(task) {
     try {
-      const range = `${task.column}${task.row}`;
+      // answerCellから範囲を取得、または列と行から構築
+      const range = task.answerCell || `${task.column}${task.row}`;
       const spreadsheetId =
-        task.spreadsheetId || window.globalState?.spreadsheetId;
+        task.spreadsheetId ||
+        task.spreadsheetData?.spreadsheetId ||
+        window.globalState?.spreadsheetId;
 
       if (!spreadsheetId) {
         ExecuteLogger.error("❌ スプレッドシートIDが取得できません");
