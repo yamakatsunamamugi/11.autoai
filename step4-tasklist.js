@@ -596,8 +596,8 @@ class StepIntegratedWindowService {
    * ウィンドウ位置を計算
    */
   static calculateWindowPosition(position, screenInfo) {
-    const baseWidth = Math.floor(screenInfo.width * 0.35);
-    const baseHeight = Math.floor(screenInfo.height * 0.8);
+    const baseWidth = Math.floor(screenInfo.width * 0.5);
+    const baseHeight = Math.floor(screenInfo.height * 0.5);
     const offsetLeft = screenInfo.left;
     const offsetTop = screenInfo.top;
 
@@ -611,7 +611,7 @@ class StepIntegratedWindowService {
       },
       1: {
         // 右上
-        left: offsetLeft + screenInfo.width - baseWidth,
+        left: offsetLeft + baseWidth,
         top: offsetTop,
         width: baseWidth,
         height: baseHeight,
@@ -619,14 +619,14 @@ class StepIntegratedWindowService {
       2: {
         // 左下
         left: offsetLeft,
-        top: offsetTop + screenInfo.height - baseHeight,
+        top: offsetTop + baseHeight,
         width: baseWidth,
         height: baseHeight,
       },
       3: {
         // 右下
-        left: offsetLeft + screenInfo.width - baseWidth,
-        top: offsetTop + screenInfo.height - baseHeight,
+        left: offsetLeft + baseWidth,
+        top: offsetTop + baseHeight,
         width: baseWidth,
         height: baseHeight,
       },
@@ -687,7 +687,7 @@ class StepIntegratedWindowService {
       this.windowPositions.set(position, window.id);
 
       // タブ情報の詳細ログ
-      log.info(`🔍 [StepIntegratedWindowService] ウィンドウ作成結果の詳細:`, {
+      log.warn(`🔍 [StepIntegratedWindowService] ウィンドウ作成結果の詳細:`, {
         windowId: window.id,
         position: position,
         requestedUrl: url,
@@ -699,6 +699,12 @@ class StepIntegratedWindowService {
               pendingUrl: tab.pendingUrl,
               status: tab.status,
               title: tab.title,
+              isExtensionPage: tab.url?.startsWith("chrome-extension://"),
+              isTargetUrl: tab.url?.includes(
+                url.replace("https://", "").replace("/", ""),
+              ),
+              isChromeNewTab: tab.url === "chrome://newtab/",
+              isAboutBlank: tab.url === "about:blank",
             }))
           : [],
       });
@@ -2803,6 +2809,122 @@ class WindowController {
       "🏁 [WindowController] Step 4-1-4: ウィンドウクローズ完了",
     );
   }
+
+  /**
+   * 正しいAIサイトのタブIDを検索する
+   * @param {string} automationName - オートメーション名
+   * @param {number} windowId - ウィンドウID
+   * @returns {Promise<number|null>} 正しいタブID
+   */
+  async findCorrectAITab(automationName, windowId) {
+    try {
+      ExecuteLogger.info(`🔍 [findCorrectAITab] AIサイトタブ検索開始:`, {
+        automationName: automationName,
+        windowId: windowId,
+      });
+
+      // ウィンドウ内の全タブを取得
+      const window = await chrome.windows.get(windowId, { populate: true });
+
+      if (!window.tabs || window.tabs.length === 0) {
+        ExecuteLogger.warn(
+          `⚠️ [findCorrectAITab] ウィンドウにタブが見つかりません: ${windowId}`,
+        );
+        return null;
+      }
+
+      ExecuteLogger.debug(`🔍 [findCorrectAITab] ウィンドウ内タブ情報:`, {
+        windowId: windowId,
+        tabCount: window.tabs.length,
+        tabs: window.tabs.map((tab) => ({
+          id: tab.id,
+          url: tab.url,
+          title: tab.title,
+          status: tab.status,
+        })),
+      });
+
+      // 期待されるURLパターンを取得
+      const expectedUrlPatterns = this.getExpectedUrlPatterns(automationName);
+
+      // タブをURLパターンでフィルタリング
+      for (const tab of window.tabs) {
+        if (tab.url && this.validateAIUrl(tab.url, automationName)) {
+          ExecuteLogger.info(
+            `✅ [findCorrectAITab] 正しいAIサイトタブを発見:`,
+            {
+              tabId: tab.id,
+              url: tab.url,
+              automationName: automationName,
+            },
+          );
+          return tab.id;
+        }
+      }
+
+      ExecuteLogger.error(
+        `❌ [findCorrectAITab] 該当するAIサイトタブが見つかりません:`,
+        {
+          automationName: automationName,
+          windowId: windowId,
+          availableTabs: window.tabs.map((tab) => tab.url),
+          expectedPatterns: expectedUrlPatterns,
+        },
+      );
+
+      return null;
+    } catch (error) {
+      ExecuteLogger.error(`❌ [findCorrectAITab] エラー:`, {
+        automationName: automationName,
+        windowId: windowId,
+        error: error.message,
+      });
+      return null;
+    }
+  }
+
+  /**
+   * AIサイトのURL有効性を検証する
+   * @param {string} url - チェックするURL
+   * @param {string} automationName - オートメーション名
+   * @returns {boolean} 有効かどうか
+   */
+  validateAIUrl(url, automationName) {
+    if (!url || typeof url !== "string") {
+      return false;
+    }
+
+    // 拡張機能ページは無効
+    if (url.startsWith("chrome-extension://")) {
+      return false;
+    }
+
+    const urlPatterns = this.getExpectedUrlPatterns(automationName);
+
+    for (const pattern of urlPatterns) {
+      if (url.includes(pattern)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * オートメーション名から期待されるURLパターンを取得
+   * @param {string} automationName - オートメーション名
+   * @returns {string[]} URLパターンの配列
+   */
+  getExpectedUrlPatterns(automationName) {
+    const patterns = {
+      ClaudeAutomation: ["claude.ai"],
+      ChatGPTAutomationV2: ["chatgpt.com", "chat.openai.com"],
+      GeminiAutomation: ["gemini.google.com"],
+      GensparkAutomation: ["genspark.com", "genspark.ai"],
+    };
+
+    return patterns[automationName] || [];
+  }
 }
 
 // グローバルインスタンス作成
@@ -2872,112 +2994,10 @@ class SimpleSheetsClient {
 } // SimpleSheetsClient クラスの終了
 
 // ========================================
-// StreamProcessorV2統合: createWindowForBatch関数
+// 削除: createWindowForBatch関数 (unused/StreamProcessorV2からの不要なコード)
+// この関数は実際には使われていないため削除
+// 実際のウィンドウ作成は WindowController.openWindows が担当
 // ========================================
-
-/**
- * バッチ用のウィンドウを作成（StreamProcessorV2パターン）
- * @param {Object} task - タスクオブジェクト
- * @param {number} position - ウィンドウ位置（0=左上, 1=右上, 2=左下, 3=右下）
- * @returns {Promise<Object>} ウィンドウ情報
- */
-async function createWindowForBatch(task, position = 0) {
-  ExecuteLogger.info(
-    `🪟 [createWindowForBatch] ${task.aiType}ウィンドウ作成開始 (position: ${position})`,
-  );
-
-  try {
-    // Step内統合版クラスを使用
-    ExecuteLogger.info(
-      `✅ [createWindowForBatch] Step内統合版パターン使用: ${task.aiType}`,
-    );
-
-    // Step内統合版aiUrlManagerからURLを取得
-    const url = StepIntegratedAiUrlManager.getUrl(task.aiType);
-    ExecuteLogger.info(
-      `🔗 [createWindowForBatch] URL取得: ${url} (AI: ${task.aiType})`,
-    );
-
-    // Step内統合版WindowService.createWindowWithPositionを使用
-    const window = await StepIntegratedWindowService.createWindowWithPosition(
-      url,
-      position,
-      {
-        type: "popup",
-        aiType: task.aiType,
-      },
-    );
-
-    // タブIDを正しく取得（拡張機能ページではなく、実際のAIページのタブ）
-    let correctTabId = null;
-    if (window.tabs && window.tabs.length > 0) {
-      const firstTab = window.tabs[0];
-      // タブURLを確認してログ出力
-      ExecuteLogger.info(`🔍 [createWindowForBatch] タブ情報確認:`, {
-        tabId: firstTab.id,
-        url: firstTab.url,
-        pendingUrl: firstTab.pendingUrl,
-        expectedUrl: url,
-        aiType: task.aiType,
-      });
-
-      // URLが正しいか検証
-      if (firstTab.url && !firstTab.url.startsWith("chrome-extension://")) {
-        correctTabId = firstTab.id;
-        ExecuteLogger.info(
-          `✅ [createWindowForBatch] 正しいタブID取得: ${correctTabId} (URL: ${firstTab.url})`,
-        );
-      } else if (
-        firstTab.pendingUrl &&
-        !firstTab.pendingUrl.startsWith("chrome-extension://")
-      ) {
-        // pendingUrlをチェック（まだナビゲーション中の場合）
-        correctTabId = firstTab.id;
-        ExecuteLogger.info(
-          `✅ [createWindowForBatch] ナビゲーション中のタブID取得: ${correctTabId} (PendingURL: ${firstTab.pendingUrl})`,
-        );
-      } else {
-        // 拡張機能ページの場合、エラーログを出力
-        ExecuteLogger.warn(
-          `⚠️ [createWindowForBatch] タブURLが拡張機能ページです:`,
-          {
-            tabId: firstTab.id,
-            actualUrl: firstTab.url,
-            expectedUrl: url,
-          },
-        );
-        // それでもtabIdは設定する（後続処理でエラーになるが、デバッグのため）
-        correctTabId = firstTab.id;
-      }
-    }
-
-    // StreamProcessorV2と同じ形式で返却
-    const windowInfo = {
-      ...window,
-      tabId: correctTabId,
-      windowId: window.id,
-      aiType: task.aiType,
-      position: position,
-      url: url, // 期待されるURLも保存
-    };
-
-    ExecuteLogger.info(
-      `✅ [createWindowForBatch] ${task.aiType}ウィンドウ作成完了`,
-      {
-        windowId: windowInfo.windowId,
-        tabId: windowInfo.tabId,
-        url: url,
-        actualTabUrl:
-          window.tabs && window.tabs.length > 0 ? window.tabs[0].url : null,
-      },
-    );
-
-    return windowInfo;
-  } catch (error) {
-    ExecuteLogger.error(`❌ [createWindowForBatch] エラー:`, error);
-    throw error;
-  }
-}
 
 // ========================================
 // executeStep4 Function - Moved from step5-execute.js
@@ -3361,34 +3381,22 @@ async function executeStep4(taskList) {
             },
           );
         } else {
-          // 新しいウィンドウを作成
-          ExecuteLogger.info(
-            `🪟 [step4-execute.js] Step 4-6-6-${batchIndex + 2}-A-4: タスク${taskIndex + 1}用の新規ウィンドウ作成（Position: ${position}）`,
+          // 新しいウィンドウを作成する必要がある場合
+          // 注: 現在の実装では WindowController.openWindows で事前にウィンドウを作成しているため、
+          // このブロックは通常実行されません。
+          // unusedコードから持ち込まれた不要な処理のため、エラーとして記録
+          ExecuteLogger.error(
+            `❌ [step4-execute.js] 予期しない状態: ウィンドウが存在しません`,
+            {
+              taskIndex: taskIndex,
+              aiType: aiType,
+              position: position,
+              windowKey: windowKey,
+              note: "WindowController.openWindowsで事前作成されているはずです",
+            },
           );
-
-          try {
-            const windowInfo = await createWindowForBatch(task, position);
-            batchWindows.set(taskIndex, windowInfo);
-
-            // windowControllerに登録
-            window.windowController.openedWindows.set(windowKey, windowInfo);
-
-            ExecuteLogger.info(
-              `✅ [step4-execute.js] Step 4-6-6-${batchIndex + 2}-A-5: タスク${taskIndex + 1}用ウィンドウ作成成功`,
-              {
-                taskIndex: taskIndex,
-                aiType: aiType,
-                tabId: windowInfo.tabId,
-                windowId: windowInfo.windowId,
-                position: position,
-              },
-            );
-          } catch (error) {
-            ExecuteLogger.error(
-              `❌ [step4-execute.js] タスク${taskIndex + 1}のウィンドウ作成失敗:`,
-              error,
-            );
-          }
+          // ウィンドウが存在しない場合は処理をスキップ
+          continue;
         }
       }
 
@@ -3935,9 +3943,119 @@ async function executeStep4(taskList) {
                   throw new Error(`未知のautomationName: ${automationName}`);
               }
 
-              // 常に注入を実行（重複しても Content Script側で処理）
+              // 注入前にタブ情報を確認して正しいタブか検証
+              const tabInfo = await chrome.tabs.get(tabId);
+              ExecuteLogger.warn(
+                `🔍 [Content Script注入前] タブ情報詳細確認:`,
+                {
+                  tabId: tabId,
+                  url: tabInfo.url,
+                  title: tabInfo.title,
+                  status: tabInfo.status,
+                  isExtensionPage: tabInfo.url?.startsWith(
+                    "chrome-extension://",
+                  ),
+                  isClaudeUrl: tabInfo.url?.includes("claude.ai"),
+                  isChatGPTUrl:
+                    tabInfo.url?.includes("chatgpt.com") ||
+                    tabInfo.url?.includes("chat.openai.com"),
+                  isGeminiUrl: tabInfo.url?.includes("gemini.google.com"),
+                  isGensparkUrl:
+                    tabInfo.url?.includes("genspark.com") ||
+                    tabInfo.url?.includes("genspark.ai"),
+                  windowId: tabInfo.windowId,
+                  active: tabInfo.active,
+                  scriptFile: scriptFile,
+                  taskId: task?.id,
+                  aiType: task?.aiType,
+                },
+              );
+
+              // 拡張機能ページへの注入チェックと修正
+              if (tabInfo.url?.startsWith("chrome-extension://")) {
+                ExecuteLogger.warn(
+                  `⚠️ [Content Script注入] 拡張機能ページが検出されました。正しいAIサイトタブを検索中...`,
+                  {
+                    wrongTabId: tabId,
+                    wrongUrl: tabInfo.url,
+                    windowId: tabInfo.windowId,
+                  },
+                );
+
+                // 正しいAIサイトのタブを検索
+                const correctTabId = await this.findCorrectAITab(
+                  automationName,
+                  tabInfo.windowId,
+                );
+
+                if (correctTabId && correctTabId !== tabId) {
+                  ExecuteLogger.info(
+                    `✅ [Content Script注入] 正しいAIサイトタブを発見: ${correctTabId}`,
+                  );
+                  tabId = correctTabId; // 正しいタブIDに更新
+
+                  // 正しいタブの情報を再取得
+                  tabInfo = await chrome.tabs.get(tabId);
+                  ExecuteLogger.info(
+                    `🔍 [Content Script注入] 正しいタブ情報:`,
+                    {
+                      tabId: tabId,
+                      url: tabInfo.url,
+                      windowId: tabInfo.windowId,
+                      status: tabInfo.status,
+                    },
+                  );
+                } else {
+                  ExecuteLogger.error(
+                    `❌ [Content Script注入] 正しいAIサイトタブが見つかりません`,
+                    {
+                      automationName: automationName,
+                      windowId: tabInfo.windowId,
+                      expectedPattern:
+                        automationName === "ClaudeAutomation"
+                          ? "https://claude.ai/*"
+                          : automationName === "ChatGPTAutomation"
+                            ? "https://chatgpt.com/* or https://chat.openai.com/*"
+                            : automationName === "GeminiAutomation"
+                              ? "https://gemini.google.com/*"
+                              : automationName === "GensparkAutomation"
+                                ? "https://genspark.com/* or https://genspark.ai/*"
+                                : "Unknown AI URL",
+                    },
+                  );
+                  throw new Error(
+                    `正しいAIサイトタブが見つかりません: ${automationName}`,
+                  );
+                }
+              }
+
+              // 最終確認：AIサイトのURLパターンをチェック
+              const isValidAIUrl = this.validateAIUrl(
+                tabInfo.url,
+                automationName,
+              );
+              if (!isValidAIUrl) {
+                ExecuteLogger.error(
+                  `❌ [Content Script注入] 無効なAIサイトURL`,
+                  {
+                    tabId: tabId,
+                    url: tabInfo.url,
+                    automationName: automationName,
+                  },
+                );
+                throw new Error(
+                  `無効なAIサイトURL: ${tabInfo.url} (${automationName})`,
+                );
+              }
+
+              // 正しいタブに注入を実行
               ExecuteLogger.info(
                 `🔧 [Content Script注入] スクリプト注入実行: ${scriptFile}`,
+                {
+                  tabId: tabId,
+                  url: tabInfo.url,
+                  automationName: automationName,
+                },
               );
 
               const injectionResults = await chrome.scripting.executeScript({
