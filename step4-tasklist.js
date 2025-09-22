@@ -3101,6 +3101,240 @@ class WindowController {
   }
 }
 
+// ========================================
+// TaskStatusManager: 作業中マーカーによる排他制御
+// ========================================
+class TaskStatusManager {
+  constructor() {
+    this.checkInterval = 10000; // 10秒
+  }
+
+  /**
+   * タスクの機能に応じた最大待機時間を取得
+   * @param {Object} task - タスクオブジェクト
+   * @returns {number} タイムアウト時間（ミリ秒）
+   */
+  getMaxWaitTimeForTask(task) {
+    try {
+      // タスクの機能名を取得
+      const functionName = task.function || task.featureName || "";
+
+      // Deep Research/エージェント機能の判定（既存AIコードと同じロジック）
+      const isDeepResearchMode =
+        functionName === "Deep Research" ||
+        functionName.includes("エージェント") ||
+        functionName.includes("Research") ||
+        functionName.includes("DeepResearch") ||
+        functionName.includes("研究");
+
+      // 既存のAI処理設定に合わせる
+      const timeout = isDeepResearchMode ? 2400000 : 600000; // 40分 : 10分
+
+      ExecuteLogger.debug(
+        `⏰ タスクタイムアウト判定: ${functionName || "(機能名なし)"} → ${timeout / 60000}分`,
+        {
+          taskId: task.id || task.taskId,
+          functionName: functionName,
+          isDeepResearchMode: isDeepResearchMode,
+          timeoutMinutes: timeout / 60000,
+        },
+      );
+
+      return timeout;
+    } catch (error) {
+      ExecuteLogger.warn(
+        "⚠️ タスクタイムアウト判定エラー、デフォルト10分を使用:",
+        error,
+      );
+      return 600000; // デフォルト10分
+    }
+  }
+
+  /**
+   * セルの現在値を取得
+   */
+  async getCellValue(task) {
+    try {
+      const range = `${task.column}${task.row}`;
+      const spreadsheetId =
+        task.spreadsheetId || window.globalState?.spreadsheetId;
+
+      if (!spreadsheetId) {
+        ExecuteLogger.warn("⚠️ スプレッドシートIDが取得できません");
+        return "";
+      }
+
+      if (!window.simpleSheetsClient) {
+        ExecuteLogger.error("❌ simpleSheetsClientが利用できません");
+        return "";
+      }
+
+      const values = await window.simpleSheetsClient.getValues(
+        spreadsheetId,
+        range,
+      );
+      return values && values[0] && values[0][0] ? values[0][0] : "";
+    } catch (error) {
+      ExecuteLogger.error(
+        `❌ セル値取得エラー: ${task.column}${task.row}`,
+        error,
+      );
+      return "";
+    }
+  }
+
+  /**
+   * 作業中マーカーを書き込み
+   */
+  async markTaskInProgress(task) {
+    try {
+      const marker = `作業中\n${new Date().toISOString()}`;
+      const range = `${task.column}${task.row}`;
+      const spreadsheetId =
+        task.spreadsheetId || window.globalState?.spreadsheetId;
+
+      if (!spreadsheetId) {
+        ExecuteLogger.error("❌ スプレッドシートIDが取得できません");
+        return false;
+      }
+
+      // 書き込み前に現在値を確認（競合状態回避）
+      const currentValue = await this.getCellValue(task);
+      if (currentValue && currentValue.startsWith("作業中")) {
+        ExecuteLogger.warn(`⚠️ すでに作業中: ${range}`);
+        return false;
+      }
+
+      await window.simpleSheetsClient.updateValue(spreadsheetId, range, marker);
+      ExecuteLogger.info(`✍️ 作業中マーカー設定: ${range}`);
+      return true;
+    } catch (error) {
+      ExecuteLogger.error(
+        `❌ マーカー設定エラー: ${task.column}${task.row}`,
+        error,
+      );
+      return false;
+    }
+  }
+
+  /**
+   * 利用可能なタスクを取得（最大limit個）
+   */
+  async getAvailableTasks(taskList, limit = 3) {
+    const available = [];
+
+    for (const task of taskList) {
+      if (available.length >= limit) break;
+
+      const cellValue = await this.getCellValue(task);
+
+      // 空またはタイムアウトしたタスクは利用可能
+      if (!cellValue || cellValue === "") {
+        available.push(task);
+        ExecuteLogger.debug(`✅ 利用可能: ${task.column}${task.row} (空)`);
+      } else if (cellValue.startsWith("作業中")) {
+        if (this.isTaskTimedOut(cellValue, task)) {
+          ExecuteLogger.warn(
+            `⏰ タイムアウトタスク発見: ${task.column}${task.row}`,
+          );
+          available.push(task);
+        } else {
+          ExecuteLogger.debug(`⏳ 作業中: ${task.column}${task.row}`);
+        }
+      } else {
+        // すでに結果が書かれている場合はスキップ
+        ExecuteLogger.debug(`✓ 完了済み: ${task.column}${task.row}`);
+      }
+    }
+
+    ExecuteLogger.info(`📊 利用可能タスク: ${available.length}個`);
+    return available;
+  }
+
+  /**
+   * 作業中タスクを取得
+   */
+  async getInProgressTasks(taskList) {
+    const inProgress = [];
+
+    for (const task of taskList) {
+      const cellValue = await this.getCellValue(task);
+      if (cellValue && cellValue.startsWith("作業中")) {
+        inProgress.push({
+          ...task,
+          markerText: cellValue,
+        });
+      }
+    }
+
+    ExecuteLogger.info(`⏳ 作業中タスク: ${inProgress.length}個`);
+    return inProgress;
+  }
+
+  /**
+   * タイムアウトチェック（タスク情報を考慮）
+   * @param {string} markerText - 作業中マーカーテキスト
+   * @param {Object} task - タスクオブジェクト
+   * @returns {boolean} タイムアウトしているかどうか
+   */
+  isTaskTimedOut(markerText, task) {
+    const match = markerText.match(/作業中\n(.+)/);
+    if (!match) return false;
+
+    try {
+      const startTime = new Date(match[1]);
+      const elapsed = Date.now() - startTime.getTime();
+
+      // タスクに応じた最大待機時間を取得
+      const maxWaitTime = this.getMaxWaitTimeForTask(task);
+      const isTimeout = elapsed > maxWaitTime;
+
+      if (isTimeout) {
+        const elapsedMinutes = Math.floor(elapsed / 60000);
+        const maxMinutes = Math.floor(maxWaitTime / 60000);
+        ExecuteLogger.debug(
+          `⏰ タイムアウト検出: ${elapsedMinutes}分経過 (最大${maxMinutes}分)`,
+          {
+            taskId: task.id || task.taskId,
+            functionName: task.function || "(なし)",
+            elapsedMinutes: elapsedMinutes,
+            maxMinutes: maxMinutes,
+          },
+        );
+      }
+
+      return isTimeout;
+    } catch (e) {
+      ExecuteLogger.error("❌ 日時解析エラー:", e);
+      return true; // 日時解析失敗時はタイムアウト扱い
+    }
+  }
+
+  /**
+   * マーカーをクリア
+   */
+  async clearMarker(task) {
+    try {
+      const range = `${task.column}${task.row}`;
+      const spreadsheetId =
+        task.spreadsheetId || window.globalState?.spreadsheetId;
+
+      if (!spreadsheetId) {
+        ExecuteLogger.error("❌ スプレッドシートIDが取得できません");
+        return;
+      }
+
+      await window.simpleSheetsClient.updateValue(spreadsheetId, range, "");
+      ExecuteLogger.info(`🧹 マーカークリア: ${range}`);
+    } catch (error) {
+      ExecuteLogger.error(
+        `❌ マーカークリアエラー: ${task.column}${task.row}`,
+        error,
+      );
+    }
+  }
+}
+
 // グローバルインスタンス作成
 // WindowController は step0-ui-controller.js で初期化済み
 // window.windowController = new WindowController();
@@ -3473,38 +3707,52 @@ async function executeStep4(taskList) {
       }
     }
 
-    // Step 4-6-6: 各タスクの実行（統一バッチ処理: 3タスクずつ）
+    // Step 4-6-6: 各タスクの実行（逐次処理: 3タスクずつ動的選択）
     ExecuteLogger.info(
-      "⚡ [step4-execute.js] Step 4-6-6: タスク実行ループ開始",
+      "⚡ [step4-execute.js] Step 4-6-6: タスク実行ループ開始（逐次処理方式）",
     );
 
-    // Step 4-6-6-0: 3タスクずつのバッチに分割
+    // TaskStatusManagerの初期化
+    const statusManager = new TaskStatusManager();
     ExecuteLogger.info(
-      `[step4-execute.js] Step 4-6-6-0: タスクをバッチ処理用に準備 - 合計${enrichedTaskList.length}タスク`,
+      `[step4-execute.js] Step 4-6-6-0: TaskStatusManager初期化完了`,
     );
 
-    const batchSize = 3;
-    const batches = [];
+    // 逐次処理ループ
+    let processedCount = 0;
+    let batchIndex = 0;
 
-    // 3タスクずつのバッチを作成
-    for (let i = 0; i < enrichedTaskList.length; i += batchSize) {
-      const batch = enrichedTaskList.slice(
-        i,
-        Math.min(i + batchSize, enrichedTaskList.length),
-      );
-      batches.push(batch);
-    }
+    while (processedCount < enrichedTaskList.length) {
+      // 利用可能なタスクを最大3つ取得
+      const batch = await statusManager.getAvailableTasks(enrichedTaskList, 3);
 
-    ExecuteLogger.info(
-      `[step4-execute.js] Step 4-6-6-1: ${batches.length}個のバッチ作成完了（各バッチ最大3タスク）`,
-    );
+      if (batch.length === 0) {
+        // 利用可能なタスクがない場合は、タイムアウトしたタスクをチェック
+        const inProgressTasks =
+          await statusManager.getInProgressTasks(enrichedTaskList);
 
-    // バッチごとに処理
-    for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
-      const batch = batches[batchIndex];
+        if (inProgressTasks.length > 0) {
+          ExecuteLogger.info(
+            `⏳ [step4-execute.js] 作業中のタスク${inProgressTasks.length}個を待機中...`,
+          );
+          await new Promise((resolve) =>
+            setTimeout(resolve, statusManager.checkInterval),
+          );
+          continue;
+        } else {
+          ExecuteLogger.info(`✅ [step4-execute.js] 全タスク処理完了`);
+          break;
+        }
+      }
+
       ExecuteLogger.info(
-        `📦 [step4-execute.js] Step 4-6-6-${batchIndex + 2}: バッチ${batchIndex + 1}/${batches.length} 処理開始 - ${batch.length}タスク`,
+        `📦 [step4-execute.js] Step 4-6-6-${batchIndex + 2}: バッチ${batchIndex + 1} 処理開始 - ${batch.length}タスク`,
       );
+
+      // 作業中マーカーを設定
+      for (const task of batch) {
+        await statusManager.markTaskInProgress(task);
+      }
 
       // Step 4-6-6-A: ウィンドウ割り当て (unused/stream-processor-v2.js準拠)
       // 各タスクに異なるウィンドウを割り当てる
@@ -3840,7 +4088,7 @@ async function executeStep4(taskList) {
         }
       });
 
-      // 全タスクの完了を待機
+      // タスクを逐次実行（3つずつ同時実行）
       const batchResults = await Promise.allSettled(batchPromises);
 
       // 結果を収集
@@ -3863,6 +4111,25 @@ async function executeStep4(taskList) {
       ExecuteLogger.info(
         `✅ [step4-execute.js] Step 4-6-6-${batchIndex + 2}-D: バッチ${batchIndex + 1}完了 - 成功: ${successCount}, 失敗: ${failCount}`,
       );
+
+      // Step 4-6-6-D2: 作業中マーカーをクリア
+      ExecuteLogger.info(
+        `🧹 [step4-execute.js] Step 4-6-6-${batchIndex + 2}-D2: 作業中マーカークリア`,
+      );
+
+      for (const task of validBatchTasks) {
+        try {
+          await statusManager.clearMarker(task);
+          ExecuteLogger.debug(
+            `🧹 マーカークリア完了: ${task.column}${task.row}`,
+          );
+        } catch (error) {
+          ExecuteLogger.error(
+            `❌ マーカークリアエラー: ${task.column}${task.row}`,
+            error,
+          );
+        }
+      }
 
       // Step 4-6-6-E: バッチのウィンドウをクローズ
       ExecuteLogger.info(
@@ -3918,8 +4185,59 @@ async function executeStep4(taskList) {
         break;
       }
 
-      // バッチ間の待機時間
-      if (batchIndex < batches.length - 1) {
+      // 処理済みカウントを更新
+      processedCount += validBatchTasks.length;
+      batchIndex++;
+
+      // 次のバッチ前にウィンドウを閉じる
+      if (processedCount < enrichedTaskList.length) {
+        ExecuteLogger.info(
+          `🪟 [step4-execute.js] バッチ${batchIndex}完了、ウィンドウクローズ`,
+        );
+
+        // 使用したウィンドウをクローズ
+        for (const [taskIndex, windowInfo] of batchWindows.entries()) {
+          try {
+            if (windowInfo && windowInfo.windowId) {
+              await chrome.windows.remove(windowInfo.windowId);
+              ExecuteLogger.info(
+                `✅ ウィンドウクローズ: ${windowInfo.windowId}`,
+              );
+            }
+          } catch (error) {
+            ExecuteLogger.warn(`⚠️ ウィンドウクローズ失敗: ${error.message}`);
+          }
+        }
+
+        // 次のバッチ用に新しいウィンドウを開く
+        ExecuteLogger.info(
+          `🪟 [step4-execute.js] 次のバッチ用ウィンドウを開く`,
+        );
+        const nextBatch = await statusManager.getAvailableTasks(
+          enrichedTaskList.slice(processedCount),
+          3,
+        );
+        if (nextBatch.length > 0) {
+          const nextWindowLayout =
+            window.taskGroupTypeDetector.getWindowLayoutFromTasks(nextBatch);
+          const windowResults =
+            await window.windowController.openWindows(nextWindowLayout);
+          successfulWindows = windowResults.filter((w) => w.success);
+
+          // ライフサイクル管理に登録
+          for (const windowResult of successfulWindows) {
+            const windowInfo = window.windowController.openedWindows.get(
+              windowResult.aiType,
+            );
+            if (windowInfo) {
+              window.windowLifecycleManager.registerWindow(
+                windowResult.aiType,
+                windowInfo,
+              );
+            }
+          }
+        }
+
         ExecuteLogger.info(`⏳ 次のバッチまで1秒待機`);
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
@@ -3962,6 +4280,61 @@ async function executeStep4(taskList) {
     failedTasks: results.filter((r) => !r.success).length,
     windowLayout: windowLayoutInfo?.length || 0,
   });
+
+  // Step 4-6-8: 次のグループへの自動移行
+  ExecuteLogger.info("🔄 [Step 4-6-8] 次のグループへの自動移行処理");
+
+  // 全タスクが成功した場合のみ次のグループへ移行
+  const allSuccess = results.every((r) => r.success);
+  if (allSuccess && enrichedTaskList.length > 0) {
+    ExecuteLogger.info("✅ 全タスクが成功、次のグループをチェック");
+
+    // step6-nextgroup.jsのexecuteStep6を呼び出して次のグループへ
+    if (typeof window.executeStep6 === "function") {
+      try {
+        const nextGroupResult = await window.executeStep6(
+          window.globalState?.taskGroups || [],
+          window.globalState?.currentGroupIndex || 0,
+        );
+
+        if (nextGroupResult.hasNext) {
+          ExecuteLogger.info(
+            `🎯 次のグループ（グループ${nextGroupResult.nextIndex + 1}）への移行を開始`,
+          );
+
+          // グループインデックスを更新
+          if (window.globalState) {
+            window.globalState.currentGroupIndex = nextGroupResult.nextIndex;
+          }
+
+          // 再帰的にstep4を呼び出して次のグループを処理
+          ExecuteLogger.info("🔄 Step4を再実行して次のグループを処理");
+
+          // 少し待機してから次のグループを実行
+          await new Promise((resolve) => setTimeout(resolve, 3000));
+
+          // 次のグループのタスクを取得して実行
+          const nextGroupTasks =
+            window.globalState?.taskGroups?.[nextGroupResult.nextIndex];
+          if (nextGroupTasks) {
+            ExecuteLogger.info(
+              `📋 グループ${nextGroupResult.nextIndex + 1}のタスク${nextGroupTasks.length}個を実行開始`,
+            );
+            // 再帰的に executeStep4 を呼び出す
+            return await executeStep4(nextGroupTasks);
+          }
+        } else {
+          ExecuteLogger.info("🎉 すべてのグループの処理が完了しました");
+        }
+      } catch (error) {
+        ExecuteLogger.error("❌ 次グループへの移行エラー:", error);
+      }
+    } else {
+      ExecuteLogger.warn("⚠️ executeStep6関数が利用できません");
+    }
+  } else if (!allSuccess) {
+    ExecuteLogger.warn("⚠️ 失敗タスクがあるため、次のグループへは移行しません");
+  }
 
   // ========================================
   // Step 4-6: サブ関数群

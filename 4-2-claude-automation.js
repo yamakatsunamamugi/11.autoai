@@ -5304,7 +5304,7 @@
             }
           }
 
-          return { success: true, text: finalText };
+          return { success: true, text: finalText, response: finalText };
         },
         maxRetries: 3,
         actionName: "送信・応答取得(個別処理)",
@@ -5317,6 +5317,9 @@
         success: sendResponseResult.success,
         phase: "send",
         text: sendResponseResult.success ? sendResponseResult.result.text : "",
+        response: sendResponseResult.success
+          ? sendResponseResult.result.text
+          : "",
       };
     } catch (error) {
       log.error("❌ [ClaudeV2] 送信・応答取得エラー:", error.message);
