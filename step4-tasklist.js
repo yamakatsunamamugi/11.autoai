@@ -1640,22 +1640,69 @@ async function generateTaskList(
             });
             break;
           } else {
-            ExecuteLogger.info(
-              `[TaskList] タスク作成対象: ${row}行目 (${col}列)`,
-              {
-                理由: "作業中マーカーは回答とみなさない",
-                マーカー: cellValue.substring(0, 50) + "...",
-                グループ: taskGroup.groupNumber,
-                グループタイプ: taskGroup.groupType,
-              },
-            );
-            addLog(
-              `[TaskList] ${row}行目: 作業中マーカー検出 (${col}列) - タスク作成対象`,
-              {
+            // 初回実行時は作業中マーカーを削除
+            if (options.isFirstRun) {
+              // TaskStatusManagerインスタンスを作成
+              const taskStatusManager = new TaskStatusManager();
+
+              // 一時的なタスクオブジェクトを作成
+              const tempTask = {
                 column: col,
-                marker: cellValue.substring(0, 30) + "...",
-              },
-            );
+                row: row,
+                spreadsheetId:
+                  options.spreadsheetId || window.globalState?.spreadsheetId,
+                groupNumber: taskGroup.groupNumber,
+              };
+
+              // 作業中マーカーを削除
+              const cleared =
+                await taskStatusManager.clearWorkingMarker(tempTask);
+
+              if (cleared) {
+                ExecuteLogger.info(
+                  `[TaskList] 初回実行: 作業中マーカー削除後タスク作成 ${row}行目 (${col}列)`,
+                  {
+                    理由: "初回実行時の自動クリア",
+                    元のマーカー: cellValue.substring(0, 50) + "...",
+                    グループ: taskGroup.groupNumber,
+                    グループタイプ: taskGroup.groupType,
+                  },
+                );
+                addLog(
+                  `[TaskList] ${row}行目: 初回実行で作業中マーカー削除 (${col}列)`,
+                  {
+                    column: col,
+                    originalMarker: cellValue.substring(0, 30) + "...",
+                    reason: "初回実行時自動クリア",
+                  },
+                );
+              } else {
+                ExecuteLogger.warn(
+                  `[TaskList] 作業中マーカー削除失敗: ${row}行目 (${col}列)`,
+                  {
+                    マーカー: cellValue.substring(0, 50) + "...",
+                    グループ: taskGroup.groupNumber,
+                  },
+                );
+              }
+            } else {
+              ExecuteLogger.info(
+                `[TaskList] タスク作成対象: ${row}行目 (${col}列)`,
+                {
+                  理由: "作業中マーカーは回答とみなさない",
+                  マーカー: cellValue.substring(0, 50) + "...",
+                  グループ: taskGroup.groupNumber,
+                  グループタイプ: taskGroup.groupType,
+                },
+              );
+              addLog(
+                `[TaskList] ${row}行目: 作業中マーカー検出 (${col}列) - タスク作成対象`,
+                {
+                  column: col,
+                  marker: cellValue.substring(0, 30) + "...",
+                },
+              );
+            }
           }
         }
       }
@@ -3354,6 +3401,48 @@ class TaskStatusManager {
     } catch (error) {
       ExecuteLogger.error(
         `❌ マーカー設定エラー: ${task.column}${task.row}`,
+        error,
+      );
+      return false;
+    }
+  }
+
+  /**
+   * 作業中マーカーを削除（初回実行時のみ使用）
+   */
+  async clearWorkingMarker(task) {
+    try {
+      const range = task.answerCell || `${task.column}${task.row}`;
+      const spreadsheetId =
+        task.spreadsheetId ||
+        task.spreadsheetData?.spreadsheetId ||
+        window.globalState?.spreadsheetId;
+
+      if (!spreadsheetId) {
+        ExecuteLogger.error("❌ スプレッドシートIDが取得できません");
+        return false;
+      }
+
+      // 現在値を確認
+      const currentValue = await this.getCellValue(task);
+      if (!currentValue || !currentValue.startsWith("作業中")) {
+        ExecuteLogger.warn(`⚠️ 作業中マーカーがありません: ${range}`);
+        return false;
+      }
+
+      // 作業中マーカーを削除（空文字に更新）
+      await window.simpleSheetsClient.updateValue(spreadsheetId, range, "");
+
+      ExecuteLogger.info(`🧹 初回実行: 作業中マーカー削除 ${range}`, {
+        削除理由: "初回実行時の自動クリア",
+        元のマーカー: currentValue.substring(0, 50) + "...",
+        タスク: `${task.column}${task.row} (グループ${task.groupNumber})`,
+      });
+
+      return true;
+    } catch (error) {
+      ExecuteLogger.error(
+        `❌ 作業中マーカー削除エラー: ${task.column}${task.row}`,
         error,
       );
       return false;
