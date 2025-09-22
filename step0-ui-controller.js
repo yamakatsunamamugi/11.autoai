@@ -806,7 +806,7 @@ async function clearAllWorkingMarkers(spreadsheetUrl) {
     }
 
     // スプレッドシート全体のデータを取得
-    const range = "A1:CZ1000"; // 十分に広い範囲を指定
+    const range = "A1:ZZ1000"; // より広い範囲を指定（ZZ列まで）
     const response = await window.simpleSheetsClient.getValues(
       spreadsheetId,
       range,
@@ -820,11 +820,25 @@ async function clearAllWorkingMarkers(spreadsheetUrl) {
     const values = response.values;
     let deletedCount = 0;
 
+    log.debug(
+      `🔍 [Step0] データ取得完了: ${values.length}行, 最大列数: ${Math.max(...values.map((row) => row.length))}`,
+    );
+
     // 作業中マーカーを検索して削除
     for (let rowIndex = 0; rowIndex < values.length; rowIndex++) {
       const row = values[rowIndex];
       for (let colIndex = 0; colIndex < row.length; colIndex++) {
         const cellValue = row[colIndex];
+
+        // Y列周辺（X, Y, Z列）のセル値をデバッグログに出力
+        if (colIndex >= 23 && colIndex <= 25 && cellValue) {
+          // X(23), Y(24), Z(25)列
+          const columnLetter = String.fromCharCode(65 + (colIndex % 26));
+          const cellRef = `${columnLetter}${rowIndex + 1}`;
+          log.debug(
+            `🔍 [Step0] ${cellRef}セル値: "${cellValue}" (type: ${typeof cellValue})`,
+          );
+        }
 
         // 作業中マーカーを検出
         if (
@@ -836,6 +850,10 @@ async function clearAllWorkingMarkers(spreadsheetUrl) {
           const columnLetter = String.fromCharCode(65 + (colIndex % 26));
           const cellRef = `${columnLetter}${rowIndex + 1}`;
 
+          log.info(
+            `🎯 [Step0] 作業中マーカー検出: ${cellRef} = "${cellValue}"`,
+          );
+
           // セルを空にする
           await window.simpleSheetsClient.updateValue(
             spreadsheetId,
@@ -844,7 +862,7 @@ async function clearAllWorkingMarkers(spreadsheetUrl) {
           );
           deletedCount++;
 
-          log.debug(`🧹 [Step0] 作業中マーカー削除: ${cellRef}`);
+          log.info(`🧹 [Step0] 作業中マーカー削除完了: ${cellRef}`);
         }
       }
     }
