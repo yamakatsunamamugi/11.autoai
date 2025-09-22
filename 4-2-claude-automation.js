@@ -1394,6 +1394,7 @@
         const x = rect.left + rect.width / 2;
         const y = rect.top + rect.height / 2;
 
+        // テストコードの完全なイベントシーケンス（A3パターン）
         const events = [
           new PointerEvent("pointerover", {
             bubbles: true,
@@ -1424,26 +1425,34 @@
             cancelable: true,
             clientX: x,
             clientY: y,
+            button: 0,
+            buttons: 1,
           }),
           new MouseEvent("mousedown", {
             bubbles: true,
             cancelable: true,
             clientX: x,
             clientY: y,
+            button: 0,
+            buttons: 1,
           }),
           new PointerEvent("pointerup", {
             bubbles: true,
             cancelable: true,
             clientX: x,
             clientY: y,
+            button: 0,
+            buttons: 0,
           }),
           new MouseEvent("mouseup", {
             bubbles: true,
             cancelable: true,
             clientX: x,
             clientY: y,
+            button: 0,
+            buttons: 0,
           }),
-          new MouseEvent("click", {
+          new PointerEvent("click", {
             bubbles: true,
             cancelable: true,
             clientX: x,
@@ -1456,11 +1465,13 @@
           await wait(10);
         }
 
+        // S1パターン: 直接クリック
         element.click();
-        logEvent(`✅ クリックイベント完了: ${element.tagName}`);
+        logEvent(`✅ イベント発火完了: ${eventType}`);
       }
     } catch (error) {
-      logEvent(`⚠️ イベント処理エラー: ${error.message}`);
+      logEvent(`❌ イベント発火エラー: ${error.message}`);
+      throw error;
     }
   };
 
@@ -2012,23 +2023,37 @@
       element.focus();
       await wait(100);
 
-      element.textContent = text;
+      // テキストコンテンツをクリア
+      element.textContent = "";
 
+      // プレースホルダー要素を削除（存在する場合）
+      const placeholderP = element.querySelector("p.is-empty");
+      if (placeholderP) {
+        placeholderP.remove();
+      }
+
+      // 新しいp要素を作成してテキストを挿入
+      const p = document.createElement("p");
+      p.textContent = text;
+      element.appendChild(p);
+
+      // ql-blankクラスを削除（Quillエディタ対応）
+      element.classList.remove("ql-blank");
+
+      // inputイベントとchangeイベントを発火
       const inputEvent = new Event("input", {
         bubbles: true,
         cancelable: true,
       });
-      element.dispatchEvent(inputEvent);
-
       const changeEvent = new Event("change", {
         bubbles: true,
         cancelable: true,
       });
+
+      element.dispatchEvent(inputEvent);
       element.dispatchEvent(changeEvent);
 
-      await wait(100);
-
-      // Text input success
+      log.debug("✓ テキスト入力完了");
       return true;
     } catch (e) {
       log.error("✗ テキスト入力エラー:", e);
@@ -2050,61 +2075,34 @@
     log.debug(`\n👆 ${description}をクリック`);
 
     try {
-      button.scrollIntoView({ behavior: "smooth", block: "center" });
-      await wait(100);
+      // フォーカスを設定
+      button.focus();
+      await wait(50);
 
-      const rect = button.getBoundingClientRect();
-      log.debug(
-        `📍 ボタン位置: (${Math.round(rect.left)}, ${Math.round(rect.top)})`,
-      );
-
-      const x = rect.left + rect.width / 2;
-      const y = rect.top + rect.height / 2;
-
-      const mouseenter = new MouseEvent("mouseenter", {
-        bubbles: true,
-        cancelable: true,
-        clientX: x,
-        clientY: y,
-      });
-      const mouseover = new MouseEvent("mouseover", {
-        bubbles: true,
-        cancelable: true,
-        clientX: x,
-        clientY: y,
-      });
+      // マウスイベントチェーンをシンプル化（テストコードの実装）
       const mousedown = new MouseEvent("mousedown", {
         bubbles: true,
         cancelable: true,
-        clientX: x,
-        clientY: y,
       });
       const mouseup = new MouseEvent("mouseup", {
         bubbles: true,
         cancelable: true,
-        clientX: x,
-        clientY: y,
       });
       const click = new MouseEvent("click", {
         bubbles: true,
         cancelable: true,
-        clientX: x,
-        clientY: y,
       });
 
-      button.dispatchEvent(mouseenter);
-      await wait(10);
-      button.dispatchEvent(mouseover);
-      await wait(10);
       button.dispatchEvent(mousedown);
       await wait(10);
       button.dispatchEvent(mouseup);
       await wait(10);
       button.dispatchEvent(click);
 
+      // 最後に直接clickメソッドを呼び出し
       button.click();
 
-      // Button click complete
+      log.debug("✓ ボタンクリック完了");
       return true;
     } catch (e) {
       log.error("✗ ボタンクリックエラー:", e);
