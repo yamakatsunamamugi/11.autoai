@@ -1,50 +1,7 @@
-// ログレベル定義
-const LOG_LEVEL = { ERROR: 1, WARN: 2, INFO: 3, DEBUG: 4 };
-
-// Chrome Storageからログレベルを取得（非同期）
-let CURRENT_LOG_LEVEL = LOG_LEVEL.INFO; // デフォルト値
-
-// Chrome拡張環境でのみStorageから設定を読み込む
-if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-  chrome.storage.local.get('logLevel', (result) => {
-    if (result.logLevel) {
-      CURRENT_LOG_LEVEL = parseInt(result.logLevel);
-      console.log(`📋 ログレベル設定: ${['', 'ERROR', 'WARN', 'INFO', 'DEBUG'][CURRENT_LOG_LEVEL]} (${CURRENT_LOG_LEVEL})`);
-    } else {
-      console.log('📋 ログレベル: デフォルト (INFO)');
-    }
-  });
-}
-
-// ログユーティリティ（CURRENT_LOG_LEVELを動的に参照）
-const log = {
-  error: (...args) => {
-    if (CURRENT_LOG_LEVEL >= LOG_LEVEL.ERROR) console.error(...args);
-  },
-  warn: (...args) => {
-    if (CURRENT_LOG_LEVEL >= LOG_LEVEL.WARN) console.warn(...args);
-  },
-  info: (...args) => {
-    if (CURRENT_LOG_LEVEL >= LOG_LEVEL.INFO) console.log(...args);
-  },
-  debug: (...args) => {
-    if (CURRENT_LOG_LEVEL >= LOG_LEVEL.DEBUG) console.log(...args);
-  }
-};
-
-
-
 /**
  * @fileoverview Genspark自動化V2 - 統一アーキテクチャ実装
- * Version: 2.1.0
+ * Version: 2.0.0
  * 作成日: 2025年9月12日
- *
- * 【ステップ構成】
- * Step 4-5-0: 初期化とUI Selectors読み込み
- * Step 4-5-1: 機能検出とURL判定
- * Step 4-5-2: テキスト入力
- * Step 4-5-3: メッセージ送信
- * Step 4-5-4: 応答待機とURL抽出
  *
  * 【V2の改善点】
  * - common-ai-handler.js統合による重複コード削減（800行→270行、66%削減）
@@ -65,8 +22,6 @@ const log = {
  * 【グローバル公開】
  * window.GensparkAutomationV2: V2メインAPI
  * window.GensparkAutomation: V1互換性API
- *
- * @updated 2024-12-20 Step 4-5-X番号体系導入、詳細エラーログ強化
  */
 (() => {
   "use strict";
@@ -96,7 +51,7 @@ const log = {
   };
 
   // ========================================
-  // Step 4-5-0-3: 統一GensparkRetryManager クラス定義
+  // Genspark-ステップ0-3: 統一GensparkRetryManager クラス定義
   // エラー分類とリトライ戦略を統合した統一システム
   // ========================================
 
@@ -277,7 +232,7 @@ const log = {
           retryCount++;
           this.metrics.totalAttempts++;
 
-          log.debug(
+          console.log(
             `🔄 [Genspark-Retry] ${actionName} 試行 ${retryCount}/20`,
           );
 
@@ -287,7 +242,7 @@ const log = {
           if (isSuccess(lastResult)) {
             this.metrics.successfulAttempts++;
             this.consecutiveErrorCount = 0; // エラーカウントリセット
-            log.debug(
+            console.log(
               `✅ [Genspark-Retry] ${actionName} 成功（${retryCount}回目）`,
             );
             return {
@@ -307,7 +262,7 @@ const log = {
           // エラー履歴管理
           this.addErrorToHistory(errorType, error.message);
 
-          log.error(
+          console.error(
             `❌ [Genspark-Retry] ${actionName} エラー (${retryCount}回目):`,
             {
               errorType,
@@ -356,7 +311,7 @@ const log = {
       }
 
       // 全リトライ失敗
-      log.error(`❌ [Genspark-Retry] ${actionName} 全リトライ失敗`);
+      console.error(`❌ [Genspark-Retry] ${actionName} 全リトライ失敗`);
       return {
         success: false,
         result: lastResult,
@@ -372,7 +327,7 @@ const log = {
     async executeEscalation(level, context) {
       const { retryCount, errorType, taskData } = context;
 
-      log.debug(
+      console.log(
         `🔄 [Genspark-Escalation] ${level} 実行開始 (${retryCount}回目)`,
       );
 
@@ -383,13 +338,13 @@ const log = {
 
         case "MODERATE":
           // ページリフレッシュ
-          log.debug(`🔄 [Genspark-Escalation] ページリフレッシュ実行`);
+          console.log(`🔄 [Genspark-Escalation] ページリフレッシュ実行`);
           location.reload();
           return { success: false, needsWait: true }; // リロード後は待機が必要
 
         case "HEAVY_RESET":
           // 新規ウィンドウ作成
-          log.debug(`🔄 [Genspark-Escalation] 新規ウィンドウ作成`);
+          console.log(`🔄 [Genspark-Escalation] 新規ウィンドウ作成`);
           return await this.performNewWindowRetry(taskData, {
             errorType,
             retryCount,
@@ -419,17 +374,6 @@ const log = {
             closeCurrentWindow: true,
           },
           (response) => {
-            if (chrome.runtime.lastError) {
-              log.warn(
-                "[4-5-genspark] Runtime error in performNewWindowRetry:",
-                chrome.runtime.lastError.message,
-              );
-              resolve({
-                success: false,
-                error: chrome.runtime.lastError.message,
-              });
-              return;
-            }
             if (response && response.success) {
               resolve(response);
             } else {
@@ -453,7 +397,7 @@ const log = {
 
       if (delay > 0) {
         const delayMinutes = Math.round((delay / 60000) * 10) / 10;
-        log.debug(
+        console.log(
           `⏳ [Genspark-Wait] ${level} - ${delayMinutes}分後にリトライします...`,
         );
         await this.delay(delay);
@@ -525,30 +469,39 @@ const log = {
   let menuHandler = null;
 
   // ========================================
-  // UI Selectors読み込み（step1-setup.js統一管理版）
+  // UI Selectors読み込みと基本関数定義
   // ========================================
+  let UI_SELECTORS = {};
+  let selectorsLoaded = false;
 
   async function loadUISelectors() {
-    log("【Step 4-5-0-0-1】📋 UI Selectors読み込み開始...", "INFO");
+    if (selectorsLoaded) return UI_SELECTORS;
 
-    // step1-setup.jsからのUI_SELECTORS読み込み待機
-    let retryCount = 0;
-    const maxRetries = 50;
+    log("【初期化ステップ0-1】📋 UI Selectors読み込み開始...", "INFO");
 
-    while (!window.UI_SELECTORS && retryCount < maxRetries) {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      retryCount++;
-    }
-
-    if (!window.UI_SELECTORS || !window.UI_SELECTORS.Genspark) {
-      throw new Error("UI_SELECTORS not available from step1-setup.js");
-    }
-
-    log(
-      "【Step 4-5-0-0-1】✅ UI Selectors loaded from step1-setup.js",
-      "SUCCESS",
+    const response = await fetch(
+      chrome.runtime.getURL("ui-selectors-data.json"),
     );
-    return window.UI_SELECTORS.Genspark;
+    const data = await response.json();
+
+    // ui-selectors-data.jsonからGensparkセレクタを取得
+    if (!data.selectors || !data.selectors.Genspark) {
+      throw new Error(
+        "ui-selectors-data.jsonにGensparkセレクタが定義されていません",
+      );
+    }
+
+    UI_SELECTORS = data.selectors.Genspark;
+    window.UI_SELECTORS = data.selectors; // 他のAIとの互換性のため全体も保存
+    selectorsLoaded = true;
+
+    log("【初期化ステップ0-1】✅ UI Selectors読み込み完了", "SUCCESS");
+    log(
+      `【初期化ステップ0-1】📋 読み込まれたセレクタ: INPUT=${UI_SELECTORS.INPUT?.length || 0}個, SEND_BUTTON=${UI_SELECTORS.SEND_BUTTON?.length || 0}個`,
+      "INFO",
+    );
+
+    return UI_SELECTORS;
   }
 
   // 基本的なDOM操作関数
@@ -607,40 +560,22 @@ const log = {
   // ========================================
   // ユーティリティ関数
   // ========================================
-  function log(message, level = "INFO", context = {}) {
+  function log(message, level = "INFO") {
     const timestamp = new Date().toLocaleTimeString();
-    const prefix = `[Step 4-5:${timestamp}]`;
-
-    const logData = {
-      message,
-      level,
-      timestamp: new Date().toISOString(),
-      context,
-      url: window.location.href,
-      userAgent: navigator.userAgent,
-    };
+    const prefix = `[GensparkV2:${timestamp}]`;
 
     switch (level) {
       case "ERROR":
-        log.error(`${prefix} ❌ ${message}`, logData);
-        if (context.error) {
-          log.error(`${prefix} 📋 エラー詳細:`, {
-            errorName: context.error.name,
-            errorMessage: context.error.message,
-            errorStack: context.error.stack,
-            retryCount: context.retryCount || 0,
-            escalationLevel: context.escalationLevel || "NONE",
-          });
-        }
+        console.error(`${prefix} ❌ ${message}`);
         break;
       case "SUCCESS":
-        log.debug(`${prefix} ✅ ${message}`, logData);
+        console.log(`${prefix} ✅ ${message}`);
         break;
       case "WARNING":
-        log.warn(`${prefix} ⚠️ ${message}`, logData);
+        console.warn(`${prefix} ⚠️ ${message}`);
         break;
       default:
-        log.debug(`${prefix} ℹ️ ${message}`, logData);
+        console.log(`${prefix} ℹ️ ${message}`);
     }
   }
 
@@ -715,29 +650,29 @@ const log = {
         currentFunction = detectFunction();
 
         log(
-          `【Step 4-5-1-1】🚀 ${currentFunction}機能でメッセージ送信開始`,
+          `【Genspark-ステップ1-1】🚀 ${currentFunction}機能でメッセージ送信開始`,
           "INFO",
         );
         log(
-          `【Step 4-5-1-1】📝 送信テキスト: "${text.substring(0, 50)}..."`,
+          `【Genspark-ステップ1-1】📝 送信テキスト: "${text.substring(0, 50)}..."`,
           "INFO",
         );
 
         // UI Selectors初期化
-        log(`【Step 4-5-1-2】📋 UI Selectors初期化中...`, "INFO");
-        const UI_SELECTORS = await loadUISelectors();
-        log(`【Step 4-5-1-2】✅ UI Selectors初期化完了`, "SUCCESS");
+        log(`【Genspark-ステップ1-2】📋 UI Selectors初期化中...`, "INFO");
+        await loadUISelectors();
+        log(`【Genspark-ステップ1-2】✅ UI Selectors初期化完了`, "SUCCESS");
 
         // 入力欄を探す
-        log(`【Step 4-5-2-1】🔍 入力欄を検索中...`, "INFO");
+        log(`【Genspark-ステップ2-1】🔍 入力欄を検索中...`, "INFO");
         const inputElement = await findElement(UI_SELECTORS.INPUT);
         if (!inputElement) {
           throw new Error("入力欄が見つかりません");
         }
-        log(`【Step 4-5-2-1】✅ 入力欄を発見`, "SUCCESS");
+        log(`【Genspark-ステップ2-1】✅ 入力欄を発見`, "SUCCESS");
 
         // テキスト入力
-        log(`【Step 4-5-2-2】✏️ テキスト入力中...`, "INFO");
+        log(`【Genspark-ステップ2-2】✏️ テキスト入力中...`, "INFO");
         inputElement.focus();
         await wait(CONFIG.INPUT_DELAY);
 
@@ -755,39 +690,39 @@ const log = {
         inputElement.dispatchEvent(new Event("change", { bubbles: true }));
 
         log(
-          `【Step 4-5-2-2】✅ テキスト入力完了（${finalText.length}文字）`,
+          `【Genspark-ステップ2-2】✅ テキスト入力完了（${finalText.length}文字）`,
           "SUCCESS",
         );
 
         // 送信ボタンを探す
-        log(`【Step 4-5-2-3】🔍 送信ボタンを検索中...`, "INFO");
+        log(`【Genspark-ステップ2-3】🔍 送信ボタンを検索中...`, "INFO");
         const sendButton = await findElement(UI_SELECTORS.SEND_BUTTON);
         if (!sendButton) {
           throw new Error("送信ボタンが見つかりません");
         }
-        log(`【Step 4-5-2-3】✅ 送信ボタンを発見`, "SUCCESS");
+        log(`【Genspark-ステップ2-3】✅ 送信ボタンを発見`, "SUCCESS");
 
         // 送信実行
-        log(`【Step 4-5-2-4】📤 メッセージ送信実行中...`, "INFO");
+        log(`【Genspark-ステップ2-4】📤 メッセージ送信実行中...`, "INFO");
         sendButton.click();
         await wait(CONFIG.CLICK_DELAY);
-        log(`【Step 4-5-2-4】✅ メッセージ送信完了`, "SUCCESS");
+        log(`【Genspark-ステップ2-4】✅ メッセージ送信完了`, "SUCCESS");
 
         // 応答待機
         log(
-          `【Step 4-5-3-1】⏱️ 応答待機開始（最大${(options.timeout || CONFIG.DEFAULT_TIMEOUT) / 60000}分）...`,
+          `【Genspark-ステップ3-1】⏱️ 応答待機開始（最大${(options.timeout || CONFIG.DEFAULT_TIMEOUT) / 60000}分）...`,
           "INFO",
         );
         const response = await this.waitForResponse(
           options.timeout || CONFIG.DEFAULT_TIMEOUT,
         );
-        log(`【Step 4-5-3-1】✅ 応答受信完了`, "SUCCESS");
+        log(`【Genspark-ステップ3-1】✅ 応答受信完了`, "SUCCESS");
 
         // レスポンスURL抽出
-        log(`【Step 4-5-3-2】🔍 URL抽出処理中...`, "INFO");
+        log(`【Genspark-ステップ3-2】🔍 URL抽出処理中...`, "INFO");
         const extractedUrls = extractResponseUrls(response.text);
         log(
-          `【Step 4-5-3-2】📋 抽出されたURL: ${extractedUrls.length}件`,
+          `【Genspark-ステップ3-2】📋 抽出されたURL: ${extractedUrls.length}件`,
           extractedUrls.length > 0 ? "SUCCESS" : "INFO",
         );
 
@@ -827,6 +762,51 @@ const log = {
     },
 
     /**
+     * タスクを実行（step5-execute.jsとの互換性のため追加）
+     * @param {Object} task - タスクオブジェクト
+     * @returns {Promise<Object>} 実行結果
+     */
+    async executeTask(task) {
+      try {
+        log(
+          `【Genspark-タスク実行】📝 タスク実行開始: ${task.id || "unknown"}`,
+          "INFO",
+        );
+
+        // タスクからプロンプトテキストを取得
+        const promptText = task.prompt || task.text || task.promptText || "";
+        if (!promptText) {
+          throw new Error("タスクにプロンプトテキストが含まれていません");
+        }
+
+        // sendMessageを使用してタスクを実行
+        const result = await this.sendMessage(promptText, {
+          timeout: task.timeout || CONFIG.DEFAULT_TIMEOUT,
+        });
+
+        // 結果にタスク情報を追加
+        return {
+          ...result,
+          taskId: task.id || task.taskId,
+          response: result.text, // responseフィールドも追加（互換性のため）
+          row: task.row,
+        };
+      } catch (error) {
+        log(
+          `【Genspark-タスク実行】❌ タスク実行エラー: ${error.message}`,
+          "ERROR",
+        );
+        return {
+          success: false,
+          error: error.message,
+          taskId: task.id || task.taskId,
+          row: task.row,
+          timestamp: new Date().toISOString(),
+        };
+      }
+    },
+
+    /**
      * 応答待機
      * @param {number} timeout - タイムアウト時間（ミリ秒）
      * @returns {Promise<Object>} 応答結果
@@ -834,33 +814,36 @@ const log = {
     async waitForResponse(timeout = CONFIG.DEFAULT_TIMEOUT) {
       try {
         log(
-          `【Step 4-5-4-1】⏱️ 応答待機処理開始（タイムアウト: ${timeout / 60000}分）`,
+          `【Genspark-ステップ4-1】⏱️ 応答待機処理開始（タイムアウト: ${timeout / 60000}分）`,
           "INFO",
         );
 
         // 停止ボタンが表示されるまで待機
-        log(`【Step 4-5-4-2】🔍 停止ボタンの出現を監視中...`, "INFO");
+        log(`【Genspark-ステップ4-2】🔍 停止ボタンの出現を監視中...`, "INFO");
         const stopButton = await findElement(UI_SELECTORS.STOP_BUTTON, 10000);
 
         if (stopButton) {
-          log(`【Step 4-5-4-2】✅ 停止ボタンを確認（応答生成開始）`, "SUCCESS");
+          log(
+            `【Genspark-ステップ4-2】✅ 停止ボタンを確認（応答生成開始）`,
+            "SUCCESS",
+          );
 
           // 停止ボタンが消えるまで待機（応答完了まで）
-          log(`【Step 4-5-4-3】⏳ 応答生成完了まで待機中...`, "INFO");
+          log(`【Genspark-ステップ4-3】⏳ 応答生成完了まで待機中...`, "INFO");
           await this._waitUntilElementDisappears(
             UI_SELECTORS.STOP_BUTTON,
             timeout,
           );
-          log(`【Step 4-5-4-3】✅ 応答生成完了を確認`, "SUCCESS");
+          log(`【Genspark-ステップ4-3】✅ 応答生成完了を確認`, "SUCCESS");
         } else {
           log(
-            `【Step 4-5-4-2】⚠️ 停止ボタンが確認できません（即座完了の可能性）`,
+            `【Genspark-ステップ4-2】⚠️ 停止ボタンが確認できません（即座完了の可能性）`,
             "WARNING",
           );
         }
 
         // 最終的な応答テキストを取得
-        log(`【Step 4-5-4-4】📝 応答テキストを取得中...`, "INFO");
+        log(`【Genspark-ステップ4-4】📝 応答テキストを取得中...`, "INFO");
         await wait(1000); // レンダリング安定化待ち
 
         const responseElements = findElements(UI_SELECTORS.RESPONSE);
@@ -878,7 +861,7 @@ const log = {
         }
 
         log(
-          `【Step 4-5-4-4】✅ 応答テキスト取得完了（${responseText.length}文字）`,
+          `【Genspark-ステップ4-4】✅ 応答テキスト取得完了（${responseText.length}文字）`,
           "SUCCESS",
         );
 
@@ -889,7 +872,10 @@ const log = {
           timestamp: new Date().toISOString(),
         };
       } catch (error) {
-        log(`【Step 4-5-4-失敗】❌ 応答待機エラー: ${error.message}`, "ERROR");
+        log(
+          `【Genspark-ステップ4-失敗】❌ 応答待機エラー: ${error.message}`,
+          "ERROR",
+        );
         return {
           success: false,
           error: error.message,
@@ -970,7 +956,7 @@ const log = {
           // 500ms * 20 = 10秒
           const elapsed = Math.round((Date.now() - startTime) / 1000);
           log(
-            `【Step 4-5-4-3】⏱️ 応答生成監視中: ${elapsed}秒経過 - 停止ボタン: ${element ? "表示中" : "非表示"}`,
+            `【Genspark-ステップ4-3】⏱️ 応答生成監視中: ${elapsed}秒経過 - 停止ボタン: ${element ? "表示中" : "非表示"}`,
             "INFO",
           );
         }
