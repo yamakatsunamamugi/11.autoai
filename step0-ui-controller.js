@@ -96,108 +96,38 @@ window.addEventListener("load", function () {
 });
 
 // ========================================
-// Section 2: ウィンドウサービス機能 (旧 ui-window-loader.js)
+// Section 2: ウィンドウサービス機能を削除 - step4-tasklist.jsで一元管理
 // ========================================
 
-log.debug("🔧 [step0-ui-controller] WindowService読み込み開始...");
+log.debug(
+  "🔧 [step0-ui-controller] WindowServiceはstep4-tasklist.jsで管理します",
+);
 
-// WindowServiceの簡易実装（外部依存を避けるため）
+// WindowServiceのスタブ実装（step4-tasklist.jsのStepIntegratedWindowServiceにリダイレクト）
 window.WindowService = {
   /**
-   * プライマリディスプレイに強制配置してウィンドウを作成
-   * @param {Object} options - ウィンドウオプション
-   * @param {boolean} forcePrimary - プライマリディスプレイに強制配置するか
-   * @returns {Promise<Object>} 作成されたウィンドウオブジェクト
+   * @deprecated step4-tasklist.jsのStepIntegratedWindowServiceを使用してください
    */
   async createWindow(options, forcePrimary = false) {
-    try {
-      if (forcePrimary) {
-        log.debug(
-          "[step0-ui-controller.js→Step0-1] プライマリディスプレイに強制配置でウィンドウ作成...",
-        );
-
-        // プライマリディスプレイ情報を取得
-        const primaryDisplay = await getPrimaryDisplayInfo();
-
-        // ウィンドウサイズ
-        const width = options.width || 800;
-        const height = options.height || 600;
-
-        // プライマリディスプレイの中央位置を計算
-        const workArea = primaryDisplay.workArea;
-        const position = {
-          left: workArea.left + Math.floor((workArea.width - width) / 2),
-          top: workArea.top + Math.floor((workArea.height - height) / 2),
-          width: width,
-          height: height,
-        };
-
-        // プライマリディスプレイ位置を強制指定
-        const windowOptions = {
-          ...options,
-          left: position.left,
-          top: position.top,
-          width: position.width,
-          height: position.height,
-        };
-
-        log.debug(
-          "[step0-ui-controller.js→Step0-1] プライマリディスプレイ位置:",
-          position,
-        );
-
-        const window = await chrome.windows.create(windowOptions);
-
-        // 作成後の位置確認
-        const actualWindow = await chrome.windows.get(window.id);
-        log.debug(
-          "[step0-ui-controller.js→Step0-1] 作成されたウィンドウ位置:",
-          {
-            expected: position,
-            actual: {
-              left: actualWindow.left,
-              top: actualWindow.top,
-              width: actualWindow.width,
-              height: actualWindow.height,
-            },
-          },
-        );
-
-        return window;
-      } else {
-        return await chrome.windows.create(options);
-      }
-    } catch (error) {
-      log.error(
-        "[step0-ui-controller.js→Step0-1] WindowService.createWindow エラー:",
-        error,
-      );
-      throw error;
-    }
+    log.warn(
+      "[step0-ui-controller] WindowService.createWindow は廃止予定です。step4-tasklist.jsのStepIntegratedWindowServiceを使用してください",
+    );
+    // 互換性のため基本的な機能のみ提供
+    return await chrome.windows.create(options);
   },
 
   async updateWindow(windowId, updateInfo) {
-    try {
-      return await chrome.windows.update(windowId, updateInfo);
-    } catch (error) {
-      log.error(
-        "[step0-ui-controller.js→Step0-1] WindowService.updateWindow エラー:",
-        error,
-      );
-      throw error;
-    }
+    log.warn(
+      "[step0-ui-controller] WindowService.updateWindow は廃止予定です。step4-tasklist.jsのStepIntegratedWindowServiceを使用してください",
+    );
+    return await chrome.windows.update(windowId, updateInfo);
   },
 
   async closeWindow(windowId) {
-    try {
-      return await chrome.windows.remove(windowId);
-    } catch (error) {
-      log.error(
-        "[step0-ui-controller.js→Step0-1] WindowService.closeWindow エラー:",
-        error,
-      );
-      throw error;
-    }
+    log.warn(
+      "[step0-ui-controller] WindowService.closeWindow は廃止予定です。step4-tasklist.jsのStepIntegratedWindowServiceを使用してください",
+    );
+    return await chrome.windows.remove(windowId);
   },
 
   /**
@@ -219,13 +149,23 @@ window.WindowService = {
   },
 
   /**
-   * 指定された位置にウィンドウを作成（step5との互換性のため）
-   * @param {string} url - 開くURL
-   * @param {number} position - ウィンドウ位置（0-3）
-   * @param {Object} options - 追加オプション
-   * @returns {Promise<Object>} 作成されたウィンドウ情報
+   * @deprecated step4-tasklist.jsのStepIntegratedWindowServiceを使用してください
    */
   async createWindowWithPosition(url, position, options = {}) {
+    log.warn(
+      "[step0-ui-controller] WindowService.createWindowWithPosition は廃止予定です。step4-tasklist.jsのStepIntegratedWindowServiceを使用してください",
+    );
+
+    // step4-tasklist.jsのStepIntegratedWindowServiceを直接呼び出し
+    if (window.StepIntegratedWindowService) {
+      return await window.StepIntegratedWindowService.createWindowWithPosition(
+        url,
+        position,
+        options,
+      );
+    }
+
+    // フォールバック: 基本的な実装
     try {
       log.debug(
         `[step0-ui-controller.js→Step0-1] 位置${position}にウィンドウを作成:`,

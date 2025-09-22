@@ -6,46 +6,8 @@ chrome.runtime.onInstalled.addListener(() => {
   // log.debug("✅ Extension installed/updated");
 });
 
-// タブ更新時のContent Script注入確認と手動注入
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (changeInfo.status === "complete") {
-    if (tab.url?.includes("claude.ai")) {
-      // log.debug("🔍 Claude AI page detected:", tab.url);
-
-      // Content Script注入状態を確認（遅延実行）
-      setTimeout(() => {
-        chrome.tabs.sendMessage(tabId, { type: "ping" }, (response) => {
-          if (chrome.runtime.lastError) {
-            // log.debug(
-            //   "⚠️ Content Script not responding, injecting manually...",
-            //   chrome.runtime.lastError.message
-            // );
-
-            // 手動でContent Script注入
-            chrome.scripting.executeScript(
-              {
-                target: { tabId: tabId },
-                files: ["4-2-claude-automation.js"],
-              },
-              () => {
-                if (chrome.runtime.lastError) {
-                  console.error(
-                    "❌ Failed to inject script:",
-                    chrome.runtime.lastError,
-                  );
-                } else {
-                  // log.debug("✅ Content Script manually injected");
-                }
-              },
-            );
-          } else {
-            // log.debug("✅ Content Script is responding:", response);
-          }
-        });
-      }, 2000); // 2秒待機してからチェック
-    }
-  }
-});
+// タブ更新時の処理を削除 - step4-tasklist.jsで統一管理
+// Content Script注入はタスク実行時にのみ行う
 
 // Extension間メッセージの中継
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
