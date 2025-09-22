@@ -3102,6 +3102,105 @@ class WindowController {
 }
 
 // ========================================
+// SimpleSheetsClient: step4内で完結するSheets APIクライアント（step5から複製）
+// ========================================
+class SimpleSheetsClient {
+  constructor() {
+    this.baseUrl = "https://sheets.googleapis.com/v4/spreadsheets";
+    this.sheetNameCache = new Map(); // GID -> シート名のキャッシュ
+    ExecuteLogger.info("📊 SimpleSheetsClient初期化（step4内部版）");
+  }
+
+  /**
+   * 認証トークン取得
+   */
+  async getAuthToken() {
+    return new Promise((resolve, reject) => {
+      if (typeof chrome === "undefined" || !chrome.identity) {
+        reject(new Error("Chrome Identity APIが利用できません"));
+        return;
+      }
+
+      chrome.identity.getAuthToken({ interactive: false }, (token) => {
+        if (chrome.runtime.lastError) {
+          reject(chrome.runtime.lastError);
+        } else {
+          resolve(token);
+        }
+      });
+    });
+  }
+
+  /**
+   * スプレッドシートから値を取得
+   */
+  async getValues(spreadsheetId, range) {
+    try {
+      const token = await this.getAuthToken();
+      const url = `${this.baseUrl}/${spreadsheetId}/values/${range}`;
+
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(
+          `データ取得失敗: HTTP ${response.status} - ${errorText || response.statusText}`,
+        );
+      }
+
+      const data = await response.json();
+      return data.values || [];
+    } catch (error) {
+      ExecuteLogger.error(`❌ getValues失敗: ${range}`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * スプレッドシートに値を書き込み（単一セル）
+   */
+  async updateValue(spreadsheetId, range, value) {
+    try {
+      const token = await this.getAuthToken();
+      const url = `${this.baseUrl}/${spreadsheetId}/values/${range}?valueInputOption=USER_ENTERED`;
+
+      const response = await fetch(url, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          values: [[value]],
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(
+          `データ書き込み失敗: HTTP ${response.status} - ${errorText || response.statusText}`,
+        );
+      }
+
+      return await response.json();
+    } catch (error) {
+      ExecuteLogger.error(`❌ updateValue失敗: ${range}`, error);
+      throw error;
+    }
+  }
+}
+
+// Step4内でグローバルインスタンスを作成（step5の依存を解消）
+if (!window.simpleSheetsClient) {
+  window.simpleSheetsClient = new SimpleSheetsClient();
+  ExecuteLogger.info("✅ window.simpleSheetsClient を step4内で初期化");
+}
+
+// ========================================
 // TaskStatusManager: 作業中マーカーによる排他制御
 // ========================================
 class TaskStatusManager {
@@ -3906,7 +4005,7 @@ async function executeStep4(taskList) {
       // 🔍 [DEBUG] バッチタスク詳細情報ログ追加
       ExecuteLogger.info("🔍 [DEBUG-BATCH-EXECUTION] バッチタスク詳細:", {
         batchIndex: batchIndex + 1,
-        totalBatches: batches.length,
+        totalBatches: "動的生成のため不明",
         validTaskCount: validBatchTasks.length,
         originalTaskCount: batch.length,
         validTasks: validBatchTasks.map((task) => ({
