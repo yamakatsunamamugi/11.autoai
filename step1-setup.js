@@ -5,13 +5,15 @@ const LOG_LEVEL = { ERROR: 1, WARN: 2, INFO: 3, DEBUG: 4 };
 let CURRENT_LOG_LEVEL = LOG_LEVEL.INFO; // デフォルト値
 
 // Chrome拡張環境でのみStorageから設定を読み込む
-if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-  chrome.storage.local.get('logLevel', (result) => {
+if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+  chrome.storage.local.get("logLevel", (result) => {
     if (result.logLevel) {
       CURRENT_LOG_LEVEL = parseInt(result.logLevel);
-      console.log(`📋 ログレベル設定: ${['', 'ERROR', 'WARN', 'INFO', 'DEBUG'][CURRENT_LOG_LEVEL]} (${CURRENT_LOG_LEVEL})`);
+      console.log(
+        `📋 ログレベル設定: ${["", "ERROR", "WARN", "INFO", "DEBUG"][CURRENT_LOG_LEVEL]} (${CURRENT_LOG_LEVEL})`,
+      );
     } else {
-      console.log('📋 ログレベル: デフォルト (INFO)');
+      console.log("📋 ログレベル: デフォルト (INFO)");
     }
   });
 }
@@ -29,14 +31,86 @@ const log = {
   },
   debug: (...args) => {
     if (CURRENT_LOG_LEVEL >= LOG_LEVEL.DEBUG) console.log(...args);
-  }
+  },
 };
-
-
 
 // ========================================
 // Step1: 初期設定・環境準備
 // ========================================
+
+/**
+ * 列インデックスを列文字に変換（A, B, ..., Z, AA, AB, ...）
+ */
+function getColumnLetter(colIndex) {
+  let result = "";
+  while (colIndex >= 0) {
+    result = String.fromCharCode(65 + (colIndex % 26)) + result;
+    colIndex = Math.floor(colIndex / 26) - 1;
+  }
+  return result;
+}
+
+/**
+ * 初回実行時の作業中マーカー一括削除
+ */
+async function clearWorkingMarkers(allSheetData, spreadsheetId) {
+  try {
+    log.info("🧹 [Step1] 初回実行時の作業中マーカー削除開始");
+    let deletedCount = 0;
+
+    // 作業中マーカーを検索して削除
+    for (let rowIndex = 0; rowIndex < allSheetData.length; rowIndex++) {
+      const row = allSheetData[rowIndex];
+      if (!row || !Array.isArray(row)) continue; // 空行やnull行をスキップ
+
+      for (let colIndex = 0; colIndex < row.length; colIndex++) {
+        const cellValue = row[colIndex];
+
+        // 作業中マーカーを検出
+        if (
+          cellValue &&
+          typeof cellValue === "string" &&
+          cellValue.startsWith("作業中")
+        ) {
+          // セル位置を計算（A1記法）
+          const columnLetter = getColumnLetter(colIndex);
+          const cellRef = `${columnLetter}${rowIndex + 1}`;
+
+          log.info(
+            `🎯 [Step1] 作業中マーカー検出: ${cellRef} = "${cellValue}"`,
+          );
+
+          // セルを空にする（Step1と同じAPI呼び出し方式）
+          const updateUrl = `${window.globalState.sheetsApiBase}/${spreadsheetId}/values/${cellRef}?valueInputOption=RAW`;
+          const updateResponse = await fetchWithTokenRefresh(updateUrl, {
+            method: "PUT",
+            headers: window.globalState.apiHeaders,
+            body: JSON.stringify({
+              values: [[""]],
+            }),
+          });
+
+          if (updateResponse.ok) {
+            deletedCount++;
+            log.info(`🧹 [Step1] 作業中マーカー削除完了: ${cellRef}`);
+          } else {
+            log.warn(
+              `⚠️ [Step1] 作業中マーカー削除失敗: ${cellRef}`,
+              updateResponse.status,
+            );
+          }
+        }
+      }
+    }
+
+    log.info(
+      `✅ [Step1] 作業中マーカー削除完了: ${deletedCount}個のマーカーを削除`,
+    );
+  } catch (error) {
+    log.warn("⚠️ [Step1] 作業中マーカー削除でエラー（処理は継続）:", error);
+    // エラーが発生しても処理は継続
+  }
+}
 
 // ========================================
 // 1-1: インターネット接続確認
@@ -315,9 +389,7 @@ async function initializeAPI() {
 
       if (token) {
         const elapsedTime = Date.now() - startTime;
-        log.debug(
-          "[step1-setup.js] [Step 1-3-2] ✅ アクセストークン取得成功",
-        );
+        log.debug("[step1-setup.js] [Step 1-3-2] ✅ アクセストークン取得成功");
 
         // トークンの詳細情報を表示
         log.debug(`  - トークン長: ${token.length}文字`);
@@ -547,9 +619,7 @@ function initializeUISelectors() {
 
   log.debug("[step1-setup.js] [Step 1-3-X] ✅ UIセレクタ一元管理初期化完了");
   log.debug(`  - 対応AI: ${Object.keys(ALL_UI_SELECTORS).join(", ")}`);
-  log.debug(
-    `  - 総セレクタ数: ${JSON.stringify(ALL_UI_SELECTORS).length}文字`,
-  );
+  log.debug(`  - 総セレクタ数: ${JSON.stringify(ALL_UI_SELECTORS).length}文字`);
 
   return ALL_UI_SELECTORS;
 }
@@ -561,9 +631,7 @@ function initializeUISelectors() {
  */
 function getSelectors(aiType) {
   if (!window.UI_SELECTORS) {
-    log.warn(
-      `[step1-setup.js] UIセレクタが未初期化です。初期化を実行します。`,
-    );
+    log.warn(`[step1-setup.js] UIセレクタが未初期化です。初期化を実行します。`);
     initializeUISelectors();
   }
 
@@ -581,9 +649,7 @@ function getSelectors(aiType) {
  */
 function getAllSelectors() {
   if (!window.UI_SELECTORS) {
-    log.warn(
-      `[step1-setup.js] UIセレクタが未初期化です。初期化を実行します。`,
-    );
+    log.warn(`[step1-setup.js] UIセレクタが未初期化です。初期化を実行します。`);
     initializeUISelectors();
   }
 
@@ -679,9 +745,7 @@ async function fetchWithTokenRefresh(url, options = {}, maxRetries = 3) {
 
       // 401エラーの場合、トークンをリフレッシュして再試行
       if (response.status === 401) {
-        log.debug(
-          "[step1-setup.js] 401エラー検出 - トークンリフレッシュ実行",
-        );
+        log.debug("[step1-setup.js] 401エラー検出 - トークンリフレッシュ実行");
 
         const newToken = await refreshAuthToken();
 
@@ -702,9 +766,7 @@ async function fetchWithTokenRefresh(url, options = {}, maxRetries = 3) {
         // 再試行後も429の場合は待機
         if (response.status === 429) {
           const waitTime = Math.min(2000 * Math.pow(2, attempt - 1), 10000);
-          log.debug(
-            `[step1-setup.js] 再試行後も429エラー - ${waitTime}ms待機`,
-          );
+          log.debug(`[step1-setup.js] 再試行後も429エラー - ${waitTime}ms待機`);
           await new Promise((resolve) => setTimeout(resolve, waitTime));
           continue;
         }
@@ -838,9 +900,7 @@ async function findSpecialRows() {
 
     if (!response.ok) {
       const error = await response.text();
-      log.error(
-        `[step1-setup.js] APIエラー: ${response.status} - ${error}`,
-      );
+      log.error(`[step1-setup.js] APIエラー: ${response.status} - ${error}`);
 
       if (response.status === 403) {
         throw new Error(
@@ -863,6 +923,9 @@ async function findSpecialRows() {
     // 初期設定用データをキャッシュ
     window.globalState.initialSheetData = allSheetData;
     log.debug(`[step1-setup.js] ✅ データ取得完了: ${allSheetData.length}行`);
+
+    // 作業中マーカー削除処理（初回実行時のみ）
+    await clearWorkingMarkers(allSheetData, spreadsheetId);
 
     // A列データを抽出
     const columnA = allSheetData.map((row) => [row[0] || ""]);
@@ -967,9 +1030,7 @@ async function setupColumnStructure() {
 
     // メニュー行番号を取得
     const menuRowNumber = window.globalState.specialRows?.menuRow || 3;
-    log.debug(
-      `[step1-setup.js] [Step 1-5-0] メニュー行: ${menuRowNumber}行目`,
-    );
+    log.debug(`[step1-setup.js] [Step 1-5-0] メニュー行: ${menuRowNumber}行目`);
 
     // 1-5-1. プロンプト列の検出
     log.debug("[step1-setup.js] [Step 1-5-1] プロンプト列を検出中...");
@@ -1146,9 +1207,7 @@ async function setupColumnStructure() {
 
       const success = await insertColumn(spreadsheetId, sheetId, col.position);
       if (!success) {
-        log.error(
-          `[step1-setup.js] [Step 1-5-3] ❌ 列追加失敗: ${col.name}`,
-        );
+        log.error(`[step1-setup.js] [Step 1-5-3] ❌ 列追加失敗: ${col.name}`);
         continue;
       }
 
@@ -1222,9 +1281,7 @@ async function insertColumn(spreadsheetId, sheetId, columnIndex) {
   try {
     log.debug("[step1-setup.js] [Step 1-5-6] batchUpdate実行中...");
     log.debug(`  - URL: ${batchUpdateUrl}`);
-    log.debug(
-      `  - 挿入位置: ${columnIndex} (${indexToColumn(columnIndex)}列)`,
-    );
+    log.debug(`  - 挿入位置: ${columnIndex} (${indexToColumn(columnIndex)}列)`);
 
     const response = await fetch(batchUpdateUrl, {
       method: "POST",
@@ -1234,10 +1291,7 @@ async function insertColumn(spreadsheetId, sheetId, columnIndex) {
 
     if (!response.ok) {
       const errorText = await response.text();
-      log.error(
-        `[step1-setup.js] [Step 1-5-6] ❌ 列挿入エラー:`,
-        errorText,
-      );
+      log.error(`[step1-setup.js] [Step 1-5-6] ❌ 列挿入エラー:`, errorText);
       return false;
     }
 
@@ -1301,9 +1355,7 @@ async function executeStep1(spreadsheetUrl) {
         `[step1-setup.js] ✅ スプレッドシートURLをglobalStateに設定: ${spreadsheetUrl}`,
       );
     } else {
-      log.warn(
-        "[step1-setup.js] ⚠️ スプレッドシートURLが提供されていません",
-      );
+      log.warn("[step1-setup.js] ⚠️ スプレッドシートURLが提供されていません");
     }
 
     // 1-1: インターネット接続確認

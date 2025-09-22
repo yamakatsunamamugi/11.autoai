@@ -689,11 +689,6 @@ if (stepOnlyBtn) {
         // Step関数を順番に実行（URLを渡す）
         const steps = [
           { name: "Step1", func: window.executeStep1, needsUrl: true },
-          {
-            name: "Step0.5",
-            func: () => clearAllWorkingMarkers(url),
-            needsUrl: false,
-          }, // 認証後の作業中マーカー削除
           { name: "Step2", func: window.executeStep2, needsUrl: false },
           { name: "Step3", func: window.executeStep3, needsUrl: false },
           { name: "Step4", func: window.executeStep4, needsUrl: false },
@@ -781,100 +776,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   log.debug("✅ [step0-ui-controller] 初期化完了");
 });
-
-/**
- * 初回実行時の作業中マーカー一括削除
- */
-async function clearAllWorkingMarkers(spreadsheetUrl) {
-  try {
-    log.info("🧹 [Step0] 初回実行時の作業中マーカー削除開始");
-
-    // スプレッドシートIDを抽出
-    const match = spreadsheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
-    if (!match) {
-      log.warn("⚠️ [Step0] スプレッドシートIDを抽出できませんでした");
-      return;
-    }
-    const spreadsheetId = match[1];
-
-    // SimpleSheetsClientが利用可能かチェック（認証はStep1で行われる）
-    if (!window.simpleSheetsClient) {
-      log.info(
-        "ℹ️ [Step0] SimpleSheetsClientが未初期化のため、作業中マーカー削除をスキップ",
-      );
-      return;
-    }
-
-    // スプレッドシート全体のデータを取得
-    const range = "A1:ZZ1000"; // より広い範囲を指定（ZZ列まで）
-    const response = await window.simpleSheetsClient.getValues(
-      spreadsheetId,
-      range,
-    );
-
-    if (!response || !response.values) {
-      log.warn("⚠️ [Step0] スプレッドシートデータの取得に失敗");
-      return;
-    }
-
-    const values = response.values;
-    let deletedCount = 0;
-
-    log.debug(
-      `🔍 [Step0] データ取得完了: ${values.length}行, 最大列数: ${Math.max(...values.map((row) => row.length))}`,
-    );
-
-    // 作業中マーカーを検索して削除
-    for (let rowIndex = 0; rowIndex < values.length; rowIndex++) {
-      const row = values[rowIndex];
-      for (let colIndex = 0; colIndex < row.length; colIndex++) {
-        const cellValue = row[colIndex];
-
-        // Y列周辺（X, Y, Z列）のセル値をデバッグログに出力
-        if (colIndex >= 23 && colIndex <= 25 && cellValue) {
-          // X(23), Y(24), Z(25)列
-          const columnLetter = String.fromCharCode(65 + (colIndex % 26));
-          const cellRef = `${columnLetter}${rowIndex + 1}`;
-          log.debug(
-            `🔍 [Step0] ${cellRef}セル値: "${cellValue}" (type: ${typeof cellValue})`,
-          );
-        }
-
-        // 作業中マーカーを検出
-        if (
-          cellValue &&
-          typeof cellValue === "string" &&
-          cellValue.startsWith("作業中")
-        ) {
-          // セル位置を計算（A1記法）
-          const columnLetter = String.fromCharCode(65 + (colIndex % 26));
-          const cellRef = `${columnLetter}${rowIndex + 1}`;
-
-          log.info(
-            `🎯 [Step0] 作業中マーカー検出: ${cellRef} = "${cellValue}"`,
-          );
-
-          // セルを空にする
-          await window.simpleSheetsClient.updateValue(
-            spreadsheetId,
-            cellRef,
-            "",
-          );
-          deletedCount++;
-
-          log.info(`🧹 [Step0] 作業中マーカー削除完了: ${cellRef}`);
-        }
-      }
-    }
-
-    log.info(
-      `✅ [Step0] 作業中マーカー削除完了: ${deletedCount}個のマーカーを削除`,
-    );
-  } catch (error) {
-    log.warn("⚠️ [Step0] 作業中マーカー削除でエラー（処理は継続）:", error);
-    // エラーが発生しても処理は継続
-  }
-}
 
 // スクリプト読み込み完了をトラッキング
 window.scriptLoadTracker.addScript("step0-ui-controller.js");
