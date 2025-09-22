@@ -42,38 +42,117 @@
   };
 
   // ========================================
-  // 🔒 実行状態管理（重複実行防止）
+  // 🔒 実行状態管理（重複実行防止）- 改良版
+  // コンテキスト間共有のためwindowレベルとsessionStorageを併用
   // ========================================
-  let isExecuting = false;
-  let currentTaskId = null;
-  let taskStartTime = null;
-  let lastActivityTime = null;
 
-  // タスク実行状態を管理するヘルパー関数
-  const setExecutionState = (executing, taskId = null) => {
-    isExecuting = executing;
-    currentTaskId = taskId;
-    lastActivityTime = Date.now();
-    if (executing && taskId) {
-      taskStartTime = Date.now();
-      log.info(`🔒 [EXECUTION-STATE] タスク実行開始: ${taskId}`);
-    } else if (!executing) {
-      const duration = taskStartTime ? Date.now() - taskStartTime : 0;
-      log.info(
-        `🔓 [EXECUTION-STATE] タスク実行完了: ${currentTaskId} (${Math.round(duration / 1000)}秒)`,
-      );
-      taskStartTime = null;
+  // windowレベルの状態管理（即座のコンテキスト間共有）
+  window.CLAUDE_TASK_EXECUTING = window.CLAUDE_TASK_EXECUTING || false;
+  window.CLAUDE_CURRENT_TASK_ID = window.CLAUDE_CURRENT_TASK_ID || null;
+  window.CLAUDE_TASK_START_TIME = window.CLAUDE_TASK_START_TIME || null;
+  window.CLAUDE_LAST_ACTIVITY_TIME = window.CLAUDE_LAST_ACTIVITY_TIME || null;
+
+  // ローカル変数（後方互換性のため維持）
+  let isExecuting = window.CLAUDE_TASK_EXECUTING;
+  let currentTaskId = window.CLAUDE_CURRENT_TASK_ID;
+  let taskStartTime = window.CLAUDE_TASK_START_TIME;
+  let lastActivityTime = window.CLAUDE_LAST_ACTIVITY_TIME;
+
+  // sessionStorageとの同期（永続化とタブ間共有）
+  const syncExecutionStateWithStorage = () => {
+    try {
+      const state = {
+        isExecuting: window.CLAUDE_TASK_EXECUTING,
+        currentTaskId: window.CLAUDE_CURRENT_TASK_ID,
+        taskStartTime: window.CLAUDE_TASK_START_TIME,
+        lastActivityTime: window.CLAUDE_LAST_ACTIVITY_TIME,
+      };
+      sessionStorage.setItem("CLAUDE_EXECUTION_STATE", JSON.stringify(state));
+    } catch (e) {
+      log.debug("sessionStorage同期エラー:", e);
     }
   };
 
-  // 実行状態を取得
+  // sessionStorageから状態を復元
+  const loadExecutionStateFromStorage = () => {
+    try {
+      const storedState = sessionStorage.getItem("CLAUDE_EXECUTION_STATE");
+      if (storedState) {
+        const state = JSON.parse(storedState);
+        // 15分以上経過していたらリセット
+        const timeSinceLastActivity =
+          Date.now() - (state.lastActivityTime || 0);
+        if (timeSinceLastActivity > 15 * 60 * 1000) {
+          log.info("⏰ 実行状態タイムアウト - リセット");
+          return false;
+        }
+
+        window.CLAUDE_TASK_EXECUTING = state.isExecuting;
+        window.CLAUDE_CURRENT_TASK_ID = state.currentTaskId;
+        window.CLAUDE_TASK_START_TIME = state.taskStartTime;
+        window.CLAUDE_LAST_ACTIVITY_TIME = state.lastActivityTime;
+
+        isExecuting = state.isExecuting;
+        currentTaskId = state.currentTaskId;
+        taskStartTime = state.taskStartTime;
+        lastActivityTime = state.lastActivityTime;
+
+        if (state.isExecuting && state.currentTaskId) {
+          log.info(`♻️ 実行状態復元: タスク ${state.currentTaskId} が実行中`);
+        }
+        return true;
+      }
+    } catch (e) {
+      log.debug("sessionStorage復元エラー:", e);
+    }
+    return false;
+  };
+
+  // ページロード時に状態を復元
+  loadExecutionStateFromStorage();
+
+  // タスク実行状態を管理するヘルパー関数（改良版）
+  const setExecutionState = (executing, taskId = null) => {
+    // windowレベルの状態を更新
+    window.CLAUDE_TASK_EXECUTING = executing;
+    window.CLAUDE_CURRENT_TASK_ID = executing ? taskId : null;
+    window.CLAUDE_LAST_ACTIVITY_TIME = Date.now();
+
+    // ローカル変数も更新
+    isExecuting = executing;
+    currentTaskId = executing ? taskId : null;
+    lastActivityTime = Date.now();
+
+    if (executing && taskId) {
+      window.CLAUDE_TASK_START_TIME = Date.now();
+      taskStartTime = Date.now();
+      log.info(`🔒 [EXECUTION-STATE] タスク実行開始: ${taskId}`);
+    } else if (!executing) {
+      const duration = window.CLAUDE_TASK_START_TIME
+        ? Date.now() - window.CLAUDE_TASK_START_TIME
+        : 0;
+      log.info(
+        `🔓 [EXECUTION-STATE] タスク実行完了: ${window.CLAUDE_CURRENT_TASK_ID} (${Math.round(duration / 1000)}秒)`,
+      );
+      window.CLAUDE_TASK_START_TIME = null;
+      taskStartTime = null;
+    }
+
+    // sessionStorageに同期
+    syncExecutionStateWithStorage();
+  };
+
+  // 実行状態を取得（改良版）
   const getExecutionStatus = () => {
+    // 最新のwindowレベルの状態を返す
     return {
-      isExecuting,
-      currentTaskId,
-      taskStartTime,
-      lastActivityTime,
-      executionDuration: taskStartTime ? Date.now() - taskStartTime : 0,
+      isExecuting: window.CLAUDE_TASK_EXECUTING,
+      currentTaskId: window.CLAUDE_CURRENT_TASK_ID,
+      taskStartTime: window.CLAUDE_TASK_START_TIME,
+      lastActivityTime: window.CLAUDE_LAST_ACTIVITY_TIME,
+      executionDuration: window.CLAUDE_TASK_START_TIME
+        ? Date.now() - window.CLAUDE_TASK_START_TIME
+        : 0,
     };
   };
 
@@ -3172,31 +3251,53 @@
       taskData.id ||
       `task_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
-    // 重複実行チェック
-    if (isExecuting) {
-      if (currentTaskId === taskId) {
+    // 重複実行チェック（グローバル状態を使用）
+    const currentStatus = getExecutionStatus();
+
+    // windowレベルの状態を再確認（異なるコンテキストからの実行を検出）
+    if (window.CLAUDE_TASK_EXECUTING || currentStatus.isExecuting) {
+      // タイムアウトチェック（15分間実行状態が続いていたらリセット）
+      const timeSinceStart = currentStatus.taskStartTime
+        ? Date.now() - currentStatus.taskStartTime
+        : 0;
+      if (timeSinceStart > 15 * 60 * 1000) {
         log.warn(
-          `⚠️ [DUPLICATE-EXECUTION] タスクID ${taskId} は既に実行中です`,
+          `⏰ タスク ${currentStatus.currentTaskId} は15分以上実行中 - リセット`,
         );
+        setExecutionState(false);
+      } else {
+        if (currentStatus.currentTaskId === taskId) {
+          log.warn(
+            `⚠️ [DUPLICATE-EXECUTION] タスクID ${taskId} は既に実行中です (コンテキスト: ${typeof chrome !== "undefined" && chrome.runtime ? chrome.runtime.id : "unknown"})`,
+          );
+          return {
+            success: false,
+            error: "Task already executing",
+            inProgress: true,
+            taskId: taskId,
+            executionStatus: currentStatus,
+          };
+        }
+
+        log.warn(
+          `⚠️ [BUSY] 別のタスク（${currentStatus.currentTaskId}）が実行中です。新しいタスク（${taskId}）は拒否されました`,
+        );
+        log.debug(`実行中タスク情報:`, {
+          currentTaskId: currentStatus.currentTaskId,
+          duration: Math.round(timeSinceStart / 1000),
+          context:
+            typeof chrome !== "undefined" && chrome.runtime
+              ? chrome.runtime.id
+              : "unknown",
+        });
         return {
           success: false,
-          error: "Task already executing",
-          inProgress: true,
-          taskId: taskId,
-          executionStatus: getExecutionStatus(),
+          error: "Another task is in progress",
+          busyWith: currentStatus.currentTaskId,
+          requestedTaskId: taskId,
+          executionStatus: currentStatus,
         };
       }
-
-      log.warn(
-        `⚠️ [BUSY] 別のタスク（${currentTaskId}）が実行中です。新しいタスク（${taskId}）は拒否されました`,
-      );
-      return {
-        success: false,
-        error: "Another task is in progress",
-        busyWith: currentTaskId,
-        requestedTaskId: taskId,
-        executionStatus: getExecutionStatus(),
-      };
     }
 
     // 実行状態を設定
@@ -5238,6 +5339,46 @@
             error: "Invalid task data: missing prompt or text",
           });
           return true;
+        }
+
+        // 重複実行チェック（メッセージリスナーレベル）
+        const taskId =
+          taskToExecute?.taskId ||
+          taskToExecute?.id ||
+          `task_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+
+        const currentStatus = getExecutionStatus();
+        if (window.CLAUDE_TASK_EXECUTING || currentStatus.isExecuting) {
+          if (currentStatus.currentTaskId === taskId) {
+            log.warn(
+              `⚠️ [MESSAGE-LISTENER] タスク ${taskId} は既に実行中です（メッセージリスナーでブロック）`,
+            );
+            wrappedSendResponse({
+              success: false,
+              error: "Task already executing",
+              inProgress: true,
+              taskId: taskId,
+              executionStatus: currentStatus,
+            });
+            return true;
+          }
+
+          const timeSinceStart = currentStatus.taskStartTime
+            ? Date.now() - currentStatus.taskStartTime
+            : 0;
+          if (timeSinceStart < 15 * 60 * 1000) {
+            log.warn(
+              `⚠️ [MESSAGE-LISTENER] 別のタスク ${currentStatus.currentTaskId} が実行中 - ${taskId} を拒否`,
+            );
+            wrappedSendResponse({
+              success: false,
+              error: "Another task is in progress",
+              busyWith: currentStatus.currentTaskId,
+              requestedTaskId: taskId,
+              executionStatus: currentStatus,
+            });
+            return true;
+          }
         }
 
         // 非同期処理のため、即座にtrueを返してチャネルを開いておく
