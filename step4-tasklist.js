@@ -1,6 +1,14 @@
 // ログレベル定義
 const LOG_LEVEL = { ERROR: 1, WARN: 2, INFO: 3, DEBUG: 4 };
 
+// バッチ処理改善設定（安全性優先）
+const BATCH_PROCESSING_CONFIG = {
+  ENABLE_ASYNC_BATCH: false, // 段階的実装のため最初は無効
+  ENABLE_INDIVIDUAL_COMPLETION: false, // 個別タスク完了時の即座処理
+  ENABLE_WINDOW_ASYNC_CLOSE: false, // 非同期ウィンドウクローズ
+  SAFE_MODE: true, // 既存機能の保護
+};
+
 // Chrome Storageからログレベルを取得（非同期）
 let CURRENT_LOG_LEVEL = LOG_LEVEL.INFO; // デフォルト値
 
@@ -40,6 +48,59 @@ const log = {
 
 // 初期化ログ（簡略化）
 log.info("✅ [step4-tasklist.js] 初期化完了");
+
+/**
+ * 安全な非同期バッチ処理（将来実装用）
+ * 既存のPromise.allSettledを拡張し、個別タスク完了時の即座処理を追加
+ */
+async function executeAsyncBatchProcessing(batchPromises) {
+  if (BATCH_PROCESSING_CONFIG.SAFE_MODE) {
+    // セーフモードでは既存処理にフォールバック
+    return await Promise.allSettled(batchPromises);
+  }
+
+  const results = [];
+  const pending = new Map();
+
+  // 各タスクに完了ハンドラーを追加
+  batchPromises.forEach((promise, index) => {
+    pending.set(index, promise);
+
+    promise
+      .then((result) => {
+        if (BATCH_PROCESSING_CONFIG.ENABLE_INDIVIDUAL_COMPLETION) {
+          // 個別タスク完了時の即座処理
+          handleIndividualTaskCompletion(result, index);
+        }
+        pending.delete(index);
+      })
+      .catch((error) => {
+        log.error(`非同期バッチ処理エラー[${index}]:`, error);
+        pending.delete(index);
+      });
+  });
+
+  // 既存のPromise.allSettledと同じ結果形式を維持
+  return await Promise.allSettled(batchPromises);
+}
+
+/**
+ * 個別タスク完了時の処理（安全実装）
+ */
+function handleIndividualTaskCompletion(result, taskIndex) {
+  try {
+    if (BATCH_PROCESSING_CONFIG.ENABLE_WINDOW_ASYNC_CLOSE && result.windowId) {
+      // 非同期でウィンドウをクローズ（fire-and-forget）
+      chrome.windows
+        .remove(result.windowId)
+        .catch((err) => log.warn(`ウィンドウクローズ警告[${taskIndex}]:`, err));
+    }
+
+    log.debug(`個別タスク完了[${taskIndex}]:`, result);
+  } catch (error) {
+    log.error(`個別タスク完了処理エラー[${taskIndex}]:`, error);
+  }
+}
 
 // グローバルエラーハンドリング
 if (typeof window !== "undefined") {
@@ -4870,7 +4931,18 @@ async function executeStep4(taskList) {
         });
 
         // タスクを逐次実行（3つずつ同時実行）
-        const batchResults = await Promise.allSettled(batchPromises);
+        let batchResults;
+
+        if (
+          BATCH_PROCESSING_CONFIG.ENABLE_ASYNC_BATCH &&
+          !BATCH_PROCESSING_CONFIG.SAFE_MODE
+        ) {
+          // 新しい非同期バッチ処理（将来実装）
+          batchResults = await executeAsyncBatchProcessing(batchPromises);
+        } else {
+          // 既存の安定したPromise.allSettled処理を維持
+          batchResults = await Promise.allSettled(batchPromises);
+        }
 
         // 結果を収集
         let successCount = 0;
@@ -5490,11 +5562,35 @@ async function executeStep4(taskList) {
               );
 
               // 初期化待機（manifest.json自動注入Content Scriptが初期化されるまで）
-              await new Promise((resolve) => setTimeout(resolve, 2000));
+              // 緊急修正: 通信エラー回避のため5秒に延長
+              await new Promise((resolve) => setTimeout(resolve, 5000));
 
               ExecuteLogger.info(
                 `✅ [manifest.json自動注入] ${automationName} 準備完了`,
               );
+
+              // 緊急追加: Content Script通信テスト
+              try {
+                const testMessage = {
+                  action: "ping",
+                  type: "CONNECTIVITY_TEST",
+                  timestamp: Date.now(),
+                };
+                const testResponse = await chrome.tabs.sendMessage(
+                  tabId,
+                  testMessage,
+                );
+                ExecuteLogger.info(
+                  `✅ [通信テスト成功] ${automationName}:`,
+                  testResponse,
+                );
+              } catch (testError) {
+                ExecuteLogger.warn(
+                  `⚠️ [通信テスト失敗] ${automationName}:`,
+                  testError.message,
+                );
+                // テスト失敗でも処理継続（警告のみ）
+              }
             } catch (injectionError) {
               ExecuteLogger.error(`❌ [Content Script注入] 失敗:`, {
                 tabId: tabId,
