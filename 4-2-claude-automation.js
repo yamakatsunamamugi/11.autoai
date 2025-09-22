@@ -507,6 +507,89 @@
   }
 
   // ========================================
+  // 🔍 直接実行方式: メッセージリスナーを早期に登録
+  // ========================================
+  // Claude.aiページでのみメッセージリスナーを登録
+  // 他のAI（ChatGPT/Gemini/Genspark）は直接実行方式を使用しているが、
+  // Claudeも段階的に移行するため、まずはメッセージリスナーを修正
+  if (isValidClaudeURL && !isExtensionPage && chrome?.runtime?.onMessage) {
+    console.log("📡 [Claude-直接実行方式] メッセージリスナー登録開始");
+
+    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+      const requestId = Math.random().toString(36).substring(2, 8);
+      console.log(
+        `📬 [Claude-直接実行方式] メッセージ受信 [ID:${requestId}]:`,
+        {
+          type: request?.type || request?.action,
+          keys: Object.keys(request || {}),
+          timestamp: new Date().toISOString(),
+        },
+      );
+
+      // executeTaskタスクの処理
+      if (request.action === "executeTask" || request.type === "executeTask") {
+        console.log(
+          `🔧 [Claude-直接実行方式] executeTask実行開始 [ID:${requestId}]`,
+        );
+
+        (async () => {
+          try {
+            // executeTask関数が定義されているか確認
+            if (typeof executeTask === "function") {
+              console.log(
+                `✅ [Claude-直接実行方式] executeTask関数が利用可能 [ID:${requestId}]`,
+              );
+              const result = await executeTask(request.task || request);
+              sendResponse({ success: true, result });
+            } else {
+              console.warn(
+                `⏳ [Claude-直接実行方式] executeTask未定義、1秒後に再試行 [ID:${requestId}]`,
+              );
+              // 関数がまだ定義されていない場合は少し待つ
+              setTimeout(async () => {
+                if (typeof executeTask === "function") {
+                  console.log(
+                    `✅ [Claude-直接実行方式] executeTask関数が利用可能（再試行） [ID:${requestId}]`,
+                  );
+                  const result = await executeTask(request.task || request);
+                  sendResponse({ success: true, result });
+                } else {
+                  console.error(
+                    `❌ [Claude-直接実行方式] executeTask関数が利用不可 [ID:${requestId}]`,
+                  );
+                  sendResponse({
+                    success: false,
+                    error: "executeTask not available",
+                  });
+                }
+              }, 1000);
+            }
+          } catch (error) {
+            console.error(
+              `❌ [Claude-直接実行方式] エラー [ID:${requestId}]:`,
+              error,
+            );
+            sendResponse({ success: false, error: error.message });
+          }
+        })();
+
+        return true; // 非同期レスポンスのために必要
+      }
+
+      // その他のメッセージタイプは無視
+      console.log(
+        `ℹ️ [Claude-直接実行方式] 未対応のメッセージタイプ [ID:${requestId}]:`,
+        request?.type || request?.action,
+      );
+    });
+
+    console.log("✅ [Claude-直接実行方式] メッセージリスナー登録完了");
+
+    // 初期化完了をグローバルに通知
+    window.CLAUDE_MESSAGE_LISTENER_READY = true;
+  }
+
+  // ========================================
   // ログ管理システムの初期化（メッセージベース対応）
   // ========================================
   // Content scriptから直接importできないため、メッセージベースのログマネージャーを作成
@@ -5180,394 +5263,11 @@
   }
 
   // ========================================
-  // Chrome Runtime Message Handler (詳細ログ版)
+  // 🔍 古いメッセージリスナーコードは削除
   // ========================================
-  log.debug("📝 [ClaudeAutomation] メッセージリスナー登録開始:", {
-    登録時刻: new Date().toISOString(),
-    スクリプト初期化時刻: window.CLAUDE_SCRIPT_INIT_TIME
-      ? new Date(window.CLAUDE_SCRIPT_INIT_TIME).toISOString()
-      : "未設定",
-    初期化マーカー: window.CLAUDE_SCRIPT_LOADED,
-    chromeオブジェクト: typeof chrome !== "undefined",
-    runtimeオブジェクト: typeof chrome?.runtime !== "undefined",
-  });
+  // 注意: メッセージリスナーは上部（515行目付近）に移動済み
+  // 直接実行方式への段階的移行のため、早期にリスナーを登録する必要がある
 
-  // 🔍 STEP 2: メッセージリスナー登録
-  log.debug("=".repeat(60));
-  log.debug("🔍 [STEP 2] メッセージリスナー登録開始");
-  log.debug("=".repeat(60));
-
-  // メッセージリスナー登録の試行
-  try {
-    log.debug("📩 [LISTENER] chrome.runtime.onMessage.addListener 登録前");
-    log.debug("📩 [LISTENER] chrome.runtime 存在確認:", !!chrome?.runtime);
-    log.debug(
-      "📩 [LISTENER] addListener 存在確認:",
-      !!chrome?.runtime?.onMessage?.addListener,
-    );
-
-    log.debug("🔍 [STEP 2-2] chrome.runtime.onMessage.addListener 実行中...");
-    // Manifest V3: リスナーは同期的にtrueまたはPromiseを返す必要がある
-    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-      const messageReceiveTime = Date.now();
-      const requestId = Math.random().toString(36).substring(2, 8);
-
-      // 📨 メッセージ受信詳細ログ
-      log.debug("📨 [RECEIVED] メッセージ受信:", {
-        requestId,
-        messageType: request?.type || request?.action,
-        messageKeys: Object.keys(request || {}),
-        senderTab: sender?.tab?.id,
-        timestamp: new Date().toISOString(),
-      });
-
-      // 🔍 STEP 3: メッセージ受信確認
-      log.debug("=".repeat(60));
-      log.debug("🔍 [STEP 3] メッセージ受信確認 - ID:" + requestId);
-      log.debug("=".repeat(60));
-
-      // 🔍 実行環境の確認（重要）
-      const currentURL = window.location.href;
-      const isClaudePage = currentURL.includes("claude.ai");
-      const isExtensionPage = currentURL.startsWith("chrome-extension://");
-
-      log.debug(`📬 [ClaudeAutomation] メッセージ受信 [ID:${requestId}]:`, {
-        実行環境: {
-          現在のURL: currentURL,
-          "Claude.aiページ": isClaudePage,
-          拡張機能ページ: isExtensionPage,
-          ドメイン: window.location.hostname,
-          プロトコル: window.location.protocol,
-        },
-        メッセージタイプ: request.type || request.action,
-        メッセージ全体: request,
-        送信者: {
-          タブID: sender.tab?.id,
-          URL: sender.tab?.url,
-          タイトル: sender.tab?.title,
-        },
-        受信時刻: new Date().toISOString(),
-        // 追加デバッグ情報
-        デバッグ情報: {
-          requestKeys: Object.keys(request),
-          hasType: "type" in request,
-          hasAction: "action" in request,
-          typeValue: request.type,
-          actionValue: request.action,
-          automationName: request.automationName,
-          hasTask: "task" in request,
-          hasTaskData: "taskData" in request,
-        },
-      });
-
-      // 🚫 拡張機能ページでの実行を即座にブロック
-      if (isExtensionPage) {
-        log.error(`❌ [ClaudeAutomation] 拡張機能ページで実行されています!`, {
-          requestId,
-          currentURL,
-          メッセージタイプ: request.type || request.action,
-          エラー: "Content Scriptは拡張機能UIでは動作しません",
-          スタックトレース: new Error().stack,
-        });
-        sendResponse({
-          success: false,
-          error: "Content Scriptが拡張機能UIページで実行されています",
-          context: currentURL,
-        });
-        return true;
-      }
-
-      // Claude.aiページでない場合の警告
-      if (!isClaudePage) {
-        log.error(
-          `❌ [ClaudeAutomation] Claude.ai以外のページで実行されています`,
-          {
-            現在のURL: currentURL,
-            期待URL: "https://claude.ai/*",
-            メッセージタイプ: request.type || request.action,
-          },
-        );
-        // ただし、拡張機能のUI (chrome-extension://) からの場合は処理を続行
-        if (!currentURL.startsWith("chrome-extension://")) {
-          log.error(`❌ [ClaudeAutomation] エラー: 無効なページでの実行を拒否`);
-          sendResponse({
-            success: false,
-            error: `Invalid execution context: ${currentURL}`,
-          });
-          return false;
-        }
-      }
-
-      // メッセージタイプの互換性チェック
-      const isClaudeExecuteTask =
-        request.type === "CLAUDE_EXECUTE_TASK" ||
-        (request.action === "executeTask" &&
-          request.automationName === "ClaudeAutomation");
-
-      const isCheckReady =
-        request.type === "CLAUDE_CHECK_READY" || request.action === "ping";
-
-      log.debug(`🔍 [ClaudeAutomation] メッセージタイプ判定:`, {
-        isClaudeExecuteTask,
-        isCheckReady,
-        判定根拠: {
-          type: request.type,
-          action: request.action,
-          automationName: request.automationName,
-        },
-      });
-
-      // Claude専用のメッセージのみ処理
-      if (isClaudeExecuteTask) {
-        // タスクデータの取得（taskDataまたはtask、両方に対応）
-        const taskToExecute = request.taskData || request.task || request;
-
-        log.debug(`🔍 [ClaudeAutomation] タスクデータ取得 [ID:${requestId}]:`, {
-          taskDataあり: !!request.taskData,
-          taskあり: !!request.task,
-          直接データ: !request.taskData && !request.task,
-          取得したデータ: taskToExecute ? "取得成功" : "取得失敗",
-        });
-
-        log.debug(
-          `🎯 [ClaudeAutomation] タスク実行処理開始 [ID:${requestId}]:`,
-          {
-            タスクID: taskToExecute?.taskId || taskToExecute?.id,
-            タスクデータ構造: taskToExecute
-              ? Object.keys(taskToExecute)
-              : "なし",
-            プロンプト長: taskToExecute?.prompt?.length || 0,
-            モデル: taskToExecute?.model,
-            機能: taskToExecute?.function,
-            処理開始時刻: new Date().toISOString(),
-            実際のタスクデータ: taskToExecute,
-          },
-        );
-
-        // sendResponseコールバックの状態追跡
-        let responseCallbackCalled = false;
-        const wrappedSendResponse = (response) => {
-          if (responseCallbackCalled) {
-            log.warn(
-              `⚠️ [ClaudeAutomation] 重複レスポンス試行 [ID:${requestId}]:`,
-              response,
-            );
-            return;
-          }
-          responseCallbackCalled = true;
-          const responseTime = Date.now() - messageReceiveTime;
-          log.debug(`📤 [ClaudeAutomation] レスポンス送信 [ID:${requestId}]:`, {
-            処理時間: `${responseTime}ms`,
-            成功: response.success,
-            レスポンス構造: Object.keys(response),
-            エラー: response.error,
-            送信時刻: new Date().toISOString(),
-          });
-          sendResponse(response);
-        };
-
-        log.debug(
-          `🚀 [ClaudeAutomation] executeTask実行開始 [ID:${requestId}]`,
-          {
-            実行環境URL: window.location.href,
-            タスクID: taskToExecute?.taskId || taskToExecute?.id,
-            実行時刻: new Date().toISOString(),
-          },
-        );
-
-        // タスクデータの検証
-        if (!taskToExecute || (!taskToExecute.prompt && !taskToExecute.text)) {
-          log.error(
-            `❌ [ClaudeAutomation] エラー: タスクデータが不正です [ID:${requestId}]`,
-            {
-              受信データ: request,
-              taskToExecute: taskToExecute,
-            },
-          );
-          wrappedSendResponse({
-            success: false,
-            error: "Invalid task data: missing prompt or text",
-          });
-          return true;
-        }
-
-        // 重複実行チェック（メッセージリスナーレベル）
-        const taskId =
-          taskToExecute?.taskId ||
-          taskToExecute?.id ||
-          `task_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-
-        // メッセージ受信ログ
-        console.log(
-          `📨 [MESSAGE-RECEIVED] タスク ${taskId} のメッセージを受信`,
-          {
-            timestamp: new Date().toISOString(),
-            taskId: taskId,
-            messageType: message.type,
-            currentlyExecuting: window.CLAUDE_TASK_EXECUTING,
-            executionStatus: getExecutionStatus(),
-          },
-        );
-
-        const currentStatus = getExecutionStatus();
-        if (window.CLAUDE_TASK_EXECUTING || currentStatus.isExecuting) {
-          if (currentStatus.currentTaskId === taskId) {
-            console.log(
-              `🔄 [DUPLICATE-DETECTED] 同じタスクIDのメッセージが重複受信`,
-              {
-                timestamp: new Date().toISOString(),
-                taskId: taskId,
-                currentTaskId: currentStatus.currentTaskId,
-                windowExecuting: window.CLAUDE_TASK_EXECUTING,
-                status: currentStatus,
-              },
-            );
-            log.warn(
-              `⚠️ [MESSAGE-LISTENER] タスク ${taskId} は既に実行中です（メッセージリスナーでブロック）`,
-            );
-            wrappedSendResponse({
-              success: false,
-              error: "Task already executing",
-              inProgress: true,
-              taskId: taskId,
-              executionStatus: currentStatus,
-            });
-            return true;
-          }
-
-          const timeSinceStart = currentStatus.taskStartTime
-            ? Date.now() - currentStatus.taskStartTime
-            : 0;
-          if (timeSinceStart < 15 * 60 * 1000) {
-            log.warn(
-              `⚠️ [MESSAGE-LISTENER] 別のタスク ${currentStatus.currentTaskId} が実行中 - ${taskId} を拒否`,
-            );
-            wrappedSendResponse({
-              success: false,
-              error: "Another task is in progress",
-              busyWith: currentStatus.currentTaskId,
-              requestedTaskId: taskId,
-              executionStatus: currentStatus,
-            });
-            return true;
-          }
-        }
-
-        // Manifest V3対応: async/awaitで同期的に処理してPromiseを返す
-        (async () => {
-          try {
-            const result = await executeTask(taskToExecute);
-            const executionTime = Date.now() - messageReceiveTime;
-            log.debug(
-              `✅ [ClaudeAutomation] executeTask成功 [ID:${requestId}]:`,
-              {
-                結果構造: result ? Object.keys(result) : "なし",
-                成功: result?.success,
-                レスポンス長: result?.response?.length || 0,
-                実行時間: `${executionTime}ms`,
-                実行環境: currentURL,
-                結果詳細: result,
-              },
-            );
-            wrappedSendResponse({ success: true, result });
-          } catch (error) {
-            const executionTime = Date.now() - messageReceiveTime;
-            log.error(
-              `❌ [ClaudeAutomation] executeTask失敗 [ID:${requestId}]:`,
-              {
-                エラー名: error.name,
-                エラーメッセージ: error.message,
-                エラースタック: error.stack?.substring(0, 500),
-                実行時間: `${executionTime}ms`,
-                実行環境: currentURL,
-                エラー全体: error,
-              },
-            );
-            wrappedSendResponse({ success: false, error: error.message });
-          }
-        })();
-
-        log.debug(
-          `🔄 [ClaudeAutomation] Manifest V3: Promiseベースの非同期処理 [ID:${requestId}]`,
-        );
-        return true; // 非同期レスポンスのためチャネルを保持（Manifest V3でも有効）
-      } else if (isCheckReady) {
-        // 実行環境情報を含めて応答
-        log.debug(`🏓 [ClaudeAutomation] ping/準備確認処理 [ID:${requestId}]`, {
-          実行環境: currentURL,
-          isClaude: isClaudePage,
-        });
-
-        const readyResponse = {
-          ready: true,
-          automationName: "ClaudeAutomation",
-          version: "3.0.0",
-          url: currentURL,
-          initialized: window.CLAUDE_SCRIPT_LOADED,
-          initTime: Date.now(),
-          methods: [
-            "executeTask",
-            "runAutomation",
-            "inputTextOnly",
-            "selectModelOnly",
-            "selectFunctionOnly",
-            "sendAndGetResponse",
-          ],
-          environment: {
-            url: window.location.href,
-            isClaudePage: isClaudePage,
-            hostname: window.location.hostname,
-          },
-        };
-        log.debug(
-          `✅ [ClaudeAutomation] ping応答 [ID:${requestId}]:`,
-          readyResponse,
-        );
-        sendResponse(readyResponse);
-        return true; // pingはtrueを返す
-      }
-
-      log.debug(
-        `🚀 [ClaudeAutomation] 非対応メッセージ [ID:${requestId}] - content-script-consolidated.jsに委譲:`,
-        {
-          メッセージタイプ: request.type,
-          処理結果: "falseを返して他に委譲",
-        },
-      );
-      // Claude専用のメッセージでない場合は何もしない
-      // （content-script-consolidated.jsに処理を委譲）
-      return false;
-    });
-
-    log.debug("✅ [ClaudeAutomation] メッセージリスナー登録完了:", {
-      登録完了時刻: new Date().toISOString(),
-      処理対象: [
-        "CLAUDE_EXECUTE_TASK",
-        "CLAUDE_CHECK_READY",
-        "executeTask (action)",
-        "ping (action)",
-      ],
-      リスナー状態: "アクティブ",
-      互換性モード: "有効（typeとactionの両方をサポート）",
-    });
-
-    log.debug("🔍 [STEP 2-3] メッセージリスナー登録成功");
-    log.debug("✅ [LISTENER] リスナー登録完了");
-  } catch (listenerError) {
-    log.error("❌ [STEP 2-ERROR] メッセージリスナー登録失敗:", {
-      error: listenerError.message,
-      stack: listenerError.stack,
-      chromeContext: typeof chrome,
-      runtimeAPI: typeof chrome?.runtime,
-    });
-  }
-
-  // 🔍 STEP 4: 初期化完了確認
-  log.debug("=".repeat(60));
-  log.debug("🔍 [STEP 4] 初期化完了確認");
-  log.debug("=".repeat(60));
-
-  // 初期化完了マーカーを設定（ai-task-executorが期待する名前を使用）
   const initCompleteTime = Date.now();
   window.CLAUDE_SCRIPT_LOADED = true;
   window.CLAUDE_SCRIPT_INIT_TIME = initCompleteTime;
@@ -5631,8 +5331,8 @@
 
   log.debug("🔥 [STEP 0] 4-2-claude-automation.js バージョン1です");
 
-  // メッセージリスナーは上部の既存のリスナー（4733行目）で処理するため、ここでは登録しない
-  // 重複を避けるために削除
+  // メッセージリスナーは上部（515行目付近）で登録済み
+  // 直接実行方式への段階的移行のため、早期にリスナーを登録している
   if (shouldInitialize && !chrome?.runtime?.onMessage) {
     log.error("❌ [Claude] chrome.runtime.onMessage が利用できません");
   }
