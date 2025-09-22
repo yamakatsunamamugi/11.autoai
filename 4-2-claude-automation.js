@@ -5090,86 +5090,9 @@
 
   log.debug("🔥 [STEP 0] 4-2-claude-automation.js バージョン1です");
 
-  // 最小限のメッセージリスナー (claude.aiでのみ登録)
-  if (
-    shouldInitialize &&
-    chrome &&
-    chrome.runtime &&
-    chrome.runtime.onMessage
-  ) {
-    log.info("✅ [Claude] chrome.runtime.onMessage リスナー登録開始");
-
-    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-      log.info("📨 [Claude] メッセージ受信:", {
-        action: request.action,
-        hasData: !!request.data,
-        timestamp: new Date().toISOString(),
-      });
-
-      if (
-        request.action === "executeTask" ||
-        request.action === "CLAUDE_EXECUTE_TASK"
-      ) {
-        log.info("✅ [Claude] executeTask メッセージを受信しました");
-        log.info("📋 タスクデータ:", request.data || request);
-
-        // データの取得（request.dataまたはrequest自体から）
-        const taskData = request.data || request;
-
-        // 非同期でタスクを実行
-        (async () => {
-          try {
-            log.info("🚀 [Claude] タスク実行開始");
-            const result = await executeTask(taskData);
-            log.info("✅ [Claude] タスク実行完了:", result);
-
-            // 結果を返送
-            chrome.runtime.sendMessage({
-              action: "TASK_COMPLETE",
-              taskId: taskData?.taskId,
-              result: result,
-            });
-          } catch (error) {
-            log.error("❌ [Claude] タスク実行エラー:", error);
-            chrome.runtime.sendMessage({
-              action: "TASK_ERROR",
-              taskId: taskData?.taskId,
-              error: error.message,
-            });
-          }
-        })();
-
-        sendResponse({
-          success: true,
-          message: "Task received and executing",
-          timestamp: Date.now(),
-        });
-        return true;
-      }
-
-      if (request.action === "ping") {
-        log.info("🏓 [Claude] ping メッセージを受信しました");
-        sendResponse({
-          success: true,
-          message: "pong",
-          loaded: true,
-          version: "V2",
-          timestamp: Date.now(),
-        });
-        return true;
-      }
-
-      log.warn("⚠️ [Claude] 未知のアクション:", request.action);
-      sendResponse({
-        success: false,
-        message: "Unknown action",
-        action: request.action,
-      });
-      return true;
-    });
-
-    log.info("✅ [Claude] メッセージリスナー登録完了");
-  } else if (shouldInitialize) {
+  // メッセージリスナーは上部の既存のリスナー（4733行目）で処理するため、ここでは登録しない
+  // 重複を避けるために削除
+  if (shouldInitialize && !chrome?.runtime?.onMessage) {
     log.error("❌ [Claude] chrome.runtime.onMessage が利用できません");
   }
 
