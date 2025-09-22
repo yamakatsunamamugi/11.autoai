@@ -96,7 +96,10 @@ class SimpleSheetsClient {
     });
 
     if (!response.ok) {
-      throw new Error(`データ取得失敗: ${response.statusText}`);
+      const errorText = await response.text();
+      throw new Error(
+        `データ取得失敗: HTTP ${response.status} - ${errorText || response.statusText}`,
+      );
     }
 
     const data = await response.json();
@@ -122,7 +125,10 @@ class SimpleSheetsClient {
     });
 
     if (!response.ok) {
-      throw new Error(`データ書き込み失敗: ${response.statusText}`);
+      const errorText = await response.text();
+      throw new Error(
+        `データ書き込み失敗: HTTP ${response.status} - ${errorText || response.statusText}`,
+      );
     }
 
     return await response.json();

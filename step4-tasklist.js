@@ -3107,91 +3107,92 @@ class WindowController {
 // Step5で定義されている場合はスキップ
 if (!window.SimpleSheetsClient) {
   class SimpleSheetsClient {
-  constructor() {
-    this.baseUrl = "https://sheets.googleapis.com/v4/spreadsheets";
-    this.sheetNameCache = new Map(); // GID -> シート名のキャッシュ
-    ExecuteLogger.info("📊 SimpleSheetsClient初期化（step4内部版）");
-  }
-
-  /**
-   * 認証トークン取得
-   */
-  async getAuthToken() {
-    return new Promise((resolve, reject) => {
-      if (typeof chrome === "undefined" || !chrome.identity) {
-        reject(new Error("Chrome Identity APIが利用できません"));
-        return;
-      }
-
-      chrome.identity.getAuthToken({ interactive: false }, (token) => {
-        if (chrome.runtime.lastError) {
-          reject(chrome.runtime.lastError);
-        } else {
-          resolve(token);
-        }
-      });
-    });
-  }
-
-  /**
-   * スプレッドシートから値を取得
-   */
-  async getValues(spreadsheetId, range) {
-    try {
-      const token = await this.getAuthToken();
-      const url = `${this.baseUrl}/${spreadsheetId}/values/${range}`;
-
-      const response = await fetch(url, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(
-          `データ取得失敗: HTTP ${response.status} - ${errorText || response.statusText}`,
-        );
-      }
-
-      const data = await response.json();
-      return data.values || [];
-    } catch (error) {
-      ExecuteLogger.error(`❌ getValues失敗: ${range}`, error);
-      throw error;
+    constructor() {
+      this.baseUrl = "https://sheets.googleapis.com/v4/spreadsheets";
+      this.sheetNameCache = new Map(); // GID -> シート名のキャッシュ
+      ExecuteLogger.info("📊 SimpleSheetsClient初期化（step4内部版）");
     }
-  }
 
-  /**
-   * スプレッドシートに値を書き込み（単一セル）
-   */
-  async updateValue(spreadsheetId, range, value) {
-    try {
-      const token = await this.getAuthToken();
-      const url = `${this.baseUrl}/${spreadsheetId}/values/${range}?valueInputOption=USER_ENTERED`;
+    /**
+     * 認証トークン取得
+     */
+    async getAuthToken() {
+      return new Promise((resolve, reject) => {
+        if (typeof chrome === "undefined" || !chrome.identity) {
+          reject(new Error("Chrome Identity APIが利用できません"));
+          return;
+        }
 
-      const response = await fetch(url, {
-        method: "PUT",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          values: [[value]],
-        }),
+        chrome.identity.getAuthToken({ interactive: false }, (token) => {
+          if (chrome.runtime.lastError) {
+            reject(chrome.runtime.lastError);
+          } else {
+            resolve(token);
+          }
+        });
       });
+    }
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(
-          `データ書き込み失敗: HTTP ${response.status} - ${errorText || response.statusText}`,
-        );
+    /**
+     * スプレッドシートから値を取得
+     */
+    async getValues(spreadsheetId, range) {
+      try {
+        const token = await this.getAuthToken();
+        const url = `${this.baseUrl}/${spreadsheetId}/values/${range}`;
+
+        const response = await fetch(url, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(
+            `データ取得失敗: HTTP ${response.status} - ${errorText || response.statusText}`,
+          );
+        }
+
+        const data = await response.json();
+        return data.values || [];
+      } catch (error) {
+        ExecuteLogger.error(`❌ getValues失敗: ${range}`, error);
+        throw error;
       }
+    }
 
-      return await response.json();
-    } catch (error) {
-      ExecuteLogger.error(`❌ updateValue失敗: ${range}`, error);
-      throw error;
+    /**
+     * スプレッドシートに値を書き込み（単一セル）
+     */
+    async updateValue(spreadsheetId, range, value) {
+      try {
+        const token = await this.getAuthToken();
+        const url = `${this.baseUrl}/${spreadsheetId}/values/${range}?valueInputOption=USER_ENTERED`;
+
+        const response = await fetch(url, {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            values: [[value]],
+          }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(
+            `データ書き込み失敗: HTTP ${response.status} - ${errorText || response.statusText}`,
+          );
+        }
+
+        return await response.json();
+      } catch (error) {
+        ExecuteLogger.error(`❌ updateValue失敗: ${range}`, error);
+        throw error;
+      }
     }
   }
 
