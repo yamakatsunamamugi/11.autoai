@@ -3206,11 +3206,32 @@ class WindowLifecycleManager {
         );
         this.sheetsClient = new SimpleSheetsClient();
 
-        // updateCellメソッドの存在確認
+        // updateCellメソッドの存在確認（より寛容なチェック）
         if (typeof this.sheetsClient.updateCell !== "function") {
-          throw new Error(
-            "SimpleSheetsClient.updateCellメソッドが存在しません",
+          ExecuteLogger.warn(
+            "⚠️ [WindowLifecycleManager] SimpleSheetsClient.updateCellメソッドが見つかりません。フォールバックを設定します。",
           );
+          // フォールバックメソッドを追加
+          this.sheetsClient.updateCell = async (
+            spreadsheetId,
+            cellRef,
+            value,
+          ) => {
+            ExecuteLogger.warn(
+              `⚠️ [WindowLifecycleManager] フォールバックupdateCell: ${cellRef} = ${value?.length || 0}文字`,
+            );
+            if (typeof this.sheetsClient.updateValue === "function") {
+              return await this.sheetsClient.updateValue(
+                spreadsheetId,
+                cellRef,
+                value,
+              );
+            } else {
+              ExecuteLogger.warn(
+                "⚠️ updateValueメソッドも見つかりません。スキップします。",
+              );
+            }
+          };
         }
 
         ExecuteLogger.info(
@@ -4099,66 +4120,10 @@ class TaskStatusManager {
 // window.windowController = new WindowController();
 
 // ========================================
-// SimpleSheetsClient: stepフォルダ内で完結するSheets APIクライアント
-// ========================================
-class SimpleSheetsClient {
-  constructor() {
-    this.baseUrl = "https://sheets.googleapis.com/v4/spreadsheets";
-    this.sheetNameCache = new Map(); // GID -> シート名のキャッシュ
-  }
-
-  /**
-   * 認証トークンの取得
-   */
-  async getAuthToken() {
-    if (window.globalState?.authToken) {
-      return window.globalState.authToken;
-    }
-    throw new Error("認証トークンが利用できません");
-  }
-
-  /**
-   * GIDから実際のシート名を取得
-   * @param {string} spreadsheetId - スプレッドシートID
-   * @param {string} gid - シートのGID
-   * @returns {Promise<string|null>} 実際のシート名
-   */
-  async getSheetNameFromGid(spreadsheetId, gid) {
-    if (!gid) return null;
-
-    // キャッシュチェック
-    const cacheKey = `${spreadsheetId}-${gid}`;
-    if (this.sheetNameCache.has(cacheKey)) {
-      return this.sheetNameCache.get(cacheKey);
-    }
-
-    const token = await this.getAuthToken();
-    const url = `${this.baseUrl}/${spreadsheetId}`;
-
-    const response = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`スプレッドシート情報取得失敗: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    const sheets = data.sheets || [];
-
-    for (const sheet of sheets) {
-      if (sheet.properties && sheet.properties.sheetId == gid) {
-        const sheetName = sheet.properties.title;
-        this.sheetNameCache.set(cacheKey, sheetName);
-        return sheetName;
-      }
-    }
-
-    return null;
-  }
-} // SimpleSheetsClient クラスの終了
+// 削除: 重複したSimpleSheetsClientクラス定義
+// 正しい定義は上記の3533行目で定義済み（updateCellメソッド付き）
+// この重複定義により WindowLifecycleManager がメソッド不存在エラーを起こしていた
+// ======================================== // SimpleSheetsClient クラスの終了
 
 // ========================================
 // 削除: createWindowForBatch関数 (unused/StreamProcessorV2からの不要なコード)
