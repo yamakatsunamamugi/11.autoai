@@ -1712,6 +1712,23 @@
     }
   };
 
+  // Claude-ステップ1-4-1: トグル状態取得関数（テストコードから追加）
+  /**
+   * トグル状態取得関数
+   * 【動作説明】トグルボタンの現在の状態を取得する
+   * 【用途】機能の選択状態確認
+   * 【引数】toggleButton: トグルボタンのDOM要素
+   * 【戻り値】boolean|null - 現在の状態（true=ON, false=OFF, null=要素なし）
+   */
+  const getToggleState = (toggleButton) => {
+    const input = toggleButton.querySelector('input[role="switch"]');
+    if (!input) {
+      log.debug("トグルinput要素が見つかりません");
+      return null;
+    }
+    return input.checked;
+  };
+
   // Claude-ステップ1-5: React風イベント処理関数
   /**
    * 高精度トグルボタン制御関数
@@ -1723,27 +1740,19 @@
    * 【使用頻度】3回（機能選択処理で重要）
    */
   const setToggleState = (toggleButton, targetState) => {
-    log.debug(`\n🔄 トグル状態変更: ${targetState ? "ON" : "OFF"}`);
+    const currentState = getToggleState(toggleButton);
+    if (currentState === null) return false;
 
-    const inputElement = toggleButton.querySelector('input[role="switch"]');
-    if (!inputElement) {
-      log.debug("  ⚠️ トグル入力要素が見つかりません");
-      return false;
-    }
-
-    const currentState =
-      inputElement.checked ||
-      inputElement.getAttribute("aria-checked") === "true";
-    log.debug(`  現在の状態: ${currentState ? "ON" : "OFF"}`);
+    log.debug(`トグル現在状態: ${currentState}, 目標状態: ${targetState}`);
 
     if (currentState !== targetState) {
       toggleButton.click();
-      // Toggle state changed
+      log.debug("トグルクリック実行");
       return true;
-    } else {
-      log.debug(`  ℹ️ 既に目標の状態です`);
-      return false;
     }
+
+    log.debug("状態変更不要");
+    return false;
   };
 
   // Claude-ステップ1-6: 強化版findClaudeElement
