@@ -3296,7 +3296,12 @@ class TaskStatusManager {
    */
   async markTaskInProgress(task) {
     try {
-      const marker = `作業中\n${new Date().toISOString()}`;
+      // 日本時間（JST）でタイムスタンプを生成
+      const now = new Date();
+      const jstDate = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+      const jstString =
+        jstDate.toISOString().replace("T", " ").replace("Z", "") + " JST";
+      const marker = `作業中\n${jstString}`;
       // answerCellから範囲を取得、または列と行から構築
       const range = task.answerCell || `${task.column}${task.row}`;
       const spreadsheetId =
