@@ -3913,6 +3913,38 @@ class TaskStatusManager {
         const markerMatch = cellValue.match(/作業中\n(.+)/);
         const markerTime = markerMatch ? markerMatch[1] : "不明";
 
+        // 【新規追加】初回実行時の作業中マーカー削除（タスク選択時の安全なタイミング）
+        try {
+          const answerCellRef = `${task.column}${task.row}`;
+          const spreadsheetId =
+            task.spreadsheetId || window.globalState?.spreadsheetId;
+
+          if (spreadsheetId && window.simpleSheetsClient) {
+            // 作業中マーカーを削除（空文字列で上書き）
+            await window.simpleSheetsClient.updateValue(
+              spreadsheetId,
+              answerCellRef,
+              "",
+            );
+            ExecuteLogger.info(
+              `🧹 [getAvailableTasks] 初回実行時作業中マーカー削除: ${answerCellRef}`,
+            );
+
+            // マーカー削除後、このタスクを利用可能として追加
+            available.push(task);
+            ExecuteLogger.info(
+              `✅ 利用可能: ${taskIdentifier} - 理由: 作業中マーカー削除済み`,
+            );
+            continue; // 次のタスクへ
+          }
+        } catch (markerError) {
+          ExecuteLogger.warn(
+            `⚠️ [getAvailableTasks] 作業中マーカー削除に失敗: ${answerCellRef}`,
+            markerError,
+          );
+          // マーカー削除失敗時は従来通りの処理を続行
+        }
+
         if (this.isTaskTimedOut(cellValue, task)) {
           available.push(task);
           const maxWaitTime = this.getMaxWaitTimeForTask(task);
