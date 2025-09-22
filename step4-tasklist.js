@@ -3104,7 +3104,9 @@ class WindowController {
 // ========================================
 // SimpleSheetsClient: step4内で完結するSheets APIクライアント（step5から複製）
 // ========================================
-class SimpleSheetsClient {
+// Step5で定義されている場合はスキップ
+if (!window.SimpleSheetsClient) {
+  class SimpleSheetsClient {
   constructor() {
     this.baseUrl = "https://sheets.googleapis.com/v4/spreadsheets";
     this.sheetNameCache = new Map(); // GID -> シート名のキャッシュ
@@ -3192,11 +3194,14 @@ class SimpleSheetsClient {
       throw error;
     }
   }
+
+  // Step4内でSimpleSheetsClientをグローバルに登録
+  window.SimpleSheetsClient = SimpleSheetsClient;
 }
 
 // Step4内でグローバルインスタンスを作成（step5の依存を解消）
 if (!window.simpleSheetsClient) {
-  window.simpleSheetsClient = new SimpleSheetsClient();
+  window.simpleSheetsClient = new window.SimpleSheetsClient();
   ExecuteLogger.info("✅ window.simpleSheetsClient を step4内で初期化");
 }
 
