@@ -5207,6 +5207,7 @@
     );
 
     log.debug("🔍 [STEP 2-2] chrome.runtime.onMessage.addListener 実行中...");
+    // Manifest V3: リスナーは同期的にtrueまたはPromiseを返す必要がある
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       const messageReceiveTime = Date.now();
       const requestId = Math.random().toString(36).substring(2, 8);
@@ -5452,9 +5453,10 @@
           }
         }
 
-        // 非同期処理のため、即座にtrueを返してチャネルを開いておく
-        executeTask(taskToExecute)
-          .then((result) => {
+        // Manifest V3対応: async/awaitで同期的に処理してPromiseを返す
+        (async () => {
+          try {
+            const result = await executeTask(taskToExecute);
             const executionTime = Date.now() - messageReceiveTime;
             log.debug(
               `✅ [ClaudeAutomation] executeTask成功 [ID:${requestId}]:`,
@@ -5468,8 +5470,7 @@
               },
             );
             wrappedSendResponse({ success: true, result });
-          })
-          .catch((error) => {
+          } catch (error) {
             const executionTime = Date.now() - messageReceiveTime;
             log.error(
               `❌ [ClaudeAutomation] executeTask失敗 [ID:${requestId}]:`,
@@ -5483,12 +5484,13 @@
               },
             );
             wrappedSendResponse({ success: false, error: error.message });
-          });
+          }
+        })();
 
         log.debug(
-          `🔄 [ClaudeAutomation] 非同期チャネル保持 [ID:${requestId}] - trueを返します`,
+          `🔄 [ClaudeAutomation] Manifest V3: Promiseベースの非同期処理 [ID:${requestId}]`,
         );
-        return true; // 非同期レスポンスのためチャネルを保持
+        return true; // 非同期レスポンスのためチャネルを保持（Manifest V3でも有効）
       } else if (isCheckReady) {
         // 実行環境情報を含めて応答
         log.debug(`🏓 [ClaudeAutomation] ping/準備確認処理 [ID:${requestId}]`, {

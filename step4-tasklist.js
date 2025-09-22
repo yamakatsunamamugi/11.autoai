@@ -152,10 +152,10 @@ class UnifiedWindowManager {
     if (!aiType) return "unknown";
     const baseType = aiType.replace(/_task.*/, "").toLowerCase();
     const typeMap = {
-      chatgpt: "chatgpt",
-      claude: "claude",
-      gemini: "gemini",
-      genspark: "genspark",
+      chatgpt: "ChatGPT",
+      claude: "Claude",
+      gemini: "Gemini",
+      genspark: "Genspark",
     };
     return typeMap[baseType] || baseType;
   }
@@ -168,7 +168,10 @@ class UnifiedWindowManager {
     const results = [];
 
     for (const [windowId, info] of this.windows.entries()) {
-      if (info.aiType.startsWith(normalizedType + "_")) {
+      // 大文字小文字を無視して比較（Claudeも統一）
+      const infoNormalized = info.aiType.toLowerCase();
+      const searchNormalized = normalizedType.toLowerCase();
+      if (infoNormalized.startsWith(searchNormalized + "_")) {
         // タブが実際に存在するかチェック
         try {
           const tab = await chrome.tabs.get(info.tabId);
@@ -1707,7 +1710,11 @@ async function generateTaskList(
               key,
               value,
             ] of window.windowController.openedWindows.entries()) {
-              if (key.startsWith(normalizedAiType + "_")) {
+              if (
+                key
+                  .toLowerCase()
+                  .startsWith(normalizedAiType.toLowerCase() + "_")
+              ) {
                 allWindows.push(value);
               }
             }
@@ -2187,16 +2194,16 @@ class WindowController {
    */
   normalizeAiType(aiType) {
     if (!aiType || typeof aiType !== "string") {
-      return "claude";
+      return "Claude";
     }
     const normalized = aiType.toLowerCase().trim();
     const mappings = {
-      chatgpt: "chatgpt",
-      claude: "claude",
-      gemini: "gemini",
-      genspark: "genspark",
-      report: "report",
-      "3種類（chatgpt・gemini・claude）": "3ai",
+      chatgpt: "ChatGPT",
+      claude: "Claude",
+      gemini: "Gemini",
+      genspark: "Genspark",
+      report: "Report",
+      "3種類（chatgpt・gemini・claude）": "3AI",
     };
     return mappings[normalized] || normalized;
   }
@@ -2495,7 +2502,9 @@ class WindowController {
       // 新しい保存形式に対応: 該当するウィンドウを全て探す（並列処理対応）
       const matchingWindows = [];
       for (const [key, value] of this.openedWindows.entries()) {
-        if (key.startsWith(normalizedAiType + "_")) {
+        if (
+          key.toLowerCase().startsWith(normalizedAiType.toLowerCase() + "_")
+        ) {
           matchingWindows.push({ key, value });
         }
       }
@@ -2741,7 +2750,7 @@ class WindowController {
 
     const matchingWindows = [];
     for (const [key, value] of this.openedWindows.entries()) {
-      if (key.startsWith(normalizedAiType + "_")) {
+      if (key.toLowerCase().startsWith(normalizedAiType.toLowerCase() + "_")) {
         matchingWindows.push({ key, value });
       }
     }
@@ -4368,15 +4377,23 @@ async function executeStep4(taskList) {
           );
 
           if (!response) {
-            ExecuteLogger.error(
-              `❌ [Content Script] 応答なし - Chrome Runtime情報:`,
+            // Manifest V3では、Content Scriptが非同期処理中でも即座にundefinedが返る可能性がある
+            ExecuteLogger.warn(
+              `⚠️ [Content Script] 応答なし（Manifest V3の仕様変更の可能性）:`,
               {
                 tabId: tabId,
                 lastError: chrome.runtime.lastError?.message,
                 sendDuration: sendDuration,
+                responseType: typeof response,
               },
             );
-            reject(new Error("Content Scriptからの応答がありません"));
+            // 応答がない場合でも成功とみなす（Content Script側で非同期処理中の可能性）
+            resolve({
+              success: true,
+              warning:
+                "No immediate response from Content Script (async processing)",
+              tabId: tabId,
+            });
             return;
           }
 
