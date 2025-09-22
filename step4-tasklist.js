@@ -2162,15 +2162,24 @@ class WindowController {
       // グローバルのWindowServiceを使用
       this.windowService = WindowService;
     } else {
-      // 内部のWindowControllerを使用（step5-execute.js内で完結）
-      ExecuteLogger.debug("✅ [DEBUG] 内部WindowController機能を使用");
-      this.windowService = null; // WindowControllerクラスを直接使用
+      // 内部のStepIntegratedWindowServiceを使用（step4-tasklist.js内で定義）
+      ExecuteLogger.debug(
+        "✅ [DEBUG] 内部StepIntegratedWindowService機能を使用",
+        {
+          serviceType: "StepIntegratedWindowService",
+          hasCreateMethod:
+            !!StepIntegratedWindowService.createWindowWithPosition,
+        },
+      );
+      this.windowService = StepIntegratedWindowService; // StepIntegratedWindowServiceを直接使用
     }
 
     ExecuteLogger.debug("✅ [DEBUG] WindowService設定完了", {
       hasWindowService: !!this.windowService,
       serviceType: typeof this.windowService,
-      useInternalController: !this.windowService,
+      serviceName:
+        this.windowService?.name || this.windowService?.constructor?.name,
+      useInternalController: this.windowService === StepIntegratedWindowService,
     });
 
     ExecuteLogger.info(
