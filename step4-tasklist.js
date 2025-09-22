@@ -3176,6 +3176,356 @@ class WindowController {
 }
 
 // ========================================
+// WindowLifecycleManager: タスク完了処理とウィンドウライフサイクル管理
+// ========================================
+class WindowLifecycleManager {
+  constructor() {
+    this.registeredWindows = new Map(); // aiType -> windowInfo
+    this.sheetsClient = null;
+    this.maxRetries = 3;
+    this.retryDelay = 1000;
+    ExecuteLogger.info("🔄 WindowLifecycleManager初期化");
+  }
+
+  /**
+   * ライフサイクル管理初期化
+   */
+  async initializeLifecycleManager() {
+    try {
+      ExecuteLogger.info("🔄 [WindowLifecycleManager] 初期化開始");
+
+      // SimpleSheetsClientクラスの存在確認
+      if (typeof SimpleSheetsClient === "undefined") {
+        throw new Error("SimpleSheetsClientクラスが定義されていません");
+      }
+
+      // SheetsClientインスタンス作成
+      if (!this.sheetsClient) {
+        ExecuteLogger.info(
+          "📊 [WindowLifecycleManager] SimpleSheetsClientインスタンス作成中",
+        );
+        this.sheetsClient = new SimpleSheetsClient();
+
+        // updateCellメソッドの存在確認
+        if (typeof this.sheetsClient.updateCell !== "function") {
+          throw new Error(
+            "SimpleSheetsClient.updateCellメソッドが存在しません",
+          );
+        }
+
+        ExecuteLogger.info(
+          "✅ [WindowLifecycleManager] SimpleSheetsClientインスタンス作成完了",
+        );
+      }
+
+      ExecuteLogger.info("✅ WindowLifecycleManager初期化完了", {
+        sheetsClientExists: !!this.sheetsClient,
+        hasUpdateCellMethod:
+          typeof this.sheetsClient?.updateCell === "function",
+        registeredWindowsSize: this.registeredWindows.size,
+      });
+
+      return true;
+    } catch (error) {
+      ExecuteLogger.error("❌ WindowLifecycleManager初期化エラー:", error);
+
+      // フォールバック処理: 基本的な機能だけでも動作するように
+      if (!this.sheetsClient) {
+        ExecuteLogger.warn(
+          "⚠️ [WindowLifecycleManager] フォールバック: SheetsClient機能無効化",
+        );
+        this.sheetsClient = {
+          updateCell: async () => {
+            ExecuteLogger.warn(
+              "⚠️ [WindowLifecycleManager] SheetsClient無効のため、セル更新をスキップ",
+            );
+          },
+        };
+      }
+
+      return false;
+    }
+  }
+
+  /**
+   * ウィンドウを登録
+   */
+  registerWindow(aiType, windowInfo) {
+    this.registeredWindows.set(aiType, windowInfo);
+    ExecuteLogger.debug(`🪟 ウィンドウ登録: ${aiType}`, {
+      tabId: windowInfo?.tabId,
+      windowId: windowInfo?.windowId,
+    });
+  }
+
+  /**
+   * タスク完了処理（メイン機能）
+   * @param {Object} task - タスク情報
+   * @param {Object} result - 実行結果
+   */
+  async handleTaskCompletion(task, result) {
+    ExecuteLogger.info(
+      `🎯 [WindowLifecycleManager] タスク完了処理開始: ${task.id || task.taskId}`,
+      {
+        aiType: task.aiType,
+        success: result?.success,
+        hasResult: !!result?.result,
+      },
+    );
+
+    try {
+      // 1. 結果が成功している場合のみスプレッドシート書き込み処理
+      if (result?.success && result?.result) {
+        await this.writeResultToSpreadsheet(task, result.result);
+      }
+
+      // 2. エラーの場合はエラー情報を記録
+      if (!result?.success && result?.error) {
+        await this.writeErrorToSpreadsheet(task, result.error);
+      }
+
+      // 3. ウィンドウクローズ判定（設定により制御可能）
+      await this.handleWindowCleanup(task, result);
+
+      ExecuteLogger.info(
+        `✅ [WindowLifecycleManager] タスク完了処理完了: ${task.id || task.taskId}`,
+      );
+    } catch (error) {
+      ExecuteLogger.error(
+        `❌ [WindowLifecycleManager] タスク完了処理エラー: ${task.id || task.taskId}`,
+        error,
+      );
+    }
+  }
+
+  /**
+   * スプレッドシートに結果を書き込み
+   */
+  async writeResultToSpreadsheet(task, result) {
+    try {
+      ExecuteLogger.info(
+        `📝 [WindowLifecycleManager] スプレッドシート書き込み開始: ${task.id || task.taskId}`,
+      );
+
+      // スプレッドシート情報を取得
+      const spreadsheetId =
+        task.spreadsheetId || window.globalState?.spreadsheetId;
+      if (!spreadsheetId) {
+        throw new Error("スプレッドシートIDが見つかりません");
+      }
+
+      // 結果テキストを取得
+      const resultText = this.extractResultText(result);
+      if (!resultText || resultText.length < 10) {
+        ExecuteLogger.warn(
+          `⚠️ [WindowLifecycleManager] 結果テキストが短すぎます: ${resultText?.length || 0}文字`,
+        );
+      }
+
+      // セル位置を計算
+      const cellRef = this.calculateCellReference(task);
+
+      // スプレッドシートに書き込み
+      await this.sheetsClient.updateCell(spreadsheetId, cellRef, resultText);
+
+      ExecuteLogger.info(
+        `✅ [WindowLifecycleManager] スプレッドシート書き込み完了`,
+        {
+          cellRef,
+          textLength: resultText?.length || 0,
+        },
+      );
+    } catch (error) {
+      ExecuteLogger.error(
+        `❌ [WindowLifecycleManager] スプレッドシート書き込みエラー:`,
+        error,
+      );
+    }
+  }
+
+  /**
+   * エラー情報をスプレッドシートに書き込み
+   */
+  async writeErrorToSpreadsheet(task, error) {
+    try {
+      const spreadsheetId =
+        task.spreadsheetId || window.globalState?.spreadsheetId;
+      if (!spreadsheetId) return;
+
+      const cellRef = this.calculateCellReference(task);
+      const errorMessage = `エラー: ${error}`;
+
+      await this.sheetsClient.updateCell(spreadsheetId, cellRef, errorMessage);
+
+      ExecuteLogger.info(
+        `📝 [WindowLifecycleManager] エラー情報記録完了: ${cellRef}`,
+      );
+    } catch (writeError) {
+      ExecuteLogger.error(
+        `❌ [WindowLifecycleManager] エラー記録失敗:`,
+        writeError,
+      );
+    }
+  }
+
+  /**
+   * 結果からテキストを抽出
+   */
+  extractResultText(result) {
+    if (!result) return "";
+
+    // 様々な結果形式に対応
+    if (typeof result === "string") return result;
+    if (result.response) return result.response;
+    if (result.text) return result.text;
+    if (result.finalText) return result.finalText;
+    if (result.content) return result.content;
+
+    // オブジェクトの場合はJSON文字列として保存
+    return JSON.stringify(result, null, 2);
+  }
+
+  /**
+   * セル参照を計算
+   */
+  calculateCellReference(task) {
+    // タスクからセル情報を取得
+    if (task.cellRef) return task.cellRef;
+    if (task.column && task.row) return `${task.column}${task.row}`;
+
+    // デフォルト値（エラー防止）
+    return `C${task.rowIndex || 1}`;
+  }
+
+  /**
+   * ウィンドウクリーンアップ処理
+   */
+  async handleWindowCleanup(task, result) {
+    try {
+      // 個別タスク完了時の即座クローズ設定確認
+      const shouldCloseImmediately = this.shouldCloseWindowImmediately(
+        task,
+        result,
+      );
+
+      if (shouldCloseImmediately) {
+        ExecuteLogger.info(
+          `🚪 [WindowLifecycleManager] ウィンドウ即座クローズ: ${task.aiType}`,
+        );
+
+        const windowInfo = this.registeredWindows.get(task.aiType) || {
+          windowId: task.windowId,
+          tabId: task.tabId,
+        };
+
+        if (windowInfo?.windowId) {
+          await StepIntegratedWindowService.closeWindow(windowInfo.windowId);
+          this.registeredWindows.delete(task.aiType);
+          ExecuteLogger.info(
+            `✅ [WindowLifecycleManager] ウィンドウクローズ完了: ${task.aiType}`,
+          );
+        }
+      } else {
+        ExecuteLogger.debug(
+          `💤 [WindowLifecycleManager] ウィンドウ保持: ${task.aiType}`,
+        );
+      }
+    } catch (error) {
+      ExecuteLogger.error(
+        `❌ [WindowLifecycleManager] ウィンドウクリーンアップエラー:`,
+        error,
+      );
+    }
+  }
+
+  /**
+   * ウィンドウを即座に閉じるべきかの判定
+   */
+  shouldCloseWindowImmediately(task, result) {
+    // 成功したタスクのウィンドウを即座に閉じる
+    if (result?.success) return true;
+
+    // エラーの場合は保持（デバッグ用）
+    return false;
+  }
+
+  /**
+   * リトライ機能付きタスク実行
+   */
+  async executeWithRetry(taskFunction, task, description) {
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
+      try {
+        ExecuteLogger.info(
+          `🔄 [WindowLifecycleManager] 実行試行 ${attempt}/${this.maxRetries}: ${description}`,
+        );
+
+        const result = await taskFunction();
+
+        if (result?.success) {
+          ExecuteLogger.info(
+            `✅ [WindowLifecycleManager] 実行成功: ${description}`,
+          );
+          return result;
+        } else {
+          throw new Error(result?.error || "実行結果が成功ではありません");
+        }
+      } catch (error) {
+        lastError = error;
+        ExecuteLogger.warn(
+          `⚠️ [WindowLifecycleManager] 実行失敗 ${attempt}/${this.maxRetries}: ${error.message}`,
+        );
+
+        if (attempt < this.maxRetries) {
+          const waitTime = this.retryDelay * attempt;
+          ExecuteLogger.info(
+            `⏳ [WindowLifecycleManager] ${waitTime}ms待機後リトライ`,
+          );
+          await new Promise((resolve) => setTimeout(resolve, waitTime));
+        }
+      }
+    }
+
+    ExecuteLogger.error(
+      `❌ [WindowLifecycleManager] 最終的な実行失敗: ${description}`,
+      lastError,
+    );
+    return { success: false, error: lastError?.message || "実行失敗" };
+  }
+
+  /**
+   * 全ウィンドウクリーンアップ
+   */
+  async cleanupAllWindows() {
+    ExecuteLogger.info(
+      "🧹 [WindowLifecycleManager] 全ウィンドウクリーンアップ開始",
+    );
+
+    for (const [aiType, windowInfo] of this.registeredWindows) {
+      try {
+        if (windowInfo?.windowId) {
+          await StepIntegratedWindowService.closeWindow(windowInfo.windowId);
+          ExecuteLogger.info(
+            `✅ [WindowLifecycleManager] ウィンドウクローズ: ${aiType}`,
+          );
+        }
+      } catch (error) {
+        ExecuteLogger.error(
+          `❌ [WindowLifecycleManager] ウィンドウクローズエラー: ${aiType}`,
+          error,
+        );
+      }
+    }
+
+    this.registeredWindows.clear();
+    ExecuteLogger.info(
+      "🏁 [WindowLifecycleManager] 全ウィンドウクリーンアップ完了",
+    );
+  }
+}
+
+// ========================================
 // SimpleSheetsClient: step4内で完結するSheets APIクライアント（step5から複製）
 // ========================================
 // Step5で定義されている場合はスキップ
@@ -3267,6 +3617,17 @@ if (!window.SimpleSheetsClient) {
         ExecuteLogger.error(`❌ updateValue失敗: ${range}`, error);
         throw error;
       }
+    }
+
+    /**
+     * スプレッドシートに値を書き込み（updateCellエイリアス）
+     * WindowLifecycleManagerとの互換性のため
+     */
+    async updateCell(spreadsheetId, cellRef, value) {
+      ExecuteLogger.debug(
+        `📝 [SimpleSheetsClient] updateCell: ${cellRef} = ${value?.length || 0}文字`,
+      );
+      return await this.updateValue(spreadsheetId, cellRef, value);
     }
   }
 
@@ -4090,7 +4451,15 @@ async function executeStep4(taskList) {
     // Step 4-6-5: ライフサイクル管理初期化
     ExecuteLogger.info("🔄 [Step 4-6-5] ライフサイクル管理初期化");
 
-    await window.windowLifecycleManager.initializeLifecycleManager();
+    const lifecycleInitialized =
+      await window.windowLifecycleManager.initializeLifecycleManager();
+    if (!lifecycleInitialized) {
+      ExecuteLogger.warn(
+        "⚠️ [Step 4-6-5] WindowLifecycleManager初期化に失敗しましたが、処理を継続します（フォールバック機能有効）",
+      );
+    }
+
+    ExecuteLogger.info("✅ WindowLifecycleManager初期化完了");
 
     // 各ウィンドウを登録
     for (const windowResult of successfulWindows) {
@@ -4541,17 +4910,35 @@ async function executeStep4(taskList) {
         // 結果を収集
         let successCount = 0;
         let failCount = 0;
+        const failedTasks = [];
 
-        batchResults.forEach((pr) => {
+        batchResults.forEach((pr, index) => {
           if (pr.status === "fulfilled") {
             results.push(pr.value);
             if (pr.value.success) {
               successCount++;
             } else {
               failCount++;
+              failedTasks.push({
+                taskIndex: index,
+                taskId:
+                  pr.value.taskId || `batch_${batchIndex + 1}_task_${index}`,
+                aiType: pr.value.aiType || "不明",
+                error: pr.value.error || "詳細不明",
+                row: pr.value.row || "不明",
+                column: pr.value.column || "不明",
+              });
             }
           } else {
             failCount++;
+            failedTasks.push({
+              taskIndex: index,
+              taskId: `batch_${batchIndex + 1}_task_${index}`,
+              aiType: "不明",
+              error: pr.reason?.message || pr.reason || "Promise rejected",
+              row: "不明",
+              column: "不明",
+            });
           }
         });
 
@@ -4631,6 +5018,49 @@ async function executeStep4(taskList) {
           ExecuteLogger.error(
             `🛑 [step4-execute.js] バッチ${batchIndex + 1}で${failCount}個のタスクが失敗したため、処理を停止します`,
           );
+
+          // 失敗したタスクの詳細ログ記録
+          ExecuteLogger.error(`📋 [step4-execute.js] 失敗したタスクの詳細:`, {
+            batchIndex: batchIndex + 1,
+            failCount: failCount,
+            failedTasks: failedTasks,
+            timestamp: new Date().toISOString(),
+          });
+
+          // 個別の失敗タスクも詳細ログ出力
+          failedTasks.forEach((failedTask, failIndex) => {
+            ExecuteLogger.error(
+              `❌ [失敗タスク ${failIndex + 1}/${failCount}]`,
+              {
+                taskId: failedTask.taskId,
+                aiType: failedTask.aiType,
+                position: `${failedTask.column}${failedTask.row}`,
+                error: failedTask.error,
+                batchIndex: batchIndex + 1,
+                taskIndex: failedTask.taskIndex,
+              },
+            );
+          });
+
+          // 失敗時でも作業中マーカーをクリア
+          ExecuteLogger.info(
+            `🧹 [step4-execute.js] 失敗時の緊急マーカークリア開始（バッチ${batchIndex + 1}）`,
+          );
+
+          for (const task of validBatchTasks) {
+            try {
+              await statusManager.clearMarker(task);
+              ExecuteLogger.debug(
+                `🧹 [緊急クリア] マーカークリア完了: ${task.column}${task.row}`,
+              );
+            } catch (clearError) {
+              ExecuteLogger.error(
+                `❌ [緊急クリア] マーカークリアエラー: ${task.column}${task.row}`,
+                clearError,
+              );
+            }
+          }
+
           break;
         }
 
@@ -4833,6 +5263,65 @@ async function executeStep4(taskList) {
         return;
       }
 
+      // Content Script注入確認関数
+      async function verifyContentScriptInjection(tabId, automationName) {
+        const maxRetries = 5;
+        const retryDelay = 1000;
+
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+          try {
+            ExecuteLogger.info(
+              `🔍 [Content Script確認] 試行 ${attempt}/${maxRetries}`,
+              {
+                tabId: tabId,
+                automationName: automationName,
+              },
+            );
+
+            // Ping メッセージを送信してContent Scriptの応答を確認
+            const pingMessage = {
+              action: "ping",
+              type: "PING_CHECK",
+              automationName: automationName,
+              timestamp: Date.now(),
+            };
+
+            const response = await chrome.tabs.sendMessage(tabId, pingMessage);
+
+            if (response && response.success) {
+              ExecuteLogger.info(`✅ [Content Script確認] 応答確認完了`, {
+                tabId: tabId,
+                automationName: automationName,
+                attempt: attempt,
+                response: response,
+              });
+              return true;
+            } else {
+              throw new Error(`無効な応答: ${JSON.stringify(response)}`);
+            }
+          } catch (error) {
+            ExecuteLogger.warn(
+              `⚠️ [Content Script確認] 試行 ${attempt} 失敗:`,
+              {
+                tabId: tabId,
+                automationName: automationName,
+                error: error.message,
+                willRetry: attempt < maxRetries,
+              },
+            );
+
+            if (attempt === maxRetries) {
+              throw new Error(
+                `Content Script注入確認に失敗しました (${maxRetries}回試行): ${error.message}`,
+              );
+            }
+
+            // リトライ前の待機
+            await new Promise((resolve) => setTimeout(resolve, retryDelay));
+          }
+        }
+      }
+
       async function sendMessageToValidTab() {
         // メッセージ送信（Manifest V3対応: Promise形式）
         try {
@@ -4846,12 +5335,25 @@ async function executeStep4(taskList) {
           });
 
           // 互換性のため複数の形式をサポート
+          // Content Scriptに送信するためのタスクデータを最小化
+          const optimizedTask = {
+            id: task.id,
+            taskId: task.taskId,
+            prompt: task.prompt,
+            aiType: task.aiType,
+            row: task.row,
+            column: task.column,
+            model: task.model,
+            // 大きなデータは除去（Content Scriptでは不要）
+            // spreadsheetData, extendedData等は送信しない
+          };
+
           const messagePayload = {
             action: "executeTask",
             type: "CLAUDE_EXECUTE_TASK", // unusedコードと互換
             automationName: automationName,
-            task: task,
-            taskData: task, // 両方の形式に対応
+            task: optimizedTask,
+            taskData: optimizedTask, // 両方の形式に対応
           };
 
           ExecuteLogger.info(`📡 [DEBUG-sendMessage] メッセージ詳細:`, {
@@ -5078,8 +5580,8 @@ async function executeStep4(taskList) {
                 },
               );
 
-              // 初期化待機（manifest.json自動注入Content Scriptが初期化されるまで）
-              await new Promise((resolve) => setTimeout(resolve, 2000));
+              // Content Script注入確認（ping-pong方式）
+              await verifyContentScriptInjection(tabId, automationName);
 
               ExecuteLogger.info(
                 `✅ [manifest.json自動注入] ${automationName} 準備完了`,
@@ -5612,9 +6114,26 @@ if (typeof window !== "undefined") {
     hasCheckWindows: typeof window.windowController.checkWindows === "function",
   });
 
+  // WindowLifecycleManagerクラスをエクスポートとインスタンス化
+  window.WindowLifecycleManager = WindowLifecycleManager;
+  window.windowLifecycleManager = new WindowLifecycleManager();
+
+  ExecuteLogger.info("✅ WindowLifecycleManager インスタンス作成完了", {
+    hasHandleTaskCompletion:
+      typeof window.windowLifecycleManager.handleTaskCompletion === "function",
+    hasWriteResultToSpreadsheet:
+      typeof window.windowLifecycleManager.writeResultToSpreadsheet ===
+      "function",
+    hasExecuteWithRetry:
+      typeof window.windowLifecycleManager.executeWithRetry === "function",
+  });
+
   ExecuteLogger.info("✅ executeStep4 exported to window");
   ExecuteLogger.info(
     `✅ WindowController status: ${window.windowController ? "initialized" : "not initialized"}`,
+  );
+  ExecuteLogger.info(
+    `✅ WindowLifecycleManager status: ${window.windowLifecycleManager ? "initialized" : "not initialized"}`,
   );
 }
 

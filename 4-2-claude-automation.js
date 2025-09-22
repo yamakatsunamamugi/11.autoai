@@ -1265,651 +1265,6 @@
     log.error("❌ CLAUDE_SELECTORS initialization error!");
   }
 
-  // ========================================
-  // 🔄 初期化フェーズ: リトライマネージャー
-  // ========================================
-
-  class ClaudeRetryManager {
-    constructor() {
-      this.maxRetries = 3;
-      this.retryDelay = 2000;
-      this.timeout = 600000; // 10分
-      this.activeTimeouts = new Set();
-
-      // エラー戦略マップを定義
-      this.errorStrategies = {
-        TIMEOUT_ERROR: {
-          baseDelay: 3000,
-          maxDelay: 15000,
-          backoffMultiplier: 1.5,
-        },
-        GENERAL_ERROR: {
-          baseDelay: 2000,
-          maxDelay: 10000,
-          backoffMultiplier: 2.0,
-        },
-      };
-
-      // メトリクス初期化
-      this.resetMetrics();
-    }
-
-    // シンプルなエラー分類
-    classifyError(error, context = {}) {
-      const errorMessage = error?.message || error?.toString() || "";
-      if (errorMessage.includes("timeout")) {
-        return "TIMEOUT_ERROR";
-      }
-      return "GENERAL_ERROR";
-    }
-
-    // Canvas無限更新検出
-    isCanvasInfiniteUpdate() {
-      try {
-        const versionElement = document.querySelector(
-          '[data-testid="artifact-version-trigger"]',
-        );
-        if (versionElement) {
-          const versionText =
-            versionElement.textContent || versionElement.innerText || "";
-          const hasHighVersion = /v([2-9]|\d{2,})/.test(versionText);
-          if (hasHighVersion) {
-            log.debug(`🎨 Canvas無限更新検出: ${versionText}`);
-            return true;
-          }
-        }
-        return false;
-      } catch (error) {
-        log.warn("Canvas版本チェックエラー:", error.message);
-        return false;
-      }
-    }
-
-    // 連続同一エラー検出
-    detectConsecutiveErrors(threshold = 5) {
-      if (this.errorHistory.length < threshold) return false;
-
-      const recentErrors = this.errorHistory.slice(-threshold);
-      const firstErrorType = recentErrors[0].errorType;
-
-      const isConsecutive = recentErrors.every(
-        (error) => error.errorType === firstErrorType,
-      );
-
-      if (isConsecutive) {
-        log.debug(`🔍 連続同一エラー検出: ${firstErrorType} (${threshold}回)`);
-      }
-
-      return isConsecutive;
-    }
-
-    // リトライレベル判定
-    determineRetryLevel(retryCount, context = {}) {
-      // Canvas無限更新は即座に最終手段
-      if (this.isCanvasInfiniteUpdate() || context.isCanvasVersionUpdate) {
-        // Retry level: HEAVY_RESET
-        return "HEAVY_RESET";
-      }
-
-      // 連続同一エラーが5回以上 = 構造的問題
-      if (this.detectConsecutiveErrors(5)) {
-        // Retry level: HEAVY_RESET
-        return "HEAVY_RESET";
-      }
-
-      // リトライ回数による段階判定
-      if (retryCount <= 5) {
-        // Retry level: LIGHTWEIGHT
-        return "LIGHTWEIGHT";
-      } else if (retryCount <= 8) {
-        // Retry level: MODERATE
-        return "MODERATE";
-      } else {
-        // Retry level: HEAVY_RESET
-        return "HEAVY_RESET";
-      }
-    }
-
-    // メイン実行メソッド（統一インターフェース）
-    async executeWithRetry(config) {
-      // 引数の互換性チェック
-      if (
-        typeof config === "object" &&
-        config.taskId &&
-        config.prompt &&
-        !config.action
-      ) {
-        // Canvas無限更新の古い形式
-        return await this.executeCanvasRetry(config);
-      }
-
-      // 新しい統一形式での処理
-      const {
-        action,
-        errorClassifier = this.classifyError.bind(this),
-        successValidator = (result) => result && result.success !== false,
-        maxRetries = this.defaultMaxRetries,
-        retryDelay = this.defaultRetryDelay,
-        actionName = "処理",
-        context = {},
-        timeoutMs = this.globalTimeout,
-      } = config;
-
-      if (!action) {
-        throw new Error("action関数が必要です");
-      }
-
-      this.abortController = new AbortController();
-      const startTime = Date.now();
-      let retryCount = 0;
-      let lastResult = null;
-      let lastError = null;
-      let errorType = "GENERAL_ERROR";
-
-      try {
-        while (retryCount < maxRetries) {
-          // グローバルタイムアウトチェック
-          if (Date.now() - startTime > timeoutMs) {
-            throw new Error(`グローバルタイムアウト: ${timeoutMs}ms`);
-          }
-
-          try {
-            this.metrics.totalAttempts++;
-
-            if (retryCount > 0) {
-              log.debug(
-                `🔄 【${actionName}】リトライ ${retryCount}/${maxRetries} (エラー種別: ${errorType})`,
-              );
-            }
-
-            // アクション実行
-            lastResult = await Promise.race([
-              action(),
-              this.createTimeoutPromise(timeoutMs - (Date.now() - startTime)),
-            ]);
-
-            // 成功判定
-            if (successValidator(lastResult)) {
-              this.metrics.successfulAttempts++;
-              if (retryCount > 0) {
-                log.debug(
-                  `✅ 【${actionName}】${retryCount}回目のリトライで成功`,
-                );
-              }
-              return {
-                success: true,
-                result: lastResult,
-                retryCount,
-                errorType: retryCount > 0 ? errorType : null,
-                executionTime: Date.now() - startTime,
-              };
-            }
-
-            // 成功判定失敗の場合は次のリトライへ
-            lastError = new Error("成功判定に失敗しました");
-            errorType = errorClassifier(lastError, {
-              ...context,
-              result: lastResult,
-            });
-          } catch (error) {
-            lastError = error;
-            errorType = errorClassifier(error, context);
-
-            // エラー履歴記録
-            log.error(`🔍 [Error Record] エラー記録:`, {
-              error: error.message,
-              retryCount,
-              lastResult,
-              context,
-            });
-
-            // エラー統計更新
-            this.metrics.errorCounts[errorType] =
-              (this.metrics.errorCounts[errorType] || 0) + 1;
-
-            log.error(
-              `❌ 【${actionName}】エラー発生 (種別: ${errorType}):`,
-              error.message,
-            );
-          }
-
-          retryCount++;
-
-          // 最大リトライ回数チェック
-          if (retryCount >= maxRetries) {
-            break;
-          }
-
-          // 段階的エスカレーション: リトライレベル判定
-          const retryLevel = this.determineRetryLevel(retryCount, context);
-
-          // タスクデータの準備（新規ウィンドウリトライ用）
-          const taskData = context.taskData ||
-            config.taskData || {
-              taskId: context.taskId || `retry_${Date.now()}`,
-              prompt: context.prompt || "リトライタスク",
-              enableDeepResearch: context.enableDeepResearch || false,
-              specialMode: context.specialMode || null,
-            };
-
-          // リトライレベルに応じた実行戦略
-          try {
-            log.debug(
-              `🔄 【${actionName}】段階的エスカレーション: ${retryLevel}`,
-            );
-
-            if (retryLevel === "HEAVY_RESET") {
-              // 新規ウィンドウ作成リトライ
-              const heavyRetryResult = await this.executeRetryByLevel(
-                retryLevel,
-                action,
-                taskData,
-                retryCount,
-                { ...context, errorType },
-              );
-
-              if (heavyRetryResult && heavyRetryResult.success) {
-                log.debug(
-                  `✅ 【${actionName}】新規ウィンドウリトライで復旧成功`,
-                );
-                this.metrics.successfulAttempts++;
-                return {
-                  success: true,
-                  result: heavyRetryResult,
-                  retryCount,
-                  errorType,
-                  retryLevel,
-                  executionTime: Date.now() - startTime,
-                };
-              }
-            } else {
-              // 軽量・中程度リトライ（従来の待機戦略）
-              await this.waitWithStrategy(errorType, retryCount, context);
-            }
-          } catch (retryError) {
-            log.error(
-              `❌ 【${actionName}】${retryLevel}リトライでエラー:`,
-              retryError.message,
-            );
-            // リトライエラーも記録
-            log.error(`🔍 [Retry Error Record] リトライエラー記録:`, {
-              error: retryError.message,
-              retryCount,
-              context: {
-                ...context,
-                retryLevel,
-              },
-            });
-          }
-        }
-
-        // 全リトライ失敗
-        log.error(`❌ 【${actionName}】${maxRetries}回のリトライ後も失敗`);
-        return {
-          success: false,
-          error: lastError?.message || "Unknown error",
-          errorType,
-          retryCount,
-          result: lastResult,
-          executionTime: Date.now() - startTime,
-          finalError: true,
-        };
-      } finally {
-        this.cleanup();
-      }
-    }
-
-    // Canvas無限更新専用処理（後方互換性）
-    async executeCanvasRetry(taskData) {
-      log.debug(
-        `🔄 Canvas無限更新リトライ処理開始 - 最大${this.canvasMaxRetries}回まで実行`,
-      );
-
-      const retryConfig = {
-        action: async () => {
-          // Canvas専用のリトライロジック
-          return await this.performCanvasRetry(taskData);
-        },
-        errorClassifier: () => "CANVAS_VERSION_UPDATE",
-        successValidator: (result) => result && result.success,
-        maxRetries: this.canvasMaxRetries,
-        actionName: "Canvas無限更新対応",
-        context: { isCanvasVersionUpdate: true, taskData },
-      };
-
-      return await this.executeWithRetry(retryConfig);
-    }
-
-    // Canvas専用リトライアクション
-    async performCanvasRetry(taskData) {
-      return new Promise((resolve) => {
-        chrome.runtime.sendMessage(
-          {
-            type: "RETRY_WITH_NEW_WINDOW",
-            taskId: taskData.taskId || `retry_${Date.now()}`,
-            prompt: taskData.prompt,
-            aiType: "Claude",
-            enableDeepResearch: taskData.enableDeepResearch || false,
-            specialMode: taskData.specialMode || null,
-            error: "CANVAS_VERSION_UPDATE",
-            errorMessage: "Canvas無限更新によるリトライ",
-            retryReason: "canvas_infinite_update_prevention",
-            closeCurrentWindow: true,
-          },
-          (response) => {
-            if (response && response.success) {
-              resolve(response);
-            } else {
-              resolve({ success: false });
-            }
-          },
-        );
-      });
-    }
-
-    // レベル1: 軽量リトライ（同一ウィンドウ内での再試行）
-    async performLightweightRetry(action, retryCount, context = {}) {
-      // Lightweight retry
-
-      // 軽量リトライの待機時間（1秒 → 2秒 → 5秒 → 10秒 → 15秒）
-      const lightDelays = [1000, 2000, 5000, 10000, 15000];
-      const delayIndex = Math.min(retryCount - 1, lightDelays.length - 1);
-      const delay = lightDelays[delayIndex];
-
-      // Waiting to retry...
-      await this.wait(delay);
-
-      // DOM要素の再検索やUI操作の再実行
-      return await action();
-    }
-
-    // レベル2: 中程度リトライ（ページリフレッシュ）
-    async performModerateRetry(action, retryCount, context = {}) {
-      log.debug(
-        `🔄 中程度リトライ実行 (${retryCount}回目) - ページリフレッシュ`,
-      );
-
-      // 中程度リトライの待機時間（30秒 → 1分 → 2分）
-      const moderateDelays = [30000, 60000, 120000];
-      const delayIndex = Math.min(retryCount - 6, moderateDelays.length - 1);
-      const delay = moderateDelays[delayIndex];
-
-      // Waiting for page refresh...
-      await this.wait(delay);
-
-      try {
-        // ページリフレッシュ実行
-        // Refreshing page...
-        location.reload();
-
-        // リフレッシュ後の待機
-        await this.wait(5000);
-
-        // アクション再実行
-        return await action();
-      } catch (error) {
-        log.error("ページリフレッシュエラー:", error.message);
-        return { success: false, error: error.message };
-      }
-    }
-
-    // レベル3: 重いリトライ（新規ウィンドウ作成）
-    async performHeavyRetry(taskData, retryCount, context = {}) {
-      // Heavy retry with new window
-
-      // 重いリトライの待機時間（5分 → 15分 → 30分 → 1時間 → 2時間）
-      const heavyDelays = [
-        300000, // 5分
-        900000, // 15分
-        1800000, // 30分
-        3600000, // 1時間
-        7200000, // 2時間
-      ];
-      const delayIndex = Math.min(retryCount - 9, heavyDelays.length - 1);
-      const delay = heavyDelays[delayIndex];
-
-      // Waiting for new window retry...
-      await this.waitWithCountdown(delay);
-
-      // 新規ウィンドウ作成（performCanvasRetryを汎用化）
-      return await this.performNewWindowRetry(taskData, context);
-    }
-
-    // 汎用新規ウィンドウリトライ（Canvas専用から汎用化）
-    async performNewWindowRetry(taskData, context = {}) {
-      const errorType = context.errorType || "GENERAL_ERROR";
-      const errorMessage = context.errorMessage || "エラー復旧によるリトライ";
-      const retryReason = context.retryReason || "error_recovery_retry";
-
-      return new Promise((resolve) => {
-        chrome.runtime.sendMessage(
-          {
-            type: "RETRY_WITH_NEW_WINDOW",
-            taskId: taskData.taskId || `retry_${Date.now()}`,
-            prompt: taskData.prompt,
-            aiType: "Claude",
-            enableDeepResearch: taskData.enableDeepResearch || false,
-            specialMode: taskData.specialMode || null,
-            error: errorType,
-            errorMessage: errorMessage,
-            retryReason: retryReason,
-            closeCurrentWindow: true,
-          },
-          (response) => {
-            if (response && response.success) {
-              // New window retry success
-              resolve(response);
-            } else {
-              // New window retry failed
-              resolve({ success: false });
-            }
-          },
-        );
-      });
-    }
-
-    // リトライレベルに応じた実行戦略
-    async executeRetryByLevel(
-      retryLevel,
-      action,
-      taskData,
-      retryCount,
-      context = {},
-    ) {
-      switch (retryLevel) {
-        case "LIGHTWEIGHT":
-          return await this.performLightweightRetry(
-            action,
-            retryCount,
-            context,
-          );
-
-        case "MODERATE":
-          return await this.performModerateRetry(action, retryCount, context);
-
-        case "HEAVY_RESET":
-          // 新規ウィンドウ作成の場合はtaskDataが必要
-          if (taskData) {
-            return await this.performHeavyRetry(taskData, retryCount, context);
-          } else {
-            // taskDataがない場合は軽量リトライにフォールバック
-            log.warn(
-              "⚠️ 新規ウィンドウリトライにはtaskDataが必要です。軽量リトライにフォールバック。",
-            );
-            return await this.performLightweightRetry(
-              action,
-              retryCount,
-              context,
-            );
-          }
-
-        default:
-          return await this.performLightweightRetry(
-            action,
-            retryCount,
-            context,
-          );
-      }
-    }
-
-    // エラー種別に応じた待機戦略
-    async waitWithStrategy(errorType, retryCount, context = {}) {
-      const strategy =
-        this.errorStrategies[errorType] || this.errorStrategies.GENERAL_ERROR;
-
-      let delay;
-
-      if (strategy.customDelays) {
-        // Canvas用のカスタム遅延
-        const delayIndex = Math.min(
-          retryCount - 1,
-          strategy.customDelays.length - 1,
-        );
-        delay = strategy.customDelays[delayIndex];
-
-        // 長時間待機の場合はカウントダウン表示
-        if (delay >= 60000) {
-          await this.waitWithCountdown(delay);
-          return;
-        }
-      } else {
-        // 指数バックオフ
-        delay =
-          strategy.baseDelay *
-          Math.pow(strategy.backoffMultiplier, retryCount - 1);
-      }
-
-      // Waiting to retry...
-      await this.wait(delay);
-    }
-
-    // カウントダウン付き待機
-    async waitWithCountdown(totalDelay) {
-      const delayMinutes = Math.round((totalDelay / 60000) * 10) / 10;
-      // Long wait before retry...
-
-      if (totalDelay >= 60000) {
-        const intervals = Math.min(10, totalDelay / 10000);
-        const intervalTime = totalDelay / intervals;
-
-        for (let i = 0; i < intervals; i++) {
-          const remaining = totalDelay - intervalTime * i;
-          const remainingMinutes = Math.round((remaining / 60000) * 10) / 10;
-          log.debug(`⏱️ 残り ${remainingMinutes}分...`);
-          await this.wait(intervalTime);
-        }
-      } else {
-        await this.wait(totalDelay);
-      }
-    }
-
-    // 基本待機関数
-    wait(ms) {
-      return new Promise((resolve) => {
-        const timeoutId = setTimeout(resolve, ms);
-        this.activeTimeouts.add(timeoutId);
-
-        // クリーンアップ用にPromiseを拡張
-        const promise = new Promise((res) => setTimeout(res, ms));
-        promise.finally(() => this.activeTimeouts.delete(timeoutId));
-        return promise;
-      });
-    }
-
-    // タイムアウトPromise作成
-    createTimeoutPromise(ms) {
-      return new Promise((_, reject) => {
-        const timeoutId = setTimeout(() => {
-          reject(new Error(`処理タイムアウト: ${ms}ms`));
-        }, ms);
-        this.activeTimeouts.add(timeoutId);
-      });
-    }
-
-    // リソースクリーンアップ
-    cleanup() {
-      // アクティブなタイムアウトをクリア
-      this.activeTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
-      this.activeTimeouts.clear();
-
-      // AbortControllerのクリーンアップ
-      if (this.abortController) {
-        this.abortController.abort();
-        this.abortController = null;
-      }
-    }
-
-    // 統計情報取得
-    getMetrics() {
-      const totalAttempts = this.metrics.totalAttempts;
-      const successRate =
-        totalAttempts > 0
-          ? ((this.metrics.successfulAttempts / totalAttempts) * 100).toFixed(2)
-          : 0;
-
-      // エラー履歴の分析
-      const recentErrors = this.errorHistory.slice(-10); // 直近10件
-      const errorTrends = this.analyzeErrorTrends();
-
-      return {
-        ...this.metrics,
-        successRate: `${successRate}%`,
-        errorDistribution: this.metrics.errorCounts,
-        errorHistory: {
-          totalErrors: this.errorHistory.length,
-          recentErrors: recentErrors,
-          trends: errorTrends,
-        },
-        retryLevels: this.getRetryLevelStats(),
-      };
-    }
-
-    // エラー傾向分析
-    analyzeErrorTrends() {
-      if (this.errorHistory.length === 0) return { message: "エラー履歴なし" };
-
-      const last5Errors = this.errorHistory.slice(-5);
-      const errorTypes = last5Errors.map((e) => e.errorType);
-      const uniqueTypes = [...new Set(errorTypes)];
-
-      return {
-        recentErrorTypes: uniqueTypes,
-        hasConsecutiveErrors: this.detectConsecutiveErrors(3),
-        canvasIssueDetected: this.isCanvasInfiniteUpdate(),
-        lastErrorTime:
-          this.errorHistory[this.errorHistory.length - 1]?.timestamp,
-      };
-    }
-
-    // リトライレベル統計
-    getRetryLevelStats() {
-      const levels = { LIGHTWEIGHT: 0, MODERATE: 0, HEAVY_RESET: 0 };
-
-      this.errorHistory.forEach((error) => {
-        const level = this.determineRetryLevel(error.retryCount, error.context);
-        if (levels.hasOwnProperty(level)) {
-          levels[level]++;
-        }
-      });
-
-      return levels;
-    }
-
-    // 統計リセット
-    resetMetrics() {
-      this.metrics = {
-        totalAttempts: 0,
-        successfulAttempts: 0,
-        errorCounts: {},
-        averageRetryCount: 0,
-      };
-
-      // エラー履歴もリセット
-      this.errorHistory = [];
-      this.lastResults = [];
-      this.taskContext = null;
-    }
-  }
 
   // ========================================
   // Claude-ステップ0-4: セレクタ定義
@@ -3073,43 +2428,132 @@
   const excludeThinkingProcess = (element) => {
     if (!element) return null;
 
-    log.debug("🧹 [excludeThinkingProcess] 思考プロセス除外チェック");
+    log.debug("🧹 [excludeThinkingProcess] 思考プロセス除外チェック開始");
+    log.debug(`  - 要素タイプ: ${element.tagName}`);
+    log.debug(`  - 要素クラス: ${element.className || "(なし)"}`);
+    log.debug(`  - 要素ID: ${element.id || "(なし)"}`);
 
-    // 思考プロセスインジケータ
+    const textContent = element.textContent?.trim() || "";
+    log.debug(`  - テキスト内容長: ${textContent.length}文字`);
+    log.debug(
+      `  - テキスト先頭: ${textContent.substring(0, 100)}${textContent.length > 100 ? "..." : ""}`,
+    );
+
+    // 思考プロセスインジケータの拡張
     const thinkingIndicators = [
       ".ease-out.rounded-lg",
       '[class*="thinking-process"]',
+      '[class*="thinking"]',
+      '[data-testid*="thinking"]',
+      '[aria-label*="思考"]',
+      '[class*="thought"]',
+      "details[open]", // 折りたたまれた思考プロセス
     ];
 
     // 親要素に思考プロセスが含まれていないか確認
     for (const indicator of thinkingIndicators) {
       try {
         if (element.closest(indicator)) {
-          log.debug(`  ⚠️ 思考プロセス要素を検出: ${indicator}`);
+          log.debug(
+            `  ❌ 思考プロセス要素を検出（親要素チェック）: ${indicator}`,
+          );
           return null;
         }
       } catch (e) {
         // セレクタエラーをスキップ
+        log.debug(
+          `  ⚠️ セレクタエラー（スキップ）: ${indicator} - ${e.message}`,
+        );
       }
     }
 
-    // 要素のクラスをチェック
+    // 要素のクラスをチェック（より詳細）
     const classNames = element.className || "";
-    if (classNames.includes("thinking") || classNames.includes("thought")) {
-      log.debug("  ⚠️ 思考プロセスクラスを検出");
-      return null;
-    }
+    const thinkingClassPatterns = [
+      "thinking",
+      "thought",
+      "process",
+      "reasoning",
+      "reflection",
+      "analysis",
+      "考え",
+      "思考",
+      "プロセス",
+    ];
 
-    // ボタンテキストのチェック
-    const buttons = element.querySelectorAll("button");
-    for (const btn of buttons) {
-      if (btn.textContent && btn.textContent.includes("思考プロセス")) {
-        log.debug("  ⚠️ 思考プロセスボタンを検出");
+    for (const pattern of thinkingClassPatterns) {
+      if (classNames.toLowerCase().includes(pattern)) {
+        log.debug(
+          `  ❌ 思考プロセスクラスを検出: "${pattern}" in "${classNames}"`,
+        );
         return null;
       }
     }
 
-    log.debug("  ✓ 思考プロセスではありません");
+    // テキスト内容による思考プロセス判定
+    const thinkingTextPatterns = [
+      "思考プロセス",
+      "Thinking Process",
+      "Let me think",
+      "考えてみます",
+      "分析中",
+      "検討中",
+      "reasoning",
+      "analysis",
+      "考察",
+      "まず考えてみましょう",
+      "step by step",
+      "段階的に考える",
+    ];
+
+    for (const pattern of thinkingTextPatterns) {
+      if (textContent.toLowerCase().includes(pattern.toLowerCase())) {
+        log.debug(`  ❌ 思考プロセステキストを検出: "${pattern}"`);
+        return null;
+      }
+    }
+
+    // ボタンテキストのチェック（拡張）
+    const buttons = element.querySelectorAll("button, [role='button']");
+    for (const btn of buttons) {
+      const buttonText = btn.textContent?.trim() || "";
+      if (
+        buttonText.includes("思考プロセス") ||
+        buttonText.includes("Show thinking") ||
+        buttonText.includes("Hide thinking")
+      ) {
+        log.debug(`  ❌ 思考プロセスボタンを検出: "${buttonText}"`);
+        return null;
+      }
+    }
+
+    // 詳細要素（details/summary）のチェック
+    const details = element.querySelectorAll("details");
+    for (const detail of details) {
+      const summary = detail.querySelector("summary");
+      if (summary && summary.textContent?.includes("思考")) {
+        log.debug(`  ❌ 思考プロセス詳細要素を検出: "${summary.textContent}"`);
+        return null;
+      }
+    }
+
+    // 非常に短いテキストまたは空のテキストをチェック
+    if (textContent.length < 10) {
+      log.debug(
+        `  ❌ テキストが短すぎます: ${textContent.length}文字 - "${textContent}"`,
+      );
+      return null;
+    }
+
+    // 有効性をチェック：実際のコンテンツが含まれているか
+    const validContentLength = textContent.replace(/\s+/g, " ").trim().length;
+    if (validContentLength < 20) {
+      log.debug(`  ❌ 有効なコンテンツが不足: ${validContentLength}文字`);
+      return null;
+    }
+
+    log.debug("  ✅ 有効なコンテンツと判定");
+    log.debug(`  ✅ 有効なコンテンツ: ${validContentLength}文字`);
     return element;
   };
 
@@ -5367,7 +4811,7 @@
         log.debug(
           "🚫 【Claude-ステップ7-1】プロンプト除外機能を適用してテキスト取得",
         );
-        const textInfo = getTextPreview(canvasResult);
+        const textInfo = await getTextPreview(canvasResult);
         if (textInfo && textInfo.full && textInfo.full.length > 100) {
           finalText = textInfo.full;
           log.debug(`📄 Canvas 最終テキスト取得完了 (${textInfo.length}文字)`);
@@ -5397,7 +4841,7 @@
           log.debug(
             "🚫 【Claude-ステップ7-3】プロンプト除外機能を適用してテキスト取得（通常応答）",
           );
-          const textInfo = getTextPreview(normalResult);
+          const textInfo = await getTextPreview(normalResult);
           if (textInfo && textInfo.full) {
             finalText = textInfo.full;
             log.debug(`📄 通常 テキスト取得完了 (${textInfo.length}文字)`);
@@ -5413,9 +4857,44 @@
       }
 
       // finalTextの確実な初期化
+      log.debug("🔍 [FINAL-TEXT-CHECK] 最終テキスト状況確認:");
+      log.debug(`  - finalText存在: ${!!finalText}`);
+      log.debug(`  - finalText型: ${typeof finalText}`);
+      log.debug(`  - finalText長: ${finalText?.length || 0}文字`);
+      log.debug(
+        `  - finalText内容（先頭100文字）: ${finalText?.substring(0, 100) || "(空)"}`,
+      );
+
       if (!finalText || finalText.trim() === "") {
-        log.warn("⚠️ テキストが取得できませんでした");
+        log.warn(
+          "⚠️ [FINAL-TEXT-CHECK] テキストが取得できませんでした - デバッグ情報:",
+        );
+
+        // デバッグ用：ページ上のテキスト要素を再検索
+        try {
+          const allTextElements = document.querySelectorAll(
+            '[class*="markdown"], [class*="response"], [class*="message"], div[role="main"] div, main div',
+          );
+          log.debug(
+            `  - ページ上の潜在的テキスト要素数: ${allTextElements.length}`,
+          );
+
+          for (let i = 0; i < Math.min(5, allTextElements.length); i++) {
+            const elem = allTextElements[i];
+            const text = elem.textContent?.trim() || "";
+            if (text.length > 50) {
+              log.debug(
+                `  - 要素${i + 1}: ${text.substring(0, 100)}... (${text.length}文字)`,
+              );
+            }
+          }
+        } catch (debugError) {
+          log.debug(`  - デバッグ検索エラー: ${debugError.message}`);
+        }
+
         finalText = "テキスト取得失敗";
+      } else {
+        log.debug("✅ [FINAL-TEXT-CHECK] 正常なテキストを取得");
       }
 
       log.debug(
@@ -5838,7 +5317,7 @@
           );
 
           if (canvasResult) {
-            const textInfo = getTextPreview(canvasResult);
+            const textInfo = await getTextPreview(canvasResult);
             if (textInfo) finalText = textInfo.full;
           }
 
@@ -5849,7 +5328,7 @@
               true,
             );
             if (normalResult) {
-              const textInfo = getTextPreview(normalResult);
+              const textInfo = await getTextPreview(normalResult);
               if (textInfo) finalText = textInfo.full;
             }
           }
