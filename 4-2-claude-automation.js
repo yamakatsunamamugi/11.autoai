@@ -1,9 +1,58 @@
 // 全体を即時実行関数でラップ
 (function () {
-  // URL検証 - Content Scriptは claude.ai でのみ動作すべき
+  // 🔒 重複実行防止（manifest.json自動注入対応）
+  if (window.__CLAUDE_AUTOMATION_LOADED__) {
+    console.log(
+      "🛡️ [Claude Automation] 重複実行防止: 既に初期化済みのためスキップ",
+    );
+    return;
+  }
+  window.__CLAUDE_AUTOMATION_LOADED__ = true;
+
+  // 🔍 [段階5] Content Script実行コンテキストの詳細確認
   const currentURL = window.location.href;
   const isValidClaudeURL = currentURL.includes("claude.ai");
   const isExtensionPage = currentURL.startsWith("chrome-extension://");
+
+  // 🔍 [段階5-実行コンテキスト] Content Script実行環境の詳細ログ
+  console.warn(`🔍 [段階5-Content Script] 実行コンテキスト詳細分析:`, {
+    executionContext: {
+      url: currentURL,
+      title: document.title,
+      domain: window.location.hostname,
+      protocol: window.location.protocol,
+      pathname: window.location.pathname,
+      search: window.location.search,
+      hash: window.location.hash,
+    },
+    validationResults: {
+      isValidClaudeURL: isValidClaudeURL,
+      isExtensionPage: isExtensionPage,
+      isChromeNewTab: currentURL === "chrome://newtab/",
+      isAboutBlank: currentURL === "about:blank",
+    },
+    documentState: {
+      readyState: document.readyState,
+      hasDocumentElement: !!document.documentElement,
+      hasBody: !!document.body,
+      bodyChildrenCount: document.body ? document.body.children.length : 0,
+    },
+    chromeExtensionInfo: {
+      hasChromeRuntime: typeof chrome !== "undefined" && !!chrome.runtime,
+      extensionId:
+        typeof chrome !== "undefined" && chrome.runtime
+          ? chrome.runtime.id
+          : null,
+      runtimeUrl:
+        typeof chrome !== "undefined" && chrome.runtime
+          ? chrome.runtime.getURL("")
+          : null,
+    },
+    timestamp: new Date().toISOString(),
+    userAgent: navigator.userAgent,
+  });
+
+  // URL検証 - Content Scriptは claude.ai でのみ動作すべき
 
   // ログレベル定義
   const LOG_LEVEL = { ERROR: 1, WARN: 2, INFO: 3, DEBUG: 4 };

@@ -5,13 +5,15 @@ const LOG_LEVEL = { ERROR: 1, WARN: 2, INFO: 3, DEBUG: 4 };
 let CURRENT_LOG_LEVEL = LOG_LEVEL.INFO; // デフォルト値
 
 // Chrome拡張環境でのみStorageから設定を読み込む
-if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-  chrome.storage.local.get('logLevel', (result) => {
+if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+  chrome.storage.local.get("logLevel", (result) => {
     if (result.logLevel) {
       CURRENT_LOG_LEVEL = parseInt(result.logLevel);
-      console.log(`📋 ログレベル設定: ${['', 'ERROR', 'WARN', 'INFO', 'DEBUG'][CURRENT_LOG_LEVEL]} (${CURRENT_LOG_LEVEL})`);
+      console.log(
+        `📋 ログレベル設定: ${["", "ERROR", "WARN", "INFO", "DEBUG"][CURRENT_LOG_LEVEL]} (${CURRENT_LOG_LEVEL})`,
+      );
     } else {
-      console.log('📋 ログレベル: デフォルト (INFO)');
+      console.log("📋 ログレベル: デフォルト (INFO)");
     }
   });
 }
@@ -29,10 +31,8 @@ const log = {
   },
   debug: (...args) => {
     if (CURRENT_LOG_LEVEL >= LOG_LEVEL.DEBUG) console.log(...args);
-  }
+  },
 };
-
-
 
 /**
  * @fileoverview ステップ5: タスクグループ内の繰り返し処理
@@ -1068,8 +1068,8 @@ async function executeTasks(tasks, taskGroup) {
     const formattedTasks = tasks.map((task, index) => {
       // DEBUG: Step3からのタスクデータ詳細
 
-      // Step3で生成されたタスクの情報を使用
-      const aiType = task.ai || taskGroup?.aiType || "Claude";
+      // Step3で生成されたタスクの情報を使用（AI行の実際の値）
+      const aiType = task.ai || task.aiType || "Claude";
 
       // DEBUG: aiType決定プロセス
 
@@ -1125,12 +1125,10 @@ async function executeTasks(tasks, taskGroup) {
       if (!task.prompt) {
         throw new Error(`タスク${task.id}: promptが未定義`);
       }
-      // 特殊タスク（report, genspark, single）の場合はanswerCellが不要なので警告を出さない
+      // 特殊タスク（report, genspark）の場合はanswerCellが不要なので警告を出さない
       const isSpecialTask =
         task.groupType === "report" ||
         task.groupType === "genspark" ||
-        task.ai === "single" ||
-        task.aiType === "single" ||
         task.ai === "Report" ||
         task.ai === "Genspark";
 

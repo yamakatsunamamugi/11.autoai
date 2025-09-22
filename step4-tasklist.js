@@ -531,6 +531,41 @@ class StableWindowManager {
         // 新しいウィンドウを作成
         const window = await chrome.windows.create(windowOptions);
 
+        // 🔍 [段階1] ウィンドウ作成結果の詳細ログ
+        log.warn(
+          `🔍 [段階1-ウィンドウ作成] chrome.windows.create結果の詳細分析:`,
+          {
+            requestedUrl: url,
+            windowOptions: windowOptions,
+            createdWindow: {
+              id: window.id,
+              state: window.state,
+              type: window.type,
+              focused: window.focused,
+              top: window.top,
+              left: window.left,
+              width: window.width,
+              height: window.height,
+              tabsCount: window.tabs ? window.tabs.length : 0,
+            },
+            tabsDetails: window.tabs
+              ? window.tabs.map((tab, index) => ({
+                  index: index,
+                  id: tab.id,
+                  url: tab.url,
+                  title: tab.title,
+                  status: tab.status,
+                  active: tab.active,
+                  windowId: tab.windowId,
+                  isClaudeAI: tab.url ? tab.url.includes("claude.ai") : false,
+                  isExtensionPage: tab.url
+                    ? tab.url.startsWith("chrome-extension://")
+                    : false,
+                }))
+              : [],
+          },
+        );
+
         // ウィンドウ情報を登録
         const windowInfo = {
           url: url,
@@ -682,6 +717,58 @@ class StepIntegratedWindowService {
 
       // ウィンドウ作成
       const window = await chrome.windows.create(createOptions);
+
+      // 🔍 [段階1] StepIntegratedWindowService ウィンドウ作成結果の詳細ログ
+      log.warn(
+        `🔍 [段階1-StepIntegratedWindowService] chrome.windows.create結果:`,
+        {
+          requestedUrl: url,
+          position: position,
+          createOptions: createOptions,
+          createdWindow: {
+            id: window.id,
+            state: window.state,
+            type: window.type,
+            focused: window.focused,
+            top: window.top,
+            left: window.left,
+            width: window.width,
+            height: window.height,
+            tabsCount: window.tabs ? window.tabs.length : 0,
+          },
+          immediateTabsAnalysis: window.tabs
+            ? window.tabs.map((tab, index) => ({
+                tabIndex: index,
+                tabId: tab.id,
+                url: tab.url,
+                pendingUrl: tab.pendingUrl,
+                title: tab.title,
+                status: tab.status,
+                active: tab.active,
+                windowId: tab.windowId,
+                isClaudeAI: tab.url ? tab.url.includes("claude.ai") : false,
+                isExtensionPage: tab.url
+                  ? tab.url.startsWith("chrome-extension://")
+                  : false,
+                isChromeNewTab: tab.url === "chrome://newtab/",
+                isAboutBlank: tab.url === "about:blank",
+                urlMatchesRequest: tab.url === url,
+              }))
+            : [],
+          potentialIssues: {
+            noTabsCreated: !window.tabs || window.tabs.length === 0,
+            wrongUrl:
+              window.tabs && window.tabs[0] && window.tabs[0].url !== url,
+            extensionPageDetected:
+              window.tabs &&
+              window.tabs.some((tab) =>
+                tab.url?.startsWith("chrome-extension://"),
+              ),
+            pendingUrlExists:
+              window.tabs && window.tabs.some((tab) => tab.pendingUrl),
+          },
+        },
+      );
 
       // 位置を記録
       this.windowPositions.set(position, window.id);
@@ -1600,10 +1687,8 @@ async function generateTaskList(
         for (let aiType of aiTypes) {
           const originalAiType = aiType;
 
-          // AIタイプの正規化（singleをClaudeに変換）
-          if (aiType === "single" || !aiType) {
-            aiType = "Claude";
-          }
+          // AI行の実際の値をそのまま使用（"single" → "Claude"変換を削除）
+          // aiTypeは既にAI行から取得した正しい値（"ChatGPT", "Claude", "Gemini"など）
 
           // 【シンプル化】文字列結合でセル位置計算
           const answerCell = getAnswerCell(taskGroup, aiType, row);
@@ -2111,7 +2196,6 @@ class WindowController {
       gemini: "gemini",
       genspark: "genspark",
       report: "report",
-      single: "claude",
       "3種類（chatgpt・gemini・claude）": "3ai",
     };
     return mappings[normalized] || normalized;
@@ -2826,12 +2910,62 @@ class WindowController {
       // ウィンドウ内の全タブを取得
       const window = await chrome.windows.get(windowId, { populate: true });
 
+      // 🔍 [段階2] ウィンドウ取得結果の詳細ログ
+      ExecuteLogger.warn(
+        `🔍 [段階2-findCorrectAITab] chrome.windows.get結果の詳細分析:`,
+        {
+          windowId: windowId,
+          automationName: automationName,
+          windowExists: !!window,
+          windowState: window ? window.state : null,
+          windowType: window ? window.type : null,
+          tabsCount: window && window.tabs ? window.tabs.length : 0,
+          hasPopulatedTabs: !!(window && window.tabs && window.tabs.length > 0),
+        },
+      );
+
       if (!window.tabs || window.tabs.length === 0) {
         ExecuteLogger.warn(
           `⚠️ [findCorrectAITab] ウィンドウにタブが見つかりません: ${windowId}`,
         );
         return null;
       }
+
+      // 🔍 [段階2] 全タブの詳細分析
+      const tabsAnalysis = window.tabs.map((tab, index) => {
+        const isValidAI = this.validateAIUrl(tab.url, automationName);
+        return {
+          tabIndex: index,
+          tabId: tab.id,
+          url: tab.url,
+          pendingUrl: tab.pendingUrl,
+          title: tab.title,
+          status: tab.status,
+          active: tab.active,
+          windowId: tab.windowId,
+          isExtensionPage: tab.url
+            ? tab.url.startsWith("chrome-extension://")
+            : false,
+          isClaudeAI: tab.url ? tab.url.includes("claude.ai") : false,
+          isChromeNewTab: tab.url === "chrome://newtab/",
+          isAboutBlank: tab.url === "about:blank",
+          validateAIUrlResult: isValidAI,
+          urlLength: tab.url ? tab.url.length : 0,
+          hasUrl: !!tab.url,
+        };
+      });
+
+      ExecuteLogger.warn(`🔍 [段階2-findCorrectAITab] 全タブの詳細分析:`, {
+        windowId: windowId,
+        automationName: automationName,
+        tabCount: window.tabs.length,
+        tabsAnalysis: tabsAnalysis,
+        validAITabsCount: tabsAnalysis.filter((t) => t.validateAIUrlResult)
+          .length,
+        extensionPagesCount: tabsAnalysis.filter((t) => t.isExtensionPage)
+          .length,
+        claudeAITabsCount: tabsAnalysis.filter((t) => t.isClaudeAI).length,
+      });
 
       ExecuteLogger.debug(`🔍 [findCorrectAITab] ウィンドウ内タブ情報:`, {
         windowId: windowId,
@@ -2847,9 +2981,40 @@ class WindowController {
       // 期待されるURLパターンを取得
       const expectedUrlPatterns = this.getExpectedUrlPatterns(automationName);
 
+      // 🔍 [段階2] URLパターンマッチングの詳細ログ
+      ExecuteLogger.warn(
+        `🔍 [段階2-findCorrectAITab] URLパターンマッチング開始:`,
+        {
+          automationName: automationName,
+          expectedUrlPatterns: expectedUrlPatterns,
+        },
+      );
+
       // タブをURLパターンでフィルタリング
       for (const tab of window.tabs) {
-        if (tab.url && this.validateAIUrl(tab.url, automationName)) {
+        // 🔍 [段階2] 各タブの検証詳細ログ
+        const validationResult = this.validateAIUrl(tab.url, automationName);
+        ExecuteLogger.warn(`🔍 [段階2-findCorrectAITab] タブ検証結果:`, {
+          tabId: tab.id,
+          url: tab.url,
+          automationName: automationName,
+          hasUrl: !!tab.url,
+          urlType: tab.url
+            ? tab.url.startsWith("chrome-extension://")
+              ? "extension"
+              : tab.url.includes("claude.ai")
+                ? "claude"
+                : tab.url === "chrome://newtab/"
+                  ? "newtab"
+                  : tab.url === "about:blank"
+                    ? "blank"
+                    : "other"
+            : "none",
+          validationResult: validationResult,
+          expectedPatterns: expectedUrlPatterns,
+        });
+
+        if (tab.url && validationResult) {
           ExecuteLogger.info(
             `✅ [findCorrectAITab] 正しいAIサイトタブを発見:`,
             {
@@ -3983,10 +4148,11 @@ async function executeStep4(taskList) {
                 );
 
                 // 正しいAIサイトのタブを検索
-                const correctTabId = await this.findCorrectAITab(
-                  automationName,
-                  tabInfo.windowId,
-                );
+                const correctTabId =
+                  await window.windowController.findCorrectAITab(
+                    automationName,
+                    tabInfo.windowId,
+                  );
 
                 if (correctTabId && correctTabId !== tabId) {
                   ExecuteLogger.info(
@@ -4029,51 +4195,112 @@ async function executeStep4(taskList) {
                 }
               }
 
-              // 最終確認：AIサイトのURLパターンをチェック
-              const isValidAIUrl = this.validateAIUrl(
-                tabInfo.url,
-                automationName,
+              // 🔍 [段階3] manifest.json自動注入Content Scriptへの直接通信
+              ExecuteLogger.warn(
+                `🔍 [段階3-自動注入確認] manifest.json自動注入Content Scriptとの通信開始:`,
+                {
+                  automationName: automationName,
+                  targetTabId: tabId,
+                  tabInfo: {
+                    id: tabInfo.id,
+                    url: tabInfo.url,
+                    title: tabInfo.title,
+                    status: tabInfo.status,
+                    active: tabInfo.active,
+                    windowId: tabInfo.windowId,
+                  },
+                  manifestAutoInjection: true,
+                  timestamp: new Date().toISOString(),
+                },
               );
-              if (!isValidAIUrl) {
-                ExecuteLogger.error(
-                  `❌ [Content Script注入] 無効なAIサイトURL`,
+
+              // タブの現在状態を再取得して確認
+              let currentTabInfo;
+              try {
+                currentTabInfo = await chrome.tabs.get(tabId);
+                ExecuteLogger.warn(
+                  `🔍 [段階3-タブ確認] 現在のタブ状態（manifest.json自動注入対応）:`,
                   {
                     tabId: tabId,
-                    url: tabInfo.url,
+                    current: {
+                      id: currentTabInfo.id,
+                      url: currentTabInfo.url,
+                      title: currentTabInfo.title,
+                      status: currentTabInfo.status,
+                      active: currentTabInfo.active,
+                      windowId: currentTabInfo.windowId,
+                    },
+                    urlAnalysis: {
+                      isExtensionPage: currentTabInfo.url
+                        ? currentTabInfo.url.startsWith("chrome-extension://")
+                        : false,
+                      isClaudeAI: currentTabInfo.url
+                        ? currentTabInfo.url.includes("claude.ai")
+                        : false,
+                      shouldHaveAutoInjection: currentTabInfo.url
+                        ? currentTabInfo.url.includes("claude.ai") ||
+                          currentTabInfo.url.includes("chatgpt.com") ||
+                          currentTabInfo.url.includes("gemini.google.com") ||
+                          currentTabInfo.url.includes("genspark")
+                        : false,
+                    },
+                  },
+                );
+              } catch (tabGetError) {
+                ExecuteLogger.error(
+                  `❌ [段階3-タブ確認] chrome.tabs.get失敗:`,
+                  {
+                    tabId: tabId,
+                    error: tabGetError.message,
+                  },
+                );
+                currentTabInfo = tabInfo; // フォールバック
+              }
+
+              // 最終確認：AIサイトのURLパターンをチェック
+              const isValidAIUrl = window.windowController.validateAIUrl(
+                currentTabInfo.url,
+                automationName,
+              );
+
+              ExecuteLogger.warn(`🔍 [段階3-URL確認] URL有効性チェック結果:`, {
+                tabId: tabId,
+                url: currentTabInfo.url,
+                automationName: automationName,
+                isValidAIUrl: isValidAIUrl,
+                validationMethod: "window.windowController.validateAIUrl",
+                manifestAutoInjection: "有効",
+              });
+
+              if (!isValidAIUrl) {
+                ExecuteLogger.error(
+                  `❌ [manifest.json自動注入] 無効なAIサイトURL`,
+                  {
+                    tabId: tabId,
+                    url: currentTabInfo.url,
                     automationName: automationName,
                   },
                 );
                 throw new Error(
-                  `無効なAIサイトURL: ${tabInfo.url} (${automationName})`,
+                  `無効なAIサイトURL: ${currentTabInfo.url} (${automationName})`,
                 );
               }
 
-              // 正しいタブに注入を実行
+              // manifest.json自動注入Content Scriptの準備確認
               ExecuteLogger.info(
-                `🔧 [Content Script注入] スクリプト注入実行: ${scriptFile}`,
+                `🔧 [manifest.json自動注入] Content Script準備確認中: ${automationName}`,
                 {
                   tabId: tabId,
-                  url: tabInfo.url,
+                  url: currentTabInfo.url,
                   automationName: automationName,
                 },
               );
 
-              const injectionResults = await chrome.scripting.executeScript({
-                target: { tabId: tabId },
-                files: [scriptFile],
-              });
-
-              ExecuteLogger.info(`✅ [Content Script注入] 注入完了:`, {
-                tabId: tabId,
-                scriptFile: scriptFile,
-                resultsCount: injectionResults.length,
-              });
-
-              // 初期化待機（スクリプトが完全に読み込まれるまで）
-              await new Promise((resolve) => setTimeout(resolve, 1500));
+              // 初期化待機（manifest.json自動注入Content Scriptが初期化されるまで）
+              await new Promise((resolve) => setTimeout(resolve, 2000));
 
               ExecuteLogger.info(
-                `✅ [Content Script注入] ${automationName} 準備完了`,
+                `✅ [manifest.json自動注入] ${automationName} 準備完了`,
               );
             } catch (injectionError) {
               ExecuteLogger.error(`❌ [Content Script注入] 失敗:`, {
@@ -4107,126 +4334,6 @@ async function executeStep4(taskList) {
             );
 
             response = await chrome.tabs.sendMessage(tabId, messagePayload);
-
-            // 以下は削除されたchrome.scripting.executeScriptのコード（参考用に残す）
-            if (false && automationName === "ClaudeAutomation") {
-              const results = await chrome.scripting.executeScript({
-                target: { tabId: tabId },
-                func: async (taskData) => {
-                  try {
-                    // 🔍 [SCRIPT-EXEC] 詳細ログ追加
-                    console.log("🔍 [SCRIPT-EXEC] claude.aiタブ内実行開始");
-                    console.log(
-                      "🔍 [SCRIPT-EXEC] 現在のURL:",
-                      window.location.href,
-                    );
-                    console.log("🔍 [SCRIPT-EXEC] taskData:", taskData);
-
-                    // 🔧 [ENHANCED-DIAGNOSTIC] Content Script状態詳細確認
-                    console.log(
-                      "🔧 [ENHANCED-DIAGNOSTIC] Content Script状態確認:",
-                    );
-                    console.log(
-                      "  - CLAUDE_SCRIPT_LOADED:",
-                      window.CLAUDE_SCRIPT_LOADED,
-                    );
-                    console.log(
-                      "  - CLAUDE_SCRIPT_INIT_TIME:",
-                      window.CLAUDE_SCRIPT_INIT_TIME,
-                    );
-                    console.log(
-                      "  - executeTask存在:",
-                      typeof window.executeTask,
-                    );
-                    console.log(
-                      "  - findClaudeElement存在:",
-                      typeof window.findClaudeElement,
-                    );
-                    console.log("  - inputText存在:", typeof window.inputText);
-                    console.log(
-                      "  - runAutomation存在:",
-                      typeof window.runAutomation,
-                    );
-
-                    // 🔧 [ENHANCED-DIAGNOSTIC] isValidClaudeURL and shouldExportFunctions check
-                    const currentURL = window.location.href;
-                    const isValidClaudeURL = /^https:\/\/claude\.ai\/.*/i.test(
-                      currentURL,
-                    );
-                    const isExtensionPage = currentURL.includes(
-                      "chrome-extension://",
-                    );
-                    console.log("🔧 [ENHANCED-DIAGNOSTIC] URL状態確認:");
-                    console.log("  - isValidClaudeURL:", isValidClaudeURL);
-                    console.log("  - isExtensionPage:", isExtensionPage);
-                    console.log(
-                      "  - shouldInitialize計算結果:",
-                      !isExtensionPage && isValidClaudeURL,
-                    );
-
-                    console.log(
-                      "🔍 [SCRIPT-EXEC] window.executeTask存在確認:",
-                      typeof window.executeTask,
-                    );
-                    console.log(
-                      "🔍 [SCRIPT-EXEC] windowオブジェクト上の関数一覧:",
-                      Object.getOwnPropertyNames(window).filter(
-                        (name) =>
-                          typeof window[name] === "function" &&
-                          name.includes("execute"),
-                      ),
-                    );
-
-                    // Content Script内のexecuteTask関数を直接呼び出し
-                    if (typeof window.executeTask !== "function") {
-                      console.log(
-                        "❌ [SCRIPT-EXEC] executeTask未定義 - 利用可能な関数:",
-                        Object.getOwnPropertyNames(window)
-                          .filter((name) => typeof window[name] === "function")
-                          .slice(0, 10),
-                      );
-                      throw new Error("executeTask function is not available");
-                    }
-
-                    console.log("🔍 [SCRIPT-EXEC] executeTask呼び出し開始");
-                    console.log("📤 Executing task with data:", taskData);
-                    const result = await window.executeTask(taskData);
-                    console.log(
-                      "🔍 [SCRIPT-EXEC] executeTask実行結果:",
-                      result,
-                    );
-
-                    if (result) {
-                      return {
-                        success: true,
-                        message: "Task executed successfully",
-                        result: result,
-                        timestamp: Date.now(),
-                      };
-                    } else {
-                      return {
-                        success: false,
-                        message: "Task execution failed",
-                        timestamp: Date.now(),
-                      };
-                    }
-                  } catch (error) {
-                    console.error("❌ executeTask error:", error);
-                    return {
-                      success: false,
-                      error: error.message,
-                      timestamp: Date.now(),
-                    };
-                  }
-                },
-                args: [messagePayload.task || messagePayload.taskData],
-              });
-
-              response =
-                results && results[0]
-                  ? results[0].result
-                  : { success: false, error: "No response" };
-            }
 
             ExecuteLogger.info(`🔍 [STEP C-2] メッセージ送信成功:`, {
               tabId: tabId,
@@ -4309,14 +4416,9 @@ async function executeStep4(taskList) {
 
     // 注: 3種類AI判定は Step 4-6-0 で既に展開済みのため、ここでは不要
 
-    // Step 4-6-8-1: AI種別の正規化
-    let normalizedAiType = task.aiType;
-    if (task.aiType === "single" || !task.aiType) {
-      ExecuteLogger.info(
-        `[step4-execute.js] Step 4-6-8-2: AIタイプ '${task.aiType}' を 'Claude' に変換`,
-      );
-      normalizedAiType = "Claude";
-    }
+    // Step 4-6-8-1: AI種別の正規化（不要な"single"変換を削除）
+    let normalizedAiType = task.aiType || "Claude";
+    // aiTypeは既にAI行から取得した正しい値（"ChatGPT", "Claude", "Gemini"など）
 
     // Step 4-6-8-2: 正しいタブIDを取得
     const normalizedKey =
@@ -4368,19 +4470,10 @@ async function executeStep4(taskList) {
       window.detailedLogManager.recordTaskStart(task, windowInfo);
     }
 
-    // Step 4-6-8-3: AI自動化ファイルの読み込み確認（全AI対応）
-    const aiType = normalizedAiType.toLowerCase();
-    if (!window.aiAutomationLoader.isAIAvailable(aiType)) {
-      ExecuteLogger.info(
-        `[step4-execute.js] Step 4-6-8-3: ${normalizedAiType} 自動化ファイルを読み込み中...`,
-      );
-      await window.aiAutomationLoader.loadAIFile(aiType);
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-    } else {
-      ExecuteLogger.info(
-        `[step4-execute.js] Step 4-6-8-3: ${normalizedAiType} 自動化ファイルは読み込み済み`,
-      );
-    }
+    // Step 4-6-8-3: manifest.json自動注入Content Script確認（純粋メッセージパッシング版）
+    ExecuteLogger.info(
+      `[step4-execute.js] Step 4-6-8-3: ${normalizedAiType} manifest.json自動注入Content Script準備確認`,
+    );
 
     // Step 4-6-8-4: 送信時刻記録
     if (window.detailedLogManager) {
@@ -4392,7 +4485,7 @@ async function executeStep4(taskList) {
       `[step4-execute.js] Step 4-6-8-5: ${normalizedAiType}実行準備`,
     );
     const executeFunction = async () => {
-      switch (aiType) {
+      switch (normalizedAiType.toLowerCase()) {
         case "chatgpt":
           return await executeContentScriptTask(
             targetTabId,

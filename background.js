@@ -20,10 +20,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.type === "content_script_ready") {
     // log.debug("✅ Content Script initialized on tab:", sender.tab?.id);
     sendResponse({ success: true, message: "Background acknowledged" });
+    return true;
   }
+
+  // 注意: Content Script注入はmanifest.json自動注入に移行済み
+  // Content Script注入要求は廃止
 
   return true; // 非同期レスポンスを許可
 });
+
+// 注意: Content Script注入機能は廃止
+// manifest.json自動注入方式に移行済み
 
 // エラーハンドリング
 self.addEventListener("unhandledrejection", (event) => {

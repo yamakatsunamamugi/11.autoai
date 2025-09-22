@@ -5,13 +5,15 @@ const LOG_LEVEL = { ERROR: 1, WARN: 2, INFO: 3, DEBUG: 4 };
 let CURRENT_LOG_LEVEL = LOG_LEVEL.INFO; // デフォルト値
 
 // Chrome拡張環境でのみStorageから設定を読み込む
-if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-  chrome.storage.local.get('logLevel', (result) => {
+if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+  chrome.storage.local.get("logLevel", (result) => {
     if (result.logLevel) {
       CURRENT_LOG_LEVEL = parseInt(result.logLevel);
-      console.log(`📋 ログレベル設定: ${['', 'ERROR', 'WARN', 'INFO', 'DEBUG'][CURRENT_LOG_LEVEL]} (${CURRENT_LOG_LEVEL})`);
+      console.log(
+        `📋 ログレベル設定: ${["", "ERROR", "WARN", "INFO", "DEBUG"][CURRENT_LOG_LEVEL]} (${CURRENT_LOG_LEVEL})`,
+      );
     } else {
-      console.log('📋 ログレベル: デフォルト (INFO)');
+      console.log("📋 ログレベル: デフォルト (INFO)");
     }
   });
 }
@@ -29,10 +31,8 @@ const log = {
   },
   debug: (...args) => {
     if (CURRENT_LOG_LEVEL >= LOG_LEVEL.DEBUG) console.log(...args);
-  }
+  },
 };
-
-
 
 /**
  * @fileoverview Step5 Execute - ステップ5実行処理
@@ -177,7 +177,9 @@ class SimpleSheetsClient {
 window.simpleSheetsClient = new SimpleSheetsClient();
 
 // ========================================
-// AI自動化ファイルローダークラス
+// AI自動化ファイルローダークラス（manifest.json自動注入対応）
+// 注意: UIページからのContent Script直接読み込みは廃止
+// manifest.json自動注入されたContent Scriptとメッセージパッシングで通信
 // ========================================
 class AIAutomationLoader {
   constructor() {
@@ -186,80 +188,24 @@ class AIAutomationLoader {
   }
 
   /**
-   * AI自動化ファイルを動的にロード
+   * AI自動化ファイルの状態確認（manifest.json自動注入版）
+   * 注意: UIページからの直接読み込みは廃止
    * @param {string} aiType - AI種別（chatgpt/claude/gemini/genspark/report）
    */
   async loadAIFile(aiType) {
     const aiTypeNormalized = aiType.toLowerCase();
 
-    // 既にロード済みか確認
-    if (this.loadedAIFiles.has(aiTypeNormalized)) {
-      ExecuteLogger.info(
-        `✅ ${aiTypeNormalized} 自動化ファイルは既にロード済み`,
-      );
-      return true;
-    }
+    // manifest.json自動注入のため、常に利用可能として扱う
+    ExecuteLogger.info(
+      `✅ ${aiTypeNormalized} 自動化ファイル: manifest.json自動注入により利用可能`,
+    );
 
-    // ローディング中の場合は既存のPromiseを返す
-    if (this.loadingPromises.has(aiTypeNormalized)) {
-      ExecuteLogger.info(
-        `⏳ ${aiTypeNormalized} 自動化ファイルは現在ロード中...`,
-      );
-      return this.loadingPromises.get(aiTypeNormalized);
-    }
-
-    // ファイルマッピング
-    const fileMap = {
-      chatgpt: "4-1-chatgpt-automation.js",
-      claude: "4-2-claude-automation.js",
-      gemini: "4-3-gemini-automation.js",
-      report: "4-4-report-automation.js",
-      genspark: "4-5-genspark-automation.js",
-    };
-
-    const fileName = fileMap[aiTypeNormalized];
-    if (!fileName) {
-      ExecuteLogger.error(`❌ 未対応のAI種別: ${aiType}`);
-      return false;
-    }
-
-    // ローディングPromiseを作成
-    const loadingPromise = new Promise((resolve) => {
-      ExecuteLogger.info(
-        `📂 ${aiTypeNormalized} 自動化ファイルをロード中: ${fileName}`,
-      );
-
-      const script = document.createElement("script");
-      script.type = "module";
-      script.src = chrome.runtime.getURL(fileName);
-
-      script.onload = () => {
-        this.loadedAIFiles.add(aiTypeNormalized);
-        this.loadingPromises.delete(aiTypeNormalized);
-        ExecuteLogger.info(
-          `✅ ${aiTypeNormalized} 自動化ファイルロード完了: ${fileName}`,
-        );
-        resolve(true);
-      };
-
-      script.onerror = (error) => {
-        this.loadingPromises.delete(aiTypeNormalized);
-        ExecuteLogger.error(
-          `❌ ${aiTypeNormalized} 自動化ファイルロード失敗: ${fileName}`,
-          error,
-        );
-        resolve(false);
-      };
-
-      document.head.appendChild(script);
-    });
-
-    this.loadingPromises.set(aiTypeNormalized, loadingPromise);
-    return loadingPromise;
+    this.loadedAIFiles.add(aiTypeNormalized);
+    return true;
   }
 
   /**
-   * 必要なすべてのAIファイルを一度にロード
+   * 必要なすべてのAIファイルの状態確認（manifest.json自動注入版）
    * @param {Array<string>} aiTypes - AI種別の配列
    */
   async loadAllRequiredFiles(aiTypes) {
@@ -269,13 +215,15 @@ class AIAutomationLoader {
   }
 
   /**
-   * AIが利用可能か確認
+   * AIが利用可能か確認（manifest.json自動注入版）
    * @param {string} aiType - AI種別
    */
   isAIAvailable(aiType) {
     const aiTypeNormalized = aiType.toLowerCase();
 
-    return this.loadedAIFiles.has(aiTypeNormalized);
+    // manifest.json自動注入のため、対応AI種別は常に利用可能
+    const supportedAIs = ["chatgpt", "claude", "gemini", "genspark", "report"];
+    return supportedAIs.includes(aiTypeNormalized);
   }
 }
 
