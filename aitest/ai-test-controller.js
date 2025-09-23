@@ -229,6 +229,10 @@ class AITestController {
       // 全て準備完了したかチェック
       if (Object.values(this.readyStates).every((ready) => ready)) {
         log.info("✅ 全てのContent Scriptが準備完了");
+
+        // 各AIのモデル・機能探索を実行
+        await this.discoverAllAIFeatures();
+
         return true;
       }
 
@@ -244,8 +248,100 @@ class AITestController {
       `⚠️ 一部のContent Scriptが準備できませんでした: ${notReady.join(", ")}`,
     );
 
-    // 準備できたものだけで続行
+    // 準備できたものだけで続行して探索
+    await this.discoverAllAIFeatures();
+
     return false;
+  }
+
+  // ========================================
+  // 全AIのモデル・機能探索
+  // ========================================
+  async discoverAllAIFeatures() {
+    log.info("🔍 各AIサービスのモデル・機能を探索中...");
+
+    const discoveryPromises = [];
+
+    // ChatGPTの探索
+    if (this.readyStates["chatgpt"] && this.tabs["chatgpt"]) {
+      discoveryPromises.push(
+        this.discoverAIFeatures("chatgpt")
+          .then((result) => {
+            this.chatgptCapabilities = result;
+            log.info("✅ ChatGPT探索完了", result);
+          })
+          .catch((error) => {
+            log.error("❌ ChatGPT探索エラー:", error);
+          }),
+      );
+    }
+
+    // Claudeの探索
+    if (this.readyStates["claude"] && this.tabs["claude"]) {
+      discoveryPromises.push(
+        this.discoverAIFeatures("claude")
+          .then((result) => {
+            this.claudeCapabilities = result;
+            log.info("✅ Claude探索完了", result);
+          })
+          .catch((error) => {
+            log.error("❌ Claude探索エラー:", error);
+          }),
+      );
+    }
+
+    // Geminiの探索
+    if (this.readyStates["gemini"] && this.tabs["gemini"]) {
+      discoveryPromises.push(
+        this.discoverAIFeatures("gemini")
+          .then((result) => {
+            this.geminiCapabilities = result;
+            log.info("✅ Gemini探索完了", result);
+          })
+          .catch((error) => {
+            log.error("❌ Gemini探索エラー:", error);
+          }),
+      );
+    }
+
+    await Promise.all(discoveryPromises);
+    log.info("✅ 全AIサービスの探索が完了しました");
+  }
+
+  // ========================================
+  // 個別AIのモデル・機能探索
+  // ========================================
+  async discoverAIFeatures(aiType) {
+    if (!this.readyStates[aiType] || !this.tabs[aiType]) {
+      log.info(
+        `⏭️ ${aiType}が準備できていないため、モデル・機能探索をスキップ`,
+      );
+      return null;
+    }
+
+    log.info(`🔍 ${aiType}のモデル・機能を探索中...`);
+
+    try {
+      const response = await chrome.tabs.sendMessage(this.tabs[aiType].id, {
+        type: "DISCOVER_FEATURES",
+        aiType: aiType,
+      });
+
+      if (response && response.success) {
+        log.info(`✅ ${aiType}探索成功`, {
+          models: response.result?.models || [],
+          features: response.result?.features || [],
+        });
+
+        return response.result;
+      } else {
+        log.warn(`⚠️ ${aiType}探索失敗`, response);
+        return null;
+      }
+    } catch (error) {
+      log.error(`❌ ${aiType}探索エラー:`, error);
+      return null;
+    }
   }
 
   // ========================================

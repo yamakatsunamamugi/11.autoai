@@ -84,6 +84,116 @@
       return true;
     }
 
+    // モデル・機能の探索
+    if (request.type === "DISCOVER_FEATURES" && request.aiType === AI_TYPE) {
+      console.log(`🔍 [${AI_TYPE}] Model/Feature discovery requested`);
+
+      (async () => {
+        try {
+          let result = null;
+
+          switch (AI_TYPE) {
+            case "claude":
+              // Claudeのモデル・機能探索
+              const models = [];
+              const features = [];
+
+              // モデル探索
+              if (typeof window.detectClaudeModelsFromOpenMenu === "function") {
+                console.log(`📋 [Claude] Detecting models...`);
+                try {
+                  const detectedModels =
+                    await window.detectClaudeModelsFromOpenMenu();
+                  models.push(...detectedModels.map((m) => m.name || m));
+                  console.log(`✅ [Claude] Models detected:`, models);
+                } catch (error) {
+                  console.error(`❌ [Claude] Model detection error:`, error);
+                }
+              }
+
+              // 機能探索
+              if (
+                typeof window.detectClaudeFunctionsFromOpenMenu === "function"
+              ) {
+                console.log(`📋 [Claude] Detecting features...`);
+                try {
+                  const detectedFeatures =
+                    await window.detectClaudeFunctionsFromOpenMenu();
+                  features.push(...detectedFeatures.map((f) => f.name || f));
+                  console.log(`✅ [Claude] Features detected:`, features);
+                } catch (error) {
+                  console.error(`❌ [Claude] Feature detection error:`, error);
+                }
+              }
+
+              result = { models, features };
+              break;
+
+            case "chatgpt":
+              // ChatGPTのモデル・機能探索
+              if (
+                window.ChatGPTAutomation &&
+                typeof window.ChatGPTAutomation
+                  .detectChatGPTModelsAndFeatures === "function"
+              ) {
+                console.log(`📋 [ChatGPT] Detecting models and features...`);
+                try {
+                  result =
+                    await window.ChatGPTAutomation.detectChatGPTModelsAndFeatures();
+                  console.log(`✅ [ChatGPT] Detection completed:`, result);
+                } catch (error) {
+                  console.error(`❌ [ChatGPT] Detection error:`, error);
+                  result = { models: [], features: [] };
+                }
+              } else {
+                console.log(
+                  `⚠️ [ChatGPT] detectChatGPTModelsAndFeatures not available`,
+                );
+                result = { models: [], features: [] };
+              }
+              break;
+
+            case "gemini":
+              // Geminiのモデル・機能探索
+              if (
+                window.GeminiAutomation &&
+                window.GeminiAutomation.discoverModelsAndFeatures
+              ) {
+                result =
+                  await window.GeminiAutomation.discoverModelsAndFeatures();
+              } else {
+                console.log(
+                  `⚠️ [Gemini] discoverModelsAndFeatures not available`,
+                );
+                result = { models: [], features: [] };
+              }
+              break;
+
+            default:
+              throw new Error(`Unknown AI type: ${AI_TYPE}`);
+          }
+
+          console.log(`✅ [${AI_TYPE}] Discovery completed:`, result);
+
+          sendResponse({
+            success: true,
+            aiType: AI_TYPE,
+            result: result,
+          });
+        } catch (error) {
+          console.error(`❌ [${AI_TYPE}] Discovery error:`, error);
+
+          sendResponse({
+            success: false,
+            aiType: AI_TYPE,
+            error: error.message,
+          });
+        }
+      })();
+
+      return true; // 非同期レスポンス許可
+    }
+
     // タスク実行
     if (request.type === "EXECUTE_TASK" && request.aiType === AI_TYPE) {
       console.log(
