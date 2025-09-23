@@ -850,40 +850,114 @@ const log = {
 
   // 通常モードの待機処理
   async function standardWaitForResponse() {
-    // 停止ボタンが表示されるまで待機
+    logWithTimestamp("【Step 4-1-6-1】停止ボタンの表示を待機（最大30秒）", "info");
+
+    // 停止ボタンが表示されるまで待機（テストコード準拠の改良版）
     let stopBtn = null;
     for (let i = 0; i < 30; i++) {
-      stopBtn = await findElement(SELECTORS.stopButton, 1);
+      // 複数の方法で停止ボタンを検出
+      stopBtn = await findElement(SELECTORS.stopButton, "停止ボタン", 1);
+
+      // 代替検出: composer-submit-buttonの状態変化チェック
+      if (!stopBtn) {
+        const submitButton = document.querySelector('#composer-submit-button');
+        if (submitButton) {
+          const ariaLabel = submitButton.getAttribute('aria-label');
+          if (ariaLabel && ariaLabel.includes('ストリーミングの停止')) {
+            stopBtn = submitButton;
+            logWithTimestamp("【Step 4-1-6-1】✅ 代替方法で停止ボタンを検出", "success");
+            break;
+          }
+        }
+      }
+
+      // さらなる代替検出: SVGパスパターンチェック
+      if (!stopBtn) {
+        const buttons = document.querySelectorAll('button');
+        for (const btn of buttons) {
+          const svg = btn.querySelector('svg path[d*="M4.5 5.75"]');
+          if (svg && isElementInteractable(btn)) {
+            stopBtn = btn;
+            logWithTimestamp("【Step 4-1-6-1】✅ SVGパターンで停止ボタンを検出", "success");
+            break;
+          }
+        }
+      }
+
       if (stopBtn) {
-        logWithTimestamp(
-          "【Step 4-1-6-1】停止ボタンが表示されました",
-          "success",
-        );
+        logWithTimestamp("【Step 4-1-6-1】✅ 停止ボタンが表示されました", "success");
         break;
       }
-      await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
+      await sleep(1000);
+    }
+
+    // 停止ボタンが見つからない場合でも処理を継続
+    if (!stopBtn) {
+      logWithTimestamp(
+        "⚠️ 停止ボタンが30秒以内に表示されませんでした。応答の完了を待機します（最大5分）",
+        "warning"
+      );
+
+      // 停止ボタンなしでも応答完了を待つロジック（テストコード準拠）
+      for (let i = 0; i < 300; i++) {
+        // 送信ボタンが再表示されるかチェック（応答完了の指標）
+        const sendBtn = await findElement(SELECTORS.sendButton, "送信ボタン", 1);
+        if (sendBtn && !sendBtn.disabled) {
+          logWithTimestamp("✅ 送信ボタンが再表示されました - 応答完了と判定", "success");
+          return;
+        }
+
+        if (i % 10 === 0) {
+          logWithTimestamp(`応答完了待機中... (${i}秒経過)`, "info");
+        }
+        await sleep(1000);
+      }
+      return;
     }
 
     // 停止ボタンが消えるまで待機（テストコード準拠：10秒間連続非表示で完了、最大5分）
-    if (stopBtn) {
-      logWithTimestamp(
-        "【Step 4-1-6-2】停止ボタンが10秒間消えるまで待機（最大5分）",
-        "info",
-      );
-      let disappearWaitCount = 0;
-      let confirmCount = 0;
+    logWithTimestamp(
+      "【Step 4-1-6-2】停止ボタンが10秒間消えるまで待機（最大5分）",
+      "info",
+    );
+    let disappearWaitCount = 0;
+    let confirmCount = 0;
 
-      while (disappearWaitCount < 300) {
-        stopBtn = await findElement(SELECTORS.stopButton, "停止ボタン");
+    while (disappearWaitCount < 300) {
+      // 複数の方法で停止ボタンの消失をチェック
+      stopBtn = await findElement(SELECTORS.stopButton, "停止ボタン", 1);
 
-        if (!stopBtn) {
-          confirmCount++;
-          if (confirmCount >= 10) {
-            logWithTimestamp(
-              "【Step 4-1-6-2】✅ 応答完了（停止ボタンが10秒間非表示）",
-              "success",
-            );
+      // 代替チェック: composer-submit-buttonの状態変化
+      if (!stopBtn) {
+        const submitButton = document.querySelector('#composer-submit-button');
+        if (submitButton) {
+          const ariaLabel = submitButton.getAttribute('aria-label');
+          if (ariaLabel && ariaLabel.includes('ストリーミングの停止')) {
+            stopBtn = submitButton;
+          }
+        }
+      }
+
+      // さらなる代替チェック: SVGパスパターン
+      if (!stopBtn) {
+        const buttons = document.querySelectorAll('button');
+        for (const btn of buttons) {
+          const svg = btn.querySelector('svg path[d*="M4.5 5.75"]');
+          if (svg && isElementInteractable(btn)) {
+            stopBtn = btn;
             break;
+          }
+        }
+      }
+
+      if (!stopBtn) {
+        confirmCount++;
+        if (confirmCount >= 10) {
+          logWithTimestamp(
+            "【Step 4-1-6-2】✅ 応答完了（停止ボタンが10秒間非表示）",
+            "success",
+          );
+          break;
           }
         } else {
           confirmCount = 0;
