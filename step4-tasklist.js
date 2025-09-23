@@ -230,19 +230,8 @@ async function immediateSpreadsheetUpdate(result, taskIndex) {
         return;
       }
 
-      // セル参照を作成
-      // columnが既に文字列（"C"など）の場合はそのまま使用、数値の場合は変換
-      let columnLetter;
-      if (typeof result.column === "string") {
-        columnLetter = result.column;
-      } else if (typeof result.column === "number") {
-        columnLetter = String.fromCharCode(64 + result.column); // 1->A, 2->B, 3->C
-      } else {
-        log.error(
-          `❌ [即座スプレッドシート] 不正なcolumn値[${taskIndex}]: ${result.column}`,
-        );
-        return;
-      }
+      // セル参照を作成（例：column=3, row=5 -> "C5"）
+      const columnLetter = String.fromCharCode(64 + result.column); // 1->A, 2->B, 3->C
       const cellRef = `${columnLetter}${result.row}`;
 
       const updateResult = await window.simpleSheetsClient.updateCell(
@@ -4916,32 +4905,15 @@ async function executeStep4(taskList) {
       // TaskStatusManagerをグローバルに設定
       window.taskStatusManager = statusManager;
 
-      // 現在のグループ情報を設定（最初のタスクのグループ番号から実際のtaskGroupを取得）
+      // 現在のグループ情報を設定（最初のタスクから取得）
       if (enrichedTaskList && enrichedTaskList.length > 0) {
         const firstTask = enrichedTaskList[0];
-        const groupNumber = firstTask.groupNumber || 0;
-
-        // window.globalState.taskGroupsから対応するタスクグループを探す
-        const taskGroups = window.globalState?.taskGroups || [];
-        const currentTaskGroup =
-          taskGroups.find((g) => g.groupNumber === groupNumber) ||
-          taskGroups[0];
-
         window.globalState = window.globalState || {};
         window.globalState.currentGroup = {
-          groupNumber: currentTaskGroup?.groupNumber || groupNumber,
-          columns: currentTaskGroup?.columns || {
-            prompts: currentTaskGroup?.promptColumns || [],
-            answer:
-              currentTaskGroup?.answerColumn ||
-              currentTaskGroup?.answerColumns?.[0] ||
-              {},
-          },
-          dataStartRow:
-            currentTaskGroup?.dataStartRow ||
-            window.globalState?.specialRows?.dataStartRow ||
-            8,
-          pattern: currentTaskGroup?.type || "通常",
+          groupNumber: firstTask.groupNumber || 0,
+          columns: firstTask.columns || {},
+          dataStartRow: firstTask.dataStartRow || 8,
+          pattern: firstTask.pattern || "通常",
         };
       }
 
