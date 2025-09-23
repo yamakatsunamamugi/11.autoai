@@ -570,13 +570,15 @@ class DetailedLogManager {
       const logText = this.formatLog(log);
 
       // スプレッドシート更新
-      await window.simpleSheetsClient.updateValue(
+      const updateResult = await window.simpleSheetsClient.updateValue(
         spreadsheetId,
         cellRef,
         logText,
       );
 
-      ExecuteLogger.info(`📊 ログ書き込み完了: ${cellRef}`);
+      ExecuteLogger.info(
+        `📊 ログ書き込み完了: ${cellRef} → 実際: ${updateResult?.updatedRange || cellRef}`,
+      );
     } catch (error) {
       ExecuteLogger.error(`❌ ログ書き込みエラー: ${cellRef}`, error);
     }
@@ -597,13 +599,15 @@ class DetailedLogManager {
       }
 
       // スプレッドシート更新
-      await window.simpleSheetsClient.updateValue(
+      const updateResult = await window.simpleSheetsClient.updateValue(
         spreadsheetId,
         cellRef,
         log.response,
       );
 
-      ExecuteLogger.info(`📊 回答書き込み完了: ${cellRef}`);
+      ExecuteLogger.info(
+        `📊 回答書き込み完了: ${cellRef} → 実際: ${updateResult?.updatedRange || cellRef}`,
+      );
     } catch (error) {
       ExecuteLogger.error(`❌ 回答書き込みエラー: ${cellRef}`, error);
     }

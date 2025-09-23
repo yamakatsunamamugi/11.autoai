@@ -329,7 +329,8 @@ async function immediateSpreadsheetUpdate(result, taskIndex) {
       );
 
       log.info(`✅ [即座スプレッドシート] 記載完了[${taskIndex}]:`, {
-        cellRef: cellRef,
+        requestedCell: cellRef,
+        actualCell: updateResult?.updatedRange || cellRef,
         column: result.column,
         row: result.row,
         success: updateResult?.success || true,
@@ -4494,12 +4495,17 @@ class WindowLifecycleManager {
       const cellRef = this.calculateCellReference(task);
 
       // スプレッドシートに書き込み
-      await this.sheetsClient.updateCell(spreadsheetId, cellRef, resultText);
+      const updateResult = await this.sheetsClient.updateCell(
+        spreadsheetId,
+        cellRef,
+        resultText,
+      );
 
       ExecuteLogger.info(
         `✅ [WindowLifecycleManager] スプレッドシート書き込み完了`,
         {
-          cellRef,
+          requestedCell: cellRef,
+          actualCell: updateResult?.updatedRange || cellRef,
           textLength: resultText?.length || 0,
         },
       );
@@ -4779,7 +4785,15 @@ if (!window.SimpleSheetsClient) {
           );
         }
 
-        return await response.json();
+        const result = await response.json();
+
+        // 実際に書き込まれたセル位置をログ出力
+        const actualRange = result.updatedRange || range;
+        ExecuteLogger.info(
+          `📝 [SimpleSheetsClient] 実際の書き込み先: ${actualRange} (${result.updatedCells || 1}セル)`,
+        );
+
+        return result;
       } catch (error) {
         ExecuteLogger.error(`❌ updateValue失敗: ${range}`, error);
         throw error;
