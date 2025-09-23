@@ -7,7 +7,7 @@ const BATCH_PROCESSING_CONFIG = {
   ENABLE_INDIVIDUAL_COMPLETION: true, // 個別タスク完了時の即座処理
   ENABLE_IMMEDIATE_SPREADSHEET: true, // 即座スプレッドシート記載
   ENABLE_IMMEDIATE_WINDOW_CLOSE: true, // 即座ウィンドウクローズ
-  ENABLE_DYNAMIC_NEXT_TASK: true, // 動的次タスク開始
+  ENABLE_DYNAMIC_NEXT_TASK: false, // 動的次タスク開始（一時的に無効）
   SAFE_MODE: false, // 新機能有効化
 };
 
@@ -2014,6 +2014,7 @@ async function generateTaskList(
     // 3-2: タスク生成の除外処理
     const validTasks = [];
     const skippedRows = []; // スキップした行を記録
+    const skippedDetails = []; // スキップの詳細情報を記録
     const debugLogs = []; // デバッグログを収集
 
     for (let row = dataStartRow; row <= lastPromptRow; row++) {
@@ -2056,15 +2057,14 @@ async function generateTaskList(
           // 「作業中」マーカーは回答とみなさない
           if (!cellValue.startsWith("作業中")) {
             hasAnswer = true;
-            ExecuteLogger.info(`[TaskList] スキップ: ${row}行目 (${col}列)`, {
-              理由: "既に回答あり",
-              セル値プレビュー: cellValue.substring(0, 50) + "...",
-              グループ: taskGroup.groupNumber,
-              グループタイプ: taskGroup.groupType,
-            });
-            addLog(`[TaskList] ${row}行目: 既に回答あり (${col}列)`, {
+            // スキップ詳細を記録（後でまとめて出力）
+            skippedDetails.push({
+              row: row,
               column: col,
-              value: cellValue.substring(0, 50) + "...",
+              reason: "既に回答あり",
+              cellValuePreview: cellValue.substring(0, 50) + "...",
+              group: taskGroup.groupNumber,
+              groupType: taskGroup.groupType,
             });
             break;
           } else {
@@ -2390,6 +2390,39 @@ async function generateTaskList(
     const totalRows = lastPromptRow - dataStartRow + 1;
     const processedRows = validTasks.length;
     const skippedCount = skippedRows.length;
+
+    // スキップ詳細のサマリー出力
+    if (skippedDetails.length > 0) {
+      const skipSummary = {};
+      skippedDetails.forEach((detail) => {
+        const key = `${detail.reason}_${detail.column}列`;
+        if (!skipSummary[key]) {
+          skipSummary[key] = [];
+        }
+        skipSummary[key].push(detail.row);
+      });
+
+      ExecuteLogger.info(
+        `[TaskList] スキップサマリー (${skippedDetails.length}件):`,
+        {
+          詳細: Object.entries(skipSummary).map(([key, rows]) => {
+            return `${key}: ${rows.length}件 (行: ${rows.join(", ")})`;
+          }),
+          グループ: taskGroup.groupNumber,
+          グループタイプ: taskGroup.groupType,
+        },
+      );
+
+      addLog(
+        `[TaskList] スキップサマリー: ${skippedDetails.length}件スキップ`,
+        {
+          summary: Object.entries(skipSummary)
+            .map(([key, rows]) => `${key}: ${rows.length}件`)
+            .join(", "),
+        },
+      );
+    }
+
     log.debug(
       `[TaskList] 処理結果サマリー: 全${totalRows}行中、処理対象${processedRows}行、スキップ${skippedCount}行`,
     );
@@ -3103,6 +3136,85 @@ class WindowController {
       report: "about:blank", // レポート用は空白ページ
     };
     return urls[aiType.toLowerCase()] || "about:blank";
+  }
+
+  /**
+   * Content Scriptが準備完了になるまで待機する関数
+   * @param {number} tabId - タブID
+   * @param {string} aiType - AI種別 (claude, chatgpt, gemini, genspark)
+   * @param {number} maxRetries - 最大リトライ回数
+   * @param {number} delayMs - リトライ間隔(ms)
+   * @returns {boolean} Content Scriptが準備完了したかどうか
+   */
+  async waitForContentScriptReady(
+    tabId,
+    aiType,
+    maxRetries = 5,
+    delayMs = 1000,
+  ) {
+    ExecuteLogger.info(
+      `🔄 [Content Script Check] 開始: ${aiType} (tabId: ${tabId})`,
+    );
+
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        // ping/pongメッセージでContent Scriptの準備状態を確認
+        const pingMessage = {
+          action: "ping",
+          type: "CONTENT_SCRIPT_CHECK",
+          timestamp: Date.now(),
+        };
+
+        ExecuteLogger.debug(
+          `📡 [Content Script Check] Attempt ${i + 1}/${maxRetries}`,
+        );
+
+        // タイムアウト付きでpingを送信
+        const response = await Promise.race([
+          chrome.tabs.sendMessage(tabId, pingMessage),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("Ping timeout")), 2000),
+          ),
+        ]);
+
+        if (
+          response &&
+          (response.status === "ready" || response.action === "pong")
+        ) {
+          ExecuteLogger.info(`✅ [Content Script Check] 準備完了: ${aiType}`);
+          return true;
+        }
+      } catch (error) {
+        const errorMessage = error.message || String(error);
+
+        // "Could not establish connection"エラーの場合
+        if (
+          errorMessage.includes("Could not establish connection") ||
+          errorMessage.includes("Receiving end does not exist")
+        ) {
+          ExecuteLogger.debug(
+            `⏳ [Content Script Check] まだ準備中 (${i + 1}/${maxRetries})`,
+          );
+        } else if (errorMessage.includes("Ping timeout")) {
+          ExecuteLogger.debug(
+            `⏱️ [Content Script Check] タイムアウト (${i + 1}/${maxRetries})`,
+          );
+        } else {
+          ExecuteLogger.warn(
+            `⚠️ [Content Script Check] エラー: ${errorMessage}`,
+          );
+        }
+
+        if (i < maxRetries - 1) {
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+        }
+      }
+    }
+
+    ExecuteLogger.warn(
+      `⚠️ [Content Script Check] 準備完了タイムアウト: ${aiType}`,
+    );
+    return false;
   }
 
   /**
