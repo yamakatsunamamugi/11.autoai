@@ -173,15 +173,71 @@ const log = {
         chrome.runtime &&
         chrome.runtime.sendMessage
       ) {
-        await chrome.runtime.sendMessage({
-          type: "UPDATE_GEMINI_INFO",
-          data: {
-            models: models || [],
-            features: features || [],
-            timestamp: new Date().toISOString(),
-          },
+        log.debug("📡 [Gemini] UI通信開始", {
+          modelsCount: models?.length || 0,
+          featuresCount: features?.length || 0,
+          timestamp: new Date().toISOString(),
         });
-        log.info("UI更新メッセージを送信しました");
+
+        // タイムアウト付きでsendMessageを実行
+        const sendMessageWithTimeout = new Promise((resolve) => {
+          const timeout = setTimeout(() => {
+            log.warn("⏱️ [Gemini] sendMessageがタイムアウト（3秒経過）");
+            resolve({
+              error: "timeout",
+              message: "sendMessage timeout after 3000ms",
+            });
+          }, 3000); // 3秒でタイムアウト
+
+          try {
+            chrome.runtime.sendMessage(
+              {
+                type: "AI_MODEL_FUNCTION_UPDATE",
+                aiType: "gemini",
+                data: {
+                  models: models || [],
+                  features: features || [],
+                  timestamp: new Date().toISOString(),
+                },
+              },
+              (response) => {
+                clearTimeout(timeout);
+
+                // chrome.runtime.lastErrorをチェック
+                if (chrome.runtime.lastError) {
+                  log.warn(
+                    "⚠️ [Gemini] chrome.runtime.lastError:",
+                    chrome.runtime.lastError.message,
+                  );
+                  resolve({
+                    error: "runtime_error",
+                    message: chrome.runtime.lastError.message,
+                  });
+                } else {
+                  log.debug("📨 [Gemini] sendMessage応答受信:", response);
+                  resolve(response || { success: true });
+                }
+              },
+            );
+          } catch (error) {
+            clearTimeout(timeout);
+            log.warn("❌ [Gemini] sendMessage実行エラー:", error.message);
+            resolve({
+              error: "execution_error",
+              message: error.message,
+            });
+          }
+        });
+
+        const result = await sendMessageWithTimeout;
+
+        if (result.error) {
+          log.warn("⚠️ [Gemini] UI通信失敗:", result);
+        } else {
+          log.info("✅ [Gemini] UI更新メッセージを送信しました");
+        }
+
+        return result;
       }
     } catch (error) {
       log.debug(
