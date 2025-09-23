@@ -67,7 +67,7 @@ log.info("🔧 [バッチ処理設定]", {
  * 安全な非同期バッチ処理（将来実装用）
  * 既存のPromise.allSettledを拡張し、個別タスク完了時の即座処理を追加
  */
-async function executeAsyncBatchProcessing(batchPromises) {
+async function executeAsyncBatchProcessing(batchPromises, originalTasks = []) {
   if (BATCH_PROCESSING_CONFIG.SAFE_MODE) {
     // セーフモードでは既存処理にフォールバック
     return await Promise.allSettled(batchPromises);
@@ -77,25 +77,41 @@ async function executeAsyncBatchProcessing(batchPromises) {
 
   const completedTasks = new Map();
   const enhancedPromises = batchPromises.map((promise, index) => {
+    // 元のタスク情報を取得
+    const originalTask = originalTasks[index] || {};
+
     return promise
       .then(async (result) => {
         try {
+          // 元のタスク情報を結果にマージ（結果側の値を優先）
+          const enhancedResult = {
+            ...result,
+            column: result.column || originalTask.column,
+            row: result.row || originalTask.row,
+            windowId: result.windowId || originalTask.windowId,
+            response:
+              result.response || result.result?.response || result.result?.text,
+          };
+
           log.info(`✅ [個別完了] タスク[${index}]完了:`, {
-            success: result.success,
-            taskId: result.taskId,
-            windowId: result.windowId,
+            success: enhancedResult.success,
+            taskId: enhancedResult.taskId,
+            windowId: enhancedResult.windowId,
+            column: enhancedResult.column,
+            row: enhancedResult.row,
+            hasResponse: !!enhancedResult.response,
           });
 
           if (
-            result.success &&
+            enhancedResult.success &&
             BATCH_PROCESSING_CONFIG.ENABLE_INDIVIDUAL_COMPLETION
           ) {
-            // 個別タスク完了時の即座処理
-            await handleIndividualTaskCompletion(result, index);
+            // 個別タスク完了時の即座処理（拡張された結果を渡す）
+            await handleIndividualTaskCompletion(enhancedResult, index);
           }
 
-          completedTasks.set(index, result);
-          return { status: "fulfilled", value: result };
+          completedTasks.set(index, enhancedResult);
+          return { status: "fulfilled", value: enhancedResult };
         } catch (error) {
           log.error(`❌ [個別完了処理エラー] タスク[${index}]:`, error);
           const errorResult = { status: "rejected", reason: error };
@@ -152,6 +168,16 @@ async function handleIndividualTaskCompletion(result, taskIndex) {
 
     // Phase 4: 動的次タスク探索
     if (BATCH_PROCESSING_CONFIG.ENABLE_DYNAMIC_NEXT_TASK) {
+      // DynamicTaskSearchにタスク完了を登録
+      if (window.DynamicTaskSearch && result.taskId) {
+        const taskId =
+          result.column && result.row
+            ? `${result.column}${result.row}`
+            : result.taskId;
+        window.DynamicTaskSearch.registerTaskCompletion(taskId);
+        log.info(`📝 [個別完了処理] DynamicTaskSearchに完了登録: ${taskId}`);
+      }
+
       // 非同期で次タスクを探索開始（ブロックしない）
       startNextTaskIfAvailable(taskIndex).catch((error) =>
         log.warn(`次タスク探索エラー[${taskIndex}]:`, error),
@@ -191,13 +217,31 @@ async function immediateSpreadsheetUpdate(result, taskIndex) {
       window.simpleSheetsClient &&
       typeof window.simpleSheetsClient.updateCell === "function"
     ) {
+      // spreadsheetIdを取得（globalStateまたは他のソースから）
+      const spreadsheetId =
+        window.globalState?.spreadsheetId ||
+        window.currentSpreadsheetId ||
+        localStorage.getItem("spreadsheetId");
+
+      if (!spreadsheetId) {
+        log.error(
+          `❌ [即座スプレッドシート] spreadsheetId未設定[${taskIndex}]`,
+        );
+        return;
+      }
+
+      // セル参照を作成（例：column=3, row=5 -> "C5"）
+      const columnLetter = String.fromCharCode(64 + result.column); // 1->A, 2->B, 3->C
+      const cellRef = `${columnLetter}${result.row}`;
+
       const updateResult = await window.simpleSheetsClient.updateCell(
-        result.column,
-        result.row,
+        spreadsheetId,
+        cellRef,
         result.response,
       );
 
       log.info(`✅ [即座スプレッドシート] 記載完了[${taskIndex}]:`, {
+        cellRef: cellRef,
         column: result.column,
         row: result.row,
         success: updateResult?.success || true,
@@ -280,10 +324,29 @@ async function findNextAvailableTask() {
   try {
     log.info("🔍 [次タスク検索] 開始");
 
-    // step3-loop.jsまたは同等のタスク管理システムからタスクを取得
+    // step4.5-dynamic-search.jsの動的検索システムを使用
+    if (
+      window.DynamicTaskSearch &&
+      typeof window.DynamicTaskSearch.findNextTask === "function"
+    ) {
+      log.debug("🔗 [次タスク検索] DynamicTaskSearchを使用");
+      const nextTask = await window.DynamicTaskSearch.findNextTask();
+
+      if (nextTask) {
+        log.info("🎯 [次タスク検索] DynamicTaskSearchで発見:", {
+          taskId: nextTask.id,
+          aiType: nextTask.aiType,
+          row: nextTask.row,
+          column: nextTask.column,
+        });
+        return nextTask;
+      }
+    }
+
+    // フォールバック: 従来の方法
     if (typeof window.processIncompleteTasks === "function") {
       // 既存のタスク処理システムを活用
-      log.debug("🔗 [次タスク検索] 既存システム活用");
+      log.debug("🔗 [次タスク検索] 既存システム活用（フォールバック）");
       return null; // 既存システムに委譲
     }
 
@@ -294,7 +357,7 @@ async function findNextAvailableTask() {
       );
 
       if (availableTask) {
-        log.info("🎯 [次タスク検索] 発見:", {
+        log.info("🎯 [次タスク検索] 発見（フォールバック）:", {
           taskId: availableTask.id,
           aiType: availableTask.aiType,
         });
@@ -4834,6 +4897,31 @@ async function executeStep4(taskList) {
       `[step4-execute.js] Step 4-6-6-0: TaskStatusManager初期化完了`,
     );
 
+    // DynamicTaskSearch用のグローバル変数を設定
+    if (typeof window !== "undefined") {
+      // 現在のタスクリストを設定
+      window.currentTaskList = enrichedTaskList;
+
+      // TaskStatusManagerをグローバルに設定
+      window.taskStatusManager = statusManager;
+
+      // 現在のグループ情報を設定（最初のタスクから取得）
+      if (enrichedTaskList && enrichedTaskList.length > 0) {
+        const firstTask = enrichedTaskList[0];
+        window.globalState = window.globalState || {};
+        window.globalState.currentGroup = {
+          groupNumber: firstTask.groupNumber || 0,
+          columns: firstTask.columns || {},
+          dataStartRow: firstTask.dataStartRow || 8,
+          pattern: firstTask.pattern || "通常",
+        };
+      }
+
+      ExecuteLogger.info(
+        "📦 [executeStep4] DynamicTaskSearch用グローバル変数設定完了",
+      );
+    }
+
     // タスクをグループ番号で分類
     const groupedTasks = {};
     for (const task of enrichedTaskList) {
@@ -5232,6 +5320,13 @@ async function executeStep4(taskList) {
               aiType: task.aiType,
               success: result.success,
               result: result,
+              column: task.column, // タスクの列情報を追加
+              row: task.row, // タスクの行情報を追加
+              windowId: task.windowId, // ウィンドウIDを追加
+              response:
+                result.result?.response ||
+                result.result?.text ||
+                result.response, // レスポンステキストを追加
               specialProcessing: specialInfo.isSpecial,
               isThreeType: isThreeTypeTask,
             };
@@ -5247,6 +5342,10 @@ async function executeStep4(taskList) {
               aiType: task.aiType,
               success: false,
               error: error.message,
+              column: task.column, // エラー時もタスク情報を保持
+              row: task.row,
+              windowId: task.windowId,
+              response: null,
               specialProcessing: false,
               isThreeType: isThreeTypeTask,
             };
@@ -5260,8 +5359,11 @@ async function executeStep4(taskList) {
           BATCH_PROCESSING_CONFIG.ENABLE_ASYNC_BATCH &&
           !BATCH_PROCESSING_CONFIG.SAFE_MODE
         ) {
-          // 新しい非同期バッチ処理（将来実装）
-          batchResults = await executeAsyncBatchProcessing(batchPromises);
+          // 新しい非同期バッチ処理（タスクリスト情報付き）
+          batchResults = await executeAsyncBatchProcessing(
+            batchPromises,
+            validBatchTasks,
+          );
         } else {
           // 既存の安定したPromise.allSettled処理を維持
           batchResults = await Promise.allSettled(batchPromises);

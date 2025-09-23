@@ -90,6 +90,7 @@
         "step2-taskgroup.js",
         "step3-loop.js",
         "step4-tasklist.js",
+        "step4.5-dynamic-search.js",
         "step5-execute.js",
         "step6-nextgroup.js",
         "4-1-chatgpt-automation.js",
