@@ -1810,6 +1810,20 @@
       }
     };
 
+    // 要素の可視性チェック関数
+    const isVisible = (element) => {
+      if (!element) return false;
+      const rect = element.getBoundingClientRect();
+      const style = window.getComputedStyle(element);
+      return (
+        rect.width > 0 &&
+        rect.height > 0 &&
+        style.display !== "none" &&
+        style.visibility !== "hidden" &&
+        style.opacity !== "0"
+      );
+    };
+
     const findElementByMultipleSelectors = async (selectors, description) => {
       // Element search: ${description}
 
@@ -1820,11 +1834,73 @@
         // 試行中: ${selector.description}
 
         try {
-          // より長い待機時間を設定（5回×500ms = 2.5秒）
-          const element = await waitForElement(selector.selector, 5, 500);
-          if (element) {
-            // Success: ${selector.description}
-            return element;
+          let element = null;
+
+          // オブジェクト形式のセレクタ処理（テストコードスタイル）
+          if (typeof selector === "object" && selector.method) {
+            log.debug(`  試行${i + 1}: ${selector.method} - ${selector.query}`);
+
+            switch (selector.method) {
+              case "data-testid":
+                element = document.querySelector(
+                  `[data-testid="${selector.query}"]`,
+                );
+                break;
+              case "aria-label":
+                element = document.querySelector(
+                  `[aria-label="${selector.query}"]`,
+                );
+                break;
+              case "id":
+                element = document.getElementById(selector.query);
+                break;
+              case "selector":
+                element = document.querySelector(selector.query);
+                break;
+              case "text":
+                const elements = Array.from(
+                  document.querySelectorAll(selector.query),
+                );
+                element = elements.find((el) => {
+                  const text = el.textContent?.trim();
+                  return selector.condition
+                    ? selector.condition(text)
+                    : text === selector.text;
+                });
+                break;
+            }
+
+            // `:has()` 疑似クラスの代替処理
+            if (
+              !element &&
+              selector.query &&
+              selector.query.includes(":has(") &&
+              selector.query.includes("ウェブ検索")
+            ) {
+              const buttons = document.querySelectorAll("button");
+              for (const el of buttons) {
+                const text = el.textContent || "";
+                if (
+                  text.includes("ウェブ検索") &&
+                  el.querySelector('input[role="switch"]')
+                ) {
+                  element = el;
+                  break;
+                }
+              }
+            }
+
+            if (element && isVisible(element)) {
+              log.debug(`  ✓ 要素発見: ${description}`);
+              return element;
+            }
+          } else {
+            // 従来のセレクタ処理
+            element = await waitForElement(selector.selector, 5, 500);
+            if (element) {
+              // Success: ${selector.description}
+              return element;
+            }
           }
         } catch (error) {
           log.debug(`  ❌ 失敗: ${error.message}`);
@@ -5544,13 +5620,40 @@
               ? modelName
               : `Claude ${modelName}`;
 
+            // "他のモデル"メニューの処理を追加
+            const otherModelsBtn = document.querySelector('[role="menuitem"]');
+            const otherModelsBtns = Array.from(
+              document.querySelectorAll('[role="menuitem"]'),
+            );
+            const otherModelsButton = otherModelsBtns.find(
+              (item) =>
+                item.textContent &&
+                item.textContent.trim().includes("他のモデル"),
+            );
+
+            if (otherModelsButton) {
+              log.debug("他のモデルメニューを開きます");
+              await triggerReactEvent(otherModelsButton, "click");
+              await wait(1000);
+            }
+
             const menuItems = document.querySelectorAll('[role="menuitem"]');
             for (const item of menuItems) {
-              const itemText = item.textContent;
-              if (itemText && itemText.includes(targetModelName)) {
-                await triggerReactEvent(item, "click");
-                await wait(1500);
-                return { success: true, selected: targetModelName };
+              const itemText = item.textContent?.trim();
+
+              // より精密な正規表現マッチングを使用
+              if (
+                itemText &&
+                itemText.match(/^Claude\s+(Opus|Sonnet|Haiku)\s+[\d.]+$/)
+              ) {
+                if (
+                  itemText === targetModelName ||
+                  itemText.includes(targetModelName)
+                ) {
+                  await triggerReactEvent(item, "click");
+                  await wait(1500);
+                  return { success: true, selected: itemText };
+                }
               }
             }
             return { success: false };

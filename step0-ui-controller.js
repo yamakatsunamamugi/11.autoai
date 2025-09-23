@@ -1141,13 +1141,7 @@ function updateAITable(aiType, data) {
       log.debug(`✅ ${aiType}機能情報更新完了:`, data.functions);
     }
 
-    // 更新時刻を追加
-    const timestamp = new Date().toLocaleTimeString("ja-JP");
-    const updateNote = `<br><small style="color: #666; font-size: 10px;">更新: ${timestamp}</small>`;
-
-    if (cells[modelCellIndex]) {
-      cells[modelCellIndex].innerHTML += updateNote;
-    }
+    // 更新時刻・日付の表示は除去（データのみ表示）
 
     log.info(`🔍 [UI] ${aiType}の情報表示を更新しました`);
   } catch (error) {
@@ -1202,16 +1196,13 @@ function copyAITableToClipboard() {
       return;
     }
 
-    // ヘッダー行を取得
-    const headers = [
-      "AI種別",
-      "ChatGPTモデル",
-      "Claudeモデル",
-      "Geminiモデル",
-      "ChatGPT機能",
-      "Claude機能",
-      "Gemini機能",
-    ];
+    // 現在の日時を取得
+    const now = new Date();
+    const dateStr = now.toLocaleDateString("ja-JP");
+    const timeStr = now.toLocaleTimeString("ja-JP");
+
+    // ヘッダー行を準備
+    const headers = ["検出日時", "AI種別", "項目種別", "項目名", "詳細情報"];
 
     // データ行を取得
     const tbody = table.querySelector("tbody");
@@ -1222,34 +1213,72 @@ function copyAITableToClipboard() {
     // ヘッダーを追加
     tsvData += headers.join("\t") + "\n";
 
+    // AI種別の定義
+    const aiTypes = ["ChatGPT", "Claude", "Gemini"];
+    const itemTypes = ["モデル", "機能"];
+
     // データ行を処理
     dataRows.forEach((row, rowIndex) => {
       const cells = row.querySelectorAll("td");
 
       if (cells.length === 6) {
-        // 通常のデータ行
-        const rowData = ["AI統合情報"]; // AI種別列
+        // 各セルの内容を処理（モデル：0-2、機能：3-5）
+        cells.forEach((cell, cellIndex) => {
+          const aiType = aiTypes[cellIndex % 3];
+          const itemType = cellIndex < 3 ? "モデル" : "機能";
 
-        cells.forEach((cell) => {
-          // HTMLタグを除去してテキストのみ抽出
-          let cellText = cell.textContent || cell.innerText || "";
-          cellText = cellText.replace(/\s+/g, " ").trim();
+          // セル内容を取得
+          let cellContent = cell.textContent || cell.innerText || "";
 
-          // 改行を適切に処理
-          cellText = cellText.replace(/\n/g, ", ");
+          // 日付・時間表示部分を除去（更新:、検出日: など）
+          cellContent = cellContent.replace(/(?:更新|検出日):.*$/m, "").trim();
 
-          // 検出待機中の場合は空にする
+          // 検出待機中や未検出の場合はスキップ
           if (
-            cellText.includes("検出待機中") ||
-            cellText.includes("データを読み込み中")
+            cellContent.includes("検出待機中") ||
+            cellContent.includes("データを読み込み中") ||
+            cellContent.includes("未検出") ||
+            cellContent === ""
           ) {
-            cellText = "";
+            return;
           }
 
-          rowData.push(cellText);
-        });
+          // 箇条書きアイテムに分割（• で始まる行、✅/❌ で始まる行）
+          const items = cellContent
+            .split(/(?=•)|(?=✅)|(?=❌)/)
+            .map((item) => item.trim())
+            .filter((item) => item.length > 0);
 
-        tsvData += rowData.join("\t") + "\n";
+          // 各アイテムを個別の行として追加
+          items.forEach((item) => {
+            // アイテムのクリーンアップ
+            let cleanItem = item
+              .replace(/^[•✅❌]\s*/, "") // 先頭の記号を除去
+              .replace(/\s*🟢|\s*🔴/g, "") // トグル状態アイコンを除去
+              .replace(/\([^)]*\)/g, "") // 括弧内のセレクタ情報を除去
+              .replace(/\[[^\]]*\]/g, "") // 括弧内のステータス情報を除去
+              .trim();
+
+            if (cleanItem && cleanItem.length > 0) {
+              // 詳細情報を抽出
+              let details = "";
+              if (item.includes("🟢")) details += "有効 ";
+              if (item.includes("🔴")) details += "無効 ";
+              if (item.includes("✅")) details += "利用可能 ";
+              if (item.includes("❌")) details += "利用不可 ";
+
+              const rowData = [
+                `${dateStr} ${timeStr}`, // 検出日時
+                aiType, // AI種別
+                itemType, // 項目種別
+                cleanItem, // 項目名
+                details.trim(), // 詳細情報
+              ];
+
+              tsvData += rowData.join("\t") + "\n";
+            }
+          });
+        });
       }
     });
 
@@ -1258,7 +1287,7 @@ function copyAITableToClipboard() {
       .writeText(tsvData)
       .then(() => {
         statusDiv.textContent =
-          "✅ 表をクリップボードにコピーしました！スプレッドシートに貼り付けできます";
+          "✅ 表をクリップボードにコピーしました！各項目が別行で貼り付けされます";
         statusDiv.style.color = "#28a745";
 
         // 3秒後にステータスをクリア
