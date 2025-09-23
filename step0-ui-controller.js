@@ -1040,15 +1040,29 @@ function updateTestConfigDropdowns() {
   lastAIData.chatgpt.models = chatgptModels;
   lastAIData.chatgpt.functions = chatgptFeatures;
 
-  // Claude
-  if (lastAIData.claude && lastAIData.claude.models) {
-    log.debug("📋 Claudeモデル更新:", lastAIData.claude.models);
-    updateSelectOptions("claudeModel", lastAIData.claude.models);
+  // Claude - 手動でモデル・機能を設定
+  const claudeModels = ["Claude 3.5 Sonnet", "Claude 3.5 Haiku"];
+  const claudeFeatures = [
+    "じっくり考える",
+    "ウェブ検索",
+    "Deep Research",
+    "Canvas",
+  ];
+
+  log.debug("📋 Claude手動設定:", {
+    models: claudeModels,
+    features: claudeFeatures,
+  });
+
+  updateSelectOptions("claudeModel", claudeModels);
+  updateSelectOptions("claudeFeature", claudeFeatures);
+
+  // 手動設定をlastAIDataにも保存（他の処理との整合性のため）
+  if (!lastAIData.claude) {
+    lastAIData.claude = {};
   }
-  if (lastAIData.claude && lastAIData.claude.functions) {
-    log.debug("📋 Claude機能更新:", lastAIData.claude.functions);
-    updateSelectOptions("claudeFeature", lastAIData.claude.functions);
-  }
+  lastAIData.claude.models = claudeModels;
+  lastAIData.claude.functions = claudeFeatures;
 
   // Gemini - 手動でモデル・機能を設定
   const geminiModels = ["2.5 Flash", "2.5 Pro"];
@@ -1657,16 +1671,7 @@ function copyAITableToClipboard() {
       return;
     }
 
-    // ヘッダー行（指定フォーマット）
-    const headers = [
-      "ChatGPTモデル",
-      "Claudeモデル",
-      "Geminiモデル",
-      "ChatGPT機能",
-      "Claude機能",
-      "Gemini機能",
-    ];
-    let tsvData = headers.join("\t") + "\n";
+    let tsvData = "";
 
     // 最初の行からデータを取得
     const row = dataRows[0];
@@ -1676,11 +1681,19 @@ function copyAITableToClipboard() {
       // 各セルからデータを抽出
       const columnData = [];
 
-      cells.forEach((cell, index) => {
-        let cellContent = cell.textContent || cell.innerText || "";
+      cells.forEach((cell) => {
+        // HTMLタグを保持してから処理
+        let cellContent =
+          cell.innerHTML || cell.textContent || cell.innerText || "";
 
-        // HTMLタグや不要な文字を除去
-        cellContent = cellContent.replace(/(?:更新|検出日):.*$/m, "").trim();
+        // HTMLタグを適切に処理・除去
+        cellContent = cellContent
+          .replace(/<small[^>]*>/g, "") // <small>開始タグを除去
+          .replace(/<\/small>/g, "") // </small>終了タグを除去
+          .replace(/<span[^>]*>/g, "") // <span>開始タグを除去
+          .replace(/<\/span>/g, "") // </span>終了タグを除去
+          .replace(/(?:更新|検出日):.*$/m, "") // 更新・検出日情報を除去
+          .trim();
 
         // 検出待機中や未検出の場合は "-" に置換
         if (
@@ -1692,14 +1705,48 @@ function copyAITableToClipboard() {
           return;
         }
 
-        // 項目を改行で分割して整理
-        const items = cellContent
-          .split(/\n|<br>/)
+        // デバッグ: セルの生コンテンツを確認
+        console.log(
+          `セル${cells.length > 3 ? "機能" : "モデル"}の生コンテンツ:`,
+          cellContent,
+        );
+
+        // より詳細な分割パターンを使用
+        let items = [];
+
+        // HTMLの<br>タグがある場合
+        if (cellContent.includes("<br>")) {
+          items = cellContent.split(/<br\s*\/?>/gi);
+        }
+        // 改行文字がある場合
+        else if (cellContent.includes("\n")) {
+          items = cellContent.split(/\n/);
+        }
+        // •文字がある場合
+        else if (cellContent.includes("•")) {
+          items = cellContent.split(/•/);
+        }
+        // スペースで区切られた複数の項目の場合（日本語の場合は適用しない）
+        else if (
+          /[a-zA-Z]/.test(cellContent) &&
+          cellContent.split(/\s+/).length > 1
+        ) {
+          items = cellContent.split(/\s+/);
+        }
+        // その他の場合は単一項目として扱う
+        else {
+          items = [cellContent];
+        }
+
+        // 各項目をクリーンアップ
+        items = items
           .map((item) => {
-            // 記号や状態アイコンを除去
             return item
               .replace(/^[•✅❌]\s*/, "")
               .replace(/\s*🟢|\s*🔴/g, "")
+              .replace(/🍌\s*/g, "") // バナナ絵文字を除去
+              .replace(/[\u{1F000}-\u{1F9FF}]/gu, "") // 一般的な絵文字を除去
+              .replace(/[\u{2600}-\u{26FF}]/gu, "") // その他記号・絵文字を除去
               .replace(/\([^)]*\)/g, "")
               .replace(/\[[^\]]*\]/g, "")
               .replace(/\s*\(無効\)/g, "")
@@ -1710,16 +1757,48 @@ function copyAITableToClipboard() {
               item !== "" && !item.includes("検出日") && !item.includes("更新"),
           );
 
+        console.log(`分割後のアイテム:`, items);
+
         if (items.length === 0) {
-          columnData.push("-");
+          columnData.push(["-"]);
         } else {
-          // 複数項目は改行で結合
-          columnData.push(items.join("\n"));
+          // 複数項目を配列として保持（後で個別セルに分離）
+          columnData.push(items);
         }
       });
 
-      // データ行を追加
-      tsvData += columnData.join("\t");
+      // 最大アイテム数を取得
+      const maxItems = Math.max(
+        ...columnData.map((col) => (Array.isArray(col) ? col.length : 1)),
+      );
+
+      // シンプルなヘッダー（固定6列）
+      const headers = [
+        "ChatGPTモデル",
+        "Claudeモデル",
+        "Geminiモデル",
+        "ChatGPT機能",
+        "Claude機能",
+        "Gemini機能",
+      ];
+
+      tsvData = headers.join("\t") + "\n";
+
+      // 各アイテムを個別の行として出力
+      for (let rowIndex = 0; rowIndex < maxItems; rowIndex++) {
+        const dataRow = [];
+        for (let colIndex = 0; colIndex < columnData.length; colIndex++) {
+          const columnItems = Array.isArray(columnData[colIndex])
+            ? columnData[colIndex]
+            : [columnData[colIndex]];
+          const item = columnItems[rowIndex] || "-";
+          dataRow.push(item);
+        }
+        tsvData += dataRow.join("\t");
+        if (rowIndex < maxItems - 1) {
+          tsvData += "\n";
+        }
+      }
     }
 
     // クリップボードにコピー
