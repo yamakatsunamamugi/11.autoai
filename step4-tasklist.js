@@ -230,8 +230,21 @@ async function immediateSpreadsheetUpdate(result, taskIndex) {
         return;
       }
 
-      // セル参照を作成（例：column=3, row=5 -> "C5"）
-      const columnLetter = String.fromCharCode(64 + result.column); // 1->A, 2->B, 3->C
+      // セル参照を作成（例：column=3, row=5 -> "C5"、column="C", row=5 -> "C5"）
+      let columnLetter;
+      if (typeof result.column === "string") {
+        // すでに文字列の場合（"C"など）
+        columnLetter = result.column;
+      } else if (typeof result.column === "number") {
+        // 数値の場合（3 -> "C"）
+        columnLetter = String.fromCharCode(64 + result.column); // 1->A, 2->B, 3->C
+      } else {
+        log.error(
+          `❌ [即座スプレッドシート] 不正な列型[${taskIndex}]:`,
+          typeof result.column,
+        );
+        return;
+      }
       const cellRef = `${columnLetter}${result.row}`;
 
       const updateResult = await window.simpleSheetsClient.updateCell(

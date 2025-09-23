@@ -962,128 +962,153 @@
   // 他のAI（ChatGPT/Gemini/Genspark）は直接実行方式を使用しているが、
   // Claudeも段階的に移行するため、まずはメッセージリスナーを修正
   if (isValidClaudeURL && !isExtensionPage && chrome?.runtime?.onMessage) {
-    console.log("📡 [Claude-直接実行方式] メッセージリスナー登録開始");
+    console.log(
+      "📡 [Claude-直接実行方式] メッセージリスナー登録を遅延開始（ページ完全読み込み待機）",
+    );
 
-    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-      const requestId = Math.random().toString(36).substring(2, 8);
-      console.warn(
-        `📬 [Claude-直接実行方式] メッセージ受信 [ID:${requestId}]:`,
-        {
-          type: request?.type || request?.action,
-          keys: Object.keys(request || {}),
-          hasTask: !!request?.task,
-          hasTaskData: !!request?.taskData,
-          automationName: request?.automationName,
-          taskId: request?.task?.id || request?.taskData?.id,
-          timestamp: new Date().toISOString(),
-        },
-      );
+    // ページ完全読み込みを待機してからリスナーを登録（Content Script通信エラー対策）
+    const registerMessageListener = () => {
+      console.log("📡 [Claude-直接実行方式] メッセージリスナー登録開始");
 
-      // executeTaskタスクの処理
-      if (
-        request.action === "executeTask" ||
-        request.type === "executeTask" ||
-        request.type === "CLAUDE_EXECUTE_TASK"
-      ) {
+      chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+        const requestId = Math.random().toString(36).substring(2, 8);
         console.warn(
-          `🔧 [Claude-直接実行方式] executeTask実行開始 [ID:${requestId}]`,
+          `📬 [Claude-直接実行方式] メッセージ受信 [ID:${requestId}]:`,
           {
-            requestId: requestId,
-            action: request.action,
-            type: request.type,
-            automationName: request.automationName,
-            hasTask: !!request.task,
-            hasTaskData: !!request.taskData,
+            type: request?.type || request?.action,
+            keys: Object.keys(request || {}),
+            hasTask: !!request?.task,
+            hasTaskData: !!request?.taskData,
+            automationName: request?.automationName,
             taskId: request?.task?.id || request?.taskData?.id,
+            timestamp: new Date().toISOString(),
           },
         );
 
-        (async () => {
-          try {
-            // executeTask関数が定義されているか確認
-            if (typeof executeTask === "function") {
-              console.warn(
-                `✅ [Claude-直接実行方式] executeTask関数が利用可能 [ID:${requestId}]`,
-              );
-              const taskToExecute = request.task || request.taskData || request;
-              console.warn(
-                `🚀 [Claude-直接実行方式] executeTask呼び出し前 [ID:${requestId}]:`,
-                {
-                  taskId: taskToExecute?.id,
-                  taskKeys: Object.keys(taskToExecute || {}),
-                },
-              );
+        // executeTaskタスクの処理
+        if (
+          request.action === "executeTask" ||
+          request.type === "executeTask" ||
+          request.type === "CLAUDE_EXECUTE_TASK"
+        ) {
+          console.warn(
+            `🔧 [Claude-直接実行方式] executeTask実行開始 [ID:${requestId}]`,
+            {
+              requestId: requestId,
+              action: request.action,
+              type: request.type,
+              automationName: request.automationName,
+              hasTask: !!request.task,
+              hasTaskData: !!request.taskData,
+              taskId: request?.task?.id || request?.taskData?.id,
+            },
+          );
 
-              try {
-                const result = await executeTask(taskToExecute);
+          (async () => {
+            try {
+              // executeTask関数が定義されているか確認
+              if (typeof executeTask === "function") {
                 console.warn(
-                  `✅ [Claude-直接実行方式] executeTask完了 [ID:${requestId}]:`,
+                  `✅ [Claude-直接実行方式] executeTask関数が利用可能 [ID:${requestId}]`,
+                );
+                const taskToExecute =
+                  request.task || request.taskData || request;
+                console.warn(
+                  `🚀 [Claude-直接実行方式] executeTask呼び出し前 [ID:${requestId}]:`,
                   {
-                    success: result?.success,
-                    hasResult: !!result,
-                    resultKeys: result ? Object.keys(result) : [],
+                    taskId: taskToExecute?.id,
+                    taskKeys: Object.keys(taskToExecute || {}),
                   },
                 );
-                sendResponse({ success: true, result });
-              } catch (taskError) {
-                console.error(
-                  `❌ [Claude-直接実行方式] executeTaskエラー [ID:${requestId}]:`,
-                  taskError,
-                );
-                sendResponse({
-                  success: false,
-                  error: taskError.message || "executeTask failed",
-                  stack: taskError.stack,
-                });
-              }
-            } else {
-              console.warn(
-                `⏳ [Claude-直接実行方式] executeTask未定義、1秒後に再試行 [ID:${requestId}]`,
-              );
-              // 関数がまだ定義されていない場合は少し待つ
-              setTimeout(async () => {
-                if (typeof executeTask === "function") {
-                  console.log(
-                    `✅ [Claude-直接実行方式] executeTask関数が利用可能（再試行） [ID:${requestId}]`,
+
+                try {
+                  const result = await executeTask(taskToExecute);
+                  console.warn(
+                    `✅ [Claude-直接実行方式] executeTask完了 [ID:${requestId}]:`,
+                    {
+                      success: result?.success,
+                      hasResult: !!result,
+                      resultKeys: result ? Object.keys(result) : [],
+                    },
                   );
-                  const result = await executeTask(request.task || request);
                   sendResponse({ success: true, result });
-                } else {
+                } catch (taskError) {
                   console.error(
-                    `❌ [Claude-直接実行方式] executeTask関数が利用不可 [ID:${requestId}]`,
+                    `❌ [Claude-直接実行方式] executeTaskエラー [ID:${requestId}]:`,
+                    taskError,
                   );
                   sendResponse({
                     success: false,
-                    error: "executeTask not available",
+                    error: taskError.message || "executeTask failed",
+                    stack: taskError.stack,
                   });
                 }
-              }, 1000);
+              } else {
+                console.warn(
+                  `⏳ [Claude-直接実行方式] executeTask未定義、1秒後に再試行 [ID:${requestId}]`,
+                );
+                // 関数がまだ定義されていない場合は少し待つ
+                setTimeout(async () => {
+                  if (typeof executeTask === "function") {
+                    console.log(
+                      `✅ [Claude-直接実行方式] executeTask関数が利用可能（再試行） [ID:${requestId}]`,
+                    );
+                    const result = await executeTask(request.task || request);
+                    sendResponse({ success: true, result });
+                  } else {
+                    console.error(
+                      `❌ [Claude-直接実行方式] executeTask関数が利用不可 [ID:${requestId}]`,
+                    );
+                    sendResponse({
+                      success: false,
+                      error: "executeTask not available",
+                    });
+                  }
+                }, 1000);
+              }
+            } catch (error) {
+              console.error(
+                `❌ [Claude-直接実行方式] エラー [ID:${requestId}]:`,
+                error,
+              );
+              sendResponse({ success: false, error: error.message });
             }
-          } catch (error) {
-            console.error(
-              `❌ [Claude-直接実行方式] エラー [ID:${requestId}]:`,
-              error,
-            );
-            sendResponse({ success: false, error: error.message });
-          }
-        })();
-        console.warn(
-          `🔄 [Claude-直接実行方式] 非同期処理のためreturn true [ID:${requestId}]`,
+          })();
+          console.warn(
+            `🔄 [Claude-直接実行方式] 非同期処理のためreturn true [ID:${requestId}]`,
+          );
+          return true; // 非同期レスポンスのために必要
+        }
+
+        // その他のメッセージタイプは無視
+        console.log(
+          `ℹ️ [Claude-直接実行方式] 未対応のメッセージタイプ [ID:${requestId}]:`,
+          request?.type || request?.action,
         );
-        return true; // 非同期レスポンスのために必要
-      }
+      });
 
-      // その他のメッセージタイプは無視
-      console.log(
-        `ℹ️ [Claude-直接実行方式] 未対応のメッセージタイプ [ID:${requestId}]:`,
-        request?.type || request?.action,
-      );
-    });
+      console.log("✅ [Claude-直接実行方式] メッセージリスナー登録完了");
 
-    console.log("✅ [Claude-直接実行方式] メッセージリスナー登録完了");
+      // 初期化完了をグローバルに通知
+      window.CLAUDE_MESSAGE_LISTENER_READY = true;
+    };
 
-    // 初期化完了をグローバルに通知
-    window.CLAUDE_MESSAGE_LISTENER_READY = true;
+    // ページの読み込み状態に応じて登録タイミングを調整
+    if (document.readyState === "loading") {
+      // DOMContentLoadedを待機
+      document.addEventListener("DOMContentLoaded", () => {
+        console.log("📋 [Claude] DOMContentLoaded - 500ms後にリスナー登録");
+        setTimeout(registerMessageListener, 500);
+      });
+    } else if (document.readyState === "interactive") {
+      // 500ms待機してから登録
+      console.log("📋 [Claude] Document interactive - 500ms後にリスナー登録");
+      setTimeout(registerMessageListener, 500);
+    } else {
+      // すでに完全に読み込まれている場合は1000ms待機（Content Script通信エラー対策）
+      console.log("📋 [Claude] Document complete - 1000ms後にリスナー登録");
+      setTimeout(registerMessageListener, 1000);
+    }
   }
 
   // ========================================
@@ -1264,7 +1289,6 @@
   if (!CLAUDE_SELECTORS) {
     log.error("❌ CLAUDE_SELECTORS initialization error!");
   }
-
 
   // ========================================
   // Claude-ステップ0-4: セレクタ定義
