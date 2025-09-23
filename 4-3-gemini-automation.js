@@ -862,7 +862,8 @@ const log = {
       if (
         request.action === "executeTask" ||
         request.type === "executeTask" ||
-        request.type === "GEMINI_EXECUTE_TASK"
+        request.type === "GEMINI_EXECUTE_TASK" ||
+        request.type === "EXECUTE_TASK"
       ) {
         const requestId = Math.random().toString(36).substring(2, 8);
         console.log(`📬 [Gemini] executeTask実行開始 [ID:${requestId}]:`, {

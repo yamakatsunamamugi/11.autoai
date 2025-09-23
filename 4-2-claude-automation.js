@@ -1148,7 +1148,8 @@
             if (
               request.action === "executeTask" ||
               request.type === "executeTask" ||
-              request.type === "CLAUDE_EXECUTE_TASK"
+              request.type === "CLAUDE_EXECUTE_TASK" ||
+              request.type === "EXECUTE_TASK"
             ) {
               console.warn(
                 `🔧 [Claude-直接実行方式] executeTask実行開始 [ID:${requestId}]`,

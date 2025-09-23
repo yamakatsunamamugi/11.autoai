@@ -3199,7 +3199,8 @@ const log = {
       if (
         request.action === "executeTask" ||
         request.type === "executeTask" ||
-        request.type === "CLAUDE_EXECUTE_TASK"
+        request.type === "CLAUDE_EXECUTE_TASK" ||
+        request.type === "EXECUTE_TASK"
       ) {
         log.warn(
           `🔧 [ChatGPT-直接実行方式] executeTask実行開始 [ID:${requestId}]`,
@@ -3363,23 +3364,9 @@ async function chatWithChatGPT() {
 */
 
 // ========================================
-// ウィンドウ終了時のログ保存処理
+// 注意: ChatGPTLogManagerはIIFE内で定義されているため、
+// IIFE外でのwindow設定やbeforeunloadイベントでの使用は不可
 // ========================================
-window.addEventListener("beforeunload", async (event) => {
-  log.debug("🔄 [ChatGPTAutomation] ウィンドウ終了検知 - ログ保存開始");
-
-  try {
-    const fileName = await ChatGPTLogManager.saveToFile();
-    if (fileName) {
-      log.debug(`✅ [ChatGPTAutomation] ログ保存完了: ${fileName}`);
-    }
-  } catch (error) {
-    log.error("[ChatGPTAutomation] ログ保存エラー:", error);
-  }
-});
-
-// ChatGPTLogManagerをwindowに設定
-window.ChatGPTLogManager = ChatGPTLogManager;
 
 // ========================================
 // 【エクスポート】検出システム用関数一覧
