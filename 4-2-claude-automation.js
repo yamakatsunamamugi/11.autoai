@@ -1209,12 +1209,22 @@
                 responseTime: new Date().toISOString(),
               });
 
-              sendResponse({
-                action: "pong",
-                status: "ready",
-                timestamp: Date.now(),
-                scriptLoaded: true,
-              });
+              // 🔍 [MESSAGE-PORT-SAFE] Ping応答も安全な送信
+              try {
+                sendResponse({
+                  action: "pong",
+                  status: "ready",
+                  timestamp: Date.now(),
+                  scriptLoaded: true,
+                  messagePortSafe: true,
+                });
+                console.log("✅ [MESSAGE-PORT-SAFE] Ping応答送信完了");
+              } catch (pingError) {
+                console.error(
+                  "🚨 [MESSAGE-PORT-ERROR] Ping応答送信失敗:",
+                  pingError,
+                );
+              }
               return true;
             }
 
@@ -1319,17 +1329,93 @@
                           resultKeys: result ? Object.keys(result) : [],
                         },
                       );
-                      sendResponse({ success: true, result });
+
+                      // 🔍 [MESSAGE-PORT-SAFE] Message Port Error 対策：安全なsendResponse呼び出し
+                      try {
+                        // ポート状態を事前チェック
+                        if (chrome.runtime && chrome.runtime.lastError) {
+                          console.error(
+                            "🚨 [MESSAGE-PORT-PRECHECK] Chrome Runtime Error 検出:",
+                            chrome.runtime.lastError,
+                          );
+                        }
+
+                        console.log(
+                          "📤 [MESSAGE-PORT-SAFE] sendResponse 呼び出し前チェック:",
+                          {
+                            chromeRuntimeAvailable:
+                              typeof chrome !== "undefined" && chrome.runtime,
+                            senderTabId: sender?.tab?.id,
+                            responseSize: JSON.stringify({
+                              success: true,
+                              result,
+                            }).length,
+                            timestamp: new Date().toISOString(),
+                          },
+                        );
+
+                        sendResponse({
+                          success: true,
+                          result,
+                          messagePortSafe: true,
+                          timestamp: new Date().toISOString(),
+                        });
+
+                        console.log(
+                          "✅ [MESSAGE-PORT-SAFE] sendResponse 正常完了",
+                        );
+                      } catch (sendError) {
+                        console.error(
+                          "🚨 [MESSAGE-PORT-ERROR] sendResponse でエラー:",
+                          {
+                            error: sendError.message,
+                            stack: sendError.stack,
+                            requestId: requestId,
+                            hypothesis: "Message Port が予期せず閉じられた",
+                            timestamp: new Date().toISOString(),
+                          },
+                        );
+
+                        // フォールバック：chrome.runtime.sendMessage を使用
+                        try {
+                          chrome.runtime.sendMessage({
+                            type: "EXECUTE_TASK_RESULT",
+                            requestId: requestId,
+                            success: true,
+                            result: result,
+                            fallback: true,
+                          });
+                          console.log(
+                            "🔧 [MESSAGE-PORT-FALLBACK] フォールバック送信完了",
+                          );
+                        } catch (fallbackError) {
+                          console.error(
+                            "❌ [MESSAGE-PORT-FALLBACK] フォールバック送信も失敗:",
+                            fallbackError,
+                          );
+                        }
+                      }
                     } catch (taskError) {
                       console.error(
                         `❌ [Claude-直接実行方式] executeTaskエラー [ID:${requestId}]:`,
                         taskError,
                       );
-                      sendResponse({
-                        success: false,
-                        error: taskError.message || "executeTask failed",
-                        stack: taskError.stack,
-                      });
+
+                      // 🔍 [MESSAGE-PORT-SAFE] エラー時も安全なsendResponse
+                      try {
+                        sendResponse({
+                          success: false,
+                          error: taskError.message || "executeTask failed",
+                          stack: taskError.stack,
+                          messagePortSafe: true,
+                          timestamp: new Date().toISOString(),
+                        });
+                      } catch (sendError) {
+                        console.error(
+                          "🚨 [MESSAGE-PORT-ERROR] エラーレスポンス送信失敗:",
+                          sendError,
+                        );
+                      }
                     }
                   } else {
                     console.error(

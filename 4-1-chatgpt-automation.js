@@ -68,6 +68,38 @@ const log = {
   );
   console.log(`[DEBUG] ChatGPT Script Loaded - Marker Set`);
 
+  // 早期メッセージリスナー登録（Content Script準備確認用）
+  const earlyMessageListener = (request, sender, sendResponse) => {
+    console.log(`🏓 [ChatGPT-Early] 受信:`, request);
+
+    if (
+      request.action === "ping" ||
+      request.type === "CONTENT_SCRIPT_CHECK" ||
+      request.type === "PING"
+    ) {
+      console.log("🏓 [ChatGPT-Early] Ping受信、即座にPong応答");
+      sendResponse({
+        action: "pong",
+        status: "ready",
+        timestamp: Date.now(),
+        scriptLoaded: true,
+        earlyResponse: true,
+      });
+      return true;
+    }
+    return false;
+  };
+
+  // 即座にリスナー登録
+  if (
+    typeof chrome !== "undefined" &&
+    chrome.runtime &&
+    chrome.runtime.onMessage
+  ) {
+    chrome.runtime.onMessage.addListener(earlyMessageListener);
+    console.log("📡 [ChatGPT] 早期メッセージリスナー登録完了");
+  }
+
   // 🔧 [FIXED] ChatGPTメッセージング問題修正完了のお知らせ
   console.log("🔧 [FIXED] ChatGPTメッセージング問題修正済み:", {
     fixes: [
@@ -79,12 +111,63 @@ const log = {
     note: "リトライ機能のエラーログがより明確に",
   });
 
+  // ログ出力（タイムスタンプ付き）
+  function logWithTimestamp(message, type = "info") {
+    const timestamp = new Date().toLocaleTimeString("ja-JP", {
+      hour12: false,
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+    const prefix = `[${timestamp}]`;
+
+    switch (type) {
+      case "error":
+        console.error(`${prefix} ❌ ${message}`);
+        break;
+      case "success":
+        console.log(`${prefix} ✅ ${message}`);
+        break;
+      case "warning":
+        console.warn(`${prefix} ⚠️ ${message}`);
+        break;
+      case "step":
+        console.log(`${prefix} 🔧 ${message}`);
+        break;
+      case "info":
+      default:
+        console.log(`${prefix} ℹ️ ${message}`);
+        break;
+    }
+  }
+
   // 🔍 Content Script実行コンテキストの詳細確認（Claude式）
   const currentURL = window.location.href;
   const isValidChatGPTURL =
     currentURL.includes("chatgpt.com") ||
     currentURL.includes("chat.openai.com");
   const isExtensionPage = currentURL.startsWith("chrome-extension://");
+
+  // DOM準備状態の詳細チェック
+  const domReadyCheck = () => {
+    const hasBasicElements = !!(document.body && document.head);
+    const hasInteractiveElements =
+      document.querySelectorAll('[contenteditable="true"], textarea, input')
+        .length > 0;
+    const isReady =
+      document.readyState === "complete" ||
+      document.readyState === "interactive";
+
+    return {
+      readyState: document.readyState,
+      hasBasicElements,
+      hasInteractiveElements,
+      isReady,
+      bodyChildren: document.body ? document.body.children.length : 0,
+    };
+  };
+
+  console.log("🔍 [ChatGPT] DOM準備状態チェック:", domReadyCheck());
 
   // 🔍 Content Script実行環境の詳細ログ
   console.warn(
@@ -738,6 +821,39 @@ const log = {
     "success",
   );
 
+  // DOM準備完了を待機する関数
+  const waitForDOMReady = async () => {
+    logWithTimestamp("DOM準備完了を待機中...", "info");
+
+    const maxWaitTime = 10000; // 最大10秒待機
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < maxWaitTime) {
+      const domStatus = domReadyCheck();
+
+      if (domStatus.isReady && domStatus.hasBasicElements) {
+        logWithTimestamp("DOM準備完了！", "success");
+        logWithTimestamp(`準備完了状態: ${JSON.stringify(domStatus)}`, "info");
+        return true;
+      }
+
+      if ((Date.now() - startTime) % 2000 === 0) {
+        logWithTimestamp(
+          `DOM準備待機中... ${JSON.stringify(domStatus)}`,
+          "info",
+        );
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    logWithTimestamp("DOM準備タイムアウト、続行します", "warning");
+    return false;
+  };
+
+  // DOM準備を待機
+  await waitForDOMReady();
+
   // ChatGPT用固定セレクタ
   const SELECTORS = {
     // モデル関連（テストコードから更新）
@@ -790,6 +906,12 @@ const log = {
     ],
     // 入力・送信関連（テストコードから更新）
     textInput: [
+      // 2024年12月最新のChatGPTセレクタ
+      'div[contenteditable="true"][data-id^="root"]',
+      'div[contenteditable="true"][placeholder*="Message"]',
+      'div[contenteditable="true"][translate="no"]',
+      'div[role="textbox"][contenteditable="true"]',
+      // 従来のセレクタ（フォールバック用）
       ".ProseMirror",
       "#prompt-textarea",
       '[contenteditable="true"][translate="no"]',
@@ -798,6 +920,10 @@ const log = {
       ".ql-editor",
       'textarea[placeholder*="Message ChatGPT"]',
       'textarea[data-testid="composer-text-input"]',
+      // より広範囲なフォールバック
+      '[contenteditable="true"]',
+      "textarea",
+      'input[type="text"]',
     ],
     sendButton: [
       '[data-testid="send-button"]',
@@ -879,34 +1005,6 @@ const log = {
           logWithTimestamp(`応答待機中... (${i}秒経過)`, "info");
         }
         await sleep(1000);
-      }
-    }
-
-    // ログ出力（タイムスタンプ付き）
-    function logWithTimestamp(message, type = "info") {
-      const timestamp = new Date().toLocaleTimeString("ja-JP", {
-        hour12: false,
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-      });
-      const prefix = `[${timestamp}]`;
-
-      switch (type) {
-        case "error":
-          console.error(`${prefix} ❌ ${message}`);
-          break;
-        case "success":
-          console.log(`${prefix} ✅ ${message}`);
-          break;
-        case "warning":
-          console.warn(`${prefix} ⚠️ ${message}`);
-          break;
-        case "step":
-          console.log(`${prefix} 📍 ${message}`);
-          break;
-        default:
-          console.log(`${prefix} ℹ️ ${message}`);
       }
     }
 
@@ -2084,6 +2182,15 @@ const log = {
         // ========================================
         logWithTimestamp("\n【Step 4-1-2】テキスト入力", "step");
 
+        // デバッグ: 使用するセレクタ一覧を表示
+        logWithTimestamp(
+          `使用するセレクタ (${SELECTORS.textInput.length}個):`,
+          "info",
+        );
+        SELECTORS.textInput.forEach((selector, index) => {
+          logWithTimestamp(`  ${index + 1}. ${selector}`, "info");
+        });
+
         // getElementWithWaitを使用してテキスト入力欄を検索
         let input = await getElementWithWait(
           SELECTORS.textInput,
@@ -2094,13 +2201,38 @@ const log = {
         if (!input) {
           // 最後の手段として、より広範囲の検索を試行
           logWithTimestamp("最後の手段として広範囲検索を実行", "warning");
+
+          // デバッグ: ページ上の全ての編集可能要素を調査
           const allEditableElements = document.querySelectorAll(
             '[contenteditable="true"], textarea, input[type="text"]',
           );
+          logWithTimestamp(
+            `発見された編集可能要素: ${allEditableElements.length}個`,
+            "info",
+          );
+
+          allEditableElements.forEach((elem, index) => {
+            const tagName = elem.tagName;
+            const className = elem.className || "(クラスなし)";
+            const id = elem.id || "(IDなし)";
+            const placeholder =
+              elem.placeholder ||
+              elem.getAttribute("placeholder") ||
+              "(プレースホルダーなし)";
+            const isInteractable = isElementInteractable(elem);
+            logWithTimestamp(
+              `  ${index + 1}. ${tagName} - クラス: ${className} - ID: ${id} - プレースホルダー: ${placeholder} - 操作可能: ${isInteractable}`,
+              "info",
+            );
+          });
+
           for (const elem of allEditableElements) {
             if (isElementInteractable(elem)) {
               input = elem;
-              logWithTimestamp("代替入力欄を発見", "success");
+              logWithTimestamp(
+                `代替入力欄を発見: ${elem.tagName}.${elem.className}`,
+                "success",
+              );
               break;
             }
           }
@@ -3793,4 +3925,122 @@ async function executeFullTest(modelIndex, functionIndex, message) {
     log.error("完全テストエラー:", error);
     throw error;
   }
+}
+
+// ========================================
+// 🚨 ChatGPT グローバルエラーハンドラー
+// ========================================
+
+// ChatGPT専用ネットワークエラーハンドラーを追加
+if (
+  typeof window !== "undefined" &&
+  window.location &&
+  window.location.href.includes("chatgpt.com")
+) {
+  // グローバルエラーハンドラー
+  window.addEventListener("error", (e) => {
+    const errorMessage = e.message || e.error?.message || "";
+    const errorName = e.error?.name || "";
+
+    // 🔍 ネットワークエラー検出 (Claudeと同じロジック)
+    const isNetworkError =
+      errorMessage.includes("timeout") ||
+      errorMessage.includes("network") ||
+      errorMessage.includes("fetch") ||
+      errorMessage.includes("Failed to fetch") ||
+      errorName.includes("NetworkError");
+
+    if (isNetworkError) {
+      console.error("🌐 [ChatGPT-GLOBAL-NETWORK-ERROR]", {
+        message: errorMessage,
+        name: errorName,
+        type: "NETWORK_ERROR",
+        filename: e.filename,
+        lineno: e.lineno,
+        timestamp: new Date().toISOString(),
+        aiType: "chatgpt",
+      });
+
+      // エラー統計記録 (将来のChatGPTRetryManager用)
+      try {
+        if (!window.chatgptErrorHistory) {
+          window.chatgptErrorHistory = [];
+        }
+        window.chatgptErrorHistory.push({
+          type: "NETWORK_ERROR",
+          message: errorMessage,
+          timestamp: Date.now(),
+          level: "global_error",
+        });
+      } catch (retryError) {
+        // エラー記録失敗は無視
+      }
+    } else {
+      console.error("🚨 [ChatGPT-GLOBAL-ERROR]", e.message);
+    }
+  });
+
+  // unhandledrejectionハンドラー
+  window.addEventListener("unhandledrejection", (e) => {
+    const errorReason = e.reason;
+    const errorMessage = errorReason?.message || String(errorReason);
+    const errorName = errorReason?.name || "";
+
+    // 🔍 ネットワークエラー検出
+    const isNetworkError =
+      errorMessage.includes("timeout") ||
+      errorMessage.includes("network") ||
+      errorMessage.includes("fetch") ||
+      errorMessage.includes("Failed to fetch") ||
+      errorName.includes("NetworkError");
+
+    if (isNetworkError) {
+      console.error("🌐 [ChatGPT-UNHANDLED-NETWORK-ERROR]", {
+        message: errorMessage,
+        name: errorName,
+        type: "NETWORK_ERROR",
+        timestamp: new Date().toISOString(),
+        aiType: "chatgpt",
+      });
+
+      // 🔄 エラー統計を記録
+      try {
+        if (!window.chatgptErrorHistory) {
+          window.chatgptErrorHistory = [];
+        }
+        window.chatgptErrorHistory.push({
+          type: "NETWORK_ERROR",
+          message: errorMessage,
+          timestamp: Date.now(),
+          level: "unhandledrejection",
+        });
+
+        console.log(
+          "📊 [ChatGPT-RETRY-MANAGER] ネットワークエラーを統計に記録",
+          {
+            totalErrors: window.chatgptErrorHistory.length,
+            errorType: "NETWORK_ERROR",
+          },
+        );
+
+        // 🔄 アクティブなタスクがある場合のリトライ準備 (将来実装用)
+        if (window.currentChatGPTTask) {
+          console.warn(
+            "🔄 [ChatGPT-RETRY-TRIGGER] アクティブタスク検出 - リトライ実行準備",
+          );
+          // ChatGPT用リトライマネージャーは将来実装
+          // 現在は統計記録のみ
+        }
+      } catch (retryError) {
+        console.error(
+          "❌ [ChatGPT-RETRY-MANAGER] エラー記録処理エラー:",
+          retryError,
+        );
+      }
+    } else {
+      console.error("🚨 [ChatGPT-UNHANDLED-PROMISE]", e.reason);
+    }
+  });
+
+  console.log("✅ [ChatGPT] ネットワークエラーハンドラー登録完了");
 }

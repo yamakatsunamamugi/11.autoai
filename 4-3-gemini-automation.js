@@ -947,4 +947,122 @@ const log = {
   }
 
   log.info("✅ Gemini Automation 準備完了");
+
+  // ========================================
+  // 🚨 Gemini グローバルエラーハンドラー
+  // ========================================
+
+  // Gemini専用ネットワークエラーハンドラーを追加
+  if (
+    typeof window !== "undefined" &&
+    window.location &&
+    window.location.href.includes("gemini.google.com")
+  ) {
+    // グローバルエラーハンドラー
+    window.addEventListener("error", (e) => {
+      const errorMessage = e.message || e.error?.message || "";
+      const errorName = e.error?.name || "";
+
+      // 🔍 ネットワークエラー検出 (Claude・ChatGPTと同じロジック)
+      const isNetworkError =
+        errorMessage.includes("timeout") ||
+        errorMessage.includes("network") ||
+        errorMessage.includes("fetch") ||
+        errorMessage.includes("Failed to fetch") ||
+        errorName.includes("NetworkError");
+
+      if (isNetworkError) {
+        console.error("🌐 [Gemini-GLOBAL-NETWORK-ERROR]", {
+          message: errorMessage,
+          name: errorName,
+          type: "NETWORK_ERROR",
+          filename: e.filename,
+          lineno: e.lineno,
+          timestamp: new Date().toISOString(),
+          aiType: "gemini",
+        });
+
+        // エラー統計記録 (将来のGeminiRetryManager用)
+        try {
+          if (!window.geminiErrorHistory) {
+            window.geminiErrorHistory = [];
+          }
+          window.geminiErrorHistory.push({
+            type: "NETWORK_ERROR",
+            message: errorMessage,
+            timestamp: Date.now(),
+            level: "global_error",
+          });
+        } catch (retryError) {
+          // エラー記録失敗は無視
+        }
+      } else {
+        console.error("🚨 [Gemini-GLOBAL-ERROR]", e.message);
+      }
+    });
+
+    // unhandledrejectionハンドラー
+    window.addEventListener("unhandledrejection", (e) => {
+      const errorReason = e.reason;
+      const errorMessage = errorReason?.message || String(errorReason);
+      const errorName = errorReason?.name || "";
+
+      // 🔍 ネットワークエラー検出
+      const isNetworkError =
+        errorMessage.includes("timeout") ||
+        errorMessage.includes("network") ||
+        errorMessage.includes("fetch") ||
+        errorMessage.includes("Failed to fetch") ||
+        errorName.includes("NetworkError");
+
+      if (isNetworkError) {
+        console.error("🌐 [Gemini-UNHANDLED-NETWORK-ERROR]", {
+          message: errorMessage,
+          name: errorName,
+          type: "NETWORK_ERROR",
+          timestamp: new Date().toISOString(),
+          aiType: "gemini",
+        });
+
+        // 🔄 エラー統計を記録
+        try {
+          if (!window.geminiErrorHistory) {
+            window.geminiErrorHistory = [];
+          }
+          window.geminiErrorHistory.push({
+            type: "NETWORK_ERROR",
+            message: errorMessage,
+            timestamp: Date.now(),
+            level: "unhandledrejection",
+          });
+
+          console.log(
+            "📊 [Gemini-RETRY-MANAGER] ネットワークエラーを統計に記録",
+            {
+              totalErrors: window.geminiErrorHistory.length,
+              errorType: "NETWORK_ERROR",
+            },
+          );
+
+          // 🔄 アクティブなタスクがある場合のリトライ準備 (将来実装用)
+          if (window.currentGeminiTask) {
+            console.warn(
+              "🔄 [Gemini-RETRY-TRIGGER] アクティブタスク検出 - リトライ実行準備",
+            );
+            // Gemini用リトライマネージャーは将来実装
+            // 現在は統計記録のみ
+          }
+        } catch (retryError) {
+          console.error(
+            "❌ [Gemini-RETRY-MANAGER] エラー記録処理エラー:",
+            retryError,
+          );
+        }
+      } else {
+        console.error("🚨 [Gemini-UNHANDLED-PROMISE]", e.reason);
+      }
+    });
+
+    console.log("✅ [Gemini] ネットワークエラーハンドラー登録完了");
+  }
 })();
