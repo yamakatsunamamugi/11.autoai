@@ -63,10 +63,10 @@ const log = {
   window.CHATGPT_SCRIPT_LOADED = true;
   window.CHATGPT_SCRIPT_INIT_TIME = Date.now();
 
-  log.debug(
+  console.log(
     `ChatGPT Automation V2 - 初期化時刻: ${new Date().toLocaleString("ja-JP")}`,
   );
-  log.debug(`[DEBUG] ChatGPT Script Loaded - Marker Set`);
+  console.log(`[DEBUG] ChatGPT Script Loaded - Marker Set`);
 
   // 🔍 Content Script実行コンテキストの詳細確認（Claude式）
   const currentURL = window.location.href;

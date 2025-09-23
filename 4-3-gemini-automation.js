@@ -54,7 +54,7 @@ const log = {
 (async function () {
   "use strict";
 
-  log.debug(`🚀 Gemini Automation V3 初期化`);
+  console.log(`🚀 Gemini Automation V3 初期化`);
 
   // 初期化マーカー設定
   window.GEMINI_SCRIPT_LOADED = true;
