@@ -7,7 +7,7 @@ const BATCH_PROCESSING_CONFIG = {
   ENABLE_INDIVIDUAL_COMPLETION: true, // 個別タスク完了時の即座処理
   ENABLE_IMMEDIATE_SPREADSHEET: true, // 即座スプレッドシート記載
   ENABLE_IMMEDIATE_WINDOW_CLOSE: true, // 即座ウィンドウクローズ
-  ENABLE_DYNAMIC_NEXT_TASK: false, // 動的次タスク開始（一時的に無効）
+  ENABLE_DYNAMIC_NEXT_TASK: true, // 動的次タスク開始を再有効化
   SAFE_MODE: false, // 新機能有効化
 };
 
