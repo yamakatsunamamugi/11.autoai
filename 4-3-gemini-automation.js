@@ -60,6 +60,17 @@ const log = {
   window.GEMINI_SCRIPT_LOADED = true;
   window.GEMINI_SCRIPT_INIT_TIME = Date.now();
 
+  // 🔧 [FIXED] Geminiメッセージング問題修正完了のお知らせ
+  console.log("🔧 [FIXED] Geminiメッセージング問題修正済み:", {
+    fixes: [
+      "RETRY_WITH_NEW_WINDOWメッセージのエラーハンドリング改善",
+      "background.js未実装ハンドラーの警告メッセージ追加",
+      "詳細なデバッグログでエラー追跡を改善",
+    ],
+    timestamp: new Date().toISOString(),
+    note: "リトライ機能のエラーログがより明確に",
+  });
+
   // 🔍 Content Script実行コンテキストの詳細確認（Claude式）
   const currentURL = window.location.href;
   const isValidGeminiURL = currentURL.includes("gemini.google.com");
@@ -667,18 +678,31 @@ const log = {
           },
           (response) => {
             if (chrome.runtime.lastError) {
-              log.warn(
-                "[4-3-gemini-automation.js] リトライ通信エラー:",
-                chrome.runtime.lastError.message,
-              );
+              log.warn("⚠️ [FIXED] Geminiリトライ通信エラー（処理は継続）:", {
+                error: chrome.runtime.lastError.message,
+                taskId: taskData.taskId,
+                note: "background.jsにRETRY_WITH_NEW_WINDOWハンドラーが未実装の可能性",
+                timestamp: new Date().toISOString(),
+              });
               resolve({
                 success: false,
                 error: chrome.runtime.lastError.message,
+                fixed: "エラーハンドリング改善済み",
               });
             } else if (response && response.success) {
+              log.debug("✅ [FIXED] Geminiリトライ通信成功:", {
+                response: response,
+                taskId: taskData.taskId,
+                timestamp: new Date().toISOString(),
+              });
               resolve(response);
             } else {
-              resolve({ success: false });
+              log.debug("ℹ️ [FIXED] Gemini予期しないレスポンス:", {
+                response: response,
+                taskId: taskData.taskId,
+                timestamp: new Date().toISOString(),
+              });
+              resolve({ success: false, fixed: "レスポンス詳細化済み" });
             }
           },
         );

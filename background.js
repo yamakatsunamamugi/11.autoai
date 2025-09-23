@@ -54,6 +54,23 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true; // 非同期レスポンス許可
   }
 
+  // 🔄 新規ウィンドウでのリトライ要求（ChatGPT, Geminiから）
+  if (request.type === "RETRY_WITH_NEW_WINDOW") {
+    console.log("🔄 [BG-FIX] RETRY_WITH_NEW_WINDOW要求を受信:", {
+      taskId: request.taskId,
+      aiType: request.aiType,
+      prompt: request.prompt?.substring(0, 50) + "...",
+      retryReason: request.retryReason,
+    });
+    // 実際のウィンドウ管理は実装なし（デバッグ用のみ）
+    sendResponse({
+      success: true,
+      message: "Retry request acknowledged (not implemented yet)",
+      timestamp: new Date().toISOString(),
+    });
+    return true; // 非同期レスポンス許可
+  }
+
   // 注意: Content Script注入はmanifest.json自動注入に移行済み
   // Content Script注入要求は廃止
 

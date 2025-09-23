@@ -5294,6 +5294,102 @@ class TaskStatusManager {
 // window.windowController = new WindowController();
 
 // ========================================
+// Step 4-1: createTaskListFromGroup Helper Function - グループ変換ユーティリティ
+// ========================================
+
+/**
+ * グループオブジェクトをタスク配列に変換する
+ * step4内部遷移時にグループオブジェクトが渡される場合に使用
+ * Groups 3以降のデータ形式統一のためのヘルパー関数
+ * @param {Object} groupData - グループオブジェクト
+ * @returns {Array} タスク配列
+ */
+async function createTaskListFromGroup(groupData) {
+  ExecuteLogger.info(
+    "🔧 [Step 4-1] createTaskListFromGroup: グループデータ変換開始:",
+    {
+      groupType: typeof groupData,
+      groupKeys: groupData ? Object.keys(groupData) : null,
+      hasColumns: !!(groupData && groupData.columns),
+      hasTaskGroup: !!(groupData && groupData.taskGroup),
+    },
+  );
+
+  try {
+    // Step 4-1-1: グループデータの構造を判定
+    let taskGroup = null;
+    let spreadsheetData = null;
+    let specialRows = null;
+    let dataStartRow = null;
+    let options = {};
+
+    // Step 4-1-2: step6からの遷移データの場合
+    if (groupData.taskGroup) {
+      taskGroup = groupData.taskGroup;
+      spreadsheetData = groupData.spreadsheetData || [];
+      specialRows = groupData.specialRows || {};
+      dataStartRow = groupData.dataStartRow || 4;
+      options = groupData.options || {};
+
+      ExecuteLogger.info("✅ [Step 4-1-2] Step6遷移データ形式を検出:", {
+        groupNumber: taskGroup.groupNumber,
+        groupType: taskGroup.groupType,
+        columnKeys: taskGroup.columns ? Object.keys(taskGroup.columns) : null,
+      });
+    }
+    // Step 4-1-3: 直接グループオブジェクトの場合
+    else if (groupData.columns) {
+      taskGroup = groupData;
+
+      // 現在のコンテキストからスプレッドシートデータを取得
+      spreadsheetData = window.globalState?.currentSpreadsheetData || [];
+      specialRows = window.globalState?.specialRows || {};
+      dataStartRow = window.globalState?.dataStartRow || 4;
+      options = {
+        spreadsheetUrl: window.globalState?.spreadsheetUrl || "",
+        spreadsheetId: window.globalState?.spreadsheetId || "",
+        gid: window.globalState?.gid || "",
+      };
+
+      ExecuteLogger.info(
+        "✅ [Step 4-1-3] 直接グループオブジェクト形式を検出:",
+        {
+          groupNumber: taskGroup.groupNumber,
+          groupType: taskGroup.groupType,
+          hasGlobalState: !!window.globalState,
+        },
+      );
+    } else {
+      throw new Error("未対応のグループデータ形式です");
+    }
+
+    // Step 4-1-4: generateTaskListを使用してタスク配列を生成
+    const taskList = await generateTaskList(
+      taskGroup,
+      spreadsheetData,
+      specialRows,
+      dataStartRow,
+      options,
+    );
+
+    ExecuteLogger.info("✅ [Step 4-1-4] タスク配列変換完了:", {
+      inputGroupNumber: taskGroup.groupNumber,
+      outputTaskCount: taskList.length,
+      taskTypes: taskList.map((task) => task.aiType).slice(0, 5), // 最初の5個のタスクタイプを表示
+    });
+
+    return taskList;
+  } catch (error) {
+    ExecuteLogger.error("❌ [Step 4-1] createTaskListFromGroup変換エラー:", {
+      error: error.message,
+      stack: error.stack,
+      groupData: groupData,
+    });
+    throw new Error(`グループオブジェクト変換失敗: ${error.message}`);
+  }
+}
+
+// ========================================
 // 削除: 重複したSimpleSheetsClientクラス定義
 // 正しい定義は上記の3533行目で定義済み（updateCellメソッド付き）
 // この重複定義により WindowLifecycleManager がメソッド不存在エラーを起こしていた
