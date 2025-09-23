@@ -998,11 +998,131 @@
     // 🚨 グローバルエラーハンドラー追加（claude.aiでのみ）
     if (shouldInitialize) {
       window.addEventListener("error", (e) => {
-        log.error("🚨 [GLOBAL-ERROR]", e.message);
+        const errorMessage = e.message || e.error?.message || "";
+        const errorName = e.error?.name || "";
+
+        // 🔍 ネットワークエラー検出
+        const isNetworkError =
+          errorMessage.includes("timeout") ||
+          errorMessage.includes("network") ||
+          errorMessage.includes("fetch") ||
+          errorMessage.includes("Failed to fetch") ||
+          errorName.includes("NetworkError");
+
+        if (isNetworkError) {
+          log.error("🌐 [GLOBAL-NETWORK-ERROR]", {
+            message: errorMessage,
+            name: errorName,
+            type: "NETWORK_ERROR",
+            filename: e.filename,
+            lineno: e.lineno,
+            timestamp: new Date().toISOString(),
+          });
+
+          // ClaudeRetryManagerでエラー統計を記録
+          try {
+            if (window.claudeRetryManager) {
+              window.claudeRetryManager.errorHistory.push({
+                type: "NETWORK_ERROR",
+                message: errorMessage,
+                timestamp: Date.now(),
+                level: "global_error",
+              });
+            }
+          } catch (retryError) {
+            // エラー記録失敗は無視
+          }
+        } else {
+          log.error("🚨 [GLOBAL-ERROR]", e.message);
+        }
       });
 
       window.addEventListener("unhandledrejection", (e) => {
-        log.error("🚨 [UNHANDLED-PROMISE]", e.reason);
+        const errorReason = e.reason;
+        const errorMessage = errorReason?.message || String(errorReason);
+        const errorName = errorReason?.name || "";
+
+        // 🔍 ネットワークエラー検出 (ClaudeRetryManagerと同じロジック)
+        const isNetworkError =
+          errorMessage.includes("timeout") ||
+          errorMessage.includes("network") ||
+          errorMessage.includes("fetch") ||
+          errorMessage.includes("Failed to fetch") ||
+          errorName.includes("NetworkError");
+
+        if (isNetworkError) {
+          log.error("🌐 [UNHANDLED-NETWORK-ERROR]", {
+            message: errorMessage,
+            name: errorName,
+            type: "NETWORK_ERROR",
+            timestamp: new Date().toISOString(),
+          });
+
+          // 🔄 ClaudeRetryManagerでネットワークエラーの統計を記録
+          try {
+            if (window.claudeRetryManager) {
+              // エラーを記録してメトリクスに反映
+              window.claudeRetryManager.errorHistory.push({
+                type: "NETWORK_ERROR",
+                message: errorMessage,
+                timestamp: Date.now(),
+                level: "unhandledrejection",
+              });
+
+              log.debug("📊 [RETRY-MANAGER] ネットワークエラーを統計に記録", {
+                totalErrors: window.claudeRetryManager.errorHistory.length,
+                errorType: "NETWORK_ERROR",
+              });
+
+              // 🔄 アクティブなタスクがある場合はリトライ実行を試行
+              if (window.currentClaudeTask) {
+                log.warn(
+                  "🔄 [RETRY-TRIGGER] アクティブタスク検出 - リトライ実行を試行",
+                );
+                // 非同期でリトライを試行（unhandledrejectionイベント内で重いタスクを避けるため）
+                setTimeout(async () => {
+                  try {
+                    const retryManager = new ClaudeRetryManager();
+                    await retryManager.executeWithRetry({
+                      action: async () => {
+                        log.info(
+                          "🔄 [NETWORK-RETRY] ネットワークエラー復旧試行中...",
+                        );
+                        // 現在のタスクを再実行
+                        if (
+                          window.currentClaudeTask &&
+                          typeof window.executeTask === "function"
+                        ) {
+                          return await window.executeTask(
+                            window.currentClaudeTask,
+                          );
+                        }
+                        return {
+                          success: false,
+                          error: "No active task to retry",
+                        };
+                      },
+                      errorType: "NETWORK_ERROR",
+                      context: "unhandledrejection_recovery",
+                    });
+                  } catch (retryError) {
+                    log.error(
+                      "❌ [NETWORK-RETRY] リトライ実行中にエラー:",
+                      retryError,
+                    );
+                  }
+                }, 100);
+              }
+            }
+          } catch (retryError) {
+            log.error(
+              "❌ [RETRY-MANAGER] リトライマネージャー処理エラー:",
+              retryError,
+            );
+          }
+        } else {
+          log.error("🚨 [UNHANDLED-PROMISE]", e.reason);
+        }
       });
 
       // Content Script注入確認
@@ -2561,42 +2681,136 @@
      */
     const inputText = async (element, text) => {
       try {
+        // 🔍 [HYPOTHESIS-TEST] React Error #418 対策として入力前のDOM状態をログ
+        console.log("🔍 [INPUT-BEFORE] テキスト入力前の状態:", {
+          elementType: element.tagName,
+          contentEditable: element.contentEditable,
+          textContent: element.textContent,
+          innerHTML: element.innerHTML,
+          className: element.className,
+          timestamp: new Date().toISOString(),
+        });
+
         element.focus();
         await wait(100);
 
-        // テキストコンテンツをクリア
-        element.textContent = "";
+        // 🚨 [REACT-SAFE] React Error #418 対策：より安全な入力方式を試行
+        console.log("🔍 [INPUT-METHOD] React Safe入力モード開始");
 
-        // プレースホルダー要素を削除（存在する場合）
-        const placeholderP = element.querySelector("p.is-empty");
-        if (placeholderP) {
-          placeholderP.remove();
+        // 方法1: React互換のイベント発火（先にイベントを準備）
+        const inputDescriptor =
+          Object.getOwnPropertyDescriptor(element, "value") ||
+          Object.getOwnPropertyDescriptor(
+            HTMLInputElement.prototype,
+            "value",
+          ) ||
+          Object.getOwnPropertyDescriptor(
+            HTMLTextAreaElement.prototype,
+            "value",
+          );
+
+        // React合成イベントに対応したイベント作成
+        const createReactSafeEvent = (eventType) => {
+          const event = new Event(eventType, {
+            bubbles: true,
+            cancelable: true,
+          });
+          // React fiber nodeの更新をトリガー
+          Object.defineProperty(event, "target", {
+            value: element,
+            enumerable: true,
+          });
+          return event;
+        };
+
+        try {
+          // 段階的クリア（React状態の整合性を保つ）
+          console.log("🔧 [CLEAR-PHASE] 段階的コンテンツクリア開始");
+
+          // Step 1: フォーカスイベント
+          element.dispatchEvent(new FocusEvent("focus", { bubbles: true }));
+          await wait(50);
+
+          // Step 2: 既存コンテンツのクリア
+          element.textContent = "";
+
+          // Step 3: プレースホルダー要素を削除（存在する場合）
+          const placeholderP = element.querySelector("p.is-empty");
+          if (placeholderP) {
+            placeholderP.remove();
+          }
+
+          // Step 4: React Safe なテキスト挿入
+          console.log("🔧 [INSERT-PHASE] React Safe テキスト挿入開始");
+
+          // 新しいp要素を作成してテキストを挿入
+          const p = document.createElement("p");
+          p.textContent = text;
+          element.appendChild(p);
+
+          // ql-blankクラスを削除（Quillエディタ対応）
+          element.classList.remove("ql-blank");
+
+          // Step 5: React 合成イベントの発火（順序重要）
+          console.log("🔧 [EVENT-PHASE] React合成イベント発火開始");
+
+          // beforeinput → input → change の順序でイベント発火
+          element.dispatchEvent(
+            new InputEvent("beforeinput", {
+              bubbles: true,
+              cancelable: true,
+              inputType: "insertText",
+              data: text,
+            }),
+          );
+          await wait(10);
+
+          element.dispatchEvent(createReactSafeEvent("input"));
+          await wait(10);
+
+          element.dispatchEvent(createReactSafeEvent("change"));
+          await wait(10);
+
+          // 追加のReactイベント（compositionend も発火）
+          element.dispatchEvent(
+            new CompositionEvent("compositionend", {
+              bubbles: true,
+              cancelable: true,
+              data: text,
+            }),
+          );
+
+          console.log("🔍 [INPUT-AFTER] テキスト入力後の状態:", {
+            elementType: element.tagName,
+            finalTextContent: element.textContent,
+            finalInnerHTML: element.innerHTML,
+            timestamp: new Date().toISOString(),
+          });
+
+          log.debug("✓ テキスト入力完了");
+          return true;
+        } catch (reactError) {
+          // React Error が発生した場合のフォールバック
+          console.error(
+            "🚨 [REACT-FALLBACK] React Safe 入力でエラー、フォールバックモードに切り替え:",
+            reactError,
+          );
+
+          // シンプルな入力方式にフォールバック
+          element.textContent = "";
+          const p = document.createElement("p");
+          p.textContent = text;
+          element.appendChild(p);
+
+          // 基本イベントのみ発火
+          element.dispatchEvent(new Event("input", { bubbles: true }));
+          element.dispatchEvent(new Event("change", { bubbles: true }));
+
+          log.debug("✓ フォールバック入力完了");
+          return true;
         }
-
-        // 新しいp要素を作成してテキストを挿入
-        const p = document.createElement("p");
-        p.textContent = text;
-        element.appendChild(p);
-
-        // ql-blankクラスを削除（Quillエディタ対応）
-        element.classList.remove("ql-blank");
-
-        // inputイベントとchangeイベントを発火
-        const inputEvent = new Event("input", {
-          bubbles: true,
-          cancelable: true,
-        });
-        const changeEvent = new Event("change", {
-          bubbles: true,
-          cancelable: true,
-        });
-
-        element.dispatchEvent(inputEvent);
-        element.dispatchEvent(changeEvent);
-
-        log.debug("✓ テキスト入力完了");
-        return true;
       } catch (e) {
+        console.error("🚨 [INPUT-FATAL-ERROR] テキスト入力で致命的エラー:", e);
         log.error("✗ テキスト入力エラー:", e);
         return false;
       }
@@ -5510,6 +5724,63 @@
       } catch (error) {
         // エラー時も実行状態を解除
         setExecutionState(false);
+
+        // 🔍 [HYPOTHESIS-TEST] React Error #418 検出とログ
+        const isReactError418 =
+          error.message.includes("Minified React error #418") ||
+          error.stack?.includes("418");
+        const isMessagePortError =
+          error.message.includes("message port closed") ||
+          error.message.includes(
+            "The message port closed before a response was received",
+          );
+
+        if (isReactError418) {
+          console.error(
+            "🚨 [REACT-ERROR-418-DETECTED] React Error #418 が executeTask 内で検出されました:",
+            {
+              errorMessage: error.message,
+              errorStack: error.stack,
+              timestamp: new Date().toISOString(),
+              currentURL: window.location.href,
+              domState: document.readyState,
+              hypothesis: "テキスト入力処理とReact仮想DOMの競合",
+            },
+          );
+
+          // DOM状態をログ出力
+          const inputElements = document.querySelectorAll(
+            '[aria-label*="プロンプト"], [contenteditable="true"], textarea',
+          );
+          console.error("🔍 [REACT-ERROR-418-DOM] DOM状態詳細:", {
+            inputElementCount: inputElements.length,
+            inputElements: Array.from(inputElements).map((el) => ({
+              tagName: el.tagName,
+              type: el.type || "none",
+              contentEditable: el.contentEditable,
+              ariaLabel: el.getAttribute("aria-label"),
+              className: el.className,
+            })),
+          });
+        }
+
+        if (isMessagePortError) {
+          console.error(
+            "🚨 [MESSAGE-PORT-ERROR-DETECTED] Message Port Error が検出されました:",
+            {
+              errorMessage: error.message,
+              errorStack: error.stack,
+              timestamp: new Date().toISOString(),
+              chromeRuntimeAvailable:
+                typeof chrome !== "undefined" && chrome.runtime,
+              extensionId:
+                typeof chrome !== "undefined" && chrome.runtime
+                  ? chrome.runtime.id
+                  : "unknown",
+              hypothesis: "Chrome拡張機能のメッセージ送信タイミング問題",
+            },
+          );
+        }
 
         log.error("❌ [ClaudeV2] タスク実行エラー:", error.message);
         log.error("スタックトレース:", error.stack);
