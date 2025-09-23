@@ -3502,10 +3502,14 @@ class WindowController {
     // 全ウィンドウの作成を並列実行
     const results = await Promise.all(windowPromises);
 
-    // 全ウィンドウ作成後に一度だけ待機（タブの準備を確実にする）
+    // 全ウィンドウ作成後に5秒待機（ページの完全読み込みを待つ）
     if (results.some((r) => r.success)) {
-      ExecuteLogger.info("⏳ 全ウィンドウのタブ準備待機中... (3秒)");
-      await new Promise((resolve) => setTimeout(resolve, 3000));
+      ExecuteLogger.info("⏳ 全ウィンドウのタブ準備待機中... (5秒)");
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+
+      // テキスト入力欄を探す
+      ExecuteLogger.info("🔍 テキスト入力欄の存在確認を開始");
+      await this.checkInputFieldsAndRecreateIfNeeded(results);
     }
 
     ExecuteLogger.info(
@@ -3527,6 +3531,129 @@ class WindowController {
     });
 
     return results;
+  }
+
+  /**
+   * テキスト入力欄の存在確認と必要に応じたウィンドウ再作成
+   */
+  async checkInputFieldsAndRecreateIfNeeded(results) {
+    ExecuteLogger.info("🔍 [WindowController] テキスト入力欄の存在確認開始");
+
+    for (const result of results) {
+      if (!result.success || !result.tabId) continue;
+
+      try {
+        const aiType = result.aiType;
+        ExecuteLogger.info(
+          `🔍 [${aiType}] タブ${result.tabId}のテキスト入力欄を確認中`,
+        );
+
+        // Content Scriptにテキスト入力欄の存在確認を依頼
+        const checkResult = await this.checkInputFieldInTab(
+          result.tabId,
+          aiType,
+        );
+
+        if (!checkResult.found) {
+          ExecuteLogger.warn(
+            `⚠️ [${aiType}] テキスト入力欄が見つかりません - ウィンドウ再作成を実行`,
+          );
+
+          // ウィンドウを閉じる
+          if (result.windowId) {
+            ExecuteLogger.info(
+              `🗑️ [${aiType}] ウィンドウ${result.windowId}を閉じる`,
+            );
+            try {
+              await chrome.windows.remove(result.windowId);
+            } catch (e) {
+              ExecuteLogger.warn(
+                `⚠️ ウィンドウ${result.windowId}は既に閉じられています`,
+              );
+            }
+          }
+
+          // 1秒待機
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+
+          // 新しいウィンドウを作成
+          ExecuteLogger.info(`🔄 [${aiType}] ウィンドウを再作成`);
+          const url = this.getAIUrl(aiType);
+          const newWindowInfo =
+            await this.windowService.createWindowWithPosition(
+              url,
+              result.position,
+              {
+                type: "popup",
+                aiType: aiType,
+              },
+            );
+
+          if (newWindowInfo && newWindowInfo.id) {
+            // 新しいウィンドウ情報で更新
+            result.windowId = newWindowInfo.id;
+            result.tabId = newWindowInfo.tabs?.[0]?.id;
+            result.success = true;
+
+            // openedWindowsマップも更新
+            const storageKey = `${this.normalizeAiType(aiType)}_${result.position}`;
+            const windowData = {
+              windowId: newWindowInfo.id,
+              tabId: newWindowInfo.tabs?.[0]?.id,
+              url: url,
+              position: result.position,
+              aiType: aiType,
+              uniqueKey: `${this.normalizeAiType(aiType)}_${result.position}_${Date.now()}`,
+            };
+            this.openedWindows.set(storageKey, windowData);
+
+            ExecuteLogger.info(
+              `✅ [${aiType}] ウィンドウ再作成完了: windowId=${newWindowInfo.id}`,
+            );
+
+            // 再作成後も5秒待機
+            ExecuteLogger.info(
+              `⏳ [${aiType}] 再作成後の読み込み待機中... (5秒)`,
+            );
+            await new Promise((resolve) => setTimeout(resolve, 5000));
+          }
+        } else {
+          ExecuteLogger.info(`✅ [${aiType}] テキスト入力欄が存在します`);
+        }
+      } catch (error) {
+        ExecuteLogger.error(`❌ テキスト入力欄チェックエラー:`, error);
+      }
+    }
+  }
+
+  /**
+   * 特定のタブでテキスト入力欄の存在を確認
+   */
+  async checkInputFieldInTab(tabId, aiType) {
+    try {
+      // Claude用のセレクタ
+      const inputSelectors = [
+        ".ProseMirror",
+        'div[contenteditable="true"]',
+        'div[aria-label*="Claude"]',
+        "textarea",
+      ];
+
+      // Content Scriptにメッセージを送信してチェック
+      const response = await chrome.tabs.sendMessage(tabId, {
+        action: "CHECK_INPUT_FIELD",
+        selectors: inputSelectors,
+        aiType: aiType,
+      });
+
+      return response || { found: false };
+    } catch (error) {
+      ExecuteLogger.warn(
+        `⚠️ タブ${tabId}でのテキスト入力欄チェック失敗:`,
+        error,
+      );
+      return { found: false };
+    }
   }
 
   /**

@@ -1009,6 +1009,34 @@
               return true;
             }
 
+            // テキスト入力欄の存在チェック
+            if (request.action === "CHECK_INPUT_FIELD") {
+              console.log("🔍 [Claude] テキスト入力欄の存在チェック開始");
+              const selectors = request.selectors || [
+                ".ProseMirror",
+                'div[contenteditable="true"]',
+                'div[aria-label*="Claude"]',
+                "textarea",
+              ];
+
+              let found = false;
+              for (const selector of selectors) {
+                const element = document.querySelector(selector);
+                if (element) {
+                  console.log(`✅ [Claude] テキスト入力欄を発見: ${selector}`);
+                  found = true;
+                  break;
+                }
+              }
+
+              if (!found) {
+                console.warn(`⚠️ [Claude] テキスト入力欄が見つかりません`);
+              }
+
+              sendResponse({ found: found });
+              return true;
+            }
+
             const requestId = Math.random().toString(36).substring(2, 8);
             console.warn(
               `📬 [Claude-直接実行方式] メッセージ受信 [ID:${requestId}]:`,
