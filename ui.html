@@ -188,6 +188,91 @@
         </div>
         <div class="step-content">
           <p class="test-description">全てのAIサービスの自動テストをまとめて実行できます</p>
+
+          <!-- AI統合テスト設定 -->
+          <div class="ai-test-config">
+
+            <!-- ChatGPT設定行 -->
+            <div class="ai-config-row">
+              <div class="ai-service-name">
+                <span class="ai-icon">🤖</span>
+                <span>ChatGPT</span>
+              </div>
+
+              <div class="ai-model-select">
+                <select id="chatgptModel" class="form-select">
+                  <option value="">モデルを選択</option>
+                </select>
+              </div>
+
+              <div class="ai-feature-select">
+                <select id="chatgptFeature" class="form-select">
+                  <option value="">機能を選択</option>
+                </select>
+              </div>
+
+              <div class="ai-prompt-input">
+                <input type="text" id="chatgptPrompt" class="form-input"
+                       placeholder="プロンプトを入力..."
+                       value="桃太郎について20000文字で解説して">
+              </div>
+            </div>
+
+            <!-- Claude設定行 -->
+            <div class="ai-config-row">
+              <div class="ai-service-name">
+                <span class="ai-icon">🧠</span>
+                <span>Claude</span>
+              </div>
+
+              <div class="ai-model-select">
+                <select id="claudeModel" class="form-select">
+                  <option value="">モデルを選択</option>
+                </select>
+              </div>
+
+              <div class="ai-feature-select">
+                <select id="claudeFeature" class="form-select">
+                  <option value="">機能を選択</option>
+                </select>
+              </div>
+
+              <div class="ai-prompt-input">
+                <input type="text" id="claudePrompt" class="form-input"
+                       placeholder="プロンプトを入力..."
+                       value="桃太郎について20000文字で解説して">
+              </div>
+            </div>
+
+            <!-- Gemini設定行 -->
+            <div class="ai-config-row">
+              <div class="ai-service-name">
+                <span class="ai-icon">💎</span>
+                <span>Gemini</span>
+              </div>
+
+              <div class="ai-model-select">
+                <select id="geminiModel" class="form-select">
+                  <option value="">モデルを選択</option>
+                </select>
+              </div>
+
+              <div class="ai-feature-select">
+                <select id="geminiFeature" class="form-select">
+                  <option value="">機能を選択</option>
+                </select>
+              </div>
+
+              <div class="ai-prompt-input">
+                <input type="text" id="geminiPrompt" class="form-input"
+                       placeholder="プロンプトを入力..."
+                       value="桃太郎について20000文字で解説して">
+              </div>
+            </div>
+
+          </div>
+
+          <!-- 実行ボタン -->
           <div class="control-buttons">
             <button id="aiTestAllBtn" class="btn btn-test-all btn-large">
               <span class="btn-icon">🚀</span>

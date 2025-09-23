@@ -2319,7 +2319,6 @@ const log = {
               "warning",
             );
           }
-
         } else {
           logWithTimestamp(
             "モデル選択をスキップ（モデル名が指定されていません）",
@@ -2594,7 +2593,10 @@ const log = {
               "warning",
             );
           }
-        } else {
+        }
+
+        // モデル選択処理終了
+        if (!modelName || modelName === "") {
           logWithTimestamp(
             "モデル選択をスキップ（モデル名が指定されていません）",
             "info",

@@ -67,10 +67,24 @@ class AITestController {
   // ========================================
   // メイン実行関数
   // ========================================
-  async executeTest(
-    testPrompt = "こんにちは！今日はいい天気ですね。AIテストです。",
-  ) {
-    log.info("🚀 AI統合テスト開始", { prompt: testPrompt });
+  async executeTest(testConfig) {
+    // 設定の型を確認（文字列の場合は後方互換性のため変換）
+    if (typeof testConfig === "string") {
+      testConfig = {
+        chatgpt: { prompt: testConfig },
+        claude: { prompt: testConfig },
+        gemini: { prompt: testConfig },
+      };
+    }
+
+    // デフォルト値を設定
+    testConfig = testConfig || {
+      chatgpt: { prompt: "こんにちは！今日はいい天気ですね。AIテストです。" },
+      claude: { prompt: "こんにちは！今日はいい天気ですね。AIテストです。" },
+      gemini: { prompt: "こんにちは！今日はいい天気ですね。AIテストです。" },
+    };
+
+    log.info("🚀 AI統合テスト開始", testConfig);
 
     try {
       // Step 1: 画面サイズを取得
@@ -82,8 +96,8 @@ class AITestController {
       // Step 3: Content Scriptの準備を待つ
       await this.waitForContentScripts();
 
-      // Step 4: 各AIにテストタスクを送信
-      await this.sendTestTasks(testPrompt);
+      // Step 4: 各AIに個別設定でテストタスクを送信
+      await this.sendTestTasks(testConfig);
 
       // Step 5: 結果を待つ
       await this.waitForResults();
@@ -237,18 +251,25 @@ class AITestController {
   // ========================================
   // テストタスク送信
   // ========================================
-  async sendTestTasks(prompt) {
+  async sendTestTasks(testConfig) {
     log.info("📤 テストタスクを送信中...");
 
     const taskPromises = [];
 
     for (const [aiType, tabId] of Object.entries(this.tabs)) {
       if (this.readyStates[aiType] && tabId) {
+        // 各AIサービスの個別設定を取得
+        const aiConfig = testConfig[aiType] || {};
+
         const taskData = {
-          prompt: prompt,
+          prompt: aiConfig.prompt || "デフォルトプロンプト",
+          model: aiConfig.model || "",
+          feature: aiConfig.feature || "",
           taskId: `test_${aiType}_${Date.now()}`,
           timestamp: new Date().toISOString(),
         };
+
+        log.debug(`📝 ${aiType}への送信タスク:`, taskData);
 
         const promise = chrome.tabs
           .sendMessage(tabId.id, {

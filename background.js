@@ -439,7 +439,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       try {
         console.log("🚀 [BG] AITestController実行開始");
         const controller = new AITestController();
-        const result = await controller.executeTest(request.data?.prompt);
+        const result = await controller.executeTest(request.data);
 
         console.log("✅ [BG] AITestController実行完了:", result);
         sendResponse({

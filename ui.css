@@ -597,6 +597,121 @@ main {
   border: 1px solid #bee5eb;
 }
 
+/* AI統合テスト設定 */
+.ai-test-config {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 20px 0;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+/* 各AI設定行 */
+.ai-config-row {
+  display: grid;
+  grid-template-columns: 110px 140px 140px 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  background: white;
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  transition: box-shadow 0.2s ease;
+}
+
+.ai-config-row:hover {
+  box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+}
+
+/* AIサービス名 */
+.ai-service-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: #2c3e50;
+  font-size: 14px;
+}
+
+.ai-icon {
+  font-size: 18px;
+}
+
+/* モデル・機能選択 */
+.ai-model-select,
+.ai-feature-select {
+  min-width: 130px;
+}
+
+.form-select {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: white;
+  font-size: 13px;
+  color: #2c3e50;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+
+.form-select:hover {
+  border-color: #667eea;
+}
+
+.form-select:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+}
+
+/* プロンプト入力 */
+.ai-prompt-input {
+  flex: 1;
+}
+
+.form-input {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #2c3e50;
+  transition: border-color 0.2s ease;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+}
+
+.form-input::placeholder {
+  color: #95a5a6;
+}
+
+/* レスポンシブ対応 */
+@media (max-width: 768px) {
+  .ai-config-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .ai-service-name {
+    padding: 5px 0;
+    border-bottom: 1px solid #eee;
+    margin-bottom: 5px;
+  }
+
+  .ai-model-select,
+  .ai-feature-select,
+  .ai-prompt-input {
+    width: 100%;
+  }
+}
+
 /* 列状況カード */
 .column-status-card {
   margin-top: 15px;

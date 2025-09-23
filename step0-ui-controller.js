@@ -790,6 +790,9 @@ document.addEventListener("DOMContentLoaded", () => {
     loadSavedAIData();
   }
 
+  // AI統合テスト設定用ドロップダウンを初期化
+  initializeAITestConfig();
+
   // AI統合テストボタンのイベントリスナー
   const aiTestAllBtn = document.getElementById("aiTestAllBtn");
   if (aiTestAllBtn) {
@@ -802,14 +805,44 @@ document.addEventListener("DOMContentLoaded", () => {
       const originalText = aiTestAllBtn.innerHTML;
       aiTestAllBtn.innerHTML = '<span class="btn-icon">⏳</span> 実行中...';
 
+      // 各AIサービスの設定を収集
+      const testConfig = {
+        chatgpt: {
+          prompt:
+            document.getElementById("chatgptPrompt")?.value ||
+            "こんにちは！今日はいい天気ですね。AIテストです。",
+          model: document.getElementById("chatgptModel")?.value || "",
+          feature: document.getElementById("chatgptFeature")?.value || "",
+        },
+        claude: {
+          prompt:
+            document.getElementById("claudePrompt")?.value ||
+            "こんにちは！今日はいい天気ですね。AIテストです。",
+          model: document.getElementById("claudeModel")?.value || "",
+          feature: document.getElementById("claudeFeature")?.value || "",
+        },
+        gemini: {
+          prompt:
+            document.getElementById("geminiPrompt")?.value ||
+            "こんにちは！今日はいい天気ですね。AIテストです。",
+          model: document.getElementById("geminiModel")?.value || "",
+          feature: document.getElementById("geminiFeature")?.value || "",
+        },
+      };
+
+      // 設定をChrome Storageに保存
+      chrome.storage.local.set({
+        aiTestConfig: testConfig,
+        lastTestTime: new Date().toISOString(),
+      });
+
+      log.info("📝 テスト設定:", testConfig);
+
       try {
         // background.jsにメッセージを送信してウィンドウを作成
         const response = await chrome.runtime.sendMessage({
           type: "RUN_AI_TEST_ALL",
-          data: {
-            prompt: "こんにちは！今日はいい天気ですね。AIテストです。",
-            timestamp: new Date().toISOString(),
-          },
+          data: testConfig,
         });
 
         if (response && response.success) {
@@ -889,10 +922,176 @@ function loadSavedAIData() {
             }
           }
         });
+
+        // データ読み込み完了後にドロップダウンを更新
+        log.info("🔄 保存データからドロップダウンを更新");
+        updateTestConfigDropdowns();
       } else {
         log.debug("💾 [UI] 保存されたAI検出データはありません");
       }
     });
+  }
+}
+
+// AI統合テスト設定の初期化
+function initializeAITestConfig() {
+  log.info("🎮 AI統合テスト設定を初期化中...");
+
+  // loadSavedAIDataの完了を待ってからドロップダウンを更新
+  // (loadSavedAIData内で非同期にupdateTestConfigDropdowns()が呼ばれる)
+
+  // Chrome Storageから前回の設定を復元
+  chrome.storage.local.get(["aiTestConfig"], (result) => {
+    if (result.aiTestConfig) {
+      const config = result.aiTestConfig;
+
+      // ChatGPT設定を復元
+      if (config.chatgpt) {
+        const chatgptPromptEl = document.getElementById("chatgptPrompt");
+        const chatgptModelEl = document.getElementById("chatgptModel");
+        const chatgptFeatureEl = document.getElementById("chatgptFeature");
+
+        if (chatgptPromptEl)
+          chatgptPromptEl.value = config.chatgpt.prompt || "";
+        if (chatgptModelEl) chatgptModelEl.value = config.chatgpt.model || "";
+        if (chatgptFeatureEl)
+          chatgptFeatureEl.value = config.chatgpt.feature || "";
+      }
+
+      // Claude設定を復元
+      if (config.claude) {
+        const claudePromptEl = document.getElementById("claudePrompt");
+        const claudeModelEl = document.getElementById("claudeModel");
+        const claudeFeatureEl = document.getElementById("claudeFeature");
+
+        if (claudePromptEl) claudePromptEl.value = config.claude.prompt || "";
+        if (claudeModelEl) claudeModelEl.value = config.claude.model || "";
+        if (claudeFeatureEl)
+          claudeFeatureEl.value = config.claude.feature || "";
+      }
+
+      // Gemini設定を復元
+      if (config.gemini) {
+        const geminiPromptEl = document.getElementById("geminiPrompt");
+        const geminiModelEl = document.getElementById("geminiModel");
+        const geminiFeatureEl = document.getElementById("geminiFeature");
+
+        if (geminiPromptEl) geminiPromptEl.value = config.gemini.prompt || "";
+        if (geminiModelEl) geminiModelEl.value = config.gemini.model || "";
+        if (geminiFeatureEl)
+          geminiFeatureEl.value = config.gemini.feature || "";
+      }
+
+      log.info("✅ AI統合テスト設定を復元しました");
+    }
+  });
+}
+
+// lastAIDataからドロップダウンを更新
+function updateTestConfigDropdowns() {
+  log.debug("📋 ドロップダウンを更新中...");
+  log.debug("📋 lastAIData内容:", {
+    chatgpt: {
+      models: lastAIData.chatgpt?.models?.length || 0,
+      functions: lastAIData.chatgpt?.functions?.length || 0,
+    },
+    claude: {
+      models: lastAIData.claude?.models?.length || 0,
+      functions: lastAIData.claude?.functions?.length || 0,
+      functionsType:
+        lastAIData.claude?.functions?.length > 0
+          ? typeof lastAIData.claude.functions[0]
+          : "none",
+    },
+    gemini: {
+      models: lastAIData.gemini?.models?.length || 0,
+      functions: lastAIData.gemini?.functions?.length || 0,
+    },
+  });
+
+  // ChatGPT
+  if (lastAIData.chatgpt && lastAIData.chatgpt.models) {
+    updateSelectOptions("chatgptModel", lastAIData.chatgpt.models);
+  }
+  if (lastAIData.chatgpt && lastAIData.chatgpt.functions) {
+    updateSelectOptions("chatgptFeature", lastAIData.chatgpt.functions);
+  }
+
+  // Claude
+  if (lastAIData.claude && lastAIData.claude.models) {
+    log.debug("📋 Claudeモデル更新:", lastAIData.claude.models);
+    updateSelectOptions("claudeModel", lastAIData.claude.models);
+  }
+  if (lastAIData.claude && lastAIData.claude.functions) {
+    log.debug("📋 Claude機能更新:", lastAIData.claude.functions);
+    updateSelectOptions("claudeFeature", lastAIData.claude.functions);
+  }
+
+  // Gemini
+  if (lastAIData.gemini && lastAIData.gemini.models) {
+    updateSelectOptions("geminiModel", lastAIData.gemini.models);
+  }
+  if (lastAIData.gemini && lastAIData.gemini.functions) {
+    updateSelectOptions("geminiFeature", lastAIData.gemini.functions);
+  }
+}
+
+// ドロップダウンオプションを更新
+function updateSelectOptions(selectId, options) {
+  const selectEl = document.getElementById(selectId);
+  if (!selectEl) {
+    log.debug(`⚠️ セレクト要素が見つかりません: ${selectId}`);
+    return;
+  }
+
+  log.debug(`📝 ${selectId}を更新中... オプション数: ${options?.length || 0}`);
+
+  // 現在の値を保存
+  const currentValue = selectEl.value;
+
+  // 既存のオプションをクリア（最初のオプションは残す）
+  while (selectEl.options.length > 1) {
+    selectEl.remove(1);
+  }
+
+  // 新しいオプションを追加
+  if (options && options.length > 0) {
+    options.forEach((opt, index) => {
+      const option = document.createElement("option");
+
+      // オプションが文字列かオブジェクトかで処理を分岐
+      if (typeof opt === "string") {
+        option.value = opt;
+        option.textContent = opt;
+        log.debug(`  - オプション${index}: ${opt} (文字列)`);
+      } else if (opt && typeof opt === "object") {
+        // functionsWithDetailsの場合の処理
+        const funcName = opt.name || opt.label || opt.value || opt.toString();
+        option.value = funcName;
+
+        // トグル状態を表示に追加
+        if (opt.isToggled !== undefined) {
+          option.textContent = `${funcName} ${opt.isToggled ? "✓" : ""}`;
+          log.debug(
+            `  - オプション${index}: ${funcName} (オブジェクト, toggled:${opt.isToggled})`,
+          );
+        } else {
+          option.textContent = funcName;
+          log.debug(`  - オプション${index}: ${funcName} (オブジェクト)`);
+        }
+      }
+
+      selectEl.appendChild(option);
+    });
+
+    log.debug(`✅ ${selectId}: ${options.length}個のオプションを追加完了`);
+  } else {
+    log.debug(`⚠️ ${selectId}: オプションなし`);
+  }
+
+  // 前の値を復元（まだ存在する場合）
+  if (currentValue) {
+    selectEl.value = currentValue;
   }
 }
 
@@ -1081,6 +1280,10 @@ if (
         );
         updateAITable(message.aiType, message.data);
         saveAIData(message.aiType, message.data);
+
+        // AI統合テスト設定のドロップダウンも更新
+        updateTestConfigDropdowns();
+
         sendResponse({ success: true, updated: true });
       } else {
         log.debug(
