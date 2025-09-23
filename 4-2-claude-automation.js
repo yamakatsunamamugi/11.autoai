@@ -6336,9 +6336,33 @@
       // Claude機能メニュー検出関数（修正版：機能メニューを開いてから検出）
       async function detectClaudeFunctionsFromOpenMenu() {
         console.log("🔧 Claude機能検出開始");
+        console.log("🔍 [DEBUG] 現在のURL:", window.location.href);
+        console.log("🔍 [DEBUG] 現在時刻:", new Date().toISOString());
+
+        // まず、既に開いている機能メニューをチェック（ユーザーテストコードパターン）
+        console.log("📍 ステップ0: 既に開いている機能メニューをチェック");
+        const existingMenuToggleItems = document.querySelectorAll(
+          'button:has(input[role="switch"])',
+        );
+        console.log(
+          `🔍 [DEBUG] 既存のトグルアイテム数: ${existingMenuToggleItems.length}`,
+        );
+
+        if (existingMenuToggleItems.length > 0) {
+          console.log("✅ 機能メニューが既に開いています - 直接抽出を試行");
+          const directResult = extractFunctionsFromExistingMenu(
+            existingMenuToggleItems,
+          );
+          if (directResult.length > 0) {
+            console.log(
+              `✅ 直接抽出成功: ${directResult.length}個の機能を検出`,
+            );
+            return directResult;
+          }
+        }
 
         // Step 1: 機能メニューボタンを探す
-        console.log("📍 機能メニューボタンを探しています...");
+        console.log("📍 ステップ1: 機能メニューボタンを探しています...");
 
         let functionButton = null;
 
@@ -6429,6 +6453,65 @@
 
         console.log("✅ 機能メニューのコンテンツを検出しました");
         return extractFunctionsFromMenu(contentDiv);
+      }
+
+      // ユーザーテストコードで成功したパターンによる機能抽出（既存メニューから）
+      function extractFunctionsFromExistingMenu(menuToggleItems) {
+        console.log("🔧 [新機能] 既存メニューから機能抽出開始");
+        console.log(`🔍 [DEBUG] トグルアイテム数: ${menuToggleItems.length}`);
+
+        const functions = [];
+
+        menuToggleItems.forEach((item, index) => {
+          console.log(`🔍 [DEBUG] アイテム${index + 1}を処理中...`);
+
+          // p.font-base要素を探す（ユーザーテストコードと同じパターン）
+          const label = item.querySelector("p.font-base");
+          console.log(`🔍 [DEBUG] ラベル要素: ${label ? "あり" : "なし"}`);
+
+          if (label) {
+            const functionName = label.textContent.trim();
+            console.log(`🔍 [DEBUG] 機能名: "${functionName}"`);
+
+            // トグル状態を取得
+            const toggleInput = item.querySelector('input[role="switch"]');
+            const isToggled = toggleInput ? toggleInput.checked : false;
+            console.log(`🔍 [DEBUG] トグル状態: ${isToggled}`);
+
+            const functionData = {
+              name: functionName,
+              isEnabled: true,
+              isToggleable: true,
+              isToggled: isToggled,
+              secretStatus: "",
+              selector: 'button:has(input[role="switch"])',
+              index: index,
+            };
+
+            functions.push(functionData);
+            console.log(
+              `✅ 機能追加: ${functionName} (${isToggled ? "ON" : "OFF"})`,
+            );
+          } else {
+            console.log(`⚠️ アイテム${index + 1}: ラベルが見つかりません`);
+            // デバッグ用：要素の内容を確認
+            console.log(
+              `🔍 [DEBUG] アイテム内容: ${item.textContent.substring(0, 100)}`,
+            );
+          }
+        });
+
+        console.log(`🔧 [新機能] 抽出完了: ${functions.length}個の機能`);
+        if (functions.length > 0) {
+          console.log("📝 抽出された機能一覧:");
+          functions.forEach((func, i) => {
+            console.log(
+              `  ${i + 1}. ${func.name} (${func.isToggled ? "ON" : "OFF"})`,
+            );
+          });
+        }
+
+        return functions;
       }
 
       // メニューから機能情報を抽出（改善版）

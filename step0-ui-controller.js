@@ -1000,7 +1000,34 @@ if (
         aiType: message.aiType,
         modelsCount: message.data.models?.length || 0,
         functionsCount: message.data.functions?.length || 0,
+        functionsWithDetailsCount:
+          message.data.functionsWithDetails?.length || 0,
       });
+
+      // 詳細データログ追加（Claude機能調査用）
+      if (message.aiType === "claude") {
+        log.debug("🔍 [UI-CLAUDE] 受信データ詳細:", {
+          models: message.data.models,
+          functions: message.data.functions,
+          functionsWithDetails: message.data.functionsWithDetails,
+          hasModelsWithDetails: !!message.data.modelsWithDetails,
+          timestamp: new Date().toISOString(),
+        });
+
+        // functionsWithDetailsの各要素の型をチェック
+        if (message.data.functionsWithDetails) {
+          log.debug("🔍 [UI-CLAUDE] functionsWithDetails詳細分析:");
+          message.data.functionsWithDetails.forEach((func, index) => {
+            log.debug(`  [${index}] 型: ${typeof func}, 内容:`, func);
+            if (typeof func === "object" && func !== null) {
+              log.debug(`    - name: ${func.name}`);
+              log.debug(`    - isEnabled: ${func.isEnabled}`);
+              log.debug(`    - isToggleable: ${func.isToggleable}`);
+              log.debug(`    - isToggled: ${func.isToggled}`);
+            }
+          });
+        }
+      }
 
       // 変更検出
       if (hasDataChanged(message.aiType, message.data)) {
@@ -1023,11 +1050,16 @@ if (
 // UI表更新関数
 function updateAITable(aiType, data) {
   try {
+    log.debug(`🔧 [updateAITable] 開始: ${aiType}`);
+    log.debug(`🔧 [updateAITable] 受信データキー:`, Object.keys(data));
+
     const tbody = document.getElementById("ai-integrated-tbody");
     if (!tbody) {
       log.error("AI統合表のtbodyが見つかりません");
       return;
     }
+
+    log.debug(`🔧 [updateAITable] tbody要素発見: ${aiType}`);
 
     // 表の行を取得または作成
     let row = tbody.querySelector("tr");
@@ -1075,22 +1107,33 @@ function updateAITable(aiType, data) {
 
     // 機能情報を更新（詳細情報付き）
     if (data.functionsWithDetails && cells[functionCellIndex]) {
+      log.debug(`🔧 [updateAITable] ${aiType} functionsWithDetails処理開始`);
+      log.debug(
+        `🔧 [updateAITable] functionsWithDetails配列長: ${data.functionsWithDetails.length}`,
+      );
+
       try {
         const functionList = data.functionsWithDetails
-          .map((func) => {
+          .map((func, index) => {
+            log.debug(`🔧 [updateAITable] 機能${index}: 型=${typeof func}`);
+
             // オブジェクトが文字列として送信されている場合の対応
             if (typeof func === "string") {
+              log.debug(`🔧 [updateAITable] 文字列機能: ${func}`);
               return `• ${func}`;
             }
 
             // 正常なオブジェクトの場合の処理
             if (typeof func === "object" && func !== null) {
               const funcName = func.name || func.functionName || "Unknown";
+              log.debug(`🔧 [updateAITable] オブジェクト機能: ${funcName}`);
+
               let status = "";
 
               // トグル状態を表示
               if (func.isToggleable) {
                 status += func.isToggled ? " 🟢" : " 🔴";
+                log.debug(`🔧 [updateAITable] トグル状態: ${func.isToggled}`);
               }
 
               // セレクタ状態を表示
@@ -1107,13 +1150,18 @@ function updateAITable(aiType, data) {
                 debugInfo += ` (${func.selector.substring(0, 20)}...)`;
               }
 
-              return `${enabledIcon} ${funcName}${status}${debugInfo}`;
+              const result = `${enabledIcon} ${funcName}${status}${debugInfo}`;
+              log.debug(`🔧 [updateAITable] 生成された表示: ${result}`);
+              return result;
             }
 
             // 予期しない形式の場合はJSONで表示
+            log.debug(`🔧 [updateAITable] 予期しない形式:`, func);
             return `• ${JSON.stringify(func)}`;
           })
           .join("<br>");
+
+        log.debug(`🔧 [updateAITable] 最終的な機能リスト: ${functionList}`);
 
         cells[functionCellIndex].innerHTML =
           functionList || '<span style="color: #999;">未検出</span>';
