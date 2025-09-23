@@ -1424,8 +1424,20 @@ const log = {
         }
 
         // 統合ログ: モデル選択完了
+        // 選択後確認で表示されているモデルを取得
+        let displayedModel = "";
+        try {
+          if (window.ModelInfoExtractor) {
+            displayedModel =
+              window.ModelInfoExtractor.extract("Gemini") || "取得失敗";
+          } else {
+            displayedModel = "取得不可";
+          }
+        } catch (error) {
+          displayedModel = "取得失敗";
+        }
         console.log(
-          `✅ [セル ${cellInfo}] モデル選択完了: ${modelName || "デフォルト"}`,
+          `✅ [セル ${cellInfo}] モデル選択完了: 選択=${modelName || "デフォルト"} → 表示=${displayedModel}`,
         );
         return `モデル選択完了: ${modelName || "デフォルト"}`;
       });
@@ -1541,8 +1553,20 @@ const log = {
         if (overlay) overlay.click();
 
         // 統合ログ: 機能選択完了
+        // 選択後確認で表示されている機能を取得
+        let displayedFunction = "";
+        try {
+          if (window.FunctionInfoExtractor) {
+            displayedFunction =
+              window.FunctionInfoExtractor.extract("Gemini") || "未選択";
+          } else {
+            displayedFunction = "取得不可";
+          }
+        } catch (error) {
+          displayedFunction = "取得失敗";
+        }
         console.log(
-          `✅ [セル ${cellInfo}] 機能選択完了: ${featureName || "設定なし"}`,
+          `✅ [セル ${cellInfo}] 機能選択完了: 選択=${featureName || "設定なし"} → 表示=${displayedFunction}`,
         );
         return `機能選択完了: ${featureName || "設定なし"}`;
       });
@@ -1573,12 +1597,6 @@ const log = {
       // ステップ5: メッセージ送信（再試行対応）
       // ========================================
       await logStep("【Step 4-3-5】メッセージ送信（再試行対応）", async () => {
-        // 統合ログ: 送信開始
-        const promptPreview =
-          text.substring(0, 50) + (text.length > 50 ? "..." : "");
-        console.log(
-          `📤 [セル ${cellInfo}] メッセージ送信・回答待機開始: "${promptPreview}"`,
-        );
         // 送信ボタンを5回まで再試行
         let sendSuccess = false;
         let sendAttempts = 0;
@@ -1631,8 +1649,10 @@ const log = {
                 `【Step 4-3-5-${sendAttempts}】停止ボタンが表示されました - 送信成功`,
                 "success",
               );
-              // 統合ログ: 回答待機開始
-              console.log(`⏳ [セル ${cellInfo}] 回答待機中...`);
+              // 統合ログ: 送信完了
+              const promptPreview =
+                text.substring(0, 10) + (text.length > 10 ? "..." : "");
+              console.log(`📤 [セル ${cellInfo}] 送信完了: "${promptPreview}"`);
               break;
             }
             await sleep(1000);

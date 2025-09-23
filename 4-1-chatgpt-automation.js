@@ -1355,8 +1355,6 @@ const log = {
   // 6-1: 停止ボタン出現待機
   async function waitForStopButton() {
     log("【Step 4-1-6-1】停止ボタン出現待機", "step");
-    // 統合ログ: 回答待機開始
-    console.log(`⏳ [セル ${cellInfo}] 回答待機中...`);
     for (let i = 0; i < 60; i++) {
       const stopBtn = await findElement(SELECTORS.stopButton, 1);
       if (stopBtn) {
@@ -2107,9 +2105,6 @@ const log = {
         log("【Step 4-1-3-3】モデル選択ロジックを実行", "step");
         // 統合ログ: モデル選択開始
         const cellInfo = taskData.cellReference || taskData.cell || "不明";
-        console.log(
-          `🎯 [セル ${cellInfo}] モデル選択・機能選択・送信・回答待機 - モデル選択開始: ${modelName}`,
-        );
         let selectedModel = null;
         let resolvedModel = modelName;
 
@@ -2234,8 +2229,21 @@ const log = {
             await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
             log(`モデル選択完了: ${resolvedModel}`, "success");
             // 統合ログ: モデル選択完了
+            // 選択後確認で表示されているモデルを取得
+            let displayedModel = "";
+            try {
+              const modelButton = await findElement(
+                SELECTORS.modelButton,
+                "モデルボタン",
+              );
+              if (modelButton) {
+                displayedModel = getCleanText(modelButton);
+              }
+            } catch (error) {
+              displayedModel = "取得失敗";
+            }
             console.log(
-              `✅ [セル ${cellInfo}] モデル選択完了: ${resolvedModel}`,
+              `✅ [セル ${cellInfo}] モデル選択完了: 選択=${modelName} → 表示=${displayedModel}`,
             );
 
             // ========================================
@@ -2304,8 +2312,6 @@ const log = {
         featureName !== "通常"
       ) {
         log("\n【Step 4-1-4】機能選択", "step");
-        // 統合ログ: 機能選択開始
-        console.log(`🔧 [セル ${cellInfo}] 機能選択開始: ${featureName}`);
 
         // 機能名マッピング（スプレッドシート値 → ChatGPT UI表記）
         const featureMapping = {
@@ -2505,8 +2511,21 @@ const log = {
             await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
             log(`機能選択完了: ${resolvedFeature}`, "success");
             // 統合ログ: 機能選択完了
+            // 選択後確認で表示されている機能を取得
+            let displayedFunction = "";
+            try {
+              // FunctionInfoExtractorを使用して現在の機能を取得
+              if (window.FunctionInfoExtractor) {
+                displayedFunction =
+                  window.FunctionInfoExtractor.extract("ChatGPT") || "未選択";
+              } else {
+                displayedFunction = "取得不可";
+              }
+            } catch (error) {
+              displayedFunction = "取得失敗";
+            }
             console.log(
-              `✅ [セル ${cellInfo}] 機能選択完了: ${resolvedFeature}`,
+              `✅ [セル ${cellInfo}] 機能選択完了: 選択=${featureName} → 表示=${displayedFunction}`,
             );
 
             // ========================================
@@ -2581,13 +2600,6 @@ const log = {
         log("機能選択をスキップ", "info");
       }
       log("\n【Step 4-1-5】メッセージ送信（再試行対応）", "step");
-      // 統合ログ: 送信開始
-      const cellInfo = taskData.cellReference || taskData.cell || "不明";
-      const promptPreview =
-        text.substring(0, 50) + (text.length > 50 ? "..." : "");
-      console.log(
-        `📤 [セル ${cellInfo}] メッセージ送信・回答待機開始: "${promptPreview}"`,
-      );
 
       // 送信ボタンを5回まで再試行
       let sendSuccess = false;
@@ -2662,6 +2674,12 @@ const log = {
           `${maxSendAttempts}回試行しても送信が成功しませんでした`,
         );
       }
+
+      // 統合ログ: 送信完了
+      const cellInfo = taskData.cellReference || taskData.cell || "不明";
+      const promptPreview =
+        text.substring(0, 10) + (text.length > 10 ? "..." : "");
+      console.log(`📤 [セル ${cellInfo}] 送信完了: "${promptPreview}"`);
 
       // 送信時刻を記録（SpreadsheetLogger用）
       log(

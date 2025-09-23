@@ -3630,9 +3630,6 @@
           taskData.cellInfo ||
           taskData.cell ||
           "不明";
-        console.log(
-          `🎯 [セル ${cellInfo}] モデル選択・機能選択・送信・回答待機 - モデル選択開始: ${modelName}`,
-        );
         if (modelName && modelName !== "" && modelName !== "設定なし") {
           console.log(`  - 選択するモデル: ${modelName}`);
           console.log(`  - 現在のURL: ${window.location.href}`);
@@ -3918,7 +3915,21 @@
             "color: #4CAF50; font-weight: bold;",
           );
           // 統合ログ: モデル選択完了
-          console.log(`✅ [セル ${cellInfo}] モデル選択完了: ${modelName}`);
+          // 選択後確認で表示されているモデルを取得
+          let displayedModel = "";
+          try {
+            if (window.ModelInfoExtractor) {
+              displayedModel =
+                window.ModelInfoExtractor.extract("Claude") || "取得失敗";
+            } else {
+              displayedModel = "取得不可";
+            }
+          } catch (error) {
+            displayedModel = "取得失敗";
+          }
+          console.log(
+            `✅ [セル ${cellInfo}] モデル選択完了: 選択=${modelName} → 表示=${displayedModel}`,
+          );
           log.debug("─".repeat(50));
         } else {
           console.log("  - モデル選択: スキップ（設定なし）");
@@ -3936,8 +3947,6 @@
             "%c【Claude-ステップ4-1】機能選択開始",
             "color: #9C27B0; font-weight: bold;",
           );
-          // 統合ログ: 機能選択開始
-          console.log(`🔧 [セル ${cellInfo}] 機能選択開始: ${featureName}`);
           log.debug("─".repeat(40));
           log.debug(`🎯 目標機能: ${featureName}`);
           log.debug(`🔍 Deep Research判定: ${isDeepResearch ? "Yes" : "No"}`);
@@ -4093,7 +4102,21 @@
             "color: #4CAF50; font-weight: bold;",
           );
           // 統合ログ: 機能選択完了
-          console.log(`✅ [セル ${cellInfo}] 機能選択完了: ${featureName}`);
+          // 選択後確認で表示されている機能を取得
+          let displayedFunction = "";
+          try {
+            if (window.FunctionInfoExtractor) {
+              displayedFunction =
+                window.FunctionInfoExtractor.extract("Claude") || "未選択";
+            } else {
+              displayedFunction = "取得不可";
+            }
+          } catch (error) {
+            displayedFunction = "取得失敗";
+          }
+          console.log(
+            `✅ [セル ${cellInfo}] 機能選択完了: 選択=${featureName} → 表示=${displayedFunction}`,
+          );
           log.debug("─".repeat(50));
         } else {
           console.log("  - 機能選択: スキップ（設定なし）");
@@ -4109,12 +4132,6 @@
         console.log(
           "%c📤 === ステップ5: メッセージ送信 ===",
           "color: #4CAF50; font-weight: bold; font-size: 14px",
-        );
-        // 統合ログ: 送信開始
-        const promptPreview =
-          prompt.substring(0, 50) + (prompt.length > 50 ? "..." : "");
-        console.log(
-          `📤 [セル ${cellInfo}] メッセージ送信・回答待機開始: "${promptPreview}"`,
         );
         console.log(
           `  - 送信ボタンセレクタ: ${claudeSelectors["2_送信ボタン"]}`,
@@ -4336,8 +4353,10 @@
         }
 
         log.debug("✅ メッセージ送信完了");
-        // 統合ログ: 回答待機開始
-        console.log(`⏳ [セル ${cellInfo}] 回答待機中...`);
+        // 統合ログ: 送信完了
+        const promptPreview =
+          prompt.substring(0, 10) + (prompt.length > 10 ? "..." : "");
+        console.log(`📤 [セル ${cellInfo}] 送信完了: "${promptPreview}"`);
         log.debug(`📤 実際の送信時刻: ${sendTime.toISOString()}`);
         log.debug(`⏱️ 送信処理時間: ${Date.now() - taskStartTime.getTime()}ms`);
 
@@ -4898,8 +4917,6 @@
           "%c【Claude-ステップ7-1】テキスト取得処理開始",
           "color: #3F51B5; font-weight: bold;",
         );
-        // 統合ログ: テキスト取得開始
-        console.log(`📥 [セル ${cellInfo}] 回答取得開始...`);
         log.debug("─".repeat(40));
         log.debug("🎯 取得対象: Canvas機能、通常応答テキスト");
 
