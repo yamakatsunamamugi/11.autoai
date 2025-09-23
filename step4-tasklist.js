@@ -6795,13 +6795,25 @@ async function executeStep4(taskList) {
             row: task.row,
             column: task.column,
             model: task.model,
+            function: task.function, // スプレッドシートの機能情報を追加
             // 大きなデータは除去（Content Scriptでは不要）
             // spreadsheetData, extendedData等は送信しない
           };
 
+          // AI種別に応じたメッセージタイプを設定
+          const getMessageType = (automationName) => {
+            const typeMap = {
+              ClaudeAutomation: "CLAUDE_EXECUTE_TASK",
+              ChatGPTAutomationV2: "CHATGPT_EXECUTE_TASK",
+              GeminiAutomation: "GEMINI_EXECUTE_TASK",
+              GensparkAutomationV2: "GENSPARK_EXECUTE_TASK",
+            };
+            return typeMap[automationName] || "EXECUTE_TASK";
+          };
+
           const messagePayload = {
             action: "executeTask",
-            type: "CLAUDE_EXECUTE_TASK", // unusedコードと互換
+            type: getMessageType(automationName), // AI種別に応じて動的に設定
             automationName: automationName,
             task: optimizedTask,
             taskData: optimizedTask, // 両方の形式に対応

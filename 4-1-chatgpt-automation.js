@@ -2993,6 +2993,160 @@ const log = {
   window.CHATGPT_SCRIPT_LOADED = true;
   window.CHATGPT_SCRIPT_INIT_TIME = Date.now();
 
+  // ========================================
+  // メッセージリスナー登録 (step4-tasklist.js統合用)
+  // ========================================
+  const registerMessageListener = () => {
+    log.debug("📡 [ChatGPT-直接実行方式] メッセージリスナー登録開始");
+
+    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+      // リクエストIDを生成（デバッグ用）
+      const requestId = `req_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+
+      // ping/pongメッセージへの即座応答（最優先）
+      if (
+        request.action === "ping" ||
+        request.type === "CONTENT_SCRIPT_CHECK"
+      ) {
+        log.debug("🏓 [ChatGPT] Ping受信、即座にPong応答");
+        sendResponse({
+          action: "pong",
+          status: "ready",
+          timestamp: Date.now(),
+          scriptLoaded: true,
+        });
+        return true;
+      }
+
+      // テキスト入力欄の存在チェック
+      if (request.action === "CHECK_INPUT_FIELD") {
+        log.debug("🔍 [ChatGPT] テキスト入力欄の存在チェック開始");
+        const selectors = request.selectors || [
+          'textarea[placeholder*="Message"]',
+          'textarea[data-id*="root"]',
+          "#prompt-textarea",
+          "textarea",
+        ];
+
+        let inputField = null;
+        for (const selector of selectors) {
+          try {
+            inputField = document.querySelector(selector);
+            if (inputField && inputField.offsetParent !== null) {
+              break;
+            }
+          } catch (e) {
+            // セレクタエラーは無視
+          }
+        }
+
+        const result = {
+          found: !!inputField,
+          selector: inputField ? inputField.tagName.toLowerCase() : null,
+          aiType: request.aiType || "chatgpt",
+          tabId: sender.tab?.id,
+        };
+
+        log.debug("🔍 [ChatGPT] テキスト入力欄チェック結果:", result);
+        sendResponse(result);
+        return true;
+      }
+
+      // executeTaskタスクの処理
+      if (
+        request.action === "executeTask" ||
+        request.type === "executeTask" ||
+        request.type === "CLAUDE_EXECUTE_TASK"
+      ) {
+        log.warn(
+          `🔧 [ChatGPT-直接実行方式] executeTask実行開始 [ID:${requestId}]`,
+          {
+            requestId: requestId,
+            action: request.action,
+            type: request.type,
+            automationName: request.automationName,
+            hasTask: !!request.task,
+            hasTaskData: !!request.taskData,
+            taskId: request?.task?.id || request?.taskData?.id,
+          },
+        );
+
+        // タスクデータを抽出
+        const taskToExecute = request.task || request.taskData;
+
+        if (!taskToExecute) {
+          const errorMsg = "Task data not found in request";
+          log.error(`❌ [ChatGPT] ${errorMsg}`);
+          sendResponse({ success: false, error: errorMsg });
+          return true;
+        }
+
+        log.debug(`🔍 [ChatGPT] executeTask実行開始 [ID:${requestId}]:`, {
+          taskId: taskToExecute.id,
+          prompt: taskToExecute.prompt
+            ? `${taskToExecute.prompt.substring(0, 50)}...`
+            : null,
+          model: taskToExecute.model,
+          function: taskToExecute.function,
+          taskKeys: Object.keys(taskToExecute || {}),
+        });
+
+        // executeTask関数が定義されているか確認（Claude式安全パターン）
+        if (typeof executeTask === "function") {
+          log.debug(
+            `✅ [ChatGPT-直接実行方式] executeTask関数が利用可能 [ID:${requestId}]`,
+          );
+
+          (async () => {
+            try {
+              const result = await executeTask(taskToExecute);
+              log.warn(
+                `✅ [ChatGPT-直接実行方式] executeTask完了 [ID:${requestId}]:`,
+                {
+                  success: result?.success,
+                  hasResult: !!result,
+                  resultKeys: result ? Object.keys(result) : [],
+                },
+              );
+              sendResponse({ success: true, result });
+            } catch (taskError) {
+              const errorMsg = `executeTask実行エラー: ${taskError.message}`;
+              log.error(
+                `❌ [ChatGPT] ${errorMsg} [ID:${requestId}]`,
+                taskError,
+              );
+              sendResponse({ success: false, error: errorMsg });
+            }
+          })();
+        } else {
+          const errorMsg = "executeTask関数が定義されていません";
+          log.error(`❌ [ChatGPT] ${errorMsg} [ID:${requestId}]`);
+          sendResponse({ success: false, error: errorMsg });
+        }
+        return true;
+      }
+
+      // その他のメッセージは無視
+      log.debug(`🔕 [ChatGPT] 未対応メッセージを無視:`, {
+        action: request.action,
+        type: request.type,
+        requestId: requestId,
+      });
+      sendResponse({ success: false, error: "Unsupported message type" });
+      return true;
+    });
+
+    log.debug("✅ [ChatGPT] メッセージリスナー登録完了");
+  };
+
+  // メッセージリスナーを即座に登録
+  try {
+    registerMessageListener();
+    log.info("📡 [ChatGPT] step4-tasklist.js統合用メッセージリスナー準備完了");
+  } catch (error) {
+    log.error("❌ [ChatGPT] メッセージリスナー登録エラー:", error);
+  }
+
   log.debug("✅ ChatGPT Automation V2 準備完了");
   log.debug(
     '使用方法: ChatGPTAutomation.executeTask({ model: "GPT-4o", function: "Deep Research", prompt: "..." })',

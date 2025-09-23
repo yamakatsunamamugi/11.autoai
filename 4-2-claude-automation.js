@@ -37,13 +37,28 @@
     // 🔍 [段階5] Content Script実行コンテキストの詳細確認
     const currentURL = window.location.href;
     // 🔧 より包括的なClaude URL検出ロジック
+    const condition1 = currentURL.includes("claude.ai");
+    const condition2 = currentURL.includes("claude.ai/chat");
+    const condition3 = currentURL.includes("claude.ai/new");
+    const condition4 = window.location.hostname === "claude.ai";
+    const condition5 = window.location.hostname.endsWith(".claude.ai");
     const isValidClaudeURL =
-      currentURL.includes("claude.ai") ||
-      currentURL.includes("claude.ai/chat") ||
-      currentURL.includes("claude.ai/new") ||
-      window.location.hostname === "claude.ai" ||
-      window.location.hostname.endsWith(".claude.ai");
+      condition1 || condition2 || condition3 || condition4 || condition5;
     const isExtensionPage = currentURL.startsWith("chrome-extension://");
+
+    // 🔍 [URL-DIAGNOSTIC] URL検出詳細診断
+    console.log("🔍 [URL-DIAGNOSTIC] URL検出詳細:", {
+      currentURL,
+      hostname: window.location.hostname,
+      pathname: window.location.pathname,
+      condition1_includes_claude_ai: condition1,
+      condition2_includes_claude_ai_chat: condition2,
+      condition3_includes_claude_ai_new: condition3,
+      condition4_hostname_equals_claude_ai: condition4,
+      condition5_hostname_ends_with_claude_ai: condition5,
+      isValidClaudeURL_final_result: isValidClaudeURL,
+      isExtensionPage: isExtensionPage,
+    });
 
     // 🔍 [段階5-実行コンテキスト] Content Script実行環境の詳細ログ
     console.warn(`🔍 [段階5-Content Script] 実行コンテキスト詳細分析:`, {
@@ -992,25 +1007,78 @@
     // 他のAI（ChatGPT/Gemini/Genspark）は直接実行方式を使用しているが、
     // Claudeも段階的に移行するため、まずはメッセージリスナーを修正
     // 🔧 FIX: chrome.ai/newを含むすべてのClaude URLでメッセージリスナーを登録
-    if (
-      (isValidClaudeURL || currentURL.includes("claude.ai")) &&
-      !isExtensionPage &&
-      chrome?.runtime?.onMessage
-    ) {
+
+    // 🔍 [LISTENER-CONDITION] メッセージリスナー登録条件診断
+    const listenerCondition1 = isValidClaudeURL;
+    const listenerCondition2 = currentURL.includes("claude.ai");
+    const listenerCombinedCondition = listenerCondition1 || listenerCondition2;
+    const listenerCondition3 = !isExtensionPage;
+    const listenerCondition4 = typeof chrome !== "undefined";
+    const listenerCondition5 = !!chrome?.runtime;
+    const listenerCondition6 = !!chrome?.runtime?.onMessage;
+    const listenerFinalCondition =
+      listenerCombinedCondition && listenerCondition3 && listenerCondition6;
+
+    console.log("🔍 [LISTENER-CONDITION] 登録条件診断:", {
+      isValidClaudeURL: listenerCondition1,
+      currentURLIncludesClaudeAi: listenerCondition2,
+      combinedURLCondition: listenerCombinedCondition,
+      notExtensionPage: listenerCondition3,
+      hasChromeObject: listenerCondition4,
+      hasChromeRuntime: listenerCondition5,
+      hasChromeRuntimeOnMessage: listenerCondition6,
+      finalCondition: listenerFinalCondition,
+      willRegisterListener: listenerFinalCondition,
+    });
+
+    if (listenerFinalCondition) {
       console.log("📡 [Claude-直接実行方式] メッセージリスナー登録を早期開始");
 
       // ping/pong応答を最優先で処理するリスナーを即座に登録
       const registerMessageListener = () => {
         console.log("📡 [Claude-直接実行方式] メッセージリスナー登録開始");
 
+        // 🔍 [CONTENT-SCRIPT-INIT] Content Script初期化診断
+        console.log("🔍 [CONTENT-SCRIPT-INIT] 初期化状況:", {
+          chromeRuntimeAvailable: !!chrome?.runtime,
+          chromeRuntimeId: chrome?.runtime?.id,
+          onMessageAvailable: !!chrome?.runtime?.onMessage,
+          documentReadyState: document.readyState,
+          windowLoaded: document.readyState === "complete",
+          domContentLoaded: document.readyState !== "loading",
+          timestamp: new Date().toISOString(),
+        });
+
         chrome.runtime.onMessage.addListener(
           (request, sender, sendResponse) => {
+            // 🔍 [MESSAGE-RECEIVED] メッセージ受信診断
+            console.log("🔍 [MESSAGE-RECEIVED] メッセージ受信詳細:", {
+              action: request.action,
+              type: request.type,
+              hasRequest: !!request,
+              requestKeys: Object.keys(request || {}),
+              isPing: request.action === "ping",
+              isContentScriptCheck: request.type === "CONTENT_SCRIPT_CHECK",
+              isExecuteTask:
+                request.type === "CLAUDE_EXECUTE_TASK" ||
+                request.action === "executeTask",
+              timestamp: new Date().toISOString(),
+            });
+
             // ping/pongメッセージへの即座応答（最優先）
             if (
               request.action === "ping" ||
               request.type === "CONTENT_SCRIPT_CHECK"
             ) {
               console.log("🏓 [Claude] Ping受信、即座にPong応答");
+              console.log("🔍 [PING-RESPONSE] Pong応答送信:", {
+                action: "pong",
+                status: "ready",
+                timestamp: Date.now(),
+                scriptLoaded: true,
+                responseTime: new Date().toISOString(),
+              });
+
               sendResponse({
                 action: "pong",
                 status: "ready",
@@ -1168,6 +1236,23 @@
 
         console.log("✅ [Claude-直接実行方式] メッセージリスナー登録完了");
 
+        // 🔍 [CHROME-EXTENSION-ENV] Chrome Extension環境診断
+        console.log("🔍 [CHROME-EXTENSION-ENV] 拡張機能環境:", {
+          chromeObject: typeof chrome,
+          chromeRuntime: !!chrome?.runtime,
+          chromeRuntimeId: chrome?.runtime?.id,
+          chromeRuntimeVersion: chrome?.runtime?.getManifest?.()?.version,
+          chromeRuntimeManifestVersion:
+            chrome?.runtime?.getManifest?.()?.manifest_version,
+          chromeLastError: chrome?.runtime?.lastError,
+          onMessageListeners:
+            chrome?.runtime?.onMessage?.hasListeners?.() || "unknown",
+          extensionURL: chrome?.runtime?.getURL?.(""),
+          tabsAPI: !!chrome?.tabs,
+          storageAPI: !!chrome?.storage,
+          timestamp: new Date().toISOString(),
+        });
+
         // 初期化完了をグローバルに通知
         window.CLAUDE_MESSAGE_LISTENER_READY = true;
       };
@@ -1185,6 +1270,20 @@
           }
         });
       }
+    } else {
+      // 🔍 [LISTENER-SKIP] メッセージリスナー登録をスキップした理由
+      console.log("🔍 [LISTENER-SKIP] メッセージリスナー登録スキップ理由:", {
+        listenerFinalCondition: listenerFinalCondition,
+        isValidClaudeURL: listenerCondition1,
+        currentURLIncludesClaudeAi: listenerCondition2,
+        combinedURLCondition: listenerCombinedCondition,
+        notExtensionPage: listenerCondition3,
+        hasChromeObject: listenerCondition4,
+        hasChromeRuntime: listenerCondition5,
+        hasChromeRuntimeOnMessage: listenerCondition6,
+        skipReason: !listenerFinalCondition ? "条件不一致" : "不明",
+        timestamp: new Date().toISOString(),
+      });
     }
 
     // ========================================
@@ -6340,9 +6439,41 @@
       log.info("📊 処理時間:", Date.now() - scriptLoadTime, "ms");
       log.info("=".repeat(60));
     }
+
+    // 🔍 [SCRIPT-COMPLETION] Content Script完了診断サマリー
+    console.log("🔍 [SCRIPT-COMPLETION] Content Script実行完了サマリー:", {
+      scriptLoaded: window.CLAUDE_SCRIPT_LOADED,
+      messageListenerReady: window.CLAUDE_MESSAGE_LISTENER_READY,
+      automationLoaded: window.__CLAUDE_AUTOMATION_LOADED__,
+      currentURL: window.location.href,
+      isValidClaudeURL: isValidClaudeURL,
+      executionTime: Date.now() - window.CLAUDE_SCRIPT_INIT_TIME,
+      completionTime: new Date().toISOString(),
+      globalObjects: {
+        claudeLogFileManager: !!window.claudeLogFileManager,
+        executeTask: typeof window.executeTask,
+        runAutomation: typeof window.runAutomation,
+      },
+    });
   } catch (error) {
     // 致命的エラーをキャッチして記録
     console.error("🚨 [Claude Script] FATAL ERROR:", error);
     console.error("🚨 Stack trace:", error.stack);
+
+    // 🔍 [ERROR-DIAGNOSTIC] エラー発生時診断
+    console.log("🔍 [ERROR-DIAGNOSTIC] エラー発生時の状態:", {
+      currentURL: window.location.href,
+      error: {
+        message: error.message,
+        name: error.name,
+        stack: error.stack,
+      },
+      scriptState: {
+        scriptLoaded: window.CLAUDE_SCRIPT_LOADED,
+        automationLoaded: window.__CLAUDE_AUTOMATION_LOADED__,
+        messageListenerReady: window.CLAUDE_MESSAGE_LISTENER_READY,
+      },
+      timestamp: new Date().toISOString(),
+    });
   }
 })(); // 即時実行関数の終了
