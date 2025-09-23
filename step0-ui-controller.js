@@ -783,6 +783,9 @@ document.addEventListener("DOMContentLoaded", () => {
   // AI統合表を初期化
   initializeAITable();
 
+  // 保存されたAI検出データを読み込み
+  loadSavedAIData();
+
   log.debug("✅ [step0-ui-controller] 初期化完了");
 });
 
@@ -796,6 +799,47 @@ const lastAIData = {
   claude: { models: [], functions: [] },
   gemini: { models: [], functions: [] },
 };
+
+// 保存されたデータを読み込んで表に表示
+function loadSavedAIData() {
+  if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+    const storageKey = "ai_detection_data";
+
+    chrome.storage.local.get(storageKey, (result) => {
+      if (result[storageKey]) {
+        const savedData = result[storageKey];
+        log.info("💾 [UI] 保存されたAI検出データを読み込みました", {
+          lastUpdated: savedData.lastUpdated,
+        });
+
+        // 各AIのデータを復元
+        ["chatgpt", "claude", "gemini"].forEach((aiType) => {
+          if (savedData[aiType] && savedData[aiType].models) {
+            // メモリに復元
+            lastAIData[aiType] = {
+              models: savedData[aiType].models || [],
+              functions: savedData[aiType].functions || [],
+            };
+
+            // UIテーブルを更新
+            updateAITable(aiType, {
+              models: savedData[aiType].models,
+              functions: savedData[aiType].functions,
+            });
+
+            if (savedData[aiType].timestamp) {
+              log.debug(
+                `📅 [UI] ${aiType}の最終検出: ${savedData[aiType].timestamp}`,
+              );
+            }
+          }
+        });
+      } else {
+        log.debug("💾 [UI] 保存されたAI検出データはありません");
+      }
+    });
+  }
+}
 
 // データが変更されたかチェック
 function hasDataChanged(aiType, newData) {
@@ -860,12 +904,42 @@ function hasDataChanged(aiType, newData) {
   return false;
 }
 
-// データを保存
+// データを保存（メモリ内とchrome.storageの両方）
 function saveAIData(aiType, data) {
+  // メモリ内に保存
   lastAIData[aiType] = {
     models: data.models || [],
     functions: data.functionsWithDetails || data.functions || [],
   };
+
+  // chrome.storage.localに永続保存
+  if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+    const storageKey = "ai_detection_data";
+
+    // 既存のデータを取得して更新
+    chrome.storage.local.get(storageKey, (result) => {
+      const allData = result[storageKey] || {
+        chatgpt: { models: [], functions: [] },
+        claude: { models: [], functions: [] },
+        gemini: { models: [], functions: [] },
+      };
+
+      // 該当AIのデータを更新
+      allData[aiType] = {
+        models: data.models || [],
+        functions: data.functionsWithDetails || data.functions || [],
+        timestamp: new Date().toISOString(),
+      };
+
+      // 全体の最終更新時刻も記録
+      allData.lastUpdated = new Date().toISOString();
+
+      // storage に保存
+      chrome.storage.local.set({ [storageKey]: allData }, () => {
+        log.debug(`💾 [UI] ${aiType}のデータをchrome.storageに保存しました`);
+      });
+    });
+  }
 }
 
 // Chromeメッセージ受信処理
