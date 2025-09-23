@@ -740,49 +740,96 @@ const log = {
 
   // ChatGPT用固定セレクタ
   const SELECTORS = {
+    // モデル関連（テストコードから更新）
     modelButton: [
+      '[data-testid="model-switcher-dropdown-button"]',
+      'button[aria-label*="モデル セレクター"]',
+      'button[aria-label*="モデル"][aria-haspopup="menu"]',
+      "#radix-\\:r2m\\:",
+      'button.group.flex.cursor-pointer[aria-haspopup="menu"]',
       'button[data-testid="model-switcher-button"]',
       'button[aria-label*="Model"]',
       ".model-selector-button",
     ],
     modelMenu: [
+      '[role="menu"][data-radix-menu-content]',
+      '[role="menu"][data-state="open"]',
+      'div.z-50.max-w-xs.rounded-2xl.popover[role="menu"]',
+      '[aria-labelledby*="radix"][role="menu"]',
+      'div[data-radix-popper-content-wrapper] [role="menu"]',
       '[data-testid="model-switcher-menu"]',
       ".model-menu",
       '[role="menu"]',
     ],
+    // 機能関連（テストコードから更新）
     menuButton: [
+      '[data-testid="composer-plus-btn"]',
+      'button[aria-haspopup="menu"]',
+      "#radix-\\:R2eij4im4pact9a4mj5\\:",
+      "button.composer-btn",
+      'div[class*="leading"] button',
       'button[data-testid="composer-tools-button"]',
       'button[aria-label="Additional tools"]',
       ".composer-tools-button",
     ],
     mainMenu: [
+      '[role="menu"][data-state="open"]',
+      "[data-radix-menu-content]",
+      'div[data-side="bottom"][role="menu"]',
+      'div.popover[role="menu"]',
       '[data-testid="composer-tools-menu"]',
       ".composer-tools-menu",
       '[role="menu"]',
     ],
-    subMenu: [".submenu", '[role="menuitem"]'],
+    subMenu: [
+      '[role="menu"][data-side="right"]',
+      'div[data-side="right"][role="menu"]',
+      '[data-align="start"][role="menu"]:last-of-type',
+      ".submenu",
+      '[role="menuitem"]',
+    ],
+    // 入力・送信関連（テストコードから更新）
     textInput: [
+      ".ProseMirror",
       "#prompt-textarea",
+      '[contenteditable="true"][translate="no"]',
+      'div[data-virtualkeyboard="true"]',
+      "div.ProseMirror.text-token-text-primary",
+      ".ql-editor",
       'textarea[placeholder*="Message ChatGPT"]',
       'textarea[data-testid="composer-text-input"]',
     ],
     sendButton: [
-      'button[data-testid="send-button"]',
+      '[data-testid="send-button"]',
+      "#composer-submit-button",
+      'button[aria-label="プロンプトを送信する"]',
+      "button.composer-submit-btn.composer-submit-button-color",
+      'button:has(svg[width="20"][height="20"])',
       'button[aria-label="Send message"]',
       ".send-button",
     ],
+    // 停止ボタン（テストコードから更新）
     stopButton: [
-      'button[data-testid="stop-button"]',
+      '[data-testid="stop-button"]',
+      '#composer-submit-button[aria-label="ストリーミングの停止"]',
+      "button.composer-submit-btn.composer-secondary-button-color",
+      'button:has(svg path[d*="M4.5 5.75"])',
       'button[aria-label="Stop generating"]',
       ".stop-button",
     ],
+    // 結果取得関連（テストコードから更新）
     canvasText: [
+      "div.markdown.prose",
+      "div.w-full.pt-1.pb-1",
+      "div.markdown-new-styling",
       '[data-testid="canvas-content"]',
       ".canvas-content",
       ".artifact-content",
     ],
     normalText: [
       '[data-message-author-role="assistant"]',
+      "div.text-message",
+      "div.min-h-8.text-message",
       ".assistant-message",
       ".message-content",
     ],
@@ -1078,36 +1125,36 @@ const log = {
     },
 
     logStep: function (message, data) {
-      const log = this._addLog("INFO", message, data);
+      const logEntry = this._addLog("INFO", message, data);
       log.debug(`🔄 [ChatGPT-Step] ${message}`, data || "");
-      return log;
+      return logEntry;
     },
 
     logError: function (message, error) {
-      const log = this._addLog("ERROR", message, null, error);
+      const logEntry = this._addLog("ERROR", message, null, error);
       log.error(`❌ [ChatGPT-Error] ${message}`, error);
-      return log;
+      return logEntry;
     },
 
     logSuccess: function (message, data) {
-      const log = this._addLog("SUCCESS", message, data);
+      const logEntry = this._addLog("SUCCESS", message, data);
       log.debug(`✅ [ChatGPT-Success] ${message}`, data || "");
-      return log;
+      return logEntry;
     },
 
     logTaskStart: function (taskInfo) {
-      const log = this._addLog("TASK_START", "タスク開始", taskInfo);
+      const logEntry = this._addLog("TASK_START", "タスク開始", taskInfo);
       log.debug(`🚀 [ChatGPT-Task] タスク開始:`, taskInfo);
-      return log;
+      return logEntry;
     },
 
     logTaskComplete: function (taskInfo, result) {
-      const log = this._addLog("TASK_COMPLETE", "タスク完了", {
+      const logEntry = this._addLog("TASK_COMPLETE", "タスク完了", {
         taskInfo,
         result,
       });
       log.debug(`🏁 [ChatGPT-Task] タスク完了:`, { taskInfo, result });
-      return log;
+      return logEntry;
     },
 
     saveToFile: function () {
@@ -1128,16 +1175,21 @@ const log = {
     },
 
     saveErrorImmediately: function (error) {
-      const log = this._addLog("CRITICAL_ERROR", "緊急エラー", null, error);
+      const logEntry = this._addLog(
+        "CRITICAL_ERROR",
+        "緊急エラー",
+        null,
+        error,
+      );
       log.error(`🚨 [ChatGPT-Critical] 緊急エラー:`, error);
-      this._saveToStorage(log);
-      return log;
+      this._saveToStorage(logEntry);
+      return logEntry;
     },
 
     saveIntermediate: function (data) {
-      const log = this._addLog("INTERMEDIATE", "中間データ", data);
+      const logEntry = this._addLog("INTERMEDIATE", "中間データ", data);
       log.debug(`📊 [ChatGPT-Intermediate] 中間データ:`, data);
-      return log;
+      return logEntry;
     },
 
     // ログ取得メソッド
@@ -1246,6 +1298,36 @@ const log = {
     );
   }
 
+  // React イベントトリガー（テストコードから追加）
+  function triggerReactEvent(element, eventType, eventData = {}) {
+    try {
+      if (eventType === "click") {
+        element.click();
+        return true;
+      } else if (eventType === "pointer") {
+        const pointerDown = new PointerEvent("pointerdown", {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+          ...eventData,
+        });
+        const pointerUp = new PointerEvent("pointerup", {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+          ...eventData,
+        });
+        element.dispatchEvent(pointerDown);
+        element.dispatchEvent(pointerUp);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      logWithTimestamp(`React イベントトリガー失敗: ${error.message}`, "error");
+      return false;
+    }
+  }
+
   // 複数セレクタで要素検索（テスト済みコードより改善版）
   // 要素検索（固定セレクタ対応 + テスト済みセレクタ強化版）
   async function findElement(selectors, description = "", maxRetries = 5) {
@@ -1268,7 +1350,7 @@ const log = {
             element = document.querySelector(selector);
           }
 
-          if (element && isVisible(element)) {
+          if (element && isElementInteractable(element)) {
             if (description && retry > 0) {
               logWithTimestamp(
                 `${description}を発見: ${selector} (${retry + 1}回目の試行)`,
@@ -3320,6 +3402,9 @@ const log = {
     "✅ ChatGPT Automation Enhanced - インデックス選択機能追加完了",
     "success",
   );
+
+  // ChatGPTLogManagerをwindowに設定（即座実行関数内で実行）
+  window.ChatGPTLogManager = ChatGPTLogManager;
 })();
 
 /*
