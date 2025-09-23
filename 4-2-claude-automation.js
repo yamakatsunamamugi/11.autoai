@@ -1001,6 +1001,38 @@
         const errorMessage = e.message || e.error?.message || "";
         const errorName = e.error?.name || "";
 
+        // 🔍 [VS-CODE-ERROR-FILTER] VS Code関連エラーの検出と抑制
+        const isVSCodeError =
+          errorMessage.includes(
+            "The message port closed before a response was received",
+          ) ||
+          errorMessage.includes("message port closed") ||
+          (e.filename &&
+            (e.filename.includes("content.js") ||
+              e.filename.includes("vscode"))) ||
+          errorMessage.includes("vscode") ||
+          errorMessage.includes("vscode-webview");
+
+        if (isVSCodeError) {
+          // VS Codeエラーは抑制（コンソールに表示しない）
+          console.debug(
+            "🔇 [VS-CODE-ERROR-SUPPRESSED] VS Code拡張機能のエラーを抑制:",
+            {
+              message: errorMessage,
+              name: errorName,
+              filename: e.filename,
+              lineno: e.lineno,
+              source: "VS Code Extension",
+              suppressed: true,
+              timestamp: new Date().toISOString(),
+            },
+          );
+
+          // エラーの既定処理を防止
+          e.preventDefault();
+          return;
+        }
+
         // 🔍 ネットワークエラー検出
         const isNetworkError =
           errorMessage.includes("timeout") ||
@@ -1041,6 +1073,35 @@
         const errorReason = e.reason;
         const errorMessage = errorReason?.message || String(errorReason);
         const errorName = errorReason?.name || "";
+
+        // 🔍 [VS-CODE-ERROR-FILTER] VS Code関連エラーの検出と抑制
+        const isVSCodeError =
+          errorMessage.includes(
+            "The message port closed before a response was received",
+          ) ||
+          errorMessage.includes("message port closed") ||
+          (e.filename && e.filename.includes("content.js")) ||
+          (e.stack && e.stack.includes("content.js")) ||
+          errorMessage.includes("vscode") ||
+          errorMessage.includes("vscode-webview");
+
+        if (isVSCodeError) {
+          // VS Codeエラーは抑制（コンソールに表示しない）
+          console.debug(
+            "🔇 [VS-CODE-ERROR-SUPPRESSED] VS Code拡張機能のエラーを抑制:",
+            {
+              message: errorMessage,
+              name: errorName,
+              source: "VS Code Extension",
+              suppressed: true,
+              timestamp: new Date().toISOString(),
+            },
+          );
+
+          // エラーの既定処理を防止
+          e.preventDefault();
+          return;
+        }
 
         // 🔍 ネットワークエラー検出 (ClaudeRetryManagerと同じロジック)
         const isNetworkError =
