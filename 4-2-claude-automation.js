@@ -36,7 +36,13 @@
 
     // 🔍 [段階5] Content Script実行コンテキストの詳細確認
     const currentURL = window.location.href;
-    const isValidClaudeURL = currentURL.includes("claude.ai");
+    // 🔧 より包括的なClaude URL検出ロジック
+    const isValidClaudeURL =
+      currentURL.includes("claude.ai") ||
+      currentURL.includes("claude.ai/chat") ||
+      currentURL.includes("claude.ai/new") ||
+      window.location.hostname === "claude.ai" ||
+      window.location.hostname.endsWith(".claude.ai");
     const isExtensionPage = currentURL.startsWith("chrome-extension://");
 
     // 🔍 [段階5-実行コンテキスト] Content Script実行環境の詳細ログ
@@ -985,7 +991,12 @@
     // Claude.aiページでのみメッセージリスナーを登録
     // 他のAI（ChatGPT/Gemini/Genspark）は直接実行方式を使用しているが、
     // Claudeも段階的に移行するため、まずはメッセージリスナーを修正
-    if (isValidClaudeURL && !isExtensionPage && chrome?.runtime?.onMessage) {
+    // 🔧 FIX: chrome.ai/newを含むすべてのClaude URLでメッセージリスナーを登録
+    if (
+      (isValidClaudeURL || currentURL.includes("claude.ai")) &&
+      !isExtensionPage &&
+      chrome?.runtime?.onMessage
+    ) {
       console.log("📡 [Claude-直接実行方式] メッセージリスナー登録を早期開始");
 
       // ping/pong応答を最優先で処理するリスナーを即座に登録
