@@ -266,6 +266,12 @@ const cancelOpenUrlBtn = document.getElementById("cancelOpenUrlBtn");
 // メインボタン
 const stepOnlyBtn = document.getElementById("stepOnlyBtn");
 
+// AI検出機能ボタン
+const aiDetectionSystemBtn = document.getElementById("aiDetectionSystemBtn");
+const aiSelectorMutationSystemBtn = document.getElementById(
+  "aiSelectorMutationSystemBtn",
+);
+
 // ========================================
 // Section 5: URL保存・管理機能
 // ========================================
@@ -774,8 +780,143 @@ document.addEventListener("DOMContentLoaded", () => {
     attachRowEventListeners(firstRow);
   }
 
+  // AI統合表を初期化
+  initializeAITable();
+
   log.debug("✅ [step0-ui-controller] 初期化完了");
 });
+
+// ========================================
+// Section 8: AI モデル・機能情報受信・更新処理
+// ========================================
+
+// Chromeメッセージ受信処理
+if (
+  typeof chrome !== "undefined" &&
+  chrome.runtime &&
+  chrome.runtime.onMessage
+) {
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type === "AI_MODEL_FUNCTION_UPDATE") {
+      log.debug("🔍 [UI] AI情報受信:", {
+        aiType: message.aiType,
+        modelsCount: message.data.models?.length || 0,
+        functionsCount: message.data.functions?.length || 0,
+      });
+
+      updateAITable(message.aiType, message.data);
+      sendResponse({ success: true });
+    }
+  });
+}
+
+// UI表更新関数
+function updateAITable(aiType, data) {
+  try {
+    const tbody = document.getElementById("ai-integrated-tbody");
+    if (!tbody) {
+      log.error("AI統合表のtbodyが見つかりません");
+      return;
+    }
+
+    // 表の行を取得または作成
+    let row = tbody.querySelector("tr");
+    if (!row) {
+      // 新しい行を作成
+      row = document.createElement("tr");
+      for (let i = 0; i < 6; i++) {
+        const cell = document.createElement("td");
+        cell.style.cssText =
+          "border: 1px solid #dee2e6; padding: 8px; text-align: left; vertical-align: top; font-size: 12px;";
+        row.appendChild(cell);
+      }
+      tbody.appendChild(row);
+    }
+
+    const cells = row.querySelectorAll("td");
+
+    // AI種別に応じて該当セルを更新
+    let modelCellIndex, functionCellIndex;
+    switch (aiType) {
+      case "chatgpt":
+        modelCellIndex = 0; // ChatGPTモデル列
+        functionCellIndex = 3; // ChatGPT機能列
+        break;
+      case "claude":
+        modelCellIndex = 1; // Claudeモデル列
+        functionCellIndex = 4; // Claude機能列
+        break;
+      case "gemini":
+        modelCellIndex = 2; // Geminiモデル列
+        functionCellIndex = 5; // Gemini機能列
+        break;
+      default:
+        log.warn("未対応のAI種別:", aiType);
+        return;
+    }
+
+    // モデル情報を更新
+    if (data.models && cells[modelCellIndex]) {
+      const modelList = data.models.map((model) => `• ${model}`).join("<br>");
+      cells[modelCellIndex].innerHTML =
+        modelList || '<span style="color: #999;">未検出</span>';
+      log.debug(`✅ ${aiType}モデル情報更新完了:`, data.models);
+    }
+
+    // 機能情報を更新
+    if (data.functions && cells[functionCellIndex]) {
+      const functionList = data.functions
+        .map((func) => `• ${func}`)
+        .join("<br>");
+      cells[functionCellIndex].innerHTML =
+        functionList || '<span style="color: #999;">未検出</span>';
+      log.debug(`✅ ${aiType}機能情報更新完了:`, data.functions);
+    }
+
+    // 更新時刻を追加
+    const timestamp = new Date().toLocaleTimeString("ja-JP");
+    const updateNote = `<br><small style="color: #666; font-size: 10px;">更新: ${timestamp}</small>`;
+
+    if (cells[modelCellIndex]) {
+      cells[modelCellIndex].innerHTML += updateNote;
+    }
+
+    log.info(`🔍 [UI] ${aiType}の情報表示を更新しました`);
+  } catch (error) {
+    log.error("AI表更新エラー:", error);
+  }
+}
+
+// 初期化時に表の構造を準備
+function initializeAITable() {
+  const tbody = document.getElementById("ai-integrated-tbody");
+  if (tbody) {
+    // 既存の "データを読み込み中..." を削除
+    tbody.innerHTML = "";
+
+    // 空の行を作成
+    const row = document.createElement("tr");
+    const headers = [
+      "ChatGPTモデル",
+      "Claudeモデル",
+      "Geminiモデル",
+      "ChatGPT機能",
+      "Claude機能",
+      "Gemini機能",
+    ];
+
+    headers.forEach((header, index) => {
+      const cell = document.createElement("td");
+      cell.style.cssText =
+        "border: 1px solid #dee2e6; padding: 8px; text-align: left; vertical-align: top; font-size: 12px;";
+      cell.innerHTML = '<span style="color: #999;">検出待機中...</span>';
+      row.appendChild(cell);
+    });
+
+    tbody.appendChild(row);
+    log.debug("✅ AI統合表を初期化しました");
+  }
+}
 
 // スクリプト読み込み完了をトラッキング
 window.scriptLoadTracker.addScript("step0-ui-controller.js");

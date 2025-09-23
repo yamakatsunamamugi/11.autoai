@@ -3453,6 +3453,7 @@
         "%c🚀 ========== Claude V2 タスク実行開始 ==========",
         "color: #9C27B0; font-weight: bold; font-size: 16px",
       );
+
       console.log(
         "%c【ステップ1】タスク初期化",
         "color: #2196F3; font-weight: bold;",
@@ -3702,6 +3703,26 @@
             await triggerReactEvent(menuButton);
             await wait(2000);
             console.log("  - メニュー展開完了");
+
+            // 🔍 モデル情報自動検出（テスト済みロジック）
+            try {
+              console.log("🔍 Claudeモデル情報検出開始");
+              const detectedModels = await detectClaudeModelsFromOpenMenu();
+              console.log("🔍 検出されたClaudeモデル:", detectedModels);
+
+              // UIに送信
+              await chrome.runtime.sendMessage({
+                type: "AI_MODEL_FUNCTION_UPDATE",
+                aiType: "claude",
+                data: {
+                  models: detectedModels.map((m) => m.name),
+                  modelsWithDetails: detectedModels,
+                },
+              });
+              console.log("✅ 検出結果をUIに送信完了");
+            } catch (detectionError) {
+              console.log("❌ モデル検出エラー:", detectionError);
+            }
           }
 
           // モデル名がClaudeを含むか確認
@@ -5849,6 +5870,87 @@
         inputText: typeof window.inputText,
         runAutomation: typeof window.runAutomation,
       });
+
+      // ========================================
+      // Claude モデル・機能検出関数（テスト済み）
+      // ========================================
+
+      // Claudeモデル情報検出関数（コンソールテスト済み）
+      async function detectClaudeModelsFromOpenMenu() {
+        console.log("🔍 Claudeモデル検出テスト開始");
+
+        // 1. モデルメニューが既に開いているかチェック
+        let menu = document.querySelector(
+          'div[role="menu"][data-state="open"]',
+        );
+
+        if (menu) {
+          console.log("✅ モデルメニューが開いています");
+          return extractModelsFromMenu(menu);
+        } else {
+          console.log("❌ モデルメニューが開いていません");
+          return [];
+        }
+      }
+
+      // メニューからモデル情報を抽出する関数
+      function extractModelsFromMenu(menu) {
+        const models = [];
+        const menuItems = menu.querySelectorAll('div[role="menuitem"]');
+
+        console.log(`📋 メニューアイテム数: ${menuItems.length}`);
+
+        menuItems.forEach((item, index) => {
+          // モデル名を取得（複数のセレクタを試す）
+          const modelNameElement =
+            item.querySelector(".flex-1.text-sm div") || // メインの場所
+            item.querySelector("div.flex-1 div") || // 代替パス
+            item.querySelector(".text-sm div") || // シンプルパス
+            item.querySelector("div > div:first-child"); // フォールバック
+
+          if (modelNameElement) {
+            const modelName = modelNameElement.textContent.trim();
+
+            // モデル説明を取得
+            const descriptionElement = item.querySelector(
+              ".text-text-500.pr-4.text-xs.mt-1",
+            );
+            const description = descriptionElement
+              ? descriptionElement.textContent.trim()
+              : "";
+
+            // 現在選択されているかチェック（SVGチェックマークの存在）
+            const isSelected = !!item.querySelector(
+              'svg path[d*="M232.49,80.49l-128,128"]',
+            );
+
+            console.log(
+              `[${index + 1}] モデル: "${modelName}" | 説明: "${description}" | 選択済み: ${isSelected}`,
+            );
+
+            if (modelName && modelName !== "他のモデル") {
+              // セクション区切りは除外
+              models.push({
+                name: modelName,
+                description: description,
+                isSelected: isSelected,
+              });
+            }
+          } else {
+            // セクション区切りやその他の要素の可能性
+            const textContent = item.textContent.trim();
+            console.log(`[${index + 1}] その他の要素: "${textContent}"`);
+          }
+        });
+
+        console.log("🎯 検出結果:");
+        console.table(models);
+        return models;
+      }
+
+      // Windowオブジェクトに追加してアクセス可能にする
+      window.detectClaudeModelsFromOpenMenu = detectClaudeModelsFromOpenMenu;
+      window.extractModelsFromMenu = extractModelsFromMenu;
 
       log.info("=".repeat(60));
       log.info("🎉 [Claude Automation] 関数エクスポート完了");

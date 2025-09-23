@@ -3067,3 +3067,154 @@ window.ChatGPTLogManager = ChatGPTLogManager;
 // ChatGPT自動化関数はwindowオブジェクトに定義
 // エクスポートする関数なし（内部実装のみ）
 // コンテンツスクリプトではexport文を使用できないため、コメントアウト
+
+// ========================================
+// ChatGPTモデル・機能検出関数
+// ========================================
+async function detectChatGPTModelsAndFeatures() {
+  log("🔍 ChatGPTモデル・機能検出開始");
+
+  const DETECTION_SELECTORS = {
+    modelButton: [
+      'button[type="button"]:has([data-testid="model-switcher-button"])',
+      'button:has([data-testid="model-switcher-button"])',
+    ],
+    modelMenu: ['div[role="menu"]'],
+    functionMenuButton: [
+      'button[aria-label="機能メニューを開く"]',
+      'button:has(svg):has(path[d*="M12 6.5a5.5"])',
+    ],
+    functionMenu: ['div[role="menu"]'],
+  };
+
+  const findElement = (selectors) => {
+    for (const selector of selectors) {
+      const element = document.querySelector(selector);
+      if (element) return element;
+    }
+    return null;
+  };
+
+  const availableModels = [];
+  const availableFunctions = [];
+
+  try {
+    // モデル検出
+    const modelBtn = findElement(DETECTION_SELECTORS.modelButton);
+    if (modelBtn) {
+      log("モデルメニューボタン発見、クリック実行");
+      modelBtn.click();
+      await sleep(1500);
+
+      const modelMenu = findElement(DETECTION_SELECTORS.modelMenu);
+      if (modelMenu) {
+        log("モデルメニュー発見、モデル一覧取得");
+
+        // メインモデルメニューの項目取得
+        const mainMenuItems = modelMenu.querySelectorAll(
+          '[role="menuitem"][data-testid^="model-switcher-"]',
+        );
+        mainMenuItems.forEach((item) => {
+          const modelName = item.textContent.trim();
+          if (modelName && !modelName.includes("レガシー")) {
+            availableModels.push(modelName);
+          }
+        });
+
+        // レガシーモデルもチェック
+        const legacyButton =
+          modelMenu.querySelector('[role="menuitem"][data-has-submenu]') ||
+          Array.from(modelMenu.querySelectorAll('[role="menuitem"]')).find(
+            (el) => el.textContent && el.textContent.includes("レガシーモデル"),
+          );
+
+        if (legacyButton) {
+          log("レガシーモデルメニュー発見、追加モデル取得");
+          legacyButton.click();
+          await sleep(1500);
+
+          const allMenus = document.querySelectorAll('[role="menu"]');
+          allMenus.forEach((menu) => {
+            if (menu !== modelMenu) {
+              const items = menu.querySelectorAll('[role="menuitem"]');
+              items.forEach((item) => {
+                const modelName = item.textContent.trim();
+                if (modelName && modelName.includes("GPT")) {
+                  availableModels.push(modelName);
+                }
+              });
+            }
+          });
+        }
+
+        // メニューを閉じる
+        document.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Escape", code: "Escape" }),
+        );
+        await sleep(500);
+      }
+    }
+
+    // 機能検出
+    const funcMenuBtn = findElement(DETECTION_SELECTORS.functionMenuButton);
+    if (funcMenuBtn) {
+      log("機能メニューボタン発見、クリック実行");
+      funcMenuBtn.click();
+      await sleep(1500);
+
+      const funcMenu = findElement(DETECTION_SELECTORS.functionMenu);
+      if (funcMenu) {
+        log("機能メニュー発見、機能一覧取得");
+
+        // メイン機能を取得
+        const menuItems = funcMenu.querySelectorAll('[role="menuitemradio"]');
+        menuItems.forEach((item) => {
+          const funcName = item.textContent.trim();
+          if (funcName) {
+            availableFunctions.push(funcName);
+          }
+        });
+
+        // サブメニューもチェック
+        const moreButton = Array.from(
+          funcMenu.querySelectorAll('[role="menuitem"]'),
+        ).find((el) => el.textContent && el.textContent.includes("さらに表示"));
+
+        if (moreButton) {
+          log("追加機能メニュー発見、サブメニュー取得");
+          moreButton.click();
+          await sleep(1000);
+
+          const subMenu = document.querySelector('[data-side="right"]');
+          if (subMenu) {
+            const subMenuItems = subMenu.querySelectorAll(
+              '[role="menuitemradio"]',
+            );
+            subMenuItems.forEach((item) => {
+              const funcName = item.textContent.trim();
+              if (funcName) {
+                availableFunctions.push(funcName);
+              }
+            });
+          }
+        }
+
+        // メニューを閉じる
+        document.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Escape", code: "Escape" }),
+        );
+        await sleep(500);
+      }
+    }
+
+    const result = { models: availableModels, functions: availableFunctions };
+    log(
+      `🔍 ChatGPT検出完了 - モデル: ${availableModels.length}個, 機能: ${availableFunctions.length}個`,
+      result,
+    );
+    return result;
+  } catch (error) {
+    log.error("🔍 ChatGPT検出エラー:", error);
+    return { models: availableModels, functions: availableFunctions };
+  }
+}

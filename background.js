@@ -71,6 +71,40 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true; // 非同期レスポンス許可
   }
 
+  // 🔍 AI モデル・機能情報更新要求
+  if (request.type === "AI_MODEL_FUNCTION_UPDATE") {
+    console.log("🔍 [BG] AI モデル・機能情報受信:", {
+      aiType: request.aiType,
+      modelsCount: request.data.models?.length || 0,
+      functionsCount: request.data.functions?.length || 0,
+      timestamp: new Date().toISOString(),
+    });
+
+    // UIウィンドウにメッセージを転送
+    chrome.tabs.query({}, (tabs) => {
+      tabs.forEach((tab) => {
+        if (tab.url && tab.url.includes("chrome-extension://")) {
+          chrome.tabs
+            .sendMessage(tab.id, {
+              type: "AI_MODEL_FUNCTION_UPDATE",
+              aiType: request.aiType,
+              data: request.data,
+            })
+            .catch(() => {
+              // エラーは無視（UIタブが見つからない場合）
+            });
+        }
+      });
+    });
+
+    sendResponse({
+      success: true,
+      message: "AI information forwarded to UI",
+      timestamp: new Date().toISOString(),
+    });
+    return true; // 非同期レスポンス許可
+  }
+
   // 注意: Content Script注入はmanifest.json自動注入に移行済み
   // Content Script注入要求は廃止
 
