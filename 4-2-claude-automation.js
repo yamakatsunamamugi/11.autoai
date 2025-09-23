@@ -4032,44 +4032,45 @@
 
           for (const item of mainMenuItems) {
             const itemText = item.textContent?.trim();
-            log.debug(`  - アイテム: "${itemText}"`);
+            log.debug(`[MODEL-MATCH-DEBUG] 検査中: "${itemText}"`);
 
-            // 完全一致または部分一致でチェック
             if (itemText) {
-              // Claude 3.5 Sonnet, Claude 3 Opus, Claude 3 Haiku などのパターンに対応
-              const normalizedItemText = itemText.replace(/\s+/g, " ").trim();
-              const normalizedTarget = targetModelName
-                .replace(/\s+/g, " ")
-                .trim();
+              // より精密な正規表現マッチングを使用（Claudeプレフィックスをオプションに、説明文を許可）
+              const modelMatch = itemText.match(
+                /^(Claude\s+)?(Opus|Sonnet|Haiku)\s+[\d.]+/,
+              );
 
-              if (
-                normalizedItemText === normalizedTarget ||
-                normalizedItemText.includes(normalizedTarget) ||
-                normalizedTarget.includes(normalizedItemText)
-              ) {
-                log.debug(`✅ モデル発見: "${itemText}"`);
-                foundInMain = true;
-                await triggerReactEvent(item, "click");
-                await wait(1500);
-                break;
-              }
+              if (modelMatch) {
+                // マッチした部分のみを抽出
+                const extractedModelName = modelMatch[0];
+                log.debug(
+                  `[MODEL-MATCH-DEBUG] 抽出されたモデル名: "${extractedModelName}"`,
+                );
+                log.debug(
+                  `[MODEL-MATCH-DEBUG] 目標モデル名: "${targetModelName}"`,
+                );
 
-              // 数字のバージョン表記の違いも考慮（例：3.5 vs 3-5）
-              const itemTextNormalized = itemText
-                .replace(/[-\s]/g, "")
-                .toLowerCase();
-              const targetNormalized = targetModelName
-                .replace(/[-\s]/g, "")
-                .toLowerCase();
-              if (
-                itemTextNormalized.includes(targetNormalized) ||
-                targetNormalized.includes(itemTextNormalized)
-              ) {
-                log.debug(`✅ モデル発見（正規化後）: "${itemText}"`);
-                foundInMain = true;
-                await triggerReactEvent(item, "click");
-                await wait(1500);
-                break;
+                // より柔軟なマッチング
+                const isExactMatch = extractedModelName === targetModelName;
+                const isPartialMatch = extractedModelName.includes(
+                  targetModelName.replace("Claude ", ""),
+                );
+                const isReverseMatch =
+                  targetModelName.includes(extractedModelName);
+
+                log.debug(
+                  `[MODEL-MATCH-DEBUG] 完全一致: ${isExactMatch}, 部分一致: ${isPartialMatch}, 逆一致: ${isReverseMatch}`,
+                );
+
+                if (isExactMatch || isPartialMatch || isReverseMatch) {
+                  log.debug(
+                    `[MODEL-MATCH-SUCCESS] モデル選択: "${extractedModelName}"`,
+                  );
+                  foundInMain = true;
+                  await triggerReactEvent(item, "click");
+                  await wait(1500);
+                  break;
+                }
               }
             }
           }
