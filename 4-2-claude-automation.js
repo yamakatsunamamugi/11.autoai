@@ -61,42 +61,51 @@
     });
 
     // 🔍 [段階5-実行コンテキスト] Content Script実行環境の詳細ログ
-    console.warn(`🔍 [段階5-Content Script] 実行コンテキスト詳細分析:`, {
-      executionContext: {
-        url: currentURL,
-        title: document.title,
-        domain: window.location.hostname,
-        protocol: window.location.protocol,
-        pathname: window.location.pathname,
-        search: window.location.search,
-        hash: window.location.hash,
-      },
-      validationResults: {
-        isValidClaudeURL: isValidClaudeURL,
-        isExtensionPage: isExtensionPage,
-        isChromeNewTab: currentURL === "chrome://newtab/",
-        isAboutBlank: currentURL === "about:blank",
-      },
-      documentState: {
-        readyState: document.readyState,
-        hasDocumentElement: !!document.documentElement,
-        hasBody: !!document.body,
-        bodyChildrenCount: document.body ? document.body.children.length : 0,
-      },
-      chromeExtensionInfo: {
-        hasChromeRuntime: typeof chrome !== "undefined" && !!chrome.runtime,
-        extensionId:
-          typeof chrome !== "undefined" && chrome.runtime
-            ? chrome.runtime.id
-            : null,
-        runtimeUrl:
-          typeof chrome !== "undefined" && chrome.runtime
-            ? chrome.runtime.getURL("")
-            : null,
-      },
-      timestamp: new Date().toISOString(),
-      userAgent: navigator.userAgent,
-    });
+    console.warn(
+      `🔍 [段階5-Content Script] 実行コンテキスト詳細分析:`,
+      JSON.stringify(
+        {
+          executionContext: {
+            url: currentURL,
+            title: document.title,
+            domain: window.location.hostname,
+            protocol: window.location.protocol,
+            pathname: window.location.pathname,
+            search: window.location.search,
+            hash: window.location.hash,
+          },
+          validationResults: {
+            isValidClaudeURL: isValidClaudeURL,
+            isExtensionPage: isExtensionPage,
+            isChromeNewTab: currentURL === "chrome://newtab/",
+            isAboutBlank: currentURL === "about:blank",
+          },
+          documentState: {
+            readyState: document.readyState,
+            hasDocumentElement: !!document.documentElement,
+            hasBody: !!document.body,
+            bodyChildrenCount: document.body
+              ? document.body.children.length
+              : 0,
+          },
+          chromeExtensionInfo: {
+            hasChromeRuntime: typeof chrome !== "undefined" && !!chrome.runtime,
+            extensionId:
+              typeof chrome !== "undefined" && chrome.runtime
+                ? chrome.runtime.id
+                : null,
+            runtimeUrl:
+              typeof chrome !== "undefined" && chrome.runtime
+                ? chrome.runtime.getURL("")
+                : null,
+          },
+          timestamp: new Date().toISOString(),
+          userAgent: navigator.userAgent,
+        },
+        null,
+        2,
+      ),
+    );
 
     // URL検証 - Content Scriptは claude.ai でのみ動作すべき
 
@@ -1068,7 +1077,8 @@
             // ping/pongメッセージへの即座応答（最優先）
             if (
               request.action === "ping" ||
-              request.type === "CONTENT_SCRIPT_CHECK"
+              request.type === "CONTENT_SCRIPT_CHECK" ||
+              request.type === "PING"
             ) {
               console.log("🏓 [Claude] Ping受信、即座にPong応答");
               console.log("🔍 [PING-RESPONSE] Pong応答送信:", {
@@ -1119,15 +1129,19 @@
             const requestId = Math.random().toString(36).substring(2, 8);
             console.warn(
               `📬 [Claude-直接実行方式] メッセージ受信 [ID:${requestId}]:`,
-              {
-                type: request?.type || request?.action,
-                keys: Object.keys(request || {}),
-                hasTask: !!request?.task,
-                hasTaskData: !!request?.taskData,
-                automationName: request?.automationName,
-                taskId: request?.task?.id || request?.taskData?.id,
-                timestamp: new Date().toISOString(),
-              },
+              JSON.stringify(
+                {
+                  type: request?.type || request?.action,
+                  keys: Object.keys(request || {}),
+                  hasTask: !!request?.task,
+                  hasTaskData: !!request?.taskData,
+                  automationName: request?.automationName,
+                  taskId: request?.task?.id || request?.taskData?.id,
+                  timestamp: new Date().toISOString(),
+                },
+                null,
+                2,
+              ),
             );
 
             // executeTaskタスクの処理

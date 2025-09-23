@@ -38,7 +38,7 @@ const log = {
  * @fileoverview ChatGPT Automation V2 - 統合版
  *
  * 【ステップ構成】
- * Step 4-1-0: 初期化（UI_SELECTORS読み込み）
+ * Step 4-1-0: 初期化（固定セレクタ使用）
  * Step 4-1-1: ページ準備状態チェック
  * Step 4-1-2: テキスト入力
  * Step 4-1-3: モデル選択（条件付き）
@@ -87,42 +87,49 @@ const log = {
   const isExtensionPage = currentURL.startsWith("chrome-extension://");
 
   // 🔍 Content Script実行環境の詳細ログ
-  console.warn(`🔍 [ChatGPT-Content Script] 実行コンテキスト詳細分析:`, {
-    executionContext: {
-      url: currentURL,
-      title: document.title,
-      domain: window.location.hostname,
-      protocol: window.location.protocol,
-      pathname: window.location.pathname,
-      search: window.location.search,
-      hash: window.location.hash,
-    },
-    validationResults: {
-      isValidChatGPTURL: isValidChatGPTURL,
-      isExtensionPage: isExtensionPage,
-      isChromeNewTab: currentURL === "chrome://newtab/",
-      isAboutBlank: currentURL === "about:blank",
-    },
-    documentState: {
-      readyState: document.readyState,
-      hasDocumentElement: !!document.documentElement,
-      hasBody: !!document.body,
-      bodyChildrenCount: document.body ? document.body.children.length : 0,
-    },
-    chromeExtensionInfo: {
-      hasChromeRuntime: typeof chrome !== "undefined" && !!chrome.runtime,
-      extensionId:
-        typeof chrome !== "undefined" && chrome.runtime
-          ? chrome.runtime.id
-          : null,
-      runtimeUrl:
-        typeof chrome !== "undefined" && chrome.runtime
-          ? chrome.runtime.getURL("")
-          : null,
-    },
-    timestamp: new Date().toISOString(),
-    userAgent: navigator.userAgent,
-  });
+  console.warn(
+    `🔍 [ChatGPT-Content Script] 実行コンテキスト詳細分析:`,
+    JSON.stringify(
+      {
+        executionContext: {
+          url: currentURL,
+          title: document.title,
+          domain: window.location.hostname,
+          protocol: window.location.protocol,
+          pathname: window.location.pathname,
+          search: window.location.search,
+          hash: window.location.hash,
+        },
+        validationResults: {
+          isValidChatGPTURL: isValidChatGPTURL,
+          isExtensionPage: isExtensionPage,
+          isChromeNewTab: currentURL === "chrome://newtab/",
+          isAboutBlank: currentURL === "about:blank",
+        },
+        documentState: {
+          readyState: document.readyState,
+          hasDocumentElement: !!document.documentElement,
+          hasBody: !!document.body,
+          bodyChildrenCount: document.body ? document.body.children.length : 0,
+        },
+        chromeExtensionInfo: {
+          hasChromeRuntime: typeof chrome !== "undefined" && !!chrome.runtime,
+          extensionId:
+            typeof chrome !== "undefined" && chrome.runtime
+              ? chrome.runtime.id
+              : null,
+          runtimeUrl:
+            typeof chrome !== "undefined" && chrome.runtime
+              ? chrome.runtime.getURL("")
+              : null,
+        },
+        timestamp: new Date().toISOString(),
+        userAgent: navigator.userAgent,
+      },
+      null,
+      2,
+    ),
+  );
 
   // ========================================
   // Step 4-1-0-3: 統一ChatGPTRetryManager クラス定義
@@ -723,50 +730,68 @@ const log = {
   };
 
   // ========================================
-  // Step 4-1-0: UIセレクタ（step1-setup.js統一管理版）
-  // step1-setup.jsのwindow.UI_SELECTORSを参照
+  // Step 4-1-0: 固定UIセレクタ（UI_SELECTORS依存なし）
   // ========================================
 
-  const loadSelectors = async () => {
-    log.debug("loadSelectors starts - waiting for step1 UI_SELECTORS");
+  logWithTimestamp(
+    "【Step 4-1-0-1】✅ 固定セレクタを使用（UI_SELECTORS不要）",
+    "success",
+  );
 
-    // step1-setup.jsからのUI_SELECTORS読み込み待機
-    let retryCount = 0;
-    const maxRetries = 50;
-
-    while (!window.UI_SELECTORS && retryCount < maxRetries) {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      retryCount++;
-    }
-
-    if (!window.UI_SELECTORS) {
-      throw new Error("UI_SELECTORS not available from step1-setup.js");
-    }
-
-    logWithTimestamp(
-      "【Step 4-1-0-1】✅ UI Selectors loaded from step1-setup.js",
-      "success",
-    );
-    return window.UI_SELECTORS;
-  };
-
-  // セレクタを読み込み
-  await loadSelectors();
-
-  // ChatGPT用セレクタを取得
+  // ChatGPT用固定セレクタ
   const SELECTORS = {
-    modelButton: window.UI_SELECTORS.ChatGPT?.MODEL_BUTTON || [],
-    modelMenu: window.UI_SELECTORS.ChatGPT?.MENU?.CONTAINER || [],
-    menuButton: window.UI_SELECTORS.ChatGPT?.FUNCTION_MENU_BUTTON || [],
-    mainMenu: window.UI_SELECTORS.ChatGPT?.MENU?.CONTAINER || [],
-    subMenu: window.UI_SELECTORS.ChatGPT?.MENU?.SUBMENU_TRIGGERS || [],
-    textInput: window.UI_SELECTORS.ChatGPT?.INPUT || [],
-    sendButton: window.UI_SELECTORS.ChatGPT?.SEND_BUTTON || [],
-    stopButton: window.UI_SELECTORS.ChatGPT?.STOP_BUTTON || [],
-    canvasText: window.UI_SELECTORS.ChatGPT?.CANVAS_TEXT || [],
-    normalText: window.UI_SELECTORS.ChatGPT?.ASSISTANT_MESSAGE || [],
-    menuItem: window.UI_SELECTORS.ChatGPT?.MENU_ITEM || [],
-    response: window.UI_SELECTORS.ChatGPT?.STANDARD_MARKDOWN || [],
+    modelButton: [
+      'button[data-testid="model-switcher-button"]',
+      'button[aria-label*="Model"]',
+      ".model-selector-button",
+    ],
+    modelMenu: [
+      '[data-testid="model-switcher-menu"]',
+      ".model-menu",
+      '[role="menu"]',
+    ],
+    menuButton: [
+      'button[data-testid="composer-tools-button"]',
+      'button[aria-label="Additional tools"]',
+      ".composer-tools-button",
+    ],
+    mainMenu: [
+      '[data-testid="composer-tools-menu"]',
+      ".composer-tools-menu",
+      '[role="menu"]',
+    ],
+    subMenu: [".submenu", '[role="menuitem"]'],
+    textInput: [
+      "#prompt-textarea",
+      'textarea[placeholder*="Message ChatGPT"]',
+      'textarea[data-testid="composer-text-input"]',
+    ],
+    sendButton: [
+      'button[data-testid="send-button"]',
+      'button[aria-label="Send message"]',
+      ".send-button",
+    ],
+    stopButton: [
+      'button[data-testid="stop-button"]',
+      'button[aria-label="Stop generating"]',
+      ".stop-button",
+    ],
+    canvasText: [
+      '[data-testid="canvas-content"]',
+      ".canvas-content",
+      ".artifact-content",
+    ],
+    normalText: [
+      '[data-message-author-role="assistant"]',
+      ".assistant-message",
+      ".message-content",
+    ],
+    menuItem: [
+      '[role="menuitem"]',
+      ".menu-item",
+      'button[data-testid*="menu-item"]',
+    ],
+    response: [".markdown", ".prose", ".message-content p"],
   };
 
   // ========================================
@@ -1222,7 +1247,7 @@ const log = {
   }
 
   // 複数セレクタで要素検索（テスト済みコードより改善版）
-  // 要素検索（UI_SELECTORS対応 + テスト済みセレクタ強化版）
+  // 要素検索（固定セレクタ対応 + テスト済みセレクタ強化版）
   async function findElement(selectors, description = "", maxRetries = 5) {
     for (let retry = 0; retry < maxRetries; retry++) {
       for (const selector of selectors) {
@@ -2849,7 +2874,7 @@ const log = {
       // テキスト取得（ui-selectors-data.jsonを使用）
       let responseText = "";
 
-      // Canvas/Artifactを最優先でチェック（UI_SELECTORS使用）
+      // Canvas/Artifactを最優先でチェック（固定セレクタ使用）
       logWithTimestamp("Canvas/Artifactコンテンツを検索中...", "info");
 
       const canvasElement = await findElement(
@@ -2882,14 +2907,14 @@ const log = {
           "info",
         );
 
-        // UI_SELECTORSを使用した確実な方式
+        // 固定セレクタを使用した確実な方式
         const assistantMessages = document.querySelectorAll(
           SELECTORS.normalText[0],
         );
         if (assistantMessages.length > 0) {
           const lastMessage = assistantMessages[assistantMessages.length - 1];
 
-          // 通常処理のテキスト取得（UI_SELECTORS使用）
+          // 通常処理のテキスト取得（固定セレクタ使用）
           const normalElements = Array.from(
             document.querySelectorAll(SELECTORS.response[0]),
           );
@@ -3123,7 +3148,8 @@ const log = {
       // ping/pongメッセージへの即座応答（最優先）
       if (
         request.action === "ping" ||
-        request.type === "CONTENT_SCRIPT_CHECK"
+        request.type === "CONTENT_SCRIPT_CHECK" ||
+        request.type === "PING"
       ) {
         log.debug("🏓 [ChatGPT] Ping受信、即座にPong応答");
         sendResponse({
@@ -3352,14 +3378,8 @@ window.addEventListener("beforeunload", async (event) => {
   }
 });
 
-// ChatGPTLogManagerが定義されている場合のみwindowに設定
-if (typeof ChatGPTLogManager !== "undefined") {
-  window.ChatGPTLogManager = ChatGPTLogManager;
-} else {
-  console.warn(
-    "[ChatGPT] ChatGPTLogManager is not defined - スコープ外にある可能性があります",
-  );
-}
+// ChatGPTLogManagerをwindowに設定
+window.ChatGPTLogManager = ChatGPTLogManager;
 
 // ========================================
 // 【エクスポート】検出システム用関数一覧

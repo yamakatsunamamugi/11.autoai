@@ -820,7 +820,8 @@ const log = {
       // ping/pong メッセージへの即座応答（最優先）
       if (
         request.action === "ping" ||
-        request.type === "CONTENT_SCRIPT_CHECK"
+        request.type === "CONTENT_SCRIPT_CHECK" ||
+        request.type === "PING"
       ) {
         console.log("🏓 [Gemini] Ping受信、即座にPong応答");
         sendResponse({
