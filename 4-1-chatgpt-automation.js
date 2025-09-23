@@ -1355,6 +1355,8 @@ const log = {
   // 6-1: 停止ボタン出現待機
   async function waitForStopButton() {
     log("【Step 4-1-6-1】停止ボタン出現待機", "step");
+    // 統合ログ: 回答待機開始
+    console.log(`⏳ [セル ${cellInfo}] 回答待機中...`);
     for (let i = 0; i < 60; i++) {
       const stopBtn = await findElement(SELECTORS.stopButton, 1);
       if (stopBtn) {
@@ -2103,6 +2105,11 @@ const log = {
 
         // 3-3: 動的選択ロジック（番号指定または名前マッチング）
         log("【Step 4-1-3-3】モデル選択ロジックを実行", "step");
+        // 統合ログ: モデル選択開始
+        const cellInfo = taskData.cellReference || taskData.cell || "不明";
+        console.log(
+          `🎯 [セル ${cellInfo}] モデル選択・機能選択・送信・回答待機 - モデル選択開始: ${modelName}`,
+        );
         let selectedModel = null;
         let resolvedModel = modelName;
 
@@ -2226,6 +2233,10 @@ const log = {
             targetElement.click();
             await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
             log(`モデル選択完了: ${resolvedModel}`, "success");
+            // 統合ログ: モデル選択完了
+            console.log(
+              `✅ [セル ${cellInfo}] モデル選択完了: ${resolvedModel}`,
+            );
 
             // ========================================
             // ステップ3-7: モデル選択確認（テストコード準拠）
@@ -2293,6 +2304,8 @@ const log = {
         featureName !== "通常"
       ) {
         log("\n【Step 4-1-4】機能選択", "step");
+        // 統合ログ: 機能選択開始
+        console.log(`🔧 [セル ${cellInfo}] 機能選択開始: ${featureName}`);
 
         // 機能名マッピング（スプレッドシート値 → ChatGPT UI表記）
         const featureMapping = {
@@ -2491,6 +2504,10 @@ const log = {
             targetElement.click();
             await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
             log(`機能選択完了: ${resolvedFeature}`, "success");
+            // 統合ログ: 機能選択完了
+            console.log(
+              `✅ [セル ${cellInfo}] 機能選択完了: ${resolvedFeature}`,
+            );
 
             // ========================================
             // ステップ4-4: 機能選択確認（テストコード準拠）
@@ -2564,6 +2581,13 @@ const log = {
         log("機能選択をスキップ", "info");
       }
       log("\n【Step 4-1-5】メッセージ送信（再試行対応）", "step");
+      // 統合ログ: 送信開始
+      const cellInfo = taskData.cellReference || taskData.cell || "不明";
+      const promptPreview =
+        text.substring(0, 50) + (text.length > 50 ? "..." : "");
+      console.log(
+        `📤 [セル ${cellInfo}] メッセージ送信・回答待機開始: "${promptPreview}"`,
+      );
 
       // 送信ボタンを5回まで再試行
       let sendSuccess = false;
@@ -2696,6 +2720,8 @@ const log = {
       // ステップ7: テキスト取得と表示
       // ========================================
       log("\n【Step 4-1-7】テキスト取得と表示", "step");
+      // 統合ログ: テキスト取得開始
+      console.log(`📥 [セル ${cellInfo}] 回答取得開始...`);
 
       // テキスト取得（ui-selectors-data.jsonを使用）
       let responseText = "";
@@ -2793,6 +2819,11 @@ const log = {
       if (responseText) {
         // テストコード準拠のシンプルな最終確認
         log("【Step 4-1-7-1】テキスト取得完了", "success");
+        // 統合ログ: 回答取得完了（冒頭50文字）
+        const responsePreview =
+          responseText.substring(0, 50) +
+          (responseText.length > 50 ? "..." : "");
+        console.log(`✅ [セル ${cellInfo}] 回答取得完了: "${responsePreview}"`);
 
         // 現在表示されているモデルと機能を取得（選択後確認）
         let displayedModel = "";
