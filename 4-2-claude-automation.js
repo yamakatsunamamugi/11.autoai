@@ -4130,10 +4130,22 @@
 
       try {
         // パラメータ準備（スプレッドシートの値をそのまま使用）
-        let prompt = taskData.prompt || taskData.text || "";
+        // promptが文字列でない場合の対処
+        let prompt = "";
+        if (typeof taskData === "string") {
+          prompt = taskData;
+        } else if (taskData && typeof taskData === "object") {
+          prompt = taskData.prompt || taskData.text || "";
+          // promptがまだオブジェクトの場合、文字列に変換
+          if (typeof prompt !== "string") {
+            log.debug("⚠️ promptが文字列でないため変換:", typeof prompt);
+            prompt = String(prompt || "");
+          }
+        }
 
         // セル位置情報を追加
         if (
+          taskData &&
           taskData.cellInfo &&
           taskData.cellInfo.column &&
           taskData.cellInfo.row
@@ -4143,8 +4155,8 @@
           log.debug(`📍 セル位置情報を追加: ${cellPosition}`);
         }
 
-        const modelName = taskData.model || "";
-        const featureName = taskData.function || null;
+        const modelName = taskData?.model || "";
+        const featureName = taskData?.function || null;
 
         // Deep Research判定
         const isDeepResearch = featureName === "Deep Research";
@@ -4207,10 +4219,15 @@
         console.log(`  - 要素ID: ${inputResult.id || "(なし)"}`);
         console.log(`  - 要素クラス: ${inputResult.className || "(なし)"}`);
 
-        log.debug(`📝 ${prompt.length}文字のテキストを入力中...`);
-        log.debug(
-          `💬 プロンプト先頭: "${prompt.substring(0, 50)}${prompt.length > 50 ? "..." : ""}"`,
-        );
+        const promptLength = prompt ? prompt.length : 0;
+        log.debug(`📝 ${promptLength}文字のテキストを入力中...`);
+        if (prompt) {
+          log.debug(
+            `💬 プロンプト先頭: "${prompt.substring(0, 50)}${promptLength > 50 ? "..." : ""}"`,
+          );
+        } else {
+          log.debug("💬 プロンプトが空です");
+        }
 
         console.log("⌨️ テキスト入力処理を実行中...");
         const inputSuccess = await inputText(inputResult, prompt);
@@ -5919,8 +5936,9 @@
         result.sendTime = sendTime; // 既存の送信時刻を使用
 
         // 統合ログ: すべての情報を1つのログで出力
-        const promptPreview =
-          prompt.substring(0, 10) + (prompt.length > 10 ? "..." : "");
+        const promptPreview = prompt
+          ? prompt.substring(0, 10) + (prompt.length > 10 ? "..." : "")
+          : "(空のプロンプト)";
         console.log(`🎯 [セル ${cellInfo}] タスク完了`, {
           モデル: {
             選択: modelName || "未選択",
