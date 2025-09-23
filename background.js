@@ -66,16 +66,39 @@ class AITestController {
     };
   }
 
-  async executeTest(
-    testPrompt = "こんにちは！今日はいい天気ですね。AIテストです。",
-  ) {
-    log.info("🚀 AI統合テスト開始", { prompt: testPrompt });
+  async executeTest(testConfig) {
+    // 設定の型を確認（文字列の場合は後方互換性のため変換）
+    if (typeof testConfig === "string") {
+      testConfig = {
+        chatgpt: { prompt: testConfig },
+        claude: { prompt: testConfig },
+        gemini: { prompt: testConfig },
+      };
+    }
+
+    // デフォルト値を設定
+    testConfig = testConfig || {
+      chatgpt: { prompt: "こんにちは！今日はいい天気ですね。AIテストです。" },
+      claude: { prompt: "こんにちは！今日はいい天気ですね。AIテストです。" },
+      gemini: { prompt: "こんにちは！今日はいい天気ですね。AIテストです。" },
+    };
+
+    log.info("🚀 AI統合テスト開始", testConfig);
 
     try {
+      // Step 1: 画面サイズを取得
       const screenInfo = await this.getScreenInfo();
+
+      // Step 2: 3つのウィンドウを配置して作成
       await this.createTestWindows(screenInfo);
+
+      // Step 3: Content Scriptの準備を待つ
       await this.waitForContentScripts();
-      await this.sendTestTasks(testPrompt);
+
+      // Step 4: 各AIに個別設定でテストタスクを送信
+      await this.sendTestTasks(testConfig);
+
+      // Step 5: 結果を待つ
       await this.waitForResults();
 
       log.info("✅ AI統合テスト完了", this.testResults);
@@ -193,6 +216,10 @@ class AITestController {
 
       if (Object.values(this.readyStates).every((ready) => ready)) {
         log.info("✅ 全てのContent Scriptが準備完了");
+
+        // 各AIのモデル・機能探索を実行
+        await this.discoverAllAIFeatures();
+
         return true;
       }
 
@@ -207,21 +234,121 @@ class AITestController {
       `⚠️ 一部のContent Scriptが準備できませんでした: ${notReady.join(", ")}`,
     );
 
+    // 準備できたものだけで続行して探索
+    await this.discoverAllAIFeatures();
+
     return false;
   }
 
-  async sendTestTasks(prompt) {
+  // ========================================
+  // 全AIのモデル・機能探索
+  // ========================================
+  async discoverAllAIFeatures() {
+    log.info("🔍 各AIサービスのモデル・機能を探索中...");
+
+    const discoveryPromises = [];
+
+    // ChatGPTの探索
+    if (this.readyStates["chatgpt"] && this.tabs["chatgpt"]) {
+      discoveryPromises.push(
+        this.discoverAIFeatures("chatgpt")
+          .then((result) => {
+            this.chatgptCapabilities = result;
+            log.info("✅ ChatGPT探索完了", result);
+          })
+          .catch((error) => {
+            log.error("❌ ChatGPT探索エラー:", error);
+          }),
+      );
+    }
+
+    // Claudeの探索
+    if (this.readyStates["claude"] && this.tabs["claude"]) {
+      discoveryPromises.push(
+        this.discoverAIFeatures("claude")
+          .then((result) => {
+            this.claudeCapabilities = result;
+            log.info("✅ Claude探索完了", result);
+          })
+          .catch((error) => {
+            log.error("❌ Claude探索エラー:", error);
+          }),
+      );
+    }
+
+    // Geminiの探索
+    if (this.readyStates["gemini"] && this.tabs["gemini"]) {
+      discoveryPromises.push(
+        this.discoverAIFeatures("gemini")
+          .then((result) => {
+            this.geminiCapabilities = result;
+            log.info("✅ Gemini探索完了", result);
+          })
+          .catch((error) => {
+            log.error("❌ Gemini探索エラー:", error);
+          }),
+      );
+    }
+
+    await Promise.all(discoveryPromises);
+    log.info("✅ 全AIサービスの探索が完了しました");
+  }
+
+  // ========================================
+  // 個別AIのモデル・機能探索
+  // ========================================
+  async discoverAIFeatures(aiType) {
+    if (!this.readyStates[aiType] || !this.tabs[aiType]) {
+      log.info(
+        `⏭️ ${aiType}が準備できていないため、モデル・機能探索をスキップ`,
+      );
+      return null;
+    }
+
+    log.info(`🔍 ${aiType}のモデル・機能を探索中...`);
+
+    try {
+      const response = await chrome.tabs.sendMessage(this.tabs[aiType].id, {
+        type: "DISCOVER_FEATURES",
+        aiType: aiType,
+      });
+
+      if (response && response.success) {
+        log.info(`✅ ${aiType}探索成功`, {
+          models: response.result?.models || [],
+          features: response.result?.features || [],
+        });
+
+        return response.result;
+      } else {
+        log.warn(`⚠️ ${aiType}探索失敗`, response);
+        return null;
+      }
+    } catch (error) {
+      log.error(`❌ ${aiType}探索エラー:`, error);
+      return null;
+    }
+  }
+
+  async sendTestTasks(testConfig) {
     log.info("📤 テストタスクを送信中...");
 
     const taskPromises = [];
 
     for (const [aiType, tabId] of Object.entries(this.tabs)) {
       if (this.readyStates[aiType] && tabId) {
+        // 各AIサービスの個別設定を取得
+        const aiConfig = testConfig[aiType] || {};
+
         const taskData = {
-          prompt: prompt,
+          prompt: aiConfig.prompt || "デフォルトプロンプト",
+          model: aiConfig.model || "",
+          feature: aiConfig.feature || "",
           taskId: `test_${aiType}_${Date.now()}`,
           timestamp: new Date().toISOString(),
         };
+
+        log.debug(`📝 ${aiType}への送信タスク:`, taskData);
 
         const promise = chrome.tabs
           .sendMessage(tabId.id, {
@@ -231,6 +358,17 @@ class AITestController {
           })
           .then((response) => {
             log.info(`✅ ${aiType} タスク送信成功`, response);
+
+            // デバッグログ追加
+            if (aiType === "claude") {
+              console.log(`🔍 [Background Debug] ${aiType}から受信した応答:`, {
+                responseType: typeof response,
+                responseKeys: Object.keys(response || {}),
+                responseResult: response?.result,
+                fullResponse: response,
+              });
+            }
+
             return response;
           })
           .catch((error) => {
@@ -260,6 +398,15 @@ class AITestController {
         if (aiType && this.tabs[aiType]) {
           this.testResults[aiType] = request.result;
           log.info(`✅ ${aiType} テスト完了`, request.result);
+
+          // デバッグログ追加
+          if (aiType === "claude") {
+            console.log(`🔍 [Background Debug 2] testResultsに保存:`, {
+              aiType: aiType,
+              savedResult: this.testResults[aiType],
+              resultContent: this.testResults[aiType]?.content,
+            });
+          }
         }
       }
     };
