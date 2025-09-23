@@ -97,6 +97,15 @@ const log = {
         return true;
       }
 
+      // DISCOVER_FEATURES と EXECUTE_TASK は後で登録されるメインリスナーに委譲
+      if (
+        request.type === "DISCOVER_FEATURES" ||
+        request.type === "EXECUTE_TASK"
+      ) {
+        console.log(`🔄 [ChatGPT-Early] メインリスナーに委譲:`, request.type);
+        return false; // 他のリスナーに処理を委譲
+      }
+
       // その他のメッセージも適切に処理
       console.log(
         `⚠️ [ChatGPT-Early] 未処理メッセージタイプ:`,
@@ -2108,7 +2117,13 @@ const log = {
         ) {
           const cellPosition = `${taskData.cellInfo.column}${taskData.cellInfo.row}`;
           prompt = `【現在${cellPosition}セルを処理中です】\n\n${prompt}`;
-          log.debug(`📍 セル位置情報を追加: ${cellPosition}`);
+          log.debug(`📍 [ChatGPT] セル位置情報を追加: ${cellPosition}`);
+        } else {
+          log.debug("📍 [ChatGPT] セル位置情報なし:", {
+            hasCellInfo: !!(taskData && taskData.cellInfo),
+            cellInfo: taskData && taskData.cellInfo,
+            taskDataKeys: taskData ? Object.keys(taskData) : [],
+          });
         }
 
         const modelName = taskData.model || "";

@@ -1009,13 +1009,36 @@ function updateTestConfigDropdowns() {
     },
   });
 
-  // ChatGPT
-  if (lastAIData.chatgpt && lastAIData.chatgpt.models) {
-    updateSelectOptions("chatgptModel", lastAIData.chatgpt.models);
+  // ChatGPT - 手動でモデル・機能を設定
+  const chatgptModels = ["Auto", "Fast", "Thinking", "Pro"];
+  const chatgptFeatures = [
+    "写真とファイルを追加",
+    "Google Drive から追加する",
+    "エージェントモード",
+    "Deep Research",
+    "画像を作成する",
+    "コネクターを使用する",
+    "あらゆる学びをサポート",
+    "ウェブ検索",
+    "canvas",
+    "OneDrive を接続する",
+    "Sharepoint を接続する",
+  ];
+
+  log.debug("📋 ChatGPT手動設定:", {
+    models: chatgptModels,
+    features: chatgptFeatures,
+  });
+
+  updateSelectOptions("chatgptModel", chatgptModels);
+  updateSelectOptions("chatgptFeature", chatgptFeatures);
+
+  // 手動設定をlastAIDataにも保存（他の処理との整合性のため）
+  if (!lastAIData.chatgpt) {
+    lastAIData.chatgpt = {};
   }
-  if (lastAIData.chatgpt && lastAIData.chatgpt.functions) {
-    updateSelectOptions("chatgptFeature", lastAIData.chatgpt.functions);
-  }
+  lastAIData.chatgpt.models = chatgptModels;
+  lastAIData.chatgpt.functions = chatgptFeatures;
 
   // Claude
   if (lastAIData.claude && lastAIData.claude.models) {
@@ -1027,13 +1050,30 @@ function updateTestConfigDropdowns() {
     updateSelectOptions("claudeFeature", lastAIData.claude.functions);
   }
 
-  // Gemini
-  if (lastAIData.gemini && lastAIData.gemini.models) {
-    updateSelectOptions("geminiModel", lastAIData.gemini.models);
+  // Gemini - 手動でモデル・機能を設定
+  const geminiModels = ["2.5 Flash", "2.5 Pro"];
+  const geminiFeatures = [
+    "動画",
+    "Deep Think",
+    "Deep Research",
+    "Canvas",
+    "画像 Imagen で生成",
+  ];
+
+  log.debug("📋 Gemini手動設定:", {
+    models: geminiModels,
+    features: geminiFeatures,
+  });
+
+  updateSelectOptions("geminiModel", geminiModels);
+  updateSelectOptions("geminiFeature", geminiFeatures);
+
+  // 手動設定をlastAIDataにも保存（他の処理との整合性のため）
+  if (!lastAIData.gemini) {
+    lastAIData.gemini = {};
   }
-  if (lastAIData.gemini && lastAIData.gemini.functions) {
-    updateSelectOptions("geminiFeature", lastAIData.gemini.functions);
-  }
+  lastAIData.gemini.models = geminiModels;
+  lastAIData.gemini.functions = geminiFeatures;
 }
 
 // ドロップダウンオプションを更新

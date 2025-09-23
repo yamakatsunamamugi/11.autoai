@@ -4152,7 +4152,13 @@
         ) {
           const cellPosition = `${taskData.cellInfo.column}${taskData.cellInfo.row}`;
           prompt = `【現在${cellPosition}セルを処理中です】\n\n${prompt}`;
-          log.debug(`📍 セル位置情報を追加: ${cellPosition}`);
+          log.debug(`📍 [Claude] セル位置情報を追加: ${cellPosition}`);
+        } else {
+          log.debug("📍 [Claude] セル位置情報なし:", {
+            hasCellInfo: !!(taskData && taskData.cellInfo),
+            cellInfo: taskData && taskData.cellInfo,
+            taskDataKeys: taskData ? Object.keys(taskData) : [],
+          });
         }
 
         const modelName = taskData?.model || "";

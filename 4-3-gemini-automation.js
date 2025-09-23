@@ -350,20 +350,51 @@ const log = {
   // テキスト入力（Canvas/通常モード自動判定）
   // ========================================
   async function inputTextGemini(text) {
+    console.log(`🔍 [inputTextGemini] 入力処理開始:`, {
+      inputText: text,
+      textType: typeof text,
+      textLength: text?.length || 0,
+      timestamp: new Date().toISOString(),
+    });
+
     // Canvasモードチェック
     const canvas = document.querySelector(SELECTORS.canvas);
+    console.log(`🔍 [inputTextGemini] Canvas要素チェック:`, {
+      canvasExists: !!canvas,
+      isContentEditable: canvas?.isContentEditable,
+      canvasSelector: SELECTORS.canvas,
+    });
+
     if (canvas && canvas.isContentEditable) {
-      log.debug("Canvas mode detected");
+      console.log(
+        `✅ [inputTextGemini] Canvasモード検出 - inputToCanvas呼び出し`,
+      );
       return await inputToCanvas(text);
     }
 
     // 通常モード
     const editor = document.querySelector(SELECTORS.normalInput);
+    console.log(`🔍 [inputTextGemini] 通常エディタ要素チェック:`, {
+      editorExists: !!editor,
+      editorSelector: SELECTORS.normalInput,
+    });
+
     if (editor) {
-      log.debug("Normal mode detected");
+      console.log(
+        `✅ [inputTextGemini] 通常モード検出 - inputToNormal呼び出し`,
+      );
       return await inputToNormal(text);
     }
 
+    console.error(`❌ [inputTextGemini] テキスト入力欄が見つからない:`, {
+      canvasSelector: SELECTORS.canvas,
+      normalSelector: SELECTORS.normalInput,
+      availableElements: {
+        prosemirror: !!document.querySelector(".ProseMirror"),
+        qlEditor: !!document.querySelector(".ql-editor"),
+        contenteditable: !!document.querySelector('[contenteditable="true"]'),
+      },
+    });
     throw new Error("テキスト入力欄が見つかりません");
   }
 
@@ -727,68 +758,169 @@ const log = {
     log.info("🚀 【Step 4-3】Gemini タスク実行開始", taskData);
 
     try {
-      const promptText = taskData.prompt || "テストメッセージです";
+      // プロンプトの適切な処理 - オブジェクトの場合は文字列化
+      let promptText;
+      if (typeof taskData.prompt === "object" && taskData.prompt !== null) {
+        // オブジェクトの場合は適切なプロパティを探す
+        promptText =
+          taskData.prompt.text ||
+          taskData.prompt.content ||
+          taskData.prompt.prompt ||
+          JSON.stringify(taskData.prompt);
+        console.log(`🔍 [Gemini Debug] プロンプトオブジェクト処理:`, {
+          originalType: typeof taskData.prompt,
+          extractedText: promptText,
+          promptObject: taskData.prompt,
+        });
+      } else {
+        promptText = taskData.prompt || "テストメッセージです";
+      }
+
       const modelName = taskData.model || "";
       const featureName = taskData.feature || "";
 
-      // デバッグログ追加
-      console.log(`🔍 [Gemini Debug] taskDataの内容:`, {
-        promptText,
-        modelName,
-        featureName,
+      // 🔍 [DEBUG] セル位置情報を追加（ChatGPT・Claudeと統一）
+      if (
+        taskData &&
+        taskData.cellInfo &&
+        taskData.cellInfo.column &&
+        taskData.cellInfo.row
+      ) {
+        const cellPosition = `${taskData.cellInfo.column}${taskData.cellInfo.row}`;
+        promptText = `【現在${cellPosition}セルを処理中です】\n\n${promptText}`;
+        log.debug(`📍 [Gemini] セル位置情報を追加: ${cellPosition}`);
+      } else {
+        log.debug("📍 [Gemini] セル位置情報なし:", {
+          hasCellInfo: !!(taskData && taskData.cellInfo),
+          cellInfo: taskData && taskData.cellInfo,
+          taskDataKeys: taskData ? Object.keys(taskData) : [],
+        });
+      }
+
+      // 🔍 ステップバイステップ デバッグログ - Step 1: パラメータ確認
+      console.log(`🔍 [Gemini Step 1] タスクパラメータ確認:`, {
+        promptText: promptText,
+        promptType: typeof promptText,
+        promptLength: promptText?.length || 0,
+        modelName: modelName,
+        featureName: featureName,
         originalTaskData: taskData,
+        hasCellInfo: !!(taskData && taskData.cellInfo),
+        cellInfo: taskData && taskData.cellInfo,
       });
 
       // 【Step 4-3-2】テキスト入力
-      log.debug("【Step 4-3-2】テキスト入力");
-      await inputTextGemini(promptText);
+      console.log(`🔍 [Gemini Step 2] テキスト入力開始:`, {
+        inputText: promptText,
+        inputLength: promptText?.length || 0,
+        timestamp: new Date().toISOString(),
+      });
+
+      try {
+        await inputTextGemini(promptText);
+        console.log(`✅ [Gemini Step 2] テキスト入力完了`);
+      } catch (inputError) {
+        console.error(`❌ [Gemini Step 2] テキスト入力エラー:`, inputError);
+        throw inputError;
+      }
 
       // 【Step 4-3-3】モデル選択（必要な場合）
+      console.log(`🔍 [Gemini Step 3] モデル選択処理開始:`, {
+        modelName: modelName,
+        shouldSelect: !!(modelName && modelName !== "設定なし"),
+      });
+
       if (modelName && modelName !== "設定なし") {
-        console.log(`🔍 [Gemini Debug] モデル選択実行: ${modelName}`);
-        const modelResult = await selectModel(modelName);
-        console.log(`🔍 [Gemini Debug] モデル選択結果:`, modelResult);
-        if (!modelResult.success && !modelResult.skipped) {
-          throw new Error(`モデル選択失敗: ${modelResult.error}`);
+        try {
+          console.log(`🔍 [Gemini Step 3a] モデル選択実行中: ${modelName}`);
+          const modelResult = await selectModel(modelName);
+          console.log(`✅ [Gemini Step 3a] モデル選択結果:`, modelResult);
+          if (!modelResult.success && !modelResult.skipped) {
+            throw new Error(`モデル選択失敗: ${modelResult.error}`);
+          }
+        } catch (modelError) {
+          console.error(`❌ [Gemini Step 3a] モデル選択エラー:`, modelError);
+          throw modelError;
         }
       } else {
-        console.log(`🔍 [Gemini Debug] モデル選択スキップ: ${modelName}`);
+        console.log(`⏭️ [Gemini Step 3a] モデル選択スキップ: ${modelName}`);
       }
 
       // 【Step 4-3-4】機能選択（必要な場合）
+      console.log(`🔍 [Gemini Step 4] 機能選択処理開始:`, {
+        featureName: featureName,
+        shouldSelect: !!(featureName && featureName !== "設定なし"),
+      });
+
       if (featureName && featureName !== "設定なし") {
-        console.log(`🔍 [Gemini Debug] 機能選択実行: ${featureName}`);
-        const featureResult = await selectFeature(featureName);
-        console.log(`🔍 [Gemini Debug] 機能選択結果:`, featureResult);
-        if (!featureResult.success && !featureResult.skipped) {
-          throw new Error(`機能選択失敗: ${featureResult.error}`);
+        try {
+          console.log(`🔍 [Gemini Step 4a] 機能選択実行中: ${featureName}`);
+          const featureResult = await selectFeature(featureName);
+          console.log(`✅ [Gemini Step 4a] 機能選択結果:`, featureResult);
+          if (!featureResult.success && !featureResult.skipped) {
+            throw new Error(`機能選択失敗: ${featureResult.error}`);
+          }
+        } catch (featureError) {
+          console.error(`❌ [Gemini Step 4a] 機能選択エラー:`, featureError);
+          throw featureError;
         }
       } else {
-        console.log(`🔍 [Gemini Debug] 機能選択スキップ: ${featureName}`);
+        console.log(`⏭️ [Gemini Step 4a] 機能選択スキップ: ${featureName}`);
       }
 
       // 【Step 4-3-5】メッセージ送信
-      log.debug("【Step 4-3-5】メッセージ送信");
-      await sendMessageGemini();
+      console.log(`🔍 [Gemini Step 5] メッセージ送信開始`);
+      try {
+        await sendMessageGemini();
+        console.log(`✅ [Gemini Step 5] メッセージ送信完了`);
+      } catch (sendError) {
+        console.error(`❌ [Gemini Step 5] メッセージ送信エラー:`, sendError);
+        throw sendError;
+      }
       const startTime = Date.now();
 
       // 【Step 4-3-6】応答待機（Deep Research判定）
-      log.debug("【Step 4-3-6】応答待機");
-      if (featureName === "Deep Research") {
-        await waitForDeepResearch(startTime);
-      } else {
-        await waitForResponseGemini();
+      console.log(`🔍 [Gemini Step 6] 応答待機開始:`, {
+        featureName: featureName,
+        isDeepResearch: featureName === "Deep Research",
+        startTime: startTime,
+      });
+
+      try {
+        if (featureName === "Deep Research") {
+          console.log(`🔍 [Gemini Step 6a] Deep Research待機モード`);
+          await waitForDeepResearch(startTime);
+        } else {
+          console.log(`🔍 [Gemini Step 6a] 通常応答待機モード`);
+          await waitForResponseGemini();
+        }
+        console.log(`✅ [Gemini Step 6] 応答待機完了`);
+      } catch (waitError) {
+        console.error(`❌ [Gemini Step 6] 応答待機エラー:`, waitError);
+        throw waitError;
       }
 
       // 【Step 4-3-7】テキスト取得
-      log.debug("【Step 4-3-7】テキスト取得");
-      const content = await getResponseTextGemini();
+      console.log(`🔍 [Gemini Step 7] テキスト取得開始`);
+      let content;
+      try {
+        content = await getResponseTextGemini();
+        console.log(`✅ [Gemini Step 7] テキスト取得完了:`, {
+          contentType: typeof content,
+          contentLength: content?.length || 0,
+          contentPreview: content?.substring(0, 100) + "...",
+        });
+      } catch (getTextError) {
+        console.error(`❌ [Gemini Step 7] テキスト取得エラー:`, getTextError);
+        throw getTextError;
+      }
 
-      console.log(`🔍 [Gemini Debug 1] 取得したコンテンツ:`, {
+      // 【Step 4-3-8】結果オブジェクト作成
+      console.log(`🔍 [Gemini Step 8] 結果オブジェクト作成:`, {
+        contentExists: !!content,
         contentType: typeof content,
-        contentLength: content?.length,
-        contentPreview: content?.substring(0, 100),
-        fullContent: content,
+        modelName: modelName,
+        featureName: featureName,
       });
 
       const result = {
@@ -798,7 +930,14 @@ const log = {
         feature: featureName,
       };
 
-      console.log(`🔍 [Gemini Debug 2] executeTaskの戻り値:`, result);
+      console.log(`✅ [Gemini Step 8] executeTask完了 - 戻り値:`, {
+        success: result.success,
+        contentLength: result.content?.length || 0,
+        model: result.model,
+        feature: result.feature,
+        resultKeys: Object.keys(result),
+      });
+
       return result;
     } catch (error) {
       log.error("❌ タスク実行エラー:", error);
@@ -882,6 +1021,29 @@ const log = {
         }
         sendResponse({ found: found });
         return true;
+      }
+
+      // DISCOVER_FEATURES メッセージの処理
+      if (request.type === "DISCOVER_FEATURES") {
+        console.log(`🔍 [Gemini] DISCOVER_FEATURES実行開始`);
+
+        (async () => {
+          try {
+            const result = await discoverModelsAndFeatures();
+            console.log(`✅ [Gemini] DISCOVER_FEATURES完了:`, result);
+            sendResponse({
+              success: true,
+              result: result,
+            });
+          } catch (error) {
+            console.error(`❌ [Gemini] DISCOVER_FEATURESエラー:`, error);
+            sendResponse({
+              success: false,
+              error: error.message,
+            });
+          }
+        })();
+        return true; // 非同期レスポンスのために必要
       }
 
       // executeTask タスクの処理
