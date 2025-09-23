@@ -60,52 +60,55 @@
       isExtensionPage: isExtensionPage,
     });
 
-    // 🔍 [段階5-実行コンテキスト] Content Script実行環境の詳細ログ
-    console.warn(
-      `🔍 [段階5-Content Script] 実行コンテキスト詳細分析:`,
-      JSON.stringify(
-        {
-          executionContext: {
-            url: currentURL,
-            title: document.title,
-            domain: window.location.hostname,
-            protocol: window.location.protocol,
-            pathname: window.location.pathname,
-            search: window.location.search,
-            hash: window.location.hash,
+    // 🔍 [段階5-実行コンテキスト] Content Script実行環境の詳細ログ（デバッグモードのみ）
+    if (window.DEBUG_MODE) {
+      console.log(
+        `🔍 [段階5-Content Script] 実行コンテキスト詳細分析:`,
+        JSON.stringify(
+          {
+            executionContext: {
+              url: currentURL,
+              title: document.title,
+              domain: window.location.hostname,
+              protocol: window.location.protocol,
+              pathname: window.location.pathname,
+              search: window.location.search,
+              hash: window.location.hash,
+            },
+            validationResults: {
+              isValidClaudeURL: isValidClaudeURL,
+              isExtensionPage: isExtensionPage,
+              isChromeNewTab: currentURL === "chrome://newtab/",
+              isAboutBlank: currentURL === "about:blank",
+            },
+            documentState: {
+              readyState: document.readyState,
+              hasDocumentElement: !!document.documentElement,
+              hasBody: !!document.body,
+              bodyChildrenCount: document.body
+                ? document.body.children.length
+                : 0,
+            },
+            chromeExtensionInfo: {
+              hasChromeRuntime:
+                typeof chrome !== "undefined" && !!chrome.runtime,
+              extensionId:
+                typeof chrome !== "undefined" && chrome.runtime
+                  ? chrome.runtime.id
+                  : null,
+              runtimeUrl:
+                typeof chrome !== "undefined" && chrome.runtime
+                  ? chrome.runtime.getURL("")
+                  : null,
+            },
+            timestamp: new Date().toISOString(),
+            userAgent: navigator.userAgent,
           },
-          validationResults: {
-            isValidClaudeURL: isValidClaudeURL,
-            isExtensionPage: isExtensionPage,
-            isChromeNewTab: currentURL === "chrome://newtab/",
-            isAboutBlank: currentURL === "about:blank",
-          },
-          documentState: {
-            readyState: document.readyState,
-            hasDocumentElement: !!document.documentElement,
-            hasBody: !!document.body,
-            bodyChildrenCount: document.body
-              ? document.body.children.length
-              : 0,
-          },
-          chromeExtensionInfo: {
-            hasChromeRuntime: typeof chrome !== "undefined" && !!chrome.runtime,
-            extensionId:
-              typeof chrome !== "undefined" && chrome.runtime
-                ? chrome.runtime.id
-                : null,
-            runtimeUrl:
-              typeof chrome !== "undefined" && chrome.runtime
-                ? chrome.runtime.getURL("")
-                : null,
-          },
-          timestamp: new Date().toISOString(),
-          userAgent: navigator.userAgent,
-        },
-        null,
-        2,
-      ),
-    );
+          null,
+          2,
+        ),
+      );
+    }
 
     // URL検証 - Content Scriptは claude.ai でのみ動作すべき
 
@@ -1309,8 +1312,8 @@
                 }
               }
 
-              if (!found) {
-                console.warn(`⚠️ [Claude] テキスト入力欄が見つかりません`);
+              if (!found && window.DEBUG_MODE) {
+                console.log(`⚠️ [Claude] テキスト入力欄が見つかりません`);
               }
 
               sendResponse({ found: found });
