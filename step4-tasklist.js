@@ -2494,14 +2494,10 @@ async function generateTaskList(
 
     const promptColumns = taskGroup.columns.prompts || [];
 
-    // 🔍 [DEBUG] promptColumns詳細ログ
-    addLog(`[DEBUG-PROMPT-COLUMNS] promptColumns詳細:`, {
-      taskGroupColumns: taskGroup.columns,
-      promptColumns: promptColumns,
-      promptColumnsLength: promptColumns.length,
-      groupNumber: taskGroup.groupNumber,
-      groupType: taskGroup.groupType,
-    });
+    // Step 4-3-1: プロンプト列確認
+    addLog(
+      `[プロンプト列] Group ${taskGroup.groupNumber}: ${promptColumns.join(", ") || "未設定"}`,
+    );
     // 【統一修正】全てオブジェクト形式なのでObject.valuesを直接使用
     const answerColumns = taskGroup.columns.answer
       ? Object.values(taskGroup.columns.answer)
@@ -2513,13 +2509,6 @@ async function generateTaskList(
     for (let row = dataStartRow; row < spreadsheetData.length; row++) {
       let hasPrompt = false;
       for (const col of promptColumns) {
-        // デバッグログは削除（過剰なログ出力を防ぐ）
-        // addLog(`[CRITICAL-DEBUG] columnToIndex呼び出し前 (最終行検索 row=${row})`, {
-        //   col: col,
-        //   colType: typeof col,
-        //   colValue: col
-        // });
-
         const colIndex = columnToIndex(col);
         if (spreadsheetData[row] && spreadsheetData[row][colIndex]) {
           hasPrompt = true;
@@ -2861,8 +2850,8 @@ async function generateTaskList(
           groupNumber: taskGroup.groupNumber,
           groupType: taskGroup.groupType,
           row: row,
-          // 特殊タスクは作業セルのみ使用するため、columnプロパティは不要
-          prompt: `現在${taskGroup.columns.work ? `${taskGroup.columns.work}${row}` : `行${row}`}の作業中です。\n\n${prompts.join("\n\n")}`,
+          // Step 4-5-3: 統一プロンプト生成ロジック（通常タスクと同じ方式）
+          prompt: `現在${promptColumns.length > 0 ? promptColumns.map((col) => `${col}${row}`).join(",") : `行${row}`}の作業中です。\n\n${prompts.join("\n\n")}`,
           ai: taskGroup.groupType,
           aiType: taskGroup.groupType, // Step4互換 - lowercase変換削除
           model: "",
@@ -2885,6 +2874,13 @@ async function generateTaskList(
           },
           ...parseSpreadsheetUrl(options.spreadsheetUrl || ""),
         };
+
+        // Step 4-5-4: 統一プロンプト生成の動作確認ログ
+        const promptPreview = task.prompt.substring(
+          0,
+          task.prompt.indexOf("\n\n") || 30,
+        );
+        addLog(`[統一プロンプト] 行${row}: ${promptPreview}`);
 
         // デバッグログを収集（後でまとめて表示）
         debugLogs.push({
@@ -4561,12 +4557,11 @@ class WindowLifecycleManager {
    * セル参照を計算
    */
   calculateCellReference(task) {
-    // タスクからセル情報を取得
-    if (task.cellRef) return task.cellRef;
-    if (task.column && task.row) return `${task.column}${task.row}`;
+    // answerCellのみを使用（確実な回答列への記載）
+    if (task.answerCell) return task.answerCell;
 
-    // デフォルト値（エラー防止）
-    return `C${task.rowIndex || 1}`;
+    // answerCellが存在しない場合はエラー
+    throw new Error(`answerCellが存在しません: taskId=${task.id || "unknown"}`);
   }
 
   /**
