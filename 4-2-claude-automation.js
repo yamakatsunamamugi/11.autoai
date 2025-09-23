@@ -5641,18 +5641,43 @@
             for (const item of menuItems) {
               const itemText = item.textContent?.trim();
 
-              // より精密な正規表現マッチングを使用
-              if (
+              // デバッグ: 実際のitemTextを表示
+              log.debug(`[MODEL-MATCH-DEBUG] 検査中: "${itemText}"`);
+
+              // より精密な正規表現マッチングを使用（Claudeプレフィックスをオプションに、説明文を許可）
+              const modelMatch =
                 itemText &&
-                itemText.match(/^Claude\s+(Opus|Sonnet|Haiku)\s+[\d.]+$/)
-              ) {
-                if (
-                  itemText === targetModelName ||
-                  itemText.includes(targetModelName)
-                ) {
+                itemText.match(/^(Claude\s+)?(Opus|Sonnet|Haiku)\s+[\d.]+/);
+
+              if (modelMatch) {
+                // マッチした部分のみを抽出
+                const extractedModelName = modelMatch[0];
+                log.debug(
+                  `[MODEL-MATCH-DEBUG] 抽出されたモデル名: "${extractedModelName}"`,
+                );
+                log.debug(
+                  `[MODEL-MATCH-DEBUG] 目標モデル名: "${targetModelName}"`,
+                );
+
+                // より柔軟なマッチング
+                const isExactMatch = extractedModelName === targetModelName;
+                const isPartialMatch = extractedModelName.includes(
+                  targetModelName.replace("Claude ", ""),
+                );
+                const isReverseMatch =
+                  targetModelName.includes(extractedModelName);
+
+                log.debug(
+                  `[MODEL-MATCH-DEBUG] 完全一致: ${isExactMatch}, 部分一致: ${isPartialMatch}, 逆一致: ${isReverseMatch}`,
+                );
+
+                if (isExactMatch || isPartialMatch || isReverseMatch) {
+                  log.debug(
+                    `[MODEL-MATCH-SUCCESS] モデル選択: "${extractedModelName}"`,
+                  );
                   await triggerReactEvent(item, "click");
                   await wait(1500);
-                  return { success: true, selected: itemText };
+                  return { success: true, selected: extractedModelName };
                 }
               }
             }
