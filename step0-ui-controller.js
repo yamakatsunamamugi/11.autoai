@@ -780,11 +780,57 @@ document.addEventListener("DOMContentLoaded", () => {
     attachRowEventListeners(firstRow);
   }
 
-  // AI統合表を初期化
-  initializeAITable();
+  // AI統合表を初期化（削除済みの場合はスキップ）
+  if (typeof initializeAITable === "function") {
+    initializeAITable();
+  }
 
-  // 保存されたAI検出データを読み込み
-  loadSavedAIData();
+  // 保存されたAI検出データを読み込み（削除済みの場合はスキップ）
+  if (typeof loadSavedAIData === "function") {
+    loadSavedAIData();
+  }
+
+  // AI統合テストボタンのイベントリスナー
+  const aiTestAllBtn = document.getElementById("aiTestAllBtn");
+  if (aiTestAllBtn) {
+    aiTestAllBtn.addEventListener("click", async () => {
+      log.info("🚀 AI統合テスト実行開始");
+
+      // ボタンを無効化
+      aiTestAllBtn.disabled = true;
+      aiTestAllBtn.classList.add("processing");
+      const originalText = aiTestAllBtn.innerHTML;
+      aiTestAllBtn.innerHTML = '<span class="btn-icon">⏳</span> 実行中...';
+
+      try {
+        // background.jsにメッセージを送信してウィンドウを作成
+        const response = await chrome.runtime.sendMessage({
+          type: "RUN_AI_TEST_ALL",
+          data: {
+            prompt: "こんにちは！今日はいい天気ですね。AIテストです。",
+            timestamp: new Date().toISOString(),
+          },
+        });
+
+        if (response && response.success) {
+          log.info("✅ AI統合テストウィンドウを作成しました");
+          showFeedback("AI統合テストを開始しました", "success");
+        } else {
+          throw new Error(response?.error || "ウィンドウ作成に失敗しました");
+        }
+      } catch (error) {
+        log.error("❌ AI統合テストエラー:", error);
+        showFeedback(`エラー: ${error.message}`, "error");
+      } finally {
+        // ボタンを復元
+        setTimeout(() => {
+          aiTestAllBtn.disabled = false;
+          aiTestAllBtn.classList.remove("processing");
+          aiTestAllBtn.innerHTML = originalText;
+        }, 2000);
+      }
+    });
+  }
 
   log.debug("✅ [step0-ui-controller] 初期化完了");
 });

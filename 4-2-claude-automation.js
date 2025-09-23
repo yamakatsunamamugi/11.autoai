@@ -5971,8 +5971,25 @@
 
     // スクリプト初期化完了を確認 (claude.aiでのみログ出力)
     if (shouldExportFunctions) {
+      // ClaudeAutomationオブジェクトを作成（他のAIと統一）
+      window.ClaudeAutomation = {
+        executeTask: executeTask,
+        findClaudeElement: window.findClaudeElement,
+        inputText: inputText,
+        runAutomation: runAutomation,
+        detectClaudeModelsFromOpenMenu:
+          typeof detectClaudeModelsFromOpenMenu !== "undefined"
+            ? detectClaudeModelsFromOpenMenu
+            : undefined,
+        utils: {
+          log: log,
+          wait: wait,
+        },
+      };
+
       log.info("✅ [Claude] グローバル関数公開完了:", {
         executeTask: typeof window.executeTask,
+        ClaudeAutomation: typeof window.ClaudeAutomation,
         findClaudeElement: typeof window.findClaudeElement,
         inputText: typeof window.inputText,
         runAutomation: typeof window.runAutomation,

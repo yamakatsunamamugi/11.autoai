@@ -105,6 +105,52 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true; // 非同期レスポンス許可
   }
 
+  // 🧪 AI統合テスト実行要求
+  if (request.type === "RUN_AI_TEST_ALL") {
+    console.log("🧪 [BG] AI統合テスト実行要求受信:", {
+      prompt: request.data?.prompt,
+      timestamp: request.data?.timestamp,
+    });
+
+    // AITestControllerを使用してテスト実行
+    (async () => {
+      try {
+        // Service Worker内でAITestControllerを動的インポート
+        const module = await import(
+          chrome.runtime.getURL("aitest/ai-test-controller.js")
+        );
+
+        // または、グローバルスコープで実行
+        if (!self.AITestController) {
+          // ファイル内容を取得して評価
+          const response = await fetch(
+            chrome.runtime.getURL("aitest/ai-test-controller.js"),
+          );
+          const code = await response.text();
+          eval(code);
+        }
+
+        // コントローラーインスタンスを作成して実行
+        const controller = new self.AITestController();
+        const result = await controller.executeTest(request.data?.prompt);
+
+        sendResponse({
+          success: result.success,
+          results: result.results,
+          error: result.error,
+        });
+      } catch (error) {
+        console.error("❌ [BG] AI統合テストエラー:", error);
+        sendResponse({
+          success: false,
+          error: error.message,
+        });
+      }
+    })();
+
+    return true; // 非同期レスポンス許可
+  }
+
   // 注意: Content Script注入はmanifest.json自動注入に移行済み
   // Content Script注入要求は廃止
 

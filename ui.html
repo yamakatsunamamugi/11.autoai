@@ -180,158 +180,27 @@
         </div>
       </section>
 
-      <!-- AI検出機能セクション -->
+      <!-- AIテスト機能セクション -->
       <section class="step-section">
         <div class="step-header">
-          <span class="step-number">🔍</span>
-          <h2>AI検出機能</h2>
+          <span class="step-number">🧪</span>
+          <h2>AIテスト機能</h2>
         </div>
         <div class="step-content">
-          <p class="test-description">AIモデルと機能の変更を検出するシステムです</p>
+          <p class="test-description">全てのAIサービスの自動テストをまとめて実行できます</p>
           <div class="control-buttons">
-            <button id="aiDetectionSystemBtn" class="btn btn-detection btn-large">
-              <span class="btn-icon">🔍</span>
-              モデル・機能変更検出システム
-            </button>
-            <button id="aiSelectorMutationSystemBtn" class="btn btn-mutation btn-large">
-              <span class="btn-icon">👁️</span>
-              AIセレクタ変更検出システム
+            <button id="aiTestAllBtn" class="btn btn-test-all btn-large">
+              <span class="btn-icon">🚀</span>
+              AI統合テスト実行
             </button>
           </div>
+          <p class="test-info" style="margin-top: 15px; font-size: 13px; color: #666;">
+            ※ ボタンをクリックすると3つのウィンドウが開きます：<br>
+            左上: ChatGPT / 右上: Claude / 左下: Gemini
+          </p>
         </div>
       </section>
 
-      <!-- AIモデル・機能統合表示セクション -->
-      <section class="ai-models-functions-section" style="margin-bottom: 30px;">
-        <h2>🤖 AI モデル・機能一覧</h2>
-
-        <!-- 6列統合表 -->
-        <div style="overflow-x: auto; border: 1px solid #dee2e6; border-radius: 8px;">
-          <table id="ai-integrated-table" style="width: 100%; border-collapse: collapse; font-size: 14px;">
-            <thead>
-              <tr>
-                <th style="border: 1px solid #dee2e6; padding: 12px; background: #f8f9fa; text-align: center; font-weight: 600; min-width: 150px;">🤖 ChatGPTモデル</th>
-                <th style="border: 1px solid #dee2e6; padding: 12px; background: #f8f9fa; text-align: center; font-weight: 600; min-width: 150px;">🔮 Claudeモデル</th>
-                <th style="border: 1px solid #dee2e6; padding: 12px; background: #f8f9fa; text-align: center; font-weight: 600; min-width: 150px;">✨ Geminiモデル</th>
-                <th style="border: 1px solid #dee2e6; padding: 12px; background: #f8f9fa; text-align: center; font-weight: 600; min-width: 150px;">⚡ ChatGPT機能</th>
-                <th style="border: 1px solid #dee2e6; padding: 12px; background: #f8f9fa; text-align: center; font-weight: 600; min-width: 150px;">🔧 Claude機能</th>
-                <th style="border: 1px solid #dee2e6; padding: 12px; background: #f8f9fa; text-align: center; font-weight: 600; min-width: 150px;">🛠️ Gemini機能</th>
-              </tr>
-            </thead>
-            <tbody id="ai-integrated-tbody">
-              <tr>
-                <td colspan="6" style="border: 1px solid #dee2e6; padding: 20px; text-align: center; color: #999;">
-                  データを読み込み中...
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <!-- 表コピー機能 -->
-        <div style="margin-top: 15px; text-align: center;">
-          <button id="copy-ai-table-btn" style="
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 6px;
-            font-size: 14px;
-            cursor: pointer;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            transition: all 0.3s ease;
-          " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 8px rgba(0,0,0,0.2)'" onmouseout="this.style.transform='translateY(0px)'; this.style.boxShadow='0 2px 4px rgba(0,0,0,0.1)'">
-            📋 表をスプレッドシート形式でコピー
-          </button>
-          <div id="copy-status" style="margin-top: 10px; font-size: 12px; color: #666;"></div>
-        </div>
-      </section>
-
-      <!-- セレクタ情報セクション -->
-      <section class="selector-info-section" style="margin-bottom: 30px;">
-        <h2>🔍 AIセレクタ情報</h2>
-        <div class="selector-tabs">
-          <button class="selector-tab active" data-ai="chatgpt">ChatGPT</button>
-          <button class="selector-tab" data-ai="claude">Claude</button>
-          <button class="selector-tab" data-ai="gemini">Gemini</button>
-        </div>
-        <div class="selector-content">
-          <div class="selector-ai-panel" id="chatgpt-selectors" style="display: block;">
-            <h3>ChatGPT セレクタ情報</h3>
-            <div class="selector-types">
-              <div class="selector-type">
-                <h4>📝 INPUT (入力欄)</h4>
-                <div class="selector-list" id="chatgpt-input-selectors">セレクタ情報を取得するには上記のボタンを実行してください</div>
-              </div>
-              <div class="selector-type">
-                <h4>📤 SEND_BUTTON (送信ボタン)</h4>
-                <div class="selector-list" id="chatgpt-send-selectors">セレクタ情報を取得するには上記のボタンを実行してください</div>
-              </div>
-              <div class="selector-type">
-                <h4>⏸️ STOP_BUTTON (停止ボタン)</h4>
-                <div class="selector-list" id="chatgpt-stop-selectors">セレクタ情報を取得するには上記のボタンを実行してください</div>
-              </div>
-              <div class="selector-type">
-                <h4>📄 RESPONSE (応答)</h4>
-                <div class="selector-list" id="chatgpt-response-selectors">セレクタ情報を取得するには上記のボタンを実行してください</div>
-              </div>
-              <div class="selector-type">
-                <h4>🔬 DEEP_RESEARCH (DeepResearch)</h4>
-                <div class="selector-list" id="chatgpt-deepresearch-selectors">セレクタ情報を取得するには上記のボタンを実行してください</div>
-              </div>
-            </div>
-          </div>
-          <div class="selector-ai-panel" id="claude-selectors" style="display: none;">
-            <h3>Claude セレクタ情報</h3>
-            <div class="selector-types">
-              <div class="selector-type">
-                <h4>📝 INPUT (入力欄)</h4>
-                <div class="selector-list" id="claude-input-selectors">セレクタ情報を取得するには上記のボタンを実行してください</div>
-              </div>
-              <div class="selector-type">
-                <h4>📤 SEND_BUTTON (送信ボタン)</h4>
-                <div class="selector-list" id="claude-send-selectors">セレクタ情報を取得するには上記のボタンを実行してください</div>
-              </div>
-              <div class="selector-type">
-                <h4>⏸️ STOP_BUTTON (停止ボタン)</h4>
-                <div class="selector-list" id="claude-stop-selectors">セレクタ情報を取得するには上記のボタンを実行してください</div>
-              </div>
-              <div class="selector-type">
-                <h4>📄 RESPONSE (応答)</h4>
-                <div class="selector-list" id="claude-response-selectors">セレクタ情報を取得するには上記のボタンを実行してください</div>
-              </div>
-              <div class="selector-type">
-                <h4>🔬 DEEP_RESEARCH (DeepResearch)</h4>
-                <div class="selector-list" id="claude-deepresearch-selectors">セレクタ情報を取得するには上記のボタンを実行してください</div>
-              </div>
-            </div>
-          </div>
-          <div class="selector-ai-panel" id="gemini-selectors" style="display: none;">
-            <h3>Gemini セレクタ情報</h3>
-            <div class="selector-types">
-              <div class="selector-type">
-                <h4>📝 INPUT (入力欄)</h4>
-                <div class="selector-list" id="gemini-input-selectors">セレクタ情報を取得するには上記のボタンを実行してください</div>
-              </div>
-              <div class="selector-type">
-                <h4>📤 SEND_BUTTON (送信ボタン)</h4>
-                <div class="selector-list" id="gemini-send-selectors">セレクタ情報を取得するには上記のボタンを実行してください</div>
-              </div>
-              <div class="selector-type">
-                <h4>⏸️ STOP_BUTTON (停止ボタン)</h4>
-                <div class="selector-list" id="gemini-stop-selectors">セレクタ情報を取得するには上記のボタンを実行してください</div>
-              </div>
-              <div class="selector-type">
-                <h4>📄 RESPONSE (応答)</h4>
-                <div class="selector-list" id="gemini-response-selectors">セレクタ情報を取得するには上記のボタンを実行してください</div>
-              </div>
-              <div class="selector-type">
-                <h4>🔬 DEEP_RESEARCH (DeepResearch)</h4>
-                <div class="selector-list" id="gemini-deepresearch-selectors">セレクタ情報を取得するには上記のボタンを実行してください</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
 
 
       <!-- ログビューアーセクション -->

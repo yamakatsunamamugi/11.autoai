@@ -3071,6 +3071,11 @@ window.ChatGPTLogManager = ChatGPTLogManager;
 // ========================================
 // ChatGPTモデル・機能検出関数
 // ========================================
+
+// 検出結果を保存するグローバル変数
+window.ChatGPTAutomation = window.ChatGPTAutomation || {};
+window.ChatGPTAutomation.detectionResult = null;
+
 async function detectChatGPTModelsAndFeatures() {
   log("🔍 ChatGPTモデル・機能検出開始");
 
@@ -3212,9 +3217,182 @@ async function detectChatGPTModelsAndFeatures() {
       `🔍 ChatGPT検出完了 - モデル: ${availableModels.length}個, 機能: ${availableFunctions.length}個`,
       result,
     );
+
+    // 検出結果を保存
+    if (window.ChatGPTAutomation) {
+      window.ChatGPTAutomation.detectionResult = result;
+    }
+
+    // UIに送信
+    try {
+      if (chrome.runtime && chrome.runtime.sendMessage) {
+        chrome.runtime.sendMessage({
+          type: "AI_MODEL_FUNCTION_UPDATE",
+          aiType: "chatgpt",
+          data: {
+            models: availableModels.map((m) =>
+              typeof m === "string" ? m : m.name,
+            ),
+            functions: availableFunctions,
+          },
+        });
+        log("✅ UIテーブルにデータを送信しました");
+      }
+    } catch (error) {
+      log.warn("UIへの送信失敗:", error);
+    }
+
     return result;
   } catch (error) {
     log.error("🔍 ChatGPT検出エラー:", error);
     return { models: availableModels, functions: availableFunctions };
   }
 }
+
+// ========================================
+// インデックス選択機能とヘルパー関数
+// ========================================
+
+/**
+ * インデックスでモデルを選択
+ * @param {number} index - 選択するモデルのインデックス
+ * @returns {Promise<boolean>} 選択成功の可否
+ */
+async function selectModelByIndex(index) {
+  if (!window.ChatGPTAutomation.detectionResult) {
+    log.error(
+      "検出結果がありません。先にdetectChatGPTModelsAndFeatures()を実行してください",
+    );
+    return false;
+  }
+
+  const model = window.ChatGPTAutomation.detectionResult.models[index];
+  if (!model) {
+    log.error(`インデックス ${index} のモデルが存在しません`);
+    return false;
+  }
+
+  const modelName = typeof model === "string" ? model : model.name;
+  log(`🎯 モデル選択: [${index}] ${modelName}`);
+  return await selectModelChatGPT(modelName);
+}
+
+/**
+ * インデックスで機能を選択
+ * @param {number} index - 選択する機能のインデックス (0=通常, 1以上=機能)
+ * @returns {Promise<boolean>} 選択成功の可否
+ */
+async function selectFunctionByIndex(index) {
+  if (!window.ChatGPTAutomation.detectionResult) {
+    log.error(
+      "検出結果がありません。先にdetectChatGPTModelsAndFeatures()を実行してください",
+    );
+    return false;
+  }
+
+  if (index === 0) {
+    log("🎯 通常モードを選択");
+    // 通常モードの場合は何もしない
+    return true;
+  }
+
+  const funcName =
+    window.ChatGPTAutomation.detectionResult.functions[index - 1];
+  if (!funcName) {
+    log.error(`インデックス ${index} の機能が存在しません`);
+    return false;
+  }
+
+  log(`🎯 機能選択: [${index}] ${funcName}`);
+  return await selectFunctionChatGPT(funcName);
+}
+
+/**
+ * UIにデータを手動で送信
+ * @param {Object} data - 送信するデータ (省略時は検出結果を使用)
+ */
+function sendToUI(data) {
+  if (!data) data = window.ChatGPTAutomation.detectionResult;
+  if (!data) {
+    log.error("送信するデータがありません");
+    return;
+  }
+
+  try {
+    if (chrome.runtime && chrome.runtime.sendMessage) {
+      chrome.runtime.sendMessage({
+        type: "AI_MODEL_FUNCTION_UPDATE",
+        aiType: "chatgpt",
+        data: {
+          models: data.models.map((m) => (typeof m === "string" ? m : m.name)),
+          functions: data.functions,
+        },
+      });
+      log("✅ UIテーブルにデータを手動送信しました");
+    }
+  } catch (error) {
+    log.error("UIへの送信失敗:", error);
+  }
+}
+
+/**
+ * 一連のテストを実行
+ * @param {number} modelIndex - モデルインデックス
+ * @param {number} functionIndex - 機能インデックス
+ * @param {string} message - 送信するメッセージ
+ */
+async function executeFullTest(modelIndex, functionIndex, message) {
+  try {
+    log("🚀 完全テスト実行開始");
+
+    if (!window.ChatGPTAutomation.detectionResult) {
+      log("🔍 検出実行中...");
+      await detectChatGPTModelsAndFeatures();
+    }
+
+    log(`🎯 モデル[${modelIndex}]を選択中...`);
+    await selectModelByIndex(modelIndex);
+    await sleep(1000);
+
+    log(`🎯 機能[${functionIndex}]を選択中...`);
+    await selectFunctionByIndex(functionIndex);
+    await sleep(1000);
+
+    log(`📨 メッセージ送信中: "${message}"`);
+    await inputTextChatGPT(message);
+    await sleep(500);
+    await sendMessageChatGPT();
+
+    log("⏳ 応答待機中...");
+    await waitForResponseChatGPT();
+
+    log("📋 応答取得中...");
+    const response = await getResponseTextChatGPT();
+
+    log("✅ 完全テスト完了");
+    console.log("応答:", response);
+    return response;
+  } catch (error) {
+    log.error("完全テストエラー:", error);
+    throw error;
+  }
+}
+
+// グローバルに公開
+window.ChatGPTAutomation = window.ChatGPTAutomation || {};
+Object.assign(window.ChatGPTAutomation, {
+  detectChatGPTModelsAndFeatures,
+  selectModelByIndex,
+  selectFunctionByIndex,
+  sendToUI,
+  executeFullTest,
+  // 既存の関数も公開
+  inputTextChatGPT,
+  sendMessageChatGPT,
+  waitForResponseChatGPT,
+  getResponseTextChatGPT,
+  selectModelChatGPT,
+  selectFunctionChatGPT,
+});
+
+log("✅ ChatGPT Automation Enhanced - インデックス選択機能追加完了", "success");

@@ -6828,13 +6828,13 @@ async function executeStep4(taskList) {
               let scriptFile;
               switch (automationName) {
                 case "ChatGPTAutomationV2":
-                  scriptFile = "3-2-gpt-automation.js";
+                  scriptFile = "4-1-chatgpt-automation.js";
                   break;
                 case "ClaudeAutomation":
                   scriptFile = "4-2-claude-automation.js";
                   break;
                 case "GeminiAutomation":
-                  scriptFile = "5-2-gemini-automation.js";
+                  scriptFile = "4-3-gemini-automation.js";
                   break;
                 case "GensparkAutomationV2":
                   scriptFile = "6-2-genspark-automation.js";
