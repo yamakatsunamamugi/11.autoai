@@ -6357,11 +6357,13 @@
           // 無効な機能名をスキップ
           if (!functionName || functionName === "1") return;
 
-          // 説明を取得
+          // 説明を取得（既存のdescription変数を上書き）
           const descElement = button.querySelector(
             "p.font-small.text-text-500",
           );
-          const description = descElement ? descElement.textContent.trim() : "";
+          if (descElement && !description) {
+            description = descElement.textContent.trim();
+          }
 
           // セクレタ（接続状態）を取得
           const secretElement = button.querySelector(

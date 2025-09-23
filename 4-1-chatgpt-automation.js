@@ -743,7 +743,7 @@ const log = {
       throw new Error("UI_SELECTORS not available from step1-setup.js");
     }
 
-    log(
+    logWithTimestamp(
       "【Step 4-1-0-1】✅ UI Selectors loaded from step1-setup.js",
       "success",
     );
@@ -783,7 +783,10 @@ const log = {
     for (let i = 0; i < 30; i++) {
       stopBtn = await findElement(SELECTORS.stopButton, 1);
       if (stopBtn) {
-        log("【Step 4-1-6-1】停止ボタンが表示されました", "success");
+        logWithTimestamp(
+          "【Step 4-1-6-1】停止ボタンが表示されました",
+          "success",
+        );
         break;
       }
       await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
@@ -791,7 +794,7 @@ const log = {
 
     // 停止ボタンが消えるまで待機（テストコード準拠：10秒間連続非表示で完了、最大5分）
     if (stopBtn) {
-      log(
+      logWithTimestamp(
         "【Step 4-1-6-2】停止ボタンが10秒間消えるまで待機（最大5分）",
         "info",
       );
@@ -804,7 +807,7 @@ const log = {
         if (!stopBtn) {
           confirmCount++;
           if (confirmCount >= 10) {
-            log(
+            logWithTimestamp(
               "【Step 4-1-6-2】✅ 応答完了（停止ボタンが10秒間非表示）",
               "success",
             );
@@ -818,7 +821,7 @@ const log = {
         disappearWaitCount++;
 
         if (disappearWaitCount % 60 === 0) {
-          log(
+          logWithTimestamp(
             `応答生成中... ${Math.floor(disappearWaitCount / 60)}分経過`,
             "info",
           );
@@ -827,8 +830,8 @@ const log = {
     }
   }
 
-  // ログ出力
-  function log(message, type = "info") {
+  // ログ出力（タイムスタンプ付き）
+  function logWithTimestamp(message, type = "info") {
     const timestamp = new Date().toLocaleTimeString("ja-JP", {
       hour12: false,
       hour: "2-digit",
@@ -839,19 +842,19 @@ const log = {
 
     switch (type) {
       case "error":
-        log.error(`${prefix} ❌ ${message}`);
+        console.error(`${prefix} ❌ ${message}`);
         break;
       case "success":
-        log.debug(`${prefix} ✅ ${message}`);
+        console.log(`${prefix} ✅ ${message}`);
         break;
       case "warning":
-        log.warn(`${prefix} ⚠️ ${message}`);
+        console.warn(`${prefix} ⚠️ ${message}`);
         break;
       case "step":
-        log.debug(`${prefix} 📍 ${message}`);
+        console.log(`${prefix} 📍 ${message}`);
         break;
       default:
-        log.debug(`${prefix} ℹ️ ${message}`);
+        console.log(`${prefix} ℹ️ ${message}`);
     }
   }
 
@@ -914,7 +917,10 @@ const log = {
       // 1. 完全一致除去
       if (fullText.includes(promptToRemove)) {
         const cleanedText = fullText.replace(promptToRemove, "").trim();
-        log("【ChatGPT-除外】完全一致でプロンプトを除外しました", "success");
+        logWithTimestamp(
+          "【ChatGPT-除外】完全一致でプロンプトを除外しました",
+          "success",
+        );
         return cleanedText;
       }
 
@@ -941,7 +947,7 @@ const log = {
       });
 
       if (patternFound) {
-        log(
+        logWithTimestamp(
           "【ChatGPT-除外】パターンマッチングでプロンプトを除外しました",
           "success",
         );
@@ -1144,13 +1150,13 @@ const log = {
     // ステップログを記録
     logStep(step, message, data = {}) {
       this.logFileManager.logStep(step, message, data);
-      log(`📝 [ログ] ${step}: ${message}`);
+      logWithTimestamp(`📝 [ログ] ${step}: ${message}`);
     },
 
     // エラーログを記録（即座にファイル保存）
     async logError(step, error, context = {}) {
       this.logFileManager.logError(step, error, context);
-      log(`❌ [エラーログ] ${step}: ${error.message}`, "error");
+      logWithTimestamp(`❌ [エラーログ] ${step}: ${error.message}`, "error");
       // エラーは即座に保存
       await this.logFileManager.saveErrorImmediately(error, {
         step,
@@ -1161,32 +1167,35 @@ const log = {
     // 成功ログを記録
     logSuccess(step, message, result = {}) {
       this.logFileManager.logSuccess(step, message, result);
-      log(`✅ [成功ログ] ${step}: ${message}`, "success");
+      logWithTimestamp(`✅ [成功ログ] ${step}: ${message}`, "success");
     },
 
     // タスク開始を記録
     startTask(taskData) {
       this.logFileManager.logTaskStart(taskData);
-      log(`🚀 [タスク開始]`, "info");
+      logWithTimestamp(`🚀 [タスク開始]`, "info");
     },
 
     // タスク完了を記録
     completeTask(result) {
       this.logFileManager.logTaskComplete(result);
-      log(`🏁 [タスク完了]`, "info");
+      logWithTimestamp(`🏁 [タスク完了]`, "info");
     },
 
     // ログをファイルに保存（最終保存）
     async saveToFile() {
       try {
         const filePath = await this.logFileManager.saveToFile();
-        log(
+        logWithTimestamp(
           `✅ [ChatGPTLogManager] 最終ログを保存しました: ${filePath}`,
           "success",
         );
         return filePath;
       } catch (error) {
-        log(`[ChatGPTLogManager] ログ保存エラー: ${error.message}`, "error");
+        logWithTimestamp(
+          `[ChatGPTLogManager] ログ保存エラー: ${error.message}`,
+          "error",
+        );
       }
     },
 
@@ -1236,7 +1245,7 @@ const log = {
 
           if (element && isVisible(element)) {
             if (description && retry > 0) {
-              log(
+              logWithTimestamp(
                 `${description}を発見: ${selector} (${retry + 1}回目の試行)`,
                 "success",
               );
@@ -1250,7 +1259,7 @@ const log = {
 
       if (retry < maxRetries - 1) {
         if (description && retry === 0) {
-          log(
+          logWithTimestamp(
             `${description}が見つかりません。待機中... (${retry + 1}/${maxRetries})`,
             "warning",
           );
@@ -1260,7 +1269,10 @@ const log = {
     }
 
     if (description) {
-      log(`${description}の検索に失敗しました (${maxRetries}回試行)`, "error");
+      logWithTimestamp(
+        `${description}の検索に失敗しました (${maxRetries}回試行)`,
+        "error",
+      );
     }
     return null;
   }
@@ -1280,13 +1292,16 @@ const log = {
   // Step 4-1-0: ページ準備確認
   // ========================================
   async function waitForPageReady() {
-    log("\n【Step 4-1-0】ページ準備確認", "step");
+    logWithTimestamp("\n【Step 4-1-0】ページ準備確認", "step");
     const maxAttempts = 30; // 最大30秒待機
     let attempts = 0;
 
     while (attempts < maxAttempts) {
       attempts++;
-      log(`[Step 4-1-0] 準備確認 (${attempts}/${maxAttempts})`, "info");
+      logWithTimestamp(
+        `[Step 4-1-0] 準備確認 (${attempts}/${maxAttempts})`,
+        "info",
+      );
 
       // テキスト入力欄の存在をチェック
       const inputElement = await findElement(
@@ -1296,14 +1311,14 @@ const log = {
       );
 
       if (inputElement && isElementInteractable(inputElement)) {
-        log("✅ [Step 4-1-0] ページ準備完了", "success");
+        logWithTimestamp("✅ [Step 4-1-0] ページ準備完了", "success");
         return true;
       }
 
       await sleep(1000);
     }
 
-    log("❌ [Step 4-1-0] ページ準備タイムアウト", "error");
+    logWithTimestamp("❌ [Step 4-1-0] ページ準備タイムアウト", "error");
     throw new Error("ページが準備できませんでした");
   }
 
@@ -1315,7 +1330,7 @@ const log = {
     description = "",
     timeout = 10000,
   ) {
-    log(`[ステップ0-1] ${description}を取得中...`, "info");
+    logWithTimestamp(`[ステップ0-1] ${description}を取得中...`, "info");
     const startTime = Date.now();
     let attempts = 0;
 
@@ -1324,7 +1339,7 @@ const log = {
       const element = await findElement(selectors, description, 1);
 
       if (element && isElementInteractable(element)) {
-        log(
+        logWithTimestamp(
           `✅ [ステップ0-1] ${description}取得成功 (試行${attempts}回)`,
           "success",
         );
@@ -1332,7 +1347,7 @@ const log = {
       }
 
       if (attempts % 5 === 0) {
-        log(
+        logWithTimestamp(
           `[ステップ0-1] ${description}を探索中... (${Math.floor((Date.now() - startTime) / 1000)}秒経過)`,
           "info",
         );
@@ -1341,7 +1356,10 @@ const log = {
       await sleep(500);
     }
 
-    log(`❌ [ステップ0-1] ${description}取得タイムアウト`, "error");
+    logWithTimestamp(
+      `❌ [ステップ0-1] ${description}取得タイムアウト`,
+      "error",
+    );
     return null;
   }
 
@@ -1350,8 +1368,8 @@ const log = {
   // ========================================
   async function handleSpecialModeWaiting(featureName) {
     try {
-      log(`【${featureName}モード特別処理】開始`, "step");
-      log("【Step 4-1-6-1】最大回答待機時間: 40分", "info");
+      logWithTimestamp(`【${featureName}モード特別処理】開始`, "step");
+      logWithTimestamp("【Step 4-1-6-1】最大回答待機時間: 40分", "info");
 
       // ステップ6-1: 停止ボタン出現待機
       let stopBtn = await waitForStopButton();
@@ -1368,45 +1386,57 @@ const log = {
       // ステップ6-4: 最終待機（最大40分）
       await finalWaitForCompletion();
 
-      log(`${featureName}モード特別処理完了`, "success");
+      logWithTimestamp(`${featureName}モード特別処理完了`, "success");
       return true;
     } catch (error) {
-      log(`特別処理エラー: ${error.message}`, "error");
+      logWithTimestamp(`特別処理エラー: ${error.message}`, "error");
       return false;
     }
   }
 
   // 6-1: 停止ボタン出現待機
   async function waitForStopButton() {
-    log("【Step 4-1-6-1】停止ボタン出現待機", "step");
+    logWithTimestamp("【Step 4-1-6-1】停止ボタン出現待機", "step");
     for (let i = 0; i < 60; i++) {
       const stopBtn = await findElement(SELECTORS.stopButton, 1);
       if (stopBtn) {
-        log(`停止ボタンが表示されました (${i + 1}秒後)`, "success");
+        logWithTimestamp(
+          `停止ボタンが表示されました (${i + 1}秒後)`,
+          "success",
+        );
         return stopBtn;
       }
       if (i % 10 === 0 && i > 0) {
-        log(`停止ボタン待機中... ${i}秒経過`, "info");
+        logWithTimestamp(`停止ボタン待機中... ${i}秒経過`, "info");
       }
       await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
     }
-    log("【Step 4-1-6-1】停止ボタンが表示されませんでした", "warning");
+    logWithTimestamp(
+      "【Step 4-1-6-1】停止ボタンが表示されませんでした",
+      "warning",
+    );
     return null;
   }
 
   // 6-2: 2分間初期待機
   async function initialWaitCheck() {
-    log("【Step 4-1-6-2】2分間初期待機チェック", "step");
+    logWithTimestamp("【Step 4-1-6-2】2分間初期待機チェック", "step");
     for (let i = 0; i < 120; i++) {
       const stopBtn = await findElement(SELECTORS.stopButton, 1);
       if (!stopBtn) {
         const minutes = Math.floor(i / 60);
         const seconds = i % 60;
-        log(`停止ボタンが消えました (${minutes}分${seconds}秒で完了)`, "info");
+        logWithTimestamp(
+          `停止ボタンが消えました (${minutes}分${seconds}秒で完了)`,
+          "info",
+        );
         return true;
       }
       if (i % 30 === 0 && i > 0) {
-        log(`待機中... (${Math.floor(i / 60)}分${i % 60}秒経過)`, "info");
+        logWithTimestamp(
+          `待機中... (${Math.floor(i / 60)}分${i % 60}秒経過)`,
+          "info",
+        );
       }
       await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
     }
@@ -1415,7 +1445,7 @@ const log = {
 
   // 6-3: 再送信処理
   async function retryWithPrompt() {
-    log(
+    logWithTimestamp(
       "【Step 4-1-6-3】再送信処理（「いいから元のプロンプトを確認して作業をして」）",
       "step",
     );
@@ -1444,14 +1474,14 @@ const log = {
     const sendBtn = await findElement(SELECTORS.sendButton);
     if (sendBtn) {
       sendBtn.click();
-      log("【Step 4-1-6-2】再送信完了", "success");
+      logWithTimestamp("【Step 4-1-6-2】再送信完了", "success");
       await sleep(AI_WAIT_CONFIG.LONG_WAIT);
     }
   }
 
   // 6-4: 最終待機処理
   async function finalWaitForCompletion() {
-    log("【Step 4-1-6-4】最終待機（最大40分）", "step");
+    logWithTimestamp("【Step 4-1-6-4】最終待機（最大40分）", "step");
     const maxWaitTime = AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT / 1000;
     let consecutiveAbsent = 0;
 
@@ -1461,7 +1491,7 @@ const log = {
       if (!stopBtn) {
         consecutiveAbsent++;
         if (consecutiveAbsent >= 10) {
-          log(
+          logWithTimestamp(
             "【Step 4-1-6-3】停止ボタンが10秒間連続で消滅。完了！",
             "success",
           );
@@ -1472,7 +1502,10 @@ const log = {
       }
 
       if (i % 60 === 0 && i > 0) {
-        log(`待機中... (${Math.floor(i / 60)}分経過 / 最大40分)`, "info");
+        logWithTimestamp(
+          `待機中... (${Math.floor(i / 60)}分経過 / 最大40分)`,
+          "info",
+        );
       }
       await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
     }
@@ -1773,7 +1806,7 @@ const log = {
       // ========================================
       // ステップ1: ページ準備状態チェック（初回実行の問題を解決）
       // ========================================
-      log("\n【Step 4-1-1】ページ初期化チェック", "step");
+      logWithTimestamp("\n【Step 4-1-1】ページ初期化チェック", "step");
 
       // 1-1. ChatGPT UIの基本要素が存在するか確認
       const criticalElements = {
@@ -1788,7 +1821,10 @@ const log = {
       // 最初のタスクの場合は追加の初期化待機
       const isFirstTask = !window.ChatGPTAutomationV2._initialized;
       if (isFirstTask) {
-        log("初回タスク実行を検知。追加の初期化待機を行います", "info");
+        logWithTimestamp(
+          "初回タスク実行を検知。追加の初期化待機を行います",
+          "info",
+        );
         await sleep(AI_WAIT_CONFIG.LONG_WAIT); // 初回は3秒待機
         window.ChatGPTAutomationV2._initialized = true;
       }
@@ -1800,7 +1836,7 @@ const log = {
         for (const [name, selectors] of Object.entries(criticalElements)) {
           const element = await findElement(selectors, name, 1);
           if (!element) {
-            log(
+            logWithTimestamp(
               `${name}が見つかりません。待機中... (${retryCount + 1}/${maxRetries})`,
               "warning",
             );
@@ -1822,7 +1858,7 @@ const log = {
       }
 
       // 1-2. React/DOM の安定化待機
-      log("1-2. DOM安定化待機中...", "info");
+      logWithTimestamp("1-2. DOM安定化待機中...", "info");
       await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT - 500);
 
       // 1-3. 既存の開いているメニューを全て閉じる
@@ -1830,14 +1866,17 @@ const log = {
         '[role="menu"][data-state="open"]',
       );
       if (openMenus.length > 0) {
-        log(`開いているメニュー(${openMenus.length}個)を閉じます`, "info");
+        logWithTimestamp(
+          `開いているメニュー(${openMenus.length}個)を閉じます`,
+          "info",
+        );
         document.dispatchEvent(
           new KeyboardEvent("keydown", { key: "Escape", code: "Escape" }),
         );
         await sleep(AI_WAIT_CONFIG.TINY_WAIT);
       }
 
-      log("ページ初期化チェック完了", "success");
+      logWithTimestamp("ページ初期化チェック完了", "success");
 
       // パラメータ準備（スプレッドシートの値をそのまま使用）
       let prompt = taskData.prompt || taskData.text || "";
@@ -1856,9 +1895,9 @@ const log = {
       const modelName = taskData.model || "";
       const featureName = taskData.function || null;
 
-      log(`選択されたモデル: ${modelName}`, "info");
-      log(`選択された機能: ${featureName || "設定なし"}`, "info");
-      log(`プロンプト: ${prompt.substring(0, 100)}...`, "info");
+      logWithTimestamp(`選択されたモデル: ${modelName}`, "info");
+      logWithTimestamp(`選択された機能: ${featureName || "設定なし"}`, "info");
+      logWithTimestamp(`プロンプト: ${prompt.substring(0, 100)}...`, "info");
 
       // モデル情報を事前取得（テスト済みコードのロジック）
       let selectedModel = null;
@@ -1947,7 +1986,7 @@ const log = {
       // ========================================
       // ステップ2: テキスト入力（堅牢性強化版）
       // ========================================
-      log("\n【Step 4-1-2】テキスト入力", "step");
+      logWithTimestamp("\n【Step 4-1-2】テキスト入力", "step");
 
       // getElementWithWaitを使用してテキスト入力欄を検索
       let input = await getElementWithWait(
@@ -1958,14 +1997,14 @@ const log = {
 
       if (!input) {
         // 最後の手段として、より広範囲の検索を試行
-        log("最後の手段として広範囲検索を実行", "warning");
+        logWithTimestamp("最後の手段として広範囲検索を実行", "warning");
         const allEditableElements = document.querySelectorAll(
           '[contenteditable="true"], textarea, input[type="text"]',
         );
         for (const elem of allEditableElements) {
           if (isElementInteractable(elem)) {
             input = elem;
-            log("代替入力欄を発見", "success");
+            logWithTimestamp("代替入力欄を発見", "success");
             break;
           }
         }
@@ -1977,7 +2016,7 @@ const log = {
         );
       }
 
-      log("テキスト入力欄を発見、テキストを入力中...", "success");
+      logWithTimestamp("テキスト入力欄を発見、テキストを入力中...", "success");
 
       // ChatGPT動作コードのテキスト入力処理（テスト済み）
       try {
@@ -1993,34 +2032,37 @@ const log = {
           input.classList.remove("ql-blank");
           input.dispatchEvent(new Event("input", { bubbles: true }));
           input.dispatchEvent(new Event("change", { bubbles: true }));
-          log("ProseMirrorエディタにテキスト入力完了", "success");
+          logWithTimestamp("ProseMirrorエディタにテキスト入力完了", "success");
         } else if (input.tagName === "TEXTAREA" || input.tagName === "INPUT") {
           // 通常のテキストエリア/入力フィールド用
           input.value = prompt;
           input.dispatchEvent(new Event("input", { bubbles: true }));
           input.dispatchEvent(new Event("change", { bubbles: true }));
-          log("通常の入力フィールドにテキスト入力完了", "success");
+          logWithTimestamp("通常の入力フィールドにテキスト入力完了", "success");
         } else {
           // contenteditable要素用
           input.textContent = prompt;
           input.dispatchEvent(new Event("input", { bubbles: true }));
           input.dispatchEvent(new Event("change", { bubbles: true }));
-          log("contenteditable要素にテキスト入力完了", "success");
+          logWithTimestamp("contenteditable要素にテキスト入力完了", "success");
         }
 
         // 入力内容の検証
         await sleep(500);
         const inputContent = input.textContent || input.value || "";
         if (inputContent.includes(prompt.substring(0, 50))) {
-          log(
+          logWithTimestamp(
             `入力内容検証成功: ${inputContent.length}文字入力済み`,
             "success",
           );
         } else {
-          log("入力内容の検証に失敗しましたが、続行します", "warning");
+          logWithTimestamp(
+            "入力内容の検証に失敗しましたが、続行します",
+            "warning",
+          );
         }
       } catch (error) {
-        log(`テキスト入力エラー: ${error.message}`, "error");
+        logWithTimestamp(`テキスト入力エラー: ${error.message}`, "error");
         throw new Error(`テキスト入力に失敗しました: ${error.message}`);
       }
 
@@ -2030,7 +2072,7 @@ const log = {
       // ステップ3: モデル選択（動的検索強化版）
       // ========================================
       if (modelName) {
-        log("\n【Step 4-1-3】モデル選択", "step");
+        logWithTimestamp("\n【Step 4-1-3】モデル選択", "step");
 
         // 3-0: 現在のモデルを確認
         const currentModelButton = await findElement(
@@ -2039,11 +2081,11 @@ const log = {
         );
         if (currentModelButton) {
           const currentModelText = getCleanText(currentModelButton);
-          log(`現在のモデル: ${currentModelText}`, "info");
+          logWithTimestamp(`現在のモデル: ${currentModelText}`, "info");
         }
 
         // 3-1: モデルメニューを開いて利用可能なモデルを動的取得
-        log(
+        logWithTimestamp(
           "【Step 4-1-3-1】モデルメニューを開いて利用可能なモデルを取得",
           "step",
         );
@@ -2067,7 +2109,7 @@ const log = {
         }
 
         // 3-2: 利用可能なモデル一覧を動的に取得
-        log("【Step 4-1-3-2】利用可能なモデル一覧を取得", "step");
+        logWithTimestamp("【Step 4-1-3-2】利用可能なモデル一覧を取得", "step");
         const availableModels = [];
 
         // メインメニューのモデル取得
@@ -2084,7 +2126,7 @@ const log = {
               type: "Current",
               location: "main",
             });
-            log(`メインモデル発見: ${modelDisplayName}`, "info");
+            logWithTimestamp(`メインモデル発見: ${modelDisplayName}`, "info");
           }
         });
 
@@ -2096,7 +2138,10 @@ const log = {
           );
 
         if (legacyButton) {
-          log("レガシーモデルボタンを発見、サブメニューをチェック", "info");
+          logWithTimestamp(
+            "レガシーモデルボタンを発見、サブメニューをチェック",
+            "info",
+          );
           legacyButton.click();
           await sleep(1500);
 
@@ -2113,20 +2158,23 @@ const log = {
                     type: "Legacy",
                     location: "submenu",
                   });
-                  log(`レガシーモデル発見: ${modelDisplayName}`, "info");
+                  logWithTimestamp(
+                    `レガシーモデル発見: ${modelDisplayName}`,
+                    "info",
+                  );
                 }
               });
             }
           });
         }
 
-        log(
+        logWithTimestamp(
           `取得したモデル一覧 (${availableModels.length}個): ${availableModels.map((m) => m.name).join(", ")}`,
           "success",
         );
 
         // 3-3: 動的選択ロジック（番号指定または名前マッチング）
-        log("【Step 4-1-3-3】モデル選択ロジックを実行", "step");
+        logWithTimestamp("【Step 4-1-3-3】モデル選択ロジックを実行", "step");
         // 統合ログ: モデル選択開始
         const cellInfo = taskData.cellReference || taskData.cell || "不明";
         let selectedModel = null;
@@ -2137,12 +2185,12 @@ const log = {
           if (modelName >= 1 && modelName <= availableModels.length) {
             selectedModel = availableModels[modelName - 1];
             resolvedModel = selectedModel.name;
-            log(
+            logWithTimestamp(
               `番号指定による選択: ${modelName} → "${resolvedModel}"`,
               "success",
             );
           } else {
-            log(
+            logWithTimestamp(
               `無効な番号指定: ${modelName} (1-${availableModels.length}の範囲で指定してください)`,
               "error",
             );
@@ -2164,20 +2212,23 @@ const log = {
           if (found) {
             selectedModel = found;
             resolvedModel = found.name;
-            log(
+            logWithTimestamp(
               `名前マッチングによる選択: "${modelName}" → "${resolvedModel}"`,
               "success",
             );
           } else {
-            log(`マッチするモデルが見つかりません: "${modelName}"`, "warning");
-            log(
+            logWithTimestamp(
+              `マッチするモデルが見つかりません: "${modelName}"`,
+              "warning",
+            );
+            logWithTimestamp(
               `利用可能なモデル: ${availableModels.map((m, i) => `${i + 1}. ${m.name}`).join(", ")}`,
               "info",
             );
             selectedModel = null;
           }
         } else {
-          log("デフォルトモデルを使用", "info");
+          logWithTimestamp("デフォルトモデルを使用", "info");
           selectedModel = null;
         }
 
@@ -2189,7 +2240,10 @@ const log = {
 
         if (selectedModel) {
           // 3-4: モデル選択を実行
-          log("【Step 4-1-3-4】モデル選択のためメニューを再度開く", "step");
+          logWithTimestamp(
+            "【Step 4-1-3-4】モデル選択のためメニューを再度開く",
+            "step",
+          );
           const modelBtn2 = await findElement(
             SELECTORS.modelButton,
             "モデルボタン",
@@ -2221,14 +2275,17 @@ const log = {
                   el.textContent && el.textContent.includes("レガシーモデル"),
               );
             if (legacyBtn) {
-              log("【Step 4-1-3-5】レガシーモデルメニューを開く", "step");
+              logWithTimestamp(
+                "【Step 4-1-3-5】レガシーモデルメニューを開く",
+                "step",
+              );
               legacyBtn.click();
               await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
             }
           }
 
           // 3-6: 該当のモデルを選択
-          log("【Step 4-1-3-6】該当のモデルを選択実行", "step");
+          logWithTimestamp("【Step 4-1-3-6】該当のモデルを選択実行", "step");
 
           // 要素を再検索（DOM変更の可能性があるため）
           const allMenus = document.querySelectorAll('[role="menu"]');
@@ -2251,7 +2308,7 @@ const log = {
           if (targetElement) {
             targetElement.click();
             await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
-            log(`モデル選択完了: ${resolvedModel}`, "success");
+            logWithTimestamp(`モデル選択完了: ${resolvedModel}`, "success");
             // 統合ログ: モデル選択完了
             // 選択後確認で表示されているモデルを取得
             let displayedModel = "";
@@ -2270,7 +2327,7 @@ const log = {
             // ========================================
             // ステップ3-7: モデル選択確認（テストコード準拠）
             // ========================================
-            log("【Step 4-1-3-7】モデル選択確認", "step");
+            logWithTimestamp("【Step 4-1-3-7】モデル選択確認", "step");
             await sleep(1000); // 表示更新を待機
 
             const currentModelButton = await findElement(
@@ -2279,7 +2336,10 @@ const log = {
             );
             if (currentModelButton) {
               const currentModelText = getCleanText(currentModelButton);
-              log(`現在表示されているモデル: "${currentModelText}"`, "info");
+              logWithTimestamp(
+                `現在表示されているモデル: "${currentModelText}"`,
+                "info",
+              );
 
               // 部分一致で確認（"GPT-4o" が "4o" で選択された場合など）
               const isMatch =
@@ -2291,18 +2351,18 @@ const log = {
                   .includes(currentModelText.toLowerCase());
 
               if (isMatch) {
-                log(
+                logWithTimestamp(
                   `✅ モデル選択確認成功: 期待通りのモデル「${currentModelText}」が選択されています`,
                   "success",
                 );
               } else {
-                log(
+                logWithTimestamp(
                   `⚠️ モデル選択確認: 期待されたモデル「${resolvedModel}」と異なるモデル「${currentModelText}」が表示されていますが、処理を継続します`,
                   "warning",
                 );
               }
             } else {
-              log(
+              logWithTimestamp(
                 "⚠️ モデル選択確認: モデルボタンが見つからないため確認をスキップします",
                 "warning",
               );
@@ -2313,13 +2373,16 @@ const log = {
             );
           }
         } else {
-          log(
+          logWithTimestamp(
             "選択するモデルが特定できませんでした。現在のモデルを使用します。",
             "warning",
           );
         }
       } else {
-        log("モデル選択をスキップ（モデル名が指定されていません）", "info");
+        logWithTimestamp(
+          "モデル選択をスキップ（モデル名が指定されていません）",
+          "info",
+        );
       }
 
       // ========================================
@@ -2332,7 +2395,7 @@ const log = {
         featureName !== "none" &&
         featureName !== "通常"
       ) {
-        log("\n【Step 4-1-4】機能選択", "step");
+        logWithTimestamp("\n【Step 4-1-4】機能選択", "step");
 
         // 機能名マッピング（スプレッドシート値 → ChatGPT UI表記）
         const featureMapping = {
@@ -2341,13 +2404,13 @@ const log = {
         };
 
         let mappedFeatureName = featureMapping[featureName] || featureName;
-        log(
+        logWithTimestamp(
           `機能名マッピング: "${featureName}" → "${mappedFeatureName}"`,
           "info",
         );
 
         // 4-0: 選択されている機能を解除
-        log("【Step 4-1-4-0】既存の機能選択を解除", "step");
+        logWithTimestamp("【Step 4-1-4-0】既存の機能選択を解除", "step");
         const selectedButtons = document.querySelectorAll(
           'button[data-pill="true"]',
         );
@@ -2358,7 +2421,10 @@ const log = {
         await sleep(500);
 
         // 4-1: 機能メニューを開いて利用可能な機能を動的取得
-        log("【Step 4-1-4-1】機能メニューを開いて利用可能な機能を取得", "step");
+        logWithTimestamp(
+          "【Step 4-1-4-1】機能メニューを開いて利用可能な機能を取得",
+          "step",
+        );
         const funcMenuBtn = await findElement(
           SELECTORS.menuButton,
           "機能メニューボタン",
@@ -2384,7 +2450,7 @@ const log = {
           const name = getCleanText(item);
           if (name) {
             availableFeatures.push({ name, element: item, location: "main" });
-            log(`メイン機能発見: ${name}`, "info");
+            logWithTimestamp(`メイン機能発見: ${name}`, "info");
           }
         });
 
@@ -2395,7 +2461,10 @@ const log = {
           funcMenu,
         );
         if (moreButton) {
-          log("「さらに表示」ボタンを発見、サブメニューをチェック", "info");
+          logWithTimestamp(
+            "「さらに表示」ボタンを発見、サブメニューをチェック",
+            "info",
+          );
           moreButton.click();
           await sleep(1000);
 
@@ -2412,13 +2481,13 @@ const log = {
                   element: item,
                   location: "submenu",
                 });
-                log(`サブメニュー機能発見: ${name}`, "info");
+                logWithTimestamp(`サブメニュー機能発見: ${name}`, "info");
               }
             });
           }
         }
 
-        log(
+        logWithTimestamp(
           `取得した機能一覧 (${availableFeatures.length}個): ${availableFeatures.map((f) => f.name).join(", ")}`,
           "success",
         );
@@ -2430,12 +2499,12 @@ const log = {
           if (featureName >= 1 && featureName <= availableFeatures.length) {
             selectedFeature = availableFeatures[featureName - 1];
             resolvedFeature = selectedFeature.name;
-            log(
+            logWithTimestamp(
               `番号指定による機能選択: ${featureName} → "${resolvedFeature}"`,
               "success",
             );
           } else {
-            log(
+            logWithTimestamp(
               `無効な番号指定: ${featureName} (1-${availableFeatures.length}の範囲で指定してください)`,
               "error",
             );
@@ -2452,16 +2521,16 @@ const log = {
           if (found) {
             selectedFeature = found;
             resolvedFeature = found.name;
-            log(
+            logWithTimestamp(
               `名前マッチングによる機能選択: "${mappedFeatureName}" → "${resolvedFeature}"`,
               "success",
             );
           } else {
-            log(
+            logWithTimestamp(
               `マッチする機能が見つかりません: "${mappedFeatureName}"`,
               "warning",
             );
-            log(
+            logWithTimestamp(
               `利用可能な機能: ${availableFeatures.map((f, i) => `${i + 1}. ${f.name}`).join(", ")}`,
               "info",
             );
@@ -2477,7 +2546,10 @@ const log = {
 
         if (selectedFeature) {
           // 4-2: 機能メニューを再度開いて選択実行
-          log("【Step 4-1-4-2】機能選択のためメニューを再度開く", "step");
+          logWithTimestamp(
+            "【Step 4-1-4-2】機能選択のためメニューを再度開く",
+            "step",
+          );
           const funcMenuBtn2 = await findElement(
             SELECTORS.menuButton,
             "機能メニューボタン",
@@ -2504,14 +2576,14 @@ const log = {
               funcMenu2,
             );
             if (moreBtn) {
-              log("【Step 4-1-4-3】サブメニューを開く", "step");
+              logWithTimestamp("【Step 4-1-4-3】サブメニューを開く", "step");
               moreBtn.click();
               await sleep(1000);
             }
           }
 
           // 4-4: 機能を選択
-          log("【Step 4-1-4-4】機能を選択実行", "step");
+          logWithTimestamp("【Step 4-1-4-4】機能を選択実行", "step");
 
           // 要素を再検索（DOM変更の可能性があるため）
           const allMenus = document.querySelectorAll('[role="menu"]');
@@ -2530,7 +2602,7 @@ const log = {
           if (targetElement) {
             targetElement.click();
             await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
-            log(`機能選択完了: ${resolvedFeature}`, "success");
+            logWithTimestamp(`機能選択完了: ${resolvedFeature}`, "success");
             // 統合ログ: 機能選択完了
             // 選択後確認で表示されている機能を取得
             let displayedFunction = "";
@@ -2549,7 +2621,7 @@ const log = {
             // ========================================
             // ステップ4-4: 機能選択確認（テストコード準拠）
             // ========================================
-            log("【Step 4-1-4-4】機能選択確認", "step");
+            logWithTimestamp("【Step 4-1-4-4】機能選択確認", "step");
             await sleep(1500); // 機能の表示更新を待機
 
             // 選択された機能ボタンを確認
@@ -2561,7 +2633,10 @@ const log = {
             if (selectedFunctionButtons.length > 0) {
               selectedFunctionButtons.forEach((btn) => {
                 const buttonText = getCleanText(btn);
-                log(`選択された機能ボタン: "${buttonText}"`, "info");
+                logWithTimestamp(
+                  `選択された機能ボタン: "${buttonText}"`,
+                  "info",
+                );
 
                 // 部分一致で確認
                 const isMatch =
@@ -2573,7 +2648,7 @@ const log = {
                     .includes(buttonText.toLowerCase());
 
                 if (isMatch) {
-                  log(
+                  logWithTimestamp(
                     `✅ 機能選択確認成功: 期待通りの機能「${buttonText}」が選択されています`,
                     "success",
                   );
@@ -2585,13 +2660,13 @@ const log = {
                 const buttonTexts = Array.from(selectedFunctionButtons)
                   .map((btn) => getCleanText(btn))
                   .join(", ");
-                log(
+                logWithTimestamp(
                   `⚠️ 機能選択確認: 期待された機能「${resolvedFeature}」と異なる機能「${buttonTexts}」が選択されていますが、処理を継続します`,
                   "warning",
                 );
               }
             } else {
-              log(
+              logWithTimestamp(
                 `⚠️ 機能選択確認: 機能ボタンが表示されていません。機能「${resolvedFeature}」の選択が失敗した可能性があります`,
                 "warning",
               );
@@ -2603,21 +2678,21 @@ const log = {
           }
 
           // 4-5: メニューを閉じる
-          log("【Step 4-1-4-5】機能メニューを閉じる", "step");
+          logWithTimestamp("【Step 4-1-4-5】機能メニューを閉じる", "step");
           document.dispatchEvent(
             new KeyboardEvent("keydown", { key: "Escape", code: "Escape" }),
           );
           await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
         } else {
-          log(
+          logWithTimestamp(
             "選択する機能が特定できませんでした。機能なしで続行します。",
             "warning",
           );
         }
       } else {
-        log("機能選択をスキップ", "info");
+        logWithTimestamp("機能選択をスキップ", "info");
       }
-      log("\n【Step 4-1-5】メッセージ送信（再試行対応）", "step");
+      logWithTimestamp("\n【Step 4-1-5】メッセージ送信（再試行対応）", "step");
 
       // 送信ボタンを5回まで再試行
       let sendSuccess = false;
@@ -2626,7 +2701,7 @@ const log = {
 
       while (!sendSuccess && sendAttempts < maxSendAttempts) {
         sendAttempts++;
-        log(
+        logWithTimestamp(
           `【Step 4-1-5-${sendAttempts}】送信試行 ${sendAttempts}/${maxSendAttempts}`,
           "step",
         );
@@ -2636,14 +2711,20 @@ const log = {
           if (sendAttempts === maxSendAttempts) {
             throw new Error("送信ボタンが見つかりません");
           }
-          log(`送信ボタンが見つかりません。2秒後に再試行...`, "warning");
+          logWithTimestamp(
+            `送信ボタンが見つかりません。2秒後に再試行...`,
+            "warning",
+          );
           await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
           continue;
         }
 
         // 送信ボタンをクリック
         sendBtn.click();
-        log(`送信ボタンをクリックしました（試行${sendAttempts}）`, "success");
+        logWithTimestamp(
+          `送信ボタンをクリックしました（試行${sendAttempts}）`,
+          "success",
+        );
         await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
 
         // 送信後に停止ボタンが表示されるか、または送信ボタンが消えるまで5秒待機
@@ -2659,7 +2740,10 @@ const log = {
           );
           if (stopBtn) {
             stopButtonAppeared = true;
-            log("停止ボタンが表示されました - 送信成功", "success");
+            logWithTimestamp(
+              "停止ボタンが表示されました - 送信成功",
+              "success",
+            );
             break;
           }
 
@@ -2671,7 +2755,7 @@ const log = {
           );
           if (!stillSendBtn) {
             sendButtonDisappeared = true;
-            log("送信ボタンが消えました - 送信成功", "success");
+            logWithTimestamp("送信ボタンが消えました - 送信成功", "success");
             break;
           }
 
@@ -2682,7 +2766,10 @@ const log = {
           sendSuccess = true;
           break;
         } else {
-          log(`送信反応が確認できません。再試行します...`, "warning");
+          logWithTimestamp(
+            `送信反応が確認できません。再試行します...`,
+            "warning",
+          );
           await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
         }
       }
@@ -2694,23 +2781,23 @@ const log = {
       }
 
       // 送信時刻を記録（SpreadsheetLogger用）
-      log(
+      logWithTimestamp(
         `🔍 送信時刻記録開始 - AIHandler: ${!!window.AIHandler}, recordSendTimestamp: ${!!window.AIHandler?.recordSendTimestamp}, currentAITaskInfo: ${!!window.currentAITaskInfo}`,
         "info",
       );
       if (window.AIHandler && window.AIHandler.recordSendTimestamp) {
         try {
-          log(
+          logWithTimestamp(
             `📝 送信時刻記録実行開始 - タスクID: ${window.currentAITaskInfo?.taskId}`,
             "info",
           );
           await window.AIHandler.recordSendTimestamp("ChatGPT");
-          log(`✅ 送信時刻記録成功`, "success");
+          logWithTimestamp(`✅ 送信時刻記録成功`, "success");
         } catch (error) {
-          log(`❌ 送信時刻記録エラー: ${error.message}`, "error");
+          logWithTimestamp(`❌ 送信時刻記録エラー: ${error.message}`, "error");
         }
       } else {
-        log(
+        logWithTimestamp(
           `⚠️ AIHandler または recordSendTimestamp が利用できません`,
           "warning",
         );
@@ -2721,7 +2808,7 @@ const log = {
       // ========================================
       // ステップ6: 応答待機（Deep Research/エージェントモード統合処理）
       // ========================================
-      log("\n【Step 4-1-6】応答待機", "step");
+      logWithTimestamp("\n【Step 4-1-6】応答待機", "step");
 
       // Deep Research/エージェントモードの判定
       const finalFeatureName = resolvedFeature || featureName;
@@ -2732,24 +2819,30 @@ const log = {
           finalFeatureName.includes("Research"));
 
       if (isSpecialMode) {
-        log(`${finalFeatureName}モード検出 - 特別待機処理を実行`, "warning");
+        logWithTimestamp(
+          `${finalFeatureName}モード検出 - 特別待機処理を実行`,
+          "warning",
+        );
         await handleSpecialModeWaiting(finalFeatureName);
       } else {
         // 通常の待機処理
-        log("通常モード - 標準待機処理を実行", "info");
+        logWithTimestamp("通常モード - 標準待機処理を実行", "info");
         await standardWaitForResponse();
       }
 
       await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT); // 追加の待機
 
       // 追加安全チェック: テキスト取得前にDOMの安定性を確認
-      log("【Step 4-1-6-3】テキスト取得前の安定性チェック", "info");
+      logWithTimestamp(
+        "【Step 4-1-6-3】テキスト取得前の安定性チェック",
+        "info",
+      );
       await sleep(3000); // DOM安定化のための追加待機
 
       // ========================================
       // ステップ7: テキスト取得と表示
       // ========================================
-      log("\n【Step 4-1-7】テキスト取得と表示", "step");
+      logWithTimestamp("\n【Step 4-1-7】テキスト取得と表示", "step");
       // 統合ログ: テキスト取得開始
       console.log(`📥 [セル ${cellInfo}] 回答取得開始...`);
 
@@ -2757,7 +2850,7 @@ const log = {
       let responseText = "";
 
       // Canvas/Artifactを最優先でチェック（UI_SELECTORS使用）
-      log("Canvas/Artifactコンテンツを検索中...", "info");
+      logWithTimestamp("Canvas/Artifactコンテンツを検索中...", "info");
 
       const canvasElement = await findElement(
         SELECTORS.canvasText,
@@ -2768,9 +2861,9 @@ const log = {
         const text = canvasElement.textContent?.trim() || "";
         if (text && text.length > 10) {
           responseText = text;
-          log(`Canvas取得成功: ${text.length}文字`, "success");
+          logWithTimestamp(`Canvas取得成功: ${text.length}文字`, "success");
         } else {
-          log(
+          logWithTimestamp(
             `Canvasは見つかりましたが、テキストが短すぎます: ${text.length}文字`,
             "warning",
           );
@@ -2779,12 +2872,15 @@ const log = {
 
       // Canvasが見つからない場合のデバッグ（簡潔化）
       if (!responseText) {
-        log("Canvasコンテンツが見つかりません", "warning");
+        logWithTimestamp("Canvasコンテンツが見つかりません", "warning");
       }
 
       // Canvasが見つからない場合はアシスタントメッセージから取得
       if (!responseText) {
-        log("Canvasが見つからないため、アシスタントメッセージから取得", "info");
+        logWithTimestamp(
+          "Canvasが見つからないため、アシスタントメッセージから取得",
+          "info",
+        );
 
         // UI_SELECTORSを使用した確実な方式
         const assistantMessages = document.querySelectorAll(
@@ -2805,19 +2901,22 @@ const log = {
           })[normalElements.length - 1];
 
           if (normalElement) {
-            log(
+            logWithTimestamp(
               "🚫 【Step 4-1-7-3】プロンプト除外機能を適用してテキスト取得（通常応答）",
               "info",
             );
             responseText = normalElement.textContent?.trim() || "";
             if (responseText.length > 10) {
-              log(
+              logWithTimestamp(
                 "✅ 【Step 4-1-7-4】プロンプト除外完了 - 純粋なAI応答を取得",
                 "success",
               );
-              log(`テキスト取得成功: ${responseText.length}文字`, "success");
+              logWithTimestamp(
+                `テキスト取得成功: ${responseText.length}文字`,
+                "success",
+              );
             } else {
-              log(
+              logWithTimestamp(
                 `テキストが短すぎます: ${responseText.length}文字`,
                 "warning",
               );
@@ -2827,28 +2926,34 @@ const log = {
 
           // 上記で取得できない場合のフォールバック
           if (!responseText) {
-            log(
+            logWithTimestamp(
               "🚫 【Step 4-1-7-1】プロンプト除外機能を適用してテキスト取得",
               "info",
             );
             const text = getCleanText(lastMessage);
             if (text && text.length > 10) {
               responseText = text;
-              log(
+              logWithTimestamp(
                 "✅ 【Step 4-1-7-2】プロンプト除外完了 - 純粋なAI応答を取得",
                 "success",
               );
-              log(`フォールバック取得成功: ${text.length}文字`, "success");
+              logWithTimestamp(
+                `フォールバック取得成功: ${text.length}文字`,
+                "success",
+              );
             }
           }
         } else {
-          log("❌ アシスタントメッセージが見つかりません", "error");
+          logWithTimestamp(
+            "❌ アシスタントメッセージが見つかりません",
+            "error",
+          );
         }
       }
 
       if (responseText) {
         // テストコード準拠のシンプルな最終確認
-        log("【Step 4-1-7-1】テキスト取得完了", "success");
+        logWithTimestamp("【Step 4-1-7-1】テキスト取得完了", "success");
 
         // 現在表示されているモデルと機能を取得（選択後確認）
         let displayedModel = "";
@@ -2858,21 +2963,33 @@ const log = {
           // ModelInfoExtractorを使用
           if (window.ModelInfoExtractor) {
             displayedModel = window.ModelInfoExtractor.extract("ChatGPT") || "";
-            log(`📊 選択後確認 - 実際のモデル: "${displayedModel}"`, "info");
+            logWithTimestamp(
+              `📊 選択後確認 - 実際のモデル: "${displayedModel}"`,
+              "info",
+            );
           } else {
-            log("⚠️ ModelInfoExtractorが利用できません", "warn");
+            logWithTimestamp("⚠️ ModelInfoExtractorが利用できません", "warn");
           }
 
           // FunctionInfoExtractorを使用
           if (window.FunctionInfoExtractor) {
             displayedFunction =
               window.FunctionInfoExtractor.extract("ChatGPT") || "";
-            log(`📊 選択後確認 - 実際の機能: "${displayedFunction}"`, "info");
+            logWithTimestamp(
+              `📊 選択後確認 - 実際の機能: "${displayedFunction}"`,
+              "info",
+            );
           } else {
-            log("⚠️ FunctionInfoExtractorが利用できません", "warn");
+            logWithTimestamp(
+              "⚠️ FunctionInfoExtractorが利用できません",
+              "warn",
+            );
           }
         } catch (error) {
-          log(`⚠️ モデル/機能情報取得エラー: ${error.message}`, "warn");
+          logWithTimestamp(
+            `⚠️ モデル/機能情報取得エラー: ${error.message}`,
+            "warn",
+          );
         }
 
         log.debug("✅ ChatGPT V2 タスク実行完了");
@@ -3154,6 +3271,28 @@ const log = {
   log.debug(
     "✅ 下位互換性: ChatGPTAutomation と ChatGPTAutomationV2 の両方で利用可能",
   );
+
+  // ChatGPTAutomation オブジェクトを global に公開
+  window.ChatGPTAutomation = window.ChatGPTAutomation || {};
+  Object.assign(window.ChatGPTAutomation, {
+    detectChatGPTModelsAndFeatures,
+    selectModelByIndex,
+    selectFunctionByIndex,
+    sendToUI,
+    executeFullTest,
+    // 既存の関数も公開
+    inputTextChatGPT,
+    sendMessageChatGPT,
+    waitForResponseChatGPT,
+    getResponseTextChatGPT,
+    selectModelChatGPT,
+    selectFunctionChatGPT,
+  });
+
+  logWithTimestamp(
+    "✅ ChatGPT Automation Enhanced - インデックス選択機能追加完了",
+    "success",
+  );
 })();
 
 /*
@@ -3213,7 +3352,14 @@ window.addEventListener("beforeunload", async (event) => {
   }
 });
 
-window.ChatGPTLogManager = ChatGPTLogManager;
+// ChatGPTLogManagerが定義されている場合のみwindowに設定
+if (typeof ChatGPTLogManager !== "undefined") {
+  window.ChatGPTLogManager = ChatGPTLogManager;
+} else {
+  console.warn(
+    "[ChatGPT] ChatGPTLogManager is not defined - スコープ外にある可能性があります",
+  );
+}
 
 // ========================================
 // 【エクスポート】検出システム用関数一覧
@@ -3261,13 +3407,13 @@ async function detectChatGPTModelsAndFeatures() {
     // モデル検出
     const modelBtn = findElement(DETECTION_SELECTORS.modelButton);
     if (modelBtn) {
-      log("モデルメニューボタン発見、クリック実行");
+      logWithTimestamp("モデルメニューボタン発見、クリック実行");
       modelBtn.click();
       await sleep(1500);
 
       const modelMenu = findElement(DETECTION_SELECTORS.modelMenu);
       if (modelMenu) {
-        log("モデルメニュー発見、モデル一覧取得");
+        logWithTimestamp("モデルメニュー発見、モデル一覧取得");
 
         // メインモデルメニューの項目取得
         const mainMenuItems = modelMenu.querySelectorAll(
@@ -3288,7 +3434,7 @@ async function detectChatGPTModelsAndFeatures() {
           );
 
         if (legacyButton) {
-          log("レガシーモデルメニュー発見、追加モデル取得");
+          logWithTimestamp("レガシーモデルメニュー発見、追加モデル取得");
           legacyButton.click();
           await sleep(1500);
 
@@ -3317,13 +3463,13 @@ async function detectChatGPTModelsAndFeatures() {
     // 機能検出
     const funcMenuBtn = findElement(DETECTION_SELECTORS.functionMenuButton);
     if (funcMenuBtn) {
-      log("機能メニューボタン発見、クリック実行");
+      logWithTimestamp("機能メニューボタン発見、クリック実行");
       funcMenuBtn.click();
       await sleep(1500);
 
       const funcMenu = findElement(DETECTION_SELECTORS.functionMenu);
       if (funcMenu) {
-        log("機能メニュー発見、機能一覧取得");
+        logWithTimestamp("機能メニュー発見、機能一覧取得");
 
         // メイン機能を取得
         const menuItems = funcMenu.querySelectorAll('[role="menuitemradio"]');
@@ -3340,7 +3486,7 @@ async function detectChatGPTModelsAndFeatures() {
         ).find((el) => el.textContent && el.textContent.includes("さらに表示"));
 
         if (moreButton) {
-          log("追加機能メニュー発見、サブメニュー取得");
+          logWithTimestamp("追加機能メニュー発見、サブメニュー取得");
           moreButton.click();
           await sleep(1000);
 
@@ -3367,7 +3513,7 @@ async function detectChatGPTModelsAndFeatures() {
     }
 
     const result = { models: availableModels, functions: availableFunctions };
-    log(
+    logWithTimestamp(
       `🔍 ChatGPT検出完了 - モデル: ${availableModels.length}個, 機能: ${availableFunctions.length}個`,
       result,
     );
@@ -3390,7 +3536,7 @@ async function detectChatGPTModelsAndFeatures() {
             functions: availableFunctions,
           },
         });
-        log("✅ UIテーブルにデータを送信しました");
+        logWithTimestamp("✅ UIテーブルにデータを送信しました");
       }
     } catch (error) {
       log.warn("UIへの送信失敗:", error);
@@ -3445,7 +3591,7 @@ async function selectFunctionByIndex(index) {
   }
 
   if (index === 0) {
-    log("🎯 通常モードを選択");
+    logWithTimestamp("🎯 通常モードを選択");
     // 通常モードの場合は何もしない
     return true;
   }
@@ -3482,7 +3628,7 @@ function sendToUI(data) {
           functions: data.functions,
         },
       });
-      log("✅ UIテーブルにデータを手動送信しました");
+      logWithTimestamp("✅ UIテーブルにデータを手動送信しました");
     }
   } catch (error) {
     log.error("UIへの送信失敗:", error);
@@ -3497,33 +3643,33 @@ function sendToUI(data) {
  */
 async function executeFullTest(modelIndex, functionIndex, message) {
   try {
-    log("🚀 完全テスト実行開始");
+    logWithTimestamp("🚀 完全テスト実行開始");
 
     if (!window.ChatGPTAutomation.detectionResult) {
-      log("🔍 検出実行中...");
+      logWithTimestamp("🔍 検出実行中...");
       await detectChatGPTModelsAndFeatures();
     }
 
-    log(`🎯 モデル[${modelIndex}]を選択中...`);
+    logWithTimestamp(`🎯 モデル[${modelIndex}]を選択中...`);
     await selectModelByIndex(modelIndex);
     await sleep(1000);
 
-    log(`🎯 機能[${functionIndex}]を選択中...`);
+    logWithTimestamp(`🎯 機能[${functionIndex}]を選択中...`);
     await selectFunctionByIndex(functionIndex);
     await sleep(1000);
 
-    log(`📨 メッセージ送信中: "${message}"`);
+    logWithTimestamp(`📨 メッセージ送信中: "${message}"`);
     await inputTextChatGPT(message);
     await sleep(500);
     await sendMessageChatGPT();
 
-    log("⏳ 応答待機中...");
+    logWithTimestamp("⏳ 応答待機中...");
     await waitForResponseChatGPT();
 
-    log("📋 応答取得中...");
+    logWithTimestamp("📋 応答取得中...");
     const response = await getResponseTextChatGPT();
 
-    log("✅ 完全テスト完了");
+    logWithTimestamp("✅ 完全テスト完了");
     console.log("応答:", response);
     return response;
   } catch (error) {
@@ -3531,22 +3677,3 @@ async function executeFullTest(modelIndex, functionIndex, message) {
     throw error;
   }
 }
-
-// グローバルに公開
-window.ChatGPTAutomation = window.ChatGPTAutomation || {};
-Object.assign(window.ChatGPTAutomation, {
-  detectChatGPTModelsAndFeatures,
-  selectModelByIndex,
-  selectFunctionByIndex,
-  sendToUI,
-  executeFullTest,
-  // 既存の関数も公開
-  inputTextChatGPT,
-  sendMessageChatGPT,
-  waitForResponseChatGPT,
-  getResponseTextChatGPT,
-  selectModelChatGPT,
-  selectFunctionChatGPT,
-});
-
-log("✅ ChatGPT Automation Enhanced - インデックス選択機能追加完了", "success");
