@@ -1346,15 +1346,12 @@ const log = {
       // ステップ2: モデル選択（条件付き）
       // ========================================
       await logStep("【Step 4-3-2】モデル選択", async () => {
-        // 統合ログ: モデル選択開始
+        // セル情報を取得（統合ログ用）
         const cellInfo =
           taskData.cellReference ||
           taskData.cellInfo ||
           taskData.cell ||
           "不明";
-        console.log(
-          `🎯 [セル ${cellInfo}] モデル選択・機能選択・送信・回答待機 - モデル選択開始: ${modelName}`,
-        );
         log(`【Step 4-3-2-1】選択するモデル: '${modelName}'`, "info");
 
         // モデルを選択（常に実行、Autoでもデフォルトモデルを明示的に選択）
@@ -1649,10 +1646,9 @@ const log = {
                 `【Step 4-3-5-${sendAttempts}】停止ボタンが表示されました - 送信成功`,
                 "success",
               );
-              // 統合ログ: 送信完了
+              // プロンプトプレビューを保存（統合ログ用）
               const promptPreview =
                 text.substring(0, 10) + (text.length > 10 ? "..." : "");
-              console.log(`📤 [セル ${cellInfo}] 送信完了: "${promptPreview}"`);
               break;
             }
             await sleep(1000);
@@ -2011,10 +2007,9 @@ const log = {
         }
 
         log(`【Step 4-3-7-完了】最終的に取得: ${text.length}文字`, "success");
-        // 統合ログ: 回答取得完了（冒頭50文字）
+        // レスポンスプレビューを保存（統合ログ用）
         const responsePreview =
           text.substring(0, 50) + (text.length > 50 ? "..." : "");
-        console.log(`✅ [セル ${cellInfo}] 回答取得完了: "${responsePreview}"`);
         log(
           `【Step 4-3-7-完了】最初の100文字: ${text.substring(0, 100)}...`,
           "info",
@@ -2436,6 +2431,30 @@ const log = {
         resolvedFeature,
         promptText,
       );
+
+      // セル情報を取得（統合ログ用）
+      const cellInfo =
+        taskData.cellReference || taskData.cellInfo || taskData.cell || "不明";
+
+      // 統合ログ: すべての情報を1つのログで出力
+      const promptPreview =
+        promptText.substring(0, 10) + (promptText.length > 10 ? "..." : "");
+      const responsePreview = result.response
+        ? result.response.substring(0, 50) +
+          (result.response.length > 50 ? "..." : "")
+        : "取得失敗";
+      console.log(`🎯 [セル ${cellInfo}] タスク完了`, {
+        モデル: {
+          選択: resolvedModel || "未選択",
+          表示: result.displayedModel || "取得失敗",
+        },
+        機能: {
+          選択: resolvedFeature || "未選択",
+          表示: result.displayedFunction || "取得失敗",
+        },
+        送信: promptPreview,
+        回答: responsePreview,
+      });
 
       log.debug("✅ Gemini タスク実行完了", result);
 

@@ -3927,9 +3927,6 @@
           } catch (error) {
             displayedModel = "取得失敗";
           }
-          console.log(
-            `✅ [セル ${cellInfo}] モデル選択完了: 選択=${modelName} → 表示=${displayedModel}`,
-          );
           log.debug("─".repeat(50));
         } else {
           console.log("  - モデル選択: スキップ（設定なし）");
@@ -4114,9 +4111,6 @@
           } catch (error) {
             displayedFunction = "取得失敗";
           }
-          console.log(
-            `✅ [セル ${cellInfo}] 機能選択完了: 選択=${featureName} → 表示=${displayedFunction}`,
-          );
           log.debug("─".repeat(50));
         } else {
           console.log("  - 機能選択: スキップ（設定なし）");
@@ -4353,10 +4347,6 @@
         }
 
         log.debug("✅ メッセージ送信完了");
-        // 統合ログ: 送信完了
-        const promptPreview =
-          prompt.substring(0, 10) + (prompt.length > 10 ? "..." : "");
-        console.log(`📤 [セル ${cellInfo}] 送信完了: "${promptPreview}"`);
         log.debug(`📤 実際の送信時刻: ${sendTime.toISOString()}`);
         log.debug(`⏱️ 送信処理時間: ${Date.now() - taskStartTime.getTime()}ms`);
 
@@ -5040,7 +5030,6 @@
         // 統合ログ: 回答取得完了（冒頭50文字）
         const responsePreview =
           finalText.substring(0, 50) + (finalText.length > 50 ? "..." : "");
-        console.log(`✅ [セル ${cellInfo}] 回答取得完了: "${responsePreview}"`);
         log.debug(`📊 最終取得文字数: ${finalText.length}文字`);
         log.debug("─".repeat(50));
 
@@ -5114,6 +5103,22 @@
         result.displayedModel = displayedModel;
         result.displayedFunction = displayedFunction;
         result.sendTime = sendTime; // 既存の送信時刻を使用
+
+        // 統合ログ: すべての情報を1つのログで出力
+        const promptPreview =
+          prompt.substring(0, 10) + (prompt.length > 10 ? "..." : "");
+        console.log(`🎯 [セル ${cellInfo}] タスク完了`, {
+          モデル: {
+            選択: modelName || "未選択",
+            表示: displayedModel || "取得失敗",
+          },
+          機能: {
+            選択: featureName || "未選択",
+            表示: displayedFunction || "取得失敗",
+          },
+          送信: promptPreview,
+          回答: responsePreview,
+        });
 
         log.debug(
           "✅ [Claude-Unified] タスク完了 - 統合フローでDropbox→スプレッドシートの順序で処理します",

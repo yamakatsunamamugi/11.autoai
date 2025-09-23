@@ -2242,9 +2242,6 @@ const log = {
             } catch (error) {
               displayedModel = "取得失敗";
             }
-            console.log(
-              `✅ [セル ${cellInfo}] モデル選択完了: 選択=${modelName} → 表示=${displayedModel}`,
-            );
 
             // ========================================
             // ステップ3-7: モデル選択確認（テストコード準拠）
@@ -2524,9 +2521,6 @@ const log = {
             } catch (error) {
               displayedFunction = "取得失敗";
             }
-            console.log(
-              `✅ [セル ${cellInfo}] 機能選択完了: 選択=${featureName} → 表示=${displayedFunction}`,
-            );
 
             // ========================================
             // ステップ4-4: 機能選択確認（テストコード準拠）
@@ -2674,12 +2668,6 @@ const log = {
           `${maxSendAttempts}回試行しても送信が成功しませんでした`,
         );
       }
-
-      // 統合ログ: 送信完了
-      const cellInfo = taskData.cellReference || taskData.cell || "不明";
-      const promptPreview =
-        text.substring(0, 10) + (text.length > 10 ? "..." : "");
-      console.log(`📤 [セル ${cellInfo}] 送信完了: "${promptPreview}"`);
 
       // 送信時刻を記録（SpreadsheetLogger用）
       log(
@@ -2837,11 +2825,6 @@ const log = {
       if (responseText) {
         // テストコード準拠のシンプルな最終確認
         log("【Step 4-1-7-1】テキスト取得完了", "success");
-        // 統合ログ: 回答取得完了（冒頭50文字）
-        const responsePreview =
-          responseText.substring(0, 50) +
-          (responseText.length > 50 ? "..." : "");
-        console.log(`✅ [セル ${cellInfo}] 回答取得完了: "${responsePreview}"`);
 
         // 現在表示されているモデルと機能を取得（選択後確認）
         let displayedModel = "";
@@ -2869,6 +2852,27 @@ const log = {
         }
 
         log.debug("✅ ChatGPT V2 タスク実行完了");
+
+        // 統合ログ: タスク完了サマリー
+        const cellInfo = taskData.cellReference || taskData.cell || "不明";
+        const promptPreview =
+          text.substring(0, 10) + (text.length > 10 ? "..." : "");
+        const responsePreview =
+          responseText.substring(0, 50) +
+          (responseText.length > 50 ? "..." : "");
+
+        console.log(`🎯 [セル ${cellInfo}] タスク完了`, {
+          モデル: {
+            選択: modelName || "未選択",
+            表示: displayedModel || "取得失敗",
+          },
+          機能: {
+            選択: featureName || "未選択",
+            表示: displayedFunction || "取得失敗",
+          },
+          送信: promptPreview,
+          回答: responsePreview,
+        });
 
         const result = {
           success: true,

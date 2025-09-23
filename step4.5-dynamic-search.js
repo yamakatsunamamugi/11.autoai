@@ -90,6 +90,11 @@ class DynamicTaskSearch {
     log.info("🔄 スプレッドシート最新データ取得中...");
 
     try {
+      // 依存関係チェック
+      if (!window.fetchWithTokenRefresh) {
+        throw new Error("fetchWithTokenRefresh が初期化されていません");
+      }
+
       // グローバル状態から必要な情報を取得
       const spreadsheetId = window.globalState?.spreadsheetId;
       const authToken = window.globalState?.authToken;
@@ -103,7 +108,7 @@ class DynamicTaskSearch {
       const range = "A1:Z1000";
       const apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}`;
 
-      const response = await fetch(apiUrl, {
+      const response = await window.fetchWithTokenRefresh(apiUrl, {
         method: "GET",
         headers: {
           Authorization: `Bearer ${authToken}`,
@@ -397,22 +402,54 @@ class DynamicTaskSearch {
 }
 
 // ========================================
-// グローバルインスタンス作成
+// Lazy Initialization関数
 // ========================================
-if (typeof window !== "undefined") {
+function getDynamicTaskSearchInstance() {
+  // 必要な依存関係がそろっているかチェック
+  if (!window.fetchWithTokenRefresh) {
+    log.warn(
+      "⚠️ fetchWithTokenRefresh が未初期化のため、DynamicTaskSearchを作成できません",
+    );
+    return null;
+  }
+
+  if (!window.globalState) {
+    log.warn(
+      "⚠️ globalState が未初期化のため、DynamicTaskSearchを作成できません",
+    );
+    return null;
+  }
+
   // シングルトンインスタンスとして作成
   if (!window.DynamicTaskSearch) {
     window.DynamicTaskSearch = new DynamicTaskSearch();
-    log.info("📦 window.DynamicTaskSearch を初期化");
+    log.info("📦 window.DynamicTaskSearch を遅延初期化");
   }
 
-  // 互換性のための関数エクスポート
+  return window.DynamicTaskSearch;
+}
+
+// ========================================
+// グローバル関数のエクスポート
+// ========================================
+if (typeof window !== "undefined") {
+  // 互換性のための関数エクスポート（遅延初期化対応）
   window.findNextAvailableTaskDynamic = async function () {
-    return await window.DynamicTaskSearch.findNextTask();
+    const instance = getDynamicTaskSearchInstance();
+    if (!instance) {
+      log.error("❌ DynamicTaskSearchインスタンスを初期化できません");
+      return null;
+    }
+    return await instance.findNextTask();
   };
 
   window.registerTaskCompletionDynamic = function (taskId) {
-    return window.DynamicTaskSearch.registerTaskCompletion(taskId);
+    const instance = getDynamicTaskSearchInstance();
+    if (!instance) {
+      log.error("❌ DynamicTaskSearchインスタンスを初期化できません");
+      return null;
+    }
+    return instance.registerTaskCompletion(taskId);
   };
 }
 
