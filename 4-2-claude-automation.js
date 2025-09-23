@@ -3773,10 +3773,33 @@
               let detectedFunctions = [];
               try {
                 console.log("🔧 Claude機能情報検出も試行中...");
+                console.log(
+                  "  モデルメニューを閉じてから機能メニューを開きます",
+                );
                 detectedFunctions = await detectClaudeFunctionsFromOpenMenu();
                 console.log("🔧 検出されたClaude機能:", detectedFunctions);
+
+                if (detectedFunctions.length > 0) {
+                  console.log("📝 検出された機能一覧:");
+                  detectedFunctions.forEach((func, i) => {
+                    const toggleStatus = func.isToggleable
+                      ? func.isToggled
+                        ? "[ON]"
+                        : "[OFF]"
+                      : "";
+                    const secretStatus = func.secretStatus
+                      ? `(${func.secretStatus})`
+                      : "";
+                    console.log(
+                      `  ${i + 1}. ${func.name} ${toggleStatus} ${secretStatus}`,
+                    );
+                  });
+                } else {
+                  console.log("⚠️ 機能が検出されませんでした");
+                }
               } catch (functionError) {
                 console.log("⚠️ 機能検出エラー（継続）:", functionError);
+                console.error("エラー詳細:", functionError);
               }
 
               // UIに送信（データが取得できた場合のみ）
@@ -6055,20 +6078,93 @@
       // Claude 機能検出関数（テスト済み）
       // ========================================
 
-      // Claude機能メニュー検出関数
+      // Claude機能メニュー検出関数（修正版：機能メニューを開いてから検出）
       async function detectClaudeFunctionsFromOpenMenu() {
         console.log("🔧 Claude機能検出開始");
 
-        // 機能メニューのコンテンツを見つける
-        let contentDiv = document.querySelector(
-          "div.w-full > div.p-1\\.5.flex.flex-col",
+        // Step 1: 機能メニューボタンを探す
+        console.log("📍 機能メニューボタンを探しています...");
+
+        let functionButton = null;
+
+        // SVGパスを含むボタンを探す
+        const pathElement = document.querySelector('path[d*="M40,88H73a32"]');
+        if (pathElement) {
+          // pathから親のbutton要素を探す
+          functionButton = pathElement.closest("button");
+          console.log("  ✅ SVGアイコンから機能ボタンを発見");
+        }
+
+        if (!functionButton) {
+          // 代替方法：aria-expandedを持つボタンをすべて取得
+          const expandableButtons = document.querySelectorAll(
+            "button[aria-expanded]",
+          );
+          console.log(`  展開可能なボタン数: ${expandableButtons.length}`);
+
+          // 各ボタンを確認（2番目のlistboxボタンが機能の可能性）
+          for (let i = 0; i < expandableButtons.length; i++) {
+            const btn = expandableButtons[i];
+            const text = btn.textContent?.trim() || "";
+
+            // モデル選択ボタンでないことを確認
+            if (
+              !text.match(/Claude|Sonnet|Opus|Haiku/i) &&
+              btn.getAttribute("aria-haspopup") === "listbox" &&
+              i > 0
+            ) {
+              functionButton = btn;
+              console.log(
+                `  ✅ 機能ボタンの可能性が高いボタンを発見（位置: ${i + 1}）`,
+              );
+              break;
+            }
+          }
+        }
+
+        if (!functionButton) {
+          console.log("❌ 機能メニューボタンが見つかりません");
+          return [];
+        }
+
+        // Step 2: 機能メニューを開く
+        const isExpanded =
+          functionButton.getAttribute("aria-expanded") === "true";
+        console.log(
+          `  現在の機能メニュー状態: ${isExpanded ? "開いている" : "閉じている"}`,
         );
 
-        if (!contentDiv) {
-          // フォールバック: より広範囲で探す
-          contentDiv = document.querySelector(
-            'div[class*="p-1.5"][class*="flex-col"]',
-          );
+        if (!isExpanded) {
+          console.log("  機能メニューを開いています...");
+          functionButton.click();
+          // メニューが開くのを待つ
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          console.log("  ✅ 機能メニューを開きました");
+        }
+
+        // Step 3: 機能メニューのコンテンツを見つける
+        console.log("📍 機能メニューコンテンツを検出中...");
+
+        let contentDiv = null;
+
+        // 複数のセレクタで検索
+        const menuSelectors = [
+          "div.absolute div.p-1\\.5.flex.flex-col",
+          "div[role='listbox']:last-of-type",
+          'div[class*="p-1.5"][class*="flex-col"]',
+          "div.w-full > div.p-1\\.5.flex.flex-col",
+        ];
+
+        for (const selector of menuSelectors) {
+          const elements = document.querySelectorAll(selector);
+          if (elements.length > 0) {
+            // 最後の要素（最新のメニュー）を取得
+            contentDiv = elements[elements.length - 1];
+            console.log(
+              `  ✅ メニューコンテンツを発見 (セレクタ: ${selector})`,
+            );
+            break;
+          }
         }
 
         if (!contentDiv) {
@@ -6076,27 +6172,63 @@
           return [];
         }
 
-        console.log("✅ 機能メニューのコンテンツが見つかりました");
+        console.log("✅ 機能メニューのコンテンツを検出しました");
         return extractFunctionsFromMenu(contentDiv);
       }
 
-      // メニューから機能情報を抽出
+      // メニューから機能情報を抽出（改善版）
       function extractFunctionsFromMenu(contentDiv) {
         const functions = [];
 
-        // 検索ボックス以外のボタンを取得
-        const buttons = contentDiv.querySelectorAll(
-          'button:not([id*="search"])',
-        );
+        // すべてのボタンを取得
+        const allButtons = contentDiv.querySelectorAll("button");
+        console.log(`📋 総ボタン数: ${allButtons.length}`);
 
-        console.log(`📋 機能ボタン数: ${buttons.length}`);
+        // 検索ボックスを除外
+        const buttons = Array.from(allButtons).filter((btn) => {
+          const id = btn.id || "";
+          const text = btn.textContent || "";
+          return !id.includes("search") && !text.includes("Search");
+        });
+
+        console.log(`📋 機能ボタン数（検索除外後）: ${buttons.length}`);
 
         buttons.forEach((button, index) => {
-          // 機能名を取得
-          const nameElement = button.querySelector("p.font-base.text-text-300");
-          if (!nameElement) return;
+          // テキスト要素を探す
+          const textElements = button.querySelectorAll("p, span");
 
-          const functionName = nameElement.textContent.trim();
+          let functionName = "";
+          let description = "";
+
+          // 機能名と説明を抽出
+          textElements.forEach((elem) => {
+            const text = elem.textContent?.trim() || "";
+            const className = elem.className || "";
+
+            // 名前（大きいフォント）
+            if (
+              className.includes("font-base") ||
+              className.includes("font-medium") ||
+              className.includes("text-text-300")
+            ) {
+              if (!functionName) functionName = text;
+            }
+            // 説明（小さいフォント）
+            else if (
+              className.includes("font-small") ||
+              className.includes("text-500")
+            ) {
+              if (!description) description = text;
+            }
+          });
+
+          // 機能名がない場合はボタンのテキスト全体から取得
+          if (!functionName && button.textContent?.trim()) {
+            functionName = button.textContent.trim().split("\n")[0];
+          }
+
+          // 無効な機能名をスキップ
+          if (!functionName || functionName === "1") return;
 
           // 説明を取得
           const descElement = button.querySelector(
