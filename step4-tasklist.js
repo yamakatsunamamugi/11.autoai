@@ -201,11 +201,21 @@ async function executeAsyncBatchProcessing(batchPromises, originalTasks = []) {
  * 個別タスク完了時の処理（安全実装）
  */
 async function handleIndividualTaskCompletion(result, taskIndex) {
+  log.info(`🎯🎯🎯 [個別完了処理] 関数呼び出し開始 タスク[${taskIndex}]`);
+
   try {
     log.info(`🎯 [個別完了処理] タスク[${taskIndex}]開始:`, {
       taskId: result.taskId,
       success: result.success,
       hasResponse: !!result.response,
+      BATCH_CONFIG: {
+        ENABLE_IMMEDIATE_SPREADSHEET:
+          BATCH_PROCESSING_CONFIG.ENABLE_IMMEDIATE_SPREADSHEET,
+        ENABLE_IMMEDIATE_WINDOW_CLOSE:
+          BATCH_PROCESSING_CONFIG.ENABLE_IMMEDIATE_WINDOW_CLOSE,
+        ENABLE_DYNAMIC_NEXT_TASK:
+          BATCH_PROCESSING_CONFIG.ENABLE_DYNAMIC_NEXT_TASK,
+      },
     });
 
     // Phase 2: 即座スプレッドシート記載
@@ -412,6 +422,21 @@ async function findNextAvailableTask() {
   try {
     log.info("🔍 [次タスク検索] 開始");
 
+    // デバッグ: 利用可能な機能を確認
+    log.debug("🔍 [次タスク検索デバッグ] 利用可能機能確認:", {
+      hasDynamicSearch:
+        typeof window.findNextAvailableTaskDynamic === "function",
+      hasRegisterCompletion:
+        typeof window.registerTaskCompletionDynamic === "function",
+      hasDynamicTaskSearchClass:
+        typeof window.DynamicTaskSearch !== "undefined",
+      globalState: {
+        exists: !!window.globalState,
+        currentGroup: window.globalState?.currentGroup,
+        spreadsheetId: window.globalState?.spreadsheetId,
+      },
+    });
+
     // step4.5-dynamic-search.jsの動的検索システムを使用
     if (typeof window.findNextAvailableTaskDynamic === "function") {
       log.debug("🔗 [次タスク検索] DynamicTaskSearchを使用");
@@ -503,22 +528,56 @@ async function openAIWindowForTask(task) {
       return null;
     }
 
+    // StableWindowManager.positionToWindowの初期化確認
+    if (!StableWindowManager.positionToWindow) {
+      log.warn("⚠️ [AIウィンドウ開く] positionToWindow未初期化、初期化実行");
+      StableWindowManager.positionToWindow = new Map();
+    }
+
     // StepIntegratedWindowServiceの状態確認
     log.debug("🔍 [AIウィンドウ開く] StepIntegratedWindowService状態:", {
       serviceExists: typeof StepIntegratedWindowService !== "undefined",
       hasPositionToWindow:
-        StepIntegratedWindowService &&
-        StepIntegratedWindowService.positionToWindow,
-      positionMapSize: StepIntegratedWindowService?.positionToWindow?.size || 0,
-      positionMapEntries: StepIntegratedWindowService?.positionToWindow
-        ? Array.from(StepIntegratedWindowService.positionToWindow.entries())
+        StableWindowManager && StableWindowManager.positionToWindow,
+      positionMapSize: StableWindowManager?.positionToWindow?.size || 0,
+      positionMapEntries: StableWindowManager?.positionToWindow
+        ? Array.from(StableWindowManager.positionToWindow.entries())
         : [],
     });
 
     // 利用可能なpositionを検索
     log.debug("🔍 [AIウィンドウ開く] findAvailablePosition呼び出し前");
     const availablePosition = window.windowController.findAvailablePosition();
-    log.info(`🎯 [AIウィンドウ開く] 利用可能なposition: ${availablePosition}`);
+    log.info(`🎯 [AIウィンドウ開く] 検索結果 position: ${availablePosition}`);
+
+    // 既存ウィンドウとの競合チェック
+    if (availablePosition !== null) {
+      // 現在のopenedWindowsの状態を確認
+      const openedWindowsInfo = Array.from(
+        window.windowController.openedWindows.entries(),
+      );
+      log.info(`🔍 [競合チェック] 現在のウィンドウ状態:`, {
+        position: availablePosition,
+        openedWindowsCount: openedWindowsInfo.length,
+        openedWindows: openedWindowsInfo.map(([key, value]) => ({
+          key,
+          windowId: value.windowId,
+          tabId: value.tabId,
+          position: value.position,
+        })),
+      });
+
+      // StableWindowManagerのpositionToWindowも確認
+      if (StableWindowManager.positionToWindow) {
+        const positionMap = Array.from(
+          StableWindowManager.positionToWindow.entries(),
+        );
+        log.info(
+          `🔍 [競合チェック] StableWindowManager.positionToWindow:`,
+          positionMap,
+        );
+      }
+    }
 
     // 単一ウィンドウレイアウトを作成
     const windowLayout = [
@@ -543,6 +602,12 @@ async function openAIWindowForTask(task) {
       layoutLength: windowLayout.length,
       taskAiType: task.aiType,
       targetPosition: availablePosition,
+      windowControllerState: {
+        hasOpenedWindows: window.windowController.openedWindows?.size,
+        openedWindowsKeys: Array.from(
+          window.windowController.openedWindows?.keys() || [],
+        ),
+      },
     });
 
     // 既存のopenWindowsメソッドを使用して単一ウィンドウを開く
@@ -550,7 +615,7 @@ async function openAIWindowForTask(task) {
     const windowResults =
       await window.windowController.openWindows(windowLayout);
 
-    log.debug("🔍 [AIウィンドウ開く] openWindows結果詳細:", {
+    log.debug("🔍 [AIウィンドウ開く] openWindows戻り値詳細:", {
       resultsExists: !!windowResults,
       resultsType: typeof windowResults,
       resultsLength: Array.isArray(windowResults)
@@ -563,6 +628,9 @@ async function openAIWindowForTask(task) {
         windowResults && windowResults.length > 0
           ? windowResults[0].success
           : null,
+      hasTabId: !!windowResults?.[0]?.tabId,
+      tabIdValue: windowResults?.[0]?.tabId,
+      windowIdValue: windowResults?.[0]?.windowId,
     });
 
     if (windowResults && windowResults.length > 0 && windowResults[0].success) {
@@ -577,12 +645,15 @@ async function openAIWindowForTask(task) {
         fullResult: windowResult,
       });
 
-      return {
+      const result = {
         tabId: windowResult.tabId,
         windowId: windowResult.windowId,
         url: windowResult.url,
         position: availablePosition,
       };
+
+      log.info("✅ [AIウィンドウ開く] 最終的な戻り値:", result);
+      return result;
     }
 
     log.error("❌ [AIウィンドウ開く] ウィンドウ作成失敗:", {
@@ -617,16 +688,40 @@ async function openAIWindowForTask(task) {
  */
 async function executeTaskIndependently(task) {
   try {
-    log.info("🚀 [独立タスク実行] 開始:", {
+    log.info("🚀 [独立タスク実行] 開始 - 詳細:", {
       taskId: task.id,
       aiType: task.aiType,
+      hasTabId: !!task.tabId,
       tabId: task.tabId,
+      hasWindowId: !!task.windowId,
       windowId: task.windowId,
+      taskKeys: Object.keys(task),
     });
 
-    // 既存のexecuteNormalAITask関数を活用
-    if (typeof executeNormalAITask === "function") {
-      const result = await executeNormalAITask(task);
+    // Content Script初期化待機（新しいウィンドウの場合）
+    if (task.tabId && task.windowId) {
+      log.info("⏳ [独立タスク実行] Content Script初期化待機開始（3秒）");
+      await new Promise((resolve) => setTimeout(resolve, 3000)); // 3秒待機
+
+      // Content Script準備確認
+      try {
+        const response = await chrome.tabs.sendMessage(task.tabId, {
+          action: "ping",
+          from: "independent-task-executor",
+        });
+        log.info("✅ [独立タスク実行] Content Script応答確認:", response);
+      } catch (e) {
+        log.warn("⚠️ [独立タスク実行] Content Script未応答、続行:", e.message);
+      }
+    }
+
+    // windowに保存されたexecuteNormalAITask関数をチェック
+    if (
+      window._executeNormalAITask &&
+      typeof window._executeNormalAITask === "function"
+    ) {
+      log.debug("🔍 [独立タスク実行] _executeNormalAITask使用");
+      const result = await window._executeNormalAITask(task);
 
       log.info("✅ [独立タスク実行] 完了:", {
         taskId: task.id,
@@ -641,12 +736,105 @@ async function executeTaskIndependently(task) {
 
       return result;
     } else {
-      log.error("❌ [独立タスク実行] executeNormalAITask関数が利用不可");
-      return { success: false, error: "executeNormalAITask not available" };
+      log.warn(
+        "⚠️ [独立タスク実行] window._executeNormalAITask関数が利用不可、簡易実行モードを使用",
+      );
+      // 簡易実行モードで直接タスクを実行
+      const result = await executeSimpleTask(task);
+      return result;
     }
   } catch (error) {
     log.error("❌ [独立タスク実行] エラー:", error);
     return { success: false, error: error.message };
+  }
+}
+
+/**
+ * 簡易タスク実行（動的タスク用）
+ */
+async function executeSimpleTask(task) {
+  try {
+    // WindowControllerからタブ情報を取得
+    const windowInfo = window.windowController?.openedWindows?.get(
+      task.aiType?.toLowerCase(),
+    );
+    const tabId = windowInfo?.tabId || task.tabId;
+
+    if (!tabId) {
+      log.error("❌ [簡易タスク実行] タブIDが見つかりません");
+      return { success: false, error: "Tab ID not found" };
+    }
+
+    log.info("📝 [簡易タスク実行] タスク送信開始:", {
+      taskId: task.id,
+      tabId: tabId,
+      aiType: task.aiType,
+    });
+
+    // Content Scriptに直接メッセージを送信
+    const response = await chrome.tabs.sendMessage(tabId, {
+      action: "executeTask",
+      task: {
+        ...task,
+        taskId: task.id,
+        tabId: tabId,
+        model: task.model || "Claude Opus 4.1",
+      },
+      from: "step4-tasklist-simple",
+    });
+
+    log.info("✅ [簡易タスク実行] 応答受信:", {
+      taskId: task.id,
+      success: response?.success,
+    });
+
+    // 結果を記録
+    if (response?.success && response?.response) {
+      const cellRef = `${task.column}${task.row}`;
+      await updateSpreadsheetCell(cellRef, response.response);
+    }
+
+    return {
+      success: response?.success || false,
+      response: response?.response,
+      taskId: task.id,
+    };
+  } catch (error) {
+    log.error("❌ [簡易タスク実行] エラー:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * スプレッドシートのセルを更新
+ */
+async function updateSpreadsheetCell(cellRef, value) {
+  try {
+    if (!window.globalState?.spreadsheetId || !window.globalState?.authToken) {
+      log.warn("⚠️ [セル更新] 認証情報が不足");
+      return;
+    }
+
+    const apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${window.globalState.spreadsheetId}/values/${cellRef}?valueInputOption=USER_ENTERED`;
+
+    const response = await fetch(apiUrl, {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${window.globalState.authToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        values: [[value]],
+      }),
+    });
+
+    if (response.ok) {
+      log.info("✅ [セル更新] 成功:", cellRef);
+    } else {
+      log.error("❌ [セル更新] 失敗:", await response.text());
+    }
+  } catch (error) {
+    log.error("❌ [セル更新] エラー:", error);
   }
 }
 
@@ -1337,16 +1525,49 @@ class StepIntegratedWindowService {
       // 既存ウィンドウが使用中の場合は閉じる
       if (this.windowPositions.has(position)) {
         const existingWindowId = this.windowPositions.get(position);
-        log.debug(
-          `🔄 [StepIntegratedWindowService] position=${position}の既存ウィンドウ${existingWindowId}を閉じます`,
+
+        // 詳細ログ追加
+        log.warn(
+          `⚠️ [ウィンドウ競合検出] position=${position}に既存ウィンドウ${existingWindowId}が存在`,
         );
 
-        try {
-          await chrome.windows.remove(existingWindowId);
-          this.windowPositions.delete(position);
-          await new Promise((resolve) => setTimeout(resolve, 500)); // 削除完了待ち
-        } catch (error) {
-          log.warn("既存ウィンドウ削除エラー（続行）:", error);
+        // 使用中チェック
+        const isInUse = await this.checkWindowInUse(existingWindowId);
+
+        if (isInUse) {
+          log.warn(
+            `🔒 [ウィンドウ保護] windowId=${existingWindowId}は処理中のため保持、別のpositionを使用`,
+          );
+          // 別のpositionを試す（0-3の範囲で）
+          for (let altPosition = 0; altPosition < 4; altPosition++) {
+            if (
+              altPosition !== position &&
+              !this.windowPositions.has(altPosition)
+            ) {
+              log.info(`🔄 [代替position] position=${altPosition}を使用`);
+              position = altPosition;
+              break;
+            }
+          }
+          // それでも見つからない場合は元のpositionを使用（既存ウィンドウは保持）
+          if (this.windowPositions.has(position)) {
+            log.warn(
+              `⚠️ [position競合] すべてのpositionが使用中、既存ウィンドウを保持`,
+            );
+            return null;
+          }
+        } else {
+          log.info(
+            `🔄 [ウィンドウ削除] position=${position}の未使用ウィンドウ${existingWindowId}を削除`,
+          );
+
+          try {
+            await chrome.windows.remove(existingWindowId);
+            this.windowPositions.delete(position);
+            await new Promise((resolve) => setTimeout(resolve, 500)); // 削除完了待ち
+          } catch (error) {
+            log.warn("既存ウィンドウ削除エラー（続行）:", error);
+          }
         }
       }
 
@@ -1504,9 +1725,19 @@ class StepIntegratedWindowService {
         `✅ [StepIntegratedWindowService] ウィンドウ作成完了: windowId=${window.id}, position=${position}`,
       );
 
+      // デバッグログ：戻り値の詳細
+      log.debug("🔍 [createWindowWithPosition] ウィンドウ作成後の詳細:", {
+        windowId: window.id,
+        tabsCount: window.tabs?.length,
+        firstTabId: window.tabs?.[0]?.id,
+        firstTabUrl: window.tabs?.[0]?.url,
+        windowState: window.state,
+      });
+
       return {
         id: window.id,
         tabs: window.tabs,
+        tabId: window.tabs?.[0]?.id, // タブIDを明示的に追加
         ...window,
       };
     } catch (error) {
@@ -1515,6 +1746,60 @@ class StepIntegratedWindowService {
         error,
       );
       throw error;
+    }
+  }
+
+  /**
+   * ウィンドウが使用中かチェック
+   */
+  static async checkWindowInUse(windowId) {
+    try {
+      log.debug(`🔍 [使用中チェック] windowId=${windowId}の状態確認開始`);
+
+      // ウィンドウの存在確認
+      try {
+        const window = await chrome.windows.get(windowId);
+        if (!window) {
+          log.debug(`[使用中チェック] ウィンドウ${windowId}は存在しない`);
+          return false;
+        }
+      } catch (e) {
+        log.debug(`[使用中チェック] ウィンドウ${windowId}は既に閉じられている`);
+        return false;
+      }
+
+      // タブでContent Scriptが動作中かチェック
+      const tabs = await chrome.tabs.query({ windowId });
+      log.debug(`[使用中チェック] タブ数: ${tabs.length}`);
+
+      for (const tab of tabs) {
+        try {
+          // Content Scriptにpingを送信
+          const response = await chrome.tabs.sendMessage(tab.id, {
+            action: "ping",
+            timestamp: Date.now(),
+          });
+
+          if (
+            response &&
+            (response.action === "pong" || response.status === "ready")
+          ) {
+            log.info(
+              `✅ [使用中チェック] タブ${tab.id}でContent Script動作中、windowId=${windowId}は使用中`,
+            );
+            return true;
+          }
+        } catch (e) {
+          // Content Scriptが存在しない場合はエラーになるが、それは正常
+          log.debug(`[使用中チェック] タブ${tab.id}にContent Scriptなし`);
+        }
+      }
+
+      log.debug(`[使用中チェック] windowId=${windowId}は使用中でない`);
+      return false;
+    } catch (error) {
+      log.error(`❌ [使用中チェック] エラー:`, error);
+      return false;
     }
   }
 
@@ -3167,6 +3452,10 @@ class WindowController {
             aiType: layout.aiType,
             success: true,
             windowId: windowInfo.id,
+            tabId:
+              windowInfo.tabs && windowInfo.tabs[0]
+                ? windowInfo.tabs[0].id
+                : undefined,
             position: layout.position,
           };
         } else {
@@ -3714,21 +4003,53 @@ class WindowController {
    * @returns {number} 利用可能なposition (0-3)
    */
   findAvailablePosition() {
-    // positionToWindowマップから利用可能なpositionを検索
-    for (let position = 0; position < 4; position++) {
-      if (!StepIntegratedWindowService.positionToWindow.has(position)) {
-        ExecuteLogger.debug(
-          `🎯 [findAvailablePosition] 利用可能なposition発見: ${position}`,
-        );
-        return position;
-      }
-    }
+    try {
+      ExecuteLogger.debug(`🔍 [findAvailablePosition] 検索開始`);
 
-    // 全てのpositionが使用中の場合、position 0を強制使用（上書き）
-    ExecuteLogger.warn(
-      "⚠️ [findAvailablePosition] 全positionが使用中、position 0を上書き使用",
-    );
-    return 0;
+      // positionToWindowが未初期化の場合は初期化
+      if (!StableWindowManager.positionToWindow) {
+        ExecuteLogger.warn(
+          "⚠️ [findAvailablePosition] positionToWindow未初期化、初期化実行",
+        );
+        StableWindowManager.positionToWindow = new Map();
+      }
+
+      // 現在の使用状況をログ出力
+      const currentPositions = Array.from(
+        StableWindowManager.positionToWindow.entries(),
+      );
+      ExecuteLogger.debug(
+        `🔍 [findAvailablePosition] 現在の使用状況:`,
+        currentPositions,
+      );
+
+      // positionToWindowマップから利用可能なpositionを検索
+      for (let position = 0; position < 4; position++) {
+        const isUsed = StableWindowManager.positionToWindow.has(position);
+        ExecuteLogger.debug(
+          `   position ${position}: ${isUsed ? "使用中" : "利用可能"}`,
+        );
+
+        if (!isUsed) {
+          ExecuteLogger.debug(
+            `🎯 [findAvailablePosition] 利用可能なposition発見: ${position}`,
+          );
+          return position;
+        }
+      }
+
+      // 全てのpositionが使用中の場合
+      ExecuteLogger.warn(
+        "⚠️ [findAvailablePosition] 全positionが使用中、position 0を上書き使用",
+      );
+      return 0;
+    } catch (error) {
+      ExecuteLogger.error(
+        "❌ [findAvailablePosition] エラー発生、デフォルトでposition 0を返す:",
+        error,
+      );
+      return 0;
+    }
   }
 
   /**
@@ -5310,6 +5631,9 @@ async function executeStep4(taskList) {
 
       // TaskStatusManagerをグローバルに設定
       window.taskStatusManager = statusManager;
+
+      // executeNormalAITask関数をグローバルに登録（動的タスク実行用）
+      window._executeNormalAITask = executeNormalAITask;
 
       // 現在のグループ情報を設定（最初のタスクから取得）
       if (enrichedTaskList && enrichedTaskList.length > 0) {
