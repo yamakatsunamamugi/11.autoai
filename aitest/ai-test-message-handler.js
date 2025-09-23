@@ -130,24 +130,41 @@
               break;
 
             case "chatgpt":
-              // ChatGPTのモデル・機能探索
-              if (
-                window.ChatGPTAutomation &&
-                typeof window.ChatGPTAutomation
-                  .detectChatGPTModelsAndFeatures === "function"
-              ) {
-                console.log(`📋 [ChatGPT] Detecting models and features...`);
-                try {
-                  result =
-                    await window.ChatGPTAutomation.detectChatGPTModelsAndFeatures();
-                  console.log(`✅ [ChatGPT] Detection completed:`, result);
-                } catch (error) {
-                  console.error(`❌ [ChatGPT] Detection error:`, error);
-                  result = { models: [], features: [] };
+              // ChatGPTのモデル・機能探索（再試行ロジック付き）
+              let detectionRetryCount = 0;
+              const detectionMaxRetries = 30; // 6秒間（200ms × 30回）
+
+              while (detectionRetryCount < detectionMaxRetries) {
+                if (
+                  window.ChatGPTAutomation &&
+                  typeof window.ChatGPTAutomation
+                    .detectChatGPTModelsAndFeatures === "function"
+                ) {
+                  console.log(
+                    `📋 [ChatGPT] Detecting models and features... (retry ${detectionRetryCount})`,
+                  );
+                  try {
+                    result =
+                      await window.ChatGPTAutomation.detectChatGPTModelsAndFeatures();
+                    console.log(`✅ [ChatGPT] Detection completed:`, result);
+                    break;
+                  } catch (error) {
+                    console.error(`❌ [ChatGPT] Detection error:`, error);
+                    result = { models: [], features: [] };
+                    break;
+                  }
                 }
-              } else {
+
                 console.log(
-                  `⚠️ [ChatGPT] detectChatGPTModelsAndFeatures not available`,
+                  `⏳ [ChatGPT] Waiting for detection functions... (${detectionRetryCount}/${detectionMaxRetries})`,
+                );
+                await new Promise((resolve) => setTimeout(resolve, 200));
+                detectionRetryCount++;
+              }
+
+              if (detectionRetryCount >= detectionMaxRetries) {
+                console.log(
+                  `⚠️ [ChatGPT] detectChatGPTModelsAndFeatures not available after retries`,
                 );
                 result = { models: [], features: [] };
               }
@@ -341,45 +358,67 @@
             console.log(`📝 [ChatGPT] actualPrompt:`, actualPrompt);
             console.log(`📝 [ChatGPT] actualPrompt type:`, typeof actualPrompt);
 
-            // 既存のexecuteTask関数を直接使用
-            if (typeof window.ChatGPTAutomationV2?.executeTask === "function") {
-              console.log(`✅ [ChatGPT] Using ChatGPTAutomationV2.executeTask`);
-              const result =
-                await window.ChatGPTAutomationV2.executeTask(taskData);
-              return {
-                success: true,
-                result: result,
-                timestamp: new Date().toISOString(),
-              };
-            } else if (
-              typeof window.ChatGPTAutomationV2?.runAutomation === "function"
-            ) {
+            // ChatGPTAutomationV2の読み込みを待機（最大10秒）
+            let retryCount = 0;
+            const maxRetries = 50; // 10秒間（200ms × 50回）
+
+            while (retryCount < maxRetries) {
+              if (
+                typeof window.ChatGPTAutomationV2?.executeTask === "function"
+              ) {
+                console.log(
+                  `✅ [ChatGPT] Using ChatGPTAutomationV2.executeTask (retry ${retryCount})`,
+                );
+                const result =
+                  await window.ChatGPTAutomationV2.executeTask(taskData);
+                return {
+                  success: true,
+                  result: result,
+                  timestamp: new Date().toISOString(),
+                };
+              } else if (
+                typeof window.ChatGPTAutomationV2?.runAutomation === "function"
+              ) {
+                console.log(
+                  `✅ [ChatGPT] Using ChatGPTAutomationV2.runAutomation (retry ${retryCount})`,
+                );
+                const config = {
+                  prompt: actualPrompt,
+                  model: taskData?.model || "",
+                  feature: taskData?.feature || "",
+                };
+
+                console.log(`📝 [ChatGPT] runAutomation config:`, config);
+                const result =
+                  await window.ChatGPTAutomationV2.runAutomation(config);
+
+                return {
+                  success: true,
+                  result: result,
+                  timestamp: new Date().toISOString(),
+                };
+              }
+
+              // まだ利用できない場合は少し待つ
               console.log(
-                `✅ [ChatGPT] Using ChatGPTAutomationV2.runAutomation`,
+                `⏳ [ChatGPT] Waiting for automation functions... (${retryCount}/${maxRetries})`,
               );
-              const config = {
-                prompt: actualPrompt,
-                model: taskData?.model || "",
-                feature: taskData?.feature || "",
-              };
+              await new Promise((resolve) => setTimeout(resolve, 200));
+              retryCount++;
+            }
 
-              console.log(`📝 [ChatGPT] runAutomation config:`, config);
-              const result =
-                await window.ChatGPTAutomationV2.runAutomation(config);
-
-              return {
-                success: true,
-                result: result,
-                timestamp: new Date().toISOString(),
-              };
-            } else {
-              console.error(`❌ [ChatGPT] Available functions:`, {
+            // 最終的に見つからない場合
+            console.error(
+              `❌ [ChatGPT] Available functions after ${maxRetries} retries:`,
+              {
                 ChatGPTAutomationV2: typeof window.ChatGPTAutomationV2,
                 executeTask: typeof window.ChatGPTAutomationV2?.executeTask,
                 runAutomation: typeof window.ChatGPTAutomationV2?.runAutomation,
-              });
-              throw new Error("ChatGPT automation functions not available");
-            }
+              },
+            );
+            throw new Error(
+              "ChatGPT automation functions not available after retries",
+            );
           } catch (error) {
             console.error(`❌ [ChatGPT] executeTask error:`, error);
             throw error;

@@ -1279,13 +1279,23 @@ if (
   chrome.runtime.onMessage
 ) {
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    console.log("🔍 [UI Step 1] メッセージ受信:", {
+      messageType: message.type,
+      aiType: message.aiType,
+      messageKeys: Object.keys(message || {}),
+      dataKeys: Object.keys(message.data || {}),
+      fullMessage: message,
+    });
+
     if (message.type === "AI_MODEL_FUNCTION_UPDATE") {
-      log.debug("🔍 [UI] AI情報受信:", {
+      console.log("🔍 [UI Step 2] AI_MODEL_FUNCTION_UPDATEメッセージ確認:", {
         aiType: message.aiType,
         modelsCount: message.data.models?.length || 0,
         functionsCount: message.data.functions?.length || 0,
         functionsWithDetailsCount:
           message.data.functionsWithDetails?.length || 0,
+        modelsData: message.data.models,
+        functionsData: message.data.functions,
       });
 
       // 詳細データログ追加（Claude機能調査用）
@@ -1313,16 +1323,44 @@ if (
         }
       }
 
+      // Gemini専用デバッグログ
+      if (message.aiType === "gemini") {
+        console.log("🔍 [UI Step 3 - Gemini] Gemini専用データ詳細:", {
+          models: message.data.models,
+          features: message.data.features,
+          functions: message.data.functions,
+          modelsType: typeof message.data.models,
+          featuresType: typeof message.data.features,
+          functionsType: typeof message.data.functions,
+          timestamp: new Date().toISOString(),
+        });
+      }
+
       // 変更検出
+      // console.log("🔍 [UI Step 4] 変更検出処理開始:", {
+      //   aiType: message.aiType,
+      //   hasDataChangedResult: hasDataChanged(message.aiType, message.data),
+      // });
+
       if (hasDataChanged(message.aiType, message.data)) {
         log.info(
           `🔄 [UI] ${message.aiType}のデータが変更されました - UI更新実行`,
         );
+        console.log("🔍 [UI Step 5] データ更新処理開始:", {
+          aiType: message.aiType,
+          updateAITableCall: true,
+          saveAIDataCall: true,
+        });
+
         updateAITable(message.aiType, message.data);
         saveAIData(message.aiType, message.data);
 
+        console.log("🔍 [UI Step 6] ドロップダウン更新処理開始");
+
         // AI統合テスト設定のドロップダウンも更新
         updateTestConfigDropdowns();
+
+        console.log("✅ [UI Step 7] 全処理完了");
 
         sendResponse({ success: true, updated: true });
       } else {
@@ -1357,7 +1395,7 @@ function updateAITable(aiType, data) {
       for (let i = 0; i < 6; i++) {
         const cell = document.createElement("td");
         cell.style.cssText =
-          "border: 1px solid #dee2e6; padding: 8px; text-align: left; vertical-align: top; font-size: 12px;";
+          "border: 1px solid #dee2e6; padding: 12px; text-align: left; vertical-align: top; font-size: 13px; min-height: 60px; line-height: 1.4;";
         row.appendChild(cell);
       }
       tbody.appendChild(row);
@@ -1583,7 +1621,7 @@ function initializeAITable() {
     headers.forEach((header, index) => {
       const cell = document.createElement("td");
       cell.style.cssText =
-        "border: 1px solid #dee2e6; padding: 8px; text-align: left; vertical-align: top; font-size: 12px;";
+        "border: 1px solid #dee2e6; padding: 12px; text-align: left; vertical-align: top; font-size: 13px; min-height: 60px; line-height: 1.4;";
       cell.innerHTML = '<span style="color: #999;">検出待機中...</span>';
       row.appendChild(cell);
     });

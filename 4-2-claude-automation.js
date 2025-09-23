@@ -1321,22 +1321,22 @@
             }
 
             const requestId = Math.random().toString(36).substring(2, 8);
-            console.warn(
-              `📬 [Claude-直接実行方式] メッセージ受信 [ID:${requestId}]:`,
-              JSON.stringify(
-                {
-                  type: request?.type || request?.action,
-                  keys: Object.keys(request || {}),
-                  hasTask: !!request?.task,
-                  hasTaskData: !!request?.taskData,
-                  automationName: request?.automationName,
-                  taskId: request?.task?.id || request?.taskData?.id,
-                  timestamp: new Date().toISOString(),
-                },
-                null,
-                2,
-              ),
-            );
+            // console.warn(
+            //   `📬 [Claude-直接実行方式] メッセージ受信 [ID:${requestId}]:`,
+            //   JSON.stringify(
+            //     {
+            //       type: request?.type || request?.action,
+            //       keys: Object.keys(request || {}),
+            //       hasTask: !!request?.task,
+            //       hasTaskData: !!request?.taskData,
+            //       automationName: request?.automationName,
+            //       taskId: request?.task?.id || request?.taskData?.id,
+            //       timestamp: new Date().toISOString(),
+            //     },
+            //     null,
+            //     2,
+            //   ),
+            // );
 
             // executeTaskタスクの処理
             if (

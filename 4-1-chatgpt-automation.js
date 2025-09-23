@@ -207,50 +207,50 @@ const log = {
 
   console.log("🔍 [ChatGPT] DOM準備状態チェック:", domReadyCheck());
 
-  // 🔍 Content Script実行環境の詳細ログ
-  console.warn(
-    `🔍 [ChatGPT-Content Script] 実行コンテキスト詳細分析:`,
-    JSON.stringify(
-      {
-        executionContext: {
-          url: currentURL,
-          title: document.title,
-          domain: window.location.hostname,
-          protocol: window.location.protocol,
-          pathname: window.location.pathname,
-          search: window.location.search,
-          hash: window.location.hash,
-        },
-        validationResults: {
-          isValidChatGPTURL: isValidChatGPTURL,
-          isExtensionPage: isExtensionPage,
-          isChromeNewTab: currentURL === "chrome://newtab/",
-          isAboutBlank: currentURL === "about:blank",
-        },
-        documentState: {
-          readyState: document.readyState,
-          hasDocumentElement: !!document.documentElement,
-          hasBody: !!document.body,
-          bodyChildrenCount: document.body ? document.body.children.length : 0,
-        },
-        chromeExtensionInfo: {
-          hasChromeRuntime: typeof chrome !== "undefined" && !!chrome.runtime,
-          extensionId:
-            typeof chrome !== "undefined" && chrome.runtime
-              ? chrome.runtime.id
-              : null,
-          runtimeUrl:
-            typeof chrome !== "undefined" && chrome.runtime
-              ? chrome.runtime.getURL("")
-              : null,
-        },
-        timestamp: new Date().toISOString(),
-        userAgent: navigator.userAgent,
-      },
-      null,
-      2,
-    ),
-  );
+  // 🔍 Content Script実行環境の詳細ログ（コメントアウト）
+  // console.warn(
+  //   `🔍 [ChatGPT-Content Script] 実行コンテキスト詳細分析:`,
+  //   JSON.stringify(
+  //     {
+  //       executionContext: {
+  //         url: currentURL,
+  //         title: document.title,
+  //         domain: window.location.hostname,
+  //         protocol: window.location.protocol,
+  //         pathname: window.location.pathname,
+  //         search: window.location.search,
+  //         hash: window.location.hash,
+  //       },
+  //       validationResults: {
+  //         isValidChatGPTURL: isValidChatGPTURL,
+  //         isExtensionPage: isExtensionPage,
+  //         isChromeNewTab: currentURL === "chrome://newtab/",
+  //         isAboutBlank: currentURL === "about:blank",
+  //       },
+  //       documentState: {
+  //         readyState: document.readyState,
+  //         hasDocumentElement: !!document.documentElement,
+  //         hasBody: !!document.body,
+  //         bodyChildrenCount: document.body ? document.body.children.length : 0,
+  //       },
+  //       chromeExtensionInfo: {
+  //         hasChromeRuntime: typeof chrome !== "undefined" && !!chrome.runtime,
+  //         extensionId:
+  //           typeof chrome !== "undefined" && chrome.runtime
+  //             ? chrome.runtime.id
+  //             : null,
+  //         runtimeUrl:
+  //           typeof chrome !== "undefined" && chrome.runtime
+  //             ? chrome.runtime.getURL("")
+  //             : null,
+  //       },
+  //       timestamp: new Date().toISOString(),
+  //       userAgent: navigator.userAgent,
+  //     },
+  //     null,
+  //     2,
+  //   ),
+  // );
 
   // ========================================
   // Step 4-1-0-3: 統一ChatGPTRetryManager クラス定義
@@ -3291,6 +3291,21 @@ const log = {
     window.ChatGPTAutomationV2 = automationAPI;
     window.ChatGPTAutomation = automationAPI;
 
+    // 設定確認のための強化デバッグログ
+    console.log("🔧 [ChatGPT-DEBUG] window.ChatGPTAutomationV2設定完了");
+    console.log(
+      "🔧 [ChatGPT-DEBUG] typeof window.ChatGPTAutomationV2:",
+      typeof window.ChatGPTAutomationV2,
+    );
+    console.log(
+      "🔧 [ChatGPT-DEBUG] window.ChatGPTAutomationV2.executeTask:",
+      typeof window.ChatGPTAutomationV2?.executeTask,
+    );
+    console.log(
+      "🔧 [ChatGPT-DEBUG] window.ChatGPTAutomationV2.runAutomation:",
+      typeof window.ChatGPTAutomationV2?.runAutomation,
+    );
+
     log.debug("[DEBUG] window.ChatGPTAutomationV2設定完了");
     log.debug(
       "[DEBUG] typeof window.ChatGPTAutomationV2:",
@@ -4018,4 +4033,6 @@ if (
   });
 
   console.log("✅ [ChatGPT] ネットワークエラーハンドラー登録完了");
-}
+} // ChatGPTページ判定if文終了
+
+})(); // IIFE終了 - ChatGPT自動化システム初期化完了

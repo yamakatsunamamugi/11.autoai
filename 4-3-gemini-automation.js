@@ -167,22 +167,43 @@ const log = {
   // UI通信機能
   // ========================================
   async function sendToUI(models, features) {
+    console.log("🔍 [SendToUI Step 1] UI通信関数開始:", {
+      modelsParam: models,
+      featuresParam: features,
+      modelsType: typeof models,
+      featuresType: typeof features,
+      modelsCount: models?.length || 0,
+      featuresCount: features?.length || 0,
+    });
+
     try {
       if (
         typeof chrome !== "undefined" &&
         chrome.runtime &&
         chrome.runtime.sendMessage
       ) {
-        log.debug("📡 [Gemini] UI通信開始", {
-          modelsCount: models?.length || 0,
-          featuresCount: features?.length || 0,
-          timestamp: new Date().toISOString(),
-        });
+        console.log("🔍 [SendToUI Step 2] Chrome拡張環境確認済み");
+
+        const messageData = {
+          type: "AI_MODEL_FUNCTION_UPDATE",
+          aiType: "gemini",
+          data: {
+            models: models || [],
+            functions: features || [],
+            timestamp: new Date().toISOString(),
+          },
+        };
+
+        console.log("🔍 [SendToUI Step 3] 送信メッセージ作成:", messageData);
 
         // タイムアウト付きでsendMessageを実行
         const sendMessageWithTimeout = new Promise((resolve) => {
+          console.log("🔍 [SendToUI Step 4] sendMessage実行準備");
+
           const timeout = setTimeout(() => {
-            log.warn("⏱️ [Gemini] sendMessageがタイムアウト（3秒経過）");
+            console.error(
+              "⏱️ [SendToUI Step 4 Error] sendMessageがタイムアウト（3秒経過）",
+            );
             resolve({
               error: "timeout",
               message: "sendMessage timeout after 3000ms",
@@ -190,35 +211,35 @@ const log = {
           }, 3000); // 3秒でタイムアウト
 
           try {
-            chrome.runtime.sendMessage(
-              {
-                type: "AI_MODEL_FUNCTION_UPDATE",
-                aiType: "gemini",
-                data: {
-                  models: models || [],
-                  features: features || [],
-                  timestamp: new Date().toISOString(),
-                },
-              },
-              (response) => {
-                clearTimeout(timeout);
-
-                // chrome.runtime.lastErrorをチェック
-                if (chrome.runtime.lastError) {
-                  log.warn(
-                    "⚠️ [Gemini] chrome.runtime.lastError:",
-                    chrome.runtime.lastError.message,
-                  );
-                  resolve({
-                    error: "runtime_error",
-                    message: chrome.runtime.lastError.message,
-                  });
-                } else {
-                  log.debug("📨 [Gemini] sendMessage応答受信:", response);
-                  resolve(response || { success: true });
-                }
-              },
+            console.log(
+              "🔍 [SendToUI Step 5] chrome.runtime.sendMessage実行中...",
             );
+            chrome.runtime.sendMessage(messageData, (response) => {
+              clearTimeout(timeout);
+              console.log("🔍 [SendToUI Step 6] sendMessage応答受信:", {
+                response: response,
+                responseType: typeof response,
+                lastError: chrome.runtime.lastError,
+              });
+
+              // chrome.runtime.lastErrorをチェック
+              if (chrome.runtime.lastError) {
+                console.error(
+                  "⚠️ [SendToUI Step 6 Error] chrome.runtime.lastError:",
+                  chrome.runtime.lastError.message,
+                );
+                resolve({
+                  error: "runtime_error",
+                  message: chrome.runtime.lastError.message,
+                });
+              } else {
+                console.log(
+                  "✅ [SendToUI Step 6 Success] 正常応答受信:",
+                  response,
+                );
+                resolve(response || { success: true });
+              }
+            });
           } catch (error) {
             clearTimeout(timeout);
             log.warn("❌ [Gemini] sendMessage実行エラー:", error.message);

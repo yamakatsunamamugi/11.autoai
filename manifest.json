@@ -64,7 +64,7 @@
         "https://chatgpt.com/*",
         "https://chat.openai.com/*"
       ],
-      "js": ["4-1-chatgpt-automation.js"],
+      "js": ["4-1-chatgpt-automation.js", "aitest/ai-test-message-handler.js"],
       "run_at": "document_end"
     },
     {
