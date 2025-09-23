@@ -2889,26 +2889,8 @@
       return true;
     };
 
-    /**
-     * セレクタによる要素検索
-     * 【動作説明】セレクタリストから要素を検索
-     * 【引数】selectors: セレクタ配列
-     * 【戻り値】Element or null: 見つかった要素
-     */
-    const findElementBySelectors = (selectors) => {
-      for (const selector of selectors) {
-        try {
-          const element = document.querySelector(selector);
-          if (element) {
-            log.debug(`  ✓ セレクタでマッチ: ${selector}`);
-            return element;
-          }
-        } catch (e) {
-          // セレクタエラーをスキップ
-        }
-      }
-      return null;
-    };
+    // findElementBySelectors関数は削除（重複のため）
+    // findElementByMultipleSelectors関数を使用
 
     /**
      * 統合AI応答取得メソッド
@@ -2936,15 +2918,41 @@
       log.debug("  階層的セレクタ戦略を試行");
       const selectors = getAIResponseSelectors();
 
-      // Canvas要素を優先
-      let element = findElementBySelectors(selectors.response_types.canvas);
+      // Canvas要素を優先（構造化セレクタ用に変換）
+      let element = null;
 
-      if (!element) {
-        element = findElementBySelectors(selectors.response_types.standard);
+      // Canvas要素を検索
+      for (const selector of selectors.response_types.canvas) {
+        const testElement = document.querySelector(selector);
+        if (testElement) {
+          element = testElement;
+          log.debug(`  ✓ Canvasセレクタでマッチ: ${selector}`);
+          break;
+        }
       }
 
+      // Standard要素を検索
       if (!element) {
-        element = findElementBySelectors(selectors.response_types.code_block);
+        for (const selector of selectors.response_types.standard) {
+          const testElement = document.querySelector(selector);
+          if (testElement) {
+            element = testElement;
+            log.debug(`  ✓ Standardセレクタでマッチ: ${selector}`);
+            break;
+          }
+        }
+      }
+
+      // Code block要素を検索
+      if (!element) {
+        for (const selector of selectors.response_types.code_block) {
+          const testElement = document.querySelector(selector);
+          if (testElement) {
+            element = testElement;
+            log.debug(`  ✓ CodeBlockセレクタでマッチ: ${selector}`);
+            break;
+          }
+        }
       }
 
       if (element) {
