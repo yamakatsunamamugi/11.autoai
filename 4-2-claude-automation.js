@@ -3284,44 +3284,72 @@
      */
     const getReliableAIResponse = async () => {
       log.debug("🚀 [getReliableAIResponse] AI応答取得開始");
+      log.debug("📋 使用可能なセレクタ:", {
+        canvas: aiResponseSelectors.response_types.canvas,
+        standard: aiResponseSelectors.response_types.standard,
+        code_block: aiResponseSelectors.response_types.code_block,
+      });
 
       // Method 1: ユーザー/アシスタント境界検出
+      log.debug("📍 Method 1: ユーザー/アシスタント境界検出を試行");
       let response = await getCleanAIResponse();
 
       if (response) {
+        log.debug("  - getCleanAIResponse成功、要素を取得");
         response = excludeThinkingProcess(response);
         if (response && validateResponseContent(response)) {
+          const text = response.textContent?.trim() || "";
+          log.debug(`  ✅ Method 1成功: テキスト長=${text.length}文字`);
+          log.debug(`  - 取得テキスト先頭100文字: ${text.substring(0, 100)}`);
           return {
             element: response,
-            text: response.textContent?.trim() || "",
+            text: text,
             method: "User/Assistant Boundary",
           };
+        } else {
+          log.debug("  ❌ Method 1失敗: validateResponseContentで無効と判定");
         }
+      } else {
+        log.debug("  ❌ Method 1失敗: getCleanAIResponseで要素が見つからない");
       }
 
       // Method 2: 階層的セレクタ
-      log.debug("  階層的セレクタ戦略を試行");
+      log.debug("📍 Method 2: 階層的セレクタ戦略を試行");
 
       // Canvas要素を優先（構造化セレクタ用に変換）
       let element = null;
 
       // Canvas要素を検索
+      log.debug("  - Canvas要素を検索中...");
       for (const selector of aiResponseSelectors.response_types.canvas) {
         const testElement = document.querySelector(selector);
+        log.debug(
+          `    試行: ${selector} -> ${testElement ? "見つかった" : "見つからない"}`,
+        );
         if (testElement) {
           element = testElement;
           log.debug(`  ✓ Canvasセレクタでマッチ: ${selector}`);
+          log.debug(
+            `  - 要素のテキスト長: ${testElement.textContent?.length || 0}文字`,
+          );
           break;
         }
       }
 
       // Standard要素を検索
       if (!element) {
+        log.debug("  - Standard要素を検索中...");
         for (const selector of aiResponseSelectors.response_types.standard) {
           const testElement = document.querySelector(selector);
+          log.debug(
+            `    試行: ${selector} -> ${testElement ? "見つかった" : "見つからない"}`,
+          );
           if (testElement) {
             element = testElement;
             log.debug(`  ✓ Standardセレクタでマッチ: ${selector}`);
+            log.debug(
+              `  - 要素のテキスト長: ${testElement.textContent?.length || 0}文字`,
+            );
             break;
           }
         }
@@ -3329,8 +3357,12 @@
 
       // Code block要素を検索
       if (!element) {
+        log.debug("  - Code block要素を検索中...");
         for (const selector of aiResponseSelectors.response_types.code_block) {
           const testElement = document.querySelector(selector);
+          log.debug(
+            `    試行: ${selector} -> ${testElement ? "見つかった" : "見つからない"}`,
+          );
           if (testElement) {
             element = testElement;
             log.debug(`  ✓ CodeBlockセレクタでマッチ: ${selector}`);
@@ -3409,15 +3441,28 @@
      */
     const getTextPreview = async (element) => {
       log.debug("📊 [getTextPreview] テキスト取得開始");
+      log.debug(`  - 要素指定: ${element ? "あり" : "なし"}`);
+      log.debug(`  - 要素タイプ: ${element ? element.tagName : "N/A"}`);
+      log.debug(`  - 要素クラス: ${element ? element.className : "N/A"}`);
 
       // 要素が指定されていない場合は、新しいAI応答取得ロジックを使用
       if (!element) {
         log.debug("  新しいAI応答取得ロジックを使用");
         const response = await getReliableAIResponse();
 
+        log.debug(`🔍 [getTextPreview] getReliableAIResponse結果:`, {
+          elementFound: !!response.element,
+          method: response.method,
+          textLength: response.text?.length || 0,
+          textPreview: response.text?.substring(0, 100) || "(空)",
+        });
+
         if (response.element) {
           log.debug(`  取得メソッド: ${response.method}`);
           log.debug(`  テキスト長: ${response.text.length}文字`);
+          log.debug(
+            `  テキスト先頭200文字: ${response.text.substring(0, 200)}`,
+          );
 
           const length = response.text.length;
           if (length <= 200) {
@@ -5639,11 +5684,28 @@
         // Canvas機能のテキストを優先的に最終取得
         let canvasResult = null;
         try {
+          log.debug("🔍 Canvas要素検索開始");
+          log.debug(
+            `  使用セレクタ:`,
+            deepResearchSelectors["4_Canvas機能テキスト位置"],
+          );
+
           canvasResult = await findClaudeElement(
             deepResearchSelectors["4_Canvas機能テキスト位置"],
             5,
             true,
           );
+
+          log.debug(
+            `  Canvas要素検索結果: ${canvasResult ? "見つかった" : "見つからない"}`,
+          );
+          if (canvasResult) {
+            log.debug(`  - Canvas要素タグ: ${canvasResult.tagName}`);
+            log.debug(`  - Canvas要素クラス: ${canvasResult.className}`);
+            log.debug(
+              `  - Canvas要素テキスト長: ${canvasResult.textContent?.length || 0}文字`,
+            );
+          }
         } catch (canvasError) {
           log.error("⚠️ [Claude] Canvasテキスト取得エラー:", {
             error: canvasError.message,
@@ -5657,6 +5719,13 @@
             "🚫 【Claude-ステップ7-1】プロンプト除外機能を適用してテキスト取得",
           );
           const textInfo = await getTextPreview(canvasResult);
+          log.debug(`📊 getTextPreview結果:`, {
+            hasTextInfo: !!textInfo,
+            fullTextLength: textInfo?.full?.length || 0,
+            fullTextPreview: textInfo?.full?.substring(0, 100) || "(空)",
+            lengthProperty: textInfo?.length || 0,
+          });
+
           if (textInfo && textInfo.full && textInfo.full.length > 100) {
             finalText = textInfo.full;
             log.debug(
@@ -5669,6 +5738,8 @@
               "プレビュー:\n",
               textInfo.preview.substring(0, 200) + "...",
             );
+          } else {
+            log.debug("⚠️ Canvas要素は見つかったが、テキストが不十分");
           }
         }
 
@@ -5676,6 +5747,10 @@
         if (!finalText) {
           log.debug("🔍 Canvas以外のテキストを確認中...");
           const deepResearchSelectors = getDeepResearchSelectors();
+          log.debug(
+            `  使用セレクタ:`,
+            deepResearchSelectors["5_通常処理テキスト位置"],
+          );
 
           // 通常のテキストを確認（Canvasが見つからない場合のフォールバック）
           const normalResult = await findClaudeElement(
@@ -5683,12 +5758,28 @@
             3,
             true,
           );
+
+          log.debug(
+            `  通常要素検索結果: ${normalResult ? "見つかった" : "見つからない"}`,
+          );
           if (normalResult) {
+            log.debug(`  - 通常要素タグ: ${normalResult.tagName}`);
+            log.debug(`  - 通常要素クラス: ${normalResult.className}`);
+            log.debug(
+              `  - 通常要素テキスト長: ${normalResult.textContent?.length || 0}文字`,
+            );
             log.debug("✓ 通常処理のテキストを検出");
             log.debug(
               "🚫 【Claude-ステップ7-3】プロンプト除外機能を適用してテキスト取得（通常応答）",
             );
             const textInfo = await getTextPreview(normalResult);
+            log.debug(`📊 getTextPreview結果 (通常):`, {
+              hasTextInfo: !!textInfo,
+              fullTextLength: textInfo?.full?.length || 0,
+              fullTextPreview: textInfo?.full?.substring(0, 100) || "(空)",
+              lengthProperty: textInfo?.length || 0,
+            });
+
             if (textInfo && textInfo.full) {
               finalText = textInfo.full;
               log.debug(`📄 通常 テキスト取得完了 (${textInfo.length}文字)`);
@@ -5699,6 +5790,8 @@
                 "プレビュー:\n",
                 textInfo.preview.substring(0, 200) + "...",
               );
+            } else {
+              log.debug("⚠️ 通常要素は見つかったが、テキストが取得できない");
             }
           }
         }

@@ -279,6 +279,20 @@ class AITestController {
           })
           .then((response) => {
             log.info(`✅ ${aiType} タスク送信成功`, response);
+
+            // デバッグログ追加
+            if (aiType === "gemini") {
+              console.log(
+                `🔍 [Controller Debug 1] ${aiType}から受信した応答:`,
+                {
+                  responseType: typeof response,
+                  responseKeys: Object.keys(response || {}),
+                  responseResult: response?.result,
+                  fullResponse: response,
+                },
+              );
+            }
+
             return response;
           })
           .catch((error) => {
@@ -312,6 +326,15 @@ class AITestController {
         if (aiType && this.tabs[aiType]) {
           this.testResults[aiType] = request.result;
           log.info(`✅ ${aiType} テスト完了`, request.result);
+
+          // デバッグログ追加
+          if (aiType === "gemini") {
+            console.log(`🔍 [Controller Debug 2] testResultsに保存:`, {
+              aiType: aiType,
+              savedResult: this.testResults[aiType],
+              resultContent: this.testResults[aiType]?.content,
+            });
+          }
         }
       }
     };

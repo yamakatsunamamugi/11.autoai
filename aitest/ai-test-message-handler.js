@@ -145,12 +145,30 @@
 
           console.log(`✅ [${AI_TYPE}] Task completed:`, result);
 
+          // デバッグログ追加
+          if (AI_TYPE === "gemini") {
+            console.log(`🔍 [Handler Debug 1] Geminiから受け取った結果:`, {
+              resultType: typeof result,
+              resultKeys: Object.keys(result || {}),
+              resultContent: result?.content,
+              fullResult: result,
+            });
+          }
+
           // 結果を送信
           sendResponse({
             success: true,
             aiType: AI_TYPE,
             result: result,
           });
+
+          // デバッグログ追加
+          if (AI_TYPE === "gemini") {
+            console.log(`🔍 [Handler Debug 2] sendResponseで送信するデータ:`, {
+              aiType: AI_TYPE,
+              resultInResponse: result,
+            });
+          }
 
           // background.jsにも完了通知
           chrome.runtime.sendMessage({
@@ -411,8 +429,59 @@
     }
   };
 
-  // ラップ処理を少し遅延実行（automationスクリプトが読み込まれるのを待つ）
-  setTimeout(wrapExecuteTask, 1000);
-  setTimeout(wrapExecuteTask, 3000); // 念のため再実行
-  setTimeout(wrapExecuteTask, 5000); // さらに念のため
+  // ラップ処理を即座に実行（既に読み込まれているはず）
+  console.log(`🔄 [${AI_TYPE}] wrapExecuteTask 初回実行`);
+  wrapExecuteTask();
+
+  // 元の関数を保存して定期的にラップを再適用
+  let originalExecuteTask = null;
+  let wrappedExecuteTask = null;
+
+  // Claudeの場合は特別な処理
+  if (AI_TYPE === "claude") {
+    // 0.5秒ごとにチェックして、元の関数が上書きされていたら再ラップ
+    setInterval(() => {
+      // window.executeTaskが存在し、ラップされていない場合
+      if (
+        typeof window.executeTask === "function" &&
+        window.executeTask !== wrappedExecuteTask
+      ) {
+        console.log(`🔄 [Claude] executeTaskの再ラップが必要`);
+        originalExecuteTask = window.executeTask;
+
+        // ラッパー関数を作成
+        wrappedExecuteTask = async function (taskData) {
+          console.log(`🎯 [Claude] ラッパー経由でexecuteTask呼び出し`);
+          console.log(`📊 taskData:`, taskData);
+
+          // taskDataがオブジェクトの場合、プロンプトを抽出
+          if (typeof taskData === "object" && taskData !== null) {
+            const prompt = taskData.prompt || taskData.text || "";
+            console.log(
+              `📝 文字列プロンプトに変換: ${prompt.substring(0, 50)}...`,
+            );
+            return await originalExecuteTask(prompt);
+          }
+
+          // すでに文字列の場合はそのまま渡す
+          return await originalExecuteTask(taskData);
+        };
+
+        // ラップした関数を設定
+        window.executeTask = wrappedExecuteTask;
+        console.log(`✅ [Claude] executeTaskを再ラップしました`);
+      }
+    }, 500);
+  }
+
+  // 他のAIサービスも念のため遅延実行
+  setTimeout(() => {
+    console.log(`🔄 [${AI_TYPE}] wrapExecuteTask 1秒後再実行`);
+    wrapExecuteTask();
+  }, 1000);
+
+  setTimeout(() => {
+    console.log(`🔄 [${AI_TYPE}] wrapExecuteTask 3秒後再実行`);
+    wrapExecuteTask();
+  }, 3000);
 })();

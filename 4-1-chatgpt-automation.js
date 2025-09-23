@@ -71,23 +71,52 @@ const log = {
   // 早期メッセージリスナー登録（Content Script準備確認用）
   const earlyMessageListener = (request, sender, sendResponse) => {
     console.log(`🏓 [ChatGPT-Early] 受信:`, request);
+    console.log(`📊 [ChatGPT-Early] 送信元:`, {
+      senderId: sender?.id,
+      senderUrl: sender?.url,
+      senderOrigin: sender?.origin,
+      tabId: sender?.tab?.id,
+      frameId: sender?.frameId,
+    });
 
-    if (
-      request.action === "ping" ||
-      request.type === "CONTENT_SCRIPT_CHECK" ||
-      request.type === "PING"
-    ) {
-      console.log("🏓 [ChatGPT-Early] Ping受信、即座にPong応答");
+    // 常にtrue返してポートを開いたままにする
+    try {
+      if (
+        request.action === "ping" ||
+        request.type === "CONTENT_SCRIPT_CHECK" ||
+        request.type === "PING"
+      ) {
+        console.log("🏓 [ChatGPT-Early] Ping受信、即座にPong応答");
+        sendResponse({
+          action: "pong",
+          status: "ready",
+          timestamp: Date.now(),
+          scriptLoaded: true,
+          earlyResponse: true,
+        });
+        return true;
+      }
+
+      // その他のメッセージも適切に処理
+      console.log(
+        `⚠️ [ChatGPT-Early] 未処理メッセージタイプ:`,
+        request.type || request.action,
+      );
       sendResponse({
-        action: "pong",
-        status: "ready",
+        success: false,
+        error: "Unhandled message type in early listener",
         timestamp: Date.now(),
-        scriptLoaded: true,
-        earlyResponse: true,
       });
-      return true;
+    } catch (error) {
+      console.error(`❌ [ChatGPT-Early] エラー:`, error);
+      sendResponse({
+        success: false,
+        error: error.message,
+        timestamp: Date.now(),
+      });
     }
-    return false;
+
+    return true; // 常にtrueを返してポートを維持
   };
 
   // 即座にリスナー登録
@@ -3267,143 +3296,184 @@ const log = {
         // リクエストIDを生成（デバッグ用）
         const requestId = `req_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
-        // ping/pongメッセージへの即座応答（最優先）
-        if (
-          request.action === "ping" ||
-          request.type === "CONTENT_SCRIPT_CHECK" ||
-          request.type === "PING"
-        ) {
-          log.debug("🏓 [ChatGPT] Ping受信、即座にPong応答");
-          sendResponse({
-            action: "pong",
-            status: "ready",
-            timestamp: Date.now(),
-            scriptLoaded: true,
-          });
-          return true;
-        }
+        // デバッグ：送信元の詳細情報
+        log.debug(`📬 [ChatGPT] メッセージ受信 [${requestId}]:`, {
+          type: request.type,
+          action: request.action,
+          senderId: sender?.id,
+          senderUrl: sender?.url,
+          tabId: sender?.tab?.id,
+          frameId: sender?.frameId,
+        });
 
-        // テキスト入力欄の存在チェック
-        if (request.action === "CHECK_INPUT_FIELD") {
-          log.debug("🔍 [ChatGPT] テキスト入力欄の存在チェック開始");
-          const selectors = request.selectors || [
-            'textarea[placeholder*="Message"]',
-            'textarea[data-id*="root"]',
-            "#prompt-textarea",
-            "textarea",
-          ];
+        // すべてのメッセージに対してデフォルトでtrueを返す準備
+        let shouldReturnTrue = true;
 
-          let inputField = null;
-          for (const selector of selectors) {
-            try {
-              inputField = document.querySelector(selector);
-              if (inputField && inputField.offsetParent !== null) {
-                break;
-              }
-            } catch (e) {
-              // セレクタエラーは無視
-            }
-          }
-
-          const result = {
-            found: !!inputField,
-            selector: inputField ? inputField.tagName.toLowerCase() : null,
-            aiType: request.aiType || "chatgpt",
-            tabId: sender.tab?.id,
-          };
-
-          log.debug("🔍 [ChatGPT] テキスト入力欄チェック結果:", result);
-          sendResponse(result);
-          return true;
-        }
-
-        // executeTaskタスクの処理
-        if (
-          request.action === "executeTask" ||
-          request.type === "executeTask" ||
-          request.type === "CLAUDE_EXECUTE_TASK" ||
-          request.type === "EXECUTE_TASK"
-        ) {
-          log.warn(
-            `🔧 [ChatGPT-直接実行方式] executeTask実行開始 [ID:${requestId}]`,
-            JSON.stringify(
-              {
-                requestId: requestId,
-                action: request.action,
-                type: request.type,
-                automationName: request.automationName,
-                hasTask: !!request.task,
-                hasTaskData: !!request.taskData,
-                taskId: request?.task?.id || request?.taskData?.id,
-              },
-              null,
-              2,
-            ),
-          );
-
-          // タスクデータを抽出
-          const taskToExecute = request.task || request.taskData;
-
-          if (!taskToExecute) {
-            const errorMsg = "Task data not found in request";
-            log.error(`❌ [ChatGPT] ${errorMsg}`);
-            sendResponse({ success: false, error: errorMsg });
+        try {
+          // ping/pongメッセージへの即座応答（最優先）
+          if (
+            request.action === "ping" ||
+            request.type === "CONTENT_SCRIPT_CHECK" ||
+            request.type === "PING"
+          ) {
+            log.debug("🏓 [ChatGPT] Ping受信、即座にPong応答");
+            sendResponse({
+              action: "pong",
+              status: "ready",
+              timestamp: Date.now(),
+              scriptLoaded: true,
+            });
             return true;
           }
 
-          log.debug(`🔍 [ChatGPT] executeTask実行開始 [ID:${requestId}]:`, {
-            taskId: taskToExecute.id,
-            prompt: taskToExecute.prompt
-              ? `${taskToExecute.prompt.substring(0, 50)}...`
-              : null,
-            model: taskToExecute.model,
-            function: taskToExecute.function,
-            taskKeys: Object.keys(taskToExecute || {}),
-          });
+          // テキスト入力欄の存在チェック
+          if (request.action === "CHECK_INPUT_FIELD") {
+            log.debug("🔍 [ChatGPT] テキスト入力欄の存在チェック開始");
+            const selectors = request.selectors || [
+              'textarea[placeholder*="Message"]',
+              'textarea[data-id*="root"]',
+              "#prompt-textarea",
+              "textarea",
+            ];
 
-          // executeTask関数が定義されているか確認（Claude式安全パターン）
-          if (typeof executeTask === "function") {
-            log.debug(
-              `✅ [ChatGPT-直接実行方式] executeTask関数が利用可能 [ID:${requestId}]`,
+            let inputField = null;
+            for (const selector of selectors) {
+              try {
+                inputField = document.querySelector(selector);
+                if (inputField && inputField.offsetParent !== null) {
+                  break;
+                }
+              } catch (e) {
+                // セレクタエラーは無視
+              }
+            }
+
+            const result = {
+              found: !!inputField,
+              selector: inputField ? inputField.tagName.toLowerCase() : null,
+              aiType: request.aiType || "chatgpt",
+              tabId: sender.tab?.id,
+            };
+
+            log.debug("🔍 [ChatGPT] テキスト入力欄チェック結果:", result);
+            sendResponse(result);
+            return true;
+          }
+
+          // executeTaskタスクの処理
+          if (
+            request.action === "executeTask" ||
+            request.type === "executeTask" ||
+            request.type === "CLAUDE_EXECUTE_TASK" ||
+            request.type === "EXECUTE_TASK"
+          ) {
+            log.warn(
+              `🔧 [ChatGPT-直接実行方式] executeTask実行開始 [ID:${requestId}]`,
+              JSON.stringify(
+                {
+                  requestId: requestId,
+                  action: request.action,
+                  type: request.type,
+                  automationName: request.automationName,
+                  hasTask: !!request.task,
+                  hasTaskData: !!request.taskData,
+                  taskId: request?.task?.id || request?.taskData?.id,
+                },
+                null,
+                2,
+              ),
             );
 
-            (async () => {
-              try {
-                const result = await executeTask(taskToExecute);
-                log.warn(
-                  `✅ [ChatGPT-直接実行方式] executeTask完了 [ID:${requestId}]:`,
-                  {
-                    success: result?.success,
-                    hasResult: !!result,
-                    resultKeys: result ? Object.keys(result) : [],
-                  },
-                );
-                sendResponse({ success: true, result });
-              } catch (taskError) {
-                const errorMsg = `executeTask実行エラー: ${taskError.message}`;
-                log.error(
-                  `❌ [ChatGPT] ${errorMsg} [ID:${requestId}]`,
-                  taskError,
-                );
-                sendResponse({ success: false, error: errorMsg });
-              }
-            })();
-          } else {
-            const errorMsg = "executeTask関数が定義されていません";
-            log.error(`❌ [ChatGPT] ${errorMsg} [ID:${requestId}]`);
-            sendResponse({ success: false, error: errorMsg });
+            // タスクデータを抽出
+            const taskToExecute = request.task || request.taskData;
+
+            if (!taskToExecute) {
+              const errorMsg = "Task data not found in request";
+              log.error(`❌ [ChatGPT] ${errorMsg}`);
+              sendResponse({ success: false, error: errorMsg });
+              return true;
+            }
+
+            log.debug(`🔍 [ChatGPT] executeTask実行開始 [ID:${requestId}]:`, {
+              taskId: taskToExecute.id,
+              prompt: taskToExecute.prompt
+                ? `${taskToExecute.prompt.substring(0, 50)}...`
+                : null,
+              model: taskToExecute.model,
+              function: taskToExecute.function,
+              taskKeys: Object.keys(taskToExecute || {}),
+            });
+
+            // executeTask関数が定義されているか確認（Claude式安全パターン）
+            if (typeof executeTask === "function") {
+              log.debug(
+                `✅ [ChatGPT-直接実行方式] executeTask関数が利用可能 [ID:${requestId}]`,
+              );
+
+              (async () => {
+                try {
+                  const result = await executeTask(taskToExecute);
+                  log.warn(
+                    `✅ [ChatGPT-直接実行方式] executeTask完了 [ID:${requestId}]:`,
+                    {
+                      success: result?.success,
+                      hasResult: !!result,
+                      resultKeys: result ? Object.keys(result) : [],
+                    },
+                  );
+                  sendResponse({ success: true, result });
+                } catch (taskError) {
+                  const errorMsg = `executeTask実行エラー: ${taskError.message}`;
+                  log.error(
+                    `❌ [ChatGPT] ${errorMsg} [ID:${requestId}]`,
+                    taskError,
+                  );
+                  sendResponse({ success: false, error: errorMsg });
+                }
+              })();
+            } else {
+              const errorMsg = "executeTask関数が定義されていません";
+              log.error(`❌ [ChatGPT] ${errorMsg} [ID:${requestId}]`);
+              sendResponse({ success: false, error: errorMsg });
+            }
+            return true;
+          }
+        } catch (error) {
+          log.error(`❌ [ChatGPT] メッセージ処理エラー [${requestId}]:`, error);
+          // エラーでも必ず応答を返す
+          try {
+            sendResponse({
+              success: false,
+              error: error.message,
+              requestId: requestId,
+              timestamp: Date.now(),
+            });
+          } catch (sendError) {
+            log.error(`❌ [ChatGPT] 応答送信エラー:`, sendError);
           }
           return true;
         }
 
         // その他のメッセージは無視
-        log.debug(`🔕 [ChatGPT] 未対応メッセージを無視:`, {
+        log.debug(`🔕 [ChatGPT] 未対応メッセージを処理:`, {
           action: request.action,
           type: request.type,
           requestId: requestId,
         });
-        sendResponse({ success: false, error: "Unsupported message type" });
-        return true;
+
+        // 必ず応答を返す
+        try {
+          sendResponse({
+            success: false,
+            error: "Unsupported message type",
+            requestId: requestId,
+            timestamp: Date.now(),
+          });
+        } catch (sendError) {
+          log.error(`❌ [ChatGPT] デフォルト応答送信エラー:`, sendError);
+        }
+
+        return true; // 常にtrueを返す
       });
 
       log.debug("✅ [ChatGPT] メッセージリスナー登録完了");

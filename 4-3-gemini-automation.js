@@ -768,12 +768,22 @@ const log = {
       log.debug("【Step 4-3-7】テキスト取得");
       const content = await getResponseTextGemini();
 
-      return {
+      console.log(`🔍 [Gemini Debug 1] 取得したコンテンツ:`, {
+        contentType: typeof content,
+        contentLength: content?.length,
+        contentPreview: content?.substring(0, 100),
+        fullContent: content,
+      });
+
+      const result = {
         success: true,
         content: content,
         model: modelName,
         feature: featureName,
       };
+
+      console.log(`🔍 [Gemini Debug 2] executeTaskの戻り値:`, result);
+      return result;
     } catch (error) {
       log.error("❌ タスク実行エラー:", error);
       return {
