@@ -1153,15 +1153,19 @@
             ) {
               console.warn(
                 `🔧 [Claude-直接実行方式] executeTask実行開始 [ID:${requestId}]`,
-                {
-                  requestId: requestId,
-                  action: request.action,
-                  type: request.type,
-                  automationName: request.automationName,
-                  hasTask: !!request.task,
-                  hasTaskData: !!request.taskData,
-                  taskId: request?.task?.id || request?.taskData?.id,
-                },
+                JSON.stringify(
+                  {
+                    requestId: requestId,
+                    action: request.action,
+                    type: request.type,
+                    automationName: request.automationName,
+                    hasTask: !!request.task,
+                    hasTaskData: !!request.taskData,
+                    taskId: request?.task?.id || request?.taskData?.id,
+                  },
+                  null,
+                  2,
+                ),
               );
 
               (async () => {
@@ -1175,10 +1179,14 @@
                       request.task || request.taskData || request;
                     console.warn(
                       `🚀 [Claude-直接実行方式] executeTask呼び出し前 [ID:${requestId}]:`,
-                      {
-                        taskId: taskToExecute?.id,
-                        taskKeys: Object.keys(taskToExecute || {}),
-                      },
+                      JSON.stringify(
+                        {
+                          taskId: taskToExecute?.id,
+                          taskKeys: Object.keys(taskToExecute || {}),
+                        },
+                        null,
+                        2,
+                      ),
                     );
 
                     try {

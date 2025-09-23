@@ -3360,7 +3360,7 @@ const log = {
       ) {
         log.warn(
           `🔧 [ChatGPT-直接実行方式] executeTask実行開始 [ID:${requestId}]`,
-          {
+          JSON.stringify({
             requestId: requestId,
             action: request.action,
             type: request.type,
@@ -3368,7 +3368,7 @@ const log = {
             hasTask: !!request.task,
             hasTaskData: !!request.taskData,
             taskId: request?.task?.id || request?.taskData?.id,
-          },
+          }, null, 2)
         );
 
         // タスクデータを抽出
