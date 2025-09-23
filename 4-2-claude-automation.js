@@ -2634,18 +2634,16 @@
      * 【動作説明】AI応答を確実に取得するための階層的セレクタ戦略
      * 【戻り値】Object: セレクタ定義オブジェクト
      */
-    const getAIResponseSelectors = () => {
-      return {
-        // レベル1: メッセージコンテナから最後の回答を特定
-        message_containers: CLAUDE_SELECTORS.AI_RESPONSE.GENERAL_CONTAINERS,
+    const aiResponseSelectors = {
+      // レベル1: メッセージコンテナから最後の回答を特定
+      message_containers: CLAUDE_SELECTORS.AI_RESPONSE.GENERAL_CONTAINERS,
 
-        // レベル2: 回答タイプ別セレクタ
-        response_types: {
-          canvas: CLAUDE_SELECTORS.AI_RESPONSE.CANVAS,
-          standard: CLAUDE_SELECTORS.AI_RESPONSE.STANDARD,
-          code_block: CLAUDE_SELECTORS.AI_RESPONSE.CODE_BLOCK,
-        },
-      };
+      // レベル2: 回答タイプ別セレクタ
+      response_types: {
+        canvas: CLAUDE_SELECTORS.AI_RESPONSE.CANVAS,
+        standard: CLAUDE_SELECTORS.AI_RESPONSE.STANDARD,
+        code_block: CLAUDE_SELECTORS.AI_RESPONSE.CODE_BLOCK,
+      },
     };
 
     /**
@@ -2916,13 +2914,12 @@
 
       // Method 2: 階層的セレクタ
       log.debug("  階層的セレクタ戦略を試行");
-      const selectors = getAIResponseSelectors();
 
       // Canvas要素を優先（構造化セレクタ用に変換）
       let element = null;
 
       // Canvas要素を検索
-      for (const selector of selectors.response_types.canvas) {
+      for (const selector of aiResponseSelectors.response_types.canvas) {
         const testElement = document.querySelector(selector);
         if (testElement) {
           element = testElement;
@@ -2933,7 +2930,7 @@
 
       // Standard要素を検索
       if (!element) {
-        for (const selector of selectors.response_types.standard) {
+        for (const selector of aiResponseSelectors.response_types.standard) {
           const testElement = document.querySelector(selector);
           if (testElement) {
             element = testElement;
@@ -2945,7 +2942,7 @@
 
       // Code block要素を検索
       if (!element) {
-        for (const selector of selectors.response_types.code_block) {
+        for (const selector of aiResponseSelectors.response_types.code_block) {
           const testElement = document.querySelector(selector);
           if (testElement) {
             element = testElement;

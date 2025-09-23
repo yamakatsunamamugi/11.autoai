@@ -97,7 +97,8 @@
         "4-2-claude-automation.js",
         "4-3-gemini-automation.js",
         "4-4-report-automation.js",
-        "4-5-genspark-automation.js"
+        "4-5-genspark-automation.js",
+        "aitest/ai-test-controller.js"
       ],
       "matches": ["<all_urls>"]
     }

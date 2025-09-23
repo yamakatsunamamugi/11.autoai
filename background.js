@@ -115,25 +115,46 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // AITestControllerを使用してテスト実行
     (async () => {
       try {
-        // Service Worker内でAITestControllerを動的インポート
-        const module = await import(
-          chrome.runtime.getURL("aitest/ai-test-controller.js")
-        );
-
-        // または、グローバルスコープで実行
+        // Service Worker内でAITestControllerをfetch+evalで読み込み
         if (!self.AITestController) {
+          console.log("🔄 [BG] AITestController読み込み開始");
+
           // ファイル内容を取得して評価
           const response = await fetch(
             chrome.runtime.getURL("aitest/ai-test-controller.js"),
           );
+
+          if (!response.ok) {
+            throw new Error(
+              `Failed to fetch AITestController: ${response.status}`,
+            );
+          }
+
           const code = await response.text();
-          eval(code);
+
+          // 安全にevalを実行
+          try {
+            eval(code);
+            console.log("✅ [BG] AITestController読み込み完了");
+          } catch (evalError) {
+            console.error("❌ [BG] AITestController eval エラー:", evalError);
+            throw new Error(
+              `AITestController eval failed: ${evalError.message}`,
+            );
+          }
+        }
+
+        // コントローラーが正しく読み込まれているか確認
+        if (!self.AITestController) {
+          throw new Error("AITestController was not loaded properly");
         }
 
         // コントローラーインスタンスを作成して実行
+        console.log("🚀 [BG] AITestController実行開始");
         const controller = new self.AITestController();
         const result = await controller.executeTest(request.data?.prompt);
 
+        console.log("✅ [BG] AITestController実行完了:", result);
         sendResponse({
           success: result.success,
           results: result.results,

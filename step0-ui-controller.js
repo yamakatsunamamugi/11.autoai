@@ -1223,10 +1223,54 @@ function updateAITable(aiType, data) {
         cells[functionCellIndex].innerHTML = fallbackList.join("<br>");
       }
     } else if (data.functions && cells[functionCellIndex]) {
-      // フォールバック：シンプルな機能リスト
+      // フォールバック：data.functions配列の処理（オブジェクト対応）
+      log.debug(`🔧 [updateAITable] ${aiType} functions処理開始`);
+      log.debug(`🔧 [updateAITable] functions配列長: ${data.functions.length}`);
+
       const functionList = data.functions
-        .map((func) => `• ${func}`)
+        .map((func, index) => {
+          log.debug(`🔧 [updateAITable] 機能${index}: 型=${typeof func}`, func);
+
+          // オブジェクトの場合は名前を抽出
+          if (typeof func === "object" && func !== null) {
+            const funcName = func.name || func.functionName || "Unknown";
+            log.debug(`🔧 [updateAITable] オブジェクト機能名: ${funcName}`);
+
+            let status = "";
+
+            // トグル状態を表示
+            if (func.isToggleable) {
+              status += func.isToggled ? " 🟢" : " 🔴";
+            }
+
+            // セレクタ状態を表示
+            if (func.secretStatus) {
+              status += ` [${func.secretStatus}]`;
+            }
+
+            // 有効/無効状態を表示
+            const enabledIcon = func.isEnabled ? "" : " (無効)";
+
+            const result = `${funcName}${status}${enabledIcon}`;
+            log.debug(`🔧 [updateAITable] 生成された表示: ${result}`);
+            return result;
+          }
+
+          // 文字列の場合はそのまま使用
+          if (typeof func === "string") {
+            log.debug(`🔧 [updateAITable] 文字列機能: ${func}`);
+            return func;
+          }
+
+          // その他の場合
+          log.debug(`🔧 [updateAITable] 予期しない形式:`, func);
+          return `Unknown (${typeof func})`;
+        })
+        .filter((item) => item && item.trim() !== "") // 空の項目を除外
         .join("<br>");
+
+      log.debug(`🔧 [updateAITable] 最終的な機能リスト: ${functionList}`);
+
       cells[functionCellIndex].innerHTML =
         functionList || '<span style="color: #999;">未検出</span>';
       log.debug(`✅ ${aiType}機能情報更新完了:`, data.functions);
