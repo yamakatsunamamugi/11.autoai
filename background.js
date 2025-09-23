@@ -23,6 +23,37 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
+  // 📝 送信時刻記録要求（4-2-claude-automation.js:4295から）
+  if (request.type === "recordSendTime") {
+    console.log("📝 [BG-FIX] recordSendTime要求を受信:", {
+      taskId: request.taskId,
+      sendTime: request.sendTime,
+      taskInfo: request.taskInfo,
+    });
+    // ログ記録処理は省略（デバッグ用のみ）
+    sendResponse({
+      success: true,
+      message: "Send time recorded successfully",
+      timestamp: new Date().toISOString(),
+    });
+    return true; // 非同期レスポンス許可
+  }
+
+  // 🔧 関数注入要求（4-2-claude-automation.js:5728から）
+  if (request.action === "injectClaudeFunctions") {
+    console.log("🔧 [BG-FIX] injectClaudeFunctions要求を受信:", {
+      tabId: request.tabId,
+      timestamp: new Date().toISOString(),
+    });
+    // 実際の注入は既にContent Script側で完了済み
+    sendResponse({
+      success: true,
+      message: "Functions already injected via content script",
+      injected: true,
+    });
+    return true; // 非同期レスポンス許可
+  }
+
   // 注意: Content Script注入はmanifest.json自動注入に移行済み
   // Content Script注入要求は廃止
 

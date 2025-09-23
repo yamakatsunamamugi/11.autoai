@@ -1071,29 +1071,28 @@
                       });
                     }
                   } else {
-                    console.warn(
-                      `⏳ [Claude-直接実行方式] executeTask未定義、1秒後に再試行 [ID:${requestId}]`,
+                    console.error(
+                      `❌ [FIXED] executeTask関数が未定義、即座にエラーレスポンス [ID:${requestId}]`,
+                      {
+                        requestId: requestId,
+                        availableFunctions: {
+                          executeTask: typeof executeTask,
+                          findClaudeElement: typeof findClaudeElement,
+                          inputText: typeof inputText,
+                          runAutomation: typeof runAutomation,
+                        },
+                        timestamp: new Date().toISOString(),
+                      },
                     );
-                    // 関数がまだ定義されていない場合は少し待つ
-                    setTimeout(async () => {
-                      if (typeof executeTask === "function") {
-                        console.log(
-                          `✅ [Claude-直接実行方式] executeTask関数が利用可能（再試行） [ID:${requestId}]`,
-                        );
-                        const result = await executeTask(
-                          request.task || request,
-                        );
-                        sendResponse({ success: true, result });
-                      } else {
-                        console.error(
-                          `❌ [Claude-直接実行方式] executeTask関数が利用不可 [ID:${requestId}]`,
-                        );
-                        sendResponse({
-                          success: false,
-                          error: "executeTask not available",
-                        });
-                      }
-                    }, 1000);
+
+                    // [FIX] setTimeoutを削除し、即座にレスポンス
+                    // これにより「message port closed」エラーを防止
+                    sendResponse({
+                      success: false,
+                      error: "executeTask not available",
+                      fixed: "No setTimeout delay - immediate response",
+                      timestamp: new Date().toISOString(),
+                    });
                   }
                 } catch (error) {
                   console.error(
