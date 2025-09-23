@@ -355,50 +355,6 @@ class TaskGroupTypeDetector {
 
     return layout;
   }
-
-  /**
-   * グループタイプに基づくウィンドウ配置を生成
-   * @deprecated getWindowLayoutFromTasksを使用してください
-   */
-  getWindowLayout(groupTypeInfo) {
-    const layout = [];
-
-    // グループタイプに基づく配置
-    switch (groupTypeInfo.type) {
-      case this.groupTypes.THREE_AI:
-        // 3種類AI: ChatGPT左上、Claude右上、Gemini左下
-        layout.push({ aiType: "chatgpt", position: 0 }); // 左上
-        layout.push({ aiType: "claude", position: 1 }); // 右上
-        layout.push({ aiType: "gemini", position: 2 }); // 左下
-        break;
-
-      case this.groupTypes.NORMAL:
-        // 通常処理: 検出されたAIを順番に配置
-        groupTypeInfo.aiTypes.slice(0, 3).forEach((aiType, index) => {
-          layout.push({ aiType, position: index });
-        });
-        break;
-
-      case this.groupTypes.REPORT:
-        // レポート処理: レポートウィンドウのみ
-        layout.push({ aiType: "report", position: 0 });
-        break;
-
-      case this.groupTypes.GENSPARK:
-        // Genspark処理: Gensparkウィンドウのみ
-        layout.push({ aiType: "genspark", position: 0 });
-        break;
-
-      case this.groupTypes.MIXED:
-        // 混在処理: 最大3つまで配置
-        groupTypeInfo.aiTypes.slice(0, 3).forEach((aiType, index) => {
-          layout.push({ aiType, position: index });
-        });
-        break;
-    }
-
-    return layout;
-  }
 }
 
 // グローバルインスタンス作成
