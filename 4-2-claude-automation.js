@@ -6618,6 +6618,25 @@
         });
 
         console.log(`🔧 [新機能] 抽出完了: ${functions.length}個の機能`);
+
+        // DeepResearch/リサーチを一番下に移動
+        const deepResearchIndex = functions.findIndex(
+          (f) =>
+            f.name === "DeepResearch" ||
+            f.name === "Deep Research" ||
+            f.name === "リサーチ" ||
+            f.name.includes("Research") ||
+            f.name.includes("リサーチ"),
+        );
+        if (
+          deepResearchIndex > -1 &&
+          deepResearchIndex < functions.length - 1
+        ) {
+          const deepResearch = functions.splice(deepResearchIndex, 1)[0];
+          functions.push(deepResearch);
+          console.log(`📍 DeepResearch機能を最後に移動しました`);
+        }
+
         if (functions.length > 0) {
           console.log("📝 抽出された機能一覧:");
           functions.forEach((func, i) => {
@@ -6731,6 +6750,24 @@
 
         console.log("🎯 検出結果:");
         console.log(`📋 機能総数: ${functions.length}`);
+
+        // DeepResearch/リサーチを一番下に移動
+        const deepResearchIndex = functions.findIndex(
+          (f) =>
+            f.name === "DeepResearch" ||
+            f.name === "Deep Research" ||
+            f.name === "リサーチ" ||
+            f.name.includes("Research") ||
+            f.name.includes("リサーチ"),
+        );
+        if (
+          deepResearchIndex > -1 &&
+          deepResearchIndex < functions.length - 1
+        ) {
+          const deepResearch = functions.splice(deepResearchIndex, 1)[0];
+          functions.push(deepResearch);
+          console.log(`📍 DeepResearch機能を最後に移動しました`);
+        }
 
         if (functions.length > 0) {
           console.log("📝 機能一覧:");
