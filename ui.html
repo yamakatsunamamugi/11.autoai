@@ -201,6 +201,65 @@
         </div>
       </section>
 
+      <!-- AI統合情報セクション -->
+      <section class="step-section">
+        <div class="step-header">
+          <span class="step-number">🤖</span>
+          <h2>AI統合情報</h2>
+        </div>
+        <div class="step-content">
+          <p class="test-description">各AIサービスで検出されたモデルと機能の一覧</p>
+
+          <!-- AI統合表 -->
+          <div style="overflow-x: auto; margin-bottom: 15px;">
+            <table id="ai-integrated-table" style="width: 100%; border-collapse: collapse; font-family: 'Segoe UI', Arial, sans-serif; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+              <thead style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                <tr>
+                  <th style="border: 1px solid #dee2e6; padding: 12px; text-align: left; font-weight: 600; font-size: 14px;">ChatGPTモデル</th>
+                  <th style="border: 1px solid #dee2e6; padding: 12px; text-align: left; font-weight: 600; font-size: 14px;">Claudeモデル</th>
+                  <th style="border: 1px solid #dee2e6; padding: 12px; text-align: left; font-weight: 600; font-size: 14px;">Geminiモデル</th>
+                  <th style="border: 1px solid #dee2e6; padding: 12px; text-align: left; font-weight: 600; font-size: 14px;">ChatGPT機能</th>
+                  <th style="border: 1px solid #dee2e6; padding: 12px; text-align: left; font-weight: 600; font-size: 14px;">Claude機能</th>
+                  <th style="border: 1px solid #dee2e6; padding: 12px; text-align: left; font-weight: 600; font-size: 14px;">Gemini機能</th>
+                </tr>
+              </thead>
+              <tbody id="ai-integrated-tbody">
+                <tr>
+                  <td style="border: 1px solid #dee2e6; padding: 8px; text-align: left; vertical-align: top; font-size: 12px;">
+                    <span style="color: #999;">検出待機中...</span>
+                  </td>
+                  <td style="border: 1px solid #dee2e6; padding: 8px; text-align: left; vertical-align: top; font-size: 12px;">
+                    <span style="color: #999;">検出待機中...</span>
+                  </td>
+                  <td style="border: 1px solid #dee2e6; padding: 8px; text-align: left; vertical-align: top; font-size: 12px;">
+                    <span style="color: #999;">検出待機中...</span>
+                  </td>
+                  <td style="border: 1px solid #dee2e6; padding: 8px; text-align: left; vertical-align: top; font-size: 12px;">
+                    <span style="color: #999;">検出待機中...</span>
+                  </td>
+                  <td style="border: 1px solid #dee2e6; padding: 8px; text-align: left; vertical-align: top; font-size: 12px;">
+                    <span style="color: #999;">検出待機中...</span>
+                  </td>
+                  <td style="border: 1px solid #dee2e6; padding: 8px; text-align: left; vertical-align: top; font-size: 12px;">
+                    <span style="color: #999;">検出待機中...</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- コピーボタン -->
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <button id="copy-ai-table-btn" class="btn btn-secondary">
+              <span class="btn-icon">📋</span>
+              表をコピー
+            </button>
+            <div id="copy-status" style="font-size: 12px; margin-left: 10px;"></div>
+          </div>
+        </div>
+      </section>
+
+
 
 
       <!-- ログビューアーセクション -->

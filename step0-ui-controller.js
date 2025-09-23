@@ -1075,25 +1075,62 @@ function updateAITable(aiType, data) {
 
     // 機能情報を更新（詳細情報付き）
     if (data.functionsWithDetails && cells[functionCellIndex]) {
-      const functionList = data.functionsWithDetails
-        .map((func) => {
-          let status = "";
-          // とぐる状態を表示
-          if (func.isToggleable) {
-            status += func.isToggled ? " 🟢" : " 🔴";
-          }
-          // セクレタ状態を表示
-          if (func.secretStatus) {
-            status += ` [${func.secretStatus}]`;
-          }
-          // 有効/無効状態
-          const enabledIcon = func.isEnabled ? "✅" : "❌";
-          return `${enabledIcon} ${func.name}${status}`;
-        })
-        .join("<br>");
-      cells[functionCellIndex].innerHTML =
-        functionList || '<span style="color: #999;">未検出</span>';
-      log.debug(`✅ ${aiType}機能情報更新完了:`, data.functionsWithDetails);
+      try {
+        const functionList = data.functionsWithDetails
+          .map((func) => {
+            // オブジェクトが文字列として送信されている場合の対応
+            if (typeof func === "string") {
+              return `• ${func}`;
+            }
+
+            // 正常なオブジェクトの場合の処理
+            if (typeof func === "object" && func !== null) {
+              const funcName = func.name || func.functionName || "Unknown";
+              let status = "";
+
+              // トグル状態を表示
+              if (func.isToggleable) {
+                status += func.isToggled ? " 🟢" : " 🔴";
+              }
+
+              // セレクタ状態を表示
+              if (func.secretStatus) {
+                status += ` [${func.secretStatus}]`;
+              }
+
+              // 有効/無効状態
+              const enabledIcon = func.isEnabled ? "✅" : "❌";
+
+              // デバッグ情報を追加
+              let debugInfo = "";
+              if (func.selector) {
+                debugInfo += ` (${func.selector.substring(0, 20)}...)`;
+              }
+
+              return `${enabledIcon} ${funcName}${status}${debugInfo}`;
+            }
+
+            // 予期しない形式の場合はJSONで表示
+            return `• ${JSON.stringify(func)}`;
+          })
+          .join("<br>");
+
+        cells[functionCellIndex].innerHTML =
+          functionList || '<span style="color: #999;">未検出</span>';
+        log.debug(`✅ ${aiType}機能情報更新完了:`, data.functionsWithDetails);
+      } catch (error) {
+        log.error(`❌ ${aiType}機能情報処理エラー:`, error);
+        log.debug("エラー発生時のデータ:", data.functionsWithDetails);
+
+        // エラー時はフォールバック処理
+        const fallbackList = Array.isArray(data.functionsWithDetails)
+          ? data.functionsWithDetails.map(
+              (func, index) => `• 機能${index + 1}: ${typeof func}`,
+            )
+          : [`• エラー: ${typeof data.functionsWithDetails}`];
+
+        cells[functionCellIndex].innerHTML = fallbackList.join("<br>");
+      }
     } else if (data.functions && cells[functionCellIndex]) {
       // フォールバック：シンプルな機能リスト
       const functionList = data.functions
