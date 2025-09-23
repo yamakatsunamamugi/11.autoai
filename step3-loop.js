@@ -605,6 +605,17 @@ async function executeStep3AllGroups() {
     log.debug(
       `\n====== グループ ${i + 1}/${taskGroups.length} 処理開始 ======`,
     );
+
+    // 🔧 [UNIFICATION] グループ統一化確認ログ
+    LoopLogger.info("📋 [UNIFICATION] step3メインループでグループ処理:", {
+      グループ番号: i + 1,
+      総グループ数: taskGroups.length,
+      統一フロー: "step3 → processIncompleteTasks → executeStep4",
+      step4自動移行: "無効化済み",
+      データ形式: "タスク配列（全グループ統一）",
+      プロンプト生成: "統一済み",
+    });
+
     log.debug(`📋 グループ詳細:`, {
       番号: taskGroup.groupNumber,
       タイプ: taskGroup.taskType || taskGroup.type,
@@ -1151,6 +1162,18 @@ async function executeTasks(tasks, taskGroup) {
 
     // Step4を実行
     LoopLogger.info("[Helper] Step4実行中...");
+
+    // 🔧 [UNIFICATION] タスク配列生成確認ログ
+    LoopLogger.info("📋 [UNIFICATION] processIncompleteTasks → executeStep4:", {
+      データ形式: "タスク配列",
+      タスク数: formattedTasks.length,
+      グループ番号: formattedTasks[0]?.groupNumber || "不明",
+      最初のタスクID: formattedTasks[0]?.id || "不明",
+      プロンプトプレビュー:
+        formattedTasks[0]?.prompt?.substring(0, 50) + "..." || "なし",
+      executeStep4呼び出し: "step3経由（統一フロー）",
+      生成方法: "generateTaskList経由",
+    });
 
     // DEBUG: executeStep4呼び出し直前の詳細ログ
     // DEBUG: executeStep4を呼び出す直前

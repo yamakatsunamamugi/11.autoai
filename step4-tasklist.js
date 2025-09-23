@@ -2493,6 +2493,15 @@ async function generateTaskList(
     };
 
     const promptColumns = taskGroup.columns.prompts || [];
+
+    // 🔍 [DEBUG] promptColumns詳細ログ
+    addLog(`[DEBUG-PROMPT-COLUMNS] promptColumns詳細:`, {
+      taskGroupColumns: taskGroup.columns,
+      promptColumns: promptColumns,
+      promptColumnsLength: promptColumns.length,
+      groupNumber: taskGroup.groupNumber,
+      groupType: taskGroup.groupType,
+    });
     // 【統一修正】全てオブジェクト形式なのでObject.valuesを直接使用
     const answerColumns = taskGroup.columns.answer
       ? Object.values(taskGroup.columns.answer)
@@ -2764,7 +2773,7 @@ async function generateTaskList(
             groupType: taskGroup.groupType,
             row: row,
             column: promptColumns[0],
-            prompt: `現在${promptColumns.map((col) => `${col}${row}`).join(",")}の作業中です。\n\n${prompts.join("\n\n")}`,
+            prompt: `現在${promptColumns.length > 0 ? promptColumns.map((col) => `${col}${row}`).join(",") : `行${row}`}の作業中です。\n\n${prompts.join("\n\n")}`,
             ai: aiType, // 🔧 [FIX] 変換後のaiTypeを使用
             aiType:
               taskGroup.groupType === "3種類AI"
@@ -6472,60 +6481,19 @@ async function executeStep4(taskList) {
     windowLayout: windowLayoutInfo?.length || 0,
   });
 
-  // Step 4-6-8: 次のグループへの自動移行
-  ExecuteLogger.info("🔄 [Step 4-6-8] 次のグループへの自動移行処理");
+  // 🔧 [UNIFICATION] Step 4-6-8: グループ統一化完了
+  // step4自動移行ロジックを削除し、全グループをstep3メインループで統一管理
 
-  // 全タスクが成功した場合のみ次のグループへ移行
   const allSuccess = results.every((r) => r.success);
-  if (allSuccess && enrichedTaskList.length > 0) {
-    ExecuteLogger.info("✅ 全タスクが成功、次のグループをチェック");
 
-    // step6-nextgroup.jsのexecuteStep6を呼び出して次のグループへ
-    if (typeof window.executeStep6 === "function") {
-      try {
-        const nextGroupResult = await window.executeStep6(
-          window.globalState?.taskGroups || [],
-          window.globalState?.currentGroupIndex || 0,
-        );
-
-        if (nextGroupResult.hasNext) {
-          ExecuteLogger.info(
-            `🎯 次のグループ（グループ${nextGroupResult.nextIndex + 1}）への移行を開始`,
-          );
-
-          // グループインデックスを更新
-          if (window.globalState) {
-            window.globalState.currentGroupIndex = nextGroupResult.nextIndex;
-          }
-
-          // 再帰的にstep4を呼び出して次のグループを処理
-          ExecuteLogger.info("🔄 Step4を再実行して次のグループを処理");
-
-          // 少し待機してから次のグループを実行
-          await new Promise((resolve) => setTimeout(resolve, 3000));
-
-          // 次のグループのタスクを取得して実行
-          const nextGroupTasks =
-            window.globalState?.taskGroups?.[nextGroupResult.nextIndex];
-          if (nextGroupTasks) {
-            ExecuteLogger.info(
-              `📋 グループ${nextGroupResult.nextIndex + 1}のタスク${nextGroupTasks.length}個を実行開始`,
-            );
-            // 再帰的に executeStep4 を呼び出す
-            return await executeStep4(nextGroupTasks);
-          }
-        } else {
-          ExecuteLogger.info("🎉 すべてのグループの処理が完了しました");
-        }
-      } catch (error) {
-        ExecuteLogger.error("❌ 次グループへの移行エラー:", error);
-      }
-    } else {
-      ExecuteLogger.warn("⚠️ executeStep6関数が利用できません");
-    }
-  } else if (!allSuccess) {
-    ExecuteLogger.warn("⚠️ 失敗タスクがあるため、次のグループへは移行しません");
-  }
+  ExecuteLogger.info("📋 [UNIFICATION] グループ統一化完了:", {
+    allSuccess: allSuccess,
+    taskCount: enrichedTaskList.length,
+    currentGroup: window.globalState?.currentGroupIndex + 1 || "不明",
+    統一管理: "step3メインループ",
+    step4自動移行: "削除済み",
+    データフロー: "step3 → processIncompleteTasks → executeStep4",
+  });
 
   // ========================================
   // Step 4-6: サブ関数群
