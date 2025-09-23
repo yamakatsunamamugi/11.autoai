@@ -790,6 +790,84 @@ document.addEventListener("DOMContentLoaded", () => {
 // Section 8: AI モデル・機能情報受信・更新処理
 // ========================================
 
+// 前回のAI情報を保存（変更検出用）
+const lastAIData = {
+  chatgpt: { models: [], functions: [] },
+  claude: { models: [], functions: [] },
+  gemini: { models: [], functions: [] },
+};
+
+// データが変更されたかチェック
+function hasDataChanged(aiType, newData) {
+  const lastData = lastAIData[aiType];
+
+  // データが取得できていない場合は更新しない
+  if (
+    !newData.models &&
+    !newData.functions &&
+    !newData.modelsWithDetails &&
+    !newData.functionsWithDetails
+  ) {
+    log.debug(`🔍 [UI] ${aiType}: データが取得されていないため更新をスキップ`);
+    return false;
+  }
+
+  // モデル比較
+  const newModels = newData.models || [];
+  const lastModels = lastData.models || [];
+
+  if (newModels.length !== lastModels.length) {
+    return true;
+  }
+
+  for (let i = 0; i < newModels.length; i++) {
+    if (newModels[i] !== lastModels[i]) {
+      return true;
+    }
+  }
+
+  // 機能比較（詳細データがある場合は詳細で比較）
+  const newFunctions = newData.functionsWithDetails || newData.functions || [];
+  const lastFunctions = lastData.functions || [];
+
+  if (newFunctions.length !== lastFunctions.length) {
+    return true;
+  }
+
+  // 機能の詳細比較（名前、状態、セクレタ情報）
+  for (let i = 0; i < newFunctions.length; i++) {
+    const newFunc = newFunctions[i];
+    const lastFunc = lastFunctions[i];
+
+    if (typeof newFunc === "object" && typeof lastFunc === "object") {
+      // 詳細オブジェクトの比較
+      if (
+        newFunc.name !== lastFunc.name ||
+        newFunc.isEnabled !== lastFunc.isEnabled ||
+        newFunc.isToggled !== lastFunc.isToggled ||
+        newFunc.secretStatus !== lastFunc.secretStatus
+      ) {
+        return true;
+      }
+    } else {
+      // 単純な文字列比較
+      if (newFunc !== lastFunc) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+// データを保存
+function saveAIData(aiType, data) {
+  lastAIData[aiType] = {
+    models: data.models || [],
+    functions: data.functionsWithDetails || data.functions || [],
+  };
+}
+
 // Chromeメッセージ受信処理
 if (
   typeof chrome !== "undefined" &&
@@ -804,8 +882,20 @@ if (
         functionsCount: message.data.functions?.length || 0,
       });
 
-      updateAITable(message.aiType, message.data);
-      sendResponse({ success: true });
+      // 変更検出
+      if (hasDataChanged(message.aiType, message.data)) {
+        log.info(
+          `🔄 [UI] ${message.aiType}のデータが変更されました - UI更新実行`,
+        );
+        updateAITable(message.aiType, message.data);
+        saveAIData(message.aiType, message.data);
+        sendResponse({ success: true, updated: true });
+      } else {
+        log.debug(
+          `📋 [UI] ${message.aiType}のデータは変更なし - UI更新スキップ`,
+        );
+        sendResponse({ success: true, updated: false });
+      }
     }
   });
 }
@@ -863,8 +953,29 @@ function updateAITable(aiType, data) {
       log.debug(`✅ ${aiType}モデル情報更新完了:`, data.models);
     }
 
-    // 機能情報を更新
-    if (data.functions && cells[functionCellIndex]) {
+    // 機能情報を更新（詳細情報付き）
+    if (data.functionsWithDetails && cells[functionCellIndex]) {
+      const functionList = data.functionsWithDetails
+        .map((func) => {
+          let status = "";
+          // とぐる状態を表示
+          if (func.isToggleable) {
+            status += func.isToggled ? " 🟢" : " 🔴";
+          }
+          // セクレタ状態を表示
+          if (func.secretStatus) {
+            status += ` [${func.secretStatus}]`;
+          }
+          // 有効/無効状態
+          const enabledIcon = func.isEnabled ? "✅" : "❌";
+          return `${enabledIcon} ${func.name}${status}`;
+        })
+        .join("<br>");
+      cells[functionCellIndex].innerHTML =
+        functionList || '<span style="color: #999;">未検出</span>';
+      log.debug(`✅ ${aiType}機能情報更新完了:`, data.functionsWithDetails);
+    } else if (data.functions && cells[functionCellIndex]) {
+      // フォールバック：シンプルな機能リスト
       const functionList = data.functions
         .map((func) => `• ${func}`)
         .join("<br>");
@@ -917,6 +1028,110 @@ function initializeAITable() {
     log.debug("✅ AI統合表を初期化しました");
   }
 }
+
+// ========================================
+// 表コピー機能
+// ========================================
+
+// AI統合表をスプレッドシート形式でコピー
+function copyAITableToClipboard() {
+  try {
+    const table = document.getElementById("ai-integrated-table");
+    const statusDiv = document.getElementById("copy-status");
+
+    if (!table) {
+      statusDiv.textContent = "❌ 表が見つかりません";
+      statusDiv.style.color = "#dc3545";
+      return;
+    }
+
+    // ヘッダー行を取得
+    const headers = [
+      "AI種別",
+      "ChatGPTモデル",
+      "Claudeモデル",
+      "Geminiモデル",
+      "ChatGPT機能",
+      "Claude機能",
+      "Gemini機能",
+    ];
+
+    // データ行を取得
+    const tbody = table.querySelector("tbody");
+    const dataRows = tbody.querySelectorAll("tr");
+
+    let tsvData = "";
+
+    // ヘッダーを追加
+    tsvData += headers.join("\t") + "\n";
+
+    // データ行を処理
+    dataRows.forEach((row, rowIndex) => {
+      const cells = row.querySelectorAll("td");
+
+      if (cells.length === 6) {
+        // 通常のデータ行
+        const rowData = ["AI統合情報"]; // AI種別列
+
+        cells.forEach((cell) => {
+          // HTMLタグを除去してテキストのみ抽出
+          let cellText = cell.textContent || cell.innerText || "";
+          cellText = cellText.replace(/\s+/g, " ").trim();
+
+          // 改行を適切に処理
+          cellText = cellText.replace(/\n/g, ", ");
+
+          // 検出待機中の場合は空にする
+          if (
+            cellText.includes("検出待機中") ||
+            cellText.includes("データを読み込み中")
+          ) {
+            cellText = "";
+          }
+
+          rowData.push(cellText);
+        });
+
+        tsvData += rowData.join("\t") + "\n";
+      }
+    });
+
+    // クリップボードにコピー
+    navigator.clipboard
+      .writeText(tsvData)
+      .then(() => {
+        statusDiv.textContent =
+          "✅ 表をクリップボードにコピーしました！スプレッドシートに貼り付けできます";
+        statusDiv.style.color = "#28a745";
+
+        // 3秒後にステータスをクリア
+        setTimeout(() => {
+          statusDiv.textContent = "";
+        }, 3000);
+
+        log.info("📋 AI統合表をクリップボードにコピー完了");
+      })
+      .catch((err) => {
+        statusDiv.textContent = "❌ コピーに失敗しました: " + err.message;
+        statusDiv.style.color = "#dc3545";
+        log.error("📋 クリップボードコピーエラー:", err);
+      });
+  } catch (error) {
+    const statusDiv = document.getElementById("copy-status");
+    statusDiv.textContent = "❌ エラーが発生しました: " + error.message;
+    statusDiv.style.color = "#dc3545";
+    log.error("📋 表コピー機能エラー:", error);
+  }
+}
+
+// ページ読み込み時にコピーボタンのイベントリスナーを設定
+document.addEventListener("DOMContentLoaded", () => {
+  const copyButton = document.getElementById("copy-ai-table-btn");
+  if (copyButton) {
+    copyButton.addEventListener("click", copyAITableToClipboard);
+    log.debug("📋 表コピーボタンのイベントリスナーを設定しました");
+  }
+});
 
 // スクリプト読み込み完了をトラッキング
 window.scriptLoadTracker.addScript("step0-ui-controller.js");

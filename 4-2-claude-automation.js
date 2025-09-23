@@ -3741,16 +3741,41 @@
 
               console.log("🔍 検出されたClaudeモデル:", detectedModels);
 
-              // UIに送信
-              await chrome.runtime.sendMessage({
-                type: "AI_MODEL_FUNCTION_UPDATE",
-                aiType: "claude",
-                data: {
-                  models: detectedModels.map((m) => m.name),
-                  modelsWithDetails: detectedModels,
-                },
-              });
-              console.log("✅ 検出結果をUIに送信完了");
+              // 🔧 機能情報も検出を試行
+              let detectedFunctions = [];
+              try {
+                console.log("🔧 Claude機能情報検出も試行中...");
+                detectedFunctions = await detectClaudeFunctionsFromOpenMenu();
+                console.log("🔧 検出されたClaude機能:", detectedFunctions);
+              } catch (functionError) {
+                console.log("⚠️ 機能検出エラー（継続）:", functionError);
+              }
+
+              // UIに送信（データが取得できた場合のみ）
+              if (detectedModels.length > 0 || detectedFunctions.length > 0) {
+                const response = await chrome.runtime.sendMessage({
+                  type: "AI_MODEL_FUNCTION_UPDATE",
+                  aiType: "claude",
+                  data: {
+                    models: detectedModels.map((m) => m.name),
+                    modelsWithDetails: detectedModels,
+                    functions: detectedFunctions.map((f) => f.name),
+                    functionsWithDetails: detectedFunctions,
+                  },
+                });
+
+                if (response?.updated) {
+                  console.log("✅ 検出結果をUIに送信・更新完了");
+                } else {
+                  console.log(
+                    "📋 検出結果を送信（変更なしのため更新スキップ）",
+                  );
+                }
+              } else {
+                console.log(
+                  "⚠️ モデル・機能ともに検出されなかったため送信をスキップ",
+                );
+              }
             } catch (detectionError) {
               console.log("❌ モデル検出エラー:", detectionError);
             }
@@ -5998,9 +6023,127 @@
         return models;
       }
 
+      // ========================================
+      // Claude 機能検出関数（テスト済み）
+      // ========================================
+
+      // Claude機能メニュー検出関数
+      async function detectClaudeFunctionsFromOpenMenu() {
+        console.log("🔧 Claude機能検出開始");
+
+        // 機能メニューのコンテンツを見つける
+        let contentDiv = document.querySelector(
+          "div.w-full > div.p-1\\.5.flex.flex-col",
+        );
+
+        if (!contentDiv) {
+          // フォールバック: より広範囲で探す
+          contentDiv = document.querySelector(
+            'div[class*="p-1.5"][class*="flex-col"]',
+          );
+        }
+
+        if (!contentDiv) {
+          console.log("❌ 機能メニューのコンテンツが見つかりません");
+          return [];
+        }
+
+        console.log("✅ 機能メニューのコンテンツが見つかりました");
+        return extractFunctionsFromMenu(contentDiv);
+      }
+
+      // メニューから機能情報を抽出
+      function extractFunctionsFromMenu(contentDiv) {
+        const functions = [];
+
+        // 検索ボックス以外のボタンを取得
+        const buttons = contentDiv.querySelectorAll(
+          'button:not([id*="search"])',
+        );
+
+        console.log(`📋 機能ボタン数: ${buttons.length}`);
+
+        buttons.forEach((button, index) => {
+          // 機能名を取得
+          const nameElement = button.querySelector("p.font-base.text-text-300");
+          if (!nameElement) return;
+
+          const functionName = nameElement.textContent.trim();
+
+          // 説明を取得
+          const descElement = button.querySelector(
+            "p.font-small.text-text-500",
+          );
+          const description = descElement ? descElement.textContent.trim() : "";
+
+          // セクレタ（接続状態）を取得
+          const secretElement = button.querySelector(
+            'p[class*="text-accent-secondary"], p[class*="opacity-70"]',
+          );
+          const secretStatus = secretElement
+            ? secretElement.textContent.trim()
+            : "";
+
+          // 有効/無効状態
+          const isEnabled = !button.hasAttribute("disabled");
+
+          // とぐる（トグル）機能かどうか
+          const isToggleable = !!button.querySelector('input[type="checkbox"]');
+
+          // とぐる状態
+          let isToggled = false;
+          if (isToggleable) {
+            const checkbox = button.querySelector('input[type="checkbox"]');
+            isToggled = checkbox ? checkbox.checked : false;
+          }
+
+          console.log(
+            `[${index + 1}] ${functionName} | 有効:${isEnabled} | とぐる:${isToggleable ? (isToggled ? "ON" : "OFF") : "N/A"} | セクレタ:${secretStatus || "N/A"}`,
+          );
+
+          if (functionName) {
+            functions.push({
+              name: functionName,
+              description: description,
+              secretStatus: secretStatus,
+              isEnabled: isEnabled,
+              isToggleable: isToggleable,
+              isToggled: isToggled,
+            });
+          }
+        });
+
+        console.log("🎯 検出結果:");
+        console.log(`📋 機能総数: ${functions.length}`);
+
+        if (functions.length > 0) {
+          console.log("📝 機能一覧:");
+          functions.forEach((func, i) => {
+            const status = func.isEnabled ? "✅" : "❌";
+            const toggle = func.isToggleable
+              ? func.isToggled
+                ? "🟢"
+                : "🔴"
+              : "";
+            const secret = func.secretStatus ? `[${func.secretStatus}]` : "";
+            console.log(
+              `  ${i + 1}. ${func.name} ${status} ${toggle} ${secret}`,
+            );
+          });
+        } else {
+          console.log("❌ 機能が検出されませんでした");
+        }
+
+        console.table(functions);
+        return functions;
+      }
+
       // Windowオブジェクトに追加してアクセス可能にする
       window.detectClaudeModelsFromOpenMenu = detectClaudeModelsFromOpenMenu;
       window.extractModelsFromMenu = extractModelsFromMenu;
+      window.detectClaudeFunctionsFromOpenMenu =
+        detectClaudeFunctionsFromOpenMenu;
+      window.extractFunctionsFromMenu = extractFunctionsFromMenu;
 
       log.info("=".repeat(60));
       log.info("🎉 [Claude Automation] 関数エクスポート完了");
