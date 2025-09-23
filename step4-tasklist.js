@@ -742,7 +742,7 @@ class SafeMessenger {
   }
 
   /**
-   * 実際のメッセージ送信処理
+   * 実際のメッセージ送信処理（リトライ機能付き）
    */
   static async _doSendMessage(tabId, message, timeout) {
     // 🔍 [DEBUG] 実際の送信処理開始ログ
@@ -754,61 +754,104 @@ class SafeMessenger {
       sendMessageExists: !!chrome?.tabs?.sendMessage,
     });
 
-    try {
-      // 🔍 [DEBUG] chrome.tabs.sendMessage実行前ログ
-      log.debug("🔍 [DEBUG-SAFE-MESSENGER] chrome.tabs.sendMessage実行前:", {
-        tabId: tabId,
-        message: message,
-        aboutToCall: "chrome.tabs.sendMessage",
-      });
+    // リトライ設定
+    const maxRetries = 3;
+    let lastError = null;
 
-      const response = await Promise.race([
-        chrome.tabs.sendMessage(tabId, message),
-        new Promise((_, reject) =>
-          setTimeout(
-            () => reject(new Error(`sendMessage timeout after ${timeout}ms`)),
-            timeout,
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        // 🔍 [DEBUG] chrome.tabs.sendMessage実行前ログ
+        log.debug("🔍 [DEBUG-SAFE-MESSENGER] chrome.tabs.sendMessage実行前:", {
+          tabId: tabId,
+          message: message,
+          attempt: attempt + 1,
+          maxRetries: maxRetries,
+        });
+
+        const response = await Promise.race([
+          chrome.tabs.sendMessage(tabId, message),
+          new Promise((_, reject) =>
+            setTimeout(
+              () => reject(new Error(`sendMessage timeout after ${timeout}ms`)),
+              timeout,
+            ),
           ),
-        ),
-      ]);
+        ]);
 
-      // 🔍 [DEBUG] レスポンス受信ログ
-      log.debug("🔍 [DEBUG-SAFE-MESSENGER] レスポンス受信:", {
-        tabId: tabId,
-        responseReceived: !!response,
-        responseType: typeof response,
-        responseKeys: response ? Object.keys(response) : null,
-        responseSuccess: response?.success,
-        hasResponseData: !!response?.data,
-        responseAction: response?.action,
-      });
+        // 🔍 [DEBUG] レスポンス受信ログ
+        log.debug("🔍 [DEBUG-SAFE-MESSENGER] レスポンス受信:", {
+          tabId: tabId,
+          responseReceived: !!response,
+          responseType: typeof response,
+          responseKeys: response ? Object.keys(response) : null,
+          responseSuccess: response?.success,
+          hasResponseData: !!response?.data,
+          responseAction: response?.action,
+          attempt: attempt + 1,
+        });
 
-      return {
-        success: true,
-        data: response,
-        tabId: tabId,
-        timestamp: Date.now(),
-      };
-    } catch (error) {
-      log.debug(`[SafeMessenger] エラー: ${error.message}`);
-      // 🔍 [DEBUG] エラー詳細ログ
-      log.debug("🔍 [DEBUG-SAFE-MESSENGER] エラー詳細:", {
-        tabId: tabId,
-        errorMessage: error.message,
-        errorName: error.name,
-        errorStack: error.stack?.substring(0, 200),
-        isTimeout: error.message.includes("timeout"),
-        isTabError: error.message.includes("tab"),
-        isConnectionError: error.message.includes("connection"),
-      });
+        return {
+          success: true,
+          data: response,
+          tabId: tabId,
+          timestamp: Date.now(),
+          retryCount: attempt,
+        };
+      } catch (error) {
+        lastError = error;
+        const errorMessage = error.message || String(error);
 
-      return {
-        success: false,
-        error: error.message,
-        tabId: tabId,
-        timestamp: Date.now(),
-      };
+        // "Could not establish connection"エラーの場合はリトライ
+        if (
+          (errorMessage.includes("Could not establish connection") ||
+            errorMessage.includes("Receiving end does not exist")) &&
+          attempt < maxRetries - 1
+        ) {
+          log.debug(
+            `🔁 [SafeMessenger] 接続エラー、リトライ ${attempt + 1}/${maxRetries}`,
+          );
+          // 指数バックオフ
+          await new Promise((resolve) =>
+            setTimeout(resolve, Math.min(1000 * Math.pow(2, attempt), 5000)),
+          );
+          continue;
+        }
+
+        // その他のエラーまたは最終リトライ
+        log.debug(`[SafeMessenger] エラー: ${errorMessage}`);
+        // 🔍 [DEBUG] エラー詳細ログ
+        log.debug("🔍 [DEBUG-SAFE-MESSENGER] エラー詳細:", {
+          tabId: tabId,
+          errorMessage: errorMessage,
+          errorName: error.name,
+          errorStack: error.stack?.substring(0, 200),
+          isTimeout: errorMessage.includes("timeout"),
+          isTabError: errorMessage.includes("tab"),
+          isConnectionError: errorMessage.includes("connection"),
+          attempt: attempt + 1,
+          willRetry: attempt < maxRetries - 1,
+        });
+
+        if (attempt >= maxRetries - 1) {
+          return {
+            success: false,
+            error: errorMessage,
+            tabId: tabId,
+            timestamp: Date.now(),
+            retryCount: attempt,
+          };
+        }
+      }
     }
+
+    // リトライ全て失敗
+    return {
+      success: false,
+      error: lastError?.message || "Unknown error",
+      tabId: tabId,
+      timestamp: Date.now(),
+      retryCount: maxRetries,
+    };
   }
 
   /**
@@ -5785,6 +5828,48 @@ async function executeStep4(taskList) {
           status: tab.status,
           url: tab.url,
         });
+
+        // Content Scriptの準備確認（AI種別を判定して実行）
+        if (tab.url) {
+          let aiType = null;
+          if (tab.url.includes("claude.ai")) {
+            aiType = "claude";
+          } else if (
+            tab.url.includes("chatgpt.com") ||
+            tab.url.includes("chat.openai.com")
+          ) {
+            aiType = "chatgpt";
+          } else if (tab.url.includes("gemini.google.com")) {
+            aiType = "gemini";
+          } else if (
+            tab.url.includes("genspark.com") ||
+            tab.url.includes("genspark.ai")
+          ) {
+            aiType = "genspark";
+          }
+
+          if (aiType) {
+            ExecuteLogger.info(
+              `🔍 [Execute Task] ${aiType} Content Script準備確認開始`,
+            );
+            const isContentScriptReady =
+              await windowController.waitForContentScriptReady(
+                tabId,
+                aiType,
+                5,
+                1500,
+              );
+            if (!isContentScriptReady) {
+              ExecuteLogger.warn(
+                `⚠️ [Execute Task] ${aiType} Content Script準備タイムアウト、続行します`,
+              );
+            } else {
+              ExecuteLogger.info(
+                `✅ [Execute Task] ${aiType} Content Script準備完了`,
+              );
+            }
+          }
+        }
 
         // URL有効性チェック（拡張機能ページを明示的に除外）
         if (!tab.url) {
