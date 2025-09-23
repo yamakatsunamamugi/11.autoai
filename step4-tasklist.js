@@ -5311,6 +5311,56 @@ class TaskStatusManager {
 
 async function executeStep4(taskList) {
   // executeStep4関数定義開始
+
+  // 🔧 [FIX] 入力データ検証・変換処理
+  // グループオブジェクトが渡された場合、タスク配列に変換する
+  if (!Array.isArray(taskList)) {
+    ExecuteLogger.info(
+      "🔧 [DATA-CONVERSION] グループオブジェクトを検出、タスク配列に変換中:",
+      {
+        inputType: typeof taskList,
+        inputKeys: taskList ? Object.keys(taskList) : null,
+        isGroupObject: !!(
+          taskList &&
+          typeof taskList === "object" &&
+          !Array.isArray(taskList)
+        ),
+      },
+    );
+
+    if (taskList && typeof taskList === "object") {
+      // グループオブジェクトをタスク配列に変換
+      try {
+        taskList = await createTaskListFromGroup(taskList);
+        ExecuteLogger.info(
+          "✅ [DATA-CONVERSION] グループオブジェクトからタスク配列への変換完了:",
+          {
+            convertedTaskCount: taskList.length,
+            taskListPreview: taskList.slice(0, 3).map((task) => ({
+              id: task?.id || task?.taskId,
+              aiType: task?.aiType,
+              prompt: task?.prompt?.substring(0, 30) + "...",
+            })),
+          },
+        );
+      } catch (error) {
+        ExecuteLogger.error(
+          "❌ [DATA-CONVERSION] グループオブジェクト変換エラー:",
+          error,
+        );
+        throw new Error(`executeStep4: 入力データ変換失敗 - ${error.message}`);
+      }
+    } else {
+      ExecuteLogger.error("❌ [DATA-CONVERSION] 無効な入力データ:", {
+        taskList,
+        type: typeof taskList,
+      });
+      throw new Error(
+        "executeStep4: taskListは配列またはグループオブジェクトである必要があります",
+      );
+    }
+  }
+
   ExecuteLogger.info("🚀 Step 4-6 Execute 統合実行開始", taskList);
 
   // 🔍 [DEBUG] タスクリスト詳細検証ログ

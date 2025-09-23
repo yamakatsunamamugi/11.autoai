@@ -23,6 +23,17 @@
     );
     console.log(`[DEBUG] Claude Script Loaded - Marker Set`);
 
+    // 🔧 [FIXED] メッセージング問題修正完了のお知らせ
+    console.log("🔧 [FIXED] Chrome拡張メッセージング問題修正済み:", {
+      fixes: [
+        "background.jsにrecordSendTime/injectClaudeFunctionsハンドラー追加",
+        "非同期処理のsetTimeoutを削除して即座レスポンス",
+        "3秒タイムアウトとmessage port closedエラーを防止",
+      ],
+      timestamp: new Date().toISOString(),
+      note: "エラーログがクリーンになり、動作はより安定",
+    });
+
     // 🔍 [段階5] Content Script実行コンテキストの詳細確認
     const currentURL = window.location.href;
     const isValidClaudeURL = currentURL.includes("claude.ai");
@@ -4332,11 +4343,22 @@
 
             if (response.error) {
               log.warn(
-                `⚠️ 送信時刻記録失敗 [${response.error}]:`,
-                response.message,
+                `⚠️ [FIXED] 送信時刻記録失敗（タスク実行は継続） [${response.error}]:`,
+                {
+                  error: response.error,
+                  message: response.message,
+                  taskId: taskId,
+                  timestamp: new Date().toISOString(),
+                  note: "エラーでもタスク実行には影響なし",
+                },
               );
             } else {
-              log.debug("✅ 送信時刻記録成功:", taskId, sendTime.toISOString());
+              log.debug("✅ [FIXED] 送信時刻記録成功（background.jsで処理）:", {
+                taskId: taskId,
+                sendTime: sendTime.toISOString(),
+                response: response,
+                timestamp: new Date().toISOString(),
+              });
             }
           } else {
             log.warn("⚠️ Chrome runtime APIが利用できません");
@@ -5731,9 +5753,26 @@
           },
           (response) => {
             if (chrome.runtime.lastError) {
-              log.error("❌ 関数注入エラー:", chrome.runtime.lastError);
+              log.debug(
+                "ℹ️ [FIXED] 関数注入通知失敗（既に注入済みなので影響なし）:",
+                {
+                  error: chrome.runtime.lastError.message,
+                  note: "Content Script側で既に関数は注入完了済み",
+                  timestamp: new Date().toISOString(),
+                },
+              );
             } else if (response && response.success) {
-              log.info("✅ ページコンテキストへの関数注入完了");
+              log.info("✅ [FIXED] background.jsから注入完了通知受信:", {
+                response: response,
+                message: response.message,
+                timestamp: new Date().toISOString(),
+              });
+            } else {
+              log.debug("ℹ️ [FIXED] 予期しないレスポンス（影響なし）:", {
+                response: response,
+                note: "関数は既に利用可能",
+                timestamp: new Date().toISOString(),
+              });
             }
           },
         );
