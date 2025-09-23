@@ -3708,6 +3708,37 @@
             try {
               console.log("🔍 Claudeモデル情報検出開始");
               const detectedModels = await detectClaudeModelsFromOpenMenu();
+
+              // 📝 詳細ログ：すべての表示されたモデルを記載
+              console.log("🎯 検出結果サマリー:");
+              console.log(`📋 検出されたモデル総数: ${detectedModels.length}`);
+
+              if (detectedModels.length > 0) {
+                console.log("📝 すべての検出モデル詳細一覧:");
+                detectedModels.forEach((model, index) => {
+                  console.log(
+                    `  ${index + 1}. ${model.name} ${model.isSelected ? "✅ (選択中)" : ""}`,
+                  );
+                  if (model.description) {
+                    console.log(`     説明: ${model.description}`);
+                  }
+                });
+
+                console.log("📊 モデル名一覧:");
+                console.log(
+                  `   ${detectedModels.map((m) => m.name).join(", ")}`,
+                );
+
+                const selectedModel = detectedModels.find((m) => m.isSelected);
+                if (selectedModel) {
+                  console.log(`🎯 現在選択中: ${selectedModel.name}`);
+                } else {
+                  console.log("⚠️ 選択中のモデルが見つかりません");
+                }
+              } else {
+                console.log("❌ モデルが検出されませんでした");
+              }
+
               console.log("🔍 検出されたClaudeモデル:", detectedModels);
 
               // UIに送信
@@ -5944,6 +5975,25 @@
         });
 
         console.log("🎯 検出結果:");
+        console.log(`📋 検出されたモデル数: ${models.length}`);
+
+        if (models.length > 0) {
+          console.log("📝 すべての検出モデル一覧:");
+          models.forEach((model, index) => {
+            console.log(
+              `  ${index + 1}. ${model.name} ${model.isSelected ? "✅" : ""}`,
+            );
+            if (model.description) {
+              console.log(`     説明: ${model.description}`);
+            }
+          });
+
+          console.log("📊 モデル名のみ:");
+          console.log(models.map((m) => m.name).join(", "));
+        } else {
+          console.log("❌ モデルが検出されませんでした");
+        }
+
         console.table(models);
         return models;
       }
