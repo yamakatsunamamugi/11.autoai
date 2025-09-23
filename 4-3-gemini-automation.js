@@ -729,7 +729,15 @@ const log = {
     try {
       const promptText = taskData.prompt || "テストメッセージです";
       const modelName = taskData.model || "";
-      const featureName = taskData.function || "";
+      const featureName = taskData.feature || "";
+
+      // デバッグログ追加
+      console.log(`🔍 [Gemini Debug] taskDataの内容:`, {
+        promptText,
+        modelName,
+        featureName,
+        originalTaskData: taskData,
+      });
 
       // 【Step 4-3-2】テキスト入力
       log.debug("【Step 4-3-2】テキスト入力");
@@ -737,18 +745,26 @@ const log = {
 
       // 【Step 4-3-3】モデル選択（必要な場合）
       if (modelName && modelName !== "設定なし") {
+        console.log(`🔍 [Gemini Debug] モデル選択実行: ${modelName}`);
         const modelResult = await selectModel(modelName);
+        console.log(`🔍 [Gemini Debug] モデル選択結果:`, modelResult);
         if (!modelResult.success && !modelResult.skipped) {
           throw new Error(`モデル選択失敗: ${modelResult.error}`);
         }
+      } else {
+        console.log(`🔍 [Gemini Debug] モデル選択スキップ: ${modelName}`);
       }
 
       // 【Step 4-3-4】機能選択（必要な場合）
       if (featureName && featureName !== "設定なし") {
+        console.log(`🔍 [Gemini Debug] 機能選択実行: ${featureName}`);
         const featureResult = await selectFeature(featureName);
+        console.log(`🔍 [Gemini Debug] 機能選択結果:`, featureResult);
         if (!featureResult.success && !featureResult.skipped) {
           throw new Error(`機能選択失敗: ${featureResult.error}`);
         }
+      } else {
+        console.log(`🔍 [Gemini Debug] 機能選択スキップ: ${featureName}`);
       }
 
       // 【Step 4-3-5】メッセージ送信

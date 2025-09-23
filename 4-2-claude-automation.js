@@ -6469,52 +6469,189 @@
 
       // Claudeモデル情報検出関数（コンソールテスト済み）
       async function detectClaudeModelsFromOpenMenu() {
-        console.log("🔍 Claudeモデル検出テスト開始");
+        console.log("🔍 [STEP 1] Claudeモデル検出テスト開始");
+        console.log(`🔍 [STEP 1.1] 現在のURL: ${window.location.href}`);
+        console.log(`🔍 [STEP 1.2] 現在時刻: ${new Date().toISOString()}`);
 
-        // 1. モデルメニューが既に開いているかチェック
+        // 1. モデルメニューボタンを探す
+        console.log("🔍 [STEP 2] モデルメニューボタンを探しています...");
+        const modelButtons = document.querySelectorAll("button");
+        console.log(
+          `🔍 [STEP 2.1] ページ上のボタン総数: ${modelButtons.length}`,
+        );
+
+        let modelMenuButton = null;
+        for (let i = 0; i < modelButtons.length; i++) {
+          const button = modelButtons[i];
+          const buttonText = button.textContent?.trim() || "";
+          const hasIcon = button.querySelector("svg");
+
+          // Claudeのモデル選択ボタンを探す（Claude 3.5 Sonnet等）
+          if (
+            buttonText.includes("Claude") ||
+            buttonText.includes("Sonnet") ||
+            buttonText.includes("Haiku") ||
+            buttonText.includes("Opus")
+          ) {
+            console.log(`🔍 [STEP 2.2] 候補ボタン発見[${i}]: "${buttonText}"`);
+            console.log(`  - hasIcon: ${!!hasIcon}`);
+            console.log(`  - className: ${button.className}`);
+            modelMenuButton = button;
+            break;
+          }
+        }
+
+        if (!modelMenuButton) {
+          console.log("❌ [STEP 2.3] モデルメニューボタンが見つかりません");
+          return [];
+        }
+
+        console.log("✅ [STEP 2.4] モデルメニューボタンを発見");
+
+        // 2. モデルメニューが既に開いているかチェック
+        console.log("🔍 [STEP 3] モデルメニューの状態をチェック...");
         let menu = document.querySelector(
           'div[role="menu"][data-state="open"]',
         );
 
-        if (menu) {
-          console.log("✅ モデルメニューが開いています");
-          return extractModelsFromMenu(menu);
+        if (!menu) {
+          console.log(
+            "🔍 [STEP 3.1] メニューが閉じています - クリックして開きます",
+          );
+          modelMenuButton.click();
+
+          // メニューが開くまで待機
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+
+          menu = document.querySelector('div[role="menu"][data-state="open"]');
+
+          if (!menu) {
+            console.log("❌ [STEP 3.2] メニューを開くことができませんでした");
+            return [];
+          }
+
+          console.log("✅ [STEP 3.3] メニューを正常に開きました");
         } else {
-          console.log("❌ モデルメニューが開いていません");
-          return [];
+          console.log("✅ [STEP 3.4] メニューは既に開いています");
         }
+
+        console.log("🔍 [STEP 4] メニューからモデル情報を抽出中...");
+        const models = extractModelsFromMenu(menu);
+
+        console.log(
+          `✅ [STEP 5] モデル検出完了: ${models.length}個のモデルを検出`,
+        );
+        return models;
       }
 
       // メニューからモデル情報を抽出する関数
       function extractModelsFromMenu(menu) {
+        console.log("🔍 [EXTRACT-STEP 1] メニュー抽出開始");
+        console.log(`🔍 [EXTRACT-STEP 1.1] メニュー要素:`, menu);
+        console.log(
+          `🔍 [EXTRACT-STEP 1.2] メニューのHTML:`,
+          menu.outerHTML.substring(0, 500) + "...",
+        );
+
         const models = [];
         const menuItems = menu.querySelectorAll('div[role="menuitem"]');
 
-        console.log(`📋 メニューアイテム数: ${menuItems.length}`);
+        console.log(
+          `🔍 [EXTRACT-STEP 2] メニューアイテム数: ${menuItems.length}`,
+        );
+
+        if (menuItems.length === 0) {
+          console.log("❌ [EXTRACT-STEP 2.1] メニューアイテムが見つかりません");
+
+          // 代替セレクタを試す
+          const altItems = menu.querySelectorAll(
+            'button, [role="option"], .menu-item',
+          );
+          console.log(
+            `🔍 [EXTRACT-STEP 2.2] 代替セレクタでの検索結果: ${altItems.length}個`,
+          );
+
+          if (altItems.length > 0) {
+            console.log("🔍 [EXTRACT-STEP 2.3] 代替要素の内容:");
+            altItems.forEach((item, i) => {
+              console.log(
+                `  [${i}] ${item.tagName}: "${item.textContent?.trim()}"`,
+              );
+            });
+          }
+
+          return [];
+        }
 
         menuItems.forEach((item, index) => {
+          console.log(
+            `🔍 [EXTRACT-STEP 3.${index + 1}] アイテム${index + 1}を処理中...`,
+          );
+          console.log(`  - innerHTML: ${item.innerHTML}`);
+          console.log(`  - textContent: "${item.textContent?.trim()}"`);
+
           // モデル名を取得（複数のセレクタを試す）
-          const modelNameElement =
-            item.querySelector(".flex-1.text-sm div") || // メインの場所
-            item.querySelector("div.flex-1 div") || // 代替パス
-            item.querySelector(".text-sm div") || // シンプルパス
-            item.querySelector("div > div:first-child"); // フォールバック
+          const selectors = [
+            ".flex-1.text-sm div", // メインの場所
+            "div.flex-1 div", // 代替パス
+            ".text-sm div", // シンプルパス
+            "div > div:first-child", // フォールバック
+            ".text-sm", // より一般的
+            "div:first-child", // 最も一般的
+          ];
+
+          let modelNameElement = null;
+          let usedSelector = "";
+
+          for (const selector of selectors) {
+            modelNameElement = item.querySelector(selector);
+            if (modelNameElement) {
+              usedSelector = selector;
+              console.log(`  ✅ セレクタ "${selector}" でモデル名要素を発見`);
+              break;
+            }
+          }
 
           if (modelNameElement) {
             const modelName = modelNameElement.textContent.trim();
+            console.log(`  ✅ モデル名取得: "${modelName}"`);
 
             // モデル説明を取得
-            const descriptionElement = item.querySelector(
+            const descriptionSelectors = [
               ".text-text-500.pr-4.text-xs.mt-1",
-            );
+              ".text-xs",
+              ".description",
+              "[class*='description']",
+            ];
+
+            let descriptionElement = null;
+            for (const selector of descriptionSelectors) {
+              descriptionElement = item.querySelector(selector);
+              if (descriptionElement) break;
+            }
+
             const description = descriptionElement
               ? descriptionElement.textContent.trim()
               : "";
 
+            console.log(`  - 説明: "${description}"`);
+
             // 現在選択されているかチェック（SVGチェックマークの存在）
-            const isSelected = !!item.querySelector(
+            const checkmarkSelectors = [
               'svg path[d*="M232.49,80.49l-128,128"]',
-            );
+              "svg",
+              '[class*="check"]',
+              '[class*="selected"]',
+            ];
+
+            let isSelected = false;
+            for (const selector of checkmarkSelectors) {
+              if (item.querySelector(selector)) {
+                isSelected = true;
+                console.log(`  ✅ 選択マーク発見: "${selector}"`);
+                break;
+              }
+            }
 
             console.log(
               `[${index + 1}] モデル: "${modelName}" | 説明: "${description}" | 選択済み: ${isSelected}`,
@@ -6527,6 +6664,7 @@
                 description: description,
                 isSelected: isSelected,
               });
+              console.log(`  ✅ モデルを配列に追加: "${modelName}"`);
             }
           } else {
             // セクション区切りやその他の要素の可能性
@@ -6565,34 +6703,51 @@
 
       // Claude機能メニュー検出関数（修正版：機能メニューを開いてから検出）
       async function detectClaudeFunctionsFromOpenMenu() {
-        console.log("🔧 Claude機能検出開始");
-        console.log("🔍 [DEBUG] 現在のURL:", window.location.href);
-        console.log("🔍 [DEBUG] 現在時刻:", new Date().toISOString());
+        console.log("🔧 [FUNC-STEP 1] Claude機能検出開始");
+        console.log("🔍 [FUNC-STEP 1.1] 現在のURL:", window.location.href);
+        console.log("🔍 [FUNC-STEP 1.2] 現在時刻:", new Date().toISOString());
+        console.log("🔍 [FUNC-STEP 1.3] ページタイトル:", document.title);
 
         // まず、既に開いている機能メニューをチェック（ユーザーテストコードパターン）
-        console.log("📍 ステップ0: 既に開いている機能メニューをチェック");
+        console.log("🔍 [FUNC-STEP 2] 既に開いている機能メニューをチェック");
         const existingMenuToggleItems = document.querySelectorAll(
           'button:has(input[role="switch"])',
         );
         console.log(
-          `🔍 [DEBUG] 既存のトグルアイテム数: ${existingMenuToggleItems.length}`,
+          `🔍 [FUNC-STEP 2.1] 既存のトグルアイテム数: ${existingMenuToggleItems.length}`,
+        );
+
+        // 代替セレクタでも確認
+        const altToggleItems = document.querySelectorAll(
+          'input[role="switch"], [role="switch"], button[aria-pressed], .toggle',
+        );
+        console.log(
+          `🔍 [FUNC-STEP 2.2] 代替トグルアイテム数: ${altToggleItems.length}`,
         );
 
         if (existingMenuToggleItems.length > 0) {
-          console.log("✅ 機能メニューが既に開いています - 直接抽出を試行");
+          console.log(
+            "✅ [FUNC-STEP 2.3] 機能メニューが既に開いています - 直接抽出を試行",
+          );
           const directResult = extractFunctionsFromExistingMenu(
             existingMenuToggleItems,
           );
           if (directResult.length > 0) {
             console.log(
-              `✅ 直接抽出成功: ${directResult.length}個の機能を検出`,
+              `✅ [FUNC-STEP 2.4] 直接抽出成功: ${directResult.length}個の機能を検出`,
             );
             return directResult;
           }
         }
 
         // Step 1: 機能メニューボタンを探す
-        console.log("📍 ステップ1: 機能メニューボタンを探しています...");
+        console.log("🔍 [FUNC-STEP 3] 機能メニューボタンを探しています...");
+        console.log("🔍 [FUNC-STEP 3.1] ページ上のすべてのボタンを検索中...");
+
+        const allButtons = document.querySelectorAll("button");
+        console.log(
+          `🔍 [FUNC-STEP 3.2] ページ上のボタン総数: ${allButtons.length}`,
+        );
 
         let functionButton = null;
 
