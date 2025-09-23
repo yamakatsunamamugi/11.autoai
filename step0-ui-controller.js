@@ -867,6 +867,15 @@ function loadSavedAIData() {
               functions: savedData[aiType].functions || [],
             };
 
+            log.debug(`💾 [UI] ${aiType}の保存データをメモリに復元:`, {
+              modelsCount: lastAIData[aiType].models.length,
+              functionsCount: lastAIData[aiType].functions.length,
+              functionsType:
+                lastAIData[aiType].functions.length > 0
+                  ? typeof lastAIData[aiType].functions[0]
+                  : "none",
+            });
+
             // UIテーブルを更新
             updateAITable(aiType, {
               models: savedData[aiType].models,
@@ -902,29 +911,54 @@ function hasDataChanged(aiType, newData) {
     return false;
   }
 
-  // モデル比較
+  // 詳細な比較ログを追加
   const newModels = newData.models || [];
   const lastModels = lastData.models || [];
+  const newFunctions = newData.functionsWithDetails || newData.functions || [];
+  const lastFunctions = lastData.functions || [];
 
+  log.debug(`🔍 [UI] ${aiType}変更検出:`, {
+    newModelsCount: newModels.length,
+    lastModelsCount: lastModels.length,
+    newFunctionsCount: newFunctions.length,
+    lastFunctionsCount: lastFunctions.length,
+    newFunctionsType: newFunctions.length > 0 ? typeof newFunctions[0] : "none",
+    lastFunctionsType:
+      lastFunctions.length > 0 ? typeof lastFunctions[0] : "none",
+  });
+
+  // モデル比較
   if (newModels.length !== lastModels.length) {
+    log.debug(
+      `🔍 [UI] ${aiType}: モデル数が変更されました (${lastModels.length} → ${newModels.length})`,
+    );
     return true;
   }
 
   for (let i = 0; i < newModels.length; i++) {
     if (newModels[i] !== lastModels[i]) {
+      log.debug(
+        `🔍 [UI] ${aiType}: モデルが変更されました (${lastModels[i]} → ${newModels[i]})`,
+      );
       return true;
     }
   }
 
-  // 機能比較（詳細データがある場合は詳細で比較）
-  const newFunctions = newData.functionsWithDetails || newData.functions || [];
-  const lastFunctions = lastData.functions || [];
-
+  // 機能比較
   if (newFunctions.length !== lastFunctions.length) {
+    log.debug(
+      `🔍 [UI] ${aiType}: 機能数が変更されました (${lastFunctions.length} → ${newFunctions.length})`,
+    );
     return true;
   }
 
-  // 機能の詳細比較（名前、状態、セクレタ情報）
+  // 初回検出の場合（lastFunctionsが空の場合）
+  if (lastFunctions.length === 0 && newFunctions.length > 0) {
+    log.debug(`🔍 [UI] ${aiType}: 初回機能検出 (${newFunctions.length}個)`);
+    return true;
+  }
+
+  // 機能の詳細比較
   for (let i = 0; i < newFunctions.length; i++) {
     const newFunc = newFunctions[i];
     const lastFunc = lastFunctions[i];
@@ -937,16 +971,27 @@ function hasDataChanged(aiType, newData) {
         newFunc.isToggled !== lastFunc.isToggled ||
         newFunc.secretStatus !== lastFunc.secretStatus
       ) {
+        log.debug(`🔍 [UI] ${aiType}: 機能詳細が変更されました`, {
+          index: i,
+          newName: newFunc.name,
+          lastName: lastFunc.name,
+          newEnabled: newFunc.isEnabled,
+          lastEnabled: lastFunc.isEnabled,
+        });
         return true;
       }
     } else {
       // 単純な文字列比較
       if (newFunc !== lastFunc) {
+        log.debug(
+          `🔍 [UI] ${aiType}: 機能文字列が変更されました (${lastFunc} → ${newFunc})`,
+        );
         return true;
       }
     }
   }
 
+  log.debug(`🔍 [UI] ${aiType}: データに変更はありません`);
   return false;
 }
 
@@ -1115,12 +1160,15 @@ function updateAITable(aiType, data) {
       try {
         const functionList = data.functionsWithDetails
           .map((func, index) => {
-            log.debug(`🔧 [updateAITable] 機能${index}: 型=${typeof func}`);
+            log.debug(
+              `🔧 [updateAITable] 機能${index}: 型=${typeof func}`,
+              func,
+            );
 
             // オブジェクトが文字列として送信されている場合の対応
             if (typeof func === "string") {
               log.debug(`🔧 [updateAITable] 文字列機能: ${func}`);
-              return `• ${func}`;
+              return `${func}`;
             }
 
             // 正常なオブジェクトの場合の処理
@@ -1141,24 +1189,19 @@ function updateAITable(aiType, data) {
                 status += ` [${func.secretStatus}]`;
               }
 
-              // 有効/無効状態
-              const enabledIcon = func.isEnabled ? "✅" : "❌";
+              // 有効/無効状態を表示（見やすくするため）
+              const enabledIcon = func.isEnabled ? "" : " (無効)";
 
-              // デバッグ情報を追加
-              let debugInfo = "";
-              if (func.selector) {
-                debugInfo += ` (${func.selector.substring(0, 20)}...)`;
-              }
-
-              const result = `${enabledIcon} ${funcName}${status}${debugInfo}`;
+              const result = `${funcName}${status}${enabledIcon}`;
               log.debug(`🔧 [updateAITable] 生成された表示: ${result}`);
               return result;
             }
 
-            // 予期しない形式の場合はJSONで表示
+            // 予期しない形式の場合は型情報と共に表示
             log.debug(`🔧 [updateAITable] 予期しない形式:`, func);
-            return `• ${JSON.stringify(func)}`;
+            return `Unknown (${typeof func})`;
           })
+          .filter((item) => item && item.trim() !== "") // 空の項目を除外
           .join("<br>");
 
         log.debug(`🔧 [updateAITable] 最終的な機能リスト: ${functionList}`);
@@ -1189,7 +1232,42 @@ function updateAITable(aiType, data) {
       log.debug(`✅ ${aiType}機能情報更新完了:`, data.functions);
     }
 
-    // 更新時刻・日付の表示は除去（データのみ表示）
+    // 更新時刻・日付を表示（各セルの下部に追加）
+    const now = new Date();
+    const timestamp = now.toLocaleString("ja-JP");
+
+    // モデルセルに更新時刻を追加
+    if (cells[modelCellIndex] && data.models && data.models.length > 0) {
+      const currentContent = cells[modelCellIndex].innerHTML;
+      if (!currentContent.includes("更新:")) {
+        cells[modelCellIndex].innerHTML +=
+          `<br><small style="color: #666;">更新: ${timestamp}</small>`;
+      } else {
+        // 既存の更新時刻を置換
+        cells[modelCellIndex].innerHTML = currentContent.replace(
+          /更新: .*?<\/small>/,
+          `更新: ${timestamp}</small>`,
+        );
+      }
+    }
+
+    // 機能セルに更新時刻を追加
+    if (
+      cells[functionCellIndex] &&
+      (data.functionsWithDetails || data.functions)
+    ) {
+      const currentContent = cells[functionCellIndex].innerHTML;
+      if (!currentContent.includes("更新:")) {
+        cells[functionCellIndex].innerHTML +=
+          `<br><small style="color: #666;">更新: ${timestamp}</small>`;
+      } else {
+        // 既存の更新時刻を置換
+        cells[functionCellIndex].innerHTML = currentContent.replace(
+          /更新: .*?<\/small>/,
+          `更新: ${timestamp}</small>`,
+        );
+      }
+    }
 
     log.info(`🔍 [UI] ${aiType}の情報表示を更新しました`);
   } catch (error) {
@@ -1232,7 +1310,7 @@ function initializeAITable() {
 // 表コピー機能
 // ========================================
 
-// AI統合表をスプレッドシート形式でコピー
+// AI統合表を指定フォーマットでコピー
 function copyAITableToClipboard() {
   try {
     const table = document.getElementById("ai-integrated-table");
@@ -1244,98 +1322,87 @@ function copyAITableToClipboard() {
       return;
     }
 
-    // 現在の日時を取得
-    const now = new Date();
-    const dateStr = now.toLocaleDateString("ja-JP");
-    const timeStr = now.toLocaleTimeString("ja-JP");
-
-    // ヘッダー行を準備
-    const headers = ["検出日時", "AI種別", "項目種別", "項目名", "詳細情報"];
-
     // データ行を取得
     const tbody = table.querySelector("tbody");
     const dataRows = tbody.querySelectorAll("tr");
 
-    let tsvData = "";
+    if (dataRows.length === 0) {
+      statusDiv.textContent = "❌ 表にデータがありません";
+      statusDiv.style.color = "#dc3545";
+      return;
+    }
 
-    // ヘッダーを追加
-    tsvData += headers.join("\t") + "\n";
+    // ヘッダー行（指定フォーマット）
+    const headers = [
+      "ChatGPTモデル",
+      "Claudeモデル",
+      "Geminiモデル",
+      "ChatGPT機能",
+      "Claude機能",
+      "Gemini機能",
+    ];
+    let tsvData = headers.join("\t") + "\n";
 
-    // AI種別の定義
-    const aiTypes = ["ChatGPT", "Claude", "Gemini"];
-    const itemTypes = ["モデル", "機能"];
+    // 最初の行からデータを取得
+    const row = dataRows[0];
+    const cells = row.querySelectorAll("td");
 
-    // データ行を処理
-    dataRows.forEach((row, rowIndex) => {
-      const cells = row.querySelectorAll("td");
+    if (cells.length === 6) {
+      // 各セルからデータを抽出
+      const columnData = [];
 
-      if (cells.length === 6) {
-        // 各セルの内容を処理（モデル：0-2、機能：3-5）
-        cells.forEach((cell, cellIndex) => {
-          const aiType = aiTypes[cellIndex % 3];
-          const itemType = cellIndex < 3 ? "モデル" : "機能";
+      cells.forEach((cell, index) => {
+        let cellContent = cell.textContent || cell.innerText || "";
 
-          // セル内容を取得
-          let cellContent = cell.textContent || cell.innerText || "";
+        // HTMLタグや不要な文字を除去
+        cellContent = cellContent.replace(/(?:更新|検出日):.*$/m, "").trim();
 
-          // 日付・時間表示部分を除去（更新:、検出日: など）
-          cellContent = cellContent.replace(/(?:更新|検出日):.*$/m, "").trim();
+        // 検出待機中や未検出の場合は "-" に置換
+        if (
+          cellContent.includes("検出待機中") ||
+          cellContent.includes("未検出") ||
+          cellContent.trim() === ""
+        ) {
+          columnData.push("-");
+          return;
+        }
 
-          // 検出待機中や未検出の場合はスキップ
-          if (
-            cellContent.includes("検出待機中") ||
-            cellContent.includes("データを読み込み中") ||
-            cellContent.includes("未検出") ||
-            cellContent === ""
-          ) {
-            return;
-          }
-
-          // 箇条書きアイテムに分割（• で始まる行、✅/❌ で始まる行）
-          const items = cellContent
-            .split(/(?=•)|(?=✅)|(?=❌)/)
-            .map((item) => item.trim())
-            .filter((item) => item.length > 0);
-
-          // 各アイテムを個別の行として追加
-          items.forEach((item) => {
-            // アイテムのクリーンアップ
-            let cleanItem = item
-              .replace(/^[•✅❌]\s*/, "") // 先頭の記号を除去
-              .replace(/\s*🟢|\s*🔴/g, "") // トグル状態アイコンを除去
-              .replace(/\([^)]*\)/g, "") // 括弧内のセレクタ情報を除去
-              .replace(/\[[^\]]*\]/g, "") // 括弧内のステータス情報を除去
+        // 項目を改行で分割して整理
+        const items = cellContent
+          .split(/\n|<br>/)
+          .map((item) => {
+            // 記号や状態アイコンを除去
+            return item
+              .replace(/^[•✅❌]\s*/, "")
+              .replace(/\s*🟢|\s*🔴/g, "")
+              .replace(/\([^)]*\)/g, "")
+              .replace(/\[[^\]]*\]/g, "")
+              .replace(/\s*\(無効\)/g, "")
               .trim();
+          })
+          .filter(
+            (item) =>
+              item !== "" && !item.includes("検出日") && !item.includes("更新"),
+          );
 
-            if (cleanItem && cleanItem.length > 0) {
-              // 詳細情報を抽出
-              let details = "";
-              if (item.includes("🟢")) details += "有効 ";
-              if (item.includes("🔴")) details += "無効 ";
-              if (item.includes("✅")) details += "利用可能 ";
-              if (item.includes("❌")) details += "利用不可 ";
+        if (items.length === 0) {
+          columnData.push("-");
+        } else {
+          // 複数項目は改行で結合
+          columnData.push(items.join("\n"));
+        }
+      });
 
-              const rowData = [
-                `${dateStr} ${timeStr}`, // 検出日時
-                aiType, // AI種別
-                itemType, // 項目種別
-                cleanItem, // 項目名
-                details.trim(), // 詳細情報
-              ];
-
-              tsvData += rowData.join("\t") + "\n";
-            }
-          });
-        });
-      }
-    });
+      // データ行を追加
+      tsvData += columnData.join("\t");
+    }
 
     // クリップボードにコピー
     navigator.clipboard
       .writeText(tsvData)
       .then(() => {
         statusDiv.textContent =
-          "✅ 表をクリップボードにコピーしました！各項目が別行で貼り付けされます";
+          "✅ 表を指定フォーマットでクリップボードにコピーしました！";
         statusDiv.style.color = "#28a745";
 
         // 3秒後にステータスをクリア
@@ -1343,7 +1410,8 @@ function copyAITableToClipboard() {
           statusDiv.textContent = "";
         }, 3000);
 
-        log.info("📋 AI統合表をクリップボードにコピー完了");
+        log.info("📋 AI統合表を指定フォーマットでコピー完了");
+        log.debug("📋 コピーされたデータ:", tsvData);
       })
       .catch((err) => {
         statusDiv.textContent = "❌ コピーに失敗しました: " + err.message;

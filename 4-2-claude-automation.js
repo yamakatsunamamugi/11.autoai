@@ -1469,8 +1469,8 @@
     // Claude-ステップ0-4: セレクタ定義
     // ========================================
 
-    // Claude-ステップ0-4-1: Deep Research用セレクタ
-    const getDeepResearchSelectors = () => ({
+    // Claude-ステップ0-4-1: Deep Research用セレクタ（最適化）
+    const deepResearchSelectors = {
       "3_回答停止ボタン": {
         selectors: CLAUDE_SELECTORS.STOP_BUTTON || [],
         description: "回答停止ボタン",
@@ -1512,7 +1512,7 @@
         ],
         description: "通常処理のテキスト表示エリア",
       },
-    });
+    };
 
     // Claude-ステップ0-4-2: モデル選択用セレクタ
     const modelSelectors = {
@@ -3434,7 +3434,6 @@
         const maxInitialWait = AI_WAIT_CONFIG.STOP_BUTTON_INITIAL_WAIT / 1000; // 統一設定: 30秒
 
         while (!stopButtonFound && waitCount < maxInitialWait) {
-          const deepResearchSelectors = getDeepResearchSelectors();
           const stopResult = await findClaudeElement(
             deepResearchSelectors["3_回答停止ボタン"],
             3,
@@ -3467,7 +3466,6 @@
             AI_WAIT_CONFIG.STOP_BUTTON_DISAPPEAR_WAIT / 1000; // 統一設定: 5分
 
           while (!stopButtonGone && waitCount < maxDisappearWait) {
-            const deepResearchSelectors = getDeepResearchSelectors();
             const stopResult = await findClaudeElement(
               deepResearchSelectors["3_回答停止ボタン"],
               3,
@@ -3515,7 +3513,6 @@
         const maxWaitCount = AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT / 1000; // 統一設定: 40分
 
         while (!stopButtonFound && waitCount < maxWaitCount) {
-          const deepResearchSelectors = getDeepResearchSelectors();
           const stopResult = await findClaudeElement(
             deepResearchSelectors["3_回答停止ボタン"],
             3,
@@ -3552,7 +3549,6 @@
           let lastLogTime = Date.now();
 
           while (!stopButtonGone && disappearWaitCount < maxDisappearWait) {
-            const deepResearchSelectors = getDeepResearchSelectors();
             const stopResult = await findClaudeElement(
               deepResearchSelectors["3_回答停止ボタン"],
               3,
@@ -3566,7 +3562,6 @@
 
               while (confirmCount < 10) {
                 await wait(1000);
-                const deepResearchSelectors = getDeepResearchSelectors();
                 const checkResult = await findClaudeElement(
                   deepResearchSelectors["3_回答停止ボタン"],
                   2,
@@ -4830,7 +4825,6 @@
 
           if (stopButtonFound) {
             log.debug("\n停止ボタンが消えるまで待機中...");
-            const deepResearchSelectors = getDeepResearchSelectors();
             let stopButtonGone = false;
             let isCanvasMode = false;
             let disappearWaitCount = 0;
@@ -5050,7 +5044,6 @@
         );
         log.debug("─".repeat(40));
 
-        const deepResearchSelectors = getDeepResearchSelectors();
         const previewButton = await findClaudeElement(
           deepResearchSelectors["4_4_Canvasプレビューボタン"],
           3,
@@ -6323,12 +6316,11 @@
         return functions;
       }
 
-      // Windowオブジェクトに追加してアクセス可能にする
+      // Windowオブジェクトに主要な関数のみ追加
       window.detectClaudeModelsFromOpenMenu = detectClaudeModelsFromOpenMenu;
-      window.extractModelsFromMenu = extractModelsFromMenu;
       window.detectClaudeFunctionsFromOpenMenu =
         detectClaudeFunctionsFromOpenMenu;
-      window.extractFunctionsFromMenu = extractFunctionsFromMenu;
+      // 内部関数 extractModelsFromMenu, extractFunctionsFromMenu は削除（インライン化済み）
 
       log.info("=".repeat(60));
       log.info("🎉 [Claude Automation] 関数エクスポート完了");
