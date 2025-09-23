@@ -2249,89 +2249,34 @@ const log = {
           "success",
         );
 
-        // ChatGPT動作コードのテキスト入力処理（テスト済み）
-        try {
-          if (
-            input.classList.contains("ProseMirror") ||
-            input.classList.contains("ql-editor")
-          ) {
-            // ProseMirrorエディタ用の処理
-            input.innerHTML = "";
-            const p = document.createElement("p");
-            p.textContent = prompt;
-            input.appendChild(p);
-            input.classList.remove("ql-blank");
-            input.dispatchEvent(new Event("input", { bubbles: true }));
-            input.dispatchEvent(new Event("change", { bubbles: true }));
-            logWithTimestamp(
-              "ProseMirrorエディタにテキスト入力完了",
-              "success",
-            );
-          } else if (
-            input.tagName === "TEXTAREA" ||
-            input.tagName === "INPUT"
-          ) {
-            // 通常のテキストエリア/入力フィールド用
-            input.value = prompt;
-            input.dispatchEvent(new Event("input", { bubbles: true }));
-            input.dispatchEvent(new Event("change", { bubbles: true }));
-            logWithTimestamp(
-              "通常の入力フィールドにテキスト入力完了",
-              "success",
-            );
-          } else {
-            // contenteditable要素用
-            input.textContent = prompt;
-            input.dispatchEvent(new Event("input", { bubbles: true }));
-            input.dispatchEvent(new Event("change", { bubbles: true }));
-            logWithTimestamp(
-              "contenteditable要素にテキスト入力完了",
-              "success",
-            );
-          }
-
-          // 入力内容の検証
-          await sleep(500);
-          const inputContent = input.textContent || input.value || "";
-          if (inputContent.includes(prompt.substring(0, 50))) {
-            logWithTimestamp(
-              `入力内容検証成功: ${inputContent.length}文字入力済み`,
-              "success",
-            );
-          } else {
-            logWithTimestamp(
-              "入力内容の検証に失敗しましたが、続行します",
-              "warning",
-            );
-          }
-        } catch (error) {
-          logWithTimestamp(`テキスト入力エラー: ${error.message}`, "error");
-          throw new Error(`テキスト入力に失敗しました: ${error.message}`);
+        // テスト済みのシンプルなテキスト入力処理
+        if (
+          input.classList.contains("ProseMirror") ||
+          input.classList.contains("ql-editor")
+        ) {
+          input.innerHTML = "";
+          const p = document.createElement("p");
+          p.textContent = prompt;
+          input.appendChild(p);
+          input.classList.remove("ql-blank");
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          input.dispatchEvent(new Event("change", { bubbles: true }));
+          logWithTimestamp("テキスト入力完了", "success");
+        } else {
+          input.textContent = prompt;
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          logWithTimestamp("テキスト入力完了", "success");
         }
 
         await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
 
         // ========================================
-        // ステップ3: モデル選択（動的検索強化版）
+        // ステップ3: モデル選択（テスト済みシンプル処理）
         // ========================================
         if (modelName) {
           logWithTimestamp("\n【Step 4-1-3】モデル選択", "step");
 
-          // 3-0: 現在のモデルを確認
-          const currentModelButton = await findElement(
-            SELECTORS.modelButton,
-            "モデルボタン",
-          );
-          if (currentModelButton) {
-            const currentModelText = getCleanText(currentModelButton);
-            logWithTimestamp(`現在のモデル: ${currentModelText}`, "info");
-          }
-
-          // 3-1: モデルメニューを開いて利用可能なモデルを動的取得
-          logWithTimestamp(
-            "【Step 4-1-3-1】モデルメニューを開いて利用可能なモデルを取得",
-            "step",
-          );
+          // テスト済みのシンプルなモデル選択処理
           const modelBtn = await findElement(
             SELECTORS.modelButton,
             "モデルボタン",
@@ -2340,8 +2285,9 @@ const log = {
             throw new Error("モデルボタンが見つかりません");
           }
 
-          // ポインターイベントでメニューを開く（テスト済みコードより）
-          await openModelMenu(modelBtn);
+          // メニューを開く
+          triggerReactEvent(modelBtn, "pointer");
+          await sleep(1500);
 
           const modelMenuEl = await findElement(
             SELECTORS.modelMenu,
@@ -2351,12 +2297,34 @@ const log = {
             throw new Error("モデルメニューが開きません");
           }
 
-          // 3-2: 利用可能なモデル一覧を動的に取得
+          // 指定されたモデルを直接探してクリック
+          const allMenuItems = document.querySelectorAll('[role="menuitem"]');
+          const targetItem = Array.from(allMenuItems).find((item) => {
+            const text = getCleanText(item);
+            return text === modelName || text.includes(modelName);
+          });
+
+          if (targetItem) {
+            targetItem.click();
+            await sleep(2000);
+            logWithTimestamp(`モデル選択完了: ${modelName}`, "success");
+          } else {
+            // メニューを閉じる
+            document.dispatchEvent(
+              new KeyboardEvent("keydown", { key: "Escape", code: "Escape" }),
+            );
+            await sleep(1000);
+            logWithTimestamp(
+              `指定されたモデルが見つかりません: ${modelName}`,
+              "warning",
+            );
+          }
+
+        } else {
           logWithTimestamp(
-            "【Step 4-1-3-2】利用可能なモデル一覧を取得",
-            "step",
+            "モデル選択をスキップ（モデル名が指定されていません）",
+            "info",
           );
-          const availableModels = [];
 
           // メインメニューのモデル取得
           const mainMenuItems = modelMenuEl.querySelectorAll(
@@ -2942,96 +2910,16 @@ const log = {
         } else {
           logWithTimestamp("機能選択をスキップ", "info");
         }
-        logWithTimestamp(
-          "\n【Step 4-1-5】メッセージ送信（再試行対応）",
-          "step",
-        );
+        logWithTimestamp("\n【Step 4-1-5】メッセージ送信", "step");
 
-        // 送信ボタンを5回まで再試行
-        let sendSuccess = false;
-        let sendAttempts = 0;
-        const maxSendAttempts = 5;
-
-        while (!sendSuccess && sendAttempts < maxSendAttempts) {
-          sendAttempts++;
-          logWithTimestamp(
-            `【Step 4-1-5-${sendAttempts}】送信試行 ${sendAttempts}/${maxSendAttempts}`,
-            "step",
-          );
-
-          const sendBtn = await findElement(SELECTORS.sendButton, "送信ボタン");
-          if (!sendBtn) {
-            if (sendAttempts === maxSendAttempts) {
-              throw new Error("送信ボタンが見つかりません");
-            }
-            logWithTimestamp(
-              `送信ボタンが見つかりません。2秒後に再試行...`,
-              "warning",
-            );
-            await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
-            continue;
-          }
-
-          // 送信ボタンをクリック
-          sendBtn.click();
-          logWithTimestamp(
-            `送信ボタンをクリックしました（試行${sendAttempts}）`,
-            "success",
-          );
-          await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
-
-          // 送信後に停止ボタンが表示されるか、または送信ボタンが消えるまで5秒待機
-          let stopButtonAppeared = false;
-          let sendButtonDisappeared = false;
-
-          for (let i = 0; i < 5; i++) {
-            // 停止ボタンの確認
-            const stopBtn = await findElement(
-              SELECTORS.stopButton,
-              "停止ボタン",
-              1,
-            );
-            if (stopBtn) {
-              stopButtonAppeared = true;
-              logWithTimestamp(
-                "停止ボタンが表示されました - 送信成功",
-                "success",
-              );
-              break;
-            }
-
-            // 送信ボタンが消えたかどうかを確認
-            const stillSendBtn = await findElement(
-              SELECTORS.sendButton,
-              "送信ボタン",
-              1,
-            );
-            if (!stillSendBtn) {
-              sendButtonDisappeared = true;
-              logWithTimestamp("送信ボタンが消えました - 送信成功", "success");
-              break;
-            }
-
-            await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
-          }
-
-          if (stopButtonAppeared || sendButtonDisappeared) {
-            sendSuccess = true;
-            break;
-          } else {
-            logWithTimestamp(
-              `送信反応が確認できません。再試行します...`,
-              "warning",
-            );
-            await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
-          }
+        // テスト済みのシンプルな送信処理
+        const sendBtn = await findElement(SELECTORS.sendButton, "送信ボタン");
+        if (!sendBtn) {
+          throw new Error("送信ボタンが見つかりません");
         }
 
-        if (!sendSuccess) {
-          throw new Error(
-            `${maxSendAttempts}回試行しても送信が成功しませんでした`,
-          );
-        }
+        sendBtn.click();
+        logWithTimestamp("送信ボタンをクリックしました", "success");
 
         // 送信時刻を記録（SpreadsheetLogger用）
         logWithTimestamp(
@@ -3062,38 +2950,38 @@ const log = {
         await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
 
         // ========================================
-        // ステップ6: 応答待機（Deep Research/エージェントモード統合処理）
+        // ステップ6: 応答待機（テスト済みシンプル処理）
         // ========================================
         logWithTimestamp("\n【Step 4-1-6】応答待機", "step");
 
-        // Deep Research/エージェントモードの判定
-        const finalFeatureName = resolvedFeature || featureName;
-        const isSpecialMode =
-          finalFeatureName &&
-          (finalFeatureName === "Deep Research" ||
-            finalFeatureName.includes("エージェント") ||
-            finalFeatureName.includes("Research"));
-
-        if (isSpecialMode) {
-          logWithTimestamp(
-            `${finalFeatureName}モード検出 - 特別待機処理を実行`,
-            "warning",
-          );
-          await handleSpecialModeWaiting(finalFeatureName);
-        } else {
-          // 通常の待機処理
-          logWithTimestamp("通常モード - 標準待機処理を実行", "info");
-          await standardWaitForResponse();
+        // 停止ボタンが表示されるまで待機
+        let stopBtn = null;
+        for (let i = 0; i < 30; i++) {
+          stopBtn = await findElement(SELECTORS.stopButton, "停止ボタン", 1);
+          if (stopBtn) {
+            logWithTimestamp("停止ボタンが表示されました", "success");
+            break;
+          }
+          await sleep(1000);
         }
 
-        await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT); // 追加の待機
+        // 停止ボタンが消えるまで待機（最大5分）
+        if (stopBtn) {
+          logWithTimestamp("送信停止ボタンが消えるまで待機（最大5分）", "info");
+          for (let i = 0; i < 300; i++) {
+            stopBtn = await findElement(SELECTORS.stopButton, "停止ボタン", 1);
+            if (!stopBtn) {
+              logWithTimestamp("応答完了", "success");
+              break;
+            }
+            if (i % 10 === 0) {
+              logWithTimestamp(`応答待機中... (${i}秒経過)`, "info");
+            }
+            await sleep(1000);
+          }
+        }
 
-        // 追加安全チェック: テキスト取得前にDOMの安定性を確認
-        logWithTimestamp(
-          "【Step 4-1-6-3】テキスト取得前の安定性チェック",
-          "info",
-        );
-        await sleep(3000); // DOM安定化のための追加待機
+        await sleep(2000); // 追加の待機
 
         // ========================================
         // ステップ7: テキスト取得と表示
