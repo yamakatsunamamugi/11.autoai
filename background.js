@@ -107,11 +107,11 @@ function formatLogEntry(request) {
  */
 async function recordLogToSpreadsheet(request) {
   try {
-    // Chrome storage からスプレッドシート情報を取得
+    // Chrome storage からスプレッドシート情報とタスクグループ情報を取得
     const result = await chrome.storage.local.get([
       "spreadsheetId",
       "gid",
-      "currentRow",
+      "currentTaskGroup",
     ]);
 
     if (!result.spreadsheetId) {
@@ -119,14 +119,21 @@ async function recordLogToSpreadsheet(request) {
       throw new Error("スプレッドシートIDが設定されていません");
     }
 
-    // 現在の行番号を取得（デフォルトは2）
-    const currentRow = result.currentRow || 2;
+    // requestオブジェクトからlogCellを直接取得
+    let logCell = request.logCell;
+
+    if (!logCell) {
+      console.log(
+        "📝 ログセル位置（logCell）が見つからないためログ記録をスキップ",
+      );
+      return;
+    }
 
     // ログをフォーマット
     const logText = formatLogEntry(request);
 
-    // Column A にログを記録
-    const range = `A${currentRow}`;
+    // 指定されたログセルにログを記録
+    const range = logCell;
     await sheetsClient.updateValue(result.spreadsheetId, range, logText);
 
     console.log(`📊 ログ記録完了: ${range} → ${logText}`);

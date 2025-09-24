@@ -1282,7 +1282,9 @@ async function checkCompletionStatus(taskGroup) {
     log.debug(
       `[DEBUG-checkCompletionStatus] グループ${taskGroup.groupNumber}: promptCount=${promptCount}, answerCount=${answerCount}`,
     );
-    const isComplete = promptCount === answerCount;
+
+    // 厳格な完了判定：プロンプトと回答が一致し、かつプロンプトが存在する場合のみ完了
+    const isComplete = promptCount > 0 && promptCount === answerCount;
 
     LoopLogger.info("[step5-loop.js] [Step 5-1-3] 完了状況:", {
       プロンプト数: promptCount,
@@ -1401,10 +1403,26 @@ async function processIncompleteTasks(taskGroup) {
         理由: "すべてのタスクが完了済みまたは処理対象外",
         グループ番号: taskGroup.groupNumber,
       });
-      log.debug(
-        "🎯 [step5-loop.js] このグループは完了済み - 正常終了として扱います",
-      );
-      isComplete = true; // タスクがない = このグループは完了
+
+      // タスクがない場合でも、実際の完了状況を再確認
+      const actualCompletion = await checkCompletionStatus(taskGroup);
+
+      if (actualCompletion) {
+        log.debug("🎯 [step5-loop.js] タスクなし＆完了確認済み - 正常終了");
+        isComplete = true;
+      } else {
+        log.warn(
+          "⚠️ [step5-loop.js] タスクなしだが未完了 - プロンプトと回答の不一致の可能性",
+          {
+            グループ番号: taskGroup.groupNumber,
+            プロンプト数: window.globalState.stats.totalPrompts,
+            回答数: window.globalState.stats.completedAnswers,
+            差分: window.globalState.stats.pendingTasks,
+          },
+        );
+        // グループ内で処理可能なタスクがないが、実際は未完了の状態
+        isComplete = false;
+      }
       break;
     }
     LoopLogger.info(

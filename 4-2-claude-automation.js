@@ -131,13 +131,7 @@
         const errorMessage = error?.message || error?.toString() || "";
         const errorName = error?.name || "";
 
-        log.debug(`🔍 [Claude RetryManager] エラー分類開始:`, {
-          errorMessage,
-          errorName,
-          context,
-          timestamp: new Date().toISOString(),
-          url: window.location.href,
-        });
+        // エラー分類開始
 
         // Claude特有エラーの検出
         let errorType = "GENERAL_ERROR";
@@ -148,11 +142,7 @@
           errorMessage.includes("Too many requests")
         ) {
           errorType = "RATE_LIMIT_ERROR";
-          log.debug(`⚠️ [Claude RetryManager] レート制限エラー検出:`, {
-            errorType,
-            errorMessage,
-            immediateEscalation: "HEAVY_RESET",
-          });
+          // レート制限エラー検出
           return errorType;
         }
 
@@ -163,11 +153,7 @@
           errorMessage.includes("Please log in")
         ) {
           errorType = "LOGIN_ERROR";
-          log.debug(`🔐 [Claude RetryManager] ログインエラー検出:`, {
-            errorType,
-            errorMessage,
-            immediateEscalation: "HEAVY_RESET",
-          });
+          // ログインエラー検出
           return errorType;
         }
 
@@ -177,11 +163,7 @@
           errorMessage.includes("Session expired")
         ) {
           errorType = "SESSION_ERROR";
-          log.debug(`📋 [Claude RetryManager] セッションエラー検出:`, {
-            errorType,
-            errorMessage,
-            immediateEscalation: "HEAVY_RESET",
-          });
+          // セッションエラー検出
           return errorType;
         }
 
@@ -191,11 +173,7 @@
           context.feature === "Canvas"
         ) {
           errorType = "CANVAS_ERROR";
-          log.debug(`🎨 [Claude RetryManager] Canvasエラー検出:`, {
-            errorType,
-            errorMessage,
-            escalation: "MODERATE",
-          });
+          // Canvasエラー検出
           return errorType;
         }
 
@@ -205,11 +183,7 @@
           context.feature === "Deep Research"
         ) {
           errorType = "DEEP_RESEARCH_ERROR";
-          log.debug(`🔬 [Claude RetryManager] Deep Researchエラー検出:`, {
-            errorType,
-            errorMessage,
-            escalation: "MODERATE",
-          });
+          // Deep Researchエラー検出
           return errorType;
         }
 
@@ -221,11 +195,7 @@
           errorName.includes("NetworkError")
         ) {
           errorType = "NETWORK_ERROR";
-          log.debug(`🌐 [Claude RetryManager] ネットワークエラー検出:`, {
-            errorType,
-            errorMessage,
-            escalation: "MODERATE",
-          });
+          // ネットワークエラー検出
           return errorType;
         }
 
@@ -236,11 +206,7 @@
           errorMessage.includes("querySelector")
         ) {
           errorType = "DOM_ERROR";
-          log.debug(`🔍 [Claude RetryManager] DOM要素エラー検出:`, {
-            errorType,
-            errorMessage,
-            escalation: "LIGHTWEIGHT",
-          });
+          // DOM要素エラー検出
           return errorType;
         }
 
@@ -250,19 +216,11 @@
           errorMessage.includes("wait")
         ) {
           errorType = "UI_TIMING_ERROR";
-          log.debug(`⏱️ [Claude RetryManager] UIタイミングエラー検出:`, {
-            errorType,
-            errorMessage,
-            escalation: "LIGHTWEIGHT",
-          });
+          // UIタイミングエラー検出
           return errorType;
         }
 
-        log.debug(`❓ [Claude RetryManager] 一般エラーとして分類:`, {
-          errorType,
-          errorMessage,
-          escalation: "MODERATE",
-        });
+        // 一般エラーとして分類
 
         return errorType;
       }
@@ -543,7 +501,7 @@
           const timeSinceLastActivity =
             Date.now() - (state.lastActivityTime || 0);
           if (timeSinceLastActivity > 15 * 60 * 1000) {
-            log.info("⏰ 実行状態タイムアウト - リセット");
+            // 実行状態タイムアウト - リセット
             return false;
           }
 
@@ -558,12 +516,12 @@
           lastActivityTime = state.lastActivityTime;
 
           if (state.isExecuting && state.currentTaskId) {
-            log.info(`♻️ 実行状態復元: タスク ${state.currentTaskId} が実行中`);
+            // 実行状態復元: タスクが実行中
           }
           return true;
         }
       } catch (e) {
-        log.debug("sessionStorage復元エラー:", e);
+        // sessionStorage復元エラー
       }
       return false;
     };
@@ -586,14 +544,12 @@
       if (executing && taskId) {
         window.CLAUDE_TASK_START_TIME = Date.now();
         taskStartTime = Date.now();
-        log.info(`🔒 [EXECUTION-STATE] タスク実行開始: ${taskId}`);
+        log.info(`タスク実行開始: ${taskId}`);
       } else if (!executing) {
         const duration = window.CLAUDE_TASK_START_TIME
           ? Date.now() - window.CLAUDE_TASK_START_TIME
           : 0;
-        log.info(
-          `🔓 [EXECUTION-STATE] タスク実行完了: ${window.CLAUDE_CURRENT_TASK_ID} (${Math.round(duration / 1000)}秒)`,
-        );
+        log.info(`タスク実行完了 (${Math.round(duration / 1000)}秒)`);
         window.CLAUDE_TASK_START_TIME = null;
         taskStartTime = null;
       }
@@ -859,25 +815,18 @@
     let shouldExportFunctions = false; // 🔧 関数エクスポート制御フラグ追加
 
     if (isExtensionPage) {
-      log.info(
-        "📌 [Claude Automation] 拡張機能ページで実行されています。スキップします。",
-      );
-      log.info("  URL:", currentURL);
+      // 拡張機能ページで実行 - スキップ
       window.CLAUDE_SCRIPT_LOADED = false;
       window.CLAUDE_SCRIPT_INIT_TIME = Date.now();
     } else if (!isValidClaudeURL) {
-      log.warn(
-        "⚠️ [Claude Automation] claude.ai 以外のサイトで実行されています。",
-      );
-      log.warn("  URL:", currentURL);
+      // claude.ai 以外のサイトで実行
       window.CLAUDE_SCRIPT_LOADED = false;
       window.CLAUDE_SCRIPT_INIT_TIME = Date.now();
     } else {
       // claude.ai での実行
       shouldInitialize = true;
       shouldExportFunctions = true; // 🔧 claude.aiでは関数エクスポートも有効
-      log.info("✅ Claude Automation V2 初期化");
-      log.info("📍 有効なClaude URL:", currentURL);
+      log.info("✅ Claude Automation V2 初期化: " + currentURL);
     }
 
     // 🔧 Option 1 Fix: claude.ai URLでは初期化がスキップされても関数エクスポートを実行
@@ -905,16 +854,12 @@
       // デバウンス: 5秒以内の重複呼び出しを防ぐ
       const now = Date.now();
       if (now - lastOverloadedCallTime < 5000) {
-        log.debug("🔄 [OVERLOADED-HANDLER] デバウンス中 - スキップ");
+        // デバウンス中 - スキップ
         return;
       }
       lastOverloadedCallTime = now;
 
-      log.warn("⚠️ [OVERLOADED-HANDLER] Overloadedエラー処理開始", {
-        retryCount: overloadedRetryCount + 1,
-        maxRetries: MAX_OVERLOADED_RETRIES,
-        timestamp: new Date().toISOString(),
-      });
+      log.warn("⚠️ Overloadedエラー処理開始");
 
       if (overloadedRetryCount >= MAX_OVERLOADED_RETRIES) {
         console.error(
@@ -985,21 +930,7 @@
           errorMessage.includes("vscode-webview");
 
         if (isVSCodeError) {
-          // VS Codeエラーは抑制（コンソールに表示しない）
-          log.debug(
-            "🔇 [VS-CODE-ERROR-SUPPRESSED] VS Code拡張機能のエラーを抑制:",
-            {
-              message: errorMessage,
-              name: errorName,
-              filename: e.filename,
-              lineno: e.lineno,
-              source: "VS Code Extension",
-              suppressed: true,
-              timestamp: new Date().toISOString(),
-            },
-          );
-
-          // エラーの既定処理を防止
+          // VS Codeエラーを抑制
           e.preventDefault();
           return;
         }
@@ -1021,14 +952,7 @@
           (e.reason && String(e.reason).includes("Overloaded"));
 
         if (isOverloadedError) {
-          log.error("🚨 [CLAUDE-OVERLOADED-ERROR]", {
-            message: errorMessage,
-            name: errorName,
-            type: "OVERLOADED_ERROR",
-            filename: e.filename,
-            lineno: e.lineno,
-            timestamp: new Date().toISOString(),
-          });
+          log.error("🚨 Overloadedエラー検出");
 
           // 即座にウィンドウリセット・リトライを開始
           handleOverloadedError();
@@ -1044,14 +968,7 @@
           errorName.includes("NetworkError");
 
         if (isNetworkError) {
-          log.error("🌐 [GLOBAL-NETWORK-ERROR]", {
-            message: errorMessage,
-            name: errorName,
-            type: "NETWORK_ERROR",
-            filename: e.filename,
-            lineno: e.lineno,
-            timestamp: new Date().toISOString(),
-          });
+          log.error("🌐 ネットワークエラー");
 
           // ClaudeRetryManagerでエラー統計を記録
           try {
@@ -1067,7 +984,7 @@
             // エラー記録失敗は無視
           }
         } else {
-          log.error("🚨 [GLOBAL-ERROR]", e.message);
+          // その他のグローバルエラー
         }
       });
 
@@ -1088,19 +1005,7 @@
           errorMessage.includes("vscode-webview");
 
         if (isVSCodeError) {
-          // VS Codeエラーは抑制（コンソールに表示しない）
-          log.debug(
-            "🔇 [VS-CODE-ERROR-SUPPRESSED] VS Code拡張機能のエラーを抑制:",
-            {
-              message: errorMessage,
-              name: errorName,
-              source: "VS Code Extension",
-              suppressed: true,
-              timestamp: new Date().toISOString(),
-            },
-          );
-
-          // エラーの既定処理を防止
+          // VS Codeエラーを抑制
           e.preventDefault();
           return;
         }
@@ -1111,14 +1016,7 @@
         const errorStack = errorReason?.stack || "";
         const errorToString = errorReason?.toString() || "";
 
-        // デバッグ用ログ
-        log.debug("🔍 [OVERLOADED-DETECTION] エラー詳細:", {
-          errorMessage,
-          errorToString,
-          errorStr: errorStr.substring(0, 200),
-          errorStack: errorStack.substring(0, 200),
-          errorName,
-        });
+        // Overloadedエラー検出チェック
 
         const isOverloadedError =
           errorMessage.includes("Overloaded") ||
@@ -1133,13 +1031,7 @@
           errorToString.includes("i: Overloaded");
 
         if (isOverloadedError) {
-          log.error("🚨 [CLAUDE-OVERLOADED-ERROR-UNHANDLED]", {
-            message: errorMessage,
-            name: errorName,
-            type: "OVERLOADED_ERROR",
-            source: "unhandledrejection",
-            timestamp: new Date().toISOString(),
-          });
+          log.error("🚨 Overloadedエラー検出 (unhandled)");
 
           // 即座にウィンドウリセット・リトライを開始
           handleOverloadedError();
@@ -1220,18 +1112,15 @@
               }
             }
           } catch (retryError) {
-            log.error(
-              "❌ [RETRY-MANAGER] リトライマネージャー処理エラー:",
-              retryError,
-            );
+            // リトライマネージャー処理エラー
           }
         } else {
-          log.error("🚨 [UNHANDLED-PROMISE]", e.reason);
+          // 未処理Promiseエラー
         }
       });
 
       // Content Script注入確認
-      log.debug(`Claude Automation V2 loaded`);
+      // Claude Automation V2 loaded
     }
 
     // ========================================
@@ -1252,7 +1141,7 @@
             text.includes("overloaded") ||
             text === "i: Overloaded"
           ) {
-            log.warn("🔍 [DOM-MONITOR] Overloadedエラーを検出:", text);
+            log.warn("🔍 Overloadedエラー検出");
             handleOverloadedError();
           }
         });
@@ -1268,10 +1157,7 @@
                   text.includes("Overloaded") ||
                   text.includes("error occurred")
                 ) {
-                  log.warn(
-                    "🔍 [DOM-MUTATION] エラー要素を検出:",
-                    text.substring(0, 100),
-                  );
+                  // DOMエラー要素検出
                   if (text.includes("Overloaded")) {
                     handleOverloadedError();
                   }
@@ -1298,10 +1184,7 @@
           errorStr.includes("Overloaded") ||
           errorStr.includes("i: Overloaded")
         ) {
-          log.warn(
-            "🔍 [CONSOLE-INTERCEPT] Overloadedエラーを検出:",
-            errorStr.substring(0, 200),
-          );
+          log.warn("🔍 Overloadedエラー検出");
           handleOverloadedError();
         }
         originalConsoleError.apply(console, args);
@@ -1323,11 +1206,7 @@
               !response.ok &&
               (response.status === 529 || response.status === 503)
             ) {
-              log.error("🔍 [FETCH-INTERCEPT] サーバー過負荷を検出:", {
-                status: response.status,
-                statusText: response.statusText,
-                url: args[0],
-              });
+              log.error("🔍 サーバー過負荷検出");
               handleOverloadedError();
             }
           }
@@ -1339,17 +1218,14 @@
             (error.message.includes("Overloaded") ||
               error.message.includes("i: Overloaded"))
           ) {
-            log.error(
-              "🔍 [FETCH-ERROR] Overloadedエラーを検出:",
-              error.message,
-            );
+            log.error("🔍 Overloadedエラー検出");
             handleOverloadedError();
           }
           throw error;
         }
       };
 
-      log.info("✅ 追加のOverloadedエラー検出機構を設定しました");
+      // 追加のOverloadedエラー検出機構を設定
     }
 
     // ========================================
@@ -1454,54 +1330,20 @@
               request.type === "CLAUDE_EXECUTE_TASK" ||
               request.type === "EXECUTE_TASK"
             ) {
-              console.warn(
-                `🔧 [Claude-直接実行方式] executeTask実行開始 [ID:${requestId}]`,
-                JSON.stringify(
-                  {
-                    requestId: requestId,
-                    action: request.action,
-                    type: request.type,
-                    automationName: request.automationName,
-                    hasTask: !!request.task,
-                    hasTaskData: !!request.taskData,
-                    taskId: request?.task?.id || request?.taskData?.id,
-                  },
-                  null,
-                  2,
-                ),
-              );
+              // executeTask実行開始
 
               (async () => {
                 try {
                   // executeTask関数が定義されているか確認
                   if (typeof executeTask === "function") {
-                    console.warn(
-                      `✅ [Claude-直接実行方式] executeTask関数が利用可能 [ID:${requestId}]`,
-                    );
+                    // executeTask関数が利用可能
                     const taskToExecute =
                       request.task || request.taskData || request;
-                    console.warn(
-                      `🚀 [Claude-直接実行方式] executeTask呼び出し前 [ID:${requestId}]:`,
-                      JSON.stringify(
-                        {
-                          taskId: taskToExecute?.id,
-                          taskKeys: Object.keys(taskToExecute || {}),
-                        },
-                        null,
-                        2,
-                      ),
-                    );
+                    // executeTask呼び出し
 
                     try {
                       const result = await executeTask(taskToExecute);
-                      console.warn(
-                        `✅ [Claude-直接実行方式] executeTask完了 [ID:${requestId}]:`,
-                        {
-                          success: result?.success,
-                          hasResult: !!result,
-                          resultKeys: result ? Object.keys(result) : [],
-                        },
-                      );
+                      // executeTask完了
 
                       // 🔍 [MESSAGE-PORT-SAFE] Message Port Error 対策：安全なsendResponse呼び出し
                       try {
@@ -5028,7 +4870,9 @@
                       aiType: "Claude",
                       model: modelName || "不明",
                       function: featureName || "通常",
+                      cellInfo: taskData.cellInfo, // cellInfo を追加
                     },
+                    logCell: taskData.logCell, // ログセルを直接追加
                   },
                   (response) => {
                     clearTimeout(timeout);

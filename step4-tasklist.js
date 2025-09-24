@@ -2494,8 +2494,25 @@ async function generateTaskList(
     const skippedDetails = []; // スキップの詳細情報を記録
     const debugLogs = []; // デバッグログを収集
 
+    // デバッグ: タスク生成範囲を明示
+    log.debug(
+      `[step4-tasklist.js] タスク生成範囲: ${dataStartRow} ~ ${lastPromptRow}`,
+    );
+    log.debug(
+      `[step4-tasklist.js] グループ${taskGroup.groupNumber}のプロンプト列: ${promptColumns}`,
+    );
+    log.debug(
+      `[step4-tasklist.js] グループ${taskGroup.groupNumber}の回答列: ${answerColumns}`,
+    );
+
     for (let row = dataStartRow; row <= lastPromptRow; row++) {
       const rowData = spreadsheetData[row - 1]; // 0ベースインデックス
+
+      // デバッグ: 各行の処理状況を出力
+      if (row <= dataStartRow + 2) {
+        // 最初の数行だけデバッグ出力
+        log.debug(`[step4-tasklist.js] 行${row}を処理中...`);
+      }
 
       if (!rowData) continue;
 
