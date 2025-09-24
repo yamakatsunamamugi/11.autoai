@@ -746,7 +746,17 @@
       // ========== モデル選択系 ==========
       MODEL: {
         BUTTON: [
-          '[data-testid="model-selector-dropdown"]', // 最新のセレクタ（最優先）
+          // モデル名に依存しない汎用セレクタ（どのモデルでも対応）
+          '[data-testid="model-selector-dropdown"]', // 共通の最優先セレクタ
+          'button[data-testid="model-selector-dropdown"]', // ボタン要素を明示
+          "button:has(.font-claude-response)", // font-claude-responseクラスを持つdivを含むボタン
+          "button:has(.claude-logo-model-selector)", // Claudeロゴを含むボタン（パターン1）
+          "button:has(.whitespace-nowrap):has(svg)", // モデル名表示部分と矢印SVGの両方を持つボタン
+          "button:has(.whitespace-nowrap)", // whitespace-nowrapクラスを持つdivを含むボタン
+          "button:has(div.tracking-tight)", // tracking-tightクラスを持つdivを含むボタン
+          'button:has(svg[viewBox="0 0 256 256"])', // 矢印SVGを持つボタン（viewBox指定）
+          'button:has(path[d*="M213.66,101.66"])', // 下矢印のpath要素を持つボタン
+          // フォールバックセレクタ
           'button[data-value*="claude"]', // モデル名を含むボタン
           "button.cursor-pointer:has(span.font-medium)", // モデル表示ボタン
           'button[aria-label*="モデル"]',

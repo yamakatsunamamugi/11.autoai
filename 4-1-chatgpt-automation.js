@@ -37,6 +37,31 @@ const log = {
 // グローバルスコープにlogオブジェクトを追加（IIFE外のコードから使用可能にする）
 window.log = log;
 
+// セレクタエラー報告用の関数を追加
+async function reportSelectorError(selectorKey, error, selectors) {
+  try {
+    // step7のエラー報告関数をインポート
+    const { addSelectorError } = await import(
+      "./step7-selector-data-structure.js"
+    );
+    addSelectorError("chatgpt", selectorKey, error);
+
+    // コンソールに警告を出力
+    log.warn(`🚨 ChatGPT セレクタエラー [${selectorKey}]:`, error);
+    log.warn("失敗したセレクタ:", selectors);
+
+    // UI更新をトリガー（もし管理画面が開いていれば）
+    if (
+      window.selectorTimelineManager &&
+      window.selectorTimelineManager.updateDisplay
+    ) {
+      window.selectorTimelineManager.updateDisplay();
+    }
+  } catch (importError) {
+    log.error("セレクタエラー報告に失敗:", importError);
+  }
+}
+
 /**
  * @fileoverview ChatGPT Automation V2 - 統合版
  *
@@ -1466,7 +1491,12 @@ window.log = log;
 
   // 複数セレクタで要素検索（テスト済みコードより改善版）
   // 要素検索（固定セレクタ対応 + テスト済みセレクタ強化版）
-  async function findElement(selectors, description = "", maxRetries = 5) {
+  async function findElement(
+    selectors,
+    description = "",
+    maxRetries = 5,
+    selectorKey = null,
+  ) {
     for (let retry = 0; retry < maxRetries; retry++) {
       for (const selector of selectors) {
         try {
@@ -1493,6 +1523,17 @@ window.log = log;
                 "success",
               );
             }
+            // セレクタが成功した場合、エラーをクリア
+            if (selectorKey) {
+              try {
+                const { clearSelectorError } = await import(
+                  "./step7-selector-data-structure.js"
+                );
+                clearSelectorError("chatgpt", selectorKey);
+              } catch (importError) {
+                // インポートエラーは無視
+              }
+            }
             return element;
           }
         } catch (e) {
@@ -1517,6 +1558,12 @@ window.log = log;
         "error",
       );
     }
+
+    // すべてのセレクタが失敗した場合、エラーを報告
+    if (selectorKey) {
+      await reportSelectorError(selectorKey, "要素が見つかりません", selectors);
+    }
+
     return null;
   }
 
@@ -4197,21 +4244,15 @@ async function chatWithChatGPT() {
     log.info("🔍 ChatGPTモデル・機能検出開始");
 
     // テストコードから動作確認済みのセレクタを使用
+    // 動作テストコードから完全コピーしたセレクタ定義
     const DETECTION_SELECTORS = {
+      // モデル関連（動作テストコードから）
       modelButton: [
         '[data-testid="model-switcher-dropdown-button"]',
         'button[aria-label*="モデル セレクター"]',
         'button[aria-label*="モデル"][aria-haspopup="menu"]',
-        'button[aria-haspopup="menu"]',
+        "#radix-\\:r2m\\:",
         'button.group.flex.cursor-pointer[aria-haspopup="menu"]',
-        'button[type="button"]:has([data-testid="model-switcher-button"])',
-        'button:has([data-testid="model-switcher-button"])',
-        'button:has(span:contains("GPT"))',
-        'button:has(span:contains("gpt"))',
-        'button[class*="model"]',
-        'div[class*="model"] button',
-        "header button:first-child",
-        "nav button:first-child",
       ],
       modelMenu: [
         '[role="menu"][data-radix-menu-content]',
@@ -4219,28 +4260,38 @@ async function chatWithChatGPT() {
         'div.z-50.max-w-xs.rounded-2xl.popover[role="menu"]',
         '[aria-labelledby*="radix"][role="menu"]',
         'div[data-radix-popper-content-wrapper] [role="menu"]',
-        'div[role="menu"]',
       ],
+      legacyButton: [
+        '[data-testid="レガシーモデル-submenu"]',
+        '[role="menuitem"][data-has-submenu]:contains("レガシーモデル")',
+        'div.__menu-item:contains("レガシーモデル")',
+        '[role="menuitem"][aria-haspopup="menu"]:last-of-type',
+      ],
+      legacyMenu: [
+        '[role="menu"][data-side="right"]',
+        'div[data-side="right"][role="menu"]',
+        '[role="menu"]:not([data-side="bottom"])',
+        'div.mt-2.max-h-\\[calc\\(100vh-300px\\)\\][role="menu"]',
+      ],
+      // 機能関連（動作テストコードから）
       functionMenuButton: [
         '[data-testid="composer-plus-btn"]',
         'button[aria-haspopup="menu"]',
+        "#radix-\\:R2eij4im4pact9a4mj5\\:",
         "button.composer-btn",
         'div[class*="leading"] button',
-        'button[aria-label="機能メニューを開く"]',
-        'button:has(svg):has(path[d*="M12 6.5a5.5"])',
-        'button:has(svg) path[d*="plus"]',
-        "form button:first-child",
-        'div[class*="composer"] button',
-        'button[class*="plus"]',
-        "textarea + div button",
-        'div[data-testid*="composer"] button',
       ],
       functionMenu: [
         '[role="menu"][data-state="open"]',
         "[data-radix-menu-content]",
         'div[data-side="bottom"][role="menu"]',
         'div.popover[role="menu"]',
-        'div[role="menu"]',
+        '[role="menu"]',
+      ],
+      subMenu: [
+        '[role="menu"][data-side="right"]',
+        'div[data-side="right"][role="menu"]',
+        '[data-align="start"][role="menu"]:last-of-type',
       ],
     };
 
@@ -4258,11 +4309,81 @@ async function chatWithChatGPT() {
       );
     };
 
-    const findElement = async (selectors, maxRetries = 3) => {
+    // 動作テストコードから完全コピー：装飾要素を除外したテキスト取得
+    function getCleanText(element) {
+      if (!element) return "";
+      const clone = element.cloneNode(true);
+      // 装飾要素を削除
+      const decorativeElements = clone.querySelectorAll(
+        "mat-icon, mat-ripple, svg, .icon, .ripple",
+      );
+      decorativeElements.forEach((el) => el.remove());
+      return clone.textContent?.trim() || "";
+    }
+
+    // モデル名をクリーンアップする関数（説明文を削除してコア名のみ抽出）
+    function getCleanModelName(modelText) {
+      if (!modelText) return "";
+
+      // 英語部分（文字、数字、ハイフン、ドット）のみを抽出
+      const match = modelText.match(/^[A-Za-z0-9.-]+/);
+      return match ? match[0] : modelText;
+    }
+
+    // 動作テストコードのReactイベントトリガー関数を追加
+    function triggerReactEvent(element, eventType, eventData = {}) {
+      try {
+        if (eventType === "click") {
+          element.click();
+          return true;
+        } else if (eventType === "pointer") {
+          const pointerDown = new PointerEvent("pointerdown", {
+            bubbles: true,
+            cancelable: true,
+            view: window,
+            ...eventData,
+          });
+          const pointerUp = new PointerEvent("pointerup", {
+            bubbles: true,
+            cancelable: true,
+            view: window,
+            ...eventData,
+          });
+          element.dispatchEvent(pointerDown);
+          element.dispatchEvent(pointerUp);
+          return true;
+        }
+        return false;
+      } catch (error) {
+        logWithTimestamp(
+          `React イベントトリガー失敗: ${error.message}`,
+          "error",
+        );
+        return false;
+      }
+    }
+
+    // 動作テストコードから完全コピー：複数セレクタで要素検索
+    const findElement = async (selectors, description = "", maxRetries = 3) => {
       for (let retry = 0; retry < maxRetries; retry++) {
         for (const selector of selectors) {
           try {
-            const element = document.querySelector(selector);
+            let element;
+
+            if (selector.includes(":contains(")) {
+              const match = selector.match(/\:contains\("([^"]+)"\)/);
+              if (match) {
+                const text = match[1];
+                const baseSelector = selector.split(":contains(")[0];
+                const elements = document.querySelectorAll(baseSelector || "*");
+                element = Array.from(elements).find(
+                  (el) => el.textContent && el.textContent.includes(text),
+                );
+              }
+            } else {
+              element = document.querySelector(selector);
+            }
+
             if (element && isElementInteractable(element)) {
               return element;
             }
@@ -4270,34 +4391,42 @@ async function chatWithChatGPT() {
             // セレクタエラーを無視
           }
         }
+
         if (retry < maxRetries - 1) {
           await sleep(500);
         }
       }
+
       return null;
     };
+
+    // 動作テストコードから完全コピー：テキストで要素を検索
+    function findElementByText(selector, text, parent = document) {
+      const elements = parent.querySelectorAll(selector);
+      for (const el of elements) {
+        if (el.textContent && el.textContent.includes(text)) {
+          return el;
+        }
+      }
+      return null;
+    }
 
     const availableModels = [];
     const availableFunctions = [];
 
-    // テスト済みコード - モデル検出
+    // テスト済みコード - モデル検出（動作テストコードと同じ処理）
     logWithTimestamp("1-1. メニュークリックボタンを探しています...", "step");
-    const modelButton = await findElement(
-      DETECTION_SELECTORS.modelButton,
-      "モデル切り替えボタン",
-    );
+    const modelButton = await findElement(DETECTION_SELECTORS.modelButton);
     if (modelButton) {
       const currentModelText = getCleanText(modelButton);
       logWithTimestamp(`現在のモデル: ${currentModelText}`, "info");
 
-      modelButton.click();
+      // 動作テストコードと同じtriggerReactEvent関数を使用
+      triggerReactEvent(modelButton, "pointer");
       await sleep(1500);
 
       logWithTimestamp("1-2. 表示されたモデル一覧を取得・記録", "step");
-      const modelMenu = await findElement(
-        DETECTION_SELECTORS.modelMenu,
-        "モデルメニュー",
-      );
+      const modelMenu = await findElement(DETECTION_SELECTORS.modelMenu);
 
       if (modelMenu) {
         logWithTimestamp("✅ モデルメニューが開きました", "success");
@@ -4306,7 +4435,7 @@ async function chatWithChatGPT() {
           '[role="menuitem"][data-testid^="model-switcher-"]',
         );
         mainMenuItems.forEach((item) => {
-          const modelName = getCleanText(item);
+          const modelName = getCleanModelName(getCleanText(item));
           if (modelName && !modelName.includes("レガシー")) {
             availableModels.push({
               name: modelName,
@@ -4333,7 +4462,7 @@ async function chatWithChatGPT() {
             if (menu !== modelMenu) {
               const items = menu.querySelectorAll('[role="menuitem"]');
               items.forEach((item) => {
-                const modelName = getCleanText(item);
+                const modelName = getCleanModelName(getCleanText(item));
                 if (modelName && modelName.includes("GPT")) {
                   availableModels.push({
                     name: modelName,
@@ -4361,22 +4490,25 @@ async function chatWithChatGPT() {
       logWithTimestamp("❌ モデル切り替えボタンが見つかりません", "error");
     }
 
-    // テスト済みコード - 機能検出
+    // テスト済みコード - 機能検出（動作テストコードと同じ処理）
     logWithTimestamp("2-1. 機能メニューボタンを探しています...", "step");
     const funcMenuBtn = await findElement(
       DETECTION_SELECTORS.functionMenuButton,
-      "機能メニューボタン",
     );
     if (funcMenuBtn) {
       logWithTimestamp("機能メニューボタン発見、クリック実行", "info");
 
-      funcMenuBtn.click();
+      // 動作テストコードと同じPointerEventを使用
+      funcMenuBtn.dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true }),
+      );
+      await sleep(100);
+      funcMenuBtn.dispatchEvent(
+        new PointerEvent("pointerup", { bubbles: true }),
+      );
       await sleep(1500);
 
-      const funcMenu = await findElement(
-        DETECTION_SELECTORS.functionMenu,
-        "機能メニュー",
-      );
+      const funcMenu = await findElement(DETECTION_SELECTORS.functionMenu);
       if (funcMenu) {
         logWithTimestamp("✅ 機能メニューが開きました", "success");
 
@@ -4389,9 +4521,12 @@ async function chatWithChatGPT() {
           }
         });
 
-        const moreButton = Array.from(
-          funcMenu.querySelectorAll('[role="menuitem"]'),
-        ).find((el) => el.textContent && el.textContent.includes("さらに表示"));
+        // 動作テストコードと同じ方法で「さらに表示」ボタンを検索
+        const moreButton = findElementByText(
+          '[role="menuitem"]',
+          "さらに表示",
+          funcMenu,
+        );
 
         if (moreButton) {
           logWithTimestamp("追加機能メニュー発見、サブメニュー取得", "info");

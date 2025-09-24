@@ -553,6 +553,10 @@ export function initializeSelectorStats() {
           hitCount: 0,
           failCount: 0,
           avgResponseTime: 0,
+          hasError: false,
+          lastError: null,
+          lastErrorTime: null,
+          errorCount: 0,
         };
       });
     });
@@ -625,6 +629,42 @@ export function getSelectorsByCategory(aiName, category) {
   });
 
   return result;
+}
+
+/**
+ * セレクタエラー情報を追加
+ */
+export function addSelectorError(
+  aiName,
+  selectorKey,
+  error,
+  timestamp = new Date(),
+) {
+  if (!SELECTOR_STATS[aiName]) {
+    SELECTOR_STATS[aiName] = {};
+  }
+
+  if (!SELECTOR_STATS[aiName][selectorKey]) {
+    initializeSelectorStats();
+  }
+
+  const stats = SELECTOR_STATS[aiName][selectorKey];
+  stats.hasError = true;
+  stats.lastError = error;
+  stats.lastErrorTime = timestamp.toISOString();
+  stats.errorCount = (stats.errorCount || 0) + 1;
+}
+
+/**
+ * セレクタエラー情報をクリア
+ */
+export function clearSelectorError(aiName, selectorKey) {
+  if (SELECTOR_STATS[aiName] && SELECTOR_STATS[aiName][selectorKey]) {
+    const stats = SELECTOR_STATS[aiName][selectorKey];
+    stats.hasError = false;
+    stats.lastError = null;
+    stats.lastErrorTime = null;
+  }
 }
 
 // 初期化実行

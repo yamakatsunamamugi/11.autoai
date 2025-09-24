@@ -13,6 +13,8 @@ import {
   updateSelectorStats,
   getTotalSelectorsCount,
   getSelectorsByCategory,
+  addSelectorError,
+  clearSelectorError,
 } from "./step7-selector-data-structure.js";
 
 // ========================================
@@ -104,26 +106,21 @@ export class SelectorTimelineManager {
     );
     if (!timelineContainer) return;
 
-    const aiData = AI_SELECTORS_TIMELINE[this.currentAI];
-    if (!aiData) return;
-
-    timelineContainer.innerHTML = this.renderTimeline(aiData);
+    timelineContainer.innerHTML = this.renderTimeline();
     this.updateStats();
   }
 
   // ========================================
   // タイムライン HTML 生成
   // ========================================
-  renderTimeline(aiData) {
-    const filteredSteps = this.filterSteps(aiData.steps);
-    const allSelectors = this.getAllSelectorsFromSteps(filteredSteps);
+  renderTimeline() {
+    const allAISelectors = this.getAllSelectorsFromAllAIs();
 
     return `
-      <div class="selector-timeline" data-ai="${this.currentAI}">
+      <div class="selector-timeline">
         <div class="selector-timeline-header">
           <div class="ai-info">
-            <span class="ai-icon">${aiData.icon}</span>
-            <h3>${aiData.name} セレクタ一覧</h3>
+            <h3>全AIセレクタ一覧</h3>
           </div>
           <div class="timeline-controls">
             <input type="text" id="selector-search" placeholder="セレクタを検索..." value="${this.searchTerm}">
@@ -140,36 +137,34 @@ export class SelectorTimelineManager {
         </div>
 
         <div class="selector-table-container">
-          ${this.renderSelectorsTable(allSelectors)}
-          ${this.renderStepsTable(filteredSteps)}
+          ${this.renderAllSelectorsTable(allAISelectors)}
         </div>
       </div>
     `;
   }
 
   // ========================================
-  // セレクタ表の生成
+  // 全AIセレクタ表の生成
   // ========================================
-  renderSelectorsTable(allSelectors) {
-    if (Object.keys(allSelectors).length === 0) {
+  renderAllSelectorsTable(allAISelectors) {
+    if (allAISelectors.length === 0) {
       return '<div class="no-selectors">該当するセレクタがありません</div>';
     }
 
     return `
       <div class="selectors-table-section">
-        <h4>💻 セレクタ一覧</h4>
+        <h4>全AIセレクタ一覧</h4>
         <table class="selectors-table">
           <thead>
             <tr>
+              <th>AI</th>
               <th>セレクタ名</th>
-              <th>カテゴリ</th>
               <th>CSSセレクタ</th>
-              <th>用途</th>
             </tr>
           </thead>
           <tbody>
-            ${Object.entries(allSelectors)
-              .map(([key, selector]) => this.renderSelectorRow(key, selector))
+            ${allAISelectors
+              .map((item) => this.renderAllSelectorRow(item))
               .join("")}
           </tbody>
         </table>
@@ -177,26 +172,55 @@ export class SelectorTimelineManager {
     `;
   }
 
-  renderSelectorRow(key, selector) {
-    const category = SELECTOR_CATEGORIES[selector.category];
-    const primarySelector = selector.selectors[0]; // 最優先のセレクタを表示
+  renderAllSelectorRow(item) {
+    const { aiName, aiInfo, key, selector } = item;
+    const stats = SELECTOR_STATS[aiName][key] || {};
+    const hasError = stats.hasError || false;
+    const errorClass = hasError ? "selector-error-row" : "";
 
     return `
-      <tr class="selector-row" data-selector-key="${key}">
-        <td class="selector-name-cell">
-          <strong>${selector.name}</strong>
-          ${!selector.isRequired ? '<span class="optional-badge">オプション</span>' : ""}
+      <tr class="selector-row ${errorClass}" data-selector-key="${key}" data-ai="${aiName}">
+        <td class="ai-name-cell">
+          ${aiInfo.name}
         </td>
-        <td class="selector-category-cell">
-          <span class="category-icon" style="color: ${category.color}">${category.icon}</span>
-          ${category.name}
+        <td class="selector-name-cell">
+          ${selector.name}
+          ${hasError ? '<span class="error-indicator">⚠️</span>' : ""}
         </td>
         <td class="selector-css-cell">
-          <code class="css-selector">${this.escapeHtml(primarySelector)}</code>
-          ${selector.selectors.length > 1 ? `<span class="alt-count">+${selector.selectors.length - 1}個</span>` : ""}
+          ${
+            hasError
+              ? `<div class="error-message">❌ ${stats.lastError || "セレクタエラー"}</div>
+             <div class="error-selectors">${selector.selectors
+               .map(
+                 (sel) =>
+                   `<div><code class="css-selector error">${this.escapeHtml(sel)}</code></div>`,
+               )
+               .join("")}</div>`
+              : selector.selectors
+                  .map(
+                    (sel) =>
+                      `<div><code class="css-selector">${this.escapeHtml(sel)}</code></div>`,
+                  )
+                  .join("")
+          }
         </td>
-        <td class="selector-purpose-cell">
-          ${selector.purpose}
+      </tr>
+      <tr id="details-${key}" class="selector-details-row" style="display: none;">
+        <td colspan="3" class="selector-details-cell">
+          <div><strong>用途:</strong> ${selector.purpose}</div>
+          ${
+            hasError
+              ? `
+            <div style="margin-top: 8px; color: #d32f2f;">
+              <strong>エラー詳細:</strong><br>
+              エラー: ${stats.lastError}<br>
+              発生時刻: ${stats.lastErrorTime ? new Date(stats.lastErrorTime).toLocaleString("ja-JP") : "不明"}<br>
+              エラー回数: ${stats.errorCount || 0}回
+            </div>
+          `
+              : ""
+          }
         </td>
       </tr>
     `;
@@ -295,6 +319,36 @@ export class SelectorTimelineManager {
   }
 
   // ========================================
+  // セレクタ検証機能
+  // ========================================
+  async validateSelector(selectorArray) {
+    if (!selectorArray || selectorArray.length === 0) {
+      return {
+        isValid: false,
+        workingSelector: null,
+        error: "セレクタが定義されていません",
+      };
+    }
+
+    for (const selector of selectorArray) {
+      try {
+        const element = document.querySelector(selector);
+        if (element) {
+          return { isValid: true, workingSelector: selector, error: null };
+        }
+      } catch (error) {
+        console.warn(`Invalid selector syntax: ${selector}`, error);
+      }
+    }
+
+    return {
+      isValid: false,
+      workingSelector: null,
+      error: "要素が見つかりません",
+    };
+  }
+
+  // ========================================
   // セレクタ収集機能
   // ========================================
   getAllSelectorsFromSteps(steps) {
@@ -312,22 +366,57 @@ export class SelectorTimelineManager {
     return allSelectors;
   }
 
+  // 全AIからセレクタを収集（ChatGPT、Claude、Geminiの順）
+  getAllSelectorsFromAllAIs() {
+    const allSelectors = [];
+    const aiOrder = ["chatgpt", "claude", "gemini"];
+
+    aiOrder.forEach((aiName) => {
+      const aiData = AI_SELECTORS_TIMELINE[aiName];
+      if (aiData) {
+        const collectedSelectors = {};
+
+        aiData.steps.forEach((step) => {
+          const filteredSelectors = this.filterSelectors(step.selectors);
+          Object.entries(filteredSelectors).forEach(([key, selector]) => {
+            if (!collectedSelectors[key]) {
+              collectedSelectors[key] = selector;
+              allSelectors.push({
+                aiName,
+                aiInfo: {
+                  name: aiData.name,
+                  icon: aiData.icon,
+                  color: aiData.color,
+                },
+                key,
+                selector,
+              });
+            }
+          });
+        });
+      }
+    });
+
+    return allSelectors;
+  }
+
   // ========================================
   // 統計更新（簡略化）
   // ========================================
   updateStats() {
     const statsContainer = document.getElementById("selector-stats-summary");
     if (statsContainer) {
-      const totalSelectors = getTotalSelectorsCount(this.currentAI);
-      const categoryStats = this.getCategoryStats();
+      const allAISelectors = this.getAllSelectorsFromAllAIs();
+      const totalSelectors = allAISelectors.length;
+      const aiCounts = this.getAICounts(allAISelectors);
 
       statsContainer.innerHTML = `
         <div class="simple-stats">
           <span>総セレクタ数: ${totalSelectors}個</span>
-          ${Object.entries(categoryStats)
-            .map(([category, count]) => {
-              const cat = SELECTOR_CATEGORIES[category];
-              return `<span>${cat.icon} ${cat.name}: ${count}個</span>`;
+          ${Object.entries(aiCounts)
+            .map(([aiName, count]) => {
+              const aiData = AI_SELECTORS_TIMELINE[aiName];
+              return aiData ? `<span>${aiData.name}: ${count}個</span>` : "";
             })
             .join("")}
         </div>
@@ -346,6 +435,16 @@ export class SelectorTimelineManager {
     return stats;
   }
 
+  getAICounts(allAISelectors) {
+    const counts = { chatgpt: 0, claude: 0, gemini: 0 };
+    allAISelectors.forEach((item) => {
+      if (counts.hasOwnProperty(item.aiName)) {
+        counts[item.aiName]++;
+      }
+    });
+    return counts;
+  }
+
   escapeHtml(text) {
     const map = {
       "&": "&amp;",
@@ -358,6 +457,30 @@ export class SelectorTimelineManager {
   }
 
   // ========================================
+  // セレクタ検証とエラー更新
+  // ========================================
+  async validateAllSelectors() {
+    const allAISelectors = this.getAllSelectorsFromAllAIs();
+
+    for (const item of allAISelectors) {
+      const { aiName, key, selector } = item;
+      const validation = await this.validateSelector(selector.selectors);
+
+      if (!validation.isValid) {
+        addSelectorError(aiName, key, validation.error);
+        console.warn(
+          `❌ Selector validation failed for ${aiName}:${key} - ${validation.error}`,
+        );
+      } else {
+        clearSelectorError(aiName, key);
+      }
+    }
+
+    // 検証後に表示を更新
+    this.updateDisplay();
+  }
+
+  // ========================================
   // 公開 API
   // ========================================
   init() {
@@ -366,12 +489,26 @@ export class SelectorTimelineManager {
     this.updateDisplay();
     this.isInitialized = true;
     console.log("✅ SelectorTimelineManager initialized successfully");
+
+    // 初期化後にセレクタを検証
+    this.validateAllSelectors();
   }
 
   getCurrentAI() {
     return this.currentAI;
   }
 }
+
+// ========================================
+// グローバル関数（HTML から呼び出し用）
+// ========================================
+window.toggleSelectorDetails = function (selectorKey) {
+  const detailsElement = document.getElementById(`details-${selectorKey}`);
+  if (detailsElement) {
+    const isVisible = detailsElement.style.display !== "none";
+    detailsElement.style.display = isVisible ? "none" : "table-row";
+  }
+};
 
 // ========================================
 // エクスポート

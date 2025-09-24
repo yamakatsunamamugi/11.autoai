@@ -454,11 +454,12 @@ class AITestController {
 
       // Step 4: 探索は waitForContentScripts 内で実行済み
 
-      // Step 5: 少し待ってからウィンドウを閉じる
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      // Step 5: 少し待ってからウィンドウを閉じる (無効化 - テスト用にウィンドウを残す)
+      // await new Promise((resolve) => setTimeout(resolve, 2000));
 
-      // Step 6: クリーンアップ
-      await this.cleanup();
+      // Step 6: クリーンアップ (無効化 - テスト用にウィンドウを残す)
+      // await this.cleanup();
+      log.info("🔧 テスト用にウィンドウを残します（クリーンアップをスキップ）");
 
       log.info("✅ AIモデル・機能探索完了");
       return {
@@ -471,7 +472,8 @@ class AITestController {
       };
     } catch (error) {
       log.error("❌ AIモデル・機能探索エラー:", error);
-      await this.cleanup();
+      // await this.cleanup(); // エラー時もウィンドウを残す
+      log.info("🔧 エラー時もテスト用にウィンドウを残します");
       return {
         success: false,
         error: error.message,
