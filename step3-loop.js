@@ -1066,6 +1066,43 @@ async function checkCompletionStatus(taskGroup) {
 
   try {
     // ========================================
+    // 行制御情報の取得（タスクグループの範囲内）
+    // ========================================
+    let rowControls = [];
+
+    // タスクグループの範囲のデータを取得して行制御を抽出
+    // 注意：B列に行制御命令が入っているため、B列を含む範囲を取得する必要がある
+    const controlCheckRange = `B${taskGroup.dataStartRow}:B1000`;
+    let controlData;
+    try {
+      controlData = await readSpreadsheet(controlCheckRange);
+      if (controlData && controlData.values) {
+        // getRowControlの形式に合わせてデータを整形
+        const formattedData = controlData.values.map((row, index) => {
+          // B列のデータを2列目として配置（getRowControlがrowData[1]を見るため）
+          return [null, row[0] || ""];
+        });
+
+        // 行制御を取得
+        if (
+          window.Step3TaskList &&
+          typeof window.Step3TaskList.getRowControl === "function"
+        ) {
+          rowControls = window.Step3TaskList.getRowControl(formattedData);
+          LoopLogger.info("[step5-loop.js] 行制御情報取得:", {
+            制御数: rowControls.length,
+            詳細: rowControls.map((c) => `${c.type}制御: ${c.row}行目`),
+          });
+        } else {
+          LoopLogger.warn("[step5-loop.js] getRowControl関数が利用不可");
+        }
+      }
+    } catch (error) {
+      LoopLogger.warn("[step5-loop.js] 行制御取得エラー:", error.message);
+      // エラーがあっても処理は継続（行制御なしで全行対象）
+    }
+
+    // ========================================
     // Step 5-1-1: プロンプト列の確認
     // ========================================
     LoopLogger.info("[step5-loop.js→Step5-1-1] プロンプト列を確認中...");
@@ -1124,6 +1161,26 @@ async function checkCompletionStatus(taskGroup) {
         const row = promptValues.values[rowIndex];
         if (!row) continue;
 
+        // 実際の行番号を計算
+        const actualRow = taskGroup.dataStartRow + rowIndex;
+
+        // 行制御チェック
+        if (rowControls.length > 0) {
+          if (
+            window.Step3TaskList &&
+            typeof window.Step3TaskList.shouldProcessRow === "function"
+          ) {
+            if (
+              !window.Step3TaskList.shouldProcessRow(actualRow, rowControls)
+            ) {
+              LoopLogger.debug(
+                `[step5-loop.js] 行${actualRow}は行制御によりスキップ`,
+              );
+              continue;
+            }
+          }
+        }
+
         // この行にプロンプトが存在するかチェック
         let hasPromptInRow = false;
         let firstPromptContent = "";
@@ -1146,7 +1203,7 @@ async function checkCompletionStatus(taskGroup) {
         if (hasPromptInRow) {
           promptCount++;
           promptDetails.push({
-            行: taskGroup.dataStartRow + rowIndex,
+            行: actualRow,
             列: taskGroup.columns.prompts.join(", "),
             内容プレビュー:
               firstPromptContent.substring(0, 30) +
@@ -1245,6 +1302,23 @@ async function checkCompletionStatus(taskGroup) {
           const row = values.values[rowIndex];
           if (!row) continue;
 
+          // 実際の行番号を計算
+          const actualRow = taskGroup.dataStartRow + rowIndex;
+
+          // 行制御チェック
+          if (rowControls.length > 0) {
+            if (
+              window.Step3TaskList &&
+              typeof window.Step3TaskList.shouldProcessRow === "function"
+            ) {
+              if (
+                !window.Step3TaskList.shouldProcessRow(actualRow, rowControls)
+              ) {
+                continue;
+              }
+            }
+          }
+
           let hasAnswerInRow = false;
           // 3列（ChatGPT, Claude, Gemini）をチェック
           for (
@@ -1252,7 +1326,9 @@ async function checkCompletionStatus(taskGroup) {
             colIndex < 3 && colIndex < row.length;
             colIndex++
           ) {
-            if (row[colIndex] && row[colIndex].trim()) {
+            const cellValue = row[colIndex] ? row[colIndex].trim() : "";
+            // 値があり、かつ「作業中」マーカーでない場合のみ回答としてカウント
+            if (cellValue && !cellValue.startsWith("作業中")) {
               hasAnswerInRow = true;
               break; // 1つでも回答があれば十分
             }
@@ -1280,8 +1356,34 @@ async function checkCompletionStatus(taskGroup) {
       const answerValues = await readSpreadsheet(answerRange);
 
       if (answerValues && answerValues.values) {
-        for (const row of answerValues.values) {
-          if (row[0] && row[0].trim()) {
+        for (
+          let rowIndex = 0;
+          rowIndex < answerValues.values.length;
+          rowIndex++
+        ) {
+          const row = answerValues.values[rowIndex];
+          if (!row) continue;
+
+          // 実際の行番号を計算
+          const actualRow = taskGroup.dataStartRow + rowIndex;
+
+          // 行制御チェック
+          if (rowControls.length > 0) {
+            if (
+              window.Step3TaskList &&
+              typeof window.Step3TaskList.shouldProcessRow === "function"
+            ) {
+              if (
+                !window.Step3TaskList.shouldProcessRow(actualRow, rowControls)
+              ) {
+                continue;
+              }
+            }
+          }
+
+          const cellValue = row[0] ? row[0].trim() : "";
+          // 値があり、かつ「作業中」マーカーでない場合のみ回答としてカウント
+          if (cellValue && !cellValue.startsWith("作業中")) {
             answerCount++;
           }
         }
@@ -2175,8 +2277,16 @@ async function executeTasks(tasks, taskGroup) {
 
     try {
       // DEBUG: executeStep4を呼び出し
+      console.log(
+        "🔍 [STEP3-EXEC] executeStep4呼び出し前のSimpleSheetsClient状態:",
+        !!window.simpleSheetsClient,
+      );
       const results = await window.executeStep4(formattedTasks);
       // DEBUG: executeStep4完了
+      console.log(
+        "✅ [STEP3-EXEC] executeStep4実行完了後のSimpleSheetsClient状態:",
+        !!window.simpleSheetsClient,
+      );
       return results || [];
     } catch (step4Error) {
       log.error("executeStep4でエラーが発生:", step4Error.message);

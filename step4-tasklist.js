@@ -137,36 +137,33 @@ async function executeAsyncBatchProcessing(batchPromises, originalTasks = []) {
           };
 
           // 【仮説検証】詳細デバッグログ追加
-          console.warn(
-            `🔍 [仮説検証] タスク[${index}] enhancedResult生成詳細:`,
-            {
-              originalTask: {
-                taskId: originalTask.id,
-                column: originalTask.column,
-                row: originalTask.row,
-                cellRef: originalTask.cellRef,
-                answerCell: originalTask.answerCell,
-                windowId: originalTask.windowId,
-              },
-              result: {
-                taskId: result.taskId,
-                column: result.column,
-                row: result.row,
-                windowId: result.windowId,
-                success: result.success,
-                hasResponse: !!result.response,
-              },
-              enhancedResult: {
-                taskId: enhancedResult.taskId,
-                column: enhancedResult.column,
-                row: enhancedResult.row,
-                windowId: enhancedResult.windowId,
-                success: enhancedResult.success,
-                hasResponse: !!enhancedResult.response,
-              },
-              timestamp: new Date().toISOString(),
+          log.debug(`🔍 [仮説検証] タスク[${index}] enhancedResult生成詳細:`, {
+            originalTask: {
+              taskId: originalTask.id,
+              column: originalTask.column,
+              row: originalTask.row,
+              cellRef: originalTask.cellRef,
+              answerCell: originalTask.answerCell,
+              windowId: originalTask.windowId,
             },
-          );
+            result: {
+              taskId: result.taskId,
+              column: result.column,
+              row: result.row,
+              windowId: result.windowId,
+              success: result.success,
+              hasResponse: !!result.response,
+            },
+            enhancedResult: {
+              taskId: enhancedResult.taskId,
+              column: enhancedResult.column,
+              row: enhancedResult.row,
+              windowId: enhancedResult.windowId,
+              success: enhancedResult.success,
+              hasResponse: !!enhancedResult.response,
+            },
+            timestamp: new Date().toISOString(),
+          });
 
           log.info(`✅ [個別完了] タスク[${index}]完了:`, {
             success: enhancedResult.success,
@@ -314,6 +311,17 @@ async function handleIndividualTaskCompletion(result, taskIndex) {
  */
 async function immediateSpreadsheetUpdate(result, taskIndex) {
   try {
+    // 🔍 SimpleSheetsClient初期化状態チェック
+    console.log("🔍 [INIT-CHECK] immediateSpreadsheetUpdate実行開始");
+    console.log(
+      "🔍 [INIT-CHECK] window.simpleSheetsClient存在:",
+      !!window.simpleSheetsClient,
+    );
+    console.log(
+      "🔍 [INIT-CHECK] window.SimpleSheetsClientクラス存在:",
+      typeof window.SimpleSheetsClient,
+    );
+
     log.info(`📊 [即座スプレッドシート] タスク[${taskIndex}]記載開始:`, {
       taskId: result.taskId,
       column: result.column,
@@ -322,7 +330,7 @@ async function immediateSpreadsheetUpdate(result, taskIndex) {
     });
 
     // 【仮説検証】詳細な事前チェックログ
-    console.warn(
+    log.debug(
       `🔍 [仮説検証] スプレッドシート書き込み事前チェック[${taskIndex}]:`,
       {
         result: {
@@ -369,6 +377,17 @@ async function immediateSpreadsheetUpdate(result, taskIndex) {
     }
 
     // SimpleSheetsClientを使用してスプレッドシートを更新
+    // 初期化されていない場合はここで初期化を試みる
+    if (!window.simpleSheetsClient && window.SimpleSheetsClient) {
+      console.log(
+        "⚠️ [INIT-CHECK] simpleSheetsClientがないため、今初期化します",
+      );
+      window.simpleSheetsClient = new window.SimpleSheetsClient();
+      console.log(
+        "✅ [INIT-CHECK] simpleSheetsClientをimmediateSpreadsheetUpdate内で初期化完了",
+      );
+    }
+
     if (
       window.simpleSheetsClient &&
       typeof window.simpleSheetsClient.updateCell === "function"
@@ -404,18 +423,15 @@ async function immediateSpreadsheetUpdate(result, taskIndex) {
       const cellRef = `${columnLetter}${result.row}`;
 
       // 【仮説検証】書き込み実行前ログ
-      console.warn(
-        `🔍 [仮説検証] スプレッドシート書き込み実行[${taskIndex}]:`,
-        {
-          spreadsheetId: spreadsheetId,
-          cellRef: cellRef,
-          columnLetter: columnLetter,
-          originalColumn: result.column,
-          originalRow: result.row,
-          responseLength: result.response.length,
-          aboutToCallUpdateCell: true,
-        },
-      );
+      log.debug(`🔍 [仮説検証] スプレッドシート書き込み実行[${taskIndex}]:`, {
+        spreadsheetId: spreadsheetId,
+        cellRef: cellRef,
+        columnLetter: columnLetter,
+        originalColumn: result.column,
+        originalRow: result.row,
+        responseLength: result.response.length,
+        aboutToCallUpdateCell: true,
+      });
 
       const updateResult = await window.simpleSheetsClient.updateCell(
         spreadsheetId,
@@ -424,18 +440,15 @@ async function immediateSpreadsheetUpdate(result, taskIndex) {
       );
 
       // 【仮説検証】書き込み成功ログ
-      console.warn(
-        `✅ [仮説検証] スプレッドシート書き込み成功[${taskIndex}]:`,
-        {
-          requestedCell: cellRef,
-          actualCell: updateResult?.updatedRange || cellRef,
-          column: result.column,
-          row: result.row,
-          success: updateResult?.success || true,
-          updateResult: updateResult,
-          writeWasSuccessful: true,
-        },
-      );
+      log.debug(`✅ [仮説検証] スプレッドシート書き込み成功[${taskIndex}]:`, {
+        requestedCell: cellRef,
+        actualCell: updateResult?.updatedRange || cellRef,
+        column: result.column,
+        row: result.row,
+        success: updateResult?.success || true,
+        updateResult: updateResult,
+        writeWasSuccessful: true,
+      });
 
       log.info(`✅ [即座スプレッドシート] 記載完了[${taskIndex}]:`, {
         requestedCell: cellRef,
@@ -445,6 +458,13 @@ async function immediateSpreadsheetUpdate(result, taskIndex) {
         success: updateResult?.success || true,
       });
     } else {
+      console.error(`❌ [INIT-CHECK] SimpleSheetsClient利用不可詳細:`, {
+        simpleSheetsClient存在: !!window.simpleSheetsClient,
+        SimpleSheetsClientクラス存在: typeof window.SimpleSheetsClient,
+        updateCellメソッド存在: window.simpleSheetsClient
+          ? typeof window.simpleSheetsClient.updateCell
+          : "simpleSheetsClientがない",
+      });
       log.error(
         `❌ [即座スプレッドシート] SimpleSheetsClient利用不可[${taskIndex}]`,
       );
@@ -5049,9 +5069,32 @@ if (!window.SimpleSheetsClient) {
 }
 
 // Step4内でグローバルインスタンスを作成（step5の依存を解消）
+console.log("🔍 [INIT-DEBUG] step4-tasklist.js トップレベルチェック");
+console.log(
+  "🔍 [INIT-DEBUG] 現在のwindow.simpleSheetsClient:",
+  !!window.simpleSheetsClient,
+);
+console.log(
+  "🔍 [INIT-DEBUG] window.SimpleSheetsClientクラス:",
+  typeof window.SimpleSheetsClient,
+);
+
 if (!window.simpleSheetsClient) {
-  window.simpleSheetsClient = new window.SimpleSheetsClient();
-  ExecuteLogger.info("✅ window.simpleSheetsClient を step4内で初期化");
+  console.log(
+    "⚠️ [INIT-DEBUG] simpleSheetsClientが存在しないため初期化を試みます",
+  );
+
+  if (typeof window.SimpleSheetsClient === "function") {
+    window.simpleSheetsClient = new window.SimpleSheetsClient();
+    console.log(
+      "✅ [INIT-DEBUG] window.simpleSheetsClient を step4内で初期化成功",
+    );
+    ExecuteLogger.info("✅ window.simpleSheetsClient を step4内で初期化");
+  } else {
+    console.error("❌ [INIT-DEBUG] SimpleSheetsClientクラスが存在しません！");
+  }
+} else {
+  console.log("✅ [INIT-DEBUG] window.simpleSheetsClient は既に初期化済み");
 }
 
 // ========================================
@@ -7438,9 +7481,17 @@ async function executeStep4(taskList) {
       );
     }
 
-    // Step 4-6-8-3: タスク開始ログ記録
+    // Step 4-6-8-3: タスク開始ログ記録 - 詳細なwindowInfo情報を含める
     if (window.detailedLogManager) {
-      window.detailedLogManager.recordTaskStart(task, windowInfo);
+      const enhancedWindowInfo = {
+        ...windowInfo,
+        windowId: windowInfo?.windowId || windowInfo?.id,
+        tabId: windowInfo?.tabId || windowInfo?.tabs?.[0]?.id,
+        url: windowInfo?.url || windowInfo?.tabs?.[0]?.url,
+        aiType: normalizedAiType,
+        feature: task.feature || "デフォルト",
+      };
+      window.detailedLogManager.recordTaskStart(task, enhancedWindowInfo);
     }
 
     // Step 4-6-8-3: manifest.json自動注入Content Script確認（純粋メッセージパッシング版）
@@ -7590,13 +7641,21 @@ async function executeStep4(taskList) {
    * ログセル位置の計算
    */
   function calculateLogCellRef(task) {
+    // 1. タスクに直接logCellが設定されている場合はそれを使用
+    if (task.logCell) {
+      return task.logCell;
+    }
+
+    // 2. cellRefから行番号を取得してログ列を計算
     const cellRef = task.cellRef || `${task.column}${task.row}`;
     if (!cellRef) return null;
 
-    // 簡単な実装: A列をログ列として使用
     const match = cellRef.match(/^([A-Z]+)(\d+)$/);
     if (match) {
-      return `A${match[2]}`;
+      const rowNumber = match[2];
+      // task.logColumnがある場合はそれを使用、なければA列をデフォルトに
+      const logColumn = task.logColumn || "A";
+      return `${logColumn}${rowNumber}`;
     }
     return null;
   }
