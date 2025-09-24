@@ -1437,12 +1437,7 @@ async function processIncompleteTasks(taskGroup) {
       } else {
         log.warn(
           "⚠️ [step5-loop.js] タスクなしだが未完了 - プロンプトと回答の不一致の可能性",
-          {
-            グループ番号: taskGroup.groupNumber,
-            プロンプト数: window.globalState.stats.totalPrompts,
-            回答数: window.globalState.stats.completedAnswers,
-            差分: window.globalState.stats.pendingTasks,
-          },
+          actualCompletion,
         );
         // グループ内で処理可能なタスクがないが、実際は未完了の状態
         isComplete = false;

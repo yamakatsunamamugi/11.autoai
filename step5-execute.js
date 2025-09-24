@@ -610,35 +610,70 @@ class DetailedLogManager {
   }
 
   /**
-   * ログをフォーマット
+   * ログをフォーマット（詳細形式）
    */
   formatLog(log) {
+    const aiName = this.getAIDisplayName(log.aiType);
     const parts = [];
 
-    // 実行時刻
-    if (log.startTimeStr) {
-      parts.push(`開始: ${log.startTimeStr}`);
+    // ヘッダー
+    parts.push(`---------- ${aiName} ----------`);
+
+    // モデル情報
+    parts.push(`モデル: 選択: ${aiName} / 表示: ${aiName}`);
+
+    // 機能情報
+    const feature = log.windowInfo?.feature || "デフォルト";
+    parts.push(`機能: 選択: ${feature} / 表示: ${feature}`);
+
+    // URL
+    if (log.aiUrl) {
+      parts.push(`URL: ${log.aiUrl}`);
     }
 
-    // AI種別
-    if (log.aiType) {
-      parts.push(`AI: ${log.aiType}`);
+    // 送信時刻
+    if (log.sendTime) {
+      const sendTimeFormatted = this.formatDateTime(log.sendTime);
+      parts.push(`送信時刻: ${sendTimeFormatted}`);
     }
 
-    // 実行時間
-    if (log.executionTimeSec) {
-      parts.push(`実行時間: ${log.executionTimeSec}秒`);
-    }
+    // 記載時刻（スプレッドシートに記載する時間＝現在時刻）
+    const now = new Date();
+    const recordTimeFormatted = this.formatDateTime(now);
+    const timeDiff = log.sendTime ? Math.round((now - log.sendTime) / 1000) : 0;
+    parts.push(`記載時刻: ${recordTimeFormatted} (${timeDiff}秒後)`);
 
-    // ステータス
-    parts.push(`ステータス: ${log.status || "unknown"}`);
+    return parts.join("\n");
+  }
 
-    // エラーメッセージ
-    if (log.status === "failed" && log.result?.error) {
-      parts.push(`エラー: ${log.result.error}`);
-    }
+  /**
+   * AI種別の表示名を取得
+   */
+  getAIDisplayName(aiType) {
+    const aiTypeMap = {
+      claude: "Claude",
+      chatgpt: "ChatGPT",
+      gemini: "Gemini",
+      genspark: "Genspark",
+    };
+    return aiTypeMap[aiType?.toLowerCase()] || aiType || "Claude";
+  }
 
-    return parts.join(" | ");
+  /**
+   * 日時を日本語形式でフォーマット
+   */
+  formatDateTime(date) {
+    if (!date) return "";
+
+    const d = new Date(date);
+    const year = d.getFullYear();
+    const month = d.getMonth() + 1;
+    const day = d.getDate();
+    const hour = d.getHours();
+    const minute = d.getMinutes();
+    const second = d.getSeconds();
+
+    return `${year}/${month}/${day} ${hour}:${minute.toString().padStart(2, "0")}:${second.toString().padStart(2, "0")}`;
   }
 
   /**

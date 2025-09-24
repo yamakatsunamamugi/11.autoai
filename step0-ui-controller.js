@@ -33,20 +33,6 @@ const log = {
 // 🔥 STEP 0: バージョン確認
 log.debug("🔥 [STEP 0] step0-ui-controller.js バージョン1です");
 
-// Claude UI機能状態を1つのログにまとめて出力
-function logClaudeUIFeatures(features) {
-  if (!features || !Array.isArray(features)) return;
-
-  const summary = features.map((f) => ({
-    name: f.name,
-    enabled: f.isEnabled,
-    togglable: f.isToggleable,
-    toggled: f.isToggled || false,
-  }));
-
-  log.debug("🔍 [UI] Claude機能状態:", JSON.stringify(summary, null, 2));
-}
-
 /**
  * @fileoverview step0-ui-controller.js - AutoAI UI Controller
  *
@@ -1208,16 +1194,6 @@ function hasDataChanged(aiType, newData) {
   const newFunctions = newData.functionsWithDetails || newData.functions || [];
   const lastFunctions = lastData.functions || [];
 
-  log.debug(`🔍 [UI] ${aiType}変更検出:`, {
-    newModelsCount: newModels.length,
-    lastModelsCount: lastModels.length,
-    newFunctionsCount: newFunctions.length,
-    lastFunctionsCount: lastFunctions.length,
-    newFunctionsType: newFunctions.length > 0 ? typeof newFunctions[0] : "none",
-    lastFunctionsType:
-      lastFunctions.length > 0 ? typeof lastFunctions[0] : "none",
-  });
-
   // モデル比較
   if (newModels.length !== lastModels.length) {
     log.debug(
@@ -1262,13 +1238,6 @@ function hasDataChanged(aiType, newData) {
         newFunc.isToggled !== lastFunc.isToggled ||
         newFunc.secretStatus !== lastFunc.secretStatus
       ) {
-        log.debug(`🔍 [UI] ${aiType}: 機能詳細が変更されました`, {
-          index: i,
-          newName: newFunc.name,
-          lastName: lastFunc.name,
-          newEnabled: newFunc.isEnabled,
-          lastEnabled: lastFunc.isEnabled,
-        });
         return true;
       }
     } else {
@@ -1282,7 +1251,6 @@ function hasDataChanged(aiType, newData) {
     }
   }
 
-  log.debug(`🔍 [UI] ${aiType}: データに変更はありません`);
   return false;
 }
 
@@ -1325,35 +1293,6 @@ if (
 ) {
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === "AI_MODEL_FUNCTION_UPDATE") {
-      // 詳細データログ追加（Claude機能調査用）
-      if (message.aiType === "claude") {
-        log.debug("🔍 [UI-CLAUDE] 受信データ詳細:", {
-          models: message.data.models,
-          functions: message.data.functions,
-          functionsWithDetails: message.data.functionsWithDetails,
-          hasModelsWithDetails: !!message.data.modelsWithDetails,
-          timestamp: new Date().toISOString(),
-        });
-
-        // functionsWithDetailsの各要素の型をチェック
-        if (message.data.functionsWithDetails) {
-          log.debug("🔍 [UI-CLAUDE] functionsWithDetails詳細分析:");
-          message.data.functionsWithDetails.forEach((func, index) => {
-            log.debug(`  [${index}] 型: ${typeof func}, 内容:`, func);
-            if (typeof func === "object" && func !== null) {
-              log.debug(`    - name: ${func.name}`);
-              log.debug(`    - isEnabled: ${func.isEnabled}`);
-              log.debug(`    - isToggleable: ${func.isToggleable}`);
-              log.debug(`    - isToggled: ${func.isToggled}`);
-            }
-          });
-        }
-      }
-
-      // Gemini専用デバッグログ
-      if (message.aiType === "gemini") {
-      }
-
       // 変更検出
 
       if (hasDataChanged(message.aiType, message.data)) {

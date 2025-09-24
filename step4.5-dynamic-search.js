@@ -256,15 +256,6 @@ class DynamicTaskSearch {
   async findNextTask() {
     log.info("🔍 次のタスク検索開始");
 
-    // 【デバッグログ追加】検索開始時の状態
-    log.warn("🔍 [重複検証] findNextTask開始時の状態:", {
-      completedTasksCount: this.completedTasks.size,
-      completedTasks: Array.from(this.completedTasks),
-      processingTasksCount: this.processingTasks.size,
-      processingTasks: Array.from(this.processingTasks),
-      timestamp: new Date().toISOString(),
-    });
-
     try {
       // 【修正】統一管理システムから現在のグループ情報を取得
       const currentGroup = window.getCurrentGroup
@@ -344,6 +335,17 @@ class DynamicTaskSearch {
   async searchTaskInGroup(spreadsheetData, taskGroup) {
     const { columns, dataStartRow } = taskGroup;
 
+    // 【デバッグ追加】taskGroup全体の内容を確認
+    log.warn("🔍 [DynamicSearch] taskGroup詳細:", {
+      groupNumber: taskGroup.groupNumber,
+      type: taskGroup.type || taskGroup.taskType,
+      columns: columns,
+      columnsLogExists: columns?.log ? true : false,
+      logColumn: columns?.log || "未設定",
+      dataStartRow: dataStartRow,
+      fullTaskGroup: JSON.stringify(taskGroup),
+    });
+
     if (!columns || !dataStartRow) {
       log.error("グループ情報が不完全");
       return null;
@@ -387,7 +389,21 @@ class DynamicTaskSearch {
           const taskId = `${answerCol.column}${rowNumber}`;
 
           // このタスクが処理可能かチェック
-          if (this.isTaskAvailable(taskId, answerValue)) {
+          if (await this.isTaskAvailable(taskId, answerValue)) {
+            // 【デバッグ追加】logCell生成確認
+            const logCellValue = taskGroup.columns?.log
+              ? `${taskGroup.columns.log}${rowNumber}`
+              : null;
+
+            log.warn("🔍 [DynamicSearch] タスク生成時のlogCell:", {
+              taskId: taskId,
+              logCellValue: logCellValue,
+              taskGroupColumns: taskGroup.columns,
+              logColumnExists: taskGroup.columns?.log ? true : false,
+              logColumn: taskGroup.columns?.log || "未設定",
+              rowNumber: rowNumber,
+            });
+
             // 利用可能なタスクを返す
             return {
               id: taskId,
@@ -401,9 +417,7 @@ class DynamicTaskSearch {
               // 追加情報
               cellRef: `${answerCol.column}${rowNumber}`,
               answerCell: `${answerCol.column}${rowNumber}`,
-              logCell: taskGroup.columns?.log
-                ? `${taskGroup.columns.log}${rowNumber}`
-                : null,
+              logCell: logCellValue,
             };
           }
         }
@@ -443,29 +457,104 @@ class DynamicTaskSearch {
 
   /**
    * タスクが実行可能かチェック
+   * 【修正】重複実行防止のための厳密なチェック
    */
-  isTaskAvailable(taskId, cellValue) {
+  async isTaskAvailable(taskId, cellValue) {
     // 【デバッグログ追加】チェック開始
     const checkTime = new Date().toISOString();
 
-    // すでに完了済みならスキップ
+    // 【仮説検証】詳細チェックログ
+    console.warn(
+      `🔍 [重複検証] DynamicTaskSearch.isTaskAvailable チェック開始:`,
+      {
+        taskId: taskId,
+        cellValue: cellValue,
+        cellValueType: typeof cellValue,
+        cellValueLength: cellValue ? cellValue.length : 0,
+        completedTasksCount: this.completedTasks.size,
+        processingTasksCount: this.processingTasks.size,
+        completedTasksList: Array.from(this.completedTasks),
+        processingTasksList: Array.from(this.processingTasks),
+        checkTime: checkTime,
+      },
+    );
+
+    // 【修正1】すでに完了済みならスキップ（優先度：最高）
     if (this.completedTasks.has(taskId)) {
       log.debug(`⏭️ スキップ（完了済み）: ${taskId}`);
-      log.warn(`🔍 [重複検証] ${taskId}は完了済みリストに存在`, {
+      console.warn(`❌ [重複検証] タスク実行拒否 - 完了済み:`, {
         taskId: taskId,
-        checkTime: checkTime,
+        reason: "completedTasks.has(taskId)",
+        completedTasks: Array.from(this.completedTasks),
       });
       return false;
     }
 
-    // 現在処理中ならスキップ
+    // 【修正2】現在処理中ならスキップ（優先度：最高）
     if (this.processingTasks.has(taskId)) {
       log.debug(`⏳ スキップ（処理中）: ${taskId}`);
-      log.warn(`🔍 [重複検証] ${taskId}は処理中リストに存在`, {
+      console.warn(`❌ [重複検証] タスク実行拒否 - 処理中:`, {
         taskId: taskId,
-        checkTime: checkTime,
+        reason: "processingTasks.has(taskId)",
+        processingTasks: Array.from(this.processingTasks),
+        criticalDuplicationPrevention: true,
       });
       return false;
+    }
+
+    // 【修正3】最新データ再取得による二重確認
+    // セル値が空の場合、スプレッドシートから最新値を再確認
+    if (!cellValue || !cellValue.trim()) {
+      console.warn(
+        `⚠️ [重複検証] セル空検出 - 最新データ再確認開始: ${taskId}`,
+      );
+
+      try {
+        // 最新のスプレッドシートデータを強制取得
+        const latestData = await this.fetchLatestSpreadsheetData(true); // forceRefresh=true
+
+        // 該当セルの最新値を確認
+        const match = taskId.match(/([A-Z]+)(\d+)/);
+        if (match && latestData) {
+          const [, column, row] = match;
+          const rowIndex = parseInt(row) - 1;
+          const colIndex = this.columnToIndex(column);
+
+          if (latestData[rowIndex] && latestData[rowIndex][colIndex]) {
+            const latestCellValue = latestData[rowIndex][colIndex];
+
+            console.warn(`🔍 [重複検証] 最新セル値確認:`, {
+              taskId: taskId,
+              originalCellValue: cellValue || "empty",
+              latestCellValue: latestCellValue,
+              cellHasContent: !!(latestCellValue && latestCellValue.trim()),
+              preventDuplication: true,
+            });
+
+            // 最新データに内容がある場合は実行拒否
+            if (latestCellValue && latestCellValue.trim()) {
+              if (latestCellValue.startsWith("作業中")) {
+                log.debug(`⏳ スキップ（最新確認：作業中マーカー）: ${taskId}`);
+                return false;
+              }
+
+              // 実際の回答がある場合
+              log.debug(`✓ スキップ（最新確認：回答済み）: ${taskId}`);
+              this.completedTasks.add(taskId); // 完了済みとしてマーク
+              console.warn(`✅ [重複検証] 最新確認で回答発見 - 重複防止成功:`, {
+                taskId: taskId,
+                latestCellValue: latestCellValue.substring(0, 100) + "...",
+                duplicationPrevented: true,
+              });
+              return false;
+            }
+          }
+        }
+      } catch (error) {
+        console.warn(`⚠️ [重複検証] 最新データ確認エラー: ${error.message}`);
+        // エラーの場合は慎重にスキップ
+        return false;
+      }
     }
 
     // セルに値がある場合
@@ -483,13 +572,29 @@ class DynamicTaskSearch {
       return false;
     }
 
-    // セルが空の場合は実行可能
-    log.warn(`⚠️ [重複検証] ${taskId}のセルが空と判定 - 実行可能`, {
+    // 【修正4】最終確認：処理中状態を再度チェック
+    if (this.processingTasks.has(taskId)) {
+      console.warn(`❌ [重複検証] 最終チェックで処理中検出 - 重複防止:`, {
+        taskId: taskId,
+        reason: "Final processing check",
+        duplicationPrevented: true,
+      });
+      return false;
+    }
+
+    // セルが本当に空の場合のみ実行可能
+    console.warn(`✅ [重複検証] タスク実行許可 - 全チェック通過:`, {
       taskId: taskId,
-      cellValue: cellValue,
-      cellValueLength: cellValue ? cellValue.length : 0,
-      checkTime: checkTime,
-      completedTasksList: Array.from(this.completedTasks),
+      cellValue: cellValue || "empty",
+      latestDataChecked: true,
+      reason: "セルが空で全検証を通過",
+      willReturn: true,
+      safeguardsApplied: [
+        "completed check",
+        "processing check",
+        "latest data check",
+        "final check",
+      ],
     });
     return true;
   }
@@ -517,20 +622,47 @@ class DynamicTaskSearch {
 
   /**
    * タスク完了を登録
+   * 【修正】重複防止の強化とデータ整合性確保
    */
   registerTaskCompletion(taskId) {
-    this.processingTasks.delete(taskId);
+    // 【仮説検証】完了登録前の状態ログ
+    console.warn(`🔍 [重複検証] registerTaskCompletion呼び出し前:`, {
+      taskId: taskId,
+      wasInProcessing: this.processingTasks.has(taskId),
+      wasInCompleted: this.completedTasks.has(taskId),
+      processingTasksBefore: Array.from(this.processingTasks),
+      completedTasksBefore: Array.from(this.completedTasks),
+      timestamp: new Date().toISOString(),
+    });
+
+    // 【修正】重複完了登録の防止
+    if (this.completedTasks.has(taskId)) {
+      console.warn(`⚠️ [重複検証] 既に完了済みのタスク - 重複登録防止:`, {
+        taskId: taskId,
+        reason: "Already completed",
+        skipDuplicateRegistration: true,
+      });
+      return; // 重複登録を防止
+    }
+
+    // 処理中リストから削除
+    const wasProcessing = this.processingTasks.delete(taskId);
+
+    // 完了リストに追加
     this.completedTasks.add(taskId);
 
     log.info(`✅ タスク完了登録: ${taskId}`);
 
-    // 【デバッグログ追加】完了登録後の状態
-    log.warn(`🔍 [重複検証] registerTaskCompletion後の状態:`, {
+    // 【修正】完了登録後の詳細状態ログ
+    console.warn(`✅ [重複検証] registerTaskCompletion完了:`, {
       taskId: taskId,
-      completedTasksCount: this.completedTasks.size,
-      completedTasksList: Array.from(this.completedTasks),
-      processingTasksCount: this.processingTasks.size,
-      timestamp: new Date().toISOString(),
+      wasProcessing: wasProcessing,
+      processingTasksAfter: Array.from(this.processingTasks),
+      completedTasksAfter: Array.from(this.completedTasks),
+      taskNowCompleted: this.completedTasks.has(taskId),
+      taskNoLongerProcessing: !this.processingTasks.has(taskId),
+      completionTimestamp: new Date().toISOString(),
+      duplicationPrevented: true,
     });
 
     // window.currentTaskListも更新
@@ -539,11 +671,18 @@ class DynamicTaskSearch {
       if (task) {
         task.processing = false;
         task.completed = true;
+        task.completedAt = new Date().toISOString(); // 完了時刻を記録
       }
     }
 
-    // キャッシュをクリアして次回最新データを取得
+    // 【修正】キャッシュクリアの強化
     this.cache.spreadsheetData = null;
+    this.cache.lastFetchTime = null; // 完全リセット
+
+    // 【追加】グローバル状態への完了通知
+    if (window.globalState && window.globalState.completedTasksRegistry) {
+      window.globalState.completedTasksRegistry.add(taskId);
+    }
   }
 
   /**

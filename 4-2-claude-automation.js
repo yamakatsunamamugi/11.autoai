@@ -795,7 +795,7 @@
     // AI待機設定
     const AI_WAIT_CONFIG = window.AI_WAIT_CONFIG || {
       INITIAL_WAIT: 30000,
-      MAX_WAIT: 600000, // 10分（通常処理）
+      MAX_WAIT: 1800000, // 30分（通常処理）
       CHECK_INTERVAL: 2000,
       DEEP_RESEARCH_WAIT: 2400000, // 40分（Deep Research/エージェント）
       SHORT_WAIT: 1000,
@@ -4860,6 +4860,17 @@
                 });
               }, 3000); // 3秒でタイムアウト
 
+              // 🔍 [DEBUG-LOGCELL] Content Script送信前のlogCell確認
+              console.warn(
+                `🔍 [DEBUG-LOGCELL] Content Script送信前: ${taskId}`,
+                {
+                  taskDataExists: !!taskData,
+                  taskDataLogCell: taskData?.logCell,
+                  taskDataKeys: taskData ? Object.keys(taskData) : [],
+                  taskId: taskId,
+                },
+              );
+
               try {
                 chrome.runtime.sendMessage(
                   {
@@ -5065,60 +5076,105 @@
             let isCanvasMode = false;
             let disappearWaitCount = 0;
             let confirmCount = 0; // 連続で停止ボタンが見つからない回数
-            const maxDisappearWait = AI_WAIT_CONFIG.MAX_WAIT / 1000; // 最大5分（300秒）
 
+            // 文字数監視用の変数を追加
+            let lastTextLength = 0; // 前回の文字数
+            let textUnchangedCount = 0; // 文字数が変化しなかった秒数
+            const maxTextUnchangedTime = 60; // 60秒間変化なしで完了とする
+            const maxTotalWaitTime = AI_WAIT_CONFIG.MAX_WAIT / 1000; // 30分（1800秒）
+            const textMonitorStartTime = 600; // 10分（600秒）後から文字数監視開始
+
+            // ハイブリッド監視モード
             log.debug(
-              `📊 [STOP-BUTTON-MONITOR] 監視開始 - 最大待機時間: ${maxDisappearWait}秒`,
+              `📊 [STOP-BUTTON-MONITOR] 監視開始 - 最初10分は停止ボタン、その後は文字数監視`,
             );
+            log.debug(`  ・最大待機時間: ${maxTotalWaitTime / 60}分`);
+            log.debug(`  ・文字数監視開始: ${textMonitorStartTime / 60}分後`);
 
-            while (disappearWaitCount < maxDisappearWait) {
-              // 待機状態の詳細ログ（毎秒）
+            while (disappearWaitCount < maxTotalWaitTime) {
+              // 最大30分待機
+              // 毎秒文字数をチェックする
+              let currentTextLength = 0;
 
-              // 待機中の文字数カウント（10秒ごと）
-              if (disappearWaitCount % 10 === 0 && disappearWaitCount > 0) {
-                log.debug(
-                  `  生成中... ${Math.floor(disappearWaitCount / 60)}分${disappearWaitCount % 60}秒経過`,
-                );
+              // Canvasテキストをチェック
+              const canvasElement = await findClaudeElement(
+                deepResearchSelectors["4_Canvas機能テキスト位置"],
+                1,
+                true,
+              );
+              if (canvasElement) {
+                currentTextLength += canvasElement.textContent
+                  ? canvasElement.textContent.trim().length
+                  : 0;
+              }
 
-                // Canvasテキストをチェック
-                const canvasElement = await findClaudeElement(
-                  deepResearchSelectors["4_Canvas機能テキスト位置"],
-                  1,
-                  true,
-                );
-                if (canvasElement) {
-                  const canvasTextLength = canvasElement.textContent
-                    ? canvasElement.textContent.trim().length
-                    : 0;
-                  log.debug(`  📈 Canvasテキスト: ${canvasTextLength}文字`);
-                  ClaudeLogManager.logStep(
-                    "Progress-Canvas",
-                    `Canvas文字数: ${canvasTextLength}文字`,
-                    {
-                      charCount: canvasTextLength,
-                      time: disappearWaitCount,
-                    },
+              // 通常テキストをチェック
+              const normalElement = await findClaudeElement(
+                deepResearchSelectors["5_通常処理テキスト位置"],
+                1,
+                true,
+              );
+              if (normalElement) {
+                currentTextLength += normalElement.textContent
+                  ? normalElement.textContent.trim().length
+                  : 0;
+              }
+
+              // 文字数変化の判定
+              if (
+                currentTextLength > 0 &&
+                currentTextLength === lastTextLength
+              ) {
+                textUnchangedCount++;
+
+                // 10秒ごとに進捗ログ
+                if (textUnchangedCount % 10 === 0) {
+                  log.debug(
+                    `📊 [TEXT-MONITOR] 文字数変化なし: ${textUnchangedCount}秒 / ${maxTextUnchangedTime}秒 (${currentTextLength}文字)`,
                   );
                 }
 
-                // 通常テキストをチェック
-                const normalElement = await findClaudeElement(
-                  deepResearchSelectors["5_通常処理テキスト位置"],
-                  1,
-                  true,
-                );
-                if (normalElement) {
-                  const normalTextLength = normalElement.textContent
-                    ? normalElement.textContent.trim().length
-                    : 0;
-                  log.debug(`  📈 通常テキスト: ${normalTextLength}文字`);
+                // 60秒間文字数が変化しない場合は完了と判定
+                if (textUnchangedCount >= maxTextUnchangedTime) {
+                  stopButtonGone = true;
+                  log.debug(
+                    `✓ 応答生成完了（文字数${maxTextUnchangedTime}秒間変化なし: ${currentTextLength}文字）`,
+                  );
+
                   ClaudeLogManager.logStep(
-                    "Progress-Normal",
-                    `通常文字数: ${normalTextLength}文字`,
+                    "Generation-Complete",
+                    `文字数${maxTextUnchangedTime}秒間安定: ${currentTextLength}文字`,
                     {
-                      charCount: normalTextLength,
-                      time: disappearWaitCount,
+                      finalCharCount: currentTextLength,
+                      unchangedSeconds: textUnchangedCount,
+                      totalTime: disappearWaitCount,
                     },
+                  );
+
+                  await wait(3000);
+                  break;
+                }
+              } else if (currentTextLength !== lastTextLength) {
+                // 文字数が変化したらカウンタをリセット
+                if (textUnchangedCount > 0) {
+                  log.debug(
+                    `🔄 [TEXT-MONITOR] 文字数変化検出 - カウンタリセット (${lastTextLength} → ${currentTextLength}文字, ${textUnchangedCount}秒後)`,
+                  );
+                }
+                textUnchangedCount = 0;
+                lastTextLength = currentTextLength;
+              }
+
+              // 待機中の詳細ログ（10秒ごと）
+              if (disappearWaitCount % 10 === 0 && disappearWaitCount > 0) {
+                log.debug(
+                  `  生成中... ${Math.floor(disappearWaitCount / 60)}分${disappearWaitCount % 60}秒経過 (文字数: ${currentTextLength})`,
+                );
+
+                // 10分経過の通知（削除されたタイムアウトの代わり）
+                if (disappearWaitCount === 600) {
+                  log.debug(
+                    `⏱️ [INFO] 10分経過 - 文字数監視継続中 (現在: ${currentTextLength}文字)`,
                   );
                 }
               }
@@ -5172,23 +5228,28 @@
               await wait(1000);
               disappearWaitCount++;
 
-              // 長時間待機の警告（30秒ごと）
-              if (disappearWaitCount % 30 === 0 && disappearWaitCount > 0) {
-                console.warn(`⚠️ [TIMEOUT-WARNING] 長時間待機中:`, {
-                  経過時間: `${disappearWaitCount}秒`,
-                  分換算: `${Math.floor(disappearWaitCount / 60)}分${disappearWaitCount % 60}秒`,
-                  最大待機: `${maxDisappearWait}秒`,
-                  残り時間: `${maxDisappearWait - disappearWaitCount}秒`,
+              // 長時間待機の通知（60秒ごと）
+              if (disappearWaitCount % 60 === 0 && disappearWaitCount > 0) {
+                const monitorMode =
+                  disappearWaitCount >= textMonitorStartTime
+                    ? "文字数監視"
+                    : "停止ボタン監視";
+                log.debug(`📊 [STATUS] 処理継続中:`, {
+                  経過時間: `${Math.floor(disappearWaitCount / 60)}分`,
+                  監視モード: monitorMode,
+                  現在文字数: `${currentTextLength}文字`,
+                  文字数変化なし: `${textUnchangedCount}秒`,
                   confirmCount: confirmCount,
                   停止ボタン最終検出: stopResult ? "検出中" : "非検出",
                 });
               }
 
-              // タイムアウトチェック
-              if (disappearWaitCount >= maxDisappearWait) {
+              // 30分タイムアウトチェック
+              if (disappearWaitCount >= maxTotalWaitTime) {
                 log.warn(
-                  `⚠️ [STOP-BUTTON-MONITOR] タイムアウト - 最大待機時間${maxDisappearWait}秒に到達`,
+                  `⚠️ [TIMEOUT] 最大待機時間${maxTotalWaitTime / 60}分に到達 - 強制終了`,
                 );
+                log.warn(`  最終文字数: ${currentTextLength}文字`);
                 stopButtonGone = true;
                 break;
               }

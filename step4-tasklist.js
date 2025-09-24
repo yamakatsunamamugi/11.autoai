@@ -116,12 +116,57 @@ async function executeAsyncBatchProcessing(batchPromises, originalTasks = []) {
           // 元のタスク情報を結果にマージ（結果側の値を優先）
           const enhancedResult = {
             ...result,
-            column: result.column || originalTask.column,
-            row: result.row || originalTask.row,
+            // 【修正】column情報の適切な取得
+            column:
+              result.column ||
+              originalTask.column ||
+              originalTask.cellRef?.match(/([A-Z]+)/)?.[1] ||
+              originalTask.answerCell?.match(/([A-Z]+)/)?.[1],
+            // 【修正】row情報の適切な取得
+            row:
+              result.row ||
+              originalTask.row ||
+              parseInt(
+                originalTask.cellRef?.match(/(\d+)/)?.[1] ||
+                  originalTask.answerCell?.match(/(\d+)/)?.[1] ||
+                  "0",
+              ),
             windowId: result.windowId || originalTask.windowId,
             response:
               result.response || result.result?.response || result.result?.text,
           };
+
+          // 【仮説検証】詳細デバッグログ追加
+          console.warn(
+            `🔍 [仮説検証] タスク[${index}] enhancedResult生成詳細:`,
+            {
+              originalTask: {
+                taskId: originalTask.id,
+                column: originalTask.column,
+                row: originalTask.row,
+                cellRef: originalTask.cellRef,
+                answerCell: originalTask.answerCell,
+                windowId: originalTask.windowId,
+              },
+              result: {
+                taskId: result.taskId,
+                column: result.column,
+                row: result.row,
+                windowId: result.windowId,
+                success: result.success,
+                hasResponse: !!result.response,
+              },
+              enhancedResult: {
+                taskId: enhancedResult.taskId,
+                column: enhancedResult.column,
+                row: enhancedResult.row,
+                windowId: enhancedResult.windowId,
+                success: enhancedResult.success,
+                hasResponse: !!enhancedResult.response,
+              },
+              timestamp: new Date().toISOString(),
+            },
+          );
 
           log.info(`✅ [個別完了] タスク[${index}]完了:`, {
             success: enhancedResult.success,
@@ -244,31 +289,18 @@ async function handleIndividualTaskCompletion(result, taskIndex) {
         try {
           window.registerTaskCompletionDynamic(taskId);
           log.info(`📝 [個別完了処理] DynamicTaskSearchに完了登録: ${taskId}`);
-
-          // 【デバッグログ追加】完了登録時の状態記録
-          log.warn(`🔍 [重複検証] タスク完了登録時点:`, {
-            taskId: taskId,
-            completedAt: new Date().toISOString(),
-            hasResponse: !!result.response,
-            responseLength: result.response?.length || 0,
-            column: result.column,
-            row: result.row,
-            spreadsheetWriteStatus: "pending_or_completed",
-          });
         } catch (error) {
           log.warn(`⚠️ [個別完了処理] DynamicTaskSearch完了登録エラー:`, error);
         }
       }
 
       // 【修正】スプレッドシート書き込み完了を待機してから次タスク探索
-      // Google Sheets APIの書き込み反映に2-3秒必要
-      log.warn(`⏳ [重複検証] 書き込み待機開始（3秒）- タスク[${taskIndex}]`);
+      // Google Sheets APIの書き込み反映に時間が必要（10秒に延長）
       setTimeout(() => {
-        log.warn(`✅ [重複検証] 書き込み待機完了 - 次タスク探索開始`);
         startNextTaskIfAvailable(taskIndex).catch((error) =>
           log.warn(`次タスク探索エラー[${taskIndex}]:`, error),
         );
-      }, 3000); // 3秒待機
+      }, 10000); // 10秒待機に延長
     }
 
     log.info(`✅ [個別完了処理] タスク[${taskIndex}]完了`);
@@ -289,13 +321,50 @@ async function immediateSpreadsheetUpdate(result, taskIndex) {
       hasResponse: !!result.response,
     });
 
+    // 【仮説検証】詳細な事前チェックログ
+    console.warn(
+      `🔍 [仮説検証] スプレッドシート書き込み事前チェック[${taskIndex}]:`,
+      {
+        result: {
+          taskId: result.taskId,
+          column: result.column,
+          columnType: typeof result.column,
+          row: result.row,
+          rowType: typeof result.row,
+          response: result.response
+            ? result.response.substring(0, 100) + "..."
+            : null,
+          responseLength: result.response ? result.response.length : 0,
+          hasResponse: !!result.response,
+          allResultKeys: Object.keys(result),
+        },
+        globalState: {
+          spreadsheetId: window.globalState?.spreadsheetId,
+          hasSimpleSheetsClient: !!window.simpleSheetsClient,
+          simpleSheetsClientMethods: window.simpleSheetsClient
+            ? Object.getOwnPropertyNames(
+                Object.getPrototypeOf(window.simpleSheetsClient),
+              )
+            : [],
+        },
+        timestamp: new Date().toISOString(),
+      },
+    );
+
     // スプレッドシート記載に必要な情報を確認
     if (!result.column || !result.row || !result.response) {
-      log.warn(`⚠️ [即座スプレッドシート] 記載情報不足[${taskIndex}]:`, {
-        hasColumn: !!result.column,
-        hasRow: !!result.row,
-        hasResponse: !!result.response,
-      });
+      console.error(
+        `❌ [仮説検証] スプレッドシート書き込み失敗 - 記載情報不足[${taskIndex}]:`,
+        {
+          hasColumn: !!result.column,
+          hasRow: !!result.row,
+          hasResponse: !!result.response,
+          column: result.column,
+          row: result.row,
+          responseLength: result.response ? result.response.length : 0,
+          thisIsTheRootCause: !result.column || !result.row || !result.response,
+        },
+      );
       return;
     }
 
@@ -334,10 +403,38 @@ async function immediateSpreadsheetUpdate(result, taskIndex) {
       }
       const cellRef = `${columnLetter}${result.row}`;
 
+      // 【仮説検証】書き込み実行前ログ
+      console.warn(
+        `🔍 [仮説検証] スプレッドシート書き込み実行[${taskIndex}]:`,
+        {
+          spreadsheetId: spreadsheetId,
+          cellRef: cellRef,
+          columnLetter: columnLetter,
+          originalColumn: result.column,
+          originalRow: result.row,
+          responseLength: result.response.length,
+          aboutToCallUpdateCell: true,
+        },
+      );
+
       const updateResult = await window.simpleSheetsClient.updateCell(
         spreadsheetId,
         cellRef,
         result.response,
+      );
+
+      // 【仮説検証】書き込み成功ログ
+      console.warn(
+        `✅ [仮説検証] スプレッドシート書き込み成功[${taskIndex}]:`,
+        {
+          requestedCell: cellRef,
+          actualCell: updateResult?.updatedRange || cellRef,
+          column: result.column,
+          row: result.row,
+          success: updateResult?.success || true,
+          updateResult: updateResult,
+          writeWasSuccessful: true,
+        },
       );
 
       log.info(`✅ [即座スプレッドシート] 記載完了[${taskIndex}]:`, {
@@ -701,6 +798,15 @@ async function openAIWindowForTask(task) {
  */
 async function executeTaskIndependently(task) {
   try {
+    // 【デバッグ追加】logCellの存在確認
+    log.warn("🔍 [独立タスク実行] タスクのlogCell確認:", {
+      taskId: task.id,
+      logCell: task.logCell,
+      hasLogCell: task.logCell ? true : false,
+      taskKeys: Object.keys(task),
+      fullTask: JSON.stringify(task),
+    });
+
     log.info("🚀 [独立タスク実行] 開始 - 詳細:", {
       taskId: task.id,
       aiType: task.aiType,
@@ -709,6 +815,7 @@ async function executeTaskIndependently(task) {
       hasWindowId: !!task.windowId,
       windowId: task.windowId,
       taskKeys: Object.keys(task),
+      logCell: task.logCell || "未設定",
     });
 
     // Content Script初期化待機（新しいウィンドウの場合）
@@ -743,8 +850,18 @@ async function executeTaskIndependently(task) {
 
       // 完了後の処理（スプレッドシート記載、ウィンドウクローズ）
       if (result?.success) {
-        // 個別完了処理を再度実行
-        await handleIndividualTaskCompletion(result, "independent");
+        // 【修正】タスク情報を結果にマージして渡す
+        const enhancedResult = {
+          ...result,
+          taskId: result.taskId || task.id,
+          column: result.column || task.column,
+          row: result.row || task.row,
+          windowId: result.windowId || task.windowId,
+          aiType: result.aiType || task.aiType,
+        };
+
+        // 個別完了処理を実行
+        await handleIndividualTaskCompletion(enhancedResult, "independent");
       }
 
       return result;
@@ -2707,6 +2824,10 @@ async function generateTaskList(
 
           // 【シンプル化】文字列結合でセル位置計算
           const answerCell = getAnswerCell(taskGroup, aiType, row);
+          // answerCellから列文字を抽出（例: "Q9" → "Q"）
+          const answerColumn = answerCell
+            ? answerCell.match(/^([A-Z]+)/)?.[1]
+            : null;
 
           // WindowControllerからtabID/windowIDを取得
           // aiTypeを正規化（大文字小文字の不一致を防ぐ）
@@ -2794,6 +2915,15 @@ async function generateTaskList(
             },
             ...parseSpreadsheetUrl(options.spreadsheetUrl || ""),
           };
+
+          // 🔍 [DEBUG-LOGCELL] タスク作成時のlogCell値確認
+          log.warn(`🔍 [DEBUG-LOGCELL] タスク作成: ${task.taskId}`, {
+            taskGroupLogColumn: taskGroup.columns.log,
+            row: row,
+            generatedLogCell: task.logCell,
+            taskGroupColumns: taskGroup.columns,
+            taskId: task.taskId,
+          });
 
           // デバッグログを収集（後でまとめて表示）
           debugLogs.push({
@@ -3269,19 +3399,6 @@ class WindowController {
     const maxRetries = 10;
 
     while (retryCount < maxRetries) {
-      // 🔍 [DEBUG] WindowService存在確認（詳細版）
-      ExecuteLogger.info(
-        `🔍 [DEBUG] WindowService詳細チェック (試行 ${retryCount + 1}/${maxRetries}):`,
-        {
-          typeofWindowService: typeof WindowService,
-          windowWindowService: typeof window.WindowService,
-          globalWindowService: typeof globalThis.WindowService,
-          windowKeys: Object.keys(window).filter((k) => k.includes("Window")),
-          windowServiceConstructor: window.WindowService?.constructor?.name,
-          windowServicePrototype: window.WindowService?.prototype,
-        },
-      );
-
       // window.WindowServiceが存在すれば使用
       if (window.WindowService) {
         this.windowService = window.WindowService;
@@ -3307,21 +3424,11 @@ class WindowController {
       // グローバルのWindowServiceを使用
       this.windowService = WindowService;
     } else {
-      // 内部のStepIntegratedWindowServiceを使用（step4-tasklist.js内で定義）
-      ExecuteLogger.debug(
-        "✅ [DEBUG] 内部StepIntegratedWindowService機能を使用",
-        {
-          serviceType: "StepIntegratedWindowService",
-          hasCreateMethod:
-            !!StepIntegratedWindowService.createWindowWithPosition,
-        },
-      );
       this.windowService = StepIntegratedWindowService; // StepIntegratedWindowServiceを直接使用
     }
 
-    ExecuteLogger.debug("✅ [DEBUG] WindowService設定完了", {
-      hasWindowService: !!this.windowService,
-      serviceType: typeof this.windowService,
+    // WindowService設定完了
+    ExecuteLogger.info({
       serviceName:
         this.windowService?.name || this.windowService?.constructor?.name,
       useInternalController: this.windowService === StepIntegratedWindowService,
@@ -6574,10 +6681,6 @@ async function executeStep4(taskList) {
 
     try {
       // 全ウィンドウのクリーンアップ（設定により制御可能）
-      ExecuteLogger.debug(
-        `🔧 [DEBUG] shouldPerformWindowCleanup呼び出し前 - 関数存在確認:`,
-        typeof shouldPerformWindowCleanup,
-      );
       const shouldCleanupWindows = shouldPerformWindowCleanup(results);
       if (shouldCleanupWindows) {
         await window.windowLifecycleManager.cleanupAllWindows();
@@ -6781,6 +6884,30 @@ async function executeStep4(taskList) {
             // 大きなデータは除去（Content Scriptでは不要）
             // spreadsheetData, extendedData等は送信しない
           };
+
+          // 【仮説検証】プロンプト送信内容の詳細ログ
+          console.warn(
+            `🔍 [プロンプト検証] Content Scriptに送信するプロンプト詳細:`,
+            {
+              taskId: task.id || task.taskId,
+              aiType: task.aiType,
+              tabId: tabId,
+              windowId: task.windowId,
+              promptLength: task.prompt ? task.prompt.length : 0,
+              promptPreview: task.prompt
+                ? task.prompt.substring(0, 200) + "..."
+                : "NO PROMPT",
+              promptFullContent: task.prompt, // 完全なプロンプト内容
+              row: task.row,
+              column: task.column,
+              model: task.model,
+              logCell: task.logCell,
+              originalTaskKeys: Object.keys(task),
+              optimizedTaskKeys: Object.keys(optimizedTask),
+              automationName: automationName,
+              timestamp: new Date().toISOString(),
+            },
+          );
 
           // AI種別に応じたメッセージタイプを設定
           const getMessageType = (automationName) => {
@@ -7454,10 +7581,6 @@ async function executeStep4(taskList) {
       }
 
       // ログをスプレッドシートに記載
-      ExecuteLogger.debug(
-        `🔧 [DEBUG] calculateLogCellRef呼び出し前 - 関数存在確認:`,
-        typeof calculateLogCellRef,
-      );
       const logCellRef = task.logCellRef || calculateLogCellRef(task);
       if (logCellRef && window.detailedLogManager) {
         await window.detailedLogManager.writeLogToSpreadsheet(
