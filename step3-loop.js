@@ -2089,12 +2089,13 @@ async function executeTasks(tasks, taskGroup) {
         aiType: aiType,
         prompt: task.prompt || task.text || "",
         answerCell: task.answerCell, // 🔧 [FIX] 直接task.answerCellを設定
+        logCell: task.logCell, // 🔧 [FIX] ルートレベルにlogCellを追加
         spreadsheetData: {
           id: window.globalState.spreadsheetId,
           gid: window.globalState.gid,
           spreadsheetId: task.spreadsheetId || window.globalState.spreadsheetId, // Step3からの情報
           answerCell: task.answerCell, // Step3で計算された回答セル
-          logCell: task.logCell, // Step3で計算されたログセル
+          logCell: task.logCell, // Step3で計算されたログセル（互換性のため残す）
         },
         columns: taskGroup.columns,
         taskGroup: taskGroup,

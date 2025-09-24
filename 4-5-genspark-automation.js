@@ -25,18 +25,35 @@
 // ========================================
 
 // manifest.jsonで先にcommon-error-handler.jsが読み込まれているため、
-// 動的ロードは不要。直接初期化を行う。
+// 直接初期化を行う。ただし、タイミング問題を考慮して複数回試行する。
 (function initializeErrorHandler() {
-  if (window.UniversalErrorHandler) {
-    window.gensparkErrorHandler =
-      window.UniversalErrorHandler.createForAI("genspark");
-    console.log("✅ [GENSPARK] エラーハンドラー初期化完了");
-  } else {
-    console.error(
-      "❌ [GENSPARK] 共通エラーハンドリングモジュールが見つかりません",
-      "manifest.jsonの設定を確認してください",
-    );
-  }
+  let attempts = 0;
+  const maxAttempts = 10;
+
+  const tryInitialize = () => {
+    attempts++;
+
+    if (window.UniversalErrorHandler) {
+      window.gensparkErrorHandler =
+        window.UniversalErrorHandler.createForAI("genspark");
+      console.log("✅ [GENSPARK] エラーハンドラー初期化完了");
+      return true;
+    }
+
+    if (attempts < maxAttempts) {
+      // 100ms後に再試行
+      setTimeout(tryInitialize, 100);
+    } else {
+      console.error(
+        "❌ [GENSPARK] 共通エラーハンドリングモジュールが見つかりません",
+        "manifest.jsonの設定を確認してください",
+      );
+    }
+    return false;
+  };
+
+  // 即座に試行開始
+  tryInitialize();
 })();
 
 /**

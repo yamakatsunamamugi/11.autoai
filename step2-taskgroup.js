@@ -243,16 +243,6 @@ async function identifyTaskGroups() {
           endCol: index,
         };
 
-        // 🔍 [DEBUG-LOGCELL] ログ列検出時の設定確認
-        console.error(
-          `🔍 [DEBUG-LOGCELL-STEP2] ログ列検出: グループ${groupCounter}`,
-          {
-            groupNumber: groupCounter,
-            logColumn: columnLetter,
-            columnIndex: index,
-            header: trimmedHeader,
-          },
-        );
       }
 
       // 2-1-3. 特殊グループの検出（レポート化、Genspark）
@@ -361,24 +351,8 @@ async function identifyTaskGroups() {
             endCol: index,
           };
 
-          // 🔍 [DEBUG-LOGCELL] プロンプト列検出時（ログ列なし）の設定確認
-          console.error(
-            `🔍 [DEBUG-LOGCELL-STEP2] プロンプト列検出（ログ列なし）: グループ${groupCounter}`,
-            {
-              groupNumber: groupCounter,
-              logColumn: null,
-              startColumn: columnLetter,
-              columnIndex: index,
-              header: trimmedHeader,
-            },
-          );
         } else {
           // 既存のグループにプロンプト列を追加
-          console.error(
-            `🔍 [DEBUG-PROMPT-ADD] グループ${currentGroup.groupNumber}にプロンプト列追加:`,
-            {
-              column: columnLetter,
-              existingPrompts: currentGroup.promptColumns,
               hasLogColumn: !!currentGroup.logColumn,
               logColumn: currentGroup.logColumn,
               header: trimmedHeader,
@@ -1171,20 +1145,6 @@ async function executeStep2TaskGroups() {
         work: group.workColumn || null,
       };
 
-      // 🔍 [DEBUG-LOGCELL] columns.log設定時の値確認
-      console.error(
-        `🔍 [DEBUG-LOGCELL-STEP2] グループ${group.groupNumber}のcolumns.log設定:`,
-        {
-          groupNumber: group.groupNumber,
-          groupType: group.groupType || group.type,
-          logColumn: group.logColumn,
-          startColumn: group.startColumn,
-          columnsLog: group.columns.log,
-          logColumnIsNull: group.logColumn === null,
-          logColumnIsUndefined: group.logColumn === undefined,
-          finalValue: group.columns.log,
-        },
-      );
 
       // groupTypeが未設定の場合、typeから設定
       if (!group.groupType) {

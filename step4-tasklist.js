@@ -2922,29 +2922,6 @@ async function generateTaskList(
             ...parseSpreadsheetUrl(options.spreadsheetUrl || ""),
           };
 
-          // 🔍 [DEBUG-LOGCELL] タスク作成時のlogCell値確認
-          console.error(
-            `🔍 [DEBUG-LOGCELL-TASK-CREATION] タスク作成詳細: ${task.taskId}`,
-            {
-              taskGroupLogColumn: taskGroup.columns?.log,
-              taskGroupLogColumnType: typeof taskGroup.columns?.log,
-              taskGroupStartColumn: taskGroup.startColumn,
-              row: row,
-              rowType: typeof row,
-              taskGroupColumns: taskGroup.columns,
-              taskGroupExists: !!taskGroup,
-              columnsExists: !!taskGroup.columns,
-              logCellCalculation: taskGroup.columns?.log
-                ? `${taskGroup.columns.log}${row}`
-                : null,
-              generatedLogCell: task.logCell,
-              generatedLogCellType: typeof task.logCell,
-              taskKeys: Object.keys(task),
-              taskHasLogCell: "logCell" in task,
-              taskId: task.taskId,
-            },
-          );
-
           // デバッグログを収集（後でまとめて表示）
           debugLogs.push({
             row: row,
@@ -6934,26 +6911,6 @@ async function executeStep4(taskList) {
             logCell: task?.logCell, // 🔧 [LOGCELL-FIX] logCellを明示的に追加
           };
 
-          // 🔍 [DEBUG-LOGCELL-TRACE] messagePayload作成直後のlogCell確認
-          console.error(
-            `🔍 [DEBUG-LOGCELL-TRACE] step4-tasklist.js messagePayload作成直後:`,
-            JSON.stringify(
-              {
-                taskExists: !!task,
-                taskKeys: task ? Object.keys(task) : [],
-                taskLogCell: task?.logCell,
-                taskLogCellType: typeof task?.logCell,
-                messagePayloadTaskLogCell: messagePayload.task?.logCell,
-                messagePayloadTaskDataLogCell: messagePayload.taskData?.logCell,
-                messagePayloadKeys: Object.keys(messagePayload),
-                automationName: automationName,
-                taskId: task?.id,
-              },
-              null,
-              2,
-            ),
-          );
-
           ExecuteLogger.info(`📡 [DEBUG-sendMessage] メッセージ詳細:`, {
             payload: messagePayload,
             payloadKeys: Object.keys(messagePayload),
@@ -7280,31 +7237,7 @@ async function executeStep4(taskList) {
               `🔍 [STEP C-1] chrome.tabs.sendMessage実行中...`,
             );
 
-            // 🔍 [DEBUG-LOGCELL-TRACE] chrome.tabs.sendMessage実行直前のメッセージ確認
-            console.error(
-              `🔍 [DEBUG-LOGCELL-TRACE] step4-tasklist.js chrome.tabs.sendMessage実行直前:`,
-              JSON.stringify(
-                {
-                  tabId: tabId,
-                  messagePayloadKeys: Object.keys(messagePayload),
-                  messagePayloadTaskExists: !!messagePayload.task,
-                  messagePayloadTaskLogCell: messagePayload.task?.logCell,
-                  messagePayloadTaskDataExists: !!messagePayload.taskData,
-                  messagePayloadTaskDataLogCell:
-                    messagePayload.taskData?.logCell,
-                  messagePayloadTaskId: messagePayload.task?.id,
-                  automationName: messagePayload.automationName,
-                  fullMessagePayloadDump: JSON.stringify(
-                    messagePayload,
-                    null,
-                    2,
-                  ),
-                  messageSizeBytes: JSON.stringify(messagePayload).length,
-                },
-                null,
-                2,
-              ),
-            );
+            // chrome.tabs.sendMessage実行
 
             response = await chrome.tabs.sendMessage(tabId, messagePayload);
 
