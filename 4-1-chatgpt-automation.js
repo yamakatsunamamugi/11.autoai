@@ -3956,7 +3956,7 @@ async function chatWithChatGPT() {
   window.ChatGPTAutomation.detectionResult = null;
 
   async function detectChatGPTModelsAndFeatures() {
-    log("🔍 ChatGPTモデル・機能検出開始");
+    log.info("🔍 ChatGPTモデル・機能検出開始");
 
     const DETECTION_SELECTORS = {
       modelButton: [
@@ -4158,7 +4158,7 @@ async function chatWithChatGPT() {
     }
 
     const modelName = typeof model === "string" ? model : model.name;
-    log(`🎯 モデル選択: [${index}] ${modelName}`);
+    log.info(`🎯 モデル選択: [${index}] ${modelName}`);
     return await selectModelChatGPT(modelName);
   }
 
@@ -4188,7 +4188,7 @@ async function chatWithChatGPT() {
       return false;
     }
 
-    log(`🎯 機能選択: [${index}] ${funcName}`);
+    log.info(`🎯 機能選択: [${index}] ${funcName}`);
     return await selectFunctionChatGPT(funcName);
   }
 

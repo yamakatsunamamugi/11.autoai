@@ -4540,7 +4540,7 @@
             if (itemText) {
               // より精密な正規表現マッチングを使用（Claudeプレフィックスをオプションに、説明文を許可）
               const modelMatch = itemText.match(
-                /^(Claude\s+)?(Opus|Sonnet|Haiku)\s+[\d.]+/,
+                /^(Claude\s+)?(3|3\.5)?\s*(Opus|Sonnet|Haiku)\s*[\d.]*/,
               );
 
               if (modelMatch) {
@@ -6529,38 +6529,77 @@
 
         // 1. モデルメニューボタンを探す
         console.log("🔍 [STEP 2] モデルメニューボタンを探しています...");
-        const modelButtons = document.querySelectorAll("button");
-        console.log(
-          `🔍 [STEP 2.1] ページ上のボタン総数: ${modelButtons.length}`,
-        );
-
         let modelMenuButton = null;
-        for (let i = 0; i < modelButtons.length; i++) {
-          const button = modelButtons[i];
-          const buttonText = button.textContent?.trim() || "";
-          const hasIcon = button.querySelector("svg");
 
-          // Claudeのモデル選択ボタンを探す（Claude 3.5 Sonnet等）
-          if (
-            buttonText.includes("Claude") ||
-            buttonText.includes("Sonnet") ||
-            buttonText.includes("Haiku") ||
-            buttonText.includes("Opus")
-          ) {
-            console.log(`🔍 [STEP 2.2] 候補ボタン発見[${i}]: "${buttonText}"`);
-            console.log(`  - hasIcon: ${!!hasIcon}`);
-            console.log(`  - className: ${button.className}`);
-            modelMenuButton = button;
-            break;
+        // テストコードと同じセレクタパターンを使用
+        const selectors = [
+          'button[aria-label*="model"]',
+          'button[aria-haspopup="menu"]',
+          "button:has(svg)",
+          'div[role="button"]:has(svg)',
+        ];
+
+        console.log("🔍 [STEP 2.1] セレクタベースの検索開始...");
+        for (const selector of selectors) {
+          const elements = document.querySelectorAll(selector);
+          console.log(`  - セレクタ "${selector}": ${elements.length}個の要素`);
+
+          for (const element of elements) {
+            const text = element.textContent || "";
+            if (
+              text.includes("Claude") ||
+              text.includes("claude") ||
+              text.includes("3.5") ||
+              text.includes("Sonnet") ||
+              text.includes("Opus") ||
+              text.includes("Haiku")
+            ) {
+              console.log(
+                `✅ [STEP 2.2] モデルメニューボタンを発見: "${text}"`,
+              );
+              modelMenuButton = element;
+              break;
+            }
+          }
+          if (modelMenuButton) break;
+        }
+
+        // フォールバック: テキストベースでボタンを探す
+        if (!modelMenuButton) {
+          console.log("🔍 [STEP 2.3] フォールバック: テキスト検索開始...");
+          const buttons = document.querySelectorAll("button");
+          console.log(`  - 全ボタン数: ${buttons.length}`);
+
+          for (let i = 0; i < buttons.length; i++) {
+            const button = buttons[i];
+            const buttonText = button.textContent?.trim() || "";
+            const hasIcon = button.querySelector("svg");
+
+            // Claudeのモデル選択ボタンを探す（Claude 3.5 Sonnet等）
+            if (
+              (buttonText.includes("Claude") ||
+                buttonText.includes("Sonnet") ||
+                buttonText.includes("Haiku") ||
+                buttonText.includes("Opus")) &&
+              hasIcon
+            ) {
+              console.log(
+                `🔍 [STEP 2.4] 候補ボタン発見[${i}]: "${buttonText}"`,
+              );
+              console.log(`  - hasIcon: ${!!hasIcon}`);
+              console.log(`  - className: ${button.className}`);
+              modelMenuButton = button;
+              break;
+            }
           }
         }
 
         if (!modelMenuButton) {
-          console.log("❌ [STEP 2.3] モデルメニューボタンが見つかりません");
+          console.log("❌ [STEP 2.5] モデルメニューボタンが見つかりません");
           return [];
         }
 
-        console.log("✅ [STEP 2.4] モデルメニューボタンを発見");
+        console.log("✅ [STEP 2.6] モデルメニューボタンを発見");
 
         // 2. モデルメニューが既に開いているかチェック
         console.log("🔍 [STEP 3] モデルメニューの状態をチェック...");
