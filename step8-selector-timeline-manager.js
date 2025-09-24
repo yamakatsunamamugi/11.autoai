@@ -28,7 +28,6 @@ export class SelectorTimelineManager {
     this.isInitialized = false;
 
     this.bindEvents();
-    console.log("🎯 SelectorTimelineManager initialized");
   }
 
   // ========================================
@@ -100,7 +99,6 @@ export class SelectorTimelineManager {
     // タイムラインの表示更新
     this.updateDisplay();
 
-    console.log(`🔄 AI switched to: ${aiName}`);
   }
 
   // ========================================
@@ -533,7 +531,6 @@ export class SelectorTimelineManager {
       await chrome.tabs.update(aiTab.id, { active: true });
       await chrome.windows.update(aiTab.windowId, { focused: true });
 
-      console.log(`✅ ${aiName}ウィンドウを最前面に表示しました`);
       return true;
     } catch (error) {
       console.error(`AIウィンドウフォーカスエラー:`, error);
@@ -546,11 +543,8 @@ export class SelectorTimelineManager {
 
     // AIページではない場合は検証をスキップ
     if (!currentAI) {
-      console.info("🔍 AI以外のページのため、セレクタ検証をスキップしました");
       return;
     }
-
-    console.info(`🔍 ${currentAI.toUpperCase()}ページでセレクタ検証を開始`);
 
     const allAISelectors = this.getAllSelectorsFromAllAIs();
     // 現在のAIのセレクタのみ検証
@@ -569,9 +563,6 @@ export class SelectorTimelineManager {
         );
       } else {
         clearSelectorError(aiName, key);
-        console.log(
-          `✅ Selector validated: ${aiName}:${key} - ${validation.workingSelector}`,
-        );
       }
     }
 
@@ -587,7 +578,6 @@ export class SelectorTimelineManager {
 
     this.updateDisplay();
     this.isInitialized = true;
-    console.log("✅ SelectorTimelineManager initialized successfully");
 
     // セレクタ検証は実行時のみ行う（初期化時は行わない）
   }
@@ -611,8 +601,6 @@ export class SelectorTimelineManager {
         button.textContent = "テスト中...";
         button.disabled = true;
       }
-
-      console.log(`🧪 セレクタテスト開始: ${aiName}:${selectorKey}`);
 
       // 1. AIウィンドウを最前面に表示
       const focusSuccess = await this.focusAIWindow(aiName);

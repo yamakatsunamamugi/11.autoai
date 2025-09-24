@@ -232,19 +232,12 @@
           retryCount++;
           this.metrics.totalAttempts++;
 
-          console.log(
-            `🔄 [Genspark-Retry] ${actionName} 試行 ${retryCount}/20`,
-          );
-
           // アクション実行
           lastResult = await action();
 
           if (isSuccess(lastResult)) {
             this.metrics.successfulAttempts++;
             this.consecutiveErrorCount = 0; // エラーカウントリセット
-            console.log(
-              `✅ [Genspark-Retry] ${actionName} 成功（${retryCount}回目）`,
-            );
             return {
               success: true,
               result: lastResult,
@@ -327,10 +320,6 @@
     async executeEscalation(level, context) {
       const { retryCount, errorType, taskData } = context;
 
-      console.log(
-        `🔄 [Genspark-Escalation] ${level} 実行開始 (${retryCount}回目)`,
-      );
-
       switch (level) {
         case "LIGHTWEIGHT":
           // 同一ウィンドウ内での再試行（何もしない、次の試行へ）
@@ -338,13 +327,11 @@
 
         case "MODERATE":
           // ページリフレッシュ
-          console.log(`🔄 [Genspark-Escalation] ページリフレッシュ実行`);
           location.reload();
           return { success: false, needsWait: true }; // リロード後は待機が必要
 
         case "HEAVY_RESET":
           // 新規ウィンドウ作成
-          console.log(`🔄 [Genspark-Escalation] 新規ウィンドウ作成`);
           return await this.performNewWindowRetry(taskData, {
             errorType,
             retryCount,
@@ -397,9 +384,6 @@
 
       if (delay > 0) {
         const delayMinutes = Math.round((delay / 60000) * 10) / 10;
-        console.log(
-          `⏳ [Genspark-Wait] ${level} - ${delayMinutes}分後にリトライします...`,
-        );
         await this.delay(delay);
       }
     }
@@ -569,13 +553,11 @@
         console.error(`${prefix} ❌ ${message}`);
         break;
       case "SUCCESS":
-        console.log(`${prefix} ✅ ${message}`);
         break;
       case "WARNING":
         console.warn(`${prefix} ⚠️ ${message}`);
         break;
       default:
-        console.log(`${prefix} ℹ️ ${message}`);
     }
   }
 
@@ -750,14 +732,6 @@
         // タスク重複実行問題を修正：書き込み成功を確実に確認してから完了通知
         try {
           if (result.success && taskData.cellInfo) {
-            console.log(
-              "📊 [Genspark-TaskCompletion] スプレッドシート書き込み成功確認開始",
-              {
-                taskId: taskData.taskId || taskData.cellInfo,
-                cellInfo: taskData.cellInfo,
-                hasResponse: !!result.content,
-              },
-            );
 
             // backgroundスクリプトにタスク完了を通知（作業中マーカークリア用）
             if (chrome.runtime && chrome.runtime.sendMessage) {
@@ -777,13 +751,6 @@
                     chrome.runtime.lastError.message,
                   );
                 } else {
-                  console.log(
-                    "✅ [Genspark-TaskCompletion] 作業中マーカークリア通知送信完了",
-                    {
-                      taskId: taskData.taskId || taskData.cellInfo,
-                      response: response,
-                    },
-                  );
                 }
               });
             }
@@ -1039,4 +1006,179 @@
   );
   log(`現在の機能: ${detectFunction()}`, "INFO");
   log(`現在のURL: ${window.location.href}`, "INFO");
+
+  // ========================================
+  // 🚨 Genspark Overloadedエラー対応システム
+  // ========================================
+
+  let gensparkOverloadedRetryCount = 0;
+  const MAX_GENSPARK_OVERLOADED_RETRIES = 5;
+  const GENSPARK_OVERLOADED_RETRY_INTERVALS = [
+    60000, 300000, 900000, 1800000, 3600000,
+  ]; // 1分、5分、15分、30分、60分
+
+  function handleGensparkOverloadedError() {
+
+    if (gensparkOverloadedRetryCount >= MAX_GENSPARK_OVERLOADED_RETRIES) {
+      console.error(
+        "❌ [GENSPARK-OVERLOADED-HANDLER] 最大リトライ回数に達しました。手動対応が必要です。",
+      );
+      return;
+    }
+
+    const retryInterval =
+      GENSPARK_OVERLOADED_RETRY_INTERVALS[gensparkOverloadedRetryCount] ||
+      3600000;
+    gensparkOverloadedRetryCount++;
+
+    // 即座にウィンドウを閉じる
+    setTimeout(() => {
+
+      // background scriptにウィンドウリセットを要求
+      if (chrome.runtime && chrome.runtime.sendMessage) {
+        chrome.runtime
+          .sendMessage({
+            action: "RESET_AI_WINDOW",
+            aiType: "genspark",
+            retryCount: gensparkOverloadedRetryCount,
+            nextRetryIn: retryInterval,
+          })
+          .catch((err) => {
+            console.error(
+              "❌ [GENSPARK-OVERLOADED-HANDLER] background scriptへのメッセージ送信失敗:",
+              err,
+            );
+            window.location.reload();
+          });
+      } else {
+        window.location.reload();
+      }
+    }, 1000);
+
+    // 指定時間後にリトライ
+    setTimeout(() => {
+
+      // 新しいウィンドウで Genspark を開く
+      if (chrome.runtime && chrome.runtime.sendMessage) {
+        chrome.runtime.sendMessage({
+          action: "OPEN_AI_WINDOW",
+          aiType: "genspark",
+          retryAttempt: gensparkOverloadedRetryCount,
+        });
+      }
+    }, retryInterval);
+  }
+
+  // Genspark専用グローバルエラーハンドラーを追加
+  if (
+    typeof window !== "undefined" &&
+    window.location &&
+    window.location.href.includes("genspark.ai")
+  ) {
+    // グローバルエラーハンドラー
+    window.addEventListener("error", (e) => {
+      const errorMessage = e.message || e.error?.message || "";
+      const errorName = e.error?.name || "";
+
+      // 🔍 Genspark Overloadedエラー検出
+      const isOverloadedError =
+        errorMessage.includes("Overloaded") ||
+        errorMessage.includes("overloaded") ||
+        errorMessage.includes("quota exceeded") ||
+        errorMessage.includes("too many requests") ||
+        errorMessage.includes("rate limit") ||
+        (e.reason && String(e.reason).includes("Overloaded"));
+
+      if (isOverloadedError) {
+        console.error("🚨 [GENSPARK-OVERLOADED-ERROR]", {
+          message: errorMessage,
+          name: errorName,
+          type: "OVERLOADED_ERROR",
+          filename: e.filename,
+          lineno: e.lineno,
+          timestamp: new Date().toISOString(),
+          aiType: "genspark",
+        });
+
+        // 即座にウィンドウリセット・リトライを開始
+        handleGensparkOverloadedError();
+        return;
+      }
+
+      // 🔍 ネットワークエラー検出
+      const isNetworkError =
+        errorMessage.includes("timeout") ||
+        errorMessage.includes("network") ||
+        errorMessage.includes("fetch") ||
+        errorMessage.includes("Failed to fetch") ||
+        errorName.includes("NetworkError");
+
+      if (isNetworkError) {
+        console.error("🌐 [GENSPARK-GLOBAL-NETWORK-ERROR]", {
+          message: errorMessage,
+          name: errorName,
+          type: "NETWORK_ERROR",
+          filename: e.filename,
+          lineno: e.lineno,
+          timestamp: new Date().toISOString(),
+          aiType: "genspark",
+        });
+      } else {
+        console.error("🚨 [GENSPARK-GLOBAL-ERROR]", e.message);
+      }
+    });
+
+    // unhandledrejectionハンドラー
+    window.addEventListener("unhandledrejection", (e) => {
+      const errorReason = e.reason;
+      const errorMessage = errorReason?.message || String(errorReason);
+      const errorName = errorReason?.name || "";
+
+      // 🔍 Genspark Overloadedエラー検出 (unhandledrejection用)
+      const isOverloadedError =
+        errorMessage.includes("Overloaded") ||
+        errorMessage.includes("overloaded") ||
+        errorMessage.includes("quota exceeded") ||
+        errorMessage.includes("too many requests") ||
+        errorMessage.includes("rate limit") ||
+        (errorReason && String(errorReason).includes("Overloaded"));
+
+      if (isOverloadedError) {
+        console.error("🚨 [GENSPARK-OVERLOADED-ERROR-UNHANDLED]", {
+          message: errorMessage,
+          name: errorName,
+          type: "OVERLOADED_ERROR",
+          source: "unhandledrejection",
+          timestamp: new Date().toISOString(),
+          aiType: "genspark",
+        });
+
+        // 即座にウィンドウリセット・リトライを開始
+        handleGensparkOverloadedError();
+        e.preventDefault();
+        return;
+      }
+
+      // 🔍 ネットワークエラー検出
+      const isNetworkError =
+        errorMessage.includes("timeout") ||
+        errorMessage.includes("network") ||
+        errorMessage.includes("fetch") ||
+        errorMessage.includes("Failed to fetch") ||
+        errorName.includes("NetworkError");
+
+      if (isNetworkError) {
+        console.error("🌐 [GENSPARK-UNHANDLED-NETWORK-ERROR]", {
+          message: errorMessage,
+          name: errorName,
+          type: "NETWORK_ERROR",
+          source: "unhandledrejection",
+          timestamp: new Date().toISOString(),
+          aiType: "genspark",
+        });
+      } else {
+        console.error("🚨 [GENSPARK-UNHANDLED-ERROR]", errorReason);
+      }
+    });
+  }
 })();

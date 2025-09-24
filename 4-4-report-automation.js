@@ -139,13 +139,11 @@
         console.error(`${prefix} ❌ ${message}`);
         break;
       case "SUCCESS":
-        console.log(`${prefix} ✅ ${message}`);
         break;
       case "WARNING":
         console.warn(`${prefix} ⚠️ ${message}`);
         break;
       default:
-        console.log(`${prefix} ℹ️ ${message}`);
     }
   }
 

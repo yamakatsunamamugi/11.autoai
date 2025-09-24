@@ -40,12 +40,10 @@ const DynamicSearchLogger = {
   },
   info: (...args) => {
     if (CURRENT_LOG_LEVEL >= LOG_LEVEL.INFO) {
-      console.log("[DynamicSearch]", ...args);
     }
   },
   debug: (...args) => {
     if (CURRENT_LOG_LEVEL >= LOG_LEVEL.DEBUG) {
-      console.log("[DynamicSearch-DEBUG]", ...args);
     }
   },
 };

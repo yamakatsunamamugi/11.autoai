@@ -9,11 +9,7 @@ if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
   chrome.storage.local.get("logLevel", (result) => {
     if (result.logLevel) {
       CURRENT_LOG_LEVEL = parseInt(result.logLevel);
-      console.log(
-        `📋 ログレベル設定: ${["", "ERROR", "WARN", "INFO", "DEBUG"][CURRENT_LOG_LEVEL]} (${CURRENT_LOG_LEVEL})`,
-      );
     } else {
-      console.log("📋 ログレベル: デフォルト (INFO)");
     }
   });
 }
@@ -42,8 +38,6 @@ const log = {
 
 (async function () {
   "use strict";
-
-  console.log(`🚀 Gemini Automation V3 初期化`);
 
   // 初期化マーカー設定
   window.GEMINI_SCRIPT_LOADED = true;
@@ -167,14 +161,6 @@ const log = {
   // UI通信機能
   // ========================================
   async function sendToUI(models, features) {
-    console.log("🔍 [SendToUI Step 1] UI通信関数開始:", {
-      modelsParam: models,
-      featuresParam: features,
-      modelsType: typeof models,
-      featuresType: typeof features,
-      modelsCount: models?.length || 0,
-      featuresCount: features?.length || 0,
-    });
 
     try {
       if (
@@ -182,7 +168,6 @@ const log = {
         chrome.runtime &&
         chrome.runtime.sendMessage
       ) {
-        console.log("🔍 [SendToUI Step 2] Chrome拡張環境確認済み");
 
         const messageData = {
           type: "AI_MODEL_FUNCTION_UPDATE",
@@ -194,11 +179,8 @@ const log = {
           },
         };
 
-        console.log("🔍 [SendToUI Step 3] 送信メッセージ作成:", messageData);
-
         // タイムアウト付きでsendMessageを実行
         const sendMessageWithTimeout = new Promise((resolve) => {
-          console.log("🔍 [SendToUI Step 4] sendMessage実行準備");
 
           const timeout = setTimeout(() => {
             console.error(
@@ -213,11 +195,6 @@ const log = {
           try {
             chrome.runtime.sendMessage(messageData, (response) => {
               clearTimeout(timeout);
-              console.log("🔍 [SendToUI Step 6] sendMessage応答受信:", {
-                response: response,
-                responseType: typeof response,
-                lastError: chrome.runtime.lastError,
-              });
 
               // chrome.runtime.lastErrorをチェック
               if (chrome.runtime.lastError) {
@@ -230,10 +207,6 @@ const log = {
                   message: chrome.runtime.lastError.message,
                 });
               } else {
-                console.log(
-                  "✅ [SendToUI Step 6 Success] 正常応答受信:",
-                  response,
-                );
                 resolve(response || { success: true });
               }
             });
@@ -376,39 +349,18 @@ const log = {
   // テキスト入力（Canvas/通常モード自動判定）
   // ========================================
   async function inputTextGemini(text) {
-    console.log(`🔍 [inputTextGemini] 入力処理開始:`, {
-      inputText: text,
-      textType: typeof text,
-      textLength: text?.length || 0,
-      timestamp: new Date().toISOString(),
-    });
 
     // Canvasモードチェック
     const canvas = document.querySelector(SELECTORS.canvas);
-    console.log(`🔍 [inputTextGemini] Canvas要素チェック:`, {
-      canvasExists: !!canvas,
-      isContentEditable: canvas?.isContentEditable,
-      canvasSelector: SELECTORS.canvas,
-    });
 
     if (canvas && canvas.isContentEditable) {
-      console.log(
-        `✅ [inputTextGemini] Canvasモード検出 - inputToCanvas呼び出し`,
-      );
       return await inputToCanvas(text);
     }
 
     // 通常モード
     const editor = document.querySelector(SELECTORS.normalInput);
-    console.log(`🔍 [inputTextGemini] 通常エディタ要素チェック:`, {
-      editorExists: !!editor,
-      editorSelector: SELECTORS.normalInput,
-    });
 
     if (editor) {
-      console.log(
-        `✅ [inputTextGemini] 通常モード検出 - inputToNormal呼び出し`,
-      );
       return await inputToNormal(text);
     }
 
@@ -802,11 +754,6 @@ const log = {
           taskData.prompt.content ||
           taskData.prompt.prompt ||
           JSON.stringify(taskData.prompt);
-        console.log(`🔍 [Gemini Debug] プロンプトオブジェクト処理:`, {
-          originalType: typeof taskData.prompt,
-          extractedText: promptText,
-          promptObject: taskData.prompt,
-        });
       } else {
         promptText = taskData.prompt || "テストメッセージです";
       }
@@ -833,43 +780,21 @@ const log = {
       }
 
       // 🔍 ステップバイステップ デバッグログ - Step 1: パラメータ確認
-      console.log(`🔍 [Gemini Step 1] タスクパラメータ確認:`, {
-        promptText: promptText,
-        promptType: typeof promptText,
-        promptLength: promptText?.length || 0,
-        modelName: modelName,
-        featureName: featureName,
-        originalTaskData: taskData,
-        hasCellInfo: !!(taskData && taskData.cellInfo),
-        cellInfo: taskData && taskData.cellInfo,
-      });
 
       // 【Step 4-3-2】テキスト入力
-      console.log(`🔍 [Gemini Step 2] テキスト入力開始:`, {
-        inputText: promptText,
-        inputLength: promptText?.length || 0,
-        timestamp: new Date().toISOString(),
-      });
 
       try {
         await inputTextGemini(promptText);
-        console.log(`✅ [Gemini Step 2] テキスト入力完了`);
       } catch (inputError) {
         console.error(`❌ [Gemini Step 2] テキスト入力エラー:`, inputError);
         throw inputError;
       }
 
       // 【Step 4-3-3】モデル選択（必要な場合）
-      console.log(`🔍 [Gemini Step 3] モデル選択処理開始:`, {
-        modelName: modelName,
-        shouldSelect: !!(modelName && modelName !== "設定なし"),
-      });
 
       if (modelName && modelName !== "設定なし") {
         try {
-          console.log(`🔍 [Gemini Step 3a] モデル選択実行中: ${modelName}`);
           const modelResult = await selectModel(modelName);
-          console.log(`✅ [Gemini Step 3a] モデル選択結果:`, modelResult);
           if (!modelResult.success && !modelResult.skipped) {
             throw new Error(`モデル選択失敗: ${modelResult.error}`);
           }
@@ -878,20 +803,13 @@ const log = {
           throw modelError;
         }
       } else {
-        console.log(`⏭️ [Gemini Step 3a] モデル選択スキップ: ${modelName}`);
       }
 
       // 【Step 4-3-4】機能選択（必要な場合）
-      console.log(`🔍 [Gemini Step 4] 機能選択処理開始:`, {
-        featureName: featureName,
-        shouldSelect: !!(featureName && featureName !== "設定なし"),
-      });
 
       if (featureName && featureName !== "設定なし") {
         try {
-          console.log(`🔍 [Gemini Step 4a] 機能選択実行中: ${featureName}`);
           const featureResult = await selectFeature(featureName);
-          console.log(`✅ [Gemini Step 4a] 機能選択結果:`, featureResult);
           if (!featureResult.success && !featureResult.skipped) {
             throw new Error(`機能選択失敗: ${featureResult.error}`);
           }
@@ -900,14 +818,11 @@ const log = {
           throw featureError;
         }
       } else {
-        console.log(`⏭️ [Gemini Step 4a] 機能選択スキップ: ${featureName}`);
       }
 
       // 【Step 4-3-5】メッセージ送信
-      console.log(`🔍 [Gemini Step 5] メッセージ送信開始`);
       try {
         await sendMessageGemini();
-        console.log(`✅ [Gemini Step 5] メッセージ送信完了`);
       } catch (sendError) {
         console.error(`❌ [Gemini Step 5] メッセージ送信エラー:`, sendError);
         throw sendError;
@@ -915,48 +830,28 @@ const log = {
       const startTime = Date.now();
 
       // 【Step 4-3-6】応答待機（Deep Research判定）
-      console.log(`🔍 [Gemini Step 6] 応答待機開始:`, {
-        featureName: featureName,
-        isDeepResearch: featureName === "Deep Research",
-        startTime: startTime,
-      });
 
       try {
         if (featureName === "Deep Research") {
-          console.log(`🔍 [Gemini Step 6a] Deep Research待機モード`);
           await waitForDeepResearch(startTime);
         } else {
-          console.log(`🔍 [Gemini Step 6a] 通常応答待機モード`);
           await waitForResponseGemini();
         }
-        console.log(`✅ [Gemini Step 6] 応答待機完了`);
       } catch (waitError) {
         console.error(`❌ [Gemini Step 6] 応答待機エラー:`, waitError);
         throw waitError;
       }
 
       // 【Step 4-3-7】テキスト取得
-      console.log(`🔍 [Gemini Step 7] テキスト取得開始`);
       let content;
       try {
         content = await getResponseTextGemini();
-        console.log(`✅ [Gemini Step 7] テキスト取得完了:`, {
-          contentType: typeof content,
-          contentLength: content?.length || 0,
-          contentPreview: content?.substring(0, 100) + "...",
-        });
       } catch (getTextError) {
         console.error(`❌ [Gemini Step 7] テキスト取得エラー:`, getTextError);
         throw getTextError;
       }
 
       // 【Step 4-3-8】結果オブジェクト作成
-      console.log(`🔍 [Gemini Step 8] 結果オブジェクト作成:`, {
-        contentExists: !!content,
-        contentType: typeof content,
-        modelName: modelName,
-        featureName: featureName,
-      });
 
       const result = {
         success: true,
@@ -969,14 +864,6 @@ const log = {
       // タスク重複実行問題を修正：書き込み成功を確実に確認してから完了通知
       try {
         if (result.success && taskData.cellInfo) {
-          console.log(
-            "📊 [Gemini-TaskCompletion] スプレッドシート書き込み成功確認開始",
-            {
-              taskId: taskData.taskId || taskData.cellInfo,
-              cellInfo: taskData.cellInfo,
-              hasResponse: !!result.content,
-            },
-          );
 
           // backgroundスクリプトにタスク完了を通知（作業中マーカークリア用）
           if (chrome.runtime && chrome.runtime.sendMessage) {
@@ -996,13 +883,6 @@ const log = {
                   chrome.runtime.lastError.message,
                 );
               } else {
-                console.log(
-                  "✅ [Gemini-TaskCompletion] 作業中マーカークリア通知送信完了",
-                  {
-                    taskId: taskData.taskId || taskData.cellInfo,
-                    response: response,
-                  },
-                );
               }
             });
           }
@@ -1013,14 +893,6 @@ const log = {
           completionError.message,
         );
       }
-
-      console.log(`✅ [Gemini Step 8] executeTask完了 - 戻り値:`, {
-        success: result.success,
-        contentLength: result.content?.length || 0,
-        model: result.model,
-        feature: result.feature,
-        resultKeys: Object.keys(result),
-      });
 
       return result;
     } catch (error) {
@@ -1072,7 +944,6 @@ const log = {
         request.type === "CONTENT_SCRIPT_CHECK" ||
         request.type === "PING"
       ) {
-        console.log("🏓 [Gemini] Ping受信、即座にPong応答");
         sendResponse({
           action: "pong",
           status: "ready",
@@ -1084,7 +955,6 @@ const log = {
 
       // テキスト入力欄の存在チェック
       if (request.action === "CHECK_INPUT_FIELD") {
-        console.log("🔍 [Gemini] テキスト入力欄の存在チェック開始");
         const selectors = request.selectors || [
           ".ProseMirror",
           ".ql-editor",
@@ -1095,7 +965,6 @@ const log = {
         for (const selector of selectors) {
           const element = document.querySelector(selector);
           if (element) {
-            console.log(`✅ [Gemini] テキスト入力欄を発見: ${selector}`);
             found = true;
             break;
           }
@@ -1109,12 +978,10 @@ const log = {
 
       // DISCOVER_FEATURES メッセージの処理
       if (request.type === "DISCOVER_FEATURES") {
-        console.log(`🔍 [Gemini] DISCOVER_FEATURES実行開始`);
 
         (async () => {
           try {
             const result = await discoverModelsAndFeatures();
-            console.log(`✅ [Gemini] DISCOVER_FEATURES完了:`, result);
             sendResponse({
               success: true,
               result: result,
@@ -1138,36 +1005,13 @@ const log = {
         request.type === "EXECUTE_TASK"
       ) {
         const requestId = Math.random().toString(36).substring(2, 8);
-        console.log(`📬 [Gemini] executeTask実行開始 [ID:${requestId}]:`, {
-          action: request.action,
-          type: request.type,
-          automationName: request.automationName,
-          hasTask: !!request.task,
-          hasTaskData: !!request.taskData,
-          taskId: request?.task?.id || request?.taskData?.id,
-        });
 
         (async () => {
           try {
             if (typeof executeTask === "function") {
-              console.log(
-                `✅ [Gemini] executeTask関数が利用可能 [ID:${requestId}]`,
-              );
               const taskToExecute = request.task || request.taskData || request;
-              console.log(
-                `🚀 [Gemini] executeTask呼び出し前 [ID:${requestId}]:`,
-                {
-                  taskId: taskToExecute?.id,
-                  taskKeys: Object.keys(taskToExecute || {}),
-                },
-              );
               try {
                 const result = await executeTask(taskToExecute);
-                console.log(`✅ [Gemini] executeTask完了 [ID:${requestId}]:`, {
-                  success: result?.success,
-                  hasResult: !!result,
-                  resultKeys: result ? Object.keys(result) : [],
-                });
                 sendResponse({ success: true, result });
               } catch (taskError) {
                 console.error(
@@ -1208,13 +1052,8 @@ const log = {
       }
 
       // その他のメッセージタイプは無視
-      console.log(
-        `ℹ️ [Gemini] 未対応のメッセージタイプ:`,
-        request?.type || request?.action,
-      );
     });
 
-    console.log("✅ [Gemini] メッセージリスナー登録完了");
     window.GEMINI_MESSAGE_LISTENER_READY = true;
   }
 
@@ -1223,6 +1062,64 @@ const log = {
   // ========================================
   // 🚨 Gemini グローバルエラーハンドラー
   // ========================================
+
+  // 🚨 Gemini Overloadedエラー対応システム
+  let geminiOverloadedRetryCount = 0;
+  const MAX_GEMINI_OVERLOADED_RETRIES = 5;
+  const GEMINI_OVERLOADED_RETRY_INTERVALS = [
+    60000, 300000, 900000, 1800000, 3600000,
+  ]; // 1分、5分、15分、30分、60分
+
+  function handleGeminiOverloadedError() {
+
+    if (geminiOverloadedRetryCount >= MAX_GEMINI_OVERLOADED_RETRIES) {
+      console.error(
+        "❌ [GEMINI-OVERLOADED-HANDLER] 最大リトライ回数に達しました。手動対応が必要です。",
+      );
+      return;
+    }
+
+    const retryInterval =
+      GEMINI_OVERLOADED_RETRY_INTERVALS[geminiOverloadedRetryCount] || 3600000;
+    geminiOverloadedRetryCount++;
+
+    // 即座にウィンドウを閉じる
+    setTimeout(() => {
+
+      // background scriptにウィンドウリセットを要求
+      if (chrome.runtime && chrome.runtime.sendMessage) {
+        chrome.runtime
+          .sendMessage({
+            action: "RESET_AI_WINDOW",
+            aiType: "gemini",
+            retryCount: geminiOverloadedRetryCount,
+            nextRetryIn: retryInterval,
+          })
+          .catch((err) => {
+            console.error(
+              "❌ [GEMINI-OVERLOADED-HANDLER] background scriptへのメッセージ送信失敗:",
+              err,
+            );
+            window.location.reload();
+          });
+      } else {
+        window.location.reload();
+      }
+    }, 1000);
+
+    // 指定時間後にリトライ
+    setTimeout(() => {
+
+      // 新しいウィンドウで Gemini を開く
+      if (chrome.runtime && chrome.runtime.sendMessage) {
+        chrome.runtime.sendMessage({
+          action: "OPEN_AI_WINDOW",
+          aiType: "gemini",
+          retryAttempt: geminiOverloadedRetryCount,
+        });
+      }
+    }, retryInterval);
+  }
 
   // Gemini専用ネットワークエラーハンドラーを追加
   if (
@@ -1234,6 +1131,31 @@ const log = {
     window.addEventListener("error", (e) => {
       const errorMessage = e.message || e.error?.message || "";
       const errorName = e.error?.name || "";
+
+      // 🔍 Gemini Overloadedエラー検出
+      const isOverloadedError =
+        errorMessage.includes("Overloaded") ||
+        errorMessage.includes("overloaded") ||
+        errorMessage.includes("quota exceeded") ||
+        errorMessage.includes("too many requests") ||
+        errorMessage.includes("rate limit") ||
+        (e.reason && String(e.reason).includes("Overloaded"));
+
+      if (isOverloadedError) {
+        console.error("🚨 [GEMINI-OVERLOADED-ERROR]", {
+          message: errorMessage,
+          name: errorName,
+          type: "OVERLOADED_ERROR",
+          filename: e.filename,
+          lineno: e.lineno,
+          timestamp: new Date().toISOString(),
+          aiType: "gemini",
+        });
+
+        // 即座にウィンドウリセット・リトライを開始
+        handleGeminiOverloadedError();
+        return;
+      }
 
       // 🔍 ネットワークエラー検出 (Claude・ChatGPTと同じロジック)
       const isNetworkError =
@@ -1308,14 +1230,6 @@ const log = {
             level: "unhandledrejection",
           });
 
-          console.log(
-            "📊 [Gemini-RETRY-MANAGER] ネットワークエラーを統計に記録",
-            {
-              totalErrors: window.geminiErrorHistory.length,
-              errorType: "NETWORK_ERROR",
-            },
-          );
-
           // 🔄 アクティブなタスクがある場合のリトライ準備 (将来実装用)
           if (window.currentGeminiTask) {
             console.warn(
@@ -1335,6 +1249,5 @@ const log = {
       }
     });
 
-    console.log("✅ [Gemini] ネットワークエラーハンドラー登録完了");
   }
 })();

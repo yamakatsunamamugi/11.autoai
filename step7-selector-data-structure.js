@@ -670,4 +670,3 @@ export function clearSelectorError(aiName, selectorKey) {
 // 初期化実行
 initializeSelectorStats();
 
-console.log("🎯 セレクタ統合管理データ構造が読み込まれました");

@@ -9,9 +9,7 @@ if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
   chrome.storage.local.get('logLevel', (result) => {
     if (result.logLevel) {
       CURRENT_LOG_LEVEL = parseInt(result.logLevel);
-      console.log(`📋 ログレベル設定: ${['', 'ERROR', 'WARN', 'INFO', 'DEBUG'][CURRENT_LOG_LEVEL]} (${CURRENT_LOG_LEVEL})`);
     } else {
-      console.log('📋 ログレベル: デフォルト (INFO)');
     }
   });
 }
@@ -31,8 +29,6 @@ const log = {
     if (CURRENT_LOG_LEVEL >= LOG_LEVEL.DEBUG) console.log(...args);
   }
 };
-
-
 
 /**
  * ステップ2: タスクグループの作成

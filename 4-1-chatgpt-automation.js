@@ -9,11 +9,7 @@ if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
   chrome.storage.local.get("logLevel", (result) => {
     if (result.logLevel) {
       CURRENT_LOG_LEVEL = parseInt(result.logLevel);
-      console.log(
-        `📋 ログレベル設定: ${["", "ERROR", "WARN", "INFO", "DEBUG"][CURRENT_LOG_LEVEL]} (${CURRENT_LOG_LEVEL})`,
-      );
     } else {
-      console.log("📋 ログレベル: デフォルト (INFO)");
     }
   });
 }
@@ -87,29 +83,12 @@ async function reportSelectorError(selectorKey, error, selectors) {
 (async function () {
   "use strict";
 
-  console.log("🔧 [DEBUG] IIFE開始");
-
   // デバッグマーカー（すぐに設定）
   window.CHATGPT_SCRIPT_LOADED = true;
   window.CHATGPT_SCRIPT_INIT_TIME = Date.now();
 
-  console.log("🔧 [DEBUG] 初期設定完了、関数定義セクションへ移動");
-
-  console.log(
-    `ChatGPT Automation V2 - 初期化時刻: ${new Date().toLocaleString("ja-JP")}`,
-  );
-  console.log(`[DEBUG] ChatGPT Script Loaded - Marker Set`);
-
   // 早期メッセージリスナー登録（Content Script準備確認用）
   const earlyMessageListener = (request, sender, sendResponse) => {
-    console.log(`🏓 [ChatGPT-Early] 受信:`, request);
-    console.log(`📊 [ChatGPT-Early] 送信元:`, {
-      senderId: sender?.id,
-      senderUrl: sender?.url,
-      senderOrigin: sender?.origin,
-      tabId: sender?.tab?.id,
-      frameId: sender?.frameId,
-    });
 
     // 常にtrue返してポートを開いたままにする
     try {
@@ -118,7 +97,6 @@ async function reportSelectorError(selectorKey, error, selectors) {
         request.type === "CONTENT_SCRIPT_CHECK" ||
         request.type === "PING"
       ) {
-        console.log("🏓 [ChatGPT-Early] Ping受信、即座にPong応答");
         sendResponse({
           action: "pong",
           status: "ready",
@@ -134,15 +112,10 @@ async function reportSelectorError(selectorKey, error, selectors) {
         request.type === "DISCOVER_FEATURES" ||
         request.type === "EXECUTE_TASK"
       ) {
-        console.log(`🔄 [ChatGPT-Early] メインリスナーに委譲:`, request.type);
         return false; // 他のリスナーに処理を委譲
       }
 
       // その他のメッセージも適切に処理
-      console.log(
-        `⚠️ [ChatGPT-Early] 未処理メッセージタイプ:`,
-        request.type || request.action,
-      );
       sendResponse({
         success: false,
         error: "Unhandled message type in early listener",
@@ -167,19 +140,9 @@ async function reportSelectorError(selectorKey, error, selectors) {
     chrome.runtime.onMessage
   ) {
     chrome.runtime.onMessage.addListener(earlyMessageListener);
-    console.log("📡 [ChatGPT] 早期メッセージリスナー登録完了");
   }
 
   // 🔧 [FIXED] ChatGPTメッセージング問題修正完了のお知らせ
-  console.log("🔧 [FIXED] ChatGPTメッセージング問題修正済み:", {
-    fixes: [
-      "RETRY_WITH_NEW_WINDOWメッセージのエラーハンドリング改善",
-      "background.js未実装ハンドラーの警告メッセージ追加",
-      "詳細なデバッグログでエラー追跡を改善",
-    ],
-    timestamp: new Date().toISOString(),
-    note: "リトライ機能のエラーログがより明確に",
-  });
 
   // ログ出力（タイムスタンプ付き）
   function logWithTimestamp(message, type = "info") {
@@ -196,17 +159,14 @@ async function reportSelectorError(selectorKey, error, selectors) {
         console.error(`${prefix} ❌ ${message}`);
         break;
       case "success":
-        console.log(`${prefix} ✅ ${message}`);
         break;
       case "warning":
         console.warn(`${prefix} ⚠️ ${message}`);
         break;
       case "step":
-        console.log(`${prefix} 🔧 ${message}`);
         break;
       case "info":
       default:
-        console.log(`${prefix} ℹ️ ${message}`);
         break;
     }
   }
@@ -239,8 +199,6 @@ async function reportSelectorError(selectorKey, error, selectors) {
       bodyChildren: document.body ? document.body.children.length : 0,
     };
   };
-
-  console.log("🔍 [ChatGPT] DOM準備状態チェック:", domReadyCheck());
 
   // 🔍 Content Script実行環境の詳細ログ（コメントアウト）
   // console.warn(
@@ -872,8 +830,6 @@ async function reportSelectorError(selectorKey, error, selectors) {
     }
   }
 
-  console.log("🔧 [DEBUG] ChatGPTRetryManagerクラス定義完了");
-
   // 統一された待機時間設定を取得（Claudeと同じ方式）
   const AI_WAIT_CONFIG = window.AI_WAIT_CONFIG || {
     DEEP_RESEARCH_WAIT: 2400000, // 40分
@@ -1052,8 +1008,6 @@ async function reportSelectorError(selectorKey, error, selectors) {
   // グローバルスコープにsleep関数を追加（IIFE外のコードから使用可能にする）
   window.sleep = sleep;
 
-  console.log("🔧 [DEBUG] 関数定義セクション開始");
-
   // 通常モードの待機処理
   async function standardWaitForResponse() {
     logWithTimestamp(
@@ -1088,8 +1042,6 @@ async function reportSelectorError(selectorKey, error, selectors) {
       }
     }
   } // standardWaitForResponse関数をここで閉じる
-
-  console.log("🔧 [DEBUG] standardWaitForResponse関数定義完了");
 
   // ========================================
   // プロンプト除外機能（ChatGPT用）
@@ -2065,12 +2017,9 @@ async function reportSelectorError(selectorKey, error, selectors) {
     throw new Error(`機能 '${functionName}' が見つかりません`);
   }
 
-  console.log("🔧 [DEBUG] 全ヘルパー関数定義完了");
-
   // ========================================
   // メイン実行関数
   // ========================================
-  console.log("🔧 [DEBUG] executeTask関数定義セクションに到達");
 
   // ========================================
   // ヘルパー関数群（リファクタリング）
@@ -2832,14 +2781,6 @@ async function reportSelectorError(selectorKey, error, selectors) {
         // タスク重複実行問題を修正：書き込み成功を確実に確認してから完了通知
         try {
           if (result.success && taskData.cellInfo) {
-            console.log(
-              "📊 [ChatGPT-TaskCompletion] スプレッドシート書き込み成功確認開始",
-              {
-                taskId: taskData.taskId || taskData.cellInfo,
-                cellInfo: taskData.cellInfo,
-                hasResponse: !!result.text,
-              },
-            );
 
             // backgroundスクリプトにタスク完了を通知（作業中マーカークリア用）
             if (chrome.runtime && chrome.runtime.sendMessage) {
@@ -2859,13 +2800,6 @@ async function reportSelectorError(selectorKey, error, selectors) {
                     chrome.runtime.lastError.message,
                   );
                 } else {
-                  console.log(
-                    "✅ [ChatGPT-TaskCompletion] 作業中マーカークリア通知送信完了",
-                    {
-                      taskId: taskData.taskId || taskData.cellInfo,
-                      response: response,
-                    },
-                  );
                 }
               });
             }
@@ -2885,7 +2819,6 @@ async function reportSelectorError(selectorKey, error, selectors) {
       }
     };
 
-    console.log("🔧 [DEBUG] executeTask関数定義完了");
   } catch (error) {
     console.error("❌ [DEBUG] executeTask関数定義エラー:", error);
   }
@@ -2905,10 +2838,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
   // ========================================
   // グローバル公開
   // ========================================
-  console.log("🔧 [DEBUG] グローバル公開セクションに到達");
   try {
-    console.log("🔧 [DEBUG] executeTask関数の存在:", typeof executeTask);
-    console.log("🔧 [DEBUG] runAutomation関数の存在:", typeof runAutomation);
   } catch (error) {
     console.error("❌ [DEBUG] グローバル公開セクションでエラー:", error);
   }
@@ -2929,14 +2859,6 @@ async function reportSelectorError(selectorKey, error, selectors) {
   window.executeTask = executeTask;
   window.runAutomation = runAutomation;
 
-  console.log("✅ [DEBUG] グローバル関数設定完了");
-  console.log("✅ [DEBUG] window.executeTask:", typeof window.executeTask);
-  console.log("✅ [DEBUG] window.runAutomation:", typeof window.runAutomation);
-  console.log(
-    "✅ [DEBUG] window.ChatGPTAutomationV2:",
-    typeof window.ChatGPTAutomationV2,
-  );
-
   log.debug("[DEBUG] window.ChatGPTAutomationV2設定完了");
   log.debug(
     "[DEBUG] typeof window.ChatGPTAutomationV2:",
@@ -2949,13 +2871,10 @@ async function reportSelectorError(selectorKey, error, selectors) {
   // Content Scriptの関数をWebページのコンテキストで利用可能にする
   // CSPエラーを回避するため、インラインスクリプトは使用しない
 
-  console.log("🌉 [DEBUG] ブリッジ機能をContent Script内に実装");
-
   // Content Script内でグローバルアクセス可能なオブジェクトを作成
   // 注意: これはWebページコンテキストではなくContent Script内でのみ利用可能
   window.ChatGPTAutomationBridge = {
     executeTask: async function (task) {
-      console.log("🌉 [BRIDGE] executeTask呼び出し:", task);
       try {
         const result = await executeTask(task);
         return result;
@@ -2966,7 +2885,6 @@ async function reportSelectorError(selectorKey, error, selectors) {
     },
 
     runAutomation: async function () {
-      console.log("🌉 [BRIDGE] runAutomation呼び出し");
       try {
         const result = await runAutomation();
         return result;
@@ -2977,7 +2895,6 @@ async function reportSelectorError(selectorKey, error, selectors) {
     },
 
     detectModels: async function () {
-      console.log("🌉 [BRIDGE] detectModels呼び出し");
       try {
         const result = await detectChatGPTModelsAndFunctions();
         return result;
@@ -2991,16 +2908,9 @@ async function reportSelectorError(selectorKey, error, selectors) {
   // グローバルにアクセスしやすいエイリアス
   window.ChatGPT = window.ChatGPTAutomationBridge;
 
-  console.log("✅ [BRIDGE] window.ChatGPT利用可能（Content Script内）");
-  console.log(
-    '📝 [BRIDGE] 使用例: await ChatGPT.executeTask({prompt: "テスト"})',
-  );
-  console.log("⚠️ [BRIDGE] 注意: Content Script内でのみアクセス可能です");
-
   // Content Script側でブリッジメッセージを処理
   window.addEventListener("message", async (event) => {
     if (event.data.type === "CHATGPT_AUTOMATION_EXECUTE") {
-      console.log("🌉 [DEBUG] ブリッジコマンド受信:", event.data.command);
 
       try {
         let result;
@@ -3043,8 +2953,6 @@ async function reportSelectorError(selectorKey, error, selectors) {
       }
     }
   });
-
-  console.log("✅ [DEBUG] Content Script ↔ Webpage ブリッジ設定完了");
 
   // 初期化マーカー設定（グローバルに再設定）
   window.CHATGPT_SCRIPT_LOADED = true;
@@ -3415,12 +3323,8 @@ async function reportSelectorError(selectorKey, error, selectors) {
   };
 
   // メッセージリスナーを即座に登録
-  console.log("🔧 [DEBUG] メッセージリスナー登録セクションに到達");
   try {
     registerMessageListener();
-    console.log(
-      "📡 [ChatGPT] step4-tasklist.js統合用メッセージリスナー準備完了",
-    );
   } catch (error) {
     console.error("❌ [ChatGPT] メッセージリスナー登録エラー:", error);
   }
@@ -4037,7 +3941,6 @@ async function chatWithChatGPT() {
       const response = await getResponseTextChatGPT();
 
       logWithTimestamp("✅ 完全テスト完了");
-      console.log("応答:", response);
       return response;
     } catch (error) {
       log.error("完全テストエラー:", error);
@@ -4049,6 +3952,65 @@ async function chatWithChatGPT() {
   // 🚨 ChatGPT グローバルエラーハンドラー
   // ========================================
 
+  // 🚨 ChatGPT Overloadedエラー対応システム
+  let chatgptOverloadedRetryCount = 0;
+  const MAX_CHATGPT_OVERLOADED_RETRIES = 5;
+  const CHATGPT_OVERLOADED_RETRY_INTERVALS = [
+    60000, 300000, 900000, 1800000, 3600000,
+  ]; // 1分、5分、15分、30分、60分
+
+  function handleChatGPTOverloadedError() {
+
+    if (chatgptOverloadedRetryCount >= MAX_CHATGPT_OVERLOADED_RETRIES) {
+      console.error(
+        "❌ [CHATGPT-OVERLOADED-HANDLER] 最大リトライ回数に達しました。手動対応が必要です。",
+      );
+      return;
+    }
+
+    const retryInterval =
+      CHATGPT_OVERLOADED_RETRY_INTERVALS[chatgptOverloadedRetryCount] ||
+      3600000;
+    chatgptOverloadedRetryCount++;
+
+    // 即座にウィンドウを閉じる
+    setTimeout(() => {
+
+      // background scriptにウィンドウリセットを要求
+      if (chrome.runtime && chrome.runtime.sendMessage) {
+        chrome.runtime
+          .sendMessage({
+            action: "RESET_AI_WINDOW",
+            aiType: "chatgpt",
+            retryCount: chatgptOverloadedRetryCount,
+            nextRetryIn: retryInterval,
+          })
+          .catch((err) => {
+            console.error(
+              "❌ [CHATGPT-OVERLOADED-HANDLER] background scriptへのメッセージ送信失敗:",
+              err,
+            );
+            window.location.reload();
+          });
+      } else {
+        window.location.reload();
+      }
+    }, 1000);
+
+    // 指定時間後にリトライ
+    setTimeout(() => {
+
+      // 新しいウィンドウで ChatGPT を開く
+      if (chrome.runtime && chrome.runtime.sendMessage) {
+        chrome.runtime.sendMessage({
+          action: "OPEN_AI_WINDOW",
+          aiType: "chatgpt",
+          retryAttempt: chatgptOverloadedRetryCount,
+        });
+      }
+    }, retryInterval);
+  }
+
   // ChatGPT専用ネットワークエラーハンドラーを追加
   if (
     typeof window !== "undefined" &&
@@ -4059,6 +4021,30 @@ async function chatWithChatGPT() {
     window.addEventListener("error", (e) => {
       const errorMessage = e.message || e.error?.message || "";
       const errorName = e.error?.name || "";
+
+      // 🔍 ChatGPT Overloadedエラー検出
+      const isOverloadedError =
+        errorMessage.includes("Overloaded") ||
+        errorMessage.includes("overloaded") ||
+        errorMessage.includes("too many requests") ||
+        errorMessage.includes("rate limit") ||
+        (e.reason && String(e.reason).includes("Overloaded"));
+
+      if (isOverloadedError) {
+        console.error("🚨 [CHATGPT-OVERLOADED-ERROR]", {
+          message: errorMessage,
+          name: errorName,
+          type: "OVERLOADED_ERROR",
+          filename: e.filename,
+          lineno: e.lineno,
+          timestamp: new Date().toISOString(),
+          aiType: "chatgpt",
+        });
+
+        // 即座にウィンドウリセット・リトライを開始
+        handleChatGPTOverloadedError();
+        return;
+      }
 
       // 🔍 ネットワークエラー検出 (Claudeと同じロジック)
       const isNetworkError =
@@ -4133,14 +4119,6 @@ async function chatWithChatGPT() {
             level: "unhandledrejection",
           });
 
-          console.log(
-            "📊 [ChatGPT-RETRY-MANAGER] ネットワークエラーを統計に記録",
-            {
-              totalErrors: window.chatgptErrorHistory.length,
-              errorType: "NETWORK_ERROR",
-            },
-          );
-
           // 🔄 アクティブなタスクがある場合のリトライ準備 (将来実装用)
           if (window.currentChatGPTTask) {
             console.warn(
@@ -4160,8 +4138,6 @@ async function chatWithChatGPT() {
       }
     });
 
-    console.log("✅ [ChatGPT] ネットワークエラーハンドラー登録完了");
   }
 
-  console.log("🔧 [DEBUG] IIFE正常終了 - 全ての処理完了");
 })();
