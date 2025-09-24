@@ -206,6 +206,56 @@
           return errorType;
         }
 
+        // ========================================
+        // 🚨 Claude API特有エラーの検出（拡張機能）
+        // ========================================
+
+        // Claude完了リクエストエラー
+        if (
+          (errorMessage.includes("[COMPLETION]") &&
+            errorMessage.includes("Request failed")) ||
+          errorMessage.includes("TypeError: network error") ||
+          errorMessage.includes("Non-API stream error") ||
+          (errorMessage.includes("[COMPLETION]") &&
+            errorMessage.includes("failed"))
+        ) {
+          errorType = "CLAUDE_API_ERROR";
+          log.warn("🚨 [RETRY-MANAGER] Claude API完了リクエストエラーを分類:", {
+            errorMessage: errorMessage.substring(0, 200),
+            errorType: errorType,
+            context: context,
+          });
+          return errorType;
+        }
+
+        // Claude APIネットワークエラー（より具体的）
+        if (
+          errorMessage.includes("claude.ai") &&
+          (errorMessage.includes("network") ||
+            errorMessage.includes("timeout") ||
+            errorMessage.includes("fetch"))
+        ) {
+          errorType = "CLAUDE_NETWORK_ERROR";
+          log.warn("🌐 [RETRY-MANAGER] Claude専用ネットワークエラーを分類:", {
+            errorMessage: errorMessage.substring(0, 200),
+            errorType: errorType,
+          });
+          return errorType;
+        }
+
+        // Claude DOM操作エラー
+        if (
+          (errorMessage.includes("DOM") || errorMessage.includes("element")) &&
+          (errorMessage.includes("claude") || context.aiType === "claude")
+        ) {
+          errorType = "CLAUDE_DOM_ERROR";
+          log.warn("🔧 [RETRY-MANAGER] Claude DOM操作エラーを分類:", {
+            errorMessage: errorMessage.substring(0, 200),
+            errorType: errorType,
+          });
+          return errorType;
+        }
+
         if (
           errorMessage.includes("Deep Research") ||
           errorMessage.includes("deep research") ||
@@ -1015,6 +1065,108 @@
         } else {
           // その他のグローバルエラー
         }
+      });
+
+      // ========================================
+      // 🚨 Console.errorの監視システム（Claude API特有エラー検出）
+      // ========================================
+
+      // 元のconsole.errorメソッドをバックアップ
+      const originalConsoleError = console.error;
+
+      // Console.error監視のためのフラグ
+      window.claudeAPIErrorDetected = false;
+      window.claudeLastConsoleError = null;
+
+      // console.errorを拡張してAPIエラーを監視
+      console.error = function (...args) {
+        // 元のconsole.errorを実行
+        originalConsoleError.apply(console, args);
+
+        try {
+          // 引数を文字列に変換して解析
+          const errorMessage = args
+            .map((arg) =>
+              typeof arg === "object" ? JSON.stringify(arg) : String(arg),
+            )
+            .join(" ");
+
+          // Claude API特有のエラーパターンを検出
+          const isClaudeAPIError =
+            (errorMessage.includes("[COMPLETION]") &&
+              errorMessage.includes("Request failed")) ||
+            errorMessage.includes("TypeError: network error") ||
+            errorMessage.includes("Non-API stream error") ||
+            (errorMessage.includes("[COMPLETION]") &&
+              errorMessage.includes("failed"));
+
+          if (isClaudeAPIError) {
+            log.warn(
+              "🚨 [CONSOLE-ERROR-MONITOR] Claude API エラーを検出:",
+              errorMessage,
+            );
+
+            // グローバル状態を更新
+            window.claudeAPIErrorDetected = true;
+            window.claudeLastConsoleError = {
+              message: errorMessage,
+              timestamp: Date.now(),
+              args: args,
+            };
+
+            // ClaudeRetryManagerに記録
+            try {
+              if (window.claudeRetryManager) {
+                window.claudeRetryManager.errorHistory.push({
+                  type: "CLAUDE_API_ERROR",
+                  message: errorMessage,
+                  timestamp: Date.now(),
+                  level: "console_error",
+                  source: "console.error monitoring",
+                });
+
+                log.debug(
+                  "📊 [CONSOLE-ERROR-MONITOR] Claude APIエラーを統計に記録",
+                );
+              }
+            } catch (recordError) {
+              // エラー記録失敗は無視
+              log.debug(
+                "⚠️ [CONSOLE-ERROR-MONITOR] エラー記録に失敗:",
+                recordError.message,
+              );
+            }
+
+            // アクティブなタスクがある場合は監視システムに通知
+            if (window.currentClaudeTask) {
+              log.warn(
+                "🔄 [CONSOLE-ERROR-MONITOR] アクティブタスクに API エラーを通知",
+              );
+
+              // カスタムイベントでエラーを通知（停止ボタン監視などに使用）
+              window.dispatchEvent(
+                new CustomEvent("claudeAPIError", {
+                  detail: {
+                    errorMessage: errorMessage,
+                    timestamp: Date.now(),
+                    errorType: "CLAUDE_API_ERROR",
+                  },
+                }),
+              );
+            }
+          }
+        } catch (monitorError) {
+          // Console.error監視でのエラーは元のconsole.errorで出力
+          originalConsoleError(
+            "❌ [CONSOLE-ERROR-MONITOR] 監視処理エラー:",
+            monitorError,
+          );
+        }
+      };
+
+      // ページアンロード時に元のconsole.errorを復元
+      window.addEventListener("beforeunload", () => {
+        console.error = originalConsoleError;
       });
 
       window.addEventListener("unhandledrejection", (e) => {
@@ -4028,6 +4180,239 @@
     };
 
     // ========================================
+    // 🚨 統合エラーハンドリングシステム（多層監視システム）
+    // ========================================
+
+    class IntegratedErrorHandler {
+      constructor() {
+        this.errorQueue = [];
+        this.isProcessing = false;
+        this.errorPriorities = {
+          CLAUDE_API_ERROR: 1, // 最高優先度
+          CLAUDE_NETWORK_ERROR: 2,
+          CLAUDE_DOM_ERROR: 3,
+          NETWORK_ERROR: 4,
+          CANVAS_ERROR: 5,
+          SESSION_ERROR: 6,
+          LOGIN_ERROR: 7,
+          GENERAL_ERROR: 8, // 最低優先度
+        };
+
+        // エラーイベントリスナーの登録
+        this.initializeEventListeners();
+
+        // 統計情報
+        this.stats = {
+          totalErrors: 0,
+          handledErrors: 0,
+          recoveryAttempts: 0,
+          recoverySuccesses: 0,
+        };
+      }
+
+      initializeEventListeners() {
+        // Claude APIエラーイベント
+        window.addEventListener("claudeAPIError", (event) => {
+          this.handleError({
+            type: "CLAUDE_API_ERROR",
+            message: event.detail.errorMessage,
+            timestamp: event.detail.timestamp,
+            source: "claudeAPIError event",
+          });
+        });
+
+        // カスタムエラーハンドラー登録
+        window.integratedErrorHandler = this;
+
+        log.debug("🔧 [INTEGRATED-ERROR] 統合エラーハンドラー初期化完了");
+      }
+
+      async handleError(errorInfo) {
+        this.stats.totalErrors++;
+
+        // 優先度に基づいてエラーキューに追加
+        const priority = this.errorPriorities[errorInfo.type] || 999;
+
+        const errorEntry = {
+          ...errorInfo,
+          priority: priority,
+          receivedAt: Date.now(),
+        };
+
+        // 優先度順に挿入
+        const insertIndex = this.errorQueue.findIndex(
+          (error) => error.priority > priority,
+        );
+
+        if (insertIndex === -1) {
+          this.errorQueue.push(errorEntry);
+        } else {
+          this.errorQueue.splice(insertIndex, 0, errorEntry);
+        }
+
+        log.warn(`🚨 [INTEGRATED-ERROR] エラーを受信: ${errorInfo.type}`, {
+          queueLength: this.errorQueue.length,
+          priority: priority,
+          message: errorInfo.message?.substring(0, 100) || "No message",
+        });
+
+        // エラー処理を開始（非同期）
+        if (!this.isProcessing) {
+          this.processErrorQueue();
+        }
+      }
+
+      async processErrorQueue() {
+        if (this.isProcessing || this.errorQueue.length === 0) {
+          return;
+        }
+
+        this.isProcessing = true;
+
+        try {
+          while (this.errorQueue.length > 0) {
+            const errorEntry = this.errorQueue.shift();
+            await this.processError(errorEntry);
+
+            // 過負荷防止のため短時間待機
+            await new Promise((resolve) => setTimeout(resolve, 100));
+          }
+        } catch (processError) {
+          log.error(
+            "❌ [INTEGRATED-ERROR] エラー処理中にエラー:",
+            processError,
+          );
+        } finally {
+          this.isProcessing = false;
+        }
+      }
+
+      async processError(errorEntry) {
+        this.stats.handledErrors++;
+
+        log.error(`🔥 [INTEGRATED-ERROR] エラー処理開始: ${errorEntry.type}`, {
+          priority: errorEntry.priority,
+          age: Date.now() - errorEntry.receivedAt,
+          message: errorEntry.message?.substring(0, 150) || "No message",
+        });
+
+        // エラータイプに応じた処理
+        switch (errorEntry.type) {
+          case "CLAUDE_API_ERROR":
+            await this.handleClaudeAPIError(errorEntry);
+            break;
+
+          case "CLAUDE_NETWORK_ERROR":
+            await this.handleNetworkError(errorEntry);
+            break;
+
+          case "CLAUDE_DOM_ERROR":
+            await this.handleDOMError(errorEntry);
+            break;
+
+          default:
+            await this.handleGeneralError(errorEntry);
+            break;
+        }
+
+        // ClaudeRetryManagerに記録
+        try {
+          if (window.claudeRetryManager) {
+            window.claudeRetryManager.errorHistory.push({
+              type: errorEntry.type,
+              message: errorEntry.message || "Unknown error",
+              timestamp: errorEntry.timestamp || Date.now(),
+              level: "integrated_handler",
+              processed: true,
+            });
+          }
+        } catch (recordError) {
+          log.debug(
+            "⚠️ [INTEGRATED-ERROR] エラー記録失敗:",
+            recordError.message,
+          );
+        }
+      }
+
+      async handleClaudeAPIError(errorEntry) {
+        log.error(
+          "🔥 [INTEGRATED-ERROR] Claude APIエラー処理:",
+          errorEntry.message,
+        );
+
+        // グローバル状態をリセット（エラー処理完了を示す）
+        window.claudeAPIErrorDetected = false;
+
+        this.stats.recoveryAttempts++;
+
+        // 回復処理: ページリフレッシュ
+        setTimeout(() => {
+          log.warn(
+            "🔄 [INTEGRATED-ERROR] Claude APIエラーによるページリフレッシュ",
+          );
+          window.location.reload();
+          this.stats.recoverySuccesses++;
+        }, 2000); // 2秒後にリフレッシュ
+      }
+
+      async handleNetworkError(errorEntry) {
+        log.warn(
+          "🌐 [INTEGRATED-ERROR] ネットワークエラー処理:",
+          errorEntry.message,
+        );
+
+        this.stats.recoveryAttempts++;
+
+        // ネットワーク回復の待機（軽度な対処）
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+        log.debug("📡 [INTEGRATED-ERROR] ネットワークエラー回復待機完了");
+
+        this.stats.recoverySuccesses++;
+      }
+
+      async handleDOMError(errorEntry) {
+        log.warn(
+          "🔧 [INTEGRATED-ERROR] DOM要素エラー処理:",
+          errorEntry.message,
+        );
+
+        this.stats.recoveryAttempts++;
+
+        // DOM要素の再構築を待つ
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        log.debug("🔧 [INTEGRATED-ERROR] DOM要素回復待機完了");
+
+        this.stats.recoverySuccesses++;
+      }
+
+      async handleGeneralError(errorEntry) {
+        log.debug("⚙️ [INTEGRATED-ERROR] 一般エラー処理:", errorEntry.type);
+
+        // 最小限の処理
+        this.stats.recoveryAttempts++;
+        this.stats.recoverySuccesses++;
+      }
+
+      getStats() {
+        return {
+          ...this.stats,
+          queueLength: this.errorQueue.length,
+          isProcessing: this.isProcessing,
+          recoveryRate:
+            this.stats.recoveryAttempts > 0
+              ? (
+                  (this.stats.recoverySuccesses / this.stats.recoveryAttempts) *
+                  100
+                ).toFixed(2) + "%"
+              : "0%",
+        };
+      }
+    }
+
+    // 統合エラーハンドラーのインスタンス作成
+    const integratedErrorHandler = new IntegratedErrorHandler();
+
+    // ========================================
     // メイン実行関数（Claude-ステップ2-7を含む）
     // ========================================
 
@@ -5310,7 +5695,89 @@
                   break;
                 }
               } else if (currentTextLength !== lastTextLength) {
-                // 文字数が変化したらカウンタをリセット
+                // ========================================
+                // 🚨 異常検出機能（文字数監視の根本的改善）
+                // ========================================
+
+                // 文字数が突然0になった場合の異常検出
+                if (lastTextLength > 0 && currentTextLength === 0) {
+                  log.warn(
+                    "🚨 [TEXT-MONITOR-ERROR] 文字数が突然0になりました - エラー状態を検出",
+                  );
+
+                  // Claude APIエラーを確認
+                  const apiErrorDetected =
+                    window.claudeAPIErrorDetected || false;
+                  const lastConsoleError =
+                    window.claudeLastConsoleError || null;
+
+                  if (apiErrorDetected) {
+                    log.error(
+                      "🔥 [TEXT-MONITOR-ERROR] Claude APIエラーが検出されています:",
+                      {
+                        textLengthDrop: `${lastTextLength} → ${currentTextLength}`,
+                        apiErrorTime: lastConsoleError?.timestamp,
+                        currentTime: Date.now(),
+                        timeDiff: lastConsoleError
+                          ? Date.now() - lastConsoleError.timestamp
+                          : "unknown",
+                      },
+                    );
+
+                    // エラー状態として即座に停止
+                    stopButtonGone = true;
+                    log.error(
+                      "❌ [TEXT-MONITOR-ERROR] Claude APIエラー + 文字数消失により処理を中断",
+                    );
+
+                    ClaudeLogManager.logStep(
+                      "Error-Detected",
+                      `Claude APIエラー + 文字数消失: ${lastTextLength} → 0`,
+                      {
+                        errorType: "CLAUDE_API_ERROR_WITH_TEXT_LOSS",
+                        previousTextLength: lastTextLength,
+                        apiErrorDetected: apiErrorDetected,
+                        lastConsoleError: lastConsoleError,
+                      },
+                    );
+                    break;
+                  }
+
+                  // DOM要素の健全性チェック
+                  const canvasExists = canvasElement !== null;
+                  const normalExists = normalElement !== null;
+
+                  if (!canvasExists && !normalExists) {
+                    log.warn(
+                      "⚠️ [TEXT-MONITOR-ERROR] すべてのDOM要素が見つかりません - ページ状態異常の可能性",
+                    );
+
+                    // DOM異常として処理を中断
+                    stopButtonGone = true;
+                    log.error(
+                      "❌ [TEXT-MONITOR-ERROR] DOM要素消失により処理を中断",
+                    );
+
+                    ClaudeLogManager.logStep(
+                      "Error-Detected",
+                      `DOM要素消失 + 文字数消失: ${lastTextLength} → 0`,
+                      {
+                        errorType: "DOM_ELEMENTS_MISSING",
+                        previousTextLength: lastTextLength,
+                        canvasExists: canvasExists,
+                        normalExists: normalExists,
+                      },
+                    );
+                    break;
+                  }
+
+                  // 軽度の文字数リセット（1回のみ警告）
+                  log.warn(
+                    "⚠️ [TEXT-MONITOR-WARNING] 文字数が0にリセットされました（継続監視）",
+                  );
+                }
+
+                // 通常の文字数変化処理
                 if (textUnchangedCount > 0) {
                   log.debug(
                     `🔄 [TEXT-MONITOR] 文字数変化検出 - カウンタリセット (${lastTextLength} → ${currentTextLength}文字, ${textUnchangedCount}秒後)`,
@@ -5334,8 +5801,78 @@
                 }
               }
 
-              // 停止ボタンの状態をチェック
+              // ========================================
+              // 🚨 エラー状態判定機能（停止ボタン監視の最適化）
+              // ========================================
 
+              // Claude APIエラーの状態をチェック
+              const apiErrorDetected = window.claudeAPIErrorDetected || false;
+              const lastConsoleError = window.claudeLastConsoleError || null;
+
+              if (apiErrorDetected && lastConsoleError) {
+                const timeSinceError = Date.now() - lastConsoleError.timestamp;
+
+                // APIエラーから5秒以上経過している場合は早期終了
+                if (timeSinceError >= 5000) {
+                  log.error(
+                    "🚨 [STOP-BUTTON-ERROR] Claude APIエラーにより停止ボタン監視を中断:",
+                    {
+                      errorAge: `${Math.round(timeSinceError / 1000)}秒前`,
+                      errorMessage: lastConsoleError.message,
+                      currentWaitTime: `${Math.floor(disappearWaitCount / 60)}分${disappearWaitCount % 60}秒`,
+                    },
+                  );
+
+                  stopButtonGone = true;
+
+                  ClaudeLogManager.logStep(
+                    "Error-EarlyExit",
+                    `Claude APIエラーにより停止ボタン監視を早期終了`,
+                    {
+                      errorType: "CLAUDE_API_ERROR",
+                      timeSinceError: timeSinceError,
+                      totalWaitTime: disappearWaitCount,
+                      errorMessage: lastConsoleError.message,
+                    },
+                  );
+                  break;
+                }
+              }
+
+              // ページ状態の健全性判定
+              const pageTitle = document.title || "";
+              const pageURL = window.location.href || "";
+
+              // ページがエラー状態や異常状態でないかチェック
+              const isErrorPage =
+                pageTitle.includes("Error") ||
+                pageTitle.includes("エラー") ||
+                pageURL.includes("error") ||
+                pageURL !== window.location.href; // URL変更検出
+
+              if (isErrorPage) {
+                log.error("🚨 [STOP-BUTTON-ERROR] ページエラー状態を検出:", {
+                  pageTitle: pageTitle,
+                  pageURL: pageURL,
+                  waitTime: disappearWaitCount,
+                });
+
+                stopButtonGone = true;
+
+                ClaudeLogManager.logStep(
+                  "Error-EarlyExit",
+                  "ページエラー状態により停止ボタン監視を早期終了",
+                  {
+                    errorType: "PAGE_ERROR",
+                    pageTitle: pageTitle,
+                    pageURL: pageURL,
+                    totalWaitTime: disappearWaitCount,
+                  },
+                );
+                break;
+              }
+
+              // 停止ボタンの状態をチェック
               const stopResult = await findClaudeElement(
                 claudeSelectors["3_回答停止ボタン"],
                 3, // リトライ回数を増やす

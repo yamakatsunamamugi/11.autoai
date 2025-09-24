@@ -2921,13 +2921,24 @@ async function generateTaskList(
           };
 
           // 🔍 [DEBUG-LOGCELL] タスク作成時のlogCell値確認
-          log.warn(`🔍 [DEBUG-LOGCELL] タスク作成: ${task.taskId}`, {
-            taskGroupLogColumn: taskGroup.columns.log,
-            row: row,
-            generatedLogCell: task.logCell,
-            taskGroupColumns: JSON.stringify(taskGroup.columns),
-            taskId: task.taskId,
-          });
+          console.error(
+            `🔍 [DEBUG-LOGCELL-TASK-CREATION] タスク作成詳細: ${task.taskId}`,
+            {
+              taskGroupLogColumn: taskGroup.columns?.log,
+              taskGroupLogColumnType: typeof taskGroup.columns?.log,
+              row: row,
+              rowType: typeof row,
+              taskGroupColumns: taskGroup.columns,
+              taskGroupExists: !!taskGroup,
+              columnsExists: !!taskGroup.columns,
+              logCellCalculation: `${taskGroup.columns?.log}${row}`,
+              generatedLogCell: task.logCell,
+              generatedLogCellType: typeof task.logCell,
+              taskKeys: Object.keys(task),
+              taskHasLogCell: "logCell" in task,
+              taskId: task.taskId,
+            },
+          );
 
           // デバッグログを収集（後でまとめて表示）
           debugLogs.push({
