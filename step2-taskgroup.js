@@ -206,19 +206,6 @@ async function identifyTaskGroups() {
           currentGroup.answerColumns &&
           currentGroup.answerColumns.length > 0
         ) {
-          console.error(
-            `🔍 [DEBUG-GROUP-COMPLETE] グループ${currentGroup.groupNumber}完了（ログ列検出時）:`,
-            {
-              groupNumber: currentGroup.groupNumber,
-              type: currentGroup.type,
-              logColumn: currentGroup.logColumn,
-              promptColumns: currentGroup.promptColumns,
-              answerColumns: currentGroup.answerColumns.map(
-                (a) => a.column || a,
-              ),
-              reason: "新しいログ列を検出したため前のグループを完了",
-            },
-          );
           taskGroups.push(currentGroup);
           groupCounter++;
           currentGroup = null;
@@ -240,6 +227,10 @@ async function identifyTaskGroups() {
           dependencies: groupCounter > 1 ? [`group_${groupCounter - 1}`] : [],
           sequenceOrder: groupCounter,
           startCol: index,
+          // step4-tasklist.js互換のためcolumns.logを追加
+          columns: {
+            log: columnLetter,
+          },
           endCol: index,
         };
       }
@@ -311,19 +302,6 @@ async function identifyTaskGroups() {
           currentGroup.promptColumns.length > 0 &&
           currentGroup.answerColumns.length > 0
         ) {
-          console.error(
-            `🔍 [DEBUG-GROUP-COMPLETE] グループ${currentGroup.groupNumber}完了（プロンプト列検出時）:`,
-            {
-              groupNumber: currentGroup.groupNumber,
-              type: currentGroup.type,
-              logColumn: currentGroup.logColumn,
-              promptColumns: currentGroup.promptColumns,
-              answerColumns: currentGroup.answerColumns.map(
-                (a) => a.column || a,
-              ),
-              reason: "新しいプロンプト列を検出し、前のグループが完成済み",
-            },
-          );
           taskGroups.push(currentGroup);
           groupCounter++;
           currentGroup = null;
@@ -406,24 +384,6 @@ async function identifyTaskGroups() {
     if (currentGroup && currentGroup.answerColumns.length > 0) {
       taskGroups.push(currentGroup);
     }
-
-    // 🔍 [DEBUG-TASKGROUP-RESULT] タスクグループ識別結果
-    console.error("🔍 [DEBUG-TASKGROUP-RESULT] 識別されたタスクグループ:", {
-      totalGroups: taskGroups.length,
-      groups: taskGroups.map((g) => ({
-        groupNumber: g.groupNumber,
-        type: g.type || g.groupType,
-        logColumn: g.logColumn,
-        promptColumns: g.promptColumns,
-        answerColumns: g.answerColumns
-          ? g.answerColumns.map((a) => a.column || a)
-          : [],
-        startColumn: g.startColumn,
-        endColumn: g.endColumn,
-        hasLogColumn: !!g.logColumn,
-        isSpecialGroup: g.isSpecialGroup || false,
-      })),
-    });
 
     // 内部で作成したtaskGroupsを保存（統計情報用）
     window.globalState.allTaskGroups = taskGroups;

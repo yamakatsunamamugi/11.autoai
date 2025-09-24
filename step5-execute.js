@@ -176,7 +176,24 @@ class SimpleSheetsClient {
 }
 
 // グローバルインスタンス
+console.log("🔍 [INIT-DEBUG] step5-execute.js トップレベル実行開始");
+console.log(
+  "🔍 [INIT-DEBUG] SimpleSheetsClientクラス存在確認:",
+  typeof SimpleSheetsClient,
+);
 window.simpleSheetsClient = new SimpleSheetsClient();
+console.log(
+  "✅ [INIT-DEBUG] window.simpleSheetsClient 初期化完了:",
+  !!window.simpleSheetsClient,
+);
+console.log(
+  "✅ [INIT-DEBUG] SimpleSheetsClientメソッド:",
+  window.simpleSheetsClient
+    ? Object.getOwnPropertyNames(
+        Object.getPrototypeOf(window.simpleSheetsClient),
+      )
+    : "未初期化",
+);
 
 // ========================================
 // AI自動化ファイルローダークラス（manifest.json自動注入対応）
@@ -362,7 +379,7 @@ window.taskGroupTypeDetector = new TaskGroupTypeDetector();
 class SpreadsheetDataManager {
   constructor() {
     this.cachedData = new Map(); // キャッシュ管理
-    this.cacheTimeout = 5 * 60 * 1000; // 5分
+    this.cacheTimeout = 10 * 1000; // 10秒（短期キャッシュに変更）
   }
 
   /**
@@ -424,29 +441,30 @@ class SpreadsheetDataManager {
    * スプレッドシートデータをフェッチ
    */
   async fetchSpreadsheetData(spreadsheetId, gid, range) {
-    const cacheKey = `${spreadsheetId}-${gid}-${range}`;
+    // キャッシュ無効化 - 常に最新データを取得
+    // const cacheKey = `${spreadsheetId}-${gid}-${range}`;
+    // if (this.cachedData.has(cacheKey)) {
+    //   const cached = this.cachedData.get(cacheKey);
+    //   if (Date.now() - cached.timestamp < this.cacheTimeout) {
+    //     ExecuteLogger.info("📦 キャッシュからデータ取得");
+    //     return cached.data;
+    //   }
+    // }
 
-    // キャッシュチェック
-    if (this.cachedData.has(cacheKey)) {
-      const cached = this.cachedData.get(cacheKey);
-      if (Date.now() - cached.timestamp < this.cacheTimeout) {
-        ExecuteLogger.info("📦 キャッシュからデータ取得");
-        return cached.data;
-      }
-    }
-
-    // APIから取得
-    ExecuteLogger.info(`📊 スプレッドシートデータ取得: ${range}`);
+    // 常にAPIから最新データを取得
+    ExecuteLogger.info(
+      `📊 スプレッドシートデータ取得（キャッシュ無効）: ${range}`,
+    );
     const data = await window.simpleSheetsClient.getValues(
       spreadsheetId,
       range,
     );
 
-    // キャッシュ更新
-    this.cachedData.set(cacheKey, {
-      data: data,
-      timestamp: Date.now(),
-    });
+    // キャッシュ更新も無効化
+    // this.cachedData.set(cacheKey, {
+    //   data: data,
+    //   timestamp: Date.now(),
+    // });
 
     return data;
   }

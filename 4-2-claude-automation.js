@@ -1473,32 +1473,10 @@
 
         chrome.runtime.onMessage.addListener(
           (request, sender, sendResponse) => {
-            // 🔍 [DEBUG-LOGCELL] Content Script メッセージ受信時の詳細確認
             if (
               request.type === "CLAUDE_EXECUTE_TASK" ||
               request.action === "executeTask"
             ) {
-              console.error(
-                `🔍 [DEBUG-LOGCELL] Content Script メッセージ受信:`,
-                JSON.stringify(
-                  {
-                    requestType: request.type,
-                    requestAction: request.action,
-                    requestExists: !!request,
-                    requestKeys: request ? Object.keys(request) : [],
-                    requestLogCell: request.logCell, // 🔧 直接logCellプロパティを確認
-                    requestLogCellType: typeof request.logCell,
-                    requestTask: request.task || request.taskData,
-                    requestTaskLogCell: (request.task || request.taskData)
-                      ?.logCell,
-                    fullRequest: request,
-                    fullRequestDump: JSON.stringify(request, null, 2),
-                    messageSizeBytes: JSON.stringify(request).length,
-                  },
-                  null,
-                  2,
-                ),
-              );
             }
 
             // 🔍 [MESSAGE-RECEIVED] メッセージ受信診断
@@ -1587,8 +1565,7 @@
                     const taskToExecute =
                       request.task || request.taskData || request;
 
-                    // 🔍 [DEBUG-LOGCELL] taskToExecute作成時のlogCell検証
-                    console.error(`🔍 [DEBUG-LOGCELL] taskToExecute作成直後:`, {
+                    // taskToExecute作成時のlogCell検証
                       requestTaskExists: !!request.task,
                       requestTaskDataExists: !!request.taskData,
                       requestTaskLogCell: request.task?.logCell,
@@ -4455,8 +4432,7 @@
       // 🚨 【STEP 3: executeTask関数実行確認】
       console.error("🚨 EXECUTE TASK FUNCTION CALLED");
 
-      // 🔍 [DEBUG-LOGCELL] executeTask関数受信時のtaskData確認
-      console.error(`🔍 [DEBUG-LOGCELL] executeTask受信時のtaskData:`, {
+      // executeTask関数受信時のtaskData確認
         taskDataExists: !!taskData,
         taskDataType: typeof taskData,
         taskDataKeys: taskData ? Object.keys(taskData) : [],
@@ -5361,6 +5337,29 @@
         // 🔧 [SIMPLIFIED] 元のタスクIDを使用（データ一貫性のため）
         const taskId = taskData.taskId || taskData.id || "UNKNOWN_TASK_ID";
 
+        // DetailedLogManagerに送信時刻を記録
+        if (window.parent && window.parent.detailedLogManager) {
+          try {
+            window.parent.detailedLogManager.recordSendTime(
+              taskId,
+              window.location.href,
+            );
+            log.debug("📡 DetailedLogManagerに送信時刻を記録:", taskId);
+          } catch (logError) {
+            log.warn("⚠️ DetailedLogManager送信時刻記録エラー:", logError);
+          }
+        } else if (window.top && window.top.detailedLogManager) {
+          try {
+            window.top.detailedLogManager.recordSendTime(
+              taskId,
+              window.location.href,
+            );
+            log.debug("📡 DetailedLogManagerに送信時刻を記録:", taskId);
+          } catch (logError) {
+            log.warn("⚠️ DetailedLogManager送信時刻記録エラー:", logError);
+          }
+        }
+
         // 🔧 データ一貫性バリデーション
         if (taskData._validateLogCell && !taskData._validateLogCell()) {
           console.warn(
@@ -5387,20 +5386,7 @@
                 });
               }, 3000); // 3秒でタイムアウト
 
-              // 🔍 [DEBUG-LOGCELL] Content Script送信前のlogCell確認
-              console.warn(
-                `🔍 [DEBUG-LOGCELL] Content Script送信前: ${taskId}`,
-                {
-                  taskDataExists: !!taskData,
-                  taskDataLogCell: taskData?.logCell,
-                  taskDataKeys: taskData ? Object.keys(taskData) : [],
-                  taskId: taskId,
-                },
-              );
 
-              // 🔍 [DEBUG-LOGCELL] recordSendTime送信直前のlogCell最終確認
-              console.error(
-                `🔍 [DEBUG-LOGCELL] recordSendTime送信直前: ${taskId}`,
                 {
                   taskDataExists: !!taskData,
                   taskDataLogCell: taskData?.logCell,
@@ -5411,7 +5397,6 @@
                 },
               );
 
-              // 🔍 [DEBUG-LOGCELL-TRACE] 送信直前のメッセージオブジェクト全体確認
               const messageToSend = {
                 type: "recordSendTime",
                 taskId: taskId,
@@ -5425,23 +5410,8 @@
                 logCell: taskData.logCell, // ログセルを直接追加
               };
 
-              console.error(
-                `🔍 [DEBUG-LOGCELL-TRACE] 送信直前のメッセージオブジェクト: ${taskId}`,
-                {
-                  messageKeys: Object.keys(messageToSend),
-                  messageLogCell: messageToSend.logCell,
-                  messageLogCellType: typeof messageToSend.logCell,
-                  messageTaskInfoCellInfo: messageToSend.taskInfo?.cellInfo,
-                  fullMessageDump: JSON.stringify(messageToSend, null, 2),
-                  messageSizeBytes: JSON.stringify(messageToSend).length,
-                  taskDataRaw: taskData,
-                },
-              );
 
               try {
-                // 🔍 [DEBUG-LOGCELL-TRACE] Chrome Extension送信実行直前
-                console.error(
-                  `🔍 [DEBUG-LOGCELL-TRACE] chrome.runtime.sendMessage実行直前: ${taskId}`,
                   {
                     chromeRuntimeExists: !!chrome.runtime,
                     sendMessageExists: !!chrome.runtime.sendMessage,
@@ -5453,16 +5423,6 @@
                 chrome.runtime.sendMessage(messageToSend, (response) => {
                   clearTimeout(timeout);
 
-                  // 🔍 [DEBUG-LOGCELL-TRACE] Chrome Extension送信後のレスポンス確認
-                  console.error(
-                    `🔍 [DEBUG-LOGCELL-TRACE] chrome.runtime.sendMessage送信後: ${taskId}`,
-                    {
-                      responseReceived: !!response,
-                      responseContent: response,
-                      chromeRuntimeLastError: chrome.runtime.lastError,
-                      messageWasSent: !chrome.runtime.lastError,
-                    },
-                  );
 
                   // chrome.runtime.lastErrorをチェック
                   if (chrome.runtime.lastError) {

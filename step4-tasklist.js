@@ -2928,7 +2928,9 @@ async function generateTaskList(
                 : "",
             logCell: taskGroup.columns?.log
               ? `${taskGroup.columns.log}${row}`
-              : null,
+              : taskGroup.logColumn
+                ? `${taskGroup.logColumn}${row}`
+                : null,
             promptCells: promptColumns.map((col) => `${col}${row}`),
             answerCell: answerCell,
             tabId: windowInfo?.tabId, // 🆕 タブID追加
@@ -7646,17 +7648,7 @@ async function executeStep4(taskList) {
       return task.logCell;
     }
 
-    // 2. cellRefから行番号を取得してログ列を計算
-    const cellRef = task.cellRef || `${task.column}${task.row}`;
-    if (!cellRef) return null;
-
-    const match = cellRef.match(/^([A-Z]+)(\d+)$/);
-    if (match) {
-      const rowNumber = match[2];
-      // task.logColumnがある場合はそれを使用、なければA列をデフォルトに
-      const logColumn = task.logColumn || "A";
-      return `${logColumn}${rowNumber}`;
-    }
+    // 2. ログ列が明示的に設定されていない場合は null を返す（デフォルトログ記載を無効化）
     return null;
   }
 
