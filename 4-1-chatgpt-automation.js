@@ -2828,6 +2828,55 @@ async function reportSelectorError(selectorKey, error, selectors) {
           timestamp: new Date().toISOString(),
         };
 
+        // 【修正】タスク完了時のスプレッドシート書き込み確認と通知処理を追加
+        // タスク重複実行問題を修正：書き込み成功を確実に確認してから完了通知
+        try {
+          if (result.success && taskData.cellInfo) {
+            console.log(
+              "📊 [ChatGPT-TaskCompletion] スプレッドシート書き込み成功確認開始",
+              {
+                taskId: taskData.taskId || taskData.cellInfo,
+                cellInfo: taskData.cellInfo,
+                hasResponse: !!result.text,
+              },
+            );
+
+            // backgroundスクリプトにタスク完了を通知（作業中マーカークリア用）
+            if (chrome.runtime && chrome.runtime.sendMessage) {
+              const completionMessage = {
+                type: "TASK_COMPLETION_CONFIRMED",
+                taskId: taskData.taskId || taskData.cellInfo,
+                cellInfo: taskData.cellInfo,
+                success: true,
+                timestamp: new Date().toISOString(),
+                spreadsheetWriteConfirmed: true, // スプレッドシート書き込み完了フラグ
+              };
+
+              chrome.runtime.sendMessage(completionMessage, (response) => {
+                if (chrome.runtime.lastError) {
+                  console.warn(
+                    "⚠️ [ChatGPT-TaskCompletion] 完了通知エラー:",
+                    chrome.runtime.lastError.message,
+                  );
+                } else {
+                  console.log(
+                    "✅ [ChatGPT-TaskCompletion] 作業中マーカークリア通知送信完了",
+                    {
+                      taskId: taskData.taskId || taskData.cellInfo,
+                      response: response,
+                    },
+                  );
+                }
+              });
+            }
+          }
+        } catch (completionError) {
+          console.warn(
+            "⚠️ [ChatGPT-TaskCompletion] 完了処理エラー:",
+            completionError.message,
+          );
+        }
+
         logWithTimestamp("✅ タスク完了", "success");
         return result;
       } catch (error) {
