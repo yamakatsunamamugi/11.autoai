@@ -61,18 +61,14 @@ export class SelectorTimelineManager {
       });
     }
 
-    // セレクタテスト機能
+    // セレクタ行のクリックイベント（CSP対応）
     document.addEventListener("click", (e) => {
-      if (e.target.matches(".selector-test-btn")) {
-        const selectorData = JSON.parse(e.target.dataset.selector);
-        this.testSelector(selectorData);
-      }
-    });
-
-    // セレクタ詳細表示
-    document.addEventListener("click", (e) => {
-      if (e.target.matches(".selector-item")) {
-        this.toggleSelectorDetails(e.target);
+      const row = e.target.closest(".selector-row");
+      if (row) {
+        const selectorKey = row.dataset.selectorKey;
+        if (selectorKey) {
+          this.toggleSelectorDetails(selectorKey);
+        }
       }
     });
   }
@@ -204,6 +200,11 @@ export class SelectorTimelineManager {
                   )
                   .join("")
           }
+        </td>
+        <td class="selector-action-cell">
+          <button class="selector-test-button" data-ai="${aiName}" data-selector-key="${key}">
+            テスト
+          </button>
         </td>
       </tr>
       <tr id="details-${key}" class="selector-details-row" style="display: none;">
@@ -459,10 +460,94 @@ export class SelectorTimelineManager {
   // ========================================
   // セレクタ検証とエラー更新
   // ========================================
-  async validateAllSelectors() {
-    const allAISelectors = this.getAllSelectorsFromAllAIs();
+  // ========================================
+  // AI URL定義とウィンドウ管理
+  // ========================================
+  AI_URLS = {
+    chatgpt: ["chatgpt.com", "chat.openai.com"],
+    claude: ["claude.ai"],
+    gemini: ["gemini.google.com", "bard.google.com"],
+  };
 
-    for (const item of allAISelectors) {
+  getCurrentAIFromURL() {
+    const hostname = window.location.hostname;
+
+    if (
+      hostname.includes("chatgpt.com") ||
+      hostname.includes("chat.openai.com")
+    ) {
+      return "chatgpt";
+    } else if (hostname.includes("claude.ai")) {
+      return "claude";
+    } else if (
+      hostname.includes("gemini.google.com") ||
+      hostname.includes("bard.google.com")
+    ) {
+      return "gemini";
+    }
+
+    return null; // AIページではない
+  }
+
+  // AIウィンドウを最前面に表示
+  async focusAIWindow(aiName) {
+    if (!chrome || !chrome.tabs) {
+      console.warn("Chrome Extension APIが利用できません");
+      return false;
+    }
+
+    try {
+      const urlPatterns = this.AI_URLS[aiName];
+      if (!urlPatterns) {
+        console.error(`未知のAI: ${aiName}`);
+        return false;
+      }
+
+      // すべてのタブを検索
+      const tabs = await chrome.tabs.query({});
+
+      // 該当するAIのタブを検索
+      const aiTab = tabs.find((tab) => {
+        return urlPatterns.some(
+          (pattern) => tab.url && tab.url.includes(pattern),
+        );
+      });
+
+      if (!aiTab) {
+        console.warn(`${aiName}のタブが見つかりません`);
+        return false;
+      }
+
+      // タブをアクティブにして最前面に表示
+      await chrome.tabs.update(aiTab.id, { active: true });
+      await chrome.windows.update(aiTab.windowId, { focused: true });
+
+      console.log(`✅ ${aiName}ウィンドウを最前面に表示しました`);
+      return true;
+    } catch (error) {
+      console.error(`AIウィンドウフォーカスエラー:`, error);
+      return false;
+    }
+  }
+
+  async validateAllSelectors() {
+    const currentAI = this.getCurrentAIFromURL();
+
+    // AIページではない場合は検証をスキップ
+    if (!currentAI) {
+      console.info("🔍 AI以外のページのため、セレクタ検証をスキップしました");
+      return;
+    }
+
+    console.info(`🔍 ${currentAI.toUpperCase()}ページでセレクタ検証を開始`);
+
+    const allAISelectors = this.getAllSelectorsFromAllAIs();
+    // 現在のAIのセレクタのみ検証
+    const currentAISelectors = allAISelectors.filter(
+      (item) => item.aiName === currentAI,
+    );
+
+    for (const item of currentAISelectors) {
       const { aiName, key, selector } = item;
       const validation = await this.validateSelector(selector.selectors);
 
@@ -473,6 +558,9 @@ export class SelectorTimelineManager {
         );
       } else {
         clearSelectorError(aiName, key);
+        console.log(
+          `✅ Selector validated: ${aiName}:${key} - ${validation.workingSelector}`,
+        );
       }
     }
 
@@ -490,25 +578,28 @@ export class SelectorTimelineManager {
     this.isInitialized = true;
     console.log("✅ SelectorTimelineManager initialized successfully");
 
-    // 初期化後にセレクタを検証
-    this.validateAllSelectors();
+    // セレクタ検証は実行時のみ行う（初期化時は行わない）
   }
 
   getCurrentAI() {
     return this.currentAI;
   }
+
+  // ========================================
+  // セレクタ詳細表示切り替え
+  // ========================================
+  toggleSelectorDetails(selectorKey) {
+    const detailsElement = document.getElementById(`details-${selectorKey}`);
+    if (detailsElement) {
+      const isVisible = detailsElement.style.display !== "none";
+      detailsElement.style.display = isVisible ? "none" : "table-row";
+    }
+  }
 }
 
 // ========================================
-// グローバル関数（HTML から呼び出し用）
+// グローバル関数は削除（CSP対応のため）
 // ========================================
-window.toggleSelectorDetails = function (selectorKey) {
-  const detailsElement = document.getElementById(`details-${selectorKey}`);
-  if (detailsElement) {
-    const isVisible = detailsElement.style.display !== "none";
-    detailsElement.style.display = isVisible ? "none" : "table-row";
-  }
-};
 
 // ========================================
 // エクスポート

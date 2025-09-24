@@ -610,15 +610,12 @@ const log = {
       targetButton.click();
       await wait(2000);
 
-      // 【Step 4-3-3-3】選択確認
+      // 【Step 4-3-3-3】選択確認 - 現在選択されているモデルをログ出力
       const displayElement = findElement(SELECTORS.modelDisplay);
       const displayText = getCleanText(displayElement);
 
-      if (!displayText.includes(modelName.replace("2.5 ", ""))) {
-        log.warn(`モデル選択確認: 期待値=${modelName}, 実際=${displayText}`);
-      }
-
-      log.info(`モデル「${displayText}」を選択しました`);
+      // モデル選択後の実際の表示をログ出力（一致チェックは行わない）
+      log.info(`📊 モデル選択後確認 - 現在表示中: "${displayText}"`);
       return { success: true, selected: displayText };
     } catch (error) {
       log.error("モデル選択エラー:", error);
@@ -672,13 +669,25 @@ const log = {
       featureButton.click();
       await wait(2000);
 
-      // 【Step 4-3-4-4】選択確認
-      const selectedButton = findElement(SELECTORS.selectedFeatures);
-      if (!selectedButton) {
-        log.warn(`機能「${featureName}」の選択状態を確認できません`);
-      }
+      // 【Step 4-3-4-4】選択確認 - 現在選択されている機能をログ出力
+      const selectedButtons = findElements(SELECTORS.selectedFeatures);
+      const selectedFeatureNames = [];
 
-      log.info(`機能「${featureName}」を選択しました`);
+      selectedButtons.forEach((button) => {
+        const featureText = getCleanText(button);
+        if (featureText) {
+          selectedFeatureNames.push(featureText);
+        }
+      });
+
+      // 機能選択後の実際の選択状態をログ出力（一致チェックは行わない）
+      if (selectedFeatureNames.length > 0) {
+        log.info(
+          `📊 機能選択後確認 - 現在選択中: [${selectedFeatureNames.join(", ")}]`,
+        );
+      } else {
+        log.info(`📊 機能選択後確認 - 選択された機能なし`);
+      }
       return { success: true, selected: featureName };
     } catch (error) {
       log.error("機能選択エラー:", error);
