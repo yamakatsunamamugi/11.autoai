@@ -343,6 +343,15 @@
           window.ChatGPTAutomation = {};
         }
 
+        // 既にラップ済みの場合はスキップ（無限ループ防止）
+        if (window.ChatGPTAutomation.__executeTaskWrapped) {
+          console.log(`⚠️ [ChatGPT] executeTask already wrapped, skipping`);
+          return;
+        }
+
+        // ラップ済みフラグを設定
+        window.ChatGPTAutomation.__executeTaskWrapped = true;
+
         // ChatGPT用のexecuteTask実装
         window.ChatGPTAutomation.executeTask = async function (taskData) {
           console.log(`🎯 [ChatGPT] executeTask called:`, taskData);
@@ -431,6 +440,15 @@
           window.ClaudeAutomation = {};
         }
 
+        // 既にラップ済みの場合はスキップ（無限ループ防止）
+        if (window.ClaudeAutomation.__executeTaskWrapped) {
+          console.log(`⚠️ [Claude] executeTask already wrapped, skipping`);
+          return;
+        }
+
+        // ラップ済みフラグを設定
+        window.ClaudeAutomation.__executeTaskWrapped = true;
+
         // Claude用のexecuteTask実装
         window.ClaudeAutomation.executeTask = async function (taskData) {
           console.log(`🎯 [Claude] executeTask called:`, taskData);
@@ -500,6 +518,15 @@
         if (!window.GeminiAutomation) {
           window.GeminiAutomation = {};
         }
+
+        // 既にラップ済みの場合はスキップ（無限ループ防止）
+        if (window.GeminiAutomation.__executeTaskWrapped) {
+          console.log(`⚠️ [Gemini] executeTask already wrapped, skipping`);
+          return;
+        }
+
+        // ラップ済みフラグを設定
+        window.GeminiAutomation.__executeTaskWrapped = true;
 
         // Gemini用のexecuteTask実装
         window.GeminiAutomation.executeTask = async function (taskData) {

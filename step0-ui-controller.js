@@ -1861,7 +1861,134 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 });
 
+// ========================================
+// セレクタ管理機能の統合
+// ========================================
+
+// セレクタ管理システムの初期化
+let selectorTimelineManager = null;
+
+document.addEventListener("DOMContentLoaded", async () => {
+  try {
+    // step8-selector-timeline-manager.js の読み込み完了を待機
+    if (typeof window.SelectorTimelineManager === "undefined") {
+      // 動的インポートでセレクタ管理システムを読み込み
+      const { SelectorTimelineManager } = await import(
+        "./step8-selector-timeline-manager.js"
+      );
+
+      // セレクタ管理システムを初期化
+      selectorTimelineManager = new SelectorTimelineManager();
+      selectorTimelineManager.init();
+
+      // グローバルアクセス用
+      window.selectorTimelineManager = selectorTimelineManager;
+
+      log.debug("🎯 セレクタ管理システム初期化完了");
+    }
+  } catch (error) {
+    log.error("❌ セレクタ管理システム初期化エラー:", error);
+  }
+});
+
+// セレクタ関連のイベントハンドラー
+document.addEventListener("click", (e) => {
+  // セレクタコピー機能
+  if (e.target.matches(".copy-selector-btn")) {
+    e.stopPropagation();
+    const selector = e.target.dataset.selector;
+    if (selector) {
+      window.copySelectorToClipboard(selector);
+    }
+  }
+});
+
+// セレクタテスト結果の表示補助関数
+window.showSelectorTestNotification = function (message, success = true) {
+  const notification = document.createElement("div");
+  notification.className = `selector-test-notification ${success ? "success" : "error"}`;
+  notification.textContent = message;
+  notification.style.cssText = `
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 12px 16px;
+    background: ${success ? "#28a745" : "#dc3545"};
+    color: white;
+    border-radius: 6px;
+    z-index: 10000;
+    font-size: 14px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    animation: slideInRight 0.3s ease-out;
+  `;
+
+  document.body.appendChild(notification);
+
+  // 3秒後に自動削除
+  setTimeout(() => {
+    if (notification.parentNode) {
+      notification.style.animation = "slideOutRight 0.3s ease-in";
+      setTimeout(() => notification.remove(), 300);
+    }
+  }, 3000);
+};
+
+// CSS アニメーション定義を追加
+if (!document.getElementById("selector-animations")) {
+  const style = document.createElement("style");
+  style.id = "selector-animations";
+  style.textContent = `
+    @keyframes slideInRight {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    @keyframes slideOutRight {
+      from { transform: translateX(0); opacity: 1; }
+      to { transform: translateX(100%); opacity: 0; }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+// ========================================
+// セレクタ管理機能の公開API
+// ========================================
+
+// セレクタ統計の更新
+window.updateSelectorUsage = function (
+  aiName,
+  selectorKey,
+  success,
+  responseTime,
+) {
+  if (selectorTimelineManager) {
+    selectorTimelineManager.updateStats(
+      aiName,
+      selectorKey,
+      success,
+      responseTime,
+    );
+  }
+};
+
+// 現在表示中のAIを取得
+window.getCurrentSelectorAI = function () {
+  return selectorTimelineManager
+    ? selectorTimelineManager.getCurrentAI()
+    : "chatgpt";
+};
+
+// セレクタ管理システムの再初期化
+window.reinitializeSelectorManager = function () {
+  if (selectorTimelineManager) {
+    selectorTimelineManager.updateDisplay();
+    log.debug("🔄 セレクタ管理システム再初期化完了");
+  }
+};
+
 // スクリプト読み込み完了をトラッキング
 window.scriptLoadTracker.addScript("step0-ui-controller.js");
 
-log.debug("🎉 [step0-ui-controller] 全機能読み込み完了");
+log.debug(
+  "🎉 [step0-ui-controller] 全機能読み込み完了（セレクタ管理システム含む）",
+);
