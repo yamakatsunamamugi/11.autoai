@@ -353,7 +353,7 @@ class DynamicTaskSearch {
 
     // プロンプト列を確認
     const promptColumns = columns.prompts || [];
-    const answerColumns = this.getAnswerColumns(columns.answer);
+    const answerColumns = this.getAnswerColumns(columns.answer, taskGroup);
 
     log.debug("検索範囲:", {
       プロンプト列: promptColumns,
@@ -429,22 +429,34 @@ class DynamicTaskSearch {
 
   /**
    * 回答列の情報を取得
+   * step4-tasklist.jsのgetAnswerCell関数と同じロジックを使用
    */
-  getAnswerColumns(answerConfig) {
+  getAnswerColumns(answerConfig, taskGroup) {
     const columns = [];
 
     if (typeof answerConfig === "object" && answerConfig !== null) {
-      // オブジェクト形式（3種類AIパターンなど）
-      if (answerConfig.chatgpt) {
-        columns.push({ column: answerConfig.chatgpt, aiType: "chatgpt" });
+      // step4-tasklist.jsと同じロジックを使用
+      const aiTypes = ["chatgpt", "claude", "gemini"];
+
+      for (const aiType of aiTypes) {
+        let column;
+
+        if (taskGroup && taskGroup.groupType === "3種類AI") {
+          // 3種類AIの場合：各AI専用の列を使用
+          column = answerConfig[aiType];
+        } else {
+          // 通常の場合：primaryカラムを使用
+          column = answerConfig.primary;
+        }
+
+        // 有効な列が見つかった場合のみ追加
+        if (column && column !== undefined) {
+          columns.push({ column: column, aiType: aiType });
+        }
       }
-      if (answerConfig.claude) {
-        columns.push({ column: answerConfig.claude, aiType: "claude" });
-      }
-      if (answerConfig.gemini) {
-        columns.push({ column: answerConfig.gemini, aiType: "gemini" });
-      }
-      if (answerConfig.primary) {
+
+      // primaryが存在する場合の従来互換性
+      if (answerConfig.primary && !taskGroup?.groupType) {
         columns.push({ column: answerConfig.primary, aiType: "claude" });
       }
     } else if (typeof answerConfig === "string") {
@@ -700,7 +712,7 @@ class DynamicTaskSearch {
       }
 
       const promptColumns = columns.prompts || [];
-      const answerColumns = this.getAnswerColumns(columns.answer);
+      const answerColumns = this.getAnswerColumns(columns.answer, currentGroup);
 
       let totalTasks = 0;
       let completedTasks = 0;
