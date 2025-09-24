@@ -63,6 +63,16 @@ export class SelectorTimelineManager {
 
     // セレクタ行のクリックイベント（CSP対応）
     document.addEventListener("click", (e) => {
+      // テストボタンのクリック処理
+      if (e.target.matches(".selector-test-button")) {
+        e.stopPropagation(); // 行クリックイベントを止める
+        const aiName = e.target.dataset.ai;
+        const selectorKey = e.target.dataset.selectorKey;
+        this.testSelectorWithFocus(aiName, selectorKey);
+        return;
+      }
+
+      // セレクタ行のクリック処理
       const row = e.target.closest(".selector-row");
       if (row) {
         const selectorKey = row.dataset.selectorKey;
@@ -156,6 +166,7 @@ export class SelectorTimelineManager {
               <th>AI</th>
               <th>セレクタ名</th>
               <th>CSSセレクタ</th>
+              <th>アクション</th>
             </tr>
           </thead>
           <tbody>
@@ -208,7 +219,7 @@ export class SelectorTimelineManager {
         </td>
       </tr>
       <tr id="details-${key}" class="selector-details-row" style="display: none;">
-        <td colspan="3" class="selector-details-cell">
+        <td colspan="4" class="selector-details-cell">
           <div><strong>用途:</strong> ${selector.purpose}</div>
           ${
             hasError
@@ -583,6 +594,160 @@ export class SelectorTimelineManager {
 
   getCurrentAI() {
     return this.currentAI;
+  }
+
+  // ========================================
+  // セレクタテスト実行（ウィンドウフォーカス付き）
+  // ========================================
+  async testSelectorWithFocus(aiName, selectorKey) {
+    const button = document.querySelector(
+      `[data-selector-key="${selectorKey}"].selector-test-button`,
+    );
+    const originalText = button?.textContent || "テスト";
+
+    try {
+      // ボタンの状態を「テスト中」に変更
+      if (button) {
+        button.textContent = "テスト中...";
+        button.disabled = true;
+      }
+
+      console.log(`🧪 セレクタテスト開始: ${aiName}:${selectorKey}`);
+
+      // 1. AIウィンドウを最前面に表示
+      const focusSuccess = await this.focusAIWindow(aiName);
+      if (!focusSuccess) {
+        throw new Error(
+          `${aiName}のタブが見つからないか、フォーカスに失敗しました`,
+        );
+      }
+
+      // 2. 少し待機（ウィンドウフォーカスの安定化）
+      await this.sleep(500);
+
+      // 3. セレクタを取得
+      const allAISelectors = this.getAllSelectorsFromAllAIs();
+      const selectorData = allAISelectors.find(
+        (item) => item.aiName === aiName && item.key === selectorKey,
+      );
+
+      if (!selectorData) {
+        throw new Error("セレクタデータが見つかりません");
+      }
+
+      // 4. Chrome Extension経由でセレクタテストを実行
+      const testResult = await this.executeRemoteSelectorTest(
+        aiName,
+        selectorData,
+      );
+
+      // 5. 結果を表示
+      this.showTestResult(selectorData.selector.name, testResult);
+
+      // 6. 統計を更新
+      if (testResult.success) {
+        clearSelectorError(aiName, selectorKey);
+      } else {
+        addSelectorError(aiName, selectorKey, testResult.error);
+      }
+
+      // 7. 表示を更新
+      this.updateDisplay();
+    } catch (error) {
+      console.error(`セレクタテストエラー:`, error);
+      this.showTestResult(`${aiName}:${selectorKey}`, {
+        success: false,
+        error: error.message,
+        selector: null,
+      });
+    } finally {
+      // ボタンの状態を元に戻す
+      if (button) {
+        button.textContent = originalText;
+        button.disabled = false;
+      }
+    }
+  }
+
+  // Chrome Extension経由でセレクタテストを実行
+  async executeRemoteSelectorTest(aiName, selectorData) {
+    try {
+      // Chrome Extension APIを使用してAIページでセレクタテストを実行
+      if (!chrome || !chrome.tabs) {
+        throw new Error("Chrome Extension APIが利用できません");
+      }
+
+      const result = await chrome.tabs.sendMessage(
+        await this.getAITabId(aiName),
+        {
+          action: "testSelector",
+          selectors: selectorData.selector.selectors,
+          selectorKey: selectorData.key,
+          aiName: aiName,
+        },
+      );
+
+      return result;
+    } catch (error) {
+      return {
+        success: false,
+        error: `リモートテスト失敗: ${error.message}`,
+        selector: null,
+      };
+    }
+  }
+
+  // AIタブのIDを取得
+  async getAITabId(aiName) {
+    const tabs = await chrome.tabs.query({});
+    const urlPatterns = this.AI_URLS[aiName];
+
+    const aiTab = tabs.find((tab) => {
+      return urlPatterns.some(
+        (pattern) => tab.url && tab.url.includes(pattern),
+      );
+    });
+
+    if (!aiTab) {
+      throw new Error(`${aiName}のタブが見つかりません`);
+    }
+
+    return aiTab.id;
+  }
+
+  // テスト結果表示
+  showTestResult(name, result) {
+    const resultDiv = document.createElement("div");
+    resultDiv.className = `selector-test-result ${result.success ? "success" : "failure"}`;
+    resultDiv.innerHTML = `
+      <div class="test-result-header">
+        <strong>${name}</strong> のテスト結果
+        <button onclick="this.parentElement.parentElement.remove()">×</button>
+      </div>
+      <div class="test-result-content">
+        <div><strong>結果:</strong> ${result.success ? "✅ 成功" : "❌ 失敗"}</div>
+        ${result.selector ? `<div><strong>使用セレクタ:</strong> <code>${this.escapeHtml(result.selector)}</code></div>` : ""}
+        ${result.error ? `<div><strong>エラー:</strong> ${result.error}</div>` : ""}
+      </div>
+    `;
+
+    // 結果を画面上部に表示
+    const container = document.getElementById("selector-timeline-container");
+    if (container) {
+      container.insertBefore(resultDiv, container.firstChild);
+
+      // 5秒後に自動削除
+      setTimeout(() => {
+        if (resultDiv.parentNode) {
+          resultDiv.remove();
+        }
+      }, 5000);
+    }
+  }
+
+  // Sleep関数
+  sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   // ========================================
