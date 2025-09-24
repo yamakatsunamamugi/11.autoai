@@ -1134,14 +1134,14 @@ function updateSelectOptions(selectId, options) {
         const funcName = opt.name || opt.label || opt.value || opt.toString();
         option.value = funcName;
 
-        // トグル状態を表示に追加
+        // 機能名のみを表示（トグル状態のチェックマークは表示しない）
+        option.textContent = funcName;
+
         if (opt.isToggled !== undefined) {
-          option.textContent = `${funcName} ${opt.isToggled ? "✓" : ""}`;
           log.debug(
             `  - オプション${index}: ${funcName} (オブジェクト, toggled:${opt.isToggled})`,
           );
         } else {
-          option.textContent = funcName;
           log.debug(`  - オプション${index}: ${funcName} (オブジェクト)`);
         }
       }
@@ -1154,9 +1154,26 @@ function updateSelectOptions(selectId, options) {
     log.debug(`⚠️ ${selectId}: オプションなし`);
   }
 
-  // 前の値を復元（まだ存在する場合）
-  if (currentValue) {
+  // デフォルト選択の処理
+  // 1. 前の値が有効な場合は復元
+  if (
+    currentValue &&
+    Array.from(selectEl.options).some((opt) => opt.value === currentValue)
+  ) {
     selectEl.value = currentValue;
+    log.debug(`📝 ${selectId}: 前の選択を復元: ${currentValue}`);
+  }
+  // 2. モデルの場合は最初のモデルを自動選択
+  else if (selectId.includes("Model") && selectEl.options.length > 1) {
+    selectEl.value = selectEl.options[1].value; // 最初の実際のオプションを選択
+    log.debug(
+      `📝 ${selectId}: デフォルトで最初のモデルを選択: ${selectEl.value}`,
+    );
+  }
+  // 3. 機能の場合は空のままにする（ユーザーが選択）
+  else if (selectId.includes("Feature")) {
+    selectEl.value = ""; // 機能は明示的に空を選択
+    log.debug(`📝 ${selectId}: 機能は未選択状態を維持`);
   }
 }
 
@@ -1373,12 +1390,10 @@ if (
         updateAITable(message.aiType, message.data);
         saveAIData(message.aiType, message.data);
 
-        console.log("🔍 [UI Step 6] ドロップダウン更新処理開始");
+        // 表更新時にプルダウンは更新しない（選択が消える問題を回避）
+        // updateTestConfigDropdowns();
 
-        // AI統合テスト設定のドロップダウンも更新
-        updateTestConfigDropdowns();
-
-        console.log("✅ [UI Step 7] 全処理完了");
+        console.log("✅ [UI Step 5] 表更新完了");
 
         sendResponse({ success: true, updated: true });
       } else {
