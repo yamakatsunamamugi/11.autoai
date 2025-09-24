@@ -115,6 +115,7 @@ async function recordLogToSpreadsheet(request) {
     ]);
 
     if (!result.spreadsheetId) {
+      // スプレッドシートIDが未設定の場合は静かにスキップ
       throw new Error("スプレッドシートIDが設定されていません");
     }
 
@@ -663,7 +664,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         await recordLogToSpreadsheet(request);
         console.log("📊 スプレッドシートログ記録成功");
       } catch (error) {
-        console.error("❌ スプレッドシートログ記録エラー:", error);
+        // スプレッドシートIDが未設定の場合は警告ではなくデバッグログのみ
+        if (error.message === "スプレッドシートIDが設定されていません") {
+          console.debug("📝 スプレッドシートログ記録スキップ（ID未設定）");
+        } else {
+          console.error("❌ スプレッドシートログ記録エラー:", error);
+        }
       }
     })();
 

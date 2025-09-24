@@ -897,7 +897,24 @@
       60000, 300000, 900000, 1800000, 3600000,
     ]; // 1分、5分、15分、30分、60分
 
+    // デバウンス用の変数
+    let handleOverloadedTimeout = null;
+    let lastOverloadedCallTime = 0;
+
     function handleOverloadedError() {
+      // デバウンス: 5秒以内の重複呼び出しを防ぐ
+      const now = Date.now();
+      if (now - lastOverloadedCallTime < 5000) {
+        log.debug("🔄 [OVERLOADED-HANDLER] デバウンス中 - スキップ");
+        return;
+      }
+      lastOverloadedCallTime = now;
+
+      log.warn("⚠️ [OVERLOADED-HANDLER] Overloadedエラー処理開始", {
+        retryCount: overloadedRetryCount + 1,
+        maxRetries: MAX_OVERLOADED_RETRIES,
+        timestamp: new Date().toISOString(),
+      });
 
       if (overloadedRetryCount >= MAX_OVERLOADED_RETRIES) {
         console.error(
@@ -912,7 +929,6 @@
 
       // 即座にウィンドウを閉じる
       setTimeout(() => {
-
         // background scriptにウィンドウリセットを要求
         if (chrome.runtime && chrome.runtime.sendMessage) {
           chrome.runtime
@@ -937,7 +953,6 @@
 
       // 指定時間後にリトライ
       setTimeout(() => {
-
         // リトライ成功時はカウンターリセット
         overloadedRetryCount = Math.max(0, overloadedRetryCount - 1);
 
@@ -971,6 +986,7 @@
 
         if (isVSCodeError) {
           // VS Codeエラーは抑制（コンソールに表示しない）
+          log.debug(
             "🔇 [VS-CODE-ERROR-SUPPRESSED] VS Code拡張機能のエラーを抑制:",
             {
               message: errorMessage,
@@ -988,10 +1004,20 @@
           return;
         }
 
-        // 🔍 Claude Overloadedエラー検出
+        // 🔍 Claude Overloadedエラー検出 - 強化版
+        const errorToString = e.error?.toString() || "";
+        const errorStack = e.error?.stack || "";
+
         const isOverloadedError =
           errorMessage.includes("Overloaded") ||
           errorMessage.includes("overloaded") ||
+          errorToString.includes("Overloaded") ||
+          errorStack.includes("Overloaded") ||
+          // Claude.ai特有の形式
+          errorMessage === "i: Overloaded" ||
+          errorToString === "i: Overloaded" ||
+          errorMessage.includes("i: Overloaded") ||
+          errorToString.includes("i: Overloaded") ||
           (e.reason && String(e.reason).includes("Overloaded"));
 
         if (isOverloadedError) {
@@ -1063,6 +1089,7 @@
 
         if (isVSCodeError) {
           // VS Codeエラーは抑制（コンソールに表示しない）
+          log.debug(
             "🔇 [VS-CODE-ERROR-SUPPRESSED] VS Code拡張機能のエラーを抑制:",
             {
               message: errorMessage,
@@ -1078,11 +1105,32 @@
           return;
         }
 
-        // 🔍 Claude Overloadedエラー検出 (unhandledrejection用)
+        // 🔍 Claude Overloadedエラー検出 (unhandledrejection用) - 強化版
+        // 複数の方法でエラーを検出
+        const errorStr = JSON.stringify(errorReason);
+        const errorStack = errorReason?.stack || "";
+        const errorToString = errorReason?.toString() || "";
+
+        // デバッグ用ログ
+        log.debug("🔍 [OVERLOADED-DETECTION] エラー詳細:", {
+          errorMessage,
+          errorToString,
+          errorStr: errorStr.substring(0, 200),
+          errorStack: errorStack.substring(0, 200),
+          errorName,
+        });
+
         const isOverloadedError =
           errorMessage.includes("Overloaded") ||
           errorMessage.includes("overloaded") ||
-          (errorReason && String(errorReason).includes("Overloaded"));
+          errorStr.includes("Overloaded") ||
+          errorStack.includes("Overloaded") ||
+          errorToString.includes("Overloaded") ||
+          // Claude.ai特有の形式に対応
+          errorMessage === "i: Overloaded" ||
+          errorToString === "i: Overloaded" ||
+          errorMessage.includes("i: Overloaded") ||
+          errorToString.includes("i: Overloaded");
 
         if (isOverloadedError) {
           log.error("🚨 [CLAUDE-OVERLOADED-ERROR-UNHANDLED]", {
@@ -1187,6 +1235,124 @@
     }
 
     // ========================================
+    // 🚨 追加のOverloadedエラー検出機構
+    // ========================================
+    if (shouldInitialize) {
+      // 1. DOM監視によるエラー検出
+      const errorObserver = new MutationObserver((mutations) => {
+        // Claude.aiのエラー表示要素を検出
+        const errorElements = document.querySelectorAll(
+          '[role="alert"], .error-message, [data-state="error"], .text-red-500, .text-error',
+        );
+
+        errorElements.forEach((elem) => {
+          const text = elem.textContent || "";
+          if (
+            text.includes("Overloaded") ||
+            text.includes("overloaded") ||
+            text === "i: Overloaded"
+          ) {
+            log.warn("🔍 [DOM-MONITOR] Overloadedエラーを検出:", text);
+            handleOverloadedError();
+          }
+        });
+
+        // エラーダイアログの検出
+        mutations.forEach((mutation) => {
+          if (mutation.addedNodes.length > 0) {
+            mutation.addedNodes.forEach((node) => {
+              if (node.nodeType === Node.ELEMENT_NODE) {
+                const elem = node;
+                const text = elem.textContent || "";
+                if (
+                  text.includes("Overloaded") ||
+                  text.includes("error occurred")
+                ) {
+                  log.warn(
+                    "🔍 [DOM-MUTATION] エラー要素を検出:",
+                    text.substring(0, 100),
+                  );
+                  if (text.includes("Overloaded")) {
+                    handleOverloadedError();
+                  }
+                }
+              }
+            });
+          }
+        });
+      });
+
+      // DOMの監視を開始
+      errorObserver.observe(document.body, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["data-state", "role"],
+      });
+
+      // 2. console.errorのインターセプト
+      const originalConsoleError = console.error;
+      console.error = function (...args) {
+        const errorStr = args.map((arg) => String(arg)).join(" ");
+        if (
+          errorStr.includes("Overloaded") ||
+          errorStr.includes("i: Overloaded")
+        ) {
+          log.warn(
+            "🔍 [CONSOLE-INTERCEPT] Overloadedエラーを検出:",
+            errorStr.substring(0, 200),
+          );
+          handleOverloadedError();
+        }
+        originalConsoleError.apply(console, args);
+      };
+
+      // 3. fetchインターセプト（529ステータスの検出）
+      const originalFetch = window.fetch;
+      window.fetch = async function (...args) {
+        try {
+          const response = await originalFetch.apply(this, args);
+
+          // Claude APIのレスポンスをチェック
+          if (
+            args[0] &&
+            typeof args[0] === "string" &&
+            args[0].includes("claude.ai")
+          ) {
+            if (
+              !response.ok &&
+              (response.status === 529 || response.status === 503)
+            ) {
+              log.error("🔍 [FETCH-INTERCEPT] サーバー過負荷を検出:", {
+                status: response.status,
+                statusText: response.statusText,
+                url: args[0],
+              });
+              handleOverloadedError();
+            }
+          }
+
+          return response;
+        } catch (error) {
+          if (
+            error.message &&
+            (error.message.includes("Overloaded") ||
+              error.message.includes("i: Overloaded"))
+          ) {
+            log.error(
+              "🔍 [FETCH-ERROR] Overloadedエラーを検出:",
+              error.message,
+            );
+            handleOverloadedError();
+          }
+          throw error;
+        }
+      };
+
+      log.info("✅ 追加のOverloadedエラー検出機構を設定しました");
+    }
+
+    // ========================================
     // 🔍 直接実行方式: メッセージリスナーを早期に登録
     // ========================================
     // Claude.aiページでのみメッセージリスナーを登録
@@ -1206,10 +1372,8 @@
       listenerCombinedCondition && listenerCondition3 && listenerCondition6;
 
     if (listenerFinalCondition) {
-
       // ping/pong応答を最優先で処理するリスナーを即座に登録
       const registerMessageListener = () => {
-
         // 🔍 [CONTENT-SCRIPT-INIT] Content Script初期化診断
 
         chrome.runtime.onMessage.addListener(
@@ -1222,7 +1386,6 @@
               request.type === "CONTENT_SCRIPT_CHECK" ||
               request.type === "PING"
             ) {
-
               // 🔍 [MESSAGE-PORT-SAFE] Ping応答も安全な送信
               try {
                 sendResponse({
@@ -1356,7 +1519,6 @@
                           messagePortSafe: true,
                           timestamp: new Date().toISOString(),
                         });
-
                       } catch (sendError) {
                         console.error(
                           "🚨 [MESSAGE-PORT-ERROR] sendResponse でエラー:",
@@ -1447,7 +1609,6 @@
 
             // DISCOVER_FEATURES メッセージの処理
             if (request.type === "DISCOVER_FEATURES") {
-
               (async () => {
                 try {
                   const result = await discoverClaudeModelsAndFeatures();
@@ -1941,8 +2102,12 @@
       return reactKey ? element[reactKey] : null;
     };
 
-    const triggerReactEvent = async (element, eventType = "click") => {
+    // ログイベント関数を定義
+    const logEvent = (message, ...args) => {
+      log.debug(message, ...args);
+    };
 
+    const triggerReactEvent = async (element, eventType = "click") => {
       try {
         const reactProps = getReactProps(element);
         if (reactProps) {
@@ -4184,7 +4349,6 @@
           taskData.cell ||
           "不明";
         if (modelName && modelName !== "" && modelName !== "設定なし") {
-
           log.debug(
             "%c【Claude-ステップ3-1】モデル選択開始",
             "color: #FF9800; font-weight: bold;",
@@ -4297,8 +4461,7 @@
                 }
               } else {
               }
-            } catch (detectionError) {
-            }
+            } catch (detectionError) {}
           }
 
           // モデル名がClaudeを含むか確認
@@ -4822,7 +4985,6 @@
 
         // クリック後の状態確認
         setTimeout(() => {
-
           // 送信処理が開始されたかの間接的な確認
           const loadingElements = document.querySelectorAll(
             '[data-testid*="loading"], [aria-busy="true"], .loading',
@@ -5149,7 +5311,6 @@
               } else {
                 // 停止ボタンが見つかった場合はカウントをリセット
                 if (confirmCount > 0) {
-
                   log.debug(
                     `🔄 [STOP-BUTTON-CHECK] 停止ボタン再検出 - confirmCountリセット (前回値: ${confirmCount})`,
                   );
@@ -5181,7 +5342,6 @@
 
               // タイムアウトチェック
               if (disappearWaitCount >= maxDisappearWait) {
-
                 log.warn(
                   `⚠️ [STOP-BUTTON-MONITOR] タイムアウト - 最大待機時間${maxDisappearWait}秒に到達`,
                 );
@@ -5983,7 +6143,6 @@
     // claude.aiでのみ公開
 
     if (shouldExportFunctions) {
-
       // 🔍 [DIAGNOSTIC] 初期化診断ログ開始
       log.info("🔍 [DIAGNOSTIC] Claude Automation 初期化診断開始");
       log.info(`🔍 [DIAGNOSTIC] 実行環境: ${window.location.href}`);
@@ -6014,8 +6173,7 @@
 
         // 🔧 [ENHANCED-TEST] 関数の実際の呼び出し可能性をテスト
         try {
-        } catch (testError) {
-        }
+        } catch (testError) {}
       } else {
         log.error("❌ executeTask関数が未定義");
       }
@@ -6178,7 +6336,6 @@
 
       // Claudeモデル情報検出関数（コンソールテスト済み）
       async function detectClaudeModelsFromOpenMenu() {
-
         // 1. モデルメニューボタンを探す
         let modelMenuButton = null;
 
@@ -6247,7 +6404,6 @@
           document.querySelector("[data-radix-popper-content-wrapper]");
 
         if (!menu) {
-
           // PointerEventを使用（テストコードと同じ方法）
           modelMenuButton.dispatchEvent(
             new PointerEvent("pointerdown", {
@@ -6279,7 +6435,6 @@
           if (!menu) {
             return [];
           }
-
         } else {
         }
 
@@ -6290,27 +6445,23 @@
 
       // メニューからモデル情報を抽出する関数
       function extractModelsFromMenu(menu) {
-
         const models = [];
         const menuItems = menu.querySelectorAll('div[role="menuitem"]');
 
         if (menuItems.length === 0) {
-
           // 代替セレクタを試す
           const altItems = menu.querySelectorAll(
             'button, [role="option"], .menu-item',
           );
 
           if (altItems.length > 0) {
-            altItems.forEach((item, i) => {
-            });
+            altItems.forEach((item, i) => {});
           }
 
           return [];
         }
 
         menuItems.forEach((item, index) => {
-
           // モデル名を取得（複数のセレクタを試す）
           const selectors = [
             ".flex-1.text-sm div", // メインの場所
@@ -6388,7 +6539,6 @@
             if (model.description) {
             }
           });
-
         } else {
         }
 
@@ -6402,7 +6552,6 @@
 
       // Claude機能メニュー検出関数（修正版：機能メニューを開いてから検出）
       async function detectClaudeFunctionsFromOpenMenu() {
-
         // まず、既に開いている機能メニューをチェック（ユーザーテストコードパターン）
         const existingMenuToggleItems = document.querySelectorAll(
           'button:has(input[role="switch"])',
@@ -6502,11 +6651,9 @@
 
       // ユーザーテストコードで成功したパターンによる機能抽出（既存メニューから）
       function extractFunctionsFromExistingMenu(menuToggleItems) {
-
         const functions = [];
 
         menuToggleItems.forEach((item, index) => {
-
           // p.font-base要素を探す（ユーザーテストコードと同じパターン）
           const label = item.querySelector("p.font-base");
 
@@ -6551,8 +6698,7 @@
         }
 
         if (functions.length > 0) {
-          functions.forEach((func, i) => {
-          });
+          functions.forEach((func, i) => {});
         }
 
         return functions;
@@ -6716,7 +6862,6 @@
    * DISCOVER_FEATURESメッセージハンドラーから呼び出される
    */
   async function discoverClaudeModelsAndFeatures() {
-
     try {
       // Claudeで利用可能なモデルを検出
       const models = await detectClaudeModels();
@@ -6742,7 +6887,6 @@
    * Claudeで利用可能なモデルを検出
    */
   async function detectClaudeModels() {
-
     try {
       // 実際のUIからモデルを検出する関数を使用
       if (typeof detectClaudeModelsFromOpenMenu === "function") {
@@ -6774,7 +6918,6 @@
    * Claudeで利用可能な機能を検出（Deep Research含む）
    */
   async function detectClaudeFunctions() {
-
     try {
       // 実際のUIから機能を検出する関数を使用
       if (typeof detectClaudeFunctionsFromOpenMenu === "function") {

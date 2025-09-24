@@ -839,6 +839,26 @@ async function findSpecialRows() {
         // globalStateに保存
         window.globalState.spreadsheetId = spreadsheetId;
         window.globalState.gid = gid;
+
+        // Chrome storage.localにも保存（background.jsのログ記録機能用）
+        chrome.storage.local.set(
+          {
+            spreadsheetId: spreadsheetId,
+            gid: gid,
+          },
+          () => {
+            if (chrome.runtime.lastError) {
+              log.warn(
+                "[step1-setup.js] Chrome storage設定エラー:",
+                chrome.runtime.lastError,
+              );
+            } else {
+              log.debug(
+                "[step1-setup.js] Chrome storageにスプレッドシートID保存完了",
+              );
+            }
+          },
+        );
       }
 
       log.debug("[step1-setup.js] [Step 1-4] ✅ globalStateから取得:");
