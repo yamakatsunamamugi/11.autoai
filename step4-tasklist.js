@@ -561,6 +561,10 @@ async function findNextAvailableTask() {
             column: nextTask.column,
           });
           return nextTask;
+        } else {
+          log.debug(
+            "📭 [次タスク検索] 利用可能タスクなし - グループ完了の可能性",
+          );
         }
       } catch (error) {
         log.warn("⚠️ [次タスク検索] DynamicTaskSearchエラー:", error);
@@ -2903,6 +2907,14 @@ async function generateTaskList(
                   ]
                 : "",
             logCell: `${taskGroup.columns.log}${row}`,
+            // 🔧 データ一貫性バリデーション
+            _validateLogCell: function () {
+              if (!this.logCell) {
+                console.error("❌ [VALIDATION] logCellが未定義です", this);
+                return false;
+              }
+              return true;
+            },
             promptCells: promptColumns.map((col) => `${col}${row}`),
             answerCell: answerCell,
             tabId: windowInfo?.tabId, // 🆕 タブID追加
@@ -6868,22 +6880,8 @@ async function executeStep4(taskList) {
             timestamp: new Date().toISOString(),
           });
 
-          // 互換性のため複数の形式をサポート
-          // Content Scriptに送信するためのタスクデータを最小化
-          const optimizedTask = {
-            id: task.id,
-            taskId: task.taskId,
-            prompt: task.prompt,
-            aiType: task.aiType,
-            row: task.row,
-            column: task.column,
-            model: task.model,
-            function: task.function, // スプレッドシートの機能情報を追加
-            logCell: task.logCell, // ログセル位置を追加
-            cellInfo: task.cellInfo, // cellInfo も追加（互換性のため）
-            // 大きなデータは除去（Content Scriptでは不要）
-            // spreadsheetData, extendedData等は送信しない
-          };
+          // 🔧 [SIMPLIFIED] 元のtaskオブジェクトをそのまま使用（データ一貫性のため）
+          // 不要な変換を削除し、Single Source of Truthを維持
 
           // 【仮説検証】プロンプト送信内容の詳細ログ
           console.warn(
@@ -6903,7 +6901,6 @@ async function executeStep4(taskList) {
               model: task.model,
               logCell: task.logCell,
               originalTaskKeys: Object.keys(task),
-              optimizedTaskKeys: Object.keys(optimizedTask),
               automationName: automationName,
               timestamp: new Date().toISOString(),
             },
@@ -6924,8 +6921,8 @@ async function executeStep4(taskList) {
             action: "executeTask",
             type: getMessageType(automationName), // AI種別に応じて動的に設定
             automationName: automationName,
-            task: optimizedTask,
-            taskData: optimizedTask, // 両方の形式に対応
+            task: task, // 🔧 [SIMPLIFIED] 元のtaskオブジェクトを直接使用
+            taskData: task, // 🔧 [SIMPLIFIED] 元のtaskオブジェクトを直接使用（両方の形式に対応）
           };
 
           ExecuteLogger.info(`📡 [DEBUG-sendMessage] メッセージ詳細:`, {

@@ -7,6 +7,35 @@
     }
     window.__CLAUDE_AUTOMATION_LOADED__ = true;
 
+    // 🚨 【STEP 1: 最優先検証】Content Script実行確認
+    console.error("🚨 CONTENT SCRIPT LOADED - 4-2-claude-automation.js");
+    console.error("🚨 実行時刻:", new Date().toLocaleString());
+    console.error("🚨 現在URL:", window.location.href);
+
+    // 🚨 【環境情報・競合チェック】
+    console.error("🚨 環境情報:", {
+      userAgent: navigator.userAgent,
+      chromeExtension: typeof chrome !== "undefined",
+      chromeRuntime: typeof chrome?.runtime !== "undefined",
+      documentReady: document.readyState,
+      existingContentScripts: {
+        claudeLoaded: !!window.__CLAUDE_AUTOMATION_LOADED__,
+        claudeScriptLoaded: !!window.CLAUDE_SCRIPT_LOADED,
+        otherScriptMarkers: Object.keys(window).filter((key) =>
+          key.includes("SCRIPT_LOADED"),
+        ),
+      },
+    });
+
+    // 可視的確認用
+    const originalTitle = document.title;
+    document.title = `DEBUG: Claude Content Script Loaded - ${new Date().toLocaleTimeString()}`;
+
+    // 3秒後に元のタイトルに戻す（ユーザー体験を損なわないため）
+    setTimeout(() => {
+      document.title = originalTitle;
+    }, 3000);
+
     // 初期化マーカー設定（ChatGPT/Geminiと同様）
     window.CLAUDE_SCRIPT_LOADED = true;
     window.CLAUDE_SCRIPT_INIT_TIME = Date.now();
@@ -1250,10 +1279,33 @@
     if (listenerFinalCondition) {
       // ping/pong応答を最優先で処理するリスナーを即座に登録
       const registerMessageListener = () => {
+        // 🚨 【STEP 2: メッセージリスナー登録確認】
+        console.error("🚨 MESSAGE LISTENER REGISTERING...");
+
         // 🔍 [CONTENT-SCRIPT-INIT] Content Script初期化診断
 
         chrome.runtime.onMessage.addListener(
           (request, sender, sendResponse) => {
+            // 🔍 [DEBUG-LOGCELL] Content Script メッセージ受信時の詳細確認
+            if (
+              request.type === "CLAUDE_EXECUTE_TASK" ||
+              request.action === "executeTask"
+            ) {
+              console.error(
+                `🔍 [DEBUG-LOGCELL] Content Script メッセージ受信:`,
+                {
+                  requestType: request.type,
+                  requestAction: request.action,
+                  requestExists: !!request,
+                  requestKeys: request ? Object.keys(request) : [],
+                  requestTask: request.task || request.taskData,
+                  requestTaskLogCell: (request.task || request.taskData)
+                    ?.logCell,
+                  fullRequest: request,
+                },
+              );
+            }
+
             // 🔍 [MESSAGE-RECEIVED] メッセージ受信診断
 
             // ping/pongメッセージへの即座応答（最優先）
@@ -1339,6 +1391,21 @@
                     // executeTask関数が利用可能
                     const taskToExecute =
                       request.task || request.taskData || request;
+
+                    // 🔍 [DEBUG-LOGCELL] taskToExecute作成時のlogCell検証
+                    console.error(`🔍 [DEBUG-LOGCELL] taskToExecute作成直後:`, {
+                      requestTaskExists: !!request.task,
+                      requestTaskDataExists: !!request.taskData,
+                      requestTaskLogCell: request.task?.logCell,
+                      requestTaskDataLogCell: request.taskData?.logCell,
+                      taskToExecuteLogCell: taskToExecute?.logCell,
+                      taskToExecuteKeys: taskToExecute
+                        ? Object.keys(taskToExecute)
+                        : [],
+                      taskToExecuteType: typeof taskToExecute,
+                      timestamp: new Date().toISOString(),
+                    });
+
                     // executeTask呼び出し
 
                     try {
@@ -3957,11 +4024,38 @@
     // ========================================
 
     async function executeTask(taskData) {
-      // タスクIDを生成または取得
-      const taskId =
-        taskData.taskId ||
-        taskData.id ||
-        `task_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+      // 🚨 【STEP 3: executeTask関数実行確認】
+      console.error("🚨 EXECUTE TASK FUNCTION CALLED");
+
+      // 🔍 [DEBUG-LOGCELL] executeTask関数受信時のtaskData確認
+      console.error(`🔍 [DEBUG-LOGCELL] executeTask受信時のtaskData:`, {
+        taskDataExists: !!taskData,
+        taskDataType: typeof taskData,
+        taskDataKeys: taskData ? Object.keys(taskData) : [],
+        taskDataLogCell: taskData?.logCell,
+        taskDataLogCellType: typeof taskData?.logCell,
+        rawTaskData: taskData,
+      });
+
+      // 🔧 [FIX-LOGCELL] logCellが欠如している場合の復旧ロジック
+      if (!taskData?.logCell && taskData?.row && taskData?.cellInfo) {
+        // ログセルを推測して復旧
+        const inferredLogColumn = "S"; // デフォルトログ列
+        const inferredLogCell = `${inferredLogColumn}${taskData.row}`;
+
+        console.error(`🔧 [FIX-LOGCELL] logCellを復旧します:`, {
+          originalLogCell: taskData.logCell,
+          inferredLogCell: inferredLogCell,
+          row: taskData.row,
+          taskId: taskData.taskId || taskData.id,
+        });
+
+        // taskDataにlogCellを追加
+        taskData.logCell = inferredLogCell;
+      }
+
+      // 🔧 [SIMPLIFIED] 元のタスクIDを使用（データ一貫性のため）
+      const taskId = taskData.taskId || taskData.id || "UNKNOWN_TASK_ID";
 
       // 重複実行チェック（グローバル状態を使用）
       const currentStatus = getExecutionStatus();
@@ -4836,10 +4930,15 @@
         }, 1000);
         log.debug("🔍 送信時刻記録開始 - ", sendTime.toISOString());
 
-        // taskDataからtaskIdを取得、なければ生成
-        const taskId =
-          taskData.taskId ||
-          `Claude_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        // 🔧 [SIMPLIFIED] 元のタスクIDを使用（データ一貫性のため）
+        const taskId = taskData.taskId || taskData.id || "UNKNOWN_TASK_ID";
+
+        // 🔧 データ一貫性バリデーション
+        if (taskData._validateLogCell && !taskData._validateLogCell()) {
+          console.warn(
+            "⚠️ [VALIDATION] logCellバリデーションに失敗しましたが、処理を続行します",
+          );
+        }
 
         try {
           // Chrome拡張機能のメッセージ送信で直接記録
@@ -4867,6 +4966,19 @@
                   taskDataExists: !!taskData,
                   taskDataLogCell: taskData?.logCell,
                   taskDataKeys: taskData ? Object.keys(taskData) : [],
+                  taskId: taskId,
+                },
+              );
+
+              // 🔍 [DEBUG-LOGCELL] recordSendTime送信直前のlogCell最終確認
+              console.error(
+                `🔍 [DEBUG-LOGCELL] recordSendTime送信直前: ${taskId}`,
+                {
+                  taskDataExists: !!taskData,
+                  taskDataLogCell: taskData?.logCell,
+                  taskDataLogCellType: typeof taskData?.logCell,
+                  taskDataKeys: taskData ? Object.keys(taskData) : [],
+                  sendMessageAboutToSend: true,
                   taskId: taskId,
                 },
               );
@@ -6767,6 +6879,26 @@
 
     // 🔍 [SCRIPT-COMPLETION] Content Script完了診断サマリー
   } catch (error) {
+    // 🚨 【STEP 4: 致命的エラー検出】
+    console.error("🚨 FATAL ERROR DETECTED IN CONTENT SCRIPT!");
+    console.error("🚨 Error:", error);
+    console.error("🚨 Stack:", error.stack);
+
+    // 可視的エラー表示
+    document.title = `ERROR: Content Script Failed - ${error.message}`;
+
+    // DOM要素にもエラーを書き込み（デバッグ用）
+    try {
+      const errorDiv = document.createElement("div");
+      errorDiv.id = "claude-script-error";
+      errorDiv.style.cssText =
+        "position: fixed; top: 0; left: 0; z-index: 9999; background: red; color: white; padding: 10px; font-size: 12px;";
+      errorDiv.textContent = `Content Script Error: ${error.message}`;
+      if (document.body) document.body.appendChild(errorDiv);
+    } catch (domError) {
+      console.error("🚨 DOM Error Display Failed:", domError);
+    }
+
     // 致命的エラーをキャッチして記録
     console.error("🚨 [Claude Script] FATAL ERROR:", error);
     console.error("🚨 Stack trace:", error.stack);
