@@ -40,6 +40,41 @@
     window.CLAUDE_SCRIPT_LOADED = true;
     window.CLAUDE_SCRIPT_INIT_TIME = Date.now();
 
+    // ========================================
+    // 🚨 共通エラーハンドリングモジュールの初期化
+    // ========================================
+    // manifest.jsonで先にcommon-error-handler.jsが読み込まれているため、
+    // 直接初期化を行う。ただし、タイミング問題を考慮して複数回試行する。
+    (function initializeErrorHandler() {
+      let attempts = 0;
+      const maxAttempts = 10;
+
+      const tryInitialize = () => {
+        attempts++;
+
+        if (window.UniversalErrorHandler) {
+          window.claudeErrorHandler =
+            window.UniversalErrorHandler.createForAI("claude");
+          console.log("✅ [CLAUDE] エラーハンドラー初期化完了");
+          return true;
+        }
+
+        if (attempts < maxAttempts) {
+          // 100ms後に再試行
+          setTimeout(tryInitialize, 100);
+        } else {
+          console.error(
+            "❌ [CLAUDE] 共通エラーハンドリングモジュールが見つかりません",
+            "manifest.jsonの設定を確認してください",
+          );
+        }
+        return false;
+      };
+
+      // 即座に試行開始
+      tryInitialize();
+    })();
+
     // 🔍 [段階5] Content Script実行コンテキストの詳細確認
     const currentURL = window.location.href;
     // 🔧 より包括的なClaude URL検出ロジック

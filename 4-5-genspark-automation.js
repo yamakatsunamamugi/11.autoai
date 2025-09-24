@@ -21,35 +21,20 @@
  */
 
 // ========================================
-// 🚨 共通エラーハンドリングモジュールのロード
+// 🚨 共通エラーハンドリングモジュールの初期化
 // ========================================
 
-(function loadCommonErrorHandler() {
-  if (!window.UniversalErrorHandler) {
-    const script = document.createElement("script");
-    script.src = chrome.runtime.getURL("common-error-handler.js");
-    script.onload = function () {
-      console.log("✅ [GENSPARK] 共通エラーハンドリングモジュール読み込み完了");
-
-      // Genspark用の統合エラーハンドラーを初期化
-      if (window.UniversalErrorHandler) {
-        window.gensparkErrorHandler =
-          window.UniversalErrorHandler.createForAI("genspark");
-        console.log("✅ [GENSPARK] エラーハンドラー初期化完了");
-      }
-    };
-    script.onerror = function () {
-      console.error(
-        "❌ [GENSPARK] 共通エラーハンドリングモジュールの読み込みに失敗",
-      );
-    };
-    (document.head || document.documentElement).appendChild(script);
-  } else {
-    // すでに読み込まれている場合
+// manifest.jsonで先にcommon-error-handler.jsが読み込まれているため、
+// 動的ロードは不要。直接初期化を行う。
+(function initializeErrorHandler() {
+  if (window.UniversalErrorHandler) {
     window.gensparkErrorHandler =
       window.UniversalErrorHandler.createForAI("genspark");
-    console.log(
-      "✅ [GENSPARK] エラーハンドラー初期化完了（既存モジュール使用）",
+    console.log("✅ [GENSPARK] エラーハンドラー初期化完了");
+  } else {
+    console.error(
+      "❌ [GENSPARK] 共通エラーハンドリングモジュールが見つかりません",
+      "manifest.jsonの設定を確認してください",
     );
   }
 })();
