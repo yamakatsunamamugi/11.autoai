@@ -4212,7 +4212,9 @@
         }
 
         const modelName = taskData?.model || "";
-        const featureName = taskData?.function || null;
+        // 🔧 [FIX] functionではなくfeatureを確認、または"じっくり考える"をデフォルトに
+        const featureName =
+          taskData?.feature || taskData?.function || "じっくり考える";
 
         // Deep Research判定
         const isDeepResearch = featureName === "Deep Research";
