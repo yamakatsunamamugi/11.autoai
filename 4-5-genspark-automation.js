@@ -18,6 +18,43 @@
  * 【依存関係】
  * - common-ai-handler.js: 共通基盤機能
  * - ui-selectors.js: Genspark用セレクタ
+ */
+
+// ========================================
+// 🚨 共通エラーハンドリングモジュールのロード
+// ========================================
+
+(function loadCommonErrorHandler() {
+  if (!window.UniversalErrorHandler) {
+    const script = document.createElement("script");
+    script.src = chrome.runtime.getURL("common-error-handler.js");
+    script.onload = function () {
+      console.log("✅ [GENSPARK] 共通エラーハンドリングモジュール読み込み完了");
+
+      // Genspark用の統合エラーハンドラーを初期化
+      if (window.UniversalErrorHandler) {
+        window.gensparkErrorHandler =
+          window.UniversalErrorHandler.createForAI("genspark");
+        console.log("✅ [GENSPARK] エラーハンドラー初期化完了");
+      }
+    };
+    script.onerror = function () {
+      console.error(
+        "❌ [GENSPARK] 共通エラーハンドリングモジュールの読み込みに失敗",
+      );
+    };
+    (document.head || document.documentElement).appendChild(script);
+  } else {
+    // すでに読み込まれている場合
+    window.gensparkErrorHandler =
+      window.UniversalErrorHandler.createForAI("genspark");
+    console.log(
+      "✅ [GENSPARK] エラーハンドラー初期化完了（既存モジュール使用）",
+    );
+  }
+})();
+
+/**
  *
  * 【グローバル公開】
  * window.GensparkAutomationV2: V2メインAPI
@@ -732,7 +769,6 @@
         // タスク重複実行問題を修正：書き込み成功を確実に確認してから完了通知
         try {
           if (result.success && taskData.cellInfo) {
-
             // backgroundスクリプトにタスク完了を通知（作業中マーカークリア用）
             if (chrome.runtime && chrome.runtime.sendMessage) {
               const completionMessage = {
@@ -1018,7 +1054,6 @@
   ]; // 1分、5分、15分、30分、60分
 
   function handleGensparkOverloadedError() {
-
     if (gensparkOverloadedRetryCount >= MAX_GENSPARK_OVERLOADED_RETRIES) {
       console.error(
         "❌ [GENSPARK-OVERLOADED-HANDLER] 最大リトライ回数に達しました。手動対応が必要です。",
@@ -1033,7 +1068,6 @@
 
     // 即座にウィンドウを閉じる
     setTimeout(() => {
-
       // background scriptにウィンドウリセットを要求
       if (chrome.runtime && chrome.runtime.sendMessage) {
         chrome.runtime
@@ -1057,7 +1091,6 @@
 
     // 指定時間後にリトライ
     setTimeout(() => {
-
       // 新しいウィンドウで Genspark を開く
       if (chrome.runtime && chrome.runtime.sendMessage) {
         chrome.runtime.sendMessage({

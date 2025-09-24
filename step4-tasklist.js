@@ -2906,7 +2906,9 @@ async function generateTaskList(
                     columnToIndex(promptColumns[0])
                   ]
                 : "",
-            logCell: `${taskGroup.columns.log}${row}`,
+            logCell: taskGroup.columns?.log
+              ? `${taskGroup.columns.log}${row}`
+              : `${taskGroup.startColumn || "A"}${row}`,
             promptCells: promptColumns.map((col) => `${col}${row}`),
             answerCell: answerCell,
             tabId: windowInfo?.tabId, // 🆕 タブID追加
@@ -2926,12 +2928,15 @@ async function generateTaskList(
             {
               taskGroupLogColumn: taskGroup.columns?.log,
               taskGroupLogColumnType: typeof taskGroup.columns?.log,
+              taskGroupStartColumn: taskGroup.startColumn,
               row: row,
               rowType: typeof row,
               taskGroupColumns: taskGroup.columns,
               taskGroupExists: !!taskGroup,
               columnsExists: !!taskGroup.columns,
-              logCellCalculation: `${taskGroup.columns?.log}${row}`,
+              logCellCalculation: taskGroup.columns?.log
+                ? `${taskGroup.columns.log}${row}`
+                : `${taskGroup.startColumn || "A"}${row}`,
               generatedLogCell: task.logCell,
               generatedLogCellType: typeof task.logCell,
               taskKeys: Object.keys(task),

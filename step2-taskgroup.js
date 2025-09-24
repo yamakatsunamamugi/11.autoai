@@ -5,8 +5,8 @@ const LOG_LEVEL = { ERROR: 1, WARN: 2, INFO: 3, DEBUG: 4 };
 let CURRENT_LOG_LEVEL = LOG_LEVEL.INFO; // デフォルト値
 
 // Chrome拡張環境でのみStorageから設定を読み込む
-if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-  chrome.storage.local.get('logLevel', (result) => {
+if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+  chrome.storage.local.get("logLevel", (result) => {
     if (result.logLevel) {
       CURRENT_LOG_LEVEL = parseInt(result.logLevel);
     } else {
@@ -27,7 +27,7 @@ const log = {
   },
   debug: (...args) => {
     if (CURRENT_LOG_LEVEL >= LOG_LEVEL.DEBUG) console.log(...args);
-  }
+  },
 };
 
 /**
@@ -166,9 +166,7 @@ async function identifyTaskGroups() {
   const { menuRow, aiRow } = specialRows;
 
   // 2-1-1. メニュー行とAI行の読み込み
-  log.debug(
-    "[step2-taskgroup.js] [Step 2-1-1] メニュー行とAI行の読み込み開始",
-  );
+  log.debug("[step2-taskgroup.js] [Step 2-1-1] メニュー行とAI行の読み込み開始");
   log.debug(`  - メニュー行: ${menuRow}行目`);
   log.debug(`  - AI行: ${aiRow}行目`);
 
@@ -231,6 +229,17 @@ async function identifyTaskGroups() {
           startCol: index,
           endCol: index,
         };
+
+        // 🔍 [DEBUG-LOGCELL] ログ列検出時の設定確認
+        console.error(
+          `🔍 [DEBUG-LOGCELL-STEP2] ログ列検出: グループ${groupCounter}`,
+          {
+            groupNumber: groupCounter,
+            logColumn: columnLetter,
+            columnIndex: index,
+            header: trimmedHeader,
+          },
+        );
       }
 
       // 2-1-3. 特殊グループの検出（レポート化、Genspark）
@@ -325,6 +334,18 @@ async function identifyTaskGroups() {
             startCol: index,
             endCol: index,
           };
+
+          // 🔍 [DEBUG-LOGCELL] プロンプト列検出時（ログ列なし）の設定確認
+          console.error(
+            `🔍 [DEBUG-LOGCELL-STEP2] プロンプト列検出（ログ列なし）: グループ${groupCounter}`,
+            {
+              groupNumber: groupCounter,
+              logColumn: null,
+              startColumn: columnLetter,
+              columnIndex: index,
+              header: trimmedHeader,
+            },
+          );
         } else {
           // 既存のグループにプロンプト列を追加
           currentGroup.promptColumns.push(columnLetter);
@@ -753,9 +774,7 @@ function reorganizeTaskGroups() {
   const taskGroups = window.globalState.taskGroups;
 
   // 2-4-1. 有効なタスクグループの番号振り直し
-  log.debug(
-    "[step2-taskgroup.js] [Step 2-4-1] 有効グループの番号振り直し開始",
-  );
+  log.debug("[step2-taskgroup.js] [Step 2-4-1] 有効グループの番号振り直し開始");
   const activeGroups = taskGroups.filter((group) => !group.skip);
   const skippedGroups = taskGroups.filter((group) => group.skip);
 
@@ -1092,11 +1111,26 @@ async function executeStep2TaskGroups() {
 
       // シンプルなcolumns構造（列名のみ）
       group.columns = {
-        log: group.logColumn || "A",
+        log: group.logColumn || group.startColumn || "A",
         prompts: group.promptColumns || ["B"],
         answer: answerColumns,
         work: group.workColumn || null,
       };
+
+      // 🔍 [DEBUG-LOGCELL] columns.log設定時の値確認
+      console.error(
+        `🔍 [DEBUG-LOGCELL-STEP2] グループ${group.groupNumber}のcolumns.log設定:`,
+        {
+          groupNumber: group.groupNumber,
+          groupType: group.groupType || group.type,
+          logColumn: group.logColumn,
+          startColumn: group.startColumn,
+          columnsLog: group.columns.log,
+          logColumnIsNull: group.logColumn === null,
+          logColumnIsUndefined: group.logColumn === undefined,
+          finalValue: group.columns.log,
+        },
+      );
 
       // groupTypeが未設定の場合、typeから設定
       if (!group.groupType) {

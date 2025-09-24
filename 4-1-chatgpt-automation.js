@@ -1,3 +1,38 @@
+// ========================================
+// 🚨 共通エラーハンドリングモジュールのロード
+// ========================================
+
+// 共通エラーハンドリングモジュールを動的にロード
+(function loadCommonErrorHandler() {
+  if (!window.UniversalErrorHandler) {
+    const script = document.createElement("script");
+    script.src = chrome.runtime.getURL("common-error-handler.js");
+    script.onload = function () {
+      console.log("✅ [CHATGPT] 共通エラーハンドリングモジュール読み込み完了");
+
+      // ChatGPT用の統合エラーハンドラーを初期化
+      if (window.UniversalErrorHandler) {
+        window.chatgptErrorHandler =
+          window.UniversalErrorHandler.createForAI("chatgpt");
+        console.log("✅ [CHATGPT] エラーハンドラー初期化完了");
+      }
+    };
+    script.onerror = function () {
+      console.error(
+        "❌ [CHATGPT] 共通エラーハンドリングモジュールの読み込みに失敗",
+      );
+    };
+    (document.head || document.documentElement).appendChild(script);
+  } else {
+    // すでに読み込まれている場合
+    window.chatgptErrorHandler =
+      window.UniversalErrorHandler.createForAI("chatgpt");
+    console.log(
+      "✅ [CHATGPT] エラーハンドラー初期化完了（既存モジュール使用）",
+    );
+  }
+})();
+
 // ログレベル定義
 const LOG_LEVEL = { ERROR: 1, WARN: 2, INFO: 3, DEBUG: 4 };
 
@@ -89,7 +124,6 @@ async function reportSelectorError(selectorKey, error, selectors) {
 
   // 早期メッセージリスナー登録（Content Script準備確認用）
   const earlyMessageListener = (request, sender, sendResponse) => {
-
     // 常にtrue返してポートを開いたままにする
     try {
       if (
@@ -1026,15 +1060,38 @@ async function reportSelectorError(selectorKey, error, selectors) {
       await sleep(1000);
     }
 
-    // 停止ボタンが消えるまで待機（テストコード準拠：10秒間連続非表示で完了、最大5分）
+    // 停止ボタンが消えるまで待機（共通エラーハンドラー統合版）
     if (stopBtn) {
       logWithTimestamp("停止ボタンが消えるまで待機（最大5分）", "info");
+
       for (let i = 0; i < 300; i++) {
-        stopBtn = await findElement(SELECTORS.stopButton, "停止ボタン", 1);
-        if (!stopBtn) {
-          logWithTimestamp("✅ 応答完了", "success");
+        // 共通エラーハンドラーでエラー状態をチェック
+        if (
+          window.chatgptErrorHandler &&
+          window.chatgptErrorHandler.shouldStopOnError()
+        ) {
+          logWithTimestamp("❌ エラー検出により監視を中断", "error");
           break;
         }
+
+        stopBtn = await findElement(SELECTORS.stopButton, "停止ボタン", 1);
+
+        // 共通エラーハンドラーで停止ボタン状態を更新
+        if (window.chatgptErrorHandler) {
+          const shouldStop =
+            window.chatgptErrorHandler.updateButtonStatus(!stopBtn);
+          if (shouldStop) {
+            logWithTimestamp("✅ 応答完了", "success");
+            break;
+          }
+        } else {
+          // フォールバック: 従来の処理
+          if (!stopBtn) {
+            logWithTimestamp("✅ 応答完了", "success");
+            break;
+          }
+        }
+
         if (i % 10 === 0) {
           logWithTimestamp(`応答待機中... (${i}秒経過)`, "info");
         }
@@ -2781,7 +2838,6 @@ async function reportSelectorError(selectorKey, error, selectors) {
         // タスク重複実行問題を修正：書き込み成功を確実に確認してから完了通知
         try {
           if (result.success && taskData.cellInfo) {
-
             // backgroundスクリプトにタスク完了を通知（作業中マーカークリア用）
             if (chrome.runtime && chrome.runtime.sendMessage) {
               const completionMessage = {
@@ -2818,7 +2874,6 @@ async function reportSelectorError(selectorKey, error, selectors) {
         return handleTaskError(error, taskData);
       }
     };
-
   } catch (error) {
     console.error("❌ [DEBUG] executeTask関数定義エラー:", error);
   }
@@ -2911,7 +2966,6 @@ async function reportSelectorError(selectorKey, error, selectors) {
   // Content Script側でブリッジメッセージを処理
   window.addEventListener("message", async (event) => {
     if (event.data.type === "CHATGPT_AUTOMATION_EXECUTE") {
-
       try {
         let result;
         switch (event.data.command) {
@@ -3960,7 +4014,6 @@ async function chatWithChatGPT() {
   ]; // 1分、5分、15分、30分、60分
 
   function handleChatGPTOverloadedError() {
-
     if (chatgptOverloadedRetryCount >= MAX_CHATGPT_OVERLOADED_RETRIES) {
       console.error(
         "❌ [CHATGPT-OVERLOADED-HANDLER] 最大リトライ回数に達しました。手動対応が必要です。",
@@ -3975,7 +4028,6 @@ async function chatWithChatGPT() {
 
     // 即座にウィンドウを閉じる
     setTimeout(() => {
-
       // background scriptにウィンドウリセットを要求
       if (chrome.runtime && chrome.runtime.sendMessage) {
         chrome.runtime
@@ -3999,7 +4051,6 @@ async function chatWithChatGPT() {
 
     // 指定時間後にリトライ
     setTimeout(() => {
-
       // 新しいウィンドウで ChatGPT を開く
       if (chrome.runtime && chrome.runtime.sendMessage) {
         chrome.runtime.sendMessage({
@@ -4137,7 +4188,5 @@ async function chatWithChatGPT() {
         console.error("🚨 [ChatGPT-UNHANDLED-PROMISE]", e.reason);
       }
     });
-
   }
-
 })();

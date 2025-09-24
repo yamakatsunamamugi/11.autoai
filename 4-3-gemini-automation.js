@@ -1,3 +1,35 @@
+// ========================================
+// 🚨 共通エラーハンドリングモジュールのロード
+// ========================================
+
+(function loadCommonErrorHandler() {
+  if (!window.UniversalErrorHandler) {
+    const script = document.createElement("script");
+    script.src = chrome.runtime.getURL("common-error-handler.js");
+    script.onload = function () {
+      console.log("✅ [GEMINI] 共通エラーハンドリングモジュール読み込み完了");
+
+      // Gemini用の統合エラーハンドラーを初期化
+      if (window.UniversalErrorHandler) {
+        window.geminiErrorHandler =
+          window.UniversalErrorHandler.createForAI("gemini");
+        console.log("✅ [GEMINI] エラーハンドラー初期化完了");
+      }
+    };
+    script.onerror = function () {
+      console.error(
+        "❌ [GEMINI] 共通エラーハンドリングモジュールの読み込みに失敗",
+      );
+    };
+    (document.head || document.documentElement).appendChild(script);
+  } else {
+    // すでに読み込まれている場合
+    window.geminiErrorHandler =
+      window.UniversalErrorHandler.createForAI("gemini");
+    console.log("✅ [GEMINI] エラーハンドラー初期化完了（既存モジュール使用）");
+  }
+})();
+
 // ログレベル定義
 const LOG_LEVEL = { ERROR: 1, WARN: 2, INFO: 3, DEBUG: 4 };
 
@@ -161,14 +193,12 @@ const log = {
   // UI通信機能
   // ========================================
   async function sendToUI(models, features) {
-
     try {
       if (
         typeof chrome !== "undefined" &&
         chrome.runtime &&
         chrome.runtime.sendMessage
       ) {
-
         const messageData = {
           type: "AI_MODEL_FUNCTION_UPDATE",
           aiType: "gemini",
@@ -181,7 +211,6 @@ const log = {
 
         // タイムアウト付きでsendMessageを実行
         const sendMessageWithTimeout = new Promise((resolve) => {
-
           const timeout = setTimeout(() => {
             console.error(
               "⏱️ [SendToUI Step 4 Error] sendMessageがタイムアウト（3秒経過）",
@@ -349,7 +378,6 @@ const log = {
   // テキスト入力（Canvas/通常モード自動判定）
   // ========================================
   async function inputTextGemini(text) {
-
     // Canvasモードチェック
     const canvas = document.querySelector(SELECTORS.canvas);
 
@@ -864,7 +892,6 @@ const log = {
       // タスク重複実行問題を修正：書き込み成功を確実に確認してから完了通知
       try {
         if (result.success && taskData.cellInfo) {
-
           // backgroundスクリプトにタスク完了を通知（作業中マーカークリア用）
           if (chrome.runtime && chrome.runtime.sendMessage) {
             const completionMessage = {
@@ -978,7 +1005,6 @@ const log = {
 
       // DISCOVER_FEATURES メッセージの処理
       if (request.type === "DISCOVER_FEATURES") {
-
         (async () => {
           try {
             const result = await discoverModelsAndFeatures();
@@ -1071,7 +1097,6 @@ const log = {
   ]; // 1分、5分、15分、30分、60分
 
   function handleGeminiOverloadedError() {
-
     if (geminiOverloadedRetryCount >= MAX_GEMINI_OVERLOADED_RETRIES) {
       console.error(
         "❌ [GEMINI-OVERLOADED-HANDLER] 最大リトライ回数に達しました。手動対応が必要です。",
@@ -1085,7 +1110,6 @@ const log = {
 
     // 即座にウィンドウを閉じる
     setTimeout(() => {
-
       // background scriptにウィンドウリセットを要求
       if (chrome.runtime && chrome.runtime.sendMessage) {
         chrome.runtime
@@ -1109,7 +1133,6 @@ const log = {
 
     // 指定時間後にリトライ
     setTimeout(() => {
-
       // 新しいウィンドウで Gemini を開く
       if (chrome.runtime && chrome.runtime.sendMessage) {
         chrome.runtime.sendMessage({
@@ -1248,6 +1271,5 @@ const log = {
         console.error("🚨 [Gemini-UNHANDLED-PROMISE]", e.reason);
       }
     });
-
   }
 })();

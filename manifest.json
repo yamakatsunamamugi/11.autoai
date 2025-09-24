@@ -93,6 +93,7 @@
         "step4.5-dynamic-search.js",
         "step5-execute.js",
         "step6-nextgroup.js",
+        "common-error-handler.js",
         "4-1-chatgpt-automation.js",
         "4-2-claude-automation.js",
         "4-3-gemini-automation.js",
