@@ -1052,85 +1052,53 @@ function updateTestConfigDropdowns() {
     },
   });
 
-  // ChatGPT - 手動でモデル・機能を設定
-  const chatgptModels = ["Auto", "Fast", "Thinking", "Pro"];
-  const chatgptFeatures = [
-    "写真とファイルを追加",
-    "Google Drive から追加する",
-    "エージェントモード",
-    "Deep Research",
-    "画像を作成する",
-    "コネクターを使用する",
-    "あらゆる学びをサポート",
-    "ウェブ検索",
-    "canvas",
-    "OneDrive を接続する",
-    "Sharepoint を接続する",
-  ];
+  // ChatGPT - AI統合情報から取得したデータを使用
+  if (lastAIData.chatgpt) {
+    const chatgptModels = lastAIData.chatgpt.models || [];
+    const chatgptFeatures = lastAIData.chatgpt.functions || [];
 
-  log.debug("📋 ChatGPT手動設定:", {
-    models: chatgptModels,
-    features: chatgptFeatures,
-  });
+    log.debug("📋 ChatGPT AI統合情報から取得:", {
+      models: chatgptModels,
+      features: chatgptFeatures,
+    });
 
-  updateSelectOptions("chatgptModel", chatgptModels);
-  updateSelectOptions("chatgptFeature", chatgptFeatures);
-
-  // 手動設定をlastAIDataにも保存（他の処理との整合性のため）
-  if (!lastAIData.chatgpt) {
-    lastAIData.chatgpt = {};
+    updateSelectOptions("chatgptModel", chatgptModels);
+    updateSelectOptions("chatgptFeature", chatgptFeatures);
+  } else {
+    log.debug("📋 ChatGPT: データなし");
   }
-  lastAIData.chatgpt.models = chatgptModels;
-  lastAIData.chatgpt.functions = chatgptFeatures;
 
-  // Claude - 手動でモデル・機能を設定
-  const claudeModels = ["Claude 3.5 Sonnet", "Claude 3.5 Haiku"];
-  const claudeFeatures = [
-    "じっくり考える",
-    "ウェブ検索",
-    "Deep Research",
-    "Canvas",
-  ];
+  // Claude - AI統合情報から取得したデータを使用
+  if (lastAIData.claude) {
+    const claudeModels = lastAIData.claude.models || [];
+    const claudeFeatures = lastAIData.claude.functions || [];
 
-  log.debug("📋 Claude手動設定:", {
-    models: claudeModels,
-    features: claudeFeatures,
-  });
+    log.debug("📋 Claude AI統合情報から取得:", {
+      models: claudeModels,
+      features: claudeFeatures,
+    });
 
-  updateSelectOptions("claudeModel", claudeModels);
-  updateSelectOptions("claudeFeature", claudeFeatures);
-
-  // 手動設定をlastAIDataにも保存（他の処理との整合性のため）
-  if (!lastAIData.claude) {
-    lastAIData.claude = {};
+    updateSelectOptions("claudeModel", claudeModels);
+    updateSelectOptions("claudeFeature", claudeFeatures);
+  } else {
+    log.debug("📋 Claude: データなし");
   }
-  lastAIData.claude.models = claudeModels;
-  lastAIData.claude.functions = claudeFeatures;
 
-  // Gemini - 手動でモデル・機能を設定
-  const geminiModels = ["2.5 Flash", "2.5 Pro"];
-  const geminiFeatures = [
-    "動画",
-    "Deep Think",
-    "Deep Research",
-    "Canvas",
-    "画像 Imagen で生成",
-  ];
+  // Gemini - AI統合情報から取得したデータを使用
+  if (lastAIData.gemini) {
+    const geminiModels = lastAIData.gemini.models || [];
+    const geminiFeatures = lastAIData.gemini.functions || [];
 
-  log.debug("📋 Gemini手動設定:", {
-    models: geminiModels,
-    features: geminiFeatures,
-  });
+    log.debug("📋 Gemini AI統合情報から取得:", {
+      models: geminiModels,
+      features: geminiFeatures,
+    });
 
-  updateSelectOptions("geminiModel", geminiModels);
-  updateSelectOptions("geminiFeature", geminiFeatures);
-
-  // 手動設定をlastAIDataにも保存（他の処理との整合性のため）
-  if (!lastAIData.gemini) {
-    lastAIData.gemini = {};
+    updateSelectOptions("geminiModel", geminiModels);
+    updateSelectOptions("geminiFeature", geminiFeatures);
+  } else {
+    log.debug("📋 Gemini: データなし");
   }
-  lastAIData.gemini.models = geminiModels;
-  lastAIData.gemini.functions = geminiFeatures;
 }
 
 // ドロップダウンオプションを更新

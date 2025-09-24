@@ -3713,7 +3713,7 @@ window.log = log;
 
               // UIに送信
               if (typeof sendToUI === "function") {
-                await sendToUI(availableModels, availableFunctions);
+                await sendToUI(result);
               }
 
               sendResponse({
@@ -4209,10 +4209,11 @@ async function chatWithChatGPT() {
           type: "AI_MODEL_FUNCTION_UPDATE",
           aiType: "chatgpt",
           data: {
-            models: data.models.map((m) =>
-              typeof m === "string" ? m : m.name,
-            ),
-            functions: data.functions,
+            models:
+              data.models && Array.isArray(data.models)
+                ? data.models.map((m) => (typeof m === "string" ? m : m.name))
+                : [],
+            functions: data.functions || [],
           },
         });
         logWithTimestamp("✅ UIテーブルにデータを手動送信しました");
