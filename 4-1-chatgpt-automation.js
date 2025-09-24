@@ -4574,26 +4574,32 @@ async function chatWithChatGPT() {
       window.ChatGPTAutomation.detectionResult = result;
     }
 
-    // UIに送信
-    try {
-      if (chrome.runtime && chrome.runtime.sendMessage) {
-        const modelsToSend = availableModels.map((m) => {
-          if (typeof m === "string") return m;
-          return m.name || m;
-        });
+    // UIに送信（ClaudeとGeminiと同じように、成功時のみ送信）
+    // detectChatGPTModelsAndFeatures()が成功した場合のみこの部分が実行される
+    if (availableModels.length > 0 || availableFunctions.length > 0) {
+      try {
+        if (chrome.runtime && chrome.runtime.sendMessage) {
+          const modelsToSend = availableModels.map((m) => {
+            if (typeof m === "string") return m;
+            return m.name || m;
+          });
 
-        chrome.runtime.sendMessage({
-          type: "AI_MODEL_FUNCTION_UPDATE",
-          aiType: "chatgpt",
-          data: {
-            models: modelsToSend,
-            functions: availableFunctions,
-          },
-        });
-        logWithTimestamp("✅ UIテーブルにデータを送信しました");
+          chrome.runtime.sendMessage({
+            type: "AI_MODEL_FUNCTION_UPDATE",
+            aiType: "chatgpt",
+            data: {
+              models: modelsToSend,
+              functions: availableFunctions,
+            },
+          });
+          logWithTimestamp("✅ UIテーブルにデータを送信しました");
+        }
+      } catch (error) {
+        log.warn("UIへの送信失敗:", error);
+        // エラー時は送信しない（ClaudeとGeminiと同じ動作）
       }
-    } catch (error) {
-      log.warn("UIへの送信失敗:", error);
+    } else {
+      logWithTimestamp("⚠️ 検出データなし、UIへの送信をスキップ", "warning");
     }
 
     // 今回の検出で何か取得できたかチェック
@@ -4695,6 +4701,8 @@ async function chatWithChatGPT() {
     }
 
     try {
+      // ClaudeとGeminiと同じように、エラーがない場合のみ送信
+      // detectChatGPTModelsAndFeatures()が成功した場合のみ呼び出される
       if (chrome.runtime && chrome.runtime.sendMessage) {
         chrome.runtime.sendMessage({
           type: "AI_MODEL_FUNCTION_UPDATE",
