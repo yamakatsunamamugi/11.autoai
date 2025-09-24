@@ -211,8 +211,39 @@ const log = {
           }, 3000); // 3秒でタイムアウト
 
           try {
+<<<<<<< HEAD
             console.log(
               "🔍 [SendToUI Step 5] chrome.runtime.sendMessage実行中...",
+=======
+            chrome.runtime.sendMessage(
+              {
+                type: "AI_MODEL_FUNCTION_UPDATE",
+                aiType: "gemini",
+                data: {
+                  models: models || [],
+                  functions: features || [], // featuresをfunctionsとして送信
+                  timestamp: new Date().toISOString(),
+                },
+              },
+              (response) => {
+                clearTimeout(timeout);
+
+                // chrome.runtime.lastErrorをチェック
+                if (chrome.runtime.lastError) {
+                  log.warn(
+                    "⚠️ [Gemini] chrome.runtime.lastError:",
+                    chrome.runtime.lastError.message,
+                  );
+                  resolve({
+                    error: "runtime_error",
+                    message: chrome.runtime.lastError.message,
+                  });
+                } else {
+                  log.debug("📨 [Gemini] sendMessage応答受信:", response);
+                  resolve(response || { success: true });
+                }
+              },
+>>>>>>> de14852 (fix: ChatGPT自動化スクリプトの重大な構造問題を修正)
             );
             chrome.runtime.sendMessage(messageData, (response) => {
               clearTimeout(timeout);

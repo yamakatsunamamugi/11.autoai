@@ -1519,6 +1519,54 @@
               return true; // 非同期レスポンスのために必要
             }
 
+            // DISCOVER_FEATURES メッセージの処理
+            if (request.type === "DISCOVER_FEATURES") {
+              console.log(`🔍 [Claude] DISCOVER_FEATURES実行開始`);
+
+              (async () => {
+                try {
+                  const result = await discoverClaudeModelsAndFeatures();
+                  console.log(`✅ [Claude] DISCOVER_FEATURES完了:`, result);
+
+                  // UIに送信（sendToBackground関数を使用）
+                  if (typeof sendToBackground === "function" && result) {
+                    await sendToBackground(
+                      result.models || [],
+                      result.functions || [],
+                    );
+                    console.log(`📡 [Claude] UIへデータ送信完了`);
+                  } else if (chrome.runtime && chrome.runtime.sendMessage) {
+                    // フォールバック: 直接Chrome APIを使用
+                    chrome.runtime.sendMessage({
+                      type: "AI_MODEL_FUNCTION_UPDATE",
+                      aiType: "claude",
+                      data: {
+                        models: result.models || [],
+                        functions: result.functions || [],
+                        timestamp: new Date().toISOString(),
+                      },
+                    });
+                    console.log(
+                      `📡 [Claude] UIへデータ送信完了（フォールバック）`,
+                    );
+                  }
+
+                  sendResponse({
+                    success: true,
+                    result: result,
+                  });
+                } catch (error) {
+                  console.error(`❌ [Claude] DISCOVER_FEATURESエラー:`, error);
+                  sendResponse({
+                    success: false,
+                    error: error.message,
+                  });
+                }
+              })();
+
+              return true; // 非同期レスポンスのために必要
+            }
+
             // その他のメッセージタイプは無視
             console.log(
               `ℹ️ [Claude-直接実行方式] 未対応のメッセージタイプ [ID:${requestId}]:`,
@@ -6516,23 +6564,57 @@
 
         // 2. モデルメニューが既に開いているかチェック
         console.log("🔍 [STEP 3] モデルメニューの状態をチェック...");
-        let menu = document.querySelector(
-          'div[role="menu"][data-state="open"]',
-        );
+
+        // 複数のセレクタを試す
+        let menu =
+          document.querySelector('div[role="menu"][data-state="open"]') ||
+          document.querySelector('div[role="menu"]') ||
+          document.querySelector(".absolute.bottom-full") ||
+          document.querySelector("[data-radix-popper-content-wrapper]");
 
         if (!menu) {
           console.log(
-            "🔍 [STEP 3.1] メニューが閉じています - クリックして開きます",
+            "🔍 [STEP 3.1] メニューが閉じています - PointerEventで開きます",
           );
-          modelMenuButton.click();
 
-          // メニューが開くまで待機
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+          // PointerEventを使用（テストコードと同じ方法）
+          modelMenuButton.dispatchEvent(
+            new PointerEvent("pointerdown", {
+              bubbles: true,
+              cancelable: true,
+              view: window,
+            }),
+          );
+          await new Promise((resolve) => setTimeout(resolve, 50));
 
-          menu = document.querySelector('div[role="menu"][data-state="open"]');
+          modelMenuButton.dispatchEvent(
+            new PointerEvent("pointerup", {
+              bubbles: true,
+              cancelable: true,
+              view: window,
+            }),
+          );
+
+          // メニューが開くまで待機（少し長めに）
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+
+          // 再度複数のセレクタで検索
+          menu =
+            document.querySelector('div[role="menu"][data-state="open"]') ||
+            document.querySelector('div[role="menu"]') ||
+            document.querySelector(".absolute.bottom-full") ||
+            document.querySelector("[data-radix-popper-content-wrapper]");
 
           if (!menu) {
             console.log("❌ [STEP 3.2] メニューを開くことができませんでした");
+            console.log("🔍 デバッグ: 利用可能な要素:", {
+              roleMenu: !!document.querySelector('div[role="menu"]'),
+              absoluteBottom: !!document.querySelector(".absolute.bottom-full"),
+              radixPopper: !!document.querySelector(
+                "[data-radix-popper-content-wrapper]",
+              ),
+              allDivs: document.querySelectorAll("div").length,
+            });
             return [];
           }
 
@@ -7115,5 +7197,123 @@
       },
       timestamp: new Date().toISOString(),
     });
+  }
+
+  // ========================================
+  // Claude モデル・機能検出機能
+  // ========================================
+
+  /**
+   * Claudeのモデルと機能を検出する関数
+   * DISCOVER_FEATURESメッセージハンドラーから呼び出される
+   */
+  async function discoverClaudeModelsAndFeatures() {
+    console.log("🔍 [Claude] モデル・機能検出開始");
+
+    try {
+      // Claudeで利用可能なモデルを検出
+      const models = await detectClaudeModels();
+
+      // Claudeで利用可能な機能を検出（Deep Research含む）
+      const functions = await detectClaudeFunctions();
+
+      const result = {
+        models: models,
+        functions: functions,
+        timestamp: new Date().toISOString(),
+        source: "dynamic_detection",
+      };
+
+      console.log("✅ [Claude] モデル・機能検出完了:", result);
+      return result;
+    } catch (error) {
+      console.error("❌ [Claude] モデル・機能検出エラー:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Claudeで利用可能なモデルを検出
+   */
+  async function detectClaudeModels() {
+    console.log("🔍 [Claude] モデル検出開始");
+
+    try {
+      // 実際のUIからモデルを検出する関数を使用
+      if (typeof detectClaudeModelsFromOpenMenu === "function") {
+        const detectedModels = await detectClaudeModelsFromOpenMenu();
+
+        if (detectedModels && detectedModels.length > 0) {
+          // オブジェクト配列の場合は名前だけ抽出
+          const modelNames = detectedModels
+            .map((model) => (typeof model === "object" ? model.name : model))
+            .filter(Boolean);
+
+          console.log(
+            `✅ [Claude] UIから${modelNames.length}個のモデルを検出:`,
+            modelNames,
+          );
+          return modelNames;
+        } else {
+          console.log("⚠️ [Claude] UIからモデルを検出できませんでした");
+          return [];
+        }
+      } else {
+        console.error(
+          "❌ [Claude] detectClaudeModelsFromOpenMenu関数が定義されていません",
+        );
+        return [];
+      }
+    } catch (error) {
+      console.error("❌ [Claude] UI検出エラー:", error);
+      return [];
+    }
+  }
+
+  /**
+   * Claudeで利用可能な機能を検出（Deep Research含む）
+   */
+  async function detectClaudeFunctions() {
+    console.log("🔍 [Claude] 機能検出開始");
+
+    try {
+      // 実際のUIから機能を検出する関数を使用
+      if (typeof detectClaudeFunctionsFromOpenMenu === "function") {
+        const detectedFunctions = await detectClaudeFunctionsFromOpenMenu();
+
+        if (detectedFunctions && detectedFunctions.length > 0) {
+          // オブジェクト配列の場合は名前だけ抽出、文字列配列の場合はそのまま
+          const functionNames = detectedFunctions
+            .map((func) =>
+              typeof func === "object" ? func.name || func.functionName : func,
+            )
+            .filter(Boolean);
+
+          // Deep Researchが含まれていない場合は追加
+          if (!functionNames.includes("Deep Research")) {
+            functionNames.push("Deep Research");
+            console.log("🔧 [Claude] Deep Researchを機能リストに追加");
+          }
+
+          console.log(
+            `✅ [Claude] UIから${functionNames.length}個の機能を検出:`,
+            functionNames,
+          );
+          console.log("📋 [Claude] 最終機能リスト:", functionNames);
+          return functionNames;
+        } else {
+          console.log("⚠️ [Claude] UIから機能を検出できませんでした");
+          return [];
+        }
+      } else {
+        console.error(
+          "❌ [Claude] detectClaudeFunctionsFromOpenMenu関数が定義されていません",
+        );
+        return [];
+      }
+    } catch (error) {
+      console.error("❌ [Claude] UI検出エラー:", error);
+      return [];
+    }
   }
 })(); // 即時実行関数の終了

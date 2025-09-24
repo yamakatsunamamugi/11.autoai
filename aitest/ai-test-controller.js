@@ -465,6 +465,49 @@ class AITestController {
   }
 
   // ========================================
+  // モデル・機能探索のみ実行
+  // ========================================
+  async discoverOnly() {
+    log.info("🔍 AIモデル・機能探索のみ実行開始");
+
+    try {
+      // Step 1: 画面サイズを取得
+      const screenInfo = await this.getScreenInfo();
+
+      // Step 2: 3つのウィンドウを配置して作成
+      await this.createTestWindows(screenInfo);
+
+      // Step 3: Content Scriptの準備を待つ
+      await this.waitForContentScripts();
+
+      // Step 4: 探索は waitForContentScripts 内で実行済み
+
+      // Step 5: 少し待ってからウィンドウを閉じる
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+
+      // Step 6: クリーンアップ
+      await this.cleanup();
+
+      log.info("✅ AIモデル・機能探索完了");
+      return {
+        success: true,
+        capabilities: {
+          chatgpt: this.chatgptCapabilities,
+          claude: this.claudeCapabilities,
+          gemini: this.geminiCapabilities,
+        },
+      };
+    } catch (error) {
+      log.error("❌ AIモデル・機能探索エラー:", error);
+      await this.cleanup();
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+
+  // ========================================
   // ウィンドウクリーンアップ
   // ========================================
   async cleanup() {

@@ -439,6 +439,46 @@ class AITestController {
     return false;
   }
 
+  async discoverOnly() {
+    log.info("🔍 AIモデル・機能探索のみ実行開始");
+
+    try {
+      // Step 1: 画面サイズを取得
+      const screenInfo = await this.getScreenInfo();
+
+      // Step 2: 3つのウィンドウを配置して作成
+      await this.createTestWindows(screenInfo);
+
+      // Step 3: Content Scriptの準備を待つ
+      await this.waitForContentScripts();
+
+      // Step 4: 探索は waitForContentScripts 内で実行済み
+
+      // Step 5: 少し待ってからウィンドウを閉じる
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+
+      // Step 6: クリーンアップ
+      await this.cleanup();
+
+      log.info("✅ AIモデル・機能探索完了");
+      return {
+        success: true,
+        capabilities: {
+          chatgpt: this.chatgptCapabilities,
+          claude: this.claudeCapabilities,
+          gemini: this.geminiCapabilities,
+        },
+      };
+    } catch (error) {
+      log.error("❌ AIモデル・機能探索エラー:", error);
+      await this.cleanup();
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+
   async cleanup() {
     log.info("🧹 テストウィンドウをクリーンアップ中...");
 
@@ -596,6 +636,37 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         });
       } catch (error) {
         console.error("❌ [BG] AI統合テストエラー:", error);
+        sendResponse({
+          success: false,
+          error: error.message,
+        });
+      }
+    })();
+
+    return true; // 非同期レスポンス許可
+  }
+
+  // 🔍 AIモデル・機能探索のみ実行要求
+  if (request.action === "DISCOVER_AI_FEATURES_ONLY") {
+    console.log("🔍 [BG] AIモデル・機能探索要求受信:", {
+      timestamp: new Date().toISOString(),
+    });
+
+    // AITestControllerのdiscoverOnlyメソッドを実行
+    (async () => {
+      try {
+        console.log("🚀 [BG] AIモデル・機能探索開始");
+        const controller = new AITestController();
+        const result = await controller.discoverOnly();
+
+        console.log("✅ [BG] AIモデル・機能探索完了:", result);
+        sendResponse({
+          success: result.success,
+          capabilities: result.capabilities,
+          error: result.error,
+        });
+      } catch (error) {
+        console.error("❌ [BG] AIモデル・機能探索エラー:", error);
         sendResponse({
           success: false,
           error: error.message,

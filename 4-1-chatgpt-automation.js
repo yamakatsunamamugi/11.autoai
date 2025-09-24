@@ -34,6 +34,9 @@ const log = {
   },
 };
 
+// グローバルスコープにlogオブジェクトを追加（IIFE外のコードから使用可能にする）
+window.log = log;
+
 /**
  * @fileoverview ChatGPT Automation V2 - 統合版
  *
@@ -59,9 +62,13 @@ const log = {
 (async function () {
   "use strict";
 
+  console.log("🔧 [DEBUG] IIFE開始");
+
   // デバッグマーカー（すぐに設定）
   window.CHATGPT_SCRIPT_LOADED = true;
   window.CHATGPT_SCRIPT_INIT_TIME = Date.now();
+
+  console.log("🔧 [DEBUG] 初期設定完了、関数定義セクションへ移動");
 
   console.log(
     `ChatGPT Automation V2 - 初期化時刻: ${new Date().toLocaleString("ja-JP")}`,
@@ -179,6 +186,9 @@ const log = {
     }
   }
 
+  // グローバルスコープに関数を追加（IIFE外のコードから使用可能にする）
+  window.logWithTimestamp = logWithTimestamp;
+
   // 🔍 Content Script実行コンテキストの詳細確認（Claude式）
   const currentURL = window.location.href;
   const isValidChatGPTURL =
@@ -207,6 +217,7 @@ const log = {
 
   console.log("🔍 [ChatGPT] DOM準備状態チェック:", domReadyCheck());
 
+<<<<<<< HEAD
   // 🔍 Content Script実行環境の詳細ログ（コメントアウト）
   // console.warn(
   //   `🔍 [ChatGPT-Content Script] 実行コンテキスト詳細分析:`,
@@ -252,6 +263,8 @@ const log = {
   //   ),
   // );
 
+=======
+>>>>>>> de14852 (fix: ChatGPT自動化スクリプトの重大な構造問題を修正)
   // ========================================
   // Step 4-1-0-3: 統一ChatGPTRetryManager クラス定義
   // エラー分類とリトライ戦略を統合した統一システム
@@ -837,6 +850,8 @@ const log = {
     }
   }
 
+  console.log("🔧 [DEBUG] ChatGPTRetryManagerクラス定義完了");
+
   // 統一された待機時間設定を取得（Claudeと同じ方式）
   const AI_WAIT_CONFIG = window.AI_WAIT_CONFIG || {
     DEEP_RESEARCH_WAIT: 2400000, // 40分
@@ -1012,6 +1027,11 @@ const log = {
   // 待機関数
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+  // グローバルスコープにsleep関数を追加（IIFE外のコードから使用可能にする）
+  window.sleep = sleep;
+
+  console.log("🔧 [DEBUG] 関数定義セクション開始");
+
   // 通常モードの待機処理
   async function standardWaitForResponse() {
     logWithTimestamp(
@@ -1045,968 +1065,972 @@ const log = {
         await sleep(1000);
       }
     }
+  } // standardWaitForResponse関数をここで閉じる
 
-    // ========================================
-    // プロンプト除外機能（ChatGPT用）
-    // ========================================
+  console.log("🔧 [DEBUG] standardWaitForResponse関数定義完了");
 
-    /**
-     * DOM構造によるユーザーメッセージ除外（ChatGPT用）
-     * @param {Element} container - 検索対象のコンテナ要素
-     * @returns {Element} フィルタ済みコンテナ
-     */
-    function excludeUserMessages(container) {
-      if (!container) return container;
+  // ========================================
+  // プロンプト除外機能（ChatGPT用）
+  // ========================================
 
-      try {
-        const clone = container.cloneNode(true);
+  /**
+   * DOM構造によるユーザーメッセージ除外（ChatGPT用）
+   * @param {Element} container - 検索対象のコンテナ要素
+   * @returns {Element} フィルタ済みコンテナ
+   */
+  function excludeUserMessages(container) {
+    if (!container) return container;
 
-        // ChatGPT用のユーザーメッセージセレクタ
-        const userMessageSelectors = [
-          ".user-message-bubble-color",
-          "[data-multiline]",
-          ".whitespace-pre-wrap",
-        ];
+    try {
+      const clone = container.cloneNode(true);
 
-        userMessageSelectors.forEach((selector) => {
-          const userMessages = clone.querySelectorAll(selector);
-          userMessages.forEach((msg) => {
-            // ユーザーメッセージの親要素ごと削除
-            const parentToRemove =
-              msg.closest(".user-message-bubble-color") || msg;
-            if (parentToRemove && parentToRemove.parentNode) {
-              parentToRemove.parentNode.removeChild(parentToRemove);
+      // ChatGPT用のユーザーメッセージセレクタ
+      const userMessageSelectors = [
+        ".user-message-bubble-color",
+        "[data-multiline]",
+        ".whitespace-pre-wrap",
+      ];
+
+      userMessageSelectors.forEach((selector) => {
+        const userMessages = clone.querySelectorAll(selector);
+        userMessages.forEach((msg) => {
+          // ユーザーメッセージの親要素ごと削除
+          const parentToRemove =
+            msg.closest(".user-message-bubble-color") || msg;
+          if (parentToRemove && parentToRemove.parentNode) {
+            parentToRemove.parentNode.removeChild(parentToRemove);
+          }
+        });
+      });
+
+      return clone;
+    } catch (error) {
+      log.warn("[ChatGPT] ユーザーメッセージ除外中にエラーが発生:", error);
+      return container;
+    }
+  }
+
+  /**
+   * テキスト内容によるプロンプト除外（ChatGPT用）
+   * @param {string} fullText - 完全テキスト
+   * @param {string} sentPrompt - 送信されたプロンプト（オプション）
+   * @returns {string} プロンプト除外後のテキスト
+   */
+  function removePromptFromText(fullText, sentPrompt = null) {
+    if (!fullText || typeof fullText !== "string") return fullText;
+
+    try {
+      // 使用するプロンプト（パラメータまたはグローバル変数から）
+      const promptToRemove = sentPrompt || window.lastSentPrompt;
+
+      if (!promptToRemove) return fullText;
+
+      // 1. 完全一致除去
+      if (fullText.includes(promptToRemove)) {
+        const cleanedText = fullText.replace(promptToRemove, "").trim();
+        logWithTimestamp(
+          "【ChatGPT-除外】完全一致でプロンプトを除外しました",
+          "success",
+        );
+        return cleanedText;
+      }
+
+      // 2. 特徴的なプロンプトパターンで除外
+      const promptPatterns = [
+        "【現在.+?セルを処理中です】",
+        "# 命令書",
+        "## 1\\. あなたの役割",
+        "あなたはプロの.+?です",
+        "以下の\\{元のメルマガ\\}",
+        "変更して欲しい内容",
+        "ステップ1:結論について",
+      ];
+
+      let cleanedText = fullText;
+      let patternFound = false;
+
+      promptPatterns.forEach((pattern) => {
+        const regex = new RegExp(pattern, "gi");
+        if (regex.test(cleanedText)) {
+          cleanedText = cleanedText.replace(regex, "").trim();
+          patternFound = true;
+        }
+      });
+
+      if (patternFound) {
+        logWithTimestamp(
+          "【ChatGPT-除外】パターンマッチングでプロンプトを除外しました",
+          "success",
+        );
+      }
+
+      return cleanedText;
+    } catch (error) {
+      log.warn("[ChatGPT] プロンプト除去中にエラーが発生:", error);
+      return fullText;
+    }
+  }
+
+  // 装飾要素を除外したテキスト取得
+  function getCleanText(element) {
+    if (!element) return "";
+
+    try {
+      // ユーザーメッセージを除外
+      const filteredElement = excludeUserMessages(element);
+
+      // 装飾要素を削除
+      const decorativeElements = filteredElement.querySelectorAll(
+        "mat-icon, mat-ripple, svg, .icon, .ripple",
+      );
+      decorativeElements.forEach((el) => el.remove());
+
+      const rawText = filteredElement.textContent?.trim() || "";
+
+      // プロンプト除去を適用
+      const cleanedText = removePromptFromText(rawText);
+
+      return cleanedText;
+    } catch (error) {
+      log.warn("[ChatGPT] getCleanText処理中にエラーが発生:", error);
+      // フォールバック
+      const clone = element.cloneNode(true);
+      const decorativeElements = clone.querySelectorAll(
+        "mat-icon, mat-ripple, svg, .icon, .ripple",
+      );
+      decorativeElements.forEach((el) => el.remove());
+      return clone.textContent?.trim() || "";
+    }
+  }
+
+  // ========================================
+  // ログ管理システムの初期化（内部実装 - 実際に動作）
+  // ========================================
+  window.chatgptLogFileManager = {
+    logs: [], // メモリ内ログ保存
+    maxLogs: 1000, // 最大ログ数
+
+    // 共通ログ処理
+    _addLog: function (level, message, data = null, error = null) {
+      const timestamp = new Date().toISOString();
+      const logEntry = {
+        timestamp,
+        level,
+        message,
+        data,
+        error: error
+          ? {
+              message: error.message,
+              stack: error.stack,
+              name: error.name,
             }
-          });
-        });
+          : null,
+      };
 
-        return clone;
-      } catch (error) {
-        log.warn("[ChatGPT] ユーザーメッセージ除外中にエラーが発生:", error);
-        return container;
+      // メモリ内ログに追加
+      this.logs.push(logEntry);
+
+      // 最大ログ数を超えた場合は古いログを削除
+      if (this.logs.length > this.maxLogs) {
+        this.logs.shift();
       }
-    }
 
-    /**
-     * テキスト内容によるプロンプト除外（ChatGPT用）
-     * @param {string} fullText - 完全テキスト
-     * @param {string} sentPrompt - 送信されたプロンプト（オプション）
-     * @returns {string} プロンプト除外後のテキスト
-     */
-    function removePromptFromText(fullText, sentPrompt = null) {
-      if (!fullText || typeof fullText !== "string") return fullText;
-
-      try {
-        // 使用するプロンプト（パラメータまたはグローバル変数から）
-        const promptToRemove = sentPrompt || window.lastSentPrompt;
-
-        if (!promptToRemove) return fullText;
-
-        // 1. 完全一致除去
-        if (fullText.includes(promptToRemove)) {
-          const cleanedText = fullText.replace(promptToRemove, "").trim();
-          logWithTimestamp(
-            "【ChatGPT-除外】完全一致でプロンプトを除外しました",
-            "success",
-          );
-          return cleanedText;
-        }
-
-        // 2. 特徴的なプロンプトパターンで除外
-        const promptPatterns = [
-          "【現在.+?セルを処理中です】",
-          "# 命令書",
-          "## 1\\. あなたの役割",
-          "あなたはプロの.+?です",
-          "以下の\\{元のメルマガ\\}",
-          "変更して欲しい内容",
-          "ステップ1:結論について",
-        ];
-
-        let cleanedText = fullText;
-        let patternFound = false;
-
-        promptPatterns.forEach((pattern) => {
-          const regex = new RegExp(pattern, "gi");
-          if (regex.test(cleanedText)) {
-            cleanedText = cleanedText.replace(regex, "").trim();
-            patternFound = true;
-          }
-        });
-
-        if (patternFound) {
-          logWithTimestamp(
-            "【ChatGPT-除外】パターンマッチングでプロンプトを除外しました",
-            "success",
-          );
-        }
-
-        return cleanedText;
-      } catch (error) {
-        log.warn("[ChatGPT] プロンプト除去中にエラーが発生:", error);
-        return fullText;
-      }
-    }
-
-    // 装飾要素を除外したテキスト取得
-    function getCleanText(element) {
-      if (!element) return "";
-
-      try {
-        // ユーザーメッセージを除外
-        const filteredElement = excludeUserMessages(element);
-
-        // 装飾要素を削除
-        const decorativeElements = filteredElement.querySelectorAll(
-          "mat-icon, mat-ripple, svg, .icon, .ripple",
-        );
-        decorativeElements.forEach((el) => el.remove());
-
-        const rawText = filteredElement.textContent?.trim() || "";
-
-        // プロンプト除去を適用
-        const cleanedText = removePromptFromText(rawText);
-
-        return cleanedText;
-      } catch (error) {
-        log.warn("[ChatGPT] getCleanText処理中にエラーが発生:", error);
-        // フォールバック
-        const clone = element.cloneNode(true);
-        const decorativeElements = clone.querySelectorAll(
-          "mat-icon, mat-ripple, svg, .icon, .ripple",
-        );
-        decorativeElements.forEach((el) => el.remove());
-        return clone.textContent?.trim() || "";
-      }
-    }
-
-    // ========================================
-    // ログ管理システムの初期化（内部実装 - 実際に動作）
-    // ========================================
-    window.chatgptLogFileManager = {
-      logs: [], // メモリ内ログ保存
-      maxLogs: 1000, // 最大ログ数
-
-      // 共通ログ処理
-      _addLog: function (level, message, data = null, error = null) {
-        const timestamp = new Date().toISOString();
-        const logEntry = {
-          timestamp,
-          level,
-          message,
-          data,
-          error: error
-            ? {
-                message: error.message,
-                stack: error.stack,
-                name: error.name,
-              }
-            : null,
-        };
-
-        // メモリ内ログに追加
-        this.logs.push(logEntry);
-
-        // 最大ログ数を超えた場合は古いログを削除
-        if (this.logs.length > this.maxLogs) {
-          this.logs.shift();
-        }
-
-        // localStorageに重要なログを保存
-        if (level === "ERROR" || level === "SUCCESS") {
-          this._saveToStorage(logEntry);
-        }
-
-        return logEntry;
-      },
-
-      // localStorageへの保存
-      _saveToStorage: function (logEntry) {
-        try {
-          const storageKey = `chatgpt_logs_${new Date().toISOString().split("T")[0]}`;
-          const existingLogs = JSON.parse(
-            localStorage.getItem(storageKey) || "[]",
-          );
-          existingLogs.push(logEntry);
-
-          // 最大100エントリまで保存
-          if (existingLogs.length > 100) {
-            existingLogs.shift();
-          }
-
-          localStorage.setItem(storageKey, JSON.stringify(existingLogs));
-        } catch (e) {
-          log.warn("[ChatGPT-Log] localStorage保存エラー:", e);
-        }
-      },
-
-      logStep: function (message, data) {
-        const logEntry = this._addLog("INFO", message, data);
-        log.debug(`🔄 [ChatGPT-Step] ${message}`, data || "");
-        return logEntry;
-      },
-
-      logError: function (message, error) {
-        const logEntry = this._addLog("ERROR", message, null, error);
-        log.error(`❌ [ChatGPT-Error] ${message}`, error);
-        return logEntry;
-      },
-
-      logSuccess: function (message, data) {
-        const logEntry = this._addLog("SUCCESS", message, data);
-        log.debug(`✅ [ChatGPT-Success] ${message}`, data || "");
-        return logEntry;
-      },
-
-      logTaskStart: function (taskInfo) {
-        const logEntry = this._addLog("TASK_START", "タスク開始", taskInfo);
-        log.debug(`🚀 [ChatGPT-Task] タスク開始:`, taskInfo);
-        return logEntry;
-      },
-
-      logTaskComplete: function (taskInfo, result) {
-        const logEntry = this._addLog("TASK_COMPLETE", "タスク完了", {
-          taskInfo,
-          result,
-        });
-        log.debug(`🏁 [ChatGPT-Task] タスク完了:`, { taskInfo, result });
-        return logEntry;
-      },
-
-      saveToFile: function () {
-        // ブラウザでファイルダウンロード
-        try {
-          const logsJson = JSON.stringify(this.logs, null, 2);
-          const blob = new Blob([logsJson], { type: "application/json" });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = `chatgpt_logs_${new Date().toISOString().split("T")[0]}.json`;
-          a.click();
-          URL.revokeObjectURL(url);
-          log.debug(`💾 [ChatGPT-Log] ログファイルをダウンロード`);
-        } catch (e) {
-          log.error(`❌ [ChatGPT-Log] ファイル保存エラー:`, e);
-        }
-      },
-
-      saveErrorImmediately: function (error) {
-        const logEntry = this._addLog(
-          "CRITICAL_ERROR",
-          "緊急エラー",
-          null,
-          error,
-        );
-        log.error(`🚨 [ChatGPT-Critical] 緊急エラー:`, error);
+      // localStorageに重要なログを保存
+      if (level === "ERROR" || level === "SUCCESS") {
         this._saveToStorage(logEntry);
-        return logEntry;
-      },
+      }
 
-      saveIntermediate: function (data) {
-        const logEntry = this._addLog("INTERMEDIATE", "中間データ", data);
-        log.debug(`📊 [ChatGPT-Intermediate] 中間データ:`, data);
-        return logEntry;
-      },
+      return logEntry;
+    },
 
-      // ログ取得メソッド
-      getLogs: function (level = null) {
-        if (level) {
-          return this.logs.filter((log) => log.level === level);
-        }
-        return [...this.logs];
-      },
-
-      // ログクリア
-      clearLogs: function () {
-        this.logs = [];
-        log.debug(`🗑️ [ChatGPT-Log] ログをクリア`);
-      },
-    };
-
-    const ChatGPTLogManager = {
-      // LogFileManagerのプロキシとして動作
-      get logFileManager() {
-        return (
-          window.chatgptLogFileManager || {
-            logStep: () => {},
-            logError: () => {},
-            logSuccess: () => {},
-            logTaskStart: () => {},
-            logTaskComplete: () => {},
-            saveToFile: () => {},
-            saveErrorImmediately: () => {},
-            saveIntermediate: () => {},
-          }
+    // localStorageへの保存
+    _saveToStorage: function (logEntry) {
+      try {
+        const storageKey = `chatgpt_logs_${new Date().toISOString().split("T")[0]}`;
+        const existingLogs = JSON.parse(
+          localStorage.getItem(storageKey) || "[]",
         );
-      },
+        existingLogs.push(logEntry);
 
-      // ステップログを記録
-      logStep(step, message, data = {}) {
-        this.logFileManager.logStep(step, message, data);
-        logWithTimestamp(`📝 [ログ] ${step}: ${message}`);
-      },
-
-      // エラーログを記録（即座にファイル保存）
-      async logError(step, error, context = {}) {
-        this.logFileManager.logError(step, error, context);
-        logWithTimestamp(`❌ [エラーログ] ${step}: ${error.message}`, "error");
-        // エラーは即座に保存
-        await this.logFileManager.saveErrorImmediately(error, {
-          step,
-          ...context,
-        });
-      },
-
-      // 成功ログを記録
-      logSuccess(step, message, result = {}) {
-        this.logFileManager.logSuccess(step, message, result);
-        logWithTimestamp(`✅ [成功ログ] ${step}: ${message}`, "success");
-      },
-
-      // タスク開始を記録
-      startTask(taskData) {
-        this.logFileManager.logTaskStart(taskData);
-        logWithTimestamp(`🚀 [タスク開始]`, "info");
-      },
-
-      // タスク完了を記録
-      completeTask(result) {
-        this.logFileManager.logTaskComplete(result);
-        logWithTimestamp(`🏁 [タスク完了]`, "info");
-      },
-
-      // ログをファイルに保存（最終保存）
-      async saveToFile() {
-        try {
-          const filePath = await this.logFileManager.saveToFile();
-          logWithTimestamp(
-            `✅ [ChatGPTLogManager] 最終ログを保存しました: ${filePath}`,
-            "success",
-          );
-          return filePath;
-        } catch (error) {
-          logWithTimestamp(
-            `[ChatGPTLogManager] ログ保存エラー: ${error.message}`,
-            "error",
-          );
+        // 最大100エントリまで保存
+        if (existingLogs.length > 100) {
+          existingLogs.shift();
         }
-      },
 
-      // ログをクリア
-      clear() {
-        if (this.logFileManager.clearCurrentLogs) {
-          this.logFileManager.clearCurrentLogs();
-        }
-      },
-    };
+        localStorage.setItem(storageKey, JSON.stringify(existingLogs));
+      } catch (e) {
+        log.warn("[ChatGPT-Log] localStorage保存エラー:", e);
+      }
+    },
 
-    // 要素が可視かつクリック可能かチェック
-    function isElementInteractable(element) {
-      if (!element) return false;
-      const rect = element.getBoundingClientRect();
-      const style = window.getComputedStyle(element);
+    logStep: function (message, data) {
+      const logEntry = this._addLog("INFO", message, data);
+      log.debug(`🔄 [ChatGPT-Step] ${message}`, data || "");
+      return logEntry;
+    },
+
+    logError: function (message, error) {
+      const logEntry = this._addLog("ERROR", message, null, error);
+      log.error(`❌ [ChatGPT-Error] ${message}`, error);
+      return logEntry;
+    },
+
+    logSuccess: function (message, data) {
+      const logEntry = this._addLog("SUCCESS", message, data);
+      log.debug(`✅ [ChatGPT-Success] ${message}`, data || "");
+      return logEntry;
+    },
+
+    logTaskStart: function (taskInfo) {
+      const logEntry = this._addLog("TASK_START", "タスク開始", taskInfo);
+      log.debug(`🚀 [ChatGPT-Task] タスク開始:`, taskInfo);
+      return logEntry;
+    },
+
+    logTaskComplete: function (taskInfo, result) {
+      const logEntry = this._addLog("TASK_COMPLETE", "タスク完了", {
+        taskInfo,
+        result,
+      });
+      log.debug(`🏁 [ChatGPT-Task] タスク完了:`, { taskInfo, result });
+      return logEntry;
+    },
+
+    saveToFile: function () {
+      // ブラウザでファイルダウンロード
+      try {
+        const logsJson = JSON.stringify(this.logs, null, 2);
+        const blob = new Blob([logsJson], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `chatgpt_logs_${new Date().toISOString().split("T")[0]}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        log.debug(`💾 [ChatGPT-Log] ログファイルをダウンロード`);
+      } catch (e) {
+        log.error(`❌ [ChatGPT-Log] ファイル保存エラー:`, e);
+      }
+    },
+
+    saveErrorImmediately: function (error) {
+      const logEntry = this._addLog(
+        "CRITICAL_ERROR",
+        "緊急エラー",
+        null,
+        error,
+      );
+      log.error(`🚨 [ChatGPT-Critical] 緊急エラー:`, error);
+      this._saveToStorage(logEntry);
+      return logEntry;
+    },
+
+    saveIntermediate: function (data) {
+      const logEntry = this._addLog("INTERMEDIATE", "中間データ", data);
+      log.debug(`📊 [ChatGPT-Intermediate] 中間データ:`, data);
+      return logEntry;
+    },
+
+    // ログ取得メソッド
+    getLogs: function (level = null) {
+      if (level) {
+        return this.logs.filter((log) => log.level === level);
+      }
+      return [...this.logs];
+    },
+
+    // ログクリア
+    clearLogs: function () {
+      this.logs = [];
+      log.debug(`🗑️ [ChatGPT-Log] ログをクリア`);
+    },
+  };
+
+  const ChatGPTLogManager = {
+    // LogFileManagerのプロキシとして動作
+    get logFileManager() {
       return (
-        rect.width > 0 &&
-        rect.height > 0 &&
-        style.display !== "none" &&
-        style.visibility !== "hidden" &&
-        style.opacity !== "0"
-      );
-    }
-
-    // React イベントトリガー（テストコードから追加）
-    function triggerReactEvent(element, eventType, eventData = {}) {
-      try {
-        if (eventType === "click") {
-          element.click();
-          return true;
-        } else if (eventType === "pointer") {
-          const pointerDown = new PointerEvent("pointerdown", {
-            bubbles: true,
-            cancelable: true,
-            view: window,
-            ...eventData,
-          });
-          const pointerUp = new PointerEvent("pointerup", {
-            bubbles: true,
-            cancelable: true,
-            view: window,
-            ...eventData,
-          });
-          element.dispatchEvent(pointerDown);
-          element.dispatchEvent(pointerUp);
-          return true;
+        window.chatgptLogFileManager || {
+          logStep: () => {},
+          logError: () => {},
+          logSuccess: () => {},
+          logTaskStart: () => {},
+          logTaskComplete: () => {},
+          saveToFile: () => {},
+          saveErrorImmediately: () => {},
+          saveIntermediate: () => {},
         }
-        return false;
+      );
+    },
+
+    // ステップログを記録
+    logStep(step, message, data = {}) {
+      this.logFileManager.logStep(step, message, data);
+      logWithTimestamp(`📝 [ログ] ${step}: ${message}`);
+    },
+
+    // エラーログを記録（即座にファイル保存）
+    async logError(step, error, context = {}) {
+      this.logFileManager.logError(step, error, context);
+      logWithTimestamp(`❌ [エラーログ] ${step}: ${error.message}`, "error");
+      // エラーは即座に保存
+      await this.logFileManager.saveErrorImmediately(error, {
+        step,
+        ...context,
+      });
+    },
+
+    // 成功ログを記録
+    logSuccess(step, message, result = {}) {
+      this.logFileManager.logSuccess(step, message, result);
+      logWithTimestamp(`✅ [成功ログ] ${step}: ${message}`, "success");
+    },
+
+    // タスク開始を記録
+    startTask(taskData) {
+      this.logFileManager.logTaskStart(taskData);
+      logWithTimestamp(`🚀 [タスク開始]`, "info");
+    },
+
+    // タスク完了を記録
+    completeTask(result) {
+      this.logFileManager.logTaskComplete(result);
+      logWithTimestamp(`🏁 [タスク完了]`, "info");
+    },
+
+    // ログをファイルに保存（最終保存）
+    async saveToFile() {
+      try {
+        const filePath = await this.logFileManager.saveToFile();
+        logWithTimestamp(
+          `✅ [ChatGPTLogManager] 最終ログを保存しました: ${filePath}`,
+          "success",
+        );
+        return filePath;
       } catch (error) {
         logWithTimestamp(
-          `React イベントトリガー失敗: ${error.message}`,
-          "error",
-        );
-        return false;
-      }
-    }
-
-    // 複数セレクタで要素検索（テスト済みコードより改善版）
-    // 要素検索（固定セレクタ対応 + テスト済みセレクタ強化版）
-    async function findElement(selectors, description = "", maxRetries = 5) {
-      for (let retry = 0; retry < maxRetries; retry++) {
-        for (const selector of selectors) {
-          try {
-            let element;
-
-            if (selector.includes(":contains(")) {
-              const match = selector.match(/\:contains\("([^"]+)"\)/);
-              if (match) {
-                const text = match[1];
-                const baseSelector = selector.split(":contains(")[0];
-                const elements = document.querySelectorAll(baseSelector || "*");
-                element = Array.from(elements).find(
-                  (el) => el.textContent && el.textContent.includes(text),
-                );
-              }
-            } else {
-              element = document.querySelector(selector);
-            }
-
-            if (element && isElementInteractable(element)) {
-              if (description && retry > 0) {
-                logWithTimestamp(
-                  `${description}を発見: ${selector} (${retry + 1}回目の試行)`,
-                  "success",
-                );
-              }
-              return element;
-            }
-          } catch (e) {
-            // セレクタエラーを無視
-          }
-        }
-
-        if (retry < maxRetries - 1) {
-          if (description && retry === 0) {
-            logWithTimestamp(
-              `${description}が見つかりません。待機中... (${retry + 1}/${maxRetries})`,
-              "warning",
-            );
-          }
-          await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
-        }
-      }
-
-      if (description) {
-        logWithTimestamp(
-          `${description}の検索に失敗しました (${maxRetries}回試行)`,
+          `[ChatGPTLogManager] ログ保存エラー: ${error.message}`,
           "error",
         );
       }
-      return null;
-    }
+    },
 
-    // テキストで要素を検索
-    function findElementByText(selector, text, parent = document) {
-      const elements = parent.querySelectorAll(selector);
-      for (const el of elements) {
-        if (el.textContent && el.textContent.includes(text)) {
-          return el;
-        }
+    // ログをクリア
+    clear() {
+      if (this.logFileManager.clearCurrentLogs) {
+        this.logFileManager.clearCurrentLogs();
       }
-      return null;
-    }
+    },
+  };
 
-    // ========================================
-    // Step 4-1-0: ページ準備確認
-    // ========================================
-    async function waitForPageReady() {
-      logWithTimestamp("\n【Step 4-1-0】ページ準備確認", "step");
-      const maxAttempts = 30; // 最大30秒待機
-      let attempts = 0;
+  // 要素が可視かつクリック可能かチェック
+  function isElementInteractable(element) {
+    if (!element) return false;
+    const rect = element.getBoundingClientRect();
+    const style = window.getComputedStyle(element);
+    return (
+      rect.width > 0 &&
+      rect.height > 0 &&
+      style.display !== "none" &&
+      style.visibility !== "hidden" &&
+      style.opacity !== "0"
+    );
+  }
 
-      while (attempts < maxAttempts) {
-        attempts++;
-        logWithTimestamp(
-          `[Step 4-1-0] 準備確認 (${attempts}/${maxAttempts})`,
-          "info",
-        );
-
-        // テキスト入力欄の存在をチェック
-        const inputElement = await findElement(
-          SELECTORS.textInput,
-          "テキスト入力欄",
-          1,
-        );
-
-        if (inputElement && isElementInteractable(inputElement)) {
-          logWithTimestamp("✅ [Step 4-1-0] ページ準備完了", "success");
-          return true;
-        }
-
-        await sleep(1000);
-      }
-
-      logWithTimestamp("❌ [Step 4-1-0] ページ準備タイムアウト", "error");
-      throw new Error("ページが準備できませんでした");
-    }
-
-    // ========================================
-    // ステップ0-1: 要素取得リトライ機能
-    // ========================================
-    async function getElementWithWait(
-      selectors,
-      description = "",
-      timeout = 10000,
-    ) {
-      logWithTimestamp(`[ステップ0-1] ${description}を取得中...`, "info");
-      const startTime = Date.now();
-      let attempts = 0;
-
-      while (Date.now() - startTime < timeout) {
-        attempts++;
-        const element = await findElement(selectors, description, 1);
-
-        if (element && isElementInteractable(element)) {
-          logWithTimestamp(
-            `✅ [ステップ0-1] ${description}取得成功 (試行${attempts}回)`,
-            "success",
-          );
-          return element;
-        }
-
-        if (attempts % 5 === 0) {
-          logWithTimestamp(
-            `[ステップ0-1] ${description}を探索中... (${Math.floor((Date.now() - startTime) / 1000)}秒経過)`,
-            "info",
-          );
-        }
-
-        await sleep(500);
-      }
-
-      logWithTimestamp(
-        `❌ [ステップ0-1] ${description}取得タイムアウト`,
-        "error",
-      );
-      return null;
-    }
-
-    // ========================================
-    // Deep Research/エージェントモード統合処理
-    // ========================================
-    async function handleSpecialModeWaiting(featureName) {
-      try {
-        logWithTimestamp(`【${featureName}モード特別処理】開始`, "step");
-        logWithTimestamp("【Step 4-1-6-1】最大回答待機時間: 40分", "info");
-
-        // ステップ6-1: 停止ボタン出現待機
-        let stopBtn = await waitForStopButton();
-        if (!stopBtn) return false;
-
-        // ステップ6-2: 2分間初期待機
-        const disappeared = await initialWaitCheck();
-
-        // ステップ6-3: 2分以内に完了した場合の再送信
-        if (disappeared) {
-          await retryWithPrompt();
-        }
-
-        // ステップ6-4: 最終待機（最大40分）
-        await finalWaitForCompletion();
-
-        logWithTimestamp(`${featureName}モード特別処理完了`, "success");
+  // React イベントトリガー（テストコードから追加）
+  function triggerReactEvent(element, eventType, eventData = {}) {
+    try {
+      if (eventType === "click") {
+        element.click();
         return true;
-      } catch (error) {
-        logWithTimestamp(`特別処理エラー: ${error.message}`, "error");
-        return false;
-      }
-    }
-
-    // 6-1: 停止ボタン出現待機
-    async function waitForStopButton() {
-      logWithTimestamp("【Step 4-1-6-1】停止ボタン出現待機", "step");
-      for (let i = 0; i < 60; i++) {
-        const stopBtn = await findElement(SELECTORS.stopButton, 1);
-        if (stopBtn) {
-          logWithTimestamp(
-            `停止ボタンが表示されました (${i + 1}秒後)`,
-            "success",
-          );
-          return stopBtn;
-        }
-        if (i % 10 === 0 && i > 0) {
-          logWithTimestamp(`停止ボタン待機中... ${i}秒経過`, "info");
-        }
-        await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
-      }
-      logWithTimestamp(
-        "【Step 4-1-6-1】停止ボタンが表示されませんでした",
-        "warning",
-      );
-      return null;
-    }
-
-    // 6-2: 2分間初期待機
-    async function initialWaitCheck() {
-      logWithTimestamp("【Step 4-1-6-2】2分間初期待機チェック", "step");
-      for (let i = 0; i < 120; i++) {
-        const stopBtn = await findElement(SELECTORS.stopButton, 1);
-        if (!stopBtn) {
-          const minutes = Math.floor(i / 60);
-          const seconds = i % 60;
-          logWithTimestamp(
-            `停止ボタンが消えました (${minutes}分${seconds}秒で完了)`,
-            "info",
-          );
-          return true;
-        }
-        if (i % 30 === 0 && i > 0) {
-          logWithTimestamp(
-            `待機中... (${Math.floor(i / 60)}分${i % 60}秒経過)`,
-            "info",
-          );
-        }
-        await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
+      } else if (eventType === "pointer") {
+        const pointerDown = new PointerEvent("pointerdown", {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+          ...eventData,
+        });
+        const pointerUp = new PointerEvent("pointerup", {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+          ...eventData,
+        });
+        element.dispatchEvent(pointerDown);
+        element.dispatchEvent(pointerUp);
+        return true;
       }
       return false;
+    } catch (error) {
+      logWithTimestamp(`React イベントトリガー失敗: ${error.message}`, "error");
+      return false;
     }
+  }
 
-    // 6-3: 再送信処理
-    async function retryWithPrompt() {
-      logWithTimestamp(
-        "【Step 4-1-6-3】再送信処理（「いいから元のプロンプトを確認して作業をして」）",
-        "step",
-      );
-      const input = await findElement(SELECTORS.textInput);
-      if (!input) return;
+  // 複数セレクタで要素検索（テスト済みコードより改善版）
+  // 要素検索（固定セレクタ対応 + テスト済みセレクタ強化版）
+  async function findElement(selectors, description = "", maxRetries = 5) {
+    for (let retry = 0; retry < maxRetries; retry++) {
+      for (const selector of selectors) {
+        try {
+          let element;
 
-      const retryMessage = "いいから元のプロンプトを確認して作業をして";
-
-      // テキスト入力
-      if (
-        input.classList.contains("ProseMirror") ||
-        input.classList.contains("ql-editor")
-      ) {
-        input.innerHTML = "";
-        const p = document.createElement("p");
-        p.textContent = retryMessage;
-        input.appendChild(p);
-        input.classList.remove("ql-blank");
-        input.dispatchEvent(new Event("input", { bubbles: true }));
-      } else {
-        input.textContent = retryMessage;
-        input.dispatchEvent(new Event("input", { bubbles: true }));
-      }
-
-      // 送信
-      const sendBtn = await findElement(SELECTORS.sendButton);
-      if (sendBtn) {
-        sendBtn.click();
-        logWithTimestamp("【Step 4-1-6-2】再送信完了", "success");
-        await sleep(AI_WAIT_CONFIG.LONG_WAIT);
-      }
-    }
-
-    // 6-4: 最終待機処理
-    async function finalWaitForCompletion() {
-      logWithTimestamp("【Step 4-1-6-4】最終待機（最大40分）", "step");
-      const maxWaitTime = AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT / 1000;
-      let consecutiveAbsent = 0;
-
-      for (let i = 0; i < maxWaitTime; i++) {
-        const stopBtn = await findElement(SELECTORS.stopButton, 1);
-
-        if (!stopBtn) {
-          consecutiveAbsent++;
-          if (consecutiveAbsent >= 10) {
-            logWithTimestamp(
-              "【Step 4-1-6-3】停止ボタンが10秒間連続で消滅。完了！",
-              "success",
-            );
-            break;
+          if (selector.includes(":contains(")) {
+            const match = selector.match(/\:contains\("([^"]+)"\)/);
+            if (match) {
+              const text = match[1];
+              const baseSelector = selector.split(":contains(")[0];
+              const elements = document.querySelectorAll(baseSelector || "*");
+              element = Array.from(elements).find(
+                (el) => el.textContent && el.textContent.includes(text),
+              );
+            }
+          } else {
+            element = document.querySelector(selector);
           }
-        } else {
-          consecutiveAbsent = 0;
-        }
 
-        if (i % 60 === 0 && i > 0) {
+          if (element && isElementInteractable(element)) {
+            if (description && retry > 0) {
+              logWithTimestamp(
+                `${description}を発見: ${selector} (${retry + 1}回目の試行)`,
+                "success",
+              );
+            }
+            return element;
+          }
+        } catch (e) {
+          // セレクタエラーを無視
+        }
+      }
+
+      if (retry < maxRetries - 1) {
+        if (description && retry === 0) {
           logWithTimestamp(
-            `待機中... (${Math.floor(i / 60)}分経過 / 最大40分)`,
-            "info",
+            `${description}が見つかりません。待機中... (${retry + 1}/${maxRetries})`,
+            "warning",
           );
         }
-        await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
+        await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
       }
     }
 
-    // ========================================
-    // 【関数一覧】検出システム用エクスポート関数
-    // ========================================
+    if (description) {
+      logWithTimestamp(
+        `${description}の検索に失敗しました (${maxRetries}回試行)`,
+        "error",
+      );
+    }
+    return null;
+  }
 
-    /*
+  // テキストで要素を検索
+  function findElementByText(selector, text, parent = document) {
+    const elements = parent.querySelectorAll(selector);
+    for (const el of elements) {
+      if (el.textContent && el.textContent.includes(text)) {
+        return el;
+      }
+    }
+    return null;
+  }
+
+  // ========================================
+  // Step 4-1-0: ページ準備確認
+  // ========================================
+  async function waitForPageReady() {
+    logWithTimestamp("\n【Step 4-1-0】ページ準備確認", "step");
+    const maxAttempts = 30; // 最大30秒待機
+    let attempts = 0;
+
+    while (attempts < maxAttempts) {
+      attempts++;
+      logWithTimestamp(
+        `[Step 4-1-0] 準備確認 (${attempts}/${maxAttempts})`,
+        "info",
+      );
+
+      // テキスト入力欄の存在をチェック
+      const inputElement = await findElement(
+        SELECTORS.textInput,
+        "テキスト入力欄",
+        1,
+      );
+
+      if (inputElement && isElementInteractable(inputElement)) {
+        logWithTimestamp("✅ [Step 4-1-0] ページ準備完了", "success");
+        return true;
+      }
+
+      await sleep(1000);
+    }
+
+    logWithTimestamp("❌ [Step 4-1-0] ページ準備タイムアウト", "error");
+    throw new Error("ページが準備できませんでした");
+  }
+
+  // ========================================
+  // ステップ0-1: 要素取得リトライ機能
+  // ========================================
+  async function getElementWithWait(
+    selectors,
+    description = "",
+    timeout = 10000,
+  ) {
+    logWithTimestamp(`[ステップ0-1] ${description}を取得中...`, "info");
+    const startTime = Date.now();
+    let attempts = 0;
+
+    while (Date.now() - startTime < timeout) {
+      attempts++;
+      const element = await findElement(selectors, description, 1);
+
+      if (element && isElementInteractable(element)) {
+        logWithTimestamp(
+          `✅ [ステップ0-1] ${description}取得成功 (試行${attempts}回)`,
+          "success",
+        );
+        return element;
+      }
+
+      if (attempts % 5 === 0) {
+        logWithTimestamp(
+          `[ステップ0-1] ${description}を探索中... (${Math.floor((Date.now() - startTime) / 1000)}秒経過)`,
+          "info",
+        );
+      }
+
+      await sleep(500);
+    }
+
+    logWithTimestamp(
+      `❌ [ステップ0-1] ${description}取得タイムアウト`,
+      "error",
+    );
+    return null;
+  }
+
+  // ========================================
+  // Deep Research/エージェントモード統合処理
+  // ========================================
+  async function handleSpecialModeWaiting(featureName) {
+    try {
+      logWithTimestamp(`【${featureName}モード特別処理】開始`, "step");
+      logWithTimestamp("【Step 4-1-6-1】最大回答待機時間: 40分", "info");
+
+      // ステップ6-1: 停止ボタン出現待機
+      let stopBtn = await waitForStopButton();
+      if (!stopBtn) return false;
+
+      // ステップ6-2: 2分間初期待機
+      const disappeared = await initialWaitCheck();
+
+      // ステップ6-3: 2分以内に完了した場合の再送信
+      if (disappeared) {
+        await retryWithPrompt();
+      }
+
+      // ステップ6-4: 最終待機（最大40分）
+      await finalWaitForCompletion();
+
+      logWithTimestamp(`${featureName}モード特別処理完了`, "success");
+      return true;
+    } catch (error) {
+      logWithTimestamp(`特別処理エラー: ${error.message}`, "error");
+      return false;
+    }
+  }
+
+  // 6-1: 停止ボタン出現待機
+  async function waitForStopButton() {
+    logWithTimestamp("【Step 4-1-6-1】停止ボタン出現待機", "step");
+    for (let i = 0; i < 60; i++) {
+      const stopBtn = await findElement(SELECTORS.stopButton, 1);
+      if (stopBtn) {
+        logWithTimestamp(
+          `停止ボタンが表示されました (${i + 1}秒後)`,
+          "success",
+        );
+        return stopBtn;
+      }
+      if (i % 10 === 0 && i > 0) {
+        logWithTimestamp(`停止ボタン待機中... ${i}秒経過`, "info");
+      }
+      await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
+    }
+    logWithTimestamp(
+      "【Step 4-1-6-1】停止ボタンが表示されませんでした",
+      "warning",
+    );
+    return null;
+  }
+
+  // 6-2: 2分間初期待機
+  async function initialWaitCheck() {
+    logWithTimestamp("【Step 4-1-6-2】2分間初期待機チェック", "step");
+    for (let i = 0; i < 120; i++) {
+      const stopBtn = await findElement(SELECTORS.stopButton, 1);
+      if (!stopBtn) {
+        const minutes = Math.floor(i / 60);
+        const seconds = i % 60;
+        logWithTimestamp(
+          `停止ボタンが消えました (${minutes}分${seconds}秒で完了)`,
+          "info",
+        );
+        return true;
+      }
+      if (i % 30 === 0 && i > 0) {
+        logWithTimestamp(
+          `待機中... (${Math.floor(i / 60)}分${i % 60}秒経過)`,
+          "info",
+        );
+      }
+      await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
+    }
+    return false;
+  }
+
+  // 6-3: 再送信処理
+  async function retryWithPrompt() {
+    logWithTimestamp(
+      "【Step 4-1-6-3】再送信処理（「いいから元のプロンプトを確認して作業をして」）",
+      "step",
+    );
+    const input = await findElement(SELECTORS.textInput);
+    if (!input) return;
+
+    const retryMessage = "いいから元のプロンプトを確認して作業をして";
+
+    // テキスト入力
+    if (
+      input.classList.contains("ProseMirror") ||
+      input.classList.contains("ql-editor")
+    ) {
+      input.innerHTML = "";
+      const p = document.createElement("p");
+      p.textContent = retryMessage;
+      input.appendChild(p);
+      input.classList.remove("ql-blank");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    } else {
+      input.textContent = retryMessage;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+
+    // 送信
+    const sendBtn = await findElement(SELECTORS.sendButton);
+    if (sendBtn) {
+      sendBtn.click();
+      logWithTimestamp("【Step 4-1-6-2】再送信完了", "success");
+      await sleep(AI_WAIT_CONFIG.LONG_WAIT);
+    }
+  }
+
+  // 6-4: 最終待機処理
+  async function finalWaitForCompletion() {
+    logWithTimestamp("【Step 4-1-6-4】最終待機（最大40分）", "step");
+    const maxWaitTime = AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT / 1000;
+    let consecutiveAbsent = 0;
+
+    for (let i = 0; i < maxWaitTime; i++) {
+      const stopBtn = await findElement(SELECTORS.stopButton, 1);
+
+      if (!stopBtn) {
+        consecutiveAbsent++;
+        if (consecutiveAbsent >= 10) {
+          logWithTimestamp(
+            "【Step 4-1-6-3】停止ボタンが10秒間連続で消滅。完了！",
+            "success",
+          );
+          break;
+        }
+      } else {
+        consecutiveAbsent = 0;
+      }
+
+      if (i % 60 === 0 && i > 0) {
+        logWithTimestamp(
+          `待機中... (${Math.floor(i / 60)}分経過 / 最大40分)`,
+          "info",
+        );
+      }
+      await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
+    }
+  }
+
+  // ========================================
+  // 【関数一覧】検出システム用エクスポート関数
+  // ========================================
+
+  /*
     ┌─────────────────────────────────────────────────────┐
     │                【メニュー操作関数】                    │
     │   本番executeTask内のコードをそのまま関数化           │
     └─────────────────────────────────────────────────────┘
     */
 
-    /**
-     * 🔧 ChatGPTモデルメニューを開く
-     * @description 本番executeTask内の行497-500のコードをそのまま関数化
-     * @param {Element} modelButton - モデルボタン要素
-     * @returns {Promise<boolean>} メニュー開放成功フラグ
-     */
-    async function openModelMenu(modelButton) {
-      if (!modelButton) {
-        log.error("[ChatGPT-openModelMenu] モデルボタンが見つかりません");
-        return false;
-      }
-
-      try {
-        modelButton.dispatchEvent(
-          new PointerEvent("pointerdown", { bubbles: true }),
-        );
-        await sleep(AI_WAIT_CONFIG.MICRO_WAIT);
-        modelButton.dispatchEvent(
-          new PointerEvent("pointerup", { bubbles: true }),
-        );
-        await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT - 500);
-
-        // メニュー出現確認
-        const menuContainer = await findElement(
-          SELECTORS.modelMenu,
-          "モデルメニュー",
-          1,
-        );
-        if (menuContainer) {
-          log.debug("[ChatGPT-openModelMenu] ✅ モデルメニュー開放成功");
-          return true;
-        } else {
-          log.warn(
-            "[ChatGPT-openModelMenu] ⚠️ メニュー開放したがDOM確認できず",
-          );
-          return false;
-        }
-      } catch (error) {
-        log.error("[ChatGPT-openModelMenu] ❌ エラー:", error);
-        return false;
-      }
+  /**
+   * 🔧 ChatGPTモデルメニューを開く
+   * @description 本番executeTask内の行497-500のコードをそのまま関数化
+   * @param {Element} modelButton - モデルボタン要素
+   * @returns {Promise<boolean>} メニュー開放成功フラグ
+   */
+  async function openModelMenu(modelButton) {
+    if (!modelButton) {
+      log.error("[ChatGPT-openModelMenu] モデルボタンが見つかりません");
+      return false;
     }
 
-    /**
-     * 🔧 ChatGPT機能メニューを開く
-     * @description 本番executeTask内の行880-883のコードをそのまま関数化
-     * @param {Element} funcMenuBtn - 機能メニューボタン要素
-     * @returns {Promise<boolean>} メニュー開放成功フラグ
-     */
-    async function openFunctionMenu(funcMenuBtn) {
-      if (!funcMenuBtn) {
-        log.error(
-          "[ChatGPT-openFunctionMenu] 機能メニューボタンが見つかりません",
-        );
+    try {
+      modelButton.dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true }),
+      );
+      await sleep(AI_WAIT_CONFIG.MICRO_WAIT);
+      modelButton.dispatchEvent(
+        new PointerEvent("pointerup", { bubbles: true }),
+      );
+      await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT - 500);
+
+      // メニュー出現確認
+      const menuContainer = await findElement(
+        SELECTORS.modelMenu,
+        "モデルメニュー",
+        1,
+      );
+      if (menuContainer) {
+        log.debug("[ChatGPT-openModelMenu] ✅ モデルメニュー開放成功");
+        return true;
+      } else {
+        log.warn("[ChatGPT-openModelMenu] ⚠️ メニュー開放したがDOM確認できず");
         return false;
       }
+    } catch (error) {
+      log.error("[ChatGPT-openModelMenu] ❌ エラー:", error);
+      return false;
+    }
+  }
 
-      try {
-        funcMenuBtn.dispatchEvent(
-          new PointerEvent("pointerdown", { bubbles: true }),
-        );
-        await sleep(AI_WAIT_CONFIG.MICRO_WAIT);
-        funcMenuBtn.dispatchEvent(
-          new PointerEvent("pointerup", { bubbles: true }),
-        );
-        await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
-
-        // メニュー出現確認
-        const menuContainer = await findElement(
-          SELECTORS.mainMenu,
-          "機能メニュー",
-          1,
-        );
-        if (menuContainer) {
-          log.debug("[ChatGPT-openFunctionMenu] ✅ 機能メニュー開放成功");
-          return true;
-        } else {
-          log.warn(
-            "[ChatGPT-openFunctionMenu] ⚠️ メニュー開放したがDOM確認できず",
-          );
-          return false;
-        }
-      } catch (error) {
-        log.error("[ChatGPT-openFunctionMenu] ❌ エラー:", error);
-        return false;
-      }
+  /**
+   * 🔧 ChatGPT機能メニューを開く
+   * @description 本番executeTask内の行880-883のコードをそのまま関数化
+   * @param {Element} funcMenuBtn - 機能メニューボタン要素
+   * @returns {Promise<boolean>} メニュー開放成功フラグ
+   */
+  async function openFunctionMenu(funcMenuBtn) {
+    if (!funcMenuBtn) {
+      log.error(
+        "[ChatGPT-openFunctionMenu] 機能メニューボタンが見つかりません",
+      );
+      return false;
     }
 
-    /*
+    try {
+      funcMenuBtn.dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true }),
+      );
+      await sleep(AI_WAIT_CONFIG.MICRO_WAIT);
+      funcMenuBtn.dispatchEvent(
+        new PointerEvent("pointerup", { bubbles: true }),
+      );
+      await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
+
+      // メニュー出現確認
+      const menuContainer = await findElement(
+        SELECTORS.mainMenu,
+        "機能メニュー",
+        1,
+      );
+      if (menuContainer) {
+        log.debug("[ChatGPT-openFunctionMenu] ✅ 機能メニュー開放成功");
+        return true;
+      } else {
+        log.warn(
+          "[ChatGPT-openFunctionMenu] ⚠️ メニュー開放したがDOM確認できず",
+        );
+        return false;
+      }
+    } catch (error) {
+      log.error("[ChatGPT-openFunctionMenu] ❌ エラー:", error);
+      return false;
+    }
+  }
+
+  /*
     ┌─────────────────────────────────────────────────────┐
     │                【基本操作関数】                        │
     │        ChatGPTでの基本的なUI操作を関数化             │
     └─────────────────────────────────────────────────────┘
     */
 
-    /**
-     * ✏️ ChatGPTテキスト入力処理
-     * @description ChatGPTのテキスト入力欄にテキストを入力し、React環境での値変更イベントを発火
-     * @param {string} text - 入力するテキスト
-     * @returns {Promise<Element>} 入力要素
-     * @throws {Error} テキスト入力欄が見つからない場合
-     */
-    async function inputTextChatGPT(text) {
-      const inputElement = await findElement(
-        SELECTORS.textInput,
-        "テキスト入力欄",
-      );
-      if (!inputElement) throw new Error("テキスト入力欄が見つかりません");
+  /**
+   * ✏️ ChatGPTテキスト入力処理
+   * @description ChatGPTのテキスト入力欄にテキストを入力し、React環境での値変更イベントを発火
+   * @param {string} text - 入力するテキスト
+   * @returns {Promise<Element>} 入力要素
+   * @throws {Error} テキスト入力欄が見つからない場合
+   */
+  async function inputTextChatGPT(text) {
+    const inputElement = await findElement(
+      SELECTORS.textInput,
+      "テキスト入力欄",
+    );
+    if (!inputElement) throw new Error("テキスト入力欄が見つかりません");
 
-      inputElement.focus();
-      await sleep(100);
-      inputElement.value = text;
+    inputElement.focus();
+    await sleep(100);
+    inputElement.value = text;
 
-      // React環境での値変更イベント発火
-      const inputEvent = new Event("input", { bubbles: true });
-      inputElement.dispatchEvent(inputEvent);
-      await sleep(500);
+    // React環境での値変更イベント発火
+    const inputEvent = new Event("input", { bubbles: true });
+    inputElement.dispatchEvent(inputEvent);
+    await sleep(500);
 
-      return inputElement;
-    }
+    return inputElement;
+  }
 
-    /**
-     * 📤 ChatGPTメッセージ送信処理
-     * @description ChatGPTの送信ボタンをクリックしてメッセージを送信
-     * @returns {Promise<boolean>} 送信成功フラグ
-     * @throws {Error} 送信ボタンが見つからない場合
-     */
-    async function sendMessageChatGPT() {
-      const sendButton = await findElement(SELECTORS.sendButton, "送信ボタン");
-      if (!sendButton) throw new Error("送信ボタンが見つかりません");
+  /**
+   * 📤 ChatGPTメッセージ送信処理
+   * @description ChatGPTの送信ボタンをクリックしてメッセージを送信
+   * @returns {Promise<boolean>} 送信成功フラグ
+   * @throws {Error} 送信ボタンが見つからない場合
+   */
+  async function sendMessageChatGPT() {
+    const sendButton = await findElement(SELECTORS.sendButton, "送信ボタン");
+    if (!sendButton) throw new Error("送信ボタンが見つかりません");
 
-      sendButton.click();
-      await sleep(1000);
+    sendButton.click();
+    await sleep(1000);
 
-      return true;
-    }
+    return true;
+  }
 
-    /**
-     * ⏳ ChatGPTレスポンス待機処理
-     * @description ChatGPTのレスポンス生成完了まで待機（停止ボタンの消失を監視）
-     * @returns {Promise<boolean>} 待機完了フラグ
-     * @throws {Error} タイムアウト（2分）の場合
-     */
-    async function waitForResponseChatGPT() {
-      const maxWaitTime = 600000; // 10分（通常処理に合わせて調整）
-      const checkInterval = 1000;
-      let elapsedTime = 0;
+  /**
+   * ⏳ ChatGPTレスポンス待機処理
+   * @description ChatGPTのレスポンス生成完了まで待機（停止ボタンの消失を監視）
+   * @returns {Promise<boolean>} 待機完了フラグ
+   * @throws {Error} タイムアウト（2分）の場合
+   */
+  async function waitForResponseChatGPT() {
+    const maxWaitTime = 600000; // 10分（通常処理に合わせて調整）
+    const checkInterval = 1000;
+    let elapsedTime = 0;
 
-      while (elapsedTime < maxWaitTime) {
-        const stopButton = document.querySelector(SELECTORS.stopButton);
-        if (!stopButton) {
-          // 停止ボタンがない = レスポンス完了
-          await sleep(2000); // 安全のため追加待機
-          return true;
-        }
-
-        await sleep(checkInterval);
-        elapsedTime += checkInterval;
+    while (elapsedTime < maxWaitTime) {
+      const stopButton = document.querySelector(SELECTORS.stopButton);
+      if (!stopButton) {
+        // 停止ボタンがない = レスポンス完了
+        await sleep(2000); // 安全のため追加待機
+        return true;
       }
 
-      throw new Error("レスポンス待機タイムアウト");
+      await sleep(checkInterval);
+      elapsedTime += checkInterval;
     }
 
-    /**
-     * 📥 ChatGPTレスポンステキスト取得処理
-     * @description ChatGPTの最新のアシスタント回答を取得
-     * @returns {Promise<string>} レスポンステキスト
-     * @throws {Error} アシスタントの回答が見つからない場合
-     */
-    window.getResponseTextChatGPT = async function getResponseTextChatGPT() {
-      const responseElements = document.querySelectorAll(
-        '[data-message-author-role="assistant"]',
-      );
-      if (responseElements.length === 0) {
-        throw new Error("アシスタントの回答が見つかりません");
-      }
+    throw new Error("レスポンス待機タイムアウト");
+  }
 
-      const latestResponse = responseElements[responseElements.length - 1];
-      const responseText = getCleanText(latestResponse);
+  /**
+   * 📥 ChatGPTレスポンステキスト取得処理
+   * @description ChatGPTの最新のアシスタント回答を取得
+   * @returns {Promise<string>} レスポンステキスト
+   * @throws {Error} アシスタントの回答が見つからない場合
+   */
+  window.getResponseTextChatGPT = async function getResponseTextChatGPT() {
+    const responseElements = document.querySelectorAll(
+      '[data-message-author-role="assistant"]',
+    );
+    if (responseElements.length === 0) {
+      throw new Error("アシスタントの回答が見つかりません");
+    }
 
-      return responseText;
-    };
+    const latestResponse = responseElements[responseElements.length - 1];
+    const responseText = getCleanText(latestResponse);
 
-    /*
+    return responseText;
+  };
+
+  /*
     ┌─────────────────────────────────────────────────────┐
     │                【選択操作関数】                        │
     │        モデルや機能の選択処理を関数化                 │
     └─────────────────────────────────────────────────────┘
     */
 
-    /**
-     * 🎯 ChatGPTモデル選択処理
-     * @description 指定されたモデル名のモデルを選択
-     * @param {string} modelName - 選択するモデル名（例: "GPT-4", "GPT-3.5"）
-     * @returns {Promise<boolean>} 選択成功フラグ
-     * @throws {Error} モデルが見つからない場合
-     */
-    async function selectModelChatGPT(modelName) {
-      const modelButton = await findElement(
-        SELECTORS.modelButton,
-        "モデルボタン",
-      );
-      await openModelMenu(modelButton);
+  /**
+   * 🎯 ChatGPTモデル選択処理
+   * @description 指定されたモデル名のモデルを選択
+   * @param {string} modelName - 選択するモデル名（例: "GPT-4", "GPT-3.5"）
+   * @returns {Promise<boolean>} 選択成功フラグ
+   * @throws {Error} モデルが見つからない場合
+   */
+  async function selectModelChatGPT(modelName) {
+    const modelButton = await findElement(
+      SELECTORS.modelButton,
+      "モデルボタン",
+    );
+    await openModelMenu(modelButton);
 
-      const modelMenuEl = await findElement(
-        SELECTORS.modelMenu,
-        "モデルメニュー",
-      );
-      if (!modelMenuEl) throw new Error("モデルメニューが開きません");
+    const modelMenuEl = await findElement(
+      SELECTORS.modelMenu,
+      "モデルメニュー",
+    );
+    if (!modelMenuEl) throw new Error("モデルメニューが開きません");
 
-      // メインメニューから検索
-      const mainMenuItems = modelMenuEl.querySelectorAll(
-        '[role="menuitem"][data-testid^="model-switcher-"]',
-      );
-      for (const item of mainMenuItems) {
-        if (getCleanText(item).includes(modelName)) {
-          item.click();
-          await sleep(1000);
-          return true;
-        }
+    // メインメニューから検索
+    const mainMenuItems = modelMenuEl.querySelectorAll(
+      '[role="menuitem"][data-testid^="model-switcher-"]',
+    );
+    for (const item of mainMenuItems) {
+      if (getCleanText(item).includes(modelName)) {
+        item.click();
+        await sleep(1000);
+        return true;
       }
-
-      throw new Error(`モデル '${modelName}' が見つかりません`);
     }
 
-    /**
-     * 🎯 ChatGPT機能選択処理
-     * @description 指定された機能名の機能を選択
-     * @param {string} functionName - 選択する機能名（例: "Code Interpreter", "Browse with Bing"）
-     * @returns {Promise<boolean>} 選択成功フラグ
-     * @throws {Error} 機能が見つからない場合
-     */
-    async function selectFunctionChatGPT(functionName) {
-      const funcMenuBtn = await findElement(
-        SELECTORS.menuButton,
-        "機能メニューボタン",
-      );
-      await openFunctionMenu(funcMenuBtn);
+    throw new Error(`モデル '${modelName}' が見つかりません`);
+  }
 
-      const funcMenu = await findElement(SELECTORS.mainMenu, "メインメニュー");
-      if (!funcMenu) throw new Error("機能メニューが開きません");
+  /**
+   * 🎯 ChatGPT機能選択処理
+   * @description 指定された機能名の機能を選択
+   * @param {string} functionName - 選択する機能名（例: "Code Interpreter", "Browse with Bing"）
+   * @returns {Promise<boolean>} 選択成功フラグ
+   * @throws {Error} 機能が見つからない場合
+   */
+  async function selectFunctionChatGPT(functionName) {
+    const funcMenuBtn = await findElement(
+      SELECTORS.menuButton,
+      "機能メニューボタン",
+    );
+    await openFunctionMenu(funcMenuBtn);
 
-      // メニューアイテムから検索
-      const menuItems = funcMenu.querySelectorAll('[role="menuitemradio"]');
-      for (const item of menuItems) {
-        if (getCleanText(item).includes(functionName)) {
-          item.click();
-          await sleep(1000);
-          return true;
-        }
+    const funcMenu = await findElement(SELECTORS.mainMenu, "メインメニュー");
+    if (!funcMenu) throw new Error("機能メニューが開きません");
+
+    // メニューアイテムから検索
+    const menuItems = funcMenu.querySelectorAll('[role="menuitemradio"]');
+    for (const item of menuItems) {
+      if (getCleanText(item).includes(functionName)) {
+        item.click();
+        await sleep(1000);
+        return true;
       }
-
-      throw new Error(`機能 '${functionName}' が見つかりません`);
     }
 
-    // ========================================
-    // メイン実行関数
-    // ========================================
-    async function executeTask(taskData) {
+    throw new Error(`機能 '${functionName}' が見つかりません`);
+  }
+
+  console.log("🔧 [DEBUG] 全ヘルパー関数定義完了");
+
+  // ========================================
+  // メイン実行関数
+  // ========================================
+  console.log("🔧 [DEBUG] executeTask関数定義セクションに到達");
+
+  let executeTask; // 関数を変数として宣言
+  try {
+    executeTask = async function executeTaskImpl(taskData) {
       // 実行前にフラグをリセット（どの経路から呼ばれても適切に初期化）
       window.__v2_execution_complete = false;
       window.__v2_execution_result = null;
@@ -2214,7 +2238,10 @@ const log = {
 
               // メニューを閉じる
               document.dispatchEvent(
-                new KeyboardEvent("keydown", { key: "Escape", code: "Escape" }),
+                new KeyboardEvent("keydown", {
+                  key: "Escape",
+                  code: "Escape",
+                }),
               );
               await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
             }
@@ -2711,7 +2738,11 @@ const log = {
           menuItems.forEach((item) => {
             const name = getCleanText(item);
             if (name) {
-              availableFeatures.push({ name, element: item, location: "main" });
+              availableFeatures.push({
+                name,
+                element: item,
+                location: "main",
+              });
               logWithTimestamp(`メイン機能発見: ${name}`, "info");
             }
           });
@@ -3257,40 +3288,41 @@ const log = {
 
         return result;
       }
-    }
-
-    // ========================================
-    // runAutomation関数（後方互換性）
-    // ========================================
-    async function runAutomation(config) {
-      // executeTask内でフラグリセットが行われるため、ここでは不要
-      return executeTask({
-        model: config.model,
-        function: config.function,
-        prompt: config.text || config.prompt,
-      });
-    }
-
-    // ========================================
-    // グローバル公開
-    // ========================================
-    log.debug("[DEBUG] グローバル公開セクションに到達");
-    log.debug("[DEBUG] executeTask関数の存在:", typeof executeTask);
-    log.debug("[DEBUG] runAutomation関数の存在:", typeof runAutomation);
-
-    const automationAPI = {
-      executeTask,
-      runAutomation,
     };
+    console.log("🔧 [DEBUG] executeTask関数定義完了");
+  } catch (error) {
+    console.error("❌ [DEBUG] executeTask関数定義エラー:", error);
+  }
 
-    log.debug("[DEBUG] automationAPI作成成功");
+  // ========================================
+  // runAutomation関数（後方互換性）
+  // ========================================
+  async function runAutomation(config) {
+    // executeTask内でフラグリセットが行われるため、ここでは不要
+    return executeTask({
+      model: config.model,
+      function: config.function,
+      prompt: config.text || config.prompt,
+    });
+  }
 
-    log.debug("[DEBUG] automationAPI作成完了、windowに設定開始");
+  // ========================================
+  // グローバル公開
+  // ========================================
+  console.log("🔧 [DEBUG] グローバル公開セクションに到達");
+  try {
+    console.log("🔧 [DEBUG] executeTask関数の存在:", typeof executeTask);
+    console.log("🔧 [DEBUG] runAutomation関数の存在:", typeof runAutomation);
+  } catch (error) {
+    console.error("❌ [DEBUG] グローバル公開セクションでエラー:", error);
+  }
 
-    // v2名と標準名の両方をサポート（下位互換性保持）
-    window.ChatGPTAutomationV2 = automationAPI;
-    window.ChatGPTAutomation = automationAPI;
+  const automationAPI = {
+    executeTask,
+    runAutomation,
+  };
 
+<<<<<<< HEAD
     // 設定確認のための強化デバッグログ
     console.log("🔧 [ChatGPT-DEBUG] window.ChatGPTAutomationV2設定完了");
     console.log(
@@ -3311,250 +3343,447 @@ const log = {
       "[DEBUG] typeof window.ChatGPTAutomationV2:",
       typeof window.ChatGPTAutomationV2,
     );
+=======
+  log.debug("[DEBUG] automationAPI作成成功");
+>>>>>>> de14852 (fix: ChatGPT自動化スクリプトの重大な構造問題を修正)
 
-    // 初期化マーカー設定（グローバルに再設定）
-    window.CHATGPT_SCRIPT_LOADED = true;
-    window.CHATGPT_SCRIPT_INIT_TIME = Date.now();
+  log.debug("[DEBUG] automationAPI作成完了、windowに設定開始");
 
-    // ========================================
-    // メッセージリスナー登録 (step4-tasklist.js統合用)
-    // ========================================
-    const registerMessageListener = () => {
-      log.debug("📡 [ChatGPT-直接実行方式] メッセージリスナー登録開始");
+  // v2名と標準名の両方をサポート（下位互換性保持）
+  window.ChatGPTAutomationV2 = automationAPI;
+  window.ChatGPTAutomation = automationAPI;
 
-      chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-        // リクエストIDを生成（デバッグ用）
-        const requestId = `req_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+  // グローバル関数として直接アクセス可能にする
+  window.executeTask = executeTask;
+  window.runAutomation = runAutomation;
 
-        // デバッグ：送信元の詳細情報
-        log.debug(`📬 [ChatGPT] メッセージ受信 [${requestId}]:`, {
-          type: request.type,
-          action: request.action,
-          senderId: sender?.id,
-          senderUrl: sender?.url,
-          tabId: sender?.tab?.id,
-          frameId: sender?.frameId,
-        });
+  console.log("✅ [DEBUG] グローバル関数設定完了");
+  console.log("✅ [DEBUG] window.executeTask:", typeof window.executeTask);
+  console.log("✅ [DEBUG] window.runAutomation:", typeof window.runAutomation);
+  console.log(
+    "✅ [DEBUG] window.ChatGPTAutomationV2:",
+    typeof window.ChatGPTAutomationV2,
+  );
 
-        // すべてのメッセージに対してデフォルトでtrueを返す準備
-        let shouldReturnTrue = true;
+  log.debug("[DEBUG] window.ChatGPTAutomationV2設定完了");
+  log.debug(
+    "[DEBUG] typeof window.ChatGPTAutomationV2:",
+    typeof window.ChatGPTAutomationV2,
+  );
 
-        try {
-          // ping/pongメッセージへの即座応答（最優先）
-          if (
-            request.action === "ping" ||
-            request.type === "CONTENT_SCRIPT_CHECK" ||
-            request.type === "PING"
-          ) {
-            log.debug("🏓 [ChatGPT] Ping受信、即座にPong応答");
-            sendResponse({
-              action: "pong",
-              status: "ready",
-              timestamp: Date.now(),
-              scriptLoaded: true,
-            });
-            return true;
-          }
+  // 初期化マーカー設定（グローバルに再設定）
+  window.CHATGPT_SCRIPT_LOADED = true;
+  window.CHATGPT_SCRIPT_INIT_TIME = Date.now();
 
-          // テキスト入力欄の存在チェック
-          if (request.action === "CHECK_INPUT_FIELD") {
-            log.debug("🔍 [ChatGPT] テキスト入力欄の存在チェック開始");
-            const selectors = request.selectors || [
-              'textarea[placeholder*="Message"]',
-              'textarea[data-id*="root"]',
-              "#prompt-textarea",
-              "textarea",
-            ];
+  // ========================================
+  // メッセージリスナー登録 (step4-tasklist.js統合用)
+  // ========================================
+  const registerMessageListener = () => {
+    log.debug("📡 [ChatGPT-直接実行方式] メッセージリスナー登録開始");
 
-            let inputField = null;
-            for (const selector of selectors) {
-              try {
-                inputField = document.querySelector(selector);
-                if (inputField && inputField.offsetParent !== null) {
-                  break;
-                }
-              } catch (e) {
-                // セレクタエラーは無視
-              }
-            }
+    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+      // リクエストIDを生成（デバッグ用）
+      const requestId = `req_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
-            const result = {
-              found: !!inputField,
-              selector: inputField ? inputField.tagName.toLowerCase() : null,
-              aiType: request.aiType || "chatgpt",
-              tabId: sender.tab?.id,
-            };
+      // デバッグ：送信元の詳細情報
+      log.debug(`📬 [ChatGPT] メッセージ受信 [${requestId}]:`, {
+        type: request.type,
+        action: request.action,
+        senderId: sender?.id,
+        senderUrl: sender?.url,
+        tabId: sender?.tab?.id,
+        frameId: sender?.frameId,
+      });
 
-            log.debug("🔍 [ChatGPT] テキスト入力欄チェック結果:", result);
-            sendResponse(result);
-            return true;
-          }
+      // すべてのメッセージに対してデフォルトでtrueを返す準備
+      let shouldReturnTrue = true;
 
-          // executeTaskタスクの処理
-          if (
-            request.action === "executeTask" ||
-            request.type === "executeTask" ||
-            request.type === "CLAUDE_EXECUTE_TASK" ||
-            request.type === "EXECUTE_TASK"
-          ) {
-            log.warn(
-              `🔧 [ChatGPT-直接実行方式] executeTask実行開始 [ID:${requestId}]`,
-              JSON.stringify(
-                {
-                  requestId: requestId,
-                  action: request.action,
-                  type: request.type,
-                  automationName: request.automationName,
-                  hasTask: !!request.task,
-                  hasTaskData: !!request.taskData,
-                  taskId: request?.task?.id || request?.taskData?.id,
-                },
-                null,
-                2,
-              ),
-            );
-
-            // タスクデータを抽出
-            const taskToExecute = request.task || request.taskData;
-
-            if (!taskToExecute) {
-              const errorMsg = "Task data not found in request";
-              log.error(`❌ [ChatGPT] ${errorMsg}`);
-              sendResponse({ success: false, error: errorMsg });
-              return true;
-            }
-
-            log.debug(`🔍 [ChatGPT] executeTask実行開始 [ID:${requestId}]:`, {
-              taskId: taskToExecute.id,
-              prompt: taskToExecute.prompt
-                ? `${taskToExecute.prompt.substring(0, 50)}...`
-                : null,
-              model: taskToExecute.model,
-              function: taskToExecute.function,
-              taskKeys: Object.keys(taskToExecute || {}),
-            });
-
-            // executeTask関数が定義されているか確認（Claude式安全パターン）
-            if (typeof executeTask === "function") {
-              log.debug(
-                `✅ [ChatGPT-直接実行方式] executeTask関数が利用可能 [ID:${requestId}]`,
-              );
-
-              (async () => {
-                try {
-                  const result = await executeTask(taskToExecute);
-                  log.warn(
-                    `✅ [ChatGPT-直接実行方式] executeTask完了 [ID:${requestId}]:`,
-                    {
-                      success: result?.success,
-                      hasResult: !!result,
-                      resultKeys: result ? Object.keys(result) : [],
-                    },
-                  );
-                  sendResponse({ success: true, result });
-                } catch (taskError) {
-                  const errorMsg = `executeTask実行エラー: ${taskError.message}`;
-                  log.error(
-                    `❌ [ChatGPT] ${errorMsg} [ID:${requestId}]`,
-                    taskError,
-                  );
-                  sendResponse({ success: false, error: errorMsg });
-                }
-              })();
-            } else {
-              const errorMsg = "executeTask関数が定義されていません";
-              log.error(`❌ [ChatGPT] ${errorMsg} [ID:${requestId}]`);
-              sendResponse({ success: false, error: errorMsg });
-            }
-            return true;
-          }
-        } catch (error) {
-          log.error(`❌ [ChatGPT] メッセージ処理エラー [${requestId}]:`, error);
-          // エラーでも必ず応答を返す
-          try {
-            sendResponse({
-              success: false,
-              error: error.message,
-              requestId: requestId,
-              timestamp: Date.now(),
-            });
-          } catch (sendError) {
-            log.error(`❌ [ChatGPT] 応答送信エラー:`, sendError);
-          }
+      try {
+        // ping/pongメッセージへの即座応答（最優先）
+        if (
+          request.action === "ping" ||
+          request.type === "CONTENT_SCRIPT_CHECK" ||
+          request.type === "PING"
+        ) {
+          log.debug("🏓 [ChatGPT] Ping受信、即座にPong応答");
+          sendResponse({
+            action: "pong",
+            status: "ready",
+            timestamp: Date.now(),
+            scriptLoaded: true,
+          });
           return true;
         }
 
-        // その他のメッセージは無視
-        log.debug(`🔕 [ChatGPT] 未対応メッセージを処理:`, {
-          action: request.action,
-          type: request.type,
-          requestId: requestId,
-        });
+        // テキスト入力欄の存在チェック
+        if (request.action === "CHECK_INPUT_FIELD") {
+          log.debug("🔍 [ChatGPT] テキスト入力欄の存在チェック開始");
+          const selectors = request.selectors || [
+            'textarea[placeholder*="Message"]',
+            'textarea[data-id*="root"]',
+            "#prompt-textarea",
+            "textarea",
+          ];
 
-        // 必ず応答を返す
+          let inputField = null;
+          for (const selector of selectors) {
+            try {
+              inputField = document.querySelector(selector);
+              if (inputField && inputField.offsetParent !== null) {
+                break;
+              }
+            } catch (e) {
+              // セレクタエラーは無視
+            }
+          }
+
+          const result = {
+            found: !!inputField,
+            selector: inputField ? inputField.tagName.toLowerCase() : null,
+            aiType: request.aiType || "chatgpt",
+            tabId: sender.tab?.id,
+          };
+
+          log.debug("🔍 [ChatGPT] テキスト入力欄チェック結果:", result);
+          sendResponse(result);
+          return true;
+        }
+
+        // DISCOVER_FEATURESメッセージの処理
+        if (request.type === "DISCOVER_FEATURES") {
+          log.info(`🔍 [ChatGPT] DISCOVER_FEATURES実行開始`);
+
+          (async () => {
+            try {
+              // 実際のUIからモデルと機能を探索
+              const availableModels = [];
+              const availableFunctions = [];
+
+              // モデル探索
+              const modelBtn =
+                document.querySelector(
+                  'button[type="button"]:has([data-testid="model-switcher-button"])',
+                ) ||
+                document.querySelector(
+                  'button:has([data-testid="model-switcher-button"])',
+                );
+
+              if (modelBtn) {
+                modelBtn.click();
+                await sleep(1500);
+
+                const modelMenu = document.querySelector('div[role="menu"]');
+                if (modelMenu) {
+                  // メインモデルメニューの項目取得
+                  const mainMenuItems = modelMenu.querySelectorAll(
+                    '[role="menuitem"][data-testid^="model-switcher-"]',
+                  );
+                  mainMenuItems.forEach((item) => {
+                    const modelName = item.textContent.trim();
+                    if (modelName && !modelName.includes("レガシー")) {
+                      availableModels.push(modelName);
+                    }
+                  });
+
+                  // レガシーモデルもチェック
+                  const legacyButton =
+                    modelMenu.querySelector(
+                      '[role="menuitem"][data-has-submenu]',
+                    ) ||
+                    Array.from(
+                      modelMenu.querySelectorAll('[role="menuitem"]'),
+                    ).find(
+                      (el) =>
+                        el.textContent &&
+                        el.textContent.includes("レガシーモデル"),
+                    );
+
+                  if (legacyButton) {
+                    legacyButton.click();
+                    await sleep(1500);
+
+                    const allMenus = document.querySelectorAll('[role="menu"]');
+                    allMenus.forEach((menu) => {
+                      if (menu !== modelMenu) {
+                        const items =
+                          menu.querySelectorAll('[role="menuitem"]');
+                        items.forEach((item) => {
+                          const modelName = item.textContent.trim();
+                          if (modelName && modelName.includes("GPT")) {
+                            availableModels.push(modelName);
+                          }
+                        });
+                      }
+                    });
+                  }
+
+                  // メニューを閉じる
+                  document.dispatchEvent(
+                    new KeyboardEvent("keydown", {
+                      key: "Escape",
+                      code: "Escape",
+                    }),
+                  );
+                  await sleep(500);
+                }
+              }
+
+              // 機能探索
+              const funcMenuBtn =
+                document.querySelector(
+                  'button[aria-label="機能メニューを開く"]',
+                ) ||
+                document.querySelector(
+                  'button:has(svg):has(path[d*="M12 6.5a5.5"])',
+                );
+
+              if (funcMenuBtn) {
+                funcMenuBtn.click();
+                await sleep(1500);
+
+                const funcMenu = document.querySelector('div[role="menu"]');
+                if (funcMenu) {
+                  // メイン機能を取得
+                  const menuItems = funcMenu.querySelectorAll(
+                    '[role="menuitemradio"]',
+                  );
+                  menuItems.forEach((item) => {
+                    const funcName = item.textContent.trim();
+                    if (funcName) {
+                      availableFunctions.push(funcName);
+                    }
+                  });
+
+                  // サブメニューもチェック
+                  const moreButton = Array.from(
+                    funcMenu.querySelectorAll('[role="menuitem"]'),
+                  ).find(
+                    (el) =>
+                      el.textContent && el.textContent.includes("さらに表示"),
+                  );
+
+                  if (moreButton) {
+                    moreButton.click();
+                    await sleep(1000);
+
+                    const subMenu = document.querySelector(
+                      '[data-side="right"]',
+                    );
+                    if (subMenu) {
+                      const subMenuItems = subMenu.querySelectorAll(
+                        '[role="menuitemradio"]',
+                      );
+                      subMenuItems.forEach((item) => {
+                        const funcName = item.textContent.trim();
+                        if (funcName) {
+                          availableFunctions.push(funcName);
+                        }
+                      });
+                    }
+                  }
+
+                  // メニューを閉じる
+                  document.dispatchEvent(
+                    new KeyboardEvent("keydown", {
+                      key: "Escape",
+                      code: "Escape",
+                    }),
+                  );
+                  await sleep(500);
+                }
+              }
+
+              const result = {
+                models: availableModels,
+                functions: availableFunctions,
+              };
+
+              log.info(`✅ [ChatGPT] DISCOVER_FEATURES完了:`, result);
+
+              // UIに送信
+              if (typeof sendToUI === "function") {
+                await sendToUI(availableModels, availableFunctions);
+              }
+
+              sendResponse({
+                success: true,
+                result: result,
+              });
+            } catch (error) {
+              log.error(`❌ [ChatGPT] DISCOVER_FEATURESエラー:`, error);
+              sendResponse({
+                success: false,
+                error: error.message,
+              });
+            }
+          })();
+          return true; // 非同期レスポンスのために必要
+        }
+
+        // executeTaskタスクの処理
+        if (
+          request.action === "executeTask" ||
+          request.type === "executeTask" ||
+          request.type === "CLAUDE_EXECUTE_TASK" ||
+          request.type === "EXECUTE_TASK"
+        ) {
+          log.warn(
+            `🔧 [ChatGPT-直接実行方式] executeTask実行開始 [ID:${requestId}]`,
+            JSON.stringify(
+              {
+                requestId: requestId,
+                action: request.action,
+                type: request.type,
+                automationName: request.automationName,
+                hasTask: !!request.task,
+                hasTaskData: !!request.taskData,
+                taskId: request?.task?.id || request?.taskData?.id,
+              },
+              null,
+              2,
+            ),
+          );
+
+          // タスクデータを抽出
+          const taskToExecute = request.task || request.taskData;
+
+          if (!taskToExecute) {
+            const errorMsg = "Task data not found in request";
+            log.error(`❌ [ChatGPT] ${errorMsg}`);
+            sendResponse({ success: false, error: errorMsg });
+            return true;
+          }
+
+          log.debug(`🔍 [ChatGPT] executeTask実行開始 [ID:${requestId}]:`, {
+            taskId: taskToExecute.id,
+            prompt: taskToExecute.prompt
+              ? `${taskToExecute.prompt.substring(0, 50)}...`
+              : null,
+            model: taskToExecute.model,
+            function: taskToExecute.function,
+            taskKeys: Object.keys(taskToExecute || {}),
+          });
+
+          // executeTask関数が定義されているか確認（Claude式安全パターン）
+          if (typeof executeTask === "function") {
+            log.debug(
+              `✅ [ChatGPT-直接実行方式] executeTask関数が利用可能 [ID:${requestId}]`,
+            );
+
+            (async () => {
+              try {
+                const result = await executeTask(taskToExecute);
+                log.warn(
+                  `✅ [ChatGPT-直接実行方式] executeTask完了 [ID:${requestId}]:`,
+                  {
+                    success: result?.success,
+                    hasResult: !!result,
+                    resultKeys: result ? Object.keys(result) : [],
+                  },
+                );
+                sendResponse({ success: true, result });
+              } catch (taskError) {
+                const errorMsg = `executeTask実行エラー: ${taskError.message}`;
+                log.error(
+                  `❌ [ChatGPT] ${errorMsg} [ID:${requestId}]`,
+                  taskError,
+                );
+                sendResponse({ success: false, error: errorMsg });
+              }
+            })();
+          } else {
+            const errorMsg = "executeTask関数が定義されていません";
+            log.error(`❌ [ChatGPT] ${errorMsg} [ID:${requestId}]`);
+            sendResponse({ success: false, error: errorMsg });
+          }
+          return true;
+        }
+      } catch (error) {
+        log.error(`❌ [ChatGPT] メッセージ処理エラー [${requestId}]:`, error);
+        // エラーでも必ず応答を返す
         try {
           sendResponse({
             success: false,
-            error: "Unsupported message type",
+            error: error.message,
             requestId: requestId,
             timestamp: Date.now(),
           });
         } catch (sendError) {
-          log.error(`❌ [ChatGPT] デフォルト応答送信エラー:`, sendError);
+          log.error(`❌ [ChatGPT] 応答送信エラー:`, sendError);
         }
+        return true;
+      }
 
-        return true; // 常にtrueを返す
+      // その他のメッセージは無視
+      log.debug(`🔕 [ChatGPT] 未対応メッセージを処理:`, {
+        action: request.action,
+        type: request.type,
+        requestId: requestId,
       });
 
-      log.debug("✅ [ChatGPT] メッセージリスナー登録完了");
-    };
+      // 必ず応答を返す
+      try {
+        sendResponse({
+          success: false,
+          error: "Unsupported message type",
+          requestId: requestId,
+          timestamp: Date.now(),
+        });
+      } catch (sendError) {
+        log.error(`❌ [ChatGPT] デフォルト応答送信エラー:`, sendError);
+      }
 
-    // メッセージリスナーを即座に登録
-    try {
-      registerMessageListener();
-      log.info(
-        "📡 [ChatGPT] step4-tasklist.js統合用メッセージリスナー準備完了",
-      );
-    } catch (error) {
-      log.error("❌ [ChatGPT] メッセージリスナー登録エラー:", error);
-    }
-
-    log.debug("✅ ChatGPT Automation V2 準備完了");
-    log.debug(
-      '使用方法: ChatGPTAutomation.executeTask({ model: "GPT-4o", function: "Deep Research", prompt: "..." })',
-    );
-    log.debug(
-      "✅ 下位互換性: ChatGPTAutomation と ChatGPTAutomationV2 の両方で利用可能",
-    );
-
-    // ChatGPTAutomation オブジェクトを global に公開
-    window.ChatGPTAutomation = window.ChatGPTAutomation || {};
-    Object.assign(window.ChatGPTAutomation, {
-      detectChatGPTModelsAndFeatures,
-      selectModelByIndex,
-      selectFunctionByIndex,
-      sendToUI,
-      executeFullTest,
-      // 既存の関数も公開
-      inputTextChatGPT,
-      sendMessageChatGPT,
-      waitForResponseChatGPT,
-      getResponseTextChatGPT,
-      selectModelChatGPT,
-      selectFunctionChatGPT,
+      return true; // 常にtrueを返す
     });
 
-    logWithTimestamp(
-      "✅ ChatGPT Automation Enhanced - インデックス選択機能追加完了",
-      "success",
+    log.debug("✅ [ChatGPT] メッセージリスナー登録完了");
+  };
+
+  // メッセージリスナーを即座に登録
+  console.log("🔧 [DEBUG] メッセージリスナー登録セクションに到達");
+  try {
+    registerMessageListener();
+    console.log(
+      "📡 [ChatGPT] step4-tasklist.js統合用メッセージリスナー準備完了",
     );
-
-    // ChatGPTLogManagerをwindowに設定（即座実行関数内で実行）
-    window.ChatGPTLogManager = ChatGPTLogManager;
+  } catch (error) {
+    console.error("❌ [ChatGPT] メッセージリスナー登録エラー:", error);
   }
-})();
 
-/*
+  log.debug("✅ ChatGPT Automation V2 準備完了");
+  log.debug(
+    '使用方法: ChatGPTAutomation.executeTask({ model: "GPT-4o", function: "Deep Research", prompt: "..." })',
+  );
+  log.debug(
+    "✅ 下位互換性: ChatGPTAutomation と ChatGPTAutomationV2 の両方で利用可能",
+  );
+
+  // ChatGPTAutomation オブジェクトを global に公開
+  window.ChatGPTAutomation = window.ChatGPTAutomation || {};
+  Object.assign(window.ChatGPTAutomation, {
+    detectChatGPTModelsAndFeatures,
+    selectModelByIndex,
+    selectFunctionByIndex,
+    sendToUI,
+    executeFullTest,
+    // 既存の関数も公開
+    inputTextChatGPT,
+    sendMessageChatGPT,
+    waitForResponseChatGPT,
+    getResponseTextChatGPT,
+    selectModelChatGPT,
+    selectFunctionChatGPT,
+  });
+
+  logWithTimestamp(
+    "✅ ChatGPT Automation Enhanced - インデックス選択機能追加完了",
+    "success",
+  );
+
+  // ChatGPTLogManagerをwindowに設定（即座実行関数内で実行）
+  window.ChatGPTLogManager = ChatGPTLogManager;
+
+  /*
 ┌─────────────────────────────────────────────────────┐
 │                【使用例】                              │
 └─────────────────────────────────────────────────────┘
@@ -3595,444 +3824,459 @@ async function chatWithChatGPT() {
 
 */
 
-// ========================================
-// 注意: ChatGPTLogManagerはIIFE内で定義されているため、
-// IIFE外でのwindow設定やbeforeunloadイベントでの使用は不可
-// ========================================
+  // ========================================
+  // 注意: ChatGPTLogManagerはIIFE内で定義されているため、
+  // IIFE外でのwindow設定やbeforeunloadイベントでの使用は不可
+  // ========================================
 
-// ========================================
-// 【エクスポート】検出システム用関数一覧
-// ========================================
-// ChatGPT自動化関数はwindowオブジェクトに定義
-// エクスポートする関数なし（内部実装のみ）
-// コンテンツスクリプトではexport文を使用できないため、コメントアウト
+  // ========================================
+  // 【エクスポート】検出システム用関数一覧
+  // ========================================
+  // ChatGPT自動化関数はwindowオブジェクトに定義
+  // エクスポートする関数なし（内部実装のみ）
+  // コンテンツスクリプトではexport文を使用できないため、コメントアウト
 
-// ========================================
-// ChatGPTモデル・機能検出関数
-// ========================================
+  // ========================================
+  // ChatGPTモデル・機能検出関数
+  // ========================================
 
-// 検出結果を保存するグローバル変数
-window.ChatGPTAutomation = window.ChatGPTAutomation || {};
-window.ChatGPTAutomation.detectionResult = null;
+  // 検出結果を保存するグローバル変数
+  window.ChatGPTAutomation = window.ChatGPTAutomation || {};
+  window.ChatGPTAutomation.detectionResult = null;
 
-async function detectChatGPTModelsAndFeatures() {
-  log("🔍 ChatGPTモデル・機能検出開始");
+  async function detectChatGPTModelsAndFeatures() {
+    log("🔍 ChatGPTモデル・機能検出開始");
 
-  const DETECTION_SELECTORS = {
-    modelButton: [
-      'button[type="button"]:has([data-testid="model-switcher-button"])',
-      'button:has([data-testid="model-switcher-button"])',
-    ],
-    modelMenu: ['div[role="menu"]'],
-    functionMenuButton: [
-      'button[aria-label="機能メニューを開く"]',
-      'button:has(svg):has(path[d*="M12 6.5a5.5"])',
-    ],
-    functionMenu: ['div[role="menu"]'],
-  };
+    const DETECTION_SELECTORS = {
+      modelButton: [
+        'button[type="button"]:has([data-testid="model-switcher-button"])',
+        'button:has([data-testid="model-switcher-button"])',
+      ],
+      modelMenu: ['div[role="menu"]'],
+      functionMenuButton: [
+        'button[aria-label="機能メニューを開く"]',
+        'button:has(svg):has(path[d*="M12 6.5a5.5"])',
+      ],
+      functionMenu: ['div[role="menu"]'],
+    };
 
-  const findElement = (selectors) => {
-    for (const selector of selectors) {
-      const element = document.querySelector(selector);
-      if (element) return element;
-    }
-    return null;
-  };
+    const findElement = (selectors) => {
+      for (const selector of selectors) {
+        const element = document.querySelector(selector);
+        if (element) return element;
+      }
+      return null;
+    };
 
-  const availableModels = [];
-  const availableFunctions = [];
+    const availableModels = [];
+    const availableFunctions = [];
 
-  try {
-    // モデル検出
-    const modelBtn = findElement(DETECTION_SELECTORS.modelButton);
-    if (modelBtn) {
-      logWithTimestamp("モデルメニューボタン発見、クリック実行");
-      modelBtn.click();
-      await sleep(1500);
+    try {
+      // モデル検出
+      const modelBtn = findElement(DETECTION_SELECTORS.modelButton);
+      if (modelBtn) {
+        logWithTimestamp("モデルメニューボタン発見、クリック実行");
+        modelBtn.click();
+        await sleep(1500);
 
-      const modelMenu = findElement(DETECTION_SELECTORS.modelMenu);
-      if (modelMenu) {
-        logWithTimestamp("モデルメニュー発見、モデル一覧取得");
+        const modelMenu = findElement(DETECTION_SELECTORS.modelMenu);
+        if (modelMenu) {
+          logWithTimestamp("モデルメニュー発見、モデル一覧取得");
 
-        // メインモデルメニューの項目取得
-        const mainMenuItems = modelMenu.querySelectorAll(
-          '[role="menuitem"][data-testid^="model-switcher-"]',
-        );
-        mainMenuItems.forEach((item) => {
-          const modelName = item.textContent.trim();
-          if (modelName && !modelName.includes("レガシー")) {
-            availableModels.push(modelName);
-          }
-        });
-
-        // レガシーモデルもチェック
-        const legacyButton =
-          modelMenu.querySelector('[role="menuitem"][data-has-submenu]') ||
-          Array.from(modelMenu.querySelectorAll('[role="menuitem"]')).find(
-            (el) => el.textContent && el.textContent.includes("レガシーモデル"),
+          // メインモデルメニューの項目取得
+          const mainMenuItems = modelMenu.querySelectorAll(
+            '[role="menuitem"][data-testid^="model-switcher-"]',
           );
-
-        if (legacyButton) {
-          logWithTimestamp("レガシーモデルメニュー発見、追加モデル取得");
-          legacyButton.click();
-          await sleep(1500);
-
-          const allMenus = document.querySelectorAll('[role="menu"]');
-          allMenus.forEach((menu) => {
-            if (menu !== modelMenu) {
-              const items = menu.querySelectorAll('[role="menuitem"]');
-              items.forEach((item) => {
-                const modelName = item.textContent.trim();
-                if (modelName && modelName.includes("GPT")) {
-                  availableModels.push(modelName);
-                }
-              });
+          mainMenuItems.forEach((item) => {
+            const modelName = item.textContent.trim();
+            if (modelName && !modelName.includes("レガシー")) {
+              availableModels.push(modelName);
             }
           });
-        }
 
-        // メニューを閉じる
-        document.dispatchEvent(
-          new KeyboardEvent("keydown", { key: "Escape", code: "Escape" }),
-        );
-        await sleep(500);
-      }
-    }
-
-    // 機能検出
-    const funcMenuBtn = findElement(DETECTION_SELECTORS.functionMenuButton);
-    if (funcMenuBtn) {
-      logWithTimestamp("機能メニューボタン発見、クリック実行");
-      funcMenuBtn.click();
-      await sleep(1500);
-
-      const funcMenu = findElement(DETECTION_SELECTORS.functionMenu);
-      if (funcMenu) {
-        logWithTimestamp("機能メニュー発見、機能一覧取得");
-
-        // メイン機能を取得
-        const menuItems = funcMenu.querySelectorAll('[role="menuitemradio"]');
-        menuItems.forEach((item) => {
-          const funcName = item.textContent.trim();
-          if (funcName) {
-            availableFunctions.push(funcName);
-          }
-        });
-
-        // サブメニューもチェック
-        const moreButton = Array.from(
-          funcMenu.querySelectorAll('[role="menuitem"]'),
-        ).find((el) => el.textContent && el.textContent.includes("さらに表示"));
-
-        if (moreButton) {
-          logWithTimestamp("追加機能メニュー発見、サブメニュー取得");
-          moreButton.click();
-          await sleep(1000);
-
-          const subMenu = document.querySelector('[data-side="right"]');
-          if (subMenu) {
-            const subMenuItems = subMenu.querySelectorAll(
-              '[role="menuitemradio"]',
+          // レガシーモデルもチェック
+          const legacyButton =
+            modelMenu.querySelector('[role="menuitem"][data-has-submenu]') ||
+            Array.from(modelMenu.querySelectorAll('[role="menuitem"]')).find(
+              (el) =>
+                el.textContent && el.textContent.includes("レガシーモデル"),
             );
-            subMenuItems.forEach((item) => {
-              const funcName = item.textContent.trim();
-              if (funcName) {
-                availableFunctions.push(funcName);
+
+          if (legacyButton) {
+            logWithTimestamp("レガシーモデルメニュー発見、追加モデル取得");
+            legacyButton.click();
+            await sleep(1500);
+
+            const allMenus = document.querySelectorAll('[role="menu"]');
+            allMenus.forEach((menu) => {
+              if (menu !== modelMenu) {
+                const items = menu.querySelectorAll('[role="menuitem"]');
+                items.forEach((item) => {
+                  const modelName = item.textContent.trim();
+                  if (modelName && modelName.includes("GPT")) {
+                    availableModels.push(modelName);
+                  }
+                });
               }
             });
           }
+
+          // メニューを閉じる
+          document.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "Escape", code: "Escape" }),
+          );
+          await sleep(500);
         }
-
-        // メニューを閉じる
-        document.dispatchEvent(
-          new KeyboardEvent("keydown", { key: "Escape", code: "Escape" }),
-        );
-        await sleep(500);
       }
+
+      // 機能検出
+      const funcMenuBtn = findElement(DETECTION_SELECTORS.functionMenuButton);
+      if (funcMenuBtn) {
+        logWithTimestamp("機能メニューボタン発見、クリック実行");
+        funcMenuBtn.click();
+        await sleep(1500);
+
+        const funcMenu = findElement(DETECTION_SELECTORS.functionMenu);
+        if (funcMenu) {
+          logWithTimestamp("機能メニュー発見、機能一覧取得");
+
+          // メイン機能を取得
+          const menuItems = funcMenu.querySelectorAll('[role="menuitemradio"]');
+          menuItems.forEach((item) => {
+            const funcName = item.textContent.trim();
+            if (funcName) {
+              availableFunctions.push(funcName);
+            }
+          });
+
+          // サブメニューもチェック
+          const moreButton = Array.from(
+            funcMenu.querySelectorAll('[role="menuitem"]'),
+          ).find(
+            (el) => el.textContent && el.textContent.includes("さらに表示"),
+          );
+
+          if (moreButton) {
+            logWithTimestamp("追加機能メニュー発見、サブメニュー取得");
+            moreButton.click();
+            await sleep(1000);
+
+            const subMenu = document.querySelector('[data-side="right"]');
+            if (subMenu) {
+              const subMenuItems = subMenu.querySelectorAll(
+                '[role="menuitemradio"]',
+              );
+              subMenuItems.forEach((item) => {
+                const funcName = item.textContent.trim();
+                if (funcName) {
+                  availableFunctions.push(funcName);
+                }
+              });
+            }
+          }
+
+          // メニューを閉じる
+          document.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "Escape", code: "Escape" }),
+          );
+          await sleep(500);
+        }
+      }
+
+      const result = {
+        models: availableModels,
+        functions: availableFunctions,
+      };
+      logWithTimestamp(
+        `🔍 ChatGPT検出完了 - モデル: ${availableModels.length}個, 機能: ${availableFunctions.length}個`,
+        result,
+      );
+
+      // 検出結果を保存
+      if (window.ChatGPTAutomation) {
+        window.ChatGPTAutomation.detectionResult = result;
+      }
+
+      // UIに送信
+      try {
+        if (chrome.runtime && chrome.runtime.sendMessage) {
+          chrome.runtime.sendMessage({
+            type: "AI_MODEL_FUNCTION_UPDATE",
+            aiType: "chatgpt",
+            data: {
+              models: availableModels.map((m) =>
+                typeof m === "string" ? m : m.name,
+              ),
+              functions: availableFunctions,
+            },
+          });
+          logWithTimestamp("✅ UIテーブルにデータを送信しました");
+        }
+      } catch (error) {
+        log.warn("UIへの送信失敗:", error);
+      }
+
+      return result;
+    } catch (error) {
+      log.error("🔍 ChatGPT検出エラー:", error);
+      return { models: availableModels, functions: availableFunctions };
+    }
+  }
+
+  // ========================================
+  // インデックス選択機能とヘルパー関数
+  // ========================================
+
+  /**
+   * インデックスでモデルを選択
+   * @param {number} index - 選択するモデルのインデックス
+   * @returns {Promise<boolean>} 選択成功の可否
+   */
+  async function selectModelByIndex(index) {
+    if (!window.ChatGPTAutomation.detectionResult) {
+      log.error(
+        "検出結果がありません。先にdetectChatGPTModelsAndFeatures()を実行してください",
+      );
+      return false;
     }
 
-    const result = { models: availableModels, functions: availableFunctions };
-    logWithTimestamp(
-      `🔍 ChatGPT検出完了 - モデル: ${availableModels.length}個, 機能: ${availableFunctions.length}個`,
-      result,
-    );
-
-    // 検出結果を保存
-    if (window.ChatGPTAutomation) {
-      window.ChatGPTAutomation.detectionResult = result;
+    const model = window.ChatGPTAutomation.detectionResult.models[index];
+    if (!model) {
+      log.error(`インデックス ${index} のモデルが存在しません`);
+      return false;
     }
 
-    // UIに送信
+    const modelName = typeof model === "string" ? model : model.name;
+    log(`🎯 モデル選択: [${index}] ${modelName}`);
+    return await selectModelChatGPT(modelName);
+  }
+
+  /**
+   * インデックスで機能を選択
+   * @param {number} index - 選択する機能のインデックス (0=通常, 1以上=機能)
+   * @returns {Promise<boolean>} 選択成功の可否
+   */
+  async function selectFunctionByIndex(index) {
+    if (!window.ChatGPTAutomation.detectionResult) {
+      log.error(
+        "検出結果がありません。先にdetectChatGPTModelsAndFeatures()を実行してください",
+      );
+      return false;
+    }
+
+    if (index === 0) {
+      logWithTimestamp("🎯 通常モードを選択");
+      // 通常モードの場合は何もしない
+      return true;
+    }
+
+    const funcName =
+      window.ChatGPTAutomation.detectionResult.functions[index - 1];
+    if (!funcName) {
+      log.error(`インデックス ${index} の機能が存在しません`);
+      return false;
+    }
+
+    log(`🎯 機能選択: [${index}] ${funcName}`);
+    return await selectFunctionChatGPT(funcName);
+  }
+
+  /**
+   * UIにデータを手動で送信
+   * @param {Object} data - 送信するデータ (省略時は検出結果を使用)
+   */
+  function sendToUI(data) {
+    if (!data) data = window.ChatGPTAutomation.detectionResult;
+    if (!data) {
+      log.error("送信するデータがありません");
+      return;
+    }
+
     try {
       if (chrome.runtime && chrome.runtime.sendMessage) {
         chrome.runtime.sendMessage({
           type: "AI_MODEL_FUNCTION_UPDATE",
           aiType: "chatgpt",
           data: {
-            models: availableModels.map((m) =>
+            models: data.models.map((m) =>
               typeof m === "string" ? m : m.name,
             ),
-            functions: availableFunctions,
+            functions: data.functions,
           },
         });
-        logWithTimestamp("✅ UIテーブルにデータを送信しました");
+        logWithTimestamp("✅ UIテーブルにデータを手動送信しました");
       }
     } catch (error) {
-      log.warn("UIへの送信失敗:", error);
+      log.error("UIへの送信失敗:", error);
     }
-
-    return result;
-  } catch (error) {
-    log.error("🔍 ChatGPT検出エラー:", error);
-    return { models: availableModels, functions: availableFunctions };
-  }
-}
-
-// ========================================
-// インデックス選択機能とヘルパー関数
-// ========================================
-
-/**
- * インデックスでモデルを選択
- * @param {number} index - 選択するモデルのインデックス
- * @returns {Promise<boolean>} 選択成功の可否
- */
-async function selectModelByIndex(index) {
-  if (!window.ChatGPTAutomation.detectionResult) {
-    log.error(
-      "検出結果がありません。先にdetectChatGPTModelsAndFeatures()を実行してください",
-    );
-    return false;
   }
 
-  const model = window.ChatGPTAutomation.detectionResult.models[index];
-  if (!model) {
-    log.error(`インデックス ${index} のモデルが存在しません`);
-    return false;
-  }
+  /**
+   * 一連のテストを実行
+   * @param {number} modelIndex - モデルインデックス
+   * @param {number} functionIndex - 機能インデックス
+   * @param {string} message - 送信するメッセージ
+   */
+  async function executeFullTest(modelIndex, functionIndex, message) {
+    try {
+      logWithTimestamp("🚀 完全テスト実行開始");
 
-  const modelName = typeof model === "string" ? model : model.name;
-  log(`🎯 モデル選択: [${index}] ${modelName}`);
-  return await selectModelChatGPT(modelName);
-}
-
-/**
- * インデックスで機能を選択
- * @param {number} index - 選択する機能のインデックス (0=通常, 1以上=機能)
- * @returns {Promise<boolean>} 選択成功の可否
- */
-async function selectFunctionByIndex(index) {
-  if (!window.ChatGPTAutomation.detectionResult) {
-    log.error(
-      "検出結果がありません。先にdetectChatGPTModelsAndFeatures()を実行してください",
-    );
-    return false;
-  }
-
-  if (index === 0) {
-    logWithTimestamp("🎯 通常モードを選択");
-    // 通常モードの場合は何もしない
-    return true;
-  }
-
-  const funcName =
-    window.ChatGPTAutomation.detectionResult.functions[index - 1];
-  if (!funcName) {
-    log.error(`インデックス ${index} の機能が存在しません`);
-    return false;
-  }
-
-  log(`🎯 機能選択: [${index}] ${funcName}`);
-  return await selectFunctionChatGPT(funcName);
-}
-
-/**
- * UIにデータを手動で送信
- * @param {Object} data - 送信するデータ (省略時は検出結果を使用)
- */
-function sendToUI(data) {
-  if (!data) data = window.ChatGPTAutomation.detectionResult;
-  if (!data) {
-    log.error("送信するデータがありません");
-    return;
-  }
-
-  try {
-    if (chrome.runtime && chrome.runtime.sendMessage) {
-      chrome.runtime.sendMessage({
-        type: "AI_MODEL_FUNCTION_UPDATE",
-        aiType: "chatgpt",
-        data: {
-          models: data.models.map((m) => (typeof m === "string" ? m : m.name)),
-          functions: data.functions,
-        },
-      });
-      logWithTimestamp("✅ UIテーブルにデータを手動送信しました");
-    }
-  } catch (error) {
-    log.error("UIへの送信失敗:", error);
-  }
-}
-
-/**
- * 一連のテストを実行
- * @param {number} modelIndex - モデルインデックス
- * @param {number} functionIndex - 機能インデックス
- * @param {string} message - 送信するメッセージ
- */
-async function executeFullTest(modelIndex, functionIndex, message) {
-  try {
-    logWithTimestamp("🚀 完全テスト実行開始");
-
-    if (!window.ChatGPTAutomation.detectionResult) {
-      logWithTimestamp("🔍 検出実行中...");
-      await detectChatGPTModelsAndFeatures();
-    }
-
-    logWithTimestamp(`🎯 モデル[${modelIndex}]を選択中...`);
-    await selectModelByIndex(modelIndex);
-    await sleep(1000);
-
-    logWithTimestamp(`🎯 機能[${functionIndex}]を選択中...`);
-    await selectFunctionByIndex(functionIndex);
-    await sleep(1000);
-
-    logWithTimestamp(`📨 メッセージ送信中: "${message}"`);
-    await inputTextChatGPT(message);
-    await sleep(500);
-    await sendMessageChatGPT();
-
-    logWithTimestamp("⏳ 応答待機中...");
-    await waitForResponseChatGPT();
-
-    logWithTimestamp("📋 応答取得中...");
-    const response = await getResponseTextChatGPT();
-
-    logWithTimestamp("✅ 完全テスト完了");
-    console.log("応答:", response);
-    return response;
-  } catch (error) {
-    log.error("完全テストエラー:", error);
-    throw error;
-  }
-}
-
-// ========================================
-// 🚨 ChatGPT グローバルエラーハンドラー
-// ========================================
-
-// ChatGPT専用ネットワークエラーハンドラーを追加
-if (
-  typeof window !== "undefined" &&
-  window.location &&
-  window.location.href.includes("chatgpt.com")
-) {
-  // グローバルエラーハンドラー
-  window.addEventListener("error", (e) => {
-    const errorMessage = e.message || e.error?.message || "";
-    const errorName = e.error?.name || "";
-
-    // 🔍 ネットワークエラー検出 (Claudeと同じロジック)
-    const isNetworkError =
-      errorMessage.includes("timeout") ||
-      errorMessage.includes("network") ||
-      errorMessage.includes("fetch") ||
-      errorMessage.includes("Failed to fetch") ||
-      errorName.includes("NetworkError");
-
-    if (isNetworkError) {
-      console.error("🌐 [ChatGPT-GLOBAL-NETWORK-ERROR]", {
-        message: errorMessage,
-        name: errorName,
-        type: "NETWORK_ERROR",
-        filename: e.filename,
-        lineno: e.lineno,
-        timestamp: new Date().toISOString(),
-        aiType: "chatgpt",
-      });
-
-      // エラー統計記録 (将来のChatGPTRetryManager用)
-      try {
-        if (!window.chatgptErrorHistory) {
-          window.chatgptErrorHistory = [];
-        }
-        window.chatgptErrorHistory.push({
-          type: "NETWORK_ERROR",
-          message: errorMessage,
-          timestamp: Date.now(),
-          level: "global_error",
-        });
-      } catch (retryError) {
-        // エラー記録失敗は無視
+      if (!window.ChatGPTAutomation.detectionResult) {
+        logWithTimestamp("🔍 検出実行中...");
+        await detectChatGPTModelsAndFeatures();
       }
-    } else {
-      console.error("🚨 [ChatGPT-GLOBAL-ERROR]", e.message);
+
+      logWithTimestamp(`🎯 モデル[${modelIndex}]を選択中...`);
+      await selectModelByIndex(modelIndex);
+      await sleep(1000);
+
+      logWithTimestamp(`🎯 機能[${functionIndex}]を選択中...`);
+      await selectFunctionByIndex(functionIndex);
+      await sleep(1000);
+
+      logWithTimestamp(`📨 メッセージ送信中: "${message}"`);
+      await inputTextChatGPT(message);
+      await sleep(500);
+      await sendMessageChatGPT();
+
+      logWithTimestamp("⏳ 応答待機中...");
+      await waitForResponseChatGPT();
+
+      logWithTimestamp("📋 応答取得中...");
+      const response = await getResponseTextChatGPT();
+
+      logWithTimestamp("✅ 完全テスト完了");
+      console.log("応答:", response);
+      return response;
+    } catch (error) {
+      log.error("完全テストエラー:", error);
+      throw error;
     }
-  });
+  }
 
-  // unhandledrejectionハンドラー
-  window.addEventListener("unhandledrejection", (e) => {
-    const errorReason = e.reason;
-    const errorMessage = errorReason?.message || String(errorReason);
-    const errorName = errorReason?.name || "";
+  // ========================================
+  // 🚨 ChatGPT グローバルエラーハンドラー
+  // ========================================
 
-    // 🔍 ネットワークエラー検出
-    const isNetworkError =
-      errorMessage.includes("timeout") ||
-      errorMessage.includes("network") ||
-      errorMessage.includes("fetch") ||
-      errorMessage.includes("Failed to fetch") ||
-      errorName.includes("NetworkError");
+  // ChatGPT専用ネットワークエラーハンドラーを追加
+  if (
+    typeof window !== "undefined" &&
+    window.location &&
+    window.location.href.includes("chatgpt.com")
+  ) {
+    // グローバルエラーハンドラー
+    window.addEventListener("error", (e) => {
+      const errorMessage = e.message || e.error?.message || "";
+      const errorName = e.error?.name || "";
 
-    if (isNetworkError) {
-      console.error("🌐 [ChatGPT-UNHANDLED-NETWORK-ERROR]", {
-        message: errorMessage,
-        name: errorName,
-        type: "NETWORK_ERROR",
-        timestamp: new Date().toISOString(),
-        aiType: "chatgpt",
-      });
+      // 🔍 ネットワークエラー検出 (Claudeと同じロジック)
+      const isNetworkError =
+        errorMessage.includes("timeout") ||
+        errorMessage.includes("network") ||
+        errorMessage.includes("fetch") ||
+        errorMessage.includes("Failed to fetch") ||
+        errorName.includes("NetworkError");
 
-      // 🔄 エラー統計を記録
-      try {
-        if (!window.chatgptErrorHistory) {
-          window.chatgptErrorHistory = [];
-        }
-        window.chatgptErrorHistory.push({
-          type: "NETWORK_ERROR",
+      if (isNetworkError) {
+        console.error("🌐 [ChatGPT-GLOBAL-NETWORK-ERROR]", {
           message: errorMessage,
-          timestamp: Date.now(),
-          level: "unhandledrejection",
+          name: errorName,
+          type: "NETWORK_ERROR",
+          filename: e.filename,
+          lineno: e.lineno,
+          timestamp: new Date().toISOString(),
+          aiType: "chatgpt",
         });
 
-        console.log(
-          "📊 [ChatGPT-RETRY-MANAGER] ネットワークエラーを統計に記録",
-          {
-            totalErrors: window.chatgptErrorHistory.length,
-            errorType: "NETWORK_ERROR",
-          },
-        );
+        // エラー統計記録 (将来のChatGPTRetryManager用)
+        try {
+          if (!window.chatgptErrorHistory) {
+            window.chatgptErrorHistory = [];
+          }
+          window.chatgptErrorHistory.push({
+            type: "NETWORK_ERROR",
+            message: errorMessage,
+            timestamp: Date.now(),
+            level: "global_error",
+          });
+        } catch (retryError) {
+          // エラー記録失敗は無視
+        }
+      } else {
+        console.error("🚨 [ChatGPT-GLOBAL-ERROR]", e.message);
+      }
+    });
 
-        // 🔄 アクティブなタスクがある場合のリトライ準備 (将来実装用)
-        if (window.currentChatGPTTask) {
-          console.warn(
-            "🔄 [ChatGPT-RETRY-TRIGGER] アクティブタスク検出 - リトライ実行準備",
+    // unhandledrejectionハンドラー
+    window.addEventListener("unhandledrejection", (e) => {
+      const errorReason = e.reason;
+      const errorMessage = errorReason?.message || String(errorReason);
+      const errorName = errorReason?.name || "";
+
+      // 🔍 ネットワークエラー検出
+      const isNetworkError =
+        errorMessage.includes("timeout") ||
+        errorMessage.includes("network") ||
+        errorMessage.includes("fetch") ||
+        errorMessage.includes("Failed to fetch") ||
+        errorName.includes("NetworkError");
+
+      if (isNetworkError) {
+        console.error("🌐 [ChatGPT-UNHANDLED-NETWORK-ERROR]", {
+          message: errorMessage,
+          name: errorName,
+          type: "NETWORK_ERROR",
+          timestamp: new Date().toISOString(),
+          aiType: "chatgpt",
+        });
+
+        // 🔄 エラー統計を記録
+        try {
+          if (!window.chatgptErrorHistory) {
+            window.chatgptErrorHistory = [];
+          }
+          window.chatgptErrorHistory.push({
+            type: "NETWORK_ERROR",
+            message: errorMessage,
+            timestamp: Date.now(),
+            level: "unhandledrejection",
+          });
+
+          console.log(
+            "📊 [ChatGPT-RETRY-MANAGER] ネットワークエラーを統計に記録",
+            {
+              totalErrors: window.chatgptErrorHistory.length,
+              errorType: "NETWORK_ERROR",
+            },
           );
-          // ChatGPT用リトライマネージャーは将来実装
-          // 現在は統計記録のみ
-        }
-      } catch (retryError) {
-        console.error(
-          "❌ [ChatGPT-RETRY-MANAGER] エラー記録処理エラー:",
-          retryError,
-        );
-      }
-    } else {
-      console.error("🚨 [ChatGPT-UNHANDLED-PROMISE]", e.reason);
-    }
-  });
 
+<<<<<<< HEAD
   console.log("✅ [ChatGPT] ネットワークエラーハンドラー登録完了");
 } // ChatGPTページ判定if文終了
 
 })(); // IIFE終了 - ChatGPT自動化システム初期化完了
+=======
+          // 🔄 アクティブなタスクがある場合のリトライ準備 (将来実装用)
+          if (window.currentChatGPTTask) {
+            console.warn(
+              "🔄 [ChatGPT-RETRY-TRIGGER] アクティブタスク検出 - リトライ実行準備",
+            );
+            // ChatGPT用リトライマネージャーは将来実装
+            // 現在は統計記録のみ
+          }
+        } catch (retryError) {
+          console.error(
+            "❌ [ChatGPT-RETRY-MANAGER] エラー記録処理エラー:",
+            retryError,
+          );
+        }
+      } else {
+        console.error("🚨 [ChatGPT-UNHANDLED-PROMISE]", e.reason);
+      }
+    });
+
+    console.log("✅ [ChatGPT] ネットワークエラーハンドラー登録完了");
+    console.log("🔧 [DEBUG] IIFE正常終了 - 全ての処理完了");
+  }
+})();
+>>>>>>> de14852 (fix: ChatGPT自動化スクリプトの重大な構造問題を修正)
