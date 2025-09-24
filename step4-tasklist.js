@@ -244,15 +244,31 @@ async function handleIndividualTaskCompletion(result, taskIndex) {
         try {
           window.registerTaskCompletionDynamic(taskId);
           log.info(`📝 [個別完了処理] DynamicTaskSearchに完了登録: ${taskId}`);
+
+          // 【デバッグログ追加】完了登録時の状態記録
+          log.warn(`🔍 [重複検証] タスク完了登録時点:`, {
+            taskId: taskId,
+            completedAt: new Date().toISOString(),
+            hasResponse: !!result.response,
+            responseLength: result.response?.length || 0,
+            column: result.column,
+            row: result.row,
+            spreadsheetWriteStatus: "pending_or_completed",
+          });
         } catch (error) {
           log.warn(`⚠️ [個別完了処理] DynamicTaskSearch完了登録エラー:`, error);
         }
       }
 
-      // 非同期で次タスクを探索開始（ブロックしない）
-      startNextTaskIfAvailable(taskIndex).catch((error) =>
-        log.warn(`次タスク探索エラー[${taskIndex}]:`, error),
-      );
+      // 【修正】スプレッドシート書き込み完了を待機してから次タスク探索
+      // Google Sheets APIの書き込み反映に2-3秒必要
+      log.warn(`⏳ [重複検証] 書き込み待機開始（3秒）- タスク[${taskIndex}]`);
+      setTimeout(() => {
+        log.warn(`✅ [重複検証] 書き込み待機完了 - 次タスク探索開始`);
+        startNextTaskIfAvailable(taskIndex).catch((error) =>
+          log.warn(`次タスク探索エラー[${taskIndex}]:`, error),
+        );
+      }, 3000); // 3秒待機
     }
 
     log.info(`✅ [個別完了処理] タスク[${taskIndex}]完了`);

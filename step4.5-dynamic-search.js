@@ -256,6 +256,15 @@ class DynamicTaskSearch {
   async findNextTask() {
     log.info("🔍 次のタスク検索開始");
 
+    // 【デバッグログ追加】検索開始時の状態
+    log.warn("🔍 [重複検証] findNextTask開始時の状態:", {
+      completedTasksCount: this.completedTasks.size,
+      completedTasks: Array.from(this.completedTasks),
+      processingTasksCount: this.processingTasks.size,
+      processingTasks: Array.from(this.processingTasks),
+      timestamp: new Date().toISOString(),
+    });
+
     try {
       // 【修正】統一管理システムから現在のグループ情報を取得
       const currentGroup = window.getCurrentGroup
@@ -392,7 +401,9 @@ class DynamicTaskSearch {
               // 追加情報
               cellRef: `${answerCol.column}${rowNumber}`,
               answerCell: `${answerCol.column}${rowNumber}`,
-              logCell: `A${rowNumber}`, // ログは通常A列
+              logCell: taskGroup.columns?.log
+                ? `${taskGroup.columns.log}${rowNumber}`
+                : null,
             };
           }
         }
@@ -434,15 +445,26 @@ class DynamicTaskSearch {
    * タスクが実行可能かチェック
    */
   isTaskAvailable(taskId, cellValue) {
+    // 【デバッグログ追加】チェック開始
+    const checkTime = new Date().toISOString();
+
     // すでに完了済みならスキップ
     if (this.completedTasks.has(taskId)) {
       log.debug(`⏭️ スキップ（完了済み）: ${taskId}`);
+      log.warn(`🔍 [重複検証] ${taskId}は完了済みリストに存在`, {
+        taskId: taskId,
+        checkTime: checkTime,
+      });
       return false;
     }
 
     // 現在処理中ならスキップ
     if (this.processingTasks.has(taskId)) {
       log.debug(`⏳ スキップ（処理中）: ${taskId}`);
+      log.warn(`🔍 [重複検証] ${taskId}は処理中リストに存在`, {
+        taskId: taskId,
+        checkTime: checkTime,
+      });
       return false;
     }
 
@@ -462,6 +484,13 @@ class DynamicTaskSearch {
     }
 
     // セルが空の場合は実行可能
+    log.warn(`⚠️ [重複検証] ${taskId}のセルが空と判定 - 実行可能`, {
+      taskId: taskId,
+      cellValue: cellValue,
+      cellValueLength: cellValue ? cellValue.length : 0,
+      checkTime: checkTime,
+      completedTasksList: Array.from(this.completedTasks),
+    });
     return true;
   }
 
@@ -494,6 +523,15 @@ class DynamicTaskSearch {
     this.completedTasks.add(taskId);
 
     log.info(`✅ タスク完了登録: ${taskId}`);
+
+    // 【デバッグログ追加】完了登録後の状態
+    log.warn(`🔍 [重複検証] registerTaskCompletion後の状態:`, {
+      taskId: taskId,
+      completedTasksCount: this.completedTasks.size,
+      completedTasksList: Array.from(this.completedTasks),
+      processingTasksCount: this.processingTasks.size,
+      timestamp: new Date().toISOString(),
+    });
 
     // window.currentTaskListも更新
     if (window.currentTaskList && Array.isArray(window.currentTaskList)) {
