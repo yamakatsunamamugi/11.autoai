@@ -4188,9 +4188,10 @@ async function chatWithChatGPT() {
   // ChatGPTモデル・機能検出関数
   // ========================================
 
-  // 検出結果を保存するグローバル変数
+  // 検出結果を保存するグローバル変数（既存情報を保持）
   window.ChatGPTAutomation = window.ChatGPTAutomation || {};
-  window.ChatGPTAutomation.detectionResult = null;
+  window.ChatGPTAutomation.detectionResult = window.ChatGPTAutomation
+    .detectionResult || { models: [], functions: [] };
 
   async function detectChatGPTModelsAndFeatures() {
     log.info("🔍 ChatGPTモデル・機能検出開始");
@@ -4201,10 +4202,16 @@ async function chatWithChatGPT() {
         '[data-testid="model-switcher-dropdown-button"]',
         'button[aria-label*="モデル セレクター"]',
         'button[aria-label*="モデル"][aria-haspopup="menu"]',
-        "#radix-\\:r2m\\:",
+        'button[aria-haspopup="menu"]',
         'button.group.flex.cursor-pointer[aria-haspopup="menu"]',
         'button[type="button"]:has([data-testid="model-switcher-button"])',
         'button:has([data-testid="model-switcher-button"])',
+        'button:has(span:contains("GPT"))',
+        'button:has(span:contains("gpt"))',
+        'button[class*="model"]',
+        'div[class*="model"] button',
+        "header button:first-child",
+        "nav button:first-child",
       ],
       modelMenu: [
         '[role="menu"][data-radix-menu-content]',
@@ -4217,11 +4224,16 @@ async function chatWithChatGPT() {
       functionMenuButton: [
         '[data-testid="composer-plus-btn"]',
         'button[aria-haspopup="menu"]',
-        "#radix-\\:R2eij4im4pact9a4mj5\\:",
         "button.composer-btn",
         'div[class*="leading"] button',
         'button[aria-label="機能メニューを開く"]',
         'button:has(svg):has(path[d*="M12 6.5a5.5"])',
+        'button:has(svg) path[d*="plus"]',
+        "form button:first-child",
+        'div[class*="composer"] button',
+        'button[class*="plus"]',
+        "textarea + div button",
+        'div[data-testid*="composer"] button',
       ],
       functionMenu: [
         '[role="menu"][data-state="open"]',
@@ -4447,6 +4459,25 @@ async function chatWithChatGPT() {
       }
     } catch (error) {
       log.warn("UIへの送信失敗:", error);
+    }
+
+    // 既存の検出結果がある場合は保持
+    if (
+      window.ChatGPTAutomation.detectionResult &&
+      (window.ChatGPTAutomation.detectionResult.models.length > 0 ||
+        window.ChatGPTAutomation.detectionResult.functions.length > 0)
+    ) {
+      logWithTimestamp("⚠️ 一部検出失敗、既存情報を保持", "warning");
+
+      // 新しく検出できた情報があれば更新
+      if (result.models.length > 0) {
+        window.ChatGPTAutomation.detectionResult.models = result.models;
+      }
+      if (result.functions.length > 0) {
+        window.ChatGPTAutomation.detectionResult.functions = result.functions;
+      }
+
+      return window.ChatGPTAutomation.detectionResult;
     }
 
     return result;

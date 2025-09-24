@@ -6494,7 +6494,11 @@
     // スクリプト初期化完了を確認 (claude.aiでのみログ出力)
     if (shouldExportFunctions) {
       // ClaudeAutomationオブジェクトを作成（他のAIと統一）
+      window.ClaudeAutomation = window.ClaudeAutomation || {};
+      window.ClaudeAutomation.detectionResult = window.ClaudeAutomation
+        .detectionResult || { models: [], functions: [] };
       window.ClaudeAutomation = {
+        ...window.ClaudeAutomation,
         executeTask: executeTask,
         findClaudeElement: window.findClaudeElement,
         inputText: inputText,
