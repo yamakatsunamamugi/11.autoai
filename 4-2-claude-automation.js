@@ -4769,6 +4769,18 @@
         // ========================================
         // ⚙️ ステップ4: 機能選択
         // ========================================
+        // 🔧 [FEATURE-DEBUG] 機能選択パラメータ詳細
+        console.log("🔧 [FEATURE-SELECTION-DEBUG] 機能選択条件チェック:");
+        console.log("  - featureName値:", featureName);
+        console.log("  - featureName型:", typeof featureName);
+        console.log("  - 空文字チェック:", featureName === "");
+        console.log("  - 設定なしチェック:", featureName === "設定なし");
+        console.log("  - null/undefinedチェック:", featureName == null);
+        console.log(
+          "  - 機能選択実行判定:",
+          !!(featureName && featureName !== "" && featureName !== "設定なし"),
+        );
+
         if (featureName && featureName !== "" && featureName !== "設定なし") {
           log.debug(
             "%c【Claude-ステップ4-1】機能選択開始",
@@ -4882,27 +4894,30 @@
                 const currentState = targetFeature.input.checked;
                 console.log(`  - 現在の状態: ${currentState ? "ON" : "OFF"}`);
 
-                if (!currentState) {
-                  console.log(`  - クリックして状態を変更...`);
+                // 🔧 [FORCE-SELECTION] 全機能OFF後は必ず選択を実行
+                // 既にONでも一度OFFにしてからONにする（確実性向上）
+                if (currentState) {
+                  console.log(`  - 🔄 既にONですが、確実性のため再選択します`);
+                  console.log(`  - 一旦OFFにします...`);
                   targetFeature.element.click();
-                  await wait(1000);
+                  await wait(500);
+                }
 
-                  // 状態確認
-                  const newState = targetFeature.input.checked;
-                  console.log(
-                    `  - 新しい状態: ${newState ? "✅ ON" : "❌ OFF"}`,
-                  );
+                // ONにする
+                console.log(`  - クリックしてONに設定...`);
+                targetFeature.element.click();
+                await wait(1000);
 
-                  if (newState) {
-                    log.debug(`✅ ${featureName}機能を有効化しました`);
-                  } else {
-                    log.warn(
-                      `⚠️ ${featureName}機能の有効化に失敗した可能性があります`,
-                    );
-                  }
+                // 最終状態確認
+                const finalState = targetFeature.input.checked;
+                console.log(`  - 最終状態: ${finalState ? "✅ ON" : "❌ OFF"}`);
+
+                if (finalState) {
+                  log.debug(`✅ ${featureName}機能を有効化しました`);
                 } else {
-                  console.log(`  - すでにONです`);
-                  log.debug(`ℹ️ ${featureName}機能はすでに有効です`);
+                  log.warn(
+                    `⚠️ ${featureName}機能の有効化に失敗した可能性があります`,
+                  );
                 }
               } else {
                 console.error(`❌ 「${featureName}」が見つかりませんでした`);
@@ -4992,7 +5007,8 @@
           }
           log.debug("─".repeat(50));
         } else {
-          console.log("  - 機能選択: スキップ（設定なし）");
+          console.log("  - 機能選択: スキップ");
+          console.log("    理由: featureName=", featureName);
           log.debug(
             "%c⏭️【Claude-ステップ4-1】機能選択をスキップ（設定なし）",
             "color: #9E9E9E; font-style: italic;",
@@ -5007,7 +5023,8 @@
           "color: #4CAF50; font-weight: bold; font-size: 14px",
         );
         console.log(
-          `  - 送信ボタンセレクタ: ${claudeSelectors["2_送信ボタン"]}`,
+          `  - 送信ボタンセレクタ:`,
+          JSON.stringify(claudeSelectors["2_送信ボタン"], null, 2),
         );
         console.log(`  - 送信内容長: ${prompt.length}文字`);
 
