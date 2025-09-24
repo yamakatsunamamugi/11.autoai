@@ -4268,242 +4268,188 @@ async function chatWithChatGPT() {
     const availableModels = [];
     const availableFunctions = [];
 
-    try {
-      // モデル検出（テスト済みコードをそのまま使用）
-      logWithTimestamp("1-1. メニュークリックボタンを探しています...", "step");
-      const modelButton = await findElement(
-        DETECTION_SELECTORS.modelButton,
-        "モデル切り替えボタン",
+    // テスト済みコード - モデル検出
+    logWithTimestamp("1-1. メニュークリックボタンを探しています...", "step");
+    const modelButton = await findElement(
+      DETECTION_SELECTORS.modelButton,
+      "モデル切り替えボタン",
+    );
+    if (modelButton) {
+      const currentModelText = getCleanText(modelButton);
+      logWithTimestamp(`現在のモデル: ${currentModelText}`, "info");
+
+      modelButton.click();
+      await sleep(1500);
+
+      logWithTimestamp("1-2. 表示されたモデル一覧を取得・記録", "step");
+      const modelMenu = await findElement(
+        DETECTION_SELECTORS.modelMenu,
+        "モデルメニュー",
       );
-      if (modelButton) {
-        const currentModelText = getCleanText(modelButton);
-        logWithTimestamp(`現在のモデル: ${currentModelText}`, "info");
 
-        // テスト済みコードのtriggerReactEvent使用
-        function triggerReactEvent(element, eventType, eventData = {}) {
-          try {
-            if (eventType === "pointer") {
-              const pointerDown = new PointerEvent("pointerdown", {
-                bubbles: true,
-                cancelable: true,
-                view: window,
-                ...eventData,
-              });
-              const pointerUp = new PointerEvent("pointerup", {
-                bubbles: true,
-                cancelable: true,
-                view: window,
-                ...eventData,
-              });
-              element.dispatchEvent(pointerDown);
-              element.dispatchEvent(pointerUp);
-              return true;
-            }
-            return false;
-          } catch (error) {
-            logWithTimestamp(
-              `React イベントトリガー失敗: ${error.message}`,
-              "error",
-            );
-            return false;
-          }
-        }
+      if (modelMenu) {
+        logWithTimestamp("✅ モデルメニューが開きました", "success");
 
-        triggerReactEvent(modelButton, "pointer");
-        await sleep(1500);
-
-        // 1-2: モデル一覧を取得・記録（テスト済みコード完全コピー）
-        logWithTimestamp("1-2. 表示されたモデル一覧を取得・記録", "step");
-        const modelMenu = await findElement(
-          DETECTION_SELECTORS.modelMenu,
-          "モデルメニュー",
+        const mainMenuItems = modelMenu.querySelectorAll(
+          '[role="menuitem"][data-testid^="model-switcher-"]',
         );
-
-        if (modelMenu) {
-          logWithTimestamp("✅ モデルメニューが開きました", "success");
-
-          // テスト済みコードの成功パターンをそのまま使用
-          // メインメニューのモデル取得
-          const mainMenuItems = modelMenu.querySelectorAll(
-            '[role="menuitem"][data-testid^="model-switcher-"]',
-          );
-          mainMenuItems.forEach((item) => {
-            const modelName = getCleanText(item);
-            if (modelName && !modelName.includes("レガシー")) {
-              availableModels.push({
-                name: modelName,
-                testId: item.getAttribute("data-testid"),
-                type: "Current",
-              });
-              logWithTimestamp(`モデル発見: ${modelName}`, "success");
-            }
-          });
-
-          // レガシーモデルチェック（テスト済みコード完全コピー）
-          const legacyButton =
-            modelMenu.querySelector('[role="menuitem"][data-has-submenu]') ||
-            Array.from(modelMenu.querySelectorAll('[role="menuitem"]')).find(
-              (el) =>
-                el.textContent && el.textContent.includes("レガシーモデル"),
-            );
-
-          if (legacyButton) {
-            logWithTimestamp("レガシーモデルボタンをクリック", "info");
-            legacyButton.click();
-            await sleep(1500);
-
-            const allMenus = document.querySelectorAll('[role="menu"]');
-            allMenus.forEach((menu) => {
-              if (menu !== modelMenu) {
-                const items = menu.querySelectorAll('[role="menuitem"]');
-                items.forEach((item) => {
-                  const modelName = getCleanText(item);
-                  if (modelName && modelName.includes("GPT")) {
-                    availableModels.push({
-                      name: modelName,
-                      type: "Legacy",
-                    });
-                    logWithTimestamp(
-                      `レガシーモデル発見: ${modelName}`,
-                      "success",
-                    );
-                  }
-                });
-              }
+        mainMenuItems.forEach((item) => {
+          const modelName = getCleanText(item);
+          if (modelName && !modelName.includes("レガシー")) {
+            availableModels.push({
+              name: modelName,
+              testId: item.getAttribute("data-testid"),
+              type: "Current",
             });
+            logWithTimestamp(`モデル発見: ${modelName}`, "success");
           }
+        });
 
-          // 1-5: メニューを閉じる（テスト済みコード）
-          logWithTimestamp("1-5. メニューを閉じる", "step");
-          document.dispatchEvent(
-            new KeyboardEvent("keydown", { key: "Escape", code: "Escape" }),
-          );
-          await sleep(1000);
-        } else {
-          throw new Error("モデルメニューが開きませんでした");
-        }
-      } else {
-        throw new Error("モデル切り替えボタンが見つかりません");
-      }
-
-      // 機能検出
-      const funcMenuBtn = await findElement(
-        DETECTION_SELECTORS.functionMenuButton,
-      );
-      if (funcMenuBtn) {
-        logWithTimestamp("機能メニューボタン発見、クリック実行");
-        // PointerEventを使用（テストコードから）
-        funcMenuBtn.dispatchEvent(
-          new PointerEvent("pointerdown", { bubbles: true }),
-        );
-        await sleep(100);
-        funcMenuBtn.dispatchEvent(
-          new PointerEvent("pointerup", { bubbles: true }),
-        );
-        await sleep(1500);
-
-        const funcMenu = await findElement(DETECTION_SELECTORS.functionMenu);
-        if (funcMenu) {
-          logWithTimestamp("機能メニュー発見、機能一覧取得");
-
-          // メイン機能を取得
-          const menuItems = funcMenu.querySelectorAll('[role="menuitemradio"]');
-          menuItems.forEach((item) => {
-            const funcName = getCleanText(item);
-            if (funcName) {
-              availableFunctions.push(funcName);
-            }
-          });
-
-          // サブメニューもチェック
-          const moreButton = Array.from(
-            funcMenu.querySelectorAll('[role="menuitem"]'),
-          ).find(
-            (el) => el.textContent && el.textContent.includes("さらに表示"),
+        const legacyButton =
+          modelMenu.querySelector('[role="menuitem"][data-has-submenu]') ||
+          Array.from(modelMenu.querySelectorAll('[role="menuitem"]')).find(
+            (el) => el.textContent && el.textContent.includes("レガシーモデル"),
           );
 
-          if (moreButton) {
-            logWithTimestamp("追加機能メニュー発見、サブメニュー取得");
-            moreButton.click();
-            await sleep(1000);
+        if (legacyButton) {
+          logWithTimestamp("レガシーモデルボタンをクリック", "info");
+          legacyButton.click();
+          await sleep(1500);
 
-            const subMenu = document.querySelector('[data-side="right"]');
-            if (subMenu) {
-              const subMenuItems = subMenu.querySelectorAll(
-                '[role="menuitemradio"]',
-              );
-              subMenuItems.forEach((item) => {
-                const funcName = getCleanText(item);
-                if (funcName) {
-                  availableFunctions.push(funcName);
+          const allMenus = document.querySelectorAll('[role="menu"]');
+          allMenus.forEach((menu) => {
+            if (menu !== modelMenu) {
+              const items = menu.querySelectorAll('[role="menuitem"]');
+              items.forEach((item) => {
+                const modelName = getCleanText(item);
+                if (modelName && modelName.includes("GPT")) {
+                  availableModels.push({
+                    name: modelName,
+                    type: "Legacy",
+                  });
+                  logWithTimestamp(
+                    `レガシーモデル発見: ${modelName}`,
+                    "success",
+                  );
                 }
               });
             }
-          }
-
-          // メニューを閉じる
-          document.dispatchEvent(
-            new KeyboardEvent("keydown", { key: "Escape", code: "Escape" }),
-          );
-          await sleep(500);
-        } else {
-          logWithTimestamp("❌ 機能メニューが開けませんでした", "error");
-          // デバッグ情報を出力
-          const allFuncMenus = document.querySelectorAll('[role="menu"]');
-          logWithTimestamp(
-            `デバッグ: 機能検出時の[role="menu"]要素数: ${allFuncMenus.length}`,
-            "info",
-          );
+          });
         }
-      } else {
-        logWithTimestamp(
-          "❌ 機能メニューボタンが見つかりませんでした",
-          "error",
+
+        logWithTimestamp("1-5. メニューを閉じる", "step");
+        document.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Escape", code: "Escape" }),
         );
+        await sleep(1000);
+      } else {
+        logWithTimestamp("❌ モデルメニューが開きませんでした", "error");
       }
-
-      const result = {
-        models: availableModels,
-        functions: availableFunctions,
-      };
-      logWithTimestamp(
-        `🔍 ChatGPT検出完了 - モデル: ${availableModels.length}個, 機能: ${availableFunctions.length}個`,
-        result,
-      );
-
-      // 検出結果を保存
-      if (window.ChatGPTAutomation) {
-        window.ChatGPTAutomation.detectionResult = result;
-      }
-
-      // UIに送信
-      try {
-        if (chrome.runtime && chrome.runtime.sendMessage) {
-          // モデルデータを正しくフォーマット
-          const modelsToSend = availableModels.map((m) => {
-            if (typeof m === "string") return m;
-            return m.name || m;
-          });
-
-          chrome.runtime.sendMessage({
-            type: "AI_MODEL_FUNCTION_UPDATE",
-            aiType: "chatgpt",
-            data: {
-              models: modelsToSend,
-              functions: availableFunctions,
-            },
-          });
-          logWithTimestamp("✅ UIテーブルにデータを送信しました");
-        }
-      } catch (error) {
-        log.warn("UIへの送信失敗:", error);
-      }
-
-      return result;
-    } catch (error) {
-      log.error("🔍 ChatGPT検出エラー:", error);
-      return { models: availableModels, functions: availableFunctions };
+    } else {
+      logWithTimestamp("❌ モデル切り替えボタンが見つかりません", "error");
     }
+
+    // テスト済みコード - 機能検出
+    logWithTimestamp("2-1. 機能メニューボタンを探しています...", "step");
+    const funcMenuBtn = await findElement(
+      DETECTION_SELECTORS.functionMenuButton,
+      "機能メニューボタン",
+    );
+    if (funcMenuBtn) {
+      logWithTimestamp("機能メニューボタン発見、クリック実行", "info");
+
+      funcMenuBtn.click();
+      await sleep(1500);
+
+      const funcMenu = await findElement(
+        DETECTION_SELECTORS.functionMenu,
+        "機能メニュー",
+      );
+      if (funcMenu) {
+        logWithTimestamp("✅ 機能メニューが開きました", "success");
+
+        const menuItems = funcMenu.querySelectorAll('[role="menuitemradio"]');
+        menuItems.forEach((item) => {
+          const funcName = getCleanText(item);
+          if (funcName) {
+            availableFunctions.push(funcName);
+            logWithTimestamp(`機能発見: ${funcName}`, "success");
+          }
+        });
+
+        const moreButton = Array.from(
+          funcMenu.querySelectorAll('[role="menuitem"]'),
+        ).find((el) => el.textContent && el.textContent.includes("さらに表示"));
+
+        if (moreButton) {
+          logWithTimestamp("追加機能メニュー発見、サブメニュー取得", "info");
+          moreButton.click();
+          await sleep(1000);
+
+          const subMenu = document.querySelector('[data-side="right"]');
+          if (subMenu) {
+            const subMenuItems = subMenu.querySelectorAll(
+              '[role="menuitemradio"]',
+            );
+            subMenuItems.forEach((item) => {
+              const funcName = getCleanText(item);
+              if (funcName) {
+                availableFunctions.push(funcName);
+                logWithTimestamp(`追加機能発見: ${funcName}`, "success");
+              }
+            });
+          }
+        }
+
+        logWithTimestamp("2-5. 機能メニューを閉じる", "step");
+        document.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Escape", code: "Escape" }),
+        );
+        await sleep(1000);
+      } else {
+        logWithTimestamp("❌ 機能メニューが開きませんでした", "error");
+      }
+    } else {
+      logWithTimestamp("❌ 機能メニューボタンが見つかりません", "error");
+    }
+
+    const result = {
+      models: availableModels,
+      functions: availableFunctions,
+    };
+    logWithTimestamp(
+      `🔍 ChatGPT検出完了 - モデル: ${availableModels.length}個, 機能: ${availableFunctions.length}個`,
+      result,
+    );
+
+    // 検出結果を保存
+    if (window.ChatGPTAutomation) {
+      window.ChatGPTAutomation.detectionResult = result;
+    }
+
+    // UIに送信
+    try {
+      if (chrome.runtime && chrome.runtime.sendMessage) {
+        const modelsToSend = availableModels.map((m) => {
+          if (typeof m === "string") return m;
+          return m.name || m;
+        });
+
+        chrome.runtime.sendMessage({
+          type: "AI_MODEL_FUNCTION_UPDATE",
+          aiType: "chatgpt",
+          data: {
+            models: modelsToSend,
+            functions: availableFunctions,
+          },
+        });
+        logWithTimestamp("✅ UIテーブルにデータを送信しました");
+      }
+    } catch (error) {
+      log.warn("UIへの送信失敗:", error);
+    }
+
+    return result;
   }
 
   // ========================================
