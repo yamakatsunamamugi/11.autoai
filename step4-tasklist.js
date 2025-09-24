@@ -2907,14 +2907,6 @@ async function generateTaskList(
                   ]
                 : "",
             logCell: `${taskGroup.columns.log}${row}`,
-            // 🔧 データ一貫性バリデーション
-            _validateLogCell: function () {
-              if (!this.logCell) {
-                console.error("❌ [VALIDATION] logCellが未定義です", this);
-                return false;
-              }
-              return true;
-            },
             promptCells: promptColumns.map((col) => `${col}${row}`),
             answerCell: answerCell,
             tabId: windowInfo?.tabId, // 🆕 タブID追加
@@ -2933,7 +2925,7 @@ async function generateTaskList(
             taskGroupLogColumn: taskGroup.columns.log,
             row: row,
             generatedLogCell: task.logCell,
-            taskGroupColumns: taskGroup.columns,
+            taskGroupColumns: JSON.stringify(taskGroup.columns),
             taskId: task.taskId,
           });
 
@@ -6923,7 +6915,28 @@ async function executeStep4(taskList) {
             automationName: automationName,
             task: task, // 🔧 [SIMPLIFIED] 元のtaskオブジェクトを直接使用
             taskData: task, // 🔧 [SIMPLIFIED] 元のtaskオブジェクトを直接使用（両方の形式に対応）
+            logCell: task?.logCell, // 🔧 [LOGCELL-FIX] logCellを明示的に追加
           };
+
+          // 🔍 [DEBUG-LOGCELL-TRACE] messagePayload作成直後のlogCell確認
+          console.error(
+            `🔍 [DEBUG-LOGCELL-TRACE] step4-tasklist.js messagePayload作成直後:`,
+            JSON.stringify(
+              {
+                taskExists: !!task,
+                taskKeys: task ? Object.keys(task) : [],
+                taskLogCell: task?.logCell,
+                taskLogCellType: typeof task?.logCell,
+                messagePayloadTaskLogCell: messagePayload.task?.logCell,
+                messagePayloadTaskDataLogCell: messagePayload.taskData?.logCell,
+                messagePayloadKeys: Object.keys(messagePayload),
+                automationName: automationName,
+                taskId: task?.id,
+              },
+              null,
+              2,
+            ),
+          );
 
           ExecuteLogger.info(`📡 [DEBUG-sendMessage] メッセージ詳細:`, {
             payload: messagePayload,
@@ -7249,6 +7262,32 @@ async function executeStep4(taskList) {
             // すべてのAI（Claude含む）で統一的にchrome.tabs.sendMessageを使用
             ExecuteLogger.info(
               `🔍 [STEP C-1] chrome.tabs.sendMessage実行中...`,
+            );
+
+            // 🔍 [DEBUG-LOGCELL-TRACE] chrome.tabs.sendMessage実行直前のメッセージ確認
+            console.error(
+              `🔍 [DEBUG-LOGCELL-TRACE] step4-tasklist.js chrome.tabs.sendMessage実行直前:`,
+              JSON.stringify(
+                {
+                  tabId: tabId,
+                  messagePayloadKeys: Object.keys(messagePayload),
+                  messagePayloadTaskExists: !!messagePayload.task,
+                  messagePayloadTaskLogCell: messagePayload.task?.logCell,
+                  messagePayloadTaskDataExists: !!messagePayload.taskData,
+                  messagePayloadTaskDataLogCell:
+                    messagePayload.taskData?.logCell,
+                  messagePayloadTaskId: messagePayload.task?.id,
+                  automationName: messagePayload.automationName,
+                  fullMessagePayloadDump: JSON.stringify(
+                    messagePayload,
+                    null,
+                    2,
+                  ),
+                  messageSizeBytes: JSON.stringify(messagePayload).length,
+                },
+                null,
+                2,
+              ),
             );
 
             response = await chrome.tabs.sendMessage(tabId, messagePayload);

@@ -1293,16 +1293,24 @@
             ) {
               console.error(
                 `🔍 [DEBUG-LOGCELL] Content Script メッセージ受信:`,
-                {
-                  requestType: request.type,
-                  requestAction: request.action,
-                  requestExists: !!request,
-                  requestKeys: request ? Object.keys(request) : [],
-                  requestTask: request.task || request.taskData,
-                  requestTaskLogCell: (request.task || request.taskData)
-                    ?.logCell,
-                  fullRequest: request,
-                },
+                JSON.stringify(
+                  {
+                    requestType: request.type,
+                    requestAction: request.action,
+                    requestExists: !!request,
+                    requestKeys: request ? Object.keys(request) : [],
+                    requestLogCell: request.logCell, // 🔧 直接logCellプロパティを確認
+                    requestLogCellType: typeof request.logCell,
+                    requestTask: request.task || request.taskData,
+                    requestTaskLogCell: (request.task || request.taskData)
+                      ?.logCell,
+                    fullRequest: request,
+                    fullRequestDump: JSON.stringify(request, null, 2),
+                    messageSizeBytes: JSON.stringify(request).length,
+                  },
+                  null,
+                  2,
+                ),
               );
             }
 
@@ -4983,39 +4991,74 @@
                 },
               );
 
-              try {
-                chrome.runtime.sendMessage(
-                  {
-                    type: "recordSendTime",
-                    taskId: taskId,
-                    sendTime: sendTime.toISOString(),
-                    taskInfo: {
-                      aiType: "Claude",
-                      model: modelName || "不明",
-                      function: featureName || "通常",
-                      cellInfo: taskData.cellInfo, // cellInfo を追加
-                    },
-                    logCell: taskData.logCell, // ログセルを直接追加
-                  },
-                  (response) => {
-                    clearTimeout(timeout);
+              // 🔍 [DEBUG-LOGCELL-TRACE] 送信直前のメッセージオブジェクト全体確認
+              const messageToSend = {
+                type: "recordSendTime",
+                taskId: taskId,
+                sendTime: sendTime.toISOString(),
+                taskInfo: {
+                  aiType: "Claude",
+                  model: modelName || "不明",
+                  function: featureName || "通常",
+                  cellInfo: taskData.cellInfo, // cellInfo を追加
+                },
+                logCell: taskData.logCell, // ログセルを直接追加
+              };
 
-                    // chrome.runtime.lastErrorをチェック
-                    if (chrome.runtime.lastError) {
-                      log.warn(
-                        "⚠️ [chrome.runtime.lastError]:",
-                        chrome.runtime.lastError.message,
-                      );
-                      resolve({
-                        error: "runtime_error",
-                        message: chrome.runtime.lastError.message,
-                      });
-                    } else {
-                      log.debug("📨 [DEBUG] sendMessage応答受信:", response);
-                      resolve(response || { success: true });
-                    }
+              console.error(
+                `🔍 [DEBUG-LOGCELL-TRACE] 送信直前のメッセージオブジェクト: ${taskId}`,
+                {
+                  messageKeys: Object.keys(messageToSend),
+                  messageLogCell: messageToSend.logCell,
+                  messageLogCellType: typeof messageToSend.logCell,
+                  messageTaskInfoCellInfo: messageToSend.taskInfo?.cellInfo,
+                  fullMessageDump: JSON.stringify(messageToSend, null, 2),
+                  messageSizeBytes: JSON.stringify(messageToSend).length,
+                  taskDataRaw: taskData,
+                },
+              );
+
+              try {
+                // 🔍 [DEBUG-LOGCELL-TRACE] Chrome Extension送信実行直前
+                console.error(
+                  `🔍 [DEBUG-LOGCELL-TRACE] chrome.runtime.sendMessage実行直前: ${taskId}`,
+                  {
+                    chromeRuntimeExists: !!chrome.runtime,
+                    sendMessageExists: !!chrome.runtime.sendMessage,
+                    messageToSendExists: !!messageToSend,
+                    aboutToSendMessage: true,
                   },
                 );
+
+                chrome.runtime.sendMessage(messageToSend, (response) => {
+                  clearTimeout(timeout);
+
+                  // 🔍 [DEBUG-LOGCELL-TRACE] Chrome Extension送信後のレスポンス確認
+                  console.error(
+                    `🔍 [DEBUG-LOGCELL-TRACE] chrome.runtime.sendMessage送信後: ${taskId}`,
+                    {
+                      responseReceived: !!response,
+                      responseContent: response,
+                      chromeRuntimeLastError: chrome.runtime.lastError,
+                      messageWasSent: !chrome.runtime.lastError,
+                    },
+                  );
+
+                  // chrome.runtime.lastErrorをチェック
+                  if (chrome.runtime.lastError) {
+                    log.warn(
+                      "⚠️ [chrome.runtime.lastError]:",
+                      chrome.runtime.lastError.message,
+                    );
+                    resolve({
+                      error: "runtime_error",
+                      message: chrome.runtime.lastError.message,
+                    });
+                  } else {
+                    log.debug("📨 [DEBUG] sendMessage応答受信:", response);
+                    resolve(response || { success: true });
+                  }
+                });
               } catch (syncError) {
                 clearTimeout(timeout);
                 log.error("❌ [SYNC-ERROR] sendMessage同期エラー:", syncError);

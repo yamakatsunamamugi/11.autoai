@@ -119,12 +119,78 @@ async function recordLogToSpreadsheet(request) {
       throw new Error("スプレッドシートIDが設定されていません");
     }
 
-    // requestオブジェクトからlogCellを直接取得
+    // 🔍 [DEBUG-LOGCELL] Background.js受信時の詳細確認
+    console.warn(
+      "🔍 [DEBUG-LOGCELL] Background.js受信詳細:",
+      JSON.stringify(
+        {
+          requestExists: !!request,
+          requestType: request?.type,
+          requestKeys: request ? Object.keys(request) : [],
+          requestLogCell: request?.logCell,
+          requestLogCellType: typeof request?.logCell,
+          requestTaskId: request?.taskId,
+          requestTaskInfo: request?.taskInfo,
+          requestTaskInfoKeys: request?.taskInfo
+            ? Object.keys(request.taskInfo)
+            : [],
+          requestTaskInfoCellInfo: request?.taskInfo?.cellInfo,
+          fullRequest: request,
+        },
+        null,
+        2,
+      ),
+    );
+
+    // requestオブジェクトからlogCellを複数の方法で取得試行
     let logCell = request.logCell;
 
+    // 🔍 [DEBUG-LOGCELL-FALLBACK] 複数の取得方法でlogCellを探索
+    console.warn("🔍 [DEBUG-LOGCELL-FALLBACK] logCell探索開始:", {
+      method1_directLogCell: request.logCell,
+      method2_taskLogCell: request.task?.logCell,
+      method3_taskDataLogCell: request.taskData?.logCell,
+      method4_taskInfoLogCell: request.taskInfo?.logCell,
+      method5_nestedTaskLogCell: request.data?.task?.logCell,
+      method6_payloadLogCell: request.payload?.logCell,
+      requestStructure: {
+        hasTask: !!request.task,
+        hasTaskData: !!request.taskData,
+        hasTaskInfo: !!request.taskInfo,
+        hasData: !!request.data,
+        hasPayload: !!request.payload,
+      },
+    });
+
+    // フォールバック機能: 複数の場所からlogCellを探索
     if (!logCell) {
-      console.log(
-        "📝 ログセル位置（logCell）が見つからないためログ記録をスキップ",
+      logCell =
+        request.task?.logCell ||
+        request.taskData?.logCell ||
+        request.taskInfo?.logCell ||
+        request.data?.task?.logCell ||
+        request.payload?.logCell;
+
+      console.warn("🔍 [DEBUG-LOGCELL-FALLBACK] フォールバックでlogCell取得:", {
+        foundLogCell: logCell,
+        source: logCell ? "フォールバック成功" : "フォールバック失敗",
+      });
+    }
+
+    if (!logCell) {
+      console.error(
+        "❌ [DEBUG-LOGCELL] ログセル位置（logCell）が見つからないためログ記録をスキップ",
+        JSON.stringify(
+          {
+            requestLogCell: request.logCell,
+            requestLogCellType: typeof request.logCell,
+            requestTaskId: request.taskId,
+            requestKeys: Object.keys(request),
+            allRequestData: request,
+          },
+          null,
+          2,
+        ),
       );
       return;
     }
@@ -663,7 +729,41 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       taskId: request.taskId,
       sendTime: request.sendTime,
       taskInfo: request.taskInfo,
+      logCell: request.logCell, // 🔍 logCell受信状況確認
     });
+
+    // 🔍 [DEBUG-LOGCELL-TRACE] background.js受信時点での詳細トレース
+    console.error(
+      "🔍 [DEBUG-LOGCELL-TRACE] background.js受信時点の全request:",
+      JSON.stringify(
+        {
+          requestKeys: Object.keys(request),
+          requestLogCell: request.logCell,
+          requestLogCellType: typeof request.logCell,
+          requestTaskInfoCellInfo: request.taskInfo?.cellInfo,
+          fullRequestDump: JSON.stringify(request, null, 2),
+          messageSizeBytes: JSON.stringify(request).length,
+        },
+        null,
+        2,
+      ),
+    );
+
+    // 🔍 [DEBUG-LOGCELL-TRACE] Chrome Extension受信イベントの詳細確認
+    console.error(
+      "🔍 [DEBUG-LOGCELL-TRACE] Chrome Extension Message受信イベント:",
+      JSON.stringify(
+        {
+          messageListenerTriggered: true,
+          requestType: request.type,
+          requestSender: "content-script",
+          chromeRuntimeMessageEvent: true,
+          timestamp: new Date().toISOString(),
+        },
+        null,
+        2,
+      ),
+    );
 
     // 非同期でスプレッドシートにログを記録
     (async () => {

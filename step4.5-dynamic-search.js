@@ -361,6 +361,11 @@ class DynamicTaskSearch {
       開始行: dataStartRow,
     });
 
+    // 【無限ループ防止】カウンター追加
+    let tasksChecked = 0;
+    let completedTasksFound = 0;
+    const maxTasksToCheck = 200;
+
     // データ行を順番にチェック
     for (
       let rowIndex = dataStartRow - 1;
@@ -388,6 +393,22 @@ class DynamicTaskSearch {
           // タスクIDを生成
           const taskId = `${answerCol.column}${rowNumber}`;
 
+          tasksChecked++;
+
+          // 【無限ループ防止】チェック数制限
+          if (tasksChecked > maxTasksToCheck) {
+            log.warn(
+              `⚠️ タスクチェック制限に達しました (${maxTasksToCheck}個)`,
+            );
+            return null;
+          }
+
+          // 完了済みタスクをカウント（詳細ログなしで高速チェック）
+          if (this.completedTasks.has(taskId)) {
+            completedTasksFound++;
+            continue; // スキップして次へ
+          }
+
           // このタスクが処理可能かチェック
           if (await this.isTaskAvailable(taskId, answerValue)) {
             // 【デバッグ追加】logCell生成確認
@@ -398,10 +419,13 @@ class DynamicTaskSearch {
             log.warn("🔍 [DynamicSearch] タスク生成時のlogCell:", {
               taskId: taskId,
               logCellValue: logCellValue,
+              logCellType: typeof logCellValue,
               taskGroupColumns: taskGroup.columns,
               logColumnExists: taskGroup.columns?.log ? true : false,
               logColumn: taskGroup.columns?.log || "未設定",
               rowNumber: rowNumber,
+              finalTaskLogCell: logCellValue,
+              logCellCalculation: `${taskGroup.columns?.log}${rowNumber}`,
             });
 
             // 利用可能なタスクを返す
@@ -423,6 +447,14 @@ class DynamicTaskSearch {
         }
       }
     }
+
+    // 【無限ループ防止】統計情報ログ
+    log.info(`📊 タスク検索完了:`, {
+      チェック済み: tasksChecked,
+      完了済み発見: completedTasksFound,
+      利用可能タスク: "0個",
+      グループ: taskGroup.groupNumber,
+    });
 
     return null;
   }
@@ -472,33 +504,10 @@ class DynamicTaskSearch {
    * 【修正】重複実行防止のための厳密なチェック
    */
   async isTaskAvailable(taskId, cellValue) {
-    // 【デバッグログ追加】チェック開始
-    const checkTime = new Date().toISOString();
-
-    // 【仮説検証】詳細チェックログ
-    console.warn(
-      `🔍 [重複検証] DynamicTaskSearch.isTaskAvailable チェック開始:`,
-      {
-        taskId: taskId,
-        cellValue: cellValue,
-        cellValueType: typeof cellValue,
-        cellValueLength: cellValue ? cellValue.length : 0,
-        completedTasksCount: this.completedTasks.size,
-        processingTasksCount: this.processingTasks.size,
-        completedTasksList: Array.from(this.completedTasks),
-        processingTasksList: Array.from(this.processingTasks),
-        checkTime: checkTime,
-      },
-    );
-
     // 【修正1】すでに完了済みならスキップ（優先度：最高）
     if (this.completedTasks.has(taskId)) {
+      // 【無限ループ防止】過剰ログを削減し、デバッグレベルに変更
       log.debug(`⏭️ スキップ（完了済み）: ${taskId}`);
-      console.warn(`❌ [重複検証] タスク実行拒否 - 完了済み:`, {
-        taskId: taskId,
-        reason: "completedTasks.has(taskId)",
-        completedTasks: Array.from(this.completedTasks),
-      });
       return false;
     }
 
