@@ -242,7 +242,6 @@ async function identifyTaskGroups() {
           startCol: index,
           endCol: index,
         };
-
       }
 
       // 2-1-3. 特殊グループの検出（レポート化、Genspark）
@@ -350,14 +349,8 @@ async function identifyTaskGroups() {
             startCol: index,
             endCol: index,
           };
-
         } else {
           // 既存のグループにプロンプト列を追加
-              hasLogColumn: !!currentGroup.logColumn,
-              logColumn: currentGroup.logColumn,
-              header: trimmedHeader,
-            },
-          );
           currentGroup.promptColumns.push(columnLetter);
           currentGroup.endCol = index;
         }
@@ -1144,7 +1137,6 @@ async function executeStep2TaskGroups() {
         answer: answerColumns,
         work: group.workColumn || null,
       };
-
 
       // groupTypeが未設定の場合、typeから設定
       if (!group.groupType) {
