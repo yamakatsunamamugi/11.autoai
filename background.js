@@ -10,6 +10,132 @@ chrome.runtime.onInstalled.addListener(() => {
 // Content Script注入はタスク実行時にのみ行う
 
 // ========================================
+// SimpleSheetsClient: スプレッドシート操作クラス
+// ========================================
+class SimpleSheetsClient {
+  constructor() {
+    this.baseUrl = "https://sheets.googleapis.com/v4/spreadsheets";
+  }
+
+  /**
+   * 認証トークン取得
+   */
+  async getAuthToken() {
+    return new Promise((resolve, reject) => {
+      if (typeof chrome === "undefined" || !chrome.identity) {
+        reject(new Error("Chrome Identity APIが利用できません"));
+        return;
+      }
+
+      chrome.identity.getAuthToken({ interactive: false }, (token) => {
+        if (chrome.runtime.lastError) {
+          reject(chrome.runtime.lastError);
+        } else {
+          resolve(token);
+        }
+      });
+    });
+  }
+
+  /**
+   * スプレッドシートに値を書き込み（単一セル）
+   */
+  async updateValue(spreadsheetId, range, value) {
+    const token = await this.getAuthToken();
+    const url = `${this.baseUrl}/${spreadsheetId}/values/${range}?valueInputOption=USER_ENTERED`;
+
+    const response = await fetch(url, {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        values: [[value]],
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`書き込み失敗: HTTP ${response.status}, ${errorText}`);
+    }
+
+    return await response.json();
+  }
+}
+
+// グローバルインスタンス
+const sheetsClient = new SimpleSheetsClient();
+
+// ========================================
+// ログ記録関数
+// ========================================
+
+/**
+ * ログをフォーマット
+ */
+function formatLogEntry(request) {
+  const parts = [];
+
+  // 送信時刻
+  if (request.sendTime) {
+    const sendTime = new Date(request.sendTime);
+    parts.push(`開始: ${sendTime.toLocaleString("ja-JP")}`);
+  }
+
+  // AI種別
+  if (request.taskInfo?.aiType) {
+    parts.push(`AI: ${request.taskInfo.aiType}`);
+  }
+
+  // モデル・機能
+  if (request.taskInfo?.model && request.taskInfo?.model !== "不明") {
+    parts.push(`モデル: ${request.taskInfo.model}`);
+  }
+  if (request.taskInfo?.function && request.taskInfo?.function !== "通常") {
+    parts.push(`機能: ${request.taskInfo.function}`);
+  }
+
+  // ステータス（送信時は「実行中」）
+  parts.push(`ステータス: 送信完了`);
+
+  return parts.join(" | ");
+}
+
+/**
+ * スプレッドシートにログを記録
+ */
+async function recordLogToSpreadsheet(request) {
+  try {
+    // Chrome storage からスプレッドシート情報を取得
+    const result = await chrome.storage.local.get([
+      "spreadsheetId",
+      "gid",
+      "currentRow",
+    ]);
+
+    if (!result.spreadsheetId) {
+      throw new Error("スプレッドシートIDが設定されていません");
+    }
+
+    // 現在の行番号を取得（デフォルトは2）
+    const currentRow = result.currentRow || 2;
+
+    // ログをフォーマット
+    const logText = formatLogEntry(request);
+
+    // Column A にログを記録
+    const range = `A${currentRow}`;
+    await sheetsClient.updateValue(result.spreadsheetId, range, logText);
+
+    console.log(`📊 ログ記録完了: ${range} → ${logText}`);
+  } catch (error) {
+    console.error("❌ スプレッドシートログ記録エラー:", error);
+    throw error;
+  }
+}
+
+// ========================================
 // AITestController クラス定義（background.js内）
 // ========================================
 
@@ -361,12 +487,6 @@ class AITestController {
 
             // デバッグログ追加
             if (aiType === "claude") {
-              console.log(`🔍 [Background Debug] ${aiType}から受信した応答:`, {
-                responseType: typeof response,
-                responseKeys: Object.keys(response || {}),
-                responseResult: response?.result,
-                fullResponse: response,
-              });
             }
 
             return response;
@@ -401,11 +521,6 @@ class AITestController {
 
           // デバッグログ追加
           if (aiType === "claude") {
-            console.log(`🔍 [Background Debug 2] testResultsに保存:`, {
-              aiType: aiType,
-              savedResult: this.testResults[aiType],
-              resultContent: this.testResults[aiType]?.content,
-            });
           }
         }
       }
@@ -541,7 +656,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       sendTime: request.sendTime,
       taskInfo: request.taskInfo,
     });
-    // ログ記録処理は省略（デバッグ用のみ）
+
+    // 非同期でスプレッドシートにログを記録
+    (async () => {
+      try {
+        await recordLogToSpreadsheet(request);
+        console.log("📊 スプレッドシートログ記録成功");
+      } catch (error) {
+        console.error("❌ スプレッドシートログ記録エラー:", error);
+      }
+    })();
+
     sendResponse({
       success: true,
       message: "Send time recorded successfully",
@@ -552,10 +677,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   // 🔧 関数注入要求（4-2-claude-automation.js:5728から）
   if (request.action === "injectClaudeFunctions") {
-    console.log("🔧 [BG-FIX] injectClaudeFunctions要求を受信:", {
-      tabId: request.tabId,
-      timestamp: new Date().toISOString(),
-    });
     // 実際の注入は既にContent Script側で完了済み
     sendResponse({
       success: true,
@@ -567,12 +688,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   // 🔄 新規ウィンドウでのリトライ要求（ChatGPT, Geminiから）
   if (request.type === "RETRY_WITH_NEW_WINDOW") {
-    console.log("🔄 [BG-FIX] RETRY_WITH_NEW_WINDOW要求を受信:", {
-      taskId: request.taskId,
-      aiType: request.aiType,
-      prompt: request.prompt?.substring(0, 50) + "...",
-      retryReason: request.retryReason,
-    });
     // 実際のウィンドウ管理は実装なし（デバッグ用のみ）
     sendResponse({
       success: true,
@@ -582,15 +697,79 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true; // 非同期レスポンス許可
   }
 
-  // 🔍 AI モデル・機能情報更新要求
-  if (request.type === "AI_MODEL_FUNCTION_UPDATE") {
-    console.log("🔍 [BG] AI モデル・機能情報受信:", {
-      aiType: request.aiType,
-      modelsCount: request.data.models?.length || 0,
-      functionsCount: request.data.functions?.length || 0,
-      timestamp: new Date().toISOString(),
+  // 🚨 全AI Overloadedエラー対応: ウィンドウリセット (汎用版)
+  if (
+    request.action === "RESET_AI_WINDOW" ||
+    request.action === "RESET_CLAUDE_WINDOW"
+  ) {
+    const aiType = request.aiType || "claude";
+
+    // AI別のURL設定
+    const urlPatterns = {
+      claude: "*://*.claude.ai/*",
+      chatgpt: "*://chatgpt.com/*",
+      gemini: "*://gemini.google.com/*",
+      genspark: "*://genspark.ai/*",
+    };
+
+    const urlPattern = urlPatterns[aiType] || urlPatterns.claude;
+
+    // 指定されたAIのタブを特定して閉じる
+    chrome.tabs.query({ url: urlPattern }, (tabs) => {
+      tabs.forEach((tab) => {
+        chrome.tabs.remove(tab.id);
+      });
     });
 
+    sendResponse({
+      success: true,
+      message: `${aiType.toUpperCase()} window reset completed`,
+      aiType: aiType,
+      timestamp: new Date().toISOString(),
+    });
+    return true;
+  }
+
+  // 🚨 全AI Overloadedエラー対応: 新しいウィンドウを開く (汎用版)
+  if (
+    request.action === "OPEN_AI_WINDOW" ||
+    request.action === "OPEN_CLAUDE_WINDOW"
+  ) {
+    const aiType = request.aiType || "claude";
+
+    // AI別のURL設定
+    const urls = {
+      claude: "https://claude.ai/new",
+      chatgpt: "https://chatgpt.com/",
+      gemini: "https://gemini.google.com/",
+      genspark: "https://genspark.ai/",
+    };
+
+    const targetUrl = urls[aiType] || urls.claude;
+
+    // 新しいAIタブを開く
+    chrome.tabs.create(
+      {
+        url: targetUrl,
+        active: true,
+      },
+      (tab) => {
+        sendResponse({
+          success: true,
+          message: `New ${aiType.toUpperCase()} window opened`,
+          aiType: aiType,
+          tabId: tab.id,
+          targetUrl: targetUrl,
+          timestamp: new Date().toISOString(),
+        });
+      },
+    );
+
+    return true;
+  }
+
+  // 🔍 AI モデル・機能情報更新要求
+  if (request.type === "AI_MODEL_FUNCTION_UPDATE") {
     // UIウィンドウにメッセージを転送
     chrome.tabs.query({}, (tabs) => {
       tabs.forEach((tab) => {
@@ -618,19 +797,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   // 🧪 AI統合テスト実行要求
   if (request.type === "RUN_AI_TEST_ALL") {
-    console.log("🧪 [BG] AI統合テスト実行要求受信:", {
-      prompt: request.data?.prompt,
-      timestamp: request.data?.timestamp,
-    });
-
     // AITestControllerを直接実行
     (async () => {
       try {
-        console.log("🚀 [BG] AITestController実行開始");
         const controller = new AITestController();
         const result = await controller.executeTest(request.data);
 
-        console.log("✅ [BG] AITestController実行完了:", result);
         sendResponse({
           success: result.success,
           results: result.results,
@@ -650,18 +822,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   // 🔍 AIモデル・機能探索のみ実行要求
   if (request.action === "DISCOVER_AI_FEATURES_ONLY") {
-    console.log("🔍 [BG] AIモデル・機能探索要求受信:", {
-      timestamp: new Date().toISOString(),
-    });
-
     // AITestControllerのdiscoverOnlyメソッドを実行
     (async () => {
       try {
-        console.log("🚀 [BG] AIモデル・機能探索開始");
         const controller = new AITestController();
         const result = await controller.discoverOnly();
 
-        console.log("✅ [BG] AIモデル・機能探索完了:", result);
         sendResponse({
           success: result.success,
           capabilities: result.capabilities,
