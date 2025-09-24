@@ -111,6 +111,910 @@ if (!window.globalState) {
   };
 }
 
+// ========================================
+// DynamicSearch協調システム
+// ========================================
+
+/**
+ * DynamicSearchからの制御移譲シグナルを初期化・監視
+ * 【追加】ハイブリッド協調モデル: step3-loop.jsでの受信機能
+ */
+function initializeDynamicSearchCoordination() {
+  log.debug("🔗 [step3-loop.js] DynamicSearch協調システムを初期化中...");
+
+  // 【方法1】カスタムイベントリスナーを設定
+  if (typeof window !== "undefined" && window.addEventListener) {
+    // 既存のリスナーを削除（重複登録防止）
+    window.removeEventListener(
+      "dynamicSearchGroupCompleted",
+      handleDynamicSearchCompletion,
+    );
+
+    // 新しいリスナーを登録
+    window.addEventListener(
+      "dynamicSearchGroupCompleted",
+      handleDynamicSearchCompletion,
+    );
+    log.debug(
+      "✅ [step3-loop.js] カスタムイベントリスナー登録完了: dynamicSearchGroupCompleted",
+    );
+  }
+
+  // 【方法2】直接コールバック関数を設定
+  window.onDynamicSearchGroupCompleted = function (data) {
+    log.info("📡 [step3-loop.js] DynamicSearch直接コールバック受信:", {
+      groupNumber: data.groupNumber,
+      groupData: data.groupData,
+      timestamp: new Date().toISOString(),
+    });
+
+    handleDynamicSearchCompletionData({
+      detail: {
+        groupNumber: data.groupNumber,
+        transferControl: true,
+        timestamp: new Date().toISOString(),
+        source: "DirectCallback",
+      },
+    });
+  };
+
+  // 【方法3】globalState監視用のポーリング開始
+  initializeGlobalStateMonitoring();
+
+  log.info("🔗 [step3-loop.js] DynamicSearch協調システム初期化完了");
+}
+
+/**
+ * DynamicSearchからの制御移譲イベントハンドラー
+ * 【追加】ハイブリッド協調モデル: イベント受信時の処理
+ */
+function handleDynamicSearchCompletion(event) {
+  log.info("📡 [step3-loop.js] DynamicSearchから制御移譲イベント受信:", {
+    groupNumber: event.detail?.groupNumber,
+    groupType: event.detail?.groupType,
+    source: event.detail?.source,
+    timestamp: event.detail?.timestamp,
+  });
+
+  handleDynamicSearchCompletionData(event);
+}
+
+/**
+ * DynamicSearch完了データの共通処理
+ * 【追加】ハイブリッド協調モデル: 完了通知の統一処理
+ */
+function handleDynamicSearchCompletionData(event) {
+  try {
+    const { groupNumber, transferControl, timestamp, source } =
+      event.detail || {};
+
+    if (!transferControl) {
+      log.debug("🔄 [step3-loop.js] 制御移譲不要 - 処理継続");
+      return;
+    }
+
+    log.info("🎯 [step3-loop.js] DynamicSearch制御移譲を受信:", {
+      completedGroup: groupNumber,
+      source: source || "Unknown",
+      currentGroup: window.globalState.currentGroup?.groupNumber,
+      timestamp,
+    });
+
+    // グループ完了をglobalStateに記録
+    if (window.globalState) {
+      if (!window.globalState.completedGroupsByDynamicSearch) {
+        window.globalState.completedGroupsByDynamicSearch = new Set();
+      }
+      window.globalState.completedGroupsByDynamicSearch.add(groupNumber);
+
+      // 協調フラグを設定
+      window.globalState.dynamicSearchCoordination = {
+        lastCompletedGroup: groupNumber,
+        transferReceived: true,
+        processedAt: new Date().toISOString(),
+        shouldSkipProcessing: true,
+        source: source,
+      };
+
+      log.debug("✅ [step3-loop.js] globalState協調情報更新完了");
+    }
+
+    // 現在処理中のグループが完了したグループと一致する場合
+    if (window.globalState.currentGroup?.groupNumber === groupNumber) {
+      log.info(
+        "🏁 [step3-loop.js] 現在のグループがDynamicSearchで完了 - 次グループへ移行準備",
+      );
+
+      // 完了フラグを設定（processIncompleteTasks内のループを終了させる）
+      window.globalState.currentGroup.dynamicSearchCompleted = true;
+    }
+  } catch (error) {
+    log.error("❌ [step3-loop.js] DynamicSearch制御移譲処理エラー:", error);
+  }
+}
+
+/**
+ * globalState監視によるDynamicSearch通知検出
+ * 【追加】ハイブリッド協調モデル: ポーリングベースの監視
+ */
+function initializeGlobalStateMonitoring() {
+  // ポーリング間隔（1秒）
+  const POLLING_INTERVAL = 1000;
+  let lastCheckedTimestamp = null;
+
+  const checkGlobalStateNotifications = () => {
+    try {
+      const notification = window.globalState?.dynamicSearchNotification;
+
+      if (
+        notification &&
+        notification.type === "GROUP_COMPLETED" &&
+        notification.requestControlTransfer &&
+        notification.timestamp !== lastCheckedTimestamp
+      ) {
+        log.info("📊 [step3-loop.js] globalState経由でDynamicSearch通知検出:", {
+          groupNumber: notification.groupNumber,
+          timestamp: notification.timestamp,
+        });
+
+        // イベントデータ形式に変換してハンドラーに渡す
+        handleDynamicSearchCompletionData({
+          detail: {
+            groupNumber: notification.groupNumber,
+            transferControl: true,
+            timestamp: notification.timestamp,
+            source: "GlobalStatePolling",
+          },
+        });
+
+        lastCheckedTimestamp = notification.timestamp;
+      }
+    } catch (error) {
+      log.debug(
+        "🔍 [step3-loop.js] globalState監視エラー（継続）:",
+        error.message,
+      );
+    }
+  };
+
+  // ポーリング開始
+  if (typeof window !== "undefined") {
+    window.dynamicSearchPollingInterval = setInterval(
+      checkGlobalStateNotifications,
+      POLLING_INTERVAL,
+    );
+    log.debug("🔄 [step3-loop.js] globalState監視ポーリング開始");
+  }
+}
+
+/**
+ * DynamicSearchとの協調状態をチェック
+ * 【追加】ハイブリッド協調モデル: グループスキップ判定
+ */
+function shouldSkipGroupProcessing(taskGroup) {
+  try {
+    // DynamicSearchで完了済みのグループかチェック
+    const completedGroups = window.globalState?.completedGroupsByDynamicSearch;
+    if (completedGroups && completedGroups.has(taskGroup.groupNumber)) {
+      log.info("⏭️ [step3-loop.js] グループスキップ: DynamicSearchで完了済み", {
+        groupNumber: taskGroup.groupNumber,
+        reason: "DynamicSearch completed",
+      });
+      return true;
+    }
+
+    // 協調フラグによるスキップ判定
+    const coordination = window.globalState?.dynamicSearchCoordination;
+    if (
+      coordination?.shouldSkipProcessing &&
+      coordination.lastCompletedGroup === taskGroup.groupNumber
+    ) {
+      log.info("⏭️ [step3-loop.js] グループスキップ: 協調フラグ", {
+        groupNumber: taskGroup.groupNumber,
+        reason: "Coordination flag",
+      });
+
+      // スキップフラグをリセット（1回のみ有効）
+      coordination.shouldSkipProcessing = false;
+      return true;
+    }
+
+    return false;
+  } catch (error) {
+    log.warn("⚠️ [step3-loop.js] スキップ判定エラー:", error.message);
+    return false;
+  }
+}
+
+// ========================================
+// globalState.currentGroup 一元管理システム
+// ========================================
+
+/**
+ * currentGroupの一元管理システム
+ * 【追加】ハイブリッド協調モデル: 統一状態管理
+ */
+class CurrentGroupManager {
+  constructor() {
+    this.listeners = new Set();
+    this.updateHistory = [];
+    this.maxHistorySize = 10;
+    this.lastUpdateTimestamp = null;
+    this.updateLock = false;
+
+    log.debug("🔧 [CurrentGroupManager] 初期化完了");
+  }
+
+  /**
+   * currentGroupを安全に更新
+   * @param {Object} newGroup - 新しいグループ情報
+   * @param {string} source - 更新元（"step3-loop" | "DynamicSearch" | "system"）
+   * @returns {boolean} 更新成功
+   */
+  async updateCurrentGroup(newGroup, source = "system") {
+    // 更新ロック処理
+    if (this.updateLock) {
+      log.debug("⏳ [CurrentGroupManager] 更新ロック中 - 待機");
+      await this.waitForUnlock();
+    }
+
+    this.updateLock = true;
+
+    try {
+      const oldGroup = window.globalState?.currentGroup;
+      const timestamp = new Date().toISOString();
+
+      // 検証: 同じグループへの重複更新をスキップ
+      if (
+        oldGroup?.groupNumber === newGroup?.groupNumber &&
+        oldGroup?.taskType === newGroup?.taskType
+      ) {
+        log.debug("🔄 [CurrentGroupManager] 同じグループへの更新 - スキップ", {
+          groupNumber: newGroup.groupNumber,
+          source,
+        });
+        return true;
+      }
+
+      // グローバル状態を更新
+      if (!window.globalState) {
+        window.globalState = {};
+      }
+
+      const previousGroup = window.globalState.currentGroup;
+      window.globalState.currentGroup = {
+        ...newGroup,
+        _metadata: {
+          updatedBy: source,
+          updatedAt: timestamp,
+          previousGroup: previousGroup?.groupNumber || null,
+        },
+      };
+
+      // 更新履歴を記録
+      this.recordUpdate({
+        from: oldGroup,
+        to: newGroup,
+        source,
+        timestamp,
+      });
+
+      log.info("✅ [CurrentGroupManager] currentGroup更新完了:", {
+        previousGroup: oldGroup?.groupNumber || "none",
+        newGroup: newGroup.groupNumber,
+        source: source,
+        timestamp,
+      });
+
+      // リスナーに通知
+      this.notifyListeners({
+        type: "GROUP_CHANGED",
+        previousGroup: oldGroup,
+        currentGroup: newGroup,
+        source,
+        timestamp,
+      });
+
+      return true;
+    } catch (error) {
+      log.error("❌ [CurrentGroupManager] currentGroup更新エラー:", error);
+      return false;
+    } finally {
+      this.updateLock = false;
+    }
+  }
+
+  /**
+   * currentGroupを安全に取得
+   * @returns {Object|null} 現在のグループ情報
+   */
+  getCurrentGroup() {
+    try {
+      const currentGroup = window.globalState?.currentGroup;
+
+      if (currentGroup) {
+        log.debug("📋 [CurrentGroupManager] currentGroup取得:", {
+          groupNumber: currentGroup.groupNumber,
+          taskType: currentGroup.taskType || currentGroup.type,
+          updatedBy: currentGroup._metadata?.updatedBy,
+          updatedAt: currentGroup._metadata?.updatedAt,
+        });
+      } else {
+        log.debug("📋 [CurrentGroupManager] currentGroup未設定");
+      }
+
+      return currentGroup;
+    } catch (error) {
+      log.error("❌ [CurrentGroupManager] currentGroup取得エラー:", error);
+      return null;
+    }
+  }
+
+  /**
+   * グループの変更を監視するリスナーを追加
+   * @param {Function} listener - リスナー関数
+   */
+  addListener(listener) {
+    this.listeners.add(listener);
+    log.debug(
+      "👂 [CurrentGroupManager] リスナー追加 - 総数:",
+      this.listeners.size,
+    );
+  }
+
+  /**
+   * リスナーを削除
+   * @param {Function} listener - 削除するリスナー関数
+   */
+  removeListener(listener) {
+    this.listeners.delete(listener);
+    log.debug(
+      "🗑️ [CurrentGroupManager] リスナー削除 - 総数:",
+      this.listeners.size,
+    );
+  }
+
+  /**
+   * 全リスナーに変更を通知
+   * @param {Object} changeEvent - 変更イベント情報
+   */
+  notifyListeners(changeEvent) {
+    for (const listener of this.listeners) {
+      try {
+        listener(changeEvent);
+      } catch (error) {
+        log.warn("⚠️ [CurrentGroupManager] リスナー通知エラー:", error.message);
+      }
+    }
+  }
+
+  /**
+   * 更新履歴を記録
+   * @param {Object} updateRecord - 更新記録
+   */
+  recordUpdate(updateRecord) {
+    this.updateHistory.push(updateRecord);
+
+    // 履歴サイズ制限
+    if (this.updateHistory.length > this.maxHistorySize) {
+      this.updateHistory = this.updateHistory.slice(-this.maxHistorySize);
+    }
+
+    this.lastUpdateTimestamp = updateRecord.timestamp;
+  }
+
+  /**
+   * 更新ロックが解除されるまで待機
+   * @returns {Promise<void>}
+   */
+  async waitForUnlock() {
+    const maxWaitTime = 5000; // 5秒でタイムアウト
+    const checkInterval = 100; // 100msごとにチェック
+    let waitTime = 0;
+
+    while (this.updateLock && waitTime < maxWaitTime) {
+      await new Promise((resolve) => setTimeout(resolve, checkInterval));
+      waitTime += checkInterval;
+    }
+
+    if (waitTime >= maxWaitTime) {
+      log.warn(
+        "⚠️ [CurrentGroupManager] 更新ロック解除タイムアウト - 強制継続",
+      );
+      this.updateLock = false;
+    }
+  }
+
+  /**
+   * システム状態の診断情報を取得
+   * @returns {Object} 診断情報
+   */
+  getDiagnostics() {
+    return {
+      currentGroup: this.getCurrentGroup(),
+      updateHistory: this.updateHistory,
+      listeners: this.listeners.size,
+      lastUpdateTimestamp: this.lastUpdateTimestamp,
+      updateLock: this.updateLock,
+    };
+  }
+
+  /**
+   * システムをリセット
+   */
+  reset() {
+    this.listeners.clear();
+    this.updateHistory = [];
+    this.lastUpdateTimestamp = null;
+    this.updateLock = false;
+
+    if (window.globalState) {
+      window.globalState.currentGroup = null;
+    }
+
+    log.info("🔄 [CurrentGroupManager] システムリセット完了");
+  }
+}
+
+// グローバルインスタンス作成
+if (!window.currentGroupManager) {
+  window.currentGroupManager = new CurrentGroupManager();
+}
+
+/**
+ * currentGroupの統一アクセス関数
+ * 【追加】両システムで使用する統一インターフェース
+ */
+function setCurrentGroup(newGroup, source = "system") {
+  return window.currentGroupManager.updateCurrentGroup(newGroup, source);
+}
+
+function getCurrentGroup() {
+  return window.currentGroupManager.getCurrentGroup();
+}
+
+function addCurrentGroupListener(listener) {
+  return window.currentGroupManager.addListener(listener);
+}
+
+function removeCurrentGroupListener(listener) {
+  return window.currentGroupManager.removeListener(listener);
+}
+
+// ========================================
+// グループ間移行協調プロトコル
+// ========================================
+
+/**
+ * グループ移行の協調管理システム
+ * 【追加】ハイブリッド協調モデル: グループ移行の統一制御
+ */
+class GroupTransitionCoordinator {
+  constructor() {
+    this.transitionLock = false;
+    this.transitionHistory = [];
+    this.maxHistorySize = 20;
+    this.pendingTransitions = new Map();
+    this.validationCache = new Map();
+
+    log.debug("🔀 [GroupTransitionCoordinator] 初期化完了");
+  }
+
+  /**
+   * グループ移行を安全に実行
+   * @param {Object} fromGroup - 移行元グループ
+   * @param {Object} toGroup - 移行先グループ
+   * @param {string} initiator - 移行開始者 ("step3-loop" | "DynamicSearch")
+   * @returns {Promise<boolean>} 移行成功
+   */
+  async executeGroupTransition(fromGroup, toGroup, initiator) {
+    const transitionId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    log.info("🔀 [GroupTransitionCoordinator] グループ移行開始:", {
+      transitionId,
+      from: fromGroup?.groupNumber || "none",
+      to: toGroup?.groupNumber || "unknown",
+      initiator,
+      timestamp: new Date().toISOString(),
+    });
+
+    // 移行ロックの取得
+    if (this.transitionLock) {
+      log.info("⏳ [GroupTransitionCoordinator] 移行ロック中 - 待機");
+      await this.waitForTransitionUnlock();
+    }
+
+    this.transitionLock = true;
+    let transitionSuccess = false;
+
+    try {
+      // Phase 1: 移行前検証
+      const validationResult = await this.validateGroupTransition(
+        fromGroup,
+        toGroup,
+        initiator,
+      );
+      if (!validationResult.valid) {
+        log.warn(
+          "❌ [GroupTransitionCoordinator] 移行検証失敗:",
+          validationResult.reason,
+        );
+        return false;
+      }
+
+      // Phase 2: 移行実行
+      transitionSuccess = await this.performGroupTransition(
+        fromGroup,
+        toGroup,
+        initiator,
+        transitionId,
+      );
+
+      if (transitionSuccess) {
+        // Phase 3: 移行後処理
+        await this.completeGroupTransition(
+          fromGroup,
+          toGroup,
+          initiator,
+          transitionId,
+        );
+
+        log.info("✅ [GroupTransitionCoordinator] グループ移行完了:", {
+          transitionId,
+          from: fromGroup?.groupNumber || "none",
+          to: toGroup?.groupNumber,
+          initiator,
+        });
+      } else {
+        log.error("❌ [GroupTransitionCoordinator] グループ移行失敗:", {
+          transitionId,
+          from: fromGroup?.groupNumber || "none",
+          to: toGroup?.groupNumber || "unknown",
+          initiator,
+        });
+      }
+
+      return transitionSuccess;
+    } catch (error) {
+      log.error("❌ [GroupTransitionCoordinator] グループ移行エラー:", error);
+
+      // エラー時のロールバック
+      try {
+        await this.rollbackTransition(fromGroup, toGroup, transitionId);
+      } catch (rollbackError) {
+        log.error(
+          "❌ [GroupTransitionCoordinator] ロールバックエラー:",
+          rollbackError,
+        );
+      }
+
+      return false;
+    } finally {
+      this.transitionLock = false;
+      this.pendingTransitions.delete(transitionId);
+    }
+  }
+
+  /**
+   * グループ移行の事前検証
+   * @param {Object} fromGroup - 移行元グループ
+   * @param {Object} toGroup - 移行先グループ
+   * @param {string} initiator - 移行開始者
+   * @returns {Promise<Object>} 検証結果
+   */
+  async validateGroupTransition(fromGroup, toGroup, initiator) {
+    try {
+      log.debug("🔍 [GroupTransitionCoordinator] グループ移行検証開始");
+
+      // 基本検証
+      if (!toGroup || !toGroup.groupNumber) {
+        return { valid: false, reason: "移行先グループが無効" };
+      }
+
+      // 移行元グループの完了状態検証 (null/undefined は初期状態として許可)
+      if (fromGroup && fromGroup.groupNumber) {
+        const cacheKey = `completion-${fromGroup.groupNumber}`;
+        let isFromGroupComplete;
+
+        // キャッシュから取得を試行
+        if (this.validationCache.has(cacheKey)) {
+          isFromGroupComplete = this.validationCache.get(cacheKey);
+          log.debug(
+            "📋 [GroupTransitionCoordinator] キャッシュから完了状態取得",
+          );
+        } else {
+          // step3-loop.jsの完了確認機能を使用
+          try {
+            isFromGroupComplete = await window.checkCompletionStatus(fromGroup);
+            this.validationCache.set(cacheKey, isFromGroupComplete);
+
+            // キャッシュの自動クリア (30秒後)
+            setTimeout(() => this.validationCache.delete(cacheKey), 30000);
+          } catch (error) {
+            log.warn(
+              "⚠️ [GroupTransitionCoordinator] 完了状態確認エラー:",
+              error.message,
+            );
+            // エラー時は移行を許可（保守的でない判断）
+            isFromGroupComplete = true;
+          }
+        }
+
+        if (!isFromGroupComplete) {
+          return {
+            valid: false,
+            reason: `移行元グループ${fromGroup.groupNumber}が未完了`,
+            details: { fromGroupComplete: isFromGroupComplete },
+          };
+        }
+      }
+
+      // 重複移行の防止
+      const currentGroup = window.getCurrentGroup();
+      if (currentGroup?.groupNumber === toGroup.groupNumber) {
+        return {
+          valid: false,
+          reason: `移行先グループ${toGroup.groupNumber}は既に現在のグループ`,
+          details: { currentGroup: currentGroup.groupNumber },
+        };
+      }
+
+      // 移行タイミングの検証
+      const recentTransitions = this.transitionHistory
+        .filter((t) => Date.now() - new Date(t.timestamp).getTime() < 5000) // 5秒以内
+        .filter((t) => t.toGroupNumber === toGroup.groupNumber);
+
+      if (recentTransitions.length > 0) {
+        return {
+          valid: false,
+          reason: `グループ${toGroup.groupNumber}への最近の移行を検出`,
+          details: { recentTransitions: recentTransitions.length },
+        };
+      }
+
+      log.debug("✅ [GroupTransitionCoordinator] グループ移行検証成功");
+      return {
+        valid: true,
+        reason: "検証成功",
+        details: {
+          fromGroup: fromGroup?.groupNumber || "none",
+          toGroup: toGroup.groupNumber,
+          initiator,
+        },
+      };
+    } catch (error) {
+      log.error("❌ [GroupTransitionCoordinator] 移行検証エラー:", error);
+      return {
+        valid: false,
+        reason: `検証エラー: ${error.message}`,
+        error: error,
+      };
+    }
+  }
+
+  /**
+   * グループ移行の実行
+   * @param {Object} fromGroup - 移行元グループ
+   * @param {Object} toGroup - 移行先グループ
+   * @param {string} initiator - 移行開始者
+   * @param {string} transitionId - 移行ID
+   * @returns {Promise<boolean>} 実行成功
+   */
+  async performGroupTransition(fromGroup, toGroup, initiator, transitionId) {
+    try {
+      log.debug("⚡ [GroupTransitionCoordinator] グループ移行実行開始");
+
+      // 移行を記録 (実行前)
+      this.pendingTransitions.set(transitionId, {
+        fromGroup,
+        toGroup,
+        initiator,
+        startTime: new Date().toISOString(),
+        status: "executing",
+      });
+
+      // 統一管理システムを使用してcurrentGroupを更新
+      const updateSuccess = await setCurrentGroup(toGroup, initiator);
+
+      if (!updateSuccess) {
+        throw new Error("currentGroup更新失敗");
+      }
+
+      log.debug("✅ [GroupTransitionCoordinator] グループ移行実行成功");
+      return true;
+    } catch (error) {
+      log.error(
+        "❌ [GroupTransitionCoordinator] グループ移行実行エラー:",
+        error,
+      );
+      return false;
+    }
+  }
+
+  /**
+   * グループ移行の完了処理
+   * @param {Object} fromGroup - 移行元グループ
+   * @param {Object} toGroup - 移行先グループ
+   * @param {string} initiator - 移行開始者
+   * @param {string} transitionId - 移行ID
+   */
+  async completeGroupTransition(fromGroup, toGroup, initiator, transitionId) {
+    try {
+      log.debug("🎯 [GroupTransitionCoordinator] グループ移行完了処理開始");
+
+      // 移行履歴に記録
+      const transitionRecord = {
+        transitionId,
+        fromGroupNumber: fromGroup?.groupNumber || null,
+        toGroupNumber: toGroup.groupNumber,
+        initiator,
+        timestamp: new Date().toISOString(),
+        status: "completed",
+      };
+
+      this.recordTransition(transitionRecord);
+
+      // 他システムへの移行通知
+      this.notifyTransitionComplete(transitionRecord);
+
+      // 検証キャッシュのクリア
+      this.validationCache.clear();
+
+      log.debug("✅ [GroupTransitionCoordinator] グループ移行完了処理成功");
+    } catch (error) {
+      log.error("❌ [GroupTransitionCoordinator] 移行完了処理エラー:", error);
+    }
+  }
+
+  /**
+   * 移行のロールバック
+   * @param {Object} fromGroup - 移行元グループ
+   * @param {Object} toGroup - 移行先グループ
+   * @param {string} transitionId - 移行ID
+   */
+  async rollbackTransition(fromGroup, toGroup, transitionId) {
+    try {
+      log.warn("🔄 [GroupTransitionCoordinator] 移行ロールバック実行");
+
+      // 元のグループに戻す (fromGroupが存在する場合のみ)
+      if (fromGroup && fromGroup.groupNumber) {
+        await setCurrentGroup(fromGroup, "rollback");
+      }
+
+      // ロールバック記録
+      this.recordTransition({
+        transitionId,
+        fromGroupNumber: toGroup?.groupNumber || null,
+        toGroupNumber: fromGroup?.groupNumber || null,
+        initiator: "rollback",
+        timestamp: new Date().toISOString(),
+        status: "rolled_back",
+      });
+
+      log.info("✅ [GroupTransitionCoordinator] 移行ロールバック完了");
+    } catch (error) {
+      log.error("❌ [GroupTransitionCoordinator] ロールバックエラー:", error);
+    }
+  }
+
+  /**
+   * 移行記録の保存
+   * @param {Object} record - 移行記録
+   */
+  recordTransition(record) {
+    this.transitionHistory.push(record);
+
+    // 履歴サイズ制限
+    if (this.transitionHistory.length > this.maxHistorySize) {
+      this.transitionHistory = this.transitionHistory.slice(
+        -this.maxHistorySize,
+      );
+    }
+
+    log.debug("📝 [GroupTransitionCoordinator] 移行記録保存:", {
+      transitionId: record.transitionId,
+      transition: `${record.fromGroupNumber || "none"} → ${record.toGroupNumber}`,
+      status: record.status,
+    });
+  }
+
+  /**
+   * 移行完了の通知
+   * @param {Object} transitionRecord - 移行記録
+   */
+  notifyTransitionComplete(transitionRecord) {
+    try {
+      // カスタムイベントで通知
+      if (typeof window !== "undefined" && window.dispatchEvent) {
+        const event = new CustomEvent("groupTransitionCompleted", {
+          detail: transitionRecord,
+        });
+        window.dispatchEvent(event);
+      }
+
+      // グローバル状態に通知情報を設定
+      if (window.globalState) {
+        window.globalState.lastGroupTransition = transitionRecord;
+      }
+
+      log.debug("📡 [GroupTransitionCoordinator] 移行完了通知送信");
+    } catch (error) {
+      log.warn(
+        "⚠️ [GroupTransitionCoordinator] 移行通知エラー:",
+        error.message,
+      );
+    }
+  }
+
+  /**
+   * 移行ロック解除まで待機
+   * @returns {Promise<void>}
+   */
+  async waitForTransitionUnlock() {
+    const maxWaitTime = 10000; // 10秒でタイムアウト
+    const checkInterval = 200; // 200msごとにチェック
+    let waitTime = 0;
+
+    while (this.transitionLock && waitTime < maxWaitTime) {
+      await new Promise((resolve) => setTimeout(resolve, checkInterval));
+      waitTime += checkInterval;
+    }
+
+    if (waitTime >= maxWaitTime) {
+      log.warn(
+        "⚠️ [GroupTransitionCoordinator] 移行ロック解除タイムアウト - 強制継続",
+      );
+      this.transitionLock = false;
+    }
+  }
+
+  /**
+   * 診断情報の取得
+   * @returns {Object} 診断情報
+   */
+  getDiagnostics() {
+    return {
+      transitionLock: this.transitionLock,
+      transitionHistory: this.transitionHistory.slice(-5), // 最新5件
+      pendingTransitions: Array.from(this.pendingTransitions.entries()),
+      validationCacheSize: this.validationCache.size,
+    };
+  }
+
+  /**
+   * システムのリセット
+   */
+  reset() {
+    this.transitionLock = false;
+    this.transitionHistory = [];
+    this.pendingTransitions.clear();
+    this.validationCache.clear();
+
+    log.info("🔄 [GroupTransitionCoordinator] システムリセット完了");
+  }
+}
+
+// グローバルインスタンス作成
+if (!window.groupTransitionCoordinator) {
+  window.groupTransitionCoordinator = new GroupTransitionCoordinator();
+}
+
+/**
+ * グループ移行の統一インターフェース
+ * 【追加】両システムで使用する移行制御関数
+ */
+function executeGroupTransition(fromGroup, toGroup, initiator) {
+  return window.groupTransitionCoordinator.executeGroupTransition(
+    fromGroup,
+    toGroup,
+    initiator,
+  );
+}
+
+function getTransitionDiagnostics() {
+  return window.groupTransitionCoordinator.getDiagnostics();
+}
+
 /**
  * 完了状況の確認
  * @param {Object} taskGroup - タスクグループ情報
@@ -450,6 +1354,20 @@ async function processIncompleteTasks(taskGroup) {
       },
     );
 
+    // 【追加】DynamicSearchによるグループ完了チェック
+    if (window.globalState.currentGroup?.dynamicSearchCompleted) {
+      log.info(
+        "🎯 [step5-loop.js] DynamicSearchによりグループ完了 - ループ終了",
+        {
+          groupNumber: taskGroup.groupNumber,
+          iteration: iteration,
+          reason: "DynamicSearch completed flag",
+        },
+      );
+      isComplete = true;
+      break;
+    }
+
     if (iteration > maxIterations) {
       LoopLogger.error(
         "[step5-loop.js] [Step 5-2-3] 最大繰り返し回数超過 - 処理を中止",
@@ -592,6 +1510,17 @@ async function executeStep3AllGroups() {
   log.debug("🚀 [step3-loop.js] 全グループ処理開始");
   log.debug("========================================");
 
+  // 【追加】DynamicSearch協調システムを初期化
+  try {
+    initializeDynamicSearchCoordination();
+    log.debug("✅ [step3-loop.js] DynamicSearch協調システム初期化完了");
+  } catch (error) {
+    log.warn(
+      "⚠️ [step3-loop.js] DynamicSearch協調システム初期化エラー:",
+      error.message,
+    );
+  }
+
   const taskGroups = window.globalState?.taskGroups || [];
   log.debug(`📊 処理対象: ${taskGroups.length}グループ`);
 
@@ -606,6 +1535,20 @@ async function executeStep3AllGroups() {
       `\n====== グループ ${i + 1}/${taskGroups.length} 処理開始 ======`,
     );
 
+    // 【追加】DynamicSearchとの協調チェック：スキップ判定
+    if (shouldSkipGroupProcessing(taskGroup)) {
+      log.info(
+        "⏭️ [step3-loop.js] グループスキップ - DynamicSearchで完了済み",
+        {
+          groupNumber: taskGroup.groupNumber,
+          currentIndex: i + 1,
+          totalGroups: taskGroups.length,
+        },
+      );
+      completedGroups++;
+      continue;
+    }
+
     // 🔧 [UNIFICATION] グループ統一化確認ログ
     LoopLogger.info("📋 [UNIFICATION] step3メインループでグループ処理:", {
       グループ番号: i + 1,
@@ -614,6 +1557,7 @@ async function executeStep3AllGroups() {
       step4自動移行: "無効化済み",
       データ形式: "タスク配列（全グループ統一）",
       プロンプト生成: "統一済み",
+      DynamicSearch協調: "有効",
     });
 
     log.debug(`📋 グループ詳細:`, {
@@ -640,6 +1584,20 @@ async function executeStep3AllGroups() {
         break;
       }
     }
+  }
+
+  // 【追加】DynamicSearch協調システムのクリーンアップ
+  try {
+    if (window.dynamicSearchPollingInterval) {
+      clearInterval(window.dynamicSearchPollingInterval);
+      window.dynamicSearchPollingInterval = null;
+      log.debug("🧹 [step3-loop.js] DynamicSearchポーリング停止完了");
+    }
+  } catch (error) {
+    log.warn(
+      "⚠️ [step3-loop.js] DynamicSearchクリーンアップエラー:",
+      error.message,
+    );
   }
 
   log.debug(`\n========================================`);
@@ -676,8 +1634,8 @@ async function executeStep3SingleGroup(taskGroup) {
   // DEBUG: 入力グループ詳細情報
 
   try {
-    // グループ情報を状態に保存
-    window.globalState.currentGroup = taskGroup;
+    // 【修正】統一管理システムを使用してグループ情報を保存
+    await setCurrentGroup(taskGroup, "step3-loop");
 
     // 5-1: 完了状況確認
     log.debug("🔍 [step5-loop.js] Step 5-1: 完了状況を確認中...");
@@ -1229,6 +2187,22 @@ if (typeof window !== "undefined") {
     window.checkCompletionStatus = checkCompletionStatus;
     window.processIncompleteTasks = processIncompleteTasks;
     window.readFullSpreadsheet = readFullSpreadsheet;
+
+    // 【追加】DynamicSearch協調機能のエクスポート
+    window.initializeDynamicSearchCoordination =
+      initializeDynamicSearchCoordination;
+    window.shouldSkipGroupProcessing = shouldSkipGroupProcessing;
+    window.handleDynamicSearchCompletion = handleDynamicSearchCompletion;
+
+    // 【追加】currentGroup一元管理システムのエクスポート
+    window.setCurrentGroup = setCurrentGroup;
+    window.getCurrentGroup = getCurrentGroup;
+    window.addCurrentGroupListener = addCurrentGroupListener;
+    window.removeCurrentGroupListener = removeCurrentGroupListener;
+
+    // 【追加】グループ移行協調システムのエクスポート
+    window.executeGroupTransition = executeGroupTransition;
+    window.getTransitionDiagnostics = getTransitionDiagnostics;
 
     // DEBUG: グローバルエクスポート成功
   } catch (exportError) {
