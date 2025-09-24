@@ -217,7 +217,6 @@ window.log = log;
 
   console.log("🔍 [ChatGPT] DOM準備状態チェック:", domReadyCheck());
 
-<<<<<<< HEAD
   // 🔍 Content Script実行環境の詳細ログ（コメントアウト）
   // console.warn(
   //   `🔍 [ChatGPT-Content Script] 実行コンテキスト詳細分析:`,
@@ -263,8 +262,6 @@ window.log = log;
   //   ),
   // );
 
-=======
->>>>>>> de14852 (fix: ChatGPT自動化スクリプトの重大な構造問題を修正)
   // ========================================
   // Step 4-1-0-3: 統一ChatGPTRetryManager クラス定義
   // エラー分類とリトライ戦略を統合した統一システム
@@ -3322,31 +3319,7 @@ window.log = log;
     runAutomation,
   };
 
-<<<<<<< HEAD
-    // 設定確認のための強化デバッグログ
-    console.log("🔧 [ChatGPT-DEBUG] window.ChatGPTAutomationV2設定完了");
-    console.log(
-      "🔧 [ChatGPT-DEBUG] typeof window.ChatGPTAutomationV2:",
-      typeof window.ChatGPTAutomationV2,
-    );
-    console.log(
-      "🔧 [ChatGPT-DEBUG] window.ChatGPTAutomationV2.executeTask:",
-      typeof window.ChatGPTAutomationV2?.executeTask,
-    );
-    console.log(
-      "🔧 [ChatGPT-DEBUG] window.ChatGPTAutomationV2.runAutomation:",
-      typeof window.ChatGPTAutomationV2?.runAutomation,
-    );
-
-    log.debug("[DEBUG] window.ChatGPTAutomationV2設定完了");
-    log.debug(
-      "[DEBUG] typeof window.ChatGPTAutomationV2:",
-      typeof window.ChatGPTAutomationV2,
-    );
-=======
   log.debug("[DEBUG] automationAPI作成成功");
->>>>>>> de14852 (fix: ChatGPT自動化スクリプトの重大な構造問題を修正)
-
   log.debug("[DEBUG] automationAPI作成完了、windowに設定開始");
 
   // v2名と標準名の両方をサポート（下位互換性保持）
@@ -3370,6 +3343,144 @@ window.log = log;
     "[DEBUG] typeof window.ChatGPTAutomationV2:",
     typeof window.ChatGPTAutomationV2,
   );
+
+  // ========================================
+  // 🌉 Content Script ↔ Webpage ブリッジ
+  // ========================================
+  // Content Scriptの関数をWebページのコンテキストで利用可能にする
+
+  console.log("🌉 [DEBUG] ブリッジスクリプト注入開始");
+
+  // スクリプトタグを注入してwebページのコンテキストで実行
+  const bridgeScript = document.createElement("script");
+  bridgeScript.textContent = `
+    (function() {
+      console.log('🌉 [BRIDGE] Webページコンテキストでブリッジ初期化');
+
+      // Content Scriptとの通信用インターフェース
+      window.ChatGPTAutomationBridge = {
+        executeTask: function(task) {
+          console.log('🌉 [BRIDGE] executeTask呼び出し:', task);
+          window.postMessage({
+            type: 'CHATGPT_AUTOMATION_EXECUTE',
+            command: 'executeTask',
+            data: task
+          }, '*');
+          return new Promise((resolve, reject) => {
+            const handler = (event) => {
+              if (event.data.type === 'CHATGPT_AUTOMATION_RESPONSE' &&
+                  event.data.command === 'executeTask') {
+                window.removeEventListener('message', handler);
+                if (event.data.success) {
+                  resolve(event.data.result);
+                } else {
+                  reject(new Error(event.data.error));
+                }
+              }
+            };
+            window.addEventListener('message', handler);
+            setTimeout(() => {
+              window.removeEventListener('message', handler);
+              reject(new Error('ブリッジタイムアウト'));
+            }, 30000);
+          });
+        },
+
+        runAutomation: function() {
+          console.log('🌉 [BRIDGE] runAutomation呼び出し');
+          window.postMessage({
+            type: 'CHATGPT_AUTOMATION_EXECUTE',
+            command: 'runAutomation',
+            data: null
+          }, '*');
+        },
+
+        detectModels: function() {
+          console.log('🌉 [BRIDGE] detectModels呼び出し');
+          window.postMessage({
+            type: 'CHATGPT_AUTOMATION_EXECUTE',
+            command: 'detectModels',
+            data: null
+          }, '*');
+          return new Promise((resolve, reject) => {
+            const handler = (event) => {
+              if (event.data.type === 'CHATGPT_AUTOMATION_RESPONSE' &&
+                  event.data.command === 'detectModels') {
+                window.removeEventListener('message', handler);
+                if (event.data.success) {
+                  resolve(event.data.result);
+                } else {
+                  reject(new Error(event.data.error));
+                }
+              }
+            };
+            window.addEventListener('message', handler);
+            setTimeout(() => {
+              window.removeEventListener('message', handler);
+              reject(new Error('ブリッジタイムアウト'));
+            }, 10000);
+          });
+        }
+      };
+
+      // グローバルにアクセスしやすいエイリアス
+      window.ChatGPT = window.ChatGPTAutomationBridge;
+
+      console.log('✅ [BRIDGE] window.ChatGPT利用可能');
+      console.log('📝 [BRIDGE] 使用例: ChatGPT.executeTask({prompt: "テスト"})');
+    })();
+  `;
+  document.head.appendChild(bridgeScript);
+  bridgeScript.remove(); // スクリプトタグは実行後に削除
+
+  // Content Script側でブリッジメッセージを処理
+  window.addEventListener("message", async (event) => {
+    if (event.data.type === "CHATGPT_AUTOMATION_EXECUTE") {
+      console.log("🌉 [DEBUG] ブリッジコマンド受信:", event.data.command);
+
+      try {
+        let result;
+        switch (event.data.command) {
+          case "executeTask":
+            result = await executeTask(event.data.data);
+            break;
+          case "runAutomation":
+            result = await runAutomation();
+            break;
+          case "detectModels":
+            result = await detectChatGPTModelsAndFeatures();
+            break;
+          default:
+            throw new Error(`未知のコマンド: ${event.data.command}`);
+        }
+
+        // 成功レスポンス
+        window.postMessage(
+          {
+            type: "CHATGPT_AUTOMATION_RESPONSE",
+            command: event.data.command,
+            success: true,
+            result: result,
+          },
+          "*",
+        );
+      } catch (error) {
+        // エラーレスポンス
+        console.error("🌉 [DEBUG] ブリッジエラー:", error);
+        window.postMessage(
+          {
+            type: "CHATGPT_AUTOMATION_RESPONSE",
+            command: event.data.command,
+            success: false,
+            error: error.message,
+          },
+          "*",
+        );
+      }
+    }
+  });
+
+  console.log("✅ [DEBUG] Content Script ↔ Webpage ブリッジ設定完了");
 
   // 初期化マーカー設定（グローバルに再設定）
   window.CHATGPT_SCRIPT_LOADED = true;
@@ -4250,12 +4361,6 @@ async function chatWithChatGPT() {
             },
           );
 
-<<<<<<< HEAD
-  console.log("✅ [ChatGPT] ネットワークエラーハンドラー登録完了");
-} // ChatGPTページ判定if文終了
-
-})(); // IIFE終了 - ChatGPT自動化システム初期化完了
-=======
           // 🔄 アクティブなタスクがある場合のリトライ準備 (将来実装用)
           if (window.currentChatGPTTask) {
             console.warn(
@@ -4279,4 +4384,3 @@ async function chatWithChatGPT() {
     console.log("🔧 [DEBUG] IIFE正常終了 - 全ての処理完了");
   }
 })();
->>>>>>> de14852 (fix: ChatGPT自動化スクリプトの重大な構造問題を修正)
