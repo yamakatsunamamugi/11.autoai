@@ -4859,17 +4859,66 @@
                 );
               }
             } else {
-              // その他の機能を選択
-              const toggles = document.querySelectorAll(
+              // その他の機能を選択（テストコードから導入したロジック）
+              console.log(`🎯 機能「${featureName}」を選択開始`);
+
+              // 現在のトグルボタンを取得
+              const currentButtons = document.querySelectorAll(
                 'button:has(input[role="switch"])',
               );
-              for (const toggle of toggles) {
-                const label = toggle.querySelector("p.font-base");
-                if (label && label.textContent.trim() === featureName) {
-                  setToggleState(toggle, true);
+              const currentFeatures = [];
+
+              currentButtons.forEach((button) => {
+                const label = button.querySelector("p.font-base");
+                const labelText = label ? label.textContent.trim() : "";
+                const input = button.querySelector('input[role="switch"]');
+
+                currentFeatures.push({
+                  text: labelText,
+                  element: button,
+                  input: input,
+                });
+              });
+
+              // 対象機能を探して選択
+              const targetFeature = currentFeatures.find(
+                (f) => f.text === featureName,
+              );
+
+              if (targetFeature) {
+                console.log(`✅ 「${featureName}」のトグルを発見`);
+                const currentState = targetFeature.input.checked;
+                console.log(`  - 現在の状態: ${currentState ? "ON" : "OFF"}`);
+
+                if (!currentState) {
+                  console.log(`  - クリックして状態を変更...`);
+                  targetFeature.element.click();
                   await wait(1000);
-                  break;
+
+                  // 状態確認
+                  const newState = targetFeature.input.checked;
+                  console.log(
+                    `  - 新しい状態: ${newState ? "✅ ON" : "❌ OFF"}`,
+                  );
+
+                  if (newState) {
+                    log.debug(`✅ ${featureName}機能を有効化しました`);
+                  } else {
+                    log.warn(
+                      `⚠️ ${featureName}機能の有効化に失敗した可能性があります`,
+                    );
+                  }
+                } else {
+                  console.log(`  - すでにONです`);
+                  log.debug(`ℹ️ ${featureName}機能はすでに有効です`);
                 }
+              } else {
+                console.error(`❌ 「${featureName}」が見つかりませんでした`);
+                console.log("利用可能な機能:");
+                currentFeatures.forEach((f) => console.log(`  - "${f.text}"`));
+                log.error(
+                  `機能「${featureName}」のトグルが見つかりませんでした`,
+                );
               }
 
               // メニューを閉じる

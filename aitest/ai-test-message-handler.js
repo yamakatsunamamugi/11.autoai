@@ -365,6 +365,18 @@
             Object.keys(taskData || {}),
           );
 
+          // 重複実行チェック
+          if (isExecutingTask) {
+            console.log(`⚠️ [ChatGPT] タスク実行中のため、重複実行をスキップ`);
+            return {
+              success: false,
+              error: "Task already executing",
+              timestamp: new Date().toISOString(),
+            };
+          }
+
+          isExecutingTask = true;
+
           try {
             // taskDataから実際のプロンプトを取得
             const actualPrompt = taskData?.prompt || taskData || "";
@@ -385,6 +397,7 @@
                   originalAutomation,
                   taskData,
                 );
+                isExecutingTask = false; // 成功時もフラグリセット
                 return {
                   success: true,
                   result: result,
@@ -406,6 +419,7 @@
                 const result =
                   await window.ChatGPTAutomationV2.runAutomation(config);
 
+                isExecutingTask = false; // 成功時もフラグリセット
                 return {
                   success: true,
                   result: result,
@@ -436,6 +450,9 @@
           } catch (error) {
             console.error(`❌ [ChatGPT] executeTask error:`, error);
             throw error;
+          } finally {
+            // 実行フラグをリセット
+            isExecutingTask = false;
           }
         };
         break;
@@ -617,6 +634,9 @@
   // 元の関数を保存して定期的にラップを再適用
   let originalExecuteTask = null;
   let wrappedExecuteTask = null;
+
+  // ChatGPT用の重複実行防止フラグ
+  let isExecutingTask = false;
 
   // Claudeの場合は特別な処理
   if (AI_TYPE === "claude") {

@@ -2628,33 +2628,39 @@ async function reportSelectorError(selectorKey, error, selectors) {
           modelMenuEl = await findElement(
             SELECTORS.modelMenu,
             "モデルメニュー",
+            3, // 3回までリトライ
           );
           if (!modelMenuEl) {
-            throw new Error("モデルメニューが開きません");
-          }
-
-          // 指定されたモデルを直接探してクリック
-          const allMenuItems = document.querySelectorAll('[role="menuitem"]');
-          const targetItem = Array.from(allMenuItems).find((item) => {
-            const text = getCleanText(item);
-            return text === modelName || text.includes(modelName);
-          });
-
-          if (targetItem) {
-            targetItem.click();
-            await sleep(2000);
-            logWithTimestamp(`モデル選択完了: ${modelName}`, "success");
-          } else {
-            // メニューを閉じる
-            document.dispatchEvent(
-              new KeyboardEvent("keydown", { key: "Escape", code: "Escape" }),
-            );
-            await sleep(1000);
+            // エラーを投げる代わりに警告ログを出して続行
             logWithTimestamp(
-              `指定されたモデルが見つかりません: ${modelName}`,
+              "モデルメニューが開きませんでしたが、処理を続行します",
               "warning",
             );
-          }
+            // モデル選択をスキップして送信処理へ進む
+          } else {
+            // 指定されたモデルを直接探してクリック
+            const allMenuItems = document.querySelectorAll('[role="menuitem"]');
+            const targetItem = Array.from(allMenuItems).find((item) => {
+              const text = getCleanText(item);
+              return text === modelName || text.includes(modelName);
+            });
+
+            if (targetItem) {
+              targetItem.click();
+              await sleep(2000);
+              logWithTimestamp(`モデル選択完了: ${modelName}`, "success");
+            } else {
+              // メニューを閉じる
+              document.dispatchEvent(
+                new KeyboardEvent("keydown", { key: "Escape", code: "Escape" }),
+              );
+              await sleep(1000);
+              logWithTimestamp(
+                `指定されたモデルが見つかりません: ${modelName}`,
+                "warning",
+              );
+            }
+          } // modelMenuElのelse節を閉じる
         } else {
           logWithTimestamp(
             "モデル選択をスキップ（モデル名が指定されていません）",
@@ -2835,125 +2841,134 @@ async function reportSelectorError(selectorKey, error, selectors) {
               const modelMenuEl2 = await findElement(
                 SELECTORS.modelMenu,
                 "モデルメニュー",
+                3, // 3回までリトライ
               );
               if (!modelMenuEl2) {
-                throw new Error("モデルメニューが開きません");
-              }
-
-              // レガシーモデルの場合はサブメニューを開く
-              if (selectedModel.type === "Legacy") {
-                const legacyBtn =
-                  modelMenuEl2.querySelector(
-                    '[role="menuitem"][data-has-submenu]',
-                  ) ||
-                  Array.from(
-                    modelMenuEl2.querySelectorAll('[role="menuitem"]'),
-                  ).find(
-                    (el) =>
-                      el.textContent &&
-                      el.textContent.includes("レガシーモデル"),
-                  );
-                if (legacyBtn) {
-                  logWithTimestamp(
-                    "【Step 4-1-3-5】レガシーモデルメニューを開く",
-                    "step",
-                  );
-                  legacyBtn.click();
-                  await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
-                }
-              }
-
-              // 3-6: 該当のモデルを選択
-              logWithTimestamp(
-                "【Step 4-1-3-6】該当のモデルを選択実行",
-                "step",
-              );
-
-              // 要素を再検索（DOM変更の可能性があるため）
-              const allMenus = document.querySelectorAll('[role="menu"]');
-              let targetElement = null;
-              for (const menu of allMenus) {
-                const items = menu.querySelectorAll('[role="menuitem"]');
-                for (const item of items) {
-                  if (
-                    getCleanText(item) === selectedModel.name ||
-                    (selectedModel.testId &&
-                      item.getAttribute("data-testid") === selectedModel.testId)
-                  ) {
-                    targetElement = item;
-                    break;
+                logWithTimestamp(
+                  "モデルメニューが開きませんでしたが、処理を続行します",
+                  "warning",
+                );
+                // エラーを投げずに続行
+              } else {
+                // レガシーモデルの場合はサブメニューを開く
+                if (selectedModel.type === "Legacy") {
+                  const legacyBtn =
+                    modelMenuEl2.querySelector(
+                      '[role="menuitem"][data-has-submenu]',
+                    ) ||
+                    Array.from(
+                      modelMenuEl2.querySelectorAll('[role="menuitem"]'),
+                    ).find(
+                      (el) =>
+                        el.textContent &&
+                        el.textContent.includes("レガシーモデル"),
+                    );
+                  if (legacyBtn) {
+                    logWithTimestamp(
+                      "【Step 4-1-3-5】レガシーモデルメニューを開く",
+                      "step",
+                    );
+                    legacyBtn.click();
+                    await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
                   }
                 }
-                if (targetElement) break;
-              }
 
-              if (targetElement) {
-                targetElement.click();
-                await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
-                logWithTimestamp(`モデル選択完了: ${resolvedModel}`, "success");
-                // 統合ログ: モデル選択完了
-                // 選択後確認で表示されているモデルを取得
-                let displayedModel = "";
-                try {
-                  const modelButton = await findElement(
+                // 3-6: 該当のモデルを選択
+                logWithTimestamp(
+                  "【Step 4-1-3-6】該当のモデルを選択実行",
+                  "step",
+                );
+
+                // 要素を再検索（DOM変更の可能性があるため）
+                const allMenus = document.querySelectorAll('[role="menu"]');
+                let targetElement = null;
+                for (const menu of allMenus) {
+                  const items = menu.querySelectorAll('[role="menuitem"]');
+                  for (const item of items) {
+                    if (
+                      getCleanText(item) === selectedModel.name ||
+                      (selectedModel.testId &&
+                        item.getAttribute("data-testid") ===
+                          selectedModel.testId)
+                    ) {
+                      targetElement = item;
+                      break;
+                    }
+                  }
+                  if (targetElement) break;
+                }
+
+                if (targetElement) {
+                  targetElement.click();
+                  await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
+                  logWithTimestamp(
+                    `モデル選択完了: ${resolvedModel}`,
+                    "success",
+                  );
+                  // 統合ログ: モデル選択完了
+                  // 選択後確認で表示されているモデルを取得
+                  let displayedModel = "";
+                  try {
+                    const modelButton = await findElement(
+                      SELECTORS.modelButton,
+                      "モデルボタン",
+                    );
+                    if (modelButton) {
+                      displayedModel = getCleanText(modelButton);
+                    }
+                  } catch (error) {
+                    displayedModel = "取得失敗";
+                  }
+
+                  // ========================================
+                  // ステップ3-7: モデル選択確認（テストコード準拠）
+                  // ========================================
+                  logWithTimestamp("【Step 4-1-3-7】モデル選択確認", "step");
+                  await sleep(1000); // 表示更新を待機
+
+                  const currentModelButton = await findElement(
                     SELECTORS.modelButton,
                     "モデルボタン",
                   );
-                  if (modelButton) {
-                    displayedModel = getCleanText(modelButton);
-                  }
-                } catch (error) {
-                  displayedModel = "取得失敗";
-                }
-
-                // ========================================
-                // ステップ3-7: モデル選択確認（テストコード準拠）
-                // ========================================
-                logWithTimestamp("【Step 4-1-3-7】モデル選択確認", "step");
-                await sleep(1000); // 表示更新を待機
-
-                const currentModelButton = await findElement(
-                  SELECTORS.modelButton,
-                  "モデルボタン",
-                );
-                if (currentModelButton) {
-                  const currentModelText = getCleanText(currentModelButton);
-                  logWithTimestamp(
-                    `現在表示されているモデル: "${currentModelText}"`,
-                    "info",
-                  );
-
-                  // 部分一致で確認（"GPT-4o" が "4o" で選択された場合など）
-                  const isMatch =
-                    currentModelText
-                      .toLowerCase()
-                      .includes(resolvedModel.toLowerCase()) ||
-                    resolvedModel
-                      .toLowerCase()
-                      .includes(currentModelText.toLowerCase());
-
-                  if (isMatch) {
+                  if (currentModelButton) {
+                    const currentModelText = getCleanText(currentModelButton);
                     logWithTimestamp(
-                      `✅ モデル選択確認成功: 期待通りのモデル「${currentModelText}」が選択されています`,
-                      "success",
+                      `現在表示されているモデル: "${currentModelText}"`,
+                      "info",
                     );
+
+                    // 部分一致で確認（"GPT-4o" が "4o" で選択された場合など）
+                    const isMatch =
+                      currentModelText
+                        .toLowerCase()
+                        .includes(resolvedModel.toLowerCase()) ||
+                      resolvedModel
+                        .toLowerCase()
+                        .includes(currentModelText.toLowerCase());
+
+                    if (isMatch) {
+                      logWithTimestamp(
+                        `✅ モデル選択確認成功: 期待通りのモデル「${currentModelText}」が選択されています`,
+                        "success",
+                      );
+                    } else {
+                      logWithTimestamp(
+                        `⚠️ モデル選択確認: 期待されたモデル「${resolvedModel}」と異なるモデル「${currentModelText}」が表示されていますが、処理を継続します`,
+                        "warning",
+                      );
+                    }
                   } else {
                     logWithTimestamp(
-                      `⚠️ モデル選択確認: 期待されたモデル「${resolvedModel}」と異なるモデル「${currentModelText}」が表示されていますが、処理を継続します`,
+                      "⚠️ モデル選択確認: モデルボタンが見つからないため確認をスキップします",
                       "warning",
                     );
                   }
                 } else {
-                  logWithTimestamp(
-                    "⚠️ モデル選択確認: モデルボタンが見つからないため確認をスキップします",
-                    "warning",
+                  throw new Error(
+                    `モデル要素が見つかりません: ${selectedModel.name}`,
                   );
                 }
-              } else {
-                throw new Error(
-                  `モデル要素が見つかりません: ${selectedModel.name}`,
-                );
-              }
+              } // modelMenuEl2のelse節を閉じる
             } else {
               logWithTimestamp(
                 "選択するモデルが特定できませんでした。現在のモデルを使用します。",
@@ -4881,6 +4896,7 @@ async function chatWithChatGPT() {
     });
 
     console.log("✅ [ChatGPT] ネットワークエラーハンドラー登録完了");
-    console.log("🔧 [DEBUG] IIFE正常終了 - 全ての処理完了");
   }
+
+  console.log("🔧 [DEBUG] IIFE正常終了 - 全ての処理完了");
 })();
