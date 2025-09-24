@@ -56,7 +56,7 @@
       "matches": [
         "https://claude.ai/*"
       ],
-      "js": ["4-2-claude-automation.js"],
+      "js": ["common-error-handler.js", "4-2-claude-automation.js"],
       "run_at": "document_end"
     },
     {
@@ -64,14 +64,14 @@
         "https://chatgpt.com/*",
         "https://chat.openai.com/*"
       ],
-      "js": ["4-1-chatgpt-automation.js", "aitest/ai-test-message-handler.js"],
+      "js": ["common-error-handler.js", "4-1-chatgpt-automation.js", "aitest/ai-test-message-handler.js"],
       "run_at": "document_end"
     },
     {
       "matches": [
         "https://gemini.google.com/*"
       ],
-      "js": ["4-3-gemini-automation.js"],
+      "js": ["common-error-handler.js", "4-3-gemini-automation.js"],
       "run_at": "document_end"
     },
     {
@@ -79,7 +79,7 @@
         "https://genspark.com/*",
         "https://www.genspark.ai/*"
       ],
-      "js": ["4-5-genspark-automation.js"],
+      "js": ["common-error-handler.js", "4-5-genspark-automation.js"],
       "run_at": "document_end"
     }
   ],

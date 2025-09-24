@@ -1,34 +1,15 @@
 // ========================================
-// 🚨 共通エラーハンドリングモジュールのロード
+// 🚨 共通エラーハンドリングモジュールの初期化
 // ========================================
 
-(function loadCommonErrorHandler() {
-  if (!window.UniversalErrorHandler) {
-    const script = document.createElement("script");
-    script.src = chrome.runtime.getURL("common-error-handler.js");
-    script.onload = function () {
-      console.log("✅ [GEMINI] 共通エラーハンドリングモジュール読み込み完了");
-
-      // Gemini用の統合エラーハンドラーを初期化
-      if (window.UniversalErrorHandler) {
-        window.geminiErrorHandler =
-          window.UniversalErrorHandler.createForAI("gemini");
-        console.log("✅ [GEMINI] エラーハンドラー初期化完了");
-      }
-    };
-    script.onerror = function () {
-      console.error(
-        "❌ [GEMINI] 共通エラーハンドリングモジュールの読み込みに失敗",
-      );
-    };
-    (document.head || document.documentElement).appendChild(script);
-  } else {
-    // すでに読み込まれている場合
-    window.geminiErrorHandler =
-      window.UniversalErrorHandler.createForAI("gemini");
-    console.log("✅ [GEMINI] エラーハンドラー初期化完了（既存モジュール使用）");
-  }
-})();
+// manifest.jsonで事前に読み込まれた共通モジュールを使用
+if (window.UniversalErrorHandler) {
+  window.geminiErrorHandler =
+    window.UniversalErrorHandler.createForAI("gemini");
+  console.log("✅ [GEMINI] エラーハンドラー初期化完了");
+} else {
+  console.error("❌ [GEMINI] 共通エラーハンドリングモジュールが見つかりません");
+}
 
 // ログレベル定義
 const LOG_LEVEL = { ERROR: 1, WARN: 2, INFO: 3, DEBUG: 4 };

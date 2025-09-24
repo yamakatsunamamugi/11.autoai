@@ -414,7 +414,7 @@ class DynamicTaskSearch {
             // 【デバッグ追加】logCell生成確認
             const logCellValue = taskGroup.columns?.log
               ? `${taskGroup.columns.log}${rowNumber}`
-              : `${taskGroup.startColumn || "A"}${rowNumber}`;
+              : null;
 
             log.warn("🔍 [DynamicSearch] タスク生成時のlogCell:", {
               taskId: taskId,

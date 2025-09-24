@@ -2908,7 +2908,7 @@ async function generateTaskList(
                 : "",
             logCell: taskGroup.columns?.log
               ? `${taskGroup.columns.log}${row}`
-              : `${taskGroup.startColumn || "A"}${row}`,
+              : null,
             promptCells: promptColumns.map((col) => `${col}${row}`),
             answerCell: answerCell,
             tabId: windowInfo?.tabId, // 🆕 タブID追加
@@ -2936,7 +2936,7 @@ async function generateTaskList(
               columnsExists: !!taskGroup.columns,
               logCellCalculation: taskGroup.columns?.log
                 ? `${taskGroup.columns.log}${row}`
-                : `${taskGroup.startColumn || "A"}${row}`,
+                : null,
               generatedLogCell: task.logCell,
               generatedLogCellType: typeof task.logCell,
               taskKeys: Object.keys(task),

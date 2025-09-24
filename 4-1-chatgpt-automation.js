@@ -1,37 +1,17 @@
 // ========================================
-// 🚨 共通エラーハンドリングモジュールのロード
+// 🚨 共通エラーハンドリングモジュールの初期化
 // ========================================
 
-// 共通エラーハンドリングモジュールを動的にロード
-(function loadCommonErrorHandler() {
-  if (!window.UniversalErrorHandler) {
-    const script = document.createElement("script");
-    script.src = chrome.runtime.getURL("common-error-handler.js");
-    script.onload = function () {
-      console.log("✅ [CHATGPT] 共通エラーハンドリングモジュール読み込み完了");
-
-      // ChatGPT用の統合エラーハンドラーを初期化
-      if (window.UniversalErrorHandler) {
-        window.chatgptErrorHandler =
-          window.UniversalErrorHandler.createForAI("chatgpt");
-        console.log("✅ [CHATGPT] エラーハンドラー初期化完了");
-      }
-    };
-    script.onerror = function () {
-      console.error(
-        "❌ [CHATGPT] 共通エラーハンドリングモジュールの読み込みに失敗",
-      );
-    };
-    (document.head || document.documentElement).appendChild(script);
-  } else {
-    // すでに読み込まれている場合
-    window.chatgptErrorHandler =
-      window.UniversalErrorHandler.createForAI("chatgpt");
-    console.log(
-      "✅ [CHATGPT] エラーハンドラー初期化完了（既存モジュール使用）",
-    );
-  }
-})();
+// manifest.jsonで事前に読み込まれた共通モジュールを使用
+if (window.UniversalErrorHandler) {
+  window.chatgptErrorHandler =
+    window.UniversalErrorHandler.createForAI("chatgpt");
+  console.log("✅ [CHATGPT] エラーハンドラー初期化完了");
+} else {
+  console.error(
+    "❌ [CHATGPT] 共通エラーハンドリングモジュールが見つかりません",
+  );
+}
 
 // ログレベル定義
 const LOG_LEVEL = { ERROR: 1, WARN: 2, INFO: 3, DEBUG: 4 };
