@@ -1,14 +1,8 @@
 // 全体を即時実行関数でラップ
 (function () {
-  // 🚨 デバッグ: スクリプト開始を最初に記録
-  console.log("🚨 [Claude Script] START - " + window.location.href);
-
   try {
     // 🔒 重複実行防止（manifest.json自動注入対応）
     if (window.__CLAUDE_AUTOMATION_LOADED__) {
-      console.log(
-        "🛡️ [Claude Automation] 重複実行防止: 既に初期化済みのためスキップ",
-      );
       return;
     }
     window.__CLAUDE_AUTOMATION_LOADED__ = true;
@@ -16,23 +10,6 @@
     // 初期化マーカー設定（ChatGPT/Geminiと同様）
     window.CLAUDE_SCRIPT_LOADED = true;
     window.CLAUDE_SCRIPT_INIT_TIME = Date.now();
-
-    // log未定義エラーを修正: console.logを直接使用
-    console.log(
-      `🚀 Claude Automation - 初期化時刻: ${new Date().toLocaleString("ja-JP")}`,
-    );
-    console.log(`[DEBUG] Claude Script Loaded - Marker Set`);
-
-    // 🔧 [FIXED] メッセージング問題修正完了のお知らせ
-    console.log("🔧 [FIXED] Chrome拡張メッセージング問題修正済み:", {
-      fixes: [
-        "background.jsにrecordSendTime/injectClaudeFunctionsハンドラー追加",
-        "非同期処理のsetTimeoutを削除して即座レスポンス",
-        "3秒タイムアウトとmessage port closedエラーを防止",
-      ],
-      timestamp: new Date().toISOString(),
-      note: "エラーログがクリーンになり、動作はより安定",
-    });
 
     // 🔍 [段階5] Content Script実行コンテキストの詳細確認
     const currentURL = window.location.href;
@@ -45,20 +22,6 @@
     const isValidClaudeURL =
       condition1 || condition2 || condition3 || condition4 || condition5;
     const isExtensionPage = currentURL.startsWith("chrome-extension://");
-
-    // 🔍 [URL-DIAGNOSTIC] URL検出詳細診断
-    console.log("🔍 [URL-DIAGNOSTIC] URL検出詳細:", {
-      currentURL,
-      hostname: window.location.hostname,
-      pathname: window.location.pathname,
-      condition1_includes_claude_ai: condition1,
-      condition2_includes_claude_ai_chat: condition2,
-      condition3_includes_claude_ai_new: condition3,
-      condition4_hostname_equals_claude_ai: condition4,
-      condition5_hostname_ends_with_claude_ai: condition5,
-      isValidClaudeURL_final_result: isValidClaudeURL,
-      isExtensionPage: isExtensionPage,
-    });
 
     // 🔍 [段階5-実行コンテキスト] Content Script実行環境の詳細ログ（デバッグモードのみ）
     if (window.DEBUG_MODE) {
