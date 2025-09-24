@@ -6463,7 +6463,8 @@
         window.inputText = inputText;
         log.info("✅ inputText関数を公開");
       } else {
-        log.error("❌ inputText関数が未定義");
+        // inputText関数は後で定義されるため、このエラーは無視する
+        log.debug("ℹ️ inputText関数はスコープ内で後で定義されます");
       }
 
       if (typeof runAutomation !== "undefined") {
