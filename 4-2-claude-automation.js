@@ -818,14 +818,6 @@
           '[aria-label*="Web"]',
         ],
 
-        THINK_TOGGLE: [
-          'button:has(svg path[d*="M10.3857 2.50977"]):has(input[role="switch"])',
-          'button:has(p:contains("じっくり考える")):has(input[role="switch"])',
-          'button input[role="switch"][style*="width: 28px"]',
-          'div:contains("じっくり考える") button:has(.group\\/switch)',
-          'button .font-base:contains("じっくり考える")',
-        ],
-
         RESEARCH_BUTTON: [
           'button[aria-pressed]:has(svg path[d*="M8.5 2C12.0899"])',
           'button:has(p:contains("リサーチ"))',
