@@ -1955,19 +1955,31 @@ if (!document.getElementById("selector-animations")) {
 // ========================================
 
 // セレクタ統計の更新
-window.updateSelectorUsage = function (
+window.updateSelectorUsage = async function (
   aiName,
   selectorKey,
   success,
   responseTime,
 ) {
-  if (selectorTimelineManager) {
-    selectorTimelineManager.updateStats(
-      aiName,
-      selectorKey,
-      success,
-      responseTime,
+  // step7-selector-data-structure.jsのupdateSelectorStatsを動的インポート
+  try {
+    const { updateSelectorStats } = await import(
+      "./step7-selector-data-structure.js"
     );
+
+    // 統計を更新
+    updateSelectorStats(aiName, selectorKey, success, responseTime);
+
+    // UI表示も更新
+    if (selectorTimelineManager) {
+      selectorTimelineManager.updateDisplay();
+    }
+
+    log.debug(
+      `✅ [セレクタ統計更新] ${aiName}:${selectorKey} - 成功:${success}, 応答時間:${responseTime}ms`,
+    );
+  } catch (error) {
+    log.error("セレクタ統計更新エラー:", error);
   }
 };
 
