@@ -4596,20 +4596,27 @@ async function chatWithChatGPT() {
       log.warn("UIへの送信失敗:", error);
     }
 
-    // 既存の検出結果がある場合は保持
+    // 今回の検出で何か取得できたかチェック
+    const hasNewData = result.models.length > 0 || result.functions.length > 0;
+
+    // 既存の検出結果がある場合
     if (
       window.ChatGPTAutomation.detectionResult &&
       (window.ChatGPTAutomation.detectionResult.models.length > 0 ||
         window.ChatGPTAutomation.detectionResult.functions.length > 0)
     ) {
-      logWithTimestamp("⚠️ 一部検出失敗、既存情報を保持", "warning");
-
-      // 新しく検出できた情報があれば更新
+      // 新しく検出できた情報があれば更新（警告は出さない）
       if (result.models.length > 0) {
         window.ChatGPTAutomation.detectionResult.models = result.models;
       }
       if (result.functions.length > 0) {
         window.ChatGPTAutomation.detectionResult.functions = result.functions;
+      }
+
+      // 今回何も検出できなかった場合のみ警告（既存データで補完）
+      if (!hasNewData && !window.ChatGPTAutomation._detectionWarningShown) {
+        logWithTimestamp("⚠️ 検出失敗、既存情報を使用", "warning");
+        window.ChatGPTAutomation._detectionWarningShown = true;
       }
 
       return window.ChatGPTAutomation.detectionResult;

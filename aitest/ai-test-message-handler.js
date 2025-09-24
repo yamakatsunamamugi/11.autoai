@@ -339,14 +339,18 @@
   const wrapExecuteTask = () => {
     switch (AI_TYPE) {
       case "chatgpt":
-        if (!window.ChatGPTAutomation) {
-          window.ChatGPTAutomation = {};
-        }
+        // 元の関数を保存
+        const originalAutomation = window.ChatGPTAutomation;
+        const originalExecuteTask = originalAutomation?.executeTask;
 
         // 既にラップ済みの場合はスキップ（無限ループ防止）
-        if (window.ChatGPTAutomation.__executeTaskWrapped) {
+        if (window.ChatGPTAutomation?.__executeTaskWrapped) {
           console.log(`⚠️ [ChatGPT] executeTask already wrapped, skipping`);
           return;
+        }
+
+        if (!window.ChatGPTAutomation) {
+          window.ChatGPTAutomation = {};
         }
 
         // ラップ済みフラグを設定
@@ -367,19 +371,20 @@
             console.log(`📝 [ChatGPT] actualPrompt:`, actualPrompt);
             console.log(`📝 [ChatGPT] actualPrompt type:`, typeof actualPrompt);
 
-            // ChatGPTAutomationV2の読み込みを待機（最大10秒）
+            // 元のexecuteTaskを使用するか、runAutomationを使用
             let retryCount = 0;
             const maxRetries = 50; // 10秒間（200ms × 50回）
 
             while (retryCount < maxRetries) {
-              if (
-                typeof window.ChatGPTAutomationV2?.executeTask === "function"
-              ) {
+              // 元のexecuteTaskが存在する場合（4-1-chatgpt-automation.js由来）
+              if (typeof originalExecuteTask === "function") {
                 console.log(
-                  `✅ [ChatGPT] Using ChatGPTAutomationV2.executeTask (retry ${retryCount})`,
+                  `✅ [ChatGPT] Using original executeTask (retry ${retryCount})`,
                 );
-                const result =
-                  await window.ChatGPTAutomationV2.executeTask(taskData);
+                const result = await originalExecuteTask.call(
+                  originalAutomation,
+                  taskData,
+                );
                 return {
                   success: true,
                   result: result,
