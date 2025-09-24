@@ -33,6 +33,20 @@ const log = {
 // 🔥 STEP 0: バージョン確認
 log.debug("🔥 [STEP 0] step0-ui-controller.js バージョン1です");
 
+// Claude UI機能状態を1つのログにまとめて出力
+function logClaudeUIFeatures(features) {
+  if (!features || !Array.isArray(features)) return;
+
+  const summary = features.map((f) => ({
+    name: f.name,
+    enabled: f.isEnabled,
+    togglable: f.isToggleable,
+    toggled: f.isToggled || false,
+  }));
+
+  log.debug("🔍 [UI] Claude機能状態:", JSON.stringify(summary, null, 2));
+}
+
 /**
  * @fileoverview step0-ui-controller.js - AutoAI UI Controller
  *
@@ -1310,9 +1324,7 @@ if (
   chrome.runtime.onMessage
 ) {
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-
     if (message.type === "AI_MODEL_FUNCTION_UPDATE") {
-
       // 詳細データログ追加（Claude機能調査用）
       if (message.aiType === "claude") {
         log.debug("🔍 [UI-CLAUDE] 受信データ詳細:", {

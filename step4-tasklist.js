@@ -2749,7 +2749,7 @@ async function generateTaskList(
             groupType: taskGroup.groupType,
             row: row,
             column: promptColumns[0],
-            prompt: `現在${promptColumns.length > 0 ? promptColumns.map((col) => `${col}${row}`).join(",") : `行${row}`}の作業中です。\n\n${prompts.join("\n\n")}`,
+            prompt: `現在${answerColumn ? `${answerColumn}${row}` : promptColumns.length > 0 ? promptColumns.map((col) => `${col}${row}`).join(",") : `行${row}`}の作業中です。\n\n${prompts.join("\n\n")}`,
             ai: aiType, // 🔧 [FIX] 変換後のaiTypeを使用
             aiType:
               taskGroup.groupType === "3種類AI"
@@ -2773,12 +2773,8 @@ async function generateTaskList(
             cellInfo: {
               // Step4互換: cellInfo構造追加
               row: row,
-              column: answerCell
-                ? answerCell.match(/^([A-Z]+)/)?.[1]
-                : promptColumns[0],
-              columnIndex: answerCell
-                ? columnToIndex(answerCell.match(/^([A-Z]+)/)?.[1])
-                : columnToIndex(promptColumns[0]),
+              column: answerColumn || promptColumns[0], // answerColumnを直接使用（正規表現不要）
+              columnIndex: columnToIndex(answerColumn || promptColumns[0]),
             },
             ...parseSpreadsheetUrl(options.spreadsheetUrl || ""),
           };
@@ -2837,8 +2833,8 @@ async function generateTaskList(
           groupNumber: taskGroup.groupNumber,
           groupType: taskGroup.groupType,
           row: row,
-          // Step 4-5-3: 統一プロンプト生成ロジック（通常タスクと同じ方式）
-          prompt: `現在${promptColumns.length > 0 ? promptColumns.map((col) => `${col}${row}`).join(",") : `行${row}`}の作業中です。\n\n${prompts.join("\n\n")}`,
+          // Step 4-5-3: 統一プロンプト生成ロジック（作業列を優先表示）
+          prompt: `現在${taskGroup.columns.work ? `${taskGroup.columns.work}${row}` : promptColumns.length > 0 ? promptColumns.map((col) => `${col}${row}`).join(",") : `行${row}`}の作業中です。\n\n${prompts.join("\n\n")}`,
           ai: taskGroup.groupType,
           aiType: taskGroup.groupType, // Step4互換 - lowercase変換削除
           model: "",
@@ -6764,6 +6760,8 @@ async function executeStep4(taskList) {
             column: task.column,
             model: task.model,
             function: task.function, // スプレッドシートの機能情報を追加
+            logCell: task.logCell, // ログセル位置を追加
+            cellInfo: task.cellInfo, // cellInfo も追加（互換性のため）
             // 大きなデータは除去（Content Scriptでは不要）
             // spreadsheetData, extendedData等は送信しない
           };

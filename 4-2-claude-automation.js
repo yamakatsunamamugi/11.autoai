@@ -6542,7 +6542,19 @@
         }
 
         if (functions.length > 0) {
-          functions.forEach((func, i) => {});
+          // 1つのログにまとめて出力
+          const summary = functions.map((func) => ({
+            name: func.name,
+            enabled: func.isEnabled,
+            togglable: func.isToggleable,
+            toggled: func.isToggled || false,
+            status: func.secretStatus || "",
+          }));
+
+          log.debug(
+            "🔍 [UI] Claude機能一覧 (既存メニュー):",
+            JSON.stringify(summary, null, 2),
+          );
         }
 
         return functions;
@@ -6658,19 +6670,23 @@
         }
 
         if (functions.length > 0) {
-          functions.forEach((func, i) => {
-            const status = func.isEnabled ? "✅" : "❌";
-            const toggle = func.isToggleable
-              ? func.isToggled
-                ? "🟢"
-                : "🔴"
-              : "";
-            const secret = func.secretStatus ? `[${func.secretStatus}]` : "";
-          });
+          // 1つのログにまとめて出力
+          const summary = functions.map((func) => ({
+            name: func.name,
+            enabled: func.isEnabled,
+            togglable: func.isToggleable,
+            toggled: func.isToggled || false,
+            status: func.secretStatus || "",
+          }));
+
+          log.debug(
+            "🔍 [UI] Claude機能一覧:",
+            JSON.stringify(summary, null, 2),
+          );
         } else {
+          log.debug("🔍 [UI] Claude機能: 未検出");
         }
 
-        console.table(functions);
         return functions;
       }
 

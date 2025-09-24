@@ -1109,7 +1109,7 @@ async function checkCompletionStatus(taskGroup) {
       throw error;
     }
 
-    // 値があるプロンプトセルをカウント
+    // 値があるプロンプト行をカウント（行ベース：複数列でも1行は1タスク）
     let promptCount = 0;
     let promptDetails = [];
     if (promptValues && promptValues.values) {
@@ -1124,6 +1124,10 @@ async function checkCompletionStatus(taskGroup) {
         const row = promptValues.values[rowIndex];
         if (!row) continue;
 
+        // この行にプロンプトが存在するかチェック
+        let hasPromptInRow = false;
+        let firstPromptContent = "";
+
         for (
           let colIndex = 0;
           colIndex < row.length && colIndex < taskGroup.columns.prompts.length;
@@ -1131,14 +1135,23 @@ async function checkCompletionStatus(taskGroup) {
         ) {
           const cell = row[colIndex];
           if (cell && cell.trim()) {
-            promptCount++;
-            promptDetails.push({
-              行: taskGroup.dataStartRow + rowIndex,
-              列: taskGroup.columns.prompts[colIndex],
-              内容プレビュー:
-                cell.substring(0, 30) + (cell.length > 30 ? "..." : ""),
-            });
+            hasPromptInRow = true;
+            if (!firstPromptContent) {
+              firstPromptContent = cell;
+            }
           }
+        }
+
+        // この行にプロンプトがあれば1カウント
+        if (hasPromptInRow) {
+          promptCount++;
+          promptDetails.push({
+            行: taskGroup.dataStartRow + rowIndex,
+            列: taskGroup.columns.prompts.join(", "),
+            内容プレビュー:
+              firstPromptContent.substring(0, 30) +
+              (firstPromptContent.length > 30 ? "..." : ""),
+          });
         }
       }
     } else {
@@ -1176,9 +1189,9 @@ async function checkCompletionStatus(taskGroup) {
     let answerCount = 0;
 
     if (taskGroup.pattern === "3種類AI") {
-      // 3種類AIパターンの場合
+      // 3種類AIパターンの場合（行ベースでカウント）
       LoopLogger.info(
-        "[step5-loop.js] [Step 5-1-2] 3種類AIパターンの回答を確認",
+        "[step5-loop.js] [Step 5-1-2] 3種類AIパターンの回答を確認（行ベース）",
       );
 
       // 【統一修正】全てオブジェクト形式になったのでチェックを調整
@@ -1203,46 +1216,57 @@ async function checkCompletionStatus(taskGroup) {
         Gemini列: columns[2] || "undefined",
       });
 
-      for (const col of columns) {
-        if (!col) {
-          LoopLogger.warn(
-            "[step5-loop.js] [Step 5-1-2] 警告: 列が未定義のためスキップ",
-          );
-          continue;
-        }
+      // 3列をまとめて取得（行ベースで処理するため）
+      const startCol = columns[0]; // ChatGPT列
+      const endCol = columns[2]; // Gemini列
+      answerRange = `${startCol}${taskGroup.dataStartRow}:${endCol}1000`;
 
-        const range = `${col}${taskGroup.dataStartRow}:${col}1000`;
-        LoopLogger.info(
-          `[step5-loop.js] [Step 5-1-2] ${col}列を確認: ${range}`,
+      LoopLogger.info(
+        `[step5-loop.js] [Step 5-1-2] 3種類AI回答範囲: ${answerRange}`,
+      );
+
+      let values;
+      try {
+        values = await readSpreadsheet(answerRange);
+      } catch (error) {
+        LoopLogger.error(
+          "[step5-loop.js] [Step 5-1-2] 3種類AI回答読み込みエラー:",
+          {
+            範囲: answerRange,
+            エラー: error.message,
+          },
         );
+        throw error;
+      }
 
-        let values;
-        try {
-          values = await readSpreadsheet(range);
-        } catch (error) {
-          LoopLogger.error(
-            `[step5-loop.js] [Step 5-1-2] ${col}列読み込みエラー:`,
-            {
-              範囲: range,
-              エラー: error.message,
-            },
-          );
-          continue; // エラーでも処理を継続
-        }
+      if (values && values.values) {
+        // 行ごとに処理（いずれかのAIに回答があれば1カウント）
+        for (let rowIndex = 0; rowIndex < values.values.length; rowIndex++) {
+          const row = values.values[rowIndex];
+          if (!row) continue;
 
-        if (values && values.values) {
-          for (const row of values.values) {
-            if (row[0] && row[0].trim()) {
-              answerCount++;
+          let hasAnswerInRow = false;
+          // 3列（ChatGPT, Claude, Gemini）をチェック
+          for (
+            let colIndex = 0;
+            colIndex < 3 && colIndex < row.length;
+            colIndex++
+          ) {
+            if (row[colIndex] && row[colIndex].trim()) {
+              hasAnswerInRow = true;
+              break; // 1つでも回答があれば十分
             }
+          }
+
+          if (hasAnswerInRow) {
+            answerCount++; // 行ごとに1カウント
           }
         }
       }
 
-      // 3種類AIの場合、プロンプト数×3と比較
-      promptCount = promptCount * 3;
+      // 注意：3種類AIでもプロンプト数を3倍にしない（行ベースで比較）
       LoopLogger.info(
-        `[step5-loop.js] [Step 5-1-2] 3種類AI調整後 - 期待回答数: ${promptCount}`,
+        `[step5-loop.js] [Step 5-1-2] 3種類AI回答数（行ベース）: ${answerCount}行`,
       );
     } else {
       // 【統一修正】通常パターンもオブジェクト形式に統一
