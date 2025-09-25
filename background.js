@@ -69,9 +69,6 @@ class SimpleSheetsClient {
   async updateRichTextValue(spreadsheetId, range, text, linkUrl) {
     const token = await this.getAuthToken();
 
-    // まずセルにテキストを書き込む
-    await this.updateValue(spreadsheetId, range, text);
-
     // リッチテキストフォーマットを適用
     const batchUpdateUrl = `${this.baseUrl}/${spreadsheetId}:batchUpdate`;
 
@@ -97,25 +94,19 @@ class SimpleSheetsClient {
       return;
     }
 
+    const urlEndIndex = urlStartIndex + linkUrl.length;
+
     const requests = [
       {
         updateCells: {
-          range: {
-            sheetId: 0, // デフォルトシートを使用
-            startRowIndex: row,
-            endRowIndex: row + 1,
-            startColumnIndex: col,
-            endColumnIndex: col + 1,
-          },
           rows: [
             {
               values: [
                 {
+                  userEnteredValue: {
+                    stringValue: text,
+                  },
                   textFormatRuns: [
-                    {
-                      startIndex: 0,
-                      format: {},
-                    },
                     {
                       startIndex: urlStartIndex,
                       format: {
@@ -129,7 +120,7 @@ class SimpleSheetsClient {
                       },
                     },
                     {
-                      startIndex: urlStartIndex + linkUrl.length,
+                      startIndex: urlEndIndex,
                       format: {},
                     },
                   ],
@@ -137,7 +128,14 @@ class SimpleSheetsClient {
               ],
             },
           ],
-          fields: "textFormatRuns",
+          fields: "userEnteredValue,textFormatRuns",
+          range: {
+            sheetId: 0, // デフォルトシートを使用
+            startRowIndex: row,
+            endRowIndex: row + 1,
+            startColumnIndex: col,
+            endColumnIndex: col + 1,
+          },
         },
       },
     ];
