@@ -15,6 +15,7 @@ chrome.runtime.onInstalled.addListener(() => {
 class SimpleSheetsClient {
   constructor() {
     this.baseUrl = "https://sheets.googleapis.com/v4/spreadsheets";
+    this.sheetNameCache = new Map(); // シート名キャッシュ
   }
 
   /**
@@ -157,6 +158,43 @@ class SimpleSheetsClient {
     }
 
     return await response.json();
+  }
+
+  /**
+   * GIDからシート名を取得
+   */
+  async getSheetNameFromGid(spreadsheetId, gid) {
+    // キャッシュチェック
+    const cacheKey = `${spreadsheetId}-${gid}`;
+    if (this.sheetNameCache.has(cacheKey)) {
+      return this.sheetNameCache.get(cacheKey);
+    }
+
+    const token = await this.getAuthToken();
+    const url = `${this.baseUrl}/${spreadsheetId}`;
+
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`スプレッドシート情報取得失敗: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    const sheets = data.sheets || [];
+
+    for (const sheet of sheets) {
+      if (sheet.properties && sheet.properties.sheetId == gid) {
+        const sheetName = sheet.properties.title;
+        this.sheetNameCache.set(cacheKey, sheetName);
+        return sheetName;
+      }
+    }
+
+    return null; // 見つからない場合
   }
 }
 

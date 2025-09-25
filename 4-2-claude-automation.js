@@ -5473,8 +5473,55 @@
         }
 
         try {
+          // Chrome拡張コンテキスト検証を強化
+          const isExtensionContextValid = () => {
+            try {
+              return !!(
+                chrome &&
+                chrome.runtime &&
+                chrome.runtime.sendMessage &&
+                chrome.runtime.id &&
+                !chrome.runtime.lastError
+              );
+            } catch (e) {
+              return false;
+            }
+          };
+
+          // フォールバック用ローカル記録関数
+          const recordSendTimeLocally = (taskId, sendTime, taskInfo) => {
+            try {
+              const localRecord = {
+                taskId,
+                sendTime,
+                taskInfo,
+                timestamp: new Date().toISOString(),
+                method: "local_fallback",
+              };
+
+              // sessionStorageに記録（ページリロードまで保持）
+              const existingRecords = JSON.parse(
+                sessionStorage.getItem("sendTimeRecords") || "[]",
+              );
+              existingRecords.push(localRecord);
+              sessionStorage.setItem(
+                "sendTimeRecords",
+                JSON.stringify(existingRecords.slice(-100)),
+              ); // 最新100件まで
+
+              log.debug(
+                "📝 [FALLBACK] ローカルストレージに送信時刻を記録:",
+                localRecord,
+              );
+              return { success: true, method: "local_fallback" };
+            } catch (err) {
+              log.warn("⚠️ [FALLBACK-ERROR] ローカル記録も失敗:", err.message);
+              return { error: "local_fallback_failed", message: err.message };
+            }
+          };
+
           // Chrome拡張機能のメッセージ送信で直接記録
-          if (chrome.runtime && chrome.runtime.sendMessage) {
+          if (isExtensionContextValid()) {
             log.debug("📡 [DEBUG] chrome.runtime.sendMessage呼び出し開始", {
               taskId: taskId,
               sendTime: sendTime.toISOString(),
@@ -5484,7 +5531,7 @@
             // タイムアウト付きでsendMessageを実行
             const sendMessageWithTimeout = new Promise((resolve) => {
               const timeout = setTimeout(() => {
-                log.warn("⏱️ [TIMEOUT] sendMessageがタイムアウト（3秒経過）");
+                log.debug("⏱️ [TIMEOUT] sendMessageがタイムアウト（3秒経過）");
                 resolve({
                   error: "timeout",
                   message: "sendMessage timeout after 3000ms",
@@ -5527,8 +5574,8 @@
 
                   // chrome.runtime.lastErrorをチェック
                   if (chrome.runtime.lastError) {
-                    log.warn(
-                      "⚠️ chrome.runtime.lastError:",
+                    log.debug(
+                      "ℹ️ chrome.runtime.lastError（継続処理）:",
                       chrome.runtime.lastError.message,
                     );
                     resolve({
@@ -5542,7 +5589,10 @@
                 });
               } catch (syncError) {
                 clearTimeout(timeout);
-                log.error("❌ [SYNC-ERROR] sendMessage同期エラー:", syncError);
+                log.debug(
+                  "ℹ️ [SYNC-ERROR] sendMessage同期エラー（継続処理）:",
+                  syncError.message,
+                );
                 resolve({ error: "sync_error", message: syncError.message });
               }
             });
@@ -5550,10 +5600,31 @@
             const response = await sendMessageWithTimeout;
 
             if (response.error) {
-              log.warn(
-                `⚠️ 送信時刻記録失敗 [${response.error}]:`,
-                response.error,
+              log.debug(
+                `ℹ️ [FIXED] 送信時刻記録失敗（タスク実行は継続） [${response.error}]:`,
+                {
+                  error: response.error,
+                  message: response.message,
+                  taskId: taskId,
+                  fallbackAttempt: "開始",
+                },
               );
+
+              // フォールバック実行
+              const fallbackResult = recordSendTimeLocally(
+                taskId,
+                sendTime.toISOString(),
+                {
+                  aiType: "Claude",
+                  model: modelName || "不明",
+                  function: featureName || "通常",
+                  cellInfo: taskData.cellInfo,
+                },
+              );
+
+              if (fallbackResult.success) {
+                log.debug("✅ [FALLBACK] ローカル記録でカバー完了");
+              }
             } else {
               log.debug("✅ [FIXED] 送信時刻記録成功（background.jsで処理）:", {
                 taskId: taskId,
@@ -5563,7 +5634,23 @@
               });
             }
           } else {
-            log.warn("⚠️ Chrome runtime APIが利用できません");
+            log.debug("ℹ️ Chrome拡張コンテキストが無効（フォールバック実行）");
+
+            // 拡張機能コンテキスト無効時はフォールバック実行
+            const fallbackResult = recordSendTimeLocally(
+              taskId,
+              sendTime.toISOString(),
+              {
+                aiType: "Claude",
+                model: modelName || "不明",
+                function: featureName || "通常",
+                cellInfo: taskData.cellInfo,
+              },
+            );
+
+            if (fallbackResult.success) {
+              log.debug("✅ [FALLBACK] 拡張無効時のローカル記録完了");
+            }
           }
         } catch (error) {
           log.debug("❌ 送信時刻記録エラー:", error.message);
