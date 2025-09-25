@@ -18,6 +18,12 @@ const BATCH_PROCESSING_CONFIG = {
   SPREADSHEET_WAIT_TIME: 10000, // スプレッドシート反映待機時間（デフォルト10秒）
   WINDOW_CLOSE_WAIT_TIME: 1000, // ウィンドウクローズ後待機時間（デフォルト1秒）
 
+  // 回答待機時間設定
+  MAX_RESPONSE_WAIT_TIME: 300000, // 通常モード: 最大回答待機時間（デフォルト5分）
+  MAX_RESPONSE_WAIT_TIME_DEEP: 600000, // DeepResearchモード: 最大回答待機時間（デフォルト10分）
+  MAX_RESPONSE_WAIT_TIME_AGENT: 1800000, // エージェントモード: 最大回答待機時間（デフォルト30分）
+  STOP_CHECK_INTERVAL: 10000, // 回答停止検知間隔（デフォルト10秒 = Stop生成ボタンの確認間隔）
+
   // === デバッグ設定 ===
   DEBUG_INDEPENDENT_MODE: false, // 独立モードの詳細ログ出力
 };
@@ -59,6 +65,25 @@ if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
       console.log(
         "📋 [step4-tasklist] Chrome Storageに設定がないため、デフォルト設定を使用",
       );
+    }
+  });
+
+  // 回答待機時間設定の読み込み
+  chrome.storage.local.get("responseWaitConfig", (result) => {
+    if (result.responseWaitConfig) {
+      // Chrome Storageの設定で回答待機時間設定を上書き
+      Object.assign(BATCH_PROCESSING_CONFIG, result.responseWaitConfig);
+
+      console.log("⏱️ [step4-tasklist] 回答待機時間設定を読み込みました:", {
+        MAX_RESPONSE_WAIT_TIME:
+          BATCH_PROCESSING_CONFIG.MAX_RESPONSE_WAIT_TIME / 60000 + "分",
+        MAX_RESPONSE_WAIT_TIME_DEEP:
+          BATCH_PROCESSING_CONFIG.MAX_RESPONSE_WAIT_TIME_DEEP / 60000 + "分",
+        MAX_RESPONSE_WAIT_TIME_AGENT:
+          BATCH_PROCESSING_CONFIG.MAX_RESPONSE_WAIT_TIME_AGENT / 60000 + "分",
+        STOP_CHECK_INTERVAL:
+          BATCH_PROCESSING_CONFIG.STOP_CHECK_INTERVAL / 1000 + "秒",
+      });
     }
   });
 }

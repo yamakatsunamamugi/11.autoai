@@ -865,18 +865,71 @@ async function reportSelectorError(selectorKey, error, selectors) {
     }
   }
 
-  // 統一された待機時間設定を取得（Claudeと同じ方式）
-  const AI_WAIT_CONFIG = window.AI_WAIT_CONFIG || {
-    DEEP_RESEARCH_WAIT: 2400000, // 40分
-    NORMAL_WAIT: 300000, // 5分
+  // 統一された待機時間設定（デフォルト値）
+  let AI_WAIT_CONFIG = {
+    DEEP_RESEARCH_WAIT: 600000, // 10分（Deep Research）
+    AGENT_MODE_WAIT: 1800000, // 30分（エージェントモード）
+    NORMAL_WAIT: 300000, // 5分（通常処理）
     STOP_BUTTON_WAIT: 30000, // 30秒
-    CHECK_INTERVAL: 2000, // 2秒
+    CHECK_INTERVAL: 10000, // 10秒（Stop確認間隔）
     MICRO_WAIT: 100, // 100ms
     TINY_WAIT: 500, // 500ms
     SHORT_WAIT: 1000, // 1秒
     MEDIUM_WAIT: 2000, // 2秒
     LONG_WAIT: 3000, // 3秒
   };
+
+  // Chrome Storageから設定を読み込む
+  if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+    chrome.storage.local.get(
+      ["responseWaitConfig", "batchProcessingConfig"],
+      (result) => {
+        if (result.responseWaitConfig) {
+          // 回答待機時間設定を適用
+          AI_WAIT_CONFIG.NORMAL_WAIT =
+            result.responseWaitConfig.MAX_RESPONSE_WAIT_TIME ||
+            AI_WAIT_CONFIG.NORMAL_WAIT;
+          AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT =
+            result.responseWaitConfig.MAX_RESPONSE_WAIT_TIME_DEEP ||
+            AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT;
+          AI_WAIT_CONFIG.AGENT_MODE_WAIT =
+            result.responseWaitConfig.MAX_RESPONSE_WAIT_TIME_AGENT ||
+            AI_WAIT_CONFIG.AGENT_MODE_WAIT;
+          AI_WAIT_CONFIG.CHECK_INTERVAL =
+            result.responseWaitConfig.STOP_CHECK_INTERVAL ||
+            AI_WAIT_CONFIG.CHECK_INTERVAL;
+
+          console.log("⏱️ [ChatGPT] 回答待機時間設定を適用:", {
+            通常モード: AI_WAIT_CONFIG.NORMAL_WAIT / 60000 + "分",
+            DeepResearch: AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT / 60000 + "分",
+            エージェント: AI_WAIT_CONFIG.AGENT_MODE_WAIT / 60000 + "分",
+            Stop確認間隔: AI_WAIT_CONFIG.CHECK_INTERVAL / 1000 + "秒",
+          });
+        }
+
+        if (result.batchProcessingConfig) {
+          // バッチ処理設定から回答待機時間設定も読み込み（互換性のため）
+          if (!result.responseWaitConfig) {
+            AI_WAIT_CONFIG.NORMAL_WAIT =
+              result.batchProcessingConfig.MAX_RESPONSE_WAIT_TIME ||
+              AI_WAIT_CONFIG.NORMAL_WAIT;
+            AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT =
+              result.batchProcessingConfig.MAX_RESPONSE_WAIT_TIME_DEEP ||
+              AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT;
+            AI_WAIT_CONFIG.AGENT_MODE_WAIT =
+              result.batchProcessingConfig.MAX_RESPONSE_WAIT_TIME_AGENT ||
+              AI_WAIT_CONFIG.AGENT_MODE_WAIT;
+            AI_WAIT_CONFIG.CHECK_INTERVAL =
+              result.batchProcessingConfig.STOP_CHECK_INTERVAL ||
+              AI_WAIT_CONFIG.CHECK_INTERVAL;
+          }
+        }
+      },
+    );
+  }
+
+  // windowレベルでも公開（後方互換性）
+  window.AI_WAIT_CONFIG = AI_WAIT_CONFIG;
 
   // ========================================
   // Step 4-1-0: 固定UIセレクタ（UI_SELECTORS依存なし）
@@ -1063,9 +1116,13 @@ async function reportSelectorError(selectorKey, error, selectors) {
 
     // 停止ボタンが消えるまで待機（共通エラーハンドラー統合版）
     if (stopBtn) {
-      logWithTimestamp("停止ボタンが消えるまで待機（最大5分）", "info");
+      const maxWaitSeconds = AI_WAIT_CONFIG.NORMAL_WAIT / 1000;
+      logWithTimestamp(
+        `停止ボタンが消えるまで待機（最大${maxWaitSeconds / 60}分）`,
+        "info",
+      );
 
-      for (let i = 0; i < 300; i++) {
+      for (let i = 0; i < maxWaitSeconds; i++) {
         // 共通エラーハンドラーでエラー状態をチェック
         if (
           window.chatgptErrorHandler &&
@@ -1669,7 +1726,13 @@ async function reportSelectorError(selectorKey, error, selectors) {
   async function handleSpecialModeWaiting(featureName) {
     try {
       logWithTimestamp(`【${featureName}モード特別処理】開始`, "step");
-      logWithTimestamp("【Step 4-1-6-1】最大回答待機時間: 40分", "info");
+      const maxWaitTime = featureName.includes("エージェント")
+        ? AI_WAIT_CONFIG.AGENT_MODE_WAIT
+        : AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT;
+      logWithTimestamp(
+        `【Step 4-1-6-1】最大回答待機時間: ${maxWaitTime / 60000}分`,
+        "info",
+      );
 
       // ステップ6-1: 停止ボタン出現待機
       let stopBtn = await waitForStopButton();
@@ -1683,8 +1746,8 @@ async function reportSelectorError(selectorKey, error, selectors) {
         await retryWithPrompt();
       }
 
-      // ステップ6-4: 最終待機（最大40分）
-      await finalWaitForCompletion();
+      // ステップ6-4: 最終待機
+      await finalWaitForCompletion(maxWaitTime);
 
       logWithTimestamp(`${featureName}モード特別処理完了`, "success");
       return true;
@@ -1780,9 +1843,15 @@ async function reportSelectorError(selectorKey, error, selectors) {
   }
 
   // 6-4: 最終待機処理
-  async function finalWaitForCompletion() {
-    logWithTimestamp("【Step 4-1-6-4】最終待機（最大40分）", "step");
-    const maxWaitTime = AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT / 1000;
+  async function finalWaitForCompletion(maxWaitTimeMs) {
+    const maxWaitMinutes =
+      (maxWaitTimeMs || AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT) / 60000;
+    logWithTimestamp(
+      `【Step 4-1-6-4】最終待機（最大${maxWaitMinutes}分）`,
+      "step",
+    );
+    const maxWaitTime =
+      (maxWaitTimeMs || AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT) / 1000;
     let consecutiveAbsent = 0;
 
     for (let i = 0; i < maxWaitTime; i++) {
@@ -1803,7 +1872,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
 
       if (i % 60 === 0 && i > 0) {
         logWithTimestamp(
-          `待機中... (${Math.floor(i / 60)}分経過 / 最大40分)`,
+          `待機中... (${Math.floor(i / 60)}分経過 / 最大${maxWaitMinutes}分)`,
           "info",
         );
       }
@@ -1961,10 +2030,10 @@ async function reportSelectorError(selectorKey, error, selectors) {
    * ⏳ ChatGPTレスポンス待機処理
    * @description ChatGPTのレスポンス生成完了まで待機（停止ボタンの消失を監視）
    * @returns {Promise<boolean>} 待機完了フラグ
-   * @throws {Error} タイムアウト（2分）の場合
+   * @throws {Error} タイムアウトの場合
    */
   async function waitForResponseChatGPT() {
-    const maxWaitTime = 600000; // 10分（通常処理に合わせて調整）
+    const maxWaitTime = AI_WAIT_CONFIG.NORMAL_WAIT; // 設定から取得
     const checkInterval = 1000;
     let elapsedTime = 0;
 
@@ -2863,10 +2932,11 @@ async function reportSelectorError(selectorKey, error, selectors) {
           await sleep(1000);
         }
 
-        // 停止ボタンが消えるまで待機（最大5分）
+        // 停止ボタンが消えるまで待機
         if (stopBtn) {
+          const maxWaitSeconds = AI_WAIT_CONFIG.NORMAL_WAIT / 1000;
           logWithTimestamp("応答生成を待機中...", "info");
-          for (let i = 0; i < 300; i++) {
+          for (let i = 0; i < maxWaitSeconds; i++) {
             stopBtn = await findElement(SELECTORS.stopButton, "停止ボタン", 1);
             if (!stopBtn) {
               logWithTimestamp("✅ 応答生成完了", "success");

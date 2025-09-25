@@ -272,6 +272,93 @@
         </div>
       </section>
 
+      <!-- 回答待機時間設定セクション -->
+      <section class="step-section">
+        <div class="step-header">
+          <span class="step-number">⏱️</span>
+          <h2>回答待機時間設定</h2>
+        </div>
+        <div class="step-content">
+          <p class="test-description">AIの回答生成待機時間を調整できます</p>
+
+          <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+            <!-- 通常モードの最大待機時間 -->
+            <div style="margin-bottom: 20px;">
+              <label style="font-weight: 600;">
+                📝 通常モード最大待機時間:
+                <span id="normalWaitValue" style="color: #007bff;">5分</span>
+              </label>
+              <input type="range" id="normalWaitTime" min="60000" max="600000" step="60000" value="300000"
+                     style="width: 100%; margin-top: 5px;">
+              <div style="display: flex; justify-content: space-between; font-size: 11px; color: #666;">
+                <span>1分</span>
+                <span>5分（推奨）</span>
+                <span>10分</span>
+              </div>
+            </div>
+
+            <!-- DeepResearchモードの最大待機時間 -->
+            <div style="margin-bottom: 20px;">
+              <label style="font-weight: 600;">
+                🔬 DeepResearchモード最大待機時間:
+                <span id="deepWaitValue" style="color: #007bff;">10分</span>
+              </label>
+              <input type="range" id="deepWaitTime" min="300000" max="1800000" step="60000" value="600000"
+                     style="width: 100%; margin-top: 5px;">
+              <div style="display: flex; justify-content: space-between; font-size: 11px; color: #666;">
+                <span>5分</span>
+                <span>10分（推奨）</span>
+                <span>30分</span>
+              </div>
+            </div>
+
+            <!-- エージェントモードの最大待機時間 -->
+            <div style="margin-bottom: 20px;">
+              <label style="font-weight: 600;">
+                🤖 エージェントモード最大待機時間:
+                <span id="agentWaitValue" style="color: #007bff;">30分</span>
+              </label>
+              <input type="range" id="agentWaitTime" min="600000" max="3600000" step="300000" value="1800000"
+                     style="width: 100%; margin-top: 5px;">
+              <div style="display: flex; justify-content: space-between; font-size: 11px; color: #666;">
+                <span>10分</span>
+                <span>30分（推奨）</span>
+                <span>60分</span>
+              </div>
+            </div>
+
+            <!-- Stop生成ボタン確認間隔 -->
+            <div>
+              <label style="font-weight: 600;">
+                🛑 Stop生成ボタン確認間隔:
+                <span id="stopCheckValue" style="color: #28a745;">10秒</span>
+              </label>
+              <input type="range" id="stopCheckInterval" min="5000" max="30000" step="5000" value="10000"
+                     style="width: 100%; margin-top: 5px;">
+              <div style="display: flex; justify-content: space-between; font-size: 11px; color: #666;">
+                <span>5秒（高頻度）</span>
+                <span>10秒（推奨）</span>
+                <span>30秒（低頻度）</span>
+              </div>
+              <div style="margin-top: 5px; font-size: 11px; color: #888;">
+                ※ 頻度を上げると負荷が高くなりますが、回答完了の検知が早くなります
+              </div>
+            </div>
+          </div>
+
+          <!-- 保存ボタン -->
+          <div style="display: flex; align-items: center; gap: 15px;">
+            <button id="saveResponseWaitBtn" class="btn btn-primary" style="padding: 10px 20px;">
+              <span>💾 設定を保存</span>
+            </button>
+            <span id="responseWaitStatus" style="color: #28a745; font-size: 14px; display: none;">✅ 保存しました</span>
+          </div>
+          <div style="margin-top: 10px; font-size: 12px; color: #666;">
+            ※ 変更は次回の処理開始時から適用されます
+          </div>
+        </div>
+      </section>
+
       <!-- AIテスト機能セクション -->
       <section class="step-section">
         <div class="step-header">
@@ -494,6 +581,9 @@
 
   <!-- バッチ処理モード設定管理スクリプト -->
   <script type="module" src="batch-mode-settings-ui.js"></script>
+
+  <!-- 回答待機時間設定管理スクリプト -->
+  <script type="module" src="response-wait-settings-ui.js"></script>
 
   <!-- 統合されたUIコントローラー -->
   <script type="module" src="step0-ui-controller.js"></script>

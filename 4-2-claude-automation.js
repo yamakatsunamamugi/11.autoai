@@ -890,17 +890,80 @@
       },
     };
 
-    // AI待機設定
-    const AI_WAIT_CONFIG = window.AI_WAIT_CONFIG || {
+    // AI待機設定（デフォルト値）
+    let AI_WAIT_CONFIG = {
       INITIAL_WAIT: 30000,
-      MAX_WAIT: 1800000, // 30分（通常処理）
-      CHECK_INTERVAL: 2000,
-      DEEP_RESEARCH_WAIT: 2400000, // 40分（Deep Research/エージェント）
+      MAX_WAIT: 300000, // 5分（通常処理）
+      CHECK_INTERVAL: 10000, // Stop確認間隔: 10秒
+      DEEP_RESEARCH_WAIT: 600000, // 10分（Deep Research）
+      AGENT_MODE_WAIT: 1800000, // 30分（エージェントモード）
       SHORT_WAIT: 1000,
       MEDIUM_WAIT: 2000,
       STOP_BUTTON_INITIAL_WAIT: 30000,
       STOP_BUTTON_DISAPPEAR_WAIT: 300000,
     };
+
+    // Chrome Storageから設定を読み込む
+    if (
+      typeof chrome !== "undefined" &&
+      chrome.storage &&
+      chrome.storage.local
+    ) {
+      chrome.storage.local.get(
+        ["responseWaitConfig", "batchProcessingConfig"],
+        (result) => {
+          if (result.responseWaitConfig) {
+            // 回答待機時間設定を適用
+            AI_WAIT_CONFIG.MAX_WAIT =
+              result.responseWaitConfig.MAX_RESPONSE_WAIT_TIME ||
+              AI_WAIT_CONFIG.MAX_WAIT;
+            AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT =
+              result.responseWaitConfig.MAX_RESPONSE_WAIT_TIME_DEEP ||
+              AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT;
+            AI_WAIT_CONFIG.AGENT_MODE_WAIT =
+              result.responseWaitConfig.MAX_RESPONSE_WAIT_TIME_AGENT ||
+              AI_WAIT_CONFIG.AGENT_MODE_WAIT;
+            AI_WAIT_CONFIG.CHECK_INTERVAL =
+              result.responseWaitConfig.STOP_CHECK_INTERVAL ||
+              AI_WAIT_CONFIG.CHECK_INTERVAL;
+            AI_WAIT_CONFIG.STOP_BUTTON_DISAPPEAR_WAIT =
+              result.responseWaitConfig.MAX_RESPONSE_WAIT_TIME ||
+              AI_WAIT_CONFIG.STOP_BUTTON_DISAPPEAR_WAIT;
+
+            log.info("⏱️ [Claude] 回答待機時間設定を適用:", {
+              通常モード: AI_WAIT_CONFIG.MAX_WAIT / 60000 + "分",
+              DeepResearch: AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT / 60000 + "分",
+              エージェント: AI_WAIT_CONFIG.AGENT_MODE_WAIT / 60000 + "分",
+              Stop確認間隔: AI_WAIT_CONFIG.CHECK_INTERVAL / 1000 + "秒",
+            });
+          }
+
+          if (result.batchProcessingConfig) {
+            // バッチ処理設定から回答待機時間設定も読み込み（互換性のため）
+            if (!result.responseWaitConfig) {
+              AI_WAIT_CONFIG.MAX_WAIT =
+                result.batchProcessingConfig.MAX_RESPONSE_WAIT_TIME ||
+                AI_WAIT_CONFIG.MAX_WAIT;
+              AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT =
+                result.batchProcessingConfig.MAX_RESPONSE_WAIT_TIME_DEEP ||
+                AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT;
+              AI_WAIT_CONFIG.AGENT_MODE_WAIT =
+                result.batchProcessingConfig.MAX_RESPONSE_WAIT_TIME_AGENT ||
+                AI_WAIT_CONFIG.AGENT_MODE_WAIT;
+              AI_WAIT_CONFIG.CHECK_INTERVAL =
+                result.batchProcessingConfig.STOP_CHECK_INTERVAL ||
+                AI_WAIT_CONFIG.CHECK_INTERVAL;
+              AI_WAIT_CONFIG.STOP_BUTTON_DISAPPEAR_WAIT =
+                result.batchProcessingConfig.MAX_RESPONSE_WAIT_TIME ||
+                AI_WAIT_CONFIG.STOP_BUTTON_DISAPPEAR_WAIT;
+            }
+          }
+        },
+      );
+    }
+
+    // windowレベルでも公開（後方互換性）
+    window.AI_WAIT_CONFIG = AI_WAIT_CONFIG;
 
     // スクリプトの読み込み時間を記録
     const scriptLoadTime = Date.now();
@@ -4108,10 +4171,10 @@
           }
         }
 
-        // Claude-ステップ6-1-5: 回答停止ボタンが10秒間消滅するまで待機
+        // Claude-ステップ6-1-5: 回答停止ボタンが指定秒間消滅するまで待機
         if (stopButtonFound) {
           log.debug(
-            "\n【Claude-ステップ6-5】回答停止ボタンが10秒間消滅するまで待機",
+            `\n【Claude-ステップ6-5】回答停止ボタンが${AI_WAIT_CONFIG.CHECK_INTERVAL / 1000}秒間消滅するまで待機`,
           );
           let stopButtonGone = false;
           let disappearWaitCount = 0;
@@ -4126,11 +4189,12 @@
             );
 
             if (!stopResult) {
-              // 10秒間確認
+              // Stop確認間隔で確認
+              const checkIntervalSeconds = AI_WAIT_CONFIG.CHECK_INTERVAL / 1000;
               let confirmCount = 0;
               let stillGone = true;
 
-              while (confirmCount < 10) {
+              while (confirmCount < checkIntervalSeconds) {
                 await wait(1000);
                 const checkResult = await findClaudeElement(
                   deepResearchSelectors["3_回答停止ボタン"],
@@ -6088,9 +6152,15 @@
                 true,
               );
               if (!stopResult) {
-                // 10秒間確認
+                // Stop確認間隔で確認
+                const checkIntervalSeconds =
+                  AI_WAIT_CONFIG.CHECK_INTERVAL / 1000;
                 let stillGone = true;
-                for (let confirmCount = 0; confirmCount < 10; confirmCount++) {
+                for (
+                  let confirmCount = 0;
+                  confirmCount < checkIntervalSeconds;
+                  confirmCount++
+                ) {
                   await wait(1000);
                   const reconfirmResult = await findClaudeElement(
                     deepResearchSelectors["3_回答停止ボタン"],
