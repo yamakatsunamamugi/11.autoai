@@ -97,6 +97,48 @@ class SimpleSheetsClient {
 
     const urlEndIndex = urlStartIndex + linkUrl.length;
 
+    // シートIDを取得
+    let sheetId = 0; // デフォルト値
+    if (sheetMatch && sheetMatch[1]) {
+      const sheetName = sheetMatch[1];
+      try {
+        // メタデータを取得してシートIDを検索
+        const token = await this.getAuthToken();
+        const metadataUrl = `${this.baseUrl}/${spreadsheetId}`;
+        const metadataResponse = await fetch(metadataUrl, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (metadataResponse.ok) {
+          const metadata = await metadataResponse.json();
+          const sheet = metadata.sheets?.find(
+            (s) => s.properties.title === sheetName,
+          );
+          if (sheet) {
+            sheetId = sheet.properties.sheetId;
+            console.log(`✅ シートID取得成功: "${sheetName}" → ID: ${sheetId}`);
+          } else {
+            console.warn(
+              `⚠️ シート名 "${sheetName}" が見つからず、デフォルト値0を使用`,
+            );
+          }
+        } else {
+          console.warn("⚠️ シートメタデータ取得失敗、デフォルト値0を使用");
+        }
+      } catch (error) {
+        console.warn(
+          "⚠️ シートID取得エラー、デフォルト値0を使用:",
+          error.message,
+        );
+      }
+    } else {
+      console.log(
+        "💡 シート名が指定されていないため、デフォルトシート(ID: 0)を使用",
+      );
+    }
+
     const requests = [
       {
         updateCells: {
@@ -131,7 +173,7 @@ class SimpleSheetsClient {
           ],
           fields: "userEnteredValue,textFormatRuns",
           range: {
-            sheetId: 0, // デフォルトシートを使用
+            sheetId: sheetId, // 動的に取得したシートIDを使用
             startRowIndex: row,
             endRowIndex: row + 1,
             startColumnIndex: col,
