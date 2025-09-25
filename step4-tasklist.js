@@ -7975,6 +7975,16 @@ async function executeStep4(taskList) {
           `🔄 [Execute Task] タブ準備完了待機開始: tabId=${tabId}`,
         );
         const tab = await windowController.waitForTabReady(tabId, 10, 1000);
+
+        // タブがnullの場合の処理
+        if (!tab) {
+          ExecuteLogger.error(
+            `❌ [Execute Task] タブ ${tabId} が取得できませんでした（削除済みまたは無効）`,
+          );
+          reject(new Error(`タブID ${tabId} が無効または削除済みです`));
+          return;
+        }
+
         ExecuteLogger.info(`✅ [Execute Task] タブ準備完了:`, {
           tabId: tab.id,
           status: tab.status,
@@ -8178,7 +8188,21 @@ async function executeStep4(taskList) {
               }
 
               // 注入前にタブ情報を確認して正しいタブか検証
-              const tabInfo = await chrome.tabs.get(tabId);
+              let tabInfo;
+              try {
+                tabInfo = await chrome.tabs.get(tabId);
+                if (!tabInfo) {
+                  throw new Error(`タブID ${tabId} が見つかりません`);
+                }
+              } catch (tabError) {
+                ExecuteLogger.error(`❌ [Content Script注入] タブ取得エラー:`, {
+                  tabId: tabId,
+                  error: tabError.message,
+                });
+                throw new Error(
+                  `タブID ${tabId} が無効または削除済みです: ${tabError.message}`,
+                );
+              }
               const tabInfoDetails = {
                 tabId: tabId,
                 url: tabInfo.url,
