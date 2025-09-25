@@ -243,12 +243,28 @@ class DynamicTaskSearch {
     log.info("🔍 次のタスク検索開始");
 
     try {
-      // 【修正】統一管理システムから現在のグループ情報を取得
-      const currentGroup = window.getCurrentGroup
-        ? window.getCurrentGroup()
-        : window.globalState?.currentGroup;
+      // 【修正】統一管理システムから現在のグループ番号を取得し、詳細情報を参照
+      const currentGroupNumber = window.getCurrentGroup
+        ? window.getCurrentGroup()?.groupNumber
+        : window.globalState?.currentGroup?.groupNumber;
+
+      if (!currentGroupNumber) {
+        log.warn("⚠️ 現在のグループ番号が見つかりません");
+        return null;
+      }
+
+      // 詳細なグループ情報をtaskGroupsから取得
+      const currentGroup = window.globalState?.taskGroups?.find(
+        (g) => g.groupNumber === currentGroupNumber,
+      );
+
       if (!currentGroup) {
-        log.warn("⚠️ 現在のグループ情報が見つかりません");
+        log.warn("⚠️ 詳細なグループ情報が見つかりません", {
+          currentGroupNumber,
+          availableGroups: window.globalState?.taskGroups?.map(
+            (g) => g.groupNumber,
+          ),
+        });
         return null;
       }
 

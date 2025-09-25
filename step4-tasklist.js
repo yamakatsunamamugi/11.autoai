@@ -6305,8 +6305,19 @@ class TaskStatusManager {
       );
 
       // 作業中マーカーのみ削除（それ以外は保護）
-      if (!currentValue || typeof currentValue !== "string") {
+      if (!currentValue) {
         ExecuteLogger.info(`🔍 [SAFE-CLEAR] ${range}: 空またはnull - スキップ`);
+        return;
+      }
+
+      if (typeof currentValue !== "string") {
+        ExecuteLogger.warn(
+          `⚠️ [SAFE-CLEAR] ${range}: 文字列以外の値を検出 - タイプ: ${typeof currentValue}`,
+          {
+            値: JSON.stringify(currentValue),
+            範囲: range,
+          },
+        );
         return;
       }
 
@@ -6314,7 +6325,11 @@ class TaskStatusManager {
         ExecuteLogger.warn(
           `⚠️ [SAFE-CLEAR] ${range}: 作業中マーカーではない値を保護`,
           {
-            値の先頭50文字: currentValue.substring(0, 50),
+            値の先頭50文字:
+              typeof currentValue === "string"
+                ? currentValue.substring(0, 50)
+                : JSON.stringify(currentValue).substring(0, 50),
+            値の型: typeof currentValue,
             範囲: range,
           },
         );
@@ -6324,7 +6339,10 @@ class TaskStatusManager {
       // 作業中マーカーのみクリア
       await window.simpleSheetsClient.updateValue(spreadsheetId, range, "");
       ExecuteLogger.info(`🧹 [SAFE-CLEAR] 作業中マーカーをクリア: ${range}`, {
-        削除された値: currentValue.substring(0, 100),
+        削除された値:
+          typeof currentValue === "string"
+            ? currentValue.substring(0, 100)
+            : JSON.stringify(currentValue).substring(0, 100),
       });
     } catch (error) {
       ExecuteLogger.error(

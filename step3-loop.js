@@ -1874,20 +1874,24 @@ async function checkCompletionStatus(taskGroup) {
     if (taskGroup.groupNumber === 2) {
       console.error(
         `🚨 [GROUP-2-DEBUG] グループ2完了判定詳細（ここに到達すること自体が意外）:`,
-        {
-          groupNumber: taskGroup.groupNumber,
-          promptCount: promptCount,
-          answerCount: answerCount,
-          isComplete: isComplete,
-          promptRange: promptRange,
-          answerRange: answerRange,
-          columns: taskGroup.columns,
-          dataStartRow: taskGroup.dataStartRow,
-          blankTasksFound: blankTasks.length,
-          completedTasksFound: completedTasks.length,
-          判定時刻: new Date().toISOString(),
-          重要: "このログが出力される場合、shouldSkipGroupProcessingの修正が効いている",
-        },
+        JSON.stringify(
+          {
+            groupNumber: taskGroup.groupNumber,
+            promptCount: promptCount,
+            answerCount: answerCount,
+            isComplete: isComplete,
+            promptRange: promptRange,
+            answerRange: answerRange,
+            columns: taskGroup.columns,
+            dataStartRow: taskGroup.dataStartRow,
+            blankTasksFound: blankTasks.length,
+            completedTasksFound: completedTasks.length,
+            判定時刻: new Date().toISOString(),
+            重要: "このログが出力される場合、shouldSkipGroupProcessingの修正が効いている",
+          },
+          null,
+          2,
+        ),
       );
 
       // グループ2で未処理タスクがあるのに完了判定される場合は強制的にfalseを返す
@@ -1906,6 +1910,17 @@ async function checkCompletionStatus(taskGroup) {
       if (completedTasks.length < actualTaskCount) {
         console.error(
           `🚨 [GROUP-2-FIX] グループ2の完了タスク数が不足(${completedTasks.length}/${actualTaskCount})、未完了に設定`,
+          JSON.stringify(
+            {
+              完了タスクリスト: completedTasks.map((t) =>
+                typeof t === "object" ? JSON.stringify(t) : t,
+              ),
+              実際のタスク数: actualTaskCount,
+              判定時刻: new Date().toISOString(),
+            },
+            null,
+            2,
+          ),
         );
         return false;
       }
@@ -2240,19 +2255,26 @@ async function executeStep3AllGroups() {
 
     // 🔍 【検証用ログ】Group 2の実データ詳細確認
     if (taskGroup.groupNumber === 2) {
-      log.error("🚨 [GROUP-2-DATA] Group 2実データ検証ログ:", {
-        groupNumber: taskGroup.groupNumber,
-        fullTaskGroup: taskGroup,
-        columns: taskGroup.columns,
-        dataStartRow: taskGroup.dataStartRow,
-        expectedRange: "W~Y列（31-36行）",
-        expectedTasks: 6,
-        期待される列構成: {
-          prompts: "W列あたり",
-          answer: "X, Y列あたり",
-        },
-        検証開始時刻: new Date().toISOString(),
-      });
+      log.error(
+        "🚨 [GROUP-2-DATA] Group 2実データ検証ログ:",
+        JSON.stringify(
+          {
+            groupNumber: taskGroup.groupNumber,
+            fullTaskGroup: taskGroup,
+            columns: taskGroup.columns,
+            dataStartRow: taskGroup.dataStartRow,
+            expectedRange: "W~Y列（31-36行）",
+            expectedTasks: 6,
+            期待される列構成: {
+              prompts: "W列あたり",
+              answer: "X, Y列あたり",
+            },
+            検証開始時刻: new Date().toISOString(),
+          },
+          null,
+          2,
+        ),
+      );
     }
 
     // 【追加】DynamicSearchとの協調チェック：スキップ判定
