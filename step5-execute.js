@@ -193,6 +193,235 @@ class SimpleSheetsClientStep5 {
   createRangeFromCell(sheetName, column, row) {
     return `'${sheetName}'!${column}${row}`;
   }
+
+  /**
+   * リッチテキストでセルを更新（リンクを含むテキスト）
+   * @param {string} spreadsheetId - スプレッドシートID
+   * @param {string} range - 更新する範囲（例: "B5"）
+   * @param {Array<Object>} richTextData - リッチテキストデータの配列
+   *   [{text: "通常テキスト"}, {text: "リンクテキスト", url: "https://example.com"}, ...]
+   * @returns {Promise<Object>} 更新結果
+   */
+  async updateCellWithRichText(spreadsheetId, range, richTextData) {
+    const token = await this.getAuthToken();
+
+    // フルテキストとテキスト書式設定を構築
+    let fullText = "";
+    const textFormatRuns = [];
+    richTextData.forEach((item) => {
+      const startIndex = fullText.length;
+      fullText += item.text || "";
+
+      if (item.url) {
+        // リンクの書式設定
+        textFormatRuns.push({
+          startIndex,
+          endIndex: fullText.length,
+          format: {
+            foregroundColor: {
+              red: 0.0,
+              green: 0.0,
+              blue: 1.0,
+            },
+            underline: true,
+            link: {
+              uri: item.url,
+            },
+          },
+        });
+      }
+    });
+
+    // シート名とセル位置を解析
+    const [sheetPart, cellPart] = range.includes("!")
+      ? range.split("!")
+      : ["Sheet1", range];
+
+    const sheetName = sheetPart.replace(/^'|'$/g, ""); // シングルクォート除去
+
+    // セル位置を行と列に分解（例：A5 -> row=4, col=0）
+    const match = cellPart.match(/([A-Z]+)(\d+)/);
+    if (!match) {
+      throw new Error(`無効なセル参照: ${cellPart}`);
+    }
+
+    const columnStr = match[1];
+    const rowNumber = parseInt(match[2], 10) - 1; // 0ベース
+    const columnIndex = columnStr
+      .split("")
+      .reduce((acc, char) => acc * 26 + char.charCodeAt(0) - 65, 0);
+
+    // シートIDを動的に取得
+    let sheetId = 0;
+    try {
+      // まずGIDから取得を試行
+      if (
+        window.globalState?.gid !== undefined &&
+        window.globalState?.gid !== null
+      ) {
+        const gidValue = window.globalState.gid;
+        if (typeof gidValue === "string" && gidValue.trim() !== "") {
+          sheetId = parseInt(gidValue, 10);
+        } else if (typeof gidValue === "number") {
+          sheetId = gidValue;
+        }
+        ExecuteLogger.info(
+          `📊 [SimpleSheetsClientStep5] 取得したシートID: ${sheetId} (元値: ${gidValue})`,
+        );
+      } else {
+        // スプレッドシートメタデータから最初のシートのIDを取得
+        const metadataUrl = `${this.baseUrl}/${spreadsheetId}?fields=sheets.properties.sheetId,sheets.properties.title`;
+        const token = await this.getAuthToken();
+
+        const metadataResponse = await fetch(metadataUrl, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (metadataResponse.ok) {
+          const metadata = await metadataResponse.json();
+          if (metadata.sheets && metadata.sheets.length > 0) {
+            sheetId = metadata.sheets[0].properties.sheetId;
+            ExecuteLogger.info(
+              `📊 [SimpleSheetsClientStep5] メタデータから取得したシートID: ${sheetId}`,
+            );
+          }
+        } else {
+          ExecuteLogger.warn(
+            "⚠️ スプレッドシートメタデータ取得失敗、デフォルト値0を使用",
+          );
+        }
+      }
+    } catch (error) {
+      ExecuteLogger.warn("⚠️ シートID取得エラー、デフォルト値0を使用:", error);
+      sheetId = 0;
+    }
+
+    const requestBody = {
+      requests: [
+        {
+          updateCells: {
+            range: {
+              sheetId: sheetId,
+              startRowIndex: rowNumber,
+              endRowIndex: rowNumber + 1,
+              startColumnIndex: columnIndex,
+              endColumnIndex: columnIndex + 1,
+            },
+            rows: [
+              {
+                values: [
+                  {
+                    userEnteredValue: {
+                      stringValue: fullText,
+                    },
+                    textFormatRuns: textFormatRuns,
+                  },
+                ],
+              },
+            ],
+            fields: "userEnteredValue,textFormatRuns",
+          },
+        },
+      ],
+    };
+
+    const response = await fetch(
+      `${this.baseUrl}/${spreadsheetId}:batchUpdate`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+      },
+    );
+
+    if (!response.ok) {
+      let errorDetails = { error: { message: "Unknown error" } };
+      try {
+        const errorText = await response.text();
+        if (errorText.trim()) {
+          errorDetails = JSON.parse(errorText);
+        }
+      } catch (parseError) {
+        ExecuteLogger.warn("⚠️ エラーレスポンスの解析失敗:", parseError);
+      }
+
+      ExecuteLogger.error(
+        `❌ [SimpleSheetsClientStep5] updateCellWithRichText失敗 (HTTP ${response.status}):`,
+        errorDetails,
+      );
+
+      throw new Error(
+        `Sheets API batchUpdate error: ${errorDetails.error?.message || "Unknown error"} (Status: ${response.status})`,
+      );
+    }
+
+    const result = await response.json();
+    ExecuteLogger.info(
+      `✅ [SimpleSheetsClientStep5] updateCellWithRichText成功:`,
+      {
+        range,
+        updatedCells: result.replies?.[0]?.updateCells?.updatedCells,
+      },
+    );
+
+    return result;
+  }
+
+  /**
+   * ログテキストをリッチテキストデータに変換
+   * @param {string} logText - ログテキスト
+   * @returns {Array<Object>} リッチテキストデータの配列
+   */
+  parseLogToRichText(logText) {
+    const richTextData = [];
+    const lines = logText.split("\n");
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+
+      // URL行を検出（"URL: "で始まる行）
+      if (line.startsWith("URL: ")) {
+        // "URL: "部分を追加
+        richTextData.push({ text: "URL: " });
+
+        // URL部分を抽出
+        const urlPart = line.substring(5);
+        const urlMatch = urlPart.match(/(https?:\/\/[^\s]+)/);
+
+        if (urlMatch) {
+          // URLをリンクとして追加
+          richTextData.push({
+            text: urlMatch[1],
+            url: urlMatch[1],
+          });
+
+          // URL以降の残りのテキストがあれば追加
+          const remaining = urlPart.substring(urlMatch[1].length);
+          if (remaining) {
+            richTextData.push({ text: remaining });
+          }
+        } else {
+          // URLが見つからない場合は通常テキストとして追加
+          richTextData.push({ text: urlPart });
+        }
+      } else {
+        // 通常の行はそのまま追加
+        richTextData.push({ text: line });
+      }
+
+      // 改行を追加（最後の行以外）
+      if (i < lines.length - 1) {
+        richTextData.push({ text: "\n" });
+      }
+    }
+
+    return richTextData;
+  }
 }
 
 // グローバルインスタンス
@@ -605,18 +834,56 @@ class DetailedLogManager {
       // ログフォーマット
       const logText = this.formatLog(log);
 
-      // スプレッドシート更新
-      const updateResult = await window.simpleSheetsClient.updateValue(
-        spreadsheetId,
-        cellRef,
-        logText,
-      );
+      // URLが含まれている場合はリッチテキストで書き込み
+      if (log.aiUrl && logText.includes("URL: ")) {
+        ExecuteLogger.info(
+          `🔗 [DetailedLogManager] リッチテキスト形式でログ書き込み: ${cellRef}`,
+        );
 
-      ExecuteLogger.info(
-        `📊 ログ書き込み完了: ${cellRef} → 実際: ${updateResult?.updatedRange || cellRef}`,
-      );
+        // リッチテキストデータに変換
+        const richTextData =
+          window.simpleSheetsClientStep5.parseLogToRichText(logText);
+
+        // リッチテキストで書き込み
+        const updateResult =
+          await window.simpleSheetsClientStep5.updateCellWithRichText(
+            spreadsheetId,
+            cellRef,
+            richTextData,
+          );
+
+        ExecuteLogger.info(`✅ リッチテキストログ書き込み完了: ${cellRef}`);
+      } else {
+        // URLが含まれていない場合は従来通りプレーンテキスト
+        const updateResult = await window.simpleSheetsClient.updateValue(
+          spreadsheetId,
+          cellRef,
+          logText,
+        );
+
+        ExecuteLogger.info(
+          `📊 プレーンテキストログ書き込み完了: ${cellRef} → 実際: ${updateResult?.updatedRange || cellRef}`,
+        );
+      }
     } catch (error) {
       ExecuteLogger.error(`❌ ログ書き込みエラー: ${cellRef}`, error);
+
+      // リッチテキストで失敗した場合はフォールバックでプレーンテキスト
+      try {
+        ExecuteLogger.warn("⚠️ フォールバック: プレーンテキストでリトライ");
+        const logText = this.formatLog(log);
+        await window.simpleSheetsClient.updateValue(
+          spreadsheetId,
+          cellRef,
+          logText,
+        );
+        ExecuteLogger.info(`✅ フォールバックでログ書き込み完了: ${cellRef}`);
+      } catch (fallbackError) {
+        ExecuteLogger.error(
+          `❌ フォールバックも失敗: ${cellRef}`,
+          fallbackError,
+        );
+      }
     }
   }
 

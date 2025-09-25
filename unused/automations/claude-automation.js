@@ -1965,51 +1965,138 @@
     };
 
     /**
-     * 思考プロセス除外の強化
-     * 【動作説明】思考プロセス要素を確実に除外
+     * 思考プロセス・ユーザーメッセージ除外の完全版
+     * 【動作説明】精密なパターンマッチングで思考プロセス要素とユーザーメッセージ要素を確実に除外
      * 【引数】element: チェック対象の要素
      * 【戻り値】Element or null: クリーンな要素
+     * 【更新】2024年版Claude UIの正確な構造に対応
      */
     const excludeThinkingProcess = (element) => {
         if (!element) return null;
 
-        console.log('🧹 [excludeThinkingProcess] 思考プロセス除外チェック');
+        console.log('🧹 [excludeThinkingProcess] 思考プロセス・ユーザーメッセージ除外チェック (v2024)');
 
-        // 思考プロセスインジケータ
-        const thinkingIndicators = [
-            '.ease-out.rounded-lg',
-            '[class*="thinking-process"]',
-        ];
+        // Phase 1: 属性ベース検出（最優先）
+        console.log('  Phase 1: 属性ベース検出');
 
-        // 親要素に思考プロセスが含まれていないか確認
-        for (const indicator of thinkingIndicators) {
-            try {
-                if (element.closest(indicator)) {
-                    console.log(`  ⚠️ 思考プロセス要素を検出: ${indicator}`);
-                    return null;
-                }
-            } catch (e) {
-                // セレクタエラーをスキップ
-            }
-        }
-
-        // 要素のクラスをチェック
-        const classNames = element.className || '';
-        if (classNames.includes('thinking') || classNames.includes('thought')) {
-            console.log('  ⚠️ 思考プロセスクラスを検出');
+        // ユーザーメッセージの検出
+        const dataTestId = element.getAttribute('data-testid') || '';
+        if (dataTestId === 'user-message') {
+            console.log('    ⚠️ ユーザーメッセージ要素を検出 (data-testid="user-message")');
             return null;
         }
 
-        // ボタンテキストのチェック
-        const buttons = element.querySelectorAll('button');
-        for (const btn of buttons) {
-            if (btn.textContent && btn.textContent.includes('思考プロセス')) {
-                console.log('  ⚠️ 思考プロセスボタンを検出');
+        // 親要素のdata-testid確認
+        const userMessageParent = element.closest('[data-testid="user-message"]');
+        if (userMessageParent) {
+            console.log('    ⚠️ ユーザーメッセージの子要素を検出');
+            return null;
+        }
+
+        // Phase 2: 複合クラス検出（高優先）
+        console.log('  Phase 2: 複合クラス検出');
+
+        const classNames = element.className || '';
+
+        // ユーザーメッセージのフォントクラス
+        if (classNames.includes('font-user-message')) {
+            console.log('    ⚠️ ユーザーメッセージフォント要素を検出 (font-user-message)');
+            return null;
+        }
+
+        // 思考プロセスの特徴的クラス組み合わせ
+        const hasEaseOut = classNames.includes('ease-out');
+        const hasRoundedLg = classNames.includes('rounded-lg');
+        const hasBorder05 = classNames.includes('border-0.5');
+        const hasMinHeight = classNames.includes('min-h-[2.625rem]');
+
+        if ((hasEaseOut && hasRoundedLg && hasBorder05) || hasMinHeight) {
+            console.log('    ⚠️ 思考プロセス複合クラス要素を検出');
+            console.log(`      ease-out: ${hasEaseOut}, rounded-lg: ${hasRoundedLg}, border-0.5: ${hasBorder05}, min-h: ${hasMinHeight}`);
+            return null;
+        }
+
+        // 親要素の複合クラス確認
+        try {
+            const thinkingProcessParent = element.closest('.ease-out.rounded-lg[class*="border-0.5"], [class*="min-h-[2.625rem]"]');
+            if (thinkingProcessParent) {
+                console.log('    ⚠️ 思考プロセス要素の子要素を検出');
+                return null;
+            }
+        } catch (e) {
+            // CSS セレクタエラーをスキップ
+        }
+
+        // Phase 3: 構造的検出（中優先）
+        console.log('  Phase 3: 構造的検出');
+
+        // group/rowボタンの検出
+        const groupRowButtons = element.querySelectorAll('button[class*="group/row"]');
+        if (groupRowButtons.length > 0) {
+            console.log('    ⚠️ group/rowボタンを含む要素を検出（思考プロセス候補）');
+
+            // さらに詳細な検証
+            for (const btn of groupRowButtons) {
+                const tabularNums = btn.querySelector('[class*="tabular-nums"]');
+                if (tabularNums) {
+                    console.log('    ⚠️ 時間表示を含むgroup/rowボタンを検出（思考プロセス確定）');
+                    return null;
+                }
+            }
+        }
+
+        // tabular-numsクラスの検出（時間表示）
+        const tabularNums = element.querySelectorAll('[class*="tabular-nums"]');
+        if (tabularNums.length > 0) {
+            console.log('    ⚠️ 時間表示要素を検出（思考プロセス候補）');
+
+            // 時間パターンの確認
+            for (const timeEl of tabularNums) {
+                const timeText = timeEl.textContent || '';
+                if (/\d+s/.test(timeText)) {
+                    console.log(`    ⚠️ 時間パターンを検出: ${timeText} (思考プロセス確定)`);
+                    return null;
+                }
+            }
+        }
+
+        // Phase 4: テキストパターン検証（低優先）
+        console.log('  Phase 4: テキストパターン検証');
+
+        const elementText = element.textContent || '';
+        const excludeTextPatterns = [
+            { pattern: '思考プロセス', type: 'thinking' },
+            { pattern: 'ユーザーのプロンプト', type: 'user' },
+            { pattern: 'User', type: 'user' },
+            { pattern: 'Assistant', type: 'assistant' }
+        ];
+
+        for (const { pattern, type } of excludeTextPatterns) {
+            // 完全一致または短いテキスト内での部分一致
+            if (elementText.trim() === pattern ||
+                (elementText.length < 100 && elementText.includes(pattern))) {
+                console.log(`    ⚠️ 除外テキストパターンを検出: "${pattern}" (${type})`);
                 return null;
             }
         }
 
-        console.log('  ✓ 思考プロセスではありません');
+        // 思考プロセステキスト+時間パターンの組み合わせ
+        if (elementText.includes('思考プロセス') && /\d+s/.test(elementText)) {
+            console.log('    ⚠️ 思考プロセス+時間パターンを検出');
+            return null;
+        }
+
+        // Phase 5: 最終検証
+        console.log('  Phase 5: 最終検証');
+
+        // whitespace-pre-wrap break-wordsパターン（ユーザー入力の特徴）
+        const preWrapElements = element.querySelectorAll('.whitespace-pre-wrap.break-words');
+        if (preWrapElements.length > 0 && classNames.includes('font-large')) {
+            console.log('    ⚠️ ユーザー入力テキスト形式を検出');
+            return null;
+        }
+
+        console.log('  ✅ すべての除外条件をクリア - 有効な要素として判定');
         return element;
     };
 

@@ -351,7 +351,7 @@ function initializeGlobalStateMonitoring() {
  * DynamicSearchとの協調状態をチェック
  * 【追加】ハイブリッド協調モデル: グループスキップ判定
  */
-function shouldSkipGroupProcessing(taskGroup) {
+async function shouldSkipGroupProcessing(taskGroup) {
   try {
     // 🚨 【詳細デバッグ】スキップ判定の全状態をログ出力
     const completedGroups = window.globalState?.completedGroupsByDynamicSearch;
@@ -411,6 +411,26 @@ function shouldSkipGroupProcessing(taskGroup) {
       // スキップフラグをリセット（1回のみ有効）
       coordination.shouldSkipProcessing = false;
       return true;
+    }
+
+    // 【新規追加】実際の完了状態チェック
+    // DynamicSearch状態に関係なく、実際のデータで完了状態を確認
+    try {
+      const actualCompletion = await checkCompletionStatus(taskGroup);
+      if (actualCompletion) {
+        log.info("🔍 [SKIP-DEBUG] 実際の完了状態によりスキップ:", {
+          groupNumber: taskGroup.groupNumber,
+          reason: "Actually completed (checkCompletionStatus)",
+          skipDecision: true,
+        });
+        return true;
+      }
+    } catch (completionError) {
+      log.warn("⚠️ [SKIP-DEBUG] 完了状態チェックエラー:", {
+        groupNumber: taskGroup.groupNumber,
+        error: completionError.message,
+        reason: "Completion check failed, continuing with processing",
+      });
     }
 
     // スキップしない場合もログ出力
@@ -1206,9 +1226,17 @@ async function checkCompletionStatus(taskGroup) {
           typeof window.Step3TaskList.getRowControl === "function"
         ) {
           rowControls = window.Step3TaskList.getRowControl(formattedData);
+
+          // 🔧 [OFFSET-FIX] dataStartRowオフセットを行制御の行番号に適用
+          rowControls = rowControls.map((control) => ({
+            ...control,
+            row: control.row + taskGroup.dataStartRow - 1,
+          }));
+
           LoopLogger.info("[step5-loop.js] 行制御情報取得:", {
             制御数: rowControls.length,
             詳細: rowControls.map((c) => `${c.type}制御: ${c.row}行目`),
+            オフセット適用: `dataStartRow(${taskGroup.dataStartRow}) - 1`,
           });
         } else {
           LoopLogger.warn("[step5-loop.js] getRowControl関数が利用不可");
@@ -1870,62 +1898,6 @@ async function checkCompletionStatus(taskGroup) {
     // 厳格な完了判定：プロンプトと回答が一致し、かつプロンプトが存在する場合のみ完了
     const isComplete = promptCount > 0 && promptCount === answerCount;
 
-    // 🚨 【緊急デバッグ】グループ2の強制ログ（実際は処理されないことが判明）
-    if (taskGroup.groupNumber === 2) {
-      console.error(
-        `🚨 [GROUP-2-DEBUG] グループ2完了判定詳細（ここに到達すること自体が意外）:`,
-        JSON.stringify(
-          {
-            groupNumber: taskGroup.groupNumber,
-            promptCount: promptCount,
-            answerCount: answerCount,
-            isComplete: isComplete,
-            promptRange: promptRange,
-            answerRange: answerRange,
-            columns: taskGroup.columns,
-            dataStartRow: taskGroup.dataStartRow,
-            blankTasksFound: blankTasks.length,
-            completedTasksFound: completedTasks.length,
-            判定時刻: new Date().toISOString(),
-            重要: "このログが出力される場合、shouldSkipGroupProcessingの修正が効いている",
-          },
-          null,
-          2,
-        ),
-      );
-
-      // グループ2で未処理タスクがあるのに完了判定される場合は強制的にfalseを返す
-      if (isComplete && blankTasks.length > 0) {
-        console.error(
-          `🚨 [GROUP-2-FIX] グループ2で未処理タスクを検出、強制的に未完了に設定`,
-        );
-        return false;
-      }
-
-      // グループ2の実際のタスク数を動的に計算
-      // プロンプトがある行数 = 実際のタスク数
-      const actualTaskCount = promptCount; // promptCountは実際にプロンプトがある行数
-
-      // 完了タスクが実際のタスク数より少ない場合は未完了とする
-      if (completedTasks.length < actualTaskCount) {
-        console.error(
-          `🚨 [GROUP-2-FIX] グループ2の完了タスク数が不足(${completedTasks.length}/${actualTaskCount})、未完了に設定`,
-          JSON.stringify(
-            {
-              完了タスクリスト: completedTasks.map((t) =>
-                typeof t === "object" ? JSON.stringify(t) : t,
-              ),
-              実際のタスク数: actualTaskCount,
-              判定時刻: new Date().toISOString(),
-            },
-            null,
-            2,
-          ),
-        );
-        return false;
-      }
-    }
-
     // 🔍 【強化】完了判定結果の詳細ログ
     console.log(`🔍 [COMPLETION-CHECK-RESULT] 完了判定結果`, {
       completionCheckId,
@@ -2253,34 +2225,49 @@ async function executeStep3AllGroups() {
       `\n====== グループ ${i + 1}/${taskGroups.length} 処理開始 ======`,
     );
 
-    // 🔍 【検証用ログ】Group 2の実データ詳細確認
-    if (taskGroup.groupNumber === 2) {
-      log.error(
-        "🚨 [GROUP-2-DATA] Group 2実データ検証ログ:",
-        JSON.stringify(
-          {
-            groupNumber: taskGroup.groupNumber,
-            fullTaskGroup: taskGroup,
-            columns: taskGroup.columns,
-            dataStartRow: taskGroup.dataStartRow,
-            expectedRange: "W~Y列（31-36行）",
-            expectedTasks: 6,
-            期待される列構成: {
-              prompts: "W列あたり",
-              answer: "X, Y列あたり",
-            },
-            検証開始時刻: new Date().toISOString(),
-          },
-          null,
-          2,
-        ),
-      );
-    }
+    // 【診断ログ】Step2とStep3の整合性確認
+    log.info("🔍 [STEP2-STEP3-CONSISTENCY] グループ情報整合性確認:", {
+      step3GroupNumber: taskGroup.groupNumber,
+      step3GroupId: taskGroup.id,
+      step3GroupName: taskGroup.name,
+      step3ColumnRange: `${taskGroup.columns?.prompts?.[0]} 〜 ${taskGroup.columns?.answer?.primary || taskGroup.columns?.answer?.claude}`,
+      step3SkipReason: taskGroup.skipReason,
+      step3ProcessingStatus: taskGroup.processingStatus,
+      step3CellRange: `${taskGroup.startColumn}:${taskGroup.endColumn}`,
+      timestamp: new Date().toISOString(),
+    });
 
     // 【追加】DynamicSearchとの協調チェック：スキップ判定
-    if (shouldSkipGroupProcessing(taskGroup)) {
+    log.info("🔍 [STEP-BY-STEP] グループスキップ判定開始:", {
+      groupNumber: taskGroup.groupNumber,
+      groupType: taskGroup.type || taskGroup.taskType,
+      columnRange: `${taskGroup.columns?.prompts?.[0]} 〜 ${taskGroup.columns?.answer?.primary || taskGroup.columns?.answer?.claude}`,
+      timestamp: new Date().toISOString(),
+    });
+
+    const skipDecision = await shouldSkipGroupProcessing(taskGroup);
+
+    log.info("🔍 [STEP-BY-STEP] スキップ判定結果:", {
+      groupNumber: taskGroup.groupNumber,
+      skipDecision: skipDecision,
+      nextAction: skipDecision ? "二重チェック実行" : "処理継続",
+      timestamp: new Date().toISOString(),
+    });
+
+    if (skipDecision) {
       // 🛡️ 【安全装置】スキップ前に未処理タスクがないか二重チェック
       const completionCheck = await checkCompletionStatus(taskGroup);
+
+      log.info("🔍 [STEP-BY-STEP] 二重チェック結果:", {
+        groupNumber: taskGroup.groupNumber,
+        shouldSkipResult: skipDecision,
+        completionCheckResult: completionCheck,
+        finalDecision: completionCheck
+          ? "スキップ実行"
+          : "処理継続（安全装置作動）",
+        timestamp: new Date().toISOString(),
+      });
+
       if (!completionCheck) {
         log.error(
           "🚨 [SAFETY-CHECK] スキップ阻止 - グループに未処理タスクあり",
@@ -2292,15 +2279,12 @@ async function executeStep3AllGroups() {
           },
         );
       } else {
-        log.info(
-          "⏭️ [step3-loop.js] グループスキップ - DynamicSearchで完了済み",
-          {
-            groupNumber: taskGroup.groupNumber,
-            currentIndex: i + 1,
-            totalGroups: taskGroups.length,
-            safetyCheckPassed: true,
-          },
-        );
+        log.info("⏭️ [step3-loop.js] グループスキップ - 完了確認済み", {
+          groupNumber: taskGroup.groupNumber,
+          currentIndex: i + 1,
+          totalGroups: taskGroups.length,
+          safetyCheckPassed: true,
+        });
         completedGroups++;
         continue;
       }
@@ -2674,9 +2658,15 @@ async function createTaskList(taskGroup, isFirstRun = false) {
     try {
       // Step 5-3-1: 行制御をチェック
       rowControls = window.Step3TaskList.getRowControl(spreadsheetData);
+
+      // 🔧 [OFFSET-FIX] createTaskList用のdataStartRowオフセット適用
+      // 注意：spreadsheetDataは全体データなので、dataStartRowオフセットは不要
+      // rowControlsは既に正しい行番号を持っている
+
       LoopLogger.info("[createTaskList] [Step 5-3-1] 行制御情報取得完了:", {
         制御数: rowControls.length,
         詳細: rowControls.map((c) => `${c.type}制御: ${c.row}行目`),
+        備考: "全体データからの行制御取得（オフセット不要）",
       });
 
       // Step 5-3-2: 列制御の再チェック（タスクグループ作成後の追加フィルタ）
