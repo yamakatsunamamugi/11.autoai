@@ -17,10 +17,10 @@ class ResponseWaitSettings {
   constructor() {
     // デフォルト設定
     this.defaultSettings = {
-      MAX_RESPONSE_WAIT_TIME: 300000, // 通常モード: 5分
-      MAX_RESPONSE_WAIT_TIME_DEEP: 600000, // DeepResearch: 10分
-      MAX_RESPONSE_WAIT_TIME_AGENT: 1800000, // エージェント: 30分
-      STOP_CHECK_INTERVAL: 10000, // Stop確認間隔: 10秒
+      MAX_RESPONSE_WAIT_TIME: 600000, // 通常モード: 10分
+      MAX_RESPONSE_WAIT_TIME_DEEP: 2400000, // DeepResearch: 40分
+      MAX_RESPONSE_WAIT_TIME_AGENT: 2400000, // エージェント: 40分
+      STOP_CHECK_INTERVAL: 10000, // 停止ボタン消滅継続時間: 10秒
     };
 
     this.initializeUI();
@@ -64,25 +64,25 @@ class ResponseWaitSettings {
   setupEventListeners() {
     // 通常モードのスライダー
     this.elements.normalWaitTime?.addEventListener("input", (e) => {
-      const minutes = parseInt(e.target.value) / 60000;
+      const minutes = Math.round(parseInt(e.target.value) / 60000);
       this.elements.normalWaitValue.textContent = `${minutes}分`;
     });
 
     // DeepResearchモードのスライダー
     this.elements.deepWaitTime?.addEventListener("input", (e) => {
-      const minutes = parseInt(e.target.value) / 60000;
+      const minutes = Math.round(parseInt(e.target.value) / 60000);
       this.elements.deepWaitValue.textContent = `${minutes}分`;
     });
 
     // エージェントモードのスライダー
     this.elements.agentWaitTime?.addEventListener("input", (e) => {
-      const minutes = parseInt(e.target.value) / 60000;
+      const minutes = Math.round(parseInt(e.target.value) / 60000);
       this.elements.agentWaitValue.textContent = `${minutes}分`;
     });
 
     // Stop確認間隔のスライダー
     this.elements.stopCheckInterval?.addEventListener("input", (e) => {
-      const seconds = parseInt(e.target.value) / 1000;
+      const seconds = Math.round(parseInt(e.target.value) / 1000);
       this.elements.stopCheckValue.textContent = `${seconds}秒`;
     });
 
@@ -96,10 +96,18 @@ class ResponseWaitSettings {
    * 表示値の更新
    */
   updateDisplayValues() {
-    const normalMinutes = parseInt(this.elements.normalWaitTime.value) / 60000;
-    const deepMinutes = parseInt(this.elements.deepWaitTime.value) / 60000;
-    const agentMinutes = parseInt(this.elements.agentWaitTime.value) / 60000;
-    const stopSeconds = parseInt(this.elements.stopCheckInterval.value) / 1000;
+    const normalMinutes = Math.round(
+      parseInt(this.elements.normalWaitTime.value) / 60000,
+    );
+    const deepMinutes = Math.round(
+      parseInt(this.elements.deepWaitTime.value) / 60000,
+    );
+    const agentMinutes = Math.round(
+      parseInt(this.elements.agentWaitTime.value) / 60000,
+    );
+    const stopSeconds = Math.round(
+      parseInt(this.elements.stopCheckInterval.value) / 1000,
+    );
 
     this.elements.normalWaitValue.textContent = `${normalMinutes}分`;
     this.elements.deepWaitValue.textContent = `${deepMinutes}分`;

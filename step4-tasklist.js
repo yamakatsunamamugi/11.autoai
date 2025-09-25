@@ -19,10 +19,10 @@ const BATCH_PROCESSING_CONFIG = {
   WINDOW_CLOSE_WAIT_TIME: 1000, // ウィンドウクローズ後待機時間（デフォルト1秒）
 
   // 回答待機時間設定
-  MAX_RESPONSE_WAIT_TIME: 300000, // 通常モード: 最大回答待機時間（デフォルト5分）
-  MAX_RESPONSE_WAIT_TIME_DEEP: 600000, // DeepResearchモード: 最大回答待機時間（デフォルト10分）
-  MAX_RESPONSE_WAIT_TIME_AGENT: 1800000, // エージェントモード: 最大回答待機時間（デフォルト30分）
-  STOP_CHECK_INTERVAL: 10000, // 回答停止検知間隔（デフォルト10秒 = Stop生成ボタンの確認間隔）
+  MAX_RESPONSE_WAIT_TIME: 600000, // 通常モード: 最大回答待機時間（デフォルト10分）
+  MAX_RESPONSE_WAIT_TIME_DEEP: 2400000, // DeepResearchモード: 最大回答待機時間（デフォルト40分）
+  MAX_RESPONSE_WAIT_TIME_AGENT: 2400000, // エージェントモード: 最大回答待機時間（デフォルト40分）
+  STOP_CHECK_INTERVAL: 10000, // 回答停止ボタンの消滅継続時間（デフォルト10秒）
 
   // === デバッグ設定 ===
   DEBUG_INDEPENDENT_MODE: false, // 独立モードの詳細ログ出力

@@ -896,14 +896,14 @@
     // AI待機設定（デフォルト値）
     let AI_WAIT_CONFIG = {
       INITIAL_WAIT: 30000,
-      MAX_WAIT: 300000, // 5分（通常処理）
-      CHECK_INTERVAL: 10000, // Stop確認間隔: 10秒
-      DEEP_RESEARCH_WAIT: 600000, // 10分（Deep Research）
-      AGENT_MODE_WAIT: 1800000, // 30分（エージェントモード）
+      MAX_WAIT: 600000, // 10分（通常処理）
+      CHECK_INTERVAL: 10000, // 停止ボタン消滅継続時間: 10秒
+      DEEP_RESEARCH_WAIT: 2400000, // 40分（Deep Research）
+      AGENT_MODE_WAIT: 2400000, // 40分（エージェントモード）
       SHORT_WAIT: 1000,
       MEDIUM_WAIT: 2000,
       STOP_BUTTON_INITIAL_WAIT: 30000,
-      STOP_BUTTON_DISAPPEAR_WAIT: 300000,
+      STOP_BUTTON_DISAPPEAR_WAIT: 600000, // 10分
     };
 
     // Chrome Storageから設定を読み込む

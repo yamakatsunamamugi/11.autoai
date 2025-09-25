@@ -867,11 +867,11 @@ async function reportSelectorError(selectorKey, error, selectors) {
 
   // 統一された待機時間設定（デフォルト値）
   let AI_WAIT_CONFIG = {
-    DEEP_RESEARCH_WAIT: 600000, // 10分（Deep Research）
-    AGENT_MODE_WAIT: 1800000, // 30分（エージェントモード）
-    NORMAL_WAIT: 300000, // 5分（通常処理）
+    DEEP_RESEARCH_WAIT: 2400000, // 40分（Deep Research）
+    AGENT_MODE_WAIT: 2400000, // 40分（エージェントモード）
+    NORMAL_WAIT: 600000, // 10分（通常処理）
     STOP_BUTTON_WAIT: 30000, // 30秒
-    CHECK_INTERVAL: 10000, // 10秒（Stop確認間隔）
+    CHECK_INTERVAL: 10000, // 10秒（停止ボタン消滅継続時間）
     MICRO_WAIT: 100, // 100ms
     TINY_WAIT: 500, // 500ms
     SHORT_WAIT: 1000, // 1秒
