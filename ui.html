@@ -180,6 +180,98 @@
         </div>
       </section>
 
+      <!-- バッチ処理モード設定セクション -->
+      <section class="step-section">
+        <div class="step-header">
+          <span class="step-number">🚀</span>
+          <h2>バッチ処理モード設定</h2>
+        </div>
+        <div class="step-content">
+          <p class="test-description">タスク処理の並列実行方法を調整できます</p>
+
+          <!-- プリセットボタン -->
+          <div style="margin-bottom: 20px;">
+            <label style="display: block; margin-bottom: 8px; font-weight: 600;">プリセット選択:</label>
+            <div style="display: flex; gap: 10px;">
+              <button id="batchModeSafePreset" class="btn btn-secondary" style="flex: 1;">
+                <span>🛡️ 安全モード</span>
+                <small style="display: block; font-size: 11px; margin-top: 2px;">3つ全て待機・待機時間デフォルト</small>
+              </button>
+              <button id="batchModeFastPreset" class="btn btn-secondary" style="flex: 1;">
+                <span>⚡ 高速モード</span>
+                <small style="display: block; font-size: 11px; margin-top: 2px;">独立処理・待機なし</small>
+              </button>
+              <button id="batchModeBalancedPreset" class="btn btn-secondary" style="flex: 1;">
+                <span>⚖️ バランスモード</span>
+                <small style="display: block; font-size: 11px; margin-top: 2px;">独立処理・短い待機時間</small>
+              </button>
+            </div>
+          </div>
+
+          <!-- 詳細設定 -->
+          <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+            <!-- 独立処理モード -->
+            <div style="margin-bottom: 15px;">
+              <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                <input type="checkbox" id="independentWindowMode" style="width: 18px; height: 18px;">
+                <span style="font-weight: 600;">独立ウィンドウ処理モード</span>
+                <span style="color: #666; font-size: 12px;">（各ウィンドウが独立してタスクを処理）</span>
+              </label>
+            </div>
+
+            <!-- バッチ完了待機 -->
+            <div style="margin-bottom: 15px;">
+              <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                <input type="checkbox" id="waitForBatchCompletion" checked style="width: 18px; height: 18px;">
+                <span style="font-weight: 600;">バッチ完了を待機</span>
+                <span style="color: #666; font-size: 12px;">（3つ全て完了してから次へ）</span>
+              </label>
+            </div>
+
+            <!-- スプレッドシート反映待機時間 -->
+            <div style="margin-bottom: 15px;">
+              <label style="font-weight: 600;">
+                スプレッドシート反映待機:
+                <span id="spreadsheetWaitValue" style="color: #007bff;">10.0秒</span>
+              </label>
+              <input type="range" id="spreadsheetWaitTime" min="0" max="10000" step="500" value="10000"
+                     style="width: 100%; margin-top: 5px;">
+              <div style="display: flex; justify-content: space-between; font-size: 11px; color: #666;">
+                <span>0秒（待機なし）</span>
+                <span>5秒</span>
+                <span>10秒（推奨）</span>
+              </div>
+            </div>
+
+            <!-- ウィンドウクローズ待機時間 -->
+            <div>
+              <label style="font-weight: 600;">
+                ウィンドウクローズ待機:
+                <span id="windowCloseWaitValue" style="color: #007bff;">1.0秒</span>
+              </label>
+              <input type="range" id="windowCloseWaitTime" min="0" max="3000" step="100" value="1000"
+                     style="width: 100%; margin-top: 5px;">
+              <div style="display: flex; justify-content: space-between; font-size: 11px; color: #666;">
+                <span>0秒（待機なし）</span>
+                <span>1.5秒</span>
+                <span>3秒</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 保存ボタン -->
+          <div style="display: flex; align-items: center; gap: 15px;">
+            <button id="saveBatchModeBtn" class="btn btn-primary" style="padding: 10px 20px;">
+              <span>💾 設定を保存</span>
+            </button>
+            <span id="batchModeStatus" style="color: #28a745; font-size: 14px; display: none;">✅ 保存しました</span>
+          </div>
+          <div style="margin-top: 10px; font-size: 12px; color: #666;">
+            ※ 変更は次回の処理開始時から適用されます
+          </div>
+        </div>
+      </section>
+
       <!-- AIテスト機能セクション -->
       <section class="step-section">
         <div class="step-header">
@@ -399,6 +491,9 @@
 
   <!-- ログレベル管理スクリプト（外部ファイル） -->
   <script type="module" src="step7-3-log-level-ui.js"></script>
+
+  <!-- バッチ処理モード設定管理スクリプト -->
+  <script type="module" src="batch-mode-settings-ui.js"></script>
 
   <!-- 統合されたUIコントローラー -->
   <script type="module" src="step0-ui-controller.js"></script>

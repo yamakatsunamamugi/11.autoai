@@ -9,6 +9,17 @@ const BATCH_PROCESSING_CONFIG = {
   ENABLE_IMMEDIATE_WINDOW_CLOSE: true, // 即座ウィンドウクローズ
   ENABLE_DYNAMIC_NEXT_TASK: true, // 動的次タスク開始を再有効化
   SAFE_MODE: false, // 新機能有効化
+
+  // === 独立ウィンドウ処理モード設定 ===
+  INDEPENDENT_WINDOW_MODE: false, // 各ウィンドウ独立処理モード（デフォルトOFF = 安全モード）
+  WAIT_FOR_BATCH_COMPLETION: true, // バッチ完了待機（デフォルトON = 3つ全て待つ）
+
+  // === 待機時間設定（ミリ秒） ===
+  SPREADSHEET_WAIT_TIME: 10000, // スプレッドシート反映待機時間（デフォルト10秒）
+  WINDOW_CLOSE_WAIT_TIME: 1000, // ウィンドウクローズ後待機時間（デフォルト1秒）
+
+  // === デバッグ設定 ===
+  DEBUG_INDEPENDENT_MODE: false, // 独立モードの詳細ログ出力
 };
 
 // Chrome Storageからログレベルを取得（非同期）
@@ -16,10 +27,38 @@ let CURRENT_LOG_LEVEL = LOG_LEVEL.INFO; // デフォルト値
 
 // Chrome拡張環境でのみStorageから設定を読み込む
 if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+  // ログレベルの読み込み
   chrome.storage.local.get("logLevel", (result) => {
     if (result.logLevel) {
       CURRENT_LOG_LEVEL = parseInt(result.logLevel);
+    }
+  });
+
+  // バッチ処理設定の読み込み
+  chrome.storage.local.get("batchProcessingConfig", (result) => {
+    if (result.batchProcessingConfig) {
+      // Chrome Storageの設定でBATCH_PROCESSING_CONFIGを上書き
+      Object.assign(BATCH_PROCESSING_CONFIG, result.batchProcessingConfig);
+
+      console.log(
+        "📋 [step4-tasklist] Chrome Storageから設定を読み込みました:",
+        {
+          INDEPENDENT_WINDOW_MODE:
+            BATCH_PROCESSING_CONFIG.INDEPENDENT_WINDOW_MODE,
+          WAIT_FOR_BATCH_COMPLETION:
+            BATCH_PROCESSING_CONFIG.WAIT_FOR_BATCH_COMPLETION,
+          SPREADSHEET_WAIT_TIME: BATCH_PROCESSING_CONFIG.SPREADSHEET_WAIT_TIME,
+          WINDOW_CLOSE_WAIT_TIME:
+            BATCH_PROCESSING_CONFIG.WINDOW_CLOSE_WAIT_TIME,
+          処理モード: BATCH_PROCESSING_CONFIG.INDEPENDENT_WINDOW_MODE
+            ? "🏃 独立ウィンドウ処理モード"
+            : "🛡️ 通常バッチ処理モード",
+        },
+      );
     } else {
+      console.log(
+        "📋 [step4-tasklist] Chrome Storageに設定がないため、デフォルト設定を使用",
+      );
     }
   });
 }
@@ -47,6 +86,7 @@ const log = {
 // 初期化ログ（簡略化）
 log.info("✅ [step4-tasklist.js] 初期化完了");
 log.info("🔧 [バッチ処理設定]", {
+  // 基本設定
   ENABLE_ASYNC_BATCH: BATCH_PROCESSING_CONFIG.ENABLE_ASYNC_BATCH,
   ENABLE_INDIVIDUAL_COMPLETION:
     BATCH_PROCESSING_CONFIG.ENABLE_INDIVIDUAL_COMPLETION,
@@ -56,8 +96,118 @@ log.info("🔧 [バッチ処理設定]", {
     BATCH_PROCESSING_CONFIG.ENABLE_IMMEDIATE_WINDOW_CLOSE,
   ENABLE_DYNAMIC_NEXT_TASK: BATCH_PROCESSING_CONFIG.ENABLE_DYNAMIC_NEXT_TASK,
   SAFE_MODE: BATCH_PROCESSING_CONFIG.SAFE_MODE,
-  status: "個別完了処理対応モード",
+  // 新規: 独立処理モード設定
+  INDEPENDENT_WINDOW_MODE: BATCH_PROCESSING_CONFIG.INDEPENDENT_WINDOW_MODE,
+  WAIT_FOR_BATCH_COMPLETION: BATCH_PROCESSING_CONFIG.WAIT_FOR_BATCH_COMPLETION,
+  // 新規: 待機時間設定
+  SPREADSHEET_WAIT_TIME: `${BATCH_PROCESSING_CONFIG.SPREADSHEET_WAIT_TIME}ms`,
+  WINDOW_CLOSE_WAIT_TIME: `${BATCH_PROCESSING_CONFIG.WINDOW_CLOSE_WAIT_TIME}ms`,
+  // 現在の処理モード
+  status: BATCH_PROCESSING_CONFIG.INDEPENDENT_WINDOW_MODE
+    ? "🏃 独立ウィンドウ処理モード"
+    : "🛡️ 通常バッチ処理モード（安全）",
 });
+
+/**
+ * 独立ウィンドウ処理モード
+ * 各ウィンドウが独立してタスクを処理し、完了後即座に次のタスクを開始
+ */
+async function executeIndependentProcessing(batchPromises, originalTasks = []) {
+  log.info("🚀 [独立処理モード] 各ウィンドウが独立してタスク処理を開始", {
+    タスク数: batchPromises.length,
+    INDEPENDENT_WINDOW_MODE: BATCH_PROCESSING_CONFIG.INDEPENDENT_WINDOW_MODE,
+    WAIT_FOR_BATCH_COMPLETION:
+      BATCH_PROCESSING_CONFIG.WAIT_FOR_BATCH_COMPLETION,
+  });
+
+  const results = [];
+  const activeWindows = new Map(); // aiType -> { promise, taskIndex, status }
+
+  // 各タスクを独立して開始（完了を待たない）
+  batchPromises.forEach((promise, index) => {
+    const originalTask = originalTasks[index] || {};
+    const aiType = originalTask.aiType || originalTask.ai || `window_${index}`;
+
+    if (BATCH_PROCESSING_CONFIG.DEBUG_INDEPENDENT_MODE) {
+      log.debug(`🔄 [独立処理] ウィンドウ開始: ${aiType}`, {
+        taskIndex: index,
+        taskId: originalTask.id,
+        row: originalTask.row,
+      });
+    }
+
+    // 各ウィンドウのPromiseを独立して処理
+    const independentPromise = Promise.resolve(promise)
+      .then(async (result) => {
+        // タスク完了処理
+        const enhancedResult = {
+          ...result,
+          column: result.column || originalTask.column,
+          row: result.row || originalTask.row,
+          windowId: result.windowId || originalTask.windowId,
+          aiType: aiType,
+        };
+
+        log.info(`✅ [独立処理] ${aiType} タスク完了`, {
+          taskIndex: index,
+          success: enhancedResult.success,
+          row: enhancedResult.row,
+        });
+
+        // 個別完了処理を即座に実行
+        if (
+          enhancedResult.success &&
+          BATCH_PROCESSING_CONFIG.ENABLE_INDIVIDUAL_COMPLETION
+        ) {
+          await handleIndividualTaskCompletion(enhancedResult, index);
+        }
+
+        // 完了したウィンドウの状態を更新
+        activeWindows.set(aiType, {
+          status: "completed",
+          result: enhancedResult,
+          completedAt: Date.now(),
+        });
+
+        // 次のタスクを即座に探して実行（独立モードの場合）
+        if (!BATCH_PROCESSING_CONFIG.WAIT_FOR_BATCH_COMPLETION) {
+          log.info(`🔍 [独立処理] ${aiType} 次のタスク検索を即座に開始`);
+          // ここで次のタスク検索・実行ロジックを呼び出す
+          // ※実際の実装は step4.5-dynamic-search.js の機能を利用
+        }
+
+        return { status: "fulfilled", value: enhancedResult };
+      })
+      .catch((error) => {
+        log.error(`❌ [独立処理エラー] ${aiType}:`, error);
+        activeWindows.set(aiType, {
+          status: "failed",
+          error: error,
+          failedAt: Date.now(),
+        });
+        return { status: "rejected", reason: error };
+      });
+
+    results.push(independentPromise);
+  });
+
+  // WAIT_FOR_BATCH_COMPLETIONがtrueの場合は全て待つ、falseの場合は即座に返す
+  if (BATCH_PROCESSING_CONFIG.WAIT_FOR_BATCH_COMPLETION) {
+    log.info("⏳ [独立処理] バッチ完了待機モード - 全タスクの完了を待機");
+    return await Promise.all(results);
+  } else {
+    log.info("🏃 [独立処理] 即座実行モード - タスク開始後、完了を待たずに続行");
+    // 非同期で結果を収集（待機しない）
+    Promise.all(results).then(() => {
+      log.info("✅ [独立処理] 全ウィンドウのタスク処理が完了");
+    });
+    // 即座に開始状態を返す
+    return results.map((_, index) => ({
+      status: "started",
+      value: { taskIndex: index, startedAt: Date.now() },
+    }));
+  }
+}
 
 /**
  * 安全な非同期バッチ処理（将来実装用）
@@ -67,6 +217,12 @@ async function executeAsyncBatchProcessing(batchPromises, originalTasks = []) {
   if (BATCH_PROCESSING_CONFIG.SAFE_MODE) {
     // セーフモードでは既存処理にフォールバック
     return await Promise.allSettled(batchPromises);
+  }
+
+  // 独立ウィンドウモードの判定
+  if (BATCH_PROCESSING_CONFIG.INDEPENDENT_WINDOW_MODE) {
+    log.info("🔀 [処理モード切替] 独立ウィンドウモードで実行");
+    return await executeIndependentProcessing(batchPromises, originalTasks);
   }
 
   log.info("🚀 [非同期バッチ処理] 個別完了処理対応モードで実行開始");
@@ -244,13 +400,21 @@ async function handleIndividualTaskCompletion(result, taskIndex) {
       await immediateWindowClose(result.windowId, taskIndex);
 
       // 重要: ウィンドウクローズ完了を確実に待機
-      log.info(
-        `⏰ [TASK-FLOW-TRACE] ウィンドウクローズ完了待機: ${result.windowId}`,
-      );
-      await new Promise((resolve) => setTimeout(resolve, 1000)); // 1秒追加待機
-      log.info(
-        `✅ [TASK-FLOW-TRACE] ウィンドウクローズ完了待機終了: ${result.windowId}`,
-      );
+      if (BATCH_PROCESSING_CONFIG.WINDOW_CLOSE_WAIT_TIME > 0) {
+        log.info(
+          `⏰ [TASK-FLOW-TRACE] ウィンドウクローズ完了待機: ${result.windowId} (${BATCH_PROCESSING_CONFIG.WINDOW_CLOSE_WAIT_TIME}ms)`,
+        );
+        await new Promise((resolve) =>
+          setTimeout(resolve, BATCH_PROCESSING_CONFIG.WINDOW_CLOSE_WAIT_TIME),
+        );
+        log.info(
+          `✅ [TASK-FLOW-TRACE] ウィンドウクローズ完了待機終了: ${result.windowId}`,
+        );
+      } else {
+        log.info(
+          `⚡ [TASK-FLOW-TRACE] ウィンドウクローズ後の待機をスキップ (設定: 0ms)`,
+        );
+      }
     }
 
     // Phase 4: 動的次タスク探索
@@ -329,24 +493,47 @@ async function handleIndividualTaskCompletion(result, taskIndex) {
       }
 
       // 【修正】スプレッドシート書き込み完了を待機してから次タスク探索
-      // Google Sheets APIの書き込み反映に時間が必要（10秒に延長）
-      log.info(
-        `⏰ [TASK-FLOW-TRACE] 10秒待機開始 - スプレッドシート反映待ち:`,
-        {
-          taskIndex: taskIndex,
-          taskId: result.taskId,
-          待機開始時刻: new Date().toISOString(),
-          待機終了予定時刻: new Date(Date.now() + 10000).toISOString(),
-        },
-      );
+      // Google Sheets APIの書き込み反映に時間が必要（設定可能）
+      const waitTime = BATCH_PROCESSING_CONFIG.SPREADSHEET_WAIT_TIME || 10000;
 
-      setTimeout(() => {
-        log.info(`⏰ [TASK-FLOW-TRACE] 10秒待機完了 - 次タスク探索開始:`, {
-          taskIndex: taskIndex,
-          taskId: result.taskId,
-          実際の待機完了時刻: new Date().toISOString(),
-        });
+      if (waitTime > 0) {
+        log.info(
+          `⏰ [TASK-FLOW-TRACE] ${waitTime}ms待機開始 - スプレッドシート反映待ち:`,
+          {
+            taskIndex: taskIndex,
+            taskId: result.taskId,
+            待機開始時刻: new Date().toISOString(),
+            待機終了予定時刻: new Date(Date.now() + waitTime).toISOString(),
+          },
+        );
 
+        setTimeout(() => {
+          log.info(
+            `⏰ [TASK-FLOW-TRACE] ${waitTime}ms待機完了 - 次タスク探索開始:`,
+            {
+              taskIndex: taskIndex,
+              taskId: result.taskId,
+              実際の待機完了時刻: new Date().toISOString(),
+            },
+          );
+
+          startNextTaskIfAvailable(taskIndex).catch((error) => {
+            log.error(
+              `❌ [TASK-FLOW-TRACE] 次タスク探索エラー[${taskIndex}]:`,
+              {
+                error: error.message,
+                stack: error.stack,
+                taskId: result.taskId,
+                エラー発生時刻: new Date().toISOString(),
+              },
+            );
+          });
+        }, waitTime); // 設定可能な待機時間
+      } else {
+        log.info(
+          `⚡ [TASK-FLOW-TRACE] スプレッドシート反映待機をスキップ (設定: 0ms)`,
+        );
+        // 待機せずに即座に次タスク探索
         startNextTaskIfAvailable(taskIndex).catch((error) => {
           log.error(`❌ [TASK-FLOW-TRACE] 次タスク探索エラー[${taskIndex}]:`, {
             error: error.message,
@@ -355,7 +542,7 @@ async function handleIndividualTaskCompletion(result, taskIndex) {
             エラー発生時刻: new Date().toISOString(),
           });
         });
-      }, 10000); // 10秒待機に延長
+      }
     } else {
       log.warn(
         `⚠️ [TASK-FLOW-TRACE] Phase 4スキップ - ENABLE_DYNAMIC_NEXT_TASK無効:`,
