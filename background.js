@@ -225,9 +225,10 @@ function formatLogEntry(request) {
     timestamp: new Date().toISOString(),
   });
 
-  // URLが存在し、空文字列でない場合に追加（防御的処理強化）
+  // URLが存在し、空文字列でない場合に追加（プレーンテキストとして）
   const urlValue = request.taskInfo?.url;
   if (urlValue && typeof urlValue === "string" && urlValue.trim() !== "") {
+    // プレーンテキストとしてURLを追加（リッチテキストAPIで後からリンク化）
     parts.push(`URL: ${urlValue}`);
     console.log("✅ [DEBUG-URL] URLをログに追加:", urlValue);
   } else {
@@ -248,6 +249,7 @@ function formatLogEntry(request) {
       typeof fallbackUrl === "string" &&
       fallbackUrl.trim() !== ""
     ) {
+      // フォールバックURLもプレーンテキストとして追加
       parts.push(`URL: ${fallbackUrl}`);
       console.log("🔄 [DEBUG-URL] フォールバックURLをログに追加:", fallbackUrl);
     }

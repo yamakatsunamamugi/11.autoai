@@ -849,6 +849,9 @@
         ],
 
         STANDARD: [
+          ".grid-cols-1.grid.standard-markdown", // 最優先：完全一致セレクタ
+          ".standard-markdown:has(p.whitespace-normal)", // 段落要素を含むstandard-markdown
+          ".standard-markdown", // フォールバック
           ".markdown.prose",
           "div.markdown-content",
           'div[class*="prose"][class*="markdown"]',
@@ -3265,7 +3268,16 @@
           ) {
             log.debug("  ✓ アシスタントメッセージを検出");
 
-            // Canvas要素を優先的に探す
+            // standard-markdownクラスを最優先で探す
+            const standardContent = nextElement.querySelector(
+              ".grid-cols-1.grid.standard-markdown",
+            );
+            if (standardContent) {
+              log.debug("  ✓ 標準マークダウン要素を発見（最優先）");
+              return standardContent;
+            }
+
+            // 次にCanvas要素を探す
             const canvasContent = nextElement.querySelector(
               "#markdown-artifact, .grid-cols-1.grid.gap-2\\.5, .code-block__code",
             );
@@ -3275,12 +3287,12 @@
               return canvasContent;
             }
 
-            // 通常のマークダウン
-            const standardContent =
+            // フォールバック：単純な.standard-markdownクラス
+            const simpleStandardContent =
               nextElement.querySelector(".standard-markdown");
-            if (standardContent) {
-              log.debug("  ✓ 標準マークダウン要素を発見");
-              return standardContent;
+            if (simpleStandardContent) {
+              log.debug("  ✓ 標準マークダウン要素を発見（フォールバック）");
+              return simpleStandardContent;
             }
           }
           nextElement = nextElement.nextElementSibling;
@@ -3441,6 +3453,12 @@
     const validateResponseContent = (element) => {
       if (!element) return false;
 
+      // ユーザーメッセージの子孫要素でないことを確認（最重要チェック）
+      if (element.closest('[data-testid="user-message"]')) {
+        log.debug(`  ⚠️ 要素はユーザーメッセージの子孫です`);
+        return false;
+      }
+
       // Content validation
       const text = element.textContent?.trim() || "";
 
@@ -3586,18 +3604,58 @@
         }
       }
 
-      // Method 3: フォールバック - 最後のgrid要素
-      // Fallback search
+      // Method 3: フォールバック - standard-markdownクラスを持つgrid要素を優先
+      log.debug("📍 Method 3: フォールバック処理を試行");
+
+      // まず、standard-markdownクラスを持つ要素を探す
+      const standardMarkdowns = document.querySelectorAll(
+        ".grid-cols-1.grid.standard-markdown",
+      );
+      if (standardMarkdowns.length > 0) {
+        log.debug(
+          `  - standard-markdownクラスを持つ要素: ${standardMarkdowns.length}個発見`,
+        );
+        // ユーザーメッセージでないことを確認
+        for (const elem of standardMarkdowns) {
+          if (!elem.closest('[data-testid="user-message"]')) {
+            const validated = excludeThinkingProcess(elem);
+            if (validated && validateResponseContent(validated)) {
+              log.debug("  ✓ standard-markdown要素から有効な回答を取得");
+              return {
+                element: validated,
+                text: validated.textContent?.trim() || "",
+                method: "Fallback - Standard Markdown",
+              };
+            }
+          }
+        }
+      }
+
+      // standard-markdownが見つからない場合、通常のgrid要素を検索（ユーザーメッセージを除外）
       const grids = document.querySelectorAll(".grid-cols-1.grid");
       if (grids.length > 0) {
-        const lastGrid = grids[grids.length - 1];
-        const validated = excludeThinkingProcess(lastGrid);
-        if (validated && validateResponseContent(validated)) {
-          return {
-            element: validated,
-            text: validated.textContent?.trim() || "",
-            method: "Fallback - Last Grid",
-          };
+        log.debug(
+          `  - grid要素: ${grids.length}個発見、ユーザーメッセージを除外して検索`,
+        );
+        // 最後から順に検索（最新の回答を優先）
+        for (let i = grids.length - 1; i >= 0; i--) {
+          const grid = grids[i];
+          // ユーザーメッセージの子孫でないことを確認
+          if (!grid.closest('[data-testid="user-message"]')) {
+            const validated = excludeThinkingProcess(grid);
+            if (validated && validateResponseContent(validated)) {
+              log.debug(`  ✓ grid要素[${i}]から有効な回答を取得`);
+              return {
+                element: validated,
+                text: validated.textContent?.trim() || "",
+                method: "Fallback - Last Valid Grid",
+              };
+            }
+          } else {
+            log.debug(
+              `  ⚠️ grid要素[${i}]はユーザーメッセージの子孫のため除外`,
+            );
+          }
         }
       }
 
