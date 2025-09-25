@@ -4713,7 +4713,7 @@ class WindowController {
    */
   async waitForTabReady(
     tabId,
-    maxRetries = 15,  // 15回に増やす（30秒待機）
+    maxRetries = 15, // 15回に増やす（30秒待機）
     delayMs = 2000,
   ) {
     const startTimestamp = new Date().toISOString();
@@ -5687,6 +5687,7 @@ class WindowLifecycleManager {
         writeError,
       );
     }
+    */
   }
 
   /**
