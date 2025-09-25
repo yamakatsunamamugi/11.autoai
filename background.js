@@ -914,58 +914,64 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
       aiType: request.taskInfo?.aiType,
     });
 
-    // 送信時刻のみを記録（後でタスク完了時に記載時刻と合わせて記録）
-    // Chrome storageに一時保存（ディープコピーでデータ保護）
-    const taskLogData = {
-      taskId: request.taskId,
-      sendTime: request.sendTime,
-      taskInfo: JSON.parse(JSON.stringify(request.taskInfo)), // ディープコピー
-      logCell: request.logCell,
-    };
+    // 非同期処理を適切にラップして実行
+    (async () => {
+      try {
+        // 送信時刻のみを記録（後でタスク完了時に記載時刻と合わせて記録）
+        // Chrome storageに一時保存（ディープコピーでデータ保護）
+        const taskLogData = {
+          taskId: request.taskId,
+          sendTime: request.sendTime,
+          taskInfo: JSON.parse(JSON.stringify(request.taskInfo)), // ディープコピー
+          logCell: request.logCell,
+        };
 
-    // 🔍 保存前のURL確認ログ
-    console.log("🔍 [DEBUG-STORAGE] 保存前のtaskLogData:", {
-      hasTaskInfo: !!taskLogData.taskInfo,
-      hasUrl: !!taskLogData.taskInfo?.url,
-      urlValue: taskLogData.taskInfo?.url,
-      taskInfoKeys: taskLogData.taskInfo
-        ? Object.keys(taskLogData.taskInfo)
-        : [],
-    });
+        // 🔍 保存前のURL確認ログ
+        console.log("🔍 [DEBUG-STORAGE] 保存前のtaskLogData:", {
+          hasTaskInfo: !!taskLogData.taskInfo,
+          hasUrl: !!taskLogData.taskInfo?.url,
+          urlValue: taskLogData.taskInfo?.url,
+          taskInfoKeys: taskLogData.taskInfo
+            ? Object.keys(taskLogData.taskInfo)
+            : [],
+        });
 
-    // Promise版Chrome Storageを使用（非同期処理の確実性向上）
-    try {
-      await chrome.storage.local.set({
-        [`taskLog_${request.taskId}`]: taskLogData,
-      });
+        // Promise版Chrome Storageを使用（非同期処理の確実性向上）
+        await chrome.storage.local.set({
+          [`taskLog_${request.taskId}`]: taskLogData,
+        });
 
-      // 🔍 保存後の確認読み取り
-      const verifyResult = await chrome.storage.local.get([
-        `taskLog_${request.taskId}`,
-      ]);
-      const savedData = verifyResult[`taskLog_${request.taskId}`];
-      console.log("🔍 [DEBUG-STORAGE] 保存後の確認読み取り:", {
-        dataExists: !!savedData,
-        hasTaskInfo: !!savedData?.taskInfo,
-        hasUrl: !!savedData?.taskInfo?.url,
-        urlValue: savedData?.taskInfo?.url,
-      });
+        // 🔍 保存後の確認読み取り
+        const verifyResult = await chrome.storage.local.get([
+          `taskLog_${request.taskId}`,
+        ]);
+        const savedData = verifyResult[`taskLog_${request.taskId}`];
+        console.log("🔍 [DEBUG-STORAGE] 保存後の確認読み取り:", {
+          dataExists: !!savedData,
+          hasTaskInfo: !!savedData?.taskInfo,
+          hasUrl: !!savedData?.taskInfo?.url,
+          urlValue: savedData?.taskInfo?.url,
+        });
 
-      console.log("📝 送信時刻を一時保存しました:", request.taskId);
+        console.log("📝 送信時刻を一時保存しました:", request.taskId);
 
-      sendResponse({
-        success: true,
-        message: "Send time recorded successfully",
-        timestamp: new Date().toISOString(),
-      });
-    } catch (error) {
-      console.error("❌ Chrome Storage保存エラー:", error);
-      sendResponse({
-        success: false,
-        message: "Failed to save send time",
-        error: error.message,
-      });
-    }
+        // 成功レスポンスを送信
+        sendResponse({
+          success: true,
+          message: "Send time recorded successfully",
+          timestamp: new Date().toISOString(),
+        });
+      } catch (error) {
+        console.error("❌ Chrome Storage保存エラー:", error);
+        // エラーレスポンスを送信
+        sendResponse({
+          success: false,
+          message: "Failed to save send time",
+          error: error.message,
+        });
+      }
+    })();
+
     return true; // 非同期レスポンス許可
   }
 
