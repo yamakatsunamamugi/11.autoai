@@ -1015,6 +1015,21 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
         }
 
         if (taskLogData) {
+          // 完了時のメッセージにtaskInfo（URL含む）が含まれている場合は更新
+          if (request.taskInfo) {
+            console.log("🔄 [URL-UPDATE] 完了時のtaskInfo情報で更新中:", {
+              oldTaskInfo: taskLogData.taskInfo,
+              newTaskInfo: request.taskInfo,
+              hasNewUrl: !!request.taskInfo.url,
+            });
+
+            // 既存のtaskInfoを完了時の情報で更新（URLを含む）
+            taskLogData.taskInfo = {
+              ...taskLogData.taskInfo,
+              ...request.taskInfo,
+            };
+          }
+
           // URL防御的チェック - もしURLが失われていたら警告
           if (!taskLogData.taskInfo?.url) {
             console.warn(

@@ -6488,12 +6488,18 @@
         // 実行状態を解除
         setExecutionState(false);
 
-        // タスク完了時刻をBackground Scriptに記録
+        // タスク完了時刻をBackground Scriptに記録（URL情報を含む）
         try {
           chrome.runtime.sendMessage({
             type: "recordCompletionTime",
             taskId: taskId,
             completionTime: new Date().toISOString(),
+            taskInfo: {
+              aiType: "Claude",
+              model: displayedModel || result.model || modelName,
+              function: displayedFunction || result.function || featureName,
+              url: currentUrl, // 会話URLを含める
+            },
           });
           log.debug("✅ recordCompletionTime送信完了:", taskId);
         } catch (error) {
