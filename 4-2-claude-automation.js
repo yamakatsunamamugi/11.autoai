@@ -5440,7 +5440,7 @@
         log.debug("🔍 送信時刻記録開始 - ", sendTime.toISOString());
 
         // 🔧 [SIMPLIFIED] 元のタスクIDを使用（データ一貫性のため）
-        const taskId = taskData.taskId || taskData.id || "UNKNOWN_TASK_ID";
+        // taskId は関数の最初で既に宣言済み
 
         // DetailedLogManagerに送信時刻を記録
         if (window.parent && window.parent.detailedLogManager) {
@@ -6482,7 +6482,7 @@
         }
 
         // DetailedLogManagerに受信完了とURLを記録
-        const taskId = taskData.taskId || taskData.id || "UNKNOWN_TASK_ID";
+        // taskId は関数の最初で既に宣言済み
         const receiveTime = new Date();
 
         if (window.parent && window.parent.detailedLogManager) {
