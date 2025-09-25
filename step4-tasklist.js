@@ -53,6 +53,9 @@ if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
       // Chrome Storageの設定でBATCH_PROCESSING_CONFIGを上書き
       Object.assign(BATCH_PROCESSING_CONFIG, result.batchProcessingConfig);
 
+      // 🚨 CRITICAL FIX: タスク完了を適切に待機するため強制設定
+      BATCH_PROCESSING_CONFIG.WAIT_FOR_BATCH_COMPLETION = true;
+
       console.log(
         "📋 [step4-tasklist] Chrome Storageから設定を読み込みました:",
         {
@@ -81,6 +84,9 @@ if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
       // Chrome Storageの設定で回答待機時間設定を上書き
       Object.assign(BATCH_PROCESSING_CONFIG, result.responseWaitConfig);
 
+      // 🚨 CRITICAL FIX: タスク完了を適切に待機するため強制設定
+      BATCH_PROCESSING_CONFIG.WAIT_FOR_BATCH_COMPLETION = true;
+
       console.log("⏱️ [step4-tasklist] 回答待機時間設定を読み込みました:", {
         MAX_RESPONSE_WAIT_TIME:
           BATCH_PROCESSING_CONFIG.MAX_RESPONSE_WAIT_TIME / 60000 + "分",
@@ -99,6 +105,9 @@ if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
     if (result.windowInitConfig) {
       // Chrome Storageの設定でウィンドウ初期化設定を上書き
       Object.assign(BATCH_PROCESSING_CONFIG, result.windowInitConfig);
+
+      // 🚨 CRITICAL FIX: タスク完了を適切に待機するため強制設定
+      BATCH_PROCESSING_CONFIG.WAIT_FOR_BATCH_COMPLETION = true;
 
       console.log("🪟 [step4-tasklist] ウィンドウ初期化設定を読み込みました:", {
         WINDOW_CREATION_WAIT:
