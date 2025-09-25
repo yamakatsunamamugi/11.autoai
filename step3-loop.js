@@ -1730,6 +1730,9 @@ async function checkCompletionStatus(taskGroup) {
     });
 
     try {
+      // APIレート制限対策：バッチ読み取り前に少し待機
+      await new Promise((resolve) => setTimeout(resolve, 200)); // 200ms待機
+
       const batchResponse = await readSpreadsheet(batchRange);
       if (batchResponse?.values) {
         // SpreadsheetDataにデータをロード
@@ -1783,40 +1786,72 @@ async function checkCompletionStatus(taskGroup) {
       }
     } catch (batchError) {
       console.error(`❌ [BATCH-READ] バッチ読み取りエラー:`, batchError);
-      // エラー時は個別読み取りにフォールバック
+      // エラー時は個別読み取りにフォールバック（レート制限対策付き）
       console.log(`🔄 [BATCH-READ] 個別読み取りにフォールバック`);
-      for (let row = startRow; row <= endRow; row++) {
-        try {
-          const promptAddress = `${promptCol}${row}`;
-          const answerAddress = `${answerCol}${row}`;
-          const promptRange = `${sheetPrefix}${promptAddress}`;
-          const answerRange = `${sheetPrefix}${answerAddress}`;
-          const promptResponse = await readSpreadsheet(promptRange);
-          const answerResponse = await readSpreadsheet(answerRange);
 
-          const promptValue = promptResponse?.values?.[0]?.[0] || "";
-          const answerValue = answerResponse?.values?.[0]?.[0] || "";
+      // APIレート制限対策：個別読み取りを小さいバッチに分割
+      const BATCH_SIZE = 5; // 5行ずつ処理
+      const BATCH_DELAY = 1000; // バッチ間で1秒待機
 
-          const taskInfo = {
-            row,
-            promptAddress,
-            answerAddress,
-            promptValue: promptValue,
-            answerValue: answerValue,
-            hasPrompt: Boolean(promptValue && promptValue.trim()),
-            hasAnswer: Boolean(answerValue && answerValue.trim()),
-          };
+      for (
+        let batchStart = startRow;
+        batchStart <= endRow;
+        batchStart += BATCH_SIZE
+      ) {
+        const batchEnd = Math.min(batchStart + BATCH_SIZE - 1, endRow);
 
-          if (taskInfo.hasPrompt && !taskInfo.hasAnswer) {
-            blankTasks.push(taskInfo);
-          } else if (taskInfo.hasPrompt && taskInfo.hasAnswer) {
-            completedTasks.push(taskInfo);
+        // バッチ間の待機（最初のバッチ以外）
+        if (batchStart > startRow) {
+          await new Promise((resolve) => setTimeout(resolve, BATCH_DELAY));
+        }
+
+        for (let row = batchStart; row <= batchEnd; row++) {
+          try {
+            const promptAddress = `${promptCol}${row}`;
+            const answerAddress = `${answerCol}${row}`;
+            const promptRange = `${sheetPrefix}${promptAddress}`;
+            const answerRange = `${sheetPrefix}${answerAddress}`;
+
+            // 個別API呼び出し間にも小さな待機
+            await new Promise((resolve) => setTimeout(resolve, 100)); // 100ms待機
+
+            const promptResponse = await readSpreadsheet(promptRange);
+            await new Promise((resolve) => setTimeout(resolve, 100)); // 100ms待機
+            const answerResponse = await readSpreadsheet(answerRange);
+
+            const promptValue = promptResponse?.values?.[0]?.[0] || "";
+            const answerValue = answerResponse?.values?.[0]?.[0] || "";
+
+            const taskInfo = {
+              row,
+              promptAddress,
+              answerAddress,
+              promptValue: promptValue,
+              answerValue: answerValue,
+              hasPrompt: Boolean(promptValue && promptValue.trim()),
+              hasAnswer: Boolean(answerValue && answerValue.trim()),
+            };
+
+            if (taskInfo.hasPrompt && !taskInfo.hasAnswer) {
+              blankTasks.push(taskInfo);
+            } else if (taskInfo.hasPrompt && taskInfo.hasAnswer) {
+              completedTasks.push(taskInfo);
+            }
+          } catch (readError) {
+            console.error(
+              `❌ [FALLBACK] ${promptCol}${row}/${answerCol}${row}読み取りエラー:`,
+              readError,
+            );
+
+            // 429エラー（レート制限）の場合は長めに待機
+            if (
+              readError.message?.includes("429") ||
+              readError.message?.includes("Quota exceeded")
+            ) {
+              console.log(`⏳ [RATE-LIMIT] APIレート制限検出、長めの待機中...`);
+              await new Promise((resolve) => setTimeout(resolve, 5000)); // 5秒待機
+            }
           }
-        } catch (readError) {
-          console.error(
-            `❌ [FALLBACK] ${promptCol}${row}/${answerCol}${row}読み取りエラー:`,
-            readError,
-          );
         }
       }
     }
@@ -1863,10 +1898,14 @@ async function checkCompletionStatus(taskGroup) {
         return false;
       }
 
-      // グループ2で処理済みタスクが22個より少ない場合も未完了とする
-      if (completedTasks.length < 22) {
+      // グループ2の実際のタスク数を動的に計算
+      // プロンプトがある行数 = 実際のタスク数
+      const actualTaskCount = promptCount; // promptCountは実際にプロンプトがある行数
+
+      // 完了タスクが実際のタスク数より少ない場合は未完了とする
+      if (completedTasks.length < actualTaskCount) {
         console.error(
-          `🚨 [GROUP-2-FIX] グループ2の完了タスク数が不足(${completedTasks.length}/22)、未完了に設定`,
+          `🚨 [GROUP-2-FIX] グループ2の完了タスク数が不足(${completedTasks.length}/${actualTaskCount})、未完了に設定`,
         );
         return false;
       }

@@ -854,80 +854,92 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
       completionTime: request.completionTime,
     });
 
-    // Chrome storageから送信時の情報を取得（Promise版で確実性向上）
-    try {
-      const result = await chrome.storage.local.get([
-        `taskLog_${request.taskId}`,
-      ]);
-      const taskLogData = result[`taskLog_${request.taskId}`];
+    // 非同期処理を適切にラップして実行
+    (async () => {
+      try {
+        // Chrome storageから送信時の情報を取得（Promise版で確実性向上）
+        const result = await chrome.storage.local.get([
+          `taskLog_${request.taskId}`,
+        ]);
+        const taskLogData = result[`taskLog_${request.taskId}`];
 
-      // 🔍 取得後のURL確認ログ（強化版）
-      console.log("🔍 [DEBUG-STORAGE] 取得後のtaskLogData:", {
-        dataExists: !!taskLogData,
-        hasTaskInfo: !!taskLogData?.taskInfo,
-        hasUrl: !!taskLogData?.taskInfo?.url,
-        urlValue: taskLogData?.taskInfo?.url,
-        urlValueType: typeof taskLogData?.taskInfo?.url,
-        urlValueLength: taskLogData?.taskInfo?.url?.length,
-        taskInfoKeys: taskLogData?.taskInfo
-          ? Object.keys(taskLogData.taskInfo)
-          : [],
-        allDataKeys: taskLogData ? Object.keys(taskLogData) : [],
-        completeTaskInfo: taskLogData?.taskInfo,
-      });
+        // 🔍 取得後のURL確認ログ（強化版）
+        console.log("🔍 [DEBUG-STORAGE] 取得後のtaskLogData:", {
+          dataExists: !!taskLogData,
+          hasTaskInfo: !!taskLogData?.taskInfo,
+          hasUrl: !!taskLogData?.taskInfo?.url,
+          urlValue: taskLogData?.taskInfo?.url,
+          urlValueType: typeof taskLogData?.taskInfo?.url,
+          urlValueLength: taskLogData?.taskInfo?.url?.length,
+          taskInfoKeys: taskLogData?.taskInfo
+            ? Object.keys(taskLogData.taskInfo)
+            : [],
+          allDataKeys: taskLogData ? Object.keys(taskLogData) : [],
+          completeTaskInfo: taskLogData?.taskInfo,
+        });
 
-      // 🔍 URL値の詳細分析
-      if (taskLogData?.taskInfo) {
-        console.log("🔍 [URL-DETAILED-CHECK] taskInfo詳細分析:", {
-          taskInfoStringified: JSON.stringify(taskLogData.taskInfo, null, 2),
-          urlProperty: taskLogData.taskInfo.url,
-          urlPropertyExists: "url" in taskLogData.taskInfo,
-          urlPropertyType: typeof taskLogData.taskInfo.url,
-          urlTruthyCheck: !!taskLogData.taskInfo.url,
-          urlEmptyCheck: taskLogData.taskInfo.url === "",
-          urlNullCheck: taskLogData.taskInfo.url === null,
-          urlUndefinedCheck: taskLogData.taskInfo.url === undefined,
+        // 🔍 URL値の詳細分析
+        if (taskLogData?.taskInfo) {
+          console.log("🔍 [URL-DETAILED-CHECK] taskInfo詳細分析:", {
+            taskInfoStringified: JSON.stringify(taskLogData.taskInfo, null, 2),
+            urlProperty: taskLogData.taskInfo.url,
+            urlPropertyExists: "url" in taskLogData.taskInfo,
+            urlPropertyType: typeof taskLogData.taskInfo.url,
+            urlTruthyCheck: !!taskLogData.taskInfo.url,
+            urlEmptyCheck: taskLogData.taskInfo.url === "",
+            urlNullCheck: taskLogData.taskInfo.url === null,
+            urlUndefinedCheck: taskLogData.taskInfo.url === undefined,
+          });
+        }
+
+        if (taskLogData) {
+          // URL防御的チェック - もしURLが失われていたら警告
+          if (!taskLogData.taskInfo?.url) {
+            console.warn(
+              "⚠️ [URL-WARNING] 取得されたデータにURLが含まれていません!",
+              {
+                taskId: request.taskId,
+                taskInfo: taskLogData.taskInfo,
+              },
+            );
+          }
+
+          // 完了時刻を追加
+          taskLogData.completionTime =
+            request.completionTime || new Date().toISOString();
+
+          // スプレッドシートにログを記録
+          try {
+            await recordLogToSpreadsheet(taskLogData);
+            console.log("📊 タスク完了ログ記録成功:", request.taskId);
+
+            // 使用済みデータを削除
+            await chrome.storage.local.remove([`taskLog_${request.taskId}`]);
+          } catch (error) {
+            console.error("❌ タスク完了ログ記録エラー:", error);
+            // エラーが発生してもレスポンスは返す
+          }
+        } else {
+          console.warn("⚠️ 送信時刻データが見つかりません:", request.taskId);
+        }
+
+        // 成功レスポンスを送信
+        sendResponse({
+          success: true,
+          message: "Completion time recorded successfully",
+        });
+      } catch (storageError) {
+        console.error("❌ Chrome Storage取得エラー:", storageError);
+        // エラーレスポンスを送信
+        sendResponse({
+          success: false,
+          message: "Storage error occurred",
+          error: storageError.message,
         });
       }
+    })();
 
-      if (taskLogData) {
-        // URL防御的チェック - もしURLが失われていたら警告
-        if (!taskLogData.taskInfo?.url) {
-          console.warn(
-            "⚠️ [URL-WARNING] 取得されたデータにURLが含まれていません!",
-            {
-              taskId: request.taskId,
-              taskInfo: taskLogData.taskInfo,
-            },
-          );
-        }
-
-        // 完了時刻を追加
-        taskLogData.completionTime =
-          request.completionTime || new Date().toISOString();
-
-        // スプレッドシートにログを記録
-        try {
-          await recordLogToSpreadsheet(taskLogData);
-          console.log("📊 タスク完了ログ記録成功:", request.taskId);
-
-          // 使用済みデータを削除
-          chrome.storage.local.remove([`taskLog_${request.taskId}`]);
-        } catch (error) {
-          console.error("❌ タスク完了ログ記録エラー:", error);
-        }
-      } else {
-        console.warn("⚠️ 送信時刻データが見つかりません:", request.taskId);
-      }
-    } catch (storageError) {
-      console.error("❌ Chrome Storage取得エラー:", storageError);
-    }
-
-    sendResponse({
-      success: true,
-      message: "Completion time recorded successfully",
-    });
-    return true;
+    return true; // 非同期レスポンス許可
   }
 
   // 🔧 関数注入要求（4-2-claude-automation.js:5728から）

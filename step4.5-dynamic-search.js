@@ -336,12 +336,15 @@ class DynamicTaskSearch {
     let skippedTasks = [];
     const maxTasksToCheck = 200;
 
+    // グループの範囲を限定（最大70行までチェック）
+    const groupMaxRows = 100;
+    const endRow = Math.min(
+      dataStartRow + groupMaxRows - 1,
+      spreadsheetData.length,
+    );
+
     // データ行を順番にチェック
-    for (
-      let rowIndex = dataStartRow - 1;
-      rowIndex < spreadsheetData.length;
-      rowIndex++
-    ) {
+    for (let rowIndex = dataStartRow - 1; rowIndex < endRow; rowIndex++) {
       const row = spreadsheetData[rowIndex];
       if (!row) continue;
 
@@ -382,7 +385,6 @@ class DynamicTaskSearch {
           // このタスクが処理可能かチェック
           const isAvailable = await this.isTaskAvailable(taskId, answerValue);
 
-
           if (isAvailable) {
             availableTasksFound++;
             // 【デバッグ追加】logCell生成確認
@@ -417,10 +419,10 @@ class DynamicTaskSearch {
               answerCell: `${answerCol.column}${rowNumber}`,
               logCell: logCellValue,
             };
+          }
         }
       }
     }
-
 
     // 【無限ループ防止】統計情報ログ
     log.info(`📊 タスク検索完了:`, {
@@ -633,7 +635,6 @@ class DynamicTaskSearch {
       );
     }
 
-
     // 【修正1】すでに完了済みならスキップ（優先度：最高）
     if (this.completedTasks.has(taskId)) {
       return false;
@@ -728,7 +729,6 @@ class DynamicTaskSearch {
 
     // 最終判定結果の内部記録のみ（ログ出力削除）
 
-
     log.info(`✅ タスク実行許可: ${taskId}`);
     return result;
   }
@@ -805,21 +805,22 @@ class DynamicTaskSearch {
         return false;
       }
 
-
       const promptColumns = columns.prompts || [];
       const answerColumns = this.getAnswerColumns(columns.answer, currentGroup);
-
 
       let totalTasks = 0;
       let completedTasks = 0;
       let debugRows = [];
 
       // グループ範囲内の全タスクをチェック
-      for (
-        let rowIndex = dataStartRow - 1;
-        rowIndex < spreadsheetData.length;
-        rowIndex++
-      ) {
+      // グループの終了行を決定（グループサイズまたはデータ終端）
+      const maxRowsToCheck = 100; // グループの最大行数
+      const endRow = Math.min(
+        dataStartRow + maxRowsToCheck - 1,
+        spreadsheetData.length,
+      );
+
+      for (let rowIndex = dataStartRow - 1; rowIndex < endRow; rowIndex++) {
         const row = spreadsheetData[rowIndex];
         if (!row) continue;
 
@@ -842,7 +843,6 @@ class DynamicTaskSearch {
           }
         }
 
-
         if (!hasPrompt) continue;
 
         // 各回答列の完了状態をチェック
@@ -860,9 +860,7 @@ class DynamicTaskSearch {
           if (isCompleted) {
             completedTasks++;
           }
-
         }
-
 
         debugRows.push({
           rowNumber,
@@ -877,7 +875,6 @@ class DynamicTaskSearch {
         totalTasks > 0
           ? ((completedTasks / totalTasks) * 100).toFixed(1)
           : "0.0";
-
 
       log.info(`📊 グループ${currentGroup.groupNumber}完了状態:`, {
         totalTasks,
