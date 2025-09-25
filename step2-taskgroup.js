@@ -901,38 +901,47 @@ async function logTaskGroups() {
     logOutputs.push(logOutput);
   });
 
-  // 最後にまとめて出力
-  log.debug("========");
-  log.debug("タスクグループ情報:");
-  log.debug("========");
-  logOutputs.forEach((output) => {
-    output.forEach((line) => log.debug(line));
-  });
+  // タスクグループ情報をまとめて出力
+  const activeGroupsCount = window.globalState.taskGroups.filter(
+    (g) => !g.skip,
+  ).length;
+  const totalGroupsCount = window.globalState.taskGroups.length;
+  const skipCount = totalGroupsCount - activeGroupsCount;
+
+  log.info(
+    `📋 タスクグループ解析完了: ${activeGroupsCount}個 (スキップ: ${skipCount}個)`,
+  );
+
+  // 各グループのタイプ別集計
+  const typeCounts = {};
+  window.globalState.taskGroups
+    .filter((g) => !g.skip)
+    .forEach((group) => {
+      const taskType =
+        group.type === "通常処理"
+          ? "通常処理"
+          : group.type === "3種類AI"
+            ? "3種類AI"
+            : "レポート化";
+      typeCounts[taskType] = (typeCounts[taskType] || 0) + 1;
+    });
+
+  const typeStr = Object.entries(typeCounts)
+    .map(([type, count]) => `${type}:${count}`)
+    .join(", ");
+  log.info(`📊 タスクタイプ: ${typeStr}`);
 }
 
 // ========================================
 // 2-6. 定義の作成と保存
 // ========================================
 function saveDefinitions() {
-  log.debug("========");
-  log.debug("2-6. 定義の作成と保存");
-  log.debug("========");
-
   const activeGroups = window.globalState.taskGroups.filter((g) => !g.skip);
-
-  // 2-6-1. タスクグループ配列の作成（既に完了）
-  log.debug(`タスクグループ配列: ${activeGroups.length}個`);
-
-  // 2-6-2. タスクタイプマップの作成（2-5で完了）
-  log.debug("タスクタイプマップ:", window.globalState.taskTypeMap);
-
-  // 2-6-3. 作業列マップの作成（2-5で完了）
-  log.debug("作業列マップ:", window.globalState.workColumnMap);
 
   // localStorageに保存
   localStorage.setItem("step2Result", JSON.stringify(window.globalState));
 
-  log.debug("✅ 定義の保存完了");
+  log.info("✅ タスクグループ定義の保存完了");
   return window.globalState;
 }
 
