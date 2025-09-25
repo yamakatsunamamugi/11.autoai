@@ -242,6 +242,15 @@ async function handleIndividualTaskCompletion(result, taskIndex) {
       result.windowId
     ) {
       await immediateWindowClose(result.windowId, taskIndex);
+
+      // 重要: ウィンドウクローズ完了を確実に待機
+      log.info(
+        `⏰ [TASK-FLOW-TRACE] ウィンドウクローズ完了待機: ${result.windowId}`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 1000)); // 1秒追加待機
+      log.info(
+        `✅ [TASK-FLOW-TRACE] ウィンドウクローズ完了待機終了: ${result.windowId}`,
+      );
     }
 
     // Phase 4: 動的次タスク探索
@@ -521,10 +530,18 @@ async function immediateWindowClose(windowId, taskIndex) {
       windowId,
     });
 
-    // fire-and-forget方式で即座にクローズ
-    chrome.windows
-      .remove(windowId)
-      .catch((err) => log.warn(`ウィンドウクローズ警告[${taskIndex}]:`, err));
+    // ウィンドウクローズ完了を確実に待機
+    try {
+      await chrome.windows.remove(windowId);
+      log.info(
+        `✅ [ウィンドウクローズ完了] タスク[${taskIndex}]: windowId=${windowId}`,
+      );
+
+      // 追加の待機時間でクローズ確実性を向上
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    } catch (err) {
+      log.warn(`⚠️ [ウィンドウクローズ警告] タスク[${taskIndex}]:`, err);
+    }
 
     // WindowControllerから削除
     if (
@@ -2088,22 +2105,60 @@ class StepIntegratedWindowService {
 
           if (isInUse) {
             log.info(
-              `🔄 [強制クローズ] windowId=${existingWindowId}を強制的に閉じて、position=${position}を使用`,
+              `⏳ [ウィンドウ完了待機] windowId=${existingWindowId}の処理完了を待機します（position=${position}）`,
             );
 
-            try {
-              // 強制的にウィンドウを閉じる
-              await chrome.windows.remove(existingWindowId);
-              this.windowPositions.delete(position);
-              // ウィンドウが確実に閉じられるまで待機
-              await new Promise((resolve) => setTimeout(resolve, 1000));
-              log.info(
-                `✅ [強制クローズ完了] position=${position}を再利用可能`,
+            // ウィンドウの処理完了を待機（最大60秒）
+            let waitCount = 0;
+            const maxWaitTime = 60; // 60秒
+            let windowBecameAvailable = false;
+
+            while (waitCount < maxWaitTime && !windowBecameAvailable) {
+              await new Promise((resolve) => setTimeout(resolve, 1000)); // 1秒待機
+              waitCount++;
+
+              try {
+                // ウィンドウがまだ存在するかチェック
+                await chrome.windows.get(existingWindowId);
+                const stillInUse =
+                  await this.checkWindowInUse(existingWindowId);
+
+                if (!stillInUse) {
+                  log.info(
+                    `✅ [ウィンドウ解放] windowId=${existingWindowId}の処理が完了しました（${waitCount}秒待機）`,
+                  );
+                  windowBecameAvailable = true;
+                }
+              } catch (error) {
+                // ウィンドウが閉じられた場合
+                log.info(
+                  `✅ [ウィンドウ閉鎖] windowId=${existingWindowId}が閉じられました（${waitCount}秒待機）`,
+                );
+                this.windowPositions.delete(position);
+                windowBecameAvailable = true;
+              }
+            }
+
+            if (!windowBecameAvailable) {
+              log.warn(
+                `⚠️ [待機タイムアウト] windowId=${existingWindowId}の処理完了を${maxWaitTime}秒待機しましたが完了しませんでした。別のpositionを使用します。`,
               );
-            } catch (error) {
-              log.warn(`⚠️ [強制クローズエラー] ${error.message}`);
-              // エラーでも削除処理は実行
-              this.windowPositions.delete(position);
+              // タイムアウト時は別のpositionを探す
+              for (let altPosition = 0; altPosition < 4; altPosition++) {
+                if (
+                  altPosition !== position &&
+                  !this.windowPositions.has(altPosition)
+                ) {
+                  log.info(`🔄 [代替position] position=${altPosition}を使用`);
+                  position = altPosition;
+                  break;
+                }
+              }
+              // それでも見つからない場合はエラー
+              if (this.windowPositions.has(position)) {
+                log.error(`❌ [position不足] すべてのpositionが使用中です`);
+                return null;
+              }
             }
           } else {
             log.info(
