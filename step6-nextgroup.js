@@ -5,8 +5,8 @@ const LOG_LEVEL = { ERROR: 1, WARN: 2, INFO: 3, DEBUG: 4 };
 let CURRENT_LOG_LEVEL = LOG_LEVEL.INFO; // デフォルト値
 
 // Chrome拡張環境でのみStorageから設定を読み込む
-if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-  chrome.storage.local.get('logLevel', (result) => {
+if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+  chrome.storage.local.get("logLevel", (result) => {
     if (result.logLevel) {
       CURRENT_LOG_LEVEL = parseInt(result.logLevel);
     } else {
@@ -27,7 +27,7 @@ const log = {
   },
   debug: (...args) => {
     if (CURRENT_LOG_LEVEL >= LOG_LEVEL.DEBUG) console.log(...args);
-  }
+  },
 };
 
 /**
@@ -50,6 +50,17 @@ const log = {
 
 // 統一されたグローバル状態を使用（防御的プログラミング適用）
 if (!window.globalState) {
+  const initTimestamp = new Date().toISOString();
+  const initSource = "step6-nextgroup.js";
+
+  // 🔍 [GLOBAL-STATE] グローバル状態初期化ログ
+  console.log(`🔍 [GLOBAL-STATE] globalState初期化開始:`, {
+    initTimestamp,
+    initSource,
+    previousState: window.globalState,
+    callStack: new Error().stack.split("\n").slice(1, 4),
+  });
+
   window.globalState = {
     // Core Data (統一構造)
     spreadsheetId: null,
@@ -95,35 +106,18 @@ function checkNextGroup() {
   const processedGroups = window.globalState?.processedGroups || [];
   const currentIndex = window.globalState?.currentGroupIndex || 0;
 
-  log.debug("🔄 [step6-nextgroup.js] ====== Step 6 開始 ======");
-  log.debug("[step6-nextgroup.js→Step6-1] 次グループの確認", {
-    現在の状態: {
-      グループ数: taskGroups.length,
-      現在インデックス: currentIndex,
-      処理済み数: processedGroups.length,
-      各グループの状態: taskGroups.map((g, i) => ({
-        index: i,
-        番号: g.groupNumber,
-        タイプ: g.taskType || g.type,
-        処理済み: i < currentIndex ? "✅" : i === currentIndex ? "⚡" : "⏳",
-      })),
-    },
-  });
+  log.info("🔄 [Step 6] 次グループ移行開始");
 
   // ========================================
   // Step 6-1-1: 現在のグループ番号を取得
   // ========================================
-  log.debug("[step6-nextgroup.js→Step6-1-1] 現在のグループ番号を取得");
 
   // データ検証（防御的プログラミング）
   if (!Array.isArray(taskGroups)) {
-    log.error(
-      "[step6-nextgroup.js] [Step 6-1-1] エラー: taskGroupsが不正",
-      {
-        taskGroups: taskGroups,
-        型: typeof taskGroups,
-      },
-    );
+    log.error("[step6-nextgroup.js] [Step 6-1-1] エラー: taskGroupsが不正", {
+      taskGroups: taskGroups,
+      型: typeof taskGroups,
+    });
     return null;
   }
 
@@ -224,7 +218,7 @@ async function processNextGroup(nextGroup) {
     }
 
     log.debug(
-      `[step6-nextgroup.js] [Step 6-2-1] グループ番号をインクリメント: ${prevIndex + 1} → ${(window.globalState?.currentGroupIndex || 0) + 1}`,
+      `[step6-nextgroup.js] [Step 6-2-1] グループ番号をインクリメント: ${prevIndex + 1} → ${window.globalState?.currentGroupIndex + 1}`,
       {
         前のインデックス: prevIndex,
         新しいインデックス: window.globalState?.currentGroupIndex || 0,
@@ -348,9 +342,7 @@ function calculateStatistics() {
   log.debug(
     `[step6-nextgroup.js] [Step 6-3-2] 成功タスク数: ${successTasks}件`,
   );
-  log.debug(
-    `[step6-nextgroup.js] [Step 6-3-2] 失敗タスク数: ${failedTasks}件`,
-  );
+  log.debug(`[step6-nextgroup.js] [Step 6-3-2] 失敗タスク数: ${failedTasks}件`);
   log.debug(
     `[step6-nextgroup.js] [Step 6-3-2] 処理時間: ${minutes}分${seconds}秒`,
   );

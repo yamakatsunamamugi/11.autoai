@@ -855,6 +855,46 @@ const log = {
       // 【Step 4-3-5】メッセージ送信
       try {
         await sendMessageGemini();
+
+        // 送信時刻を記録
+        const sendTime = new Date();
+        const taskId = taskData.taskId || taskData.id || "UNKNOWN_TASK_ID";
+
+        // モデルと機能を取得
+        const modelName = modelName_var || "不明";
+        const featureName_var = featureName || "通常";
+
+        // background.jsに送信時刻を記録
+        if (chrome.runtime && chrome.runtime.sendMessage) {
+          const messageToSend = {
+            type: "recordSendTime",
+            taskId: taskId,
+            sendTime: sendTime.toISOString(),
+            taskInfo: {
+              aiType: "Gemini",
+              model: modelName,
+              function: featureName_var,
+              url: window.location.href,
+              cellInfo: taskData.cellInfo,
+            },
+            logCell: taskData.logCell,
+          };
+
+          try {
+            chrome.runtime.sendMessage(messageToSend, (response) => {
+              if (chrome.runtime.lastError) {
+                console.warn(
+                  "⚠️ [Gemini] 送信時刻記録エラー:",
+                  chrome.runtime.lastError.message,
+                );
+              } else {
+                console.log("✅ [Gemini] 送信時刻記録成功", response);
+              }
+            });
+          } catch (error) {
+            console.error("❌ [Gemini] 送信時刻記録失敗:", error);
+          }
+        }
       } catch (sendError) {
         console.error(`❌ [Gemini Step 5] メッセージ送信エラー:`, sendError);
         throw sendError;

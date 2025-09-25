@@ -76,30 +76,116 @@ const sheetsClient = new SimpleSheetsClient();
  */
 function formatLogEntry(request) {
   const parts = [];
+  const aiType = request.taskInfo?.aiType || "AI不明";
+
+  // デバッグ：request全体の構造確認
+  console.log("🔍 [DEBUG-formatLogEntry] request全体:", {
+    requestKeys: Object.keys(request),
+    hasTaskInfo: !!request.taskInfo,
+    taskInfoType: typeof request.taskInfo,
+    aiType: aiType,
+  });
+
+  // AIタイプをヘッダーとして
+  parts.push(`---------- ${aiType} ----------`);
+
+  // モデル情報
+  const model =
+    request.taskInfo?.model && request.taskInfo?.model !== "不明"
+      ? request.taskInfo.model
+      : "不明";
+  parts.push(`モデル: 選択: ${model} / 表示: ${model}`);
+
+  // 機能情報
+  const func =
+    request.taskInfo?.function && request.taskInfo?.function !== "通常"
+      ? request.taskInfo.function
+      : "通常";
+  parts.push(`機能: 選択: ${func} / 表示: ${func}`);
+
+  // URL
+  console.log("🔍 [DEBUG-URL] formatLogEntry内のURL処理:", {
+    hasTaskInfo: !!request.taskInfo,
+    hasUrl: !!request.taskInfo?.url,
+    urlValue: request.taskInfo?.url,
+    urlType: typeof request.taskInfo?.url,
+    urlLength: request.taskInfo?.url?.length,
+    taskInfoKeys: request.taskInfo ? Object.keys(request.taskInfo) : [],
+  });
+
+  // 🔍 formatLogEntry引数の完全なデバッグ
+  console.log("🔍 [FORMAT-LOG-ARGS] formatLogEntry呼び出し時の全引数:", {
+    requestType: typeof request,
+    requestKeys: Object.keys(request),
+    requestStringified: JSON.stringify(request, null, 2),
+    taskInfoExists: !!request.taskInfo,
+    taskInfoStringified: request.taskInfo
+      ? JSON.stringify(request.taskInfo, null, 2)
+      : "なし",
+    urlDirectAccess: request.taskInfo?.url,
+    urlViaDestruct: request.taskInfo && request.taskInfo.url,
+    timestamp: new Date().toISOString(),
+  });
+
+  // URLが存在し、空文字列でない場合に追加（防御的処理強化）
+  const urlValue = request.taskInfo?.url;
+  if (urlValue && typeof urlValue === "string" && urlValue.trim() !== "") {
+    parts.push(`URL: ${urlValue}`);
+    console.log("✅ [DEBUG-URL] URLをログに追加:", urlValue);
+  } else {
+    // URLが無い場合の詳細ログ
+    console.warn("⚠️ [DEBUG-URL] URLが存在しないか空のため追加されません:", {
+      urlExists: !!urlValue,
+      urlType: typeof urlValue,
+      urlValue: urlValue,
+      taskInfoExists: !!request.taskInfo,
+      requestKeys: Object.keys(request),
+    });
+
+    // フォールバック: 他の場所からURLを探索
+    const fallbackUrl =
+      request.url || request.taskInfo?.cellInfo?.url || request.data?.url;
+    if (
+      fallbackUrl &&
+      typeof fallbackUrl === "string" &&
+      fallbackUrl.trim() !== ""
+    ) {
+      parts.push(`URL: ${fallbackUrl}`);
+      console.log("🔄 [DEBUG-URL] フォールバックURLをログに追加:", fallbackUrl);
+    }
+  }
 
   // 送信時刻
   if (request.sendTime) {
     const sendTime = new Date(request.sendTime);
-    parts.push(`開始: ${sendTime.toLocaleString("ja-JP")}`);
+    parts.push(`送信時刻: ${sendTime.toLocaleString("ja-JP")}`);
   }
 
-  // AI種別
-  if (request.taskInfo?.aiType) {
-    parts.push(`AI: ${request.taskInfo.aiType}`);
+  // 記載時刻（タスク完了時刻を使用）
+  if (request.completionTime) {
+    const recordTime = new Date(request.completionTime);
+    const timeDiff = request.sendTime
+      ? Math.round(
+          (recordTime.getTime() - new Date(request.sendTime).getTime()) / 1000,
+        )
+      : 0;
+    parts.push(
+      `記載時刻: ${recordTime.toLocaleString("ja-JP")} (${timeDiff}秒後)`,
+    );
+  } else {
+    // completionTimeが無い場合は現在時刻を使用（後方互換性）
+    const recordTime = new Date();
+    const timeDiff = request.sendTime
+      ? Math.round(
+          (recordTime.getTime() - new Date(request.sendTime).getTime()) / 1000,
+        )
+      : 0;
+    parts.push(
+      `記載時刻: ${recordTime.toLocaleString("ja-JP")} (${timeDiff}秒後)`,
+    );
   }
 
-  // モデル・機能
-  if (request.taskInfo?.model && request.taskInfo?.model !== "不明") {
-    parts.push(`モデル: ${request.taskInfo.model}`);
-  }
-  if (request.taskInfo?.function && request.taskInfo?.function !== "通常") {
-    parts.push(`機能: ${request.taskInfo.function}`);
-  }
-
-  // ステータス（送信時は「実行中」）
-  parts.push(`ステータス: 送信完了`);
-
-  return parts.join(" | ");
+  return parts.join("\n");
 }
 
 /**
@@ -149,6 +235,16 @@ async function recordLogToSpreadsheet(request) {
       );
       return;
     }
+
+    // デバッグ：requestの内容確認
+    console.log("🔍 [DEBUG-URL] recordLogToSpreadsheet内のrequest:", {
+      hasTaskInfo: !!request.taskInfo,
+      taskInfoKeys: request.taskInfo ? Object.keys(request.taskInfo) : [],
+      taskInfoUrl: request.taskInfo?.url,
+      requestKeys: Object.keys(request),
+      taskId: request.taskId,
+      logCell: logCell,
+    });
 
     // ログをフォーマット
     const logText = formatLogEntry(request);
@@ -665,7 +761,7 @@ class AITestController {
 // ========================================
 
 // Extension間メッセージの中継
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
   // log.debug("📨 Message received in background:", {
   //   type: request.type,
   //   from: sender.tab ? `Tab ${sender.tab.id}` : "Extension",
@@ -687,30 +783,151 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       logCell: request.logCell, // 🔍 logCell受信状況確認
     });
 
-    // 短いログは不要のため無効化
-    /*
-    // 非同期でスプレッドシートにログを記録
-    (async () => {
-      try {
-        await recordLogToSpreadsheet(request);
-        console.log("📊 スプレッドシートログ記録成功");
-      } catch (error) {
-        // スプレッドシートIDが未設定の場合は警告ではなくデバッグログのみ
-        if (error.message === "スプレッドシートIDが設定されていません") {
-          console.debug("📝 スプレッドシートログ記録スキップ（ID未設定）");
-        } else {
-          console.error("❌ スプレッドシートログ記録エラー:", error);
-        }
+    // 🔍 URL記録デバッグ - URLが含まれているかチェック
+    console.log("🔍 [URL-DEBUG] taskInfo詳細:", {
+      hasTaskInfo: !!request.taskInfo,
+      taskInfoKeys: request.taskInfo ? Object.keys(request.taskInfo) : [],
+      hasUrl: !!request.taskInfo?.url,
+      urlValue: request.taskInfo?.url,
+      aiType: request.taskInfo?.aiType,
+    });
+
+    // 送信時刻のみを記録（後でタスク完了時に記載時刻と合わせて記録）
+    // Chrome storageに一時保存（ディープコピーでデータ保護）
+    const taskLogData = {
+      taskId: request.taskId,
+      sendTime: request.sendTime,
+      taskInfo: JSON.parse(JSON.stringify(request.taskInfo)), // ディープコピー
+      logCell: request.logCell,
+    };
+
+    // 🔍 保存前のURL確認ログ
+    console.log("🔍 [DEBUG-STORAGE] 保存前のtaskLogData:", {
+      hasTaskInfo: !!taskLogData.taskInfo,
+      hasUrl: !!taskLogData.taskInfo?.url,
+      urlValue: taskLogData.taskInfo?.url,
+      taskInfoKeys: taskLogData.taskInfo
+        ? Object.keys(taskLogData.taskInfo)
+        : [],
+    });
+
+    // Promise版Chrome Storageを使用（非同期処理の確実性向上）
+    try {
+      await chrome.storage.local.set({
+        [`taskLog_${request.taskId}`]: taskLogData,
+      });
+
+      // 🔍 保存後の確認読み取り
+      const verifyResult = await chrome.storage.local.get([
+        `taskLog_${request.taskId}`,
+      ]);
+      const savedData = verifyResult[`taskLog_${request.taskId}`];
+      console.log("🔍 [DEBUG-STORAGE] 保存後の確認読み取り:", {
+        dataExists: !!savedData,
+        hasTaskInfo: !!savedData?.taskInfo,
+        hasUrl: !!savedData?.taskInfo?.url,
+        urlValue: savedData?.taskInfo?.url,
+      });
+
+      console.log("📝 送信時刻を一時保存しました:", request.taskId);
+
+      sendResponse({
+        success: true,
+        message: "Send time recorded successfully",
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error("❌ Chrome Storage保存エラー:", error);
+      sendResponse({
+        success: false,
+        message: "Failed to save send time",
+        error: error.message,
+      });
+    }
+    return true; // 非同期レスポンス許可
+  }
+
+  // 📝 タスク完了時のログ記録要求
+  if (request.type === "recordCompletionTime") {
+    console.log("📝 タスク完了時刻記録要求を受信:", {
+      taskId: request.taskId,
+      completionTime: request.completionTime,
+    });
+
+    // Chrome storageから送信時の情報を取得（Promise版で確実性向上）
+    try {
+      const result = await chrome.storage.local.get([
+        `taskLog_${request.taskId}`,
+      ]);
+      const taskLogData = result[`taskLog_${request.taskId}`];
+
+      // 🔍 取得後のURL確認ログ（強化版）
+      console.log("🔍 [DEBUG-STORAGE] 取得後のtaskLogData:", {
+        dataExists: !!taskLogData,
+        hasTaskInfo: !!taskLogData?.taskInfo,
+        hasUrl: !!taskLogData?.taskInfo?.url,
+        urlValue: taskLogData?.taskInfo?.url,
+        urlValueType: typeof taskLogData?.taskInfo?.url,
+        urlValueLength: taskLogData?.taskInfo?.url?.length,
+        taskInfoKeys: taskLogData?.taskInfo
+          ? Object.keys(taskLogData.taskInfo)
+          : [],
+        allDataKeys: taskLogData ? Object.keys(taskLogData) : [],
+        completeTaskInfo: taskLogData?.taskInfo,
+      });
+
+      // 🔍 URL値の詳細分析
+      if (taskLogData?.taskInfo) {
+        console.log("🔍 [URL-DETAILED-CHECK] taskInfo詳細分析:", {
+          taskInfoStringified: JSON.stringify(taskLogData.taskInfo, null, 2),
+          urlProperty: taskLogData.taskInfo.url,
+          urlPropertyExists: "url" in taskLogData.taskInfo,
+          urlPropertyType: typeof taskLogData.taskInfo.url,
+          urlTruthyCheck: !!taskLogData.taskInfo.url,
+          urlEmptyCheck: taskLogData.taskInfo.url === "",
+          urlNullCheck: taskLogData.taskInfo.url === null,
+          urlUndefinedCheck: taskLogData.taskInfo.url === undefined,
+        });
       }
-    })();
-    */
+
+      if (taskLogData) {
+        // URL防御的チェック - もしURLが失われていたら警告
+        if (!taskLogData.taskInfo?.url) {
+          console.warn(
+            "⚠️ [URL-WARNING] 取得されたデータにURLが含まれていません!",
+            {
+              taskId: request.taskId,
+              taskInfo: taskLogData.taskInfo,
+            },
+          );
+        }
+
+        // 完了時刻を追加
+        taskLogData.completionTime =
+          request.completionTime || new Date().toISOString();
+
+        // スプレッドシートにログを記録
+        try {
+          await recordLogToSpreadsheet(taskLogData);
+          console.log("📊 タスク完了ログ記録成功:", request.taskId);
+
+          // 使用済みデータを削除
+          chrome.storage.local.remove([`taskLog_${request.taskId}`]);
+        } catch (error) {
+          console.error("❌ タスク完了ログ記録エラー:", error);
+        }
+      } else {
+        console.warn("⚠️ 送信時刻データが見つかりません:", request.taskId);
+      }
+    } catch (storageError) {
+      console.error("❌ Chrome Storage取得エラー:", storageError);
+    }
 
     sendResponse({
       success: true,
-      message: "Send time recorded successfully",
-      timestamp: new Date().toISOString(),
+      message: "Completion time recorded successfully",
     });
-    return true; // 非同期レスポンス許可
+    return true;
   }
 
   // 🔧 関数注入要求（4-2-claude-automation.js:5728から）

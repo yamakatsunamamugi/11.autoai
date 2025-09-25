@@ -2,7 +2,7 @@
 const LOG_LEVEL = { ERROR: 1, WARN: 2, INFO: 3, DEBUG: 4 };
 
 // Chrome Storageからログレベルを取得（非同期）
-let CURRENT_LOG_LEVEL = LOG_LEVEL.INFO; // デフォルト値
+let CURRENT_LOG_LEVEL = LOG_LEVEL.WARN; // デフォルト値（デバッグとINFOログを無効化）
 
 // Chrome拡張環境でのみStorageから設定を読み込む
 if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
@@ -926,13 +926,6 @@ function loadSavedAIData() {
       chrome.storage.local.get(storageKey, (result) => {
         if (result[storageKey]) {
           const savedData = result[storageKey];
-          log.info(
-            `💾 [UI] ${aiType}の保存データを独立キーから読み込みました`,
-            {
-              timestamp: savedData.timestamp,
-              source: savedData.source,
-            },
-          );
 
           // メモリに復元
           lastAIData[aiType] = {
@@ -940,33 +933,17 @@ function loadSavedAIData() {
             functions: savedData.functions || [],
           };
 
-          log.debug(`💾 [UI] ${aiType}の保存データをメモリに復元:`, {
-            modelsCount: lastAIData[aiType].models.length,
-            functionsCount: lastAIData[aiType].functions.length,
-            functionsType:
-              lastAIData[aiType].functions.length > 0
-                ? typeof lastAIData[aiType].functions[0]
-                : "none",
-          });
-
           // UIテーブルを更新
           updateAITable(aiType, {
             models: savedData.models,
             functions: savedData.functions,
           });
-
-          if (savedData.timestamp) {
-            log.debug(`📅 [UI] ${aiType}の最終検出: ${savedData.timestamp}`);
-          }
-        } else {
-          log.debug(`💾 [UI] ${aiType}の保存データはありません`);
         }
       });
     });
 
-    // データ読み込み後にドロップダウンを更新（少し遅延を入れて全データ読み込み完了を待つ）
+    // データ読み込み後にドロップダウンを更新
     setTimeout(() => {
-      log.info("🔄 保存データからドロップダウンを更新");
       updateTestConfigDropdowns();
     }, 500);
   }

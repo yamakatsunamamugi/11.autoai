@@ -5385,6 +5385,7 @@
                   aiType: "Claude",
                   model: modelName || "不明",
                   function: featureName || "通常",
+                  url: window.location.href,
                   cellInfo: taskData.cellInfo, // cellInfo を追加
                 },
                 logCell: taskData.logCell, // ログセルを直接追加
@@ -5404,7 +5405,7 @@
                   // chrome.runtime.lastErrorをチェック
                   if (chrome.runtime.lastError) {
                     log.warn(
-                      "⚠️ [chrome.runtime.lastError]:",
+                      "⚠️ chrome.runtime.lastError:",
                       chrome.runtime.lastError.message,
                     );
                     resolve({
@@ -5427,14 +5428,8 @@
 
             if (response.error) {
               log.warn(
-                `⚠️ [FIXED] 送信時刻記録失敗（タスク実行は継続） [${response.error}]:`,
-                {
-                  error: response.error,
-                  message: response.message,
-                  taskId: taskId,
-                  timestamp: new Date().toISOString(),
-                  note: "エラーでもタスク実行には影響なし",
-                },
+                `⚠️ 送信時刻記録失敗 [${response.error}]:`,
+                response.error,
               );
             } else {
               log.debug("✅ [FIXED] 送信時刻記録成功（background.jsで処理）:", {
@@ -6471,6 +6466,18 @@
 
         // 実行状態を解除
         setExecutionState(false);
+
+        // タスク完了時刻をBackground Scriptに記録
+        try {
+          chrome.runtime.sendMessage({
+            type: "recordCompletionTime",
+            taskId: taskId,
+            completionTime: new Date().toISOString(),
+          });
+          log.debug("✅ recordCompletionTime送信完了:", taskId);
+        } catch (error) {
+          log.warn("⚠️ recordCompletionTime送信エラー:", error);
+        }
 
         return result;
       } catch (error) {

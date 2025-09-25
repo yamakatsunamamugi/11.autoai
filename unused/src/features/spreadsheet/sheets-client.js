@@ -26,6 +26,14 @@ class SheetsClient {
       windowDuration: 60000, // ウィンドウ期間 (1分)
     };
 
+    // 🔍 【追加】並行処理・競合状態追跡システム
+    this.concurrencyTracker = {
+      activeCellOperations: new Map(), // セルごとの進行中操作を追跡
+      operationHistory: [], // 操作履歴（最新100件）
+      maxHistorySize: 100,
+      conflictCount: 0,
+    };
+
     // エラー監視と統計
     this.errorMonitor = {
       totalErrors: 0,
@@ -1832,6 +1840,56 @@ class SheetsClient {
     const { enableValidation = true, enableSplitting = true } = options;
 
     const startTime = Date.now();
+    const operationId = `${range}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    // 🔍 【追加】並行処理競合検出
+    const cellKey = `${spreadsheetId}:${range}`;
+    const currentOperation = {
+      operationId,
+      range,
+      value,
+      startTime,
+      status: "starting",
+    };
+
+    // 同一セルで進行中の操作がある場合は警告
+    if (this.concurrencyTracker.activeCellOperations.has(cellKey)) {
+      const existingOp =
+        this.concurrencyTracker.activeCellOperations.get(cellKey);
+      this.concurrencyTracker.conflictCount++;
+      console.error(
+        `🔥 [CONCURRENCY-CONFLICT] 同一セルへの並行書き込み検出: ${range}`,
+        {
+          newOperationId: operationId,
+          existingOperationId: existingOp.operationId,
+          existingStartTime: existingOp.startTime,
+          timeDiff: startTime - existingOp.startTime,
+          conflictCount: this.concurrencyTracker.conflictCount,
+          cellKey,
+        },
+      );
+    }
+
+    // 現在の操作を登録
+    this.concurrencyTracker.activeCellOperations.set(cellKey, currentOperation);
+
+    // 🔍 【追加】書き込み前の値を記録
+    let preWriteValue = null;
+    try {
+      const preWriteResult = await this.getCellValue(spreadsheetId, range, gid);
+      preWriteValue = preWriteResult;
+      console.log(`🔍 [DEBUG-WRITE] 書き込み前値記録: ${range}`, {
+        operationId,
+        preWriteValue: preWriteValue,
+        preWriteType: typeof preWriteValue,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (preError) {
+      console.warn(`⚠️ [DEBUG-WRITE] 書き込み前値取得失敗: ${range}`, {
+        operationId,
+        error: preError.message,
+      });
+    }
 
     // ログ記録: スプレッドシート書き込み開始（文字数付き）
     const valueLength =
@@ -1841,11 +1899,13 @@ class SheetsClient {
           ? JSON.stringify(value).length
           : 0;
     console.log(`📝 [SheetsClient] セル更新開始: ${range}`, {
+      operationId,
       spreadsheetId: spreadsheetId.substring(0, 10) + "...",
       range: range,
       valueLength: valueLength,
       valuePreview:
         typeof value === "string" ? value.substring(0, 100) + "..." : value,
+      preWriteValue: preWriteValue,
     });
 
     return await this.executeWithQuotaManagement(async () => {
@@ -1936,18 +1996,59 @@ class SheetsClient {
 
         const result = await response.json();
 
+        // 🔍 【追加】書き込み直後の値確認
+        let postWriteValue = null;
+        let immediateReadError = null;
+        try {
+          // 書き込み直後に即座に読み取り（キャッシュ問題検出のため）
+          const immediateReadResult = await this.getCellValue(
+            spreadsheetId,
+            processedRange,
+            gid,
+          );
+          postWriteValue = immediateReadResult;
+          console.log(
+            `🔍 [DEBUG-WRITE] 書き込み直後値確認: ${processedRange}`,
+            {
+              operationId,
+              postWriteValue: postWriteValue,
+              postWriteType: typeof postWriteValue,
+              expectedValue: value,
+              valuesMatch: postWriteValue === value,
+              timestamp: new Date().toISOString(),
+              timeSinceWrite: `${Date.now() - startTime}ms`,
+            },
+          );
+        } catch (immediateReadError) {
+          immediateReadError = immediateReadError;
+          console.warn(
+            `⚠️ [DEBUG-WRITE] 書き込み直後値取得失敗: ${processedRange}`,
+            {
+              operationId,
+              error: immediateReadError.message,
+            },
+          );
+        }
+
         // 5. 書き込み結果の確認
         const duration = Date.now() - startTime;
         if (result && result.updatedCells) {
           this.detailedLog("info", `書き込み成功: ${processedRange}`, {
+            operationId,
             updatedCells: result.updatedCells,
             duration: `${duration}ms`,
+            preWriteValue,
+            postWriteValue,
+            immediateReadError: immediateReadError?.message,
             ...validation.stats,
           });
         } else {
           this.detailedLog("warn", `書き込み結果が不明: ${processedRange}`, {
+            operationId,
             result,
             duration,
+            preWriteValue,
+            postWriteValue,
           });
         }
 
@@ -1992,10 +2093,18 @@ class SheetsClient {
 
             const duration = Date.now() - startTime;
             console.log(`✅ [SheetsClient] セル更新完了: ${processedRange}`, {
+              operationId,
               range: processedRange,
               valueLength: valueLength,
               duration: `${duration}ms`,
               verification: verificationResult.isMatch ? "OK" : "MISMATCH",
+            });
+
+            // 🔍 【追加】操作完了時の競合状態追跡クリーンアップ
+            this.cleanupConcurrencyTracking(cellKey, operationId, "completed", {
+              success: true,
+              duration,
+              verification: verificationResult.isMatch,
             });
 
             return {
@@ -2017,11 +2126,19 @@ class SheetsClient {
         console.log(
           `✅ [SheetsClient] セル更新完了: ${processedRange || range}`,
           {
+            operationId,
             range: processedRange || range,
             valueLength: valueLength,
             duration: `${totalDuration}ms`,
           },
         );
+
+        // 🔍 【追加】操作完了時の競合状態追跡クリーンアップ（検証なし）
+        this.cleanupConcurrencyTracking(cellKey, operationId, "completed", {
+          success: true,
+          duration: totalDuration,
+          verification: "disabled",
+        });
 
         return {
           ...result,
@@ -2031,12 +2148,75 @@ class SheetsClient {
       } catch (error) {
         const duration = Date.now() - startTime;
         this.detailedLog("error", `書き込み処理エラー: ${range}`, {
+          operationId,
           error: error,
           duration: `${duration}ms`,
         });
+
+        // 🔍 【追加】エラー時の競合状態追跡クリーンアップ
+        this.cleanupConcurrencyTracking(cellKey, operationId, "error", {
+          success: false,
+          duration,
+          error: error.message,
+        });
+
         throw error;
       }
     }, "updateCell");
+  }
+
+  /**
+   * 🔍 【追加】並行処理競合状態追跡のクリーンアップ
+   * @param {string} cellKey - セルのキー
+   * @param {string} operationId - 操作ID
+   * @param {string} status - 操作状態
+   * @param {Object} result - 結果情報
+   */
+  cleanupConcurrencyTracking(cellKey, operationId, status, result) {
+    try {
+      // 操作履歴に記録
+      const historyEntry = {
+        cellKey,
+        operationId,
+        status,
+        result,
+        timestamp: new Date().toISOString(),
+        endTime: Date.now(),
+      };
+
+      this.concurrencyTracker.operationHistory.push(historyEntry);
+
+      // 履歴サイズ制限
+      if (
+        this.concurrencyTracker.operationHistory.length >
+        this.concurrencyTracker.maxHistorySize
+      ) {
+        this.concurrencyTracker.operationHistory.shift();
+      }
+
+      // アクティブ操作から削除
+      const activeOp =
+        this.concurrencyTracker.activeCellOperations.get(cellKey);
+      if (activeOp && activeOp.operationId === operationId) {
+        this.concurrencyTracker.activeCellOperations.delete(cellKey);
+        console.log(`🔍 [CONCURRENCY-CLEANUP] 操作完了: ${cellKey}`, {
+          operationId,
+          status,
+          duration: result.duration,
+          remainingActiveOps: this.concurrencyTracker.activeCellOperations.size,
+        });
+      } else {
+        console.warn(
+          `⚠️ [CONCURRENCY-CLEANUP] 操作ID不一致または既に削除済み: ${cellKey}`,
+          {
+            operationId,
+            activeOpId: activeOp?.operationId,
+          },
+        );
+      }
+    } catch (error) {
+      console.error(`❌ [CONCURRENCY-CLEANUP] エラー:`, error);
+    }
   }
 
   /**

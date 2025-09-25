@@ -252,6 +252,18 @@ class DynamicTaskSearch {
         return null;
       }
 
+      // 🔍 【詳細デバッグ】Group 2のタスク検索開始ログ
+      const isGroup2 = currentGroup.groupNumber === 2;
+      if (isGroup2) {
+        log.error("🚨 [GROUP-2-SEARCH] Group 2タスク検索開始:", {
+          groupNumber: currentGroup.groupNumber,
+          currentGroup: currentGroup,
+          processingTasks: Array.from(this.processingTasks),
+          completedTasks: Array.from(this.completedTasks),
+          検索開始時刻: new Date().toISOString(),
+        });
+      }
+
       // 最新のスプレッドシートデータを取得
       const spreadsheetData = await this.fetchLatestSpreadsheetData();
 
@@ -320,7 +332,17 @@ class DynamicTaskSearch {
   async searchTaskInGroup(spreadsheetData, taskGroup) {
     const { columns, dataStartRow } = taskGroup;
 
-    // taskGroup内容確認
+    // 🔍 【詳細デバッグ】Group 2のタスク検索詳細
+    const isGroup2 = taskGroup.groupNumber === 2;
+    if (isGroup2) {
+      log.error("🚨 [GROUP-2-SEARCH] searchTaskInGroup開始:", {
+        groupNumber: taskGroup.groupNumber,
+        columns: columns,
+        dataStartRow: dataStartRow,
+        spreadsheetDataLength: spreadsheetData?.length,
+        taskGroupDetails: taskGroup,
+      });
+    }
 
     if (!columns || !dataStartRow) {
       log.error("グループ情報が不完全");
@@ -331,9 +353,21 @@ class DynamicTaskSearch {
     const promptColumns = columns.prompts || [];
     const answerColumns = this.getAnswerColumns(columns.answer, taskGroup);
 
+    // 🔍 【詳細デバッグ】Group 2の列構成確認
+    if (isGroup2) {
+      log.error("🚨 [GROUP-2-SEARCH] 列構成詳細:", {
+        promptColumns: promptColumns,
+        answerColumns: answerColumns,
+        columnsAnswer: columns.answer,
+        期待される列範囲: "W~Y列かどうか確認",
+      });
+    }
+
     // 【無限ループ防止】カウンター追加
     let tasksChecked = 0;
     let completedTasksFound = 0;
+    let availableTasksFound = 0;
+    let skippedTasks = [];
     const maxTasksToCheck = 200;
 
     // データ行を順番にチェック
@@ -376,11 +410,36 @@ class DynamicTaskSearch {
           // 完了済みタスクをカウント（詳細ログなしで高速チェック）
           if (this.completedTasks.has(taskId)) {
             completedTasksFound++;
+            if (isGroup2) {
+              skippedTasks.push({
+                taskId,
+                reason: "already_completed",
+                row: rowNumber,
+                column: answerCol.column,
+              });
+            }
             continue; // スキップして次へ
           }
 
           // このタスクが処理可能かチェック
-          if (await this.isTaskAvailable(taskId, answerValue)) {
+          const isAvailable = await this.isTaskAvailable(taskId, answerValue);
+
+          // 🔍 【詳細デバッグ】Group 2のタスク可用性チェック
+          if (isGroup2) {
+            log.error(`🚨 [GROUP-2-SEARCH] タスク${taskId}可用性チェック:`, {
+              taskId: taskId,
+              row: rowNumber,
+              column: answerCol.column,
+              answerValue: answerValue
+                ? answerValue.substring(0, 50) + "..."
+                : "empty",
+              isAvailable: isAvailable,
+              aiType: answerCol.aiType,
+            });
+          }
+
+          if (isAvailable) {
+            availableTasksFound++;
             // 【デバッグ追加】logCell生成確認
             const logCellValue = taskGroup.columns?.log
               ? `${taskGroup.columns.log}${rowNumber}`
@@ -413,8 +472,49 @@ class DynamicTaskSearch {
               answerCell: `${answerCol.column}${rowNumber}`,
               logCell: logCellValue,
             };
+          } else if (!isAvailable && isGroup2) {
+            skippedTasks.push({
+              taskId,
+              reason: "not_available",
+              row: rowNumber,
+              column: answerCol.column,
+              answerValue: answerValue ? answerValue.substring(0, 30) : "empty",
+            });
           }
         }
+      }
+    }
+
+    // 🔍 【詳細デバッグ】Group 2の検索完了サマリー
+    if (isGroup2) {
+      log.error("🚨 [GROUP-2-SEARCH] タスク検索完了サマリー:", {
+        groupNumber: taskGroup.groupNumber,
+        チェック済み: tasksChecked,
+        完了済み発見: completedTasksFound,
+        利用可能タスク発見: availableTasksFound,
+        スキップされたタスク数: skippedTasks.length,
+        スキップ理由別: {
+          already_completed: skippedTasks.filter(
+            (t) => t.reason === "already_completed",
+          ).length,
+          not_available: skippedTasks.filter(
+            (t) => t.reason === "not_available",
+          ).length,
+        },
+        スキップ詳細サンプル: skippedTasks.slice(0, 10),
+        検索完了時刻: new Date().toISOString(),
+      });
+
+      if (availableTasksFound === 0 && tasksChecked > 0) {
+        log.error(
+          "🚨 [GROUP-2-SEARCH] Group 2でタスクが見つからない原因分析:",
+          {
+            データ範囲問題: `dataStartRow=${dataStartRow}が正しいか？`,
+            列設定問題: `promptColumns=${JSON.stringify(promptColumns)}, answerColumns=${JSON.stringify(answerColumns.map((c) => c.column))}が正しいか？`,
+            データ存在問題: "実際にW~Y列にタスクデータが存在するか？",
+            判定ロジック問題: "isTaskAvailable()が常にfalseを返している可能性",
+          },
+        );
       }
     }
 
@@ -422,7 +522,7 @@ class DynamicTaskSearch {
     log.info(`📊 タスク検索完了:`, {
       チェック済み: tasksChecked,
       完了済み発見: completedTasksFound,
-      利用可能タスク: "0個",
+      利用可能タスク: availableTasksFound + "個",
       グループ: taskGroup.groupNumber,
     });
 
@@ -617,9 +717,63 @@ class DynamicTaskSearch {
    * 【修正】重複実行防止のための厳密なチェック
    */
   async isTaskAvailable(taskId, cellValue) {
+    const startTimestamp = new Date().toISOString();
+    const callId = `${taskId}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+
+    // 🔍 【詳細デバッグ】Group 2のタスク可用性詳細チェック
+    const isGroup2Task =
+      taskId.includes("W") || taskId.includes("X") || taskId.includes("Y");
+
+    // 🔍 [RACE-CONDITION-DETECTION] 競合状態検知のための詳細ログ
+    console.log(`🔍 [RACE-DETECTION] isTaskAvailable呼び出し開始:`, {
+      callId,
+      taskId,
+      startTimestamp,
+      inputCellValue: cellValue ? cellValue.substring(0, 50) + "..." : "empty",
+      currentState: {
+        completedTasksHas: this.completedTasks.has(taskId),
+        processingTasksHas: this.processingTasks.has(taskId),
+        completedTasksSize: this.completedTasks.size,
+        processingTasksSize: this.processingTasks.size,
+        completedTasksList: Array.from(this.completedTasks).slice(0, 10),
+        processingTasksList: Array.from(this.processingTasks),
+      },
+      callStack: new Error().stack.split("\n").slice(1, 3),
+      isGroup2Task,
+    });
+
+    // エラー相関トラッカーへのイベント記録
+    if (window.errorCorrelationTracker) {
+      window.errorCorrelationTracker.recordEvent(
+        "task_availability_check_start",
+        {
+          taskId,
+          callId,
+          cellValue: cellValue ? "has_content" : "empty",
+          completedTasksHas: this.completedTasks.has(taskId),
+          processingTasksHas: this.processingTasks.has(taskId),
+        },
+      );
+    }
+
+    if (isGroup2Task) {
+      log.error("🚨 [GROUP-2-AVAILABLE] タスク可用性チェック開始:", {
+        taskId,
+        callId,
+        cellValue: cellValue ? cellValue.substring(0, 50) + "..." : "empty",
+        completedTasksHas: this.completedTasks.has(taskId),
+        processingTasksHas: this.processingTasks.has(taskId),
+        チェック開始時刻: startTimestamp,
+      });
+    }
+
     // 【修正1】すでに完了済みならスキップ（優先度：最高）
     if (this.completedTasks.has(taskId)) {
-      // 【無限ループ防止】過剰ログを削減し、デバッグレベルに変更
+      if (isGroup2Task) {
+        log.error("🚨 [GROUP-2-AVAILABLE] 完了済みタスクのためスキップ:", {
+          taskId,
+        });
+      }
       return false;
     }
 
@@ -734,8 +888,46 @@ class DynamicTaskSearch {
     }
 
     // セルが本当に空の場合のみ実行可能
+    const result = true;
+    const endTimestamp = new Date().toISOString();
+
+    // 🔍 [RACE-DETECTION] 最終判定結果のログ
+    console.log(`🔍 [RACE-DETECTION] isTaskAvailable最終判定:`, {
+      callId,
+      taskId,
+      result,
+      startTimestamp,
+      endTimestamp,
+      duration: Date.now() - new Date(startTimestamp).getTime(),
+      finalState: {
+        completedTasksHas: this.completedTasks.has(taskId),
+        processingTasksHas: this.processingTasks.has(taskId),
+        completedTasksSize: this.completedTasks.size,
+        processingTasksSize: this.processingTasks.size,
+      },
+      reason: "セルが空で全検証を通過",
+      stateChangedDuringCheck:
+        this.completedTasks.has(taskId) || this.processingTasks.has(taskId),
+    });
+
+    if (isGroup2Task) {
+      log.error(
+        "🚨 [GROUP-2-AVAILABLE] タスク実行許可 - Group 2タスクが利用可能:",
+        {
+          taskId: taskId,
+          callId,
+          cellValue: cellValue || "empty",
+          result: result,
+          reason: "セルが空で全検証を通過",
+          チェック完了時刻: endTimestamp,
+          処理時間: Date.now() - new Date(startTimestamp).getTime() + "ms",
+        },
+      );
+    }
+
     console.warn(`✅ [重複検証] タスク実行許可 - 全チェック通過:`, {
       taskId: taskId,
+      callId,
       cellValue: cellValue || "empty",
       latestDataChecked: true,
       reason: "セルが空で全検証を通過",
@@ -747,14 +939,46 @@ class DynamicTaskSearch {
         "final check",
       ],
     });
-    return true;
+    return result;
   }
 
   /**
    * タスクを処理中としてマーク
    */
   markTaskAsProcessing(task) {
+    const timestamp = new Date().toISOString();
+    const wasAlreadyProcessing = this.processingTasks.has(task.id);
+    const wasCompleted = this.completedTasks.has(task.id);
+
+    // 🔍 [STATE-TRACKING] 処理開始時の状態スナップショット
+    console.log(`🔍 [STATE-TRANSITION] markTaskAsProcessing開始:`, {
+      taskId: task.id,
+      timestamp,
+      currentState: {
+        wasAlreadyProcessing,
+        wasCompleted,
+        processingTasksSize: this.processingTasks.size,
+        completedTasksSize: this.completedTasks.size,
+        processingTasksList: Array.from(this.processingTasks),
+        completedTasksList: Array.from(this.completedTasks),
+      },
+      stateTransition: `IDLE → PROCESSING`,
+      callStack: new Error().stack.split("\n").slice(1, 4),
+    });
+
     this.processingTasks.add(task.id);
+
+    // 状態変更後の検証
+    console.log(`🔍 [STATE-TRANSITION] markTaskAsProcessing完了:`, {
+      taskId: task.id,
+      timestamp: new Date().toISOString(),
+      newState: {
+        isNowProcessing: this.processingTasks.has(task.id),
+        processingTasksSize: this.processingTasks.size,
+        processingTasksList: Array.from(this.processingTasks),
+      },
+      duration: Date.now() - new Date(timestamp).getTime(),
+    });
 
     // window.currentTaskListも更新
     if (window.currentTaskList && Array.isArray(window.currentTaskList)) {
@@ -775,19 +999,60 @@ class DynamicTaskSearch {
    * 【修正】重複防止の強化とデータ整合性確保
    */
   registerTaskCompletion(taskId) {
-    // 完了登録前の状態チェック
+    const timestamp = new Date().toISOString();
+    const wasAlreadyCompleted = this.completedTasks.has(taskId);
+    const wasProcessing = this.processingTasks.has(taskId);
+
+    // 🔍 [STATE-TRACKING] 完了登録時の状態スナップショット
+    console.log(`🔍 [STATE-TRANSITION] registerTaskCompletion開始:`, {
+      taskId,
+      timestamp,
+      currentState: {
+        wasAlreadyCompleted,
+        wasProcessing,
+        processingTasksSize: this.processingTasks.size,
+        completedTasksSize: this.completedTasks.size,
+        processingTasksList: Array.from(this.processingTasks),
+        completedTasksList: Array.from(this.completedTasks),
+      },
+      stateTransition: wasProcessing
+        ? `PROCESSING → COMPLETED`
+        : `UNKNOWN → COMPLETED`,
+      callStack: new Error().stack.split("\n").slice(1, 4),
+    });
 
     // 【修正】重複完了登録の防止
     if (this.completedTasks.has(taskId)) {
-      // 重複完了タスク - 登録スキップ
-      return; // 重複登録を防止
+      console.warn(`⚠️ [STATE-TRANSITION] 重複完了登録をスキップ:`, {
+        taskId,
+        timestamp,
+        reason: "already_completed",
+        skipRegistration: true,
+      });
+      return;
     }
 
     // 処理中リストから削除
-    const wasProcessing = this.processingTasks.delete(taskId);
+    const removedFromProcessing = this.processingTasks.delete(taskId);
 
     // 完了リストに追加
     this.completedTasks.add(taskId);
+
+    // 状態変更後の検証
+    console.log(`🔍 [STATE-TRANSITION] registerTaskCompletion完了:`, {
+      taskId,
+      timestamp: new Date().toISOString(),
+      newState: {
+        isNowCompleted: this.completedTasks.has(taskId),
+        isStillProcessing: this.processingTasks.has(taskId),
+        removedFromProcessing,
+        processingTasksSize: this.processingTasks.size,
+        completedTasksSize: this.completedTasks.size,
+        processingTasksList: Array.from(this.processingTasks),
+        completedTasksList: Array.from(this.completedTasks),
+      },
+      duration: Date.now() - new Date(timestamp).getTime(),
+    });
 
     log.info(`✅ タスク完了登録: ${taskId}`);
 
@@ -823,11 +1088,42 @@ class DynamicTaskSearch {
         return false;
       }
 
+      // 🔍 【詳細デバッグ】グループ完了判定の詳細ログ（Group 2専用強化）
+      const isGroup2 = currentGroup.groupNumber === 2;
+      if (isGroup2) {
+        log.error(
+          "🚨 [GROUP-2-COMPLETION] グループ2完了判定開始 - 詳細トレース:",
+          {
+            groupNumber: currentGroup.groupNumber,
+            columns: currentGroup.columns,
+            dataStartRow: currentGroup.dataStartRow,
+            spreadsheetDataLength: spreadsheetData?.length,
+            groupType: currentGroup.type,
+            范囲: `${currentGroup.columns?.prompts?.[0]} 〜 ${currentGroup.columns?.answer?.primary || currentGroup.columns?.answer}`,
+            判定開始時刻: new Date().toISOString(),
+          },
+        );
+      }
+
       const promptColumns = columns.prompts || [];
       const answerColumns = this.getAnswerColumns(columns.answer, currentGroup);
 
+      // 🔍 【詳細デバッグ】列設定の詳細
+      if (isGroup2) {
+        log.error("🚨 [GROUP-2-COMPLETION] 列設定詳細:", {
+          promptColumns: promptColumns,
+          answerColumns: answerColumns,
+          columnsAnswer: columns.answer,
+          getAnswerColumnsResult: answerColumns.map((col) => ({
+            column: col.column,
+            aiType: col.aiType,
+          })),
+        });
+      }
+
       let totalTasks = 0;
       let completedTasks = 0;
+      let debugRows = [];
 
       // グループ範囲内の全タスクをチェック
       for (
@@ -842,32 +1138,85 @@ class DynamicTaskSearch {
 
         // プロンプト存在確認
         let hasPrompt = false;
+        let promptDetails = [];
         for (const promptCol of promptColumns) {
           const colIndex = this.columnToIndex(promptCol);
           const promptValue = row[colIndex];
+          promptDetails.push({
+            column: promptCol,
+            index: colIndex,
+            value: promptValue ? promptValue.substring(0, 50) + "..." : "empty",
+          });
           if (promptValue && promptValue.trim()) {
             hasPrompt = true;
             break;
           }
         }
 
+        // 🔍 【詳細デバッグ】Group 2の場合、各行の詳細をログ
+        if (isGroup2 && (hasPrompt || rowNumber <= dataStartRow + 10)) {
+          log.error(`🚨 [GROUP-2-COMPLETION] 行${rowNumber}詳細:`, {
+            rowNumber,
+            hasPrompt,
+            promptDetails,
+            rowData: row
+              ? row
+                  .slice(0, 10)
+                  .map(
+                    (cell, i) =>
+                      `${String.fromCharCode(65 + i)}:${cell || "empty"}`,
+                  )
+              : "no data",
+          });
+        }
+
         if (!hasPrompt) continue;
 
         // 各回答列の完了状態をチェック
+        let rowTasks = [];
         for (const answerCol of answerColumns) {
           totalTasks++;
           const answerIndex = this.columnToIndex(answerCol.column);
           const answerValue = row[answerIndex] || "";
 
-          // 完了判定：セルに値があり、作業中マーカーでない場合
-          if (
+          const isCompleted =
             answerValue &&
             answerValue.trim() &&
-            !answerValue.startsWith("作業中")
-          ) {
+            !answerValue.startsWith("作業中");
+
+          if (isCompleted) {
             completedTasks++;
           }
+
+          // 🔍 【詳細デバッグ】Group 2のタスク詳細
+          if (isGroup2) {
+            rowTasks.push({
+              column: answerCol.column,
+              value: answerValue
+                ? answerValue.substring(0, 30) + "..."
+                : "empty",
+              isCompleted,
+              aiType: answerCol.aiType,
+            });
+          }
         }
+
+        // 🔍 【詳細デバッグ】Group 2の行タスク一覧
+        if (isGroup2 && rowTasks.length > 0) {
+          log.error(`🚨 [GROUP-2-COMPLETION] 行${rowNumber}タスク詳細:`, {
+            rowNumber,
+            tasks: rowTasks,
+            rowTotalTasks: rowTasks.length,
+            rowCompletedTasks: rowTasks.filter((t) => t.isCompleted).length,
+          });
+        }
+
+        debugRows.push({
+          rowNumber,
+          hasPrompt,
+          tasks: rowTasks.length,
+          completed: rowTasks.filter((t) => t.isCompleted).length,
+        });
       }
 
       const isCompleted = totalTasks > 0 && completedTasks === totalTasks;
@@ -875,6 +1224,38 @@ class DynamicTaskSearch {
         totalTasks > 0
           ? ((completedTasks / totalTasks) * 100).toFixed(1)
           : "0.0";
+
+      // 🔍 【詳細デバッグ】Group 2の最終判定結果
+      if (isGroup2) {
+        log.error("🚨 [GROUP-2-COMPLETION] 完了判定結果詳細:", {
+          groupNumber: currentGroup.groupNumber,
+          totalTasks,
+          completedTasks,
+          completionRate: `${completionRate}%`,
+          isCompleted,
+          判定ロジック: `totalTasks > 0 (${totalTasks > 0}) && completedTasks === totalTasks (${completedTasks === totalTasks})`,
+          processedRows: debugRows.length,
+          rowsWithTasks: debugRows.filter((r) => r.tasks > 0).length,
+          debugRowsSample: debugRows.slice(0, 5),
+          判定完了時刻: new Date().toISOString(),
+        });
+
+        // Group 2で未処理タスクがある場合の特別警告
+        if (totalTasks > completedTasks) {
+          const uncompletedCount = totalTasks - completedTasks;
+          log.error(
+            "🚨 [GROUP-2-COMPLETION] 未処理タスク検出 - この判定が間違っている場合の詳細:",
+            {
+              未処理タスク数: uncompletedCount,
+              期待されていた未処理数: 6,
+              実際の範囲: `行${dataStartRow}〜${dataStartRow + debugRows.length - 1}`,
+              W_Y列範囲確認: "W~Y列が正しく設定されているか要確認",
+              判定異常:
+                uncompletedCount !== 6 ? "期待値と異なる" : "期待値と一致",
+            },
+          );
+        }
+      }
 
       log.info(`📊 グループ${currentGroup.groupNumber}完了状態:`, {
         totalTasks,

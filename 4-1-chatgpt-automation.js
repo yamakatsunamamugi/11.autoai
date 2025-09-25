@@ -2224,12 +2224,52 @@ async function reportSelectorError(selectorKey, error, selectors) {
   }
 
   // メッセージ送信
-  async function sendMessageStep() {
+  async function sendMessageStep(taskData) {
     logWithTimestamp("\n【Step 4-1-5】メッセージ送信", "step");
 
     const success = await sendMessageChatGPT();
     if (!success) {
       throw new Error("メッセージ送信に失敗しました");
+    }
+
+    // 送信時刻を記録
+    const sendTime = new Date();
+    const taskId = taskData.taskId || taskData.id || "UNKNOWN_TASK_ID";
+
+    // モデルと機能を取得
+    const modelName = (await getCurrentModelChatGPT()) || "不明";
+    const featureName = (await getCurrentFunctionChatGPT()) || "通常";
+
+    // background.jsに送信時刻を記録
+    if (chrome.runtime && chrome.runtime.sendMessage) {
+      const messageToSend = {
+        type: "recordSendTime",
+        taskId: taskId,
+        sendTime: sendTime.toISOString(),
+        taskInfo: {
+          aiType: "ChatGPT",
+          model: modelName,
+          function: featureName,
+          url: window.location.href,
+          cellInfo: taskData.cellInfo,
+        },
+        logCell: taskData.logCell,
+      };
+
+      try {
+        chrome.runtime.sendMessage(messageToSend, (response) => {
+          if (chrome.runtime.lastError) {
+            console.warn(
+              "⚠️ [ChatGPT] 送信時刻記録エラー:",
+              chrome.runtime.lastError.message,
+            );
+          } else {
+            console.log("✅ [ChatGPT] 送信時刻記録成功", response);
+          }
+        });
+      } catch (error) {
+        console.error("❌ [ChatGPT] 送信時刻記録失敗:", error);
+      }
     }
 
     logWithTimestamp("✅ メッセージ送信完了", "success");
@@ -2741,6 +2781,47 @@ async function reportSelectorError(selectorKey, error, selectors) {
             logWithTimestamp("✅ 送信ボタンを発見しました", "success");
             sendBtn.click();
             logWithTimestamp("🚀 送信ボタンをクリックしました！", "success");
+
+            // 送信時刻を記録
+            const sendTime = new Date();
+            const taskId = taskData.taskId || taskData.id || "UNKNOWN_TASK_ID";
+
+            // モデルと機能を取得
+            const modelName = (await getCurrentModelChatGPT()) || "不明";
+            const featureName = (await getCurrentFunctionChatGPT()) || "通常";
+
+            // background.jsに送信時刻を記録
+            if (chrome.runtime && chrome.runtime.sendMessage) {
+              const messageToSend = {
+                type: "recordSendTime",
+                taskId: taskId,
+                sendTime: sendTime.toISOString(),
+                taskInfo: {
+                  aiType: "ChatGPT",
+                  model: modelName,
+                  function: featureName,
+                  url: window.location.href,
+                  cellInfo: taskData.cellInfo,
+                },
+                logCell: taskData.logCell,
+              };
+
+              try {
+                chrome.runtime.sendMessage(messageToSend, (response) => {
+                  if (chrome.runtime.lastError) {
+                    console.warn(
+                      "⚠️ [ChatGPT] 送信時刻記録エラー:",
+                      chrome.runtime.lastError.message,
+                    );
+                  } else {
+                    console.log("✅ [ChatGPT] 送信時刻記録成功", response);
+                  }
+                });
+              } catch (error) {
+                console.error("❌ [ChatGPT] 送信時刻記録失敗:", error);
+              }
+            }
+
             await sleep(1000);
           } else {
             logWithTimestamp("⚠️ 送信ボタンが見つかりません", "warning");

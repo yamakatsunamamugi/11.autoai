@@ -1097,6 +1097,10 @@ async function setupColumnStructure() {
     const aiRow = window.globalState.initialSheetData[aiRowNumber - 1] || [];
     log.debug(`[step1-setup.js] [Step 1-5-2] ✅ AI行取得: ${aiRow.length}列`);
 
+    // AI行データをglobalStateに保存（DynamicSearchで使用）
+    window.globalState.aiRowData = aiRow;
+    log.debug("[step1-setup.js] [Step 1-5-2] AI行データをglobalStateに保存");
+
     const columnsToAdd = [];
 
     // プロンプトグループを検出（プロンプト、プロンプト2〜5）

@@ -1,3 +1,6 @@
+// SpreadsheetDataクラスをインポート
+import SpreadsheetData from "./spreadsheet-data.js";
+
 // ログレベル定義
 const LOG_LEVEL = { ERROR: 1, WARN: 2, INFO: 3, DEBUG: 4 };
 
@@ -88,6 +91,17 @@ try {
 // グローバル状態チェック
 
 if (!window.globalState) {
+  const initTimestamp = new Date().toISOString();
+  const initSource = "step3-loop.js";
+
+  // 🔍 [GLOBAL-STATE] グローバル状態初期化ログ
+  console.log(`🔍 [GLOBAL-STATE] globalState初期化開始:`, {
+    initTimestamp,
+    initSource,
+    previousState: window.globalState,
+    callStack: new Error().stack.split("\n").slice(1, 4),
+  });
+
   // グローバル状態を初期化
   window.globalState = {
     spreadsheetId: null,
@@ -201,7 +215,57 @@ function handleDynamicSearchCompletionData(event) {
       if (!window.globalState.completedGroupsByDynamicSearch) {
         window.globalState.completedGroupsByDynamicSearch = new Set();
       }
-      window.globalState.completedGroupsByDynamicSearch.add(groupNumber);
+
+      // 🛡️ 【安全装置】グループを完了済みにマークする前に実際に完了しているか確認
+      const targetGroup = window.globalState?.taskGroups?.find(
+        (g) => g.groupNumber === groupNumber,
+      );
+      if (targetGroup) {
+        checkCompletionStatus(targetGroup)
+          .then((isActuallyCompleted) => {
+            if (isActuallyCompleted) {
+              window.globalState.completedGroupsByDynamicSearch.add(
+                groupNumber,
+              );
+              log.info(
+                "✅ [SAFETY-CHECK] グループ完了確認済み - 完了リストに追加:",
+                {
+                  groupNumber,
+                  verificationPassed: true,
+                },
+              );
+            } else {
+              log.error(
+                "🚨 [SAFETY-CHECK] 完了マーキング阻止 - グループに未処理タスクあり:",
+                {
+                  groupNumber,
+                  reason: "DynamicSearchからの完了通知だが実際は未完了",
+                  action: "完了リストに追加せず",
+                },
+              );
+            }
+          })
+          .catch((error) => {
+            log.error(
+              "❌ [SAFETY-CHECK] 完了確認エラー - 安全のため完了マーキング拒否:",
+              {
+                groupNumber,
+                error: error.message,
+              },
+            );
+          });
+      } else {
+        // フォールバック: グループが見つからない場合はマークしない
+        log.warn(
+          "⚠️ [SAFETY-CHECK] 対象グループ未発見 - 完了マーキングスキップ:",
+          {
+            groupNumber,
+            availableGroups: window.globalState?.taskGroups?.map(
+              (g) => g.groupNumber,
+            ),
+          },
+        );
+      }
 
       // 協調フラグを設定
       window.globalState.dynamicSearchCoordination = {
@@ -289,25 +353,59 @@ function initializeGlobalStateMonitoring() {
  */
 function shouldSkipGroupProcessing(taskGroup) {
   try {
-    // DynamicSearchで完了済みのグループかチェック
+    // 🚨 【詳細デバッグ】スキップ判定の全状態をログ出力
     const completedGroups = window.globalState?.completedGroupsByDynamicSearch;
+    const coordination = window.globalState?.dynamicSearchCoordination;
+
+    log.info("🔍 [SKIP-DEBUG] shouldSkipGroupProcessing詳細調査:", {
+      groupNumber: taskGroup.groupNumber,
+      groupType: taskGroup.type || taskGroup.taskType,
+      columnRange: `${taskGroup.columns?.prompts?.[0]} 〜 ${taskGroup.columns?.answer?.primary || taskGroup.columns?.answer?.claude}`,
+      completedGroups: {
+        exists: !!completedGroups,
+        type: typeof completedGroups,
+        size: completedGroups?.size || 0,
+        hasThisGroup: completedGroups?.has(taskGroup.groupNumber),
+        allGroups: completedGroups ? Array.from(completedGroups) : null,
+      },
+      coordination: {
+        exists: !!coordination,
+        shouldSkipProcessing: coordination?.shouldSkipProcessing,
+        lastCompletedGroup: coordination?.lastCompletedGroup,
+        matchesThisGroup:
+          coordination?.lastCompletedGroup === taskGroup.groupNumber,
+      },
+      globalState: {
+        exists: !!window.globalState,
+        hasCompletedGroups:
+          !!window.globalState?.completedGroupsByDynamicSearch,
+        hasCoordination: !!window.globalState?.dynamicSearchCoordination,
+      },
+      timestamp: new Date().toISOString(),
+    });
+
+    // DynamicSearchで完了済みのグループかチェック
     if (completedGroups && completedGroups.has(taskGroup.groupNumber)) {
-      log.info("⏭️ [step3-loop.js] グループスキップ: DynamicSearchで完了済み", {
+      log.error("🚨 [SKIP-REASON] DynamicSearchで完了済みと判定:", {
         groupNumber: taskGroup.groupNumber,
         reason: "DynamicSearch completed",
+        completedGroupsContent: Array.from(completedGroups),
+        skipDecision: true,
       });
       return true;
     }
 
     // 協調フラグによるスキップ判定
-    const coordination = window.globalState?.dynamicSearchCoordination;
     if (
       coordination?.shouldSkipProcessing &&
       coordination.lastCompletedGroup === taskGroup.groupNumber
     ) {
-      log.info("⏭️ [step3-loop.js] グループスキップ: 協調フラグ", {
+      log.error("🚨 [SKIP-REASON] 協調フラグによりスキップ:", {
         groupNumber: taskGroup.groupNumber,
         reason: "Coordination flag",
+        shouldSkipProcessing: coordination.shouldSkipProcessing,
+        lastCompletedGroup: coordination.lastCompletedGroup,
+        skipDecision: true,
       });
 
       // スキップフラグをリセット（1回のみ有効）
@@ -315,9 +413,21 @@ function shouldSkipGroupProcessing(taskGroup) {
       return true;
     }
 
+    // スキップしない場合もログ出力
+    log.info("✅ [SKIP-DEBUG] グループ処理継続:", {
+      groupNumber: taskGroup.groupNumber,
+      reason: "No skip conditions met",
+      skipDecision: false,
+    });
+
     return false;
   } catch (error) {
-    log.warn("⚠️ [step3-loop.js] スキップ判定エラー:", error.message);
+    log.error("❌ [step3-loop.js] スキップ判定エラー:", {
+      error: error.message,
+      stack: error.stack,
+      groupNumber: taskGroup?.groupNumber,
+      timestamp: new Date().toISOString(),
+    });
     return false;
   }
 }
@@ -1047,7 +1157,14 @@ function validateTaskGroupForStep5(taskGroup) {
 }
 
 async function checkCompletionStatus(taskGroup) {
+  const completionCheckId = `completion_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+  log.info(
+    `🔍 [COMPLETION-CHECK] グループ${taskGroup.groupNumber}完了チェック開始`,
+  );
+
   LoopLogger.info("[step5-loop.js→Step5-1] 完了状況の確認開始", {
+    completionCheckId,
     groupNumber: taskGroup.groupNumber || "undefined",
     taskType: taskGroup.taskType || "undefined",
     pattern: taskGroup.pattern || "undefined",
@@ -1233,9 +1350,7 @@ async function checkCompletionStatus(taskGroup) {
         prompts列設定: taskGroup.columns.prompts,
       },
     );
-    log.debug(
-      `[DEBUG-checkCompletionStatus] グループ${taskGroup.groupNumber}: プロンプト検索完了 - promptCount=${promptCount}, 範囲=${promptRange}`,
-    );
+    log.info(`📊 グループ${taskGroup.groupNumber}: プロンプト=${promptCount}`);
 
     // ========================================
     // Step 5-1-2: 回答列の確認
@@ -1513,8 +1628,266 @@ async function checkCompletionStatus(taskGroup) {
       判定タイムスタンプ: new Date().toISOString(),
     });
 
+    // 🔍 【強化】空白タスク詳細検出ログ
+    const blankTasks = [];
+    const completedTasks = [];
+
+    // 🔄 【修正】キャッシュを使わず直接APIから最新データ取得
+    console.log(`🔍 [CACHE-FIX] 個別タスク検証のためAPI直接読み取り開始`, {
+      completionCheckId,
+      taskGroupNumber: taskGroup.groupNumber,
+      dataStartRow: taskGroup.dataStartRow,
+      promptCount,
+      timestamp: new Date().toISOString(),
+    });
+
+    // 🔍 【シート名統一】GIDからシート名を取得して使用
+    let sheetPrefix = "";
+    if (window.globalState?.gid) {
+      try {
+        // SimpleSheetsClientのインスタンスからシート名取得
+        if (window.simpleSheetsClientStep5?.getSheetNameFromGid) {
+          const sheetName =
+            await window.simpleSheetsClientStep5.getSheetNameFromGid(
+              window.globalState.spreadsheetId,
+              window.globalState.gid,
+            );
+          if (sheetName) {
+            sheetPrefix = `'${sheetName}'!`;
+          }
+        }
+      } catch (err) {
+        console.warn(
+          `⚠️ [BATCH-READ] シート名取得失敗、デフォルトシート使用:`,
+          err,
+        );
+      }
+    }
+
+    // バッチ読み取り範囲の計算
+    // columns.promptsは常に配列（例: ['O', 'P']）
+    const promptCol =
+      Array.isArray(taskGroup.columns?.prompts) &&
+      taskGroup.columns.prompts.length > 0
+        ? taskGroup.columns.prompts[0]
+        : null;
+
+    // columns.answerは2つの構造に対応:
+    // 1. 文字列（古い構造）: 'Q'
+    // 2. オブジェクト（新しい構造）: {primary: 'Q'} または {chatgpt: 'C', claude: 'D', gemini: 'E'}
+    let answerCol = null;
+    if (taskGroup.columns?.answer) {
+      if (typeof taskGroup.columns.answer === "string") {
+        // 古い構造（文字列）
+        answerCol = taskGroup.columns.answer;
+      } else if (typeof taskGroup.columns.answer === "object") {
+        // 新しい構造（オブジェクト）
+        answerCol =
+          taskGroup.columns.answer.primary ||
+          taskGroup.columns.answer.claude ||
+          taskGroup.columns.answer.chatgpt ||
+          taskGroup.columns.answer.gemini;
+      }
+    }
+
+    // 列が取得できない場合はエラー
+    if (!promptCol || !answerCol) {
+      console.error(`❌ [BATCH-READ] 列情報が不正:`, {
+        promptCol,
+        answerCol,
+        columns: taskGroup.columns,
+      });
+      // 個別タスク詳細を空で返す
+      console.log(
+        `🔍 [COMPLETION-CHECK-DETAILS] 個別タスク詳細分析（スキップ）`,
+        {
+          completionCheckId,
+          taskGroupNumber: taskGroup.groupNumber,
+          error: "列情報が取得できません",
+        },
+      );
+      return { isComplete: false, blankTasks, completedTasks };
+    }
+
+    const startRow = taskGroup.dataStartRow;
+    const endRow = taskGroup.dataStartRow + promptCount - 1;
+
+    // SpreadsheetDataを使用したセルアドレスベースのアクセス
+    const spreadsheetData = new (window.SpreadsheetData || SpreadsheetData)();
+
+    // 両列を含む範囲を取得
+    const minCol = promptCol < answerCol ? promptCol : answerCol;
+    const maxCol = promptCol > answerCol ? promptCol : answerCol;
+    const batchRange = `${sheetPrefix}${minCol}${startRow}:${maxCol}${endRow}`;
+
+    console.log(`📊 [BATCH-READ] バッチ読み取り開始:`, {
+      range: batchRange,
+      rowCount: promptCount,
+      startRow: startRow,
+      endRow: endRow,
+      promptCol,
+      answerCol,
+    });
+
+    try {
+      const batchResponse = await readSpreadsheet(batchRange);
+      if (batchResponse?.values) {
+        // SpreadsheetDataにデータをロード
+        spreadsheetData.loadBatchData(batchRange, batchResponse.values);
+
+        // セルアドレスで直接アクセス
+        for (let row = startRow; row <= endRow; row++) {
+          const promptAddress = `${promptCol}${row}`;
+          const answerAddress = `${answerCol}${row}`;
+
+          const promptValue = spreadsheetData.getCell(promptAddress) || "";
+          const answerValue = spreadsheetData.getCell(answerAddress) || "";
+
+          const taskInfo = {
+            row,
+            promptAddress,
+            answerAddress,
+            promptValue: promptValue,
+            answerValue: answerValue,
+            hasPrompt: spreadsheetData.hasValue(promptAddress),
+            hasAnswer: spreadsheetData.hasValue(answerAddress),
+          };
+
+          if (taskInfo.hasPrompt && !taskInfo.hasAnswer) {
+            blankTasks.push(taskInfo);
+          } else if (taskInfo.hasPrompt && taskInfo.hasAnswer) {
+            completedTasks.push(taskInfo);
+          }
+
+          // デバッグログ（最初の3件のみ）
+          if (row <= startRow + 2) {
+            console.log(
+              `🔍 [BATCH-READ] ${promptAddress}/${answerAddress}の結果:`,
+              {
+                promptValue: promptValue?.substring(0, 50),
+                answerValue: answerValue?.substring(0, 50),
+                hasPrompt: taskInfo.hasPrompt,
+                hasAnswer: taskInfo.hasAnswer,
+              },
+            );
+          }
+        }
+
+        // デバッグ用：読み込まれたセルを表示
+        if (taskGroup.groupNumber === 2) {
+          console.log(`🔍 [GROUP-2-CELLS] Group 2のセルアドレス確認:`);
+          spreadsheetData.debugPrintCells(5);
+        }
+      } else {
+        console.warn(`⚠️ [BATCH-READ] バッチ読み取りの結果が空です`);
+      }
+    } catch (batchError) {
+      console.error(`❌ [BATCH-READ] バッチ読み取りエラー:`, batchError);
+      // エラー時は個別読み取りにフォールバック
+      console.log(`🔄 [BATCH-READ] 個別読み取りにフォールバック`);
+      for (let row = startRow; row <= endRow; row++) {
+        try {
+          const promptAddress = `${promptCol}${row}`;
+          const answerAddress = `${answerCol}${row}`;
+          const promptRange = `${sheetPrefix}${promptAddress}`;
+          const answerRange = `${sheetPrefix}${answerAddress}`;
+          const promptResponse = await readSpreadsheet(promptRange);
+          const answerResponse = await readSpreadsheet(answerRange);
+
+          const promptValue = promptResponse?.values?.[0]?.[0] || "";
+          const answerValue = answerResponse?.values?.[0]?.[0] || "";
+
+          const taskInfo = {
+            row,
+            promptAddress,
+            answerAddress,
+            promptValue: promptValue,
+            answerValue: answerValue,
+            hasPrompt: Boolean(promptValue && promptValue.trim()),
+            hasAnswer: Boolean(answerValue && answerValue.trim()),
+          };
+
+          if (taskInfo.hasPrompt && !taskInfo.hasAnswer) {
+            blankTasks.push(taskInfo);
+          } else if (taskInfo.hasPrompt && taskInfo.hasAnswer) {
+            completedTasks.push(taskInfo);
+          }
+        } catch (readError) {
+          console.error(
+            `❌ [FALLBACK] ${promptCol}${row}/${answerCol}${row}読み取りエラー:`,
+            readError,
+          );
+        }
+      }
+    }
+
+    console.log(`🔍 [COMPLETION-CHECK-DETAILS] 個別タスク詳細分析`, {
+      completionCheckId,
+      taskGroupNumber: taskGroup.groupNumber,
+      totalTasks: promptCount,
+      completedTasks: completedTasks.length,
+      blankTasks: blankTasks.length,
+      blankTaskRows: blankTasks.map((t) => t.row),
+      blankTaskDetails: blankTasks.slice(0, 3), // 最初の3件のみ表示
+      timestamp: new Date().toISOString(),
+    });
+
     // 厳格な完了判定：プロンプトと回答が一致し、かつプロンプトが存在する場合のみ完了
     const isComplete = promptCount > 0 && promptCount === answerCount;
+
+    // 🚨 【緊急デバッグ】グループ2の強制ログ（実際は処理されないことが判明）
+    if (taskGroup.groupNumber === 2) {
+      console.error(
+        `🚨 [GROUP-2-DEBUG] グループ2完了判定詳細（ここに到達すること自体が意外）:`,
+        {
+          groupNumber: taskGroup.groupNumber,
+          promptCount: promptCount,
+          answerCount: answerCount,
+          isComplete: isComplete,
+          promptRange: promptRange,
+          answerRange: answerRange,
+          columns: taskGroup.columns,
+          dataStartRow: taskGroup.dataStartRow,
+          blankTasksFound: blankTasks.length,
+          completedTasksFound: completedTasks.length,
+          判定時刻: new Date().toISOString(),
+          重要: "このログが出力される場合、shouldSkipGroupProcessingの修正が効いている",
+        },
+      );
+
+      // グループ2で未処理タスクがあるのに完了判定される場合は強制的にfalseを返す
+      if (isComplete && blankTasks.length > 0) {
+        console.error(
+          `🚨 [GROUP-2-FIX] グループ2で未処理タスクを検出、強制的に未完了に設定`,
+        );
+        return false;
+      }
+
+      // グループ2で処理済みタスクが22個より少ない場合も未完了とする
+      if (completedTasks.length < 22) {
+        console.error(
+          `🚨 [GROUP-2-FIX] グループ2の完了タスク数が不足(${completedTasks.length}/22)、未完了に設定`,
+        );
+        return false;
+      }
+    }
+
+    // 🔍 【強化】完了判定結果の詳細ログ
+    console.log(`🔍 [COMPLETION-CHECK-RESULT] 完了判定結果`, {
+      completionCheckId,
+      isComplete: isComplete,
+      promptCount: promptCount,
+      answerCount: answerCount,
+      promptCountCheck: promptCount > 0,
+      equalityCheck: promptCount === answerCount,
+      blankTasksFound: blankTasks.length,
+      taskGroupNumber: taskGroup.groupNumber,
+      cacheStatus: {
+        hasCacheData: Boolean(window.globalState?.cache?.spreadsheetData),
+        cacheDataRows: window.globalState?.cache?.spreadsheetData?.length || 0,
+      },
+      timestamp: new Date().toISOString(),
+    });
 
     // 【問題特定ログ】完了判定結果の詳細
     log.debug(`[DEBUG-PROBLEM-TRACE] 完了判定結果:`, {
@@ -1524,6 +1897,7 @@ async function checkCompletionStatus(taskGroup) {
       promptCountCheck: promptCount > 0,
       equalityCheck: promptCount === answerCount,
       taskGroupNumber: taskGroup.groupNumber,
+      blankTasksCount: blankTasks.length,
       判定結果タイムスタンプ: new Date().toISOString(),
     });
 
@@ -1787,6 +2161,15 @@ async function processIncompleteTasks(taskGroup) {
  * @returns {Promise<Object>} 処理結果
  */
 async function executeStep3AllGroups() {
+  const executionFlowId = `exec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+  console.log(`🚀 [EXECUTION-FLOW] 全グループ処理開始`, {
+    executionFlowId,
+    timestamp: new Date().toISOString(),
+    phase: "START_ALL_GROUPS",
+    totalGroups: window.globalState?.taskGroups?.length || 0,
+  });
+
   log.debug("========================================");
   log.debug("🚀 [step3-loop.js] 全グループ処理開始");
   log.debug("========================================");
@@ -1816,18 +2199,50 @@ async function executeStep3AllGroups() {
       `\n====== グループ ${i + 1}/${taskGroups.length} 処理開始 ======`,
     );
 
+    // 🔍 【検証用ログ】Group 2の実データ詳細確認
+    if (taskGroup.groupNumber === 2) {
+      log.error("🚨 [GROUP-2-DATA] Group 2実データ検証ログ:", {
+        groupNumber: taskGroup.groupNumber,
+        fullTaskGroup: taskGroup,
+        columns: taskGroup.columns,
+        dataStartRow: taskGroup.dataStartRow,
+        expectedRange: "W~Y列（31-36行）",
+        expectedTasks: 6,
+        期待される列構成: {
+          prompts: "W列あたり",
+          answer: "X, Y列あたり",
+        },
+        検証開始時刻: new Date().toISOString(),
+      });
+    }
+
     // 【追加】DynamicSearchとの協調チェック：スキップ判定
     if (shouldSkipGroupProcessing(taskGroup)) {
-      log.info(
-        "⏭️ [step3-loop.js] グループスキップ - DynamicSearchで完了済み",
-        {
-          groupNumber: taskGroup.groupNumber,
-          currentIndex: i + 1,
-          totalGroups: taskGroups.length,
-        },
-      );
-      completedGroups++;
-      continue;
+      // 🛡️ 【安全装置】スキップ前に未処理タスクがないか二重チェック
+      const completionCheck = await checkCompletionStatus(taskGroup);
+      if (!completionCheck) {
+        log.error(
+          "🚨 [SAFETY-CHECK] スキップ阻止 - グループに未処理タスクあり",
+          {
+            groupNumber: taskGroup.groupNumber,
+            reason:
+              "shouldSkipGroupProcessingがtrueでもcheckCompletionStatusがfalse",
+            action: "強制的に処理継続",
+          },
+        );
+      } else {
+        log.info(
+          "⏭️ [step3-loop.js] グループスキップ - DynamicSearchで完了済み",
+          {
+            groupNumber: taskGroup.groupNumber,
+            currentIndex: i + 1,
+            totalGroups: taskGroups.length,
+            safetyCheckPassed: true,
+          },
+        );
+        completedGroups++;
+        continue;
+      }
     }
 
     // 🔧 [UNIFICATION] グループ統一化確認ログ
@@ -1900,6 +2315,18 @@ async function executeStep3AllGroups() {
  * @returns {Promise<boolean>} 完了の場合true
  */
 async function executeStep3SingleGroup(taskGroup) {
+  const groupExecutionId = `group_${taskGroup?.groupNumber}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+  console.log(`🔄 [EXECUTION-FLOW] 単一グループ処理開始`, {
+    groupExecutionId,
+    timestamp: new Date().toISOString(),
+    phase: "START_SINGLE_GROUP",
+    groupNumber: taskGroup?.groupNumber,
+    groupType: taskGroup?.type || taskGroup?.taskType,
+    pattern: taskGroup?.pattern,
+    dataStartRow: taskGroup?.dataStartRow,
+  });
+
   LoopLogger.info("========================================");
   LoopLogger.info(
     "[step3-loop.js] [Step 3] タスクグループ内の繰り返し処理開始",
@@ -1935,6 +2362,15 @@ async function executeStep3SingleGroup(taskGroup) {
     // 最終的な完了確認
     log.debug("🔍 [step5-loop.js] 最終完了確認中...");
     const finalComplete = await checkCompletionStatus(taskGroup);
+
+    console.log(`✅ [EXECUTION-FLOW] 単一グループ処理完了`, {
+      groupExecutionId,
+      timestamp: new Date().toISOString(),
+      phase: "COMPLETE_SINGLE_GROUP",
+      groupNumber: taskGroup?.groupNumber,
+      finalComplete,
+      duration: `${Date.now() - parseInt(groupExecutionId.split("_")[2])}ms`,
+    });
 
     LoopLogger.info("[step5-loop.js] 🎯 [Step 5] グループ処理完了");
 

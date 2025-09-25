@@ -4467,9 +4467,41 @@ class WindowController {
    * タブが準備完了になるまで待機する関数
    */
   async waitForTabReady(tabId, maxRetries = 10, delayMs = 2000) {
+    const startTimestamp = new Date().toISOString();
+    const lifecycleId = `tab_${tabId}_${Date.now()}`;
+
+    // 🔍 [TAB-LIFECYCLE] タブライフサイクル開始ログ
+    console.log(`🔍 [TAB-LIFECYCLE] waitForTabReady開始:`, {
+      lifecycleId,
+      tabId,
+      startTimestamp,
+      maxRetries,
+      delayMs,
+      callStack: new Error().stack.split("\n").slice(1, 3),
+    });
+
     for (let i = 0; i < maxRetries; i++) {
       try {
+        const attemptTimestamp = new Date().toISOString();
         const tab = await chrome.tabs.get(tabId);
+
+        // 🔍 [TAB-LIFECYCLE] タブ状態チェック詳細
+        console.log(`🔍 [TAB-LIFECYCLE] タブ状態チェック:`, {
+          lifecycleId,
+          tabId,
+          attempt: i + 1,
+          maxRetries,
+          attemptTimestamp,
+          tabState: {
+            exists: Boolean(tab),
+            status: tab?.status,
+            url: tab?.url,
+            windowId: tab?.windowId,
+            active: tab?.active,
+            id: tab?.id,
+          },
+          isReady: tab && tab.status === "complete",
+        });
 
         ExecuteLogger.info(
           `🔄 [Tab Ready Check] Attempt ${i + 1}/${maxRetries}:`,
@@ -4482,6 +4514,22 @@ class WindowController {
         );
 
         if (tab && tab.status === "complete") {
+          const completionTimestamp = new Date().toISOString();
+
+          // 🔍 [TAB-LIFECYCLE] タブ準備完了
+          console.log(`🔍 [TAB-LIFECYCLE] タブ準備完了:`, {
+            lifecycleId,
+            tabId,
+            completionTimestamp,
+            totalDuration: Date.now() - new Date(startTimestamp).getTime(),
+            attemptsUsed: i + 1,
+            finalTabState: {
+              status: tab.status,
+              url: tab.url,
+              windowId: tab.windowId,
+            },
+          });
+
           ExecuteLogger.info(`✅ [Tab Ready] Tab is ready:`, {
             tabId: tabId,
             finalStatus: tab.status,
@@ -4499,12 +4547,36 @@ class WindowController {
           await new Promise((resolve) => setTimeout(resolve, delayMs));
         }
       } catch (error) {
+        const errorTimestamp = new Date().toISOString();
+
+        // 🔍 [TAB-LIFECYCLE] タブエラー詳細
+        console.error(`🔍 [TAB-LIFECYCLE] タブエラー発生:`, {
+          lifecycleId,
+          tabId,
+          errorTimestamp,
+          attempt: i + 1,
+          errorMessage: error.message,
+          errorType: error.constructor.name,
+          isTabMissing: error?.message?.includes("No tab with id"),
+          callDuration: Date.now() - new Date(startTimestamp).getTime(),
+        });
+
         // タブが存在しない場合の早期終了
         if (error?.message?.includes("No tab with id")) {
           // 代替手法でタブ存在確認
           try {
             const allTabs = await chrome.tabs.query({});
             const targetExists = allTabs.some((t) => t.id === tabId);
+
+            // 🔍 [TAB-LIFECYCLE] 全タブスキャン結果
+            console.error(`🔍 [TAB-LIFECYCLE] 全タブスキャン結果:`, {
+              lifecycleId,
+              tabId,
+              targetExists,
+              totalTabsCount: allTabs.length,
+              existingTabIds: allTabs.map((t) => t.id),
+              searchedTabId: tabId,
+            });
 
             if (!targetExists) {
               log.warn(
@@ -4515,6 +4587,13 @@ class WindowController {
               );
             }
           } catch (queryError) {
+            console.error(`🔍 [TAB-LIFECYCLE] クエリエラー:`, {
+              lifecycleId,
+              tabId,
+              queryError: queryError.message,
+              originalError: error.message,
+            });
+
             log.error(
               `❌ [Tab Check] タブ ${tabId} の存在確認に失敗: ${queryError.message}`,
             );
