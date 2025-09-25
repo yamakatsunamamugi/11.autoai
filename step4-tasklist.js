@@ -566,38 +566,95 @@ async function immediateWindowClose(windowId, taskIndex) {
  */
 async function startNextTaskIfAvailable(taskIndex) {
   try {
-    log.info(`🔍 [次タスク探索] タスク[${taskIndex}]開始`);
+    log.info(`🔍 [TASK-FLOW-TRACE] startNextTaskIfAvailable開始:`, {
+      taskIndex: taskIndex,
+      開始時刻: new Date().toISOString(),
+    });
 
     // デバッグ: 設定値と状態を確認
-    log.debug("🔍 [次タスク探索デバッグ] 設定確認:", {
+    log.info("🔍 [TASK-FLOW-TRACE] 次タスク探索システム状態確認:", {
+      taskIndex: taskIndex,
       ENABLE_DYNAMIC_NEXT_TASK:
         BATCH_PROCESSING_CONFIG.ENABLE_DYNAMIC_NEXT_TASK,
       hasFindNextAvailableTaskDynamic:
         typeof window.findNextAvailableTaskDynamic === "function",
+      hasRegisterTaskCompletionDynamic:
+        typeof window.registerTaskCompletionDynamic === "function",
       currentGroup: window.globalState?.currentGroup,
       globalStateExists: !!window.globalState,
+      spreadsheetId: window.globalState?.spreadsheetId,
+      状態確認時刻: new Date().toISOString(),
     });
 
     // 利用可能なタスクを動的に検索
+    log.info(`🔍 [TASK-FLOW-TRACE] findNextAvailableTask呼び出し開始:`, {
+      taskIndex: taskIndex,
+      呼び出し開始時刻: new Date().toISOString(),
+    });
+
     const nextTask = await findNextAvailableTask();
 
+    log.info(`🔍 [TASK-FLOW-TRACE] findNextAvailableTask結果:`, {
+      taskIndex: taskIndex,
+      hasNextTask: !!nextTask,
+      nextTaskId: nextTask?.id,
+      nextTaskAiType: nextTask?.aiType,
+      nextTaskColumn: nextTask?.column,
+      nextTaskRow: nextTask?.row,
+      検索結果時刻: new Date().toISOString(),
+    });
+
     if (nextTask) {
-      log.info(`🚀 [次タスク探索] 発見[${taskIndex}]:`, {
-        nextTaskId: nextTask.id,
-        aiType: nextTask.aiType,
-      });
+      log.info(
+        `🚀 [TASK-FLOW-TRACE] 次タスク発見 - ウィンドウ開設開始[${taskIndex}]:`,
+        {
+          nextTaskId: nextTask.id,
+          aiType: nextTask.aiType,
+          column: nextTask.column,
+          row: nextTask.row,
+          ウィンドウ開設開始時刻: new Date().toISOString(),
+        },
+      );
 
       // 新しいウィンドウを開いて即座に開始
       const windowInfo = await openAIWindowForTask(nextTask);
+
+      log.info(`🔍 [TASK-FLOW-TRACE] ウィンドウ開設結果:`, {
+        taskIndex: taskIndex,
+        nextTaskId: nextTask.id,
+        hasWindowInfo: !!windowInfo,
+        windowId: windowInfo?.windowId,
+        tabId: windowInfo?.tabId,
+        ウィンドウ開設完了時刻: new Date().toISOString(),
+      });
+
       if (windowInfo) {
         nextTask.tabId = windowInfo.tabId;
         nextTask.windowId = windowInfo.windowId;
 
+        log.info(`🚀 [TASK-FLOW-TRACE] タスク独立実行開始:`, {
+          taskIndex: taskIndex,
+          nextTaskId: nextTask.id,
+          tabId: nextTask.tabId,
+          windowId: nextTask.windowId,
+          実行開始時刻: new Date().toISOString(),
+        });
+
         // 非同期で実行開始
         executeTaskIndependently(nextTask);
+      } else {
+        log.error(`❌ [TASK-FLOW-TRACE] ウィンドウ開設失敗:`, {
+          taskIndex: taskIndex,
+          nextTaskId: nextTask.id,
+          エラー時刻: new Date().toISOString(),
+        });
       }
     } else {
-      log.debug(`📭 [次タスク探索] 利用可能タスクなし[${taskIndex}]`);
+      log.info(`📭 [TASK-FLOW-TRACE] 利用可能タスクなし[${taskIndex}]:`, {
+        taskIndex: taskIndex,
+        理由: "findNextAvailableTaskがnullを返却",
+        確認時刻: new Date().toISOString(),
+      });
     }
   } catch (error) {
     log.error(`❌ [次タスク探索] エラー[${taskIndex}]:`, error);
@@ -609,10 +666,12 @@ async function startNextTaskIfAvailable(taskIndex) {
  */
 async function findNextAvailableTask() {
   try {
-    log.info("🔍 [次タスク検索] 開始");
+    log.info("🔍 [TASK-FLOW-TRACE] findNextAvailableTask開始:", {
+      開始時刻: new Date().toISOString(),
+    });
 
     // デバッグ: 利用可能な機能を確認
-    log.debug("🔍 [次タスク検索デバッグ] 利用可能機能確認:", {
+    log.info("🔍 [TASK-FLOW-TRACE] システム機能確認:", {
       hasDynamicSearch:
         typeof window.findNextAvailableTaskDynamic === "function",
       hasRegisterCompletion:
@@ -624,30 +683,58 @@ async function findNextAvailableTask() {
         currentGroup: window.globalState?.currentGroup,
         spreadsheetId: window.globalState?.spreadsheetId,
       },
+      機能確認時刻: new Date().toISOString(),
     });
 
     // step4.5-dynamic-search.jsの動的検索システムを使用
     if (typeof window.findNextAvailableTaskDynamic === "function") {
-      log.debug("🔗 [次タスク検索] DynamicTaskSearchを使用");
+      log.info("🔗 [TASK-FLOW-TRACE] DynamicTaskSearch使用開始:", {
+        システム: "window.findNextAvailableTaskDynamic",
+        呼び出し開始時刻: new Date().toISOString(),
+      });
+
       try {
         const nextTask = await window.findNextAvailableTaskDynamic();
 
+        log.info("🔍 [TASK-FLOW-TRACE] DynamicTaskSearch検索結果:", {
+          hasNextTask: !!nextTask,
+          nextTaskId: nextTask?.id,
+          nextTaskAiType: nextTask?.aiType,
+          nextTaskRow: nextTask?.row,
+          nextTaskColumn: nextTask?.column,
+          nextTaskPrompt: nextTask?.prompt?.substring(0, 50),
+          検索完了時刻: new Date().toISOString(),
+        });
+
         if (nextTask) {
-          log.info("🎯 [次タスク検索] DynamicTaskSearchで発見:", {
+          log.info("✅ [TASK-FLOW-TRACE] DynamicTaskSearchで次タスク発見:", {
             taskId: nextTask.id,
             aiType: nextTask.aiType,
             row: nextTask.row,
             column: nextTask.column,
+            発見時刻: new Date().toISOString(),
           });
           return nextTask;
         } else {
-          log.debug(
-            "📭 [次タスク検索] 利用可能タスクなし - グループ完了の可能性",
-          );
+          log.info("📭 [TASK-FLOW-TRACE] DynamicTaskSearch結果なし:", {
+            理由: "利用可能タスクなし - グループ完了の可能性",
+            検索完了時刻: new Date().toISOString(),
+          });
         }
       } catch (error) {
-        log.warn("⚠️ [次タスク検索] DynamicTaskSearchエラー:", error);
+        log.error("❌ [TASK-FLOW-TRACE] DynamicTaskSearchエラー:", {
+          error: error.message,
+          stack: error.stack,
+          エラー発生時刻: new Date().toISOString(),
+        });
       }
+    } else {
+      log.warn("⚠️ [TASK-FLOW-TRACE] DynamicTaskSearch利用不可:", {
+        hasDynamicFunction:
+          typeof window.findNextAvailableTaskDynamic === "function",
+        理由: "window.findNextAvailableTaskDynamic関数が存在しない",
+        確認時刻: new Date().toISOString(),
+      });
     }
 
     // フォールバック: 従来の方法
@@ -688,10 +775,12 @@ async function findNextAvailableTask() {
  */
 async function openAIWindowForTask(task) {
   try {
-    log.info("🪟 [AIウィンドウ開く] 開始:", {
+    log.info("🔍 [TASK-FLOW-TRACE] openAIWindowForTask開始:", {
       taskId: task.id,
       aiType: task.aiType,
-      taskDetails: task,
+      column: task.column,
+      row: task.row,
+      ウィンドウ開設開始時刻: new Date().toISOString(),
     });
 
     // WindowControllerの詳細存在確認
@@ -881,30 +970,37 @@ async function openAIWindowForTask(task) {
  */
 async function executeTaskIndependently(task) {
   try {
-    // 【デバッグ追加】logCellの存在確認
-    log.warn("🔍 [独立タスク実行] タスクのlogCell確認:", {
-      taskId: task.id,
-      logCell: task.logCell,
-      hasLogCell: task.logCell ? true : false,
-      taskKeys: Object.keys(task),
-      fullTask: JSON.stringify(task),
-    });
-
-    log.info("🚀 [独立タスク実行] 開始 - 詳細:", {
+    log.info("🔍 [TASK-FLOW-TRACE] executeTaskIndependently開始:", {
       taskId: task.id,
       aiType: task.aiType,
+      column: task.column,
+      row: task.row,
       hasTabId: !!task.tabId,
       tabId: task.tabId,
       hasWindowId: !!task.windowId,
       windowId: task.windowId,
-      taskKeys: Object.keys(task),
+      hasLogCell: !!task.logCell,
       logCell: task.logCell || "未設定",
+      実行開始時刻: new Date().toISOString(),
     });
 
     // Content Script初期化待機（新しいウィンドウの場合）
     if (task.tabId && task.windowId) {
-      log.info("⏳ [独立タスク実行] Content Script初期化待機開始（3秒）");
+      log.info("⏰ [TASK-FLOW-TRACE] Content Script初期化待機開始:", {
+        taskId: task.id,
+        tabId: task.tabId,
+        windowId: task.windowId,
+        待機時間: "3秒",
+        待機開始時刻: new Date().toISOString(),
+      });
+
       await new Promise((resolve) => setTimeout(resolve, 3000)); // 3秒待機
+
+      log.info("⏰ [TASK-FLOW-TRACE] Content Script初期化待機完了:", {
+        taskId: task.id,
+        tabId: task.tabId,
+        待機完了時刻: new Date().toISOString(),
+      });
 
       // Content Script準備確認
       try {
@@ -912,10 +1008,28 @@ async function executeTaskIndependently(task) {
           action: "ping",
           from: "independent-task-executor",
         });
-        log.info("✅ [独立タスク実行] Content Script応答確認:", response);
+        log.info("✅ [TASK-FLOW-TRACE] Content Script準備確認成功:", {
+          taskId: task.id,
+          tabId: task.tabId,
+          response: response,
+          確認成功時刻: new Date().toISOString(),
+        });
       } catch (e) {
-        log.warn("⚠️ [独立タスク実行] Content Script未応答、続行:", e.message);
+        log.warn("⚠️ [TASK-FLOW-TRACE] Content Script未応答:", {
+          taskId: task.id,
+          tabId: task.tabId,
+          error: e.message,
+          エラー時刻: new Date().toISOString(),
+          処理: "続行",
+        });
       }
+    } else {
+      log.warn("⚠️ [TASK-FLOW-TRACE] タブ/ウィンドウ情報不足:", {
+        taskId: task.id,
+        hasTabId: !!task.tabId,
+        hasWindowId: !!task.windowId,
+        タイムスタンプ: new Date().toISOString(),
+      });
     }
 
     // windowに保存されたexecuteNormalAITask関数をチェック
