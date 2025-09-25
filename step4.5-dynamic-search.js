@@ -622,18 +622,6 @@ class DynamicTaskSearch {
 
     log.info(`✅ タスク完了登録: ${taskId}`);
 
-    // 【修正】完了登録後の詳細状態ログ
-    console.warn(`✅ [重複検証] registerTaskCompletion完了:`, {
-      taskId: taskId,
-      wasProcessing: wasProcessing,
-      processingTasksAfter: Array.from(this.processingTasks),
-      completedTasksAfter: Array.from(this.completedTasks),
-      taskNowCompleted: this.completedTasks.has(taskId),
-      taskNoLongerProcessing: !this.processingTasks.has(taskId),
-      completionTimestamp: new Date().toISOString(),
-      duplicationPrevented: true,
-    });
-
     // window.currentTaskListも更新
     if (window.currentTaskList && Array.isArray(window.currentTaskList)) {
       const task = window.currentTaskList.find((t) => t.id === taskId);

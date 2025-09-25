@@ -313,7 +313,16 @@ async function handleIndividualTaskCompletion(result, taskIndex) {
         });
 
         try {
+          // 【追加】完了状態を両システムに同期
+
+          // DynamicTaskSearchに登録
           window.registerTaskCompletionDynamic(taskId);
+
+          // グローバルレジストリにも登録
+          if (window.globalCompletedTasks) {
+            window.globalCompletedTasks.add(taskId);
+          }
+
           log.info(
             `✅ [TASK-FLOW-TRACE] DynamicTaskSearch完了登録成功: ${taskId}`,
             {
@@ -572,6 +581,12 @@ const groupTransitionState = {
   maxConsecutiveAttempts: 3,
   lastTaskIndex: null,
 };
+
+// グローバル完了タスクレジストリの初期化
+if (!window.globalCompletedTasks) {
+  window.globalCompletedTasks = new Set();
+  log.info(`📋 [GLOBAL-REGISTRY] グローバル完了タスクレジストリ初期化完了`);
+}
 
 async function startNextTaskIfAvailable(taskIndex) {
   try {
@@ -2101,51 +2116,53 @@ class StepIntegratedWindowService {
         const existingWindowId = this.windowPositions.get(position);
 
         // ウィンドウ存在確認後に競合判定
+        let windowExists = true;
         try {
           await chrome.windows.get(existingWindowId);
         } catch (e) {
           // ウィンドウが既に閉じられている場合はマップから削除
           this.windowPositions.delete(position);
-          // 競合なしとして処理継続
-          continue;
+          windowExists = false;
         }
 
-        // 使用中チェック
-        const isInUse = await this.checkWindowInUse(existingWindowId);
+        // ウィンドウが存在する場合のみ使用中チェック
+        if (windowExists) {
+          const isInUse = await this.checkWindowInUse(existingWindowId);
 
-        if (isInUse) {
-          log.warn(
-            `🔒 [ウィンドウ保護] windowId=${existingWindowId}は処理中のため保持、別のpositionを使用`,
-          );
-          // 別のpositionを試す（0-3の範囲で）
-          for (let altPosition = 0; altPosition < 4; altPosition++) {
-            if (
-              altPosition !== position &&
-              !this.windowPositions.has(altPosition)
-            ) {
-              log.info(`🔄 [代替position] position=${altPosition}を使用`);
-              position = altPosition;
-              break;
-            }
-          }
-          // それでも見つからない場合は元のpositionを使用（既存ウィンドウは保持）
-          if (this.windowPositions.has(position)) {
+          if (isInUse) {
             log.warn(
-              `⚠️ [position競合] すべてのpositionが使用中、既存ウィンドウを保持`,
+              `🔒 [ウィンドウ保護] windowId=${existingWindowId}は処理中のため保持、別のpositionを使用`,
             );
-            return null;
-          }
-        } else {
-          log.info(
-            `🔄 [ウィンドウ削除] position=${position}の未使用ウィンドウ${existingWindowId}を削除`,
-          );
+            // 別のpositionを試す（0-3の範囲で）
+            for (let altPosition = 0; altPosition < 4; altPosition++) {
+              if (
+                altPosition !== position &&
+                !this.windowPositions.has(altPosition)
+              ) {
+                log.info(`🔄 [代替position] position=${altPosition}を使用`);
+                position = altPosition;
+                break;
+              }
+            }
+            // それでも見つからない場合は元のpositionを使用（既存ウィンドウは保持）
+            if (this.windowPositions.has(position)) {
+              log.warn(
+                `⚠️ [position競合] すべてのpositionが使用中、既存ウィンドウを保持`,
+              );
+              return null;
+            }
+          } else {
+            log.info(
+              `🔄 [ウィンドウ削除] position=${position}の未使用ウィンドウ${existingWindowId}を削除`,
+            );
 
-          try {
-            await chrome.windows.remove(existingWindowId);
-            this.windowPositions.delete(position);
-            await new Promise((resolve) => setTimeout(resolve, 500)); // 削除完了待ち
-          } catch (error) {
-            // 既に閉じられたウィンドウの削除は正常な状況
+            try {
+              await chrome.windows.remove(existingWindowId);
+              this.windowPositions.delete(position);
+              await new Promise((resolve) => setTimeout(resolve, 500)); // 削除完了待ち
+            } catch (error) {
+              // 既に閉じられたウィンドウの削除は正常な状況
+            }
           }
         }
       }
@@ -3322,6 +3339,40 @@ async function generateTaskList(
             // WARNING: WindowInfo取得失敗
           }
 
+          // 【追加】DynamicTaskSearchとの協調チェック - タスク生成前の重複防止
+          const taskId = `${answerColumn}${row}`;
+
+          // DynamicTaskSearchで完了済みの場合はスキップ
+          if (window.DynamicTaskSearch?.completedTasks?.has(taskId)) {
+            console.warn(
+              `⏭️ [COORDINATION-SKIP] DynamicTaskSearchで完了済み - スキップ:`,
+              {
+                taskId: taskId,
+                skippedBy: "DynamicTaskSearch coordination",
+                completedTasksSize:
+                  window.DynamicTaskSearch.completedTasks.size,
+                groupNumber: taskGroup.groupNumber,
+                timestamp: new Date().toISOString(),
+              },
+            );
+            continue; // タスク生成をスキップ
+          }
+
+          // グローバルレジストリで完了済みの場合もスキップ
+          if (window.globalCompletedTasks?.has(taskId)) {
+            console.warn(
+              `⏭️ [COORDINATION-SKIP] グローバルレジストリで完了済み - スキップ:`,
+              {
+                taskId: taskId,
+                skippedBy: "GlobalRegistry coordination",
+                globalRegistrySize: window.globalCompletedTasks.size,
+                groupNumber: taskGroup.groupNumber,
+                timestamp: new Date().toISOString(),
+              },
+            );
+            continue; // タスク生成をスキップ
+          }
+
           // Step4との互換性のため、aiTypeフィールドも追加
           const task = {
             taskId: `task_${taskGroup.groupNumber}_${row}_${Date.now()}`,
@@ -4099,9 +4150,7 @@ class WindowController {
         );
 
         if (!checkResult.found) {
-          ExecuteLogger.info(
-            `🔄 [${aiType}] ウィンドウ再作成を実行`,
-          );
+          ExecuteLogger.info(`🔄 [${aiType}] ウィンドウ再作成を実行`);
 
           // ウィンドウを閉じる
           if (result.windowId) {
