@@ -359,6 +359,120 @@
         </div>
       </section>
 
+      <!-- ウィンドウ初期化タイムアウト設定セクション -->
+      <section class="step-section">
+        <div class="step-header">
+          <span class="step-number">⏱️</span>
+          <h2>ウィンドウ初期化タイムアウト設定</h2>
+        </div>
+        <div class="step-content">
+          <p class="test-description">ウィンドウを開いた後の要素検出待機時間を調整できます</p>
+
+          <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+            <!-- ウィンドウ作成初期待機時間 -->
+            <div style="margin-bottom: 20px;">
+              <label style="font-weight: 600;">
+                ウィンドウ作成初期待機:
+                <span id="windowCreationWaitValue" style="color: #007bff;">5秒</span>
+              </label>
+              <input type="range" id="windowCreationWait" min="2000" max="10000" step="1000" value="5000"
+                     style="width: 100%; margin-top: 5px;">
+              <div style="display: flex; justify-content: space-between; font-size: 11px; color: #666;">
+                <span>2秒（高速）</span>
+                <span>5秒（推奨）</span>
+                <span>10秒（安定）</span>
+              </div>
+              <div style="margin-top: 5px; font-size: 11px; color: #888;">
+                ※ 新しいウィンドウ/タブを開いた直後の待機時間
+              </div>
+            </div>
+
+            <!-- タブ準備確認タイムアウト -->
+            <div style="margin-bottom: 20px;">
+              <label style="font-weight: 600;">
+                タブ準備確認タイムアウト:
+                <span id="tabReadyTimeoutValue" style="color: #007bff;">20秒</span>
+              </label>
+              <input type="range" id="tabReadyTimeout" min="10000" max="30000" step="5000" value="20000"
+                     style="width: 100%; margin-top: 5px;">
+              <div style="display: flex; justify-content: space-between; font-size: 11px; color: #666;">
+                <span>10秒（高速）</span>
+                <span>20秒（推奨）</span>
+                <span>30秒（慎重）</span>
+              </div>
+              <div style="margin-top: 5px; font-size: 11px; color: #888;">
+                ※ タブの準備完了を待つ最大時間（最大10回のリトライ）
+              </div>
+            </div>
+
+            <!-- Content Script初期化待機時間 -->
+            <div style="margin-bottom: 20px;">
+              <label style="font-weight: 600;">
+                Content Script初期化待機:
+                <span id="contentScriptWaitValue" style="color: #007bff;">3秒</span>
+              </label>
+              <input type="range" id="contentScriptWait" min="1000" max="5000" step="500" value="3000"
+                     style="width: 100%; margin-top: 5px;">
+              <div style="display: flex; justify-content: space-between; font-size: 11px; color: #666;">
+                <span>1秒（高速）</span>
+                <span>3秒（推奨）</span>
+                <span>5秒（安定）</span>
+              </div>
+              <div style="margin-top: 5px; font-size: 11px; color: #888;">
+                ※ Content Scriptが完全に初期化されるまでの待機時間
+              </div>
+            </div>
+
+            <!-- 要素検出リトライ設定 -->
+            <div style="margin-bottom: 20px;">
+              <label style="font-weight: 600;">
+                要素検出リトライ回数:
+                <span id="elementRetryCountValue" style="color: #007bff;">5回</span>
+              </label>
+              <input type="range" id="elementRetryCount" min="3" max="10" step="1" value="5"
+                     style="width: 100%; margin-top: 5px;">
+              <div style="display: flex; justify-content: space-between; font-size: 11px; color: #666;">
+                <span>3回（高速）</span>
+                <span>5回（推奨）</span>
+                <span>10回（確実）</span>
+              </div>
+              <div style="margin-top: 5px; font-size: 11px; color: #888;">
+                ※ 要素が見つからない場合のリトライ回数
+              </div>
+            </div>
+
+            <!-- 要素検出リトライ間隔 -->
+            <div>
+              <label style="font-weight: 600;">
+                要素検出リトライ間隔:
+                <span id="elementRetryIntervalValue" style="color: #007bff;">1秒</span>
+              </label>
+              <input type="range" id="elementRetryInterval" min="500" max="3000" step="500" value="1000"
+                     style="width: 100%; margin-top: 5px;">
+              <div style="display: flex; justify-content: space-between; font-size: 11px; color: #666;">
+                <span>0.5秒（高速）</span>
+                <span>1秒（推奨）</span>
+                <span>3秒（慎重）</span>
+              </div>
+              <div style="margin-top: 5px; font-size: 11px; color: #888;">
+                ※ 各リトライ間の待機時間
+              </div>
+            </div>
+          </div>
+
+          <!-- 保存ボタン -->
+          <div style="display: flex; align-items: center; gap: 15px;">
+            <button id="saveWindowInitBtn" class="btn btn-primary" style="padding: 10px 20px;">
+              <span>💾 設定を保存</span>
+            </button>
+            <span id="windowInitStatus" style="color: #28a745; font-size: 14px; display: none;">✅ 保存しました</span>
+          </div>
+          <div style="margin-top: 10px; font-size: 12px; color: #666;">
+            ※ 変更は次回の処理開始時から適用されます
+          </div>
+        </div>
+      </section>
+
       <!-- AIテスト機能セクション -->
       <section class="step-section">
         <div class="step-header">
@@ -584,6 +698,7 @@
 
   <!-- 回答待機時間設定管理スクリプト -->
   <script type="module" src="response-wait-settings-ui.js"></script>
+  <script type="module" src="window-init-settings-ui.js"></script>
 
   <!-- 統合されたUIコントローラー -->
   <script type="module" src="step0-ui-controller.js"></script>

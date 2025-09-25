@@ -11,7 +11,7 @@ const BATCH_PROCESSING_CONFIG = {
   SAFE_MODE: false, // 新機能有効化
 
   // === 独立ウィンドウ処理モード設定 ===
-  INDEPENDENT_WINDOW_MODE: false, // 各ウィンドウ独立処理モード（デフォルトOFF = 安全モード）
+  INDEPENDENT_WINDOW_MODE: true, // 各ウィンドウ独立処理モード（デフォルトON = 独立処理）
   WAIT_FOR_BATCH_COMPLETION: true, // バッチ完了待機（デフォルトON = 3つ全て待つ）
 
   // === 待機時間設定（ミリ秒） ===
@@ -23,6 +23,13 @@ const BATCH_PROCESSING_CONFIG = {
   MAX_RESPONSE_WAIT_TIME_DEEP: 2400000, // DeepResearchモード: 最大回答待機時間（デフォルト40分）
   MAX_RESPONSE_WAIT_TIME_AGENT: 2400000, // エージェントモード: 最大回答待機時間（デフォルト40分）
   STOP_CHECK_INTERVAL: 10000, // 回答停止ボタンの消滅継続時間（デフォルト10秒）
+
+  // === ウィンドウ初期化タイムアウト設定 ===
+  WINDOW_CREATION_WAIT: 5000, // ウィンドウ作成初期待機: 5秒
+  TAB_READY_TIMEOUT: 20000, // タブ準備確認タイムアウト: 20秒
+  CONTENT_SCRIPT_WAIT: 3000, // Content Script初期化待機: 3秒
+  ELEMENT_RETRY_COUNT: 5, // 要素検出リトライ回数: 5回
+  ELEMENT_RETRY_INTERVAL: 1000, // 要素検出リトライ間隔: 1秒
 
   // === デバッグ設定 ===
   DEBUG_INDEPENDENT_MODE: false, // 独立モードの詳細ログ出力
@@ -83,6 +90,26 @@ if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
           BATCH_PROCESSING_CONFIG.MAX_RESPONSE_WAIT_TIME_AGENT / 60000 + "分",
         STOP_CHECK_INTERVAL:
           BATCH_PROCESSING_CONFIG.STOP_CHECK_INTERVAL / 1000 + "秒",
+      });
+    }
+  });
+
+  // ウィンドウ初期化タイムアウト設定の読み込み
+  chrome.storage.local.get("windowInitConfig", (result) => {
+    if (result.windowInitConfig) {
+      // Chrome Storageの設定でウィンドウ初期化設定を上書き
+      Object.assign(BATCH_PROCESSING_CONFIG, result.windowInitConfig);
+
+      console.log("🪟 [step4-tasklist] ウィンドウ初期化設定を読み込みました:", {
+        WINDOW_CREATION_WAIT:
+          BATCH_PROCESSING_CONFIG.WINDOW_CREATION_WAIT / 1000 + "秒",
+        TAB_READY_TIMEOUT:
+          BATCH_PROCESSING_CONFIG.TAB_READY_TIMEOUT / 1000 + "秒",
+        CONTENT_SCRIPT_WAIT:
+          BATCH_PROCESSING_CONFIG.CONTENT_SCRIPT_WAIT / 1000 + "秒",
+        ELEMENT_RETRY_COUNT: BATCH_PROCESSING_CONFIG.ELEMENT_RETRY_COUNT + "回",
+        ELEMENT_RETRY_INTERVAL:
+          BATCH_PROCESSING_CONFIG.ELEMENT_RETRY_INTERVAL / 1000 + "秒",
       });
     }
   });
@@ -1650,8 +1677,8 @@ if (typeof window !== "undefined") {
 async function executeSimpleRetry({
   action,
   isSuccess,
-  maxRetries = 20,
-  interval = 500,
+  maxRetries = BATCH_PROCESSING_CONFIG.ELEMENT_RETRY_COUNT || 20,
+  interval = BATCH_PROCESSING_CONFIG.ELEMENT_RETRY_INTERVAL || 500,
   actionName = "",
   context = {},
 }) {
@@ -4320,8 +4347,12 @@ class WindowController {
 
     // 全ウィンドウ作成後に5秒待機（ページの完全読み込みを待つ）
     if (results.some((r) => r.success)) {
-      ExecuteLogger.info("⏳ 全ウィンドウのタブ準備待機中... (5秒)");
-      await new Promise((resolve) => setTimeout(resolve, 5000));
+      ExecuteLogger.info(
+        `⏳ 全ウィンドウのタブ準備待機中... (${BATCH_PROCESSING_CONFIG.WINDOW_CREATION_WAIT / 1000}秒)`,
+      );
+      await new Promise((resolve) =>
+        setTimeout(resolve, BATCH_PROCESSING_CONFIG.WINDOW_CREATION_WAIT),
+      );
 
       // テキスト入力欄を探す
       ExecuteLogger.info("🔍 テキスト入力欄の存在確認を開始");
@@ -4425,9 +4456,11 @@ class WindowController {
 
             // 再作成後も5秒待機
             ExecuteLogger.info(
-              `⏳ [${aiType}] 再作成後の読み込み待機中... (5秒)`,
+              `⏳ [${aiType}] 再作成後の読み込み待機中... (${BATCH_PROCESSING_CONFIG.WINDOW_CREATION_WAIT / 1000}秒)`,
             );
-            await new Promise((resolve) => setTimeout(resolve, 5000));
+            await new Promise((resolve) =>
+              setTimeout(resolve, BATCH_PROCESSING_CONFIG.WINDOW_CREATION_WAIT),
+            );
           }
         } else {
           ExecuteLogger.info(`✅ [${aiType}] テキスト入力欄が存在します`);
@@ -4678,7 +4711,11 @@ class WindowController {
   /**
    * タブが準備完了になるまで待機する関数
    */
-  async waitForTabReady(tabId, maxRetries = 10, delayMs = 2000) {
+  async waitForTabReady(
+    tabId,
+    maxRetries = Math.ceil(BATCH_PROCESSING_CONFIG.TAB_READY_TIMEOUT / 2000),
+    delayMs = 2000,
+  ) {
     const startTimestamp = new Date().toISOString();
     const lifecycleId = `tab_${tabId}_${Date.now()}`;
 
@@ -4966,7 +5003,11 @@ class WindowController {
         log.debug(
           `[DEBUG-performWindowCheck] タブ準備完了待機開始: tabId=${tabId}`,
         );
-        const tab = await this.waitForTabReady(tabId, 10, 1000);
+        const tab = await this.waitForTabReady(
+          tabId,
+          BATCH_PROCESSING_CONFIG.ELEMENT_RETRY_COUNT,
+          BATCH_PROCESSING_CONFIG.ELEMENT_RETRY_INTERVAL,
+        );
         log.debug(`[DEBUG-performWindowCheck] タブ準備完了:`, {
           tabId,
           url: tab?.url,
@@ -5970,9 +6011,18 @@ if (!window.SimpleSheetsClient) {
     }
 
     /**
-     * スプレッドシートから値を取得
+     * スプレッドシートから値を取得（レート制限対策付き）
      */
     async getValues(spreadsheetId, range) {
+      // レート制限対策：最小間隔を設ける
+      if (this.lastApiCallTime) {
+        const elapsed = Date.now() - this.lastApiCallTime;
+        if (elapsed < 1500) {
+          // 1.5秒の最小間隔
+          await new Promise((resolve) => setTimeout(resolve, 1500 - elapsed));
+        }
+      }
+
       try {
         const token = await this.getAuthToken();
         const url = `${this.baseUrl}/${spreadsheetId}/values/${range}`;
@@ -5983,8 +6033,20 @@ if (!window.SimpleSheetsClient) {
           },
         });
 
+        this.lastApiCallTime = Date.now();
+
         if (!response.ok) {
           const errorText = await response.text();
+
+          // レート制限エラーの場合、exponential backoffでリトライ
+          if (response.status === 429) {
+            ExecuteLogger.warn(
+              `⚠️ API レート制限エラー検出。3秒後にリトライします: ${range}`,
+            );
+            await new Promise((resolve) => setTimeout(resolve, 3000));
+            return await this.getValues(spreadsheetId, range); // リトライ
+          }
+
           throw new Error(
             `データ取得失敗: HTTP ${response.status} - ${errorText || response.statusText}`,
           );
@@ -6020,6 +6082,15 @@ if (!window.SimpleSheetsClient) {
      * スプレッドシートに値を書き込み（単一セル）
      */
     async updateValue(spreadsheetId, range, value) {
+      // レート制限対策：最小間隔を設ける
+      if (this.lastApiCallTime) {
+        const elapsed = Date.now() - this.lastApiCallTime;
+        if (elapsed < 1500) {
+          // 1.5秒の最小間隔
+          await new Promise((resolve) => setTimeout(resolve, 1500 - elapsed));
+        }
+      }
+
       try {
         const token = await this.getAuthToken();
         const url = `${this.baseUrl}/${spreadsheetId}/values/${range}?valueInputOption=USER_ENTERED`;
@@ -6035,8 +6106,20 @@ if (!window.SimpleSheetsClient) {
           }),
         });
 
+        this.lastApiCallTime = Date.now();
+
         if (!response.ok) {
           const errorText = await response.text();
+
+          // レート制限エラーの場合、exponential backoffでリトライ
+          if (response.status === 429) {
+            ExecuteLogger.warn(
+              `⚠️ API レート制限エラー検出。3秒後にリトライします: ${range}`,
+            );
+            await new Promise((resolve) => setTimeout(resolve, 3000));
+            return await this.updateValue(spreadsheetId, range, value); // リトライ
+          }
+
           throw new Error(
             `データ書き込み失敗: HTTP ${response.status} - ${errorText || response.statusText}`,
           );
@@ -7461,7 +7544,7 @@ async function executeStep4(taskList) {
           // 各タスク実行を段階的に開始（Chrome APIの過負荷を避ける）
           // Content Scriptの初期化完了を待つため、遅延を増やす
           if (index > 0) {
-            const delay = index * 3000; // 3秒ずつずらす（Content Script初期化待ち）
+            const delay = index * BATCH_PROCESSING_CONFIG.CONTENT_SCRIPT_WAIT; // Content Script初期化待ち
             ExecuteLogger.info(
               `⏱️ Task ${index + 1} 開始待機: ${delay}ms（Content Script初期化待ち）`,
             );
@@ -7469,9 +7552,11 @@ async function executeStep4(taskList) {
           } else {
             // 最初のタスクも5秒待機（ウィンドウ開いてすぐは初期化未完了の可能性）
             ExecuteLogger.info(
-              `⏱️ 初回タスク開始前に5秒待機（Content Script初期化待ち）`,
+              `⏱️ 初回タスク開始前に${BATCH_PROCESSING_CONFIG.WINDOW_CREATION_WAIT / 1000}秒待機（Content Script初期化待ち）`,
             );
-            await new Promise((resolve) => setTimeout(resolve, 5000));
+            await new Promise((resolve) =>
+              setTimeout(resolve, BATCH_PROCESSING_CONFIG.WINDOW_CREATION_WAIT),
+            );
           }
 
           try {
@@ -8266,8 +8351,13 @@ async function executeStep4(taskList) {
               );
 
               // 初期化待機（manifest.json自動注入Content Scriptが初期化されるまで）
-              // 緊急修正: 通信エラー回避のため5秒に延長
-              await new Promise((resolve) => setTimeout(resolve, 5000));
+              // 緊急修正: 通信エラー回避のための待機
+              await new Promise((resolve) =>
+                setTimeout(
+                  resolve,
+                  BATCH_PROCESSING_CONFIG.WINDOW_CREATION_WAIT,
+                ),
+              );
 
               ExecuteLogger.info(
                 `✅ [manifest.json自動注入] ${automationName} 準備完了`,

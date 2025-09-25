@@ -2811,7 +2811,27 @@ async function executeTasks(tasks, taskGroup) {
       // DEBUG: Step3からのタスクデータ詳細
 
       // Step3で生成されたタスクの情報を使用（AI行の実際の値）
-      const aiType = task.ai || task.aiType || "Claude";
+      // taskGroupのAI列の値も考慮（グループ2はClaude、グループ3はChatGPT等）
+      let aiType = task.ai || task.aiType;
+
+      // aiTypeが取得できない場合、taskGroupの回答列から推測
+      if (!aiType && taskGroup?.answerColumnLetter) {
+        const columnLetter = taskGroup.answerColumnLetter;
+        // AG列 = Claude, P列 = ChatGPT, Q列 = Gemini 等のマッピング
+        if (columnLetter === "AG" || columnLetter === "AK") {
+          aiType = "Claude";
+        } else if (columnLetter === "P" || columnLetter === "T") {
+          aiType = "ChatGPT";
+        } else if (columnLetter === "Q" || columnLetter === "U") {
+          aiType = "Gemini";
+        } else {
+          aiType = "Claude"; // デフォルト
+        }
+        console.log(`[DEBUG] aiType推測: ${columnLetter}列 → ${aiType}`);
+      }
+
+      // それでも取得できない場合はデフォルト値
+      aiType = aiType || "Claude";
 
       // DEBUG: aiType決定プロセス
 
