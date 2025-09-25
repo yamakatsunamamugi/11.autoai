@@ -98,21 +98,24 @@ class SimpleSheetsClient {
     const urlEndIndex = urlStartIndex + linkUrl.length;
 
     // シートIDを取得
-    let sheetId = 0; // デフォルト値
-    if (sheetMatch && sheetMatch[1]) {
-      const sheetName = sheetMatch[1];
-      try {
-        // メタデータを取得してシートIDを検索
-        const token = await this.getAuthToken();
-        const metadataUrl = `${this.baseUrl}/${spreadsheetId}`;
-        const metadataResponse = await fetch(metadataUrl, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
+    let sheetId = null; // デフォルト値を null に変更
 
-        if (metadataResponse.ok) {
-          const metadata = await metadataResponse.json();
+    try {
+      // スプレッドシートメタデータを取得
+      const token = await this.getAuthToken();
+      const metadataUrl = `${this.baseUrl}/${spreadsheetId}`;
+      const metadataResponse = await fetch(metadataUrl, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (metadataResponse.ok) {
+        const metadata = await metadataResponse.json();
+
+        // シート名が指定されている場合は該当シートを検索
+        if (sheetMatch && sheetMatch[1]) {
+          const sheetName = sheetMatch[1];
           const sheet = metadata.sheets?.find(
             (s) => s.properties.title === sheetName,
           );
@@ -120,23 +123,36 @@ class SimpleSheetsClient {
             sheetId = sheet.properties.sheetId;
             console.log(`✅ シートID取得成功: "${sheetName}" → ID: ${sheetId}`);
           } else {
-            console.warn(
-              `⚠️ シート名 "${sheetName}" が見つからず、デフォルト値0を使用`,
-            );
+            // 指定されたシート名が見つからない場合は最初のシートを使用
+            if (metadata.sheets && metadata.sheets.length > 0) {
+              sheetId = metadata.sheets[0].properties.sheetId;
+              console.warn(
+                `⚠️ シート名 "${sheetName}" が見つからないため、最初のシート(ID: ${sheetId})を使用`,
+              );
+            }
           }
         } else {
-          console.warn("⚠️ シートメタデータ取得失敗、デフォルト値0を使用");
+          // シート名が指定されていない場合は最初のシートを使用
+          if (metadata.sheets && metadata.sheets.length > 0) {
+            sheetId = metadata.sheets[0].properties.sheetId;
+            console.log(
+              `💡 シート名が指定されていないため、最初のシート(ID: ${sheetId})を使用`,
+            );
+          }
         }
-      } catch (error) {
-        console.warn(
-          "⚠️ シートID取得エラー、デフォルト値0を使用:",
-          error.message,
-        );
+      } else {
+        console.warn("⚠️ シートメタデータ取得失敗");
       }
-    } else {
-      console.log(
-        "💡 シート名が指定されていないため、デフォルトシート(ID: 0)を使用",
+    } catch (error) {
+      console.warn("⚠️ シートID取得エラー:", error.message);
+    }
+
+    // シートIDが取得できない場合はリッチテキスト設定をスキップ
+    if (sheetId === null) {
+      console.warn(
+        "⚠️ シートIDが取得できないため、リッチテキスト設定をスキップします",
       );
+      return;
     }
 
     const requests = [
