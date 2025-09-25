@@ -170,6 +170,77 @@ log.info("🔧 [バッチ処理設定]", {
 });
 
 /**
+ * オブジェクトを安全にJSONシリアライズする関数
+ * 循環参照や[object Object]エラーを回避
+ */
+function safeStringify(obj, maxDepth = 3) {
+  const seen = new WeakSet();
+
+  function stringify(value, depth = 0) {
+    // 深度制限
+    if (depth > maxDepth) {
+      return "[Max Depth Exceeded]";
+    }
+
+    // null や undefined の場合
+    if (value === null) return "null";
+    if (value === undefined) return "undefined";
+
+    // プリミティブ型の場合
+    if (typeof value !== "object") {
+      if (typeof value === "string") return `"${value}"`;
+      if (typeof value === "function") return "[Function]";
+      if (typeof value === "symbol") return "[Symbol]";
+      return String(value);
+    }
+
+    // 循環参照チェック
+    if (seen.has(value)) {
+      return "[Circular Reference]";
+    }
+    seen.add(value);
+
+    try {
+      // 配列の場合
+      if (Array.isArray(value)) {
+        const items = value
+          .slice(0, 5)
+          .map((item) => stringify(item, depth + 1));
+        if (value.length > 5)
+          items.push(`...and ${value.length - 5} more items`);
+        return `[${items.join(", ")}]`;
+      }
+
+      // オブジェクトの場合
+      const keys = Object.keys(value).slice(0, 5);
+      const entries = keys.map((key) => {
+        try {
+          return `"${key}": ${stringify(value[key], depth + 1)}`;
+        } catch (error) {
+          return `"${key}": [Error: ${error.message}]`;
+        }
+      });
+
+      if (Object.keys(value).length > 5) {
+        entries.push(`...and ${Object.keys(value).length - 5} more properties`);
+      }
+
+      return `{${entries.join(", ")}}`;
+    } catch (error) {
+      return `[Error: ${error.message}]`;
+    } finally {
+      seen.delete(value);
+    }
+  }
+
+  try {
+    return stringify(obj);
+  } catch (error) {
+    return `[Stringify Error: ${error.message}]`;
+  }
+}
+
+/**
  * 独立ウィンドウ処理モード
  * 各ウィンドウが独立してタスクを処理し、完了後即座に次のタスクを開始
  */
@@ -6626,7 +6697,7 @@ class TaskStatusManager {
         ExecuteLogger.warn(
           `⚠️ [SAFE-CLEAR] ${range}: 文字列以外の値を検出 - タイプ: ${typeof currentValue}`,
           {
-            値: JSON.stringify(currentValue),
+            値: safeStringify(currentValue),
             範囲: range,
           },
         );
@@ -6640,7 +6711,7 @@ class TaskStatusManager {
             値の先頭50文字:
               typeof currentValue === "string"
                 ? currentValue.substring(0, 50)
-                : JSON.stringify(currentValue).substring(0, 50),
+                : safeStringify(currentValue).substring(0, 50),
             値の型: typeof currentValue,
             範囲: range,
           },
@@ -6654,7 +6725,7 @@ class TaskStatusManager {
         削除された値:
           typeof currentValue === "string"
             ? currentValue.substring(0, 100)
-            : JSON.stringify(currentValue).substring(0, 100),
+            : safeStringify(currentValue).substring(0, 100),
       });
     } catch (error) {
       ExecuteLogger.error(
