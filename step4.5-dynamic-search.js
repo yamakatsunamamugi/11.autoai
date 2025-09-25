@@ -40,10 +40,12 @@ const DynamicSearchLogger = {
   },
   info: (...args) => {
     if (CURRENT_LOG_LEVEL >= LOG_LEVEL.INFO) {
+      console.log("[DynamicSearch]", ...args);
     }
   },
   debug: (...args) => {
     if (CURRENT_LOG_LEVEL >= LOG_LEVEL.DEBUG) {
+      console.log("[DynamicSearch]", ...args);
     }
   },
 };
@@ -66,8 +68,6 @@ class DynamicTaskSearch {
 
     // 【追加】currentGroup変更の監視
     this.initializeCurrentGroupListener();
-
-    log.info("✅ DynamicTaskSearch 初期化完了");
   }
 
   /**
@@ -77,12 +77,10 @@ class DynamicTaskSearch {
   initializeCurrentGroupListener() {
     if (window.addCurrentGroupListener) {
       const listener = (changeEvent) => {
-        log.info("🔄 [DynamicTaskSearch] currentGroup変更通知受信:", {
-          previousGroup: changeEvent.previousGroup?.groupNumber,
-          currentGroup: changeEvent.currentGroup?.groupNumber,
-          source: changeEvent.source,
-          timestamp: changeEvent.timestamp,
-        });
+        log.warn(
+          "🔄 [DynamicTaskSearch] currentGroup変更:",
+          changeEvent.currentGroup?.groupNumber,
+        );
 
         // グループ変更時にキャッシュをクリア
         this.cache.spreadsheetData = null;
@@ -93,19 +91,13 @@ class DynamicTaskSearch {
           changeEvent.currentGroup?.groupNumber !==
           changeEvent.previousGroup?.groupNumber
         ) {
-          log.debug("🧹 [DynamicTaskSearch] グループ変更 - 処理状態をリセット");
           this.processingTasks.clear(); // 前のグループの処理中タスクをクリア
         }
       };
 
       window.addCurrentGroupListener(listener);
       this._currentGroupListener = listener; // クリーンアップ用に保存
-
-      log.debug("👂 [DynamicTaskSearch] currentGroup変更リスナー登録完了");
     } else {
-      log.debug(
-        "⚠️ [DynamicTaskSearch] currentGroup統一管理システム未利用可能",
-      );
     }
   }
 
@@ -124,7 +116,6 @@ class DynamicTaskSearch {
       this.cache.lastFetchTime &&
       now - this.cache.lastFetchTime < 1000 // 1秒に短縮
     ) {
-      log.debug("📋 キャッシュからデータ取得");
       return this.cache.spreadsheetData;
     }
 
@@ -153,7 +144,6 @@ class DynamicTaskSearch {
 
         // 【追加】書き込み完了待機：初回以外は待機してから取得
         if (retryCount > 0) {
-          log.debug(`⏳ データ反映待機中... (${retryCount}/${maxRetries})`);
           await new Promise((resolve) => setTimeout(resolve, retryDelay));
         }
 
@@ -181,9 +171,6 @@ class DynamicTaskSearch {
         // 【追加】データ変更確認：前回と比較して変更があるかチェック
         const hasSignificantChange = this.validateDataFreshness(values);
         if (retryCount > 0 && !hasSignificantChange) {
-          log.debug(
-            `🔄 データ未更新確認、リトライ継続 (${retryCount}/${maxRetries})`,
-          );
           retryCount++;
           continue;
         }
@@ -221,7 +208,6 @@ class DynamicTaskSearch {
 
     // 簡単な変更検出：行数または内容の変化をチェック
     if (newData.length !== this.cache.spreadsheetData.length) {
-      log.debug("📊 行数変化検出 - データ更新確認");
       return true;
     }
 
@@ -237,9 +223,6 @@ class DynamicTaskSearch {
         if (newData[rowIndex] && newData[rowIndex][colIndex]) {
           const cellValue = newData[rowIndex][colIndex];
           if (cellValue && !cellValue.startsWith("作業中")) {
-            log.debug(
-              `📊 完了タスク反映確認: ${taskId} = ${cellValue.substring(0, 50)}...`,
-            );
             return true;
           }
         }
@@ -318,7 +301,6 @@ class DynamicTaskSearch {
         // 【追加】step3メインループに制御移譲イベントを送信
         this.notifyGroupCompletionToStep3(currentGroup);
       } else {
-        log.debug("📋 グループ未完了 - 一時的にタスクなし");
       }
 
       return null;
@@ -345,12 +327,6 @@ class DynamicTaskSearch {
     // プロンプト列を確認
     const promptColumns = columns.prompts || [];
     const answerColumns = this.getAnswerColumns(columns.answer, taskGroup);
-
-    log.debug("検索範囲:", {
-      プロンプト列: promptColumns,
-      回答列: answerColumns,
-      開始行: dataStartRow,
-    });
 
     // 【無限ループ防止】カウンター追加
     let tasksChecked = 0;
@@ -498,13 +474,11 @@ class DynamicTaskSearch {
     // 【修正1】すでに完了済みならスキップ（優先度：最高）
     if (this.completedTasks.has(taskId)) {
       // 【無限ループ防止】過剰ログを削減し、デバッグレベルに変更
-      log.debug(`⏭️ スキップ（完了済み）: ${taskId}`);
       return false;
     }
 
     // 【修正2】現在処理中ならスキップ（優先度：最高）
     if (this.processingTasks.has(taskId)) {
-      log.debug(`⏳ スキップ（処理中）: ${taskId}`);
       console.warn(`❌ [重複検証] タスク実行拒否 - 処理中:`, {
         taskId: taskId,
         reason: "processingTasks.has(taskId)",
@@ -546,12 +520,10 @@ class DynamicTaskSearch {
             // 最新データに内容がある場合は実行拒否
             if (latestCellValue && latestCellValue.trim()) {
               if (latestCellValue.startsWith("作業中")) {
-                log.debug(`⏳ スキップ（最新確認：作業中マーカー）: ${taskId}`);
                 return false;
               }
 
               // 実際の回答がある場合
-              log.debug(`✓ スキップ（最新確認：回答済み）: ${taskId}`);
               this.completedTasks.add(taskId); // 完了済みとしてマーク
               console.warn(`✅ [重複検証] 最新確認で回答発見 - 重複防止成功:`, {
                 taskId: taskId,
@@ -574,12 +546,10 @@ class DynamicTaskSearch {
       // 作業中マーカーの場合
       if (cellValue.startsWith("作業中")) {
         // タイムアウトチェック（必要に応じて実装）
-        log.debug(`⏳ スキップ（作業中マーカー）: ${taskId}`);
         return false;
       }
 
       // すでに回答がある場合
-      log.debug(`✓ スキップ（回答済み）: ${taskId}`);
       this.completedTasks.add(taskId); // 完了済みとしてマーク
       return false;
     }
@@ -616,7 +586,6 @@ class DynamicTaskSearch {
    */
   markTaskAsProcessing(task) {
     this.processingTasks.add(task.id);
-    log.debug(`🔄 処理中マーク: ${task.id}`);
 
     // window.currentTaskListも更新
     if (window.currentTaskList && Array.isArray(window.currentTaskList)) {
@@ -691,8 +660,6 @@ class DynamicTaskSearch {
    */
   async checkAndRecordGroupCompletion(currentGroup, spreadsheetData) {
     try {
-      log.debug(`🔍 グループ${currentGroup.groupNumber}完了状態確認開始`);
-
       const { columns, dataStartRow } = currentGroup;
       if (!columns || !dataStartRow) {
         log.warn("⚠️ グループ情報不完全", { currentGroup });
@@ -853,12 +820,6 @@ class DynamicTaskSearch {
       }
 
       const nextGroup = taskGroups[nextIndex];
-      log.debug("➡️ [DynamicTaskSearch] 次のグループ決定:", {
-        currentGroup: currentGroup.groupNumber,
-        nextGroup: nextGroup.groupNumber,
-        currentIndex,
-        nextIndex,
-      });
 
       return nextGroup;
     } catch (error) {
@@ -889,7 +850,6 @@ class DynamicTaskSearch {
           },
         });
         window.dispatchEvent(event);
-        log.debug("✅ カスタムイベント送信完了: dynamicSearchGroupCompleted");
       }
 
       // 【方法2】グローバル状態による通知
@@ -900,7 +860,6 @@ class DynamicTaskSearch {
           requestControlTransfer: true,
           timestamp: new Date().toISOString(),
         };
-        log.debug("✅ globalState通知設定完了");
       }
 
       // 【方法3】直接コールバック（利用可能な場合）
@@ -909,7 +868,6 @@ class DynamicTaskSearch {
           groupNumber: completedGroup.groupNumber,
           groupData: completedGroup,
         });
-        log.debug("✅ 直接コールバック実行完了");
       }
     } catch (error) {
       log.error("❌ step3制御移譲通知エラー:", error);
@@ -956,7 +914,6 @@ class DynamicTaskSearch {
     if (this._currentGroupListener && window.removeCurrentGroupListener) {
       window.removeCurrentGroupListener(this._currentGroupListener);
       this._currentGroupListener = null;
-      log.debug("🗑️ [DynamicTaskSearch] currentGroupリスナー削除完了");
     }
 
     log.info("🔄 DynamicTaskSearchをリセットしました");
@@ -1006,12 +963,51 @@ if (typeof window !== "undefined") {
   };
 
   window.registerTaskCompletionDynamic = function (taskId) {
+    log.info(`🔍 [TASK-FLOW-TRACE] registerTaskCompletionDynamic呼び出し:`, {
+      taskId: taskId,
+      taskIdType: typeof taskId,
+      呼び出し時刻: new Date().toISOString(),
+    });
+
     const instance = getDynamicTaskSearchInstance();
+
+    log.info(`🔍 [TASK-FLOW-TRACE] DynamicTaskSearchインスタンス確認:`, {
+      taskId: taskId,
+      hasInstance: !!instance,
+      instanceType: typeof instance,
+      インスタンス確認時刻: new Date().toISOString(),
+    });
+
     if (!instance) {
-      log.error("❌ DynamicTaskSearchインスタンスを初期化できません");
+      log.error(
+        `❌ [TASK-FLOW-TRACE] DynamicTaskSearchインスタンス初期化失敗:`,
+        {
+          taskId: taskId,
+          globalStateExists: !!window.globalState,
+          currentGroup: window.globalState?.currentGroup,
+          エラー時刻: new Date().toISOString(),
+        },
+      );
       return null;
     }
-    return instance.registerTaskCompletion(taskId);
+
+    try {
+      const result = instance.registerTaskCompletion(taskId);
+      log.info(`✅ [TASK-FLOW-TRACE] タスク完了登録成功:`, {
+        taskId: taskId,
+        result: result,
+        登録成功時刻: new Date().toISOString(),
+      });
+      return result;
+    } catch (error) {
+      log.error(`❌ [TASK-FLOW-TRACE] タスク完了登録エラー:`, {
+        taskId: taskId,
+        error: error.message,
+        stack: error.stack,
+        エラー発生時刻: new Date().toISOString(),
+      });
+      throw error;
+    }
   };
 }
 

@@ -564,6 +564,15 @@ async function immediateWindowClose(windowId, taskIndex) {
 /**
  * Phase 4: 動的次タスク探索システム
  */
+
+// 無限ループ防止用の状態追跡
+const groupTransitionState = {
+  consecutiveNoTasksCount: 0,
+  lastTransitionAttempt: null,
+  maxConsecutiveAttempts: 3,
+  lastTaskIndex: null,
+};
+
 async function startNextTaskIfAvailable(taskIndex) {
   try {
     log.info(`🔍 [TASK-FLOW-TRACE] startNextTaskIfAvailable開始:`, {
@@ -640,6 +649,12 @@ async function startNextTaskIfAvailable(taskIndex) {
           実行開始時刻: new Date().toISOString(),
         });
 
+        // 【修正】タスク発見時はカウンターをリセット
+        groupTransitionState.consecutiveNoTasksCount = 0;
+        log.debug(
+          `🔄 [LOOP-PREVENTION] カウンターリセット[${taskIndex}] - タスク発見`,
+        );
+
         // 非同期で実行開始
         executeTaskIndependently(nextTask);
       } else {
@@ -655,6 +670,56 @@ async function startNextTaskIfAvailable(taskIndex) {
         理由: "findNextAvailableTaskがnullを返却",
         確認時刻: new Date().toISOString(),
       });
+
+      // 【修正】無限ループ防止チェック
+      groupTransitionState.consecutiveNoTasksCount++;
+      const timeSinceLastAttempt = groupTransitionState.lastTransitionAttempt
+        ? Date.now() - groupTransitionState.lastTransitionAttempt
+        : Infinity;
+
+      log.info(`🔍 [LOOP-PREVENTION] 無限ループ防止状態[${taskIndex}]:`, {
+        taskIndex: taskIndex,
+        consecutiveNoTasksCount: groupTransitionState.consecutiveNoTasksCount,
+        maxConsecutiveAttempts: groupTransitionState.maxConsecutiveAttempts,
+        timeSinceLastAttempt: timeSinceLastAttempt,
+        shouldProceed:
+          groupTransitionState.consecutiveNoTasksCount <=
+            groupTransitionState.maxConsecutiveAttempts ||
+          timeSinceLastAttempt > 30000,
+        チェック時刻: new Date().toISOString(),
+      });
+
+      // 連続試行回数制限または30秒経過後なら処理を続行
+      if (
+        groupTransitionState.consecutiveNoTasksCount <=
+          groupTransitionState.maxConsecutiveAttempts ||
+        timeSinceLastAttempt > 30000
+      ) {
+        // 【修正】利用可能タスクなし - グループ完了チェックと移行処理
+        log.info(
+          `🔍 [GROUP-TRANSITION] グループ完了チェック開始[${taskIndex}]:`,
+          {
+            taskIndex: taskIndex,
+            attemptNumber: groupTransitionState.consecutiveNoTasksCount,
+            開始時刻: new Date().toISOString(),
+          },
+        );
+
+        groupTransitionState.lastTransitionAttempt = Date.now();
+        groupTransitionState.lastTaskIndex = taskIndex;
+
+        await checkAndHandleGroupCompletion(taskIndex);
+      } else {
+        log.warn(
+          `⚠️ [LOOP-PREVENTION] 無限ループ防止により処理スキップ[${taskIndex}]:`,
+          {
+            taskIndex: taskIndex,
+            consecutiveAttempts: groupTransitionState.consecutiveNoTasksCount,
+            maxAllowed: groupTransitionState.maxConsecutiveAttempts,
+            スキップ時刻: new Date().toISOString(),
+          },
+        );
+      }
     }
   } catch (error) {
     log.error(`❌ [次タスク探索] エラー[${taskIndex}]:`, error);
@@ -767,6 +832,188 @@ async function findNextAvailableTask() {
   } catch (error) {
     log.error("❌ [次タスク検索] エラー:", error);
     return null;
+  }
+}
+
+/**
+ * グループ完了チェックと次のグループへの移行処理
+ * 【追加】タスクがない場合のグループ移行を処理
+ */
+async function checkAndHandleGroupCompletion(taskIndex) {
+  try {
+    log.info(`🔍 [GROUP-TRANSITION] グループ完了状態確認開始[${taskIndex}]:`, {
+      taskIndex: taskIndex,
+      currentGroup: window.globalState?.currentGroup?.groupNumber,
+      開始時刻: new Date().toISOString(),
+    });
+
+    // DynamicTaskSearchからグループ完了状態を確認
+    if (
+      window.DynamicTaskSearch &&
+      typeof window.DynamicTaskSearch.checkAndRecordGroupCompletion ===
+        "function"
+    ) {
+      const currentGroup = window.globalState?.currentGroup;
+      if (!currentGroup) {
+        log.warn(`⚠️ [GROUP-TRANSITION] 現在のグループ情報なし[${taskIndex}]`);
+        return;
+      }
+
+      // 最新のスプレッドシートデータを取得
+      const spreadsheetData =
+        await window.DynamicTaskSearch.fetchLatestSpreadsheetData(true);
+
+      // グループ完了判定
+      const isGroupCompleted =
+        await window.DynamicTaskSearch.checkAndRecordGroupCompletion(
+          currentGroup,
+          spreadsheetData,
+        );
+
+      log.info(`📊 [GROUP-TRANSITION] グループ完了判定結果[${taskIndex}]:`, {
+        taskIndex: taskIndex,
+        groupNumber: currentGroup.groupNumber,
+        isCompleted: isGroupCompleted,
+        判定時刻: new Date().toISOString(),
+      });
+
+      if (isGroupCompleted) {
+        log.info(
+          `🏁 [GROUP-TRANSITION] グループ${currentGroup.groupNumber}完了 - 次グループ移行開始[${taskIndex}]`,
+        );
+        await transitionToNextGroup(currentGroup, taskIndex);
+      } else {
+        log.info(
+          `📋 [GROUP-TRANSITION] グループ${currentGroup.groupNumber}未完了 - 他タスクの完了待ち[${taskIndex}]`,
+        );
+      }
+    } else {
+      log.warn(
+        `⚠️ [GROUP-TRANSITION] DynamicTaskSearch利用不可[${taskIndex}] - step6直接呼び出し`,
+      );
+      // フォールバック: step6-nextgroup.jsを直接呼び出し
+      await transitionToNextGroupFallback(taskIndex);
+    }
+  } catch (error) {
+    log.error(
+      `❌ [GROUP-TRANSITION] グループ完了チェックエラー[${taskIndex}]:`,
+      {
+        taskIndex: taskIndex,
+        error: error.message,
+        stack: error.stack,
+        エラー時刻: new Date().toISOString(),
+      },
+    );
+  }
+}
+
+/**
+ * 次のグループへの移行実行
+ * 【追加】step6-nextgroup.jsとの連携
+ */
+async function transitionToNextGroup(completedGroup, taskIndex) {
+  try {
+    log.info(`🔀 [GROUP-TRANSITION] グループ移行実行開始[${taskIndex}]:`, {
+      taskIndex: taskIndex,
+      completedGroup: completedGroup.groupNumber,
+      移行開始時刻: new Date().toISOString(),
+    });
+
+    // step6-nextgroup.jsの機能を使用
+    if (
+      typeof window.checkNextGroup === "function" &&
+      typeof window.processNextGroup === "function"
+    ) {
+      const nextGroup = window.checkNextGroup();
+
+      if (nextGroup) {
+        log.info(`➡️ [GROUP-TRANSITION] 次のグループ発見[${taskIndex}]:`, {
+          taskIndex: taskIndex,
+          nextGroup: nextGroup.groupNumber || nextGroup.number,
+          groupType: nextGroup.groupType || nextGroup.type,
+        });
+
+        await window.processNextGroup(nextGroup);
+
+        log.info(`✅ [GROUP-TRANSITION] グループ移行完了[${taskIndex}]:`, {
+          taskIndex: taskIndex,
+          from: completedGroup.groupNumber,
+          to: nextGroup.groupNumber || nextGroup.number,
+          移行完了時刻: new Date().toISOString(),
+        });
+
+        // 移行後、新しいグループでタスクを開始
+        setTimeout(() => {
+          log.info(
+            `🚀 [GROUP-TRANSITION] 新グループでタスク探索開始[${taskIndex}]`,
+          );
+          startNextTaskIfAvailable(taskIndex).catch((error) => {
+            log.error(
+              `❌ [GROUP-TRANSITION] 新グループタスク探索エラー[${taskIndex}]:`,
+              error,
+            );
+          });
+        }, 2000); // 2秒待機してからタスク探索
+      } else {
+        log.info(
+          `🏁 [GROUP-TRANSITION] 全てのグループ完了[${taskIndex}] - 処理終了`,
+        );
+      }
+    } else {
+      log.error(
+        `❌ [GROUP-TRANSITION] step6-nextgroup.js機能利用不可[${taskIndex}]`,
+      );
+    }
+  } catch (error) {
+    log.error(`❌ [GROUP-TRANSITION] グループ移行エラー[${taskIndex}]:`, {
+      taskIndex: taskIndex,
+      error: error.message,
+      stack: error.stack,
+      エラー時刻: new Date().toISOString(),
+    });
+  }
+}
+
+/**
+ * フォールバック用のグループ移行処理
+ * 【追加】DynamicTaskSearch利用不可時の代替処理
+ */
+async function transitionToNextGroupFallback(taskIndex) {
+  try {
+    log.info(`🔄 [GROUP-TRANSITION] フォールバック移行開始[${taskIndex}]`);
+
+    // 簡単なグループ移行ロジック
+    if (
+      typeof window.checkNextGroup === "function" &&
+      typeof window.processNextGroup === "function"
+    ) {
+      const nextGroup = window.checkNextGroup();
+      if (nextGroup) {
+        await window.processNextGroup(nextGroup);
+        log.info(`✅ [GROUP-TRANSITION] フォールバック移行完了[${taskIndex}]`);
+
+        // 移行後タスク探索
+        setTimeout(() => {
+          startNextTaskIfAvailable(taskIndex).catch((error) => {
+            log.error(
+              `❌ [GROUP-TRANSITION] フォールバック後タスク探索エラー[${taskIndex}]:`,
+              error,
+            );
+          });
+        }, 2000);
+      } else {
+        log.info(
+          `🏁 [GROUP-TRANSITION] フォールバック: 全グループ完了[${taskIndex}]`,
+        );
+      }
+    } else {
+      log.warn(`⚠️ [GROUP-TRANSITION] step6機能も利用不可[${taskIndex}]`);
+    }
+  } catch (error) {
+    log.error(
+      `❌ [GROUP-TRANSITION] フォールバック移行エラー[${taskIndex}]:`,
+      error,
+    );
   }
 }
 
@@ -1853,10 +2100,15 @@ class StepIntegratedWindowService {
       if (this.windowPositions.has(position)) {
         const existingWindowId = this.windowPositions.get(position);
 
-        // 詳細ログ追加
-        log.warn(
-          `⚠️ [ウィンドウ競合検出] position=${position}に既存ウィンドウ${existingWindowId}が存在`,
-        );
+        // ウィンドウ存在確認後に競合判定
+        try {
+          await chrome.windows.get(existingWindowId);
+        } catch (e) {
+          // ウィンドウが既に閉じられている場合はマップから削除
+          this.windowPositions.delete(position);
+          // 競合なしとして処理継続
+          continue;
+        }
 
         // 使用中チェック
         const isInUse = await this.checkWindowInUse(existingWindowId);
@@ -1893,7 +2145,7 @@ class StepIntegratedWindowService {
             this.windowPositions.delete(position);
             await new Promise((resolve) => setTimeout(resolve, 500)); // 削除完了待ち
           } catch (error) {
-            log.warn("既存ウィンドウ削除エラー（続行）:", error);
+            // 既に閉じられたウィンドウの削除は正常な状況
           }
         }
       }
@@ -2054,18 +2306,14 @@ class StepIntegratedWindowService {
    */
   static async checkWindowInUse(windowId) {
     try {
-      log.debug(`🔍 [使用中チェック] windowId=${windowId}の状態確認開始`);
-
-      // ウィンドウの存在確認
+      // ウィンドウの存在確認を最初に実行
       try {
         const window = await chrome.windows.get(windowId);
         if (!window) {
-          log.debug(`[使用中チェック] ウィンドウ${windowId}は存在しない`);
-          return false;
+          return false; // 存在しないウィンドウは使用中でない
         }
       } catch (e) {
-        log.debug(`[使用中チェック] ウィンドウ${windowId}は既に閉じられている`);
-        return false;
+        return false; // 既に閉じられたウィンドウは使用中でない
       }
 
       // タブでContent Scriptが動作中かチェック
@@ -2090,16 +2338,15 @@ class StepIntegratedWindowService {
             return true;
           }
         } catch (e) {
-          // Content Scriptが存在しない場合はエラーになるが、それは正常
-          log.debug(`[使用中チェック] タブ${tab.id}にContent Scriptなし`);
+          // "Could not establish connection"エラーは正常な状態
+          // Content Scriptが存在しない、またはタブが閉じられている
+          continue; // 次のタブをチェック
         }
       }
 
-      log.debug(`[使用中チェック] windowId=${windowId}は使用中でない`);
-      return false;
+      return false; // どのタブでもContent Scriptが動作していない
     } catch (error) {
-      log.error(`❌ [使用中チェック] エラー:`, error);
-      return false;
+      return false; // エラー時は使用中でないとみなす
     }
   }
 
@@ -3852,8 +4099,8 @@ class WindowController {
         );
 
         if (!checkResult.found) {
-          ExecuteLogger.warn(
-            `⚠️ [${aiType}] テキスト入力欄が見つかりません - ウィンドウ再作成を実行`,
+          ExecuteLogger.info(
+            `🔄 [${aiType}] ウィンドウ再作成を実行`,
           );
 
           // ウィンドウを閉じる
@@ -3864,9 +4111,7 @@ class WindowController {
             try {
               await chrome.windows.remove(result.windowId);
             } catch (e) {
-              ExecuteLogger.warn(
-                `⚠️ ウィンドウ${result.windowId}は既に閉じられています`,
-              );
+              // ウィンドウが既に閉じられている場合は正常
             }
           }
 
