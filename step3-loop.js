@@ -1353,7 +1353,26 @@ async function checkCompletionStatus(taskGroup) {
       answerRange = `${answerColumn}${taskGroup.dataStartRow}:${answerColumn}1000`;
       LoopLogger.info(`[step5-loop.js] [Step 5-1-2] 取得範囲: ${answerRange}`);
 
+      // 【問題特定ログ】通常パターンでのスプレッドシート読み込み前ログ
+      log.debug(`[DEBUG-PROBLEM-TRACE] 通常パターン回答データ読み込み開始:`, {
+        answerRange: answerRange,
+        answerColumn: answerColumn,
+        taskGroupNumber: taskGroup.groupNumber,
+        dataStartRow: taskGroup.dataStartRow,
+        読み込み前タイムスタンプ: new Date().toISOString(),
+      });
+
       const answerValues = await readSpreadsheet(answerRange);
+
+      // 【問題特定ログ】通常パターンでのスプレッドシート読み込み後ログ
+      log.debug(`[DEBUG-PROBLEM-TRACE] 通常パターン回答データ読み込み完了:`, {
+        answerRange: answerRange,
+        answerValues存在: !!answerValues,
+        answerValuesValues存在: !!(answerValues && answerValues.values),
+        rawDataLength: answerValues?.values?.length || 0,
+        読み込み後タイムスタンプ: new Date().toISOString(),
+        rawDataプレビュー: answerValues?.values?.slice(0, 5) || "データなし",
+      });
 
       if (answerValues && answerValues.values) {
         for (
@@ -1382,9 +1401,83 @@ async function checkCompletionStatus(taskGroup) {
           }
 
           const cellValue = row[0] ? row[0].trim() : "";
+
+          // 【根本原因特定ログ】セル詳細と直近書き込み記録の照合
+          if (actualRow >= 11 && actualRow <= 13) {
+            // 直近書き込み記録をチェック
+            const recentWrites = window.globalState?.recentWrites || [];
+            const matchingWrite = recentWrites.find(
+              (write) =>
+                write.cellRef === `${answerColumn}${actualRow}` &&
+                write.groupNumber === taskGroup.groupNumber,
+            );
+
+            log.debug(
+              `[DEBUG-PROBLEM-TRACE] セル詳細チェック (行${actualRow}):`,
+              {
+                actualRow: actualRow,
+                cellValue: cellValue,
+                cellValueLength: cellValue.length,
+                isEmpty: !cellValue,
+                isWorkingMarker: cellValue.startsWith("作業中"),
+                willCount: cellValue && !cellValue.startsWith("作業中"),
+                rowIndex: rowIndex,
+                answerColumn: answerColumn,
+                cellRef: `${answerColumn}${actualRow}`,
+                // 直近書き込み情報
+                hasMatchingWrite: !!matchingWrite,
+                matchingWriteInfo: matchingWrite
+                  ? {
+                      taskId: matchingWrite.taskId,
+                      writeTimestamp: new Date(
+                        matchingWrite.timestamp,
+                      ).toISOString(),
+                      verificationTimestamp: new Date(
+                        matchingWrite.verificationTimestamp,
+                      ).toISOString(),
+                      wasVerified: matchingWrite.isVerified,
+                      expectedTextLength: matchingWrite.textLength,
+                      timeSinceWrite: `${(Date.now() - matchingWrite.timestamp) / 1000}秒前`,
+                    }
+                  : null,
+                // APIキャッシュ疑惑判定
+                possibleCacheIssue:
+                  matchingWrite && matchingWrite.isVerified && !cellValue,
+                タイムスタンプ: new Date().toISOString(),
+              },
+            );
+
+            // APIキャッシュ問題の疑いがある場合、追加検証
+            if (matchingWrite && matchingWrite.isVerified && !cellValue) {
+              log.warn(`🚨 [CACHE-ISSUE-DETECTED] APIキャッシュ問題の疑い:`, {
+                cellRef: `${answerColumn}${actualRow}`,
+                expectedFromWrite: `${matchingWrite.textLength}文字`,
+                actualFromRead: `${cellValue.length}文字`,
+                writeTime: new Date(matchingWrite.timestamp).toISOString(),
+                readTime: new Date().toISOString(),
+                timeDifference: `${(Date.now() - matchingWrite.timestamp) / 1000}秒`,
+                writeWasVerified: matchingWrite.isVerified,
+              });
+            }
+          }
+
           // 値があり、かつ「作業中」マーカーでない場合のみ回答としてカウント
           if (cellValue && !cellValue.startsWith("作業中")) {
             answerCount++;
+
+            // 【問題特定ログ】カウントしたセルの詳細（U12付近のみ）
+            if (actualRow >= 11 && actualRow <= 13) {
+              log.debug(
+                `[DEBUG-PROBLEM-TRACE] 回答カウント実行 (行${actualRow}):`,
+                {
+                  actualRow: actualRow,
+                  cellValue: cellValue.substring(0, 100),
+                  現在のanswerCount: answerCount,
+                  answerColumn: answerColumn,
+                  タイムスタンプ: new Date().toISOString(),
+                },
+              );
+            }
           }
         }
       }
@@ -1409,8 +1502,30 @@ async function checkCompletionStatus(taskGroup) {
       `[DEBUG-checkCompletionStatus] グループ${taskGroup.groupNumber}: promptCount=${promptCount}, answerCount=${answerCount}`,
     );
 
+    // 【問題特定ログ】完了判定前の詳細状態
+    log.debug(`[DEBUG-PROBLEM-TRACE] 完了判定前の最終状態:`, {
+      promptCount: promptCount,
+      answerCount: answerCount,
+      difference: promptCount - answerCount,
+      taskGroupNumber: taskGroup.groupNumber,
+      promptRange: promptRange,
+      answerRange: answerRange,
+      判定タイムスタンプ: new Date().toISOString(),
+    });
+
     // 厳格な完了判定：プロンプトと回答が一致し、かつプロンプトが存在する場合のみ完了
     const isComplete = promptCount > 0 && promptCount === answerCount;
+
+    // 【問題特定ログ】完了判定結果の詳細
+    log.debug(`[DEBUG-PROBLEM-TRACE] 完了判定結果:`, {
+      isComplete: isComplete,
+      promptCount: promptCount,
+      answerCount: answerCount,
+      promptCountCheck: promptCount > 0,
+      equalityCheck: promptCount === answerCount,
+      taskGroupNumber: taskGroup.groupNumber,
+      判定結果タイムスタンプ: new Date().toISOString(),
+    });
 
     LoopLogger.info("[step5-loop.js] [Step 5-1-3] 完了状況:", {
       プロンプト数: promptCount,
@@ -1593,8 +1708,39 @@ async function processIncompleteTasks(taskGroup) {
     // 完了確認（Step 5-1を再実行）
     LoopLogger.info(
       "[step5-loop.js] [Step 5-2-3] 完了確認のためStep 5-1を再実行",
+      {
+        繰り返し回数: iteration,
+        待機後タイムスタンプ: new Date().toISOString(),
+        checkCompletionStatus呼び出し前: true,
+      },
     );
+
+    // 【問題特定ログ】checkCompletionStatus呼び出し前の状態
+    log.debug(
+      `[DEBUG-PROBLEM-TRACE] checkCompletionStatus呼び出し前の詳細状態:`,
+      {
+        iteration: iteration,
+        taskGroupNumber: taskGroup.groupNumber,
+        globalStateStats: window.globalState?.stats || "undefined",
+        タイムスタンプ: new Date().toISOString(),
+      },
+    );
+
     isComplete = await checkCompletionStatus(taskGroup);
+
+    // 【問題特定ログ】checkCompletionStatus呼び出し後の状態
+    log.debug(
+      `[DEBUG-PROBLEM-TRACE] checkCompletionStatus呼び出し後の詳細状態:`,
+      {
+        iteration: iteration,
+        isComplete: isComplete,
+        globalStateStats: window.globalState?.stats || "undefined",
+        promptCount: window.globalState.stats?.totalPrompts,
+        answerCount: window.globalState.stats?.completedAnswers,
+        pendingTasks: window.globalState.stats?.pendingTasks,
+        タイムスタンプ: new Date().toISOString(),
+      },
+    );
 
     if (!isComplete) {
       LoopLogger.info(

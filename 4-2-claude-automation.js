@@ -7,25 +7,9 @@
     }
     window.__CLAUDE_AUTOMATION_LOADED__ = true;
 
-    // 🚨 【STEP 1: 最優先検証】Content Script実行確認
-    console.error("🚨 CONTENT SCRIPT LOADED - 4-2-claude-automation.js");
-    console.error("🚨 実行時刻:", new Date().toLocaleString());
-    console.error("🚨 現在URL:", window.location.href);
+    // Content Script実行確認
 
-    // 🚨 【環境情報・競合チェック】
-    console.error("🚨 環境情報:", {
-      userAgent: navigator.userAgent,
-      chromeExtension: typeof chrome !== "undefined",
-      chromeRuntime: typeof chrome?.runtime !== "undefined",
-      documentReady: document.readyState,
-      existingContentScripts: {
-        claudeLoaded: !!window.__CLAUDE_AUTOMATION_LOADED__,
-        claudeScriptLoaded: !!window.CLAUDE_SCRIPT_LOADED,
-        otherScriptMarkers: Object.keys(window).filter((key) =>
-          key.includes("SCRIPT_LOADED"),
-        ),
-      },
-    });
+    // 環境情報・競合チェック
 
     // 可視的確認用
     const originalTitle = document.title;
@@ -1466,8 +1450,7 @@
     if (listenerFinalCondition) {
       // ping/pong応答を最優先で処理するリスナーを即座に登録
       const registerMessageListener = () => {
-        // 🚨 【STEP 2: メッセージリスナー登録確認】
-        console.error("🚨 MESSAGE LISTENER REGISTERING...");
+        // メッセージリスナー登録
 
         // 🔍 [CONTENT-SCRIPT-INIT] Content Script初期化診断
 
@@ -1566,6 +1549,7 @@
                       request.task || request.taskData || request;
 
                     // taskToExecute作成時のlogCell検証
+                    console.log("🔍 [taskToExecute検証]", {
                       requestTaskExists: !!request.task,
                       requestTaskDataExists: !!request.taskData,
                       requestTaskLogCell: request.task?.logCell,
@@ -4429,10 +4413,10 @@
     // ========================================
 
     async function executeTask(taskData) {
-      // 🚨 【STEP 3: executeTask関数実行確認】
-      console.error("🚨 EXECUTE TASK FUNCTION CALLED");
+      // executeTask関数実行開始
 
       // executeTask関数受信時のtaskData確認
+      console.log("🔍 [executeTask関数受信時のtaskData確認]", {
         taskDataExists: !!taskData,
         taskDataType: typeof taskData,
         taskDataKeys: taskData ? Object.keys(taskData) : [],
@@ -5386,16 +5370,14 @@
                 });
               }, 3000); // 3秒でタイムアウト
 
-
-                {
-                  taskDataExists: !!taskData,
-                  taskDataLogCell: taskData?.logCell,
-                  taskDataLogCellType: typeof taskData?.logCell,
-                  taskDataKeys: taskData ? Object.keys(taskData) : [],
-                  sendMessageAboutToSend: true,
-                  taskId: taskId,
-                },
-              );
+              console.log("🔍 [sendMessage実行前のtaskData確認]", {
+                taskDataExists: !!taskData,
+                taskDataLogCell: taskData?.logCell,
+                taskDataLogCellType: typeof taskData?.logCell,
+                taskDataKeys: taskData ? Object.keys(taskData) : [],
+                sendMessageAboutToSend: true,
+                taskId: taskId,
+              });
 
               const messageToSend = {
                 type: "recordSendTime",
@@ -5410,19 +5392,16 @@
                 logCell: taskData.logCell, // ログセルを直接追加
               };
 
-
               try {
-                  {
-                    chromeRuntimeExists: !!chrome.runtime,
-                    sendMessageExists: !!chrome.runtime.sendMessage,
-                    messageToSendExists: !!messageToSend,
-                    aboutToSendMessage: true,
-                  },
-                );
+                console.log("🔍 [chrome.runtime.sendMessage実行直前]", {
+                  chromeRuntimeExists: !!chrome.runtime,
+                  sendMessageExists: !!chrome.runtime.sendMessage,
+                  messageToSendExists: !!messageToSend,
+                  aboutToSendMessage: true,
+                });
 
                 chrome.runtime.sendMessage(messageToSend, (response) => {
                   clearTimeout(timeout);
-
 
                   // chrome.runtime.lastErrorをチェック
                   if (chrome.runtime.lastError) {

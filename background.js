@@ -687,6 +687,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       logCell: request.logCell, // 🔍 logCell受信状況確認
     });
 
+    // 短いログは不要のため無効化
+    /*
     // 非同期でスプレッドシートにログを記録
     (async () => {
       try {
@@ -701,6 +703,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         }
       }
     })();
+    */
 
     sendResponse({
       success: true,
