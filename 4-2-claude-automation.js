@@ -6481,6 +6481,37 @@
           }
         }
 
+        // DetailedLogManagerに受信完了とURLを記録
+        const taskId = taskData.taskId || taskData.id || "UNKNOWN_TASK_ID";
+        const receiveTime = new Date();
+
+        if (window.parent && window.parent.detailedLogManager) {
+          try {
+            window.parent.detailedLogManager.recordReceiveTime(
+              taskId,
+              currentUrl,
+            );
+            log.debug("📡 DetailedLogManagerに受信完了とURLを記録:", {
+              taskId: taskId,
+              url: currentUrl,
+              receiveTime: receiveTime.toISOString(),
+            });
+          } catch (logError) {
+            log.warn("⚠️ DetailedLogManager受信記録エラー:", logError);
+          }
+        } else if (window.top && window.top.detailedLogManager) {
+          try {
+            window.top.detailedLogManager.recordReceiveTime(taskId, currentUrl);
+            log.debug("📡 DetailedLogManagerに受信完了とURLを記録:", {
+              taskId: taskId,
+              url: currentUrl,
+              receiveTime: receiveTime.toISOString(),
+            });
+          } catch (logError) {
+            log.warn("⚠️ DetailedLogManager受信記録エラー:", logError);
+          }
+        }
+
         const result = {
           success: true,
           result: {
