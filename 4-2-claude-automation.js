@@ -5385,7 +5385,7 @@
                   aiType: "Claude",
                   model: modelName || "不明",
                   function: featureName || "通常",
-                  url: window.location.href,
+                  // URLは応答完了時に取得するため、ここでは記録しない
                   cellInfo: taskData.cellInfo, // cellInfo を追加
                 },
                 logCell: taskData.logCell, // ログセルを直接追加
@@ -6331,6 +6331,27 @@
         log.debug(`  ├─ 使用機能: ${featureName || "通常"}`);
         log.debug(`  └─ 送信時刻: ${sendTime.toISOString()}`);
 
+        // URLが変更されるまで少し待つ（/new から /chat/xxx への変更）
+        let currentUrl = window.location.href;
+        if (currentUrl.includes("/new")) {
+          log.debug("⏳ [URL-WAIT] 会話URLへの変更を待機中...");
+
+          // 最大3秒待機
+          for (let i = 0; i < 6; i++) {
+            await delay(500);
+            const newUrl = window.location.href;
+            if (!newUrl.includes("/new") && newUrl.includes("/chat/")) {
+              currentUrl = newUrl;
+              log.debug(`✅ [URL-WAIT] 会話URLを取得: ${currentUrl}`);
+              break;
+            }
+          }
+
+          if (currentUrl.includes("/new")) {
+            log.warn("⚠️ [URL-WAIT] 会話URLへの変更を検出できませんでした");
+          }
+        }
+
         const result = {
           success: true,
           result: {
@@ -6343,7 +6364,7 @@
           model: modelName,
           function: featureName,
           sendTime: sendTime,
-          url: window.location.href,
+          url: currentUrl, // 会話URLを記録
           cellInfo: taskData.cellInfo,
         };
 

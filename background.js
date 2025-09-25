@@ -62,6 +62,104 @@ class SimpleSheetsClient {
 
     return await response.json();
   }
+
+  /**
+   * リッチテキストでURLリンクを含むセルを書き込み
+   */
+  async updateRichTextValue(spreadsheetId, range, text, linkUrl) {
+    const token = await this.getAuthToken();
+
+    // まずセルにテキストを書き込む
+    await this.updateValue(spreadsheetId, range, text);
+
+    // リッチテキストフォーマットを適用
+    const batchUpdateUrl = `${this.baseUrl}/${spreadsheetId}:batchUpdate`;
+
+    // A1形式をGridRangeに変換
+    const sheetMatch = range.match(/^'?([^'!]+)'?!/);
+    const cellMatch = range.match(/([A-Z]+)(\d+)/);
+
+    if (!cellMatch) {
+      console.warn("リッチテキスト設定失敗: 範囲の解析エラー", range);
+      return;
+    }
+
+    const col =
+      cellMatch[1]
+        .split("")
+        .reduce((sum, char) => sum * 26 + char.charCodeAt(0) - 64, 0) - 1;
+    const row = parseInt(cellMatch[2]) - 1;
+
+    // URL部分を見つける
+    const urlStartIndex = text.indexOf(linkUrl);
+    if (urlStartIndex === -1) {
+      console.warn("リッチテキスト設定失敗: URLがテキスト内に見つかりません");
+      return;
+    }
+
+    const requests = [
+      {
+        updateCells: {
+          range: {
+            sheetId: 0, // デフォルトシートを使用
+            startRowIndex: row,
+            endRowIndex: row + 1,
+            startColumnIndex: col,
+            endColumnIndex: col + 1,
+          },
+          rows: [
+            {
+              values: [
+                {
+                  textFormatRuns: [
+                    {
+                      startIndex: 0,
+                      format: {},
+                    },
+                    {
+                      startIndex: urlStartIndex,
+                      format: {
+                        link: {
+                          uri: linkUrl,
+                        },
+                        foregroundColor: {
+                          blue: 1.0,
+                        },
+                        underline: true,
+                      },
+                    },
+                    {
+                      startIndex: urlStartIndex + linkUrl.length,
+                      format: {},
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+          fields: "textFormatRuns",
+        },
+      },
+    ];
+
+    const response = await fetch(batchUpdateUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ requests }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(
+        `リッチテキスト設定失敗: HTTP ${response.status}, ${errorText}`,
+      );
+    }
+
+    return await response.json();
+  }
 }
 
 // グローバルインスタンス
@@ -251,9 +349,33 @@ async function recordLogToSpreadsheet(request) {
 
     // 指定されたログセルにログを記録
     const range = logCell;
-    await sheetsClient.updateValue(result.spreadsheetId, range, logText);
 
-    console.log(`📊 ログ記録完了: ${range} → ${logText}`);
+    // URLがある場合はリッチテキストで記録
+    const urlValue = request.taskInfo?.url;
+    if (urlValue && typeof urlValue === "string" && urlValue.trim() !== "") {
+      try {
+        await sheetsClient.updateRichTextValue(
+          result.spreadsheetId,
+          range,
+          logText,
+          urlValue,
+        );
+        console.log(
+          `📊 ログ記録完了（リッチテキスト付き）: ${range} → ${logText}`,
+        );
+      } catch (richTextError) {
+        console.warn(
+          "⚠️ リッチテキスト設定失敗、通常テキストで記録:",
+          richTextError,
+        );
+        await sheetsClient.updateValue(result.spreadsheetId, range, logText);
+        console.log(`📊 ログ記録完了: ${range} → ${logText}`);
+      }
+    } else {
+      // URLがない場合は通常のテキストとして記録
+      await sheetsClient.updateValue(result.spreadsheetId, range, logText);
+      console.log(`📊 ログ記録完了: ${range} → ${logText}`);
+    }
   } catch (error) {
     console.error("❌ スプレッドシートログ記録エラー:", error);
     throw error;
