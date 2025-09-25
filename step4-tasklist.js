@@ -29,7 +29,7 @@ const BATCH_PROCESSING_CONFIG = {
   TAB_READY_TIMEOUT: 20000, // タブ準備確認タイムアウト: 20秒
   CONTENT_SCRIPT_WAIT: 3000, // Content Script初期化待機: 3秒
   ELEMENT_RETRY_COUNT: 5, // 要素検出リトライ回数: 5回
-  ELEMENT_RETRY_INTERVAL: 1000, // 要素検出リトライ間隔: 1秒
+  ELEMENT_RETRY_INTERVAL: 2750, // 要素検出リトライ間隔: 2.75秒
 
   // === デバッグ設定 ===
   DEBUG_INDEPENDENT_MODE: false, // 独立モードの詳細ログ出力
