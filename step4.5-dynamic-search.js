@@ -60,7 +60,7 @@ class DynamicTaskSearch {
     this.cache = {
       spreadsheetData: null,
       lastFetchTime: null,
-      cacheTimeout: 5000, // 5秒
+      cacheTimeout: 0, // 🔍 【修正】キャッシュを完全無効化（常に最新データ取得）
     };
 
     this.processingTasks = new Set(); // 処理中タスクのID管理
@@ -109,15 +109,18 @@ class DynamicTaskSearch {
   async fetchLatestSpreadsheetData(forceRefresh = false) {
     const now = Date.now();
 
-    // 【修正】重複実行防止：キャッシュ時間を短縮し、最新データ取得を優先
+    // 🔍 【修正】キャッシュ完全無効化 - 常に最新データを取得
     if (
       !forceRefresh &&
       this.cache.spreadsheetData &&
       this.cache.lastFetchTime &&
-      now - this.cache.lastFetchTime < 1000 // 1秒に短縮
+      this.cache.cacheTimeout > 0 && // cacheTimeout=0なら常に新規取得
+      now - this.cache.lastFetchTime < this.cache.cacheTimeout
     ) {
       return this.cache.spreadsheetData;
     }
+
+    console.log(`🔍 [DYNAMIC-SEARCH] キャッシュ無効化により最新データ取得`);
 
     log.info("🔄 スプレッドシート最新データ取得中...");
 
@@ -428,42 +431,185 @@ class DynamicTaskSearch {
 
   /**
    * 回答列の情報を取得
-   * step4-tasklist.jsのgetAnswerCell関数と同じロジックを使用
+   * スプレッドシートのAI行から実際のAI種別を取得
    */
   getAnswerColumns(answerConfig, taskGroup) {
     const columns = [];
 
     if (typeof answerConfig === "object" && answerConfig !== null) {
-      // step4-tasklist.jsと同じロジックを使用
-      const aiTypes = ["chatgpt", "claude", "gemini"];
+      // 通常の場合：primaryカラムとそのAI種別を取得
+      if (answerConfig.primary) {
+        const column = answerConfig.primary;
+        // 回答列に対応するプロンプト列を特定してからAI種別を取得
+        const promptColumn = this.getPromptColumnForAnswer(column, taskGroup);
+        const aiType = this.getAITypeForColumn(promptColumn);
 
-      for (const aiType of aiTypes) {
-        let column;
-
-        if (taskGroup && taskGroup.groupType === "3種類AI") {
-          // 3種類AIの場合：各AI専用の列を使用
-          column = answerConfig[aiType];
-        } else {
-          // 通常の場合：primaryカラムを使用
-          column = answerConfig.primary;
+        if (!aiType) {
+          console.error(
+            `❌ [DynamicSearch] 列${column}のAI種別が取得できません`,
+            {
+              column,
+              taskGroup: taskGroup?.groupNumber,
+              availableAIData: window.globalState?.aiRowData,
+            },
+          );
+          throw new Error(
+            `列${column}のAI種別が特定できません。スプレッドシートのAI行を確認してください。`,
+          );
         }
 
-        // 有効な列が見つかった場合のみ追加
-        if (column && column !== undefined) {
-          columns.push({ column: column, aiType: aiType });
-        }
-      }
-
-      // primaryが存在する場合の従来互換性
-      if (answerConfig.primary && !taskGroup?.groupType) {
-        columns.push({ column: answerConfig.primary, aiType: "claude" });
+        columns.push({ column: column, aiType: aiType });
       }
     } else if (typeof answerConfig === "string") {
       // 文字列形式（通常パターン）
-      columns.push({ column: answerConfig, aiType: "claude" });
+      // 回答列に対応するプロンプト列を特定してからAI種別を取得
+      const promptColumn = this.getPromptColumnForAnswer(
+        answerConfig,
+        taskGroup,
+      );
+      const aiType = this.getAITypeForColumn(promptColumn);
+
+      if (!aiType) {
+        console.error(
+          `❌ [DynamicSearch] 列${answerConfig}のAI種別が取得できません`,
+        );
+        throw new Error(
+          `列${answerConfig}のAI種別が特定できません。スプレッドシートのAI行を確認してください。`,
+        );
+      }
+
+      columns.push({ column: answerConfig, aiType: aiType });
     }
 
     return columns;
+  }
+
+  /**
+   * 回答列に対応するプロンプト列を取得
+   */
+  getPromptColumnForAnswer(answerColumn, taskGroup) {
+    // タスクグループの列設定から対応関係を判定
+    const { columns } = taskGroup;
+
+    // プロンプト列が配列の場合、最後のプロンプト列を使用（通常パターン）
+    if (columns?.prompts && Array.isArray(columns.prompts)) {
+      const lastPromptColumn = columns.prompts[columns.prompts.length - 1];
+      console.log(
+        `✅ [DynamicSearch] 回答列${answerColumn}に対応するプロンプト列: ${lastPromptColumn}`,
+      );
+      return lastPromptColumn;
+    }
+
+    // フォールバック：回答列の1つ前の列をプロンプト列と仮定
+    const answerIndex = this.columnToIndex(answerColumn);
+    const promptIndex = answerIndex - 1;
+    const promptColumn = this.indexToColumn(promptIndex);
+    console.log(
+      `⚠️ [DynamicSearch] プロンプト列を推定: ${promptColumn} (回答列${answerColumn}の1つ前)`,
+    );
+    return promptColumn;
+  }
+
+  /**
+   * インデックスを列文字に変換
+   */
+  indexToColumn(index) {
+    let column = "";
+    while (index >= 0) {
+      column = String.fromCharCode((index % 26) + 65) + column;
+      index = Math.floor(index / 26) - 1;
+    }
+    return column;
+  }
+
+  /**
+   * 列からAI種別を取得（スプレッドシートのAI行を参照）
+   */
+  getAITypeForColumn(column) {
+    try {
+      // globalStateから保存されたAI行データを取得
+      const aiRowData = window.globalState?.aiRowData;
+      if (!aiRowData) {
+        console.error("❌ AI行データが取得できません");
+        return null;
+      }
+
+      // 列インデックスを計算
+      const colIndex = this.columnToIndex(column);
+
+      // AI行データから該当列のAI種別を取得
+      const aiValue = aiRowData[colIndex];
+
+      if (!aiValue) {
+        console.error(
+          `❌ プロンプト列${column}(インデックス${colIndex})のAI種別が空です`,
+        );
+        return null;
+      }
+
+      // AI種別を正規化（小文字に変換）
+      const normalizedAI = aiValue.toLowerCase().trim();
+
+      // 有効なAI種別かチェック
+      const validAITypes = ["claude", "chatgpt", "gemini", "genspark"];
+      if (!validAITypes.includes(normalizedAI)) {
+        console.error(`❌ 無効なAI種別: ${aiValue}`);
+        return null;
+      }
+
+      console.log(`✅ [DynamicSearch] 列${column}のAI種別: ${normalizedAI}`);
+      return normalizedAI;
+    } catch (error) {
+      console.error(`❌ AI種別取得エラー:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * 🔍 【追加】指定されたAIを優先するAIタイプ配列を生成
+   * @param {Object} taskGroup - タスクグループ情報
+   * @returns {Array<string>} AI タイプの配列（指定AI優先順）
+   */
+  getAiTypesOrderByPreference(taskGroup) {
+    // Claudeをデフォルトで最優先に変更
+    const defaultOrder = ["claude", "chatgpt", "gemini"];
+
+    // タスクグループからAI指定があるかチェック
+    let preferredAI = null;
+
+    if (taskGroup?.aiPreference) {
+      preferredAI = taskGroup.aiPreference.toLowerCase();
+    } else if (taskGroup?.groupType?.includes("claude")) {
+      preferredAI = "claude";
+    } else if (taskGroup?.groupType?.includes("chatgpt")) {
+      preferredAI = "chatgpt";
+    } else if (taskGroup?.groupType?.includes("gemini")) {
+      preferredAI = "gemini";
+    }
+
+    // 指定されたAIを最初に配置
+    if (preferredAI && defaultOrder.includes(preferredAI)) {
+      const reorderedTypes = [
+        preferredAI,
+        ...defaultOrder.filter((ai) => ai !== preferredAI),
+      ];
+
+      console.log(`🔍 [AI-SELECTION] AI優先順序を調整:`, {
+        taskGroupType: taskGroup?.groupType,
+        preferredAI,
+        originalOrder: defaultOrder,
+        reorderedTypes,
+      });
+
+      return reorderedTypes;
+    }
+
+    console.log(`🔍 [AI-SELECTION] デフォルト順序を使用:`, {
+      taskGroupType: taskGroup?.groupType,
+      aiTypes: defaultOrder,
+    });
+
+    return defaultOrder;
   }
 
   /**
