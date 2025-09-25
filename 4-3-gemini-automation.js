@@ -884,8 +884,6 @@ const log = {
         });
       }
 
-      // 🔍 ステップバイステップ デバッグログ - Step 1: パラメータ確認
-
       // 【Step 4-3-2】テキスト入力
 
       try {
@@ -907,7 +905,6 @@ const log = {
           console.error(`❌ [Gemini Step 3a] モデル選択エラー:`, modelError);
           throw modelError;
         }
-      } else {
       }
 
       // 【Step 4-3-4】機能選択（必要な場合）
@@ -922,7 +919,6 @@ const log = {
           console.error(`❌ [Gemini Step 4a] 機能選択エラー:`, featureError);
           throw featureError;
         }
-      } else {
       }
 
       // 【Step 4-3-5】メッセージ送信
@@ -934,7 +930,7 @@ const log = {
         const taskId = taskData.taskId || taskData.id || "UNKNOWN_TASK_ID";
 
         // モデルと機能を取得
-        const modelName = modelName_var || "不明";
+        const modelName_current = modelName || "不明";
         const featureName_var = featureName || "通常";
 
         // background.jsに送信時刻を記録
@@ -945,7 +941,7 @@ const log = {
             sendTime: sendTime.toISOString(),
             taskInfo: {
               aiType: "Gemini",
-              model: modelName,
+              model: modelName_current,
               function: featureName_var,
               url: window.location.href,
               cellInfo: taskData.cellInfo,
