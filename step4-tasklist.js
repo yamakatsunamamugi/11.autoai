@@ -256,13 +256,15 @@ async function handleIndividualTaskCompletion(result, taskIndex) {
       },
     });
 
-    // Phase 2: 即座スプレッドシート記載
+    // Phase 2: 即座スプレッドシート記載（短いログは不要のため無効化）
+    /*
     if (
       BATCH_PROCESSING_CONFIG.ENABLE_IMMEDIATE_SPREADSHEET &&
       result.success
     ) {
       await immediateSpreadsheetUpdate(result, taskIndex);
     }
+    */
 
     // Phase 3: 即座ウィンドウクローズ
     if (
@@ -311,16 +313,7 @@ async function handleIndividualTaskCompletion(result, taskIndex) {
  */
 async function immediateSpreadsheetUpdate(result, taskIndex) {
   try {
-    // 🔍 SimpleSheetsClient初期化状態チェック
-    console.log("🔍 [INIT-CHECK] immediateSpreadsheetUpdate実行開始");
-    console.log(
-      "🔍 [INIT-CHECK] window.simpleSheetsClient存在:",
-      !!window.simpleSheetsClient,
-    );
-    console.log(
-      "🔍 [INIT-CHECK] window.SimpleSheetsClientクラス存在:",
-      typeof window.SimpleSheetsClient,
-    );
+    // SimpleSheetsClient初期化状態チェック
 
     log.info(`📊 [即座スプレッドシート] タスク[${taskIndex}]記載開始:`, {
       taskId: result.taskId,
@@ -379,13 +372,8 @@ async function immediateSpreadsheetUpdate(result, taskIndex) {
     // SimpleSheetsClientを使用してスプレッドシートを更新
     // 初期化されていない場合はここで初期化を試みる
     if (!window.simpleSheetsClient && window.SimpleSheetsClient) {
-      console.log(
-        "⚠️ [INIT-CHECK] simpleSheetsClientがないため、今初期化します",
-      );
+      console.log("⚠️ [初期化] simpleSheetsClientを初期化します");
       window.simpleSheetsClient = new window.SimpleSheetsClient();
-      console.log(
-        "✅ [INIT-CHECK] simpleSheetsClientをimmediateSpreadsheetUpdate内で初期化完了",
-      );
     }
 
     if (
@@ -458,13 +446,7 @@ async function immediateSpreadsheetUpdate(result, taskIndex) {
         success: updateResult?.success || true,
       });
     } else {
-      console.error(`❌ [INIT-CHECK] SimpleSheetsClient利用不可詳細:`, {
-        simpleSheetsClient存在: !!window.simpleSheetsClient,
-        SimpleSheetsClientクラス存在: typeof window.SimpleSheetsClient,
-        updateCellメソッド存在: window.simpleSheetsClient
-          ? typeof window.simpleSheetsClient.updateCell
-          : "simpleSheetsClientがない",
-      });
+      // SimpleSheetsClient利用不可
       log.error(
         `❌ [即座スプレッドシート] SimpleSheetsClient利用不可[${taskIndex}]`,
       );
@@ -4763,6 +4745,61 @@ class WindowLifecycleManager {
           textLength: resultText?.length || 0,
         },
       );
+
+      // 【根本原因特定ログ】書き込み直後の即座検証読み込み
+      try {
+        const writeTimestamp = Date.now();
+        await new Promise((resolve) => setTimeout(resolve, 100)); // 100ms待機
+
+        const verificationResult = await this.sheetsClient.readRange(
+          spreadsheetId,
+          cellRef + ":" + cellRef,
+        );
+
+        const verifiedValue = verificationResult?.values?.[0]?.[0] || "";
+        const isVerified = verifiedValue.length > 0;
+
+        ExecuteLogger.info(`🔍 [WRITE-VERIFICATION] 書き込み直後検証:`, {
+          cellRef: cellRef,
+          taskId: task.id || task.taskId,
+          writeTimestamp: new Date(writeTimestamp).toISOString(),
+          verificationTimestamp: new Date().toISOString(),
+          originalTextLength: resultText?.length || 0,
+          verifiedTextLength: verifiedValue.length,
+          isSuccessfullyWritten: isVerified,
+          verifiedPreview: verifiedValue.substring(0, 100),
+          timeDifference: `${Date.now() - writeTimestamp}ms`,
+          groupNumber: task.groupNumber || "unknown",
+        });
+
+        // グローバル記録として保存（完了チェック時の参照用）
+        if (!window.globalState.recentWrites) {
+          window.globalState.recentWrites = [];
+        }
+        window.globalState.recentWrites.push({
+          cellRef: cellRef,
+          taskId: task.id || task.taskId,
+          timestamp: writeTimestamp,
+          verificationTimestamp: Date.now(),
+          isVerified: isVerified,
+          textLength: resultText?.length || 0,
+          groupNumber: task.groupNumber || "unknown",
+          row: task.row || "unknown",
+        });
+
+        // 古い記録を削除（5分以上前）
+        const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+        window.globalState.recentWrites =
+          window.globalState.recentWrites.filter(
+            (write) => write.timestamp > fiveMinutesAgo,
+          );
+      } catch (verificationError) {
+        ExecuteLogger.error(`❌ [WRITE-VERIFICATION] 書き込み検証エラー:`, {
+          cellRef: cellRef,
+          taskId: task.id || task.taskId,
+          error: verificationError.message,
+        });
+      }
     } catch (error) {
       ExecuteLogger.error(
         `❌ [WindowLifecycleManager] スプレッドシート書き込みエラー:`,
@@ -5014,6 +5051,15 @@ if (!window.SimpleSheetsClient) {
     }
 
     /**
+     * スプレッドシートから範囲データを取得（readRangeエイリアス）
+     * 書き込み検証機能との互換性のため
+     */
+    async readRange(spreadsheetId, range) {
+      ExecuteLogger.debug(`📖 [SimpleSheetsClient] readRange: ${range}`);
+      return await this.getValues(spreadsheetId, range);
+    }
+
+    /**
      * スプレッドシートに値を書き込み（単一セル）
      */
     async updateValue(spreadsheetId, range, value) {
@@ -5071,32 +5117,40 @@ if (!window.SimpleSheetsClient) {
 }
 
 // Step4内でグローバルインスタンスを作成（step5の依存を解消）
-console.log("🔍 [INIT-DEBUG] step4-tasklist.js トップレベルチェック");
-console.log(
-  "🔍 [INIT-DEBUG] 現在のwindow.simpleSheetsClient:",
-  !!window.simpleSheetsClient,
-);
-console.log(
-  "🔍 [INIT-DEBUG] window.SimpleSheetsClientクラス:",
-  typeof window.SimpleSheetsClient,
-);
-
 if (!window.simpleSheetsClient) {
-  console.log(
-    "⚠️ [INIT-DEBUG] simpleSheetsClientが存在しないため初期化を試みます",
-  );
-
   if (typeof window.SimpleSheetsClient === "function") {
     window.simpleSheetsClient = new window.SimpleSheetsClient();
-    console.log(
-      "✅ [INIT-DEBUG] window.simpleSheetsClient を step4内で初期化成功",
-    );
     ExecuteLogger.info("✅ window.simpleSheetsClient を step4内で初期化");
-  } else {
-    console.error("❌ [INIT-DEBUG] SimpleSheetsClientクラスが存在しません！");
   }
-} else {
-  console.log("✅ [INIT-DEBUG] window.simpleSheetsClient は既に初期化済み");
+}
+
+// updateCellメソッドの存在確認と修正
+if (window.simpleSheetsClient && !window.simpleSheetsClient.updateCell) {
+  window.simpleSheetsClient.updateCell = async function (
+    spreadsheetId,
+    cellRef,
+    value,
+  ) {
+    if (this.updateValue) {
+      return await this.updateValue(spreadsheetId, cellRef, value);
+    } else {
+      throw new Error("updateValueメソッドも存在しません");
+    }
+  };
+}
+
+// readRangeメソッドの存在確認と修正
+if (window.simpleSheetsClient && !window.simpleSheetsClient.readRange) {
+  console.warn("⚠️ [INIT-FIX] readRangeメソッドが存在しないため追加します");
+  window.simpleSheetsClient.readRange = async function (spreadsheetId, range) {
+    console.log(`📖 [SimpleSheetsClient-Fix] readRange: ${range}`);
+    if (this.getValues) {
+      return await this.getValues(spreadsheetId, range);
+    } else {
+      throw new Error("getValuesメソッドも存在しません");
+    }
+  };
+  console.log("✅ [INIT-FIX] readRangeメソッドを動的に追加しました");
 }
 
 // ========================================
@@ -5281,10 +5335,54 @@ class TaskStatusManager {
       const cellValue = await this.getCellValue(task);
       const taskIdentifier = `${task.column}${task.row} (グループ${task.groupNumber})`;
 
-      // 空またはタイムアウトしたタスクは利用可能
+      // 【根本原因特定ログ】空セル判定の詳細検証
       if (!cellValue || cellValue === "") {
+        // 直近書き込み記録をチェック
+        const recentWrites = window.globalState?.recentWrites || [];
+        const matchingWrite = recentWrites.find(
+          (write) =>
+            write.cellRef === `${task.column}${task.row}` &&
+            write.groupNumber === task.groupNumber,
+        );
+
+        ExecuteLogger.info(`✅ 利用可能: ${taskIdentifier} - 理由: セルが空`, {
+          cellValue: cellValue,
+          cellValueType: typeof cellValue,
+          cellValueLength: cellValue?.length || 0,
+          taskDetails: {
+            column: task.column,
+            row: task.row,
+            groupNumber: task.groupNumber,
+            answerCell: task.answerCell,
+          },
+          // 直近書き込み検証
+          hasMatchingWrite: !!matchingWrite,
+          matchingWriteInfo: matchingWrite
+            ? {
+                taskId: matchingWrite.taskId,
+                writeTimestamp: new Date(matchingWrite.timestamp).toISOString(),
+                wasVerified: matchingWrite.isVerified,
+                expectedTextLength: matchingWrite.textLength,
+                timeSinceWrite: `${(Date.now() - matchingWrite.timestamp) / 1000}秒前`,
+              }
+            : null,
+          // 重複判定の警告
+          possibleDuplicate: matchingWrite && matchingWrite.isVerified,
+          判定タイムスタンプ: new Date().toISOString(),
+        });
+
+        // 重複可能性の警告
+        if (matchingWrite && matchingWrite.isVerified) {
+          ExecuteLogger.warn(`🚨 [DUPLICATE-RISK] 重複タスク生成の可能性:`, {
+            cellRef: `${task.column}${task.row}`,
+            現在の判定: "セルが空 → タスク生成",
+            直近の書き込み: `${matchingWrite.textLength}文字 (${(Date.now() - matchingWrite.timestamp) / 1000}秒前)`,
+            書き込み検証結果: matchingWrite.isVerified ? "成功" : "失敗",
+            重複リスク: "HIGH",
+          });
+        }
+
         available.push(task);
-        ExecuteLogger.info(`✅ 利用可能: ${taskIdentifier} - 理由: セルが空`);
       } else if (cellValue.startsWith("作業中")) {
         const markerMatch = cellValue.match(/作業中\n(.+)/);
         const markerTime = markerMatch ? markerMatch[1] : "不明";
@@ -6913,7 +7011,7 @@ async function executeStep4(taskList) {
           // 🔧 [SIMPLIFIED] 元のtaskオブジェクトをそのまま使用（データ一貫性のため）
           // 不要な変換を削除し、Single Source of Truthを維持
 
-          // 【仮説検証】プロンプト送信内容の詳細ログ
+          // 【仮説検証】プロンプト送信内容の詳細ログ（最適化版）
           console.warn(
             `🔍 [プロンプト検証] Content Scriptに送信するプロンプト詳細:`,
             {
@@ -6925,14 +7023,11 @@ async function executeStep4(taskList) {
               promptPreview: task.prompt
                 ? task.prompt.substring(0, 200) + "..."
                 : "NO PROMPT",
-              promptFullContent: task.prompt, // 完全なプロンプト内容
               row: task.row,
               column: task.column,
               model: task.model,
               logCell: task.logCell,
-              originalTaskKeys: Object.keys(task),
               automationName: automationName,
-              timestamp: new Date().toISOString(),
             },
           );
 
@@ -6947,12 +7042,26 @@ async function executeStep4(taskList) {
             return typeMap[automationName] || "EXECUTE_TASK";
           };
 
+          // Content Script用の最適化されたタスクデータ（必要最小限）
+          const optimizedTask = {
+            id: task.id || task.taskId,
+            taskId: task.id || task.taskId,
+            prompt: task.prompt,
+            aiType: task.aiType,
+            row: task.row,
+            column: task.column,
+            model: task.model,
+            function: task.function,
+            logCell: task.logCell,
+            tabId: task.tabId,
+            windowId: task.windowId,
+          };
+
           const messagePayload = {
             action: "executeTask",
             type: getMessageType(automationName), // AI種別に応じて動的に設定
             automationName: automationName,
-            task: task, // 🔧 [SIMPLIFIED] 元のtaskオブジェクトを直接使用
-            taskData: task, // 🔧 [SIMPLIFIED] 元のtaskオブジェクトを直接使用（両方の形式に対応）
+            task: optimizedTask, // 最適化されたタスクデータのみ送信
             logCell: task?.logCell, // 🔧 [LOGCELL-FIX] logCellを明示的に追加
           };
 
@@ -7014,9 +7123,7 @@ async function executeStep4(taskList) {
                 taskId: task?.id,
                 aiType: task?.aiType,
               };
-              ExecuteLogger.warn(
-                `🔍 [Content Script注入前] タブ情報詳細確認: ${JSON.stringify(tabInfoDetails, null, 2)}`,
-              );
+              // タブ情報詳細確認
 
               // 拡張機能ページへの注入チェックと修正
               if (tabInfo.url?.startsWith("chrome-extension://")) {
@@ -7092,9 +7199,7 @@ async function executeStep4(taskList) {
                 manifestAutoInjection: true,
                 timestamp: new Date().toISOString(),
               };
-              ExecuteLogger.warn(
-                `🔍 [段階3-自動注入確認] manifest.json自動注入Content Scriptとの通信開始: ${JSON.stringify(autoInjectionDetails, null, 2)}`,
-              );
+              // 自動注入Content Script通信開始
 
               // タブの現在状態を再取得して確認
               let currentTabInfo;
@@ -7125,9 +7230,7 @@ async function executeStep4(taskList) {
                       : false,
                   },
                 };
-                ExecuteLogger.warn(
-                  `🔍 [段階3-タブ確認] 現在のタブ状態（manifest.json自動注入対応）: ${JSON.stringify(tabStateDetails, null, 2)}`,
-                );
+                // 現在のタブ状態確認
               } catch (tabGetError) {
                 ExecuteLogger.error(
                   `❌ [段階3-タブ確認] chrome.tabs.get失敗:`,
@@ -7153,9 +7256,7 @@ async function executeStep4(taskList) {
                 validationMethod: "window.windowController.validateAIUrl",
                 manifestAutoInjection: "有効",
               };
-              ExecuteLogger.warn(
-                `🔍 [段階3-URL確認] URL有効性チェック結果: ${JSON.stringify(urlValidationDetails, null, 2)}`,
-              );
+              // URL有効性チェック
 
               if (!isValidAIUrl) {
                 ExecuteLogger.error(
@@ -7244,23 +7345,23 @@ async function executeStep4(taskList) {
               messageSizeKB: Math.round(messageSize / 1024),
               messageSizeMB: (messageSize / 1024 / 1024).toFixed(2),
               taskId: task.id,
-              promptLength: task.prompt?.length || 0,
+              promptLength: optimizedTask.prompt?.length || 0,
               warning: "Chrome拡張のメッセージパッシングには制限があります",
             });
 
             // プロンプトが非常に長い場合、切り詰める
-            if (task.prompt && task.prompt.length > 50000) {
-              const originalLength = task.prompt.length;
+            if (optimizedTask.prompt && optimizedTask.prompt.length > 50000) {
+              const originalLength = optimizedTask.prompt.length;
               // 最初の45000文字と最後の5000文字を保持
-              task.prompt =
-                task.prompt.substring(0, 45000) +
+              optimizedTask.prompt =
+                optimizedTask.prompt.substring(0, 45000) +
                 "\n\n[...中略...](" +
                 (originalLength - 50000) +
                 "文字省略)\n\n" +
-                task.prompt.substring(originalLength - 5000);
+                optimizedTask.prompt.substring(originalLength - 5000);
 
               // メッセージペイロードを再構築
-              messagePayload.task = { ...task };
+              messagePayload.task = optimizedTask;
 
               const newMessageSize = JSON.stringify(messagePayload).length;
               ExecuteLogger.info(`✂️ [STEP C] プロンプトを切り詰めました:`, {
@@ -7648,7 +7749,17 @@ async function executeStep4(taskList) {
       return task.logCell;
     }
 
-    // 2. ログ列が明示的に設定されていない場合は null を返す（デフォルトログ記載を無効化）
+    // 2. taskGroupのログ列を使用してセル参照を計算
+    if (
+      task.taskGroup &&
+      task.taskGroup.columns &&
+      task.taskGroup.columns.log &&
+      task.row
+    ) {
+      return `${task.taskGroup.columns.log}${task.row}`;
+    }
+
+    // 3. ログ列が設定されていない場合は null を返す
     return null;
   }
 

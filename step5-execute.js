@@ -50,9 +50,9 @@ const ExecuteLogger = {
 };
 
 // ========================================
-// SimpleSheetsClient: stepフォルダ内で完結するSheets APIクライアント
+// SimpleSheetsClientStep5: step5専用のSheets APIクライアント（step4との競合回避）
 // ========================================
-class SimpleSheetsClient {
+class SimpleSheetsClientStep5 {
   constructor() {
     this.baseUrl = "https://sheets.googleapis.com/v4/spreadsheets";
     this.sheetNameCache = new Map(); // GID -> シート名のキャッシュ
@@ -131,6 +131,26 @@ class SimpleSheetsClient {
   }
 
   /**
+   * スプレッドシートに値を書き込み（updateCellエイリアス）
+   * step4-tasklist.jsとの互換性のため
+   */
+  async updateCell(spreadsheetId, cellRef, value) {
+    ExecuteLogger.debug(
+      `📝 [SimpleSheetsClient] updateCell: ${cellRef} = ${value?.length || 0}文字`,
+    );
+    return await this.updateValue(spreadsheetId, cellRef, value);
+  }
+
+  /**
+   * スプレッドシートから範囲データを取得（readRangeエイリアス）
+   * 書き込み検証機能との互換性のため
+   */
+  async readRange(spreadsheetId, range) {
+    ExecuteLogger.debug(`📖 [SimpleSheetsClientStep5] readRange: ${range}`);
+    return await this.getValues(spreadsheetId, range);
+  }
+
+  /**
    * GIDからシート名を取得
    */
   async getSheetNameFromGid(spreadsheetId, gid) {
@@ -178,19 +198,20 @@ class SimpleSheetsClient {
 // グローバルインスタンス
 console.log("🔍 [INIT-DEBUG] step5-execute.js トップレベル実行開始");
 console.log(
-  "🔍 [INIT-DEBUG] SimpleSheetsClientクラス存在確認:",
-  typeof SimpleSheetsClient,
+  "🔍 [INIT-DEBUG] SimpleSheetsClientStep5クラス存在確認:",
+  typeof SimpleSheetsClientStep5,
 );
-window.simpleSheetsClient = new SimpleSheetsClient();
+// step5専用インスタンス（step4のsimpleSheetsClientとは別）
+window.simpleSheetsClientStep5 = new SimpleSheetsClientStep5();
 console.log(
-  "✅ [INIT-DEBUG] window.simpleSheetsClient 初期化完了:",
-  !!window.simpleSheetsClient,
+  "✅ [INIT-DEBUG] window.simpleSheetsClientStep5 初期化完了:",
+  !!window.simpleSheetsClientStep5,
 );
 console.log(
-  "✅ [INIT-DEBUG] SimpleSheetsClientメソッド:",
-  window.simpleSheetsClient
+  "✅ [INIT-DEBUG] SimpleSheetsClientStep5メソッド:",
+  window.simpleSheetsClientStep5
     ? Object.getOwnPropertyNames(
-        Object.getPrototypeOf(window.simpleSheetsClient),
+        Object.getPrototypeOf(window.simpleSheetsClientStep5),
       )
     : "未初期化",
 );
@@ -520,6 +541,7 @@ class DetailedLogManager {
       startTime: now,
       startTimeStr: now.toISOString(),
       windowInfo: windowInfo,
+      task: task, // タスクデータ全体を保存
       status: "started",
     });
 
@@ -638,11 +660,15 @@ class DetailedLogManager {
     parts.push(`---------- ${aiName} ----------`);
 
     // モデル情報
-    parts.push(`モデル: 選択: ${aiName} / 表示: ${aiName}`);
+    const selectedModel = log.task?.model || aiName;
+    const displayedModel = log.task?.displayedModel || selectedModel;
+    parts.push(`モデル: 選択: ${selectedModel} / 表示: ${displayedModel}`);
 
     // 機能情報
-    const feature = log.windowInfo?.feature || "デフォルト";
-    parts.push(`機能: 選択: ${feature} / 表示: ${feature}`);
+    const selectedFeature =
+      log.task?.function || log.task?.specialOperation || "デフォルト";
+    const displayedFeature = log.task?.displayedFunction || selectedFeature;
+    parts.push(`機能: 選択: ${selectedFeature} / 表示: ${displayedFeature}`);
 
     // URL
     if (log.aiUrl) {
