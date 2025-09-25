@@ -4713,7 +4713,7 @@ class WindowController {
    */
   async waitForTabReady(
     tabId,
-    maxRetries = Math.ceil(BATCH_PROCESSING_CONFIG.TAB_READY_TIMEOUT / 2000),
+    maxRetries = 15,  // 15回に増やす（30秒待機）
     delayMs = 2000,
   ) {
     const startTimestamp = new Date().toISOString();
@@ -4829,11 +4829,10 @@ class WindowController {
 
             if (!targetExists) {
               log.warn(
-                `⚠️ [Tab Check] タブ ${tabId} は削除済みのため処理を終了`,
+                `⚠️ [Tab Check] タブ ${tabId} は削除済みのため新しいタブを作成します`,
               );
-              throw new Error(
-                `Tab ${tabId} has been closed and is no longer available`,
-              );
+              // タブが閉じられている場合は新しいタブを作成して復旧
+              return null; // nullを返して呼び出し側で新しいタブを作成させる
             }
           } catch (queryError) {
             console.error(`🔍 [TAB-LIFECYCLE] クエリエラー:`, {
@@ -4843,12 +4842,11 @@ class WindowController {
               originalError: error.message,
             });
 
-            log.error(
-              `❌ [Tab Check] タブ ${tabId} の存在確認に失敗: ${queryError.message}`,
+            log.warn(
+              `⚠️ [Tab Check] タブ ${tabId} の存在確認に失敗 - 復旧を試行: ${queryError.message}`,
             );
-            throw new Error(
-              `Tab ${tabId} validation failed: ${queryError.message}`,
-            );
+            // タブ検証エラーの場合は null を返して呼び出し側で新しいタブを作成
+            return null;
           }
         }
 
@@ -5660,8 +5658,16 @@ class WindowLifecycleManager {
 
   /**
    * エラー情報をスプレッドシートに書き込み
+   * 【無効化】エラーメッセージをスプレッドシートに書き込まない
    */
   async writeErrorToSpreadsheet(task, error) {
+    // エラーメッセージをスプレッドシートに書き込まない
+    ExecuteLogger.warn(
+      `⚠️ [WindowLifecycleManager] エラー記録をスキップ（エラーメッセージを回答欄に書かない）: ${error}`,
+    );
+    return;
+
+    /* 以下の処理は実行されない
     try {
       const spreadsheetId =
         task.spreadsheetId || window.globalState?.spreadsheetId;
@@ -5831,10 +5837,11 @@ class WindowLifecycleManager {
       }
     }
 
-    ExecuteLogger.error(
-      `❌ [WindowLifecycleManager] 最終的な実行失敗: ${description}`,
+    ExecuteLogger.warn(
+      `⚠️ [WindowLifecycleManager] リトライ後も失敗（エラーはスプレッドシートに記録しません）: ${description}`,
       lastError,
     );
+    // エラーを返すが、スプレッドシートには書き込まれない（writeErrorToSpreadsheetが無効化されているため）
     return { success: false, error: lastError?.message || "実行失敗" };
   }
 

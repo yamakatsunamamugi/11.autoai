@@ -375,12 +375,12 @@
                 ウィンドウ作成初期待機:
                 <span id="windowCreationWaitValue" style="color: #007bff;">5秒</span>
               </label>
-              <input type="range" id="windowCreationWait" min="2000" max="10000" step="1000" value="5000"
+              <input type="range" id="windowCreationWait" min="2000" max="8000" step="1000" value="5000"
                      style="width: 100%; margin-top: 5px;">
               <div style="display: flex; justify-content: space-between; font-size: 11px; color: #666;">
                 <span>2秒（高速）</span>
                 <span>5秒（推奨）</span>
-                <span>10秒（安定）</span>
+                <span>8秒（安定）</span>
               </div>
               <div style="margin-top: 5px; font-size: 11px; color: #888;">
                 ※ 新しいウィンドウ/タブを開いた直後の待機時間
@@ -393,7 +393,7 @@
                 タブ準備確認タイムアウト:
                 <span id="tabReadyTimeoutValue" style="color: #007bff;">20秒</span>
               </label>
-              <input type="range" id="tabReadyTimeout" min="10000" max="30000" step="5000" value="20000"
+              <input type="range" id="tabReadyTimeout" min="10000" max="30000" step="2000" value="20000"
                      style="width: 100%; margin-top: 5px;">
               <div style="display: flex; justify-content: space-between; font-size: 11px; color: #666;">
                 <span>10秒（高速）</span>
@@ -429,12 +429,12 @@
                 要素検出リトライ回数:
                 <span id="elementRetryCountValue" style="color: #007bff;">5回</span>
               </label>
-              <input type="range" id="elementRetryCount" min="3" max="10" step="1" value="5"
+              <input type="range" id="elementRetryCount" min="2" max="8" step="1" value="5"
                      style="width: 100%; margin-top: 5px;">
               <div style="display: flex; justify-content: space-between; font-size: 11px; color: #666;">
-                <span>3回（高速）</span>
+                <span>2回（高速）</span>
                 <span>5回（推奨）</span>
-                <span>10回（確実）</span>
+                <span>8回（確実）</span>
               </div>
               <div style="margin-top: 5px; font-size: 11px; color: #888;">
                 ※ 要素が見つからない場合のリトライ回数
@@ -447,12 +447,12 @@
                 要素検出リトライ間隔:
                 <span id="elementRetryIntervalValue" style="color: #007bff;">1秒</span>
               </label>
-              <input type="range" id="elementRetryInterval" min="500" max="3000" step="500" value="1000"
+              <input type="range" id="elementRetryInterval" min="500" max="1500" step="100" value="1000"
                      style="width: 100%; margin-top: 5px;">
               <div style="display: flex; justify-content: space-between; font-size: 11px; color: #666;">
                 <span>0.5秒（高速）</span>
                 <span>1秒（推奨）</span>
-                <span>3秒（慎重）</span>
+                <span>1.5秒（慎重）</span>
               </div>
               <div style="margin-top: 5px; font-size: 11px; color: #888;">
                 ※ 各リトライ間の待機時間
