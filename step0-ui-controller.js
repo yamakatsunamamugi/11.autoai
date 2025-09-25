@@ -1053,15 +1053,12 @@ function updateTestConfigDropdowns() {
     const chatgptModels = lastAIData.chatgpt.models || [];
     const chatgptFeatures = lastAIData.chatgpt.functions || [];
 
-    log.debug("📋 ChatGPT AI統合情報から取得:", {
-      models: chatgptModels,
-      features: chatgptFeatures,
-    });
+    // ChatGPT データ取得完了
 
     updateSelectOptions("chatgptModel", chatgptModels);
     updateSelectOptions("chatgptFeature", chatgptFeatures);
   } else {
-    log.debug("📋 ChatGPT: データなし");
+    // ChatGPT データなし
   }
 
   // Claude - AI統合情報から取得したデータを使用
@@ -1069,15 +1066,12 @@ function updateTestConfigDropdowns() {
     const claudeModels = lastAIData.claude.models || [];
     const claudeFeatures = lastAIData.claude.functions || [];
 
-    log.debug("📋 Claude AI統合情報から取得:", {
-      models: claudeModels,
-      features: claudeFeatures,
-    });
+    // Claude データ取得完了
 
     updateSelectOptions("claudeModel", claudeModels);
     updateSelectOptions("claudeFeature", claudeFeatures);
   } else {
-    log.debug("📋 Claude: データなし");
+    // Claude データなし
   }
 
   // Gemini - AI統合情報から取得したデータを使用
@@ -1085,15 +1079,12 @@ function updateTestConfigDropdowns() {
     const geminiModels = lastAIData.gemini.models || [];
     const geminiFeatures = lastAIData.gemini.functions || [];
 
-    log.debug("📋 Gemini AI統合情報から取得:", {
-      models: geminiModels,
-      features: geminiFeatures,
-    });
+    // Gemini データ取得完了
 
     updateSelectOptions("geminiModel", geminiModels);
     updateSelectOptions("geminiFeature", geminiFeatures);
   } else {
-    log.debug("📋 Gemini: データなし");
+    // Gemini データなし
   }
 }
 
@@ -1101,11 +1092,11 @@ function updateTestConfigDropdowns() {
 function updateSelectOptions(selectId, options) {
   const selectEl = document.getElementById(selectId);
   if (!selectEl) {
-    log.debug(`⚠️ セレクト要素が見つかりません: ${selectId}`);
+    // セレクト要素が見つからない
     return;
   }
 
-  log.debug(`📝 ${selectId}を更新中... オプション数: ${options?.length || 0}`);
+  // オプション更新中
 
   // 現在の値を保存
   const currentValue = selectEl.value;
@@ -1124,7 +1115,7 @@ function updateSelectOptions(selectId, options) {
       if (typeof opt === "string") {
         option.value = opt;
         option.textContent = opt;
-        log.debug(`  - オプション${index}: ${opt} (文字列)`);
+        // 文字列オプション追加
       } else if (opt && typeof opt === "object") {
         // functionsWithDetailsの場合の処理
         const funcName = opt.name || opt.label || opt.value || opt.toString();
@@ -1133,21 +1124,15 @@ function updateSelectOptions(selectId, options) {
         // 機能名のみを表示（トグル状態のチェックマークは表示しない）
         option.textContent = funcName;
 
-        if (opt.isToggled !== undefined) {
-          log.debug(
-            `  - オプション${index}: ${funcName} (オブジェクト, toggled:${opt.isToggled})`,
-          );
-        } else {
-          log.debug(`  - オプション${index}: ${funcName} (オブジェクト)`);
-        }
+        // オブジェクトオプション追加
       }
 
       selectEl.appendChild(option);
     });
 
-    log.debug(`✅ ${selectId}: ${options.length}個のオプションを追加完了`);
+    // オプション追加完了
   } else {
-    log.debug(`⚠️ ${selectId}: オプションなし`);
+    // オプションなし
   }
 
   // デフォルト選択の処理
@@ -1157,19 +1142,17 @@ function updateSelectOptions(selectId, options) {
     Array.from(selectEl.options).some((opt) => opt.value === currentValue)
   ) {
     selectEl.value = currentValue;
-    log.debug(`📝 ${selectId}: 前の選択を復元: ${currentValue}`);
+    // 前の選択を復元
   }
   // 2. モデルの場合は最初のモデルを自動選択
   else if (selectId.includes("Model") && selectEl.options.length > 1) {
     selectEl.value = selectEl.options[1].value; // 最初の実際のオプションを選択
-    log.debug(
-      `📝 ${selectId}: デフォルトで最初のモデルを選択: ${selectEl.value}`,
-    );
+    // デフォルトモデル選択
   }
   // 3. 機能の場合は空のままにする（ユーザーが選択）
   else if (selectId.includes("Feature")) {
     selectEl.value = ""; // 機能は明示的に空を選択
-    log.debug(`📝 ${selectId}: 機能は未選択状態を維持`);
+    // 機能未選択状態維持
   }
 }
 
