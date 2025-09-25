@@ -2087,26 +2087,23 @@ class StepIntegratedWindowService {
           const isInUse = await this.checkWindowInUse(existingWindowId);
 
           if (isInUse) {
-            log.warn(
-              `🔒 [ウィンドウ保護] windowId=${existingWindowId}は処理中のため保持、別のpositionを使用`,
+            log.info(
+              `🔄 [強制クローズ] windowId=${existingWindowId}を強制的に閉じて、position=${position}を使用`,
             );
-            // 別のpositionを試す（0-3の範囲で）
-            for (let altPosition = 0; altPosition < 4; altPosition++) {
-              if (
-                altPosition !== position &&
-                !this.windowPositions.has(altPosition)
-              ) {
-                log.info(`🔄 [代替position] position=${altPosition}を使用`);
-                position = altPosition;
-                break;
-              }
-            }
-            // それでも見つからない場合は元のpositionを使用（既存ウィンドウは保持）
-            if (this.windowPositions.has(position)) {
-              log.warn(
-                `⚠️ [position競合] すべてのpositionが使用中、既存ウィンドウを保持`,
+
+            try {
+              // 強制的にウィンドウを閉じる
+              await chrome.windows.remove(existingWindowId);
+              this.windowPositions.delete(position);
+              // ウィンドウが確実に閉じられるまで待機
+              await new Promise((resolve) => setTimeout(resolve, 1000));
+              log.info(
+                `✅ [強制クローズ完了] position=${position}を再利用可能`,
               );
-              return null;
+            } catch (error) {
+              log.warn(`⚠️ [強制クローズエラー] ${error.message}`);
+              // エラーでも削除処理は実行
+              this.windowPositions.delete(position);
             }
           } else {
             log.info(
