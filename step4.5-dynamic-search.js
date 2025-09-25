@@ -335,16 +335,7 @@ class DynamicTaskSearch {
   async searchTaskInGroup(spreadsheetData, taskGroup) {
     const { columns, dataStartRow } = taskGroup;
 
-    // 【デバッグ追加】taskGroup全体の内容を確認
-    log.warn("🔍 [DynamicSearch] taskGroup詳細:", {
-      groupNumber: taskGroup.groupNumber,
-      type: taskGroup.type || taskGroup.taskType,
-      columns: columns,
-      columnsLogExists: columns?.log ? true : false,
-      logColumn: columns?.log || "未設定",
-      dataStartRow: dataStartRow,
-      fullTaskGroup: JSON.stringify(taskGroup),
-    });
+    // taskGroup内容確認
 
     if (!columns || !dataStartRow) {
       log.error("グループ情報が不完全");
@@ -646,23 +637,11 @@ class DynamicTaskSearch {
    * 【修正】重複防止の強化とデータ整合性確保
    */
   registerTaskCompletion(taskId) {
-    // 【仮説検証】完了登録前の状態ログ
-    console.warn(`🔍 [重複検証] registerTaskCompletion呼び出し前:`, {
-      taskId: taskId,
-      wasInProcessing: this.processingTasks.has(taskId),
-      wasInCompleted: this.completedTasks.has(taskId),
-      processingTasksBefore: Array.from(this.processingTasks),
-      completedTasksBefore: Array.from(this.completedTasks),
-      timestamp: new Date().toISOString(),
-    });
+    // 完了登録前の状態チェック
 
     // 【修正】重複完了登録の防止
     if (this.completedTasks.has(taskId)) {
-      console.warn(`⚠️ [重複検証] 既に完了済みのタスク - 重複登録防止:`, {
-        taskId: taskId,
-        reason: "Already completed",
-        skipDuplicateRegistration: true,
-      });
+      // 重複完了タスク - 登録スキップ
       return; // 重複登録を防止
     }
 

@@ -275,8 +275,26 @@ async function handleIndividualTaskCompletion(result, taskIndex) {
     }
 
     // Phase 4: 動的次タスク探索
+    log.info(`🔍 [TASK-FLOW-TRACE] Phase 4開始 - 動的次タスク探索:`, {
+      taskIndex: taskIndex,
+      taskId: result.taskId,
+      ENABLE_DYNAMIC_NEXT_TASK:
+        BATCH_PROCESSING_CONFIG.ENABLE_DYNAMIC_NEXT_TASK,
+      タイムスタンプ: new Date().toISOString(),
+    });
+
     if (BATCH_PROCESSING_CONFIG.ENABLE_DYNAMIC_NEXT_TASK) {
       // DynamicTaskSearchにタスク完了を登録
+      log.info(`🔍 [TASK-FLOW-TRACE] 完了登録プロセス開始:`, {
+        hasRegisterFunction:
+          typeof window.registerTaskCompletionDynamic === "function",
+        hasTaskId: !!result.taskId,
+        resultColumn: result.column,
+        resultRow: result.row,
+        taskIndex: taskIndex,
+        タイムスタンプ: new Date().toISOString(),
+      });
+
       if (
         typeof window.registerTaskCompletionDynamic === "function" &&
         result.taskId
@@ -285,21 +303,80 @@ async function handleIndividualTaskCompletion(result, taskIndex) {
           result.column && result.row
             ? `${result.column}${result.row}`
             : result.taskId;
+
+        log.info(`🔍 [TASK-FLOW-TRACE] 完了登録実行中:`, {
+          taskId: taskId,
+          originalTaskId: result.taskId,
+          taskIndex: taskIndex,
+          generatedFrom: result.column && result.row ? "column+row" : "taskId",
+          タイムスタンプ: new Date().toISOString(),
+        });
+
         try {
           window.registerTaskCompletionDynamic(taskId);
-          log.info(`📝 [個別完了処理] DynamicTaskSearchに完了登録: ${taskId}`);
+          log.info(
+            `✅ [TASK-FLOW-TRACE] DynamicTaskSearch完了登録成功: ${taskId}`,
+            {
+              taskIndex: taskIndex,
+              登録時刻: new Date().toISOString(),
+            },
+          );
         } catch (error) {
-          log.warn(`⚠️ [個別完了処理] DynamicTaskSearch完了登録エラー:`, error);
+          log.error(`❌ [TASK-FLOW-TRACE] DynamicTaskSearch完了登録エラー:`, {
+            taskId: taskId,
+            taskIndex: taskIndex,
+            error: error.message,
+            stack: error.stack,
+            タイムスタンプ: new Date().toISOString(),
+          });
         }
+      } else {
+        log.warn(`⚠️ [TASK-FLOW-TRACE] 完了登録スキップ - 条件未満:`, {
+          hasRegisterFunction:
+            typeof window.registerTaskCompletionDynamic === "function",
+          hasTaskId: !!result.taskId,
+          taskIndex: taskIndex,
+          タイムスタンプ: new Date().toISOString(),
+        });
       }
 
       // 【修正】スプレッドシート書き込み完了を待機してから次タスク探索
       // Google Sheets APIの書き込み反映に時間が必要（10秒に延長）
+      log.info(
+        `⏰ [TASK-FLOW-TRACE] 10秒待機開始 - スプレッドシート反映待ち:`,
+        {
+          taskIndex: taskIndex,
+          taskId: result.taskId,
+          待機開始時刻: new Date().toISOString(),
+          待機終了予定時刻: new Date(Date.now() + 10000).toISOString(),
+        },
+      );
+
       setTimeout(() => {
-        startNextTaskIfAvailable(taskIndex).catch((error) =>
-          log.warn(`次タスク探索エラー[${taskIndex}]:`, error),
-        );
+        log.info(`⏰ [TASK-FLOW-TRACE] 10秒待機完了 - 次タスク探索開始:`, {
+          taskIndex: taskIndex,
+          taskId: result.taskId,
+          実際の待機完了時刻: new Date().toISOString(),
+        });
+
+        startNextTaskIfAvailable(taskIndex).catch((error) => {
+          log.error(`❌ [TASK-FLOW-TRACE] 次タスク探索エラー[${taskIndex}]:`, {
+            error: error.message,
+            stack: error.stack,
+            taskId: result.taskId,
+            エラー発生時刻: new Date().toISOString(),
+          });
+        });
       }, 10000); // 10秒待機に延長
+    } else {
+      log.warn(
+        `⚠️ [TASK-FLOW-TRACE] Phase 4スキップ - ENABLE_DYNAMIC_NEXT_TASK無効:`,
+        {
+          taskIndex: taskIndex,
+          設定値: BATCH_PROCESSING_CONFIG.ENABLE_DYNAMIC_NEXT_TASK,
+          タイムスタンプ: new Date().toISOString(),
+        },
+      );
     }
 
     log.info(`✅ [個別完了処理] タスク[${taskIndex}]完了`);
@@ -1931,8 +2008,8 @@ class StepIntegratedWindowService {
         `✅ [StepIntegratedWindowService] ウィンドウ閉じる完了: windowId=${windowId}`,
       );
     } catch (error) {
-      log.warn(
-        `⚠️ [StepIntegratedWindowService] ウィンドウ閉じるエラー: windowId=${windowId}`,
+      log.debug(
+        `[StepIntegratedWindowService] ウィンドウ閉じるエラー: windowId=${windowId}`,
         error,
       );
     }
@@ -7011,25 +7088,7 @@ async function executeStep4(taskList) {
           // 🔧 [SIMPLIFIED] 元のtaskオブジェクトをそのまま使用（データ一貫性のため）
           // 不要な変換を削除し、Single Source of Truthを維持
 
-          // 【仮説検証】プロンプト送信内容の詳細ログ（最適化版）
-          console.warn(
-            `🔍 [プロンプト検証] Content Scriptに送信するプロンプト詳細:`,
-            {
-              taskId: task.id || task.taskId,
-              aiType: task.aiType,
-              tabId: tabId,
-              windowId: task.windowId,
-              promptLength: task.prompt ? task.prompt.length : 0,
-              promptPreview: task.prompt
-                ? task.prompt.substring(0, 200) + "..."
-                : "NO PROMPT",
-              row: task.row,
-              column: task.column,
-              model: task.model,
-              logCell: task.logCell,
-              automationName: automationName,
-            },
-          );
+          // プロンプト送信処理
 
           // AI種別に応じたメッセージタイプを設定
           const getMessageType = (automationName) => {
@@ -7404,17 +7463,7 @@ async function executeStep4(taskList) {
               automationName: automationName,
             });
 
-            // ClaudeAutomationの場合の特別なログ
-            if (automationName === "ClaudeAutomation") {
-              ExecuteLogger.warn(`🔍 [ClaudeAutomation] 応答詳細:`, {
-                tabId: tabId,
-                taskId: task.id,
-                responseExists: !!response,
-                responseType: typeof response,
-                responseValue: response,
-                willProceed: !!response,
-              });
-            }
+            // ClaudeAutomation応答処理
           } catch (timeoutError) {
             ExecuteLogger.error(`❌ [STEP C-ERROR] メッセージ送信エラー:`, {
               error: timeoutError.message,

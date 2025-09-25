@@ -1666,9 +1666,7 @@
                   sendResponse({ success: false, error: error.message });
                 }
               })();
-              console.warn(
-                `🔄 [Claude-直接実行方式] 非同期処理のためreturn true [ID:${requestId}]`,
-              );
+              // 非同期処理のためreturn true
               return true; // 非同期レスポンスのために必要
             }
 
