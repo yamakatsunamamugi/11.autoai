@@ -5528,76 +5528,184 @@
               timestamp: new Date().toISOString(),
             });
 
-            // タイムアウト付きでsendMessageを実行
-            const sendMessageWithTimeout = new Promise((resolve) => {
-              const timeout = setTimeout(() => {
-                log.debug("⏱️ [TIMEOUT] sendMessageがタイムアウト（3秒経過）");
-                resolve({
-                  error: "timeout",
-                  message: "sendMessage timeout after 3000ms",
-                });
-              }, 3000); // 3秒でタイムアウト
+            // エラー分類関数
+            const classifyError = (error) => {
+              if (!error) return { type: "none", isTransient: false };
 
-              console.log("🔍 [sendMessage実行前のtaskData確認]", {
-                taskDataExists: !!taskData,
-                taskDataLogCell: taskData?.logCell,
-                taskDataLogCellType: typeof taskData?.logCell,
-                taskDataKeys: taskData ? Object.keys(taskData) : [],
-                sendMessageAboutToSend: true,
-                taskId: taskId,
+              const message = error.message || error;
+
+              // 一時的エラー（リトライ可能）
+              if (message.includes("message port closed")) {
+                return {
+                  type: "port_closed",
+                  isTransient: true,
+                  description: "メッセージポート切断",
+                };
+              }
+              if (message.includes("timeout")) {
+                return {
+                  type: "timeout",
+                  isTransient: true,
+                  description: "タイムアウト",
+                };
+              }
+              if (message.includes("connection lost")) {
+                return {
+                  type: "connection_lost",
+                  isTransient: true,
+                  description: "接続切断",
+                };
+              }
+              if (message.includes("runtime_error")) {
+                return {
+                  type: "runtime_error",
+                  isTransient: true,
+                  description: "ランタイムエラー",
+                };
+              }
+
+              // 致命的エラー（リトライ不可）
+              if (message.includes("extension context invalidated")) {
+                return {
+                  type: "context_invalidated",
+                  isTransient: false,
+                  description: "拡張機能コンテキスト無効",
+                };
+              }
+              if (message.includes("service worker terminated")) {
+                return {
+                  type: "service_worker_terminated",
+                  isTransient: false,
+                  description: "サービスワーカー終了",
+                };
+              }
+
+              // その他のエラー（リトライ1回のみ）
+              return {
+                type: "unknown",
+                isTransient: true,
+                description: "不明なエラー",
+              };
+            };
+
+            const isTransientError = (error) => {
+              return classifyError(error).isTransient;
+            };
+
+            // リトライ付きsendMessage実行関数
+            const sendMessageWithRetry = async (maxRetries = 3) => {
+              for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                log.debug(`📡 [RETRY] 送信試行 ${attempt}/${maxRetries}`, {
+                  taskId,
+                });
+
+                const result = await sendMessageWithTimeout();
+
+                if (!result.error) {
+                  if (attempt > 1) {
+                    log.debug(`✅ [RETRY] ${attempt}回目で成功`, { taskId });
+                  }
+                  return result;
+                }
+
+                const errorInfo = classifyError(result);
+                if (errorInfo.isTransient && attempt < maxRetries) {
+                  const delay = Math.min(1000 * Math.pow(2, attempt - 1), 3000); // 指数バックオフ（最大3秒）
+                  log.debug(`⏱️ [RETRY] ${delay}ms待機後に再試行`, {
+                    taskId,
+                    attempt,
+                    errorType: errorInfo.type,
+                    description: errorInfo.description,
+                    error: result.error,
+                  });
+                  await new Promise((resolve) => setTimeout(resolve, delay));
+                } else {
+                  log.debug(`❌ [RETRY] 最終試行失敗または非一時的エラー`, {
+                    taskId,
+                    attempt,
+                    errorType: errorInfo.type,
+                    description: errorInfo.description,
+                    error: result.error,
+                    isTransient: errorInfo.isTransient,
+                  });
+                  return result;
+                }
+              }
+            };
+
+            // タイムアウト付きでsendMessageを実行
+            const sendMessageWithTimeout = () =>
+              new Promise((resolve) => {
+                const timeout = setTimeout(() => {
+                  log.debug(
+                    "⏱️ [TIMEOUT] sendMessageがタイムアウト（3秒経過）",
+                  );
+                  resolve({
+                    error: "timeout",
+                    message: "sendMessage timeout after 3000ms",
+                  });
+                }, 3000); // 3秒でタイムアウト
+
+                console.log("🔍 [sendMessage実行前のtaskData確認]", {
+                  taskDataExists: !!taskData,
+                  taskDataLogCell: taskData?.logCell,
+                  taskDataLogCellType: typeof taskData?.logCell,
+                  taskDataKeys: taskData ? Object.keys(taskData) : [],
+                  sendMessageAboutToSend: true,
+                  taskId: taskId,
+                });
+
+                const messageToSend = {
+                  type: "recordSendTime",
+                  taskId: taskId,
+                  sendTime: sendTime.toISOString(),
+                  taskInfo: {
+                    aiType: "Claude",
+                    model: modelName || "不明",
+                    function: featureName || "通常",
+                    // URLは応答完了時に取得するため、ここでは記録しない
+                    cellInfo: taskData.cellInfo, // cellInfo を追加
+                  },
+                  logCell: taskData.logCell, // ログセルを直接追加
+                };
+
+                try {
+                  console.log("🔍 [chrome.runtime.sendMessage実行直前]", {
+                    chromeRuntimeExists: !!chrome.runtime,
+                    sendMessageExists: !!chrome.runtime.sendMessage,
+                    messageToSendExists: !!messageToSend,
+                    aboutToSendMessage: true,
+                  });
+
+                  chrome.runtime.sendMessage(messageToSend, (response) => {
+                    clearTimeout(timeout);
+
+                    // chrome.runtime.lastErrorをチェック
+                    if (chrome.runtime.lastError) {
+                      log.debug(
+                        "ℹ️ chrome.runtime.lastError（継続処理）:",
+                        chrome.runtime.lastError.message,
+                      );
+                      resolve({
+                        error: "runtime_error",
+                        message: chrome.runtime.lastError.message,
+                      });
+                    } else {
+                      log.debug("📨 [DEBUG] sendMessage応答受信:", response);
+                      resolve(response || { success: true });
+                    }
+                  });
+                } catch (syncError) {
+                  clearTimeout(timeout);
+                  log.debug(
+                    "ℹ️ [SYNC-ERROR] sendMessage同期エラー（継続処理）:",
+                    syncError.message,
+                  );
+                  resolve({ error: "sync_error", message: syncError.message });
+                }
               });
 
-              const messageToSend = {
-                type: "recordSendTime",
-                taskId: taskId,
-                sendTime: sendTime.toISOString(),
-                taskInfo: {
-                  aiType: "Claude",
-                  model: modelName || "不明",
-                  function: featureName || "通常",
-                  // URLは応答完了時に取得するため、ここでは記録しない
-                  cellInfo: taskData.cellInfo, // cellInfo を追加
-                },
-                logCell: taskData.logCell, // ログセルを直接追加
-              };
-
-              try {
-                console.log("🔍 [chrome.runtime.sendMessage実行直前]", {
-                  chromeRuntimeExists: !!chrome.runtime,
-                  sendMessageExists: !!chrome.runtime.sendMessage,
-                  messageToSendExists: !!messageToSend,
-                  aboutToSendMessage: true,
-                });
-
-                chrome.runtime.sendMessage(messageToSend, (response) => {
-                  clearTimeout(timeout);
-
-                  // chrome.runtime.lastErrorをチェック
-                  if (chrome.runtime.lastError) {
-                    log.debug(
-                      "ℹ️ chrome.runtime.lastError（継続処理）:",
-                      chrome.runtime.lastError.message,
-                    );
-                    resolve({
-                      error: "runtime_error",
-                      message: chrome.runtime.lastError.message,
-                    });
-                  } else {
-                    log.debug("📨 [DEBUG] sendMessage応答受信:", response);
-                    resolve(response || { success: true });
-                  }
-                });
-              } catch (syncError) {
-                clearTimeout(timeout);
-                log.debug(
-                  "ℹ️ [SYNC-ERROR] sendMessage同期エラー（継続処理）:",
-                  syncError.message,
-                );
-                resolve({ error: "sync_error", message: syncError.message });
-              }
-            });
-
-            const response = await sendMessageWithTimeout;
+            const response = await sendMessageWithRetry();
 
             if (response.error) {
               log.debug(
@@ -6707,22 +6815,73 @@
                 spreadsheetWriteConfirmed: true, // スプレッドシート書き込み完了フラグ
               };
 
-              chrome.runtime.sendMessage(completionMessage, (response) => {
-                if (chrome.runtime.lastError) {
-                  log.warn(
-                    "⚠️ [Claude-TaskCompletion] 完了通知エラー:",
-                    chrome.runtime.lastError.message,
-                  );
-                } else {
-                  log.info(
-                    "✅ [Claude-TaskCompletion] 作業中マーカークリア通知送信完了",
-                    {
-                      taskId: taskData.taskId || taskData.cellInfo,
-                      response: response,
-                    },
-                  );
+              // 完了通知用のリトライ付き送信
+              const sendCompletionMessageWithRetry = async (
+                message,
+                maxRetries = 2,
+              ) => {
+                for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                  try {
+                    const result = await new Promise((resolve) => {
+                      chrome.runtime.sendMessage(message, (response) => {
+                        if (chrome.runtime.lastError) {
+                          resolve({
+                            error: "runtime_error",
+                            message: chrome.runtime.lastError.message,
+                          });
+                        } else {
+                          resolve({ success: true, response });
+                        }
+                      });
+                    });
+
+                    if (!result.error) {
+                      if (attempt > 1) {
+                        log.debug(
+                          `✅ [COMPLETION-RETRY] ${attempt}回目で完了通知成功`,
+                        );
+                      }
+                      return result;
+                    }
+
+                    if (
+                      attempt < maxRetries &&
+                      (result.message.includes("message port closed") ||
+                        result.message.includes("runtime_error"))
+                    ) {
+                      log.debug(
+                        `⏱️ [COMPLETION-RETRY] ${attempt}回目失敗、再試行します`,
+                      );
+                      await new Promise((resolve) => setTimeout(resolve, 1000));
+                    } else {
+                      return result;
+                    }
+                  } catch (error) {
+                    if (attempt === maxRetries) {
+                      return { error: "exception", message: error.message };
+                    }
+                    await new Promise((resolve) => setTimeout(resolve, 1000));
+                  }
                 }
-              });
+              };
+
+              const completionResult =
+                await sendCompletionMessageWithRetry(completionMessage);
+
+              if (completionResult.error) {
+                log.debug(
+                  "ℹ️ [Claude-TaskCompletion] 完了通知エラー（継続処理）:",
+                  completionResult.message,
+                );
+              } else {
+                log.info(
+                  "✅ [Claude-TaskCompletion] 作業中マーカークリア通知送信完了",
+                  {
+                    taskId: taskData.taskId || taskData.cellInfo,
+                    response: completionResult.response,
+                  },
+                );
+              }
             }
           }
         } catch (completionError) {
