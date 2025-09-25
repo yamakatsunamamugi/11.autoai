@@ -71,47 +71,17 @@ async function executeAsyncBatchProcessing(batchPromises, originalTasks = []) {
 
   log.info("🚀 [非同期バッチ処理] 個別完了処理対応モードで実行開始");
 
-  // デバッグ: 設定値の確認
-  log.debug("🔍 [バッチ処理設定確認]", {
-    ENABLE_ASYNC_BATCH: BATCH_PROCESSING_CONFIG.ENABLE_ASYNC_BATCH,
-    ENABLE_INDIVIDUAL_COMPLETION:
-      BATCH_PROCESSING_CONFIG.ENABLE_INDIVIDUAL_COMPLETION,
-    SAFE_MODE: BATCH_PROCESSING_CONFIG.SAFE_MODE,
-    batchPromisesLength: batchPromises.length,
-    originalTasksLength: originalTasks.length,
-  });
-
   const completedTasks = new Map();
-
-  // デバッグ: Promiseの状態を確認
-  log.debug("🔍 [Promise状態確認] batchPromisesの型チェック", {
-    isArray: Array.isArray(batchPromises),
-    firstItemType: batchPromises.length > 0 ? typeof batchPromises[0] : "empty",
-    firstItemIsPromise:
-      batchPromises.length > 0 ? batchPromises[0] instanceof Promise : false,
-  });
 
   const enhancedPromises = batchPromises.map((promise, index) => {
     // 元のタスク情報を取得
     const originalTask = originalTasks[index] || {};
-
-    log.debug(`🔍 [Promise処理開始] タスク[${index}]`, {
-      hasOriginalTask: !!originalTask,
-      originalTaskId: originalTask.id || originalTask.taskId,
-      promiseType: typeof promise,
-      isPromise: promise instanceof Promise,
-    });
 
     // Promiseであることを確実にする
     const ensuredPromise = Promise.resolve(promise);
 
     return ensuredPromise
       .then(async (result) => {
-        log.info(`🎯 [then実行] タスク[${index}] thenブロック開始`, {
-          resultReceived: !!result,
-          resultType: typeof result,
-        });
-
         try {
           // 元のタスク情報を結果にマージ（結果側の値を優先）
           const enhancedResult = {
@@ -561,7 +531,7 @@ async function immediateWindowClose(windowId, taskIndex) {
       window.windowController &&
       typeof window.windowController.removeClosedWindow === "function"
     ) {
-      window.windowController.removeClosedWindow(windowId);
+      await window.windowController.removeClosedWindow(windowId);
     }
 
     log.info(`✅ [即座ウィンドウクローズ] 完了[${taskIndex}]:`, { windowId });
@@ -1043,19 +1013,6 @@ async function openAIWindowForTask(task) {
       column: task.column,
       row: task.row,
       ウィンドウ開設開始時刻: new Date().toISOString(),
-    });
-
-    // WindowControllerの詳細存在確認
-    log.debug("🔍 [AIウィンドウ開く] WindowController詳細チェック:", {
-      windowControllerExists: !!window.windowController,
-      windowControllerType: typeof window.windowController,
-      hasOpenWindows:
-        window.windowController &&
-        typeof window.windowController.openWindows === "function",
-      hasFindAvailablePosition:
-        window.windowController &&
-        typeof window.windowController.findAvailablePosition === "function",
-      constructorName: window.windowController?.constructor?.name,
     });
 
     if (!window.windowController) {
@@ -4490,32 +4447,37 @@ class WindowController {
           await new Promise((resolve) => setTimeout(resolve, delayMs));
         }
       } catch (error) {
-        // 詳細なエラー情報を取得
+        // タブが存在しない場合の早期終了
+        if (error?.message?.includes("No tab with id")) {
+          // 代替手法でタブ存在確認
+          try {
+            const allTabs = await chrome.tabs.query({});
+            const targetExists = allTabs.some((t) => t.id === tabId);
+
+            if (!targetExists) {
+              log.warn(
+                `⚠️ [Tab Check] タブ ${tabId} は削除済みのため処理を終了`,
+              );
+              throw new Error(
+                `Tab ${tabId} has been closed and is no longer available`,
+              );
+            }
+          } catch (queryError) {
+            log.error(
+              `❌ [Tab Check] タブ ${tabId} の存在確認に失敗: ${queryError.message}`,
+            );
+            throw new Error(
+              `Tab ${tabId} validation failed: ${queryError.message}`,
+            );
+          }
+        }
+
+        // その他のエラーについてはデバッグ情報を記録
         log.error("🔴 [DEBUG-TAB-ERROR] 詳細エラー情報:", {
           errorMessage: error?.message || "メッセージなし",
-          errorStack: error?.stack || "スタックなし",
-          errorName: error?.name || "名前なし",
-          errorType: typeof error,
-          errorKeys: error ? Object.keys(error) : [],
-          fullError: JSON.stringify(error, null, 2),
-          chromeLastError: chrome.runtime.lastError?.message || "なし",
-        });
-
-        // タブID自体の検証
-        log.debug("🔍 [DEBUG-TAB-ID] タブID検証:", {
           tabId: tabId,
-          tabIdType: typeof tabId,
-          isValidNumber: Number.isInteger(tabId),
-          tabIdValue: tabId,
-        });
-
-        // Chrome API の状態確認
-        log.debug("🔧 [DEBUG-CHROME-API] Chrome API状態:", {
-          chromeExists: typeof chrome !== "undefined",
-          tabsApiExists: typeof chrome?.tabs !== "undefined",
-          getMethodExists: typeof chrome?.tabs?.get === "function",
-          manifestVersion: chrome?.runtime?.getManifest?.()?.manifest_version,
-          permissions: chrome?.runtime?.getManifest?.()?.permissions,
+          attempt: i + 1,
+          maxRetries: maxRetries,
         });
 
         // 代替手法での情報取得
@@ -4524,10 +4486,7 @@ class WindowController {
           log.debug("📋 [DEBUG-ALL-TABS] 全タブ情報:", {
             totalTabs: allTabs.length,
             targetTabExists: allTabs.some((t) => t.id === tabId),
-            tabIds: allTabs.map((t) => ({
-              id: t.id,
-              url: t.url?.substring(0, 50),
-            })),
+            tabIds: allTabs.map((t) => t.id),
           });
         } catch (queryError) {
           log.error("❌ [DEBUG-QUERY-ERROR]:", queryError.message, queryError);
@@ -4780,21 +4739,43 @@ class WindowController {
    * 閉じられたウィンドウをopenedWindowsから削除
    * @param {number} windowId - 削除するウィンドウID
    */
-  removeClosedWindow(windowId) {
+  async removeClosedWindow(windowId) {
     try {
       ExecuteLogger.debug(
         `🗑️ [removeClosedWindow] ウィンドウ削除開始: ${windowId}`,
       );
 
+      // 先にウィンドウの存在確認
+      try {
+        await chrome.windows.get(windowId);
+        ExecuteLogger.warn(
+          `⚠️ [removeClosedWindow] ウィンドウ ${windowId} は実際にはまだ存在します`,
+        );
+        return; // 実際に存在する場合は削除しない
+      } catch (checkError) {
+        // ウィンドウが存在しない場合（期待される動作）
+        ExecuteLogger.debug(
+          `✅ [removeClosedWindow] ウィンドウ ${windowId} は既に削除済み - 管理情報をクリーンアップ`,
+        );
+      }
+
       // openedWindowsマップから該当ウィンドウを検索・削除
+      let found = false;
       for (const [key, windowInfo] of this.openedWindows.entries()) {
         if (windowInfo.windowId === windowId) {
           this.openedWindows.delete(key);
           ExecuteLogger.info(
             `✅ [removeClosedWindow] ウィンドウ削除完了: ${key} (windowId: ${windowId})`,
           );
+          found = true;
           break;
         }
+      }
+
+      if (!found) {
+        ExecuteLogger.warn(
+          `⚠️ [removeClosedWindow] ウィンドウ ${windowId} は管理情報に見つかりませんでした`,
+        );
       }
 
       // StepIntegratedWindowServiceのクリーンアップも実行
@@ -5422,6 +5403,36 @@ class WindowLifecycleManager {
         }
       } catch (error) {
         lastError = error;
+
+        // タブクローズエラーの場合は復旧を試行
+        if (this.isTabClosedError(error)) {
+          ExecuteLogger.warn(
+            `⚠️ [WindowLifecycleManager] タブクローズエラーを検出 - 復旧を試行: ${error.message}`,
+          );
+          const recoveryResult = await this.recoverClosedTab(error);
+          if (recoveryResult.success) {
+            ExecuteLogger.info(`✅ [WindowLifecycleManager] タブ復旧に成功`);
+            continue; // 復旧後にリトライ
+          } else {
+            ExecuteLogger.error(
+              `❌ [WindowLifecycleManager] タブ復旧に失敗: ${recoveryResult.error}`,
+            );
+            return {
+              success: false,
+              error: recoveryResult.error,
+              nonRecoverable: true,
+            };
+          }
+        }
+
+        // その他のリカバリ不可能なエラーの場合は即座に処理を終了
+        if (this.isNonRecoverableError(error)) {
+          ExecuteLogger.error(
+            `❌ [WindowLifecycleManager] リカバリ不可能なエラー - 処理終了: ${error.message}`,
+          );
+          return { success: false, error: error.message, nonRecoverable: true };
+        }
+
         ExecuteLogger.warn(
           `⚠️ [WindowLifecycleManager] 実行失敗 ${attempt}/${this.maxRetries}: ${error.message}`,
         );
@@ -5441,6 +5452,115 @@ class WindowLifecycleManager {
       lastError,
     );
     return { success: false, error: lastError?.message || "実行失敗" };
+  }
+
+  /**
+   * エラーがタブクローズエラーかどうかを判定
+   * @param {Error} error - エラーオブジェクト
+   * @returns {boolean} - タブクローズエラーの場合はtrue
+   */
+  isTabClosedError(error) {
+    if (!error || !error.message) return false;
+
+    const tabClosedPatterns = [
+      /No tab with id:/,
+      /tab has been closed/,
+      /has been closed and is no longer available/,
+      /Tab .* validation failed/,
+    ];
+
+    return tabClosedPatterns.some((pattern) => pattern.test(error.message));
+  }
+
+  /**
+   * エラーがリカバリ不可能かどうかを判定
+   * @param {Error} error - エラーオブジェクト
+   * @returns {boolean} - リカバリ不可能な場合はtrue
+   */
+  isNonRecoverableError(error) {
+    if (!error || !error.message) return false;
+
+    const nonRecoverablePatterns = [
+      /window has been closed/,
+      /could not establish connection/i,
+      /receiving end does not exist/i,
+    ];
+
+    return nonRecoverablePatterns.some((pattern) =>
+      pattern.test(error.message),
+    );
+  }
+
+  /**
+   * クローズされたタブを復旧する
+   * @param {Error} error - タブクローズエラー
+   * @returns {Promise<{success: boolean, error?: string, newTabId?: number}>}
+   */
+  async recoverClosedTab(error) {
+    try {
+      ExecuteLogger.info(`🔄 [WindowLifecycleManager] タブ復旧処理開始`);
+
+      // エラーメッセージからタブIDを抽出
+      const tabIdMatch = error.message.match(/Tab (\d+)/);
+      if (!tabIdMatch) {
+        return { success: false, error: "タブIDを特定できませんでした" };
+      }
+
+      const closedTabId = parseInt(tabIdMatch[1]);
+      ExecuteLogger.info(
+        `📋 [WindowLifecycleManager] クローズされたタブID: ${closedTabId}`,
+      );
+
+      // 新しいタブを作成（適切なAIサービスURLで）
+      const newTab = await this.createNewAITab();
+      if (!newTab) {
+        return { success: false, error: "新しいタブの作成に失敗しました" };
+      }
+
+      ExecuteLogger.info(
+        `✨ [WindowLifecycleManager] 新しいタブを作成: ${newTab.id}`,
+      );
+
+      // 復旧成功
+      return { success: true, newTabId: newTab.id };
+    } catch (recoveryError) {
+      ExecuteLogger.error(
+        `❌ [WindowLifecycleManager] タブ復旧中にエラー: ${recoveryError.message}`,
+      );
+      return { success: false, error: recoveryError.message };
+    }
+  }
+
+  /**
+   * 新しいAIサービスタブを作成する
+   * @returns {Promise<chrome.tabs.Tab|null>}
+   */
+  async createNewAITab() {
+    try {
+      // デフォルトのAIサービスURL（ChatGPT）
+      const aiServiceUrls = [
+        "https://chatgpt.com/",
+        "https://claude.ai/",
+        "https://gemini.google.com/",
+        "https://www.genspark.ai/",
+      ];
+
+      // 最初のURLで新しいタブを作成
+      const newTab = await chrome.tabs.create({
+        url: aiServiceUrls[0],
+        active: false,
+      });
+
+      // タブが完全に読み込まれるまで待機
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+
+      return newTab;
+    } catch (error) {
+      ExecuteLogger.error(
+        `❌ [WindowLifecycleManager] 新しいタブ作成中にエラー: ${error.message}`,
+      );
+      return null;
+    }
   }
 
   /**
@@ -5542,6 +5662,15 @@ if (!window.SimpleSheetsClient) {
     async readRange(spreadsheetId, range) {
       ExecuteLogger.debug(`📖 [SimpleSheetsClient] readRange: ${range}`);
       return await this.getValues(spreadsheetId, range);
+    }
+
+    /**
+     * スプレッドシートから単一セルの値を取得（readValueエイリアス）
+     * clearMarker機能との互換性のため
+     */
+    async readValue(spreadsheetId, range) {
+      const values = await this.getValues(spreadsheetId, range);
+      return values?.[0]?.[0];
     }
 
     /**
@@ -6038,8 +6167,34 @@ class TaskStatusManager {
         return;
       }
 
+      // 🔍 【安全チェック追加】値を確認してから削除
+      const currentValue = await window.simpleSheetsClient.readValue(
+        spreadsheetId,
+        range,
+      );
+
+      // 作業中マーカーのみ削除（それ以外は保護）
+      if (!currentValue || typeof currentValue !== "string") {
+        ExecuteLogger.info(`🔍 [SAFE-CLEAR] ${range}: 空またはnull - スキップ`);
+        return;
+      }
+
+      if (!currentValue.startsWith("作業中")) {
+        ExecuteLogger.warn(
+          `⚠️ [SAFE-CLEAR] ${range}: 作業中マーカーではない値を保護`,
+          {
+            値の先頭50文字: currentValue.substring(0, 50),
+            範囲: range,
+          },
+        );
+        return;
+      }
+
+      // 作業中マーカーのみクリア
       await window.simpleSheetsClient.updateValue(spreadsheetId, range, "");
-      ExecuteLogger.info(`🧹 マーカークリア: ${range}`);
+      ExecuteLogger.info(`🧹 [SAFE-CLEAR] 作業中マーカーをクリア: ${range}`, {
+        削除された値: currentValue.substring(0, 100),
+      });
     } catch (error) {
       ExecuteLogger.error(
         `❌ マーカークリアエラー: ${task.column}${task.row}`,

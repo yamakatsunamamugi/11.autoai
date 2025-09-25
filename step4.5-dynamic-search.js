@@ -634,6 +634,29 @@ class DynamicTaskSearch {
       return false;
     }
 
+    // 【修正2.5】セル位置ベースの重複チェック（より確実な重複防止）
+    const cellPosition = this.extractCellPosition(taskId);
+    if (cellPosition) {
+      for (const processingTaskId of this.processingTasks) {
+        const processingCellPosition =
+          this.extractCellPosition(processingTaskId);
+        if (
+          processingCellPosition &&
+          processingCellPosition.column === cellPosition.column &&
+          processingCellPosition.row === cellPosition.row
+        ) {
+          console.warn(`❌ [重複検証] セル位置重複によりタスク実行拒否:`, {
+            taskId,
+            cellPosition,
+            conflictingTaskId: processingTaskId,
+            processingCellPosition,
+            reason: "same_cell_position_already_processing",
+          });
+          return false;
+        }
+      }
+    }
+
     // 【修正3】最新データ再取得による二重確認
     // セル値が空の場合、スプレッドシートから最新値を再確認
     if (!cellValue || !cellValue.trim()) {
@@ -1051,6 +1074,45 @@ class DynamicTaskSearch {
     }
 
     log.info("🔄 DynamicTaskSearchをリセットしました");
+  }
+
+  /**
+   * タスクIDからセル位置を抽出するヘルパーメソッド
+   * @param {string} taskId - タスクID（例: "Y25", "task_2_25_1758775278465"）
+   * @returns {Object|null} - {column: string, row: number} または null
+   */
+  extractCellPosition(taskId) {
+    if (!taskId || typeof taskId !== "string") return null;
+
+    // パターン1: "Y25" 形式
+    const simpleMatch = taskId.match(/^([A-Z]+)(\d+)$/);
+    if (simpleMatch) {
+      return {
+        column: simpleMatch[1],
+        row: parseInt(simpleMatch[2], 10),
+      };
+    }
+
+    // パターン2: "task_2_25_1758775278465" 形式から行番号を抽出
+    const complexMatch = taskId.match(/task_\d+_(\d+)_\d+/);
+    if (complexMatch) {
+      const row = parseInt(complexMatch[1], 10);
+      // この場合、列は現在のグループのデータから取得する必要がある
+      const currentGroup = window.globalState?.currentGroup;
+      if (currentGroup && window.globalState?.taskGroups) {
+        const taskGroup = window.globalState.taskGroups.find(
+          (g) => g.groupNumber === currentGroup,
+        );
+        if (taskGroup && taskGroup.columns && taskGroup.columns.answer) {
+          return {
+            column: taskGroup.columns.answer,
+            row: row,
+          };
+        }
+      }
+    }
+
+    return null;
   }
 }
 
