@@ -80,6 +80,70 @@ const log = {
   window.GEMINI_SCRIPT_INIT_TIME = Date.now();
 
   // ========================================
+  // AI待機設定（デフォルト値）
+  // ========================================
+  let AI_WAIT_CONFIG = {
+    NORMAL_WAIT: 600000, // 10分（通常処理）
+    DEEP_RESEARCH_WAIT: 2400000, // 40分（Deep Research）
+    AGENT_MODE_WAIT: 2400000, // 40分（エージェントモード）
+    CHECK_INTERVAL: 10000, // 10秒（停止ボタン消滅継続時間）
+    SHORT_WAIT: 1000,
+    MEDIUM_WAIT: 2000,
+  };
+
+  // Chrome Storageから設定を読み込む
+  if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+    chrome.storage.local.get(
+      ["responseWaitConfig", "batchProcessingConfig"],
+      (result) => {
+        if (result.responseWaitConfig) {
+          // 回答待機時間設定を適用
+          AI_WAIT_CONFIG.NORMAL_WAIT =
+            result.responseWaitConfig.MAX_RESPONSE_WAIT_TIME ||
+            AI_WAIT_CONFIG.NORMAL_WAIT;
+          AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT =
+            result.responseWaitConfig.MAX_RESPONSE_WAIT_TIME_DEEP ||
+            AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT;
+          AI_WAIT_CONFIG.AGENT_MODE_WAIT =
+            result.responseWaitConfig.MAX_RESPONSE_WAIT_TIME_AGENT ||
+            AI_WAIT_CONFIG.AGENT_MODE_WAIT;
+          AI_WAIT_CONFIG.CHECK_INTERVAL =
+            result.responseWaitConfig.STOP_CHECK_INTERVAL ||
+            AI_WAIT_CONFIG.CHECK_INTERVAL;
+
+          log.info("⏱️ [Gemini] 回答待機時間設定を適用:", {
+            通常モード: AI_WAIT_CONFIG.NORMAL_WAIT / 60000 + "分",
+            DeepResearch: AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT / 60000 + "分",
+            エージェント: AI_WAIT_CONFIG.AGENT_MODE_WAIT / 60000 + "分",
+            Stop確認間隔: AI_WAIT_CONFIG.CHECK_INTERVAL / 1000 + "秒",
+          });
+        }
+
+        if (result.batchProcessingConfig) {
+          // バッチ処理設定から回答待機時間設定も読み込み（互換性のため）
+          if (!result.responseWaitConfig) {
+            AI_WAIT_CONFIG.NORMAL_WAIT =
+              result.batchProcessingConfig.MAX_RESPONSE_WAIT_TIME ||
+              AI_WAIT_CONFIG.NORMAL_WAIT;
+            AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT =
+              result.batchProcessingConfig.MAX_RESPONSE_WAIT_TIME_DEEP ||
+              AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT;
+            AI_WAIT_CONFIG.AGENT_MODE_WAIT =
+              result.batchProcessingConfig.MAX_RESPONSE_WAIT_TIME_AGENT ||
+              AI_WAIT_CONFIG.AGENT_MODE_WAIT;
+            AI_WAIT_CONFIG.CHECK_INTERVAL =
+              result.batchProcessingConfig.STOP_CHECK_INTERVAL ||
+              AI_WAIT_CONFIG.CHECK_INTERVAL;
+          }
+        }
+      },
+    );
+  }
+
+  // windowレベルでも公開（後方互換性）
+  window.AI_WAIT_CONFIG = AI_WAIT_CONFIG;
+
+  // ========================================
   // セレクタ定義（冒頭に集約）
   // ========================================
   const SELECTORS = {
@@ -475,7 +539,7 @@ const log = {
   // 応答待機
   // ========================================
   async function waitForResponseGemini() {
-    const maxWaitTime = 300000; // 5分
+    const maxWaitTime = AI_WAIT_CONFIG.NORMAL_WAIT; // 設定から取得
     const checkInterval = 1000;
     let elapsedTime = 0;
 
@@ -497,7 +561,9 @@ const log = {
       }
     }
 
-    throw new Error("Geminiの応答がタイムアウトしました（5分）");
+    throw new Error(
+      `Geminiの応答がタイムアウトしました（${maxWaitTime / 60000}分）`,
+    );
   }
 
   // ========================================
@@ -685,7 +751,7 @@ const log = {
   async function waitForDeepResearch(startTime) {
     log.debug("【Step 4-3-6-DR】Deep Research専用待機処理");
 
-    const MAX_WAIT = 40 * 60 * 1000; // 40分
+    const MAX_WAIT = AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT; // 設定から取得
     const logDr = (message) => {
       const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(1);
       log.info(`[経過: ${elapsedTime}秒] ${message}`);
@@ -694,7 +760,11 @@ const log = {
     return new Promise((resolve, reject) => {
       const timeoutId = setTimeout(() => {
         cleanup();
-        reject(new Error(`Deep Researchが40分以内に完了しませんでした`));
+        reject(
+          new Error(
+            `Deep Researchが${MAX_WAIT / 60000}分以内に完了しませんでした`,
+          ),
+        );
       }, MAX_WAIT);
 
       let loggingInterval, checkInterval;
@@ -718,9 +788,12 @@ const log = {
 
         // 【Step DR-2】初期応答完了を待ち、リサーチ開始ボタンをクリック
         logDr("初期応答の完了を待機中...");
+        const initialWaitTime = AI_WAIT_CONFIG.NORMAL_WAIT; // 通常モードの待機時間を使用
         while (findElement([SELECTORS.stopButton])) {
-          if (Date.now() - startTime > 5 * 60 * 1000) {
-            throw new Error("5分以内に初期応答が完了しませんでした");
+          if (Date.now() - startTime > initialWaitTime) {
+            throw new Error(
+              `${initialWaitTime / 60000}分以内に初期応答が完了しませんでした`,
+            );
           }
           await wait(1000);
         }

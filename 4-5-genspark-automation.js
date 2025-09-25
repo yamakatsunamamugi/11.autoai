@@ -66,12 +66,76 @@
   "use strict";
 
   // ========================================
+  // AI待機設定（デフォルト値）
+  // ========================================
+  let AI_WAIT_CONFIG = {
+    NORMAL_WAIT: 600000, // 10分（通常処理）
+    DEEP_RESEARCH_WAIT: 2400000, // 40分（Deep Research）
+    AGENT_MODE_WAIT: 2400000, // 40分（エージェントモード）
+    CHECK_INTERVAL: 10000, // 10秒（停止ボタン消滅継続時間）
+    SHORT_WAIT: 1000,
+    MEDIUM_WAIT: 2000,
+  };
+
+  // Chrome Storageから設定を読み込む
+  if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+    chrome.storage.local.get(
+      ["responseWaitConfig", "batchProcessingConfig"],
+      (result) => {
+        if (result.responseWaitConfig) {
+          // 回答待機時間設定を適用
+          AI_WAIT_CONFIG.NORMAL_WAIT =
+            result.responseWaitConfig.MAX_RESPONSE_WAIT_TIME ||
+            AI_WAIT_CONFIG.NORMAL_WAIT;
+          AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT =
+            result.responseWaitConfig.MAX_RESPONSE_WAIT_TIME_DEEP ||
+            AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT;
+          AI_WAIT_CONFIG.AGENT_MODE_WAIT =
+            result.responseWaitConfig.MAX_RESPONSE_WAIT_TIME_AGENT ||
+            AI_WAIT_CONFIG.AGENT_MODE_WAIT;
+          AI_WAIT_CONFIG.CHECK_INTERVAL =
+            result.responseWaitConfig.STOP_CHECK_INTERVAL ||
+            AI_WAIT_CONFIG.CHECK_INTERVAL;
+
+          console.log("⏱️ [Genspark] 回答待機時間設定を適用:", {
+            通常モード: AI_WAIT_CONFIG.NORMAL_WAIT / 60000 + "分",
+            DeepResearch: AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT / 60000 + "分",
+            エージェント: AI_WAIT_CONFIG.AGENT_MODE_WAIT / 60000 + "分",
+            Stop確認間隔: AI_WAIT_CONFIG.CHECK_INTERVAL / 1000 + "秒",
+          });
+        }
+
+        if (result.batchProcessingConfig) {
+          // バッチ処理設定から回答待機時間設定も読み込み（互換性のため）
+          if (!result.responseWaitConfig) {
+            AI_WAIT_CONFIG.NORMAL_WAIT =
+              result.batchProcessingConfig.MAX_RESPONSE_WAIT_TIME ||
+              AI_WAIT_CONFIG.NORMAL_WAIT;
+            AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT =
+              result.batchProcessingConfig.MAX_RESPONSE_WAIT_TIME_DEEP ||
+              AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT;
+            AI_WAIT_CONFIG.AGENT_MODE_WAIT =
+              result.batchProcessingConfig.MAX_RESPONSE_WAIT_TIME_AGENT ||
+              AI_WAIT_CONFIG.AGENT_MODE_WAIT;
+            AI_WAIT_CONFIG.CHECK_INTERVAL =
+              result.batchProcessingConfig.STOP_CHECK_INTERVAL ||
+              AI_WAIT_CONFIG.CHECK_INTERVAL;
+          }
+        }
+      },
+    );
+  }
+
+  // windowレベルでも公開（後方互換性）
+  window.AI_WAIT_CONFIG = AI_WAIT_CONFIG;
+
+  // ========================================
   // 設定定数
   // ========================================
   const CONFIG = {
     AI_TYPE: "Genspark",
     VERSION: "2.0.0",
-    DEFAULT_TIMEOUT: 3600000, // デフォルトタイムアウト: 60分
+    DEFAULT_TIMEOUT: AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT || 2400000, // デフォルトタイムアウト: 設定値または40分
     WAIT_INTERVAL: 1000, // 待機間隔: 1秒
     CLICK_DELAY: 500, // クリック後の待機: 0.5秒
     INPUT_DELAY: 300, // 入力後の待機: 0.3秒
