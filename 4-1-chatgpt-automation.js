@@ -869,7 +869,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
   let AI_WAIT_CONFIG = {
     DEEP_RESEARCH_WAIT: 2400000, // 40分（Deep Research）
     AGENT_MODE_WAIT: 2400000, // 40分（エージェントモード）
-    NORMAL_WAIT: 600000, // 10分（通常処理）
+    MAX_WAIT: 600000, // 10分（通常処理） - Claudeと統一
     STOP_BUTTON_WAIT: 30000, // 30秒
     CHECK_INTERVAL: 10000, // 10秒（停止ボタン消滅継続時間）
     MICRO_WAIT: 100, // 100ms
@@ -886,9 +886,9 @@ async function reportSelectorError(selectorKey, error, selectors) {
       (result) => {
         if (result.responseWaitConfig) {
           // 回答待機時間設定を適用
-          AI_WAIT_CONFIG.NORMAL_WAIT =
+          AI_WAIT_CONFIG.MAX_WAIT =
             result.responseWaitConfig.MAX_RESPONSE_WAIT_TIME ||
-            AI_WAIT_CONFIG.NORMAL_WAIT;
+            AI_WAIT_CONFIG.MAX_WAIT;
           AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT =
             result.responseWaitConfig.MAX_RESPONSE_WAIT_TIME_DEEP ||
             AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT;
@@ -900,7 +900,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
             AI_WAIT_CONFIG.CHECK_INTERVAL;
 
           console.log("⏱️ [ChatGPT] 回答待機時間設定を適用:", {
-            通常モード: AI_WAIT_CONFIG.NORMAL_WAIT / 60000 + "分",
+            通常モード: AI_WAIT_CONFIG.MAX_WAIT / 60000 + "分",
             DeepResearch: AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT / 60000 + "分",
             エージェント: AI_WAIT_CONFIG.AGENT_MODE_WAIT / 60000 + "分",
             Stop確認間隔: AI_WAIT_CONFIG.CHECK_INTERVAL / 1000 + "秒",
@@ -910,9 +910,9 @@ async function reportSelectorError(selectorKey, error, selectors) {
         if (result.batchProcessingConfig) {
           // バッチ処理設定から回答待機時間設定も読み込み（互換性のため）
           if (!result.responseWaitConfig) {
-            AI_WAIT_CONFIG.NORMAL_WAIT =
+            AI_WAIT_CONFIG.MAX_WAIT =
               result.batchProcessingConfig.MAX_RESPONSE_WAIT_TIME ||
-              AI_WAIT_CONFIG.NORMAL_WAIT;
+              AI_WAIT_CONFIG.MAX_WAIT;
             AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT =
               result.batchProcessingConfig.MAX_RESPONSE_WAIT_TIME_DEEP ||
               AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT;
@@ -1116,7 +1116,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
 
     // 停止ボタンが消えるまで待機（共通エラーハンドラー統合版）
     if (stopBtn) {
-      const maxWaitSeconds = AI_WAIT_CONFIG.NORMAL_WAIT / 1000;
+      const maxWaitSeconds = AI_WAIT_CONFIG.MAX_WAIT / 1000;
       logWithTimestamp(
         `停止ボタンが消えるまで待機（最大${maxWaitSeconds / 60}分）`,
         "info",
@@ -2033,7 +2033,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
    * @throws {Error} タイムアウトの場合
    */
   async function waitForResponseChatGPT() {
-    const maxWaitTime = AI_WAIT_CONFIG.NORMAL_WAIT; // 設定から取得
+    const maxWaitTime = AI_WAIT_CONFIG.MAX_WAIT; // 設定から取得
     const checkInterval = 1000;
     let elapsedTime = 0;
 
@@ -2934,7 +2934,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
 
         // 停止ボタンが消えるまで待機
         if (stopBtn) {
-          const maxWaitSeconds = AI_WAIT_CONFIG.NORMAL_WAIT / 1000;
+          const maxWaitSeconds = AI_WAIT_CONFIG.MAX_WAIT / 1000;
           logWithTimestamp("応答生成を待機中...", "info");
           for (let i = 0; i < maxWaitSeconds; i++) {
             stopBtn = await findElement(SELECTORS.stopButton, "停止ボタン", 1);
@@ -2985,6 +2985,24 @@ async function reportSelectorError(selectorKey, error, selectors) {
           text: responseText,
           timestamp: new Date().toISOString(),
         };
+
+        // ✅ タスク完了時刻をスプレッドシートに記録（Claude automationと同じロジック）
+        try {
+          chrome.runtime.sendMessage({
+            type: "recordCompletionTime",
+            taskId: taskId,
+            completionTime: new Date().toISOString(),
+            taskInfo: {
+              aiType: "ChatGPT",
+              model: modelName,
+              function: functionName,
+              url: window.location.href,
+            },
+          });
+          log.debug("✅ recordCompletionTime送信完了:", taskId);
+        } catch (error) {
+          log.warn("⚠️ recordCompletionTime送信エラー:", error);
+        }
 
         // 【修正】タスク完了時のスプレッドシート書き込み確認と通知処理を追加
         // タスク重複実行問題を修正：書き込み成功を確実に確認してから完了通知
@@ -3409,11 +3427,11 @@ async function reportSelectorError(selectorKey, error, selectors) {
           return true; // 非同期レスポンスのために必要
         }
 
-        // executeTaskタスクの処理
+        // executeTaskタスクの処理（メッセージタイプ統一）
         if (
           request.action === "executeTask" ||
           request.type === "executeTask" ||
-          request.type === "CLAUDE_EXECUTE_TASK" ||
+          request.type === "CHATGPT_EXECUTE_TASK" ||
           request.type === "EXECUTE_TASK"
         ) {
           log.warn(

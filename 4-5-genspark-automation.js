@@ -69,7 +69,7 @@
   // AI待機設定（デフォルト値）
   // ========================================
   let AI_WAIT_CONFIG = {
-    NORMAL_WAIT: 600000, // 10分（通常処理）
+    MAX_WAIT: 600000, // 10分（通常処理） - 全AI統一
     DEEP_RESEARCH_WAIT: 2400000, // 40分（Deep Research）
     AGENT_MODE_WAIT: 2400000, // 40分（エージェントモード）
     CHECK_INTERVAL: 10000, // 10秒（停止ボタン消滅継続時間）
@@ -84,9 +84,9 @@
       (result) => {
         if (result.responseWaitConfig) {
           // 回答待機時間設定を適用
-          AI_WAIT_CONFIG.NORMAL_WAIT =
+          AI_WAIT_CONFIG.MAX_WAIT =
             result.responseWaitConfig.MAX_RESPONSE_WAIT_TIME ||
-            AI_WAIT_CONFIG.NORMAL_WAIT;
+            AI_WAIT_CONFIG.MAX_WAIT;
           AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT =
             result.responseWaitConfig.MAX_RESPONSE_WAIT_TIME_DEEP ||
             AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT;
@@ -98,7 +98,7 @@
             AI_WAIT_CONFIG.CHECK_INTERVAL;
 
           console.log("⏱️ [Genspark] 回答待機時間設定を適用:", {
-            通常モード: AI_WAIT_CONFIG.NORMAL_WAIT / 60000 + "分",
+            通常モード: AI_WAIT_CONFIG.MAX_WAIT / 60000 + "分",
             DeepResearch: AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT / 60000 + "分",
             エージェント: AI_WAIT_CONFIG.AGENT_MODE_WAIT / 60000 + "分",
             Stop確認間隔: AI_WAIT_CONFIG.CHECK_INTERVAL / 1000 + "秒",
@@ -108,9 +108,9 @@
         if (result.batchProcessingConfig) {
           // バッチ処理設定から回答待機時間設定も読み込み（互換性のため）
           if (!result.responseWaitConfig) {
-            AI_WAIT_CONFIG.NORMAL_WAIT =
+            AI_WAIT_CONFIG.MAX_WAIT =
               result.batchProcessingConfig.MAX_RESPONSE_WAIT_TIME ||
-              AI_WAIT_CONFIG.NORMAL_WAIT;
+              AI_WAIT_CONFIG.MAX_WAIT;
             AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT =
               result.batchProcessingConfig.MAX_RESPONSE_WAIT_TIME_DEEP ||
               AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT;

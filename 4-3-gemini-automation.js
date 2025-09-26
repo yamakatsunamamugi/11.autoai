@@ -83,7 +83,7 @@ const log = {
   // AI待機設定（デフォルト値）
   // ========================================
   let AI_WAIT_CONFIG = {
-    NORMAL_WAIT: 600000, // 10分（通常処理）
+    MAX_WAIT: 600000, // 10分（通常処理） - 全AI統一
     DEEP_RESEARCH_WAIT: 2400000, // 40分（Deep Research）
     AGENT_MODE_WAIT: 2400000, // 40分（エージェントモード）
     CHECK_INTERVAL: 10000, // 10秒（停止ボタン消滅継続時間）
@@ -98,9 +98,9 @@ const log = {
       (result) => {
         if (result.responseWaitConfig) {
           // 回答待機時間設定を適用
-          AI_WAIT_CONFIG.NORMAL_WAIT =
+          AI_WAIT_CONFIG.MAX_WAIT =
             result.responseWaitConfig.MAX_RESPONSE_WAIT_TIME ||
-            AI_WAIT_CONFIG.NORMAL_WAIT;
+            AI_WAIT_CONFIG.MAX_WAIT;
           AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT =
             result.responseWaitConfig.MAX_RESPONSE_WAIT_TIME_DEEP ||
             AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT;
@@ -112,7 +112,7 @@ const log = {
             AI_WAIT_CONFIG.CHECK_INTERVAL;
 
           log.info("⏱️ [Gemini] 回答待機時間設定を適用:", {
-            通常モード: AI_WAIT_CONFIG.NORMAL_WAIT / 60000 + "分",
+            通常モード: AI_WAIT_CONFIG.MAX_WAIT / 60000 + "分",
             DeepResearch: AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT / 60000 + "分",
             エージェント: AI_WAIT_CONFIG.AGENT_MODE_WAIT / 60000 + "分",
             Stop確認間隔: AI_WAIT_CONFIG.CHECK_INTERVAL / 1000 + "秒",
@@ -122,9 +122,9 @@ const log = {
         if (result.batchProcessingConfig) {
           // バッチ処理設定から回答待機時間設定も読み込み（互換性のため）
           if (!result.responseWaitConfig) {
-            AI_WAIT_CONFIG.NORMAL_WAIT =
+            AI_WAIT_CONFIG.MAX_WAIT =
               result.batchProcessingConfig.MAX_RESPONSE_WAIT_TIME ||
-              AI_WAIT_CONFIG.NORMAL_WAIT;
+              AI_WAIT_CONFIG.MAX_WAIT;
             AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT =
               result.batchProcessingConfig.MAX_RESPONSE_WAIT_TIME_DEEP ||
               AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT;
@@ -180,6 +180,9 @@ const log = {
       ".toolbox-drawer-button.has-selected-item",
     ],
 
+    // Canvas関連
+    canvasEditor: ["immersive-editor", ".immersive-editor"],
+
     // 入力欄
     canvas: ".ProseMirror",
     normalInput: ".ql-editor",
@@ -202,7 +205,7 @@ const log = {
     deepResearchButton: 'button[data-test-id="confirm-button"]',
 
     // レスポンス
-    canvasResponse: ".ProseMirror",
+    canvasResponse: "immersive-editor .ProseMirror", // Canvas応答は immersive-editor 内
     normalResponse: ".model-response-text .markdown",
     responseAlt: [
       "[data-response-index]:last-child",
@@ -544,28 +547,94 @@ const log = {
   // 応答待機
   // ========================================
   async function waitForResponseGemini() {
-    const maxWaitTime = AI_WAIT_CONFIG.NORMAL_WAIT; // 設定から取得
+    const maxWaitTime = AI_WAIT_CONFIG.MAX_WAIT; // 設定から取得
 
     log.debug("応答待機を開始します...");
 
-    // Canvasモードの判定
-    const canvasEditor = document.querySelector(SELECTORS.canvas);
-    const isCanvasMode = canvasEditor && canvasEditor.isContentEditable;
+    // 最初は通常モードとして処理を開始
+    let elapsedTime = 0;
+    const checkInterval = 1000;
+    let hasPartialContent = false;
+    let isCanvasMode = false;
 
-    if (isCanvasMode) {
-      // Canvasモード: テキスト生成の監視
-      log.debug("Canvasモード: 初期待機30秒...");
-      await wait(30000); // 初期待機30秒
+    // 通常モードの監視を開始
+    log.debug("停止ボタン監視を開始...");
 
-      log.debug("Canvasモード: テキスト生成の監視を開始します");
+    while (elapsedTime < maxWaitTime) {
+      await wait(checkInterval);
+      elapsedTime += checkInterval;
 
-      let lastLength = -1;
-      let lastChangeTime = Date.now();
-      let elapsedTime = 30000; // 初期待機時間を含む
+      // Canvas（immersive-editor）が出現したかチェック
+      if (!isCanvasMode) {
+        const canvasResponse = document.querySelector(SELECTORS.canvasResponse);
+        if (canvasResponse) {
+          // Canvasモードに切り替え
+          isCanvasMode = true;
+          log.debug("🎨 Canvasモード検出！テキスト監視に切り替えます");
 
-      return new Promise((resolve, reject) => {
-        const monitor = setInterval(() => {
-          elapsedTime += 2000;
+          // Canvasモードの処理を開始
+          return await waitForCanvasResponse(elapsedTime, maxWaitTime);
+        }
+      }
+
+      // 通常モード: 停止ボタンの確認
+      const stopButton = findElement(SELECTORS.stopButton);
+
+      // 部分的な結果があるかチェック
+      const responseElements = document.querySelectorAll(
+        SELECTORS.normalResponse,
+      );
+      if (responseElements.length > 0) {
+        const latestResponse = responseElements[responseElements.length - 1];
+        if (latestResponse && latestResponse.textContent.trim()) {
+          hasPartialContent = true;
+        }
+      }
+
+      if (!stopButton) {
+        log.debug("応答が完了しました（停止ボタンが消えました）");
+        return { success: true, partial: false, timeout: false };
+      }
+
+      if (elapsedTime % 10000 === 0) {
+        log.debug(`応答待機中... (${elapsedTime / 1000}秒経過)`);
+      }
+    }
+
+    // タイムアウト時の処理
+    if (hasPartialContent) {
+      log.warn(
+        `タイムアウトしましたが、部分的な結果を保存します（${maxWaitTime / 60000}分経過）`,
+      );
+      return { success: true, partial: true, timeout: true };
+    } else {
+      throw new Error(
+        `Geminiの応答がタイムアウトしました（${maxWaitTime / 60000}分）`,
+      );
+    }
+  }
+
+  // Canvasモード専用の待機処理
+  async function waitForCanvasResponse(initialElapsedTime, maxWaitTime) {
+    log.debug("Canvasモード: 初期待機15秒...");
+    await wait(15000); // Canvas表示を待つ
+
+    log.debug("Canvasモード: テキスト生成の監視を開始します");
+
+    let lastLength = -1;
+    let lastChangeTime = Date.now();
+    let elapsedTime = initialElapsedTime + 15000; // 既に経過した時間 + 初期待機
+    let hasPartialContent = false;
+
+    return new Promise((resolve, reject) => {
+      const monitor = setInterval(() => {
+        elapsedTime += 2000;
+
+        // Canvas応答を immersive-editor 内から探す
+        const currentEditor = document.querySelector(SELECTORS.canvasResponse);
+        if (!currentEditor) {
+          // まだテキストが生成されていない場合は続行
+          log.debug("[Canvas監視] テキスト生成待機中...");
 
           // タイムアウトチェック
           if (elapsedTime >= maxWaitTime) {
@@ -575,58 +644,51 @@ const log = {
                 `Geminiの応答がタイムアウトしました（${maxWaitTime / 60000}分）`,
               ),
             );
-            return;
           }
-
-          const currentEditor = document.querySelector(SELECTORS.canvas);
-          if (!currentEditor) {
-            clearInterval(monitor);
-            resolve("Canvasエディタが見つかりません");
-            return;
-          }
-
-          const currentLength = currentEditor.textContent.length;
-          log.debug(`[Canvas監視] 現在の文字数: ${currentLength}`);
-
-          if (currentLength > lastLength) {
-            lastLength = currentLength;
-            lastChangeTime = Date.now();
-          }
-
-          // 10秒間変化がなければ完了とみなす
-          if (Date.now() - lastChangeTime > 10000) {
-            clearInterval(monitor);
-            log.debug("10秒間テキストの更新がなかったため、応答完了と判断");
-            resolve(true);
-          }
-        }, 2000); // 2秒ごとに監視
-      });
-    } else {
-      // 通常モード: 停止ボタンが消えるまで待機
-      log.debug("通常モード: 停止ボタン監視");
-      let elapsedTime = 0;
-      const checkInterval = 1000;
-
-      while (elapsedTime < maxWaitTime) {
-        await wait(checkInterval);
-        elapsedTime += checkInterval;
-
-        const stopButton = findElement(SELECTORS.stopButton);
-
-        if (!stopButton) {
-          log.debug("応答が完了しました（停止ボタンが消えました）");
-          return true;
+          return;
         }
 
-        if (elapsedTime % 10000 === 0) {
-          log.debug(`応答待機中... (${elapsedTime / 1000}秒経過)`);
-        }
-      }
+        const currentLength = currentEditor.textContent.length;
+        log.debug(`[Canvas監視] 現在の文字数: ${currentLength}`);
 
-      throw new Error(
-        `Geminiの応答がタイムアウトしました（${maxWaitTime / 60000}分）`,
-      );
-    }
+        // 部分的な結果があるかチェック
+        if (currentLength > 0) {
+          hasPartialContent = true;
+        }
+
+        if (currentLength > lastLength) {
+          lastLength = currentLength;
+          lastChangeTime = Date.now();
+        }
+
+        // タイムアウトチェック
+        if (elapsedTime >= maxWaitTime) {
+          clearInterval(monitor);
+
+          // 部分的な結果がある場合は成功として返す
+          if (hasPartialContent) {
+            log.warn(
+              `タイムアウトしましたが、部分的な結果を保存します（${maxWaitTime / 60000}分経過、${currentLength}文字取得済み）`,
+            );
+            resolve({ success: true, partial: true, timeout: true });
+          } else {
+            reject(
+              new Error(
+                `Geminiの応答がタイムアウトしました（${maxWaitTime / 60000}分）`,
+              ),
+            );
+          }
+          return;
+        }
+
+        // 10秒間変化がなければ完了とみなす
+        if (Date.now() - lastChangeTime > 10000) {
+          clearInterval(monitor);
+          log.debug("10秒間テキストの更新がなかったため、応答完了と判断");
+          resolve({ success: true, partial: false, timeout: false });
+        }
+      }, 2000); // 2秒ごとに監視
+    });
   }
 
   // ========================================
@@ -783,6 +845,16 @@ const log = {
       await wait(2000);
 
       // 【Step 4-3-4-4】選択確認 - 現在選択されている機能をログ出力
+
+      // Canvasモードの特別処理
+      if (featureName === "Canvas") {
+        // Canvas選択はボタンクリックで完了
+        // 編集画面はメッセージ送信後に表示されるため、ここでは確認不要
+        log.info(`📊 機能選択後確認 - Canvasモードが選択されました`);
+        return { success: true, selected: featureName };
+      }
+
+      // 通常の機能ボタンの確認
       const selectedButtons = findElements(SELECTORS.selectedFeatures);
       const selectedFeatureNames = [];
 
@@ -799,6 +871,7 @@ const log = {
           `📊 機能選択後確認 - 現在選択中: [${selectedFeatureNames.join(", ")}]`,
         );
       } else {
+        // Canvas以外で選択が確認できない場合
         log.info(`📊 機能選択後確認 - 選択された機能なし`);
       }
       return { success: true, selected: featureName };
@@ -851,7 +924,7 @@ const log = {
 
         // 【Step DR-2】初期応答完了を待ち、リサーチ開始ボタンをクリック
         logDr("初期応答の完了を待機中...");
-        const initialWaitTime = AI_WAIT_CONFIG.NORMAL_WAIT; // 通常モードの待機時間を使用
+        const initialWaitTime = AI_WAIT_CONFIG.MAX_WAIT; // 通常モードの待機時間を使用
         while (findElement([SELECTORS.stopButton])) {
           if (Date.now() - startTime > initialWaitTime) {
             throw new Error(
@@ -914,228 +987,429 @@ const log = {
 
     // taskIdを最初に定義（スコープ全体で利用可能にする）
     const taskId = taskData.taskId || taskData.id || "UNKNOWN_TASK_ID";
+    const MAX_RETRIES = 3; // 最大リトライ回数
+    let lastError = null;
+    let partialResult = null;
 
-    try {
-      // プロンプトの適切な処理 - オブジェクトの場合は文字列化
-      let promptText;
-      if (typeof taskData.prompt === "object" && taskData.prompt !== null) {
-        // オブジェクトの場合は適切なプロパティを探す
-        promptText =
-          taskData.prompt.text ||
-          taskData.prompt.content ||
-          taskData.prompt.prompt ||
-          JSON.stringify(taskData.prompt);
-      } else {
-        promptText = taskData.prompt || "テストメッセージです";
+    // リトライループ
+    for (let retryCount = 0; retryCount < MAX_RETRIES; retryCount++) {
+      if (retryCount > 0) {
+        log.info(
+          `🔄 [Gemini] リトライ ${retryCount}/${MAX_RETRIES - 1} を実行中`,
+        );
+        await wait(5000); // リトライ前に5秒待機
       }
 
-      const modelName = taskData.model || "";
-      const featureName = taskData.function || ""; // feature → function に修正
+      try {
+        // プロンプトの適切な処理 - オブジェクトの場合は文字列化
+        let promptText;
+        if (typeof taskData.prompt === "object" && taskData.prompt !== null) {
+          // オブジェクトの場合は適切なプロパティを探す
+          promptText =
+            taskData.prompt.text ||
+            taskData.prompt.content ||
+            taskData.prompt.prompt ||
+            JSON.stringify(taskData.prompt);
+        } else {
+          promptText = taskData.prompt || "テストメッセージです";
+        }
 
-      // 🔍 [DEBUG] タスクデータの詳細確認
-      log.debug("📋 [Gemini Debug] TaskData詳細:", {
-        model: modelName,
-        feature: featureName,
-        hasModel: !!modelName,
-        hasFeature: !!featureName,
-        modelType: typeof modelName,
-        featureType: typeof featureName,
-        taskDataKeys: taskData ? Object.keys(taskData) : [],
-      });
+        const modelName = taskData.model || "";
+        const featureName = taskData.function || ""; // feature → function に修正
 
-      // 🔍 [DEBUG] セル位置情報を追加（ChatGPT・Claudeと統一）
-      if (
-        taskData &&
-        taskData.cellInfo &&
-        taskData.cellInfo.column &&
-        taskData.cellInfo.row
-      ) {
-        const cellPosition = `${taskData.cellInfo.column}${taskData.cellInfo.row}`;
-        promptText = `【現在${cellPosition}セルを処理中です】\n\n${promptText}`;
-        log.debug(`📍 [Gemini] セル位置情報を追加: ${cellPosition}`);
-      } else {
-        log.debug("📍 [Gemini] セル位置情報なし:", {
-          hasCellInfo: !!(taskData && taskData.cellInfo),
-          cellInfo: taskData && taskData.cellInfo,
+        // 🔍 [DEBUG] タスクデータの詳細確認
+        log.debug("📋 [Gemini Debug] TaskData詳細:", {
+          model: modelName,
+          feature: featureName,
+          hasModel: !!modelName,
+          hasFeature: !!featureName,
+          modelType: typeof modelName,
+          featureType: typeof featureName,
           taskDataKeys: taskData ? Object.keys(taskData) : [],
         });
-      }
 
-      // 【Step 4-3-2】テキスト入力
-
-      try {
-        await inputTextGemini(promptText);
-      } catch (inputError) {
-        console.error(`❌ [Gemini Step 2] テキスト入力エラー:`, inputError);
-        throw inputError;
-      }
-
-      // 【Step 4-3-3】モデル選択（必要な場合）
-
-      if (modelName && modelName !== "設定なし") {
-        try {
-          const modelResult = await selectModel(modelName);
-          if (!modelResult.success && !modelResult.skipped) {
-            throw new Error(`モデル選択失敗: ${modelResult.error}`);
-          }
-        } catch (modelError) {
-          console.error(`❌ [Gemini Step 3a] モデル選択エラー:`, modelError);
-          throw modelError;
-        }
-      }
-
-      // 【Step 4-3-4】機能選択（必要な場合）
-
-      if (featureName && featureName !== "設定なし") {
-        try {
-          const featureResult = await selectFeature(featureName);
-          if (!featureResult.success && !featureResult.skipped) {
-            throw new Error(`機能選択失敗: ${featureResult.error}`);
-          }
-        } catch (featureError) {
-          console.error(`❌ [Gemini Step 4a] 機能選択エラー:`, featureError);
-          throw featureError;
-        }
-      }
-
-      // 【Step 4-3-5】メッセージ送信
-      try {
-        await sendMessageGemini();
-
-        // 送信時刻を記録
-        const sendTime = new Date();
-
-        // モデルと機能を取得
-        const modelName_current = modelName || "不明";
-        const featureName_var = featureName || "通常";
-
-        // background.jsに送信時刻を記録
-        if (chrome.runtime && chrome.runtime.sendMessage) {
-          const messageToSend = {
-            type: "recordSendTime",
-            taskId: taskId,
-            sendTime: sendTime.toISOString(),
-            taskInfo: {
-              aiType: "Gemini",
-              model: modelName_current,
-              function: featureName_var,
-              url: window.location.href,
-              cellInfo: taskData.cellInfo,
-            },
-            logCell: taskData.logCell,
-          };
-
-          try {
-            chrome.runtime.sendMessage(messageToSend, (response) => {
-              if (chrome.runtime.lastError) {
-                console.warn(
-                  "⚠️ [Gemini] 送信時刻記録エラー:",
-                  chrome.runtime.lastError.message,
-                );
-              } else {
-                console.log("✅ [Gemini] 送信時刻記録成功", response);
-              }
-            });
-          } catch (error) {
-            console.error("❌ [Gemini] 送信時刻記録失敗:", error);
-          }
-        }
-      } catch (sendError) {
-        console.error(`❌ [Gemini Step 5] メッセージ送信エラー:`, sendError);
-        throw sendError;
-      }
-      const startTime = Date.now();
-
-      // 【Step 4-3-6】応答待機（Deep Research判定）
-
-      try {
-        if (featureName === "Deep Research") {
-          await waitForDeepResearch(startTime);
+        // 🔍 [DEBUG] セル位置情報を追加（ChatGPT・Claudeと統一）
+        if (
+          taskData &&
+          taskData.cellInfo &&
+          taskData.cellInfo.column &&
+          taskData.cellInfo.row
+        ) {
+          const cellPosition = `${taskData.cellInfo.column}${taskData.cellInfo.row}`;
+          promptText = `【現在${cellPosition}セルを処理中です】\n\n${promptText}`;
+          log.debug(`📍 [Gemini] セル位置情報を追加: ${cellPosition}`);
         } else {
-          await waitForResponseGemini();
+          log.debug("📍 [Gemini] セル位置情報なし:", {
+            hasCellInfo: !!(taskData && taskData.cellInfo),
+            cellInfo: taskData && taskData.cellInfo,
+            taskDataKeys: taskData ? Object.keys(taskData) : [],
+          });
         }
-      } catch (waitError) {
-        console.error(`❌ [Gemini Step 6] 応答待機エラー:`, waitError);
-        throw waitError;
-      }
 
-      // 【Step 4-3-7】テキスト取得
-      let content;
-      try {
-        content = await getResponseTextGemini();
-      } catch (getTextError) {
-        console.error(`❌ [Gemini Step 7] テキスト取得エラー:`, getTextError);
-        throw getTextError;
-      }
+        // 【Step 4-3-2】テキスト入力
 
-      // 【Step 4-3-8】結果オブジェクト作成
+        try {
+          await inputTextGemini(promptText);
+        } catch (inputError) {
+          console.error(`❌ [Gemini Step 2] テキスト入力エラー:`, inputError);
+          throw inputError;
+        }
 
-      const result = {
-        success: true,
-        content: content,
-        model: modelName,
-        feature: featureName,
-      };
+        // 【Step 4-3-3】モデル選択（必要な場合）
 
-      // ✅ タスク完了時刻をスプレッドシートに記録（Claude/ChatGPTと統一）
-      try {
-        chrome.runtime.sendMessage({
-          type: "recordCompletionTime",
-          taskId: taskId,
-          completionTime: new Date().toISOString(),
-          taskInfo: {
-            aiType: "Gemini",
-            model: modelName,
-            function: featureName,
-            url: window.location.href,
-          },
-        });
-        log.debug("✅ recordCompletionTime送信完了:", taskId);
-      } catch (error) {
-        log.warn("⚠️ recordCompletionTime送信エラー:", error);
-      }
+        if (modelName && modelName !== "設定なし") {
+          try {
+            const modelResult = await selectModel(modelName);
+            if (!modelResult.success && !modelResult.skipped) {
+              throw new Error(`モデル選択失敗: ${modelResult.error}`);
+            }
+          } catch (modelError) {
+            console.error(`❌ [Gemini Step 3a] モデル選択エラー:`, modelError);
+            throw modelError;
+          }
+        }
 
-      // 【修正】タスク完了時のスプレッドシート書き込み確認と通知処理を追加
-      // タスク重複実行問題を修正：書き込み成功を確実に確認してから完了通知
-      try {
-        if (result.success && taskData.cellInfo) {
-          // backgroundスクリプトにタスク完了を通知（作業中マーカークリア用）
+        // 【Step 4-3-4】機能選択（必要な場合）
+
+        if (featureName && featureName !== "設定なし") {
+          try {
+            const featureResult = await selectFeature(featureName);
+            if (!featureResult.success && !featureResult.skipped) {
+              throw new Error(`機能選択失敗: ${featureResult.error}`);
+            }
+          } catch (featureError) {
+            console.error(`❌ [Gemini Step 4a] 機能選択エラー:`, featureError);
+            throw featureError;
+          }
+        }
+
+        // 【Step 4-3-5】メッセージ送信
+        try {
+          await sendMessageGemini();
+
+          // 送信時刻を記録
+          const sendTime = new Date();
+
+          // モデルと機能を取得
+          const modelName_current = modelName || "不明";
+          const featureName_var = featureName || "通常";
+
+          // background.jsに送信時刻を記録
           if (chrome.runtime && chrome.runtime.sendMessage) {
-            const completionMessage = {
-              type: "TASK_COMPLETION_CONFIRMED",
-              taskId: taskData.taskId || taskData.cellInfo,
-              cellInfo: taskData.cellInfo,
-              success: true,
-              timestamp: new Date().toISOString(),
-              spreadsheetWriteConfirmed: true, // スプレッドシート書き込み完了フラグ
+            const messageToSend = {
+              type: "recordSendTime",
+              taskId: taskId,
+              sendTime: sendTime.toISOString(),
+              taskInfo: {
+                aiType: "Gemini",
+                model: modelName_current,
+                function: featureName_var,
+                // URLは応答完了時に取得するため、ここでは記録しない（Claudeと同じ）
+                cellInfo: taskData.cellInfo,
+              },
+              logCell: taskData.logCell,
             };
 
-            chrome.runtime.sendMessage(completionMessage, (response) => {
-              if (chrome.runtime.lastError) {
-                console.warn(
-                  "⚠️ [Gemini-TaskCompletion] 完了通知エラー:",
-                  chrome.runtime.lastError.message,
-                );
-              } else {
-              }
-            });
+            // Promise化してタイムアウト処理を追加
+            const sendMessageWithTimeout = () => {
+              return new Promise((resolve) => {
+                const timeout = setTimeout(() => {
+                  console.warn("⚠️ [Gemini] 送信時刻記録タイムアウト");
+                  resolve(null);
+                }, 5000); // 5秒でタイムアウト
+
+                try {
+                  // 拡張機能のコンテキストが有効か確認
+                  if (!chrome.runtime?.id) {
+                    console.warn(
+                      "⚠️ [Gemini] 拡張機能のコンテキストが無効です",
+                    );
+                    clearTimeout(timeout);
+                    resolve(null);
+                    return;
+                  }
+
+                  chrome.runtime.sendMessage(messageToSend, (response) => {
+                    clearTimeout(timeout);
+                    // エラーチェックを先に行う
+                    if (chrome.runtime.lastError) {
+                      // ポートが閉じられたエラーは警告レベルに留める
+                      if (
+                        chrome.runtime.lastError.message.includes("port closed")
+                      ) {
+                        console.warn(
+                          "⚠️ [Gemini] メッセージポートが閉じられました（送信は成功している可能性があります）",
+                        );
+                      } else {
+                        console.warn(
+                          "⚠️ [Gemini] 送信時刻記録エラー:",
+                          chrome.runtime.lastError.message,
+                        );
+                      }
+                      resolve(null);
+                    } else if (response) {
+                      console.log("✅ [Gemini] 送信時刻記録成功", response);
+                      resolve(response);
+                    } else {
+                      // レスポンスがnullの場合
+                      console.warn("⚠️ [Gemini] 送信時刻記録: レスポンスなし");
+                      resolve(null);
+                    }
+                  });
+                } catch (error) {
+                  clearTimeout(timeout);
+                  console.error("❌ [Gemini] 送信時刻記録失敗:", error);
+                  resolve(null);
+                }
+              });
+            };
+
+            // 非同期で実行（ブロックしない）
+            sendMessageWithTimeout();
+          }
+        } catch (sendError) {
+          console.error(`❌ [Gemini Step 5] メッセージ送信エラー:`, sendError);
+          throw sendError;
+        }
+        const startTime = Date.now();
+
+        // 【Step 4-3-6】応答待機（Deep Research判定）
+        let responseResult;
+        let isPartialResult = false;
+
+        try {
+          if (featureName === "Deep Research") {
+            responseResult = await waitForDeepResearch(startTime);
+          } else {
+            responseResult = await waitForResponseGemini();
+          }
+
+          // 結果の形式を確認
+          if (responseResult && typeof responseResult === "object") {
+            isPartialResult = responseResult.partial || false;
+            if (responseResult.timeout && responseResult.partial) {
+              log.warn(
+                `⚠️ [Gemini] タイムアウトしましたが、部分的な結果を処理します`,
+              );
+            }
+          }
+        } catch (waitError) {
+          console.error(`❌ [Gemini Step 6] 応答待機エラー:`, waitError);
+          throw waitError;
+        }
+
+        // 【Step 4-3-7】テキスト取得
+        let content;
+        try {
+          content = await getResponseTextGemini();
+        } catch (getTextError) {
+          // 部分的な結果の場合はエラーを許容
+          if (isPartialResult) {
+            console.warn(
+              `⚠️ [Gemini Step 7] 部分的な結果の取得を試みます:`,
+              getTextError,
+            );
+            content = "[タイムアウトによる部分的な応答]";
+          } else {
+            console.error(
+              `❌ [Gemini Step 7] テキスト取得エラー:`,
+              getTextError,
+            );
+            throw getTextError;
           }
         }
-      } catch (completionError) {
-        console.warn(
-          "⚠️ [Gemini-TaskCompletion] 完了処理エラー:",
-          completionError.message,
-        );
-      }
 
-      return result;
-    } catch (error) {
-      log.error("❌ タスク実行エラー:", error);
+        // 【Step 4-3-8】結果オブジェクト作成
+
+        const result = {
+          success: true,
+          content: content,
+          model: modelName,
+          feature: featureName,
+          partial: isPartialResult,
+        };
+
+        // ✅ タスク完了時刻をスプレッドシートに記録（Claude/ChatGPTと統一）
+        try {
+          // 会話URLの取得を待つ（GeminiではURLが変化する場合がある）
+          let conversationUrl = window.location.href;
+
+          // GeminiでもURLが更新されるまで少し待つ
+          // 例： /app から /app/xxx への変更を待つ
+          const startUrl = conversationUrl;
+          let attempts = 0;
+          const maxAttempts = 10; // 最大5秒待つ（500ms x 10）
+
+          while (attempts < maxAttempts) {
+            await wait(500);
+            conversationUrl = window.location.href;
+
+            // URLが変更されたら終了
+            if (conversationUrl !== startUrl) {
+              log.debug(`🔗 [Gemini] URLが更新されました: ${conversationUrl}`);
+              break;
+            }
+
+            attempts++;
+          }
+
+          // URLが変更されなくても現在のURLを使用
+          if (attempts === maxAttempts) {
+            log.debug(
+              `ℹ️ [Gemini] URL変更なし、現在のURLを使用: ${conversationUrl}`,
+            );
+          }
+
+          // Promise化してエラーハンドリングを改善
+          const sendCompletionMessage = () => {
+            return new Promise((resolve) => {
+              const timeout = setTimeout(() => {
+                log.warn("⚠️ recordCompletionTime送信タイムアウト");
+                resolve(null);
+              }, 5000);
+
+              chrome.runtime.sendMessage(
+                {
+                  type: "recordCompletionTime",
+                  taskId: taskId,
+                  completionTime: new Date().toISOString(),
+                  taskInfo: {
+                    aiType: "Gemini",
+                    model: modelName,
+                    function: featureName,
+                    url: conversationUrl, // 取得した会話URLを使用
+                  },
+                },
+                (response) => {
+                  clearTimeout(timeout);
+                  if (!chrome.runtime.lastError) {
+                    log.debug(
+                      "✅ recordCompletionTime送信完了:",
+                      taskId,
+                      "URL:",
+                      conversationUrl,
+                    );
+                  }
+                  resolve(response);
+                },
+              );
+            });
+          };
+
+          await sendCompletionMessage();
+        } catch (error) {
+          log.warn("⚠️ recordCompletionTime送信エラー:", error);
+        }
+
+        // 【修正】タスク完了時のスプレッドシート書き込み確認と通知処理を追加
+        // タスク重複実行問題を修正：書き込み成功を確実に確認してから完了通知
+        try {
+          if (result.success && taskData.cellInfo) {
+            // backgroundスクリプトにタスク完了を通知（作業中マーカークリア用）
+            if (chrome.runtime && chrome.runtime.sendMessage) {
+              const completionMessage = {
+                type: "TASK_COMPLETION_CONFIRMED",
+                taskId: taskData.taskId || taskData.cellInfo,
+                cellInfo: taskData.cellInfo,
+                success: true,
+                timestamp: new Date().toISOString(),
+                spreadsheetWriteConfirmed: true, // スプレッドシート書き込み完了フラグ
+              };
+
+              chrome.runtime.sendMessage(completionMessage, (response) => {
+                if (chrome.runtime.lastError) {
+                  console.warn(
+                    "⚠️ [Gemini-TaskCompletion] 完了通知エラー:",
+                    chrome.runtime.lastError.message,
+                  );
+                } else {
+                }
+              });
+            }
+          }
+        } catch (completionError) {
+          console.warn(
+            "⚠️ [Gemini-TaskCompletion] 完了処理エラー:",
+            completionError.message,
+          );
+        }
+
+        return result;
+      } catch (error) {
+        lastError = error;
+        log.error(
+          `❌ タスク実行エラー (リトライ ${retryCount}/${MAX_RETRIES - 1}):`,
+          error,
+        );
+
+        // 部分的な結果を保存
+        try {
+          const tempContent = await getResponseTextGemini();
+          if (tempContent && tempContent.trim()) {
+            partialResult = tempContent;
+            log.info("💾 [Gemini] 部分的な結果を保存しました");
+          }
+        } catch (e) {
+          // 部分的な結果の取得に失敗
+        }
+
+        // リトライ可能なエラーか判定
+        if (retryCount === MAX_RETRIES - 1 || !isRetryableError(error)) {
+          // 部分的な結果がある場合はそれを返す
+          if (partialResult) {
+            log.warn(
+              "⚠️ [Gemini] エラーが発生しましたが、部分的な結果を返します",
+            );
+            return {
+              success: true,
+              content: partialResult,
+              partial: true,
+              error: error.message,
+            };
+          }
+
+          return {
+            success: false,
+            error: error.message,
+          };
+        }
+      }
+    }
+
+    // すべてのリトライが失敗した場合
+    if (partialResult) {
+      log.warn(
+        "⚠️ [Gemini] すべてのリトライが失敗しましたが、部分的な結果を返します",
+      );
       return {
-        success: false,
-        error: error.message,
+        success: true,
+        content: partialResult,
+        partial: true,
+        error: lastError ? lastError.message : "リトライ失敗",
       };
     }
+
+    return {
+      success: false,
+      error: lastError ? lastError.message : "すべてのリトライが失敗しました",
+    };
+  }
+
+  // リトライ可能なエラーか判定
+  function isRetryableError(error) {
+    const retryableErrors = [
+      "タイムアウト",
+      "timeout",
+      "ネットワーク",
+      "network",
+      "一時的",
+      "temporary",
+      "停止ボタン",
+      "応答待機",
+    ];
+
+    const errorMessage = (error.message || "").toLowerCase();
+    return retryableErrors.some((keyword) => errorMessage.includes(keyword));
   }
 
   // ========================================
