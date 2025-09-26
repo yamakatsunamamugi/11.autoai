@@ -266,6 +266,33 @@ class SimpleSheetsClient {
   }
 
   /**
+   * バッチ更新（複数範囲の一括更新）
+   */
+  async batchUpdate(spreadsheetId, updateRequests) {
+    const token = await this.getAuthToken();
+    const url = `${this.baseUrl}/${spreadsheetId}/values:batchUpdate`;
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        valueInputOption: "USER_ENTERED",
+        data: updateRequests,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`バッチ更新失敗: HTTP ${response.status}, ${errorText}`);
+    }
+
+    return await response.json();
+  }
+
+  /**
    * GIDからシート名を取得
    */
   async getSheetNameFromGid(spreadsheetId, gid) {
@@ -1466,9 +1493,35 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
 
         // 1. スプレッドシート全体を取得
         const sheetData = await sheetsClient.getAllValues(spreadsheetId);
+        console.log("📊 [ログクリア] シートデータ取得:", {
+          rows: sheetData.length,
+          firstRow: sheetData[0],
+        });
 
         // 2. メニュー行から"ログ"列を検索
-        const menuRowData = sheetData[menuRow - 1] || [];
+        // menuRowが未定義の場合は、"ログ"というテキストを含む行を探す
+        let actualMenuRow = menuRow;
+        if (!actualMenuRow) {
+          console.log("⚠️ [ログクリア] menuRow未定義、自動検出を試行");
+          for (let i = 0; i < Math.min(20, sheetData.length); i++) {
+            if (sheetData[i] && sheetData[i].includes("ログ")) {
+              actualMenuRow = i + 1; // 1ベースの行番号
+              console.log(
+                `✅ [ログクリア] メニュー行を自動検出: 行${actualMenuRow}`,
+              );
+              break;
+            }
+          }
+        }
+
+        const menuRowData = actualMenuRow
+          ? sheetData[actualMenuRow - 1] || []
+          : [];
+        console.log("📋 [ログクリア] メニュー行データ:", {
+          menuRow: actualMenuRow,
+          menuRowData: menuRowData,
+        });
+
         const logColumns = [];
         menuRowData.forEach((cell, index) => {
           if (cell === "ログ") {
@@ -1591,9 +1644,35 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
 
         // 1. スプレッドシート全体を取得
         const sheetData = await sheetsClient.getAllValues(spreadsheetId);
+        console.log("📊 [回答削除] シートデータ取得:", {
+          rows: sheetData.length,
+          firstRow: sheetData[0],
+        });
 
         // 2. メニュー行から"回答"列を検索
-        const menuRowData = sheetData[menuRow - 1] || [];
+        // menuRowが未定義の場合は、"回答"というテキストを含む行を探す
+        let actualMenuRow = menuRow;
+        if (!actualMenuRow) {
+          console.log("⚠️ [回答削除] menuRow未定義、自動検出を試行");
+          for (let i = 0; i < Math.min(20, sheetData.length); i++) {
+            if (sheetData[i] && sheetData[i].includes("回答")) {
+              actualMenuRow = i + 1; // 1ベースの行番号
+              console.log(
+                `✅ [回答削除] メニュー行を自動検出: 行${actualMenuRow}`,
+              );
+              break;
+            }
+          }
+        }
+
+        const menuRowData = actualMenuRow
+          ? sheetData[actualMenuRow - 1] || []
+          : [];
+        console.log("📋 [回答削除] メニュー行データ:", {
+          menuRow: actualMenuRow,
+          menuRowData: menuRowData,
+        });
+
         const answerColumns = [];
         menuRowData.forEach((cell, index) => {
           if (cell === "回答") {
