@@ -19,6 +19,18 @@ class SimpleSheetsClient {
   }
 
   /**
+   * 列インデックスを列文字に変換（0 = A, 25 = Z, 26 = AA, など）
+   */
+  getColumnLetter(index) {
+    let letter = "";
+    while (index >= 0) {
+      letter = String.fromCharCode((index % 26) + 65) + letter;
+      index = Math.floor(index / 26) - 1;
+    }
+    return letter;
+  }
+
+  /**
    * 認証トークン取得
    */
   async getAuthToken() {
@@ -1581,7 +1593,7 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
 
         // 各ログ列に対してclear APIを実行
         for (const colIndex of logColumns) {
-          const columnLetter = String.fromCharCode(65 + colIndex); // A, B, C...
+          const columnLetter = sheetsClient.getColumnLetter(colIndex); // AA列以降も対応
           const range = `${columnLetter}${targetStartRow}:${columnLetter}1000`; // 明示的に範囲を指定
 
           console.log(`🖮️ [ログクリア] ${range} をクリア中...`);
@@ -1742,7 +1754,7 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
 
         // 各回答列に対してclear APIを実行
         for (const colIndex of answerColumns) {
-          const columnLetter = String.fromCharCode(65 + colIndex); // A, B, C...
+          const columnLetter = sheetsClient.getColumnLetter(colIndex); // AA列以降も対応
           const range = `${columnLetter}${targetStartRow}:${columnLetter}1000`; // 明示的に範囲を指定
 
           console.log(`🖮️ [回答削除] ${range} をクリア中...`);
