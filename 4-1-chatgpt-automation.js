@@ -1604,13 +1604,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
 
     // タスク開始を記録
     startTask(taskData) {
-        hasLogFileManager: !!this.logFileManager,
-        logFileManagerType: typeof this.logFileManager,
-        hasLogTaskStart: this.logFileManager
-          ? typeof this.logFileManager.logTaskStart
-          : "no-manager",
-        taskDataKeys: taskData ? Object.keys(taskData) : null,
-      });
+      // デバッグログ（削除し忘れを修正）
 
       try {
         if (
@@ -1621,9 +1615,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
         } else {
         }
       } catch (logError) {
-        console.error(
-          logError,
-        );
+        console.error(logError);
       }
 
       logWithTimestamp(`🚀 [タスク開始]`, "info");
@@ -1712,11 +1704,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
     maxRetries = 5,
     selectorKey = null,
   ) {
-      description: description,
-      selectorsCount: Array.isArray(selectors) ? selectors.length : 1,
-      maxRetries: maxRetries,
-      firstSelector: Array.isArray(selectors) ? selectors[0] : selectors,
-    });
+    // デバッグログ削除済み
 
     for (let retry = 0; retry < maxRetries; retry++) {
       for (const selector of selectors) {
@@ -1738,10 +1726,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
           }
 
           if (element && isElementInteractable(element)) {
-              selector: selector,
-              retry: retry + 1,
-              element: element.tagName,
-            });
+            // デバッグログ削除済み
             if (description && retry > 0) {
               logWithTimestamp(
                 `${description}を発見: ${selector} (${retry + 1}回目の試行)`,
@@ -1796,11 +1781,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
   // Step 4-1-0: ページ準備確認
   // ========================================
   async function waitForPageReady() {
-      readyState: document.readyState,
-      url: window.location.href,
-      hasBody: !!document.body,
-      bodyChildren: document.body?.children?.length,
-    });
+    // デバッグログ削除済み
 
     logWithTimestamp("\n【Step 4-1-0】ページ準備確認", "step");
     const maxAttempts = 30; // 最大30秒待機
@@ -1821,10 +1802,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
       );
 
       if (inputElement && isElementInteractable(inputElement)) {
-          inputFound: true,
-          interactable: true,
-          attempts: attempts,
-        });
+        // デバッグログ削除済み
         logWithTimestamp("✅ [Step 4-1-0] ページ準備完了", "success");
         return true;
       }
@@ -1832,10 +1810,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
       await sleep(1000);
     }
 
-      attempts: attempts,
-      lastInputElement: !!inputElement,
-      documentState: document.readyState,
-    });
+    // デバッグログ削除済み
     logWithTimestamp("❌ [Step 4-1-0] ページ準備タイムアウト", "error");
     throw new Error("ページが準備できませんでした");
   }
@@ -2388,55 +2363,20 @@ async function reportSelectorError(selectorKey, error, selectors) {
       console.log("🔍 [ChatGPT] タスク実行開始");
 
       // 🔍 包括的デバッグ: 実行コンテキスト検証
-        functionName: "executeTaskImpl",
-        thisContext: this,
-        windowExecuteTask: typeof window.executeTask,
-        callerInfo: new Error().stack?.split("\n")[2],
-        timestamp: Date.now(),
-        taskDataKeys: taskData ? Object.keys(taskData) : null,
-        taskDataType: typeof taskData,
-      });
-
-      // 🔍 グローバル変数状態検証
-        hasLogManager: !!ChatGPTLogManager,
-        logManagerType: typeof ChatGPTLogManager,
-        hasStartTask: ChatGPTLogManager
-          ? typeof ChatGPTLogManager.startTask
-          : "no-manager",
-        hasLogFileManager: ChatGPTLogManager
-          ? !!ChatGPTLogManager.logFileManager
-          : "no-manager",
-        windowLogFileManager: !!window.chatgptLogFileManager,
-        v2Flags: {
-          complete: window.__v2_execution_complete,
-          result: window.__v2_execution_result,
-        },
-      });
+      // デバッグログ削除済み
 
       // 実行前にフラグをリセット（どの経路から呼ばれても適切に初期化）
       window.__v2_execution_complete = false;
       window.__v2_execution_result = null;
 
       // 🔍 タスクデータ詳細検証
-        taskData: taskData,
-        hasPrompt: !!(taskData?.prompt || taskData?.text),
-        promptPreview:
-          taskData?.prompt?.substring(0, 50) ||
-          taskData?.text?.substring(0, 50),
-        model: taskData?.model,
-        function: taskData?.function,
-        taskId: taskData?.taskId || taskData?.id,
-        cellInfo: taskData?.cellInfo,
-      });
+      // デバッグログ削除済み
 
       // タスク開始をログに記録
       try {
         ChatGPTLogManager.startTask(taskData);
       } catch (startTaskError) {
-        console.error(
-          startTaskError,
-          startTaskError.stack,
-        );
+        console.error(startTaskError, startTaskError.stack);
         // エラーでも処理を継続
       }
 
@@ -2453,11 +2393,11 @@ async function reportSelectorError(selectorKey, error, selectors) {
       });
 
       try {
-
         // ========================================
         // Step 4-1-0: ページ準備確認
         // ========================================
-        console.log("📋 [ChatGPT] ページ準備状態確認中...");        await waitForPageReady();
+        console.log("📋 [ChatGPT] ページ準備状態確認中...");
+        await waitForPageReady();
         console.log("✅ [ChatGPT] ページ準備完了");
         // ========================================
         // ステップ1: ページ準備状態チェック（初回実行の問題を解決）
@@ -2573,8 +2513,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
             "モデル切り替えボタン",
           );
           if (modelButton) {
-              caller: new Error().stack?.split("\n").slice(1, 4),
-            });
+            // デバッグログ削除済み
             await openModelMenu(modelButton);
 
             const modelMenu = await findElement(
@@ -2657,7 +2596,8 @@ async function reportSelectorError(selectorKey, error, selectors) {
         // ========================================
         // ステップ2: テキスト入力（堅牢性強化版）
         // ========================================
-        console.log("📝 [ChatGPT] テキスト入力開始");        logWithTimestamp("\n【Step 4-1-2】テキスト入力", "step");
+        console.log("📝 [ChatGPT] テキスト入力開始");
+        logWithTimestamp("\n【Step 4-1-2】テキスト入力", "step");
 
         // デバッグ: 使用するセレクタ一覧を表示
         logWithTimestamp(
@@ -2757,7 +2697,8 @@ async function reportSelectorError(selectorKey, error, selectors) {
         // ステップ3: モデル選択（簡素化版）
         // ========================================
         if (modelName) {
-          console.log("🤖 [ChatGPT] モデル選択処理開始");          logWithTimestamp("\n【Step 4-1-3】モデル選択", "step");
+          console.log("🤖 [ChatGPT] モデル選択処理開始");
+          logWithTimestamp("\n【Step 4-1-3】モデル選択", "step");
           logWithTimestamp(`選択するモデル: ${modelName}`, "info");
 
           try {
@@ -2838,7 +2779,8 @@ async function reportSelectorError(selectorKey, error, selectors) {
           featureName !== "none" &&
           featureName !== "通常"
         ) {
-          console.log("🛠️ [ChatGPT] 機能選択処理開始");          logWithTimestamp("\n【Step 4-1-4】機能選択", "step");
+          console.log("🛠️ [ChatGPT] 機能選択処理開始");
+          logWithTimestamp("\n【Step 4-1-4】機能選択", "step");
           logWithTimestamp(`選択する機能: ${featureName}`, "info");
 
           try {
@@ -3001,7 +2943,8 @@ async function reportSelectorError(selectorKey, error, selectors) {
         // ========================================
         // ステップ5: メッセージ送信（最重要）
         // ========================================
-        console.log("📤 [ChatGPT] メッセージ送信準備");        logWithTimestamp("\n【Step 4-1-5】メッセージ送信", "step");
+        console.log("📤 [ChatGPT] メッセージ送信準備");
+        logWithTimestamp("\n【Step 4-1-5】メッセージ送信", "step");
         logWithTimestamp("🎯 送信ボタンを探しています...", "debug");
 
         try {
@@ -3082,7 +3025,8 @@ async function reportSelectorError(selectorKey, error, selectors) {
         // ========================================
         // ステップ6: 応答待機（エラーハンドリング強化版）
         // ========================================
-        console.log("⏳ [ChatGPT] 応答待機開始");        logWithTimestamp("\n【Step 4-1-6】応答待機", "step");
+        console.log("⏳ [ChatGPT] 応答待機開始");
+        logWithTimestamp("\n【Step 4-1-6】応答待機", "step");
 
         // 停止ボタンが表示されるまで待機
         let stopBtn = null;
@@ -3195,16 +3139,14 @@ async function reportSelectorError(selectorKey, error, selectors) {
                 assistantMessages[assistantMessages.length - 1];
               const messageText = lastMessage.textContent || "";
               if (messageText.length > 10) {
-                console.warn(
-                );
+                console.warn();
                 logWithTimestamp("アシスタントの応答を検出しました", "success");
                 break;
               }
             }
             await sleep(1000);
             if (i % 5 === 0 && i > 0) {
-              console.warn(
-              );
+              console.warn();
             }
           }
         }
@@ -3350,19 +3292,11 @@ async function reportSelectorError(selectorKey, error, selectors) {
         logWithTimestamp("✅ タスク完了", "success");
         return result;
       } catch (error) {
-          errorName: error?.name,
-          errorMessage: error?.message,
-          errorStack: error?.stack,
-        });
-        // エラーハンドリング
-        return handleTaskError(error, taskData);
+        // デバッグログ削除済み        return handleTaskError(error, taskData);
       }
     };
   } catch (defineError) {
-      errorName: defineError?.name,
-      errorMessage: defineError?.message,
-      errorStack: defineError?.stack,
-    });
+    // デバッグログ削除済み
     console.error("❌ [DEBUG] executeTask関数定義エラー:", defineError);
   }
 
@@ -3797,15 +3731,9 @@ async function reportSelectorError(selectorKey, error, selectors) {
 
             (async () => {
               try {
-                  executeTaskType: typeof executeTask,
-                  executeTaskName: executeTask?.name,
-                  taskToExecute: taskToExecute,
-                  requestId: requestId,
-                });
+                // デバッグログ削除済み
                 const result = await executeTask(taskToExecute);
-                  resultKeys: result ? Object.keys(result) : null,
-                  success: result?.success,
-                });
+                // デバッグログ削除済み
                 log.warn(
                   `✅ [ChatGPT-直接実行方式] executeTask完了 [ID:${requestId}]:`,
                   {
