@@ -276,24 +276,28 @@ function formatLogEntry(request) {
     hasTaskInfo: !!request.taskInfo,
     taskInfoType: typeof request.taskInfo,
     aiType: aiType,
+    requestStringified: JSON.stringify(request, null, 2),
   });
 
   // AIタイプをヘッダーとして
   parts.push(`---------- ${aiType} ----------`);
 
   // モデル情報
-  const model =
+  const selectedModel =
     request.taskInfo?.model && request.taskInfo?.model !== "不明"
       ? request.taskInfo.model
       : "不明";
-  parts.push(`モデル: 選択: ${model} / 表示: ${model}`);
+  const displayedModel = request.taskInfo?.displayedModel || selectedModel;
+  parts.push(`モデル: 選択: ${selectedModel} / 表示: ${displayedModel}`);
 
   // 機能情報
-  const func =
+  const selectedFunction =
     request.taskInfo?.function && request.taskInfo?.function !== "通常"
       ? request.taskInfo.function
       : "通常";
-  parts.push(`機能: 選択: ${func} / 表示: ${func}`);
+  const displayedFunction =
+    request.taskInfo?.displayedFunction || selectedFunction;
+  parts.push(`機能: 選択: ${selectedFunction} / 表示: ${displayedFunction}`);
 
   // URL
   console.log("🔍 [DEBUG-URL] formatLogEntry内のURL処理:", {
@@ -318,36 +322,6 @@ function formatLogEntry(request) {
     urlViaDestruct: request.taskInfo && request.taskInfo.url,
     timestamp: new Date().toISOString(),
   });
-
-  // URLが存在し、空文字列でない場合に追加（プレーンテキストとして）
-  const urlValue = request.taskInfo?.url;
-  if (urlValue && typeof urlValue === "string" && urlValue.trim() !== "") {
-    // プレーンテキストとしてURLを追加（リッチテキストAPIで後からリンク化）
-    parts.push(`URL: ${urlValue}`);
-    console.log("✅ [DEBUG-URL] URLをログに追加:", urlValue);
-  } else {
-    // URLが無い場合の詳細ログ
-    console.warn("⚠️ [DEBUG-URL] URLが存在しないか空のため追加されません:", {
-      urlExists: !!urlValue,
-      urlType: typeof urlValue,
-      urlValue: urlValue,
-      taskInfoExists: !!request.taskInfo,
-      requestKeys: Object.keys(request),
-    });
-
-    // フォールバック: 他の場所からURLを探索
-    const fallbackUrl =
-      request.url || request.taskInfo?.cellInfo?.url || request.data?.url;
-    if (
-      fallbackUrl &&
-      typeof fallbackUrl === "string" &&
-      fallbackUrl.trim() !== ""
-    ) {
-      // フォールバックURLもプレーンテキストとして追加
-      parts.push(`URL: ${fallbackUrl}`);
-      console.log("🔄 [DEBUG-URL] フォールバックURLをログに追加:", fallbackUrl);
-    }
-  }
 
   // 送信時刻
   if (request.sendTime) {
@@ -377,6 +351,36 @@ function formatLogEntry(request) {
     parts.push(
       `記載時刻: ${recordTime.toLocaleString("ja-JP")} (${timeDiff}秒後)`,
     );
+  }
+
+  // URLが存在し、空文字列でない場合に追加（プレーンテキストとして）
+  const urlValue = request.taskInfo?.url;
+  if (urlValue && typeof urlValue === "string" && urlValue.trim() !== "") {
+    // プレーンテキストとしてURLを追加（リッチテキストAPIで後からリンク化）
+    parts.push(`URL: ${urlValue}`);
+    console.log("✅ [DEBUG-URL] URLをログに追加:", urlValue);
+  } else {
+    // URLが無い場合の詳細ログ
+    console.warn("⚠️ [DEBUG-URL] URLが存在しないか空のため追加されません:", {
+      urlExists: !!urlValue,
+      urlType: typeof urlValue,
+      urlValue: urlValue,
+      taskInfoExists: !!request.taskInfo,
+      requestKeys: Object.keys(request),
+    });
+
+    // フォールバック: 他の場所からURLを探索
+    const fallbackUrl =
+      request.url || request.taskInfo?.cellInfo?.url || request.data?.url;
+    if (
+      fallbackUrl &&
+      typeof fallbackUrl === "string" &&
+      fallbackUrl.trim() !== ""
+    ) {
+      // フォールバックURLもプレーンテキストとして追加
+      parts.push(`URL: ${fallbackUrl}`);
+      console.log("🔄 [DEBUG-URL] フォールバックURLをログに追加:", fallbackUrl);
+    }
   }
 
   return parts.join("\n");

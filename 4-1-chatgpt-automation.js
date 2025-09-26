@@ -1293,6 +1293,47 @@ async function reportSelectorError(selectorKey, error, selectors) {
     }
   }
 
+  // Canvasモード専用のテキスト取得
+  function getCanvasText(canvasElement) {
+    if (!canvasElement) return "";
+
+    try {
+      // ProseMirrorエディタからテキストを抽出
+      const clone = canvasElement.cloneNode(true);
+
+      // 不要な要素を削除
+      const unwantedElements = clone.querySelectorAll(
+        "svg, .icon, .ripple, hr, [contenteditable='false']:not(.ProseMirror)",
+      );
+      unwantedElements.forEach((el) => el.remove());
+
+      // テキストを段落ごとに整理
+      const paragraphs = [];
+
+      // 見出し、段落、リストアイテムなどを順番に処理
+      const elements = clone.querySelectorAll(
+        "h1, h2, h3, h4, h5, h6, p, li, blockquote",
+      );
+      elements.forEach((el) => {
+        const text = el.textContent?.trim();
+        if (text && text.length > 0) {
+          paragraphs.push(text);
+        }
+      });
+
+      // 要素がない場合は全体のテキストを返す
+      if (paragraphs.length === 0) {
+        return clone.textContent?.trim() || "";
+      }
+
+      return paragraphs.join("\n\n");
+    } catch (error) {
+      console.warn("[ChatGPT] getCanvasText処理中にエラーが発生:", error);
+      // フォールバック
+      return canvasElement.textContent?.trim() || "";
+    }
+  }
+
   // ========================================
   // ログ管理システムの初期化（内部実装 - 実際に動作）
   // ========================================
@@ -2105,11 +2146,32 @@ async function reportSelectorError(selectorKey, error, selectors) {
 
   /**
    * 📥 ChatGPTレスポンステキスト取得処理
-   * @description ChatGPTの最新のアシスタント回答を取得
+   * @description ChatGPTの最新のアシスタント回答を取得（Canvasモード対応）
    * @returns {Promise<string>} レスポンステキスト
    * @throws {Error} アシスタントの回答が見つからない場合
    */
   window.getResponseTextChatGPT = async function getResponseTextChatGPT() {
+    // Canvasモードの複数セレクターをチェック
+    const canvasSelectors = [
+      "#prosemirror-editor-container .ProseMirror",
+      '.ProseMirror[contenteditable="false"]',
+      '[data-testid="canvas-content"]',
+      ".canvas-content .ProseMirror",
+      'div[class*="_main_"][class*="ProseMirror"]',
+    ];
+
+    for (const selector of canvasSelectors) {
+      const canvasElement = document.querySelector(selector);
+      if (canvasElement) {
+        console.log(`[ChatGPT] Canvasモードを検出 (${selector})`);
+        const canvasText = getCanvasText(canvasElement);
+        if (canvasText && canvasText.trim().length > 0) {
+          return canvasText;
+        }
+      }
+    }
+
+    // 通常モードの処理
     const responseElements = document.querySelectorAll(
       '[data-message-author-role="assistant"]',
     );
@@ -3061,16 +3123,18 @@ async function reportSelectorError(selectorKey, error, selectors) {
               try {
                 chrome.runtime.sendMessage(messageToSend, (response) => {
                   if (chrome.runtime.lastError) {
-                    console.warn(
-                      "⚠️ [ChatGPT] 送信時刻記録エラー:",
+                    // エラーはデバッグログにのみ記録（通常は表示されない）
+                    log.debug(
+                      "[ChatGPT] 送信時刻記録エラー（無視可）:",
                       chrome.runtime.lastError.message,
                     );
                   } else {
-                    console.log("✅ [ChatGPT] 送信時刻記録成功", response);
+                    log.debug("✅ [ChatGPT] 送信時刻記録成功", response);
                   }
                 });
               } catch (error) {
-                console.error("❌ [ChatGPT] 送信時刻記録失敗:", error);
+                // エラーはデバッグログにのみ記録
+                log.debug("[ChatGPT] 送信時刻記録失敗（無視可）:", error);
               }
             }
 
@@ -3184,9 +3248,10 @@ async function reportSelectorError(selectorKey, error, selectors) {
               url: window.location.href,
             },
           });
-          log.debug("✅ recordCompletionTime送信完了:", taskIdForRecord);
+          log.debug("recordCompletionTime送信完了:", taskIdForRecord);
         } catch (error) {
-          log.warn("⚠️ recordCompletionTime送信エラー:", error);
+          // エラーはデバッグログにのみ記録
+          log.debug("recordCompletionTime送信エラー（無視可）:", error);
         }
 
         // 【修正】タスク完了時のスプレッドシート書き込み確認と通知処理を追加
@@ -3619,8 +3684,8 @@ async function reportSelectorError(selectorKey, error, selectors) {
           request.type === "CHATGPT_EXECUTE_TASK" ||
           request.type === "EXECUTE_TASK"
         ) {
-          log.warn(
-            `🔧 [ChatGPT-直接実行方式] executeTask実行開始 [ID:${requestId}]`,
+          log.debug(
+            `[ChatGPT-直接実行方式] executeTask実行開始 [ID:${requestId}]`,
             JSON.stringify(
               {
                 requestId: requestId,

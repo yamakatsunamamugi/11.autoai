@@ -74,9 +74,6 @@
 
       // console.errorをオーバーライド
       console.error = function (...args) {
-        // 元のconsole.errorを実行
-        self.originalConsoleError.apply(console, args);
-
         try {
           // エラーメッセージを構築
           const errorMessage = args
@@ -84,6 +81,18 @@
               typeof arg === "object" ? JSON.stringify(arg) : String(arg),
             )
             .join(" ");
+
+          // ResizeObserverエラーを無視
+          if (
+            errorMessage.includes("ResizeObserver loop completed") ||
+            errorMessage.includes("ResizeObserver loop limit exceeded")
+          ) {
+            // ResizeObserverエラーは無視（ログも出力しない）
+            return;
+          }
+
+          // 元のconsole.errorを実行
+          self.originalConsoleError.apply(console, args);
 
           // エラーパターンをチェック
           const matchedPattern = self.errorPatterns.find((pattern) =>
