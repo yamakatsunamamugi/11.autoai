@@ -1611,13 +1611,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
         console.log("✅ [ログクリア] 完了");
 
-        const result = {
+        const response = {
           success: true,
           clearedColumns: logColumns.length,
           message: `${logColumns.length}列のログをクリアしました`,
         };
-        console.log("📤 [ログクリア] レスポンス送信:", result);
-        sendResponse(result);
+        console.log("📤 [ログクリア] レスポンス送信:", response);
+        sendResponse(response);
       } catch (error) {
         console.error("❌ [ログクリア] エラー:", error);
         const errorResult = {
@@ -1762,13 +1762,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
         console.log("✅ [回答削除] 完了");
 
-        const result = {
+        const response = {
           success: true,
           clearedColumns: answerColumns.length,
           message: `${answerColumns.length}列の回答を削除しました`,
         };
-        console.log("📤 [回答削除] レスポンス送信:", result);
-        sendResponse(result);
+        console.log("📤 [回答削除] レスポンス送信:", response);
+        sendResponse(response);
       } catch (error) {
         console.error("❌ [回答削除] エラー:", error);
         const errorResult = {
