@@ -1083,7 +1083,7 @@ class AITestController {
 // ========================================
 
 // Extension間メッセージの中継
-chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // log.debug("📨 Message received in background:", {
   //   type: request.type,
   //   from: sender.tab ? `Tab ${sender.tab.id}` : "Extension",
