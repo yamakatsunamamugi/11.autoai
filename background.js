@@ -244,6 +244,28 @@ class SimpleSheetsClient {
   }
 
   /**
+   * スプレッドシートから全データを取得
+   */
+  async getAllValues(spreadsheetId) {
+    const token = await this.getAuthToken();
+    const url = `${this.baseUrl}/${spreadsheetId}/values/A1:Z1000`;
+
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`データ取得失敗: HTTP ${response.status}, ${errorText}`);
+    }
+
+    const data = await response.json();
+    return data.values || [];
+  }
+
+  /**
    * GIDからシート名を取得
    */
   async getSheetNameFromGid(spreadsheetId, gid) {
