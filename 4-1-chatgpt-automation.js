@@ -2869,11 +2869,143 @@ async function reportSelectorError(selectorKey, error, selectors) {
             );
 
             if (funcMenuBtn) {
-              // 機能メニューを開く処理（簡略化）
-              logWithTimestamp(
-                "機能選択処理をスキップ（簡略化のため）",
-                "info",
+              // 機能メニューを開く（React対応）
+              logWithTimestamp("機能メニューボタンをクリック", "info");
+              funcMenuBtn.dispatchEvent(
+                new PointerEvent("pointerdown", { bubbles: true }),
               );
+              await sleep(100);
+              funcMenuBtn.dispatchEvent(
+                new PointerEvent("pointerup", { bubbles: true }),
+              );
+              await sleep(1500);
+
+              // 機能メニューが開いたか確認
+              const menuEl = await findElement(
+                SELECTORS.mainMenu,
+                "機能メニュー",
+                3,
+              );
+
+              if (menuEl) {
+                logWithTimestamp("✅ 機能メニューが開きました", "success");
+
+                // 指定された機能を探してクリック
+                const allMenuItems = menuEl.querySelectorAll(
+                  '[role="menuitemradio"]',
+                );
+                let targetItem = null;
+
+                // 機能名のマッピング（canvas等）
+                const featureNameMap = {
+                  canvas: "Canvas",
+                  Canvas: "Canvas",
+                  python: "Python",
+                  Python: "Python",
+                  webSearch: "Search the web",
+                  search: "Search the web",
+                  image: "Image",
+                  "dall-e": "DALL·E",
+                  dalle: "DALL·E",
+                };
+
+                const normalizedFeatureName =
+                  featureNameMap[featureName] || featureName;
+
+                for (const item of allMenuItems) {
+                  const text = getCleanText(item);
+                  if (
+                    text === normalizedFeatureName ||
+                    text
+                      .toLowerCase()
+                      .includes(normalizedFeatureName.toLowerCase())
+                  ) {
+                    targetItem = item;
+                    break;
+                  }
+                }
+
+                // メインメニューで見つからない場合、「さらに表示」を探す
+                if (!targetItem) {
+                  logWithTimestamp(
+                    "メインメニューで見つからないため、「さらに表示」を探します",
+                    "info",
+                  );
+
+                  const moreButton = Array.from(
+                    menuEl.querySelectorAll('[role="menuitem"]'),
+                  ).find((el) => {
+                    const text = getCleanText(el);
+                    return text && text.includes("さらに表示");
+                  });
+
+                  if (moreButton) {
+                    logWithTimestamp("「さらに表示」ボタンをクリック", "info");
+                    moreButton.click();
+                    await sleep(1000);
+
+                    // サブメニューから機能を探す
+                    const subMenu =
+                      document.querySelector('[data-side="right"]') ||
+                      document.querySelector(
+                        '[role="menu"][data-side="right"]',
+                      );
+
+                    if (subMenu) {
+                      const subMenuItems = subMenu.querySelectorAll(
+                        '[role="menuitemradio"]',
+                      );
+                      for (const item of subMenuItems) {
+                        const text = getCleanText(item);
+                        if (
+                          text === normalizedFeatureName ||
+                          text
+                            .toLowerCase()
+                            .includes(normalizedFeatureName.toLowerCase())
+                        ) {
+                          targetItem = item;
+                          logWithTimestamp(
+                            `サブメニューで機能を発見: ${text}`,
+                            "info",
+                          );
+                          break;
+                        }
+                      }
+                    }
+                  }
+                }
+
+                if (targetItem) {
+                  logWithTimestamp(
+                    `機能「${normalizedFeatureName}」を選択中...`,
+                    "info",
+                  );
+                  targetItem.click();
+                  await sleep(2000);
+                  logWithTimestamp(
+                    `✅ 機能選択完了: ${normalizedFeatureName}`,
+                    "success",
+                  );
+                } else {
+                  logWithTimestamp(
+                    `⚠️ 指定された機能が見つかりません: ${featureName}`,
+                    "warning",
+                  );
+                  // メニューを閉じる
+                  document.dispatchEvent(
+                    new KeyboardEvent("keydown", {
+                      key: "Escape",
+                      code: "Escape",
+                    }),
+                  );
+                  await sleep(500);
+                }
+              } else {
+                logWithTimestamp(
+                  "⚠️ 機能メニューが開きませんでした",
+                  "warning",
+                );
+              }
             }
           } catch (error) {
             logWithTimestamp(
@@ -3039,9 +3171,11 @@ async function reportSelectorError(selectorKey, error, selectors) {
 
         // ✅ タスク完了時刻をスプレッドシートに記録（Claude automationと同じロジック）
         try {
+          const taskIdForRecord =
+            taskData.taskId || taskData.id || taskData.cellInfo || "UNKNOWN";
           chrome.runtime.sendMessage({
             type: "recordCompletionTime",
-            taskId: taskId,
+            taskId: taskIdForRecord,
             completionTime: new Date().toISOString(),
             taskInfo: {
               aiType: "ChatGPT",
@@ -3050,7 +3184,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
               url: window.location.href,
             },
           });
-          log.debug("✅ recordCompletionTime送信完了:", taskId);
+          log.debug("✅ recordCompletionTime送信完了:", taskIdForRecord);
         } catch (error) {
           log.warn("⚠️ recordCompletionTime送信エラー:", error);
         }

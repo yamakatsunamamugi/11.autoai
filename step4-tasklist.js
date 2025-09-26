@@ -1661,6 +1661,7 @@ async function executeSimpleTask(task) {
         taskId: task.id,
         tabId: tabId,
         model: task.model || "Claude Opus 4.1",
+        function: task.function || "",
       },
       from: "step4-tasklist-simple",
     });
