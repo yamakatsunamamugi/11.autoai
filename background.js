@@ -260,7 +260,7 @@ class SimpleSheetsClient {
    */
   async getAllValues(spreadsheetId) {
     const token = await this.getAuthToken();
-    const url = `${this.baseUrl}/${spreadsheetId}/values/A1:Z1000`;
+    const url = `${this.baseUrl}/${spreadsheetId}/values/A1:CZ1000`; // AA列以降も含むように範囲拡張
 
     const response = await fetch(url, {
       headers: {
