@@ -191,7 +191,12 @@ const log = {
       'button[aria-label*="Send"]:not([disabled])',
       ".send-button:not([disabled])",
     ],
-    stopButton: "button.send-button.stop",
+    stopButton: [
+      "button.send-button.stop",
+      'button[aria-label="停止"]',
+      'button[aria-label*="Stop"]',
+      ".send-button.stop",
+    ],
 
     // Deep Research
     deepResearchButton: 'button[data-test-id="confirm-button"]',
@@ -540,30 +545,88 @@ const log = {
   // ========================================
   async function waitForResponseGemini() {
     const maxWaitTime = AI_WAIT_CONFIG.NORMAL_WAIT; // 設定から取得
-    const checkInterval = 1000;
-    let elapsedTime = 0;
 
     log.debug("応答待機を開始します...");
 
-    while (elapsedTime < maxWaitTime) {
-      await wait(checkInterval);
-      elapsedTime += checkInterval;
+    // Canvasモードの判定
+    const canvasEditor = document.querySelector(SELECTORS.canvas);
+    const isCanvasMode = canvasEditor && canvasEditor.isContentEditable;
 
-      const stopButton = document.querySelector(SELECTORS.stopButton);
+    if (isCanvasMode) {
+      // Canvasモード: テキスト生成の監視
+      log.debug("Canvasモード: 初期待機30秒...");
+      await wait(30000); // 初期待機30秒
 
-      if (!stopButton) {
-        log.debug("応答が完了しました（停止ボタンが消えました）");
-        return true;
+      log.debug("Canvasモード: テキスト生成の監視を開始します");
+
+      let lastLength = -1;
+      let lastChangeTime = Date.now();
+      let elapsedTime = 30000; // 初期待機時間を含む
+
+      return new Promise((resolve, reject) => {
+        const monitor = setInterval(() => {
+          elapsedTime += 2000;
+
+          // タイムアウトチェック
+          if (elapsedTime >= maxWaitTime) {
+            clearInterval(monitor);
+            reject(
+              new Error(
+                `Geminiの応答がタイムアウトしました（${maxWaitTime / 60000}分）`,
+              ),
+            );
+            return;
+          }
+
+          const currentEditor = document.querySelector(SELECTORS.canvas);
+          if (!currentEditor) {
+            clearInterval(monitor);
+            resolve("Canvasエディタが見つかりません");
+            return;
+          }
+
+          const currentLength = currentEditor.textContent.length;
+          log.debug(`[Canvas監視] 現在の文字数: ${currentLength}`);
+
+          if (currentLength > lastLength) {
+            lastLength = currentLength;
+            lastChangeTime = Date.now();
+          }
+
+          // 10秒間変化がなければ完了とみなす
+          if (Date.now() - lastChangeTime > 10000) {
+            clearInterval(monitor);
+            log.debug("10秒間テキストの更新がなかったため、応答完了と判断");
+            resolve(true);
+          }
+        }, 2000); // 2秒ごとに監視
+      });
+    } else {
+      // 通常モード: 停止ボタンが消えるまで待機
+      log.debug("通常モード: 停止ボタン監視");
+      let elapsedTime = 0;
+      const checkInterval = 1000;
+
+      while (elapsedTime < maxWaitTime) {
+        await wait(checkInterval);
+        elapsedTime += checkInterval;
+
+        const stopButton = findElement(SELECTORS.stopButton);
+
+        if (!stopButton) {
+          log.debug("応答が完了しました（停止ボタンが消えました）");
+          return true;
+        }
+
+        if (elapsedTime % 10000 === 0) {
+          log.debug(`応答待機中... (${elapsedTime / 1000}秒経過)`);
+        }
       }
 
-      if (elapsedTime % 10000 === 0) {
-        log.debug(`応答待機中... (${elapsedTime / 1000}秒経過)`);
-      }
+      throw new Error(
+        `Geminiの応答がタイムアウトしました（${maxWaitTime / 60000}分）`,
+      );
     }
-
-    throw new Error(
-      `Geminiの応答がタイムアウトしました（${maxWaitTime / 60000}分）`,
-    );
   }
 
   // ========================================
