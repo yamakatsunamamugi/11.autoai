@@ -791,9 +791,11 @@ if (clearLogBtn) {
         type: "CLEAR_SPREADSHEET_LOG",
       });
 
+      console.log("📝 [ログクリア] レスポンス受信:", response);
+
       if (response && response.success) {
         log.info("✅ [ログクリア] 処理完了");
-        showFeedback("ログをクリアしました", "success");
+        showFeedback(`${response.message}`, "success");
       } else {
         throw new Error(response?.error || "ログクリアに失敗しました");
       }
@@ -829,9 +831,11 @@ if (deleteAnswersBtn) {
         type: "DELETE_SPREADSHEET_ANSWERS",
       });
 
+      console.log("📝 [回答削除] レスポンス受信:", response);
+
       if (response && response.success) {
         log.info("✅ [回答削除] 処理完了");
-        showFeedback("回答を削除しました", "success");
+        showFeedback(`${response.message}`, "success");
       } else {
         throw new Error(response?.error || "回答削除に失敗しました");
       }
