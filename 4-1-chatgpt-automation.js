@@ -285,8 +285,9 @@ async function reportSelectorError(selectorKey, error, selectors) {
   // Step 4-1-0-3: 統一ChatGPTRetryManager クラス定義
   // エラー分類とリトライ戦略を統合した統一システム
   // ========================================
+  // ChatGPTRetryManager class removed - unused
 
-  class ChatGPTRetryManager {
+  /*
     constructor() {
       // 3段階エスカレーション設定
       this.escalationLevels = {
@@ -865,6 +866,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
       }
     }
   }
+  */
 
   // 統一された待機時間設定（デフォルト値）
   let AI_WAIT_CONFIG = {
@@ -1056,25 +1058,25 @@ async function reportSelectorError(selectorKey, error, selectors) {
     ],
     // 停止ボタン（実際のHTMLから確認済み）
     stopButton: [
-      // 最優先: 実際のHTMLから確認したセレクター
-      '#composer-submit-button[aria-label="ストリーミングの停止"]',
-      '[data-testid="stop-button"]',
-      '#composer-submit-button[data-testid="stop-button"]',
-      "button.composer-submit-btn.composer-secondary-button-color",
+      // 最優先: 実際のHTMLから確認したセレクター（送信中のみ存在）
+      '#composer-submit-button[aria-label="ストリーミングの停止"]:not([disabled])',
+      '[data-testid="stop-button"]:not([disabled])',
+      '#composer-submit-button[data-testid="stop-button"]:not([disabled])',
+
+      // 停止ボタン特有の色クラスを持つボタン（送信ボタンは異なる色クラス）
+      'button.composer-secondary-button-color[aria-label*="停止"]:not([disabled])',
+      'button.composer-secondary-button-color[aria-label*="ストリーミング"]:not([disabled])',
 
       // セカンダリ: 部分一致や代替セレクター
-      '#composer-submit-button[aria-label*="停止"]',
-      'button[aria-label="ストリーミングの停止"]',
-      "button.composer-secondary-button-color",
+      '#composer-submit-button[aria-label*="停止"]:not([disabled])',
+      'button[aria-label="ストリーミングの停止"]:not([disabled])',
 
-      // 追加: SVG内のpath要素で特定
-      'button:has(svg path[d^="M4.5 5.75"])',
-      'button:has(svg path[d*="M4.5 5.75C4.5"])',
+      // SVGアイコンで特定（停止ボタンは四角形アイコン）
+      "button:has(svg rect):not([disabled])",
 
-      // フォールバック
-      'button[aria-label*="Stop"]',
-      'button[aria-label*="stop"]',
-      "#composer-submit-button",
+      // フォールバック（英語版）
+      'button[aria-label*="Stop"]:not([disabled])',
+      'button[aria-label*="stop"]:not([disabled])',
     ],
     // 結果取得関連（テストコードから更新）
     canvasText: [
@@ -1111,66 +1113,6 @@ async function reportSelectorError(selectorKey, error, selectors) {
   window.sleep = sleep;
 
   // 通常モードの待機処理
-  async function standardWaitForResponse() {
-    logWithTimestamp(
-      "【Step 4-1-6-1】停止ボタンの表示を待機（最大30秒）",
-      "info",
-    );
-
-    // 停止ボタンが表示されるまで待機（テストコード準拠）
-    let stopBtn = null;
-    for (let i = 0; i < 30; i++) {
-      stopBtn = await findElement(SELECTORS.stopButton, "停止ボタン", 1);
-      if (stopBtn) {
-        logWithTimestamp("✅ 停止ボタンが表示されました", "success");
-        break;
-      }
-      await sleep(1000);
-    }
-
-    // 停止ボタンが消えるまで待機（共通エラーハンドラー統合版）
-    if (stopBtn) {
-      const maxWaitSeconds = AI_WAIT_CONFIG.MAX_WAIT / 1000;
-      logWithTimestamp(
-        `停止ボタンが消えるまで待機（最大${maxWaitSeconds / 60}分）`,
-        "info",
-      );
-
-      for (let i = 0; i < maxWaitSeconds; i++) {
-        // 共通エラーハンドラーでエラー状態をチェック
-        if (
-          window.chatgptErrorHandler &&
-          window.chatgptErrorHandler.shouldStopOnError()
-        ) {
-          logWithTimestamp("❌ エラー検出により監視を中断", "error");
-          break;
-        }
-
-        stopBtn = await findElement(SELECTORS.stopButton, "停止ボタン", 1);
-
-        // 共通エラーハンドラーで停止ボタン状態を更新
-        if (window.chatgptErrorHandler) {
-          const shouldStop =
-            window.chatgptErrorHandler.updateButtonStatus(!stopBtn);
-          if (shouldStop) {
-            logWithTimestamp("✅ 応答完了", "success");
-            break;
-          }
-        } else {
-          // フォールバック: 従来の処理
-          if (!stopBtn) {
-            logWithTimestamp("✅ 応答完了", "success");
-            break;
-          }
-        }
-
-        if (i % 10 === 0) {
-          logWithTimestamp(`応答待機中... (${i}秒経過)`, "info");
-        }
-        await sleep(1000);
-      }
-    }
-  } // standardWaitForResponse関数をここで閉じる
 
   // ========================================
   // プロンプト除外機能（ChatGPT用）
@@ -1476,43 +1418,6 @@ async function reportSelectorError(selectorKey, error, selectors) {
   }
 
   // Canvas要素からテキストを抽出する専用関数
-  function extractElementText(element) {
-    if (!element) return "";
-
-    try {
-      // 1. 要素に子要素がない場合は直接textContent
-      if (!element.children || element.children.length === 0) {
-        return element.textContent?.trim() || "";
-      }
-
-      // 2. span要素を含む複雑な構造の場合
-      let textParts = [];
-
-      for (const node of element.childNodes) {
-        if (node.nodeType === Node.TEXT_NODE) {
-          const text = node.textContent?.trim();
-          if (text) textParts.push(text);
-        } else if (node.nodeType === Node.ELEMENT_NODE) {
-          const tagName = node.tagName.toLowerCase();
-          // span, strong, em, bなどのインライン要素のテキストを取得
-          if (
-            ["span", "strong", "em", "b", "i", "code", "a"].includes(tagName)
-          ) {
-            const text = node.textContent?.trim();
-            if (text) textParts.push(text);
-          } else if (["br"].includes(tagName)) {
-            // 改行要素は空白として扱う
-            textParts.push(" ");
-          }
-        }
-      }
-
-      return textParts.join("").trim();
-    } catch (error) {
-      console.warn("[ChatGPT] extractElementText エラー:", error);
-      return element.textContent?.trim() || "";
-    }
-  }
 
   // ========================================
   // ログ管理システムの初期化（内部実装 - 実際に動作）
@@ -1894,17 +1799,6 @@ async function reportSelectorError(selectorKey, error, selectors) {
     return null;
   }
 
-  // テキストで要素を検索
-  function findElementByText(selector, text, parent = document) {
-    const elements = parent.querySelectorAll(selector);
-    for (const el of elements) {
-      if (el.textContent && el.textContent.includes(text)) {
-        return el;
-      }
-    }
-    return null;
-  }
-
   // ========================================
   // Step 4-1-0: ページ準備確認
   // ========================================
@@ -1997,43 +1891,6 @@ async function reportSelectorError(selectorKey, error, selectors) {
     return null;
   }
 
-  // ========================================
-  // Deep Research/エージェントモード統合処理
-  // ========================================
-  async function handleSpecialModeWaiting(featureName) {
-    try {
-      logWithTimestamp(`【${featureName}モード特別処理】開始`, "step");
-      const maxWaitTime = featureName.includes("エージェント")
-        ? AI_WAIT_CONFIG.AGENT_MODE_WAIT
-        : AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT;
-      logWithTimestamp(
-        `【Step 4-1-6-1】最大回答待機時間: ${maxWaitTime / 60000}分`,
-        "info",
-      );
-
-      // ステップ6-1: 停止ボタン出現待機
-      let stopBtn = await waitForStopButton();
-      if (!stopBtn) return false;
-
-      // ステップ6-2: 2分間初期待機
-      const disappeared = await initialWaitCheck();
-
-      // ステップ6-3: 2分以内に完了した場合の再送信
-      if (disappeared) {
-        await retryWithPrompt();
-      }
-
-      // ステップ6-4: 最終待機
-      await finalWaitForCompletion(maxWaitTime);
-
-      logWithTimestamp(`${featureName}モード特別処理完了`, "success");
-      return true;
-    } catch (error) {
-      logWithTimestamp(`特別処理エラー: ${error.message}`, "error");
-      return false;
-    }
-  }
-
   // 6-1: 停止ボタン出現待機
   async function waitForStopButton() {
     logWithTimestamp("【Step 4-1-6-1】停止ボタン出現待機", "step");
@@ -2116,44 +1973,6 @@ async function reportSelectorError(selectorKey, error, selectors) {
       sendBtn.click();
       logWithTimestamp("【Step 4-1-6-2】再送信完了", "success");
       await sleep(AI_WAIT_CONFIG.LONG_WAIT);
-    }
-  }
-
-  // 6-4: 最終待機処理
-  async function finalWaitForCompletion(maxWaitTimeMs) {
-    const maxWaitMinutes =
-      (maxWaitTimeMs || AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT) / 60000;
-    logWithTimestamp(
-      `【Step 4-1-6-4】最終待機（最大${maxWaitMinutes}分）`,
-      "step",
-    );
-    const maxWaitTime =
-      (maxWaitTimeMs || AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT) / 1000;
-    let consecutiveAbsent = 0;
-
-    for (let i = 0; i < maxWaitTime; i++) {
-      const stopBtn = await findElement(SELECTORS.stopButton, 1);
-
-      if (!stopBtn) {
-        consecutiveAbsent++;
-        if (consecutiveAbsent >= 10) {
-          logWithTimestamp(
-            "【Step 4-1-6-3】停止ボタンが10秒間連続で消滅。完了！",
-            "success",
-          );
-          break;
-        }
-      } else {
-        consecutiveAbsent = 0;
-      }
-
-      if (i % 60 === 0 && i > 0) {
-        logWithTimestamp(
-          `待機中... (${Math.floor(i / 60)}分経過 / 最大${maxWaitMinutes}分)`,
-          "info",
-        );
-      }
-      await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
     }
   }
 
@@ -2540,226 +2359,6 @@ async function reportSelectorError(selectorKey, error, selectors) {
   // ========================================
   // ヘルパー関数群（リファクタリング）
   // ========================================
-
-  // タスク初期化とページ準備
-  async function initializeTask(taskData) {
-    // 実行前にフラグをリセット
-    window.__v2_execution_complete = false;
-    window.__v2_execution_result = null;
-
-    // タスク開始をログに記録
-    ChatGPTLogManager.startTask(taskData);
-
-    log.debug(
-      "%c🚀 ChatGPT V2 タスク実行開始",
-      "color: #00BCD4; font-weight: bold; font-size: 16px",
-    );
-
-    // ページ準備確認
-    await waitForPageReady();
-
-    // ページ初期化チェック
-    logWithTimestamp("\n【Step 4-1-1】ページ初期化チェック", "step");
-
-    // ChatGPT UIの基本要素が存在するか確認
-    const criticalElements = {
-      テキスト入力欄: SELECTORS.textInput,
-      モデルボタン: SELECTORS.modelButton,
-    };
-
-    let allElementsReady = false;
-    let retryCount = 0;
-    const maxRetries = 10;
-
-    while (!allElementsReady && retryCount < maxRetries) {
-      allElementsReady = true;
-      for (const [name, selectors] of Object.entries(criticalElements)) {
-        const element = await findElement(selectors, name, 1);
-        if (!element) {
-          allElementsReady = false;
-          logWithTimestamp(
-            `${name}が見つかりません (試行 ${retryCount + 1}/${maxRetries})`,
-            "warn",
-          );
-          break;
-        }
-      }
-      if (!allElementsReady) {
-        retryCount++;
-        await sleep(1000);
-      }
-    }
-
-    if (!allElementsReady) {
-      throw new Error(
-        "ChatGPT UIが完全に初期化されていません。ページをリロードしてください。",
-      );
-    }
-
-    // DOM安定化待機
-    await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT - 500);
-
-    // 既存の開いているメニューを閉じる
-    const openMenus = document.querySelectorAll(
-      '[role="menu"][data-state="open"]',
-    );
-    if (openMenus.length > 0) {
-      document.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "Escape", code: "Escape" }),
-      );
-      await sleep(AI_WAIT_CONFIG.TINY_WAIT);
-    }
-
-    logWithTimestamp("ページ初期化チェック完了", "success");
-  }
-
-  // テキスト入力
-  async function inputTextStep(taskData) {
-    logWithTimestamp("\n【Step 4-1-2】テキスト入力", "step");
-
-    let prompt = taskData.prompt || taskData.text || "";
-
-    // セル位置情報を追加
-    if (
-      taskData.cellInfo &&
-      taskData.cellInfo.column &&
-      taskData.cellInfo.row
-    ) {
-      const cellPosition = `${taskData.cellInfo.column}${taskData.cellInfo.row}`;
-      prompt = `【現在${cellPosition}セルを処理中です】\n\n${prompt}`;
-    }
-
-    if (!prompt || prompt.trim().length === 0) {
-      throw new Error("プロンプトが空です");
-    }
-
-    // テキスト入力欄を見つける
-    const inputField = await findElement(SELECTORS.textInput, "テキスト入力欄");
-    if (!inputField) {
-      throw new Error("テキスト入力欄が見つかりません");
-    }
-
-    // テキスト入力の実行
-    logWithTimestamp("✨ テキスト入力を開始します", "info");
-
-    const success = await inputTextChatGPT(prompt);
-    if (!success) {
-      throw new Error("テキスト入力に失敗しました");
-    }
-
-    logWithTimestamp(`✅ テキスト入力完了 (${prompt.length}文字)`, "success");
-    await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
-  }
-
-  // モデル選択
-  async function selectModelStep(modelName) {
-    if (!modelName) return;
-
-    logWithTimestamp("\n【Step 4-1-3】モデル選択", "step");
-
-    const success = await selectModelChatGPT(modelName);
-    if (!success) {
-      throw new Error(`モデル選択に失敗しました: ${modelName}`);
-    }
-
-    logWithTimestamp(`✅ モデル選択完了: ${modelName}`, "success");
-    await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
-  }
-
-  // 機能選択
-  async function selectFunctionStep(functionName) {
-    if (!functionName) return;
-
-    logWithTimestamp("\n【Step 4-1-4】機能選択", "step");
-
-    const success = await selectFunctionChatGPT(functionName);
-    if (!success) {
-      throw new Error(`機能選択に失敗しました: ${functionName}`);
-    }
-
-    logWithTimestamp(`✅ 機能選択完了: ${functionName}`, "success");
-    await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
-  }
-
-  // メッセージ送信
-  async function sendMessageStep(taskData) {
-    logWithTimestamp("\n【Step 4-1-5】メッセージ送信", "step");
-
-    const success = await sendMessageChatGPT();
-    if (!success) {
-      throw new Error("メッセージ送信に失敗しました");
-    }
-
-    // 送信時刻を記録
-    const sendTime = new Date();
-    const taskId = taskData.taskId || taskData.id || "UNKNOWN_TASK_ID";
-
-    // モデルと機能を取得
-    const modelName = (await getCurrentModelChatGPT()) || "不明";
-    const featureName = (await getCurrentFunctionChatGPT()) || "通常";
-
-    // background.jsに送信時刻を記録
-    if (chrome.runtime && chrome.runtime.sendMessage) {
-      const messageToSend = {
-        type: "recordSendTime",
-        taskId: taskId,
-        sendTime: sendTime.toISOString(),
-        taskInfo: {
-          aiType: "ChatGPT",
-          model: modelName,
-          function: featureName,
-          url: window.location.href,
-          cellInfo: taskData.cellInfo,
-        },
-        logCell: taskData.logCell,
-      };
-
-      try {
-        chrome.runtime.sendMessage(messageToSend, (response) => {
-          if (chrome.runtime.lastError) {
-            console.warn(
-              "⚠️ [ChatGPT] 送信時刻記録エラー:",
-              chrome.runtime.lastError.message,
-            );
-          } else {
-            console.log("✅ [ChatGPT] 送信時刻記録成功", response);
-          }
-        });
-      } catch (error) {
-        console.error("❌ [ChatGPT] 送信時刻記録失敗:", error);
-      }
-    }
-
-    logWithTimestamp("✅ メッセージ送信完了", "success");
-  }
-
-  // 応答待機
-  async function waitForResponseStep() {
-    logWithTimestamp("\n【Step 4-1-6】応答待機", "step");
-
-    const success = await waitForResponseChatGPT();
-    if (!success) {
-      throw new Error("応答の取得に失敗しました");
-    }
-
-    logWithTimestamp("✅ 応答待機完了", "success");
-  }
-
-  // レスポンス取得
-  async function extractResponseStep() {
-    logWithTimestamp("\n【Step 4-1-7】テキスト取得", "step");
-
-    const responseText = await getResponseTextChatGPT();
-    if (!responseText || responseText.trim().length === 0) {
-      throw new Error("応答テキストを取得できませんでした");
-    }
-
-    logWithTimestamp(
-      `✅ テキスト取得完了 (${responseText.length}文字)`,
-      "success",
-    );
-    return responseText;
-  }
 
   // エラーハンドリング
   function handleTaskError(error, taskData) {
@@ -3500,33 +3099,19 @@ async function reportSelectorError(selectorKey, error, selectors) {
           logWithTimestamp(`❌ 送信エラー: ${error.message}`, "error");
         }
 
-        console.warn("🔍 [ZERO-DEBUG-STEP-6] Step 4-1-6移行前");
-
         // ========================================
         // ステップ6: 応答待機（エラーハンドリング強化版）
         // ========================================
         logWithTimestamp("\n【Step 4-1-6】応答待機", "step");
-        console.warn("🔍 [ZERO-DEBUG-STEP-6-START] 応答待機開始");
 
         // 停止ボタンが表示されるまで待機
         let stopBtn = null;
         let stopBtnFound = false;
 
-        console.warn("🔍 [ZERO-DEBUG-STOP-1] 停止ボタン検索開始", {
-          selectors: SELECTORS.stopButton,
-          selectorsCount: SELECTORS.stopButton?.length,
-        });
-
         for (let i = 0; i < 30; i++) {
-          console.warn(`🔍 [ZERO-DEBUG-STOP-2] 停止ボタン検索 ${i + 1}/30`);
           try {
             stopBtn = await findElement(SELECTORS.stopButton, "停止ボタン", 1);
-            console.warn(`🔍 [ZERO-DEBUG-STOP-3] findElement結果:`, {
-              found: !!stopBtn,
-              elementType: stopBtn ? stopBtn.tagName : null,
-            });
             if (stopBtn) {
-              console.warn("🔍 [ZERO-DEBUG-STOP-4] 停止ボタン発見！");
               logWithTimestamp(
                 "停止ボタンが表示されました（応答生成中）",
                 "success",
@@ -3534,15 +3119,8 @@ async function reportSelectorError(selectorKey, error, selectors) {
               stopBtnFound = true;
               break;
             } else {
-              console.warn(
-                `🔍 [ZERO-DEBUG-STOP-5] 停止ボタン未検出 (${i + 1}/30)`,
-              );
             }
           } catch (error) {
-            console.error(
-              `🔍 [ZERO-DEBUG-STOP-ERROR] 停止ボタン検索エラー (${i + 1}/30):`,
-              error,
-            );
             log.debug(`停止ボタン検索エラー (${i + 1}/30): ${error.message}`);
           }
 
@@ -3564,15 +3142,16 @@ async function reportSelectorError(selectorKey, error, selectors) {
           await sleep(1000);
         }
 
-        console.warn("🔍 [ZERO-DEBUG-STOP-6] 停止ボタン検索ループ終了", {
-          stopBtnFound: stopBtnFound,
-          stopBtn: !!stopBtn,
-        });
+        // 停止ボタンが消えるまで待機（Claude方式: 10秒間連続確認）
 
-        // 停止ボタンが消えるまで待機
-        if (stopBtnFound && stopBtn) {
+        if (stopBtnFound) {
           const maxWaitSeconds = AI_WAIT_CONFIG.MAX_WAIT / 1000;
+          const CHECK_INTERVAL = 10; // 10秒間連続で停止ボタンが消えたら完了
+
           logWithTimestamp("応答生成を待機中...", "info");
+
+          let consecutiveAbsent = 0; // 停止ボタンが連続で見つからない回数
+
           for (let i = 0; i < maxWaitSeconds; i++) {
             try {
               stopBtn = await findElement(
@@ -3580,18 +3159,43 @@ async function reportSelectorError(selectorKey, error, selectors) {
                 "停止ボタン",
                 1,
               );
+
               if (!stopBtn) {
-                logWithTimestamp("✅ 応答生成完了", "success");
-                break;
+                consecutiveAbsent++;
+
+                if (consecutiveAbsent <= 10) {
+                  log.debug(`停止ボタン不在: ${consecutiveAbsent}秒連続`);
+                }
+
+                // 10秒間連続で停止ボタンが見つからなければ完了
+                if (consecutiveAbsent >= CHECK_INTERVAL) {
+                  logWithTimestamp(
+                    `✅ 応答生成完了（連続非検出: ${consecutiveAbsent}秒）`,
+                    "success",
+                  );
+
+                  // 停止ボタン消滅後の3秒待機
+                  await sleep(3000);
+                  break;
+                }
+              } else {
+                // 停止ボタンが見つかったらカウントをリセット
+                if (consecutiveAbsent > 0) {
+                  log.debug(
+                    `停止ボタン再検出。カウントリセット (${consecutiveAbsent} → 0)`,
+                  );
+                }
+                consecutiveAbsent = 0;
               }
             } catch (error) {
               log.debug(`停止ボタン再検索エラー: ${error.message}`);
               // エラーが発生しても続行
             }
 
-            if (i % 10 === 0) {
+            if (i % 10 === 0 && i > 0) {
               logWithTimestamp(`応答待機中... (${i}秒経過)`, "info");
             }
+
             await sleep(1000);
           }
         } else if (!stopBtnFound) {
@@ -3600,7 +3204,31 @@ async function reportSelectorError(selectorKey, error, selectors) {
             "停止ボタンが見つからないため、代替待機を実行",
             "warning",
           );
-          await sleep(5000); // 5秒待機
+
+          // アシスタントメッセージの出現を待つ
+          for (let i = 0; i < 30; i++) {
+            const assistantMessages = document.querySelectorAll(
+              '[data-message-author-role="assistant"]',
+            );
+            if (assistantMessages.length > 0) {
+              const lastMessage =
+                assistantMessages[assistantMessages.length - 1];
+              const messageText = lastMessage.textContent || "";
+              if (messageText.length > 10) {
+                console.warn(
+                  "🔍 [ZERO-DEBUG-FALLBACK-SUCCESS] アシスタントメッセージ検出",
+                );
+                logWithTimestamp("アシスタントの応答を検出しました", "success");
+                break;
+              }
+            }
+            await sleep(1000);
+            if (i % 5 === 0 && i > 0) {
+              console.warn(
+                `🔍 [ZERO-DEBUG-FALLBACK-WAIT] フォールバック待機中 ${i}/30秒`,
+              );
+            }
+          }
         }
 
         await sleep(2000); // 追加の待機
@@ -4531,17 +4159,6 @@ async function chatWithChatGPT() {
 
       return null;
     };
-
-    // 動作テストコードから完全コピー：テキストで要素を検索
-    function findElementByText(selector, text, parent = document) {
-      const elements = parent.querySelectorAll(selector);
-      for (const el of elements) {
-        if (el.textContent && el.textContent.includes(text)) {
-          return el;
-        }
-      }
-      return null;
-    }
 
     const availableModels = [];
     const availableFunctions = [];
