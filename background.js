@@ -1561,6 +1561,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         console.log("📋 [ログクリア] メニュー行データ:", {
           menuRow: actualMenuRow,
           menuRowData: menuRowData,
+          menuRowLength: menuRowData.length,
+          lastColumns: menuRowData.slice(-5), // 最後の5列を表示
         });
 
         const logColumns = [];
@@ -1712,6 +1714,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         console.log("📋 [回答削除] メニュー行データ:", {
           menuRow: actualMenuRow,
           menuRowData: menuRowData,
+          menuRowLength: menuRowData.length,
+          lastColumns: menuRowData.slice(-5), // 最後の5列を表示
         });
 
         const answerColumns = [];
