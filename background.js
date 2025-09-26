@@ -295,15 +295,6 @@ function formatLogEntry(request) {
   const parts = [];
   const aiType = request.taskInfo?.aiType || "AI不明";
 
-  // デバッグ：request全体の構造確認
-  console.log("🔍 [DEBUG-formatLogEntry] request全体:", {
-    requestKeys: Object.keys(request),
-    hasTaskInfo: !!request.taskInfo,
-    taskInfoType: typeof request.taskInfo,
-    aiType: aiType,
-    requestStringified: JSON.stringify(request, null, 2),
-  });
-
   // AIタイプをヘッダーとして
   parts.push(`---------- ${aiType} ----------`);
 
@@ -324,74 +315,12 @@ function formatLogEntry(request) {
     request.taskInfo?.displayedFunction || selectedFunction;
   parts.push(`機能: 選択: ${selectedFunction} / 表示: ${displayedFunction}`);
 
-  // URL
-  console.log("🔍 [DEBUG-URL] formatLogEntry内のURL処理:", {
-    hasTaskInfo: !!request.taskInfo,
-    hasUrl: !!request.taskInfo?.url,
-    urlValue: request.taskInfo?.url,
-    urlType: typeof request.taskInfo?.url,
-    urlLength: request.taskInfo?.url?.length,
-    taskInfoKeys: request.taskInfo ? Object.keys(request.taskInfo) : [],
-  });
-
-  // 🔍 formatLogEntry引数の完全なデバッグ
-  console.log("🔍 [FORMAT-LOG-ARGS] formatLogEntry呼び出し時の全引数:", {
-    requestType: typeof request,
-    requestKeys: Object.keys(request),
-    requestStringified: JSON.stringify(request, null, 2),
-    taskInfoExists: !!request.taskInfo,
-    taskInfoStringified: request.taskInfo
-      ? JSON.stringify(request.taskInfo, null, 2)
-      : "なし",
-    urlDirectAccess: request.taskInfo?.url,
-    urlViaDestruct: request.taskInfo && request.taskInfo.url,
-    timestamp: new Date().toISOString(),
-  });
-
-  // 送信時刻
-  if (request.sendTime) {
-    const sendTime = new Date(request.sendTime);
-    const hours = String(sendTime.getHours()).padStart(2, "0");
-    const minutes = String(sendTime.getMinutes()).padStart(2, "0");
-    const seconds = String(sendTime.getSeconds()).padStart(2, "0");
-    const milliseconds = String(sendTime.getMilliseconds()).padStart(3, "0");
-    parts.push(`送信時刻: ${hours}:${minutes}:${seconds}.${milliseconds}`);
-  }
-
-  // 記載時刻（タスク完了時刻を使用）
-  if (request.completionTime) {
-    const recordTime = new Date(request.completionTime);
-    const hours = String(recordTime.getHours()).padStart(2, "0");
-    const minutes = String(recordTime.getMinutes()).padStart(2, "0");
-    const seconds = String(recordTime.getSeconds()).padStart(2, "0");
-    const milliseconds = String(recordTime.getMilliseconds()).padStart(3, "0");
-    parts.push(`記録時刻: ${hours}:${minutes}:${seconds}.${milliseconds}`);
-  } else {
-    // completionTimeが無い場合は現在時刻を使用（後方互換性）
-    const recordTime = new Date();
-    const hours = String(recordTime.getHours()).padStart(2, "0");
-    const minutes = String(recordTime.getMinutes()).padStart(2, "0");
-    const seconds = String(recordTime.getSeconds()).padStart(2, "0");
-    const milliseconds = String(recordTime.getMilliseconds()).padStart(3, "0");
-    parts.push(`記録時刻: ${hours}:${minutes}:${seconds}.${milliseconds}`);
-  }
-
-  // URLが存在し、空文字列でない場合に追加（プレーンテキストとして）
+  // URLを機能の直後に追加（Gemini形式）
   const urlValue = request.taskInfo?.url;
   if (urlValue && typeof urlValue === "string" && urlValue.trim() !== "") {
-    // プレーンテキストとしてURLを追加（リッチテキストAPIで後からリンク化）
     parts.push(`URL: ${urlValue}`);
     console.log("✅ [DEBUG-URL] URLをログに追加:", urlValue);
   } else {
-    // URLが無い場合の詳細ログ
-    console.warn("⚠️ [DEBUG-URL] URLが存在しないか空のため追加されません:", {
-      urlExists: !!urlValue,
-      urlType: typeof urlValue,
-      urlValue: urlValue,
-      taskInfoExists: !!request.taskInfo,
-      requestKeys: Object.keys(request),
-    });
-
     // フォールバック: 他の場所からURLを探索
     const fallbackUrl =
       request.url || request.taskInfo?.cellInfo?.url || request.data?.url;
@@ -400,11 +329,74 @@ function formatLogEntry(request) {
       typeof fallbackUrl === "string" &&
       fallbackUrl.trim() !== ""
     ) {
-      // フォールバックURLもプレーンテキストとして追加
       parts.push(`URL: ${fallbackUrl}`);
       console.log("🔄 [DEBUG-URL] フォールバックURLをログに追加:", fallbackUrl);
     }
   }
+
+  // 送信時刻（Gemini形式: YYYY/M/D HH:MM:SS）
+  if (request.sendTime) {
+    const sendTime = new Date(request.sendTime);
+    const year = sendTime.getFullYear();
+    const month = sendTime.getMonth() + 1; // 月は0-indexed
+    const day = sendTime.getDate();
+    const hours = String(sendTime.getHours()).padStart(2, "0");
+    const minutes = String(sendTime.getMinutes()).padStart(2, "0");
+    const seconds = String(sendTime.getSeconds()).padStart(2, "0");
+    parts.push(
+      `送信時刻: ${year}/${month}/${day} ${hours}:${minutes}:${seconds}`,
+    );
+  }
+
+  // 記載時刻（タスク完了時刻を使用、秒数差も表示）
+  if (request.completionTime) {
+    const recordTime = new Date(request.completionTime);
+    const year = recordTime.getFullYear();
+    const month = recordTime.getMonth() + 1;
+    const day = recordTime.getDate();
+    const hours = String(recordTime.getHours()).padStart(2, "0");
+    const minutes = String(recordTime.getMinutes()).padStart(2, "0");
+    const seconds = String(recordTime.getSeconds()).padStart(2, "0");
+
+    // 秒数差を計算
+    let timeDiffText = "";
+    if (request.sendTime) {
+      const sendTime = new Date(request.sendTime);
+      const timeDiff = Math.round(
+        (recordTime.getTime() - sendTime.getTime()) / 1000,
+      );
+      timeDiffText = ` (${timeDiff}秒後)`;
+    }
+
+    parts.push(
+      `記載時刻: ${year}/${month}/${day} ${hours}:${minutes}:${seconds}${timeDiffText}`,
+    );
+  } else {
+    // completionTimeが無い場合は現在時刻を使用（後方互換性）
+    const recordTime = new Date();
+    const year = recordTime.getFullYear();
+    const month = recordTime.getMonth() + 1;
+    const day = recordTime.getDate();
+    const hours = String(recordTime.getHours()).padStart(2, "0");
+    const minutes = String(recordTime.getMinutes()).padStart(2, "0");
+    const seconds = String(recordTime.getSeconds()).padStart(2, "0");
+
+    // 秒数差を計算
+    let timeDiffText = "";
+    if (request.sendTime) {
+      const sendTime = new Date(request.sendTime);
+      const timeDiff = Math.round(
+        (recordTime.getTime() - sendTime.getTime()) / 1000,
+      );
+      timeDiffText = ` (${timeDiff}秒後)`;
+    }
+
+    parts.push(
+      `記載時刻: ${year}/${month}/${day} ${hours}:${minutes}:${seconds}${timeDiffText}`,
+    );
+  }
+
+  // URLは機能の直後に移動済み（上記参照）
 
   return parts.join("\n");
 }
