@@ -293,6 +293,30 @@ class SimpleSheetsClient {
   }
 
   /**
+   * 指定範囲のデータをクリア（Google Sheets API clear メソッド）
+   */
+  async clearRange(spreadsheetId, range) {
+    const token = await this.getAuthToken();
+    const url = `${this.baseUrl}/${spreadsheetId}/values/${range}:clear`;
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({}),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`クリア失敗: HTTP ${response.status}, ${errorText}`);
+    }
+
+    return await response.json();
+  }
+
+  /**
    * GIDからシート名を取得
    */
   async getSheetNameFromGid(spreadsheetId, gid) {
@@ -1552,27 +1576,19 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
 
         console.log("🔍 [ログクリア] データ開始行:", targetStartRow);
 
-        // 4. バッチ更新リクエストを作成
-        const updateRequests = [];
+        // 4. 各ログ列をクリア
+        console.log("🔍 [ログクリア] クリア対象列:", logColumns);
 
-        // 各ログ列に対してクリアリクエストを作成
-        logColumns.forEach((colIndex) => {
+        // 各ログ列に対してclear APIを実行
+        for (const colIndex of logColumns) {
           const columnLetter = String.fromCharCode(65 + colIndex); // A, B, C...
-          const range = `${columnLetter}${targetStartRow}:${columnLetter}`;
+          const range = `${columnLetter}${targetStartRow}:${columnLetter}1000`; // 明示的に範囲を指定
 
-          updateRequests.push({
-            range: range,
-            values: [], // 空の配列でクリア
-          });
-        });
-
-        console.log("🔍 [ログクリア] クリア対象:", updateRequests);
-
-        // 5. バッチ更新を実行
-        if (updateRequests.length > 0) {
-          await sheetsClient.batchUpdate(spreadsheetId, updateRequests);
-          console.log("✅ [ログクリア] 完了");
+          console.log(`🖮️ [ログクリア] ${range} をクリア中...`);
+          await sheetsClient.clearRange(spreadsheetId, range);
         }
+
+        console.log("✅ [ログクリア] 完了");
 
         return {
           success: true,
@@ -1590,7 +1606,10 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
 
     // Promiseを実行してレスポンスを送信
     handleClearLog()
-      .then(sendResponse)
+      .then((result) => {
+        console.log("📤 [ログクリア] レスポンス送信:", result);
+        sendResponse(result);
+      })
       .catch((error) => {
         console.error("❌ [ログクリア] 処理エラー:", error);
         sendResponse({
@@ -1718,27 +1737,19 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
 
         console.log("🔍 [回答削除] データ開始行:", targetStartRow);
 
-        // 4. バッチ更新リクエストを作成
-        const updateRequests = [];
+        // 4. 各回答列をクリア
+        console.log("🔍 [回答削除] 削除対象列:", answerColumns);
 
-        // 各回答列に対してクリアリクエストを作成
-        answerColumns.forEach((colIndex) => {
+        // 各回答列に対してclear APIを実行
+        for (const colIndex of answerColumns) {
           const columnLetter = String.fromCharCode(65 + colIndex); // A, B, C...
-          const range = `${columnLetter}${targetStartRow}:${columnLetter}`;
+          const range = `${columnLetter}${targetStartRow}:${columnLetter}1000`; // 明示的に範囲を指定
 
-          updateRequests.push({
-            range: range,
-            values: [], // 空の配列でクリア
-          });
-        });
-
-        console.log("🔍 [回答削除] 削除対象:", updateRequests);
-
-        // 5. バッチ更新を実行
-        if (updateRequests.length > 0) {
-          await sheetsClient.batchUpdate(spreadsheetId, updateRequests);
-          console.log("✅ [回答削除] 完了");
+          console.log(`🖮️ [回答削除] ${range} をクリア中...`);
+          await sheetsClient.clearRange(spreadsheetId, range);
         }
+
+        console.log("✅ [回答削除] 完了");
 
         return {
           success: true,
@@ -1756,7 +1767,10 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
 
     // Promiseを実行してレスポンスを送信
     handleDeleteAnswers()
-      .then(sendResponse)
+      .then((result) => {
+        console.log("📤 [回答削除] レスポンス送信:", result);
+        sendResponse(result);
+      })
       .catch((error) => {
         console.error("❌ [回答削除] 処理エラー:", error);
         sendResponse({
