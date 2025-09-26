@@ -1479,8 +1479,8 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
   ) {
     console.log("🧹 [ログクリア] 要求受信");
 
-    // 非同期処理を開始（sendResponseを適切に処理）
-    const handleClearLog = async () => {
+    // 非同期処理を即座に開始
+    (async () => {
       try {
         // 現在のスプレッドシートIDとシート情報を取得
         const result = await chrome.storage.local.get([
@@ -1602,33 +1602,23 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
 
         console.log("✅ [ログクリア] 完了");
 
-        return {
+        const result = {
           success: true,
           clearedColumns: logColumns.length,
           message: `${logColumns.length}列のログをクリアしました`,
         };
+        console.log("📤 [ログクリア] レスポンス送信:", result);
+        sendResponse(result);
       } catch (error) {
         console.error("❌ [ログクリア] エラー:", error);
-        return {
+        const errorResult = {
           success: false,
           error: error.message,
         };
+        console.log("📤 [ログクリア] エラーレスポンス送信:", errorResult);
+        sendResponse(errorResult);
       }
-    };
-
-    // Promiseを実行してレスポンスを送信
-    handleClearLog()
-      .then((result) => {
-        console.log("📤 [ログクリア] レスポンス送信:", result);
-        sendResponse(result);
-      })
-      .catch((error) => {
-        console.error("❌ [ログクリア] 処理エラー:", error);
-        sendResponse({
-          success: false,
-          error: "内部エラーが発生しました",
-        });
-      });
+    })();
 
     return true; // 非同期レスポンス許可
   }
@@ -1640,8 +1630,8 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
   ) {
     console.log("🗑️ [回答削除] 要求受信");
 
-    // 非同期処理を開始（sendResponseを適切に処理）
-    const handleDeleteAnswers = async () => {
+    // 非同期処理を即座に開始
+    (async () => {
       try {
         // 現在のスプレッドシートIDとシート情報を取得
         const result = await chrome.storage.local.get([
@@ -1763,33 +1753,23 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
 
         console.log("✅ [回答削除] 完了");
 
-        return {
+        const result = {
           success: true,
           clearedColumns: answerColumns.length,
           message: `${answerColumns.length}列の回答を削除しました`,
         };
+        console.log("📤 [回答削除] レスポンス送信:", result);
+        sendResponse(result);
       } catch (error) {
         console.error("❌ [回答削除] エラー:", error);
-        return {
+        const errorResult = {
           success: false,
           error: error.message,
         };
+        console.log("📤 [回答削除] エラーレスポンス送信:", errorResult);
+        sendResponse(errorResult);
       }
-    };
-
-    // Promiseを実行してレスポンスを送信
-    handleDeleteAnswers()
-      .then((result) => {
-        console.log("📤 [回答削除] レスポンス送信:", result);
-        sendResponse(result);
-      })
-      .catch((error) => {
-        console.error("❌ [回答削除] 処理エラー:", error);
-        sendResponse({
-          success: false,
-          error: "内部エラーが発生しました",
-        });
-      });
+    })();
 
     return true; // 非同期レスポンス許可
   }
