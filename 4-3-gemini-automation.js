@@ -849,6 +849,9 @@ const log = {
   async function executeTask(taskData) {
     log.info("🚀 【Step 4-3】Gemini タスク実行開始", taskData);
 
+    // taskIdを最初に定義（スコープ全体で利用可能にする）
+    const taskId = taskData.taskId || taskData.id || "UNKNOWN_TASK_ID";
+
     try {
       // プロンプトの適切な処理 - オブジェクトの場合は文字列化
       let promptText;
@@ -864,7 +867,18 @@ const log = {
       }
 
       const modelName = taskData.model || "";
-      const featureName = taskData.feature || "";
+      const featureName = taskData.function || ""; // feature → function に修正
+
+      // 🔍 [DEBUG] タスクデータの詳細確認
+      log.debug("📋 [Gemini Debug] TaskData詳細:", {
+        model: modelName,
+        feature: featureName,
+        hasModel: !!modelName,
+        hasFeature: !!featureName,
+        modelType: typeof modelName,
+        featureType: typeof featureName,
+        taskDataKeys: taskData ? Object.keys(taskData) : [],
+      });
 
       // 🔍 [DEBUG] セル位置情報を追加（ChatGPT・Claudeと統一）
       if (
@@ -927,7 +941,6 @@ const log = {
 
         // 送信時刻を記録
         const sendTime = new Date();
-        const taskId = taskData.taskId || taskData.id || "UNKNOWN_TASK_ID";
 
         // モデルと機能を取得
         const modelName_current = modelName || "不明";
@@ -1000,6 +1013,24 @@ const log = {
         model: modelName,
         feature: featureName,
       };
+
+      // ✅ タスク完了時刻をスプレッドシートに記録（Claude/ChatGPTと統一）
+      try {
+        chrome.runtime.sendMessage({
+          type: "recordCompletionTime",
+          taskId: taskId,
+          completionTime: new Date().toISOString(),
+          taskInfo: {
+            aiType: "Gemini",
+            model: modelName,
+            function: featureName,
+            url: window.location.href,
+          },
+        });
+        log.debug("✅ recordCompletionTime送信完了:", taskId);
+      } catch (error) {
+        log.warn("⚠️ recordCompletionTime送信エラー:", error);
+      }
 
       // 【修正】タスク完了時のスプレッドシート書き込み確認と通知処理を追加
       // タスク重複実行問題を修正：書き込み成功を確実に確認してから完了通知
