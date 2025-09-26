@@ -788,6 +788,7 @@ if (clearLogBtn) {
     try {
       // background.jsにメッセージを送信
       const response = await chrome.runtime.sendMessage({
+        action: "CLEAR_SPREADSHEET_LOG",
         type: "CLEAR_SPREADSHEET_LOG",
       });
 
@@ -828,6 +829,7 @@ if (deleteAnswersBtn) {
     try {
       // background.jsにメッセージを送信
       const response = await chrome.runtime.sendMessage({
+        action: "DELETE_SPREADSHEET_ANSWERS",
         type: "DELETE_SPREADSHEET_ANSWERS",
       });
 

@@ -1437,7 +1437,10 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
   }
 
   // 🧹 スプレッドシートのログクリア要求
-  if (request.type === "CLEAR_SPREADSHEET_LOG") {
+  if (
+    request.type === "CLEAR_SPREADSHEET_LOG" ||
+    request.action === "CLEAR_SPREADSHEET_LOG"
+  ) {
     console.log("🧹 [ログクリア] 要求受信");
 
     // 非同期処理を開始（sendResponseを適切に処理）
@@ -1600,7 +1603,10 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
   }
 
   // 🗑️ スプレッドシートの回答削除要求
-  if (request.type === "DELETE_SPREADSHEET_ANSWERS") {
+  if (
+    request.type === "DELETE_SPREADSHEET_ANSWERS" ||
+    request.action === "DELETE_SPREADSHEET_ANSWERS"
+  ) {
     console.log("🗑️ [回答削除] 要求受信");
 
     // 非同期処理を開始（sendResponseを適切に処理）
