@@ -938,10 +938,43 @@ async function logTaskGroups() {
 function saveDefinitions() {
   const activeGroups = window.globalState.taskGroups.filter((g) => !g.skip);
 
-  // localStorageに保存
-  localStorage.setItem("step2Result", JSON.stringify(window.globalState));
+  // 必要最小限のデータのみ抽出（大きなデータを除外）
+  const minimalData = {
+    taskGroups: window.globalState.taskGroups,
+    setupResult: window.globalState.setupResult,
+    spreadsheetId: window.globalState.spreadsheetId,
+    gid: window.globalState.gid,
+    taskTypeMap: window.globalState.taskTypeMap,
+    workColumnMap: window.globalState.workColumnMap,
+    specialRowsFound: window.globalState.specialRowsFound,
+  };
 
-  log.info("✅ タスクグループ定義の保存完了");
+  // Chrome Extension APIのstorage.localを使用（容量制限が100MB）
+  if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+    chrome.storage.local.set({ step2Result: minimalData }, () => {
+      if (chrome.runtime.lastError) {
+        log.error("Chrome storage保存エラー:", chrome.runtime.lastError);
+        // フォールバック: セッションストレージに保存
+        try {
+          sessionStorage.setItem("step2Result", JSON.stringify(minimalData));
+          log.info("✅ タスクグループ定義をセッションストレージに保存");
+        } catch (e) {
+          log.error("セッションストレージ保存エラー:", e);
+        }
+      } else {
+        log.info("✅ タスクグループ定義の保存完了");
+      }
+    });
+  } else {
+    // Chrome Extension APIが使えない場合はセッションストレージを使用
+    try {
+      sessionStorage.setItem("step2Result", JSON.stringify(minimalData));
+      log.info("✅ タスクグループ定義をセッションストレージに保存");
+    } catch (e) {
+      log.error("セッションストレージ保存エラー:", e);
+    }
+  }
+
   return window.globalState;
 }
 

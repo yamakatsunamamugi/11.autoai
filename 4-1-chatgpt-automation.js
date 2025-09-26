@@ -142,10 +142,11 @@ async function reportSelectorError(selectorKey, error, selectors) {
         return true;
       }
 
-      // DISCOVER_FEATURES と EXECUTE_TASK は後で登録されるメインリスナーに委譲
+      // DISCOVER_FEATURES と EXECUTE_TASK と CHATGPT_EXECUTE_TASK は後で登録されるメインリスナーに委譲
       if (
         request.type === "DISCOVER_FEATURES" ||
-        request.type === "EXECUTE_TASK"
+        request.type === "EXECUTE_TASK" ||
+        request.type === "CHATGPT_EXECUTE_TASK"
       ) {
         return false; // 他のリスナーに処理を委譲
       }
@@ -1890,6 +1891,56 @@ async function reportSelectorError(selectorKey, error, selectors) {
     │   本番executeTask内のコードをそのまま関数化           │
     └─────────────────────────────────────────────────────┘
     */
+
+  /**
+   * 🔧 現在選択されているモデルを取得
+   * @returns {Promise<string|null>} モデル名
+   */
+  async function getCurrentModelChatGPT() {
+    try {
+      const modelButton = await findElement(
+        SELECTORS.modelButton,
+        "モデルボタン",
+        1,
+      );
+      if (modelButton) {
+        const modelText = modelButton.textContent?.trim();
+        if (modelText) {
+          return modelText;
+        }
+      }
+      return null;
+    } catch (error) {
+      log.error("[ChatGPT-getCurrentModel] エラー:", error);
+      return null;
+    }
+  }
+
+  /**
+   * 🔧 現在選択されている機能を取得
+   * @returns {Promise<string|null>} 機能名
+   */
+  async function getCurrentFunctionChatGPT() {
+    try {
+      const selectedButtons = document.querySelectorAll(
+        'button[data-pill="true"]',
+      );
+      if (selectedButtons.length > 0) {
+        const features = [];
+        selectedButtons.forEach((btn) => {
+          const text = btn.textContent?.trim();
+          if (text && !text.includes("削除")) {
+            features.push(text);
+          }
+        });
+        return features.length > 0 ? features.join(", ") : null;
+      }
+      return null;
+    } catch (error) {
+      log.error("[ChatGPT-getCurrentFunction] エラー:", error);
+      return null;
+    }
+  }
 
   /**
    * 🔧 ChatGPTモデルメニューを開く

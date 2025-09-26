@@ -693,10 +693,23 @@
 
         // タスクデータの検証
         log(`【Report-ステップ3-2】🔍 タスクデータ検証中...`, "INFO");
-        if (!task.row || !task.promptColumn || !task.answerColumn) {
+        if (!task.row || !task.promptColumn) {
           throw new Error("必要なタスクデータが不足しています");
         }
         log(`【Report-ステップ3-2】✅ タスクデータ検証完了`, "SUCCESS");
+
+        // 回答列を動的に探索
+        log(`【Report-ステップ3-2a】🔍 回答列を探索中...`, "INFO");
+        const searchStartColumn =
+          task.reportColumn || task.answerColumn || task.promptColumn;
+        const actualAnswerColumn = this._findAnswerFromMenuRow(
+          spreadsheetData,
+          searchStartColumn,
+        );
+        log(
+          `【Report-ステップ3-2a】✅ 使用する回答列: ${actualAnswerColumn} (探索開始: ${searchStartColumn})`,
+          "SUCCESS",
+        );
 
         // スプレッドシートからデータ取得
         log(`【Report-ステップ3-3】📊 スプレッドシートデータ取得中...`, "INFO");
@@ -708,7 +721,7 @@
         const answerText = this._getCellValue(
           spreadsheetData,
           task.row,
-          task.answerColumn,
+          actualAnswerColumn,
         );
 
         if (!promptText) {
@@ -716,7 +729,7 @@
         }
 
         log(
-          `【Report-ステップ3-3】✅ データ取得完了: プロンプト${promptText.length}文字, 回答${answerText?.length || 0}文字`,
+          `【Report-ステップ3-3】✅ データ取得完了: プロンプト${promptText.length}文字, 回答${answerText?.length || 0}文字 (${actualAnswerColumn}列)`,
           "SUCCESS",
         );
 
@@ -802,6 +815,96 @@
         log(`セル値取得エラー: ${error.message}`, "ERROR");
         return "";
       }
+    }
+
+    /**
+     * メニュー行から回答列を左方向に探索
+     * @param {Object} spreadsheetData - スプレッドシートデータ
+     * @param {string} startColumn - 探索開始列（レポート列またはデフォルト列）
+     * @returns {string} 見つかった回答列、または元の列
+     */
+    _findAnswerFromMenuRow(spreadsheetData, startColumn) {
+      try {
+        // メニュー行を取得（グローバル状態またはデフォルト）
+        const menuRow = window.globalState?.specialRows?.menuRow || 3;
+        const menuRowIndex = menuRow - 1;
+
+        log(
+          `【Report】メニュー行から回答列を探索開始: ${menuRow}行目, 開始列: ${startColumn}`,
+          "INFO",
+        );
+
+        // 開始列のインデックスを取得
+        const startIndex = this._columnToIndex(startColumn);
+        if (startIndex < 0) {
+          log(`【Report】開始列 ${startColumn} のインデックス取得失敗`, "WARN");
+          return startColumn;
+        }
+
+        // メニュー行データを取得
+        let menuRowData = [];
+        if (spreadsheetData.rows && spreadsheetData.rows[menuRowIndex]) {
+          menuRowData = spreadsheetData.rows[menuRowIndex];
+        } else if (
+          Array.isArray(spreadsheetData) &&
+          spreadsheetData[menuRowIndex]
+        ) {
+          menuRowData = spreadsheetData[menuRowIndex];
+        } else {
+          log(`【Report】メニュー行データが見つかりません`, "WARN");
+          return startColumn;
+        }
+
+        // 左方向に探索（開始列から左へ）
+        for (let i = startIndex; i >= 0; i--) {
+          const cellValue = (menuRowData[i] || "").toString().trim();
+
+          if (cellValue === "回答") {
+            const foundColumn = this._indexToColumn(i);
+            log(
+              `【Report】✅ 回答列を発見: ${foundColumn}列（${menuRow}行目）`,
+              "SUCCESS",
+            );
+            return foundColumn;
+          }
+        }
+
+        // 見つからなかった場合は元の列を返す
+        log(
+          `【Report】回答列が見つからなかったため、元の列 ${startColumn} を使用`,
+          "WARN",
+        );
+        return startColumn;
+      } catch (error) {
+        log(`【Report】回答列探索エラー: ${error.message}`, "ERROR");
+        return startColumn;
+      }
+    }
+
+    /**
+     * 列名を数値インデックスに変換
+     */
+    _columnToIndex(column) {
+      if (!column || typeof column !== "string") return -1;
+      let index = 0;
+      for (let i = 0; i < column.length; i++) {
+        index = index * 26 + (column.charCodeAt(i) - 64);
+      }
+      return index - 1;
+    }
+
+    /**
+     * 数値インデックスを列名に変換
+     */
+    _indexToColumn(index) {
+      let column = "";
+      index++;
+      while (index > 0) {
+        const remainder = (index - 1) % 26;
+        column = String.fromCharCode(65 + remainder) + column;
+        index = Math.floor((index - 1) / 26);
+      }
+      return column;
     }
 
     /**

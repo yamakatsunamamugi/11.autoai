@@ -6704,18 +6704,11 @@ class TaskStatusManager {
         return;
       }
 
-      if (!currentValue.startsWith("作業中")) {
-        ExecuteLogger.warn(
-          `⚠️ [SAFE-CLEAR] ${range}: 作業中マーカーではない値を保護`,
-          {
-            値の先頭50文字:
-              typeof currentValue === "string"
-                ? currentValue.substring(0, 50)
-                : safeStringify(currentValue).substring(0, 50),
-            値の型: typeof currentValue,
-            範囲: range,
-          },
-        );
+      if (
+        typeof currentValue !== "string" ||
+        !currentValue.startsWith("作業中")
+      ) {
+        // ログを削除し、単純にreturnのみ
         return;
       }
 
